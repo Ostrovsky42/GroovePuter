@@ -41,6 +41,9 @@ static constexpr IGfxColor COLOR_KNOB_3 = IGfxColor::Magenta();
 static constexpr IGfxColor COLOR_KNOB_4 = IGfxColor::Green();
 
 static constexpr IGfxColor COLOR_KNOB_CONTROL = IGfxColor::Yellow();
+static constexpr IGfxColor COLOR_STEP_SELECTED = IGfxColor::Orange();
+static constexpr IGfxColor COLOR_PATTERN_SELECTED_FILL = IGfxColor::Blue();
+
 
 namespace {
 
@@ -73,6 +76,19 @@ void drawLineColored(IGfx& gfx, int x0, int y0, int x1, int y1, IGfxColor color)
     if (e2 >= dy) { err += dy; x0 += sx; }
     if (e2 <= dx) { err += dx; y0 += sy; }
   }
+}
+
+void formatNoteName(int note, char* buf, size_t bufSize) {
+  if (!buf || bufSize == 0) return;
+  if (note < 0) {
+    snprintf(buf, bufSize, "--");
+    return;
+  }
+  static const char* names[] = {"C",  "C#", "D",  "D#", "E",  "F",
+                                "F#", "G",  "G#", "A",  "A#", "B"};
+  int octave = note / 12 - 1;
+  const char* name = names[note % 12];
+  snprintf(buf, bufSize, "%s%d", name, octave);
 }
 
 struct Knob {
@@ -124,6 +140,14 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid)
     : gfx_(gfx), mini_acid_(mini_acid) {
   splash_start_ms_ = nowMillis();
   gfx_.setFont(GfxFont::kFont5x7);
+  for (int i = 0; i < NUM_303_VOICES; ++i) {
+    int idx = mini_acid_.current303PatternIndex(i);
+    if (idx < 0 || idx >= Bank<SynthPattern>::kPatterns) idx = 0;
+    pattern_row_cursor_[i] = idx;
+  }
+  int drumIdx = mini_acid_.currentDrumPatternIndex();
+  if (drumIdx < 0 || drumIdx >= Bank<DrumPatternSet>::kPatterns) drumIdx = 0;
+  drum_pattern_cursor_ = drumIdx;
 }
 
 MiniAcidDisplay::~MiniAcidDisplay() = default;
@@ -141,13 +165,196 @@ void MiniAcidDisplay::previousPage() {
 }
 
 int MiniAcidDisplay::active303Voice() const {
-  if (page_index_ == kKnobs2) return 1;
+  if (page_index_ == kKnobs2 || page_index_ == kPatternEditB) return 1;
   return 0;
 }
 
 bool MiniAcidDisplay::is303ControlPage() const {
-  return page_index_ == kKnobs || page_index_ == kKnobs2;
+  return page_index_ == kKnobs || page_index_ == kKnobs2 ||
+         page_index_ == kPatternEditA || page_index_ == kPatternEditB;
 }
+
+bool MiniAcidDisplay::isPatternEditPage() const {
+  return page_index_ == kPatternEditA || page_index_ == kPatternEditB;
+}
+
+int MiniAcidDisplay::activePatternVoice() const {
+  return isPatternEditPage() ? active303Voice() : 0;
+}
+
+int MiniAcidDisplay::activePatternCursor() const {
+  int voice = activePatternVoice();
+  if (voice < 0 || voice >= NUM_303_VOICES) return 0;
+  int idx = pattern_row_cursor_[voice];
+  if (idx < 0) idx = 0;
+  if (idx >= Bank<SynthPattern>::kPatterns)
+    idx = Bank<SynthPattern>::kPatterns - 1;
+  return idx;
+}
+
+void MiniAcidDisplay::setPatternCursor(int voiceIndex, int cursorIndex) {
+  int idx = voiceIndex;
+  if (idx < 0 || idx >= NUM_303_VOICES) return;
+  int cursor = cursorIndex;
+  if (cursor < 0) cursor = 0;
+  if (cursor >= Bank<SynthPattern>::kPatterns)
+    cursor = Bank<SynthPattern>::kPatterns - 1;
+  pattern_row_cursor_[idx] = cursor;
+}
+
+int MiniAcidDisplay::activeDrumPatternCursor() const {
+  int idx = drum_pattern_cursor_;
+  if (idx < 0) idx = 0;
+  if (idx >= Bank<DrumPatternSet>::kPatterns)
+    idx = Bank<DrumPatternSet>::kPatterns - 1;
+  return idx;
+}
+
+int MiniAcidDisplay::activeDrumStep() const {
+  int idx = drum_step_cursor_;
+  if (idx < 0) idx = 0;
+  if (idx >= SEQ_STEPS) idx = SEQ_STEPS - 1;
+  return idx;
+}
+
+int MiniAcidDisplay::activeDrumVoice() const {
+  int idx = drum_voice_cursor_;
+  if (idx < 0) idx = 0;
+  if (idx >= NUM_DRUM_VOICES) idx = NUM_DRUM_VOICES - 1;
+  return idx;
+}
+
+void MiniAcidDisplay::setDrumPatternCursor(int cursorIndex) {
+  int cursor = cursorIndex;
+  if (cursor < 0) cursor = 0;
+  if (cursor >= Bank<DrumPatternSet>::kPatterns)
+    cursor = Bank<DrumPatternSet>::kPatterns - 1;
+  drum_pattern_cursor_ = cursor;
+}
+
+void MiniAcidDisplay::moveDrumCursor(int delta) {
+  if (drum_pattern_focus_) {
+    int cursor = activeDrumPatternCursor();
+    cursor = (cursor + delta) % Bank<DrumPatternSet>::kPatterns;
+    if (cursor < 0) cursor += Bank<DrumPatternSet>::kPatterns;
+    drum_pattern_cursor_ = cursor;
+    return;
+  }
+  int step = activeDrumStep();
+  step = (step + delta) % SEQ_STEPS;
+  if (step < 0) step += SEQ_STEPS;
+  drum_step_cursor_ = step;
+}
+
+void MiniAcidDisplay::moveDrumCursorVertical(int delta) {
+  if (delta == 0) return;
+  if (drum_pattern_focus_) {
+    if (delta > 0) {
+      drum_pattern_focus_ = false;
+    }
+    return;
+  }
+
+  int voice = activeDrumVoice();
+  int newVoice = voice + delta;
+  if (newVoice < 0 || newVoice >= NUM_DRUM_VOICES) {
+    drum_pattern_focus_ = true;
+    drum_pattern_cursor_ = activeDrumStep() % Bank<DrumPatternSet>::kPatterns;
+    return;
+  }
+  drum_voice_cursor_ = newVoice;
+}
+
+int MiniAcidDisplay::activePatternStep() const {
+  int voice = activePatternVoice();
+  if (voice < 0 || voice >= NUM_303_VOICES) return 0;
+  int idx = pattern_edit_cursor_[voice];
+  if (idx < 0) idx = 0;
+  if (idx >= SEQ_STEPS) idx = SEQ_STEPS - 1;
+  return idx;
+}
+
+void MiniAcidDisplay::movePatternCursor(int delta) {
+  int voice = activePatternVoice();
+  if (voice < 0 || voice >= NUM_303_VOICES) return;
+  if (pattern_focus_[voice] == PatternEditFocus::PatternRow) {
+    int cursor = activePatternCursor();
+    cursor = (cursor + delta) % Bank<SynthPattern>::kPatterns;
+    if (cursor < 0) cursor += Bank<SynthPattern>::kPatterns;
+    pattern_row_cursor_[voice] = cursor;
+    return;
+  }
+  int idx = activePatternStep();
+  int row = idx / 8;
+  int col = idx % 8;
+  col = (col + delta) % 8;
+  if (col < 0) col += 8;
+  pattern_edit_cursor_[voice] = row * 8 + col;
+}
+
+void MiniAcidDisplay::movePatternCursorVertical(int delta) {
+  int voice = activePatternVoice();
+  if (voice < 0 || voice >= NUM_303_VOICES) return;
+  if (delta == 0) return;
+  if (pattern_focus_[voice] == PatternEditFocus::PatternRow) {
+    int col = activePatternCursor();
+    int targetRow = delta > 0 ? 0 : 1;
+    pattern_edit_cursor_[voice] = targetRow * 8 + col;
+    pattern_focus_[voice] = PatternEditFocus::Steps;
+    return;
+  }
+  int idx = activePatternStep();
+  int row = idx / 8;
+  int col = idx % 8;
+  int newRow = row + delta;
+  if (newRow < 0) {
+    pattern_focus_[voice] = PatternEditFocus::PatternRow;
+    setPatternCursor(voice, col);
+    return;
+  }
+  if (newRow > 1) {
+    pattern_focus_[voice] = PatternEditFocus::PatternRow;
+    setPatternCursor(voice, col);
+    return;
+  }
+  pattern_edit_cursor_[voice] = newRow * 8 + col;
+}
+
+void MiniAcidDisplay::focusPatternRow(int voiceIndex) {
+  int idx = voiceIndex;
+  if (idx < 0 || idx >= NUM_303_VOICES) return;
+  setPatternCursor(idx, pattern_row_cursor_[idx]);
+  pattern_focus_[idx] = PatternEditFocus::PatternRow;
+}
+
+void MiniAcidDisplay::focusPatternSteps(int voiceIndex) {
+  int idx = voiceIndex;
+  if (idx < 0 || idx >= NUM_303_VOICES) return;
+  setPatternCursor(idx, pattern_row_cursor_[idx]);
+  int row = pattern_edit_cursor_[idx] / 8;
+  if (row < 0 || row > 1) row = 0;
+  pattern_edit_cursor_[idx] = row * 8 + pattern_row_cursor_[idx];
+  pattern_focus_[idx] = PatternEditFocus::Steps;
+}
+
+bool MiniAcidDisplay::patternRowFocused(int voiceIndex) const {
+  int idx = voiceIndex;
+  if (idx < 0 || idx >= NUM_303_VOICES) return false;
+  return pattern_focus_[idx] == PatternEditFocus::PatternRow;
+}
+
+void MiniAcidDisplay::focusDrumPatternRow() {
+  setDrumPatternCursor(drum_pattern_cursor_);
+  drum_pattern_focus_ = true;
+}
+
+void MiniAcidDisplay::focusDrumGrid() {
+  drum_pattern_focus_ = false;
+  drum_step_cursor_ = activeDrumStep();
+  drum_voice_cursor_ = activeDrumVoice();
+}
+
+bool MiniAcidDisplay::drumPatternRowFocused() const { return drum_pattern_focus_; }
 
 void MiniAcidDisplay::update() {
   if (splash_active_) {
@@ -181,20 +388,26 @@ void MiniAcidDisplay::update() {
   int content_h = 110;
   if (content_h < 0) content_h = 0;
 
-  if (page_index_ == kHelp1) {
-    drawHelpPage(content_x, content_y, content_w, content_h, 1);
-  } else if (page_index_ == kHelp2) {
-    drawHelpPage(content_x, content_y, content_w, content_h, 2);
-  } else if (page_index_ == kKnobs) {
+  if (page_index_ == kKnobs) {
     drawKnobPage(content_x, content_y, content_w, content_h, 0);
+  } else if (page_index_ == kPatternEditA) {
+    drawPatternEditPage(content_x, content_y, content_w, content_h, 0);
   } else if (page_index_ == kKnobs2) {
     drawKnobPage(content_x, content_y, content_w, content_h, 1);
-  } else if (page_index_ == kSequencer) {
-    drawSequencerPage(content_x, content_y, content_w, content_h);
+  } else if (page_index_ == kPatternEditB) {
+    drawPatternEditPage(content_x, content_y, content_w, content_h, 1);
   } else if (page_index_ == kDrumSequencer) {
     drawDrumSequencerPage(content_x, content_y, content_w, content_h);
   } else if (page_index_ == kWaveform) {
     drawWaveform(content_x, content_y, content_w, content_h);
+  } else if (page_index_ == kHelp1) {
+    drawHelpPage(content_x, content_y, content_w, content_h, 1);
+  } else if (page_index_ == kHelp2) {
+    drawHelpPage(content_x, content_y, content_w, content_h, 2);
+  } else if (page_index_ == kHelpPattern) {
+    drawHelpPage(content_x, content_y, content_w, content_h, 3);
+  } else if (page_index_ == kHelpDrum) {
+    drawHelpPage(content_x, content_y, content_w, content_h, 4);
   }
 
   drawMutesSection(margin, content_h + margin, gfx_.width() - margin * 2, gfx_.height() - content_h - margin );
@@ -427,7 +640,7 @@ void MiniAcidDisplay::drawHelpPage(int x, int y, int w, int h, int helpPage) {
     item(left_x, left_y, "P", "drum randomize", IGfxColor::Yellow());
     left_y += lh;
 
-  } else {
+  } else if (helpPage == 2) {
     heading(left_x, left_y, "303 (active page voice)");
     left_y += lh;
     item(left_x, left_y, "A / Z", "cutoff + / -", COLOR_KNOB_1);
@@ -453,6 +666,52 @@ void MiniAcidDisplay::drawHelpPage(int x, int y, int w, int h, int helpPage) {
     right_y += lh;
     item(right_x, right_y, "K/L", "flip pages", COLOR_LABEL);
     right_y += lh;
+  } else if (helpPage == 3) {
+    heading(left_x, left_y, "303 Pattern Edit");
+    left_y += lh;
+    heading(left_x, left_y, "Navigation");
+    left_y += lh;
+    item(left_x, left_y, "LEFT/RIGHT", "", COLOR_LABEL);
+    left_y += lh;
+    item(left_x, left_y, "UP/DOWN", "move", COLOR_LABEL);
+    left_y += lh;
+    item(left_x, left_y, "ENTER", "Load pattern", IGfxColor::Green());
+    left_y += lh;
+
+    heading(left_x, left_y, "Pattern slots");
+    left_y += lh;
+    item(left_x, left_y, "Q..I", "Pick pattern", COLOR_PATTERN_SELECTED_FILL);
+    left_y += lh;
+
+    int ry = body_y + 4 + lh;
+    heading(right_x, ry, "Step edits");
+    ry += lh;
+    item(right_x, ry, "Q", "Toggle slide", COLOR_SLIDE);
+    ry += lh;
+    item(right_x, ry, "W", "Toggle accent", COLOR_ACCENT);
+    ry += lh;
+    item(right_x, ry, "A / Z", "Note +1 / -1", COLOR_303_NOTE);
+    ry += lh;
+    item(right_x, ry, "S / X", "Octave + / -", COLOR_LABEL);
+    ry += lh;
+    item(right_x, ry, "BACK", "Clear step", IGfxColor::Red());
+    ry += lh;
+  } else {
+    heading(left_x, left_y, "Drums Pattern Edit");
+    left_y += lh;
+    heading(left_x, left_y, "Navigation");
+    left_y += lh;
+    item(left_x, left_y, "LEFT / RIGHT", "", COLOR_LABEL);
+    left_y += lh;
+    item(left_x, left_y, "UP / DOWN", "move", COLOR_LABEL);
+    left_y += lh;
+    item(left_x, left_y, "ENTER", "Load/toggle ", IGfxColor::Green());
+    left_y += lh;
+
+    heading(left_x, left_y, "Patterns");
+    left_y += lh;
+    item(left_x, left_y, "Q..I", "Select drum pattern 1-8", COLOR_PATTERN_SELECTED_FILL);
+    left_y += lh;
   }
 }
 
@@ -515,96 +774,167 @@ void MiniAcidDisplay::drawKnobPage(int x, int y, int w, int h, int voiceIndex) {
   gfx_.setTextColor(COLOR_WHITE);
 }
 
-
-void MiniAcidDisplay::drawSequencerPage(int x, int y, int w, int h) {
-  char buf[128];
-  auto print = [&](int px, int py, const char* fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, ap);
-    va_end(ap);
-    gfx_.drawText(px, py, buf);
-  };
-
-  int title_h = drawPageTitle(x, y, w, "303 SEQUENCER");
-  int lh = 16;
-
-  int lane_space = (h - title_h - lh - 10);
-  if (lane_space < 36) lane_space = 36;
-  int lane_h = lane_space / 3 - 4;
-  if (lane_h < 12) lane_h = 12;
-
-  int lane_y = y + title_h + 4;
-  print(x, lane_y, "303A pattern (I to randomize)");
-  lane_y += lh;
-  draw303Lane(x, lane_y, w, lane_h, 0);
-
-  lane_y += lane_h + 6;
-  print(x, lane_y, "303B pattern (O to randomize)");
-  lane_y += lh;
-  draw303Lane(x, lane_y, w, lane_h, 1);
-
-}
-
-void MiniAcidDisplay::drawDrumSequencerPage(int x, int y, int w, int h) {
-  char buf[128];
-  auto print = [&](int px, int py, const char* fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, ap);
-    va_end(ap);
-    gfx_.drawText(px, py, buf);
-  };
-
-  int title_h = drawPageTitle(x, y, w, "DRUM SEQUENCER");
-  int lh = 16;
-
-  int lane_space = (h - title_h - lh - 20);
-  if (lane_space < 36) lane_space = 36;
-  int lane_h = lane_space;
-  if (lane_h < 12) lane_h = 12;
-
-  int lane_y = y + title_h + 4;
-  print(x, lane_y, "Drums Pattern (P to randomize)");
-  lane_y += lh;
-  drawDrumLane(x, lane_y, w, lane_h);
-}
-
-void MiniAcidDisplay::draw303Lane(int x, int y, int w, int h, int voiceIndex) {
-  const int cell_w = w / SEQ_STEPS;
-  if (cell_w < 2) return;
+void MiniAcidDisplay::drawPatternEditPage(int x, int y, int w, int h, int voiceIndex) {
+  const char* title = voiceIndex == 0 ? "303A EDIT" : "303B EDIT";
+  int title_h = drawPageTitle(x, y, w, title);
+  int body_y = y + title_h + 2;
+  int body_h = h - title_h - 2;
+  if (body_h <= 0) return;
 
   const int8_t* notes = mini_acid_.pattern303Steps(voiceIndex);
   const bool* accent = mini_acid_.pattern303AccentSteps(voiceIndex);
   const bool* slide = mini_acid_.pattern303SlideSteps(voiceIndex);
-  int highlight = mini_acid_.currentStep();
+  int stepCursor = pattern_edit_cursor_[voiceIndex];
+  int playing = mini_acid_.currentStep();
+  int selectedPattern = mini_acid_.current303PatternIndex(voiceIndex);
+  bool patternFocus = patternRowFocused(voiceIndex);
+  bool stepFocus = !patternFocus;
+  int patternCursor = activePatternCursor();
+
+  int spacing = 4;
+  int pattern_size = (w - spacing * 7 - 2) / 8;
+  int pattern_size_height = pattern_size / 2;
+  if (pattern_size < 12) pattern_size = 12;
+  int pattern_label_h = gfx_.fontHeight();
+  int pattern_row_y = body_y + pattern_label_h + 1;
+
+  gfx_.setTextColor(COLOR_LABEL);
+  gfx_.drawText(x, body_y, "PATTERNS");
+  gfx_.setTextColor(COLOR_WHITE);
+
+  for (int i = 0; i < Bank<SynthPattern>::kPatterns; ++i) {
+    int col = i % 8;
+    int cell_x = x + col * (pattern_size + spacing);
+    bool isCursor = patternFocus && patternCursor == i;
+    gfx_.fillRect(cell_x, pattern_row_y, pattern_size, pattern_size_height, COLOR_PANEL);
+    if (selectedPattern == i) {
+      gfx_.fillRect(cell_x - 1, pattern_row_y - 1, pattern_size + 2, pattern_size_height + 2, COLOR_PATTERN_SELECTED_FILL);
+      gfx_.drawRect(cell_x - 1, pattern_row_y - 1, pattern_size + 2, pattern_size_height + 2, COLOR_LABEL);
+    }
+    gfx_.drawRect(cell_x, pattern_row_y, pattern_size, pattern_size_height, COLOR_WHITE);
+    if (isCursor) {
+      gfx_.drawRect(cell_x - 2, pattern_row_y - 2, pattern_size + 4, pattern_size_height + 4, COLOR_STEP_SELECTED);
+    }
+    char label[4];
+    snprintf(label, sizeof(label), "%d", i + 1);
+    int tw = textWidth(gfx_, label);
+    int tx = cell_x + (pattern_size - tw) / 2;
+    int ty = pattern_row_y + pattern_size_height / 2 - gfx_.fontHeight() / 2;
+    gfx_.drawText(tx, ty, label);
+  }
+
+  int grid_top = pattern_row_y + pattern_size_height + 6;
+  int cell_size = (w - spacing * 7 - 2) / 8;
+  if (cell_size < 12) cell_size = 12;
+  int indicator_h = 5;
+  int indicator_gap = 1;
+  int row_height = indicator_h + indicator_gap + cell_size + 4;
 
   for (int i = 0; i < SEQ_STEPS; ++i) {
-    int cw = cell_w;
-    int cx = x + i * cell_w;
+    int row = i / 8;
+    int col = i % 8;
+    int cell_x = x + col * (cell_size + spacing);
+    int cell_y = grid_top + row * row_height;
 
-    bool hasNote = notes[i] >= 0;
-    IGfxColor fill = hasNote ? COLOR_303_NOTE : COLOR_GRAY;
-    gfx_.fillRect(cx, y, cw - 1, h - 1, fill);
+    int indicator_w = (cell_size - 2) / 2;
+    if (indicator_w < 4) indicator_w = 4;
+    int slide_x = cell_x + cell_size - indicator_w;
+    int indicator_y = cell_y;
 
-    if (accent[i])
-      gfx_.fillRect(cx + 1, y + 1, cw - 3, 3, COLOR_ACCENT);
-    if (slide[i])
-      gfx_.fillRect(cx + 1, y + 1 + 4, cw - 3, 3, COLOR_SLIDE);
+    gfx_.fillRect(cell_x, indicator_y, indicator_w, indicator_h, slide[i] ? COLOR_SLIDE : COLOR_GRAY_DARKER);
+    gfx_.drawRect(cell_x, indicator_y, indicator_w, indicator_h, COLOR_WHITE);
+    gfx_.fillRect(slide_x, indicator_y, indicator_w, indicator_h, accent[i] ? COLOR_ACCENT : COLOR_GRAY_DARKER);
+    gfx_.drawRect(slide_x, indicator_y, indicator_w, indicator_h, COLOR_WHITE);
 
-    if(hasNote) {
-      int min_note = 25;
-      int note_y = (notes[i] - min_note) * h / (70 - min_note);
-      note_y = h - 1 - note_y;
-      gfx_.fillRect(cx + 1, y + 1 + (note_y), cw - 3, 3, COLOR_WHITE);
+    int note_box_y = indicator_y + indicator_h + indicator_gap;
+    IGfxColor fill = notes[i] >= 0 ? COLOR_303_NOTE : COLOR_GRAY;
+    gfx_.fillRect(cell_x, note_box_y, cell_size, cell_size, fill);
+    gfx_.drawRect(cell_x, note_box_y, cell_size, cell_size, COLOR_WHITE);
+
+    if (playing == i) {
+      gfx_.drawRect(cell_x - 1, note_box_y - 1, cell_size + 2, cell_size + 2, COLOR_STEP_HILIGHT);
+    }
+    if (stepFocus && stepCursor == i) {
+      gfx_.drawRect(cell_x - 2, note_box_y - 2, cell_size + 4, cell_size + 4, COLOR_STEP_SELECTED);
     }
 
-    if (highlight == i)
-      gfx_.drawRect(cx, y, cw - 1, h - 1, COLOR_STEP_HILIGHT);
+    char note_label[8];
+    formatNoteName(notes[i], note_label, sizeof(note_label));
+    int tw = textWidth(gfx_, note_label);
+    int tx = cell_x + (cell_size - tw) / 2;
+    int ty = note_box_y + cell_size / 2 - gfx_.fontHeight() / 2;
+    gfx_.drawText(tx, ty, note_label);
   }
 }
 
-void MiniAcidDisplay::drawDrumLane(int x, int y, int w, int h) {
+void MiniAcidDisplay::drawDrumSequencerPage(int x, int y, int w, int h) {
+  int title_h = drawPageTitle(x, y, w, "DRUM SEQUENCER");
+  int body_y = y + title_h + 2;
+  int body_h = h - title_h - 2;
+  if (body_h <= 0) return;
+
+  int pattern_label_h = gfx_.fontHeight();
+  gfx_.setTextColor(COLOR_LABEL);
+  gfx_.drawText(x, body_y, "PATTERN");
+  gfx_.setTextColor(COLOR_WHITE);
+
+  int spacing = 4;
+  int pattern_size = (w - spacing * 7 - 2) / 8;
+  if (pattern_size < 12) pattern_size = 12;
+  int pattern_height = pattern_size / 2;
+  int pattern_row_y = body_y + pattern_label_h + 1;
+
+  int selectedPattern = mini_acid_.currentDrumPatternIndex();
+  int patternCursor = activeDrumPatternCursor();
+  bool patternFocus = drumPatternRowFocused();
+
+  for (int i = 0; i < Bank<DrumPatternSet>::kPatterns; ++i) {
+    int col = i % 8;
+    int cell_x = x + col * (pattern_size + spacing);
+    bool isCursor = patternFocus && patternCursor == i;
+    gfx_.fillRect(cell_x, pattern_row_y, pattern_size, pattern_height, COLOR_PANEL);
+    if (selectedPattern == i) {
+      gfx_.fillRect(cell_x - 1, pattern_row_y - 1, pattern_size + 2, pattern_height + 2, COLOR_PATTERN_SELECTED_FILL);
+      gfx_.drawRect(cell_x - 1, pattern_row_y - 1, pattern_size + 2, pattern_height + 2, COLOR_LABEL);
+    }
+    gfx_.drawRect(cell_x, pattern_row_y, pattern_size, pattern_height, COLOR_WHITE);
+    if (isCursor) {
+      gfx_.drawRect(cell_x - 2, pattern_row_y - 2, pattern_size + 4, pattern_height + 4, COLOR_STEP_SELECTED);
+    }
+    char label[4];
+    snprintf(label, sizeof(label), "%d", i + 1);
+    int tw = textWidth(gfx_, label);
+    int tx = cell_x + (pattern_size - tw) / 2;
+    int ty = pattern_row_y + pattern_height / 2 - gfx_.fontHeight() / 2;
+    gfx_.drawText(tx, ty, label);
+  }
+
+  int grid_top = pattern_row_y + pattern_height + 6;
+  int grid_h = body_h - (grid_top - body_y);
+  if (grid_h <= 0) return;
+
+  int label_w = 18;
+  int grid_x = x + label_w;
+  int grid_w = w - label_w;
+  if (grid_w < 8) grid_w = 8;
+
+  const char* voiceLabels[NUM_DRUM_VOICES] = {"BD", "SD", "CH", "OH", "MT", "HT", "RS", "CP"};
+  int labelStripeH = grid_h / NUM_DRUM_VOICES;
+  if (labelStripeH < 3) labelStripeH = 3;
+  for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
+    int ly = grid_top + v * labelStripeH + (labelStripeH - gfx_.fontHeight()) / 2;
+    gfx_.setTextColor(COLOR_LABEL);
+    gfx_.drawText(x, ly, voiceLabels[v]);
+  }
+  gfx_.setTextColor(COLOR_WHITE);
+
+  int cursorStep = activeDrumStep();
+  int cursorVoice = activeDrumVoice();
+  bool gridFocus = !patternFocus;
+  drawDrumLane(grid_x, grid_top, grid_w, grid_h, cursorStep, cursorVoice, gridFocus);
+}
+
+void MiniAcidDisplay::drawDrumLane(int x, int y, int w, int h, int cursorStep, int cursorVoice, bool gridFocus) {
   const int cell_w = w / SEQ_STEPS;
   if (cell_w < 2) return;
 
@@ -618,7 +948,11 @@ void MiniAcidDisplay::drawDrumLane(int x, int y, int w, int h) {
   const bool* clap = mini_acid_.patternClapSteps();
   int highlight = mini_acid_.currentStep();
 
-  int stripe_h = h / 8;
+  const bool* hits[NUM_DRUM_VOICES] = {kick, snare, hat, openHat, midTom, highTom, rim, clap};
+  const IGfxColor colors[NUM_DRUM_VOICES] = {COLOR_DRUM_KICK, COLOR_DRUM_SNARE, COLOR_DRUM_HAT, COLOR_DRUM_OPEN_HAT,
+                                             COLOR_DRUM_MID_TOM, COLOR_DRUM_HIGH_TOM, COLOR_DRUM_RIM, COLOR_DRUM_CLAP};
+
+  int stripe_h = h / NUM_DRUM_VOICES;
   if (stripe_h < 3) stripe_h = 3;
 
   for (int i = 0; i < SEQ_STEPS; ++i) {
@@ -628,25 +962,22 @@ void MiniAcidDisplay::drawDrumLane(int x, int y, int w, int h) {
 
     gfx_.fillRect(cx, y, cw - 1, h - 1, COLOR_DARKER);
 
-    if (kick[i])
-      gfx_.fillRect(cx + 1, y + 1, cw - 3, stripe_h - 1, COLOR_DRUM_KICK);
-    if (snare[i])
-      gfx_.fillRect(cx + 1, y + stripe_h, cw - 3, stripe_h - 1, COLOR_DRUM_SNARE);
-    if (hat[i])
-      gfx_.fillRect(cx + 1, y + stripe_h * 2, cw - 3, stripe_h - 1, COLOR_DRUM_HAT);
-    if (openHat[i])
-      gfx_.fillRect(cx + 1, y + stripe_h * 3, cw - 3, stripe_h - 1, COLOR_DRUM_OPEN_HAT);
-    if (midTom[i])
-      gfx_.fillRect(cx + 1, y + stripe_h * 4, cw - 3, stripe_h - 1, COLOR_DRUM_MID_TOM);
-    if (highTom[i])
-      gfx_.fillRect(cx + 1, y + stripe_h * 5, cw - 3, stripe_h - 1, COLOR_DRUM_HIGH_TOM);
-    if (rim[i])
-      gfx_.fillRect(cx + 1, y + stripe_h * 6, cw - 3, stripe_h - 1, COLOR_DRUM_RIM);
-    if (clap[i])
-      gfx_.fillRect(cx + 1, y + stripe_h * 7, cw - 3, stripe_h - 1, COLOR_DRUM_CLAP);
+    for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
+      if (!hits[v] || !hits[v][i]) continue;
+      int stripe_y = y + v * stripe_h;
+      int stripe_w = cw - 3;
+      if (stripe_w < 1) stripe_w = 1;
+      int stripe_h_clamped = stripe_h - 2;
+      if (stripe_h_clamped < 1) stripe_h_clamped = 1;
+      gfx_.fillRect(cx + 1, stripe_y + 1, stripe_w, stripe_h_clamped, colors[v]);
+    }
 
     if (highlight == i)
       gfx_.drawRect(cx, y, cw - 1, h - 1, COLOR_STEP_HILIGHT);
+    if (gridFocus && cursorStep == i) {
+      int stripe_y = y + cursorVoice * stripe_h;
+      gfx_.drawRect(cx, stripe_y, cw - 1, stripe_h - 1, COLOR_STEP_SELECTED);
+    }
   }
 }
 

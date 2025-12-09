@@ -3,45 +3,57 @@
 #include <math.h>
 #include <stdlib.h>
 #include <algorithm>
+#include <string>
+
+namespace {
+constexpr int kDrumKickVoice = 0;
+constexpr int kDrumSnareVoice = 1;
+constexpr int kDrumHatVoice = 2;
+constexpr int kDrumOpenHatVoice = 3;
+constexpr int kDrumMidTomVoice = 4;
+constexpr int kDrumHighTomVoice = 5;
+constexpr int kDrumRimVoice = 6;
+constexpr int kDrumClapVoice = 7;
+}
 
 Parameter::Parameter()
-  : _label(""), _unit(""), _min(0.0f), _max(1.0f),
-    _default(0.0f), _step(0.0f), _value(0.0f) {}
+  : _label(""), _unit(""), min_(0.0f), max_(1.0f),
+    default_(0.0f), step_(0.0f), value_(0.0f) {}
 
 Parameter::Parameter(const char* label, const char* unit, float minValue, float maxValue, float defaultValue, float step)
-  : _label(label), _unit(unit), _min(minValue), _max(maxValue),
-    _default(defaultValue), _step(step), _value(defaultValue) {}
+  : _label(label), _unit(unit), min_(minValue), max_(maxValue),
+    default_(defaultValue), step_(step), value_(defaultValue) {}
 
 const char* Parameter::label() const { return _label; }
 const char* Parameter::unit() const { return _unit; }
-float Parameter::value() const { return _value; }
-float Parameter::min() const { return _min; }
-float Parameter::max() const { return _max; }
-float Parameter::step() const { return _step; }
+float Parameter::value() const { return value_; }
+float Parameter::min() const { return min_; }
+float Parameter::max() const { return max_; }
+float Parameter::step() const { return step_; }
 
 float Parameter::normalized() const {
-  if (_max <= _min) return 0.0f;
-  return (_value - _min) / (_max - _min);
+  if (max_ <= min_) return 0.0f;
+  return (value_ - min_) / (max_ - min_);
 }
 
 void Parameter::setValue(float v) {
-  if (v < _min) v = _min;
-  if (v > _max) v = _max;
-  _value = v;
+  if (v < min_) v = min_;
+  if (v > max_) v = max_;
+  value_ = v;
 }
 
 void Parameter::addSteps(int steps) {
-  setValue(_value + _step * steps);
+  setValue(value_ + step_ * steps);
 }
 
 void Parameter::setNormalized(float norm) {
   if (norm < 0.0f) norm = 0.0f;
   if (norm > 1.0f) norm = 1.0f;
-  _value = _min + norm * (_max - _min);
+  value_ = min_ + norm * (max_ - min_);
 }
 
 void Parameter::reset() {
-  _value = _default;
+  value_ = default_;
 }
 
 ChamberlinFilter::ChamberlinFilter(float sampleRate) : _lp(0.0f), _bp(0.0f), _sampleRate(sampleRate) {
@@ -97,7 +109,7 @@ void TB303Voice::reset() {
   phase = 0.0f;
   freq = 110.0f;
   targetFreq = 110.0f;
-  slideSpeed = 0.002f;
+  slideSpeed = 0.001f;
   env = 0.0f;
   gate = false;
   slide = false;
@@ -122,7 +134,7 @@ void TB303Voice::startNote(float freqHz, bool accent, bool slideFlag) {
   targetFreq = freqHz;
 
   gate = true;
-  env = accent ? 1.5f : 1.0f;
+  env = accent ? 2.0f : 1.0f;
 }
 
 void TB303Voice::release() { gate = false; }
@@ -634,11 +646,12 @@ float TempoDelay::process(float input) {
   return input + delayed * mix;
 }
 
-MiniAcid::MiniAcid(float sampleRate)
+MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
   : voice303(sampleRate),
     voice3032(sampleRate),
     drums(sampleRate),
     sampleRateValue(sampleRate),
+    sceneStorage_(sceneStorage),
     playing(false),
     mute303(false),
     mute303_2(false),
@@ -659,71 +672,14 @@ MiniAcid::MiniAcid(float sampleRate)
     delay303(sampleRate),
     delay3032(sampleRate) {
   if (sampleRateValue <= 0.0f) sampleRateValue = 44100.0f;
+  reset();
+}
 
-  // Default patterns
-  int8_t notes[SEQ_STEPS] = {48, 48, 55, 55, 50, 50, 55, 55,
-                             48, 48, 55, 55, 50, 55, 50, -1};
-  bool accent[SEQ_STEPS] = {false, true, false, true, false, true,
-                            false, true, false, true, false, true,
-                            false, true, false, false};
-  bool slide[SEQ_STEPS] = {false, true, false, true, false, true,
-                           false, true, false, true, false, true,
-                           false, true, false, false};
 
-  bool kick[SEQ_STEPS] = {true,  false, false, false, true,  false,
-                          false, false, true,  false, false, false,
-                          true,  false, false, false};
-
-  bool snare[SEQ_STEPS] = {false, false, true,  false, false, false,
-                           true,  false, false, false, true,  false,
-                           false, false, true,  false};
-
-  bool hat[SEQ_STEPS] = {true, true, true, true, true, true, true, true,
-                         true, true, true, true, true, true, true, true};
-
-  bool openHat[SEQ_STEPS] = {false, false, false, true,  false, false, false, false,
-                             false, false, false, true,  false, false, false, false};
-
-  bool midTom[SEQ_STEPS] = {false, false, false, false, true,  false, false, false,
-                            false, false, false, false, true,  false, false, false};
-
-  bool highTom[SEQ_STEPS] = {false, false, false, false, false, false, true,  false,
-                             false, false, false, false, false, false, true,  false};
-
-  bool rim[SEQ_STEPS] = {false, false, false, false, false, true,  false, false,
-                         false, false, false, false, false, true,  false, false};
-
-  bool clap[SEQ_STEPS] = {false, false, false, false, false, false, false, false,
-                          false, false, false, false, true,  false, false, false};
-
-  int8_t notes2[SEQ_STEPS] = {48, 48, 55, 55, 50, 50, 55, 55,
-                             48, 48, 55, 55, 50, 55, 50, -1};
-  bool accent2[SEQ_STEPS] = {true,  false, true,  false, true,  false,
-                             true,  false, true,  false, true,  false,
-                             true,  false, true,  false};
-  bool slide2[SEQ_STEPS] = {false, false, true,  false, false, false,
-                            true,  false, false, false, true,  false,
-                            false, false, true,  false};
-
-  for (int i = 0; i < SEQ_STEPS; ++i) {
-    pattern303[i] = notes[i];
-    pattern303Accent[i] = accent[i];
-    pattern303Slide[i] = slide[i];
-    pattern303_2[i] = notes2[i];
-    pattern303Accent2[i] = accent2[i];
-    pattern303Slide2[i] = slide2[i];
-    patternKick[i] = kick[i];
-    patternSnare[i] = snare[i];
-    patternHat[i] = hat[i];
-    patternOpenHat[i] = openHat[i];
-    if (patternOpenHat[i])
-      patternHat[i] = false;
-    patternMidTom[i] = midTom[i];
-    patternHighTom[i] = highTom[i];
-    patternRim[i] = rim[i];
-    patternClap[i] = clap[i];
-  }
-
+void MiniAcid::init() {
+  // maybe move everything from the constructor here later
+  sceneStorage_->initializeStorage();
+  loadSceneFromStorage();
   reset();
 }
 
@@ -781,6 +737,8 @@ void MiniAcid::stop() {
   voice303.release();
   voice3032.release();
   drums.reset();
+
+  saveSceneToStorage();
 }
 
 void MiniAcid::setBpm(float bpm) {
@@ -800,6 +758,15 @@ float MiniAcid::sampleRate() const { return sampleRateValue; }
 bool MiniAcid::isPlaying() const { return playing; }
 
 int MiniAcid::currentStep() const { return currentStepIndex; }
+
+int MiniAcid::currentDrumPatternIndex() const {
+  return sceneManager_.getCurrentDrumPatternIndex();
+}
+
+int MiniAcid::current303PatternIndex(int voiceIndex) const {
+  int idx = clamp303Voice(voiceIndex);
+  return sceneManager_.getCurrentSynthPatternIndex(idx);
+}
 
 bool MiniAcid::is303Muted(int voiceIndex) const {
   int idx = clamp303Voice(voiceIndex);
@@ -823,24 +790,51 @@ const Parameter& MiniAcid::parameter303(TB303ParamId id, int voiceIndex) const {
 }
 const int8_t* MiniAcid::pattern303Steps(int voiceIndex) const {
   int idx = clamp303Voice(voiceIndex);
-  return idx == 0 ? pattern303 : pattern303_2;
+  refreshSynthCaches(idx);
+  return synthNotesCache_[idx];
 }
 const bool* MiniAcid::pattern303AccentSteps(int voiceIndex) const {
   int idx = clamp303Voice(voiceIndex);
-  return idx == 0 ? pattern303Accent : pattern303Accent2;
+  refreshSynthCaches(idx);
+  return synthAccentCache_[idx];
 }
 const bool* MiniAcid::pattern303SlideSteps(int voiceIndex) const {
   int idx = clamp303Voice(voiceIndex);
-  return idx == 0 ? pattern303Slide : pattern303Slide2;
+  refreshSynthCaches(idx);
+  return synthSlideCache_[idx];
 }
-const bool* MiniAcid::patternKickSteps() const { return patternKick; }
-const bool* MiniAcid::patternSnareSteps() const { return patternSnare; }
-const bool* MiniAcid::patternHatSteps() const { return patternHat; }
-const bool* MiniAcid::patternOpenHatSteps() const { return patternOpenHat; }
-const bool* MiniAcid::patternMidTomSteps() const { return patternMidTom; }
-const bool* MiniAcid::patternHighTomSteps() const { return patternHighTom; }
-const bool* MiniAcid::patternRimSteps() const { return patternRim; }
-const bool* MiniAcid::patternClapSteps() const { return patternClap; }
+const bool* MiniAcid::patternKickSteps() const {
+  refreshDrumCache(kDrumKickVoice);
+  return drumHitCache_[kDrumKickVoice];
+}
+const bool* MiniAcid::patternSnareSteps() const {
+  refreshDrumCache(kDrumSnareVoice);
+  return drumHitCache_[kDrumSnareVoice];
+}
+const bool* MiniAcid::patternHatSteps() const {
+  refreshDrumCache(kDrumHatVoice);
+  return drumHitCache_[kDrumHatVoice];
+}
+const bool* MiniAcid::patternOpenHatSteps() const {
+  refreshDrumCache(kDrumOpenHatVoice);
+  return drumHitCache_[kDrumOpenHatVoice];
+}
+const bool* MiniAcid::patternMidTomSteps() const {
+  refreshDrumCache(kDrumMidTomVoice);
+  return drumHitCache_[kDrumMidTomVoice];
+}
+const bool* MiniAcid::patternHighTomSteps() const {
+  refreshDrumCache(kDrumHighTomVoice);
+  return drumHitCache_[kDrumHighTomVoice];
+}
+const bool* MiniAcid::patternRimSteps() const {
+  refreshDrumCache(kDrumRimVoice);
+  return drumHitCache_[kDrumRimVoice];
+}
+const bool* MiniAcid::patternClapSteps() const {
+  refreshDrumCache(kDrumClapVoice);
+  return drumHitCache_[kDrumClapVoice];
+}
 
 size_t MiniAcid::copyLastAudio(int16_t *dst, size_t maxSamples) const {
   if (!dst || maxSamples == 0) return 0;
@@ -875,6 +869,18 @@ void MiniAcid::toggleDelay303(int voiceIndex) {
     delay3032.setEnabled(delay3032Enabled);
   }
 }
+
+void MiniAcid::setDrumPatternIndex(int patternIndex) {
+  sceneManager_.setCurrentDrumPatternIndex(patternIndex);
+}
+
+void MiniAcid::shiftDrumPatternIndex(int delta) {
+  int current = sceneManager_.getCurrentDrumPatternIndex();
+  int next = current + delta;
+  if (next < 0) next = Bank<DrumPatternSet>::kPatterns - 1;
+  if (next >= Bank<DrumPatternSet>::kPatterns) next = 0;
+  sceneManager_.setCurrentDrumPatternIndex(next);
+}
 void MiniAcid::adjust303Parameter(TB303ParamId id, int steps, int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
   if (idx == 0)
@@ -889,11 +895,126 @@ void MiniAcid::set303Parameter(TB303ParamId id, float value, int voiceIndex) {
   else
     voice3032.setParameter(id, value);
 }
+void MiniAcid::set303PatternIndex(int voiceIndex, int patternIndex) {
+  int idx = clamp303Voice(voiceIndex);
+  sceneManager_.setCurrentSynthPatternIndex(idx, patternIndex);
+}
+void MiniAcid::shift303PatternIndex(int voiceIndex, int delta) {
+  int idx = clamp303Voice(voiceIndex);
+  int current = sceneManager_.getCurrentSynthPatternIndex(idx);
+  int next = current + delta;
+  if (next < 0) next = Bank<SynthPattern>::kPatterns - 1;
+  if (next >= Bank<SynthPattern>::kPatterns) next = 0;
+  sceneManager_.setCurrentSynthPatternIndex(idx, next);
+}
+void MiniAcid::adjust303StepNote(int voiceIndex, int stepIndex, int semitoneDelta) {
+  int idx = clamp303Voice(voiceIndex);
+  int step = clamp303Step(stepIndex);
+  SynthPattern& pattern = editSynthPattern(idx);
+  int note = pattern.steps[step].note;
+  if (note < 0) {
+    if (semitoneDelta <= 0) return; // keep rests when moving downward
+    note = kMin303Note;
+  }
+  note += semitoneDelta;
+  if (note < kMin303Note) {
+    pattern.steps[step].note = -1;
+    return;
+  }
+  note = clamp303Note(note);
+  pattern.steps[step].note = static_cast<int8_t>(note);
+}
+void MiniAcid::adjust303StepOctave(int voiceIndex, int stepIndex, int octaveDelta) {
+  adjust303StepNote(voiceIndex, stepIndex, octaveDelta * 12);
+}
+void MiniAcid::clear303StepNote(int voiceIndex, int stepIndex) {
+  int idx = clamp303Voice(voiceIndex);
+  int step = clamp303Step(stepIndex);
+  SynthPattern& pattern = editSynthPattern(idx);
+  pattern.steps[step].note = -1;
+}
+void MiniAcid::toggle303AccentStep(int voiceIndex, int stepIndex) {
+  int idx = clamp303Voice(voiceIndex);
+  int step = clamp303Step(stepIndex);
+  SynthPattern& pattern = editSynthPattern(idx);
+  pattern.steps[step].accent = !pattern.steps[step].accent;
+}
+void MiniAcid::toggle303SlideStep(int voiceIndex, int stepIndex) {
+  int idx = clamp303Voice(voiceIndex);
+  int step = clamp303Step(stepIndex);
+  SynthPattern& pattern = editSynthPattern(idx);
+  pattern.steps[step].slide = !pattern.steps[step].slide;
+}
+
+void MiniAcid::toggleDrumStep(int voiceIndex, int stepIndex) {
+  int voice = clampDrumVoice(voiceIndex);
+  int step = stepIndex;
+  if (step < 0) step = 0;
+  if (step >= DrumPattern::kSteps) step = DrumPattern::kSteps - 1;
+  DrumPattern& pattern = editDrumPattern(voice);
+  pattern.steps[step].hit = !pattern.steps[step].hit;
+  pattern.steps[step].accent = pattern.steps[step].hit;
+}
 
 int MiniAcid::clamp303Voice(int voiceIndex) const {
   if (voiceIndex < 0) return 0;
   if (voiceIndex >= NUM_303_VOICES) return NUM_303_VOICES - 1;
   return voiceIndex;
+}
+int MiniAcid::clampDrumVoice(int voiceIndex) const {
+  if (voiceIndex < 0) return 0;
+  if (voiceIndex >= NUM_DRUM_VOICES) return NUM_DRUM_VOICES - 1;
+  return voiceIndex;
+}
+int MiniAcid::clamp303Step(int stepIndex) const {
+  if (stepIndex < 0) return 0;
+  if (stepIndex >= SEQ_STEPS) return SEQ_STEPS - 1;
+  return stepIndex;
+}
+int MiniAcid::clamp303Note(int note) const {
+  if (note < kMin303Note) return kMin303Note;
+  if (note > kMax303Note) return kMax303Note;
+  return note;
+}
+
+const SynthPattern& MiniAcid::synthPattern(int synthIndex) const {
+  int idx = clamp303Voice(synthIndex);
+  return sceneManager_.getCurrentSynthPattern(idx);
+}
+
+SynthPattern& MiniAcid::editSynthPattern(int synthIndex) {
+  int idx = clamp303Voice(synthIndex);
+  return sceneManager_.editCurrentSynthPattern(idx);
+}
+
+const DrumPattern& MiniAcid::drumPattern(int drumVoiceIndex) const {
+  int idx = clampDrumVoice(drumVoiceIndex);
+  const DrumPatternSet& patternSet = sceneManager_.getCurrentDrumPattern();
+  return patternSet.voices[idx];
+}
+
+DrumPattern& MiniAcid::editDrumPattern(int drumVoiceIndex) {
+  int idx = clampDrumVoice(drumVoiceIndex);
+  DrumPatternSet& patternSet = sceneManager_.editCurrentDrumPattern();
+  return patternSet.voices[idx];
+}
+
+void MiniAcid::refreshSynthCaches(int synthIndex) const {
+  int idx = clamp303Voice(synthIndex);
+  const SynthPattern& pattern = synthPattern(idx);
+  for (int i = 0; i < SEQ_STEPS; ++i) {
+    synthNotesCache_[idx][i] = static_cast<int8_t>(pattern.steps[i].note);
+    synthAccentCache_[idx][i] = pattern.steps[i].accent;
+    synthSlideCache_[idx][i] = pattern.steps[i].slide;
+  }
+}
+
+void MiniAcid::refreshDrumCache(int drumVoiceIndex) const {
+  int idx = clampDrumVoice(drumVoiceIndex);
+  const DrumPattern& pattern = drumPattern(idx);
+  for (int i = 0; i < SEQ_STEPS; ++i) {
+    drumHitCache_[idx][i] = pattern.steps[i].hit;
+  }
 }
 
 void MiniAcid::updateSamplesPerStep() {
@@ -908,13 +1029,17 @@ void MiniAcid::advanceStep() {
   currentStepIndex = (currentStepIndex + 1) % SEQ_STEPS;
 
   // 303 voices
-  int8_t note = pattern303[currentStepIndex];
-  bool accent = pattern303Accent[currentStepIndex];
-  bool slide = pattern303Slide[currentStepIndex];
+  const SynthPattern& synthA = synthPattern(0);
+  const SynthPattern& synthB = synthPattern(1);
+  const SynthStep& stepA = synthA.steps[currentStepIndex];
+  const SynthStep& stepB = synthB.steps[currentStepIndex];
+  int note = stepA.note;
+  bool accent = stepA.accent;
+  bool slide = stepA.slide;
 
-  int8_t note2 = pattern303_2[currentStepIndex];
-  bool accent2 = pattern303Accent2[currentStepIndex];
-  bool slide2 = pattern303Slide2[currentStepIndex];
+  int note2 = stepB.note;
+  bool accent2 = stepB.accent;
+  bool slide2 = stepB.slide;
 
   if (!mute303 && note >= 0)
     voice303.startNote(noteToFreq(note), accent, slide);
@@ -927,21 +1052,30 @@ void MiniAcid::advanceStep() {
     voice3032.release();
 
   // Drums
-  if (patternKick[currentStepIndex] && !muteKick)
+  const DrumPattern& kick = drumPattern(kDrumKickVoice);
+  const DrumPattern& snare = drumPattern(kDrumSnareVoice);
+  const DrumPattern& hat = drumPattern(kDrumHatVoice);
+  const DrumPattern& openHat = drumPattern(kDrumOpenHatVoice);
+  const DrumPattern& midTom = drumPattern(kDrumMidTomVoice);
+  const DrumPattern& highTom = drumPattern(kDrumHighTomVoice);
+  const DrumPattern& rim = drumPattern(kDrumRimVoice);
+  const DrumPattern& clap = drumPattern(kDrumClapVoice);
+
+  if (kick.steps[currentStepIndex].hit && !muteKick)
     drums.triggerKick();
-  if (patternSnare[currentStepIndex] && !muteSnare)
+  if (snare.steps[currentStepIndex].hit && !muteSnare)
     drums.triggerSnare();
-  if (patternHat[currentStepIndex] && !muteHat)
+  if (hat.steps[currentStepIndex].hit && !muteHat)
     drums.triggerHat();
-  if (patternOpenHat[currentStepIndex] && !muteOpenHat)
+  if (openHat.steps[currentStepIndex].hit && !muteOpenHat)
     drums.triggerOpenHat();
-  if (patternMidTom[currentStepIndex] && !muteMidTom)
+  if (midTom.steps[currentStepIndex].hit && !muteMidTom)
     drums.triggerMidTom();
-  if (patternHighTom[currentStepIndex] && !muteHighTom)
+  if (highTom.steps[currentStepIndex].hit && !muteHighTom)
     drums.triggerHighTom();
-  if (patternRim[currentStepIndex] && !muteRim)
+  if (rim.steps[currentStepIndex].hit && !muteRim)
     drums.triggerRim();
-  if (patternClap[currentStepIndex] && !muteClap)
+  if (clap.steps[currentStepIndex].hit && !muteClap)
     drums.triggerClap();
 }
 
@@ -1016,84 +1150,135 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
 
 void MiniAcid::randomize303Pattern(int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
-  if (idx == 0)
-    PatternGenerator::generateRandom303Pattern(SEQ_STEPS, pattern303, pattern303Accent, pattern303Slide);
-  else
-    PatternGenerator::generateRandom303Pattern(SEQ_STEPS, pattern303_2, pattern303Accent2, pattern303Slide2);
+  PatternGenerator::generateRandom303Pattern(editSynthPattern(idx));
 }
 
 void MiniAcid::randomizeDrumPattern() {
-  PatternGenerator::generateRandomDrumPattern(SEQ_STEPS, patternKick, patternSnare, patternHat, patternOpenHat, patternMidTom, patternHighTom, patternRim, patternClap);
+  PatternGenerator::generateRandomDrumPattern(sceneManager_.editCurrentDrumPattern());
+}
+
+void MiniAcid::loadSceneFromStorage() {
+  if (sceneStorage_) {
+    if (sceneStorage_->readScene(sceneManager_)) return;
+
+    std::string serialized;
+    if (sceneStorage_->readScene(serialized) && sceneManager_.loadScene(serialized)) {
+      return;
+    }
+  }
+  sceneManager_.loadDefaultScene();
+}
+
+void MiniAcid::saveSceneToStorage() {
+  if (!sceneStorage_) return;
+  if (sceneStorage_->writeScene(sceneManager_)) return;
+
+  std::string serialized = sceneManager_.dumpCurrentScene();
+  sceneStorage_->writeScene(serialized);
 }
 
 
 int dorian_intervals[7] = {0, 2, 3, 5, 7, 9, 10};
 int phrygian_intervals[7] = {0, 1, 3, 5, 7, 8, 10};
 
-void PatternGenerator::generateRandom303Pattern(int seq_steps, int8_t *pattern303, bool *pattern303Accent, bool *pattern303Slide) {
+void PatternGenerator::generateRandom303Pattern(SynthPattern& pattern) {
   int rootNote = 26;
 
-  for (int i = 0; i < seq_steps; ++i) {
+  for (int i = 0; i < SynthPattern::kSteps; ++i) {
     int r = rand() % 10;
     if (r < 7) {
-      pattern303[i] = rootNote + dorian_intervals[rand() % 7] + 12 * (rand() % 3);
+      pattern.steps[i].note = rootNote + dorian_intervals[rand() % 7] + 12 * (rand() % 3);
     } else {
-      pattern303[i] = -1; // 30% chance of rest
+      pattern.steps[i].note = -1; // 30% chance of rest
     }
 
     // Random accent (30% chance)
-    pattern303Accent[i] = (rand() % 100) < 30;
+    pattern.steps[i].accent = (rand() % 100) < 30;
 
     // Random slide (20% chance)
-    pattern303Slide[i] = (rand() % 100) < 20;
+    pattern.steps[i].slide = (rand() % 100) < 20;
   }
 }
 
-void PatternGenerator::generateRandomDrumPattern(int seq_steps, bool *patternKick, bool *patternSnare, bool *patternHat, bool *patternOpenHat, bool *patternMidTom, bool *patternHighTom, bool *patternRim, bool *patternClap) {
-  for (int i = 0; i < seq_steps; ++i) {
-    // Kick on beats and random additional hits
-    if (i % 4 == 0 || (rand() % 100) < 20) {
-      patternKick[i] = true;
-    } else {
-      patternKick[i] = false;
+void PatternGenerator::generateRandomDrumPattern(DrumPatternSet& patternSet) {
+  const int stepCount = DrumPattern::kSteps;
+  const int drumVoiceCount = DrumPatternSet::kVoices;
+
+  for (int v = 0; v < drumVoiceCount; ++v) {
+    for (int i = 0; i < stepCount; ++i) {
+      patternSet.voices[v].steps[i].hit = false;
+      patternSet.voices[v].steps[i].accent = false;
+    }
+  }
+
+  for (int i = 0; i < stepCount; ++i) {
+    if (drumVoiceCount > kDrumKickVoice) {
+      if (i % 4 == 0 || (rand() % 100) < 20) {
+        patternSet.voices[kDrumKickVoice].steps[i].hit = true;
+      } else {
+        patternSet.voices[kDrumKickVoice].steps[i].hit = false;
+      }
+      patternSet.voices[kDrumKickVoice].steps[i].accent = patternSet.voices[kDrumKickVoice].steps[i].hit;
     }
 
-    // Snare on off-beats and random additional hits
-    if (i % 4 == 2 || (rand() % 100) < 15) {
-      patternSnare[i] = (rand() % 100) < 80; // 80% chance if triggered
-    } else {
-      patternSnare[i] = false;
+    if (drumVoiceCount > kDrumSnareVoice) {
+      if (i % 4 == 2 || (rand() % 100) < 15) {
+        patternSet.voices[kDrumSnareVoice].steps[i].hit = (rand() % 100) < 80;
+      } else {
+        patternSet.voices[kDrumSnareVoice].steps[i].hit = false;
+      }
+      patternSet.voices[kDrumSnareVoice].steps[i].accent = patternSet.voices[kDrumSnareVoice].steps[i].hit;
     }
 
-    // Hi-hat on every step with occasional openings
-    if ((rand() % 100) < 90) {
-      patternHat[i] = (rand() % 100) < 80; // 80% chance if triggered
-    } else {
-      patternHat[i] = false;
+    bool hatVal = false;
+    if (drumVoiceCount > kDrumHatVoice) {
+      if ((rand() % 100) < 90) {
+        hatVal = (rand() % 100) < 80;
+      } else {
+        hatVal = false;
+      }
+      patternSet.voices[kDrumHatVoice].steps[i].hit = hatVal;
+      patternSet.voices[kDrumHatVoice].steps[i].accent = hatVal;
     }
 
-    // Open hat occasionally replaces or augments closed hats
-    bool wantsOpen = (i % 4 == 3 && (rand() % 100) < 65) || ((rand() % 100) < 20 && patternHat[i]);
-    patternOpenHat[i] = wantsOpen;
-    if (patternOpenHat[i]) {
-      // leave more room when an open hat rings out
-      patternHat[i] = false;
+    bool openVal = false;
+    if (drumVoiceCount > kDrumOpenHatVoice) {
+      openVal = (i % 4 == 3 && (rand() % 100) < 65) || ((rand() % 100) < 20 && hatVal);
+      patternSet.voices[kDrumOpenHatVoice].steps[i].hit = openVal;
+      patternSet.voices[kDrumOpenHatVoice].steps[i].accent = openVal;
+      if (openVal && drumVoiceCount > kDrumHatVoice) {
+        patternSet.voices[kDrumHatVoice].steps[i].hit = false;
+        patternSet.voices[kDrumHatVoice].steps[i].accent = false;
+      }
     }
 
-    // Mid tom on beat 3-ish with some swing
-    patternMidTom[i] = (i % 8 == 4 && (rand() % 100) < 75) || ((rand() % 100) < 8);
+    if (drumVoiceCount > kDrumMidTomVoice) {
+      bool midTom = (i % 8 == 4 && (rand() % 100) < 75) || ((rand() % 100) < 8);
+      patternSet.voices[kDrumMidTomVoice].steps[i].hit = midTom;
+      patternSet.voices[kDrumMidTomVoice].steps[i].accent = midTom;
+    }
 
-    // High tom on beat 4 or random fill
-    patternHighTom[i] = (i % 8 == 6 && (rand() % 100) < 70) || ((rand() % 100) < 6);
+    if (drumVoiceCount > kDrumHighTomVoice) {
+      bool highTom = (i % 8 == 6 && (rand() % 100) < 70) || ((rand() % 100) < 6);
+      patternSet.voices[kDrumHighTomVoice].steps[i].hit = highTom;
+      patternSet.voices[kDrumHighTomVoice].steps[i].accent = highTom;
+    }
 
-    // Rim shot sparse
-    patternRim[i] = (i % 4 == 1 && (rand() % 100) < 25);
+    if (drumVoiceCount > kDrumRimVoice) {
+      bool rim = (i % 4 == 1 && (rand() % 100) < 25);
+      patternSet.voices[kDrumRimVoice].steps[i].hit = rim;
+      patternSet.voices[kDrumRimVoice].steps[i].accent = rim;
+    }
 
-    // Clap on 2 and 4 style
-    if (i % 4 == 2) {
-      patternClap[i] = (rand() % 100) < 80;
-    } else {
-      patternClap[i] = (rand() % 100) < 5;
+    if (drumVoiceCount > kDrumClapVoice) {
+      bool clap = false;
+      if (i % 4 == 2) {
+        clap = (rand() % 100) < 80;
+      } else {
+        clap = (rand() % 100) < 5;
+      }
+      patternSet.voices[kDrumClapVoice].steps[i].hit = clap;
+      patternSet.voices[kDrumClapVoice].steps[i].accent = clap;
     }
   }
 }

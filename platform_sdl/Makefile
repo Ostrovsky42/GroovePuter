@@ -18,12 +18,12 @@ ifeq ($(strip $(SDL_GFX_CFLAGS)),)
 endif
 
 TARGET := miniacid
-SOURCES := ../dsp_engine.cpp ../miniacid_display.cpp ../cardputer_display.cpp sdl_main.cpp sdl_display.cpp
+SOURCES := ../dsp_engine.cpp ../miniacid_display.cpp ../cardputer_display.cpp ../scenes.cpp ../json_evented.cpp sdl_main.cpp sdl_display.cpp scene_storage_sdl.cpp 
 
 ROOT := $(abspath ..)
 DOCKER ?= docker
 EMCC_IMAGE ?= emscripten/emsdk
-WASM_FLAGS := -I.. -std=c++17 -sUSE_SDL=2 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=262144 -sASSERTIONS=1 -sUSE_SDL_GFX=2
+WASM_FLAGS := -I.. -std=c++17 -sUSE_SDL=2 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=262144 -sASSERTIONS=1 -sUSE_SDL_GFX=2 -sEXPORTED_RUNTIME_METHODS='[UTF8ToString,stringToUTF8,lengthBytesUTF8]'
 
 all: $(TARGET)
 

@@ -10,9 +10,11 @@
 #include "../cardputer_display.h"
 #include "../miniacid_display.h"
 #include "../dsp_engine.h"
+#include "scene_storage_sdl.h"
 
 struct AudioContext {
-  explicit AudioContext(float sampleRate) : synth(sampleRate), device(0) {}
+  explicit AudioContext(float sampleRate) : storage(), synth(sampleRate, &storage), device(0) {}
+  SceneStorageSdl storage;
   MiniAcid synth;
   SDL_AudioDeviceID device;
 };
@@ -40,6 +42,19 @@ static void audioCallback(void *userdata, Uint8 *stream, int len) {
 
 static void handleEvents(AppState& s) {
   SDL_Event e;
+  auto patternIndexFromScan = [](SDL_Scancode code) -> int {
+    switch (code) {
+      case SDL_SCANCODE_Q: return 0;
+      case SDL_SCANCODE_W: return 1;
+      case SDL_SCANCODE_E: return 2;
+      case SDL_SCANCODE_R: return 3;
+      case SDL_SCANCODE_T: return 4;
+      case SDL_SCANCODE_Y: return 5;
+      case SDL_SCANCODE_U: return 6;
+      case SDL_SCANCODE_I: return 7;
+      default: return -1;
+    }
+  };
   while (SDL_PollEvent(&e)) {
     if (e.type == SDL_QUIT) {
       s.running = false;
@@ -47,6 +62,151 @@ static void handleEvents(AppState& s) {
       if (s.ui) s.ui->dismissSplash();
       SDL_Scancode sc = e.key.keysym.scancode;
       int voiceIndex = (s.ui && s.ui->is303ControlPage()) ? s.ui->active303Voice() : 0;
+      if (s.ui && s.ui->isPatternEditPage()) {
+        int editVoice = s.ui->activePatternVoice();
+        bool handled = false;
+        if (sc == SDL_SCANCODE_LEFT) {
+          s.ui->movePatternCursor(-1);
+          handled = true;
+        } else if (sc == SDL_SCANCODE_RIGHT) {
+          s.ui->movePatternCursor(1);
+          handled = true;
+        } else if (sc == SDL_SCANCODE_UP) {
+          s.ui->movePatternCursorVertical(-1);
+          handled = true;
+        } else if (sc == SDL_SCANCODE_DOWN) {
+          s.ui->movePatternCursorVertical(1);
+          handled = true;
+        } else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) {
+          if (s.ui->patternRowFocused(editVoice)) {
+            int cursor = s.ui->activePatternCursor();
+            SDL_LockAudioDevice(s.audio.device);
+            s.audio.synth.set303PatternIndex(editVoice, cursor);
+            SDL_UnlockAudioDevice(s.audio.device);
+            handled = true;
+          }
+        } else if (sc == SDL_SCANCODE_BACKSPACE) {
+          if (!s.ui->patternRowFocused(editVoice)) {
+            int step = s.ui->activePatternStep();
+            SDL_LockAudioDevice(s.audio.device);
+            s.audio.synth.clear303StepNote(editVoice, step);
+            SDL_UnlockAudioDevice(s.audio.device);
+            handled = true;
+          }
+        }
+
+        if (!handled) {
+          auto ensureStepFocus = [&]() {
+            if (s.ui->patternRowFocused(editVoice)) {
+              s.ui->focusPatternSteps(editVoice);
+            }
+          };
+
+          int patternIdx = patternIndexFromScan(sc);
+          bool reservedPatternKey = (sc == SDL_SCANCODE_Q || sc == SDL_SCANCODE_W);
+          if (patternIdx >= 0 && (!reservedPatternKey || s.ui->patternRowFocused(editVoice))) {
+            s.ui->focusPatternRow(editVoice);
+            s.ui->setPatternCursor(editVoice, patternIdx);
+            SDL_LockAudioDevice(s.audio.device);
+            s.audio.synth.set303PatternIndex(editVoice, patternIdx);
+            SDL_UnlockAudioDevice(s.audio.device);
+            handled = true;
+          } else if (sc == SDL_SCANCODE_Q) {
+            ensureStepFocus();
+            int step = s.ui->activePatternStep();
+            SDL_LockAudioDevice(s.audio.device);
+            s.audio.synth.toggle303SlideStep(editVoice, step);
+            SDL_UnlockAudioDevice(s.audio.device);
+            handled = true;
+          } else if (sc == SDL_SCANCODE_W) {
+            ensureStepFocus();
+            int step = s.ui->activePatternStep();
+            SDL_LockAudioDevice(s.audio.device);
+            s.audio.synth.toggle303AccentStep(editVoice, step);
+            SDL_UnlockAudioDevice(s.audio.device);
+            handled = true;
+          } else if (sc == SDL_SCANCODE_A) {
+            ensureStepFocus();
+            int step = s.ui->activePatternStep();
+            SDL_LockAudioDevice(s.audio.device);
+            s.audio.synth.adjust303StepNote(editVoice, step, 1);
+            SDL_UnlockAudioDevice(s.audio.device);
+            handled = true;
+          } else if (sc == SDL_SCANCODE_Z) {
+            ensureStepFocus();
+            int step = s.ui->activePatternStep();
+            SDL_LockAudioDevice(s.audio.device);
+            s.audio.synth.adjust303StepNote(editVoice, step, -1);
+            SDL_UnlockAudioDevice(s.audio.device);
+            handled = true;
+          } else if (sc == SDL_SCANCODE_S) {
+            ensureStepFocus();
+            int step = s.ui->activePatternStep();
+            SDL_LockAudioDevice(s.audio.device);
+            s.audio.synth.adjust303StepOctave(editVoice, step, 1);
+            SDL_UnlockAudioDevice(s.audio.device);
+            handled = true;
+          } else if (sc == SDL_SCANCODE_X) {
+            ensureStepFocus();
+            int step = s.ui->activePatternStep();
+            SDL_LockAudioDevice(s.audio.device);
+            s.audio.synth.adjust303StepOctave(editVoice, step, -1);
+            SDL_UnlockAudioDevice(s.audio.device);
+            handled = true;
+          }
+        }
+
+        if (handled) {
+          if (s.ui) s.ui->update();
+          continue;
+        }
+      } else if (s.ui && s.ui->isDrumSequencerPage()) {
+        bool handled = false;
+        if (sc == SDL_SCANCODE_LEFT) {
+          s.ui->moveDrumCursor(-1);
+          handled = true;
+        } else if (sc == SDL_SCANCODE_RIGHT) {
+          s.ui->moveDrumCursor(1);
+          handled = true;
+        } else if (sc == SDL_SCANCODE_UP) {
+          s.ui->moveDrumCursorVertical(-1);
+          handled = true;
+        } else if (sc == SDL_SCANCODE_DOWN) {
+          s.ui->moveDrumCursorVertical(1);
+          handled = true;
+        } else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) {
+          if (s.ui->drumPatternRowFocused()) {
+            int cursor = s.ui->activeDrumPatternCursor();
+            SDL_LockAudioDevice(s.audio.device);
+            s.audio.synth.setDrumPatternIndex(cursor);
+            SDL_UnlockAudioDevice(s.audio.device);
+          } else {
+            int step = s.ui->activeDrumStep();
+            int voice = s.ui->activeDrumVoice();
+            SDL_LockAudioDevice(s.audio.device);
+            s.audio.synth.toggleDrumStep(voice, step);
+            SDL_UnlockAudioDevice(s.audio.device);
+          }
+          handled = true;
+        }
+
+        if (!handled) {
+          int patternIdx = patternIndexFromScan(sc);
+          if (patternIdx >= 0) {
+            s.ui->focusDrumPatternRow();
+            s.ui->setDrumPatternCursor(patternIdx);
+            SDL_LockAudioDevice(s.audio.device);
+            s.audio.synth.setDrumPatternIndex(patternIdx);
+            SDL_UnlockAudioDevice(s.audio.device);
+            handled = true;
+          }
+        }
+
+        if (handled) {
+          if (s.ui) s.ui->update();
+          continue;
+        }
+      }
       if (sc == SDL_SCANCODE_ESCAPE) {
         // s.running = false;
       } else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) {
@@ -266,8 +426,7 @@ int main(int argc, char **argv) {
   }
 
   state.gfx->begin();
-  state.audio.synth.reset();
-  // state.audio.synth.start();
+  state.audio.synth.init();
 
   SDL_AudioSpec desired{};
   desired.freq = SAMPLE_RATE;

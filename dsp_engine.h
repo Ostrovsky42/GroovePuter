@@ -3,6 +3,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <vector>
+#include "scene_storage.h"
+#include "scenes.h"
 
 // ===================== Audio config =====================
 
@@ -10,6 +12,7 @@ static const int SAMPLE_RATE = 22050;        // Hz
 static const int AUDIO_BUFFER_SAMPLES = 256; // per buffer, mono
 static const int SEQ_STEPS = 16;             // 16-step sequencer
 static const int NUM_303_VOICES = 2;
+static const int NUM_DRUM_VOICES = DrumPatternSet::kVoices;
 
 // ===================== Parameters =====================
 
@@ -42,11 +45,11 @@ public:
 private:
   const char* _label;
   const char* _unit;
-  float _min;
-  float _max;
-  float _default;
-  float _step;
-  float _value;
+  float min_;
+  float max_;
+  float default_;
+  float step_;
+  float value_;
 };
 
 // ===================== TB-303 style voice =====================
@@ -210,8 +213,12 @@ private:
 
 class MiniAcid {
 public:
-  explicit MiniAcid(float sampleRate);
+  static constexpr int kMin303Note = 24; // C1
+  static constexpr int kMax303Note = 71; // B4
 
+  MiniAcid(float sampleRate, SceneStorage* sceneStorage);
+
+  void init();
   void reset();
   void start();
   void stop();
@@ -220,6 +227,8 @@ public:
   float sampleRate() const;
   bool isPlaying() const;
   int currentStep() const;
+  int currentDrumPatternIndex() const;
+  int current303PatternIndex(int voiceIndex = 0) const;
   bool is303Muted(int voiceIndex = 0) const;
   bool isKickMuted() const;
   bool isSnareMuted() const;
@@ -254,8 +263,18 @@ public:
   void toggleMuteRim();
   void toggleMuteClap();
   void toggleDelay303(int voiceIndex = 0);
+  void setDrumPatternIndex(int patternIndex);
+  void shiftDrumPatternIndex(int delta);
   void adjust303Parameter(TB303ParamId id, int steps, int voiceIndex = 0);
   void set303Parameter(TB303ParamId id, float value, int voiceIndex = 0);
+  void set303PatternIndex(int voiceIndex, int patternIndex);
+  void shift303PatternIndex(int voiceIndex, int delta);
+  void adjust303StepNote(int voiceIndex, int stepIndex, int semitoneDelta);
+  void adjust303StepOctave(int voiceIndex, int stepIndex, int octaveDelta);
+  void clear303StepNote(int voiceIndex, int stepIndex);
+  void toggle303AccentStep(int voiceIndex, int stepIndex);
+  void toggle303SlideStep(int voiceIndex, int stepIndex);
+  void toggleDrumStep(int voiceIndex, int stepIndex);
 
   void randomize303Pattern(int voiceIndex = 0);
   void randomizeDrumPattern();
@@ -267,26 +286,27 @@ private:
   void advanceStep();
   float noteToFreq(int note);
   int clamp303Voice(int voiceIndex) const;
+  int clamp303Step(int stepIndex) const;
+  int clamp303Note(int note) const;
+  const SynthPattern& synthPattern(int synthIndex) const;
+  SynthPattern& editSynthPattern(int synthIndex);
+  const DrumPattern& drumPattern(int drumVoiceIndex) const;
+  DrumPattern& editDrumPattern(int drumVoiceIndex);
+  int clampDrumVoice(int voiceIndex) const;
+  void refreshSynthCaches(int synthIndex) const;
+  void refreshDrumCache(int drumVoiceIndex) const;
 
   TB303Voice voice303;
   TB303Voice voice3032;
   DrumSynthVoice drums;
   float sampleRateValue;
 
-  int8_t pattern303[SEQ_STEPS];
-  bool pattern303Accent[SEQ_STEPS];
-  bool pattern303Slide[SEQ_STEPS];
-  int8_t pattern303_2[SEQ_STEPS];
-  bool pattern303Accent2[SEQ_STEPS];
-  bool pattern303Slide2[SEQ_STEPS];
-  bool patternKick[SEQ_STEPS];
-  bool patternSnare[SEQ_STEPS];
-  bool patternHat[SEQ_STEPS];
-  bool patternOpenHat[SEQ_STEPS];
-  bool patternMidTom[SEQ_STEPS];
-  bool patternHighTom[SEQ_STEPS];
-  bool patternRim[SEQ_STEPS];
-  bool patternClap[SEQ_STEPS];
+  SceneManager sceneManager_;
+  SceneStorage* sceneStorage_;
+  mutable int8_t synthNotesCache_[NUM_303_VOICES][SEQ_STEPS];
+  mutable bool synthAccentCache_[NUM_303_VOICES][SEQ_STEPS];
+  mutable bool synthSlideCache_[NUM_303_VOICES][SEQ_STEPS];
+  mutable bool drumHitCache_[NUM_DRUM_VOICES][SEQ_STEPS];
 
   volatile bool playing;
   volatile bool mute303;
@@ -310,10 +330,13 @@ private:
   TempoDelay delay3032;
   int16_t lastBuffer[AUDIO_BUFFER_SAMPLES];
   size_t lastBufferCount;
+
+  void loadSceneFromStorage();
+  void saveSceneToStorage();
 };
 
 class PatternGenerator {
 public:
-  static void generateRandom303Pattern(int seq_steps, int8_t *pattern303, bool *pattern303Accent, bool *pattern303Slide);
-  static void generateRandomDrumPattern(int seq_steps, bool *patternKick, bool *patternSnare, bool *patternHat, bool *patternOpenHat, bool *patternMidTom, bool *patternHighTom, bool *patternRim, bool *patternClap);
+  static void generateRandom303Pattern(SynthPattern& pattern);
+  static void generateRandomDrumPattern(DrumPatternSet& patternSet);
 };
