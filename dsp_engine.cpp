@@ -14,6 +14,30 @@ constexpr int kDrumMidTomVoice = 4;
 constexpr int kDrumHighTomVoice = 5;
 constexpr int kDrumRimVoice = 6;
 constexpr int kDrumClapVoice = 7;
+
+SynthPattern makeEmptySynthPattern() {
+  SynthPattern pattern{};
+  for (int i = 0; i < SynthPattern::kSteps; ++i) {
+    pattern.steps[i].note = -1;
+    pattern.steps[i].accent = false;
+    pattern.steps[i].slide = false;
+  }
+  return pattern;
+}
+
+DrumPatternSet makeEmptyDrumPatternSet() {
+  DrumPatternSet set{};
+  for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
+    for (int s = 0; s < DrumPattern::kSteps; ++s) {
+      set.voices[v].steps[s].hit = false;
+      set.voices[v].steps[s].accent = false;
+    }
+  }
+  return set;
+}
+
+const SynthPattern kEmptySynthPattern = makeEmptySynthPattern();
+const DrumPatternSet kEmptyDrumPatternSet = makeEmptyDrumPatternSet();
 }
 
 Parameter::Parameter()
@@ -204,10 +228,11 @@ float TB303Voice::parameterValue(TB303ParamId id) const {
 }
 
 void TB303Voice::initParameters() {
-  params[static_cast<int>(TB303ParamId::Cutoff)] = Parameter("cut", "Hz", 60.0f, 2500.0f, 800.0f, 100.0f);
-  params[static_cast<int>(TB303ParamId::Resonance)] = Parameter("res", "", 0.05f, 0.85f, 0.6f, 0.05f);
-  params[static_cast<int>(TB303ParamId::EnvAmount)] = Parameter("env", "Hz", 0.0f, 2000.0f, 400.0f, 200.0f);
-  params[static_cast<int>(TB303ParamId::EnvDecay)] = Parameter("dec", "ms", 20.0f, 2200.0f, 420.0f, 50.0f);
+  params[static_cast<int>(TB303ParamId::Cutoff)] = Parameter("cut", "Hz", 60.0f, 2500.0f, 800.0f, (2500.f - 60.0f) / 128);
+  params[static_cast<int>(TB303ParamId::Resonance)] = Parameter("res", "", 0.05f, 0.85f, 0.6f, (0.85f - 0.05f) / 128);
+  params[static_cast<int>(TB303ParamId::EnvAmount)] = Parameter("env", "Hz", 0.0f, 2000.0f, 400.0f, (2000.0f - 0.0f) / 128);
+  params[static_cast<int>(TB303ParamId::EnvDecay)] = Parameter("dec", "ms", 20.0f, 2200.0f, 420.0f, (2200.0f - 20.0f) / 128);
+  params[static_cast<int>(TB303ParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.0f, 0.8f, 1.0f / 128);
 }
 
 DrumSynthVoice::DrumSynthVoice(float sampleRate)
@@ -265,6 +290,8 @@ void DrumSynthVoice::reset() {
   clapNoise = 0.0f;
   clapActive = false;
   clapDelay = 0.0f;
+
+  params[static_cast<int>(DrumParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.0f, 0.8f, 1.0f / 128);
 }
 
 void DrumSynthVoice::setSampleRate(float sampleRateHz) {
@@ -669,6 +696,10 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
     currentStepIndex(-1),
     samplesIntoStep(0),
     samplesPerStep(0.0f),
+    songMode_(false),
+    songPlayheadPosition_(0),
+    patternModeDrumPatternIndex_(0),
+    patternModeSynthPatternIndex_{0, 0},
     delay303(sampleRate),
     delay3032(sampleRate) {
   if (sampleRateValue <= 0.0f) sampleRateValue = 44100.0f;
@@ -677,6 +708,9 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
 
 
 void MiniAcid::init() {
+
+  params[static_cast<int>(MiniAcidParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.0f, 0.8f, 1.0f / 128);
+
   // maybe move everything from the constructor here later
   sceneStorage_->initializeStorage();
   loadSceneFromStorage();
@@ -723,12 +757,22 @@ void MiniAcid::reset() {
   delay3032.setBpm(bpmValue);
   lastBufferCount = 0;
   for (int i = 0; i < AUDIO_BUFFER_SAMPLES; ++i) lastBuffer[i] = 0;
+  songMode_ = false;
+  songPlayheadPosition_ = 0;
+  patternModeDrumPatternIndex_ = 0;
+  patternModeSynthPatternIndex_[0] = 0;
+  patternModeSynthPatternIndex_[1] = 0;
 }
 
 void MiniAcid::start() {
   playing = true;
   currentStepIndex = -1;
   samplesIntoStep = static_cast<unsigned long>(samplesPerStep);
+  if (songMode_) {
+    songPlayheadPosition_ = clampSongPosition(sceneManager_.getSongPosition());
+    sceneManager_.setSongPosition(songPlayheadPosition_);
+    applySongPositionSelection();
+  }
 }
 
 void MiniAcid::stop() {
@@ -738,6 +782,9 @@ void MiniAcid::stop() {
   voice303.release();
   voice3032.release();
   drums.reset();
+  if (songMode_) {
+    sceneManager_.setSongPosition(clampSongPosition(songPlayheadPosition_));
+  }
 
   saveSceneToStorage();
 }
@@ -835,6 +882,80 @@ const bool* MiniAcid::patternRimSteps() const {
 const bool* MiniAcid::patternClapSteps() const {
   refreshDrumCache(kDrumClapVoice);
   return drumHitCache_[kDrumClapVoice];
+}
+
+bool MiniAcid::songModeEnabled() const { return songMode_; }
+
+void MiniAcid::setSongMode(bool enabled) {
+  if (enabled == songMode_) return;
+  if (enabled) {
+    patternModeDrumPatternIndex_ = sceneManager_.getCurrentDrumPatternIndex();
+    patternModeSynthPatternIndex_[0] = sceneManager_.getCurrentSynthPatternIndex(0);
+    patternModeSynthPatternIndex_[1] = sceneManager_.getCurrentSynthPatternIndex(1);
+    songPlayheadPosition_ = clampSongPosition(sceneManager_.getSongPosition());
+    sceneManager_.setSongPosition(songPlayheadPosition_);
+    applySongPositionSelection();
+  } else {
+    sceneManager_.setCurrentDrumPatternIndex(patternModeDrumPatternIndex_);
+    sceneManager_.setCurrentSynthPatternIndex(0, patternModeSynthPatternIndex_[0]);
+    sceneManager_.setCurrentSynthPatternIndex(1, patternModeSynthPatternIndex_[1]);
+  }
+  songMode_ = enabled;
+  sceneManager_.setSongMode(songMode_);
+}
+
+void MiniAcid::toggleSongMode() { setSongMode(!songMode_); }
+
+int MiniAcid::songLength() const { return sceneManager_.songLength(); }
+
+int MiniAcid::currentSongPosition() const { return sceneManager_.getSongPosition(); }
+
+int MiniAcid::songPlayheadPosition() const { return songPlayheadPosition_; }
+
+void MiniAcid::setSongPosition(int position) {
+  int pos = clampSongPosition(position);
+  sceneManager_.setSongPosition(pos);
+  if (!playing) songPlayheadPosition_ = pos;
+  if (songMode_) applySongPositionSelection();
+}
+
+void MiniAcid::setSongPattern(int position, SongTrack track, int patternIndex) {
+  sceneManager_.setSongPattern(position, track, patternIndex);
+  if (songMode_ && position == currentSongPosition()) {
+    applySongPositionSelection();
+  }
+}
+
+void MiniAcid::clearSongPattern(int position, SongTrack track) {
+  sceneManager_.clearSongPattern(position, track);
+  int pos = clampSongPosition(sceneManager_.getSongPosition());
+  sceneManager_.setSongPosition(pos);
+  if (songMode_ && position == pos) {
+    applySongPositionSelection();
+  }
+}
+
+int MiniAcid::songPatternAt(int position, SongTrack track) const {
+  return sceneManager_.songPattern(position, track);
+}
+
+const Song& MiniAcid::song() const { return sceneManager_.song(); }
+
+int MiniAcid::display303PatternIndex(int voiceIndex) const {
+  int idx = clamp303Voice(voiceIndex);
+  if (songMode_) {
+    int pat = sceneManager_.songPattern(sceneManager_.getSongPosition(),
+                                        idx == 0 ? SongTrack::SynthA : SongTrack::SynthB);
+    return pat;
+  }
+  return sceneManager_.getCurrentSynthPatternIndex(idx);
+}
+
+int MiniAcid::displayDrumPatternIndex() const {
+  if (songMode_) {
+    return sceneManager_.songPattern(sceneManager_.getSongPosition(), SongTrack::Drums);
+  }
+  return sceneManager_.getCurrentDrumPatternIndex();
 }
 
 size_t MiniAcid::copyLastAudio(int16_t *dst, size_t maxSamples) const {
@@ -1000,9 +1121,82 @@ DrumPattern& MiniAcid::editDrumPattern(int drumVoiceIndex) {
   return patternSet.voices[idx];
 }
 
+int MiniAcid::songPatternIndexForTrack(SongTrack track) const {
+  if (!songMode_) {
+    switch (track) {
+    case SongTrack::SynthA:
+      return sceneManager_.getCurrentSynthPatternIndex(0);
+    case SongTrack::SynthB:
+      return sceneManager_.getCurrentSynthPatternIndex(1);
+    case SongTrack::Drums:
+      return sceneManager_.getCurrentDrumPatternIndex();
+    default:
+      return -1;
+    }
+  }
+  int pos = clampSongPosition(sceneManager_.getSongPosition());
+  int pat = sceneManager_.songPattern(pos, track);
+  if (pat < 0) return -1;
+  int maxPatterns = track == SongTrack::Drums ? Bank<DrumPatternSet>::kPatterns
+                                              : Bank<SynthPattern>::kPatterns;
+  if (pat >= maxPatterns) pat = maxPatterns - 1;
+  return pat;
+}
+
+const SynthPattern& MiniAcid::activeSynthPattern(int synthIndex) const {
+  int idx = clamp303Voice(synthIndex);
+  SongTrack track = idx == 0 ? SongTrack::SynthA : SongTrack::SynthB;
+  int pat = songPatternIndexForTrack(track);
+  if (pat < 0) return kEmptySynthPattern;
+  return sceneManager_.getSynthPattern(idx, pat);
+}
+
+const DrumPattern& MiniAcid::activeDrumPattern(int drumVoiceIndex) const {
+  int idx = clampDrumVoice(drumVoiceIndex);
+  int pat = songPatternIndexForTrack(SongTrack::Drums);
+  const DrumPatternSet& set = pat >= 0 ? sceneManager_.getDrumPatternSet(pat)
+                                       : kEmptyDrumPatternSet;
+  return set.voices[idx];
+}
+
+int MiniAcid::clampSongPosition(int position) const {
+  int len = sceneManager_.songLength();
+  if (len < 1) len = 1;
+  if (position < 0) return 0;
+  if (position >= len) return len - 1;
+  if (position >= Song::kMaxPositions) return Song::kMaxPositions - 1;
+  return position;
+}
+
+void MiniAcid::applySongPositionSelection() {
+  if (!songMode_) return;
+  int pos = clampSongPosition(sceneManager_.getSongPosition());
+  sceneManager_.setSongPosition(pos);
+  songPlayheadPosition_ = pos;
+  int patA = sceneManager_.songPattern(pos, SongTrack::SynthA);
+  int patB = sceneManager_.songPattern(pos, SongTrack::SynthB);
+  int patD = sceneManager_.songPattern(pos, SongTrack::Drums);
+
+  if (patA < 0) patA = patternModeSynthPatternIndex_[0];
+  if (patB < 0) patB = patternModeSynthPatternIndex_[1];
+  if (patD < 0) patD = patternModeDrumPatternIndex_;
+
+  sceneManager_.setCurrentSynthPatternIndex(0, patA);
+  sceneManager_.setCurrentSynthPatternIndex(1, patB);
+  sceneManager_.setCurrentDrumPatternIndex(patD);
+}
+
+void MiniAcid::advanceSongPlayhead() {
+  int len = sceneManager_.songLength();
+  if (len < 1) len = 1;
+  songPlayheadPosition_ = (songPlayheadPosition_ + 1) % len;
+  sceneManager_.setSongPosition(songPlayheadPosition_);
+  applySongPositionSelection();
+}
+
 void MiniAcid::refreshSynthCaches(int synthIndex) const {
   int idx = clamp303Voice(synthIndex);
-  const SynthPattern& pattern = synthPattern(idx);
+  const SynthPattern& pattern = activeSynthPattern(idx);
   for (int i = 0; i < SEQ_STEPS; ++i) {
     synthNotesCache_[idx][i] = static_cast<int8_t>(pattern.steps[i].note);
     synthAccentCache_[idx][i] = pattern.steps[i].accent;
@@ -1012,7 +1206,7 @@ void MiniAcid::refreshSynthCaches(int synthIndex) const {
 
 void MiniAcid::refreshDrumCache(int drumVoiceIndex) const {
   int idx = clampDrumVoice(drumVoiceIndex);
-  const DrumPattern& pattern = drumPattern(idx);
+  const DrumPattern& pattern = activeDrumPattern(idx);
   for (int i = 0; i < SEQ_STEPS; ++i) {
     drumHitCache_[idx][i] = pattern.steps[i].hit;
   }
@@ -1027,11 +1221,26 @@ float MiniAcid::noteToFreq(int note) {
 }
 
 void MiniAcid::advanceStep() {
+  int prevStep = currentStepIndex;
   currentStepIndex = (currentStepIndex + 1) % SEQ_STEPS;
 
+  if (songMode_) {
+    if (prevStep < 0) {
+      songPlayheadPosition_ = clampSongPosition(sceneManager_.getSongPosition());
+      sceneManager_.setSongPosition(songPlayheadPosition_);
+      applySongPositionSelection();
+    } else if (currentStepIndex == 0) {
+      advanceSongPlayhead();
+    }
+  }
+
+  int songPatternA = songPatternIndexForTrack(SongTrack::SynthA);
+  int songPatternB = songPatternIndexForTrack(SongTrack::SynthB);
+  int songPatternDrums = songPatternIndexForTrack(SongTrack::Drums);
+
   // 303 voices
-  const SynthPattern& synthA = synthPattern(0);
-  const SynthPattern& synthB = synthPattern(1);
+  const SynthPattern& synthA = activeSynthPattern(0);
+  const SynthPattern& synthB = activeSynthPattern(1);
   const SynthStep& stepA = synthA.steps[currentStepIndex];
   const SynthStep& stepB = synthB.steps[currentStepIndex];
   int note = stepA.note;
@@ -1042,41 +1251,43 @@ void MiniAcid::advanceStep() {
   bool accent2 = stepB.accent;
   bool slide2 = stepB.slide;
 
-  if (!mute303 && note >= 0)
+  if (!mute303 && songPatternA >= 0 && note >= 0)
     voice303.startNote(noteToFreq(note), accent, slide);
   else
     voice303.release();
 
-  if (!mute303_2 && note2 >= 0)
+  if (!mute303_2 && songPatternB >= 0 && note2 >= 0)
     voice3032.startNote(noteToFreq(note2), accent2, slide2);
   else
     voice3032.release();
 
   // Drums
-  const DrumPattern& kick = drumPattern(kDrumKickVoice);
-  const DrumPattern& snare = drumPattern(kDrumSnareVoice);
-  const DrumPattern& hat = drumPattern(kDrumHatVoice);
-  const DrumPattern& openHat = drumPattern(kDrumOpenHatVoice);
-  const DrumPattern& midTom = drumPattern(kDrumMidTomVoice);
-  const DrumPattern& highTom = drumPattern(kDrumHighTomVoice);
-  const DrumPattern& rim = drumPattern(kDrumRimVoice);
-  const DrumPattern& clap = drumPattern(kDrumClapVoice);
+  const DrumPattern& kick = activeDrumPattern(kDrumKickVoice);
+  const DrumPattern& snare = activeDrumPattern(kDrumSnareVoice);
+  const DrumPattern& hat = activeDrumPattern(kDrumHatVoice);
+  const DrumPattern& openHat = activeDrumPattern(kDrumOpenHatVoice);
+  const DrumPattern& midTom = activeDrumPattern(kDrumMidTomVoice);
+  const DrumPattern& highTom = activeDrumPattern(kDrumHighTomVoice);
+  const DrumPattern& rim = activeDrumPattern(kDrumRimVoice);
+  const DrumPattern& clap = activeDrumPattern(kDrumClapVoice);
 
-  if (kick.steps[currentStepIndex].hit && !muteKick)
+  bool drumsActive = songPatternDrums >= 0;
+
+  if (kick.steps[currentStepIndex].hit && !muteKick && drumsActive)
     drums.triggerKick();
-  if (snare.steps[currentStepIndex].hit && !muteSnare)
+  if (snare.steps[currentStepIndex].hit && !muteSnare && drumsActive)
     drums.triggerSnare();
-  if (hat.steps[currentStepIndex].hit && !muteHat)
+  if (hat.steps[currentStepIndex].hit && !muteHat && drumsActive)
     drums.triggerHat();
-  if (openHat.steps[currentStepIndex].hit && !muteOpenHat)
+  if (openHat.steps[currentStepIndex].hit && !muteOpenHat && drumsActive)
     drums.triggerOpenHat();
-  if (midTom.steps[currentStepIndex].hit && !muteMidTom)
+  if (midTom.steps[currentStepIndex].hit && !muteMidTom && drumsActive)
     drums.triggerMidTom();
-  if (highTom.steps[currentStepIndex].hit && !muteHighTom)
+  if (highTom.steps[currentStepIndex].hit && !muteHighTom && drumsActive)
     drums.triggerHighTom();
-  if (rim.steps[currentStepIndex].hit && !muteRim)
+  if (rim.steps[currentStepIndex].hit && !muteRim && drumsActive)
     drums.triggerRim();
-  if (clap.steps[currentStepIndex].hit && !muteClap)
+  if (clap.steps[currentStepIndex].hit && !muteClap && drumsActive)
     drums.triggerClap();
 }
 
@@ -1140,7 +1351,10 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     if (sample < -1.0f)
       sample = -1.0f;
 
-    buffer[i] = static_cast<int16_t>(sample * 32767.0f);
+    
+    float currentVolume = params[static_cast<int>(MiniAcidParamId::MainVolume)].value();
+    buffer[i] = static_cast<int16_t>(sample * 32767.0f * currentVolume);
+
   }
 
   size_t copyCount = numSamples;
@@ -1154,8 +1368,67 @@ void MiniAcid::randomize303Pattern(int voiceIndex) {
   PatternGenerator::generateRandom303Pattern(editSynthPattern(idx));
 }
 
+void MiniAcid::setParameter(MiniAcidParamId id, float value) {
+  params[static_cast<int>(id)].setValue(value);
+}
+
+void MiniAcid::adjustParameter(MiniAcidParamId id, int steps) {
+  params[static_cast<int>(id)].addSteps(steps);
+}
+
 void MiniAcid::randomizeDrumPattern() {
   PatternGenerator::generateRandomDrumPattern(sceneManager_.editCurrentDrumPattern());
+}
+
+std::string MiniAcid::currentSceneName() const {
+  if (!sceneStorage_) return {};
+  return sceneStorage_->getCurrentSceneName();
+}
+
+std::vector<std::string> MiniAcid::availableSceneNames() const {
+  if (!sceneStorage_) return {};
+  std::vector<std::string> names = sceneStorage_->getAvailableSceneNames();
+  if (names.empty() && sceneStorage_) {
+    std::string current = sceneStorage_->getCurrentSceneName();
+    if (!current.empty()) names.push_back(current);
+  }
+  std::sort(names.begin(), names.end());
+  names.erase(std::unique(names.begin(), names.end()), names.end());
+  return names;
+}
+
+bool MiniAcid::loadSceneByName(const std::string& name) {
+  if (!sceneStorage_) return false;
+  std::string previousName = sceneStorage_->getCurrentSceneName();
+  sceneStorage_->setCurrentSceneName(name);
+
+  bool loaded = sceneStorage_->readScene(sceneManager_);
+  if (!loaded) {
+    std::string serialized;
+    loaded = sceneStorage_->readScene(serialized) && sceneManager_.loadScene(serialized);
+  }
+  if (!loaded) {
+    sceneStorage_->setCurrentSceneName(previousName);
+    return false;
+  }
+  applySceneStateFromManager();
+  return true;
+}
+
+bool MiniAcid::saveSceneAs(const std::string& name) {
+  if (!sceneStorage_) return false;
+  sceneStorage_->setCurrentSceneName(name);
+  saveSceneToStorage();
+  return true;
+}
+
+bool MiniAcid::createNewSceneWithName(const std::string& name) {
+  if (!sceneStorage_) return false;
+  sceneStorage_->setCurrentSceneName(name);
+  sceneManager_.loadDefaultScene();
+  applySceneStateFromManager();
+  saveSceneToStorage();
+  return true;
 }
 
 void MiniAcid::loadSceneFromStorage() {
@@ -1205,6 +1478,15 @@ void MiniAcid::applySceneStateFromManager() {
   voice3032.setParameter(TB303ParamId::Resonance, paramsB.resonance);
   voice3032.setParameter(TB303ParamId::EnvAmount, paramsB.envAmount);
   voice3032.setParameter(TB303ParamId::EnvDecay, paramsB.envDecay);
+
+  patternModeDrumPatternIndex_ = sceneManager_.getCurrentDrumPatternIndex();
+  patternModeSynthPatternIndex_[0] = sceneManager_.getCurrentSynthPatternIndex(0);
+  patternModeSynthPatternIndex_[1] = sceneManager_.getCurrentSynthPatternIndex(1);
+  songMode_ = sceneManager_.songMode();
+  songPlayheadPosition_ = clampSongPosition(sceneManager_.getSongPosition());
+  if (songMode_) {
+    applySongPositionSelection();
+  }
 }
 
 void MiniAcid::syncSceneStateToManager() {
@@ -1220,6 +1502,9 @@ void MiniAcid::syncSceneStateToManager() {
   sceneManager_.setDrumMute(kDrumHighTomVoice, muteHighTom);
   sceneManager_.setDrumMute(kDrumRimVoice, muteRim);
   sceneManager_.setDrumMute(kDrumClapVoice, muteClap);
+  sceneManager_.setSongMode(songMode_);
+  int songPosToStore = songMode_ ? songPlayheadPosition_ : sceneManager_.getSongPosition();
+  sceneManager_.setSongPosition(clampSongPosition(songPosToStore));
 
   SynthParameters paramsA;
   paramsA.cutoff = voice303.parameterValue(TB303ParamId::Cutoff);

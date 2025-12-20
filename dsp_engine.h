@@ -3,6 +3,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <vector>
+#include <string>
 #include "scene_storage.h"
 #include "scenes.h"
 
@@ -21,6 +22,7 @@ enum class TB303ParamId : uint8_t {
   Resonance,
   EnvAmount,
   EnvDecay,
+  MainVolume,
   Count
 };
 
@@ -102,6 +104,11 @@ private:
   ChamberlinFilter filter;
 };
 
+enum class DrumParamId : uint8_t {
+  MainVolume = 0,
+  Count
+};
+
 class DrumSynthVoice {
 public:
   explicit DrumSynthVoice(float sampleRate);
@@ -125,6 +132,9 @@ public:
   float processHighTom();
   float processRim();
   float processClap();
+
+  const Parameter& parameter(DrumParamId id) const;
+  void setParameter(DrumParamId id, float value);
 
 private:
   float frand();
@@ -179,6 +189,8 @@ private:
 
   float sampleRate;
   float invSampleRate;
+
+  Parameter params[static_cast<int>(DrumParamId::Count)];
 };
 
 class TempoDelay {
@@ -211,6 +223,11 @@ private:
   bool enabled;
 };
 
+
+enum class MiniAcidParamId : uint8_t {
+  MainVolume = 0,
+  Count
+};
 class MiniAcid {
 public:
   static constexpr int kMin303Note = 24; // C1
@@ -252,6 +269,24 @@ public:
   const bool* patternHighTomSteps() const;
   const bool* patternRimSteps() const;
   const bool* patternClapSteps() const;
+  bool songModeEnabled() const;
+  void setSongMode(bool enabled);
+  void toggleSongMode();
+  int songLength() const;
+  int currentSongPosition() const;
+  int songPlayheadPosition() const;
+  void setSongPosition(int position);
+  void setSongPattern(int position, SongTrack track, int patternIndex);
+  void clearSongPattern(int position, SongTrack track);
+  int songPatternAt(int position, SongTrack track) const;
+  const Song& song() const;
+  int display303PatternIndex(int voiceIndex) const;
+  int displayDrumPatternIndex() const;
+  std::string currentSceneName() const;
+  std::vector<std::string> availableSceneNames() const;
+  bool loadSceneByName(const std::string& name);
+  bool saveSceneAs(const std::string& name);
+  bool createNewSceneWithName(const std::string& name);
 
   void toggleMute303(int voiceIndex = 0);
   void toggleMuteKick();
@@ -279,6 +314,10 @@ public:
   void randomize303Pattern(int voiceIndex = 0);
   void randomizeDrumPattern();
 
+  Parameter& miniParameter(MiniAcidParamId id);
+  void setParameter(MiniAcidParamId id, float value);
+  void adjustParameter(MiniAcidParamId id, int steps);
+
   void generateAudioBuffer(int16_t *buffer, size_t numSamples);
 
 private:
@@ -295,6 +334,12 @@ private:
   int clampDrumVoice(int voiceIndex) const;
   void refreshSynthCaches(int synthIndex) const;
   void refreshDrumCache(int drumVoiceIndex) const;
+  const SynthPattern& activeSynthPattern(int synthIndex) const;
+  const DrumPattern& activeDrumPattern(int drumVoiceIndex) const;
+  int songPatternIndexForTrack(SongTrack track) const;
+  void applySongPositionSelection();
+  void advanceSongPlayhead();
+  int clampSongPosition(int position) const;
 
   TB303Voice voice303;
   TB303Voice voice3032;
@@ -325,6 +370,10 @@ private:
   volatile int currentStepIndex;
   unsigned long samplesIntoStep;
   float samplesPerStep;
+  bool songMode_;
+  int songPlayheadPosition_;
+  int patternModeDrumPatternIndex_;
+  int patternModeSynthPatternIndex_[NUM_303_VOICES];
 
   TempoDelay delay303;
   TempoDelay delay3032;
@@ -335,6 +384,8 @@ private:
   void saveSceneToStorage();
   void applySceneStateFromManager();
   void syncSceneStateToManager();
+
+  Parameter params[static_cast<int>(MiniAcidParamId::Count)];
 };
 
 class PatternGenerator {

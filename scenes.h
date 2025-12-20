@@ -39,6 +39,23 @@ struct SynthParameters {
   float envDecay = 420.0f;
 };
 
+enum class SongTrack : uint8_t {
+  SynthA = 0,
+  SynthB = 1,
+  Drums = 2,
+};
+
+struct SongPosition {
+  static constexpr int kTrackCount = 3;
+  int8_t patterns[kTrackCount] = {-1, -1, -1};
+};
+
+struct Song {
+  static constexpr int kMaxPositions = 128;
+  SongPosition positions[kMaxPositions];
+  int length = 1;
+};
+
 template <typename PatternType>
 struct Bank {
   static constexpr int kPatterns = 8;
@@ -49,6 +66,7 @@ struct Scene {
   Bank<DrumPatternSet> drumBank;
   Bank<SynthPattern> synthABank;
   Bank<SynthPattern> synthBBank;
+  Song song;
 };
 
 class SceneJsonObserver : public JsonObserver {
@@ -77,6 +95,10 @@ public:
   bool synthMute(int idx) const;
   const SynthParameters& synthParameters(int synthIdx) const;
   float bpm() const;
+  const Song& song() const;
+  bool hasSong() const;
+  bool songMode() const;
+  int songPosition() const;
 
 private:
   enum class Path {
@@ -98,6 +120,9 @@ private:
     MuteSynth,
     SynthParams,
     SynthParam,
+    Song,
+    SongPositions,
+    SongPosition,
     Unknown,
   };
 
@@ -132,6 +157,10 @@ private:
   bool synthMute_[2] = {false, false};
   SynthParameters synthParameters_[2];
   float bpm_ = 100.0f;
+  Song song_;
+  bool hasSong_ = false;
+  bool songMode_ = false;
+  int songPosition_ = 0;
 };
 
 class SceneManager {
@@ -145,6 +174,10 @@ public:
 
   const SynthPattern& getCurrentSynthPattern(int synthIndex) const;
   SynthPattern& editCurrentSynthPattern(int synthIndex);
+  const SynthPattern& getSynthPattern(int synthIndex, int patternIndex) const;
+  SynthPattern& editSynthPattern(int synthIndex, int patternIndex);
+  const DrumPatternSet& getDrumPatternSet(int patternIndex) const;
+  DrumPatternSet& editDrumPatternSet(int patternIndex);
 
   void setCurrentDrumPatternIndex(int idx);
   void setCurrentSynthPatternIndex(int synthIdx, int idx);
@@ -169,6 +202,18 @@ public:
   void setBpm(float bpm);
   float getBpm() const;
 
+  const Song& song() const;
+  Song& editSong();
+  void setSongPattern(int position, SongTrack track, int patternIndex);
+  void clearSongPattern(int position, SongTrack track);
+  int songPattern(int position, SongTrack track) const;
+  void setSongLength(int length);
+  int songLength() const;
+  void setSongPosition(int position);
+  int getSongPosition() const;
+  void setSongMode(bool enabled);
+  bool songMode() const;
+
   template <typename TWriter>
   bool writeSceneJson(TWriter&& writer) const;
   template <typename TReader>
@@ -181,6 +226,11 @@ public:
 private:
   int clampPatternIndex(int idx) const;
   int clampSynthIndex(int idx) const;
+  int clampSongPosition(int position) const;
+  int clampSongLength(int length) const;
+  int songTrackToIndex(SongTrack track) const;
+  void trimSongLength();
+  void clearSongData(Song& song) const;
   void buildSceneDocument(ArduinoJson::JsonDocument& doc) const;
   bool applySceneDocument(const ArduinoJson::JsonDocument& doc);
   bool loadSceneEventedWithReader(JsonVisitor::NextChar nextChar);
@@ -194,6 +244,8 @@ private:
   bool synthMute_[2] = {false, false};
   SynthParameters synthParameters_[2];
   float bpm_ = 100.0f;
+  bool songMode_ = false;
+  int songPosition_ = 0;
 };
 
 // inline constexpr size_t SceneManager::sceneJsonCapacity() {

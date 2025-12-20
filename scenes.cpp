@@ -23,6 +23,15 @@ void clearSynthPattern(SynthPattern& pattern) {
   }
 }
 
+void clearSong(Song& song) {
+  song.length = 1;
+  for (int i = 0; i < Song::kMaxPositions; ++i) {
+    for (int t = 0; t < SongPosition::kTrackCount; ++t) {
+      song.positions[i].patterns[t] = -1;
+    }
+  }
+}
+
 void clearSceneData(Scene& scene) {
   for (int p = 0; p < Bank<DrumPatternSet>::kPatterns; ++p) {
     for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
@@ -33,6 +42,7 @@ void clearSceneData(Scene& scene) {
     clearSynthPattern(scene.synthABank.patterns[p]);
     clearSynthPattern(scene.synthBBank.patterns[p]);
   }
+  clearSong(scene.song);
 }
 
 void serializeDrumPattern(const DrumPattern& pattern, ArduinoJson::JsonObject obj) {
@@ -193,7 +203,10 @@ bool deserializeSynthParameters(ArduinoJson::JsonVariantConst value, SynthParame
 }
 }
 
-SceneJsonObserver::SceneJsonObserver(Scene& scene, float defaultBpm) : target_(scene), bpm_(defaultBpm) {}
+SceneJsonObserver::SceneJsonObserver(Scene& scene, float defaultBpm)
+    : target_(scene), bpm_(defaultBpm) {
+  clearSong(song_);
+}
 
 SceneJsonObserver::Path SceneJsonObserver::deduceArrayPath(const Context& parent) const {
   switch (parent.path) {
@@ -205,6 +218,8 @@ SceneJsonObserver::Path SceneJsonObserver::deduceArrayPath(const Context& parent
     return Path::SynthPattern;
   case Path::SynthParams:
     return Path::SynthParam;
+  case Path::Song:
+    return Path::SongPosition;
   default:
     return Path::Unknown;
   }
@@ -218,6 +233,8 @@ SceneJsonObserver::Path SceneJsonObserver::deduceObjectPath(const Context& paren
     return Path::SynthStep;
   case Path::SynthParams:
     return Path::SynthParam;
+  case Path::SongPositions:
+    return Path::SongPosition;
   default:
     return Path::Unknown;
   }
@@ -275,6 +292,8 @@ void SceneJsonObserver::onObjectStart() {
       path = deduceObjectPath(parent);
     } else if (parent.path == Path::Root && lastKey_ == "state") {
       path = Path::State;
+    } else if (parent.path == Path::Root && lastKey_ == "song") {
+      path = Path::Song;
     } else if (parent.path == Path::State && lastKey_ == "mute") {
       path = Path::Mute;
     }
@@ -298,6 +317,8 @@ void SceneJsonObserver::onArrayStart() {
         if (lastKey_ == "drumBank") path = Path::DrumBank;
         else if (lastKey_ == "synthABank") path = Path::SynthABank;
         else if (lastKey_ == "synthBBank") path = Path::SynthBBank;
+      } else if (parent.path == Path::Song) {
+        if (lastKey_ == "positions") path = Path::SongPositions;
       } else if (parent.path == Path::DrumVoice) {
         if (lastKey_ == "hit") path = Path::DrumHitArray;
         else if (lastKey_ == "accent") path = Path::DrumAccentArray;
@@ -326,6 +347,33 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
   (void)isInteger;
   if (error_ || stackSize_ == 0) return;
   Path path = stack_[stackSize_ - 1].path;
+  if (path == Path::Song) {
+    if (lastKey_ == "length") {
+      int len = static_cast<int>(value);
+      if (len < 1) len = 1;
+      if (len > Song::kMaxPositions) len = Song::kMaxPositions;
+      song_.length = len;
+      hasSong_ = true;
+    }
+    return;
+  }
+  if (path == Path::SongPosition) {
+    int posIdx = currentIndexFor(Path::SongPositions);
+    if (posIdx < 0 || posIdx >= Song::kMaxPositions) {
+      error_ = true;
+      return;
+    }
+    int trackIdx = -1;
+    if (lastKey_ == "a") trackIdx = 0;
+    else if (lastKey_ == "b") trackIdx = 1;
+    else if (lastKey_ == "drums") trackIdx = 2;
+    if (trackIdx >= 0 && trackIdx < SongPosition::kTrackCount) {
+      song_.positions[posIdx].patterns[trackIdx] = static_cast<int>(value);
+      if (posIdx + 1 > song_.length) song_.length = posIdx + 1;
+      hasSong_ = true;
+    }
+    return;
+  }
   if (path == Path::DrumHitArray || path == Path::DrumAccentArray ||
       path == Path::MuteDrums || path == Path::MuteSynth) {
     handlePrimitiveBool(value != 0);
@@ -382,6 +430,14 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
   if (path == Path::State) {
     if (lastKey_ == "bpm") {
       bpm_ = static_cast<float>(value);
+      return;
+    }
+    if (lastKey_ == "songPosition") {
+      songPosition_ = static_cast<int>(value);
+      return;
+    }
+    if (lastKey_ == "songMode") {
+      songMode_ = value != 0;
       return;
     }
     int intValue = static_cast<int>(value);
@@ -455,6 +511,11 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
     } else if (lastKey_ == "accent") {
       pattern.steps[stepIdx].accent = value;
     }
+    return;
+  }
+
+  if (path == Path::State && lastKey_ == "songMode") {
+    songMode_ = value;
   }
 }
 
@@ -515,6 +576,14 @@ const SynthParameters& SceneJsonObserver::synthParameters(int synthIdx) const {
 
 float SceneJsonObserver::bpm() const { return bpm_; }
 
+const Song& SceneJsonObserver::song() const { return song_; }
+
+bool SceneJsonObserver::hasSong() const { return hasSong_; }
+
+bool SceneJsonObserver::songMode() const { return songMode_; }
+
+int SceneJsonObserver::songPosition() const { return songPosition_; }
+
 void SceneManager::loadDefaultScene() {
   drumPatternIndex_ = 0;
   drumBankIndex_ = 0;
@@ -528,6 +597,13 @@ void SceneManager::loadDefaultScene() {
   synthParameters_[0] = SynthParameters();
   synthParameters_[1] = SynthParameters();
   setBpm(100.0f);
+  songMode_ = false;
+  songPosition_ = 0;
+  clearSongData(scene_.song);
+  scene_.song.length = 1;
+  scene_.song.positions[0].patterns[0] = 0;
+  scene_.song.positions[0].patterns[1] = 0;
+  scene_.song.positions[0].patterns[2] = 0;
 
   for (int i = 0; i < Bank<DrumPatternSet>::kPatterns; ++i) {
     for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
@@ -654,6 +730,34 @@ SynthPattern& SceneManager::editCurrentSynthPattern(int synthIndex) {
   return scene_.synthBBank.patterns[patternIndex];
 }
 
+const SynthPattern& SceneManager::getSynthPattern(int synthIndex, int patternIndex) const {
+  int idx = clampSynthIndex(synthIndex);
+  int pat = clampPatternIndex(patternIndex);
+  if (idx == 0) {
+    return scene_.synthABank.patterns[pat];
+  }
+  return scene_.synthBBank.patterns[pat];
+}
+
+SynthPattern& SceneManager::editSynthPattern(int synthIndex, int patternIndex) {
+  int idx = clampSynthIndex(synthIndex);
+  int pat = clampPatternIndex(patternIndex);
+  if (idx == 0) {
+    return scene_.synthABank.patterns[pat];
+  }
+  return scene_.synthBBank.patterns[pat];
+}
+
+const DrumPatternSet& SceneManager::getDrumPatternSet(int patternIndex) const {
+  int pat = clampPatternIndex(patternIndex);
+  return scene_.drumBank.patterns[pat];
+}
+
+DrumPatternSet& SceneManager::editDrumPatternSet(int patternIndex) {
+  int pat = clampPatternIndex(patternIndex);
+  return scene_.drumBank.patterns[pat];
+}
+
 void SceneManager::setCurrentDrumPatternIndex(int idx) {
   drumPatternIndex_ = clampPatternIndex(idx);
 }
@@ -708,6 +812,65 @@ void SceneManager::setBpm(float bpm) {
 
 float SceneManager::getBpm() const { return bpm_; }
 
+const Song& SceneManager::song() const { return scene_.song; }
+
+Song& SceneManager::editSong() { return scene_.song; }
+
+void SceneManager::setSongPattern(int position, SongTrack track, int patternIndex) {
+  int pos = position;
+  if (pos < 0) pos = 0;
+  if (pos >= Song::kMaxPositions) pos = Song::kMaxPositions - 1;
+  int trackIdx = songTrackToIndex(track);
+  if (trackIdx < 0 || trackIdx >= SongPosition::kTrackCount) return;
+  int pat = patternIndex;
+  if (pat < -1) pat = -1;
+  if (pat >= Bank<SynthPattern>::kPatterns) pat = Bank<SynthPattern>::kPatterns - 1;
+  if (pos >= scene_.song.length) setSongLength(pos + 1);
+  scene_.song.positions[pos].patterns[trackIdx] = static_cast<int8_t>(pat);
+}
+
+void SceneManager::clearSongPattern(int position, SongTrack track) {
+  int pos = clampSongPosition(position);
+  int trackIdx = songTrackToIndex(track);
+  if (trackIdx < 0 || trackIdx >= SongPosition::kTrackCount) return;
+  scene_.song.positions[pos].patterns[trackIdx] = -1;
+  trimSongLength();
+}
+
+int SceneManager::songPattern(int position, SongTrack track) const {
+  if (position < 0 || position >= Song::kMaxPositions) return -1;
+  int trackIdx = songTrackToIndex(track);
+  if (trackIdx < 0 || trackIdx >= SongPosition::kTrackCount) return -1;
+  if (position >= scene_.song.length) return -1;
+  return scene_.song.positions[position].patterns[trackIdx];
+}
+
+void SceneManager::setSongLength(int length) {
+  int clamped = clampSongLength(length);
+  scene_.song.length = clamped;
+  if (songPosition_ >= scene_.song.length) songPosition_ = scene_.song.length - 1;
+  if (songPosition_ < 0) songPosition_ = 0;
+}
+
+int SceneManager::songLength() const {
+  int len = scene_.song.length;
+  if (len < 1) len = 1;
+  if (len > Song::kMaxPositions) len = Song::kMaxPositions;
+  return len;
+}
+
+void SceneManager::setSongPosition(int position) {
+  songPosition_ = clampSongPosition(position);
+}
+
+int SceneManager::getSongPosition() const {
+  return clampSongPosition(songPosition_);
+}
+
+void SceneManager::setSongMode(bool enabled) { songMode_ = enabled; }
+
+bool SceneManager::songMode() const { return songMode_; }
+
 void SceneManager::setCurrentBankIndex(int instrumentId, int bankIdx) {
   int clampedBank = 0; // Only a single bank exists today; retain parameter for future use
   if (instrumentId == 0) {
@@ -749,10 +912,22 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   serializeSynthBank(scene_.synthABank, synthABank);
   ArduinoJson::JsonArray synthBBank = root["synthBBank"].to<ArduinoJson::JsonArray>();
   serializeSynthBank(scene_.synthBBank, synthBBank);
+  ArduinoJson::JsonObject songObj = root["song"].to<ArduinoJson::JsonObject>();
+  int songLen = songLength();
+  songObj["length"] = songLen;
+  ArduinoJson::JsonArray songPositions = songObj["positions"].to<ArduinoJson::JsonArray>();
+  for (int i = 0; i < songLen; ++i) {
+    ArduinoJson::JsonObject pos = songPositions.add<ArduinoJson::JsonObject>();
+    pos["a"] = scene_.song.positions[i].patterns[0];
+    pos["b"] = scene_.song.positions[i].patterns[1];
+    pos["drums"] = scene_.song.positions[i].patterns[2];
+  }
 
   ArduinoJson::JsonObject state = root["state"].to<ArduinoJson::JsonObject>();
   state["drumPatternIndex"] = drumPatternIndex_;
   state["bpm"] = bpm_;
+  state["songMode"] = songMode_;
+  state["songPosition"] = clampSongPosition(songPosition_);
 
   ArduinoJson::JsonArray synthPatternIndices = state["synthPatternIndex"].to<ArduinoJson::JsonArray>();
   synthPatternIndices.add(synthPatternIndex_[0]);
@@ -808,6 +983,36 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
   bool synthMute[2] = {false, false};
   SynthParameters synthParams[2] = {SynthParameters(), SynthParameters()};
   float bpm = bpm_;
+  Song loadedSong{};
+  clearSong(loadedSong);
+  bool hasSongObj = false;
+  bool songMode = songMode_;
+  int songPosition = songPosition_;
+
+  ArduinoJson::JsonObjectConst songObj = obj["song"].as<ArduinoJson::JsonObjectConst>();
+  if (!songObj.isNull()) {
+    hasSongObj = true;
+    int length = valueToInt(songObj["length"], loadedSong.length);
+    loadedSong.length = clampSongLength(length);
+    ArduinoJson::JsonArrayConst positions = songObj["positions"].as<ArduinoJson::JsonArrayConst>();
+    if (!positions.isNull()) {
+      int posIdx = 0;
+      for (ArduinoJson::JsonVariantConst posVal : positions) {
+        if (posIdx >= Song::kMaxPositions) break;
+        ArduinoJson::JsonObjectConst posObj = posVal.as<ArduinoJson::JsonObjectConst>();
+        if (!posObj.isNull()) {
+          auto a = posObj["a"];
+          auto b = posObj["b"];
+          auto d = posObj["drums"];
+          if (a.is<int>()) loadedSong.positions[posIdx].patterns[0] = a.as<int>();
+          if (b.is<int>()) loadedSong.positions[posIdx].patterns[1] = b.as<int>();
+          if (d.is<int>()) loadedSong.positions[posIdx].patterns[2] = d.as<int>();
+        }
+        if (posIdx + 1 > loadedSong.length) loadedSong.length = posIdx + 1;
+        ++posIdx;
+      }
+    }
+  }
 
   ArduinoJson::JsonObjectConst state = obj["state"].as<ArduinoJson::JsonObjectConst>();
   if (!state.isNull()) {
@@ -842,9 +1047,19 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
         ++idx;
       }
     }
+    songMode = state["songMode"].is<bool>() ? state["songMode"].as<bool>() : songMode;
+    songPosition = valueToInt(state["songPosition"], songPosition);
+  }
+
+  if (!hasSongObj) {
+    loadedSong.length = 1;
+    loadedSong.positions[0].patterns[0] = clampPatternIndex(synthPatternIndexA);
+    loadedSong.positions[0].patterns[1] = clampPatternIndex(synthPatternIndexB);
+    loadedSong.positions[0].patterns[2] = clampPatternIndex(drumPatternIndex);
   }
 
   scene_ = loaded;
+  scene_.song = loadedSong;
   drumPatternIndex_ = clampPatternIndex(drumPatternIndex);
   synthPatternIndex_[0] = clampPatternIndex(synthPatternIndexA);
   synthPatternIndex_[1] = clampPatternIndex(synthPatternIndexB);
@@ -858,6 +1073,9 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
   synthMute_[1] = synthMute[1];
   synthParameters_[0] = synthParams[0];
   synthParameters_[1] = synthParams[1];
+  setSongLength(scene_.song.length);
+  songPosition_ = clampSongPosition(songPosition);
+  songMode_ = songMode;
   setBpm(bpm);
   return true;
 }
@@ -894,12 +1112,19 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   if (!parsed || observer.hadError()) return false;
 
   scene_ = loaded;
+  scene_.song = observer.song();
   drumPatternIndex_ = clampPatternIndex(observer.drumPatternIndex());
   synthPatternIndex_[0] = clampPatternIndex(observer.synthPatternIndex(0));
   synthPatternIndex_[1] = clampPatternIndex(observer.synthPatternIndex(1));
   drumBankIndex_ = clampIndex(observer.drumBankIndex(), 1);
   synthBankIndex_[0] = clampIndex(observer.synthBankIndex(0), 1);
   synthBankIndex_[1] = clampIndex(observer.synthBankIndex(1), 1);
+  if (!observer.hasSong()) {
+    scene_.song.length = 1;
+    scene_.song.positions[0].patterns[0] = synthPatternIndex_[0];
+    scene_.song.positions[0].patterns[1] = synthPatternIndex_[1];
+    scene_.song.positions[0].patterns[2] = drumPatternIndex_;
+  }
   for (int i = 0; i < DrumPatternSet::kVoices; ++i) {
     drumMute_[i] = observer.drumMute(i);
   }
@@ -907,6 +1132,9 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   synthMute_[1] = observer.synthMute(1);
   synthParameters_[0] = observer.synthParameters(0);
   synthParameters_[1] = observer.synthParameters(1);
+  setSongLength(scene_.song.length);
+  songPosition_ = clampSongPosition(observer.songPosition());
+  songMode_ = observer.songMode();
   setBpm(observer.bpm());
   return true;
 }
@@ -919,4 +1147,52 @@ int SceneManager::clampSynthIndex(int idx) const {
   if (idx < 0) return 0;
   if (idx > 1) return 1;
   return idx;
+}
+
+int SceneManager::clampSongPosition(int position) const {
+  int len = songLength();
+  if (len < 1) len = 1;
+  if (position < 0) return 0;
+  if (position >= len) return len - 1;
+  if (position >= Song::kMaxPositions) return Song::kMaxPositions - 1;
+  return position;
+}
+
+int SceneManager::clampSongLength(int length) const {
+  if (length < 1) return 1;
+  if (length > Song::kMaxPositions) return Song::kMaxPositions;
+  return length;
+}
+
+int SceneManager::songTrackToIndex(SongTrack track) const {
+  switch (track) {
+  case SongTrack::SynthA: return 0;
+  case SongTrack::SynthB: return 1;
+  case SongTrack::Drums: return 2;
+  default: return -1;
+  }
+}
+
+void SceneManager::trimSongLength() {
+  int lastUsed = -1;
+  for (int pos = scene_.song.length - 1; pos >= 0; --pos) {
+    bool hasData = false;
+    for (int t = 0; t < SongPosition::kTrackCount; ++t) {
+      if (scene_.song.positions[pos].patterns[t] >= 0) {
+        hasData = true;
+        break;
+      }
+    }
+    if (hasData) {
+      lastUsed = pos;
+      break;
+    }
+  }
+  int newLength = lastUsed >= 0 ? lastUsed + 1 : 1;
+  scene_.song.length = clampSongLength(newLength);
+  if (songPosition_ >= scene_.song.length) songPosition_ = scene_.song.length - 1;
+}
+
+void SceneManager::clearSongData(Song& song) const {
+  clearSong(song);
 }

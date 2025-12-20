@@ -1,7 +1,9 @@
-#include <SDL.h>
+#include <cmath>
+#include <functional>
 #include <stdio.h>
 #include <string>
-#include <cmath>
+
+#include <SDL.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
 #endif
@@ -42,171 +44,43 @@ static void audioCallback(void *userdata, Uint8 *stream, int len) {
 
 static void handleEvents(AppState& s) {
   SDL_Event e;
-  auto patternIndexFromScan = [](SDL_Scancode code) -> int {
-    switch (code) {
-      case SDL_SCANCODE_Q: return 0;
-      case SDL_SCANCODE_W: return 1;
-      case SDL_SCANCODE_E: return 2;
-      case SDL_SCANCODE_R: return 3;
-      case SDL_SCANCODE_T: return 4;
-      case SDL_SCANCODE_Y: return 5;
-      case SDL_SCANCODE_U: return 6;
-      case SDL_SCANCODE_I: return 7;
-      default: return -1;
-    }
-  };
   while (SDL_PollEvent(&e)) {
     if (e.type == SDL_QUIT) {
       s.running = false;
     } else if (e.type == SDL_KEYDOWN) {
       if (s.ui) s.ui->dismissSplash();
       SDL_Scancode sc = e.key.keysym.scancode;
-      int voiceIndex = (s.ui && s.ui->is303ControlPage()) ? s.ui->active303Voice() : 0;
-      if (s.ui && s.ui->isPatternEditPage()) {
-        int editVoice = s.ui->activePatternVoice();
-        bool handled = false;
-        if (sc == SDL_SCANCODE_LEFT) {
-          s.ui->movePatternCursor(-1);
-          handled = true;
-        } else if (sc == SDL_SCANCODE_RIGHT) {
-          s.ui->movePatternCursor(1);
-          handled = true;
-        } else if (sc == SDL_SCANCODE_UP) {
-          s.ui->movePatternCursorVertical(-1);
-          handled = true;
-        } else if (sc == SDL_SCANCODE_DOWN) {
-          s.ui->movePatternCursorVertical(1);
-          handled = true;
-        } else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) {
-          if (s.ui->patternRowFocused(editVoice)) {
-            int cursor = s.ui->activePatternCursor();
-            SDL_LockAudioDevice(s.audio.device);
-            s.audio.synth.set303PatternIndex(editVoice, cursor);
-            SDL_UnlockAudioDevice(s.audio.device);
-            handled = true;
-          }
-        } else if (sc == SDL_SCANCODE_BACKSPACE) {
-          if (!s.ui->patternRowFocused(editVoice)) {
-            int step = s.ui->activePatternStep();
-            SDL_LockAudioDevice(s.audio.device);
-            s.audio.synth.clear303StepNote(editVoice, step);
-            SDL_UnlockAudioDevice(s.audio.device);
-            handled = true;
-          }
-        }
-
-        if (!handled) {
-          auto ensureStepFocus = [&]() {
-            if (s.ui->patternRowFocused(editVoice)) {
-              s.ui->focusPatternSteps(editVoice);
-            }
-          };
-
-          int patternIdx = patternIndexFromScan(sc);
-          bool reservedPatternKey = (sc == SDL_SCANCODE_Q || sc == SDL_SCANCODE_W);
-          if (patternIdx >= 0 && (!reservedPatternKey || s.ui->patternRowFocused(editVoice))) {
-            s.ui->focusPatternRow(editVoice);
-            s.ui->setPatternCursor(editVoice, patternIdx);
-            SDL_LockAudioDevice(s.audio.device);
-            s.audio.synth.set303PatternIndex(editVoice, patternIdx);
-            SDL_UnlockAudioDevice(s.audio.device);
-            handled = true;
-          } else if (sc == SDL_SCANCODE_Q) {
-            ensureStepFocus();
-            int step = s.ui->activePatternStep();
-            SDL_LockAudioDevice(s.audio.device);
-            s.audio.synth.toggle303SlideStep(editVoice, step);
-            SDL_UnlockAudioDevice(s.audio.device);
-            handled = true;
-          } else if (sc == SDL_SCANCODE_W) {
-            ensureStepFocus();
-            int step = s.ui->activePatternStep();
-            SDL_LockAudioDevice(s.audio.device);
-            s.audio.synth.toggle303AccentStep(editVoice, step);
-            SDL_UnlockAudioDevice(s.audio.device);
-            handled = true;
-          } else if (sc == SDL_SCANCODE_A) {
-            ensureStepFocus();
-            int step = s.ui->activePatternStep();
-            SDL_LockAudioDevice(s.audio.device);
-            s.audio.synth.adjust303StepNote(editVoice, step, 1);
-            SDL_UnlockAudioDevice(s.audio.device);
-            handled = true;
-          } else if (sc == SDL_SCANCODE_Z) {
-            ensureStepFocus();
-            int step = s.ui->activePatternStep();
-            SDL_LockAudioDevice(s.audio.device);
-            s.audio.synth.adjust303StepNote(editVoice, step, -1);
-            SDL_UnlockAudioDevice(s.audio.device);
-            handled = true;
-          } else if (sc == SDL_SCANCODE_S) {
-            ensureStepFocus();
-            int step = s.ui->activePatternStep();
-            SDL_LockAudioDevice(s.audio.device);
-            s.audio.synth.adjust303StepOctave(editVoice, step, 1);
-            SDL_UnlockAudioDevice(s.audio.device);
-            handled = true;
-          } else if (sc == SDL_SCANCODE_X) {
-            ensureStepFocus();
-            int step = s.ui->activePatternStep();
-            SDL_LockAudioDevice(s.audio.device);
-            s.audio.synth.adjust303StepOctave(editVoice, step, -1);
-            SDL_UnlockAudioDevice(s.audio.device);
-            handled = true;
-          }
-        }
-
-        if (handled) {
-          if (s.ui) s.ui->update();
-          continue;
-        }
-      } else if (s.ui && s.ui->isDrumSequencerPage()) {
-        bool handled = false;
-        if (sc == SDL_SCANCODE_LEFT) {
-          s.ui->moveDrumCursor(-1);
-          handled = true;
-        } else if (sc == SDL_SCANCODE_RIGHT) {
-          s.ui->moveDrumCursor(1);
-          handled = true;
-        } else if (sc == SDL_SCANCODE_UP) {
-          s.ui->moveDrumCursorVertical(-1);
-          handled = true;
-        } else if (sc == SDL_SCANCODE_DOWN) {
-          s.ui->moveDrumCursorVertical(1);
-          handled = true;
-        } else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) {
-          if (s.ui->drumPatternRowFocused()) {
-            int cursor = s.ui->activeDrumPatternCursor();
-            SDL_LockAudioDevice(s.audio.device);
-            s.audio.synth.setDrumPatternIndex(cursor);
-            SDL_UnlockAudioDevice(s.audio.device);
-          } else {
-            int step = s.ui->activeDrumStep();
-            int voice = s.ui->activeDrumVoice();
-            SDL_LockAudioDevice(s.audio.device);
-            s.audio.synth.toggleDrumStep(voice, step);
-            SDL_UnlockAudioDevice(s.audio.device);
-          }
-          handled = true;
-        }
-
-        if (!handled) {
-          int patternIdx = patternIndexFromScan(sc);
-          if (patternIdx >= 0) {
-            s.ui->focusDrumPatternRow();
-            s.ui->setDrumPatternCursor(patternIdx);
-            SDL_LockAudioDevice(s.audio.device);
-            s.audio.synth.setDrumPatternIndex(patternIdx);
-            SDL_UnlockAudioDevice(s.audio.device);
-            handled = true;
-          }
-        }
-
-        if (handled) {
-          if (s.ui) s.ui->update();
-          continue;
-        }
+      UIEvent miniacidEvent{};
+      miniacidEvent.event_type = MINIACID_KEY_DOWN;
+      miniacidEvent.alt = (e.key.keysym.mod & KMOD_ALT) != 0;
+      switch(sc) {
+        case SDL_SCANCODE_DOWN:
+          miniacidEvent.scancode = MINIACID_DOWN;
+          break;
+        case SDL_SCANCODE_UP:
+          miniacidEvent.scancode = MINIACID_UP;
+          break;
+        case SDL_SCANCODE_LEFT:
+          miniacidEvent.scancode = MINIACID_LEFT;
+          break;
+        case SDL_SCANCODE_RIGHT:
+          miniacidEvent.scancode = MINIACID_RIGHT;
+          break;
+        default:
+          break;
       }
+      SDL_Keycode keycode = e.key.keysym.sym;
+      if (keycode == SDLK_RETURN || keycode == SDLK_KP_ENTER) {
+        miniacidEvent.key = '\n';
+      } else if (keycode == SDLK_BACKSPACE) {
+        miniacidEvent.key = '\b';
+      } else if (keycode >= 32 && keycode < 127) {
+        miniacidEvent.key = static_cast<char>(keycode);
+      }
+
+      bool handledByUI = s.ui ? s.ui->handleEvent(miniacidEvent) : false;
+      if (handledByUI) continue;
+
       if (sc == SDL_SCANCODE_ESCAPE) {
         // s.running = false;
       } else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) {
@@ -241,60 +115,6 @@ static void handleEvents(AppState& s) {
         s.audio.synth.randomizeDrumPattern();
         SDL_UnlockAudioDevice(s.audio.device);
         printf("Randomized drums\n");
-      } else if (sc == SDL_SCANCODE_M) {
-        SDL_LockAudioDevice(s.audio.device);
-        s.audio.synth.toggleDelay303(voiceIndex);
-        bool enabled = s.audio.synth.is303DelayEnabled(voiceIndex);
-        SDL_UnlockAudioDevice(s.audio.device);
-        printf("303A delay %c %s\n", voiceIndex == 0 ? 'A' : 'B', enabled ? "on" : "off");
-      } else if (sc == SDL_SCANCODE_A) {
-        SDL_LockAudioDevice(s.audio.device);
-        s.audio.synth.adjust303Parameter(TB303ParamId::Cutoff, 1, voiceIndex);
-        float cf = s.audio.synth.parameter303(TB303ParamId::Cutoff, voiceIndex).value();
-        SDL_UnlockAudioDevice(s.audio.device);
-        printf("303%c cutoff: %.1f Hz\n", voiceIndex == 0 ? 'A' : 'B', cf);
-      } else if (sc == SDL_SCANCODE_Z) {
-        SDL_LockAudioDevice(s.audio.device);
-        s.audio.synth.adjust303Parameter(TB303ParamId::Cutoff, -1, voiceIndex);
-        float cf = s.audio.synth.parameter303(TB303ParamId::Cutoff, voiceIndex).value();
-        SDL_UnlockAudioDevice(s.audio.device);
-        printf("303%c cutoff: %.1f Hz\n", voiceIndex == 0 ? 'A' : 'B', cf);
-      } else if (sc == SDL_SCANCODE_S) {
-        SDL_LockAudioDevice(s.audio.device);
-        s.audio.synth.adjust303Parameter(TB303ParamId::Resonance, 1, voiceIndex);
-        float res = s.audio.synth.parameter303(TB303ParamId::Resonance, voiceIndex).value();
-        SDL_UnlockAudioDevice(s.audio.device);
-        printf("303%c resonance: %.2f\n", voiceIndex == 0 ? 'A' : 'B', res);
-      } else if (sc == SDL_SCANCODE_X) {
-        SDL_LockAudioDevice(s.audio.device);
-        s.audio.synth.adjust303Parameter(TB303ParamId::Resonance, -1, voiceIndex);
-        float res = s.audio.synth.parameter303(TB303ParamId::Resonance, voiceIndex).value();
-        SDL_UnlockAudioDevice(s.audio.device);
-        printf("303%c resonance: %.2f\n", voiceIndex == 0 ? 'A' : 'B', res);
-      } else if (sc == SDL_SCANCODE_D) {
-        SDL_LockAudioDevice(s.audio.device);
-        s.audio.synth.adjust303Parameter(TB303ParamId::EnvAmount, 1, voiceIndex);
-        float amt = s.audio.synth.parameter303(TB303ParamId::EnvAmount, voiceIndex).value();
-        SDL_UnlockAudioDevice(s.audio.device);
-        printf("303%c env amount: %.0f Hz\n", voiceIndex == 0 ? 'A' : 'B', amt);
-      } else if (sc == SDL_SCANCODE_C) {
-        SDL_LockAudioDevice(s.audio.device);
-        s.audio.synth.adjust303Parameter(TB303ParamId::EnvAmount, -1, voiceIndex);
-        float amt = s.audio.synth.parameter303(TB303ParamId::EnvAmount, voiceIndex).value();
-        SDL_UnlockAudioDevice(s.audio.device);
-        printf("303%c env amount: %.0f Hz\n", voiceIndex == 0 ? 'A' : 'B', amt);
-      } else if (sc == SDL_SCANCODE_F) {
-        SDL_LockAudioDevice(s.audio.device);
-        s.audio.synth.adjust303Parameter(TB303ParamId::EnvDecay, 1, voiceIndex);
-        float dec = s.audio.synth.parameter303(TB303ParamId::EnvDecay, voiceIndex).value();
-        SDL_UnlockAudioDevice(s.audio.device);
-        printf("303%c decay: %.0f ms\n", voiceIndex == 0 ? 'A' : 'B', dec);
-      } else if (sc == SDL_SCANCODE_V) {
-        SDL_LockAudioDevice(s.audio.device);
-        s.audio.synth.adjust303Parameter(TB303ParamId::EnvDecay, -1, voiceIndex);
-        float dec = s.audio.synth.parameter303(TB303ParamId::EnvDecay, voiceIndex).value();
-        SDL_UnlockAudioDevice(s.audio.device);
-        printf("303%c decay: %.0f ms\n", voiceIndex == 0 ? 'A' : 'B', dec);
       } else if (sc == SDL_SCANCODE_1) {
         SDL_LockAudioDevice(s.audio.device);
         s.audio.synth.toggleMute303(0);
@@ -450,6 +270,11 @@ int main(int argc, char **argv) {
   SDL_PauseAudioDevice(state.audio.device, 0); // start playback
 
   state.ui = new MiniAcidDisplay(*state.gfx, state.audio.synth);
+  state.ui->setAudioGuard([&](const std::function<void()>& fn) {
+    SDL_LockAudioDevice(state.audio.device);
+    fn();
+    SDL_UnlockAudioDevice(state.audio.device);
+  });
 
 #ifdef __EMSCRIPTEN__
   emscripten_set_main_loop_arg(mainLoopTick, &state, 0, 1);
