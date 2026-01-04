@@ -18,7 +18,7 @@ ifeq ($(strip $(SDL_GFX_CFLAGS)),)
 endif
 
 TARGET := miniacid
-SOURCES := ../src/dsp/mini_tb303.cpp ../src/dsp/mini_drumvoices.cpp ../src/dsp/miniacid_engine.cpp ../src/ui/miniacid_display.cpp ../src/ui/pages/help_page.cpp ../src/ui/pages/tb303_params_page.cpp ../src/ui/pages/waveform_page.cpp ../src/ui/pages/pattern_edit_page.cpp ../src/ui/pages/drum_sequencer_page.cpp ../src/ui/pages/song_page.cpp ../src/ui/pages/project_page.cpp ../cardputer_display.cpp ../scenes.cpp ../json_evented.cpp sdl_main.cpp sdl_display.cpp scene_storage_sdl.cpp 
+SOURCES := ../src/dsp/mini_tb303.cpp ../src/dsp/mini_drumvoices.cpp ../src/dsp/miniacid_engine.cpp ../src/ui/miniacid_display.cpp ../src/ui/pages/help_page.cpp ../src/ui/pages/tb303_params_page.cpp ../src/ui/pages/waveform_page.cpp ../src/ui/pages/pattern_edit_page.cpp ../src/ui/pages/drum_sequencer_page.cpp ../src/ui/pages/song_page.cpp ../src/ui/pages/project_page.cpp ../cardputer_display.cpp ../scenes.cpp ../json_evented.cpp sdl_main.cpp sdl_display.cpp scene_storage_sdl.cpp wav_recorder.cpp 
 
 ROOT := $(abspath ..)
 DOCKER ?= docker

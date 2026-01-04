@@ -13,12 +13,18 @@
 #include "../src/ui/miniacid_display.h"
 #include "../src/dsp/miniacid_engine.h"
 #include "scene_storage_sdl.h"
+#ifndef __EMSCRIPTEN__
+#include "wav_recorder.h"
+#endif
 
 struct AudioContext {
   explicit AudioContext(float sampleRate) : storage(), synth(sampleRate, &storage), device(0) {}
   SceneStorageSdl storage;
   MiniAcid synth;
   SDL_AudioDeviceID device;
+#ifndef __EMSCRIPTEN__
+  WavRecorder recorder;
+#endif
 };
 
 struct AppState {
@@ -40,6 +46,9 @@ static void audioCallback(void *userdata, Uint8 *stream, int len) {
 
   // Fill the output buffer using the synth
   ctx->synth.generateAudioBuffer(out, frames);
+#ifndef __EMSCRIPTEN__
+  ctx->recorder.writeSamples(out, frames);
+#endif
 }
 
 static void handleEvents(AppState& s) {
@@ -50,6 +59,21 @@ static void handleEvents(AppState& s) {
     } else if (e.type == SDL_KEYDOWN) {
       if (s.ui) s.ui->dismissSplash();
       SDL_Scancode sc = e.key.keysym.scancode;
+#ifndef __EMSCRIPTEN__
+      if (sc == SDL_SCANCODE_R && (e.key.keysym.mod & KMOD_CTRL) != 0 && s.sdl && e.key.repeat == 0) {
+        SDL_LockAudioDevice(s.audio.device);
+        if (s.audio.recorder.isRecording()) {
+          s.audio.recorder.stop();
+          printf("WAV Recording stopped: %s\n", s.audio.recorder.filename().c_str());
+        } else if (s.audio.recorder.start(SAMPLE_RATE, 1)) {
+          printf("WAV Recording started: %s\n", s.audio.recorder.filename().c_str());
+        } else {
+          fprintf(stderr, "Failed to start WAV recording\n");
+        }
+        SDL_UnlockAudioDevice(s.audio.device);
+        continue;
+      }
+#endif
       UIEvent miniacidEvent{};
       miniacidEvent.event_type = MINIACID_KEY_DOWN;
       miniacidEvent.alt = (e.key.keysym.mod & KMOD_ALT) != 0;
@@ -190,6 +214,14 @@ static void updateUI(AppState& s) {
 
 static void cleanup(AppState& s) {
   if (s.cleaned_up) return;
+#ifndef __EMSCRIPTEN__
+  if (s.audio.recorder.isRecording()) {
+    SDL_LockAudioDevice(s.audio.device);
+    s.audio.recorder.stop();
+    SDL_UnlockAudioDevice(s.audio.device);
+    printf("WAV Recording stopped: %s\n", s.audio.recorder.filename().c_str());
+  }
+#endif
   SDL_CloseAudioDevice(s.audio.device);
   SDL_Quit();
   s.cleaned_up = true;
