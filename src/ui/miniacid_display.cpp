@@ -161,7 +161,7 @@ void MiniAcidDisplay::drawSplashScreen() {
   centerText(info_y + small_h, "Space - to start/stop sound", COLOR_WHITE);
   centerText(info_y + 2 * small_h, "ESC - for help on each page", COLOR_WHITE);
   
-  centerText(info_y + 3 * small_h + 5, "v0.0.6-dev", IGfxColor::Gray());
+  centerText(info_y + 3 * small_h + 5, "v0.0.6", IGfxColor::Gray());
   
   // char build_info[64];
   // snprintf(build_info, sizeof(build_info), "Built: %s %s", __DATE__, __TIME__);
