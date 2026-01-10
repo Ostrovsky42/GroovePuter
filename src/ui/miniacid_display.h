@@ -20,9 +20,9 @@ public:
 
 private:
   void initMuteButtons(int x, int y, int w, int h);
+  void initPageHint(int x, int y, int w);
   void drawMutesSection(int x, int y, int w, int h);
   int drawPageTitle(int x, int y, int w, const char* text);
-  void drawPageHint(int x, int y);
   void drawSplashScreen();
   bool translateToApplicationEvent(UIEvent& event);
 
@@ -39,4 +39,6 @@ private:
   std::vector<std::unique_ptr<IPage>> pages_;
   Container mute_buttons_container_;
   bool mute_buttons_initialized_ = false;
+  Container page_hint_container_;
+  bool page_hint_initialized_ = false;
 };

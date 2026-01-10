@@ -23,6 +23,7 @@
 #include "pages/tb303_params_page.h"
 #include "pages/waveform_page.h"
 #include "components/mute_button.h"
+#include "components/page_hint.h"
 
 namespace {
 unsigned long nowMillis() {
@@ -125,7 +126,10 @@ void MiniAcidDisplay::update() {
   drawMutesSection(margin, content_h + margin, gfx_.width() - margin * 2, gfx_.height() - content_h - margin );
 
   int hint_w = textWidth(gfx_, "[< 0/0 >]");
-  drawPageHint(gfx_.width() - hint_w - margin, margin + 2);
+  if (!page_hint_initialized_) {
+    initPageHint(gfx_.width() - hint_w - margin, margin + 2, hint_w);
+  }
+  page_hint_container_.draw(gfx_);
 
   gfx_.flush();
   gfx_.endWrite();
@@ -265,12 +269,16 @@ int MiniAcidDisplay::drawPageTitle(int x, int y, int w, const char* text) {
   return kTitleHeight;
 }
 
-void MiniAcidDisplay::drawPageHint(int x, int y) {
-  char buf[32];
-  snprintf(buf, sizeof(buf), "[< %d/%d >]", page_index_ + 1, static_cast<int>(pages_.size()));
-  gfx_.setTextColor(COLOR_LABEL);
-  gfx_.drawText(x, y, buf);
-  gfx_.setTextColor(COLOR_WHITE);
+void MiniAcidDisplay::initPageHint(int x, int y, int w) {
+  auto hint = std::make_shared<PageHint>(
+    [this]() { return page_index_; },
+    [this]() { return static_cast<int>(pages_.size()); },
+    [this]() { previousPage(); },
+    [this]() { nextPage(); }
+  );
+  hint->setBoundaries(Rect(x, y, w, gfx_.fontHeight()));
+  page_hint_container_.addChild(hint);
+  page_hint_initialized_ = true;
 }
 
 bool MiniAcidDisplay::translateToApplicationEvent(UIEvent& event) {
@@ -367,6 +375,11 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 
   // Handle mute button clicks
   if (mute_buttons_initialized_ && mute_buttons_container_.handleEvent(event)) {
+    return true;
+  }
+
+  // Handle page hint clicks
+  if (page_hint_initialized_ && page_hint_container_.handleEvent(event)) {
     return true;
   }
 
