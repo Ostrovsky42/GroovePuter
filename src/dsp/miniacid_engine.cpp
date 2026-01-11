@@ -139,7 +139,8 @@ float TempoDelay::process(float input) {
 MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
   : voice303(sampleRate),
     voice3032(sampleRate),
-    drums(sampleRate),
+    drums(std::make_unique<TR808DrumSynthVoice>(sampleRate)),
+    // drums(std::make_unique<TR909DrumSynthVoice>(sampleRate)),
     sampleRateValue(sampleRate),
     sceneStorage_(sceneStorage),
     playing(false),
@@ -162,6 +163,7 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
     samplesIntoStep(0),
     samplesPerStep(0.0f),
     songMode_(false),
+    drumCycleIndex_(0),
     songPlayheadPosition_(0),
     patternModeDrumPatternIndex_(0),
     patternModeDrumBankIndex_(0),
@@ -194,7 +196,7 @@ void MiniAcid::reset() {
   voice3032.adjustParameter(TB303ParamId::Cutoff, -3);
   voice3032.adjustParameter(TB303ParamId::Resonance, -3);
   voice3032.adjustParameter(TB303ParamId::EnvAmount, -1);
-  drums.reset();
+  drums->reset();
   playing = false;
   mute303 = false;
   mute303_2 = false;
@@ -254,7 +256,7 @@ void MiniAcid::stop() {
   samplesIntoStep = 0;
   voice303.release();
   voice3032.release();
-  drums.reset();
+  drums->reset();
   if (songMode_) {
     sceneManager_.setSongPosition(clampSongPosition(songPlayheadPosition_));
   }
@@ -849,6 +851,22 @@ void MiniAcid::advanceStep() {
     }
   }
 
+  // DEBUG: toggle drum kit every measure for testing
+  /*
+  if (prevStep >= 0 && currentStepIndex == 0) {
+    drumCycleIndex_ = (drumCycleIndex_ + 1) % 3;
+    if (drumCycleIndex_ == 0) {
+      drums = std::make_unique<TR808DrumSynthVoice>(sampleRateValue);
+      // printf("Switched to TR-808 drum kit\n");
+    } else if (drumCycleIndex_ == 1) {
+      drums = std::make_unique<TR909DrumSynthVoice>(sampleRateValue);
+      // printf("Switched to TR-909 drum kit\n");
+    } else {
+      drums = std::make_unique<TR606DrumSynthVoice>(sampleRateValue);
+      // printf("Switched to TR-606 drum kit\n");
+    }
+  }
+  */
   int songPatternA = songPatternIndexForTrack(SongTrack::SynthA);
   int songPatternB = songPatternIndexForTrack(SongTrack::SynthB);
   int songPatternDrums = songPatternIndexForTrack(SongTrack::Drums);
@@ -898,21 +916,22 @@ void MiniAcid::advanceStep() {
     clap.steps[currentStepIndex].accent;
 
   if (kick.steps[currentStepIndex].hit && !muteKick && drumsActive)
-    drums.triggerKick(stepAccent);
+    drums->triggerKick(stepAccent);
   if (snare.steps[currentStepIndex].hit && !muteSnare && drumsActive)
-    drums.triggerSnare(stepAccent);
+    drums->triggerSnare(stepAccent);
   if (hat.steps[currentStepIndex].hit && !muteHat && drumsActive)
-    drums.triggerHat(stepAccent);
+    drums->triggerHat(stepAccent);
   if (openHat.steps[currentStepIndex].hit && !muteOpenHat && drumsActive)
-    drums.triggerOpenHat(stepAccent);
+    drums->triggerOpenHat(stepAccent);
   if (midTom.steps[currentStepIndex].hit && !muteMidTom && drumsActive)
-    drums.triggerMidTom(stepAccent);
+    drums->triggerMidTom(stepAccent);
   if (highTom.steps[currentStepIndex].hit && !muteHighTom && drumsActive)
-    drums.triggerHighTom(stepAccent);
+    drums->triggerHighTom(stepAccent);
   if (rim.steps[currentStepIndex].hit && !muteRim && drumsActive)
-    drums.triggerRim(stepAccent);
+    drums->triggerRim(stepAccent);
   if (clap.steps[currentStepIndex].hit && !muteClap && drumsActive)
-    drums.triggerClap(stepAccent);
+    //drums->triggerCymbal(stepAccent);
+    drums->triggerClap(stepAccent);
 }
 
 void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
@@ -952,21 +971,22 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
         delay3032.process(0.0f);
       }
       if (!muteKick)
-        sample += drums.processKick();
+        sample += drums->processKick();
       if (!muteSnare)
-        sample += drums.processSnare();
+        sample += drums->processSnare();
       if (!muteHat)
-        sample += drums.processHat();
+        sample += drums->processHat();
       if (!muteOpenHat)
-        sample += drums.processOpenHat();
+        sample += drums->processOpenHat();
       if (!muteMidTom)
-        sample += drums.processMidTom();
+        sample += drums->processMidTom();
       if (!muteHighTom)
-        sample += drums.processHighTom();
+        sample += drums->processHighTom();
       if (!muteRim)
-        sample += drums.processRim();
+        sample += drums->processRim();
       if (!muteClap)
-        sample += drums.processClap();
+        // sample += drums->processCymbal();
+        sample += drums->processClap();
       sample += sample303;
     }
 

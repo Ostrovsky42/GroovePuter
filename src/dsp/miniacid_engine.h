@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <memory>
 #include <vector>
 #include <string>
 
@@ -187,7 +188,7 @@ private:
 
   TB303Voice voice303;
   TB303Voice voice3032;
-  DrumSynthVoice drums;
+  std::unique_ptr<DrumSynthVoice> drums;
   float sampleRateValue;
 
   SceneManager sceneManager_;
@@ -219,6 +220,7 @@ private:
   unsigned long samplesIntoStep;
   float samplesPerStep;
   bool songMode_;
+  int drumCycleIndex_;
   int songPlayheadPosition_;
   int patternModeDrumPatternIndex_;
   int patternModeDrumBankIndex_;

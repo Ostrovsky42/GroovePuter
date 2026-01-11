@@ -12,34 +12,89 @@ enum class DrumParamId : uint8_t {
 
 class DrumSynthVoice {
 public:
-  explicit DrumSynthVoice(float sampleRate);
+  virtual ~DrumSynthVoice() = default;
 
-  void reset();
-  void setSampleRate(float sampleRate);
-  void triggerKick(bool accent = false);
-  void triggerSnare(bool accent = false);
-  void triggerHat(bool accent = false);
-  void triggerOpenHat(bool accent = false);
-  void triggerMidTom(bool accent = false);
-  void triggerHighTom(bool accent = false);
-  void triggerRim(bool accent = false);
-  void triggerClap(bool accent = false);
+  virtual void reset() = 0;
+  virtual void setSampleRate(float sampleRate) = 0;
+  virtual void triggerKick(bool accent = false) = 0;
+  virtual void triggerSnare(bool accent = false) = 0;
+  virtual void triggerHat(bool accent = false) = 0;
+  virtual void triggerOpenHat(bool accent = false) = 0;
+  virtual void triggerMidTom(bool accent = false) = 0;
+  virtual void triggerHighTom(bool accent = false) = 0;
+  virtual void triggerRim(bool accent = false) = 0;
+  virtual void triggerClap(bool accent = false) = 0;
+  virtual void triggerCymbal(bool accent = false) = 0;
 
-  float processKick();
-  float processSnare();
-  float processHat();
-  float processOpenHat();
-  float processMidTom();
-  float processHighTom();
-  float processRim();
-  float processClap();
+  virtual float processKick() = 0;
+  virtual float processSnare() = 0;
+  virtual float processHat() = 0;
+  virtual float processOpenHat() = 0;
+  virtual float processMidTom() = 0;
+  virtual float processHighTom() = 0;
+  virtual float processRim() = 0;
+  virtual float processClap() = 0;
+  virtual float processCymbal() = 0;
 
-  const Parameter& parameter(DrumParamId id) const;
-  void setParameter(DrumParamId id, float value);
+  virtual const Parameter& parameter(DrumParamId id) const = 0;
+  virtual void setParameter(DrumParamId id, float value) = 0;
+};
+
+class TR808DrumSynthVoice : public DrumSynthVoice {
+public:
+  explicit TR808DrumSynthVoice(float sampleRate);
+
+  void reset() override;
+  void setSampleRate(float sampleRate) override;
+  void triggerKick(bool accent = false) override;
+  void triggerSnare(bool accent = false) override;
+  void triggerHat(bool accent = false) override;
+  void triggerOpenHat(bool accent = false) override;
+  void triggerMidTom(bool accent = false) override;
+  void triggerHighTom(bool accent = false) override;
+  void triggerRim(bool accent = false) override;
+  void triggerClap(bool accent = false) override;
+  void triggerCymbal(bool accent = false) override;
+
+  float processKick() override;
+  float processSnare() override;
+  float processHat() override;
+  float processOpenHat() override;
+  float processMidTom() override;
+  float processHighTom() override;
+  float processRim() override;
+  float processClap() override;
+  float processCymbal() override;
+
+  const Parameter& parameter(DrumParamId id) const override;
+  void setParameter(DrumParamId id, float value) override;
 
 private:
+  struct Biquad {
+    float a0;
+    float a1;
+    float a2;
+    float b1;
+    float b2;
+    float z1;
+    float z2;
+
+    float process(float input) {
+      float output = a0 * input + z1;
+      z1 = a1 * input - b1 * output + z2;
+      z2 = a2 * input - b2 * output;
+      return output;
+    }
+
+    void reset() {
+      z1 = 0.0f;
+      z2 = 0.0f;
+    }
+  };
+
   float frand();
   float applyAccentDistortion(float input, bool accent);
+  void updateClapFilters(float accentAmount);
 
   float kickPhase;
   float kickFreq;
@@ -107,13 +162,304 @@ private:
   float clapNoise;
   bool clapActive;
   float clapDelay;
+  float clapTime;
+  float clapAccentAmount;
   float clapAccentGain;
   bool clapAccentDistortion;
+  Biquad clapBandpass;
+  Biquad clapLowpass;
+
+  float cymbalEnv;
+  float cymbalToneEnv;
+  bool cymbalActive;
+  float cymbalHp;
+  float cymbalPrev;
+  float cymbalPhaseA;
+  float cymbalPhaseB;
+  float cymbalAccentGain;
+  float cymbalBrightness;
+  bool cymbalAccentDistortion;
 
   float sampleRate;
   float invSampleRate;
 
   TubeDistortion accentDistortion;
+
+  Parameter params[static_cast<int>(DrumParamId::Count)];
+};
+
+class TR909DrumSynthVoice : public DrumSynthVoice {
+public:
+  explicit TR909DrumSynthVoice(float sampleRate);
+
+  void reset() override;
+  void setSampleRate(float sampleRate) override;
+  void triggerKick(bool accent = false) override;
+  void triggerSnare(bool accent = false) override;
+  void triggerHat(bool accent = false) override;
+  void triggerOpenHat(bool accent = false) override;
+  void triggerMidTom(bool accent = false) override;
+  void triggerHighTom(bool accent = false) override;
+  void triggerRim(bool accent = false) override;
+  void triggerClap(bool accent = false) override;
+  void triggerCymbal(bool accent = false) override;
+
+  float processKick() override;
+  float processSnare() override;
+  float processHat() override;
+  float processOpenHat() override;
+  float processMidTom() override;
+  float processHighTom() override;
+  float processRim() override;
+  float processClap() override;
+  float processCymbal() override;
+
+  const Parameter& parameter(DrumParamId id) const override;
+  void setParameter(DrumParamId id, float value) override;
+
+private:
+  struct Biquad {
+    float a0;
+    float a1;
+    float a2;
+    float b1;
+    float b2;
+    float z1;
+    float z2;
+
+    float process(float input) {
+      float output = a0 * input + z1;
+      z1 = a1 * input - b1 * output + z2;
+      z2 = a2 * input - b2 * output;
+      return output;
+    }
+
+    void reset() {
+      z1 = 0.0f;
+      z2 = 0.0f;
+    }
+  };
+
+  float frand();
+  float applyAccentDistortion(float input, bool accent);
+  void updateClapFilter();
+
+  float kickPhase;
+  float kickFreq;
+  float kickEnvAmp;
+  float kickEnvPitch;
+  bool kickActive;
+  float kickAccentGain;
+  bool kickAccentDistortion;
+  float kickAmpDecay;
+  float kickBaseFreq;
+  float kickClickEnv;
+
+  float snareEnvAmp;
+  float snareToneEnv;
+  bool snareActive;
+  float snareBp;
+  float snareLp;
+  float snareTonePhase;
+  float snareTonePhase2;
+  float snareAccentGain;
+  float snareToneGain;
+  bool snareAccentDistortion;
+  float snareNoiseColor;
+
+  float hatEnvAmp;
+  float hatToneEnv;
+  bool hatActive;
+  float hatHp;
+  float hatPrev;
+  float hatPhaseA;
+  float hatPhaseB;
+  float hatAccentGain;
+  float hatBrightness;
+  bool hatAccentDistortion;
+
+  float openHatEnvAmp;
+  float openHatToneEnv;
+  bool openHatActive;
+  float openHatHp;
+  float openHatPrev;
+  float openHatPhaseA;
+  float openHatPhaseB;
+  float openHatAccentGain;
+  float openHatBrightness;
+  bool openHatAccentDistortion;
+
+  float midTomPhase;
+  float midTomEnv;
+  bool midTomActive;
+  float midTomAccentGain;
+  bool midTomAccentDistortion;
+
+  float highTomPhase;
+  float highTomEnv;
+  bool highTomActive;
+  float highTomAccentGain;
+  bool highTomAccentDistortion;
+
+  float rimPhase;
+  float rimEnv;
+  bool rimActive;
+  float rimAccentGain;
+  bool rimAccentDistortion;
+
+  float clapEnv;
+  float clapTrans;
+  float clapNoise;
+  bool clapActive;
+  float clapDelay;
+  float clapTime;
+  float clapAccentGain;
+  bool clapAccentDistortion;
+  Biquad clapBandpass;
+
+  float cymbalEnv;
+  float cymbalToneEnv;
+  bool cymbalActive;
+  float cymbalHp;
+  float cymbalPrev;
+  float cymbalPhaseA;
+  float cymbalPhaseB;
+  float cymbalAccentGain;
+  float cymbalBrightness;
+  bool cymbalAccentDistortion;
+
+  float sampleRate;
+  float invSampleRate;
+
+  TubeDistortion accentDistortion;
+
+  Parameter params[static_cast<int>(DrumParamId::Count)];
+};
+
+class TR606DrumSynthVoice : public DrumSynthVoice {
+public:
+  explicit TR606DrumSynthVoice(float sampleRate);
+
+  void reset() override;
+  void setSampleRate(float sampleRate) override;
+  void triggerKick(bool accent = false) override;
+  void triggerSnare(bool accent = false) override;
+  void triggerHat(bool accent = false) override;
+  void triggerOpenHat(bool accent = false) override;
+  void triggerMidTom(bool accent = false) override;
+  void triggerHighTom(bool accent = false) override;
+  void triggerRim(bool accent = false) override;
+  void triggerClap(bool accent = false) override;
+  void triggerCymbal(bool accent = false) override;
+
+  float processKick() override;
+  float processSnare() override;
+  float processHat() override;
+  float processOpenHat() override;
+  float processMidTom() override;
+  float processHighTom() override;
+  float processRim() override;
+  float processClap() override;
+  float processCymbal() override;
+
+  const Parameter& parameter(DrumParamId id) const override;
+  void setParameter(DrumParamId id, float value) override;
+
+private:
+  struct OnePole {
+    float z;
+    float a;
+    float process(float input) { return z += a * (input - z); }
+    void reset() { z = 0.0f; }
+  };
+
+  struct Biquad {
+    float a0;
+    float a1;
+    float a2;
+    float b1;
+    float b2;
+    float z1;
+    float z2;
+
+    float process(float input) {
+      float output = a0 * input + z1;
+      z1 = a1 * input - b1 * output + z2;
+      z2 = a2 * input - b2 * output;
+      return output;
+    }
+
+    void reset() {
+      z1 = 0.0f;
+      z2 = 0.0f;
+    }
+  };
+
+  float frand();
+  float decayCoeff(float timeSeconds) const;
+  float onePoleCoeff(float cutoffHz) const;
+  float square(float phase) const;
+  void setAccent(bool accent);
+  void updateMetalBank();
+  void updateHatFilters(float accent);
+  void updateCymbalFilter(float accent, Biquad& filter);
+
+  float kickPhase;
+  float kickAmpEnv;
+  float kickFmEnv;
+  bool kickActive;
+  float kickAmpDecay;
+  float kickFmDecay;
+
+  float snareTonePhaseA;
+  float snareTonePhaseB;
+  float snareToneEnv;
+  float snareNoiseEnv;
+  bool snareActive;
+  float snareToneDecay;
+  float snareNoiseDecay;
+  OnePole snareNoiseLp;
+  float snareNoiseLpCoeff;
+
+  float midTomPhase;
+  float midTomAmpEnv;
+  float midTomFmEnv;
+  bool midTomActive;
+  float midTomAmpDecay;
+  float midTomFmDecay;
+
+  float highTomPhase;
+  float highTomAmpEnv;
+  float highTomFmEnv;
+  bool highTomActive;
+  float highTomAmpDecay;
+  float highTomFmDecay;
+
+  float hatEnv;
+  float openHatEnv;
+  bool hatActive;
+  bool openHatActive;
+  float hatDecay;
+  float openHatDecay;
+  OnePole hatNoiseLp;
+  OnePole hatMetalLp;
+  float hatNoiseLpCoeff;
+  float hatMetalLpCoeff;
+
+  float cymbalEnv;
+  bool cymbalActive;
+  float cymbalDecay;
+  Biquad cymbalBandpass;
+
+  float accentEnv;
+  float accentDecay;
+
+  float sampleRate;
+  float invSampleRate;
+
+  float metalPhases[6];
+  float metalSignal;
+  const float metalFreqs[6] = {330.0f, 558.0f, 880.0f, 1320.0f, 1760.0f, 2640.0f};
 
   Parameter params[static_cast<int>(DrumParamId::Count)];
 };
