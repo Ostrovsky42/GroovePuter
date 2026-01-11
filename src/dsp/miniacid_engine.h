@@ -124,6 +124,7 @@ public:
   int displayDrumPatternIndex() const;
   std::vector<std::string> getAvailableDrumEngines() const;
   void setDrumEngine(const std::string& engineName);
+  std::string currentDrumEngineName() const;
   std::string currentSceneName() const;
   std::vector<std::string> availableSceneNames() const;
   bool loadSceneByName(const std::string& name);

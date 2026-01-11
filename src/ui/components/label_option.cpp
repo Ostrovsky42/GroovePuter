@@ -36,10 +36,10 @@ bool LabelOptionComponent::handleEvent(UIEvent& ui_event) {
 
   int delta = 0;
   switch (ui_event.scancode) {
-    case MINIACID_LEFT:
+    case MINIACID_DOWN:
       delta = -1;
       break;
-    case MINIACID_RIGHT:
+    case MINIACID_UP:
       delta = 1;
       break;
     default:

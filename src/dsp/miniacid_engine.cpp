@@ -533,6 +533,10 @@ void MiniAcid::setDrumEngine(const std::string& engineName) {
   drums->reset();
 }
 
+std::string MiniAcid::currentDrumEngineName() const {
+  return drumEngineName_;
+}
+
 size_t MiniAcid::copyLastAudio(int16_t *dst, size_t maxSamples) const {
   if (!dst || maxSamples == 0) return 0;
   size_t n = lastBufferCount;

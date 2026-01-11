@@ -228,10 +228,11 @@ class GlobalDrumSettingsPage : public Container {
  public:
   explicit GlobalDrumSettingsPage(MiniAcid& mini_acid);
   bool handleEvent(UIEvent& ui_event) override;
-  void draw(IGfx& gfx) override;
+ void draw(IGfx& gfx) override;
 
  private:
   void applyDrumEngineSelection();
+  void syncDrumEngineSelection();
 
   MiniAcid& mini_acid_;
   std::vector<std::string> drum_engine_options_;
@@ -711,6 +712,7 @@ bool GlobalDrumSettingsPage::handleEvent(UIEvent& ui_event) {
 void GlobalDrumSettingsPage::draw(IGfx& gfx) {
   const Rect& bounds = getBoundaries();
   if (bounds.w <= 0 || bounds.h <= 0) return;
+  syncDrumEngineSelection();
   int x = bounds.x;
   int y = bounds.y;
   int w = bounds.w;
@@ -731,6 +733,22 @@ void GlobalDrumSettingsPage::applyDrumEngineSelection() {
   int index = character_control_->optionIndex();
   if (index < 0 || index >= static_cast<int>(drum_engine_options_.size())) return;
   mini_acid_.setDrumEngine(drum_engine_options_[index]);
+}
+
+void GlobalDrumSettingsPage::syncDrumEngineSelection() {
+  if (!character_control_) return;
+  std::string current = mini_acid_.currentDrumEngineName();
+  if (current.empty()) return;
+  int target = -1;
+  for (int i = 0; i < static_cast<int>(drum_engine_options_.size()); ++i) {
+    if (drum_engine_options_[i] == current) {
+      target = i;
+      break;
+    }
+  }
+  if (target < 0) return;
+  if (character_control_->optionIndex() == target) return;
+  character_control_->setOptionIndex(target);
 }
 
 DrumSequencerPage::DrumSequencerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard) {
