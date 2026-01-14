@@ -5,6 +5,7 @@
 
 #include "../ui_colors.h"
 #include "../ui_utils.h"
+#include "../ui_themes.h"
 
 PatternSelectionBarComponent::PatternSelectionBarComponent(std::string label)
     : label_(std::move(label)) {}
@@ -87,9 +88,11 @@ void PatternSelectionBarComponent::draw(IGfx& gfx) {
   last_layout_ = layout;
   last_layout_valid_ = true;
 
-  gfx.setTextColor(COLOR_LABEL);
+  const auto& palette = getPalette(g_currentTheme);
+
+  gfx.setTextColor(palette.muted);
   gfx.drawText(layout.bounds_x, layout.label_y, label_.c_str());
-  gfx.setTextColor(COLOR_WHITE);
+  gfx.setTextColor(palette.ink);
 
   bool songMode = state_.song_mode;
   int count = state_.pattern_count;
@@ -104,27 +107,28 @@ void PatternSelectionBarComponent::draw(IGfx& gfx) {
     int cell_x = layout.bounds_x + col * (layout.pattern_size + layout.spacing);
     int cell_y = layout.row_y + row * (layout.pattern_height + layout.row_spacing);
     bool isCursor = showCursor && cursor == i;
-    IGfxColor bg = songMode ? COLOR_GRAY_DARKER : COLOR_PANEL;
+    IGfxColor bg = songMode ? palette.muted : palette.panel;
     gfx.fillRect(cell_x, cell_y, layout.pattern_size, layout.pattern_height, bg);
     if (selected == i) {
-      IGfxColor sel = songMode ? IGfxColor::Yellow() : COLOR_PATTERN_SELECTED_FILL;
-      IGfxColor border = songMode ? IGfxColor::Yellow() : COLOR_LABEL;
+      IGfxColor sel = songMode ? palette.led : palette.accent;
+      IGfxColor border = songMode ? palette.led : palette.ink;
       gfx.fillRect(cell_x - 1, cell_y - 1, layout.pattern_size + 2, layout.pattern_height + 2, sel);
       gfx.drawRect(cell_x - 1, cell_y - 1, layout.pattern_size + 2, layout.pattern_height + 2, border);
     }
     gfx.drawRect(cell_x, cell_y, layout.pattern_size, layout.pattern_height,
-                 songMode ? COLOR_LABEL : COLOR_WHITE);
+                 songMode ? palette.ink : palette.ink);
     if (isCursor) {
       gfx.drawRect(cell_x - 2, cell_y - 2, layout.pattern_size + 4, layout.pattern_height + 4,
-                   COLOR_STEP_SELECTED);
+                   palette.led);
     }
     char label[4];
     snprintf(label, sizeof(label), "%d", i + 1);
     int tw = textWidth(gfx, label);
     int tx = cell_x + (layout.pattern_size - tw) / 2;
     int ty = cell_y + layout.pattern_height / 2 - gfx.fontHeight() / 2;
-    gfx.setTextColor(songMode ? COLOR_LABEL : COLOR_WHITE);
+    gfx.setTextColor(songMode ? palette.ink : palette.ink); // Keep contrast
+    if (selected == i) gfx.setTextColor(palette.bg); // Invert text on selection
     gfx.drawText(tx, ty, label);
-    gfx.setTextColor(COLOR_WHITE);
+    gfx.setTextColor(palette.ink);
   }
 }

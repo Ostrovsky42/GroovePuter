@@ -40,13 +40,15 @@ unsigned long nowMillis() {
 }
 } // namespace
 
+CassetteTheme g_currentTheme = CassetteTheme::WarmTape;
+
 MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid)
     : gfx_(gfx), mini_acid_(mini_acid) {
   splash_start_ms_ = nowMillis();
   gfx_.setFont(GfxFont::kFont5x7);
 
   // Initialize cassette skin with WarmTape theme
-  skin_ = std::make_unique<CassetteSkin>(gfx_, CassetteTheme::WarmTape);
+  skin_ = std::make_unique<CassetteSkin>(gfx_, g_currentTheme);
 
   pages_.push_back(std::make_unique<Synth303ParamsPage>(gfx_, mini_acid_, audio_guard_, 0));
   pages_.push_back(std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 0));
@@ -110,16 +112,21 @@ void MiniAcidDisplay::update() {
     skin_->drawBackground();
     skin_->drawHeader(buildHeaderState());
     
-    // Panel frame around content area
+    // Panel frame around content area (leave room for mutes at bottom)
     int margin = 4;
+    int mutes_h = 20;  // Height reserved for mute buttons
     Rect panelBounds(margin, skin_->headerHeight() + margin,
                      gfx_.width() - margin * 2,
-                     gfx_.height() - skin_->headerHeight() - skin_->footerHeight() - margin * 2);
+                     gfx_.height() - skin_->headerHeight() - skin_->footerHeight() - mutes_h - margin * 2);
     skin_->drawPanelFrame(panelBounds);
   }
 
   // Use skin's content bounds for page rendering
-  Rect contentBounds = skin_ ? skin_->contentBounds() : Rect(4, 4, gfx_.width() - 8, gfx_.height() - 8);
+  int mutes_h = 20;
+  Rect contentBounds = skin_ ? 
+      Rect(skin_->contentBounds().x, skin_->contentBounds().y,
+           skin_->contentBounds().w, skin_->contentBounds().h - mutes_h) :
+      Rect(4, 4, gfx_.width() - 8, gfx_.height() - 8);
   gfx_.setTextColor(skin_ ? skin_->palette().ink : COLOR_WHITE);
 
   if (pages_[page_index_]) {
@@ -142,15 +149,17 @@ void MiniAcidDisplay::update() {
     }
   }
 
+  // Draw mute buttons section (above footer)
+  int margin = 4;
+  int mutes_y = gfx_.height() - (skin_ ? skin_->footerHeight() : 0) - mutes_h;
+  drawMutesSection(margin, mutes_y, gfx_.width() - margin * 2, mutes_h);
+
   // Draw footer with reels
   if (skin_) {
     skin_->drawFooterReels(buildFooterState());
   }
 
-  // Mutes section is now part of footer area, skip for cassette skin
-  // drawMutesSection(...);
-
-  int margin = 4;
+  // Page hint for navigation with [ ]
   int hint_w = textWidth(gfx_, "[< 0/0 >]");
   if (!page_hint_initialized_) {
     initPageHint(gfx_.width() - hint_w - margin, margin + 2, hint_w);

@@ -10,12 +10,21 @@
 #include "scenes.h"
 #include "mini_tb303.h"
 #include "mini_drumvoices.h"
+#include "mini_drumvoices.h"
 #include "tube_distortion.h"
+#include "perf_stats.h"
+#include "tape_fx.h"
+#include "tape_looper.h"
+#include "../audio/audio_config.h"
+#include "../sampler/sample_store.h"
+#include "../sampler/sample_index.h"
+#include "../sampler/drum_sampler_track.h"
+#include "../sampler/sample_index.h"
 
 // ===================== Audio config =====================
 
-static const int SAMPLE_RATE = 22050;        // Hz
-static const int AUDIO_BUFFER_SAMPLES = 256; // per buffer, mono
+static const int SAMPLE_RATE = kSampleRate;        // Hz
+static const int AUDIO_BUFFER_SAMPLES = kBlockFrames; // per buffer, mono
 static const int SEQ_STEPS = 16;             // 16-step sequencer
 static const int NUM_303_VOICES = 2;
 static const int NUM_DRUM_VOICES = DrumPatternSet::kVoices;
@@ -25,7 +34,8 @@ static const int NUM_DRUM_VOICES = DrumPatternSet::kVoices;
 class TempoDelay {
 public:
   explicit TempoDelay(float sampleRate);
-
+  
+  void init(float maxSeconds); // Explicit init with size control
   void reset();
   void setSampleRate(float sr);
   void setBpm(float bpm);
@@ -249,6 +259,16 @@ private:
   void syncSceneStateToManager();
 
   Parameter params[static_cast<int>(MiniAcidParamId::Count)];
+  
+public:
+  // Public access to stats and sample bank for now
+  PerfStats perfStats;
+  ISampleStore* sampleStore = nullptr;
+  float samplerOutBuffer[AUDIO_BUFFER_SAMPLES];
+  SampleIndex sampleIndex;
+  DrumSamplerTrack samplerTrack;
+  TapeFX tapeFX;
+  TapeLooper tapeLooper;
 };
 
 class PatternGenerator {

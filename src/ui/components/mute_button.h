@@ -4,6 +4,7 @@
 #include "../ui_core.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
+#include "../ui_themes.h"
 
 class MuteButton : public Component {
  public:
@@ -11,11 +12,15 @@ class MuteButton : public Component {
       : label_(label), is_muted_(is_muted), toggle_callback_(toggle_callback) {}
 
   void draw(IGfx& gfx) override {
+    const auto& palette = getPalette(g_currentTheme);
     if (!is_muted_()) {
-      gfx.fillRect(dx() + 1, dy() + 1, width() - 3, height() - 2, COLOR_MUTE_BACKGROUND);
+      gfx.fillRect(dx() + 1, dy() + 1, width() - 3, height() - 2, palette.bg);
     }
-    gfx.drawRect(dx() + 1, dy() + 1, width() - 3, height() - 2, COLOR_WHITE);
-    gfx.setTextColor(COLOR_WHITE);
+    // else {
+    //   gfx.fillRect(dx() + 1, dy() + 1, width() - 3, height() - 2, palette.accent);
+    // }
+    gfx.drawRect(dx() + 1, dy() + 1, width() - 3, height() - 2, palette.panel);
+    gfx.setTextColor(is_muted_() ? palette.muted : palette.ink);
     // Center the label
     int label_w = textWidth(gfx, label_);
     int label_x = dx() + (width() - label_w) / 2;

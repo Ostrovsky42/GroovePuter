@@ -1,8 +1,12 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_heap_caps.h"
 #include <M5Cardputer.h>
 #include <SD.h>
 #include <SPI.h>
+#include "esp_system.h"
+#include "esp_heap_caps.h"
+#include "esp_psram.h"
 #include "src/dsp/miniacid_engine.h"
 #include "cardputer_display.h"
 #include <cstdarg>
@@ -23,12 +27,14 @@ int16_t g_audioBuffer[AUDIO_BUFFER_SAMPLES];
 
 TaskHandle_t g_audioTaskHandle = nullptr;
 
-MiniAcid g_miniAcid(SAMPLE_RATE, &g_sceneStorage);
-Encoder8Miniacid g_encoder8(g_miniAcid);
+// Static engine instance to avoid heap fragmentation
+static MiniAcid g_miniAcidInstance(SAMPLE_RATE, &g_sceneStorage);
+MiniAcid* g_miniAcid = nullptr;
+Encoder8Miniacid* g_encoder8 = nullptr;
 
 void audioTask(void *param) {
   while (true) {
-    if (!g_miniAcid.isPlaying()) {
+    if (!g_miniAcid || !g_miniAcid->isPlaying()) {
       vTaskDelay(10 / portTICK_PERIOD_MS);
       continue;
     }
@@ -37,7 +43,7 @@ void audioTask(void *param) {
       vTaskDelay(1 / portTICK_PERIOD_MS);
     }
 
-    g_miniAcid.generateAudioBuffer(g_audioBuffer, AUDIO_BUFFER_SAMPLES);
+    g_miniAcid->generateAudioBuffer(g_audioBuffer, AUDIO_BUFFER_SAMPLES);
 
     // Write to recorder if recording
     if (g_audioRecorder) {
@@ -54,21 +60,77 @@ void drawUI() {
   if (g_miniDisplay) g_miniDisplay->update();
 }
 
+static void logHeapCaps(const char* tag) {
+  auto freeInt  = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  auto largInt  = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  auto free8    = heap_caps_get_free_size(MALLOC_CAP_8BIT);
+  auto larg8    = heap_caps_get_largest_free_block(MALLOC_CAP_8BIT);
+
+  Serial.printf("[%s] freeInt=%u largInt=%u free8=%u larg8=%u\n",
+                tag, (unsigned)freeInt, (unsigned)largInt,
+                (unsigned)free8, (unsigned)larg8);
+}
+
 void setup() {
+  Serial.begin(115200);
+  delay(500);
+  Serial.println("\n\n!! BOOTING !!");
+  logHeapCaps("boot-start");
+  
   auto cfg = M5.config();
   M5Cardputer.begin(cfg);
+  
+  logHeapCaps("after-m5-begin");
+  
+  esp_reset_reason_t reason = esp_reset_reason();
+  Serial.println("\n\n=== MiniAcid STARTUP DIAGNOSTICS ===");
+  Serial.printf("Reset Reason: %d\n", (int)reason);
 
-  Serial.begin(115200);
-
+  Serial.println("Creating Display...");
+  logHeapCaps("before-display");
   g_display.setRotation(1);
   g_display.begin();
+  
+  Serial.println("Clearing Display...");
   g_display.clear(CP_BLACK);
-
+  g_display.setTextColor(IGfxColor::White());
+  logHeapCaps("after-display");
+  
+  Serial.println("Init Speaker...");
   M5Cardputer.Speaker.begin();
-  M5Cardputer.Speaker.setVolume(200); // 0-255
+  M5Cardputer.Speaker.setVolume(200);
+  Serial.println("Speaker OK");
+  logHeapCaps("after-speaker");
+  
+  auto screenLog = [&](const char* msg) {
+    static int logY = 0;
+    Serial.println(msg);
+    g_display.drawText(0, logY, msg);
+    logY += 10;
+    if (logY > 120) { g_display.clear(CP_BLACK); logY = 0; }
+  };
 
-  g_miniAcid.init();
-  g_miniDisplay = new MiniAcidDisplay(g_display, g_miniAcid);
+  screenLog("1. M5 Hardware OK");
+  char buf[64];
+  snprintf(buf, sizeof(buf), "2. PSRAM: %d KB free", (int)(ESP.getFreePsram() / 1024));
+  screenLog(buf);
+
+  // Points to static instance
+  g_miniAcid = &g_miniAcidInstance;
+  
+  screenLog("4. Engine Static OK");
+  
+  // Previously we tried PSRAM allocation here, but now we use BSS
+  // to avoid 'largest free block' issues on DRAM-only usage.
+
+  screenLog("5. Creating Encoder8");
+  g_encoder8 = new Encoder8Miniacid(*g_miniAcid);
+
+  screenLog("6. Engine Init...");
+  g_miniAcid->init();
+  
+  screenLog("7. UI Setup...");
+  g_miniDisplay = new MiniAcidDisplay(g_display, *g_miniAcid);
   
   // Set audio guard to protect audio task from concurrent access
   g_miniDisplay->setAudioGuard([](const std::function<void()>& fn) {
@@ -89,7 +151,7 @@ void setup() {
                           1 // core
   );
 
-  g_encoder8.initialize();
+  g_encoder8->initialize();
 
   drawUI();
 }
@@ -97,13 +159,13 @@ void setup() {
 void loop() {
   M5Cardputer.update();
 
-  g_encoder8.update();
+  if (g_encoder8) g_encoder8->update();
 
   if (M5Cardputer.BtnA.wasClicked()) {
-    if (g_miniAcid.isPlaying()) {
-      g_miniAcid.stop();
+    if (g_miniAcid->isPlaying()) {
+      g_miniAcid->stop();
     } else {
-      g_miniAcid.start();
+      g_miniAcid->start();
     }
     drawUI();
   }
@@ -133,55 +195,55 @@ void loop() {
       if (g_miniDisplay) g_miniDisplay->nextPage();
       drawUI();
     } else if (c == 'i' || c == 'I') {
-      g_miniAcid.randomize303Pattern(0);
+      g_miniAcid->randomize303Pattern(0);
       drawUI();
     } else if (c == 'o' || c == 'O') {
-      g_miniAcid.randomize303Pattern(1);
+      g_miniAcid->randomize303Pattern(1);
       drawUI();
     } else if (c == 'p' || c == 'P') {
-      g_miniAcid.randomizeDrumPattern();
+      g_miniAcid->randomizeDrumPattern();
       drawUI();
     } else if (c == '1') {
-      g_miniAcid.toggleMute303(0);
+      g_miniAcid->toggleMute303(0);
       drawUI();
     } else if (c == '2') {
-      g_miniAcid.toggleMute303(1);
+      g_miniAcid->toggleMute303(1);
       drawUI();
     } else if (c == '3') {
-      g_miniAcid.toggleMuteKick();
+      g_miniAcid->toggleMuteKick();
       drawUI();
     } else if (c == '4') {
-      g_miniAcid.toggleMuteSnare();
+      g_miniAcid->toggleMuteSnare();
       drawUI();
     } else if (c == '5') {
-      g_miniAcid.toggleMuteHat();
+      g_miniAcid->toggleMuteHat();
       drawUI();
     } else if (c == '6') {
-      g_miniAcid.toggleMuteOpenHat();
+      g_miniAcid->toggleMuteOpenHat();
       drawUI();
     } else if (c == '7') {
-      g_miniAcid.toggleMuteMidTom();
+      g_miniAcid->toggleMuteMidTom();
       drawUI();
     } else if (c == '8') {
-      g_miniAcid.toggleMuteHighTom();
+      g_miniAcid->toggleMuteHighTom();
       drawUI();
     } else if (c == '9') {
-      g_miniAcid.toggleMuteRim();
+      g_miniAcid->toggleMuteRim();
       drawUI();
     } else if (c == '0') {
-      g_miniAcid.toggleMuteClap();
+      g_miniAcid->toggleMuteClap();
       drawUI();
     } else if (c == 'k' || c == 'K') {
-      g_miniAcid.setBpm(g_miniAcid.bpm() - 5.0f);
+      g_miniAcid->setBpm(g_miniAcid->bpm() - 5.0f);
       drawUI();
     } else if (c == 'l' || c == 'L') {
-      g_miniAcid.setBpm(g_miniAcid.bpm() + 5.0f);
+      g_miniAcid->setBpm(g_miniAcid->bpm() + 5.0f);
       drawUI();
     } else if (c == ' ') {
-      if (g_miniAcid.isPlaying()) {
-        g_miniAcid.stop();
+      if (g_miniAcid->isPlaying()) {
+        g_miniAcid->stop();
       } else {
-        g_miniAcid.start();
+        g_miniAcid->start();
       }
       drawUI();
     }

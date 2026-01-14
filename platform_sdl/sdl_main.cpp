@@ -12,7 +12,9 @@
 #include "../cardputer_display.h"
 #include "../src/ui/miniacid_display.h"
 #include "../src/dsp/miniacid_engine.h"
+#include "../src/audio/audio_config.h"
 #include "scene_storage_sdl.h"
+#include "../src/sampler/ram_sample_store.h"
 #ifndef __EMSCRIPTEN__
 #include "../src/audio/desktop_audio_recorder.h"
 #else
@@ -20,8 +22,9 @@
 #endif
 
 struct AudioContext {
-  explicit AudioContext(float sampleRate) : storage(), synth(sampleRate, &storage), device(0) {}
+  explicit AudioContext(float sampleRate) : storage(), pool(), synth(sampleRate, &storage), device(0) { synth.sampleStore = &pool; }
   SceneStorageSdl storage;
+  RamSampleStore pool;
   MiniAcid synth;
   SDL_AudioDeviceID device;
 #ifndef __EMSCRIPTEN__
@@ -32,7 +35,7 @@ struct AudioContext {
 };
 
 struct AppState {
-  AppState() : audio(SAMPLE_RATE) {}
+  AppState() : audio(kSampleRate) {}
   AudioContext audio;
   IGfx* gfx = nullptr;
   SDLDisplay* sdl = nullptr;
@@ -330,12 +333,18 @@ int main(int argc, char **argv) {
 
   state.gfx->begin();
   state.audio.synth.init();
+  
+  // Initialize sample index and register files into the store
+  state.audio.synth.sampleIndex.scanDirectory("../samples");
+  for (const auto& file : state.audio.synth.sampleIndex.getFiles()) {
+      state.audio.pool.registerFile(file.id, file.fullPath);
+  }
 
   SDL_AudioSpec desired{};
-  desired.freq = SAMPLE_RATE;
+  desired.freq = kSampleRate;
   desired.format = AUDIO_S16SYS;
   desired.channels = 1;
-  desired.samples = AUDIO_BUFFER_SAMPLES;
+  desired.samples = kBlockFrames;
   desired.callback = audioCallback;
   desired.userdata = &state.audio;
 

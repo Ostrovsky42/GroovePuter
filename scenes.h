@@ -130,10 +130,30 @@ inline int songPatternFromBank(int bankIndex, int patternIndex) {
   return bankIndex * Bank<SynthPattern>::kPatterns + patternIndex;
 }
 
+struct SamplerPadState {
+  uint32_t sampleId = 0;
+  float volume = 1.0f;
+  float pitch = 1.0f;
+  uint32_t startFrame = 0;
+  uint32_t endFrame = 0;
+  uint8_t chokeGroup = 0;
+  bool reverse = false;
+  bool loop = false;
+};
+
+struct TapeState {
+  float wow = 0.0f;
+  float flutter = 0.0f;
+  float saturation = 0.0f;
+  float looperVolume = 1.0f;
+};
+
 struct Scene {
   Bank<DrumPatternSet> drumBanks[kBankCount];
   Bank<SynthPattern> synthABanks[kBankCount];
   Bank<SynthPattern> synthBBanks[kBankCount];
+  SamplerPadState samplerPads[16];
+  TapeState tape;
   Song song;
 };
 
@@ -199,6 +219,9 @@ private:
     SynthDelay,
     SynthParams,
     SynthParam,
+    SamplerPads,
+    SamplerPad,
+    Tape,
     Song,
     SongPositions,
     SongPosition,
@@ -250,6 +273,7 @@ private:
 
 class SceneManager {
 public:
+  SceneManager();
   void loadDefaultScene();
   Scene& currentScene();
   const Scene& currentScene() const;
@@ -333,7 +357,7 @@ private:
   bool applySceneDocument(const ArduinoJson::JsonDocument& doc);
   bool loadSceneEventedWithReader(JsonVisitor::NextChar nextChar);
 
-  Scene scene_;
+  Scene* scene_;
   int drumPatternIndex_ = 0;
   int synthPatternIndex_[2] = {0, 0};
   int drumBankIndex_ = 0;
@@ -484,13 +508,13 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeChar('{')) return false;
 
   if (!writeLiteral("\"drumBanks\":")) return false;
-  if (!writeDrumBanks(scene_.drumBanks)) return false;
+  if (!writeDrumBanks(scene_->drumBanks)) return false;
 
   if (!writeLiteral(",\"synthABanks\":")) return false;
-  if (!writeSynthBanks(scene_.synthABanks)) return false;
+  if (!writeSynthBanks(scene_->synthABanks)) return false;
 
   if (!writeLiteral(",\"synthBBanks\":")) return false;
-  if (!writeSynthBanks(scene_.synthBBanks)) return false;
+  if (!writeSynthBanks(scene_->synthBBanks)) return false;
 
   if (!writeLiteral(",\"song\":{")) return false;
   int songLen = songLength();
@@ -501,11 +525,11 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
     if (i > 0 && !writeChar(',')) return false;
     if (!writeChar('{')) return false;
     if (!writeLiteral("\"a\":")) return false;
-    if (!writeInt(scene_.song.positions[i].patterns[0])) return false;
+    if (!writeInt(scene_->song.positions[i].patterns[0])) return false;
     if (!writeLiteral(",\"b\":")) return false;
-    if (!writeInt(scene_.song.positions[i].patterns[1])) return false;
+    if (!writeInt(scene_->song.positions[i].patterns[1])) return false;
     if (!writeLiteral(",\"drums\":")) return false;
-    if (!writeInt(scene_.song.positions[i].patterns[2])) return false;
+    if (!writeInt(scene_->song.positions[i].patterns[2])) return false;
     if (!writeChar('}')) return false;
   }
   if (!writeChar(']')) return false;
@@ -573,6 +597,41 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeChar(',')) return false;
   if (!writeBool(synthDelay_[1])) return false;
   if (!writeChar(']')) return false;
+
+  if (!writeLiteral(",\"samplerPads\":[")) return false;
+  for (int i = 0; i < 16; ++i) {
+    if (i > 0 && !writeChar(',')) return false;
+    const auto& p = scene_->samplerPads[i];
+    if (!writeLiteral("{\"id\":")) return false;
+    if (!writeInt(p.sampleId)) return false;
+    if (!writeLiteral(",\"vol\":")) return false;
+    if (!writeFloat(p.volume)) return false;
+    if (!writeLiteral(",\"pch\":")) return false;
+    if (!writeFloat(p.pitch)) return false;
+    if (!writeLiteral(",\"str\":")) return false;
+    if (!writeInt(p.startFrame)) return false;
+    if (!writeLiteral(",\"end\":")) return false;
+    if (!writeInt(p.endFrame)) return false;
+    if (!writeLiteral(",\"chk\":")) return false;
+    if (!writeInt(p.chokeGroup)) return false;
+    if (!writeLiteral(",\"rev\":")) return false;
+    if (!writeBool(p.reverse)) return false;
+    if (!writeLiteral(",\"lop\":")) return false;
+    if (!writeBool(p.loop)) return false;
+    if (!writeChar('}')) return false;
+  }
+  if (!writeChar(']')) return false;
+
+  if (!writeLiteral(",\"tape\":{\"wow\":")) return false;
+  if (!writeFloat(scene_->tape.wow)) return false;
+  if (!writeLiteral(",\"flt\":")) return false;
+  if (!writeFloat(scene_->tape.flutter)) return false;
+  if (!writeLiteral(",\"sat\":")) return false;
+  if (!writeFloat(scene_->tape.saturation)) return false;
+  if (!writeLiteral(",\"vol\":")) return false;
+  if (!writeFloat(scene_->tape.looperVolume)) return false;
+  if (!writeLiteral("}")) return false;
+
   if (!writeChar('}')) return false;
 
   if (!writeChar('}')) return false;

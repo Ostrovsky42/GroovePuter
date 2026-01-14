@@ -18,28 +18,28 @@ struct CassettePalette {
     IGfxColor muted;    // Muted text/inactive elements
 };
 
-// WarmTape: warm cream + faded coral + soft teal
-// Like a vintage TDK/Maxell cassette with bedroom lofi warmth
+// WarmTape: Dark Obsidian case + Neon Orange accent + Green LED
+// High contrast, professional midnight cassette vibe
 inline constexpr CassettePalette kWarmTapePalette = {
-    .bg     = IGfxColor(0xF5F0E6),  // warm cream (paper)
-    .panel  = IGfxColor(0xE8E4D8),  // light plastic
-    .ink    = IGfxColor(0x1A1A1A),  // almost black
-    .accent = IGfxColor(0xE07850),  // faded coral/orange
-    .led    = IGfxColor(0x40C0A0),  // soft teal
-    .shadow = IGfxColor(0x8A7A6A),  // gray-brown
-    .muted  = IGfxColor(0x9A9080),  // muted beige
+    .bg     = IGfxColor(0x0A0A0A),  // black/charcoal
+    .panel  = IGfxColor(0x1F1F1F),  // dark plastic
+    .ink    = IGfxColor(0xE0E0E0),  // light gray (ink is now light for visibility)
+    .accent = IGfxColor(0xFF6B35),  // vivid orange
+    .led    = IGfxColor(0x3CFFA0),  // neon green
+    .shadow = IGfxColor(0x000000),  // pure black
+    .muted  = IGfxColor(0x707070),  // medium gray
 };
 
-// CoolTape: minty gray + dusty pink + amber lamp
-// More "technical" feel, like studio equipment
+// CoolTape: Deep Indigo Slate + Electric Cyan + Amber LED
+// Night-mode studio aesthetic
 inline constexpr CassettePalette kCoolTapePalette = {
-    .bg     = IGfxColor(0xE0EAE4),  // minty gray
-    .panel  = IGfxColor(0xD0DAD4),  // cool plastic
-    .ink    = IGfxColor(0x1A1A1A),  // almost black
-    .accent = IGfxColor(0xC08090),  // dusty pink
-    .led    = IGfxColor(0xE0A040),  // amber (lamp)
-    .shadow = IGfxColor(0x6A7A70),  // gray-green
-    .muted  = IGfxColor(0x808A84),  // muted mint
+    .bg     = IGfxColor(0x0D1117),  // deep midnight blue
+    .panel  = IGfxColor(0x161B22),  // slate plastic
+    .ink    = IGfxColor(0xF0F6FC),  // almost white
+    .accent = IGfxColor(0x58A6FF),  // electric blue
+    .led    = IGfxColor(0xFF8C00),  // bright amber
+    .shadow = IGfxColor(0x010409),  // deepest blue-black
+    .muted  = IGfxColor(0x8B949E),  // slate gray
 };
 
 enum class CassetteTheme {
@@ -56,3 +56,5 @@ inline const CassettePalette& getPalette(CassetteTheme theme) {
             return kWarmTapePalette;
     }
 }
+
+extern CassetteTheme g_currentTheme;

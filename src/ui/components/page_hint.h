@@ -5,6 +5,7 @@
 #include "../ui_core.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
+#include "../ui_themes.h"
 
 class PageHint : public Component {
  public:
@@ -20,9 +21,10 @@ class PageHint : public Component {
   void draw(IGfx& gfx) override {
     char buf[32];
     snprintf(buf, sizeof(buf), "[< %d/%d >]", get_page_index_() + 1, get_page_count_());
-    gfx.setTextColor(COLOR_LABEL);
+    const auto& palette = getPalette(g_currentTheme);
+    gfx.setTextColor(palette.ink);
     gfx.drawText(dx(), dy(), buf);
-    gfx.setTextColor(COLOR_WHITE);
+    gfx.setTextColor(palette.ink);
   }
 
   bool handleEvent(UIEvent& ui_event) override {

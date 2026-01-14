@@ -4,6 +4,7 @@
 
 #include "../ui_colors.h"
 #include "../ui_utils.h"
+#include "../ui_themes.h"
 
 BankSelectionBarComponent::BankSelectionBarComponent(std::string label, std::string letters)
     : label_(std::move(label)), letters_(std::move(letters)) {}
@@ -90,33 +91,37 @@ void BankSelectionBarComponent::draw(IGfx& gfx) {
   int bank_count = state_.bank_count;
   if (bank_count < 0) bank_count = 0;
 
-  gfx.setTextColor(COLOR_LABEL);
+  const auto& palette = getPalette(g_currentTheme);
+
+  gfx.setTextColor(palette.muted);
   gfx.drawText(layout.bank_x, layout.label_y, label_.c_str());
 
   int box_x = layout.bank_x + layout.label_w + layout.spacing;
   for (int i = 0; i < bank_count; ++i) {
     int cell_x = box_x + i * (layout.box_size + layout.spacing);
-    IGfxColor bg = songMode ? COLOR_GRAY_DARKER : COLOR_PANEL;
-    IGfxColor border = songMode ? COLOR_LABEL : COLOR_WHITE;
+    IGfxColor bg = songMode ? palette.muted : palette.panel;
+    IGfxColor border = songMode ? palette.led : palette.ink;
     gfx.fillRect(cell_x, layout.bank_y, layout.box_size, layout.box_size, bg);
     if (state_.selected_index == i) {
-      IGfxColor sel = songMode ? IGfxColor::Yellow() : COLOR_PATTERN_SELECTED_FILL;
-      IGfxColor sel_border = songMode ? IGfxColor::Yellow() : COLOR_LABEL;
+      IGfxColor sel = songMode ? palette.led : palette.accent;
+      IGfxColor sel_border = songMode ? palette.led : palette.ink;
       gfx.fillRect(cell_x - 1, layout.bank_y - 1, layout.box_size + 2, layout.box_size + 2, sel);
       gfx.drawRect(cell_x - 1, layout.bank_y - 1, layout.box_size + 2, layout.box_size + 2, sel_border);
     }
     gfx.drawRect(cell_x, layout.bank_y, layout.box_size, layout.box_size, border);
     if (state_.show_cursor && state_.cursor_index == i) {
       gfx.drawRect(cell_x - 2, layout.bank_y - 2, layout.box_size + 4, layout.box_size + 4,
-                   COLOR_STEP_SELECTED);
+                   palette.led);
     }
     char label[2] = { bankLetter(i), '\0' };
     int tw = textWidth(gfx, label);
     int tx = cell_x + (layout.box_size - tw) / 2;
     int ty = layout.bank_y + layout.box_size / 2 - gfx.fontHeight() / 2;
-    gfx.setTextColor(songMode ? COLOR_LABEL : COLOR_WHITE);
+    // Invert text color if selected
+    bool isSelected = (state_.selected_index == i);
+    gfx.setTextColor(isSelected ? palette.bg : palette.ink);
     gfx.drawText(tx, ty, label);
-    gfx.setTextColor(COLOR_WHITE);
+    gfx.setTextColor(palette.ink);
   }
-  gfx.setTextColor(COLOR_WHITE);
+  gfx.setTextColor(palette.ink);
 }

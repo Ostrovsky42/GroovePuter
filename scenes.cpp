@@ -280,6 +280,8 @@ SceneJsonObserver::Path SceneJsonObserver::deduceArrayPath(const Context& parent
     return Path::SynthDistortion;
   case Path::SynthDelay:
     return Path::SynthDelay;
+  case Path::SamplerPads:
+    return Path::SamplerPad;
   case Path::Song:
     return Path::SongPosition;
   default:
@@ -352,10 +354,10 @@ void SceneJsonObserver::onObjectStart() {
     const Context& parent = stack_[stackSize_ - 1];
     if (parent.type == Context::Type::Array) {
       path = deduceObjectPath(parent);
-    } else if (parent.path == Path::Root && lastKey_ == "state") {
-      path = Path::State;
-    } else if (parent.path == Path::Root && lastKey_ == "song") {
-      path = Path::Song;
+    } else if (parent.path == Path::Root) {
+      if (lastKey_ == "state") path = Path::State;
+      else if (lastKey_ == "song") path = Path::Song;
+      else if (lastKey_ == "tape") path = Path::Tape;
     } else if (parent.path == Path::State && lastKey_ == "mute") {
       path = Path::Mute;
     }
@@ -377,11 +379,9 @@ void SceneJsonObserver::onArrayStart() {
     if (parent.type == Context::Type::Object) {
       if (parent.path == Path::Root) {
         if (lastKey_ == "drumBanks") path = Path::DrumBanks;
-        else if (lastKey_ == "drumBank") path = Path::DrumBank;
         else if (lastKey_ == "synthABanks") path = Path::SynthABanks;
-        else if (lastKey_ == "synthABank") path = Path::SynthABank;
         else if (lastKey_ == "synthBBanks") path = Path::SynthBBanks;
-        else if (lastKey_ == "synthBBank") path = Path::SynthBBank;
+        else if (lastKey_ == "samplerPads") path = Path::SamplerPads;
       } else if (parent.path == Path::Song) {
         if (lastKey_ == "positions") path = Path::SongPositions;
         else if (lastKey_ == "synthDistortion") path = Path::SynthDistortion;
@@ -406,6 +406,7 @@ void SceneJsonObserver::onArrayStart() {
   pushContext(Context::Type::Array, path);
   if (path == Path::Unknown) error_ = true;
 }
+
 
 void SceneJsonObserver::onArrayEnd() {
   if (error_) return;
@@ -533,6 +534,26 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     } else if (lastKey_ == "synthBankIndex") {
       synthBankIndex_[0] = intValue;
     }
+    return;
+  }
+  if (path == Path::SamplerPad) {
+    int padIdx = currentIndexFor(Path::SamplerPads);
+    if (padIdx >= 0 && padIdx < 16) {
+      if (lastKey_ == "id") target_.samplerPads[padIdx].sampleId = static_cast<uint32_t>(value);
+      else if (lastKey_ == "vol") target_.samplerPads[padIdx].volume = static_cast<float>(value);
+      else if (lastKey_ == "pch") target_.samplerPads[padIdx].pitch = static_cast<float>(value);
+      else if (lastKey_ == "str") target_.samplerPads[padIdx].startFrame = static_cast<uint32_t>(value);
+      else if (lastKey_ == "end") target_.samplerPads[padIdx].endFrame = static_cast<uint32_t>(value);
+      else if (lastKey_ == "chk") target_.samplerPads[padIdx].chokeGroup = static_cast<uint8_t>(value);
+    }
+    return;
+  }
+  if (path == Path::Tape) {
+    if (lastKey_ == "wow") target_.tape.wow = static_cast<float>(value);
+    else if (lastKey_ == "flt") target_.tape.flutter = static_cast<float>(value);
+    else if (lastKey_ == "sat") target_.tape.saturation = static_cast<float>(value);
+    else if (lastKey_ == "vol") target_.tape.looperVolume = static_cast<float>(value);
+    return;
   }
 }
 
@@ -626,6 +647,14 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
   } else if (path == Path::State && lastKey_ == "loopMode") {
     loopMode_ = value;
   }
+
+  if (path == Path::SamplerPad) {
+    int padIdx = currentIndexFor(Path::SamplerPads);
+    if (padIdx >= 0 && padIdx < 16) {
+      if (lastKey_ == "rev") target_.samplerPads[padIdx].reverse = value;
+      else if (lastKey_ == "lop") target_.samplerPads[padIdx].loop = value;
+    }
+  }
 }
 
 void SceneJsonObserver::onNumber(int value) { handlePrimitiveNumber(static_cast<double>(value), true); }
@@ -715,6 +744,11 @@ int SceneJsonObserver::loopEndRow() const { return loopEndRow_; }
 
 const std::string& SceneJsonObserver::drumEngineName() const { return drumEngineName_; }
 
+// Main processing scene (static to avoid heap fragmentation)
+static Scene g_mainScene;
+
+SceneManager::SceneManager() : scene_(&g_mainScene) {}
+
 void SceneManager::loadDefaultScene() {
   drumPatternIndex_ = 0;
   drumBankIndex_ = 0;
@@ -738,21 +772,21 @@ void SceneManager::loadDefaultScene() {
   loopMode_ = false;
   loopStartRow_ = 0;
   loopEndRow_ = 0;
-  clearSongData(scene_.song);
-  scene_.song.length = 1;
-  scene_.song.positions[0].patterns[0] = 0;
-  scene_.song.positions[0].patterns[1] = 0;
-  scene_.song.positions[0].patterns[2] = 0;
+  clearSongData(scene_->song);
+  scene_->song.length = 1;
+  scene_->song.positions[0].patterns[0] = 0;
+  scene_->song.positions[0].patterns[1] = 0;
+  scene_->song.positions[0].patterns[2] = 0;
 
   for (int b = 0; b < kBankCount; ++b) {
     for (int i = 0; i < Bank<DrumPatternSet>::kPatterns; ++i) {
       for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-        clearDrumPattern(scene_.drumBanks[b].patterns[i].voices[v]);
+        clearDrumPattern(scene_->drumBanks[b].patterns[i].voices[v]);
       }
     }
     for (int i = 0; i < Bank<SynthPattern>::kPatterns; ++i) {
-      clearSynthPattern(scene_.synthABanks[b].patterns[i]);
-      clearSynthPattern(scene_.synthBBanks[b].patterns[i]);
+      clearSynthPattern(scene_->synthABanks[b].patterns[i]);
+      clearSynthPattern(scene_->synthBBanks[b].patterns[i]);
     }
   }
 
@@ -801,13 +835,13 @@ void SceneManager::loadDefaultScene() {
                                     false, false, false, false, true,  false, false, false};
 
   for (int i = 0; i < SynthPattern::kSteps; ++i) {
-    scene_.synthABanks[0].patterns[0].steps[i].note = notes[i];
-    scene_.synthABanks[0].patterns[0].steps[i].accent = accent[i];
-    scene_.synthABanks[0].patterns[0].steps[i].slide = slide[i];
+    scene_->synthABanks[0].patterns[0].steps[i].note = notes[i];
+    scene_->synthABanks[0].patterns[0].steps[i].accent = accent[i];
+    scene_->synthABanks[0].patterns[0].steps[i].slide = slide[i];
 
-    scene_.synthBBanks[0].patterns[0].steps[i].note = notes2[i];
-    scene_.synthBBanks[0].patterns[0].steps[i].accent = accent2[i];
-    scene_.synthBBanks[0].patterns[0].steps[i].slide = slide2[i];
+    scene_->synthBBanks[0].patterns[0].steps[i].note = notes2[i];
+    scene_->synthBBanks[0].patterns[0].steps[i].accent = accent2[i];
+    scene_->synthBBanks[0].patterns[0].steps[i].slide = slide2[i];
   }
 
   for (int i = 0; i < DrumPattern::kSteps; ++i) {
@@ -815,44 +849,44 @@ void SceneManager::loadDefaultScene() {
     if (openHat[i]) {
       hatVal = false;
     }
-    scene_.drumBanks[0].patterns[0].voices[0].steps[i].hit = kick[i];
-    scene_.drumBanks[0].patterns[0].voices[0].steps[i].accent = kick[i];
+    scene_->drumBanks[0].patterns[0].voices[0].steps[i].hit = kick[i];
+    scene_->drumBanks[0].patterns[0].voices[0].steps[i].accent = kick[i];
 
-    scene_.drumBanks[0].patterns[0].voices[1].steps[i].hit = snare[i];
-    scene_.drumBanks[0].patterns[0].voices[1].steps[i].accent = snare[i];
+    scene_->drumBanks[0].patterns[0].voices[1].steps[i].hit = snare[i];
+    scene_->drumBanks[0].patterns[0].voices[1].steps[i].accent = snare[i];
 
-    scene_.drumBanks[0].patterns[0].voices[2].steps[i].hit = hatVal;
-    scene_.drumBanks[0].patterns[0].voices[2].steps[i].accent = hatVal;
+    scene_->drumBanks[0].patterns[0].voices[2].steps[i].hit = hatVal;
+    scene_->drumBanks[0].patterns[0].voices[2].steps[i].accent = hatVal;
 
-    scene_.drumBanks[0].patterns[0].voices[3].steps[i].hit = openHat[i];
-    scene_.drumBanks[0].patterns[0].voices[3].steps[i].accent = openHat[i];
+    scene_->drumBanks[0].patterns[0].voices[3].steps[i].hit = openHat[i];
+    scene_->drumBanks[0].patterns[0].voices[3].steps[i].accent = openHat[i];
 
-    scene_.drumBanks[0].patterns[0].voices[4].steps[i].hit = midTom[i];
-    scene_.drumBanks[0].patterns[0].voices[4].steps[i].accent = midTom[i];
+    scene_->drumBanks[0].patterns[0].voices[4].steps[i].hit = midTom[i];
+    scene_->drumBanks[0].patterns[0].voices[4].steps[i].accent = midTom[i];
 
-    scene_.drumBanks[0].patterns[0].voices[5].steps[i].hit = highTom[i];
-    scene_.drumBanks[0].patterns[0].voices[5].steps[i].accent = highTom[i];
+    scene_->drumBanks[0].patterns[0].voices[5].steps[i].hit = highTom[i];
+    scene_->drumBanks[0].patterns[0].voices[5].steps[i].accent = highTom[i];
 
-    scene_.drumBanks[0].patterns[0].voices[6].steps[i].hit = rim[i];
-    scene_.drumBanks[0].patterns[0].voices[6].steps[i].accent = rim[i];
+    scene_->drumBanks[0].patterns[0].voices[6].steps[i].hit = rim[i];
+    scene_->drumBanks[0].patterns[0].voices[6].steps[i].accent = rim[i];
 
-    scene_.drumBanks[0].patterns[0].voices[7].steps[i].hit = clap[i];
-    scene_.drumBanks[0].patterns[0].voices[7].steps[i].accent = clap[i];
+    scene_->drumBanks[0].patterns[0].voices[7].steps[i].hit = clap[i];
+    scene_->drumBanks[0].patterns[0].voices[7].steps[i].accent = clap[i];
   }
 }
 
-Scene& SceneManager::currentScene() { return scene_; }
+Scene& SceneManager::currentScene() { return *scene_; }
 
-const Scene& SceneManager::currentScene() const { return scene_; }
+const Scene& SceneManager::currentScene() const { return *scene_; }
 
 const DrumPatternSet& SceneManager::getCurrentDrumPattern() const {
   int bank = clampBankIndex(drumBankIndex_);
-  return scene_.drumBanks[bank].patterns[clampPatternIndex(drumPatternIndex_)];
+  return scene_->drumBanks[bank].patterns[clampPatternIndex(drumPatternIndex_)];
 }
 
 DrumPatternSet& SceneManager::editCurrentDrumPattern() {
   int bank = clampBankIndex(drumBankIndex_);
-  return scene_.drumBanks[bank].patterns[clampPatternIndex(drumPatternIndex_)];
+  return scene_->drumBanks[bank].patterns[clampPatternIndex(drumPatternIndex_)];
 }
 
 const SynthPattern& SceneManager::getCurrentSynthPattern(int synthIndex) const {
@@ -860,9 +894,9 @@ const SynthPattern& SceneManager::getCurrentSynthPattern(int synthIndex) const {
   int patternIndex = clampPatternIndex(synthPatternIndex_[idx]);
   int bank = clampBankIndex(synthBankIndex_[idx]);
   if (idx == 0) {
-    return scene_.synthABanks[bank].patterns[patternIndex];
+    return scene_->synthABanks[bank].patterns[patternIndex];
   }
-  return scene_.synthBBanks[bank].patterns[patternIndex];
+  return scene_->synthBBanks[bank].patterns[patternIndex];
 }
 
 SynthPattern& SceneManager::editCurrentSynthPattern(int synthIndex) {
@@ -870,9 +904,9 @@ SynthPattern& SceneManager::editCurrentSynthPattern(int synthIndex) {
   int patternIndex = clampPatternIndex(synthPatternIndex_[idx]);
   int bank = clampBankIndex(synthBankIndex_[idx]);
   if (idx == 0) {
-    return scene_.synthABanks[bank].patterns[patternIndex];
+    return scene_->synthABanks[bank].patterns[patternIndex];
   }
-  return scene_.synthBBanks[bank].patterns[patternIndex];
+  return scene_->synthBBanks[bank].patterns[patternIndex];
 }
 
 const SynthPattern& SceneManager::getSynthPattern(int synthIndex, int patternIndex) const {
@@ -880,9 +914,9 @@ const SynthPattern& SceneManager::getSynthPattern(int synthIndex, int patternInd
   int pat = clampPatternIndex(patternIndex);
   int bank = clampBankIndex(synthBankIndex_[idx]);
   if (idx == 0) {
-    return scene_.synthABanks[bank].patterns[pat];
+    return scene_->synthABanks[bank].patterns[pat];
   }
-  return scene_.synthBBanks[bank].patterns[pat];
+  return scene_->synthBBanks[bank].patterns[pat];
 }
 
 SynthPattern& SceneManager::editSynthPattern(int synthIndex, int patternIndex) {
@@ -890,21 +924,21 @@ SynthPattern& SceneManager::editSynthPattern(int synthIndex, int patternIndex) {
   int pat = clampPatternIndex(patternIndex);
   int bank = clampBankIndex(synthBankIndex_[idx]);
   if (idx == 0) {
-    return scene_.synthABanks[bank].patterns[pat];
+    return scene_->synthABanks[bank].patterns[pat];
   }
-  return scene_.synthBBanks[bank].patterns[pat];
+  return scene_->synthBBanks[bank].patterns[pat];
 }
 
 const DrumPatternSet& SceneManager::getDrumPatternSet(int patternIndex) const {
   int pat = clampPatternIndex(patternIndex);
   int bank = clampBankIndex(drumBankIndex_);
-  return scene_.drumBanks[bank].patterns[pat];
+  return scene_->drumBanks[bank].patterns[pat];
 }
 
 DrumPatternSet& SceneManager::editDrumPatternSet(int patternIndex) {
   int pat = clampPatternIndex(patternIndex);
   int bank = clampBankIndex(drumBankIndex_);
-  return scene_.drumBanks[bank].patterns[pat];
+  return scene_->drumBanks[bank].patterns[pat];
 }
 
 void SceneManager::setCurrentDrumPatternIndex(int idx) {
@@ -985,9 +1019,9 @@ void SceneManager::setBpm(float bpm) {
 
 float SceneManager::getBpm() const { return bpm_; }
 
-const Song& SceneManager::song() const { return scene_.song; }
+const Song& SceneManager::song() const { return scene_->song; }
 
-Song& SceneManager::editSong() { return scene_.song; }
+Song& SceneManager::editSong() { return scene_->song; }
 
 void SceneManager::setSongPattern(int position, SongTrack track, int patternIndex) {
   int pos = position;
@@ -996,15 +1030,15 @@ void SceneManager::setSongPattern(int position, SongTrack track, int patternInde
   int trackIdx = songTrackToIndex(track);
   if (trackIdx < 0 || trackIdx >= SongPosition::kTrackCount) return;
   int pat = clampSongPatternIndex(patternIndex);
-  if (pos >= scene_.song.length) setSongLength(pos + 1);
-  scene_.song.positions[pos].patterns[trackIdx] = static_cast<int8_t>(pat);
+  if (pos >= scene_->song.length) setSongLength(pos + 1);
+  scene_->song.positions[pos].patterns[trackIdx] = static_cast<int8_t>(pat);
 }
 
 void SceneManager::clearSongPattern(int position, SongTrack track) {
   int pos = clampSongPosition(position);
   int trackIdx = songTrackToIndex(track);
   if (trackIdx < 0 || trackIdx >= SongPosition::kTrackCount) return;
-  scene_.song.positions[pos].patterns[trackIdx] = -1;
+  scene_->song.positions[pos].patterns[trackIdx] = -1;
   trimSongLength();
 }
 
@@ -1012,20 +1046,20 @@ int SceneManager::songPattern(int position, SongTrack track) const {
   if (position < 0 || position >= Song::kMaxPositions) return -1;
   int trackIdx = songTrackToIndex(track);
   if (trackIdx < 0 || trackIdx >= SongPosition::kTrackCount) return -1;
-  if (position >= scene_.song.length) return -1;
-  return clampSongPatternIndex(scene_.song.positions[position].patterns[trackIdx]);
+  if (position >= scene_->song.length) return -1;
+  return clampSongPatternIndex(scene_->song.positions[position].patterns[trackIdx]);
 }
 
 void SceneManager::setSongLength(int length) {
   int clamped = clampSongLength(length);
-  scene_.song.length = clamped;
-  if (songPosition_ >= scene_.song.length) songPosition_ = scene_.song.length - 1;
+  scene_->song.length = clamped;
+  if (songPosition_ >= scene_->song.length) songPosition_ = scene_->song.length - 1;
   if (songPosition_ < 0) songPosition_ = 0;
   clampLoopRange();
 }
 
 int SceneManager::songLength() const {
-  int len = scene_.song.length;
+  int len = scene_->song.length;
   if (len < 1) len = 1;
   if (len > Song::kMaxPositions) len = Song::kMaxPositions;
   return len;
@@ -1099,20 +1133,20 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   ArduinoJson::JsonObject root = doc.to<ArduinoJson::JsonObject>();
 
   ArduinoJson::JsonArray drumBanks = root["drumBanks"].to<ArduinoJson::JsonArray>();
-  serializeDrumBanks(scene_.drumBanks, drumBanks);
+  serializeDrumBanks(scene_->drumBanks, drumBanks);
   ArduinoJson::JsonArray synthABanks = root["synthABanks"].to<ArduinoJson::JsonArray>();
-  serializeSynthBanks(scene_.synthABanks, synthABanks);
+  serializeSynthBanks(scene_->synthABanks, synthABanks);
   ArduinoJson::JsonArray synthBBanks = root["synthBBanks"].to<ArduinoJson::JsonArray>();
-  serializeSynthBanks(scene_.synthBBanks, synthBBanks);
+  serializeSynthBanks(scene_->synthBBanks, synthBBanks);
   ArduinoJson::JsonObject songObj = root["song"].to<ArduinoJson::JsonObject>();
   int songLen = songLength();
   songObj["length"] = songLen;
   ArduinoJson::JsonArray songPositions = songObj["positions"].to<ArduinoJson::JsonArray>();
   for (int i = 0; i < songLen; ++i) {
     ArduinoJson::JsonObject pos = songPositions.add<ArduinoJson::JsonObject>();
-    pos["a"] = scene_.song.positions[i].patterns[0];
-    pos["b"] = scene_.song.positions[i].patterns[1];
-    pos["drums"] = scene_.song.positions[i].patterns[2];
+    pos["a"] = scene_->song.positions[i].patterns[0];
+    pos["b"] = scene_->song.positions[i].patterns[1];
+    pos["drums"] = scene_->song.positions[i].patterns[2];
   }
 
   ArduinoJson::JsonObject state = root["state"].to<ArduinoJson::JsonObject>();
@@ -1294,6 +1328,35 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     loopEndRow = valueToInt(state["loopEnd"], loopEndRow);
   }
 
+  if (obj.containsKey("samplerPads")) {
+    auto padsArr = obj["samplerPads"].as<ArduinoJson::JsonArrayConst>();
+    if (!padsArr.isNull() && static_cast<int>(padsArr.size()) == 16) {
+      for (int i = 0; i < 16; ++i) {
+        auto pObj = padsArr[i].as<ArduinoJson::JsonObjectConst>();
+        if (!pObj.isNull()) {
+          loaded->samplerPads[i].sampleId = pObj["id"].as<uint32_t>();
+          loaded->samplerPads[i].volume = pObj["vol"].as<float>();
+          loaded->samplerPads[i].pitch = pObj["pch"].as<float>();
+          loaded->samplerPads[i].startFrame = pObj["str"].as<uint32_t>();
+          loaded->samplerPads[i].endFrame = pObj["end"].as<uint32_t>();
+          loaded->samplerPads[i].chokeGroup = pObj["chk"].as<uint8_t>();
+          loaded->samplerPads[i].reverse = pObj["rev"].as<bool>();
+          loaded->samplerPads[i].loop = pObj["lop"].as<bool>();
+        }
+      }
+    }
+  }
+
+  if (obj.containsKey("tape")) {
+    auto tObj = obj["tape"].as<ArduinoJson::JsonObjectConst>();
+    if (!tObj.isNull()) {
+      loaded->tape.wow = tObj["wow"].as<float>();
+      loaded->tape.flutter = tObj["flt"].as<float>();
+      loaded->tape.saturation = tObj["sat"].as<float>();
+      loaded->tape.looperVolume = tObj["vol"].as<float>();
+    }
+  }
+
   if (!hasSongObj) {
     loadedSong.length = 1;
     loadedSong.positions[0].patterns[0] = songPatternFromBank(synthBankIndexA,
@@ -1304,8 +1367,8 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
                                                              clampPatternIndex(drumPatternIndex));
   }
 
-  scene_ = *loaded;
-  scene_.song = loadedSong;
+  *scene_ = *loaded;
+  scene_->song = loadedSong;
   drumPatternIndex_ = clampPatternIndex(drumPatternIndex);
   synthPatternIndex_[0] = clampPatternIndex(synthPatternIndexA);
   synthPatternIndex_[1] = clampPatternIndex(synthPatternIndexB);
@@ -1324,7 +1387,7 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
   synthParameters_[0] = synthParams[0];
   synthParameters_[1] = synthParams[1];
   drumEngineName_ = drumEngineName;
-  setSongLength(scene_.song.length);
+  setSongLength(scene_->song.length);
   songPosition_ = clampSongPosition(songPosition);
   songMode_ = songMode;
   loopMode_ = loopMode;
@@ -1348,13 +1411,26 @@ bool SceneManager::loadScene(const std::string& json) {
     return static_cast<unsigned char>(json[idx++]);
   };
   if (loadSceneEventedWithReader(nextChar)) return true;
-  return loadSceneJson(json);
+  
+  // DISABLED: ArduinoJson fallback causes abort() on ESP32 due to insufficient DRAM
+  // return loadSceneJson(json);
+  Serial.println("ERROR: Streaming JSON parse failed, skipping ArduinoJson fallback (insufficient memory)");
+  return false;
 }
 
-bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
-  auto loaded = std::make_unique<Scene>();
-  clearSceneData(*loaded);
+// Static buffer to avoid heap fragmentation during loading
+static Scene s_tempLoadScene;
 
+bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
+  Serial.println("  - loadSceneEventedWithReader: Using static loading buffer...");
+  
+  // Reuse the static buffer
+  Scene* loaded = &s_tempLoadScene;
+  
+  // Clear it before use
+  clearSceneData(*loaded);
+  
+  Serial.println("  - loadSceneEventedWithReader: Starting Parse...");
   struct NextCharStream {
     JsonVisitor::NextChar next;
     int read() { return next(); }
@@ -1364,10 +1440,11 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   JsonVisitor visitor;
   SceneJsonObserver observer(*loaded, bpm_);
   bool parsed = visitor.parse(stream, observer);
+  Serial.printf("  - loadSceneEventedWithReader: Parse done, result=%d, error=%d\n", (int)parsed, (int)observer.hadError());
   if (!parsed || observer.hadError()) return false;
 
-  scene_ = *loaded;
-  scene_.song = observer.song();
+  *scene_ = *loaded;
+  scene_->song = observer.song();
   drumPatternIndex_ = clampPatternIndex(observer.drumPatternIndex());
   synthPatternIndex_[0] = clampPatternIndex(observer.synthPatternIndex(0));
   synthPatternIndex_[1] = clampPatternIndex(observer.synthPatternIndex(1));
@@ -1375,12 +1452,12 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   synthBankIndex_[0] = clampIndex(observer.synthBankIndex(0), kBankCount);
   synthBankIndex_[1] = clampIndex(observer.synthBankIndex(1), kBankCount);
   if (!observer.hasSong()) {
-    scene_.song.length = 1;
-    scene_.song.positions[0].patterns[0] = songPatternFromBank(synthBankIndex_[0],
+    scene_->song.length = 1;
+    scene_->song.positions[0].patterns[0] = songPatternFromBank(synthBankIndex_[0],
                                                                synthPatternIndex_[0]);
-    scene_.song.positions[0].patterns[1] = songPatternFromBank(synthBankIndex_[1],
+    scene_->song.positions[0].patterns[1] = songPatternFromBank(synthBankIndex_[1],
                                                                synthPatternIndex_[1]);
-    scene_.song.positions[0].patterns[2] = songPatternFromBank(drumBankIndex_,
+    scene_->song.positions[0].patterns[2] = songPatternFromBank(drumBankIndex_,
                                                                drumPatternIndex_);
   }
   for (int i = 0; i < DrumPatternSet::kVoices; ++i) {
@@ -1395,7 +1472,7 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   synthParameters_[0] = observer.synthParameters(0);
   synthParameters_[1] = observer.synthParameters(1);
   drumEngineName_ = observer.drumEngineName();
-  setSongLength(scene_.song.length);
+  setSongLength(scene_->song.length);
   songPosition_ = clampSongPosition(observer.songPosition());
   songMode_ = observer.songMode();
   loopMode_ = observer.loopMode();
@@ -1403,6 +1480,11 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   loopEndRow_ = observer.loopEndRow();
   clampLoopRange();
   setBpm(observer.bpm());
+
+  // Restore Sampler/Tape from observer target (the loaded scene)
+  // Observer target was 'loaded' unique_ptr, which we copied to scene_ at 1397.
+  // So it's already in scene_-> We just need to make sure MiniAcid pulls it.
+
   return true;
 }
 
@@ -1446,10 +1528,10 @@ int SceneManager::songTrackToIndex(SongTrack track) const {
 
 void SceneManager::trimSongLength() {
   int lastUsed = -1;
-  for (int pos = scene_.song.length - 1; pos >= 0; --pos) {
+  for (int pos = scene_->song.length - 1; pos >= 0; --pos) {
     bool hasData = false;
     for (int t = 0; t < SongPosition::kTrackCount; ++t) {
-      if (scene_.song.positions[pos].patterns[t] >= 0) {
+      if (scene_->song.positions[pos].patterns[t] >= 0) {
         hasData = true;
         break;
       }
@@ -1460,8 +1542,8 @@ void SceneManager::trimSongLength() {
     }
   }
   int newLength = lastUsed >= 0 ? lastUsed + 1 : 1;
-  scene_.song.length = clampSongLength(newLength);
-  if (songPosition_ >= scene_.song.length) songPosition_ = scene_.song.length - 1;
+  scene_->song.length = clampSongLength(newLength);
+  if (songPosition_ >= scene_->song.length) songPosition_ = scene_->song.length - 1;
   clampLoopRange();
 }
 
