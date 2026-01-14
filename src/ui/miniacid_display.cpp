@@ -22,6 +22,8 @@
 #include "pages/song_page.h"
 #include "pages/tb303_params_page.h"
 #include "pages/waveform_page.h"
+#include "pages/sampler_page.h"
+#include "pages/tape_page.h"
 #include "components/mute_button.h"
 #include "components/page_hint.h"
 
@@ -51,6 +53,8 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid)
   pages_.push_back(std::make_unique<SongPage>(gfx_, mini_acid_, audio_guard_));
   pages_.push_back(std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_));
   pages_.push_back(std::make_unique<WaveformPage>(gfx_, mini_acid_, audio_guard_));
+  pages_.push_back(std::make_unique<SamplerPage>(gfx_, mini_acid_, audio_guard_));
+  pages_.push_back(std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_));
   pages_.push_back(std::make_unique<HelpPage>());
 }
 
@@ -130,6 +134,9 @@ void MiniAcidDisplay::update() {
     initPageHint(gfx_.width() - hint_w - margin, margin + 2, hint_w);
   }
   page_hint_container_.draw(gfx_);
+  
+  // enable debug overlay by default for now
+  drawDebugOverlay();
 
   gfx_.flush();
   gfx_.endWrite();
@@ -436,4 +443,24 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     return handled;
   }
   return false;
+}
+
+void MiniAcidDisplay::drawDebugOverlay() {
+  const PerfStats& stats = mini_acid_.perfStats;
+  char buf[32];
+  
+  int w = 80;
+  int h = 22;
+  int x = gfx_.width() - w - 2;
+  int y = 20; 
+  
+  gfx_.fillRect(x, y, w, h, COLOR_BLACK);
+  gfx_.drawRect(x, y, w, h, IGfxColor::Gray());
+  
+  gfx_.setTextColor(IGfxColor::Yellow());
+  snprintf(buf, sizeof(buf), "C:%3.0f%% U:%u", stats.cpuAudioPct * 100.0f, stats.audioUnderruns);
+  gfx_.drawText(x + 2, y + 2, buf);
+  
+  snprintf(buf, sizeof(buf), "H:%uK", stats.heapFree / 1024);
+  gfx_.drawText(x + 2, y + 12, buf);
 }

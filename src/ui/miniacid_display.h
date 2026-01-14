@@ -24,6 +24,7 @@ private:
   void drawMutesSection(int x, int y, int w, int h);
   int drawPageTitle(int x, int y, int w, const char* text);
   void drawSplashScreen();
+  void drawDebugOverlay();
   bool translateToApplicationEvent(UIEvent& event);
 
   IGfx& gfx_;
