@@ -45,6 +45,9 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid)
   splash_start_ms_ = nowMillis();
   gfx_.setFont(GfxFont::kFont5x7);
 
+  // Initialize cassette skin with WarmTape theme
+  skin_ = std::make_unique<CassetteSkin>(gfx_, CassetteTheme::WarmTape);
+
   pages_.push_back(std::make_unique<Synth303ParamsPage>(gfx_, mini_acid_, audio_guard_, 0));
   pages_.push_back(std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 0));
   pages_.push_back(std::make_unique<Synth303ParamsPage>(gfx_, mini_acid_, audio_guard_, 1));
@@ -96,39 +99,58 @@ void MiniAcidDisplay::update() {
 
   gfx_.setFont(GfxFont::kFont5x7);
   gfx_.startWrite();
-  gfx_.clear(COLOR_BLACK);
-  gfx_.setTextColor(COLOR_WHITE);
-  char buf[128];
 
-  auto print = [&](int x, int y, const char* fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, ap);
-    va_end(ap);
-    gfx_.drawText(x, y, buf);
-  };
+  // Advance skin animation
+  if (skin_) {
+    skin_->tick();
+  }
 
-  int margin = 4;
+  // Draw cassette skin background with dither pattern
+  if (skin_) {
+    skin_->drawBackground();
+    skin_->drawHeader(buildHeaderState());
+    
+    // Panel frame around content area
+    int margin = 4;
+    Rect panelBounds(margin, skin_->headerHeight() + margin,
+                     gfx_.width() - margin * 2,
+                     gfx_.height() - skin_->headerHeight() - skin_->footerHeight() - margin * 2);
+    skin_->drawPanelFrame(panelBounds);
+  }
 
-  int content_x = margin;
-  int content_w = gfx_.width() - margin * 2;
-  int content_y = margin;
-  int content_h = 110;
-  if (content_h < 0) content_h = 0;
+  // Use skin's content bounds for page rendering
+  Rect contentBounds = skin_ ? skin_->contentBounds() : Rect(4, 4, gfx_.width() - 8, gfx_.height() - 8);
+  gfx_.setTextColor(skin_ ? skin_->palette().ink : COLOR_WHITE);
 
   if (pages_[page_index_]) {
-    int title_h = drawPageTitle(content_x, content_y, content_w, pages_[page_index_]->getTitle().c_str());
-    // we don't need to do this each time, but for simplicity we do it here
-    pages_[page_index_]->setBoundaries(Rect(content_x, content_y + title_h, content_w, content_h - title_h));
+    // Draw page title inside content area
+    const char* title = pages_[page_index_]->getTitle().c_str();
+    int title_h = gfx_.fontHeight() + 2;
+    gfx_.setTextColor(skin_ ? skin_->palette().accent : COLOR_ACCENT);
+    gfx_.drawText(contentBounds.x, contentBounds.y, title);
+    gfx_.setTextColor(skin_ ? skin_->palette().ink : COLOR_WHITE);
+    
+    // Page content below title
+    Rect pageBounds(contentBounds.x, contentBounds.y + title_h,
+                    contentBounds.w, contentBounds.h - title_h);
+    pages_[page_index_]->setBoundaries(pageBounds);
     pages_[page_index_]->draw(gfx_);
+    
     if (help_dialog_visible_ && help_dialog_) {
-      help_dialog_->setBoundaries(Rect(content_x, content_y + title_h, content_w, content_h - title_h));
+      help_dialog_->setBoundaries(pageBounds);
       help_dialog_->draw(gfx_);
     }
   }
 
-  drawMutesSection(margin, content_h + margin, gfx_.width() - margin * 2, gfx_.height() - content_h - margin );
+  // Draw footer with reels
+  if (skin_) {
+    skin_->drawFooterReels(buildFooterState());
+  }
 
+  // Mutes section is now part of footer area, skip for cassette skin
+  // drawMutesSection(...);
+
+  int margin = 4;
   int hint_w = textWidth(gfx_, "[< 0/0 >]");
   if (!page_hint_initialized_) {
     initPageHint(gfx_.width() - hint_w - margin, margin + 2, hint_w);
@@ -463,4 +485,40 @@ void MiniAcidDisplay::drawDebugOverlay() {
   
   snprintf(buf, sizeof(buf), "H:%uK", stats.heapFree / 1024);
   gfx_.drawText(x + 2, y + 12, buf);
+}
+
+HeaderState MiniAcidDisplay::buildHeaderState() const {
+  HeaderState state;
+  
+  // Scene name (use current scene from miniacid)
+  state.sceneName = mini_acid_.currentSceneName().c_str();
+  
+  state.bpm = static_cast<int>(mini_acid_.bpm());
+  
+  // Pattern name - show current bank and pattern
+  static char patternNameBuf[16];
+  snprintf(patternNameBuf, sizeof(patternNameBuf), "D%d", mini_acid_.displayDrumPatternIndex() + 1);
+  state.patternName = patternNameBuf;
+  
+  state.isNavMode = true;  // TODO: track nav/edit mode
+  state.isRecording = audio_recorder_ && audio_recorder_->isRecording();
+  state.tapeEnabled = true;   // Tape is always processing if present
+  state.fxEnabled = false;    // TODO: get from FX state
+  state.songMode = mini_acid_.songModeEnabled();
+  state.swingPercent = 50;    // TODO: get from swing parameter
+  
+  return state;
+}
+
+FooterState MiniAcidDisplay::buildFooterState() const {
+  FooterState state;
+  
+  state.currentStep = mini_acid_.currentStep();
+  state.totalSteps = 16;
+  state.songPosition = mini_acid_.songModeEnabled() ? mini_acid_.songPlayheadPosition() : 0;
+  state.loopPosition = mini_acid_.loopModeEnabled() ? mini_acid_.loopStartRow() : -1;
+  state.isPlaying = mini_acid_.isPlaying();
+  state.animFrame = skin_ ? skin_->animFrame() : 0;
+  
+  return state;
 }

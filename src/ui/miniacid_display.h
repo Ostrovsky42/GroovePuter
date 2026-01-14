@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "ui_core.h"
+#include "cassette_skin.h"
 
 class IAudioRecorder;
 
@@ -42,4 +43,9 @@ private:
   bool mute_buttons_initialized_ = false;
   Container page_hint_container_;
   bool page_hint_initialized_ = false;
+  
+  // Cassette skin wrapper
+  std::unique_ptr<CassetteSkin> skin_;
+  HeaderState buildHeaderState() const;
+  FooterState buildFooterState() const;
 };
