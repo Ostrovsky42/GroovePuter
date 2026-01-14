@@ -701,7 +701,7 @@ void SongPage::draw(IGfx& gfx) {
   gfx.drawText(x + pos_col_w + spacing, body_y, "303A");
   gfx.drawText(x + pos_col_w + spacing + track_col_w, body_y, "303B");
   gfx.drawText(x + pos_col_w + spacing + track_col_w * 2, body_y, "Drums");
-  char lenBuf[24];
+  char lenBuf[32];
   snprintf(lenBuf, sizeof(lenBuf), "PLAYHD %d:%d", playhead + 1, song_len);
   int lenX = x + pos_col_w + spacing + track_col_w * 3 + spacing + 10;
   int lenW = textWidth(gfx, lenBuf);
@@ -714,7 +714,7 @@ void SongPage::draw(IGfx& gfx) {
   if (loopMode) {
     int loopStart = mini_acid_.loopStartRow();
     int loopEnd = mini_acid_.loopEndRow();
-    char loopBuf[24];
+    char loopBuf[32];
     snprintf(loopBuf, sizeof(loopBuf), "LOOP %d-%d", loopStart + 1, loopEnd + 1);
     int loopX = lenX + lenW + 8;
     gfx.setTextColor(IGfxColor::Yellow());
@@ -758,7 +758,7 @@ void SongPage::draw(IGfx& gfx) {
       gfx.fillRect(x, row_y - 1, w - modeBtnW - 2, row_h, COLOR_DARKER);
     }
 
-    char posLabel[8];
+    char posLabel[16];
     snprintf(posLabel, sizeof(posLabel), "%d", row_idx + 1);
     gfx.setTextColor(row_idx < song_len ? COLOR_WHITE : COLOR_LABEL);
     gfx.drawText(x, row_y + 2, posLabel);
@@ -781,7 +781,7 @@ void SongPage::draw(IGfx& gfx) {
       } else if (isSelected) {
         gfx.drawRect(col_x - 1, row_y - 2, track_col_w + 2, row_h + 2 - 1, COLOR_STEP_SELECTED);
       }
-      char label[6];
+      char label[12];
       if (patternIdx < 0) {
         snprintf(label, sizeof(label), "--");
         gfx.setTextColor(COLOR_LABEL);

@@ -691,6 +691,28 @@ void MiniAcid::toggleDistortion303(int voiceIndex) {
   }
 }
 
+void MiniAcid::set303DelayEnabled(int voiceIndex, bool enabled) {
+  int idx = clamp303Voice(voiceIndex);
+  if (idx == 0) {
+    delay303Enabled = enabled;
+    delay303.setEnabled(enabled);
+  } else {
+    delay3032Enabled = enabled;
+    delay3032.setEnabled(enabled);
+  }
+}
+
+void MiniAcid::set303DistortionEnabled(int voiceIndex, bool enabled) {
+  int idx = clamp303Voice(voiceIndex);
+  if (idx == 0) {
+    distortion303Enabled = enabled;
+    distortion303.setEnabled(enabled);
+  } else {
+    distortion3032Enabled = enabled;
+    distortion3032.setEnabled(enabled);
+  }
+}
+
 void MiniAcid::setDrumPatternIndex(int patternIndex) {
   sceneManager_.setCurrentDrumPatternIndex(patternIndex);
 }
@@ -1127,6 +1149,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   // Uses dirty flag internally to skip expensive recalculations when unchanged
   const TapeState& tapeState = sceneManager_.currentScene().tape;
   tapeFX.applyMacro(tapeState.macro);
+  tapeFX.applyMinimalParams(tapeState.space, tapeState.movement, tapeState.groove);
   tapeLooper.setMode(tapeState.mode);
   tapeLooper.setSpeed(tapeState.speed);
   tapeLooper.setVolume(tapeState.looperVolume);
@@ -1215,7 +1238,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
 
 void MiniAcid::randomize303Pattern(int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
-  PatternGenerator::generateRandom303Pattern(editSynthPattern(idx));
+  SynthPattern& pattern = editSynthPattern(idx);
+  modeManager_.generatePattern(pattern);
 }
 
 void MiniAcid::setParameter(MiniAcidParamId id, float value) {
@@ -1227,7 +1251,39 @@ void MiniAcid::adjustParameter(MiniAcidParamId id, int steps) {
 }
 
 void MiniAcid::randomizeDrumPattern() {
-  PatternGenerator::generateRandomDrumPattern(sceneManager_.editCurrentDrumPattern());
+  DrumPatternSet& patternSet = sceneManager_.editCurrentDrumPattern();
+  modeManager_.generateDrumPattern(patternSet);
+}
+
+void MiniAcid::setGrooveboxMode(GrooveboxMode mode) {
+  sceneManager_.setMode(mode);
+  syncModeToVoices();
+}
+
+void MiniAcid::syncModeToVoices() {
+  GrooveboxMode mode = sceneManager_.getMode();
+  const ModeConfig& cfg = modeManager_.config();
+  
+  voice303.setMode(mode);
+  voice303.setSubOscillator(cfg.dsp.subOscillator);
+  voice303.setNoiseAmount(cfg.dsp.noiseAmount);
+  
+  voice3032.setMode(mode);
+  voice3032.setSubOscillator(cfg.dsp.subOscillator);
+  voice3032.setNoiseAmount(cfg.dsp.noiseAmount);
+  
+  if (drums) {
+    drums->setLoFiMode(cfg.dsp.lofiDrums);
+    drums->setLoFiAmount(0.4f);
+  }
+}
+
+GrooveboxMode MiniAcid::grooveboxMode() const {
+  return sceneManager_.getMode();
+}
+
+void MiniAcid::toggleGrooveboxMode() {
+  modeManager_.toggle();
 }
 
 std::string MiniAcid::currentSceneName() const {
@@ -1301,6 +1357,7 @@ void MiniAcid::saveSceneToStorage() {
 
 void MiniAcid::applySceneStateFromManager() {
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: Start");
+  syncModeToVoices();
   setBpm(sceneManager_.getBpm());
   const std::string& drumEngineName = sceneManager_.getDrumEngineName();
   if (!drumEngineName.empty()) {
@@ -1523,7 +1580,6 @@ void PatternGenerator::generateRandomDrumPattern(DrumPatternSet& patternSet) {
         clap = (rand() % 100) < 5;
       }
       patternSet.voices[kDrumClapVoice].steps[i].hit = clap;
-      patternSet.voices[kDrumClapVoice].steps[i].accent = clap && (rand() % 100) < 30;
     }
   }
 }

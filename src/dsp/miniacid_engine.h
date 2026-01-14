@@ -6,10 +6,10 @@
 #include <vector>
 #include <string>
 
-#include "scene_storage.h"
-#include "scenes.h"
+#include "mode_manager.h"
+#include "../../scene_storage.h"
+#include "../../scenes.h"
 #include "mini_tb303.h"
-#include "mini_drumvoices.h"
 #include "mini_drumvoices.h"
 #include "tube_distortion.h"
 #include "perf_stats.h"
@@ -157,6 +157,8 @@ public:
   void toggleMuteClap();
   void toggleDelay303(int voiceIndex = 0);
   void toggleDistortion303(int voiceIndex = 0);
+  void set303DelayEnabled(int voiceIndex, bool enabled);
+  void set303DistortionEnabled(int voiceIndex, bool enabled);
   void setDrumPatternIndex(int patternIndex);
   void shiftDrumPatternIndex(int delta);
   void setDrumBankIndex(int bankIndex);
@@ -176,6 +178,12 @@ public:
 
   void randomize303Pattern(int voiceIndex = 0);
   void randomizeDrumPattern();
+  void setGrooveboxMode(GrooveboxMode mode);
+  GrooveboxMode grooveboxMode() const;
+  void toggleGrooveboxMode();
+
+  GrooveboxModeManager& modeManager() { return modeManager_; }
+  const GrooveboxModeManager& modeManager() const { return modeManager_; }
 
   Parameter& miniParameter(MiniAcidParamId id);
   void setParameter(MiniAcidParamId id, float value);
@@ -201,6 +209,7 @@ private:
   const DrumPattern& activeDrumPattern(int drumVoiceIndex) const;
   int songPatternIndexForTrack(SongTrack track) const;
   void applySongPositionSelection();
+  void syncModeToVoices();
   void advanceSongPlayhead();
   int clampSongPosition(int position) const;
 
@@ -273,6 +282,9 @@ public:
   // Scene manager accessor for UI tape state
   SceneManager& sceneManager() { return sceneManager_; }
   const SceneManager& sceneManager() const { return sceneManager_; }
+
+private:
+  GrooveboxModeManager modeManager_{*this};
 };
 
 class PatternGenerator {

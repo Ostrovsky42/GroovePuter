@@ -12,7 +12,7 @@ class ProjectPage : public IPage{
   const std::string & getTitle() const override;
 
  private:
-  enum class MainFocus { Load = 0, SaveAs, New };
+  enum class MainFocus { Load = 0, SaveAs, New, Mode };
   enum class DialogType { None = 0, Load, SaveAs };
   enum class DialogFocus { List = 0, Cancel };
   enum class SaveDialogFocus { Input = 0, Randomize, Save, Cancel };

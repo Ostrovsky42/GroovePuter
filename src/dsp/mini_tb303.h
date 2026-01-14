@@ -17,6 +17,16 @@ enum class TB303ParamId : uint8_t {
   Count
 };
 
+struct TB303Preset {
+  float cutoff;
+  float resonance;
+  float envAmount;
+  float decay;
+  bool distortion;
+  bool delay;
+  const char* name;
+};
+
 class TB303Voice {
 public:
   explicit TB303Voice(float sampleRate);
@@ -32,12 +42,21 @@ public:
   float parameterValue(TB303ParamId id) const;
   int oscillatorIndex() const;
 
+  void applyLoFiPreset(int index);
+  void setMode(GrooveboxMode mode);
+  void setLoFiAmount(float amount); // 0..1 for various degradations
+  void setSubOscillator(bool enabled);
+  void setNoiseAmount(float amount);
+
 private:
   float oscSaw();
   float oscSquare(float saw);
+  float oscPulse();
+  float oscSub();
   float oscSuperSaw();
   float oscillatorSample();
   float svfProcess(float input);
+  float applyLoFiDegradation(float input);
   void initParameters();
 
   static constexpr int kSuperSawOscCount = 6;
@@ -58,4 +77,13 @@ private:
 
   Parameter params[static_cast<int>(TB303ParamId::Count)];
   std::unique_ptr<AudioFilter> filter;
+  
+  GrooveboxMode mode_ = GrooveboxMode::Acid;
+  float loFiAmount_ = 0.0f;
+  uint32_t noiseState_ = 12345;
+  float driftPhase_ = 0.0f;
+  
+  bool subEnabled_ = false;
+  float subPhase_ = 0.0f;
+  float noiseAmount_ = 0.0f;
 };

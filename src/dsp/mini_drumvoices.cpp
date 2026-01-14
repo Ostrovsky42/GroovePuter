@@ -1,7 +1,60 @@
+#include <stdlib.h>
+#include <math.h>
 #include "mini_drumvoices.h"
 
-#include <math.h>
-#include <stdlib.h>
+LoFiDrumFX::LoFiDrumFX() : noiseState_(12345) {}
+
+void LoFiDrumFX::setEnabled(bool enabled) { enabled_ = enabled; }
+void LoFiDrumFX::setAmount(float amount) { amount_ = amount; }
+
+float LoFiDrumFX::process(float input, DrumVoiceType voice) {
+  if (!enabled_ || amount_ <= 0.001f) return input;
+  
+  float output = input;
+  
+  // 1. Bit reduction
+  int bits = 12 - (int)(amount_ * 6.0f);
+  output = bitcrush(output, bits);
+  
+  // 2. Soft saturation
+  output = fastTanh(output * (1.0f + amount_ * 0.5f));
+  
+  // 3. Highpass (subtle)
+  output = hipass_.process(output, 60.0f + amount_ * 100.0f, 22050.0f);
+  
+  // 4. Vinyl noise (very quiet)
+  output += vinyl() * 0.01f * amount_;
+  
+  // 5. Drift
+  output *= (1.0f + drift() * 0.002f * amount_);
+  
+  return output;
+}
+
+float LoFiDrumFX::bitcrush(float input, int bits) {
+  float levels = powf(2.0f, (float)bits);
+  return floorf(input * levels + 0.5f) / levels;
+}
+
+inline float LoFiDrumFX::fastTanh(float x) {
+  if (x < -3.0f) return -1.0f;
+  if (x > 3.0f) return 1.0f;
+  float x2 = x * x;
+  return x * (27.0f + x2) / (27.0f + 9.0f * x2);
+}
+
+float LoFiDrumFX::vinyl() {
+  noiseState_ = noiseState_ * 1664525 + 1013904223;
+  float noise = ((noiseState_ >> 16) & 0x7FFF) / 32768.0f - 0.5f;
+  if ((noiseState_ & 0xFF) < 2) noise *= 4.0f; // occasional pop
+  return noise;
+}
+
+float LoFiDrumFX::drift() {
+  driftPhase_ += 0.0002f;
+  if (driftPhase_ > 1.0f) driftPhase_ -= 1.0f;
+  return (driftPhase_ < 0.5f) ? (driftPhase_ * 4.0f - 1.0f) : (3.0f - driftPhase_ * 4.0f);
+}
 
 TR808DrumSynthVoice::TR808DrumSynthVoice(float sampleRate)
   : sampleRate(sampleRate),
@@ -293,7 +346,8 @@ float TR808DrumSynthVoice::processKick() {
   float driven = tanhf(body * (2.8f + 0.6f * kickEnvAmp));
 
   float out = (driven * 0.85f + transient) * kickEnvAmp * kickAccentGain;
-  return applyAccentDistortion(out, kickAccentDistortion);
+  float res = applyAccentDistortion(out, kickAccentDistortion);
+  return lofiEnabled ? lofi.process(res, KICK) : res;
 }
 
 
@@ -335,11 +389,11 @@ float TR808DrumSynthVoice::processSnare() {
   float toneB = sinf(2.0f * 3.14159265f * snareTonePhase2);
   float tone = (toneA * 0.55f + toneB * 0.45f) * snareToneEnv * snareToneGain;
 
-  // --- MIX ---
   // 808: tone only supports transient, noise dominates sustain
   float out = noiseOut * 0.75f + tone * 0.65f;
   out *= snareEnvAmp * snareAccentGain;
-  return applyAccentDistortion(out, snareAccentDistortion);
+  float res = applyAccentDistortion(out, snareAccentDistortion);
+  return lofiEnabled ? lofi.process(res, SNARE) : res;
 }
 
 float TR808DrumSynthVoice::processHat() {
@@ -372,7 +426,8 @@ float TR808DrumSynthVoice::processHat() {
 
   float out = hatHp * 0.65f + tone * 0.7f;
   out *= hatEnvAmp * 0.6f * hatAccentGain;
-  return applyAccentDistortion(out, hatAccentDistortion);
+  float res = applyAccentDistortion(out, hatAccentDistortion);
+  return lofiEnabled ? lofi.process(res, CLOSED_HAT) : res;
 }
 
 float TR808DrumSynthVoice::processOpenHat() {
@@ -403,7 +458,8 @@ float TR808DrumSynthVoice::processOpenHat() {
 
   float out = openHatHp * 0.55f + tone * 0.95f;
   out *= openHatEnvAmp * 0.7f * openHatAccentGain;
-  return applyAccentDistortion(out, openHatAccentDistortion);
+  float res = applyAccentDistortion(out, openHatAccentDistortion);
+  return lofiEnabled ? lofi.process(res, OPEN_HAT) : res;
 }
 
 float TR808DrumSynthVoice::processMidTom() {
@@ -424,7 +480,8 @@ float TR808DrumSynthVoice::processMidTom() {
   float tone = sinf(2.0f * 3.14159265f * midTomPhase);
   float slightNoise = frand() * 0.05f;
   float out = (tone * 0.9f + slightNoise) * midTomEnv * 0.8f * midTomAccentGain;
-  return applyAccentDistortion(out, midTomAccentDistortion);
+  float res = applyAccentDistortion(out, midTomAccentDistortion);
+  return lofiEnabled ? lofi.process(res, MID_TOM) : res;
 }
 
 float TR808DrumSynthVoice::processHighTom() {
@@ -446,7 +503,8 @@ float TR808DrumSynthVoice::processHighTom() {
   float tone = sinf(2.0f * 3.14159265f * highTomPhase);
   float slightNoise = frand() * 0.04f;
   float out = (tone * 0.88f + slightNoise) * highTomEnv * 0.75f * highTomAccentGain;
-  return applyAccentDistortion(out, highTomAccentDistortion);
+  float res = applyAccentDistortion(out, highTomAccentDistortion);
+  return lofiEnabled ? lofi.process(res, HIGH_TOM) : res;
 }
 
 float TR808DrumSynthVoice::processRim() {
@@ -465,7 +523,8 @@ float TR808DrumSynthVoice::processRim() {
   float tone = sinf(2.0f * 3.14159265f * rimPhase);
   float click = (frand() * 0.6f + 0.4f) * rimEnv;
   float out = (tone * 0.5f + click) * rimEnv * 0.8f * rimAccentGain;
-  return applyAccentDistortion(out, rimAccentDistortion);
+  float res = applyAccentDistortion(out, rimAccentDistortion);
+  return lofiEnabled ? lofi.process(res, RIM) : res;
 }
 
 float TR808DrumSynthVoice::processClap() {
@@ -498,7 +557,8 @@ float TR808DrumSynthVoice::processClap() {
   out = clapBandpass.process(out);
   out = clapLowpass.process(out);
   out *= (clapEnv * clapAccentGain) * 0.8f;
-  return applyAccentDistortion(out, clapAccentDistortion);
+  float res = applyAccentDistortion(out, clapAccentDistortion);
+  return lofiEnabled ? lofi.process(res, CLAP) : res;
 }
 
 float TR808DrumSynthVoice::processCymbal() {
@@ -529,7 +589,8 @@ float TR808DrumSynthVoice::processCymbal() {
 
   float out = cymbalHp * 0.6f + tone * 0.9f;
   out *= cymbalEnv * cymbalAccentGain;
-  return applyAccentDistortion(out, cymbalAccentDistortion);
+  float res = applyAccentDistortion(out, cymbalAccentDistortion);
+  return lofiEnabled ? lofi.process(res, CYMBAL) : res;
 }
 
 const Parameter& TR808DrumSynthVoice::parameter(DrumParamId id) const {
@@ -788,7 +849,8 @@ float TR909DrumSynthVoice::processKick() {
   float driven = tanhf(body * (2.4f + 0.7f * kickEnvAmp));
 
   float out = (driven * 0.9f + transient + click) * kickEnvAmp * kickAccentGain;
-  return applyAccentDistortion(out, kickAccentDistortion);
+  float res = applyAccentDistortion(out, kickAccentDistortion);
+  return lofiEnabled ? lofi.process(res, KICK) : res;
 }
 
 float TR909DrumSynthVoice::processSnare() {

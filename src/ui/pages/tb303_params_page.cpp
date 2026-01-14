@@ -427,13 +427,40 @@ void Synth303ParamsPage::draw(IGfx& gfx) {
                                        delayFocusW, delayFocusH));
   }
 
-  // draw knob keyboard shortcuts
-  gfx_.setTextColor(COLOR_KNOB_CONTROL);
-  print(cx1 + delta_x_for_controls, center_y_for_knobs + delta_y_for_controls, "A/Z");
-  print(cx2 + delta_x_for_controls, center_y_for_knobs + delta_y_for_controls, "S/X");
-  print(cx3 + delta_x_for_controls, center_y_for_knobs + delta_y_for_controls, "D/C");
-  print(cx4 + delta_x_for_controls, center_y_for_knobs + delta_y_for_controls, "F/V");
+  // Mode badge
+  GrooveboxMode mode = mini_acid_.grooveboxMode();
+  uint16_t modeColor = (mode == GrooveboxMode::Acid) ? kAcidConfig.accentColor : kMinimalConfig.accentColor;
+  const char* modeName = (mode == GrooveboxMode::Acid) ? "ACID" : "MINIMAL";
+  int badgeW = textWidth(gfx_, modeName) + 6;
+  int badgeX = dx() + width() - badgeW - 2;
+  gfx_.fillRect(badgeX, dy(), badgeW, 10, (IGfxColor)modeColor);
+  gfx_.setTextColor(COLOR_BLACK);
+  gfx_.drawText(badgeX + 3, dy() + 2, modeName);
+
+  // Presets section
+  int presetY = dy() + height() - 30;
+  gfx_.setTextColor(COLOR_LABEL);
+  gfx_.drawText(dx() + 6, presetY, "PRESETS:");
   
+  int count;
+  const TB303ModePreset* presets = mini_acid_.modeManager().get303Presets(count);
+  for (int i = 0; i < count; i++) {
+    int px = dx() + 6 + i * 50;
+    bool selected = (current_preset_index_ == i);
+    if (selected) {
+      gfx_.fillRect(px, presetY + 10, 45, 12, (IGfxColor)modeColor);
+      gfx_.setTextColor(COLOR_BLACK);
+    } else {
+      gfx_.drawRect(px, presetY + 10, 45, 12, COLOR_WHITE);
+      gfx_.setTextColor(COLOR_WHITE);
+    }
+    gfx_.drawText(px + 3, presetY + 12, presets[i].name);
+  }
+
+  // Hint
+  gfx_.setTextColor(COLOR_LABEL);
+  gfx_.drawText(dx() + 6, dy() + height() - 6, "[1-4] Load preset  [M] Toggle mode");
+
   // finally draw all child components
   Container::draw(gfx_);
 }
@@ -537,14 +564,25 @@ bool Synth303ParamsPage::handleEvent(UIEvent& ui_event)
       event_handled = true;
       break;
     case 'm':
+    case 'M':
       withAudioGuard([&]() { 
-        mini_acid_.toggleDelay303(voice_index_);
+        mini_acid_.toggleGrooveboxMode();
+        loadModePreset(0);
       });
+      event_handled = true;
       break;
     case 'n':
       withAudioGuard([&]() {
         mini_acid_.toggleDistortion303(voice_index_);
       });
+      event_handled = true;
+      break;
+    case '1':
+    case '2':
+    case '3':
+    case '4':
+      loadModePreset(ui_event.key - '1');
+      event_handled = true;
       break;
     default:
       break;
@@ -553,6 +591,13 @@ bool Synth303ParamsPage::handleEvent(UIEvent& ui_event)
     return true;
   }
   return Container::handleEvent(ui_event);
+}
+
+void Synth303ParamsPage::loadModePreset(int index) {
+  withAudioGuard([&]() {
+    mini_acid_.modeManager().apply303Preset(voice_index_, index);
+    current_preset_index_ = index;
+  });
 }
 
 

@@ -10,6 +10,48 @@ enum class DrumParamId : uint8_t {
   Count
 };
 
+enum DrumVoiceType : uint8_t {
+  KICK = 0,
+  SNARE,
+  CLOSED_HAT,
+  OPEN_HAT,
+  MID_TOM,
+  HIGH_TOM,
+  RIM,
+  CLAP,
+  CYMBAL,
+  VOICE_COUNT
+};
+
+class LoFiDrumFX {
+public:
+  LoFiDrumFX();
+  float process(float input, DrumVoiceType voice);
+  void setAmount(float amount);
+  void setEnabled(bool enabled);
+
+private:
+  float bitcrush(float input, int bits);
+  inline float fastTanh(float x);
+  float vinyl();
+  float drift();
+
+  bool enabled_ = false;
+  float amount_ = 0.0f;
+  uint32_t noiseState_;
+  float driftPhase_ = 0;
+  
+  struct OnePoleHP {
+    float z1_ = 0;
+    float process(float input, float cutoffHz, float sampleRate) {
+      float alpha = cutoffHz / (sampleRate * 0.5f);
+      float output = alpha * (input - z1_);
+      z1_ = input;
+      return output;
+    }
+  } hipass_;
+};
+
 class DrumSynthVoice {
 public:
   virtual ~DrumSynthVoice() = default;
@@ -38,6 +80,9 @@ public:
 
   virtual const Parameter& parameter(DrumParamId id) const = 0;
   virtual void setParameter(DrumParamId id, float value) = 0;
+
+  virtual void setLoFiMode(bool enabled) = 0;
+  virtual void setLoFiAmount(float amount) = 0;
 };
 
 class TR808DrumSynthVoice : public DrumSynthVoice {
@@ -68,6 +113,13 @@ public:
 
   const Parameter& parameter(DrumParamId id) const override;
   void setParameter(DrumParamId id, float value) override;
+
+  void setLoFiMode(bool enabled) override { lofiEnabled = enabled; }
+  void setLoFiAmount(float amount) override { lofi.setAmount(amount); }
+
+private:
+  bool lofiEnabled = false;
+  LoFiDrumFX lofi;
 
 private:
   struct Biquad {
@@ -217,6 +269,13 @@ public:
   const Parameter& parameter(DrumParamId id) const override;
   void setParameter(DrumParamId id, float value) override;
 
+  void setLoFiMode(bool enabled) override { lofiEnabled = enabled; }
+  void setLoFiAmount(float amount) override { lofi.setAmount(amount); }
+
+private:
+  bool lofiEnabled = false;
+  LoFiDrumFX lofi;
+
 private:
   struct Biquad {
     float a0;
@@ -364,6 +423,13 @@ public:
 
   const Parameter& parameter(DrumParamId id) const override;
   void setParameter(DrumParamId id, float value) override;
+
+  void setLoFiMode(bool enabled) override { lofiEnabled = enabled; }
+  void setLoFiAmount(float amount) override { lofi.setAmount(amount); }
+
+private:
+  bool lofiEnabled = false;
+  LoFiDrumFX lofi;
 
 private:
   struct OnePole {

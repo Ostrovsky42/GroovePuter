@@ -284,10 +284,11 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
     case MINIACID_LEFT:
       if (main_focus_ == MainFocus::SaveAs) main_focus_ = MainFocus::Load;
       else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::SaveAs;
+      else if (main_focus_ == MainFocus::Mode) main_focus_ = MainFocus::New;
       return true;
-    case MINIACID_RIGHT:
       if (main_focus_ == MainFocus::Load) main_focus_ = MainFocus::SaveAs;
       else if (main_focus_ == MainFocus::SaveAs) main_focus_ = MainFocus::New;
+      else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::Mode;
       return true;
     case MINIACID_UP:
     case MINIACID_DOWN:
@@ -306,6 +307,9 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
       return true;
     } else if (main_focus_ == MainFocus::New) {
       return createNewScene();
+    } else if (main_focus_ == MainFocus::Mode) {
+      mini_acid_.toggleGrooveboxMode();
+      return true;
     }
   }
   return false;
@@ -340,10 +344,15 @@ void ProjectPage::draw(IGfx& gfx) {
   int btn_h = line_h + 8;
   int btn_y = body_y + line_h * 2 + 8;
   int spacing = 6;
-  int total_w = btn_w * 3 + spacing * 2;
+  const char* labels[4] = {"Load", "Save As", "New", "Acid"};
+  if (mini_acid_.grooveboxMode() == GrooveboxMode::Minimal) labels[3] = "Minimal";
+  
+  btn_w = 48;
+  spacing = 4;
+  int total_w = btn_w * 4 + spacing * 3;
   int start_x = x + (w - total_w) / 2;
-  const char* labels[3] = {"Load", "Save As", "New"};
-  for (int i = 0; i < 3; ++i) {
+  
+  for (int i = 0; i < 4; ++i) {
     int btn_x = start_x + i * (btn_w + spacing);
     bool focused = (dialog_type_ == DialogType::None && static_cast<int>(main_focus_) == i);
     gfx.fillRect(btn_x, btn_y, btn_w, btn_h, COLOR_PANEL);

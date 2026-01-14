@@ -25,10 +25,13 @@ class Synth303ParamsPage : public IPage, public IMultiHelpFramesProvider {
   void adjustFocusedElement(int direction);
   void initComponents();
 
+  void loadModePreset(int index);
+
   IGfx& gfx_;
   MiniAcid& mini_acid_;
   AudioGuard& audio_guard_;
   int voice_index_;
+  int current_preset_index_ = -1;
   bool initialized_ = false;
   std::shared_ptr<KnobComponent> cutoff_knob_;
   std::shared_ptr<KnobComponent> resonance_knob_;

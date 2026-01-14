@@ -121,7 +121,7 @@ void PatternSelectionBarComponent::draw(IGfx& gfx) {
       gfx.drawRect(cell_x - 2, cell_y - 2, layout.pattern_size + 4, layout.pattern_height + 4,
                    palette.led);
     }
-    char label[4];
+    char label[8];
     snprintf(label, sizeof(label), "%d", i + 1);
     int tw = textWidth(gfx, label);
     int tx = cell_x + (layout.pattern_size - tw) / 2;

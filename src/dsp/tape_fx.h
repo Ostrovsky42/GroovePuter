@@ -23,6 +23,9 @@ public:
     // Process a single sample (call per sample)
     float process(float input);
     
+    // Minimal Techno extensions
+    void applyMinimalParams(uint8_t space, uint8_t movement, uint8_t groove);
+    
     // Force parameter recalculation on next process()
     void invalidateParams() { paramsDirty_ = true; }
 
@@ -65,6 +68,18 @@ private:
     
     // Noise state (simple LFSR)
     uint32_t noiseState_ = 0x12345678;
+
+    // Minimal extensions
+    float spaceAmount_ = 0;
+    float movementAmount_ = 0;
+    float movementPhase_ = 0;
+    float movementFreq_ = 0.5f;
+    float movementZ1_ = 0;
+
+    // Simple delay for "Space"
+    static constexpr uint32_t kSpaceDelaySize = 4096;
+    float spaceBuffer_[kSpaceDelaySize];
+    uint32_t spaceWritePos_ = 0;
 
     // Update LFO oscillators (called every kLFOUpdateRate samples)
     void updateLFO();

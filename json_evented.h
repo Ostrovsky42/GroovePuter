@@ -1,4 +1,6 @@
-#pragma once
+#ifndef JSON_EVENTED_H
+#define JSON_EVENTED_H
+
 
 #include <functional>
 #include <string>
@@ -37,3 +39,4 @@ public:
 private:
   bool parseImpl(NextChar nextChar, JsonObserver& observer);
 };
+#endif // JSON_EVENTED_H

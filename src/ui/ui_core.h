@@ -43,6 +43,8 @@ enum ApplicationEventType {
 
   MINIACID_APP_EVENT_MULTIPAGE_DOWN,
   MINIACID_APP_EVENT_MULTIPAGE_UP,
+
+  MINIACID_APP_EVENT_TOGGLE_MODE,
 };
 
 enum MouseButtonType {

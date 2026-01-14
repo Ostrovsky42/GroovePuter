@@ -399,6 +399,10 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       withAudioGuard([&]() { mini_acid_.adjust303StepOctave(voice_index_, step, -1); });
       return true;
     }
+    case 'g': {
+      withAudioGuard([&]() { mini_acid_.randomize303Pattern(voice_index_); });
+      return true;
+    }
     default:
       break;
   }

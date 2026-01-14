@@ -619,6 +619,10 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
       withAudioGuard([&]() { mini_acid_.toggleDrumAccentStep(step); });
       return true;
     }
+    case 'g': {
+      withAudioGuard([&]() { mini_acid_.randomizeDrumPattern(); });
+      return true;
+    }
     default:
       break;
   }

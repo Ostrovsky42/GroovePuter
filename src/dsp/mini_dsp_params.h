@@ -1,5 +1,11 @@
 #pragma once
 
+enum class GrooveboxMode {
+  Acid = 0,
+  Minimal = 1
+};
+
+
 class Parameter {
 public:
   Parameter();

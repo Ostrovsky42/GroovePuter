@@ -7,6 +7,9 @@ TapeFX::TapeFX() {
     for (uint32_t i = 0; i < kDelaySize; ++i) {
         buffer_[i] = 0.0f;
     }
+    for (uint32_t i = 0; i < kSpaceDelaySize; ++i) {
+        spaceBuffer_[i] = 0.0f;
+    }
     
     // Initialize LFO step values for default frequencies
     // Wow: ~0.8 Hz, Flutter: ~12 Hz
@@ -69,6 +72,12 @@ void TapeFX::updateInternalParams() {
     crushDownsample_ = kDownsampleTable[crushIdx];
     
     paramsDirty_ = false;
+}
+
+void TapeFX::applyMinimalParams(uint8_t space, uint8_t movement, uint8_t groove) {
+    spaceAmount_ = space * 0.008f;
+    movementAmount_ = movement * 0.01f; // depth scaling
+    movementFreq_ = 0.5f + (movement % 50) * 0.1f;
 }
 
 void TapeFX::updateLFO() {
@@ -155,6 +164,31 @@ float TapeFX::process(float input) {
             crushHold_ = floorf(x * levels * 0.5f + 0.5f) / (levels * 0.5f);
         }
         x = crushHold_;
+    }
+
+    // 8. Minimal Techno Extensions
+    // Space (Simple Feedback Delay)
+    if (spaceAmount_ > 0.05f) {
+        float dTime = 4000.0f; // Fixed long delay for space
+        float sRead = (float)spaceWritePos_ - dTime;
+        if (sRead < 0) sRead += kSpaceDelaySize;
+        float spaceDelayed = spaceBuffer_[(uint32_t)sRead & (kSpaceDelaySize - 1)];
+        
+        spaceBuffer_[spaceWritePos_] = x + spaceDelayed * 0.7f;
+        spaceWritePos_ = (spaceWritePos_ + 1) & (kSpaceDelaySize - 1);
+        
+        x = x * (1.0f - spaceAmount_ * 0.5f) + spaceDelayed * spaceAmount_;
+    }
+
+    // Movement (Filter modulation)
+    if (movementAmount_ > 0.01f) {
+        movementPhase_ += movementFreq_ / static_cast<float>(kSampleRate);
+        if (movementPhase_ >= 1.0f) movementPhase_ -= 1.0f;
+        
+        float mod = sinf(6.2831853f * movementPhase_) * 0.5f + 0.5f;
+        float coeff = 0.1f + mod * movementAmount_ * 0.8f;
+        movementZ1_ += coeff * (x - movementZ1_);
+        x = movementZ1_;
     }
 
     return x;

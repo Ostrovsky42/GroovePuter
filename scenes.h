@@ -1,4 +1,6 @@
-#pragma once
+#ifndef SCENES_H
+#define SCENES_H
+
 
 #include <stdint.h>
 #include <cstdio>
@@ -7,6 +9,7 @@
 #include <type_traits>
 #include <utility>
 #include "ArduinoJson-v7.4.2.h"
+#include "src/dsp/mini_dsp_params.h"
 #include "json_evented.h"
 
 namespace scene_json_detail {
@@ -181,6 +184,11 @@ struct TapeState {
     
     // Looper volume (mix level of loop playback)
     float looperVolume = 1.0f;
+    
+    // Minimal extensions
+    uint8_t space = 0;    // 0..100
+    uint8_t movement = 0; // 0..100
+    uint8_t groove = 0;   // 0..100
 };
 
 struct Scene {
@@ -190,6 +198,7 @@ struct Scene {
   SamplerPadState samplerPads[16];
   TapeState tape;
   Song song;
+  GrooveboxMode mode = GrooveboxMode::Acid;
 };
 
 class SceneJsonObserver : public JsonObserver {
@@ -228,6 +237,7 @@ public:
   int loopStartRow() const;
   int loopEndRow() const;
   const std::string& drumEngineName() const;
+  GrooveboxMode mode() const;
 
 private:
   enum class Path {
@@ -349,6 +359,8 @@ public:
   const SynthParameters& getSynthParameters(int synthIdx) const;
   void setDrumEngineName(const std::string& name);
   const std::string& getDrumEngineName() const;
+  void setMode(GrooveboxMode mode);
+  GrooveboxMode getMode() const;
   void setBpm(float bpm);
   float getBpm() const;
 
@@ -409,6 +421,7 @@ private:
   int loopStartRow_ = 0;
   int loopEndRow_ = 0;
   std::string drumEngineName_ = "808";
+  GrooveboxMode mode_ = GrooveboxMode::Acid;
 };
 
 // inline constexpr size_t SceneManager::sceneJsonCapacity() {
@@ -677,12 +690,15 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeInt(scene_->tape.macro.crush)) return false;
   if (!writeLiteral(",\"vol\":")) return false;
   if (!writeFloat(scene_->tape.looperVolume)) return false;
-  if (!writeLiteral("}")) return false;
-
-  if (!writeChar('}')) return false;
-
-  if (!writeChar('}')) return false;
-  return true;
+  if (!writeLiteral(",\"space\":")) return false;
+  if (!writeInt(scene_->tape.space)) return false;
+  if (!writeLiteral(",\"movement\":")) return false;
+  if (!writeInt(scene_->tape.movement)) return false;
+  if (!writeLiteral(",\"groove\":")) return false;
+  if (!writeInt(scene_->tape.groove)) return false;
+  if (!writeLiteral("},\"mode\":")) return false;
+  if (!writeInt(static_cast<int>(mode_))) return false;
+  return writeLiteral("}}");
 }
 
 template <typename TReader>
@@ -698,3 +714,4 @@ bool SceneManager::loadSceneEvented(TReader&& reader) {
   JsonVisitor::NextChar nextChar = [&reader]() -> int { return reader.read(); };
   return loadSceneEventedWithReader(nextChar);
 }
+#endif // SCENES_H

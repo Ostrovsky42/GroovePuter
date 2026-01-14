@@ -106,12 +106,20 @@ class TapePage::PresetComponent : public FocusableComponent {
 
   void draw(IGfx& gfx) override {
     const Rect& bounds = getBoundaries();
-    TapePreset preset = synth_.sceneManager().currentScene().tape.preset;
-    
+    TapeState& tape = synth_.sceneManager().currentScene().tape;
+    int count;
+    const TapeModePreset* presets = synth_.modeManager().getTapePresets(count);
+    const char* pName = "LEGACY";
+    if (presets && static_cast<int>(tape.preset) < count) {
+      pName = presets[static_cast<int>(tape.preset)].name;
+    } else {
+      pName = tapePresetName(tape.preset);
+    }
+
     gfx.setTextColor(isFocused() ? COLOR_WHITE : COLOR_LABEL);
     gfx.drawText(bounds.x, bounds.y, "PRESET:");
     gfx.setTextColor(COLOR_KNOB_2);
-    gfx.drawText(bounds.x + 50, bounds.y, tapePresetName(preset));
+    gfx.drawText(bounds.x + 50, bounds.y, pName);
     
     if (isFocused()) {
       gfx.drawRect(bounds.x - 2, bounds.y - 1, bounds.w + 4, bounds.h + 2, kFocusColor);
@@ -121,8 +129,17 @@ class TapePage::PresetComponent : public FocusableComponent {
   void cyclePreset() {
     guard_([this](){
       TapeState& tape = synth_.sceneManager().currentScene().tape;
-      tape.preset = nextTapePreset(tape.preset);
-      loadTapePreset(tape.preset, tape.macro);
+      int count;
+      const TapeModePreset* presets = synth_.modeManager().getTapePresets(count);
+      
+      int nextIdx = (static_cast<int>(tape.preset) + 1) % (count > 0 ? count : 4);
+      tape.preset = static_cast<TapePreset>(nextIdx);
+      
+      if (presets && nextIdx < count) {
+        tape.macro = presets[nextIdx].macro;
+      } else {
+        loadTapePreset(tape.preset, tape.macro);
+      }
       synth_.tapeFX.applyMacro(tape.macro);
     });
   }

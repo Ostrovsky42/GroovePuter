@@ -24,6 +24,7 @@
 #include "pages/waveform_page.h"
 #include "pages/sampler_page.h"
 #include "pages/tape_page.h"
+#include "pages/mode_page.h"
 #include "components/mute_button.h"
 #include "components/page_hint.h"
 
@@ -60,6 +61,7 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid)
   pages_.push_back(std::make_unique<WaveformPage>(gfx_, mini_acid_, audio_guard_));
   pages_.push_back(std::make_unique<SamplerPage>(gfx_, mini_acid_, audio_guard_));
   pages_.push_back(std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_));
+  pages_.push_back(std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_));
   pages_.push_back(std::make_unique<HelpPage>());
 }
 
@@ -362,6 +364,10 @@ bool MiniAcidDisplay::translateToApplicationEvent(UIEvent& event) {
         event.app_event_type = MINIACID_APP_EVENT_START_RECORDING;
       }
       return true;
+    } else if (event.key == 'm' && (event.ctrl || event.meta)) {
+      event.event_type = MINIACID_APPLICATION_EVENT;
+      event.app_event_type = MINIACID_APP_EVENT_TOGGLE_MODE;
+      return true;
     }
   }
   return false;
@@ -414,6 +420,9 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             });
           }
         }
+        return true;
+      case MINIACID_APP_EVENT_TOGGLE_MODE:
+        mini_acid_.toggleGrooveboxMode();
         return true;
       default:
         break;

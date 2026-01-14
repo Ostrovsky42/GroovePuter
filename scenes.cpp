@@ -577,6 +577,19 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
       target_.tape.macro.crush = static_cast<uint8_t>(v < 0 ? 0 : v > 3 ? 3 : v);
     } else if (lastKey_ == "vol") {
       target_.tape.looperVolume = static_cast<float>(value);
+    } else if (lastKey_ == "space") {
+      target_.tape.space = static_cast<uint8_t>(value);
+    } else if (lastKey_ == "movement") {
+      target_.tape.movement = static_cast<uint8_t>(value);
+    } else if (lastKey_ == "groove") {
+      target_.tape.groove = static_cast<uint8_t>(value);
+    }
+    return;
+  }
+  if (path == Path::Root) {
+    if (lastKey_ == "mode") {
+      int m = static_cast<int>(value);
+      target_.mode = static_cast<GrooveboxMode>(m);
     }
     return;
   }
@@ -769,6 +782,8 @@ int SceneJsonObserver::loopEndRow() const { return loopEndRow_; }
 
 const std::string& SceneJsonObserver::drumEngineName() const { return drumEngineName_; }
 
+GrooveboxMode SceneJsonObserver::mode() const { return target_.mode; }
+
 // Main processing scene (static to avoid heap fragmentation)
 static Scene g_mainScene;
 
@@ -797,6 +812,7 @@ void SceneManager::loadDefaultScene() {
   loopMode_ = false;
   loopStartRow_ = 0;
   loopEndRow_ = 0;
+  mode_ = GrooveboxMode::Acid;
   clearSongData(scene_->song);
   scene_->song.length = 1;
   scene_->song.positions[0].patterns[0] = 0;
@@ -1035,6 +1051,16 @@ const SynthParameters& SceneManager::getSynthParameters(int synthIdx) const {
 void SceneManager::setDrumEngineName(const std::string& name) { drumEngineName_ = name; }
 
 const std::string& SceneManager::getDrumEngineName() const { return drumEngineName_; }
+
+void SceneManager::setMode(GrooveboxMode mode) {
+  mode_ = mode;
+  scene_->mode = mode;
+}
+
+GrooveboxMode SceneManager::getMode() const {
+  return mode_;
+}
+
 
 void SceneManager::setBpm(float bpm) {
   if (bpm < 40.0f) bpm = 40.0f;
@@ -1353,7 +1379,7 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     loopEndRow = valueToInt(state["loopEnd"], loopEndRow);
   }
 
-  if (obj.containsKey("samplerPads")) {
+  if (obj["samplerPads"].is<ArduinoJson::JsonArrayConst>()) {
     auto padsArr = obj["samplerPads"].as<ArduinoJson::JsonArrayConst>();
     if (!padsArr.isNull() && static_cast<int>(padsArr.size()) == 16) {
       for (int i = 0; i < 16; ++i) {
@@ -1372,7 +1398,7 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     }
   }
 
-  if (obj.containsKey("tape")) {
+  if (obj["tape"].is<ArduinoJson::JsonObjectConst>()) {
     auto tObj = obj["tape"].as<ArduinoJson::JsonObjectConst>();
     if (!tObj.isNull()) {
       // Load mode and preset (new fields)
@@ -1547,6 +1573,7 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   loopEndRow_ = observer.loopEndRow();
   clampLoopRange();
   setBpm(observer.bpm());
+  setMode(observer.mode());
 
   // Restore Sampler/Tape from observer target (the loaded scene)
   // Observer target was 'loaded' unique_ptr, which we copied to scene_ at 1397.
