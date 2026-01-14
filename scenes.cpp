@@ -549,10 +549,35 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     return;
   }
   if (path == Path::Tape) {
-    if (lastKey_ == "wow") target_.tape.wow = static_cast<float>(value);
-    else if (lastKey_ == "flt") target_.tape.flutter = static_cast<float>(value);
-    else if (lastKey_ == "sat") target_.tape.saturation = static_cast<float>(value);
-    else if (lastKey_ == "vol") target_.tape.looperVolume = static_cast<float>(value);
+    if (lastKey_ == "mode") {
+      int m = static_cast<int>(value);
+      if (m >= 0 && m <= 3) target_.tape.mode = static_cast<TapeMode>(m);
+    } else if (lastKey_ == "preset") {
+      int p = static_cast<int>(value);
+      if (p >= 0 && p < static_cast<int>(TapePreset::Count)) {
+        target_.tape.preset = static_cast<TapePreset>(p);
+      }
+    } else if (lastKey_ == "speed") {
+      int s = static_cast<int>(value);
+      if (s >= 0 && s <= 2) target_.tape.speed = static_cast<uint8_t>(s);
+    } else if (lastKey_ == "wow") {
+      int v = static_cast<int>(value);
+      target_.tape.macro.wow = static_cast<uint8_t>(v < 0 ? 0 : v > 100 ? 100 : v);
+    } else if (lastKey_ == "age") {
+      int v = static_cast<int>(value);
+      target_.tape.macro.age = static_cast<uint8_t>(v < 0 ? 0 : v > 100 ? 100 : v);
+    } else if (lastKey_ == "sat") {
+      int v = static_cast<int>(value);
+      target_.tape.macro.sat = static_cast<uint8_t>(v < 0 ? 0 : v > 100 ? 100 : v);
+    } else if (lastKey_ == "tone") {
+      int v = static_cast<int>(value);
+      target_.tape.macro.tone = static_cast<uint8_t>(v < 0 ? 0 : v > 100 ? 100 : v);
+    } else if (lastKey_ == "crush") {
+      int v = static_cast<int>(value);
+      target_.tape.macro.crush = static_cast<uint8_t>(v < 0 ? 0 : v > 3 ? 3 : v);
+    } else if (lastKey_ == "vol") {
+      target_.tape.looperVolume = static_cast<float>(value);
+    }
     return;
   }
 }
@@ -1350,10 +1375,44 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
   if (obj.containsKey("tape")) {
     auto tObj = obj["tape"].as<ArduinoJson::JsonObjectConst>();
     if (!tObj.isNull()) {
-      loaded->tape.wow = tObj["wow"].as<float>();
-      loaded->tape.flutter = tObj["flt"].as<float>();
-      loaded->tape.saturation = tObj["sat"].as<float>();
-      loaded->tape.looperVolume = tObj["vol"].as<float>();
+      // Load mode and preset (new fields)
+      if (tObj["mode"].is<int>()) {
+        int m = tObj["mode"].as<int>();
+        if (m >= 0 && m <= 3) loaded->tape.mode = static_cast<TapeMode>(m);
+      }
+      if (tObj["preset"].is<int>()) {
+        int p = tObj["preset"].as<int>();
+        if (p >= 0 && p < static_cast<int>(TapePreset::Count)) {
+          loaded->tape.preset = static_cast<TapePreset>(p);
+        }
+      }
+      if (tObj["speed"].is<int>()) {
+        int s = tObj["speed"].as<int>();
+        if (s >= 0 && s <= 2) loaded->tape.speed = static_cast<uint8_t>(s);
+      }
+      if (tObj["fxEnabled"].is<bool>()) {
+        loaded->tape.fxEnabled = tObj["fxEnabled"].as<bool>();
+      }
+      // Load macro values (new structure)
+      if (tObj["wow"].is<int>()) {
+        loaded->tape.macro.wow = std::min(100, std::max(0, tObj["wow"].as<int>()));
+      }
+      if (tObj["age"].is<int>()) {
+        loaded->tape.macro.age = std::min(100, std::max(0, tObj["age"].as<int>()));
+      }
+      if (tObj["sat"].is<int>()) {
+        loaded->tape.macro.sat = std::min(100, std::max(0, tObj["sat"].as<int>()));
+      }
+      if (tObj["tone"].is<int>()) {
+        loaded->tape.macro.tone = std::min(100, std::max(0, tObj["tone"].as<int>()));
+      }
+      if (tObj["crush"].is<int>()) {
+        loaded->tape.macro.crush = std::min(3, std::max(0, tObj["crush"].as<int>()));
+      }
+      // Looper volume
+      if (tObj["vol"].is<float>()) {
+        loaded->tape.looperVolume = tObj["vol"].as<float>();
+      }
     }
   }
 
@@ -1414,7 +1473,9 @@ bool SceneManager::loadScene(const std::string& json) {
   
   // DISABLED: ArduinoJson fallback causes abort() on ESP32 due to insufficient DRAM
   // return loadSceneJson(json);
+#ifdef ARDUINO
   Serial.println("ERROR: Streaming JSON parse failed, skipping ArduinoJson fallback (insufficient memory)");
+#endif
   return false;
 }
 
@@ -1422,7 +1483,9 @@ bool SceneManager::loadScene(const std::string& json) {
 static Scene s_tempLoadScene;
 
 bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
+#ifdef ARDUINO
   Serial.println("  - loadSceneEventedWithReader: Using static loading buffer...");
+#endif
   
   // Reuse the static buffer
   Scene* loaded = &s_tempLoadScene;
@@ -1430,7 +1493,9 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   // Clear it before use
   clearSceneData(*loaded);
   
+#ifdef ARDUINO
   Serial.println("  - loadSceneEventedWithReader: Starting Parse...");
+#endif
   struct NextCharStream {
     JsonVisitor::NextChar next;
     int read() { return next(); }
@@ -1440,7 +1505,9 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   JsonVisitor visitor;
   SceneJsonObserver observer(*loaded, bpm_);
   bool parsed = visitor.parse(stream, observer);
+#ifdef ARDUINO
   Serial.printf("  - loadSceneEventedWithReader: Parse done, result=%d, error=%d\n", (int)parsed, (int)observer.hadError());
+#endif
   if (!parsed || observer.hadError()) return false;
 
   *scene_ = *loaded;

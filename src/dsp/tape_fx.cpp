@@ -1,79 +1,161 @@
 #include "tape_fx.h"
 #include <algorithm>
+#include <cmath>
 
 TapeFX::TapeFX() {
-  for (uint32_t i = 0; i < kDelaySize; ++i) buffer_[i] = 0.0f;
+    // Clear delay buffer
+    for (uint32_t i = 0; i < kDelaySize; ++i) {
+        buffer_[i] = 0.0f;
+    }
+    
+    // Initialize LFO step values for default frequencies
+    // Wow: ~0.8 Hz, Flutter: ~12 Hz
+    constexpr float kPi2 = 2.0f * 3.14159265f;
+    float thetaWow = kPi2 * 0.8f / static_cast<float>(kSampleRate);
+    wowStepSin_ = sinf(thetaWow);
+    wowStepCos_ = cosf(thetaWow);
+    
+    float thetaFlutter = kPi2 * 12.0f / static_cast<float>(kSampleRate);
+    flutterStepSin_ = sinf(thetaFlutter);
+    flutterStepCos_ = cosf(thetaFlutter);
+    
+    // Initialize current macro to defaults
+    currentMacro_ = TapeMacro{};
+    paramsDirty_ = true;
+}
 
-  float thetaWow = 2.0f * 3.14159265f * 0.8f / (float)kSampleRate;
-  wowStepSin_ = sinf(thetaWow);
-  wowStepCos_ = cosf(thetaWow);
+void TapeFX::applyMacro(const TapeMacro& macro) {
+    // Only mark dirty if macro actually changed
+    if (std::memcmp(&macro, &currentMacro_, sizeof(TapeMacro)) != 0) {
+        currentMacro_ = macro;
+        paramsDirty_ = true;
+    }
+}
 
-  float thetaFlutter = 2.0f * 3.14159265f * 12.0f / (float)kSampleRate;
-  flutterStepSin_ = sinf(thetaFlutter);
-  flutterStepCos_ = cosf(thetaFlutter);
+void TapeFX::updateInternalParams() {
+    const TapeMacro& m = currentMacro_;
+    constexpr float kPi2 = 2.0f * 3.14159265f;
+    
+    // WOW (0-100) → wowDepth 0..0.012, flutterAmount at high values
+    wowDepth_ = m.wow * 0.00012f;
+    flutterAmount_ = (m.wow > 50) ? (m.wow - 50) * 0.02f : 0.0f;
+    
+    // Update LFO frequencies based on wow intensity
+    // Wow: 0.5-2.5 Hz depending on intensity
+    float wowHz = 0.5f + m.wow * 0.02f;
+    float thetaWow = kPi2 * wowHz / static_cast<float>(kSampleRate);
+    wowStepSin_ = sinf(thetaWow);
+    wowStepCos_ = cosf(thetaWow);
+    
+    // AGE (0-100) → noiseAmount 0..0.08
+    noiseAmount_ = m.age * 0.0008f;
+    
+    // SAT (0-100) → drive 1..8
+    drive_ = 1.0f + m.sat * 0.07f;
+    
+    // TONE (0-100) → LPF coefficient
+    // 0 = dark (coeff ~0.15), 100 = bright (coeff ~0.95)
+    // One-pole LPF: y[n] = y[n-1] + coeff * (x[n] - y[n-1])
+    // Higher coeff = brighter (closer to input)
+    lpfCoeff_ = 0.15f + m.tone * 0.008f;
+    lpfCoeff_ = std::min(lpfCoeff_, 0.95f);
+    
+    // CRUSH (0-3) → bits and downsample
+    // 0=off (16bit), 1=8bit, 2=6bit, 3=4bit
+    static const uint8_t kBitsTable[4] = { 16, 8, 6, 4 };
+    static const uint8_t kDownsampleTable[4] = { 1, 2, 4, 6 };
+    uint8_t crushIdx = std::min(m.crush, (uint8_t)3);
+    crushBits_ = kBitsTable[crushIdx];
+    crushDownsample_ = kDownsampleTable[crushIdx];
+    
+    paramsDirty_ = false;
 }
 
 void TapeFX::updateLFO() {
-  // Wow recursion
-  float wS = wowSin_ * wowStepCos_ + wowCos_ * wowStepSin_;
-  float wC = wowCos_ * wowStepCos_ - wowSin_ * wowStepSin_;
-  wowSin_ = wS;
-  wowCos_ = wC;
-
-  // Flutter recursion
-  float fS = flutterSin_ * flutterStepCos_ + flutterCos_ * flutterStepSin_;
-  float fC = flutterCos_ * flutterStepCos_ - flutterSin_ * flutterStepSin_;
-  flutterSin_ = fS;
-  flutterCos_ = fC;
-
-  // Normalize every so often to avoid drift (every sample is fine if cheap, but maybe just periodically)
-  // For now, simple re-norm
-  float wowRescale = 1.0f / sqrtf(wowSin_*wowSin_ + wowCos_*wowCos_);
-  wowSin_ *= wowRescale;
-  wowCos_ *= wowRescale;
-  
-  float flutRescale = 1.0f / sqrtf(flutterSin_*flutterSin_ + flutterCos_*flutterCos_);
-  flutterSin_ *= flutRescale;
-  flutterCos_ *= flutRescale;
+    // Rotation matrix for wow oscillator
+    float wS = wowSin_ * wowStepCos_ + wowCos_ * wowStepSin_;
+    float wC = wowCos_ * wowStepCos_ - wowSin_ * wowStepSin_;
+    wowSin_ = wS;
+    wowCos_ = wC;
+    
+    // Rotation matrix for flutter oscillator
+    float fS = flutterSin_ * flutterStepCos_ + flutterCos_ * flutterStepSin_;
+    float fC = flutterCos_ * flutterStepCos_ - flutterSin_ * flutterStepSin_;
+    flutterSin_ = fS;
+    flutterCos_ = fC;
+    
+    // Periodic normalization to prevent drift (every update is fine since we only 
+    // update every 32 samples now)
+    float wowRescale = 1.0f / sqrtf(wowSin_ * wowSin_ + wowCos_ * wowCos_ + 1e-10f);
+    wowSin_ *= wowRescale;
+    wowCos_ *= wowRescale;
+    
+    float flutRescale = 1.0f / sqrtf(flutterSin_ * flutterSin_ + flutterCos_ * flutterCos_ + 1e-10f);
+    flutterSin_ *= flutRescale;
+    flutterCos_ *= flutRescale;
 }
 
 float TapeFX::process(float input) {
-  updateLFO();
+    // Update internal params if macro changed (once per dirty flag)
+    if (paramsDirty_) {
+        updateInternalParams();
+    }
+    
+    // Update LFO at reduced rate (every 32 samples to save CPU)
+    if (++lfoCounter_ >= kLFOUpdateRate) {
+        lfoCounter_ = 0;
+        updateLFO();
+    }
 
-  // 1. Calculate modulated delay time
-  // Wow depth: ~2-5ms
-  // Flutter depth: ~0.5ms
-  float wow = wowSin_ * wowAmount_ * 50.0f;
-  float flutter = flutterSin_ * flutterAmount_ * 10.0f;
-  
-  float delaySamples = 100.0f + wow + flutter; // offset + mod
-  
-  // 2. Read with linear interpolation
-  float readPos = (float)writePos_ - delaySamples;
-  if (readPos < 0) readPos += (float)kDelaySize;
-  
-  uint32_t i0 = (uint32_t)readPos & kDelayMask;
-  uint32_t i1 = (i0 + 1) & kDelayMask;
-  float frac = readPos - (float)i0; // Faster than std::floor for positive readPos
-  
-  float delayed = buffer_[i0] + frac * (buffer_[i1] - buffer_[i0]);
+    // 1. Calculate modulated delay time for wow/flutter
+    // Wow depth: ~2-5ms at max, Flutter depth: ~0.5ms
+    float wowMod = wowSin_ * wowDepth_ * 50.0f;
+    float flutterMod = flutterSin_ * flutterAmount_ * 10.0f;
+    float delaySamples = 100.0f + wowMod + flutterMod;
+    
+    // 2. Read from delay line with linear interpolation
+    float readPos = static_cast<float>(writePos_) - delaySamples;
+    if (readPos < 0) readPos += static_cast<float>(kDelaySize);
+    
+    uint32_t i0 = static_cast<uint32_t>(readPos) & kDelayMask;
+    uint32_t i1 = (i0 + 1) & kDelayMask;
+    float frac = readPos - floorf(readPos);
+    
+    float delayed = buffer_[i0] + frac * (buffer_[i1] - buffer_[i0]);
 
-  // 3. Update buffer
-  buffer_[writePos_] = input;
-  writePos_ = (writePos_ + 1) & kDelayMask;
+    // 3. Write input to delay buffer
+    buffer_[writePos_] = input;
+    writePos_ = (writePos_ + 1) & kDelayMask;
 
-  // 4. Saturation (Soft clipping)
-  float x = delayed;
-  if (saturationAmount_ > 0.01f) {
-      float drive = 1.0f + saturationAmount_ * 4.0f;
-      x *= drive;
-      // Cubic clipper
-      if (x > 1.0f) x = 1.0f;
-      else if (x < -1.0f) x = -1.0f;
-      else x = x - (x * x * x) / 3.0f;
-      
-      x *= 0.8f; // compensation
-  }
+    // 4. Add noise (AGE parameter)
+    float x = delayed;
+    if (noiseAmount_ > 0.001f) {
+        x += fastNoise() * noiseAmount_;
+    }
 
-  return x;
+    // 5. Apply LPF (TONE parameter) - one-pole lowpass
+    lpfZ1_ += lpfCoeff_ * (x - lpfZ1_);
+    x = lpfZ1_;
+
+    // 6. Apply saturation (SAT parameter)
+    if (drive_ > 1.01f) {
+        x *= drive_;
+        x = fastTanh(x);
+        x *= 0.8f; // compensation
+    }
+
+    // 7. Apply bit crush (CRUSH parameter)
+    if (crushBits_ < 16) {
+        // Downsample: hold value for N samples
+        if (++crushCounter_ >= crushDownsample_) {
+            crushCounter_ = 0;
+            
+            // Bit reduction
+            float levels = static_cast<float>(1 << crushBits_);
+            crushHold_ = floorf(x * levels * 0.5f + 0.5f) / (levels * 0.5f);
+        }
+        x = crushHold_;
+    }
+
+    return x;
 }

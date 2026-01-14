@@ -3,6 +3,7 @@
 #include "../ui_core.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
+#include "../../dsp/miniacid_engine.h"
 
 class TapePage : public IPage {
  public:
@@ -13,11 +14,12 @@ class TapePage : public IPage {
   void setBoundaries(const Rect& rect) override;
 
  private:
-  class LabelValueComponent;
-  class KnobComponent;
+  class SliderComponent;
+  class ModeComponent;
+  class PresetComponent;
   
   void initComponents();
-  void adjustFocusedElement(int direction);
+  void syncFromState();
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;
@@ -26,14 +28,14 @@ class TapePage : public IPage {
   bool initialized_ = false;
   
   // UI Components
-  std::shared_ptr<KnobComponent> wow_knob_;
-  std::shared_ptr<KnobComponent> flutter_knob_;
-  std::shared_ptr<KnobComponent> saturation_knob_;
+  std::shared_ptr<SliderComponent> wow_slider_;
+  std::shared_ptr<SliderComponent> age_slider_;
+  std::shared_ptr<SliderComponent> sat_slider_;
+  std::shared_ptr<SliderComponent> tone_slider_;
+  std::shared_ptr<SliderComponent> crush_slider_;
   
-  std::shared_ptr<LabelValueComponent> rec_ctrl_;
-  std::shared_ptr<LabelValueComponent> play_ctrl_;
-  std::shared_ptr<LabelValueComponent> dub_ctrl_;
-  std::shared_ptr<LabelValueComponent> clear_btn_;
+  std::shared_ptr<FocusableComponent> mode_ctrl_;
+  std::shared_ptr<FocusableComponent> preset_ctrl_;
 
-  std::string title_ = "TAPE & LO-FI";
+  std::string title_ = "TAPE";
 };

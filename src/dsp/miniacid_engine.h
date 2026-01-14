@@ -269,6 +269,10 @@ public:
   DrumSamplerTrack samplerTrack;
   TapeFX tapeFX;
   TapeLooper tapeLooper;
+  
+  // Scene manager accessor for UI tape state
+  SceneManager& sceneManager() { return sceneManager_; }
+  const SceneManager& sceneManager() const { return sceneManager_; }
 };
 
 class PatternGenerator {

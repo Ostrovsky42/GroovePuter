@@ -68,17 +68,12 @@ void CassetteSkin::drawHeader(const HeaderState& state) {
     int divider_y = margin + 9;
     gfx_.drawRect(margin + 2, divider_y, w - margin * 2 - 4, 1, palette_->shadow);
     
-    // Top row: [LOFI-TAPE] SCENE xxx BPM xxx MODE
+    // Top row: SCENE xxx BPM xxx MODE (no LOFI-SEQ branding - wastes space)
     char buf[64];
     int x = margin + 4;
     int y = margin + 1;
     
-    // Serial number label
-    gfx_.setTextColor(palette_->muted);
-    gfx_.drawText(x, y, "LOFI-SEQ");
-    x += gfx_.textWidth("LOFI-SEQ") + 8;
-    
-    // Scene
+    // Scene - first element
     gfx_.setTextColor(palette_->ink);
     snprintf(buf, sizeof(buf), "SCENE %s", state.sceneName);
     gfx_.drawText(x, y, buf);
@@ -177,7 +172,7 @@ void CassetteSkin::drawCornerScrew(int x, int y) {
 }
 
 // ============================================================================
-// Footer - Tape reels with progress
+// Footer - Minimal status bar (no more tape reels - every pixel matters!)
 // ============================================================================
 void CassetteSkin::drawFooterReels(const FooterState& state) {
     const int w = gfx_.width();
@@ -185,45 +180,38 @@ void CassetteSkin::drawFooterReels(const FooterState& state) {
     const int y = gfx_.height() - h;
     const int margin = 4;
     
-    // Background strip
+    // Simple background strip
     gfx_.fillRect(0, y, w, h, palette_->panel);
     gfx_.drawRect(0, y, w, 1, palette_->shadow);
     
-    // Left reel
-    int reel_radius = 5;
-    int left_reel_x = margin + reel_radius + 2;
-    int reel_y = y + h / 2;
-    drawReel(left_reel_x, reel_y, reel_radius);
-    
-    // Right reel
-    int right_reel_x = w - margin - reel_radius - 2;
-    drawReel(right_reel_x, reel_y, reel_radius);
-    
-    // Tape progress between reels
-    int tape_x = left_reel_x + reel_radius + 4;
-    int tape_w = right_reel_x - reel_radius - 4 - tape_x;
-    drawTapeProgress(tape_x, reel_y - 1, tape_w, state.currentStep, state.totalSteps);
-    
-    // Status text below tape
-    char buf[48];
+    char buf[32];
     int text_y = y + 2;
+    int x = margin;
     
-    // Step counter
-    int info_x = tape_x;
+    // Step counter with visual indicator
+    gfx_.setTextColor(palette_->muted);
+    gfx_.drawText(x, text_y, "=");  // Simple arrow
+    x += gfx_.textWidth("=") + 1;
+    
     snprintf(buf, sizeof(buf), "STEP %02d/%d", state.currentStep + 1, state.totalSteps);
     gfx_.setTextColor(palette_->ink);
-    gfx_.drawText(info_x, text_y, buf);
+    gfx_.drawText(x, text_y, buf);
+    x += gfx_.textWidth(buf) + 12;
     
-    // Song position (center)
-    snprintf(buf, sizeof(buf), "BAR %02d", state.songPosition + 1);
-    int center_x = w / 2 - gfx_.textWidth(buf) / 2;
-    gfx_.drawText(center_x, text_y, buf);
+    // Song position
+    snprintf(buf, sizeof(buf), "BAR: %02d", state.songPosition + 1);
+    gfx_.drawText(x, text_y, buf);
     
-    // Play state (right)
+    // Play/Stop state (right-aligned)
     const char* playText = state.isPlaying ? "PLAY" : "STOP";
-    int play_x = tape_x + tape_w - gfx_.textWidth(playText);
+    int play_x = w - margin - gfx_.textWidth(playText);
+    
     if (state.isPlaying) {
         gfx_.setTextColor(palette_->led);
+        // Draw tiny play indicator
+        gfx_.drawPixel(play_x - 4, text_y + 2, palette_->led);
+        gfx_.drawPixel(play_x - 4, text_y + 3, palette_->led);
+        gfx_.drawPixel(play_x - 4, text_y + 4, palette_->led);
     } else {
         gfx_.setTextColor(palette_->muted);
     }

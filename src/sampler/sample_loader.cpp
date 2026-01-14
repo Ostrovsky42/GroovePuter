@@ -3,7 +3,16 @@
 #include <cstdio>
 #include <cstring>
 #include <vector>
+#include <cstdlib>
+
+#if defined(ESP32) || defined(ESP_PLATFORM) || defined(ARDUINO)
 #include <esp_heap_caps.h>
+#define SAMPLE_MALLOC_PSRAM(size) heap_caps_malloc(size, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+#define SAMPLE_MALLOC_DRAM(size) heap_caps_malloc(size, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)
+#else
+#define SAMPLE_MALLOC_PSRAM(size) malloc(size)
+#define SAMPLE_MALLOC_DRAM(size) malloc(size)
+#endif
 
 struct WavRiffHeader {
   char riff[4]; uint32_t totalSize; char wave[4];
@@ -62,9 +71,9 @@ bool loadWavFile(const char* path, WavInfo& outInfo, int16_t** outPcm) {
 
   // Allocate with PSRAM priority
   size_t bytes = dataSize;
-  *outPcm = (int16_t*)heap_caps_malloc(bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  *outPcm = (int16_t*)SAMPLE_MALLOC_PSRAM(bytes);
   if (!*outPcm) {
-    *outPcm = (int16_t*)heap_caps_malloc(bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    *outPcm = (int16_t*)SAMPLE_MALLOC_DRAM(bytes);
   }
   if (!*outPcm) { fclose(f); return false; }
 
@@ -90,8 +99,8 @@ bool loadWavFile(const char* path, WavInfo& outInfo, int16_t** outPcm) {
       // Realloc down is better for small RAM.
       // But careful with `new[]`. We can't realloc easily.
       // Allocate new smaller buffer with PSRAM priority
-      int16_t* mono = (int16_t*)heap_caps_malloc(outInfo.numFrames * 2, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-      if (!mono) mono = (int16_t*)heap_caps_malloc(outInfo.numFrames * 2, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+      int16_t* mono = (int16_t*)SAMPLE_MALLOC_PSRAM(outInfo.numFrames * 2);
+      if (!mono) mono = (int16_t*)SAMPLE_MALLOC_DRAM(outInfo.numFrames * 2);
       
       if (mono) {
           for(uint32_t i=0; i<outInfo.numFrames; ++i) mono[i] = data[i];

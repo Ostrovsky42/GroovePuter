@@ -1,4 +1,5 @@
 #include "tape_page.h"
+#include "../../dsp/tape_presets.h"
 #include <cstdio>
 #include <algorithm>
 
@@ -6,62 +7,129 @@ namespace {
 inline constexpr IGfxColor kFocusColor = IGfxColor(0xB36A00);
 }
 
-class TapePage::KnobComponent : public FocusableComponent {
+class TapePage::SliderComponent : public FocusableComponent {
  public:
-  KnobComponent(const char* label, float initial, std::function<void(float)> adjust_fn)
-      : label_(label), value_(initial), adjust_fn_(adjust_fn) {}
+  SliderComponent(const char* label, int initial, int maxVal, std::function<void(int)> change_fn)
+      : label_(label), value_(initial), maxValue_(maxVal), change_fn_(change_fn) {}
 
-  void adjust(int direction) {
-    value_ = std::clamp(value_ + direction * 0.05f, 0.0f, 1.0f);
-    if (adjust_fn_) adjust_fn_(value_);
+  void adjust(int direction, bool fine = false) {
+    int step = fine ? 1 : 5;
+    value_ = std::clamp(value_ + direction * step, 0, maxValue_);
+    if (change_fn_) change_fn_(value_);
   }
+
+  void setValue(int v) { value_ = std::clamp(v, 0, maxValue_); }
+  int value() const { return value_; }
 
   void draw(IGfx& gfx) override {
     const Rect& bounds = getBoundaries();
-    int radius = std::min(bounds.w, bounds.h) / 2 - 5;
-    int cx = bounds.x + bounds.w / 2;
-    int cy = bounds.y + bounds.h / 2;
-
-    gfx.drawKnobFace(cx, cy, radius, COLOR_KNOB_1, COLOR_BLACK);
-
-    float angle = (135.0f + value_ * 270.0f) * (3.14159265f / 180.0f);
-    int ix = cx + static_cast<int>(roundf(cosf(angle) * (radius - 2)));
-    int iy = cy + static_cast<int>(roundf(sinf(angle) * (radius - 2)));
-    gfx.drawLine(cx, cy, ix, iy);
-
-    gfx.setTextColor(COLOR_LABEL);
-    gfx.drawText(cx - textWidth(gfx, label_) / 2, cy + radius + 10, label_);
-
+    
+    // Label
+    gfx.setTextColor(isFocused() ? COLOR_KNOB_1 : COLOR_LABEL);
+    gfx.drawText(bounds.x, bounds.y, label_);
+    
+    // Slider bar
+    int barX = bounds.x + 45;
+    int barW = bounds.w - 70;
+    int barY = bounds.y + 3;
+    int barH = 4;
+    
+    // Background
+    gfx.fillRect(barX, barY, barW, barH, COLOR_BLACK);
+    
+    // Fill
+    int fillW = (barW * value_) / maxValue_;
+    gfx.fillRect(barX, barY, fillW, barH, isFocused() ? COLOR_KNOB_1 : COLOR_KNOB_2);
+    
+    // Value text
+    char buf[8];
+    snprintf(buf, sizeof(buf), "%d", value_);
+    gfx.drawText(barX + barW + 4, bounds.y, buf);
+    
+    // Focus indicator
     if (isFocused()) {
-      gfx.drawRect(bounds.x, bounds.y, bounds.w, bounds.h, kFocusColor);
+      gfx.drawRect(bounds.x - 2, bounds.y - 1, bounds.w + 4, bounds.h + 2, kFocusColor);
     }
   }
 
  private:
   const char* label_;
-  float value_;
-  std::function<void(float)> adjust_fn_;
+  int value_;
+  int maxValue_;
+  std::function<void(int)> change_fn_;
 };
 
-class TapePage::LabelValueComponent : public FocusableComponent {
+class TapePage::ModeComponent : public FocusableComponent {
  public:
-  LabelValueComponent(const char* label, IGfxColor val_color)
-      : label_(label), val_color_(val_color) {}
-  void setValue(const std::string& v) { value_ = v; }
+  ModeComponent(MiniAcid& synth, AudioGuard& guard) : synth_(synth), guard_(guard) {}
+
   void draw(IGfx& gfx) override {
     const Rect& bounds = getBoundaries();
-    gfx.setTextColor(COLOR_WHITE);
-    gfx.drawText(bounds.x, bounds.y, label_);
-    gfx.setTextColor(val_color_);
-    gfx.drawText(bounds.x + textWidth(gfx, label_) + 5, bounds.y, value_.c_str());
+    TapeMode mode = synth_.sceneManager().currentScene().tape.mode;
+    const char* modeStr = tapeModeName(mode);
+    
+    // Mode indicator with color
+    IGfxColor modeColor;
+    switch(mode) {
+      case TapeMode::Stop: modeColor = COLOR_LABEL; break;
+      case TapeMode::Rec:  modeColor = IGfxColor(0xFF2020); break;
+      case TapeMode::Dub:  modeColor = IGfxColor(0xFF8800); break;
+      case TapeMode::Play: modeColor = IGfxColor(0x20FF20); break;
+    }
+    
+    gfx.setTextColor(isFocused() ? COLOR_WHITE : COLOR_LABEL);
+    gfx.drawText(bounds.x, bounds.y, "MODE:");
+    gfx.setTextColor(modeColor);
+    gfx.drawText(bounds.x + 35, bounds.y, modeStr);
+    
     if (isFocused()) {
-      gfx.drawRect(bounds.x - 2, bounds.y - 2, bounds.w + 4, bounds.h + 4, kFocusColor);
+      gfx.drawRect(bounds.x - 2, bounds.y - 1, bounds.w + 4, bounds.h + 2, kFocusColor);
     }
   }
+
+  void cycleMode() {
+    guard_([this](){
+      TapeState& tape = synth_.sceneManager().currentScene().tape;
+      tape.mode = nextTapeMode(tape.mode);
+      synth_.tapeLooper.setMode(tape.mode);
+    });
+  }
+
  private:
-  const char* label_;
-  std::string value_;
-  IGfxColor val_color_;
+  MiniAcid& synth_;
+  AudioGuard& guard_;
+};
+
+class TapePage::PresetComponent : public FocusableComponent {
+ public:
+  PresetComponent(MiniAcid& synth, AudioGuard& guard) : synth_(synth), guard_(guard) {}
+
+  void draw(IGfx& gfx) override {
+    const Rect& bounds = getBoundaries();
+    TapePreset preset = synth_.sceneManager().currentScene().tape.preset;
+    
+    gfx.setTextColor(isFocused() ? COLOR_WHITE : COLOR_LABEL);
+    gfx.drawText(bounds.x, bounds.y, "PRESET:");
+    gfx.setTextColor(COLOR_KNOB_2);
+    gfx.drawText(bounds.x + 50, bounds.y, tapePresetName(preset));
+    
+    if (isFocused()) {
+      gfx.drawRect(bounds.x - 2, bounds.y - 1, bounds.w + 4, bounds.h + 2, kFocusColor);
+    }
+  }
+
+  void cyclePreset() {
+    guard_([this](){
+      TapeState& tape = synth_.sceneManager().currentScene().tape;
+      tape.preset = nextTapePreset(tape.preset);
+      loadTapePreset(tape.preset, tape.macro);
+      synth_.tapeFX.applyMacro(tape.macro);
+    });
+  }
+
+ private:
+  MiniAcid& synth_;
+  AudioGuard& guard_;
 };
 
 TapePage::TapePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard)
@@ -73,77 +141,183 @@ void TapePage::setBoundaries(const Rect& rect) {
 }
 
 void TapePage::initComponents() {
-  wow_knob_ = std::make_shared<KnobComponent>("WOW", 0, [this](float v){ mini_acid_.tapeFX.setWow(v); });
-  flutter_knob_ = std::make_shared<KnobComponent>("FLUT", 0, [this](float v){ mini_acid_.tapeFX.setFlutter(v); });
-  saturation_knob_ = std::make_shared<KnobComponent>("SAT", 0, [this](float v){ mini_acid_.tapeFX.setSaturation(v); });
+  // Macro sliders
+  auto updateMacro = [this](int idx, int val) {
+    audio_guard_([this, idx, val](){
+      TapeMacro& macro = mini_acid_.sceneManager().currentScene().tape.macro;
+      switch(idx) {
+        case 0: macro.wow = val; break;
+        case 1: macro.age = val; break;
+        case 2: macro.sat = val; break;
+        case 3: macro.tone = val; break;
+        case 4: macro.crush = val; break;
+      }
+      mini_acid_.tapeFX.applyMacro(macro);
+    });
+  };
 
-  rec_ctrl_ = std::make_shared<LabelValueComponent>("REC:", COLOR_WHITE);
-  play_ctrl_ = std::make_shared<LabelValueComponent>("PLY:", COLOR_KNOB_2);
-  dub_ctrl_ = std::make_shared<LabelValueComponent>("DUB:", COLOR_KNOB_3);
-  clear_btn_ = std::make_shared<LabelValueComponent>("CLR:", COLOR_WHITE);
+  wow_slider_ = std::make_shared<SliderComponent>("WOW", 12, 100, [=](int v){ updateMacro(0, v); });
+  age_slider_ = std::make_shared<SliderComponent>("AGE", 20, 100, [=](int v){ updateMacro(1, v); });
+  sat_slider_ = std::make_shared<SliderComponent>("SAT", 35, 100, [=](int v){ updateMacro(2, v); });
+  tone_slider_ = std::make_shared<SliderComponent>("TONE", 60, 100, [=](int v){ updateMacro(3, v); });
+  crush_slider_ = std::make_shared<SliderComponent>("CRUSH", 0, 3, [=](int v){ updateMacro(4, v); });
 
-  addChild(wow_knob_);
-  addChild(flutter_knob_);
-  addChild(saturation_knob_);
-  addChild(rec_ctrl_);
-  addChild(play_ctrl_);
-  addChild(dub_ctrl_);
-  addChild(clear_btn_);
+  mode_ctrl_ = std::make_shared<ModeComponent>(mini_acid_, audio_guard_);
+  preset_ctrl_ = std::make_shared<PresetComponent>(mini_acid_, audio_guard_);
 
-  int x = dx() + 20;
-  int yr1 = dy() + 30;
-  int kw = 40, kh = 40;
-  wow_knob_->setBoundaries(Rect(x, yr1, kw, kh));
-  flutter_knob_->setBoundaries(Rect(x + 60, yr1, kw, kh));
-  saturation_knob_->setBoundaries(Rect(x + 120, yr1, kw, kh));
+  addChild(wow_slider_);
+  addChild(age_slider_);
+  addChild(sat_slider_);
+  addChild(tone_slider_);
+  addChild(crush_slider_);
+  addChild(mode_ctrl_);
+  addChild(preset_ctrl_);
 
-  int yr2 = dy() + 90;
-  int lh = 18;
-  rec_ctrl_->setBoundaries(Rect(x, yr2, 100, lh)); yr2 += lh;
-  play_ctrl_->setBoundaries(Rect(x, yr2, 100, lh)); yr2 += lh;
-  dub_ctrl_->setBoundaries(Rect(x, yr2, 100, lh)); yr2 += lh;
-  clear_btn_->setBoundaries(Rect(x, yr2, 100, lh));
+  int x = dx() + 5;
+  int y = dy() + 5;
+  int lh = 12;
+  int sliderW = getBoundaries().w - 10;
+
+  // Layout
+  mode_ctrl_->setBoundaries(Rect(x, y, 80, lh)); 
+  preset_ctrl_->setBoundaries(Rect(x + 85, y, 80, lh)); 
+  y += lh + 4;
+
+  wow_slider_->setBoundaries(Rect(x, y, sliderW, lh)); y += lh + 2;
+  age_slider_->setBoundaries(Rect(x, y, sliderW, lh)); y += lh + 2;
+  sat_slider_->setBoundaries(Rect(x, y, sliderW, lh)); y += lh + 2;
+  tone_slider_->setBoundaries(Rect(x, y, sliderW, lh)); y += lh + 2;
+  crush_slider_->setBoundaries(Rect(x, y, sliderW, lh));
 
   initialized_ = true;
 }
 
-void TapePage::draw(IGfx& gfx) {
-  if (!initialized_) initComponents();
-  
-  // Update looper stats (ideally these would be Atomic/Volatile but simple for now)
-  // Since we don't have getters, I'll need to trust the state.
-  // Actually I'll just use static tracking in the UI or add getters to Looper.
-  
-  rec_ctrl_->setValue("READY"); // Placeholder, should add getters to looper
-  play_ctrl_->setValue("IDLE");
-  dub_ctrl_->setValue("OFF");
-  clear_btn_->setValue("PRESS SP");
-
-  Container::draw(gfx);
+void TapePage::syncFromState() {
+  const TapeMacro& macro = mini_acid_.sceneManager().currentScene().tape.macro;
+  wow_slider_->setValue(macro.wow);
+  age_slider_->setValue(macro.age);
+  sat_slider_->setValue(macro.sat);
+  tone_slider_->setValue(macro.tone);
+  crush_slider_->setValue(macro.crush);
 }
 
-void TapePage::adjustFocusedElement(int direction) {
-  if (wow_knob_->isFocused()) wow_knob_->adjust(direction);
-  else if (flutter_knob_->isFocused()) flutter_knob_->adjust(direction);
-  else if (saturation_knob_->isFocused()) saturation_knob_->adjust(direction);
-  else if (rec_ctrl_->isFocused()) { if (direction != 0) audio_guard_([&](){ mini_acid_.tapeLooper.setRecording(direction > 0); }); }
-  else if (play_ctrl_->isFocused()) { if (direction != 0) audio_guard_([&](){ mini_acid_.tapeLooper.setPlaying(direction > 0); }); }
-  else if (dub_ctrl_->isFocused()) { if (direction != 0) audio_guard_([&](){ mini_acid_.tapeLooper.setOverdub(direction > 0); }); }
+void TapePage::draw(IGfx& gfx) {
+  if (!initialized_) initComponents();
+  syncFromState();
+  Container::draw(gfx);
+  
+  // Draw looper info at bottom
+  int y = dy() + getBoundaries().h - 14;
+  int x = dx() + 5;
+  
+  const TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
+  
+  // Speed indicator
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(x, y, "SPD:");
+  gfx.setTextColor(COLOR_WHITE);
+  gfx.drawText(x + 28, y, tapeSpeedName(tape.speed));
+  
+  // Loop length
+  if (mini_acid_.tapeLooper.hasLoop()) {
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%.1fs", mini_acid_.tapeLooper.loopLengthSeconds());
+    gfx.setTextColor(COLOR_LABEL);
+    gfx.drawText(x + 70, y, "LEN:");
+    gfx.setTextColor(COLOR_WHITE);
+    gfx.drawText(x + 98, y, buf);
+  }
+  
+  // FX status
+  gfx.setTextColor(tape.fxEnabled ? COLOR_KNOB_1 : COLOR_LABEL);
+  gfx.drawText(x + 140, y, tape.fxEnabled ? "FX:ON" : "FX:--");
 }
 
 bool TapePage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type != MINIACID_KEY_DOWN) return Container::handleEvent(ui_event);
 
+  bool shift = ui_event.shift;
+
   switch (ui_event.scancode) {
     case MINIACID_UP: focusPrev(); return true;
     case MINIACID_DOWN: focusNext(); return true;
-    case MINIACID_LEFT: adjustFocusedElement(-1); return true;
-    case MINIACID_RIGHT: adjustFocusedElement(1); return true;
+    case MINIACID_LEFT:
+    case MINIACID_RIGHT: {
+      int dir = (ui_event.scancode == MINIACID_RIGHT) ? 1 : -1;
+      // Adjust focused slider
+      if (wow_slider_->isFocused()) wow_slider_->adjust(dir, shift);
+      else if (age_slider_->isFocused()) age_slider_->adjust(dir, shift);
+      else if (sat_slider_->isFocused()) sat_slider_->adjust(dir, shift);
+      else if (tone_slider_->isFocused()) tone_slider_->adjust(dir, shift);
+      else if (crush_slider_->isFocused()) crush_slider_->adjust(dir, shift);
+      else if (mode_ctrl_->isFocused()) {
+        std::static_pointer_cast<ModeComponent>(mode_ctrl_)->cycleMode();
+      } else if (preset_ctrl_->isFocused()) {
+        std::static_pointer_cast<PresetComponent>(preset_ctrl_)->cyclePreset();
+      }
+      return true;
+    }
     default: break;
   }
   
-  if (ui_event.key == ' ' && clear_btn_->isFocused()) {
-      audio_guard_([&](){ mini_acid_.tapeLooper.clear(); });
+  char key = ui_event.key;
+  
+  // Hotkeys
+  switch (key) {
+    case 'p':
+    case 'P':
+      std::static_pointer_cast<PresetComponent>(preset_ctrl_)->cyclePreset();
+      return true;
+    case 'r':
+    case 'R':
+      std::static_pointer_cast<ModeComponent>(mode_ctrl_)->cycleMode();
+      return true;
+    case 'f':
+    case 'F':
+      audio_guard_([this](){
+        TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
+        tape.fxEnabled = !tape.fxEnabled;
+      });
+      return true;
+    case '1':
+      audio_guard_([this](){
+        TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
+        tape.speed = 0; // 0.5x
+        mini_acid_.tapeLooper.setSpeed(tape.speed);
+      });
+      return true;
+    case '2':
+      audio_guard_([this](){
+        TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
+        tape.speed = 1; // 1.0x
+        mini_acid_.tapeLooper.setSpeed(tape.speed);
+      });
+      return true;
+    case '3':
+      audio_guard_([this](){
+        TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
+        tape.speed = 2; // 2.0x
+        mini_acid_.tapeLooper.setSpeed(tape.speed);
+      });
+      return true;
+    case '\n': // Enter = stutter (TODO: hold detection)
+      audio_guard_([this](){
+        mini_acid_.tapeLooper.setStutter(true);
+      });
+      return true;
+    case '\b': // Backspace/Del = eject
+    case 0x7F:
+      audio_guard_([this](){
+        mini_acid_.tapeLooper.eject();
+        TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
+        tape.mode = TapeMode::Stop;
+        tape.fxEnabled = false;
+      });
+      return true;
+    case ' ':
+      audio_guard_([this](){
+        mini_acid_.tapeLooper.clear();
+      });
       return true;
   }
 

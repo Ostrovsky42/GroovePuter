@@ -54,7 +54,7 @@ public:
 
     // Layout helpers
     int headerHeight() const { return 18; }
-    int footerHeight() const { return 14; }
+    int footerHeight() const { return 10; }  // Minimized - every pixel matters!
     Rect contentBounds() const;
 
     // Call once per frame to advance reel animation

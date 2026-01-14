@@ -11,6 +11,15 @@
 #include <esp_psram.h>
 #endif
 
+// Cross-platform debug logging
+#ifdef ARDUINO
+#define LOG_DEBUG(...) LOG_DEBUG(__VA_ARGS__)
+#define LOG_PRINTLN(msg) LOG_PRINTLN(msg)
+#else
+#define LOG_DEBUG(...) (void)0
+#define LOG_PRINTLN(msg) (void)0
+#endif
+
 namespace {
 constexpr int kDrumKickVoice = 0;
 constexpr int kDrumSnareVoice = 1;
@@ -84,7 +93,7 @@ void TempoDelay::init(float maxSeconds) {
   size_t required = static_cast<size_t>(maxDelaySamples);
   
   // Log allocation attempt
-  Serial.printf("TempoDelay::init: Allocating %d samples (%.1f KB)...\n", 
+  LOG_DEBUG("TempoDelay::init: Allocating %d samples (%.1f KB)...\n", 
                 maxDelaySamples, (maxDelaySamples * sizeof(float)) / 1024.0f);
 
   buffer.assign(required, 0.0f);
@@ -245,14 +254,14 @@ void MiniAcid::init() {
     delay3032.init(0.25f);
   }
 
-  Serial.println("  - MiniAcid::init: Memory strategy applied");
+  LOG_PRINTLN("  - MiniAcid::init: Memory strategy applied");
 
   params[static_cast<int>(MiniAcidParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.0f, 0.8f, 1.0f / 128);
 
   if (sceneStorage_) {
-    Serial.println("  - MiniAcid::init: Initializing scene storage...");
+    LOG_PRINTLN("  - MiniAcid::init: Initializing scene storage...");
     sceneStorage_->initializeStorage();
-    Serial.println("  - MiniAcid::init: Loading scene from storage...");
+    LOG_PRINTLN("  - MiniAcid::init: Loading scene from storage...");
     loadSceneFromStorage();
   }
   
@@ -262,7 +271,7 @@ void MiniAcid::init() {
 
   // Ensure drums are allocated before reset
   if (!drums) {
-    Serial.println("  - MiniAcid::init: Allocating default drum engine (909)...");
+    LOG_PRINTLN("  - MiniAcid::init: Allocating default drum engine (909)...");
     setDrumEngine("909"); 
   }
 
@@ -271,19 +280,19 @@ void MiniAcid::init() {
 }
 
 void MiniAcid::reset() {
-  Serial.println("    - MiniAcid::reset: Start");
+  LOG_PRINTLN("    - MiniAcid::reset: Start");
   voice303.reset();
   voice3032.reset();
-  Serial.println("    - MiniAcid::reset: voices reset");
+  LOG_PRINTLN("    - MiniAcid::reset: voices reset");
   // make the second voice have different params
   voice3032.adjustParameter(TB303ParamId::Cutoff, -3);
   voice3032.adjustParameter(TB303ParamId::Resonance, -3);
   voice3032.adjustParameter(TB303ParamId::EnvAmount, -1);
   if (drums) {
-    Serial.println("    - MiniAcid::reset: resetting drums...");
+    LOG_PRINTLN("    - MiniAcid::reset: resetting drums...");
     drums->reset();
   } else {
-    Serial.println("    - MiniAcid::reset: ERROR: drums is NULL!");
+    LOG_PRINTLN("    - MiniAcid::reset: ERROR: drums is NULL!");
   }
   playing = false;
   mute303 = false;
@@ -328,7 +337,7 @@ void MiniAcid::reset() {
   patternModeDrumPatternIndex_ = 0;
   patternModeSynthPatternIndex_[0] = 0;
   patternModeSynthPatternIndex_[1] = 0;
-  Serial.println("    - MiniAcid::reset: Done");
+  LOG_PRINTLN("    - MiniAcid::reset: Done");
 }
 
 void MiniAcid::start() {
@@ -614,7 +623,7 @@ std::vector<std::string> MiniAcid::getAvailableDrumEngines() const {
 
 void MiniAcid::setDrumEngine(const std::string& engineName) {
   std::string name = toLowerCopy(engineName);
-  Serial.printf("    - MiniAcid::setDrumEngine: setting to %s\n", name.c_str());
+  LOG_DEBUG("    - MiniAcid::setDrumEngine: setting to %s\n", name.c_str());
   if (name.find("909") != std::string::npos) {
     drums = std::make_unique<TR909DrumSynthVoice>(sampleRateValue);
     drumEngineName_ = "909";
@@ -625,11 +634,11 @@ void MiniAcid::setDrumEngine(const std::string& engineName) {
     drums = std::make_unique<TR808DrumSynthVoice>(sampleRateValue);
     drumEngineName_ = "808";
   } else {
-    Serial.println("    - MiniAcid::setDrumEngine: Unknown engine!");
+    LOG_PRINTLN("    - MiniAcid::setDrumEngine: Unknown engine!");
     return;
   }
   if (drums) {
-    Serial.println("    - MiniAcid::setDrumEngine: resetting drums...");
+    LOG_PRINTLN("    - MiniAcid::setDrumEngine: resetting drums...");
     drums->reset();
   }
 }
@@ -1114,6 +1123,14 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   delay303.setBpm(bpmValue);
   delay3032.setBpm(bpmValue);
 
+  // Update tape FX parameters ONCE per buffer (not per sample!)
+  // Uses dirty flag internally to skip expensive recalculations when unchanged
+  const TapeState& tapeState = sceneManager_.currentScene().tape;
+  tapeFX.applyMacro(tapeState.macro);
+  tapeLooper.setMode(tapeState.mode);
+  tapeLooper.setSpeed(tapeState.speed);
+  tapeLooper.setVolume(tapeState.looperVolume);
+
   // Optimization: render sampler track in a block once per buffer
   // Note: this has a max 1-buffer jitter for triggers (standard for blocks)
   bool hasSampleStore = (sampleStore != nullptr);
@@ -1175,8 +1192,10 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     tapeLooper.process(sample, &loopSample);
     sample += loopSample;
 
-    // Process through Tape FX (Tape layer 2: Wow/Flutter/Saturation)
-    sample = tapeFX.process(sample);
+    // Process through Tape FX (Tape layer 2: Wow/Flutter/Saturation/Age/Tone/Crush)
+    if (tapeState.fxEnabled) {
+      sample = tapeFX.process(sample);
+    }
 
     // Master Output & Limiting
     sample *= 0.65f * params[static_cast<int>(MiniAcidParamId::MainVolume)].value();
@@ -1281,11 +1300,11 @@ void MiniAcid::saveSceneToStorage() {
 }
 
 void MiniAcid::applySceneStateFromManager() {
-  Serial.println("  - MiniAcid::applySceneStateFromManager: Start");
+  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: Start");
   setBpm(sceneManager_.getBpm());
   const std::string& drumEngineName = sceneManager_.getDrumEngineName();
   if (!drumEngineName.empty()) {
-    Serial.printf("  - MiniAcid::applySceneStateFromManager: setting drum engine to %s\n", drumEngineName.c_str());
+    LOG_DEBUG("  - MiniAcid::applySceneStateFromManager: setting drum engine to %s\n", drumEngineName.c_str());
     setDrumEngine(drumEngineName);
   }
   mute303 = sceneManager_.getSynthMute(0);
@@ -1304,7 +1323,7 @@ void MiniAcid::applySceneStateFromManager() {
   delay303Enabled = sceneManager_.getSynthDelayEnabled(0);
   delay3032Enabled = sceneManager_.getSynthDelayEnabled(1);
 
-  Serial.println("  - MiniAcid::applySceneStateFromManager: setting voice params...");
+  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: setting voice params...");
   const SynthParameters& paramsA = sceneManager_.getSynthParameters(0);
   const SynthParameters& paramsB = sceneManager_.getSynthParameters(1);
 
@@ -1326,7 +1345,7 @@ void MiniAcid::applySceneStateFromManager() {
   delay303.setEnabled(delay303Enabled);
   delay3032.setEnabled(delay3032Enabled);
 
-  Serial.println("  - MiniAcid::applySceneStateFromManager: syncing patterns...");
+  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: syncing patterns...");
   patternModeDrumPatternIndex_ = sceneManager_.getCurrentDrumPatternIndex();
   patternModeSynthPatternIndex_[0] = sceneManager_.getCurrentSynthPatternIndex(0);
   patternModeSynthPatternIndex_[1] = sceneManager_.getCurrentSynthPatternIndex(1);
@@ -1336,7 +1355,7 @@ void MiniAcid::applySceneStateFromManager() {
     applySongPositionSelection();
   }
 
-  Serial.println("  - MiniAcid::applySceneStateFromManager: syncing Sampler...");
+  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: syncing Sampler...");
   // Sync Sampler
   for (int i = 0; i < 16; ++i) {
     const auto& s = sceneManager_.currentScene().samplerPads[i];
@@ -1352,14 +1371,14 @@ void MiniAcid::applySceneStateFromManager() {
     if (p.id.value != 0 && sampleStore) sampleStore->preload(p.id);
   }
 
-  Serial.println("  - MiniAcid::applySceneStateFromManager: syncing Tape...");
-  // Sync Tape
+  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: syncing Tape...");
+  // Sync Tape - uses dirty flag so this is safe to call
   const auto& t = sceneManager_.currentScene().tape;
-  tapeFX.setWow(t.wow);
-  tapeFX.setFlutter(t.flutter);
-  tapeFX.setSaturation(t.saturation);
+  tapeFX.applyMacro(t.macro);
+  tapeLooper.setMode(t.mode);
+  tapeLooper.setSpeed(t.speed);
   tapeLooper.setVolume(t.looperVolume);
-  Serial.println("  - MiniAcid::applySceneStateFromManager: Done");
+  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: Done");
 }
 
 void MiniAcid::syncSceneStateToManager() {

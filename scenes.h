@@ -141,11 +141,46 @@ struct SamplerPadState {
   bool loop = false;
 };
 
+// Tape mode enum for looper state machine
+enum class TapeMode : uint8_t { 
+    Stop = 0, 
+    Rec = 1, 
+    Dub = 2, 
+    Play = 3 
+};
+
+// Tape preset enum for character presets
+enum class TapePreset : uint8_t {
+    Clean = 0,
+    Warm = 1,
+    Dust = 2,
+    VHS = 3,
+    Broken = 4,
+    AcidBath = 5,
+    Count = 6
+};
+
+// Macro parameters (0–100 range for UI, mapped to DSP internally)
+struct TapeMacro {
+    uint8_t wow = 12;      // 0..100 - motor drift / pitch wobble
+    uint8_t age = 20;      // 0..100 - noise + LPF rolloff
+    uint8_t sat = 35;      // 0..100 - tape saturation drive
+    uint8_t tone = 60;     // 0..100 - brightness (0=dark, 100=bright)
+    uint8_t crush = 0;     // 0=off, 1=8bit, 2=6bit, 3=4bit
+};
+
 struct TapeState {
-  float wow = 0.0f;
-  float flutter = 0.0f;
-  float saturation = 0.0f;
-  float looperVolume = 1.0f;
+    // Mode & control
+    TapeMode mode = TapeMode::Stop;
+    TapePreset preset = TapePreset::Warm;
+    uint8_t speed = 1;       // 0=0.5x, 1=1.0x, 2=2.0x
+    bool fxEnabled = true;   // Master tape FX on/off
+    
+    // Macro controls (the 5 knobs)
+    TapeMacro macro;
+    
+    // Looper volume (mix level of loop playback)
+    float looperVolume = 1.0f;
 };
 
 struct Scene {
@@ -622,12 +657,24 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   }
   if (!writeChar(']')) return false;
 
-  if (!writeLiteral(",\"tape\":{\"wow\":")) return false;
-  if (!writeFloat(scene_->tape.wow)) return false;
-  if (!writeLiteral(",\"flt\":")) return false;
-  if (!writeFloat(scene_->tape.flutter)) return false;
+  if (!writeLiteral(",\"tape\":{\"mode\":")) return false;
+  if (!writeInt(static_cast<int>(scene_->tape.mode))) return false;
+  if (!writeLiteral(",\"preset\":")) return false;
+  if (!writeInt(static_cast<int>(scene_->tape.preset))) return false;
+  if (!writeLiteral(",\"speed\":")) return false;
+  if (!writeInt(scene_->tape.speed)) return false;
+  if (!writeLiteral(",\"fxEnabled\":")) return false;
+  if (!writeBool(scene_->tape.fxEnabled)) return false;
+  if (!writeLiteral(",\"wow\":")) return false;
+  if (!writeInt(scene_->tape.macro.wow)) return false;
+  if (!writeLiteral(",\"age\":")) return false;
+  if (!writeInt(scene_->tape.macro.age)) return false;
   if (!writeLiteral(",\"sat\":")) return false;
-  if (!writeFloat(scene_->tape.saturation)) return false;
+  if (!writeInt(scene_->tape.macro.sat)) return false;
+  if (!writeLiteral(",\"tone\":")) return false;
+  if (!writeInt(scene_->tape.macro.tone)) return false;
+  if (!writeLiteral(",\"crush\":")) return false;
+  if (!writeInt(scene_->tape.macro.crush)) return false;
   if (!writeLiteral(",\"vol\":")) return false;
   if (!writeFloat(scene_->tape.looperVolume)) return false;
   if (!writeLiteral("}")) return false;
