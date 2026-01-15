@@ -1393,7 +1393,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
 
 void MiniAcid::randomize303Pattern(int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
-  PatternGenerator::generateRandom303Pattern(editSynthPattern(idx));
+  // Use BPM-adaptive mode-aware generator instead of legacy PatternGenerator
+  modeManager_.generatePattern(editSynthPattern(idx), bpmValue);
 }
 
 void MiniAcid::setParameter(MiniAcidParamId id, float value) {
@@ -1405,7 +1406,8 @@ void MiniAcid::adjustParameter(MiniAcidParamId id, int steps) {
 }
 
 void MiniAcid::randomizeDrumPattern() {
-  PatternGenerator::generateRandomDrumPattern(sceneManager_.editCurrentDrumPattern());
+  // Use mode-aware drum generator instead of legacy PatternGenerator
+  modeManager_.generateDrumPattern(sceneManager_.editCurrentDrumPattern());
 }
 
 void MiniAcid::toggleAudioDiag() {

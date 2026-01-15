@@ -237,8 +237,7 @@ void Synth303ParamsPage::initComponents() {
       });
   osc_control_ = std::make_shared<LabelValueComponent>("OSC:", COLOR_WHITE,
                                                        IGfxColor::Cyan());
-  filter_control_ = std::make_shared<LabelValueComponent>("FLT:", COLOR_WHITE,
-                                                          IGfxColor::Cyan());
+ // filter_control_ = std::make_shared<LabelValueComponent>("FLT:", COLOR_WHITE,                                                         IGfxColor::Cyan());
   delay_control_ = std::make_shared<LabelValueComponent>("DLY:", COLOR_WHITE,
                                                          IGfxColor::Cyan());
   distortion_control_ = std::make_shared<LabelValueComponent>("DST:", COLOR_WHITE,
@@ -249,7 +248,7 @@ void Synth303ParamsPage::initComponents() {
   addChild(env_amount_knob_);
   addChild(env_decay_knob_);
   addChild(osc_control_);
-  addChild(filter_control_);
+  // addChild(filter_control_);  // Commented out since filter_control_ is not initialized
   addChild(distortion_control_);
   addChild(delay_control_);
 

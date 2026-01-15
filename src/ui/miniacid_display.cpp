@@ -197,8 +197,8 @@ void MiniAcidDisplay::update() {
   }
   page_hint_container_.draw(gfx_);
   
-  // enable debug overlay by default for now
-  drawDebugOverlay();
+  // Debug overlay disabled
+  // drawDebugOverlay();
 
   gfx_.flush();
   gfx_.endWrite();
@@ -520,11 +520,11 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         case '5': targetPage = 4; break;  // Drums
         case '6': targetPage = 5; break; // Song
         case '7': targetPage = 9; break;  // Tape
-        case '8': targetPage = 8; break;  // Sampler
-        case '9': targetPage =  7; break;  // Waveform
-        case '0': targetPage =  10; break; // Mode
-        case 'q': targetPage =  6; break;  // Project (Home) - as requested Fn+0
-        case 'w': targetPage = 11; break; // Settings
+        case '8': targetPage = 11; break;  // Settings 
+        case '9': targetPage = 8; break;  // Sampler
+        case '0': targetPage = 10; break; // Mode
+        case 'q': targetPage = 6; break;  // Project (Home) - as requested Fn+0
+        case 'w': targetPage = 7; break; // Waveform 
         default: break;
       }
       

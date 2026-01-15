@@ -47,8 +47,12 @@ const Scale kScales[] = {
 };
 
 int quantizeToScale(int note, const Scale& scale) {
+    // Protect against negative notes
+    if (note < 0) return note;
+    
     int octave = note / 12;
-    int pitch = note % 12;
+    // Normalize pitch for negative modulo behavior in C++
+    int pitch = ((note % 12) + 12) % 12;
     
     int bestPitch = scale.intervals[0];
     int minDiff = 12;
@@ -63,9 +67,47 @@ int quantizeToScale(int note, const Scale& scale) {
     return octave * 12 + bestPitch;
 }
 
-void GrooveboxModeManager::generatePattern(SynthPattern& pattern) const {
-    const ModeConfig& cfg = config();
+
+void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm) const {
+    const ModeConfig& cfg = config();  // Use reference, not copy!
     
+    // BPM-adaptive parameters (computed locally to avoid stack overflow)
+    // Normalize BPM to [0,1]: 0=slow (80), 1=fast (170)
+    float t = (bpm - 80.0f) / (170.0f - 80.0f);
+    if (t < 0.0f) t = 0.0f;
+    if (t > 1.0f) t = 1.0f;
+    
+    // Linear interpolation helper
+    auto lerp = [](float a, float b, float t) { return a + (b - a) * t; };
+    
+    // Compute BPM-adapted parameters based on mode
+    int adaptedMinNotes, adaptedMaxNotes;
+    float adaptedChromaticProb, adaptedGhostProb, adaptedRootBias, adaptedSwing;
+    
+    if (currentMode_ == GrooveboxMode::Acid) {
+        // ACID: Fast = tight & clean, Slow = busy & chromatic
+        adaptedMinNotes = (int)lerp(13.0f, 6.0f, t);
+        adaptedMaxNotes = (int)lerp(16.0f, 8.0f, t);
+        adaptedChromaticProb = lerp(0.18f, 0.06f, t);
+        adaptedGhostProb = lerp(0.12f, 0.04f, t);
+        adaptedRootBias = cfg.pattern.rootNoteBias;  // Use base config
+        adaptedSwing = 0.0f;  // Always grid-tight
+    } else {
+        // MINIMAL: Fast = hypnotic & clean, Slow = deep & textured
+        adaptedMinNotes = (int)lerp(5.0f, 2.0f, t);
+        adaptedMaxNotes = (int)lerp(7.0f, 4.0f, t);
+        adaptedChromaticProb = cfg.pattern.chromaticProbability;  // Use base
+        adaptedGhostProb = lerp(0.35f, 0.12f, t);
+        adaptedRootBias = lerp(0.70f, 0.85f, t);
+        
+        // Swing in milliseconds (18ms @ slow, 8ms @ fast)
+        float swingMs = lerp(18.0f, 8.0f, t);
+        adaptedSwing = swingMs / 100.0f;  // Normalize
+    }
+    
+    // Standardized probability helper (float 0-1 -> int 0-100)
+    auto prob100 = [](float p){ return int(p * 100.0f + 0.5f); };
+
     // Clear pattern
     for (int i = 0; i < SynthPattern::kSteps; ++i) {
         pattern.steps[i].note = -1; // -1 means no note
@@ -80,22 +122,28 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern) const {
     const Scale& scale = (currentMode_ == GrooveboxMode::Acid) ? kScales[0] : kScales[rand() % 4];
     int rootNote = (currentMode_ == GrooveboxMode::Acid) ? 36 : 24; // C2 or C1
     int strategy = rand() % 3; // 0: Random Walk, 1: Arp/Rhythm, 2: Sequential
-    
-    float swingAmount = (currentMode_ == GrooveboxMode::Acid) ? 0.0f : 0.20f;  // Subtle shuffle for minimal
-    float ghostProb = (currentMode_ == GrooveboxMode::Acid) ? 0.15f : 0.45f;   // More ghosts in minimal
 
     if (currentMode_ == GrooveboxMode::Acid) {
-        // ACID STRATEGY
+        // ACID STRATEGY: Melodic, chromatic, contrasting
         int currentScaleIdx = rand() % scale.count;
+        int lastOctaveShift = 0;  // Track last octave shift to prevent ping-pong
+        
+        // Probability cache (using adapted values)
+        int minNotesProb = adaptedMinNotes * 100 / 16 + 10;
+        int chromaticProb = prob100(adaptedChromaticProb);
+        int slideProb = prob100(cfg.pattern.slideProbability);
+        int accentProb = prob100(cfg.pattern.accentProbability);
+        int ghostProbVal = prob100(adaptedGhostProb);
+
         for (int i = 0; i < 16; i++) {
-            bool shouldHit = (rand() % 100) < (cfg.pattern.minNotes * 100 / 16 + 25);
+            bool shouldHit = (rand() % 100) < minNotesProb;
             
             if (shouldHit) {
-                // Determine next note
+                // Determine next note via strategy
                 if (strategy == 0) { // Random walk in scale
                     currentScaleIdx = (currentScaleIdx + (rand() % 3) - 1 + scale.count) % scale.count;
                 } else if (strategy == 1) { // Arp-like (root/3rd/5th focus)
-                    int choices[] = {0, 0, 2, 4}; // Root, Root, 3rd, 5th in pentatonic
+                    int choices[] = {0, 0, 2, 4};
                     currentScaleIdx = choices[rand() % 4];
                 } else { // High energy random
                     currentScaleIdx = rand() % scale.count;
@@ -104,79 +152,117 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern) const {
                 int note = rootNote + scale.intervals[currentScaleIdx];
                 
                 // Chromatic passing tones (Acid character)
-                if ((rand() % 100) < (cfg.pattern.chromaticProbability * 100)) {
+                if ((rand() % 100) < chromaticProb) {
                     note += (rand() % 3) - 1;  // +1, 0, -1 semitone
                 }
                 
-                // Octave jumps (Classic Acid)
-                if (rand() % 100 < 30) note += 12;
-                if (rand() % 100 < 10) note += 24;
-                if (rand() % 100 < 5)  note -= 12;
+                // Octave jumps with ping-pong prevention
+                int octaveShift = 0;
+                if ((rand() % 100) < 25) octaveShift = 12;
+                else if ((rand() % 100) < 8) octaveShift = 24;
+                else if ((rand() % 100) < 5) octaveShift = -12;
+                
+                // Prevent consecutive opposite jumps (ping-pong)
+                if (lastOctaveShift != 0 && octaveShift != 0 && 
+                    ((lastOctaveShift > 0 && octaveShift < 0) || (lastOctaveShift < 0 && octaveShift > 0))) {
+                    octaveShift = 0;  // Cancel jump to prevent ping-pong
+                }
+                
+                note += octaveShift;
+                lastOctaveShift = octaveShift;
 
                 pattern.steps[i].note = note;
-                pattern.steps[i].velocity = cfg.pattern.velocityMin + (rand() % (cfg.pattern.velocityMax - cfg.pattern.velocityMin));
+                pattern.steps[i].velocity = cfg.pattern.velocityMin + 
+                    (rand() % (cfg.pattern.velocityMax - cfg.pattern.velocityMin + 1));
                 
-                if ((rand() % 100) < (cfg.pattern.slideProbability * 100)) pattern.steps[i].slide = true;
-                if ((rand() % 100) < (cfg.pattern.accentProbability * 100)) {
+                if ((rand() % 100) < slideProb) {
+                    pattern.steps[i].slide = true;
+                }
+                if ((rand() % 100) < accentProb) {
                     pattern.steps[i].accent = true;
                     pattern.steps[i].velocity = 127;
-                    if (rand() % 100 < 40) pattern.steps[i].slide = true; // Accent + Slide = Acid fun
+                    if (rand() % 100 < 40) pattern.steps[i].slide = true;
                 }
-            } else if ((rand() % 100) < (ghostProb * 100)) {
-                // Ghost notes (low velocity)
+            } else if ((rand() % 100) < ghostProbVal) {
+                // Ghost notes (punchy but quiet)
                 pattern.steps[i].note = rootNote;
                 pattern.steps[i].ghost = true;
-                pattern.steps[i].velocity = 25 + (rand() % 20);
-                if (rand() % 100 < 20) pattern.steps[i].slide = true;
+                pattern.steps[i].accent = false;  // Ghosts never accented
+                pattern.steps[i].slide = false;   // Ghosts never slide in Acid
+                pattern.steps[i].velocity = cfg.pattern.ghostVelocityMin + 
+                    (rand() % (cfg.pattern.ghostVelocityMax - cfg.pattern.ghostVelocityMin + 1));
             }
         }
     } else {
-        // MINIMAL STRATEGY: Hypnotic, bass-heavy
-        int baseNote = 24 + (rand() % 12); // Transpose the whole pattern
-        int lastNoteIdx = 0;
+        // MINIMAL STRATEGY: Hypnotic, bass-heavy, textural
+        // FIXED baseNote for stable hypnosis
+        int baseNote = rootNote; 
         
+        // Probability cache (using adapted values)
+        int rootBiasProb = prob100(adaptedRootBias);
+        int accentProb = prob100(cfg.pattern.accentProbability);
+        int slideProb = prob100(cfg.pattern.slideProbability);
+        int ghostProbVal = prob100(adaptedGhostProb);
+
         for (int i = 0; i < 16; i++) {
-            // Rhythmic anchor: 1, 4, 7, 10, 13 (typical minimal syncopation)
+            // Rhythmic anchors: strong beats for hypnotic pulse
             bool isAnchor = (i % 4 == 0) || (i == 3) || (i == 6) || (i == 10);
-            float hitProb = isAnchor ? 70.0f : 15.0f;
+            float hitProb = isAnchor ? 70.0f : 12.0f;  // Very sparse off-beats
             
             if ((rand() % 100) < hitProb) {
                 // Focus on root (hypnotic repetition)
                 int scaleIdx;
-                int rootBiasPercent = (int)(cfg.pattern.rootNoteBias * 100);
-                if (rand() % 100 < rootBiasPercent) scaleIdx = 0; // Root note (80% in minimal)
-                else if (rand() % 100 < 30) scaleIdx = (scale.count > 4) ? 4 : 2; // 30% fifth-ish
-                else scaleIdx = rand() % scale.count; // 10% other
+                
+                if (rand() % 100 < rootBiasProb) {
+                    scaleIdx = 0; // Root note
+                } else if (rand() % 100 < 35) {
+                    scaleIdx = (scale.count > 4) ? 4 : 2; // Fifth-ish
+                } else {
+                    scaleIdx = rand() % scale.count;
+                }
+                
+                // "Rare escape" rule: force non-root on bar start sometimes
+                if ((i == 0 || i == 8) && rand() % 100 < 20) {
+                    scaleIdx = 1 + (rand() % (scale.count - 1));  // Any note but root
+                }
                 
                 int note = baseNote + scale.intervals[scaleIdx];
                 
-                // Deep octave drops
-                if (rand() % 100 < 20) note -= 12;
+                // Deep octave drops (bass emphasis)
+                if (rand() % 100 < 15) note -= 12;
                 
                 pattern.steps[i].note = note;
-                pattern.steps[i].velocity = cfg.pattern.velocityMin + (rand() % (cfg.pattern.velocityMax - cfg.pattern.velocityMin));
+                pattern.steps[i].velocity = cfg.pattern.velocityMin + 
+                    (rand() % (cfg.pattern.velocityMax - cfg.pattern.velocityMin + 1));
                 
-                // Minimal accents are precise
-                if (i % 8 == 0 && rand() % 100 < 60) {
+                // Minimal accents are rare but precise
+                if (i % 8 == 0 && rand() % 100 < accentProb) {
                     pattern.steps[i].accent = true;
                     pattern.steps[i].velocity = 127;
                 }
                 
-                if (rand() % 100 < 8) pattern.steps[i].slide = true;
-            } else if ((rand() % 100) < (ghostProb * 100)) {
-                // More active ghosts in minimal for texture
+                if (rand() % 100 < slideProb) {
+                    pattern.steps[i].slide = true;
+                }
+            } else if ((rand() % 100) < ghostProbVal) {
+                // Ghost notes: textural, quiet, slightly late
                 pattern.steps[i].note = baseNote;
                 pattern.steps[i].ghost = true;
-                pattern.steps[i].velocity = 10 + (rand() % 15);  // Quieter ghosts
-                // Microtiming for "shuffle"
-                pattern.steps[i].timing = (int8_t)((rand() % 13) - 6); 
+                pattern.steps[i].accent = false;  // Ghosts never accented
+                pattern.steps[i].slide = false;   // Ghosts never slide in Minimal
+                pattern.steps[i].velocity = cfg.pattern.ghostVelocityMin + 
+                    (rand() % (cfg.pattern.ghostVelocityMax - cfg.pattern.ghostVelocityMin + 1));
+                // Micro-late timing for shuffle feel (+5 to +12 ticks) -- Minimal Only
+                pattern.steps[i].timing = (int8_t)(5 + (rand() % 8));
             }
         }
     }
 
-    // Apply Swing
-    if (swingAmount > 0.01f) {
-        int8_t swingTicks = (int8_t)(swingAmount * 36.0f); // More pronounced swing
+    // Apply Swing (only to off-beat notes)
+    // Use adapted swing value
+    if (adaptedSwing > 0.01f) {
+        // Use 36 ticks for consistent swing timing across synth and drums
+        int8_t swingTicks = (int8_t)(adaptedSwing * 36.0f);
         for (int i = 0; i < 16; i++) {
             if (i % 2 == 1 && pattern.steps[i].note >= 0) {
                 pattern.steps[i].timing += swingTicks;
@@ -184,6 +270,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern) const {
         }
     }
 }
+
 
 void GrooveboxModeManager::generateDrumPattern(DrumPatternSet& patternSet) const {
     const ModeConfig& cfg = config();
@@ -198,8 +285,12 @@ void GrooveboxModeManager::generateDrumPattern(DrumPatternSet& patternSet) const
         }
     }
     
-    float swingAmount = (currentMode_ == GrooveboxMode::Acid) ? 0.08f : 0.15f;  // Subtle swing for both
+    // Use swing from synth pattern config (drums follow the same groove)
+    float swingAmount = cfg.pattern.swingAmount;
     bool humanize = true;
+
+    // Standardized probability helper
+    auto prob100 = [](float p){ return int(p * 100.0f + 0.5f); };
 
     // KICK
     if (cfg.drums.sparseKick) {
@@ -265,7 +356,7 @@ void GrooveboxModeManager::generateDrumPattern(DrumPatternSet& patternSet) const
     }
     
     // FILLS / PERC
-    if ((rand() % 100) < (cfg.drums.fillProbability * 100)) {
+    if ((rand() % 100) < prob100(cfg.drums.fillProbability)) {
         int count = 1 + (rand() % 3);
         int voice = 4 + (rand() % 4); // MT, HT, Rim, Clap
         for (int i = 0; i < count; i++) {

@@ -43,8 +43,8 @@ public:
     // Apply a mode-specific preset to a voice
     void apply303Preset(int voiceIndex, int presetIndex);
     
-    // Pattern generation according to current mode rules
-    void generatePattern(SynthPattern& pattern) const;
+    // Pattern generation according to current mode rules (BPM-adaptive)
+    void generatePattern(SynthPattern& pattern, float bpm) const;
     void generateDrumPattern(DrumPatternSet& patternSet) const;
     
 private:
