@@ -5,15 +5,16 @@
 
 namespace {
 const char* const kOscillatorOptions[] = {"saw", "sqr", "super"};
-const char* const kFilterTypeOptions[] = {"lp1"};
+const char* const kFilterTypeOptions[] = {"lp", "bp", "hp"};
 } // namespace
 
 TB303Voice::TB303Voice(float sampleRate)
   : sampleRate(sampleRate),
     invSampleRate(0.0f),
     nyquist(0.0f),
-    filter(std::make_unique<ChamberlinFilter>(sampleRate)) {
+    filter(nullptr) {
   setSampleRate(sampleRate);
+  createFilter(0); // Default to lowpass
   reset();
 }
 
@@ -31,7 +32,9 @@ void TB303Voice::reset() {
   gate = false;
   slide = false;
   amp = 0.3f;
-  filter->reset();
+  if (filter) {
+    filter->reset();
+  }
 }
 
 void TB303Voice::setSampleRate(float sampleRateHz) {
@@ -39,7 +42,9 @@ void TB303Voice::setSampleRate(float sampleRateHz) {
   sampleRate = sampleRateHz;
   invSampleRate = 1.0f / sampleRate;
   nyquist = sampleRate * 0.5f;
-  filter->setSampleRate(sampleRate);
+  if (filter) {
+    filter->setSampleRate(sampleRate);
+  }
 }
 
 void TB303Voice::startNote(float freqHz, bool accent, bool slideFlag) {
@@ -156,10 +161,16 @@ const Parameter& TB303Voice::parameter(TB303ParamId id) const {
 
 void TB303Voice::setParameter(TB303ParamId id, float value) {
   params[static_cast<int>(id)].setValue(value);
+  if (id == TB303ParamId::FilterType) {
+    createFilter(params[static_cast<int>(id)].optionIndex());
+  }
 }
 
 void TB303Voice::adjustParameter(TB303ParamId id, int steps) {
   params[static_cast<int>(id)].addSteps(steps);
+  if (id == TB303ParamId::FilterType) {
+    createFilter(params[static_cast<int>(id)].optionIndex());
+  }
 }
 
 float TB303Voice::parameterValue(TB303ParamId id) const {
@@ -176,6 +187,23 @@ void TB303Voice::initParameters() {
   params[static_cast<int>(TB303ParamId::EnvAmount)] = Parameter("env", "Hz", 0.0f, 2000.0f, 400.0f, (2000.0f - 0.0f) / 128);
   params[static_cast<int>(TB303ParamId::EnvDecay)] = Parameter("dec", "ms", 20.0f, 2200.0f, 420.0f, (2200.0f - 20.0f) / 128);
   params[static_cast<int>(TB303ParamId::Oscillator)] = Parameter("osc", "", kOscillatorOptions, 3, 0);
-  params[static_cast<int>(TB303ParamId::FilterType)] = Parameter("flt", "", kFilterTypeOptions, 1, 0);
+  params[static_cast<int>(TB303ParamId::FilterType)] = Parameter("flt", "", kFilterTypeOptions, 3, 0);
   params[static_cast<int>(TB303ParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.0f, 0.8f, 1.0f / 128);
+}
+
+void TB303Voice::createFilter(int filterTypeIndex) {
+  switch (filterTypeIndex) {
+    case 0: // lp
+      filter = std::make_unique<ChamberlinFilterLp>(sampleRate);
+      break;
+    case 1: // bp
+      filter = std::make_unique<ChamberlinFilterBp>(sampleRate);
+      break;
+    case 2: // hp
+      filter = std::make_unique<ChamberlinFilterHp>(sampleRate);
+      break;
+    default:
+      filter = std::make_unique<ChamberlinFilterLp>(sampleRate);
+      break;
+  }
 }

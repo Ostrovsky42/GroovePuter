@@ -9,15 +9,43 @@ public:
   virtual float process(float input, float cutoffHz, float resonance) = 0;
 };
 
-class ChamberlinFilter : public AudioFilter {
+class ChamberlinFilterBase {
 public:
-  explicit ChamberlinFilter(float sampleRate);
-  void reset() override;
-  void setSampleRate(float sr) override;
-  float process(float input, float cutoffHz, float resonance) override;
+  explicit ChamberlinFilterBase(float sampleRate);
+  void reset();
+  void setSampleRate(float sr);
+  void processInternal(float input, float cutoffHz, float resonance);
 
-private:
+protected:
   float _lp;
   float _bp;
+  float _hp;
   float _sampleRate;
 };
+
+class ChamberlinFilterLp : public AudioFilter, protected ChamberlinFilterBase {
+public:
+  explicit ChamberlinFilterLp(float sampleRate) : ChamberlinFilterBase(sampleRate) {}
+  void reset() override { ChamberlinFilterBase::reset(); }
+  void setSampleRate(float sr) override { ChamberlinFilterBase::setSampleRate(sr); }
+  float process(float input, float cutoffHz, float resonance) override;
+};
+
+class ChamberlinFilterBp : public AudioFilter, protected ChamberlinFilterBase {
+public:
+  explicit ChamberlinFilterBp(float sampleRate) : ChamberlinFilterBase(sampleRate) {}
+  void reset() override { ChamberlinFilterBase::reset(); }
+  void setSampleRate(float sr) override { ChamberlinFilterBase::setSampleRate(sr); }
+  float process(float input, float cutoffHz, float resonance) override;
+};
+
+class ChamberlinFilterHp : public AudioFilter, protected ChamberlinFilterBase {
+public:
+  explicit ChamberlinFilterHp(float sampleRate) : ChamberlinFilterBase(sampleRate) {}
+  void reset() override { ChamberlinFilterBase::reset(); }
+  void setSampleRate(float sr) override { ChamberlinFilterBase::setSampleRate(sr); }
+  float process(float input, float cutoffHz, float resonance) override;
+};
+
+// Legacy alias for backward compatibility
+using ChamberlinFilter = ChamberlinFilterLp;

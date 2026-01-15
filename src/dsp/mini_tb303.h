@@ -39,6 +39,7 @@ private:
   float oscillatorSample();
   float svfProcess(float input);
   void initParameters();
+  void createFilter(int filterTypeIndex);
 
   static constexpr int kSuperSawOscCount = 6;
 
