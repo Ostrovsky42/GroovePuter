@@ -16,15 +16,15 @@ void LedManager::init() {
 }
 
 void LedManager::setLedColor(Rgb8 color, uint8_t brightness) {
-    // M5Cardputer v1.1.1 doesn't expose RGB LED API
-    // TODO: Use M5.Display.setBrightness() or custom GPIO control if needed
-    // uint8_t r = (color.r * brightness) >> 8;
-    // uint8_t g = (color.g * brightness) >> 8;
-    // uint8_t b = (color.b * brightness) >> 8;
-    // M5Cardputer.Rgb.setPixelColor(0, M5Cardputer.Rgb.Color(r, g, b));
-    // M5Cardputer.Rgb.show();
-    (void)color;
-    (void)brightness;
+    // Cardputer uses a single NeoPixel on GPIO 21
+    uint8_t r = (uint16_t(color.r) * brightness) >> 8;
+    uint8_t g = (uint16_t(color.g) * brightness) >> 8;
+    uint8_t b = (uint16_t(color.b) * brightness) >> 8;
+    
+#if defined(ESP32)
+    // Use the built-in function for WS2812 on functionality for ESP32-S3
+    neopixelWrite(21, r, g, b);
+#endif
 }
 
 void LedManager::onVoiceTriggered(VoiceId v, const LedSettings& settings) {

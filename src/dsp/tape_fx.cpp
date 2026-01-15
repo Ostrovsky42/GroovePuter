@@ -96,7 +96,7 @@ void TapeFX::updateInternalParams() {
 }
 
 void TapeFX::applyMinimalParams(uint8_t space, uint8_t movement, uint8_t groove) {
-    spaceAmount_ = space * 0.008f;
+    spaceAmount_ = space * 0.1f; // Boosted from 0.008f for audible delay/reverb
     movementAmount_ = movement * 0.01f; // depth scaling
     movementFreq_ = 0.5f + (movement % 50) * 0.1f;
 }

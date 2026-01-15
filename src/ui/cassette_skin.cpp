@@ -39,6 +39,13 @@ void CassetteSkin::drawBackground() {
     // Fill with base background color
     gfx_.fillRect(0, 0, w, h, palette_->bg);
     
+    // Debug skin call
+    // static unsigned long lastPrint = 0;
+    // if (millis() - lastPrint > 1000) {
+    //    Serial.printf("[SKIN] Draw BG w=%d h=%d color=%04X\n", w, h, palette_->bg.value());
+    //    lastPrint = millis();
+    // }
+    
     // Apply subtle 2x2 dither pattern (2-4% intensity)
     // Only darken every other pixel in checkerboard pattern
     IGfxColor darkPixel(

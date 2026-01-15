@@ -41,9 +41,10 @@ bool AudioOutI2S::begin(uint32_t sampleRate, size_t bufferFrames) {
   }
   
   // 1. Create I2S Channel (Standard Mode)
-  i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_AUTO, I2S_ROLE_MASTER);
+  // Use I2S_NUM_1 to minimize conflict chance with M5Unified (which might grab 0)
+  i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_1, I2S_ROLE_MASTER);
   chan_cfg.dma_desc_num = 8;         // Number of DMA buffers
-  chan_cfg.dma_frame_num = bufferFrames; // Frames per buffer
+  chan_cfg.dma_frame_num = 256;      // Fixed smaller frame size for better latency
   chan_cfg.auto_clear = true;        // Silence on underrun
   
   esp_err_t err = i2s_new_channel(&chan_cfg, &tx_handle_, NULL);
@@ -57,7 +58,14 @@ bool AudioOutI2S::begin(uint32_t sampleRate, size_t bufferFrames) {
   // 2. Configure Channel (Slot & Clock)
   i2s_std_config_t std_cfg = {
       .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(sampleRate),
-      .slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
+      // --- MODE SELECTION ---
+      // Option A: MSB Mode (Usually correct for ES8311 in M5Stack)
+      //Option A: MSB Mode (Usually correct for ES8311 in M5Stack)
+      //.slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
+      
+      // Option B: Philips Mode (Standard I2S, try if sound is distorted/quiet)
+      .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
+      // ----------------------
       .gpio_cfg = {
           .mclk = I2S_GPIO_UNUSED,
           .bclk = (gpio_num_t)I2S_BCLK,
@@ -123,7 +131,7 @@ bool AudioOutI2S::writeMono16(const int16_t* monoBuffer, size_t frames) {
     stereoBuffer_,
     frames * 2 * sizeof(int16_t),
     &bytesWritten,
-    portMAX_DELAY // Block until written
+    pdMS_TO_TICKS(100) // Block with timeout (avoid indefinite hang)
   );
   
   if (err != ESP_OK || bytesWritten != frames * 2 * sizeof(int16_t)) {
