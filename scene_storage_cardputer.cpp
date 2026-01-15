@@ -167,14 +167,10 @@ bool SceneStorageCardputer::readScene(SceneManager& manager) {
   Serial.println("File opened successfully, loading scene...");
   bool ok = manager.loadSceneEvented(file);
   file.close();
-  if (!ok) {
-    Serial.println("Evented parse failed, retrying with ArduinoJson...");
-    File retry = SD.open(path.c_str(), FILE_READ);
-    if (retry) {
-      ok = manager.loadSceneJson(retry);
-      retry.close();
-    }
-  }
+  
+  // ArduinoJson fallback REMOVED - it causes OOM on DRAM-only devices
+  // If streaming parse fails, caller will load default scene instead
+  
   Serial.printf("Streaming read %s\n", ok ? "succeeded" : "failed");
   return ok;
 }

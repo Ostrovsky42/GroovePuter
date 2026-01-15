@@ -38,20 +38,20 @@ struct TapeModePreset {
     const char* name;
 };
 
-// Acid tape (wow, distortion)
+// Acid tape (wow, movement)
 const TapeModePreset kAcidTapePresets[] = {
-    {{5, 10, 25, 70, 0}, "CLEAN"},
-    {{12, 20, 35, 60, 0}, "WARM"},
-    {{25, 40, 50, 50, 1}, "DIRTY"},
-    {{35, 35, 65, 55, 1}, "BROKEN"}
+    {{3, 5, 8, 85, 0}, "CLEAN"},    // transparent
+    {{8, 15, 12, 70, 0}, "WARM"},   // vinyl
+    {{12, 8, 10, 75, 0}, "SPACE"},  // Space Echo
+    {{15, 12, 15, 68, 0}, "ANALOG"} // Juno
 };
 
-// Minimal tape (space, movement)
+// Minimal tape (dub techno, depth)
 const TapeModePreset kMinimalTapePresets[] = {
-    {{8, 25, 20, 50, 0}, "DUB"},        // spacious
-    {{5, 40, 45, 35, 1}, "WAREHOUSE"},  // dry, punchy
-    {{20, 30, 25, 55, 0}, "HYPNOTIC"}, // movement
-    {{30, 50, 40, 45, 2}, "BEDROOM"}   // lofi
+    {{12, 15, 10, 68, 0}, "DUB"},      // deep
+    {{8, 18, 12, 65, 0}, "WAREHOUSE"}, // raw but clean
+    {{25, 12, 10, 70, 0}, "HYPNOTIC"}, // moving
+    {{15, 20, 12, 60, 0}, "BEDROOM"}   // warm lofi
 };
 
 // === MODE CONFIGURATION ===

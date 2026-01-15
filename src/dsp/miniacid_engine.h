@@ -285,6 +285,16 @@ public:
 
 private:
   GrooveboxModeManager modeManager_{*this};
+  
+  // DSP State for Audio Quality
+  uint32_t ditherState_ = 12345;
+  float dcBlockX1_ = 0.0f;
+  float dcBlockY1_ = 0.0f;
+  
+  static float softLimit(float x) {
+      float absX = (x > 0) ? x : -x;
+      return x / (1.0f + absX); 
+  }
 };
 
 class PatternGenerator {

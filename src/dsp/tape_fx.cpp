@@ -10,21 +10,22 @@ TapeFX::TapeFX() {
     for (uint32_t i = 0; i < kSpaceDelaySize; ++i) {
         spaceBuffer_[i] = 0.0f;
     }
+
+    warmthLPF_.reset();
+    toneLPF_.reset();
+    crushLPF_.reset();
     
-    // Initialize LFO step values for default frequencies
-    // Wow: ~0.8 Hz, Flutter: ~12 Hz
-    constexpr float kPi2 = 2.0f * 3.14159265f;
-    float thetaWow = kPi2 * 0.8f / static_cast<float>(kSampleRate);
-    wowStepSin_ = sinf(thetaWow);
-    wowStepCos_ = cosf(thetaWow);
-    
-    float thetaFlutter = kPi2 * 12.0f / static_cast<float>(kSampleRate);
-    flutterStepSin_ = sinf(thetaFlutter);
-    flutterStepCos_ = cosf(thetaFlutter);
+    // Initialize LFO state
+    wowSin_ = 0; wowCos_ = 1.0f;
+    flutterSin_ = 0; flutterCos_ = 1.0f;
     
     // Initialize current macro to defaults
     currentMacro_ = TapeMacro{};
     paramsDirty_ = true;
+    
+    // Noise state
+    noiseState_ = 0x12345678;
+    pinkB0_ = pinkB1_ = pinkB2_ = pinkB3_ = pinkB4_ = pinkB5_ = pinkB6_ = 0;
 }
 
 void TapeFX::applyMacro(const TapeMacro& macro) {
@@ -39,37 +40,57 @@ void TapeFX::updateInternalParams() {
     const TapeMacro& m = currentMacro_;
     constexpr float kPi2 = 2.0f * 3.14159265f;
     
-    // WOW (0-100) → wowDepth 0..0.012, flutterAmount at high values
-    wowDepth_ = m.wow * 0.00012f;
-    flutterAmount_ = (m.wow > 50) ? (m.wow - 50) * 0.02f : 0.0f;
+    // WOW: subtle movement (0..0.006) - reduced from 0.012
+    wowDepth_ = (m.wow / 100.0f) * 0.006f;
     
-    // Update LFO frequencies based on wow intensity
-    // Wow: 0.5-2.5 Hz depending on intensity
-    float wowHz = 0.5f + m.wow * 0.02f;
+    // Wow freq: 0.3 - 1.5 Hz (slower LFO)
+    float wowHz = 0.3f + (m.wow / 100.0f) * 1.2f;
     float thetaWow = kPi2 * wowHz / static_cast<float>(kSampleRate);
     wowStepSin_ = sinf(thetaWow);
     wowStepCos_ = cosf(thetaWow);
     
-    // AGE (0-100) → noiseAmount 0..0.08
-    noiseAmount_ = m.age * 0.0008f;
+    // Flutter frequency: 4.0 - 8.0 Hz (only if wow > 50)
+    if (m.wow > 50) {
+        flutterRatio_ = (m.wow - 50) / 50.0f;
+        float flutterHz = 4.0f + flutterRatio_ * 4.0f;
+        float thetaFlutter = kPi2 * flutterHz / static_cast<float>(kSampleRate);
+        flutterStepSin_ = sinf(thetaFlutter);
+        flutterStepCos_ = cosf(thetaFlutter);
+    } else {
+        flutterRatio_ = 0;
+    }
     
-    // SAT (0-100) → drive 1..8
-    drive_ = 1.0f + m.sat * 0.07f;
+    // AGE: Pink noise + Warmth (LPF)
+    ageAmount_ = m.age / 100.0f;
+    // Noise amount greatly reduced (0.0002 max)
+    noiseAmount_ = ageAmount_ * 0.0002f;
     
-    // TONE (0-100) → LPF coefficient
-    // 0 = dark (coeff ~0.15), 100 = bright (coeff ~0.95)
-    // One-pole LPF: y[n] = y[n-1] + coeff * (x[n] - y[n-1])
-    // Higher coeff = brighter (closer to input)
-    lpfCoeff_ = 0.15f + m.tone * 0.008f;
-    lpfCoeff_ = std::min(lpfCoeff_, 0.95f);
+    // Warmth LPF: 8k to 2k Hz
+    float warmthCutoffHz = 8000.0f - (ageAmount_ * 6000.0f);
+    warmthCutoffNorm_ = warmthCutoffHz / kSampleRate;
     
-    // CRUSH (0-3) → bits and downsample
-    // 0=off (16bit), 1=8bit, 2=6bit, 3=4bit
-    static const uint8_t kBitsTable[4] = { 16, 8, 6, 4 };
-    static const uint8_t kDownsampleTable[4] = { 1, 2, 4, 6 };
-    uint8_t crushIdx = std::min(m.crush, (uint8_t)3);
-    crushBits_ = kBitsTable[crushIdx];
-    crushDownsample_ = kDownsampleTable[crushIdx];
+    // SAT: subtle drive (1.0 to 2.5) - reduced from 1-8
+    drive_ = 1.0f + (m.sat / 100.0f) * 1.5f;
+    // Mix: preserve more dry signal (0.3 to 0.7 wet)
+    satMix_ = 0.3f + (m.sat / 100.0f) * 0.4f;
+    
+    // TONE: Resonant LPF (0.3 - 0.95) - brighter range
+    lpfCutoff_ = 0.3f + (m.tone / 100.0f) * 0.65f;
+    lpfResonance_ = 0.1f + (m.tone / 100.0f) * 0.2f;
+    
+    // CRUSH: Off by default, specific levels if needed
+    if (m.crush == 0) {
+        crushBits_ = 16;
+        crushDownsample_ = 1;
+    } else {
+        // Less aggressive crush settings
+        switch(m.crush) {
+            case 1: crushBits_ = 12; crushDownsample_ = 1; break; // Subtle
+            case 2: crushBits_ = 10; crushDownsample_ = 2; break; // Medium
+            case 3: crushBits_ = 8;  crushDownsample_ = 3; break; // Heavy
+            default: crushBits_ = 16; crushDownsample_ = 1; break;
+        }
+    }
     
     paramsDirty_ = false;
 }
@@ -105,91 +126,96 @@ void TapeFX::updateLFO() {
 }
 
 float TapeFX::process(float input) {
-    // Update internal params if macro changed (once per dirty flag)
-    if (paramsDirty_) {
-        updateInternalParams();
-    }
+    if (paramsDirty_) updateInternalParams();
     
-    // Update LFO at reduced rate (every 32 samples to save CPU)
     if (++lfoCounter_ >= kLFOUpdateRate) {
         lfoCounter_ = 0;
         updateLFO();
     }
 
-    // 1. Calculate modulated delay time for wow/flutter
-    // Wow depth: ~2-5ms at max, Flutter depth: ~0.5ms
-    float wowMod = wowSin_ * wowDepth_ * 50.0f;
-    float flutterMod = flutterSin_ * flutterAmount_ * 10.0f;
-    float delaySamples = 100.0f + wowMod + flutterMod;
-    
-    // 2. Read from delay line with linear interpolation
-    float readPos = static_cast<float>(writePos_) - delaySamples;
-    if (readPos < 0) readPos += static_cast<float>(kDelaySize);
-    
-    uint32_t i0 = static_cast<uint32_t>(readPos) & kDelayMask;
-    uint32_t i1 = (i0 + 1) & kDelayMask;
-    float frac = readPos - floorf(readPos);
-    
-    float delayed = buffer_[i0] + frac * (buffer_[i1] - buffer_[i0]);
+    float output = input;
 
-    // 3. Write input to delay buffer
+    // 1. WOW/FLUTTER
+    if (wowDepth_ > 0) {
+        float mod = wowSin_ * wowDepth_;
+        if (flutterRatio_ > 0) {
+            mod += flutterSin_ * wowDepth_ * 0.3f * flutterRatio_;
+        }
+        float delaySmp = 100.0f + mod * kSampleRate;
+        output = readDelayInterpolated(delaySmp);
+    }
+    
     buffer_[writePos_] = input;
     writePos_ = (writePos_ + 1) & kDelayMask;
 
-    // 4. Add noise (AGE parameter)
-    float x = delayed;
-    if (noiseAmount_ > 0.001f) {
-        x += fastNoise() * noiseAmount_;
+    // 2. WARMTH (Pink Noise + LPF)
+    if (ageAmount_ > 0) {
+        output += generatePinkNoise() * noiseAmount_;
+        output = warmthLPF_.process(output, warmthCutoffNorm_, 0.1f);
     }
 
-    // 5. Apply LPF (TONE parameter) - one-pole lowpass
-    lpfZ1_ += lpfCoeff_ * (x - lpfZ1_);
-    x = lpfZ1_;
-
-    // 6. Apply saturation (SAT parameter)
-    if (drive_ > 1.01f) {
-        x *= drive_;
-        x = fastTanh(x);
-        x *= 0.8f; // compensation
+    // 3. SATURATION (Soft Mix)
+    if (drive_ > 1.0f) {
+        float driven = output * drive_;
+        float saturated = fastTanh(driven);
+        output = output * (1.0f - satMix_) + saturated * satMix_;
     }
 
-    // 7. Apply bit crush (CRUSH parameter)
+    // 4. TONE (Resonant)
+    output = toneLPF_.process(output, lpfCutoff_, lpfResonance_);
+
+    // 5. CRUSH (Anti-aliased)
     if (crushBits_ < 16) {
-        // Downsample: hold value for N samples
         if (++crushCounter_ >= crushDownsample_) {
             crushCounter_ = 0;
-            
-            // Bit reduction
-            float levels = static_cast<float>(1 << crushBits_);
-            crushHold_ = floorf(x * levels * 0.5f + 0.5f) / (levels * 0.5f);
+            float filtered = crushLPF_.process(output, 0.3f, 0.1f);
+            float levels = static_cast<float>(1 << (crushBits_ - 1));
+            crushHold_ = floorf(filtered * levels + 0.5f) / levels;
         }
-        x = crushHold_;
+        output = crushHold_;
     }
 
-    // 8. Minimal Techno Extensions
-    // Space (Simple Feedback Delay)
+    // 6. Minimal Extensions
     if (spaceAmount_ > 0.05f) {
-        float dTime = 4000.0f; // Fixed long delay for space
+        float dTime = 4000.0f;
         float sRead = (float)spaceWritePos_ - dTime;
         if (sRead < 0) sRead += kSpaceDelaySize;
         float spaceDelayed = spaceBuffer_[(uint32_t)sRead & (kSpaceDelaySize - 1)];
-        
-        spaceBuffer_[spaceWritePos_] = x + spaceDelayed * 0.7f;
+        spaceBuffer_[spaceWritePos_] = output + spaceDelayed * 0.7f;
         spaceWritePos_ = (spaceWritePos_ + 1) & (kSpaceDelaySize - 1);
-        
-        x = x * (1.0f - spaceAmount_ * 0.5f) + spaceDelayed * spaceAmount_;
+        output = output * (1.0f - spaceAmount_ * 0.5f) + spaceDelayed * spaceAmount_;
     }
 
-    // Movement (Filter modulation)
     if (movementAmount_ > 0.01f) {
         movementPhase_ += movementFreq_ / static_cast<float>(kSampleRate);
         if (movementPhase_ >= 1.0f) movementPhase_ -= 1.0f;
-        
         float mod = sinf(6.2831853f * movementPhase_) * 0.5f + 0.5f;
-        float coeff = 0.1f + mod * movementAmount_ * 0.8f;
-        movementZ1_ += coeff * (x - movementZ1_);
-        x = movementZ1_;
+        float fc = 0.1f + mod * movementAmount_ * 0.8f;
+        movementZ1_ += fc * (output - movementZ1_);
+        output = movementZ1_;
     }
 
-    return x;
+    return output;
+}
+
+float TapeFX::generatePinkNoise() {
+    float white = fastNoise();
+    pinkB0_ = 0.99886f * pinkB0_ + white * 0.0555179f;
+    pinkB1_ = 0.99332f * pinkB1_ + white * 0.0750759f;
+    pinkB2_ = 0.96900f * pinkB2_ + white * 0.1538520f;
+    pinkB3_ = 0.86650f * pinkB3_ + white * 0.3104856f;
+    pinkB4_ = 0.55000f * pinkB4_ + white * 0.5329522f;
+    pinkB5_ = -0.7616f * pinkB5_ - white * 0.0168980f;
+    float pink = pinkB0_ + pinkB1_ + pinkB2_ + pinkB3_ + pinkB4_ + pinkB5_ + pinkB6_ + white * 0.5362f;
+    pinkB6_ = white * 0.115926f;
+    return pink * 0.11f;
+}
+
+float TapeFX::readDelayInterpolated(float delaySamples) {
+    float readPos = static_cast<float>(writePos_) - delaySamples;
+    while (readPos < 0) readPos += static_cast<float>(kDelaySize);
+    uint32_t i0 = static_cast<uint32_t>(readPos) & kDelayMask;
+    uint32_t i1 = (i0 + 1) & kDelayMask;
+    float frac = readPos - floorf(readPos);
+    return buffer_[i0] + frac * (buffer_[i1] - buffer_[i0]);
 }

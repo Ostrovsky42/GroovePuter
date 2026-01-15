@@ -4,7 +4,7 @@
 // Global Audio Contract
 // All DSP code must use these constants.
 
-static constexpr uint32_t kSampleRate = 22050;
+static constexpr uint32_t kSampleRate = 44100;
 
 // Block size for processing (usually 128 or 256)
 // MiniAcid original engine uses 256 (AUDIO_BUFFER_SAMPLES)

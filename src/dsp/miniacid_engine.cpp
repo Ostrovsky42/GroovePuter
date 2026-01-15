@@ -1,8 +1,8 @@
 #include "miniacid_engine.h"
 
-#include <math.h>
-#include <stdlib.h>
+#include <Arduino.h>
 #include <algorithm>
+#include <cmath>
 #include <cctype>
 #include <string>
 
@@ -11,14 +11,12 @@
 #include <esp_psram.h>
 #endif
 
-// Cross-platform debug logging
-#ifdef ARDUINO
-#define LOG_DEBUG(...) LOG_DEBUG(__VA_ARGS__)
-#define LOG_PRINTLN(msg) LOG_PRINTLN(msg)
-#else
-#define LOG_DEBUG(...) (void)0
-#define LOG_PRINTLN(msg) (void)0
-#endif
+#define LOG_DEBUG(...) Serial.printf(__VA_ARGS__); Serial.println()
+#define LOG_PRINTLN(msg) Serial.println(msg)
+
+// If you want to disable logging:
+// #define LOG_DEBUG(...) (void)0
+// #define LOG_PRINTLN(msg) (void)0
 
 namespace {
 constexpr int kDrumKickVoice = 0;
@@ -234,24 +232,38 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
 void MiniAcid::init() {
   bool hasPsram = false;
 #if defined(ESP32) || defined(ESP_PLATFORM)
-  hasPsram = psramFound();
+  // psramFound() can return true even if init failed (size 0)
+  // Check actual usable size.
+  hasPsram = (ESP.getFreePsram() > 100000); 
+  LOG_DEBUG("  - MiniAcid::init: PSRAM check: %s (free: %d)", hasPsram ? "YES" : "NO", ESP.getFreePsram());
 #endif
 
-  // Memory Strategy:
   if (hasPsram) {
-    // PSRAM: High-performance mode
-    tapeLooper.init(8);           // 8s looper
-    if (sampleStore) sampleStore->setPoolSize(1024 * 1024); // 1MB sampler pool
-    // PSRAM: Use full 1.0s delay
+    // PSRAM: High-performance mode (44.1kHz = ~176KB per second float)
+    // 8s loop = ~1.4MB
+    tapeLooper.init(8);           
+    if (sampleStore) sampleStore->setPoolSize(2 * 1024 * 1024); // 2MB pool
+    // 1.0s delay = ~176KB * 2 = 352KB
     delay303.init(1.0f);
     delay3032.init(1.0f);
   } else {
-    // DRAM: Constrained memory
-    tapeLooper.init(0.5f); // 0.5s looper (~44KB)
-    if (sampleStore) sampleStore->setPoolSize(32 * 1024); // 32KB sampler pool
-    // FX Delays: 0.25s (~43KB each)
+    // DRAM: Constrained mode (44.1kHz is expensive!)
+    // We have ~200KB free total, max block ~130KB.
+    // 1.0s delay = 176KB -> IMPOSSIBLE.
+    // 0.25s delay = 44KB -> Two of them = 88KB. Feasible.
+    
+    // Tape Looper: 0.5s = 88KB. Might fragment heap.
+    // Let's set looper to minimal or disable (0.25s)
+    tapeLooper.init(0.25f); 
+    
+    // Sampler: 32KB pool (micro-samples only)
+    if (sampleStore) sampleStore->setPoolSize(32 * 1024);
+    
+    // FX Delays: 0.25s (250ms is enough for slapback/rhythmic)
     delay303.init(0.25f);
     delay3032.init(0.25f);
+    
+    LOG_PRINTLN("  - MiniAcid::init: DRAM MODE ACTIVE (Reduced buffers)");
   }
 
   LOG_PRINTLN("  - MiniAcid::init: Memory strategy applied");
@@ -1220,14 +1232,32 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       sample = tapeFX.process(sample);
     }
 
-    // Master Output & Limiting
-    sample *= 0.65f * params[static_cast<int>(MiniAcidParamId::MainVolume)].value();
+    // 6. Master Limiter (Soft Limit for more headroom)
     
-    // Simple master soft clipping
-    if (sample > 1.0f) sample = 1.0f;
-    else if (sample < -1.0f) sample = -1.0f;
+    // DC Blocker (R = 0.995)
+    float dcIn = sample;
+    float dcOut = dcIn - dcBlockX1_ + 0.995f * dcBlockY1_;
+    dcBlockX1_ = dcIn;
+    dcBlockY1_ = dcOut;
+    
+    // Soft Limiter (tanh-style) with slight makeup gain
+    float limitIn = dcOut * 1.5f; 
+    float finalSample = softLimit(limitIn); 
+    
+    // 7. Dithering (TPDF)
+    ditherState_ = ditherState_ * 1664525u + 1013904223u;
+    float r1 = (float)(ditherState_ & 65535) * (1.0f / 65536.0f);
+    ditherState_ = ditherState_ * 1664525u + 1013904223u;
+    float r2 = (float)(ditherState_ & 65535) * (1.0f / 65536.0f);
+    float dither = (r1 - r2) * (1.0f / 32768.0f); 
+    
+    finalSample += dither;
 
-    buffer[i] = static_cast<int16_t>(sample * 32767.0f);
+    // Clamp safely for int16 conversion
+    if (finalSample > 1.0f) finalSample = 1.0f;
+    if (finalSample < -1.0f) finalSample = -1.0f;
+    
+    buffer[i] = (int16_t)(finalSample * 32767.0f);
   }
 
   // Copy to debug/visualizer buffer
@@ -1309,10 +1339,8 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
   sceneStorage_->setCurrentSceneName(name);
 
   bool loaded = sceneStorage_->readScene(sceneManager_);
-  if (!loaded) {
-    std::string serialized;
-    loaded = sceneStorage_->readScene(serialized) && sceneManager_.loadScene(serialized);
-  }
+  // String-based fallback REMOVED - causes OOM on DRAM-only devices
+  
   if (!loaded) {
     sceneStorage_->setCurrentSceneName(previousName);
     return false;
@@ -1340,11 +1368,7 @@ bool MiniAcid::createNewSceneWithName(const std::string& name) {
 void MiniAcid::loadSceneFromStorage() {
   if (sceneStorage_) {
     if (sceneStorage_->readScene(sceneManager_)) return;
-
-    std::string serialized;
-    if (sceneStorage_->readScene(serialized) && sceneManager_.loadScene(serialized)) {
-      return;
-    }
+    // String-based fallback REMOVED - causes OOM on DRAM-only devices
   }
   sceneManager_.loadDefaultScene();
 }

@@ -4,25 +4,22 @@
 // Preset macro tables for 6 tape characters
 // Each preset defines starting values for WOW/AGE/SAT/TONE/CRUSH
 
+// LEGACY PRESETS (used when ModeManager presets are unavailable)
 inline constexpr TapeMacro kTapePresets[static_cast<int>(TapePreset::Count)] = {
-    // CLEAN: subtle warmth, almost transparent
-    { .wow = 5,  .age = 0,  .sat = 10, .tone = 80, .crush = 0 },
-    
-    // WARM: classic tape character
-    { .wow = 12, .age = 20, .sat = 35, .tone = 60, .crush = 0 },
-    
-    // DUST: aged cassette with noise
-    { .wow = 15, .age = 55, .sat = 30, .tone = 45, .crush = 0 },
-    
-    // VHS: video tape vibe with artifacts
-    { .wow = 25, .age = 65, .sat = 40, .tone = 35, .crush = 1 },
-    
-    // BROKEN: destroyed tape, heavy degradation
-    { .wow = 70, .age = 80, .sat = 55, .tone = 30, .crush = 2 },
-    
-    // ACID_BATH: 303 character, saturated but present
-    { .wow = 35, .age = 35, .sat = 80, .tone = 55, .crush = 1 },
+    // CLEAN
+    { .wow = 3,  .age = 5,  .sat = 8,  .tone = 85, .crush = 0 },
+    // WARM
+    { .wow = 8,  .age = 15, .sat = 12, .tone = 70, .crush = 0 },
+    // DUST
+    { .wow = 12, .age = 22, .sat = 10, .tone = 60, .crush = 0 },
+    // VHS
+    { .wow = 15, .age = 25, .sat = 15, .tone = 55, .crush = 1 },
+    // BROKEN
+    { .wow = 25, .age = 35, .sat = 20, .tone = 45, .crush = 2 },
+    // ACID_BATH
+    { .wow = 10, .age = 12, .sat = 25, .tone = 75, .crush = 0 },
 };
+// NOTE: ModeManager provides Mode-specific presets (CLEAN/WARM/SPACE/ANALOG or DUB/DREAM/TAPE/VIBE)
 
 inline const char* tapePresetName(TapePreset preset) {
     static constexpr const char* names[] = {
