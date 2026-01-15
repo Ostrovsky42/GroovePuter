@@ -70,20 +70,30 @@ void SamplerPage::initComponents() {
   addChild(reverse_ctrl_);
   addChild(choke_ctrl_);
 
-  int x = dx() + 10;
-  int y = dy() + 10;
-  int h = gfx_.fontHeight() + 6;
-  int w = 150;
+  int x = dx() + 4;
+  int y = dy() + 2;
+  int h = gfx_.fontHeight() + 2; // Compact height
+  int w1 = (width() - 8) / 2;
+  int w_full = width() - 8;
 
-  pad_ctrl_->setBoundaries(Rect(x, y, w, h)); y += h;
-  file_ctrl_->setBoundaries(Rect(x, y, w + 100, h)); y += h + 4;
-  volume_ctrl_->setBoundaries(Rect(x, y, w, h)); y += h;
-  pitch_ctrl_->setBoundaries(Rect(x, y, w, h)); y += h + 4;
-  start_ctrl_->setBoundaries(Rect(x, y, w, h)); y += h;
-  end_ctrl_->setBoundaries(Rect(x, y, w, h)); y += h + 4;
-  loop_ctrl_->setBoundaries(Rect(x, y, w, h)); y += h;
-  reverse_ctrl_->setBoundaries(Rect(x, y, w, h)); y += h;
-  choke_ctrl_->setBoundaries(Rect(x, y, w, h));
+  pad_ctrl_->setBoundaries(Rect(x, y, w_full, h)); y += h;
+  file_ctrl_->setBoundaries(Rect(x, y, w_full, h)); y += h + 2;
+  
+  // Two columns for the rest
+  int mid_x = x + w1 + 4;
+  volume_ctrl_->setBoundaries(Rect(x, y, w1, h)); 
+  pitch_ctrl_->setBoundaries(Rect(mid_x, y, w1, h)); 
+  y += h;
+
+  start_ctrl_->setBoundaries(Rect(x, y, w1, h)); 
+  end_ctrl_->setBoundaries(Rect(mid_x, y, w1, h)); 
+  y += h;
+
+  loop_ctrl_->setBoundaries(Rect(x, y, w1, h)); 
+  reverse_ctrl_->setBoundaries(Rect(mid_x, y, w1, h)); 
+  y += h;
+
+  choke_ctrl_->setBoundaries(Rect(x, y, w1, h));
 
   initialized_ = true;
 }

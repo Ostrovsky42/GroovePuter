@@ -48,8 +48,10 @@ bool writeChunk(Writer& writer, const char* data, size_t len) {
 } // namespace scene_json_detail
 
 struct DrumStep {
-  bool hit;
-  bool accent;
+  bool hit = false;
+  bool accent = false;
+  uint8_t velocity = 100;
+  int8_t timing = 0;
 };
 
 struct DrumPattern {
@@ -63,9 +65,12 @@ struct DrumPatternSet {
 };
 
 struct SynthStep {
-  int note; 
-  bool slide;
-  bool accent;
+  int note = 0; 
+  bool slide = false;
+  bool accent = false;
+  uint8_t velocity = 100;
+  int8_t timing = 0;
+  bool ghost = false;
 };
 
 struct SynthPattern {
@@ -102,6 +107,41 @@ template <typename PatternType>
 struct Bank {
   static constexpr int kPatterns = 8;
   PatternType patterns[kPatterns];
+};
+
+enum class LedMode : uint8_t {
+  Off,
+  StepTrig,
+  Beat,
+  MuteState
+};
+
+enum class VoiceId : uint8_t {
+  SynthA,
+  SynthB,
+  DrumKick,
+  DrumSnare,
+  DrumHatC,
+  DrumHatO,
+  DrumTomM,
+  DrumTomH,
+  DrumRim,
+  DrumClap,
+  Count
+};
+
+using LedSource = VoiceId;
+
+struct Rgb8 {
+  uint8_t r, g, b;
+};
+
+struct LedSettings {
+  LedMode mode = LedMode::Off;
+  LedSource source = LedSource::SynthA;
+  Rgb8 color = {255, 128, 0}; // Amber
+  uint8_t brightness = 40;
+  uint16_t flashMs = 40;
 };
 
 static constexpr int kBankCount = 4;
@@ -191,6 +231,39 @@ struct TapeState {
     uint8_t groove = 0;   // 0..100
 };
 
+enum ScaleType {
+    MINOR,
+    MAJOR,
+    DORIAN,
+    PHRYGIAN,
+    LYDIAN,
+    MIXOLYDIAN,
+    LOCRIAN,
+    PENTATONIC_MJ,   // Major pentatonic
+    PENTATONIC_MN,   // Minor pentatonic
+    CHROMATIC        // All 12 notes
+};
+
+struct GeneratorParams {
+    // Basic
+    int minNotes = 4;
+    int maxNotes = 12;
+    int minOctave = 36;
+    int maxOctave = 60;
+    
+    // Variations
+    float swingAmount = 0.0f;        // 0-0.66 (0% - 66% swing)
+    float velocityRange = 0.3f;      // 0-1 (variation amount)
+    float ghostNoteProbability = 0.1f;// 0-1
+    float microTimingAmount = 0.2f;  // 0-1
+    
+    // Musicality
+    bool preferDownbeats = true;     
+    bool scaleQuantize = false;      
+    int scaleRoot = 0;               // 0=C, 1=C#, etc.
+    ScaleType scale = MINOR;         
+};
+
 struct Scene {
   Bank<DrumPatternSet> drumBanks[kBankCount];
   Bank<SynthPattern> synthABanks[kBankCount];
@@ -199,6 +272,9 @@ struct Scene {
   TapeState tape;
   Song song;
   GrooveboxMode mode = GrooveboxMode::Acid;
+  float masterVolume = 0.6f;  // Default volume
+  GeneratorParams generatorParams; 
+  LedSettings led;
 };
 
 class SceneJsonObserver : public JsonObserver {
@@ -261,12 +337,15 @@ private:
     MuteDrums,
     MuteSynth,
     SynthDistortion,
+    GeneratorParams,
     SynthDelay,
     SynthParams,
     SynthParam,
     SamplerPads,
     SamplerPad,
     Tape,
+    Led,
+    LedColorArray,
     Song,
     SongPositions,
     SongPosition,
@@ -696,6 +775,20 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeInt(scene_->tape.movement)) return false;
   if (!writeLiteral(",\"groove\":")) return false;
   if (!writeInt(scene_->tape.groove)) return false;
+  if (!writeLiteral("},\"led\":{\"mode\":")) return false;
+  if (!writeInt(static_cast<int>(scene_->led.mode))) return false;
+  if (!writeLiteral(",\"src\":")) return false;
+  if (!writeInt(static_cast<int>(scene_->led.source))) return false;
+  if (!writeLiteral(",\"clr\":[")) return false;
+  if (!writeInt(scene_->led.color.r)) return false;
+  if (!writeChar(',')) return false;
+  if (!writeInt(scene_->led.color.g)) return false;
+  if (!writeChar(',')) return false;
+  if (!writeInt(scene_->led.color.b)) return false;
+  if (!writeLiteral("],\"bri\":")) return false;
+  if (!writeInt(scene_->led.brightness)) return false;
+  if (!writeLiteral(",\"fls\":")) return false;
+  if (!writeInt(scene_->led.flashMs)) return false;
   if (!writeLiteral("},\"mode\":")) return false;
   if (!writeInt(static_cast<int>(mode_))) return false;
   return writeLiteral("}}");

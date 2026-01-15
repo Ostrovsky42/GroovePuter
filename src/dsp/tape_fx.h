@@ -10,7 +10,27 @@
 // - AGE:  Noise + high frequency rolloff
 // - SAT:  Tape saturation (soft clipping)
 // - TONE: Brightness control (LPF)
-// - CRUSH: Bit reduction + downsampling
+// - TONE: Brightness control (Resonant LPF)
+// - CRUSH: Bit reduction + downsampling (with anti-aliasing)
+
+class ResonantLPF {
+public:
+    float process(float input, float cutoff, float resonance) {
+        // State variable filter (smooth, musical)
+        float f = cutoff * 1.16f;
+        float fb = resonance * (1.0f - 0.15f * f * f);
+        
+        low_ += f * band_;
+        float high = input - low_ - fb * band_;
+        band_ += f * high;
+        
+        return low_;
+    }
+    void reset() { low_ = 0; band_ = 0; }
+private:
+    float low_ = 0;
+    float band_ = 0;
+};
 
 class TapeFX {
 public:
@@ -51,23 +71,32 @@ private:
     uint16_t lfoCounter_ = 0;
 
     // DSP parameters (derived from macros)
-    float wowDepth_ = 0;          // 0..0.012
-    float flutterAmount_ = 0;     // 0..1
-    float noiseAmount_ = 0;       // 0..0.08
-    float drive_ = 1.0f;          // 1..8
-    float lpfCoeff_ = 0.9f;       // one-pole LPF coefficient
-    uint8_t crushBits_ = 16;      // 16/8/6/4
-    uint8_t crushDownsample_ = 1; // 1/2/4/6
+    float wowDepth_ = 0;          
+    float flutterRatio_ = 0;      
+    float ageAmount_ = 0;
+    float noiseAmount_ = 0;       
+    float drive_ = 1.0f;          
+    float satMix_ = 0.5f;
+    float lpfCutoff_ = 0.9f;       
+    float lpfResonance_ = 0.1f;
+    uint8_t crushBits_ = 16;      
+    uint8_t crushDownsample_ = 1; 
+    
+    // Calculated warmth cutoff (0..0.5)
+    float warmthCutoffNorm_ = 0.5f;
 
-    // LPF state (one-pole)
-    float lpfZ1_ = 0;
+    // Filter states
+    ResonantLPF warmthLPF_;
+    ResonantLPF toneLPF_;
+    ResonantLPF crushLPF_;
     
     // Crush state (sample-and-hold for downsampling)
     uint8_t crushCounter_ = 0;
     float crushHold_ = 0;
     
-    // Noise state (simple LFSR)
+    // Noise state
     uint32_t noiseState_ = 0x12345678;
+    float pinkB0_ = 0, pinkB1_ = 0, pinkB2_ = 0, pinkB3_ = 0, pinkB4_ = 0, pinkB5_ = 0, pinkB6_ = 0;
 
     // Minimal extensions
     float spaceAmount_ = 0;
@@ -104,4 +133,7 @@ private:
         noiseState_ ^= noiseState_ << 5;
         return (float)(int32_t)noiseState_ * (1.0f / 2147483648.0f);
     }
+
+    float generatePinkNoise();
+    float readDelayInterpolated(float delaySamples);
 };

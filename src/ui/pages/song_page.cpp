@@ -663,8 +663,8 @@ void SongPage::draw(IGfx& gfx) {
 
   int label_h = gfx.fontHeight();
   int header_h = label_h + 4;
-  int row_h = label_h + 6;
-  if (row_h < 10) row_h = 10;
+  int row_h = label_h + 4;  // Reduced from +6 to +4
+  if (row_h < 8) row_h = 8;  // Minimum 8px instead of 10px
   int usable_h = body_h - header_h;
   if (usable_h < row_h) usable_h = row_h;
   int visible_rows = usable_h / row_h;
@@ -691,8 +691,8 @@ void SongPage::draw(IGfx& gfx) {
   if (scroll_row_ > maxStart) scroll_row_ = maxStart;
 
   int pos_col_w = 20;
-  int spacing = 3;
-  int modeBtnW = 70;
+  int spacing = 2;  // Reduced from 3px to 2px
+  int modeBtnW = 55;  // Reduced from 70px to 55px
   int track_col_w = (w - pos_col_w - spacing * 5 - modeBtnW) / 3;
   if (track_col_w < 20) track_col_w = 20;
 

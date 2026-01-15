@@ -28,9 +28,10 @@ class TapePage::SliderComponent : public FocusableComponent {
     gfx.setTextColor(isFocused() ? COLOR_KNOB_1 : COLOR_LABEL);
     gfx.drawText(bounds.x, bounds.y, label_);
     
-    // Slider bar
-    int barX = bounds.x + 45;
-    int barW = bounds.w - 70;
+    // Slider bar (dynamic layout)
+    int labelW = gfx.textWidth(label_);
+    int barX = bounds.x + labelW + 6;
+    int barW = bounds.w - labelW - 35; // Save space for value text
     int barY = bounds.y + 3;
     int barH = 4;
     
@@ -42,8 +43,12 @@ class TapePage::SliderComponent : public FocusableComponent {
     gfx.fillRect(barX, barY, fillW, barH, isFocused() ? COLOR_KNOB_1 : COLOR_KNOB_2);
     
     // Value text
-    char buf[8];
-    snprintf(buf, sizeof(buf), "%d", value_);
+    char buf[12];
+    if (maxValue_ == 100) {
+        snprintf(buf, sizeof(buf), "%d%%", value_);
+    } else {
+        snprintf(buf, sizeof(buf), "%d", value_);
+    }
     gfx.drawText(barX + barW + 4, bounds.y, buf);
     
     // Focus indicator

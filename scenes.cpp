@@ -47,6 +47,10 @@ void clearSceneData(Scene& scene) {
     }
   }
   clearSong(scene.song);
+  scene.masterVolume = 0.6f;
+  scene.generatorParams = GeneratorParams();
+  scene.led = LedSettings();
+  scene.tape = TapeState();
 }
 
 void serializeDrumPattern(const DrumPattern& pattern, ArduinoJson::JsonObject obj) {
@@ -253,6 +257,65 @@ bool deserializeSynthParameters(ArduinoJson::JsonVariantConst value, SynthParame
 
   return true;
 }
+
+void serializeGeneratorParams(const GeneratorParams& params, ArduinoJson::JsonObject obj) {
+  obj["minNotes"] = params.minNotes;
+  obj["maxNotes"] = params.maxNotes;
+  obj["minOctave"] = params.minOctave;
+  obj["maxOctave"] = params.maxOctave;
+  obj["swingAmount"] = params.swingAmount;
+  obj["velocityRange"] = params.velocityRange;
+  obj["ghostNoteProbability"] = params.ghostNoteProbability;
+  obj["microTimingAmount"] = params.microTimingAmount;
+  obj["preferDownbeats"] = params.preferDownbeats;
+  obj["scaleQuantize"] = params.scaleQuantize;
+  obj["scaleRoot"] = params.scaleRoot;
+  obj["scale"] = static_cast<int>(params.scale);
+}
+
+bool deserializeGeneratorParams(ArduinoJson::JsonObjectConst obj, GeneratorParams& params) {
+  if (obj.isNull()) return false;
+  params.minNotes = valueToInt(obj["minNotes"], params.minNotes);
+  params.maxNotes = valueToInt(obj["maxNotes"], params.maxNotes);
+  params.minOctave = valueToInt(obj["minOctave"], params.minOctave);
+  params.maxOctave = valueToInt(obj["maxOctave"], params.maxOctave);
+  params.swingAmount = valueToFloat(obj["swingAmount"], params.swingAmount);
+  params.velocityRange = valueToFloat(obj["velocityRange"], params.velocityRange);
+  params.ghostNoteProbability = valueToFloat(obj["ghostNoteProbability"], params.ghostNoteProbability);
+  params.microTimingAmount = valueToFloat(obj["microTimingAmount"], params.microTimingAmount);
+  if (obj["preferDownbeats"].is<bool>()) params.preferDownbeats = obj["preferDownbeats"].as<bool>();
+  if (obj["scaleQuantize"].is<bool>()) params.scaleQuantize = obj["scaleQuantize"].as<bool>();
+  params.scaleRoot = valueToInt(obj["scaleRoot"], params.scaleRoot);
+  params.scale = static_cast<ScaleType>(valueToInt(obj["scale"], static_cast<int>(params.scale)));
+  return true;
+}
+
+void serializeLedSettings(const LedSettings& led, ArduinoJson::JsonObject obj) {
+  obj["mode"] = static_cast<int>(led.mode);
+  obj["src"] = static_cast<int>(led.source);
+  ArduinoJson::JsonArray clr = obj["clr"].to<ArduinoJson::JsonArray>();
+  clr.add(led.color.r);
+  clr.add(led.color.g);
+  clr.add(led.color.b);
+  obj["bri"] = led.brightness;
+  obj["fls"] = led.flashMs;
+}
+
+bool deserializeLedSettings(ArduinoJson::JsonObjectConst obj, LedSettings& led) {
+  if (obj.isNull()) return false;
+  led.mode = static_cast<LedMode>(valueToInt(obj["mode"], static_cast<int>(led.mode)));
+  led.source = static_cast<LedSource>(valueToInt(obj["src"], static_cast<int>(led.source)));
+  ArduinoJson::JsonArrayConst clr = obj["clr"].as<ArduinoJson::JsonArrayConst>();
+  if (!clr.isNull() && clr.size() >= 3) {
+    led.color.r = clr[0].as<uint8_t>();
+    led.color.g = clr[1].as<uint8_t>();
+    led.color.b = clr[2].as<uint8_t>();
+  }
+  led.brightness = static_cast<uint8_t>(valueToInt(obj["bri"], led.brightness));
+  led.flashMs = static_cast<uint16_t>(valueToInt(obj["fls"], led.flashMs));
+  return true;
+}
+
 }
 
 SceneJsonObserver::SceneJsonObserver(Scene& scene, float defaultBpm)
@@ -357,7 +420,10 @@ void SceneJsonObserver::onObjectStart() {
     } else if (parent.path == Path::Root) {
       if (lastKey_ == "state") path = Path::State;
       else if (lastKey_ == "song") path = Path::Song;
+      else if (lastKey_ == "song") path = Path::Song;
       else if (lastKey_ == "tape") path = Path::Tape;
+      else if (lastKey_ == "led") path = Path::Led;
+      else if (lastKey_ == "generatorParams") path = Path::GeneratorParams;
     } else if (parent.path == Path::State && lastKey_ == "mute") {
       path = Path::Mute;
     }
@@ -386,6 +452,9 @@ void SceneJsonObserver::onArrayStart() {
         if (lastKey_ == "positions") path = Path::SongPositions;
         else if (lastKey_ == "synthDistortion") path = Path::SynthDistortion;
         else if (lastKey_ == "synthDelay") path = Path::SynthDelay;
+        else if (lastKey_ == "clr") path = Path::LedColorArray;
+      } else if (parent.path == Path::Led) {
+        if (lastKey_ == "clr") path = Path::LedColorArray;
       } else if (parent.path == Path::DrumVoice) {
         if (lastKey_ == "hit") path = Path::DrumHitArray;
         else if (lastKey_ == "accent") path = Path::DrumAccentArray;
@@ -446,7 +515,7 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
   }
   if (path == Path::DrumHitArray || path == Path::DrumAccentArray ||
       path == Path::MuteDrums || path == Path::MuteSynth || path == Path::SynthDistortion ||
-      path == Path::SynthDelay) {
+      path == Path::SynthDelay || path == Path::LedColorArray) {
     handlePrimitiveBool(value != 0);
     return;
   }
@@ -481,6 +550,19 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     } else if (lastKey_ == "accent") {
       pattern.steps[stepIdx].accent = value != 0;
     }
+    return;
+  }
+  if (path == Path::GeneratorParams) {
+    if (lastKey_ == "minNotes") target_.generatorParams.minNotes = static_cast<int>(value);
+    else if (lastKey_ == "maxNotes") target_.generatorParams.maxNotes = static_cast<int>(value);
+    else if (lastKey_ == "minOctave") target_.generatorParams.minOctave = static_cast<int>(value);
+    else if (lastKey_ == "maxOctave") target_.generatorParams.maxOctave = static_cast<int>(value);
+    else if (lastKey_ == "swingAmount") target_.generatorParams.swingAmount = static_cast<float>(value);
+    else if (lastKey_ == "velocityRange") target_.generatorParams.velocityRange = static_cast<float>(value);
+    else if (lastKey_ == "ghostNoteProbability") target_.generatorParams.ghostNoteProbability = static_cast<float>(value);
+    else if (lastKey_ == "microTimingAmount") target_.generatorParams.microTimingAmount = static_cast<float>(value);
+    else if (lastKey_ == "scaleRoot") target_.generatorParams.scaleRoot = static_cast<int>(value);
+    else if (lastKey_ == "scale") target_.generatorParams.scale = static_cast<ScaleType>(static_cast<int>(value));
     return;
   }
   if (path == Path::SynthParam) {
@@ -522,6 +604,10 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     }
     if (lastKey_ == "loopEnd") {
       loopEndRow_ = static_cast<int>(value);
+      return;
+    }
+    if (lastKey_ == "masterVolume") {
+      target_.masterVolume = static_cast<float>(value);
       return;
     }
     int intValue = static_cast<int>(value);
@@ -586,6 +672,20 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     }
     return;
   }
+  if (path == Path::LedColorArray) {
+    int idx = stack_[stackSize_ - 1].index;
+    if (idx == 0) target_.led.color.r = static_cast<uint8_t>(value);
+    else if (idx == 1) target_.led.color.g = static_cast<uint8_t>(value);
+    else if (idx == 2) target_.led.color.b = static_cast<uint8_t>(value);
+    return;
+  }
+  if (path == Path::Led) {
+    if (lastKey_ == "mode") target_.led.mode = static_cast<LedMode>(static_cast<int>(value));
+    else if (lastKey_ == "src") target_.led.source = static_cast<LedSource>(static_cast<int>(value));
+    else if (lastKey_ == "bri") target_.led.brightness = static_cast<uint8_t>(value);
+    else if (lastKey_ == "fls") target_.led.flashMs = static_cast<uint16_t>(value);
+    return;
+  }
   if (path == Path::Root) {
     if (lastKey_ == "mode") {
       int m = static_cast<int>(value);
@@ -598,6 +698,11 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
 void SceneJsonObserver::handlePrimitiveBool(bool value) {
   if (error_ || stackSize_ == 0) return;
   Path path = stack_[stackSize_ - 1].path;
+  if (path == Path::GeneratorParams) {
+    if (lastKey_ == "preferDownbeats") target_.generatorParams.preferDownbeats = value;
+    else if (lastKey_ == "scaleQuantize") target_.generatorParams.scaleQuantize = value;
+    return;
+  }
   if (path == Path::DrumHitArray || path == Path::DrumAccentArray) {
     int bankIdx = currentIndexFor(Path::DrumBanks);
     if (bankIdx < 0) bankIdx = 0;
@@ -1063,8 +1168,8 @@ GrooveboxMode SceneManager::getMode() const {
 
 
 void SceneManager::setBpm(float bpm) {
-  if (bpm < 40.0f) bpm = 40.0f;
-  if (bpm > 200.0f) bpm = 200.0f;
+  if (bpm < 10.0f) bpm = 10.0f;
+  if (bpm > 250.0f) bpm = 250.0f;
   bpm_ = bpm;
 }
 
@@ -1243,6 +1348,43 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   ArduinoJson::JsonArray synthDelay = state["synthDelay"].to<ArduinoJson::JsonArray>();
   synthDelay.add(synthDelay_[0]);
   synthDelay.add(synthDelay_[1]);
+
+  state["masterVolume"] = scene_->masterVolume;
+
+  ArduinoJson::JsonObject genParams = root["generatorParams"].to<ArduinoJson::JsonObject>();
+  serializeGeneratorParams(scene_->generatorParams, genParams);
+
+  ArduinoJson::JsonObject ledObj = root["led"].to<ArduinoJson::JsonObject>();
+  serializeLedSettings(scene_->led, ledObj);
+
+  ArduinoJson::JsonArray samplerPadsArr = root["samplerPads"].to<ArduinoJson::JsonArray>();
+  for (int i = 0; i < 16; ++i) {
+    ArduinoJson::JsonObject padObj = samplerPadsArr.add<ArduinoJson::JsonObject>();
+    const auto& p = scene_->samplerPads[i];
+    padObj["id"] = p.sampleId;
+    padObj["vol"] = p.volume;
+    padObj["pch"] = p.pitch;
+    padObj["str"] = p.startFrame;
+    padObj["end"] = p.endFrame;
+    padObj["chk"] = p.chokeGroup;
+    padObj["rev"] = p.reverse;
+    padObj["lop"] = p.loop;
+  }
+
+  ArduinoJson::JsonObject tapeObj = root["tape"].to<ArduinoJson::JsonObject>();
+  tapeObj["mode"] = static_cast<int>(scene_->tape.mode);
+  tapeObj["preset"] = static_cast<int>(scene_->tape.preset);
+  tapeObj["speed"] = scene_->tape.speed;
+  tapeObj["fxEnabled"] = scene_->tape.fxEnabled;
+  tapeObj["wow"] = scene_->tape.macro.wow;
+  tapeObj["age"] = scene_->tape.macro.age;
+  tapeObj["sat"] = scene_->tape.macro.sat;
+  tapeObj["tone"] = scene_->tape.macro.tone;
+  tapeObj["crush"] = scene_->tape.macro.crush;
+  tapeObj["vol"] = scene_->tape.looperVolume;
+  tapeObj["space"] = scene_->tape.space;
+  tapeObj["movement"] = scene_->tape.movement;
+  tapeObj["groove"] = scene_->tape.groove;
 }
 
 bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
@@ -1325,6 +1467,11 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     }
   }
 
+  ArduinoJson::JsonObjectConst ledObj = obj["led"].as<ArduinoJson::JsonObjectConst>();
+  if (!ledObj.isNull()) {
+    deserializeLedSettings(ledObj, loaded->led);
+  }
+
   ArduinoJson::JsonObjectConst state = obj["state"].as<ArduinoJson::JsonObjectConst>();
   if (!state.isNull()) {
     drumPatternIndex = valueToInt(state["drumPatternIndex"], drumPatternIndex);
@@ -1377,6 +1524,7 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     loopMode = state["loopMode"].is<bool>() ? state["loopMode"].as<bool>() : loopMode;
     loopStartRow = valueToInt(state["loopStart"], loopStartRow);
     loopEndRow = valueToInt(state["loopEnd"], loopEndRow);
+    loaded->masterVolume = valueToFloat(state["masterVolume"], loaded->masterVolume);
   }
 
   if (obj["samplerPads"].is<ArduinoJson::JsonArrayConst>()) {
@@ -1440,6 +1588,11 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
         loaded->tape.looperVolume = tObj["vol"].as<float>();
       }
     }
+  }
+
+  ArduinoJson::JsonObjectConst genParams = obj["generatorParams"].as<ArduinoJson::JsonObjectConst>();
+  if (!genParams.isNull()) {
+    deserializeGeneratorParams(genParams, loaded->generatorParams);
   }
 
   if (!hasSongObj) {

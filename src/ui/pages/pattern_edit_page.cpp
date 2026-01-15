@@ -344,7 +344,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   if (patternIdx >= 0) {
     char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
     patternKeyReserved = (lowerKey == 'q' || lowerKey == 'w');
-    if (!patternKeyReserved || patternRowFocused()) {
+    if (ui_event.shift || !patternKeyReserved || patternRowFocused()) {
       if (mini_acid_.songModeEnabled()) return true;
       focusPatternRow();
       setPatternCursor(patternIdx);

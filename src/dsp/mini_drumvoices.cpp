@@ -71,8 +71,12 @@ void TR808DrumSynthVoice::reset() {
   kickActive = false;
   kickAccentGain = 1.0f;
   kickAccentDistortion = false;
-  kickAmpDecay = 0.9995f;
-  kickBaseFreq = 42.0f;
+  kickAmpDecay = 0.9985f;
+  kickBaseFreq = 45.0f;
+  kickSubPhase = 0.0f;
+  kickSubDecay = 0.0f;
+  kickClickAmp = 0.0f;
+  noiseState = 12345;
 
   snareEnvAmp = 0.0f;
   snareToneEnv = 0.0f;
@@ -174,21 +178,26 @@ void TR808DrumSynthVoice::setSampleRate(float sampleRateHz) {
   updateClapFilters(clapAccentAmount);
 }
 
-void TR808DrumSynthVoice::triggerKick(bool accent) {
+void TR808DrumSynthVoice::triggerKick(bool accent, uint8_t velocity) {
   kickActive = true;
   kickPhase = 0.0f;
-  kickEnvAmp = accent ? 1.4f : 1.2f;
+  float vel = velocity / 100.0f;
+  kickEnvAmp = (accent ? 1.4f : 1.2f) * vel;
   kickEnvPitch = 1.0f;
   kickFreq = 55.0f;
   kickAccentGain = accent ? 1.15f : 1.0f;
   kickAccentDistortion = accent;
   kickAmpDecay = accent ? 0.99965f : 0.9995f;
-  kickBaseFreq = accent ? 36.0f : 42.0f;
+  kickBaseFreq = accent ? 38.0f : 45.0f;
+  kickSubPhase = 0.0f;
+  kickSubDecay = 1.0f;
+  kickClickAmp = (accent ? 0.5f : 0.4f) * vel;
 }
 
-void TR808DrumSynthVoice::triggerSnare(bool accent) {
+void TR808DrumSynthVoice::triggerSnare(bool accent, uint8_t velocity) {
   snareActive = true;
-  snareEnvAmp = accent ? 1.4f : 1.0f;
+  float vel = velocity / 100.0f;
+  snareEnvAmp = (accent ? 1.4f : 1.0f) * vel;
   snareToneEnv = accent ? 1.35f : 1.0f;
   snareTonePhase = 0.0f;
   snareTonePhase2 = 0.0f;
@@ -197,9 +206,10 @@ void TR808DrumSynthVoice::triggerSnare(bool accent) {
   snareAccentDistortion = accent;
 }
 
-void TR808DrumSynthVoice::triggerHat(bool accent) {
+void TR808DrumSynthVoice::triggerHat(bool accent, uint8_t velocity) {
   hatActive = true;
-  hatEnvAmp = accent ? 0.7f : 0.5f;
+  float vel = velocity / 100.0f;
+  hatEnvAmp = (accent ? 0.7f : 0.5f) * vel;
   hatToneEnv = 1.0f;
   hatPhaseA = 0.0f;
   hatPhaseB = 0.25f;
@@ -210,9 +220,10 @@ void TR808DrumSynthVoice::triggerHat(bool accent) {
   openHatEnvAmp *= 0.3f;
 }
 
-void TR808DrumSynthVoice::triggerOpenHat(bool accent) {
+void TR808DrumSynthVoice::triggerOpenHat(bool accent, uint8_t velocity) {
   openHatActive = true;
-  openHatEnvAmp = accent ? 0.999f : 0.9f;
+  float vel = velocity / 100.0f;
+  openHatEnvAmp = (accent ? 0.999f : 0.9f) * vel;
   openHatToneEnv = 1.0f;
   openHatPhaseA = 0.0f;
   openHatPhaseB = 0.37f;
@@ -221,33 +232,37 @@ void TR808DrumSynthVoice::triggerOpenHat(bool accent) {
   openHatAccentDistortion = accent;
 }
 
-void TR808DrumSynthVoice::triggerMidTom(bool accent) {
+void TR808DrumSynthVoice::triggerMidTom(bool accent, uint8_t velocity) {
   midTomActive = true;
-  midTomEnv = 1.0f;
+  float vel = velocity / 100.0f;
+  midTomEnv = 1.0f * vel;
   midTomPhase = 0.0f;
   midTomAccentGain = accent ? 1.45f : 1.0f;
   midTomAccentDistortion = accent;
 }
 
-void TR808DrumSynthVoice::triggerHighTom(bool accent) {
+void TR808DrumSynthVoice::triggerHighTom(bool accent, uint8_t velocity) {
   highTomActive = true;
-  highTomEnv = 1.0f;
+  float vel = velocity / 100.0f;
+  highTomEnv = 1.0f * vel;
   highTomPhase = 0.0f;
   highTomAccentGain = accent ? 1.45f : 1.0f;
   highTomAccentDistortion = accent;
 }
 
-void TR808DrumSynthVoice::triggerRim(bool accent) {
+void TR808DrumSynthVoice::triggerRim(bool accent, uint8_t velocity) {
   rimActive = true;
-  rimEnv = 1.0f;
+  float vel = velocity / 100.0f;
+  rimEnv = 1.0f * vel;
   rimPhase = 0.0f;
   rimAccentGain = accent ? 1.4f : 1.0f;
   rimAccentDistortion = accent;
 }
 
-void TR808DrumSynthVoice::triggerClap(bool accent) {
+void TR808DrumSynthVoice::triggerClap(bool accent, uint8_t velocity) {
   clapActive = true;
-  clapEnv = 1.0f;
+  float vel = velocity / 100.0f;
+  clapEnv = 1.0f * vel;
   clapTrans = 1.0f;
   clapNoise = frand();
   clapDelay = 0.0f;
@@ -260,9 +275,10 @@ void TR808DrumSynthVoice::triggerClap(bool accent) {
   updateClapFilters(clapAccentAmount);
 }
 
-void TR808DrumSynthVoice::triggerCymbal(bool accent) {
+void TR808DrumSynthVoice::triggerCymbal(bool accent, uint8_t velocity) {
   cymbalActive = true;
-  cymbalEnv = accent ? 0.85f : 0.7f;
+  float vel = velocity / 100.0f;
+  cymbalEnv = (accent ? 0.85f : 0.7f) * vel;
   cymbalToneEnv = 1.0f;
   cymbalPhaseA = 0.0f;
   cymbalPhaseB = 0.35f;
@@ -343,9 +359,36 @@ float TR808DrumSynthVoice::processKick() {
 
   float body = sinf(2.0f * 3.14159265f * kickPhase);
   float transient = sinf(2.0f * 3.14159265f * kickPhase * 3.0f) * pitchFactor * 0.25f;
-  float driven = tanhf(body * (2.8f + 0.6f * kickEnvAmp));
-
-  float out = (driven * 0.85f + transient) * kickEnvAmp * kickAccentGain;
+  
+  // === SUB LAYER (NEW) ===
+  float subFreq = kickBaseFreq * 0.5f;
+  kickSubPhase += subFreq * invSampleRate;
+  if (kickSubPhase >= 1.0f) kickSubPhase -= 1.0f;
+  float sub = sinf(2.0f * 3.14159265f * kickSubPhase);
+  kickSubDecay *= 0.9992f;
+  sub *= kickSubDecay * kickSubDecay;
+  
+  // === MIX & SATURATION (NEW) ===
+  float mixed = (body * 0.65f + sub * 0.35f);
+  // Fast tanh saturation
+  float driven = mixed * (2.8f + 0.6f * kickEnvAmp);
+  if (driven > 3.0f) driven = 1.0f;
+  else if (driven < -3.0f) driven = -1.0f;
+  else {
+      float d2 = driven * driven;
+      driven = driven * (27.0f + d2) / (27.0f + 9.0f * d2);
+  }
+  driven *= 0.8f;
+  
+  // === CLICK TRANSIENT (NEW) ===
+  float click = 0;
+  if (kickClickAmp > 0.01f) {
+      noiseState = noiseState * 1664525 + 1013904223;
+      click = ((noiseState >> 16) & 0x7FFF) / 32768.0f - 0.5f;
+      kickClickAmp *= 0.92f;
+  }
+  
+  float out = (driven + transient + click * 0.15f) * kickEnvAmp * kickAccentGain;
   float res = applyAccentDistortion(out, kickAccentDistortion);
   return lofiEnabled ? lofi.process(res, KICK) : res;
 }
@@ -521,7 +564,8 @@ float TR808DrumSynthVoice::processRim() {
   if (rimPhase >= 1.0f)
     rimPhase -= 1.0f;
   float tone = sinf(2.0f * 3.14159265f * rimPhase);
-  float click = (frand() * 0.6f + 0.4f) * rimEnv;
+  // Fixed: centered noise to avoid DC offset "thump"
+  float click = (frand() * 0.6f) * rimEnv; 
   float out = (tone * 0.5f + click) * rimEnv * 0.8f * rimAccentGain;
   float res = applyAccentDistortion(out, rimAccentDistortion);
   return lofiEnabled ? lofi.process(res, RIM) : res;
@@ -698,22 +742,24 @@ void TR909DrumSynthVoice::setSampleRate(float sampleRateHz) {
   updateClapFilter();
 }
 
-void TR909DrumSynthVoice::triggerKick(bool accent) {
+void TR909DrumSynthVoice::triggerKick(bool accent, uint8_t velocity) {
   kickActive = true;
   kickPhase = 0.0f;
-  kickEnvAmp = accent ? 1.35f : 1.15f;
+  float vel = velocity / 100.0f;
+  kickEnvAmp = (accent ? 1.35f : 1.15f) * vel;
   kickEnvPitch = 0.85f;
   kickFreq = 58.0f;
   kickAccentGain = accent ? 1.2f : 1.0f;
   kickAccentDistortion = accent;
   kickAmpDecay = accent ? 0.99935f : 0.99925f;
   kickBaseFreq = accent ? 46.0f : 48.0f;
-  kickClickEnv = accent ? 1.0f : 0.85f;
+  kickClickEnv = (accent ? 1.0f : 0.85f) * vel;
 }
 
-void TR909DrumSynthVoice::triggerSnare(bool accent) {
+void TR909DrumSynthVoice::triggerSnare(bool accent, uint8_t velocity) {
   snareActive = true;
-  snareEnvAmp = accent ? 1.25f : 1.0f;
+  float vel = velocity / 100.0f;
+  snareEnvAmp = (accent ? 1.25f : 1.0f) * vel;
   snareToneEnv = accent ? 1.25f : 1.0f;
   snareTonePhase = 0.0f;
   snareTonePhase2 = 0.0f;
@@ -723,9 +769,10 @@ void TR909DrumSynthVoice::triggerSnare(bool accent) {
   snareNoiseColor = 0.0f;
 }
 
-void TR909DrumSynthVoice::triggerHat(bool accent) {
+void TR909DrumSynthVoice::triggerHat(bool accent, uint8_t velocity) {
   hatActive = true;
-  hatEnvAmp = accent ? 0.6f : 0.42f;
+  float vel = velocity / 100.0f;
+  hatEnvAmp = (accent ? 0.6f : 0.42f) * vel;
   hatToneEnv = 1.0f;
   hatPhaseA = 0.0f;
   hatPhaseB = 0.33f;
@@ -735,9 +782,10 @@ void TR909DrumSynthVoice::triggerHat(bool accent) {
   openHatEnvAmp *= 0.25f;
 }
 
-void TR909DrumSynthVoice::triggerOpenHat(bool accent) {
+void TR909DrumSynthVoice::triggerOpenHat(bool accent, uint8_t velocity) {
   openHatActive = true;
-  openHatEnvAmp = accent ? 0.9995f : 0.95f;
+  float vel = velocity / 100.0f;
+  openHatEnvAmp = (accent ? 0.9995f : 0.95f) * vel;
   openHatToneEnv = 1.0f;
   openHatPhaseA = 0.0f;
   openHatPhaseB = 0.29f;
@@ -746,33 +794,37 @@ void TR909DrumSynthVoice::triggerOpenHat(bool accent) {
   openHatAccentDistortion = accent;
 }
 
-void TR909DrumSynthVoice::triggerMidTom(bool accent) {
+void TR909DrumSynthVoice::triggerMidTom(bool accent, uint8_t velocity) {
   midTomActive = true;
-  midTomEnv = 1.0f;
+  float vel = velocity / 100.0f;
+  midTomEnv = 1.0f * vel;
   midTomPhase = 0.0f;
   midTomAccentGain = accent ? 1.3f : 1.0f;
   midTomAccentDistortion = accent;
 }
 
-void TR909DrumSynthVoice::triggerHighTom(bool accent) {
+void TR909DrumSynthVoice::triggerHighTom(bool accent, uint8_t velocity) {
   highTomActive = true;
-  highTomEnv = 1.0f;
+  float vel = velocity / 100.0f;
+  highTomEnv = 1.0f * vel;
   highTomPhase = 0.0f;
   highTomAccentGain = accent ? 1.3f : 1.0f;
   highTomAccentDistortion = accent;
 }
 
-void TR909DrumSynthVoice::triggerRim(bool accent) {
+void TR909DrumSynthVoice::triggerRim(bool accent, uint8_t velocity) {
   rimActive = true;
-  rimEnv = 1.0f;
+  float vel = velocity / 100.0f;
+  rimEnv = 1.0f * vel;
   rimPhase = 0.0f;
   rimAccentGain = accent ? 1.35f : 1.0f;
   rimAccentDistortion = accent;
 }
 
-void TR909DrumSynthVoice::triggerClap(bool accent) {
+void TR909DrumSynthVoice::triggerClap(bool accent, uint8_t velocity) {
   clapActive = true;
-  clapEnv = 1.0f;
+  float vel = velocity / 100.0f;
+  clapEnv = 1.0f * vel;
   clapTrans = 1.0f;
   clapNoise = frand();
   clapDelay = 0.0f;
@@ -782,9 +834,10 @@ void TR909DrumSynthVoice::triggerClap(bool accent) {
   clapBandpass.reset();
 }
 
-void TR909DrumSynthVoice::triggerCymbal(bool accent) {
+void TR909DrumSynthVoice::triggerCymbal(bool accent, uint8_t velocity) {
   cymbalActive = true;
-  cymbalEnv = accent ? 0.95f : 0.75f;
+  float vel = velocity / 100.0f;
+  cymbalEnv = (accent ? 0.95f : 0.75f) * vel;
   cymbalToneEnv = 1.0f;
   cymbalPhaseA = 0.0f;
   cymbalPhaseB = 0.27f;
@@ -1178,67 +1231,74 @@ void TR606DrumSynthVoice::setSampleRate(float sampleRateHz) {
   updateCymbalFilter(accentEnv, cymbalBandpass);
 }
 
-void TR606DrumSynthVoice::triggerKick(bool accent) {
+void TR606DrumSynthVoice::triggerKick(bool accent, uint8_t velocity) {
   setAccent(accent);
+  float vel = velocity / 100.0f;
   kickActive = true;
   kickPhase = 0.0f;
-  kickAmpEnv = 1.0f + accentEnv * 0.7f;
+  kickAmpEnv = (1.0f + accentEnv * 0.7f) * vel;
   kickFmEnv = 1.0f + accentEnv * 0.4f;
 }
 
-void TR606DrumSynthVoice::triggerSnare(bool accent) {
+void TR606DrumSynthVoice::triggerSnare(bool accent, uint8_t velocity) {
   setAccent(accent);
+  float vel = velocity / 100.0f;
   snareActive = true;
-  snareToneEnv = 1.0f + accentEnv * 0.4f;
-  snareNoiseEnv = 1.0f + accentEnv * 0.8f;
+  snareToneEnv = (1.0f + accentEnv * 0.4f) * vel;
+  snareNoiseEnv = (1.0f + accentEnv * 0.8f) * vel;
   snareTonePhaseA = 0.0f;
   snareTonePhaseB = 0.0f;
 }
 
-void TR606DrumSynthVoice::triggerHat(bool accent) {
+void TR606DrumSynthVoice::triggerHat(bool accent, uint8_t velocity) {
   setAccent(accent);
+  float vel = velocity / 100.0f;
   hatActive = true;
-  hatEnv = 1.0f + accentEnv * 0.6f;
+  hatEnv = (1.0f + accentEnv * 0.6f) * vel;
   updateHatFilters(accentEnv);
   openHatEnv *= 0.25f;
 }
 
-void TR606DrumSynthVoice::triggerOpenHat(bool accent) {
+void TR606DrumSynthVoice::triggerOpenHat(bool accent, uint8_t velocity) {
   setAccent(accent);
+  float vel = velocity / 100.0f;
   openHatActive = true;
-  openHatEnv = 1.0f + accentEnv * 0.6f;
+  openHatEnv = (1.0f + accentEnv * 0.6f) * vel;
   updateHatFilters(accentEnv);
 }
 
-void TR606DrumSynthVoice::triggerMidTom(bool accent) {
+void TR606DrumSynthVoice::triggerMidTom(bool accent, uint8_t velocity) {
   setAccent(accent);
+  float vel = velocity / 100.0f;
   midTomActive = true;
   midTomPhase = 0.0f;
-  midTomAmpEnv = 1.0f + accentEnv * 0.5f;
+  midTomAmpEnv = (1.0f + accentEnv * 0.5f) * vel;
   midTomFmEnv = 1.0f;
 }
 
-void TR606DrumSynthVoice::triggerHighTom(bool accent) {
+void TR606DrumSynthVoice::triggerHighTom(bool accent, uint8_t velocity) {
   setAccent(accent);
+  float vel = velocity / 100.0f;
   highTomActive = true;
   highTomPhase = 0.0f;
-  highTomAmpEnv = 1.0f + accentEnv * 0.5f;
+  highTomAmpEnv = (1.0f + accentEnv * 0.5f) * vel;
   highTomFmEnv = 1.0f;
 }
 
-void TR606DrumSynthVoice::triggerRim(bool accent) {
-  triggerCymbal(accent);
+void TR606DrumSynthVoice::triggerRim(bool accent, uint8_t velocity) {
+  triggerCymbal(accent, velocity);
 }
 
-void TR606DrumSynthVoice::triggerCymbal(bool accent) {
+void TR606DrumSynthVoice::triggerCymbal(bool accent, uint8_t velocity) {
   setAccent(accent);
+  float vel = velocity / 100.0f;
   cymbalActive = true;
-  cymbalEnv = 1.0f + accentEnv * 0.5f;
+  cymbalEnv = (1.0f + accentEnv * 0.5f) * vel;
   cymbalDecay = decayCoeff(0.600f * (1.0f + accentEnv * 0.5f));
   updateCymbalFilter(accentEnv, cymbalBandpass);
 }
 
-void TR606DrumSynthVoice::triggerClap(bool accent) {
+void TR606DrumSynthVoice::triggerClap(bool accent, uint8_t velocity) {
   setAccent(accent);
 }
 

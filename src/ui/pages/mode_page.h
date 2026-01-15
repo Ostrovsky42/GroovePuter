@@ -16,7 +16,7 @@ private:
     void applyToTape();
     void previewMode();
     
-    void drawModeBox(IGfx& gfx, int x, int y, const char* name, bool active, uint16_t color);
+    void drawModeBox(IGfx& gfx, int x, int y, const char* name, bool active, uint16_t color, int w, int h);
     void withAudioGuard(const std::function<void()>& fn);
 
     MiniAcid& mini_acid_;

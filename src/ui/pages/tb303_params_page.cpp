@@ -118,19 +118,19 @@ class Synth303ParamsPage::KnobComponent : public FocusableComponent {
       label = "";
     }
     gfx.setTextColor(COLOR_LABEL);
-    int label_x = cx - textWidth(gfx, label) / 2;
-    gfx.drawText(label_x, cy + radius + 6, label);
+    int label_x = cx - gfx.textWidth(label) / 2;
+    gfx.drawText(label_x, cy + radius + 4, label);  // Reduced from +6
 
     char buf[48];
     const char* unit = param_.unit();
     float value = param_.value();
     if (unit && unit[0]) {
-      snprintf(buf, sizeof(buf), "%.0f %s", value, unit);
+      snprintf(buf, sizeof(buf), "%.0f%s", value, unit);
     } else {
       snprintf(buf, sizeof(buf), "%.2f", value);
     }
-    int val_x = cx - textWidth(gfx, buf) / 2;
-    gfx.drawText(val_x, cy - radius - 14, buf);
+    int val_x = cx - gfx.textWidth(buf) / 2;
+    gfx.drawText(val_x, cy - radius - 10, buf);  // Reduced from -14 to fit tighter space
 
     if (isFocused()) {
       int pad = 3;
@@ -254,10 +254,10 @@ void Synth303ParamsPage::initComponents() {
   addChild(delay_control_);
 
   // setting boundaries really belongs in a layout pass, but for now do it here
-  int x_margin = -10;
+  int x_margin = 4;  // Fixed: was -10 causing overflow!
   int usable_w = width() - x_margin * 2;
 
-  int radius = 18;
+  int radius = 14;  // Reduced from 18 to fit better
   int spacing = usable_w / 5;
   
   int cx1 = dx() + x_margin + spacing * 1;
@@ -343,10 +343,10 @@ void Synth303ParamsPage::draw(IGfx& gfx) {
 
   int center_y_for_knobs = dy() + height() / 2 - 13;
 
-  int x_margin = -10;
+  int x_margin = 4;  // Fixed: was -10 causing overflow!
   int usable_w = width() - x_margin * 2;
 
-  int radius = 18;
+  int radius = 14;  // Reduced from 18 to fit better
   int spacing = usable_w / 5;
   
   int cx1 = dx() + x_margin + spacing * 1;
@@ -437,29 +437,9 @@ void Synth303ParamsPage::draw(IGfx& gfx) {
   gfx_.setTextColor(COLOR_BLACK);
   gfx_.drawText(badgeX + 3, dy() + 2, modeName);
 
-  // Presets section
-  int presetY = dy() + height() - 30;
+  // Hint (simplified - removed presets section for space)
   gfx_.setTextColor(COLOR_LABEL);
-  gfx_.drawText(dx() + 6, presetY, "PRESETS:");
-  
-  int count;
-  const TB303ModePreset* presets = mini_acid_.modeManager().get303Presets(count);
-  for (int i = 0; i < count; i++) {
-    int px = dx() + 6 + i * 50;
-    bool selected = (current_preset_index_ == i);
-    if (selected) {
-      gfx_.fillRect(px, presetY + 10, 45, 12, (IGfxColor)modeColor);
-      gfx_.setTextColor(COLOR_BLACK);
-    } else {
-      gfx_.drawRect(px, presetY + 10, 45, 12, COLOR_WHITE);
-      gfx_.setTextColor(COLOR_WHITE);
-    }
-    gfx_.drawText(px + 3, presetY + 12, presets[i].name);
-  }
-
-  // Hint
-  gfx_.setTextColor(COLOR_LABEL);
-  gfx_.drawText(dx() + 6, dy() + height() - 6, "[1-4] Load preset  [M] Toggle mode");
+  gfx_.drawText(dx() + 6, dy() + height() - 10, "[M] Mode  [1-4] Preset  [G] Random");
 
   // finally draw all child components
   Container::draw(gfx_);

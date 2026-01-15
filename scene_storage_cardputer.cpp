@@ -168,11 +168,31 @@ bool SceneStorageCardputer::readScene(SceneManager& manager) {
   bool ok = manager.loadSceneEvented(file);
   file.close();
   if (!ok) {
-    Serial.println("Evented parse failed, retrying with ArduinoJson...");
-    File retry = SD.open(path.c_str(), FILE_READ);
-    if (retry) {
-      ok = manager.loadSceneJson(retry);
-      retry.close();
+    Serial.println("Evented parse failed.");
+    // Fallback requires loading entire file into RAM, which crashes on DRAM-only devices.
+    // Only attempt if file is small enough or if we are sure we have RAM.
+    size_t fileSize = file.size();
+    if (fileSize < 20 * 1024) { // Only try fallback for small files (<20KB)
+        Serial.println("Retrying with ArduinoJson (small file)...");
+        File retry = SD.open(path.c_str(), FILE_READ);
+        if (retry) {
+          ok = manager.loadSceneJson(retry);
+          retry.close();
+        }
+    } else {
+        Serial.printf("Skipping ArduinoJson fallback (file too large: %u bytes). Checking PSRAM...\n", (unsigned)fileSize);
+        #if defined(ESP32) 
+        if (psramFound() && heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > fileSize * 2) {
+             Serial.println("PSRAM available, attempting full load...");
+             File retry = SD.open(path.c_str(), FILE_READ);
+             if (retry) {
+               ok = manager.loadSceneJson(retry);
+               retry.close();
+             }
+        } else {
+             Serial.println("Insufficient RAM for full JSON parse. Scene load aborted.");
+        }
+        #endif
     }
   }
   Serial.printf("Streaming read %s\n", ok ? "succeeded" : "failed");

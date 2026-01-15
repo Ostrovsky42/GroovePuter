@@ -30,6 +30,26 @@ std::string generateMemorableName() {
   name += nouns[nounIdx];
   return name;
 }
+
+struct TapeColor {
+    const char* name;
+    Rgb8 rgb;
+};
+
+static const TapeColor TAPE_PALETTE[] = {
+    {"Amber",    {255, 128, 0}},
+    {"WarmTape", {255, 100, 50}},
+    {"Violet",   {180, 100, 255}},
+    {"Mint",     {100, 255, 180}},
+    {"Ice",      {100, 200, 255}},
+    {"Rose",     {255, 100, 150}}
+};
+
+static const char* LED_MODE_NAMES[] = {"Off", "StepTrig", "Beat", "MuteState"};
+static const char* VOICE_ID_NAMES[] = {"303A", "303B", "Kick", "Snare", "HatC", "HatO", "TomM", "TomH", "Rim", "Clap"};
+static const uint8_t BRI_STEPS[] = {10, 25, 40, 60, 90};
+static const uint16_t FLASH_STEPS[] = {20, 40, 60, 90};
+
 } // namespace
 
 ProjectPage::ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard)
@@ -282,17 +302,62 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
 
   switch (ui_event.scancode) {
     case MINIACID_LEFT:
+      if (main_focus_ == MainFocus::Volume) {
+        mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, -1);
+        return true;
+      }
       if (main_focus_ == MainFocus::SaveAs) main_focus_ = MainFocus::Load;
       else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::SaveAs;
       else if (main_focus_ == MainFocus::Mode) main_focus_ = MainFocus::New;
+      else if (main_focus_ == MainFocus::LedMode || main_focus_ == MainFocus::LedSource || 
+               main_focus_ == MainFocus::LedColor || main_focus_ == MainFocus::LedBri ||
+               main_focus_ == MainFocus::LedFlash) {
+          // Horizontal nav in LED row? or sequential?
+          if (main_focus_ == MainFocus::LedMode) main_focus_ = MainFocus::Mode;
+          else if (main_focus_ == MainFocus::LedSource) main_focus_ = MainFocus::LedMode;
+          else if (main_focus_ == MainFocus::LedColor) main_focus_ = MainFocus::LedSource;
+          else if (main_focus_ == MainFocus::LedBri) main_focus_ = MainFocus::LedColor;
+          else if (main_focus_ == MainFocus::LedFlash) main_focus_ = MainFocus::LedBri;
+          return true;
+      }
       return true;
+    case MINIACID_RIGHT:
+      if (main_focus_ == MainFocus::Volume) {
+        mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, 1);
+        return true;
+      }
       if (main_focus_ == MainFocus::Load) main_focus_ = MainFocus::SaveAs;
       else if (main_focus_ == MainFocus::SaveAs) main_focus_ = MainFocus::New;
       else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::Mode;
+      else if (main_focus_ == MainFocus::Mode) main_focus_ = MainFocus::LedMode;
+      else if (main_focus_ == MainFocus::LedMode) main_focus_ = MainFocus::LedSource;
+      else if (main_focus_ == MainFocus::LedSource) main_focus_ = MainFocus::LedColor;
+      else if (main_focus_ == MainFocus::LedColor) main_focus_ = MainFocus::LedBri;
+      else if (main_focus_ == MainFocus::LedBri) main_focus_ = MainFocus::LedFlash;
       return true;
     case MINIACID_UP:
+     if (main_focus_ == MainFocus::Volume) {
+        main_focus_ = MainFocus::LedMode;
+        return true;
+      } else if (main_focus_ == MainFocus::LedMode || main_focus_ == MainFocus::LedSource || 
+                 main_focus_ == MainFocus::LedColor || main_focus_ == MainFocus::LedBri ||
+                 main_focus_ == MainFocus::LedFlash) {
+        main_focus_ = MainFocus::Load;
+        return true;
+      }
+      break;
     case MINIACID_DOWN:
-      return true;
+      if (main_focus_ == MainFocus::Load || main_focus_ == MainFocus::SaveAs || 
+          main_focus_ == MainFocus::New || main_focus_ == MainFocus::Mode) {
+        main_focus_ = MainFocus::LedMode;
+        return true;
+      } else if (main_focus_ == MainFocus::LedMode || main_focus_ == MainFocus::LedSource || 
+                 main_focus_ == MainFocus::LedColor || main_focus_ == MainFocus::LedBri ||
+                 main_focus_ == MainFocus::LedFlash) {
+        main_focus_ = MainFocus::Volume;
+        return true;
+      }
+      break;
     default:
       break;
   }
@@ -310,6 +375,42 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
     } else if (main_focus_ == MainFocus::Mode) {
       mini_acid_.toggleGrooveboxMode();
       return true;
+    }
+ else if (main_focus_ == MainFocus::LedMode) {
+        auto& led = mini_acid_.sceneManager().currentScene().led;
+        led.mode = static_cast<LedMode>((static_cast<int>(led.mode) + 1) % 4);
+        return true;
+    } else if (main_focus_ == MainFocus::LedSource) {
+        auto& led = mini_acid_.sceneManager().currentScene().led;
+        led.source = static_cast<LedSource>((static_cast<int>(led.source) + 1) % static_cast<int>(VoiceId::Count));
+        // Auto-assign color
+        switch (led.source) {
+            case LedSource::SynthA: led.color = TAPE_PALETTE[1].rgb; break; // WarmTape
+            case LedSource::SynthB: led.color = TAPE_PALETTE[2].rgb; break; // Violet
+            case LedSource::DrumKick: led.color = TAPE_PALETTE[0].rgb; break; // Amber
+            case LedSource::DrumSnare: led.color = TAPE_PALETTE[3].rgb; break; // Mint
+            case LedSource::DrumClap: led.color = TAPE_PALETTE[5].rgb; break; // Rose
+            default: led.color = TAPE_PALETTE[4].rgb; break; // Ice
+        }
+        return true;
+    } else if (main_focus_ == MainFocus::LedColor) {
+        auto& led = mini_acid_.sceneManager().currentScene().led;
+        int currentIdx = 0;
+        for (int i=0; i<6; ++i) if (TAPE_PALETTE[i].rgb.r == led.color.r && TAPE_PALETTE[i].rgb.g == led.color.g) currentIdx = i;
+        led.color = TAPE_PALETTE[(currentIdx + 1) % 6].rgb;
+        return true;
+    } else if (main_focus_ == MainFocus::LedBri) {
+        auto& led = mini_acid_.sceneManager().currentScene().led;
+        int currentIdx = 0;
+        for (int i=0; i<5; ++i) if (BRI_STEPS[i] == led.brightness) currentIdx = i;
+        led.brightness = BRI_STEPS[(currentIdx + 1) % 5];
+        return true;
+    } else if (main_focus_ == MainFocus::LedFlash) {
+        auto& led = mini_acid_.sceneManager().currentScene().led;
+        int currentIdx = 0;
+        for (int i=0; i<4; ++i) if (FLASH_STEPS[i] == led.flashMs) currentIdx = i;
+        led.flashMs = FLASH_STEPS[(currentIdx + 1) % 4];
+        return true;
     }
   }
   return false;
@@ -341,14 +442,14 @@ void ProjectPage::draw(IGfx& gfx) {
   int btn_w = 70;
   if (btn_w > 90) btn_w = 90;
   if (btn_w < 60) btn_w = 60;
-  int btn_h = line_h + 8;
+  int btn_h = line_h + 6;  // Reduced from +8 to +6
   int btn_y = body_y + line_h * 2 + 8;
   int spacing = 6;
   const char* labels[4] = {"Load", "Save As", "New", "Acid"};
   if (mini_acid_.grooveboxMode() == GrooveboxMode::Minimal) labels[3] = "Minimal";
   
-  btn_w = 48;
-  spacing = 4;
+  btn_w = 40;  // Reduced from 48 to 40
+  spacing = 3;  // Reduced from 4 to 3
   int total_w = btn_w * 4 + spacing * 3;
   int start_x = x + (w - total_w) / 2;
   
@@ -361,8 +462,67 @@ void ProjectPage::draw(IGfx& gfx) {
     gfx.drawText(btn_x + (btn_w - btn_tw) / 2, btn_y + (btn_h - line_h) / 2, labels[i]);
   }
 
+  // LED Section
+  int led_y = btn_y + btn_h + 10;
   gfx.setTextColor(COLOR_LABEL);
-  gfx.drawText(x, btn_y + btn_h + 6, "Enter to act, arrows to move focus");
+  gfx.drawText(x, led_y, "LED SETTINGS");
+  
+  int led_ctrl_y = led_y + line_h + 4;
+  int led_btn_w = 38;
+  int led_spacing = 2;
+  
+  auto& led = mini_acid_.sceneManager().currentScene().led;
+  char briBuf[8]; snprintf(briBuf, sizeof(briBuf), "%d%%", led.brightness);
+  char flsBuf[8]; snprintf(flsBuf, sizeof(flsBuf), "%dm", led.flashMs);
+  
+  const char* ledLabels[5] = { LED_MODE_NAMES[static_cast<int>(led.mode)], 
+                               VOICE_ID_NAMES[static_cast<int>(led.source)],
+                               "Color", briBuf, flsBuf };
+                               
+  for (int i=0; i<5; ++i) {
+      int bx = start_x + (i * (led_btn_w + led_spacing));
+      MainFocus focus = static_cast<MainFocus>(static_cast<int>(MainFocus::LedMode) + i);
+      bool focused = (dialog_type_ == DialogType::None && main_focus_ == focus);
+      
+      gfx.fillRect(bx, led_ctrl_y, led_btn_w, btn_h, COLOR_PANEL);
+      
+      IGfxColor btnColor = COLOR_LABEL;
+      if (focused) btnColor = COLOR_ACCENT;
+      else if (i == 2) {
+          btnColor = IGfxColor((led.color.r << 16) | (led.color.g << 8) | led.color.b);
+      }
+      gfx.drawRect(bx, led_ctrl_y, led_btn_w, btn_h, btnColor);
+      
+      int tw = textWidth(gfx, ledLabels[i]);
+      gfx.drawText(bx + (led_btn_w - tw) / 2, led_ctrl_y + (btn_h - line_h) / 2, ledLabels[i]);
+  }
+
+  // Volume Slider
+  int vol_y = led_ctrl_y + btn_h + 8;
+  int vol_h = 10;
+  int vol_label_w = 30;
+  int track_x = start_x + vol_label_w + 5;
+  int track_w = total_w - vol_label_w - 5;
+  
+  bool volFocused = (dialog_type_ == DialogType::None && static_cast<int>(main_focus_) == static_cast<int>(MainFocus::Volume));
+  
+  gfx.setTextColor(volFocused ? COLOR_ACCENT : COLOR_LABEL);
+  gfx.drawText(start_x, vol_y + (vol_h - line_h)/2, "Vol:");
+  
+  gfx.drawRect(track_x, vol_y, track_w, vol_h, volFocused ? COLOR_ACCENT : COLOR_DARKER);
+  float volVal = mini_acid_.miniParameter(MiniAcidParamId::MainVolume).value();
+  int fill_w = (int)(track_w * volVal);
+  if (fill_w > track_w - 2) fill_w = track_w - 2;
+  if (fill_w > 0) {
+      gfx.fillRect(track_x + 1, vol_y + 1, fill_w, vol_h - 2, volFocused ? COLOR_ACCENT : COLOR_GRAY);
+  }
+
+  // Warning
+  gfx.setTextColor(COLOR_ACCENT);
+  gfx.drawText(x, vol_y + vol_h + 4, "NOTE: RGB needs Screen BL=100%");
+
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(x, h - line_h - 2, "Enter/Arrow Keys to navigate");
   gfx.setTextColor(COLOR_WHITE);
 
   if (dialog_type_ == DialogType::None) return;

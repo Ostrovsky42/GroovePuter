@@ -49,7 +49,11 @@ public:
 
 private:
   // for 2 voices at 22050 Hz, this is the max that the cardputer can handle.
-  static const int kMaxDelaySeconds = 1;
+#if defined(ARDUINO_M5STACK_CARDPUTER)
+  static constexpr float kMaxDelaySeconds = 0.25f; // reduced for memory constrained device
+#else
+  static constexpr float kMaxDelaySeconds = 1.0f;
+#endif
 
   std::vector<float> buffer;
   int writeIndex;
@@ -241,8 +245,12 @@ private:
   volatile bool muteClap;
   volatile bool delay303Enabled;
   volatile bool delay3032Enabled;
-  volatile bool distortion303Enabled;
-  volatile bool distortion3032Enabled;
+  volatile bool distortion303Enabled = false;
+  bool distortion3032Enabled = false;
+  
+  // Timing state
+  int currentTimingOffset_ = 0;
+  
   volatile float bpmValue;
   volatile int currentStepIndex;
   unsigned long samplesIntoStep;
@@ -254,6 +262,37 @@ private:
   int patternModeDrumBankIndex_;
   int patternModeSynthPatternIndex_[NUM_303_VOICES];
   int patternModeSynthBankIndex_[NUM_303_VOICES];
+
+  struct SoftLimiter {
+    float threshold = 0.95f;
+    float process(float in) {
+      float absIn = fabsf(in);
+      if (absIn <= threshold) return in;
+      float over = absIn - threshold;
+      float comp = threshold + tanhf(over * 3.0f) * 0.15f; 
+      return (in > 0) ? comp : -comp;
+    }
+  } masterLimiter;
+
+  struct MasterBassBoost {
+    float f_coeff = 80.0f / 22050.0f; 
+    float boost = 1.25f; 
+    float lpf = 0.0f;
+    float process(float in) {
+      lpf += f_coeff * (in - lpf);
+      return in + lpf * (boost - 1.0f);
+    }
+  } masterBass;
+
+  // High-frequency dampening to soften harsh highs
+  struct HighShelfCut {
+    float lpf = 0.0f;
+    float coeff = 0.15f; // ~3kHz rolloff at 22050Hz 
+    float process(float in) {
+      lpf += coeff * (in - lpf);
+      return lpf; // Lowpass output
+    }
+  } masterHighCut;
 
   TempoDelay delay303;
   TempoDelay delay3032;

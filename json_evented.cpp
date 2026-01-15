@@ -225,9 +225,18 @@ bool JsonVisitor::parse(const std::string& input, JsonObserver& observer) {
 }
 
 bool JsonVisitor::parseImpl(NextChar nextChar, JsonObserver& observer) {
+  printf("JsonVisitor::parseImpl: Starting parse...\n");
   CharStream stream(std::move(nextChar));
-  if (!parseValue(stream, observer)) return false;
+  if (!parseValue(stream, observer)) {
+      printf("JsonVisitor::parseImpl: parseValue failed\n");
+      return false;
+  }
   stream.skipWhitespace();
   char extra;
-  return !stream.peek(extra);
+  if (stream.peek(extra)) {
+      printf("JsonVisitor::parseImpl: Extra chars after JSON: '%c' (%d)\n", extra, (int)extra);
+      return false;
+  }
+  printf("JsonVisitor::parseImpl: Success\n");
+  return true;
 }

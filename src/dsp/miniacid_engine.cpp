@@ -6,19 +6,16 @@
 #include <cctype>
 #include <string>
 
+#include "../sampler/sample_index.h"
+#include "../ui/led_manager.h"
+
 #if defined(ESP32) || defined(ESP_PLATFORM)
 #include <esp_heap_caps.h>
 #include <esp_psram.h>
 #endif
 
-// Cross-platform debug logging
-#ifdef ARDUINO
-#define LOG_DEBUG(...) LOG_DEBUG(__VA_ARGS__)
-#define LOG_PRINTLN(msg) LOG_PRINTLN(msg)
-#else
-#define LOG_DEBUG(...) (void)0
-#define LOG_PRINTLN(msg) (void)0
-#endif
+#include "../platform/log.h"
+#include "advanced_pattern_generator.h"
 
 namespace {
 constexpr int kDrumKickVoice = 0;
@@ -85,11 +82,20 @@ TempoDelay::TempoDelay(float sampleRate)
 void TempoDelay::init(float maxSeconds) {
   if (maxSeconds <= 0.0f) maxSeconds = 1.0f;
   
-  // Update max delay length
-  maxDelaySamples = static_cast<int>(this->sampleRate * maxSeconds);
-  if (maxDelaySamples < 1) maxDelaySamples = 44100;
+  // Calculate required
+  int newMaxSamples = static_cast<int>(this->sampleRate * maxSeconds);
+  if (newMaxSamples < 1) newMaxSamples = 44100;
   
-  // Allocate buffer now
+  // Prevent double allocation if already sufficient
+  if (!buffer.empty() && maxDelaySamples == newMaxSamples) {
+     LOG_PRINTLN("TempoDelay::init: already initialized, skipping allocation");
+     return;
+  }
+
+  LOG_DEBUG("TempoDelay::init: sr=%.1f maxSeconds=%.3f => samples=%d\n",
+          sampleRate, maxSeconds, newMaxSamples);
+  
+  maxDelaySamples = newMaxSamples;
   size_t required = static_cast<size_t>(maxDelaySamples);
   
   // Log allocation attempt
@@ -225,7 +231,8 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
     delay303(sampleRate),
     delay3032(sampleRate),
     distortion303(),
-    distortion3032() {
+    distortion3032(),
+    currentTimingOffset_(0) {
   if (sampleRateValue <= 0.0f) sampleRateValue = 44100.0f;
   // Don't call reset() here, drums are not allocated yet!
 }
@@ -234,11 +241,16 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
 void MiniAcid::init() {
   bool hasPsram = false;
 #if defined(ESP32) || defined(ESP_PLATFORM)
-  hasPsram = psramFound();
+  // Check for ACTUAL usable PSRAM, not just if it was detected
+  // psramFound() can return true even if init failed
+  size_t freePsram = ESP.getFreePsram();
+  hasPsram = (freePsram > 512 * 1024); // Require at least 512KB usable
+  LOG_DEBUG("  - MiniAcid::init: freePsram=%u, hasPsram=%d\n", (unsigned)freePsram, hasPsram);
 #endif
 
   // Memory Strategy:
   if (hasPsram) {
+    LOG_PRINTLN("  - MiniAcid::init: PSRAM mode (high performance)");
     // PSRAM: High-performance mode
     tapeLooper.init(8);           // 8s looper
     if (sampleStore) sampleStore->setPoolSize(1024 * 1024); // 1MB sampler pool
@@ -246,17 +258,18 @@ void MiniAcid::init() {
     delay303.init(1.0f);
     delay3032.init(1.0f);
   } else {
+    LOG_PRINTLN("  - MiniAcid::init: DRAM-only mode (constrained)");
     // DRAM: Constrained memory
     tapeLooper.init(0.5f); // 0.5s looper (~44KB)
     if (sampleStore) sampleStore->setPoolSize(32 * 1024); // 32KB sampler pool
-    // FX Delays: 0.25s (~43KB each)
+    // FX Delays: 0.25s (~22KB each at 22050Hz)
     delay303.init(0.25f);
     delay3032.init(0.25f);
   }
 
   LOG_PRINTLN("  - MiniAcid::init: Memory strategy applied");
 
-  params[static_cast<int>(MiniAcidParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.0f, 0.8f, 1.0f / 128);
+  params[static_cast<int>(MiniAcidParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.0f, 0.6f, 1.0f / 64);
 
   if (sceneStorage_) {
     LOG_PRINTLN("  - MiniAcid::init: Initializing scene storage...");
@@ -312,6 +325,7 @@ void MiniAcid::reset() {
   bpmValue = 100.0f;
   currentStepIndex = -1;
   samplesIntoStep = 0;
+  currentTimingOffset_ = 0;
   updateSamplesPerStep();
   
   delay303.reset();
@@ -657,19 +671,48 @@ size_t MiniAcid::copyLastAudio(int16_t *dst, size_t maxSamples) const {
 
 void MiniAcid::toggleMute303(int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
-  if (idx == 0)
+  bool muted;
+  if (idx == 0) {
     mute303 = !mute303;
-  else
+    muted = mute303;
+  } else {
     mute303_2 = !mute303_2;
+    muted = mute303_2;
+  }
+  LedManager::instance().onMuteChanged(muted, sceneManager_.currentScene().led);
 }
-void MiniAcid::toggleMuteKick() { muteKick = !muteKick; }
-void MiniAcid::toggleMuteSnare() { muteSnare = !muteSnare; }
-void MiniAcid::toggleMuteHat() { muteHat = !muteHat; }
-void MiniAcid::toggleMuteOpenHat() { muteOpenHat = !muteOpenHat; }
-void MiniAcid::toggleMuteMidTom() { muteMidTom = !muteMidTom; }
-void MiniAcid::toggleMuteHighTom() { muteHighTom = !muteHighTom; }
-void MiniAcid::toggleMuteRim() { muteRim = !muteRim; }
-void MiniAcid::toggleMuteClap() { muteClap = !muteClap; }
+void MiniAcid::toggleMuteKick() {
+  muteKick = !muteKick;
+  LedManager::instance().onMuteChanged(muteKick, sceneManager_.currentScene().led);
+}
+void MiniAcid::toggleMuteSnare() {
+  muteSnare = !muteSnare;
+  LedManager::instance().onMuteChanged(muteSnare, sceneManager_.currentScene().led);
+}
+void MiniAcid::toggleMuteHat() {
+  muteHat = !muteHat;
+  LedManager::instance().onMuteChanged(muteHat, sceneManager_.currentScene().led);
+}
+void MiniAcid::toggleMuteOpenHat() {
+  muteOpenHat = !muteOpenHat;
+  LedManager::instance().onMuteChanged(muteOpenHat, sceneManager_.currentScene().led);
+}
+void MiniAcid::toggleMuteMidTom() {
+  muteMidTom = !muteMidTom;
+  LedManager::instance().onMuteChanged(muteMidTom, sceneManager_.currentScene().led);
+}
+void MiniAcid::toggleMuteHighTom() {
+  muteHighTom = !muteHighTom;
+  LedManager::instance().onMuteChanged(muteHighTom, sceneManager_.currentScene().led);
+}
+void MiniAcid::toggleMuteRim() {
+  muteRim = !muteRim;
+  LedManager::instance().onMuteChanged(muteRim, sceneManager_.currentScene().led);
+}
+void MiniAcid::toggleMuteClap() {
+  muteClap = !muteClap;
+  LedManager::instance().onMuteChanged(muteClap, sceneManager_.currentScene().led);
+}
 void MiniAcid::toggleDelay303(int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
   if (idx == 0) {
@@ -1028,6 +1071,8 @@ void MiniAcid::advanceStep() {
   int prevStep = currentStepIndex;
   currentStepIndex = (currentStepIndex + 1) % SEQ_STEPS;
 
+  LedManager::instance().onBeat(currentStepIndex, sceneManager_.currentScene().led);
+
   if (songMode_) {
     if (prevStep < 0) {
       songPlayheadPosition_ = clampSongPosition(sceneManager_.getSongPosition());
@@ -1063,23 +1108,21 @@ void MiniAcid::advanceStep() {
   const SynthPattern& synthB = activeSynthPattern(1);
   const SynthStep& stepA = synthA.steps[currentStepIndex];
   const SynthStep& stepB = synthB.steps[currentStepIndex];
-  int note = stepA.note;
-  bool accent = stepA.accent;
-  bool slide = stepA.slide;
-
-  int note2 = stepB.note;
-  bool accent2 = stepB.accent;
-  bool slide2 = stepB.slide;
-
-  if (!mute303 && songPatternA >= 0 && note >= 0)
-    voice303.startNote(noteToFreq(note), accent, slide);
-  else
+  
+  // Note: ghost notes handled by velocity < 50 usually
+  if (!mute303 && songPatternA >= 0 && stepA.note >= 0 && (!stepA.ghost || (rand() % 100 < 80))) {
+    voice303.startNote(noteToFreq(stepA.note), stepA.accent, stepA.slide, stepA.velocity);
+    LedManager::instance().onVoiceTriggered(VoiceId::SynthA, sceneManager_.currentScene().led);
+  } else {
     voice303.release();
+  }
 
-  if (!mute303_2 && songPatternB >= 0 && note2 >= 0)
-    voice3032.startNote(noteToFreq(note2), accent2, slide2);
-  else
+  if (!mute303_2 && songPatternB >= 0 && stepB.note >= 0 && (!stepB.ghost || (rand() % 100 < 80))) {
+    voice3032.startNote(noteToFreq(stepB.note), stepB.accent, stepB.slide, stepB.velocity);
+    LedManager::instance().onVoiceTriggered(VoiceId::SynthB, sceneManager_.currentScene().led);
+  } else {
     voice3032.release();
+  }
 
   // Drums
   const DrumPattern& kick = activeDrumPattern(kDrumKickVoice);
@@ -1103,36 +1146,44 @@ void MiniAcid::advanceStep() {
     clap.steps[currentStepIndex].accent;
 
   if (kick.steps[currentStepIndex].hit && !muteKick && drumsActive) {
-    drums->triggerKick(stepAccent);
+    drums->triggerKick(stepAccent, kick.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack.triggerPad(0, stepAccent ? 1.0f : 0.6f, *sampleStore);
+    LedManager::instance().onVoiceTriggered(VoiceId::DrumKick, sceneManager_.currentScene().led);
   }
   if (snare.steps[currentStepIndex].hit && !muteSnare && drumsActive) {
-    drums->triggerSnare(stepAccent);
+    drums->triggerSnare(stepAccent, snare.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack.triggerPad(1, stepAccent ? 1.0f : 0.6f, *sampleStore);
+    LedManager::instance().onVoiceTriggered(VoiceId::DrumSnare, sceneManager_.currentScene().led);
   }
   if (hat.steps[currentStepIndex].hit && !muteHat && drumsActive) {
-    drums->triggerHat(stepAccent);
+    drums->triggerHat(stepAccent, hat.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack.triggerPad(2, stepAccent ? 1.0f : 0.6f, *sampleStore);
+    LedManager::instance().onVoiceTriggered(VoiceId::DrumHatC, sceneManager_.currentScene().led);
   }
   if (openHat.steps[currentStepIndex].hit && !muteOpenHat && drumsActive) {
-    drums->triggerOpenHat(stepAccent);
+    drums->triggerOpenHat(stepAccent, openHat.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack.triggerPad(3, stepAccent ? 1.0f : 0.6f, *sampleStore);
+    LedManager::instance().onVoiceTriggered(VoiceId::DrumHatO, sceneManager_.currentScene().led);
   }
   if (midTom.steps[currentStepIndex].hit && !muteMidTom && drumsActive) {
-    drums->triggerMidTom(stepAccent);
+    drums->triggerMidTom(stepAccent, midTom.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack.triggerPad(4, stepAccent ? 1.0f : 0.6f, *sampleStore);
+    LedManager::instance().onVoiceTriggered(VoiceId::DrumTomM, sceneManager_.currentScene().led);
   }
   if (highTom.steps[currentStepIndex].hit && !muteHighTom && drumsActive) {
-    drums->triggerHighTom(stepAccent);
+    drums->triggerHighTom(stepAccent, highTom.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack.triggerPad(5, stepAccent ? 1.0f : 0.6f, *sampleStore);
+    LedManager::instance().onVoiceTriggered(VoiceId::DrumTomH, sceneManager_.currentScene().led);
   }
   if (rim.steps[currentStepIndex].hit && !muteRim && drumsActive) {
-    drums->triggerRim(stepAccent);
+    drums->triggerRim(stepAccent, rim.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack.triggerPad(6, stepAccent ? 1.0f : 0.6f, *sampleStore);
+    LedManager::instance().onVoiceTriggered(VoiceId::DrumRim, sceneManager_.currentScene().led);
   }
   if (clap.steps[currentStepIndex].hit && !muteClap && drumsActive) {
-    drums->triggerClap(stepAccent);
+    drums->triggerClap(stepAccent, clap.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack.triggerPad(7, stepAccent ? 1.0f : 0.6f, *sampleStore);
+    LedManager::instance().onVoiceTriggered(VoiceId::DrumClap, sceneManager_.currentScene().led);
   }
 }
 
@@ -1164,8 +1215,34 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
 
   for (size_t i = 0; i < numSamples; ++i) {
     if (playing) {
-      if (samplesIntoStep >= (unsigned long)samplesPerStep) {
+      // Micro-timing logic
+      // Calculate timing offset for the NEXT step to determine current step's duration
+      // We process note-on in advanceStep(), so we need to delay the CALL to advanceStep()
+      // if next step is late, or call it early if next step is early.
+      
+      // Look ahead to next step timing
+      int nextStepIndex = (currentStepIndex + 1) % SEQ_STEPS;
+      // Use Synth A as the groove master
+      int8_t nextTiming = 0;
+      // Ideally we'd valid check patterns but assuming cache/scenes are valid
+      // Using pattern303Steps(0) cache logic or direct scene access
+      // Direct access to get timing field as it's not cached in bool arrays
+      const SynthPattern& groovePattern = sceneManager_.getCurrentSynthPattern(0);
+      nextTiming = groovePattern.steps[nextStepIndex].timing;
+
+      // 1 step = 24 ticks. samplePerStep = 24 ticks.
+      // Offset in samples.
+      long samplesPerTick = (long)(samplesPerStep / 24.0f);
+      if (samplesPerTick < 1) samplesPerTick = 1;
+      long nextOffset = (long)nextTiming * samplesPerTick;
+
+      // Target duration = nominal + (next - current)
+      long targetDuration = (long)samplesPerStep + nextOffset - currentTimingOffset_;
+      if (targetDuration < 1) targetDuration = 1; 
+
+      if (samplesIntoStep >= (unsigned long)targetDuration) {
         samplesIntoStep = 0;
+        currentTimingOffset_ = nextOffset; // Update for next cycle
         advanceStep();
       }
       samplesIntoStep++;
@@ -1176,7 +1253,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       float sample303 = 0.0f;
       // 303 Voice 1
       if (!mute303) {
-        float v = voice303.process() * 0.5f;
+        float v = voice303.process() * 0.7f;
         v = distortion303.process(v);
         sample303 += delay303.process(v);
       } else {
@@ -1185,7 +1262,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
 
       // 303 Voice 2
       if (!mute303_2) {
-        float v = voice3032.process() * 0.5f;
+        float v = voice3032.process() * 0.7f;
         v = distortion3032.process(v);
         sample303 += delay3032.process(v);
       } else {
@@ -1220,10 +1297,26 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       sample = tapeFX.process(sample);
     }
 
+    // Bass boost (NEW)
+    sample = masterBass.process(sample);
+
     // Master Output & Limiting
-    sample *= 0.65f * params[static_cast<int>(MiniAcidParamId::MainVolume)].value();
+    sample *= params[static_cast<int>(MiniAcidParamId::MainVolume)].value();
     
-    // Simple master soft clipping
+    // Noise gate to reduce background hiss
+    // Threshold: -60dB (0.001f)
+    float absLevel = fabsf(sample);
+    if (absLevel < 0.001f) {
+      sample = 0.0f;
+    }
+    
+    // High-frequency dampening to soften harsh highs
+    sample = masterHighCut.process(sample);
+    
+    // Soft limiting (NEW)
+    sample = masterLimiter.process(sample);
+
+    // Safety clamp
     if (sample > 1.0f) sample = 1.0f;
     else if (sample < -1.0f) sample = -1.0f;
 
@@ -1239,7 +1332,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
 void MiniAcid::randomize303Pattern(int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
   SynthPattern& pattern = editSynthPattern(idx);
-  modeManager_.generatePattern(pattern);
+  AdvancedPatternGenerator::generatePattern(pattern, sceneManager_.currentScene().generatorParams);
 }
 
 void MiniAcid::setParameter(MiniAcidParamId id, float value) {
@@ -1252,7 +1345,11 @@ void MiniAcid::adjustParameter(MiniAcidParamId id, int steps) {
 
 void MiniAcid::randomizeDrumPattern() {
   DrumPatternSet& patternSet = sceneManager_.editCurrentDrumPattern();
-  modeManager_.generateDrumPattern(patternSet);
+  DrumPatternGenerator::DrumParams params;
+  params.ghostHatProbability = sceneManager_.currentScene().generatorParams.ghostNoteProbability;
+  params.swingAmount = sceneManager_.currentScene().generatorParams.swingAmount; 
+  // Map other params if applicable
+  DrumPatternGenerator::generateDrumPattern(patternSet, params);
 }
 
 void MiniAcid::setGrooveboxMode(GrooveboxMode mode) {
@@ -1341,10 +1438,13 @@ void MiniAcid::loadSceneFromStorage() {
   if (sceneStorage_) {
     if (sceneStorage_->readScene(sceneManager_)) return;
 
-    std::string serialized;
-    if (sceneStorage_->readScene(serialized) && sceneManager_.loadScene(serialized)) {
-      return;
-    }
+    // DISABLED: ArduinoJson fallback causes OOM on DRAM-only devices
+    // The streaming parser should be fixed instead, but for now just load default
+    LOG_PRINTLN("  - loadSceneFromStorage: Streaming parse failed, loading default scene");
+    // std::string serialized;
+    // if (sceneStorage_->readScene(serialized) && sceneManager_.loadScene(serialized)) {
+    //   return;
+    // }
   }
   sceneManager_.loadDefaultScene();
 }
@@ -1359,6 +1459,12 @@ void MiniAcid::applySceneStateFromManager() {
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: Start");
   syncModeToVoices();
   setBpm(sceneManager_.getBpm());
+  
+  // Load master volume from scene
+  float sceneVolume = sceneManager_.currentScene().masterVolume;
+  params[static_cast<int>(MiniAcidParamId::MainVolume)].setValue(sceneVolume);
+  LOG_DEBUG("  - MiniAcid::applySceneStateFromManager: loaded volume=%.2f\n", sceneVolume);
+  
   const std::string& drumEngineName = sceneManager_.getDrumEngineName();
   if (!drumEngineName.empty()) {
     LOG_DEBUG("  - MiniAcid::applySceneStateFromManager: setting drum engine to %s\n", drumEngineName.c_str());
@@ -1441,6 +1547,10 @@ void MiniAcid::applySceneStateFromManager() {
 void MiniAcid::syncSceneStateToManager() {
   sceneManager_.setBpm(bpmValue);
   sceneManager_.setDrumEngineName(drumEngineName_);
+  
+  // Save master volume to scene
+  sceneManager_.currentScene().masterVolume = params[static_cast<int>(MiniAcidParamId::MainVolume)].value();
+  
   sceneManager_.setSynthMute(0, mute303);
   sceneManager_.setSynthMute(1, mute303_2);
 

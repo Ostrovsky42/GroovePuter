@@ -33,7 +33,7 @@ public:
 
   void reset();
   void setSampleRate(float sampleRate);
-  void startNote(float freqHz, bool accent, bool slideFlag);
+  void startNote(float freqHz, bool accent, bool slideFlag, uint8_t velocity = 100);
   void release();
   float process();
   const Parameter& parameter(TB303ParamId id) const;
@@ -85,5 +85,17 @@ private:
   
   bool subEnabled_ = false;
   float subPhase_ = 0.0f;
+  float subMix_ = 0.25f;
+  float subLPF_prev_ = 0.0f;
   float noiseAmount_ = 0.0f;
+
+  struct LowShelfEQ {
+    float cutoff = 0.01f;
+    float boost = 1.25f; // ~2dB
+    float lpf = 0.0f;
+    float process(float input) {
+      lpf += cutoff * (input - lpf);
+      return input + lpf * (boost - 1.0f);
+    }
+  } bassBoost_;
 };

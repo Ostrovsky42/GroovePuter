@@ -13,4 +13,7 @@ class HelpPage : public IPage {
 
  private:
   void drawTransportSection(IGfx& gfx, int x, int y, int w, int h);
+  
+  int scroll_y_ = 0;
+  int total_content_h_ = 0;
 };
