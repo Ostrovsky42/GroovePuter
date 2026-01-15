@@ -16,6 +16,8 @@ public:
   void update();
   void nextPage();
   void previousPage();
+  void goToPage(int index);
+  void togglePreviousPage();
   void dismissSplash();
   bool handleEvent(UIEvent event);
 
@@ -31,6 +33,7 @@ private:
   IGfx& gfx_;
   MiniAcid& mini_acid_;
   int page_index_ = 0;
+  int previous_page_index_ = 0;  // For Backspace/` toggle
   unsigned long splash_start_ms_ = 0;
   bool splash_active_ = true;
   bool help_dialog_visible_ = false;
@@ -39,6 +42,7 @@ private:
   AudioGuard audio_guard_;
   IAudioRecorder* audio_recorder_ = nullptr;
   std::vector<std::unique_ptr<IPage>> pages_;
+  std::unique_ptr<IPage> help_page_;  // Separate help page for 'h' key
   Container mute_buttons_container_;
   bool mute_buttons_initialized_ = false;
   Container page_hint_container_;

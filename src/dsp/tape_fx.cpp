@@ -40,19 +40,23 @@ void TapeFX::updateInternalParams() {
     const TapeMacro& m = currentMacro_;
     constexpr float kPi2 = 2.0f * 3.14159265f;
     
-    // WOW: subtle movement (0..0.006) - reduced from 0.012
+    // WOW: 0..0.006 max depth
     wowDepth_ = (m.wow / 100.0f) * 0.006f;
     
-    // Wow freq: 0.3 - 1.5 Hz (slower LFO)
+    // Wow freq: 0.3 - 1.5 Hz
     float wowHz = 0.3f + (m.wow / 100.0f) * 1.2f;
     float thetaWow = kPi2 * wowHz / static_cast<float>(kSampleRate);
     wowStepSin_ = sinf(thetaWow);
     wowStepCos_ = cosf(thetaWow);
     
-    // Flutter frequency: 4.0 - 8.0 Hz (only if wow > 50)
+    // Flutter: 4.0 - 8.0 Hz (only if wow > 50)
+    // Flutter depth is implicitly tied to wowDepth in process(), but we can tune ratio here
     if (m.wow > 50) {
         flutterRatio_ = (m.wow - 50) / 50.0f;
-        float flutterHz = 4.0f + flutterRatio_ * 4.0f;
+        // Cap flutter ratio contribution
+        if(flutterRatio_ > 0.3f) flutterRatio_ = 0.3f; 
+        
+        float flutterHz = 4.0f + ((m.wow - 50) / 50.0f) * 4.0f;
         float thetaFlutter = kPi2 * flutterHz / static_cast<float>(kSampleRate);
         flutterStepSin_ = sinf(thetaFlutter);
         flutterStepCos_ = cosf(thetaFlutter);
@@ -60,34 +64,31 @@ void TapeFX::updateInternalParams() {
         flutterRatio_ = 0;
     }
     
-    // AGE: Pink noise + Warmth (LPF)
+    // AGE: Pink Noise + Warmth
     ageAmount_ = m.age / 100.0f;
-    // Noise amount greatly reduced (0.0002 max)
-    noiseAmount_ = ageAmount_ * 0.0002f;
+    noiseAmount_ = ageAmount_ * 0.0002f; // Max 0.0002
     
-    // Warmth LPF: 8k to 2k Hz
+    // Warmth LPF: Starts at 8kHz, drops to 2kHz
     float warmthCutoffHz = 8000.0f - (ageAmount_ * 6000.0f);
     warmthCutoffNorm_ = warmthCutoffHz / kSampleRate;
     
-    // SAT: subtle drive (1.0 to 2.5) - reduced from 1-8
+    // SAT: Drive 1.0 .. 2.5, Mix 0.3 .. 0.7
     drive_ = 1.0f + (m.sat / 100.0f) * 1.5f;
-    // Mix: preserve more dry signal (0.3 to 0.7 wet)
     satMix_ = 0.3f + (m.sat / 100.0f) * 0.4f;
     
-    // TONE: Resonant LPF (0.3 - 0.95) - brighter range
+    // TONE: Cutoff 0.3 .. 0.95, Res 0.1 .. 0.3
     lpfCutoff_ = 0.3f + (m.tone / 100.0f) * 0.65f;
     lpfResonance_ = 0.1f + (m.tone / 100.0f) * 0.2f;
     
-    // CRUSH: Off by default, specific levels if needed
+    // CRUSH: Off by default
     if (m.crush == 0) {
         crushBits_ = 16;
         crushDownsample_ = 1;
     } else {
-        // Less aggressive crush settings
         switch(m.crush) {
-            case 1: crushBits_ = 12; crushDownsample_ = 1; break; // Subtle
-            case 2: crushBits_ = 10; crushDownsample_ = 2; break; // Medium
-            case 3: crushBits_ = 8;  crushDownsample_ = 3; break; // Heavy
+            case 1: crushBits_ = 12; crushDownsample_ = 1; break; 
+            case 2: crushBits_ = 10; crushDownsample_ = 2; break; 
+            case 3: crushBits_ = 8;  crushDownsample_ = 3; break; 
             default: crushBits_ = 16; crushDownsample_ = 1; break;
         }
     }

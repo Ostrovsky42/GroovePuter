@@ -81,8 +81,8 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern) const {
     int rootNote = (currentMode_ == GrooveboxMode::Acid) ? 36 : 24; // C2 or C1
     int strategy = rand() % 3; // 0: Random Walk, 1: Arp/Rhythm, 2: Sequential
     
-    float swingAmount = (currentMode_ == GrooveboxMode::Acid) ? 0.0f : 0.45f;
-    float ghostProb = (currentMode_ == GrooveboxMode::Acid) ? 0.15f : 0.35f;
+    float swingAmount = (currentMode_ == GrooveboxMode::Acid) ? 0.0f : 0.20f;  // Subtle shuffle for minimal
+    float ghostProb = (currentMode_ == GrooveboxMode::Acid) ? 0.15f : 0.45f;   // More ghosts in minimal
 
     if (currentMode_ == GrooveboxMode::Acid) {
         // ACID STRATEGY
@@ -103,13 +103,18 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern) const {
 
                 int note = rootNote + scale.intervals[currentScaleIdx];
                 
+                // Chromatic passing tones (Acid character)
+                if ((rand() % 100) < (cfg.pattern.chromaticProbability * 100)) {
+                    note += (rand() % 3) - 1;  // +1, 0, -1 semitone
+                }
+                
                 // Octave jumps (Classic Acid)
                 if (rand() % 100 < 30) note += 12;
                 if (rand() % 100 < 10) note += 24;
                 if (rand() % 100 < 5)  note -= 12;
 
                 pattern.steps[i].note = note;
-                pattern.steps[i].velocity = 90 + (rand() % 30);
+                pattern.steps[i].velocity = cfg.pattern.velocityMin + (rand() % (cfg.pattern.velocityMax - cfg.pattern.velocityMin));
                 
                 if ((rand() % 100) < (cfg.pattern.slideProbability * 100)) pattern.steps[i].slide = true;
                 if ((rand() % 100) < (cfg.pattern.accentProbability * 100)) {
@@ -136,9 +141,10 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern) const {
             float hitProb = isAnchor ? 70.0f : 15.0f;
             
             if ((rand() % 100) < hitProb) {
-                // Focus on root (0) and 5th (interval 3 or 4 in scale depending on scale)
+                // Focus on root (hypnotic repetition)
                 int scaleIdx;
-                if (rand() % 100 < 60) scaleIdx = 0; // 60% root
+                int rootBiasPercent = (int)(cfg.pattern.rootNoteBias * 100);
+                if (rand() % 100 < rootBiasPercent) scaleIdx = 0; // Root note (80% in minimal)
                 else if (rand() % 100 < 30) scaleIdx = (scale.count > 4) ? 4 : 2; // 30% fifth-ish
                 else scaleIdx = rand() % scale.count; // 10% other
                 
@@ -148,7 +154,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern) const {
                 if (rand() % 100 < 20) note -= 12;
                 
                 pattern.steps[i].note = note;
-                pattern.steps[i].velocity = 80 + (rand() % 40);
+                pattern.steps[i].velocity = cfg.pattern.velocityMin + (rand() % (cfg.pattern.velocityMax - cfg.pattern.velocityMin));
                 
                 // Minimal accents are precise
                 if (i % 8 == 0 && rand() % 100 < 60) {
@@ -161,7 +167,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern) const {
                 // More active ghosts in minimal for texture
                 pattern.steps[i].note = baseNote;
                 pattern.steps[i].ghost = true;
-                pattern.steps[i].velocity = 15 + (rand() % 15);
+                pattern.steps[i].velocity = 10 + (rand() % 15);  // Quieter ghosts
                 // Microtiming for "shuffle"
                 pattern.steps[i].timing = (int8_t)((rand() % 13) - 6); 
             }
@@ -192,7 +198,7 @@ void GrooveboxModeManager::generateDrumPattern(DrumPatternSet& patternSet) const
         }
     }
     
-    float swingAmount = (currentMode_ == GrooveboxMode::Acid) ? 0.05f : 0.20f;
+    float swingAmount = (currentMode_ == GrooveboxMode::Acid) ? 0.08f : 0.15f;  // Subtle swing for both
     bool humanize = true;
 
     // KICK

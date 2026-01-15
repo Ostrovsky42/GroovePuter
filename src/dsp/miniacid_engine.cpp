@@ -390,10 +390,10 @@ void MiniAcid::stop() {
 
 void MiniAcid::setBpm(float bpm) {
   bpmValue = bpm;
-  if (bpmValue < 40.0f)
-    bpmValue = 40.0f;
-  if (bpmValue > 200.0f)
-    bpmValue = 200.0f;
+  if (bpmValue < 10.0f)
+    bpmValue = 10.0f;
+  if (bpmValue > 250.0f)
+    bpmValue = 250.0f;
   updateSamplesPerStep();
   delay303.setBpm(bpmValue);
   delay3032.setBpm(bpmValue);

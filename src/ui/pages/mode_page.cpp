@@ -41,9 +41,15 @@ void ModePage::draw(IGfx& gfx) {
 
     gfx.setTextColor(COLOR_WHITE);
     if (currentMode == GrooveboxMode::Acid) {
-        gfx.drawText(x + 10, infoY + 10, "Squelchy 303, busy patterns");
+        gfx.drawText(x + 10, infoY + 6, "CHARACTER: AGGRESSIVE");
+        
+        gfx.setTextColor(kAcidConfig.accentColor);
+        gfx.drawText(x + 10, infoY + 20, "FOCUS: FREAK . RES . ACCENT");
     } else {
-        gfx.drawText(x + 10, infoY + 10, "LoFi minimal, sparse grooves");
+        gfx.drawText(x + 10, infoY + 6, "CHARACTER: HYPNOTIC");
+        
+        gfx.setTextColor(kMinimalConfig.accentColor);
+        gfx.drawText(x + 10, infoY + 20, "FOCUS: TIME . SPACE . DUB");
     }
 
     // Hints

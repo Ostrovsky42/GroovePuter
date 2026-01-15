@@ -52,19 +52,27 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid)
   // Initialize cassette skin with WarmTape theme
   skin_ = std::make_unique<CassetteSkin>(gfx_, g_currentTheme);
 
-  pages_.push_back(std::make_unique<Synth303ParamsPage>(gfx_, mini_acid_, audio_guard_, 0));
-  pages_.push_back(std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 0));
-  pages_.push_back(std::make_unique<Synth303ParamsPage>(gfx_, mini_acid_, audio_guard_, 1));
-  pages_.push_back(std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 1));
-  pages_.push_back(std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_));
-  pages_.push_back(std::make_unique<SongPage>(gfx_, mini_acid_, audio_guard_));
-  pages_.push_back(std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_));
-  pages_.push_back(std::make_unique<WaveformPage>(gfx_, mini_acid_, audio_guard_));
-  pages_.push_back(std::make_unique<SamplerPage>(gfx_, mini_acid_, audio_guard_));
-  pages_.push_back(std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_));
-  pages_.push_back(std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_));
-  pages_.push_back(std::make_unique<SettingsPage>(gfx_, mini_acid_));
-  pages_.push_back(std::make_unique<HelpPage>());
+  // Page order for Alt+1-0 navigation:
+  // Alt+1: 303A Params, Alt+2: 303A Pattern, Alt+3: 303B Params, Alt+4: 303B Pattern
+  // Alt+5: Drums, Alt+6: Song, Alt+7: Project, Alt+8: Waveform
+  // Alt+9: Sampler, Alt+0: Tape
+  // Alt+Q: Mode, Alt+W: Settings, Alt+E: (reserved)
+  pages_.push_back(std::make_unique<Synth303ParamsPage>(gfx_, mini_acid_, audio_guard_, 0));  // 0: Alt+1
+  pages_.push_back(std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 0));     // 1: Alt+2
+  pages_.push_back(std::make_unique<Synth303ParamsPage>(gfx_, mini_acid_, audio_guard_, 1));  // 2: Alt+3
+  pages_.push_back(std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 1));     // 3: Alt+4
+  pages_.push_back(std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_));      // 4: Alt+5
+  pages_.push_back(std::make_unique<SongPage>(gfx_, mini_acid_, audio_guard_));               // 5: Alt+6
+  pages_.push_back(std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_));            // 6: Alt+7 (Home)
+  pages_.push_back(std::make_unique<WaveformPage>(gfx_, mini_acid_, audio_guard_));           // 7: Alt+8
+  pages_.push_back(std::make_unique<SamplerPage>(gfx_, mini_acid_, audio_guard_));            // 8: Alt+9
+  pages_.push_back(std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_));               // 9: Alt+0
+  pages_.push_back(std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_));               // 10: Alt+Q
+  pages_.push_back(std::make_unique<SettingsPage>(gfx_, mini_acid_));                         // 11: Alt+W
+  // Help page removed from navigation - accessible via 'h' key only
+  
+  // Store help page separately for 'h' key access
+  help_page_ = std::make_unique<HelpPage>();
 }
 
 MiniAcidDisplay::~MiniAcidDisplay() = default;
@@ -82,13 +90,32 @@ void MiniAcidDisplay::dismissSplash() {
 }
 
 void MiniAcidDisplay::nextPage() {
+  previous_page_index_ = page_index_;
   page_index_ = (page_index_ + 1) % static_cast<int>(pages_.size());
   help_dialog_visible_ = false;
   help_dialog_.reset();
 }
 
 void MiniAcidDisplay::previousPage() {
+  previous_page_index_ = page_index_;
   page_index_ = (page_index_ - 1 + static_cast<int>(pages_.size())) % static_cast<int>(pages_.size());
+  help_dialog_visible_ = false;
+  help_dialog_.reset();
+}
+
+void MiniAcidDisplay::goToPage(int index) {
+  if (index >= 0 && index < static_cast<int>(pages_.size())) {
+    previous_page_index_ = page_index_;
+    page_index_ = index;
+    help_dialog_visible_ = false;
+    help_dialog_.reset();
+  }
+}
+
+void MiniAcidDisplay::togglePreviousPage() {
+  int temp = page_index_;
+  page_index_ = previous_page_index_;
+  previous_page_index_ = temp;
   help_dialog_visible_ = false;
   help_dialog_.reset();
 }
@@ -473,13 +500,67 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
       } else {
         // Universal "Back/Home" key: go to ProjectPage (index 6)
         if (page_index_ != 6) {
-          page_index_ = 6;
-          help_dialog_visible_ = false;
-          help_dialog_.reset();
+          goToPage(6);
           update();
           return true;
         }
       }
+    }
+    
+    // Alt+1-0 navigation (10 pages)
+    if (event.meta || event.alt) {
+      char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)));
+      int targetPage = -1;
+      
+      switch(lowerKey) {
+        case '1': targetPage = 0; break;  // 303A Params
+        case '2': targetPage = 1; break;  // 303A Pattern
+        case '3': targetPage = 2; break;  // 303B Params
+        case '4': targetPage = 3; break;  // 303B Pattern
+        case '5': targetPage = 4; break;  // Drums
+        case '6': targetPage = 5; break; // Song
+        case '7': targetPage = 9; break;  // Tape
+        case '8': targetPage = 8; break;  // Sampler
+        case '9': targetPage =  7; break;  // Waveform
+        case '0': targetPage =  10; break; // Mode
+        case 'q': targetPage =  6; break;  // Project (Home) - as requested Fn+0
+        case 'w': targetPage = 11; break; // Settings
+        default: break;
+      }
+      
+      if (targetPage >= 0 && targetPage < static_cast<int>(pages_.size())) {
+        goToPage(targetPage);
+        update();
+        return true;
+      }
+    }
+    
+    // 'h' key for Help page
+    if (event.key == 'h' || event.key == 'H') {
+      if (help_page_) {
+        // Temporarily show help page
+        previous_page_index_ = page_index_;
+        // We'll handle this by showing help dialog instead
+        auto dialog = help_page_->getHelpDialog();
+        if (dialog) {
+          help_dialog_ = std::move(dialog);
+          help_dialog_visible_ = true;
+          help_dialog_->setExitRequestedCallback([this]() {
+            help_dialog_visible_ = false;
+            help_dialog_.reset();
+          });
+          update();
+          return true;
+        }
+      }
+      return true;
+    }
+    
+    // Backspace or ` (backtick) for previous page toggle
+    if (event.key == '\b' || event.key == 0x7F || event.key == '`' || event.key == '~') {
+      togglePreviousPage();
+      update();
+      return true;
     }
   }
 
