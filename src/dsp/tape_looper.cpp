@@ -180,9 +180,19 @@ void TapeLooper::process(float input, float* loopPart) {
         }
     }
 
-    // Playback
+    // Playback with crossfade at loop boundary
     if ((mode_ == TapeMode::Play || mode_ == TapeMode::Dub) && length_ > 0) {
-        out = readInterpolated(effectivePlayhead);
+        // Check if we're near the loop wrap point
+        float distToEnd = static_cast<float>(length_) - effectivePlayhead;
+        if (distToEnd < static_cast<float>(kCrossfadeFrames) && distToEnd > 0) {
+            // Crossfade zone: blend end of loop with beginning
+            float fade = distToEnd / static_cast<float>(kCrossfadeFrames);
+            float sampleEnd = readInterpolated(effectivePlayhead);
+            float sampleStart = readInterpolated(effectivePlayhead - static_cast<float>(length_));
+            out = sampleEnd * fade + sampleStart * (1.0f - fade);
+        } else {
+            out = readInterpolated(effectivePlayhead);
+        }
     }
 
     // Recording

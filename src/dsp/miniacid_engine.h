@@ -195,6 +195,10 @@ public:
   
   // Audio diagnostics toggle (hotkey: Ctrl+D or similar)
   void toggleAudioDiag();
+  
+  // Test Tone Mode (Diagnose hardware vs DSP)
+  void setTestTone(bool enabled);
+  bool isTestToneEnabled() const { return testToneEnabled_; }
 
   void generateAudioBuffer(int16_t *buffer, size_t numSamples);
 
@@ -330,8 +334,13 @@ private:
   
   // DSP State for Audio Quality
   uint32_t ditherState_ = 12345;
+
   float dcBlockX1_ = 0.0f;
   float dcBlockY1_ = 0.0f;
+  
+  // Test Tone State
+  bool testToneEnabled_ = false;
+  float testTonePhase_ = 0.0f;
   
   static float softLimit(float x) {
       float absX = (x > 0) ? x : -x;

@@ -63,6 +63,11 @@ private:
 
   float phase;
   float superPhases[kSuperSawOscCount];
+  
+  // Wavetable phase accumulators (10.22 fixed-point)
+  uint32_t phaseAcc_;
+  uint32_t superPhasesAcc_[kSuperSawOscCount];
+  
   float freq;       // current frequency (Hz)
   float targetFreq; // slide target
   float slideSpeed; // how fast we slide toward target

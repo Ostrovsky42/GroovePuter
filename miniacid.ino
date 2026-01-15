@@ -16,6 +16,7 @@
 #include "miniacid_encoder8.h"
 #include "scene_storage_cardputer.h"
 #include "src/ui/led_manager.h"
+#include "src/audio/audio_diagnostics.h"
 
 static constexpr IGfxColor CP_BLACK = IGfxColor::Black();
 
@@ -24,9 +25,11 @@ MiniAcidDisplay* g_miniDisplay = nullptr;
 SceneStorageCardputer g_sceneStorage;
 CardputerAudioRecorder* g_audioRecorder = nullptr;
 #include "src/sampler/ram_sample_store.h"
+#include "src/audio/audio_out_i2s.h"
 RamSampleStore g_sampleStore;
 
-int16_t g_audioBuffer[AUDIO_BUFFER_SAMPLES];
+static AudioOutI2S g_audioOut;
+static int16_t g_audioBuffer[kBlockFrames];
 
 TaskHandle_t g_audioTaskHandle = nullptr;
 
@@ -36,25 +39,41 @@ MiniAcid* g_miniAcid = nullptr;
 Encoder8Miniacid* g_encoder8 = nullptr;
 
 void audioTask(void *param) {
+  // Initialize I2S audio output
+  if (!g_audioOut.begin(kSampleRate, kBlockFrames)) {
+    Serial.println("[FATAL] I2S audio init failed");
+    while (true) { delay(1000); }
+  }
+  
   while (true) {
     if (!g_miniAcid || !g_miniAcid->isPlaying()) {
       vTaskDelay(10 / portTICK_PERIOD_MS);
       continue;
     }
 
-    while (M5Cardputer.Speaker.isPlaying()) {
-      vTaskDelay(1 / portTICK_PERIOD_MS);
+    // Generate audio
+    uint32_t start = micros();
+    g_miniAcid->generateAudioBuffer(g_audioBuffer, kBlockFrames);
+    uint32_t dsp_time = micros() - start;
+    
+    // Check for underruns
+    constexpr uint32_t max_allowed = (1000000UL * kBlockFrames) / kSampleRate;
+    if (dsp_time > max_allowed) {
+      Serial.printf("[UNDERRUN] dsp:%uus max:%uus\n", dsp_time, max_allowed);
     }
-
-    g_miniAcid->generateAudioBuffer(g_audioBuffer, AUDIO_BUFFER_SAMPLES);
 
     // Write to recorder if recording
     if (g_audioRecorder) {
-      g_audioRecorder->writeSamples(g_audioBuffer, AUDIO_BUFFER_SAMPLES);
+      g_audioRecorder->writeSamples(g_audioBuffer, kBlockFrames);
+    }
+    
+    // Flush diagnostics periodically
+    if (AudioDiagnostics::instance().isEnabled()) {
+      AudioDiagnostics::instance().flushIfReady(millis());
     }
 
-    M5Cardputer.Speaker.playRaw(g_audioBuffer, AUDIO_BUFFER_SAMPLES,
-                                SAMPLE_RATE, false);
+    // Write to I2S (blocks until DMA accepts the buffer)
+    g_audioOut.writeMono16(g_audioBuffer, kBlockFrames);
   }
 }
 
@@ -76,11 +95,19 @@ static void logHeapCaps(const char* tag) {
 
 void setup() {
   Serial.begin(115200);
+  // При желании сразу включить
+  AudioDiagnostics::instance().enable(true);
   delay(500);
   Serial.println("\n\n!! BOOTING !!");
   logHeapCaps("boot-start");
   
   auto cfg = M5.config();
+  
+  // Disable M5 audio to verify our custom I2S driver takes precedence
+  cfg.internal_spk = false;
+  cfg.external_spk = false;
+  cfg.internal_mic = false;
+  
   M5Cardputer.begin(cfg);
   
   // Seed random number generator with hardware RNG
@@ -102,12 +129,14 @@ void setup() {
   g_display.setTextColor(IGfxColor::White());
   logHeapCaps("after-display");
   
-  Serial.println("Init Speaker...");
-  M5Cardputer.Speaker.begin();
-  M5Cardputer.Speaker.setVolume(200);
-  Serial.println("Speaker OK");
-  logHeapCaps("after-speaker");
   
+  // Speaker initialization removed - using direct I2S in audioTask
+  // Serial.println("Init Speaker...");
+  // M5Cardputer.Speaker.begin();
+  // M5Cardputer.Speaker.setVolume(160);
+  // Serial.println("Speaker OK");
+  // logHeapCaps("after-speaker");
+    
   auto screenLog = [&](const char* msg) {
     static int logY = 0;
     Serial.println(msg);
@@ -274,6 +303,16 @@ void loop() {
     } else if (c == '=' || c == '+') {
       // Volume up (larger step: 3 * 1/64 ≈ 5%)
       g_miniAcid->adjustParameter(MiniAcidParamId::MainVolume, 3);
+      drawUI();
+
+    } else if (c == ';') {
+      g_miniAcid->toggleAudioDiag();
+      Serial.println("[UI] Toggled Audio Diagnostics");
+      drawUI();
+    } else if (c == '\'') {
+      bool newState = !g_miniAcid->isTestToneEnabled();
+      g_miniAcid->setTestTone(newState);
+      Serial.printf("[UI] Test Tone: %s\n", newState ? "ON" : "OFF");
       drawUI();
     } else if (c == ' ') {
       if (g_miniAcid->isPlaying()) {

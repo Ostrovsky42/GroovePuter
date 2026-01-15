@@ -1201,6 +1201,18 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     return;
   }
 
+  // Test Tone Mode (Hardware diagnostic)
+  if (testToneEnabled_) {
+    for (size_t i = 0; i < numSamples; ++i) {
+      testTonePhase_ += 440.0f / sampleRateValue;
+      if (testTonePhase_ >= 1.0f) testTonePhase_ -= 1.0f;
+      // Pure sine, -3dB
+      float val = sinf(2.0f * 3.14159265f * testTonePhase_) * 0.707f; 
+      buffer[i] = static_cast<int16_t>(val * 32767.0f);
+    }
+    return;
+  }
+
   updateSamplesPerStep();
   delay303.setBpm(bpmValue);
   delay3032.setBpm(bpmValue);
@@ -1278,16 +1290,22 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
         delay3032.process(0.0f);
       }
 
-      // Virtual Analog Drums
-      if (!muteKick)    sample += drums->processKick();
-      if (!muteSnare)   sample += drums->processSnare();
-      if (!muteHat)     sample += drums->processHat();
-      if (!muteOpenHat) sample += drums->processOpenHat();
-      if (!muteMidTom)  sample += drums->processMidTom();
-      if (!muteHighTom) sample += drums->processHighTom();
-      if (!muteRim)     sample += drums->processRim();
-      if (!muteClap)    sample += drums->processClap();
-
+      // Virtual Analog Drums (with proper gain staging)
+      float drumsMix = 0.0f;
+      if (!muteKick)    drumsMix += drums->processKick();
+      if (!muteSnare)   drumsMix += drums->processSnare();
+      if (!muteHat)     drumsMix += drums->processHat();
+      if (!muteOpenHat) drumsMix += drums->processOpenHat();
+      if (!muteMidTom)  drumsMix += drums->processMidTom();
+      if (!muteHighTom) drumsMix += drums->processHighTom();
+      if (!muteRim)     drumsMix += drums->processRim();
+      if (!muteClap)    drumsMix += drums->processClap();
+      
+      // Drums gain staging: trim + soft limit for musical bus compression
+      drumsMix *= 0.60f;                  // Base headroom
+      drumsMix = softLimit(drumsMix);     // Smooth limiting on peaks (bus glue)
+      
+      sample += drumsMix;
       sample += sample303;
 
       // Add pre-rendered sampler audio
@@ -1297,10 +1315,9 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       
       // Track per-source peaks for diagnostics
       if (AudioDiagnostics::instance().isEnabled()) {
-        float delayReturn = (sample303 - (mute303 ? 0.0f : voice303.process() * 0.5f * (1.0f - 0.0f)));
         AudioDiagnostics::instance().trackSource(
           sample303, 
-          sample - sample303 - (hasSampleStore ? samplerOutBuffer[i] : 0.0f),
+          drumsMix,  // Now tracking the gain-staged drums
           hasSampleStore ? samplerOutBuffer[i] : 0.0f,
           0.0f,  // delay already in sample303
           0.0f,  // looper tracked below
@@ -1731,3 +1748,16 @@ void PatternGenerator::generateRandomDrumPattern(DrumPatternSet& patternSet) {
     }
   }
 }
+
+void MiniAcid::setTestTone(bool enabled) {
+  testToneEnabled_ = enabled;
+  if (!enabled) {
+    testTonePhase_ = 0.0f;
+  }
+}
+/*
+void MiniAcid::toggleAudioDiag() {
+  bool enabled = AudioDiagnostics::instance().isEnabled();
+  AudioDiagnostics::instance().enable(!enabled);
+}
+  */
