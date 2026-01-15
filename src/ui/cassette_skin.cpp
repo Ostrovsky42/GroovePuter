@@ -65,7 +65,7 @@ void CassetteSkin::drawHeader(const HeaderState& state) {
     gfx_.drawRect(margin, margin, w - margin * 2, h - margin, palette_->shadow);
     
     // Inner divider line
-    int divider_y = margin + 9;
+    int divider_y = margin + 8;  // Adjusted for 16px header
     gfx_.drawRect(margin + 2, divider_y, w - margin * 2 - 4, 1, palette_->shadow);
     
     // Top row: SCENE xxx BPM xxx MODE (no LOFI-SEQ branding - wastes space)

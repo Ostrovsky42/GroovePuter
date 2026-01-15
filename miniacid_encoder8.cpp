@@ -33,7 +33,8 @@ Encoder8Miniacid::Encoder8Miniacid(MiniAcid& miniAcid)
       miniAcid_(miniAcid) {}
 
 void Encoder8Miniacid::initialize() {
-  sensor_initialized_ = false; // sensor_.begin(&Wire, ENCODER_ADDR, G2, G1, 100000UL);
+  // sensor_.begin(&Wire, ENCODER_ADDR, G2, G1, 100000UL);
+  sensor_initialized_ = false; // Disabled until pins are properly defined for Cardputer
   initial_values_sent_ = false;
 }
 

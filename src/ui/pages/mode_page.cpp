@@ -20,38 +20,34 @@ void ModePage::draw(IGfx& gfx) {
     gfx.fillRect(x, y, w, h, COLOR_BLACK);
 
     // Big Mode Indicators
-    int centerY = y + 30;
-    int boxW = 60;
-    int boxH = 30;
+    int centerY = y + 25;  // Reduced from 30
+    int boxW = 50;  // Reduced from 60
+    int boxH = 24;  // Reduced from 30
     
     // Acid Box
-    drawModeBox(gfx, x + 30, centerY, "ACID", currentMode == GrooveboxMode::Acid, kAcidConfig.accentColor);
+    drawModeBox(gfx, x + 25, centerY, "ACID", currentMode == GrooveboxMode::Acid, kAcidConfig.accentColor, boxW, boxH);
     
     // Minimal Box
-    drawModeBox(gfx, x + 150, centerY, "MNML", currentMode == GrooveboxMode::Minimal, kMinimalConfig.accentColor);
+    drawModeBox(gfx, x + 160, centerY, "MNML", currentMode == GrooveboxMode::Minimal, kMinimalConfig.accentColor, boxW, boxH);
 
     // Arrow
     gfx.setTextColor(COLOR_WHITE);
-    gfx.drawText(x + 105, centerY + 10, (currentMode == GrooveboxMode::Acid) ? "->" : "<-");
+    gfx.drawText(x + 105, centerY + 8, (currentMode == GrooveboxMode::Acid) ? "->" : "<-");
 
     // Mode Info
-    int infoY = y + 75;
+    int infoY = y + 55;  // Reduced from 75
     gfx.setTextColor(cfg.accentColor);
     gfx.drawText(x + 10, infoY, cfg.displayName);
 
     gfx.setTextColor(COLOR_WHITE);
     if (currentMode == GrooveboxMode::Acid) {
-        gfx.drawText(x + 10, infoY + 12, "Squelchy 303");
-        gfx.drawText(x + 10, infoY + 22, "Busy patterns");
-        gfx.drawText(x + 10, infoY + 32, "High resonance");
+        gfx.drawText(x + 10, infoY + 10, "Squelchy 303, busy patterns");
     } else {
-        gfx.drawText(x + 10, infoY + 12, "LoFi minimal");
-        gfx.drawText(x + 10, infoY + 22, "Sparse grooves");
-        gfx.drawText(x + 10, infoY + 32, "Dark & warm");
+        gfx.drawText(x + 10, infoY + 10, "LoFi minimal, sparse grooves");
     }
 
     // Hints
-    int hintY = y + 115;
+    int hintY = y + 75;  // Reduced from 115
     gfx.setTextColor(COLOR_LABEL);
     gfx.drawText(x + 10, hintY, "[ENTER] Toggle   [A] Apply to 303A");
     gfx.drawText(x + 10, hintY + 10, "[SPACE] Preview  [B] Apply to 303B");
@@ -122,17 +118,15 @@ void ModePage::previewMode() {
     });
 }
 
-void ModePage::drawModeBox(IGfx& gfx, int x, int y, const char* name, bool active, uint16_t color) {
-    int w = 60;
-    int h = 30;
+void ModePage::drawModeBox(IGfx& gfx, int x, int y, const char* name, bool active, uint16_t color, int w, int h) {
     if (active) {
         gfx.fillRect(x, y, w, h, (IGfxColor)color);
         gfx.setTextColor(COLOR_BLACK);
-        gfx.drawText(x + 15, y + 10, name);
+        gfx.drawText(x + 10, y + 7, name);
     } else {
         gfx.drawRect(x, y, w, h, (IGfxColor)color);
         gfx.setTextColor((IGfxColor)color);
-        gfx.drawText(x + 15, y + 10, name);
+        gfx.drawText(x + 10, y + 7, name);
     }
 }
 

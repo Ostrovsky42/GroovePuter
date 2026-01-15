@@ -53,7 +53,7 @@ void TB303Voice::setSampleRate(float sampleRateHz) {
   filter->setSampleRate(sampleRate);
 }
 
-void TB303Voice::startNote(float freqHz, bool accent, bool slideFlag) {
+void TB303Voice::startNote(float freqHz, bool accent, bool slideFlag, uint8_t velocity) {
   slide = slideFlag;
 
   if (!slide) {
@@ -63,6 +63,9 @@ void TB303Voice::startNote(float freqHz, bool accent, bool slideFlag) {
 
   gate = true;
   env = accent ? 2.0f : 1.0f;
+  
+  // Velocity scaling (0.3f is base gain)
+  amp = 0.3f * (velocity / 100.0f);
 }
 
 void TB303Voice::release() { gate = false; }
@@ -219,8 +222,23 @@ float TB303Voice::process() {
     return 0.0f;
   }
 
-  float osc = oscillatorSample();
-  float out = svfProcess(osc);
+  float mainOsc = oscillatorSample();
+  
+  // === SUB OSCILLATOR (NEW) ===
+  float finalOsc = mainOsc;
+  if (subEnabled_) {
+    subPhase_ += (freq * 0.5f) * invSampleRate;
+    if (subPhase_ >= 1.0f) subPhase_ -= 1.0f;
+    float sub = (subPhase_ < 0.5f) ? 1.0f : -1.0f;
+    
+    // Simple LPF for sub to avoid clicks
+    subLPF_prev_ += 0.2f * (sub - subLPF_prev_);
+    sub = subLPF_prev_;
+    
+    finalOsc = mainOsc * (1.0f - subMix_) + sub * subMix_;
+  }
+
+  float out = svfProcess(finalOsc);
   
   if (mode_ == GrooveboxMode::Minimal) {
     out = applyLoFiDegradation(out);
@@ -233,6 +251,9 @@ float TB303Voice::process() {
     out += noise * noiseAmount_;
     out += 0.01f * noiseAmount_;
   }
+
+  // === BASS BOOST (NEW) ===
+  out = bassBoost_.process(out);
 
   return out * amp;
 }
@@ -277,6 +298,7 @@ void TB303Voice::setLoFiAmount(float amount) {
 
 void TB303Voice::setSubOscillator(bool enabled) {
   subEnabled_ = enabled;
+  if (!enabled) subPhase_ = 0;
 }
 
 void TB303Voice::setNoiseAmount(float amount) {

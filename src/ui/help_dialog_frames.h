@@ -75,6 +75,8 @@ inline void drawHelpPageTransport(IGfx& gfx, int x, int y, int w, int h) {
   drawHelpItem(gfx, layout.left_x, left_y, "[ / ]", "prev/next page", COLOR_LABEL);
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "TAB", "Open page help", COLOR_LABEL);
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "ESC", "Back / Close Help", COLOR_LABEL);
 
   left_y += lh;
   drawHelpHeading(gfx, layout.left_x, left_y, "Playback");
@@ -90,7 +92,7 @@ inline void drawHelpPage303(IGfx& gfx, int x, int y, int w, int h) {
   int right_y = layout.right_y;
   int lh = layout.line_h;
 
-  drawHelpHeading(gfx, layout.left_x, left_y, "303");
+  drawHelpHeading(gfx, layout.left_x, left_y, "303 Synth");
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "A / Z", "cutoff +/-", COLOR_KNOB_1);
   left_y += lh;
@@ -100,17 +102,40 @@ inline void drawHelpPage303(IGfx& gfx, int x, int y, int w, int h) {
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "F / V", "decay +/-", COLOR_KNOB_4);
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "M", "toggle delay", IGfxColor::Magenta());
+  drawHelpItem(gfx, layout.left_x, left_y, "M", "toggle mode", IGfxColor::Magenta());
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "N", "toggle distortion", IGfxColor::Magenta());
 
+  drawHelpHeading(gfx, layout.right_x, right_y, "Presets");
+  right_y += lh;
+  drawHelpItem(gfx, layout.right_x, right_y, "1-4", "Load Preset", IGfxColor::Orange());
+  right_y += lh;
   drawHelpHeading(gfx, layout.right_x, right_y, "Mutes");
   right_y += lh;
-  drawHelpItem(gfx, layout.right_x, right_y, "1", "303A", IGfxColor::Orange());
-  right_y += lh;
-  drawHelpItem(gfx, layout.right_x, right_y, "2", "303B", IGfxColor::Orange());
-  right_y += lh;
-  drawHelpItem(gfx, layout.right_x, right_y, "3-0", "Drum Parts", IGfxColor::Orange());
+  drawHelpItem(gfx, layout.right_x, right_y, "I / 2", "303A / 303B", IGfxColor::Orange());
+}
+
+inline void drawHelpPageTape(IGfx& gfx, int x, int y, int w, int h) {
+  HelpLayout layout = makeHelpLayout(gfx, x, y, w, h);
+  int left_y = layout.left_y;
+  int lh = layout.line_h;
+
+  drawHelpHeading(gfx, layout.left_x, left_y, "Tape Section");
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+M", "Mode: STOP/REC/PLAY", IGfxColor::Red());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "1-6", "Load Tape Character", IGfxColor::Cyan());
+  left_y += lh;
+  
+  drawHelpHeading(gfx, layout.left_x, left_y, "DSP Effects");
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "WOW", "Pitch instability", COLOR_LABEL);
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "AGE", "Tape wear/HF loss", COLOR_LABEL);
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "SAT", "Saturation/Warmth", COLOR_LABEL);
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "CRSH", "Lo-fi degradation", COLOR_LABEL);
 }
 
 inline void drawHelpPage303PatternEdit(IGfx& gfx, int x, int y, int w, int h) {
@@ -131,7 +156,7 @@ inline void drawHelpPage303PatternEdit(IGfx& gfx, int x, int y, int w, int h) {
 
   drawHelpHeading(gfx, layout.left_x, left_y, "Pattern slots");
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "Q..I", "Pick pattern", COLOR_PATTERN_SELECTED_FILL);
+  drawHelpItem(gfx, layout.left_x, left_y, "SHIFT+Q..I", "Pick pattern", COLOR_PATTERN_SELECTED_FILL);
   left_y += lh;
 
   int right_y = y + 4 + lh;
@@ -167,7 +192,7 @@ inline void drawHelpPageDrumPatternEdit(IGfx& gfx, int x, int y, int w, int h) {
 
   drawHelpHeading(gfx, layout.left_x, left_y, "Patterns");
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "Q..I", "Select drum pattern 1-8", COLOR_PATTERN_SELECTED_FILL);
+  drawHelpItem(gfx, layout.left_x, left_y, "SHIFT+Q..I", "Select drum pattern", COLOR_PATTERN_SELECTED_FILL);
 
   drawHelpHeading(gfx, layout.right_x, right_y, "Step edits");
   right_y += lh;

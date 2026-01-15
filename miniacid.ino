@@ -15,6 +15,7 @@
 #include "src/audio/cardputer_audio_recorder.h"
 #include "miniacid_encoder8.h"
 #include "scene_storage_cardputer.h"
+#include "src/ui/led_manager.h"
 
 static constexpr IGfxColor CP_BLACK = IGfxColor::Black();
 
@@ -22,6 +23,8 @@ CardputerDisplay g_display;
 MiniAcidDisplay* g_miniDisplay = nullptr;
 SceneStorageCardputer g_sceneStorage;
 CardputerAudioRecorder* g_audioRecorder = nullptr;
+#include "src/sampler/ram_sample_store.h"
+RamSampleStore g_sampleStore;
 
 int16_t g_audioBuffer[AUDIO_BUFFER_SAMPLES];
 
@@ -80,6 +83,9 @@ void setup() {
   auto cfg = M5.config();
   M5Cardputer.begin(cfg);
   
+  // Seed random number generator with hardware RNG
+  srand(esp_random());
+  
   logHeapCaps("after-m5-begin");
   
   esp_reset_reason_t reason = esp_reset_reason();
@@ -127,7 +133,26 @@ void setup() {
   g_encoder8 = new Encoder8Miniacid(*g_miniAcid);
 
   screenLog("6. Engine Init...");
+  // Link sample store before init
+  g_miniAcid->sampleStore = &g_sampleStore;
   g_miniAcid->init();
+  
+  // Scan samples from SD card (SD initialized by engine->init->sceneStorage)
+  screenLog("6b. Scan /sd/samples...");
+  g_miniAcid->sampleIndex.scanDirectory("/sd/samples");
+  
+  if (g_miniAcid->sampleIndex.getFiles().empty()) {
+     // Fallback: try different path if /sd/samples is not right
+     g_miniAcid->sampleIndex.scanDirectory("/samples");
+  }
+
+  for (const auto& file : g_miniAcid->sampleIndex.getFiles()) {
+      Serial.printf("Found sample: %s (id=%u)\n", file.filename.c_str(), file.id.value);
+      // Register with RamSampleStore. 
+      // Note: "registerFile" just stores the path for lazy loading.
+      g_sampleStore.registerFile(file.id, file.fullPath);
+  }
+
   
   screenLog("7. UI Setup...");
   g_miniDisplay = new MiniAcidDisplay(g_display, *g_miniAcid);
@@ -152,12 +177,15 @@ void setup() {
   );
 
   g_encoder8->initialize();
+  LedManager::instance().init();
 
   drawUI();
 }
 
+
 void loop() {
   M5Cardputer.update();
+  LedManager::instance().update();
 
   if (g_encoder8) g_encoder8->update();
 
@@ -238,6 +266,14 @@ void loop() {
       drawUI();
     } else if (c == 'l' || c == 'L') {
       g_miniAcid->setBpm(g_miniAcid->bpm() + 5.0f);
+      drawUI();
+    } else if (c == '-' || c == '_') {
+      // Volume down (larger step: 3 * 1/64 ≈ 5%)
+      g_miniAcid->adjustParameter(MiniAcidParamId::MainVolume, -3);
+      drawUI();
+    } else if (c == '=' || c == '+') {
+      // Volume up (larger step: 3 * 1/64 ≈ 5%)
+      g_miniAcid->adjustParameter(MiniAcidParamId::MainVolume, 3);
       drawUI();
     } else if (c == ' ') {
       if (g_miniAcid->isPlaying()) {

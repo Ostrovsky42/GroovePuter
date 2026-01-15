@@ -53,7 +53,7 @@ public:
     void drawFocusRect(const Rect& rect, bool editMode);
 
     // Layout helpers
-    int headerHeight() const { return 18; }
+    int headerHeight() const { return 16; }  // Reduced from 18 for more content space
     int footerHeight() const { return 10; }  // Minimized - every pixel matters!
     Rect contentBounds() const;
 

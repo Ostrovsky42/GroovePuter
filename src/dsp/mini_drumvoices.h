@@ -58,15 +58,15 @@ public:
 
   virtual void reset() = 0;
   virtual void setSampleRate(float sampleRate) = 0;
-  virtual void triggerKick(bool accent = false) = 0;
-  virtual void triggerSnare(bool accent = false) = 0;
-  virtual void triggerHat(bool accent = false) = 0;
-  virtual void triggerOpenHat(bool accent = false) = 0;
-  virtual void triggerMidTom(bool accent = false) = 0;
-  virtual void triggerHighTom(bool accent = false) = 0;
-  virtual void triggerRim(bool accent = false) = 0;
-  virtual void triggerClap(bool accent = false) = 0;
-  virtual void triggerCymbal(bool accent = false) = 0;
+  virtual void triggerKick(bool accent = false, uint8_t velocity = 100) = 0;
+  virtual void triggerSnare(bool accent = false, uint8_t velocity = 100) = 0;
+  virtual void triggerHat(bool accent = false, uint8_t velocity = 100) = 0;
+  virtual void triggerOpenHat(bool accent = false, uint8_t velocity = 100) = 0;
+  virtual void triggerMidTom(bool accent = false, uint8_t velocity = 100) = 0;
+  virtual void triggerHighTom(bool accent = false, uint8_t velocity = 100) = 0;
+  virtual void triggerRim(bool accent = false, uint8_t velocity = 100) = 0;
+  virtual void triggerClap(bool accent = false, uint8_t velocity = 100) = 0;
+  virtual void triggerCymbal(bool accent = false, uint8_t velocity = 100) = 0;
 
   virtual float processKick() = 0;
   virtual float processSnare() = 0;
@@ -91,15 +91,15 @@ public:
 
   void reset() override;
   void setSampleRate(float sampleRate) override;
-  void triggerKick(bool accent = false) override;
-  void triggerSnare(bool accent = false) override;
-  void triggerHat(bool accent = false) override;
-  void triggerOpenHat(bool accent = false) override;
-  void triggerMidTom(bool accent = false) override;
-  void triggerHighTom(bool accent = false) override;
-  void triggerRim(bool accent = false) override;
-  void triggerClap(bool accent = false) override;
-  void triggerCymbal(bool accent = false) override;
+  void triggerKick(bool accent = false, uint8_t velocity = 100) override;
+  void triggerSnare(bool accent = false, uint8_t velocity = 100) override;
+  void triggerHat(bool accent = false, uint8_t velocity = 100) override;
+  void triggerOpenHat(bool accent = false, uint8_t velocity = 100) override;
+  void triggerMidTom(bool accent = false, uint8_t velocity = 100) override;
+  void triggerHighTom(bool accent = false, uint8_t velocity = 100) override;
+  void triggerRim(bool accent = false, uint8_t velocity = 100) override;
+  void triggerClap(bool accent = false, uint8_t velocity = 100) override;
+  void triggerCymbal(bool accent = false, uint8_t velocity = 100) override;
 
   float processKick() override;
   float processSnare() override;
@@ -157,6 +157,10 @@ private:
   bool kickAccentDistortion;
   float kickAmpDecay;
   float kickBaseFreq;
+  float kickSubPhase;
+  float kickSubDecay;
+  float kickClickAmp;
+  uint32_t noiseState;
 
   float snareEnvAmp;
   float snareToneEnv;
@@ -246,15 +250,15 @@ public:
 
   void reset() override;
   void setSampleRate(float sampleRate) override;
-  void triggerKick(bool accent = false) override;
-  void triggerSnare(bool accent = false) override;
-  void triggerHat(bool accent = false) override;
-  void triggerOpenHat(bool accent = false) override;
-  void triggerMidTom(bool accent = false) override;
-  void triggerHighTom(bool accent = false) override;
-  void triggerRim(bool accent = false) override;
-  void triggerClap(bool accent = false) override;
-  void triggerCymbal(bool accent = false) override;
+  void triggerKick(bool accent = false, uint8_t velocity = 100) override;
+  void triggerSnare(bool accent = false, uint8_t velocity = 100) override;
+  void triggerHat(bool accent = false, uint8_t velocity = 100) override;
+  void triggerOpenHat(bool accent = false, uint8_t velocity = 100) override;
+  void triggerMidTom(bool accent = false, uint8_t velocity = 100) override;
+  void triggerHighTom(bool accent = false, uint8_t velocity = 100) override;
+  void triggerRim(bool accent = false, uint8_t velocity = 100) override;
+  void triggerClap(bool accent = false, uint8_t velocity = 100) override;
+  void triggerCymbal(bool accent = false, uint8_t velocity = 100) override;
 
   float processKick() override;
   float processSnare() override;
@@ -401,15 +405,15 @@ public:
 
   void reset() override;
   void setSampleRate(float sampleRate) override;
-  void triggerKick(bool accent = false) override;
-  void triggerSnare(bool accent = false) override;
-  void triggerHat(bool accent = false) override;
-  void triggerOpenHat(bool accent = false) override;
-  void triggerMidTom(bool accent = false) override;
-  void triggerHighTom(bool accent = false) override;
-  void triggerRim(bool accent = false) override;
-  void triggerClap(bool accent = false) override;
-  void triggerCymbal(bool accent = false) override;
+  void triggerKick(bool accent = false, uint8_t velocity = 100) override;
+  void triggerSnare(bool accent = false, uint8_t velocity = 100) override;
+  void triggerHat(bool accent = false, uint8_t velocity = 100) override;
+  void triggerOpenHat(bool accent = false, uint8_t velocity = 100) override;
+  void triggerMidTom(bool accent = false, uint8_t velocity = 100) override;
+  void triggerHighTom(bool accent = false, uint8_t velocity = 100) override;
+  void triggerRim(bool accent = false, uint8_t velocity = 100) override;
+  void triggerClap(bool accent = false, uint8_t velocity = 100) override;
+  void triggerCymbal(bool accent = false, uint8_t velocity = 100) override;
 
   float processKick() override;
   float processSnare() override;

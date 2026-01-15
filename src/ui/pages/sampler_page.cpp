@@ -70,20 +70,30 @@ void SamplerPage::initComponents() {
   addChild(reverse_ctrl_);
   addChild(choke_ctrl_);
 
-  int x = dx() + 10;
-  int y = dy() + 10;
-  int h = gfx_.fontHeight() + 6;
-  int w = 150;
+  int x = dx() + 4;
+  int y = dy() + 2;
+  int h = gfx_.fontHeight() + 2; // Compact height
+  int w1 = (width() - 8) / 2;
+  int w_full = width() - 8;
 
-  pad_ctrl_->setBoundaries(Rect(x, y, w, h)); y += h;
-  file_ctrl_->setBoundaries(Rect(x, y, w + 100, h)); y += h + 4;
-  volume_ctrl_->setBoundaries(Rect(x, y, w, h)); y += h;
-  pitch_ctrl_->setBoundaries(Rect(x, y, w, h)); y += h + 4;
-  start_ctrl_->setBoundaries(Rect(x, y, w, h)); y += h;
-  end_ctrl_->setBoundaries(Rect(x, y, w, h)); y += h + 4;
-  loop_ctrl_->setBoundaries(Rect(x, y, w, h)); y += h;
-  reverse_ctrl_->setBoundaries(Rect(x, y, w, h)); y += h;
-  choke_ctrl_->setBoundaries(Rect(x, y, w, h));
+  pad_ctrl_->setBoundaries(Rect(x, y, w_full, h)); y += h;
+  file_ctrl_->setBoundaries(Rect(x, y, w_full, h)); y += h + 2;
+  
+  // Two columns for the rest
+  int mid_x = x + w1 + 4;
+  volume_ctrl_->setBoundaries(Rect(x, y, w1, h)); 
+  pitch_ctrl_->setBoundaries(Rect(mid_x, y, w1, h)); 
+  y += h;
+
+  start_ctrl_->setBoundaries(Rect(x, y, w1, h)); 
+  end_ctrl_->setBoundaries(Rect(mid_x, y, w1, h)); 
+  y += h;
+
+  loop_ctrl_->setBoundaries(Rect(x, y, w1, h)); 
+  reverse_ctrl_->setBoundaries(Rect(mid_x, y, w1, h)); 
+  y += h;
+
+  choke_ctrl_->setBoundaries(Rect(x, y, w1, h));
 
   initialized_ = true;
 }
@@ -174,14 +184,24 @@ bool SamplerPage::handleEvent(UIEvent& ui_event) {
     case MINIACID_DOWN:
       focusNext();
       return true;
-    case MINIACID_LEFT:
-      adjustFocusedElement(-1);
-      return true;
     case MINIACID_RIGHT:
       adjustFocusedElement(1);
       return true;
     default:
       break;
+  }
+
+  char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)));
+  
+  // Q-I triggered pads 1-8 (Standardized row)
+  const char* triggerKeys = "qwertyui";
+  const char* found = strchr(triggerKeys, lowerKey);
+  if (found) {
+    int padIdx = found - triggerKeys;
+    audio_guard_([&]() {
+        mini_acid_.samplerTrack.triggerPad(padIdx, 1.0f, *mini_acid_.sampleStore);
+    });
+    return true;
   }
 
   if (ui_event.key == ' ') {

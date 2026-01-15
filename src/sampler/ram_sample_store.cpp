@@ -115,23 +115,41 @@ bool RamSampleStore::preload(SampleId id) {
   {
     std::lock_guard<std::mutex> lk(pathsMutex_);
     auto it = filePaths_.find(id.value);
-    if (it == filePaths_.end()) return false;
+    if (it == filePaths_.end()) {
+        printf("Preload: ID %u not found in registry\n", id.value);
+        return false;
+    }
     path = it->second;
   }
+
+  printf("Preload: Loading %s ...\n", path.c_str());
 
   // 3. Load from disk
   WavInfo info;
   int16_t* pcm = nullptr;
   if (!loadWavFile(path.c_str(), info, &pcm)) {
+    printf("Preload: loadWavFile failed for %s\n", path.c_str());
     return false;
   }
   
   std::size_t size = info.numFrames * sizeof(int16_t);
+  printf("Preload: Loaded %u frames (%u bytes). Pool usage: %u/%u\n", 
+         info.numFrames, (unsigned)size, (unsigned)currentPoolUsage_, (unsigned)maxPoolBytes_);
   
   // 4. Find free slot or evict
   int slotIdx = -1;
   while (currentPoolUsage_ + size > maxPoolBytes_) {
+    printf("Preload: Evicting LRU to make space...\n");
     evictLRU();
+    // Safety break if eviction didn't help (e.g. all locked?)
+    if (freePoolBytes() < size && currentPoolUsage_ == 0) break; // Should not happen if evict works
+  }
+  
+  if (currentPoolUsage_ + size > maxPoolBytes_) {
+      printf("Preload: Pool full! Needed %u, have %u free. Max: %u\n", 
+             (unsigned)size, (unsigned)freePoolBytes(), (unsigned)maxPoolBytes_);
+      free(pcm);
+      return false;
   }
 
   // Find empty slot
@@ -143,6 +161,7 @@ bool RamSampleStore::preload(SampleId id) {
   }
 
   if (slotIdx < 0) {
+    printf("Preload: No free slots!\n");
     if (pcm) free(pcm);
     return false;
   }

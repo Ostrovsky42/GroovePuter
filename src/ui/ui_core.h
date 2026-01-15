@@ -15,6 +15,7 @@ enum KeyScanCode {
   MINIACID_LEFT,
   MINIACID_RIGHT,
   MINIACID_ESCAPE,
+  MINIACID_TAB,
 };
 
 enum EventType {

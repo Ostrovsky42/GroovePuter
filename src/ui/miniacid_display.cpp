@@ -25,6 +25,7 @@
 #include "pages/sampler_page.h"
 #include "pages/tape_page.h"
 #include "pages/mode_page.h"
+#include "pages/settings_page.h"
 #include "components/mute_button.h"
 #include "components/page_hint.h"
 
@@ -62,6 +63,7 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid)
   pages_.push_back(std::make_unique<SamplerPage>(gfx_, mini_acid_, audio_guard_));
   pages_.push_back(std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_));
   pages_.push_back(std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_));
+  pages_.push_back(std::make_unique<SettingsPage>(gfx_, mini_acid_));
   pages_.push_back(std::make_unique<HelpPage>());
 }
 
@@ -116,7 +118,7 @@ void MiniAcidDisplay::update() {
     
     // Panel frame around content area (leave room for mutes at bottom)
     int margin = 4;
-    int mutes_h = 20;  // Height reserved for mute buttons
+    int mutes_h = 14;  // Reduced from 20 to save vertical space
     Rect panelBounds(margin, skin_->headerHeight() + margin,
                      gfx_.width() - margin * 2,
                      gfx_.height() - skin_->headerHeight() - skin_->footerHeight() - mutes_h - margin * 2);
@@ -124,7 +126,7 @@ void MiniAcidDisplay::update() {
   }
 
   // Use skin's content bounds for page rendering
-  int mutes_h = 20;
+  int mutes_h = 14;
   Rect contentBounds = skin_ ? 
       Rect(skin_->contentBounds().x, skin_->contentBounds().y,
            skin_->contentBounds().w, skin_->contentBounds().h - mutes_h) :
@@ -264,7 +266,7 @@ int MiniAcidDisplay::drawPageTitle(int x, int y, int w, const char* text) {
 
   w = w - transport_info_w; 
 
-  constexpr int kTitleHeight = 11;
+  constexpr int kTitleHeight = 9;  // Reduced from 11 to save vertical space
   constexpr int kReservedRight = 60; 
 
 
@@ -447,18 +449,36 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     return true;
   }
 
-  if (event.event_type == MINIACID_KEY_DOWN && event.scancode == MINIACID_ESCAPE) {
-    if (page_index_ >= 0 && page_index_ < static_cast<int>(pages_.size()) && pages_[page_index_]) {
-      auto dialog = pages_[page_index_]->getHelpDialog();
-      if (dialog) {
-        help_dialog_ = std::move(dialog);
-        help_dialog_visible_ = true;
-        help_dialog_->setExitRequestedCallback([this]() {
-          help_dialog_visible_ = false;
-          help_dialog_.reset();
-        });
+  if (event.event_type == MINIACID_KEY_DOWN) {
+    if (event.scancode == MINIACID_TAB) {
+      if (page_index_ >= 0 && page_index_ < static_cast<int>(pages_.size()) && pages_[page_index_]) {
+        auto dialog = pages_[page_index_]->getHelpDialog();
+        if (dialog) {
+          help_dialog_ = std::move(dialog);
+          help_dialog_visible_ = true;
+          help_dialog_->setExitRequestedCallback([this]() {
+            help_dialog_visible_ = false;
+            help_dialog_.reset();
+          });
+          update();
+          return true;
+        }
+      }
+    } else if (event.scancode == MINIACID_ESCAPE) {
+      if (help_dialog_visible_) {
+        help_dialog_visible_ = false;
+        help_dialog_.reset();
         update();
         return true;
+      } else {
+        // Universal "Back/Home" key: go to ProjectPage (index 6)
+        if (page_index_ != 6) {
+          page_index_ = 6;
+          help_dialog_visible_ = false;
+          help_dialog_.reset();
+          update();
+          return true;
+        }
       }
     }
   }
@@ -490,10 +510,9 @@ void MiniAcidDisplay::drawDebugOverlay() {
   char buf[32];
   
   int w = 80;
-  int h = 22;
+  int h = 20;  // Reduced from 22
   int x = gfx_.width() - w - 2;
-  int y = 20; 
-  
+  int y = gfx_.height() - h - 14 - 10;  // Moved to just above mutes section  
   gfx_.fillRect(x, y, w, h, COLOR_BLACK);
   gfx_.drawRect(x, y, w, h, IGfxColor::Gray());
   
@@ -502,7 +521,7 @@ void MiniAcidDisplay::drawDebugOverlay() {
   gfx_.drawText(x + 2, y + 2, buf);
   
   snprintf(buf, sizeof(buf), "H:%uK", stats.heapFree / 1024);
-  gfx_.drawText(x + 2, y + 12, buf);
+  gfx_.drawText(x + 2, y + 10, buf); 
 }
 
 HeaderState MiniAcidDisplay::buildHeaderState() const {

@@ -52,7 +52,7 @@ public:
             }
             
             // Accent
-            if (isDownbeat(step) && (rand() % 100) < 30) {
+            if ((rand() % 100) < 30) {
                 pattern.steps[step].accent = true;
             }
             
@@ -143,10 +143,19 @@ private:
     static int quantizeToScale(int note, int root, ScaleType scale) {
         static const int minorIntervals[] = {0, 2, 3, 5, 7, 8, 10};
         static const int majorIntervals[] = {0, 2, 4, 5, 7, 9, 11};
-        // Add others if needed
+        static const int dorianIntervals[] = {0, 2, 3, 5, 7, 9, 10};
+        static const int phrygianIntervals[] = {0, 1, 3, 5, 7, 8, 10};
+        static const int mixolydianIntervals[] = {0, 2, 4, 5, 7, 9, 10};
         
-        const int* intervals = (scale == MAJOR) ? majorIntervals : minorIntervals; 
-        // fallback to minor for others for now or implement full list
+        const int* intervals;
+        switch(scale) {
+            case MAJOR: intervals = majorIntervals; break;
+            case DORIAN: intervals = dorianIntervals; break;
+            case PHRYGIAN: intervals = phrygianIntervals; break;
+            case MIXOLYDIAN: intervals = mixolydianIntervals; break;
+            case MINOR: 
+            default: intervals = minorIntervals; break;
+        }
         
         int octave = note / 12;
         int semitone = note % 12;

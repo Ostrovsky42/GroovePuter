@@ -339,12 +339,12 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     }
   }
 
-  int patternIdx = patternIndexFromKey(key);
-  bool patternKeyReserved = false;
-  if (patternIdx >= 0) {
-    char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
-    patternKeyReserved = (lowerKey == 'q' || lowerKey == 'w');
-    if (!patternKeyReserved || patternRowFocused()) {
+  char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
+  
+  // Q-I Pattern Selection (Standardized)
+  if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta) {
+    int patternIdx = patternIndexFromKey(lowerKey);
+    if (patternIdx >= 0) {
       if (mini_acid_.songModeEnabled()) return true;
       focusPatternRow();
       setPatternCursor(patternIdx);
@@ -361,19 +361,24 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     }
   };
 
-  char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
   switch (lowerKey) {
     case 'q': {
-      ensureStepFocusAndCursor();
-      int step = activePatternStep();
-      withAudioGuard([&]() { mini_acid_.toggle303SlideStep(voice_index_, step); });
-      return true;
+      if (ui_event.shift) {
+        ensureStepFocusAndCursor();
+        int step = activePatternStep();
+        withAudioGuard([&]() { mini_acid_.toggle303SlideStep(voice_index_, step); });
+        return true;
+      }
+      break;
     }
     case 'w': {
-      ensureStepFocusAndCursor();
-      int step = activePatternStep();
-      withAudioGuard([&]() { mini_acid_.toggle303AccentStep(voice_index_, step); });
-      return true;
+      if (ui_event.shift) {
+        ensureStepFocusAndCursor();
+        int step = activePatternStep();
+        withAudioGuard([&]() { mini_acid_.toggle303AccentStep(voice_index_, step); });
+        return true;
+      }
+      break;
     }
     case 'a': {
       ensureStepFocusAndCursor();
