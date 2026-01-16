@@ -2,7 +2,9 @@
 #include "esp_heap_caps.h"
 #include <Arduino.h>
 
-// New ESP-IDF I2S Driver (avoids conflict with M5Unified/M5GFX)
+// New ESP-IDF I2S Driver (v5.x API)
+// Using I2S_NUM_1 to avoid Port 0 conflicts with M5Unified/Mic/Speaker
+
 // M5Cardputer ADV I2S pins for ES8311 codec
 static const int I2S_BCLK = 41;
 static const int I2S_LRCLK = 43;
@@ -41,10 +43,10 @@ bool AudioOutI2S::begin(uint32_t sampleRate, size_t bufferFrames) {
   }
   
   // 1. Create I2S Channel (Standard Mode)
-  // Use I2S_NUM_1 to minimize conflict chance with M5Unified (which might grab 0)
-  i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_1, I2S_ROLE_MASTER);
-  chan_cfg.dma_desc_num = 8;         // Number of DMA buffers
-  chan_cfg.dma_frame_num = 256;      // Fixed smaller frame size for better latency
+  // Use I2S_NUM_0 - must be freed by M5Cardputer.Speaker.end() before this call
+  i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
+  chan_cfg.dma_desc_num = 8;         // Matches working test config
+  chan_cfg.dma_frame_num = 512;      // Matches working test config
   chan_cfg.auto_clear = true;        // Silence on underrun
   
   esp_err_t err = i2s_new_channel(&chan_cfg, &tx_handle_, NULL);
@@ -56,33 +58,26 @@ bool AudioOutI2S::begin(uint32_t sampleRate, size_t bufferFrames) {
   }
   
   // 2. Configure Channel (Slot & Clock)
-  i2s_std_config_t std_cfg = {
-      .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(sampleRate),
-      // --- MODE SELECTION ---
-      // Option A: MSB Mode (Usually correct for ES8311 in M5Stack)
-      //Option A: MSB Mode (Usually correct for ES8311 in M5Stack)
-      //.slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
-      
-      // Option B: Philips Mode (Standard I2S, try if sound is distorted/quiet)
-      .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO),
-      // ----------------------
-      .gpio_cfg = {
-          .mclk = I2S_GPIO_UNUSED,
-          .bclk = (gpio_num_t)I2S_BCLK,
-          .ws = (gpio_num_t)I2S_LRCLK,
-          .dout = (gpio_num_t)I2S_DOUT,
-          .din = I2S_GPIO_UNUSED,
-          .invert_flags = {
-              .mclk_inv = false,
-              .bclk_inv = false,
-              .ws_inv = false,
-          },
-      },
-  };
-
-  // Important: M5Unified typically uses I2S_STD_SLOT_DEFAULT_CONFIG (Philips)
-  // But some codecs prefer MSB. If sound is missing/distorted, try I2S_STD_SLOT_DEFAULT_CONFIG
+  i2s_std_config_t std_cfg = {};
   
+  // Clock: Use default source (usually PLL or XTAL)
+  std_cfg.clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(sampleRate);
+  std_cfg.clk_cfg.clk_src = I2S_CLK_SRC_DEFAULT;
+
+  
+  // Slot: Standard Philips I2S (Option B from before, matching i2s_test.ino)
+  std_cfg.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO);
+  
+  // GPIOs
+  std_cfg.gpio_cfg.mclk = I2S_GPIO_UNUSED;
+  std_cfg.gpio_cfg.bclk = (gpio_num_t)I2S_BCLK;
+  std_cfg.gpio_cfg.ws = (gpio_num_t)I2S_LRCLK;
+  std_cfg.gpio_cfg.dout = (gpio_num_t)I2S_DOUT;
+  std_cfg.gpio_cfg.din = I2S_GPIO_UNUSED;
+  std_cfg.gpio_cfg.invert_flags.mclk_inv = false;
+  std_cfg.gpio_cfg.invert_flags.bclk_inv = false;
+  std_cfg.gpio_cfg.invert_flags.ws_inv = false;
+
   err = i2s_channel_init_std_mode(tx_handle_, &std_cfg);
   if (err != ESP_OK) {
     Serial.printf("[AudioOutI2S] i2s_channel_init_std_mode failed: %d\n", (int)err);
@@ -104,7 +99,7 @@ bool AudioOutI2S::begin(uint32_t sampleRate, size_t bufferFrames) {
     return false;
   }
   
-  Serial.printf("[AudioOutI2S] Initialized i2s_std: %u Hz, %u frames, 8 DMA bufs\n", 
+  Serial.printf("[AudioOutI2S] Initialized on I2S_NUM_0: %u Hz, %u frames\n", 
                 sampleRate, (unsigned)bufferFrames);
   return true;
 }
@@ -115,14 +110,14 @@ bool AudioOutI2S::writeMono16(const int16_t* monoBuffer, size_t frames) {
   }
   
   if (frames > bufferFrames_) {
-    frames = bufferFrames_;  // Clamp to allocated size
+    frames = bufferFrames_;
   }
   
   // Convert mono to stereo (L=R duplication)
   for (size_t i = 0; i < frames; i++) {
     int16_t sample = monoBuffer[i];
-    stereoBuffer_[i * 2 + 0] = sample;  // L
-    stereoBuffer_[i * 2 + 1] = sample;  // R
+    stereoBuffer_[i * 2 + 0] = sample;
+    stereoBuffer_[i * 2 + 1] = sample;
   }
   
   size_t bytesWritten = 0;
@@ -131,13 +126,11 @@ bool AudioOutI2S::writeMono16(const int16_t* monoBuffer, size_t frames) {
     stereoBuffer_,
     frames * 2 * sizeof(int16_t),
     &bytesWritten,
-    pdMS_TO_TICKS(100) // Block with timeout (avoid indefinite hang)
+    pdMS_TO_TICKS(100) // Avoid indefinite hang
   );
   
   if (err != ESP_OK || bytesWritten != frames * 2 * sizeof(int16_t)) {
-    Serial.printf("[AudioOutI2S] i2s_channel_write error: %d, bytes: %u/%u\n",
-                  (int)err, (unsigned)bytesWritten, 
-                  (unsigned)(frames * 2 * sizeof(int16_t)));
+    // Treat regular timeouts as silent failures (underruns)
     return false;
   }
   

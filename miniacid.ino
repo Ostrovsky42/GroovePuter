@@ -73,7 +73,11 @@ void audioTask(void *param) {
     }
 
     // Write to I2S (blocks until DMA accepts the buffer)
-    g_audioOut.writeMono16(g_audioBuffer, kBlockFrames);
+    if (!g_audioOut.writeMono16(g_audioBuffer, kBlockFrames)) {
+      // If write fails (usually because it was never initialized),
+      // we MUST sleep to avoid starving lower priority tasks (like the UI/Keys!)
+      vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
   }
 }
 
@@ -99,16 +103,22 @@ void setup() {
   AudioDiagnostics::instance().enable(true);
   delay(500);
   Serial.println("\n\n!! BOOTING !!");
-  logHeapCaps("boot-start");
-  
   auto cfg = M5.config();
-  
-  // Disable M5 audio to verify our custom I2S driver takes precedence
-  cfg.internal_spk = false;
-  cfg.external_spk = false;
-  cfg.internal_mic = false;
-  
   M5Cardputer.begin(cfg);
+  
+  // 1. Let M5Unified initialize the ES8311 codec over I2C.
+  // This wakes up the codec, sets output volumes, etc.
+  M5Cardputer.Speaker.begin();
+  M5Cardputer.Speaker.setVolume(160);
+  
+  // 2. IMPORTANT: Release Port 0 immediately.
+  // This uninstalls M5's I2S driver but keeps the ES8311 codec registers intact.
+  // This avoids the "I2S driver conflict" and allows us to use Port 0.
+  M5Cardputer.Speaker.end();
+  Serial.println("[Audio] ES8311 codec initialized, Speaker released Port 0");
+  
+  // Small delay to ensure the driver is fully uninstalled before our custom one starts
+  delay(50);
   
   // Seed random number generator with hardware RNG
   srand(esp_random());

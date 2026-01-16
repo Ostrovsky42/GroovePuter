@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <cstddef>
-
 #include "driver/i2s_std.h"
 
 // Direct I2S audio output wrapper (New ESP-IDF Driver)
