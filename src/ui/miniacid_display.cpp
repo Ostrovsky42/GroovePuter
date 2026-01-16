@@ -198,7 +198,7 @@ void MiniAcidDisplay::update() {
   page_hint_container_.draw(gfx_);
   
   // enable debug overlay by default for now
-  drawDebugOverlay();
+  //drawDebugOverlay();
 
   gfx_.flush();
   gfx_.endWrite();
