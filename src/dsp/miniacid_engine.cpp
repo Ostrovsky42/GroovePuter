@@ -306,10 +306,12 @@ void MiniAcid::reset() {
   voice303.reset();
   voice3032.reset();
   LOG_PRINTLN("    - MiniAcid::reset: voices reset");
-  // make the second voice have different params
+  
+  // Make the second voice have different params (intentional base offset)
   voice3032.adjustParameter(TB303ParamId::Cutoff, -3);
   voice3032.adjustParameter(TB303ParamId::Resonance, -3);
   voice3032.adjustParameter(TB303ParamId::EnvAmount, -1);
+  
   if (drums) {
     LOG_PRINTLN("    - MiniAcid::reset: resetting drums...");
     drums->reset();
@@ -360,6 +362,12 @@ void MiniAcid::reset() {
   patternModeDrumPatternIndex_ = 0;
   patternModeSynthPatternIndex_[0] = 0;
   patternModeSynthPatternIndex_[1] = 0;
+  
+  // NOW reset bias tracking (after all base params are set)
+  genreManager_.resetTextureBiasTracking();
+  // Apply texture to bring engine into consistent state with current genre
+  genreManager_.applyTexture(*this);
+  
   LOG_PRINTLN("    - MiniAcid::reset: Done");
 }
 
@@ -1118,19 +1126,32 @@ void MiniAcid::advanceStep() {
   const SynthStep& stepA = synthA.steps[currentStepIndex];
   const SynthStep& stepB = synthB.steps[currentStepIndex];
   
+  // Get gate length multiplier from genre params
+  float gateMult = genreManager_.getGenerativeParams().gateLengthMultiplier;
+  if (gateMult < 0.1f) gateMult = 0.5f; // Default fallback
+  if (gateMult > 1.0f) gateMult = 1.0f;
+  
+  // Voice A (Bass): slightly shorter gate for tighter feel
+  float gateMultA = gateMult * 0.85f;
+  if (gateMultA < 0.15f) gateMultA = 0.15f;
+  
+  // Voice B (Lead): slightly longer gate for more legato
+  float gateMultB = gateMult * 1.05f;
+  if (gateMultB > 0.98f) gateMultB = 0.98f;
+  
   // Note: ghost notes handled by velocity < 50 usually
   if (!mute303 && songPatternA >= 0 && stepA.note >= 0 && (!stepA.ghost || (rand() % 100 < 80))) {
     voice303.startNote(noteToFreq(stepA.note), stepA.accent, stepA.slide, stepA.velocity);
+    // Set gate countdown: gate_samples = step_duration * multiplier
+    gateCountdownA_ = (long)(samplesPerStep * gateMultA);
     LedManager::instance().onVoiceTriggered(VoiceId::SynthA, sceneManager_.currentScene().led);
-  } else {
-    voice303.release();
   }
+  // Note: release is now handled by gate countdown, not here
 
   if (!mute303_2 && songPatternB >= 0 && stepB.note >= 0 && (!stepB.ghost || (rand() % 100 < 80))) {
     voice3032.startNote(noteToFreq(stepB.note), stepB.accent, stepB.slide, stepB.velocity);
+    gateCountdownB_ = (long)(samplesPerStep * gateMultB);
     LedManager::instance().onVoiceTriggered(VoiceId::SynthB, sceneManager_.currentScene().led);
-  } else {
-    voice3032.release();
   }
 
   // Drums
@@ -1267,6 +1288,20 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
         advanceStep();
       }
       samplesIntoStep++;
+      
+      // Gate length control: decrement countdowns and release when they hit 0
+      if (gateCountdownA_ > 0) {
+        gateCountdownA_--;
+        if (gateCountdownA_ <= 0) {
+          voice303.release();
+        }
+      }
+      if (gateCountdownB_ > 0) {
+        gateCountdownB_--;
+        if (gateCountdownB_ <= 0) {
+          voice3032.release();
+        }
+      }
     }
 
     float sample = 0.0f;
@@ -1393,8 +1428,10 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
 
 void MiniAcid::randomize303Pattern(int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
-  // Use BPM-adaptive mode-aware generator instead of legacy PatternGenerator
-  modeManager_.generatePattern(editSynthPattern(idx), bpmValue);
+  // Use genre-aware generator with voice role (0=bass, 1=lead)
+  const auto& params = genreManager_.getGenerativeParams();
+  const auto behavior = genreManager_.getBehavior();
+  modeManager_.generatePattern(editSynthPattern(idx), bpmValue, params, behavior, idx);
 }
 
 void MiniAcid::setParameter(MiniAcidParamId id, float value) {
@@ -1406,8 +1443,26 @@ void MiniAcid::adjustParameter(MiniAcidParamId id, int steps) {
 }
 
 void MiniAcid::randomizeDrumPattern() {
-  // Use mode-aware drum generator instead of legacy PatternGenerator
-  modeManager_.generateDrumPattern(sceneManager_.editCurrentDrumPattern());
+  // Use genre-aware drum generator
+  const auto& params = genreManager_.getGenerativeParams();
+  const auto behavior = genreManager_.getBehavior();
+  modeManager_.generateDrumPattern(sceneManager_.editCurrentDrumPattern(), params, behavior);
+}
+
+void MiniAcid::regeneratePatternsWithGenre() {
+  // NOTE: applyTexture is NOT called here - it's applied separately by UI on texture change
+  // This prevents double-application which would cause delta-bias drift
+  
+  const auto& params = genreManager_.getGenerativeParams();
+  const auto behavior = genreManager_.getBehavior();
+
+  // Regenerate 303 patterns using generative mode + structural behavior
+  // Voice 0 = bass (low, repetitive), Voice 1 = lead/arp (high, melodic)
+  modeManager_.generatePattern(editSynthPattern(0), bpmValue, params, behavior, 0); // Bass
+  modeManager_.generatePattern(editSynthPattern(1), bpmValue, params, behavior, 1); // Lead
+  
+  // Regenerate drum pattern
+  modeManager_.generateDrumPattern(sceneManager_.editCurrentDrumPattern(), params, behavior);
 }
 
 void MiniAcid::toggleAudioDiag() {
@@ -1514,6 +1569,10 @@ void MiniAcid::saveSceneToStorage() {
 
 void MiniAcid::applySceneStateFromManager() {
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: Start");
+  
+  // Reset bias tracking since scene overwrites all params
+  genreManager_.resetTextureBiasTracking();
+  
   syncModeToVoices();
   setBpm(sceneManager_.getBpm());
   
@@ -1598,6 +1657,16 @@ void MiniAcid::applySceneStateFromManager() {
   tapeLooper.setMode(t.mode);
   tapeLooper.setSpeed(t.speed);
   tapeLooper.setVolume(t.looperVolume);
+  
+  // 1. Enforce Genre Timbre BASE (overwrites scene params to ensure genre identity)
+  genreManager_.applyGenreTimbre(*this);
+  
+  // 2. Reset bias tracking so subsequent texture application is fresh delta from new base
+  genreManager_.resetTextureBiasTracking();
+  
+  // 3. Apply texture (delta bias + FX)
+  genreManager_.applyTexture(*this);
+  
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: Done");
 }
 

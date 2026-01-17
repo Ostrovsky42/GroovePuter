@@ -356,7 +356,17 @@ void loop() {
       evt.ctrl = ks.ctrl;
       evt.shift = ks.shift;
       bool shouldSend = false;
-      if (hid == 0x33) {
+      auto mapFKey = [&](uint8_t h, KeyScanCode& sc) -> bool {
+        if (h >= 0x3A && h <= 0x41) {
+            sc = static_cast<KeyScanCode>(MINIACID_F1 + (h - 0x3A));
+            return true;
+        }
+        return false;
+      };
+
+      if (mapFKey(hid, evt.scancode)) {
+        shouldSend = true;
+      } else if (hid == 0x33) {
         evt.scancode = MINIACID_UP;
         shouldSend = true;
       } else if (hid == 0x37) {

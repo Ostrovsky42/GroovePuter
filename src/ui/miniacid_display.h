@@ -52,4 +52,11 @@ private:
   std::unique_ptr<CassetteSkin> skin_;
   HeaderState buildHeaderState() const;
   FooterState buildFooterState() const;
+  
+  void showToast(const char* msg, int durationMs = 1500);
+
+private:
+  char toastMsg_[32] = {0};
+  unsigned long toastEndTime_ = 0;
+  void drawToast();
 };

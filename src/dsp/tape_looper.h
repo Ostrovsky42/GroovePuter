@@ -16,7 +16,10 @@
 
 class TapeLooper {
 public:
-    static constexpr uint32_t kMaxSeconds = 8;
+    // 2 seconds = ~88KB @ 22kHz mono 16-bit
+    // Fits in internal RAM (no PSRAM needed)
+    // Musically: 1 bar @ 120 BPM, perfect for techno/minimal
+    static constexpr uint32_t kMaxSeconds = 2;
     static constexpr uint32_t kMaxSamples = kMaxSeconds * kSampleRate;
     static constexpr uint32_t kStutterFrames = 512; // ~23ms @ 22kHz
     static constexpr uint32_t kCrossfadeFrames = 256;

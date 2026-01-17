@@ -7,6 +7,7 @@
 #include <string>
 
 #include "mode_manager.h"
+#include "genre_manager.h"
 #include "../../scene_storage.h"
 #include "../../scenes.h"
 #include "mini_tb303.h"
@@ -188,6 +189,17 @@ public:
 
   GrooveboxModeManager& modeManager() { return modeManager_; }
   const GrooveboxModeManager& modeManager() const { return modeManager_; }
+  
+  GenreManager& genreManager() { return genreManager_; }
+  const GenreManager& genreManager() const { return genreManager_; }
+  
+  TempoDelay& tempoDelay() { return delay303; }  // Main delay for texture (Legacy/Voice 0)
+  const TempoDelay& tempoDelay() const { return delay303; }
+  
+  TempoDelay& tempoDelay(int voiceIndex) { return (voiceIndex == 1) ? delay3032 : delay303; }
+  const TempoDelay& tempoDelay(int voiceIndex) const { return (voiceIndex == 1) ? delay3032 : delay303; }
+  
+  void regeneratePatternsWithGenre();  // Regenerate patterns using current genre
 
   Parameter& miniParameter(MiniAcidParamId id);
   void setParameter(MiniAcidParamId id, float value);
@@ -262,6 +274,10 @@ private:
   volatile int currentStepIndex;
   unsigned long samplesIntoStep;
   float samplesPerStep;
+  
+  // Gate length countdown (samples until release, 0 = released)
+  long gateCountdownA_ = 0;
+  long gateCountdownB_ = 0;
   bool songMode_;
   int drumCycleIndex_;
   int songPlayheadPosition_;
@@ -331,6 +347,7 @@ public:
 
 private:
   GrooveboxModeManager modeManager_{*this};
+  GenreManager genreManager_;
   
   // DSP State for Audio Quality
   uint32_t ditherState_ = 12345;

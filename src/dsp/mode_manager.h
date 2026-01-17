@@ -2,6 +2,7 @@
 #include "mode_config.h"
 #include "mini_tb303.h"
 #include "mini_drumvoices.h"
+#include "genre_manager.h"
 #include "../../scenes.h"
 #include <stdlib.h>
 
@@ -43,9 +44,18 @@ public:
     // Apply a mode-specific preset to a voice
     void apply303Preset(int voiceIndex, int presetIndex);
     
-    // Pattern generation according to current mode rules (BPM-adaptive)
+    // Pattern generation (Legacy Mode-based)
     void generatePattern(SynthPattern& pattern, float bpm) const;
     void generateDrumPattern(DrumPatternSet& patternSet) const;
+
+    // Pattern generation (Genre-based)
+    void generatePattern(SynthPattern& pattern, float bpm, const GenerativeParams& params) const;
+    void generateDrumPattern(DrumPatternSet& patternSet, const GenerativeParams& params) const;
+    
+    // Pattern generation (Genre + Behavior + Voice Role)
+    // voiceIndex: 0 = bass (low, repetitive), 1 = lead/arp (high, melodic)
+    void generatePattern(SynthPattern& pattern, float bpm, const GenerativeParams& params, const GenreBehavior& behavior, int voiceIndex = 0) const;
+    void generateDrumPattern(DrumPatternSet& patternSet, const GenerativeParams& params, const GenreBehavior& behavior) const;
     
 private:
     MiniAcid& engine_;
