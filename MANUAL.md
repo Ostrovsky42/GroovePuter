@@ -28,6 +28,7 @@
 - **Eight-voice drum machine** with classic 808 sounds (kick, snare, hats, toms, rim, clap)
 - **16-step sequencer** for each voice
 - **Pattern banks** with 8 slots per instrument
+- **Per-pattern automation** for 303 parameters
 - **Song mode** for arranging patterns into complete tracks
 - **Live muting** for all voices
 - **Audio recording** to WAV files
@@ -99,9 +100,9 @@ The MiniAcid interface consists of several sections:
 MiniAcid has several pages accessible via `[` and `]` keys:
 
 1. **TB-303 Page (A)** - First bass synth parameters and waveform
-2. **Pattern Edit Page (A)** - 303A sequencer editor
+2. **Pattern Edit Page (A)** - 303A sequencer editor + automation subpage
 3. **TB-303 Page (B)** - Second bass synth parameters and waveform
-4. **Pattern Edit Page (B)** - 303B sequencer editor
+4. **Pattern Edit Page (B)** - 303B sequencer editor + automation subpage
 5. **Drum Sequencer** - Drum pattern editor
 6. **Song Mode** - Pattern arrangement and song sequencing
 7. **Project Page** - Scene management and settings
@@ -138,7 +139,7 @@ MiniAcid has two playback modes:
    - Plays the song arrangement from the Song page
    - Patterns change automatically according to song positions
 
-You can togle between modes using Ctrl/Cmd + `P` or by pressing `M` on the Song page.`
+You can toggle between modes using Ctrl/Cmd + `P` or by pressing `M` on the Song page.
 
 ---
 
@@ -257,6 +258,34 @@ Each 303 voice has 8 pattern slots:
 
 **Undo**:
 - **CTRL+Z** or **CMD+Z** - Undo last edit
+
+**Transpose**:
+- **ALT+D** - Transpose pattern up one semitone
+- **ALT+C** - Transpose pattern down one semitone
+
+### Pattern Automation (303)
+
+Each 303 pattern has an automation subpage for parameter lanes (cutoff, resonance, envelope, oscillator, filter type, volume).
+
+**Open the Automation Subpage**:
+- **CTRL/CMD+UP** or **CTRL/CMD+DOWN** - Switch between pattern notes and automation
+- Click the up/down indicator in the title bar (desktop/web)
+
+**Select a Lane**:
+- **TAB** / **SHIFT+TAB** - Move focus between the pattern bar, lane list, and lane editor
+- **UP/DOWN** (when the lane list is focused) - Choose a parameter lane
+- **ENTER** (on a lane label) - Enable/disable that lane
+
+**Edit the Lane**:
+- **Arrow keys** - Move the cursor
+- **ENTER** - Add/remove a node at the cursor
+- **BACKSPACE** - Delete the node at the cursor
+- **ALT+LEFT/ALT+RIGHT** - Jump between existing nodes
+
+**Indicators**:
+- A small yellow square next to a parameter means that lane has automation
+  - Filled = enabled, outline = disabled
+- Copy/paste/cut operations include automation data for the pattern
 
 ### Mouse Control (Desktop/Web)
 
@@ -501,6 +530,10 @@ MiniAcid can record your sessions to WAV audio files. Recording captures the mas
 | **ENTER** | Dismiss splash / Confirm action |
 | **ESC** | Open page help |
 | **`-` `=`** | Decrease/Increase main volume |
+| **TAB** | Move focus to next panel/control |
+| **SHIFT+TAB** | Move focus to previous panel/control |
+| **CTRL/CMD+UP** | Switch subpage up (when available) |
+| **CTRL/CMD+DOWN** | Switch subpage down (when available) |
 
 ### Pattern Randomization
 
@@ -566,6 +599,15 @@ MiniAcid can record your sessions to WAV audio files. Recording captures the mas
 |-----|--------|
 | **W** | Toggle accent |
 
+### Automation Editing (303 automation page)
+
+| Key | Action |
+|-----|--------|
+| **Arrow Keys** | Move automation cursor |
+| **ENTER** | Add/remove automation node |
+| **BACKSPACE** | Delete automation node |
+| **ALT+LEFT/ALT+RIGHT** | Jump between nodes |
+
 ### Song Mode (on Song page)
 
 | Key | Action |
@@ -614,6 +656,11 @@ MiniAcid can record your sessions to WAV audio files. Recording captures the mas
 **Pattern Bank**:
 - **Click on pattern slot** - Switch to that pattern
 - **Active pattern** - Highlighted in bank selector
+
+### Pattern Automation (303)
+
+- **Click in the automation lane editor** - Add/remove nodes
+- **Click the yellow square** next to a lane label to enable/disable automation
 
 ### Drum Sequencer
 

@@ -318,5 +318,10 @@ void DrumPatternAutomationPage::draw(IGfx &gfx)
         automation_editor_->setBoundaries(Rect{editor_x, editor_y, editor_w, editor_h});
         automation_editor_->setParamId(selectedParamId());
     }
-    Container::draw(gfx);
+    if (combo_box_) {
+        combo_box_->draw(gfx);
+    }
+    if (automation_editor_) {
+        automation_editor_->draw(gfx);
+    }
 }

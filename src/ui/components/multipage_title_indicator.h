@@ -42,8 +42,8 @@ class MultiPageTitleIndicator : public Component {
     if (ui_event.event_type == MINIACID_MOUSE_DOWN &&
         ui_event.button == MOUSE_BUTTON_LEFT &&
         contains(ui_event.x, ui_event.y)) {
-      int midpoint = dx() + width() / 2;
-      if (ui_event.x < midpoint) {
+      int midpoint = dy() + height() / 2;
+      if (ui_event.y < midpoint) {
         if (up_callback_) up_callback_();
       } else {
         if (down_callback_) down_callback_();
