@@ -141,6 +141,7 @@ class Component : public Frame, public EventHandler {
   virtual bool isFocusable() const { return false; }
   virtual bool isFocused() const { return false; }
   virtual void setFocused(bool focused) { (void)focused; }
+  virtual void setTextColor(IGfxColor color) { (void)color; }
   virtual ~Component() = default;
 };
 

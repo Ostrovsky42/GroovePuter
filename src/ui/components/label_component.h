@@ -15,7 +15,7 @@ class LabelComponent : public Component {
 
   void setJustification(LabelJustification justification);
   void setText(std::string text);
-  void setTextColor(IGfxColor color);
+  void setTextColor(IGfxColor color) override;
   const std::string& text() const { return text_; }
 
   void draw(IGfx& gfx) override;

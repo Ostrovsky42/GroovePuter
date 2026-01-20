@@ -123,9 +123,7 @@ void ComboBoxComponent::draw(IGfx& gfx) {
       // gfx.drawRect(bounds.x, row_y, bounds.w, row_h, COLOR_STEP_SELECTED);
     }
     if (options_[i]) {
-      if (auto label = dynamic_cast<LabelComponent*>(options_[i].get())) {
-        label->setTextColor(selected ? COLOR_WHITE : COLOR_LABEL);
-      }
+      options_[i]->setTextColor(selected ? COLOR_WHITE : COLOR_LABEL);
       options_[i]->setBoundaries(Rect(bounds.x + 2, row_y, bounds.w - 2, row_h));
       options_[i]->draw(gfx);
     }
