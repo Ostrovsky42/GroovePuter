@@ -5,7 +5,7 @@
 
 #include "../ui_core.h"
 
-class BankSelectionBarComponent : public Component {
+class BankSelectionBarComponent : public FocusableComponent {
  public:
   struct State {
     int bank_count = 4;
@@ -17,6 +17,7 @@ class BankSelectionBarComponent : public Component {
 
   struct Callbacks {
     std::function<void(int index)> onSelect;
+    std::function<void(int index)> onCursorMove;
   };
 
   BankSelectionBarComponent(std::string label, std::string letters);

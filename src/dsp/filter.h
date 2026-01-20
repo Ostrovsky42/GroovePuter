@@ -1,4 +1,6 @@
 #pragma once
+#ifndef MINIACID_DSP_FILTER_H_
+#define MINIACID_DSP_FILTER_H_
 
 class AudioFilter {
 public:
@@ -49,3 +51,5 @@ public:
 
 // Legacy alias for backward compatibility
 using ChamberlinFilter = ChamberlinFilterLp;
+
+#endif  // MINIACID_DSP_FILTER_H_

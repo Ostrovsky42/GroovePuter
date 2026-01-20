@@ -4,7 +4,10 @@
 #include <stdlib.h>
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <string>
+
+#include "../miniacid_config.h"
 
 namespace {
 constexpr int kDrumKickVoice = 0;
@@ -15,6 +18,8 @@ constexpr int kDrumMidTomVoice = 4;
 constexpr int kDrumHighTomVoice = 5;
 constexpr int kDrumRimVoice = 6;
 constexpr int kDrumClapVoice = 7;
+const char* const kDrumEngineOptions[] = {"808", "909", "606"};
+constexpr int kDrumEngineOptionCount = 3;
 
 SynthPattern makeEmptySynthPattern() {
   SynthPattern pattern{};
@@ -22,6 +27,9 @@ SynthPattern makeEmptySynthPattern() {
     pattern.steps[i].note = -1;
     pattern.steps[i].accent = false;
     pattern.steps[i].slide = false;
+  }
+  for (int p = 0; p < static_cast<int>(TB303ParamId::Count); ++p) {
+    pattern.automation[p].clear();
   }
   return pattern;
 }
@@ -31,20 +39,96 @@ DrumPatternSet makeEmptyDrumPatternSet() {
   for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
     for (int s = 0; s < DrumPattern::kSteps; ++s) {
       set.voices[v].steps[s].hit = false;
-      set.voices[v].steps[s].accent = false;
     }
+  }
+  for (int s = 0; s < DrumPattern::kSteps; ++s) {
+    set.accents[s] = false;
+  }
+  for (int i = 0; i < static_cast<int>(DrumAutomationParamId::Count); ++i) {
+    set.automation[i].clear();
   }
   return set;
 }
 
 const SynthPattern kEmptySynthPattern = makeEmptySynthPattern();
 const DrumPatternSet kEmptyDrumPatternSet = makeEmptyDrumPatternSet();
+constexpr uint8_t kAutomationSampleStride = static_cast<uint8_t>(MINIACID_AUTOMATION_SAMPLE_STRIDE);
+constexpr float kAutomationValueScale = 1.0f / 255.0f;
 
 std::string toLowerCopy(std::string value) {
   for (char& ch : value) {
     ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
   }
   return value;
+}
+
+int findOptionIndexByLabel(const Parameter& param, const char* label) {
+  if (!label || !label[0]) return -1;
+  int count = param.optionCount();
+  for (int i = 0; i < count; ++i) {
+    const char* optionLabel = param.optionLabelAt(i);
+    if (optionLabel && std::strcmp(optionLabel, label) == 0) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+void upgradeAutomationOptionLanesForPattern(MiniAcid& engine, SynthPattern& pattern, int voiceIndex) {
+  for (int p = 0; p < static_cast<int>(TB303ParamId::Count); ++p) {
+    AutomationLane& lane = pattern.automation[p];
+    if (lane.nodeCount == 0) continue;
+    if (lane.hasOptions()) continue;
+    TB303ParamId paramId = static_cast<TB303ParamId>(p);
+    const Parameter& param = engine.parameter303(paramId, voiceIndex);
+    if (!param.hasOptions()) continue;
+    int optionCount = param.optionCount();
+    if (optionCount <= 0) continue;
+    if (optionCount > kAutomationMaxOptions) optionCount = kAutomationMaxOptions;
+    const char* labels[kAutomationMaxOptions]{};
+    for (int i = 0; i < optionCount; ++i) {
+      labels[i] = param.optionLabelAt(i);
+    }
+    lane.setOptions(labels, optionCount);
+    AutomationNode* nodes = lane.nodes();
+    if (!nodes) continue;
+    int maxIndex = optionCount > 1 ? optionCount - 1 : 0;
+    for (int i = 0; i < lane.nodeCount; ++i) {
+      if (maxIndex <= 0) {
+        nodes[i].y = 0;
+        continue;
+      }
+      float norm = static_cast<float>(nodes[i].y) * kAutomationValueScale;
+      int idx = static_cast<int>(norm * static_cast<float>(maxIndex) + 0.5f);
+      if (idx < 0) idx = 0;
+      if (idx > maxIndex) idx = maxIndex;
+      nodes[i].y = static_cast<uint8_t>(idx);
+    }
+  }
+}
+
+void copyAutomationLane(const AutomationLane* src, AutomationLane& dst) {
+  dst.clear();
+  if (!src) return;
+  dst.enabled = src->enabled;
+  if (src->optionCount > 0) {
+    const char* labels[kAutomationMaxOptions]{};
+    int limit = src->optionCount;
+    if (limit > kAutomationMaxOptions) limit = kAutomationMaxOptions;
+    for (int i = 0; i < limit; ++i) {
+      labels[i] = src->optionLabelAt(i);
+    }
+    dst.setOptions(labels, limit);
+  }
+  if (src->nodeCount == 0) return;
+  if (!dst.ensureCapacity(src->nodeCount)) return;
+  AutomationNode* dst_nodes = dst.nodes();
+  const AutomationNode* src_nodes = src->nodes();
+  if (!dst_nodes || !src_nodes) return;
+  for (int i = 0; i < src->nodeCount; ++i) {
+    dst_nodes[i] = src_nodes[i];
+  }
+  dst.nodeCount = src->nodeCount;
 }
 }
 
@@ -190,6 +274,8 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
 void MiniAcid::init() {
 
   params[static_cast<int>(MiniAcidParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.0f, 0.8f, 1.0f / 128);
+  params[static_cast<int>(MiniAcidParamId::DrumEngine)] =
+    Parameter("eng", "", kDrumEngineOptions, kDrumEngineOptionCount, 0);
 
   // maybe move everything from the constructor here later
   sceneStorage_->initializeStorage();
@@ -241,6 +327,7 @@ void MiniAcid::reset() {
   distortion3032.setEnabled(distortion3032Enabled);
   lastBufferCount = 0;
   for (int i = 0; i < AUDIO_BUFFER_SAMPLES; ++i) lastBuffer[i] = 0;
+  automationSampleCountdown_ = 0;
   songMode_ = false;
   songPlayheadPosition_ = 0;
   patternModeDrumPatternIndex_ = 0;
@@ -252,6 +339,7 @@ void MiniAcid::start() {
   playing = true;
   currentStepIndex = -1;
   samplesIntoStep = static_cast<unsigned long>(samplesPerStep);
+  automationSampleCountdown_ = 0;
   if (songMode_) {
     songPlayheadPosition_ = clampSongPosition(sceneManager_.getSongPosition());
     sceneManager_.setSongPosition(songPlayheadPosition_);
@@ -290,6 +378,14 @@ float MiniAcid::sampleRate() const { return sampleRateValue; }
 bool MiniAcid::isPlaying() const { return playing; }
 
 int MiniAcid::currentStep() const { return currentStepIndex; }
+
+float MiniAcid::currentStepProgress() const {
+  if (samplesPerStep <= 0.0f) return 0.0f;
+  float frac = static_cast<float>(samplesIntoStep) / samplesPerStep;
+  if (frac < 0.0f) frac = 0.0f;
+  if (frac > 1.0f) frac = 1.0f;
+  return frac;
+}
 
 int MiniAcid::currentDrumPatternIndex() const {
   return sceneManager_.getCurrentDrumPatternIndex();
@@ -332,6 +428,72 @@ bool MiniAcid::is303DistortionEnabled(int voiceIndex) const {
 const Parameter& MiniAcid::parameter303(TB303ParamId id, int voiceIndex) const {
   int idx = clamp303Voice(voiceIndex);
   return idx == 0 ? voice303.parameter(id) : voice3032.parameter(id);
+}
+const Parameter& MiniAcid::drumParameter(DrumAutomationParamId id) const {
+  switch (id) {
+    case DrumAutomationParamId::DrumEngine:
+      return params[static_cast<int>(MiniAcidParamId::DrumEngine)];
+    default:
+      return params[static_cast<int>(MiniAcidParamId::DrumEngine)];
+  }
+}
+const AutomationLane* MiniAcid::automationLane303(TB303ParamId id, int voiceIndex) const {
+  int idx = clamp303Voice(voiceIndex);
+  return activeSynthPattern(idx).automationLane(id);
+}
+AutomationLane* MiniAcid::editAutomationLane303(TB303ParamId id, int voiceIndex) {
+  int idx = clamp303Voice(voiceIndex);
+  return editSynthPattern(idx).editAutomationLane(id);
+}
+void MiniAcid::clearAutomationLane303(TB303ParamId id, int voiceIndex) {
+  int idx = clamp303Voice(voiceIndex);
+  editSynthPattern(idx).clearAutomationLane(id);
+}
+void MiniAcid::setAutomationLaneEnabled303(TB303ParamId id, bool enabled, int voiceIndex) {
+  int idx = clamp303Voice(voiceIndex);
+  AutomationLane* lane = editSynthPattern(idx).editAutomationLane(id);
+  if (!lane) return;
+  lane->enabled = enabled;
+}
+bool MiniAcid::toggleAutomationLaneEnabled303(TB303ParamId id, int voiceIndex) {
+  const AutomationLane* lane = automationLane303(id, voiceIndex);
+  bool next_enabled = lane ? !lane->enabled : true;
+  setAutomationLaneEnabled303(id, next_enabled, voiceIndex);
+  return true;
+}
+void MiniAcid::copy303AutomationToPattern(SynthPattern& dst, int voiceIndex) const {
+  int idx = clamp303Voice(voiceIndex);
+  const SynthPattern& src = activeSynthPattern(idx);
+  for (int p = 0; p < static_cast<int>(TB303ParamId::Count); ++p) {
+    copyAutomationLane(&src.automation[p], dst.automation[p]);
+  }
+}
+void MiniAcid::paste303AutomationFromPattern(const SynthPattern& src, int voiceIndex) {
+  int idx = clamp303Voice(voiceIndex);
+  SynthPattern& dst = editSynthPattern(idx);
+  for (int p = 0; p < static_cast<int>(TB303ParamId::Count); ++p) {
+    copyAutomationLane(&src.automation[p], dst.automation[p]);
+  }
+}
+const AutomationLane* MiniAcid::automationLaneDrum(DrumAutomationParamId id) const {
+  return activeDrumPatternSet().automationLane(id);
+}
+AutomationLane* MiniAcid::editAutomationLaneDrum(DrumAutomationParamId id) {
+  return editActiveDrumPatternSet().editAutomationLane(id);
+}
+void MiniAcid::clearAutomationLaneDrum(DrumAutomationParamId id) {
+  editActiveDrumPatternSet().clearAutomationLane(id);
+}
+void MiniAcid::setAutomationLaneEnabledDrum(DrumAutomationParamId id, bool enabled) {
+  AutomationLane* lane = editActiveDrumPatternSet().editAutomationLane(id);
+  if (!lane) return;
+  lane->enabled = enabled;
+}
+bool MiniAcid::toggleAutomationLaneEnabledDrum(DrumAutomationParamId id) {
+  const AutomationLane* lane = automationLaneDrum(id);
+  bool next_enabled = lane ? !lane->enabled : true;
+  setAutomationLaneEnabledDrum(id, next_enabled);
+  return true;
 }
 const int8_t* MiniAcid::pattern303Steps(int voiceIndex) const {
   int idx = clamp303Voice(voiceIndex);
@@ -384,49 +546,31 @@ const bool* MiniAcid::patternDrumAccentSteps() const {
   int pat = songPatternIndexForTrack(SongTrack::Drums);
   const DrumPatternSet& set = pat >= 0 ? sceneManager_.getDrumPatternSet(pat)
                                        : kEmptyDrumPatternSet;
-  for (int i = 0; i < SEQ_STEPS; ++i) {
-    bool accent = false;
-    for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-      if (set.voices[v].steps[i].accent) {
-        accent = true;
-        break;
-      }
-    }
-    drumStepAccentCache_[i] = accent;
-  }
-  return drumStepAccentCache_;
+  return set.accents;
 }
 const bool* MiniAcid::patternKickAccentSteps() const {
-  refreshDrumCache(kDrumKickVoice);
-  return drumAccentCache_[kDrumKickVoice];
+  return patternDrumAccentSteps();
 }
 const bool* MiniAcid::patternSnareAccentSteps() const {
-  refreshDrumCache(kDrumSnareVoice);
-  return drumAccentCache_[kDrumSnareVoice];
+  return patternDrumAccentSteps();
 }
 const bool* MiniAcid::patternHatAccentSteps() const {
-  refreshDrumCache(kDrumHatVoice);
-  return drumAccentCache_[kDrumHatVoice];
+  return patternDrumAccentSteps();
 }
 const bool* MiniAcid::patternOpenHatAccentSteps() const {
-  refreshDrumCache(kDrumOpenHatVoice);
-  return drumAccentCache_[kDrumOpenHatVoice];
+  return patternDrumAccentSteps();
 }
 const bool* MiniAcid::patternMidTomAccentSteps() const {
-  refreshDrumCache(kDrumMidTomVoice);
-  return drumAccentCache_[kDrumMidTomVoice];
+  return patternDrumAccentSteps();
 }
 const bool* MiniAcid::patternHighTomAccentSteps() const {
-  refreshDrumCache(kDrumHighTomVoice);
-  return drumAccentCache_[kDrumHighTomVoice];
+  return patternDrumAccentSteps();
 }
 const bool* MiniAcid::patternRimAccentSteps() const {
-  refreshDrumCache(kDrumRimVoice);
-  return drumAccentCache_[kDrumRimVoice];
+  return patternDrumAccentSteps();
 }
 const bool* MiniAcid::patternClapAccentSteps() const {
-  refreshDrumCache(kDrumClapVoice);
-  return drumAccentCache_[kDrumClapVoice];
+  return patternDrumAccentSteps();
 }
 
 bool MiniAcid::songModeEnabled() const { return songMode_; }
@@ -543,6 +687,12 @@ void MiniAcid::setDrumEngine(const std::string& engineName) {
     return;
   }
   drums->reset();
+  int optionIndex = findOptionIndexByLabel(
+    params[static_cast<int>(MiniAcidParamId::DrumEngine)],
+    drumEngineName_.c_str());
+  if (optionIndex >= 0) {
+    params[static_cast<int>(MiniAcidParamId::DrumEngine)].setValue(static_cast<float>(optionIndex));
+  }
 }
 
 std::string MiniAcid::currentDrumEngineName() const {
@@ -693,26 +843,15 @@ void MiniAcid::toggleDrumAccentStep(int stepIndex) {
   if (step < 0) step = 0;
   if (step >= DrumPattern::kSteps) step = DrumPattern::kSteps - 1;
   DrumPatternSet& patternSet = sceneManager_.editCurrentDrumPattern();
-  bool anyAccent = false;
-  for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-    if (patternSet.voices[v].steps[step].accent) {
-      anyAccent = true;
-      break;
-    }
-  }
-  bool newAccent = !anyAccent;
-  for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-    patternSet.voices[v].steps[step].accent = newAccent;
-  }
+  patternSet.accents[step] = !patternSet.accents[step];
 }
 
-void MiniAcid::setDrumAccentStep(int voiceIndex, int stepIndex, bool accent) {
-  int voice = clampDrumVoice(voiceIndex);
+void MiniAcid::setDrumAccentStep(int stepIndex, bool accent) {
   int step = stepIndex;
   if (step < 0) step = 0;
   if (step >= DrumPattern::kSteps) step = DrumPattern::kSteps - 1;
-  DrumPattern& pattern = editDrumPattern(voice);
-  pattern.steps[step].accent = accent;
+  DrumPatternSet& patternSet = sceneManager_.editCurrentDrumPattern();
+  patternSet.accents[step] = accent;
 }
 
 int MiniAcid::clamp303Voice(int voiceIndex) const {
@@ -756,6 +895,16 @@ DrumPattern& MiniAcid::editDrumPattern(int drumVoiceIndex) {
   int idx = clampDrumVoice(drumVoiceIndex);
   DrumPatternSet& patternSet = sceneManager_.editCurrentDrumPattern();
   return patternSet.voices[idx];
+}
+
+const DrumPatternSet& MiniAcid::activeDrumPatternSet() const {
+  int pat = songPatternIndexForTrack(SongTrack::Drums);
+  if (pat < 0) return kEmptyDrumPatternSet;
+  return sceneManager_.getDrumPatternSet(pat);
+}
+
+DrumPatternSet& MiniAcid::editActiveDrumPatternSet() {
+  return sceneManager_.editCurrentDrumPattern();
 }
 
 int MiniAcid::songPatternIndexForTrack(SongTrack track) const {
@@ -892,7 +1041,98 @@ void MiniAcid::refreshDrumCache(int drumVoiceIndex) const {
   const DrumPattern& pattern = activeDrumPattern(idx);
   for (int i = 0; i < SEQ_STEPS; ++i) {
     drumHitCache_[idx][i] = pattern.steps[i].hit;
-    drumAccentCache_[idx][i] = pattern.steps[i].accent && pattern.steps[i].hit;
+  }
+}
+
+void MiniAcid::applySynthAutomation(int voiceIndex, float t) {
+  int idx = clamp303Voice(voiceIndex);
+  const SynthPattern& pattern = activeSynthPattern(idx);
+  for (int p = 0; p < static_cast<int>(TB303ParamId::Count); ++p) {
+    const AutomationLane& lane = pattern.automation[p];
+    if (!lane.enabled || lane.nodeCount == 0) continue;
+    uint8_t value = lane.evaluate(t);
+    TB303ParamId paramId = static_cast<TB303ParamId>(p);
+    const Parameter& param = parameter303(paramId, idx);
+    float paramValue = 0.0f;
+    if (param.hasOptions()) {
+      int options = param.optionCount();
+      if (options <= 1) {
+        paramValue = 0.0f;
+      } else if (lane.hasOptions()) {
+        int laneIndex = lane.clampOptionIndex(static_cast<int>(value));
+        const char* laneLabel = lane.optionLabelAt(laneIndex);
+        int mappedIndex = findOptionIndexByLabel(param, laneLabel);
+        if (mappedIndex < 0) {
+          if (laneIndex >= options) laneIndex = options - 1;
+          mappedIndex = laneIndex;
+        }
+        paramValue = static_cast<float>(mappedIndex);
+      } else {
+        float norm = static_cast<float>(value) * kAutomationValueScale;
+        paramValue = norm * static_cast<float>(options - 1);
+      }
+    } else {
+      float minVal = param.min();
+      float maxVal = param.max();
+      if (lane.hasOptions()) {
+        int maxIndex = lane.optionCount > 1 ? lane.optionCount - 1 : 0;
+        float laneNorm = maxIndex > 0
+          ? static_cast<float>(lane.clampOptionIndex(static_cast<int>(value))) /
+            static_cast<float>(maxIndex)
+          : 0.0f;
+        paramValue = minVal + laneNorm * (maxVal - minVal);
+      } else {
+        float norm = static_cast<float>(value) * kAutomationValueScale;
+        paramValue = minVal + norm * (maxVal - minVal);
+      }
+    }
+    set303Parameter(paramId, paramValue, voiceIndex);
+  }
+}
+
+void MiniAcid::applyDrumAutomation(float t) {
+  const DrumPatternSet& patternSet = activeDrumPatternSet();
+  for (int p = 0; p < static_cast<int>(DrumAutomationParamId::Count); ++p) {
+    const AutomationLane& lane = patternSet.automation[p];
+    if (!lane.enabled || lane.nodeCount == 0) continue;
+    uint8_t value = lane.evaluate(t);
+    DrumAutomationParamId paramId = static_cast<DrumAutomationParamId>(p);
+    const Parameter& param = drumParameter(paramId);
+    float paramValue = 0.0f;
+    if (param.hasOptions()) {
+      int options = param.optionCount();
+      if (options <= 1) {
+        paramValue = 0.0f;
+      } else if (lane.hasOptions()) {
+        int laneIndex = lane.clampOptionIndex(static_cast<int>(value));
+        const char* laneLabel = lane.optionLabelAt(laneIndex);
+        int mappedIndex = findOptionIndexByLabel(param, laneLabel);
+        if (mappedIndex < 0) {
+          if (laneIndex >= options) laneIndex = options - 1;
+          mappedIndex = laneIndex;
+        }
+        paramValue = static_cast<float>(mappedIndex);
+      } else {
+        float norm = static_cast<float>(value) * kAutomationValueScale;
+        paramValue = norm * static_cast<float>(options - 1);
+      }
+    } else {
+      float minVal = param.min();
+      float maxVal = param.max();
+      float norm = static_cast<float>(value) * kAutomationValueScale;
+      paramValue = minVal + norm * (maxVal - minVal);
+    }
+    int optionIndex = static_cast<int>(paramValue + 0.5f);
+    const char* label = param.optionLabelAt(optionIndex);
+    if (label) {
+      if (drumEngineName_ != label) {
+        setDrumEngine(label);
+      } else {
+        params[static_cast<int>(MiniAcidParamId::DrumEngine)].setValue(paramValue);
+      }
+    } else {
+      setParameter(MiniAcidParamId::DrumEngine, paramValue);
+    }
   }
 }
 
@@ -917,6 +1157,7 @@ void MiniAcid::advanceStep() {
       advanceSongPlayhead();
     }
   }
+  applyDrumAutomation(static_cast<float>(currentStepIndex));
 
   // DEBUG: toggle drum kit every measure for testing
   /*
@@ -972,15 +1213,8 @@ void MiniAcid::advanceStep() {
   const DrumPattern& clap = activeDrumPattern(kDrumClapVoice);
 
   bool drumsActive = songPatternDrums >= 0;
-  bool stepAccent =
-    kick.steps[currentStepIndex].accent ||
-    snare.steps[currentStepIndex].accent ||
-    hat.steps[currentStepIndex].accent ||
-    openHat.steps[currentStepIndex].accent ||
-    midTom.steps[currentStepIndex].accent ||
-    highTom.steps[currentStepIndex].accent ||
-    rim.steps[currentStepIndex].accent ||
-    clap.steps[currentStepIndex].accent;
+  const DrumPatternSet& patternSet = activeDrumPatternSet();
+  bool stepAccent = patternSet.accents[currentStepIndex];
 
   if (kick.steps[currentStepIndex].hit && !muteKick && drumsActive)
     drums->triggerKick(stepAccent);
@@ -1017,6 +1251,20 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
         advanceStep();
       }
       samplesIntoStep++;
+
+      int step = currentStepIndex;
+      if (step < 0) step = 0;
+      float frac = samplesPerStep > 0.0f ? static_cast<float>(samplesIntoStep) / samplesPerStep : 0.0f;
+      float t = static_cast<float>(step) + frac;
+#if !MINIACID_DISABLE_AUTOMATION_APPLY
+      if (automationSampleCountdown_ == 0) {
+        automationSampleCountdown_ = kAutomationSampleStride - 1;
+        applySynthAutomation(0, t);
+        applySynthAutomation(1, t);
+      } else {
+        --automationSampleCountdown_;
+      }
+#endif
     }
 
     float sample = 0.0f;
@@ -1082,10 +1330,28 @@ void MiniAcid::randomize303Pattern(int voiceIndex) {
 }
 
 void MiniAcid::setParameter(MiniAcidParamId id, float value) {
+  if (id == MiniAcidParamId::DrumEngine) {
+    params[static_cast<int>(id)].setValue(value);
+    int optionIndex = params[static_cast<int>(id)].optionIndex();
+    const char* label = params[static_cast<int>(id)].optionLabelAt(optionIndex);
+    if (label) {
+      setDrumEngine(label);
+    }
+    return;
+  }
   params[static_cast<int>(id)].setValue(value);
 }
 
 void MiniAcid::adjustParameter(MiniAcidParamId id, int steps) {
+  if (id == MiniAcidParamId::DrumEngine) {
+    params[static_cast<int>(id)].addSteps(steps);
+    int optionIndex = params[static_cast<int>(id)].optionIndex();
+    const char* label = params[static_cast<int>(id)].optionLabelAt(optionIndex);
+    if (label) {
+      setDrumEngine(label);
+    }
+    return;
+  }
   params[static_cast<int>(id)].addSteps(steps);
 }
 
@@ -1124,6 +1390,7 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
     sceneStorage_->setCurrentSceneName(previousName);
     return false;
   }
+  upgradeAutomationOptionLanes();
   applySceneStateFromManager();
   return true;
 }
@@ -1146,20 +1413,29 @@ bool MiniAcid::createNewSceneWithName(const std::string& name) {
 
 void MiniAcid::loadSceneFromStorage() {
   if (sceneStorage_) {
-    if (sceneStorage_->readScene(sceneManager_)) return;
-
-    std::string serialized;
-    if (sceneStorage_->readScene(serialized) && sceneManager_.loadScene(serialized)) {
+    if (sceneStorage_->readScene(sceneManager_)) {
+      upgradeAutomationOptionLanes();
       return;
     }
   }
   sceneManager_.loadDefaultScene();
+  upgradeAutomationOptionLanes();
 }
 
 void MiniAcid::saveSceneToStorage() {
   if (!sceneStorage_) return;
   syncSceneStateToManager();
   sceneStorage_->writeScene(sceneManager_);
+}
+
+void MiniAcid::upgradeAutomationOptionLanes() {
+  Scene& scene = sceneManager_.currentScene();
+  for (int bank = 0; bank < kBankCount; ++bank) {
+    for (int patternIdx = 0; patternIdx < Bank<SynthPattern>::kPatterns; ++patternIdx) {
+      upgradeAutomationOptionLanesForPattern(*this, scene.synthABanks[bank].patterns[patternIdx], 0);
+      upgradeAutomationOptionLanesForPattern(*this, scene.synthBBanks[bank].patterns[patternIdx], 1);
+    }
+  }
 }
 
 void MiniAcid::applySceneStateFromManager() {
@@ -1282,19 +1558,22 @@ void PatternGenerator::generateRandomDrumPattern(DrumPatternSet& patternSet) {
   for (int v = 0; v < drumVoiceCount; ++v) {
     for (int i = 0; i < stepCount; ++i) {
       patternSet.voices[v].steps[i].hit = false;
-      patternSet.voices[v].steps[i].accent = false;
     }
+  }
+  for (int i = 0; i < stepCount; ++i) {
+    patternSet.accents[i] = false;
   }
 
   for (int i = 0; i < stepCount; ++i) {
+    bool accentStep = false;
     if (drumVoiceCount > kDrumKickVoice) {
       if (i % 4 == 0 || (rand() % 100) < 20) {
         patternSet.voices[kDrumKickVoice].steps[i].hit = true;
       } else {
         patternSet.voices[kDrumKickVoice].steps[i].hit = false;
       }
-      patternSet.voices[kDrumKickVoice].steps[i].accent =
-        patternSet.voices[kDrumKickVoice].steps[i].hit && (rand() % 100) < 35;
+      accentStep = accentStep ||
+                   (patternSet.voices[kDrumKickVoice].steps[i].hit && (rand() % 100) < 35);
     }
 
     if (drumVoiceCount > kDrumSnareVoice) {
@@ -1303,8 +1582,8 @@ void PatternGenerator::generateRandomDrumPattern(DrumPatternSet& patternSet) {
       } else {
         patternSet.voices[kDrumSnareVoice].steps[i].hit = false;
       }
-      patternSet.voices[kDrumSnareVoice].steps[i].accent =
-        patternSet.voices[kDrumSnareVoice].steps[i].hit && (rand() % 100) < 30;
+      accentStep = accentStep ||
+                   (patternSet.voices[kDrumSnareVoice].steps[i].hit && (rand() % 100) < 30);
     }
 
     bool hatVal = false;
@@ -1315,36 +1594,35 @@ void PatternGenerator::generateRandomDrumPattern(DrumPatternSet& patternSet) {
         hatVal = false;
       }
       patternSet.voices[kDrumHatVoice].steps[i].hit = hatVal;
-      patternSet.voices[kDrumHatVoice].steps[i].accent = hatVal && (rand() % 100) < 20;
+      accentStep = accentStep || (hatVal && (rand() % 100) < 20);
     }
 
     bool openVal = false;
     if (drumVoiceCount > kDrumOpenHatVoice) {
       openVal = (i % 4 == 3 && (rand() % 100) < 65) || ((rand() % 100) < 20 && hatVal);
       patternSet.voices[kDrumOpenHatVoice].steps[i].hit = openVal;
-      patternSet.voices[kDrumOpenHatVoice].steps[i].accent = openVal && (rand() % 100) < 25;
+      accentStep = accentStep || (openVal && (rand() % 100) < 25);
       if (openVal && drumVoiceCount > kDrumHatVoice) {
         patternSet.voices[kDrumHatVoice].steps[i].hit = false;
-        patternSet.voices[kDrumHatVoice].steps[i].accent = false;
       }
     }
 
     if (drumVoiceCount > kDrumMidTomVoice) {
       bool midTom = (i % 8 == 4 && (rand() % 100) < 75) || ((rand() % 100) < 8);
       patternSet.voices[kDrumMidTomVoice].steps[i].hit = midTom;
-      patternSet.voices[kDrumMidTomVoice].steps[i].accent = midTom && (rand() % 100) < 35;
+      accentStep = accentStep || (midTom && (rand() % 100) < 35);
     }
 
     if (drumVoiceCount > kDrumHighTomVoice) {
       bool highTom = (i % 8 == 6 && (rand() % 100) < 70) || ((rand() % 100) < 6);
       patternSet.voices[kDrumHighTomVoice].steps[i].hit = highTom;
-      patternSet.voices[kDrumHighTomVoice].steps[i].accent = highTom && (rand() % 100) < 35;
+      accentStep = accentStep || (highTom && (rand() % 100) < 35);
     }
 
     if (drumVoiceCount > kDrumRimVoice) {
       bool rim = (i % 4 == 1 && (rand() % 100) < 25);
       patternSet.voices[kDrumRimVoice].steps[i].hit = rim;
-      patternSet.voices[kDrumRimVoice].steps[i].accent = rim && (rand() % 100) < 30;
+      accentStep = accentStep || (rim && (rand() % 100) < 30);
     }
 
     if (drumVoiceCount > kDrumClapVoice) {
@@ -1355,7 +1633,8 @@ void PatternGenerator::generateRandomDrumPattern(DrumPatternSet& patternSet) {
         clap = (rand() % 100) < 5;
       }
       patternSet.voices[kDrumClapVoice].steps[i].hit = clap;
-      patternSet.voices[kDrumClapVoice].steps[i].accent = clap && (rand() % 100) < 30;
+      accentStep = accentStep || (clap && (rand() % 100) < 30);
     }
+    patternSet.accents[i] = accentStep;
   }
 }

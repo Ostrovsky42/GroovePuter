@@ -54,6 +54,7 @@ private:
 
 enum class MiniAcidParamId : uint8_t {
   MainVolume = 0,
+  DrumEngine = 1,
   Count
 };
 class MiniAcid {
@@ -72,6 +73,7 @@ public:
   float sampleRate() const;
   bool isPlaying() const;
   int currentStep() const;
+  float currentStepProgress() const;
   int currentDrumPatternIndex() const;
   int current303PatternIndex(int voiceIndex = 0) const;
   int currentDrumBankIndex() const;
@@ -88,6 +90,19 @@ public:
   bool is303DelayEnabled(int voiceIndex = 0) const;
   bool is303DistortionEnabled(int voiceIndex = 0) const;
   const Parameter& parameter303(TB303ParamId id, int voiceIndex = 0) const;
+  const Parameter& drumParameter(DrumAutomationParamId id) const;
+  const AutomationLane* automationLane303(TB303ParamId id, int voiceIndex = 0) const;
+  AutomationLane* editAutomationLane303(TB303ParamId id, int voiceIndex = 0);
+  void clearAutomationLane303(TB303ParamId id, int voiceIndex = 0);
+  void setAutomationLaneEnabled303(TB303ParamId id, bool enabled, int voiceIndex = 0);
+  bool toggleAutomationLaneEnabled303(TB303ParamId id, int voiceIndex = 0);
+  void copy303AutomationToPattern(SynthPattern& dst, int voiceIndex = 0) const;
+  void paste303AutomationFromPattern(const SynthPattern& src, int voiceIndex = 0);
+  const AutomationLane* automationLaneDrum(DrumAutomationParamId id) const;
+  AutomationLane* editAutomationLaneDrum(DrumAutomationParamId id);
+  void clearAutomationLaneDrum(DrumAutomationParamId id);
+  void setAutomationLaneEnabledDrum(DrumAutomationParamId id, bool enabled);
+  bool toggleAutomationLaneEnabledDrum(DrumAutomationParamId id);
   size_t copyLastAudio(int16_t *dst, size_t maxSamples) const;
   const int8_t* pattern303Steps(int voiceIndex = 0) const;
   const bool* pattern303AccentSteps(int voiceIndex = 0) const;
@@ -162,7 +177,7 @@ public:
   void toggle303SlideStep(int voiceIndex, int stepIndex);
   void toggleDrumStep(int voiceIndex, int stepIndex);
   void toggleDrumAccentStep(int stepIndex);
-  void setDrumAccentStep(int voiceIndex, int stepIndex, bool accent);
+  void setDrumAccentStep(int stepIndex, bool accent);
 
   void randomize303Pattern(int voiceIndex = 0);
   void randomizeDrumPattern();
@@ -180,10 +195,13 @@ private:
   int clamp303Voice(int voiceIndex) const;
   int clamp303Step(int stepIndex) const;
   int clamp303Note(int note) const;
+  void applySynthAutomation(int voiceIndex, float t);
   const SynthPattern& synthPattern(int synthIndex) const;
   SynthPattern& editSynthPattern(int synthIndex);
   const DrumPattern& drumPattern(int drumVoiceIndex) const;
   DrumPattern& editDrumPattern(int drumVoiceIndex);
+  const DrumPatternSet& activeDrumPatternSet() const;
+  DrumPatternSet& editActiveDrumPatternSet();
   int clampDrumVoice(int voiceIndex) const;
   void refreshSynthCaches(int synthIndex) const;
   void refreshDrumCache(int drumVoiceIndex) const;
@@ -193,6 +211,8 @@ private:
   void applySongPositionSelection();
   void advanceSongPlayhead();
   int clampSongPosition(int position) const;
+  void upgradeAutomationOptionLanes();
+  void applyDrumAutomation(float t);
 
   TB303Voice voice303;
   TB303Voice voice3032;
@@ -206,8 +226,6 @@ private:
   mutable bool synthAccentCache_[NUM_303_VOICES][SEQ_STEPS];
   mutable bool synthSlideCache_[NUM_303_VOICES][SEQ_STEPS];
   mutable bool drumHitCache_[NUM_DRUM_VOICES][SEQ_STEPS];
-  mutable bool drumAccentCache_[NUM_DRUM_VOICES][SEQ_STEPS];
-  mutable bool drumStepAccentCache_[SEQ_STEPS];
 
   volatile bool playing;
   volatile bool mute303;
@@ -242,6 +260,7 @@ private:
   TubeDistortion distortion3032;
   int16_t lastBuffer[AUDIO_BUFFER_SAMPLES];
   size_t lastBufferCount;
+  uint8_t automationSampleCountdown_;
 
   void loadSceneFromStorage();
   void saveSceneToStorage();

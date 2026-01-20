@@ -5,7 +5,7 @@
 
 #include "../ui_core.h"
 
-class PatternSelectionBarComponent : public Component {
+class PatternSelectionBarComponent : public FocusableComponent {
  public:
  struct State {
     int pattern_count = 8;
@@ -18,6 +18,7 @@ class PatternSelectionBarComponent : public Component {
 
   struct Callbacks {
     std::function<void(int index)> onSelect;
+    std::function<void(int index)> onCursorMove;
   };
 
   explicit PatternSelectionBarComponent(std::string label);
@@ -34,9 +35,6 @@ class PatternSelectionBarComponent : public Component {
     int bounds_x = 0;
     int bounds_y = 0;
     int bounds_w = 0;
-    int label_y = 0;
-    int label_h = 0;
-    int row_y = 0;
     int pattern_size = 0;
     int pattern_height = 0;
     int spacing = 4;
@@ -44,6 +42,7 @@ class PatternSelectionBarComponent : public Component {
     int rows = 1;
     int row_spacing = 0;
     int bar_height = 0;
+    int row_y = 0;
   };
 
   bool computeLayout(IGfx& gfx, Layout& layout) const;

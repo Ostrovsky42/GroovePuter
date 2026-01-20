@@ -4,7 +4,7 @@
 #include <stdlib.h>
 
 namespace {
-const char* const kOscillatorOptions[] = {"saw", "sqr", "super"};
+const char* const kOscillatorOptions[] = {"saw", "sqr", "supr"};
 const char* const kFilterTypeOptions[] = {"lp", "bp", "hp"};
 } // namespace
 
@@ -12,6 +12,7 @@ TB303Voice::TB303Voice(float sampleRate)
   : sampleRate(sampleRate),
     invSampleRate(0.0f),
     nyquist(0.0f),
+    currentFilterTypeIndex(-1),
     filter(nullptr) {
   setSampleRate(sampleRate);
   createFilter(0); // Default to lowpass
@@ -99,7 +100,7 @@ float TB303Voice::oscSuperSaw() {
   }
 
   // constexpr float kGain = 1.0f / (1.0f + TB303Voice::kSuperSawOscCount);
-  constexpr float kGain = 1.0f / (TB303Voice::kSuperSawOscCount - 5);
+  constexpr float kGain = 1.0f / (1.0f + TB303Voice::kSuperSawOscCount - 5);
   return sum * kGain;
 }
 
@@ -152,7 +153,8 @@ float TB303Voice::process() {
   float osc = oscillatorSample();
   float out = svfProcess(osc);
 
-  return out * amp;
+  float volume = parameterValue(TB303ParamId::MainVolume);
+  return out * amp * volume;
 }
 
 const Parameter& TB303Voice::parameter(TB303ParamId id) const {
@@ -192,7 +194,16 @@ void TB303Voice::initParameters() {
 }
 
 void TB303Voice::createFilter(int filterTypeIndex) {
-  switch (filterTypeIndex) {
+  int desiredIndex = filterTypeIndex;
+  if (desiredIndex < 0 || desiredIndex > 2) {
+    desiredIndex = 0;
+  }
+  if (filter && desiredIndex == currentFilterTypeIndex) {
+    return;
+  }
+
+  currentFilterTypeIndex = desiredIndex;
+  switch (desiredIndex) {
     case 0: // lp
       filter = std::make_unique<ChamberlinFilterLp>(sampleRate);
       break;

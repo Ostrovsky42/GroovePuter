@@ -162,19 +162,14 @@ bool SceneStorageCardputer::readScene(SceneManager& manager) {
   std::string path = currentScenePath();
   Serial.printf("Reading scene (streaming) from SD card (%s)...\n", path.c_str());
   File file = SD.open(path.c_str(), FILE_READ);
-  if (!file) return false;
+  if (!file) {
+    SCENE_DEBUG_PRINTLN("Failed to open scene file for streaming read.");
+    return false;
+  }
 
   Serial.println("File opened successfully, loading scene...");
   bool ok = manager.loadSceneEvented(file);
   file.close();
-  if (!ok) {
-    Serial.println("Evented parse failed, retrying with ArduinoJson...");
-    File retry = SD.open(path.c_str(), FILE_READ);
-    if (retry) {
-      ok = manager.loadSceneJson(retry);
-      retry.close();
-    }
-  }
   Serial.printf("Streaming read %s\n", ok ? "succeeded" : "failed");
   return ok;
 }

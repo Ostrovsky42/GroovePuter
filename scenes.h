@@ -6,8 +6,18 @@
 #include <string>
 #include <type_traits>
 #include <utility>
-#include "ArduinoJson-v7.4.2.h"
 #include "json_evented.h"
+#include "src/dsp/mini_tb303.h"
+#include "src/miniacid_config.h"
+
+#if defined(MINIACID_SCENE_DEBUG) && defined(ARDUINO)
+#include <Arduino.h>
+#define SCENE_DEBUG_PRINTF(...) Serial.printf(__VA_ARGS__)
+#define SCENE_DEBUG_PRINTLN(msg) Serial.println(msg)
+#else
+#define SCENE_DEBUG_PRINTF(...) do {} while (0)
+#define SCENE_DEBUG_PRINTLN(msg) do {} while (0)
+#endif
 
 namespace scene_json_detail {
 inline bool writeChunk(std::string& writer, const char* data, size_t len) {
@@ -46,17 +56,14 @@ bool writeChunk(Writer& writer, const char* data, size_t len) {
 
 struct DrumStep {
   bool hit;
-  bool accent;
 };
+
+static constexpr int kSequencerSteps = 16;
+static constexpr int kSceneJsonVersion = 1;
 
 struct DrumPattern {
-  static constexpr int kSteps = 16;
+  static constexpr int kSteps = kSequencerSteps;
   DrumStep steps[kSteps];
-};
-
-struct DrumPatternSet {
-  static constexpr int kVoices = 8;
-  DrumPattern voices[kVoices];
 };
 
 struct SynthStep {
@@ -65,9 +72,73 @@ struct SynthStep {
   bool accent;
 };
 
+static constexpr int kAutomationMaxX = kSequencerSteps + 1;
+static constexpr int kAutomationMaxNodes = MINIACID_AUTOMATION_MAX_NODES;
+static constexpr int kAutomationPoolNodes = MINIACID_AUTOMATION_POOL_NODES;
+static constexpr int kAutomationMaxOptions = 8;
+static constexpr int kAutomationOptionLabelMaxLen = 12;
+
+struct AutomationNode {
+  uint8_t x;
+  uint8_t y;
+};
+
+static constexpr uint16_t kAutomationInvalidIndex = 0xFFFF;
+
+struct AutomationLane {
+  // Nodes live in a shared pool to avoid storing large arrays in every pattern.
+  uint16_t start = kAutomationInvalidIndex;
+  uint16_t capacity = 0;
+  uint8_t nodeCount = 0;
+  bool enabled = false;
+  uint8_t optionCount = 0;
+  char* optionLabels = nullptr;
+
+  AutomationLane() = default;
+  AutomationLane(const AutomationLane& other);
+  AutomationLane& operator=(const AutomationLane& other);
+  ~AutomationLane();
+
+  bool hasOptions() const;
+  bool hasNodes() const;
+  void clear();
+  uint8_t evaluate(float t) const;
+  AutomationNode* nodes();
+  const AutomationNode* nodes() const;
+  bool ensureCapacity(int needed);
+  void clearOptions();
+  void setOptions(const char* const* labels, int count);
+  void setOptionLabel(int index, const char* label);
+  const char* optionLabelAt(int index) const;
+  int clampOptionIndex(int index) const;
+};
+
+enum class DrumAutomationParamId : uint8_t {
+  DrumEngine = 0,
+  Count
+};
+
+struct DrumPatternSet {
+  static constexpr int kVoices = 8;
+  DrumPattern voices[kVoices];
+  bool accents[DrumPattern::kSteps]{};
+  AutomationLane automation[static_cast<int>(DrumAutomationParamId::Count)];
+
+  bool hasAutomationLane(DrumAutomationParamId id) const;
+  const AutomationLane* automationLane(DrumAutomationParamId id) const;
+  AutomationLane* editAutomationLane(DrumAutomationParamId id);
+  void clearAutomationLane(DrumAutomationParamId id);
+};
+
 struct SynthPattern {
-  static constexpr int kSteps = 16;
+  static constexpr int kSteps = kSequencerSteps;
   SynthStep steps[kSteps];
+  AutomationLane automation[static_cast<int>(TB303ParamId::Count)];
+
+  bool hasAutomationLane(TB303ParamId id) const;
+  const AutomationLane* automationLane(TB303ParamId id) const;
+  AutomationLane* editAutomationLane(TB303ParamId id);
+  void clearAutomationLane(TB303ParamId id);
 };
 
 struct SynthParameters {
@@ -183,12 +254,23 @@ private:
     DrumVoice,
     DrumHitArray,
     DrumAccentArray,
+    DrumAutomation,
+    DrumAutomationLane,
+    DrumAutomationNodes,
+    DrumAutomationOptions,
+    DrumAutomationNode,
     SynthABanks,
     SynthABank,
     SynthBBanks,
     SynthBBank,
     SynthPattern,
+    SynthSteps,
     SynthStep,
+    SynthAutomation,
+    SynthAutomationLane,
+    SynthAutomationNodes,
+    SynthAutomationOptions,
+    SynthAutomationNode,
     State,
     SynthPatternIndex,
     SynthBankIndex,
@@ -217,6 +299,7 @@ private:
   int currentIndexFor(Path path) const;
   bool inSynthBankA() const;
   bool inSynthBankB() const;
+  static const char* pathName(Path path);
   void pushContext(Context::Type type, Path path);
   void popContext();
   void handlePrimitiveNumber(double value, bool isInteger);
@@ -246,6 +329,18 @@ private:
   int loopStartRow_ = 0;
   int loopEndRow_ = 0;
   std::string drumEngineName_ = "808";
+  int automationParam_ = -1;
+  bool automationEnabled_ = true;
+  bool automationNodeHasX_ = false;
+  bool automationNodeHasY_ = false;
+  int automationNodeX_ = 0;
+  int automationNodeY_ = 0;
+  int drumAutomationParam_ = -1;
+  bool drumAutomationEnabled_ = true;
+  bool drumAutomationNodeHasX_ = false;
+  bool drumAutomationNodeHasY_ = false;
+  int drumAutomationNodeX_ = 0;
+  int drumAutomationNodeY_ = 0;
 };
 
 class SceneManager {
@@ -272,7 +367,7 @@ public:
   void setCurrentBankIndex(int instrumentId, int bankIdx);
   int getCurrentBankIndex(int instrumentId) const;
 
-  void setDrumStep(int voiceIdx, int step, bool hit, bool accent);
+  void setDrumStep(int voiceIdx, int step, bool hit);
   void setSynthStep(int synthIdx, int step, int note, bool slide, bool accent);
 
   std::string dumpCurrentScene() const;
@@ -313,8 +408,6 @@ public:
   template <typename TWriter>
   bool writeSceneJson(TWriter&& writer) const;
   template <typename TReader>
-  bool loadSceneJson(TReader&& reader);
-  template <typename TReader>
   bool loadSceneEvented(TReader&& reader);
 
   // static constexpr size_t sceneJsonCapacity();
@@ -329,8 +422,6 @@ private:
   void trimSongLength();
   void clampLoopRange();
   void clearSongData(Song& song) const;
-  void buildSceneDocument(ArduinoJson::JsonDocument& doc) const;
-  bool applySceneDocument(const ArduinoJson::JsonDocument& doc);
   bool loadSceneEventedWithReader(JsonVisitor::NextChar nextChar);
 
   Scene scene_;
@@ -416,16 +507,23 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
     }
     return writeChar('"');
   };
+  auto writeCString = [&](const char* value) -> bool {
+    if (!value) value = "";
+    if (!writeChar('"')) return false;
+    for (const char* ptr = value; *ptr; ++ptr) {
+      char ch = *ptr;
+      if (ch == '"' || ch == '\\') {
+        if (!writeChar('\\')) return false;
+      }
+      if (!writeChar(ch)) return false;
+    }
+    return writeChar('"');
+  };
   auto writeDrumPattern = [&](const DrumPattern& pattern) -> bool {
     if (!writeLiteral("{\"hit\":[")) return false;
     for (int i = 0; i < DrumPattern::kSteps; ++i) {
       if (i > 0 && !writeChar(',')) return false;
       if (!writeBool(pattern.steps[i].hit)) return false;
-    }
-    if (!writeLiteral("],\"accent\":[")) return false;
-    for (int i = 0; i < DrumPattern::kSteps; ++i) {
-      if (i > 0 && !writeChar(',')) return false;
-      if (!writeBool(pattern.steps[i].accent)) return false;
     }
     return writeLiteral("]}");
   };
@@ -433,12 +531,52 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
     if (!writeChar('[')) return false;
     for (int p = 0; p < Bank<DrumPatternSet>::kPatterns; ++p) {
       if (p > 0 && !writeChar(',')) return false;
-      if (!writeChar('[')) return false;
+      if (!writeLiteral("{\"voices\":[")) return false;
       for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
         if (v > 0 && !writeChar(',')) return false;
         if (!writeDrumPattern(bank.patterns[p].voices[v])) return false;
       }
+      if (!writeLiteral("],\"accent\":[")) return false;
+      for (int i = 0; i < DrumPattern::kSteps; ++i) {
+        if (i > 0 && !writeChar(',')) return false;
+        if (!writeBool(bank.patterns[p].accents[i])) return false;
+      }
       if (!writeChar(']')) return false;
+      if (!writeLiteral(",\"automation\":[")) return false;
+      bool wroteLane = false;
+      for (int a = 0; a < static_cast<int>(DrumAutomationParamId::Count); ++a) {
+        const AutomationLane& lane = bank.patterns[p].automation[a];
+        if (!lane.enabled && lane.nodeCount == 0) continue;
+        if (wroteLane && !writeChar(',')) return false;
+        wroteLane = true;
+        if (!writeLiteral("{\"param\":")) return false;
+        if (!writeInt(a)) return false;
+        if (!writeLiteral(",\"enabled\":")) return false;
+        if (!writeBool(lane.enabled)) return false;
+        if (lane.optionCount > 0) {
+          if (!writeLiteral(",\"options\":[")) return false;
+          for (int i = 0; i < lane.optionCount; ++i) {
+            if (i > 0 && !writeChar(',')) return false;
+            const char* label = lane.optionLabelAt(i);
+            if (!writeCString(label)) return false;
+          }
+          if (!writeChar(']')) return false;
+        }
+        if (!writeLiteral(",\"nodes\":[")) return false;
+        const AutomationNode* laneNodes = lane.nodes();
+        for (int n = 0; n < lane.nodeCount; ++n) {
+          if (n > 0 && !writeChar(',')) return false;
+          if (!writeLiteral("{\"x\":")) return false;
+          if (!laneNodes || !writeInt(laneNodes[n].x)) return false;
+          if (!writeLiteral(",\"y\":")) return false;
+          if (!writeInt(laneNodes[n].y)) return false;
+          if (!writeChar('}')) return false;
+        }
+        if (!writeChar(']')) return false;
+        if (!writeChar('}')) return false;
+      }
+      if (!writeChar(']')) return false;
+      if (!writeChar('}')) return false;
     }
     return writeChar(']');
   };
@@ -451,7 +589,7 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
     return writeChar(']');
   };
   auto writeSynthPattern = [&](const SynthPattern& pattern) -> bool {
-    if (!writeChar('[')) return false;
+    if (!writeLiteral("{\"steps\":[")) return false;
     for (int i = 0; i < SynthPattern::kSteps; ++i) {
       if (i > 0 && !writeChar(',')) return false;
       if (!writeLiteral("{\"note\":")) return false;
@@ -462,7 +600,41 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
       if (!writeBool(pattern.steps[i].accent)) return false;
       if (!writeChar('}')) return false;
     }
-    return writeChar(']');
+    if (!writeLiteral("],\"automation\":[")) return false;
+    bool wroteLane = false;
+    for (int p = 0; p < static_cast<int>(TB303ParamId::Count); ++p) {
+      const AutomationLane& lane = pattern.automation[p];
+      if (!lane.enabled && lane.nodeCount == 0) continue;
+      if (wroteLane && !writeChar(',')) return false;
+      wroteLane = true;
+      if (!writeLiteral("{\"param\":")) return false;
+      if (!writeInt(p)) return false;
+      if (!writeLiteral(",\"enabled\":")) return false;
+      if (!writeBool(lane.enabled)) return false;
+      if (lane.optionCount > 0) {
+        if (!writeLiteral(",\"options\":[")) return false;
+        for (int i = 0; i < lane.optionCount; ++i) {
+          if (i > 0 && !writeChar(',')) return false;
+          const char* label = lane.optionLabelAt(i);
+          if (!writeCString(label)) return false;
+        }
+        if (!writeChar(']')) return false;
+      }
+      if (!writeLiteral(",\"nodes\":[")) return false;
+      const AutomationNode* laneNodes = lane.nodes();
+      for (int n = 0; n < lane.nodeCount; ++n) {
+        if (n > 0 && !writeChar(',')) return false;
+        if (!writeLiteral("{\"x\":")) return false;
+        if (!laneNodes || !writeInt(laneNodes[n].x)) return false;
+        if (!writeLiteral(",\"y\":")) return false;
+        if (!writeInt(laneNodes[n].y)) return false;
+        if (!writeChar('}')) return false;
+      }
+      if (!writeChar(']')) return false;
+      if (!writeChar('}')) return false;
+    }
+    if (!writeChar(']')) return false;
+    return writeChar('}');
   };
   auto writeSynthBank = [&](const Bank<SynthPattern>& bank) -> bool {
     if (!writeChar('[')) return false;
@@ -483,7 +655,9 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
 
   if (!writeChar('{')) return false;
 
-  if (!writeLiteral("\"drumBanks\":")) return false;
+  if (!writeLiteral("\"version\":")) return false;
+  if (!writeInt(kSceneJsonVersion)) return false;
+  if (!writeLiteral(",\"drumBanks\":")) return false;
   if (!writeDrumBanks(scene_.drumBanks)) return false;
 
   if (!writeLiteral(",\"synthABanks\":")) return false;
@@ -577,14 +751,6 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
 
   if (!writeChar('}')) return false;
   return true;
-}
-
-template <typename TReader>
-bool SceneManager::loadSceneJson(TReader&& reader) {
-  ArduinoJson::JsonDocument doc;
-  auto error = ArduinoJson::deserializeJson(doc, std::forward<TReader>(reader));
-  if (error) return false;
-  return applySceneDocument(doc);
 }
 
 template <typename TReader>

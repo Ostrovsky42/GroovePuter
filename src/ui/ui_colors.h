@@ -6,6 +6,7 @@ inline constexpr IGfxColor COLOR_WHITE = IGfxColor(0xFFFFFF);
 inline constexpr IGfxColor COLOR_BLACK = IGfxColor(0x000000);
 inline constexpr IGfxColor COLOR_GRAY = IGfxColor(0x202020);
 inline constexpr IGfxColor COLOR_LIGHT_GRAY = IGfxColor(0x303030);
+inline constexpr IGfxColor COLOR_LIGHTER_GRAY = IGfxColor(0x808080);
 inline constexpr IGfxColor COLOR_DARKER = IGfxColor(0x101010);
 inline constexpr IGfxColor COLOR_WAVE = IGfxColor(0x00FF90);
 inline constexpr IGfxColor COLOR_PANEL = IGfxColor(0x181818);

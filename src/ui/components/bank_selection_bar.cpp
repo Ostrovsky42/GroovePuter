@@ -56,6 +56,45 @@ char BankSelectionBarComponent::bankLetter(int index) const {
 }
 
 bool BankSelectionBarComponent::handleEvent(UIEvent& ui_event) {
+  // Handle keyboard events when focused
+  if (ui_event.event_type == MINIACID_KEY_DOWN && isFocused()) {
+    int cursor = state_.cursor_index;
+    if (cursor < 0) cursor = 0;
+    if (cursor >= state_.bank_count) cursor = state_.bank_count - 1;
+    
+    switch (ui_event.scancode) {
+      case MINIACID_LEFT:
+        if (cursor > 0) {
+          if (callbacks_.onCursorMove) {
+            callbacks_.onCursorMove(cursor - 1);
+          } else if (callbacks_.onSelect) {
+            callbacks_.onSelect(cursor - 1);
+          }
+          return true;
+        }
+        return false;  // At left edge, let parent handle
+      case MINIACID_RIGHT:
+        if (cursor < state_.bank_count - 1) {
+          if (callbacks_.onCursorMove) {
+            callbacks_.onCursorMove(cursor + 1);
+          } else if (callbacks_.onSelect) {
+            callbacks_.onSelect(cursor + 1);
+          }
+          return true;
+        }
+        return false;  // At right edge, let parent handle
+      default:
+        break;
+    }
+    
+    if (ui_event.key == '\n' || ui_event.key == '\r') {
+      if (callbacks_.onSelect) {
+        callbacks_.onSelect(cursor);
+      }
+      return true;
+    }
+  }
+  
   if (ui_event.event_type != MINIACID_MOUSE_DOWN) return false;
   if (ui_event.button != MOUSE_BUTTON_LEFT) return false;
   if (!contains(ui_event.x, ui_event.y)) return false;
@@ -89,6 +128,7 @@ void BankSelectionBarComponent::draw(IGfx& gfx) {
   bool songMode = state_.song_mode;
   int bank_count = state_.bank_count;
   if (bank_count < 0) bank_count = 0;
+  bool showCursor = state_.show_cursor || isFocused();
 
   gfx.setTextColor(COLOR_LABEL);
   gfx.drawText(layout.bank_x, layout.label_y, label_.c_str());
@@ -106,7 +146,7 @@ void BankSelectionBarComponent::draw(IGfx& gfx) {
       gfx.drawRect(cell_x - 1, layout.bank_y - 1, layout.box_size + 2, layout.box_size + 2, sel_border);
     }
     gfx.drawRect(cell_x, layout.bank_y, layout.box_size, layout.box_size, border);
-    if (state_.show_cursor && state_.cursor_index == i) {
+    if (showCursor && state_.cursor_index == i) {
       gfx.drawRect(cell_x - 2, layout.bank_y - 2, layout.box_size + 4, layout.box_size + 4,
                    COLOR_STEP_SELECTED);
     }

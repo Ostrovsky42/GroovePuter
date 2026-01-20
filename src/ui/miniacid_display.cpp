@@ -23,6 +23,7 @@
 #include "pages/tb303_params_page.h"
 #include "pages/waveform_page.h"
 #include "components/mute_button.h"
+#include "components/multipage_title_indicator.h"
 #include "components/page_hint.h"
 
 namespace {
@@ -38,6 +39,71 @@ unsigned long nowMillis() {
 }
 } // namespace
 
+class PageHintNavigator : public Container {
+ public:
+  PageHintNavigator(std::function<int()> page_index,
+                    std::function<int()> page_count,
+                    std::function<void()> previous,
+                    std::function<void()> next)
+      : page_index_(std::move(page_index)),
+        page_count_(std::move(page_count)),
+        previous_(std::move(previous)),
+        next_(std::move(next)) {}
+
+  void updateLayout(IGfx& gfx, int x, int y, int w) {
+    if (!hint_) {
+      hint_ = std::make_shared<PageHint>(page_index_, page_count_, previous_, next_);
+      addChild(hint_);
+    }
+    hint_->setBoundaries(Rect(x, y, w, gfx.fontHeight()));
+  }
+
+ private:
+  std::shared_ptr<PageHint> hint_;
+  std::function<int()> page_index_;
+  std::function<int()> page_count_;
+  std::function<void()> previous_;
+  std::function<void()> next_;
+};
+
+class TransportBpmHeader : public Container {
+ public:
+  explicit TransportBpmHeader(MiniAcid& mini_acid) : mini_acid_(mini_acid) {}
+
+  void updateLayout(int x, int y, int w, int h) {
+    setBoundaries(Rect(x, y, w, h));
+  }
+
+  void draw(IGfx& gfx) override {
+    constexpr int kFillInset = 2;
+    int fill_x = dx();
+    int fill_y = dy() + 1;
+    int fill_w = width() - kFillInset * 2;
+    int fill_h = height();
+    if (fill_w < 0) fill_w = 0;
+
+    IGfxColor transport_color = mini_acid_.songModeEnabled() ? IGfxColor::Green() : IGfxColor::Blue();
+    if (mini_acid_.isPlaying()) {
+      gfx.fillRect(fill_x, fill_y - 1, fill_w, fill_h, transport_color);
+    } else {
+      gfx.fillRect(fill_x, fill_y - 1, fill_w, fill_h, IGfxColor::Gray());
+    }
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%0.0fbpm", mini_acid_.bpm());
+    int text_width = textWidth(gfx, buf);
+    if (mini_acid_.isPlaying()) {
+      IGfxColor text_color = mini_acid_.songModeEnabled() ? IGfxColor::Black() : IGfxColor::White();
+      gfx.setTextColor(text_color);
+    }
+    gfx.drawText(fill_x + (fill_w - text_width) / 2, fill_y + 1, buf);
+    gfx.setTextColor(IGfxColor::White());
+  }
+
+ private:
+  MiniAcid& mini_acid_;
+};
+
 MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid)
     : gfx_(gfx), mini_acid_(mini_acid) {
   splash_start_ms_ = nowMillis();
@@ -52,6 +118,21 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid)
   pages_.push_back(std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_));
   pages_.push_back(std::make_unique<WaveformPage>(gfx_, mini_acid_, audio_guard_));
   pages_.push_back(std::make_unique<HelpPage>());
+
+  multipage_indicator_ = std::make_unique<MultiPageTitleIndicator>(
+      [this]() { dispatchMultiPageEvent(MINIACID_APP_EVENT_MULTIPAGE_UP); },
+      [this]() { dispatchMultiPageEvent(MINIACID_APP_EVENT_MULTIPAGE_DOWN); });
+
+  page_hint_navigator_ = std::make_unique<PageHintNavigator>(
+      [this]() { return page_index_; },
+      [this]() { return static_cast<int>(pages_.size()); },
+      [this]() { previousPage(); },
+      [this]() { nextPage(); });
+
+  transport_bpm_header_ = std::make_unique<TransportBpmHeader>(mini_acid_);
+
+  title_label_ = std::make_unique<LabelComponent>("");
+  title_label_->setJustification(JUSTIFY_CENTER);
 }
 
 MiniAcidDisplay::~MiniAcidDisplay() = default;
@@ -96,14 +177,6 @@ void MiniAcidDisplay::update() {
   gfx_.setTextColor(COLOR_WHITE);
   char buf[128];
 
-  auto print = [&](int x, int y, const char* fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, ap);
-    va_end(ap);
-    gfx_.drawText(x, y, buf);
-  };
-
   int margin = 4;
 
   int content_x = margin;
@@ -113,7 +186,53 @@ void MiniAcidDisplay::update() {
   if (content_h < 0) content_h = 0;
 
   if (pages_[page_index_]) {
-    int title_h = drawPageTitle(content_x, content_y, content_w, pages_[page_index_]->getTitle().c_str());
+    int kTitleHeight = 11;
+    auto title_h = kTitleHeight;
+    auto headerRect = Rect(content_x, content_y, content_w, kTitleHeight);
+
+    // draw transport bpm bar header
+
+    int pagesHintWidth = textWidth(gfx_, "[< 0/0 >]");
+    if (page_hint_navigator_) {
+      auto pagesHintRect = headerRect.removeFromRight(pagesHintWidth);
+      page_hint_navigator_->updateLayout(gfx_, pagesHintRect.x, pagesHintRect.y, pagesHintRect.w );
+      page_hint_navigator_->draw(gfx_);
+      headerRect.removeFromRight(2);
+    }
+
+    if (transport_bpm_header_) {
+      auto transportBpmHeaderRect = headerRect.removeFromRight(50);
+      transport_bpm_header_->setBoundaries(transportBpmHeaderRect);
+      transport_bpm_header_->draw(gfx_);
+      headerRect.removeFromRight(2);
+    }
+
+
+    MultiPage* multiPage = pages_[page_index_]->asMultiPage();
+    if (multiPage && multiPage->pageCount() > 1) {
+      auto multiPageSwitcherComponentRect = headerRect.removeFromRight(15);
+      multipage_indicator_->setVisible(true);
+      multipage_indicator_->setBoundaries(multiPageSwitcherComponentRect);
+      multipage_indicator_->draw(gfx_);
+      headerRect.removeFromRight(2);
+    }
+
+
+    auto title = pages_[page_index_]->getTitle();
+    title_label_->setText(title);
+    title_label_->setBoundaries(headerRect);
+    gfx_.fillRect(headerRect.x, headerRect.y, headerRect.w, headerRect.h, COLOR_WHITE);
+    gfx_.setTextColor(COLOR_BLACK);
+    title_label_->draw(gfx_);
+
+    // Draw recording indicator (red square) on the left if recording
+    if (audio_recorder_ && audio_recorder_->isRecording()) {
+      int indicator_size = 6;
+      int indicator_x = headerRect.x + 3;
+      int indicator_y = headerRect.y + (kTitleHeight - indicator_size) / 2;
+      gfx_.fillRect(indicator_x, indicator_y, indicator_size, indicator_size, IGfxColor::Red());
+    }
+
     // we don't need to do this each time, but for simplicity we do it here
     pages_[page_index_]->setBoundaries(Rect(content_x, content_y + title_h, content_w, content_h - title_h));
     pages_[page_index_]->draw(gfx_);
@@ -124,12 +243,6 @@ void MiniAcidDisplay::update() {
   }
 
   drawMutesSection(margin, content_h + margin, gfx_.width() - margin * 2, gfx_.height() - content_h - margin );
-
-  int hint_w = textWidth(gfx_, "[< 0/0 >]");
-  if (!page_hint_initialized_) {
-    initPageHint(gfx_.width() - hint_w - margin, margin + 2, hint_w);
-  }
-  page_hint_container_.draw(gfx_);
 
   gfx_.flush();
   gfx_.endWrite();
@@ -217,77 +330,23 @@ void MiniAcidDisplay::drawMutesSection(int x, int y, int w, int h) {
   mute_buttons_container_.draw(gfx_);
 }
 
-int MiniAcidDisplay::drawPageTitle(int x, int y, int w, const char* text) {
-  if (w <= 0 || !text) return 0;
-
-  int transport_info_w = 60;
-
-  w = w - transport_info_w; 
-
-  constexpr int kTitleHeight = 11;
-  constexpr int kReservedRight = 60; 
-
-
-  int title_w = w;
-  if (title_w > kReservedRight)
-    title_w -= kReservedRight;
-
-  gfx_.fillRect(x, y, title_w, kTitleHeight, COLOR_WHITE);
-
-  // Draw recording indicator (red square) on the left if recording
-  if (audio_recorder_ && audio_recorder_->isRecording()) {
-    int indicator_size = 6;
-    int indicator_x = x + 3;
-    int indicator_y = y + (kTitleHeight - indicator_size) / 2;
-    gfx_.fillRect(indicator_x, indicator_y, indicator_size, indicator_size, IGfxColor::Red());
+bool MiniAcidDisplay::dispatchMultiPageEvent(ApplicationEventType type) {
+  if (page_index_ >= 0 && page_index_ < static_cast<int>(pages_.size()) && pages_[page_index_]) {
+    UIEvent event;
+    event.event_type = MINIACID_APPLICATION_EVENT;
+    event.app_event_type = type;
+    return pages_[page_index_]->handleEvent(event);
   }
-
-  int text_x = x + (title_w - textWidth(gfx_, text)) / 2;
-  if (text_x < x) text_x = x;
-  gfx_.setTextColor(COLOR_BLACK);
-  gfx_.drawText(text_x, y + 1, text);
-  gfx_.setTextColor(COLOR_WHITE);
-
-  {
-    int info_x = x + title_w + 2;
-    int info_y = y + 1;
-    char buf[32];
-    IGfxColor transportColor = mini_acid_.songModeEnabled() ? IGfxColor::Green() : IGfxColor::Blue();
-    if (mini_acid_.isPlaying()) {
-      gfx_.fillRect(info_x, info_y - 1, transport_info_w - 4, kTitleHeight, transportColor);
-    } else {
-      gfx_.fillRect(info_x, info_y - 1, transport_info_w - 4, kTitleHeight, IGfxColor::Gray());
-    }
-    snprintf(buf, sizeof(buf), "  %0.0fbpm", mini_acid_.bpm());
-    if (mini_acid_.isPlaying()) {
-      IGfxColor textColor = mini_acid_.songModeEnabled() ? IGfxColor::Black() : IGfxColor::White();
-      gfx_.setTextColor(textColor);
-    }
-    gfx_.drawText(info_x, info_y, buf);
-    gfx_.setTextColor(IGfxColor::White());
-  }
-  return kTitleHeight;
-}
-
-void MiniAcidDisplay::initPageHint(int x, int y, int w) {
-  auto hint = std::make_shared<PageHint>(
-    [this]() { return page_index_; },
-    [this]() { return static_cast<int>(pages_.size()); },
-    [this]() { previousPage(); },
-    [this]() { nextPage(); }
-  );
-  hint->setBoundaries(Rect(x, y, w, gfx_.fontHeight()));
-  page_hint_container_.addChild(hint);
-  page_hint_initialized_ = true;
+  return false;
 }
 
 bool MiniAcidDisplay::translateToApplicationEvent(UIEvent& event) {
   if (event.event_type == MINIACID_KEY_DOWN) {
-    if (event.shift && event.ctrl&& event.scancode == MINIACID_DOWN) {
+    if ((event.ctrl || event.meta) && event.scancode == MINIACID_DOWN) {
       event.event_type = MINIACID_APPLICATION_EVENT;
       event.app_event_type = MINIACID_APP_EVENT_MULTIPAGE_DOWN;
       return true;
-    } else if (event.shift && event.ctrl && event.scancode == MINIACID_UP) {
+    } else if ((event.ctrl || event.meta) && event.scancode == MINIACID_UP) {
       event.event_type = MINIACID_APPLICATION_EVENT;
       event.app_event_type = MINIACID_APP_EVENT_MULTIPAGE_UP;
       return true;
@@ -382,14 +441,25 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     }
   }
 
-  // Handle mute button clicks
-  if (mute_buttons_initialized_ && mute_buttons_container_.handleEvent(event)) {
-    return true;
+  // Handle mute button clicks (only mouse events, not keyboard)
+  if (mute_buttons_initialized_ && event.event_type != MINIACID_KEY_DOWN) {
+    if (mute_buttons_container_.handleEvent(event)) {
+      return true;
+    }
   }
 
-  // Handle page hint clicks
-  if (page_hint_initialized_ && page_hint_container_.handleEvent(event)) {
-    return true;
+  // Handle multipage indicator clicks (only mouse events, not keyboard)
+  if (multipage_indicator_ && event.event_type != MINIACID_KEY_DOWN) {
+    if (multipage_indicator_->handleEvent(event)) {
+      return true;
+    }
+  }
+
+  // Handle page hint clicks (only mouse events, not keyboard)
+  if (page_hint_navigator_ && event.event_type != MINIACID_KEY_DOWN) {
+    if (page_hint_navigator_->handleEvent(event)) {
+      return true;
+    }
   }
 
   if (help_dialog_visible_) {

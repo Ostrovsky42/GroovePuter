@@ -4,9 +4,12 @@
 #include <utility>
 
 #include "../help_dialog_frames.h"
+#include "drum_pattern_automation_page.h"
 #include "../components/bank_selection_bar.h"
 #include "../components/label_option.h"
+#include "../components/label_component.h"
 #include "../components/pattern_selection_bar.h"
+#include "../ui_colors.h"
 
 namespace {
 struct DrumPatternClipboard {
@@ -16,7 +19,7 @@ struct DrumPatternClipboard {
 
 DrumPatternClipboard g_drum_pattern_clipboard;
 
-class DrumSequencerGridComponent : public Component {
+class DrumSequencerGridComponent : public FocusableComponent {
  public:
   struct Callbacks {
     std::function<void(int step, int voice)> onToggle;
@@ -187,11 +190,15 @@ class DrumSequencerGridComponent : public Component {
   Callbacks callbacks_;
 };
 
-class DrumSequencerMainPage : public Container {
+class DrumSequencerMainPage : public IPage {
  public:
   DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard& audio_guard);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
+  const std::string & getTitle() const override {
+    static std::string title = "DRUM SEQUENCER";
+    return title;
+  }
 
  private:
   int activeDrumPatternCursor() const;
@@ -201,8 +208,7 @@ class DrumSequencerMainPage : public Container {
   void setDrumPatternCursor(int cursorIndex);
   void moveDrumCursor(int delta);
   void moveDrumCursorVertical(int delta);
-  void focusPatternRow();
-  void focusGrid();
+  void focusChild(Component* target);
   bool patternRowFocused() const;
   int patternIndexFromKey(char key) const;
   int bankIndexFromKey(char key) const;
@@ -217,18 +223,21 @@ class DrumSequencerMainPage : public Container {
   int drum_pattern_cursor_;
   int bank_index_;
   int bank_cursor_;
-  bool bank_focus_;
-  bool drum_pattern_focus_;
-  std::shared_ptr<Component> grid_component_;
+  std::shared_ptr<LabelComponent> pattern_label_;
+  std::shared_ptr<DrumSequencerGridComponent> grid_component_;
   std::shared_ptr<PatternSelectionBarComponent> pattern_bar_;
   std::shared_ptr<BankSelectionBarComponent> bank_bar_;
 };
 
-class GlobalDrumSettingsPage : public Container {
+class GlobalDrumSettingsPage : public IPage {
  public:
   explicit GlobalDrumSettingsPage(MiniAcid& mini_acid);
   bool handleEvent(UIEvent& ui_event) override;
- void draw(IGfx& gfx) override;
+  void draw(IGfx& gfx) override;
+  const std::string & getTitle() const override {
+    static std::string title = "GLOBAL SETTINGS";
+    return title;
+  }
 
  private:
   void applyDrumEngineSelection();
@@ -246,52 +255,60 @@ DrumSequencerMainPage::DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard& au
     drum_voice_cursor_(0),
     drum_pattern_cursor_(0),
     bank_index_(0),
-    bank_cursor_(0),
-    bank_focus_(false),
-    drum_pattern_focus_(true) {
+    bank_cursor_(0) {
   int drumIdx = mini_acid_.currentDrumPatternIndex();
   if (drumIdx < 0 || drumIdx >= Bank<DrumPatternSet>::kPatterns) drumIdx = 0;
   drum_pattern_cursor_ = drumIdx;
   bank_index_ = mini_acid_.currentDrumBankIndex();
   bank_cursor_ = bank_index_;
+  pattern_label_ = std::make_shared<LabelComponent>("PATTERN");
+  pattern_label_->setTextColor(COLOR_LABEL);
   pattern_bar_ = std::make_shared<PatternSelectionBarComponent>("PATTERN");
   bank_bar_ = std::make_shared<BankSelectionBarComponent>("BANK", "ABCD");
   PatternSelectionBarComponent::Callbacks pattern_callbacks;
   pattern_callbacks.onSelect = [this](int index) {
     if (mini_acid_.songModeEnabled()) return;
-    drum_pattern_focus_ = true;
-    bank_focus_ = false;
     setDrumPatternCursor(index);
     withAudioGuard([&]() { mini_acid_.setDrumPatternIndex(index); });
+  };
+  pattern_callbacks.onCursorMove = [this](int index) {
+    if (mini_acid_.songModeEnabled()) return;
+    setDrumPatternCursor(index);
   };
   pattern_bar_->setCallbacks(std::move(pattern_callbacks));
   BankSelectionBarComponent::Callbacks bank_callbacks;
   bank_callbacks.onSelect = [this](int index) {
     if (mini_acid_.songModeEnabled()) return;
-    bank_focus_ = true;
-    drum_pattern_focus_ = false;
     bank_cursor_ = index;
     setBankIndex(index);
+  };
+  bank_callbacks.onCursorMove = [this](int index) {
+    if (mini_acid_.songModeEnabled()) return;
+    bank_cursor_ = index;
   };
   bank_bar_->setCallbacks(std::move(bank_callbacks));
   DrumSequencerGridComponent::Callbacks callbacks;
   callbacks.onToggle = [this](int step, int voice) {
-    focusGrid();
     drum_step_cursor_ = step;
     drum_voice_cursor_ = voice;
     withAudioGuard([&]() { mini_acid_.toggleDrumStep(voice, step); });
   };
   callbacks.onToggleAccent = [this](int step) {
-    focusGrid();
     drum_step_cursor_ = step;
     withAudioGuard([&]() { mini_acid_.toggleDrumAccentStep(step); });
   };
   callbacks.cursorStep = [this]() { return activeDrumStep(); };
   callbacks.cursorVoice = [this]() { return activeDrumVoice(); };
-  callbacks.gridFocused = [this]() { return !patternRowFocused() && !bankRowFocused(); };
+  callbacks.gridFocused = [this]() { return grid_component_ && grid_component_->isFocused(); };
   callbacks.currentStep = [this]() { return mini_acid_.currentStep(); };
   grid_component_ = std::make_shared<DrumSequencerGridComponent>(mini_acid_, std::move(callbacks));
+  bank_bar_->setFocusable(true);
+  addChild(bank_bar_);
+  pattern_bar_->setFocusable(true);
+  addChild(pattern_bar_);
+  grid_component_->setFocusable(true);
   addChild(grid_component_);
+  focusChild(grid_component_.get());
 }
 
 int DrumSequencerMainPage::activeDrumPatternCursor() const {
@@ -331,25 +348,24 @@ void DrumSequencerMainPage::setDrumPatternCursor(int cursorIndex) {
   drum_pattern_cursor_ = cursor;
 }
 
+void DrumSequencerMainPage::focusChild(Component* target) {
+  if (!target) return;
+  const auto& children = getChildren();
+  bool hasTarget = false;
+  for (const auto& child : children) {
+    if (child.get() == target) {
+      hasTarget = true;
+      break;
+    }
+  }
+  if (!hasTarget) return;
+  int count = static_cast<int>(children.size());
+  for (int i = 0; i < count && focusedChild() != target; ++i) {
+    focusNext();
+  }
+}
+
 void DrumSequencerMainPage::moveDrumCursor(int delta) {
-  if (mini_acid_.songModeEnabled()) {
-    drum_pattern_focus_ = false;
-    bank_focus_ = false;
-  }
-  if (bank_focus_) {
-    int cursor = activeBankCursor();
-    cursor = (cursor + delta) % kBankCount;
-    if (cursor < 0) cursor += kBankCount;
-    bank_cursor_ = cursor;
-    return;
-  }
-  if (drum_pattern_focus_) {
-    int cursor = activeDrumPatternCursor();
-    cursor = (cursor + delta) % Bank<DrumPatternSet>::kPatterns;
-    if (cursor < 0) cursor += Bank<DrumPatternSet>::kPatterns;
-    drum_pattern_cursor_ = cursor;
-    return;
-  }
   int step = activeDrumStep();
   step = (step + delta) % SEQ_STEPS;
   if (step < 0) step += SEQ_STEPS;
@@ -358,60 +374,30 @@ void DrumSequencerMainPage::moveDrumCursor(int delta) {
 
 void DrumSequencerMainPage::moveDrumCursorVertical(int delta) {
   if (delta == 0) return;
-  if (mini_acid_.songModeEnabled()) {
-    drum_pattern_focus_ = false;
-    bank_focus_ = false;
-  }
-  if (bank_focus_) {
-    if (delta > 0) {
-      drum_pattern_focus_ = true;
-      bank_focus_ = false;
-    }
-    return;
-  }
-  if (drum_pattern_focus_) {
-    if (delta > 0) {
-      drum_pattern_focus_ = false;
-    }
-    if (delta < 0 && !mini_acid_.songModeEnabled()) {
-      bank_cursor_ = bank_index_;
-      bank_focus_ = true;
-      drum_pattern_focus_ = false;
-    }
-    return;
-  }
-
   int voice = activeDrumVoice();
   int newVoice = voice + delta;
   if (newVoice < 0 || newVoice >= NUM_DRUM_VOICES) {
-    drum_pattern_focus_ = true;
+    if (mini_acid_.songModeEnabled()) {
+      if (newVoice < 0) newVoice = 0;
+      if (newVoice >= NUM_DRUM_VOICES) newVoice = NUM_DRUM_VOICES - 1;
+      drum_voice_cursor_ = newVoice;
+      return;
+    }
     drum_pattern_cursor_ = activeDrumStep() % Bank<DrumPatternSet>::kPatterns;
+    focusChild(pattern_bar_.get());
     return;
   }
   drum_voice_cursor_ = newVoice;
 }
 
-void DrumSequencerMainPage::focusPatternRow() {
-  setDrumPatternCursor(drum_pattern_cursor_);
-  drum_pattern_focus_ = true;
-  bank_focus_ = false;
-}
-
-void DrumSequencerMainPage::focusGrid() {
-  drum_pattern_focus_ = false;
-  bank_focus_ = false;
-  drum_step_cursor_ = activeDrumStep();
-  drum_voice_cursor_ = activeDrumVoice();
-}
-
 bool DrumSequencerMainPage::patternRowFocused() const {
   if (mini_acid_.songModeEnabled()) return false;
-  return drum_pattern_focus_;
+  return pattern_bar_ && pattern_bar_->isFocused();
 }
 
 bool DrumSequencerMainPage::bankRowFocused() const {
   if (mini_acid_.songModeEnabled()) return false;
-  return bank_focus_;
+  return bank_bar_ && bank_bar_->isFocused();
 }
 
 int DrumSequencerMainPage::patternIndexFromKey(char key) const {
@@ -455,10 +441,6 @@ void DrumSequencerMainPage::withAudioGuard(const std::function<void()>& fn) {
 }
 
 bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
-  if (pattern_bar_ && pattern_bar_->handleEvent(ui_event)) return true;
-  if (bank_bar_ && bank_bar_->handleEvent(ui_event)) return true;
-  if (Container::handleEvent(ui_event)) return true;
-
   if (ui_event.event_type == MINIACID_APPLICATION_EVENT) {
     switch (ui_event.app_event_type) {
       case MINIACID_APP_EVENT_COPY: {
@@ -472,21 +454,14 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
           mini_acid_.patternRimSteps(),
           mini_acid_.patternClapSteps()
         };
-        const bool* accents[NUM_DRUM_VOICES] = {
-          mini_acid_.patternKickAccentSteps(),
-          mini_acid_.patternSnareAccentSteps(),
-          mini_acid_.patternHatAccentSteps(),
-          mini_acid_.patternOpenHatAccentSteps(),
-          mini_acid_.patternMidTomAccentSteps(),
-          mini_acid_.patternHighTomAccentSteps(),
-          mini_acid_.patternRimAccentSteps(),
-          mini_acid_.patternClapAccentSteps()
-        };
         for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
           for (int i = 0; i < SEQ_STEPS; ++i) {
             g_drum_pattern_clipboard.pattern.voices[v].steps[i].hit = hits[v][i];
-            g_drum_pattern_clipboard.pattern.voices[v].steps[i].accent = accents[v][i];
           }
+        }
+        const bool* accents = mini_acid_.patternDrumAccentSteps();
+        for (int i = 0; i < SEQ_STEPS; ++i) {
+          g_drum_pattern_clipboard.pattern.accents[i] = accents[i];
         }
         g_drum_pattern_clipboard.has_pattern = true;
         return true;
@@ -494,7 +469,6 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
       case MINIACID_APP_EVENT_PASTE: {
         if (!g_drum_pattern_clipboard.has_pattern) return false;
         bool current_hits[NUM_DRUM_VOICES][SEQ_STEPS];
-        bool current_accents[NUM_DRUM_VOICES][SEQ_STEPS];
         const bool* hits[NUM_DRUM_VOICES] = {
           mini_acid_.patternKickSteps(),
           mini_acid_.patternSnareSteps(),
@@ -505,34 +479,25 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
           mini_acid_.patternRimSteps(),
           mini_acid_.patternClapSteps()
         };
-        const bool* accents[NUM_DRUM_VOICES] = {
-          mini_acid_.patternKickAccentSteps(),
-          mini_acid_.patternSnareAccentSteps(),
-          mini_acid_.patternHatAccentSteps(),
-          mini_acid_.patternOpenHatAccentSteps(),
-          mini_acid_.patternMidTomAccentSteps(),
-          mini_acid_.patternHighTomAccentSteps(),
-          mini_acid_.patternRimAccentSteps(),
-          mini_acid_.patternClapAccentSteps()
-        };
         for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
           for (int i = 0; i < SEQ_STEPS; ++i) {
             current_hits[v][i] = hits[v][i];
-            current_accents[v][i] = accents[v][i];
           }
         }
         const DrumPatternSet& src = g_drum_pattern_clipboard.pattern;
+        const bool* current_accents = mini_acid_.patternDrumAccentSteps();
         withAudioGuard([&]() {
           for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
             for (int i = 0; i < SEQ_STEPS; ++i) {
               bool desiredHit = src.voices[v].steps[i].hit;
-              bool desiredAccent = src.voices[v].steps[i].accent && desiredHit;
               if (current_hits[v][i] != desiredHit) {
                 mini_acid_.toggleDrumStep(v, i);
               }
-              if (current_accents[v][i] != desiredAccent) {
-                mini_acid_.setDrumAccentStep(v, i, desiredAccent);
-              }
+            }
+          }
+          for (int i = 0; i < SEQ_STEPS; ++i) {
+            if (current_accents[i] != src.accents[i]) {
+              mini_acid_.setDrumAccentStep(i, src.accents[i]);
             }
           }
         });
@@ -542,30 +507,47 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
         return false;
     }
   }
-  if (ui_event.event_type != MINIACID_KEY_DOWN) return false;
-  bool handled = false;
-  switch (ui_event.scancode) {
-    case MINIACID_LEFT:
-      moveDrumCursor(-1);
-      handled = true;
-      break;
-    case MINIACID_RIGHT:
-      moveDrumCursor(1);
-      handled = true;
-      break;
-    case MINIACID_UP:
-      moveDrumCursorVertical(-1);
-      handled = true;
-      break;
-    case MINIACID_DOWN:
-      moveDrumCursorVertical(1);
-      handled = true;
-      break;
-    default:
-      break;
+  if (ui_event.event_type == MINIACID_KEY_DOWN) {
+    if (ui_event.scancode == MINIACID_DOWN || ui_event.scancode == MINIACID_UP) {
+      Component* focused = focusedChild();
+      bool onPatternBar = focused == pattern_bar_.get();
+      bool onBankBar = focused == bank_bar_.get();
+      if (onPatternBar || onBankBar) {
+        bool handledByChild = focused->handleEvent(ui_event);
+        if (handledByChild) return true;
+        if (ui_event.scancode == MINIACID_DOWN) {
+          focusNext();
+          return true;
+        }
+        if (ui_event.scancode == MINIACID_UP) {
+          focusPrev();
+          return true;
+        }
+      }
+    }
+    if (focusedChild() == grid_component_.get()) {
+      switch (ui_event.scancode) {
+        case MINIACID_LEFT:
+          moveDrumCursor(-1);
+          return true;
+        case MINIACID_RIGHT:
+          moveDrumCursor(1);
+          return true;
+        case MINIACID_UP:
+          moveDrumCursorVertical(-1);
+          return true;
+        case MINIACID_DOWN:
+          moveDrumCursorVertical(1);
+          return true;
+        default:
+          break;
+      }
+    }
   }
 
-  if (handled) return true;
+  if (Container::handleEvent(ui_event)) return true;
+
+  if (ui_event.event_type != MINIACID_KEY_DOWN) return false;
 
   char key = ui_event.key;
   if (!key) return false;
@@ -575,21 +557,14 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   if (bankIdx >= 0) {
     setBankIndex(bankIdx);
     if (!mini_acid_.songModeEnabled()) {
-      bank_focus_ = true;
-      drum_pattern_focus_ = false;
+      focusChild(bank_bar_.get());
     }
     return true;
   }
     */
 
   if (key == '\n' || key == '\r') {
-    if (bankRowFocused()) {
-      if (mini_acid_.songModeEnabled()) return true;
-      setBankIndex(activeBankCursor());
-    } else if (patternRowFocused()) {
-      int cursor = activeDrumPatternCursor();
-      withAudioGuard([&]() { mini_acid_.setDrumPatternIndex(cursor); });
-    } else {
+    if (focusedChild() == grid_component_.get()) {
       int step = activeDrumStep();
       int voice = activeDrumVoice();
       withAudioGuard([&]() { mini_acid_.toggleDrumStep(voice, step); });
@@ -604,7 +579,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     patternKeyReserved = (lowerKey == 'w');
     if (!patternKeyReserved || patternRowFocused()) {
       if (mini_acid_.songModeEnabled()) return true;
-      focusPatternRow();
+      focusChild(pattern_bar_.get());
       setDrumPatternCursor(patternIdx);
       withAudioGuard([&]() { mini_acid_.setDrumPatternIndex(patternIdx); });
       return true;
@@ -614,7 +589,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
   switch (lowerKey) {
     case 'w': {
-      focusGrid();
+      focusChild(grid_component_.get());
       int step = activeDrumStep();
       withAudioGuard([&]() { mini_acid_.toggleDrumAccentStep(step); });
       return true;
@@ -639,6 +614,11 @@ void DrumSequencerMainPage::draw(IGfx& gfx) {
   if (body_h <= 0) return;
 
   bool songMode = mini_acid_.songModeEnabled();
+  if (bank_bar_) bank_bar_->setFocusable(!songMode);
+  if (pattern_bar_) pattern_bar_->setFocusable(!songMode);
+  if (songMode && (patternRowFocused() || bankRowFocused())) {
+    focusChild(grid_component_.get());
+  }
   bool bankFocus = !songMode && bankRowFocused();
   int bankCursor = activeBankCursor();
 
@@ -646,6 +626,12 @@ void DrumSequencerMainPage::draw(IGfx& gfx) {
   int patternCursor = activeDrumPatternCursor();
   bool patternFocus = !songMode && patternRowFocused();
   if (songMode && selectedPattern >= 0) patternCursor = selectedPattern;
+  int label_h = gfx.fontHeight();
+  if (pattern_label_) {
+    pattern_label_->setBoundaries(Rect{x, body_y, w, label_h});
+    pattern_label_->draw(gfx);
+  }
+  int pattern_bar_y = body_y + label_h + 1;
   PatternSelectionBarComponent::State pattern_state;
   pattern_state.pattern_count = Bank<DrumPatternSet>::kPatterns;
   pattern_state.selected_index = selectedPattern;
@@ -653,10 +639,9 @@ void DrumSequencerMainPage::draw(IGfx& gfx) {
   pattern_state.show_cursor = patternFocus;
   pattern_state.song_mode = songMode;
   pattern_bar_->setState(pattern_state);
-  pattern_bar_->setBoundaries(Rect{x, body_y, w, 0});
+  pattern_bar_->setBoundaries(Rect{x, pattern_bar_y, w, 0});
   int pattern_bar_h = pattern_bar_->barHeight(gfx);
-  pattern_bar_->setBoundaries(Rect{x, body_y, w, pattern_bar_h});
-  pattern_bar_->draw(gfx);
+  pattern_bar_->setBoundaries(Rect{x, pattern_bar_y, w, pattern_bar_h});
 
   BankSelectionBarComponent::State bank_state;
   bank_state.bank_count = kBankCount;
@@ -668,10 +653,11 @@ void DrumSequencerMainPage::draw(IGfx& gfx) {
   bank_bar_->setBoundaries(Rect{x, body_y - 1, w, 0});
   int bank_bar_h = bank_bar_->barHeight(gfx);
   bank_bar_->setBoundaries(Rect{x, body_y - 1, w, bank_bar_h});
+  pattern_bar_->draw(gfx);
   bank_bar_->draw(gfx);
 
   // labels for voices
-  int grid_top = body_y + pattern_bar_h + 5;
+  int grid_top = pattern_bar_y + pattern_bar_h + 5;
   int grid_h = body_h - (grid_top - body_y);
   if (grid_h <= 0) {
     if (grid_component_) {
@@ -682,8 +668,8 @@ void DrumSequencerMainPage::draw(IGfx& gfx) {
 
   if (grid_component_) {
     grid_component_->setBoundaries(Rect{x, grid_top, w, grid_h});
+    grid_component_->draw(gfx);
   }
-  Container::draw(gfx);
 }
 } // namespace
 
@@ -754,15 +740,26 @@ void GlobalDrumSettingsPage::syncDrumEngineSelection() {
 DrumSequencerPage::DrumSequencerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard) {
   (void)gfx;
   addPage(std::make_shared<DrumSequencerMainPage>(mini_acid, audio_guard));
-  addPage(std::make_shared<GlobalDrumSettingsPage>(mini_acid));
+  // addPage(std::make_shared<GlobalDrumSettingsPage>(mini_acid));
+  // addPage(std::make_shared<DrumPatternAutomationPage>(gfx, mini_acid, audio_guard));
 }
 
 const std::string & DrumSequencerPage::getTitle() const {
+  IPage* active = activePage();
+  if (active) {
+    const std::string & title = active->getTitle();
+    if (!title.empty()) return title;
+  }
   static std::string title = "DRUM SEQUENCER";
   return title;
 }
 
 std::unique_ptr<MultiPageHelpDialog> DrumSequencerPage::getHelpDialog() {
+  IPage* active = activePage();
+  if (active) {
+    auto dialog = active->getHelpDialog();
+    if (dialog) return dialog;
+  }
   return std::make_unique<MultiPageHelpDialog>(*this);
 }
 

@@ -3,8 +3,12 @@
 #include <memory>
 
 #include "ui_core.h"
+#include "components/label_component.h"
 
 class IAudioRecorder;
+class MultiPageTitleIndicator;
+class PageHintNavigator;
+class TransportBpmHeader;
 
 class MiniAcidDisplay {
 public:
@@ -20,11 +24,10 @@ public:
 
 private:
   void initMuteButtons(int x, int y, int w, int h);
-  void initPageHint(int x, int y, int w);
   void drawMutesSection(int x, int y, int w, int h);
-  int drawPageTitle(int x, int y, int w, const char* text);
   void drawSplashScreen();
   bool translateToApplicationEvent(UIEvent& event);
+  bool dispatchMultiPageEvent(ApplicationEventType type);
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;
@@ -39,6 +42,8 @@ private:
   std::vector<std::unique_ptr<IPage>> pages_;
   Container mute_buttons_container_;
   bool mute_buttons_initialized_ = false;
-  Container page_hint_container_;
-  bool page_hint_initialized_ = false;
+  std::unique_ptr<PageHintNavigator> page_hint_navigator_;
+  std::unique_ptr<TransportBpmHeader> transport_bpm_header_;
+  std::unique_ptr<MultiPageTitleIndicator> multipage_indicator_;
+  std::unique_ptr<LabelComponent> title_label_;
 };

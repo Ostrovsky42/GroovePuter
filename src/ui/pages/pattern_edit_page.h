@@ -8,47 +8,14 @@
 class BankSelectionBarComponent;
 class PatternSelectionBarComponent;
 
-class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
+class PatternEditPage : public MultiPage, public IMultiHelpFramesProvider {
  public:
   PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard, int voice_index);
-  void draw(IGfx& gfx) override;
-  bool handleEvent(UIEvent& ui_event) override;
   const std::string & getTitle() const override;
   std::unique_ptr<MultiPageHelpDialog> getHelpDialog() override;
   int getHelpFrameCount() const override;
   void drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const override;
 
-  int activePatternCursor() const;
-  int activePatternStep() const;
-  void setPatternCursor(int cursorIndex);
-  void focusPatternRow();
-  void focusPatternSteps();
-  bool patternRowFocused() const;
-  void movePatternCursor(int delta);
-  void movePatternCursorVertical(int delta);
-  int voiceIndex() const { return voice_index_; }
-
  private:
-  enum class Focus { Steps = 0, PatternRow, BankRow };
-
-  int clampCursor(int cursorIndex) const;
-  int activeBankCursor() const;
-  int patternIndexFromKey(char key) const;
-  int bankIndexFromKey(char key) const;
-  void setBankIndex(int bankIndex);
-  void ensureStepFocus();
-  void withAudioGuard(const std::function<void()>& fn);
-
-  IGfx& gfx_;
-  MiniAcid& mini_acid_;
-  AudioGuard& audio_guard_;
-  int voice_index_;
-  int pattern_edit_cursor_;
-  int pattern_row_cursor_;
-  int bank_index_;
-  int bank_cursor_;
-  Focus focus_;
   std::string title_;
-  std::shared_ptr<PatternSelectionBarComponent> pattern_bar_;
-  std::shared_ptr<BankSelectionBarComponent> bank_bar_;
 };

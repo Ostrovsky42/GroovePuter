@@ -1,4 +1,6 @@
 #pragma once
+#ifndef MINIACID_DSP_MINI_TB303_H_
+#define MINIACID_DSP_MINI_TB303_H_
 
 #include <stdint.h>
 #include <memory>
@@ -56,7 +58,10 @@ private:
   float sampleRate;
   float invSampleRate;
   float nyquist;
+  int currentFilterTypeIndex;
 
   Parameter params[static_cast<int>(TB303ParamId::Count)];
   std::unique_ptr<AudioFilter> filter;
 };
+
+#endif  // MINIACID_DSP_MINI_TB303_H_

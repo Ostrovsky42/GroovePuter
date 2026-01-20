@@ -32,26 +32,63 @@ bool PatternSelectionBarComponent::computeLayout(IGfx& gfx, Layout& layout) cons
   layout.bounds_w = bounds.w;
   if (layout.bounds_w <= 0) return false;
 
-  layout.label_h = gfx.fontHeight();
-  layout.label_y = layout.bounds_y;
   layout.columns = state_.columns > 0 ? state_.columns : 8;
   if (layout.columns < 1) layout.columns = 1;
 
   layout.pattern_size = (layout.bounds_w - layout.spacing * (layout.columns - 1) - 2) / layout.columns;
   if (layout.pattern_size < 12) layout.pattern_size = 12;
   layout.pattern_height = layout.pattern_size / 2;
-  layout.row_y = layout.label_y + layout.label_h + 1;
+  layout.row_y = layout.bounds_y;
 
   int count = state_.pattern_count;
   if (count < 1) count = 1;
   layout.rows = (count + layout.columns - 1) / layout.columns;
   layout.row_spacing = layout.rows > 1 ? 2 : 0;
-  layout.bar_height = layout.label_h + 1 + layout.rows * layout.pattern_height +
+  layout.bar_height = layout.rows * layout.pattern_height +
                       (layout.rows - 1) * layout.row_spacing;
   return true;
 }
 
 bool PatternSelectionBarComponent::handleEvent(UIEvent& ui_event) {
+  // Handle keyboard events when focused
+  if (ui_event.event_type == MINIACID_KEY_DOWN && isFocused()) {
+    int cursor = state_.cursor_index;
+    if (cursor < 0) cursor = 0;
+    if (cursor >= state_.pattern_count) cursor = state_.pattern_count - 1;
+    
+    switch (ui_event.scancode) {
+      case MINIACID_LEFT:
+        if (cursor > 0) {
+          if (callbacks_.onCursorMove) {
+            callbacks_.onCursorMove(cursor - 1);
+          } else if (callbacks_.onSelect) {
+            callbacks_.onSelect(cursor - 1);
+          }
+          return true;
+        }
+        return false;  // At left edge, let parent handle
+      case MINIACID_RIGHT:
+        if (cursor < state_.pattern_count - 1) {
+          if (callbacks_.onCursorMove) {
+            callbacks_.onCursorMove(cursor + 1);
+          } else if (callbacks_.onSelect) {
+            callbacks_.onSelect(cursor + 1);
+          }
+          return true;
+        }
+        return false;  // At right edge, let parent handle
+      default:
+        break;
+    }
+    
+    if (ui_event.key == '\n' || ui_event.key == '\r') {
+      if (callbacks_.onSelect) {
+        callbacks_.onSelect(cursor);
+      }
+      return true;
+    }
+  }
+  
   if (ui_event.event_type != MINIACID_MOUSE_DOWN) return false;
   if (ui_event.button != MOUSE_BUTTON_LEFT) return false;
   if (!contains(ui_event.x, ui_event.y)) return false;
@@ -87,16 +124,12 @@ void PatternSelectionBarComponent::draw(IGfx& gfx) {
   last_layout_ = layout;
   last_layout_valid_ = true;
 
-  gfx.setTextColor(COLOR_LABEL);
-  gfx.drawText(layout.bounds_x, layout.label_y, label_.c_str());
-  gfx.setTextColor(COLOR_WHITE);
-
   bool songMode = state_.song_mode;
   int count = state_.pattern_count;
   if (count < 0) count = 0;
   int cursor = state_.cursor_index;
   int selected = state_.selected_index;
-  bool showCursor = state_.show_cursor;
+  bool showCursor = state_.show_cursor || isFocused();
 
   for (int i = 0; i < count; ++i) {
     int row = i / layout.columns;

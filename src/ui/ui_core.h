@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "../dsp/miniacid_engine.h"
+#include "../miniacid_config.h"
 #include "display.h"
 
 enum KeyScanCode {
@@ -88,6 +89,29 @@ class Rect {
     bool contains(Point p) const {
       return p.x >= x && p.x < x + w && p.y >= y && p.y < y + h;
     }
+    Rect removeFromRight(int amount) {
+      auto return_rect = Rect(x + w - amount, y, amount, h);
+      w = w - amount;
+      return return_rect;
+    }
+    Rect removeFromLeft(int amount) {
+      auto return_rect = Rect(x, y, amount, h);
+      x = x + amount;
+      w = w - amount;
+      return return_rect;
+    }
+    Rect removeFromTop(int amount) {
+      auto return_rect = Rect(x, y, w, amount);
+      y = y + amount;
+      h = h - amount;
+      return return_rect;
+    }
+    Rect removeFromBottom(int amount) {
+      auto return_rect = Rect(x, y + h - amount, w, amount);
+      h = h - amount;
+      return return_rect;
+    }
+  
 };
 class Frame {
   public:
@@ -161,6 +185,7 @@ class Container : public EventHandler, public Frame {
 
   // EventHandler methods
   bool handleEvent(UIEvent& ui_event) override {
+    // Handle mouse events
     if (isMouseEvent(ui_event.event_type)) {
       return handleMouseEvent(ui_event);
     }
@@ -179,6 +204,19 @@ class Container : public EventHandler, public Frame {
         return true;
       }
     }
+    
+    // Handle TAB key to move focus (after trying children first)
+    // Check SHIFT+TAB first so it takes priority
+    if (ui_event.event_type == MINIACID_KEY_DOWN && ui_event.key == '\t' && ui_event.shift) {
+      focusPrev();
+      return true;
+    }
+    if (ui_event.event_type == MINIACID_KEY_DOWN && ui_event.key == '\t') {
+      focusNext();
+      return true;
+    }
+  
+    // EXPERIMENTAL
     return false;
   }
 
@@ -309,6 +347,8 @@ class IPage : public Container {
   // Help dialog factory, return nullptr when the page does not provide help.
   virtual std::unique_ptr<MultiPageHelpDialog> getHelpDialog();
 
+  virtual class MultiPage* asMultiPage() { return nullptr; }
+
   virtual ~IPage() = default;
 
   // EventHandler methods
@@ -320,7 +360,7 @@ class IPage : public Container {
 
 class MultiPage : public IPage {
  public:
-  void addPage(std::shared_ptr<Container> page) {
+  void addPage(std::shared_ptr<IPage> page) {
     pages_.push_back(page);
     if (active_index_ < 0) {
       active_index_ = 0;
@@ -329,6 +369,7 @@ class MultiPage : public IPage {
 
   int pageCount() const { return static_cast<int>(pages_.size()); }
   int activePageIndex() const { return active_index_; }
+  MultiPage* asMultiPage() override { return this; }
 
   bool handleEvent(UIEvent& ui_event) override {
     if (ui_event.event_type == MINIACID_APPLICATION_EVENT) {
@@ -341,14 +382,14 @@ class MultiPage : public IPage {
           break;
       }
     }
-    Container* active = activePage();
+    IPage* active = activePage();
     if (!active) return false;
     active->setBoundaries(getBoundaries());
     return active->handleEvent(ui_event);
   }
 
   void draw(IGfx& gfx) override {
-    Container* active = activePage();
+    IPage* active = activePage();
     if (!active) return;
     active->setBoundaries(getBoundaries());
     active->draw(gfx);
@@ -377,7 +418,7 @@ class MultiPage : public IPage {
     return true;
   }
 
-  Container* activePage() const {
+  IPage* activePage() const {
     if (active_index_ < 0 ||
         active_index_ >= static_cast<int>(pages_.size())) {
       return nullptr;
@@ -386,7 +427,7 @@ class MultiPage : public IPage {
   }
 
  private:
-  std::vector<std::shared_ptr<Container>> pages_;
+  std::vector<std::shared_ptr<IPage>> pages_;
   int active_index_ = -1;
 };
 

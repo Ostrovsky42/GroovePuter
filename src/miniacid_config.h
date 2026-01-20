@@ -1,0 +1,32 @@
+#pragma once
+
+#ifndef MINIACID_AUTOMATION_MAX_NODES
+#define MINIACID_AUTOMATION_MAX_NODES 36
+#endif
+
+#ifndef MINIACID_AUTOMATION_POOL_NODES
+// Total automation nodes available across all lanes.
+// This is a shared pool to avoid storing large arrays in every pattern.
+#define MINIACID_AUTOMATION_POOL_NODES 256
+#endif
+
+#ifndef MINIACID_DISABLE_AUTOMATION_APPLY
+#define MINIACID_DISABLE_AUTOMATION_APPLY 0
+#endif
+
+#ifndef MINIACID_AUTOMATION_SAMPLE_STRIDE
+// Update automation every N samples to reduce CPU load.
+// #define MINIACID_AUTOMATION_SAMPLE_STRIDE 8
+// #define MINIACID_AUTOMATION_SAMPLE_STRIDE 16
+// #define MINIACID_AUTOMATION_SAMPLE_STRIDE 32
+#define MINIACID_AUTOMATION_SAMPLE_STRIDE 255
+#endif
+
+#if MINIACID_AUTOMATION_SAMPLE_STRIDE < 1
+#undef MINIACID_AUTOMATION_SAMPLE_STRIDE
+#define MINIACID_AUTOMATION_SAMPLE_STRIDE 1
+#endif
+
+#ifndef MINIACID_DISABLE_FOCUS_PRINTF
+#define MINIACID_DISABLE_FOCUS_PRINTF 0
+#endif

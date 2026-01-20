@@ -21,7 +21,8 @@ class PageHint : public Component {
     char buf[32];
     snprintf(buf, sizeof(buf), "[< %d/%d >]", get_page_index_() + 1, get_page_count_());
     gfx.setTextColor(COLOR_LABEL);
-    gfx.drawText(dx(), dy(), buf);
+    // TODO: fix this +2 magic number to center horizontally on its own
+    gfx.drawText(dx(), dy() + 2, buf);
     gfx.setTextColor(COLOR_WHITE);
   }
 

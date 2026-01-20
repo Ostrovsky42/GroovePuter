@@ -1,4 +1,6 @@
 #pragma once
+#ifndef MINIACID_DSP_MINI_DSP_PARAMS_H_
+#define MINIACID_DSP_MINI_DSP_PARAMS_H_
 
 class Parameter {
 public:
@@ -17,6 +19,7 @@ public:
   int optionCount() const;
   int optionIndex() const;
   const char* optionLabel() const;
+  const char* optionLabelAt(int index) const;
 
   void setValue(float v);
   void addSteps(int steps);
@@ -129,3 +132,11 @@ inline const char* Parameter::optionLabel() const {
   if (idx < 0 || idx >= optionCount_) return nullptr;
   return options_[idx];
 }
+
+inline const char* Parameter::optionLabelAt(int index) const {
+  if (!hasOptions() || !options_) return nullptr;
+  if (index < 0 || index >= optionCount_) return nullptr;
+  return options_[index];
+}
+
+#endif  // MINIACID_DSP_MINI_DSP_PARAMS_H_

@@ -10,17 +10,37 @@
 
 namespace {
 inline constexpr IGfxColor kFocusColor = IGfxColor(0xB36A00);
+
+int automationIndicatorSize(int font_height) {
+  int size = 5;
+  if (size > font_height - 2) size = font_height - 2;
+  if (size < 2) return 0;
+  return size;
+}
+
+void drawAutomationIndicator(IGfx& gfx, int x, int y, int size, bool enabled) {
+  IGfxColor square_color = IGfxColor::Yellow();
+  if (enabled) {
+    gfx.fillRect(x, y, size, size, square_color);
+  } else {
+    gfx.drawRect(x, y, size, size, square_color);
+  }
+}
 } // namespace
 
 class Synth303ParamsPage::KnobComponent : public FocusableComponent {
  public:
   KnobComponent(const Parameter& param, IGfxColor ring_color,
                 IGfxColor indicator_color,
-                std::function<void(int)> adjust_fn)
+                std::function<void(int)> adjust_fn,
+                MiniAcid* mini_acid, TB303ParamId param_id, int voice_index)
       : param_(param),
         ring_color_(ring_color),
         indicator_color_(indicator_color),
-        adjust_fn_(std::move(adjust_fn)) {}
+        adjust_fn_(std::move(adjust_fn)),
+        mini_acid_(mini_acid),
+        param_id_(param_id),
+        voice_index_(voice_index) {}
 
   void setValue(int direction) {
     if (adjust_fn_) {
@@ -118,8 +138,21 @@ class Synth303ParamsPage::KnobComponent : public FocusableComponent {
       label = "";
     }
     gfx.setTextColor(COLOR_LABEL);
-    int label_x = cx - textWidth(gfx, label) / 2;
-    gfx.drawText(label_x, cy + radius + 6, label);
+    int label_w = textWidth(gfx, label);
+    int label_x = cx - label_w / 2;
+    int label_y = cy + radius + 6;
+    gfx.drawText(label_x, label_y, label);
+    if (mini_acid_) {
+      const AutomationLane* lane = mini_acid_->automationLane303(param_id_, voice_index_);
+      if (lane && lane->hasNodes()) {
+        int size = automationIndicatorSize(gfx.fontHeight());
+        if (size > 0) {
+          int square_x = label_x + label_w + 2;
+          int square_y = label_y + (gfx.fontHeight() - size) / 2;
+          drawAutomationIndicator(gfx, square_x, square_y, size, lane->enabled);
+        }
+      }
+    }
 
     char buf[48];
     const char* unit = param_.unit();
@@ -147,6 +180,9 @@ class Synth303ParamsPage::KnobComponent : public FocusableComponent {
   bool dragging_ = false;
   int last_drag_y_ = 0;
   int drag_accum_ = 0;
+  MiniAcid* mini_acid_ = nullptr;
+  TB303ParamId param_id_ = TB303ParamId::Count;
+  int voice_index_ = 0;
 };
 
 class Synth303ParamsPage::LabelValueComponent : public FocusableComponent {
@@ -158,6 +194,11 @@ class Synth303ParamsPage::LabelValueComponent : public FocusableComponent {
         value_color_(value_color) {}
 
   void setValue(const char* value) { value_ = value ? value : ""; }
+  void setAutomationLane(MiniAcid& mini_acid, TB303ParamId param_id, int voice_index) {
+    mini_acid_ = &mini_acid;
+    param_id_ = param_id;
+    voice_index_ = voice_index;
+  }
 
   void draw(IGfx& gfx) override {
     const Rect& bounds = getBoundaries();
@@ -165,7 +206,21 @@ class Synth303ParamsPage::LabelValueComponent : public FocusableComponent {
     gfx.drawText(bounds.x, bounds.y, label_);
     int label_w = textWidth(gfx, label_);
     gfx.setTextColor(value_color_);
-    gfx.drawText(bounds.x + label_w + 3, bounds.y, value_);
+    int label_value_gap = 3;
+    int value_x = bounds.x + label_w + label_value_gap;
+    if (mini_acid_) {
+      const AutomationLane* lane = mini_acid_->automationLane303(param_id_, voice_index_);
+      if (lane && lane->hasNodes()) {
+        int size = automationIndicatorSize(gfx.fontHeight());
+        if (size > 0) {
+          int square_x = bounds.x + label_w + label_value_gap;
+          int square_y = bounds.y + (gfx.fontHeight() - size) / 2;
+          drawAutomationIndicator(gfx, square_x, square_y, size, lane->enabled);
+          value_x = square_x + size + label_value_gap;
+        }
+      }
+    }
+    gfx.drawText(value_x, bounds.y, value_);
 
     if (isFocused()) {
       int pad = 2;
@@ -179,6 +234,9 @@ class Synth303ParamsPage::LabelValueComponent : public FocusableComponent {
   const char* value_ = "";
   IGfxColor label_color_;
   IGfxColor value_color_;
+  MiniAcid* mini_acid_ = nullptr;
+  TB303ParamId param_id_ = TB303ParamId::Count;
+  int voice_index_ = 0;
 };
 
 Synth303ParamsPage::Synth303ParamsPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard, int voice_index) :
@@ -210,7 +268,8 @@ void Synth303ParamsPage::initComponents() {
         withAudioGuard([&]() {
           mini_acid_.adjust303Parameter(TB303ParamId::Cutoff, steps * direction, voice_index_);
         });
-      });
+      },
+      &mini_acid_, TB303ParamId::Cutoff, voice_index_);
   resonance_knob_ = std::make_shared<KnobComponent>(
       pRes, COLOR_KNOB_2, COLOR_KNOB_2,
       [this](int direction) {
@@ -218,7 +277,8 @@ void Synth303ParamsPage::initComponents() {
         withAudioGuard([&]() {
           mini_acid_.adjust303Parameter(TB303ParamId::Resonance, steps * direction, voice_index_);
         });
-      });
+      },
+      &mini_acid_, TB303ParamId::Resonance, voice_index_);
   env_amount_knob_ = std::make_shared<KnobComponent>(
       pEnv, COLOR_KNOB_3, COLOR_KNOB_3,
       [this](int direction) {
@@ -226,7 +286,8 @@ void Synth303ParamsPage::initComponents() {
         withAudioGuard([&]() {
           mini_acid_.adjust303Parameter(TB303ParamId::EnvAmount, steps * direction, voice_index_);
         });
-      });
+      },
+      &mini_acid_, TB303ParamId::EnvAmount, voice_index_);
   env_decay_knob_ = std::make_shared<KnobComponent>(
       pDec, COLOR_KNOB_4, COLOR_KNOB_4,
       [this](int direction) {
@@ -234,7 +295,8 @@ void Synth303ParamsPage::initComponents() {
         withAudioGuard([&]() {
           mini_acid_.adjust303Parameter(TB303ParamId::EnvDecay, steps * direction, voice_index_);
         });
-      });
+      },
+      &mini_acid_, TB303ParamId::EnvDecay, voice_index_);
   osc_control_ = std::make_shared<LabelValueComponent>("OSC:", COLOR_WHITE,
                                                        IGfxColor::Cyan());
   filter_control_ = std::make_shared<LabelValueComponent>("FLT:", COLOR_WHITE,
@@ -243,6 +305,9 @@ void Synth303ParamsPage::initComponents() {
                                                          IGfxColor::Cyan());
   distortion_control_ = std::make_shared<LabelValueComponent>("DST:", COLOR_WHITE,
                                                               IGfxColor::Cyan());
+
+  osc_control_->setAutomationLane(mini_acid_, TB303ParamId::Oscillator, voice_index_);
+  filter_control_->setAutomationLane(mini_acid_, TB303ParamId::FilterType, voice_index_);
 
   addChild(cutoff_knob_);
   addChild(resonance_knob_);
@@ -375,6 +440,14 @@ void Synth303ParamsPage::draw(IGfx& gfx) {
   if (osc_control_) {
     osc_control_->setValue(oscLabel);
     int oscFocusW = oscLabelW + labelValueGap + oscValueW;
+    const AutomationLane* osc_lane =
+        mini_acid_.automationLane303(TB303ParamId::Oscillator, voice_index_);
+    if (osc_lane && osc_lane->hasNodes()) {
+      int size = automationIndicatorSize(gfx_.fontHeight());
+      if (size > 0) {
+        oscFocusW += labelValueGap + size;
+      }
+    }
     int oscFocusH = gfx_.fontHeight();
     osc_control_->setBoundaries(Rect(oscLabelX, oscSwitchesY,
                                      oscFocusW, oscFocusH));
@@ -391,6 +464,14 @@ void Synth303ParamsPage::draw(IGfx& gfx) {
   if (filter_control_) {
     filter_control_->setValue(filterLabel);
     int filterFocusW = filterLabelW + labelValueGap + filterValueW;
+    const AutomationLane* filter_lane =
+        mini_acid_.automationLane303(TB303ParamId::FilterType, voice_index_);
+    if (filter_lane && filter_lane->hasNodes()) {
+      int size = automationIndicatorSize(gfx_.fontHeight());
+      if (size > 0) {
+        filterFocusW += labelValueGap + size;
+      }
+    }
     int filterFocusH = gfx_.fontHeight();
     filter_control_->setBoundaries(Rect(filterLabelX, oscSwitchesY,
                                         filterFocusW, filterFocusH));

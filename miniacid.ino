@@ -59,6 +59,13 @@ void setup() {
   M5Cardputer.begin(cfg);
 
   Serial.begin(115200);
+#if defined(MINIACID_SCENE_DEBUG)
+  Serial.printf("sizeof(AutomationLane)=%u sizeof(SynthPattern)=%u sizeof(Scene)=%u\n",
+                static_cast<unsigned>(sizeof(AutomationLane)),
+                static_cast<unsigned>(sizeof(SynthPattern)),
+                static_cast<unsigned>(sizeof(Scene)));
+  Serial.printf("free heap at boot: %u\n", static_cast<unsigned>(ESP.getFreeHeap()));
+#endif
 
   g_display.setRotation(1);
   g_display.begin();
@@ -68,6 +75,9 @@ void setup() {
   M5Cardputer.Speaker.setVolume(200); // 0-255
 
   g_miniAcid.init();
+#if defined(MINIACID_SCENE_DEBUG)
+  Serial.printf("free heap after MiniAcid init: %u\n", static_cast<unsigned>(ESP.getFreeHeap()));
+#endif
   g_miniDisplay = new MiniAcidDisplay(g_display, g_miniAcid);
   
   // Set audio guard to protect audio task from concurrent access

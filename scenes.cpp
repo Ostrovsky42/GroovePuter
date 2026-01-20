@@ -1,6 +1,8 @@
-#include "ArduinoJson-v7.4.2.h"
 #include "scenes.h"
 
+#include <cstdlib>
+#include <cstring>
+#include <new>
 #include <memory>
 
 namespace {
@@ -10,10 +12,172 @@ int clampIndex(int value, int maxExclusive) {
   return value;
 }
 
+int clampAutomationValue(int value, int maxValue) {
+  if (value < 0) return 0;
+  if (value > maxValue) return maxValue;
+  return value;
+}
+
+struct AutomationBlock {
+  uint16_t start;
+  uint16_t length;
+};
+
+// Shared pool for automation nodes to keep per-pattern memory small.
+class AutomationNodePool {
+ public:
+  AutomationNodePool() {
+    freeBlocks_[0] = {0, static_cast<uint16_t>(kAutomationPoolNodes)};
+    freeCount_ = 1;
+  }
+
+  AutomationNode* data() { return nodes_; }
+  const AutomationNode* data() const { return nodes_; }
+
+  bool ensureCapacity(AutomationLane& lane, int needed) {
+    if (needed <= 0) return true;
+    uint16_t need = static_cast<uint16_t>(needed);
+    if (lane.capacity >= need) return true;
+
+    uint16_t newCap = need;
+    uint16_t grow = lane.capacity > 0 ? static_cast<uint16_t>(lane.capacity * 2) : static_cast<uint16_t>(4);
+    if (grow > newCap) newCap = grow;
+    if (newCap > kAutomationMaxNodes) newCap = static_cast<uint16_t>(kAutomationMaxNodes);
+    if (newCap < need) return false;
+
+    uint16_t newStart = kAutomationInvalidIndex;
+    if (!reserveBlock(newCap, newStart)) {
+      if (newCap == need || !reserveBlock(need, newStart)) {
+        return false;
+      }
+      newCap = need;
+    }
+
+    if (lane.nodeCount > 0 && lane.start != kAutomationInvalidIndex) {
+      std::memmove(nodes_ + newStart, nodes_ + lane.start,
+                   static_cast<size_t>(lane.nodeCount) * sizeof(AutomationNode));
+      freeBlock(lane.start, lane.capacity);
+    } else if (lane.start != kAutomationInvalidIndex && lane.capacity > 0) {
+      freeBlock(lane.start, lane.capacity);
+    }
+    lane.start = newStart;
+    lane.capacity = newCap;
+    return true;
+  }
+
+  void release(AutomationLane& lane) {
+    if (lane.start != kAutomationInvalidIndex && lane.capacity > 0) {
+      freeBlock(lane.start, lane.capacity);
+    }
+    lane.start = kAutomationInvalidIndex;
+    lane.capacity = 0;
+  }
+
+ private:
+  bool reserveBlock(uint16_t length, uint16_t& outStart) {
+    for (int i = 0; i < freeCount_; ++i) {
+      if (freeBlocks_[i].length >= length) {
+        outStart = freeBlocks_[i].start;
+        freeBlocks_[i].start = static_cast<uint16_t>(freeBlocks_[i].start + length);
+        freeBlocks_[i].length = static_cast<uint16_t>(freeBlocks_[i].length - length);
+        if (freeBlocks_[i].length == 0) {
+          removeBlock(i);
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void freeBlock(uint16_t start, uint16_t length) {
+    if (length == 0 || freeCount_ >= kMaxBlocks) return;
+    insertBlock(start, length);
+  }
+
+  void insertBlock(uint16_t start, uint16_t length) {
+    int pos = 0;
+    while (pos < freeCount_ && freeBlocks_[pos].start < start) {
+      ++pos;
+    }
+    if (freeCount_ >= kMaxBlocks) return;
+    for (int i = freeCount_; i > pos; --i) {
+      freeBlocks_[i] = freeBlocks_[i - 1];
+    }
+    freeBlocks_[pos] = {start, length};
+    freeCount_++;
+    mergeAdjacent();
+  }
+
+  void mergeAdjacent() {
+    if (freeCount_ < 2) return;
+    int write = 0;
+    for (int i = 1; i < freeCount_; ++i) {
+      AutomationBlock& cur = freeBlocks_[write];
+      AutomationBlock next = freeBlocks_[i];
+      if (static_cast<uint32_t>(cur.start) + cur.length == next.start) {
+        cur.length = static_cast<uint16_t>(cur.length + next.length);
+      } else {
+        ++write;
+        freeBlocks_[write] = next;
+      }
+    }
+    freeCount_ = write + 1;
+  }
+
+  void removeBlock(int index) {
+    for (int i = index; i + 1 < freeCount_; ++i) {
+      freeBlocks_[i] = freeBlocks_[i + 1];
+    }
+    freeCount_--;
+  }
+
+  static constexpr int kMaxBlocks = 64;
+  AutomationNode nodes_[kAutomationPoolNodes]{};
+  AutomationBlock freeBlocks_[kMaxBlocks]{};
+  int freeCount_ = 0;
+};
+
+AutomationNodePool& automationPool() {
+  static AutomationNodePool pool;
+  return pool;
+}
+
+bool appendAutomationNode(AutomationLane& lane, uint8_t x, uint8_t y) {
+  if (lane.nodeCount >= kAutomationMaxNodes) return false;
+  if (!lane.ensureCapacity(lane.nodeCount + 1)) return false;
+  AutomationNode* nodes = lane.nodes();
+  if (!nodes) return false;
+  if (lane.nodeCount > 0) {
+    uint8_t lastX = nodes[lane.nodeCount - 1].x;
+    if (x < lastX) return false;
+    if (x == lastX) {
+      int sameCount = 1;
+      for (int i = lane.nodeCount - 2; i >= 0; --i) {
+        if (nodes[i].x != lastX) break;
+        ++sameCount;
+      }
+      if (sameCount >= 2) return false;
+    }
+  }
+  nodes[lane.nodeCount++] = AutomationNode{x, y};
+  return true;
+}
+
 void clearDrumPattern(DrumPattern& pattern) {
   for (int i = 0; i < DrumPattern::kSteps; ++i) {
     pattern.steps[i].hit = false;
-    pattern.steps[i].accent = false;
+  }
+}
+
+void clearDrumPatternSet(DrumPatternSet& patternSet) {
+  for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
+    clearDrumPattern(patternSet.voices[v]);
+  }
+  for (int i = 0; i < DrumPattern::kSteps; ++i) {
+    patternSet.accents[i] = false;
+  }
+  for (int i = 0; i < static_cast<int>(DrumAutomationParamId::Count); ++i) {
+    patternSet.automation[i].clear();
   }
 }
 
@@ -22,6 +186,9 @@ void clearSynthPattern(SynthPattern& pattern) {
     pattern.steps[i].note = -1;
     pattern.steps[i].slide = false;
     pattern.steps[i].accent = false;
+  }
+  for (int i = 0; i < static_cast<int>(TB303ParamId::Count); ++i) {
+    pattern.automation[i].clear();
   }
 }
 
@@ -37,9 +204,7 @@ void clearSong(Song& song) {
 void clearSceneData(Scene& scene) {
   for (int b = 0; b < kBankCount; ++b) {
     for (int p = 0; p < Bank<DrumPatternSet>::kPatterns; ++p) {
-      for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-        clearDrumPattern(scene.drumBanks[b].patterns[p].voices[v]);
-      }
+      clearDrumPatternSet(scene.drumBanks[b].patterns[p]);
     }
     for (int p = 0; p < Bank<SynthPattern>::kPatterns; ++p) {
       clearSynthPattern(scene.synthABanks[b].patterns[p]);
@@ -48,211 +213,219 @@ void clearSceneData(Scene& scene) {
   }
   clearSong(scene.song);
 }
-
-void serializeDrumPattern(const DrumPattern& pattern, ArduinoJson::JsonObject obj) {
-  ArduinoJson::JsonArray hit = obj["hit"].to<ArduinoJson::JsonArray>();
-  ArduinoJson::JsonArray accent = obj["accent"].to<ArduinoJson::JsonArray>();
-  for (int i = 0; i < DrumPattern::kSteps; ++i) {
-    hit.add(pattern.steps[i].hit);
-    accent.add(pattern.steps[i].accent);
-  }
 }
 
-void serializeDrumBank(const Bank<DrumPatternSet>& bank, ArduinoJson::JsonArray patterns) {
-  for (int p = 0; p < Bank<DrumPatternSet>::kPatterns; ++p) {
-    ArduinoJson::JsonArray voices = patterns.add<ArduinoJson::JsonArray>();
-    for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-      ArduinoJson::JsonObject voice = voices.add<ArduinoJson::JsonObject>();
-      serializeDrumPattern(bank.patterns[p].voices[v], voice);
+bool AutomationLane::hasNodes() const { return nodeCount > 0; }
+
+bool AutomationLane::hasOptions() const { return optionCount > 0; }
+
+AutomationLane::AutomationLane(const AutomationLane& other)
+    : start(other.start),
+      capacity(other.capacity),
+      nodeCount(other.nodeCount),
+      enabled(other.enabled),
+      optionCount(other.optionCount),
+      optionLabels(nullptr) {
+  if (!other.optionLabels) return;
+  constexpr size_t kLabelBytes =
+      static_cast<size_t>(kAutomationMaxOptions) * kAutomationOptionLabelMaxLen;
+  optionLabels = static_cast<char*>(std::malloc(kLabelBytes));
+  if (!optionLabels) return;
+  std::memcpy(optionLabels, other.optionLabels, kLabelBytes);
+}
+
+AutomationLane& AutomationLane::operator=(const AutomationLane& other) {
+  if (this == &other) return *this;
+  start = other.start;
+  capacity = other.capacity;
+  nodeCount = other.nodeCount;
+  enabled = other.enabled;
+  optionCount = other.optionCount;
+  if (optionLabels) {
+    std::free(optionLabels);
+    optionLabels = nullptr;
+  }
+  if (!other.optionLabels) return *this;
+  constexpr size_t kLabelBytes =
+      static_cast<size_t>(kAutomationMaxOptions) * kAutomationOptionLabelMaxLen;
+  optionLabels = static_cast<char*>(std::malloc(kLabelBytes));
+  if (!optionLabels) return *this;
+  std::memcpy(optionLabels, other.optionLabels, kLabelBytes);
+  return *this;
+}
+
+AutomationLane::~AutomationLane() { clearOptions(); }
+
+void AutomationLane::clear() {
+  automationPool().release(*this);
+  nodeCount = 0;
+  enabled = false;
+  clearOptions();
+}
+
+uint8_t AutomationLane::evaluate(float t) const {
+  if (nodeCount == 0) return 0;
+  const AutomationNode* laneNodes = nodes();
+  if (!laneNodes) return 0;
+  auto clampOption = [&](int value) -> uint8_t {
+    if (optionCount <= 1) return 0;
+    int maxValue = static_cast<int>(optionCount) - 1;
+    if (value < 0) value = 0;
+    if (value > maxValue) value = maxValue;
+    return static_cast<uint8_t>(value);
+  };
+
+  if (hasOptions()) {
+    if (nodeCount == 1) return clampOption(laneNodes[0].y);
+    if (t <= static_cast<float>(laneNodes[0].x)) return clampOption(laneNodes[0].y);
+    for (int i = 1; i < nodeCount; ++i) {
+      float x1 = static_cast<float>(laneNodes[i].x);
+      if (t < x1) {
+        const AutomationNode& n0 = laneNodes[i - 1];
+        return clampOption(n0.y);
+      }
+    }
+    return clampOption(laneNodes[nodeCount - 1].y);
+  }
+
+  if (nodeCount == 1) return laneNodes[0].y;
+  if (t <= static_cast<float>(laneNodes[0].x)) return laneNodes[0].y;
+  for (int i = 1; i < nodeCount; ++i) {
+    float x1 = static_cast<float>(laneNodes[i].x);
+    if (t < x1) {
+      const AutomationNode& n0 = laneNodes[i - 1];
+      const AutomationNode& n1 = laneNodes[i];
+      if (n0.x == n1.x) return n0.y;
+      float x0 = static_cast<float>(n0.x);
+      float alpha = (t - x0) / (x1 - x0);
+      float y = static_cast<float>(n0.y) + alpha * (static_cast<float>(n1.y) - static_cast<float>(n0.y));
+      if (y < 0.0f) y = 0.0f;
+      if (y > 255.0f) y = 255.0f;
+      return static_cast<uint8_t>(y + 0.5f);
     }
   }
+  return laneNodes[nodeCount - 1].y;
 }
 
-void serializeDrumBanks(const Bank<DrumPatternSet>* banks, ArduinoJson::JsonArray banksArr) {
-  for (int b = 0; b < kBankCount; ++b) {
-    ArduinoJson::JsonArray patterns = banksArr.add<ArduinoJson::JsonArray>();
-    serializeDrumBank(banks[b], patterns);
-  }
+AutomationNode* AutomationLane::nodes() {
+  if (start == kAutomationInvalidIndex || capacity == 0) return nullptr;
+  return automationPool().data() + start;
 }
 
-void serializeSynthPattern(const SynthPattern& pattern, ArduinoJson::JsonArray steps) {
-  for (int i = 0; i < SynthPattern::kSteps; ++i) {
-    ArduinoJson::JsonObject step = steps.add<ArduinoJson::JsonObject>();
-    step["note"] = pattern.steps[i].note;
-    step["slide"] = pattern.steps[i].slide;
-    step["accent"] = pattern.steps[i].accent;
-  }
+const AutomationNode* AutomationLane::nodes() const {
+  if (start == kAutomationInvalidIndex || capacity == 0) return nullptr;
+  return automationPool().data() + start;
 }
 
-void serializeSynthBank(const Bank<SynthPattern>& bank, ArduinoJson::JsonArray patterns) {
-  for (int p = 0; p < Bank<SynthPattern>::kPatterns; ++p) {
-    ArduinoJson::JsonArray steps = patterns.add<ArduinoJson::JsonArray>();
-    serializeSynthPattern(bank.patterns[p], steps);
-  }
+bool AutomationLane::ensureCapacity(int needed) {
+  return automationPool().ensureCapacity(*this, needed);
 }
 
-void serializeSynthBanks(const Bank<SynthPattern>* banks, ArduinoJson::JsonArray banksArr) {
-  for (int b = 0; b < kBankCount; ++b) {
-    ArduinoJson::JsonArray patterns = banksArr.add<ArduinoJson::JsonArray>();
-    serializeSynthBank(banks[b], patterns);
+void AutomationLane::clearOptions() {
+  optionCount = 0;
+  if (optionLabels) {
+    std::free(optionLabels);
+    optionLabels = nullptr;
   }
 }
 
-bool deserializeBoolArray(ArduinoJson::JsonArrayConst arr, bool* dst, int expectedSize) {
-  if (static_cast<int>(arr.size()) != expectedSize) return false;
-  int idx = 0;
-  for (ArduinoJson::JsonVariantConst value : arr) {
-    if (!value.is<bool>()) return false;
-    dst[idx++] = value.as<bool>();
+void AutomationLane::setOptions(const char* const* labels, int count) {
+  clearOptions();
+  if (!labels || count <= 0) return;
+  int limit = count;
+  if (limit > kAutomationMaxOptions) limit = kAutomationMaxOptions;
+  optionLabels = static_cast<char*>(std::calloc(
+      static_cast<size_t>(kAutomationMaxOptions) * kAutomationOptionLabelMaxLen,
+      sizeof(char)));
+  if (!optionLabels) return;
+  optionCount = static_cast<uint8_t>(limit);
+  for (int i = 0; i < limit; ++i) {
+    if (!labels[i]) continue;
+    setOptionLabel(i, labels[i]);
   }
-  return true;
 }
 
-bool deserializeDrumPattern(ArduinoJson::JsonVariantConst value, DrumPattern& pattern) {
-  ArduinoJson::JsonObjectConst obj = value.as<ArduinoJson::JsonObjectConst>();
-  if (obj.isNull()) return false;
-  ArduinoJson::JsonArrayConst hit = obj["hit"].as<ArduinoJson::JsonArrayConst>();
-  ArduinoJson::JsonArrayConst accent = obj["accent"].as<ArduinoJson::JsonArrayConst>();
-  if (hit.isNull() || accent.isNull()) return false;
-  bool hits[DrumPattern::kSteps];
-  bool accents[DrumPattern::kSteps];
-  if (!deserializeBoolArray(hit, hits, DrumPattern::kSteps)) return false;
-  if (!deserializeBoolArray(accent, accents, DrumPattern::kSteps)) return false;
-  for (int i = 0; i < DrumPattern::kSteps; ++i) {
-    pattern.steps[i].hit = hits[i];
-    pattern.steps[i].accent = accents[i];
+void AutomationLane::setOptionLabel(int index, const char* label) {
+  if (index < 0 || index >= kAutomationMaxOptions) return;
+  if (!optionLabels) {
+    optionLabels = static_cast<char*>(std::calloc(
+        static_cast<size_t>(kAutomationMaxOptions) * kAutomationOptionLabelMaxLen,
+        sizeof(char)));
+    if (!optionLabels) return;
   }
-  return true;
+  if (!label) label = "";
+  char* dst = optionLabels + index * kAutomationOptionLabelMaxLen;
+  std::strncpy(dst, label, kAutomationOptionLabelMaxLen - 1);
+  dst[kAutomationOptionLabelMaxLen - 1] = '\0';
+  if (optionCount < static_cast<uint8_t>(index + 1)) {
+    optionCount = static_cast<uint8_t>(index + 1);
+  }
 }
 
-bool deserializeDrumPatternSet(ArduinoJson::JsonVariantConst value, DrumPatternSet& patternSet) {
-  ArduinoJson::JsonArrayConst voices = value.as<ArduinoJson::JsonArrayConst>();
-  if (voices.isNull() || static_cast<int>(voices.size()) != DrumPatternSet::kVoices) return false;
-  int v = 0;
-  for (ArduinoJson::JsonVariantConst voice : voices) {
-    if (!deserializeDrumPattern(voice, patternSet.voices[v])) return false;
-    ++v;
-  }
-  return true;
+const char* AutomationLane::optionLabelAt(int index) const {
+  if (index < 0 || index >= optionCount) return nullptr;
+  if (!optionLabels) return nullptr;
+  const char* label = optionLabels + index * kAutomationOptionLabelMaxLen;
+  if (!label[0]) return nullptr;
+  return label;
 }
 
-bool deserializeDrumBank(ArduinoJson::JsonVariantConst value, Bank<DrumPatternSet>& bank) {
-  ArduinoJson::JsonArrayConst patterns = value.as<ArduinoJson::JsonArrayConst>();
-  if (patterns.isNull() || static_cast<int>(patterns.size()) != Bank<DrumPatternSet>::kPatterns) return false;
-  int p = 0;
-  for (ArduinoJson::JsonVariantConst pattern : patterns) {
-    if (!deserializeDrumPatternSet(pattern, bank.patterns[p])) return false;
-    ++p;
-  }
-  return true;
+int AutomationLane::clampOptionIndex(int index) const {
+  if (optionCount <= 1) return 0;
+  int maxValue = static_cast<int>(optionCount) - 1;
+  if (index < 0) return 0;
+  if (index > maxValue) return maxValue;
+  return index;
 }
 
-bool deserializeDrumBanks(ArduinoJson::JsonVariantConst value, Bank<DrumPatternSet>* banks) {
-  ArduinoJson::JsonArrayConst banksArr = value.as<ArduinoJson::JsonArrayConst>();
-  if (banksArr.isNull()) return false;
-  if (static_cast<int>(banksArr.size()) == Bank<DrumPatternSet>::kPatterns) {
-    return deserializeDrumBank(value, banks[0]);
-  }
-  if (static_cast<int>(banksArr.size()) != kBankCount) return false;
-  int b = 0;
-  for (ArduinoJson::JsonVariantConst bankVal : banksArr) {
-    if (!deserializeDrumBank(bankVal, banks[b])) return false;
-    ++b;
-  }
-  return true;
+bool SynthPattern::hasAutomationLane(TB303ParamId id) const {
+  int idx = static_cast<int>(id);
+  if (idx < 0 || idx >= static_cast<int>(TB303ParamId::Count)) return false;
+  return automation[idx].enabled && automation[idx].nodeCount > 0;
 }
 
-bool deserializeSynthPattern(ArduinoJson::JsonVariantConst value, SynthPattern& pattern) {
-  ArduinoJson::JsonArrayConst steps = value.as<ArduinoJson::JsonArrayConst>();
-  if (steps.isNull() || static_cast<int>(steps.size()) != SynthPattern::kSteps) return false;
-  int i = 0;
-  for (ArduinoJson::JsonVariantConst stepValue : steps) {
-    ArduinoJson::JsonObjectConst obj = stepValue.as<ArduinoJson::JsonObjectConst>();
-    if (obj.isNull()) return false;
-    auto note = obj["note"];
-    auto slide = obj["slide"];
-    auto accent = obj["accent"];
-    if (!note.is<int>() || !slide.is<bool>() || !accent.is<bool>()) return false;
-    pattern.steps[i].note = note.as<int>();
-    pattern.steps[i].slide = slide.as<bool>();
-    pattern.steps[i].accent = accent.as<bool>();
-    ++i;
-  }
-  return true;
+bool DrumPatternSet::hasAutomationLane(DrumAutomationParamId id) const {
+  int idx = static_cast<int>(id);
+  if (idx < 0 || idx >= static_cast<int>(DrumAutomationParamId::Count)) return false;
+  return automation[idx].enabled && automation[idx].nodeCount > 0;
 }
 
-bool deserializeSynthBank(ArduinoJson::JsonVariantConst value, Bank<SynthPattern>& bank) {
-  ArduinoJson::JsonArrayConst patterns = value.as<ArduinoJson::JsonArrayConst>();
-  if (patterns.isNull() || static_cast<int>(patterns.size()) != Bank<SynthPattern>::kPatterns) return false;
-  int p = 0;
-  for (ArduinoJson::JsonVariantConst pattern : patterns) {
-    if (!deserializeSynthPattern(pattern, bank.patterns[p])) return false;
-    ++p;
-  }
-  return true;
+const AutomationLane* SynthPattern::automationLane(TB303ParamId id) const {
+  int idx = static_cast<int>(id);
+  if (idx < 0 || idx >= static_cast<int>(TB303ParamId::Count)) return nullptr;
+  return &automation[idx];
 }
 
-bool deserializeSynthBanks(ArduinoJson::JsonVariantConst value, Bank<SynthPattern>* banks) {
-  ArduinoJson::JsonArrayConst banksArr = value.as<ArduinoJson::JsonArrayConst>();
-  if (banksArr.isNull()) return false;
-  if (static_cast<int>(banksArr.size()) == Bank<SynthPattern>::kPatterns) {
-    return deserializeSynthBank(value, banks[0]);
-  }
-  if (static_cast<int>(banksArr.size()) != kBankCount) return false;
-  int b = 0;
-  for (ArduinoJson::JsonVariantConst bankVal : banksArr) {
-    if (!deserializeSynthBank(bankVal, banks[b])) return false;
-    ++b;
-  }
-  return true;
-}
-int valueToInt(ArduinoJson::JsonVariantConst value, int defaultValue) {
-  if (value.is<int>()) {
-    return value.as<int>();
-  }
-  return defaultValue;
+const AutomationLane* DrumPatternSet::automationLane(DrumAutomationParamId id) const {
+  int idx = static_cast<int>(id);
+  if (idx < 0 || idx >= static_cast<int>(DrumAutomationParamId::Count)) return nullptr;
+  return &automation[idx];
 }
 
-float valueToFloat(ArduinoJson::JsonVariantConst value, float defaultValue) {
-  if (value.is<float>() || value.is<int>()) {
-    return value.as<float>();
-  }
-  return defaultValue;
+AutomationLane* SynthPattern::editAutomationLane(TB303ParamId id) {
+  int idx = static_cast<int>(id);
+  if (idx < 0 || idx >= static_cast<int>(TB303ParamId::Count)) return nullptr;
+  automation[idx].enabled = true;
+  return &automation[idx];
 }
 
-bool deserializeSynthParameters(ArduinoJson::JsonVariantConst value, SynthParameters& params) {
-  ArduinoJson::JsonObjectConst obj = value.as<ArduinoJson::JsonObjectConst>();
-  if (obj.isNull()) return false;
-
-  auto cutoff = obj["cutoff"];
-  auto resonance = obj["resonance"];
-  auto envAmount = obj["envAmount"];
-  auto envDecay = obj["envDecay"];
-  auto oscType = obj["oscType"];
-
-  if (!cutoff.isNull()) {
-    if (!cutoff.is<float>() && !cutoff.is<int>()) return false;
-    params.cutoff = valueToFloat(cutoff, params.cutoff);
-  }
-  if (!resonance.isNull()) {
-    if (!resonance.is<float>() && !resonance.is<int>()) return false;
-    params.resonance = valueToFloat(resonance, params.resonance);
-  }
-  if (!envAmount.isNull()) {
-    if (!envAmount.is<float>() && !envAmount.is<int>()) return false;
-    params.envAmount = valueToFloat(envAmount, params.envAmount);
-  }
-  if (!envDecay.isNull()) {
-    if (!envDecay.is<float>() && !envDecay.is<int>()) return false;
-    params.envDecay = valueToFloat(envDecay, params.envDecay);
-  }
-  if (!oscType.isNull()) {
-    if (!oscType.is<int>()) return false;
-    params.oscType = oscType.as<int>();
-  }
-
-  return true;
+AutomationLane* DrumPatternSet::editAutomationLane(DrumAutomationParamId id) {
+  int idx = static_cast<int>(id);
+  if (idx < 0 || idx >= static_cast<int>(DrumAutomationParamId::Count)) return nullptr;
+  automation[idx].enabled = true;
+  return &automation[idx];
 }
+
+void SynthPattern::clearAutomationLane(TB303ParamId id) {
+  int idx = static_cast<int>(id);
+  if (idx < 0 || idx >= static_cast<int>(TB303ParamId::Count)) return;
+  automation[idx].clear();
+}
+
+void DrumPatternSet::clearAutomationLane(DrumAutomationParamId id) {
+  int idx = static_cast<int>(id);
+  if (idx < 0 || idx >= static_cast<int>(DrumAutomationParamId::Count)) return;
+  automation[idx].clear();
 }
 
 SceneJsonObserver::SceneJsonObserver(Scene& scene, float defaultBpm)
@@ -269,11 +442,15 @@ SceneJsonObserver::Path SceneJsonObserver::deduceArrayPath(const Context& parent
   case Path::SynthABanks:
     return Path::SynthABank;
   case Path::SynthABank:
-    return Path::SynthPattern;
+    return Path::SynthSteps;
   case Path::SynthBBanks:
     return Path::SynthBBank;
   case Path::SynthBBank:
-    return Path::SynthPattern;
+    return Path::SynthSteps;
+  case Path::SynthAutomation:
+    return Path::SynthAutomationLane;
+  case Path::DrumAutomation:
+    return Path::DrumAutomationLane;
   case Path::SynthParams:
     return Path::SynthParam;
   case Path::SynthDistortion:
@@ -289,10 +466,23 @@ SceneJsonObserver::Path SceneJsonObserver::deduceArrayPath(const Context& parent
 
 SceneJsonObserver::Path SceneJsonObserver::deduceObjectPath(const Context& parent) const {
   switch (parent.path) {
+  case Path::DrumBank:
+    return Path::DrumPatternSet;
   case Path::DrumPatternSet:
     return Path::DrumVoice;
-  case Path::SynthPattern:
+  case Path::DrumAutomation:
+    return Path::DrumAutomationLane;
+  case Path::SynthABank:
+  case Path::SynthBBank:
+    return Path::SynthPattern;
+  case Path::SynthSteps:
     return Path::SynthStep;
+  case Path::SynthAutomation:
+    return Path::SynthAutomationLane;
+  case Path::SynthAutomationNodes:
+    return Path::SynthAutomationNode;
+  case Path::DrumAutomationNodes:
+    return Path::DrumAutomationNode;
   case Path::SynthParams:
     return Path::SynthParam;
   case Path::SongPositions:
@@ -327,8 +517,53 @@ bool SceneJsonObserver::inSynthBankB() const {
   return false;
 }
 
+const char* SceneJsonObserver::pathName(Path path) {
+  switch (path) {
+    case Path::Root: return "Root";
+    case Path::DrumBanks: return "DrumBanks";
+    case Path::DrumBank: return "DrumBank";
+    case Path::DrumPatternSet: return "DrumPatternSet";
+    case Path::DrumVoice: return "DrumVoice";
+    case Path::DrumHitArray: return "DrumHitArray";
+    case Path::DrumAccentArray: return "DrumAccentArray";
+    case Path::DrumAutomation: return "DrumAutomation";
+    case Path::DrumAutomationLane: return "DrumAutomationLane";
+    case Path::DrumAutomationNodes: return "DrumAutomationNodes";
+    case Path::DrumAutomationOptions: return "DrumAutomationOptions";
+    case Path::DrumAutomationNode: return "DrumAutomationNode";
+    case Path::SynthABanks: return "SynthABanks";
+    case Path::SynthABank: return "SynthABank";
+    case Path::SynthBBanks: return "SynthBBanks";
+    case Path::SynthBBank: return "SynthBBank";
+    case Path::SynthPattern: return "SynthPattern";
+    case Path::SynthSteps: return "SynthSteps";
+    case Path::SynthStep: return "SynthStep";
+    case Path::SynthAutomation: return "SynthAutomation";
+    case Path::SynthAutomationLane: return "SynthAutomationLane";
+    case Path::SynthAutomationNodes: return "SynthAutomationNodes";
+    case Path::SynthAutomationOptions: return "SynthAutomationOptions";
+    case Path::SynthAutomationNode: return "SynthAutomationNode";
+    case Path::State: return "State";
+    case Path::SynthPatternIndex: return "SynthPatternIndex";
+    case Path::SynthBankIndex: return "SynthBankIndex";
+    case Path::Mute: return "Mute";
+    case Path::MuteDrums: return "MuteDrums";
+    case Path::MuteSynth: return "MuteSynth";
+    case Path::SynthDistortion: return "SynthDistortion";
+    case Path::SynthDelay: return "SynthDelay";
+    case Path::SynthParams: return "SynthParams";
+    case Path::SynthParam: return "SynthParam";
+    case Path::Song: return "Song";
+    case Path::SongPositions: return "SongPositions";
+    case Path::SongPosition: return "SongPosition";
+    case Path::Unknown: return "Unknown";
+  }
+  return "Unknown";
+}
+
 void SceneJsonObserver::pushContext(Context::Type type, Path path) {
   if (stackSize_ >= kMaxStack) {
+    SCENE_DEBUG_PRINTF("SceneJsonObserver: stack overflow at %s\n", pathName(path));
     error_ = true;
     return;
   }
@@ -337,6 +572,7 @@ void SceneJsonObserver::pushContext(Context::Type type, Path path) {
 
 void SceneJsonObserver::popContext() {
   if (stackSize_ == 0) {
+    SCENE_DEBUG_PRINTLN("SceneJsonObserver: popContext on empty stack");
     error_ = true;
     return;
   }
@@ -346,26 +582,101 @@ void SceneJsonObserver::popContext() {
 void SceneJsonObserver::onObjectStart() {
   if (error_) return;
   Path path = Path::Unknown;
+  Path parentPath = Path::Unknown;
+  Context::Type parentType = Context::Type::Object;
   if (stackSize_ == 0) {
     path = Path::Root;
   } else {
     const Context& parent = stack_[stackSize_ - 1];
+    parentPath = parent.path;
+    parentType = parent.type;
     if (parent.type == Context::Type::Array) {
       path = deduceObjectPath(parent);
     } else if (parent.path == Path::Root && lastKey_ == "state") {
       path = Path::State;
     } else if (parent.path == Path::Root && lastKey_ == "song") {
       path = Path::Song;
+    } else if (parent.path == Path::Root && lastKey_ == "drumBanks") {
+      path = Path::DrumBanks;
+    } else if (parent.path == Path::Root && lastKey_ == "synthABanks") {
+      path = Path::SynthABanks;
+    } else if (parent.path == Path::Root && lastKey_ == "synthBBanks") {
+      path = Path::SynthBBanks;
     } else if (parent.path == Path::State && lastKey_ == "mute") {
       path = Path::Mute;
     }
   }
   pushContext(Context::Type::Object, path);
-  if (path == Path::Unknown) error_ = true;
+  if (path == Path::Unknown) {
+    SCENE_DEBUG_PRINTF(
+        "SceneJsonObserver: unknown object path key='%s' parent=%s type=%s\n",
+        lastKey_.c_str(),
+        pathName(parentPath),
+        parentType == Context::Type::Array ? "array" : "object");
+    error_ = true;
+  }
+  if (path == Path::SynthAutomationLane) {
+    automationParam_ = -1;
+    automationEnabled_ = true;
+  } else if (path == Path::DrumAutomationLane) {
+    drumAutomationParam_ = -1;
+    drumAutomationEnabled_ = true;
+  } else if (path == Path::SynthAutomationNode) {
+    automationNodeHasX_ = false;
+    automationNodeHasY_ = false;
+  } else if (path == Path::DrumAutomationNode) {
+    drumAutomationNodeHasX_ = false;
+    drumAutomationNodeHasY_ = false;
+  }
 }
 
 void SceneJsonObserver::onObjectEnd() {
   if (error_) return;
+  if (stackSize_ > 0) {
+    Path path = stack_[stackSize_ - 1].path;
+    if (path == Path::SynthAutomationNode) {
+      if (automationParam_ >= 0 && automationParam_ < static_cast<int>(TB303ParamId::Count) &&
+          automationNodeHasX_ && automationNodeHasY_) {
+        bool useBankB = inSynthBankB();
+        int bankIdx = currentIndexFor(useBankB ? Path::SynthBBanks : Path::SynthABanks);
+        if (bankIdx < 0) bankIdx = 0;
+        int patternIdx = currentIndexFor(useBankB ? Path::SynthBBank : Path::SynthABank);
+        if (patternIdx >= 0 && patternIdx < Bank<SynthPattern>::kPatterns &&
+            bankIdx >= 0 && bankIdx < kBankCount) {
+          SynthPattern& pattern = useBankB ? target_.synthBBanks[bankIdx].patterns[patternIdx]
+                                           : target_.synthABanks[bankIdx].patterns[patternIdx];
+          int x = clampAutomationValue(automationNodeX_, kAutomationMaxX);
+          AutomationLane& lane = pattern.automation[automationParam_];
+          int maxY = lane.optionCount > 0 ? lane.optionCount - 1 : 255;
+          int y = clampAutomationValue(automationNodeY_, maxY);
+          appendAutomationNode(lane, static_cast<uint8_t>(x), static_cast<uint8_t>(y));
+        }
+      }
+    } else if (path == Path::DrumAutomationNode) {
+      if (drumAutomationParam_ >= 0 &&
+          drumAutomationParam_ < static_cast<int>(DrumAutomationParamId::Count) &&
+          drumAutomationNodeHasX_ && drumAutomationNodeHasY_) {
+        int bankIdx = currentIndexFor(Path::DrumBanks);
+        if (bankIdx < 0) bankIdx = 0;
+        int patternIdx = currentIndexFor(Path::DrumBank);
+        if (patternIdx >= 0 && patternIdx < Bank<DrumPatternSet>::kPatterns &&
+            bankIdx >= 0 && bankIdx < kBankCount) {
+          DrumPatternSet& patternSet = target_.drumBanks[bankIdx].patterns[patternIdx];
+          int x = clampAutomationValue(drumAutomationNodeX_, kAutomationMaxX);
+          AutomationLane& lane = patternSet.automation[drumAutomationParam_];
+          int maxY = lane.optionCount > 0 ? lane.optionCount - 1 : 255;
+          int y = clampAutomationValue(drumAutomationNodeY_, maxY);
+          appendAutomationNode(lane, static_cast<uint8_t>(x), static_cast<uint8_t>(y));
+        }
+      }
+    } else if (path == Path::SynthAutomationLane) {
+      automationParam_ = -1;
+      automationEnabled_ = true;
+    } else if (path == Path::DrumAutomationLane) {
+      drumAutomationParam_ = -1;
+      drumAutomationEnabled_ = true;
+    }
+  }
   popContext();
 }
 
@@ -382,6 +693,8 @@ void SceneJsonObserver::onArrayStart() {
         else if (lastKey_ == "synthABank") path = Path::SynthABank;
         else if (lastKey_ == "synthBBanks") path = Path::SynthBBanks;
         else if (lastKey_ == "synthBBank") path = Path::SynthBBank;
+      } else if (parent.path == Path::DrumBanks) {
+        if (lastKey_ == "banks" || lastKey_ == "patterns") path = Path::DrumBanks;
       } else if (parent.path == Path::Song) {
         if (lastKey_ == "positions") path = Path::SongPositions;
         else if (lastKey_ == "synthDistortion") path = Path::SynthDistortion;
@@ -389,12 +702,25 @@ void SceneJsonObserver::onArrayStart() {
       } else if (parent.path == Path::DrumVoice) {
         if (lastKey_ == "hit") path = Path::DrumHitArray;
         else if (lastKey_ == "accent") path = Path::DrumAccentArray;
+      } else if (parent.path == Path::DrumPatternSet) {
+        if (lastKey_ == "voices") path = Path::DrumPatternSet;
+        else if (lastKey_ == "accent") path = Path::DrumAccentArray;
+        else if (lastKey_ == "automation") path = Path::DrumAutomation;
       } else if (parent.path == Path::State) {
         if (lastKey_ == "synthPatternIndex") path = Path::SynthPatternIndex;
         else if (lastKey_ == "synthBankIndex") path = Path::SynthBankIndex;
         else if (lastKey_ == "synthDistortion") path = Path::SynthDistortion;
         else if (lastKey_ == "synthDelay") path = Path::SynthDelay;
         else if (lastKey_ == "synthParams") path = Path::SynthParams;
+      } else if (parent.path == Path::SynthPattern) {
+        if (lastKey_ == "steps") path = Path::SynthSteps;
+        else if (lastKey_ == "automation") path = Path::SynthAutomation;
+      } else if (parent.path == Path::SynthAutomationLane) {
+        if (lastKey_ == "nodes") path = Path::SynthAutomationNodes;
+        else if (lastKey_ == "options") path = Path::SynthAutomationOptions;
+      } else if (parent.path == Path::DrumAutomationLane) {
+        if (lastKey_ == "nodes") path = Path::DrumAutomationNodes;
+        else if (lastKey_ == "options") path = Path::DrumAutomationOptions;
       } else if (parent.path == Path::Mute) {
         if (lastKey_ == "drums") path = Path::MuteDrums;
         else if (lastKey_ == "synth") path = Path::MuteSynth;
@@ -404,11 +730,57 @@ void SceneJsonObserver::onArrayStart() {
     }
   }
   pushContext(Context::Type::Array, path);
-  if (path == Path::Unknown) error_ = true;
+  if (path == Path::Unknown) {
+    SCENE_DEBUG_PRINTF("SceneJsonObserver: unknown array path for key '%s'\n", lastKey_.c_str());
+    error_ = true;
+  }
 }
 
 void SceneJsonObserver::onArrayEnd() {
   if (error_) return;
+  if (stackSize_ > 0) {
+    Path path = stack_[stackSize_ - 1].path;
+    if (path == Path::SynthAutomationOptions) {
+      if (automationParam_ >= 0 && automationParam_ < static_cast<int>(TB303ParamId::Count)) {
+        bool useBankB = inSynthBankB();
+        int bankIdx = currentIndexFor(useBankB ? Path::SynthBBanks : Path::SynthABanks);
+        if (bankIdx < 0) bankIdx = 0;
+        int patternIdx = currentIndexFor(useBankB ? Path::SynthBBank : Path::SynthABank);
+        if (patternIdx >= 0 && patternIdx < Bank<SynthPattern>::kPatterns &&
+            bankIdx >= 0 && bankIdx < kBankCount) {
+          SynthPattern& pattern = useBankB ? target_.synthBBanks[bankIdx].patterns[patternIdx]
+                                           : target_.synthABanks[bankIdx].patterns[patternIdx];
+          AutomationLane& lane = pattern.automation[automationParam_];
+          int maxY = lane.optionCount > 0 ? lane.optionCount - 1 : 0;
+          AutomationNode* nodes = lane.nodes();
+          if (nodes) {
+            for (int i = 0; i < lane.nodeCount; ++i) {
+              if (nodes[i].y > maxY) nodes[i].y = static_cast<uint8_t>(maxY);
+            }
+          }
+        }
+      }
+    } else if (path == Path::DrumAutomationOptions) {
+      if (drumAutomationParam_ >= 0 &&
+          drumAutomationParam_ < static_cast<int>(DrumAutomationParamId::Count)) {
+        int bankIdx = currentIndexFor(Path::DrumBanks);
+        if (bankIdx < 0) bankIdx = 0;
+        int patternIdx = currentIndexFor(Path::DrumBank);
+        if (patternIdx >= 0 && patternIdx < Bank<DrumPatternSet>::kPatterns &&
+            bankIdx >= 0 && bankIdx < kBankCount) {
+          DrumPatternSet& patternSet = target_.drumBanks[bankIdx].patterns[patternIdx];
+          AutomationLane& lane = patternSet.automation[drumAutomationParam_];
+          int maxY = lane.optionCount > 0 ? lane.optionCount - 1 : 0;
+          AutomationNode* nodes = lane.nodes();
+          if (nodes) {
+            for (int i = 0; i < lane.nodeCount; ++i) {
+              if (nodes[i].y > maxY) nodes[i].y = static_cast<uint8_t>(maxY);
+            }
+          }
+        }
+      }
+    }
+  }
   popContext();
 }
 
@@ -429,6 +801,7 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
   if (path == Path::SongPosition) {
     int posIdx = currentIndexFor(Path::SongPositions);
     if (posIdx < 0 || posIdx >= Song::kMaxPositions) {
+      SCENE_DEBUG_PRINTF("SceneJsonObserver: invalid song position index %d\n", posIdx);
       error_ = true;
       return;
     }
@@ -460,7 +833,7 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     return;
   }
   if (path == Path::SynthStep) {
-    int stepIdx = currentIndexFor(Path::SynthPattern);
+    int stepIdx = currentIndexFor(Path::SynthSteps);
     bool useBankB = inSynthBankB();
     int bankIdx = currentIndexFor(useBankB ? Path::SynthBBanks : Path::SynthABanks);
     if (bankIdx < 0) bankIdx = 0;
@@ -468,6 +841,8 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     if (stepIdx < 0 || stepIdx >= SynthPattern::kSteps ||
         patternIdx < 0 || patternIdx >= Bank<SynthPattern>::kPatterns ||
         bankIdx < 0 || bankIdx >= kBankCount) {
+      SCENE_DEBUG_PRINTF("SceneJsonObserver: invalid synth step idx=%d pattern=%d bank=%d\n",
+                         stepIdx, patternIdx, bankIdx);
       error_ = true;
       return;
     }
@@ -482,9 +857,76 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     }
     return;
   }
+  if (path == Path::SynthAutomationLane) {
+    if (lastKey_ == "param") {
+      int param = static_cast<int>(value);
+      if (param < 0 || param >= static_cast<int>(TB303ParamId::Count)) {
+        automationParam_ = -1;
+        return;
+      }
+      automationParam_ = param;
+      bool useBankB = inSynthBankB();
+      int bankIdx = currentIndexFor(useBankB ? Path::SynthBBanks : Path::SynthABanks);
+      if (bankIdx < 0) bankIdx = 0;
+      int patternIdx = currentIndexFor(useBankB ? Path::SynthBBank : Path::SynthABank);
+      if (patternIdx < 0 || patternIdx >= Bank<SynthPattern>::kPatterns ||
+          bankIdx < 0 || bankIdx >= kBankCount) {
+        automationParam_ = -1;
+        return;
+      }
+      SynthPattern& pattern = useBankB ? target_.synthBBanks[bankIdx].patterns[patternIdx]
+                                       : target_.synthABanks[bankIdx].patterns[patternIdx];
+      pattern.automation[automationParam_].clear();
+      pattern.automation[automationParam_].enabled = automationEnabled_;
+    }
+    return;
+  }
+  if (path == Path::DrumAutomationLane) {
+    if (lastKey_ == "param") {
+      int param = static_cast<int>(value);
+      if (param < 0 || param >= static_cast<int>(DrumAutomationParamId::Count)) {
+        drumAutomationParam_ = -1;
+        return;
+      }
+      drumAutomationParam_ = param;
+      int bankIdx = currentIndexFor(Path::DrumBanks);
+      if (bankIdx < 0) bankIdx = 0;
+      int patternIdx = currentIndexFor(Path::DrumBank);
+      if (patternIdx < 0 || patternIdx >= Bank<DrumPatternSet>::kPatterns ||
+          bankIdx < 0 || bankIdx >= kBankCount) {
+        drumAutomationParam_ = -1;
+        return;
+      }
+      DrumPatternSet& patternSet = target_.drumBanks[bankIdx].patterns[patternIdx];
+      patternSet.automation[drumAutomationParam_].clear();
+      patternSet.automation[drumAutomationParam_].enabled = drumAutomationEnabled_;
+    }
+    return;
+  }
+  if (path == Path::SynthAutomationNode) {
+    if (lastKey_ == "x") {
+      automationNodeHasX_ = true;
+      automationNodeX_ = static_cast<int>(value);
+    } else if (lastKey_ == "y") {
+      automationNodeHasY_ = true;
+      automationNodeY_ = static_cast<int>(value);
+    }
+    return;
+  }
+  if (path == Path::DrumAutomationNode) {
+    if (lastKey_ == "x") {
+      drumAutomationNodeHasX_ = true;
+      drumAutomationNodeX_ = static_cast<int>(value);
+    } else if (lastKey_ == "y") {
+      drumAutomationNodeHasY_ = true;
+      drumAutomationNodeY_ = static_cast<int>(value);
+    }
+    return;
+  }
   if (path == Path::SynthParam) {
     int synthIdx = currentIndexFor(Path::SynthParams);
     if (synthIdx < 0 || synthIdx >= 2) {
+      SCENE_DEBUG_PRINTF("SceneJsonObserver: invalid synth param index %d\n", synthIdx);
       error_ = true;
       return;
     }
@@ -543,20 +985,31 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
     int bankIdx = currentIndexFor(Path::DrumBanks);
     if (bankIdx < 0) bankIdx = 0;
     int patternIdx = currentIndexFor(Path::DrumBank);
-    int voiceIdx = currentIndexFor(Path::DrumPatternSet);
     int stepIdx = stack_[stackSize_ - 1].index;
     if (patternIdx < 0 || patternIdx >= Bank<DrumPatternSet>::kPatterns ||
-        voiceIdx < 0 || voiceIdx >= DrumPatternSet::kVoices ||
         stepIdx < 0 || stepIdx >= DrumPattern::kSteps ||
         bankIdx < 0 || bankIdx >= kBankCount) {
+      SCENE_DEBUG_PRINTF("SceneJsonObserver: invalid drum step idx=%d pattern=%d bank=%d\n",
+                         stepIdx, patternIdx, bankIdx);
       error_ = true;
       return;
     }
-    DrumStep& step = target_.drumBanks[bankIdx].patterns[patternIdx].voices[voiceIdx].steps[stepIdx];
+    DrumPatternSet& patternSet = target_.drumBanks[bankIdx].patterns[patternIdx];
     if (path == Path::DrumHitArray) {
-      step.hit = value;
+      int voiceIdx = currentIndexFor(Path::DrumPatternSet);
+      if (voiceIdx < 0 || voiceIdx >= DrumPatternSet::kVoices) {
+        SCENE_DEBUG_PRINTF("SceneJsonObserver: invalid drum voice index %d\n", voiceIdx);
+        error_ = true;
+        return;
+      }
+      patternSet.voices[voiceIdx].steps[stepIdx].hit = value;
     } else {
-      step.accent = value;
+      int voiceIdx = currentIndexFor(Path::DrumPatternSet);
+      if (voiceIdx >= 0 && voiceIdx < DrumPatternSet::kVoices) {
+        if (value) patternSet.accents[stepIdx] = true;
+      } else {
+        patternSet.accents[stepIdx] = value;
+      }
     }
     return;
   }
@@ -564,6 +1017,7 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
   if (path == Path::MuteDrums) {
     int muteIdx = stack_[stackSize_ - 1].index;
     if (muteIdx < 0 || muteIdx >= DrumPatternSet::kVoices) {
+      SCENE_DEBUG_PRINTF("SceneJsonObserver: invalid drum mute index %d\n", muteIdx);
       error_ = true;
       return;
     }
@@ -574,6 +1028,7 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
   if (path == Path::MuteSynth) {
     int muteIdx = stack_[stackSize_ - 1].index;
     if (muteIdx < 0 || muteIdx >= 2) {
+      SCENE_DEBUG_PRINTF("SceneJsonObserver: invalid synth mute index %d\n", muteIdx);
       error_ = true;
       return;
     }
@@ -583,6 +1038,7 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
   if (path == Path::SynthDistortion) {
     int idx = stack_[stackSize_ - 1].index;
     if (idx < 0 || idx >= 2) {
+      SCENE_DEBUG_PRINTF("SceneJsonObserver: invalid synth distortion index %d\n", idx);
       error_ = true;
       return;
     }
@@ -592,6 +1048,7 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
   if (path == Path::SynthDelay) {
     int idx = stack_[stackSize_ - 1].index;
     if (idx < 0 || idx >= 2) {
+      SCENE_DEBUG_PRINTF("SceneJsonObserver: invalid synth delay index %d\n", idx);
       error_ = true;
       return;
     }
@@ -600,7 +1057,7 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
   }
 
   if (path == Path::SynthStep) {
-    int stepIdx = currentIndexFor(Path::SynthPattern);
+    int stepIdx = currentIndexFor(Path::SynthSteps);
     bool useBankB = inSynthBankB();
     int bankIdx = currentIndexFor(useBankB ? Path::SynthBBanks : Path::SynthABanks);
     if (bankIdx < 0) bankIdx = 0;
@@ -608,6 +1065,8 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
     if (patternIdx < 0 || patternIdx >= Bank<SynthPattern>::kPatterns ||
         stepIdx < 0 || stepIdx >= SynthPattern::kSteps ||
         bankIdx < 0 || bankIdx >= kBankCount) {
+      SCENE_DEBUG_PRINTF("SceneJsonObserver: invalid synth bool step=%d pattern=%d bank=%d\n",
+                         stepIdx, patternIdx, bankIdx);
       error_ = true;
       return;
     }
@@ -617,6 +1076,39 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
       pattern.steps[stepIdx].slide = value;
     } else if (lastKey_ == "accent") {
       pattern.steps[stepIdx].accent = value;
+    }
+    return;
+  }
+  if (path == Path::SynthAutomationLane && lastKey_ == "enabled") {
+    automationEnabled_ = value;
+    if (automationParam_ >= 0 && automationParam_ < static_cast<int>(TB303ParamId::Count)) {
+      bool useBankB = inSynthBankB();
+      int bankIdx = currentIndexFor(useBankB ? Path::SynthBBanks : Path::SynthABanks);
+      if (bankIdx < 0) bankIdx = 0;
+      int patternIdx = currentIndexFor(useBankB ? Path::SynthBBank : Path::SynthABank);
+      if (patternIdx < 0 || patternIdx >= Bank<SynthPattern>::kPatterns ||
+          bankIdx < 0 || bankIdx >= kBankCount) {
+        return;
+      }
+      SynthPattern& pattern = useBankB ? target_.synthBBanks[bankIdx].patterns[patternIdx]
+                                       : target_.synthABanks[bankIdx].patterns[patternIdx];
+      pattern.automation[automationParam_].enabled = automationEnabled_;
+    }
+    return;
+  }
+  if (path == Path::DrumAutomationLane && lastKey_ == "enabled") {
+    drumAutomationEnabled_ = value;
+    if (drumAutomationParam_ >= 0 &&
+        drumAutomationParam_ < static_cast<int>(DrumAutomationParamId::Count)) {
+      int bankIdx = currentIndexFor(Path::DrumBanks);
+      if (bankIdx < 0) bankIdx = 0;
+      int patternIdx = currentIndexFor(Path::DrumBank);
+      if (patternIdx < 0 || patternIdx >= Bank<DrumPatternSet>::kPatterns ||
+          bankIdx < 0 || bankIdx >= kBankCount) {
+        return;
+      }
+      DrumPatternSet& patternSet = target_.drumBanks[bankIdx].patterns[patternIdx];
+      patternSet.automation[drumAutomationParam_].enabled = drumAutomationEnabled_;
     }
     return;
   }
@@ -641,6 +1133,44 @@ void SceneJsonObserver::onString(const std::string& value) {
   Path path = stack_[stackSize_ - 1].path;
   if (path == Path::State && lastKey_ == "drumEngine") {
     drumEngineName_ = value;
+    return;
+  }
+  if (path == Path::SynthAutomationOptions) {
+    if (automationParam_ < 0 || automationParam_ >= static_cast<int>(TB303ParamId::Count)) return;
+    bool useBankB = inSynthBankB();
+    int bankIdx = currentIndexFor(useBankB ? Path::SynthBBanks : Path::SynthABanks);
+    if (bankIdx < 0) bankIdx = 0;
+    int patternIdx = currentIndexFor(useBankB ? Path::SynthBBank : Path::SynthABank);
+    if (patternIdx < 0 || patternIdx >= Bank<SynthPattern>::kPatterns ||
+        bankIdx < 0 || bankIdx >= kBankCount) {
+      return;
+    }
+    int optionIdx = stack_[stackSize_ - 1].index;
+    if (optionIdx < 0 || optionIdx >= kAutomationMaxOptions) return;
+    SynthPattern& pattern = useBankB ? target_.synthBBanks[bankIdx].patterns[patternIdx]
+                                     : target_.synthABanks[bankIdx].patterns[patternIdx];
+    AutomationLane& lane = pattern.automation[automationParam_];
+    lane.setOptionLabel(optionIdx, value.c_str());
+    return;
+  }
+  if (path == Path::DrumAutomationOptions) {
+    if (drumAutomationParam_ < 0 ||
+        drumAutomationParam_ >= static_cast<int>(DrumAutomationParamId::Count)) {
+      return;
+    }
+    int bankIdx = currentIndexFor(Path::DrumBanks);
+    if (bankIdx < 0) bankIdx = 0;
+    int patternIdx = currentIndexFor(Path::DrumBank);
+    if (patternIdx < 0 || patternIdx >= Bank<DrumPatternSet>::kPatterns ||
+        bankIdx < 0 || bankIdx >= kBankCount) {
+      return;
+    }
+    int optionIdx = stack_[stackSize_ - 1].index;
+    if (optionIdx < 0 || optionIdx >= kAutomationMaxOptions) return;
+    DrumPatternSet& patternSet = target_.drumBanks[bankIdx].patterns[patternIdx];
+    AutomationLane& lane = patternSet.automation[drumAutomationParam_];
+    lane.setOptionLabel(optionIdx, value.c_str());
+    return;
   }
 }
 
@@ -746,9 +1276,7 @@ void SceneManager::loadDefaultScene() {
 
   for (int b = 0; b < kBankCount; ++b) {
     for (int i = 0; i < Bank<DrumPatternSet>::kPatterns; ++i) {
-      for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-        clearDrumPattern(scene_.drumBanks[b].patterns[i].voices[v]);
-      }
+      clearDrumPatternSet(scene_.drumBanks[b].patterns[i]);
     }
     for (int i = 0; i < Bank<SynthPattern>::kPatterns; ++i) {
       clearSynthPattern(scene_.synthABanks[b].patterns[i]);
@@ -816,28 +1344,22 @@ void SceneManager::loadDefaultScene() {
       hatVal = false;
     }
     scene_.drumBanks[0].patterns[0].voices[0].steps[i].hit = kick[i];
-    scene_.drumBanks[0].patterns[0].voices[0].steps[i].accent = kick[i];
 
     scene_.drumBanks[0].patterns[0].voices[1].steps[i].hit = snare[i];
-    scene_.drumBanks[0].patterns[0].voices[1].steps[i].accent = snare[i];
 
     scene_.drumBanks[0].patterns[0].voices[2].steps[i].hit = hatVal;
-    scene_.drumBanks[0].patterns[0].voices[2].steps[i].accent = hatVal;
 
     scene_.drumBanks[0].patterns[0].voices[3].steps[i].hit = openHat[i];
-    scene_.drumBanks[0].patterns[0].voices[3].steps[i].accent = openHat[i];
 
     scene_.drumBanks[0].patterns[0].voices[4].steps[i].hit = midTom[i];
-    scene_.drumBanks[0].patterns[0].voices[4].steps[i].accent = midTom[i];
 
     scene_.drumBanks[0].patterns[0].voices[5].steps[i].hit = highTom[i];
-    scene_.drumBanks[0].patterns[0].voices[5].steps[i].accent = highTom[i];
 
     scene_.drumBanks[0].patterns[0].voices[6].steps[i].hit = rim[i];
-    scene_.drumBanks[0].patterns[0].voices[6].steps[i].accent = rim[i];
 
     scene_.drumBanks[0].patterns[0].voices[7].steps[i].hit = clap[i];
-    scene_.drumBanks[0].patterns[0].voices[7].steps[i].accent = clap[i];
+    scene_.drumBanks[0].patterns[0].accents[i] =
+        kick[i] || snare[i] || hatVal || openHat[i] || midTom[i] || highTom[i] || rim[i] || clap[i];
   }
 }
 
@@ -1078,12 +1600,11 @@ int SceneManager::getCurrentBankIndex(int instrumentId) const {
   return synthBankIndex_[synthIdx];
 }
 
-void SceneManager::setDrumStep(int voiceIdx, int step, bool hit, bool accent) {
+void SceneManager::setDrumStep(int voiceIdx, int step, bool hit) {
   DrumPatternSet& patternSet = editCurrentDrumPattern();
   int clampedVoice = clampIndex(voiceIdx, DrumPatternSet::kVoices);
   int clampedStep = clampIndex(step, DrumPattern::kSteps);
   patternSet.voices[clampedVoice].steps[clampedStep].hit = hit;
-  patternSet.voices[clampedVoice].steps[clampedStep].accent = accent;
 }
 
 void SceneManager::setSynthStep(int synthIdx, int step, int note, bool slide, bool accent) {
@@ -1092,247 +1613,6 @@ void SceneManager::setSynthStep(int synthIdx, int step, int note, bool slide, bo
   pattern.steps[clampedStep].note = note;
   pattern.steps[clampedStep].slide = slide;
   pattern.steps[clampedStep].accent = accent;
-}
-
-void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
-  doc.clear();
-  ArduinoJson::JsonObject root = doc.to<ArduinoJson::JsonObject>();
-
-  ArduinoJson::JsonArray drumBanks = root["drumBanks"].to<ArduinoJson::JsonArray>();
-  serializeDrumBanks(scene_.drumBanks, drumBanks);
-  ArduinoJson::JsonArray synthABanks = root["synthABanks"].to<ArduinoJson::JsonArray>();
-  serializeSynthBanks(scene_.synthABanks, synthABanks);
-  ArduinoJson::JsonArray synthBBanks = root["synthBBanks"].to<ArduinoJson::JsonArray>();
-  serializeSynthBanks(scene_.synthBBanks, synthBBanks);
-  ArduinoJson::JsonObject songObj = root["song"].to<ArduinoJson::JsonObject>();
-  int songLen = songLength();
-  songObj["length"] = songLen;
-  ArduinoJson::JsonArray songPositions = songObj["positions"].to<ArduinoJson::JsonArray>();
-  for (int i = 0; i < songLen; ++i) {
-    ArduinoJson::JsonObject pos = songPositions.add<ArduinoJson::JsonObject>();
-    pos["a"] = scene_.song.positions[i].patterns[0];
-    pos["b"] = scene_.song.positions[i].patterns[1];
-    pos["drums"] = scene_.song.positions[i].patterns[2];
-  }
-
-  ArduinoJson::JsonObject state = root["state"].to<ArduinoJson::JsonObject>();
-  state["drumPatternIndex"] = drumPatternIndex_;
-  state["bpm"] = bpm_;
-  state["songMode"] = songMode_;
-  state["songPosition"] = clampSongPosition(songPosition_);
-  state["loopMode"] = loopMode_;
-  state["loopStart"] = loopStartRow_;
-  state["loopEnd"] = loopEndRow_;
-  state["drumEngine"] = drumEngineName_;
-
-  ArduinoJson::JsonArray synthPatternIndices = state["synthPatternIndex"].to<ArduinoJson::JsonArray>();
-  synthPatternIndices.add(synthPatternIndex_[0]);
-  synthPatternIndices.add(synthPatternIndex_[1]);
-
-  state["drumBankIndex"] = drumBankIndex_;
-  ArduinoJson::JsonArray synthBankIndices = state["synthBankIndex"].to<ArduinoJson::JsonArray>();
-  synthBankIndices.add(synthBankIndex_[0]);
-  synthBankIndices.add(synthBankIndex_[1]);
-
-  ArduinoJson::JsonObject mute = state["mute"].to<ArduinoJson::JsonObject>();
-  ArduinoJson::JsonArray drumMutes = mute["drums"].to<ArduinoJson::JsonArray>();
-  for (int i = 0; i < DrumPatternSet::kVoices; ++i) {
-    drumMutes.add(drumMute_[i]);
-  }
-  ArduinoJson::JsonArray synthMutes = mute["synth"].to<ArduinoJson::JsonArray>();
-  synthMutes.add(synthMute_[0]);
-  synthMutes.add(synthMute_[1]);
-
-  ArduinoJson::JsonArray synthParams = state["synthParams"].to<ArduinoJson::JsonArray>();
-  for (int i = 0; i < 2; ++i) {
-    ArduinoJson::JsonObject param = synthParams.add<ArduinoJson::JsonObject>();
-    param["cutoff"] = synthParameters_[i].cutoff;
-    param["resonance"] = synthParameters_[i].resonance;
-    param["envAmount"] = synthParameters_[i].envAmount;
-    param["envDecay"] = synthParameters_[i].envDecay;
-    param["oscType"] = synthParameters_[i].oscType;
-  }
-  ArduinoJson::JsonArray synthDistortion = state["synthDistortion"].to<ArduinoJson::JsonArray>();
-  synthDistortion.add(synthDistortion_[0]);
-  synthDistortion.add(synthDistortion_[1]);
-  ArduinoJson::JsonArray synthDelay = state["synthDelay"].to<ArduinoJson::JsonArray>();
-  synthDelay.add(synthDelay_[0]);
-  synthDelay.add(synthDelay_[1]);
-}
-
-bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
-  ArduinoJson::JsonObjectConst obj = doc.as<ArduinoJson::JsonObjectConst>();
-  if (obj.isNull()) return false;
-
-  ArduinoJson::JsonVariantConst drumBanksVal = obj["drumBanks"];
-  ArduinoJson::JsonVariantConst synthABanksVal = obj["synthABanks"];
-  ArduinoJson::JsonVariantConst synthBBanksVal = obj["synthBBanks"];
-  if (drumBanksVal.isNull()) drumBanksVal = obj["drumBank"];
-  if (synthABanksVal.isNull()) synthABanksVal = obj["synthABank"];
-  if (synthBBanksVal.isNull()) synthBBanksVal = obj["synthBBank"];
-  if (drumBanksVal.isNull() || synthABanksVal.isNull() || synthBBanksVal.isNull()) return false;
-
-  auto loaded = std::make_unique<Scene>();
-  clearSceneData(*loaded);
-
-  if (!deserializeDrumBanks(drumBanksVal, loaded->drumBanks)) return false;
-  if (!deserializeSynthBanks(synthABanksVal, loaded->synthABanks)) return false;
-  if (!deserializeSynthBanks(synthBBanksVal, loaded->synthBBanks)) return false;
-
-  int drumPatternIndex = 0;
-  int synthPatternIndexA = 0;
-  int synthPatternIndexB = 0;
-  int drumBankIndex = 0;
-  int synthBankIndexA = 0;
-  int synthBankIndexB = 0;
-  bool drumMute[DrumPatternSet::kVoices] = {false, false, false, false, false, false, false, false};
-  bool synthMute[2] = {false, false};
-  bool synthDistortion[2] = {false, false};
-  bool synthDelay[2] = {false, false};
-  SynthParameters synthParams[2] = {SynthParameters(), SynthParameters()};
-  float bpm = bpm_;
-  Song loadedSong{};
-  clearSong(loadedSong);
-  bool hasSongObj = false;
-  bool songMode = songMode_;
-  int songPosition = songPosition_;
-  bool loopMode = false;
-  int loopStartRow = 0;
-  int loopEndRow = 0;
-  std::string drumEngineName = drumEngineName_;
-
-  ArduinoJson::JsonObjectConst songObj = obj["song"].as<ArduinoJson::JsonObjectConst>();
-  if (!songObj.isNull()) {
-    hasSongObj = true;
-    int length = valueToInt(songObj["length"], loadedSong.length);
-    loadedSong.length = clampSongLength(length);
-    ArduinoJson::JsonArrayConst positions = songObj["positions"].as<ArduinoJson::JsonArrayConst>();
-    if (!positions.isNull()) {
-      int posIdx = 0;
-      for (ArduinoJson::JsonVariantConst posVal : positions) {
-        if (posIdx >= Song::kMaxPositions) break;
-        ArduinoJson::JsonObjectConst posObj = posVal.as<ArduinoJson::JsonObjectConst>();
-        if (!posObj.isNull()) {
-          auto a = posObj["a"];
-          auto b = posObj["b"];
-          auto d = posObj["drums"];
-          if (a.is<int>()) {
-            loadedSong.positions[posIdx].patterns[0] = clampSongPatternIndex(a.as<int>());
-          }
-          if (b.is<int>()) {
-            loadedSong.positions[posIdx].patterns[1] = clampSongPatternIndex(b.as<int>());
-          }
-          if (d.is<int>()) {
-            loadedSong.positions[posIdx].patterns[2] = clampSongPatternIndex(d.as<int>());
-          }
-        }
-        if (posIdx + 1 > loadedSong.length) loadedSong.length = posIdx + 1;
-        ++posIdx;
-      }
-    }
-    ArduinoJson::JsonArrayConst songDistortionArr = songObj["synthDistortion"].as<ArduinoJson::JsonArrayConst>();
-    if (!songDistortionArr.isNull()) {
-      if (!deserializeBoolArray(songDistortionArr, synthDistortion, 2)) return false;
-    }
-    ArduinoJson::JsonArrayConst songDelayArr = songObj["synthDelay"].as<ArduinoJson::JsonArrayConst>();
-    if (!songDelayArr.isNull()) {
-      if (!deserializeBoolArray(songDelayArr, synthDelay, 2)) return false;
-    }
-  }
-
-  ArduinoJson::JsonObjectConst state = obj["state"].as<ArduinoJson::JsonObjectConst>();
-  if (!state.isNull()) {
-    drumPatternIndex = valueToInt(state["drumPatternIndex"], drumPatternIndex);
-    bpm = valueToFloat(state["bpm"], bpm);
-    ArduinoJson::JsonArrayConst synthPatternIndexArr = state["synthPatternIndex"].as<ArduinoJson::JsonArrayConst>();
-    if (!synthPatternIndexArr.isNull()) {
-      if (synthPatternIndexArr.size() > 0) synthPatternIndexA = valueToInt(synthPatternIndexArr[0], synthPatternIndexA);
-      if (synthPatternIndexArr.size() > 1) synthPatternIndexB = valueToInt(synthPatternIndexArr[1], synthPatternIndexB);
-    }
-    drumBankIndex = valueToInt(state["drumBankIndex"], drumBankIndex);
-    if (state["drumEngine"].is<const char*>()) {
-      drumEngineName = state["drumEngine"].as<const char*>();
-    } else if (state["drumEngine"].is<std::string>()) {
-      drumEngineName = state["drumEngine"].as<std::string>();
-    }
-    ArduinoJson::JsonArrayConst synthBankIndexArr = state["synthBankIndex"].as<ArduinoJson::JsonArrayConst>();
-    if (!synthBankIndexArr.isNull()) {
-      if (synthBankIndexArr.size() > 0) synthBankIndexA = valueToInt(synthBankIndexArr[0], synthBankIndexA);
-      if (synthBankIndexArr.size() > 1) synthBankIndexB = valueToInt(synthBankIndexArr[1], synthBankIndexB);
-    }
-    ArduinoJson::JsonObjectConst muteObj = state["mute"].as<ArduinoJson::JsonObjectConst>();
-    if (!muteObj.isNull()) {
-      ArduinoJson::JsonArrayConst drumMuteArr = muteObj["drums"].as<ArduinoJson::JsonArrayConst>();
-      if (!drumMuteArr.isNull() && !deserializeBoolArray(drumMuteArr, drumMute, DrumPatternSet::kVoices)) return false;
-      ArduinoJson::JsonArrayConst synthMuteArr = muteObj["synth"].as<ArduinoJson::JsonArrayConst>();
-      if (!synthMuteArr.isNull() && !deserializeBoolArray(synthMuteArr, synthMute, 2)) return false;
-    }
-    ArduinoJson::JsonArrayConst synthDistortionArr = state["synthDistortion"].as<ArduinoJson::JsonArrayConst>();
-    if (!synthDistortionArr.isNull() &&
-        !deserializeBoolArray(synthDistortionArr, synthDistortion, 2)) {
-      return false;
-    }
-    ArduinoJson::JsonArrayConst synthDelayArr = state["synthDelay"].as<ArduinoJson::JsonArrayConst>();
-    if (!synthDelayArr.isNull() && !deserializeBoolArray(synthDelayArr, synthDelay, 2)) {
-      return false;
-    }
-    ArduinoJson::JsonArrayConst synthParamsArr = state["synthParams"].as<ArduinoJson::JsonArrayConst>();
-    if (!synthParamsArr.isNull()) {
-      int idx = 0;
-      for (ArduinoJson::JsonVariantConst paramValue : synthParamsArr) {
-        if (idx >= 2) break;
-        SynthParameters parsed = synthParams[idx];
-        if (!deserializeSynthParameters(paramValue, parsed)) return false;
-        synthParams[idx] = parsed;
-        ++idx;
-      }
-    }
-    songMode = state["songMode"].is<bool>() ? state["songMode"].as<bool>() : songMode;
-    songPosition = valueToInt(state["songPosition"], songPosition);
-    loopMode = state["loopMode"].is<bool>() ? state["loopMode"].as<bool>() : loopMode;
-    loopStartRow = valueToInt(state["loopStart"], loopStartRow);
-    loopEndRow = valueToInt(state["loopEnd"], loopEndRow);
-  }
-
-  if (!hasSongObj) {
-    loadedSong.length = 1;
-    loadedSong.positions[0].patterns[0] = songPatternFromBank(synthBankIndexA,
-                                                             clampPatternIndex(synthPatternIndexA));
-    loadedSong.positions[0].patterns[1] = songPatternFromBank(synthBankIndexB,
-                                                             clampPatternIndex(synthPatternIndexB));
-    loadedSong.positions[0].patterns[2] = songPatternFromBank(drumBankIndex,
-                                                             clampPatternIndex(drumPatternIndex));
-  }
-
-  scene_ = *loaded;
-  scene_.song = loadedSong;
-  drumPatternIndex_ = clampPatternIndex(drumPatternIndex);
-  synthPatternIndex_[0] = clampPatternIndex(synthPatternIndexA);
-  synthPatternIndex_[1] = clampPatternIndex(synthPatternIndexB);
-  drumBankIndex_ = clampIndex(drumBankIndex, kBankCount);
-  synthBankIndex_[0] = clampIndex(synthBankIndexA, kBankCount);
-  synthBankIndex_[1] = clampIndex(synthBankIndexB, kBankCount);
-  for (int i = 0; i < DrumPatternSet::kVoices; ++i) {
-    drumMute_[i] = drumMute[i];
-  }
-  synthMute_[0] = synthMute[0];
-  synthMute_[1] = synthMute[1];
-  synthDistortion_[0] = synthDistortion[0];
-  synthDistortion_[1] = synthDistortion[1];
-  synthDelay_[0] = synthDelay[0];
-  synthDelay_[1] = synthDelay[1];
-  synthParameters_[0] = synthParams[0];
-  synthParameters_[1] = synthParams[1];
-  drumEngineName_ = drumEngineName;
-  setSongLength(scene_.song.length);
-  songPosition_ = clampSongPosition(songPosition);
-  songMode_ = songMode;
-  loopMode_ = loopMode;
-  loopStartRow_ = loopStartRow;
-  loopEndRow_ = loopEndRow;
-  clampLoopRange();
-  setBpm(bpm);
-  return true;
 }
 
 std::string SceneManager::dumpCurrentScene() const {
@@ -1347,12 +1627,15 @@ bool SceneManager::loadScene(const std::string& json) {
     if (idx >= json.size()) return -1;
     return static_cast<unsigned char>(json[idx++]);
   };
-  if (loadSceneEventedWithReader(nextChar)) return true;
-  return loadSceneJson(json);
+  return loadSceneEventedWithReader(nextChar);
 }
 
 bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
-  auto loaded = std::make_unique<Scene>();
+  std::unique_ptr<Scene> loaded(new (std::nothrow) Scene());
+  if (!loaded) {
+    SCENE_DEBUG_PRINTLN("loadSceneEventedWithReader: failed to allocate Scene");
+    return false;
+  }
   clearSceneData(*loaded);
 
   struct NextCharStream {
@@ -1364,7 +1647,12 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   JsonVisitor visitor;
   SceneJsonObserver observer(*loaded, bpm_);
   bool parsed = visitor.parse(stream, observer);
-  if (!parsed || observer.hadError()) return false;
+  if (!parsed || observer.hadError()) {
+    SCENE_DEBUG_PRINTF("loadSceneEventedWithReader: parse=%s error=%s\n",
+                       parsed ? "true" : "false",
+                       observer.hadError() ? "true" : "false");
+    return false;
+  }
 
   scene_ = *loaded;
   scene_.song = observer.song();
