@@ -106,6 +106,7 @@ class NotesPatternEditPage : public IPage {
   bool setStepNoteFromRemembered(int step);
   void captureRememberedNote(int step);
   void transposePattern(int semitoneDelta);
+  void rotatePattern(int stepDelta);
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;
@@ -355,6 +356,61 @@ void NotesPatternEditPage::transposePattern(int semitoneDelta) {
   });
 }
 
+void NotesPatternEditPage::rotatePattern(int stepDelta) {
+  if (stepDelta == 0) return;
+  int delta = stepDelta % SEQ_STEPS;
+  if (delta < 0) delta += SEQ_STEPS;
+  int current_notes[SEQ_STEPS];
+  bool current_accent[SEQ_STEPS];
+  bool current_slide[SEQ_STEPS];
+  int target_notes[SEQ_STEPS];
+  bool target_accent[SEQ_STEPS];
+  bool target_slide[SEQ_STEPS];
+  const int8_t* notes = mini_acid_.pattern303Steps(voice_index_);
+  const bool* accent = mini_acid_.pattern303AccentSteps(voice_index_);
+  const bool* slide = mini_acid_.pattern303SlideSteps(voice_index_);
+  for (int i = 0; i < SEQ_STEPS; ++i) {
+    current_notes[i] = notes[i];
+    current_accent[i] = accent[i];
+    current_slide[i] = slide[i];
+    int target = (i + delta) % SEQ_STEPS;
+    target_notes[target] = notes[i];
+    target_accent[target] = accent[i];
+    target_slide[target] = slide[i];
+  }
+  withAudioGuard([&]() {
+    for (int i = 0; i < SEQ_STEPS; ++i) {
+      int next_note = target_notes[i];
+      int cur_note = current_notes[i];
+      if (next_note < 0) {
+        if (cur_note >= 0) {
+          mini_acid_.clear303StepNote(voice_index_, i);
+        }
+      } else if (cur_note < 0) {
+        int delta_note = next_note - MiniAcid::kMin303Note;
+        if (delta_note == 0) {
+          mini_acid_.adjust303StepNote(voice_index_, i, 1);
+          mini_acid_.adjust303StepNote(voice_index_, i, -1);
+        } else {
+          mini_acid_.adjust303StepNote(voice_index_, i, delta_note);
+        }
+      } else {
+        int delta_note = next_note - cur_note;
+        if (delta_note != 0) {
+          mini_acid_.adjust303StepNote(voice_index_, i, delta_note);
+        }
+      }
+
+      if (current_accent[i] != target_accent[i]) {
+        mini_acid_.toggle303AccentStep(voice_index_, i);
+      }
+      if (current_slide[i] != target_slide[i]) {
+        mini_acid_.toggle303SlideStep(voice_index_, i);
+      }
+    }
+  });
+}
+
 bool NotesPatternEditPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type == MINIACID_APPLICATION_EVENT) {
     switch (ui_event.app_event_type) {
@@ -484,6 +540,15 @@ bool NotesPatternEditPage::handleEvent(UIEvent& ui_event) {
       transposePattern(-1);
       return true;
     }
+    if (lowerKey == 'f') {
+      rotatePattern(1);
+      return true;
+    }
+    if (lowerKey == 'v') {
+      rotatePattern(-1);
+      return true;
+    }
+    
   }
 
   /*

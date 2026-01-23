@@ -356,6 +356,13 @@ void AutomationLaneEditor::draw(IGfx& gfx) {
         drawLineColored(gfx, x0, y0, x1, y1, color);
       }
     }
+    const AutomationNode& last = nodes[lane->nodeCount - 1];
+    if (last.x < kXSteps - 1) {
+      int x0 = xToPixel(last.x);
+      int x1 = xToPixel(kXSteps - 1);
+      int y0 = yIndexToPixel(valueToYIndex(last.y));
+      drawLineColored(gfx, x0, y0, x1, y0, lane_color);
+    }
     for (int i = 0; i < lane->nodeCount; ++i) {
       const AutomationNode& node = nodes[i];
       int x = xToPixel(node.x);

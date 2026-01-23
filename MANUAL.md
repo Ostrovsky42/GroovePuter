@@ -263,6 +263,10 @@ Each 303 voice has 8 pattern slots:
 - **ALT+D** - Transpose pattern up one semitone
 - **ALT+C** - Transpose pattern down one semitone
 
+**Rotate**:
+- **F** - Rotate pattern forward by one step
+- **V** - Rotate pattern backward by one step
+
 ### Pattern Automation (303)
 
 Each 303 pattern has an automation subpage for parameter lanes (cutoff, resonance, envelope, oscillator, filter type, volume).
@@ -285,6 +289,7 @@ Each 303 pattern has an automation subpage for parameter lanes (cutoff, resonanc
 **Indicators**:
 - A small yellow square next to a parameter means that lane has automation
   - Filled = enabled, outline = disabled
+- Lanes hold the last node value to the end of the pattern
 - Copy/paste/cut operations include automation data for the pattern
 
 ### Mouse Control (Desktop/Web)
@@ -581,6 +586,8 @@ MiniAcid can record your sessions to WAV audio files. Recording captures the mas
 | **Q**-**I** | Select pattern slots 1-8 (when on patterns row)|
 | **ENTER** | Load pattern / Toggle hit |
 | **BACKSPACE** | Clear step |
+| **F** | Rotate 303 pattern forward |
+| **V** | Rotate 303 pattern backward |
 
 ### 303 Step Editing (when step focused)
 
