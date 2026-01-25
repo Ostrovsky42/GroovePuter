@@ -23,6 +23,7 @@ public:
   bool handleEvent(UIEvent event);
 
 private:
+  bool _handleGlobalKeyEvent(UIEvent& event);
   void initMuteButtons(int x, int y, int w, int h);
   void drawMutesSection(int x, int y, int w, int h);
   void drawSplashScreen();

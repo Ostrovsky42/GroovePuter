@@ -79,9 +79,9 @@ inline void drawHelpPageTransport(IGfx& gfx, int x, int y, int w, int h) {
   left_y += lh;
   drawHelpHeading(gfx, layout.left_x, left_y, "Playback");
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "I / O", "303A/303B randomize", IGfxColor::Yellow());
+  drawHelpItem(gfx, layout.left_x, left_y, "ALT+I / ALT+O", "303A/303B randomize", IGfxColor::Yellow());
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "P", "drum randomize", IGfxColor::Yellow());
+  drawHelpItem(gfx, layout.left_x, left_y, "ALT+P", "drum randomize", IGfxColor::Yellow());
 }
 
 inline void drawHelpPage303(IGfx& gfx, int x, int y, int w, int h) {

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdarg>
+#include <cctype>
 #include <cstdio>
 #include <utility>
 #include <string>
@@ -388,17 +389,184 @@ bool MiniAcidDisplay::translateToApplicationEvent(UIEvent& event) {
   return false;
 }
 
+bool MiniAcidDisplay::_handleGlobalKeyEvent(UIEvent& event) {
+  // handle global key events
+  auto withAudioGuard = [this](const std::function<void()>& fn) {
+    if (audio_guard_) {
+      audio_guard_(fn);
+    } else {
+      fn();
+    }
+  };
+  if (event.event_type == MINIACID_KEY_DOWN)
+  {
+    char key = event.key;
+    if (!key)
+      return false;
+
+    if (key == '\n' || key == '\r')
+    {
+      dismissSplash();
+      update();
+      return true;
+    }
+    if (key == '[')
+    {
+      previousPage();
+      update();
+      return true;
+    }
+    if (key == ']')
+    {
+      nextPage();
+      update();
+      return true;
+    }
+    if (key == ' ')
+    {
+      withAudioGuard([this]()
+                     {
+        if (mini_acid_.isPlaying()) {
+          mini_acid_.stop();
+        } else {
+          mini_acid_.start();
+        } });
+      update();
+      return true;
+    }
+
+    char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
+    if (event.alt)
+    {
+      if (lowerKey == 'i')
+      {
+        withAudioGuard([this]()
+                       { mini_acid_.randomize303Pattern(0); });
+        update();
+        return true;
+      }
+      if (lowerKey == 'o')
+      {
+        withAudioGuard([this]()
+                       { mini_acid_.randomize303Pattern(1); });
+        update();
+        return true;
+      }
+      if (lowerKey == 'p')
+      {
+        withAudioGuard([this]()
+                       { mini_acid_.randomizeDrumPattern(); });
+        update();
+        return true;
+      }
+    }
+
+    if (lowerKey == 'k')
+    {
+      withAudioGuard([this]()
+                     { mini_acid_.setBpm(mini_acid_.bpm() - 5.0f); });
+      update();
+      return true;
+    }
+    if (lowerKey == 'l')
+    {
+      withAudioGuard([this]()
+                     { mini_acid_.setBpm(mini_acid_.bpm() + 5.0f); });
+      update();
+      return true;
+    }
+
+    switch (key)
+    {
+    case '-':
+      withAudioGuard([this]()
+                     { mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, -5); });
+      update();
+      return true;
+    case '=':
+      withAudioGuard([this]()
+                     { mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, 5); });
+      update();
+      return true;
+    case '1':
+      withAudioGuard([this]()
+                     { mini_acid_.toggleMute303(0); });
+      update();
+      return true;
+    case '2':
+      withAudioGuard([this]()
+                     { mini_acid_.toggleMute303(1); });
+      update();
+      return true;
+    case '3':
+      withAudioGuard([this]()
+                     { mini_acid_.toggleMuteKick(); });
+      update();
+      return true;
+    case '4':
+      withAudioGuard([this]()
+                     { mini_acid_.toggleMuteSnare(); });
+      update();
+      return true;
+    case '5':
+      withAudioGuard([this]()
+                     { mini_acid_.toggleMuteHat(); });
+      update();
+      return true;
+    case '6':
+      withAudioGuard([this]()
+                     { mini_acid_.toggleMuteOpenHat(); });
+      update();
+      return true;
+    case '7':
+      withAudioGuard([this]()
+                     { mini_acid_.toggleMuteMidTom(); });
+      update();
+      return true;
+    case '8':
+      withAudioGuard([this]()
+                     { mini_acid_.toggleMuteHighTom(); });
+      update();
+      return true;
+    case '9':
+      withAudioGuard([this]()
+                     { mini_acid_.toggleMuteRim(); });
+      update();
+      return true;
+    case '0':
+      withAudioGuard([this]()
+                     { mini_acid_.toggleMuteClap(); });
+      update();
+      return true;
+    default:
+      break;
+    }
+  }
+
+  return false;
+}
+
 bool MiniAcidDisplay::handleEvent(UIEvent event) {
   translateToApplicationEvent(event);
+
+  auto withAudioGuard = [this](const std::function<void()>& fn) {
+    if (audio_guard_) {
+      audio_guard_(fn);
+    } else {
+      fn();
+    }
+  };
 
   // handle any global application events first
   if (event.event_type == MINIACID_APPLICATION_EVENT) {
     switch (event.app_event_type) {
       case MINIACID_APP_EVENT_TOGGLE_SONG_MODE:
         mini_acid_.toggleSongMode();
+        update();
         return true;
       case MINIACID_APP_EVENT_SAVE_SCENE:
         mini_acid_.saveSceneAs(mini_acid_.currentSceneName());
+        update();
         return true;
       case MINIACID_APP_EVENT_START_RECORDING:
 #if defined(ARDUINO)
@@ -420,6 +588,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             });
           }
         }
+        update();
         return true;
       case MINIACID_APP_EVENT_STOP_RECORDING:
 #if defined(ARDUINO)
@@ -435,6 +604,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             });
           }
         }
+        update();
         return true;
       default:
         break;
@@ -486,24 +656,19 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     }
   }
 
-  switch(event.event_type) {
-    case MINIACID_KEY_DOWN:
-      if (event.key == '-') {
-        mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, -5);
-        return true;
-      } else if (event.key == '=') {
-        mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, 5);
-        return true;
-      }
-      break;
-    default:
-      break;
+  if (_handleGlobalKeyEvent(event)) {
+    return true;
   }
 
-  if (page_index_ >= 0 && page_index_ < static_cast<int>(pages_.size()) && pages_[page_index_]) {
+  // dispatch event to current page
+  if (page_index_ >= 0 && page_index_ < static_cast<int>(pages_.size()) && pages_[page_index_])
+  {
     bool handled = pages_[page_index_]->handleEvent(event);
-    if (handled) update();
-    return handled;
+    if (handled)
+      update();
+    if (handled)
+      return true;
   }
+
   return false;
 }
