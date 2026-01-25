@@ -811,7 +811,7 @@ std::unique_ptr<MultiPageHelpDialog> SongPage::getHelpDialog() {
 }
 
 int SongPage::getHelpFrameCount() const {
-  return 2;
+  return 3;
 }
 
 void SongPage::drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const {
@@ -822,6 +822,9 @@ void SongPage::drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const {
       break;
     case 1:
       drawHelpPageSongCont(gfx, bounds.x, bounds.y, bounds.w, bounds.h);
+      break;
+    case 2:
+      drawHelpPageSongSelectionLoop(gfx, bounds.x, bounds.y, bounds.w, bounds.h);
       break;
     default:
       break;

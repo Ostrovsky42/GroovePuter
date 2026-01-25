@@ -219,3 +219,25 @@ inline void drawHelpPageSongCont(IGfx& gfx, int x, int y, int w, int h) {
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "M", "toggle mode", IGfxColor::Magenta());
 }
+
+inline void drawHelpPageSongSelectionLoop(IGfx& gfx, int x, int y, int w, int h) {
+  HelpLayout layout = makeHelpLayout(gfx, x, y, w, h);
+  int left_y = layout.left_y;
+  int lh = layout.line_h;
+
+  drawHelpHeading(gfx, layout.left_x, left_y, "Song Page (selection)");
+  left_y += lh;
+  drawHelpHeading(gfx, layout.left_x, left_y, "Selection");
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "SHIFT+ARROWS", "extend", COLOR_LABEL);
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "ARROWS", "move/clear", COLOR_LABEL);
+  left_y += lh;
+
+  // left_y += lh;
+  drawHelpHeading(gfx, layout.left_x, left_y, "Loop");
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+L", "toggle on selection", IGfxColor::Yellow());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "SHIFT+ARROWS", "resize range", IGfxColor::Yellow());
+}
