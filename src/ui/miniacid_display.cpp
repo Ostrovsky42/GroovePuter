@@ -462,14 +462,14 @@ bool MiniAcidDisplay::_handleGlobalKeyEvent(UIEvent& event) {
       }
     }
 
-    if (lowerKey == 'k')
+    if (lowerKey == 'k' && !(event.alt || event.ctrl || event.meta))
     {
       withAudioGuard([this]()
                      { mini_acid_.setBpm(mini_acid_.bpm() - 5.0f); });
       update();
       return true;
     }
-    if (lowerKey == 'l')
+    if (lowerKey == 'l' && !(event.alt || event.ctrl || event.meta))
     {
       withAudioGuard([this]()
                      { mini_acid_.setBpm(mini_acid_.bpm() + 5.0f); });

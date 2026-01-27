@@ -622,7 +622,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
   char key = ui_event.key;
   if (!key) return false;
 
-  if (ui_event.ctrl && (key == 'l' || key == 'L')) {
+  if ((ui_event.ctrl || ui_event.meta) && (key == 'l' || key == 'L')) {
     return toggleLoopMode();
   }
 
