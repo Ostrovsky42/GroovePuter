@@ -480,6 +480,11 @@ void loop() {
       }
     }
 
+    // do not send events only for ctlr/alt/shift changes
+    // so that we don't get double events when those are used as modifiers
+    if (ks.ctrl || ks.alt || ks.shift) {
+      return;
+    }
     for (auto inputChar : ks.word) {
       // Skip letter chars when Ctrl/Alt is held - already handled via HID path
       // (applyCtrlLetter / applyAltLetter). Without this, every Ctrl/Alt+letter
