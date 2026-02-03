@@ -1,6 +1,7 @@
 #include "settings_page.h"
 #include "../../../scenes.h"
 #include "../ui_colors.h"
+#include "../ui_input.h"
 #include <cstdio>
 
 namespace {
@@ -224,22 +225,23 @@ bool SettingsPage::handleEvent(UIEvent& e) {
     const int dirUp = -1;
     const int dirDn = +1;
 
-    if (e.scancode == MINIACID_UP) {
+    int nav = UIInput::navCode(e);
+    if (nav == MINIACID_UP) {
         if (fast) list_.page(dirUp, b.h, wrap);
         else      list_.move(dirUp, wrap);
         return true;
     }
-    if (e.scancode == MINIACID_DOWN) {
+    if (nav == MINIACID_DOWN) {
         if (fast) list_.page(dirDn, b.h, wrap);
         else      list_.move(dirDn, wrap);
         return true;
     }
     
-    if (e.scancode == MINIACID_LEFT) { 
+    if (nav == MINIACID_LEFT) { 
         adjustSetting(-1, fast); 
         return true; 
     }
-    if (e.scancode == MINIACID_RIGHT) { 
+    if (nav == MINIACID_RIGHT) { 
         adjustSetting(1, fast); 
         return true; 
     }

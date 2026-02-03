@@ -34,50 +34,81 @@ static int16_t g_audioBuffer[kBlockFrames];
 TaskHandle_t g_audioTaskHandle = nullptr;
 
 // Static engine instance to avoid heap fragmentation
-static MiniAcid g_miniAcidInstance(SAMPLE_RATE, &g_sceneStorage);
-MiniAcid* g_miniAcid = nullptr;
+static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);
+MiniAcid* volatile g_miniAcid = nullptr;
 Encoder8Miniacid* g_encoder8 = nullptr;
 
 void audioTask(void *param) {
+  Serial.println("AudioTask: Starting begin()...");
   // Initialize I2S audio output
   if (!g_audioOut.begin(kSampleRate, kBlockFrames)) {
     Serial.println("[FATAL] I2S audio init failed");
     while (true) { delay(1000); }
   }
+  Serial.println("AudioTask: Loop start");
   
   while (true) {
-    if (!g_miniAcid || !g_miniAcid->isPlaying()) {
-      vTaskDelay(10 / portTICK_PERIOD_MS);
-      continue;
-    }
-
+    // Serial.println("A1"); Serial.flush();
     // Generate audio
-    uint32_t start = micros();
-    g_miniAcid->generateAudioBuffer(g_audioBuffer, kBlockFrames);
+    uint32_t now = micros();
+    uint32_t start = now;
+    if (g_miniAcid) {
+      g_miniAcid->generateAudioBuffer(g_audioBuffer, kBlockFrames);
+    } else {
+      std::fill(g_audioBuffer, g_audioBuffer + kBlockFrames, 0);
+    }
     uint32_t dsp_time = micros() - start;
     
-    // Check for underruns
-    constexpr uint32_t max_allowed = (1000000UL * kBlockFrames) / kSampleRate;
-    if (dsp_time > max_allowed) {
-      Serial.printf("[UNDERRUN] dsp:%uus max:%uus\n", dsp_time, max_allowed);
+    // Update performance stats with lock-free snapshot
+    constexpr uint32_t ideal_period_us = (1000000UL * kBlockFrames) / kSampleRate;
+    if (g_miniAcid) {
+        auto& stats = g_miniAcid->perfStats;
+        
+        // Measure actual callback period
+        uint32_t actual_period_us = ideal_period_us;  // default
+        if (stats.lastCallbackMicros > 0) {
+            actual_period_us = now - stats.lastCallbackMicros;
+        }
+        
+        // Start snapshot write (seq becomes odd)
+        stats.seq++;
+        
+        // Write all fields
+        stats.audioUnderruns = (dsp_time > ideal_period_us) ? stats.audioUnderruns + 1 : stats.audioUnderruns;
+        stats.cpuAudioPctIdeal = (float)dsp_time * 100.0f / (float)ideal_period_us;
+        stats.cpuAudioPctActual = (float)dsp_time * 100.0f / (float)actual_period_us;
+        stats.lastCallbackMicros = now;
+        
+        // End snapshot write (seq becomes even)
+        stats.seq++;
+        
+        // Log underruns
+        if (dsp_time > ideal_period_us) {
+            Serial.printf("[UNDERRUN] dsp:%uus ideal:%uus actual:%uus total:%u\n", 
+                         dsp_time, ideal_period_us, actual_period_us, (unsigned)stats.audioUnderruns);
+        }
     }
 
     // Write to recorder if recording
     if (g_audioRecorder) {
+      // Serial.println("A4"); Serial.flush();
       g_audioRecorder->writeSamples(g_audioBuffer, kBlockFrames);
     }
     
     // Flush diagnostics periodically
     if (AudioDiagnostics::instance().isEnabled()) {
+      // Serial.println("A5"); Serial.flush();
       AudioDiagnostics::instance().flushIfReady(millis());
     }
 
     // Write to I2S (blocks until DMA accepts the buffer)
     if (!g_audioOut.writeMono16(g_audioBuffer, kBlockFrames)) {
+      // Serial.println("A6"); Serial.flush();
       // If write fails (usually because it was never initialized),
       // we MUST sleep to avoid starving lower priority tasks (like the UI/Keys!)
       vTaskDelay(10 / portTICK_PERIOD_MS);
     }
+    // Serial.println("A7"); Serial.flush();
   }
 }
 
@@ -162,6 +193,8 @@ void setup() {
 
   // Points to static instance
   g_miniAcid = &g_miniAcidInstance;
+  Serial.printf("[DEBUG] g_miniAcid addr: %p (instance: %p)\n", (void*)g_miniAcid, (void*)&g_miniAcidInstance);
+  Serial.printf("[DEBUG] MiniAcid size: %u bytes\n", (unsigned)sizeof(MiniAcid));
   
   screenLog("4. Engine Static OK");
   
@@ -193,32 +226,42 @@ void setup() {
   }
 
   
-  screenLog("7. UI Setup...");
+  Serial.println("7a. UI Instance Created");
   g_miniDisplay = new MiniAcidDisplay(g_display, *g_miniAcid);
+  Serial.println("7b. UI setAudioGuard");
   
   // Set audio guard to protect audio task from concurrent access
-  g_miniDisplay->setAudioGuard([](const std::function<void()>& fn) {
-    // On Cardputer, we need to suspend/resume the audio task or use a mutex
-    // For now, just call the function directly since FreeRTOS handles this
-    fn();
-  });
+  // Configure Audio Guard for synchronization
+  AudioGuard guard;
+  guard.lock = [](void*) {
+      // In a real dual-core ESP32 setup, we could use a mutex here
+      // For now, miniacid uses a single-threaded DSP model with volatile flags
+  };
+  guard.unlock = [](void*) {};
+  g_miniDisplay->setAudioGuard(guard);
   
+  Serial.println("7c. UI setAudioRecorder");
   // Initialize audio recorder (done after other initialization to avoid boot issues)
-  g_audioRecorder = new CardputerAudioRecorder();
-  g_miniDisplay->setAudioRecorder(g_audioRecorder);
+  // DISABLING FOR CRASH DEBUGGING
+  // g_audioRecorder = new CardputerAudioRecorder();
+  // g_miniDisplay->setAudioRecorder(g_audioRecorder);
 
+  Serial.println("8. Creating AudioTask...");
   xTaskCreatePinnedToCore(audioTask, "AudioTask",
-                          4096, // stack
+                          8192, // stack
                           nullptr,
                           3, // priority
                           &g_audioTaskHandle,
                           1 // core
   );
 
+  Serial.println("9. Final Init...");
   g_encoder8->initialize();
   LedManager::instance().init();
 
+  Serial.println("10. First drawUI...");
   drawUI();
+  Serial.println("setup() complete");
 }
 
 
@@ -301,10 +344,10 @@ void loop() {
       g_miniAcid->toggleMuteClap();
       drawUI();
     } else if (c == 'k' || c == 'K') {
-      g_miniAcid->setBpm(g_miniAcid->bpm() - 5.0f);
+      g_miniAcid->setBpm(g_miniAcid->bpm() - 2.5f);
       drawUI();
     } else if (c == 'l' || c == 'L') {
-      g_miniAcid->setBpm(g_miniAcid->bpm() + 5.0f);
+      g_miniAcid->setBpm(g_miniAcid->bpm() + 2.5f);
       drawUI();
     } else if (c == '-' || c == '_') {
       // Volume down (larger step: 3 * 1/64 ≈ 5%)
@@ -316,13 +359,13 @@ void loop() {
       drawUI();
 
     } else if (c == ';') {
-      g_miniAcid->toggleAudioDiag();
-      Serial.println("[UI] Toggled Audio Diagnostics");
+     // g_miniAcid->toggleAudioDiag();
+     // Serial.println("[UI] Toggled Audio Diagnostics");
       drawUI();
     } else if (c == '\'') {
-      bool newState = !g_miniAcid->isTestToneEnabled();
-      g_miniAcid->setTestTone(newState);
-      Serial.printf("[UI] Test Tone: %s\n", newState ? "ON" : "OFF");
+     // bool newState = !g_miniAcid->isTestToneEnabled();
+      //g_miniAcid->setTestTone(newState);
+      //Serial.printf("[UI] Test Tone: %s\n", newState ? "ON" : "OFF");
       drawUI();
     } else if (c == ' ') {
       if (g_miniAcid->isPlaying()) {
@@ -428,7 +471,7 @@ void loop() {
   }
 
   static unsigned long lastUIUpdate = 0;
-  if (millis() - lastUIUpdate > 80) {
+  if (millis() - lastUIUpdate > 40) {
     lastUIUpdate = millis();
     if (g_miniDisplay) g_miniDisplay->update();
   }

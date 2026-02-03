@@ -39,7 +39,7 @@ public:
     float absPost = fabsf(postLimiter);
     if (absPost > diag_.peakPost) diag_.peakPost = absPost;
     
-    if (!isfinite(preLimiter) || !isfinite(postLimiter)) {
+    if (!std::isfinite(preLimiter) || !std::isfinite(postLimiter)) {
       diag_.nanCount++;
     }
     

@@ -1,10 +1,13 @@
 #include "project_page.h"
+#include "../ui_common.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
 
+#include "../layout_manager.h"
+#include "../screen_geometry.h"
 #include "../help_dialog_frames.h"
 
 namespace {
@@ -52,10 +55,8 @@ static const uint16_t FLASH_STEPS[] = {20, 40, 60, 90};
 
 } // namespace
 
-ProjectPage::ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard)
-  : gfx_(gfx),
-    mini_acid_(mini_acid),
-    audio_guard_(audio_guard),
+ProjectPage::ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
+  : gfx_(gfx), mini_acid_(mini_acid), audio_guard_(audio_guard),
     main_focus_(MainFocus::Load),
     dialog_type_(DialogType::None),
     dialog_focus_(DialogFocus::List),
@@ -108,13 +109,6 @@ void ProjectPage::closeDialog() {
   save_dialog_focus_ = SaveDialogFocus::Input;
 }
 
-void ProjectPage::withAudioGuard(const std::function<void()>& fn) {
-  if (audio_guard_) {
-    audio_guard_(fn);
-    return;
-  }
-  fn();
-}
 
 void ProjectPage::moveSelection(int delta) {
   if (scenes_.empty() || delta == 0) return;
@@ -204,216 +198,146 @@ bool ProjectPage::handleSaveDialogInput(char key) {
 }
 
 bool ProjectPage::handleEvent(UIEvent& ui_event) {
-  if (ui_event.event_type != MINIACID_KEY_DOWN) return false;
+    if (ui_event.event_type != MINIACID_KEY_DOWN) return false;
 
-  if (dialog_type_ == DialogType::Load) {
-    switch (ui_event.scancode) {
-      case MINIACID_LEFT:
-        if (dialog_focus_ == DialogFocus::Cancel) {
-          dialog_focus_ = DialogFocus::List;
-          return true;
+    if (dialog_type_ == DialogType::Load) {
+        switch (ui_event.scancode) {
+            case MINIACID_LEFT:
+                if (dialog_focus_ == DialogFocus::Cancel) { dialog_focus_ = DialogFocus::List; return true; }
+                break;
+            case MINIACID_RIGHT:
+                if (dialog_focus_ == DialogFocus::List) { dialog_focus_ = DialogFocus::Cancel; return true; }
+                break;
+            case MINIACID_UP:
+                if (dialog_focus_ == DialogFocus::List) { moveSelection(-1); return true; }
+                break;
+            case MINIACID_DOWN:
+                if (dialog_focus_ == DialogFocus::List) { moveSelection(1); return true; }
+                break;
+            default: break;
         }
-        break;
-      case MINIACID_RIGHT:
-        if (dialog_focus_ == DialogFocus::List) {
-          dialog_focus_ = DialogFocus::Cancel;
-          return true;
+        char key = ui_event.key;
+        if (key == '\n' || key == '\r') {
+            if (dialog_focus_ == DialogFocus::Cancel) { closeDialog(); return true; }
+            return loadSceneAtSelection();
         }
-        break;
-      case MINIACID_UP:
-        if (dialog_focus_ == DialogFocus::List) {
-          moveSelection(-1);
-          return true;
-        }
-        break;
-      case MINIACID_DOWN:
-        if (dialog_focus_ == DialogFocus::List) {
-          moveSelection(1);
-          return true;
-        }
-        break;
-      default:
-        break;
+        if (key == '\b') { closeDialog(); return true; }
+        return false;
     }
+
+    if (dialog_type_ == DialogType::SaveAs) {
+        switch (ui_event.scancode) {
+            case MINIACID_LEFT:
+                if (save_dialog_focus_ == SaveDialogFocus::Cancel) save_dialog_focus_ = SaveDialogFocus::Save;
+                else if (save_dialog_focus_ == SaveDialogFocus::Save) save_dialog_focus_ = SaveDialogFocus::Randomize;
+                else if (save_dialog_focus_ == SaveDialogFocus::Randomize) save_dialog_focus_ = SaveDialogFocus::Input;
+                return true;
+            case MINIACID_RIGHT:
+                if (save_dialog_focus_ == SaveDialogFocus::Input) save_dialog_focus_ = SaveDialogFocus::Randomize;
+                else if (save_dialog_focus_ == SaveDialogFocus::Randomize) save_dialog_focus_ = SaveDialogFocus::Save;
+                else if (save_dialog_focus_ == SaveDialogFocus::Save) save_dialog_focus_ = SaveDialogFocus::Cancel;
+                return true;
+            case MINIACID_UP:
+            case MINIACID_DOWN:
+                if (save_dialog_focus_ == SaveDialogFocus::Input) save_dialog_focus_ = SaveDialogFocus::Randomize;
+                else save_dialog_focus_ = SaveDialogFocus::Input;
+                return true;
+            default: break;
+        }
+        char key = ui_event.key;
+        if (save_dialog_focus_ == SaveDialogFocus::Input && handleSaveDialogInput(key)) return true;
+        if (key == '\n' || key == '\r') {
+            if (save_dialog_focus_ == SaveDialogFocus::Randomize) { randomizeSaveName(); return true; }
+            if (save_dialog_focus_ == SaveDialogFocus::Save || save_dialog_focus_ == SaveDialogFocus::Input) return saveCurrentScene();
+            if (save_dialog_focus_ == SaveDialogFocus::Cancel) { closeDialog(); return true; }
+        }
+        if (key == '\b') {
+            if (save_dialog_focus_ == SaveDialogFocus::Input) return handleSaveDialogInput(key);
+            closeDialog(); return true;
+        }
+        return false;
+    }
+
+    switch (ui_event.scancode) {
+        case MINIACID_LEFT:
+            if (main_focus_ == MainFocus::Volume) { mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, -1); return true; }
+            if (main_focus_ == MainFocus::SaveAs) main_focus_ = MainFocus::Load;
+            else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::SaveAs;
+            else if (main_focus_ == MainFocus::Mode) main_focus_ = MainFocus::New;
+            else if (main_focus_ == MainFocus::VisualStyle) main_focus_ = MainFocus::Mode;
+            else if (main_focus_ >= MainFocus::LedMode && main_focus_ <= MainFocus::LedFlash) {
+                if (main_focus_ == MainFocus::LedMode) main_focus_ = MainFocus::VisualStyle;
+                else main_focus_ = static_cast<MainFocus>(static_cast<int>(main_focus_) - 1);
+            }
+            return true;
+        case MINIACID_RIGHT:
+            if (main_focus_ == MainFocus::Volume) { mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, 1); return true; }
+            if (main_focus_ == MainFocus::Load) main_focus_ = MainFocus::SaveAs;
+            else if (main_focus_ == MainFocus::SaveAs) main_focus_ = MainFocus::New;
+            else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::Mode;
+            else if (main_focus_ == MainFocus::Mode) main_focus_ = MainFocus::VisualStyle;
+            else if (main_focus_ == MainFocus::VisualStyle) main_focus_ = MainFocus::LedMode;
+            else if (main_focus_ >= MainFocus::LedMode && main_focus_ < MainFocus::LedFlash) {
+                main_focus_ = static_cast<MainFocus>(static_cast<int>(main_focus_) + 1);
+            }
+            return true;
+        case MINIACID_UP:
+            if (main_focus_ == MainFocus::Volume) { main_focus_ = MainFocus::LedMode; return true; }
+            if (main_focus_ >= MainFocus::LedMode && main_focus_ <= MainFocus::LedFlash) { main_focus_ = MainFocus::Load; return true; }
+            break;
+        case MINIACID_DOWN:
+            if (main_focus_ <= MainFocus::VisualStyle) { main_focus_ = MainFocus::LedMode; return true; }
+            if (main_focus_ >= MainFocus::LedMode && main_focus_ <= MainFocus::LedFlash) { main_focus_ = MainFocus::Volume; return true; }
+            break;
+        default: break;
+    }
+
     char key = ui_event.key;
     if (key == '\n' || key == '\r') {
-      if (dialog_focus_ == DialogFocus::Cancel) {
-        closeDialog();
-        return true;
-      }
-      return loadSceneAtSelection();
-    }
-    if (key == '\b') {
-      closeDialog();
-      return true;
+        if (main_focus_ == MainFocus::Load) { openLoadDialog(); return true; }
+        if (main_focus_ == MainFocus::SaveAs) { openSaveDialog(); return true; }
+        if (main_focus_ == MainFocus::New) return createNewScene();
+        if (main_focus_ == MainFocus::Mode) { mini_acid_.toggleGrooveboxMode(); return true; }
+        if (main_focus_ == MainFocus::VisualStyle) {
+             UI::currentStyle = (UI::currentStyle == VisualStyle::MINIMAL) ? 
+                                 VisualStyle::RETRO_CLASSIC : VisualStyle::MINIMAL;
+             return true;
+        }
+        
+        auto& led = mini_acid_.sceneManager().currentScene().led;
+        if (main_focus_ == MainFocus::LedMode) { led.mode = static_cast<LedMode>((static_cast<int>(led.mode) + 1) % 4); return true; }
+        if (main_focus_ == MainFocus::LedSource) {
+            led.source = static_cast<LedSource>((static_cast<int>(led.source) + 1) % static_cast<int>(VoiceId::Count));
+            switch (led.source) {
+                case LedSource::SynthA: led.color = TAPE_PALETTE[1].rgb; break;
+                case LedSource::SynthB: led.color = TAPE_PALETTE[2].rgb; break;
+                case LedSource::DrumKick: led.color = TAPE_PALETTE[0].rgb; break;
+                case LedSource::DrumSnare: led.color = TAPE_PALETTE[3].rgb; break;
+                case LedSource::DrumClap: led.color = TAPE_PALETTE[5].rgb; break;
+                default: led.color = TAPE_PALETTE[4].rgb; break;
+            }
+            return true;
+        }
+        if (main_focus_ == MainFocus::LedColor) {
+            int currentIdx = 0;
+            for (int i=0; i<6; ++i) if (TAPE_PALETTE[i].rgb.r == led.color.r && TAPE_PALETTE[i].rgb.g == led.color.g) currentIdx = i;
+            led.color = TAPE_PALETTE[(currentIdx + 1) % 6].rgb;
+            return true;
+        }
+        if (main_focus_ == MainFocus::LedBri) {
+            int currentIdx = 0;
+            for (int i=0; i<5; ++i) if (BRI_STEPS[i] == led.brightness) currentIdx = i;
+            led.brightness = BRI_STEPS[(currentIdx + 1) % 5];
+            return true;
+        }
+        if (main_focus_ == MainFocus::LedFlash) {
+            int currentIdx = 0;
+            for (int i=0; i<4; ++i) if (FLASH_STEPS[i] == led.flashMs) currentIdx = i;
+            led.flashMs = FLASH_STEPS[(currentIdx + 1) % 4];
+            return true;
+        }
     }
     return false;
-  }
-
-  if (dialog_type_ == DialogType::SaveAs) {
-    switch (ui_event.scancode) {
-      case MINIACID_LEFT:
-        if (save_dialog_focus_ == SaveDialogFocus::Cancel) save_dialog_focus_ = SaveDialogFocus::Save;
-        else if (save_dialog_focus_ == SaveDialogFocus::Save) save_dialog_focus_ = SaveDialogFocus::Randomize;
-        else if (save_dialog_focus_ == SaveDialogFocus::Randomize) save_dialog_focus_ = SaveDialogFocus::Input;
-        return true;
-      case MINIACID_RIGHT:
-        if (save_dialog_focus_ == SaveDialogFocus::Input) save_dialog_focus_ = SaveDialogFocus::Randomize;
-        else if (save_dialog_focus_ == SaveDialogFocus::Randomize) save_dialog_focus_ = SaveDialogFocus::Save;
-        else if (save_dialog_focus_ == SaveDialogFocus::Save) save_dialog_focus_ = SaveDialogFocus::Cancel;
-        return true;
-      case MINIACID_UP:
-      case MINIACID_DOWN:
-        if (save_dialog_focus_ == SaveDialogFocus::Input) {
-          save_dialog_focus_ = SaveDialogFocus::Randomize;
-        } else {
-          save_dialog_focus_ = SaveDialogFocus::Input;
-        }
-        return true;
-      default:
-        break;
-    }
-    char key = ui_event.key;
-    if (save_dialog_focus_ == SaveDialogFocus::Input && handleSaveDialogInput(key)) {
-      return true;
-    }
-    if (key == '\n' || key == '\r') {
-      if (save_dialog_focus_ == SaveDialogFocus::Randomize) {
-        randomizeSaveName();
-        return true;
-      }
-      if (save_dialog_focus_ == SaveDialogFocus::Save || save_dialog_focus_ == SaveDialogFocus::Input) {
-        return saveCurrentScene();
-      }
-      if (save_dialog_focus_ == SaveDialogFocus::Cancel) {
-        closeDialog();
-        return true;
-      }
-    }
-    if (key == '\b') {
-      if (save_dialog_focus_ == SaveDialogFocus::Input) {
-        return handleSaveDialogInput(key);
-      }
-      closeDialog();
-      return true;
-    }
-    return false;
-  }
-
-  switch (ui_event.scancode) {
-    case MINIACID_LEFT:
-      if (main_focus_ == MainFocus::Volume) {
-        mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, -1);
-        return true;
-      }
-      if (main_focus_ == MainFocus::SaveAs) main_focus_ = MainFocus::Load;
-      else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::SaveAs;
-      else if (main_focus_ == MainFocus::Mode) main_focus_ = MainFocus::New;
-      else if (main_focus_ == MainFocus::LedMode || main_focus_ == MainFocus::LedSource || 
-               main_focus_ == MainFocus::LedColor || main_focus_ == MainFocus::LedBri ||
-               main_focus_ == MainFocus::LedFlash) {
-          // Horizontal nav in LED row? or sequential?
-          if (main_focus_ == MainFocus::LedMode) main_focus_ = MainFocus::Mode;
-          else if (main_focus_ == MainFocus::LedSource) main_focus_ = MainFocus::LedMode;
-          else if (main_focus_ == MainFocus::LedColor) main_focus_ = MainFocus::LedSource;
-          else if (main_focus_ == MainFocus::LedBri) main_focus_ = MainFocus::LedColor;
-          else if (main_focus_ == MainFocus::LedFlash) main_focus_ = MainFocus::LedBri;
-          return true;
-      }
-      return true;
-    case MINIACID_RIGHT:
-      if (main_focus_ == MainFocus::Volume) {
-        mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, 1);
-        return true;
-      }
-      if (main_focus_ == MainFocus::Load) main_focus_ = MainFocus::SaveAs;
-      else if (main_focus_ == MainFocus::SaveAs) main_focus_ = MainFocus::New;
-      else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::Mode;
-      else if (main_focus_ == MainFocus::Mode) main_focus_ = MainFocus::LedMode;
-      else if (main_focus_ == MainFocus::LedMode) main_focus_ = MainFocus::LedSource;
-      else if (main_focus_ == MainFocus::LedSource) main_focus_ = MainFocus::LedColor;
-      else if (main_focus_ == MainFocus::LedColor) main_focus_ = MainFocus::LedBri;
-      else if (main_focus_ == MainFocus::LedBri) main_focus_ = MainFocus::LedFlash;
-      return true;
-    case MINIACID_UP:
-     if (main_focus_ == MainFocus::Volume) {
-        main_focus_ = MainFocus::LedMode;
-        return true;
-      } else if (main_focus_ == MainFocus::LedMode || main_focus_ == MainFocus::LedSource || 
-                 main_focus_ == MainFocus::LedColor || main_focus_ == MainFocus::LedBri ||
-                 main_focus_ == MainFocus::LedFlash) {
-        main_focus_ = MainFocus::Load;
-        return true;
-      }
-      break;
-    case MINIACID_DOWN:
-      if (main_focus_ == MainFocus::Load || main_focus_ == MainFocus::SaveAs || 
-          main_focus_ == MainFocus::New || main_focus_ == MainFocus::Mode) {
-        main_focus_ = MainFocus::LedMode;
-        return true;
-      } else if (main_focus_ == MainFocus::LedMode || main_focus_ == MainFocus::LedSource || 
-                 main_focus_ == MainFocus::LedColor || main_focus_ == MainFocus::LedBri ||
-                 main_focus_ == MainFocus::LedFlash) {
-        main_focus_ = MainFocus::Volume;
-        return true;
-      }
-      break;
-    default:
-      break;
-  }
-
-  char key = ui_event.key;
-  if (key == '\n' || key == '\r') {
-    if (main_focus_ == MainFocus::Load) {
-      openLoadDialog();
-      return true;
-    } else if (main_focus_ == MainFocus::SaveAs) {
-      openSaveDialog();
-      return true;
-    } else if (main_focus_ == MainFocus::New) {
-      return createNewScene();
-    } else if (main_focus_ == MainFocus::Mode) {
-      mini_acid_.toggleGrooveboxMode();
-      return true;
-    }
- else if (main_focus_ == MainFocus::LedMode) {
-        auto& led = mini_acid_.sceneManager().currentScene().led;
-        led.mode = static_cast<LedMode>((static_cast<int>(led.mode) + 1) % 4);
-        return true;
-    } else if (main_focus_ == MainFocus::LedSource) {
-        auto& led = mini_acid_.sceneManager().currentScene().led;
-        led.source = static_cast<LedSource>((static_cast<int>(led.source) + 1) % static_cast<int>(VoiceId::Count));
-        // Auto-assign color
-        switch (led.source) {
-            case LedSource::SynthA: led.color = TAPE_PALETTE[1].rgb; break; // WarmTape
-            case LedSource::SynthB: led.color = TAPE_PALETTE[2].rgb; break; // Violet
-            case LedSource::DrumKick: led.color = TAPE_PALETTE[0].rgb; break; // Amber
-            case LedSource::DrumSnare: led.color = TAPE_PALETTE[3].rgb; break; // Mint
-            case LedSource::DrumClap: led.color = TAPE_PALETTE[5].rgb; break; // Rose
-            default: led.color = TAPE_PALETTE[4].rgb; break; // Ice
-        }
-        return true;
-    } else if (main_focus_ == MainFocus::LedColor) {
-        auto& led = mini_acid_.sceneManager().currentScene().led;
-        int currentIdx = 0;
-        for (int i=0; i<6; ++i) if (TAPE_PALETTE[i].rgb.r == led.color.r && TAPE_PALETTE[i].rgb.g == led.color.g) currentIdx = i;
-        led.color = TAPE_PALETTE[(currentIdx + 1) % 6].rgb;
-        return true;
-    } else if (main_focus_ == MainFocus::LedBri) {
-        auto& led = mini_acid_.sceneManager().currentScene().led;
-        int currentIdx = 0;
-        for (int i=0; i<5; ++i) if (BRI_STEPS[i] == led.brightness) currentIdx = i;
-        led.brightness = BRI_STEPS[(currentIdx + 1) % 5];
-        return true;
-    } else if (main_focus_ == MainFocus::LedFlash) {
-        auto& led = mini_acid_.sceneManager().currentScene().led;
-        int currentIdx = 0;
-        for (int i=0; i<4; ++i) if (FLASH_STEPS[i] == led.flashMs) currentIdx = i;
-        led.flashMs = FLASH_STEPS[(currentIdx + 1) % 4];
-        return true;
-    }
-  }
-  return false;
 }
 
 const std::string & ProjectPage::getTitle() const {
@@ -422,14 +346,17 @@ const std::string & ProjectPage::getTitle() const {
 }
 
 void ProjectPage::draw(IGfx& gfx) {
-  const Rect& bounds = getBoundaries();
-  int x = bounds.x;
-  int y = bounds.y;
-  int w = bounds.w;
-  int h = bounds.h;
+  UI::drawStandardHeader(gfx, mini_acid_, "PROJECT");
+  LayoutManager::clearContent(gfx);
+  
+  // Use Layout::CONTENT for proper positioning
+  int x = Layout::CONTENT.x + Layout::CONTENT_PAD_X;
+  int y = Layout::CONTENT.y + Layout::CONTENT_PAD_Y;
+  int w = Layout::CONTENT.w - 2 * Layout::CONTENT_PAD_X;
+  int h = Layout::CONTENT.h - 2 * Layout::CONTENT_PAD_Y;
 
-  int body_y = y + 3;
-  int body_h = h - 3;
+  int body_y = y;
+  int body_h = h;
   if (body_h <= 0) return;
 
   int line_h = gfx.fontHeight();
@@ -444,16 +371,18 @@ void ProjectPage::draw(IGfx& gfx) {
   if (btn_w < 60) btn_w = 60;
   int btn_h = line_h + 6;  // Reduced from +8 to +6
   int btn_y = body_y + line_h * 2 + 8;
-  int spacing = 6;
-  const char* labels[4] = {"Load", "Save As", "New", "Acid"};
+  int spacing = 3;
+  const char* labels[5] = {"Load", "Save As", "New", "Acid", "Theme"};
   if (mini_acid_.grooveboxMode() == GrooveboxMode::Minimal) labels[3] = "Minimal";
+  if (UI::currentStyle == VisualStyle::MINIMAL) labels[4] = "Mini";
+  else labels[4] = "Retr";
   
-  btn_w = 40;  // Reduced from 48 to 40
-  spacing = 3;  // Reduced from 4 to 3
-  int total_w = btn_w * 4 + spacing * 3;
+  btn_w = 42;
+  spacing = 3;
+  int total_w = btn_w * 5 + spacing * 4;
   int start_x = x + (w - total_w) / 2;
   
-  for (int i = 0; i < 4; ++i) {
+  for (int i = 0; i < 5; ++i) {
     int btn_x = start_x + i * (btn_w + spacing);
     bool focused = (dialog_type_ == DialogType::None && static_cast<int>(main_focus_) == i);
     gfx.fillRect(btn_x, btn_y, btn_w, btn_h, COLOR_PANEL);
@@ -518,12 +447,11 @@ void ProjectPage::draw(IGfx& gfx) {
   }
 
   // Warning
-  gfx.setTextColor(COLOR_ACCENT);
-  gfx.drawText(x, vol_y + vol_h + 4, "NOTE: RGB needs Screen BL=100%");
+  //gfx.setTextColor(COLOR_ACCENT);
+ //gfx.drawText(x, vol_y + vol_h + 4, "NOTE: RGB needs Screen BL=100%");
 
-  gfx.setTextColor(COLOR_LABEL);
-  gfx.drawText(x, h - line_h - 2, "Enter/Arrow Keys to navigate");
-  gfx.setTextColor(COLOR_WHITE);
+  // v1.1  Footer
+  UI::drawStandardFooter(gfx, "[ARROWS]NAV [ENT]SELECT", "[M]MODE");
 
   if (dialog_type_ == DialogType::None) return;
 

@@ -2,7 +2,7 @@
 #include <cstdio>
 #include "../ui_colors.h"
 
-ModePage::ModePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard)
+ModePage::ModePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
 }
 
@@ -90,9 +90,7 @@ const std::string& ModePage::getTitle() const {
 void ModePage::toggleMode() {
     withAudioGuard([&]() {
         mini_acid_.toggleGrooveboxMode();
-        // Auto-apply first preset to both
-        mini_acid_.modeManager().apply303Preset(0, 0);
-        mini_acid_.modeManager().apply303Preset(1, 1);
+        // Presets are now applied manually via 'A' / 'B' to avoid overwriting genre sound
         applyToTape();
     });
 }
@@ -136,10 +134,4 @@ void ModePage::drawModeBox(IGfx& gfx, int x, int y, const char* name, bool activ
     }
 }
 
-void ModePage::withAudioGuard(const std::function<void()>& fn) {
-    if (audio_guard_) {
-        audio_guard_(fn);
-    } else {
-        fn();
-    }
-}
+

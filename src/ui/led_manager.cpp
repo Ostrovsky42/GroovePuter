@@ -1,6 +1,11 @@
 #include "led_manager.h"
+
+#if defined(ARDUINO)
 #include <Arduino.h>
 #include <M5Cardputer.h>
+#else
+#include "../../platform_sdl/arduino_compat.h"
+#endif
 
 LedManager& LedManager::instance() {
     static LedManager inst;

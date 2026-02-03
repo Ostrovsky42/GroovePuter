@@ -55,7 +55,10 @@ enum ApplicationEventType {
 
   MINIACID_APP_EVENT_TOGGLE_MODE,
   MINIACID_APP_EVENT_OPEN_GENRE,
+  MINIACID_APP_EVENT_SET_VISUAL_STYLE,
 };
+
+enum class VisualStyle { MINIMAL, RETRO_CLASSIC };
 
 enum MouseButtonType {
   MOUSE_BUTTON_NONE = 0,
@@ -316,8 +319,8 @@ class Container : public EventHandler, public Frame {
 class MultiPageHelpDialog;
 class IPage : public Container {
  public:
-  virtual const std::string & getTitle() const = 0;
-
+  virtual const std::string& getTitle() const = 0;
+  virtual void setVisualStyle(VisualStyle style) { (void)style; }
   // Help dialog factory, return nullptr when the page does not provide help.
   virtual std::unique_ptr<MultiPageHelpDialog> getHelpDialog();
 
@@ -402,4 +405,20 @@ class MultiPage : public IPage {
   int active_index_ = -1;
 };
 
-using AudioGuard = std::function<void(const std::function<void()>&)>;
+typedef void (*AudioGuardLockFn)(void*);
+
+struct AudioGuard {
+  AudioGuardLockFn lock = nullptr;
+  AudioGuardLockFn unlock = nullptr;
+  void* context = nullptr;
+
+  template <typename F>
+  void operator()(F&& fn) const {
+    if (lock) lock(context);
+    fn();
+    if (unlock) unlock(context);
+  }
+
+  // Only consider valid if BOTH lock and unlock are present (prevents deadlock)
+  explicit operator bool() const { return lock != nullptr && unlock != nullptr; }
+};

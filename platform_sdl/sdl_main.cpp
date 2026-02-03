@@ -15,6 +15,11 @@
 #include "../src/audio/audio_config.h"
 #include "scene_storage_sdl.h"
 #include "../src/sampler/ram_sample_store.h"
+#include "arduino_compat.h"
+
+// Define Serial instance for SDL build
+SerialMock Serial;
+
 #ifndef __EMSCRIPTEN__
 #include "../src/audio/desktop_audio_recorder.h"
 #else
@@ -359,11 +364,11 @@ int main(int argc, char **argv) {
   SDL_PauseAudioDevice(state.audio.device, 0); // start playback
 
   state.ui = new MiniAcidDisplay(*state.gfx, state.audio.synth);
-  state.ui->setAudioGuard([&](const std::function<void()>& fn) {
-    SDL_LockAudioDevice(state.audio.device);
-    fn();
-    SDL_UnlockAudioDevice(state.audio.device);
-  });
+  AudioGuard guard;
+  guard.lock = [](void* ctx) { SDL_LockAudioDevice((SDL_AudioDeviceID)(uintptr_t)ctx); };
+  guard.unlock = [](void* ctx) { SDL_UnlockAudioDevice((SDL_AudioDeviceID)(uintptr_t)ctx); };
+  guard.context = (void*)(uintptr_t)state.audio.device;
+  state.ui->setAudioGuard(guard);
   state.ui->setAudioRecorder(&state.audio.recorder);
 
 #ifdef __EMSCRIPTEN__

@@ -1,6 +1,7 @@
 #include "waveform_page.h"
 
 #include "../help_dialog_frames.h"
+#include "../ui_common.h"
 
 namespace {
 constexpr IGfxColor kWaveFadeColors[] = {
@@ -12,11 +13,10 @@ constexpr int kWaveFadeColorCount =
     static_cast<int>(sizeof(kWaveFadeColors) / sizeof(kWaveFadeColors[0]));
 } // namespace
 
-WaveformPage::WaveformPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard)
+WaveformPage::WaveformPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
   : gfx_(gfx),
     mini_acid_(mini_acid),
-    audio_guard_(audio_guard),
-    wave_color_index_(0)
+    audio_guard_(audio_guard)
 {
   for (int i = 0; i < kWaveHistoryLayers; ++i) {
     wave_lengths_[i] = 0;
@@ -39,7 +39,8 @@ void WaveformPage::draw(IGfx& gfx) {
   int mid_y = wave_y + wave_h / 2;
 
   gfx_.setTextColor(IGfxColor::Orange());
-  gfx_.drawLine(x, mid_y, x + w - 1, mid_y);
+  const IGfxColor color = COLOR_WAVE; // Base reference line
+  gfx_.drawLine(x, mid_y, x + w - 1, mid_y, color);
 
   int points = w;
   if (points > kMaxWavePoints) points = kMaxWavePoints;
@@ -84,7 +85,8 @@ void WaveformPage::draw(IGfx& gfx) {
     drawWave(wave_history_[layer], wave_lengths_[layer], kWaveFadeColors[colorIndex]);
   }
 
-  IGfxColor waveColor = WAVE_COLORS[wave_color_index_ % NUM_WAVE_COLORS];
+  // Use global synchronized color
+  IGfxColor waveColor = UI::kWaveColors[UI::waveformOverlay.colorIndex % UI::kNumWaveColors];
   drawWave(wave_history_[0], wave_lengths_[0], waveColor);
 }
 
@@ -93,7 +95,7 @@ bool WaveformPage::handleEvent(UIEvent& ui_event) {
   switch (ui_event.scancode) {
     case MINIACID_UP:
     case MINIACID_DOWN:
-      wave_color_index_ = (wave_color_index_ + 1) % NUM_WAVE_COLORS;
+      UI::waveformOverlay.colorIndex = (UI::waveformOverlay.colorIndex + 1) % UI::kNumWaveColors;
       return true;
     default:
       break;

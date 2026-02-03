@@ -303,6 +303,45 @@ void CardputerDisplay::fillRect(int x, int y, int w, int h, IGfxColor color) {
   }
 }
 
+void CardputerDisplay::fillCircle(int x, int y, int r, IGfxColor color) {
+  if (r < 0) return;
+  if (frame_.empty()) return;
+  uint16_t c = color.toCardputerColor();
+
+  auto drawHLine = [&](int x0, int x1, int py) {
+    if (py < 0 || py >= h_) return;
+    int startX = std::max(0, x0);
+    int endX = std::min(w_ - 1, x1);
+    for (int px = startX; px <= endX; ++px) {
+      frame_[py * w_ + px] = c;
+    }
+  };
+
+  int f = 1 - r;
+  int ddF_x = 1;
+  int ddF_y = -2 * r;
+  int xx = 0;
+  int yy = r;
+  
+  drawHLine(x - r, x + r, y);
+  
+  while (xx < yy) {
+    if (f >= 0) {
+      yy--;
+      ddF_y += 2;
+      f += ddF_y;
+    }
+    xx++;
+    ddF_x += 2;
+    f += ddF_x;
+    
+    drawHLine(x - xx, x + xx, y + yy);
+    drawHLine(x - xx, x + xx, y - yy);
+    drawHLine(x - yy, x + yy, y + xx);
+    drawHLine(x - yy, x + yy, y - xx);
+  }
+}
+
 void CardputerDisplay::setRotation(int rot) {
 #if defined(ARDUINO) && __has_include(<M5Cardputer.h>)
   M5Cardputer.Display.setRotation(rot);
@@ -382,15 +421,15 @@ void CardputerDisplay::flush() {
 #endif
 }
 
-void CardputerDisplay::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
+void CardputerDisplay::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, IGfxColor color) {
+  uint16_t c = color.toCardputerColor();
 #if defined(ARDUINO) && __has_include(<M5Cardputer.h>)
-  M5Cardputer.Display.drawLine(x0, y0, x1, y1, text_color565_);
+  M5Cardputer.Display.drawLine(x0, y0, x1, y1, c);
 #elif defined(ARDUINO) && __has_include(<M5Stack.h>) && defined(M5_LCD_AVAILABLE)
-  M5.Lcd.drawLine(x0, y0, x1, y1, text_color565_);
+  M5.Lcd.drawLine(x0, y0, x1, y1, c);
 #endif
 
   if (frame_.empty()) return;
-  uint16_t c = text_color565_;
   int dx = abs((int)(x1 - x0));
   int sx = x0 < x1 ? 1 : -1;
   int dy = -abs((int)(y1 - y0));

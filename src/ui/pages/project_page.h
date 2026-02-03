@@ -6,13 +6,13 @@
 
 class ProjectPage : public IPage{
  public:
-  ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard);
+  ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string & getTitle() const override;
 
  private:
-  enum class MainFocus { Load = 0, SaveAs, New, Mode, LedMode, LedSource, LedColor, LedBri, LedFlash, Volume };
+  enum class MainFocus { Load = 0, SaveAs, New, Mode, VisualStyle, LedMode, LedSource, LedColor, LedBri, LedFlash, Volume };
   enum class DialogType { None = 0, Load, SaveAs };
   enum class DialogFocus { List = 0, Cancel };
   enum class SaveDialogFocus { Input = 0, Randomize, Save, Cancel };
@@ -28,11 +28,17 @@ class ProjectPage : public IPage{
   bool saveCurrentScene();
   bool createNewScene();
   bool handleSaveDialogInput(char key);
-  void withAudioGuard(const std::function<void()>& fn);
+  template <typename F>
+  void withAudioGuard(F&& fn) {
+      if (audio_guard_) audio_guard_(std::forward<F>(fn));
+      else fn();
+  }
+  
+  void updateFromEngine();
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;
-  AudioGuard& audio_guard_;
+  AudioGuard audio_guard_;
   MainFocus main_focus_;
   DialogType dialog_type_;
   DialogFocus dialog_focus_;

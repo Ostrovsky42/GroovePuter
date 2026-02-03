@@ -38,7 +38,7 @@ class SamplerPage::LabelValueComponent : public FocusableComponent {
   IGfxColor value_color_;
 };
 
-SamplerPage::SamplerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard)
+SamplerPage::SamplerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     : gfx_(gfx), mini_acid_(mini_acid), audio_guard_(audio_guard) {
 }
 
@@ -72,7 +72,7 @@ void SamplerPage::initComponents() {
 
   int x = dx() + 4;
   int y = dy() + 2;
-  int h = gfx_.fontHeight() + 2; // Compact height
+  int h = 12; // Compact height (was gfx_.fontHeight() but gfx_ removed from class)
   int w1 = (width() - 8) / 2;
   int w_full = width() - 8;
 
@@ -101,7 +101,7 @@ void SamplerPage::initComponents() {
 void SamplerPage::draw(IGfx& gfx) {
   if (!initialized_) initComponents();
 
-  SamplerPad& p = mini_acid_.samplerTrack.pad(current_pad_);
+  SamplerPad& p = mini_acid_.samplerTrack->pad(current_pad_);
   
   char buf[64];
   pad_ctrl_->setValue(std::to_string(current_pad_ + 1));
@@ -128,7 +128,7 @@ void SamplerPage::draw(IGfx& gfx) {
 }
 
 void SamplerPage::adjustFocusedElement(int direction) {
-  SamplerPad& p = mini_acid_.samplerTrack.pad(current_pad_);
+  SamplerPad& p = mini_acid_.samplerTrack->pad(current_pad_);
   const auto& files = mini_acid_.sampleIndex.getFiles();
 
   audio_guard_([&]() {
@@ -168,7 +168,7 @@ void SamplerPage::adjustFocusedElement(int direction) {
 
 void SamplerPage::prelisten() {
     audio_guard_([&]() {
-        mini_acid_.samplerTrack.triggerPad(current_pad_, 1.0f, *mini_acid_.sampleStore);
+        mini_acid_.samplerTrack->triggerPad(current_pad_, 1.0f, *mini_acid_.sampleStore);
     });
 }
 
@@ -194,12 +194,12 @@ bool SamplerPage::handleEvent(UIEvent& ui_event) {
   char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)));
   
   // Q-I triggered pads 1-8 (Standardized row)
-  const char* triggerKeys = "qwertyui";
+  const char* triggerKeys = "qwertyu";
   const char* found = strchr(triggerKeys, lowerKey);
   if (found) {
     int padIdx = found - triggerKeys;
     audio_guard_([&]() {
-        mini_acid_.samplerTrack.triggerPad(padIdx, 1.0f, *mini_acid_.sampleStore);
+        mini_acid_.samplerTrack->triggerPad(padIdx, 1.0f, *mini_acid_.sampleStore);
     });
     return true;
   }

@@ -6,7 +6,7 @@
 
 namespace {
 const char* const kOscillatorOptions[] = {"saw", "sqr", "super", "pulse", "sub"};
-const char* const kFilterTypeOptions[] = {"lp1"};
+const char* const kFilterTypeOptions[] = {"lp1", "acid", "moog"};
 
 const TB303Preset kLoFiMinimalPresets[] = {
     // DEEP BASS
@@ -176,6 +176,9 @@ float TB303Voice::oscillatorSample() {
 }
 
 float TB303Voice::svfProcess(float input) {
+  // Update filter model if needed
+  updateFilterModel();
+
   // Slide toward target frequency
   freq += (targetFreq - freq) * slideSpeed;
   if (!isfinite(freq))
@@ -278,6 +281,10 @@ void TB303Voice::setParameter(TB303ParamId id, float value) {
   params[static_cast<int>(id)].setValue(value);
 }
 
+void TB303Voice::setParameterNormalized(TB303ParamId id, float norm) {
+  params[static_cast<int>(id)].setNormalized(norm);
+}
+
 void TB303Voice::adjustParameter(TB303ParamId id, int steps) {
   params[static_cast<int>(id)].addSteps(steps);
 }
@@ -323,6 +330,20 @@ void TB303Voice::initParameters() {
   params[static_cast<int>(TB303ParamId::EnvAmount)] = Parameter("env", "Hz", 0.0f, 2000.0f, 400.0f, (2000.0f - 0.0f) / 128);
   params[static_cast<int>(TB303ParamId::EnvDecay)] = Parameter("dec", "ms", 20.0f, 2200.0f, 420.0f, (2200.0f - 20.0f) / 128);
   params[static_cast<int>(TB303ParamId::Oscillator)] = Parameter("osc", "", kOscillatorOptions, 5, 0);
-  params[static_cast<int>(TB303ParamId::FilterType)] = Parameter("flt", "", kFilterTypeOptions, 1, 0);
+  params[static_cast<int>(TB303ParamId::FilterType)] = Parameter("flt", "", kFilterTypeOptions, 3, 0);
   params[static_cast<int>(TB303ParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.0f, 0.8f, 1.0f / 128);
 }
+
+void TB303Voice::updateFilterModel() {
+  int currentType = params[static_cast<int>(TB303ParamId::FilterType)].optionIndex();
+  if (currentType == lastFilterType_) return;
+
+  switch (currentType) {
+    case 1: filter = std::make_unique<DiodeFilter>(sampleRate); break;
+    case 2: filter = std::make_unique<LadderFilter>(sampleRate); break;
+    case 0:
+    default: filter = std::make_unique<ChamberlinFilter>(sampleRate); break;
+  }
+  lastFilterType_ = currentType;
+}
+

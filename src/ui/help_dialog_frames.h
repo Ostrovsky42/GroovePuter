@@ -47,14 +47,14 @@ inline void drawHelpScrollbar(IGfx& gfx, int x, int y, int w, int h, int pageInd
   if (pageIndex >= totalPages) pageIndex = totalPages - 1;
   int bar_x = x + w - 2;
   gfx.setTextColor(IGfxColor::Gray());
-  gfx.drawLine(bar_x, y, bar_x, y + h - 1);
+  gfx.drawLine(bar_x, y, bar_x, y + h - 1, COLOR_GRAY);
   int page_h = h / totalPages;
   if (page_h < 2) page_h = 2;
   int y1 = y + page_h * pageIndex;
   int y2 = y1 + page_h;
   if (y2 > y + h - 1) y2 = y + h - 1;
   gfx.setTextColor(IGfxColor::White());
-  gfx.drawLine(bar_x, y1, bar_x, y2);
+  gfx.drawLine(bar_x, y1, bar_x, y2, COLOR_GRAY);
   gfx.setTextColor(COLOR_WHITE);
 }
 

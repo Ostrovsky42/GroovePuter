@@ -21,3 +21,29 @@ private:
   float _bp;
   float _sampleRate;
 };
+
+
+class DiodeFilter : public AudioFilter {
+public:
+  explicit DiodeFilter(float sampleRate);
+  void reset() override;
+  void setSampleRate(float sr) override;
+  float process(float input, float cutoffHz, float resonance) override;
+
+private:
+  float _s[4];
+  float _sampleRate;
+};
+
+class LadderFilter : public AudioFilter {
+public:
+  explicit LadderFilter(float sampleRate);
+  void reset() override;
+  void setSampleRate(float sr) override;
+  float process(float input, float cutoffHz, float resonance) override;
+
+private:
+  float _s[4];
+  float _sampleRate;
+};
+

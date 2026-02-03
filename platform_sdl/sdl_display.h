@@ -22,9 +22,10 @@ public:
   void fillRect(int x, int y, int w, int h, IGfxColor color) override;
   void drawRect(int x, int y, int w, int h, IGfxColor color) override;
   void drawCircle(int x, int y, int r, IGfxColor color) override;
+  void fillCircle(int x, int y, int r, IGfxColor color) override;
   void drawKnobFace(int cx, int cy, int radius, IGfxColor ringColor,
                     IGfxColor bgColor) override;
-  void drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1) override;
+  void drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, IGfxColor color) override;
   void setRotation(int rot) override;
   void setTextColor(IGfxColor color) override;
   void setFont(GfxFont font) override;

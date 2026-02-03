@@ -3,7 +3,11 @@
 #include <algorithm>
 #include <cmath>
 #include "../../scenes.h" // For pattern structs
-#include "Arduino.h"      // For random() if needed, or standard lib
+#if defined(ARDUINO)
+#include <Arduino.h>
+#else
+#include "../../platform_sdl/arduino_compat.h"
+#endif
 
 
 class AdvancedPatternGenerator {

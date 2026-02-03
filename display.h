@@ -73,7 +73,8 @@ public:
     virtual void drawKnobFace(int cx, int cy, int radius, IGfxColor ringColor,
                               IGfxColor bgColor) = 0;
     virtual void fillRect(int x, int y, int w, int h, IGfxColor color) = 0;
-    virtual void drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1) = 0;
+    virtual void fillCircle(int x, int y, int r, IGfxColor color) = 0;
+    virtual void drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, IGfxColor color) = 0;
     virtual void setRotation(int rot) = 0;
     virtual void setTextColor(IGfxColor color) = 0;
     virtual void setFont(GfxFont font) = 0;
@@ -81,6 +82,7 @@ public:
     virtual void endWrite() = 0;
     virtual void flush() = 0; // present buffered content, if applicable
     virtual int textWidth(const char* text) const = 0;
+    virtual int measureText(const char* text) const { return textWidth(text); } // UI Kit compatibility alias
     virtual int fontHeight() const = 0;
     virtual int width() const = 0;
     virtual int height() const = 0;

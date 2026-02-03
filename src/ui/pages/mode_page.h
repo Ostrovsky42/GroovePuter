@@ -4,7 +4,7 @@
 
 class ModePage : public IPage {
 public:
-    ModePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard);
+    ModePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
     
     void draw(IGfx& gfx) override;
     bool handleEvent(UIEvent& ui_event) override;
@@ -17,9 +17,13 @@ private:
     void previewMode();
     
     void drawModeBox(IGfx& gfx, int x, int y, const char* name, bool active, uint16_t color, int w, int h);
-    void withAudioGuard(const std::function<void()>& fn);
+    template <typename F>
+    void withAudioGuard(F&& fn) {
+        if (audio_guard_) audio_guard_(std::forward<F>(fn));
+        else fn();
+    }
 
     MiniAcid& mini_acid_;
-    AudioGuard& audio_guard_;
+    AudioGuard audio_guard_;
     std::string title_ = "MODE";
 };

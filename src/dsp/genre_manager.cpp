@@ -67,14 +67,52 @@ void GenreManager::applyGenreTimbre(MiniAcid& engine) {
 
     for (int v = 0; v < 2; ++v) {
         // Apply base synthesis parameters (BEFORE texture bias)
-        // Oscillator: 0.0=Saw, 1.0=Square. Map direct float.
-        engine.set303Parameter(TB303ParamId::Oscillator, t.osc, v);
-        engine.set303Parameter(TB303ParamId::Cutoff,    clamp01(t.cutoff), v);
-        engine.set303Parameter(TB303ParamId::Resonance, clamp01(t.resonance), v);
-        engine.set303Parameter(TB303ParamId::EnvAmount, clamp01(t.envAmount), v);
-        engine.set303Parameter(TB303ParamId::EnvDecay,  clamp01(t.envDecay), v);
+        // Oscillator uses normalized index mapping
+        engine.set303ParameterNormalized(TB303ParamId::Oscillator, t.osc, v);
+        
+        float cut = t.cutoff;
+        float reso = t.resonance;
+        float env = t.envAmount;
+        float decay = t.envDecay;
+
+        if (v == 0) {
+            // Bass: keep it low, but not hard-constant
+            cut = clamp01(cut);
+            reso = clamp01(reso);
+            env = clamp01(env);
+            decay = clamp01(decay);
+
+            // Force low-ish ranges (Soft Clamps)
+            if (cut < 0.05f) cut = 0.05f;
+            if (cut > 0.45f) cut = 0.45f;
+
+            if (env < 0.02f) env = 0.02f;
+            if (env > 0.20f) env = 0.20f;
+
+            if (decay < 0.04f) decay = 0.04f;
+            if (decay > 0.25f) decay = 0.25f;
+
+            if (reso < 0.20f) reso = 0.20f;
+            if (reso > 0.85f) reso = 0.85f;
+        } else {
+            // Lead: audibility floors, but NOT huge jumps
+            if (cut < 0.40f) cut = 0.40f;
+            if (env < 0.20f) env = 0.20f;
+            if (decay < 0.08f) decay = 0.08f;
+
+            // Cap to prevent “screech”
+            if (cut > 0.95f) cut = 0.95f;
+            if (reso > 0.95f) reso = 0.95f;
+        }
+
+        // Apply NORMALIZED parameters
+        engine.set303ParameterNormalized(TB303ParamId::Cutoff,    clamp01(cut), v);
+        engine.set303ParameterNormalized(TB303ParamId::Resonance, clamp01(reso), v);
+        engine.set303ParameterNormalized(TB303ParamId::EnvAmount, clamp01(env), v);
+        engine.set303ParameterNormalized(TB303ParamId::EnvDecay,  clamp01(decay), v);
     }
 }
+
 
 void GenreManager::applyTexture(MiniAcid& engine) {
     const TextureParams& params = getTextureParams();
@@ -82,7 +120,7 @@ void GenreManager::applyTexture(MiniAcid& engine) {
     // Apply Tape FX macro
     TapeState& tape = engine.sceneManager().currentScene().tape;
     tape.macro = params.tapeMacro;
-    tape.fxEnabled = true;
+    tape.fxEnabled = false;
     
     // Apply delay settings (using TempoDelay)
     // Apply delay settings (using TempoDelay) to both voices

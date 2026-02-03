@@ -10,7 +10,7 @@ class PatternSelectionBarComponent;
 
 class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
  public:
-  PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard, int voice_index);
+  PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string & getTitle() const override;
@@ -37,11 +37,15 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   int bankIndexFromKey(char key) const;
   void setBankIndex(int bankIndex);
   void ensureStepFocus();
-  void withAudioGuard(const std::function<void()>& fn);
+  template <typename F>
+  void withAudioGuard(F&& fn) {
+      if (audio_guard_) audio_guard_(std::forward<F>(fn));
+      else fn();
+  }
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;
-  AudioGuard& audio_guard_;
+  AudioGuard audio_guard_;
   int voice_index_;
   int pattern_edit_cursor_;
   int pattern_row_cursor_;

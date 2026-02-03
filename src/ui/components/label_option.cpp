@@ -1,6 +1,7 @@
 #include "label_option.h"
 
 #include "../ui_colors.h"
+#include "../ui_input.h"
 
 namespace {
 inline constexpr IGfxColor kFocusColor = IGfxColor(0xB36A00);
@@ -34,25 +35,20 @@ bool LabelOptionComponent::handleEvent(UIEvent& ui_event) {
   if (!isFocused()) return false;
   if (options_.empty()) return false;
 
-  int delta = 0;
-  switch (ui_event.scancode) {
-    case MINIACID_DOWN:
-      delta = -1;
-      break;
+  int nav = UIInput::navCode(ui_event);
+  switch (nav) {
     case MINIACID_UP:
-      delta = 1;
-      break;
+    case MINIACID_RIGHT:
+      option_index_ = (option_index_ + 1) % options_.size();
+      return true;
+    case MINIACID_DOWN:
+    case MINIACID_LEFT:
+      option_index_ = (option_index_ - 1 + options_.size()) % options_.size();
+      return true;
     default:
-      return false;
+      break;
   }
-
-  int count = static_cast<int>(options_.size());
-  int next = option_index_;
-  if (next < 0) next = 0;
-  next = (next + delta) % count;
-  if (next < 0) next += count;
-  option_index_ = next;
-  return true;
+  return false;
 }
 
 void LabelOptionComponent::draw(IGfx& gfx) {

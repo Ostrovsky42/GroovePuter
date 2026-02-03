@@ -45,7 +45,7 @@ class MultiPageHelpDialog : public Frame, public EventHandler {
         if (legend_y <= dialog_y + 2) return;
 
         gfx.setTextColor(COLOR_LABEL);
-        gfx.drawLine(dialog_x + 2, legend_y, dialog_x + dialog_w - 3, legend_y);
+        gfx.drawLine(dialog_x + 2, legend_y, dialog_x + dialog_w - 3, legend_y, COLOR_GRAY);
 
         const char* legend = "push ESC to close";
         int legend_x = dialog_x + (dialog_w - textWidth(gfx, legend)) / 2;

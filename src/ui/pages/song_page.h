@@ -7,7 +7,7 @@
 
 class SongPage : public IPage, public IMultiHelpFramesProvider {
  public:
-  SongPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard);
+  SongPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string & getTitle() const override;
@@ -26,7 +26,11 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   void moveCursorHorizontal(int delta, bool extend_selection);
   void moveCursorVertical(int delta, bool extend_selection);
   void syncSongPositionToCursor();
-  void withAudioGuard(const std::function<void()>& fn);
+    template <typename F>
+    void withAudioGuard(F&& fn) {
+        if (audio_guard_) audio_guard_(std::forward<F>(fn));
+        else fn();
+    }
   void startSelection();
   void updateSelection();
   void clearSelection();
@@ -44,7 +48,7 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;
-  AudioGuard& audio_guard_;
+  AudioGuard audio_guard_;
   int cursor_row_;
   int cursor_track_;
   int scroll_row_;

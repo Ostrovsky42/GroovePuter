@@ -29,6 +29,7 @@ private:
   void drawSplashScreen();
   void drawDebugOverlay();
   bool translateToApplicationEvent(UIEvent& event);
+  void applyPageBounds_();
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;

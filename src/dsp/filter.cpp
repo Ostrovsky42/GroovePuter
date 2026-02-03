@@ -39,3 +39,35 @@ float ChamberlinFilter::process(float input, float cutoffHz, float resonance) {
 
   return _lp;
 }
+
+// === DIODE FILTER (Classic Acid) ===
+DiodeFilter::DiodeFilter(float sampleRate) : _sampleRate(sampleRate) { reset(); }
+void DiodeFilter::reset() { for (int i=0; i<4; ++i) _s[i] = 0; }
+void DiodeFilter::setSampleRate(float sr) { _sampleRate = sr; }
+float DiodeFilter::process(float input, float cutoffHz, float resonance) {
+  float f = (cutoffHz * 2.0f) / _sampleRate;
+  if (f > 0.95f) f = 0.95f;
+  float k = resonance * 17.0f; // Scale resonance to diode ranges
+  for (int i=0; i<4; ++i) {
+    float prev = (i == 0) ? (input - k * _s[3]) : _s[i-1];
+    _s[i] += f * (tanhf(prev) - tanhf(_s[i]));
+  }
+  return _s[3];
+}
+
+// === LADDER FILTER (Moog Style) ===
+LadderFilter::LadderFilter(float sampleRate) : _sampleRate(sampleRate) { reset(); }
+void LadderFilter::reset() { for (int i=0; i<4; ++i) _s[i] = 0; }
+void LadderFilter::setSampleRate(float sr) { _sampleRate = sr; }
+float LadderFilter::process(float input, float cutoffHz, float resonance) {
+  float f = (cutoffHz * 2.0f) / _sampleRate;
+  if (f > 0.95f) f = 0.95f;
+  float k = resonance * 4.0f;
+  float sum = input - k * _s[3];
+  for (int i=0; i<4; ++i) {
+    _s[i] += f * (sum - _s[i]);
+    sum = _s[i];
+  }
+  return _s[3];
+}
+

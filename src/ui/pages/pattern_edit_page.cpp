@@ -3,6 +3,8 @@
 #include <cctype>
 #include <utility>
 
+#include "../ui_input.h"
+#include "../layout_manager.h"
 #include "../help_dialog_frames.h"
 #include "../components/bank_selection_bar.h"
 #include "../components/pattern_selection_bar.h"
@@ -16,7 +18,7 @@ struct PatternClipboard {
 PatternClipboard g_pattern_clipboard;
 } // namespace
 
-PatternEditPage::PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard, int voice_index)
+PatternEditPage::PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index)
   : gfx_(gfx),
     mini_acid_(mini_acid),
     audio_guard_(audio_guard),
@@ -76,7 +78,7 @@ int PatternEditPage::patternIndexFromKey(char key) const {
     case 't': return 4;
     case 'y': return 5;
     case 'u': return 6;
-    case 'i': return 7;
+  //  case 'i': return 7;
     default: return -1;
   }
 }
@@ -101,14 +103,6 @@ void PatternEditPage::setBankIndex(int bankIndex) {
 
 void PatternEditPage::ensureStepFocus() {
   if (patternRowFocused() || focus_ == Focus::BankRow) focus_ = Focus::Steps;
-}
-
-void PatternEditPage::withAudioGuard(const std::function<void()>& fn) {
-  if (audio_guard_) {
-    audio_guard_(fn);
-    return;
-  }
-  fn();
 }
 
 int PatternEditPage::activePatternCursor() const {
@@ -221,6 +215,15 @@ const std::string & PatternEditPage::getTitle() const {
 }
 
 bool PatternEditPage::handleEvent(UIEvent& ui_event) {
+  // CRITICAL: Block numeric quick-select BEFORE forwarding to components
+  // Otherwise BankSelectionBar/PatternSelectionBar intercept digits before we can block them
+  if (ui_event.event_type == MINIACID_KEY_DOWN) {
+    if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta &&
+        ui_event.key >= '0' && ui_event.key <= '9') {
+      return true; // consume, do nothing
+    }
+  }
+
   if (pattern_bar_ && pattern_bar_->handleEvent(ui_event)) return true;
   if (bank_bar_ && bank_bar_->handleEvent(ui_event)) return true;
   if (ui_event.event_type == MINIACID_APPLICATION_EVENT) {
@@ -289,8 +292,16 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     }
   }
   if (ui_event.event_type != MINIACID_KEY_DOWN) return false;
+
+  // Let parent handle global navigation keys; do not steal them here.
+  if (UIInput::isGlobalNav(ui_event)) return false;
+
   bool handled = false;
-  switch (ui_event.scancode) {
+  
+  // Arrow-first: Cardputer may deliver arrows in scancode OR key.
+  // Keep vim-keys only as silent fallback (not in footer hints).
+  int nav = UIInput::navCode(ui_event);
+  switch (nav) {
     case MINIACID_LEFT:
       movePatternCursor(-1);
       handled = true;
@@ -311,6 +322,21 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       break;
   }
   if (handled) return true;
+
+  // Handle TAB for voice toggle
+  if (UIInput::isTab(ui_event)) {
+      voice_index_ = (voice_index_ + 1) % 2; // Toggle 0 <-> 1
+      title_ = voice_index_ == 0 ? "303A PATTERNS" : "303B PATTERNS";
+      
+      // Refresh state for new voice
+      bank_index_ = mini_acid_.current303BankIndex(voice_index_);
+      bank_cursor_ = bank_index_;
+      pattern_row_cursor_ = mini_acid_.current303PatternIndex(voice_index_);
+      if (pattern_row_cursor_ < 0) pattern_row_cursor_ = 0;
+      
+      // showToast(voice_index_ == 0 ? "Voice A (Bass)" : "Voice B (Lead)", 1000);
+      return true;
+  }
 
   char key = ui_event.key;
   if (!key) return false;
@@ -441,6 +467,8 @@ void PatternEditPage::drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) cons
   }
 }
 
+
+
 void PatternEditPage::draw(IGfx& gfx) {
   bank_index_ = mini_acid_.current303BankIndex(voice_index_);
   const Rect& bounds = getBoundaries();
@@ -533,4 +561,7 @@ void PatternEditPage::draw(IGfx& gfx) {
     int ty = note_box_y + cell_size / 2 - gfx.fontHeight() / 2;
     gfx.drawText(tx, ty, note_label);
   }
+
+  // v1.1 Pro Footer
+  LayoutManager::drawFooter(gfx, "[ARROWS]NAV [ENT]SEL [TAB]VOICE", "[-/+]NOTE [G]RANDOM [SHIFT+W]ACC");
 }

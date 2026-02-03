@@ -3,10 +3,12 @@
 #include <cctype>
 #include <utility>
 
+#include "../ui_input.h"
 #include "../help_dialog_frames.h"
 #include "../components/bank_selection_bar.h"
 #include "../components/label_option.h"
 #include "../components/pattern_selection_bar.h"
+#include "../components/drum_sequencer_grid.h"
 
 namespace {
 struct DrumPatternClipboard {
@@ -16,180 +18,9 @@ struct DrumPatternClipboard {
 
 DrumPatternClipboard g_drum_pattern_clipboard;
 
-class DrumSequencerGridComponent : public Component {
- public:
-  struct Callbacks {
-    std::function<void(int step, int voice)> onToggle;
-    std::function<void(int step)> onToggleAccent;
-    std::function<int()> cursorStep;
-    std::function<int()> cursorVoice;
-    std::function<bool()> gridFocused;
-    std::function<int()> currentStep;
-  };
-
-  DrumSequencerGridComponent(MiniAcid& mini_acid, Callbacks callbacks)
-      : mini_acid_(mini_acid), callbacks_(std::move(callbacks)) {}
-
-  bool handleEvent(UIEvent& ui_event) override {
-    if (ui_event.event_type != MINIACID_MOUSE_DOWN) return false;
-    if (ui_event.button != MOUSE_BUTTON_LEFT) return false;
-    if (!contains(ui_event.x, ui_event.y)) return false;
-
-    GridLayout layout{};
-    if (!computeLayout(layout)) return false;
-    int step = (ui_event.x - layout.grid_x) / layout.cell_w;
-    if (step < 0 || step >= SEQ_STEPS) {
-      return false;
-    }
-
-    if (ui_event.y >= layout.accent_y && ui_event.y < layout.accent_bottom) {
-      if (callbacks_.onToggleAccent) {
-        callbacks_.onToggleAccent(step);
-      }
-      return true;
-    }
-
-    if (ui_event.y < layout.grid_y || ui_event.y >= layout.grid_bottom) return false;
-    int voice = (ui_event.y - layout.grid_y) / layout.stripe_h;
-    if (voice < 0 || voice >= NUM_DRUM_VOICES) return false;
-    if (callbacks_.onToggle) callbacks_.onToggle(step, voice);
-    return true;
-  }
-
-  void draw(IGfx& gfx) override {
-    GridLayout layout{};
-    if (!computeLayout(layout)) return;
-
-    const char* voiceLabels[NUM_DRUM_VOICES] = {"BD", "SD", "CH", "OH", "MT", "HT", "RS", "CP"};
-    for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
-      int labelStripeH = layout.stripe_h;
-      if (labelStripeH < 3) labelStripeH = 3;
-      int ly = layout.grid_y + v * labelStripeH + (labelStripeH - gfx.fontHeight()) / 2;
-      gfx.setTextColor(COLOR_LABEL);
-      gfx.drawText(layout.bounds_x, ly, voiceLabels[v]);
-    }
-    gfx.setTextColor(COLOR_WHITE);
-
-    int cursorStep = callbacks_.cursorStep ? callbacks_.cursorStep() : 0;
-    int cursorVoice = callbacks_.cursorVoice ? callbacks_.cursorVoice() : 0;
-    bool gridFocus = callbacks_.gridFocused ? callbacks_.gridFocused() : false;
-
-    const bool* kick = mini_acid_.patternKickSteps();
-    const bool* snare = mini_acid_.patternSnareSteps();
-    const bool* hat = mini_acid_.patternHatSteps();
-    const bool* openHat = mini_acid_.patternOpenHatSteps();
-    const bool* midTom = mini_acid_.patternMidTomSteps();
-    const bool* highTom = mini_acid_.patternHighTomSteps();
-    const bool* rim = mini_acid_.patternRimSteps();
-    const bool* clap = mini_acid_.patternClapSteps();
-    const bool* accentSteps = mini_acid_.patternDrumAccentSteps();
-    int highlight = callbacks_.currentStep ? callbacks_.currentStep() : 0;
-
-    const bool* hits[NUM_DRUM_VOICES] = {kick, snare, hat, openHat, midTom, highTom, rim, clap};
-    const IGfxColor colors[NUM_DRUM_VOICES] = {COLOR_DRUM_KICK, COLOR_DRUM_SNARE, COLOR_DRUM_HAT,
-                                               COLOR_DRUM_OPEN_HAT, COLOR_DRUM_MID_TOM,
-                                               COLOR_DRUM_HIGH_TOM, COLOR_DRUM_RIM, COLOR_DRUM_CLAP};
-
-    for (int i = 0; i < SEQ_STEPS; ++i) {
-      int cw = layout.cell_w;
-      int cx = layout.grid_x + i * cw;
-      IGfxColor fill = accentSteps[i] ? COLOR_ACCENT : COLOR_GRAY_DARKER;
-      gfx.fillRect(cx, layout.accent_y, cw - 1, layout.accent_h, fill);
-      gfx.drawRect(cx, layout.accent_y, cw - 1, layout.accent_h, COLOR_WHITE);
-      if (highlight == i) {
-        gfx.drawRect(cx - 1, layout.accent_y - 1, cw + 1, layout.accent_h + 1, COLOR_STEP_HILIGHT);
-      }
-    }
-
-    // grid cells
-    for (int i = 0; i < SEQ_STEPS; ++i) {
-      int cw = layout.cell_w;
-      int ch = layout.stripe_h;
-      if (ch < 3) ch = 3;
-      int cx = layout.grid_x + i * cw;
-      for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
-        int cy = layout.grid_y + v * layout.stripe_h;
-        bool hit = hits[v][i];
-        IGfxColor fill = hit ? colors[v] : COLOR_GRAY;
-        if (!hit && (i % 4 == 0)) {
-          fill = COLOR_LIGHT_GRAY;
-        }
-        gfx.fillRect(cx, cy, cw - 1, ch - 1, fill);
-        if (highlight == i) {
-          gfx.drawRect(cx - 1, cy - 1, cw + 1, ch + 1, COLOR_STEP_HILIGHT);
-        }
-        if (gridFocus && i == cursorStep && v == cursorVoice) {
-          gfx.drawRect(cx, cy, cw - 1, ch - 1, COLOR_STEP_SELECTED);
-        }
-      }
-    }
-  }
-
- private:
-  struct GridLayout {
-    int bounds_x = 0;
-    int bounds_y = 0;
-    int bounds_w = 0;
-    int bounds_h = 0;
-    int grid_x = 0;
-    int grid_y = 0;
-    int grid_w = 0;
-    int grid_h = 0;
-    int grid_right = 0;
-    int grid_bottom = 0;
-    int cell_w = 0;
-    int stripe_h = 0;
-    int accent_y = 0;
-    int accent_h = 0;
-    int accent_bottom = 0;
-    int accent_gap = 0;
-  };
-
-  bool computeLayout(GridLayout& layout) const {
-    const Rect& bounds = getBoundaries();
-    layout.bounds_x = bounds.x;
-    layout.bounds_y = bounds.y;
-    layout.bounds_w = bounds.w;
-    layout.bounds_h = bounds.h;
-    if (layout.bounds_w <= 0 || layout.bounds_h <= 0) return false;
-
-    int label_w = 18;
-    layout.grid_x = layout.bounds_x + label_w;
-    layout.grid_y = layout.bounds_y;
-    layout.grid_w = layout.bounds_w - label_w;
-    layout.grid_h = layout.bounds_h;
-    if (layout.grid_w < 8) layout.grid_w = 8;
-
-    layout.cell_w = layout.grid_w / SEQ_STEPS;
-    if (layout.cell_w < 2) return false;
-    layout.accent_h = 4;
-    layout.accent_gap = 2;
-    if (layout.bounds_h < (NUM_DRUM_VOICES * 3 + layout.accent_h + layout.accent_gap)) {
-      layout.accent_h = 3;
-      layout.accent_gap = 1;
-    }
-    layout.accent_y = layout.bounds_y;
-    layout.accent_bottom = layout.accent_y + layout.accent_h;
-
-    layout.grid_y = layout.bounds_y + layout.accent_h + layout.accent_gap;
-    layout.grid_h = layout.bounds_h - (layout.accent_h + layout.accent_gap);
-    if (layout.grid_h < NUM_DRUM_VOICES * 3) return false;
-
-    layout.stripe_h = layout.grid_h / NUM_DRUM_VOICES;
-    if (layout.stripe_h < 3) layout.stripe_h = 3;
-
-    layout.grid_right = layout.grid_x + layout.cell_w * SEQ_STEPS;
-    layout.grid_bottom = layout.grid_y + layout.stripe_h * NUM_DRUM_VOICES;
-    return true;
-  }
-
-  MiniAcid& mini_acid_;
-  Callbacks callbacks_;
-};
-
 class DrumSequencerMainPage : public Container {
  public:
-  DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard& audio_guard);
+  DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
 
@@ -208,10 +39,14 @@ class DrumSequencerMainPage : public Container {
   int bankIndexFromKey(char key) const;
   void setBankIndex(int bankIndex);
   bool bankRowFocused() const;
-  void withAudioGuard(const std::function<void()>& fn);
+  template <typename F>
+  void withAudioGuard(F&& fn) {
+      if (audio_guard_) audio_guard_(std::forward<F>(fn));
+      else fn();
+  }
 
   MiniAcid& mini_acid_;
-  AudioGuard& audio_guard_;
+  AudioGuard audio_guard_;
   int drum_step_cursor_;
   int drum_voice_cursor_;
   int drum_pattern_cursor_;
@@ -239,9 +74,9 @@ class GlobalDrumSettingsPage : public Container {
   std::shared_ptr<LabelOptionComponent> character_control_;
 };
 
-DrumSequencerMainPage::DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard& audio_guard)
+DrumSequencerMainPage::DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard audio_guard)
   : mini_acid_(mini_acid),
-    audio_guard_(audio_guard),
+    audio_guard_(std::move(audio_guard)),
     drum_step_cursor_(0),
     drum_voice_cursor_(0),
     drum_pattern_cursor_(0),
@@ -423,7 +258,7 @@ int DrumSequencerMainPage::patternIndexFromKey(char key) const {
     case 't': return 4;
     case 'y': return 5;
     case 'u': return 6;
-    case 'i': return 7;
+    //case 'i': return 7;
     default: return -1;
   }
 }
@@ -444,14 +279,6 @@ void DrumSequencerMainPage::setBankIndex(int bankIndex) {
   if (bank_index_ == bankIndex) return;
   bank_index_ = bankIndex;
   withAudioGuard([&]() { mini_acid_.setDrumBankIndex(bank_index_); });
-}
-
-void DrumSequencerMainPage::withAudioGuard(const std::function<void()>& fn) {
-  if (audio_guard_) {
-    audio_guard_(fn);
-    return;
-  }
-  fn();
 }
 
 bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
@@ -543,8 +370,17 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     }
   }
   if (ui_event.event_type != MINIACID_KEY_DOWN) return false;
+
+  // Let parent handle global navigation ([ ] page jumps, help, back, etc.)
+  // IMPORTANT: we do NOT want to steal them here.
+  if (UIInput::isGlobalNav(ui_event)) return false;
+
   bool handled = false;
-  switch (ui_event.scancode) {
+  
+  // Arrow-first: Cardputer may deliver arrows in scancode OR key.
+  // Keep vim-keys only as silent fallback (not in footer hints).
+  int nav = UIInput::navCode(ui_event);
+  switch (nav) {
     case MINIACID_LEFT:
       moveDrumCursor(-1);
       handled = true;
@@ -755,7 +591,7 @@ void GlobalDrumSettingsPage::syncDrumEngineSelection() {
   character_control_->setOptionIndex(target);
 }
 
-DrumSequencerPage::DrumSequencerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard) {
+DrumSequencerPage::DrumSequencerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard) {
   (void)gfx;
   addPage(std::make_shared<DrumSequencerMainPage>(mini_acid, audio_guard));
   addPage(std::make_shared<GlobalDrumSettingsPage>(mini_acid));

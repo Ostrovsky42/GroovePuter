@@ -67,7 +67,7 @@ SongAreaClipboard g_song_area_clipboard;
 UndoHistory g_undo_history;
 } // namespace
 
-SongPage::SongPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard)
+SongPage::SongPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
   : gfx_(gfx),
     mini_acid_(mini_acid),
     audio_guard_(audio_guard),
@@ -122,21 +122,21 @@ void SongPage::updateSelection() {
 void SongPage::clearSelection() {
   has_selection_ = false;
   if (mini_acid_.loopModeEnabled()) {
-    withAudioGuard([&]() { mini_acid_.setLoopMode(false); });
+    audio_guard_([&]() { mini_acid_.setLoopMode(false); });
   }
 }
 
 void SongPage::updateLoopRangeFromSelection() {
   if (!mini_acid_.loopModeEnabled()) return;
   if (!has_selection_) {
-    withAudioGuard([&]() { mini_acid_.setLoopMode(false); });
+    audio_guard_([&]() { mini_acid_.setLoopMode(false); });
     return;
   }
   int min_row, max_row, min_track, max_track;
   getSelectionBounds(min_row, max_row, min_track, max_track);
   (void)min_track;
   (void)max_track;
-  withAudioGuard([&]() { mini_acid_.setLoopRange(min_row, max_row); });
+  audio_guard_([&]() { mini_acid_.setLoopRange(min_row, max_row); });
 }
 
 void SongPage::getSelectionBounds(int& min_row, int& max_row, int& min_track, int& max_track) const {
@@ -191,16 +191,8 @@ void SongPage::moveCursorVertical(int delta, bool extend_selection) {
 
 void SongPage::syncSongPositionToCursor() {
   if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
-    withAudioGuard([&]() { mini_acid_.setSongPosition(cursorRow()); });
+    audio_guard_([&]() { mini_acid_.setSongPosition(cursorRow()); });
   }
-}
-
-void SongPage::withAudioGuard(const std::function<void()>& fn) {
-  if (audio_guard_) {
-    audio_guard_(fn);
-    return;
-  }
-  fn();
 }
 
 SongTrack SongPage::trackForColumn(int col, bool& valid) const {
@@ -234,7 +226,7 @@ int SongPage::patternIndexFromKey(char key) const {
     case 't': return 4;
     case 'y': return 5;
     case 'u': return 6;
-    case 'i': return 7;
+    //case 'i': return 7;
     default: return -1;
   }
 }

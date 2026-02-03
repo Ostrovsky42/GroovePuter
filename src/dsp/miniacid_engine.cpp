@@ -1,6 +1,10 @@
 #include "miniacid_engine.h"
 
+#if defined(ARDUINO)
 #include <Arduino.h>
+#else
+#include "../../platform_sdl/arduino_compat.h"
+#endif
 #include <algorithm>
 #include <cmath>
 #include <cctype>
@@ -16,8 +20,12 @@
 #include <esp_psram.h>
 #endif
 
+#ifndef LOG_DEBUG
 #define LOG_DEBUG(...) Serial.printf(__VA_ARGS__); Serial.println()
+#endif
+#ifndef LOG_PRINTLN
 #define LOG_PRINTLN(msg) Serial.println(msg)
+#endif
 
 #include "../platform/log.h"
 #include "advanced_pattern_generator.h"
@@ -206,10 +214,13 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
   : voice303(sampleRate),
     voice3032(sampleRate),
     drums(std::make_unique<TR808DrumSynthVoice>(sampleRate)),
-    // drums(std::make_unique<TR909DrumSynthVoice>(sampleRate)),
     sampleRateValue(sampleRate),
     drumEngineName_("808"),
     sceneStorage_(sceneStorage),
+    samplerOutBuffer(std::make_unique<float[]>(AUDIO_BUFFER_SAMPLES)),
+    samplerTrack(std::make_unique<DrumSamplerTrack>()),
+    tapeFX(std::make_unique<TapeFX>()),
+    tapeLooper(std::make_unique<TapeLooper>()),
     playing(false),
     mute303(false),
     mute303_2(false),
@@ -242,7 +253,6 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
     distortion3032(),
     currentTimingOffset_(0) {
   if (sampleRateValue <= 0.0f) sampleRateValue = 44100.0f;
-  // Don't call reset() here, drums are not allocated yet!
 }
 
 
@@ -259,7 +269,7 @@ void MiniAcid::init() {
   if (hasPsram) {
     LOG_PRINTLN("  - MiniAcid::init: PSRAM mode (high performance)");
     // PSRAM: High-performance mode (44.1kHz = ~176KB per second float)
-    tapeLooper.init(8);           // 8s looper (~1.4MB)
+    if (tapeLooper) tapeLooper->init(8);           // 8s looper (~1.4MB)
     if (sampleStore) sampleStore->setPoolSize(2 * 1024 * 1024); // 2MB pool
     delay303.init(1.0f);
     delay3032.init(1.0f);
@@ -268,7 +278,7 @@ void MiniAcid::init() {
     // DRAM: Constrained mode (44.1kHz is expensive!)
     // 0.25s delay = 44KB -> Two of them = 88KB. Feasible.
     // Tape Looper: 0.25s = 44KB. 
-    tapeLooper.init(0.25f); 
+    if (tapeLooper) tapeLooper->init(0.25f); 
     if (sampleStore) sampleStore->setPoolSize(32 * 1024); // 32KB sampler pool
     delay303.init(0.25f);
     delay3032.init(0.25f);
@@ -297,8 +307,11 @@ void MiniAcid::init() {
     setDrumEngine("909"); 
   }
 
+  LOG_PRINTLN("  - MiniAcid::init: reset()...");
   reset();
+  LOG_PRINTLN("  - MiniAcid::init: applySceneStateFromManager()...");
   applySceneStateFromManager();
+  LOG_PRINTLN("  - MiniAcid::init: Done");
 }
 
 void MiniAcid::reset() {
@@ -730,6 +743,29 @@ void MiniAcid::toggleMuteClap() {
   muteClap = !muteClap;
   LedManager::instance().onMuteChanged(muteClap, sceneManager_.currentScene().led);
 }
+
+void MiniAcid::setMute303(int voiceIndex, bool muted) {
+  int idx = clamp303Voice(voiceIndex);
+  if (idx == 0) mute303 = muted;
+  else mute303_2 = muted;
+  LedManager::instance().onMuteChanged(muted, sceneManager_.currentScene().led);
+}
+
+bool MiniAcid::isTrackActive(int index) const {
+  switch (index) {
+    case 0: return !mute303;
+    case 1: return !mute303_2;
+    case 2: return !muteKick;
+    case 3: return !muteSnare;
+    case 4: return !muteHat;
+    case 5: return !muteOpenHat;
+    case 6: return !muteMidTom;
+    case 7: return !muteHighTom;
+    case 8: return !muteRim;
+    case 9: return !muteClap;
+    default: return false;
+  }
+}
 void MiniAcid::toggleDelay303(int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
   if (idx == 0) {
@@ -798,10 +834,13 @@ void MiniAcid::adjust303Parameter(TB303ParamId id, int steps, int voiceIndex) {
 }
 void MiniAcid::set303Parameter(TB303ParamId id, float value, int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
-  if (idx == 0)
-    voice303.setParameter(id, value);
-  else
-    voice3032.setParameter(id, value);
+  if (idx == 0) voice303.setParameter(id, value);
+  else voice3032.setParameter(id, value);
+}
+void MiniAcid::set303ParameterNormalized(TB303ParamId id, float norm, int voiceIndex) {
+  int idx = clamp303Voice(voiceIndex);
+  if (idx == 0) voice303.setParameterNormalized(id, norm);
+  else voice3032.setParameterNormalized(id, norm);
 }
 void MiniAcid::set303PatternIndex(int voiceIndex, int patternIndex) {
   int idx = clamp303Voice(voiceIndex);
@@ -1177,47 +1216,50 @@ void MiniAcid::advanceStep() {
 
   if (kick.steps[currentStepIndex].hit && !muteKick && drumsActive) {
     drums->triggerKick(stepAccent, kick.steps[currentStepIndex].velocity);
-    if (sampleStore) samplerTrack.triggerPad(0, stepAccent ? 1.0f : 0.6f, *sampleStore);
+    if (sampleStore) samplerTrack->triggerPad(0, stepAccent ? 1.0f : 0.6f, *sampleStore);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumKick, sceneManager_.currentScene().led);
   }
   if (snare.steps[currentStepIndex].hit && !muteSnare && drumsActive) {
     drums->triggerSnare(stepAccent, snare.steps[currentStepIndex].velocity);
-    if (sampleStore) samplerTrack.triggerPad(1, stepAccent ? 1.0f : 0.6f, *sampleStore);
+    if (sampleStore) samplerTrack->triggerPad(1, stepAccent ? 1.0f : 0.6f, *sampleStore);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumSnare, sceneManager_.currentScene().led);
   }
   if (hat.steps[currentStepIndex].hit && !muteHat && drumsActive) {
     drums->triggerHat(stepAccent, hat.steps[currentStepIndex].velocity);
-    if (sampleStore) samplerTrack.triggerPad(2, stepAccent ? 1.0f : 0.6f, *sampleStore);
+    if (sampleStore) samplerTrack->triggerPad(2, stepAccent ? 1.0f : 0.6f, *sampleStore);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumHatC, sceneManager_.currentScene().led);
   }
   if (openHat.steps[currentStepIndex].hit && !muteOpenHat && drumsActive) {
     drums->triggerOpenHat(stepAccent, openHat.steps[currentStepIndex].velocity);
-    if (sampleStore) samplerTrack.triggerPad(3, stepAccent ? 1.0f : 0.6f, *sampleStore);
+    if (sampleStore) samplerTrack->triggerPad(3, stepAccent ? 1.0f : 0.6f, *sampleStore);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumHatO, sceneManager_.currentScene().led);
   }
   if (midTom.steps[currentStepIndex].hit && !muteMidTom && drumsActive) {
     drums->triggerMidTom(stepAccent, midTom.steps[currentStepIndex].velocity);
-    if (sampleStore) samplerTrack.triggerPad(4, stepAccent ? 1.0f : 0.6f, *sampleStore);
+    if (sampleStore) samplerTrack->triggerPad(4, stepAccent ? 1.0f : 0.6f, *sampleStore);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumTomM, sceneManager_.currentScene().led);
   }
   if (highTom.steps[currentStepIndex].hit && !muteHighTom && drumsActive) {
     drums->triggerHighTom(stepAccent, highTom.steps[currentStepIndex].velocity);
-    if (sampleStore) samplerTrack.triggerPad(5, stepAccent ? 1.0f : 0.6f, *sampleStore);
+    if (sampleStore) samplerTrack->triggerPad(5, stepAccent ? 1.0f : 0.6f, *sampleStore);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumTomH, sceneManager_.currentScene().led);
   }
   if (rim.steps[currentStepIndex].hit && !muteRim && drumsActive) {
     drums->triggerRim(stepAccent, rim.steps[currentStepIndex].velocity);
-    if (sampleStore) samplerTrack.triggerPad(6, stepAccent ? 1.0f : 0.6f, *sampleStore);
+    if (sampleStore) samplerTrack->triggerPad(6, stepAccent ? 1.0f : 0.6f, *sampleStore);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumRim, sceneManager_.currentScene().led);
   }
   if (clap.steps[currentStepIndex].hit && !muteClap && drumsActive) {
     drums->triggerClap(stepAccent, clap.steps[currentStepIndex].velocity);
-    if (sampleStore) samplerTrack.triggerPad(7, stepAccent ? 1.0f : 0.6f, *sampleStore);
+    if (sampleStore) samplerTrack->triggerPad(7, stepAccent ? 1.0f : 0.6f, *sampleStore);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumClap, sceneManager_.currentScene().led);
   }
 }
 
 void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
+  static int count = 0;
+  if (count++ % 100 == 0) Serial.printf("GAB: this=%p buf=%p\n", (void*)this, (void*)buffer);
+  
   if (!buffer || numSamples == 0) {
     return;
   }
@@ -1231,8 +1273,15 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       float val = sinf(2.0f * 3.14159265f * testTonePhase_) * 0.707f; 
       buffer[i] = static_cast<int16_t>(val * 32767.0f);
     }
+    
+    // Copy to debug/visualizer buffer even in test tone mode
+    size_t copyCount = std::min(numSamples, (size_t)AUDIO_BUFFER_SAMPLES);
+    for (size_t i = 0; i < copyCount; ++i) lastBuffer[i] = buffer[i];
+    lastBufferCount = copyCount;
     return;
   }
+
+
 
   updateSamplesPerStep();
   delay303.setBpm(bpmValue);
@@ -1241,18 +1290,18 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   // Update tape FX parameters ONCE per buffer (not per sample!)
   // Uses dirty flag internally to skip expensive recalculations when unchanged
   const TapeState& tapeState = sceneManager_.currentScene().tape;
-  tapeFX.applyMacro(tapeState.macro);
-  tapeFX.applyMinimalParams(tapeState.space, tapeState.movement, tapeState.groove);
-  tapeLooper.setMode(tapeState.mode);
-  tapeLooper.setSpeed(tapeState.speed);
-  tapeLooper.setVolume(tapeState.looperVolume);
+  tapeFX->applyMacro(tapeState.macro);
+  tapeFX->applyMinimalParams(tapeState.space, tapeState.movement, tapeState.groove);
+  tapeLooper->setMode(tapeState.mode);
+  tapeLooper->setSpeed(tapeState.speed);
+  tapeLooper->setVolume(tapeState.looperVolume);
 
   // Optimization: render sampler track in a block once per buffer
   // Note: this has a max 1-buffer jitter for triggers (standard for blocks)
   bool hasSampleStore = (sampleStore != nullptr);
   if (hasSampleStore) {
-    std::fill(samplerOutBuffer, samplerOutBuffer + numSamples, 0.0f);
-    samplerTrack.process(samplerOutBuffer, numSamples, *sampleStore);
+    std::fill(samplerOutBuffer.get(), samplerOutBuffer.get() + numSamples, 0.0f);
+    samplerTrack->process(samplerOutBuffer.get(), numSamples, *sampleStore);
   }
 
   for (size_t i = 0; i < numSamples; ++i) {
@@ -1362,15 +1411,15 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     }
 
     // Process through Looper (Tape layer 1) - only when not stopped
-    if (tapeLooper.mode() != TapeMode::Stop) {
+    if (tapeLooper->mode() != TapeMode::Stop) {
       float loopSample = 0.0f;
-      tapeLooper.process(sample, &loopSample);
+      tapeLooper->process(sample, &loopSample);
       sample += loopSample;
     }
 
     // Process through Tape FX (Tape layer 2: Wow/Flutter/Saturation/Age/Tone/Crush)
     if (tapeState.fxEnabled) {
-      sample = tapeFX.process(sample);
+      sample = tapeFX->process(sample);
     }
 
     // --- MASTER OUT (Clean Hi-Fi Chain) ---
@@ -1638,7 +1687,7 @@ void MiniAcid::applySceneStateFromManager() {
   // Sync Sampler
   for (int i = 0; i < 16; ++i) {
     const auto& s = sceneManager_.currentScene().samplerPads[i];
-    auto& p = samplerTrack.pad(i);
+    auto& p = samplerTrack->pad(i);
     p.id.value = s.sampleId;
     p.volume = s.volume;
     p.pitch = s.pitch;
@@ -1653,17 +1702,22 @@ void MiniAcid::applySceneStateFromManager() {
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: syncing Tape...");
   // Sync Tape - uses dirty flag so this is safe to call
   const auto& t = sceneManager_.currentScene().tape;
-  tapeFX.applyMacro(t.macro);
-  tapeLooper.setMode(t.mode);
-  tapeLooper.setSpeed(t.speed);
-  tapeLooper.setVolume(t.looperVolume);
+  if (tapeFX) tapeFX->applyMacro(t.macro);
+  if (tapeLooper) {
+    tapeLooper->setMode(t.mode);
+    tapeLooper->setSpeed(t.speed);
+    tapeLooper->setVolume(t.looperVolume);
+  }
   
+  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: applyGenreTimbre...");
   // 1. Enforce Genre Timbre BASE (overwrites scene params to ensure genre identity)
   genreManager_.applyGenreTimbre(*this);
   
+  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: resetTextureBiasTracking...");
   // 2. Reset bias tracking so subsequent texture application is fresh delta from new base
   genreManager_.resetTextureBiasTracking();
   
+  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: applyTexture...");
   // 3. Apply texture (delta bias + FX)
   genreManager_.applyTexture(*this);
   

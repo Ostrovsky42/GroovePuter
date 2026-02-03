@@ -66,7 +66,7 @@ class TapePage::SliderComponent : public FocusableComponent {
 
 class TapePage::ModeComponent : public FocusableComponent {
  public:
-  ModeComponent(MiniAcid& synth, AudioGuard& guard) : synth_(synth), guard_(guard) {}
+  ModeComponent(MiniAcid& synth, AudioGuard guard) : synth_(synth), guard_(guard) {}
 
   void draw(IGfx& gfx) override {
     const Rect& bounds = getBoundaries();
@@ -96,18 +96,18 @@ class TapePage::ModeComponent : public FocusableComponent {
     guard_([this](){
       TapeState& tape = synth_.sceneManager().currentScene().tape;
       tape.mode = nextTapeMode(tape.mode);
-      synth_.tapeLooper.setMode(tape.mode);
+      synth_.tapeLooper->setMode(tape.mode);
     });
   }
 
  private:
   MiniAcid& synth_;
-  AudioGuard& guard_;
+  AudioGuard guard_;
 };
 
 class TapePage::PresetComponent : public FocusableComponent {
  public:
-  PresetComponent(MiniAcid& synth, AudioGuard& guard) : synth_(synth), guard_(guard) {}
+  PresetComponent(MiniAcid& synth, AudioGuard guard) : synth_(synth), guard_(guard) {}
 
   void draw(IGfx& gfx) override {
     const Rect& bounds = getBoundaries();
@@ -145,16 +145,16 @@ class TapePage::PresetComponent : public FocusableComponent {
       } else {
         loadTapePreset(tape.preset, tape.macro);
       }
-      synth_.tapeFX.applyMacro(tape.macro);
+      synth_.tapeFX->applyMacro(tape.macro);
     });
   }
 
  private:
   MiniAcid& synth_;
-  AudioGuard& guard_;
+  AudioGuard guard_;
 };
 
-TapePage::TapePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard)
+TapePage::TapePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     : gfx_(gfx), mini_acid_(mini_acid), audio_guard_(audio_guard) {}
 
 void TapePage::setBoundaries(const Rect& rect) {
@@ -174,7 +174,7 @@ void TapePage::initComponents() {
         case 3: macro.tone = val; break;
         case 4: macro.crush = val; break;
       }
-      mini_acid_.tapeFX.applyMacro(macro);
+      mini_acid_.tapeFX->applyMacro(macro);
     });
   };
 
@@ -241,9 +241,9 @@ void TapePage::draw(IGfx& gfx) {
   gfx.drawText(x + 28, y, tapeSpeedName(tape.speed));
   
   // Loop length
-  if (mini_acid_.tapeLooper.hasLoop()) {
+  if (mini_acid_.tapeLooper->hasLoop()) {
     char buf[16];
-    snprintf(buf, sizeof(buf), "%.1fs", mini_acid_.tapeLooper.loopLengthSeconds());
+    snprintf(buf, sizeof(buf), "%.1fs", mini_acid_.tapeLooper->loopLengthSeconds());
     gfx.setTextColor(COLOR_LABEL);
     gfx.drawText(x + 70, y, "LEN:");
     gfx.setTextColor(COLOR_WHITE);
@@ -316,32 +316,32 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
       audio_guard_([this](){
         TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
         tape.speed = 0; // 0.5x
-        mini_acid_.tapeLooper.setSpeed(tape.speed);
+        mini_acid_.tapeLooper->setSpeed(tape.speed);
       });
       return true;
     case '2':
       audio_guard_([this](){
         TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
         tape.speed = 1; // 1.0x
-        mini_acid_.tapeLooper.setSpeed(tape.speed);
+        mini_acid_.tapeLooper->setSpeed(tape.speed);
       });
       return true;
     case '3':
       audio_guard_([this](){
         TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
         tape.speed = 2; // 2.0x
-        mini_acid_.tapeLooper.setSpeed(tape.speed);
+        mini_acid_.tapeLooper->setSpeed(tape.speed);
       });
       return true;
     case '\n': // Enter = stutter (TODO: hold detection)
       audio_guard_([this](){
-        mini_acid_.tapeLooper.setStutter(true);
+        mini_acid_.tapeLooper->setStutter(true);
       });
       return true;
     case '\b': // Backspace/Del = eject
     case 0x7F:
       audio_guard_([this](){
-        mini_acid_.tapeLooper.eject();
+        mini_acid_.tapeLooper->eject();
         TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
         tape.mode = TapeMode::Stop;
         tape.fxEnabled = false;
@@ -349,7 +349,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
       return true;
     case ' ':
       audio_guard_([this](){
-        mini_acid_.tapeLooper.clear();
+        mini_acid_.tapeLooper->clear();
       });
       return true;
   }

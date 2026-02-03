@@ -38,6 +38,7 @@ public:
   float process();
   const Parameter& parameter(TB303ParamId id) const;
   void setParameter(TB303ParamId id, float value);
+  void setParameterNormalized(TB303ParamId id, float norm);
   void adjustParameter(TB303ParamId id, int steps);
   float parameterValue(TB303ParamId id) const;
   int oscillatorIndex() const;
@@ -58,6 +59,8 @@ private:
   float svfProcess(float input);
   float applyLoFiDegradation(float input);
   void initParameters();
+  void updateFilterModel();
+
 
   static constexpr int kSuperSawOscCount = 6;
 
@@ -94,6 +97,7 @@ private:
   float subLPF_prev_ = 0.0f;
   float noiseAmount_ = 0.0f;
 
+  int lastFilterType_ = -1;
   struct LowShelfEQ {
     float cutoff = 0.01f;
     float boost = 1.25f; // ~2dB

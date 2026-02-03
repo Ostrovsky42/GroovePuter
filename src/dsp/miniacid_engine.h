@@ -152,6 +152,7 @@ public:
   bool createNewSceneWithName(const std::string& name);
 
   void toggleMute303(int voiceIndex = 0);
+  void setMute303(int voiceIndex, bool muted);
   void toggleMuteKick();
   void toggleMuteSnare();
   void toggleMuteHat();
@@ -160,6 +161,8 @@ public:
   void toggleMuteHighTom();
   void toggleMuteRim();
   void toggleMuteClap();
+  
+  bool isTrackActive(int index) const; // 0=303A, 1=303B, 2=KICK, 3=SNARE, 4=HAT, etc.
   void toggleDelay303(int voiceIndex = 0);
   void toggleDistortion303(int voiceIndex = 0);
   void set303DelayEnabled(int voiceIndex, bool enabled);
@@ -168,8 +171,9 @@ public:
   void shiftDrumPatternIndex(int delta);
   void setDrumBankIndex(int bankIndex);
   void adjust303Parameter(TB303ParamId id, int steps, int voiceIndex = 0);
-  void set303Parameter(TB303ParamId id, float value, int voiceIndex = 0);
-  void set303PatternIndex(int voiceIndex, int patternIndex);
+  void set303Parameter(TB303ParamId id, float value, int voice_index = 0);
+  void set303ParameterNormalized(TB303ParamId id, float norm, int voice_index = 0);
+  void set303PatternIndex(int voice_index, int patternIndex);
   void shift303PatternIndex(int voiceIndex, int delta);
   void set303BankIndex(int voiceIndex, int bankIndex);
   void adjust303StepNote(int voiceIndex, int stepIndex, int semitoneDelta);
@@ -186,6 +190,11 @@ public:
   void setGrooveboxMode(GrooveboxMode mode);
   GrooveboxMode grooveboxMode() const;
   void toggleGrooveboxMode();
+
+  // UI Convenience
+  int currentScene() const { return current303BankIndex(0); }
+  bool isRecording() const { return sceneManager().currentScene().tape.mode == TapeMode::Rec; }
+  float swing() const { return genreManager().getGenerativeParams().swingAmount; }
 
   GrooveboxModeManager& modeManager() { return modeManager_; }
   const GrooveboxModeManager& modeManager() const { return modeManager_; }
@@ -321,8 +330,8 @@ private:
   TempoDelay delay3032;
   TubeDistortion distortion303;
   TubeDistortion distortion3032;
-  int16_t lastBuffer[AUDIO_BUFFER_SAMPLES];
-  size_t lastBufferCount;
+  volatile int16_t lastBuffer[AUDIO_BUFFER_SAMPLES];
+  volatile size_t lastBufferCount;
 
   void loadSceneFromStorage();
   void saveSceneToStorage();
@@ -335,11 +344,11 @@ public:
   // Public access to stats and sample bank for now
   PerfStats perfStats;
   ISampleStore* sampleStore = nullptr;
-  float samplerOutBuffer[AUDIO_BUFFER_SAMPLES];
+  std::unique_ptr<float[]> samplerOutBuffer;
   SampleIndex sampleIndex;
-  DrumSamplerTrack samplerTrack;
-  TapeFX tapeFX;
-  TapeLooper tapeLooper;
+  std::unique_ptr<DrumSamplerTrack> samplerTrack;
+  std::unique_ptr<TapeFX> tapeFX;
+  std::unique_ptr<TapeLooper> tapeLooper;
   
   // Scene manager accessor for UI tape state
   SceneManager& sceneManager() { return sceneManager_; }

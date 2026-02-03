@@ -280,6 +280,40 @@ void SDLDisplay::drawRect(int x, int y, int w, int h, IGfxColor color) {
   SDL_RenderDrawRect(renderer_, &r);
 }
 
+void SDLDisplay::fillCircle(int x, int y, int radius, IGfxColor color) {
+  if (!renderer_ || radius <= 0) return;
+  setDrawColor(renderer_, color);
+
+  // Midpoint circle algorithm for filled circle
+  // We draw horizontal lines between the points on the circumference
+  int cx = x;
+  int cy = y;
+  int xo = radius;
+  int yo = 0;
+  int err = 0;
+
+  auto drawHLine = [&](int x1, int x2, int y) {
+      if (x1 > x2) std::swap(x1, x2);
+      SDL_RenderDrawLine(renderer_, x1, y, x2, y);
+  };
+
+  while (xo >= yo) {
+      drawHLine(cx - xo, cx + xo, cy + yo);
+      drawHLine(cx - xo, cx + xo, cy - yo);
+      drawHLine(cx - yo, cx + yo, cy + xo);
+      drawHLine(cx - yo, cx + yo, cy - xo);
+
+      if (err <= 0) {
+          yo += 1;
+          err += 2 * yo + 1;
+      }
+      if (err > 0) {
+          xo -= 1;
+          err -= 2 * xo + 1;
+      }
+  }
+}
+
 void SDLDisplay::drawCircle(int x, int y, int r, IGfxColor color) {
   if (!renderer_) return;
   uint32_t packed = color.color24();
@@ -354,9 +388,9 @@ void SDLDisplay::drawKnobFace(int cx, int cy, int radius, IGfxColor ringColor,
   drawImage(cx - cache.radius, cy - cache.radius, cache.pixels.data(), size, size);
 }
 
-void SDLDisplay::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
+void SDLDisplay::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, IGfxColor color) {
   if (!renderer_) return;
-  setDrawColor(renderer_, text_color_);
+  setDrawColor(renderer_, color);
   SDL_RenderDrawLine(renderer_, x0, y0, x1, y1);
 }
 

@@ -7,11 +7,16 @@
 
 class TapePage : public IPage {
  public:
-  TapePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard);
+  TapePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string& getTitle() const override;
   void setBoundaries(const Rect& rect) override;
+  template <typename F>
+  void withAudioGuard(F&& fn) {
+      if (audio_guard_) audio_guard_(std::forward<F>(fn));
+      else fn();
+  }
 
  private:
   class SliderComponent;
@@ -23,7 +28,7 @@ class TapePage : public IPage {
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;
-  AudioGuard& audio_guard_;
+  AudioGuard audio_guard_;
   
   bool initialized_ = false;
   
