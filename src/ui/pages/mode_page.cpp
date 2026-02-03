@@ -44,18 +44,18 @@ void ModePage::draw(IGfx& gfx) {
         gfx.drawText(x + 10, infoY + 6, "CHARACTER: AGGRESSIVE");
         
         gfx.setTextColor(kAcidConfig.accentColor);
-        gfx.drawText(x + 10, infoY + 20, "FOCUS: FREAK . RES . ACCENT");
+       // gfx.drawText(x + 10, infoY + 20, "FOCUS: FREAK . RES . ACCENT");
     } else {
         gfx.drawText(x + 10, infoY + 6, "CHARACTER: HYPNOTIC");
         
         gfx.setTextColor(kMinimalConfig.accentColor);
-        gfx.drawText(x + 10, infoY + 20, "FOCUS: TIME . SPACE . DUB");
+       // gfx.drawText(x + 10, infoY + 20, "FOCUS: TIME . SPACE . DUB");
     }
 
     // Hints
     int hintY = y + 75;  // Reduced from 115
     gfx.setTextColor(COLOR_LABEL);
-    gfx.drawText(x + 10, hintY, "[ENTER] Toggle   [A] Apply to 303A");
+    //gfx.drawText(x + 10, hintY, "[ENTER] Toggle   [A] Apply to 303A");
     gfx.drawText(x + 10, hintY + 10, "[SPACE] Preview  [B] Apply to 303B");
 }
 

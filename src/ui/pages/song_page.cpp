@@ -100,12 +100,12 @@ int SongPage::cursorRow() const {
 int SongPage::cursorTrack() const {
   int track = cursor_track_;
   if (track < 0) track = 0;
-  if (track > 4) track = 4;
+  if (track > 5) track = 5;
   return track;
 }
 
-bool SongPage::cursorOnModeButton() const { return cursorTrack() == 4; }
-bool SongPage::cursorOnPlayheadLabel() const { return cursorTrack() == 3; }
+bool SongPage::cursorOnModeButton() const { return cursorTrack() == 5; }
+bool SongPage::cursorOnPlayheadLabel() const { return cursorTrack() == 4; }
 
 void SongPage::startSelection() {
   has_selection_ = true;
@@ -160,7 +160,7 @@ void SongPage::moveCursorHorizontal(int delta, bool extend_selection) {
   int track = cursorTrack();
   track += delta;
   if (track < 0) track = 0;
-  if (track > 4) track = 4;
+  if (track > 5) track = 5;
   cursor_track_ = track;
   syncSongPositionToCursor();
   if (extend_selection) {
@@ -200,8 +200,9 @@ SongTrack SongPage::trackForColumn(int col, bool& valid) const {
   if (col == 0) return SongTrack::SynthA;
   if (col == 1) return SongTrack::SynthB;
   if (col == 2) return SongTrack::Drums;
+  if (col == 3) return SongTrack::Voice;
   valid = false;
-  return SongTrack::Drums;
+  return SongTrack::Voice;
 }
 
 int SongPage::bankIndexForTrack(SongTrack track) const {
@@ -370,9 +371,9 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
           int min_row, max_row, min_track, max_track;
           getSelectionBounds(min_row, max_row, min_track, max_track);
           
-          // Only copy valid track columns (0-2)
-          if (max_track > 2) max_track = 2;
-          if (min_track > 2) return false;
+          // Only copy valid track columns (0-3)
+          if (max_track > 3) max_track = 3;
+          if (min_track > 3) return false;
           
           int rows = max_row - min_row + 1;
           int tracks = max_track - min_track + 1;
@@ -406,9 +407,9 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
           int min_row, max_row, min_track, max_track;
           getSelectionBounds(min_row, max_row, min_track, max_track);
           
-          // Only copy/clear valid track columns (0-2)
-          if (max_track > 2) max_track = 2;
-          if (min_track > 2) return false;
+          // Only copy/clear valid track columns (0-3)
+          if (max_track > 3) max_track = 3;
+          if (min_track > 3) return false;
           
           int rows = max_row - min_row + 1;
           int tracks = max_track - min_track + 1;
@@ -466,7 +467,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
           // Paste area
           int start_row = cursorRow();
           int start_track = cursorTrack();
-          if (start_track > 2) return false;
+          if (start_track > 3) return false;
           
           // Save old patterns for undo
           std::vector<int> old_patterns;
@@ -474,7 +475,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
           int max_row = start_row + g_song_area_clipboard.rows - 1;
           int min_track = start_track;
           int max_track = start_track + g_song_area_clipboard.tracks - 1;
-          if (max_track > 2) max_track = 2;
+          if (max_track > 3) max_track = 3;
           
           for (int r = min_row; r <= max_row; ++r) {
             for (int t = min_track; t <= max_track; ++t) {
@@ -495,7 +496,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
               for (int t = 0; t < g_song_area_clipboard.tracks; ++t) {
                 int target_row = start_row + r;
                 int target_track = start_track + t;
-                if (target_row >= Song::kMaxPositions || target_track > 2) {
+                if (target_row >= Song::kMaxPositions || target_track > 3) {
                   ++idx;
                   continue;
                 }
@@ -685,7 +686,7 @@ void SongPage::draw(IGfx& gfx) {
   int pos_col_w = 20;
   int spacing = 2;  // Reduced from 3px to 2px
   int modeBtnW = 55;  // Reduced from 70px to 55px
-  int track_col_w = (w - pos_col_w - spacing * 5 - modeBtnW) / 3;
+  int track_col_w = (w - pos_col_w - spacing * 6 - modeBtnW) / 4;
   if (track_col_w < 20) track_col_w = 20;
 
   gfx.setTextColor(COLOR_LABEL);
@@ -693,9 +694,10 @@ void SongPage::draw(IGfx& gfx) {
   gfx.drawText(x + pos_col_w + spacing, body_y, "303A");
   gfx.drawText(x + pos_col_w + spacing + track_col_w, body_y, "303B");
   gfx.drawText(x + pos_col_w + spacing + track_col_w * 2, body_y, "Drums");
+  gfx.drawText(x + pos_col_w + spacing + track_col_w * 3, body_y, "Voice");
   char lenBuf[32];
-  snprintf(lenBuf, sizeof(lenBuf), "PLAYHD %d:%d", playhead + 1, song_len);
-  int lenX = x + pos_col_w + spacing + track_col_w * 3 + spacing + 10;
+  snprintf(lenBuf, sizeof(lenBuf), "PLYHD %d:%d", playhead + 1, song_len);
+  int lenX = x + pos_col_w + spacing + track_col_w * 4 + spacing + 5;
   int lenW = textWidth(gfx, lenBuf);
   bool playheadSelected = cursorOnPlayheadLabel();
   if (playheadSelected) {
@@ -758,13 +760,14 @@ void SongPage::draw(IGfx& gfx) {
 
     for (int t = 0; t < SongPosition::kTrackCount; ++t) {
       int col_x = x + pos_col_w + spacing + t * (track_col_w + spacing);
-      int patternIdx = mini_acid_.songPatternAt(row_idx,
-                        t == 0 ? SongTrack::SynthA : (t == 1 ? SongTrack::SynthB : SongTrack::Drums));
+      bool trackValid = false;
+      SongTrack song_track = trackForColumn(t, trackValid);
+      int patternIdx = trackValid ? mini_acid_.songPatternAt(row_idx, song_track) : -1;
       bool isSelected = isCursorRow && cursorTrack() == t;
       bool inSelection = has_selection_ && 
                         row_idx >= sel_min_row && row_idx <= sel_max_row &&
                         t >= sel_min_track && t <= sel_max_track &&
-                        t <= 2; // Only valid track columns
+                        t <= 3; // Only valid track columns
       
       if (inSelection) {
         // Draw selection highlight with a filled background
@@ -778,15 +781,26 @@ void SongPage::draw(IGfx& gfx) {
         snprintf(label, sizeof(label), "--");
         gfx.setTextColor(COLOR_LABEL);
       } else {
-        int bankIdx = songPatternBank(patternIdx);
-        int bankPattern = songPatternIndexInBank(patternIdx);
-        if (bankIdx < 0 || bankIdx >= kBankCount || bankPattern < 0) {
-          snprintf(label, sizeof(label), "--");
-          gfx.setTextColor(COLOR_LABEL);
+        if (song_track == SongTrack::Voice) {
+          int phraseIdx = patternIdx;
+          if (phraseIdx < 16) {
+             snprintf(label, sizeof(label), "B%d", phraseIdx + 1);
+             gfx.setTextColor(IGfxColor(0x00CED1)); // Voice color
+          } else {
+             snprintf(label, sizeof(label), "C%d", phraseIdx - 16 + 1);
+             gfx.setTextColor(IGfxColor(0x00FF7F)); // Custom color
+          }
         } else {
-          char bankLetter = static_cast<char>('A' + bankIdx);
-          snprintf(label, sizeof(label), "%c%d", bankLetter, bankPattern + 1);
-          gfx.setTextColor(COLOR_WHITE);
+          int bankIdx = songPatternBank(patternIdx);
+          int bankPattern = songPatternIndexInBank(patternIdx);
+          if (bankIdx < 0 || bankIdx >= kBankCount || bankPattern < 0) {
+            snprintf(label, sizeof(label), "--");
+            gfx.setTextColor(COLOR_LABEL);
+          } else {
+            char bankLetter = static_cast<char>('A' + bankIdx);
+            snprintf(label, sizeof(label), "%c%d", bankLetter, bankPattern + 1);
+            gfx.setTextColor(COLOR_WHITE);
+          }
         }
       }
       int tw = textWidth(gfx, label);

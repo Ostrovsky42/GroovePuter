@@ -288,7 +288,16 @@ void MiniAcid::init() {
 
   LOG_PRINTLN("  - MiniAcid::init: Memory strategy applied");
 
+  // Replaces existing default params initialization
   params[static_cast<int>(MiniAcidParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.0f, 0.6f, 1.0f / 64);
+  params[static_cast<int>(MiniAcidParamId::VoicePitch)] = Parameter("v_pch", "Hz", 60.0f, 400.0f, 150.0f, 1.0f); // Was 120
+  params[static_cast<int>(MiniAcidParamId::VoiceSpeed)] = Parameter("v_spd", "x", 0.5f, 2.0f, 1.2f, 0.1f);   // Was 1.0
+  params[static_cast<int>(MiniAcidParamId::VoiceRobotness)] = Parameter("v_rob", "%", 0.0f, 1.0f, 0.7f, 0.05f); // Was 0.8
+  params[static_cast<int>(MiniAcidParamId::VoiceVolume)] = Parameter("v_vol", "%", 0.0f, 1.0f, 0.8f, 0.05f); // Was 1.0
+  
+  // Initialize Compressor
+  compressor_.init(0.3f, 4.0f, 0.3f, 0.05f);
+  duckingLevel_ = 0.0f;
 
   if (sceneStorage_) {
     LOG_PRINTLN("  - MiniAcid::init: Initializing scene storage...");
@@ -1034,6 +1043,15 @@ void MiniAcid::applySongPositionSelection() {
   int patA = sceneManager_.songPattern(pos, SongTrack::SynthA);
   int patB = sceneManager_.songPattern(pos, SongTrack::SynthB);
   int patD = sceneManager_.songPattern(pos, SongTrack::Drums);
+  int patV = sceneManager_.songPattern(pos, SongTrack::Voice);
+
+  if (playing && patV >= 0) {
+    if (patV < 16) {
+      speakPhrase(patV);
+    } else {
+      speakCustomPhrase(patV - 16);
+    }
+  }
 
   if (patA < 0) {
     sceneManager_.setCurrentBankIndex(1, patternModeSynthBankIndex_[0]);
@@ -1363,8 +1381,11 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     }
 
     float sample = 0.0f;
+    float sample303 = 0.0f;
+    float drumsMix = 0.0f;
+    float samplerSample = 0.0f;
+
     if (playing) {
-      float sample303 = 0.0f;
       // 303 Voice 1
       if (!mute303) {
         float v = voice303.process() * 0.5f;  // Hector's original gain
@@ -1384,7 +1405,6 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       }
 
       // Virtual Analog Drums (with proper gain staging)
-      float drumsMix = 0.0f;
       if (!muteKick)    drumsMix += drums->processKick();
       if (!muteSnare)   drumsMix += drums->processSnare();
       if (!muteHat)     drumsMix += drums->processHat();
@@ -1400,23 +1420,53 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       
       sample += drumsMix;
       sample += sample303;
+    }
 
-      // Add pre-rendered sampler audio
-      if (hasSampleStore) {
-        sample += samplerOutBuffer[i];
-      }
+    // Add pre-rendered sampler audio (always active for UI preview)
+    if (hasSampleStore) {
+      samplerSample = samplerOutBuffer[i];
+      sample += samplerSample;
+    }
+    
+    // ═══════════════════════════════════════════════════════════
+    // Vocal Synth (Formant-based robotic speech)
+    // ═══════════════════════════════════════════════════════════
+    // SIDECHAIN DUCKING
+    // ═══════════════════════════════════════════════════════════
+    bool isSpeaking = (!voiceTrackMuted_ && vocalSynth_.isActive() && vocalSynth_.isSpeaking());
+    if (isSpeaking) {
+      duckingLevel_ += (1.0f - duckingLevel_) * 0.05f; // Attack
+    } else {
+      duckingLevel_ += (0.0f - duckingLevel_) * 0.02f; // Release
+    }
+    float musicGain = 1.0f - (duckingLevel_ * 0.6f); // Duck by up to 60%
+    
+    sample *= musicGain;
+
+    // ═══════════════════════════════════════════════════════════
+    // VOCAL SYNTH & COMPRESSION
+    // ═══════════════════════════════════════════════════════════
+    float vocalSample = 0.0f;
+    if (!voiceTrackMuted_ && vocalSynth_.isActive()) {
+      vocalSample = vocalSynth_.process();
       
-      // Track per-source peaks for diagnostics
-      if (AudioDiagnostics::instance().isEnabled()) {
-        AudioDiagnostics::instance().trackSource(
-          sample303, 
-          drumsMix,  // Now tracking the gain-staged drums
-          hasSampleStore ? samplerOutBuffer[i] : 0.0f,
-          0.0f,  // delay already in sample303
-          0.0f,  // looper tracked below
-          0.0f   // tapeFX tracked below
-        );
-      }
+      // Apply Compressor
+      vocalSample = compressor_.process(vocalSample);
+      
+      sample += vocalSample * 0.9f;  // Mix punchy vocal
+    }
+    
+    // Track per-source peaks for diagnostics
+    if (AudioDiagnostics::instance().isEnabled()) {
+      AudioDiagnostics::instance().trackSource(
+        sample303, 
+        drumsMix, 
+        samplerSample,
+        0.0f, // delay (already in sample303)
+        vocalSample,
+        0.0f, // looper tracked below
+        0.0f  // tapeFX tracked below
+      );
     }
 
     // Process through Looper (Tape layer 1) - only when not stopped
@@ -1498,6 +1548,12 @@ void MiniAcid::randomize303Pattern(int voiceIndex) {
 
 void MiniAcid::setParameter(MiniAcidParamId id, float value) {
   params[static_cast<int>(id)].setValue(value);
+  
+  // Update real-time DSP parameters for voice
+  if (id == MiniAcidParamId::VoicePitch) vocalSynth_.setPitch(value);
+  else if (id == MiniAcidParamId::VoiceSpeed) vocalSynth_.setSpeed(value);
+  else if (id == MiniAcidParamId::VoiceRobotness) vocalSynth_.setRobotness(value);
+  else if (id == MiniAcidParamId::VoiceVolume) vocalSynth_.setVolume(value);
 }
 
 void MiniAcid::adjustParameter(MiniAcidParamId id, int steps) {
@@ -1725,6 +1781,22 @@ void MiniAcid::applySceneStateFromManager() {
     tapeLooper->setSpeed(t.speed);
     tapeLooper->setVolume(t.looperVolume);
   }
+
+  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: syncing Voice...");
+  const auto& v = sceneManager_.currentScene().vocal;
+  params[static_cast<int>(MiniAcidParamId::VoicePitch)].setValue(v.pitch);
+  params[static_cast<int>(MiniAcidParamId::VoiceSpeed)].setValue(v.speed);
+  params[static_cast<int>(MiniAcidParamId::VoiceRobotness)].setValue(v.robotness);
+  params[static_cast<int>(MiniAcidParamId::VoiceVolume)].setValue(v.volume);
+
+  vocalSynth_.setPitch(v.pitch);
+  vocalSynth_.setSpeed(v.speed);
+  vocalSynth_.setRobotness(v.robotness);
+  vocalSynth_.setVolume(v.volume);
+
+  for (int i = 0; i < Scene::kMaxCustomPhrases; ++i) {
+    vocalSynth_.setCustomPhrase(i, sceneManager_.currentScene().customPhrases[i]);
+  }
   
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: applyGenreTimbre...");
   // 1. Enforce Genre Timbre BASE (overwrites scene params to ensure genre identity)
@@ -1782,7 +1854,21 @@ void MiniAcid::syncSceneStateToManager() {
   paramsB.envDecay = voice3032.parameterValue(TB303ParamId::EnvDecay);
   paramsB.oscType = voice3032.oscillatorIndex();
   sceneManager_.setSynthParameters(1, paramsB);
+
+  // Save voice parameters to scene
+  auto& v = sceneManager_.currentScene().vocal;
+  v.pitch = params[static_cast<int>(MiniAcidParamId::VoicePitch)].value();
+  v.speed = params[static_cast<int>(MiniAcidParamId::VoiceSpeed)].value();
+  v.robotness = params[static_cast<int>(MiniAcidParamId::VoiceRobotness)].value();
+  v.volume = params[static_cast<int>(MiniAcidParamId::VoiceVolume)].value();
+
+  // Sync Voice Custom Phrases back to scene
+  for (int i = 0; i < Scene::kMaxCustomPhrases; ++i) {
+    std::strncpy(sceneManager_.currentScene().customPhrases[i], vocalSynth_.getCustomPhrase(i), Scene::kMaxPhraseLength - 1);
+    sceneManager_.currentScene().customPhrases[i][Scene::kMaxPhraseLength - 1] = '\0';
+  }
 }
+
 
 
 int dorian_intervals[7] = {0, 2, 3, 5, 7, 9, 10};
@@ -1897,6 +1983,58 @@ void MiniAcid::setTestTone(bool enabled) {
     testTonePhase_ = 0.0f;
   }
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// Vocal Synth Implementation
+// ════════════════════════════════════════════════════════════════════════════
+
+// Built-in phrases for quick announcements
+static const char* const BUILTIN_PHRASES[] = {
+    "Acid",           // 0
+    "Techno",         // 1
+    "Minimal",        // 2
+    "Pattern One",    // 3
+    "Pattern Two",    // 4
+    "Ready",          // 5
+    "Go",             // 6
+    "Stop",           // 7
+    "Recording",      // 8
+    "Saved",          // 9
+    "Error",          // 10
+    "BPM",            // 11
+    "Play",           // 12
+    "Mute",           // 13
+    "Welcome",        // 14
+    "Goodbye",        // 15
+};
+static const int NUM_BUILTIN_PHRASES = sizeof(BUILTIN_PHRASES) / sizeof(BUILTIN_PHRASES[0]);
+
+void MiniAcid::speak(const char* text) {
+    vocalSynth_.speak(text);
+}
+
+void MiniAcid::speakPhrase(int phraseIndex) {
+    if (phraseIndex >= 0 && phraseIndex < NUM_BUILTIN_PHRASES) {
+        vocalSynth_.speak(BUILTIN_PHRASES[phraseIndex]);
+    }
+}
+
+void MiniAcid::speakCustomPhrase(int index) {
+    vocalSynth_.speakCustomPhrase(index);
+}
+
+void MiniAcid::stopSpeaking() {
+    vocalSynth_.stop();
+}
+
+void MiniAcid::toggleVoiceTrackMute() {
+    voiceTrackMuted_ = !voiceTrackMuted_;
+}
+
+void MiniAcid::setVoiceTrackMute(bool muted) {
+    voiceTrackMuted_ = muted;
+}
+
 /*
 void MiniAcid::toggleAudioDiag() {
   bool enabled = AudioDiagnostics::instance().isEnabled();

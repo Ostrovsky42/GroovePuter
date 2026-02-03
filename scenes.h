@@ -90,11 +90,12 @@ enum class SongTrack : uint8_t {
   SynthA = 0,
   SynthB = 1,
   Drums = 2,
+  Voice = 3,
 };
 
 struct SongPosition {
-  static constexpr int kTrackCount = 3;
-  int8_t patterns[kTrackCount] = {-1, -1, -1};
+  static constexpr int kTrackCount = 4;
+  int8_t patterns[kTrackCount] = {-1, -1, -1, -1};
 };
 
 struct Song {
@@ -239,6 +240,13 @@ struct GeneratorParams {
     ScaleType scale = DORIAN;         
 };
 
+struct VocalSettings {
+    float pitch = 120.0f;
+    float speed = 1.0f;
+    float robotness = 0.8f;
+    float volume = 1.0f;
+};
+
 struct Scene {
   Bank<DrumPatternSet> drumBanks[kBankCount];
   Bank<SynthPattern> synthABanks[kBankCount];
@@ -249,6 +257,12 @@ struct Scene {
   GrooveboxMode mode = GrooveboxMode::Acid;
   float masterVolume = 0.6f;  // Default volume
   GeneratorParams generatorParams; 
+  VocalSettings vocal;
+  
+  static constexpr int kMaxCustomPhrases = 16;
+  static constexpr int kMaxPhraseLength = 32;
+  char customPhrases[kMaxCustomPhrases][kMaxPhraseLength];
+    
   LedSettings led;
 };
 
@@ -324,6 +338,9 @@ private:
     Song,
     SongPositions,
     SongPosition,
+    CustomPhrases,
+    CustomPhrase,
+    Vocal,
     Unknown,
   };
 
@@ -632,6 +649,8 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
     if (!writeInt(scene_->song.positions[i].patterns[1])) return false;
     if (!writeLiteral(",\"drums\":")) return false;
     if (!writeInt(scene_->song.positions[i].patterns[2])) return false;
+    if (!writeLiteral(",\"voice\":")) return false;
+    if (!writeInt(scene_->song.positions[i].patterns[3])) return false;
     if (!writeChar('}')) return false;
   }
   if (!writeChar(']')) return false;
@@ -764,8 +783,24 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeInt(scene_->led.brightness)) return false;
   if (!writeLiteral(",\"fls\":")) return false;
   if (!writeInt(scene_->led.flashMs)) return false;
+  if (!writeLiteral(",\"vocal\":{\"pch\":")) return false;
+  if (!writeFloat(scene_->vocal.pitch)) return false;
+  if (!writeLiteral(",\"spd\":")) return false;
+  if (!writeFloat(scene_->vocal.speed)) return false;
+  if (!writeLiteral(",\"rob\":")) return false;
+  if (!writeFloat(scene_->vocal.robotness)) return false;
+  if (!writeLiteral(",\"vol\":")) return false;
+  if (!writeFloat(scene_->vocal.volume)) return false;
   if (!writeLiteral("},\"mode\":")) return false;
   if (!writeInt(static_cast<int>(mode_))) return false;
+  
+  if (!writeLiteral(",\"customPhrases\":[")) return false;
+  for (int i = 0; i < Scene::kMaxCustomPhrases; ++i) {
+      if (i > 0 && !writeChar(',')) return false;
+      if (!writeString(scene_->customPhrases[i])) return false;
+  }
+  if (!writeChar(']')) return false;
+  
   return writeLiteral("}}");
 }
 

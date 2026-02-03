@@ -21,6 +21,7 @@ struct AudioDiag {
   float peakDelay = 0.0f;
   float peakLooper = 0.0f;
   float peakTapeFX = 0.0f;
+  float peakVoice = 0.0f;
 };
 
 class AudioDiagnostics {
@@ -56,10 +57,11 @@ public:
   
   // Track individual source peaks
   inline void trackSource(float val303, float valDrums, float valSampler, 
-                          float valDelay, float valLooper, float valTapeFX) {
+                          float valDelay, float valVoice, float valLooper, float valTapeFX) {
     peakUp(diag_.peak303, val303);
     peakUp(diag_.peakDrums, valDrums);
     peakUp(diag_.peakSampler, valSampler);
+    peakUp(diag_.peakVoice, valVoice);
     peakUp(diag_.peakDelay, valDelay);
     peakUp(diag_.peakLooper, valLooper);
     peakUp(diag_.peakTapeFX, valTapeFX);
@@ -74,7 +76,7 @@ public:
     
     float mean = diag_.mean / static_cast<float>(diag_.frames);
     
-    Serial.printf("[AUD] pre:%.3f clip:%u clk:%u post:%.3f dc:%.4f nan:%u | 303:%.2f dr:%.2f smp:%.2f dly:%.2f lp:%.2f fx:%.2f\n",
+    Serial.printf("[AUD] pre:%.3f clip:%u clk:%u post:%.3f dc:%.4f nan:%u | 303:%.2f dr:%.2f smp:%.2f voc:%.2f dly:%.2f lp:%.2f fx:%.2f\n",
                   diag_.peakPre, 
                   static_cast<unsigned>(diag_.clipPre),
                   static_cast<unsigned>(diag_.clickCount),
@@ -84,6 +86,7 @@ public:
                   diag_.peak303,
                   diag_.peakDrums,
                   diag_.peakSampler,
+                  diag_.peakVoice,
                   diag_.peakDelay,
                   diag_.peakLooper,
                   diag_.peakTapeFX);

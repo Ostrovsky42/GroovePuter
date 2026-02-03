@@ -14,7 +14,8 @@
 #include "pages/settings_page.h"
 #include "pages/project_page.h"
 #include "pages/tb303_params_page.h"
-#include "pages/waveform_page.h"
+#include "pages/song_page.h"
+#include "pages/voice_page.h"
 #include "pages/help_dialog.h"
 #include "ui_colors.h"
 #include "ui_input.h"
@@ -34,7 +35,7 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid)
 
     // Initialize Cassette Skin as the main frame/theme
     Serial.println("MiniAcidDisplay: init skin");
-    skin_ = std::make_unique<CassetteSkin>(gfx);
+    skin_ = std::make_unique<CassetteSkin>(gfx, CassetteTheme::WarmTape);
     
     // Register the pages in order
     Serial.println("MiniAcidDisplay: reg pages...");
@@ -46,11 +47,11 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid)
     pages_.push_back(std::make_unique<PatternEditPage>(gfx, mini_acid, audio_guard_, 1));    // 5 'E' (303B Pattern)
     pages_.push_back(std::make_unique<TB303ParamsPage>(gfx, mini_acid, audio_guard_, 0)); // 6 'y' (303A Params)
     pages_.push_back(std::make_unique<TB303ParamsPage>(gfx, mini_acid, audio_guard_, 1)); // 7 'Y' (303B Params)
-    pages_.push_back(std::make_unique<TapePage>(gfx, mini_acid, audio_guard_));              // 8 't'
     pages_.push_back(std::make_unique<ModePage>(gfx, mini_acid, audio_guard_));              // 9 'm'
     pages_.push_back(std::make_unique<SettingsPage>(gfx, mini_acid));                        // 10 's'
     pages_.push_back(std::make_unique<ProjectPage>(gfx, mini_acid, audio_guard_));           // 11 'p'
-    pages_.push_back(std::make_unique<WaveformPage>(gfx, mini_acid, audio_guard_));          // 12 'w' (Overlay too)
+    pages_.push_back(std::make_unique<SongPage>(gfx, mini_acid, audio_guard_));              // 12 'W' -> Song Mode
+    pages_.push_back(std::make_unique<VoicePage>(gfx, mini_acid, audio_guard_));             // 13 'v' (Vocal Synth)
 
     applyPageBounds_();
     
@@ -181,13 +182,19 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         if (event.key == '[') { previousPage(); return true; }
 
         if (event.key == 'h') {
-            showToast("[ ] nav  Ctrl+g style  Ctrl+d drums  Ctrl+e/E 303A/B pat  Ctrl+y/Y 303A/B  Ctrl+s set  b back  w wave", 2200);
+            showToast("[ ] nav  Ctrl+# pages  v voice  w wave  b back", 2200);
             return true;
         }
 
         // Waveform overlay toggle
         if (event.key == 'w' || event.key == 'W') {
             UI::waveformOverlay.enabled = !UI::waveformOverlay.enabled;
+            return true;
+        }
+        
+        // Voice page (v key - no Ctrl needed, it's unique)
+        if (event.key == 'v' || event.key == 'V') {
+            goToPage(13);  // Voice Synth page
             return true;
         }
 

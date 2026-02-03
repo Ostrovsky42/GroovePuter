@@ -21,6 +21,7 @@
 #include "../sampler/sample_index.h"
 #include "../sampler/drum_sampler_track.h"
 #include "../sampler/sample_index.h"
+#include "formant_synth.h"
 
 // ===================== Audio config =====================
 
@@ -69,8 +70,51 @@ private:
 
 enum class MiniAcidParamId : uint8_t {
   MainVolume = 0,
+  VoicePitch,
+  VoiceSpeed,
+  VoiceRobotness,
+  VoiceVolume,
   Count
 };
+
+
+
+class VoiceCompressor {
+public:
+    void init(float threshold, float ratio, float attack, float release) {
+        threshold_ = threshold;
+        ratio_ = ratio;
+        attack_ = attack;
+        release_ = release;
+        envelope_ = 0.0f;
+    }
+
+    float process(float input) {
+        float absInput = fabsf(input);
+        if (absInput > envelope_) {
+            envelope_ += (absInput - envelope_) * attack_;
+        } else {
+            envelope_ += (absInput - envelope_) * release_;
+        }
+
+        float gain = 1.0f;
+        if (envelope_ > threshold_) {
+            float excess = envelope_ - threshold_;
+            gain = threshold_ / (threshold_ + excess * (1.0f/ratio_)); 
+        }
+        
+        // Makeup gain (auto-estimated or fixed)
+        return input * gain * 1.5f; 
+    }
+
+private:
+    float threshold_ = 0.3f;
+    float ratio_ = 4.0f;
+    float attack_ = 0.3f;
+    float release_ = 0.05f;
+    float envelope_ = 0.0f;
+};
+
 class MiniAcid {
 public:
   static constexpr int kMin303Note = 24; // C1
@@ -228,6 +272,23 @@ public:
   void setTestTone(bool enabled);
   bool isTestToneEnabled() const { return testToneEnabled_; }
 
+  // ════════════════════════════════════════════════════════════
+  // Vocal Synth (Formant-based robotic speech)
+  // ════════════════════════════════════════════════════════════
+  FormantSynth& vocalSynth() { return vocalSynth_; }
+  const FormantSynth& vocalSynth() const { return vocalSynth_; }
+  
+  // Quick speech methods
+  void speak(const char* text);
+  void speakPhrase(int phraseIndex);  // Built-in phrases
+  void speakCustomPhrase(int index);  // User-defined phrases
+  void stopSpeaking();
+  
+  // Voice track in song mode
+  bool isVoiceTrackMuted() const { return voiceTrackMuted_; }
+  void toggleVoiceTrackMute();
+  void setVoiceTrackMute(bool muted);
+
   void generateAudioBuffer(int16_t *buffer, size_t numSamples);
 
 private:
@@ -267,6 +328,11 @@ private:
   mutable bool drumAccentCache_[NUM_DRUM_VOICES][SEQ_STEPS];
   mutable bool drumStepAccentCache_[SEQ_STEPS];
 
+  // Vocal mixing
+  float duckingLevel_ = 0.0f;
+  VoiceCompressor compressor_;
+  
+  // Internal state
   volatile bool playing;
   volatile bool mute303;
   volatile bool mute303_2;
@@ -343,6 +409,10 @@ private:
   WaveformBuffer waveformBuffers_[2];
   std::atomic<int> displayBufferIndex_{0};
   int writeBufferIndex_ = 1;
+
+  // Vocal synthesizer (formant-based robotic speech)
+  FormantSynth vocalSynth_;
+  bool voiceTrackMuted_ = false;
 
   void loadSceneFromStorage();
   void saveSceneToStorage();

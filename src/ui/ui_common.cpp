@@ -7,7 +7,7 @@ namespace UI {
 
     // Global overlay state
     WaveformOverlayState waveformOverlay;
-    VisualStyle currentStyle = VisualStyle::MINIMAL;
+    VisualStyle currentStyle = VisualStyle::RETRO_CLASSIC;
 
     // Internal state for wave history (compact overlay version)
     namespace {
@@ -25,7 +25,7 @@ namespace UI {
     }
 
     void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title) {
-        char sceneStr[8];
+        char sceneStr[16];
         snprintf(sceneStr, sizeof(sceneStr), "%02d", mini_acid.currentScene() + 1);
         
         LayoutManager::drawHeader(gfx, sceneStr, (int)mini_acid.bpm(), 

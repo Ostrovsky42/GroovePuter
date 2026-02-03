@@ -26,11 +26,16 @@ void clearSynthPattern(SynthPattern& pattern) {
 }
 
 void clearSong(Song& song) {
-  song.length = 1;
   for (int i = 0; i < Song::kMaxPositions; ++i) {
     for (int t = 0; t < SongPosition::kTrackCount; ++t) {
       song.positions[i].patterns[t] = -1;
     }
+  }
+}
+
+void clearCustomPhrases(Scene& scene) {
+  for (int i = 0; i < Scene::kMaxCustomPhrases; ++i) {
+    scene.customPhrases[i][0] = '\0';
   }
 }
 
@@ -47,6 +52,7 @@ void clearSceneData(Scene& scene) {
     }
   }
   clearSong(scene.song);
+  clearCustomPhrases(scene);
   scene.masterVolume = 0.6f;
   scene.generatorParams = GeneratorParams();
   scene.led = LedSettings();
@@ -347,6 +353,8 @@ SceneJsonObserver::Path SceneJsonObserver::deduceArrayPath(const Context& parent
     return Path::SamplerPad;
   case Path::Song:
     return Path::SongPosition;
+  case Path::Root:
+    return Path::CustomPhrase;
   default:
     return Path::Unknown;
   }
@@ -447,6 +455,7 @@ void SceneJsonObserver::onArrayStart() {
         else if (lastKey_ == "synthABanks") path = Path::SynthABanks;
         else if (lastKey_ == "synthBBanks") path = Path::SynthBBanks;
         else if (lastKey_ == "samplerPads") path = Path::SamplerPads;
+        else if (lastKey_ == "customPhrases") path = Path::CustomPhrases;
       } else if (parent.path == Path::Song) {
         if (lastKey_ == "positions") path = Path::SongPositions;
       } else if (parent.path == Path::Led) {
@@ -502,6 +511,7 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     if (lastKey_ == "a") trackIdx = 0;
     else if (lastKey_ == "b") trackIdx = 1;
     else if (lastKey_ == "drums") trackIdx = 2;
+    else if (lastKey_ == "voice") trackIdx = 3;
     if (trackIdx >= 0 && trackIdx < SongPosition::kTrackCount) {
       song_.positions[posIdx].patterns[trackIdx] = clampSongPatternIndex(static_cast<int>(value));
       if (posIdx + 1 > song_.length) song_.length = posIdx + 1;
@@ -680,9 +690,12 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     else if (lastKey_ == "src") target_.led.source = static_cast<LedSource>(static_cast<int>(value));
     else if (lastKey_ == "bri") target_.led.brightness = static_cast<uint8_t>(value);
     else if (lastKey_ == "fls") target_.led.flashMs = static_cast<uint16_t>(value);
-    return;
-  }
-  if (path == Path::Root) {
+  } else if (path == Path::Vocal) {
+    if (lastKey_ == "pch") target_.vocal.pitch = value;
+    else if (lastKey_ == "spd") target_.vocal.speed = value;
+    else if (lastKey_ == "rob") target_.vocal.robotness = value;
+    else if (lastKey_ == "vol") target_.vocal.volume = value;
+  } else if (path == Path::Root) {
     if (lastKey_ == "mode") {
       int m = static_cast<int>(value);
       target_.mode = static_cast<GrooveboxMode>(m);
@@ -809,6 +822,12 @@ void SceneJsonObserver::onString(const std::string& value) {
   Path path = stack_[stackSize_ - 1].path;
   if (path == Path::State && lastKey_ == "drumEngine") {
     drumEngineName_ = value;
+  } else if (path == Path::CustomPhrase) {
+     int idx = stack_[stackSize_ - 1].index;
+     if (idx >= 0 && idx < Scene::kMaxCustomPhrases) {
+        std::strncpy(target_.customPhrases[idx], value.c_str(), Scene::kMaxPhraseLength - 1);
+        target_.customPhrases[idx][Scene::kMaxPhraseLength - 1] = '\0';
+     }
   }
 }
 
@@ -919,6 +938,7 @@ void SceneManager::loadDefaultScene() {
   scene_->song.positions[0].patterns[0] = 0;
   scene_->song.positions[0].patterns[1] = 0;
   scene_->song.positions[0].patterns[2] = 0;
+  scene_->song.positions[0].patterns[3] = -1;
 
   for (int b = 0; b < kBankCount; ++b) {
     for (int i = 0; i < Bank<DrumPatternSet>::kPatterns; ++i) {
@@ -1299,6 +1319,12 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
     pos["a"] = scene_->song.positions[i].patterns[0];
     pos["b"] = scene_->song.positions[i].patterns[1];
     pos["drums"] = scene_->song.positions[i].patterns[2];
+    pos["voice"] = scene_->song.positions[i].patterns[3];
+  }
+  
+  ArduinoJson::JsonArray customPhrases = root["customPhrases"].to<ArduinoJson::JsonArray>();
+  for (int i = 0; i < Scene::kMaxCustomPhrases; ++i) {
+    customPhrases.add(std::string(scene_->customPhrases[i]));
   }
 
   ArduinoJson::JsonObject state = root["state"].to<ArduinoJson::JsonObject>();
@@ -1445,8 +1471,11 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
           if (b.is<int>()) {
             loadedSong.positions[posIdx].patterns[1] = clampSongPatternIndex(b.as<int>());
           }
-          if (d.is<int>()) {
-            loadedSong.positions[posIdx].patterns[2] = clampSongPatternIndex(d.as<int>());
+          if (posObj["drums"].is<int>()) {
+            loadedSong.positions[posIdx].patterns[2] = clampSongPatternIndex(posObj["drums"].as<int>());
+          }
+          if (posObj["voice"].is<int>()) {
+            loadedSong.positions[posIdx].patterns[3] = clampSongPatternIndex(posObj["voice"].as<int>());
           }
         }
         if (posIdx + 1 > loadedSong.length) loadedSong.length = posIdx + 1;
@@ -1586,9 +1615,30 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     }
   }
 
-  ArduinoJson::JsonObjectConst genParams = obj["generatorParams"].as<ArduinoJson::JsonObjectConst>();
+  ArduinoJson::JsonVariantConst genParams = obj["generatorParams"];
   if (!genParams.isNull()) {
     deserializeGeneratorParams(genParams, loaded->generatorParams);
+  }
+
+  ArduinoJson::JsonObjectConst vocalObj = obj["vocal"].as<ArduinoJson::JsonObjectConst>();
+  if (!vocalObj.isNull()) {
+    loaded->vocal.pitch = valueToFloat(vocalObj["pch"], loaded->vocal.pitch);
+    loaded->vocal.speed = valueToFloat(vocalObj["spd"], loaded->vocal.speed);
+    loaded->vocal.robotness = valueToFloat(vocalObj["rob"], loaded->vocal.robotness);
+    loaded->vocal.volume = valueToFloat(vocalObj["vol"], loaded->vocal.volume);
+  }
+
+  if (obj["customPhrases"].is<ArduinoJson::JsonArrayConst>()) {
+    auto phrasesArr = obj["customPhrases"].as<ArduinoJson::JsonArrayConst>();
+    int idx = 0;
+    for (ArduinoJson::JsonVariantConst phraseVal : phrasesArr) {
+      if (idx >= Scene::kMaxCustomPhrases) break;
+      if (phraseVal.is<const char*>()) {
+        std::strncpy(loaded->customPhrases[idx], phraseVal.as<const char*>(), Scene::kMaxPhraseLength - 1);
+        loaded->customPhrases[idx][Scene::kMaxPhraseLength - 1] = '\0';
+      }
+      ++idx;
+    }
   }
 
   if (!hasSongObj) {
@@ -1765,6 +1815,7 @@ int SceneManager::songTrackToIndex(SongTrack track) const {
   case SongTrack::SynthA: return 0;
   case SongTrack::SynthB: return 1;
   case SongTrack::Drums: return 2;
+  case SongTrack::Voice: return 3;
   default: return -1;
   }
 }
