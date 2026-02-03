@@ -91,8 +91,8 @@ namespace UI {
 
         if (w < 10 || h < 4) return;
 
-        int16_t samples[256];
-        size_t count = mini_acid.copyLastAudio(samples, 256);
+        // Get waveform buffer (thread-safe)
+        const auto& waveBuffer = mini_acid.getWaveformBuffer();
         
         const int midY = y + h / 2;
         const int amplitude = h / 2 - 2; 
@@ -102,7 +102,7 @@ namespace UI {
         gfx.drawLine(x, midY, x + w - 1, midY, COLOR_WAVE);
 
         // 2) Update wave history
-        if (count > 1 && points > 1) {
+        if (waveBuffer.count > 1 && points > 1) {
             for (int layer = kOverlayHistoryLayers - 1; layer > 0; --layer) {
                 overlayLengths[layer] = overlayLengths[layer - 1];
                 for (int px = 0; px < overlayLengths[layer]; ++px) {
@@ -113,8 +113,8 @@ namespace UI {
             overlayLengths[0] = points;
             for (int px = 0; px < points; ++px) {
                 // Shared sampling math with Page
-                size_t idx = static_cast<size_t>((uint64_t)px * (count - 1) / (points - 1));
-                overlayHistory[0][px] = samples[idx];
+                size_t idx = static_cast<size_t>((uint64_t)px * (waveBuffer.count - 1) / (points - 1));
+                overlayHistory[0][px] = waveBuffer.data[idx];
             }
         }
 

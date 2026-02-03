@@ -1,4 +1,7 @@
 #pragma once
+
+#ifdef USE_RETRO_THEME
+
 #include <stdint.h>
 #include "ui_colors.h"
 
@@ -66,3 +69,5 @@ constexpr uint16_t SCANLINE_COLOR = 0x0841;
 constexpr int SCANLINE_SPACING    = 2;
 
 } // namespace RetroTheme
+
+#endif // USE_RETRO_THEME

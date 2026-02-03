@@ -368,8 +368,15 @@ void MiniAcid::reset() {
   
   distortion303.setEnabled(distortion303Enabled);
   distortion3032.setEnabled(distortion3032Enabled);
-  lastBufferCount = 0;
-  for (int i = 0; i < AUDIO_BUFFER_SAMPLES; ++i) lastBuffer[i] = 0;
+  
+  // Initialize waveform buffers
+  for (int b = 0; b < 2; ++b) {
+    waveformBuffers_[b].count = 0;
+    for (int i = 0; i < AUDIO_BUFFER_SAMPLES; ++i) {
+      waveformBuffers_[b].data[i] = 0;
+    }
+  }
+  
   songMode_ = false;
   songPlayheadPosition_ = 0;
   patternModeDrumPatternIndex_ = 0;
@@ -691,12 +698,10 @@ std::string MiniAcid::currentDrumEngineName() const {
   return drumEngineName_;
 }
 
-size_t MiniAcid::copyLastAudio(int16_t *dst, size_t maxSamples) const {
-  if (!dst || maxSamples == 0) return 0;
-  size_t n = lastBufferCount;
-  if (n > maxSamples) n = maxSamples;
-  for (size_t i = 0; i < n; ++i) dst[i] = lastBuffer[i];
-  return n;
+// Thread-safe waveform buffer access for UI
+const MiniAcid::WaveformBuffer& MiniAcid::getWaveformBuffer() const {
+  int idx = displayBufferIndex_.load(std::memory_order_acquire);
+  return waveformBuffers_[idx];
 }
 
 void MiniAcid::toggleMute303(int voiceIndex) {
@@ -1274,10 +1279,14 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       buffer[i] = static_cast<int16_t>(val * 32767.0f);
     }
     
-    // Copy to debug/visualizer buffer even in test tone mode
+    // Copy to waveform buffer for UI visualization (thread-safe)
     size_t copyCount = std::min(numSamples, (size_t)AUDIO_BUFFER_SAMPLES);
-    for (size_t i = 0; i < copyCount; ++i) lastBuffer[i] = buffer[i];
-    lastBufferCount = copyCount;
+    memcpy(waveformBuffers_[writeBufferIndex_].data, buffer, copyCount * sizeof(int16_t));
+    waveformBuffers_[writeBufferIndex_].count = copyCount;
+    
+    // Atomic swap to display buffer
+    displayBufferIndex_.store(writeBufferIndex_, std::memory_order_release);
+    writeBufferIndex_ = 1 - writeBufferIndex_;
     return;
   }
 
@@ -1464,10 +1473,14 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     buffer[i] = (int16_t)(finalSample * 32767.0f);
   }
 
-  // Copy to debug/visualizer buffer
+  // Copy to waveform buffer for UI visualization (thread-safe)
   size_t copyCount = std::min(numSamples, (size_t)AUDIO_BUFFER_SAMPLES);
-  for (size_t i = 0; i < copyCount; ++i) lastBuffer[i] = buffer[i];
-  lastBufferCount = copyCount;
+  memcpy(waveformBuffers_[writeBufferIndex_].data, buffer, copyCount * sizeof(int16_t));
+  waveformBuffers_[writeBufferIndex_].count = copyCount;
+  
+  // Atomic swap to display buffer
+  displayBufferIndex_.store(writeBufferIndex_, std::memory_order_release);
+  writeBufferIndex_ = 1 - writeBufferIndex_;
   
   // Flush diagnostics periodically
   if (AudioDiagnostics::instance().isEnabled()) {
@@ -1570,7 +1583,11 @@ std::vector<std::string> MiniAcid::availableSceneNames() const {
 
 bool MiniAcid::loadSceneByName(const std::string& name) {
   if (!sceneStorage_) return false;
+  
+  // Auto-save current scene before switching to prevent data loss
   std::string previousName = sceneStorage_->getCurrentSceneName();
+  saveSceneToStorage();
+  
   sceneStorage_->setCurrentSceneName(name);
 
   bool loaded = sceneStorage_->readScene(sceneManager_);

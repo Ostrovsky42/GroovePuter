@@ -34,8 +34,8 @@ void WaveformPage::draw(IGfx& gfx) {
   int wave_h = h - 2;
   if (w < 4 || wave_h < 4) return;
 
-  int16_t samples[AUDIO_BUFFER_SAMPLES/2];
-  size_t sampleCount = mini_acid_.copyLastAudio(samples, AUDIO_BUFFER_SAMPLES/2);
+  // Get waveform buffer (thread-safe)
+  const auto& waveBuffer = mini_acid_.getWaveformBuffer();
   int mid_y = wave_y + wave_h / 2;
 
   gfx_.setTextColor(IGfxColor::Orange());
@@ -44,11 +44,11 @@ void WaveformPage::draw(IGfx& gfx) {
 
   int points = w;
   if (points > kMaxWavePoints) points = kMaxWavePoints;
-  if (sampleCount > 1 && points > 1) {
+  if (waveBuffer.count > 1 && points > 1) {
     int16_t new_wave[kMaxWavePoints];
     for (int px = 0; px < points; ++px) {
-      size_t idx = static_cast<size_t>((uint64_t)px * (sampleCount - 1) / (points - 1));
-      new_wave[px] = samples[idx];
+      size_t idx = static_cast<size_t>((uint64_t)px * (waveBuffer.count - 1) / (points - 1));
+      new_wave[px] = waveBuffer.data[idx];
     }
 
     for (int layer = kWaveHistoryLayers - 1; layer > 0; --layer) {

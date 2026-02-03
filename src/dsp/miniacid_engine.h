@@ -103,7 +103,14 @@ public:
   bool is303DelayEnabled(int voiceIndex = 0) const;
   bool is303DistortionEnabled(int voiceIndex = 0) const;
   const Parameter& parameter303(TB303ParamId id, int voiceIndex = 0) const;
-  size_t copyLastAudio(int16_t *dst, size_t maxSamples) const;
+  
+  // Thread-safe waveform buffer access for UI visualization
+  struct WaveformBuffer {
+    int16_t data[AUDIO_BUFFER_SAMPLES];
+    size_t count;
+  };
+  const WaveformBuffer& getWaveformBuffer() const;
+  
   const int8_t* pattern303Steps(int voiceIndex = 0) const;
   const bool* pattern303AccentSteps(int voiceIndex = 0) const;
   const bool* pattern303SlideSteps(int voiceIndex = 0) const;
@@ -330,8 +337,12 @@ private:
   TempoDelay delay3032;
   TubeDistortion distortion303;
   TubeDistortion distortion3032;
-  volatile int16_t lastBuffer[AUDIO_BUFFER_SAMPLES];
-  volatile size_t lastBufferCount;
+  
+  // Thread-safe waveform buffer for UI visualization
+  // Uses double-buffering with atomic swap to avoid race conditions
+  WaveformBuffer waveformBuffers_[2];
+  std::atomic<int> displayBufferIndex_{0};
+  int writeBufferIndex_ = 1;
 
   void loadSceneFromStorage();
   void saveSceneToStorage();

@@ -9,14 +9,15 @@ MiniAcid is a tiny acid groovebox for the M5Stack Cardputer. It runs two squelch
 - 16-step sequencers for both acid lines and drums, with quick randomize actions
 - Live mutes for every part (two synths + eight drum lanes)
 - Pattern and song arrangement system
-- **NEW**: 44.1 kHz Hi-Fi audio with PSRAM support
+- **NEW**: 44.1 kHz Hi-Fi audio optimized for DRAM
 
 ## Building & Uploading
 
-**IMPORTANT**: PSRAM must be enabled for full performance!
+**NOTE**: M5Stack Cardputer (StampS3) does NOT have PSRAM.  
+The project is optimized to run efficiently in DRAM only.
 
 ```bash
-# Build with PSRAM enabled
+# Build for Cardputer
 ./build-psram.sh
 
 # Upload to device

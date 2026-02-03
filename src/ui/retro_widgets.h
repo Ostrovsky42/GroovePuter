@@ -1,4 +1,7 @@
 #pragma once
+
+#ifdef USE_RETRO_THEME
+
 #include "retro_ui_theme.h"
 #include "display.h"
 
@@ -282,3 +285,5 @@ inline void drawScanlines(IGfx& gfx, int x, int y, int w, int h) {
 }
 
 } // namespace RetroWidgets
+
+#endif // USE_RETRO_THEME

@@ -278,6 +278,12 @@ static void updateUI(AppState& s) {
 
 static void cleanup(AppState& s) {
   if (s.cleaned_up) return;
+  
+  // Auto-save scene before exit to prevent data loss
+  SDL_LockAudioDevice(s.audio.device);
+  s.audio.synth.stop(); // This also calls saveSceneToStorage()
+  SDL_UnlockAudioDevice(s.audio.device);
+  
   if (s.audio.recorder.isRecording()) {
     SDL_LockAudioDevice(s.audio.device);
     s.audio.recorder.stop();
