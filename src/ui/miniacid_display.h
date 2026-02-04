@@ -14,6 +14,13 @@ public:
   void setAudioGuard(AudioGuard guard);
   void setAudioRecorder(IAudioRecorder* recorder);
   void update();
+  
+  template <typename F>
+  void withAudioGuard(F&& fn) {
+      if (audio_guard_) audio_guard_(std::forward<F>(fn));
+      else fn();
+  }
+
   void nextPage();
   void previousPage();
   void goToPage(int index);
@@ -30,6 +37,11 @@ private:
   void drawDebugOverlay();
   bool translateToApplicationEvent(UIEvent& event);
   void applyPageBounds_();
+  
+  // Lazy page loading
+  static constexpr int kPageCount = 13;
+  std::unique_ptr<IPage> createPage_(int index);
+  IPage* getPage_(int index); // Returns existing or creates on-demand
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;

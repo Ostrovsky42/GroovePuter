@@ -67,4 +67,9 @@ namespace UI {
      */
     void drawWaveformOverlay(IGfx& gfx, MiniAcid& mini_acid);
 
+    /**
+     * Draws a compact mutes/activity overlay.
+     */
+    void drawMutesOverlay(IGfx& gfx, MiniAcid& mini_acid);
+
 }

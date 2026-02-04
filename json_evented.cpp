@@ -13,16 +13,13 @@ public:
     if (hasBuffered_) {
       hasBuffered_ = false;
       c = buffered_;
-      // printf("CharStream::get: returning buffered '%c' (%d)\n", c, (int)c);
       return true;
     }
     int value = nextChar_();
     if (value < 0) {
-      printf("CharStream::get: nextChar returned %d (EOF)\n", value);
       return false;
     }
     c = static_cast<char>(value);
-    printf("CharStream::get: read '%c' (%d)\n", c, (int)c);
     return true;
   }
 
@@ -33,13 +30,11 @@ public:
     }
     int value = nextChar_();
     if (value < 0) {
-      printf("CharStream::peek: nextChar returned %d (EOF)\n", value);
       return false;
     }
     buffered_ = static_cast<char>(value);
     hasBuffered_ = true;
     c = buffered_;
-    printf("CharStream::peek: read '%c' (%d)\n", c, (int)c);
     return true;
   }
 

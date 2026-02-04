@@ -75,7 +75,7 @@ public:
     if (diag_.frames == 0) return;
     
     float mean = diag_.mean / static_cast<float>(diag_.frames);
-    
+    /*
     Serial.printf("[AUD] pre:%.3f clip:%u clk:%u post:%.3f dc:%.4f nan:%u | 303:%.2f dr:%.2f smp:%.2f voc:%.2f dly:%.2f lp:%.2f fx:%.2f\n",
                   diag_.peakPre, 
                   static_cast<unsigned>(diag_.clipPre),
@@ -90,7 +90,7 @@ public:
                   diag_.peakDelay,
                   diag_.peakLooper,
                   diag_.peakTapeFX);
-    
+    */
     // Reset for next period
     diag_ = AudioDiag{};
   }

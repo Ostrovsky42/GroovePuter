@@ -625,15 +625,17 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   };
 
   if (!writeChar('{')) return false;
-
   if (!writeLiteral("\"drumBanks\":")) return false;
   if (!writeDrumBanks(scene_->drumBanks)) return false;
+  Serial.print(".");
 
   if (!writeLiteral(",\"synthABanks\":")) return false;
   if (!writeSynthBanks(scene_->synthABanks)) return false;
+  Serial.print(".");
 
   if (!writeLiteral(",\"synthBBanks\":")) return false;
   if (!writeSynthBanks(scene_->synthBBanks)) return false;
+  Serial.print(".");
 
   if (!writeLiteral(",\"song\":{")) return false;
   int songLen = songLength();
@@ -655,6 +657,7 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   }
   if (!writeChar(']')) return false;
   if (!writeChar('}')) return false;
+  Serial.print(".");
 
   if (!writeLiteral(",\"state\":{")) return false;
   if (!writeLiteral("\"drumPatternIndex\":")) return false;
@@ -742,6 +745,7 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
     if (!writeChar('}')) return false;
   }
   if (!writeChar(']')) return false;
+  Serial.print(".");
 
   if (!writeLiteral(",\"tape\":{\"mode\":")) return false;
   if (!writeInt(static_cast<int>(scene_->tape.mode))) return false;
@@ -783,6 +787,9 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeInt(scene_->led.brightness)) return false;
   if (!writeLiteral(",\"fls\":")) return false;
   if (!writeInt(scene_->led.flashMs)) return false;
+  if (!writeChar('}')) return false;  // Close led object
+  Serial.print(".");
+  
   if (!writeLiteral(",\"vocal\":{\"pch\":")) return false;
   if (!writeFloat(scene_->vocal.pitch)) return false;
   if (!writeLiteral(",\"spd\":")) return false;
@@ -791,7 +798,9 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeFloat(scene_->vocal.robotness)) return false;
   if (!writeLiteral(",\"vol\":")) return false;
   if (!writeFloat(scene_->vocal.volume)) return false;
-  if (!writeLiteral("},\"mode\":")) return false;
+  if (!writeChar('}')) return false;  // Close vocal object
+  
+  if (!writeLiteral(",\"mode\":")) return false;
   if (!writeInt(static_cast<int>(mode_))) return false;
   
   if (!writeLiteral(",\"customPhrases\":[")) return false;
@@ -801,7 +810,10 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   }
   if (!writeChar(']')) return false;
   
-  return writeLiteral("}}");
+  bool finalOk = writeLiteral("}}");  // Close state and root
+  if (finalOk) Serial.println(" Done.");
+  else Serial.println(" FAILED at final literal.");
+  return finalOk;
 }
 
 template <typename TReader>
@@ -814,7 +826,14 @@ bool SceneManager::loadSceneJson(TReader&& reader) {
 
 template <typename TReader>
 bool SceneManager::loadSceneEvented(TReader&& reader) {
-  JsonVisitor::NextChar nextChar = [&reader]() -> int { return reader.read(); };
+  static size_t bytesRead = 0;
+  bytesRead = 0;
+  JsonVisitor::NextChar nextChar = [&reader]() -> int { 
+    int c = reader.read();
+    if (c >= 0) bytesRead++;
+    else Serial.printf("[Reader] EOF after %zu bytes\n", bytesRead);
+    return c; 
+  };
   return loadSceneEventedWithReader(nextChar);
 }
 #endif // SCENES_H

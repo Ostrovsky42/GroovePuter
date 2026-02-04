@@ -443,9 +443,9 @@ void SceneJsonObserver::onObjectStart() {
   }
   pushContext(Context::Type::Object, path);
   if (path == Path::Unknown) {
-    Serial.printf("[Parser] ERROR: Unknown object path, lastKey='%s', parent_path=%d, stackSize=%d\n", 
+    Serial.printf("[Parser] WARNING: Unknown object path, lastKey='%s', parent_path=%d, stackSize=%d (skipping)\n", 
                   lastKey_.c_str(), stackSize_ > 1 ? static_cast<int>(stack_[stackSize_-2].path) : -1, stackSize_);
-    error_ = true;
+    // Don't set error_ = true, just skip this unknown object
   }
 }
 
@@ -460,7 +460,7 @@ void SceneJsonObserver::onArrayStart() {
   if (stackSize_ > 0) {
     const Context& parent = stack_[stackSize_ - 1];
     if (parent.type == Context::Type::Object) {
-      if (parent.path == Path::Root || parent.path == Path::State || parent.path == Path::Led) {
+      if (parent.path == Path::Root || parent.path == Path::State) {
         if (lastKey_ == "drumBanks") path = Path::DrumBanks;
         else if (lastKey_ == "synthABanks") path = Path::SynthABanks;
         else if (lastKey_ == "synthBBanks") path = Path::SynthBBanks;
@@ -471,12 +471,14 @@ void SceneJsonObserver::onArrayStart() {
         else if (lastKey_ == "synthDistortion") path = Path::SynthDistortion;
         else if (lastKey_ == "synthDelay") path = Path::SynthDelay;
         else if (lastKey_ == "synthParams") path = Path::SynthParams;
-        else if (lastKey_ == "bpm") path = Path::Unknown; // bpm is primitive, not array, but just in case
+        else if (lastKey_ == "bpm") path = Path::Unknown;
       } else if (parent.path == Path::Song) {
         if (lastKey_ == "positions") path = Path::SongPositions;
       } else if (parent.path == Path::Led) {
-        if (lastKey_ == "clr") path = Path::LedColorArray;
-        else if (lastKey_ == "customPhrases") path = Path::CustomPhrases; // Handle both places
+        if (lastKey_ == "clr") {
+            path = Path::LedColorArray;
+        }
+        else if (lastKey_ == "customPhrases") path = Path::CustomPhrases;
       } else if (parent.path == Path::DrumVoice) {
         if (lastKey_ == "hit") path = Path::DrumHitArray;
         else if (lastKey_ == "accent") path = Path::DrumAccentArray;
@@ -490,9 +492,9 @@ void SceneJsonObserver::onArrayStart() {
   }
   pushContext(Context::Type::Array, path);
   if (path == Path::Unknown) {
-    Serial.printf("[Parser] ERROR: Unknown array path, lastKey='%s', parent_path=%d, stackSize=%d\n", 
+    Serial.printf("[Parser] WARNING: Unknown array path, lastKey='%s', parent_path=%d, stackSize=%d (skipping)\n", 
                   lastKey_.c_str(), stackSize_ > 1 ? static_cast<int>(stack_[stackSize_-2].path) : -1, stackSize_);
-    error_ = true;
+    // Don't set error_ = true, just skip this unknown array
   }
 }
 

@@ -156,6 +156,7 @@ bool SceneStorageCardputer::writeScene(const std::string& data) {
   Serial.printf("Writing to file: %s\n", path.c_str());
   size_t written = file.write(reinterpret_cast<const uint8_t*>(data.data()), data.size());
   Serial.printf("Written %zu bytes to file.\n", written);
+  file.flush();  // Ensure all buffered data is written to SD card
   file.close();
   Serial.println("File write complete.");
   return written == data.size();
@@ -188,15 +189,31 @@ bool SceneStorageCardputer::writeScene(const SceneManager& manager) {
   Serial.println("Writing scene (streaming) to SD card...");
   persistCurrentSceneName();
   std::string path = currentScenePath();
-  bool removed = SD.remove(path.c_str());
-  Serial.printf("Removed old scene file: %s\n", removed ? "yes" : "no");
+  SD.remove(path.c_str());
+  
   File file = SD.open(path.c_str(), FILE_WRITE);
-  if (!file) return false;
+  if (!file) {
+    Serial.printf("Failed to open file for writing: %s\n", path.c_str());
+    return false;
+  }
 
   bool ok = manager.writeSceneJson(file);
+  file.flush();
+  size_t bytesWritten = file.size();
   file.close();
-  Serial.printf("Streaming write %s\n to %s\n", ok ? "succeeded" : "failed", path.c_str());
-  return ok;
+
+  // Verify by reopening
+  File verify = SD.open(path.c_str(), FILE_READ);
+  size_t verifiedSize = verify ? verify.size() : 0;
+  if (verify) verify.close();
+
+  if (ok && bytesWritten > 0 && verifiedSize == bytesWritten) {
+    Serial.printf("Streaming write succeeded to %s (total size: %zu bytes, verified: %zu)\n", path.c_str(), bytesWritten, verifiedSize);
+    return true;
+  } else {
+    Serial.printf("Streaming write FAILED! ok=%d, written=%zu, verified=%zu\n", ok, bytesWritten, verifiedSize);
+    return false;
+  }
 }
 
 std::vector<std::string> SceneStorageCardputer::getAvailableSceneNames() const {

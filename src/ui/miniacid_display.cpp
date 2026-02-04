@@ -15,7 +15,9 @@
 #include "pages/project_page.h"
 #include "pages/tb303_params_page.h"
 #include "pages/song_page.h"
+#include "pages/tape_page.h"
 #include "pages/voice_page.h"
+#include "pages/waveform_page.h"
 #include "pages/help_dialog.h"
 #include "ui_colors.h"
 #include "ui_input.h"
@@ -37,30 +39,56 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid)
     Serial.println("MiniAcidDisplay: init skin");
     skin_ = std::make_unique<CassetteSkin>(gfx, CassetteTheme::WarmTape);
     
-    // Register the pages in order
-    Serial.println("MiniAcidDisplay: reg pages...");
-    pages_.push_back(std::make_unique<PlayPage>(gfx, mini_acid, audio_guard_));              // 0
-    pages_.push_back(std::make_unique<SequencerHubPage>(gfx, mini_acid, audio_guard_));      // 1 NEW!
-    pages_.push_back(std::make_unique<GenrePage>(gfx, mini_acid, audio_guard_));             // 2
-    pages_.push_back(std::make_unique<DrumSequencerPage>(gfx, mini_acid, audio_guard_));     // 3 'd'
-    pages_.push_back(std::make_unique<PatternEditPage>(gfx, mini_acid, audio_guard_, 0));    // 4 'e' (303A Pattern)
-    pages_.push_back(std::make_unique<PatternEditPage>(gfx, mini_acid, audio_guard_, 1));    // 5 'E' (303B Pattern)
-    pages_.push_back(std::make_unique<TB303ParamsPage>(gfx, mini_acid, audio_guard_, 0)); // 6 'y' (303A Params)
-    pages_.push_back(std::make_unique<TB303ParamsPage>(gfx, mini_acid, audio_guard_, 1)); // 7 'Y' (303B Params)
-    pages_.push_back(std::make_unique<ModePage>(gfx, mini_acid, audio_guard_));              // 9 'm'
-    pages_.push_back(std::make_unique<SettingsPage>(gfx, mini_acid));                        // 10 's'
-    pages_.push_back(std::make_unique<ProjectPage>(gfx, mini_acid, audio_guard_));           // 11 'p'
-    pages_.push_back(std::make_unique<SongPage>(gfx, mini_acid, audio_guard_));              // 12 'W' -> Song Mode
-    pages_.push_back(std::make_unique<VoicePage>(gfx, mini_acid, audio_guard_));             // 13 'v' (Vocal Synth)
-
+    // LAZY LOADING: Reserve space but don't create pages yet
+    // Pages will be created on-demand via getPage()
+    Serial.println("MiniAcidDisplay: reserve pages (lazy)");
+    pages_.resize(kPageCount);  // All nullptr initially
+    
+    // Only create the first page (PlayPage) to start with
+    pages_[0] = createPage_(0);
+    
     applyPageBounds_();
     
-    Serial.println("MiniAcidDisplay: init DONE");
+    Serial.println("MiniAcidDisplay: init DONE (lazy)");
     mute_buttons_initialized_ = true; 
 }
 
 
 MiniAcidDisplay::~MiniAcidDisplay() = default;
+
+std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
+    Serial.printf("[UI] createPage_(%d)\n", index);
+    switch (index) {
+        case 0:  return std::make_unique<PlayPage>(gfx_, mini_acid_, audio_guard_);
+        case 1:  return std::make_unique<GenrePage>(gfx_, mini_acid_, audio_guard_);
+        case 2:  return std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 0);
+        case 3:  return std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 1);
+        case 4:  return std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 0);
+        case 5:  return std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 1);
+        case 6:  return std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_);
+        case 7:  return std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_);
+        case 8:  return std::make_unique<SequencerHubPage>(gfx_, mini_acid_, audio_guard_);
+        case 9: return std::make_unique<SongPage>(gfx_, mini_acid_, audio_guard_);
+        case 10: return std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_);
+        case 11:  return std::make_unique<SettingsPage>(gfx_, mini_acid_);        
+        case 12: return std::make_unique<VoicePage>(gfx_, mini_acid_, audio_guard_);
+       // case 14: return std::make_unique<WaveformPage>(gfx_, mini_acid_, audio_guard_);
+       // case 8:  return std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_);
+
+        default: return nullptr;
+    }
+}
+
+IPage* MiniAcidDisplay::getPage_(int index) {
+    if (index < 0 || index >= kPageCount) return nullptr;
+    if (!pages_[index]) {
+        pages_[index] = createPage_(index);
+        if (pages_[index]) {
+            pages_[index]->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
+        }
+    }
+    return pages_[index].get();
+}
 
 void MiniAcidDisplay::setAudioGuard(AudioGuard guard) {
     audio_guard_ = guard;
@@ -89,15 +117,12 @@ void MiniAcidDisplay::update() {
         gfx_.clear(COLOR_BLACK);
     }
     
-    // Draw active page
-    if (page_index_ >= 0 && page_index_ < (int)pages_.size()) {
+    // Draw active page (lazy loading)
+    IPage* currentPage = getPage_(page_index_);
+    if (currentPage) {
         // CRITICAL: setBoundaries() MUST be called before draw() every frame
-        // Without this, pages using getBoundaries() get zero/stale rects → "dark screens" / "one line" displays
-        pages_[page_index_]->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
-        
-        const char* pageTitle = pages_[page_index_]->getTitle().c_str();
-        // Serial.printf("[UI] draw page %d/%d: %s\n", page_index_, (int)pages_.size(), pageTitle);
-        pages_[page_index_]->draw(gfx_);
+        currentPage->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
+        currentPage->draw(gfx_);
     } else {
         // "Dark screen" fix: show WIP/Invalid placeholder
         LayoutManager::drawHeader(gfx_, "--", mini_acid_.bpm(), "WIP/INVALID PAGE", false);
@@ -105,13 +130,16 @@ void MiniAcidDisplay::update() {
         gfx_.setTextColor(COLOR_WHITE);
         gfx_.drawText(Layout::COL_1, LayoutManager::lineY(2), "PAGE INDEX INVALID");
         char buf[32];
-        snprintf(buf, sizeof(buf), "idx=%d size=%d", page_index_, (int)pages_.size());
+        snprintf(buf, sizeof(buf), "idx=%d kPageCount=%d", page_index_, kPageCount);
         gfx_.drawText(Layout::COL_1, LayoutManager::lineY(3), buf);
         LayoutManager::drawFooter(gfx_, "[ ] pages", "[b] back");
     }
     
     // Waveform overlay (if enabled)
     UI::drawWaveformOverlay(gfx_, mini_acid_);
+    
+    // Mutes overlay (always on for now as per user request)
+    UI::drawMutesOverlay(gfx_, mini_acid_);
     
     drawToast();
     // drawDebugOverlay();
@@ -120,49 +148,42 @@ void MiniAcidDisplay::update() {
 }
 
 void MiniAcidDisplay::nextPage() {
-    if (pages_.empty()) return;
     previous_page_index_ = page_index_;
-    page_index_ = (page_index_ + 1) % pages_.size();
-    applyPageBounds_();
-    Serial.printf("[UI] nextPage: %d -> %d (total %d)\n", previous_page_index_, page_index_, (int)pages_.size());
+    page_index_ = (page_index_ + 1) % kPageCount;
+    Serial.printf("[UI] nextPage: %d -> %d\n", previous_page_index_, page_index_);
 }
 
 void MiniAcidDisplay::previousPage() {
-    if (pages_.empty()) return;
     previous_page_index_ = page_index_;
-    page_index_ = (page_index_ - 1 + pages_.size()) % pages_.size();
-    applyPageBounds_();
+    page_index_ = (page_index_ - 1 + kPageCount) % kPageCount;
     Serial.printf("[UI] previousPage: %d -> %d\n", previous_page_index_, page_index_);
 }
 
 void MiniAcidDisplay::goToPage(int index) {
-    if (index >= 0 && index < (int)pages_.size()) {
+    if (index >= 0 && index < kPageCount) {
         previous_page_index_ = page_index_;
         page_index_ = index;
-        applyPageBounds_();
-        Serial.printf("[UI] goToPage(%d): %s\n", index, pages_[index]->getTitle().c_str());
+        IPage* p = getPage_(index);
+        Serial.printf("[UI] goToPage(%d): %s\n", index, p ? p->getTitle().c_str() : "null");
     } else {
-        Serial.printf("[UI] goToPage(%d) INVALID (size=%d)\n", index, (int)pages_.size());
+        Serial.printf("[UI] goToPage(%d) INVALID (kPageCount=%d)\n", index, kPageCount);
     }
 }
 
 void MiniAcidDisplay::togglePreviousPage() {
-    if (pages_.empty()) return;
-
     // clamp current
-    if (page_index_ < 0 || page_index_ >= (int)pages_.size()) {
+    if (page_index_ < 0 || page_index_ >= kPageCount) {
         page_index_ = 0;
     }
 
     // if previous invalid -> just go to 0
-    if (previous_page_index_ < 0 || previous_page_index_ >= (int)pages_.size()) {
+    if (previous_page_index_ < 0 || previous_page_index_ >= kPageCount) {
         previous_page_index_ = 0;
     }
 
     int tmp = page_index_;
     page_index_ = previous_page_index_;
     previous_page_index_ = tmp;
-    applyPageBounds_();
 }
 
 void MiniAcidDisplay::dismissSplash() {
@@ -186,11 +207,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             return true;
         }
 
-        // Waveform overlay toggle
-        if (event.key == 'w') {
-            UI::waveformOverlay.enabled = !UI::waveformOverlay.enabled;
-            return true;
-        }
+       
         
         // Voice page (v key - no Ctrl needed, it's unique)
         if (event.key == 'v' || event.key == 'V') {
@@ -198,30 +215,67 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             return true;
         }
 
-        // Direct page jumps: require CTRL (or META) to prevent stealing normal editing keys
-        if (event.ctrl || event.meta) {
+        // Waveform overlay toggle
+        if (event.alt && event.key == 'w') {
+            UI::waveformOverlay.enabled = !UI::waveformOverlay.enabled;
+            return true;
+        }
+
+        // Direct page jumps: require Alt (standard) OR CTRL (fallback)
+        if (event.alt || event.ctrl || event.meta) {
+
+            
+    
+            int targetPage = -1;
             switch (event.key) {
-                case '1': goToPage(1); return true; // Genre/Style
-                case '2': goToPage(2); return true; // Drum Sequencer
-                case '3': goToPage(3); return true; // 303A Pattern Edit
-                case '4': goToPage(4); return true; // 303B Pattern Edit
-                case '5': goToPage(5); return true; // 303A Params
-                case '6': goToPage(6); return true; // 303B Params
-                case '7': goToPage(7); return true; // Tape
-                case '8': goToPage(8); return true; // Mode
-                case '9': goToPage(9); return true; // Settings
-                case '0': goToPage(10); return true; // Project
-                default:
-                    break;
+                case '1': targetPage = 1; break;  // 0 Play (Home)
+                case '2': targetPage = 2; break;  // Synth A Params
+                case '3': targetPage = 3; break;  // Synth B Params
+                case '4': targetPage = 4; break;  // 3 Drum Sequencer
+                case '5': targetPage = 5; break;  // 1 Seq Hub
+                case '6': targetPage = 6; break;  //8 Tape/FX
+                case '7': targetPage = 7; break;  // Genre/Style
+                case '8': targetPage = 8; break; // Song Mode
+                case '9': targetPage = 9; break; // Settings
+                case '0': targetPage = 10; break; // Voice Synth
+                default: break;
+            }
+            if (targetPage >= 0) {
+                goToPage(targetPage);
+                return true;
+            }
+        }
+        
+        // Global Mutes (1-9) - only if no modifiers
+        if (!event.alt && !event.ctrl && !event.meta && !event.shift) {
+            if (event.key >= '1' && event.key <= '9') {
+                int trackIdx = event.key - '1';
+                withAudioGuard([&]() {
+                    if (trackIdx == 0) mini_acid_.toggleMute303(0);
+                    else if (trackIdx == 1) mini_acid_.toggleMute303(1);
+                    else if (trackIdx == 2) mini_acid_.toggleMuteKick();
+                    else if (trackIdx == 3) mini_acid_.toggleMuteSnare();
+                    else if (trackIdx == 4) mini_acid_.toggleMuteHat();
+                    else if (trackIdx == 5) mini_acid_.toggleMuteOpenHat();
+                    else if (trackIdx == 6) mini_acid_.toggleMuteMidTom();
+                    else if (trackIdx == 7) mini_acid_.toggleMuteHighTom();
+                    else if (trackIdx == 8) mini_acid_.toggleMuteRim();
+                    // Note: 9th key can toggle Rim/Clap together or just Rim
+                });
+                return true;
+            } else if (event.key == '0') {
+                withAudioGuard([&]() {
+                    mini_acid_.toggleMuteClap();
+                });
+                return true;
             }
         }
     }
     
-    // 2) Page Handling
-    if (page_index_ >= 0 && page_index_ < (int)pages_.size()) {
-        if (pages_[page_index_]->handleEvent(event)) {
-            return true;
-        }
+    // 2) Page Handling (lazy loading)
+    IPage* currentPage = getPage_(page_index_);
+    if (currentPage && currentPage->handleEvent(event)) {
+        return true;
     }
     
     // 2.5) App Events (Inter-page communication)
@@ -230,6 +284,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             UI::currentStyle = (UI::currentStyle == VisualStyle::MINIMAL) ? 
                                 VisualStyle::RETRO_CLASSIC : VisualStyle::MINIMAL;
             
+            // Propagate to existing (loaded) pages only
             for (auto& p : pages_) {
                 if (p) p->setVisualStyle(UI::currentStyle);
             }

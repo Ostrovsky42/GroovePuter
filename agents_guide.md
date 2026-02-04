@@ -64,8 +64,14 @@ MiniAcid is a portable, high-performance acid house groovebox.
 
 ### Saving Reliability
 - **Auto-Save:** Implemented in `stop()`, `loadSceneByName()`, and `cleanup()`.
-- **Storage:** Uses LittleFS/SD on hardware, JSON files on SDL.
-- **JSON:** Avoid parsing huge documents in memory. Prefer the evented reader where possible.
+- **Storage:** Uses SD card (Cardputer) or JSON files (Desktop/SDL).
+- **Hard-Flush:** Always call `file.flush()` before `file.close()` on ESP32 to prevent truncation.
+- **Verification:** After writing, re-open the file in `FILE_READ` mode and verify `file.size()` matches the bytes written.
+
+### JSON Streaming Pitfalls
+- **Structural Integrity:** Streaming writers (e.g., `writeSceneJson`) are sensitive. A missing `}` or `,` will cause "Unexpected EOF" on read.
+- **Nesting Alert:** Always double-check that fields are closed in the correct order. (e.g., `led` must be closed before `vocal` if they are siblings in `state`).
+- **Debugging:** For large streaming files, use `Serial.print(".")` during writing and a byte counter in the reader's lambda to pinpoint the exact failure offset.
 
 ---
 

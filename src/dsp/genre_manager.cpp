@@ -107,7 +107,7 @@ void GenreManager::applyGenreTimbre(MiniAcid& engine) {
 
         // Apply NORMALIZED parameters
         engine.set303ParameterNormalized(TB303ParamId::Cutoff,    clamp01(cut), v);
-        engine.set303ParameterNormalized(TB303ParamId::Resonance, clamp01(reso), v);
+       // engine.set303ParameterNormalized(TB303ParamId::Resonance, clamp01(reso), v);
         engine.set303ParameterNormalized(TB303ParamId::EnvAmount, clamp01(env), v);
         engine.set303ParameterNormalized(TB303ParamId::EnvDecay,  clamp01(decay), v);
     }

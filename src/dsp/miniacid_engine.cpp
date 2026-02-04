@@ -1281,7 +1281,9 @@ void MiniAcid::advanceStep() {
 
 void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   static int count = 0;
-  if (count++ % 100 == 0) Serial.printf("GAB: this=%p buf=%p\n", (void*)this, (void*)buffer);
+  if (count++ % 100 == 0){
+  //  Serial.printf("GAB: this=%p buf=%p\n", (void*)this, (void*)buffer);
+  }
   
   if (!buffer || numSamples == 0) {
     return;
