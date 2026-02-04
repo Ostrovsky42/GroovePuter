@@ -8,6 +8,7 @@ public:
         PG_RANDOM = 0,
         PG_GENRE,
         PG_EVOL,
+        PG_FILL,   // FillAuto: interpolate between neighbors
         COUNT
     };
     

@@ -639,11 +639,34 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
   }
 
   if (key == 'g' || key == 'G') {
-    if (ui_event.shift) {
-        // Shift+G - Cycle Mode
+    if (ui_event.fn) {
+        // Fn+G - Cycle Mode (Cardputer has no Shift)
         cycleGeneratorMode();
         show_genre_hint_ = true;
         hint_timer_ = millis() + 2000;
+        return true;
+    } else if (ui_event.alt && has_selection_) {
+        // Alt+G with selection - Batch generate
+        int min_row, max_row, min_track, max_track;
+        getSelectionBounds(min_row, max_row, min_track, max_track);
+        if (max_track > 3) max_track = 3;
+        withAudioGuard([&]() {
+            for (int r = min_row; r <= max_row; ++r) {
+                for (int t = min_track; t <= max_track; ++t) {
+                    bool valid = false;
+                    SongTrack track = trackForColumn(t, valid);
+                    if (!valid) continue;
+                    // Temporarily set cursor for context-aware generation
+                    int savedRow = cursor_row_;
+                    int savedTrack = cursor_track_;
+                    cursor_row_ = r;
+                    cursor_track_ = t;
+                    generateCurrentCellPattern();
+                    cursor_row_ = savedRow;
+                    cursor_track_ = savedTrack;
+                }
+            }
+        });
         return true;
     } else {
         // G - Generate
@@ -877,8 +900,9 @@ void SongPage::drawGeneratorHint(IGfx& gfx) {
         return;
     }
     
-    const char* mode_names[] = { "RND", "GENRE", "EVOL" };
-    const char* current_mode = mode_names[static_cast<int>(gen_mode_)];
+    const char* mode_names[] = { "RND", "SMART", "EVOL", "FILL" };
+    int modeIdx = static_cast<int>(gen_mode_);
+    const char* current_mode = (modeIdx < 4) ? mode_names[modeIdx] : "?";
     
     int hintW = 60;
     int hintH = 12;
@@ -903,23 +927,86 @@ bool SongPage::generateCurrentCellPattern() {
     SongTrack track = trackForColumn(col, valid);
     if (!valid) return false;
     
-    uint32_t current = mini_acid_.songPatternAt(row, track);
-    uint32_t current_idx = (current < 0) ? 99 : (uint32_t)current;
-
-    uint8_t track_id = 0;
-    if (track == SongTrack::SynthB) track_id = 1;
-    else if (track == SongTrack::Drums) track_id = 2;
-    else if (track == SongTrack::Voice) track_id = 3;
+    int current_bank = bankIndexForTrack(track);
+    int patternIdx = -1;
     
-    uint32_t new_pattern = generator_.generatePattern(
-        gen_mode_,
-        mini_acid_.genreManager().generativeMode(),
-        track_id,
-        current_idx
-    );
+    // Get current pattern info
+    int current = mini_acid_.songPatternAt(row, track);
+    int current_idx = (current < 0) ? -1 : (current % 8);
     
-    int current_bank = bankIndexForTrack(track); 
-    int final_pattern = current_bank * 8 + (new_pattern % 8);
+    // FillAuto mode: interpolate between neighbors
+    if (gen_mode_ == SmartPatternGenerator::PG_FILL) {
+        int prevPattern = (row > 0) ? mini_acid_.songPatternAt(row - 1, track) : -1;
+        int nextPattern = (row < Song::kMaxPositions - 1) ? mini_acid_.songPatternAt(row + 1, track) : -1;
+        
+        if (prevPattern >= 0 && nextPattern >= 0) {
+            // Both exist: average
+            int prevIdx = prevPattern % 8;
+            int nextIdx = nextPattern % 8;
+            patternIdx = (prevIdx + nextIdx) / 2;
+        } else if (prevPattern >= 0) {
+            // Only prev: slight evolution
+            int prevIdx = prevPattern % 8;
+            patternIdx = prevIdx + ((rand() % 3) - 1);  // -1, 0, +1
+            if (patternIdx < 0) patternIdx = 0;
+            if (patternIdx > 7) patternIdx = 7;
+        } else if (nextPattern >= 0) {
+            // Only next: lead-in
+            int nextIdx = nextPattern % 8;
+            patternIdx = (nextIdx > 0) ? nextIdx - 1 : 0;
+        } else {
+            // No context: fall back to genre-smart
+            gen_mode_ = SmartPatternGenerator::PG_GENRE;
+        }
+    }
+    
+    // GenreSmart mode: use GenerativeParams
+    if (gen_mode_ == SmartPatternGenerator::PG_GENRE && patternIdx < 0) {
+        const auto& genParams = mini_acid_.genreManager().getGenerativeParams();
+        
+        if (track == SongTrack::Drums) {
+            // Drums: sparse = simple, dense = complex
+            if (genParams.sparseKick && genParams.sparseHats) {
+                patternIdx = rand() % 3;  // 0-2: simple
+            } else if (!genParams.sparseKick && !genParams.sparseHats) {
+                patternIdx = 4 + (rand() % 3);  // 4-6: complex
+            } else {
+                patternIdx = 2 + (rand() % 3);  // 2-4: medium
+            }
+        } else if (track == SongTrack::SynthA || track == SongTrack::SynthB) {
+            // Synths: complexity from note count + slides
+            float avgNotes = (genParams.minNotes + genParams.maxNotes) / 2.0f;
+            float complexity = avgNotes / 16.0f;  // Normalize 0-1
+            complexity += genParams.slideProbability * 0.3f;
+            if (complexity > 1.0f) complexity = 1.0f;
+            
+            patternIdx = (int)(complexity * 6.0f);  // Map to 0-6
+            patternIdx += (rand() % 3) - 1;  // Add variance
+            if (patternIdx < 0) patternIdx = 0;
+            if (patternIdx > 6) patternIdx = 6;
+        } else {
+            // Voice: random phrase
+            patternIdx = rand() % 8;
+        }
+    }
+    
+    // Fallback to other modes via SmartPatternGenerator
+    if (patternIdx < 0) {
+        uint8_t track_id = 0;
+        if (track == SongTrack::SynthB) track_id = 1;
+        else if (track == SongTrack::Drums) track_id = 2;
+        else if (track == SongTrack::Voice) track_id = 3;
+        
+        uint32_t new_pattern = generator_.generatePattern(
+            gen_mode_,
+            mini_acid_.genreManager().generativeMode(),
+            track_id,
+            (current_idx >= 0) ? current_idx : 99
+        );
+        patternIdx = new_pattern % 8;
+    }
+    
+    int final_pattern = current_bank * 8 + patternIdx;
     
     withAudioGuard([&]() {
         mini_acid_.setSongPattern(row, track, final_pattern);
