@@ -47,6 +47,10 @@ class VoicePage : public IPage {
   void nextFocus();
   void prevFocus();
   
+  // Advanced Vocal Support
+  std::string phoneticTransform(const std::string& input);
+  void drawPreviewSection(IGfx& gfx, int y);
+  
   IGfx& gfx_;
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
@@ -62,5 +66,11 @@ class VoicePage : public IPage {
   int editCursor_ = 0;
   char editBuffer_[32] = "";
   
+  
   std::string title_ = "VOICE SYNTH";
+  
+  // UI Preview State
+  std::string previewText_ = "";
+  uint32_t lastSpeakAnim_ = 0;
+  bool speakAnimState_ = false;
 };

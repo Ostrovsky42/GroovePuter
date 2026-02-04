@@ -21,6 +21,10 @@ public:
   virtual bool writeScene(const std::string& data) = 0;
   virtual bool readScene(SceneManager& manager) = 0;
   virtual bool writeScene(const SceneManager& manager) = 0;
+  
+  // Auto-save variants (saves to *.auto.json)
+  virtual bool writeSceneAuto(const SceneManager& manager) = 0;
+  virtual bool readSceneAuto(SceneManager& manager) = 0;
 
   // return the scenes currently found on the storage
   virtual std::vector<std::string> getAvailableSceneNames() const = 0;

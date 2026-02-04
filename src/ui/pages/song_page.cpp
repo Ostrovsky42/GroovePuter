@@ -638,9 +638,14 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return clearPattern();
   }
 
+  // Tab also clears pattern
+  if (key == '\t') {
+    return clearPattern();
+  }
+
   if (key == 'g' || key == 'G') {
-    if (ui_event.fn) {
-        // Fn+G - Cycle Mode (Cardputer has no Shift)
+    if (ui_event.ctrl) {
+        // Ctrl+G - Cycle Mode
         cycleGeneratorMode();
         show_genre_hint_ = true;
         hint_timer_ = millis() + 2000;

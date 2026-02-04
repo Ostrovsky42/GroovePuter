@@ -22,6 +22,8 @@
 #include "../sampler/drum_sampler_track.h"
 #include "../sampler/sample_index.h"
 #include "formant_synth.h"
+#include "../audio/vocal_mixer.h"
+#include "voice_compressor.h"
 
 // ===================== Audio config =====================
 
@@ -79,41 +81,7 @@ enum class MiniAcidParamId : uint8_t {
 
 
 
-class VoiceCompressor {
-public:
-    void init(float threshold, float ratio, float attack, float release) {
-        threshold_ = threshold;
-        ratio_ = ratio;
-        attack_ = attack;
-        release_ = release;
-        envelope_ = 0.0f;
-    }
 
-    float process(float input) {
-        float absInput = fabsf(input);
-        if (absInput > envelope_) {
-            envelope_ += (absInput - envelope_) * attack_;
-        } else {
-            envelope_ += (absInput - envelope_) * release_;
-        }
-
-        float gain = 1.0f;
-        if (envelope_ > threshold_) {
-            float excess = envelope_ - threshold_;
-            gain = threshold_ / (threshold_ + excess * (1.0f/ratio_)); 
-        }
-        
-        // Makeup gain (auto-estimated or fixed)
-        return input * gain * 1.5f; 
-    }
-
-private:
-    float threshold_ = 0.3f;
-    float ratio_ = 4.0f;
-    float attack_ = 0.3f;
-    float release_ = 0.05f;
-    float envelope_ = 0.0f;
-};
 
 class MiniAcid {
 public:
@@ -288,6 +256,7 @@ public:
   bool isVoiceTrackMuted() const { return voiceTrackMuted_; }
   void toggleVoiceTrackMute();
   void setVoiceTrackMute(bool muted);
+  float getVoiceDuckingLevel() const { return vocalMixer_.getDuckAmount(); }
 
   void generateAudioBuffer(int16_t *buffer, size_t numSamples);
 
@@ -329,8 +298,8 @@ private:
   mutable bool drumStepAccentCache_[SEQ_STEPS];
 
   // Vocal mixing
-  float duckingLevel_ = 0.0f;
-  VoiceCompressor compressor_;
+  VocalMixer vocalMixer_;
+  VoiceCompressor voiceCompressor_;
   
   // Internal state
   volatile bool playing;

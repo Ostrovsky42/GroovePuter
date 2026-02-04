@@ -255,3 +255,14 @@ bool SceneStorageSdl::setCurrentSceneName(const std::string& name) {
   currentSceneName_ = normalizeSceneName(name);
   return persistCurrentSceneName();
 }
+}
+
+bool SceneStorageSdl::writeSceneAuto(const SceneManager& manager) {
+  // For SDL/Desktop, auto-save = regular save (simplified)
+  return writeScene(manager);
+}
+
+bool SceneStorageSdl::readSceneAuto(SceneManager& manager) {
+  // For SDL/Desktop, auto-load = regular load (simplified)
+  return readScene(manager);
+}

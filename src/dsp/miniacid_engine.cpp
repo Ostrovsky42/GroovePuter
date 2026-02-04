@@ -253,6 +253,13 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
     distortion3032(),
     currentTimingOffset_(0) {
   if (sampleRateValue <= 0.0f) sampleRateValue = 44100.0f;
+  
+  // NEW: Configure voice processing chain
+  // HPF @ 150Hz is built-in to compressor
+  voiceCompressor_.setThreshold(0.3f);      // -10dB
+  voiceCompressor_.setRatio(4.0f);          // 4:1 compression
+  voiceCompressor_.setMakeupGain(2.8f);     // +9dB boost
+  voiceCompressor_.setPresenceBoost(0.5f);  // +3dB @ 2kHz
 }
 
 
@@ -295,9 +302,7 @@ void MiniAcid::init() {
   params[static_cast<int>(MiniAcidParamId::VoiceRobotness)] = Parameter("v_rob", "%", 0.0f, 1.0f, 0.7f, 0.05f); // Was 0.8
   params[static_cast<int>(MiniAcidParamId::VoiceVolume)] = Parameter("v_vol", "%", 0.0f, 1.0f, 0.8f, 0.05f); // Was 1.0
   
-  // Initialize Compressor
-  compressor_.init(0.3f, 4.0f, 0.3f, 0.05f);
-  duckingLevel_ = 0.0f;
+
 
   if (sceneStorage_) {
     LOG_PRINTLN("  - MiniAcid::init: Initializing scene storage...");
@@ -374,6 +379,10 @@ void MiniAcid::reset() {
   delay3032.setFeedback(0.32f);
   delay3032.setEnabled(delay3032Enabled);
   delay3032.setBpm(bpmValue);
+  
+  vocalMixer_.setDuckAmount(0.0f);
+  voiceCompressor_.reset();
+  vocalSynth_.reset();
   
   distortion303.setEnabled(distortion303Enabled);
   distortion3032.setEnabled(distortion3032Enabled);
@@ -1431,32 +1440,14 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     }
     
     // ═══════════════════════════════════════════════════════════
-    // Vocal Synth (Formant-based robotic speech)
-    // ═══════════════════════════════════════════════════════════
-    // SIDECHAIN DUCKING
-    // ═══════════════════════════════════════════════════════════
-    bool isSpeaking = (!voiceTrackMuted_ && vocalSynth_.isActive() && vocalSynth_.isSpeaking());
-    if (isSpeaking) {
-      duckingLevel_ += (1.0f - duckingLevel_) * 0.05f; // Attack
-    } else {
-      duckingLevel_ += (0.0f - duckingLevel_) * 0.02f; // Release
-    }
-    float musicGain = 1.0f - (duckingLevel_ * 0.6f); // Duck by up to 60%
-    
-    sample *= musicGain;
-
-    // ═══════════════════════════════════════════════════════════
-    // VOCAL SYNTH & COMPRESSION
+    // Vocal Synth - COMPRESSION (No Ducking)
     // ═══════════════════════════════════════════════════════════
     float vocalSample = 0.0f;
     if (!voiceTrackMuted_ && vocalSynth_.isActive()) {
-      vocalSample = vocalSynth_.process();
-      
-      // Apply Compressor
-      vocalSample = compressor_.process(vocalSample);
-      
-      sample += vocalSample * 0.9f;  // Mix punchy vocal
+      vocalSample = voiceCompressor_.process(vocalSynth_.process());
     }
+    
+    sample += vocalSample;  // Direct mix without ducking
     
     // Track per-source peaks for diagnostics
     if (AudioDiagnostics::instance().isEnabled()) {

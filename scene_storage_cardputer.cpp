@@ -58,6 +58,18 @@ std::string SceneStorageCardputer::currentScenePath() const {
   return scenePathFor(currentSceneName_);
 }
 
+std::string SceneStorageCardputer::autoScenePathFor(const std::string& name) const {
+  std::string path = kScenesDirectory;
+  path += "/";
+  path += normalizeSceneName(name);
+  path += kAutoSceneExtension;
+  return path;
+}
+
+std::string SceneStorageCardputer::currentAutoScenePath() const {
+  return autoScenePathFor(currentSceneName_);
+}
+
 void SceneStorageCardputer::loadStoredSceneName() {
   if (!isInitialized_) return;
   File file = SD.open(kSceneNamePath, FILE_READ);
@@ -214,6 +226,76 @@ bool SceneStorageCardputer::writeScene(const SceneManager& manager) {
     Serial.printf("Streaming write FAILED! ok=%d, written=%zu, verified=%zu\n", ok, bytesWritten, verifiedSize);
     return false;
   }
+}
+
+bool SceneStorageCardputer::writeSceneAuto(const SceneManager& manager) {
+  if (!isInitialized_) {
+    Serial.println("Storage not initialized. Please call initializeStorage() first.");
+    return false;
+  }
+  Serial.println("Writing auto-save scene to SD card...");
+  std::string path = currentAutoScenePath();
+  SD.remove(path.c_str());
+  
+  File file = SD.open(path.c_str(), FILE_WRITE);
+  if (!file) {
+    Serial.printf("Failed to open auto-save file for writing: %s\n", path.c_str());
+    return false;
+  }
+
+  bool ok = manager.writeSceneJson(file);
+  file.flush();
+  size_t bytesWritten = file.size();
+  file.close();
+
+  if (ok && bytesWritten > 0) {
+    Serial.printf("Auto-save succeeded to %s (%zu bytes)\n", path.c_str(), bytesWritten);
+    return true;
+  } else {
+    Serial.printf("Auto-save FAILED! ok=%d, written=%zu\n", ok, bytesWritten);
+    return false;
+  }
+}
+
+bool SceneStorageCardputer::readSceneAuto(SceneManager& manager) {
+  if (!isInitialized_) {
+    Serial.println("Storage not initialized. Please call initializeStorage() first.");
+    return false;
+  }
+  std::string autoPath = currentAutoScenePath();
+  
+  // Try auto-save file first
+  if (SD.exists(autoPath.c_str())) {
+    Serial.printf("Reading auto-save scene from SD card (%s)...\n", autoPath.c_str());
+    File file = SD.open(autoPath.c_str(), FILE_READ);
+    if (file) {
+      Serial.println("Auto-save file opened successfully, loading scene...");
+      bool ok = manager.loadSceneEvented(file);
+      file.close();
+      if (ok) {
+        Serial.println("Auto-save read succeeded");
+        return true;
+      }
+      Serial.println("Auto-save read failed, will try main file");
+    }
+  }
+  
+  // Fallback to main scene file
+  std::string mainPath = currentScenePath();
+  if (SD.exists(mainPath.c_str())) {
+    Serial.printf("Reading main scene from SD card (%s)...\n", mainPath.c_str());
+    File file = SD.open(mainPath.c_str(), FILE_READ);
+    if (file) {
+      Serial.println("Main file opened successfully, loading scene...");
+      bool ok = manager.loadSceneEvented(file);
+      file.close();
+      Serial.printf("Main scene read %s\n", ok ? "succeeded" : "failed");
+      return ok;
+    }
+  }
+  
+  Serial.println("No scene files found (auto or main)");
+  return false;
 }
 
 std::vector<std::string> SceneStorageCardputer::getAvailableSceneNames() const {

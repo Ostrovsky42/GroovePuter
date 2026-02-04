@@ -9,24 +9,40 @@ inline constexpr IGfxColor kFocusColor = IGfxColor(0xB36A00);
 inline constexpr IGfxColor kVoiceColor = IGfxColor(0x00CED1);  // Dark cyan
 inline constexpr IGfxColor kActiveColor = IGfxColor(0x00FF7F); // Spring green
 
-// Built-in phrase names for display
+// Built-in phrase names for display and playback
+// NOTE: SAM TTS is phoneme-based. Non-English words are transliterated.
 const char* const BUILTIN_PHRASE_NAMES[] = {
-    "Acid",           // 0
-    "Techno",         // 1
-    "Minimal",        // 2
-    "Pattern One",    // 3
-    "Pattern Two",    // 4
-    "Ready",          // 5
-    "Go",             // 6
-    "Stop",           // 7
-    "Recording",      // 8
-    "Saved",          // 9
-    "Error",          // 10
-    "BPM",            // 11
-    "Play",           // 12
-    "Mute",           // 13
-    "Welcome",        // 14
-    "Goodbye",        // 15
+    // === MUSICAL COMMANDS ===
+    "Tek no tek no tek no",        // 1: Techno
+    "Mi ni mal",                   // 2: Minimal
+    "Kur wa bo ber, ia per do le",              // 4: Kurwa bober
+    "Er ror",                     // 10: Error
+    "Bee P eM",                   // 11: BPM
+    "O ver ride",                 // 13: Override
+    "Wel come",                   // 14: Welcome
+    "Wat sap  what sup beach be acth",                   // 15: What's up
+    "Hu man de tec ted",          // 28: Human detected
+    "Self de struct",             // 26: Self destruct
+    "Load ing",                   // 17: Loading
+    "Press an y key",             // 31: Press any key
+
+    
+    // === USEFUL / STANDARD ===
+    "Yes",                        // 32
+    "No",                         // 33
+    "Ok ay",                      // 34: OK
+    "Thank you",                  // 35
+    "Sor ree",                    // 36: Sorry
+    "Warn ing",                   // 37
+    "Com plete",                  // 38
+    "Fail ure",                   // 39
+    "Bat ter ry low",             // 40
+    "Con nect ed",                // 41
+    "Dis con nect ed",            // 42
+    "Secu ri ty breach",          // 43
+    "Le vel up",                  // 44
+    "Game o ver",                 // 45
+    "Vic tor ry",                 // 46
 };
 const int NUM_BUILTIN_PHRASES = sizeof(BUILTIN_PHRASE_NAMES) / sizeof(BUILTIN_PHRASE_NAMES[0]);
 
@@ -34,6 +50,18 @@ const int NUM_BUILTIN_PHRASES = sizeof(BUILTIN_PHRASE_NAMES) / sizeof(BUILTIN_PH
 
 VoicePage::VoicePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     : gfx_(gfx), mini_acid_(mini_acid), audio_guard_(audio_guard) {
+  // Set OPTIMAL defaults for intelligibility on first open (Sweet Spot)
+  // Slower speed and slightly lower pitch help SAM sound clearer on small speakers.
+  withAudioGuard([&]() {
+    auto& synth = mini_acid_.vocalSynth();
+    // Only set if parameters are at their factory-default high values
+    if (synth.pitch() > 140.0f && synth.speed() > 1.1f) { 
+        synth.setPitch(120.0f);   // "Sweet spot": slightly deeper
+        synth.setSpeed(0.95f);    // "Sweet spot": slightly slower
+        synth.setRobotness(0.0f); // Pure monotone is actually clearer
+        synth.setVolume(1.0f);    // Maximum presence
+    }
+  });
 }
 
 void VoicePage::setBoundaries(const Rect& rect) {
@@ -71,7 +99,8 @@ void VoicePage::drawPhraseSection(IGfx& gfx, int y) {
     }
   } else {
     if (phraseIndex_ >= 0 && phraseIndex_ < NUM_BUILTIN_PHRASES) {
-      snprintf(buf, sizeof(buf), "%d: %s", phraseIndex_ + 1, BUILTIN_PHRASE_NAMES[phraseIndex_]);
+      // Ensure we don't overflow the display buffer
+      snprintf(buf, sizeof(buf), "%d: %.50s", phraseIndex_ + 1, BUILTIN_PHRASE_NAMES[phraseIndex_]);
     } else {
       snprintf(buf, sizeof(buf), "%d: ???", phraseIndex_ + 1);
     }
@@ -90,11 +119,24 @@ void VoicePage::drawParameterSection(IGfx& gfx, int y) {
   
   auto& synth = mini_acid_.vocalSynth();
   
-  // Pitch row
+  // Pitch row (with intelligibility indicator)
   gfx.setTextColor(COLOR_WHITE);
   gfx.drawText(x, y, "PCH:");
-  gfx.setTextColor(COLOR_KNOB_1);
-  snprintf(buf, sizeof(buf), "%.0f Hz", synth.pitch());
+  
+  float pitch = synth.pitch();
+  IGfxColor pitchColor;
+  if (pitch < 100.0f) {
+    pitchColor = COLOR_RED;          // Too low, muddy
+  } else if (pitch < 200.0f) {
+    pitchColor = COLOR_KNOB_1;       // Good range
+  } else if (pitch < 300.0f) {
+    pitchColor = IGfxColor(0x00FF7F); // High but OK
+  } else {
+    pitchColor = COLOR_RED;          // Too high, shrill
+  }
+  
+  gfx.setTextColor(pitchColor);
+  snprintf(buf, sizeof(buf), "%.0f Hz", pitch);
   gfx.drawText(x + 30, y, buf);
   if (focus_ == FocusItem::Pitch) {
     gfx.drawRect(x + 28, y - 1, 55, 10, kFocusColor);
@@ -159,22 +201,57 @@ void VoicePage::drawCustomPhraseSection(IGfx& gfx, int y) {
   
   y += 14;
   
-  // Status line
-  gfx.setTextColor(COLOR_GRAY);
+  // Status line with level meter
   if (mini_acid_.vocalSynth().isSpeaking()) {
     gfx.setTextColor(kActiveColor);
-    gfx.drawText(x, y, ">> Speaking...");
+    gfx.drawText(x, y, ">> Speaking");
+    
+    // VU meter for voice level
+    float level = mini_acid_.vocalSynth().getCurrentLevel();
+    int barWidth = (int)(level * 60);
+    if (barWidth > 60) barWidth = 60;
+    int barX = x + 70;
+    
+    // Background
+    gfx.drawRect(barX, y, 62, 8, COLOR_GRAY);
+    
+    // Level bar (color-coded)
+    IGfxColor barColor = IGfxColor::Green();
+    if (level > 0.8f) barColor = COLOR_RED;
+    else if (level > 0.5f) barColor = IGfxColor(0xB36A00); // Orange-ish
+    
+    if (barWidth > 0) {
+      gfx.fillRect(barX + 1, y + 1, barWidth, 6, barColor);
+    }
   } else if (mini_acid_.isVoiceTrackMuted()) {
     gfx.setTextColor(COLOR_RED);
     gfx.drawText(x, y, "MUTED");
   } else {
-    gfx.drawText(x, y, "Space=Preview  M=Mute");
+    gfx.setTextColor(COLOR_GRAY);
+    gfx.drawText(x, y, "Space=Preview M=Mute");
   }
+  
+  // Ducking indicator
+  float duckLevel = mini_acid_.getVoiceDuckingLevel();
+  if (duckLevel > 0.05f) {
+    gfx.setTextColor(IGfxColor(0xB36A00)); // Focus-like color
+    char duckBuf[32];
+    snprintf(duckBuf, sizeof(duckBuf), "Ducking: %d%%", (int)(duckLevel * 100));
+    gfx.drawText(x + 110, y, duckBuf);
+  }
+  
+  y += 12;
+  gfx.setTextColor(COLOR_GRAY);
+  gfx.drawText(x, y, "Presets: R=Robot H=Human D=Deep C=Chipmunk");
 }
 
 void VoicePage::draw(IGfx& gfx) {
   int y = dy() + 2;
   
+  // Quality Indicator (top right)
+  gfx.setTextColor(COLOR_GRAY);
+  gfx.drawText(dx() + width() - 55, dy() + 2, "Qual: HI");
+
   // Section 1: Phrase selection
   drawPhraseSection(gfx, y);
   y += 28;
@@ -193,6 +270,10 @@ void VoicePage::draw(IGfx& gfx) {
   
   // Section 3: Custom phrase edit
   drawCustomPhraseSection(gfx, y);
+  y += 26;
+
+  // Section 4: Preview Area (New)
+  drawPreviewSection(gfx, y);
 }
 
 void VoicePage::adjustCurrentValue(int delta) {
@@ -235,15 +316,98 @@ void VoicePage::adjustCurrentValue(int delta) {
   });
 }
 
+std::string VoicePage::phoneticTransform(const std::string& input) {
+    std::string output;
+    output.reserve(input.length() * 2); 
+    
+    for (size_t i = 0; i < input.length(); ++i) {
+        char c = tolower(input[i]);
+        
+        switch(c) {
+            case 'c': 
+                if (i + 1 < input.length() && tolower(input[i+1]) == 'h') {
+                    output += "ch";
+                    i++;
+                } else if (i + 1 < input.length() && tolower(input[i+1]) == 'k') {
+                    output += "k";
+                    i++;
+                } else {
+                    output += "k";
+                }
+                break;
+            case 'x': output += "ks"; break;
+            case 'q': output += "kw"; break;
+            case 'j': output += "j"; break;
+            case 'y': output += "y"; break;
+            case 'w': output += "w"; break;
+            case 'z': output += "z"; break;
+            default:
+                if ((c >= 'a' && c <= 'z') || c == ' ' || (c >= '0' && c <= '9')) {
+                    output += c;
+                }
+                break;
+        }
+    }
+    
+    std::string result;
+    for (size_t i = 0; i < output.length(); i++) {
+        result += output[i];
+        if (i < output.length() - 1) {
+            bool isConsonant = !strchr("aeiou ", output[i]);
+            bool isVowel = strchr("aeiou", output[i+1]) != nullptr;
+            if (isConsonant && isVowel && (rand() % 100 < 20)) { 
+                result += ' ';
+            }
+        }
+    }
+    
+    return result;
+}
+
 void VoicePage::triggerPreview() {
   withAudioGuard([&]() {
     if (useCustomPhrase_) {
-      mini_acid_.speakCustomPhrase(phraseIndex_);
+      const char* customPhrase = mini_acid_.vocalSynth().getCustomPhrase(phraseIndex_);
+      if (customPhrase && customPhrase[0] != '\0') {
+          std::string phonetized = phoneticTransform(customPhrase);
+          mini_acid_.vocalSynth().speak(phonetized.c_str());
+          previewText_ = phonetized;
+      }
     } else {
-      mini_acid_.speakPhrase(phraseIndex_);
+      if (phraseIndex_ >= 0 && phraseIndex_ < NUM_BUILTIN_PHRASES) {
+         mini_acid_.vocalSynth().speak(BUILTIN_PHRASE_NAMES[phraseIndex_]);
+         previewText_ = BUILTIN_PHRASE_NAMES[phraseIndex_];
+      }
     }
   });
 }
+
+void VoicePage::drawPreviewSection(IGfx& gfx, int y) {
+  gfx.drawLine(dx() + 2, y, dx() + width() - 2, y, COLOR_GRAY);
+  
+  int x = dx() + 4;
+  gfx.setTextColor(COLOR_KNOB_1);
+  gfx.drawText(x, y + 4, "PREVIEW:");
+  
+  gfx.setTextColor(COLOR_WHITE);
+  if (!previewText_.empty()) {
+    std::string disp = previewText_;
+    if (disp.length() > 25) disp = disp.substr(0, 22) + "...";
+    gfx.drawText(x + 55, y + 4, disp.c_str());
+  } else {
+    gfx.drawText(x + 55, y + 4, "Press 'a' to test");
+  }
+  
+  if (mini_acid_.vocalSynth().isSpeaking()) {
+    if (millis() - lastSpeakAnim_ > 200) {
+        lastSpeakAnim_ = millis();
+        speakAnimState_ = !speakAnimState_;
+    }
+    gfx.fillCircle(dx() + width() - 10, y + 7, 3, 
+                   speakAnimState_ ? COLOR_KNOB_3 : IGfxColor(0x004400));
+  }
+}
+
 
 void VoicePage::nextFocus() {
   int f = static_cast<int>(focus_);
@@ -375,6 +539,44 @@ bool VoicePage::handleEvent(UIEvent& ui_event) {
     if (!useCustomPhrase_ && phraseIndex_ < NUM_BUILTIN_PHRASES) {
       triggerPreview();
     }
+    return true;
+  }
+
+  // Presets
+  if (lowerKey == 'r') {
+    withAudioGuard([&]() {
+      mini_acid_.setParameter(MiniAcidParamId::VoicePitch, 120.0f);
+      mini_acid_.setParameter(MiniAcidParamId::VoiceRobotness, 0.9f);
+      mini_acid_.setParameter(MiniAcidParamId::VoiceVolume, 0.8f);
+      mini_acid_.setParameter(MiniAcidParamId::VoiceSpeed, 1.0f);
+    });
+    return true;
+  }
+  if (lowerKey == 'h') {
+    withAudioGuard([&]() {
+      mini_acid_.setParameter(MiniAcidParamId::VoicePitch, 180.0f);
+      mini_acid_.setParameter(MiniAcidParamId::VoiceRobotness, 0.2f);
+      mini_acid_.setParameter(MiniAcidParamId::VoiceVolume, 0.7f);
+      mini_acid_.setParameter(MiniAcidParamId::VoiceSpeed, 1.2f);
+    });
+    return true;
+  }
+  if (lowerKey == 'd') {
+    withAudioGuard([&]() {
+      mini_acid_.setParameter(MiniAcidParamId::VoicePitch, 80.0f);
+      mini_acid_.setParameter(MiniAcidParamId::VoiceRobotness, 0.5f);
+      mini_acid_.setParameter(MiniAcidParamId::VoiceVolume, 0.9f);
+      mini_acid_.setParameter(MiniAcidParamId::VoiceSpeed, 0.8f);
+    });
+    return true;
+  }
+  if (lowerKey == 'c') {
+    withAudioGuard([&]() {
+      mini_acid_.setParameter(MiniAcidParamId::VoicePitch, 280.0f);
+      mini_acid_.setParameter(MiniAcidParamId::VoiceRobotness, 0.4f);
+      mini_acid_.setParameter(MiniAcidParamId::VoiceVolume, 0.6f);
+      mini_acid_.setParameter(MiniAcidParamId::VoiceSpeed, 1.5f);
+    });
     return true;
   }
 

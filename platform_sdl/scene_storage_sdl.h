@@ -11,6 +11,8 @@ public:
   bool writeScene(const std::string& data) override;
   bool writeScene(const SceneManager& manager) override;
   bool readScene(SceneManager& manager) override;
+  bool writeSceneAuto(const SceneManager& manager) override;
+  bool readSceneAuto(SceneManager& manager) override;
   void initializeStorage() override;
   std::vector<std::string> getAvailableSceneNames() const override;
   std::string getCurrentSceneName() const override;

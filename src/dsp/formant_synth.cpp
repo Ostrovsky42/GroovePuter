@@ -210,10 +210,28 @@ float FormantSynth::process() {
         output += formants_[i].process(excitation);
     }
     
-    // Soft saturation for warmer sound
-    output = tanhf(output * 1.5f);
+    // CRITICAL: Boost gain for audibility (from improved_formants.cpp)
+    output *= 2.5f;  // +8dB boost!
     
-    return output * volume_;
+    // Soft saturation for warmer sound and to prevent harsh clipping
+    if (output > 1.0f) {
+        output = 1.0f - 0.1f * (output - 1.0f);
+    } else if (output < -1.0f) {
+        output = -1.0f + 0.1f * (-output - 1.0f);
+    }
+    
+    float result = output * volume_;
+    
+    // Simple peak tracking for UI (with fast decay)
+    float absRes = fabsf(result);
+    float current = currentLevel_.load(std::memory_order_relaxed);
+    if (absRes > current) {
+        currentLevel_.store(absRes, std::memory_order_relaxed);
+    } else {
+        currentLevel_.store(current * 0.999f, std::memory_order_relaxed);
+    }
+    
+    return result;
 }
 
 void FormantSynth::render(float* buffer, size_t numSamples) {
