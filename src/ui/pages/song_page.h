@@ -4,6 +4,7 @@
 #include "../pages/help_dialog.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
+#include "../../dsp/pattern_generator.h"
 
 class SongPage : public IPage, public IMultiHelpFramesProvider {
  public:
@@ -57,4 +58,16 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   int selection_start_track_;
   Container mode_button_container_;
   bool mode_button_initialized_ = false;
+
+  // Pattern Generator
+  SmartPatternGenerator::Mode gen_mode_;
+  SmartPatternGenerator generator_;
+  bool show_genre_hint_;
+  uint32_t hint_timer_;
+  uint32_t last_g_press_ = 0; // For double-tap detection
+
+  bool generateCurrentCellPattern();
+  void generateEntireRow();
+  void cycleGeneratorMode();
+  void drawGeneratorHint(IGfx& gfx);
 };

@@ -187,7 +187,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
 
         // Waveform overlay toggle
-        if (event.key == 'w' || event.key == 'W') {
+        if (event.key == 'w') {
             UI::waveformOverlay.enabled = !UI::waveformOverlay.enabled;
             return true;
         }

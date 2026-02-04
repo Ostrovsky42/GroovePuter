@@ -370,6 +370,8 @@ SceneJsonObserver::Path SceneJsonObserver::deduceObjectPath(const Context& paren
     return Path::SynthParam;
   case Path::SongPositions:
     return Path::SongPosition;
+  case Path::SamplerPads:
+    return Path::SamplerPad;
   default:
     return Path::Unknown;
   }
@@ -425,18 +427,26 @@ void SceneJsonObserver::onObjectStart() {
     const Context& parent = stack_[stackSize_ - 1];
     if (parent.type == Context::Type::Array) {
       path = deduceObjectPath(parent);
-    } else if (parent.path == Path::Root) {
+    } else if (parent.path == Path::Root || parent.path == Path::State) {
       if (lastKey_ == "state") path = Path::State;
       else if (lastKey_ == "song") path = Path::Song;
       else if (lastKey_ == "tape") path = Path::Tape;
       else if (lastKey_ == "led") path = Path::Led;
       else if (lastKey_ == "generatorParams") path = Path::GeneratorParams;
-    } else if (parent.path == Path::State && lastKey_ == "mute") {
-      path = Path::Mute;
+      else if (lastKey_ == "vocal") path = Path::Vocal;
+      else if (lastKey_ == "mute") path = Path::Mute;
+    } else if (parent.path == Path::Led && lastKey_ == "vocal") {
+      path = Path::Vocal;  // vocal is nested inside led in current format
+    } else if (parent.path == Path::Led && lastKey_ == "samplerPads") {
+      path = Path::SamplerPads; // samplerPads can be inside led in some versions
     }
   }
   pushContext(Context::Type::Object, path);
-  if (path == Path::Unknown) error_ = true;
+  if (path == Path::Unknown) {
+    Serial.printf("[Parser] ERROR: Unknown object path, lastKey='%s', parent_path=%d, stackSize=%d\n", 
+                  lastKey_.c_str(), stackSize_ > 1 ? static_cast<int>(stack_[stackSize_-2].path) : -1, stackSize_);
+    error_ = true;
+  }
 }
 
 void SceneJsonObserver::onObjectEnd() {
@@ -450,25 +460,26 @@ void SceneJsonObserver::onArrayStart() {
   if (stackSize_ > 0) {
     const Context& parent = stack_[stackSize_ - 1];
     if (parent.type == Context::Type::Object) {
-      if (parent.path == Path::Root) {
+      if (parent.path == Path::Root || parent.path == Path::State || parent.path == Path::Led) {
         if (lastKey_ == "drumBanks") path = Path::DrumBanks;
         else if (lastKey_ == "synthABanks") path = Path::SynthABanks;
         else if (lastKey_ == "synthBBanks") path = Path::SynthBBanks;
         else if (lastKey_ == "samplerPads") path = Path::SamplerPads;
         else if (lastKey_ == "customPhrases") path = Path::CustomPhrases;
-      } else if (parent.path == Path::Song) {
-        if (lastKey_ == "positions") path = Path::SongPositions;
-      } else if (parent.path == Path::Led) {
-        if (lastKey_ == "clr") path = Path::LedColorArray;
-      } else if (parent.path == Path::DrumVoice) {
-        if (lastKey_ == "hit") path = Path::DrumHitArray;
-        else if (lastKey_ == "accent") path = Path::DrumAccentArray;
-      } else if (parent.path == Path::State) {
-        if (lastKey_ == "synthPatternIndex") path = Path::SynthPatternIndex;
+        else if (lastKey_ == "synthPatternIndex") path = Path::SynthPatternIndex;
         else if (lastKey_ == "synthBankIndex") path = Path::SynthBankIndex;
         else if (lastKey_ == "synthDistortion") path = Path::SynthDistortion;
         else if (lastKey_ == "synthDelay") path = Path::SynthDelay;
         else if (lastKey_ == "synthParams") path = Path::SynthParams;
+        else if (lastKey_ == "bpm") path = Path::Unknown; // bpm is primitive, not array, but just in case
+      } else if (parent.path == Path::Song) {
+        if (lastKey_ == "positions") path = Path::SongPositions;
+      } else if (parent.path == Path::Led) {
+        if (lastKey_ == "clr") path = Path::LedColorArray;
+        else if (lastKey_ == "customPhrases") path = Path::CustomPhrases; // Handle both places
+      } else if (parent.path == Path::DrumVoice) {
+        if (lastKey_ == "hit") path = Path::DrumHitArray;
+        else if (lastKey_ == "accent") path = Path::DrumAccentArray;
       } else if (parent.path == Path::Mute) {
         if (lastKey_ == "drums") path = Path::MuteDrums;
         else if (lastKey_ == "synth") path = Path::MuteSynth;
@@ -478,7 +489,11 @@ void SceneJsonObserver::onArrayStart() {
     }
   }
   pushContext(Context::Type::Array, path);
-  if (path == Path::Unknown) error_ = true;
+  if (path == Path::Unknown) {
+    Serial.printf("[Parser] ERROR: Unknown array path, lastKey='%s', parent_path=%d, stackSize=%d\n", 
+                  lastKey_.c_str(), stackSize_ > 1 ? static_cast<int>(stack_[stackSize_-2].path) : -1, stackSize_);
+    error_ = true;
+  }
 }
 
 
@@ -626,6 +641,13 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     } else if (lastKey_ == "synthBankIndex") {
       synthBankIndex_[0] = intValue;
     }
+    return;
+  }
+  if (path == Path::Vocal) {
+    if (lastKey_ == "pch") target_.vocal.pitch = static_cast<float>(value);
+    else if (lastKey_ == "spd") target_.vocal.speed = static_cast<float>(value);
+    else if (lastKey_ == "rob") target_.vocal.robotness = static_cast<float>(value);
+    else if (lastKey_ == "vol") target_.vocal.volume = static_cast<float>(value);
     return;
   }
   if (path == Path::SamplerPad) {
@@ -819,15 +841,27 @@ void SceneJsonObserver::onNull() {}
 
 void SceneJsonObserver::onString(const std::string& value) {
   if (error_ || stackSize_ == 0) return;
-  Path path = stack_[stackSize_ - 1].path;
-  if (path == Path::State && lastKey_ == "drumEngine") {
-    drumEngineName_ = value;
-  } else if (path == Path::CustomPhrase) {
-     int idx = stack_[stackSize_ - 1].index;
-     if (idx >= 0 && idx < Scene::kMaxCustomPhrases) {
+  const Context& context = stack_[stackSize_ - 1];
+  if (context.type == Context::Type::Object) {
+    // Handle object keys that expect string values
+    if (context.path == Path::State && lastKey_ == "drumEngine") {
+      drumEngineName_ = value;
+    } else if (context.path == Path::CustomPhrase) { // This path is for individual custom phrases, not an array
+      int idx = context.index; // This index would be from a parent array, if CustomPhrase was an array of objects
+      if (idx >= 0 && idx < Scene::kMaxCustomPhrases) {
         std::strncpy(target_.customPhrases[idx], value.c_str(), Scene::kMaxPhraseLength - 1);
         target_.customPhrases[idx][Scene::kMaxPhraseLength - 1] = '\0';
-     }
+      }
+    }
+  } else if (context.type == Context::Type::Array) {
+    // Handle array elements that expect string values
+    if (context.path == Path::CustomPhrases) { // This is the array of custom phrases
+      int idx = context.index;
+      if (idx >= 0 && idx < Scene::kMaxCustomPhrases) {
+        std::strncpy(target_.customPhrases[idx], value.c_str(), Scene::kMaxPhraseLength - 1);
+        target_.customPhrases[idx][Scene::kMaxPhraseLength - 1] = '\0';
+      }
+    }
   }
 }
 

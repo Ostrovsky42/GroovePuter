@@ -45,6 +45,7 @@ class ProjectPage : public IPage{
   SaveDialogFocus save_dialog_focus_;
   int selection_index_;
   int scroll_offset_;
+  bool loadError_;
   std::vector<std::string> scenes_;
   std::string save_name_;
 };

@@ -63,6 +63,7 @@ ProjectPage::ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     save_dialog_focus_(SaveDialogFocus::Input),
     selection_index_(0),
     scroll_offset_(0),
+    loadError_(false),
     save_name_(generateMemorableName()) {
   refreshScenes();
 }
@@ -84,7 +85,9 @@ void ProjectPage::refreshScenes() {
 void ProjectPage::openLoadDialog() {
   dialog_type_ = DialogType::Load;
   dialog_focus_ = DialogFocus::List;
-  save_dialog_focus_ = SaveDialogFocus::Input;
+  selection_index_ = 0;
+  scroll_offset_ = 0;
+  loadError_ = false;
   refreshScenes();
   std::string current = mini_acid_.currentSceneName();
   for (size_t i = 0; i < scenes_.size(); ++i) {
@@ -111,11 +114,13 @@ void ProjectPage::closeDialog() {
 
 
 void ProjectPage::moveSelection(int delta) {
-  if (scenes_.empty() || delta == 0) return;
+  loadError_ = false; // Clear error on move
   selection_index_ += delta;
   if (selection_index_ < 0) selection_index_ = 0;
-  int maxIdx = static_cast<int>(scenes_.size()) - 1;
-  if (selection_index_ > maxIdx) selection_index_ = maxIdx;
+  if (!scenes_.empty() && selection_index_ >= static_cast<int>(scenes_.size())) {
+    selection_index_ = static_cast<int>(scenes_.size()) - 1;
+  }
+  ensureSelectionVisible(10); // Assuming 10 rows visible
 }
 
 void ProjectPage::ensureSelectionVisible(int visibleRows) {
@@ -146,7 +151,11 @@ bool ProjectPage::loadSceneAtSelection() {
   withAudioGuard([&]() {
     loaded = mini_acid_.loadSceneByName(name);
   });
-  if (loaded) closeDialog();
+  if (loaded) {
+    closeDialog();
+  } else {
+    loadError_ = true;
+  }
   return true;
 }
 
@@ -473,6 +482,10 @@ void ProjectPage::draw(IGfx& gfx) {
     int header_h = line_h + 4;
     gfx.setTextColor(COLOR_WHITE);
     gfx.drawText(dialog_x + 4, dialog_y + 2, "Load Scene");
+    if (loadError_) {
+      gfx.setTextColor(COLOR_ACCENT);
+      gfx.drawText(dialog_x + dialog_w - 70, dialog_y + 2, "LOAD FAILED");
+    }
 
     int row_h = line_h + 3;
     int cancel_h = line_h + 8;

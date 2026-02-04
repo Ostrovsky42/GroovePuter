@@ -47,7 +47,8 @@ std::string SceneStorageCardputer::normalizeSceneName(const std::string& name) c
 }
 
 std::string SceneStorageCardputer::scenePathFor(const std::string& name) const {
-  std::string path = "/";
+  std::string path = kScenesDirectory;
+  path += "/";
   path += normalizeSceneName(name);
   path += kSceneExtension;
   return path;
@@ -96,6 +97,12 @@ void SceneStorageCardputer::initializeStorage() {
   } else {
     Serial.println("Card initialized successfully");
     isInitialized_ = true;
+    
+    if (!SD.exists(kScenesDirectory)) {
+      Serial.printf("Creating directory: %s\n", kScenesDirectory);
+      SD.mkdir(kScenesDirectory);
+    }
+    
     loadStoredSceneName();
   }
 }
@@ -196,8 +203,14 @@ std::vector<std::string> SceneStorageCardputer::getAvailableSceneNames() const {
   std::vector<std::string> names;
   if (!isInitialized_) return names;
 
-  File root = SD.open("/");
-  if (!root) return names;
+  File root = SD.open(kScenesDirectory);
+  if (!root) {
+    if (!SD.exists(kScenesDirectory)) {
+       SD.mkdir(kScenesDirectory);
+       root = SD.open(kScenesDirectory);
+    }
+    if (!root) return names;
+  }
 
   while (true) {
     File entry = root.openNextFile();

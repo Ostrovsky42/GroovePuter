@@ -76,7 +76,10 @@ SongPage::SongPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     scroll_row_(0),
     has_selection_(false),
     selection_start_row_(0),
-    selection_start_track_(0) {
+    selection_start_track_(0),
+    gen_mode_(SmartPatternGenerator::PG_RANDOM),
+    show_genre_hint_(false),
+    hint_timer_(0) {
   cursor_row_ = mini_acid_.currentSongPosition();
   if (cursor_row_ < 0) cursor_row_ = 0;
   int maxSongRow = mini_acid_.songLength() - 1;
@@ -635,6 +638,30 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return clearPattern();
   }
 
+  if (key == 'g' || key == 'G') {
+    if (ui_event.shift) {
+        // Shift+G - Cycle Mode
+        cycleGeneratorMode();
+        show_genre_hint_ = true;
+        hint_timer_ = millis() + 2000;
+        return true;
+    } else {
+        // G - Generate
+        // Check for double tap
+        uint32_t now = millis();
+        if (now - last_g_press_ < 300) {
+            // Double tap: Generate entire row
+            generateEntireRow();
+            last_g_press_ = 0; // Reset
+        } else {
+            // Single tap (so far): Generate current cell
+            generateCurrentCellPattern();
+            last_g_press_ = now;
+        }
+        return true;
+    }
+  }
+
   return false;
 }
 
@@ -714,7 +741,11 @@ void SongPage::draw(IGfx& gfx) {
     gfx.setTextColor(IGfxColor::Yellow());
     gfx.drawText(loopX, body_y, loopBuf);
     gfx.setTextColor(COLOR_WHITE);
+    gfx.setTextColor(COLOR_WHITE);
   }
+
+  // Draw Generator Hint if active
+  drawGeneratorHint(gfx);
 
   int modeX = x + w - modeBtnW;
   int modeY = body_y - 2 + 30;
@@ -832,4 +863,110 @@ void SongPage::drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const {
     default:
       break;
   }
+}
+
+void SongPage::cycleGeneratorMode() {
+    int mode = static_cast<int>(gen_mode_);
+    mode = (mode + 1) % SmartPatternGenerator::Mode::COUNT;
+    gen_mode_ = static_cast<SmartPatternGenerator::Mode>(mode);
+}
+
+void SongPage::drawGeneratorHint(IGfx& gfx) {
+    if (!show_genre_hint_ || millis() > hint_timer_) {
+        show_genre_hint_ = false;
+        return;
+    }
+    
+    const char* mode_names[] = { "RND", "GENRE", "EVOL" };
+    const char* current_mode = mode_names[static_cast<int>(gen_mode_)];
+    
+    int hintW = 60;
+    int hintH = 12;
+    int hintX = gfx.width() - hintW - 60; // Left of mode button
+    int hintY = 2;
+    
+    // Background
+    gfx.fillRect(hintX, hintY, hintW, hintH, COLOR_BLACK);
+    gfx.drawRect(hintX, hintY, hintW, hintH, COLOR_ACCENT);
+    
+    gfx.setTextColor(COLOR_WHITE);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "GEN:%s", current_mode);
+    gfx.drawText(hintX + 4, hintY + 2, buf);
+}
+
+bool SongPage::generateCurrentCellPattern() {
+    int row = cursorRow();
+    int col = cursorTrack();
+    
+    bool valid = false;
+    SongTrack track = trackForColumn(col, valid);
+    if (!valid) return false;
+    
+    uint32_t current = mini_acid_.songPatternAt(row, track);
+    uint32_t current_idx = (current < 0) ? 99 : (uint32_t)current;
+
+    uint8_t track_id = 0;
+    if (track == SongTrack::SynthB) track_id = 1;
+    else if (track == SongTrack::Drums) track_id = 2;
+    else if (track == SongTrack::Voice) track_id = 3;
+    
+    uint32_t new_pattern = generator_.generatePattern(
+        gen_mode_,
+        mini_acid_.genreManager().generativeMode(),
+        track_id,
+        current_idx
+    );
+    
+    int current_bank = bankIndexForTrack(track); 
+    int final_pattern = current_bank * 8 + (new_pattern % 8);
+    
+    withAudioGuard([&]() {
+        mini_acid_.setSongPattern(row, track, final_pattern);
+        if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
+            mini_acid_.setSongPosition(row);
+        }
+    });
+    
+    return true;
+}
+
+void SongPage::generateEntireRow() {
+    int row = cursorRow();
+    int current_bank_A = mini_acid_.current303BankIndex(0);
+    int current_bank_B = mini_acid_.current303BankIndex(1);
+    int current_bank_Drums = mini_acid_.currentDrumBankIndex();
+    
+    withAudioGuard([&]() {
+        for (int col = 0; col < 4; col++) {
+            bool valid = false;
+            SongTrack track = trackForColumn(col, valid);
+            if (!valid) continue;
+            
+            uint32_t current = mini_acid_.songPatternAt(row, track);
+            uint32_t current_idx = (current < 0) ? 99 : (uint32_t)current;
+            
+            uint8_t track_id = 0;
+            int bank = 0;
+            
+            if (track == SongTrack::SynthA) { track_id = 0; bank = current_bank_A; }
+            else if (track == SongTrack::SynthB) { track_id = 1; bank = current_bank_B; }
+            else if (track == SongTrack::Drums) { track_id = 2; bank = current_bank_Drums; }
+            else if (track == SongTrack::Voice) { track_id = 3; bank = 0; }
+            
+             uint32_t new_pattern = generator_.generatePattern(
+                gen_mode_,
+                mini_acid_.genreManager().generativeMode(),
+                track_id,
+                current_idx
+            );
+            
+            int final_pattern = bank * 8 + (new_pattern % 8);
+            mini_acid_.setSongPattern(row, track, final_pattern);
+        }
+        
+        if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
+            mini_acid_.setSongPosition(row);
+        }
+    });
 }

@@ -1638,7 +1638,12 @@ std::vector<std::string> MiniAcid::availableSceneNames() const {
 }
 
 bool MiniAcid::loadSceneByName(const std::string& name) {
-  if (!sceneStorage_) return false;
+  if (!sceneStorage_) {
+    Serial.println("[LoadScene] ERROR: sceneStorage_ is null");
+    return false;
+  }
+  
+  Serial.printf("[LoadScene] Starting load for: %s\n", name.c_str());
   
   // Auto-save current scene before switching to prevent data loss
   std::string previousName = sceneStorage_->getCurrentSceneName();
@@ -1647,13 +1652,17 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
   sceneStorage_->setCurrentSceneName(name);
 
   bool loaded = sceneStorage_->readScene(sceneManager_);
+  Serial.printf("[LoadScene] readScene returned: %s\n", loaded ? "TRUE" : "FALSE");
   // String-based fallback REMOVED - causes OOM on DRAM-only devices
   
   if (!loaded) {
+    Serial.printf("[LoadScene] FAILED - reverting to: %s\n", previousName.c_str());
     sceneStorage_->setCurrentSceneName(previousName);
     return false;
   }
+  Serial.println("[LoadScene] Applying scene state...");
   applySceneStateFromManager();
+  Serial.println("[LoadScene] SUCCESS");
   return true;
 }
 

@@ -13,11 +13,16 @@ public:
     if (hasBuffered_) {
       hasBuffered_ = false;
       c = buffered_;
+      // printf("CharStream::get: returning buffered '%c' (%d)\n", c, (int)c);
       return true;
     }
     int value = nextChar_();
-    if (value < 0) return false;
+    if (value < 0) {
+      printf("CharStream::get: nextChar returned %d (EOF)\n", value);
+      return false;
+    }
     c = static_cast<char>(value);
+    printf("CharStream::get: read '%c' (%d)\n", c, (int)c);
     return true;
   }
 
@@ -27,10 +32,14 @@ public:
       return true;
     }
     int value = nextChar_();
-    if (value < 0) return false;
+    if (value < 0) {
+      printf("CharStream::peek: nextChar returned %d (EOF)\n", value);
+      return false;
+    }
     buffered_ = static_cast<char>(value);
     hasBuffered_ = true;
     c = buffered_;
+    printf("CharStream::peek: read '%c' (%d)\n", c, (int)c);
     return true;
   }
 
@@ -53,7 +62,14 @@ bool parseValue(CharStream& stream, JsonObserver& observer);
 bool parseLiteral(CharStream& stream, const char* literal) {
   for (const char* ptr = literal; *ptr; ++ptr) {
     char c;
-    if (!stream.get(c) || c != *ptr) return false;
+    if (!stream.get(c)) {
+      printf("JsonVisitor::parseLiteral: Unexpected EOF for literal '%s'\n", literal);
+      return false;
+    }
+    if (c != *ptr) {
+      printf("JsonVisitor::parseLiteral: Mismatch for '%s', expected '%c', got '%c' (%d)\n", literal, *ptr, c, (int)c);
+      return false;
+    }
   }
   return true;
 }
@@ -137,12 +153,18 @@ bool parseArray(CharStream& stream, JsonObserver& observer) {
     if (!parseValue(stream, observer)) return false;
     observer.onObjectValueEnd();
     stream.skipWhitespace();
-    if (!stream.get(c)) return false;
+    if (!stream.get(c)) {
+      printf("JsonVisitor::parseArray: Unexpected EOF, expected ',' or ']'\n");
+      return false;
+    }
     if (c == ']') {
       observer.onArrayEnd();
       return true;
     }
-    if (c != ',') return false;
+    if (c != ',') {
+      printf("JsonVisitor::parseArray: Expected ',' or ']', got '%c' (%d)\n", c, (int)c);
+      return false;
+    }
     stream.skipWhitespace();
   }
 }
@@ -158,23 +180,39 @@ bool parseObject(CharStream& stream, JsonObserver& observer) {
   }
 
   while (true) {
-    if (!stream.get(c) || c != '"') return false;
+    if (!stream.get(c)) {
+      printf("JsonVisitor::parseObject: Unexpected EOF, expected key\n");
+      return false;
+    }
+    if (c != '"') {
+      printf("JsonVisitor::parseObject: Expected '\"' (key start), got '%c' (%d)\n", c, (int)c);
+      return false;
+    }
     std::string key;
     if (!parseString(stream, key)) return false;
     observer.onObjectKey(key);
     stream.skipWhitespace();
-    if (!stream.get(c) || c != ':') return false;
+    if (!stream.get(c) || c != ':') {
+      printf("JsonVisitor::parseObject: Expected ':', got '%c' (%d)\n", c, (int)c);
+      return false;
+    }
     stream.skipWhitespace();
     observer.onObjectValueStart();
     if (!parseValue(stream, observer)) return false;
     observer.onObjectValueEnd();
     stream.skipWhitespace();
-    if (!stream.get(c)) return false;
+    if (!stream.get(c)) {
+      printf("JsonVisitor::parseObject: Unexpected EOF, expected ',' or '}'\n");
+      return false;
+    }
     if (c == '}') {
       observer.onObjectEnd();
       return true;
     }
-    if (c != ',') return false;
+    if (c != ',') {
+      printf("JsonVisitor::parseObject: Expected ',' or '}', got '%c' (%d)\n", c, (int)c);
+      return false;
+    }
     stream.skipWhitespace();
   }
 }
@@ -182,7 +220,10 @@ bool parseObject(CharStream& stream, JsonObserver& observer) {
 bool parseValue(CharStream& stream, JsonObserver& observer) {
   stream.skipWhitespace();
   char c;
-  if (!stream.get(c)) return false;
+  if (!stream.get(c)) {
+    // This is often just EOF at the very end, but if it's during parseValue, it's an error.
+    return false;
+  }
   switch (c) {
   case '{':
     return parseObject(stream, observer);
@@ -210,6 +251,7 @@ bool parseValue(CharStream& stream, JsonObserver& observer) {
     if (c == '-' || std::isdigit(static_cast<unsigned char>(c))) {
       return parseNumber(stream, observer, c);
     }
+    printf("JsonVisitor::parseValue: Unexpected character '%c' (%d)\n", c, (int)c);
     return false;
   }
 }
@@ -225,18 +267,9 @@ bool JsonVisitor::parse(const std::string& input, JsonObserver& observer) {
 }
 
 bool JsonVisitor::parseImpl(NextChar nextChar, JsonObserver& observer) {
-  printf("JsonVisitor::parseImpl: Starting parse...\n");
   CharStream stream(std::move(nextChar));
-  if (!parseValue(stream, observer)) {
-      printf("JsonVisitor::parseImpl: parseValue failed\n");
-      return false;
-  }
+  if (!parseValue(stream, observer)) return false;
   stream.skipWhitespace();
   char extra;
-  if (stream.peek(extra)) {
-      printf("JsonVisitor::parseImpl: Extra chars after JSON: '%c' (%d)\n", extra, (int)extra);
-      return false;
-  }
-  printf("JsonVisitor::parseImpl: Success\n");
-  return true;
+  return !stream.peek(extra);
 }

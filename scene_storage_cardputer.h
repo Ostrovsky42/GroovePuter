@@ -18,7 +18,8 @@ public:
 
 private:
   static constexpr const char* kDefaultSceneName = "miniacid_scene";
-  static constexpr const char* kSceneNamePath = "/miniacid_scene_name.txt";
+  static constexpr const char* kSceneNamePath = "/scenes/miniacid_scene_name.txt";
+  static constexpr const char* kScenesDirectory = "/scenes";
   static constexpr const char* kSceneExtension = ".json";
 
   std::string scenePathFor(const std::string& name) const;

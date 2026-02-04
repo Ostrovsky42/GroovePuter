@@ -455,6 +455,8 @@ void loop() {
 
   bool keyChanged = M5Cardputer.Keyboard.isChange();
   bool keyPressed = M5Cardputer.Keyboard.isPressed();
+  static uint32_t repeatCount = 0;
+  
   if (keyChanged && keyPressed) {
     if (g_miniDisplay) g_miniDisplay->dismissSplash();
     Keyboard_Class::KeysState ks = M5Cardputer.Keyboard.keysState();
@@ -462,12 +464,26 @@ void loop() {
     lastKeysState = ks;
     hasLastKeys = true;
     nextRepeatAt = millis() + KEY_REPEAT_DELAY_MS;
+    repeatCount = 0;
   } else if (!keyPressed) {
+    if (hasLastKeys) {
+        // Serial.println("[Keys] Released");
+    }
     hasLastKeys = false;
+    repeatCount = 0;
   } else if (hasLastKeys && millis() >= nextRepeatAt) {
     if (g_miniDisplay) g_miniDisplay->dismissSplash();
+    // Only repeat alphabetical keys or specific navigational keys to avoid spamming
+    // Serial.printf("[Keys] Repeating (HID=0x%02x)\n", lastKeysState.hid_keys[0]);
     processKeys(lastKeysState);
     nextRepeatAt = millis() + KEY_REPEAT_INTERVAL_MS;
+    
+    // Safety: if a key is held for more than 10 seconds, stop repeating until re-pressed
+    if (++repeatCount > 100) { // 10s / 80ms approx
+        hasLastKeys = false;
+        repeatCount = 0;
+        Serial.println("[Keys] Safety: Stopping long repeat");
+    }
   }
 
   static unsigned long lastUIUpdate = 0;
