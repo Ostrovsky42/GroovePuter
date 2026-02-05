@@ -20,7 +20,7 @@ public:
   DrumSamplerTrack();
 
   // Audio Thread: Trigger a pad
-  void triggerPad(int padIndex, float velocity, ISampleStore& store);
+  void triggerPad(int padIndex, float velocity, ISampleStore& store, bool forceReverse = false);
   
   // Audio Thread: Stop a pad
   void stopPad(int padIndex);

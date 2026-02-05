@@ -10,13 +10,7 @@
 #include "../components/pattern_selection_bar.h"
 #include "../components/drum_sequencer_grid.h"
 
-namespace {
-struct DrumPatternClipboard {
-  bool has_pattern = false;
-  DrumPatternSet pattern{};
-};
-
-DrumPatternClipboard g_drum_pattern_clipboard;
+#include "../ui_clipboard.h"
 
 class DrumSequencerMainPage : public Container {
  public:
@@ -476,6 +470,24 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     case 'g': {
       withAudioGuard([&]() { mini_acid_.randomizeDrumPattern(); });
       return true;
+    }
+    case 'c': {
+      if (ui_event.alt || ui_event.ctrl || ui_event.meta) {
+        UIEvent app_evt{};
+        app_evt.event_type = MINIACID_APPLICATION_EVENT;
+        app_evt.app_event_type = MINIACID_APP_EVENT_COPY;
+        return handleEvent(app_evt);
+      }
+      break;
+    }
+    case 'v': {
+      if (ui_event.alt || ui_event.ctrl || ui_event.meta) {
+        UIEvent app_evt{};
+        app_evt.event_type = MINIACID_APPLICATION_EVENT;
+        app_evt.app_event_type = MINIACID_APP_EVENT_PASTE;
+        return handleEvent(app_evt);
+      }
+      break;
     }
     default:
       break;

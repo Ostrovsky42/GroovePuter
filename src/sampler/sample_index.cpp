@@ -116,3 +116,48 @@ SampleId SampleIndex::findIdByFilename(const std::string& filename) const {
   if (it != nameToId_.end()) return it->second;
   return {0};
 }
+
+std::vector<std::string> SampleIndex::getSubdirectories(const std::string& dirPath) {
+  std::vector<std::string> dirs;
+  printf("SampleIndex::getSubdirectories: Scanning '%s'...\n", dirPath.c_str());
+
+#if USE_ARDUINO_SD
+  File dir = SD.open(dirPath.c_str());
+  if (!dir || !dir.isDirectory()) return dirs;
+
+  while (true) {
+    File entry = dir.openNextFile();
+    if (!entry) break;
+
+    if (entry.isDirectory()) {
+      const char* name = entry.name();
+      if (name[0] == '/') name++;
+      const char* lastSlash = strrchr(name, '/');
+      if (lastSlash) name = lastSlash + 1;
+      
+      // Skip system dirs or hidden
+      if (name[0] != '.') {
+          dirs.push_back(name);
+      }
+    }
+    entry.close();
+  }
+  dir.close();
+#else
+  DIR* dir = opendir(dirPath.c_str());
+  if (!dir) return dirs;
+  
+  struct dirent* entry;
+  while ((entry = readdir(dir)) != nullptr) {
+    if (entry->d_type == DT_DIR) {
+      if (entry->d_name[0] != '.') {
+        dirs.push_back(entry->d_name);
+      }
+    }
+  }
+  closedir(dir);
+#endif
+
+  std::sort(dirs.begin(), dirs.end());
+  return dirs;
+}

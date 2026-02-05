@@ -12,7 +12,7 @@ class ProjectPage : public IPage{
   const std::string & getTitle() const override;
 
  private:
-  enum class MainFocus { Load = 0, SaveAs, New, Mode, VisualStyle, LedMode, LedSource, LedColor, LedBri, LedFlash, Volume };
+  enum class MainFocus { Load = 0, SaveAs, New, Render, Mode, VisualStyle, LedMode, LedSource, LedColor, LedBri, LedFlash, Volume };
   enum class DialogType { None = 0, Load, SaveAs };
   enum class DialogFocus { List = 0, Cancel };
   enum class SaveDialogFocus { Input = 0, Randomize, Save, Cancel };
@@ -27,6 +27,7 @@ class ProjectPage : public IPage{
   void randomizeSaveName();
   bool saveCurrentScene();
   bool createNewScene();
+  void renderProject();
   bool handleSaveDialogInput(char key);
   template <typename F>
   void withAudioGuard(F&& fn) {

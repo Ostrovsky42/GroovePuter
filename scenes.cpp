@@ -14,6 +14,8 @@ void clearDrumPattern(DrumPattern& pattern) {
   for (int i = 0; i < DrumPattern::kSteps; ++i) {
     pattern.steps[i].hit = false;
     pattern.steps[i].accent = false;
+    pattern.steps[i].fx = 0;
+    pattern.steps[i].fxParam = 0;
   }
 }
 
@@ -22,6 +24,8 @@ void clearSynthPattern(SynthPattern& pattern) {
     pattern.steps[i].note = -1;
     pattern.steps[i].slide = false;
     pattern.steps[i].accent = false;
+    pattern.steps[i].fx = 0;
+    pattern.steps[i].fxParam = 0;
   }
 }
 
@@ -62,9 +66,13 @@ void clearSceneData(Scene& scene) {
 void serializeDrumPattern(const DrumPattern& pattern, ArduinoJson::JsonObject obj) {
   ArduinoJson::JsonArray hit = obj["hit"].to<ArduinoJson::JsonArray>();
   ArduinoJson::JsonArray accent = obj["accent"].to<ArduinoJson::JsonArray>();
+  ArduinoJson::JsonArray fx = obj["fx"].to<ArduinoJson::JsonArray>();
+  ArduinoJson::JsonArray fxp = obj["fxp"].to<ArduinoJson::JsonArray>();
   for (int i = 0; i < DrumPattern::kSteps; ++i) {
     hit.add(pattern.steps[i].hit);
     accent.add(pattern.steps[i].accent);
+    fx.add(pattern.steps[i].fx);
+    fxp.add(pattern.steps[i].fxParam);
   }
 }
 
@@ -91,6 +99,8 @@ void serializeSynthPattern(const SynthPattern& pattern, ArduinoJson::JsonArray s
     step["note"] = pattern.steps[i].note;
     step["slide"] = pattern.steps[i].slide;
     step["accent"] = pattern.steps[i].accent;
+    step["fx"] = pattern.steps[i].fx;
+    step["fxp"] = pattern.steps[i].fxParam;
   }
 }
 
@@ -123,14 +133,31 @@ bool deserializeDrumPattern(ArduinoJson::JsonVariantConst value, DrumPattern& pa
   if (obj.isNull()) return false;
   ArduinoJson::JsonArrayConst hit = obj["hit"].as<ArduinoJson::JsonArrayConst>();
   ArduinoJson::JsonArrayConst accent = obj["accent"].as<ArduinoJson::JsonArrayConst>();
+  ArduinoJson::JsonArrayConst fx = obj["fx"].as<ArduinoJson::JsonArrayConst>();
+  ArduinoJson::JsonArrayConst fxp = obj["fxp"].as<ArduinoJson::JsonArrayConst>();
   if (hit.isNull() || accent.isNull()) return false;
   bool hits[DrumPattern::kSteps];
   bool accents[DrumPattern::kSteps];
   if (!deserializeBoolArray(hit, hits, DrumPattern::kSteps)) return false;
   if (!deserializeBoolArray(accent, accents, DrumPattern::kSteps)) return false;
+  
+  // Optional FX arrays
+  int fxs[DrumPattern::kSteps] = {0};
+  int fxps[DrumPattern::kSteps] = {0};
+  if (!fx.isNull()) {
+      int idx = 0;
+      for (ArduinoJson::JsonVariantConst v : fx) { if (idx < DrumPattern::kSteps) fxs[idx++] = v.as<int>(); }
+  }
+  if (!fxp.isNull()) {
+      int idx = 0;
+      for (ArduinoJson::JsonVariantConst v : fxp) { if (idx < DrumPattern::kSteps) fxps[idx++] = v.as<int>(); }
+  }
+
   for (int i = 0; i < DrumPattern::kSteps; ++i) {
     pattern.steps[i].hit = hits[i];
     pattern.steps[i].accent = accents[i];
+    pattern.steps[i].fx = static_cast<uint8_t>(fxs[i]);
+    pattern.steps[i].fxParam = static_cast<uint8_t>(fxps[i]);
   }
   return true;
 }
@@ -182,10 +209,16 @@ bool deserializeSynthPattern(ArduinoJson::JsonVariantConst value, SynthPattern& 
     auto note = obj["note"];
     auto slide = obj["slide"];
     auto accent = obj["accent"];
+    auto fx = obj["fx"];
+    auto fxp = obj["fxp"];
     if (!note.is<int>() || !slide.is<bool>() || !accent.is<bool>()) return false;
     pattern.steps[i].note = note.as<int>();
     pattern.steps[i].slide = slide.as<bool>();
     pattern.steps[i].accent = accent.as<bool>();
+    if (!fx.isNull()) pattern.steps[i].fx = static_cast<uint8_t>(fx.as<int>());
+    else pattern.steps[i].fx = 0;
+    if (!fxp.isNull()) pattern.steps[i].fxParam = static_cast<uint8_t>(fxp.as<int>());
+    else pattern.steps[i].fxParam = 0;
     ++i;
   }
   return true;
@@ -485,6 +518,8 @@ void SceneJsonObserver::onArrayStart() {
       } else if (parent.path == Path::DrumVoice) {
         if (lastKey_ == "hit") path = Path::DrumHitArray;
         else if (lastKey_ == "accent") path = Path::DrumAccentArray;
+        else if (lastKey_ == "fx") path = Path::DrumFxArray;
+        else if (lastKey_ == "fxp") path = Path::DrumFxParamArray;
       } else if (parent.path == Path::Mute) {
         if (lastKey_ == "drums") path = Path::MuteDrums;
         else if (lastKey_ == "synth") path = Path::MuteSynth;
@@ -545,6 +580,22 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     handlePrimitiveBool(value != 0);
     return;
   }
+  if (path == Path::DrumFxArray || path == Path::DrumFxParamArray) {
+    int bankIdx = currentIndexFor(Path::DrumBanks);
+    if (bankIdx < 0) bankIdx = 0;
+    int patternIdx = currentIndexFor(Path::DrumBank);
+    int voiceIdx = currentIndexFor(Path::DrumPatternSet);
+    int stepIdx = stack_[stackSize_ - 1].index;
+    if (patternIdx >= 0 && patternIdx < Bank<DrumPatternSet>::kPatterns &&
+        voiceIdx >= 0 && voiceIdx < DrumPatternSet::kVoices &&
+        stepIdx >= 0 && stepIdx < DrumPattern::kSteps &&
+        bankIdx >= 0 && bankIdx < kBankCount) {
+        DrumStep& step = target_.drumBanks[bankIdx].patterns[patternIdx].voices[voiceIdx].steps[stepIdx];
+        if (path == Path::DrumFxArray) step.fx = static_cast<uint8_t>(value);
+        else step.fxParam = static_cast<uint8_t>(value);
+    }
+    return;
+  }
   if (path == Path::SynthPatternIndex) {
     int idx = stack_[stackSize_ - 1].index;
     if (idx >= 0 && idx < 2) synthPatternIndex_[idx] = static_cast<int>(value);
@@ -575,6 +626,10 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
       pattern.steps[stepIdx].slide = value != 0;
     } else if (lastKey_ == "accent") {
       pattern.steps[stepIdx].accent = value != 0;
+    } else if (lastKey_ == "fx") {
+      pattern.steps[stepIdx].fx = static_cast<uint8_t>(value);
+    } else if (lastKey_ == "fxp") {
+      pattern.steps[stepIdx].fxParam = static_cast<uint8_t>(value);
     }
     return;
   }

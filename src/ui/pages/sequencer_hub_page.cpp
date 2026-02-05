@@ -13,7 +13,7 @@
 #include "../retro_widgets.h"
 #include "../amber_ui_theme.h"
 #include "../amber_widgets.h"
-#include <cstdio>
+#include "../ui_clipboard.h"
 
 SequencerHubPage::SequencerHubPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
@@ -613,6 +613,82 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
                 mini_acid_.set303PatternIndex(selectedTrack_, patIdx);
             }
         });
+        return true;
+    }
+    
+    // Copy/Paste (Alt+C / Alt+V)
+    if (lower == 'c' && (e.alt || e.ctrl || e.meta)) {
+        UIEvent app_evt{};
+        app_evt.event_type = MINIACID_APPLICATION_EVENT;
+        app_evt.app_event_type = MINIACID_APP_EVENT_COPY;
+        // Forward as application event
+        return handleAppEvent(app_evt);
+    }
+    if (lower == 'v' && (e.alt || e.ctrl || e.meta)) {
+        UIEvent app_evt{};
+        app_evt.event_type = MINIACID_APPLICATION_EVENT;
+        app_evt.app_event_type = MINIACID_APP_EVENT_PASTE;
+        // Forward as application event
+        return handleAppEvent(app_evt);
+    }
+    
+    return false;
+}
+
+bool SequencerHubPage::handleAppEvent(const UIEvent& e) {
+    if (e.event_type != MINIACID_APPLICATION_EVENT) return false;
+    
+    if (e.app_event_type == MINIACID_APP_EVENT_COPY) {
+        if (isDrumTrack(selectedTrack_)) {
+            // Copy Drums
+            const bool* hits[NUM_DRUM_VOICES] = {
+                mini_acid_.patternKickSteps(), mini_acid_.patternSnareSteps(),
+                mini_acid_.patternHatSteps(), mini_acid_.patternOpenHatSteps(),
+                mini_acid_.patternMidTomSteps(), mini_acid_.patternHighTomSteps(),
+                mini_acid_.patternRimSteps(), mini_acid_.patternClapSteps()
+            };
+            const bool* accents[NUM_DRUM_VOICES] = {
+                mini_acid_.patternKickAccentSteps(), mini_acid_.patternSnareAccentSteps(),
+                mini_acid_.patternHatAccentSteps(), mini_acid_.patternOpenHatAccentSteps(),
+                mini_acid_.patternMidTomAccentSteps(), mini_acid_.patternHighTomAccentSteps(),
+                mini_acid_.patternRimAccentSteps(), mini_acid_.patternClapAccentSteps()
+            };
+            for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
+                for (int i = 0; i < SEQ_STEPS; ++i) {
+                    g_drum_pattern_clipboard.pattern.voices[v].steps[i].hit = hits[v][i];
+                    g_drum_pattern_clipboard.pattern.voices[v].steps[i].accent = accents[v][i];
+                }
+            }
+            g_drum_pattern_clipboard.has_pattern = true;
+        } else {
+            // Copy 303
+            int patIdx = mini_acid_.current303PatternIndex(selectedTrack_);
+            const SynthPattern& source = mini_acid_.sceneManager().getSynthPattern(selectedTrack_, patIdx);
+            g_pattern_clipboard.pattern = source;
+            g_pattern_clipboard.has_pattern = true;
+        }
+        return true;
+    }
+    
+    if (e.app_event_type == MINIACID_APP_EVENT_PASTE) {
+        if (isDrumTrack(selectedTrack_)) {
+            if (!g_drum_pattern_clipboard.has_pattern) return false;
+            const DrumPatternSet& src = g_drum_pattern_clipboard.pattern;
+            withAudioGuard([&]() {
+                for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
+                    for (int i = 0; i < SEQ_STEPS; ++i) {
+                         mini_acid_.setDrumStep(v, i, src.voices[v].steps[i].hit);
+                         mini_acid_.setDrumAccentStep(v, i, src.voices[v].steps[i].accent);
+                    }
+                }
+            });
+        } else {
+            if (!g_pattern_clipboard.has_pattern) return false;
+            const SynthPattern& src = g_pattern_clipboard.pattern;
+            withAudioGuard([&]() {
+                mini_acid_.sceneManager().editCurrentSynthPattern(selectedTrack_) = src;
+            });
+        }
         return true;
     }
     

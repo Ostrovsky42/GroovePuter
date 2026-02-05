@@ -15,6 +15,7 @@ public:
   // Scans a directory for .wav files and populates the index.
   // Note: Local storage implementation.
   void scanDirectory(const std::string& dirPath);
+  std::vector<std::string> getSubdirectories(const std::string& dirPath);
   
   const std::vector<SampleFileInfo>& getFiles() const { return files_; }
   

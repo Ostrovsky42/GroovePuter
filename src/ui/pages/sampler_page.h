@@ -27,10 +27,27 @@ class SamplerPage : public IPage {
   IGfx& gfx_;
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
+  std::string title_ = "SAMPLER";
   
   bool initialized_ = false;
   int current_pad_ = 0;
   int current_sample_idx_ = -1;
+  
+  // Dialog (Kit Load)
+  enum class DialogType { None = 0, LoadKit };
+  DialogType dialog_type_ = DialogType::None;
+  std::vector<std::string> kits_;
+  int list_selection_index_ = 0;
+  int list_scroll_offset_ = 0;
+  
+  void refreshKits();
+  void loadKit(const std::string& kitName);
+  void openLoadKitDialog();
+  void closeDialog();
+  void drawDialog(IGfx& gfx);
+  bool handleDialogEvent(UIEvent& ui_event);
+  
+  std::shared_ptr<LabelValueComponent> kit_ctrl_;
   
   // UI Components
   std::shared_ptr<LabelValueComponent> pad_ctrl_;
@@ -43,5 +60,5 @@ class SamplerPage : public IPage {
   std::shared_ptr<LabelValueComponent> reverse_ctrl_;
   std::shared_ptr<LabelValueComponent> choke_ctrl_;
 
-  std::string title_ = "SAMPLER EDIT";
+
 };

@@ -59,6 +59,7 @@ This document provides a comprehensive reference for all keyboard shortcuts and 
 | `Alt + S` | Toggle **Slide** for current step |
 | `Alt + A` | Toggle **Accent** for current step |
 | `g` | Randomize Pattern |
+| **`Alt + C` / `V`** | **Copy / Paste Pattern (WIP)** |
 | **`Alt + .`** | **Reset / Clear Pattern** |
 | `Enter` | Confirm Bank/Pattern Selection |
 
@@ -81,6 +82,7 @@ This document provides a comprehensive reference for all keyboard shortcuts and 
 | `x` | Toggle Step |
 | `w` | Toggle Accent |
 | `a` | Toggle Slide (Synth tracks) |
+| `Alt + C / V` | Copy / Paste Pattern (WIP) |
 | `S` / `X` | Move Pattern focus (up/down) |
 
 ### 🎼 Song Page

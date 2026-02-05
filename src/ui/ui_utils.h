@@ -29,6 +29,10 @@ inline void drawLineColored(IGfx& gfx, int x0, int y0, int x1, int y1, IGfxColor
 
 inline void formatNoteName(int note, char* buf, size_t bufSize) {
   if (!buf || bufSize == 0) return;
+  if (note == -2) {
+    snprintf(buf, bufSize, "TI");
+    return;
+  }
   if (note < 0) {
     snprintf(buf, bufSize, "--");
     return;

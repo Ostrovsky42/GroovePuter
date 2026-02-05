@@ -14,7 +14,7 @@
 #include "../retro_widgets.h"
 #include "../amber_ui_theme.h"
 #include "../amber_widgets.h"
-
+#include "ui_clipboard.h"
 #include "../ui_input.h"
 #include "../layout_manager.h"
 #include "../help_dialog_frames.h"
@@ -25,15 +25,6 @@
 using namespace RetroTheme;
 using namespace RetroWidgets;
 #endif
-
-namespace {
-struct PatternClipboard {
-  bool has_pattern = false;
-  SynthPattern pattern{};
-};
-
-PatternClipboard g_pattern_clipboard;
-} // namespace
 
 PatternEditPage::PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index)
   : gfx_(gfx),
@@ -262,13 +253,10 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type == MINIACID_APPLICATION_EVENT) {
     switch (ui_event.app_event_type) {
       case MINIACID_APP_EVENT_COPY: {
-        const int8_t* notes = mini_acid_.pattern303Steps(voice_index_);
-        const bool* accent = mini_acid_.pattern303AccentSteps(voice_index_);
-        const bool* slide = mini_acid_.pattern303SlideSteps(voice_index_);
+        int patIdx = mini_acid_.current303PatternIndex(voice_index_);
+        const SynthPattern& source = mini_acid_.sceneManager().getSynthPattern(voice_index_, patIdx);
         for (int i = 0; i < SEQ_STEPS; ++i) {
-          g_pattern_clipboard.pattern.steps[i].note = notes[i];
-          g_pattern_clipboard.pattern.steps[i].accent = accent[i];
-          g_pattern_clipboard.pattern.steps[i].slide = slide[i];
+          g_pattern_clipboard.pattern.steps[i] = source.steps[i];
         }
         g_pattern_clipboard.has_pattern = true;
         return true;
@@ -316,6 +304,30 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
             if (current_slide[i] != src.steps[i].slide) {
               mini_acid_.toggle303SlideStep(voice_index_, i);
             }
+            
+            // FX Copy
+            // Direct access via friend or adding setter? 
+            // Better to use a setter or just brute force setting via pattern reference if possible?
+            // SceneManager returns reference via editCurrentSynthPattern?
+            // MiniAcid does not expose editSynthPattern directly.
+            // But we can use the cycle/adjust methods or just add a setStep method?
+            // Actually, we can just use the scene manager via MiniAcid if we want to bypass helper.
+            // But for now, let's assume we need to update FX manually or add a setter.
+            // Let's add set303StepFx(idx, step, fx, param) later? 
+            // Or since we are in PatternEditPage which includes Scenes.h and MiniAcid has SceneManager accessor:
+            // mini_acid_.sceneManager().editCurrentSynthPattern(clamp303Voice(voice_index_)).steps[i] = src.steps[i];
+            // But we need to be careful about thread safety (AudioGuard is used here).
+            // Yes, we are inside withAudioGuard.
+            // But we need 'editCurrentSynthPattern' which is private in MiniAcid?
+            // No, sceneManager() returns SceneManager&. SceneManager has editCurrentSynthPattern?
+            // Let's check SceneManager.
+            // For now, simplest is to just set note/acc/slide and leave FX until we have a setter?
+            // No, better to do it right.
+            // Let's use internal accessor if available.
+             
+             // Access via SceneManager directly
+             int vIdx = (voice_index_ < 0) ? 0 : (voice_index_ >= 2 ? 1 : voice_index_);
+             mini_acid_.sceneManager().editCurrentSynthPattern(vIdx).steps[i] = src.steps[i];
           }
         });
         return true;
@@ -343,13 +355,28 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       movePatternCursor(1);
       handled = true;
       break;
+      break;
     case MINIACID_UP:
-      movePatternCursorVertical(-1);
-      handled = true;
+      if (ui_event.alt) {
+           ensureStepFocus();
+           int step = activePatternStep();
+           withAudioGuard([&]() { mini_acid_.adjust303StepFxParam(voice_index_, step, 1); });
+           handled = true;
+      } else {
+          movePatternCursorVertical(-1);
+          handled = true;
+      }
       break;
     case MINIACID_DOWN:
-      movePatternCursorVertical(1);
-      handled = true;
+      if (ui_event.alt) {
+           ensureStepFocus();
+           int step = activePatternStep();
+           withAudioGuard([&]() { mini_acid_.adjust303StepFxParam(voice_index_, step, -1); });
+           handled = true;
+      } else {
+          movePatternCursorVertical(1);
+          handled = true;
+      }
       break;
     default:
       break;
@@ -456,6 +483,30 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     case 'g': {
       withAudioGuard([&]() { mini_acid_.randomize303Pattern(voice_index_); });
       return true;
+    }
+    case 'f': {
+      ensureStepFocus();
+      int step = activePatternStep();
+      withAudioGuard([&]() { mini_acid_.cycle303StepFx(voice_index_, step); });
+      return true;
+    }
+    case 'c': {
+      if (ui_event.alt || ui_event.ctrl || ui_event.meta) {
+        UIEvent app_evt{};
+        app_evt.event_type = MINIACID_APPLICATION_EVENT;
+        app_evt.app_event_type = MINIACID_APP_EVENT_COPY;
+        return handleEvent(app_evt);
+      }
+      break;
+    }
+    case 'v': {
+      if (ui_event.alt || ui_event.ctrl || ui_event.meta) {
+        UIEvent app_evt{};
+        app_evt.event_type = MINIACID_APPLICATION_EVENT;
+        app_evt.app_event_type = MINIACID_APP_EVENT_PASTE;
+        return handleEvent(app_evt);
+      }
+      break;
     }
     default:
       break;
@@ -789,6 +840,18 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     RetroWidgets::drawLED(gfx, cellX + 4, dotY, 1, sld, IGfxColor(NEON_MAGENTA));
     // Accent LED (Matches Note Accent Color -> Orange)
     RetroWidgets::drawLED(gfx, cellX + cellW - 4, dotY, 1, acc, IGfxColor(NEON_ORANGE));
+
+    // FX Indicator
+    uint8_t fx = pattern.steps[i].fx;
+    if (fx != 0) {
+        gfx.setTextColor(IGfxColor(NEON_YELLOW));
+        if (fx == (uint8_t)StepFx::Retrig) {
+            char buf[8]; snprintf(buf, sizeof(buf), "R%d", pattern.steps[i].fxParam);
+            gfx.drawText(cellX + cellW/2 - textWidth(gfx,buf)/2, dotY - 8, buf);
+        } else if (fx == (uint8_t)StepFx::Reverse) {
+            gfx.drawText(cellX + cellW/2 - textWidth(gfx,"RV")/2, dotY - 8, "RV");
+        }
+    }
   }
 
   // Scanlines disabled: caused flicker on small TFT
@@ -796,7 +859,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
   // 5. Footer (consistent with header)
   const char* focusLabel = stepFocus ? "STEPS" : (bankFocus ? "BANK" : "PTRN");
   drawFooterBar(gfx, x, y + h - 12, w, 12, 
-                "A/Z:Note  Alt+S/A:Slide/Acc  G:Rand", 
+                "A/Z:Note F:FX Alt+Arrows:Param", 
                 "q..i:Ptrn  TAB:Voice", 
                 focusLabel);
 

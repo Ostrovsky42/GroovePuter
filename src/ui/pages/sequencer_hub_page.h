@@ -61,6 +61,7 @@ private:
     
     bool handleModeSwitch(UIEvent& e);
     bool handleQuickKeys(UIEvent& e);
+    bool handleAppEvent(const UIEvent& e);
     bool handleVolumeInput(UIEvent& e);
     bool handleNavigation(UIEvent& e);
     bool handleGridEdit(UIEvent& e);

@@ -156,15 +156,17 @@ inline void drawHelpPage303PatternEdit(IGfx& gfx, int x, int y, int w, int h) {
 
   drawHelpHeading(gfx, layout.left_x, left_y, "Pattern slots");
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "SHIFT+Q..I", "Pick pattern", COLOR_PATTERN_SELECTED_FILL);
+  drawHelpItem(gfx, layout.left_x, left_y, "Q..I", "Pick pattern", COLOR_PATTERN_SELECTED_FILL);
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "ALT+C / V", "Copy / Paste (WIP)", IGfxColor::Cyan());
   left_y += lh;
 
   int right_y = y + 4 + lh;
   drawHelpHeading(gfx, layout.right_x, right_y, "Step edits");
   right_y += lh;
-  drawHelpItem(gfx, layout.right_x, right_y, "Q", "Toggle slide", COLOR_SLIDE);
+  drawHelpItem(gfx, layout.right_x, right_y, "ALT+S", "Toggle slide", COLOR_SLIDE);
   right_y += lh;
-  drawHelpItem(gfx, layout.right_x, right_y, "W", "Toggle accent", COLOR_ACCENT);
+  drawHelpItem(gfx, layout.right_x, right_y, "ALT+A", "Toggle accent", COLOR_ACCENT);
   right_y += lh;
   drawHelpItem(gfx, layout.right_x, right_y, "A / Z", "Note +1 / -1", COLOR_303_NOTE);
   right_y += lh;
@@ -192,7 +194,9 @@ inline void drawHelpPageDrumPatternEdit(IGfx& gfx, int x, int y, int w, int h) {
 
   drawHelpHeading(gfx, layout.left_x, left_y, "Patterns");
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "SHIFT+Q..I", "Select drum pattern", COLOR_PATTERN_SELECTED_FILL);
+  drawHelpItem(gfx, layout.left_x, left_y, "Q..I", "Select drum pattern", COLOR_PATTERN_SELECTED_FILL);
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "ALT+C / V", "Copy / Paste (WIP)", IGfxColor::Cyan());
 
   drawHelpHeading(gfx, layout.right_x, right_y, "Step edits");
   right_y += lh;

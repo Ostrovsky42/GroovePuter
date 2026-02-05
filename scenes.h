@@ -52,6 +52,9 @@ struct DrumStep {
   bool accent = false;
   uint8_t velocity = 100;
   int8_t timing = 0;
+  // New FX fields
+  uint8_t fx = 0;      // 0=None, 1=Retrig, 2=Reverse
+  uint8_t fxParam = 0; // Value for FX (e.g. retrig count)
 };
 
 struct DrumPattern {
@@ -71,6 +74,9 @@ struct SynthStep {
   uint8_t velocity = 100;
   int8_t timing = 0;
   bool ghost = false;
+  // New FX fields
+  uint8_t fx = 0;      // 0=None, 1=Retrig, 2=Reverse
+  uint8_t fxParam = 0;
 };
 
 struct SynthPattern {
@@ -183,6 +189,13 @@ struct SamplerPadState {
   uint8_t chokeGroup = 0;
   bool reverse = false;
   bool loop = false;
+};
+
+// FX Types
+enum class StepFx : uint8_t { 
+  None = 0, 
+  Retrig = 1, 
+  Reverse = 2 
 };
 
 // Tape mode enum for looper state machine
@@ -318,6 +331,8 @@ private:
     DrumVoice,
     DrumHitArray,
     DrumAccentArray,
+    DrumFxArray,
+    DrumFxParamArray,
     SynthABanks,
     SynthABank,
     SynthBBanks,
@@ -579,6 +594,18 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
       if (i > 0 && !writeChar(',')) return false;
       if (!writeBool(pattern.steps[i].accent)) return false;
     }
+    // New FX arrays (only write if needed to save space? strict JSON usually requires consistency, but we can make them optional in parser)
+    // For now, let's write them to be safe
+    if (!writeLiteral("],\"fx\":[")) return false;
+    for (int i = 0; i < DrumPattern::kSteps; ++i) {
+      if (i > 0 && !writeChar(',')) return false;
+      if (!writeInt(pattern.steps[i].fx)) return false;
+    }
+    if (!writeLiteral("],\"fxp\":[")) return false;
+    for (int i = 0; i < DrumPattern::kSteps; ++i) {
+      if (i > 0 && !writeChar(',')) return false;
+      if (!writeInt(pattern.steps[i].fxParam)) return false;
+    }
     return writeLiteral("]}");
   };
   auto writeDrumBank = [&](const Bank<DrumPatternSet>& bank) -> bool {
@@ -612,6 +639,10 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
       if (!writeBool(pattern.steps[i].slide)) return false;
       if (!writeLiteral(",\"accent\":")) return false;
       if (!writeBool(pattern.steps[i].accent)) return false;
+      if (!writeLiteral(",\"fx\":")) return false;
+      if (!writeInt(pattern.steps[i].fx)) return false;
+      if (!writeLiteral(",\"fxp\":")) return false;
+      if (!writeInt(pattern.steps[i].fxParam)) return false;
       if (!writeChar('}')) return false;
     }
     return writeChar(']');

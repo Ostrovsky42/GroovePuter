@@ -4,7 +4,7 @@ DrumSamplerTrack::DrumSamplerTrack() {
     // Initialize pads with defaults if needed
 }
 
-void DrumSamplerTrack::triggerPad(int padIndex, float velocity, ISampleStore& store) {
+void DrumSamplerTrack::triggerPad(int padIndex, float velocity, ISampleStore& store, bool forceReverse) {
     if (padIndex < 0 || padIndex >= kNumPads) return;
     
     SamplerPad& p = pads_[padIndex];
@@ -28,7 +28,7 @@ void DrumSamplerTrack::triggerPad(int padIndex, float velocity, ISampleStore& st
     vp.gain = p.volume * velocity;
     vp.startFrame = p.startFrame;
     vp.endFrame = p.endFrame;
-    vp.reverse = p.reverse;
+    vp.reverse = p.reverse || forceReverse;
     vp.loop = p.loop;
 
     // 3. Trigger in pool

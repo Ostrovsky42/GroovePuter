@@ -33,6 +33,7 @@ constexpr const char* kPatternEditSection[] = {
     "Shift+Q    Toggle Slide",
     "Shift+W    Toggle Accent",
     "g          Randomize Pattern",
+    "Alt+C / V  Copy/Paste (WIP*)",
     "Alt+.      Clear Pattern",
 };
 constexpr int kPatternEditSectionSize = sizeof(kPatternEditSection) / sizeof(kPatternEditSection[0]);
@@ -45,6 +46,7 @@ constexpr const char* kDrumSection[] = {
     "Enter/X    Toggle Hit",
     "W          Toggle Accent",
     "Q..I       Quick Pattern",
+    "Alt+C / V  Copy/Paste (WIP*)",
     "Space      Play/Stop",
 };
 constexpr int kDrumSectionSize = sizeof(kDrumSection) / sizeof(kDrumSection[0]);

@@ -50,6 +50,9 @@ void SamplerPage::setBoundaries(const Rect& rect) {
 }
 
 void SamplerPage::initComponents() {
+  kit_ctrl_ = std::make_shared<LabelValueComponent>("KIT:", COLOR_WHITE, COLOR_ACCENT);
+  kit_ctrl_->setValue("[LOAD]");
+  
   pad_ctrl_ = std::make_shared<LabelValueComponent>("PAD:", COLOR_WHITE, COLOR_KNOB_1);
   file_ctrl_ = std::make_shared<LabelValueComponent>("SMP:", COLOR_WHITE, COLOR_KNOB_2);
   volume_ctrl_ = std::make_shared<LabelValueComponent>("VOL:", COLOR_WHITE, COLOR_KNOB_3);
@@ -60,6 +63,7 @@ void SamplerPage::initComponents() {
   reverse_ctrl_ = std::make_shared<LabelValueComponent>("REV:", COLOR_WHITE, COLOR_KNOB_1);
   choke_ctrl_ = std::make_shared<LabelValueComponent>("CHK:", COLOR_WHITE, COLOR_KNOB_1);
 
+  addChild(kit_ctrl_);
   addChild(pad_ctrl_);
   addChild(file_ctrl_);
   addChild(volume_ctrl_);
@@ -72,10 +76,11 @@ void SamplerPage::initComponents() {
 
   int x = dx() + 4;
   int y = dy() + 2;
-  int h = 12; // Compact height (was gfx_.fontHeight() but gfx_ removed from class)
-  int w1 = (width() - 8) / 2;
+  int h = 12; 
   int w_full = width() - 8;
+  int w1 = (width() - 8) / 2;
 
+  kit_ctrl_->setBoundaries(Rect(x, y, w_full, h)); y += h + 2;
   pad_ctrl_->setBoundaries(Rect(x, y, w_full, h)); y += h;
   file_ctrl_->setBoundaries(Rect(x, y, w_full, h)); y += h + 2;
   
@@ -125,6 +130,10 @@ void SamplerPage::draw(IGfx& gfx) {
   choke_ctrl_->setValue(p.chokeGroup == 0 ? "NONE" : std::to_string(p.chokeGroup));
 
   Container::draw(gfx);
+  
+  if (dialog_type_ != DialogType::None) {
+      drawDialog(gfx);
+  }
 }
 
 void SamplerPage::adjustFocusedElement(int direction) {
@@ -145,7 +154,10 @@ void SamplerPage::adjustFocusedElement(int direction) {
       p.id = files[idx].id;
       // Auto-preload if on main thread? 
       // Actually store.preload handles it.
+      // Auto-preload handled by setStore
       mini_acid_.sampleStore->preload(p.id);
+    } else if (kit_ctrl_->isFocused()) {
+        openLoadKitDialog();
     } else if (volume_ctrl_->isFocused()) {
       p.volume = std::clamp(p.volume + direction * 0.05f, 0.0f, 2.0f);
     } else if (pitch_ctrl_->isFocused()) {
@@ -175,6 +187,10 @@ void SamplerPage::prelisten() {
 bool SamplerPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type != MINIACID_KEY_DOWN) {
     return Container::handleEvent(ui_event);
+  }
+
+  if (dialog_type_ != DialogType::None) {
+      return handleDialogEvent(ui_event);
   }
 
   switch (ui_event.scancode) {
@@ -213,3 +229,122 @@ bool SamplerPage::handleEvent(UIEvent& ui_event) {
 }
 
 const std::string& SamplerPage::getTitle() const { return title_; }
+
+void SamplerPage::refreshKits() {
+    kits_ = mini_acid_.sampleIndex.getSubdirectories("/bonnethead/kits");
+    if (kits_.empty()) {
+        // Fallback for testing or bad path
+        kits_ = mini_acid_.sampleIndex.getSubdirectories("/sd/bonnethead/kits"); 
+    }
+    list_selection_index_ = 0;
+    list_scroll_offset_ = 0;
+}
+
+void SamplerPage::openLoadKitDialog() {
+    refreshKits();
+    dialog_type_ = DialogType::LoadKit;
+}
+
+void SamplerPage::closeDialog() {
+    dialog_type_ = DialogType::None;
+}
+
+void SamplerPage::loadKit(const std::string& kitName) {
+    if (kitName.empty()) return;
+    std::string path = "/bonnethead/kits/" + kitName;
+    mini_acid_.sampleIndex.scanDirectory(path);
+    
+    // Auto map
+    const auto& files = mini_acid_.sampleIndex.getFiles();
+    audio_guard_([&]() {
+        for (int i=0; i<16; ++i) {
+            auto& pad = mini_acid_.samplerTrack->pad(i);
+            // Heuristic or sequential
+            pad.id.value = 0;
+            if (i < (int)files.size()) {
+                pad.id = files[i].id;
+                // Detect specific samples for specific pads?
+                // Pad 0=Kick, 1=Snare, 2=Hat, 3=OpenHat
+                pad.volume = 1.0f;
+                pad.pitch = 1.0f;
+                pad.startFrame = 0;
+                pad.endFrame = 0;
+                pad.loop = false;
+                pad.reverse = false;
+                pad.chokeGroup = 0;
+                
+                mini_acid_.sampleStore->preload(pad.id);
+            }
+        }
+    });
+    
+    kit_ctrl_->setValue(kitName);
+    closeDialog();
+}
+
+void SamplerPage::drawDialog(IGfx& gfx) {
+    int w = width() - 20;
+    int h = height() - 20;
+    int x = dx() + 10;
+    int y = dy() + 10;
+    
+    gfx.fillRect(x, y, w, h, COLOR_DARKER);
+    gfx.drawRect(x, y, w, h, COLOR_ACCENT);
+    
+    gfx.setTextColor(COLOR_WHITE);
+    gfx.drawText(x+5, y+5, "Select Kit:");
+    
+    int list_y = y + 20;
+    int row_h = 14;
+    int rows = (h - 30) / row_h;
+    
+    if (kits_.empty()) {
+        gfx.drawText(x+5, list_y, "(No kits found)");
+        return;
+    }
+    
+    int startIdx = list_scroll_offset_;
+    int endIdx = std::min((int)kits_.size(), startIdx + rows);
+    
+    for (int i = startIdx; i < endIdx; ++i) {
+         int ry = list_y + (i - startIdx) * row_h;
+         if (i == list_selection_index_) {
+             gfx.fillRect(x+2, ry, w-4, row_h, COLOR_PANEL);
+             gfx.drawRect(x+2, ry, w-4, row_h, COLOR_ACCENT);
+         }
+         gfx.drawText(x+5, ry+2, kits_[i].c_str());
+    }
+}
+
+bool SamplerPage::handleDialogEvent(UIEvent& ui_event) {
+    if (ui_event.event_type == MINIACID_KEY_DOWN) {
+        if (ui_event.scancode == MINIACID_UP) {
+            if (list_selection_index_ > 0) {
+                list_selection_index_--;
+                if (list_selection_index_ < list_scroll_offset_) list_scroll_offset_ = list_selection_index_;
+            }
+            return true;
+        }
+        if (ui_event.scancode == MINIACID_DOWN) {
+            if (list_selection_index_ < (int)kits_.size() - 1) {
+                list_selection_index_++;
+                int rows = (height() - 50) / 14; 
+                if (list_selection_index_ >= list_scroll_offset_ + rows) list_scroll_offset_ = list_selection_index_ - rows + 1;
+            }
+            return true;
+        }
+        if (ui_event.key == '\n' || ui_event.key == '\r') {
+            if (!kits_.empty() && list_selection_index_ >= 0 && list_selection_index_ < (int)kits_.size()) {
+                loadKit(kits_[list_selection_index_]);
+            } else {
+                closeDialog();
+            }
+            return true;
+        }
+        if (ui_event.scancode == MINIACID_ESCAPE || ui_event.key == 'q') {
+            closeDialog();
+            return true;
+        }
+    }
+    return true;
+}

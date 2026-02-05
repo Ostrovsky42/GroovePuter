@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include <functional>
 
 #include "mode_manager.h"
 #include "genre_manager.h"
@@ -170,6 +171,7 @@ public:
   bool loadSceneByName(const std::string& name);
   bool saveSceneAs(const std::string& name);
   bool createNewSceneWithName(const std::string& name);
+  bool renderProjectToWav(const std::string& filename, std::function<void(float)> progressCallback);
 
   void toggleMute303(int voiceIndex = 0);
   void setMute303(int voiceIndex, bool muted);
@@ -206,6 +208,9 @@ public:
   void toggleDrumStep(int voiceIndex, int stepIndex);
   void toggleDrumAccentStep(int stepIndex);
   void setDrumAccentStep(int voiceIndex, int stepIndex, bool accent);
+  
+  void cycle303StepFx(int voiceIndex, int stepIndex);
+  void adjust303StepFxParam(int voiceIndex, int stepIndex, int delta);
 
   void randomize303Pattern(int voiceIndex = 0);
   void randomizeDrumPattern();
@@ -344,6 +349,17 @@ private:
   int patternModeDrumBankIndex_;
   int patternModeSynthPatternIndex_[NUM_303_VOICES];
   int patternModeSynthBankIndex_[NUM_303_VOICES];
+
+  struct RetrigState {
+    int interval = 0;       // Buffer samples between triggers
+    int counter = 0;        // Countdown to next trigger
+    int countRemaining = 0; // Number of retrigs left
+    bool active = false;    // Is retrig active
+  };
+  
+  RetrigState retrigA_;
+  RetrigState retrigB_;
+  RetrigState retrigDrums_[NUM_DRUM_VOICES];
 
   struct SoftLimiter {
     float threshold = 0.95f;
