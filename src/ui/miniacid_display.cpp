@@ -4,7 +4,7 @@
 #include "../../platform_sdl/arduino_compat.h"
 #endif
 
-#include "pages/play_page.h"
+
 #include "pages/sequencer_hub_page.h"
 #include "pages/genre_page.h"
 #include "pages/drum_sequencer_page.h"
@@ -66,12 +66,11 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case 4:  return std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 1);
         case 5:  return std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_);
         case 6:  return std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_);
-        case 7:  return std::make_unique<PlayPage>(gfx_, mini_acid_, audio_guard_);
-        case 8:  return std::make_unique<SequencerHubPage>(gfx_, mini_acid_, audio_guard_);
-        case 9: return std::make_unique<SongPage>(gfx_, mini_acid_, audio_guard_);
-        case 10: return std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_);
-        case 11:  return std::make_unique<SettingsPage>(gfx_, mini_acid_);        
-        case 12: return std::make_unique<VoicePage>(gfx_, mini_acid_, audio_guard_);
+        case 7:  return std::make_unique<SequencerHubPage>(gfx_, mini_acid_, audio_guard_);
+        case 8:  return std::make_unique<SongPage>(gfx_, mini_acid_, audio_guard_);
+        case 9:  return std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_);
+        case 10: return std::make_unique<SettingsPage>(gfx_, mini_acid_);        
+        case 11: return std::make_unique<VoicePage>(gfx_, mini_acid_, audio_guard_);
 
        // case 14: return std::make_unique<WaveformPage>(gfx_, mini_acid_, audio_guard_);
        // case 8:  return std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_);

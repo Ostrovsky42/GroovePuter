@@ -6,6 +6,15 @@
 #include "../ui_widgets.h"
 #include "../components/drum_sequencer_grid.h"
 
+#define USE_RETRO_THEME
+#include "../retro_ui_theme.h"
+#include "../retro_widgets.h"
+
+#ifdef USE_RETRO_THEME
+using namespace RetroTheme;
+using namespace RetroWidgets;
+#endif
+
 class SequencerHubPage : public IPage {
 public:
     enum class Mode { OVERVIEW, DETAIL };
@@ -37,6 +46,8 @@ private:
 
     void drawOverview(IGfx& gfx);
     void drawDetail(IGfx& gfx);
+    void drawRetroClassicStyle(IGfx& gfx);
+    void drawMinimalStyle(IGfx& gfx);
     void drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool selected);
     
     bool handleModeSwitch(UIEvent& e);

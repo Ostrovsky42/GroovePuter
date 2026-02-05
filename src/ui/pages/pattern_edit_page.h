@@ -31,6 +31,9 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
  private:
   enum class Focus { Steps = 0, PatternRow, BankRow };
 
+  void drawMinimalStyle(IGfx& gfx);
+  void drawRetroClassicStyle(IGfx& gfx);
+
   int clampCursor(int cursorIndex) const;
   int activeBankCursor() const;
   int patternIndexFromKey(char key) const;

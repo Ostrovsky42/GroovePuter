@@ -56,8 +56,8 @@ This document provides a comprehensive reference for all keyboard shortcuts and 
 | `Q` ... `U` | Select Pattern (1-8) |
 | `A` / `Z` | Adjust Note (+/-) for current step |
 | `S` / `X` | Adjust Octave (+/-) for current step |
-| `Shift + Q` | Toggle **Slide** for current step |
-| `Shift + W` | Toggle **Accent** for current step |
+| `Alt + S` | Toggle **Slide** for current step |
+| `Alt + A` | Toggle **Accent** for current step |
 | `g` | Randomize Pattern |
 | **`Alt + .`** | **Reset / Clear Pattern** |
 | `Enter` | Confirm Bank/Pattern Selection |

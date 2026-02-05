@@ -2,12 +2,22 @@
 
 #include <cctype>
 #include <utility>
+#include "../ui_common.h"
+
+#define USE_RETRO_THEME
+#include "../retro_ui_theme.h"
+#include "../retro_widgets.h"
 
 #include "../ui_input.h"
 #include "../layout_manager.h"
 #include "../help_dialog_frames.h"
 #include "../components/bank_selection_bar.h"
 #include "../components/pattern_selection_bar.h"
+
+#ifdef USE_RETRO_THEME
+using namespace RetroTheme;
+using namespace RetroWidgets;
+#endif
 
 namespace {
 struct PatternClipboard {
@@ -78,7 +88,7 @@ int PatternEditPage::patternIndexFromKey(char key) const {
     case 't': return 4;
     case 'y': return 5;
     case 'u': return 6;
-  //  case 'i': return 7;
+    case 'i': return 7;
     default: return -1;
   }
 }
@@ -334,12 +344,24 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       pattern_row_cursor_ = mini_acid_.current303PatternIndex(voice_index_);
       if (pattern_row_cursor_ < 0) pattern_row_cursor_ = 0;
       
-      // showToast(voice_index_ == 0 ? "Voice A (Bass)" : "Voice B (Lead)", 1000);
       return true;
   }
 
   char key = ui_event.key;
   if (!key) return false;
+  char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
+
+  // Q-I Pattern Selection (Standardized) - PRIORITIZED
+  if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
+    int patternIdx = patternIndexFromKey(lowerKey);
+    if (patternIdx >= 0) {
+      if (mini_acid_.songModeEnabled()) return true;
+      focusPatternRow();
+      setPatternCursor(patternIdx);
+      withAudioGuard([&]() { mini_acid_.set303PatternIndex(voice_index_, patternIdx); });
+      return true;
+    }
+  }
 
   /*
   int bankIdx = bankIndexFromKey(key);
@@ -365,19 +387,6 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     }
   }
 
-  char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
-  
-  // Q-I Pattern Selection (Standardized)
-  if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
-    int patternIdx = patternIndexFromKey(lowerKey);
-    if (patternIdx >= 0) {
-      if (mini_acid_.songModeEnabled()) return true;
-      focusPatternRow();
-      setPatternCursor(patternIdx);
-      withAudioGuard([&]() { mini_acid_.set303PatternIndex(voice_index_, patternIdx); });
-      return true;
-    }
-  }
 
   auto ensureStepFocusAndCursor = [&]() {
     if (patternRowFocused()) {
@@ -388,28 +397,24 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   };
 
   switch (lowerKey) {
-    case 'q': {
-      if (ui_event.shift) {
-        ensureStepFocusAndCursor();
-        int step = activePatternStep();
+    case 's': {
+      ensureStepFocusAndCursor();
+      int step = activePatternStep();
+      if (ui_event.alt) {
         withAudioGuard([&]() { mini_acid_.toggle303SlideStep(voice_index_, step); });
-        return true;
+      } else {
+        withAudioGuard([&]() { mini_acid_.adjust303StepOctave(voice_index_, step, 1); });
       }
-      break;
-    }
-    case 'w': {
-      if (ui_event.shift) {
-        ensureStepFocusAndCursor();
-        int step = activePatternStep();
-        withAudioGuard([&]() { mini_acid_.toggle303AccentStep(voice_index_, step); });
-        return true;
-      }
-      break;
+      return true;
     }
     case 'a': {
       ensureStepFocusAndCursor();
       int step = activePatternStep();
-      withAudioGuard([&]() { mini_acid_.adjust303StepNote(voice_index_, step, 1); });
+      if (ui_event.alt) {
+        withAudioGuard([&]() { mini_acid_.toggle303AccentStep(voice_index_, step); });
+      } else {
+        withAudioGuard([&]() { mini_acid_.adjust303StepNote(voice_index_, step, 1); });
+      }
       return true;
     }
     case 'z': {
@@ -418,12 +423,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       withAudioGuard([&]() { mini_acid_.adjust303StepNote(voice_index_, step, -1); });
       return true;
     }
-    case 's': {
-      ensureStepFocusAndCursor();
-      int step = activePatternStep();
-      withAudioGuard([&]() { mini_acid_.adjust303StepOctave(voice_index_, step, 1); });
-      return true;
-    }
+    
     case 'x': {
       ensureStepFocusAndCursor();
       int step = activePatternStep();
@@ -484,6 +484,18 @@ void PatternEditPage::drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) cons
 
 
 void PatternEditPage::draw(IGfx& gfx) {
+  switch (UI::currentStyle) {
+    case VisualStyle::RETRO_CLASSIC:
+      drawRetroClassicStyle(gfx);
+      break;
+    case VisualStyle::MINIMAL:
+    default:
+      drawMinimalStyle(gfx);
+      break;
+  }
+}
+
+void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
   bank_index_ = mini_acid_.current303BankIndex(voice_index_);
   const Rect& bounds = getBoundaries();
   int x = bounds.x;
@@ -575,7 +587,183 @@ void PatternEditPage::draw(IGfx& gfx) {
     int ty = note_box_y + cell_size / 2 - gfx.fontHeight() / 2;
     gfx.drawText(tx, ty, note_label);
   }
+  }
 
-  // v1.1 Pro Footer
- // LayoutManager::drawFooter(gfx, "[ARROWS]NAV [ENT]SEL [TAB]VOICE", "[-/+]NOTE [G]RANDOM [SHIFT+W]ACC");
+void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
+#ifdef USE_RETRO_THEME
+  bank_index_ = mini_acid_.current303BankIndex(voice_index_);
+  const Rect& bounds = getBoundaries();
+  int x = bounds.x;
+  int y = bounds.y;
+  int w = bounds.w;
+  int h = bounds.h;
+
+  const int8_t* notes = mini_acid_.pattern303Steps(voice_index_);
+  const bool* accent = mini_acid_.pattern303AccentSteps(voice_index_);
+  const bool* slide = mini_acid_.pattern303SlideSteps(voice_index_);
+  int stepCursor = pattern_edit_cursor_;
+  int playing = mini_acid_.currentStep();
+  int selectedPattern = mini_acid_.display303PatternIndex(voice_index_);
+  bool songMode = mini_acid_.songModeEnabled();
+  bool patternFocus = !songMode && patternRowFocused();
+  bool bankFocus = !songMode && focus_ == Focus::BankRow;
+  bool stepFocus = !patternFocus && !bankFocus;
+  int patternCursor = songMode && selectedPattern >= 0 ? selectedPattern : activePatternCursor();
+  int bankCursor = activeBankCursor();
+
+  // 1. Header (from RetroWidgets, like GenrePage)
+  char modeBuf[16];
+  snprintf(modeBuf, sizeof(modeBuf), "P%d", selectedPattern + 1);
+  drawHeaderBar(gfx, x, y, w, 14, 
+                voice_index_ == 0 ? "303 A" : "303 B", 
+                modeBuf, 
+                mini_acid_.isPlaying(), 
+                (int)(mini_acid_.bpm() + 0.5f), 
+                playing);
+
+  // 2. Background (deep black for contrast, like GenrePage)
+  int contentY = y + 15;
+  int contentH = h - 15 - 12;
+  gfx.fillRect(x, contentY, w, contentH, IGfxColor(BG_DEEP_BLACK));
+
+  // 3. Bank/Pattern Selectors (inline, with selective highlighting)
+  gfx.setTextColor(IGfxColor(TEXT_SECONDARY));
+  gfx.drawText(x + 4, contentY + 2, "BANK");
+  for (int i = 0; i < kBankCount; i++) {
+    int slotX = x + 36 + i * 18;
+    bool sel = (i == bank_index_);
+    bool cur = (i == bankCursor);
+    bool focused = bankFocus && cur;
+    
+    IGfxColor bgColor = sel ? IGfxColor(NEON_CYAN) : IGfxColor(BG_PANEL);
+    gfx.fillRect(slotX, contentY + 1, 16, 10, bgColor);
+    
+    // Glow border only when focused
+    if (focused) {
+      drawGlowBorder(gfx, slotX, contentY + 1, 16, 10, IGfxColor(NEON_CYAN), 1);
+    } else if (cur) {
+      gfx.drawRect(slotX, contentY + 1, 16, 10, IGfxColor(GRID_MEDIUM));
+    }
+    
+    char c[2] = {'A' + (char)i, 0};
+    gfx.setTextColor(sel ? IGfxColor(BG_DEEP_BLACK) : IGfxColor(TEXT_SECONDARY));
+    gfx.drawText(slotX + 4, contentY + 2, c);
+  }
+
+  gfx.setTextColor(IGfxColor(TEXT_SECONDARY));
+  gfx.drawText(x + 120, contentY + 2, "PTRN");
+  for (int i = 0; i < 8; i++) {
+    int slotX = x + 154 + i * 10;
+    bool sel = (i == selectedPattern);
+    bool cur = (i == patternCursor);
+    bool focused = patternFocus && cur;
+    
+    IGfxColor bgColor = sel ? IGfxColor(NEON_MAGENTA) : IGfxColor(BG_PANEL);
+    gfx.fillRect(slotX, contentY + 1, 9, 10, bgColor);
+    
+    if (focused) {
+      drawGlowBorder(gfx, slotX, contentY + 1, 9, 10, IGfxColor(NEON_MAGENTA), 1);
+    } else if (cur) {
+      gfx.drawRect(slotX, contentY + 1, 9, 10, IGfxColor(GRID_MEDIUM));
+    }
+    
+    char c[2] = {'1' + (char)i, 0};
+    gfx.setTextColor(sel ? IGfxColor(BG_DEEP_BLACK) : IGfxColor(TEXT_SECONDARY));
+    gfx.drawText(slotX + 2, contentY + 2, c);
+  }
+
+  // 4. Step Grid (Direct Scene Access - No Cache Lag)
+  int gridY = contentY + 16;
+  int spacing = 2;
+  int cellW = (w - 10 - spacing * 7) / 8;
+  int cellH = (contentH - 20 - spacing) / 2;
+
+  // READ DIRECTLY from source of truth
+  int patIdx = activePatternCursor();
+  const SynthPattern& pattern = mini_acid_.sceneManager().getSynthPattern(voice_index_, patIdx);
+
+  // Check if we are viewing the currently playing pattern
+  bool isPlayingPattern = false;
+  if (mini_acid_.isPlaying()) {
+     int playingIdx = mini_acid_.current303PatternIndex(voice_index_); 
+     // Note: current303PatternIndex returns what the engine is playing
+     if (playingIdx == patIdx) isPlayingPattern = true;
+  }
+
+  for (int i = 0; i < SEQ_STEPS; ++i) {
+    int row = i / 8;
+    int col = i % 8;
+    int cellX = x + 5 + col * (cellW + spacing);
+    int cellRowY = gridY + row * (cellH + spacing);
+
+    bool isCurrent = (isPlayingPattern && playing == i); // Only show playhead if we are looking at the playing pattern
+    bool isCursor = (stepFocus && stepCursor == i);
+    
+    int8_t note = pattern.steps[i].note;
+    bool acc = pattern.steps[i].accent;
+    bool sld = pattern.steps[i].slide;
+    bool hasNote = (note >= 0);
+
+    // Background (darker on beat markers for subtle rhythm guide)
+    IGfxColor bgColor = (col % 4 == 0) ? IGfxColor(BG_INSET) : IGfxColor(BG_PANEL);
+    gfx.fillRect(cellX, cellRowY, cellW, cellH, bgColor);
+
+    // Border: glow on cursor, simple otherwise
+    if (isCursor) {
+      drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, IGfxColor(SELECT_BRIGHT), 1);
+    } else {
+      gfx.drawRect(cellX, cellRowY, cellW, cellH, IGfxColor(GRID_MEDIUM));
+    }
+
+    // Playing indicator: bright green glow (full border for prominence)
+    if (isCurrent) {
+      drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, IGfxColor(STATUS_PLAYING), 2);
+    }
+
+    // Note content
+    if (hasNote) {
+      char note_label[8];
+      formatNoteName(note, note_label, sizeof(note_label));
+      
+      // "Teal & Orange" Harmony: Cleaner, distinct, professional
+      // Cyan = Normal, Orange = Accent
+      IGfxColor noteColor = acc ? IGfxColor(NEON_ORANGE) : IGfxColor(NEON_CYAN);
+      
+      int tw = textWidth(gfx, note_label);
+      int tx = cellX + (cellW - tw) / 2;
+      int ty = cellRowY + 3;
+      
+      // Glow text only when focused for emphasis
+      if (isCursor) {
+        drawGlowText(gfx, tx, ty, note_label, noteColor, IGfxColor(TEXT_PRIMARY));
+      } else {
+        gfx.setTextColor(noteColor);
+        gfx.drawText(tx, ty, note_label);
+      }
+    } else {
+      gfx.setTextColor(IGfxColor(TEXT_DIM));
+      // Use a subtle dot for "no note" steps
+      gfx.drawText(cellX + cellW/2 - 2, cellRowY + 3, ".");
+    }
+
+    // Indicators (Persistent dots below the note)
+    int dotY = cellRowY + cellH - 4;
+    // Slide LED (Purple or Magenta for better pop)
+    drawLED(gfx, cellX + 4, dotY, 1, sld, IGfxColor(NEON_MAGENTA));
+    // Accent LED (Matches Note Accent Color -> Orange)
+    drawLED(gfx, cellX + cellW - 4, dotY, 1, acc, IGfxColor(NEON_ORANGE));
+  }
+
+  // 5. Footer (consistent with header)
+  const char* focusLabel = stepFocus ? "STEPS" : (bankFocus ? "BANK" : "PTRN");
+  drawFooterBar(gfx, x, y + h - 12, w, 12, 
+                "A/Z:Note  Alt+S/A:Slide/Acc  G:Rand", 
+                "q..i:Ptrn  TAB:Voice", 
+                focusLabel);
+
+  // NO scanlines - clean and readable
+#else
+  drawMinimalStyle(gfx);
+#endif
 }
+

@@ -2,6 +2,7 @@
 #include "../ui_common.h"
 #include "../ui_input.h"
 #include "../ui_colors.h"
+#include "../ui_utils.h"
 #include <cstdio>
 
 SequencerHubPage::SequencerHubPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
@@ -26,6 +27,18 @@ SequencerHubPage::SequencerHubPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard au
 }
 
 void SequencerHubPage::draw(IGfx& gfx) {
+    switch (UI::currentStyle) {
+        case VisualStyle::RETRO_CLASSIC:
+            drawRetroClassicStyle(gfx);
+            break;
+        case VisualStyle::MINIMAL:
+        default:
+            drawMinimalStyle(gfx);
+            break;
+    }
+}
+
+void SequencerHubPage::drawMinimalStyle(IGfx& gfx) {
     if (mode_ == Mode::OVERVIEW) {
         drawOverview(gfx);
     } else {
@@ -33,8 +46,139 @@ void SequencerHubPage::draw(IGfx& gfx) {
     }
 }
 
+void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
+#ifdef USE_RETRO_THEME
+    const Rect& bounds = getBoundaries();
+    int x = bounds.x;
+    int y = bounds.y;
+    int w = bounds.w;
+    int h = bounds.h;
+
+    int playingStep = mini_acid_.currentStep();
+    bool isPlaying = mini_acid_.isPlaying();
+    int bpm = (int)(mini_acid_.bpm() + 0.5f);
+
+    // 1. Header
+    char subTitle[32];
+    if (mode_ == Mode::OVERVIEW) {
+        snprintf(subTitle, sizeof(subTitle), "OVERVIEW");
+    } else {
+        snprintf(subTitle, sizeof(subTitle), "SEQ:%s", 
+            selectedTrack_ == 0 ? "303A" : (selectedTrack_ == 1 ? "303B" : "DRUM"));
+    }
+    
+    drawHeaderBar(gfx, x, y, w, 14, "SEQ HUB", subTitle, isPlaying, bpm, playingStep);
+
+    // 2. Content Area
+    int contentY = y + 15;
+    int contentH = h - 15 - 12;
+    gfx.fillRect(x, contentY, w, contentH, IGfxColor(BG_DEEP_BLACK));
+
+    if (mode_ == Mode::OVERVIEW) {
+        // Simple List of 10 Tracks (Retro Style)
+        int rowH = 10;
+        int spacing = 1;
+        for (int i = 0; i < 10; i++) {
+            int ry = contentY + i * (rowH + spacing);
+            bool selected = (i == selectedTrack_);
+            
+            if (selected) {
+                 gfx.fillRect(x + 2, ry, w - 4, rowH, IGfxColor(BG_PANEL));
+                 drawGlowBorder(gfx, x + 2, ry, w - 4, rowH, IGfxColor(NEON_CYAN), 1);
+            }
+
+            // Name
+            char name[16];
+            if (i == 0) std::strcpy(name, "303 A");
+            else if (i == 1) std::strcpy(name, "303 B");
+            else std::snprintf(name, sizeof(name), "DRM %d", i - 1);
+            
+            gfx.setTextColor(selected ? IGfxColor(TEXT_PRIMARY) : IGfxColor(TEXT_SECONDARY));
+            gfx.drawText(x + 6, ry + 1, name);
+
+            // Tiny mask
+            int maskX = x + 65;
+            int cellW = (w - maskX - 10) / 16;
+            for (int s = 0; s < 16; s++) {
+                bool hit = false;
+                if (i < 2) hit = mini_acid_.pattern303Steps(i)[s] >= 0;
+                else {
+                    int v = i - 2;
+                    if (v == 0) hit = mini_acid_.patternKickSteps()[s] > 0;
+                    else if (v == 1) hit = mini_acid_.patternSnareSteps()[s] > 0;
+                    else if (v == 2) hit = mini_acid_.patternHatSteps()[s] > 0;
+                }
+                
+                IGfxColor color = hit ? (selected ? IGfxColor(NEON_CYAN) : IGfxColor(GRID_MEDIUM)) : IGfxColor(BG_INSET);
+                if (s == playingStep && isPlaying) color = IGfxColor(NEON_YELLOW);
+                gfx.fillRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, color);
+            }
+        }
+        
+        // Channel activity bar (from Play Page merge)
+        bool active[10];
+        for (int i = 0; i < 10; ++i) active[i] = mini_acid_.isTrackActive(i);
+        UI::drawChannelActivityBar(gfx, 8, Layout::FOOTER.y - 12, w - 16, 4, active, 10);
+
+        drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]Track [ENT]Detail", "SPACE:Play", "HUB");
+    } else {
+        // DETAIL MODE
+        if (isDrumTrack(selectedTrack_)) {
+            drumGrid_->setBoundaries(Rect(0, contentY + 2, 240, contentH - 4));
+            drumGrid_->draw(gfx);
+            drawFooterBar(gfx, x, y + h - 12, w, 12, "[ARROWS]Grid [W]Accent", "ESC:Back", "DRUM");
+        } else {
+            // Enhanced 303 Detail (Retro Style with Teal & Orange)
+            int cellW = (w - 20) / 16;
+            int cellH = 40;
+            int gridX = (w - cellW * 16) / 2;
+            int gridY = contentY + (contentH - cellH) / 2;
+
+            const int8_t* notes = mini_acid_.pattern303Steps(selectedTrack_);
+            const bool* accents = mini_acid_.pattern303AccentSteps(selectedTrack_);
+            const bool* slides = mini_acid_.pattern303SlideSteps(selectedTrack_);
+
+            for (int s = 0; s < 16; s++) {
+                int cx = gridX + s * cellW;
+                bool isCursor = (s == stepCursor_ && focus_ == FocusLane::GRID);
+                bool isPlay = (s == playingStep && isPlaying);
+
+                IGfxColor bgColor = (s % 4 == 0) ? IGfxColor(BG_INSET) : IGfxColor(BG_PANEL);
+                gfx.fillRect(cx, gridY, cellW - 1, cellH, bgColor);
+                gfx.drawRect(cx, gridY, cellW - 1, cellH, IGfxColor(GRID_MEDIUM));
+
+                if (isCursor) drawGlowBorder(gfx, cx, gridY, cellW - 1, cellH, IGfxColor(SELECT_BRIGHT), 1);
+                if (isPlay) drawGlowBorder(gfx, cx, gridY, cellW - 1, cellH, IGfxColor(STATUS_PLAYING), 2);
+
+                if (notes[s] >= 0) {
+                    char n[8]; formatNoteName(notes[s], n, sizeof(n));
+                    IGfxColor noteColor = accents[s] ? IGfxColor(NEON_ORANGE) : IGfxColor(NEON_CYAN);
+                    gfx.setTextColor(noteColor);
+                    gfx.drawText(cx + (cellW - textWidth(gfx, n)) / 2, gridY + 10, n);
+                    
+                    if (slides[s]) drawLED(gfx, cx + cellW / 2 - 1, gridY + cellH - 8, 1, true, IGfxColor(NEON_MAGENTA));
+                    if (accents[s]) drawLED(gfx, cx + cellW - 5, gridY + cellH - 8, 1, true, IGfxColor(NEON_ORANGE));
+                } else {
+                    gfx.setTextColor(IGfxColor(TEXT_DIM));
+                    gfx.drawText(cx + (cellW - 4) / 2, gridY + 10, ".");
+                }
+            }
+            drawFooterBar(gfx, x, y + h - 12, w, 12, "[A/Z]±nt [S/X]±oct [Alt+S]Sld [Alt+A]Acc", "ESC:Back", "303");
+        }
+    }
+#else
+    drawMinimalStyle(gfx);
+#endif
+}
+
 void SequencerHubPage::drawOverview(IGfx& gfx) {
-    UI::drawStandardHeader(gfx, mini_acid_, "SEQUENCER HUB [OVERVIEW]");
+    // Enhanced header with Swing % and Bank
+    char headerBuf[64];
+    int swingPct = (int)(mini_acid_.swing() * 100.0f + 0.5f);
+    char bankChar = 'A' + (mini_acid_.currentScene() / 16);
+    snprintf(headerBuf, sizeof(headerBuf), "SEQUENCER [BANK:%c SW:%d%%]", bankChar, swingPct);
+    
+    UI::drawStandardHeader(gfx, mini_acid_, headerBuf);
     LayoutManager::clearContent(gfx);
 
     const int startY = LayoutManager::lineY(0);
@@ -43,6 +187,13 @@ void SequencerHubPage::drawOverview(IGfx& gfx) {
     for (int i = 0; i < 10; i++) {
         drawTrackRow(gfx, i, startY + i * (rowH + 1), rowH, i == selectedTrack_);
     }
+    
+    // Channel activity bar (10 tracks: 2 synths + 8 drum voices)
+    bool active[10];
+    for (int i = 0; i < 10; ++i) {
+        active[i] = mini_acid_.isTrackActive(i);
+    }
+    UI::drawChannelActivityBar(gfx, 8, Layout::FOOTER.y - 10, Layout::FOOTER.w - 16, 4, active, 10);
 
     UI::drawStandardFooter(gfx, 
         "[UP/DN] TRACK  [ENT] DETAIL", 
@@ -168,7 +319,13 @@ bool SequencerHubPage::handleEvent(UIEvent& e) {
 
     if (e.event_type != MINIACID_KEY_DOWN) return false;
 
-    // Fast return for global nav
+    // LOCAL NAV FIRST: Ensure Esc/Back work within the hub to exit Detail mode
+    if (mode_ == Mode::DETAIL && UIInput::isBack(e)) {
+        mode_ = Mode::OVERVIEW;
+        return true;
+    }
+
+    // Fast return for global nav (others like help, voice toggle)
     if (UIInput::isGlobalNav(e)) return false;
 
     if (handleModeSwitch(e)) return true;
@@ -325,12 +482,38 @@ bool SequencerHubPage::handleGridEdit(UIEvent& e) {
         return true;
     }
 
-    // A: Toggle Slide (Synth only)
-    if (lower == 'a' && !isDrumTrack(selectedTrack_)) {
-        withAudioGuard([&]() {
-            mini_acid_.toggle303SlideStep(selectedTrack_, stepCursor_);
-        });
-        return true;
+    // === Note editing for 303 tracks only ===
+    if (!isDrumTrack(selectedTrack_)) {
+        // A/Z: Note +/- semitone
+        if (lower == 'a') {
+            if (e.alt) {
+                 withAudioGuard([&]() { mini_acid_.toggle303AccentStep(selectedTrack_, stepCursor_); });
+            } else {
+                 withAudioGuard([&]() { mini_acid_.adjust303StepNote(selectedTrack_, stepCursor_, 1); });
+            }
+            return true;
+        }
+        if (lower == 'z') {
+            withAudioGuard([&]() {
+                mini_acid_.adjust303StepNote(selectedTrack_, stepCursor_, -1);
+            });
+            return true;
+        }
+        
+        // S/X: Octave +/- 1
+        if (lower == 's') {
+            if (e.alt) {
+                 withAudioGuard([&]() { mini_acid_.toggle303SlideStep(selectedTrack_, stepCursor_); });
+            } else {
+                 withAudioGuard([&]() { mini_acid_.adjust303StepOctave(selectedTrack_, stepCursor_, 1); });
+            }
+            return true;
+        }
+        if (lower == 'x') {
+            focus_ = FocusLane::GRID; 
+             withAudioGuard([&]() { mini_acid_.adjust303StepOctave(selectedTrack_, stepCursor_, -1); });
+            return true;
+        }
     }
 
     return false;
