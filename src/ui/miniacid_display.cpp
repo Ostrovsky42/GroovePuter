@@ -59,19 +59,20 @@ MiniAcidDisplay::~MiniAcidDisplay() = default;
 std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
     Serial.printf("[UI] createPage_(%d)\n", index);
     switch (index) {
-        case 0:  return std::make_unique<PlayPage>(gfx_, mini_acid_, audio_guard_);
-        case 1:  return std::make_unique<GenrePage>(gfx_, mini_acid_, audio_guard_);
-        case 2:  return std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 0);
-        case 3:  return std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 1);
-        case 4:  return std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 0);
-        case 5:  return std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 1);
-        case 6:  return std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_);
-        case 7:  return std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_);
+        case 0:  return std::make_unique<GenrePage>(gfx_, mini_acid_, audio_guard_);
+        case 1:  return std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 0);
+        case 2:  return std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 1);
+        case 3:  return std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 0);
+        case 4:  return std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 1);
+        case 5:  return std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_);
+        case 6:  return std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_);
+        case 7:  return std::make_unique<PlayPage>(gfx_, mini_acid_, audio_guard_);
         case 8:  return std::make_unique<SequencerHubPage>(gfx_, mini_acid_, audio_guard_);
         case 9: return std::make_unique<SongPage>(gfx_, mini_acid_, audio_guard_);
         case 10: return std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_);
         case 11:  return std::make_unique<SettingsPage>(gfx_, mini_acid_);        
         case 12: return std::make_unique<VoicePage>(gfx_, mini_acid_, audio_guard_);
+
        // case 14: return std::make_unique<WaveformPage>(gfx_, mini_acid_, audio_guard_);
        // case 8:  return std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_);
 
@@ -209,35 +210,46 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 
        
         
-        // Voice page (v key - no Ctrl needed, it's unique)
-        if (event.key == 'v' || event.key == 'V') {
-            goToPage(13);  // Voice Synth page
+        // Waveform overlay toggle
+        if (event.alt && (event.key == 'w' || event.key == 'W')) {
+            UI::waveformOverlay.enabled = !UI::waveformOverlay.enabled;
             return true;
         }
 
-        // Waveform overlay toggle
-        if (event.alt && event.key == 'w') {
-            UI::waveformOverlay.enabled = !UI::waveformOverlay.enabled;
+        // Voice Page jump (Alt+V) - using new mapping
+        if (event.alt && (event.key == 'v' || event.key == 'V')) {
+            goToPage(12);
+            return true;
+        }
+
+        // Song Mode Toggle (Alt+M)
+        if (event.alt && (event.key == 'm' || event.key == 'M')) {
+            static uint32_t lastToggle = 0;
+            if (millis() - lastToggle < 400) return true;
+            lastToggle = millis();
+
+            bool newState = !mini_acid_.songModeEnabled();
+            withAudioGuard([&]() {
+                mini_acid_.setSongMode(newState);
+            });
+            showToast(newState ? "Song Mode: ON" : "Song Mode: OFF");
             return true;
         }
 
         // Direct page jumps: require Alt (standard) OR CTRL (fallback)
         if (event.alt || event.ctrl || event.meta) {
-
-            
-    
             int targetPage = -1;
             switch (event.key) {
-                case '1': targetPage = 1; break;  // 0 Play (Home)
-                case '2': targetPage = 2; break;  // Synth A Params
-                case '3': targetPage = 3; break;  // Synth B Params
-                case '4': targetPage = 4; break;  // 3 Drum Sequencer
-                case '5': targetPage = 5; break;  // 1 Seq Hub
-                case '6': targetPage = 6; break;  //8 Tape/FX
-                case '7': targetPage = 7; break;  // Genre/Style
-                case '8': targetPage = 8; break; // Song Mode
-                case '9': targetPage = 9; break; // Settings
-                case '0': targetPage = 10; break; // Voice Synth
+                case '1': targetPage = 1; break;  // Synth A Pattern
+                case '2': targetPage = 2; break;  // Synth B Pattern
+                case '3': targetPage = 3; break;  // Synth A Params
+                case '4': targetPage = 4; break;  // Synth B Params
+                case '5': targetPage = 5; break;  // Drum Sequencer
+                case '6': targetPage = 6; break;  // Mode Select
+                case '7': targetPage = 7; break;  // Play Page
+                case '8': targetPage = 8; break;  // Sequencer Hub
+                case '9': targetPage = 9; break;  // Song Page
+                case '0': targetPage = 10; break; // Project Page
                 default: break;
             }
             if (targetPage >= 0) {

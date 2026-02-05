@@ -24,6 +24,7 @@
 #include "formant_synth.h"
 #include "../audio/vocal_mixer.h"
 #include "voice_compressor.h"
+#include "../audio/voice_cache.h"
 
 // ===================== Audio config =====================
 
@@ -257,6 +258,11 @@ public:
   void toggleVoiceTrackMute();
   void setVoiceTrackMute(bool muted);
   float getVoiceDuckingLevel() const { return vocalMixer_.getDuckAmount(); }
+  
+  // Voice Cache (SD card)
+  VoiceCache& voiceCache() { return voiceCache_; }
+  const VoiceCache& voiceCache() const { return voiceCache_; }
+  bool speakCached(const char* text); // Play from cache or fallback to synth
 
   void generateAudioBuffer(int16_t *buffer, size_t numSamples);
 
@@ -381,6 +387,7 @@ private:
 
   // Vocal synthesizer (formant-based robotic speech)
   FormantSynth vocalSynth_;
+  VoiceCache voiceCache_;
   bool voiceTrackMuted_ = false;
 
   void loadSceneFromStorage();

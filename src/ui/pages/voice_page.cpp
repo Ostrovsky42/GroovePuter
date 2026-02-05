@@ -8,6 +8,7 @@ namespace {
 inline constexpr IGfxColor kFocusColor = IGfxColor(0xB36A00);
 inline constexpr IGfxColor kVoiceColor = IGfxColor(0x00CED1);  // Dark cyan
 inline constexpr IGfxColor kActiveColor = IGfxColor(0x00FF7F); // Spring green
+inline constexpr IGfxColor kCacheColor = IGfxColor(0xFFD700);  // Gold for cached items
 
 // Built-in phrase names for display and playback
 // NOTE: SAM TTS is phoneme-based. Non-English words are transliterated.
@@ -100,7 +101,15 @@ void VoicePage::drawPhraseSection(IGfx& gfx, int y) {
   } else {
     if (phraseIndex_ >= 0 && phraseIndex_ < NUM_BUILTIN_PHRASES) {
       // Ensure we don't overflow the display buffer
-      snprintf(buf, sizeof(buf), "%d: %.50s", phraseIndex_ + 1, BUILTIN_PHRASE_NAMES[phraseIndex_]);
+      const char* phraseText = BUILTIN_PHRASE_NAMES[phraseIndex_];
+      bool isCached = mini_acid_.voiceCache().isCached(phraseText);
+      
+      if (isCached) {
+        gfx.setTextColor(kCacheColor); // Gold for cached
+        snprintf(buf, sizeof(buf), "%d: %.45s [C]", phraseIndex_ + 1, phraseText);
+      } else {
+        snprintf(buf, sizeof(buf), "%d: %.50s", phraseIndex_ + 1, phraseText);
+      }
     } else {
       snprintf(buf, sizeof(buf), "%d: ???", phraseIndex_ + 1);
     }
@@ -519,6 +528,29 @@ bool VoicePage::handleEvent(UIEvent& ui_event) {
     });
     return true;
   }
+  
+  // C = cache current phrase to SD card
+  if (lowerKey == 'c') {
+    if (!useCustomPhrase_ && phraseIndex_ >= 0 && phraseIndex_ < NUM_BUILTIN_PHRASES) {
+      const char* phraseText = BUILTIN_PHRASE_NAMES[phraseIndex_];
+      if (!mini_acid_.voiceCache().isCached(phraseText)) {
+        // TODO: Synthesize phrase to buffer and cache
+        // For now, just show message via Serial
+        Serial.printf("[VoicePage] Cache request for: %s\n", phraseText);
+        // This would require synthesizing to a buffer first
+        // which needs FormantSynth modification
+      }
+    }
+    return true;
+  }
+  
+  // X = clear voice cache
+  if (lowerKey == 'x') {
+    mini_acid_.voiceCache().clearAll();
+    Serial.println("[VoicePage] Voice cache cleared");
+    return true;
+  }
+
   
   // Number keys 1-9 = quick phrase selection
   if (ui_event.key >= '1' && ui_event.key <= '9') {

@@ -368,7 +368,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
   
   // Q-I Pattern Selection (Standardized)
-  if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta) {
+  if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
     int patternIdx = patternIndexFromKey(lowerKey);
     if (patternIdx >= 0) {
       if (mini_acid_.songModeEnabled()) return true;
@@ -436,6 +436,20 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     }
     default:
       break;
+  }
+
+  // Alt + Backspace = Reset Pattern
+  if (ui_event.alt && (key == '.' || ui_event.key == ',')) {
+    withAudioGuard([&]() { 
+        for (int i=0; i<SEQ_STEPS; ++i) {
+            mini_acid_.clear303StepNote(voice_index_, i);
+            if (mini_acid_.pattern303AccentSteps(voice_index_)[i]) 
+                mini_acid_.toggle303AccentStep(voice_index_, i);
+            if (mini_acid_.pattern303SlideSteps(voice_index_)[i]) 
+                mini_acid_.toggle303SlideStep(voice_index_, i);
+        }
+    });
+    return true;
   }
 
   if (key == '\b') {
@@ -563,5 +577,5 @@ void PatternEditPage::draw(IGfx& gfx) {
   }
 
   // v1.1 Pro Footer
-  LayoutManager::drawFooter(gfx, "[ARROWS]NAV [ENT]SEL [TAB]VOICE", "[-/+]NOTE [G]RANDOM [SHIFT+W]ACC");
+ // LayoutManager::drawFooter(gfx, "[ARROWS]NAV [ENT]SEL [TAB]VOICE", "[-/+]NOTE [G]RANDOM [SHIFT+W]ACC");
 }

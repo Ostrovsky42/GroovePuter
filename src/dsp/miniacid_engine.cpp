@@ -307,6 +307,12 @@ void MiniAcid::init() {
   if (sceneStorage_) {
     LOG_PRINTLN("  - MiniAcid::init: Initializing scene storage...");
     sceneStorage_->initializeStorage();
+    
+    // Initialize voice cache (SD card)
+    if (voiceCache_.init()) {
+        LOG_PRINTLN("  - MiniAcid::init: Voice cache initialized");
+    }
+    
     LOG_PRINTLN("  - MiniAcid::init: Loading scene from storage...");
     loadSceneFromStorage();
   }
@@ -2027,7 +2033,21 @@ void MiniAcid::speakCustomPhrase(int index) {
 
 void MiniAcid::stopSpeaking() {
     vocalSynth_.stop();
+    voiceCache_.stopPlayback();
 }
+
+bool MiniAcid::speakCached(const char* text) {
+    // Try to play from cache first
+    if (voiceCache_.isInitialized() && voiceCache_.startPlayback(text)) {
+        Serial.printf("[VoiceCache] Playing from cache: %s\n", text);
+        return true;
+    }
+    
+    // Fallback to live synthesis
+    vocalSynth_.speak(text);
+    return false;
+}
+
 
 void MiniAcid::toggleVoiceTrackMute() {
     voiceTrackMuted_ = !voiceTrackMuted_;

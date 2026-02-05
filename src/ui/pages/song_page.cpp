@@ -634,6 +634,20 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
   if (cursorOnModeButton() && patternIdx >= 0) return false;
   if (patternIdx >= 0) return assignPattern(patternIdx);
 
+  // Alt + dote = Reset Song
+  if (ui_event.alt && (key == '.' || ui_event.key == ',')) {
+      withAudioGuard([&]() {
+          for (int r = 0; r < Song::kMaxPositions; ++r) {
+              mini_acid_.clearSongPattern(r, SongTrack::SynthA);
+              mini_acid_.clearSongPattern(r, SongTrack::SynthB);
+              mini_acid_.clearSongPattern(r, SongTrack::Drums);
+              mini_acid_.clearSongPattern(r, SongTrack::Voice);
+          }
+      });
+      // showToast("Song Cleared"); // Not available in IPage
+      return true;
+  }
+
   if (key == '\b') {
     return clearPattern();
   }
