@@ -58,7 +58,7 @@ enum ApplicationEventType {
   MINIACID_APP_EVENT_SET_VISUAL_STYLE,
 };
 
-enum class VisualStyle { MINIMAL, RETRO_CLASSIC };
+enum class VisualStyle { MINIMAL, RETRO_CLASSIC, AMBER };
 
 enum MouseButtonType {
   MOUSE_BUTTON_NONE = 0,

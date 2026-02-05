@@ -3,6 +3,16 @@
 #include "../ui_input.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
+#ifndef USE_RETRO_THEME
+#define USE_RETRO_THEME
+#endif
+#ifndef USE_AMBER_THEME
+#define USE_AMBER_THEME
+#endif
+#include "../retro_ui_theme.h"
+#include "../retro_widgets.h"
+#include "../amber_ui_theme.h"
+#include "../amber_widgets.h"
 #include <cstdio>
 
 SequencerHubPage::SequencerHubPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
@@ -30,6 +40,9 @@ void SequencerHubPage::draw(IGfx& gfx) {
     switch (UI::currentStyle) {
         case VisualStyle::RETRO_CLASSIC:
             drawRetroClassicStyle(gfx);
+            break;
+        case VisualStyle::AMBER:
+            drawAmberStyle(gfx);
             break;
         case VisualStyle::MINIMAL:
         default:
@@ -82,19 +95,28 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
             int ry = contentY + i * (rowH + spacing);
             bool selected = (i == selectedTrack_);
             
+            // Per-track colors based on instrument
+            uint32_t trackColor = NEON_ORANGE; // Default for Drums
+            if (i == 0) trackColor = NEON_CYAN;
+            else if (i == 1) trackColor = NEON_MAGENTA;
+            
             if (selected) {
                  gfx.fillRect(x + 2, ry, w - 4, rowH, IGfxColor(BG_PANEL));
-                 drawGlowBorder(gfx, x + 2, ry, w - 4, rowH, IGfxColor(NEON_CYAN), 1);
+                 drawGlowBorder(gfx, x + 2, ry, w - 4, rowH, IGfxColor(trackColor), 1);
             }
 
-            // Name
+            // Name with Glow if selected
             char name[16];
             if (i == 0) std::strcpy(name, "303 A");
             else if (i == 1) std::strcpy(name, "303 B");
             else std::snprintf(name, sizeof(name), "DRM %d", i - 1);
             
-            gfx.setTextColor(selected ? IGfxColor(TEXT_PRIMARY) : IGfxColor(TEXT_SECONDARY));
-            gfx.drawText(x + 6, ry + 1, name);
+            if (selected) {
+                drawGlowText(gfx, x + 6, ry + 1, name, IGfxColor(FOCUS_GLOW), IGfxColor(TEXT_PRIMARY));
+            } else {
+                gfx.setTextColor(IGfxColor(TEXT_SECONDARY));
+                gfx.drawText(x + 6, ry + 1, name);
+            }
 
             // Tiny mask
             int maskX = x + 65;
@@ -109,15 +131,26 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
                     else if (v == 2) hit = mini_acid_.patternHatSteps()[s] > 0;
                 }
                 
-                IGfxColor color = hit ? (selected ? IGfxColor(NEON_CYAN) : IGfxColor(GRID_MEDIUM)) : IGfxColor(BG_INSET);
+                IGfxColor color = hit ? (selected ? IGfxColor(trackColor) : IGfxColor(GRID_MEDIUM)) : IGfxColor(BG_INSET);
                 if (s == playingStep && isPlaying) color = IGfxColor(NEON_YELLOW);
                 gfx.fillRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, color);
             }
             
-            // Draw Cursor if selected
             if (selected) {
                  drawOverviewCursor(gfx, i, stepCursor_, maskX, ry + 2, cellW, rowH - 4);
             }
+
+            // Volume indicator (Retro)
+            float vol = mini_acid_.getTrackVolume((VoiceId)i);
+            int volBarW = 20;
+            int volBarX = x + w - volBarW - 12;
+            int volW = (int)(vol * volBarW);
+            gfx.fillRect(volBarX, ry + 3, volBarW, rowH - 6, IGfxColor(BG_INSET));
+            gfx.fillRect(volBarX, ry + 4, volW, rowH - 8, IGfxColor(trackColor));
+            
+            // Activity LED (Retro Hardware style)
+            bool active = mini_acid_.isTrackActive(i);
+            RetroWidgets::drawLED(gfx, volBarX + volBarW + 5, ry + (rowH/2), 2, active && isPlaying, IGfxColor(trackColor));
         }
         
         // Channel activity bar (from Play Page merge)
@@ -125,7 +158,8 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
         for (int i = 0; i < 10; ++i) active[i] = mini_acid_.isTrackActive(i);
         UI::drawChannelActivityBar(gfx, 8, Layout::FOOTER.y - 12, w - 16, 4, active, 10);
 
-        drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]Track [ENT]Detail", "SPACE:Play", "HUB");
+        // Scanlines disabled: caused flicker on small TFT
+        RetroWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]Track [ENT]Detail", "SPACE:Play", "HUB");
     } else {
         // DETAIL MODE
         if (isDrumTrack(selectedTrack_)) {
@@ -157,18 +191,162 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
 
                 if (notes[s] >= 0) {
                     char n[8]; formatNoteName(notes[s], n, sizeof(n));
-                    IGfxColor noteColor = accents[s] ? IGfxColor(NEON_ORANGE) : IGfxColor(TEXT_PRIMARY);
+                    IGfxColor noteColor = accents[s] ? IGfxColor(NEON_ORANGE) : IGfxColor(NEON_CYAN);
                     gfx.setTextColor(noteColor);
                     gfx.drawText(cx + (cellW - textWidth(gfx, n)) / 2, gridY + 10, n);
                     
-                    if (slides[s]) drawLED(gfx, cx + cellW / 2 - 1, gridY + cellH - 8, 1, true, IGfxColor(NEON_PURPLE));
+                    if (slides[s]) drawLED(gfx, cx + cellW / 2 - 1, gridY + cellH - 8, 1, true, IGfxColor(NEON_MAGENTA));
                     if (accents[s]) drawLED(gfx, cx + cellW - 5, gridY + cellH - 8, 1, true, IGfxColor(NEON_ORANGE));
                 } else {
                     gfx.setTextColor(IGfxColor(TEXT_DIM));
                     gfx.drawText(cx + (cellW - 4) / 2, gridY + 10, ".");
                 }
             }
-            drawFooterBar(gfx, x, y + h - 12, w, 12, "[A/Z]±nt [S/X]±oct [Alt+S]Sld [Alt+A]Acc", "ESC:Back", "303");
+            // Scanlines disabled: caused flicker on small TFT
+            RetroWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[A/Z]±nt [S/X]±oct [Alt+S]Sld [Alt+A]Acc", "ESC:Back", "303");
+        }
+    }
+#else
+    drawMinimalStyle(gfx);
+#endif
+}
+
+void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
+#ifdef USE_AMBER_THEME
+    const Rect& bounds = getBoundaries();
+    int x = bounds.x;
+    int y = bounds.y;
+    int w = bounds.w;
+    int h = bounds.h;
+
+    int playingStep = mini_acid_.currentStep();
+    bool isPlaying = mini_acid_.isPlaying();
+    int bpm = (int)(mini_acid_.bpm() + 0.5f);
+
+    char subTitle[32];
+    if (mode_ == Mode::OVERVIEW) {
+        snprintf(subTitle, sizeof(subTitle), "OVERVIEW");
+    } else {
+        snprintf(subTitle, sizeof(subTitle), "SEQ:%s", 
+            selectedTrack_ == 0 ? "303A" : (selectedTrack_ == 1 ? "303B" : "DRUM"));
+    }
+    
+    AmberWidgets::drawHeaderBar(gfx, x, y, w, 14, "SEQ HUB", subTitle, isPlaying, bpm, playingStep);
+
+    int contentY = y + 15;
+    int contentH = h - 15 - 12;
+    gfx.fillRect(x, contentY, w, contentH, IGfxColor(AmberTheme::BG_DEEP_BLACK));
+
+    if (mode_ == Mode::OVERVIEW) {
+        int rowH = 10;
+        int spacing = 1;
+        for (int i = 0; i < 10; i++) {
+            int ry = contentY + i * (rowH + spacing);
+            bool selected = (i == selectedTrack_);
+            
+            // Amber is more monochromatic but can use shades
+            uint32_t AmberTrackColor = AmberTheme::NEON_CYAN;
+            if (i == 1) AmberTrackColor = AmberTheme::NEON_MAGENTA;
+            else if (i >= 2) AmberTrackColor = AmberTheme::NEON_ORANGE;
+
+            if (selected) {
+                 gfx.fillRect(x + 2, ry, w - 4, rowH, IGfxColor(AmberTheme::BG_PANEL));
+                 AmberWidgets::drawGlowBorder(gfx, x + 2, ry, w - 4, rowH, IGfxColor(AmberTheme::NEON_CYAN), 1);
+            }
+
+            char name[16];
+            if (i == 0) std::strcpy(name, "303 A");
+            else if (i == 1) std::strcpy(name, "303 B");
+            else std::snprintf(name, sizeof(name), "DRM %d", i - 1);
+            
+            if (selected) {
+                AmberWidgets::drawGlowText(gfx, x + 6, ry + 1, name, IGfxColor(AmberTheme::FOCUS_GLOW), IGfxColor(AmberTheme::TEXT_PRIMARY));
+            } else {
+                gfx.setTextColor(IGfxColor(AmberTheme::TEXT_SECONDARY));
+                gfx.drawText(x + 6, ry + 1, name);
+            }
+
+            int maskX = x + 65;
+            int cellW = (w - maskX - 10) / 16;
+            for (int s = 0; s < 16; s++) {
+                bool hit = false;
+                if (i < 2) hit = mini_acid_.pattern303Steps(i)[s] >= 0;
+                else {
+                    int v = i - 2;
+                    if (v == 0) hit = mini_acid_.patternKickSteps()[s] > 0;
+                    else if (v == 1) hit = mini_acid_.patternSnareSteps()[s] > 0;
+                    else if (v == 2) hit = mini_acid_.patternHatSteps()[s] > 0;
+                }
+                
+                IGfxColor color = hit ? (selected ? IGfxColor(AmberTheme::NEON_CYAN) : IGfxColor(AmberTheme::GRID_MEDIUM)) : IGfxColor(AmberTheme::BG_INSET);
+                if (s == playingStep && isPlaying) color = IGfxColor(AmberTheme::NEON_YELLOW);
+                gfx.fillRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, color);
+            }
+            
+            if (selected) {
+                 drawOverviewCursor(gfx, i, stepCursor_, maskX, ry + 2, cellW, rowH - 4);
+            }
+
+            // Volume indicator (Amber)
+            float vol = mini_acid_.getTrackVolume((VoiceId)i);
+            int volBarW = 20;
+            int volBarX = x + w - volBarW - 12;
+            int volW = (int)(vol * volBarW);
+            gfx.fillRect(volBarX, ry + 3, volBarW, rowH - 6, IGfxColor(AmberTheme::BG_INSET));
+            gfx.fillRect(volBarX, ry + 4, volW, rowH - 8, IGfxColor(AmberTheme::NEON_CYAN));
+
+            // Activity LED (Amber Hardware style)
+            bool active = mini_acid_.isTrackActive(i);
+            AmberWidgets::drawLED(gfx, volBarX + volBarW + 5, ry + (rowH/2), 2, active && isPlaying, IGfxColor(AmberTrackColor));
+        }
+        
+        bool active[10];
+        for (int i = 0; i < 10; ++i) active[i] = mini_acid_.isTrackActive(i);
+        UI::drawChannelActivityBar(gfx, 8, Layout::FOOTER.y - 12, w - 16, 4, active, 10);
+
+        // Scanlines disabled: caused flicker on small TFT
+        AmberWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]Track [ENT]Detail", "SPACE:Play", "HUB");
+    } else {
+        if (isDrumTrack(selectedTrack_)) {
+            drumGrid_->setBoundaries(Rect(0, contentY + 2, 240, contentH - 4));
+            drumGrid_->draw(gfx);
+            AmberWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[ARROWS]Grid [W]Accent", "ESC:Back", "DRUM");
+        } else {
+            int cellW = (w - 20) / 16;
+            int cellH = 40;
+            int gridX = (w - cellW * 16) / 2;
+            int gridY = contentY + (contentH - cellH) / 2;
+
+            const int8_t* notes = mini_acid_.pattern303Steps(selectedTrack_);
+            const bool* accents = mini_acid_.pattern303AccentSteps(selectedTrack_);
+            const bool* slides = mini_acid_.pattern303SlideSteps(selectedTrack_);
+
+            for (int s = 0; s < 16; s++) {
+                int cx = gridX + s * cellW;
+                bool isCursor = (s == stepCursor_ && focus_ == FocusLane::GRID);
+                bool isPlay = (s == playingStep && isPlaying);
+
+                IGfxColor bgColor = (s % 4 == 0) ? IGfxColor(AmberTheme::BG_INSET) : IGfxColor(AmberTheme::BG_PANEL);
+                gfx.fillRect(cx, gridY, cellW - 1, cellH, bgColor);
+                gfx.drawRect(cx, gridY, cellW - 1, cellH, IGfxColor(AmberTheme::GRID_MEDIUM));
+
+                if (isCursor) AmberWidgets::drawGlowBorder(gfx, cx, gridY, cellW - 1, cellH, IGfxColor(AmberTheme::SELECT_BRIGHT), 1);
+                if (isPlay) AmberWidgets::drawGlowBorder(gfx, cx, gridY, cellW - 1, cellH, IGfxColor(AmberTheme::STATUS_PLAYING), 2);
+
+                if (notes[s] >= 0) {
+                    char n[8]; formatNoteName(notes[s], n, sizeof(n));
+                    IGfxColor noteColor = accents[s] ? IGfxColor(AmberTheme::NEON_ORANGE) : IGfxColor(AmberTheme::NEON_CYAN);
+                    gfx.setTextColor(noteColor);
+                    gfx.drawText(cx + (cellW - textWidth(gfx, n)) / 2, gridY + 10, n);
+                    
+                    if (slides[s]) AmberWidgets::drawLED(gfx, cx + cellW / 2 - 1, gridY + cellH - 8, 1, true, IGfxColor(AmberTheme::NEON_MAGENTA));
+                    if (accents[s]) AmberWidgets::drawLED(gfx, cx + cellW - 5, gridY + cellH - 8, 1, true, IGfxColor(AmberTheme::NEON_ORANGE));
+                } else {
+                    gfx.setTextColor(IGfxColor(AmberTheme::TEXT_DIM));
+                    gfx.drawText(cx + (cellW - 4) / 2, gridY + 10, ".");
+                }
+            }
+            AmberWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[A/Z]±nt [S/X]±oct [Alt+S]Sld [Alt+A]Acc", "ESC:Back", "303");
         }
     }
 #else
@@ -252,17 +430,36 @@ void SequencerHubPage::drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool 
             else if (voice == 7) hit = mini_acid_.patternClapSteps()[s];
         }
         
-        IGfxColor color = hit ? (selected ? (isSynth ? IGfxColor(NEON_CYAN) : COLOR_WHITE) : COLOR_GRAY) : IGfxColor(BG_INSET);
-        if (s == currentStep && mini_acid_.isPlaying()) color = IGfxColor(NEON_YELLOW);
+        IGfxColor color = hit ? (selected ? (isSynth ? COLOR_ACCENT : COLOR_TEXT) : COLOR_GRAY) : COLOR_DARKER;
+        if (s == currentStep && mini_acid_.isPlaying()) color = COLOR_WARN;
         
         gfx.fillRect(maskX + s * cellW, y + 2, cellW - 1, h - 4, color);
+    }
+
+    // Volume indicator
+    float vol = mini_acid_.getTrackVolume((VoiceId)trackIdx);
+    int volBarW = 20;
+    int volBarX = 236 - volBarW - 4;
+    int volW = (int)(vol * volBarW);
+    gfx.drawRect(volBarX, y + 3, volBarW, h - 6, COLOR_GRAY);
+    gfx.fillRect(volBarX + 1, y + 4, volW - 2, h - 8, COLOR_ACCENT);
+    
+    // Activity bar indicator (the "bar" from play page)
+    if (active && mini_acid_.isPlaying()) {
+        gfx.fillRect(volBarX + volBarW + 2, y + 2, 2, h - 4, COLOR_WARN);
     }
 }
 
 void SequencerHubPage::drawOverviewCursor(IGfx& gfx, int trackIdx, int stepIdx, int x, int y, int cellW, int cellH) {
      int cx = x + stepIdx * cellW;
      // Draw a prominent cursor around the step
-     drawGlowBorder(gfx, cx, y, cellW - 1, cellH, IGfxColor(SELECT_BRIGHT), 2);
+     if (UI::currentStyle == VisualStyle::AMBER) {
+         AmberWidgets::drawGlowBorder(gfx, cx, y, cellW - 1, cellH, IGfxColor(AmberTheme::SELECT_BRIGHT), 2);
+     } else if (UI::currentStyle == VisualStyle::RETRO_CLASSIC) {
+         RetroWidgets::drawGlowBorder(gfx, cx, y, cellW - 1, cellH, IGfxColor(RetroTheme::SELECT_BRIGHT), 2);
+     } else {
+         gfx.drawRect(cx, y, cellW - 1, cellH, COLOR_STEP_SELECTED);
+     }
 }
 
 void SequencerHubPage::drawDetail(IGfx& gfx) {
@@ -341,6 +538,7 @@ bool SequencerHubPage::handleEvent(UIEvent& e) {
 
     if (handleModeSwitch(e)) return true;
     if (handleQuickKeys(e)) return true;
+    if (handleVolumeInput(e)) return true; // Check volume before navigation
     if (handleNavigation(e)) return true;
     if (handleGridEdit(e)) return true;
 
@@ -421,6 +619,34 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
     return false;
 }
 
+bool SequencerHubPage::handleVolumeInput(UIEvent& e) {
+    if (mode_ != Mode::OVERVIEW) return false;
+
+    // Volume control: Per-track fader logic
+    // - Use Ctrl + Minus/Plus (overrides global master volume on this page)
+    // - Use Alt + Left/Right (alternative)
+    // Note: Ctrl + '=' is often '+' without shift, checking both covers bases
+    bool isVolUp = (e.ctrl && (e.key == '=' || e.key == '+')) || (e.alt && UIInput::isRight(e));
+    bool isVolDn = (e.ctrl && (e.key == '-' || e.key == '_')) || (e.alt && UIInput::isLeft(e));
+
+    if (isVolUp || isVolDn) {
+        float vol = mini_acid_.getTrackVolume((VoiceId)selectedTrack_);
+        if (isVolDn) {
+            vol -= 0.05f;
+            if (vol < 0.0f) vol = 0.0f;
+            mini_acid_.setTrackVolume((VoiceId)selectedTrack_, vol);
+            return true;
+        }
+        if (isVolUp) {
+            vol += 0.05f;
+            if (vol > 1.2f) vol = 1.2f; // Slight boost allowed
+            mini_acid_.setTrackVolume((VoiceId)selectedTrack_, vol);
+            return true;
+        }
+    }
+    return false;
+}
+
 bool SequencerHubPage::handleNavigation(UIEvent& e) {
     auto isNavKey = [](const UIEvent& ev) {
         return UIInput::isUp(ev) || UIInput::isDown(ev) || UIInput::isLeft(ev) || UIInput::isRight(ev);
@@ -437,6 +663,9 @@ bool SequencerHubPage::handleNavigation(UIEvent& e) {
             selectedTrack_ = (selectedTrack_ + 1) % 10;
             return true;
         }
+
+
+
         // Horizontal navigation for "the square"
         if (UIInput::isLeft(e)) {
             stepCursor_ = (stepCursor_ - 1 + SEQ_STEPS) % SEQ_STEPS;

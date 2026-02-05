@@ -327,6 +327,9 @@ bool deserializeLedSettings(ArduinoJson::JsonObjectConst obj, LedSettings& led) 
 SceneJsonObserver::SceneJsonObserver(Scene& scene, float defaultBpm)
     : target_(scene), bpm_(defaultBpm) {
   clearSong(song_);
+  for (int i = 0; i < (int)VoiceId::Count; ++i) {
+    target_.trackVolumes[i] = 1.0f;
+  }
 }
 
 SceneJsonObserver::Path SceneJsonObserver::deduceArrayPath(const Context& parent) const {
@@ -605,6 +608,13 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
       synthParameters_[synthIdx].envDecay = fval;
     } else if (lastKey_ == "oscType") {
       synthParameters_[synthIdx].oscType = static_cast<int>(value);
+    }
+    return;
+  }
+  if (path == Path::TrackVolumes) {
+    int idx = stack_[stackSize_ - 1].index;
+    if (idx >= 0 && idx < (int)VoiceId::Count) {
+      target_.trackVolumes[idx] = static_cast<float>(value);
     }
     return;
   }
@@ -1281,6 +1291,19 @@ int SceneManager::getSongPosition() const {
   return clampSongPosition(songPosition_);
 }
 
+void SceneManager::setTrackVolume(int voiceIdx, float volume) {
+  if (voiceIdx >= 0 && voiceIdx < (int)VoiceId::Count) {
+    scene_->trackVolumes[voiceIdx] = volume;
+  }
+}
+
+float SceneManager::getTrackVolume(int voiceIdx) const {
+  if (voiceIdx >= 0 && voiceIdx < (int)VoiceId::Count) {
+    return scene_->trackVolumes[voiceIdx];
+  }
+  return 1.0f;
+}
+
 void SceneManager::setSongMode(bool enabled) { songMode_ = enabled; }
 
 bool SceneManager::songMode() const { return songMode_; }
@@ -1662,6 +1685,15 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     loaded->vocal.speed = valueToFloat(vocalObj["spd"], loaded->vocal.speed);
     loaded->vocal.robotness = valueToFloat(vocalObj["rob"], loaded->vocal.robotness);
     loaded->vocal.volume = valueToFloat(vocalObj["vol"], loaded->vocal.volume);
+  }
+
+  ArduinoJson::JsonArrayConst volArr = obj["trackVolumes"].as<ArduinoJson::JsonArrayConst>();
+  if (!volArr.isNull()) {
+    int idx = 0;
+    for (ArduinoJson::JsonVariantConst vVal : volArr) {
+      if (idx >= (int)VoiceId::Count) break;
+      loaded->trackVolumes[idx++] = valueToFloat(vVal, 1.0f);
+    }
   }
 
   if (obj["customPhrases"].is<ArduinoJson::JsonArrayConst>()) {

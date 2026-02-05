@@ -264,6 +264,11 @@ struct Scene {
   char customPhrases[kMaxCustomPhrases][kMaxPhraseLength];
     
   LedSettings led;
+
+  float trackVolumes[(int)VoiceId::Count] = {
+      1.0f, 1.0f, // Synth A, B
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f // Drums
+  };
 };
 
 class SceneJsonObserver : public JsonObserver {
@@ -341,6 +346,7 @@ private:
     CustomPhrases,
     CustomPhrase,
     Vocal,
+    TrackVolumes,
     Unknown,
   };
 
@@ -451,6 +457,9 @@ public:
   void setLoopRange(int startRow, int endRow);
   int loopStartRow() const;
   int loopEndRow() const;
+
+  void setTrackVolume(int voiceIdx, float volume);
+  float getTrackVolume(int voiceIdx) const;
 
   template <typename TWriter>
   bool writeSceneJson(TWriter&& writer) const;
@@ -720,6 +729,13 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeBool(synthDelay_[0])) return false;
   if (!writeChar(',')) return false;
   if (!writeBool(synthDelay_[1])) return false;
+  if (!writeChar(']')) return false;
+
+  if (!writeLiteral(",\"trackVolumes\":[")) return false;
+  for (int i = 0; i < (int)VoiceId::Count; ++i) {
+    if (i > 0 && !writeChar(',')) return false;
+    if (!writeFloat(scene_->trackVolumes[i])) return false;
+  }
   if (!writeChar(']')) return false;
 
   if (!writeLiteral(",\"samplerPads\":[")) return false;

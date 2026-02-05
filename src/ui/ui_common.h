@@ -23,11 +23,11 @@ namespace UI {
     // Standard wave colors used by both page and overlay
     constexpr int kNumWaveColors = 5;
     constexpr IGfxColor kWaveColors[kNumWaveColors] = {
-        IGfxColor(0x00FF90), // COLOR_WAVE (Spring Green)
-        IGfxColor::Cyan(),
-        IGfxColor::Magenta(),
-        IGfxColor::Yellow(),
-        IGfxColor::White()
+        COLOR_INFO,
+        COLOR_ACCENT,
+        COLOR_WARN,
+        COLOR_DANGER,
+        COLOR_TEXT
     };
 
     /**

@@ -32,10 +32,10 @@ This document provides a comprehensive reference for all keyboard shortcuts and 
 | `Alt + 4` | Synth B Parameters (TB-303) |
 | `Alt + 5` | Drum Sequencer |
 | `Alt + 6` | Machine Mode (Acid/Minimal) |
-| `Alt + 7` | Play Page (Home) |
-| `Alt + 8` | Sequencer Hub (Overview) |
-| `Alt + 9` | Song Page (Arrangement) |
-| `Alt + 0` | Project Page |
+| `Alt + 7` | **Sequencer Hub (Home)** |
+| `Alt + 8` | Song Page (Arrangement) |
+| `Alt + 9` | Project Page |
+| `Alt + 0` | Settings |
 
 ---
 
@@ -62,16 +62,26 @@ This document provides a comprehensive reference for all keyboard shortcuts and 
 | **`Alt + .`** | **Reset / Clear Pattern** |
 | `Enter` | Confirm Bank/Pattern Selection |
 
-### 🥁 Sequencer Hub
+### 🏠 Sequencer Hub (Home)
+*Overview of all 10 tracks with activity visualization and mixing.*
+
 | Key | Action |
 | :--- | :--- |
-| `Arrows` | Navigate Grid (Detail) / Select Track (Overview) |
-| `Enter` | Enter Detail View / Toggle Step |
+| `Arrows` | Select Track (Overview) / Navigate Grid (Detail) |
+| `Enter` | Jump to **Pattern Edit** / **Drum Sequencer** / Toggle Step |
+| `Space` | Start / Stop Playback |
+| `Q` ... `I` | Quick Pattern Select (1-8) |
+| `Ctrl + - / +` | Adjust Track Volume (Local) |
+| `Alt + L / R` | Adjust Track Volume (Alternative) |
+| `Esc` / `Bksp` | Return to Overview (from Detail) |
+
+#### Grid / Pattern Management (in Detail)
+| Key | Action |
+| :--- | :--- |
 | `x` | Toggle Step |
 | `w` | Toggle Accent |
-| `a` | Toggle Slide (Synth tracks only) |
-| `Q` ... `U` | Quick Pattern Select |
-| `Space` | Start / Stop Playback |
+| `a` | Toggle Slide (Synth tracks) |
+| `S` / `X` | Move Pattern focus (up/down) |
 
 ### 🎼 Song Page
 | Key | Action |
@@ -138,5 +148,6 @@ This document provides a comprehensive reference for all keyboard shortcuts and 
 ## 💡 Pro Tips
 - Most **Alt + Key** combinations can also be triggered with **Ctrl + Key** if Alt is physically harder to reach on your layout.
 - Use **Alt + M** to check your song arrangement without leaving your current pattern editing page.
+- **Alt + 7** is your Home (Sequencer Hub) where you can see all tracks and mixing levels.
 - **Alt + .** is your "panic/reset" button for the current context (pattern or song).
 - In any list (Settings, Voice), use **Shift** with navigation keys for faster movement.

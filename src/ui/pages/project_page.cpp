@@ -308,8 +308,12 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         if (main_focus_ == MainFocus::New) return createNewScene();
         if (main_focus_ == MainFocus::Mode) { mini_acid_.toggleGrooveboxMode(); return true; }
         if (main_focus_ == MainFocus::VisualStyle) {
-             UI::currentStyle = (UI::currentStyle == VisualStyle::MINIMAL) ? 
-                                 VisualStyle::RETRO_CLASSIC : VisualStyle::MINIMAL;
+             switch (UI::currentStyle) {
+                 case VisualStyle::MINIMAL: UI::currentStyle = VisualStyle::RETRO_CLASSIC; break;
+                 case VisualStyle::RETRO_CLASSIC: UI::currentStyle = VisualStyle::AMBER; break;
+                 case VisualStyle::AMBER: UI::currentStyle = VisualStyle::MINIMAL; break;
+                 default: UI::currentStyle = VisualStyle::MINIMAL; break;
+             }
              return true;
         }
         
@@ -383,8 +387,9 @@ void ProjectPage::draw(IGfx& gfx) {
   int spacing = 3;
   const char* labels[5] = {"Load", "Save As", "New", "Acid", "Theme"};
   if (mini_acid_.grooveboxMode() == GrooveboxMode::Minimal) labels[3] = "Minimal";
-  if (UI::currentStyle == VisualStyle::MINIMAL) labels[4] = "Mini";
-  else labels[4] = "Retr";
+  if (UI::currentStyle == VisualStyle::MINIMAL) labels[4] = "Carb";
+  else if (UI::currentStyle == VisualStyle::RETRO_CLASSIC) labels[4] = "Cyb";
+  else labels[4] = "Amb";
   
   btn_w = 42;
   spacing = 3;

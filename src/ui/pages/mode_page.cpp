@@ -122,7 +122,7 @@ void ModePage::previewMode() {
     });
 }
 
-void ModePage::drawModeBox(IGfx& gfx, int x, int y, const char* name, bool active, uint16_t color, int w, int h) {
+void ModePage::drawModeBox(IGfx& gfx, int x, int y, const char* name, bool active, uint32_t color, int w, int h) {
     if (active) {
         gfx.fillRect(x, y, w, h, (IGfxColor)color);
         gfx.setTextColor(COLOR_BLACK);
@@ -133,5 +133,4 @@ void ModePage::drawModeBox(IGfx& gfx, int x, int y, const char* name, bool activ
         gfx.drawText(x + 10, y + 7, name);
     }
 }
-
 

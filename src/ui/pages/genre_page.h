@@ -40,6 +40,7 @@ private:
     // Draw methods for different styles
     void drawMinimalStyle(IGfx& gfx);
     void drawRetroClassicStyle(IGfx& gfx);
+    void drawAmberStyle(IGfx& gfx);
     
     void applyCurrent();
     template <typename F>

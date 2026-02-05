@@ -29,6 +29,26 @@
 #endif
 #include <cstdio>
 
+namespace {
+VisualStyle nextVisualStyle(VisualStyle style) {
+    switch (style) {
+        case VisualStyle::MINIMAL: return VisualStyle::RETRO_CLASSIC;
+        case VisualStyle::RETRO_CLASSIC: return VisualStyle::AMBER;
+        case VisualStyle::AMBER: return VisualStyle::MINIMAL;
+        default: return VisualStyle::MINIMAL;
+    }
+}
+
+const char* visualStyleName(VisualStyle style) {
+    switch (style) {
+        case VisualStyle::MINIMAL: return "CARBON";
+        case VisualStyle::RETRO_CLASSIC: return "CYBER";
+        case VisualStyle::AMBER: return "AMBER";
+        default: return "CARBON";
+    }
+}
+} // namespace
+
 MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid)
     : gfx_(gfx), mini_acid_(mini_acid) {
     
@@ -60,19 +80,19 @@ MiniAcidDisplay::~MiniAcidDisplay() = default;
 std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
     Serial.printf("[UI] createPage_(%d)\n", index);
     switch (index) {
-        case 0:  return std::make_unique<GenrePage>(gfx_, mini_acid_, audio_guard_);
+        case 0:  return std::make_unique<SettingsPage>(gfx_, mini_acid_);
         case 1:  return std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 0);
         case 2:  return std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 1);
         case 3:  return std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 0);
         case 4:  return std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 1);
         case 5:  return std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_);
-        case 6:  return std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_);
-        case 7:  return std::make_unique<SequencerHubPage>(gfx_, mini_acid_, audio_guard_);
-        case 8:  return std::make_unique<SongPage>(gfx_, mini_acid_, audio_guard_);
-        case 9:  return std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_);
-        case 10: return std::make_unique<SettingsPage>(gfx_, mini_acid_);        
+        case 6:  return std::make_unique<SongPage>(gfx_, mini_acid_, audio_guard_);
+        case 7:  return std::make_unique<GenrePage>(gfx_, mini_acid_, audio_guard_);
+        case 8:  return std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_);
+        case 9:  return std::make_unique<SequencerHubPage>(gfx_, mini_acid_, audio_guard_);
+        case 10: return std::make_unique<ProjectPage>(gfx_, mini_acid_,audio_guard_);        
         case 11: return std::make_unique<VoicePage>(gfx_, mini_acid_, audio_guard_);
-        case 12: return std::make_unique<ColorTestPage>(gfx_, mini_acid_);
+        //case 12: return std::make_unique<ColorTestPage>(gfx_, mini_acid_);
 
        // case 14: return std::make_unique<WaveformPage>(gfx_, mini_acid_, audio_guard_);
        // case 8:  return std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_);
@@ -215,17 +235,10 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         if (event.key == '[') { previousPage(); return true; }
 
         if (event.key == 'h') {
-            showToast("[ ] nav  Ctrl+# pages  v voice  c color  w wave  b back", 2200);
+            showToast("[ ] nav  Ctrl+# pages  \\ style  v voice  c color  w wave  b back", 2200);
             return true;
         }
 
-       
-        
-        // Waveform overlay toggle
-        if (event.alt && (event.key == 'w' || event.key == 'W')) {
-            UI::waveformOverlay.enabled = !UI::waveformOverlay.enabled;
-            return true;
-        }
         
         // Global Help Overlay toggle (Ctrl+H)
         if (event.ctrl && (event.key == 'h' || event.key == 'H')) {
@@ -233,9 +246,21 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             return true;
         }
 
-        // Voice Page jump (Alt+V) - using new mapping
+        // Waveform overlay toggle
         if (event.alt && (event.key == 'v' || event.key == 'V')) {
-            goToPage(11);
+            UI::waveformOverlay.enabled = !UI::waveformOverlay.enabled;
+            return true;
+        }
+
+        // Visual Style toggle (Alt+\)
+        if (event.alt && (event.key == '\\' || event.key == '|')) {
+            UI::currentStyle = nextVisualStyle(UI::currentStyle);
+            for (auto& p : pages_) {
+                if (p) p->setVisualStyle(UI::currentStyle);
+            }
+            char buf[32];
+            snprintf(buf, sizeof(buf), "Style: %s", visualStyleName(UI::currentStyle));
+            showToast(buf);
             return true;
         }
 
@@ -255,7 +280,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             withAudioGuard([&]() {
                 mini_acid_.setSongMode(newState);
             });
-            showToast(newState ? "Song Mode: ON" : "Song Mode: OFF");
+            showToast(newState ? "Song: ON" : "Song: OFF");
             return true;
         }
 
@@ -335,15 +360,16 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     // 2.5) App Events (Inter-page communication)
     if (event.event_type == MINIACID_APPLICATION_EVENT) {
         if (event.app_event_type == MINIACID_APP_EVENT_SET_VISUAL_STYLE) {
-            UI::currentStyle = (UI::currentStyle == VisualStyle::MINIMAL) ? 
-                                VisualStyle::RETRO_CLASSIC : VisualStyle::MINIMAL;
+            UI::currentStyle = nextVisualStyle(UI::currentStyle);
             
             // Propagate to existing (loaded) pages only
             for (auto& p : pages_) {
                 if (p) p->setVisualStyle(UI::currentStyle);
             }
-            
-            showToast(UI::currentStyle == VisualStyle::MINIMAL ? "Style: MINIMAL" : "Style: RETRO");
+
+            char buf[32];
+            snprintf(buf, sizeof(buf), "Style: %s", visualStyleName(UI::currentStyle));
+            showToast(buf);
             return true;
         }
     }
@@ -393,7 +419,7 @@ void MiniAcidDisplay::drawSplashScreen() {
   if (start_y < 6) start_y = 6;
 
   gfx_.setFont(GfxFont::kFreeSerif18pt);
-  centerText(start_y, "MiniAcid", COLOR_ACCENT);
+  centerText(start_y, "CardLooper", COLOR_ACCENT);
 
   gfx_.setFont(GfxFont::kFont5x7);
   int info_y = start_y + title_h + gap;

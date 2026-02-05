@@ -795,6 +795,15 @@ bool MiniAcid::isTrackActive(int index) const {
     default: return false;
   }
 }
+
+void MiniAcid::setTrackVolume(VoiceId id, float volume) {
+    sceneManager_.setTrackVolume((int)id, volume);
+}
+
+float MiniAcid::getTrackVolume(VoiceId id) const {
+    return sceneManager_.getTrackVolume((int)id);
+}
+
 void MiniAcid::toggleDelay303(int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
   if (idx == 0) {
@@ -1402,11 +1411,14 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     float drumsMix = 0.0f;
     float samplerSample = 0.0f;
 
+    const float* trackVolumes = sceneManager_.currentScene().trackVolumes;
+
     if (playing) {
       // 303 Voice 1
       if (!mute303) {
         float v = voice303.process() * 0.5f;  // Hector's original gain
         v = distortion303.process(v);
+        v *= trackVolumes[(int)VoiceId::SynthA];
         sample303 += delay303.process(v);
       } else {
         delay303.process(0.0f);
@@ -1416,20 +1428,21 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       if (!mute303_2) {
         float v = voice3032.process() * 0.5f;  // Hector's original gain
         v = distortion3032.process(v);
+        v *= trackVolumes[(int)VoiceId::SynthB];
         sample303 += delay3032.process(v);
       } else {
         delay3032.process(0.0f);
       }
 
       // Virtual Analog Drums (with proper gain staging)
-      if (!muteKick)    drumsMix += drums->processKick();
-      if (!muteSnare)   drumsMix += drums->processSnare();
-      if (!muteHat)     drumsMix += drums->processHat();
-      if (!muteOpenHat) drumsMix += drums->processOpenHat();
-      if (!muteMidTom)  drumsMix += drums->processMidTom();
-      if (!muteHighTom) drumsMix += drums->processHighTom();
-      if (!muteRim)     drumsMix += drums->processRim();
-      if (!muteClap)    drumsMix += drums->processClap();
+      if (!muteKick)    drumsMix += drums->processKick() * trackVolumes[(int)VoiceId::DrumKick];
+      if (!muteSnare)   drumsMix += drums->processSnare() * trackVolumes[(int)VoiceId::DrumSnare];
+      if (!muteHat)     drumsMix += drums->processHat() * trackVolumes[(int)VoiceId::DrumHatC];
+      if (!muteOpenHat) drumsMix += drums->processOpenHat() * trackVolumes[(int)VoiceId::DrumHatO];
+      if (!muteMidTom)  drumsMix += drums->processMidTom() * trackVolumes[(int)VoiceId::DrumTomM];
+      if (!muteHighTom) drumsMix += drums->processHighTom() * trackVolumes[(int)VoiceId::DrumTomH];
+      if (!muteRim)     drumsMix += drums->processRim() * trackVolumes[(int)VoiceId::DrumRim];
+      if (!muteClap)    drumsMix += drums->processClap() * trackVolumes[(int)VoiceId::DrumClap];
       
       // Drums gain staging: trim + soft limit for musical bus compression
       drumsMix *= 0.60f;                  // Base headroom

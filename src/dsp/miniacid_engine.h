@@ -183,6 +183,8 @@ public:
   void toggleMuteClap();
   
   bool isTrackActive(int index) const; // 0=303A, 1=303B, 2=KICK, 3=SNARE, 4=HAT, etc.
+  void setTrackVolume(VoiceId id, float volume);
+  float getTrackVolume(VoiceId id) const;
   void toggleDelay303(int voiceIndex = 0);
   void toggleDistortion303(int voiceIndex = 0);
   void set303DelayEnabled(int voiceIndex, bool enabled);

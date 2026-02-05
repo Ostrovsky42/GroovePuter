@@ -34,6 +34,7 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
 
   void drawMinimalStyle(IGfx& gfx);
   void drawRetroClassicStyle(IGfx& gfx);
+  void drawAmberStyle(IGfx& gfx);
 
   int clampCursor(int cursorIndex) const;
   int activeBankCursor() const;

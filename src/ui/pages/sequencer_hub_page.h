@@ -6,9 +6,16 @@
 #include "../ui_widgets.h"
 #include "../components/drum_sequencer_grid.h"
 
+#ifndef USE_RETRO_THEME
 #define USE_RETRO_THEME
+#endif
+#ifndef USE_AMBER_THEME
+#define USE_AMBER_THEME
+#endif
 #include "../retro_ui_theme.h"
 #include "../retro_widgets.h"
+#include "../amber_ui_theme.h"
+#include "../amber_widgets.h"
 
 #ifdef USE_RETRO_THEME
 using namespace RetroTheme;
@@ -47,12 +54,14 @@ private:
     void drawOverview(IGfx& gfx);
     void drawDetail(IGfx& gfx);
     void drawRetroClassicStyle(IGfx& gfx);
+    void drawAmberStyle(IGfx& gfx);
     void drawMinimalStyle(IGfx& gfx);
     void drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool selected);
     void drawOverviewCursor(IGfx& gfx, int trackIdx, int stepIdx, int x, int y, int cellW, int cellH);
     
     bool handleModeSwitch(UIEvent& e);
     bool handleQuickKeys(UIEvent& e);
+    bool handleVolumeInput(UIEvent& e);
     bool handleNavigation(UIEvent& e);
     bool handleGridEdit(UIEvent& e);
 

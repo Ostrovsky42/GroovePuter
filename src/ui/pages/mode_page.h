@@ -16,7 +16,7 @@ private:
     void applyToTape();
     void previewMode();
     
-    void drawModeBox(IGfx& gfx, int x, int y, const char* name, bool active, uint16_t color, int w, int h);
+    void drawModeBox(IGfx& gfx, int x, int y, const char* name, bool active, uint32_t color, int w, int h);
     template <typename F>
     void withAudioGuard(F&& fn) {
         if (audio_guard_) audio_guard_(std::forward<F>(fn));

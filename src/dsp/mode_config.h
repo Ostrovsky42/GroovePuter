@@ -90,7 +90,7 @@ struct ModeConfig {
     } dsp;
     
     // UI
-    uint16_t accentColor;     // mode accent color in UI
+    uint32_t accentColor;     // mode accent color in UI (RGB888)
     const char* displayName;
 };
 
@@ -126,7 +126,7 @@ const ModeConfig kAcidConfig = {
         .subOscillator = false,
         .noiseAmount = 0.0f
     },
-    .accentColor = 0xFFE0,  // yellow
+    .accentColor = 0xF59E0B,  // warn orange
     .displayName = "ACID"
 };
 
@@ -162,6 +162,6 @@ const ModeConfig kMinimalConfig = {
         .subOscillator = true,
         .noiseAmount = 0.02f
     },
-    .accentColor = 0x841F,  // purple
+    .accentColor = 0x22C55E,  // accent green
     .displayName = "MINIMAL"
 };

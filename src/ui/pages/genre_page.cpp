@@ -1,4 +1,9 @@
+#ifndef USE_RETRO_THEME
 #define USE_RETRO_THEME          // включаем ретро‑тему проектно
+#endif
+#ifndef USE_AMBER_THEME
+#define USE_AMBER_THEME
+#endif
 
 #include "genre_page.h"
 #include "../ui_common.h"
@@ -12,6 +17,10 @@
 #include "../retro_widgets.h"
 using namespace RetroTheme;
 using namespace RetroWidgets;
+#endif
+#ifdef USE_AMBER_THEME
+#include "../amber_ui_theme.h"
+#include "../amber_widgets.h"
 #endif
 
 // Preset mappings: (genre, texture)
@@ -49,6 +58,9 @@ void GenrePage::draw(IGfx& gfx) {
     switch (UI::currentStyle) {
         case VisualStyle::RETRO_CLASSIC:
             drawRetroClassicStyle(gfx);
+            break;
+        case VisualStyle::AMBER:
+            drawAmberStyle(gfx);
             break;
         case VisualStyle::MINIMAL:
         default:
@@ -178,7 +190,7 @@ void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
     const int LIST_W = 110;
     const int ROW_H = 12;
     
-    static const uint16_t genreColors[] = {
+    static const uint32_t genreColors[] = {
         NEON_CYAN, NEON_PURPLE, NEON_MAGENTA, NEON_YELLOW, NEON_ORANGE
     };
     
@@ -187,7 +199,7 @@ void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
         bool isCursor = (i == genreIndex_);
         bool isActive = (i == prevGenreIndex_);
         bool focused = genreFocus && isCursor;
-        uint16_t color = genreColors[i];
+        uint32_t color = genreColors[i];
         
         if (isCursor) {
             gfx.fillRect(4, rowY - 1, LIST_W - 4, ROW_H - 1, BG_INSET);
@@ -219,8 +231,8 @@ void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
     const int TEX_X = 124;
     const int TEX_W = 112;
     
-    static const uint16_t textureColors[] = {
-        0xAD55, 0x07E0, 0x8010, 0xF800  // CLEAN, DUB, DARK, HARD
+    static const uint32_t textureColors[] = {
+        0x9CA3AF, 0x38BDF8, 0xF59E0B, 0xEF4444  // CLEAN, DUB, DARK, HARD
     };
     
     for (int i = 0; i < 4; i++) {
@@ -228,7 +240,7 @@ void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
         bool isCursor = (i == textureIndex_);
         bool isActive = (i == prevTextureIndex_);
         bool focused = textureFocus && isCursor;
-        uint16_t color = textureColors[i];
+        uint32_t color = textureColors[i];
         
         if (isCursor) {
             gfx.fillRect(TEX_X, rowY - 1, TEX_W - 4, ROW_H - 1, BG_INSET);
@@ -325,6 +337,153 @@ void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
     drawFooterBar(gfx, 0, 135 - 12, 240, 12, leftHints, rightHints, focusMode);
 #else
     // Fallback to minimal if retro theme not included
+    drawMinimalStyle(gfx);
+#endif
+}
+
+// =================================================================
+// AMBER STYLE (Terminal)
+// =================================================================
+
+void GenrePage::drawAmberStyle(IGfx& gfx) {
+#ifdef USE_AMBER_THEME
+    char genreStr[32];
+    std::snprintf(genreStr, sizeof(genreStr), "%s/%s",
+                  genreNames[genreIndex_], textureNames[textureIndex_]);
+    
+    AmberWidgets::drawHeaderBar(gfx, 0, 0, 240, 14,
+                  "GENRE", genreStr,
+                  mini_acid_.isPlaying(),
+                  (int)(mini_acid_.bpm() + 0.5f),
+                  mini_acid_.currentStep());
+    
+    const int CONTENT_Y = 16;
+    const int CONTENT_H = 135 - 16 - 12;
+    gfx.fillRect(0, CONTENT_Y, 240, CONTENT_H, AmberTheme::BG_DEEP_BLACK);
+    
+    const int INDICATOR_Y = CONTENT_Y + 2;
+    bool genreFocus = (focus_ == FocusArea::GENRE);
+    bool textureFocus = (focus_ == FocusArea::TEXTURE);
+    bool presetFocus = (focus_ == FocusArea::PRESETS);
+    
+    if (genreFocus) {
+        AmberWidgets::drawGlowText(gfx, 4, INDICATOR_Y, "G>", AmberTheme::FOCUS_GLOW, AmberTheme::NEON_CYAN);
+    } else {
+        gfx.setTextColor(AmberTheme::GRID_DIM);
+        gfx.drawText(4, INDICATOR_Y, "G ");
+    }
+    
+    if (textureFocus) {
+        AmberWidgets::drawGlowText(gfx, 124, INDICATOR_Y, "T>", AmberTheme::FOCUS_GLOW, AmberTheme::NEON_MAGENTA);
+    } else {
+        gfx.setTextColor(AmberTheme::GRID_DIM);
+        gfx.drawText(124, INDICATOR_Y, "T ");
+    }
+    
+    const int LIST_Y = CONTENT_Y + 14;
+    const int LIST_W = 110;
+    const int ROW_H = 12;
+    
+    static const uint32_t genreColors[] = {
+        AmberTheme::NEON_CYAN, AmberTheme::NEON_PURPLE, AmberTheme::NEON_MAGENTA,
+        AmberTheme::NEON_YELLOW, AmberTheme::NEON_ORANGE
+    };
+    
+    for (int i = 0; i < 5; i++) {
+        int rowY = LIST_Y + i * ROW_H;
+        bool isCursor = (i == genreIndex_);
+        bool isActive = (i == prevGenreIndex_);
+        bool focused = genreFocus && isCursor;
+        uint32_t color = genreColors[i];
+        
+        if (isCursor) {
+            gfx.fillRect(4, rowY - 1, LIST_W - 4, ROW_H - 1, AmberTheme::BG_INSET);
+            if (focused) {
+                AmberWidgets::drawGlowBorder(gfx, 4, rowY - 1, LIST_W - 4, ROW_H - 1, color, 1);
+            } else {
+                gfx.drawRect(4, rowY - 1, LIST_W - 4, ROW_H - 1, AmberTheme::GRID_MEDIUM);
+            }
+        }
+        
+        int ledX = 8;
+        int ledY = rowY + ROW_H / 2;
+        AmberWidgets::drawLED(gfx, ledX, ledY, 2, isActive, color);
+        
+        if (focused) {
+            AmberWidgets::drawGlowText(gfx, 16, rowY, genreNames[i], color, AmberTheme::TEXT_PRIMARY);
+        } else {
+            IGfxColor textColor = (isActive || isCursor) ? IGfxColor(color) : IGfxColor(AmberTheme::TEXT_SECONDARY);
+            if (isActive && !isCursor) textColor = IGfxColor(AmberTheme::TEXT_DIM);
+            gfx.setTextColor(textColor);
+            gfx.drawText(16, rowY, genreNames[i]);
+        }
+    }
+    
+    const int TEX_X = 124;
+    const int TEX_W = 112;
+    
+    static const uint32_t textureColors[] = {
+        AmberTheme::TEXT_SECONDARY, AmberTheme::NEON_CYAN, AmberTheme::NEON_ORANGE, AmberTheme::NEON_MAGENTA
+    };
+    
+    for (int i = 0; i < 4; i++) {
+        int rowY = LIST_Y + i * ROW_H;
+        bool isCursor = (i == textureIndex_);
+        bool isActive = (i == prevTextureIndex_);
+        bool focused = textureFocus && isCursor;
+        uint32_t color = textureColors[i];
+        
+        if (isCursor) {
+            gfx.fillRect(TEX_X, rowY - 1, TEX_W - 4, ROW_H - 1, AmberTheme::BG_INSET);
+            if (focused) {
+                AmberWidgets::drawGlowBorder(gfx, TEX_X, rowY - 1, TEX_W - 4, ROW_H - 1, color, 1);
+            } else {
+                gfx.drawRect(TEX_X, rowY - 1, TEX_W - 4, ROW_H - 1, AmberTheme::GRID_MEDIUM);
+            }
+        }
+        
+        int ledX = TEX_X + 4;
+        int ledY = rowY + ROW_H / 2;
+        AmberWidgets::drawLED(gfx, ledX, ledY, 2, isActive, color);
+        
+        if (focused) {
+            AmberWidgets::drawGlowText(gfx, TEX_X + 12, rowY, textureNames[i], color, AmberTheme::TEXT_PRIMARY);
+        } else {
+            IGfxColor textColor = (isActive || isCursor) ? IGfxColor(color) : IGfxColor(AmberTheme::TEXT_SECONDARY);
+            gfx.setTextColor(textColor);
+            gfx.drawText(TEX_X + 12, rowY, textureNames[i]);
+        }
+    }
+    
+    const int GRID_Y = LIST_Y + 5 * ROW_H + 4;
+    const int BTN_W = 56;
+    const int BTN_H = 10;
+    const int GAP = 2;
+    
+    for (int i = 0; i < 8; i++) {
+        int bx = 4 + (i % 4) * (BTN_W + GAP);
+        int by = GRID_Y + (i / 4) * (BTN_H + GAP);
+        bool selected = (i == presetIndex_);
+        
+        gfx.fillRect(bx, by, BTN_W, BTN_H, AmberTheme::BG_PANEL);
+        gfx.drawRect(bx, by, BTN_W, BTN_H, selected ? AmberTheme::NEON_ORANGE : AmberTheme::GRID_MEDIUM);
+        gfx.setTextColor(selected ? AmberTheme::TEXT_PRIMARY : AmberTheme::TEXT_SECONDARY);
+        gfx.drawText(bx + 3, by + 2, presetNames[i]);
+    }
+
+    if (presetFocus) {
+        int fx = 4;
+        int fy = GRID_Y - 2;
+        int fw = 4 * (BTN_W + GAP) - GAP;
+        int fh = 2 * (BTN_H + GAP) - GAP + 2;
+        AmberWidgets::drawGlowBorder(gfx, fx, fy, fw, fh, AmberTheme::NEON_ORANGE, 1);
+    }
+    
+    AmberWidgets::drawFooterBar(gfx, 0, 135 - 12, 240, 12,
+                                "[UP/DN]Genre [L/R]Texture",
+                                "[ENT]Preset",
+                                "GENRE");
+#else
     drawMinimalStyle(gfx);
 #endif
 }

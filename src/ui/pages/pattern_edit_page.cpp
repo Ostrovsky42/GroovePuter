@@ -4,9 +4,16 @@
 #include <utility>
 #include "../ui_common.h"
 
+#ifndef USE_RETRO_THEME
 #define USE_RETRO_THEME
+#endif
+#ifndef USE_AMBER_THEME
+#define USE_AMBER_THEME
+#endif
 #include "../retro_ui_theme.h"
 #include "../retro_widgets.h"
+#include "../amber_ui_theme.h"
+#include "../amber_widgets.h"
 
 #include "../ui_input.h"
 #include "../layout_manager.h"
@@ -515,6 +522,9 @@ void PatternEditPage::draw(IGfx& gfx) {
     case VisualStyle::RETRO_CLASSIC:
       drawRetroClassicStyle(gfx);
       break;
+    case VisualStyle::AMBER:
+      drawAmberStyle(gfx);
+      break;
     case VisualStyle::MINIMAL:
     default:
       drawMinimalStyle(gfx);
@@ -662,12 +672,12 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     bool cur = (i == bankCursor);
     bool focused = bankFocus && cur;
     
-    IGfxColor bgColor = sel ? IGfxColor(NEON_GREEN) : IGfxColor(BG_PANEL);
+    IGfxColor bgColor = sel ? IGfxColor(NEON_CYAN) : IGfxColor(BG_PANEL);
     gfx.fillRect(slotX, contentY + 1, 16, 10, bgColor);
     
     // Glow border only when focused
     if (focused) {
-      drawGlowBorder(gfx, slotX, contentY + 1, 16, 10, IGfxColor(NEON_GREEN), 1);
+      drawGlowBorder(gfx, slotX, contentY + 1, 16, 10, IGfxColor(NEON_CYAN), 1);
     } else if (cur) {
       gfx.drawRect(slotX, contentY + 1, 16, 10, IGfxColor(GRID_MEDIUM));
     }
@@ -685,11 +695,11 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     bool cur = (i == patternCursor);
     bool focused = patternFocus && cur;
     
-    IGfxColor bgColor = sel ? IGfxColor(NEON_ORANGE) : IGfxColor(BG_PANEL);
+    IGfxColor bgColor = sel ? IGfxColor(NEON_MAGENTA) : IGfxColor(BG_PANEL);
     gfx.fillRect(slotX, contentY + 1, 9, 10, bgColor);
     
     if (focused) {
-      drawGlowBorder(gfx, slotX, contentY + 1, 9, 10, IGfxColor(NEON_ORANGE), 1);
+      drawGlowBorder(gfx, slotX, contentY + 1, 9, 10, IGfxColor(NEON_MAGENTA), 1);
     } else if (cur) {
       gfx.drawRect(slotX, contentY + 1, 9, 10, IGfxColor(GRID_MEDIUM));
     }
@@ -754,7 +764,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
       
       // "Teal & Orange" Harmony: Cleaner, distinct, professional
       // Cyan = Normal, Orange = Accent
-      IGfxColor noteColor = acc ? IGfxColor(NEON_ORANGE) : IGfxColor(TEXT_PRIMARY);
+      IGfxColor noteColor = acc ? IGfxColor(NEON_ORANGE) : IGfxColor(NEON_CYAN);
       
       int tw = textWidth(gfx, note_label);
       int tx = cellX + (cellW - tw) / 2;
@@ -776,10 +786,12 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     // Indicators (Persistent dots below the note)
     int dotY = cellRowY + cellH - 4;
     // Slide LED (Purple or Magenta for better pop)
-    drawLED(gfx, cellX + 4, dotY, 1, sld, IGfxColor(NEON_PURPLE));
+    RetroWidgets::drawLED(gfx, cellX + 4, dotY, 1, sld, IGfxColor(NEON_MAGENTA));
     // Accent LED (Matches Note Accent Color -> Orange)
-    drawLED(gfx, cellX + cellW - 4, dotY, 1, acc, IGfxColor(NEON_ORANGE));
+    RetroWidgets::drawLED(gfx, cellX + cellW - 4, dotY, 1, acc, IGfxColor(NEON_ORANGE));
   }
+
+  // Scanlines disabled: caused flicker on small TFT
 
   // 5. Footer (consistent with header)
   const char* focusLabel = stepFocus ? "STEPS" : (bankFocus ? "BANK" : "PTRN");
@@ -789,6 +801,166 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
                 focusLabel);
 
   // NO scanlines - clean and readable
+#else
+  drawMinimalStyle(gfx);
+#endif
+}
+
+void PatternEditPage::drawAmberStyle(IGfx& gfx) {
+#ifdef USE_AMBER_THEME
+  bank_index_ = mini_acid_.current303BankIndex(voice_index_);
+  const Rect& bounds = getBoundaries();
+  int x = bounds.x;
+  int y = bounds.y;
+  int w = bounds.w;
+  int h = bounds.h;
+
+  const int8_t* notes = mini_acid_.pattern303Steps(voice_index_);
+  const bool* accent = mini_acid_.pattern303AccentSteps(voice_index_);
+  const bool* slide = mini_acid_.pattern303SlideSteps(voice_index_);
+  int stepCursor = pattern_edit_cursor_;
+  int playing = mini_acid_.currentStep();
+  int selectedPattern = mini_acid_.display303PatternIndex(voice_index_);
+  bool songMode = mini_acid_.songModeEnabled();
+  bool patternFocus = !songMode && patternRowFocused();
+  bool bankFocus = !songMode && focus_ == Focus::BankRow;
+  bool stepFocus = !patternFocus && !bankFocus;
+  int patternCursor = songMode && selectedPattern >= 0 ? selectedPattern : activePatternCursor();
+  int bankCursor = activeBankCursor();
+
+  char modeBuf[16];
+  snprintf(modeBuf, sizeof(modeBuf), "P%d", selectedPattern + 1);
+  AmberWidgets::drawHeaderBar(
+      gfx, x, y, w, 14,
+      voice_index_ == 0 ? "303 A" : "303 B",
+      modeBuf,
+      mini_acid_.isPlaying(),
+      (int)(mini_acid_.bpm() + 0.5f),
+      playing);
+
+  int contentY = y + 15;
+  int contentH = h - 15 - 12;
+  gfx.fillRect(x, contentY, w, contentH, IGfxColor(AmberTheme::BG_DEEP_BLACK));
+
+  gfx.setTextColor(IGfxColor(AmberTheme::TEXT_SECONDARY));
+  gfx.drawText(x + 4, contentY + 2, "BANK");
+  for (int i = 0; i < kBankCount; i++) {
+    int slotX = x + 36 + i * 18;
+    bool sel = (i == bank_index_);
+    bool cur = (i == bankCursor);
+    bool focused = bankFocus && cur;
+    
+    IGfxColor bgColor = sel ? IGfxColor(AmberTheme::NEON_CYAN) : IGfxColor(AmberTheme::BG_PANEL);
+    gfx.fillRect(slotX, contentY + 1, 16, 10, bgColor);
+    
+    if (focused) {
+      AmberWidgets::drawGlowBorder(gfx, slotX, contentY + 1, 16, 10, IGfxColor(AmberTheme::NEON_CYAN), 1);
+    } else if (cur) {
+      gfx.drawRect(slotX, contentY + 1, 16, 10, IGfxColor(AmberTheme::GRID_MEDIUM));
+    }
+    
+    char c[2] = {'A' + (char)i, 0};
+    gfx.setTextColor(sel ? IGfxColor(AmberTheme::BG_DEEP_BLACK) : IGfxColor(AmberTheme::TEXT_SECONDARY));
+    gfx.drawText(slotX + 4, contentY + 2, c);
+  }
+
+  gfx.setTextColor(IGfxColor(AmberTheme::TEXT_SECONDARY));
+  gfx.drawText(x + 120, contentY + 2, "PTRN");
+  for (int i = 0; i < 8; i++) {
+    int slotX = x + 154 + i * 10;
+    bool sel = (i == selectedPattern);
+    bool cur = (i == patternCursor);
+    bool focused = patternFocus && cur;
+    
+    IGfxColor bgColor = sel ? IGfxColor(AmberTheme::NEON_ORANGE) : IGfxColor(AmberTheme::BG_PANEL);
+    gfx.fillRect(slotX, contentY + 1, 9, 10, bgColor);
+    
+    if (focused) {
+      AmberWidgets::drawGlowBorder(gfx, slotX, contentY + 1, 9, 10, IGfxColor(AmberTheme::NEON_ORANGE), 1);
+    } else if (cur) {
+      gfx.drawRect(slotX, contentY + 1, 9, 10, IGfxColor(AmberTheme::GRID_MEDIUM));
+    }
+    
+    char c[2] = {'1' + (char)i, 0};
+    gfx.setTextColor(sel ? IGfxColor(AmberTheme::BG_DEEP_BLACK) : IGfxColor(AmberTheme::TEXT_SECONDARY));
+    gfx.drawText(slotX + 2, contentY + 2, c);
+  }
+
+  int gridY = contentY + 16;
+  int spacing = 2;
+  int cellW = (w - 10 - spacing * 7) / 8;
+  int cellH = (contentH - 20 - spacing) / 2;
+
+  int patIdx = activePatternCursor();
+  const SynthPattern& pattern = mini_acid_.sceneManager().getSynthPattern(voice_index_, patIdx);
+
+  bool isPlayingPattern = false;
+  if (mini_acid_.isPlaying()) {
+     int playingIdx = mini_acid_.current303PatternIndex(voice_index_); 
+     if (playingIdx == patIdx) isPlayingPattern = true;
+  }
+
+  for (int i = 0; i < SEQ_STEPS; ++i) {
+    int row = i / 8;
+    int col = i % 8;
+    int cellX = x + 5 + col * (cellW + spacing);
+    int cellRowY = gridY + row * (cellH + spacing);
+
+    bool isCurrent = (isPlayingPattern && playing == i);
+    bool isCursor = (stepFocus && stepCursor == i);
+    
+    int8_t note = pattern.steps[i].note;
+    bool acc = pattern.steps[i].accent;
+    bool sld = pattern.steps[i].slide;
+    bool hasNote = (note >= 0);
+
+    IGfxColor bgColor = (col % 4 == 0) ? IGfxColor(AmberTheme::BG_INSET) : IGfxColor(AmberTheme::BG_PANEL);
+    gfx.fillRect(cellX, cellRowY, cellW, cellH, bgColor);
+
+    if (isCursor) {
+      AmberWidgets::drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, IGfxColor(AmberTheme::SELECT_BRIGHT), 1);
+    } else {
+      gfx.drawRect(cellX, cellRowY, cellW, cellH, IGfxColor(AmberTheme::GRID_MEDIUM));
+    }
+
+    if (isCurrent) {
+      AmberWidgets::drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, IGfxColor(AmberTheme::STATUS_PLAYING), 2);
+    }
+
+    if (hasNote) {
+      char note_label[8];
+      formatNoteName(note, note_label, sizeof(note_label));
+      
+      IGfxColor noteColor = acc ? IGfxColor(AmberTheme::NEON_ORANGE) : IGfxColor(AmberTheme::NEON_CYAN);
+      
+      int tw = textWidth(gfx, note_label);
+      int tx = cellX + (cellW - tw) / 2;
+      int ty = cellRowY + 3;
+      
+      if (isCursor) {
+        AmberWidgets::drawGlowText(gfx, tx, ty, note_label, IGfxColor(AmberTheme::FOCUS_GLOW), noteColor);
+      } else {
+        gfx.setTextColor(noteColor);
+        gfx.drawText(tx, ty, note_label);
+      }
+    } else {
+      gfx.setTextColor(IGfxColor(AmberTheme::TEXT_DIM));
+      gfx.drawText(cellX + cellW/2 - 2, cellRowY + 3, ".");
+    }
+
+    int dotY = cellRowY + cellH - 4;
+    AmberWidgets::drawLED(gfx, cellX + 4, dotY, 1, sld, IGfxColor(AmberTheme::NEON_MAGENTA));
+    AmberWidgets::drawLED(gfx, cellX + cellW - 4, dotY, 1, acc, IGfxColor(AmberTheme::NEON_ORANGE));
+  }
+
+  // Scanlines disabled: caused flicker on small TFT
+
+  const char* focusLabel = stepFocus ? "STEPS" : (bankFocus ? "BANK" : "PTRN");
+  AmberWidgets::drawFooterBar(
+      gfx, x, y + h - 12, w, 12,
+      "A/Z:Note  Alt+S/A:Slide/Acc  G:Rand",
+      "q..i:Ptrn  TAB:Voice",
+      focusLabel);
 #else
   drawMinimalStyle(gfx);
 #endif

@@ -14,17 +14,17 @@ inline constexpr IGfxColor kCacheColor = IGfxColor(0xFFD700);  // Gold for cache
 // NOTE: SAM TTS is phoneme-based. Non-English words are transliterated.
 const char* const BUILTIN_PHRASE_NAMES[] = {
     // === MUSICAL COMMANDS ===
-    "Tek no tek no tek no",        // 1: Techno
+    "Tek no tek no tek h no ",        // 1: Techno
     "Mi ni mal",                   // 2: Minimal
     "Kur wa bo ber, ia per do le",              // 4: Kurwa bober
     "Er ror",                     // 10: Error
-    "Bee P eM",                   // 11: BPM
-    "O ver ride",                 // 13: Override
-    "Wel come",                   // 14: Welcome
-    "Wat sap  what sup beach be acth",                   // 15: What's up
-    "Hu man de tec ted",          // 28: Human detected
-    "Self de struct",             // 26: Self destruct
-    "Load ing",                   // 17: Loading
+    "Bee P auM",                   // 11: BPM
+    //"O ver ride",                 // 13: Override
+    "ku ra chu",                   // 14: Welcome
+    "Wat sap   be acth",                   // 15: What's up
+    "pich ku mate ri nu",          // 28: Human detected
+   // "Self de struct",             // 26: Self destruct
+    "oh no oh no      oh no no non non onono",                   // 17: Loading
     "Press an y key",             // 31: Press any key
 
     

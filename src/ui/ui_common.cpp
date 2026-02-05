@@ -1,6 +1,14 @@
 #include "ui_common.h"
 #include "ui_utils.h"
 #include "../dsp/miniacid_engine.h"
+#ifndef USE_RETRO_THEME
+#define USE_RETRO_THEME
+#endif
+#ifndef USE_AMBER_THEME
+#define USE_AMBER_THEME
+#endif
+#include "retro_ui_theme.h"
+#include "amber_ui_theme.h"
 #include <cstdio>
 
 namespace UI {
@@ -148,115 +156,74 @@ namespace UI {
     }
 
     void drawMutesOverlay(IGfx& gfx, MiniAcid& mini_acid) {
-        if (currentStyle != VisualStyle::RETRO_CLASSIC) {
-            // Restore Original Minimal Style (Block-based)
-            const int h = 10;
-            const int y = Layout::FOOTER.y - 12;
-            const int x = 8;
-            const int w = Layout::FOOTER.w - 16;
-            const int numTracks = 10;
-            const int gap = 2;
-            const int segmentW = (w - (numTracks - 1) * gap) / numTracks;
-
-            for (int i = 0; i < numTracks; ++i) {
-                int sx = x + i * (segmentW + gap);
-                bool muted = false;
-                bool active = mini_acid.isTrackActive(i);
-                IGfxColor color = COLOR_GRAY;
-
-                if (i == 0) {
-                    muted = mini_acid.is303Muted(0);
-                    color = COLOR_KNOB_1; // Orange
-                } else if (i == 1) {
-                    muted = mini_acid.is303Muted(1);
-                    color = COLOR_KNOB_2; // Cyan
-                } else {
-                    int drumIdx = i - 2;
-                    switch (drumIdx) {
-                        case 0: muted = mini_acid.isKickMuted(); color = COLOR_DRUM_KICK; break;
-                        case 1: muted = mini_acid.isSnareMuted(); color = COLOR_DRUM_SNARE; break;
-                        case 2: muted = mini_acid.isHatMuted(); color = COLOR_DRUM_HAT; break;
-                        case 3: muted = mini_acid.isOpenHatMuted(); color = COLOR_DRUM_OPEN_HAT; break;
-                        case 4: muted = mini_acid.isMidTomMuted(); color = COLOR_DRUM_MID_TOM; break;
-                        case 5: muted = mini_acid.isHighTomMuted(); color = COLOR_DRUM_HIGH_TOM; break;
-                        case 6: muted = mini_acid.isRimMuted(); color = COLOR_DRUM_RIM; break;
-                        default: muted = mini_acid.isClapMuted(); color = COLOR_DRUM_CLAP; break;
-                    }
-                }
-
-                if (muted) {
-                    gfx.drawRect(sx, y, segmentW, h, COLOR_DARK_GRAY);
-                    gfx.drawLine(sx, y, sx + segmentW - 1, y + h - 1, COLOR_DARK_GRAY);
-                    gfx.drawLine(sx + segmentW - 1, y, sx, y + h - 1, COLOR_DARK_GRAY);
-                } else {
-                    if (active) {
-                        gfx.fillRect(sx, y, segmentW, h, color);
-                    } else {
-                        gfx.drawRect(sx, y, segmentW, h, COLOR_DARK_GRAY);
-                    }
-                    char idxStr[2];
-                    snprintf(idxStr, sizeof(idxStr), "%d", (i + 1) % 10);
-                    gfx.setTextColor(active ? COLOR_BLACK : COLOR_GRAY);
-                    gfx.drawText(sx + (segmentW - 5) / 2, y + 2, idxStr);
-                }
-            }
-            return;
+        // Mutes Overlay v3: Compact, Numbered, Themed
+        
+        // 1. Setup Theme Colors
+        IGfxColor kActive, kMuted, kIdle;
+        
+        if (currentStyle == VisualStyle::MINIMAL) {
+            kActive = COLOR_WHITE;
+            kMuted = COLOR_RED;
+            kIdle = IGfxColor(0x404040); // Dark Gray
+        } else if (currentStyle == VisualStyle::RETRO_CLASSIC) {
+            kActive = IGfxColor(RetroTheme::NEON_CYAN);
+            kMuted = IGfxColor(RetroTheme::STATUS_ACCENT); // Red/Pink
+            kIdle = IGfxColor(RetroTheme::TEXT_DIM);
+        } else { // AMBER
+            kActive = IGfxColor(AmberTheme::NEON_CYAN);
+            kMuted = IGfxColor(AmberTheme::NEON_ORANGE);
+            kIdle = IGfxColor(AmberTheme::TEXT_DIM);
         }
 
-        // RETRO MODE: Airy LED Bar v3 (Cyan / Orange / Magenta palette)
-        const int barH = 11;
-        const int barW = 160; 
-        const int x = (gfx.width() - barW) / 2;
-        const int y = Layout::FOOTER.y - barH - 2;
+        // 2. Position (Bottom Right)
+        const int itemW = 8;     // Reduced width for numbers
+        const int spacing = 2;
+        const int totalW = (10 * itemW) + (9 * spacing);
+        const int x = gfx.width() - totalW - 4; // Right aligned
+        const int y = Layout::FOOTER.y - 10;
         
-        // Semi-transparent look plate
-        gfx.fillRect(x - 4, y, barW + 8, barH, IGfxColor(0x0841)); // BG_INSET
-        gfx.drawRect(x - 4, y, barW + 8, barH, IGfxColor(0x1082)); // Subtle border
-
-        const int numTracks = 10;
-        const int trackStep = barW / numTracks;
-
-        for (int i = 0; i < numTracks; ++i) {
-            int ledCX = x + i * trackStep + trackStep / 2;
-            int ledCY = y + barH / 2;
-
+        // 3. Draw Loop
+        for (int i = 0; i < 10; ++i) {
+            int cx = x + i * (itemW + spacing);
+            
+            // Determine Mute Status
             bool muted = false;
+            switch(i) {
+                case 0: muted = mini_acid.is303Muted(0); break;
+                case 1: muted = mini_acid.is303Muted(1); break;
+                case 2: muted = mini_acid.isKickMuted(); break;
+                case 3: muted = mini_acid.isSnareMuted(); break;
+                case 4: muted = mini_acid.isHatMuted(); break;
+                case 5: muted = mini_acid.isOpenHatMuted(); break;
+                case 6: muted = mini_acid.isMidTomMuted(); break;
+                case 7: muted = mini_acid.isHighTomMuted(); break;
+                case 8: muted = mini_acid.isRimMuted(); break;
+                case 9: muted = mini_acid.isClapMuted(); break;
+            }
+            
+            // Determine Color & Style
             bool active = mini_acid.isTrackActive(i);
-            uint16_t color = 0x7BEF;
-
-            if (i == 0) {
-                muted = mini_acid.is303Muted(0);
-                color = 0x07FF; // Cyan (Acid 1)
-            } else if (i == 1) {
-                muted = mini_acid.is303Muted(1);
-                color = 0xFD20; // Orange (Acid 2)
-            } else {
-                int drumIdx = i - 2;
-                switch (drumIdx) {
-                    case 0: muted = mini_acid.isKickMuted(); color = 0xF81F; break; // Magenta (Kick)
-                    case 1: muted = mini_acid.isSnareMuted(); color = 0x07FF; break; // Cyan (Snare)
-                    case 2: muted = mini_acid.isHatMuted(); color = 0xFD20; break; // Orange (Hats)
-                    case 3: muted = mini_acid.isOpenHatMuted(); color = 0xFD20; break; 
-                    default: muted = (i < 10) ? mini_acid.isTrackActive(i) == false : false; // Placeholder for safety
-                             color = (i % 2 == 0) ? 0xF81F : 0x07FF; break;
-                }
-                // Specific overrides for missing mutes
-                if (drumIdx == 4) muted = mini_acid.isMidTomMuted();
-                if (drumIdx == 5) muted = mini_acid.isHighTomMuted();
-                if (drumIdx == 6) muted = mini_acid.isRimMuted();
-                if (drumIdx == 7) muted = mini_acid.isClapMuted();
-            }
-
+            IGfxColor color = kIdle;
+            
             if (muted) {
-                 gfx.drawCircle(ledCX, ledCY, 1, IGfxColor(0xF800)); // Distinct Red ring for muted
-            } else {
-                if (active) {
-                    gfx.fillCircle(ledCX, ledCY, 2, IGfxColor(color));
-                    gfx.drawPixel(ledCX, ledCY, IGfxColor(0xFFFF)); // Reflection
-                } else {
-                    gfx.fillCircle(ledCX, ledCY, 1, IGfxColor(0x18E3)); // Dim hole
-                }
+                color = kMuted;
+            } else if (active) {
+                color = kActive;
             }
+            
+            // Draw Number
+            char num[2]; 
+            snprintf(num, sizeof(num), "%d", (i + 1) % 10);
+            
+            gfx.setTextColor(color);
+            gfx.drawText(cx, y, num);
+            
+            // TODO: Optional: Subtle underline for playing tracks to indicate activity even if not muted
+            /*
+            if (!muted && active && mini_acid.isPlaying()) {
+                 gfx.drawPixel(cx + 2, y + 9, color);
+            }
+            */
         }
     }
 
