@@ -17,6 +17,7 @@
 #include "pages/song_page.h"
 #include "pages/tape_page.h"
 #include "pages/voice_page.h"
+#include "pages/color_test_page.h"
 #include "pages/waveform_page.h"
 #include "pages/help_dialog.h"
 #include "ui_colors.h"
@@ -71,6 +72,7 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case 9:  return std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_);
         case 10: return std::make_unique<SettingsPage>(gfx_, mini_acid_);        
         case 11: return std::make_unique<VoicePage>(gfx_, mini_acid_, audio_guard_);
+        case 12: return std::make_unique<ColorTestPage>(gfx_, mini_acid_);
 
        // case 14: return std::make_unique<WaveformPage>(gfx_, mini_acid_, audio_guard_);
        // case 8:  return std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_);
@@ -213,7 +215,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         if (event.key == '[') { previousPage(); return true; }
 
         if (event.key == 'h') {
-            showToast("[ ] nav  Ctrl+# pages  v voice  w wave  b back", 2200);
+            showToast("[ ] nav  Ctrl+# pages  v voice  c color  w wave  b back", 2200);
             return true;
         }
 
@@ -233,6 +235,12 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 
         // Voice Page jump (Alt+V) - using new mapping
         if (event.alt && (event.key == 'v' || event.key == 'V')) {
+            goToPage(11);
+            return true;
+        }
+
+        // Color Test Page (Alt+C)
+        if (event.alt && (event.key == 'c' || event.key == 'C')) {
             goToPage(12);
             return true;
         }
@@ -301,8 +309,27 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     
     // 2) Page Handling (lazy loading)
     IPage* currentPage = getPage_(page_index_);
-    if (currentPage && currentPage->handleEvent(event)) {
-        return true;
+    if (currentPage) {
+        if (currentPage->handleEvent(event)) {
+            // Check for requested page transition
+            if (currentPage->hasPageRequest()) {
+                int nextIndex = currentPage->getRequestedPage();
+                int context = currentPage->getRequestedContext();
+                currentPage->clearPageRequest();
+                
+                if (nextIndex >= 0 && nextIndex < kPageCount) {
+                    previous_page_index_ = page_index_;
+                    page_index_ = nextIndex;
+                    IPage* nextPage = getPage_(nextIndex);
+                    if (nextPage) {
+                        nextPage->setContext(context);
+                        nextPage->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()}); // Ensure valid size
+                    }
+                    Serial.printf("[UI] Transition request: %d -> %d (ctx=%d)\n", previous_page_index_, page_index_, context);
+                }
+            }
+            return true;
+        }
     }
     
     // 2.5) App Events (Inter-page communication)

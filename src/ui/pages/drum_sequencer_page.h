@@ -15,4 +15,5 @@ class DrumSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   std::unique_ptr<MultiPageHelpDialog> getHelpDialog() override;
   int getHelpFrameCount() const override;
   void drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const override;
+  void setContext(int context) override; // context: (voice << 8) | step
 };

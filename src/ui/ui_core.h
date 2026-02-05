@@ -331,6 +331,24 @@ class IPage : public Container {
   // Frame methods
   virtual void draw(IGfx& gfx) = 0;
 
+  // Request transition to another page
+  bool hasPageRequest() const { return requestedPage_ >= 0; }
+  int getRequestedPage() const { return requestedPage_; }
+  int getRequestedContext() const { return requestedContext_; }
+  void clearPageRequest() { requestedPage_ = -1; requestedContext_ = -1; }
+
+  // Receive context when being navigated TO
+  virtual void setContext(int context) { (void)context; }
+
+ protected:
+  void requestPageTransition(int pageIndex, int context = 0) {
+      requestedPage_ = pageIndex;
+      requestedContext_ = context;
+  }
+
+ private:
+  int requestedPage_ = -1;
+  int requestedContext_ = -1;
 };
 
 class MultiPage : public IPage {
@@ -398,6 +416,11 @@ class MultiPage : public IPage {
       return nullptr;
     }
     return pages_[active_index_].get();
+  }
+
+  std::shared_ptr<Container> getPagePtr(int index) const {
+      if (index < 0 || index >= static_cast<int>(pages_.size())) return nullptr;
+      return pages_[index];
   }
 
  private:

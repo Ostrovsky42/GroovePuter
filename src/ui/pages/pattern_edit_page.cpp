@@ -224,6 +224,22 @@ const std::string & PatternEditPage::getTitle() const {
   return title_;
 }
 
+void PatternEditPage::setContext(int context) {
+    // Decode step index (0-15)
+    int step = context;
+    if (step < 0) step = 0;
+    if (step >= SEQ_STEPS) step = SEQ_STEPS - 1;
+    
+    // Set focus to the specific step
+    pattern_edit_cursor_ = step;
+    focus_ = Focus::Steps;
+    
+    // Sync UI selection bars with current engine state
+    pattern_row_cursor_ = mini_acid_.current303PatternIndex(voice_index_);
+    bank_index_ = mini_acid_.current303BankIndex(voice_index_);
+    bank_cursor_ = bank_index_;
+}
+
 bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   // CRITICAL: Block numeric quick-select BEFORE forwarding to components
   // Otherwise BankSelectionBar/PatternSelectionBar intercept digits before we can block them
@@ -449,10 +465,21 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
                 mini_acid_.toggle303SlideStep(voice_index_, i);
         }
     });
-    return true;
   }
 
-  if (key == '\b') {
+  // Handle BACK/ESC for standard navigation (return to caller, e.g. Hub)
+  if (key == '\b' || key == 0x1B || ui_event.key == '`') { // add Backspace/Esc logic
+     // If we are in Steps, maybe clear note first?
+     // Existing logic: Backspace clears note at cursor.
+     // To allow navigation back, user might press ESC.
+     // Current code:
+     // if (key == '\b') { ... clear note ... }
+     
+     // Let's keep Backspace for clearing note, but allow ESC to fall through for navigation.
+     if (key == 0x1B) return false; // Let MiniAcidDisplay handle "Back"
+  }
+
+  if (key == '\b' || key == 0x7F) { // Backspace / Del
     ensureStepFocusAndCursor();
     int step = activePatternStep();
     withAudioGuard([&]() { mini_acid_.clear303StepNote(voice_index_, step); });
@@ -635,12 +662,12 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     bool cur = (i == bankCursor);
     bool focused = bankFocus && cur;
     
-    IGfxColor bgColor = sel ? IGfxColor(NEON_CYAN) : IGfxColor(BG_PANEL);
+    IGfxColor bgColor = sel ? IGfxColor(NEON_GREEN) : IGfxColor(BG_PANEL);
     gfx.fillRect(slotX, contentY + 1, 16, 10, bgColor);
     
     // Glow border only when focused
     if (focused) {
-      drawGlowBorder(gfx, slotX, contentY + 1, 16, 10, IGfxColor(NEON_CYAN), 1);
+      drawGlowBorder(gfx, slotX, contentY + 1, 16, 10, IGfxColor(NEON_GREEN), 1);
     } else if (cur) {
       gfx.drawRect(slotX, contentY + 1, 16, 10, IGfxColor(GRID_MEDIUM));
     }
@@ -658,11 +685,11 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     bool cur = (i == patternCursor);
     bool focused = patternFocus && cur;
     
-    IGfxColor bgColor = sel ? IGfxColor(NEON_MAGENTA) : IGfxColor(BG_PANEL);
+    IGfxColor bgColor = sel ? IGfxColor(NEON_ORANGE) : IGfxColor(BG_PANEL);
     gfx.fillRect(slotX, contentY + 1, 9, 10, bgColor);
     
     if (focused) {
-      drawGlowBorder(gfx, slotX, contentY + 1, 9, 10, IGfxColor(NEON_MAGENTA), 1);
+      drawGlowBorder(gfx, slotX, contentY + 1, 9, 10, IGfxColor(NEON_ORANGE), 1);
     } else if (cur) {
       gfx.drawRect(slotX, contentY + 1, 9, 10, IGfxColor(GRID_MEDIUM));
     }
@@ -727,7 +754,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
       
       // "Teal & Orange" Harmony: Cleaner, distinct, professional
       // Cyan = Normal, Orange = Accent
-      IGfxColor noteColor = acc ? IGfxColor(NEON_ORANGE) : IGfxColor(NEON_CYAN);
+      IGfxColor noteColor = acc ? IGfxColor(NEON_ORANGE) : IGfxColor(TEXT_PRIMARY);
       
       int tw = textWidth(gfx, note_label);
       int tx = cellX + (cellW - tw) / 2;
@@ -749,7 +776,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     // Indicators (Persistent dots below the note)
     int dotY = cellRowY + cellH - 4;
     // Slide LED (Purple or Magenta for better pop)
-    drawLED(gfx, cellX + 4, dotY, 1, sld, IGfxColor(NEON_MAGENTA));
+    drawLED(gfx, cellX + 4, dotY, 1, sld, IGfxColor(NEON_PURPLE));
     // Accent LED (Matches Note Accent Color -> Orange)
     drawLED(gfx, cellX + cellW - 4, dotY, 1, acc, IGfxColor(NEON_ORANGE));
   }
@@ -766,4 +793,3 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
   drawMinimalStyle(gfx);
 #endif
 }
-

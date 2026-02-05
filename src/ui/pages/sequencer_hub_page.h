@@ -49,6 +49,7 @@ private:
     void drawRetroClassicStyle(IGfx& gfx);
     void drawMinimalStyle(IGfx& gfx);
     void drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool selected);
+    void drawOverviewCursor(IGfx& gfx, int trackIdx, int stepIdx, int x, int y, int cellW, int cellH);
     
     bool handleModeSwitch(UIEvent& e);
     bool handleQuickKeys(UIEvent& e);

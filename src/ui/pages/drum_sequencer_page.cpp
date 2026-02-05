@@ -23,6 +23,7 @@ class DrumSequencerMainPage : public Container {
   DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
+  void setContext(int context); // context: (voice << 8) | step
 
  private:
   int activeDrumPatternCursor() const;
@@ -279,6 +280,23 @@ void DrumSequencerMainPage::setBankIndex(int bankIndex) {
   if (bank_index_ == bankIndex) return;
   bank_index_ = bankIndex;
   withAudioGuard([&]() { mini_acid_.setDrumBankIndex(bank_index_); });
+}
+
+void DrumSequencerMainPage::setContext(int context) {
+    int voice = (context >> 8) & 0xFF;
+    int step = context & 0xFF;
+    
+    if (voice >= 0 && voice < NUM_DRUM_VOICES) drum_voice_cursor_ = voice;
+    if (step >= 0 && step < SEQ_STEPS) drum_step_cursor_ = step;
+    
+    // Sync cursors with engine
+    drum_pattern_cursor_ = mini_acid_.currentDrumPatternIndex();
+    bank_index_ = mini_acid_.currentDrumBankIndex();
+    bank_cursor_ = bank_index_;
+    
+    drum_pattern_focus_ = false;
+    bank_focus_ = false;
+    focusGrid();
 }
 
 bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
@@ -619,4 +637,11 @@ void DrumSequencerPage::drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) co
     default:
       break;
   }
+}
+void DrumSequencerPage::setContext(int context) {
+    // Jump to the first page (Main Sequencer)
+    setActivePageIndex(0);
+    // Pass it down (we know index 0 is Main Page)
+    auto mainPage = std::static_pointer_cast<DrumSequencerMainPage>(getPagePtr(0)); 
+    if (mainPage) mainPage->setContext(context);
 }

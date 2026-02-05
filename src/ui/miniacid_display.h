@@ -40,7 +40,7 @@ private:
   void applyPageBounds_();
   
   // Lazy page loading
-  static constexpr int kPageCount = 12;
+  static constexpr int kPageCount = 13;
   std::unique_ptr<IPage> createPage_(int index);
   IPage* getPage_(int index); // Returns existing or creates on-demand
 

@@ -14,6 +14,7 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string & getTitle() const override;
+  void setContext(int context) override; // context = step index to focus
   std::unique_ptr<MultiPageHelpDialog> getHelpDialog() override;
   int getHelpFrameCount() const override;
   void drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const override;

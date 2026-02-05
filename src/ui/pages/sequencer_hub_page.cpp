@@ -113,6 +113,11 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
                 if (s == playingStep && isPlaying) color = IGfxColor(NEON_YELLOW);
                 gfx.fillRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, color);
             }
+            
+            // Draw Cursor if selected
+            if (selected) {
+                 drawOverviewCursor(gfx, i, stepCursor_, maskX, ry + 2, cellW, rowH - 4);
+            }
         }
         
         // Channel activity bar (from Play Page merge)
@@ -152,11 +157,11 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
 
                 if (notes[s] >= 0) {
                     char n[8]; formatNoteName(notes[s], n, sizeof(n));
-                    IGfxColor noteColor = accents[s] ? IGfxColor(NEON_ORANGE) : IGfxColor(NEON_CYAN);
+                    IGfxColor noteColor = accents[s] ? IGfxColor(NEON_ORANGE) : IGfxColor(TEXT_PRIMARY);
                     gfx.setTextColor(noteColor);
                     gfx.drawText(cx + (cellW - textWidth(gfx, n)) / 2, gridY + 10, n);
                     
-                    if (slides[s]) drawLED(gfx, cx + cellW / 2 - 1, gridY + cellH - 8, 1, true, IGfxColor(NEON_MAGENTA));
+                    if (slides[s]) drawLED(gfx, cx + cellW / 2 - 1, gridY + cellH - 8, 1, true, IGfxColor(NEON_PURPLE));
                     if (accents[s]) drawLED(gfx, cx + cellW - 5, gridY + cellH - 8, 1, true, IGfxColor(NEON_ORANGE));
                 } else {
                     gfx.setTextColor(IGfxColor(TEXT_DIM));
@@ -247,11 +252,17 @@ void SequencerHubPage::drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool 
             else if (voice == 7) hit = mini_acid_.patternClapSteps()[s];
         }
         
-        IGfxColor color = hit ? (selected ? COLOR_WHITE : COLOR_GRAY) : COLOR_BLACK;
-        if (s == currentStep && mini_acid_.isPlaying()) color = IGfxColor::Yellow();
+        IGfxColor color = hit ? (selected ? (isSynth ? IGfxColor(NEON_CYAN) : COLOR_WHITE) : COLOR_GRAY) : IGfxColor(BG_INSET);
+        if (s == currentStep && mini_acid_.isPlaying()) color = IGfxColor(NEON_YELLOW);
         
         gfx.fillRect(maskX + s * cellW, y + 2, cellW - 1, h - 4, color);
     }
+}
+
+void SequencerHubPage::drawOverviewCursor(IGfx& gfx, int trackIdx, int stepIdx, int x, int y, int cellW, int cellH) {
+     int cx = x + stepIdx * cellW;
+     // Draw a prominent cursor around the step
+     drawGlowBorder(gfx, cx, y, cellW - 1, cellH, IGfxColor(SELECT_BRIGHT), 2);
 }
 
 void SequencerHubPage::drawDetail(IGfx& gfx) {
@@ -337,24 +348,35 @@ bool SequencerHubPage::handleEvent(UIEvent& e) {
 }
 
 bool SequencerHubPage::handleModeSwitch(UIEvent& e) {
-    // ENTER: toggle mode or action depending on context
+    // ENTER: perform action or enter detail
     if (e.key == '\n' || e.key == '\r') {
         if (mode_ == Mode::OVERVIEW) {
-            mode_ = Mode::DETAIL;
-            focus_ = FocusLane::GRID;
-            return true;
+            // "Imba" Feature: Jump to full editor page for ALL tracks
+            if (selectedTrack_ == 0) { // 303 A
+                requestPageTransition(1, stepCursor_); // Page 1 = Pattern Edit 303A
+                return true;
+            } else if (selectedTrack_ == 1) { // 303 B
+                requestPageTransition(2, stepCursor_); // Page 2 = Pattern Edit 303B
+                return true;
+            } else {
+                // Jump to Drum Sequencer for tracks 2-9
+                int voiceIndex = getDrumVoiceIndex(selectedTrack_);
+                int context = (voiceIndex << 8) | stepCursor_;
+                requestPageTransition(5, context); // Page 5 = Drum Sequencer Page
+                return true;
+            }
         }
-        // In DETAIL, ENTER does edit action -> handled elsewhere
+        // In DETAIL (legacy fallback), ENTER does nothing special for now
         return false;
     }
     
-    // ESC: back to overview (but don't steal if already in overview)
-    if (e.key == 0x1B) {
+    // ESC/BACK: return to overview
+    if (e.key == 0x1B || e.key == 0x08) {
         if (mode_ == Mode::DETAIL) {
             mode_ = Mode::OVERVIEW;
             return true;
         }
-        // Don't consume - let parent handle page back
+        // Let MiniAcidDisplay handle global back if in OVERVIEW
         return false;
     }
     
@@ -400,48 +422,46 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
 }
 
 bool SequencerHubPage::handleNavigation(UIEvent& e) {
-    int nav = UIInput::navCode(e);
-    if (!nav) return false;
+    auto isNavKey = [](const UIEvent& ev) {
+        return UIInput::isUp(ev) || UIInput::isDown(ev) || UIInput::isLeft(ev) || UIInput::isRight(ev);
+    };
 
-    // OVERVIEW: UP/DOWN selects track
+    if (!isNavKey(e)) return false;
+
     if (mode_ == Mode::OVERVIEW) {
-        if (nav == MINIACID_UP) {
+        if (UIInput::isUp(e)) {
             selectedTrack_ = (selectedTrack_ - 1 + 10) % 10;
             return true;
         }
-        if (nav == MINIACID_DOWN) {
+        if (UIInput::isDown(e)) {
             selectedTrack_ = (selectedTrack_ + 1) % 10;
             return true;
         }
-    }
-    
-    // DETAIL: GRID focus navigation
-    if (mode_ == Mode::DETAIL && focus_ == FocusLane::GRID) {
-        if (nav == MINIACID_LEFT) {
+        // Horizontal navigation for "the square"
+        if (UIInput::isLeft(e)) {
             stepCursor_ = (stepCursor_ - 1 + SEQ_STEPS) % SEQ_STEPS;
             return true;
         }
-        if (nav == MINIACID_RIGHT) {
+        if (UIInput::isRight(e)) {
             stepCursor_ = (stepCursor_ + 1) % SEQ_STEPS;
             return true;
         }
-        
-        switch (nav) {
-            case MINIACID_UP:    
-                if (isDrumTrack(selectedTrack_)) {
-                    voiceCursor_ = (voiceCursor_ - 1 + NUM_DRUM_VOICES) % NUM_DRUM_VOICES;
-                    return true;
-                }
-                return false;
-            case MINIACID_DOWN:
-                if (isDrumTrack(selectedTrack_)) {
-                    voiceCursor_ = (voiceCursor_ + 1) % NUM_DRUM_VOICES;
-                    return true;
-                }
-                return false;
+    } else {
+        // Detail Mode (Drum Grid)
+        if (isDrumTrack(selectedTrack_)) {
+            return drumGrid_->handleEvent(e);
+        }
+        // 303 Detail Logic (Local) - now reachable only if transition fails? 
+        // Or if we decide to keep it as fallback.
+        if (UIInput::isLeft(e)) {
+            stepCursor_ = (stepCursor_ - 1 + SEQ_STEPS) % SEQ_STEPS;
+            return true;
+        }
+        if (UIInput::isRight(e)) {
+            stepCursor_ = (stepCursor_ + 1) % SEQ_STEPS;
+            return true;
         }
     }
-
     return false;
 }
 
