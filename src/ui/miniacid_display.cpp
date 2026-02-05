@@ -142,6 +142,11 @@ void MiniAcidDisplay::update() {
     // Mutes overlay (always on for now as per user request)
     UI::drawMutesOverlay(gfx_, mini_acid_);
     
+    // Global Help Overlay (fullscreen, on top of everything)
+    if (global_help_overlay_.isVisible()) {
+        global_help_overlay_.draw(gfx_);
+    }
+    
     drawToast();
     // drawDebugOverlay();
     gfx_.flush();
@@ -192,6 +197,11 @@ void MiniAcidDisplay::dismissSplash() {
 }
 
 bool MiniAcidDisplay::handleEvent(UIEvent event) {
+    // Global Help Overlay takes priority when visible
+    if (global_help_overlay_.isVisible()) {
+        if (global_help_overlay_.handleEvent(event)) return true;
+    }
+    
     if (splash_active_) {
         dismissSplash();
         return true;
@@ -213,6 +223,12 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         // Waveform overlay toggle
         if (event.alt && (event.key == 'w' || event.key == 'W')) {
             UI::waveformOverlay.enabled = !UI::waveformOverlay.enabled;
+            return true;
+        }
+        
+        // Global Help Overlay toggle (Ctrl+H)
+        if (event.ctrl && (event.key == 'h' || event.key == 'H')) {
+            global_help_overlay_.toggle();
             return true;
         }
 

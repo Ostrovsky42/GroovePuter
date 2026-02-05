@@ -4,6 +4,7 @@
 
 #include "ui_core.h"
 #include "cassette_skin.h"
+#include "global_help_overlay.h"
 
 class IAudioRecorder;
 
@@ -51,6 +52,7 @@ private:
   bool splash_active_ = true;
   bool help_dialog_visible_ = false;
   std::unique_ptr<MultiPageHelpDialog> help_dialog_;
+  GlobalHelpOverlay global_help_overlay_;
 
   AudioGuard audio_guard_;
   IAudioRecorder* audio_recorder_ = nullptr;
