@@ -49,7 +49,7 @@ const int NUM_BUILTIN_PHRASES = sizeof(BUILTIN_PHRASE_NAMES) / sizeof(BUILTIN_PH
 
 } // namespace
 
-VoicePage::VoicePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
+VoicePage::VoicePage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
     : gfx_(gfx), mini_acid_(mini_acid), audio_guard_(audio_guard) {
   // Set OPTIMAL defaults for intelligibility on first open (Sweet Spot)
   // Slower speed and slightly lower pitch help SAM sound clearer on small speakers.
@@ -304,19 +304,19 @@ void VoicePage::adjustCurrentValue(int delta) {
         break;
         
       case FocusItem::Pitch:
-        mini_acid_.adjustParameter(MiniAcidParamId::VoicePitch, delta);
+        mini_acid_.adjustParameter(GroovePuterParamId::VoicePitch, delta);
         break;
         
       case FocusItem::Speed:
-        mini_acid_.adjustParameter(MiniAcidParamId::VoiceSpeed, delta);
+        mini_acid_.adjustParameter(GroovePuterParamId::VoiceSpeed, delta);
         break;
         
       case FocusItem::Robotness:
-        mini_acid_.adjustParameter(MiniAcidParamId::VoiceRobotness, delta);
+        mini_acid_.adjustParameter(GroovePuterParamId::VoiceRobotness, delta);
         break;
         
       case FocusItem::Volume:
-        mini_acid_.adjustParameter(MiniAcidParamId::VoiceVolume, delta);
+        mini_acid_.adjustParameter(GroovePuterParamId::VoiceVolume, delta);
         break;
         
       default:
@@ -431,7 +431,7 @@ void VoicePage::prevFocus() {
 }
 
 bool VoicePage::handleEvent(UIEvent& ui_event) {
-  if (ui_event.event_type != MINIACID_KEY_DOWN) {
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) {
     return Container::handleEvent(ui_event);
   }
 
@@ -476,16 +476,16 @@ bool VoicePage::handleEvent(UIEvent& ui_event) {
 
   // Normal navigation
   switch (ui_event.scancode) {
-    case MINIACID_UP:
+    case GROOVEPUTER_UP:
       prevFocus();
       return true;
-    case MINIACID_DOWN:
+    case GROOVEPUTER_DOWN:
       nextFocus();
       return true;
-    case MINIACID_LEFT:
+    case GROOVEPUTER_LEFT:
       adjustCurrentValue(-1);
       return true;
-    case MINIACID_RIGHT:
+    case GROOVEPUTER_RIGHT:
       adjustCurrentValue(1);
       return true;
     default:
@@ -577,37 +577,37 @@ bool VoicePage::handleEvent(UIEvent& ui_event) {
   // Presets
   if (lowerKey == 'r') {
     withAudioGuard([&]() {
-      mini_acid_.setParameter(MiniAcidParamId::VoicePitch, 120.0f);
-      mini_acid_.setParameter(MiniAcidParamId::VoiceRobotness, 0.9f);
-      mini_acid_.setParameter(MiniAcidParamId::VoiceVolume, 0.8f);
-      mini_acid_.setParameter(MiniAcidParamId::VoiceSpeed, 1.0f);
+      mini_acid_.setParameter(GroovePuterParamId::VoicePitch, 120.0f);
+      mini_acid_.setParameter(GroovePuterParamId::VoiceRobotness, 0.9f);
+      mini_acid_.setParameter(GroovePuterParamId::VoiceVolume, 0.8f);
+      mini_acid_.setParameter(GroovePuterParamId::VoiceSpeed, 1.0f);
     });
     return true;
   }
   if (lowerKey == 'h') {
     withAudioGuard([&]() {
-      mini_acid_.setParameter(MiniAcidParamId::VoicePitch, 180.0f);
-      mini_acid_.setParameter(MiniAcidParamId::VoiceRobotness, 0.2f);
-      mini_acid_.setParameter(MiniAcidParamId::VoiceVolume, 0.7f);
-      mini_acid_.setParameter(MiniAcidParamId::VoiceSpeed, 1.2f);
+      mini_acid_.setParameter(GroovePuterParamId::VoicePitch, 180.0f);
+      mini_acid_.setParameter(GroovePuterParamId::VoiceRobotness, 0.2f);
+      mini_acid_.setParameter(GroovePuterParamId::VoiceVolume, 0.7f);
+      mini_acid_.setParameter(GroovePuterParamId::VoiceSpeed, 1.2f);
     });
     return true;
   }
   if (lowerKey == 'd') {
     withAudioGuard([&]() {
-      mini_acid_.setParameter(MiniAcidParamId::VoicePitch, 80.0f);
-      mini_acid_.setParameter(MiniAcidParamId::VoiceRobotness, 0.5f);
-      mini_acid_.setParameter(MiniAcidParamId::VoiceVolume, 0.9f);
-      mini_acid_.setParameter(MiniAcidParamId::VoiceSpeed, 0.8f);
+      mini_acid_.setParameter(GroovePuterParamId::VoicePitch, 80.0f);
+      mini_acid_.setParameter(GroovePuterParamId::VoiceRobotness, 0.5f);
+      mini_acid_.setParameter(GroovePuterParamId::VoiceVolume, 0.9f);
+      mini_acid_.setParameter(GroovePuterParamId::VoiceSpeed, 0.8f);
     });
     return true;
   }
   if (lowerKey == 'c') {
     withAudioGuard([&]() {
-      mini_acid_.setParameter(MiniAcidParamId::VoicePitch, 280.0f);
-      mini_acid_.setParameter(MiniAcidParamId::VoiceRobotness, 0.4f);
-      mini_acid_.setParameter(MiniAcidParamId::VoiceVolume, 0.6f);
-      mini_acid_.setParameter(MiniAcidParamId::VoiceSpeed, 1.5f);
+      mini_acid_.setParameter(GroovePuterParamId::VoicePitch, 280.0f);
+      mini_acid_.setParameter(GroovePuterParamId::VoiceRobotness, 0.4f);
+      mini_acid_.setParameter(GroovePuterParamId::VoiceVolume, 0.6f);
+      mini_acid_.setParameter(GroovePuterParamId::VoiceSpeed, 1.5f);
     });
     return true;
   }

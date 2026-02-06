@@ -2066,7 +2066,7 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
 
   // Restore Sampler/Tape from observer target (the loaded scene)
   // Observer target was 'loaded' unique_ptr, which we copied to scene_ at 1397.
-  // So it's already in scene_-> We just need to make sure MiniAcid pulls it.
+  // So it's already in scene_-> We just need to make sure GroovePuter pulls it.
 
   return true;
 }

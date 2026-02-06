@@ -94,7 +94,7 @@ std::string CardputerAudioRecorder::generateTimestampFilename() const {
   char timestamp[32];
   std::snprintf(timestamp, sizeof(timestamp), "%08lx", now);
 
-  std::string filename = "/miniacid_";
+  std::string filename = "/grooveputer_";
   filename += timestamp;
   filename += ".wav";
   return filename;

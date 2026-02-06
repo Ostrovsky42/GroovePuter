@@ -1,6 +1,7 @@
 #include "ui_common.h"
 #include "ui_utils.h"
-#include "../dsp/miniacid_engine.h"
+#include "ui_widgets.h"
+#include "../dsp/grooveputer_engine.h"
 #ifndef USE_RETRO_THEME
 #define USE_RETRO_THEME
 #endif
@@ -35,7 +36,7 @@ namespace UI {
         unsigned long gToastEndMs = 0;
     }
 
-    void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title) {
+    void drawStandardHeader(IGfx& gfx, GroovePuter& mini_acid, const char* title) {
         char sceneStr[16];
         snprintf(sceneStr, sizeof(sceneStr), "%02d", mini_acid.currentScene() + 1);
         
@@ -91,7 +92,7 @@ namespace UI {
         );
     }
 
-    void drawWaveformOverlay(IGfx& gfx, MiniAcid& mini_acid) {
+    void drawWaveformOverlay(IGfx& gfx, GroovePuter& mini_acid) {
         if (!waveformOverlay.enabled) return;
         
         // Compact dimensions at bottom of screen - increased height for better visibility
@@ -156,7 +157,7 @@ namespace UI {
         drawWave(overlayHistory[0], overlayLengths[0], waveColor);
     }
 
-    void drawMutesOverlay(IGfx& gfx, MiniAcid& mini_acid) {
+    void drawMutesOverlay(IGfx& gfx, GroovePuter& mini_acid) {
         // Mutes Overlay v3: Compact, Numbered, Themed
         
         // 1. Setup Theme Colors
@@ -228,7 +229,7 @@ namespace UI {
         }
     }
 
-    void drawFeelOverlay(IGfx& gfx, MiniAcid& mini_acid, bool pulse) {
+    void drawFeelOverlay(IGfx& gfx, GroovePuter& mini_acid, bool pulse) {
         const auto& feel = mini_acid.sceneManager().currentScene().feel;
         int grid = feel.gridSteps;
         if (grid != 8 && grid != 16 && grid != 32) grid = 16;
@@ -264,7 +265,9 @@ namespace UI {
         gfx.drawText(x, y, buf);
     }
 
-    void drawFeelHeaderHud(IGfx& gfx, MiniAcid& mini_acid, int x, int y) {
+    void drawFeelHeaderHud(IGfx& gfx, GroovePuter& mini_acid, int x, int y) {
+        (void)x;
+        (void)y;
         const auto& feel = mini_acid.sceneManager().currentScene().feel;
         int grid = feel.gridSteps;
         if (grid != 8 && grid != 16 && grid != 32) grid = 16;
@@ -276,9 +279,17 @@ namespace UI {
 
         char tbChar = (tb == 0) ? 'H' : (tb == 2) ? 'D' : 'N';
         char buf[20];
-        snprintf(buf, sizeof(buf), "G%d T %c L%d", grid, tbChar, bars);
+        snprintf(buf, sizeof(buf), "G%d T%c L%d", grid, tbChar, bars);
+
+        // Draw as right-aligned chip inside header, clipped and isolated from title text.
+        const int chipW = 72;
+        const int chipH = 9;
+        const int chipX = Layout::HEADER.x + Layout::HEADER.w - chipW - 14; // keep REC area free
+        const int chipY = 3;
+
+        gfx.fillRect(chipX, chipY, chipW, chipH, COLOR_BLACK);
         gfx.setTextColor(COLOR_LABEL);
-        gfx.drawText(x, y, buf);
+        Widgets::drawClippedText(gfx, chipX, chipY, chipW, buf);
     }
 
     void showToast(const char* msg, int durationMs) {

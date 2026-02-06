@@ -203,7 +203,7 @@ public:
         }
         
         // KICK (Voice 0 usually)
-        // Adjust indices based on miniacid_engine.h constants
+        // Adjust indices based on grooveputer_engine.h constants
         // Assuming 0=Kick, 1=Snare, 2=HatClosed, 3=HatOpen for basic
         // But let's look at scenes.h indices or define them.
         // For now, assume standard indices based on usage: 

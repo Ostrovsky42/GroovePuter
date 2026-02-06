@@ -66,7 +66,7 @@ class TapePage::SliderComponent : public FocusableComponent {
 
 class TapePage::ModeComponent : public FocusableComponent {
  public:
-  ModeComponent(MiniAcid& synth, AudioGuard guard) : synth_(synth), guard_(guard) {}
+  ModeComponent(GroovePuter& synth, AudioGuard guard) : synth_(synth), guard_(guard) {}
 
   void draw(IGfx& gfx) override {
     const Rect& bounds = getBoundaries();
@@ -101,13 +101,13 @@ class TapePage::ModeComponent : public FocusableComponent {
   }
 
  private:
-  MiniAcid& synth_;
+  GroovePuter& synth_;
   AudioGuard guard_;
 };
 
 class TapePage::PresetComponent : public FocusableComponent {
  public:
-  PresetComponent(MiniAcid& synth, AudioGuard guard) : synth_(synth), guard_(guard) {}
+  PresetComponent(GroovePuter& synth, AudioGuard guard) : synth_(synth), guard_(guard) {}
 
   void draw(IGfx& gfx) override {
     const Rect& bounds = getBoundaries();
@@ -150,11 +150,11 @@ class TapePage::PresetComponent : public FocusableComponent {
   }
 
  private:
-  MiniAcid& synth_;
+  GroovePuter& synth_;
   AudioGuard guard_;
 };
 
-TapePage::TapePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
+TapePage::TapePage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
     : gfx_(gfx), mini_acid_(mini_acid), audio_guard_(audio_guard) {}
 
 void TapePage::setBoundaries(const Rect& rect) {
@@ -256,16 +256,16 @@ void TapePage::draw(IGfx& gfx) {
 }
 
 bool TapePage::handleEvent(UIEvent& ui_event) {
-  if (ui_event.event_type != MINIACID_KEY_DOWN) return Container::handleEvent(ui_event);
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return Container::handleEvent(ui_event);
 
   bool shift = ui_event.shift;
 
   switch (ui_event.scancode) {
-    case MINIACID_UP: focusPrev(); return true;
-    case MINIACID_DOWN: focusNext(); return true;
-    case MINIACID_LEFT:
-    case MINIACID_RIGHT: {
-      int dir = (ui_event.scancode == MINIACID_RIGHT) ? 1 : -1;
+    case GROOVEPUTER_UP: focusPrev(); return true;
+    case GROOVEPUTER_DOWN: focusNext(); return true;
+    case GROOVEPUTER_LEFT:
+    case GROOVEPUTER_RIGHT: {
+      int dir = (ui_event.scancode == GROOVEPUTER_RIGHT) ? 1 : -1;
       // Adjust focused slider
       if (wow_slider_->isFocused()) wow_slider_->adjust(dir, shift);
       else if (age_slider_->isFocused()) age_slider_->adjust(dir, shift);

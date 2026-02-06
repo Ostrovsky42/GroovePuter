@@ -87,7 +87,7 @@ std::string WasmAudioRecorder::generateTimestampFilename() const {
     std::snprintf(timestamp, sizeof(timestamp), "unknown");
   }
 
-  std::string filename = "miniacid_";
+  std::string filename = "grooveputer_";
   filename += timestamp;
   filename += ".wav";
   return filename;
@@ -126,15 +126,15 @@ void WasmAudioRecorder::sendToJavaScript() {
 
   // Call JavaScript function to download the file
   EM_ASM({
-    if (typeof window.miniacidDownloadRecording === 'function') {
+    if (typeof window.grooveputerDownloadRecording === 'function') {
       const ptr = $0;
       const size = $1;
       const filename = UTF8ToString($2);
       const data = new Uint8Array(Module.HEAPU8.buffer, ptr, size);
       const blob = new Blob([data], { type: 'audio/wav' });
-      window.miniacidDownloadRecording(blob, filename);
+      window.grooveputerDownloadRecording(blob, filename);
     } else {
-      console.error('window.miniacidDownloadRecording not defined');
+      console.error('window.grooveputerDownloadRecording not defined');
     }
   }, wavData.data(), static_cast<int>(wavData.size()), filename_.c_str());
 }

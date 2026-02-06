@@ -5,57 +5,57 @@
 #include <string>
 #include <vector>
 
-#include "../dsp/miniacid_engine.h"
+#include "../dsp/grooveputer_engine.h"
 #include "display.h"
 
 enum KeyScanCode {
-  MINIACID_NO_SCANCODE = 0,
-  MINIACID_DOWN,
-  MINIACID_UP,
-  MINIACID_LEFT,
-  MINIACID_RIGHT,
-  MINIACID_ESCAPE,
-  MINIACID_TAB,
-  MINIACID_F1,
-  MINIACID_F2,
-  MINIACID_F3,
-  MINIACID_F4,
-  MINIACID_F5,
-  MINIACID_F6,
-  MINIACID_F7,
-  MINIACID_F8,
+  GROOVEPUTER_NO_SCANCODE = 0,
+  GROOVEPUTER_DOWN,
+  GROOVEPUTER_UP,
+  GROOVEPUTER_LEFT,
+  GROOVEPUTER_RIGHT,
+  GROOVEPUTER_ESCAPE,
+  GROOVEPUTER_TAB,
+  GROOVEPUTER_F1,
+  GROOVEPUTER_F2,
+  GROOVEPUTER_F3,
+  GROOVEPUTER_F4,
+  GROOVEPUTER_F5,
+  GROOVEPUTER_F6,
+  GROOVEPUTER_F7,
+  GROOVEPUTER_F8,
 };
 
 enum EventType {
-  MINIACID_NO_TYPE = 0,
-  MINIACID_KEY_DOWN,
-  MINIACID_MOUSE_MOVE,
-  MINIACID_MOUSE_DOWN,
-  MINIACID_MOUSE_UP,
-  MINIACID_MOUSE_DRAG,
-  MINIACID_MOUSE_SCROLL,
-  MINIACID_APPLICATION_EVENT,
+  GROOVEPUTER_NO_TYPE = 0,
+  GROOVEPUTER_KEY_DOWN,
+  GROOVEPUTER_MOUSE_MOVE,
+  GROOVEPUTER_MOUSE_DOWN,
+  GROOVEPUTER_MOUSE_UP,
+  GROOVEPUTER_MOUSE_DRAG,
+  GROOVEPUTER_MOUSE_SCROLL,
+  GROOVEPUTER_APPLICATION_EVENT,
 };
 
 enum ApplicationEventType {
-  MINIACID_APP_EVENT_NONE = 0,
-  MINIACID_APP_EVENT_COPY,
-  MINIACID_APP_EVENT_PASTE,
-  MINIACID_APP_EVENT_CUT,
-  MINIACID_APP_EVENT_UNDO,
+  GROOVEPUTER_APP_EVENT_NONE = 0,
+  GROOVEPUTER_APP_EVENT_COPY,
+  GROOVEPUTER_APP_EVENT_PASTE,
+  GROOVEPUTER_APP_EVENT_CUT,
+  GROOVEPUTER_APP_EVENT_UNDO,
 
-  MINIACID_APP_EVENT_TOGGLE_SONG_MODE,
-  MINIACID_APP_EVENT_SAVE_SCENE,
+  GROOVEPUTER_APP_EVENT_TOGGLE_SONG_MODE,
+  GROOVEPUTER_APP_EVENT_SAVE_SCENE,
   
-  MINIACID_APP_EVENT_START_RECORDING,
-  MINIACID_APP_EVENT_STOP_RECORDING,
+  GROOVEPUTER_APP_EVENT_START_RECORDING,
+  GROOVEPUTER_APP_EVENT_STOP_RECORDING,
 
-  MINIACID_APP_EVENT_MULTIPAGE_DOWN,
-  MINIACID_APP_EVENT_MULTIPAGE_UP,
+  GROOVEPUTER_APP_EVENT_MULTIPAGE_DOWN,
+  GROOVEPUTER_APP_EVENT_MULTIPAGE_UP,
 
-  MINIACID_APP_EVENT_TOGGLE_MODE,
-  MINIACID_APP_EVENT_OPEN_GENRE,
-  MINIACID_APP_EVENT_SET_VISUAL_STYLE,
+  GROOVEPUTER_APP_EVENT_TOGGLE_MODE,
+  GROOVEPUTER_APP_EVENT_OPEN_GENRE,
+  GROOVEPUTER_APP_EVENT_SET_VISUAL_STYLE,
 };
 
 enum class VisualStyle { MINIMAL, RETRO_CLASSIC, AMBER };
@@ -68,9 +68,9 @@ enum MouseButtonType {
 };
 
 struct UIEvent {
-  EventType event_type = MINIACID_NO_TYPE;
-  KeyScanCode scancode = MINIACID_NO_SCANCODE;
-  ApplicationEventType app_event_type = MINIACID_APP_EVENT_NONE;
+  EventType event_type = GROOVEPUTER_NO_TYPE;
+  KeyScanCode scancode = GROOVEPUTER_NO_SCANCODE;
+  ApplicationEventType app_event_type = GROOVEPUTER_APP_EVENT_NONE;
   char key = 0;
   bool alt = false;
   bool ctrl = false;
@@ -207,11 +207,11 @@ class Container : public EventHandler, public Frame {
  private:
   static bool isMouseEvent(EventType type) {
     switch (type) {
-      case MINIACID_MOUSE_MOVE:
-      case MINIACID_MOUSE_DOWN:
-      case MINIACID_MOUSE_UP:
-      case MINIACID_MOUSE_DRAG:
-      case MINIACID_MOUSE_SCROLL:
+      case GROOVEPUTER_MOUSE_MOVE:
+      case GROOVEPUTER_MOUSE_DOWN:
+      case GROOVEPUTER_MOUSE_UP:
+      case GROOVEPUTER_MOUSE_DRAG:
+      case GROOVEPUTER_MOUSE_SCROLL:
         return true;
       default:
         return false;
@@ -228,7 +228,7 @@ class Container : public EventHandler, public Frame {
   }
 
   bool handleMouseEvent(UIEvent& ui_event) {
-    if (ui_event.event_type == MINIACID_MOUSE_DOWN) {
+    if (ui_event.event_type == GROOVEPUTER_MOUSE_DOWN) {
       Component* target = childAt(ui_event.x, ui_event.y);
       if (target && target->isFocusable()) {
         setFocusIndex(indexOf(target));
@@ -241,14 +241,14 @@ class Container : public EventHandler, public Frame {
       return target != nullptr;
     }
 
-    if (ui_event.event_type == MINIACID_MOUSE_UP) {
+    if (ui_event.event_type == GROOVEPUTER_MOUSE_UP) {
       Component* target = mouse_capture_ ? mouse_capture_ : childAt(ui_event.x, ui_event.y);
       bool handled = target ? target->handleEvent(ui_event) : false;
       mouse_capture_ = nullptr;
       return handled;
     }
 
-    if (ui_event.event_type == MINIACID_MOUSE_DRAG) {
+    if (ui_event.event_type == GROOVEPUTER_MOUSE_DRAG) {
       Component* target = mouse_capture_ ? mouse_capture_ : childAt(ui_event.x, ui_event.y);
       if (target) {
         if (target->handleEvent(ui_event)) {
@@ -258,7 +258,7 @@ class Container : public EventHandler, public Frame {
       return mouse_capture_ != nullptr;
     }
 
-    if (ui_event.event_type == MINIACID_MOUSE_MOVE || ui_event.event_type == MINIACID_MOUSE_SCROLL) {
+    if (ui_event.event_type == GROOVEPUTER_MOUSE_MOVE || ui_event.event_type == GROOVEPUTER_MOUSE_SCROLL) {
       Component* target = childAt(ui_event.x, ui_event.y);
       if (target && target->handleEvent(ui_event)) {
         return true;
@@ -364,11 +364,11 @@ class MultiPage : public IPage {
   int activePageIndex() const { return active_index_; }
 
   bool handleEvent(UIEvent& ui_event) override {
-    if (ui_event.event_type == MINIACID_APPLICATION_EVENT) {
+    if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT) {
       switch (ui_event.app_event_type) {
-        case MINIACID_APP_EVENT_MULTIPAGE_DOWN:
+        case GROOVEPUTER_APP_EVENT_MULTIPAGE_DOWN:
           return stepActivePage(1);
-        case MINIACID_APP_EVENT_MULTIPAGE_UP:
+        case GROOVEPUTER_APP_EVENT_MULTIPAGE_UP:
           return stepActivePage(-1);
         default:
           break;

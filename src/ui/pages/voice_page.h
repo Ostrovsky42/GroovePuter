@@ -15,7 +15,7 @@
  */
 class VoicePage : public IPage {
  public:
-  VoicePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
+  VoicePage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string& getTitle() const override;
@@ -52,7 +52,7 @@ class VoicePage : public IPage {
   void drawPreviewSection(IGfx& gfx, int y);
   
   IGfx& gfx_;
-  MiniAcid& mini_acid_;
+  GroovePuter& mini_acid_;
   AudioGuard audio_guard_;
   
   FocusItem focus_ = FocusItem::PhraseType;

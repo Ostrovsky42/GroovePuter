@@ -6,11 +6,11 @@
 #include "../../scenes.h"
 #include <stdlib.h>
 
-class MiniAcid;
+class GroovePuter;
 
 class GrooveboxModeManager {
 public:
-    GrooveboxModeManager(MiniAcid& engine) : engine_(engine), currentMode_(GrooveboxMode::Acid) {}
+    GrooveboxModeManager(GroovePuter& engine) : engine_(engine), currentMode_(GrooveboxMode::Acid) {}
     
     GrooveboxMode mode() const { return currentMode_; }
     
@@ -59,6 +59,6 @@ public:
     void generateDrumVoice(DrumPattern& pattern, int voiceIndex, const GenerativeParams& params, const GenreBehavior& behavior) const;
     
 private:
-    MiniAcid& engine_;
+    GroovePuter& engine_;
     GrooveboxMode currentMode_;
 };

@@ -28,7 +28,7 @@ class MuteButton : public Component {
   }
 
   bool handleEvent(UIEvent& ui_event) override {
-    if (ui_event.event_type == MINIACID_MOUSE_DOWN && ui_event.button == MOUSE_BUTTON_LEFT) {
+    if (ui_event.event_type == GROOVEPUTER_MOUSE_DOWN && ui_event.button == MOUSE_BUTTON_LEFT) {
       if (contains(ui_event.x, ui_event.y)) {
         toggle_callback_();
         return true;

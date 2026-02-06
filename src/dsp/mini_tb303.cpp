@@ -333,7 +333,7 @@ void TB303Voice::applyLoFiPreset(int index) {
   setParameter(TB303ParamId::Resonance, p.resonance);
   setParameter(TB303ParamId::EnvAmount, p.envAmount);
   setParameter(TB303ParamId::EnvDecay, p.decay);
-  // distortion and delay flags will be handled by MiniAcid
+  // distortion and delay flags will be handled by GroovePuter
 }
 
 void TB303Voice::setMode(GrooveboxMode mode) {

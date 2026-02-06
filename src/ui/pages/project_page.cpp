@@ -56,7 +56,7 @@ static const uint16_t FLASH_STEPS[] = {20, 40, 60, 90};
 
 } // namespace
 
-ProjectPage::ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
+ProjectPage::ProjectPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
   : gfx_(gfx), mini_acid_(mini_acid), audio_guard_(audio_guard),
     main_focus_(MainFocus::Load),
     dialog_type_(DialogType::None),
@@ -210,20 +210,20 @@ bool ProjectPage::handleSaveDialogInput(char key) {
 }
 
 bool ProjectPage::handleEvent(UIEvent& ui_event) {
-    if (ui_event.event_type != MINIACID_KEY_DOWN) return false;
+    if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
     if (dialog_type_ == DialogType::Load) {
         switch (ui_event.scancode) {
-            case MINIACID_LEFT:
+            case GROOVEPUTER_LEFT:
                 if (dialog_focus_ == DialogFocus::Cancel) { dialog_focus_ = DialogFocus::List; return true; }
                 break;
-            case MINIACID_RIGHT:
+            case GROOVEPUTER_RIGHT:
                 if (dialog_focus_ == DialogFocus::List) { dialog_focus_ = DialogFocus::Cancel; return true; }
                 break;
-            case MINIACID_UP:
+            case GROOVEPUTER_UP:
                 if (dialog_focus_ == DialogFocus::List) { moveSelection(-1); return true; }
                 break;
-            case MINIACID_DOWN:
+            case GROOVEPUTER_DOWN:
                 if (dialog_focus_ == DialogFocus::List) { moveSelection(1); return true; }
                 break;
             default: break;
@@ -239,18 +239,18 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
 
     if (dialog_type_ == DialogType::SaveAs) {
         switch (ui_event.scancode) {
-            case MINIACID_LEFT:
+            case GROOVEPUTER_LEFT:
                 if (save_dialog_focus_ == SaveDialogFocus::Cancel) save_dialog_focus_ = SaveDialogFocus::Save;
                 else if (save_dialog_focus_ == SaveDialogFocus::Save) save_dialog_focus_ = SaveDialogFocus::Randomize;
                 else if (save_dialog_focus_ == SaveDialogFocus::Randomize) save_dialog_focus_ = SaveDialogFocus::Input;
                 return true;
-            case MINIACID_RIGHT:
+            case GROOVEPUTER_RIGHT:
                 if (save_dialog_focus_ == SaveDialogFocus::Input) save_dialog_focus_ = SaveDialogFocus::Randomize;
                 else if (save_dialog_focus_ == SaveDialogFocus::Randomize) save_dialog_focus_ = SaveDialogFocus::Save;
                 else if (save_dialog_focus_ == SaveDialogFocus::Save) save_dialog_focus_ = SaveDialogFocus::Cancel;
                 return true;
-            case MINIACID_UP:
-            case MINIACID_DOWN:
+            case GROOVEPUTER_UP:
+            case GROOVEPUTER_DOWN:
                 if (save_dialog_focus_ == SaveDialogFocus::Input) save_dialog_focus_ = SaveDialogFocus::Randomize;
                 else save_dialog_focus_ = SaveDialogFocus::Input;
                 return true;
@@ -271,8 +271,8 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
     }
 
     switch (ui_event.scancode) {
-        case MINIACID_LEFT:
-            if (main_focus_ == MainFocus::Volume) { mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, -1); return true; }
+        case GROOVEPUTER_LEFT:
+            if (main_focus_ == MainFocus::Volume) { mini_acid_.adjustParameter(GroovePuterParamId::MainVolume, -1); return true; }
             if (main_focus_ == MainFocus::SaveAs) main_focus_ = MainFocus::Load;
             else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::SaveAs;
             else if (main_focus_ == MainFocus::VisualStyle) main_focus_ = MainFocus::New;
@@ -281,8 +281,8 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 else main_focus_ = static_cast<MainFocus>(static_cast<int>(main_focus_) - 1);
             }
             return true;
-        case MINIACID_RIGHT:
-            if (main_focus_ == MainFocus::Volume) { mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, 1); return true; }
+        case GROOVEPUTER_RIGHT:
+            if (main_focus_ == MainFocus::Volume) { mini_acid_.adjustParameter(GroovePuterParamId::MainVolume, 1); return true; }
             if (main_focus_ == MainFocus::Load) main_focus_ = MainFocus::SaveAs;
             else if (main_focus_ == MainFocus::SaveAs) main_focus_ = MainFocus::New;
             else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::VisualStyle;
@@ -291,11 +291,11 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 main_focus_ = static_cast<MainFocus>(static_cast<int>(main_focus_) + 1);
             }
             return true;
-        case MINIACID_UP:
+        case GROOVEPUTER_UP:
             if (main_focus_ == MainFocus::Volume) { main_focus_ = MainFocus::LedMode; return true; }
             if (main_focus_ >= MainFocus::LedMode && main_focus_ <= MainFocus::LedFlash) { main_focus_ = MainFocus::Load; return true; }
             break;
-        case MINIACID_DOWN:
+        case GROOVEPUTER_DOWN:
             if (main_focus_ <= MainFocus::VisualStyle) { main_focus_ = MainFocus::LedMode; return true; }
             if (main_focus_ >= MainFocus::LedMode && main_focus_ <= MainFocus::LedFlash) { main_focus_ = MainFocus::Volume; return true; }
             break;
@@ -366,6 +366,7 @@ const std::string & ProjectPage::getTitle() const {
 
 void ProjectPage::draw(IGfx& gfx) {
   UI::drawStandardHeader(gfx, mini_acid_, "PROJECT");
+  UI::drawFeelHeaderHud(gfx, mini_acid_, 166, 9);
   LayoutManager::clearContent(gfx);
   
   // Use Layout::CONTENT for proper positioning
@@ -481,7 +482,7 @@ void ProjectPage::draw(IGfx& gfx) {
   gfx.drawText(start_x, vol_y + (vol_h - line_h)/2, "Vol:");
   
   gfx.drawRect(track_x, vol_y, track_w, vol_h, volFocused ? COLOR_ACCENT : COLOR_DARKER);
-  float volVal = mini_acid_.miniParameter(MiniAcidParamId::MainVolume).value();
+  float volVal = mini_acid_.miniParameter(GroovePuterParamId::MainVolume).value();
   int fill_w = (int)(track_w * volVal);
   if (fill_w > track_w - 2) fill_w = track_w - 2;
   if (fill_w > 0) {

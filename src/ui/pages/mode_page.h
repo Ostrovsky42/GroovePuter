@@ -1,10 +1,10 @@
 #pragma once
 #include "../ui_core.h"
-#include "../../dsp/miniacid_engine.h"
+#include "../../dsp/grooveputer_engine.h"
 
 class ModePage : public IPage {
 public:
-    ModePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
+    ModePage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard);
     
     void draw(IGfx& gfx) override;
     bool handleEvent(UIEvent& ui_event) override;
@@ -23,7 +23,7 @@ private:
         else fn();
     }
 
-    MiniAcid& mini_acid_;
+    GroovePuter& mini_acid_;
     AudioGuard audio_guard_;
     std::string title_ = "MODE";
 };

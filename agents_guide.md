@@ -1,11 +1,11 @@
-# MiniAcid - AI Agent Guide
+# GroovePuter - AI Agent Guide
 
-Welcome, collaborator! This document provides essential context and technical guidelines for working on MiniAcid, a groovebox project optimized for the **M5Stack Cardputer**.
+Welcome, collaborator! This document provides essential context and technical guidelines for working on GroovePuter, a groovebox project optimized for the **M5Stack Cardputer**.
 
 ---
 
 ## 🚀 Project Vision
-MiniAcid is a portable, high-performance acid house groovebox.
+GroovePuter is a portable, high-performance acid house groovebox.
 - **Goal:** Professional-grade DSP on constrained hardware.
 - **Style:** Retro 80s aesthetic (neon, scanlines) mixed with modern generative features.
 - **Hardware Target:** M5Stack Cardputer (ESP32-S3FN8).

@@ -14,7 +14,7 @@
 
 class DrumSequencerMainPage : public Container {
  public:
-  DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard audio_guard);
+  DrumSequencerMainPage(GroovePuter& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
   void setContext(int context); // context: (voice << 8) | step
@@ -40,7 +40,7 @@ class DrumSequencerMainPage : public Container {
       else fn();
   }
 
-  MiniAcid& mini_acid_;
+  GroovePuter& mini_acid_;
   AudioGuard audio_guard_;
   int drum_step_cursor_;
   int drum_voice_cursor_;
@@ -57,7 +57,7 @@ class DrumSequencerMainPage : public Container {
 
 class GlobalDrumSettingsPage : public Container {
  public:
-  explicit GlobalDrumSettingsPage(MiniAcid& mini_acid);
+  explicit GlobalDrumSettingsPage(GroovePuter& mini_acid);
   bool handleEvent(UIEvent& ui_event) override;
  void draw(IGfx& gfx) override;
 
@@ -65,12 +65,12 @@ class GlobalDrumSettingsPage : public Container {
   void applyDrumEngineSelection();
   void syncDrumEngineSelection();
 
-  MiniAcid& mini_acid_;
+  GroovePuter& mini_acid_;
   std::vector<std::string> drum_engine_options_;
   std::shared_ptr<LabelOptionComponent> character_control_;
 };
 
-DrumSequencerMainPage::DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard audio_guard)
+DrumSequencerMainPage::DrumSequencerMainPage(GroovePuter& mini_acid, AudioGuard audio_guard)
   : mini_acid_(mini_acid),
     audio_guard_(std::move(audio_guard)),
     drum_step_cursor_(0),
@@ -299,9 +299,9 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   if (bank_bar_ && bank_bar_->handleEvent(ui_event)) return true;
   if (Container::handleEvent(ui_event)) return true;
 
-  if (ui_event.event_type == MINIACID_APPLICATION_EVENT) {
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT) {
     switch (ui_event.app_event_type) {
-      case MINIACID_APP_EVENT_COPY: {
+      case GROOVEPUTER_APP_EVENT_COPY: {
         const bool* hits[NUM_DRUM_VOICES] = {
           mini_acid_.patternKickSteps(),
           mini_acid_.patternSnareSteps(),
@@ -331,7 +331,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
         g_drum_pattern_clipboard.has_pattern = true;
         return true;
       }
-      case MINIACID_APP_EVENT_PASTE: {
+      case GROOVEPUTER_APP_EVENT_PASTE: {
         if (!g_drum_pattern_clipboard.has_pattern) return false;
         bool current_hits[NUM_DRUM_VOICES][SEQ_STEPS];
         bool current_accents[NUM_DRUM_VOICES][SEQ_STEPS];
@@ -382,7 +382,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
         return false;
     }
   }
-  if (ui_event.event_type != MINIACID_KEY_DOWN) return false;
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
   // Let parent handle global navigation ([ ] page jumps, help, back, etc.)
   // IMPORTANT: we do NOT want to steal them here.
@@ -394,19 +394,19 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   // Keep vim-keys only as silent fallback (not in footer hints).
   int nav = UIInput::navCode(ui_event);
   switch (nav) {
-    case MINIACID_LEFT:
+    case GROOVEPUTER_LEFT:
       moveDrumCursor(-1);
       handled = true;
       break;
-    case MINIACID_RIGHT:
+    case GROOVEPUTER_RIGHT:
       moveDrumCursor(1);
       handled = true;
       break;
-    case MINIACID_UP:
+    case GROOVEPUTER_UP:
       moveDrumCursorVertical(-1);
       handled = true;
       break;
-    case MINIACID_DOWN:
+    case GROOVEPUTER_DOWN:
       moveDrumCursorVertical(1);
       handled = true;
       break;
@@ -499,8 +499,8 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     case 'c': {
       if (ui_event.ctrl) {
         UIEvent app_evt{};
-        app_evt.event_type = MINIACID_APPLICATION_EVENT;
-        app_evt.app_event_type = MINIACID_APP_EVENT_COPY;
+        app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
+        app_evt.app_event_type = GROOVEPUTER_APP_EVENT_COPY;
         return handleEvent(app_evt);
       }
       break;
@@ -508,8 +508,8 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     case 'v': {
       if (ui_event.ctrl) {
         UIEvent app_evt{};
-        app_evt.event_type = MINIACID_APPLICATION_EVENT;
-        app_evt.app_event_type = MINIACID_APP_EVENT_PASTE;
+        app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
+        app_evt.app_event_type = GROOVEPUTER_APP_EVENT_PASTE;
         return handleEvent(app_evt);
       }
       break;
@@ -587,7 +587,7 @@ void DrumSequencerMainPage::draw(IGfx& gfx) {
 }
 //} // namespace
 
-GlobalDrumSettingsPage::GlobalDrumSettingsPage(MiniAcid& mini_acid)
+GlobalDrumSettingsPage::GlobalDrumSettingsPage(GroovePuter& mini_acid)
   : mini_acid_(mini_acid) {
   character_control_ = std::make_shared<LabelOptionComponent>(
       "Character", COLOR_LABEL, COLOR_WHITE);
@@ -651,7 +651,7 @@ void GlobalDrumSettingsPage::syncDrumEngineSelection() {
   character_control_->setOptionIndex(target);
 }
 
-DrumSequencerPage::DrumSequencerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard) {
+DrumSequencerPage::DrumSequencerPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard) {
   (void)gfx;
   addPage(std::make_shared<DrumSequencerMainPage>(mini_acid, audio_guard));
   addPage(std::make_shared<GlobalDrumSettingsPage>(mini_acid));

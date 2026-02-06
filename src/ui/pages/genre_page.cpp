@@ -33,23 +33,23 @@ namespace {
 constexpr int kGenreVisibleRows = 4;
 constexpr int kTextureVisibleRows = 4;
 
-const char* applyModeShort(const MiniAcid& mini) {
+const char* applyModeShort(const GroovePuter& mini) {
     return mini.sceneManager().currentScene().genre.regenerateOnApply ? "S+P" : "SND";
 }
 
-const char* applyModeLong(const MiniAcid& mini) {
+const char* applyModeLong(const GroovePuter& mini) {
     return mini.sceneManager().currentScene().genre.regenerateOnApply ? "[X] SOUND+PATTERN" : "[ ] SOUND ONLY";
 }
 
-const char* curatedModeShort(const MiniAcid& mini) {
+const char* curatedModeShort(const GroovePuter& mini) {
     return mini.sceneManager().currentScene().genre.curatedMode ? "CUR" : "ADV";
 }
 
-const char* grooveModeShort(const MiniAcid& mini) {
+const char* grooveModeShort(const GroovePuter& mini) {
     return mini.grooveboxMode() == GrooveboxMode::Acid ? "ACD" : "MIN";
 }
 
-bool regenOnApply(const MiniAcid& mini) {
+bool regenOnApply(const GroovePuter& mini) {
     return mini.sceneManager().currentScene().genre.regenerateOnApply;
 }
 
@@ -95,7 +95,7 @@ const char* GenrePage::presetNames[8] = {
     "TRIPHOP DUST", "BROKEN BEAT"
 };
 
-GenrePage::GenrePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
+GenrePage::GenrePage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
     (void)gfx;
     visualStyle_ = UI::currentStyle;
@@ -650,7 +650,7 @@ void GenrePage::drawAmberStyle(IGfx& gfx) {
 // =================================================================
 
 bool GenrePage::handleEvent(UIEvent& e) {
-    if (e.event_type != MINIACID_KEY_DOWN) return false;
+    if (e.event_type != GROOVEPUTER_KEY_DOWN) return false;
     
     // Helper lambdas for navigation
     auto moveUp = [&]() {
@@ -704,10 +704,10 @@ bool GenrePage::handleEvent(UIEvent& e) {
 
     int nav = UIInput::navCode(e);
     switch (nav) {
-        case MINIACID_UP:    moveUp();    return true;
-        case MINIACID_DOWN:  moveDown();  return true;
-        case MINIACID_LEFT:  moveLeft();  return true;
-        case MINIACID_RIGHT: moveRight(); return true;
+        case GROOVEPUTER_UP:    moveUp();    return true;
+        case GROOVEPUTER_DOWN:  moveDown();  return true;
+        case GROOVEPUTER_LEFT:  moveLeft();  return true;
+        case GROOVEPUTER_RIGHT: moveRight(); return true;
         default: break;
     }
 

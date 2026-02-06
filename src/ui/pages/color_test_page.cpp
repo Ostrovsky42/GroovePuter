@@ -6,7 +6,7 @@
 #include "../screen_geometry.h"
 #include <cstdio>
 
-ColorTestPage::ColorTestPage(IGfx& gfx, MiniAcid& mini_acid)
+ColorTestPage::ColorTestPage(IGfx& gfx, GroovePuter& mini_acid)
     : gfx_(gfx), mini_acid_(mini_acid) {}
 
 bool ColorTestPage::handleEvent(UIEvent& ui_event) {

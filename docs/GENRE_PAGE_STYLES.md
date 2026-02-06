@@ -35,7 +35,7 @@ build_flags =
 **Шаг 2:** Переключите стиль в коде
 
 ```cpp
-// В miniacid_display.cpp или где создаёте GenrePage:
+// В grooveputer_display.cpp или где создаёте GenrePage:
 auto genrePage = std::make_unique<GenrePage>(gfx, mini_acid, audio_guard);
 genrePage->setVisualStyle(GenrePage::VisualStyle::RETRO_CLASSIC);
 pages_.push_back(std::move(genrePage));
@@ -212,7 +212,7 @@ arduino-cli compile --show-properties | grep USE_RETRO_THEME
 ### Статическое переключение при запуске
 
 ```cpp
-// В MiniAcidDisplay::MiniAcidDisplay()
+// В GroovePuterDisplay::GroovePuterDisplay()
 auto genre = std::make_unique<GenrePage>(gfx, mini_acid, audio_guard);
 
 #ifdef HARDWARE_REV_2  // Более мощное железо
@@ -251,5 +251,5 @@ class SettingsPage {
 
 ---
 
-**Создано для MiniAcid Sequencer**  
+**Создано для GroovePuter Sequencer**  
 *Простой код + красивая графика = профессиональный инструмент* 🎹✨

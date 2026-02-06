@@ -1,4 +1,4 @@
-# MiniAcid Key Map (Cardputer)
+# GroovePuter Key Map (Cardputer)
 
 This is the canonical key map aligned with current code.
 

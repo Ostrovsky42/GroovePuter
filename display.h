@@ -1,7 +1,7 @@
 // modeled after a minimal subset from https://docs.m5stack.com/en/arduino/m5gfx/m5gfx_functions
 #pragma once
-#ifndef MINIACID_DISPLAY_H
-#define MINIACID_DISPLAY_H
+#ifndef GROOVEPUTER_DISPLAY_H
+#define GROOVEPUTER_DISPLAY_H
 #include <cstdint>
 class IGfxColor {
 public:
@@ -89,4 +89,4 @@ public:
     virtual ~IGfx() = default;
 };
 
-#endif // MINIACID_DISPLAY_H
+#endif // GROOVEPUTER_DISPLAY_H

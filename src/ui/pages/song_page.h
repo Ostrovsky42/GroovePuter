@@ -8,7 +8,7 @@
 
 class SongPage : public IPage, public IMultiHelpFramesProvider {
  public:
-  SongPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
+  SongPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string & getTitle() const override;
@@ -48,7 +48,7 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   bool toggleLoopMode();
 
   IGfx& gfx_;
-  MiniAcid& mini_acid_;
+  GroovePuter& mini_acid_;
   AudioGuard audio_guard_;
   int cursor_row_;
   int cursor_track_;

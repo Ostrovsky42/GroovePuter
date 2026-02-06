@@ -8,6 +8,11 @@
 #include "../components/mode_button.h"
 
 namespace {
+inline IGfxColor song303Color(int synthIndex) {
+  // Keep 303A/303B colors consistent with other pages (bass/lead split).
+  return (synthIndex == 0) ? IGfxColor(0x00D7FF) : IGfxColor(0xFF4FD8);
+}
+
 struct SongPatternClipboard {
   bool has_pattern = false;
   int pattern_index = -1;
@@ -67,7 +72,7 @@ SongAreaClipboard g_song_area_clipboard;
 UndoHistory g_undo_history;
 } // namespace
 
-SongPage::SongPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
+SongPage::SongPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
   : gfx_(gfx),
     mini_acid_(mini_acid),
     audio_guard_(audio_guard),
@@ -361,14 +366,14 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  if (ui_event.event_type == MINIACID_APPLICATION_EVENT) {
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT) {
     bool trackValid = false;
     SongTrack track = trackForColumn(cursorTrack(), trackValid);
     if (!trackValid || cursorOnModeButton() || cursorOnPlayheadLabel()) {
       return false;
     }
     switch (ui_event.app_event_type) {
-      case MINIACID_APP_EVENT_COPY: {
+      case GROOVEPUTER_APP_EVENT_COPY: {
         if (has_selection_) {
           // Copy selected area
           int min_row, max_row, min_track, max_track;
@@ -404,7 +409,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
         }
         return true;
       }
-      case MINIACID_APP_EVENT_CUT: {
+      case GROOVEPUTER_APP_EVENT_CUT: {
         if (has_selection_) {
           // Copy selected area first
           int min_row, max_row, min_track, max_track;
@@ -465,7 +470,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
         }
         return true;
       }
-      case MINIACID_APP_EVENT_PASTE: {
+      case GROOVEPUTER_APP_EVENT_PASTE: {
         if (g_song_area_clipboard.has_area) {
           // Paste area
           int start_row = cursorRow();
@@ -550,7 +555,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
         }
         return true;
       }
-      case MINIACID_APP_EVENT_UNDO: {
+      case GROOVEPUTER_APP_EVENT_UNDO: {
         if (g_undo_history.action_type == UndoActionType::None || g_undo_history.cells.empty()) {
           return false;
         }
@@ -583,10 +588,10 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
         return false;
     }
   }
-  if (ui_event.event_type != MINIACID_KEY_DOWN) return false;
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
-  if (ui_event.alt && (ui_event.scancode == MINIACID_UP || ui_event.scancode == MINIACID_DOWN)) {
-    int delta = ui_event.scancode == MINIACID_UP ? 1 : -1;
+  if (ui_event.alt && (ui_event.scancode == GROOVEPUTER_UP || ui_event.scancode == GROOVEPUTER_DOWN)) {
+    int delta = ui_event.scancode == GROOVEPUTER_UP ? 1 : -1;
     if (cursorOnPlayheadLabel()) return adjustSongPlayhead(delta);
     return adjustSongPatternAtCursor(delta);
   }
@@ -595,19 +600,19 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
   // Cardputer keyboard may not have a practical Shift key, allow Ctrl as selection modifier too.
   bool extend_selection = ui_event.shift || ui_event.ctrl;
   switch (ui_event.scancode) {
-    case MINIACID_LEFT:
+    case GROOVEPUTER_LEFT:
       moveCursorHorizontal(-1, extend_selection);
       handled = true;
       break;
-    case MINIACID_RIGHT:
+    case GROOVEPUTER_RIGHT:
       moveCursorHorizontal(1, extend_selection);
       handled = true;
       break;
-    case MINIACID_UP:
+    case GROOVEPUTER_UP:
       moveCursorVertical(-1, extend_selection);
       handled = true;
       break;
-    case MINIACID_DOWN:
+    case GROOVEPUTER_DOWN:
       moveCursorVertical(1, extend_selection);
       handled = true;
       break;
@@ -761,9 +766,9 @@ void SongPage::draw(IGfx& gfx) {
 
   gfx.setTextColor(COLOR_LABEL);
   gfx.drawText(x, body_y, "POS");
-  gfx.setTextColor(COLOR_SYNTH_A);
+  gfx.setTextColor(song303Color(0));
   gfx.drawText(x + pos_col_w + spacing, body_y, "303A");
-  gfx.setTextColor(COLOR_SYNTH_B);
+  gfx.setTextColor(song303Color(1));
   gfx.drawText(x + pos_col_w + spacing + track_col_w, body_y, "303B");
   gfx.setTextColor(COLOR_LABEL);
   gfx.drawText(x + pos_col_w + spacing + track_col_w * 2, body_y, "Drums");
@@ -851,7 +856,10 @@ void SongPage::draw(IGfx& gfx) {
         gfx.fillRect(col_x - 1, row_y - 2, track_col_w + 2, row_h + 2 - 1, IGfxColor(0x000080));
         gfx.drawRect(col_x - 1, row_y - 2, track_col_w + 2, row_h + 2 - 1, IGfxColor::Cyan());
       } else if (isSelected) {
-        gfx.drawRect(col_x - 1, row_y - 2, track_col_w + 2, row_h + 2 - 1, COLOR_STEP_SELECTED);
+        IGfxColor selectedColor = COLOR_STEP_SELECTED;
+        if (song_track == SongTrack::SynthA) selectedColor = song303Color(0);
+        if (song_track == SongTrack::SynthB) selectedColor = song303Color(1);
+        gfx.drawRect(col_x - 1, row_y - 2, track_col_w + 2, row_h + 2 - 1, selectedColor);
       }
       char label[12];
       if (patternIdx < 0) {
@@ -876,8 +884,8 @@ void SongPage::draw(IGfx& gfx) {
           } else {
             char bankLetter = static_cast<char>('A' + bankIdx);
             snprintf(label, sizeof(label), "%c%d", bankLetter, bankPattern + 1);
-            if (song_track == SongTrack::SynthA) gfx.setTextColor(COLOR_SYNTH_A);
-            else if (song_track == SongTrack::SynthB) gfx.setTextColor(COLOR_SYNTH_B);
+            if (song_track == SongTrack::SynthA) gfx.setTextColor(song303Color(0));
+            else if (song_track == SongTrack::SynthB) gfx.setTextColor(song303Color(1));
             else gfx.setTextColor(COLOR_WHITE);
           }
         }

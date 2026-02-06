@@ -24,9 +24,12 @@
 namespace {
 inline constexpr IGfxColor kFocusColor = IGfxColor(0xB36A00);
 inline constexpr IGfxColor kDimText = IGfxColor(0x808080);
-inline constexpr IGfxColor kValueText = IGfxColor::Cyan();
 inline constexpr int kKnobStepCoarse = 5;
 inline constexpr int kKnobStepFine = 1;
+
+inline IGfxColor voiceColor(int voiceIndex) {
+  return (voiceIndex == 0) ? IGfxColor(0x33C8FF) : IGfxColor(0xFF4FCB);
+}
 } // namespace
 
 class TB303ParamsPage::KnobComponent : public FocusableComponent {
@@ -47,7 +50,7 @@ class TB303ParamsPage::KnobComponent : public FocusableComponent {
   }
 
   bool handleEvent(UIEvent& ui_event) override {
-    if (ui_event.event_type == MINIACID_MOUSE_DOWN) {
+    if (ui_event.event_type == GROOVEPUTER_MOUSE_DOWN) {
       if (ui_event.button != MOUSE_BUTTON_LEFT) return false;
       if (!contains(ui_event.x, ui_event.y)) return false;
       dragging_ = true;
@@ -56,14 +59,14 @@ class TB303ParamsPage::KnobComponent : public FocusableComponent {
       return true;
     }
 
-    if (ui_event.event_type == MINIACID_MOUSE_UP) {
+    if (ui_event.event_type == GROOVEPUTER_MOUSE_UP) {
       if (!dragging_) return false;
       dragging_ = false;
       drag_accum_ = 0;
       return true;
     }
 
-    if (ui_event.event_type == MINIACID_MOUSE_DRAG) {
+    if (ui_event.event_type == GROOVEPUTER_MOUSE_DRAG) {
       if (!dragging_) return false;
       int delta = ui_event.dy;
       if (delta == 0) delta = ui_event.y - last_drag_y_;
@@ -81,7 +84,7 @@ class TB303ParamsPage::KnobComponent : public FocusableComponent {
       return true;
     }
 
-    if (ui_event.event_type == MINIACID_MOUSE_SCROLL) {
+    if (ui_event.event_type == GROOVEPUTER_MOUSE_SCROLL) {
       if (!contains(ui_event.x, ui_event.y)) return false;
       if (ui_event.wheel_dy > 0) {
         setValue(1);
@@ -184,7 +187,7 @@ class TB303ParamsPage::LabelValueComponent : public FocusableComponent {
   IGfxColor focus_color_;
 };
 
-TB303ParamsPage::TB303ParamsPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index)
+TB303ParamsPage::TB303ParamsPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard, int voice_index)
     : gfx_(gfx),
       mini_acid_(mini_acid),
       audio_guard_(audio_guard),
@@ -205,7 +208,7 @@ void TB303ParamsPage::initComponents() {
   const Parameter& pEnv = mini_acid_.parameter303(TB303ParamId::EnvAmount, voice_index_);
   const Parameter& pDec = mini_acid_.parameter303(TB303ParamId::EnvDecay, voice_index_);
 
-  IGfxColor focusColor = (voice_index_ == 0) ? COLOR_SYNTH_A : COLOR_SYNTH_B;
+  IGfxColor focusColor = voiceColor(voice_index_);
 
   cutoff_knob_ = std::make_shared<KnobComponent>(
       pCut, COLOR_KNOB_1, COLOR_KNOB_1, focusColor,
@@ -239,10 +242,10 @@ void TB303ParamsPage::initComponents() {
         });
       });
 
-  osc_control_ = std::make_shared<LabelValueComponent>("OSC:", IGfxColor::White(), kValueText, focusColor);
-  filter_control_ = std::make_shared<LabelValueComponent>("FLT:", IGfxColor::White(), kValueText, focusColor);
-  distortion_control_ = std::make_shared<LabelValueComponent>("DST:", IGfxColor::White(), kValueText, focusColor);
-  delay_control_ = std::make_shared<LabelValueComponent>("DLY:", IGfxColor::White(), kValueText, focusColor);
+  osc_control_ = std::make_shared<LabelValueComponent>("OSC:", IGfxColor::White(), focusColor, focusColor);
+  filter_control_ = std::make_shared<LabelValueComponent>("FLT:", IGfxColor::White(), focusColor, focusColor);
+  distortion_control_ = std::make_shared<LabelValueComponent>("DST:", IGfxColor::White(), focusColor, focusColor);
+  delay_control_ = std::make_shared<LabelValueComponent>("DLY:", IGfxColor::White(), focusColor, focusColor);
 
   addChild(cutoff_knob_);
   addChild(resonance_knob_);
@@ -376,8 +379,9 @@ void TB303ParamsPage::draw(IGfx& gfx) {
   if (!initialized_) initComponents();
 
   const char* title = (voice_index_ == 0) ? "303A BASS" : "303B LEAD";
-  IGfxColor headerColor = (voice_index_ == 0) ? COLOR_SYNTH_A : COLOR_SYNTH_B;
+  IGfxColor headerColor = voiceColor(voice_index_);
   UI::drawStandardHeader(gfx, mini_acid_, title);
+  UI::drawFeelHeaderHud(gfx, mini_acid_, 166, 9);
   LayoutManager::clearContent(gfx);
 
   layoutComponents();
@@ -391,6 +395,8 @@ void TB303ParamsPage::draw(IGfx& gfx) {
   const auto& c = Layout::CONTENT;
   const int hintY = c.y + c.h / 2 + 22;
   gfx.drawText(c.x + 10, hintY, "A/Z  S/X  D/C  F/V");
+  gfx.setTextColor(headerColor);
+  gfx.drawText(c.x + c.w - 12, c.y + 2, (voice_index_ == 0) ? "A" : "B");
 
   Container::draw(gfx_);
 
@@ -402,7 +408,7 @@ const std::string& TB303ParamsPage::getTitle() const {
 }
 
 bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
-  if (ui_event.event_type != MINIACID_KEY_DOWN) {
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) {
     return Container::handleEvent(ui_event);
   }
 
@@ -412,10 +418,10 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
   bool fine = ui_event.shift || ui_event.ctrl;
   
   switch (nav) {
-    case MINIACID_LEFT:  focusPrev(); return true;
-    case MINIACID_RIGHT: focusNext(); return true;
-    case MINIACID_UP:    adjustFocusedElement(1, fine); return true;
-    case MINIACID_DOWN:  adjustFocusedElement(-1, fine); return true;
+    case GROOVEPUTER_LEFT:  focusPrev(); return true;
+    case GROOVEPUTER_RIGHT: focusNext(); return true;
+    case GROOVEPUTER_UP:    adjustFocusedElement(1, fine); return true;
+    case GROOVEPUTER_DOWN:  adjustFocusedElement(-1, fine); return true;
     default: break;
   }
 

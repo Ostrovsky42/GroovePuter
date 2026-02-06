@@ -100,7 +100,7 @@ namespace {
     }
 }
 
-SettingsPage::SettingsPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard) 
+SettingsPage::SettingsPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard& audio_guard) 
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
     (void)gfx;
 }
@@ -175,22 +175,22 @@ void SettingsPage::draw(IGfx& gfx) {
 }
 
 bool SettingsPage::handleEvent(UIEvent& e) {
-    if (e.event_type != MINIACID_KEY_DOWN) return false;
+    if (e.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
     const bool fast = e.shift || e.ctrl || e.alt;
     const int maxRow = kPresetRowIndex;
 
     int nav = UIInput::navCode(e);
-    if (nav == MINIACID_UP) {
+    if (nav == GROOVEPUTER_UP) {
         row_ = (row_ == 0) ? maxRow : (row_ - 1);
         return true;
     }
-    if (nav == MINIACID_DOWN) {
+    if (nav == GROOVEPUTER_DOWN) {
         row_ = (row_ == maxRow) ? 0 : (row_ + 1);
         return true;
     }
     
-    if (nav == MINIACID_LEFT) { 
+    if (nav == GROOVEPUTER_LEFT) { 
         if (row_ == kPresetRowIndex) {
             preset_index_ = (preset_index_ + 2) % 3;
         } else {
@@ -198,7 +198,7 @@ bool SettingsPage::handleEvent(UIEvent& e) {
         }
         return true; 
     }
-    if (nav == MINIACID_RIGHT) { 
+    if (nav == GROOVEPUTER_RIGHT) { 
         if (row_ == kPresetRowIndex) {
             preset_index_ = (preset_index_ + 1) % 3;
         } else {

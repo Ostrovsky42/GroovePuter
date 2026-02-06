@@ -15,7 +15,7 @@
 #include "../amber_widgets.h"
 #include "../ui_clipboard.h"
 
-SequencerHubPage::SequencerHubPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
+SequencerHubPage::SequencerHubPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
     (void)gfx;
 
@@ -362,6 +362,7 @@ void SequencerHubPage::drawOverview(IGfx& gfx) {
     snprintf(headerBuf, sizeof(headerBuf), "SEQUENCER [BANK:%c SW:%d%%]", bankChar, swingPct);
     
     UI::drawStandardHeader(gfx, mini_acid_, headerBuf);
+    UI::drawFeelHeaderHud(gfx, mini_acid_, 166, 9);
     LayoutManager::clearContent(gfx);
 
     const int startY = LayoutManager::lineY(0);
@@ -469,6 +470,7 @@ void SequencerHubPage::drawDetail(IGfx& gfx) {
         selectedTrack_ == 0 ? "303 A" : (selectedTrack_ == 1 ? "303 B" : "DRUMS"));
     
     UI::drawStandardHeader(gfx, mini_acid_, title);
+    UI::drawFeelHeaderHud(gfx, mini_acid_, 166, 9);
     LayoutManager::clearContent(gfx);
 
     if (isDrumTrack(selectedTrack_)) {
@@ -520,14 +522,14 @@ void SequencerHubPage::drawDetail(IGfx& gfx) {
 }
 
 bool SequencerHubPage::handleEvent(UIEvent& e) {
-    if (e.event_type == MINIACID_MOUSE_DOWN) {
+    if (e.event_type == GROOVEPUTER_MOUSE_DOWN) {
         if (mode_ == Mode::DETAIL && isDrumTrack(selectedTrack_)) {
             return drumGrid_->handleEvent(e);
         }
         return false;
     }
 
-    if (e.event_type != MINIACID_KEY_DOWN) return false;
+    if (e.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
     // LOCAL NAV FIRST: Ensure Esc/Back work within the hub to exit Detail mode
     if (mode_ == Mode::DETAIL && UIInput::isBack(e)) {
@@ -576,7 +578,7 @@ bool SequencerHubPage::handleModeSwitch(UIEvent& e) {
             mode_ = Mode::OVERVIEW;
             return true;
         }
-        // Let MiniAcidDisplay handle global back if in OVERVIEW
+        // Let GroovePuterDisplay handle global back if in OVERVIEW
         return false;
     }
     
@@ -621,15 +623,15 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
     // Copy/Paste (Ctrl+C / Ctrl+V)
     if (lower == 'c' && e.ctrl) {
         UIEvent app_evt{};
-        app_evt.event_type = MINIACID_APPLICATION_EVENT;
-        app_evt.app_event_type = MINIACID_APP_EVENT_COPY;
+        app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
+        app_evt.app_event_type = GROOVEPUTER_APP_EVENT_COPY;
         // Forward as application event
         return handleAppEvent(app_evt);
     }
     if (lower == 'v' && e.ctrl) {
         UIEvent app_evt{};
-        app_evt.event_type = MINIACID_APPLICATION_EVENT;
-        app_evt.app_event_type = MINIACID_APP_EVENT_PASTE;
+        app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
+        app_evt.app_event_type = GROOVEPUTER_APP_EVENT_PASTE;
         // Forward as application event
         return handleAppEvent(app_evt);
     }
@@ -638,9 +640,9 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
 }
 
 bool SequencerHubPage::handleAppEvent(const UIEvent& e) {
-    if (e.event_type != MINIACID_APPLICATION_EVENT) return false;
+    if (e.event_type != GROOVEPUTER_APPLICATION_EVENT) return false;
     
-    if (e.app_event_type == MINIACID_APP_EVENT_COPY) {
+    if (e.app_event_type == GROOVEPUTER_APP_EVENT_COPY) {
         if (isDrumTrack(selectedTrack_)) {
             // Copy Drums
             const bool* hits[NUM_DRUM_VOICES] = {
@@ -672,7 +674,7 @@ bool SequencerHubPage::handleAppEvent(const UIEvent& e) {
         return true;
     }
     
-    if (e.app_event_type == MINIACID_APP_EVENT_PASTE) {
+    if (e.app_event_type == GROOVEPUTER_APP_EVENT_PASTE) {
         if (isDrumTrack(selectedTrack_)) {
             if (!g_drum_pattern_clipboard.has_pattern) return false;
             const DrumPatternSet& src = g_drum_pattern_clipboard.pattern;

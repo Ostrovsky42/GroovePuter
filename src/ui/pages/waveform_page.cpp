@@ -13,7 +13,7 @@ constexpr int kWaveFadeColorCount =
     static_cast<int>(sizeof(kWaveFadeColors) / sizeof(kWaveFadeColors[0]));
 } // namespace
 
-WaveformPage::WaveformPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
+WaveformPage::WaveformPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
   : gfx_(gfx),
     mini_acid_(mini_acid),
     audio_guard_(audio_guard)
@@ -91,10 +91,10 @@ void WaveformPage::draw(IGfx& gfx) {
 }
 
 bool WaveformPage::handleEvent(UIEvent& ui_event) {
-  if (ui_event.event_type != MINIACID_KEY_DOWN) return false;
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
   switch (ui_event.scancode) {
-    case MINIACID_UP:
-    case MINIACID_DOWN:
+    case GROOVEPUTER_UP:
+    case GROOVEPUTER_DOWN:
       UI::waveformOverlay.colorIndex = (UI::waveformOverlay.colorIndex + 1) % UI::kNumWaveColors;
       return true;
     default:

@@ -38,7 +38,7 @@ class SamplerPage::LabelValueComponent : public FocusableComponent {
   IGfxColor value_color_;
 };
 
-SamplerPage::SamplerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
+SamplerPage::SamplerPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
     : gfx_(gfx), mini_acid_(mini_acid), audio_guard_(audio_guard) {
 }
 
@@ -185,7 +185,7 @@ void SamplerPage::prelisten() {
 }
 
 bool SamplerPage::handleEvent(UIEvent& ui_event) {
-  if (ui_event.event_type != MINIACID_KEY_DOWN) {
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) {
     return Container::handleEvent(ui_event);
   }
 
@@ -194,13 +194,13 @@ bool SamplerPage::handleEvent(UIEvent& ui_event) {
   }
 
   switch (ui_event.scancode) {
-    case MINIACID_UP:
+    case GROOVEPUTER_UP:
       focusPrev();
       return true;
-    case MINIACID_DOWN:
+    case GROOVEPUTER_DOWN:
       focusNext();
       return true;
-    case MINIACID_RIGHT:
+    case GROOVEPUTER_RIGHT:
       adjustFocusedElement(1);
       return true;
     default:
@@ -317,15 +317,15 @@ void SamplerPage::drawDialog(IGfx& gfx) {
 }
 
 bool SamplerPage::handleDialogEvent(UIEvent& ui_event) {
-    if (ui_event.event_type == MINIACID_KEY_DOWN) {
-        if (ui_event.scancode == MINIACID_UP) {
+    if (ui_event.event_type == GROOVEPUTER_KEY_DOWN) {
+        if (ui_event.scancode == GROOVEPUTER_UP) {
             if (list_selection_index_ > 0) {
                 list_selection_index_--;
                 if (list_selection_index_ < list_scroll_offset_) list_scroll_offset_ = list_selection_index_;
             }
             return true;
         }
-        if (ui_event.scancode == MINIACID_DOWN) {
+        if (ui_event.scancode == GROOVEPUTER_DOWN) {
             if (list_selection_index_ < (int)kits_.size() - 1) {
                 list_selection_index_++;
                 int rows = (height() - 50) / 14; 
@@ -341,7 +341,7 @@ bool SamplerPage::handleDialogEvent(UIEvent& ui_event) {
             }
             return true;
         }
-        if (ui_event.scancode == MINIACID_ESCAPE || ui_event.key == 'q') {
+        if (ui_event.scancode == GROOVEPUTER_ESCAPE || ui_event.key == 'q') {
             closeDialog();
             return true;
         }

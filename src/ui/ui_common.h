@@ -4,7 +4,7 @@
 #include "ui_widgets.h"
 
 // Forward declaration if needed, but ui_core/layout_manager should cover it
-class MiniAcid;
+class GroovePuter;
 
 namespace UI {
     
@@ -33,7 +33,7 @@ namespace UI {
     /**
      * Draws standard header with scene number, BPM, and recording status.
      */
-    void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title);
+    void drawStandardHeader(IGfx& gfx, GroovePuter& mini_acid, const char* title);
 
     /**
      * Draws standard footer with left and optional right text.
@@ -65,17 +65,17 @@ namespace UI {
      * Draws a compact waveform overlay at the bottom of the screen.
      * Uses dimmed colors for pseudo-transparency.
      */
-    void drawWaveformOverlay(IGfx& gfx, MiniAcid& mini_acid);
+    void drawWaveformOverlay(IGfx& gfx, GroovePuter& mini_acid);
 
     /**
      * Draws a compact mutes/activity overlay.
      */
-    void drawMutesOverlay(IGfx& gfx, MiniAcid& mini_acid);
+    void drawMutesOverlay(IGfx& gfx, GroovePuter& mini_acid);
 
     /**
      * Draws a compact FEEL overlay (Grid + Cycle length) with optional pulse.
      */
-    void drawFeelOverlay(IGfx& gfx, MiniAcid& mini_acid, bool pulse);
+    void drawFeelOverlay(IGfx& gfx, GroovePuter& mini_acid, bool pulse);
 
     /**
      * Global toast (single line).
@@ -86,6 +86,6 @@ namespace UI {
     /**
      * Mini HUD for G/T/L in header area.
      */
-    void drawFeelHeaderHud(IGfx& gfx, MiniAcid& mini_acid, int x, int y);
+    void drawFeelHeaderHud(IGfx& gfx, GroovePuter& mini_acid, int x, int y);
 
 }

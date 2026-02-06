@@ -86,7 +86,7 @@ std::string WavRecorder::generateTimestampFilename() const {
     std::snprintf(timestamp, sizeof(timestamp), "unknown");
   }
 
-  std::string filename = "miniacid_";
+  std::string filename = "grooveputer_";
   filename += timestamp;
   filename += ".wav";
   return filename;

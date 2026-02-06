@@ -7,7 +7,7 @@
  * Text-to-Phoneme Converter
  * 
  * Simple rule-based conversion from English text to phoneme sequences.
- * Designed to be compact and handle common MiniAcid vocabulary.
+ * Designed to be compact and handle common GroovePuter vocabulary.
  * 
  * Phoneme symbols used:
  *   Vowels: a(ah), e(eh), i(ee), o(oh), u(oo), @(schwa), A(ae), O(aw)
@@ -38,7 +38,7 @@ private:
         const char* phonemes;
     };
     
-    // Dictionary of common MiniAcid words
+    // Dictionary of common GroovePuter words
     static const WordEntry DICTIONARY[];
     static const int DICTIONARY_SIZE;
     
@@ -50,7 +50,7 @@ private:
 // Implementation (header-only for simplicity)
 // ─────────────────────────────────────────────────────────────
 
-// Common words dictionary optimized for MiniAcid
+// Common words dictionary optimized for GroovePuter
 inline const TextToPhoneme::WordEntry TextToPhoneme::DICTIONARY[] = {
     // Numbers
     {"0", "ziro"},

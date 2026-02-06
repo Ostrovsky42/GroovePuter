@@ -31,18 +31,18 @@ void LabelOptionComponent::setOptionIndex(int index) {
 }
 
 bool LabelOptionComponent::handleEvent(UIEvent& ui_event) {
-  if (ui_event.event_type != MINIACID_KEY_DOWN) return false;
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
   if (!isFocused()) return false;
   if (options_.empty()) return false;
 
   int nav = UIInput::navCode(ui_event);
   switch (nav) {
-    case MINIACID_UP:
-    case MINIACID_RIGHT:
+    case GROOVEPUTER_UP:
+    case GROOVEPUTER_RIGHT:
       option_index_ = (option_index_ + 1) % options_.size();
       return true;
-    case MINIACID_DOWN:
-    case MINIACID_LEFT:
+    case GROOVEPUTER_DOWN:
+    case GROOVEPUTER_LEFT:
       option_index_ = (option_index_ - 1 + options_.size()) % options_.size();
       return true;
     default:

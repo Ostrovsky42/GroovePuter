@@ -2,7 +2,7 @@
 #include <cstdio>
 #include "../ui_colors.h"
 
-ModePage::ModePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
+ModePage::ModePage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
 }
 
@@ -60,7 +60,7 @@ void ModePage::draw(IGfx& gfx) {
 }
 
 bool ModePage::handleEvent(UIEvent& ui_event) {
-    if (ui_event.event_type != MINIACID_KEY_DOWN) return false;
+    if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
     switch (ui_event.key) {
         case '\n':

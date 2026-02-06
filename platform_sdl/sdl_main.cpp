@@ -10,8 +10,8 @@
 
 #include "sdl_display.h"
 #include "../cardputer_display.h"
-#include "../src/ui/miniacid_display.h"
-#include "../src/dsp/miniacid_engine.h"
+#include "../src/ui/grooveputer_display.h"
+#include "../src/dsp/grooveputer_engine.h"
 #include "../src/audio/audio_config.h"
 #include "scene_storage_sdl.h"
 #include "../src/sampler/ram_sample_store.h"
@@ -30,7 +30,7 @@ struct AudioContext {
   explicit AudioContext(float sampleRate) : storage(), pool(), synth(sampleRate, &storage), device(0) { synth.sampleStore = &pool; }
   SceneStorageSdl storage;
   RamSampleStore pool;
-  MiniAcid synth;
+  GroovePuter synth;
   SDL_AudioDeviceID device;
 #ifndef __EMSCRIPTEN__
   DesktopAudioRecorder recorder;
@@ -45,7 +45,7 @@ struct AppState {
   IGfx* gfx = nullptr;
   SDLDisplay* sdl = nullptr;
   CardputerDisplay* card = nullptr;
-  MiniAcidDisplay* ui = nullptr;
+  GroovePuterDisplay* ui = nullptr;
   bool running = true;
   bool cleaned_up = false;
   unsigned long lastUIUpdate = 0;
@@ -73,105 +73,105 @@ static void handleEvents(AppState& s) {
     if (e.type == SDL_QUIT) {
       s.running = false;
     } else if (e.type == SDL_MOUSEMOTION) {
-      UIEvent miniacidEvent{};
-      miniacidEvent.event_type = e.motion.state != 0 ? MINIACID_MOUSE_DRAG : MINIACID_MOUSE_MOVE;
-      miniacidEvent.alt = (SDL_GetModState() & KMOD_ALT) != 0;
-      miniacidEvent.ctrl = (SDL_GetModState() & KMOD_CTRL) != 0;
-      miniacidEvent.shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
-      miniacidEvent.meta = (SDL_GetModState() & KMOD_GUI) != 0;
-      miniacidEvent.x = scaleMouse(e.motion.x);
-      miniacidEvent.y = scaleMouse(e.motion.y);
-      miniacidEvent.dx = scaleMouse(e.motion.xrel);
-      miniacidEvent.dy = scaleMouse(e.motion.yrel);
+      UIEvent grooveputerEvent{};
+      grooveputerEvent.event_type = e.motion.state != 0 ? GROOVEPUTER_MOUSE_DRAG : GROOVEPUTER_MOUSE_MOVE;
+      grooveputerEvent.alt = (SDL_GetModState() & KMOD_ALT) != 0;
+      grooveputerEvent.ctrl = (SDL_GetModState() & KMOD_CTRL) != 0;
+      grooveputerEvent.shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
+      grooveputerEvent.meta = (SDL_GetModState() & KMOD_GUI) != 0;
+      grooveputerEvent.x = scaleMouse(e.motion.x);
+      grooveputerEvent.y = scaleMouse(e.motion.y);
+      grooveputerEvent.dx = scaleMouse(e.motion.xrel);
+      grooveputerEvent.dy = scaleMouse(e.motion.yrel);
       if ((e.motion.state & SDL_BUTTON_LMASK) != 0) {
-        miniacidEvent.button = MOUSE_BUTTON_LEFT;
+        grooveputerEvent.button = MOUSE_BUTTON_LEFT;
       } else if ((e.motion.state & SDL_BUTTON_RMASK) != 0) {
-        miniacidEvent.button = MOUSE_BUTTON_RIGHT;
+        grooveputerEvent.button = MOUSE_BUTTON_RIGHT;
       } else if ((e.motion.state & SDL_BUTTON_MMASK) != 0) {
-        miniacidEvent.button = MOUSE_BUTTON_MIDDLE;
+        grooveputerEvent.button = MOUSE_BUTTON_MIDDLE;
       }
-      if (s.ui) s.ui->handleEvent(miniacidEvent);
+      if (s.ui) s.ui->handleEvent(grooveputerEvent);
     } else if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) {
-      UIEvent miniacidEvent{};
-      miniacidEvent.event_type = e.type == SDL_MOUSEBUTTONDOWN ? MINIACID_MOUSE_DOWN : MINIACID_MOUSE_UP;
-      miniacidEvent.alt = (SDL_GetModState() & KMOD_ALT) != 0;
-      miniacidEvent.ctrl = (SDL_GetModState() & KMOD_CTRL) != 0;
-      miniacidEvent.shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
-      miniacidEvent.meta = (SDL_GetModState() & KMOD_GUI) != 0;
-      miniacidEvent.x = scaleMouse(e.button.x);
-      miniacidEvent.y = scaleMouse(e.button.y);
+      UIEvent grooveputerEvent{};
+      grooveputerEvent.event_type = e.type == SDL_MOUSEBUTTONDOWN ? GROOVEPUTER_MOUSE_DOWN : GROOVEPUTER_MOUSE_UP;
+      grooveputerEvent.alt = (SDL_GetModState() & KMOD_ALT) != 0;
+      grooveputerEvent.ctrl = (SDL_GetModState() & KMOD_CTRL) != 0;
+      grooveputerEvent.shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
+      grooveputerEvent.meta = (SDL_GetModState() & KMOD_GUI) != 0;
+      grooveputerEvent.x = scaleMouse(e.button.x);
+      grooveputerEvent.y = scaleMouse(e.button.y);
       switch (e.button.button) {
         case SDL_BUTTON_LEFT:
-          miniacidEvent.button = MOUSE_BUTTON_LEFT;
+          grooveputerEvent.button = MOUSE_BUTTON_LEFT;
           break;
         case SDL_BUTTON_MIDDLE:
-          miniacidEvent.button = MOUSE_BUTTON_MIDDLE;
+          grooveputerEvent.button = MOUSE_BUTTON_MIDDLE;
           break;
         case SDL_BUTTON_RIGHT:
-          miniacidEvent.button = MOUSE_BUTTON_RIGHT;
+          grooveputerEvent.button = MOUSE_BUTTON_RIGHT;
           break;
         default:
-          miniacidEvent.button = MOUSE_BUTTON_NONE;
+          grooveputerEvent.button = MOUSE_BUTTON_NONE;
           break;
       }
-      if (s.ui) s.ui->handleEvent(miniacidEvent);
+      if (s.ui) s.ui->handleEvent(grooveputerEvent);
     } else if (e.type == SDL_MOUSEWHEEL) {
-      UIEvent miniacidEvent{};
-      miniacidEvent.event_type = MINIACID_MOUSE_SCROLL;
-      miniacidEvent.alt = (SDL_GetModState() & KMOD_ALT) != 0;
-      miniacidEvent.ctrl = (SDL_GetModState() & KMOD_CTRL) != 0;
-      miniacidEvent.shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
-      miniacidEvent.meta = (SDL_GetModState() & KMOD_GUI) != 0;
-      SDL_GetMouseState(&miniacidEvent.x, &miniacidEvent.y);
-      miniacidEvent.x = scaleMouse(miniacidEvent.x);
-      miniacidEvent.y = scaleMouse(miniacidEvent.y);
-      miniacidEvent.wheel_dx = e.wheel.x;
-      miniacidEvent.wheel_dy = e.wheel.y;
+      UIEvent grooveputerEvent{};
+      grooveputerEvent.event_type = GROOVEPUTER_MOUSE_SCROLL;
+      grooveputerEvent.alt = (SDL_GetModState() & KMOD_ALT) != 0;
+      grooveputerEvent.ctrl = (SDL_GetModState() & KMOD_CTRL) != 0;
+      grooveputerEvent.shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
+      grooveputerEvent.meta = (SDL_GetModState() & KMOD_GUI) != 0;
+      SDL_GetMouseState(&grooveputerEvent.x, &grooveputerEvent.y);
+      grooveputerEvent.x = scaleMouse(grooveputerEvent.x);
+      grooveputerEvent.y = scaleMouse(grooveputerEvent.y);
+      grooveputerEvent.wheel_dx = e.wheel.x;
+      grooveputerEvent.wheel_dy = e.wheel.y;
       if (e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {
-        miniacidEvent.wheel_dx = -miniacidEvent.wheel_dx;
-        miniacidEvent.wheel_dy = -miniacidEvent.wheel_dy;
+        grooveputerEvent.wheel_dx = -grooveputerEvent.wheel_dx;
+        grooveputerEvent.wheel_dy = -grooveputerEvent.wheel_dy;
       }
-      if (s.ui) s.ui->handleEvent(miniacidEvent);
+      if (s.ui) s.ui->handleEvent(grooveputerEvent);
     } else if (e.type == SDL_KEYDOWN) {
       if (s.ui) s.ui->dismissSplash();
       SDL_Scancode sc = e.key.keysym.scancode;
-      UIEvent miniacidEvent{};
-      miniacidEvent.event_type = MINIACID_KEY_DOWN;
-      miniacidEvent.alt = (e.key.keysym.mod & KMOD_ALT) != 0;
-      miniacidEvent.ctrl = (e.key.keysym.mod & KMOD_CTRL) != 0;
-      miniacidEvent.shift = (e.key.keysym.mod & KMOD_SHIFT) != 0;
-      miniacidEvent.meta = (e.key.keysym.mod & KMOD_GUI) != 0;
+      UIEvent grooveputerEvent{};
+      grooveputerEvent.event_type = GROOVEPUTER_KEY_DOWN;
+      grooveputerEvent.alt = (e.key.keysym.mod & KMOD_ALT) != 0;
+      grooveputerEvent.ctrl = (e.key.keysym.mod & KMOD_CTRL) != 0;
+      grooveputerEvent.shift = (e.key.keysym.mod & KMOD_SHIFT) != 0;
+      grooveputerEvent.meta = (e.key.keysym.mod & KMOD_GUI) != 0;
       switch(sc) {
         case SDL_SCANCODE_DOWN:
-          miniacidEvent.scancode = MINIACID_DOWN;
+          grooveputerEvent.scancode = GROOVEPUTER_DOWN;
           break;
         case SDL_SCANCODE_UP:
-          miniacidEvent.scancode = MINIACID_UP;
+          grooveputerEvent.scancode = GROOVEPUTER_UP;
           break;
         case SDL_SCANCODE_LEFT:
-          miniacidEvent.scancode = MINIACID_LEFT;
+          grooveputerEvent.scancode = GROOVEPUTER_LEFT;
           break;
         case SDL_SCANCODE_RIGHT:
-          miniacidEvent.scancode = MINIACID_RIGHT;
+          grooveputerEvent.scancode = GROOVEPUTER_RIGHT;
           break;
         case SDL_SCANCODE_ESCAPE:
-          miniacidEvent.scancode = MINIACID_ESCAPE;
+          grooveputerEvent.scancode = GROOVEPUTER_ESCAPE;
           break;
         default:
           break;
       }
       SDL_Keycode keycode = e.key.keysym.sym;
       if (keycode == SDLK_RETURN || keycode == SDLK_KP_ENTER) {
-        miniacidEvent.key = '\n';
+        grooveputerEvent.key = '\n';
       } else if (keycode == SDLK_TAB) {
-        miniacidEvent.key = '\t';
+        grooveputerEvent.key = '\t';
       } else if (keycode == SDLK_BACKSPACE) {
-        miniacidEvent.key = '\b';
+        grooveputerEvent.key = '\b';
       } else if (keycode >= 32 && keycode < 127) {
-        miniacidEvent.key = static_cast<char>(keycode);
+        grooveputerEvent.key = static_cast<char>(keycode);
       }
 
-      bool handledByUI = s.ui ? s.ui->handleEvent(miniacidEvent) : false;
+      bool handledByUI = s.ui ? s.ui->handleEvent(grooveputerEvent) : false;
       if (handledByUI) continue;
 
       if (sc == SDL_SCANCODE_ESCAPE) {
@@ -332,7 +332,7 @@ int main(int argc, char **argv) {
     state.card = new CardputerDisplay();
     state.gfx = state.card;
   } else {
-    state.sdl = new SDLDisplay(winw, winh, "MiniAcid");
+    state.sdl = new SDLDisplay(winw, winh, "GroovePuter");
     state.gfx = state.sdl;
   }
 
@@ -369,7 +369,7 @@ int main(int argc, char **argv) {
 
   SDL_PauseAudioDevice(state.audio.device, 0); // start playback
 
-  state.ui = new MiniAcidDisplay(*state.gfx, state.audio.synth);
+  state.ui = new GroovePuterDisplay(*state.gfx, state.audio.synth);
   AudioGuard guard;
   guard.lock = [](void* ctx) { SDL_LockAudioDevice((SDL_AudioDeviceID)(uintptr_t)ctx); };
   guard.unlock = [](void* ctx) { SDL_UnlockAudioDevice((SDL_AudioDeviceID)(uintptr_t)ctx); };

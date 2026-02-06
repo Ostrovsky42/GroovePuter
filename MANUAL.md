@@ -1,4 +1,4 @@
-# MiniAcid User Manual
+# GroovePuter User Manual
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -21,7 +21,7 @@
 
 ## Introduction
 
-**MiniAcid** is a portable acid groovebox for the M5Stack Cardputer and web. It combines two squelchy TB-303 style bass synthesizers with a punchy TR-808 inspired drum machine, giving you a complete rhythm production tool in your pocket.
+**GroovePuter** is a portable acid groovebox for the M5Stack Cardputer and web. It combines two squelchy TB-303 style bass synthesizers with a punchy TR-808 inspired drum machine, giving you a complete rhythm production tool in your pocket.
 
 ### Key Features
 - **Two TB-303 voices** with full filter, envelope, and effects controls
@@ -39,7 +39,7 @@
 ## Getting Started
 
 ### Quick Start
-1. Power on your M5Stack Cardputer/open MiniAcid in your web browser
+1. Power on your M5Stack Cardputer/open GroovePuter in your web browser
 2. Press **SPACE** to start playback
 3. Use **`[`** and **`]`** to navigate between pages
 4. Use **'ESC'** to open the help page for keyboard shortcuts on each page
@@ -52,11 +52,11 @@
 
 ### Web
 
-Go to https://miniacid.mrbook.org
+Go to https://grooveputer.mrbook.org
 
 ### Cardputer
 
-1. Search for "MiniAcid" in Launcher or M5Burner
+1. Search for "GroovePuter" in Launcher or M5Burner
 2. Install and run
 
 
@@ -66,7 +66,7 @@ Go to https://miniacid.mrbook.org
 
 ### Screen Layout
 
-The MiniAcid interface consists of several sections:
+The GroovePuter interface consists of several sections:
 
 ```
 ┌─────────────────────────────────────┐
@@ -96,7 +96,7 @@ The MiniAcid interface consists of several sections:
 
 ### Pages
 
-MiniAcid has several pages accessible via `[` and `]` keys:
+GroovePuter has several pages accessible via `[` and `]` keys:
 
 1. **TB-303 Page (A)** - First bass synth parameters and waveform
 2. **Pattern Edit Page (A)** - 303A sequencer editor
@@ -128,7 +128,7 @@ MiniAcid has several pages accessible via `[` and `]` keys:
 
 ### Playback Modes
 
-MiniAcid has two playback modes:
+GroovePuter has two playback modes:
 
 1. **Pattern Mode** (default, blue indicator)
    - Plays the currently selected pattern for each instrument
@@ -146,7 +146,7 @@ You can togle between modes using Ctrl/Cmd + `P` or by pressing `M` on the Song 
 
 ### Overview
 
-MiniAcid features two independent TB-303 style bass synthesizers (303A and 303B). Each has its own parameter page and pattern editor.
+GroovePuter features two independent TB-303 style bass synthesizers (303A and 303B). Each has its own parameter page and pattern editor.
 
 ### Parameters
 
@@ -424,13 +424,13 @@ A **Scene** contains your complete project state:
 
 ### Loading
 
-- On startup, MiniAcid loads the last saved scene from SD card
+- On startup, GroovePuter loads the last saved scene from SD card
 - If no scene exists, loads default patterns
 
 ### File Locations
 
 **Cardputer**:
-- Saves to SD card root. For example: `/miniacid_scene.json`
+- Saves to SD card root. For example: `/grooveputer_scene.json`
 
 **Web Browser**:
 - Uses browser local storage
@@ -442,7 +442,7 @@ A **Scene** contains your complete project state:
 
 ### Overview
 
-MiniAcid can record your sessions to WAV audio files. Recording captures the master output including all voices, live changes and effects.
+GroovePuter can record your sessions to WAV audio files. Recording captures the master output including all voices, live changes and effects.
 
 ### Starting Recording
 
@@ -470,12 +470,12 @@ MiniAcid can record your sessions to WAV audio files. Recording captures the mas
 ### File Locations
 
 **Cardputer**:
-- Saves to SD card: `/miniacid_YYYYMMDD_HHMMSS.wav`
-- Example: `miniacid_20260109_143045.wav`
+- Saves to SD card: `/grooveputer_YYYYMMDD_HHMMSS.wav`
+- Example: `grooveputer_20260109_143045.wav`
 
 **Web Browser**:
 - Automatically downloads when recording stops
-- Filename: `miniacid_recording.wav`
+- Filename: `grooveputer_recording.wav`
 
 ### Tips for Recording
 

@@ -40,7 +40,7 @@ EM_JS(int, wasm_write_scene, (const char* key, const char* data), {
 });
 
 EM_JS(int, wasm_read_current_scene_name, (char* out, int maxLen), {
-  const key = 'miniacid:scene:current';
+  const key = 'grooveputer:scene:current';
   try {
     const data = localStorage.getItem(key);
     if (data === null) return -1;
@@ -55,7 +55,7 @@ EM_JS(int, wasm_read_current_scene_name, (char* out, int maxLen), {
 });
 
 EM_JS(int, wasm_write_current_scene_name, (const char* name), {
-  const key = 'miniacid:scene:current';
+  const key = 'grooveputer:scene:current';
   try {
     const value = UTF8ToString(name);
     localStorage.setItem(key, value);
@@ -67,12 +67,12 @@ EM_JS(int, wasm_write_current_scene_name, (const char* name), {
 
 EM_JS(int, wasm_list_scene_names, (char* out, int maxLen), {
   const names = [];
-  const prefix = 'miniacid:scene';
+  const prefix = 'grooveputer:scene';
   for (let i = 0; i < localStorage.length; ++i) {
     const key = localStorage.key(i);
     if (!key || !key.startsWith(prefix)) continue;
     if (key === prefix) {
-      names.push('miniacid_scene');
+      names.push('grooveputer_scene');
     } else if (key.startsWith(prefix + ':')) {
       if(key.substring(prefix.length + 1) == "current") continue;
       names.push(key.substring(prefix.length + 1));
@@ -143,8 +143,8 @@ bool SceneStorageSdl::persistCurrentSceneName() const {
 }
 
 std::string SceneStorageSdl::sceneKeyForStorage(const std::string& name) const {
-  static constexpr const char* kLegacyKey = "miniacid:scene";
-  static constexpr const char* kKeyPrefix = "miniacid:scene:";
+  static constexpr const char* kLegacyKey = "grooveputer:scene";
+  static constexpr const char* kKeyPrefix = "grooveputer:scene:";
   if (name.empty() || name == kDefaultSceneName) return kLegacyKey;
   return std::string(kKeyPrefix) + name;
 }

@@ -9,8 +9,8 @@
 namespace UIInput {
 
 static inline bool isArrowCode(int v) {
-  return v == MINIACID_UP || v == MINIACID_DOWN ||
-         v == MINIACID_LEFT || v == MINIACID_RIGHT;
+  return v == GROOVEPUTER_UP || v == GROOVEPUTER_DOWN ||
+         v == GROOVEPUTER_LEFT || v == GROOVEPUTER_RIGHT;
 }
 
 // Normalize navigation: check scancode first, then key.
@@ -20,10 +20,10 @@ static inline int navCode(const UIEvent& e) {
   return 0;
 }
 
-static inline bool isUp(const UIEvent& e)    { return navCode(e) == MINIACID_UP; }
-static inline bool isDown(const UIEvent& e)  { return navCode(e) == MINIACID_DOWN; }
-static inline bool isLeft(const UIEvent& e)  { return navCode(e) == MINIACID_LEFT; }
-static inline bool isRight(const UIEvent& e) { return navCode(e) == MINIACID_RIGHT; }
+static inline bool isUp(const UIEvent& e)    { return navCode(e) == GROOVEPUTER_UP; }
+static inline bool isDown(const UIEvent& e)  { return navCode(e) == GROOVEPUTER_DOWN; }
+static inline bool isLeft(const UIEvent& e)  { return navCode(e) == GROOVEPUTER_LEFT; }
+static inline bool isRight(const UIEvent& e) { return navCode(e) == GROOVEPUTER_RIGHT; }
 
 static inline bool isConfirm(const UIEvent& e) {
   return e.key == '\n' || e.key == '\r';

@@ -19,8 +19,8 @@ public:
   bool setCurrentSceneName(const std::string& name) override;
 
 private:
-  static constexpr const char* kDefaultSceneName = "miniacid_scene";
-  static constexpr const char* kSceneNamePath = "/scenes/miniacid_scene_name.txt";
+  static constexpr const char* kDefaultSceneName = "grooveputer_scene";
+  static constexpr const char* kSceneNamePath = "/scenes/grooveputer_scene_name.txt";
   static constexpr const char* kScenesDirectory = "/scenes";
   static constexpr const char* kSceneExtension = ".json";
   static constexpr const char* kAutoSceneExtension = ".auto.json";

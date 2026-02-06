@@ -26,7 +26,21 @@ using namespace RetroTheme;
 using namespace RetroWidgets;
 #endif
 
-PatternEditPage::PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index)
+namespace {
+inline IGfxColor voiceColor(int voiceIndex) {
+  return (voiceIndex == 0) ? IGfxColor(0x33C8FF) : IGfxColor(0xFF4FCB);
+}
+
+inline IGfxColor retroVoiceColor(int voiceIndex) {
+  return (voiceIndex == 0) ? IGfxColor(NEON_CYAN) : IGfxColor(NEON_MAGENTA);
+}
+
+inline IGfxColor amberVoiceColor(int voiceIndex) {
+  return (voiceIndex == 0) ? IGfxColor(AmberTheme::NEON_CYAN) : IGfxColor(AmberTheme::NEON_MAGENTA);
+}
+} // namespace
+
+PatternEditPage::PatternEditPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard, int voice_index)
   : gfx_(gfx),
     mini_acid_(mini_acid),
     audio_guard_(audio_guard),
@@ -241,7 +255,7 @@ void PatternEditPage::setContext(int context) {
 bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   // CRITICAL: Block numeric quick-select BEFORE forwarding to components
   // Otherwise BankSelectionBar/PatternSelectionBar intercept digits before we can block them
-  if (ui_event.event_type == MINIACID_KEY_DOWN) {
+  if (ui_event.event_type == GROOVEPUTER_KEY_DOWN) {
     if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta &&
         ui_event.key >= '0' && ui_event.key <= '9') {
       return true; // consume, do nothing
@@ -250,9 +264,9 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
 
   if (pattern_bar_ && pattern_bar_->handleEvent(ui_event)) return true;
   if (bank_bar_ && bank_bar_->handleEvent(ui_event)) return true;
-  if (ui_event.event_type == MINIACID_APPLICATION_EVENT) {
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT) {
     switch (ui_event.app_event_type) {
-      case MINIACID_APP_EVENT_COPY: {
+      case GROOVEPUTER_APP_EVENT_COPY: {
         int patIdx = mini_acid_.current303PatternIndex(voice_index_);
         const SynthPattern& source = mini_acid_.sceneManager().getSynthPattern(voice_index_, patIdx);
         for (int i = 0; i < SEQ_STEPS; ++i) {
@@ -261,7 +275,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
         g_pattern_clipboard.has_pattern = true;
         return true;
       }
-      case MINIACID_APP_EVENT_PASTE: {
+      case GROOVEPUTER_APP_EVENT_PASTE: {
         if (!g_pattern_clipboard.has_pattern) return false;
         int current_notes[SEQ_STEPS];
         bool current_accent[SEQ_STEPS];
@@ -284,7 +298,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
                 mini_acid_.clear303StepNote(voice_index_, i);
               }
             } else if (current_note < 0) {
-              int delta = target_note - MiniAcid::kMin303Note;
+              int delta = target_note - GroovePuter::kMin303Note;
               if (delta == 0) {
                 mini_acid_.adjust303StepNote(voice_index_, i, 1);
                 mini_acid_.adjust303StepNote(voice_index_, i, -1);
@@ -309,16 +323,16 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
             // Direct access via friend or adding setter? 
             // Better to use a setter or just brute force setting via pattern reference if possible?
             // SceneManager returns reference via editCurrentSynthPattern?
-            // MiniAcid does not expose editSynthPattern directly.
+            // GroovePuter does not expose editSynthPattern directly.
             // But we can use the cycle/adjust methods or just add a setStep method?
-            // Actually, we can just use the scene manager via MiniAcid if we want to bypass helper.
+            // Actually, we can just use the scene manager via GroovePuter if we want to bypass helper.
             // But for now, let's assume we need to update FX manually or add a setter.
             // Let's add set303StepFx(idx, step, fx, param) later? 
-            // Or since we are in PatternEditPage which includes Scenes.h and MiniAcid has SceneManager accessor:
+            // Or since we are in PatternEditPage which includes Scenes.h and GroovePuter has SceneManager accessor:
             // mini_acid_.sceneManager().editCurrentSynthPattern(clamp303Voice(voice_index_)).steps[i] = src.steps[i];
             // But we need to be careful about thread safety (AudioGuard is used here).
             // Yes, we are inside withAudioGuard.
-            // But we need 'editCurrentSynthPattern' which is private in MiniAcid?
+            // But we need 'editCurrentSynthPattern' which is private in GroovePuter?
             // No, sceneManager() returns SceneManager&. SceneManager has editCurrentSynthPattern?
             // Let's check SceneManager.
             // For now, simplest is to just set note/acc/slide and leave FX until we have a setter?
@@ -336,7 +350,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
         return false;
     }
   }
-  if (ui_event.event_type != MINIACID_KEY_DOWN) return false;
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
   // Let parent handle global navigation keys; do not steal them here.
   if (UIInput::isGlobalNav(ui_event)) return false;
@@ -347,16 +361,16 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   // Keep vim-keys only as silent fallback (not in footer hints).
   int nav = UIInput::navCode(ui_event);
   switch (nav) {
-    case MINIACID_LEFT:
+    case GROOVEPUTER_LEFT:
       movePatternCursor(-1);
       handled = true;
       break;
-    case MINIACID_RIGHT:
+    case GROOVEPUTER_RIGHT:
       movePatternCursor(1);
       handled = true;
       break;
       break;
-    case MINIACID_UP:
+    case GROOVEPUTER_UP:
       if (ui_event.alt) {
            ensureStepFocus();
            int step = activePatternStep();
@@ -367,7 +381,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
           handled = true;
       }
       break;
-    case MINIACID_DOWN:
+    case GROOVEPUTER_DOWN:
       if (ui_event.alt) {
            ensureStepFocus();
            int step = activePatternStep();
@@ -515,9 +529,9 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     }
     case 'c': {
       if (ui_event.ctrl) {
-        ApplicationEventType type = MINIACID_APP_EVENT_COPY;
+        ApplicationEventType type = GROOVEPUTER_APP_EVENT_COPY;
         UIEvent appEvent = ui_event;
-        appEvent.event_type = MINIACID_APPLICATION_EVENT;
+        appEvent.event_type = GROOVEPUTER_APPLICATION_EVENT;
         appEvent.app_event_type = type;
         handleEvent(appEvent);
         return true;
@@ -526,9 +540,9 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     }
     case 'v': {
       if (ui_event.ctrl) {
-        ApplicationEventType type = MINIACID_APP_EVENT_PASTE;
+        ApplicationEventType type = GROOVEPUTER_APP_EVENT_PASTE;
         UIEvent appEvent = ui_event;
-        appEvent.event_type = MINIACID_APPLICATION_EVENT;
+        appEvent.event_type = GROOVEPUTER_APPLICATION_EVENT;
         appEvent.app_event_type = type;
         handleEvent(appEvent);
         return true;
@@ -569,7 +583,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
      // if (key == '\b') { ... clear note ... }
      
      // Let's keep Backspace for clearing note, but allow ESC to fall through for navigation.
-     if (key == 0x1B) return false; // Let MiniAcidDisplay handle "Back"
+     if (key == 0x1B) return false; // Let GroovePuterDisplay handle "Back"
   }
 
   if (key == '\b' || key == 0x7F) { // Backspace / Del = Clear Step (REST)
@@ -692,7 +706,7 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
     gfx.drawRect(slide_x, indicator_y, indicator_w, indicator_h, COLOR_WHITE);
 
     int note_box_y = indicator_y + indicator_h + indicator_gap;
-    IGfxColor noteColor = voice_index_ == 0 ? COLOR_SYNTH_A : COLOR_SYNTH_B;
+    IGfxColor noteColor = voiceColor(voice_index_);
     IGfxColor fill = notes[i] >= 0 ? noteColor : COLOR_GRAY;
     gfx.fillRect(cell_x, note_box_y, cell_size, cell_size, fill);
     gfx.drawRect(cell_x, note_box_y, cell_size, cell_size, COLOR_WHITE);
@@ -765,12 +779,13 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     bool cur = (i == bankCursor);
     bool focused = bankFocus && cur;
     
-    IGfxColor bgColor = sel ? IGfxColor(NEON_CYAN) : IGfxColor(BG_PANEL);
+    IGfxColor bankColor = retroVoiceColor(voice_index_);
+    IGfxColor bgColor = sel ? bankColor : IGfxColor(BG_PANEL);
     gfx.fillRect(slotX, contentY + 1, 16, 10, bgColor);
     
     // Glow border only when focused
     if (focused) {
-      drawGlowBorder(gfx, slotX, contentY + 1, 16, 10, IGfxColor(NEON_CYAN), 1);
+      drawGlowBorder(gfx, slotX, contentY + 1, 16, 10, bankColor, 1);
     } else if (cur) {
       gfx.drawRect(slotX, contentY + 1, 16, 10, IGfxColor(GRID_MEDIUM));
     }
@@ -788,7 +803,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     bool cur = (i == patternCursor);
     bool focused = patternFocus && cur;
     
-    IGfxColor selColor = voice_index_ == 0 ? COLOR_SYNTH_A : COLOR_SYNTH_B;
+    IGfxColor selColor = retroVoiceColor(voice_index_);
     IGfxColor bgColor = sel ? selColor : IGfxColor(BG_PANEL);
     gfx.fillRect(slotX, contentY + 1, 9, 10, bgColor);
     
@@ -843,7 +858,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     // Border: glow on cursor, simple otherwise
     if (isCursor) {
       // Use Voice Color for cursor to indicate which voice is being edited
-      IGfxColor cursorColor = (voice_index_ == 0) ? COLOR_SYNTH_A : COLOR_SYNTH_B;
+      IGfxColor cursorColor = retroVoiceColor(voice_index_);
       drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, cursorColor, 1);
     } else {
       gfx.drawRect(cellX, cellRowY, cellW, cellH, IGfxColor(GRID_MEDIUM));
@@ -851,7 +866,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
 
     // Playing indicator: voice color glow (prominence)
     if (isCurrent) {
-      IGfxColor playColor = (voice_index_ == 0) ? COLOR_SYNTH_A : COLOR_SYNTH_B;
+      IGfxColor playColor = retroVoiceColor(voice_index_);
       drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, playColor, 2);
     }
 
@@ -862,7 +877,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
       
       // "Teal & Orange" Harmony: Cleaner, distinct, professional
       // Voice Color = Normal, Orange = Accent
-      IGfxColor baseColor = (voice_index_ == 0) ? COLOR_SYNTH_A : COLOR_SYNTH_B;
+      IGfxColor baseColor = retroVoiceColor(voice_index_);
       IGfxColor noteColor = acc ? IGfxColor(NEON_ORANGE) : baseColor;
       
       int tw = textWidth(gfx, note_label);
@@ -966,11 +981,12 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
     bool cur = (i == bankCursor);
     bool focused = bankFocus && cur;
     
-    IGfxColor bgColor = sel ? IGfxColor(AmberTheme::NEON_CYAN) : IGfxColor(AmberTheme::BG_PANEL);
+    IGfxColor bankColor = amberVoiceColor(voice_index_);
+    IGfxColor bgColor = sel ? bankColor : IGfxColor(AmberTheme::BG_PANEL);
     gfx.fillRect(slotX, contentY + 1, 16, 10, bgColor);
     
     if (focused) {
-      AmberWidgets::drawGlowBorder(gfx, slotX, contentY + 1, 16, 10, IGfxColor(AmberTheme::NEON_CYAN), 1);
+      AmberWidgets::drawGlowBorder(gfx, slotX, contentY + 1, 16, 10, bankColor, 1);
     } else if (cur) {
       gfx.drawRect(slotX, contentY + 1, 16, 10, IGfxColor(AmberTheme::GRID_MEDIUM));
     }
@@ -988,7 +1004,7 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
     bool cur = (i == patternCursor);
     bool focused = patternFocus && cur;
     
-    IGfxColor selColor = voice_index_ == 0 ? COLOR_SYNTH_A : COLOR_SYNTH_B;
+    IGfxColor selColor = amberVoiceColor(voice_index_);
     IGfxColor bgColor = sel ? selColor : IGfxColor(AmberTheme::BG_PANEL);
     gfx.fillRect(slotX, contentY + 1, 9, 10, bgColor);
     
@@ -1048,7 +1064,7 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
       char note_label[8];
       formatNoteName(note, note_label, sizeof(note_label));
       
-      IGfxColor noteColor = acc ? IGfxColor(AmberTheme::NEON_ORANGE) : IGfxColor(AmberTheme::NEON_CYAN);
+      IGfxColor noteColor = acc ? IGfxColor(AmberTheme::NEON_ORANGE) : amberVoiceColor(voice_index_);
       
       int tw = textWidth(gfx, note_label);
       int tx = cellX + (cellW - tw) / 2;

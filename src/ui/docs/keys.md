@@ -1,11 +1,11 @@
 
 Функция	Что проверяет	Ключи/коды
 isArrowCode
-Является ли код стрелкой	MINIACID_UP, MINIACID_DOWN, MINIACID_LEFT, MINIACID_RIGHT
+Является ли код стрелкой	GROOVEPUTER_UP, GROOVEPUTER_DOWN, GROOVEPUTER_LEFT, GROOVEPUTER_RIGHT
 navCode
 Нормализует навигацию (сканкод → key)	Сначала проверяется e.scancode, затем e.key
 isUp / isDown / isLeft / isRight	Проверка направления	
-navCode(e) == MINIACID_…
+navCode(e) == GROOVEPUTER_…
 isConfirm
 Подтверждение (Enter)	e.key == '\n' или e.key == '\r'
 isBack
@@ -15,8 +15,8 @@ isTab
 isGlobalNav
 Глобальная навигация (страницы)	• [ / ] – переключение страниц • h / b / B / ` / Esc / Backspace – глобальные “back/help” • При удержании Ctrl (или Meta) – прямой переход к страницам g, d, e, y, Y, t, m, s, p
 2️⃣ Обработка событий в 
-src/ui/miniacid_display.cpp
-Событие	Действие (при event_type == MINIACID_KEY_DOWN)
+src/ui/grooveputer_display.cpp
+Событие	Действие (при event_type == GROOVEPUTER_KEY_DOWN)
 ]	
 nextPage()
  – перейти к следующей странице
@@ -60,14 +60,14 @@ l / L	Увеличить BPM на 2.5 BPM (setBpm(bpm+2.5))
 Space	Пауза/воспроизведение (аналог BtnA)
 Ctrl + <letter> (обрабатывается в processKeys)	Прямой переход к страницам (см. пункт 2)
 Alt + <letter>	Тоже передаёт букву, но без глобального перехода (используется в UI‑страницах)
-F‑клавиши (F1‑F10)	Преобразуются в event.scancode = MINIACID_Fx – могут быть использованы в отдельных страницах (не видны в текущем коде)
+F‑клавиши (F1‑F10)	Преобразуются в event.scancode = GROOVEPUTER_Fx – могут быть использованы в отдельных страницах (не видны в текущем коде)
 5️⃣ Поведение проекта в текущем виде
 Инициализация – в 
 setup()
  создаются дисплей, движок 
-MiniAcid
+GroovePuter
 , UI‑объект 
-MiniAcidDisplay
+GroovePuterDisplay
 , аудио‑задача (
 audioTask
 ) и привязываются все вспомогательные компоненты (мьюты, аудио‑рекордер, encoder и т.п.).
@@ -75,7 +75,7 @@ audioTask
 loop
 ) постоянно читает клавиатуру Cardputer, переводит HID‑коды в UIEvent и передаёт их UI‑слою.
 UI‑слой (
-MiniAcidDisplay
+GroovePuterDisplay
 ) отвечает за:
 отрисовку текущей страницы, фонового скина, отладочного оверлея и toast‑сообщений;
 навигацию между страницами (круговая навигация [/], прямой переход по Ctrl+<letter>);
@@ -90,7 +90,7 @@ Audio‑task генерирует аудио‑буфер каждый цикл,
 Эти клавиши покрывают весь текущий набор действий, реализованных в 
 ui_input.h
 , 
-miniacid_display.cpp
+grooveputer_display.cpp
  и главном 
 loop()
  проекта. Если нужны детали по конкретным страницам UI (например, какие параметры меняются в PlayPage), дайте знать – могу просмотреть соответствующие файлы.

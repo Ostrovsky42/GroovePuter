@@ -57,7 +57,7 @@ char BankSelectionBarComponent::bankLetter(int index) const {
 }
 
 bool BankSelectionBarComponent::handleEvent(UIEvent& ui_event) {
-  if (ui_event.event_type != MINIACID_MOUSE_DOWN) return false;
+  if (ui_event.event_type != GROOVEPUTER_MOUSE_DOWN) return false;
   if (ui_event.button != MOUSE_BUTTON_LEFT) return false;
   if (!contains(ui_event.x, ui_event.y)) return false;
   if (!last_layout_valid_) return false;

@@ -42,6 +42,32 @@
 - G/T/L видны в header GENRE и SETTINGS.
 - Scene сохраняется и корректно восстанавливается после перезапуска.
 
+**Performance Baseline (Release Gate)**
+- Статус на текущей ветке: средняя CPU обычно в диапазоне ~`25..80%` в зависимости от сцены; краткие пики допустимы, но не должны вызывать лавинообразный рост underrun.
+- `underruns`:
+- Допустимо: редкий рост на тяжёлых переходах/переключениях страниц.
+- Недопустимо: устойчивый рост на каждом окне PERF в спокойном воспроизведении.
+- Память:
+- `freeInt` и `largInt` должны оставаться стабильными по тренду (без непрерывной деградации).
+- Диагностика:
+- Детальный DSP breakdown (`v/d/s/f`) выборочный; нули между окнами не трактовать как “DSP не работает”.
+- Для сравнения использовать тренд по `cpuAudioPctIdeal`, `cpuAudioPeakPct`, `audioUnderruns`.
+
+**10-Min Stress Test (обязательный перед релизом)**
+1. Запустить сцену с 2x303 + drums, проигрывать 10 минут.
+2. Каждые 30-60 сек переключать страницы по кругу (`[ ]`), включая `Genre`, `Feel/Texture`, `TB303 Params`, `Project`.
+3. В середине теста включить/выключить Tape/LoFi/Drive и сменить жанр с `S+P`, затем с `SND`.
+4. Критерий PASS:
+- Нет слышимых постоянных заиканий.
+- `underruns` не растут лавинообразно.
+- Нет падения в “нерабочее” состояние UI/аудио.
+
+**Если снова видим CPU >100%**
+- Шаг 1: проверить, что включён релизный билд с decimated profiling.
+- Шаг 2: сравнить с отключёнными эффектами (Tape/Looper/Drive/LoFi) и зафиксировать вклад.
+- Шаг 3: если перегруз остаётся без FX, приоритетно оптимизировать drums path (retrig density/voice complexity).
+- Шаг 4: если перегруз только с FX, держать auto-throttle FX включённым и дополнительно ограничить wet/feedback на пике.
+
 **Файлы, затронутые в переходе**
 - `src/ui/pages/feel_texture_page.h`
 - `src/ui/pages/feel_texture_page.cpp`
@@ -51,9 +77,9 @@
 - `src/ui/pages/genre_page.cpp`
 - `src/ui/ui_common.h`
 - `src/ui/ui_common.cpp`
-- `src/ui/miniacid_display.cpp`
-- `src/dsp/miniacid_engine.h`
-- `src/dsp/miniacid_engine.cpp`
+- `src/ui/grooveputer_display.cpp`
+- `src/dsp/grooveputer_engine.h`
+- `src/dsp/grooveputer_engine.cpp`
 - `src/dsp/genre_manager.h`
 - `src/dsp/genre_manager.cpp`
 - `src/dsp/pattern_generator.cpp`

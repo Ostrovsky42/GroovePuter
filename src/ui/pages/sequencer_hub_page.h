@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../ui_core.h"
-#include "../../dsp/miniacid_engine.h"
+#include "../../dsp/grooveputer_engine.h"
 #include "../layout_manager.h"
 #include "../ui_widgets.h"
 #include "../components/drum_sequencer_grid.h"
@@ -27,14 +27,14 @@ public:
     enum class Mode { OVERVIEW, DETAIL };
     enum class FocusLane { GRID, PATTERN, BANK };
 
-    SequencerHubPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
+    SequencerHubPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard);
     
     void draw(IGfx& gfx) override;
     bool handleEvent(UIEvent& ui_event) override;
     const std::string& getTitle() const override { return title_; }
 
 private:
-    MiniAcid& mini_acid_;
+    GroovePuter& mini_acid_;
     AudioGuard audio_guard_;
     std::string title_ = "SEQUENCER HUB";
     

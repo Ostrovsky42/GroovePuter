@@ -1,10 +1,10 @@
 #include "drum_sequencer_grid.h"
 
-DrumSequencerGridComponent::DrumSequencerGridComponent(MiniAcid& mini_acid, Callbacks callbacks)
+DrumSequencerGridComponent::DrumSequencerGridComponent(GroovePuter& mini_acid, Callbacks callbacks)
     : mini_acid_(mini_acid), callbacks_(std::move(callbacks)) {}
 
 bool DrumSequencerGridComponent::handleEvent(UIEvent& ui_event) {
-  if (ui_event.event_type != MINIACID_MOUSE_DOWN) return false;
+  if (ui_event.event_type != GROOVEPUTER_MOUSE_DOWN) return false;
   if (ui_event.button != MOUSE_BUTTON_LEFT) return false;
   if (!contains(ui_event.x, ui_event.y)) return false;
 

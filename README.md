@@ -1,8 +1,10 @@
-# MiniAcid
+# GroovePuter
 
-MiniAcid is a tiny acid groovebox for the M5Stack Cardputer. It runs two squelchy TB-303 style voices plus a punchy TR-808 inspired drum section on the Cardputer's built-in keyboard and screen, so you can noodle basslines and beats anywhere.
+**Based on [GroovePuter](https://github.com/urtubia/grooveputer) by urtubia**
 
-> Go play with it: https://miniacid.mrbook.org
+GroovePuter is a tiny acid groovebox for the M5Stack Cardputer. It runs two squelchy TB-303 style voices plus a punchy TR-808 inspired drum section on the Cardputer's built-in keyboard and screen, so you can noodle basslines and beats anywhere.
+
+> Go play with it: https://grooveputer.mrbook.org
 
 ## What it does
 - Two independent 303 voices with filter/env controls and optional tempo-synced delay
@@ -39,6 +41,6 @@ On the M5Stack Cardputer:
 3) Jam, tweak synths, sequence, randomize, and mute on the fly
 
 On the web:
-1) Go to https://miniacid.mrbook.org
+1) Go to https://grooveputer.mrbook.org
 
 For more detailed instructions, see the [Manual](MANUAL.md).

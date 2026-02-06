@@ -47,16 +47,16 @@ void HelpPage::draw(IGfx& gfx) {
 }
 
 bool HelpPage::handleEvent(UIEvent& ui_event) {
-  if (ui_event.event_type != MINIACID_KEY_DOWN) return false;
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
   
   const int scroll_step = 10;
   const Rect& bounds = getBoundaries();
 
   switch (ui_event.scancode) {
-    case MINIACID_UP:
+    case GROOVEPUTER_UP:
       scroll_y_ = std::max(0, scroll_y_ - scroll_step);
       return true;
-    case MINIACID_DOWN:
+    case GROOVEPUTER_DOWN:
       if (total_content_h_ > bounds.h) {
           scroll_y_ = std::min(total_content_h_ - bounds.h, scroll_y_ + scroll_step);
       }

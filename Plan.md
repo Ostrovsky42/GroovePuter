@@ -1,5 +1,5 @@
 Tape v1: "Instrument-first Tape" Implementation Plan
-Transform MiniAcid's existing tape functionality into a performance instrument with 5 macro controls, 4 modes, 6 presets, and 3 performance actions—all with a cassette-aesthetic UI.
+Transform GroovePuter's existing tape functionality into a performance instrument with 5 macro controls, 4 modes, 6 presets, and 3 performance actions—all with a cassette-aesthetic UI.
 
 User Review Required
 IMPORTANT
@@ -180,7 +180,7 @@ Complete redesign for v1 layout:
 
 class TapePage : public IPage {
 public:
-    TapePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard,
+    TapePage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard& audio_guard,
              CassetteSkin* skin = nullptr);
     void draw(IGfx& gfx) override;
     bool handleEvent(UIEvent& ui_event) override;
@@ -203,7 +203,7 @@ private:
     void toggleStutter(bool active);
     void eject();
     IGfx& gfx_;
-    MiniAcid& mini_acid_;
+    GroovePuter& mini_acid_;
     AudioGuard& audio_guard_;
     CassetteSkin* skin_;
     
@@ -272,13 +272,13 @@ inline const char* tapePresetName(TapePreset preset) {
 Engine Integration
 [MODIFY] 
 
-miniacid_engine.cpp
+grooveputer_engine.cpp
 Update 
 
 generateAudioBuffer
  to use TapeState:
 
-void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
+void GroovePuter::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     // ... existing synth/drum rendering ...
 +   // Apply current tape macro to TapeFX
 +   tapeFX.applyMacro(sceneManager_.currentScene().tape.macro);
@@ -341,7 +341,7 @@ Desktop SDL build:
 cd platform_sdl && make clean && make -j4
 Run with preset cycling test:
 
-./miniacid_sdl
+./grooveputer_sdl
 # Navigate to TAPE page
 # Press P to cycle presets, verify audio changes
 Cardputer build:

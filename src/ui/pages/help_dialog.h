@@ -65,22 +65,22 @@ class MultiPageHelpDialog : public Frame, public EventHandler {
     }
     
     bool handleEvent(UIEvent& ui_event) override {
-        if (ui_event.event_type != MINIACID_KEY_DOWN) return false;
+        if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
         int totalFrames = provider_.getHelpFrameCount();
         if (totalFrames <= 0) return false;
 
         int next = current_frame_index_;
         switch (ui_event.scancode) {
-            case MINIACID_LEFT:
-            case MINIACID_UP:
+            case GROOVEPUTER_LEFT:
+            case GROOVEPUTER_UP:
                 next -= 1;
                 break;
-            case MINIACID_RIGHT:
-            case MINIACID_DOWN:
+            case GROOVEPUTER_RIGHT:
+            case GROOVEPUTER_DOWN:
                 next += 1;
                 break;
             
-            case MINIACID_ESCAPE:
+            case GROOVEPUTER_ESCAPE:
                 if (exit_requested_callback_) {
                     exit_requested_callback_();
                     return true;

@@ -50,7 +50,7 @@ void formatFeelDelta(const FeelSettings& before, const FeelSettings& after, char
 }
 }
 
-FeelTexturePage::FeelTexturePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
+FeelTexturePage::FeelTexturePage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
     (void)gfx;
 }
@@ -160,6 +160,7 @@ void FeelTexturePage::draw(IGfx& gfx) {
     syncFromScene();
 
     UI::drawStandardHeader(gfx, mini_acid_, title_.c_str());
+    UI::drawFeelHeaderHud(gfx, mini_acid_, 166, 9);
     LayoutManager::clearContent(gfx);
 
     const int col1X = Layout::COL_1;
@@ -258,10 +259,10 @@ int FeelTexturePage::maxRowForFocus(FocusArea focus) const {
 }
 
 bool FeelTexturePage::handleEvent(UIEvent& ui_event) {
-    if (ui_event.event_type != MINIACID_KEY_DOWN) return false;
+    if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
     int nav = UIInput::navCode(ui_event);
-    if (nav == MINIACID_LEFT) {
+    if (nav == GROOVEPUTER_LEFT) {
         if (focus_ == FocusArea::PRESETS) {
             preset_index_ = (preset_index_ + 3) % 4;
             return true;
@@ -293,7 +294,7 @@ bool FeelTexturePage::handleEvent(UIEvent& ui_event) {
             return true;
         }
     }
-    if (nav == MINIACID_RIGHT) {
+    if (nav == GROOVEPUTER_RIGHT) {
         if (focus_ == FocusArea::PRESETS) {
             preset_index_ = (preset_index_ + 1) % 4;
             return true;
@@ -325,7 +326,7 @@ bool FeelTexturePage::handleEvent(UIEvent& ui_event) {
             return true;
         }
     }
-    if (nav == MINIACID_UP) {
+    if (nav == GROOVEPUTER_UP) {
         if (focus_ == FocusArea::FEEL) {
             if (feel_row_ > 0) feel_row_--;
             return true;
@@ -336,7 +337,7 @@ bool FeelTexturePage::handleEvent(UIEvent& ui_event) {
         }
         return false;
     }
-    if (nav == MINIACID_DOWN) {
+    if (nav == GROOVEPUTER_DOWN) {
         if (focus_ == FocusArea::FEEL) {
             if (feel_row_ < maxRowForFocus(focus_)) feel_row_++;
             return true;

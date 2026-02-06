@@ -86,10 +86,10 @@ public:
     bool handleEvent(UIEvent& event) {
         if (!visible_) return false;
         
-        if (event.event_type != MINIACID_KEY_DOWN) return false;
+        if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
         
         // Close on Escape or Ctrl+H
-        if (event.scancode == MINIACID_ESCAPE) {
+        if (event.scancode == GROOVEPUTER_ESCAPE) {
             close();
             return true;
         }
@@ -103,20 +103,20 @@ public:
         int scroll_step = 1;
         
         switch (event.scancode) {
-            case MINIACID_UP:
+            case GROOVEPUTER_UP:
                 scroll_line_ -= scroll_step;
                 if (scroll_line_ < 0) scroll_line_ = 0;
                 return true;
                 
-            case MINIACID_DOWN:
+            case GROOVEPUTER_DOWN:
                 scroll_line_ += scroll_step;
                 return true;
                 
-            case MINIACID_LEFT:
+            case GROOVEPUTER_LEFT:
                 scroll_line_ = 0;  // Go to top
                 return true;
                 
-            case MINIACID_RIGHT:
+            case GROOVEPUTER_RIGHT:
                 scroll_line_ = HelpContent::getTotalLines(page_index_);  // Go to bottom
                 return true;
                 
