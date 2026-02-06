@@ -183,11 +183,6 @@ void CardputerDisplay::drawRect(int x, int y, int w, int h, IGfxColor color) {
 void CardputerDisplay::drawCircle(int x, int y, int r, IGfxColor color) {
   if (r < 0) return;
   uint16_t c = color.toCardputerColor();
-#if defined(ARDUINO) && __has_include(<M5Cardputer.h>)
-  M5Cardputer.Display.drawCircle(x, y, r, c);
-#elif defined(ARDUINO) && __has_include(<M5Stack.h>) && defined(M5_LCD_AVAILABLE)
-  M5.Lcd.drawCircle(x, y, r, c);
-#endif
   if (frame_.empty()) return;
 
   auto plot = [&](int px, int py) {
@@ -423,12 +418,6 @@ void CardputerDisplay::flush() {
 
 void CardputerDisplay::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, IGfxColor color) {
   uint16_t c = color.toCardputerColor();
-#if defined(ARDUINO) && __has_include(<M5Cardputer.h>)
-  M5Cardputer.Display.drawLine(x0, y0, x1, y1, c);
-#elif defined(ARDUINO) && __has_include(<M5Stack.h>) && defined(M5_LCD_AVAILABLE)
-  M5.Lcd.drawLine(x0, y0, x1, y1, c);
-#endif
-
   if (frame_.empty()) return;
   int dx = abs((int)(x1 - x0));
   int sx = x0 < x1 ? 1 : -1;

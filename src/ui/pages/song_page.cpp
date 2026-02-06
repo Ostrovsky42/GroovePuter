@@ -592,7 +592,8 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
   }
 
   bool handled = false;
-  bool extend_selection = ui_event.shift;
+  // Cardputer keyboard may not have a practical Shift key, allow Ctrl as selection modifier too.
+  bool extend_selection = ui_event.shift || ui_event.ctrl;
   switch (ui_event.scancode) {
     case MINIACID_LEFT:
       moveCursorHorizontal(-1, extend_selection);

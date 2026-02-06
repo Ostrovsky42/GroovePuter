@@ -52,7 +52,16 @@ void audioTask(void *param) {
     // Generate audio
     uint32_t now = micros();
     uint32_t start = now;
-    if (g_miniAcid) {
+    static uint32_t warmupBlocks = 256; // ~740ms at 44.1kHz/128 for hardware stability
+    if (warmupBlocks > 0) {
+      std::fill(g_audioBuffer, g_audioBuffer + kBlockFrames, 0);
+      warmupBlocks--;
+      if (warmupBlocks == 0) {
+        // Soft-unmute: restore volume once stream is stable
+        M5Cardputer.Speaker.setVolume(160);
+        Serial.println("AudioTask: Warmup complete, codec unmuted");
+      }
+    } else if (g_miniAcid) {
       g_miniAcid->generateAudioBuffer(g_audioBuffer, kBlockFrames);
     } else {
       std::fill(g_audioBuffer, g_audioBuffer + kBlockFrames, 0);
@@ -77,6 +86,7 @@ void audioTask(void *param) {
         stats.audioUnderruns = (dsp_time > ideal_period_us) ? stats.audioUnderruns + 1 : stats.audioUnderruns;
         stats.cpuAudioPctIdeal = (float)dsp_time * 100.0f / (float)ideal_period_us;
         stats.cpuAudioPctActual = (float)dsp_time * 100.0f / (float)actual_period_us;
+        stats.dspTimeUs = dsp_time;
         stats.lastCallbackMicros = now;
         
         // End snapshot write (seq becomes even)
@@ -84,8 +94,7 @@ void audioTask(void *param) {
         
         // Log underruns
         if (dsp_time > ideal_period_us) {
-            Serial.printf("[UNDERRUN] dsp:%uus ideal:%uus actual:%uus total:%u\n", 
-                         dsp_time, ideal_period_us, actual_period_us, (unsigned)stats.audioUnderruns);
+           // Serial.printf("[UNDERRUN] dsp:%uus ideal:%uus actual:%uus total:%u\n", dsp_time, ideal_period_us, actual_period_us, (unsigned)stats.audioUnderruns);
         }
     }
 
@@ -129,6 +138,11 @@ static void logHeapCaps(const char* tag) {
 }
 
 void setup() {
+  // IMMEDIATE HARDWARE LOCKDOWN to muffle startup pop
+  // G21 = PA_EN (amplifier enable), G42 = I2S_DOUT
+  pinMode(21, OUTPUT); digitalWrite(21, LOW);
+  pinMode(42, OUTPUT); digitalWrite(42, LOW);
+  
   Serial.begin(115200);
   // При желании сразу включить
   AudioDiagnostics::instance().enable(true);
@@ -139,8 +153,9 @@ void setup() {
   
   // 1. Let M5Unified initialize the ES8311 codec over I2C.
   // This wakes up the codec, sets output volumes, etc.
+  M5Cardputer.Speaker.setVolume(0); // Mute BEFORE initialization
   M5Cardputer.Speaker.begin();
-  M5Cardputer.Speaker.setVolume(160);
+  M5Cardputer.Speaker.setVolume(0); // Ensure muted AFTER initialization
   
   // 2. IMPORTANT: Release Port 0 immediately.
   // This uninstalls M5's I2S driver but keeps the ES8311 codec registers intact.
@@ -490,6 +505,17 @@ void loop() {
   if (millis() - lastUIUpdate > 40) {
     lastUIUpdate = millis();
     if (g_miniDisplay) g_miniDisplay->update();
+  }
+
+  static unsigned long lastMemLog = 0;
+  if (millis() - lastMemLog > 5000) {
+    lastMemLog = millis();
+    logHeapCaps("periodic");
+    if (g_miniAcid) {
+       auto& stats = g_miniAcid->perfStats;
+       Serial.printf("[PERF] CPU Audio: %.1f%% (Ideal) / %.1f%% (Actual)  Underruns: %u\n", 
+           stats.cpuAudioPctIdeal, stats.cpuAudioPctActual, (unsigned)stats.audioUnderruns);
+    }
   }
 
   delay(5);

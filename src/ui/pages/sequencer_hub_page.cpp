@@ -165,7 +165,7 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
         if (isDrumTrack(selectedTrack_)) {
             drumGrid_->setBoundaries(Rect(0, contentY + 2, 240, contentH - 4));
             drumGrid_->draw(gfx);
-            drawFooterBar(gfx, x, y + h - 12, w, 12, "[ARROWS]Grid [W]Accent", "ESC:Back", "DRUM");
+            drawFooterBar(gfx, x, y + h - 12, w, 12, "[ARROWS]Grid [A]Accent", "ESC:Back", "DRUM");
         } else {
             // Enhanced 303 Detail (Retro Style with Teal & Orange)
             int cellW = (w - 20) / 16;
@@ -310,7 +310,7 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
         if (isDrumTrack(selectedTrack_)) {
             drumGrid_->setBoundaries(Rect(0, contentY + 2, 240, contentH - 4));
             drumGrid_->draw(gfx);
-            AmberWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[ARROWS]Grid [W]Accent", "ESC:Back", "DRUM");
+            AmberWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[ARROWS]Grid [A]Accent", "ESC:Back", "DRUM");
         } else {
             int cellW = (w - 20) / 16;
             int cellH = 40;
@@ -513,7 +513,7 @@ void SequencerHubPage::drawDetail(IGfx& gfx) {
 
     // Contextual Footer
     const char* left = "[ESC] BACK  [SPACE] PLAY";
-    const char* right = isDrumTrack(selectedTrack_) ? "[W] ACCENT" : "[W] ACC  [A] SLIDE";
+    const char* right = isDrumTrack(selectedTrack_) ? "[A] ACCENT" : "[A] ACC  [S] SLIDE";
     UI::drawStandardFooter(gfx, left, right);
 }
 
@@ -596,7 +596,7 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
     // Pattern quick select (Q-I)
     int patIdx = -1;
     if (lower == 'q') patIdx = 0;
-    else if (lower == 'w' && mode_ == Mode::OVERVIEW) patIdx = 1; // 'w' has other meaning in DETAIL
+    else if (lower == 'w') patIdx = 1;
     else if (lower == 'e') patIdx = 2;
     else if (lower == 'r') patIdx = 3;
     else if (lower == 't') patIdx = 4;
@@ -616,15 +616,15 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
         return true;
     }
     
-    // Copy/Paste (Alt+C / Alt+V)
-    if (lower == 'c' && (e.alt || e.ctrl || e.meta)) {
+    // Copy/Paste (Ctrl+C / Ctrl+V)
+    if (lower == 'c' && e.ctrl) {
         UIEvent app_evt{};
         app_evt.event_type = MINIACID_APPLICATION_EVENT;
         app_evt.app_event_type = MINIACID_APP_EVENT_COPY;
         // Forward as application event
         return handleAppEvent(app_evt);
     }
-    if (lower == 'v' && (e.alt || e.ctrl || e.meta)) {
+    if (lower == 'v' && e.ctrl) {
         UIEvent app_evt{};
         app_evt.event_type = MINIACID_APPLICATION_EVENT;
         app_evt.app_event_type = MINIACID_APP_EVENT_PASTE;
@@ -677,8 +677,7 @@ bool SequencerHubPage::handleAppEvent(const UIEvent& e) {
             withAudioGuard([&]() {
                 for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
                     for (int i = 0; i < SEQ_STEPS; ++i) {
-                         mini_acid_.setDrumStep(v, i, src.voices[v].steps[i].hit);
-                         mini_acid_.setDrumAccentStep(v, i, src.voices[v].steps[i].accent);
+                         mini_acid_.sceneManager().setDrumStep(v, i, src.voices[v].steps[i].hit, src.voices[v].steps[i].accent);
                     }
                 }
             });
@@ -795,14 +794,10 @@ bool SequencerHubPage::handleGridEdit(UIEvent& e) {
         return true;
     }
 
-    // W: Toggle Accent
-    if (lower == 'w') {
+    // A: Toggle Accent (Drums only, for 303 it's handled below as Note Up / Alt+Accent)
+    if (lower == 'a' && isDrumTrack(selectedTrack_)) {
         withAudioGuard([&]() {
-            if (isDrumTrack(selectedTrack_)) {
-                mini_acid_.toggleDrumAccentStep(stepCursor_);
-            } else {
-                mini_acid_.toggle303AccentStep(selectedTrack_, stepCursor_);
-            }
+            mini_acid_.toggleDrumAccentStep(stepCursor_);
         });
         return true;
     }

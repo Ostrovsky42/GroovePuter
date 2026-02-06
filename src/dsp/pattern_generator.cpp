@@ -62,26 +62,30 @@ uint32_t SmartPatternGenerator::generateEvolution(uint32_t current_pattern, uint
 uint8_t SmartPatternGenerator::getWeightedPatternForGenre(GenerativeMode genre, uint8_t track_id) {
     // Genre mapping to GenerativeMode:
     // Acid = 0
-    // Outrun = 1
-    // Darksynth = 2
+    // Minimal (Outrun) = 1
+    // Techno (Darksynth) = 2
     // Electro = 3
     // Rave = 4
+    // Reggae = 5
+    // TripHop = 6
+    // Broken = 7
+    // Chip = 8
     
     // Track mapping: 0=303A, 1=303B, 2=Drums, 3=Other
     
     // Bitmasks for preferred patterns (0-7)
     // Each byte represents valid patterns for a track type in a specific genre
     
-    static const uint8_t genre_masks[5][4] PROGMEM = {
+    static const uint8_t genre_masks[kGenerativeModeCount][4] PROGMEM = {
         // Acid: TB1 pref, TB2 pref, Drums pref, Other
         // Acid patterns usually use 0,1,4,5,6
         { 0b01110011, 0b01110011, 0b11111111, 0b00001111 }, 
         
-        // Outrun (Minimal/Synthwave): Simple, driving
+        // Minimal (Outrun/Synthwave): Simple, driving
         // Prefers 0,1,2
         { 0b00000111, 0b00000111, 0b00001111, 0b00000001 },
         
-        // Darksynth: Aggressive
+        // Techno (Darksynth): Aggressive
         // Prefers 4,5,6,7
         { 0b11110000, 0b11110000, 0b11111111, 0b11110000 },
         
@@ -91,11 +95,23 @@ uint8_t SmartPatternGenerator::getWeightedPatternForGenre(GenerativeMode genre, 
         
         // Rave: High energy, any can work but prefers dense
         // Prefers 0, 4, 5, 7
-        { 0b10110001, 0b10110001, 0b11111111, 0b11111111 }
+        { 0b10110001, 0b10110001, 0b11111111, 0b11111111 },
+
+        // Reggae: Sparse, offbeat-friendly
+        { 0b00010101, 0b00010101, 0b00011101, 0b00000101 },
+
+        // TripHop: Slow, roomy, simple phrases
+        { 0b00111001, 0b00111001, 0b00111101, 0b00001101 },
+
+        // Broken: Syncopated, lopsided grooves
+        { 0b11001100, 0b11001100, 0b11111111, 0b00011111 },
+
+        // Chip: very regular clocked motifs
+        { 0b11111111, 0b11111111, 0b10101010, 0b00001111 }
     };
     
     int genre_idx = static_cast<int>(genre);
-    if (genre_idx >= 5) genre_idx = 0; // Fallback
+    if (genre_idx >= kGenerativeModeCount) genre_idx = 0; // Fallback
     
     uint8_t mask = pgm_read_byte(&genre_masks[genre_idx][track_id]);
     

@@ -31,10 +31,12 @@ private:
     int textureIndex_ = 0;
     int prevTextureIndex_ = -1;
     int presetIndex_ = 0;
+    int genreScroll_ = 0;
+    int textureScroll_ = 0;
     
     // Данные
-    static const char* genreNames[5];
-    static const char* textureNames[4];
+    static const char* genreNames[kGenerativeModeCount];
+    static const char* textureNames[kTextureModeCount];
     static const char* presetNames[8];
     
     // Draw methods for different styles

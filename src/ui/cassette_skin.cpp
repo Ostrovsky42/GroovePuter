@@ -35,26 +35,31 @@ Rect CassetteSkin::contentBounds() const {
 void CassetteSkin::drawBackground() {
     const int w = gfx_.width();
     const int h = gfx_.height();
-    
-    // Fill with base background color
-    gfx_.fillRect(0, 0, w, h, palette_->bg);
-    
-    // Debug skin call
-    // static unsigned long lastPrint = 0;
-    // if (millis() - lastPrint > 1000) {
-    //    Serial.printf("[SKIN] Draw BG w=%d h=%d color=%04X\n", w, h, palette_->bg.value());
-    //    lastPrint = millis();
-    // }
-    
-    // Apply subtle 2x2 dither pattern (2-4% intensity)
-    // Only darken every other pixel in checkerboard pattern
-    IGfxColor darkPixel(
-        (palette_->bg.color24() & 0xFEFEFE) - 0x060606  // ~2% darker
-    );
-    
-    for (int y = 0; y < h; y += 2) {
-        for (int x = (y / 2) % 2; x < w; x += 2) {
-            gfx_.drawPixel(x, y, darkPixel);
+    uint32_t currentBg = palette_->bg.color24();
+
+    // 1) Handle Line Cache Refresh
+    if (linePlain_.empty() || lastBgColor_ != currentBg || linePlain_.size() != (size_t)w) {
+        lastBgColor_ = currentBg;
+        linePlain_.assign(w, palette_->bg.toCardputerColor());
+        lineEven_.resize(w);
+        lineOdd_.resize(w);
+
+        uint16_t base = palette_->bg.toCardputerColor();
+        uint16_t dark = IGfxColor((palette_->bg.color24() & 0xFEFEFE) - 0x060606).toCardputerColor();
+
+        for (int x = 0; x < w; ++x) {
+            lineEven_[x] = (x % 2 == 0) ? dark : base;
+            lineOdd_[x]  = (x % 2 == 1) ? dark : base;
+        }
+    }
+
+    // 2) Line-by-Line Rendering
+    for (int y = 0; y < h; ++y) {
+        if (y % 2 != 0) {
+            gfx_.drawImage(0, y, linePlain_.data(), w, 1);
+        } else {
+            const auto& activeLine = ((y / 2) % 2 == 0) ? lineEven_ : lineOdd_;
+            gfx_.drawImage(0, y, activeLine.data(), w, 1);
         }
     }
 }

@@ -11,10 +11,14 @@
 // === AXIS 1: GENERATIVE MODE (how patterns are created) ===
 enum class GenerativeMode : uint8_t {
     Acid = 0,       // Melodic, slides, 8-14 notes
-    Outrun = 1,     // Bright lead/arp, 80s synthwave (was Minimal)
-    Darksynth = 2,  // Evil bass, aggressive gated (was Hypnotic)
+    Outrun = 1,     // Minimal (Outrun): bright lead/arp, synthwave
+    Darksynth = 2,  // Techno (Darksynth): evil bass, aggressive gated
     Electro = 3,    // Staccato, syncopated, mechanical
-    Rave = 4        // Dense, high energy, 12-16 notes
+    Rave = 4,       // Dense, high energy, 12-16 notes
+    Reggae = 5,     // Sparse, offbeat, dub-friendly
+    TripHop = 6,    // Slow, gritty, humanized
+    Broken = 7,     // Syncopated, broken-beat feel
+    Chip = 8        // Retro console style, quantized and tight
 };
 
 // === AXIS 2: TEXTURE MODE (how sound is processed) ===
@@ -22,11 +26,12 @@ enum class TextureMode : uint8_t {
     Clean = 0,     // Transparent, bright
     Dub = 1,       // Space, delay, warmth
     LoFi = 2,      // Vintage, soft, dark
-    Industrial = 3 // Harsh, bright, mechanical
+    Industrial = 3, // Harsh, bright, mechanical
+    Psychedelic = 4 // Wide, animated, bright
 };
 
-static constexpr int kGenerativeModeCount = 5;
-static constexpr int kTextureModeCount = 4;
+static constexpr int kGenerativeModeCount = 9;
+static constexpr int kTextureModeCount = 5;
 
 // === GENERATIVE PARAMETERS ===
 struct GenerativeParams {
@@ -118,8 +123,11 @@ struct GenreState {
     
     // Call when mode changes
     void updateCachedName() {
-        static const char* const genNames[] = {"Acid", "Outrun", "Darksynth", "Electro", "Rave"};
-        static const char* const texNames[] = {"", "Dub ", "LoFi ", "Industrial "};
+        static const char* const genNames[] = {
+            "Acid", "Minimal", "Techno", "Electro", "Rave",
+            "Reggae", "TripHop", "Broken", "Chip"
+        };
+        static const char* const texNames[] = {"", "Dub ", "LoFi ", "Industrial ", "Psy "};
         snprintf(cachedName_, sizeof(cachedName_), "%s%s", 
                  texNames[static_cast<int>(texture)],
                  genNames[static_cast<int>(generative)]);
@@ -182,12 +190,15 @@ public:
     
     // Mode name helpers
     static const char* generativeModeName(GenerativeMode mode) {
-        static const char* const names[] = {"Acid", "Outrun", "Darksynth", "Electro", "Rave"};
+        static const char* const names[] = {
+            "Acid", "Minimal", "Techno", "Electro", "Rave",
+            "Reggae", "TripHop", "Broken", "Chip"
+        };
         return names[static_cast<int>(mode)];
     }
     
     static const char* textureModeName(TextureMode mode) {
-        static const char* const names[] = {"Clean", "Dub", "LoFi", "Industrial"};
+        static const char* const names[] = {"Clean", "Dub", "LoFi", "Industrial", "Psychedelic"};
         return names[static_cast<int>(mode)];
     }
     

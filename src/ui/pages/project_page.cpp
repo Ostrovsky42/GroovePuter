@@ -1,5 +1,6 @@
 #include "project_page.h"
 #include "../ui_common.h"
+#include "esp_heap_caps.h"
 
 #include <algorithm>
 #include <cctype>
@@ -323,8 +324,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             if (main_focus_ == MainFocus::SaveAs) main_focus_ = MainFocus::Load;
             else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::SaveAs;
             else if (main_focus_ == MainFocus::Render) main_focus_ = MainFocus::New;
-            else if (main_focus_ == MainFocus::Mode) main_focus_ = MainFocus::Render;
-            else if (main_focus_ == MainFocus::VisualStyle) main_focus_ = MainFocus::Mode;
+            else if (main_focus_ == MainFocus::VisualStyle) main_focus_ = MainFocus::Render;
             else if (main_focus_ >= MainFocus::LedMode && main_focus_ <= MainFocus::LedFlash) {
                 if (main_focus_ == MainFocus::LedMode) main_focus_ = MainFocus::VisualStyle;
                 else main_focus_ = static_cast<MainFocus>(static_cast<int>(main_focus_) - 1);
@@ -335,8 +335,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             if (main_focus_ == MainFocus::Load) main_focus_ = MainFocus::SaveAs;
             else if (main_focus_ == MainFocus::SaveAs) main_focus_ = MainFocus::New;
             else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::Render;
-            else if (main_focus_ == MainFocus::Render) main_focus_ = MainFocus::Mode;
-            else if (main_focus_ == MainFocus::Mode) main_focus_ = MainFocus::VisualStyle;
+            else if (main_focus_ == MainFocus::Render) main_focus_ = MainFocus::VisualStyle;
             else if (main_focus_ == MainFocus::VisualStyle) main_focus_ = MainFocus::LedMode;
             else if (main_focus_ >= MainFocus::LedMode && main_focus_ < MainFocus::LedFlash) {
                 main_focus_ = static_cast<MainFocus>(static_cast<int>(main_focus_) + 1);
@@ -354,12 +353,16 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
     }
 
     char key = ui_event.key;
+    if (key == 'g' || key == 'G') {
+        requestPageTransition(0); // Genre Page
+        return true;
+    }
+
     if (key == '\n' || key == '\r') {
         if (main_focus_ == MainFocus::Load) { openLoadDialog(); return true; }
         if (main_focus_ == MainFocus::SaveAs) { openSaveDialog(); return true; }
         if (main_focus_ == MainFocus::New) return createNewScene();
         if (main_focus_ == MainFocus::Render) { renderProject(); return true; }
-        if (main_focus_ == MainFocus::Mode) { mini_acid_.toggleGrooveboxMode(); return true; }
         if (main_focus_ == MainFocus::VisualStyle) {
              switch (UI::currentStyle) {
                  case VisualStyle::MINIMAL: UI::currentStyle = VisualStyle::RETRO_CLASSIC; break;
@@ -438,21 +441,19 @@ void ProjectPage::draw(IGfx& gfx) {
   int btn_h = line_h + 6;  // Reduced from +8 to +6
   int btn_y = body_y + line_h * 2 + 8;
   int spacing = 3;
-  const char* labels[6] = {"Load", "Save As", "New", "Render", "Acid", "Theme"};
-  if (mini_acid_.grooveboxMode() == GrooveboxMode::Minimal) labels[4] = "Minimal";
-  if (UI::currentStyle == VisualStyle::MINIMAL) labels[5] = "Carb";
-  else if (UI::currentStyle == VisualStyle::RETRO_CLASSIC) labels[5] = "Cyb";
-  else labels[5] = "Amb";
+  const char* labels[5] = {"Load", "Save", "New", "Render", "Theme"};
+  if (UI::currentStyle == VisualStyle::MINIMAL) labels[4] = "Carb";
+  else if (UI::currentStyle == VisualStyle::RETRO_CLASSIC) labels[4] = "Cyb";
+  else labels[4] = "Amb";
   
   btn_w = 42;
-  // Increase spacing if needed, or reduce width? 6 buttons * 42 = 252 + spacing. Screens are usually 320 or 240. Cardputer is 240x135.
-  // 6 * 38 = 228. Fit tight.
-  btn_w = 36; 
+  // 5 controls in one row for 240x135 screen.
+  btn_w = 42;
   spacing = 2;
-  int total_w = btn_w * 6 + spacing * 5;
+  int total_w = btn_w * 5 + spacing * 4;
   int start_x = x + (w - total_w) / 2;
   
-  for (int i = 0; i < 6; ++i) {
+  for (int i = 0; i < 5; ++i) {
     int btn_x = start_x + i * (btn_w + spacing);
     bool focused = (dialog_type_ == DialogType::None && static_cast<int>(main_focus_) == i);
     gfx.fillRect(btn_x, btn_y, btn_w, btn_h, COLOR_PANEL);
@@ -461,8 +462,28 @@ void ProjectPage::draw(IGfx& gfx) {
     gfx.drawText(btn_x + (btn_w - btn_tw) / 2, btn_y + (btn_h - line_h) / 2, labels[i]);
   }
 
+  // Read-only reminder: musical mode is controlled on Genre page.
+  int mode_y = btn_y + btn_h + 2;
+  
+  // SYSTEM MONITOR
+  // Replaces the static mode text with useful stats
+  size_t freeInt = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+  size_t freePsram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  size_t largestInt = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+  
+  // Convert to KB/MB for readability
+  // layout: RAM: 120k/4.1M  CPU: 135%
+  char sysBuf[64];
+  int cpuLoad = (int)mini_acid_.perfStats.cpuAudioPctIdeal;
+  
+  snprintf(sysBuf, sizeof(sysBuf), "RAM:%dk/%dM L:%dk CPU:%d%%", 
+           freeInt/1024, freePsram/(1024*1024), largestInt/1024, cpuLoad);
+           
+  gfx.setTextColor(COLOR_ACCENT); // Highlight stats
+  gfx.drawText(start_x, mode_y, sysBuf);
+
   // LED Section
-  int led_y = btn_y + btn_h + 10;
+  int led_y = mode_y + line_h + 1;
   gfx.setTextColor(COLOR_LABEL);
   gfx.drawText(x, led_y, "LED SETTINGS");
   
@@ -521,7 +542,7 @@ void ProjectPage::draw(IGfx& gfx) {
  //gfx.drawText(x, vol_y + vol_h + 4, "NOTE: RGB needs Screen BL=100%");
 
   // v1.1  Footer
-  UI::drawStandardFooter(gfx, "[ARROWS]NAV [ENT]SELECT", "[M]MODE");
+  UI::drawStandardFooter(gfx, "[ARROWS]NAV [ENT]SELECT", "[G]GENRE");
 
   if (dialog_type_ == DialogType::None) return;
 

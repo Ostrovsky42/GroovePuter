@@ -10,10 +10,17 @@ int clampIndex(int value, int maxExclusive) {
   return value;
 }
 
+uint8_t clampProbability(int value) {
+  if (value < 0) return 0;
+  if (value > 100) return 100;
+  return static_cast<uint8_t>(value);
+}
+
 void clearDrumPattern(DrumPattern& pattern) {
   for (int i = 0; i < DrumPattern::kSteps; ++i) {
     pattern.steps[i].hit = false;
     pattern.steps[i].accent = false;
+    pattern.steps[i].probability = 100;
     pattern.steps[i].fx = 0;
     pattern.steps[i].fxParam = 0;
   }
@@ -24,6 +31,7 @@ void clearSynthPattern(SynthPattern& pattern) {
     pattern.steps[i].note = -1;
     pattern.steps[i].slide = false;
     pattern.steps[i].accent = false;
+    pattern.steps[i].probability = 100;
     pattern.steps[i].fx = 0;
     pattern.steps[i].fxParam = 0;
   }
@@ -61,6 +69,7 @@ void clearSceneData(Scene& scene) {
   scene.generatorParams = GeneratorParams();
   scene.led = LedSettings();
   scene.tape = TapeState();
+  scene.feel = FeelSettings();
 }
 
 void serializeDrumPattern(const DrumPattern& pattern, ArduinoJson::JsonObject obj) {
@@ -68,11 +77,13 @@ void serializeDrumPattern(const DrumPattern& pattern, ArduinoJson::JsonObject ob
   ArduinoJson::JsonArray accent = obj["accent"].to<ArduinoJson::JsonArray>();
   ArduinoJson::JsonArray fx = obj["fx"].to<ArduinoJson::JsonArray>();
   ArduinoJson::JsonArray fxp = obj["fxp"].to<ArduinoJson::JsonArray>();
+  ArduinoJson::JsonArray prb = obj["prb"].to<ArduinoJson::JsonArray>();
   for (int i = 0; i < DrumPattern::kSteps; ++i) {
     hit.add(pattern.steps[i].hit);
     accent.add(pattern.steps[i].accent);
     fx.add(pattern.steps[i].fx);
     fxp.add(pattern.steps[i].fxParam);
+    prb.add(pattern.steps[i].probability);
   }
 }
 
@@ -101,6 +112,7 @@ void serializeSynthPattern(const SynthPattern& pattern, ArduinoJson::JsonArray s
     step["accent"] = pattern.steps[i].accent;
     step["fx"] = pattern.steps[i].fx;
     step["fxp"] = pattern.steps[i].fxParam;
+    step["prb"] = pattern.steps[i].probability;
   }
 }
 
@@ -144,6 +156,9 @@ bool deserializeDrumPattern(ArduinoJson::JsonVariantConst value, DrumPattern& pa
   // Optional FX arrays
   int fxs[DrumPattern::kSteps] = {0};
   int fxps[DrumPattern::kSteps] = {0};
+  int probs[DrumPattern::kSteps];
+  for(int i=0; i<DrumPattern::kSteps; ++i) probs[i] = 100; // Default
+
   if (!fx.isNull()) {
       int idx = 0;
       for (ArduinoJson::JsonVariantConst v : fx) { if (idx < DrumPattern::kSteps) fxs[idx++] = v.as<int>(); }
@@ -152,12 +167,20 @@ bool deserializeDrumPattern(ArduinoJson::JsonVariantConst value, DrumPattern& pa
       int idx = 0;
       for (ArduinoJson::JsonVariantConst v : fxp) { if (idx < DrumPattern::kSteps) fxps[idx++] = v.as<int>(); }
   }
+  ArduinoJson::JsonArrayConst prb = obj["prb"];
+  if (!prb.isNull()) {
+      int idx = 0;
+      for (ArduinoJson::JsonVariantConst v : prb) { if (idx < DrumPattern::kSteps) probs[idx++] = v.as<int>(); }
+  }
 
   for (int i = 0; i < DrumPattern::kSteps; ++i) {
     pattern.steps[i].hit = hits[i];
     pattern.steps[i].accent = accents[i];
     pattern.steps[i].fx = static_cast<uint8_t>(fxs[i]);
     pattern.steps[i].fxParam = static_cast<uint8_t>(fxps[i]);
+    int p = probs[i];
+    if (p < 0) p = 0; if (p > 100) p = 100;
+    pattern.steps[i].probability = static_cast<uint8_t>(p);
   }
   return true;
 }
@@ -219,6 +242,16 @@ bool deserializeSynthPattern(ArduinoJson::JsonVariantConst value, SynthPattern& 
     else pattern.steps[i].fx = 0;
     if (!fxp.isNull()) pattern.steps[i].fxParam = static_cast<uint8_t>(fxp.as<int>());
     else pattern.steps[i].fxParam = 0;
+    auto prb = obj["prb"];
+    if (!prb.isNull()) {
+      int p = prb.as<int>();
+      if (p < 0) p = 0; if (p > 100) p = 100;
+      pattern.steps[i].probability = static_cast<uint8_t>(p);
+    } else {
+      pattern.steps[i].probability = 100;
+    }
+
+
     ++i;
   }
   return true;
@@ -467,6 +500,8 @@ void SceneJsonObserver::onObjectStart() {
       if (lastKey_ == "state") path = Path::State;
       else if (lastKey_ == "song") path = Path::Song;
       else if (lastKey_ == "tape") path = Path::Tape;
+      else if (lastKey_ == "feel") path = Path::Feel;
+      else if (lastKey_ == "genre") path = Path::Genre;
       else if (lastKey_ == "led") path = Path::Led;
       else if (lastKey_ == "generatorParams") path = Path::GeneratorParams;
       else if (lastKey_ == "vocal") path = Path::Vocal;
@@ -507,6 +542,7 @@ void SceneJsonObserver::onArrayStart() {
         else if (lastKey_ == "synthDistortion") path = Path::SynthDistortion;
         else if (lastKey_ == "synthDelay") path = Path::SynthDelay;
         else if (lastKey_ == "synthParams") path = Path::SynthParams;
+        else if (lastKey_ == "trackVolumes") path = Path::TrackVolumes;
         else if (lastKey_ == "bpm") path = Path::Unknown;
       } else if (parent.path == Path::Song) {
         if (lastKey_ == "positions") path = Path::SongPositions;
@@ -518,6 +554,7 @@ void SceneJsonObserver::onArrayStart() {
       } else if (parent.path == Path::DrumVoice) {
         if (lastKey_ == "hit") path = Path::DrumHitArray;
         else if (lastKey_ == "accent") path = Path::DrumAccentArray;
+        else if (lastKey_ == "prb") path = Path::DrumProbabilityArray;
         else if (lastKey_ == "fx") path = Path::DrumFxArray;
         else if (lastKey_ == "fxp") path = Path::DrumFxParamArray;
       } else if (parent.path == Path::Mute) {
@@ -556,6 +593,46 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     }
     return;
   }
+  if (path == Path::Feel) {
+    int v = static_cast<int>(value);
+    if (lastKey_ == "grid") {
+      if (v != 8 && v != 16 && v != 32) v = 16;
+      target_.feel.gridSteps = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "tb") {
+      if (v < 0) v = 0;
+      if (v > 2) v = 2;
+      target_.feel.timebase = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "bars") {
+      if (v != 1 && v != 2 && v != 4 && v != 8) v = 1;
+      target_.feel.patternBars = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "lofiAmt") {
+      if (v < 0) v = 0;
+      if (v > 100) v = 100;
+      target_.feel.lofiAmount = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "driveAmt") {
+      if (v < 0) v = 0;
+      if (v > 100) v = 100;
+      target_.feel.driveAmount = static_cast<uint8_t>(v);
+    }
+    return;
+  }
+  if (path == Path::Genre) {
+    int v = static_cast<int>(value);
+    if (lastKey_ == "gen") {
+      if (v < 0) v = 0;
+      if (v >= kGenerativeModeCount) v = 0;
+      target_.genre.generativeMode = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "tex") {
+      if (v < 0) v = 0;
+      if (v >= kTextureModeCount) v = 0;
+      target_.genre.textureMode = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "amt") {
+      if (v < 0) v = 0;
+      if (v > 100) v = 100;
+      target_.genre.textureAmount = static_cast<uint8_t>(v);
+    }
+    return;
+  }
   if (path == Path::SongPosition) {
     int posIdx = currentIndexFor(Path::SongPositions);
     if (posIdx < 0 || posIdx >= Song::kMaxPositions) {
@@ -580,7 +657,7 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     handlePrimitiveBool(value != 0);
     return;
   }
-  if (path == Path::DrumFxArray || path == Path::DrumFxParamArray) {
+  if (path == Path::DrumFxArray || path == Path::DrumFxParamArray || path == Path::DrumProbabilityArray) {
     int bankIdx = currentIndexFor(Path::DrumBanks);
     if (bankIdx < 0) bankIdx = 0;
     int patternIdx = currentIndexFor(Path::DrumBank);
@@ -592,7 +669,8 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
         bankIdx >= 0 && bankIdx < kBankCount) {
         DrumStep& step = target_.drumBanks[bankIdx].patterns[patternIdx].voices[voiceIdx].steps[stepIdx];
         if (path == Path::DrumFxArray) step.fx = static_cast<uint8_t>(value);
-        else step.fxParam = static_cast<uint8_t>(value);
+        else if (path == Path::DrumFxParamArray) step.fxParam = static_cast<uint8_t>(value);
+        else step.probability = clampProbability(static_cast<int>(value));
     }
     return;
   }
@@ -626,6 +704,8 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
       pattern.steps[stepIdx].slide = value != 0;
     } else if (lastKey_ == "accent") {
       pattern.steps[stepIdx].accent = value != 0;
+    } else if (lastKey_ == "prb") {
+      pattern.steps[stepIdx].probability = clampProbability(static_cast<int>(value));
     } else if (lastKey_ == "fx") {
       pattern.steps[stepIdx].fx = static_cast<uint8_t>(value);
     } else if (lastKey_ == "fxp") {
@@ -796,6 +876,16 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
 void SceneJsonObserver::handlePrimitiveBool(bool value) {
   if (error_ || stackSize_ == 0) return;
   Path path = stack_[stackSize_ - 1].path;
+  if (path == Path::Feel) {
+    if (lastKey_ == "lofi") target_.feel.lofiEnabled = value;
+    else if (lastKey_ == "drive") target_.feel.driveEnabled = value;
+    else if (lastKey_ == "tape") target_.feel.tapeEnabled = value;
+    return;
+  }
+  if (path == Path::Genre) {
+    if (lastKey_ == "regen") target_.genre.regenerateOnApply = value;
+    return;
+  }
   if (path == Path::GeneratorParams) {
     if (lastKey_ == "preferDownbeats") target_.generatorParams.preferDownbeats = value;
     else if (lastKey_ == "scaleQuantize") target_.generatorParams.scaleQuantize = value;
@@ -1486,6 +1576,26 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   synthDelay.add(synthDelay_[1]);
 
   state["masterVolume"] = scene_->masterVolume;
+  ArduinoJson::JsonArray volumes = state["trackVolumes"].to<ArduinoJson::JsonArray>();
+  for (int i = 0; i < (int)VoiceId::Count; ++i) {
+    volumes.add(scene_->trackVolumes[i]);
+  }
+
+  ArduinoJson::JsonObject feelObj = state["feel"].to<ArduinoJson::JsonObject>();
+  feelObj["grid"] = scene_->feel.gridSteps;
+  feelObj["tb"] = scene_->feel.timebase;
+  feelObj["bars"] = scene_->feel.patternBars;
+  feelObj["lofi"] = scene_->feel.lofiEnabled;
+  feelObj["lofiAmt"] = scene_->feel.lofiAmount;
+  feelObj["drive"] = scene_->feel.driveEnabled;
+  feelObj["driveAmt"] = scene_->feel.driveAmount;
+  feelObj["tape"] = scene_->feel.tapeEnabled;
+
+  ArduinoJson::JsonObject genreObj = state["genre"].to<ArduinoJson::JsonObject>();
+  genreObj["gen"] = scene_->genre.generativeMode;
+  genreObj["tex"] = scene_->genre.textureMode;
+  genreObj["amt"] = scene_->genre.textureAmount;
+  genreObj["regen"] = scene_->genre.regenerateOnApply;
 
   ArduinoJson::JsonObject genParams = root["generatorParams"].to<ArduinoJson::JsonObject>();
   serializeGeneratorParams(scene_->generatorParams, genParams);
@@ -1664,6 +1774,60 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     loopStartRow = valueToInt(state["loopStart"], loopStartRow);
     loopEndRow = valueToInt(state["loopEnd"], loopEndRow);
     loaded->masterVolume = valueToFloat(state["masterVolume"], loaded->masterVolume);
+  }
+
+  ArduinoJson::JsonObjectConst feelObjRoot = obj["feel"].as<ArduinoJson::JsonObjectConst>();
+  ArduinoJson::JsonObjectConst feelObjState = state.isNull() ? ArduinoJson::JsonObjectConst() : state["feel"].as<ArduinoJson::JsonObjectConst>();
+  ArduinoJson::JsonObjectConst feelObj = feelObjRoot.isNull() ? feelObjState : feelObjRoot;
+  if (!feelObj.isNull()) {
+    int grid = valueToInt(feelObj["grid"], loaded->feel.gridSteps);
+    if (grid != 8 && grid != 16 && grid != 32) grid = 16;
+    loaded->feel.gridSteps = static_cast<uint8_t>(grid);
+
+    int tb = valueToInt(feelObj["tb"], loaded->feel.timebase);
+    if (tb < 0) tb = 0;
+    if (tb > 2) tb = 2;
+    loaded->feel.timebase = static_cast<uint8_t>(tb);
+
+    int bars = valueToInt(feelObj["bars"], loaded->feel.patternBars);
+    if (bars != 1 && bars != 2 && bars != 4 && bars != 8) bars = 1;
+    loaded->feel.patternBars = static_cast<uint8_t>(bars);
+
+    loaded->feel.lofiEnabled = feelObj["lofi"].is<bool>() ? feelObj["lofi"].as<bool>() : loaded->feel.lofiEnabled;
+    int lofiAmt = valueToInt(feelObj["lofiAmt"], loaded->feel.lofiAmount);
+    if (lofiAmt < 0) lofiAmt = 0;
+    if (lofiAmt > 100) lofiAmt = 100;
+    loaded->feel.lofiAmount = static_cast<uint8_t>(lofiAmt);
+
+    loaded->feel.driveEnabled = feelObj["drive"].is<bool>() ? feelObj["drive"].as<bool>() : loaded->feel.driveEnabled;
+    int driveAmt = valueToInt(feelObj["driveAmt"], loaded->feel.driveAmount);
+    if (driveAmt < 0) driveAmt = 0;
+    if (driveAmt > 100) driveAmt = 100;
+    loaded->feel.driveAmount = static_cast<uint8_t>(driveAmt);
+
+    loaded->feel.tapeEnabled = feelObj["tape"].is<bool>() ? feelObj["tape"].as<bool>() : loaded->feel.tapeEnabled;
+  }
+
+  ArduinoJson::JsonObjectConst genreObjRoot = obj["genre"].as<ArduinoJson::JsonObjectConst>();
+  ArduinoJson::JsonObjectConst genreObjState = state.isNull() ? ArduinoJson::JsonObjectConst() : state["genre"].as<ArduinoJson::JsonObjectConst>();
+  ArduinoJson::JsonObjectConst genreObj = genreObjRoot.isNull() ? genreObjState : genreObjRoot;
+  if (!genreObj.isNull()) {
+    int gen = valueToInt(genreObj["gen"], loaded->genre.generativeMode);
+    if (gen < 0) gen = 0;
+    if (gen >= kGenerativeModeCount) gen = 0;
+    loaded->genre.generativeMode = static_cast<uint8_t>(gen);
+
+    int tex = valueToInt(genreObj["tex"], loaded->genre.textureMode);
+    if (tex < 0) tex = 0;
+    if (tex >= kTextureModeCount) tex = 0;
+    loaded->genre.textureMode = static_cast<uint8_t>(tex);
+
+    int amt = valueToInt(genreObj["amt"], loaded->genre.textureAmount);
+    if (amt < 0) amt = 0;
+    if (amt > 100) amt = 100;
+    loaded->genre.textureAmount = static_cast<uint8_t>(amt);
+
+    loaded->genre.regenerateOnApply = genreObj["regen"].is<bool>() ? genreObj["regen"].as<bool>() : loaded->genre.regenerateOnApply;
   }
 
   if (obj["samplerPads"].is<ArduinoJson::JsonArrayConst>()) {

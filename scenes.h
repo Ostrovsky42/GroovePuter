@@ -10,6 +10,7 @@
 #include <utility>
 #include "ArduinoJson-v7.4.2.h"
 #include "src/dsp/mini_dsp_params.h"
+#include "src/dsp/genre_manager.h"
 #include "json_evented.h"
 
 namespace scene_json_detail {
@@ -55,6 +56,7 @@ struct DrumStep {
   // New FX fields
   uint8_t fx = 0;      // 0=None, 1=Retrig, 2=Reverse
   uint8_t fxParam = 0; // Value for FX (e.g. retrig count)
+  uint8_t probability = 100; // 0-100% chance to play
 };
 
 struct DrumPattern {
@@ -77,6 +79,7 @@ struct SynthStep {
   // New FX fields
   uint8_t fx = 0;      // 0=None, 1=Retrig, 2=Reverse
   uint8_t fxParam = 0;
+  uint8_t probability = 100;
 };
 
 struct SynthPattern {
@@ -260,12 +263,32 @@ struct VocalSettings {
     float volume = 1.0f;
 };
 
+struct FeelSettings {
+    uint8_t gridSteps = 16;   // 8,16,32
+    uint8_t timebase = 1;     // 0=Half, 1=Normal, 2=Double
+    uint8_t patternBars = 1;  // 1,2,4,8
+    bool lofiEnabled = false;
+    uint8_t lofiAmount = 50;  // 0..100
+    bool driveEnabled = false;
+    uint8_t driveAmount = 70; // 0..100
+    bool tapeEnabled = false;
+};
+
+struct GenreSettings {
+    uint8_t generativeMode = 0;   // GenerativeMode enum value
+    uint8_t textureMode = 0;      // TextureMode enum value
+    uint8_t textureAmount = 70;   // 0..100 intensity
+    bool regenerateOnApply = true; // true: SOUND+PATTERN, false: SOUND ONLY
+};
+
 struct Scene {
   Bank<DrumPatternSet> drumBanks[kBankCount];
   Bank<SynthPattern> synthABanks[kBankCount];
   Bank<SynthPattern> synthBBanks[kBankCount];
   SamplerPadState samplerPads[16];
   TapeState tape;
+  FeelSettings feel;
+  GenreSettings genre;
   Song song;
   GrooveboxMode mode = GrooveboxMode::Acid;
   float masterVolume = 0.6f;  // Default volume
@@ -333,6 +356,7 @@ private:
     DrumAccentArray,
     DrumFxArray,
     DrumFxParamArray,
+    DrumProbabilityArray,
     SynthABanks,
     SynthABank,
     SynthBBanks,
@@ -353,6 +377,8 @@ private:
     SamplerPads,
     SamplerPad,
     Tape,
+    Feel,
+    Genre,
     Led,
     LedColorArray,
     Song,
@@ -606,6 +632,11 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
       if (i > 0 && !writeChar(',')) return false;
       if (!writeInt(pattern.steps[i].fxParam)) return false;
     }
+    if (!writeLiteral("],\"prb\":[")) return false;
+    for (int i = 0; i < DrumPattern::kSteps; ++i) {
+      if (i > 0 && !writeChar(',')) return false;
+      if (!writeInt(pattern.steps[i].probability)) return false;
+    }
     return writeLiteral("]}");
   };
   auto writeDrumBank = [&](const Bank<DrumPatternSet>& bank) -> bool {
@@ -643,6 +674,8 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
       if (!writeInt(pattern.steps[i].fx)) return false;
       if (!writeLiteral(",\"fxp\":")) return false;
       if (!writeInt(pattern.steps[i].fxParam)) return false;
+      if (!writeLiteral(",\"prb\":")) return false;
+      if (!writeInt(pattern.steps[i].probability)) return false;
       if (!writeChar('}')) return false;
     }
     return writeChar(']');
@@ -761,6 +794,34 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeChar(',')) return false;
   if (!writeBool(synthDelay_[1])) return false;
   if (!writeChar(']')) return false;
+
+  if (!writeLiteral(",\"feel\":{\"grid\":")) return false;
+  if (!writeInt(scene_->feel.gridSteps)) return false;
+  if (!writeLiteral(",\"tb\":")) return false;
+  if (!writeInt(scene_->feel.timebase)) return false;
+  if (!writeLiteral(",\"bars\":")) return false;
+  if (!writeInt(scene_->feel.patternBars)) return false;
+  if (!writeLiteral(",\"lofi\":")) return false;
+  if (!writeBool(scene_->feel.lofiEnabled)) return false;
+  if (!writeLiteral(",\"lofiAmt\":")) return false;
+  if (!writeInt(scene_->feel.lofiAmount)) return false;
+  if (!writeLiteral(",\"drive\":")) return false;
+  if (!writeBool(scene_->feel.driveEnabled)) return false;
+  if (!writeLiteral(",\"driveAmt\":")) return false;
+  if (!writeInt(scene_->feel.driveAmount)) return false;
+  if (!writeLiteral(",\"tape\":")) return false;
+  if (!writeBool(scene_->feel.tapeEnabled)) return false;
+  if (!writeChar('}')) return false;
+
+  if (!writeLiteral(",\"genre\":{\"gen\":")) return false;
+  if (!writeInt(scene_->genre.generativeMode)) return false;
+  if (!writeLiteral(",\"tex\":")) return false;
+  if (!writeInt(scene_->genre.textureMode)) return false;
+  if (!writeLiteral(",\"amt\":")) return false;
+  if (!writeInt(scene_->genre.textureAmount)) return false;
+  if (!writeLiteral(",\"regen\":")) return false;
+  if (!writeBool(scene_->genre.regenerateOnApply)) return false;
+  if (!writeChar('}')) return false;
 
   if (!writeLiteral(",\"trackVolumes\":[")) return false;
   for (int i = 0; i < (int)VoiceId::Count; ++i) {

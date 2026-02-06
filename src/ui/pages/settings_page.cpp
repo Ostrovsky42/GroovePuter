@@ -2,7 +2,11 @@
 #include "../../../scenes.h"
 #include "../ui_colors.h"
 #include "../ui_input.h"
+#include "../layout_manager.h"
+#include "../ui_common.h"
+#include "../ui_widgets.h"
 #include <cstdio>
+#include <cstring>
 
 namespace {
     enum class SettingId {
@@ -42,26 +46,64 @@ namespace {
         return notes[note % 12];
     }
 
-    static constexpr SettingDesc kSettings[] = {
-      { (int)SettingId::Swing,          "Swing",       SettingUIType::Slider01 },
-      { (int)SettingId::VelocityRange,  "Vel Range",   SettingUIType::Slider01 },
-      { (int)SettingId::GhostProb,      "Ghost Prob",  SettingUIType::Slider01 },
-      { (int)SettingId::MicroTiming,    "MicroTime",   SettingUIType::Slider01 },
-      { (int)SettingId::MinNotes,       "Min Notes",   SettingUIType::IntRange },
-      { (int)SettingId::MaxNotes,       "Max Notes",   SettingUIType::IntRange },
-      { (int)SettingId::MinOctave,      "Min Oct",     SettingUIType::IntRange },
-      { (int)SettingId::MaxOctave,      "Max Oct",     SettingUIType::IntRange },
-      { (int)SettingId::ScaleRoot,      "Scale Root",  SettingUIType::EnumNote },
-      { (int)SettingId::ScaleType,      "Scale",       SettingUIType::EnumScale },
-      { (int)SettingId::PreferDownbeats,"Downbeats",   SettingUIType::Toggle },
-      { (int)SettingId::ScaleQuantize,  "Quantize",    SettingUIType::Toggle },
+    static constexpr SettingId kGroupTiming[4] = {
+        SettingId::Swing,
+        SettingId::VelocityRange,
+        SettingId::GhostProb,
+        SettingId::MicroTiming
     };
-    static constexpr int kSettingCount = sizeof(kSettings)/sizeof(kSettings[0]);
-    static constexpr int kRowHeight = 12;
+
+    static constexpr SettingId kGroupNotes[4] = {
+        SettingId::MinNotes,
+        SettingId::MaxNotes,
+        SettingId::MinOctave,
+        SettingId::MaxOctave
+    };
+
+    static constexpr SettingId kGroupScale[4] = {
+        SettingId::ScaleRoot,
+        SettingId::ScaleType,
+        SettingId::ScaleQuantize,
+        SettingId::PreferDownbeats
+    };
+
+    static constexpr int kRowsPerGroup = 4;
+    static constexpr int kPresetRowIndex = 4;
+    static const char* kPresetNames[3] = { "TIGHT", "HUMAN", "LOOSE" };
+
+    void appendDelta(char* buf, size_t bufSize, int& used, bool& any,
+                     const char* label, const char* from, const char* to, int& shown, bool& more) {
+        if (strcmp(from, to) == 0) return;
+        if (shown >= 3) { more = true; return; }
+        used += snprintf(buf + used, bufSize - used, "%s%s %s->%s", any ? ", " : "", label, from, to);
+        any = true;
+        shown++;
+    }
+
+    void appendDeltaInt(char* buf, size_t bufSize, int& used, bool& any,
+                        const char* label, int from, int to, int& shown, bool& more) {
+        if (from == to) return;
+        if (shown >= 3) { more = true; return; }
+        used += snprintf(buf + used, bufSize - used, "%s%s %d->%d", any ? ", " : "", label, from, to);
+        any = true;
+        shown++;
+    }
+
+    void appendDeltaRange(char* buf, size_t bufSize, int& used, bool& any,
+                          const char* label, int f1, int f2, int t1, int t2, int& shown, bool& more) {
+        if (f1 == t1 && f2 == t2) return;
+        if (shown >= 3) { more = true; return; }
+        used += snprintf(buf + used, bufSize - used, "%s%s %d-%d->%d-%d",
+                         any ? ", " : "", label, f1, f2, t1, t2);
+        any = true;
+        shown++;
+    }
 }
 
 SettingsPage::SettingsPage(IGfx& gfx, MiniAcid& mini_acid) 
-    : gfx_(gfx), mini_acid_(mini_acid), list_(kSettingCount, kRowHeight) {}
+    : mini_acid_(mini_acid) {
+    (void)gfx;
+}
 
 const std::string& SettingsPage::getTitle() const {
     static std::string title = "Generator Settings";
@@ -69,181 +111,120 @@ const std::string& SettingsPage::getTitle() const {
 }
 
 void SettingsPage::draw(IGfx& gfx) {
-    const Rect& bounds = getBoundaries();
-    
-    // Ensure visibility
-    list_.ensureVisible(bounds.h);
-    
+    UI::drawStandardHeader(gfx, mini_acid_, "SETTINGS");
+    UI::drawFeelHeaderHud(gfx, mini_acid_, 166, 9);
+    LayoutManager::clearContent(gfx);
+
     Scene& scene = mini_acid_.sceneManager().currentScene();
     GeneratorParams& params = scene.generatorParams;
     
-    int x = bounds.x + 4;
-    int w = bounds.w - 8;
-    int vis = list_.visibleRows(bounds.h);
-    
-    for (int row = 0; row < vis; ++row) {
-        int idx = list_.scroll() + row;
-        if (idx >= kSettingCount) break;
-        
-        const auto& d = kSettings[idx];
-        int y = bounds.y + row * kRowHeight;
-        bool selected = (idx == list_.selected());
-        
-        drawSettingRow(gfx, x, y, w, params, d, selected);
+    const int y0 = LayoutManager::lineY(0);
+    const int leftX = Layout::COL_1;
+    const int leftW = Layout::COL_WIDTH;
+    const int rightX = Layout::COL_2;
+    const int rightW = Layout::CONTENT.w - rightX - 4;
+
+    // Group label (single line)
+    gfx.setTextColor(COLOR_LABEL);
+    const char* groupName = (group_ == Group::Timing) ? "TIMING" :
+                            (group_ == Group::Notes) ? "NOTES" : "SCALE";
+    char groupBuf[20];
+    std::snprintf(groupBuf, sizeof(groupBuf), "GROUP %s", groupName);
+    gfx.drawText(leftX, y0, groupBuf);
+
+    // Info header (right)
+    gfx.setTextColor(COLOR_LABEL);
+    gfx.drawText(rightX, y0, "INFO");
+
+    // Rows
+    const int rowStart = 1;
+    for (int i = 0; i < kRowsPerGroup; ++i) {
+        int y = LayoutManager::lineY(rowStart + i);
+        char buf[32];
+        int id = settingForRow();
+        if (i != row_) {
+            // Build label for non-selected row too
+            switch (group_) {
+                case Group::Timing: id = (int)kGroupTiming[i]; break;
+                case Group::Notes: id = (int)kGroupNotes[i]; break;
+                case Group::Scale: id = (int)kGroupScale[i]; break;
+            }
+        }
+        formatSetting(buf, sizeof(buf), id, params);
+        Widgets::drawListRow(gfx, leftX, y, leftW, buf,
+                             i == row_);
     }
-    
-    drawScrollbar(gfx, bounds, list_.scroll(), list_.selected(), kSettingCount, vis);
-    
-    // Display index counter (Professional touch)
-    if (bounds.w > 50) {
-        char buf[16];
-        snprintf(buf, sizeof(buf), "%d/%d", list_.selected() + 1, kSettingCount);
-        int cw = gfx.textWidth(buf);
-        // Draw in top right corner of the page area, or maybe floating?
-        // Let's put it on the right edge of the current row if selected
-        // Or better: just assume it's part of the standard UI header (which we don't control here).
-        // Let's draw it small at the bottom right if there's space, or top right overlay.
-        // For now, let's skip overlay to avoid clutter or draw it relative to selected row?
-        // User asked for "3/12 right top".
-        // The bounds passed to us are strictly the content area.
-        gfx.setTextColor(COLOR_LABEL);
-        gfx.drawText(bounds.x + bounds.w - cw - 4, bounds.y, buf);
+
+    // Presets row (below lists)
+    const int presetLabelY = LayoutManager::lineY(rowStart + kRowsPerGroup);
+    const int presetGridY = LayoutManager::lineY(rowStart + kRowsPerGroup + 1);
+    gfx.setTextColor(COLOR_LABEL);
+    gfx.drawText(leftX, presetLabelY, (row_ == kPresetRowIndex) ? "P> PRESETS" : "P  PRESETS");
+    const int cellW = 36;
+    Widgets::drawButtonGrid(gfx, leftX, presetGridY, cellW, 10, 3, 1, kPresetNames, 3,
+                            (row_ == kPresetRowIndex) ? preset_index_ : -1);
+
+    // Right-side comments
+    int infoCount = 0;
+    const char* const* infoLines = commentLines(infoCount, params);
+    if (infoLines && infoCount > 0) {
+        Widgets::drawInfoBox(gfx, rightX, LayoutManager::lineY(1), rightW, infoLines, infoCount);
     }
-}
 
-void SettingsPage::drawScrollbar(IGfx& gfx, const Rect& b, int scroll, int sel, int total, int vis) {
-  if (vis >= total) return;
-  int sbH = std::max(4, b.h * vis / total);
-  int sbY = b.y + (b.h * scroll) / total;
-  // Ensure scrollbar stays within bounds
-  if (sbY + sbH > b.y + b.h) sbY = b.y + b.h - sbH;
-  
-  gfx.fillRect(b.x + b.w - 2, sbY, 2, sbH, COLOR_ACCENT);
-}
-
-void SettingsPage::drawSettingRow(IGfx& gfx, int x, int y, int w,
-                                  GeneratorParams& params,
-                                  const SettingDesc& d,
-                                  bool selected) {
-  // Common style
-  gfx.setTextColor(selected ? COLOR_ACCENT : COLOR_LABEL);
-
-  // Fixed grid
-  const int colLabel = x;
-  // const int colValue = x + 80; // Used inside helpers
-  const int h = 8;
-  int settingW = w - 10; // Scrollbar spacing
-
-  switch ((SettingId)d.id) {
-    case SettingId::Swing:
-      drawSlider(gfx, colLabel, y, settingW, h, params.swingAmount, d.label, selected); break;
-    case SettingId::VelocityRange:
-      drawSlider(gfx, colLabel, y, settingW, h, params.velocityRange, d.label, selected); break;
-    case SettingId::GhostProb:
-      drawSlider(gfx, colLabel, y, settingW, h, params.ghostNoteProbability, d.label, selected); break;
-    case SettingId::MicroTiming:
-      drawSlider(gfx, colLabel, y, settingW, h, params.microTimingAmount, d.label, selected); break;
-
-    case SettingId::MinNotes: {
-      char buf[16]; snprintf(buf, sizeof(buf), "%d", params.minNotes);
-      drawValue(gfx, colLabel, y, settingW, h, buf, d.label, selected);
-    } break;
-
-    case SettingId::MaxNotes: {
-      char buf[16]; snprintf(buf, sizeof(buf), "%d", params.maxNotes);
-      drawValue(gfx, colLabel, y, settingW, h, buf, d.label, selected);
-    } break;
-
-    case SettingId::MinOctave: {
-      char buf[16]; snprintf(buf, sizeof(buf), "%d", params.minOctave);
-      drawValue(gfx, colLabel, y, settingW, h, buf, d.label, selected);
-    } break;
-
-    case SettingId::MaxOctave: {
-      char buf[16]; snprintf(buf, sizeof(buf), "%d", params.maxOctave);
-      drawValue(gfx, colLabel, y, settingW, h, buf, d.label, selected);
-    } break;
-
-    case SettingId::ScaleRoot:
-      drawValue(gfx, colLabel, y, settingW, h, noteToString(params.scaleRoot), d.label, selected);
-      break;
-
-    case SettingId::ScaleType:
-      drawValue(gfx, colLabel, y, settingW, h, scaleTypeToString(params.scale), d.label, selected);
-      break;
-
-    case SettingId::PreferDownbeats:
-      drawToggle(gfx, colLabel, y, settingW, h, params.preferDownbeats, d.label, selected);
-      break;
-
-    case SettingId::ScaleQuantize:
-      drawToggle(gfx, colLabel, y, settingW, h, params.scaleQuantize, d.label, selected);
-      break;
-
-    default: break;
-  }
-}
-
-void SettingsPage::drawSlider(IGfx& gfx, int x, int y, int w, int h, float value, const char* label, bool selected) {
-    gfx.drawText(x, y, label);
-    
-    int barX = x + 80;
-    int barW = w - 85; 
-    if (barW < 20) barW = 20; 
-    
-    gfx.drawRect(barX, y, barW, h, selected ? COLOR_ACCENT : COLOR_GRAY);
-    int fillW = (int)(value * (barW - 2));
-    if (fillW > 0) gfx.fillRect(barX + 1, y + 1, fillW, h - 2, COLOR_WAVE);
-    
-    char buf[16];
-    snprintf(buf, sizeof(buf), "%.2f", value);
-    // Draw value to the right/overlay?
-    // Current layout puts it inside or next to it. 
-    // Let's stick to simple bar for now or overlay text if selected?
-    if (selected) {
-         gfx.drawText(barX + barW + 2, y, buf);
-    }
-}
-
-void SettingsPage::drawToggle(IGfx& gfx, int x, int y, int w, int h, bool value, const char* label, bool selected) {
-    gfx.drawText(x, y, label);
-    // Align right
-    gfx.drawText(x + 80, y, value ? "[ON]" : "[OFF]");
-}
-
-void SettingsPage::drawValue(IGfx& gfx, int x, int y, int w, int h, const char* valueStr, const char* label, bool selected) {
-    gfx.drawText(x, y, label);
-    gfx.drawText(x + 80, y, valueStr);
+    UI::drawStandardFooter(gfx, "[TAB] GROUP  [ARROWS] SELECT", hintText());
 }
 
 bool SettingsPage::handleEvent(UIEvent& e) {
     if (e.event_type != MINIACID_KEY_DOWN) return false;
 
-    const Rect& b = getBoundaries();
-    const bool wrap = true;
-    const bool fast = e.shift;
-    const int dirUp = -1;
-    const int dirDn = +1;
+    const bool fast = e.shift || e.ctrl || e.alt;
+    const int maxRow = kPresetRowIndex;
 
     int nav = UIInput::navCode(e);
     if (nav == MINIACID_UP) {
-        if (fast) list_.page(dirUp, b.h, wrap);
-        else      list_.move(dirUp, wrap);
+        row_ = (row_ == 0) ? maxRow : (row_ - 1);
         return true;
     }
     if (nav == MINIACID_DOWN) {
-        if (fast) list_.page(dirDn, b.h, wrap);
-        else      list_.move(dirDn, wrap);
+        row_ = (row_ == maxRow) ? 0 : (row_ + 1);
         return true;
     }
     
     if (nav == MINIACID_LEFT) { 
-        adjustSetting(-1, fast); 
+        if (row_ == kPresetRowIndex) {
+            preset_index_ = (preset_index_ + 2) % 3;
+        } else {
+            adjustSetting(-1, fast);
+        }
         return true; 
     }
     if (nav == MINIACID_RIGHT) { 
-        adjustSetting(1, fast); 
+        if (row_ == kPresetRowIndex) {
+            preset_index_ = (preset_index_ + 1) % 3;
+        } else {
+            adjustSetting(1, fast);
+        }
         return true; 
+    }
+
+    if (e.key == '\t') {
+        if (group_ == Group::Timing) group_ = Group::Notes;
+        else if (group_ == Group::Notes) group_ = Group::Scale;
+        else group_ = Group::Timing;
+        return true;
+    }
+
+    if (e.key == '\n' || e.key == '\r' || e.key == ' ') {
+        if (row_ == kPresetRowIndex) {
+            applyPreset(preset_index_);
+            return true;
+        }
+    }
+
+    if (e.key >= '1' && e.key <= '3') {
+        preset_index_ = e.key - '1';
+        applyPreset(preset_index_);
+        return true;
     }
     
     return false;
@@ -252,9 +233,7 @@ bool SettingsPage::handleEvent(UIEvent& e) {
 void SettingsPage::adjustSetting(int delta, bool shift) {
     Scene& scene = mini_acid_.sceneManager().currentScene();
     GeneratorParams& params = scene.generatorParams;
-    SettingId id = kSettings[list_.selected()].id == (int)SettingId::Swing ? SettingId::Swing : (SettingId)kSettings[list_.selected()].id;
-    // The above line is silly, just cast
-    id = (SettingId)kSettings[list_.selected()].id;
+    SettingId id = static_cast<SettingId>(settingForRow());
     
     // Professional touch: accelerated steps
     float fStep = shift ? 0.15f : 0.05f;
@@ -308,4 +287,235 @@ void SettingsPage::adjustSetting(int delta, bool shift) {
             break;
         default: break;
     }
+}
+
+int SettingsPage::settingForRow() const {
+    if (row_ >= kRowsPerGroup) {
+        return (int)SettingId::Swing;
+    }
+    switch (group_) {
+        case Group::Timing: return (int)kGroupTiming[row_];
+        case Group::Notes: return (int)kGroupNotes[row_];
+        case Group::Scale: return (int)kGroupScale[row_];
+    }
+    return (int)SettingId::Swing;
+}
+
+void SettingsPage::formatSetting(char* buf, size_t bufSize, int id, const GeneratorParams& params) const {
+    SettingId sid = static_cast<SettingId>(id);
+    switch (sid) {
+        case SettingId::Swing:
+            std::snprintf(buf, bufSize, "Swing     %d%%", (int)(params.swingAmount * 100.0f + 0.5f));
+            break;
+        case SettingId::VelocityRange:
+            std::snprintf(buf, bufSize, "Vel Range %d%%", (int)(params.velocityRange * 100.0f + 0.5f));
+            break;
+        case SettingId::GhostProb:
+            std::snprintf(buf, bufSize, "Ghost Prob %d%%", (int)(params.ghostNoteProbability * 100.0f + 0.5f));
+            break;
+        case SettingId::MicroTiming:
+            std::snprintf(buf, bufSize, "MicroTime %d%%", (int)(params.microTimingAmount * 100.0f + 0.5f));
+            break;
+        case SettingId::MinNotes:
+            std::snprintf(buf, bufSize, "Min Notes %d", params.minNotes);
+            break;
+        case SettingId::MaxNotes:
+            std::snprintf(buf, bufSize, "Max Notes %d", params.maxNotes);
+            break;
+        case SettingId::MinOctave:
+            std::snprintf(buf, bufSize, "Min Oct  %d", params.minOctave);
+            break;
+        case SettingId::MaxOctave:
+            std::snprintf(buf, bufSize, "Max Oct  %d", params.maxOctave);
+            break;
+        case SettingId::ScaleRoot:
+            std::snprintf(buf, bufSize, "Scale Root %s", noteToString(params.scaleRoot));
+            break;
+        case SettingId::ScaleType:
+            std::snprintf(buf, bufSize, "Scale %s", scaleTypeToString(params.scale));
+            break;
+        case SettingId::PreferDownbeats:
+            std::snprintf(buf, bufSize, "Downbeats %s", params.preferDownbeats ? "ON" : "OFF");
+            break;
+        case SettingId::ScaleQuantize:
+            std::snprintf(buf, bufSize, "Quantize %s", params.scaleQuantize ? "ON" : "OFF");
+            break;
+        default:
+            std::snprintf(buf, bufSize, "Unknown");
+            break;
+    }
+}
+
+const char* SettingsPage::hintText() const {
+    if (row_ == kPresetRowIndex) return "1-3 preset (regen)";
+    return "[L/R] ADJ  [CTRL/ALT] FAST";
+}
+
+const char* const* SettingsPage::commentLines(int& count, const GeneratorParams& params) const {
+    static char line1[48];
+    static const char* lines[1] = { line1 };
+
+    if (row_ == kPresetRowIndex) {
+        static char presetLine[48];
+        snprintf(presetLine, sizeof(presetLine), "Presets apply on regen");
+        static const char* presetLines[1] = { presetLine };
+        count = 1;
+        return presetLines;
+    }
+
+    SettingId id = static_cast<SettingId>(settingForRow());
+    switch (id) {
+        case SettingId::Swing: {
+            int v = (int)(params.swingAmount * 100.0f + 0.5f);
+            std::snprintf(line1, sizeof(line1), "%d%% offbeat shuffle (regen)", v);
+            count = 1;
+            return lines;
+        }
+        case SettingId::VelocityRange: {
+            int v = (int)(params.velocityRange * 100.0f + 0.5f);
+            std::snprintf(line1, sizeof(line1), "%d%% dynamics range (regen)", v);
+            count = 1;
+            return lines;
+        }
+        case SettingId::GhostProb: {
+            int v = (int)(params.ghostNoteProbability * 100.0f + 0.5f);
+            std::snprintf(line1, sizeof(line1), "%d%% ghost notes (regen)", v);
+            count = 1;
+            return lines;
+        }
+        case SettingId::MicroTiming: {
+            int v = (int)(params.microTimingAmount * 100.0f + 0.5f);
+            std::snprintf(line1, sizeof(line1), "%d%% timing humanize (regen)", v);
+            count = 1;
+            return lines;
+        }
+        case SettingId::MinNotes: {
+            std::snprintf(line1, sizeof(line1), "Min %d notes (regen)", params.minNotes);
+            count = 1;
+            return lines;
+        }
+        case SettingId::MaxNotes: {
+            std::snprintf(line1, sizeof(line1), "Max %d notes (regen)", params.maxNotes);
+            count = 1;
+            return lines;
+        }
+        case SettingId::MinOctave: {
+            std::snprintf(line1, sizeof(line1), "Min Oct %d (regen)", params.minOctave);
+            count = 1;
+            return lines;
+        }
+        case SettingId::MaxOctave: {
+            std::snprintf(line1, sizeof(line1), "Max Oct %d (regen)", params.maxOctave);
+            count = 1;
+            return lines;
+        }
+        case SettingId::ScaleRoot: {
+            std::snprintf(line1, sizeof(line1), "Root %s (regen)", noteToString(params.scaleRoot));
+            count = 1;
+            return lines;
+        }
+        case SettingId::ScaleType: {
+            std::snprintf(line1, sizeof(line1), "Scale %s (regen)", scaleTypeToString(params.scale));
+            count = 1;
+            return lines;
+        }
+        case SettingId::ScaleQuantize: {
+            std::snprintf(line1, sizeof(line1), "Quantize %s (regen)", params.scaleQuantize ? "ON" : "OFF");
+            count = 1;
+            return lines;
+        }
+        case SettingId::PreferDownbeats: {
+            std::snprintf(line1, sizeof(line1), "Downbeats %s (regen)", params.preferDownbeats ? "ON" : "OFF");
+            count = 1;
+            return lines;
+        }
+        default:
+            break;
+    }
+    count = 0;
+    return nullptr;
+}
+
+void SettingsPage::applyPreset(int index) {
+    Scene& scene = mini_acid_.sceneManager().currentScene();
+    GeneratorParams& params = scene.generatorParams;
+    GeneratorParams before = params;
+
+    switch (index) {
+        case 0: // TIGHT
+            params.swingAmount = 0.10f;
+            params.ghostNoteProbability = 0.05f;
+            params.minNotes = 8;
+            params.maxNotes = 10;
+            params.minOctave = 2;
+            params.maxOctave = 3;
+            params.scaleQuantize = true;
+            params.preferDownbeats = true;
+            break;
+        case 1: // HUMAN
+            params.swingAmount = 0.35f;
+            params.ghostNoteProbability = 0.10f;
+            params.minNotes = 7;
+            params.maxNotes = 11;
+            params.minOctave = 2;
+            params.maxOctave = 4;
+            params.scaleQuantize = true;
+            params.preferDownbeats = true;
+            break;
+        case 2: // LOOSE (dub/broken)
+            params.swingAmount = 0.60f;
+            params.ghostNoteProbability = 0.15f;
+            params.minNotes = 6;
+            params.maxNotes = 12;
+            params.minOctave = 2;
+            params.maxOctave = 4;
+            params.scaleQuantize = true;
+            params.preferDownbeats = true;
+            break;
+        default:
+            break;
+    }
+
+    // Delta toast (REGEN)
+    char toast[96];
+    int used = 0;
+    bool any = false;
+    int shown = 0;
+    bool more = false;
+
+    appendDeltaInt(toast, sizeof(toast), used, any, "Sw",
+                   (int)(before.swingAmount * 100.0f + 0.5f),
+                   (int)(params.swingAmount * 100.0f + 0.5f),
+                   shown, more);
+    appendDeltaInt(toast, sizeof(toast), used, any, "Gh",
+                   (int)(before.ghostNoteProbability * 100.0f + 0.5f),
+                   (int)(params.ghostNoteProbability * 100.0f + 0.5f),
+                   shown, more);
+    appendDeltaRange(toast, sizeof(toast), used, any, "Nt",
+                     before.minNotes, before.maxNotes,
+                     params.minNotes, params.maxNotes,
+                     shown, more);
+    appendDeltaRange(toast, sizeof(toast), used, any, "Oct",
+                     before.minOctave, before.maxOctave,
+                     params.minOctave, params.maxOctave,
+                     shown, more);
+    appendDelta(toast, sizeof(toast), used, any, "Q",
+                before.scaleQuantize ? "ON" : "OFF",
+                params.scaleQuantize ? "ON" : "OFF",
+                shown, more);
+    appendDelta(toast, sizeof(toast), used, any, "Db",
+                before.preferDownbeats ? "ON" : "OFF",
+                params.preferDownbeats ? "ON" : "OFF",
+                shown, more);
+
+    if (!any) {
+        snprintf(toast, sizeof(toast), "Preset applied (regen)");
+    } else {
+        if (more && used < (int)sizeof(toast) - 4) {
+            used += snprintf(toast + used, sizeof(toast) - used, "…");
+        }
+        snprintf(toast + used, sizeof(toast) - used, " (regen)");
+    }
+
+    UI::showToast(toast, 2000);
 }

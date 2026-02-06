@@ -101,6 +101,9 @@ public:
   float sampleRate() const;
   bool isPlaying() const;
   int currentStep() const;
+  int cycleBarIndex() const;
+  int cycleBarCount() const;
+  uint32_t cyclePulseCounter() const { return cyclePulseCounter_; }
   int currentDrumPatternIndex() const;
   int current303PatternIndex(int voiceIndex = 0) const;
   int currentDrumBankIndex() const;
@@ -202,7 +205,9 @@ public:
   void set303BankIndex(int voiceIndex, int bankIndex);
   void adjust303StepNote(int voiceIndex, int stepIndex, int semitoneDelta);
   void adjust303StepOctave(int voiceIndex, int stepIndex, int octaveDelta);
+
   void clear303StepNote(int voiceIndex, int stepIndex);
+  void clear303Step(int stepIndex, int voiceIndex); // Clears entire step
   void toggle303AccentStep(int voiceIndex, int stepIndex);
   void toggle303SlideStep(int voiceIndex, int stepIndex);
   void toggleDrumStep(int voiceIndex, int stepIndex);
@@ -214,9 +219,15 @@ public:
 
   void randomize303Pattern(int voiceIndex = 0);
   void randomizeDrumPattern();
+  void randomizeDrumVoice(int voiceIndex);
+  void randomizeDrumPatternChaos();
   void setGrooveboxMode(GrooveboxMode mode);
   GrooveboxMode grooveboxMode() const;
   void toggleGrooveboxMode();
+
+  // FEEL/TEXTURE: apply scene feel settings to DSP chain
+  void applyTextureFromScene_();
+  void applyFeelTimingFromScene_();
 
   // UI Convenience
   int currentScene() const { return current303BankIndex(0); }
@@ -276,6 +287,7 @@ public:
 private:
   void updateSamplesPerStep();
   void advanceStep();
+  unsigned long computeStepDurationSamples_() const;
   float noteToFreq(int note);
   int clamp303Voice(int voiceIndex) const;
   int clamp303Step(int stepIndex) const;
@@ -337,6 +349,7 @@ private:
   volatile float bpmValue;
   volatile int currentStepIndex;
   unsigned long samplesIntoStep;
+  unsigned long currentStepDurationSamples_ = 1;
   float samplesPerStep;
   
   // Gate length countdown (samples until release, 0 = released)
@@ -345,6 +358,8 @@ private:
   bool songMode_;
   int drumCycleIndex_;
   int songPlayheadPosition_;
+  int songStepCounter_ = 0;
+  volatile uint32_t cyclePulseCounter_ = 0;
   int patternModeDrumPatternIndex_;
   int patternModeDrumBankIndex_;
   int patternModeSynthPatternIndex_[NUM_303_VOICES];

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../dsp/scenes.h"
+#include "../../scenes.h"
 
 struct PatternClipboard {
   bool has_pattern = false;

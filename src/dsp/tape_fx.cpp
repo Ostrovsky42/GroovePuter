@@ -98,7 +98,11 @@ void TapeFX::updateInternalParams() {
 
 void TapeFX::applyMinimalParams(uint8_t space, uint8_t movement, uint8_t groove) {
     spaceAmount_ = space * 0.1f; // Boosted from 0.008f for audible delay/reverb
+    if (spaceAmount_ > 0.8f) spaceAmount_ = 0.8f; // avoid runaway wet mix
+
     movementAmount_ = movement * 0.01f; // depth scaling
+    if (movementAmount_ > 1.0f) movementAmount_ = 1.0f;
+
     movementFreq_ = 0.5f + (movement % 50) * 0.1f;
 }
 
@@ -127,6 +131,8 @@ void TapeFX::updateLFO() {
 }
 
 float TapeFX::process(float input) {
+    if (!enabled_) return input;
+
     if (paramsDirty_) updateInternalParams();
     
     if (++lfoCounter_ >= kLFOUpdateRate) {

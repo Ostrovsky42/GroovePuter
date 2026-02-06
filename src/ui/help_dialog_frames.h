@@ -202,7 +202,7 @@ inline void drawHelpPageDrumPatternEdit(IGfx& gfx, int x, int y, int w, int h) {
   right_y += lh;
   drawHelpItem(gfx, layout.right_x, right_y, "ENTER", "Toggle hit", IGfxColor::Green());
   right_y += lh;
-  drawHelpItem(gfx, layout.right_x, right_y, "W", "Toggle accent", COLOR_ACCENT);
+  drawHelpItem(gfx, layout.right_x, right_y, "A", "Toggle accent", COLOR_ACCENT);
 }
 
 inline void drawHelpPageSong(IGfx& gfx, int x, int y, int w, int h) {

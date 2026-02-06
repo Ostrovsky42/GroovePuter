@@ -4,6 +4,7 @@
 #include "display.h"
 #include "ui_core.h"
 #include "ui_themes.h"
+#include <vector>
 
 // ============================================================================
 // Cassette Skin - Visual wrapper for vintage tape deck aesthetic
@@ -74,4 +75,10 @@ private:
     const CassettePalette* palette_;
     uint8_t animFrame_ = 0;
     uint8_t tickCounter_ = 0;
+
+    // Memory-safe background caching (Line-based)
+    std::vector<uint16_t> linePlain_; // Plain base color
+    std::vector<uint16_t> lineEven_;  // Dither Line 0 (Dark at 0, 2, 4...)
+    std::vector<uint16_t> lineOdd_;   // Dither Line 2 (Dark at 1, 3, 5...)
+    uint32_t lastBgColor_ = 0xFFFFFFFF;
 };

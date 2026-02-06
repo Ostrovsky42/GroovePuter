@@ -49,6 +49,10 @@ public:
     // Force parameter recalculation on next process()
     void invalidateParams() { paramsDirty_ = true; }
 
+    // Enable/Disable processing (bypass)
+    void setEnabled(bool enabled) { enabled_ = enabled; }
+    bool isEnabled() const { return enabled_; }
+
 private:
     // Delay line for wow/flutter
     static constexpr uint32_t kDelaySize = 1024;
@@ -59,6 +63,7 @@ private:
     // Current macro (for dirty detection)
     TapeMacro currentMacro_;
     bool paramsDirty_ = true;
+    bool enabled_ = true;
 
     // LFO state (rotation matrix for cheap sin/cos)
     float wowSin_ = 0, wowCos_ = 1.0f;

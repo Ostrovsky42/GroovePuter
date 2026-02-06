@@ -287,12 +287,15 @@ void MiniAcid::init() {
   } else {
     LOG_PRINTLN("  - MiniAcid::init: DRAM-only mode (constrained)");
     // DRAM: Constrained mode (44.1kHz is expensive!)
-    // 0.25s delay = 44KB -> Two of them = 88KB. Feasible.
-    // Tape Looper: 0.25s = 44KB. 
+    // 0.25s delay = 44KB -> Two of them = 88KB. Feasible but tight for DSP time.
+    // Reduced to 0.15s to be safe.
     if (tapeLooper) tapeLooper->init(0.25f); 
     if (sampleStore) sampleStore->setPoolSize(32 * 1024); // 32KB sampler pool
-    delay303.init(0.25f);
-    delay3032.init(0.25f);
+    delay303.init(0.15f);
+    delay3032.init(0.15f);
+    
+    // TAPE FX DISABLED BY DEFAULT IN DRAM MODE
+    if (tapeFX) tapeFX->setEnabled(false);
     
     LOG_PRINTLN("  - MiniAcid::init: DRAM MODE ACTIVE (Reduced buffers)");
   }
@@ -366,7 +369,7 @@ void MiniAcid::reset() {
   muteHighTom = false;
   muteRim = false;
   muteClap = false;
-  delay303Enabled = false;
+  delay303Enabled = false; // Forced OFF for performance
   delay3032Enabled = false;
   distortion303Enabled = false;
   distortion3032Enabled = false;
@@ -374,6 +377,7 @@ void MiniAcid::reset() {
   currentStepIndex = -1;
   samplesIntoStep = 0;
   currentTimingOffset_ = 0;
+  currentStepDurationSamples_ = 1;
   updateSamplesPerStep();
   
   delay303.reset();
@@ -427,7 +431,10 @@ void MiniAcid::reset() {
 void MiniAcid::start() {
   playing = true;
   currentStepIndex = -1;
-  samplesIntoStep = static_cast<unsigned long>(samplesPerStep);
+  // Force immediate first step trigger.
+  samplesIntoStep = 0;
+  currentTimingOffset_ = 0;
+  currentStepDurationSamples_ = 1;
   if (songMode_) {
     songPlayheadPosition_ = clampSongPosition(sceneManager_.getSongPosition());
     sceneManager_.setSongPosition(songPlayheadPosition_);
@@ -439,14 +446,13 @@ void MiniAcid::stop() {
   playing = false;
   currentStepIndex = -1;
   samplesIntoStep = 0;
+  currentStepDurationSamples_ = 1;
   voice303.release();
   voice3032.release();
   drums->reset();
   if (songMode_) {
     sceneManager_.setSongPosition(clampSongPosition(songPlayheadPosition_));
   }
-
-  saveSceneToStorage();
 }
 
 void MiniAcid::setBpm(float bpm) {
@@ -466,6 +472,26 @@ float MiniAcid::sampleRate() const { return sampleRateValue; }
 bool MiniAcid::isPlaying() const { return playing; }
 
 int MiniAcid::currentStep() const { return currentStepIndex; }
+
+int MiniAcid::cycleBarCount() const {
+  int bars = sceneManager_.currentScene().feel.patternBars;
+  if (bars != 1 && bars != 2 && bars != 4 && bars != 8) bars = 1;
+  return bars;
+}
+
+int MiniAcid::cycleBarIndex() const {
+  int bars = cycleBarCount();
+  int cycleSteps = SEQ_STEPS * bars;
+  if (cycleSteps <= 0) return 0;
+  int step = songStepCounter_ - 1;
+  if (step < 0) step = cycleSteps - 1;
+  if (step < 0) step = 0;
+  step %= cycleSteps;
+  int bar = step / SEQ_STEPS;
+  if (bar < 0) bar = 0;
+  if (bar >= bars) bar = bars - 1;
+  return bar;
+}
 
 int MiniAcid::currentDrumPatternIndex() const {
   return sceneManager_.getCurrentDrumPatternIndex();
@@ -1202,27 +1228,61 @@ void MiniAcid::refreshDrumCache(int drumVoiceIndex) const {
 }
 
 void MiniAcid::updateSamplesPerStep() {
-  samplesPerStep = sampleRateValue * 60.0f / (bpmValue * 4.0f);
+  int steps = sceneManager_.currentScene().feel.gridSteps;
+  if (steps != 8 && steps != 16 && steps != 32) steps = 16;
+  int tb = sceneManager_.currentScene().feel.timebase;
+  if (tb < 0) tb = 0;
+  if (tb > 2) tb = 2;
+  float timebaseMul = 1.0f;
+  if (tb == 0) timebaseMul = 0.5f;
+  else if (tb == 2) timebaseMul = 2.0f;
+  float effectiveSteps = steps * timebaseMul;
+  if (effectiveSteps < 1.0f) effectiveSteps = 1.0f;
+  samplesPerStep = sampleRateValue * 240.0f / (bpmValue * effectiveSteps);
 }
 
 float MiniAcid::noteToFreq(int note) {
   return 440.0f * powf(2.0f, (note - 69) / 12.0f);
 }
 
+unsigned long MiniAcid::computeStepDurationSamples_() const {
+  // Compute once per step:
+  // target = nominalStep + nextOffset - currentOffset
+  int nextStepIndex = (currentStepIndex + 1) % SEQ_STEPS;
+  int8_t nextTiming = 0;
+  const SynthPattern& groovePattern = sceneManager_.getCurrentSynthPattern(0);
+  nextTiming = groovePattern.steps[nextStepIndex].timing;
+
+  long samplesPerTick = static_cast<long>(samplesPerStep / 24.0f);
+  if (samplesPerTick < 1) samplesPerTick = 1;
+  long nextOffset = static_cast<long>(nextTiming) * samplesPerTick;
+
+  long targetDuration = static_cast<long>(samplesPerStep) + nextOffset - currentTimingOffset_;
+  if (targetDuration < 1) targetDuration = 1;
+  return static_cast<unsigned long>(targetDuration);
+}
+
 void MiniAcid::advanceStep() {
+  int patternBars = sceneManager_.currentScene().feel.patternBars;
+  if (patternBars != 1 && patternBars != 2 && patternBars != 4 && patternBars != 8) patternBars = 1;
+  int cycleSteps = SEQ_STEPS * patternBars;
+  if (cycleSteps <= 0) cycleSteps = SEQ_STEPS;
+  if (songStepCounter_ >= cycleSteps) songStepCounter_ = 0;
+
   int prevStep = currentStepIndex;
-  currentStepIndex = (currentStepIndex + 1) % SEQ_STEPS;
+  if (songMode_ && prevStep < 0) {
+    songPlayheadPosition_ = clampSongPosition(sceneManager_.getSongPosition());
+    sceneManager_.setSongPosition(songPlayheadPosition_);
+    applySongPositionSelection();
+    songStepCounter_ = 0;
+  }
+
+  currentStepIndex = songStepCounter_ % SEQ_STEPS;
 
   LedManager::instance().onBeat(currentStepIndex, sceneManager_.currentScene().led);
 
   if (songMode_) {
-    if (prevStep < 0) {
-      songPlayheadPosition_ = clampSongPosition(sceneManager_.getSongPosition());
-      sceneManager_.setSongPosition(songPlayheadPosition_);
-      applySongPositionSelection();
-    } else if (currentStepIndex == 0) {
-      advanceSongPlayhead();
-    }
+    // song position advance happens after step increment (see below)
   }
 
   // DEBUG: toggle drum kit every measure for testing
@@ -1275,17 +1335,21 @@ void MiniAcid::advanceStep() {
                // For now, TIE only extends.
           }
       } else if (stepA.note >= 0 && (!stepA.ghost || (rand() % 100 < 80))) {
-        voice303.startNote(noteToFreq(stepA.note), stepA.accent, stepA.slide, stepA.velocity);
-        // Set gate countdown: gate_samples = step_duration * multiplier
-        gateCountdownA_ = (long)(samplesPerStep * gateMultA);
-        LedManager::instance().onVoiceTriggered(VoiceId::SynthA, sceneManager_.currentScene().led);
-        
-        // Setup Retrig
-        if (stepA.fx == (uint8_t)StepFx::Retrig && stepA.fxParam > 0) {
-            retrigA_.countRemaining = stepA.fxParam;
-            retrigA_.interval = (int)(samplesPerStep / (stepA.fxParam + 1));
-            retrigA_.counter = retrigA_.interval;
-            retrigA_.active = true;
+        // Probability check
+        if (stepA.probability >= 100 || (rand() % 100 < stepA.probability)) {
+            voice303.startNote(noteToFreq(stepA.note), stepA.accent, stepA.slide, stepA.velocity);
+            // Set gate countdown: gate_samples = step_duration * multiplier
+            gateCountdownA_ = (long)(samplesPerStep * gateMultA);
+            LedManager::instance().onVoiceTriggered(VoiceId::SynthA, sceneManager_.currentScene().led);
+            
+            // Setup Retrig
+            if (stepA.fx == (uint8_t)StepFx::Retrig && stepA.fxParam > 0) {
+                retrigA_.countRemaining = stepA.fxParam;
+                // Retrigger interval should be relative to current step duration
+                retrigA_.interval = (int)(samplesPerStep / (stepA.fxParam + 1));
+                retrigA_.counter = retrigA_.interval;
+                retrigA_.active = true;
+            }
         }
       }
   }
@@ -1296,15 +1360,17 @@ void MiniAcid::advanceStep() {
       if (stepB.note == -2) { // TIE
           if (gateCountdownB_ > 0) gateCountdownB_ += (long)(samplesPerStep * gateMultB);
       } else if (stepB.note >= 0 && (!stepB.ghost || (rand() % 100 < 80))) {
-        voice3032.startNote(noteToFreq(stepB.note), stepB.accent, stepB.slide, stepB.velocity);
-        gateCountdownB_ = (long)(samplesPerStep * gateMultB);
-        LedManager::instance().onVoiceTriggered(VoiceId::SynthB, sceneManager_.currentScene().led);
-        
-        if (stepB.fx == (uint8_t)StepFx::Retrig && stepB.fxParam > 0) {
-            retrigB_.countRemaining = stepB.fxParam;
-            retrigB_.interval = (int)(samplesPerStep / (stepB.fxParam + 1));
-            retrigB_.counter = retrigB_.interval;
-            retrigB_.active = true;
+        if (stepB.probability >= 100 || (rand() % 100 < stepB.probability)) {
+            voice3032.startNote(noteToFreq(stepB.note), stepB.accent, stepB.slide, stepB.velocity);
+            gateCountdownB_ = (long)(samplesPerStep * gateMultB);
+            LedManager::instance().onVoiceTriggered(VoiceId::SynthB, sceneManager_.currentScene().led);
+            
+            if (stepB.fx == (uint8_t)StepFx::Retrig && stepB.fxParam > 0) {
+                retrigB_.countRemaining = stepB.fxParam;
+                retrigB_.interval = (int)(samplesPerStep / (stepB.fxParam + 1));
+                retrigB_.counter = retrigB_.interval;
+                retrigB_.active = true;
+            }
         }
       }
   }
@@ -1320,119 +1386,191 @@ void MiniAcid::advanceStep() {
   const DrumPattern& clap = activeDrumPattern(kDrumClapVoice);
 
   bool drumsActive = songPatternDrums >= 0;
-  bool stepAccent =
-    kick.steps[currentStepIndex].accent ||
-    snare.steps[currentStepIndex].accent ||
-    hat.steps[currentStepIndex].accent ||
-    openHat.steps[currentStepIndex].accent ||
-    midTom.steps[currentStepIndex].accent ||
-    highTom.steps[currentStepIndex].accent ||
-    rim.steps[currentStepIndex].accent ||
-    clap.steps[currentStepIndex].accent;
 
-  if (kick.steps[currentStepIndex].hit && !muteKick && drumsActive) {
+  auto shouldPlay = [&](const DrumStep& step, bool muted) -> bool {
+    if (!drumsActive || muted || !step.hit) return false;
+    if (step.probability >= 100) return true;
+    return (rand() % 100) < step.probability;
+  };
+
+  const bool kickPlay = shouldPlay(kick.steps[currentStepIndex], muteKick);
+  const bool snarePlay = shouldPlay(snare.steps[currentStepIndex], muteSnare);
+  const bool hatPlay = shouldPlay(hat.steps[currentStepIndex], muteHat);
+  const bool openHatPlay = shouldPlay(openHat.steps[currentStepIndex], muteOpenHat);
+  const bool midTomPlay = shouldPlay(midTom.steps[currentStepIndex], muteMidTom);
+  const bool highTomPlay = shouldPlay(highTom.steps[currentStepIndex], muteHighTom);
+  const bool rimPlay = shouldPlay(rim.steps[currentStepIndex], muteRim);
+  const bool clapPlay = shouldPlay(clap.steps[currentStepIndex], muteClap);
+
+  const bool stepAccent =
+    (kickPlay && kick.steps[currentStepIndex].accent) ||
+    (snarePlay && snare.steps[currentStepIndex].accent) ||
+    (hatPlay && hat.steps[currentStepIndex].accent) ||
+    (openHatPlay && openHat.steps[currentStepIndex].accent) ||
+    (midTomPlay && midTom.steps[currentStepIndex].accent) ||
+    (highTomPlay && highTom.steps[currentStepIndex].accent) ||
+    (rimPlay && rim.steps[currentStepIndex].accent) ||
+    (clapPlay && clap.steps[currentStepIndex].accent);
+
+  if (kickPlay) {
     bool rev = (kick.steps[currentStepIndex].fx == (uint8_t)StepFx::Reverse);
     drums->triggerKick(stepAccent, kick.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack->triggerPad(0, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumKick, sceneManager_.currentScene().led);
     if (kick.steps[currentStepIndex].fx == (uint8_t)StepFx::Retrig && kick.steps[currentStepIndex].fxParam > 0) {
-        retrigDrums_[kDrumKickVoice].countRemaining = kick.steps[currentStepIndex].fxParam;
-        retrigDrums_[kDrumKickVoice].interval = (int)(samplesPerStep / (kick.steps[currentStepIndex].fxParam + 1));
-        retrigDrums_[kDrumKickVoice].counter = retrigDrums_[kDrumKickVoice].interval;
-        retrigDrums_[kDrumKickVoice].active = true;
-    } else retrigDrums_[kDrumKickVoice].active = false;
-  } else retrigDrums_[kDrumKickVoice].active = false;
+      retrigDrums_[kDrumKickVoice].countRemaining = kick.steps[currentStepIndex].fxParam;
+      retrigDrums_[kDrumKickVoice].interval = (int)(samplesPerStep / (kick.steps[currentStepIndex].fxParam + 1));
+      retrigDrums_[kDrumKickVoice].counter = retrigDrums_[kDrumKickVoice].interval;
+      retrigDrums_[kDrumKickVoice].active = true;
+    } else {
+      retrigDrums_[kDrumKickVoice].active = false;
+    }
+  } else {
+    retrigDrums_[kDrumKickVoice].active = false;
+  }
 
-  if (snare.steps[currentStepIndex].hit && !muteSnare && drumsActive) {
+  if (snarePlay) {
     bool rev = (snare.steps[currentStepIndex].fx == (uint8_t)StepFx::Reverse);
     drums->triggerSnare(stepAccent, snare.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack->triggerPad(1, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumSnare, sceneManager_.currentScene().led);
     if (snare.steps[currentStepIndex].fx == (uint8_t)StepFx::Retrig && snare.steps[currentStepIndex].fxParam > 0) {
-        retrigDrums_[kDrumSnareVoice].countRemaining = snare.steps[currentStepIndex].fxParam;
-        retrigDrums_[kDrumSnareVoice].interval = (int)(samplesPerStep / (snare.steps[currentStepIndex].fxParam + 1));
-        retrigDrums_[kDrumSnareVoice].counter = retrigDrums_[kDrumSnareVoice].interval;
-        retrigDrums_[kDrumSnareVoice].active = true;
-    } else retrigDrums_[kDrumSnareVoice].active = false;
-  } else retrigDrums_[kDrumSnareVoice].active = false;
+      retrigDrums_[kDrumSnareVoice].countRemaining = snare.steps[currentStepIndex].fxParam;
+      retrigDrums_[kDrumSnareVoice].interval = (int)(samplesPerStep / (snare.steps[currentStepIndex].fxParam + 1));
+      retrigDrums_[kDrumSnareVoice].counter = retrigDrums_[kDrumSnareVoice].interval;
+      retrigDrums_[kDrumSnareVoice].active = true;
+    } else {
+      retrigDrums_[kDrumSnareVoice].active = false;
+    }
+  } else {
+    retrigDrums_[kDrumSnareVoice].active = false;
+  }
 
-  if (hat.steps[currentStepIndex].hit && !muteHat && drumsActive) {
+  if (hatPlay) {
     bool rev = (hat.steps[currentStepIndex].fx == (uint8_t)StepFx::Reverse);
     drums->triggerHat(stepAccent, hat.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack->triggerPad(2, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumHatC, sceneManager_.currentScene().led);
     if (hat.steps[currentStepIndex].fx == (uint8_t)StepFx::Retrig && hat.steps[currentStepIndex].fxParam > 0) {
-        retrigDrums_[kDrumHatVoice].countRemaining = hat.steps[currentStepIndex].fxParam;
-        retrigDrums_[kDrumHatVoice].interval = (int)(samplesPerStep / (hat.steps[currentStepIndex].fxParam + 1));
-        retrigDrums_[kDrumHatVoice].counter = retrigDrums_[kDrumHatVoice].interval;
-        retrigDrums_[kDrumHatVoice].active = true;
-    } else retrigDrums_[kDrumHatVoice].active = false;
-  } else retrigDrums_[kDrumHatVoice].active = false;
+      retrigDrums_[kDrumHatVoice].countRemaining = hat.steps[currentStepIndex].fxParam;
+      retrigDrums_[kDrumHatVoice].interval = (int)(samplesPerStep / (hat.steps[currentStepIndex].fxParam + 1));
+      retrigDrums_[kDrumHatVoice].counter = retrigDrums_[kDrumHatVoice].interval;
+      retrigDrums_[kDrumHatVoice].active = true;
+    } else {
+      retrigDrums_[kDrumHatVoice].active = false;
+    }
+  } else {
+    retrigDrums_[kDrumHatVoice].active = false;
+  }
 
-  if (openHat.steps[currentStepIndex].hit && !muteOpenHat && drumsActive) {
+  if (openHatPlay) {
     bool rev = (openHat.steps[currentStepIndex].fx == (uint8_t)StepFx::Reverse);
     drums->triggerOpenHat(stepAccent, openHat.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack->triggerPad(3, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumHatO, sceneManager_.currentScene().led);
     if (openHat.steps[currentStepIndex].fx == (uint8_t)StepFx::Retrig && openHat.steps[currentStepIndex].fxParam > 0) {
-        retrigDrums_[kDrumOpenHatVoice].countRemaining = openHat.steps[currentStepIndex].fxParam;
-        retrigDrums_[kDrumOpenHatVoice].interval = (int)(samplesPerStep / (openHat.steps[currentStepIndex].fxParam + 1));
-        retrigDrums_[kDrumOpenHatVoice].counter = retrigDrums_[kDrumOpenHatVoice].interval;
-        retrigDrums_[kDrumOpenHatVoice].active = true;
-    } else retrigDrums_[kDrumOpenHatVoice].active = false;
-  } else retrigDrums_[kDrumOpenHatVoice].active = false;
+      retrigDrums_[kDrumOpenHatVoice].countRemaining = openHat.steps[currentStepIndex].fxParam;
+      retrigDrums_[kDrumOpenHatVoice].interval = (int)(samplesPerStep / (openHat.steps[currentStepIndex].fxParam + 1));
+      retrigDrums_[kDrumOpenHatVoice].counter = retrigDrums_[kDrumOpenHatVoice].interval;
+      retrigDrums_[kDrumOpenHatVoice].active = true;
+    } else {
+      retrigDrums_[kDrumOpenHatVoice].active = false;
+    }
+  } else {
+    retrigDrums_[kDrumOpenHatVoice].active = false;
+  }
 
-  if (midTom.steps[currentStepIndex].hit && !muteMidTom && drumsActive) {
+  if (midTomPlay) {
     bool rev = (midTom.steps[currentStepIndex].fx == (uint8_t)StepFx::Reverse);
     drums->triggerMidTom(stepAccent, midTom.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack->triggerPad(4, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumTomM, sceneManager_.currentScene().led);
     if (midTom.steps[currentStepIndex].fx == (uint8_t)StepFx::Retrig && midTom.steps[currentStepIndex].fxParam > 0) {
-        retrigDrums_[kDrumMidTomVoice].countRemaining = midTom.steps[currentStepIndex].fxParam;
-        retrigDrums_[kDrumMidTomVoice].interval = (int)(samplesPerStep / (midTom.steps[currentStepIndex].fxParam + 1));
-        retrigDrums_[kDrumMidTomVoice].counter = retrigDrums_[kDrumMidTomVoice].interval;
-        retrigDrums_[kDrumMidTomVoice].active = true;
-    } else retrigDrums_[kDrumMidTomVoice].active = false;
-  } else retrigDrums_[kDrumMidTomVoice].active = false;
+      retrigDrums_[kDrumMidTomVoice].countRemaining = midTom.steps[currentStepIndex].fxParam;
+      retrigDrums_[kDrumMidTomVoice].interval = (int)(samplesPerStep / (midTom.steps[currentStepIndex].fxParam + 1));
+      retrigDrums_[kDrumMidTomVoice].counter = retrigDrums_[kDrumMidTomVoice].interval;
+      retrigDrums_[kDrumMidTomVoice].active = true;
+    } else {
+      retrigDrums_[kDrumMidTomVoice].active = false;
+    }
+  } else {
+    retrigDrums_[kDrumMidTomVoice].active = false;
+  }
 
-  if (highTom.steps[currentStepIndex].hit && !muteHighTom && drumsActive) {
+  if (highTomPlay) {
     bool rev = (highTom.steps[currentStepIndex].fx == (uint8_t)StepFx::Reverse);
     drums->triggerHighTom(stepAccent, highTom.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack->triggerPad(5, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumTomH, sceneManager_.currentScene().led);
     if (highTom.steps[currentStepIndex].fx == (uint8_t)StepFx::Retrig && highTom.steps[currentStepIndex].fxParam > 0) {
-        retrigDrums_[kDrumHighTomVoice].countRemaining = highTom.steps[currentStepIndex].fxParam;
-        retrigDrums_[kDrumHighTomVoice].interval = (int)(samplesPerStep / (highTom.steps[currentStepIndex].fxParam + 1));
-        retrigDrums_[kDrumHighTomVoice].counter = retrigDrums_[kDrumHighTomVoice].interval;
-        retrigDrums_[kDrumHighTomVoice].active = true;
-    } else retrigDrums_[kDrumHighTomVoice].active = false;
-  } else retrigDrums_[kDrumHighTomVoice].active = false;
+      retrigDrums_[kDrumHighTomVoice].countRemaining = highTom.steps[currentStepIndex].fxParam;
+      retrigDrums_[kDrumHighTomVoice].interval = (int)(samplesPerStep / (highTom.steps[currentStepIndex].fxParam + 1));
+      retrigDrums_[kDrumHighTomVoice].counter = retrigDrums_[kDrumHighTomVoice].interval;
+      retrigDrums_[kDrumHighTomVoice].active = true;
+    } else {
+      retrigDrums_[kDrumHighTomVoice].active = false;
+    }
+  } else {
+    retrigDrums_[kDrumHighTomVoice].active = false;
+  }
 
-  if (rim.steps[currentStepIndex].hit && !muteRim && drumsActive) {
+  if (rimPlay) {
     bool rev = (rim.steps[currentStepIndex].fx == (uint8_t)StepFx::Reverse);
     drums->triggerRim(stepAccent, rim.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack->triggerPad(6, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumRim, sceneManager_.currentScene().led);
     if (rim.steps[currentStepIndex].fx == (uint8_t)StepFx::Retrig && rim.steps[currentStepIndex].fxParam > 0) {
-        retrigDrums_[kDrumRimVoice].countRemaining = rim.steps[currentStepIndex].fxParam;
-        retrigDrums_[kDrumRimVoice].interval = (int)(samplesPerStep / (rim.steps[currentStepIndex].fxParam + 1));
-        retrigDrums_[kDrumRimVoice].counter = retrigDrums_[kDrumRimVoice].interval;
-        retrigDrums_[kDrumRimVoice].active = true;
-    } else retrigDrums_[kDrumRimVoice].active = false;
-  } else retrigDrums_[kDrumRimVoice].active = false;
+      retrigDrums_[kDrumRimVoice].countRemaining = rim.steps[currentStepIndex].fxParam;
+      retrigDrums_[kDrumRimVoice].interval = (int)(samplesPerStep / (rim.steps[currentStepIndex].fxParam + 1));
+      retrigDrums_[kDrumRimVoice].counter = retrigDrums_[kDrumRimVoice].interval;
+      retrigDrums_[kDrumRimVoice].active = true;
+    } else {
+      retrigDrums_[kDrumRimVoice].active = false;
+    }
+  } else {
+    retrigDrums_[kDrumRimVoice].active = false;
+  }
 
-  if (clap.steps[currentStepIndex].hit && !muteClap && drumsActive) {
+  if (clapPlay) {
     bool rev = (clap.steps[currentStepIndex].fx == (uint8_t)StepFx::Reverse);
     drums->triggerClap(stepAccent, clap.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack->triggerPad(7, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumClap, sceneManager_.currentScene().led);
     if (clap.steps[currentStepIndex].fx == (uint8_t)StepFx::Retrig && clap.steps[currentStepIndex].fxParam > 0) {
-        retrigDrums_[kDrumClapVoice].countRemaining = clap.steps[currentStepIndex].fxParam;
-        retrigDrums_[kDrumClapVoice].interval = (int)(samplesPerStep / (clap.steps[currentStepIndex].fxParam + 1));
-        retrigDrums_[kDrumClapVoice].counter = retrigDrums_[kDrumClapVoice].interval;
-        retrigDrums_[kDrumClapVoice].active = true;
-    } else retrigDrums_[kDrumClapVoice].active = false;
-  } else retrigDrums_[kDrumClapVoice].active = false;
+      retrigDrums_[kDrumClapVoice].countRemaining = clap.steps[currentStepIndex].fxParam;
+      retrigDrums_[kDrumClapVoice].interval = (int)(samplesPerStep / (clap.steps[currentStepIndex].fxParam + 1));
+      retrigDrums_[kDrumClapVoice].counter = retrigDrums_[kDrumClapVoice].interval;
+      retrigDrums_[kDrumClapVoice].active = true;
+    } else {
+      retrigDrums_[kDrumClapVoice].active = false;
+    }
+  } else {
+    retrigDrums_[kDrumClapVoice].active = false;
+  }
+
+  bool wrapped = false;
+  songStepCounter_++;
+  if (songStepCounter_ >= cycleSteps) {
+    songStepCounter_ = 0;
+    wrapped = true;
+  }
+
+  if (wrapped) {
+    cyclePulseCounter_++;
+  }
+
+  if (songMode_ && prevStep >= 0 && wrapped) {
+    advanceSongPlayhead();
+  }
+
+  // Cache duration for the just-started step.
+  // Update timing offset only after target is computed.
+  currentStepDurationSamples_ = computeStepDurationSamples_();
+  int nextStepIndex = (currentStepIndex + 1) % SEQ_STEPS;
+  const SynthPattern& groovePattern = sceneManager_.getCurrentSynthPattern(0);
+  long samplesPerTick = static_cast<long>(samplesPerStep / 24.0f);
+  if (samplesPerTick < 1) samplesPerTick = 1;
+  currentTimingOffset_ = static_cast<long>(groovePattern.steps[nextStepIndex].timing) * samplesPerTick;
 }
 
 void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
@@ -1489,36 +1627,17 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     samplerTrack->process(samplerOutBuffer.get(), numSamples, *sampleStore);
   }
 
+  // Cache immutable-per-buffer flags/pointers to reduce per-sample overhead.
+  const float* trackVolumes = sceneManager_.currentScene().trackVolumes;
+  const bool looperActive = (tapeLooper->mode() != TapeMode::Stop);
+  const bool tapeFxEnabled = tapeState.fxEnabled;
+  AudioDiagnostics& diag = AudioDiagnostics::instance();
+  const bool diagEnabled = diag.isEnabled();
+
   for (size_t i = 0; i < numSamples; ++i) {
     if (playing) {
-      // Micro-timing logic
-      // Calculate timing offset for the NEXT step to determine current step's duration
-      // We process note-on in advanceStep(), so we need to delay the CALL to advanceStep()
-      // if next step is late, or call it early if next step is early.
-      
-      // Look ahead to next step timing
-      int nextStepIndex = (currentStepIndex + 1) % SEQ_STEPS;
-      // Use Synth A as the groove master
-      int8_t nextTiming = 0;
-      // Ideally we'd valid check patterns but assuming cache/scenes are valid
-      // Using pattern303Steps(0) cache logic or direct scene access
-      // Direct access to get timing field as it's not cached in bool arrays
-      const SynthPattern& groovePattern = sceneManager_.getCurrentSynthPattern(0);
-      nextTiming = groovePattern.steps[nextStepIndex].timing;
-
-      // 1 step = 24 ticks. samplePerStep = 24 ticks.
-      // Offset in samples.
-      long samplesPerTick = (long)(samplesPerStep / 24.0f);
-      if (samplesPerTick < 1) samplesPerTick = 1;
-      long nextOffset = (long)nextTiming * samplesPerTick;
-
-      // Target duration = nominal + (next - current)
-      long targetDuration = (long)samplesPerStep + nextOffset - currentTimingOffset_;
-      if (targetDuration < 1) targetDuration = 1; 
-
-      if (samplesIntoStep >= (unsigned long)targetDuration) {
+      if (samplesIntoStep >= currentStepDurationSamples_) {
         samplesIntoStep = 0;
-        currentTimingOffset_ = nextOffset; // Update for next cycle
         advanceStep();
       }
       samplesIntoStep++;
@@ -1617,8 +1736,6 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
         }
     }
 
-    const float* trackVolumes = sceneManager_.currentScene().trackVolumes;
-
     if (playing) {
       // 303 Voice 1
       if (!mute303) {
@@ -1675,8 +1792,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     sample += vocalSample;  // Direct mix without ducking
     
     // Track per-source peaks for diagnostics
-    if (AudioDiagnostics::instance().isEnabled()) {
-      AudioDiagnostics::instance().trackSource(
+    if (diagEnabled) {
+      diag.trackSource(
         sample303, 
         drumsMix, 
         samplerSample,
@@ -1688,14 +1805,14 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     }
 
     // Process through Looper (Tape layer 1) - only when not stopped
-    if (tapeLooper->mode() != TapeMode::Stop) {
+    if (looperActive) {
       float loopSample = 0.0f;
       tapeLooper->process(sample, &loopSample);
       sample += loopSample;
     }
 
     // Process through Tape FX (Tape layer 2: Wow/Flutter/Saturation/Age/Tone/Crush)
-    if (tapeState.fxEnabled) {
+    if (tapeFxEnabled) {
       sample = tapeFX->process(sample);
     }
 
@@ -1734,8 +1851,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     if (finalSample < -1.0f) finalSample = -1.0f;
     
     // Track diagnostics (pre/post limiter)
-    if (AudioDiagnostics::instance().isEnabled()) {
-      AudioDiagnostics::instance().accumulate(preLimiter, limited);
+    if (diagEnabled) {
+      diag.accumulate(preLimiter, limited);
     }
     
     buffer[i] = (int16_t)(finalSample * 32767.0f);
@@ -1751,8 +1868,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   writeBufferIndex_ = 1 - writeBufferIndex_;
   
   // Flush diagnostics periodically
-  if (AudioDiagnostics::instance().isEnabled()) {
-    AudioDiagnostics::instance().flushIfReady(millis());
+  if (diagEnabled) {
+    diag.flushIfReady(millis());
   }
 }
 
@@ -1783,6 +1900,47 @@ void MiniAcid::randomizeDrumPattern() {
   const auto& params = genreManager_.getGenerativeParams();
   const auto behavior = genreManager_.getBehavior();
   modeManager_.generateDrumPattern(sceneManager_.editCurrentDrumPattern(), params, behavior);
+}
+
+void MiniAcid::randomizeDrumVoice(int voiceIndex) {
+  int idx = clampDrumVoice(voiceIndex);
+  const auto& params = genreManager_.getGenerativeParams();
+  const auto behavior = genreManager_.getBehavior();
+  modeManager_.generateDrumVoice(sceneManager_.editCurrentDrumPattern().voices[idx], idx, params, behavior);
+}
+
+// Helper to clear a step for REST
+void MiniAcid::clear303Step(int stepIndex, int synthIndex) {
+    if (synthIndex < 0 || synthIndex > 1) return;
+    SynthPattern& pattern = sceneManager_.editCurrentSynthPattern(synthIndex);
+    if (stepIndex >= 0 && stepIndex < SynthPattern::kSteps) {
+        pattern.steps[stepIndex].note = -1;  // REST
+        pattern.steps[stepIndex].slide = false;
+        pattern.steps[stepIndex].accent = false;
+        pattern.steps[stepIndex].ghost = false;
+        pattern.steps[stepIndex].probability = 100;
+        pattern.steps[stepIndex].fx = 0;
+        pattern.steps[stepIndex].fxParam = 0;
+    }
+}
+
+void MiniAcid::randomizeDrumPatternChaos() {
+  const auto& params = genreManager_.getGenerativeParams();
+  
+  // Scramble EVERYTHING
+  DrumPatternSet& patternSet = sceneManager_.editCurrentDrumPattern();
+  for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
+      // Use random behavior for each voice for "chaos"
+      GenreBehavior chaosBehavior;
+      chaosBehavior.stepMask = (uint16_t)(rand() % 0xFFFF);
+      chaosBehavior.motifLength = (uint16_t)(1 + (rand() % 8));
+      chaosBehavior.useMotif = (rand() % 100 < 50);
+      chaosBehavior.avoidClusters = (rand() % 100 < 50);
+      chaosBehavior.allowChromatic = true;
+      chaosBehavior.forceOctaveJump = true;
+      
+      modeManager_.generateDrumVoice(patternSet.voices[v], v, params, chaosBehavior);
+  }
 }
 
 void MiniAcid::regeneratePatternsWithGenre() {
@@ -1863,9 +2021,9 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
   
   Serial.printf("[LoadScene] Starting load for: %s\n", name.c_str());
   
-  // Auto-save current scene before switching to prevent data loss
+  // Do not auto-save here: filesystem writes can stall UX/audio path on constrained devices.
+  // Scene persistence is explicit via Save/Save As.
   std::string previousName = sceneStorage_->getCurrentSceneName();
-  saveSceneToStorage();
   
   sceneStorage_->setCurrentSceneName(name);
 
@@ -2026,6 +2184,11 @@ void MiniAcid::applySceneStateFromManager() {
   }
   
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: applyGenreTimbre...");
+  // Restore genre state from scene before applying timbre/texture
+  const auto& gs = sceneManager_.currentScene().genre;
+  genreManager_.setGenerativeMode(static_cast<GenerativeMode>(gs.generativeMode));
+  genreManager_.setTextureMode(static_cast<TextureMode>(gs.textureMode));
+
   // 1. Enforce Genre Timbre BASE (overwrites scene params to ensure genre identity)
   genreManager_.applyGenreTimbre(*this);
   
@@ -2036,8 +2199,50 @@ void MiniAcid::applySceneStateFromManager() {
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: applyTexture...");
   // 3. Apply texture (delta bias + FX)
   genreManager_.applyTexture(*this);
+
+  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: applyFeelTiming...");
+  applyFeelTimingFromScene_();
+
+  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: applyFeelTexture...");
+  applyTextureFromScene_();
   
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: Done");
+}
+
+void MiniAcid::applyTextureFromScene_() {
+  Scene& sc = sceneManager_.currentScene();
+  const FeelSettings& f = sc.feel;
+
+  // --- LoFi ---
+  const float lofiAmt = f.lofiEnabled ? (static_cast<float>(f.lofiAmount) / 100.0f) : 0.0f;
+  voice303.setLoFiAmount(lofiAmt);
+  voice3032.setLoFiAmount(lofiAmt);
+  if (drums) {
+    drums->setLoFiMode(f.lofiEnabled);
+    drums->setLoFiAmount(lofiAmt);
+  }
+
+  // --- Drive ---
+  const float driveAmtNorm = f.driveEnabled ? (static_cast<float>(f.driveAmount) / 100.0f) : 0.0f;
+  const bool driveOn = f.driveEnabled && driveAmtNorm > 0.001f;
+  const float driveVal = 0.1f + driveAmtNorm * 9.9f; // TubeDistortion clamps 0.1..10
+  distortion303.setDrive(driveVal);
+  distortion3032.setDrive(driveVal);
+  distortion303.setEnabled(driveOn);
+  distortion3032.setEnabled(driveOn);
+
+  // --- Tape ---
+  // FEEL/TEXTURE Tape toggle is FX-only for now (no looper control in UI).
+  // Force looper to STOP to avoid hidden loop playback/glitches.
+  sc.tape.fxEnabled = f.tapeEnabled;
+  sc.tape.mode = TapeMode::Stop;
+}
+
+void MiniAcid::applyFeelTimingFromScene_() {
+  updateSamplesPerStep();
+  samplesIntoStep = 0;
+  currentTimingOffset_ = 0;
+  currentStepDurationSamples_ = 1;
 }
 
 void MiniAcid::syncSceneStateToManager() {
@@ -2046,6 +2251,8 @@ void MiniAcid::syncSceneStateToManager() {
   
   // Save master volume to scene
   sceneManager_.currentScene().masterVolume = params[static_cast<int>(MiniAcidParamId::MainVolume)].value();
+  sceneManager_.currentScene().genre.generativeMode = static_cast<uint8_t>(genreManager_.generativeMode());
+  sceneManager_.currentScene().genre.textureMode = static_cast<uint8_t>(genreManager_.textureMode());
   
   sceneManager_.setSynthMute(0, mute303);
   sceneManager_.setSynthMute(1, mute303_2);
@@ -2323,6 +2530,7 @@ bool MiniAcid::renderProjectToWav(const std::string& filename, std::function<voi
   currentStepIndex = 0;
   samplesIntoStep = 0;
   currentTimingOffset_ = 0;
+  currentStepDurationSamples_ = 1;
   
   // 4. Write WAV Header placeholder
   WavHeader header;
@@ -2358,6 +2566,7 @@ bool MiniAcid::renderProjectToWav(const std::string& filename, std::function<voi
   
   // Hack: Reset internal counters
   samplesIntoStep = 0;
+  currentStepDurationSamples_ = 1;
   
   uint32_t bytesWritten = 0;
   int lastStepIndex = 0;

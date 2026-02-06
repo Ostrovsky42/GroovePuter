@@ -8,6 +8,7 @@
 class GlobalHelpOverlay {
 public:
     GlobalHelpOverlay() = default;
+    void setPageContext(int pageIndex) { page_index_ = pageIndex; }
     
     bool isVisible() const { return visible_; }
     
@@ -31,7 +32,7 @@ public:
         int title_h = 14;
         gfx.fillRect(0, 0, w, title_h, COLOR_DARKER);
         gfx.setTextColor(COLOR_ACCENT);
-        const char* title = "HELP (Ctrl+H to close)";
+        const char* title = "HELP (ESC or Ctrl+H)";
         int title_x = (w - gfx.textWidth(title)) / 2;
         gfx.drawText(title_x, 2, title);
         
@@ -42,7 +43,7 @@ public:
         if (line_h < 10) line_h = 10;
         
         int visible_lines = content_h / line_h;
-        int total_lines = HelpContent::getTotalLines();
+        int total_lines = HelpContent::getTotalLines(page_index_);
         
         // Clamp scroll
         int max_scroll = total_lines - visible_lines;
@@ -53,7 +54,7 @@ public:
         // Draw lines
         int y = content_y;
         for (int i = 0; i < visible_lines && (scroll_line_ + i) < total_lines; i++) {
-            const char* line = HelpContent::getLine(scroll_line_ + i);
+            const char* line = HelpContent::getLine(page_index_, scroll_line_ + i);
             if (!line) continue;
             
             // Section headers in accent color
@@ -99,7 +100,7 @@ public:
         }
         
         // Scroll
-        int scroll_step = event.shift ? 5 : 1;
+        int scroll_step = 1;
         
         switch (event.scancode) {
             case MINIACID_UP:
@@ -116,7 +117,7 @@ public:
                 return true;
                 
             case MINIACID_RIGHT:
-                scroll_line_ = HelpContent::getTotalLines();  // Go to bottom
+                scroll_line_ = HelpContent::getTotalLines(page_index_);  // Go to bottom
                 return true;
                 
             default:
@@ -130,4 +131,5 @@ public:
 private:
     bool visible_ = false;
     int scroll_line_ = 0;
+    int page_index_ = -1;
 };

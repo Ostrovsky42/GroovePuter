@@ -637,14 +637,20 @@ void GrooveboxModeManager::generateDrumPattern(DrumPatternSet& patternSet, const
 void GrooveboxModeManager::generateDrumPattern(DrumPatternSet& patternSet, 
                                                const GenerativeParams& params,
                                                const GenreBehavior& behavior) const {
-    // Clear all voices
     for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-        for (int s = 0; s < 16; ++s) {
-            patternSet.voices[v].steps[s].hit = false;
-            patternSet.voices[v].steps[s].accent = false;
-            patternSet.voices[v].steps[s].velocity = 0;
-            patternSet.voices[v].steps[s].timing = 0;
-        }
+        generateDrumVoice(patternSet.voices[v], v, params, behavior);
+    }
+}
+
+void GrooveboxModeManager::generateDrumVoice(DrumPattern& pattern, int voiceIndex,
+                                              const GenerativeParams& params,
+                                              const GenreBehavior& behavior) const {
+    // Clear voice
+    for (int s = 0; s < 16; ++s) {
+        pattern.steps[s].hit = false;
+        pattern.steps[s].accent = false;
+        pattern.steps[s].velocity = 100; // FIX: default to 100
+        pattern.steps[s].timing = 0;
     }
 
     // Template detection based on stepMask
@@ -653,92 +659,108 @@ void GrooveboxModeManager::generateDrumPattern(DrumPatternSet& patternSet,
     bool electro = (behavior.stepMask == 0xAA55);
     bool rave = (behavior.stepMask == 0xFFFF && behavior.motifLength >= 6);
 
-    // KICK (voice 0)
-    if (electro) {
-        int steps[] = {0, 6, 10, 15};
-        for (int i = 0; i < 4; i++) {
-            if (rand() % 100 < 85) {
-                patternSet.voices[0].steps[steps[i]].hit = true;
-                patternSet.voices[0].steps[steps[i]].velocity = 115;
+    switch (voiceIndex) {
+        case 0: // KICK
+            if (electro) {
+                int steps[] = {0, 6, 10, 15};
+                for (int i = 0; i < 4; i++) {
+                    if (rand() % 100 < 85) {
+                        pattern.steps[steps[i]].hit = true;
+                        pattern.steps[steps[i]].velocity = 115;
+                    }
+                }
+            } else if (hypno || minimal || params.sparseKick) {
+                pattern.steps[0].hit = true;
+                pattern.steps[0].velocity = 110;
+                if (!hypno && rand() % 100 < 35) {
+                    pattern.steps[8].hit = true;
+                    pattern.steps[8].velocity = 105;
+                }
+            } else {
+                for (int i = 0; i < 16; i += 4) {
+                    pattern.steps[i].hit = true;
+                    pattern.steps[i].velocity = rave ? 127 : 112;
+                }
+                if (rave && rand() % 100 < 45) {
+                    pattern.steps[14].hit = true;
+                    pattern.steps[14].velocity = 100;
+                }
             }
-        }
-    } else if (hypno || minimal || params.sparseKick) {
-        patternSet.voices[0].steps[0].hit = true;
-        patternSet.voices[0].steps[0].velocity = 110;
-        if (!hypno && rand() % 100 < 35) {
-            patternSet.voices[0].steps[8].hit = true;
-            patternSet.voices[0].steps[8].velocity = 105;
-        }
-    } else {
-        for (int i = 0; i < 16; i += 4) {
-            patternSet.voices[0].steps[i].hit = true;
-            patternSet.voices[0].steps[i].velocity = rave ? 127 : 112;
-        }
-        if (rave && rand() % 100 < 45) {
-            patternSet.voices[0].steps[14].hit = true;
-            patternSet.voices[0].steps[14].velocity = 100;
-        }
+            break;
+
+        case 1: // SNARE/CLAP
+            if (!hypno) {
+                if (electro) {
+                    int s1 = (rand() % 100 < 30) ? 5 : 4;
+                    int s2 = (rand() % 100 < 30) ? 13 : 12;
+                    pattern.steps[s1].hit = true;
+                    pattern.steps[s1].velocity = 110;
+                    pattern.steps[s2].hit = true;
+                    pattern.steps[s2].velocity = 110;
+                } else {
+                    pattern.steps[4].hit = true;
+                    pattern.steps[4].velocity = 112;
+                    pattern.steps[12].hit = true;
+                    pattern.steps[12].velocity = 112;
+                }
+            }
+            break;
+
+        case 2: // CLOSED HAT
+            if (hypno || minimal || params.sparseHats) {
+                for (int i = 2; i < 16; i += 4) {
+                    if (rand() % 100 < 70) {
+                        pattern.steps[i].hit = true;
+                        pattern.steps[i].velocity = 70;
+                    }
+                }
+            } else {
+                int step = rave ? 1 : 2;
+                for (int i = 0; i < 16; i += step) {
+                    if (rand() % 100 < (rave ? 92 : 80)) {
+                        pattern.steps[i].hit = true;
+                        pattern.steps[i].velocity = (i % 4 == 2) ? 95 : 55;
+                    }
+                }
+            }
+            break;
+
+        case 3: // OPEN HAT
+            for (int i = 2; i < 16; i += 4) {
+                if (rand() % 100 < (minimal ? 30 : 60)) {
+                    int pos = i;
+                    pattern.steps[pos].hit = true;
+                    pattern.steps[pos].velocity = 85;
+                }
+            }
+            break;
+
+        case 4: case 5: case 6: case 7: // PERC/FILLS
+            if ((rand() % 100) < prob100(params.fillProbability)) {
+                int count = 1 + (rand() % 2);
+                for (int i = 0; i < count; i++) {
+                    int pos = 12 + (rand() % 4);
+                    pattern.steps[pos & 15].hit = true;
+                    pattern.steps[pos & 15].velocity = 80 + (i * 10);
+                    pattern.steps[pos & 15].accent = (rand() % 100 < 30);
+                }
+            }
+            break;
     }
 
-    // SNARE/CLAP (voice 1)
-    if (!hypno) {
-        if (electro) {
-            int s1 = (rand() % 100 < 30) ? 5 : 4;
-            int s2 = (rand() % 100 < 30) ? 13 : 12;
-            patternSet.voices[1].steps[s1].hit = true;
-            patternSet.voices[1].steps[s1].velocity = 110;
-            patternSet.voices[1].steps[s2].hit = true;
-            patternSet.voices[1].steps[s2].velocity = 110;
-        } else {
-            patternSet.voices[1].steps[4].hit = true;
-            patternSet.voices[1].steps[4].velocity = 112;
-            patternSet.voices[1].steps[12].hit = true;
-            patternSet.voices[1].steps[12].velocity = 112;
-        }
-    }
-
-    // HATS (voice 2=CH, voice 3=OH)
-    if (hypno || minimal || params.sparseHats) {
-        for (int i = 2; i < 16; i += 4) {
-            if (rand() % 100 < 70) {
-                patternSet.voices[2].steps[i].hit = true;
-                patternSet.voices[2].steps[i].velocity = 70;
-            }
-        }
-    } else {
-        int step = rave ? 1 : 2;
-        for (int i = 0; i < 16; i += step) {
-            if (rand() % 100 < (rave ? 92 : 80)) {
-                patternSet.voices[2].steps[i].hit = true;
-                patternSet.voices[2].steps[i].velocity = (i % 4 == 2) ? 95 : 55;
-            }
-        }
-        for (int i = 2; i < 16; i += 4) {
-            if (rand() % 100 < 45) {
-                patternSet.voices[3].steps[i].hit = true;
-                patternSet.voices[3].steps[i].velocity = 85;
-                patternSet.voices[2].steps[i].hit = false; // choke
-            }
-        }
-    }
-
-    // Swing + microtiming
+    // Common: Swing + microtiming
     int8_t swingTicks = (int8_t)(params.swingAmount * 24.0f);
     for (int i = 0; i < 16; ++i) {
         if (i % 2 == 1 && swingTicks > 0) {
-            for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-                if (patternSet.voices[v].steps[i].hit) {
-                    patternSet.voices[v].steps[i].timing += swingTicks;
-                }
+            if (pattern.steps[i].hit) {
+                pattern.steps[i].timing += swingTicks;
             }
         }
         if (params.microTimingAmount > 0.01f) {
             int r = (int)(params.microTimingAmount * 3.0f);
             if (r > 0) {
-                for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-                    if (patternSet.voices[v].steps[i].hit) {
-                        patternSet.voices[v].steps[i].timing += (rand() % (r * 2 + 1)) - r;
-                    }
+                if (pattern.steps[i].hit) {
+                    pattern.steps[i].timing += (rand() % (r * 2 + 1)) - r;
                 }
             }
         }

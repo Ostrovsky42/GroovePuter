@@ -56,6 +56,7 @@ public:
     // voiceIndex: 0 = bass (low, repetitive), 1 = lead/arp (high, melodic)
     void generatePattern(SynthPattern& pattern, float bpm, const GenerativeParams& params, const GenreBehavior& behavior, int voiceIndex = 0) const;
     void generateDrumPattern(DrumPatternSet& patternSet, const GenerativeParams& params, const GenreBehavior& behavior) const;
+    void generateDrumVoice(DrumPattern& pattern, int voiceIndex, const GenerativeParams& params, const GenreBehavior& behavior) const;
     
 private:
     MiniAcid& engine_;

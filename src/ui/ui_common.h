@@ -72,4 +72,20 @@ namespace UI {
      */
     void drawMutesOverlay(IGfx& gfx, MiniAcid& mini_acid);
 
+    /**
+     * Draws a compact FEEL overlay (Grid + Cycle length) with optional pulse.
+     */
+    void drawFeelOverlay(IGfx& gfx, MiniAcid& mini_acid, bool pulse);
+
+    /**
+     * Global toast (single line).
+     */
+    void showToast(const char* msg, int durationMs = 1500);
+    void drawToast(IGfx& gfx);
+
+    /**
+     * Mini HUD for G/T/L in header area.
+     */
+    void drawFeelHeaderHud(IGfx& gfx, MiniAcid& mini_acid, int x, int y);
+
 }

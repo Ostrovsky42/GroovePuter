@@ -52,6 +52,7 @@ class DrumSequencerMainPage : public Container {
   std::shared_ptr<Component> grid_component_;
   std::shared_ptr<PatternSelectionBarComponent> pattern_bar_;
   std::shared_ptr<BankSelectionBarComponent> bank_bar_;
+  bool chaining_mode_ = false;
 };
 
 class GlobalDrumSettingsPage : public Container {
@@ -445,34 +446,58 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  int patternIdx = patternIndexFromKey(key);
-  bool patternKeyReserved = false;
-  if (patternIdx >= 0) {
-    char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
-    patternKeyReserved = (lowerKey == 'w');
-    if (!patternKeyReserved || patternRowFocused()) {
-      if (mini_acid_.songModeEnabled()) return true;
-      focusPatternRow();
-      setDrumPatternCursor(patternIdx);
-      withAudioGuard([&]() { mini_acid_.setDrumPatternIndex(patternIdx); });
+  // Alt + ESC for Chaining Mode
+  if (ui_event.key == 0x1B && ui_event.alt) {
+      chaining_mode_ = !chaining_mode_;
       return true;
-    }
+  }
+
+  int patternIdx = patternIndexFromKey(key);
+  if (patternIdx >= 0) {
+    if (mini_acid_.songModeEnabled()) return true;
+    focusPatternRow();
+    setDrumPatternCursor(patternIdx);
+    withAudioGuard([&]() { 
+        mini_acid_.setDrumPatternIndex(patternIdx); 
+        if (chaining_mode_) {
+            // Find next empty position in song and append
+            SongTrack track = SongTrack::Drums;
+            int nextPos = -1;
+            for (int i = 0; i < Song::kMaxPositions; ++i) {
+                if (mini_acid_.songPatternAt(i, track) == -1) {
+                    nextPos = i;
+                    break;
+                }
+            }
+            if (nextPos != -1) {
+                mini_acid_.setSongPattern(nextPos, track, patternIdx);
+            }
+        }
+    });
+    return true;
   }
 
   char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
   switch (lowerKey) {
-    case 'w': {
+    case 'a': {
       focusGrid();
       int step = activeDrumStep();
       withAudioGuard([&]() { mini_acid_.toggleDrumAccentStep(step); });
       return true;
     }
     case 'g': {
-      withAudioGuard([&]() { mini_acid_.randomizeDrumPattern(); });
+      if (ui_event.ctrl) {
+        int voice = activeDrumVoice();
+        withAudioGuard([&]() { mini_acid_.randomizeDrumVoice(voice); });
+      } else if (ui_event.alt) {
+        withAudioGuard([&]() { mini_acid_.randomizeDrumPatternChaos(); });
+      } else {
+        withAudioGuard([&]() { mini_acid_.randomizeDrumPattern(); });
+      }
       return true;
     }
     case 'c': {
-      if (ui_event.alt || ui_event.ctrl || ui_event.meta) {
+      if (ui_event.ctrl) {
         UIEvent app_evt{};
         app_evt.event_type = MINIACID_APPLICATION_EVENT;
         app_evt.app_event_type = MINIACID_APP_EVENT_COPY;
@@ -481,7 +506,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
       break;
     }
     case 'v': {
-      if (ui_event.alt || ui_event.ctrl || ui_event.meta) {
+      if (ui_event.ctrl) {
         UIEvent app_evt{};
         app_evt.event_type = MINIACID_APPLICATION_EVENT;
         app_evt.app_event_type = MINIACID_APP_EVENT_PASTE;
@@ -503,6 +528,11 @@ void DrumSequencerMainPage::draw(IGfx& gfx) {
   int y = bounds.y;
   int w = bounds.w;
   int h = bounds.h;
+
+  if (chaining_mode_) {
+      gfx.setTextColor(COLOR_ACCENT);
+      gfx.drawText(x + w - 40, y + 1, "CHAIN");
+  }
 
   int body_y = y + 2;
   int body_h = h - 2;
@@ -555,7 +585,7 @@ void DrumSequencerMainPage::draw(IGfx& gfx) {
   }
   Container::draw(gfx);
 }
-} // namespace
+//} // namespace
 
 GlobalDrumSettingsPage::GlobalDrumSettingsPage(MiniAcid& mini_acid)
   : mini_acid_(mini_acid) {

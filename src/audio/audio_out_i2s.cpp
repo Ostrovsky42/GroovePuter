@@ -37,6 +37,10 @@ bool AudioOutI2S::begin(uint32_t sampleRate, size_t bufferFrames) {
     MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT
   );
   
+  if (stereoBuffer_) {
+    memset(stereoBuffer_, 0, bufferFrames * 2 * sizeof(int16_t));
+  }
+  
   if (!stereoBuffer_) {
     Serial.println("[AudioOutI2S] Failed to allocate stereo buffer");
     return false;

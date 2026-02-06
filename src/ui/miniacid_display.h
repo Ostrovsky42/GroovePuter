@@ -38,6 +38,7 @@ private:
   void drawDebugOverlay();
   bool translateToApplicationEvent(UIEvent& event);
   void applyPageBounds_();
+  void syncVisualStyle_();
   
   // Lazy page loading
   static constexpr int kPageCount = 12;
@@ -69,9 +70,14 @@ private:
   FooterState buildFooterState() const;
   
   void showToast(const char* msg, int durationMs = 1500);
+  void updateCyclePulse_();
 
 private:
   char toastMsg_[32] = {0};
   unsigned long toastEndTime_ = 0;
   void drawToast();
+  uint32_t last_cycle_pulse_counter_ = 0;
+  unsigned long cycle_pulse_until_ms_ = 0;
+  VisualStyle applied_visual_style_ = VisualStyle::MINIMAL;
+  bool visual_style_initialized_ = false;
 };

@@ -60,4 +60,5 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   std::string title_;
   std::shared_ptr<PatternSelectionBarComponent> pattern_bar_;
   std::shared_ptr<BankSelectionBarComponent> bank_bar_;
+  bool chaining_mode_ = false;
 };

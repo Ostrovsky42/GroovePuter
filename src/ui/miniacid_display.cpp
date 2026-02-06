@@ -10,7 +10,7 @@
 #include "pages/drum_sequencer_page.h"
 #include "pages/pattern_edit_page.h"
 #include "pages/tape_page.h"
-#include "pages/mode_page.h"
+#include "pages/feel_texture_page.h"
 #include "pages/settings_page.h"
 #include "pages/project_page.h"
 #include "pages/tb303_params_page.h"
@@ -69,6 +69,8 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid)
     pages_[0] = createPage_(0);
     
     applyPageBounds_();
+    applied_visual_style_ = UI::currentStyle;
+    visual_style_initialized_ = true;
     
     Serial.println("MiniAcidDisplay: init DONE (lazy)");
     mute_buttons_initialized_ = true; 
@@ -88,7 +90,7 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case 5:  return std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_);
         case 6:  return std::make_unique<SongPage>(gfx_, mini_acid_, audio_guard_);
         case 7:  return std::make_unique<GenrePage>(gfx_, mini_acid_, audio_guard_);
-        case 8:  return std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_);
+        case 8:  return std::make_unique<FeelTexturePage>(gfx_, mini_acid_, audio_guard_);
         case 9:  return std::make_unique<SequencerHubPage>(gfx_, mini_acid_, audio_guard_);
         case 10: return std::make_unique<ProjectPage>(gfx_, mini_acid_,audio_guard_);        
         case 11: return std::make_unique<VoicePage>(gfx_, mini_acid_, audio_guard_);
@@ -103,10 +105,23 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
 
 IPage* MiniAcidDisplay::getPage_(int index) {
     if (index < 0 || index >= kPageCount) return nullptr;
+    
+    // Memory Relief: Purge all pages EXCEPT the one we need AND the previous one (for fast back-toggling)
+    // This prevents DRAM accumulation on constrained devices like the Cardputer.
     if (!pages_[index]) {
+        for (int i = 0; i < kPageCount; ++i) {
+            if (i != index && i != previous_page_index_) {
+                if (pages_[i]) {
+                    // Serial.printf("[UI] Purging page %d to free RAM\n", i);
+                    pages_[i].reset();
+                }
+            }
+        }
+
         pages_[index] = createPage_(index);
         if (pages_[index]) {
             pages_[index]->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
+            pages_[index]->setVisualStyle(UI::currentStyle);
         }
     }
     return pages_[index].get();
@@ -121,6 +136,7 @@ void MiniAcidDisplay::setAudioRecorder(IAudioRecorder* recorder) {
 }
 
 void MiniAcidDisplay::update() {
+    syncVisualStyle_();
     gfx_.startWrite();
     if (splash_active_) {
         drawSplashScreen();
@@ -160,11 +176,15 @@ void MiniAcidDisplay::update() {
     // Waveform overlay (if enabled)
     UI::drawWaveformOverlay(gfx_, mini_acid_);
     
+    updateCyclePulse_();
+    UI::drawFeelOverlay(gfx_, mini_acid_, millis() < cycle_pulse_until_ms_);
+
     // Mutes overlay (always on for now as per user request)
     UI::drawMutesOverlay(gfx_, mini_acid_);
     
     // Global Help Overlay (fullscreen, on top of everything)
     if (global_help_overlay_.isVisible()) {
+        global_help_overlay_.setPageContext(page_index_);
         global_help_overlay_.draw(gfx_);
     }
     
@@ -172,6 +192,16 @@ void MiniAcidDisplay::update() {
     // drawDebugOverlay();
     gfx_.flush();
     gfx_.endWrite();
+}
+
+void MiniAcidDisplay::syncVisualStyle_() {
+    if (!visual_style_initialized_ || applied_visual_style_ != UI::currentStyle) {
+        for (auto& p : pages_) {
+            if (p) p->setVisualStyle(UI::currentStyle);
+        }
+        applied_visual_style_ = UI::currentStyle;
+        visual_style_initialized_ = true;
+    }
 }
 
 void MiniAcidDisplay::nextPage() {
@@ -293,11 +323,11 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
                 case '3': targetPage = 3; break;  // Synth A Params
                 case '4': targetPage = 4; break;  // Synth B Params
                 case '5': targetPage = 5; break;  // Drum Sequencer
-                case '6': targetPage = 6; break;  // Mode Select
-                case '7': targetPage = 7; break;  // Play Page
-                case '8': targetPage = 8; break;  // Sequencer Hub
-                case '9': targetPage = 9; break;  // Song Page
-                case '0': targetPage = 10; break; // Project Page
+                case '6': targetPage = 8; break;  // Feel/Texture
+                case '7': targetPage = 9; break;  // Sequencer Hub
+                case '8': targetPage = 6; break;  // Song Page
+                case '9': targetPage = 10; break; // Project Page
+                case '0': targetPage = 0; break;  // Settings
                 default: break;
             }
             if (targetPage >= 0) {
@@ -488,20 +518,17 @@ HeaderState MiniAcidDisplay::buildHeaderState() const { return {}; }
 FooterState MiniAcidDisplay::buildFooterState() const { return {}; }
 
 void MiniAcidDisplay::showToast(const char* msg, int durationMs) {
-    if (!msg) return;
-    snprintf(toastMsg_, sizeof(toastMsg_), "%s", msg);
-    toastEndTime_ = millis() + durationMs;
+    UI::showToast(msg, durationMs);
 }
 
 void MiniAcidDisplay::drawToast() {
-    if (millis() < toastEndTime_) {
-        int w = gfx_.width();
-        int tw = gfx_.textWidth(toastMsg_);
-        int x = (w - tw) / 2;
-        int y = gfx_.height() - 25;
-        gfx_.fillRect(x - 4, y - 2, tw + 8, 11, COLOR_BLACK);
-        gfx_.drawRect(x - 4, y - 2, tw + 8, 11, COLOR_KNOB_2);
-        gfx_.setTextColor(COLOR_WHITE);
-        gfx_.drawText(x, y, toastMsg_);
+    UI::drawToast(gfx_);
+}
+
+void MiniAcidDisplay::updateCyclePulse_() {
+    uint32_t counter = mini_acid_.cyclePulseCounter();
+    if (counter != last_cycle_pulse_counter_) {
+        last_cycle_pulse_counter_ = counter;
+        cycle_pulse_until_ms_ = millis() + 250;
     }
 }

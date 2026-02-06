@@ -14,7 +14,7 @@
 #include "../retro_widgets.h"
 #include "../amber_ui_theme.h"
 #include "../amber_widgets.h"
-#include "ui_clipboard.h"
+#include "../ui_clipboard.h"
 #include "../ui_input.h"
 #include "../layout_manager.h"
 #include "../help_dialog_frames.h"
@@ -408,7 +408,30 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       if (mini_acid_.songModeEnabled()) return true;
       focusPatternRow();
       setPatternCursor(patternIdx);
-      withAudioGuard([&]() { mini_acid_.set303PatternIndex(voice_index_, patternIdx); });
+      withAudioGuard([&]() { 
+          mini_acid_.set303PatternIndex(voice_index_, patternIdx);
+          
+          if (chaining_mode_) {
+              // Find next empty position in song and append
+              SongTrack track = (voice_index_ == 0) ? SongTrack::SynthA : SongTrack::SynthB;
+              int songLen = mini_acid_.songLength();
+              int nextPos = -1;
+              
+              // Search for the first empty slot (-1) or the first slot after the last used one
+              for (int i = 0; i < Song::kMaxPositions; ++i) {
+                  if (mini_acid_.songPatternAt(i, track) == -1) {
+                      nextPos = i;
+                      break;
+                  }
+              }
+              
+              if (nextPos != -1) {
+                  // If we found an empty slot, put it there. 
+                  // If it's the first empty slot, it effectively appends if previous were full.
+                  mini_acid_.setSongPattern(nextPos, track, patternIdx);
+              }
+          }
+      });
       return true;
     }
   }
@@ -491,42 +514,54 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       return true;
     }
     case 'c': {
-      if (ui_event.alt || ui_event.ctrl || ui_event.meta) {
-        UIEvent app_evt{};
-        app_evt.event_type = MINIACID_APPLICATION_EVENT;
-        app_evt.app_event_type = MINIACID_APP_EVENT_COPY;
-        return handleEvent(app_evt);
+      if (ui_event.ctrl) {
+        ApplicationEventType type = MINIACID_APP_EVENT_COPY;
+        UIEvent appEvent = ui_event;
+        appEvent.event_type = MINIACID_APPLICATION_EVENT;
+        appEvent.app_event_type = type;
+        handleEvent(appEvent);
+        return true;
       }
       break;
     }
     case 'v': {
-      if (ui_event.alt || ui_event.ctrl || ui_event.meta) {
-        UIEvent app_evt{};
-        app_evt.event_type = MINIACID_APPLICATION_EVENT;
-        app_evt.app_event_type = MINIACID_APP_EVENT_PASTE;
-        return handleEvent(app_evt);
+      if (ui_event.ctrl) {
+        ApplicationEventType type = MINIACID_APP_EVENT_PASTE;
+        UIEvent appEvent = ui_event;
+        appEvent.event_type = MINIACID_APPLICATION_EVENT;
+        appEvent.app_event_type = type;
+        handleEvent(appEvent);
+        return true;
       }
       break;
+    }
+    case 'r': { // R for REST
+      ensureStepFocusAndCursor();
+      int step = activePatternStep();
+      withAudioGuard([&]() { mini_acid_.clear303Step(step, voice_index_); }); // Clean rest (clear all flags)
+      return true;
     }
     default:
       break;
   }
 
   // Alt + Backspace = Reset Pattern
-  if (ui_event.alt && (key == '.' || ui_event.key == ',')) {
+  if (ui_event.alt && (key == '\b' || key == 0x7F)) {
     withAudioGuard([&]() { 
         for (int i=0; i<SEQ_STEPS; ++i) {
-            mini_acid_.clear303StepNote(voice_index_, i);
-            if (mini_acid_.pattern303AccentSteps(voice_index_)[i]) 
-                mini_acid_.toggle303AccentStep(voice_index_, i);
-            if (mini_acid_.pattern303SlideSteps(voice_index_)[i]) 
-                mini_acid_.toggle303SlideStep(voice_index_, i);
+            mini_acid_.clear303Step(i, voice_index_);
         }
     });
+    return true;
   }
 
   // Handle BACK/ESC for standard navigation (return to caller, e.g. Hub)
-  if (key == '\b' || key == 0x1B || ui_event.key == '`') { // add Backspace/Esc logic
+  if (key == 0x1B && ui_event.alt) {
+      chaining_mode_ = !chaining_mode_;
+      return true;
+  }
+
+  if (key == '\b' || key == 0x1B || ui_event.key == '`') { 
      // If we are in Steps, maybe clear note first?
      // Existing logic: Backspace clears note at cursor.
      // To allow navigation back, user might press ESC.
@@ -537,10 +572,10 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
      if (key == 0x1B) return false; // Let MiniAcidDisplay handle "Back"
   }
 
-  if (key == '\b' || key == 0x7F) { // Backspace / Del
+  if (key == '\b' || key == 0x7F) { // Backspace / Del = Clear Step (REST)
     ensureStepFocusAndCursor();
     int step = activePatternStep();
-    withAudioGuard([&]() { mini_acid_.clear303StepNote(voice_index_, step); });
+    withAudioGuard([&]() { mini_acid_.clear303Step(step, voice_index_); }); // Use full clear
     return true;
   }
 
@@ -702,8 +737,13 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
   // 1. Header (from RetroWidgets, like GenrePage)
   char modeBuf[16];
   snprintf(modeBuf, sizeof(modeBuf), "P%d", selectedPattern + 1);
+  char titleBuf[32];
+  snprintf(titleBuf, sizeof(titleBuf), "%s%s", 
+           voice_index_ == 0 ? "303 A" : "303 B",
+           chaining_mode_ ? " [CHAIN]" : "");
+
   drawHeaderBar(gfx, x, y, w, 14, 
-                voice_index_ == 0 ? "303 A" : "303 B", 
+                titleBuf, 
                 modeBuf, 
                 mini_acid_.isPlaying(), 
                 (int)(mini_acid_.bpm() + 0.5f), 
@@ -893,9 +933,14 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
 
   char modeBuf[16];
   snprintf(modeBuf, sizeof(modeBuf), "P%d", selectedPattern + 1);
+  char titleBuf[32];
+  snprintf(titleBuf, sizeof(titleBuf), "%s%s", 
+           voice_index_ == 0 ? "303 A" : "303 B",
+           chaining_mode_ ? " [CHAIN]" : "");
+
   AmberWidgets::drawHeaderBar(
       gfx, x, y, w, 14,
-      voice_index_ == 0 ? "303 A" : "303 B",
+      titleBuf,
       modeBuf,
       mini_acid_.isPlaying(),
       (int)(mini_acid_.bpm() + 0.5f),

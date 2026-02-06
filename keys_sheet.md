@@ -1,155 +1,104 @@
-# MiniAcid Keyboard Shortcuts & Controls
+# MiniAcid Key Map (Cardputer)
 
-This document provides a comprehensive reference for all keyboard shortcuts and control combinations in MiniAcid for M5Stack Cardputer.
+This is the canonical key map aligned with current code.
 
----
-
-## 🌍 Global Controls
-*Available from any page unless specifically overridden.*
-
-### Navigation & UI
+## Global
 | Key | Action |
-| :--- | :--- |
-| `[` / `]` | Switch to Previous / Next Page |
-| `Alt + 1` ... `Alt + 0` | Direct Jump to Page (see Page Mapping below) |
-| `Alt + V` | Jump to **Voice Page** |
-| `h` | Show quick help toast |
-| `Alt + W` | Toggle Waveform Overlay (mini oscilloscope) |
+| --- | --- |
+| `[` / `]` | Previous / Next page |
+| `Alt+1..0` or `Ctrl+1..0` | Direct page jump |
+| `Alt+M` | Toggle Song Mode |
+| `Alt+W` | Waveform overlay |
+| `Alt+V` | Voice page |
+| `Alt+C` | Color page |
+| `Alt+\` | Switch visual style |
+| `Ctrl+H` | Global help overlay |
+| `1..9`, `0` | Track mutes |
+| `Esc` / `Bksp` / `b` | Back |
 
-### Transport & Performance
+## Genre Page
 | Key | Action |
-| :--- | :--- |
-| `Alt + M` | Toggle **Song Mode** ON/OFF (debounced) |
-| `1` ... `9` | Toggle Mute for tracks (Synth A, Synth B, Kick, Snare, ...) |
-| `0` | Toggle Mute for Clap |
+| --- | --- |
+| `Tab` | Cycle focus (Genre/Texture/Presets) |
+| `Arrows` | Navigate |
+| `Enter` | Apply |
+| `1..8` | Apply preset |
+| `0` | Randomize Genre+Texture |
+| `M` | Apply mode (`SOUND+PATTERN` / `SOUND ONLY`) |
+| `G` | Toggle Groove mode (`ACID` / `MINIMAL`) |
 
-### Direct Page Mapping (Alt + Number)
-| Key | Page |
-| :--- | :--- |
-| `Alt + 1` | Synth A Pattern Edit |
-| `Alt + 2` | Synth B Pattern Edit |
-| `Alt + 3` | Synth A Parameters (TB-303) |
-| `Alt + 4` | Synth B Parameters (TB-303) |
-| `Alt + 5` | Drum Sequencer |
-| `Alt + 6` | Machine Mode (Acid/Minimal) |
-| `Alt + 7` | **Sequencer Hub (Home)** |
-| `Alt + 8` | Song Page (Arrangement) |
-| `Alt + 9` | Project Page |
-| `Alt + 0` | Settings |
-
----
-
-## 📝 Page-Specific Controls
-
-### 🏠 Play Page (Home)
+## Settings Page
 | Key | Action |
-| :--- | :--- |
-| `Space` | Start / Stop Playback |
-| `Arrows` | Select Track |
-| `Enter` | Toggle OVERVIEW / DETAIL view |
-| `x` | Toggle step (in Detail view) |
-| `Esc` / `Bksp` | Return to Overview (from Detail) |
+| --- | --- |
+| `Tab` | Next group |
+| `Up/Down` | Select row |
+| `Left/Right` | Adjust value |
+| `Ctrl` or `Alt` + `Left/Right` | Fast adjust |
+| `1..3` | Apply preset (`regen`) |
 
-### 🎹 Pattern Edit Page (303)
+## Pattern Edit (303)
 | Key | Action |
-| :--- | :--- |
-| `Q` ... `U` | Select Pattern (1-8) |
-| `A` / `Z` | Adjust Note (+/-) for current step |
-| `S` / `X` | Adjust Octave (+/-) for current step |
-| `Alt + S` | Toggle **Slide** for current step |
-| `Alt + A` | Toggle **Accent** for current step |
-| `g` | Randomize Pattern |
-| **`Alt + C` / `V`** | **Copy / Paste Pattern (WIP)** |
-| **`Alt + .`** | **Reset / Clear Pattern** |
-| `Enter` | Confirm Bank/Pattern Selection |
+| --- | --- |
+| `Q..I` | Select pattern 1..8 |
+| `Arrows` | Navigate steps |
+| `A/Z` | Note +/- |
+| `S/X` | Octave +/- |
+| `Alt+A` | Accent toggle |
+| `Alt+S` | Slide toggle |
+| `R` | REST (clear current step) |
+| `Bksp` / `Del` | Clear current step |
+| `Alt+Bksp` | Clear whole pattern |
+| `G` | Randomize pattern |
+| `Ctrl+C / Ctrl+V` | Copy / Paste |
+| `Alt+Esc` | Chain mode |
 
-### 🏠 Sequencer Hub (Home)
-*Overview of all 10 tracks with activity visualization and mixing.*
-
+## Drum Sequencer
 | Key | Action |
-| :--- | :--- |
-| `Arrows` | Select Track (Overview) / Navigate Grid (Detail) |
-| `Enter` | Jump to **Pattern Edit** / **Drum Sequencer** / Toggle Step |
-| `Space` | Start / Stop Playback |
-| `Q` ... `I` | Quick Pattern Select (1-8) |
-| `Ctrl + - / +` | Adjust Track Volume (Local) |
-| `Alt + L / R` | Adjust Track Volume (Alternative) |
-| `Esc` / `Bksp` | Return to Overview (from Detail) |
+| --- | --- |
+| `Q..I` | Select pattern 1..8 |
+| `Arrows` | Navigate grid |
+| `Enter` | Toggle hit |
+| `A` | Toggle accent |
+| `G` | Randomize pattern |
+| `Ctrl+G` | Randomize focused voice |
+| `Alt+G` | Chaos random |
+| `Ctrl+C / Ctrl+V` | Copy / Paste |
+| `Alt+Esc` | Chain mode |
 
-#### Grid / Pattern Management (in Detail)
+## TB303 Params
 | Key | Action |
-| :--- | :--- |
-| `x` | Toggle Step |
-| `w` | Toggle Accent |
-| `a` | Toggle Slide (Synth tracks) |
-| `Alt + C / V` | Copy / Paste Pattern (WIP) |
-| `S` / `X` | Move Pattern focus (up/down) |
+| --- | --- |
+| `Left/Right` | Focus control |
+| `Up/Down` | Adjust value |
+| `Ctrl+Up/Down` | Fine adjust |
+| `A/Z` | Cutoff +/- |
+| `S/X` | Resonance +/- |
+| `D/C` | Env Amount +/- |
+| `F/V` | Env Decay +/- |
+| `T/G` | Oscillator +/- |
+| `Y/H` | Filter type +/- |
+| `N` / `M` | Distortion / Delay toggle |
+| `Ctrl+Z/X/C/V` | Reset parameter |
+| `Q..I` | Quick pattern select 1..8 |
 
-### 🎼 Song Page
+## Song Page
 | Key | Action |
-| :--- | :--- |
-| `Arrows` | Move Cursor / Select Area (with Shift) |
-| `0` ... `7` | Assign Pattern to current cell |
-| `Bksp` / `Tab` | Clear current cell |
-| `m` | Toggle Song Mode |
-| `Ctrl + L` | Toggle Loop Mode |
-| `g` | Generate Pattern for current cell |
-| `g` (Double Tap) | Generate Pattern for entire row |
-| `Alt + G` | Batch generate for selected area |
-| **`Alt + .`** | **Clear Entire Song Arrangement** |
+| --- | --- |
+| `Arrows` | Move cursor |
+| `Ctrl+Arrows` | Select area |
+| `Q..U` | Assign pattern 1..7 |
+| `Bksp` / `Tab` | Clear cell |
+| `M` | Toggle Song Mode |
+| `Ctrl+L` | Loop mode |
+| `G` | Generate cell |
+| `G` double-tap | Generate row |
+| `Alt+G` | Generate selected area |
+| `Alt+.` | Clear full arrangement |
 
-### 🗣️ Voice Page
+## Project Page
 | Key | Action |
-| :--- | :--- |
-| `Arrows` | Select Phrase / Adjust Params |
-| `Space` | Preview (Speak) Phrase |
-| `m` | Toggle Mute |
-| `s` | Stop speaking immediately |
-| `c` | Cache current phrase to SD card |
-| `x` | Clear all Voice Cache |
-| `r` | Apply "Robot" preset |
-| `h` | Apply "High" preset |
-| `d` | Apply "Deep" preset |
-| `1` ... `0` | Quick select phrases 1-10 |
+| --- | --- |
+| `Arrows` | Navigate controls |
+| `Enter` | Activate control |
+| `G` | Jump to Genre page |
 
----
-
-### 🎭 Genre & Texture Page
-| Key | Action |
-| :--- | :--- |
-| `Arrows` | Navigate selected area (Genre / Texture / Presets) |
-| `Tab` | Cycle focus between Genre, Texture, and Presets lanes |
-| `Enter` | Apply current selection / Load selected preset |
-| `1` ... `8` | Quick apply Presets 1-8 |
-| `0` | Randomize Genre and Texture |
-
-### ⚙️ Generator Settings
-| Key | Action |
-| :--- | :--- |
-| `UP / DOWN` | Select parameter |
-| `LEFT / RIGHT`| Adjust parameter value |
-| `Shift + L/R` | Fast/coarse parameter adjustment |
-| `Shift + U/P` | Page scroll UP/DOWN |
-
-### 📼 Tape FX & Looper
-| Key | Action |
-| :--- | :--- |
-| `UP / DOWN` | Select control (Mode / Preset / Macro sliders) |
-| `LEFT / RIGHT`| Adjust slider or Cycle Mode/Preset |
-| `Shift + L/R` | Fine adjustment for sliders |
-| `R` | Cycle Tape Mode (Off -> Rec -> Play -> Dub) |
-| `P` | Cycle Tape Preset |
-| `F` | Toggle FX logic ON/OFF |
-| `1` / `2` / `3` | Set Tape Speed (0.5x / 1.0x / 2.0x) |
-| `Enter` | Trigger Stutter (momentary) |
-| `Bksp` / `Del`| **Eject Tape** (Stop + Clear loop + FX Off) |
-| `Space` | Clear Loop buffer (Reset recording) |
-
----
-
-## 💡 Pro Tips
-- Most **Alt + Key** combinations can also be triggered with **Ctrl + Key** if Alt is physically harder to reach on your layout.
-- Use **Alt + M** to check your song arrangement without leaving your current pattern editing page.
-- **Alt + 7** is your Home (Sequencer Hub) where you can see all tracks and mixing levels.
-- **Alt + .** is your "panic/reset" button for the current context (pattern or song).
-- In any list (Settings, Voice), use **Shift** with navigation keys for faster movement.

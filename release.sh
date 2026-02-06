@@ -3,7 +3,9 @@ set -e
 
 # Configuration
 # Switching to 'default' partition scheme instead of 'huge_app' to fix checksum/bootloader issues with M5Launcher
-FQBN="m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=default"
+# FQBN="m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=default"
+# Build with OPI PSRAM enabled (Correct for Cardputer)
+ FQBN="m5stack:esp32:m5stack_cardputer:PSRAM=enabled,PartitionScheme=default"
 OUT_DIR="dist"
 BIN_NAME="miniacid.bin"
 

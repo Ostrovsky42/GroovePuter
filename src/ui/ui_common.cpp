@@ -20,7 +20,7 @@ namespace UI {
     // Internal state for wave history (compact overlay version)
     namespace {
         constexpr int kOverlayMaxPoints = 256;
-        constexpr int kOverlayHistoryLayers = 4;
+        constexpr int kOverlayHistoryLayers = 2; // Reduced from 4 for performance
         int16_t overlayHistory[kOverlayHistoryLayers][kOverlayMaxPoints];
         int overlayLengths[kOverlayHistoryLayers] = {0};
         
@@ -30,6 +30,9 @@ namespace UI {
             IGfxColor(0x202020),
         };
         constexpr int kFadeColorCount = 3;
+
+        char gToastMsg[64] = {0};
+        unsigned long gToastEndMs = 0;
     }
 
     void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title) {
@@ -143,11 +146,9 @@ namespace UI {
             }
         };
 
-        // 4) Draw history
-        for (int layer = kOverlayHistoryLayers - 1; layer >= 1; --layer) {
-            int colorIdx = layer - 1;
-            if (colorIdx >= kFadeColorCount) colorIdx = kFadeColorCount - 1;
-            drawWave(overlayHistory[layer], overlayLengths[layer], kOverlayFadeColors[colorIdx]);
+        // 4) Draw history (reduced layers)
+        if (kOverlayHistoryLayers > 1) {
+            drawWave(overlayHistory[1], overlayLengths[1], kOverlayFadeColors[0]);
         }
 
         // 5) Draw current (synchronized color)
@@ -224,6 +225,78 @@ namespace UI {
                  gfx.drawPixel(cx + 2, y + 9, color);
             }
             */
+        }
+    }
+
+    void drawFeelOverlay(IGfx& gfx, MiniAcid& mini_acid, bool pulse) {
+        const auto& feel = mini_acid.sceneManager().currentScene().feel;
+        int grid = feel.gridSteps;
+        if (grid != 8 && grid != 16 && grid != 32) grid = 16;
+        int bars = feel.patternBars;
+        if (bars != 1 && bars != 2 && bars != 4 && bars != 8) bars = 1;
+        int tb = feel.timebase;
+        if (tb < 0) tb = 0;
+        if (tb > 2) tb = 2;
+
+        const char* gridStr = (grid == 8) ? "1/8" : (grid == 32) ? "1/32" : "1/16";
+        const char* tbStr = (tb == 0) ? "H" : (tb == 2) ? "D" : "N";
+        char buf[20];
+        snprintf(buf, sizeof(buf), "G%s T%s L%dB", gridStr, tbStr, bars);
+
+        const int x = Layout::CONTENT_PAD_X;
+        const int y = Layout::FOOTER.y - 10;
+
+        IGfxColor textColor = COLOR_LABEL;
+        if (currentStyle == VisualStyle::RETRO_CLASSIC) {
+            textColor = IGfxColor(RetroTheme::TEXT_SECONDARY);
+        } else if (currentStyle == VisualStyle::AMBER) {
+            textColor = IGfxColor(AmberTheme::TEXT_SECONDARY);
+        }
+
+        if (pulse) {
+            int w = gfx.textWidth(buf);
+            gfx.fillRect(x - 2, y - 1, w + 4, 10, COLOR_ACCENT);
+            gfx.setTextColor(COLOR_BLACK);
+        } else {
+            gfx.setTextColor(textColor);
+        }
+
+        gfx.drawText(x, y, buf);
+    }
+
+    void drawFeelHeaderHud(IGfx& gfx, MiniAcid& mini_acid, int x, int y) {
+        const auto& feel = mini_acid.sceneManager().currentScene().feel;
+        int grid = feel.gridSteps;
+        if (grid != 8 && grid != 16 && grid != 32) grid = 16;
+        int bars = feel.patternBars;
+        if (bars != 1 && bars != 2 && bars != 4 && bars != 8) bars = 1;
+        int tb = feel.timebase;
+        if (tb < 0) tb = 0;
+        if (tb > 2) tb = 2;
+
+        char tbChar = (tb == 0) ? 'H' : (tb == 2) ? 'D' : 'N';
+        char buf[20];
+        snprintf(buf, sizeof(buf), "G%d T %c L%d", grid, tbChar, bars);
+        gfx.setTextColor(COLOR_LABEL);
+        gfx.drawText(x, y, buf);
+    }
+
+    void showToast(const char* msg, int durationMs) {
+        if (!msg) return;
+        snprintf(gToastMsg, sizeof(gToastMsg), "%s", msg);
+        gToastEndMs = millis() + durationMs;
+    }
+
+    void drawToast(IGfx& gfx) {
+        if (millis() < gToastEndMs) {
+            int w = gfx.width();
+            int tw = gfx.textWidth(gToastMsg);
+            int x = (w - tw) / 2;
+            int y = gfx.height() - 25;
+            gfx.fillRect(x - 4, y - 2, tw + 8, 11, COLOR_BLACK);
+            gfx.drawRect(x - 4, y - 2, tw + 8, 11, COLOR_KNOB_2);
+            gfx.setTextColor(COLOR_WHITE);
+            gfx.drawText(x, y, gToastMsg);
         }
     }
 

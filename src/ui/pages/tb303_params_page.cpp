@@ -1,3 +1,8 @@
+#if defined(ARDUINO)
+#include <Arduino.h>
+#else
+#include "../../platform_sdl/arduino_compat.h"
+#endif
 #include "tb303_params_page.h"
 
 #include "../ui_common.h"
@@ -264,7 +269,8 @@ void TB303ParamsPage::layoutComponents() {
   env_amount_knob_->setBoundaries(Rect(cx3 - radius, knobRowY - radius, radius * 2, radius * 2));
   env_decay_knob_->setBoundaries(Rect(cx4 - radius, knobRowY - radius, radius * 2, radius * 2));
 
-  const int rowY = c.y + c.h - gfx_.fontHeight() - 2;
+  const int rowTopY = c.y + c.h - (gfx_.fontHeight() * 2) - 5;
+  const int rowBottomY = rowTopY + gfx_.fontHeight() + 2;
 
   const Parameter& pOsc = mini_acid_.parameter303(TB303ParamId::Oscillator, voice_index_);
   const Parameter& pFlt = mini_acid_.parameter303(TB303ParamId::FilterType, voice_index_);
@@ -287,17 +293,22 @@ void TB303ParamsPage::layoutComponents() {
   const int labelGap = 3;
 
   int x = x0;
+  int rowY = rowTopY;
 
   auto place = [&](std::shared_ptr<LabelValueComponent>& cpt, const char* label, const char* valueMax) {
     const int lw = gfx_.textWidth(label);
     const int vwMax = gfx_.textWidth(valueMax);
     const int fw = lw + labelGap + vwMax;
+    if ((x + fw) > (x0 + w)) {
+      x = x0;
+      rowY = rowBottomY;
+    }
     cpt->setBoundaries(Rect(x, rowY, fw, gfx_.fontHeight()));
     x += fw + gap;
   };
 
   place(osc_control_, "OSC:", "super");
-  place(filter_control_, "FLT:", "lp1");
+  place(filter_control_, "FLT:", "soft");
   place(distortion_control_, "DST:", "off");
   place(delay_control_, "DLY:", "off");
 }
@@ -375,7 +386,7 @@ void TB303ParamsPage::draw(IGfx& gfx) {
 
   Container::draw(gfx_);
 
-  UI::drawStandardFooter(gfx, "[L/R]FOCUS [U/D]ADJ [Shift]FINE", "[1-4]PRESET [T/G]OSC [N]DST [M]DLY");
+  UI::drawStandardFooter(gfx, "[L/R]FOCUS [U/D]VAL [CTRL]FINE", "[T/G]OSC [Y/H]FLT [N/M]FX");
 }
 
 const std::string& TB303ParamsPage::getTitle() const {
@@ -390,7 +401,7 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
   if (UIInput::isGlobalNav(ui_event)) return false;
 
   int nav = UIInput::navCode(ui_event);
-  bool fine = ui_event.shift;
+  bool fine = ui_event.shift || ui_event.ctrl;
   
   switch (nav) {
     case MINIACID_LEFT:  focusPrev(); return true;
@@ -404,6 +415,14 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
   if (!key) return Container::handleEvent(ui_event);
 
   char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
+
+  // Explicit reset shortcuts to avoid accidental resets on key auto-repeat.
+  if (ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
+    if (lowerKey == 'z') { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::Cutoff, 800.0f, voice_index_); }); return true; }
+    if (lowerKey == 'x') { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::Resonance, 0.0f, voice_index_); }); return true; }
+    if (lowerKey == 'c') { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::EnvAmount, 400.0f, voice_index_); }); return true; }
+    if (lowerKey == 'v') { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::EnvDecay, 420.0f, voice_index_); }); return true; }
+  }
 
   if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta) {
     const char* patternKeys = "qwertyui";

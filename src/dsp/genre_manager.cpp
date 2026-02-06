@@ -17,14 +17,22 @@
 const GenerativeParams kGenerativePresets[kGenerativeModeCount] = {
     // ACID - Melodic, slides, aggressive
     { 8, 14, 36, 72,  0.40f, 0.50f, 0.8f,  0.0f, 0.1f,  85, 120,  false, true, 0.25f, 0.10f, 0.15f,  false, false, false, 0.6f },
-    // OUTRUN - Bright lead/arp, 80s synthwave (swing LOW for drive)
+    // MINIMAL (Outrun) - Bright lead/arp, 80s synthwave (swing LOW for drive)
     { 10, 14, 48, 72,  0.12f, 0.25f, 0.70f,  0.08f, 0.01f,  90, 118,  false, true, 0.10f, 0.03f, 0.05f,  false, false, false, 0.4f },
-    // DARKSYNTH - Evil bass (swing ZERO, repeats ON for bass anchor)
+    // TECHNO (Darksynth) - Evil bass (swing ZERO, repeats ON for bass anchor)
     { 4, 7, 24, 48,  0.05f, 0.50f, 0.35f,  0.0f, 0.0f,  100, 125,  true, true, 0.70f, 0.0f, 0.03f,  false, true, false, 0.25f },
     // ELECTRO - Staccato, syncopated, mechanical
     { 6, 10, 36, 60,  0.0f, 0.70f, 0.3f,  0.0f, 0.0f,  105, 115,  false, true, 0.30f, 0.05f, 0.10f,  false, false, false, 0.5f },
     // RAVE - Dense, high energy
-    { 12, 16, 36, 72,  0.20f, 0.80f, 0.5f,  0.0f, 0.0f,  110, 127,  false, true, 0.20f, 0.05f, 0.20f,  false, false, false, 0.7f }
+    { 12, 16, 36, 72,  0.20f, 0.80f, 0.5f,  0.0f, 0.0f,  110, 127,  false, true, 0.20f, 0.05f, 0.20f,  false, false, false, 0.7f },
+    // REGGAE - Sparse, offbeat, warm bass
+    { 4, 8, 24, 48,  0.05f, 0.15f, 0.55f,  0.20f, 0.15f,  80, 110,  false, true, 0.60f, 0.12f, 0.05f,  true, true, true, 0.25f },
+    // TRIPHOP - Slow, gritty, humanized
+    { 5, 9, 36, 60,  0.05f, 0.25f, 0.60f,  0.18f, 0.25f,  75, 108,  false, true, 0.35f, 0.18f, 0.10f,  true, true, false, 0.20f },
+    // BROKEN - Syncopated, broken-beat feel
+    { 7, 12, 36, 72,  0.10f, 0.35f, 0.45f,  0.28f, 0.12f,  90, 120,  false, true, 0.20f, 0.08f, 0.12f,  false, false, false, 0.35f },
+    // CHIP - Retro console style, very tight and quantized
+    { 8, 12, 48, 72,  0.02f, 0.15f, 0.38f,  0.0f, 0.0f,  96, 122,  true, true, 0.40f, 0.02f, 0.06f,  false, true, true, 0.12f }
 };
 
 // TextureParams fields in order:
@@ -40,7 +48,9 @@ const TextureParams kTexturePresets[kTextureModeCount] = {
     // LOFI - Vintage, soft, dark
     { {15, 20, 12, 60, 0},  -150, -0.1f,  true, 0.5f, 0.3f, 0.15f,  3, -4 },
     // INDUSTRIAL - Harsh, bright, mechanical
-    { {5, 30, 20, 75, 0},  100, 0.15f,  true, 0.25f, 0.2f, 0.1f,  1, 3 }
+    { {5, 30, 20, 75, 0},  100, 0.15f,  true, 0.25f, 0.2f, 0.1f,  1, 3 },
+    // PSYCHEDELIC - Wider movement, brighter top, long tails
+    { {18, 35, 22, 78, 1},  120, 0.10f,  true, 0.75f, 0.62f, 0.42f,  2, 4 }
 };
 
 // F-key preset combinations
@@ -92,7 +102,8 @@ void GenreManager::applyGenreTimbre(MiniAcid& engine) {
             if (decay < 0.04f) decay = 0.04f;
             if (decay > 0.25f) decay = 0.25f;
 
-            if (reso < 0.20f) reso = 0.20f;
+            // Do not force a resonance floor for bass; allow fully clean low-end.
+            if (reso < 0.0f) reso = 0.0f;
             if (reso > 0.85f) reso = 0.85f;
         } else {
             // Lead: audibility floors, but NOT huge jumps
@@ -107,7 +118,7 @@ void GenreManager::applyGenreTimbre(MiniAcid& engine) {
 
         // Apply NORMALIZED parameters
         engine.set303ParameterNormalized(TB303ParamId::Cutoff,    clamp01(cut), v);
-       // engine.set303ParameterNormalized(TB303ParamId::Resonance, clamp01(reso), v);
+        engine.set303ParameterNormalized(TB303ParamId::Resonance, clamp01(reso), v);
         engine.set303ParameterNormalized(TB303ParamId::EnvAmount, clamp01(env), v);
         engine.set303ParameterNormalized(TB303ParamId::EnvDecay,  clamp01(decay), v);
     }
@@ -116,28 +127,37 @@ void GenreManager::applyGenreTimbre(MiniAcid& engine) {
 
 void GenreManager::applyTexture(MiniAcid& engine) {
     const TextureParams& params = getTextureParams();
+    const float amount = clamp01(engine.sceneManager().currentScene().genre.textureAmount / 100.0f);
     
     // Apply Tape FX macro
     TapeState& tape = engine.sceneManager().currentScene().tape;
-    tape.macro = params.tapeMacro;
+    TapeMacro macro = params.tapeMacro;
+    macro.wow = static_cast<uint8_t>(macro.wow * amount);
+    macro.age = static_cast<uint8_t>(macro.age * amount);
+    macro.sat = static_cast<uint8_t>(macro.sat * amount);
+    macro.crush = static_cast<uint8_t>(macro.crush * amount);
+    const int neutralTone = 85;
+    macro.tone = static_cast<uint8_t>(neutralTone + static_cast<int>((static_cast<int>(params.tapeMacro.tone) - neutralTone) * amount));
+    tape.macro = macro;
     tape.fxEnabled = false;
     
     // Apply delay settings (using TempoDelay)
     // Apply delay settings (using TempoDelay) to both voices
     for (int i = 0; i < 2; i++) {
         auto& d = engine.tempoDelay(i);
-        d.setEnabled(params.delayEnabled);
-        if (params.delayEnabled) {
+        const bool delayOn = params.delayEnabled && amount > 0.01f;
+        d.setEnabled(delayOn);
+        if (delayOn) {
             d.setBeats(params.delayBeats);
-            d.setFeedback(params.delayFeedback);
-            d.setMix(params.delayMix);
+            d.setFeedback(params.delayFeedback * amount);
+            d.setMix(params.delayMix * amount);
         }
     }
     
     // Apply filter bias using DELTA to prevent drift on repeated calls
     // We store last applied bias and only apply the difference
-    int newCutoffBias = computeCutoffBiasSteps();
-    int newResBias = computeResBiasSteps();
+    int newCutoffBias = static_cast<int>((params.filterCutoffBias * amount) / 5.0f);
+    int newResBias = static_cast<int>((params.filterResonanceBias * amount) * 40.0f);
     
     int cutoffDelta = newCutoffBias - lastAppliedCutoffBias_;
     int resDelta = newResBias - lastAppliedResBias_;
@@ -170,12 +190,12 @@ GenreBehavior GenreManager::getBehavior() const {
         { 0xFFFF, 4, 1, true,  true,  true,  false,
           { 0.0f, 0.55f, 0.35f, 0.85f, 0.35f } },
 
-        // Outrun (was Minimal): 16ths, 6-note motif, Minor scale, bright lead/arp
+        // Minimal (Outrun): 16ths, 6-note motif, Minor scale, bright lead/arp
         // Timbre: Saw(0.0), High cutoff, Low res, Med env, Plucky
         { 0xFFFF, 6, 2, true,  false, true,  false,
           { 0.0f, 0.72f, 0.18f, 0.58f, 0.30f } },
 
-        // Darksynth (was Hypnotic): 8ths gated, 3-note motif, Phrygian, evil bass
+        // Techno (Darksynth): 8ths gated, 3-note motif, Phrygian, evil bass
         // Timbre: Square(1.0), Low cutoff, High res, Strong env, Short gate
         { 0xAAAA, 3, 1, true,  false, false, false,
           { 1.0f, 0.34f, 0.50f, 0.92f, 0.22f } },
@@ -188,14 +208,34 @@ GenreBehavior GenreManager::getBehavior() const {
         // Rave: dense, longer motif, chromatic + jumps
         // Timbre: Saw(0.0), Open filter, Aggressive
         { 0xFFFF, 6, 1, true,  true,  true,  false,
-          { 0.0f, 0.78f, 0.32f, 0.80f, 0.50f } }
+          { 0.0f, 0.78f, 0.32f, 0.80f, 0.50f } },
+
+        // Reggae: offbeat focus, short motif, minor pentatonic
+        // Timbre: Square-ish, low cutoff, warm
+        { 0xAAAA, 4, 0, true,  false, false, true,
+          { 1.0f, 0.28f, 0.40f, 0.55f, 0.18f } },
+
+        // TripHop: sparse, slow, humanized
+        // Timbre: soft saw, mid cutoff, relaxed env
+        { 0xF0F0, 4, 2, true,  false, false, true,
+          { 0.2f, 0.45f, 0.25f, 0.55f, 0.30f } },
+
+        // Broken: syncopated, lopsided groove
+        // Timbre: bright-ish, fast env
+        { 0xAA55, 3, 3, true,  true,  true,  false,
+          { 0.0f, 0.62f, 0.32f, 0.70f, 0.25f } },
+
+        // Chip: tight, stepped, game-console pulse flavor
+        // Timbre: square, high env, short decay
+        { 0xFFFF, 2, 0, true,  false, false, true,
+          { 1.0f, 0.68f, 0.22f, 0.82f, 0.12f } }
     };
 
     GenreBehavior b = kBase[static_cast<int>(state_.generative)];
 
     // Texture influences TIMBRE only, NOT rhythm/stepMask
     // (User feedback: changing stepMask makes genres unreadable)
-    if (state_.texture == TextureMode::Industrial) {
+    if (state_.texture == TextureMode::Industrial || state_.texture == TextureMode::Psychedelic) {
         b.allowChromatic = true; // Allow dissonance for harsh texture
     }
 

@@ -6,7 +6,8 @@
 
 namespace {
 const char* const kOscillatorOptions[] = {"saw", "sqr", "super", "pulse", "sub"};
-const char* const kFilterTypeOptions[] = {"lp1", "acid", "moog"};
+// Keep legacy names for compatibility and add lightweight voicing variants.
+const char* const kFilterTypeOptions[] = {"lp1", "acid", "moog", "bite", "soft"};
 
 const TB303Preset kLoFiMinimalPresets[] = {
     // DEEP BASS
@@ -202,13 +203,43 @@ float TB303Voice::svfProcess(float input) {
   float maxCutoff = nyquist * 0.9f;
   if (cutoffHz > maxCutoff)
     cutoffHz = maxCutoff;
+  
+  float resonance = parameterValue(TB303ParamId::Resonance);
+  const int fltType = params[static_cast<int>(TB303ParamId::FilterType)].optionIndex();
 
+  // TE-like "character" variants on top of the same lightweight cores.
+  switch (fltType) {
+    case 1: // acid
+      cutoffHz *= 1.08f;
+      resonance = resonance * 1.18f + 0.03f;
+      break;
+    case 2: // moog
+      cutoffHz *= 0.88f;
+      resonance *= 0.90f;
+      break;
+    case 3: // bite
+      cutoffHz *= 1.20f;
+      resonance = resonance * 1.10f + 0.06f;
+      break;
+    case 4: // soft
+      cutoffHz *= 0.80f;
+      resonance *= 0.72f;
+      break;
+    case 0: // lp1
+    default:
+      break;
+  }
 
-  return filter->process(input, cutoffHz, parameterValue(TB303ParamId::Resonance));
+  if (cutoffHz > maxCutoff) cutoffHz = maxCutoff;
+  if (cutoffHz < 50.0f) cutoffHz = 50.0f;
+  if (resonance < 0.0f) resonance = 0.0f;
+  if (resonance > 0.95f) resonance = 0.95f;
+
+  return filter->process(input, cutoffHz, resonance);
 }
 
 float TB303Voice::applyLoFiDegradation(float input) {
-  if (mode_ == GrooveboxMode::Acid || loFiAmount_ <= 0.001f) return input;
+  if (loFiAmount_ <= 0.001f) return input;
 
   float out = input;
   
@@ -255,7 +286,7 @@ float TB303Voice::process() {
 
   float out = svfProcess(finalOsc);
   
-  if (mode_ == GrooveboxMode::Minimal) {
+  if (loFiAmount_ > 0.001f) {
     out = applyLoFiDegradation(out);
   }
 
@@ -326,11 +357,11 @@ void TB303Voice::setNoiseAmount(float amount) {
 
 void TB303Voice::initParameters() {
   params[static_cast<int>(TB303ParamId::Cutoff)] = Parameter("cut", "Hz", 60.0f, 2500.0f, 800.0f, (2500.f - 60.0f) / 128);
-  params[static_cast<int>(TB303ParamId::Resonance)] = Parameter("res", "", 0.05f, 0.85f, 0.0f, (0.85f - 0.05f) / 128);
+  params[static_cast<int>(TB303ParamId::Resonance)] = Parameter("res", "", 0.0f, 0.85f, 0.0f, 0.85f / 128);
   params[static_cast<int>(TB303ParamId::EnvAmount)] = Parameter("env", "Hz", 0.0f, 2000.0f, 400.0f, (2000.0f - 0.0f) / 128);
   params[static_cast<int>(TB303ParamId::EnvDecay)] = Parameter("dec", "ms", 20.0f, 2200.0f, 420.0f, (2200.0f - 20.0f) / 128);
   params[static_cast<int>(TB303ParamId::Oscillator)] = Parameter("osc", "", kOscillatorOptions, 5, 0);
-  params[static_cast<int>(TB303ParamId::FilterType)] = Parameter("flt", "", kFilterTypeOptions, 3, 0);
+  params[static_cast<int>(TB303ParamId::FilterType)] = Parameter("flt", "", kFilterTypeOptions, 5, 0);
   params[static_cast<int>(TB303ParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.0f, 0.8f, 1.0f / 128);
 }
 
@@ -338,12 +369,15 @@ void TB303Voice::updateFilterModel() {
   int currentType = params[static_cast<int>(TB303ParamId::FilterType)].optionIndex();
   if (currentType == lastFilterType_) return;
 
+  // 5 UI modes map to 3 filter cores:
+  // lp1/bite -> Chamberlin, acid -> Diode, moog/soft -> Ladder
   switch (currentType) {
     case 1: filter = std::make_unique<DiodeFilter>(sampleRate); break;
-    case 2: filter = std::make_unique<LadderFilter>(sampleRate); break;
+    case 2:
+    case 4: filter = std::make_unique<LadderFilter>(sampleRate); break;
+    case 3:
     case 0:
     default: filter = std::make_unique<ChamberlinFilter>(sampleRate); break;
   }
   lastFilterType_ = currentType;
 }
-
