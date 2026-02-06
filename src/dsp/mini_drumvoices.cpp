@@ -1,4 +1,3 @@
-#include <stdlib.h>
 #include <math.h>
 #include "mini_drumvoices.h"
 #include "audio_wavetables.h"
@@ -640,11 +639,11 @@ float TR808DrumSynthVoice::processClap() {
   // Handle delayed trigger bursts
   if (clapWait2 > 0) {
       clapWait2--;
-      if (clapWait2 == 0) clapEnv2 = 0.75f * clapAccentGain * (clapEnv > 0.0f ? 1.0f : 0.0f); // Trigger burst 2
+      if (clapWait2 == 0) clapEnv2 = 0.7f * clapEnv * clapAccentGain; // Trigger burst 2 (musical)
   }
   if (clapWait3 > 0) {
       clapWait3--;
-      if (clapWait3 == 0) clapEnv3 = 0.55f * clapAccentGain * (clapEnv > 0.0f ? 1.0f : 0.0f); // Trigger burst 3
+      if (clapWait3 == 0) clapEnv3 = 0.5f * clapEnv * clapAccentGain; // Trigger burst 3 (musical)
   }
   
   // Decay envelopes
