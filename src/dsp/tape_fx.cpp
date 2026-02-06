@@ -1,6 +1,10 @@
 #include "tape_fx.h"
 #include <algorithm>
 #include <cmath>
+#include "audio_wavetables.h"
+
+// Fast conversion factor: 0..1 float phase -> 0..UINT32_MAX fixed phase
+static constexpr float kPhaseToUint32 = 4294967296.0f;
 
 TapeFX::TapeFX() {
     // Clear delay buffer
@@ -196,7 +200,7 @@ float TapeFX::process(float input) {
     if (movementAmount_ > 0.01f) {
         movementPhase_ += movementFreq_ / static_cast<float>(kSampleRate);
         if (movementPhase_ >= 1.0f) movementPhase_ -= 1.0f;
-        float mod = sinf(6.2831853f * movementPhase_) * 0.5f + 0.5f;
+        float mod = Wavetable::lookupSine((uint32_t)(movementPhase_ * kPhaseToUint32)) * 0.5f + 0.5f;
         float fc = 0.1f + mod * movementAmount_ * 0.8f;
         movementZ1_ += fc * (output - movementZ1_);
         output = movementZ1_;

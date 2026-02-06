@@ -201,6 +201,11 @@ public:
         static const char* const names[] = {"Clean", "Dub", "LoFi", "Industrial", "Psychedelic"};
         return names[static_cast<int>(mode)];
     }
+
+    // Curated compatibility helpers
+    static bool isTextureAllowed(GenerativeMode genre, TextureMode texture);
+    static TextureMode firstAllowedTexture(GenerativeMode genre);
+    static TextureMode nextAllowedTexture(GenerativeMode genre, TextureMode current, int direction = 1);
     
     // Apply texture to engine (implemented in cpp)
     void applyTexture(MiniAcid& engine);

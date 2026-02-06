@@ -12,5 +12,6 @@ public:
 private:
   float drive_;
   float mix_;
+  float cachedComp_;
   bool enabled_;
 };

@@ -16,11 +16,13 @@ constexpr const char* kGlobalLines[] = {
 constexpr const char* kGenreLines[] = {
     "=== GENRE PAGE ===",
     "Arrows     Move in active lane",
-    "Tab        Genre/Texture/Presets",
+    "Tab        Genre/Texture/Presets/Apply",
     "Enter      Apply selected",
+    "Space      Toggle Apply mode",
     "1..8       Apply preset",
     "0          Random Genre+Texture",
     "M          Apply mode S+P / SND",
+    "C          Curated/Advanced (recommended/all)",
     "G          Groove mode Acid/Minimal",
 };
 

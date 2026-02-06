@@ -82,18 +82,18 @@ MiniAcidDisplay::~MiniAcidDisplay() = default;
 std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
     Serial.printf("[UI] createPage_(%d)\n", index);
     switch (index) {
-        case 0:  return std::make_unique<SettingsPage>(gfx_, mini_acid_);
+        case 0:  return std::make_unique<GenrePage>(gfx_, mini_acid_, audio_guard_);
         case 1:  return std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 0);
         case 2:  return std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 1);
         case 3:  return std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 0);
         case 4:  return std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 1);
         case 5:  return std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_);
         case 6:  return std::make_unique<SongPage>(gfx_, mini_acid_, audio_guard_);
-        case 7:  return std::make_unique<GenrePage>(gfx_, mini_acid_, audio_guard_);
+        case 7:  return std::make_unique<SequencerHubPage>(gfx_, mini_acid_, audio_guard_);
         case 8:  return std::make_unique<FeelTexturePage>(gfx_, mini_acid_, audio_guard_);
-        case 9:  return std::make_unique<SequencerHubPage>(gfx_, mini_acid_, audio_guard_);
+        case 9:  return std::make_unique<SettingsPage>(gfx_, mini_acid_, audio_guard_);
         case 10: return std::make_unique<ProjectPage>(gfx_, mini_acid_,audio_guard_);        
-        case 11: return std::make_unique<VoicePage>(gfx_, mini_acid_, audio_guard_);
+        //case 11: return std::make_unique<VoicePage>(gfx_, mini_acid_, audio_guard_);
         //case 12: return std::make_unique<ColorTestPage>(gfx_, mini_acid_);
 
        // case 14: return std::make_unique<WaveformPage>(gfx_, mini_acid_, audio_guard_);
@@ -323,11 +323,11 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
                 case '3': targetPage = 3; break;  // Synth A Params
                 case '4': targetPage = 4; break;  // Synth B Params
                 case '5': targetPage = 5; break;  // Drum Sequencer
-                case '6': targetPage = 8; break;  // Feel/Texture
-                case '7': targetPage = 9; break;  // Sequencer Hub
-                case '8': targetPage = 6; break;  // Song Page
-                case '9': targetPage = 10; break; // Project Page
-                case '0': targetPage = 0; break;  // Settings
+                case '6': targetPage = 6; break;  // Feel/Texture
+                case '7': targetPage = 7; break;  // Sequencer Hub
+                case '8': targetPage = 8; break;  // Song Page
+                case '9': targetPage = 9; break; // Project Page
+                case '0': targetPage = 10; break;  // Settings
                 default: break;
             }
             if (targetPage >= 0) {

@@ -26,8 +26,8 @@ using namespace RetroWidgets;
 // Preset mappings: (genre, texture)
 // genre indices follow GenerativeMode order (see genre_manager.h)
 // texture: 0=Clean, 1=Dub, 2=LoFi, 3=Industrial
-static const uint8_t kPresetGenre[8]   = { 0, 5, 6, 8, 4, 0, 1, 2 };
-static const uint8_t kPresetTexture[8] = { 0, 1, 2, 0, 0, 1, 2, 3 };
+static const uint8_t kPresetGenre[8]   = { 0, 1, 3, 2, 4, 5, 6, 7 };
+static const uint8_t kPresetTexture[8] = { 0, 0, 3, 1, 0, 1, 2, 4 };
 
 namespace {
 constexpr int kGenreVisibleRows = 4;
@@ -35,6 +35,14 @@ constexpr int kTextureVisibleRows = 4;
 
 const char* applyModeShort(const MiniAcid& mini) {
     return mini.sceneManager().currentScene().genre.regenerateOnApply ? "S+P" : "SND";
+}
+
+const char* applyModeLong(const MiniAcid& mini) {
+    return mini.sceneManager().currentScene().genre.regenerateOnApply ? "[X] SOUND+PATTERN" : "[ ] SOUND ONLY";
+}
+
+const char* curatedModeShort(const MiniAcid& mini) {
+    return mini.sceneManager().currentScene().genre.curatedMode ? "CUR" : "ADV";
 }
 
 const char* grooveModeShort(const MiniAcid& mini) {
@@ -78,13 +86,13 @@ const char* GenrePage::genreNames[kGenerativeModeCount] = {
 };
 
 const char* GenrePage::textureNames[kTextureModeCount] = {
-    "CLEAN", "DUB", "LOFI", "HARD", "PSY"
+    "CLEAN", "DUB", "LOFI", "INDUS", "PSY"
 };
 
 const char* GenrePage::presetNames[8] = {
-    "303 ACID", "REGGAE DUB", "TRIPHOP", 
-    "CHIP", "RAVE", "ACID DUB",
-    "MINIMAL LOFI", "TECHNO DUB"
+    "CLASSIC ACID", "OUTRUN LEAD", "EBM INDUS",
+    "DUB TECHNO", "RAVE", "DUB REGGAE",
+    "TRIPHOP DUST", "BROKEN BEAT"
 };
 
 GenrePage::GenrePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
@@ -134,9 +142,12 @@ void GenrePage::drawMinimalStyle(IGfx& gfx) {
     gfx.setTextColor(IGfxColor(0x808080)); // dim
     gfx.drawText(Layout::COL_1, y0, (focus_ == FocusArea::GENRE) ? "G>" : "G ");
     gfx.drawText(Layout::COL_2, y0, (focus_ == FocusArea::TEXTURE) ? "T>" : "T ");
-    char modeBuf[26];
-    std::snprintf(modeBuf, sizeof(modeBuf), "A:%s G:%s", applyModeShort(mini_acid_), grooveModeShort(mini_acid_));
+    char modeBuf[30];
+    std::snprintf(modeBuf, sizeof(modeBuf), "A:%s C:%s", applyModeShort(mini_acid_), curatedModeShort(mini_acid_));
     gfx.drawText(168, y0, modeBuf);
+    if (focus_ == FocusArea::APPLY_MODE) {
+        gfx.drawRect(164, y0 - 1, 74, 10, COLOR_ACCENT);
+    }
 
     // Two columns: Genre / Texture
     const int listY = LayoutManager::lineY(1);
@@ -156,18 +167,23 @@ void GenrePage::drawMinimalStyle(IGfx& gfx) {
                   kGenerativeModeCount, kGenreVisibleRows, genreScroll_,
                   COLOR_LABEL, COLOR_KNOB_2);
 
-    textureScroll_ = computeScrollTop(kTextureModeCount, kTextureVisibleRows, textureIndex_, textureScroll_);
+    const int texCount = visibleTextureCount();
+    const int selectedVisible = textureToVisibleIndex(textureIndex_);
+    textureScroll_ = computeScrollTop(texCount, kTextureVisibleRows, selectedVisible, textureScroll_);
     for (int i = 0; i < kTextureVisibleRows; i++) {
-        int idx = textureScroll_ + i;
-        if (idx >= kTextureModeCount) break;
+        int vIdx = textureScroll_ + i;
+        if (vIdx >= texCount) break;
+        int idx = visibleTextureAt(vIdx);
         int rowY = listY + i * Layout::LINE_HEIGHT;
         bool selected = (idx == textureIndex_) && (focus_ == FocusArea::TEXTURE);
         bool hasIcon = (idx == prevTextureIndex_);
-        Widgets::drawListRow(gfx, Layout::COL_2, rowY, Layout::COL_WIDTH, textureNames[idx], selected, hasIcon);
+        char label[20];
+        buildTextureLabel(idx, label, sizeof(label));
+        Widgets::drawListRow(gfx, Layout::COL_2, rowY, Layout::COL_WIDTH, label, selected, hasIcon);
     }
     drawScrollBar(gfx, Layout::COL_2 + Layout::COL_WIDTH - 3, listY,
                   kTextureVisibleRows * Layout::LINE_HEIGHT,
-                  kTextureModeCount, kTextureVisibleRows, textureScroll_,
+                  texCount, kTextureVisibleRows, textureScroll_,
                   COLOR_LABEL, COLOR_KNOB_2);
 
     Widgets::drawBarRow(
@@ -199,10 +215,13 @@ void GenrePage::drawMinimalStyle(IGfx& gfx) {
 
     if (focus_ == FocusArea::PRESETS) {
         left  = "[1-8] PICK  [ENT] APPLY";
-        right = "[TAB] NEXT [M]APPLY [G]MODE";
+        right = "[TAB] NEXT [M]APPLY [C]CUR";
+    } else if (focus_ == FocusArea::APPLY_MODE) {
+        left  = "[SPACE] TOGGLE APPLY MODE";
+        right = regenOnApply(mini_acid_) ? "S+P: REGENERATES" : "SND: KEEPS PATTERNS";
     } else {
         left  = "[UP/DN] SCROLL  [ENT] APPLY";
-        right = "[TAB] NEXT [M]APPLY [G]MODE";
+        right = "[TAB] NEXT [M]APPLY [C]CUR";
     }
 
     UI::drawStandardFooter(gfx, left, right);
@@ -312,10 +331,15 @@ void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
         0x9CA3AF, 0x38BDF8, 0xF59E0B, 0xEF4444, 0xA78BFA  // CLEAN, DUB, LOFI, HARD, PSY
     };
 
-    textureScroll_ = computeScrollTop(kTextureModeCount, kTextureVisibleRows, textureIndex_, textureScroll_);
+    {
+        const int texCount = visibleTextureCount();
+        const int selectedVisible = textureToVisibleIndex(textureIndex_);
+        textureScroll_ = computeScrollTop(texCount, kTextureVisibleRows, selectedVisible, textureScroll_);
+    }
     for (int i = 0; i < kTextureVisibleRows; i++) {
-        int idx = textureScroll_ + i;
-        if (idx >= kTextureModeCount) break;
+        int vIdx = textureScroll_ + i;
+        if (vIdx >= visibleTextureCount()) break;
+        int idx = visibleTextureAt(vIdx);
         int rowY = LIST_Y + i * ROW_H;
         bool isCursor = (idx == textureIndex_);
         bool isActive = (idx == prevTextureIndex_);
@@ -336,15 +360,19 @@ void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
         drawLED(gfx, ledX, ledY, 2, isActive, color);
         
         if (focused) {
-            drawGlowText(gfx, TEX_X + 12, rowY, textureNames[idx], color, TEXT_PRIMARY);
+            char label[20];
+            buildTextureLabel(idx, label, sizeof(label));
+            drawGlowText(gfx, TEX_X + 12, rowY, label, color, TEXT_PRIMARY);
         } else {
             IGfxColor textColor = (isActive || isCursor) ? IGfxColor(color) : IGfxColor(TEXT_SECONDARY);
             gfx.setTextColor(textColor);
-            gfx.drawText(TEX_X + 12, rowY, textureNames[idx]);
+            char label[20];
+            buildTextureLabel(idx, label, sizeof(label));
+            gfx.drawText(TEX_X + 12, rowY, label);
         }
     }
     drawScrollBar(gfx, TEX_X + TEX_W - 3, LIST_Y, kTextureVisibleRows * ROW_H,
-                  kTextureModeCount, kTextureVisibleRows, textureScroll_,
+                  visibleTextureCount(), kTextureVisibleRows, textureScroll_,
                   GRID_MEDIUM, FOCUS_GLOW);
     
     // Preset grid (bottom)
@@ -415,11 +443,21 @@ void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
             rightHints = "TAB:Genre";
             focusMode = "PRESETS";
             break;
+        case FocusArea::APPLY_MODE:
+            leftHints = "SPACE:Toggle";
+            rightHints = applyModeLong(mini_acid_);
+            focusMode = "APPLY";
+            break;
     }
 
-    char modeBuf[24];
-    std::snprintf(modeBuf, sizeof(modeBuf), "A:%s G:%s", applyModeShort(mini_acid_), grooveModeShort(mini_acid_));
+    char modeBuf[48];
+    std::snprintf(modeBuf, sizeof(modeBuf), "A:%s C:%s", applyModeShort(mini_acid_), curatedModeShort(mini_acid_));
     rightHints = modeBuf;
+    if (focus_ == FocusArea::APPLY_MODE) {
+        leftHints = "SPACE:Toggle  ENT:Toggle";
+        rightHints = applyModeLong(mini_acid_);
+        focusMode = "APPLY";
+    }
     
     drawFooterBar(gfx, 0, 135 - 12, 240, 12, leftHints, rightHints, focusMode);
 #else
@@ -525,10 +563,15 @@ void GenrePage::drawAmberStyle(IGfx& gfx) {
         AmberTheme::TEXT_SECONDARY, AmberTheme::NEON_CYAN, AmberTheme::NEON_ORANGE, AmberTheme::NEON_MAGENTA, AmberTheme::NEON_YELLOW
     };
 
-    textureScroll_ = computeScrollTop(kTextureModeCount, kTextureVisibleRows, textureIndex_, textureScroll_);
+    {
+        const int texCount = visibleTextureCount();
+        const int selectedVisible = textureToVisibleIndex(textureIndex_);
+        textureScroll_ = computeScrollTop(texCount, kTextureVisibleRows, selectedVisible, textureScroll_);
+    }
     for (int i = 0; i < kTextureVisibleRows; i++) {
-        int idx = textureScroll_ + i;
-        if (idx >= kTextureModeCount) break;
+        int vIdx = textureScroll_ + i;
+        if (vIdx >= visibleTextureCount()) break;
+        int idx = visibleTextureAt(vIdx);
         int rowY = LIST_Y + i * ROW_H;
         bool isCursor = (idx == textureIndex_);
         bool isActive = (idx == prevTextureIndex_);
@@ -549,15 +592,19 @@ void GenrePage::drawAmberStyle(IGfx& gfx) {
         AmberWidgets::drawLED(gfx, ledX, ledY, 2, isActive, color);
         
         if (focused) {
-            AmberWidgets::drawGlowText(gfx, TEX_X + 12, rowY, textureNames[idx], color, AmberTheme::TEXT_PRIMARY);
+            char label[20];
+            buildTextureLabel(idx, label, sizeof(label));
+            AmberWidgets::drawGlowText(gfx, TEX_X + 12, rowY, label, color, AmberTheme::TEXT_PRIMARY);
         } else {
             IGfxColor textColor = (isActive || isCursor) ? IGfxColor(color) : IGfxColor(AmberTheme::TEXT_SECONDARY);
             gfx.setTextColor(textColor);
-            gfx.drawText(TEX_X + 12, rowY, textureNames[idx]);
+            char label[20];
+            buildTextureLabel(idx, label, sizeof(label));
+            gfx.drawText(TEX_X + 12, rowY, label);
         }
     }
     drawScrollBar(gfx, TEX_X + TEX_W - 3, LIST_Y, kTextureVisibleRows * ROW_H,
-                  kTextureModeCount, kTextureVisibleRows, textureScroll_,
+                  visibleTextureCount(), kTextureVisibleRows, textureScroll_,
                   AmberTheme::GRID_MEDIUM, AmberTheme::NEON_ORANGE);
     
     const int GRID_Y = LIST_Y + kGenreVisibleRows * ROW_H + 4;
@@ -584,8 +631,11 @@ void GenrePage::drawAmberStyle(IGfx& gfx) {
         AmberWidgets::drawGlowBorder(gfx, fx, fy, fw, fh, AmberTheme::NEON_ORANGE, 1);
     }
     
-    char modeBuf[24];
-    std::snprintf(modeBuf, sizeof(modeBuf), "A:%s G:%s", applyModeShort(mini_acid_), grooveModeShort(mini_acid_));
+    char modeBuf[48];
+    std::snprintf(modeBuf, sizeof(modeBuf), "A:%s C:%s", applyModeShort(mini_acid_), curatedModeShort(mini_acid_));
+    if (focus_ == FocusArea::APPLY_MODE) {
+        std::snprintf(modeBuf, sizeof(modeBuf), "%s", applyModeLong(mini_acid_));
+    }
     AmberWidgets::drawFooterBar(gfx, 0, 135 - 12, 240, 12,
                                 "[UP/DN]Scroll [ENT]Apply",
                                 modeBuf,
@@ -604,13 +654,31 @@ bool GenrePage::handleEvent(UIEvent& e) {
     
     // Helper lambdas for navigation
     auto moveUp = [&]() {
-        if (focus_ == FocusArea::GENRE) genreIndex_ = (genreIndex_ - 1 + kGenerativeModeCount) % kGenerativeModeCount;
-        else if (focus_ == FocusArea::TEXTURE) textureIndex_ = (textureIndex_ - 1 + kTextureModeCount) % kTextureModeCount;
+        if (focus_ == FocusArea::GENRE) {
+            genreIndex_ = (genreIndex_ - 1 + kGenerativeModeCount) % kGenerativeModeCount;
+            ensureTextureAllowedForCurrentGenre();
+        } else if (focus_ == FocusArea::TEXTURE) {
+            int vis = textureToVisibleIndex(textureIndex_);
+            int cnt = visibleTextureCount();
+            if (cnt > 0) {
+                vis = (vis - 1 + cnt) % cnt;
+                textureIndex_ = visibleTextureAt(vis);
+            }
+        }
         else if (focus_ == FocusArea::PRESETS) presetIndex_ = (presetIndex_ - 1 + 8) % 8;
     };
     auto moveDown = [&]() {
-        if (focus_ == FocusArea::GENRE) genreIndex_ = (genreIndex_ + 1) % kGenerativeModeCount;
-        else if (focus_ == FocusArea::TEXTURE) textureIndex_ = (textureIndex_ + 1) % kTextureModeCount;
+        if (focus_ == FocusArea::GENRE) {
+            genreIndex_ = (genreIndex_ + 1) % kGenerativeModeCount;
+            ensureTextureAllowedForCurrentGenre();
+        } else if (focus_ == FocusArea::TEXTURE) {
+            int vis = textureToVisibleIndex(textureIndex_);
+            int cnt = visibleTextureCount();
+            if (cnt > 0) {
+                vis = (vis + 1) % cnt;
+                textureIndex_ = visibleTextureAt(vis);
+            }
+        }
         else if (focus_ == FocusArea::PRESETS) presetIndex_ = (presetIndex_ + 1) % 8;
     };
     auto moveLeft = [&]() {
@@ -650,13 +718,30 @@ bool GenrePage::handleEvent(UIEvent& e) {
     if (key == '\t') {
         if (focus_ == FocusArea::GENRE)   focus_ = FocusArea::TEXTURE;
         else if (focus_ == FocusArea::TEXTURE) focus_ = FocusArea::PRESETS;
+        else if (focus_ == FocusArea::PRESETS) focus_ = FocusArea::APPLY_MODE;
         else focus_ = FocusArea::GENRE;
         return true;
     }
 
-    // ENTER: apply current selection
+    // ENTER: apply current selection / toggle apply mode
     if (key == '\n' || key == '\r') {
+        if (focus_ == FocusArea::APPLY_MODE) {
+            auto& gs = mini_acid_.sceneManager().currentScene().genre;
+            gs.regenerateOnApply = !gs.regenerateOnApply;
+            UI::showToast(gs.regenerateOnApply ? "Apply Mode: SOUND+PATTERN (Regenerates)"
+                                               : "Apply Mode: SOUND ONLY (Keeps patterns)", 1800);
+            return true;
+        }
         applyCurrent();
+        return true;
+    }
+
+    // SPACE: toggle apply mode when focused
+    if (key == ' ' && focus_ == FocusArea::APPLY_MODE) {
+        auto& gs = mini_acid_.sceneManager().currentScene().genre;
+        gs.regenerateOnApply = !gs.regenerateOnApply;
+        UI::showToast(gs.regenerateOnApply ? "Apply Mode: SOUND+PATTERN (Regenerates)"
+                                           : "Apply Mode: SOUND ONLY (Keeps patterns)", 1800);
         return true;
     }
 
@@ -664,7 +749,8 @@ bool GenrePage::handleEvent(UIEvent& e) {
     if (key == 'm' || key == 'M') {
         auto& gs = mini_acid_.sceneManager().currentScene().genre;
         gs.regenerateOnApply = !gs.regenerateOnApply;
-        UI::showToast(gs.regenerateOnApply ? "Genre Apply: SOUND+PATTERN" : "Genre Apply: SOUND ONLY");
+        UI::showToast(gs.regenerateOnApply ? "Apply Mode: SOUND+PATTERN (Regenerates)"
+                                           : "Apply Mode: SOUND ONLY (Keeps patterns)", 1800);
         return true;
     }
 
@@ -675,18 +761,20 @@ bool GenrePage::handleEvent(UIEvent& e) {
         return true;
     }
 
+    // C: toggle curated compatibility mode
+    if (key == 'c' || key == 'C') {
+        bool next = !isCuratedMode();
+        setCuratedMode(next);
+        UI::showToast(next ? "Texture Mode: CURATED (recommended first)"
+                           : "Texture Mode: ADVANCED (all combos)", 1800);
+        return true;
+    }
+
     // Direct preset selection (1-8)
     if (key >= '1' && key <= '8') {
         presetIndex_ = key - '1';
         focus_ = FocusArea::PRESETS;
-        withAudioGuard([&]() {
-            mini_acid_.genreManager().setGenerativeMode(static_cast<GenerativeMode>(kPresetGenre[presetIndex_]));
-            mini_acid_.genreManager().setTextureMode(static_cast<TextureMode>(kPresetTexture[presetIndex_]));
-            auto& gs = mini_acid_.sceneManager().currentScene().genre;
-            gs.generativeMode = static_cast<uint8_t>(kPresetGenre[presetIndex_]);
-            gs.textureMode = static_cast<uint8_t>(kPresetTexture[presetIndex_]);
-        });
-        updateFromEngine();
+        applyCurrent();
         return true;
     }
 
@@ -695,6 +783,10 @@ bool GenrePage::handleEvent(UIEvent& e) {
         withAudioGuard([&]() {
             int gen = std::rand() % kGenerativeModeCount;
             int tex = std::rand() % kTextureModeCount;
+            if (isCuratedMode()) {
+                // Curated mode biases random to recommended texture.
+                tex = static_cast<int>(GenreManager::firstAllowedTexture(static_cast<GenerativeMode>(gen)));
+            }
             mini_acid_.genreManager().setGenerativeMode(static_cast<GenerativeMode>(gen));
             mini_acid_.genreManager().setTextureMode(static_cast<TextureMode>(tex));
             auto& gs = mini_acid_.sceneManager().currentScene().genre;
@@ -712,6 +804,50 @@ bool GenrePage::handleEvent(UIEvent& e) {
 // INTERNAL METHODS (unchanged)
 // =================================================================
 
+bool GenrePage::isCuratedMode() const {
+    return mini_acid_.sceneManager().currentScene().genre.curatedMode;
+}
+
+void GenrePage::setCuratedMode(bool enabled) {
+    mini_acid_.sceneManager().currentScene().genre.curatedMode = enabled;
+}
+
+int GenrePage::visibleTextureCount() const {
+    return kTextureModeCount;
+}
+
+int GenrePage::visibleTextureAt(int visibleIndex) const {
+    if (visibleIndex < 0) return 0;
+    if (visibleIndex >= kTextureModeCount) return kTextureModeCount - 1;
+    return visibleIndex;
+}
+
+int GenrePage::textureToVisibleIndex(int textureIndex) const {
+    if (textureIndex < 0) return 0;
+    if (textureIndex >= kTextureModeCount) return kTextureModeCount - 1;
+    return textureIndex;
+}
+
+void GenrePage::ensureTextureAllowedForCurrentGenre() {
+    // Curated mode is recommendation-first only, not a hard limiter.
+}
+
+void GenrePage::buildTextureLabel(int textureIndex, char* out, size_t outSize) const {
+    if (!out || outSize == 0) return;
+    if (textureIndex < 0 || textureIndex >= kTextureModeCount) {
+        std::snprintf(out, outSize, "?");
+        return;
+    }
+    bool recommended = GenreManager::isTextureAllowed(
+        static_cast<GenerativeMode>(genreIndex_),
+        static_cast<TextureMode>(textureIndex));
+    if (isCuratedMode() && recommended) {
+        std::snprintf(out, outSize, "%s*", textureNames[textureIndex]);
+    } else {
+        std::snprintf(out, outSize, "%s", textureNames[textureIndex]);
+    }
+}
+
 void GenrePage::applyCurrent() {
     const bool doRegenerate = regenOnApply(mini_acid_);
     if (focus_ == FocusArea::PRESETS) {
@@ -725,10 +861,12 @@ void GenrePage::applyCurrent() {
             mini_acid_.genreManager().applyTexture(mini_acid_);
             auto& gs = mini_acid_.sceneManager().currentScene().genre;
             gs.generativeMode = static_cast<uint8_t>(kPresetGenre[presetIndex_]);
-            gs.textureMode = static_cast<uint8_t>(kPresetTexture[presetIndex_]);
+            gs.textureMode = static_cast<uint8_t>(mini_acid_.genreManager().textureMode());
             if (doRegenerate) mini_acid_.regeneratePatternsWithGenre();
         });
         updateFromEngine();
+        prevGenreIndex_ = genreIndex_;
+        prevTextureIndex_ = textureIndex_;
     } else {
         withAudioGuard([&]() {
             mini_acid_.genreManager().setGenerativeMode(static_cast<GenerativeMode>(genreIndex_));
@@ -746,6 +884,14 @@ void GenrePage::applyCurrent() {
         prevGenreIndex_ = genreIndex_;
         prevTextureIndex_ = textureIndex_;
     }
+
+    char toast[80];
+    const int g = genreIndex_;
+    const int t = textureIndex_;
+    std::snprintf(toast, sizeof(toast), "%s/%s applied (%s)",
+                  genreNames[g], textureNames[t],
+                  doRegenerate ? "Regenerated" : "Patterns kept");
+    UI::showToast(toast, 1800);
 }
 
 void GenrePage::updateFromEngine() {

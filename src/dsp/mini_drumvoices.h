@@ -219,6 +219,15 @@ private:
   bool clapActive;
   float clapDelay;
   float clapTime;
+  
+  // Optimized Clap State (replaces expensive expf)
+  float clapEnv1;
+  float clapEnv2;
+  float clapEnv3;
+  int clapWait2; // samples until 2nd burst
+  int clapWait3; // samples until 3rd burst
+  float clapDecayCoef;
+
   float clapAccentAmount;
   float clapAccentGain;
   bool clapAccentDistortion;

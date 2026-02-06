@@ -82,13 +82,25 @@ void audioTask(void *param) {
         // Start snapshot write (seq becomes odd)
         stats.seq++;
         
-        // Write all fields
+        // Update peak
+        static uint32_t peakBlockCounter = 0;
+        static float peakAccum = 0;
+        float currentPct = (float)dsp_time * 100.0f / (float)ideal_period_us;
+        if (currentPct > peakAccum) peakAccum = currentPct;
+        
+        if (++peakBlockCounter >= 22 || stats.cpuAudioPeakPct == 0) {
+            stats.cpuAudioPeakPct = peakAccum;
+            peakAccum = 0;
+            peakBlockCounter = 0;
+        }
+
+        // Core stats
         stats.audioUnderruns = (dsp_time > ideal_period_us) ? stats.audioUnderruns + 1 : stats.audioUnderruns;
-        stats.cpuAudioPctIdeal = (float)dsp_time * 100.0f / (float)ideal_period_us;
+        stats.cpuAudioPctIdeal = currentPct;
         stats.cpuAudioPctActual = (float)dsp_time * 100.0f / (float)actual_period_us;
         stats.dspTimeUs = dsp_time;
         stats.lastCallbackMicros = now;
-        
+
         // End snapshot write (seq becomes even)
         stats.seq++;
         
@@ -513,8 +525,26 @@ void loop() {
     logHeapCaps("periodic");
     if (g_miniAcid) {
        auto& stats = g_miniAcid->perfStats;
-       Serial.printf("[PERF] CPU Audio: %.1f%% (Ideal) / %.1f%% (Actual)  Underruns: %u\n", 
-           stats.cpuAudioPctIdeal, stats.cpuAudioPctActual, (unsigned)stats.audioUnderruns);
+       uint32_t s1 = 0, s2 = 0;
+       uint32_t underruns = 0;
+       float cpuAvg = 0.0f;
+       float cpuPeak = 0.0f;
+       uint32_t dv = 0, dd = 0, ds = 0, df = 0;
+       do {
+           s1 = stats.seq;
+           underruns = stats.audioUnderruns;
+           cpuAvg = stats.cpuAudioPctIdeal;
+           cpuPeak = stats.cpuAudioPeakPct;
+           dv = stats.dspVoicesUs;
+           dd = stats.dspDrumsUs;
+           ds = stats.dspSamplerUs;
+           df = stats.dspFxUs;
+           s2 = stats.seq;
+       } while (s1 != s2 || (s1 & 1));
+       Serial.printf("[PERF] CPU: avg %.1f%% / peak %.1f%% (underruns %u)\n",
+           cpuAvg, cpuPeak, (unsigned)underruns);
+       Serial.printf("       DSP: v:%uus d:%uus s:%uus f:%uus\n",
+           (unsigned)dv, (unsigned)dd, (unsigned)ds, (unsigned)df);
     }
   }
 

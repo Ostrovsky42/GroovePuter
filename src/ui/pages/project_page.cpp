@@ -191,55 +191,7 @@ bool ProjectPage::createNewScene() {
   return true;
 }
 
-void ProjectPage::renderProject() {
-    int x = gfx_.width() / 2 - 80;
-    int y = gfx_.height() / 2 - 30;
-    int w = 160;
-    int h = 60;
-    
-    // Draw dialog
-    gfx_.fillRect(x, y, w, h, COLOR_DARKER);
-    gfx_.drawRect(x, y, w, h, COLOR_ACCENT);
-    gfx_.setTextColor(COLOR_WHITE);
-    const char* label = "Rendering...";
-    int tw = textWidth(gfx_, label);
-    gfx_.drawText(x + (w-tw)/2, y + 15, label);
-    
-    // Progress loop setup
-    int bx = x + 10;
-    int by = y + 35;
-    int bw = w - 20;
-    int bh = 10;
-    gfx_.drawRect(bx, by, bw, bh, COLOR_LABEL);
-    
-    std::string filename = "/" + mini_acid_.currentSceneName() + ".wav";
-    if (mini_acid_.currentSceneName().empty()) filename = "/render.wav";
-    
-    auto cb = [&](float progress) {
-         int fillW = (int)(bw * progress);
-         if (fillW > bw - 2) fillW = bw - 2;
-         if (fillW > 0) {
-             gfx_.fillRect(bx + 1, by + 1, fillW, bh - 2, COLOR_ACCENT);
-         }
-         // Note: Assuming direct draw or that UI thread isn't needed to pump display
-    };
-    
-    bool success = false;
-    withAudioGuard([&]() {
-        success = mini_acid_.renderProjectToWav(filename, cb);
-    });
-    
-    // Show result
-    gfx_.fillRect(x, y, w, h, COLOR_DARKER);
-    gfx_.drawRect(x, y, w, h, success ? COLOR_ACCENT : COLOR_RED);
-    const char* result = success ? "Done!" : "Failed!";
-    tw = textWidth(gfx_, result);
-    gfx_.drawText(x + (w-tw)/2, y + 25, result);
-    
-    // Delay for user visibility
-    unsigned long start = millis();
-    while (millis() - start < 1000) { ; }
-}
+
 
 bool ProjectPage::handleSaveDialogInput(char key) {
   if (key == '\b') {
@@ -323,8 +275,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             if (main_focus_ == MainFocus::Volume) { mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, -1); return true; }
             if (main_focus_ == MainFocus::SaveAs) main_focus_ = MainFocus::Load;
             else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::SaveAs;
-            else if (main_focus_ == MainFocus::Render) main_focus_ = MainFocus::New;
-            else if (main_focus_ == MainFocus::VisualStyle) main_focus_ = MainFocus::Render;
+            else if (main_focus_ == MainFocus::VisualStyle) main_focus_ = MainFocus::New;
             else if (main_focus_ >= MainFocus::LedMode && main_focus_ <= MainFocus::LedFlash) {
                 if (main_focus_ == MainFocus::LedMode) main_focus_ = MainFocus::VisualStyle;
                 else main_focus_ = static_cast<MainFocus>(static_cast<int>(main_focus_) - 1);
@@ -334,8 +285,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             if (main_focus_ == MainFocus::Volume) { mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, 1); return true; }
             if (main_focus_ == MainFocus::Load) main_focus_ = MainFocus::SaveAs;
             else if (main_focus_ == MainFocus::SaveAs) main_focus_ = MainFocus::New;
-            else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::Render;
-            else if (main_focus_ == MainFocus::Render) main_focus_ = MainFocus::VisualStyle;
+            else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::VisualStyle;
             else if (main_focus_ == MainFocus::VisualStyle) main_focus_ = MainFocus::LedMode;
             else if (main_focus_ >= MainFocus::LedMode && main_focus_ < MainFocus::LedFlash) {
                 main_focus_ = static_cast<MainFocus>(static_cast<int>(main_focus_) + 1);
@@ -362,7 +312,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         if (main_focus_ == MainFocus::Load) { openLoadDialog(); return true; }
         if (main_focus_ == MainFocus::SaveAs) { openSaveDialog(); return true; }
         if (main_focus_ == MainFocus::New) return createNewScene();
-        if (main_focus_ == MainFocus::Render) { renderProject(); return true; }
+
         if (main_focus_ == MainFocus::VisualStyle) {
              switch (UI::currentStyle) {
                  case VisualStyle::MINIMAL: UI::currentStyle = VisualStyle::RETRO_CLASSIC; break;
@@ -441,19 +391,19 @@ void ProjectPage::draw(IGfx& gfx) {
   int btn_h = line_h + 6;  // Reduced from +8 to +6
   int btn_y = body_y + line_h * 2 + 8;
   int spacing = 3;
-  const char* labels[5] = {"Load", "Save", "New", "Render", "Theme"};
-  if (UI::currentStyle == VisualStyle::MINIMAL) labels[4] = "Carb";
-  else if (UI::currentStyle == VisualStyle::RETRO_CLASSIC) labels[4] = "Cyb";
-  else labels[4] = "Amb";
+  const char* labels[4] = {"Load", "Save", "New", "Theme"};
+  if (UI::currentStyle == VisualStyle::MINIMAL) labels[3] = "Carb";
+  else if (UI::currentStyle == VisualStyle::RETRO_CLASSIC) labels[3] = "Cyb";
+  else labels[3] = "Amb";
   
   btn_w = 42;
-  // 5 controls in one row for 240x135 screen.
-  btn_w = 42;
+  // 4 controls in one row for 240x135 screen.
+  btn_w = 50; // Increased width since we have fewer buttons
   spacing = 2;
-  int total_w = btn_w * 5 + spacing * 4;
+  int total_w = btn_w * 4 + spacing * 3;
   int start_x = x + (w - total_w) / 2;
   
-  for (int i = 0; i < 5; ++i) {
+  for (int i = 0; i < 4; ++i) {
     int btn_x = start_x + i * (btn_w + spacing);
     bool focused = (dialog_type_ == DialogType::None && static_cast<int>(main_focus_) == i);
     gfx.fillRect(btn_x, btn_y, btn_w, btn_h, COLOR_PANEL);
@@ -475,9 +425,10 @@ void ProjectPage::draw(IGfx& gfx) {
   // layout: RAM: 120k/4.1M  CPU: 135%
   char sysBuf[64];
   int cpuLoad = (int)mini_acid_.perfStats.cpuAudioPctIdeal;
+  int cpuPeak = (int)mini_acid_.perfStats.cpuAudioPeakPct;
   
-  snprintf(sysBuf, sizeof(sysBuf), "RAM:%dk/%dM L:%dk CPU:%d%%", 
-           freeInt/1024, freePsram/(1024*1024), largestInt/1024, cpuLoad);
+  snprintf(sysBuf, sizeof(sysBuf), "RAM:%dk L:%dk CPU:%d/(%d)%%", 
+           freeInt/1024, largestInt/1024, cpuLoad, cpuPeak);
            
   gfx.setTextColor(COLOR_ACCENT); // Highlight stats
   gfx.drawText(start_x, mode_y, sysBuf);

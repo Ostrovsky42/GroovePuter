@@ -71,6 +71,49 @@ const GenrePreset kGenrePresets[8] = {
 
 static float clamp01(float x) { return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x); }
 
+namespace {
+// Bitmask per GenerativeMode: bit N means TextureMode N is allowed.
+// 0=Clean 1=Dub 2=LoFi 3=Industrial 4=Psychedelic
+constexpr uint8_t kAllowedTextureMask[kGenerativeModeCount] = {
+    0b11111, // Acid: Clean, Dub, LoFi, Industrial, Psy
+    0b00111, // Outrun/Minimal: Clean, Dub, LoFi
+    0b11111, // Darksynth/Techno: Clean, Dub, LoFi, Industrial, Psy
+    0b11011, // Electro: Clean, Dub, Industrial, Psy
+    0b11001, // Rave: Clean, Industrial, Psy
+    0b00111, // Reggae: Clean, Dub, LoFi
+    0b00111, // TripHop: Clean, Dub, LoFi
+    0b11111, // Broken: Clean, Dub, LoFi, Industrial, Psy
+    0b10101  // Chip: Clean, LoFi, Psy
+};
+} // namespace
+
+bool GenreManager::isTextureAllowed(GenerativeMode genre, TextureMode texture) {
+    const int g = static_cast<int>(genre);
+    const int t = static_cast<int>(texture);
+    if (g < 0 || g >= kGenerativeModeCount) return false;
+    if (t < 0 || t >= kTextureModeCount) return false;
+    return (kAllowedTextureMask[g] & (1u << t)) != 0;
+}
+
+TextureMode GenreManager::firstAllowedTexture(GenerativeMode genre) {
+    for (int t = 0; t < kTextureModeCount; ++t) {
+        TextureMode mode = static_cast<TextureMode>(t);
+        if (isTextureAllowed(genre, mode)) return mode;
+    }
+    return TextureMode::Clean;
+}
+
+TextureMode GenreManager::nextAllowedTexture(GenerativeMode genre, TextureMode current, int direction) {
+    if (direction == 0) return current;
+    int start = static_cast<int>(current);
+    for (int i = 0; i < kTextureModeCount; ++i) {
+        start = (start + direction + kTextureModeCount) % kTextureModeCount;
+        TextureMode mode = static_cast<TextureMode>(start);
+        if (isTextureAllowed(genre, mode)) return mode;
+    }
+    return firstAllowedTexture(genre);
+}
+
 void GenreManager::applyGenreTimbre(MiniAcid& engine) {
     const GenreBehavior b = getBehavior();
     const GenreTimbre& t = b.timbre;
@@ -139,7 +182,7 @@ void GenreManager::applyTexture(MiniAcid& engine) {
     const int neutralTone = 85;
     macro.tone = static_cast<uint8_t>(neutralTone + static_cast<int>((static_cast<int>(params.tapeMacro.tone) - neutralTone) * amount));
     tape.macro = macro;
-    tape.fxEnabled = false;
+    // FEEL page owns Tape ON/OFF. Genre texture adjusts macro only.
     
     // Apply delay settings (using TempoDelay)
     // Apply delay settings (using TempoDelay) to both voices
@@ -232,12 +275,6 @@ GenreBehavior GenreManager::getBehavior() const {
     };
 
     GenreBehavior b = kBase[static_cast<int>(state_.generative)];
-
-    // Texture influences TIMBRE only, NOT rhythm/stepMask
-    // (User feedback: changing stepMask makes genres unreadable)
-    if (state_.texture == TextureMode::Industrial || state_.texture == TextureMode::Psychedelic) {
-        b.allowChromatic = true; // Allow dissonance for harsh texture
-    }
 
     return b;
 }

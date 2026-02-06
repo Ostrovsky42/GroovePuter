@@ -692,7 +692,8 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
     gfx.drawRect(slide_x, indicator_y, indicator_w, indicator_h, COLOR_WHITE);
 
     int note_box_y = indicator_y + indicator_h + indicator_gap;
-    IGfxColor fill = notes[i] >= 0 ? COLOR_303_NOTE : COLOR_GRAY;
+    IGfxColor noteColor = voice_index_ == 0 ? COLOR_SYNTH_A : COLOR_SYNTH_B;
+    IGfxColor fill = notes[i] >= 0 ? noteColor : COLOR_GRAY;
     gfx.fillRect(cell_x, note_box_y, cell_size, cell_size, fill);
     gfx.drawRect(cell_x, note_box_y, cell_size, cell_size, COLOR_WHITE);
 
@@ -708,6 +709,7 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
     int tw = textWidth(gfx, note_label);
     int tx = cell_x + (cell_size - tw) / 2;
     int ty = note_box_y + cell_size / 2 - gfx.fontHeight() / 2;
+    gfx.setTextColor(notes[i] >= 0 ? COLOR_BLACK : COLOR_WHITE);
     gfx.drawText(tx, ty, note_label);
   }
   }
@@ -786,18 +788,19 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     bool cur = (i == patternCursor);
     bool focused = patternFocus && cur;
     
-    IGfxColor bgColor = sel ? IGfxColor(NEON_MAGENTA) : IGfxColor(BG_PANEL);
+    IGfxColor selColor = voice_index_ == 0 ? COLOR_SYNTH_A : COLOR_SYNTH_B;
+    IGfxColor bgColor = sel ? selColor : IGfxColor(BG_PANEL);
     gfx.fillRect(slotX, contentY + 1, 9, 10, bgColor);
     
     if (focused) {
-      drawGlowBorder(gfx, slotX, contentY + 1, 9, 10, IGfxColor(NEON_MAGENTA), 1);
+      drawGlowBorder(gfx, slotX, contentY + 1, 9, 10, selColor, 1);
     } else if (cur) {
       gfx.drawRect(slotX, contentY + 1, 9, 10, IGfxColor(GRID_MEDIUM));
     }
     
-    char c[2] = {'1' + (char)i, 0};
+    char c1[2] = {'1' + (char)i, 0};
     gfx.setTextColor(sel ? IGfxColor(BG_DEEP_BLACK) : IGfxColor(TEXT_SECONDARY));
-    gfx.drawText(slotX + 2, contentY + 2, c);
+    gfx.drawText(slotX + 2, contentY + 2, c1);
   }
 
   // 4. Step Grid (Direct Scene Access - No Cache Lag)
@@ -837,15 +840,19 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     gfx.fillRect(cellX, cellRowY, cellW, cellH, bgColor);
 
     // Border: glow on cursor, simple otherwise
+    // Border: glow on cursor, simple otherwise
     if (isCursor) {
-      drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, IGfxColor(SELECT_BRIGHT), 1);
+      // Use Voice Color for cursor to indicate which voice is being edited
+      IGfxColor cursorColor = (voice_index_ == 0) ? COLOR_SYNTH_A : COLOR_SYNTH_B;
+      drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, cursorColor, 1);
     } else {
       gfx.drawRect(cellX, cellRowY, cellW, cellH, IGfxColor(GRID_MEDIUM));
     }
 
-    // Playing indicator: bright green glow (full border for prominence)
+    // Playing indicator: voice color glow (prominence)
     if (isCurrent) {
-      drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, IGfxColor(STATUS_PLAYING), 2);
+      IGfxColor playColor = (voice_index_ == 0) ? COLOR_SYNTH_A : COLOR_SYNTH_B;
+      drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, playColor, 2);
     }
 
     // Note content
@@ -854,8 +861,9 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
       formatNoteName(note, note_label, sizeof(note_label));
       
       // "Teal & Orange" Harmony: Cleaner, distinct, professional
-      // Cyan = Normal, Orange = Accent
-      IGfxColor noteColor = acc ? IGfxColor(NEON_ORANGE) : IGfxColor(NEON_CYAN);
+      // Voice Color = Normal, Orange = Accent
+      IGfxColor baseColor = (voice_index_ == 0) ? COLOR_SYNTH_A : COLOR_SYNTH_B;
+      IGfxColor noteColor = acc ? IGfxColor(NEON_ORANGE) : baseColor;
       
       int tw = textWidth(gfx, note_label);
       int tx = cellX + (cellW - tw) / 2;
@@ -980,18 +988,19 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
     bool cur = (i == patternCursor);
     bool focused = patternFocus && cur;
     
-    IGfxColor bgColor = sel ? IGfxColor(AmberTheme::NEON_ORANGE) : IGfxColor(AmberTheme::BG_PANEL);
+    IGfxColor selColor = voice_index_ == 0 ? COLOR_SYNTH_A : COLOR_SYNTH_B;
+    IGfxColor bgColor = sel ? selColor : IGfxColor(AmberTheme::BG_PANEL);
     gfx.fillRect(slotX, contentY + 1, 9, 10, bgColor);
     
     if (focused) {
-      AmberWidgets::drawGlowBorder(gfx, slotX, contentY + 1, 9, 10, IGfxColor(AmberTheme::NEON_ORANGE), 1);
+      AmberWidgets::drawGlowBorder(gfx, slotX, contentY + 1, 9, 10, selColor, 1);
     } else if (cur) {
       gfx.drawRect(slotX, contentY + 1, 9, 10, IGfxColor(AmberTheme::GRID_MEDIUM));
     }
     
-    char c[2] = {'1' + (char)i, 0};
+    char c1[2] = {'1' + (char)i, 0};
     gfx.setTextColor(sel ? IGfxColor(AmberTheme::BG_DEEP_BLACK) : IGfxColor(AmberTheme::TEXT_SECONDARY));
-    gfx.drawText(slotX + 2, contentY + 2, c);
+    gfx.drawText(slotX + 2, contentY + 2, c1);
   }
 
   int gridY = contentY + 16;

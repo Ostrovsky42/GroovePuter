@@ -34,10 +34,12 @@ class TB303ParamsPage::KnobComponent : public FocusableComponent {
   KnobComponent(const Parameter& param,
                 IGfxColor ring_color,
                 IGfxColor indicator_color,
+                IGfxColor focus_color,
                 std::function<void(int)> adjust_fn)
       : param_(param),
         ring_color_(ring_color),
         indicator_color_(indicator_color),
+        focus_color_(focus_color),
         adjust_fn_(std::move(adjust_fn)) {}
 
   void setValue(int direction) {
@@ -134,7 +136,7 @@ class TB303ParamsPage::KnobComponent : public FocusableComponent {
     if (isFocused()) {
       int pad = 3;
       gfx.drawRect(bounds.x - pad, bounds.y - pad,
-                   bounds.w + pad * 2, bounds.h + pad * 2, kFocusColor);
+                   bounds.w + pad * 2, bounds.h + pad * 2, focus_color_);
     }
   }
 
@@ -142,6 +144,7 @@ class TB303ParamsPage::KnobComponent : public FocusableComponent {
   const Parameter& param_;
   IGfxColor ring_color_;
   IGfxColor indicator_color_;
+  IGfxColor focus_color_;
   std::function<void(int)> adjust_fn_;
   bool dragging_ = false;
   int last_drag_y_ = 0;
@@ -150,10 +153,11 @@ class TB303ParamsPage::KnobComponent : public FocusableComponent {
 
 class TB303ParamsPage::LabelValueComponent : public FocusableComponent {
  public:
-  LabelValueComponent(const char* label, IGfxColor label_color, IGfxColor value_color)
+  LabelValueComponent(const char* label, IGfxColor label_color, IGfxColor value_color, IGfxColor focus_color)
       : label_(label ? label : ""),
         label_color_(label_color),
-        value_color_(value_color) {}
+        value_color_(value_color),
+        focus_color_(focus_color) {}
 
   void setValue(const char* value) { value_ = value ? value : ""; }
 
@@ -168,7 +172,7 @@ class TB303ParamsPage::LabelValueComponent : public FocusableComponent {
     if (isFocused()) {
       int pad = 2;
       gfx.drawRect(bounds.x - pad, bounds.y - pad,
-                   bounds.w + pad * 2, bounds.h + pad * 2, kFocusColor);
+                   bounds.w + pad * 2, bounds.h + pad * 2, focus_color_);
     }
   }
 
@@ -177,6 +181,7 @@ class TB303ParamsPage::LabelValueComponent : public FocusableComponent {
   const char* value_ = "";
   IGfxColor label_color_;
   IGfxColor value_color_;
+  IGfxColor focus_color_;
 };
 
 TB303ParamsPage::TB303ParamsPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index)
@@ -200,8 +205,10 @@ void TB303ParamsPage::initComponents() {
   const Parameter& pEnv = mini_acid_.parameter303(TB303ParamId::EnvAmount, voice_index_);
   const Parameter& pDec = mini_acid_.parameter303(TB303ParamId::EnvDecay, voice_index_);
 
+  IGfxColor focusColor = (voice_index_ == 0) ? COLOR_SYNTH_A : COLOR_SYNTH_B;
+
   cutoff_knob_ = std::make_shared<KnobComponent>(
-      pCut, COLOR_KNOB_1, COLOR_KNOB_1,
+      pCut, COLOR_KNOB_1, COLOR_KNOB_1, focusColor,
       [this](int direction) {
         withAudioGuard([&]() {
           mini_acid_.adjust303Parameter(TB303ParamId::Cutoff, kKnobStepCoarse * direction, voice_index_);
@@ -209,7 +216,7 @@ void TB303ParamsPage::initComponents() {
       });
 
   resonance_knob_ = std::make_shared<KnobComponent>(
-      pRes, COLOR_KNOB_2, COLOR_KNOB_2,
+      pRes, COLOR_KNOB_2, COLOR_KNOB_2, focusColor,
       [this](int direction) {
         withAudioGuard([&]() {
           mini_acid_.adjust303Parameter(TB303ParamId::Resonance, kKnobStepCoarse * direction, voice_index_);
@@ -217,7 +224,7 @@ void TB303ParamsPage::initComponents() {
       });
 
   env_amount_knob_ = std::make_shared<KnobComponent>(
-      pEnv, COLOR_KNOB_3, COLOR_KNOB_3,
+      pEnv, COLOR_KNOB_3, COLOR_KNOB_3, focusColor,
       [this](int direction) {
         withAudioGuard([&]() {
           mini_acid_.adjust303Parameter(TB303ParamId::EnvAmount, kKnobStepCoarse * direction, voice_index_);
@@ -225,17 +232,17 @@ void TB303ParamsPage::initComponents() {
       });
 
   env_decay_knob_ = std::make_shared<KnobComponent>(
-      pDec, COLOR_KNOB_4, COLOR_KNOB_4,
+      pDec, COLOR_KNOB_4, COLOR_KNOB_4, focusColor,
       [this](int direction) {
         withAudioGuard([&]() {
           mini_acid_.adjust303Parameter(TB303ParamId::EnvDecay, kKnobStepCoarse * direction, voice_index_);
         });
       });
 
-  osc_control_ = std::make_shared<LabelValueComponent>("OSC:", IGfxColor::White(), kValueText);
-  filter_control_ = std::make_shared<LabelValueComponent>("FLT:", IGfxColor::White(), kValueText);
-  distortion_control_ = std::make_shared<LabelValueComponent>("DST:", IGfxColor::White(), kValueText);
-  delay_control_ = std::make_shared<LabelValueComponent>("DLY:", IGfxColor::White(), kValueText);
+  osc_control_ = std::make_shared<LabelValueComponent>("OSC:", IGfxColor::White(), kValueText, focusColor);
+  filter_control_ = std::make_shared<LabelValueComponent>("FLT:", IGfxColor::White(), kValueText, focusColor);
+  distortion_control_ = std::make_shared<LabelValueComponent>("DST:", IGfxColor::White(), kValueText, focusColor);
+  delay_control_ = std::make_shared<LabelValueComponent>("DLY:", IGfxColor::White(), kValueText, focusColor);
 
   addChild(cutoff_knob_);
   addChild(resonance_knob_);
@@ -369,6 +376,7 @@ void TB303ParamsPage::draw(IGfx& gfx) {
   if (!initialized_) initComponents();
 
   const char* title = (voice_index_ == 0) ? "303A BASS" : "303B LEAD";
+  IGfxColor headerColor = (voice_index_ == 0) ? COLOR_SYNTH_A : COLOR_SYNTH_B;
   UI::drawStandardHeader(gfx, mini_acid_, title);
   LayoutManager::clearContent(gfx);
 

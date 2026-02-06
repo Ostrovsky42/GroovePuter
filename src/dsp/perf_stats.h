@@ -24,7 +24,15 @@ struct PerfStats {
   volatile uint32_t audioUnderruns = 0;
   volatile float cpuAudioPctIdeal = 0.0f;    // DSP time / ideal period
   volatile float cpuAudioPctActual = 0.0f;   // DSP time / measured period
+  volatile float cpuAudioPeakPct = 0.0f;     // Peak ideal load over last window
   volatile uint32_t dspTimeUs = 0;           // Actual time spent in DSP
+  
+  // Component timings
+  volatile uint32_t dspVoicesUs = 0;
+  volatile uint32_t dspDrumsUs = 0;
+  volatile uint32_t dspFxUs = 0;
+  volatile uint32_t dspSamplerUs = 0;
+  
   volatile uint32_t heapFree = 0;
   volatile uint32_t heapMinFree = 0;
   volatile uint32_t lastCallbackMicros = 0;  // For measuring actual period

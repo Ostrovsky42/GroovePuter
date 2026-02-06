@@ -19,12 +19,14 @@ This is the canonical key map aligned with current code.
 ## Genre Page
 | Key | Action |
 | --- | --- |
-| `Tab` | Cycle focus (Genre/Texture/Presets) |
+| `Tab` | Cycle focus (Genre/Texture/Presets/Apply) |
 | `Arrows` | Navigate |
-| `Enter` | Apply |
-| `1..8` | Apply preset |
+| `Enter` | Apply selected or toggle Apply mode (when focused) |
+| `Space` | Toggle Apply mode (`S+P` / `SND`) |
+| `1..8` | Apply preset (respects Apply mode) |
 | `0` | Randomize Genre+Texture |
 | `M` | Apply mode (`SOUND+PATTERN` / `SOUND ONLY`) |
+| `C` | Toggle combo mode (`CURATED` recommended / `ADVANCED` all) |
 | `G` | Toggle Groove mode (`ACID` / `MINIMAL`) |
 
 ## Settings Page
@@ -101,4 +103,3 @@ This is the canonical key map aligned with current code.
 | `Arrows` | Navigate controls |
 | `Enter` | Activate control |
 | `G` | Jump to Genre page |
-

@@ -4,10 +4,11 @@
 #include "../../dsp/miniacid_engine.h"
 #include "../layout_manager.h"
 #include "../ui_widgets.h"
+#include <cstddef>
 
 class GenrePage : public IPage {
 public:
-    enum class FocusArea { GENRE, TEXTURE, PRESETS };
+    enum class FocusArea { GENRE, TEXTURE, PRESETS, APPLY_MODE };
     
     GenrePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
     
@@ -45,6 +46,13 @@ private:
     void drawAmberStyle(IGfx& gfx);
     
     void applyCurrent();
+    int visibleTextureCount() const;
+    int visibleTextureAt(int visibleIndex) const;
+    int textureToVisibleIndex(int textureIndex) const;
+    bool isCuratedMode() const;
+    void setCuratedMode(bool enabled);
+    void ensureTextureAllowedForCurrentGenre();
+    void buildTextureLabel(int textureIndex, char* out, size_t outSize) const;
     template <typename F>
     void withAudioGuard(F&& fn) {
         if (audio_guard_) audio_guard_(std::forward<F>(fn));

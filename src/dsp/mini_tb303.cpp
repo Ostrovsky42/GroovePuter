@@ -244,9 +244,7 @@ float TB303Voice::applyLoFiDegradation(float input) {
   float out = input;
   
   // 1. Bit reduction
-  float bits = 12.0f - loFiAmount_ * 6.0f; // 12 down to 6 bits
-  float levels = powf(2.0f, bits);
-  out = floorf(out * levels + 0.5f) / levels;
+  out = floorf(input * cachedLoFiLevels_ + 0.5f) * cachedRecipLoFiLevels_;
 
   // 2. Micro-detuning / Jitter
   noiseState_ = noiseState_ * 1664525 + 1013904223;
@@ -343,7 +341,13 @@ void TB303Voice::setMode(GrooveboxMode mode) {
 }
 
 void TB303Voice::setLoFiAmount(float amount) {
-  loFiAmount_ = amount;
+  if (fabsf(amount - loFiAmount_) > 0.001f) {
+    loFiAmount_ = amount;
+    // Precalculate bit reduction levels to avoid per-sample powf/div
+    float bits = 12.0f - loFiAmount_ * 6.0f;
+    cachedLoFiLevels_ = powf(2.0f, bits);
+    cachedRecipLoFiLevels_ = 1.0f / cachedLoFiLevels_;
+  }
 }
 
 void TB303Voice::setSubOscillator(bool enabled) {

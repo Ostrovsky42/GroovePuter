@@ -5,13 +5,14 @@
 
 class SettingsPage : public IPage {
 public:
-    SettingsPage(IGfx& gfx, MiniAcid& mini_acid);
+    SettingsPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard);
     void draw(IGfx& gfx) override;
     bool handleEvent(UIEvent& ui_event) override;
     const std::string& getTitle() const override;
 
 private:
     MiniAcid& mini_acid_;
+    AudioGuard& audio_guard_;
 
     enum class Group { Timing, Notes, Scale };
     Group group_ = Group::Timing;

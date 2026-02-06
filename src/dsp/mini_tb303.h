@@ -107,4 +107,7 @@ private:
       return input + lpf * (boost - 1.0f);
     }
   } bassBoost_;
+  
+  float cachedLoFiLevels_ = 1.0f;
+  float cachedRecipLoFiLevels_ = 1.0f;
 };

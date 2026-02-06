@@ -430,7 +430,8 @@ void SequencerHubPage::drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool 
             else if (voice == 7) hit = mini_acid_.patternClapSteps()[s];
         }
         
-        IGfxColor color = hit ? (selected ? (isSynth ? COLOR_ACCENT : COLOR_TEXT) : COLOR_GRAY) : COLOR_DARKER;
+        IGfxColor baseColor = isSynth ? (trackIdx == 0 ? COLOR_SYNTH_A : COLOR_SYNTH_B) : COLOR_TEXT;
+        IGfxColor color = hit ? (selected ? baseColor : COLOR_GRAY) : COLOR_DARKER;
         if (s == currentStep && mini_acid_.isPlaying()) color = COLOR_WARN;
         
         gfx.fillRect(maskX + s * cellW, y + 2, cellW - 1, h - 4, color);
@@ -498,7 +499,8 @@ void SequencerHubPage::drawDetail(IGfx& gfx) {
             
             // Note indicator
             if (steps[s] >= 0) {
-                gfx.fillRect(x + 2, gridY + 5, cellW - 5, 10, COLOR_WHITE);
+                IGfxColor noteColor = selectedTrack_ == 0 ? COLOR_SYNTH_A : COLOR_SYNTH_B;
+                gfx.fillRect(x + 2, gridY + 5, cellW - 5, 10, noteColor);
                 // Mini note value (simplified)
                 char n[4]; std::snprintf(n, sizeof(n), "%d", steps[s] % 12);
                 gfx.setTextColor(COLOR_BLACK);

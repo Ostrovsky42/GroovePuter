@@ -1574,65 +1574,116 @@ void MiniAcid::advanceStep() {
 }
 
 void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
-  static int count = 0;
-  if (count++ % 100 == 0){
-  //  Serial.printf("GAB: this=%p buf=%p\n", (void*)this, (void*)buffer);
-  }
-  
-  if (!buffer || numSamples == 0) {
-    return;
-  }
+  if (!buffer || numSamples == 0) return;
 
   // Test Tone Mode (Hardware diagnostic)
   if (testToneEnabled_) {
     for (size_t i = 0; i < numSamples; ++i) {
       testTonePhase_ += 440.0f / sampleRateValue;
       if (testTonePhase_ >= 1.0f) testTonePhase_ -= 1.0f;
-      // Pure sine, -3dB
       float val = sinf(2.0f * 3.14159265f * testTonePhase_) * 0.707f; 
       buffer[i] = static_cast<int16_t>(val * 32767.0f);
     }
-    
-    // Copy to waveform buffer for UI visualization (thread-safe)
+    // Copy to waveform buffer for UI
     size_t copyCount = std::min(numSamples, (size_t)AUDIO_BUFFER_SAMPLES);
     memcpy(waveformBuffers_[writeBufferIndex_].data, buffer, copyCount * sizeof(int16_t));
     waveformBuffers_[writeBufferIndex_].count = copyCount;
-    
-    // Atomic swap to display buffer
     displayBufferIndex_.store(writeBufferIndex_, std::memory_order_release);
     writeBufferIndex_ = 1 - writeBufferIndex_;
     return;
   }
 
-
-
   updateSamplesPerStep();
   delay303.setBpm(bpmValue);
   delay3032.setBpm(bpmValue);
 
-  // Update tape FX parameters ONCE per buffer (not per sample!)
-  // Uses dirty flag internally to skip expensive recalculations when unchanged
+  // Update tape controls only on change (avoids per-buffer control overhead spikes).
   const TapeState& tapeState = sceneManager_.currentScene().tape;
-  tapeFX->applyMacro(tapeState.macro);
-  tapeFX->applyMinimalParams(tapeState.space, tapeState.movement, tapeState.groove);
-  tapeLooper->setMode(tapeState.mode);
-  tapeLooper->setSpeed(tapeState.speed);
-  tapeLooper->setVolume(tapeState.looperVolume);
+  const bool macroChanged =
+      (tapeState.macro.wow != lastTapeMacro_.wow) ||
+      (tapeState.macro.age != lastTapeMacro_.age) ||
+      (tapeState.macro.sat != lastTapeMacro_.sat) ||
+      (tapeState.macro.tone != lastTapeMacro_.tone) ||
+      (tapeState.macro.crush != lastTapeMacro_.crush);
+  const bool minimalChanged =
+      (tapeState.space != lastTapeSpace_) ||
+      (tapeState.movement != lastTapeMovement_) ||
+      (tapeState.groove != lastTapeGroove_);
+  const bool looperModeChanged = (tapeState.mode != lastTapeMode_);
+  const bool looperSpeedChanged = (tapeState.speed != lastTapeSpeed_);
+  const bool looperVolChanged = fabsf(tapeState.looperVolume - lastTapeLooperVolume_) > 0.0005f;
+
+  if (!tapeControlCached_ || macroChanged) {
+    tapeFX->applyMacro(tapeState.macro);
+    lastTapeMacro_ = tapeState.macro;
+  }
+  if (!tapeControlCached_ || minimalChanged) {
+    tapeFX->applyMinimalParams(tapeState.space, tapeState.movement, tapeState.groove);
+    lastTapeSpace_ = tapeState.space;
+    lastTapeMovement_ = tapeState.movement;
+    lastTapeGroove_ = tapeState.groove;
+  }
+  if (!tapeControlCached_ || looperModeChanged) {
+    tapeLooper->setMode(tapeState.mode);
+    lastTapeMode_ = tapeState.mode;
+  }
+  if (!tapeControlCached_ || looperSpeedChanged) {
+    tapeLooper->setSpeed(tapeState.speed);
+    lastTapeSpeed_ = tapeState.speed;
+  }
+  if (!tapeControlCached_ || looperVolChanged) {
+    tapeLooper->setVolume(tapeState.looperVolume);
+    lastTapeLooperVolume_ = tapeState.looperVolume;
+  }
+  tapeControlCached_ = true;
 
   // Optimization: render sampler track in a block once per buffer
-  // Note: this has a max 1-buffer jitter for triggers (standard for blocks)
+  uint32_t tSamplerStart = micros();
   bool hasSampleStore = (sampleStore != nullptr);
   if (hasSampleStore) {
     std::fill(samplerOutBuffer.get(), samplerOutBuffer.get() + numSamples, 0.0f);
     samplerTrack->process(samplerOutBuffer.get(), numSamples, *sampleStore);
   }
+  uint32_t tSamplerTime = micros() - tSamplerStart;
 
-  // Cache immutable-per-buffer flags/pointers to reduce per-sample overhead.
+  // Cache immutable-per-buffer flags
   const float* trackVolumes = sceneManager_.currentScene().trackVolumes;
-  const bool looperActive = (tapeLooper->mode() != TapeMode::Stop);
+  const bool looperActive = (tapeState.mode != TapeMode::Stop);
   const bool tapeFxEnabled = tapeState.fxEnabled;
   AudioDiagnostics& diag = AudioDiagnostics::instance();
   const bool diagEnabled = diag.isEnabled();
+  const bool detailedProfile = diagEnabled && ((perfDetailCounter_++ & 0x1Fu) == 0);
+
+  // FX safety guard: if previous callback was near/over budget, reduce FX wet path
+  // first (Tape/Looper) to avoid audible underruns, then recover gradually.
+  const float cpuLoad = perfStats.cpuAudioPctIdeal;
+  const uint32_t underrunsNow = perfStats.audioUnderruns;
+  const bool underrunAdvanced = (underrunsNow != lastUnderrunCount_);
+  lastUnderrunCount_ = underrunsNow;
+  const bool hardOverload = underrunAdvanced || (cpuLoad > 99.0f);
+  const bool nearOverload = (cpuLoad > 92.0f);
+  if (hardOverload) {
+    fxSafetyMix_ -= 0.20f;
+    fxSafetyHold_ = 80; // hold ~80 buffers before full recovery
+  } else if (nearOverload) {
+    fxSafetyMix_ -= 0.06f;
+    fxSafetyHold_ = 40;
+  } else {
+    if (fxSafetyHold_ > 0) {
+      fxSafetyHold_--;
+    } else {
+      fxSafetyMix_ += 0.01f;
+    }
+  }
+  if (fxSafetyMix_ < 0.35f) fxSafetyMix_ = 0.35f;
+  if (fxSafetyMix_ > 1.0f) fxSafetyMix_ = 1.0f;
+
+  // Profiling accumulators (detailed sections only when diagnostics is enabled)
+  uint32_t tVoicesTotal = 0;
+  uint32_t tDrumsTotal = 0;
+  uint32_t tFxTotal = 0;
+  uint32_t tVocalTotal = 0;
+  uint32_t tLoopStart = micros();
 
   for (size_t i = 0; i < numSamples; ++i) {
     if (playing) {
@@ -1641,20 +1692,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
         advanceStep();
       }
       samplesIntoStep++;
-      
-      // Gate length control: decrement countdowns and release when they hit 0
-      if (gateCountdownA_ > 0) {
-        gateCountdownA_--;
-        if (gateCountdownA_ <= 0) {
-          voice303.release();
-        }
-      }
-      if (gateCountdownB_ > 0) {
-        gateCountdownB_--;
-        if (gateCountdownB_ <= 0) {
-          voice3032.release();
-        }
-      }
+      if (gateCountdownA_ > 0 && --gateCountdownA_ <= 0) voice303.release();
+      if (gateCountdownB_ > 0 && --gateCountdownB_ <= 0) voice3032.release();
     }
 
     float sample = 0.0f;
@@ -1662,7 +1701,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     float drumsMix = 0.0f;
     float samplerSample = 0.0f;
 
-    // Retrig Logic for Synth A
+    // Retrig Logic (omitted for brevity in this view? No, I must keep it!)
+    // [Keeping retrig logic as it was in the file]
     if (retrigA_.active) {
         if (--retrigA_.counter <= 0 && retrigA_.countRemaining > 0) {
             const SynthStep& step = activeSynthPattern(0).steps[currentStepIndex];
@@ -1673,7 +1713,6 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
             if (retrigA_.countRemaining <= 0) retrigA_.active = false;
         }
     }
-    // Retrig Logic for Synth B
     if (retrigB_.active) {
         if (--retrigB_.counter <= 0 && retrigB_.countRemaining > 0) {
             const SynthStep& step = activeSynthPattern(1).steps[currentStepIndex];
@@ -1684,51 +1723,22 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
             if (retrigB_.countRemaining <= 0) retrigB_.active = false;
         }
     }
-    // Retrig Logic for Drums
     for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
         if (retrigDrums_[v].active) {
              if (--retrigDrums_[v].counter <= 0 && retrigDrums_[v].countRemaining > 0) {
                  const DrumPattern& pattern = activeDrumPattern(v);
                  const DrumStep& step = pattern.steps[currentStepIndex];
-                 bool accent = step.accent; // simplified accent check for retrig
-                 
-                 // Trigger appropriate drum voice
-                 // Helper to reduce copy-paste, but direct access is faster here
+                 bool accent = step.accent;
                  switch(v) {
-                     case kDrumKickVoice: 
-                        if (!muteKick) { drums->triggerKick(accent, step.velocity); 
-                        if(sampleStore) samplerTrack->triggerPad(0, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } 
-                        break;
-                     case kDrumSnareVoice: 
-                        if (!muteSnare) { drums->triggerSnare(accent, step.velocity); 
-                        if(sampleStore) samplerTrack->triggerPad(1, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } 
-                        break;
-                     case kDrumHatVoice: 
-                        if (!muteHat) { drums->triggerHat(accent, step.velocity); 
-                        if(sampleStore) samplerTrack->triggerPad(2, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } 
-                        break;
-                     case kDrumOpenHatVoice: 
-                        if (!muteOpenHat) { drums->triggerOpenHat(accent, step.velocity); 
-                        if(sampleStore) samplerTrack->triggerPad(3, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } 
-                        break;
-                     case kDrumMidTomVoice: 
-                        if (!muteMidTom) { drums->triggerMidTom(accent, step.velocity); 
-                        if(sampleStore) samplerTrack->triggerPad(4, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } 
-                        break;
-                     case kDrumHighTomVoice: 
-                        if (!muteHighTom) { drums->triggerHighTom(accent, step.velocity); 
-                        if(sampleStore) samplerTrack->triggerPad(5, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } 
-                        break;
-                     case kDrumRimVoice: 
-                        if (!muteRim) { drums->triggerRim(accent, step.velocity); 
-                        if(sampleStore) samplerTrack->triggerPad(6, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } 
-                        break;
-                     case kDrumClapVoice: 
-                        if (!muteClap) { drums->triggerClap(accent, step.velocity); 
-                        if(sampleStore) samplerTrack->triggerPad(7, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } 
-                        break;
+                     case kDrumKickVoice: if (!muteKick) { drums->triggerKick(accent, step.velocity); if(sampleStore) samplerTrack->triggerPad(0, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } break;
+                     case kDrumSnareVoice: if (!muteSnare) { drums->triggerSnare(accent, step.velocity); if(sampleStore) samplerTrack->triggerPad(1, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } break;
+                     case kDrumHatVoice: if (!muteHat) { drums->triggerHat(accent, step.velocity); if(sampleStore) samplerTrack->triggerPad(2, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } break;
+                     case kDrumOpenHatVoice: if (!muteOpenHat) { drums->triggerOpenHat(accent, step.velocity); if(sampleStore) samplerTrack->triggerPad(3, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } break;
+                     case kDrumMidTomVoice: if (!muteMidTom) { drums->triggerMidTom(accent, step.velocity); if(sampleStore) samplerTrack->triggerPad(4, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } break;
+                     case kDrumHighTomVoice: if (!muteHighTom) { drums->triggerHighTom(accent, step.velocity); if(sampleStore) samplerTrack->triggerPad(5, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } break;
+                     case kDrumRimVoice: if (!muteRim) { drums->triggerRim(accent, step.velocity); if(sampleStore) samplerTrack->triggerPad(6, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } break;
+                     case kDrumClapVoice: if (!muteClap) { drums->triggerClap(accent, step.velocity); if(sampleStore) samplerTrack->triggerPad(7, accent?1.0f:0.6f, *sampleStore, step.fx == (uint8_t)StepFx::Reverse); } break;
                  }
-                 
                  retrigDrums_[v].counter = retrigDrums_[v].interval;
                  retrigDrums_[v].countRemaining--;
                  if (retrigDrums_[v].countRemaining <= 0) retrigDrums_[v].active = false;
@@ -1736,28 +1746,27 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
         }
     }
 
+    uint32_t tV0 = 0;
+    if (detailedProfile) tV0 = micros();
     if (playing) {
-      // 303 Voice 1
       if (!mute303) {
-        float v = voice303.process() * 0.5f;  // Hector's original gain
+        float v = voice303.process() * 0.5f;
         v = distortion303.process(v);
         v *= trackVolumes[(int)VoiceId::SynthA];
         sample303 += delay303.process(v);
-      } else {
-        delay303.process(0.0f);
-      }
-
-      // 303 Voice 2
+      } else delay303.process(0.0f);
       if (!mute303_2) {
-        float v = voice3032.process() * 0.5f;  // Hector's original gain
+        float v = voice3032.process() * 0.5f;
         v = distortion3032.process(v);
         v *= trackVolumes[(int)VoiceId::SynthB];
         sample303 += delay3032.process(v);
-      } else {
-        delay3032.process(0.0f);
-      }
+      } else delay3032.process(0.0f);
+    }
+    if (detailedProfile) tVoicesTotal += (micros() - tV0);
 
-      // Virtual Analog Drums (with proper gain staging)
+    uint32_t tD0 = 0;
+    if (detailedProfile) tD0 = micros();
+    if (playing) {
       if (!muteKick)    drumsMix += drums->processKick() * trackVolumes[(int)VoiceId::DrumKick];
       if (!muteSnare)   drumsMix += drums->processSnare() * trackVolumes[(int)VoiceId::DrumSnare];
       if (!muteHat)     drumsMix += drums->processHat() * trackVolumes[(int)VoiceId::DrumHatC];
@@ -1766,118 +1775,96 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       if (!muteHighTom) drumsMix += drums->processHighTom() * trackVolumes[(int)VoiceId::DrumTomH];
       if (!muteRim)     drumsMix += drums->processRim() * trackVolumes[(int)VoiceId::DrumRim];
       if (!muteClap)    drumsMix += drums->processClap() * trackVolumes[(int)VoiceId::DrumClap];
-      
-      // Drums gain staging: trim + soft limit for musical bus compression
-      drumsMix *= 0.60f;                  // Base headroom
-      drumsMix = softLimit(drumsMix);     // Smooth limiting on peaks (bus glue)
-      
-      sample += drumsMix;
-      sample += sample303;
+      drumsMix *= 0.60f;
+      drumsMix = softLimit(drumsMix);
+      sample += sample303 + drumsMix;
     }
+    if (detailedProfile) tDrumsTotal += (micros() - tD0);
 
-    // Add pre-rendered sampler audio (always active for UI preview)
+    uint32_t tS0 = 0;
+    if (detailedProfile) tS0 = micros();
     if (hasSampleStore) {
       samplerSample = samplerOutBuffer[i];
       sample += samplerSample;
     }
-    
-    // ═══════════════════════════════════════════════════════════
-    // Vocal Synth - COMPRESSION (No Ducking)
-    // ═══════════════════════════════════════════════════════════
     float vocalSample = 0.0f;
     if (!voiceTrackMuted_ && vocalSynth_.isActive()) {
       vocalSample = voiceCompressor_.process(vocalSynth_.process());
     }
-    
-    sample += vocalSample;  // Direct mix without ducking
-    
-    // Track per-source peaks for diagnostics
-    if (diagEnabled) {
-      diag.trackSource(
-        sample303, 
-        drumsMix, 
-        samplerSample,
-        0.0f, // delay (already in sample303)
-        vocalSample,
-        0.0f, // looper tracked below
-        0.0f  // tapeFX tracked below
-      );
-    }
+    sample += vocalSample;
+    if (detailedProfile) tVocalTotal += (micros() - tS0);
 
-    // Process through Looper (Tape layer 1) - only when not stopped
+    uint32_t tF0 = 0;
+    if (detailedProfile) tF0 = micros();
+    if (detailedProfile) {
+      diag.trackSource(sample303, drumsMix, samplerSample, 0.0f, vocalSample, 0.0f, 0.0f);
+    }
     if (looperActive) {
       float loopSample = 0.0f;
       tapeLooper->process(sample, &loopSample);
-      sample += loopSample;
+      sample += loopSample * fxSafetyMix_;
     }
-
-    // Process through Tape FX (Tape layer 2: Wow/Flutter/Saturation/Age/Tone/Crush)
     if (tapeFxEnabled) {
-      sample = tapeFX->process(sample);
+      float wet = tapeFX->process(sample);
+      sample = sample + (wet - sample) * fxSafetyMix_;
     }
 
-    // --- MASTER OUT (Clean Hi-Fi Chain) ---
-    
-    // Headroom trim (Hector's original gain staging)
     sample *= 0.65f;
-    
-    // DC Blocker (removes sub-sonic drift)
     float dcIn = sample;
     float dcOut = dcIn - dcBlockX1_ + 0.995f * dcBlockY1_;
-    dcBlockX1_ = dcIn;
-    dcBlockY1_ = dcOut;
-    
-    // Soft Limiter BEFORE volume (prevents volume from re-clipping)
+    dcBlockX1_ = dcIn; dcBlockY1_ = dcOut;
     float preLimiter = dcOut;
     float limited = softLimit(dcOut);
-    
-    // Apply main volume (clamped to [0..1] for safety)
     float vol = params[static_cast<int>(MiniAcidParamId::MainVolume)].value();
-    if (vol < 0.0f) vol = 0.0f;
-    if (vol > 1.0f) vol = 1.0f;
+    if (vol < 0.0f) vol = 0.0f; if (vol > 1.0f) vol = 1.0f;
     float finalSample = limited * vol; 
-    
-    // TPDF Dithering (Final Hi-Fi touch)
     ditherState_ = ditherState_ * 1664525u + 1013904223u;
     float r1 = (float)(ditherState_ & 65535) * (1.0f / 65536.0f);
     ditherState_ = ditherState_ * 1664525u + 1013904223u;
     float r2 = (float)(ditherState_ & 65535) * (1.0f / 65536.0f);
-    float dither = (r1 - r2) * (1.0f / 32768.0f); 
-    
-    finalSample += dither;
-
-    // Clamp safely for int16 conversion
+    finalSample += (r1 - r2) * (1.0f / 32768.0f); 
     if (finalSample > 1.0f) finalSample = 1.0f;
     if (finalSample < -1.0f) finalSample = -1.0f;
-    
-    // Track diagnostics (pre/post limiter)
-    if (diagEnabled) {
-      diag.accumulate(preLimiter, limited);
-    }
-    
+    if (detailedProfile) diag.accumulate(preLimiter, limited);
     buffer[i] = (int16_t)(finalSample * 32767.0f);
+    if (detailedProfile) tFxTotal += (micros() - tF0);
   }
 
-  // Copy to waveform buffer for UI visualization (thread-safe)
+  perfStats.dspTimeUs = (micros() - tLoopStart) + tSamplerTime;
+  if (detailedProfile) {
+    perfStats.dspVoicesUs = tVoicesTotal;
+    perfStats.dspDrumsUs = tDrumsTotal;
+    perfStats.dspSamplerUs = tSamplerTime + tVocalTotal;
+    perfStats.dspFxUs = tFxTotal;
+  }
+
   size_t copyCount = std::min(numSamples, (size_t)AUDIO_BUFFER_SAMPLES);
   memcpy(waveformBuffers_[writeBufferIndex_].data, buffer, copyCount * sizeof(int16_t));
   waveformBuffers_[writeBufferIndex_].count = copyCount;
-  
-  // Atomic swap to display buffer
   displayBufferIndex_.store(writeBufferIndex_, std::memory_order_release);
   writeBufferIndex_ = 1 - writeBufferIndex_;
-  
-  // Flush diagnostics periodically
-  if (diagEnabled) {
-    diag.flushIfReady(millis());
-  }
+  if (detailedProfile) diag.flushIfReady(millis());
 }
 
 void MiniAcid::randomize303Pattern(int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
   // Use genre-aware generator with voice role (0=bass, 1=lead)
   const auto& params = genreManager_.getGenerativeParams();
-  const auto behavior = genreManager_.getBehavior();
+  auto behavior = genreManager_.getBehavior();
+  if (genreManager_.generativeMode() == GenerativeMode::Reggae) {
+    // Reggae split: bass anchors downbeats, lead handles offbeat movement.
+    if (idx == 0) {
+      behavior.stepMask = 0x1111;
+      behavior.motifLength = 2;
+      behavior.avoidClusters = true;
+      behavior.forceOctaveJump = false;
+    } else {
+      behavior.stepMask = 0xAAAA;
+      behavior.motifLength = 4;
+      behavior.avoidClusters = false;
+      behavior.forceOctaveJump = false;
+    }
+  }
   modeManager_.generatePattern(editSynthPattern(idx), bpmValue, params, behavior, idx);
 }
 
@@ -1952,9 +1939,23 @@ void MiniAcid::regeneratePatternsWithGenre() {
 
   // Regenerate 303 patterns using generative mode + structural behavior
   // Voice 0 = bass (low, repetitive), Voice 1 = lead/arp (high, melodic)
-  modeManager_.generatePattern(editSynthPattern(0), bpmValue, params, behavior, 0); // Bass
-  modeManager_.generatePattern(editSynthPattern(1), bpmValue, params, behavior, 1); // Lead
-  
+  auto bassBehavior = behavior;
+  auto leadBehavior = behavior;
+  if (genreManager_.generativeMode() == GenerativeMode::Reggae) {
+    // Bass breathes on downbeats, skank/lead stays offbeat.
+    bassBehavior.stepMask = 0x1111;
+    bassBehavior.motifLength = 2;
+    bassBehavior.avoidClusters = true;
+    bassBehavior.forceOctaveJump = false;
+
+    leadBehavior.stepMask = 0xAAAA;
+    leadBehavior.motifLength = 4;
+    leadBehavior.avoidClusters = false;
+    leadBehavior.forceOctaveJump = false;
+  }
+  modeManager_.generatePattern(editSynthPattern(0), bpmValue, params, bassBehavior, 0); // Bass
+  modeManager_.generatePattern(editSynthPattern(1), bpmValue, params, leadBehavior, 1); // Lead
+
   // Regenerate drum pattern
   modeManager_.generateDrumPattern(sceneManager_.editCurrentDrumPattern(), params, behavior);
 }

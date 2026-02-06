@@ -761,8 +761,11 @@ void SongPage::draw(IGfx& gfx) {
 
   gfx.setTextColor(COLOR_LABEL);
   gfx.drawText(x, body_y, "POS");
+  gfx.setTextColor(COLOR_SYNTH_A);
   gfx.drawText(x + pos_col_w + spacing, body_y, "303A");
+  gfx.setTextColor(COLOR_SYNTH_B);
   gfx.drawText(x + pos_col_w + spacing + track_col_w, body_y, "303B");
+  gfx.setTextColor(COLOR_LABEL);
   gfx.drawText(x + pos_col_w + spacing + track_col_w * 2, body_y, "Drums");
   gfx.drawText(x + pos_col_w + spacing + track_col_w * 3, body_y, "Voice");
   char lenBuf[32];
@@ -873,7 +876,9 @@ void SongPage::draw(IGfx& gfx) {
           } else {
             char bankLetter = static_cast<char>('A' + bankIdx);
             snprintf(label, sizeof(label), "%c%d", bankLetter, bankPattern + 1);
-            gfx.setTextColor(COLOR_WHITE);
+            if (song_track == SongTrack::SynthA) gfx.setTextColor(COLOR_SYNTH_A);
+            else if (song_track == SongTrack::SynthB) gfx.setTextColor(COLOR_SYNTH_B);
+            else gfx.setTextColor(COLOR_WHITE);
           }
         }
       }

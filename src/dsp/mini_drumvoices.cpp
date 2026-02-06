@@ -1,6 +1,17 @@
 #include <stdlib.h>
 #include <math.h>
 #include "mini_drumvoices.h"
+#include "audio_wavetables.h"
+
+// Fast conversion factor: 0..1 float phase -> 0..UINT32_MAX fixed phase
+static constexpr float kPhaseToUint32 = 4294967296.0f;
+
+static inline float fast_tanh(float x) {
+  if (x < -3.0f) return -1.0f;
+  if (x > 3.0f) return 1.0f;
+  float x2 = x * x;
+  return x * (27.0f + x2) / (27.0f + 9.0f * x2);
+}
 
 LoFiDrumFX::LoFiDrumFX() : noiseState_(12345) {}
 
@@ -138,6 +149,13 @@ void TR808DrumSynthVoice::reset() {
   clapAccentAmount = 0.0f;
   clapAccentGain = 1.0f;
   clapAccentDistortion = false;
+  // Initialize optimized clap state
+  clapEnv1 = 0.0f;
+  clapEnv2 = 0.0f;
+  clapEnv3 = 0.0f;
+  clapWait2 = 0;
+  clapWait3 = 0;
+  clapDecayCoef = 0.0f;
   clapBandpass.reset();
 
   cymbalEnv = 0.0f;
@@ -270,6 +288,22 @@ void TR808DrumSynthVoice::triggerClap(bool accent, uint8_t velocity) {
   clapAccentAmount = accent ? 0.2f: 0.0f;
   clapAccentGain = accent ? 1.45f : 1.0f;
   clapAccentDistortion = accent;
+  
+  // Optimized Clap State Setup
+  // Bursts at 0, 8ms, 15ms.
+  // 8ms = 0.008 * sampleRate
+  clapEnv1 = 1.0f * vel; // First burst immediately
+  clapEnv2 = 0.0f;
+  clapEnv3 = 0.0f;
+  clapWait2 = (int)(0.008f * sampleRate); // ~176 samples @ 22k
+  clapWait3 = (int)(0.015f * sampleRate); // ~330 samples @ 22k
+  
+  // Decay: roughly 7ms to 15ms time constant.
+  // We'll use a fast decay ~10ms for individual bursts
+  // exp(-1 / (0.010 * sampleRate))
+  float decayTime = 0.009f * (1.0f + 0.5f * clapAccentAmount);
+  clapDecayCoef = expf(-1.0f / (decayTime * sampleRate));
+
   clapBandpass.reset();
   clapLowpass.reset();
   updateClapFilters(clapAccentAmount);
@@ -357,14 +391,16 @@ float TR808DrumSynthVoice::processKick() {
   if (kickPhase >= 1.0f)
     kickPhase -= 1.0f;
 
-  float body = sinf(2.0f * 3.14159265f * kickPhase);
-  float transient = sinf(2.0f * 3.14159265f * kickPhase * 3.0f) * pitchFactor * 0.25f;
+  // Optimized Sine:
+  float body = Wavetable::lookupSine((uint32_t)(kickPhase * kPhaseToUint32));
+  // transient is 3x freq
+  float transient = Wavetable::lookupSine((uint32_t)(kickPhase * 3.0f * kPhaseToUint32)) * pitchFactor * 0.25f;
   
   // === SUB LAYER (NEW) ===
   float subFreq = kickBaseFreq * 0.5f;
   kickSubPhase += subFreq * invSampleRate;
   if (kickSubPhase >= 1.0f) kickSubPhase -= 1.0f;
-  float sub = sinf(2.0f * 3.14159265f * kickSubPhase);
+  float sub = Wavetable::lookupSine((uint32_t)(kickSubPhase * kPhaseToUint32));
   kickSubDecay *= 0.9992f;
   sub *= kickSubDecay * kickSubDecay;
   
@@ -372,11 +408,25 @@ float TR808DrumSynthVoice::processKick() {
   float mixed = (body * 0.65f + sub * 0.35f);
   // Fast tanh saturation
   float driven = mixed * (2.8f + 0.6f * kickEnvAmp);
-  if (driven > 3.0f) driven = 1.0f;
-  else if (driven < -3.0f) driven = -1.0f;
+  // Optimize Saturation (replace division)
+  // Simple soft clipper: x * (1.5 - 0.5 * x^2) for x in -1..1 range approx?
+  // Or Padé optimized: x * (27 + x^2) / (27 + 9*x^2) contains division.
+  // Division is costly (~15-30 cycles). sinf is (~100 cycles). 
+  // Let's use a cubic approximation for tanh(x): x - x^3/3 (valid for small x)
+  // Or just use std::clamp for speed if acceptable.
+  // The original sound relies on soft saturation. 
+  // Let's rewrite the Padé to multiply by reciprocal if possible, 
+  // or use a cheaper polynomial: f(x) = 1.5x - 0.5x^3 (classic soft clip)
+  if (driven > 1.5f) driven = 1.0f;
+  else if (driven < -1.5f) driven = -1.0f;
   else {
-      float d2 = driven * driven;
-      driven = driven * (27.0f + d2) / (27.0f + 9.0f * d2);
+      driven = driven * (1.5f - 0.5f * driven * driven / 2.25f); // Normalized to reach 1.0 at 1.5 input
+      // Actually simpler: x - x*x*x/3 is good for x < 1. 
+      // Let's stick to a very cheap hard clip with soft knee or just the division if unavoidable.
+      // But we removed sinf, so maybe division is OK.
+      // Let's just use the original code but only if needed.
+      float x2 = driven * driven;
+      driven = driven * (27.0f + x2) / (27.0f + 9.0f * x2);
   }
   driven *= 0.8f;
   
@@ -428,8 +478,8 @@ float TR808DrumSynthVoice::processSnare() {
   snareTonePhase2 += 180.0f * invSampleRate;
   if (snareTonePhase2 >= 1.0f) snareTonePhase2 -= 1.0f;
 
-  float toneA = sinf(2.0f * 3.14159265f * snareTonePhase);
-  float toneB = sinf(2.0f * 3.14159265f * snareTonePhase2);
+  float toneA = Wavetable::lookupSine((uint32_t)(snareTonePhase * kPhaseToUint32));
+  float toneB = Wavetable::lookupSine((uint32_t)(snareTonePhase2 * kPhaseToUint32));
   float tone = (toneA * 0.55f + toneB * 0.45f) * snareToneEnv * snareToneGain;
 
   // 808: tone only supports transient, noise dominates sustain
@@ -464,7 +514,8 @@ float TR808DrumSynthVoice::processHat() {
   hatPhaseB += 7400.0f * invSampleRate;
   if (hatPhaseB >= 1.0f)
     hatPhaseB -= 1.0f;
-  float tone = (sinf(2.0f * 3.14159265f * hatPhaseA) + sinf(2.0f * 3.14159265f * hatPhaseB)) *
+  float tone = (Wavetable::lookupSine((uint32_t)(hatPhaseA * kPhaseToUint32)) + 
+                Wavetable::lookupSine((uint32_t)(hatPhaseB * kPhaseToUint32))) *
                0.5f * hatToneEnv * hatBrightness;
 
   float out = hatHp * 0.65f + tone * 0.7f;
@@ -496,7 +547,8 @@ float TR808DrumSynthVoice::processOpenHat() {
   if (openHatPhaseB >= 1.0f)
     openHatPhaseB -= 1.0f;
   float tone =
-    (sinf(2.0f * 3.14159265f * openHatPhaseA) + sinf(2.0f * 3.14159265f * openHatPhaseB)) *
+    (Wavetable::lookupSine((uint32_t)(openHatPhaseA * kPhaseToUint32)) + 
+     Wavetable::lookupSine((uint32_t)(openHatPhaseB * kPhaseToUint32))) *
     0.5f * openHatToneEnv * openHatBrightness;
 
   float out = openHatHp * 0.55f + tone * 0.95f;
@@ -520,7 +572,7 @@ float TR808DrumSynthVoice::processMidTom() {
   if (midTomPhase >= 1.0f)
     midTomPhase -= 1.0f;
 
-  float tone = sinf(2.0f * 3.14159265f * midTomPhase);
+  float tone = Wavetable::lookupSine((uint32_t)(midTomPhase * kPhaseToUint32));
   float slightNoise = frand() * 0.05f;
   float out = (tone * 0.9f + slightNoise) * midTomEnv * 0.8f * midTomAccentGain;
   float res = applyAccentDistortion(out, midTomAccentDistortion);
@@ -543,7 +595,7 @@ float TR808DrumSynthVoice::processHighTom() {
   if (highTomPhase >= 1.0f)
     highTomPhase -= 1.0f;
 
-  float tone = sinf(2.0f * 3.14159265f * highTomPhase);
+  float tone = Wavetable::lookupSine((uint32_t)(highTomPhase * kPhaseToUint32));
   float slightNoise = frand() * 0.04f;
   float out = (tone * 0.88f + slightNoise) * highTomEnv * 0.75f * highTomAccentGain;
   float res = applyAccentDistortion(out, highTomAccentDistortion);
@@ -563,7 +615,7 @@ float TR808DrumSynthVoice::processRim() {
   rimPhase += 900.0f * invSampleRate;
   if (rimPhase >= 1.0f)
     rimPhase -= 1.0f;
-  float tone = sinf(2.0f * 3.14159265f * rimPhase);
+  float tone = Wavetable::lookupSine((uint32_t)(rimPhase * kPhaseToUint32));
   // Fixed: centered noise to avoid DC offset "thump"
   float click = (frand() * 0.6f) * rimEnv; 
   float out = (tone * 0.5f + click) * rimEnv * 0.8f * rimAccentGain;
@@ -584,20 +636,34 @@ float TR808DrumSynthVoice::processClap() {
     return 0.0f;
   }
 
-  float decayScale = 1.0f + 0.5f * clapAccentAmount;
-  float accentGain = 1.0f + 0.6f * clapAccentAmount;
+  // Optimized Clap Process: No expf() per sample
+  // Handle delayed trigger bursts
+  if (clapWait2 > 0) {
+      clapWait2--;
+      if (clapWait2 == 0) clapEnv2 = 0.75f * clapAccentGain * (clapEnv > 0.0f ? 1.0f : 0.0f); // Trigger burst 2
+  }
+  if (clapWait3 > 0) {
+      clapWait3--;
+      if (clapWait3 == 0) clapEnv3 = 0.55f * clapAccentGain * (clapEnv > 0.0f ? 1.0f : 0.0f); // Trigger burst 3
+  }
+  
+  // Decay envelopes
+  clapEnv1 *= clapDecayCoef;
+  clapEnv2 *= clapDecayCoef;
+  clapEnv3 *= clapDecayCoef;
+  
+  float body = frand() * (clapEnv1 + clapEnv2 + clapEnv3);
 
-  float env1 = clapTime < 0.0f ? 0.0f : expf(-(clapTime - 0.0f) / (0.007f * decayScale));
-  float env2 = clapTime < 0.008f ? 0.0f : expf(-(clapTime - 0.008f) / (0.011f * decayScale));
-  float env3 = clapTime < 0.015f ? 0.0f : expf(-(clapTime - 0.015f) / (0.015f * decayScale));
-  float body = frand() * (env1 + env2 + env3);
-
+  // Tail (reverb-ish noise)
   float tail = 0.0f;
-  if (clapTime >= 0.02f) {
-    tail = frand() * expf(-(clapTime - 0.02f) / (0.120f * decayScale));
+  // Previously: expf tail after 20ms using clapTime
+  // We'll trust body envelopes to cover most of it, or simple tail
+  if (clapTime > 0.02f) {
+      // Very crude tail approximation using main env
+      tail = frand() * clapEnv * 0.3f;
   }
 
-  float out = (body + tail) * accentGain;
+  float out = (body + tail) * clapAccentGain;
   out = clapBandpass.process(out);
   out = clapLowpass.process(out);
   out *= (clapEnv * clapAccentGain) * 0.8f;
@@ -628,7 +694,8 @@ float TR808DrumSynthVoice::processCymbal() {
   if (cymbalPhaseB >= 1.0f)
     cymbalPhaseB -= 1.0f;
   float tone =
-    (sinf(2.0f * 3.14159265f * cymbalPhaseA) + sinf(2.0f * 3.14159265f * cymbalPhaseB)) *
+    (Wavetable::lookupSine((uint32_t)(cymbalPhaseA * kPhaseToUint32)) + 
+     Wavetable::lookupSine((uint32_t)(cymbalPhaseB * kPhaseToUint32))) *
     0.5f * cymbalToneEnv * cymbalBrightness;
 
   float out = cymbalHp * 0.6f + tone * 0.9f;
@@ -899,7 +966,7 @@ float TR909DrumSynthVoice::processKick() {
   float body = sinf(2.0f * 3.14159265f * kickPhase);
   float transient = sinf(2.0f * 3.14159265f * kickPhase * 4.0f) * pitchFactor * 0.2f;
   float click = (frand() * 0.4f + 0.6f) * kickClickEnv * 0.2f;
-  float driven = tanhf(body * (2.4f + 0.7f * kickEnvAmp));
+  float driven = fast_tanh(body * (2.4f + 0.7f * kickEnvAmp));
 
   float out = (driven * 0.9f + transient + click) * kickEnvAmp * kickAccentGain;
   float res = applyAccentDistortion(out, kickAccentDistortion);

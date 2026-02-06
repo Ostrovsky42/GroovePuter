@@ -884,6 +884,7 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
   }
   if (path == Path::Genre) {
     if (lastKey_ == "regen") target_.genre.regenerateOnApply = value;
+    else if (lastKey_ == "cur") target_.genre.curatedMode = value;
     return;
   }
   if (path == Path::GeneratorParams) {
@@ -1596,6 +1597,7 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   genreObj["tex"] = scene_->genre.textureMode;
   genreObj["amt"] = scene_->genre.textureAmount;
   genreObj["regen"] = scene_->genre.regenerateOnApply;
+  genreObj["cur"] = scene_->genre.curatedMode;
 
   ArduinoJson::JsonObject genParams = root["generatorParams"].to<ArduinoJson::JsonObject>();
   serializeGeneratorParams(scene_->generatorParams, genParams);
@@ -1828,6 +1830,7 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     loaded->genre.textureAmount = static_cast<uint8_t>(amt);
 
     loaded->genre.regenerateOnApply = genreObj["regen"].is<bool>() ? genreObj["regen"].as<bool>() : loaded->genre.regenerateOnApply;
+    loaded->genre.curatedMode = genreObj["cur"].is<bool>() ? genreObj["cur"].as<bool>() : loaded->genre.curatedMode;
   }
 
   if (obj["samplerPads"].is<ArduinoJson::JsonArrayConst>()) {

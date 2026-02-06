@@ -450,6 +450,18 @@ private:
   
   // DSP State for Audio Quality
   uint32_t ditherState_ = 12345;
+  bool tapeControlCached_ = false;
+  TapeMacro lastTapeMacro_{};
+  uint8_t lastTapeSpace_ = 0xFF;
+  uint8_t lastTapeMovement_ = 0xFF;
+  uint8_t lastTapeGroove_ = 0xFF;
+  TapeMode lastTapeMode_ = TapeMode::Stop;
+  uint8_t lastTapeSpeed_ = 0xFF;
+  float lastTapeLooperVolume_ = -1.0f;
+  float fxSafetyMix_ = 1.0f;
+  uint16_t fxSafetyHold_ = 0;
+  uint32_t lastUnderrunCount_ = 0;
+  uint32_t perfDetailCounter_ = 0;
 
   float dcBlockX1_ = 0.0f;
   float dcBlockY1_ = 0.0f;

@@ -13,6 +13,7 @@ void TubeDistortion::setDrive(float drive) {
   if (drive > 10.0f)
     drive = 10.0f;
   drive_ = drive;
+  cachedComp_ = 1.0f / (1.0f + 0.3f * drive_);
 }
 
 void TubeDistortion::setMix(float mix) {
@@ -33,7 +34,6 @@ float TubeDistortion::process(float input) {
   }
   float driven = input * drive_;
   float shaped = driven / (1.0f + fabsf(driven));
-  float comp = 1.0f / (1.0f + 0.3f * drive_);
-  shaped *= comp;
+  shaped *= cachedComp_;
   return input * (1.0f - mix_) + shaped * mix_;
 }
