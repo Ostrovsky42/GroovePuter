@@ -239,6 +239,8 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
     songMode_(false),
     drumCycleIndex_(0),
     songPlayheadPosition_(0),
+    songPlaybackSlot_(0),
+    liveMixMode_(false),
     patternModeDrumPatternIndex_(0),
     patternModeDrumBankIndex_(0),
     patternModeSynthPatternIndex_{0, 0},
@@ -403,6 +405,8 @@ void MiniAcid::reset() {
   
   songMode_ = false;
   songPlayheadPosition_ = 0;
+  songPlaybackSlot_ = sceneManager_.activeSongSlot();
+  liveMixMode_ = false;
   patternModeDrumPatternIndex_ = 0;
   patternModeSynthPatternIndex_[0] = 0;
   patternModeSynthPatternIndex_[1] = 0;
@@ -428,6 +432,9 @@ void MiniAcid::start() {
   currentTimingOffset_ = 0;
   currentStepDurationSamples_ = 1;
   if (songMode_) {
+    if (!liveMixMode_) {
+      songPlaybackSlot_ = sceneManager_.activeSongSlot();
+    }
     songPlayheadPosition_ = clampSongPosition(sceneManager_.getSongPosition());
     sceneManager_.setSongPosition(songPlayheadPosition_);
     applySongPositionSelection();
@@ -679,7 +686,8 @@ void MiniAcid::setSongPosition(int position) {
 
 void MiniAcid::setSongPattern(int position, SongTrack track, int patternIndex) {
   sceneManager_.setSongPattern(position, track, patternIndex);
-  if (songMode_ && position == currentSongPosition()) {
+  if (songMode_ && position == currentSongPosition() &&
+      activeSongSlot() == songPlaybackSlot_) {
     applySongPositionSelection();
   }
 }
@@ -688,7 +696,8 @@ void MiniAcid::clearSongPattern(int position, SongTrack track) {
   sceneManager_.clearSongPattern(position, track);
   int pos = clampSongPosition(sceneManager_.getSongPosition());
   sceneManager_.setSongPosition(pos);
-  if (songMode_ && position == pos) {
+  if (songMode_ && position == pos &&
+      activeSongSlot() == songPlaybackSlot_) {
     applySongPositionSelection();
   }
 }
@@ -703,7 +712,33 @@ int MiniAcid::songPatternAtSlot(int slot, int position, SongTrack track) const {
 
 const Song& MiniAcid::song() const { return sceneManager_.song(); }
 int MiniAcid::activeSongSlot() const { return sceneManager_.activeSongSlot(); }
-void MiniAcid::setActiveSongSlot(int slot) { sceneManager_.setActiveSongSlot(slot); applySongPositionSelection(); }
+void MiniAcid::setActiveSongSlot(int slot) {
+  sceneManager_.setActiveSongSlot(slot);
+  if (!liveMixMode_) {
+    songPlaybackSlot_ = sceneManager_.activeSongSlot();
+  }
+  if (songMode_ && songPlaybackSlot_ == sceneManager_.activeSongSlot()) {
+    applySongPositionSelection();
+  }
+}
+int MiniAcid::songPlaybackSlot() const { return songPlaybackSlot_; }
+void MiniAcid::setSongPlaybackSlot(int slot) {
+  if (slot < 0) slot = 0;
+  if (slot > 1) slot = 1;
+  if (songPlaybackSlot_ == slot) return;
+  songPlaybackSlot_ = slot;
+  if (songMode_) applySongPositionSelection();
+}
+bool MiniAcid::liveMixModeEnabled() const { return liveMixMode_; }
+void MiniAcid::setLiveMixMode(bool enabled) {
+  if (liveMixMode_ == enabled) return;
+  liveMixMode_ = enabled;
+  if (!liveMixMode_) {
+    songPlaybackSlot_ = sceneManager_.activeSongSlot();
+    if (songMode_) applySongPositionSelection();
+  }
+}
+void MiniAcid::toggleLiveMixMode() { setLiveMixMode(!liveMixMode_); }
 void MiniAcid::mergeSongs() { sceneManager_.mergeSongs(); }
 void MiniAcid::alternateSongs() { sceneManager_.alternateSongs(); }
 void MiniAcid::setSongReverse(bool reverse) { sceneManager_.setSongReverse(reverse); }
@@ -720,8 +755,9 @@ bool MiniAcid::hasPendingSongReverseToggle() const { return songReverseTogglePen
 int MiniAcid::display303PatternIndex(int voiceIndex) const {
   int idx = clamp303Voice(voiceIndex);
   if (songMode_) {
-    int combined = sceneManager_.songPattern(sceneManager_.getSongPosition(),
-                                             idx == 0 ? SongTrack::SynthA : SongTrack::SynthB);
+    int pos = clampSongPosition(sceneManager_.getSongPosition());
+    int combined = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos,
+                                                   idx == 0 ? SongTrack::SynthA : SongTrack::SynthB);
     if (combined < 0) return -1;
     return songPatternIndexInBank(combined);
   }
@@ -730,7 +766,8 @@ int MiniAcid::display303PatternIndex(int voiceIndex) const {
 
 int MiniAcid::displayDrumPatternIndex() const {
   if (songMode_) {
-    int combined = sceneManager_.songPattern(sceneManager_.getSongPosition(), SongTrack::Drums);
+    int pos = clampSongPosition(sceneManager_.getSongPosition());
+    int combined = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos, SongTrack::Drums);
     if (combined < 0) return -1;
     return songPatternIndexInBank(combined);
   }
@@ -1105,7 +1142,7 @@ int MiniAcid::songPatternIndexForTrack(SongTrack track) const {
     }
   }
   int pos = clampSongPosition(sceneManager_.getSongPosition());
-  int combined = sceneManager_.songPattern(pos, track);
+  int combined = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos, track);
   if (combined < 0) return -1;
   return songPatternIndexInBank(combined);
 }
@@ -1127,7 +1164,7 @@ const DrumPattern& MiniAcid::activeDrumPattern(int drumVoiceIndex) const {
 }
 
 int MiniAcid::clampSongPosition(int position) const {
-  int len = sceneManager_.songLength();
+  int len = songMode_ ? sceneManager_.songLengthAtSlot(songPlaybackSlot_) : sceneManager_.songLength();
   if (len < 1) len = 1;
   if (position < 0) return 0;
   if (position >= len) return len - 1;
@@ -1140,10 +1177,10 @@ void MiniAcid::applySongPositionSelection() {
   int pos = clampSongPosition(sceneManager_.getSongPosition());
   sceneManager_.setSongPosition(pos);
   songPlayheadPosition_ = pos;
-  int patA = sceneManager_.songPattern(pos, SongTrack::SynthA);
-  int patB = sceneManager_.songPattern(pos, SongTrack::SynthB);
-  int patD = sceneManager_.songPattern(pos, SongTrack::Drums);
-  int patV = sceneManager_.songPattern(pos, SongTrack::Voice);
+  int patA = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos, SongTrack::SynthA);
+  int patB = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos, SongTrack::SynthB);
+  int patD = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos, SongTrack::Drums);
+  int patV = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos, SongTrack::Voice);
 
   if (playing && patV >= 0) {
     if (patV < 16) {
@@ -1192,10 +1229,10 @@ void MiniAcid::applySongPositionSelection() {
 
 // REWRITTEN LOGIC
 void MiniAcid::advanceSongPlayhead() {
-  int len = sceneManager_.songLength();
+  int len = sceneManager_.songLengthAtSlot(songPlaybackSlot_);
   if (len < 1) len = 1;
 
-  bool rev = sceneManager_.isSongReverse();
+  bool rev = sceneManager_.isSongReverseAtSlot(songPlaybackSlot_);
   bool loop = sceneManager_.loopMode();
   int loopStart = sceneManager_.loopStartRow();
   int loopEnd = sceneManager_.loopEndRow();
@@ -1322,6 +1359,7 @@ void MiniAcid::advanceStep() {
     songStepCounter_ = 0;
   }
 
+  // Song reverse affects only SONG position order, not step order inside patterns.
   currentStepIndex = songStepCounter_ % SEQ_STEPS;
 
   LedManager::instance().onBeat(currentStepIndex, sceneManager_.currentScene().led);
@@ -2186,6 +2224,8 @@ void MiniAcid::applySceneStateFromManager() {
   patternModeSynthPatternIndex_[0] = sceneManager_.getCurrentSynthPatternIndex(0);
   patternModeSynthPatternIndex_[1] = sceneManager_.getCurrentSynthPatternIndex(1);
   songMode_ = sceneManager_.songMode();
+  songPlaybackSlot_ = sceneManager_.activeSongSlot();
+  liveMixMode_ = false;
   songPlayheadPosition_ = clampSongPosition(sceneManager_.getSongPosition());
   if (songMode_) {
     applySongPositionSelection();

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../../../scenes.h"
 #include "../ui_core.h"
 #include "../pages/help_dialog.h"
 #include "../ui_colors.h"
@@ -79,7 +80,7 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   uint32_t hint_timer_;
   uint32_t last_g_press_ = 0; // For double-tap detection
   bool voice_lane_visible_ = false;  // false: DR on col 3, true: VO on col 3
-  bool split_compare_ = false;       // show other slot read-only on right side
+  bool split_compare_ = true;        // show other slot read-only on right side by default
 
   bool generateCurrentCellPattern();
   void generateEntireRow();

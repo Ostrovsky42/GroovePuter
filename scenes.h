@@ -492,6 +492,7 @@ public:
   void clearSongPattern(int position, SongTrack track);
   int songPattern(int position, SongTrack track) const;
   int songPatternAtSlot(int slot, int position, SongTrack track) const;
+  int songLengthAtSlot(int slot) const;
   void setSongLength(int length);
   int songLength() const;
   void setSongPosition(int position);
@@ -506,6 +507,7 @@ public:
   
   void setSongReverse(bool reverse);
   bool isSongReverse() const;
+  bool isSongReverseAtSlot(int slot) const;
   void mergeSongs();
   void alternateSongs();
   

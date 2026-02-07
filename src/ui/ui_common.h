@@ -4,7 +4,7 @@
 #include "ui_widgets.h"
 
 // Forward declaration if needed, but ui_core/layout_manager should cover it
-class MiniAcid;
+#include "src/dsp/miniacid_engine.h"
 
 namespace UI {
     

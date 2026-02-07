@@ -1,6 +1,6 @@
 #pragma once
 #include <stdint.h>
-#include "genre_manager.h"
+#include "src/dsp/genre_manager.h"
 
 class SmartPatternGenerator {
 public:

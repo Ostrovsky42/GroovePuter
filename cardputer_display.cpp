@@ -358,6 +358,21 @@ void CardputerDisplay::setTextColor(IGfxColor color) {
   text_color565_ = text_color_.toCardputerColor();
 }
 
+void CardputerDisplay::setTextColor(uint16_t color) {
+  // Construct best-effort IGfxColor? No, stored separately.
+  // Actually, text_color565_ is what matters for drawing.
+  text_color565_ = color;
+  // We can't easily reconstruct IGfxColor (RGB888) from 565 without loss/assumptions,
+  // but text_color_ is mostly for getters if we had them.
+  // We can convert 565 back to 888 for consistency.
+  uint8_t r = (color >> 11) & 0x1F;
+  uint8_t g = (color >> 5) & 0x3F;
+  uint8_t b = color & 0x1F;
+  // Expand to 888
+  uint32_t rgb = ((r * 255 / 31) << 16) | ((g * 255 / 63) << 8) | (b * 255 / 31);
+  text_color_ = IGfxColor(rgb);
+}
+
 CardputerDisplay::FontMetrics CardputerDisplay::computeMetrics(const GFXfont& font) const {
   FontMetrics m;
   m.line_height = font.yAdvance;

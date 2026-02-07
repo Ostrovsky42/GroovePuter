@@ -1,7 +1,8 @@
-#pragma once
+#ifndef GENRE_MANAGER_H
+#define GENRE_MANAGER_H
 #include <stdint.h>
 #include <cstdio>
-#include "tape_defs.h"
+#include "src/dsp/tape_defs.h"
 
 // ============================================================================
 // TWO-AXIS GENRE SYSTEM
@@ -254,3 +255,5 @@ struct GenrePreset {
 
 extern const GenrePreset kGenrePresets[8];
 static constexpr int kGenrePresetCount = 8;
+
+#endif // GENRE_MANAGER_H

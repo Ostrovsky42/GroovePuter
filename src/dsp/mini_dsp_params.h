@@ -1,4 +1,5 @@
-#pragma once
+#ifndef MINI_DSP_PARAMS_H
+#define MINI_DSP_PARAMS_H
 
 enum class GrooveboxMode {
   Acid = 0,
@@ -135,3 +136,5 @@ inline const char* Parameter::optionLabel() const {
   if (idx < 0 || idx >= optionCount_) return nullptr;
   return options_[idx];
 }
+
+#endif // MINI_DSP_PARAMS_H

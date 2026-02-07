@@ -8,7 +8,7 @@
 #include <functional>
 
 #include "mode_manager.h"
-#include "genre_manager.h"
+#include "src/dsp/genre_manager.h"
 #include "../../scene_storage.h"
 #include "../../scenes.h"
 #include "mini_tb303.h"
@@ -168,6 +168,11 @@ public:
   const Song& song() const;
   int activeSongSlot() const;
   void setActiveSongSlot(int slot);
+  int songPlaybackSlot() const;
+  void setSongPlaybackSlot(int slot);
+  bool liveMixModeEnabled() const;
+  void setLiveMixMode(bool enabled);
+  void toggleLiveMixMode();
   void mergeSongs();
   void alternateSongs();
   void setSongReverse(bool reverse);
@@ -368,6 +373,8 @@ private:
   bool songMode_;
   int drumCycleIndex_;
   int songPlayheadPosition_;
+  int songPlaybackSlot_ = 0;
+  bool liveMixMode_ = false;
   int songStepCounter_ = 0;
   bool songReverseTogglePending_ = false;
   volatile uint32_t cyclePulseCounter_ = 0;

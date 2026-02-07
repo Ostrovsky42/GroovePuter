@@ -1,4 +1,5 @@
 #include "miniacid_display.h"
+#include "src/dsp/miniacid_engine.h"
 
 #ifndef ARDUINO
 #include "../../platform_sdl/arduino_compat.h"
@@ -406,8 +407,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     // 3) Global Fallback "Back" (if page didn't handle it)
     if (event.event_type == GROOVEPUTER_KEY_DOWN) {
         const bool isBack = 
-            (event.key == 'b' || event.key == 'B' || event.key == '`' || 
-             event.key == 0x08 /*backspace*/ || event.key == 0x1B /*esc*/);
+            (event.key == '`' || event.key == 0x08 /*backspace*/ || event.key == 0x1B /*esc*/);
              
         if (isBack) {
             togglePreviousPage();

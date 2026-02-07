@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../ui_core.h"
-#include "../../dsp/miniacid_engine.h"
+#include "src/dsp/miniacid_engine.h"
 
 class SettingsPage : public IPage {
 public:

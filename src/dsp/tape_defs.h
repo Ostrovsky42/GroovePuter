@@ -1,4 +1,5 @@
-#pragma once
+#ifndef TAPE_DEFS_H
+#define TAPE_DEFS_H
 #include <stdint.h>
 
 // Tape mode enum for looper state machine
@@ -28,3 +29,5 @@ struct TapeMacro {
     uint8_t tone = 60;     // 0..100 - brightness (0=dark, 100=bright)
     uint8_t crush = 0;     // 0=off, 1=8bit, 2=6bit, 3=4bit
 };
+
+#endif // TAPE_DEFS_H

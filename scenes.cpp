@@ -442,6 +442,8 @@ SceneJsonObserver::Path SceneJsonObserver::deduceObjectPath(const Context& paren
     return Path::SynthStep;
   case Path::SynthParams:
     return Path::SynthParam;
+  case Path::Songs:
+    return Path::Song;
   case Path::SongPositions:
     return Path::SongPosition;
   case Path::SamplerPads:
@@ -1498,6 +1500,15 @@ int SceneManager::songPatternAtSlot(int slot, int position, SongTrack track) con
   return clampSongPatternIndex(s.positions[position].patterns[trackIdx]);
 }
 
+int SceneManager::songLengthAtSlot(int slot) const {
+  if (slot < 0) slot = 0;
+  if (slot > 1) slot = 1;
+  int len = scene_->songs[slot].length;
+  if (len < 1) len = 1;
+  if (len > Song::kMaxPositions) len = Song::kMaxPositions;
+  return len;
+}
+
 void SceneManager::setSongLength(int length) {
   int clamped = clampSongLength(length);
   scene_->songs[scene_->activeSongSlot].length = clamped;
@@ -1561,6 +1572,12 @@ void SceneManager::setSongReverse(bool reverse) {
 
 bool SceneManager::isSongReverse() const {
     return scene_->songs[scene_->activeSongSlot].reverse;
+}
+
+bool SceneManager::isSongReverseAtSlot(int slot) const {
+    if (slot < 0) slot = 0;
+    if (slot > 1) slot = 1;
+    return scene_->songs[slot].reverse;
 }
 
 void SceneManager::mergeSongs() {

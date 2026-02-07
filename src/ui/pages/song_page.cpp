@@ -402,6 +402,44 @@ bool SongPage::assignPattern(int patternIdx) {
 }
 
 bool SongPage::clearPattern() {
+  if (has_selection_) {
+    int min_row, max_row, min_track, max_track;
+    getSelectionBounds(min_row, max_row, min_track, max_track);
+    if (min_track < 0) min_track = 0;
+    int maxCol = maxEditableTrackColumn();
+    if (max_track > maxCol) max_track = maxCol;
+    if (min_track > max_track) return false;
+
+    std::vector<int> old_patterns;
+    old_patterns.reserve((max_row - min_row + 1) * (max_track - min_track + 1));
+    int cleared = 0;
+
+    withAudioGuard([&]() {
+      for (int r = min_row; r <= max_row; ++r) {
+        for (int t = min_track; t <= max_track; ++t) {
+          bool valid = false;
+          SongTrack track = trackForColumn(t, valid);
+          if (!valid) continue;
+          int before = mini_acid_.songPatternAt(r, track);
+          old_patterns.push_back(before);
+          if (before >= 0) ++cleared;
+          mini_acid_.clearSongPattern(r, track);
+        }
+      }
+      if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
+        mini_acid_.setSongPosition(min_row);
+      }
+    });
+
+    g_undo_history.action_type = UndoActionType::Delete;
+    g_undo_history.saveArea(min_row, max_row, min_track, max_track, old_patterns);
+    clearSelection();
+    char toast[48];
+    std::snprintf(toast, sizeof(toast), "Cleared %d cells", cleared);
+    showToast(toast, 900);
+    return true;
+  }
+
   bool trackValid = false;
   SongTrack track = trackForColumn(cursorTrack(), trackValid);
   if (!trackValid) return false;
@@ -825,27 +863,40 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     }
   }
 
-  bool key_j = (key == 'j') || (ui_event.scancode == GROOVEPUTER_J);
-  bool key_k = (key == 'k') || (ui_event.scancode == GROOVEPUTER_K);
+  bool key_b = (key == 'b') || (ui_event.scancode == GROOVEPUTER_B);
   bool key_l = (key == 'l') || (ui_event.scancode == GROOVEPUTER_L);
   bool key_m = (key == 'm') || (ui_event.scancode == GROOVEPUTER_M);
   bool key_n = (key == 'n') || (ui_event.scancode == GROOVEPUTER_N);
   bool key_r = (key == 'r') || (ui_event.scancode == GROOVEPUTER_R);
+  bool key_x = (key == 'x') || (ui_event.scancode == GROOVEPUTER_X);
 
   if (ui_event.ctrl && key_l) {
     LOG_INFO_UI("Toggle loop mode");
     return toggleLoopMode();
   }
 
-  // Song slot controls: Alt+J = Slot A, Alt+K = Slot B
-  if (ui_event.alt && key_j) {
-    LOG_INFO_UI("Switch to Song Slot A");
-    withAudioGuard([&]() { mini_acid_.setActiveSongSlot(0); });
+  if (ui_event.alt && key_x) {
+    bool enable = !mini_acid_.liveMixModeEnabled();
+    withAudioGuard([&]() { mini_acid_.setLiveMixMode(enable); });
+    showToast(enable ? "LiveMix: ON" : "LiveMix: OFF", 900);
     return true;
   }
-  if (ui_event.alt && key_k) {
-    LOG_INFO_UI("Switch to Song Slot B");
-    withAudioGuard([&]() { mini_acid_.setActiveSongSlot(1); });
+
+  if (ui_event.ctrl && key_b) {
+    if (!mini_acid_.liveMixModeEnabled()) {
+      withAudioGuard([&]() { mini_acid_.setLiveMixMode(true); });
+    }
+    int nextPlaySlot = mini_acid_.songPlaybackSlot() == 0 ? 1 : 0;
+    withAudioGuard([&]() { mini_acid_.setSongPlaybackSlot(nextPlaySlot); });
+    showToast(nextPlaySlot == 0 ? "Play: A" : "Play: B", 900);
+    return true;
+  }
+
+  if (ui_event.alt && !ui_event.ctrl && key_b) {
+    int nextSlot = mini_acid_.activeSongSlot() == 0 ? 1 : 0;
+    LOG_INFO_UI("Switch to Song Slot %c", 'A' + nextSlot);
+    withAudioGuard([&]() { mini_acid_.setActiveSongSlot(nextSlot); });
+    showToast(nextSlot == 0 ? "Slot: A" : "Slot: B", 800);
     return true;
   }
 
@@ -999,6 +1050,13 @@ const std::string & SongPage::getTitle() const {
 }
 
 void SongPage::draw(IGfx& gfx) {
+  // Split compare is currently implemented in TE grid renderer.
+  // Force that renderer while split is active so view switch is always visible.
+  if (split_compare_) {
+    drawTEGridStyle(gfx);
+    return;
+  }
+
   switch (visual_style_) {
     case ::VisualStyle::RETRO_CLASSIC:
       drawRetroClassicStyle(gfx);
@@ -1163,13 +1221,53 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
   int w = bounds.w;
   int h = bounds.h;
 
-  const IGfxColor TE_BLACK = IGfxColor::Black();
-  const IGfxColor TE_WHITE = IGfxColor::White();
-  const IGfxColor TE_GRID = IGfxColor(0x353535);
-  const IGfxColor TE_ACCENT = IGfxColor(0xD8D8D8);
-  const IGfxColor TE_DIM = IGfxColor(0x8A8A8A);
-  const IGfxColor TE_ROW_A = IGfxColor(0x101010);
-  const IGfxColor TE_ROW_B = IGfxColor(0x151515);
+  // Base Colors
+  IGfxColor TE_BLACK = IGfxColor::Black();
+  IGfxColor TE_WHITE = IGfxColor::White();
+  IGfxColor TE_GRID  = IGfxColor(0x353535);
+  IGfxColor TE_ACCENT = IGfxColor(0xD8D8D8);
+  IGfxColor TE_DIM    = IGfxColor(0x8A8A8A);
+  IGfxColor TE_ROW_A  = IGfxColor(0x101010);
+  IGfxColor TE_ROW_B  = IGfxColor(0x151515);
+
+  // Dimmed Colors
+  uint16_t TE_ROW_A_DIM = 0x1010; 
+  uint16_t TE_ROW_B_DIM = 0x0000; 
+  uint16_t TE_DIM_GRID  = 0x2020;
+  uint16_t TE_DIM_TEXT  = 0x6060;
+  uint16_t TE_DIM_DIM   = 0x3030;
+
+  // Apply Theme
+  if (visual_style_ == ::VisualStyle::RETRO_CLASSIC) {
+    TE_BLACK = IGfxColor(RetroTheme::BG_DEEP_BLACK);
+    TE_WHITE = IGfxColor(RetroTheme::NEON_CYAN);
+    TE_GRID  = IGfxColor(RetroTheme::GRID_DIM);
+    TE_ACCENT = IGfxColor(RetroTheme::SELECT_BRIGHT);
+    TE_DIM    = IGfxColor(RetroTheme::TEXT_DIM);
+    TE_ROW_A  = IGfxColor(RetroTheme::BG_INSET);
+    TE_ROW_B  = IGfxColor(RetroTheme::BG_PANEL);
+    
+    TE_ROW_A_DIM = TE_ROW_A.color16();
+    TE_ROW_B_DIM = TE_BLACK.color16();
+    TE_DIM_GRID  = TE_GRID.color16();
+    TE_DIM_TEXT  = TE_DIM.color16();
+    TE_DIM_DIM   = TE_BLACK.color16();
+
+  } else if (visual_style_ == ::VisualStyle::AMBER) {
+    TE_BLACK = IGfxColor(AmberTheme::BG_DEEP_BLACK);
+    TE_WHITE = IGfxColor(AmberTheme::TEXT_PRIMARY);
+    TE_GRID  = IGfxColor(AmberTheme::GRID_DIM);
+    TE_ACCENT = IGfxColor(AmberTheme::SELECT_BRIGHT);
+    TE_DIM    = IGfxColor(AmberTheme::TEXT_DIM);
+    TE_ROW_A  = IGfxColor(AmberTheme::BG_INSET);
+    TE_ROW_B  = IGfxColor(AmberTheme::BG_PANEL);
+    
+    TE_ROW_A_DIM = TE_ROW_A.color16();
+    TE_ROW_B_DIM = TE_BLACK.color16();
+    TE_DIM_GRID  = TE_GRID.color16();
+    TE_DIM_TEXT  = TE_DIM.color16();
+    TE_DIM_DIM   = TE_BLACK.color16();
+  }
 
   gfx.fillRect(x, y, w, h, TE_BLACK);
 
@@ -1178,9 +1276,15 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
   gfx.setTextColor(TE_BLACK);
 
   int slot = mini_acid_.activeSongSlot();
+  int playSlot = mini_acid_.songPlaybackSlot();
+  bool liveMix = mini_acid_.liveMixModeEnabled();
   bool reverse = mini_acid_.isSongReverse();
   char titleBuf[40];
-  snprintf(titleBuf, sizeof(titleBuf), "SONG %c%s", 'A' + slot, reverse ? " REV" : "");
+  if (split_compare_) {
+    snprintf(titleBuf, sizeof(titleBuf), "SONG A|B%s%s", reverse ? " REV" : "", liveMix ? " LM" : "");
+  } else {
+    snprintf(titleBuf, sizeof(titleBuf), "SONG %c%s%s", 'A' + slot, reverse ? " REV" : "", liveMix ? " LM" : "");
+  }
   gfx.drawText(x + 2, y + 2, titleBuf);
 
   char statusBuf[32];
@@ -1217,7 +1321,7 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
   int min_sel_row = 0, max_sel_row = -1, min_sel_track = 0, max_sel_track = -1;
   if (has_selection_) getSelectionBounds(min_sel_row, max_sel_row, min_sel_track, max_sel_track);
 
-  auto drawPane = [&](int paneX, int paneW, int paneSlot, bool editable) {
+  auto drawPane = [=, &gfx, this](int paneX, int paneW, int paneSlot, bool editable) {
     int tracks = visibleTrackCount();
     int pos_w = 16;
     int col_gap = 1;
@@ -1225,18 +1329,38 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
     int cell_w = totalCellW / tracks;
     if (cell_w < 14) cell_w = 14;
 
-    gfx.setTextColor(editable ? TE_ACCENT : TE_DIM);
+    // Dim inactive pane
+    uint16_t headerColor = editable ? TE_ACCENT.color16() : TE_DIM.color16();
+    uint16_t rowColor = editable ? TE_ACCENT.color16() : TE_DIM.color16();
+    uint16_t sepColor = editable ? TE_GRID.color16() : TE_DIM_GRID;
+    
+    // Header
+    gfx.setTextColor(headerColor);
+    int grid_y = y + header_h + 2; 
     gfx.drawText(paneX + 1, grid_y, "#");
-    gfx.drawText(paneX + pos_w + 2, grid_y, "A");
-    gfx.drawText(paneX + pos_w + (cell_w + col_gap) + 2, grid_y, "B");
-    gfx.drawText(paneX + pos_w + 2 * (cell_w + col_gap) + 2, grid_y, laneShortLabel());
-    if (split_compare_) {
-      char slotBuf[10];
-      snprintf(slotBuf, sizeof(slotBuf), "S%d", paneSlot + 1);
-      int slotW = textWidth(gfx, slotBuf);
-      gfx.drawText(paneX + paneW - slotW - 1, grid_y, slotBuf);
+    
+    if (!split_compare_ || cell_w > 20) {
+        gfx.drawText(paneX + pos_w + 2, grid_y, "A");
+        gfx.drawText(paneX + pos_w + (cell_w + col_gap) + 2, grid_y, "B");
+        gfx.drawText(paneX + pos_w + 2 * (cell_w + col_gap) + 2, grid_y, laneShortLabel()); 
     }
-    gfx.drawLine(paneX, grid_y + 9, paneX + paneW - 1, grid_y + 9, TE_GRID);
+
+    // Slot Label in corner
+    if (split_compare_) {
+      char slotBuf[16];
+      snprintf(slotBuf, sizeof(slotBuf), "%c", 'A' + paneSlot);
+      int slotW = textWidth(gfx, slotBuf);
+      gfx.setTextColor(headerColor);
+      gfx.drawText(paneX + paneW - slotW - 2, grid_y, slotBuf);
+      
+      // Draw BOLD border for active/editable pane
+      if (editable) {
+          gfx.drawRect(paneX - 1, grid_y - 2, paneW + 2, h - header_h - footer_h + 2, TE_ACCENT);
+          gfx.drawRect(paneX - 2, grid_y - 3, paneW + 4, h - header_h - footer_h + 4, TE_ACCENT);
+      }
+    }
+    
+    gfx.drawLine(paneX, grid_y + 9, paneX + paneW - 1, grid_y + 9, sepColor);
 
     int cells_y = grid_y + 11;
     for (int i = 0; i < visible_rows; ++i) {
@@ -1244,14 +1368,23 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
       if (row_idx >= Song::kMaxPositions) break;
       int ry = cells_y + i * (cell_h + row_gap);
 
-      gfx.fillRect(paneX, ry, paneW, cell_h, (i & 1) ? TE_ROW_B : TE_ROW_A);
-      if (row_idx == playhead && playing && songMode && paneSlot == slot) {
-        gfx.drawLine(paneX, ry + cell_h - 1, paneX + paneW - 1, ry + cell_h - 1, TE_ACCENT);
+      // Row background
+      uint16_t rowBg = (i & 1) ? TE_ROW_B.color16() : TE_ROW_A.color16();
+      // Dim background if not editable
+      if (!editable) {
+          rowBg = (i & 1) ? TE_ROW_B_DIM : TE_ROW_A_DIM;
+      }
+      gfx.fillRect(paneX, ry, paneW, cell_h, rowBg);
+
+      // Playhead (only on active slot if playing)
+      if (row_idx == playhead && playing && songMode) {
+        gfx.drawLine(paneX, ry + cell_h - 1, paneX + paneW - 1, ry + cell_h - 1,
+                     paneSlot == playSlot ? TE_ACCENT : TE_DIM);
       }
 
       char rowBuf[6];
       snprintf(rowBuf, sizeof(rowBuf), "%02d", row_idx + 1);
-      gfx.setTextColor(row_idx < len ? TE_ACCENT : TE_DIM);
+      gfx.setTextColor(row_idx < len ? rowColor : TE_DIM.color16());
       gfx.drawText(paneX + 1, ry + 1, rowBuf);
 
       for (int t = 0; t < tracks; ++t) {
@@ -1260,9 +1393,7 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
         SongTrack track = trackForColumn(t, valid);
         int pattern = -1;
         if (valid) {
-          pattern = (paneSlot == slot)
-              ? mini_acid_.songPatternAt(row_idx, track)
-              : mini_acid_.songPatternAtSlot(paneSlot, row_idx, track);
+          pattern = this->mini_acid_.songPatternAtSlot(paneSlot, row_idx, track);
         }
 
         bool isSelected = false;
@@ -1277,6 +1408,14 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
 
         if (isSelected) {
           gfx.fillRect(tx, ry, cell_w, cell_h, TE_ACCENT);
+          gfx.setTextColor(TE_BLACK);
+        } else {
+          // Logic for dimmed text
+          if (pattern >= 0) {
+             gfx.setTextColor(editable ? TE_WHITE.color16() : TE_DIM_TEXT);
+          } else {
+             gfx.setTextColor(editable ? TE_DIM.color16() : TE_DIM_DIM);
+          }
         }
 
         if (pattern >= 0) {
@@ -1284,10 +1423,8 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
           int pslot = (pattern % 8) + 1;
           char patBuf[10];
           snprintf(patBuf, sizeof(patBuf), "%d-%d", bank, pslot);
-          gfx.setTextColor(isSelected ? TE_BLACK : TE_WHITE);
           gfx.drawText(tx + 1, ry + 1, patBuf);
         } else {
-          gfx.setTextColor(isSelected ? TE_BLACK : TE_DIM);
           gfx.drawText(tx + 1, ry + 1, "--");
         }
       }
@@ -1295,20 +1432,34 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
   };
 
   if (split_compare_) {
-    int gap = 4;
+    int gap = 6; // Increased gap for border
     int paneW = (w - gap) / 2;
     int otherSlot = slot == 0 ? 1 : 0;
-    drawPane(x, paneW, slot, true);
-    drawPane(x + paneW + gap, w - paneW - gap, otherSlot, false);
+    
+    // Draw active pane first or second? 
+    // Left is always A, Right is always B.
+    drawPane(x, paneW, 0, slot == 0);
+    drawPane(x + paneW + gap, w - paneW - gap, 1, slot == 1);
+
   } else {
     drawPane(x, w, slot, true);
   }
 
   int footer_y = y + h - footer_h;
   gfx.drawLine(x, footer_y - 1, x + w - 1, footer_y - 1, TE_GRID);
+  
+  // Footer Status
+  char footerBuf[64];
+  // Show Edit Slot and Play Status if available
+  // "EDIT:A PLAY:A" (future)
+  int editSlot = mini_acid_.activeSongSlot();
+  std::snprintf(footerBuf, sizeof(footerBuf), "E:%c P:%c%s  A+B:EDIT C+B:PLAY CA+X:LM",
+                'A' + editSlot,
+                'A' + playSlot,
+                liveMix ? " LM" : "");
+  
   gfx.setTextColor(TE_DIM);
-  const char* cmd_text = "Q-I:PAT V:DR/VO X:SPLIT A+J/K:SLOT C+R:REV";
-  gfx.drawText(x + 2, footer_y + 2, cmd_text);
+  gfx.drawText(x + 2, footer_y + 2, footerBuf);
 
   if (mini_acid_.loopModeEnabled()) {
     int loopStart = mini_acid_.loopStartRow() + 1;
@@ -1431,7 +1582,7 @@ void SongPage::drawRetroClassicStyle(IGfx& gfx) {
         }
     }
 
-    retro::drawFooterBar(gfx, x, y + h - 12, w, 12, "A+J/K:Slot C+R:Rev C+M:Mrg C+N:Alt", "SONG");
+    retro::drawFooterBar(gfx, x, y + h - 12, w, 12, "A+B:Edit C+B:Play CA+X:LM C+R:Rev", "SONG");
 }
 
 void SongPage::drawAmberStyle(IGfx& gfx) {
@@ -1524,7 +1675,7 @@ void SongPage::drawAmberStyle(IGfx& gfx) {
         }
     }
 
-    amber::drawFooterBar(gfx, x, y + h - 12, w, 12, "A+J/K:Slot C+R:Rev C+M:Mrg C+N:Alt", "SONG");
+    amber::drawFooterBar(gfx, x, y + h - 12, w, 12, "A+B:Edit C+B:Play CA+X:LM C+R:Rev", "SONG");
 }
 
 std::unique_ptr<MultiPageHelpDialog> SongPage::getHelpDialog() {

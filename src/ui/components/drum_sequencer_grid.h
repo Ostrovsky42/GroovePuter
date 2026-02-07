@@ -2,7 +2,7 @@
 
 #include "../ui_core.h"
 #include "../ui_colors.h"
-#include "../../dsp/miniacid_engine.h"
+#include "src/dsp/miniacid_engine.h"
 #include <functional>
 
 /**

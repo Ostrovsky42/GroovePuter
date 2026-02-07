@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-#include "../dsp/miniacid_engine.h"
+class MiniAcid;
 #include "display.h"
 #include "key_normalize.h"
 

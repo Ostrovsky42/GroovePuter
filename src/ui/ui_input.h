@@ -30,8 +30,8 @@ static inline bool isConfirm(const UIEvent& e) {
 }
 
 static inline bool isBack(const UIEvent& e) {
-  return e.key == 0x1B /*esc*/ || e.key == 0x08 /*backspace*/ ||
-         e.key == 'b' || e.key == 'B' || e.key == '`';
+  return e.key == 0x1B /*esc*/ || e.key == 0x08; /*backspace*/ //||
+         //e.key == 'b' || e.key == 'B' || e.key == '`';
 }
 
 static inline bool isTab(const UIEvent& e) {

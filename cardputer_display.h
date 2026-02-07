@@ -22,6 +22,7 @@ public:
   void drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, IGfxColor color) override;
   void setRotation(int rot) override;
   void setTextColor(IGfxColor color) override;
+  void setTextColor(uint16_t color) override;
   void setFont(GfxFont font) override;
   void startWrite() override;
   void endWrite() override;

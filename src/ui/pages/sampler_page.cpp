@@ -1,4 +1,5 @@
 #include "sampler_page.h"
+#include "../../dsp/miniacid_engine.h"
 #include <cstdio>
 #include <algorithm>
 
@@ -106,7 +107,7 @@ void SamplerPage::initComponents() {
 void SamplerPage::draw(IGfx& gfx) {
   if (!initialized_) initComponents();
 
-  SamplerPad& p = mini_acid_.samplerTrack->pad(current_pad_);
+  auto& p = mini_acid_.samplerTrack->pad(current_pad_);
   
   char buf[64];
   pad_ctrl_->setValue(std::to_string(current_pad_ + 1));
@@ -137,7 +138,7 @@ void SamplerPage::draw(IGfx& gfx) {
 }
 
 void SamplerPage::adjustFocusedElement(int direction) {
-  SamplerPad& p = mini_acid_.samplerTrack->pad(current_pad_);
+  auto& p = mini_acid_.samplerTrack->pad(current_pad_);
   const auto& files = mini_acid_.sampleIndex.getFiles();
 
   audio_guard_([&]() {

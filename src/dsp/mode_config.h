@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include "mini_dsp_params.h"
-#include "tape_defs.h"
+#include "src/dsp/tape_defs.h"
 
 // === MODE-SPECIFIC PRESETS ===
 

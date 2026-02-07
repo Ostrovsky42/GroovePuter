@@ -77,6 +77,7 @@ public:
     virtual void drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, IGfxColor color) = 0;
     virtual void setRotation(int rot) = 0;
     virtual void setTextColor(IGfxColor color) = 0;
+    virtual void setTextColor(uint16_t color) = 0;
     virtual void setFont(GfxFont font) = 0;
     virtual void startWrite() = 0;
     virtual void endWrite() = 0;

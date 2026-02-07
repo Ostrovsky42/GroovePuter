@@ -1,4 +1,5 @@
 #include "voice_page.h"
+#include "../../dsp/miniacid_engine.h"
 #include "../ui_input.h"
 #include <cstdio>
 #include <algorithm>

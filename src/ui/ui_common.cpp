@@ -1,7 +1,7 @@
 #include "ui_common.h"
 #include "ui_utils.h"
 #include "ui_widgets.h"
-#include "../dsp/miniacid_engine.h"
+#include "src/dsp/miniacid_engine.h"
 #include "retro_ui_theme.h"
 #include "amber_ui_theme.h"
 #include <cstdio>
