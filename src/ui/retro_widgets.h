@@ -230,7 +230,7 @@ inline void drawHeaderBar(IGfx& gfx, int x, int y, int w, int h,
     
     drawGlowText(gfx, x + 4, y + 2, title, IGfxColor(RetroTheme::FOCUS_GLOW), IGfxColor(RetroTheme::NEON_CYAN));
     
-    int modeX = x + 80;
+    int modeX = x + 45; // Moved left
     gfx.setTextColor(IGfxColor(RetroTheme::TEXT_SECONDARY));
     gfx.drawText(modeX, y + 2, "MODE:");
     gfx.setTextColor(IGfxColor(RetroTheme::NEON_ORANGE));

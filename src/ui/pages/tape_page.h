@@ -3,11 +3,11 @@
 #include "../ui_core.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
-#include "../../dsp/grooveputer_engine.h"
+#include "../../dsp/miniacid_engine.h"
 
 class TapePage : public IPage {
  public:
-  TapePage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard);
+  TapePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string& getTitle() const override;
@@ -27,7 +27,7 @@ class TapePage : public IPage {
   void syncFromState();
 
   IGfx& gfx_;
-  GroovePuter& mini_acid_;
+  MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
   
   bool initialized_ = false;

@@ -1,5 +1,5 @@
 CXX ?= clang++
-CXXFLAGS ?= -std=c++17 -I..
+CXXFLAGS ?= -std=c++17 -I.. -I. -include arduino_compat.h -DUSE_RETRO_THEME -DUSE_AMBER_THEME
 
 # Depends on SDL2 and SDL2_gfx. Install via Homebrew with:
 # brew install sdl2 sdl2_gfx
@@ -22,7 +22,63 @@ ifeq ($(strip $(SDL_GFX_CFLAGS)),)
 endif
 
 TARGET := miniacid
-SOURCES := ../src/dsp/filter.cpp ../src/dsp/mini_tb303.cpp ../src/dsp/mini_drumvoices.cpp ../src/dsp/tube_distortion.cpp ../src/dsp/miniacid_engine.cpp ../src/dsp/mode_manager.cpp ../src/dsp/genre_manager.cpp ../src/dsp/audio_wavetables.cpp ../src/dsp/formant_synth.cpp ../src/ui/miniacid_display.cpp ../src/ui/cassette_skin.cpp ../src/ui/pages/help_page.cpp ../src/ui/pages/help_dialog.cpp ../src/ui/pages/tb303_params_page.cpp ../src/ui/pages/waveform_page.cpp ../src/ui/pages/voice_page.cpp ../src/ui/pages/pattern_edit_page.cpp ../src/ui/pages/drum_sequencer_page.cpp ../src/ui/pages/song_page.cpp ../src/ui/pages/project_page.cpp ../src/ui/pages/mode_page.cpp ../src/ui/pages/genre_page.cpp ../src/ui/pages/sequencer_hub_page.cpp ../src/ui/pages/settings_page.cpp ../src/ui/pages/sampler_page.cpp ../src/ui/pages/tape_page.cpp ../src/ui/components/pattern_selection_bar.cpp ../src/ui/components/bank_selection_bar.cpp ../src/ui/components/label_option.cpp ../src/ui/components/drum_sequencer_grid.cpp ../src/ui/led_manager.cpp ../src/audio/desktop_audio_recorder.cpp ../src/audio/wasm_audio_recorder.cpp ../src/sampler/sample_loader.cpp ../src/sampler/ram_sample_store.cpp ../src/sampler/sample_index.cpp ../src/sampler/sampler_voice.cpp ../src/sampler/sampler_pool.cpp ../src/sampler/drum_sampler_track.cpp ../src/dsp/tape_fx.cpp ../src/dsp/tape_looper.cpp ../cardputer_display.cpp ../scenes.cpp ../json_evented.cpp sdl_main.cpp sdl_display.cpp scene_storage_sdl.cpp ../src/ui/ui_core.cpp ../src/ui/ui_common.cpp ../src/ui/ui_themes.cpp ../src/ui/layout_manager.cpp ../src/ui/ui_widgets.cpp
+SOURCES := \
+	../src/dsp/filter.cpp \
+	../src/dsp/mini_tb303.cpp \
+	../src/dsp/mini_drumvoices.cpp \
+	../src/dsp/tube_distortion.cpp \
+	../src/dsp/miniacid_engine.cpp \
+	../src/dsp/mode_manager.cpp \
+	../src/dsp/genre_manager.cpp \
+	../src/dsp/audio_wavetables.cpp \
+	../src/dsp/formant_synth.cpp \
+	../src/dsp/pattern_generator.cpp \
+	../src/dsp/tape_fx.cpp \
+	../src/dsp/tape_looper.cpp \
+	../src/ui/miniacid_display.cpp \
+	../src/ui/cassette_skin.cpp \
+	../src/ui/led_manager.cpp \
+	../src/ui/ui_core.cpp \
+	../src/ui/ui_common.cpp \
+	../src/ui/ui_themes.cpp \
+	../src/ui/layout_manager.cpp \
+	../src/ui/ui_widgets.cpp \
+	../src/ui/ui_clipboard.cpp \
+	../src/ui/pages/help_page.cpp \
+	../src/ui/pages/help_dialog.cpp \
+	../src/ui/pages/tb303_params_page.cpp \
+	../src/ui/pages/waveform_page.cpp \
+	../src/ui/pages/voice_page.cpp \
+	../src/ui/pages/color_test_page.cpp \
+	../src/ui/pages/pattern_edit_page.cpp \
+	../src/ui/pages/drum_sequencer_page.cpp \
+	../src/ui/pages/song_page.cpp \
+	../src/ui/pages/project_page.cpp \
+	../src/ui/pages/mode_page.cpp \
+	../src/ui/pages/genre_page.cpp \
+	../src/ui/pages/feel_texture_page.cpp \
+	../src/ui/pages/sequencer_hub_page.cpp \
+	../src/ui/pages/settings_page.cpp \
+	../src/ui/pages/sampler_page.cpp \
+	../src/ui/pages/tape_page.cpp \
+	../src/ui/components/pattern_selection_bar.cpp \
+	../src/ui/components/bank_selection_bar.cpp \
+	../src/ui/components/label_option.cpp \
+	../src/ui/components/drum_sequencer_grid.cpp \
+	../src/audio/desktop_audio_recorder.cpp \
+	../src/audio/wasm_audio_recorder.cpp \
+	../src/sampler/sample_loader.cpp \
+	../src/sampler/ram_sample_store.cpp \
+	../src/sampler/sample_index.cpp \
+	../src/sampler/sampler_voice.cpp \
+	../src/sampler/sampler_pool.cpp \
+	../src/sampler/drum_sampler_track.cpp \
+	../cardputer_display.cpp \
+	../scenes.cpp \
+	../json_evented.cpp \
+	sdl_main.cpp \
+	sdl_display.cpp \
+	scene_storage_sdl.cpp
 
 ROOT := $(abspath ..)
 DOCKER ?= docker

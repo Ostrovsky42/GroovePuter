@@ -2,7 +2,7 @@
 #include <cstdio>
 #include "../ui_colors.h"
 
-ModePage::ModePage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
+ModePage::ModePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
 }
 

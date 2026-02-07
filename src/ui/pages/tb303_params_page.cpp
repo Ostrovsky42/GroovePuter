@@ -1,12 +1,13 @@
 #if defined(ARDUINO)
 #include <Arduino.h>
 #else
-#include "../../platform_sdl/arduino_compat.h"
+#include "../../../platform_sdl/arduino_compat.h"
 #endif
 #include "tb303_params_page.h"
-
 #include "../ui_common.h"
 #include "../ui_utils.h"
+#include "../../debug_log.h"
+#include "../key_normalize.h"
 
 #include <algorithm>
 #include <cctype>
@@ -187,7 +188,7 @@ class TB303ParamsPage::LabelValueComponent : public FocusableComponent {
   IGfxColor focus_color_;
 };
 
-TB303ParamsPage::TB303ParamsPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard, int voice_index)
+TB303ParamsPage::TB303ParamsPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index)
     : gfx_(gfx),
       mini_acid_(mini_acid),
       audio_guard_(audio_guard),
@@ -439,11 +440,10 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
   }
 
   if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta) {
-    const char* patternKeys = "qwertyui";
-    const char* found = std::strchr(patternKeys, lowerKey);
-    if (found) {
-      int idx = static_cast<int>(found - patternKeys);
-      withAudioGuard([&]() { mini_acid_.set303PatternIndex(voice_index_, idx); });
+    int patIdx = qwertyToPatternIndex(lowerKey);
+    if (patIdx >= 0) {
+      LOG_DEBUG_UI("303 Pattern Select: %d", patIdx);
+      withAudioGuard([&]() { mini_acid_.set303PatternIndex(voice_index_, patIdx); });
       return true;
     }
   }

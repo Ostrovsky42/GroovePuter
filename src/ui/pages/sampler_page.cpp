@@ -38,7 +38,7 @@ class SamplerPage::LabelValueComponent : public FocusableComponent {
   IGfxColor value_color_;
 };
 
-SamplerPage::SamplerPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
+SamplerPage::SamplerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     : gfx_(gfx), mini_acid_(mini_acid), audio_guard_(audio_guard) {
 }
 

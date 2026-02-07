@@ -1,6 +1,17 @@
 #include "pattern_generator.h"
 #include <stdlib.h>
-#include <Arduino.h> // For random(), millis() if needed, or just standard rand()
+
+#if defined(ARDUINO)
+#include <Arduino.h>
+#else
+#include "../../platform_sdl/arduino_compat.h"
+#ifndef PROGMEM
+#define PROGMEM
+#endif
+#ifndef pgm_read_byte
+#define pgm_read_byte(addr) (*(const uint8_t*)(addr))
+#endif
+#endif
 
 // Use standard C rand() for predictable portable behavior if needed, 
 // or Arduino random(). We'll use rand() to match the user's snippet style

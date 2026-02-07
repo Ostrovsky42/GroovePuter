@@ -4,12 +4,6 @@
 #include <utility>
 #include "../ui_common.h"
 
-#ifndef USE_RETRO_THEME
-#define USE_RETRO_THEME
-#endif
-#ifndef USE_AMBER_THEME
-#define USE_AMBER_THEME
-#endif
 #include "../retro_ui_theme.h"
 #include "../retro_widgets.h"
 #include "../amber_ui_theme.h"
@@ -20,6 +14,8 @@
 #include "../help_dialog_frames.h"
 #include "../components/bank_selection_bar.h"
 #include "../components/pattern_selection_bar.h"
+#include "../../debug_log.h"
+#include "../key_normalize.h"
 
 #ifdef USE_RETRO_THEME
 using namespace RetroTheme;
@@ -40,7 +36,7 @@ inline IGfxColor amberVoiceColor(int voiceIndex) {
 }
 } // namespace
 
-PatternEditPage::PatternEditPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard, int voice_index)
+PatternEditPage::PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index)
   : gfx_(gfx),
     mini_acid_(mini_acid),
     audio_guard_(audio_guard),
@@ -92,17 +88,7 @@ int PatternEditPage::activeBankCursor() const {
 }
 
 int PatternEditPage::patternIndexFromKey(char key) const {
-  switch (std::tolower(static_cast<unsigned char>(key))) {
-    case 'q': return 0;
-    case 'w': return 1;
-    case 'e': return 2;
-    case 'r': return 3;
-    case 't': return 4;
-    case 'y': return 5;
-    case 'u': return 6;
-    case 'i': return 7;
-    default: return -1;
-  }
+  return qwertyToPatternIndex(key);
 }
 
 int PatternEditPage::bankIndexFromKey(char key) const {
@@ -298,7 +284,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
                 mini_acid_.clear303StepNote(voice_index_, i);
               }
             } else if (current_note < 0) {
-              int delta = target_note - GroovePuter::kMin303Note;
+              int delta = target_note - MiniAcid::kMin303Note;
               if (delta == 0) {
                 mini_acid_.adjust303StepNote(voice_index_, i, 1);
                 mini_acid_.adjust303StepNote(voice_index_, i, -1);
@@ -323,16 +309,16 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
             // Direct access via friend or adding setter? 
             // Better to use a setter or just brute force setting via pattern reference if possible?
             // SceneManager returns reference via editCurrentSynthPattern?
-            // GroovePuter does not expose editSynthPattern directly.
+            // MiniAcid does not expose editSynthPattern directly.
             // But we can use the cycle/adjust methods or just add a setStep method?
-            // Actually, we can just use the scene manager via GroovePuter if we want to bypass helper.
+            // Actually, we can just use the scene manager via MiniAcid if we want to bypass helper.
             // But for now, let's assume we need to update FX manually or add a setter.
             // Let's add set303StepFx(idx, step, fx, param) later? 
-            // Or since we are in PatternEditPage which includes Scenes.h and GroovePuter has SceneManager accessor:
+            // Or since we are in PatternEditPage which includes Scenes.h and MiniAcid has SceneManager accessor:
             // mini_acid_.sceneManager().editCurrentSynthPattern(clamp303Voice(voice_index_)).steps[i] = src.steps[i];
             // But we need to be careful about thread safety (AudioGuard is used here).
             // Yes, we are inside withAudioGuard.
-            // But we need 'editCurrentSynthPattern' which is private in GroovePuter?
+            // But we need 'editCurrentSynthPattern' which is private in MiniAcid?
             // No, sceneManager() returns SceneManager&. SceneManager has editCurrentSynthPattern?
             // Let's check SceneManager.
             // For now, simplest is to just set note/acc/slide and leave FX until we have a setter?
@@ -418,6 +404,10 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   // Q-I Pattern Selection (Standardized) - PRIORITIZED
   if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
     int patternIdx = patternIndexFromKey(lowerKey);
+    if (patternIdx < 0) {
+        patternIdx = scancodeToPatternIndex(ui_event.scancode);
+    }
+    
     if (patternIdx >= 0) {
       if (mini_acid_.songModeEnabled()) return true;
       focusPatternRow();
@@ -483,80 +473,79 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     }
   };
 
-  switch (lowerKey) {
-    case 's': {
-      ensureStepFocusAndCursor();
-      int step = activePatternStep();
-      if (ui_event.alt) {
-        withAudioGuard([&]() { mini_acid_.toggle303SlideStep(voice_index_, step); });
-      } else {
-        withAudioGuard([&]() { mini_acid_.adjust303StepOctave(voice_index_, step, 1); });
-      }
-      return true;
+  bool key_a = (lowerKey == 'a') || (ui_event.scancode == GROOVEPUTER_A);
+  bool key_s = (lowerKey == 's') || (ui_event.scancode == GROOVEPUTER_S);
+  bool key_z = (lowerKey == 'z') || (ui_event.scancode == GROOVEPUTER_Z);
+  bool key_x = (lowerKey == 'x') || (ui_event.scancode == GROOVEPUTER_X);
+  bool key_g = (lowerKey == 'g') || (ui_event.scancode == GROOVEPUTER_G);
+  bool key_f = (lowerKey == 'f') || (ui_event.scancode == GROOVEPUTER_F);
+  bool key_c = (lowerKey == 'c') || (ui_event.scancode == GROOVEPUTER_C);
+  bool key_v = (lowerKey == 'v') || (ui_event.scancode == GROOVEPUTER_V);
+  bool key_r = (lowerKey == 'r') || (ui_event.scancode == GROOVEPUTER_R);
+
+  if (key_s) {
+    ensureStepFocusAndCursor();
+    int step = activePatternStep();
+    if (ui_event.alt) {
+      withAudioGuard([&]() { mini_acid_.toggle303SlideStep(voice_index_, step); });
+    } else {
+      withAudioGuard([&]() { mini_acid_.adjust303StepOctave(voice_index_, step, 1); });
     }
-    case 'a': {
-      ensureStepFocusAndCursor();
-      int step = activePatternStep();
-      if (ui_event.alt) {
-        withAudioGuard([&]() { mini_acid_.toggle303AccentStep(voice_index_, step); });
-      } else {
-        withAudioGuard([&]() { mini_acid_.adjust303StepNote(voice_index_, step, 1); });
-      }
-      return true;
+    return true;
+  }
+  if (key_a) {
+    ensureStepFocusAndCursor();
+    int step = activePatternStep();
+    if (ui_event.alt) {
+      withAudioGuard([&]() { mini_acid_.toggle303AccentStep(voice_index_, step); });
+    } else {
+      withAudioGuard([&]() { mini_acid_.adjust303StepNote(voice_index_, step, 1); });
     }
-    case 'z': {
-      ensureStepFocusAndCursor();
-      int step = activePatternStep();
-      withAudioGuard([&]() { mini_acid_.adjust303StepNote(voice_index_, step, -1); });
-      return true;
-    }
-    
-    case 'x': {
-      ensureStepFocusAndCursor();
-      int step = activePatternStep();
-      withAudioGuard([&]() { mini_acid_.adjust303StepOctave(voice_index_, step, -1); });
-      return true;
-    }
-    case 'g': {
-      withAudioGuard([&]() { mini_acid_.randomize303Pattern(voice_index_); });
-      return true;
-    }
-    case 'f': {
-      ensureStepFocus();
-      int step = activePatternStep();
-      withAudioGuard([&]() { mini_acid_.cycle303StepFx(voice_index_, step); });
-      return true;
-    }
-    case 'c': {
-      if (ui_event.ctrl) {
-        ApplicationEventType type = GROOVEPUTER_APP_EVENT_COPY;
-        UIEvent appEvent = ui_event;
-        appEvent.event_type = GROOVEPUTER_APPLICATION_EVENT;
-        appEvent.app_event_type = type;
-        handleEvent(appEvent);
-        return true;
-      }
-      break;
-    }
-    case 'v': {
-      if (ui_event.ctrl) {
-        ApplicationEventType type = GROOVEPUTER_APP_EVENT_PASTE;
-        UIEvent appEvent = ui_event;
-        appEvent.event_type = GROOVEPUTER_APPLICATION_EVENT;
-        appEvent.app_event_type = type;
-        handleEvent(appEvent);
-        return true;
-      }
-      break;
-    }
-    case 'r': { // R for REST
-      ensureStepFocusAndCursor();
-      int step = activePatternStep();
-      withAudioGuard([&]() { mini_acid_.clear303Step(step, voice_index_); }); // Clean rest (clear all flags)
-      return true;
-    }
-    default:
-      break;
+    return true;
+  }
+  if (key_z) {
+    ensureStepFocusAndCursor();
+    int step = activePatternStep();
+    withAudioGuard([&]() { mini_acid_.adjust303StepNote(voice_index_, step, -1); });
+    return true;
+  }
+  if (key_x) {
+    ensureStepFocusAndCursor();
+    int step = activePatternStep();
+    withAudioGuard([&]() { mini_acid_.adjust303StepOctave(voice_index_, step, -1); });
+    return true;
+  }
+  if (key_g) {
+    withAudioGuard([&]() { mini_acid_.randomize303Pattern(voice_index_); });
+    return true;
+  }
+  if (key_f) {
+    ensureStepFocus();
+    int step = activePatternStep();
+    withAudioGuard([&]() { mini_acid_.cycle303StepFx(voice_index_, step); });
+    return true;
+  }
+  if (key_c && ui_event.ctrl) {
+    ApplicationEventType type = GROOVEPUTER_APP_EVENT_COPY;
+    UIEvent appEvent = ui_event;
+    appEvent.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    appEvent.app_event_type = type;
+    handleEvent(appEvent);
+    return true;
+  }
+  if (key_v && ui_event.ctrl) {
+    ApplicationEventType type = GROOVEPUTER_APP_EVENT_PASTE;
+    UIEvent appEvent = ui_event;
+    appEvent.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    appEvent.app_event_type = type;
+    handleEvent(appEvent);
+    return true;
+  }
+  if (key_r) { // R for REST
+    ensureStepFocusAndCursor();
+    int step = activePatternStep();
+    withAudioGuard([&]() { mini_acid_.clear303Step(step, voice_index_); }); // Clean rest (clear all flags)
+    return true;
   }
 
   // Alt + Backspace = Reset Pattern
@@ -583,7 +572,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
      // if (key == '\b') { ... clear note ... }
      
      // Let's keep Backspace for clearing note, but allow ESC to fall through for navigation.
-     if (key == 0x1B) return false; // Let GroovePuterDisplay handle "Back"
+     if (key == 0x1B) return false; // Let MiniAcidDisplay handle "Back"
   }
 
   if (key == '\b' || key == 0x7F) { // Backspace / Del = Clear Step (REST)
@@ -790,7 +779,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
       gfx.drawRect(slotX, contentY + 1, 16, 10, IGfxColor(GRID_MEDIUM));
     }
     
-    char c[2] = {'A' + (char)i, 0};
+    char c[2] = {static_cast<char>('A' + i), 0};
     gfx.setTextColor(sel ? IGfxColor(BG_DEEP_BLACK) : IGfxColor(TEXT_SECONDARY));
     gfx.drawText(slotX + 4, contentY + 2, c);
   }
@@ -813,7 +802,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
       gfx.drawRect(slotX, contentY + 1, 9, 10, IGfxColor(GRID_MEDIUM));
     }
     
-    char c1[2] = {'1' + (char)i, 0};
+    char c1[2] = {static_cast<char>('1' + i), 0};
     gfx.setTextColor(sel ? IGfxColor(BG_DEEP_BLACK) : IGfxColor(TEXT_SECONDARY));
     gfx.drawText(slotX + 2, contentY + 2, c1);
   }
@@ -922,8 +911,8 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
   // 5. Footer (consistent with header)
   const char* focusLabel = stepFocus ? "STEPS" : (bankFocus ? "BANK" : "PTRN");
   drawFooterBar(gfx, x, y + h - 12, w, 12, 
-                "A/Z:Note F:FX Alt+Arrows:Param", 
-                "q..i:Ptrn  TAB:Voice", 
+                "A/Z:Nt F:FX Alt+Arw:Prm", 
+                "q..i:Ptrn TAB:Vce", 
                 focusLabel);
 
   // NO scanlines - clean and readable
@@ -991,7 +980,7 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
       gfx.drawRect(slotX, contentY + 1, 16, 10, IGfxColor(AmberTheme::GRID_MEDIUM));
     }
     
-    char c[2] = {'A' + (char)i, 0};
+    char c[2] = {static_cast<char>('A' + i), 0};
     gfx.setTextColor(sel ? IGfxColor(AmberTheme::BG_DEEP_BLACK) : IGfxColor(AmberTheme::TEXT_SECONDARY));
     gfx.drawText(slotX + 4, contentY + 2, c);
   }
@@ -1014,7 +1003,7 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
       gfx.drawRect(slotX, contentY + 1, 9, 10, IGfxColor(AmberTheme::GRID_MEDIUM));
     }
     
-    char c1[2] = {'1' + (char)i, 0};
+    char c1[2] = {static_cast<char>('1' + i), 0};
     gfx.setTextColor(sel ? IGfxColor(AmberTheme::BG_DEEP_BLACK) : IGfxColor(AmberTheme::TEXT_SECONDARY));
     gfx.drawText(slotX + 2, contentY + 2, c1);
   }

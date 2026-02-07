@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/miniacid.iml" filepath="$PROJECT_DIR$/.idea/miniacid.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/grooveputer.iml" filepath="$PROJECT_DIR$/.idea/grooveputer.iml" />
     </modules>
   </component>
 </project>

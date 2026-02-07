@@ -6,6 +6,8 @@ constexpr const char* kGlobalLines[] = {
     "=== GLOBAL ===",
     "[ / ]      Prev/Next page",
     "Alt/Ctrl+1..0  Jump to page",
+    "Alt+V/C    Voice/Color page",
+    "Alt+\\      Switch visual style",
     "Alt+M      Song mode ON/OFF",
     "Alt+W      Waveform overlay",
     "Ctrl+H     Toggle this help",
@@ -68,16 +70,19 @@ constexpr const char* kDrumLines[] = {
 };
 
 constexpr const char* kSongLines[] = {
-    "=== SONG PAGE ===",
+    "=== SONG PAGE (LOCAL) ===",
     "Arrows     Move cursor",
     "Ctrl+Arrows Select area",
-    "Q..U       Assign pattern 1..7",
+    "Q..I       Assign pattern 1..8",
     "Bksp/Tab   Clear cell",
     "M          Toggle song mode",
     "Ctrl+L     Loop mode",
     "G          Generate cell",
     "G x2       Generate row",
     "Alt+G      Generate selection",
+    "Alt+J/K    Prev/Next slot",
+    "Ctrl+R     Reverse playback",
+    "Ctrl+M/N   Merge/Alternate",
     "Alt+.      Clear full song",
 };
 

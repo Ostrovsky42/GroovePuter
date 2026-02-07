@@ -8,7 +8,7 @@
 
 class SongPage : public IPage, public IMultiHelpFramesProvider {
  public:
-  SongPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard);
+  SongPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string & getTitle() const override;
@@ -17,7 +17,14 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   void drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const override;
 
   void setScrollToPlayhead(int playhead);
+  void setVisualStyle(::VisualStyle style) override { visual_style_ = style; }
+  ::VisualStyle getVisualStyle() const { return visual_style_; }
+
  private:
+  void drawMinimalStyle(IGfx& gfx);
+  void drawRetroClassicStyle(IGfx& gfx);
+  void drawAmberStyle(IGfx& gfx);
+  void drawTEGridStyle(IGfx& gfx);
   void initModeButton(int x, int y, int w, int h);
   int clampCursorRow(int row) const;
   int cursorRow() const;
@@ -37,6 +44,12 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   void clearSelection();
   void updateLoopRangeFromSelection();
   void getSelectionBounds(int& min_row, int& max_row, int& min_track, int& max_track) const;
+  int visibleTrackCount() const;
+  int maxEditableTrackColumn() const;
+  const char* laneShortLabel() const;
+  SongTrack thirdLaneTrack() const;
+  bool hasVoiceDataInSlot(int slot) const;
+  bool hasVoiceDataInActiveSlot() const;
   SongTrack trackForColumn(int col, bool& valid) const;
   int bankIndexForTrack(SongTrack track) const;
   int patternIndexFromKey(char key) const;
@@ -48,7 +61,7 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   bool toggleLoopMode();
 
   IGfx& gfx_;
-  GroovePuter& mini_acid_;
+  MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
   int cursor_row_;
   int cursor_track_;
@@ -65,9 +78,13 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   bool show_genre_hint_;
   uint32_t hint_timer_;
   uint32_t last_g_press_ = 0; // For double-tap detection
+  bool voice_lane_visible_ = false;  // false: DR on col 3, true: VO on col 3
+  bool split_compare_ = false;       // show other slot read-only on right side
 
   bool generateCurrentCellPattern();
   void generateEntireRow();
   void cycleGeneratorMode();
   void drawGeneratorHint(IGfx& gfx);
+
+  ::VisualStyle visual_style_ = ::VisualStyle::MINIMAL;
 };

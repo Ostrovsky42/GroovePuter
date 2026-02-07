@@ -1,6 +1,13 @@
 #include "drum_sequencer_grid.h"
+#include "../retro_widgets.h"
+#include "../amber_widgets.h"
+#include "../retro_ui_theme.h"
+#include "../amber_ui_theme.h"
 
-DrumSequencerGridComponent::DrumSequencerGridComponent(GroovePuter& mini_acid, Callbacks callbacks)
+namespace retro = RetroWidgets;
+namespace amber = AmberWidgets;
+
+DrumSequencerGridComponent::DrumSequencerGridComponent(MiniAcid& mini_acid, Callbacks callbacks)
     : mini_acid_(mini_acid), callbacks_(std::move(callbacks)) {}
 
 bool DrumSequencerGridComponent::handleEvent(UIEvent& ui_event) {
@@ -33,6 +40,20 @@ void DrumSequencerGridComponent::draw(IGfx& gfx) {
   GridLayout layout{};
   if (!computeLayout(layout)) return;
 
+  switch (style_) {
+    case GrooveboxStyle::RETRO_CLASSIC:
+      drawRetroClassicStyle(gfx, layout);
+      break;
+    case GrooveboxStyle::AMBER:
+      drawAmberStyle(gfx, layout);
+      break;
+    default:
+      drawMinimalStyle(gfx, layout);
+      break;
+  }
+}
+
+void DrumSequencerGridComponent::drawMinimalStyle(IGfx& gfx, const GridLayout& layout) {
   const char* voiceLabels[NUM_DRUM_VOICES] = {"BD", "SD", "CH", "OH", "MT", "HT", "RS", "CP"};
   for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
     int labelStripeH = layout.stripe_h;
@@ -99,40 +120,140 @@ void DrumSequencerGridComponent::draw(IGfx& gfx) {
   }
 }
 
+void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayout& layout) {
+    const char* voiceLabels[NUM_DRUM_VOICES] = {"BD", "SD", "CH", "OH", "MT", "HT", "RS", "CP"};
+    for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
+        int ly = layout.grid_y + v * layout.stripe_h + (layout.stripe_h - gfx.fontHeight()) / 2;
+        gfx.setTextColor(IGfxColor(RetroTheme::TEXT_SECONDARY));
+        gfx.drawText(layout.bounds_x, ly, voiceLabels[v]);
+    }
+
+    int cursorStep = callbacks_.cursorStep ? callbacks_.cursorStep() : 0;
+    int cursorVoice = callbacks_.cursorVoice ? callbacks_.cursorVoice() : 0;
+    bool gridFocus = callbacks_.gridFocused ? callbacks_.gridFocused() : false;
+    int highlight = callbacks_.currentStep ? callbacks_.currentStep() : 0;
+    const bool* accentSteps = mini_acid_.patternDrumAccentSteps();
+
+    const bool* hits[NUM_DRUM_VOICES] = {
+        mini_acid_.patternKickSteps(), mini_acid_.patternSnareSteps(),
+        mini_acid_.patternHatSteps(), mini_acid_.patternOpenHatSteps(),
+        mini_acid_.patternMidTomSteps(), mini_acid_.patternHighTomSteps(),
+        mini_acid_.patternRimSteps(), mini_acid_.patternClapSteps()
+    };
+
+    for (int i = 0; i < SEQ_STEPS; ++i) {
+        int cx = layout.grid_x + i * layout.cell_w;
+        IGfxColor fill = accentSteps[i] ? IGfxColor(RetroTheme::STATUS_ACCENT) : IGfxColor(RetroTheme::BG_DARK_GRAY);
+        gfx.fillRect(cx, layout.accent_y, layout.cell_w - 1, layout.accent_h, fill);
+        gfx.drawRect(cx, layout.accent_y, layout.cell_w - 1, layout.accent_h, IGfxColor(RetroTheme::GRID_DIM));
+        if (highlight == i) {
+            retro::drawGlowBorder(gfx, cx, layout.accent_y, layout.cell_w - 1, layout.accent_h, IGfxColor(RetroTheme::STATUS_PLAYING), 1);
+        }
+    }
+
+    for (int i = 0; i < SEQ_STEPS; ++i) {
+        int cx = layout.grid_x + i * layout.cell_w;
+        for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
+            int cy = layout.grid_y + v * layout.stripe_h;
+            bool hit = hits[v][i];
+            IGfxColor fill = hit ? IGfxColor(RetroTheme::NEON_CYAN) : IGfxColor(RetroTheme::BG_PANEL);
+            if (!hit && (i % 4 == 0)) fill = IGfxColor(RetroTheme::BG_DARK_GRAY);
+
+            gfx.fillRect(cx, cy, layout.cell_w - 1, layout.stripe_h - 1, fill);
+            gfx.drawRect(cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(RetroTheme::GRID_DIM));
+
+            if (highlight == i) {
+                retro::drawGlowBorder(gfx, cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(RetroTheme::STATUS_PLAYING), 1);
+            }
+            if (gridFocus && i == cursorStep && v == cursorVoice) {
+                gfx.drawRect(cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(RetroTheme::SELECT_BRIGHT));
+            }
+        }
+    }
+}
+
+void DrumSequencerGridComponent::drawAmberStyle(IGfx& gfx, const GridLayout& layout) {
+    const char* voiceLabels[NUM_DRUM_VOICES] = {"BD", "SD", "CH", "OH", "MT", "HT", "RS", "CP"};
+    for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
+        int ly = layout.grid_y + v * layout.stripe_h + (layout.stripe_h - gfx.fontHeight()) / 2;
+        gfx.setTextColor(IGfxColor(AmberTheme::TEXT_SECONDARY));
+        gfx.drawText(layout.bounds_x, ly, voiceLabels[v]);
+    }
+
+    int cursorStep = callbacks_.cursorStep ? callbacks_.cursorStep() : 0;
+    int cursorVoice = callbacks_.cursorVoice ? callbacks_.cursorVoice() : 0;
+    bool gridFocus = callbacks_.gridFocused ? callbacks_.gridFocused() : false;
+    int highlight = callbacks_.currentStep ? callbacks_.currentStep() : 0;
+    const bool* accentSteps = mini_acid_.patternDrumAccentSteps();
+
+    const bool* hits[NUM_DRUM_VOICES] = {
+        mini_acid_.patternKickSteps(), mini_acid_.patternSnareSteps(),
+        mini_acid_.patternHatSteps(), mini_acid_.patternOpenHatSteps(),
+        mini_acid_.patternMidTomSteps(), mini_acid_.patternHighTomSteps(),
+        mini_acid_.patternRimSteps(), mini_acid_.patternClapSteps()
+    };
+
+    for (int i = 0; i < SEQ_STEPS; ++i) {
+        int cx = layout.grid_x + i * layout.cell_w;
+        IGfxColor fill = accentSteps[i] ? IGfxColor(AmberTheme::NEON_ORANGE) : IGfxColor(AmberTheme::BG_DARK_GRAY);
+        gfx.fillRect(cx, layout.accent_y, layout.cell_w - 1, layout.accent_h, fill);
+        gfx.drawRect(cx, layout.accent_y, layout.cell_w - 1, layout.accent_h, IGfxColor(AmberTheme::GRID_DIM));
+        if (highlight == i) {
+            amber::drawGlowBorder(gfx, cx, layout.accent_y, layout.cell_w - 1, layout.accent_h, IGfxColor(AmberTheme::STATUS_PLAYING), 1);
+        }
+    }
+
+    for (int i = 0; i < SEQ_STEPS; ++i) {
+        int cx = layout.grid_x + i * layout.cell_w;
+        for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
+            int cy = layout.grid_y + v * layout.stripe_h;
+            bool hit = hits[v][i];
+            IGfxColor fill = hit ? IGfxColor(AmberTheme::NEON_CYAN) : IGfxColor(AmberTheme::BG_PANEL);
+            if (!hit && (i % 4 == 0)) fill = IGfxColor(AmberTheme::BG_DARK_GRAY);
+
+            gfx.fillRect(cx, cy, layout.cell_w - 1, layout.stripe_h - 1, fill);
+            gfx.drawRect(cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(AmberTheme::GRID_DIM));
+
+            if (highlight == i) {
+                amber::drawGlowBorder(gfx, cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(AmberTheme::STATUS_PLAYING), 1);
+            }
+            if (gridFocus && i == cursorStep && v == cursorVoice) {
+                gfx.drawRect(cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(AmberTheme::SELECT_BRIGHT));
+            }
+        }
+    }
+}
+
 bool DrumSequencerGridComponent::computeLayout(GridLayout& layout) const {
   const Rect& bounds = getBoundaries();
+  if (bounds.w <= 0 || bounds.h <= 0) return false;
+
   layout.bounds_x = bounds.x;
   layout.bounds_y = bounds.y;
   layout.bounds_w = bounds.w;
   layout.bounds_h = bounds.h;
-  if (layout.bounds_w <= 0 || layout.bounds_h <= 0) return false;
 
-  int label_w = 18;
-  layout.grid_x = layout.bounds_x + label_w;
-  layout.grid_y = layout.bounds_y;
-  layout.grid_w = layout.bounds_w - label_w;
-  layout.grid_h = layout.bounds_h;
-  if (layout.grid_w < 8) layout.grid_w = 8;
+  layout.cell_w = bounds.w / SEQ_STEPS;
+  if (layout.cell_w < 1) layout.cell_w = 1;
 
-  layout.cell_w = layout.grid_w / SEQ_STEPS;
-  if (layout.cell_w < 2) return false;
-  layout.accent_h = 4;
+  layout.accent_h = 6; 
   layout.accent_gap = 2;
-  if (layout.bounds_h < (NUM_DRUM_VOICES * 3 + layout.accent_h + layout.accent_gap)) {
-    layout.accent_h = 3;
-    layout.accent_gap = 1;
-  }
-  layout.accent_y = layout.bounds_y;
+  
+  layout.grid_x = bounds.x;
+  int available_h = bounds.h - (layout.accent_h + layout.accent_gap);
+  layout.stripe_h = available_h / NUM_DRUM_VOICES;
+  if (layout.stripe_h < 1) layout.stripe_h = 1;
+
+  layout.accent_y = bounds.y;
+  layout.grid_y = bounds.y + layout.accent_h + layout.accent_gap;
+  
+  layout.grid_w = layout.cell_w * SEQ_STEPS;
+  layout.grid_h = layout.stripe_h * NUM_DRUM_VOICES;
+  
+  layout.grid_right = layout.grid_x + layout.grid_w;
+  layout.grid_bottom = layout.grid_y + layout.grid_h;
+  
   layout.accent_bottom = layout.accent_y + layout.accent_h;
 
-  layout.grid_y = layout.bounds_y + layout.accent_h + layout.accent_gap;
-  layout.grid_h = layout.bounds_h - (layout.accent_h + layout.accent_gap);
-  if (layout.grid_h < NUM_DRUM_VOICES * 3) return false;
-
-  layout.stripe_h = layout.grid_h / NUM_DRUM_VOICES;
-  if (layout.stripe_h < 3) layout.stripe_h = 3;
-
-  layout.grid_right = layout.grid_x + layout.cell_w * SEQ_STEPS;
-  layout.grid_bottom = layout.grid_y + layout.stripe_h * NUM_DRUM_VOICES;
   return true;
 }

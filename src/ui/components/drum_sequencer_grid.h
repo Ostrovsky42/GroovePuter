@@ -2,7 +2,7 @@
 
 #include "../ui_core.h"
 #include "../ui_colors.h"
-#include "../../dsp/grooveputer_engine.h"
+#include "../../dsp/miniacid_engine.h"
 #include <functional>
 
 /**
@@ -22,10 +22,11 @@ class DrumSequencerGridComponent : public Component {
     std::function<int()> currentStep;
   };
 
-  DrumSequencerGridComponent(GroovePuter& mini_acid, Callbacks callbacks);
+  DrumSequencerGridComponent(MiniAcid& mini_acid, Callbacks callbacks);
 
   bool handleEvent(UIEvent& ui_event) override;
   void draw(IGfx& gfx) override;
+  void setStyle(GrooveboxStyle style) { style_ = style; }
 
  private:
   struct GridLayout {
@@ -47,8 +48,13 @@ class DrumSequencerGridComponent : public Component {
     int accent_gap = 0;
   };
 
+  void drawMinimalStyle(IGfx& gfx, const GridLayout& layout);
+  void drawRetroClassicStyle(IGfx& gfx, const GridLayout& layout);
+  void drawAmberStyle(IGfx& gfx, const GridLayout& layout);
+
   bool computeLayout(GridLayout& layout) const;
 
-  GroovePuter& mini_acid_;
+  MiniAcid& mini_acid_;
   Callbacks callbacks_;
+  GrooveboxStyle style_ = GrooveboxStyle::MINIMAL_DARK;
 };

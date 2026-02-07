@@ -137,7 +137,7 @@ struct GenreState {
 };
 
 // Forward declaration
-class GroovePuter;
+class MiniAcid;
 
 // === GENRE MANAGER ===
 class GenreManager {
@@ -208,10 +208,10 @@ public:
     static TextureMode nextAllowedTexture(GenerativeMode genre, TextureMode current, int direction = 1);
     
     // Apply texture to engine (implemented in cpp)
-    void applyTexture(GroovePuter& engine);
+    void applyTexture(MiniAcid& engine);
     
     // Apply genre timbre (base synthesis params) to engine
-    void applyGenreTimbre(GroovePuter& engine);
+    void applyGenreTimbre(MiniAcid& engine);
     
     // Reset bias tracking (call on engine reset or scene load)
     void resetTextureBiasTracking() {

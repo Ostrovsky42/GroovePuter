@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../ui_core.h"
-#include "../../dsp/grooveputer_engine.h"
+#include "../../dsp/miniacid_engine.h"
 #include "../layout_manager.h"
 #include "../ui_widgets.h"
 #include <cstddef>
@@ -10,9 +10,11 @@ class GenrePage : public IPage {
 public:
     enum class FocusArea { GENRE, TEXTURE, PRESETS, APPLY_MODE };
     
-    GenrePage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard);
+    GenrePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
     
-    void draw(IGfx& gfx) override;
+    void drawHeader(IGfx& gfx) override;
+    void drawContent(IGfx& gfx) override;
+    void drawFooter(IGfx& gfx) override;
     bool handleEvent(UIEvent& ui_event) override;
     const std::string& getTitle() const override { return title_; }
     
@@ -21,7 +23,7 @@ public:
     VisualStyle getVisualStyle() const { return visualStyle_; }
     
 private:
-    GroovePuter& mini_acid_;
+    MiniAcid& mini_acid_;
     AudioGuard audio_guard_;
     std::string title_ = "GENRE";
     FocusArea focus_ = FocusArea::GENRE;

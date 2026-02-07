@@ -100,7 +100,7 @@ namespace {
     }
 }
 
-SettingsPage::SettingsPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard& audio_guard) 
+SettingsPage::SettingsPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard) 
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
     (void)gfx;
 }

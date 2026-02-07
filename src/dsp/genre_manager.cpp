@@ -1,5 +1,5 @@
 #include "genre_manager.h"
-#include "grooveputer_engine.h"
+#include "miniacid_engine.h"
 
 // ============================================================================
 // PRESET TABLE DEFINITIONS (single copy, in flash)
@@ -114,7 +114,7 @@ TextureMode GenreManager::nextAllowedTexture(GenerativeMode genre, TextureMode c
     return firstAllowedTexture(genre);
 }
 
-void GenreManager::applyGenreTimbre(GroovePuter& engine) {
+void GenreManager::applyGenreTimbre(MiniAcid& engine) {
     const GenreBehavior b = getBehavior();
     const GenreTimbre& t = b.timbre;
 
@@ -168,7 +168,7 @@ void GenreManager::applyGenreTimbre(GroovePuter& engine) {
 }
 
 
-void GenreManager::applyTexture(GroovePuter& engine) {
+void GenreManager::applyTexture(MiniAcid& engine) {
     const TextureParams& params = getTextureParams();
     const float amount = clamp01(engine.sceneManager().currentScene().genre.textureAmount / 100.0f);
     

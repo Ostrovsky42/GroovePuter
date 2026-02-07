@@ -6,7 +6,7 @@
 
 class ProjectPage : public IPage{
  public:
-  ProjectPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard);
+  ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string & getTitle() const override;
@@ -37,7 +37,7 @@ class ProjectPage : public IPage{
   void updateFromEngine();
 
   IGfx& gfx_;
-  GroovePuter& mini_acid_;
+  MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
   MainFocus main_focus_;
   DialogType dialog_type_;

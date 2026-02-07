@@ -212,7 +212,7 @@ arduino-cli compile --show-properties | grep USE_RETRO_THEME
 ### Статическое переключение при запуске
 
 ```cpp
-// В GroovePuterDisplay::GroovePuterDisplay()
+// В MiniAcidDisplay::MiniAcidDisplay()
 auto genre = std::make_unique<GenrePage>(gfx, mini_acid, audio_guard);
 
 #ifdef HARDWARE_REV_2  // Более мощное железо
@@ -251,5 +251,5 @@ class SettingsPage {
 
 ---
 
-**Создано для GroovePuter Sequencer**  
+**Создано для MiniAcid Sequencer**  
 *Простой код + красивая графика = профессиональный инструмент* 🎹✨

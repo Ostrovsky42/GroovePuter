@@ -1,15 +1,9 @@
-#ifndef USE_RETRO_THEME
-#define USE_RETRO_THEME          // включаем ретро‑тему проектно
-#endif
-#ifndef USE_AMBER_THEME
-#define USE_AMBER_THEME
-#endif
-
 #include "genre_page.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
 #include <cstdio>
 #include <cstdlib>
+#include "../../debug_log.h"
 
 // Optional: Include retro theme for RETRO_CLASSIC style
 #ifdef USE_RETRO_THEME
@@ -33,23 +27,23 @@ namespace {
 constexpr int kGenreVisibleRows = 4;
 constexpr int kTextureVisibleRows = 4;
 
-const char* applyModeShort(const GroovePuter& mini) {
+const char* applyModeShort(const MiniAcid& mini) {
     return mini.sceneManager().currentScene().genre.regenerateOnApply ? "S+P" : "SND";
 }
 
-const char* applyModeLong(const GroovePuter& mini) {
+const char* applyModeLong(const MiniAcid& mini) {
     return mini.sceneManager().currentScene().genre.regenerateOnApply ? "[X] SOUND+PATTERN" : "[ ] SOUND ONLY";
 }
 
-const char* curatedModeShort(const GroovePuter& mini) {
+const char* curatedModeShort(const MiniAcid& mini) {
     return mini.sceneManager().currentScene().genre.curatedMode ? "CUR" : "ADV";
 }
 
-const char* grooveModeShort(const GroovePuter& mini) {
+const char* grooveModeShort(const MiniAcid& mini) {
     return mini.grooveboxMode() == GrooveboxMode::Acid ? "ACD" : "MIN";
 }
 
-bool regenOnApply(const GroovePuter& mini) {
+bool regenOnApply(const MiniAcid& mini) {
     return mini.sceneManager().currentScene().genre.regenerateOnApply;
 }
 
@@ -95,7 +89,7 @@ const char* GenrePage::presetNames[8] = {
     "TRIPHOP DUST", "BROKEN BEAT"
 };
 
-GenrePage::GenrePage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
+GenrePage::GenrePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
     (void)gfx;
     visualStyle_ = UI::currentStyle;
@@ -106,8 +100,44 @@ GenrePage::GenrePage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
 // MAIN DRAW: STYLE DISPATCHER
 // =================================================================
 
-void GenrePage::draw(IGfx& gfx) {
-    switch (UI::currentStyle) {
+void GenrePage::drawHeader(IGfx& gfx) {
+    char titleStr[32];
+    std::snprintf(titleStr, sizeof(titleStr), "%s/%s",
+                  genreNames[genreIndex_], textureNames[textureIndex_]);
+
+    switch (visualStyle_) {
+        case VisualStyle::RETRO_CLASSIC:
+#ifdef USE_RETRO_THEME
+            RetroWidgets::drawHeaderBar(gfx, 0, 0, 240, 14,
+                          "GENRE", titleStr,
+                          mini_acid_.isPlaying(),
+                          (int)(mini_acid_.bpm() + 0.5f),
+                          mini_acid_.currentStep());
+#else
+            UI::drawStandardHeader(gfx, mini_acid_, titleStr);
+#endif
+            break;
+        case VisualStyle::AMBER:
+#ifdef USE_AMBER_THEME
+            AmberWidgets::drawHeaderBar(gfx, 0, 0, 240, 14,
+                          "GENRE", titleStr,
+                          mini_acid_.isPlaying(),
+                          (int)(mini_acid_.bpm() + 0.5f),
+                          mini_acid_.currentStep());
+#else
+            UI::drawStandardHeader(gfx, mini_acid_, titleStr);
+#endif
+            break;
+        case VisualStyle::MINIMAL:
+        default:
+            UI::drawStandardHeader(gfx, mini_acid_, titleStr);
+            UI::drawFeelHeaderHud(gfx, mini_acid_, 166, 9);
+            break;
+    }
+}
+
+void GenrePage::drawContent(IGfx& gfx) {
+    switch (visualStyle_) {
         case VisualStyle::RETRO_CLASSIC:
             drawRetroClassicStyle(gfx);
             break;
@@ -121,19 +151,60 @@ void GenrePage::draw(IGfx& gfx) {
     }
 }
 
+void GenrePage::drawFooter(IGfx& gfx) {
+    const char* left = nullptr;
+    const char* right = nullptr;
+    const char* focusMode = nullptr;
+
+    switch (focus_) {
+        case FocusArea::GENRE:
+            left = "UP/DN:Scroll  ENT:Apply";
+            right = "TAB:Texture";
+            focusMode = "GENRE";
+            break;
+        case FocusArea::TEXTURE:
+            left = "UP/DN:Scroll  ENT:Apply";
+            right = "TAB:Presets";
+            focusMode = "TEXTURE";
+            break;
+        case FocusArea::PRESETS:
+            left = "[1-8] PICK  [ENT] LOAD";
+            right = "[TAB] NEXT [M]APPLY [C]CUR";
+            focusMode = "PRESETS";
+            break;
+        case FocusArea::APPLY_MODE:
+            left = "[SPACE] TOGGLE APPLY MODE";
+            right = regenOnApply(mini_acid_) ? "S+P: REGENERATES" : "SND: KEEPS PATTERNS";
+            focusMode = "APPLY";
+            break;
+    }
+
+    switch (visualStyle_) {
+        case VisualStyle::RETRO_CLASSIC:
+#ifdef USE_RETRO_THEME
+            RetroWidgets::drawFooterBar(gfx, 0, 135 - 12, 240, 12, left, right, focusMode);
+#else
+            UI::drawStandardFooter(gfx, left, right);
+#endif
+            break;
+        case VisualStyle::AMBER:
+#ifdef USE_AMBER_THEME
+            AmberWidgets::drawFooterBar(gfx, 0, 135 - 12, 240, 12, left, right, focusMode);
+#else
+            UI::drawStandardFooter(gfx, left, right);
+#endif
+            break;
+        default:
+            UI::drawStandardFooter(gfx, left, right);
+            break;
+    }
+}
+
 // =================================================================
 // MINIMAL STYLE (Original clean 'pro 80-x' aesthetic)
 // =================================================================
 
 void GenrePage::drawMinimalStyle(IGfx& gfx) {
-    // Header: compact "GENRE/TEXTURE" (ASCII safe)
-    char genreStr[24];
-    std::snprintf(genreStr, sizeof(genreStr), "%s/%s",
-                  genreNames[genreIndex_], textureNames[textureIndex_]);
-
-    UI::drawStandardHeader(gfx, mini_acid_, genreStr);
-    UI::drawFeelHeaderHud(gfx, mini_acid_, 166, 9);
-
     // Content
     LayoutManager::clearContent(gfx);
 
@@ -208,23 +279,6 @@ void GenrePage::drawMinimalStyle(IGfx& gfx) {
         presetIndex_,
         focus_ == FocusArea::PRESETS
     );
-
-    // Footer: short, context-aware
-    const char* left = nullptr;
-    const char* right = nullptr;
-
-    if (focus_ == FocusArea::PRESETS) {
-        left  = "[1-8] PICK  [ENT] APPLY";
-        right = "[TAB] NEXT [M]APPLY [C]CUR";
-    } else if (focus_ == FocusArea::APPLY_MODE) {
-        left  = "[SPACE] TOGGLE APPLY MODE";
-        right = regenOnApply(mini_acid_) ? "S+P: REGENERATES" : "SND: KEEPS PATTERNS";
-    } else {
-        left  = "[UP/DN] SCROLL  [ENT] APPLY";
-        right = "[TAB] NEXT [M]APPLY [C]CUR";
-    }
-
-    UI::drawStandardFooter(gfx, left, right);
 }
 
 // =================================================================
@@ -233,17 +287,6 @@ void GenrePage::drawMinimalStyle(IGfx& gfx) {
 
 void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
 #ifdef USE_RETRO_THEME
-    // Header with retro theme
-    char genreStr[32];
-    std::snprintf(genreStr, sizeof(genreStr), "%s/%s",
-                  genreNames[genreIndex_], textureNames[textureIndex_]);
-    
-    drawHeaderBar(gfx, 0, 0, 240, 14,
-                  "GENRE", genreStr,
-                  mini_acid_.isPlaying(),
-                  (int)(mini_acid_.bpm() + 0.5f),
-                  mini_acid_.currentStep());
-    
     // Content area setup
     const int CONTENT_Y = 16;
     const int CONTENT_H = 135 - 16 - 12;
@@ -410,8 +453,8 @@ void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
             drawLED(gfx, btnX + 3, btnY + 3, 1, true, genreColor);
         }
         
-        uint16_t textColor = selected ? genreColor : TEXT_DIM;
-        if (focused) textColor = TEXT_PRIMARY;
+        IGfxColor textColor = selected ? genreColor : IGfxColor(RetroTheme::TEXT_DIM);
+        if (focused) textColor = IGfxColor(RetroTheme::TEXT_PRIMARY);
         
         gfx.setTextColor(textColor);
         const char* name = presetNames[i];
@@ -421,45 +464,6 @@ void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
         
         gfx.drawText(textX, btnY + 1, name);
     }
-    
-    // Footer
-    const char* leftHints = "";
-    const char* rightHints = "";
-    const char* focusMode = nullptr;
-    
-    switch (focus_) {
-        case FocusArea::GENRE:
-            leftHints = "UP/DN:Scroll  ENT:Apply";
-            rightHints = "TAB:Texture";
-            focusMode = "GENRE";
-            break;
-        case FocusArea::TEXTURE:
-            leftHints = "UP/DN:Scroll  ENT:Apply";
-            rightHints = "TAB:Presets";
-            focusMode = "TEXTURE";
-            break;
-        case FocusArea::PRESETS:
-            leftHints = "ARROWS:Navigate  ENT:Load";
-            rightHints = "TAB:Genre";
-            focusMode = "PRESETS";
-            break;
-        case FocusArea::APPLY_MODE:
-            leftHints = "SPACE:Toggle";
-            rightHints = applyModeLong(mini_acid_);
-            focusMode = "APPLY";
-            break;
-    }
-
-    char modeBuf[48];
-    std::snprintf(modeBuf, sizeof(modeBuf), "A:%s C:%s", applyModeShort(mini_acid_), curatedModeShort(mini_acid_));
-    rightHints = modeBuf;
-    if (focus_ == FocusArea::APPLY_MODE) {
-        leftHints = "SPACE:Toggle  ENT:Toggle";
-        rightHints = applyModeLong(mini_acid_);
-        focusMode = "APPLY";
-    }
-    
-    drawFooterBar(gfx, 0, 135 - 12, 240, 12, leftHints, rightHints, focusMode);
 #else
     // Fallback to minimal if retro theme not included
     drawMinimalStyle(gfx);
@@ -472,16 +476,6 @@ void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
 
 void GenrePage::drawAmberStyle(IGfx& gfx) {
 #ifdef USE_AMBER_THEME
-    char genreStr[32];
-    std::snprintf(genreStr, sizeof(genreStr), "%s/%s",
-                  genreNames[genreIndex_], textureNames[textureIndex_]);
-    
-    AmberWidgets::drawHeaderBar(gfx, 0, 0, 240, 14,
-                  "GENRE", genreStr,
-                  mini_acid_.isPlaying(),
-                  (int)(mini_acid_.bpm() + 0.5f),
-                  mini_acid_.currentStep());
-    
     const int CONTENT_Y = 16;
     const int CONTENT_H = 135 - 16 - 12;
     gfx.fillRect(0, CONTENT_Y, 240, CONTENT_H, AmberTheme::BG_DEEP_BLACK);
@@ -631,15 +625,6 @@ void GenrePage::drawAmberStyle(IGfx& gfx) {
         AmberWidgets::drawGlowBorder(gfx, fx, fy, fw, fh, AmberTheme::NEON_ORANGE, 1);
     }
     
-    char modeBuf[48];
-    std::snprintf(modeBuf, sizeof(modeBuf), "A:%s C:%s", applyModeShort(mini_acid_), curatedModeShort(mini_acid_));
-    if (focus_ == FocusArea::APPLY_MODE) {
-        std::snprintf(modeBuf, sizeof(modeBuf), "%s", applyModeLong(mini_acid_));
-    }
-    AmberWidgets::drawFooterBar(gfx, 0, 135 - 12, 240, 12,
-                                "[UP/DN]Scroll [ENT]Apply",
-                                modeBuf,
-                                "GENRE");
 #else
     drawMinimalStyle(gfx);
 #endif

@@ -10,15 +10,16 @@
 
 #include "sdl_display.h"
 #include "../cardputer_display.h"
-#include "../src/ui/grooveputer_display.h"
-#include "../src/dsp/grooveputer_engine.h"
+#include "../src/ui/miniacid_display.h"
+#include "../src/dsp/miniacid_engine.h"
 #include "../src/audio/audio_config.h"
 #include "scene_storage_sdl.h"
 #include "../src/sampler/ram_sample_store.h"
 #include "arduino_compat.h"
 
-// Define Serial instance for SDL build
+// Define Serial and SD instances for SDL build
 SerialMock Serial;
+SDMock SD;
 
 #ifndef __EMSCRIPTEN__
 #include "../src/audio/desktop_audio_recorder.h"
@@ -30,7 +31,7 @@ struct AudioContext {
   explicit AudioContext(float sampleRate) : storage(), pool(), synth(sampleRate, &storage), device(0) { synth.sampleStore = &pool; }
   SceneStorageSdl storage;
   RamSampleStore pool;
-  GroovePuter synth;
+  MiniAcid synth;
   SDL_AudioDeviceID device;
 #ifndef __EMSCRIPTEN__
   DesktopAudioRecorder recorder;
@@ -45,7 +46,7 @@ struct AppState {
   IGfx* gfx = nullptr;
   SDLDisplay* sdl = nullptr;
   CardputerDisplay* card = nullptr;
-  GroovePuterDisplay* ui = nullptr;
+  MiniAcidDisplay* ui = nullptr;
   bool running = true;
   bool cleaned_up = false;
   unsigned long lastUIUpdate = 0;
@@ -332,7 +333,7 @@ int main(int argc, char **argv) {
     state.card = new CardputerDisplay();
     state.gfx = state.card;
   } else {
-    state.sdl = new SDLDisplay(winw, winh, "GroovePuter");
+    state.sdl = new SDLDisplay(winw, winh, "MiniAcid");
     state.gfx = state.sdl;
   }
 
@@ -369,7 +370,7 @@ int main(int argc, char **argv) {
 
   SDL_PauseAudioDevice(state.audio.device, 0); // start playback
 
-  state.ui = new GroovePuterDisplay(*state.gfx, state.audio.synth);
+  state.ui = new MiniAcidDisplay(*state.gfx, state.audio.synth);
   AudioGuard guard;
   guard.lock = [](void* ctx) { SDL_LockAudioDevice((SDL_AudioDeviceID)(uintptr_t)ctx); };
   guard.unlock = [](void* ctx) { SDL_UnlockAudioDevice((SDL_AudioDeviceID)(uintptr_t)ctx); };

@@ -1,5 +1,6 @@
 #include "ArduinoJson-v7.4.2.h"
 #include "scenes.h"
+#include "src/debug_log.h"
 
 #include <memory>
 
@@ -63,7 +64,9 @@ void clearSceneData(Scene& scene) {
       clearSynthPattern(scene.synthBBanks[b].patterns[p]);
     }
   }
-  clearSong(scene.song);
+  for (int i = 0; i < 2; ++i) {
+    clearSong(scene.songs[i]);
+  }
   clearCustomPhrases(scene);
   scene.masterVolume = 0.6f;
   scene.generatorParams = GeneratorParams();
@@ -422,6 +425,8 @@ SceneJsonObserver::Path SceneJsonObserver::deduceArrayPath(const Context& parent
     return Path::SamplerPad;
   case Path::Song:
     return Path::SongPosition;
+  case Path::Songs:
+    return Path::Song;
   case Path::Root:
     return Path::CustomPhrase;
   default:
@@ -498,7 +503,10 @@ void SceneJsonObserver::onObjectStart() {
       path = deduceObjectPath(parent);
     } else if (parent.path == Path::Root || parent.path == Path::State) {
       if (lastKey_ == "state") path = Path::State;
-      else if (lastKey_ == "song") path = Path::Song;
+      else if (lastKey_ == "song") {
+         // Legacy 'song' object -> maps to songs[0] by default logic (index 0)
+         path = Path::Song; 
+      }
       else if (lastKey_ == "tape") path = Path::Tape;
       else if (lastKey_ == "feel") path = Path::Feel;
       else if (lastKey_ == "genre") path = Path::Genre;
@@ -510,6 +518,8 @@ void SceneJsonObserver::onObjectStart() {
       path = Path::Vocal;  // vocal is nested inside led in current format
     } else if (parent.path == Path::Led && lastKey_ == "samplerPads") {
       path = Path::SamplerPads; // samplerPads can be inside led in some versions
+    } else if (parent.path == Path::Songs) {
+      path = Path::Song;
     }
   }
   pushContext(Context::Type::Object, path);
@@ -535,6 +545,7 @@ void SceneJsonObserver::onArrayStart() {
         if (lastKey_ == "drumBanks") path = Path::DrumBanks;
         else if (lastKey_ == "synthABanks") path = Path::SynthABanks;
         else if (lastKey_ == "synthBBanks") path = Path::SynthBBanks;
+        else if (lastKey_ == "songs") path = Path::Songs;
         else if (lastKey_ == "samplerPads") path = Path::SamplerPads;
         else if (lastKey_ == "customPhrases") path = Path::CustomPhrases;
         else if (lastKey_ == "synthPatternIndex") path = Path::SynthPatternIndex;
@@ -546,6 +557,9 @@ void SceneJsonObserver::onArrayStart() {
         else if (lastKey_ == "bpm") path = Path::Unknown;
       } else if (parent.path == Path::Song) {
         if (lastKey_ == "positions") path = Path::SongPositions;
+      } else if (parent.path == Path::Songs) {
+        // Should not happen for array of objects? 
+        // Songs is array of Song objects. 
       } else if (parent.path == Path::Led) {
         if (lastKey_ == "clr") {
             path = Path::LedColorArray;
@@ -585,11 +599,21 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
   Path path = stack_[stackSize_ - 1].path;
   if (path == Path::Song) {
     if (lastKey_ == "length") {
+      // Determine which song slot we are in
+      int songIdx = 0;
+      if (stackSize_ >= 2 && stack_[stackSize_-2].path == Path::Songs) {
+          songIdx = stack_[stackSize_-2].index;
+      }
+      if (songIdx < 0) songIdx = 0; 
+      if (songIdx > 1) songIdx = 1;
+
       int len = static_cast<int>(value);
       if (len < 1) len = 1;
       if (len > Song::kMaxPositions) len = Song::kMaxPositions;
-      song_.length = len;
-      hasSong_ = true;
+      target_.songs[songIdx].length = len;
+      // We keep 'song_' member populated for legacy observer accessors if needed, 
+      // or just trust that everything writes to target_.songs
+      // hasSong_ = true; // Still useful?
     }
     return;
   }
@@ -645,8 +669,21 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     else if (lastKey_ == "drums") trackIdx = 2;
     else if (lastKey_ == "voice") trackIdx = 3;
     if (trackIdx >= 0 && trackIdx < SongPosition::kTrackCount) {
-      song_.positions[posIdx].patterns[trackIdx] = clampSongPatternIndex(static_cast<int>(value));
-      if (posIdx + 1 > song_.length) song_.length = posIdx + 1;
+      int songIdx = 0;
+      // stack: ..., Songs(Array), Song(Object), SongPositions(Array), SongPosition(Object)
+      // indices: ..., songIdx, -, posIdx, -
+      // Wait, check stack depth for Song
+      for(int i=stackSize_-1; i>=0; --i) {
+          if (stack_[i].path == Path::Songs) {
+              songIdx = stack_[i].index;
+              break;
+          }
+      }
+      if (songIdx < 0) songIdx = 0;
+      if (songIdx > 1) songIdx = 1;
+
+      target_.songs[songIdx].positions[posIdx].patterns[trackIdx] = clampSongPatternIndex(static_cast<int>(value));
+      if (posIdx + 1 > target_.songs[songIdx].length) target_.songs[songIdx].length = posIdx + 1;
       hasSong_ = true;
     }
     return;
@@ -785,6 +822,10 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
       drumBankIndex_ = intValue;
     } else if (lastKey_ == "synthPatternIndex") {
       synthPatternIndex_[0] = intValue;
+    } else if (lastKey_ == "activeSongSlot") {
+      target_.activeSongSlot = intValue;
+      if (target_.activeSongSlot < 0) target_.activeSongSlot = 0;
+      if (target_.activeSongSlot > 1) target_.activeSongSlot = 1;
     } else if (lastKey_ == "synthBankIndex") {
       synthBankIndex_[0] = intValue;
     }
@@ -876,6 +917,18 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
 void SceneJsonObserver::handlePrimitiveBool(bool value) {
   if (error_ || stackSize_ == 0) return;
   Path path = stack_[stackSize_ - 1].path;
+  if (path == Path::Song) {
+      if (lastKey_ == "reverse") {
+          int songIdx = 0;
+          if (stackSize_ >= 2 && stack_[stackSize_-2].path == Path::Songs) {
+              songIdx = stack_[stackSize_-2].index;
+          }
+          if (songIdx >= 0 && songIdx <= 1) {
+              target_.songs[songIdx].reverse = value;
+          }
+      }
+      return;
+  }
   if (path == Path::Feel) {
     if (lastKey_ == "lofi") target_.feel.lofiEnabled = value;
     else if (lastKey_ == "drive") target_.feel.driveEnabled = value;
@@ -1125,12 +1178,16 @@ void SceneManager::loadDefaultScene() {
   loopStartRow_ = 0;
   loopEndRow_ = 0;
   mode_ = GrooveboxMode::Acid;
-  clearSongData(scene_->song);
-  scene_->song.length = 1;
-  scene_->song.positions[0].patterns[0] = 0;
-  scene_->song.positions[0].patterns[1] = 0;
-  scene_->song.positions[0].patterns[2] = 0;
-  scene_->song.positions[0].patterns[3] = -1;
+  scene_->activeSongSlot = 0;
+  for (int i = 0; i < 2; ++i) {
+      clearSongData(scene_->songs[i]);
+      scene_->songs[i].length = 1;
+      scene_->songs[i].positions[0].patterns[0] = 0;
+      scene_->songs[i].positions[0].patterns[1] = 0;
+      scene_->songs[i].positions[0].patterns[2] = 0;
+      scene_->songs[i].positions[0].patterns[3] = -1;
+      scene_->songs[i].reverse = false;
+  }
 
   for (int b = 0; b < kBankCount; ++b) {
     for (int i = 0; i < Bank<DrumPatternSet>::kPatterns; ++i) {
@@ -1383,9 +1440,15 @@ void SceneManager::setBpm(float bpm) {
 
 float SceneManager::getBpm() const { return bpm_; }
 
-const Song& SceneManager::song() const { return scene_->song; }
+const Song& SceneManager::song() const { return scene_->songs[scene_->activeSongSlot]; }
+Song& SceneManager::editSong() { return scene_->songs[scene_->activeSongSlot]; }
 
-Song& SceneManager::editSong() { return scene_->song; }
+int SceneManager::activeSongSlot() const { return scene_->activeSongSlot; }
+void SceneManager::setActiveSongSlot(int slot) {
+  if (slot < 0) slot = 0;
+  if (slot > 1) slot = 1;
+  scene_->activeSongSlot = slot;
+}
 
 void SceneManager::setSongPattern(int position, SongTrack track, int patternIndex) {
   int pos = position;
@@ -1393,37 +1456,58 @@ void SceneManager::setSongPattern(int position, SongTrack track, int patternInde
   if (pos >= Song::kMaxPositions) pos = Song::kMaxPositions - 1;
   int trackIdx = songTrackToIndex(track);
   if (trackIdx < 0 || trackIdx >= SongPosition::kTrackCount) return;
-  int pat = clampSongPatternIndex(patternIndex);
-  if (pos >= scene_->song.length) setSongLength(pos + 1);
-  scene_->song.positions[pos].patterns[trackIdx] = static_cast<int8_t>(pat);
+  Song& s = scene_->songs[scene_->activeSongSlot];
+
+  if (pos >= s.length) {
+    s.length = clampSongLength(pos + 1);
+  }
+
+  s.positions[pos].patterns[trackIdx] = clampSongPatternIndex(patternIndex);
+  // NOTE: Do NOT clamp `position` by current song length here.
+  // It breaks multi-row write/fill when length==1 by collapsing writes to row 0.
+  // Also do NOT call trimSongLength() here.
+  // It was erasing the length we just set because it scans backwards
+  // and can shrink past positions with only partial track data.
 }
 
 void SceneManager::clearSongPattern(int position, SongTrack track) {
-  int pos = clampSongPosition(position);
+  int pos = position;
+  if (pos < 0) pos = 0;
+  if (pos >= Song::kMaxPositions) pos = Song::kMaxPositions - 1;
   int trackIdx = songTrackToIndex(track);
   if (trackIdx < 0 || trackIdx >= SongPosition::kTrackCount) return;
-  scene_->song.positions[pos].patterns[trackIdx] = -1;
-  trimSongLength();
+  scene_->songs[scene_->activeSongSlot].positions[pos].patterns[trackIdx] = -1;
+  // Trim length only when saving, not on every edit
 }
 
 int SceneManager::songPattern(int position, SongTrack track) const {
   if (position < 0 || position >= Song::kMaxPositions) return -1;
   int trackIdx = songTrackToIndex(track);
   if (trackIdx < 0 || trackIdx >= SongPosition::kTrackCount) return -1;
-  if (position >= scene_->song.length) return -1;
-  return clampSongPatternIndex(scene_->song.positions[position].patterns[trackIdx]);
+  if (position >= scene_->songs[scene_->activeSongSlot].length) return -1;
+  return clampSongPatternIndex(scene_->songs[scene_->activeSongSlot].positions[position].patterns[trackIdx]);
+}
+
+int SceneManager::songPatternAtSlot(int slot, int position, SongTrack track) const {
+  if (slot < 0 || slot > 1) return -1;
+  if (position < 0 || position >= Song::kMaxPositions) return -1;
+  int trackIdx = songTrackToIndex(track);
+  if (trackIdx < 0 || trackIdx >= SongPosition::kTrackCount) return -1;
+  const Song& s = scene_->songs[slot];
+  if (position >= s.length) return -1;
+  return clampSongPatternIndex(s.positions[position].patterns[trackIdx]);
 }
 
 void SceneManager::setSongLength(int length) {
   int clamped = clampSongLength(length);
-  scene_->song.length = clamped;
-  if (songPosition_ >= scene_->song.length) songPosition_ = scene_->song.length - 1;
+  scene_->songs[scene_->activeSongSlot].length = clamped;
+  if (songPosition_ >= scene_->songs[scene_->activeSongSlot].length) songPosition_ = scene_->songs[scene_->activeSongSlot].length - 1;
   if (songPosition_ < 0) songPosition_ = 0;
   clampLoopRange();
 }
 
 int SceneManager::songLength() const {
-  int len = scene_->song.length;
+  int len = scene_->songs[scene_->activeSongSlot].length;
   if (len < 1) len = 1;
   if (len > Song::kMaxPositions) len = Song::kMaxPositions;
   return len;
@@ -1450,6 +1534,8 @@ float SceneManager::getTrackVolume(int voiceIdx) const {
   return 1.0f;
 }
 
+
+
 void SceneManager::setSongMode(bool enabled) { songMode_ = enabled; }
 
 bool SceneManager::songMode() const { return songMode_; }
@@ -1467,6 +1553,98 @@ void SceneManager::setLoopRange(int startRow, int endRow) {
   loopStartRow_ = startRow;
   loopEndRow_ = endRow;
   clampLoopRange();
+}
+
+void SceneManager::setSongReverse(bool reverse) {
+    scene_->songs[scene_->activeSongSlot].reverse = reverse;
+}
+
+bool SceneManager::isSongReverse() const {
+    return scene_->songs[scene_->activeSongSlot].reverse;
+}
+
+void SceneManager::mergeSongs() {
+  // Merge Slot B into Slot A
+  // Rule: Target[i] = (A[i] != empty) ? A[i] : B[i]
+  // Note: If A is empty at i, we take B. If A has data, we keep A.
+  // This is a "fill gaps" merge.
+  // Merge OTHER slot into ACTIVE slot
+  int active = scene_->activeSongSlot;
+  int other = (active == 0) ? 1 : 0;
+
+  Song& a = scene_->songs[active];
+  const Song& b = scene_->songs[other];
+  int originalLen = a.length;
+  // Determine new length: max of A and B
+  int newLen = std::max(a.length, b.length);
+  if (newLen > Song::kMaxPositions) newLen = Song::kMaxPositions;
+  
+  for (int i = 0; i < newLen; ++i) {
+      bool aHasData = false;
+      for (int t = 0; t < SongPosition::kTrackCount; ++t) {
+          if (a.positions[i].patterns[t] >= 0) {
+              aHasData = true;
+              break;
+          }
+      }
+      
+      if (!aHasData && i < b.length) {
+          // A is empty at this position, try to copy from B
+          bool bHasData = false;
+           for (int t = 0; t < SongPosition::kTrackCount; ++t) {
+              if (b.positions[i].patterns[t] >= 0) {
+                  bHasData = true;
+                  break;
+              }
+           }
+           if (bHasData) {
+               a.positions[i] = b.positions[i];
+           }
+      }
+  }
+  a.length = newLen;
+  trimSongLength(); // Recalculate true length based on content
+}
+
+void SceneManager::alternateSongs() {
+    // Interleave Slot A and Slot B into Slot A
+    // Rule: Target[i] = (i % 2 == 0) ? A[i/2] : B[i/2]
+    // Wait, alternate meant interleave 1 from A, 1 from B? 
+    // "alternate: четные A, нечетные B" -> Evens from A, Odds from B.
+    // DOES NOT IMPLY 2x LENGTH.
+    // It implies taking step 0 from A, step 1 from B, step 2 from A...
+    // Let's implement that strict rule.
+    
+    // Interleave Active and Other into Active
+    int active = scene_->activeSongSlot;
+    int other = (active == 0) ? 1 : 0;
+    
+    Song& target = scene_->songs[active];
+    Song a = scene_->songs[active]; // Copy original Active
+    const Song& b = scene_->songs[other];
+    
+    int maxLen = std::max(a.length, b.length);
+    if (maxLen > Song::kMaxPositions) maxLen = Song::kMaxPositions;
+
+    for (int i = 0; i < maxLen; ++i) {
+        if (i % 2 == 0) {
+            // Even: Take from A 
+            if (i < a.length) target.positions[i] = a.positions[i];
+            else {
+                 // A out of bounds, clear or keep? strict logic says A[i].
+                 // If A ended, it's empty.
+                 for(int t=0; t<SongPosition::kTrackCount; ++t) target.positions[i].patterns[t] = -1;
+            }
+        } else {
+            // Odd: Take from B
+            if (i < b.length) target.positions[i] = b.positions[i];
+            else {
+                 for(int t=0; t<SongPosition::kTrackCount; ++t) target.positions[i].patterns[t] = -1;
+            }
+        }
+    }
+    target.length = maxLen;
+    trimSongLength();
 }
 
 int SceneManager::loopStartRow() const { return loopStartRow_; }
@@ -1515,16 +1693,23 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   serializeSynthBanks(scene_->synthABanks, synthABanks);
   ArduinoJson::JsonArray synthBBanks = root["synthBBanks"].to<ArduinoJson::JsonArray>();
   serializeSynthBanks(scene_->synthBBanks, synthBBanks);
-  ArduinoJson::JsonObject songObj = root["song"].to<ArduinoJson::JsonObject>();
-  int songLen = songLength();
-  songObj["length"] = songLen;
-  ArduinoJson::JsonArray songPositions = songObj["positions"].to<ArduinoJson::JsonArray>();
-  for (int i = 0; i < songLen; ++i) {
-    ArduinoJson::JsonObject pos = songPositions.add<ArduinoJson::JsonObject>();
-    pos["a"] = scene_->song.positions[i].patterns[0];
-    pos["b"] = scene_->song.positions[i].patterns[1];
-    pos["drums"] = scene_->song.positions[i].patterns[2];
-    pos["voice"] = scene_->song.positions[i].patterns[3];
+  ArduinoJson::JsonArray songsArr = root["songs"].to<ArduinoJson::JsonArray>();
+  for (int sIdx = 0; sIdx < 2; ++sIdx) {
+      ArduinoJson::JsonObject songObj = songsArr.add<ArduinoJson::JsonObject>();
+      const Song& s = scene_->songs[sIdx];
+      int songLen = s.length;
+      if (songLen < 1) songLen = 1;
+      if (songLen > Song::kMaxPositions) songLen = Song::kMaxPositions;
+      songObj["length"] = songLen;
+      songObj["reverse"] = s.reverse;
+      ArduinoJson::JsonArray songPositions = songObj["positions"].to<ArduinoJson::JsonArray>();
+      for (int i = 0; i < songLen; ++i) {
+        ArduinoJson::JsonObject pos = songPositions.add<ArduinoJson::JsonObject>();
+        pos["a"] = s.positions[i].patterns[0];
+        pos["b"] = s.positions[i].patterns[1];
+        pos["drums"] = s.positions[i].patterns[2];
+        pos["voice"] = s.positions[i].patterns[3];
+      }
   }
   
   ArduinoJson::JsonArray customPhrases = root["customPhrases"].to<ArduinoJson::JsonArray>();
@@ -1537,6 +1722,7 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   state["bpm"] = bpm_;
   state["songMode"] = songMode_;
   state["songPosition"] = clampSongPosition(songPosition_);
+  state["activeSongSlot"] = scene_->activeSongSlot;
   state["loopMode"] = loopMode_;
   state["loopStart"] = loopStartRow_;
   state["loopEnd"] = loopEndRow_;
@@ -1666,8 +1852,9 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
   bool synthDelay[2] = {false, false};
   SynthParameters synthParams[2] = {SynthParameters(), SynthParameters()};
   float bpm = bpm_;
-  Song loadedSong{};
-  clearSong(loadedSong);
+  Song loadedSongs[2];
+  clearSong(loadedSongs[0]);
+  clearSong(loadedSongs[1]);
   bool hasSongObj = false;
   bool songMode = songMode_;
   int songPosition = songPosition_;
@@ -1676,46 +1863,88 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
   int loopEndRow = 0;
   std::string drumEngineName = drumEngineName_;
 
-  ArduinoJson::JsonObjectConst songObj = obj["song"].as<ArduinoJson::JsonObjectConst>();
-  if (!songObj.isNull()) {
-    hasSongObj = true;
-    int length = valueToInt(songObj["length"], loadedSong.length);
-    loadedSong.length = clampSongLength(length);
-    ArduinoJson::JsonArrayConst positions = songObj["positions"].as<ArduinoJson::JsonArrayConst>();
-    if (!positions.isNull()) {
-      int posIdx = 0;
-      for (ArduinoJson::JsonVariantConst posVal : positions) {
-        if (posIdx >= Song::kMaxPositions) break;
-        ArduinoJson::JsonObjectConst posObj = posVal.as<ArduinoJson::JsonObjectConst>();
-        if (!posObj.isNull()) {
-          auto a = posObj["a"];
-          auto b = posObj["b"];
-          auto d = posObj["drums"];
-          if (a.is<int>()) {
-            loadedSong.positions[posIdx].patterns[0] = clampSongPatternIndex(a.as<int>());
+  // Check for new "songs" array first
+  ArduinoJson::JsonArrayConst songsArr = obj["songs"].as<ArduinoJson::JsonArrayConst>();
+  if (!songsArr.isNull()) {
+      hasSongObj = true;
+      int sIdx = 0;
+      for (ArduinoJson::JsonVariantConst songVal : songsArr) {
+          if (sIdx > 1) break;
+          ArduinoJson::JsonObjectConst songObj = songVal.as<ArduinoJson::JsonObjectConst>();
+          if (!songObj.isNull()) {
+             int length = valueToInt(songObj["length"], loadedSongs[sIdx].length);
+             loadedSongs[sIdx].length = clampSongLength(length);
+             loadedSongs[sIdx].reverse = songObj["reverse"].as<bool>();
+             ArduinoJson::JsonArrayConst positions = songObj["positions"].as<ArduinoJson::JsonArrayConst>();
+             if (!positions.isNull()) {
+                 int posIdx = 0;
+                 for (ArduinoJson::JsonVariantConst posVal : positions) {
+                     if (posIdx >= Song::kMaxPositions) break;
+                     ArduinoJson::JsonObjectConst posObj = posVal.as<ArduinoJson::JsonObjectConst>();
+                     if (!posObj.isNull()) {
+                         if (posObj["a"].is<int>()) loadedSongs[sIdx].positions[posIdx].patterns[0] = clampSongPatternIndex(posObj["a"].as<int>());
+                         if (posObj["b"].is<int>()) loadedSongs[sIdx].positions[posIdx].patterns[1] = clampSongPatternIndex(posObj["b"].as<int>());
+                         if (posObj["drums"].is<int>()) loadedSongs[sIdx].positions[posIdx].patterns[2] = clampSongPatternIndex(posObj["drums"].as<int>());
+                         if (posObj["voice"].is<int>()) loadedSongs[sIdx].positions[posIdx].patterns[3] = clampSongPatternIndex(posObj["voice"].as<int>());
+                     }
+                     if (posIdx + 1 > loadedSongs[sIdx].length) loadedSongs[sIdx].length = posIdx + 1;
+                     ++posIdx;
+                 }
+             }
           }
-          if (b.is<int>()) {
-            loadedSong.positions[posIdx].patterns[1] = clampSongPatternIndex(b.as<int>());
-          }
-          if (posObj["drums"].is<int>()) {
-            loadedSong.positions[posIdx].patterns[2] = clampSongPatternIndex(posObj["drums"].as<int>());
-          }
-          if (posObj["voice"].is<int>()) {
-            loadedSong.positions[posIdx].patterns[3] = clampSongPatternIndex(posObj["voice"].as<int>());
+          ++sIdx;
+      }
+  } else {
+      // Fallback: Legacy "song" object
+      ArduinoJson::JsonObjectConst songObj = obj["song"].as<ArduinoJson::JsonObjectConst>();
+      if (!songObj.isNull()) {
+        hasSongObj = true;
+        int length = valueToInt(songObj["length"], loadedSongs[0].length);
+        loadedSongs[0].length = clampSongLength(length);
+        ArduinoJson::JsonArrayConst positions = songObj["positions"].as<ArduinoJson::JsonArrayConst>();
+        if (!positions.isNull()) {
+          int posIdx = 0;
+          for (ArduinoJson::JsonVariantConst posVal : positions) {
+            if (posIdx >= Song::kMaxPositions) break;
+            ArduinoJson::JsonObjectConst posObj = posVal.as<ArduinoJson::JsonObjectConst>();
+            if (!posObj.isNull()) {
+              auto a = posObj["a"];
+              auto b = posObj["b"];
+              auto d = posObj["drums"];
+              if (a.is<int>()) {
+                loadedSongs[0].positions[posIdx].patterns[0] = clampSongPatternIndex(a.as<int>());
+              }
+              if (b.is<int>()) {
+                loadedSongs[0].positions[posIdx].patterns[1] = clampSongPatternIndex(b.as<int>());
+              }
+              if (posObj["drums"].is<int>()) {
+                loadedSongs[0].positions[posIdx].patterns[2] = clampSongPatternIndex(posObj["drums"].as<int>());
+              }
+              if (posObj["voice"].is<int>()) {
+                loadedSongs[0].positions[posIdx].patterns[3] = clampSongPatternIndex(posObj["voice"].as<int>());
+              }
+            }
+            if (posIdx + 1 > loadedSongs[0].length) loadedSongs[0].length = posIdx + 1;
+            ++posIdx;
           }
         }
-        if (posIdx + 1 > loadedSong.length) loadedSong.length = posIdx + 1;
-        ++posIdx;
       }
-    }
-    ArduinoJson::JsonArrayConst songDistortionArr = songObj["synthDistortion"].as<ArduinoJson::JsonArrayConst>();
-    if (!songDistortionArr.isNull()) {
-      if (!deserializeBoolArray(songDistortionArr, synthDistortion, 2)) return false;
-    }
-    ArduinoJson::JsonArrayConst songDelayArr = songObj["synthDelay"].as<ArduinoJson::JsonArrayConst>();
-    if (!songDelayArr.isNull()) {
-      if (!deserializeBoolArray(songDelayArr, synthDelay, 2)) return false;
-    }
+  }
+
+  // Legacy distortion/delay arrays were in "song" object sometimes? 
+  // Code looked like it checked songObj["synthDistortion"]...
+  // Assuming those are handled in state now or by migration logic elsewhere if vital.
+  // The provided snippet showed them being read from songObj, so let's keep that if it was there.
+  if (!obj["song"].isNull()) {
+      ArduinoJson::JsonObjectConst songObj = obj["song"].as<ArduinoJson::JsonObjectConst>();
+        ArduinoJson::JsonArrayConst songDistortionArr = songObj["synthDistortion"].as<ArduinoJson::JsonArrayConst>();
+        if (!songDistortionArr.isNull()) {
+          if (!deserializeBoolArray(songDistortionArr, synthDistortion, 2)) return false;
+        }
+        ArduinoJson::JsonArrayConst songDelayArr = songObj["synthDelay"].as<ArduinoJson::JsonArrayConst>();
+        if (!songDelayArr.isNull()) {
+          if (!deserializeBoolArray(songDelayArr, synthDelay, 2)) return false;
+        }
   }
 
   ArduinoJson::JsonObjectConst ledObj = obj["led"].as<ArduinoJson::JsonObjectConst>();
@@ -1772,6 +2001,9 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     }
     songMode = state["songMode"].is<bool>() ? state["songMode"].as<bool>() : songMode;
     songPosition = valueToInt(state["songPosition"], songPosition);
+    loaded->activeSongSlot = valueToInt(state["activeSongSlot"], loaded->activeSongSlot);
+    if (loaded->activeSongSlot < 0) loaded->activeSongSlot = 0;
+    if (loaded->activeSongSlot > 1) loaded->activeSongSlot = 1;
     loopMode = state["loopMode"].is<bool>() ? state["loopMode"].as<bool>() : loopMode;
     loopStartRow = valueToInt(state["loopStart"], loopStartRow);
     loopEndRow = valueToInt(state["loopEnd"], loopEndRow);
@@ -1932,17 +2164,23 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
   }
 
   if (!hasSongObj) {
-    loadedSong.length = 1;
-    loadedSong.positions[0].patterns[0] = songPatternFromBank(synthBankIndexA,
+    loadedSongs[0].length = 1;
+    loadedSongs[0].positions[0].patterns[0] = songPatternFromBank(synthBankIndexA,
                                                              clampPatternIndex(synthPatternIndexA));
-    loadedSong.positions[0].patterns[1] = songPatternFromBank(synthBankIndexB,
+    loadedSongs[0].positions[0].patterns[1] = songPatternFromBank(synthBankIndexB,
                                                              clampPatternIndex(synthPatternIndexB));
-    loadedSong.positions[0].patterns[2] = songPatternFromBank(drumBankIndex,
+    loadedSongs[0].positions[0].patterns[2] = songPatternFromBank(drumBankIndex,
                                                              clampPatternIndex(drumPatternIndex));
   }
 
   *scene_ = *loaded;
-  scene_->song = loadedSong;
+  // loadedSong is struct Song, scene_->songs is array.
+  // We loaded into loadedSongs[2] array above. 
+  // *scene_ = *loaded copy should cover it if we put loadedSongs back into loaded->songs?
+  // Wait, I defined 'Song loadedSongs[2]' locally, but 'loaded' is unique_ptr<Scene>.
+  // I should have written to loaded->songs directly or copied back.
+  scene_->songs[0] = loadedSongs[0];
+  scene_->songs[1] = loadedSongs[1];
   drumPatternIndex_ = clampPatternIndex(drumPatternIndex);
   synthPatternIndex_[0] = clampPatternIndex(synthPatternIndexA);
   synthPatternIndex_[1] = clampPatternIndex(synthPatternIndexB);
@@ -1961,7 +2199,7 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
   synthParameters_[0] = synthParams[0];
   synthParameters_[1] = synthParams[1];
   drumEngineName_ = drumEngineName;
-  setSongLength(scene_->song.length);
+  setSongLength(scene_->songs[scene_->activeSongSlot].length);
   songPosition_ = clampSongPosition(songPosition);
   songMode_ = songMode;
   loopMode_ = loopMode;
@@ -2026,20 +2264,40 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   if (!parsed || observer.hadError()) return false;
 
   *scene_ = *loaded;
-  scene_->song = observer.song();
+  // Songs are already in *loaded (target_.songs populated by observer)
+  // scene_->songs[0] = observer.songs(0); // Not needed, observer writes to loaded->songs
   drumPatternIndex_ = clampPatternIndex(observer.drumPatternIndex());
   synthPatternIndex_[0] = clampPatternIndex(observer.synthPatternIndex(0));
   synthPatternIndex_[1] = clampPatternIndex(observer.synthPatternIndex(1));
   drumBankIndex_ = clampIndex(observer.drumBankIndex(), kBankCount);
   synthBankIndex_[0] = clampIndex(observer.synthBankIndex(0), kBankCount);
   synthBankIndex_[1] = clampIndex(observer.synthBankIndex(1), kBankCount);
-  if (!observer.hasSong()) {
-    scene_->song.length = 1;
-    scene_->song.positions[0].patterns[0] = songPatternFromBank(synthBankIndex_[0],
-                                                               synthPatternIndex_[0]);
-    scene_->song.positions[0].patterns[1] = songPatternFromBank(synthBankIndex_[1],
-                                                               synthPatternIndex_[1]);
-    scene_->song.positions[0].patterns[2] = songPatternFromBank(drumBankIndex_,
+  synthBankIndex_[1] = clampIndex(observer.synthBankIndex(1), kBankCount);
+  
+  // Check if any song data is present in the loaded scene
+  bool hasSongData = false;
+  for(int s=0; s<2; ++s) {
+      if (scene_->songs[s].length > 1) { hasSongData = true; break; }
+      for(int i=0; i<scene_->songs[s].length; ++i) {
+          for(int t=0; t<SongPosition::kTrackCount; ++t) {
+              if (scene_->songs[s].positions[i].patterns[t] != -1) {
+                  hasSongData = true; 
+                  goto check_done;
+              }
+          }
+      }
+  }
+  check_done:
+
+  if (!hasSongData) {
+    // If no song data observed, init default pattern in active slot? Or just slot 0.
+    // Migration: If we loaded legacy scene without song data, we probably want defaults in slot 0.
+    scene_->songs[0].length = 1;
+    scene_->songs[0].positions[0].patterns[0] = songPatternFromBank(synthBankIndex_[0],
+                                                               clampPatternIndex(synthPatternIndex_[0]));
+    scene_->songs[0].positions[0].patterns[1] = songPatternFromBank(synthBankIndex_[1],
+                                                               clampPatternIndex(synthPatternIndex_[1]));
+    scene_->songs[0].positions[0].patterns[2] = songPatternFromBank(drumBankIndex_,
                                                                drumPatternIndex_);
   }
   for (int i = 0; i < DrumPatternSet::kVoices; ++i) {
@@ -2054,7 +2312,7 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   synthParameters_[0] = observer.synthParameters(0);
   synthParameters_[1] = observer.synthParameters(1);
   drumEngineName_ = observer.drumEngineName();
-  setSongLength(scene_->song.length);
+  setSongLength(scene_->songs[scene_->activeSongSlot].length);
   songPosition_ = clampSongPosition(observer.songPosition());
   songMode_ = observer.songMode();
   loopMode_ = observer.loopMode();
@@ -2066,7 +2324,7 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
 
   // Restore Sampler/Tape from observer target (the loaded scene)
   // Observer target was 'loaded' unique_ptr, which we copied to scene_ at 1397.
-  // So it's already in scene_-> We just need to make sure GroovePuter pulls it.
+  // So it's already in scene_-> We just need to make sure MiniAcid pulls it.
 
   return true;
 }
@@ -2112,10 +2370,11 @@ int SceneManager::songTrackToIndex(SongTrack track) const {
 
 void SceneManager::trimSongLength() {
   int lastUsed = -1;
-  for (int pos = scene_->song.length - 1; pos >= 0; --pos) {
+  Song& s = scene_->songs[scene_->activeSongSlot];
+  for (int pos = s.length - 1; pos >= 0; --pos) {
     bool hasData = false;
     for (int t = 0; t < SongPosition::kTrackCount; ++t) {
-      if (scene_->song.positions[pos].patterns[t] >= 0) {
+      if (s.positions[pos].patterns[t] >= 0) {
         hasData = true;
         break;
       }
@@ -2126,8 +2385,8 @@ void SceneManager::trimSongLength() {
     }
   }
   int newLength = lastUsed >= 0 ? lastUsed + 1 : 1;
-  scene_->song.length = clampSongLength(newLength);
-  if (songPosition_ >= scene_->song.length) songPosition_ = scene_->song.length - 1;
+  s.length = clampSongLength(newLength);
+  if (songPosition_ >= s.length) songPosition_ = s.length - 1;
   clampLoopRange();
 }
 

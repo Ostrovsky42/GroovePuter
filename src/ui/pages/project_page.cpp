@@ -1,6 +1,8 @@
 #include "project_page.h"
 #include "../ui_common.h"
-#include "esp_heap_caps.h"
+#if defined(ESP32) || defined(ESP_PLATFORM)
+#include <esp_heap_caps.h>
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -56,7 +58,7 @@ static const uint16_t FLASH_STEPS[] = {20, 40, 60, 90};
 
 } // namespace
 
-ProjectPage::ProjectPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
+ProjectPage::ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
   : gfx_(gfx), mini_acid_(mini_acid), audio_guard_(audio_guard),
     main_focus_(MainFocus::Load),
     dialog_type_(DialogType::None),
@@ -272,7 +274,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
 
     switch (ui_event.scancode) {
         case GROOVEPUTER_LEFT:
-            if (main_focus_ == MainFocus::Volume) { mini_acid_.adjustParameter(GroovePuterParamId::MainVolume, -1); return true; }
+            if (main_focus_ == MainFocus::Volume) { mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, -1); return true; }
             if (main_focus_ == MainFocus::SaveAs) main_focus_ = MainFocus::Load;
             else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::SaveAs;
             else if (main_focus_ == MainFocus::VisualStyle) main_focus_ = MainFocus::New;
@@ -282,7 +284,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             }
             return true;
         case GROOVEPUTER_RIGHT:
-            if (main_focus_ == MainFocus::Volume) { mini_acid_.adjustParameter(GroovePuterParamId::MainVolume, 1); return true; }
+            if (main_focus_ == MainFocus::Volume) { mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, 1); return true; }
             if (main_focus_ == MainFocus::Load) main_focus_ = MainFocus::SaveAs;
             else if (main_focus_ == MainFocus::SaveAs) main_focus_ = MainFocus::New;
             else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::VisualStyle;
@@ -418,9 +420,12 @@ void ProjectPage::draw(IGfx& gfx) {
   
   // SYSTEM MONITOR
   // Replaces the static mode text with useful stats
-  size_t freeInt = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-  size_t freePsram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-  size_t largestInt = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+  uint32_t freeInt = 0;
+  uint32_t largestInt = 0;
+#if defined(ESP32) || defined(ESP_PLATFORM)
+  freeInt = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+  largestInt = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+#endif
   
   // Convert to KB/MB for readability
   // layout: RAM: 120k/4.1M  CPU: 135%
@@ -428,8 +433,8 @@ void ProjectPage::draw(IGfx& gfx) {
   int cpuLoad = (int)mini_acid_.perfStats.cpuAudioPctIdeal;
   int cpuPeak = (int)mini_acid_.perfStats.cpuAudioPeakPct;
   
-  snprintf(sysBuf, sizeof(sysBuf), "RAM:%dk L:%dk CPU:%d/(%d)%%", 
-           freeInt/1024, largestInt/1024, cpuLoad, cpuPeak);
+  snprintf(sysBuf, sizeof(sysBuf), "RAM:%uk L:%uk CPU:%d/(%d)%%", 
+           (unsigned int)(freeInt/1024), (unsigned int)(largestInt/1024), cpuLoad, cpuPeak);
            
   gfx.setTextColor(COLOR_ACCENT); // Highlight stats
   gfx.drawText(start_x, mode_y, sysBuf);
@@ -482,7 +487,7 @@ void ProjectPage::draw(IGfx& gfx) {
   gfx.drawText(start_x, vol_y + (vol_h - line_h)/2, "Vol:");
   
   gfx.drawRect(track_x, vol_y, track_w, vol_h, volFocused ? COLOR_ACCENT : COLOR_DARKER);
-  float volVal = mini_acid_.miniParameter(GroovePuterParamId::MainVolume).value();
+  float volVal = mini_acid_.miniParameter(MiniAcidParamId::MainVolume).value();
   int fill_w = (int)(track_w * volVal);
   if (fill_w > track_w - 2) fill_w = track_w - 2;
   if (fill_w > 0) {

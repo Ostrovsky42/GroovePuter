@@ -1,17 +1,17 @@
 #pragma once
 
 #include "../ui_core.h"
-#include "../../dsp/grooveputer_engine.h"
+#include "../../dsp/miniacid_engine.h"
 
 class SettingsPage : public IPage {
 public:
-    SettingsPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard& audio_guard);
+    SettingsPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard);
     void draw(IGfx& gfx) override;
     bool handleEvent(UIEvent& ui_event) override;
     const std::string& getTitle() const override;
 
 private:
-    GroovePuter& mini_acid_;
+    MiniAcid& mini_acid_;
     AudioGuard& audio_guard_;
 
     enum class Group { Timing, Notes, Scale };

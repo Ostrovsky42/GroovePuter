@@ -1,0 +1,31 @@
+# Build artifacts
+dist/
+build/
+build_output/
+*.bin
+*.elf
+*.o
+*.a
+*.d
+*.log
+platform_sdl/miniacid
+platform_sdl/grooveputer
+
+# Local/IDE config
+.idea/
+.claude/
+.vscode/
+*.swp
+*.bak
+.DS_Store
+
+# Large binaries/tools
+arduino-cli
+
+# Project specific local files (test data or old names)
+grooveputer_scene.json
+grooveputer_scene_name.txt
+scene.json
+miniacid.ino.bin
+miniacid.ino.elf
+mini_acid_release.bin

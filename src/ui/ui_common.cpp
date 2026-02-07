@@ -1,16 +1,13 @@
 #include "ui_common.h"
 #include "ui_utils.h"
 #include "ui_widgets.h"
-#include "../dsp/grooveputer_engine.h"
-#ifndef USE_RETRO_THEME
-#define USE_RETRO_THEME
-#endif
-#ifndef USE_AMBER_THEME
-#define USE_AMBER_THEME
-#endif
+#include "../dsp/miniacid_engine.h"
 #include "retro_ui_theme.h"
 #include "amber_ui_theme.h"
 #include <cstdio>
+#ifndef ARDUINO
+#include "../../platform_sdl/arduino_compat.h"
+#endif
 
 namespace UI {
 
@@ -36,7 +33,7 @@ namespace UI {
         unsigned long gToastEndMs = 0;
     }
 
-    void drawStandardHeader(IGfx& gfx, GroovePuter& mini_acid, const char* title) {
+    void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title) {
         char sceneStr[16];
         snprintf(sceneStr, sizeof(sceneStr), "%02d", mini_acid.currentScene() + 1);
         
@@ -92,7 +89,7 @@ namespace UI {
         );
     }
 
-    void drawWaveformOverlay(IGfx& gfx, GroovePuter& mini_acid) {
+    void drawWaveformOverlay(IGfx& gfx, MiniAcid& mini_acid) {
         if (!waveformOverlay.enabled) return;
         
         // Compact dimensions at bottom of screen - increased height for better visibility
@@ -157,7 +154,7 @@ namespace UI {
         drawWave(overlayHistory[0], overlayLengths[0], waveColor);
     }
 
-    void drawMutesOverlay(IGfx& gfx, GroovePuter& mini_acid) {
+    void drawMutesOverlay(IGfx& gfx, MiniAcid& mini_acid) {
         // Mutes Overlay v3: Compact, Numbered, Themed
         
         // 1. Setup Theme Colors
@@ -229,7 +226,7 @@ namespace UI {
         }
     }
 
-    void drawFeelOverlay(IGfx& gfx, GroovePuter& mini_acid, bool pulse) {
+    void drawFeelOverlay(IGfx& gfx, MiniAcid& mini_acid, bool pulse) {
         const auto& feel = mini_acid.sceneManager().currentScene().feel;
         int grid = feel.gridSteps;
         if (grid != 8 && grid != 16 && grid != 32) grid = 16;
@@ -265,7 +262,7 @@ namespace UI {
         gfx.drawText(x, y, buf);
     }
 
-    void drawFeelHeaderHud(IGfx& gfx, GroovePuter& mini_acid, int x, int y) {
+    void drawFeelHeaderHud(IGfx& gfx, MiniAcid& mini_acid, int x, int y) {
         (void)x;
         (void)y;
         const auto& feel = mini_acid.sceneManager().currentScene().feel;

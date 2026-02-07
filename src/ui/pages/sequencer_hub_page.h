@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../ui_core.h"
-#include "../../dsp/grooveputer_engine.h"
+#include "../../dsp/miniacid_engine.h"
 #include "../layout_manager.h"
 #include "../ui_widgets.h"
 #include "../components/drum_sequencer_grid.h"
@@ -27,14 +27,18 @@ public:
     enum class Mode { OVERVIEW, DETAIL };
     enum class FocusLane { GRID, PATTERN, BANK };
 
-    SequencerHubPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard);
+    SequencerHubPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
     
     void draw(IGfx& gfx) override;
     bool handleEvent(UIEvent& ui_event) override;
     const std::string& getTitle() const override { return title_; }
 
+    void setVisualStyle(VisualStyle style) override { hub_style_ = style; }
+    void setHubStyle(VisualStyle style) { hub_style_ = style; }
+    VisualStyle getHubStyle() const { return hub_style_; }
+
 private:
-    GroovePuter& mini_acid_;
+    MiniAcid& mini_acid_;
     AudioGuard audio_guard_;
     std::string title_ = "SEQUENCER HUB";
     
@@ -56,8 +60,11 @@ private:
     void drawRetroClassicStyle(IGfx& gfx);
     void drawAmberStyle(IGfx& gfx);
     void drawMinimalStyle(IGfx& gfx);
+    void drawTEGridStyle(IGfx& gfx);
     void drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool selected);
     void drawOverviewCursor(IGfx& gfx, int trackIdx, int stepIdx, int x, int y, int cellW, int cellH);
+    
+    VisualStyle hub_style_ = VisualStyle::MINIMAL;
     
     bool handleModeSwitch(UIEvent& e);
     bool handleQuickKeys(UIEvent& e);

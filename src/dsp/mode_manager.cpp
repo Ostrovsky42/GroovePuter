@@ -1,5 +1,5 @@
 #include "mode_manager.h"
-#include "grooveputer_engine.h"
+#include "miniacid_engine.h"
 #include <algorithm>
 
 void GrooveboxModeManager::setMode(GrooveboxMode mode) {

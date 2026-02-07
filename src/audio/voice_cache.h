@@ -1,11 +1,14 @@
 #pragma once
 
+#ifdef ARDUINO
 #include <Arduino.h>
 #include <SD.h>
 #include <FS.h>
+#endif
 #include <string>
 #include <cstring>
 
+#ifdef ARDUINO
 /**
  * VoiceCache - SD Card Voice Caching System
  * 
@@ -218,7 +221,7 @@ public:
     }
     
     bool isInitialized() const { return initialized_; }
-
+ 
 private:
     /**
      * Generate file path for a phrase (using hash)
@@ -251,3 +254,21 @@ private:
     size_t totalSamples_ = 0;
     size_t samplesRead_ = 0;
 };
+#else
+// Minimal mock for non-Arduino builds
+class VoiceCache {
+public:
+    bool init() { return false; }
+    bool isCached(const char*) const { return false; }
+    bool cachePhrase(const char*, const int16_t*, size_t) { return false; }
+    bool startPlayback(const char*) { return false; }
+    size_t readSamples(int16_t*, size_t) { return 0; }
+    void stopPlayback() {}
+    bool isPlaying() const { return false; }
+    float getProgress() const { return 0.0f; }
+    bool removePhrase(const char*) { return false; }
+    void clearAll() {}
+    int getCacheCount() const { return 0; }
+    bool isInitialized() const { return false; }
+};
+#endif

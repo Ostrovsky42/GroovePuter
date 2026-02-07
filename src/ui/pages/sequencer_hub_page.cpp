@@ -3,19 +3,15 @@
 #include "../ui_input.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
-#ifndef USE_RETRO_THEME
-#define USE_RETRO_THEME
-#endif
-#ifndef USE_AMBER_THEME
-#define USE_AMBER_THEME
-#endif
 #include "../retro_ui_theme.h"
 #include "../retro_widgets.h"
 #include "../amber_ui_theme.h"
 #include "../amber_widgets.h"
 #include "../ui_clipboard.h"
+#include "../../debug_log.h"
+#include "../key_normalize.h"
 
-SequencerHubPage::SequencerHubPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
+SequencerHubPage::SequencerHubPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
     (void)gfx;
 
@@ -37,12 +33,15 @@ SequencerHubPage::SequencerHubPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard
 }
 
 void SequencerHubPage::draw(IGfx& gfx) {
-    switch (UI::currentStyle) {
+    switch (hub_style_) {
         case VisualStyle::RETRO_CLASSIC:
             drawRetroClassicStyle(gfx);
             break;
         case VisualStyle::AMBER:
             drawAmberStyle(gfx);
+            break;
+        case VisualStyle::MINIMAL_DARK:
+            drawTEGridStyle(gfx);
             break;
         case VisualStyle::MINIMAL:
         default:
@@ -56,6 +55,223 @@ void SequencerHubPage::drawMinimalStyle(IGfx& gfx) {
         drawOverview(gfx);
     } else {
         drawDetail(gfx);
+    }
+}
+
+void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
+    const Rect& bounds = getBoundaries();
+    int x = bounds.x;
+    int y = bounds.y;
+    int w = bounds.w;
+    int h = bounds.h;
+
+    // TE color palette: strict monochrome
+    const IGfxColor TE_BLACK = IGfxColor::Black();
+    const IGfxColor TE_WHITE = IGfxColor::White();
+    const IGfxColor TE_GRID = IGfxColor(0x404040);
+    const IGfxColor TE_ACCENT = IGfxColor(0xC0C0C0);
+    const IGfxColor TE_DIM = IGfxColor(0x808080);
+    const IGfxColor TE_ACTIVE = IGfxColor(0xFFFFFF);
+
+    // Clear background
+    gfx.fillRect(x, y, w, h, TE_BLACK);
+
+    // === HEADER BAR (TE brutalist style) ===
+    int header_h = 11;
+    gfx.fillRect(x, y, w, header_h, TE_WHITE);
+    gfx.setTextColor(TE_BLACK);
+
+    // Title
+    const char* modeText = (mode_ == Mode::OVERVIEW) ? "SEQ" : "EDIT";
+    char titleBuf[32];
+    if (mode_ == Mode::OVERVIEW) {
+        snprintf(titleBuf, sizeof(titleBuf), "SEQ OVERVIEW");
+    } else {
+        const char* trackName = "?";
+        if (selectedTrack_ == 0) trackName = "A";
+        else if (selectedTrack_ == 1) trackName = "B";
+        else {
+            static char drumName[8];
+            snprintf(drumName, sizeof(drumName), "D%d", selectedTrack_ - 1);
+            trackName = drumName;
+        }
+        snprintf(titleBuf, sizeof(titleBuf), "SEQ %s", trackName);
+    }
+    gfx.drawText(x + 2, y + 2, titleBuf);
+
+    // Status
+    char statusBuf[32];
+    bool playing = mini_acid_.isPlaying();
+    int bpm = (int)mini_acid_.bpm();
+    snprintf(statusBuf, sizeof(statusBuf), "%s %03d", playing ? ">" : "||", bpm);
+    int statusW = textWidth(gfx, statusBuf);
+    gfx.drawText(x + w - statusW - 2, y + 2, statusBuf);
+
+    // === MAIN CONTENT ===
+    int content_y = y + header_h + 1;
+    int content_h = h - header_h - 12; // Reserve footer
+
+    if (mode_ == Mode::OVERVIEW) {
+        // === OVERVIEW MODE: Track grid ===
+
+        int row_h = 11;
+        int track_count = 10;
+        int visible_tracks = content_h / row_h;
+        if (visible_tracks > track_count) visible_tracks = track_count;
+
+        // Draw grid lines first
+        for (int i = 0; i <= visible_tracks; i++) {
+            int ly = content_y + i * row_h;
+            gfx.drawLine(x, ly, x + w - 1, ly, TE_GRID);
+        }
+
+        // Track rows
+        for (int i = 0; i < visible_tracks; i++) {
+            if (i >= track_count) break;
+            int ry = content_y + i * row_h;
+            bool selected = (i == selectedTrack_);
+
+            // Selection highlight
+            if (selected) {
+                gfx.fillRect(x + 1, ry + 1, w - 2, row_h - 1, TE_ACCENT);
+            }
+
+            // Track label
+            char label[8];
+            if (i == 0) snprintf(label, sizeof(label), "A");
+            else if (i == 1) snprintf(label, sizeof(label), "B");
+            else snprintf(label, sizeof(label), "D%d", i - 1);
+
+            gfx.setTextColor(selected ? TE_BLACK : TE_WHITE);
+            gfx.drawText(x + 4, ry + 2, label);
+
+            // LED activity indicator (minimal dot)
+            bool active = mini_acid_.isTrackActive(i);
+            int led_x = x + 18;
+            int led_y = ry + row_h / 2 - 1;
+            if (active && playing) {
+                gfx.fillRect(led_x, led_y, 3, 3, selected ? TE_BLACK : TE_ACTIVE);
+            }
+            gfx.drawRect(led_x, led_y, 3, 3, selected ? TE_BLACK : TE_GRID);
+
+            // Step grid (16 cells)
+            int grid_x = x + 30;
+            int cell_w = 9;
+            int cell_h = row_h - 3;
+            int currentStep = mini_acid_.currentStep();
+
+            for (int s = 0; s < 16; s++) {
+                int cx = grid_x + s * cell_w;
+
+                bool hit = false;
+                if (i < 2) {
+                    hit = mini_acid_.pattern303Steps(i)[s] >= 0;
+                } else {
+                    int voice = i - 2;
+                    if (voice == 0) hit = mini_acid_.patternKickSteps()[s] > 0;
+                    else if (voice == 1) hit = mini_acid_.patternSnareSteps()[s] > 0;
+                    else if (voice == 2) hit = mini_acid_.patternHatSteps()[s] > 0;
+                    else if (voice == 3) hit = mini_acid_.patternOpenHatSteps()[s] > 0;
+                    else if (voice == 4) hit = mini_acid_.patternMidTomSteps()[s] > 0;
+                    else if (voice == 5) hit = mini_acid_.patternHighTomSteps()[s] > 0;
+                    else if (voice == 6) hit = mini_acid_.patternRimSteps()[s];
+                    else if (voice == 7) hit = mini_acid_.patternClapSteps()[s];
+                }
+
+                // Cell background
+                IGfxColor cellBg = TE_BLACK;
+                if (s == currentStep && playing) cellBg = TE_GRID;
+                if (hit) cellBg = selected ? TE_BLACK : TE_WHITE;
+                if (selected && s == stepCursor_) cellBg = TE_BLACK;
+
+                gfx.fillRect(cx, ry + 1, cell_w - 1, cell_h, cellBg);
+
+                // Cell border
+                IGfxColor borderColor = TE_GRID;
+                if (s % 4 == 0) borderColor = TE_ACCENT; // Emphasize beats
+                if (selected && s == stepCursor_) borderColor = TE_BLACK; // Cursor
+
+                gfx.drawRect(cx, ry + 1, cell_w - 1, cell_h, borderColor);
+            }
+
+            // Volume bar (compact)
+            float vol = mini_acid_.getTrackVolume((VoiceId)i);
+            int vol_x = x + w - 24;
+            int vol_w = 20;
+            int vol_h = row_h - 5;
+            int vol_fill = (int)(vol * vol_w);
+
+            gfx.drawRect(vol_x, ry + 2, vol_w, vol_h, selected ? TE_BLACK : TE_GRID);
+            if (vol_fill > 0) {
+                gfx.fillRect(vol_x + 1, ry + 3, vol_fill - 1, vol_h - 2, selected ? TE_BLACK : TE_WHITE);
+            }
+        }
+
+    } else {
+        // === DETAIL MODE ===
+        if (isDrumTrack(selectedTrack_)) {
+            // Use drum grid component
+            drumGrid_->setBoundaries(Rect(x + 2, content_y, w - 4, content_h - 2));
+            drumGrid_->draw(gfx);
+        } else {
+            // 303 detail view (compact TE style)
+            int cell_w = 14;
+            int cell_h = content_h - 20;
+            int grid_x = x + (w - cell_w * 16) / 2;
+            int grid_y = content_y + 10;
+
+            const int8_t* notes = mini_acid_.pattern303Steps(selectedTrack_);
+            const bool* accents = mini_acid_.pattern303AccentSteps(selectedTrack_);
+            const bool* slides = mini_acid_.pattern303SlideSteps(selectedTrack_);
+            int playingStep = mini_acid_.currentStep();
+
+            for (int s = 0; s < 16; s++) {
+                int cx = grid_x + s * cell_w;
+                bool isCursor = (s == stepCursor_);
+                bool isPlay = (s == playingStep && playing);
+
+                IGfxColor bgColor = (s % 4 == 0) ? TE_GRID : TE_BLACK;
+                if (isCursor) bgColor = TE_ACCENT;
+                if (isPlay) bgColor = TE_WHITE;
+
+                gfx.fillRect(cx, grid_y, cell_w - 1, cell_h, bgColor);
+                gfx.drawRect(cx, grid_y, cell_w - 1, cell_h, TE_GRID);
+
+                if (notes[s] >= 0) {
+                    // Draw note
+                    char n[8];
+                    formatNoteName(notes[s], n, sizeof(n));
+                    IGfxColor textColor = isCursor || isPlay ? TE_BLACK : TE_WHITE;
+                    gfx.setTextColor(textColor);
+                    int text_w = textWidth(gfx, n);
+                    gfx.drawText(cx + (cell_w - text_w) / 2, grid_y + 5, n);
+
+                    // Indicators
+                    if (accents[s]) {
+                        gfx.fillRect(cx + 2, grid_y + cell_h - 6, 3, 3, isCursor || isPlay ? TE_BLACK : TE_WHITE);
+                    }
+                    if (slides[s]) {
+                        gfx.fillRect(cx + cell_w - 5, grid_y + cell_h - 6, 3, 3, isCursor || isPlay ? TE_BLACK : TE_WHITE);
+                    }
+                }
+            }
+        }
+    }
+
+    // === FOOTER BAR ===
+    int footer_y = y + h - 11;
+    gfx.drawLine(x, footer_y - 1, x + w - 1, footer_y - 1, TE_GRID);
+    gfx.setTextColor(TE_DIM);
+
+    const char* footer_text = (mode_ == Mode::OVERVIEW)
+        ? "UP/DN:TRK ENT:EDIT Q-I:PAT"
+        : "ESC:BACK A/Z:NOTE S/X:OCT";
+    gfx.drawText(x + 2, footer_y + 2, footer_text);
+
+    // Play indicator
+    if (playing) {
+        gfx.setTextColor(TE_WHITE);
+        gfx.drawText(x + w - 10, footer_y + 2, ">");
     }
 }
 
@@ -152,17 +368,15 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
             bool active = mini_acid_.isTrackActive(i);
             RetroWidgets::drawLED(gfx, volBarX + volBarW + 5, ry + (rowH/2), 2, active && isPlaying, IGfxColor(trackColor));
         }
-        
-        // Channel activity bar (from Play Page merge)
-        bool active[10];
-        for (int i = 0; i < 10; ++i) active[i] = mini_acid_.isTrackActive(i);
-        UI::drawChannelActivityBar(gfx, 8, Layout::FOOTER.y - 12, w - 16, 4, active, 10);
+
+        // Removed redundant channel activity bar - LED indicators already show activity
 
         // Scanlines disabled: caused flicker on small TFT
         RetroWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]Track [ENT]Detail", "SPACE:Play", "HUB");
     } else {
         // DETAIL MODE
         if (isDrumTrack(selectedTrack_)) {
+            drumGrid_->setStyle(GrooveboxStyle::RETRO_CLASSIC);
             drumGrid_->setBoundaries(Rect(0, contentY + 2, 240, contentH - 4));
             drumGrid_->draw(gfx);
             drawFooterBar(gfx, x, y + h - 12, w, 12, "[ARROWS]Grid [A]Accent", "ESC:Back", "DRUM");
@@ -299,15 +513,14 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
             bool active = mini_acid_.isTrackActive(i);
             AmberWidgets::drawLED(gfx, volBarX + volBarW + 5, ry + (rowH/2), 2, active && isPlaying, IGfxColor(AmberTrackColor));
         }
-        
-        bool active[10];
-        for (int i = 0; i < 10; ++i) active[i] = mini_acid_.isTrackActive(i);
-        UI::drawChannelActivityBar(gfx, 8, Layout::FOOTER.y - 12, w - 16, 4, active, 10);
+
+        // Removed redundant channel activity bar - LED indicators already show activity
 
         // Scanlines disabled: caused flicker on small TFT
         AmberWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]Track [ENT]Detail", "SPACE:Play", "HUB");
     } else {
         if (isDrumTrack(selectedTrack_)) {
+            drumGrid_->setStyle(GrooveboxStyle::AMBER);
             drumGrid_->setBoundaries(Rect(0, contentY + 2, 240, contentH - 4));
             drumGrid_->draw(gfx);
             AmberWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[ARROWS]Grid [A]Accent", "ESC:Back", "DRUM");
@@ -371,16 +584,11 @@ void SequencerHubPage::drawOverview(IGfx& gfx) {
     for (int i = 0; i < 10; i++) {
         drawTrackRow(gfx, i, startY + i * (rowH + 1), rowH, i == selectedTrack_);
     }
-    
-    // Channel activity bar (10 tracks: 2 synths + 8 drum voices)
-    bool active[10];
-    for (int i = 0; i < 10; ++i) {
-        active[i] = mini_acid_.isTrackActive(i);
-    }
-    UI::drawChannelActivityBar(gfx, 8, Layout::FOOTER.y - 10, Layout::FOOTER.w - 16, 4, active, 10);
 
-    UI::drawStandardFooter(gfx, 
-        "[UP/DN] TRACK  [ENT] DETAIL", 
+    // Removed redundant channel activity bar - LED indicators already show activity
+
+    UI::drawStandardFooter(gfx,
+        "[UP/DN] TRACK  [ENT] DETAIL",
         "[SPACE] PLAY/STOP");
 }
 
@@ -399,7 +607,12 @@ void SequencerHubPage::drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool 
     char name[16];
     if (trackIdx == 0) std::strcpy(name, "303 A");
     else if (trackIdx == 1) std::strcpy(name, "303 B");
-    else std::snprintf(name, sizeof(name), "DRUM %d", trackIdx - 1);
+    else {
+        int drumIdx = trackIdx - 1;
+        if (drumIdx < 0) drumIdx = 0;
+        if (drumIdx > 99) drumIdx = 99;
+        std::snprintf(name, sizeof(name), "DRUM %d", drumIdx);
+    }
     
     gfx.setTextColor(selected ? COLOR_WHITE : COLOR_GRAY);
     gfx.drawText(4, y + 1, name);
@@ -455,9 +668,9 @@ void SequencerHubPage::drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool 
 void SequencerHubPage::drawOverviewCursor(IGfx& gfx, int trackIdx, int stepIdx, int x, int y, int cellW, int cellH) {
      int cx = x + stepIdx * cellW;
      // Draw a prominent cursor around the step
-     if (UI::currentStyle == VisualStyle::AMBER) {
+     if (UI::currentStyle == ::VisualStyle::AMBER) {
          AmberWidgets::drawGlowBorder(gfx, cx, y, cellW - 1, cellH, IGfxColor(AmberTheme::SELECT_BRIGHT), 2);
-     } else if (UI::currentStyle == VisualStyle::RETRO_CLASSIC) {
+     } else if (UI::currentStyle == ::VisualStyle::RETRO_CLASSIC) {
          RetroWidgets::drawGlowBorder(gfx, cx, y, cellW - 1, cellH, IGfxColor(RetroTheme::SELECT_BRIGHT), 2);
      } else {
          gfx.drawRect(cx, y, cellW - 1, cellH, COLOR_STEP_SELECTED);
@@ -578,7 +791,7 @@ bool SequencerHubPage::handleModeSwitch(UIEvent& e) {
             mode_ = Mode::OVERVIEW;
             return true;
         }
-        // Let GroovePuterDisplay handle global back if in OVERVIEW
+        // Let MiniAcidDisplay handle global back if in OVERVIEW
         return false;
     }
     
@@ -598,15 +811,7 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
     }
 
     // Pattern quick select (Q-I)
-    int patIdx = -1;
-    if (lower == 'q') patIdx = 0;
-    else if (lower == 'w') patIdx = 1;
-    else if (lower == 'e') patIdx = 2;
-    else if (lower == 'r') patIdx = 3;
-    else if (lower == 't') patIdx = 4;
-    else if (lower == 'y') patIdx = 5;
-    else if (lower == 'u') patIdx = 6;
-    else if (lower == 'i') patIdx = 7;
+    int patIdx = qwertyToPatternIndex(lower);
     
     if (patIdx >= 0) {
         patternCursor_ = patIdx;

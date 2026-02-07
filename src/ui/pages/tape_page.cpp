@@ -66,7 +66,7 @@ class TapePage::SliderComponent : public FocusableComponent {
 
 class TapePage::ModeComponent : public FocusableComponent {
  public:
-  ModeComponent(GroovePuter& synth, AudioGuard guard) : synth_(synth), guard_(guard) {}
+  ModeComponent(MiniAcid& synth, AudioGuard guard) : synth_(synth), guard_(guard) {}
 
   void draw(IGfx& gfx) override {
     const Rect& bounds = getBoundaries();
@@ -101,13 +101,13 @@ class TapePage::ModeComponent : public FocusableComponent {
   }
 
  private:
-  GroovePuter& synth_;
+  MiniAcid& synth_;
   AudioGuard guard_;
 };
 
 class TapePage::PresetComponent : public FocusableComponent {
  public:
-  PresetComponent(GroovePuter& synth, AudioGuard guard) : synth_(synth), guard_(guard) {}
+  PresetComponent(MiniAcid& synth, AudioGuard guard) : synth_(synth), guard_(guard) {}
 
   void draw(IGfx& gfx) override {
     const Rect& bounds = getBoundaries();
@@ -150,11 +150,11 @@ class TapePage::PresetComponent : public FocusableComponent {
   }
 
  private:
-  GroovePuter& synth_;
+  MiniAcid& synth_;
   AudioGuard guard_;
 };
 
-TapePage::TapePage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
+TapePage::TapePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     : gfx_(gfx), mini_acid_(mini_acid), audio_guard_(audio_guard) {}
 
 void TapePage::setBoundaries(const Rect& rect) {

@@ -1,4 +1,5 @@
 #include "drum_sequencer_page.h"
+#include "../ui_common.h"
 
 #include <cctype>
 #include <utility>
@@ -9,17 +10,27 @@
 #include "../components/label_option.h"
 #include "../components/pattern_selection_bar.h"
 #include "../components/drum_sequencer_grid.h"
+#include "../retro_widgets.h"
+#include "../amber_widgets.h"
+
+namespace retro = RetroWidgets;
+namespace amber = AmberWidgets;
 
 #include "../ui_clipboard.h"
+#include "../../debug_log.h"
+#include "../key_normalize.h"
 
 class DrumSequencerMainPage : public Container {
  public:
-  DrumSequencerMainPage(GroovePuter& mini_acid, AudioGuard audio_guard);
+  DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
   void setContext(int context); // context: (voice << 8) | step
 
  private:
+  void drawMinimalStyle(IGfx& gfx);
+  void drawRetroClassicStyle(IGfx& gfx);
+  void drawAmberStyle(IGfx& gfx);
   int activeDrumPatternCursor() const;
   int activeDrumStep() const;
   int activeDrumVoice() const;
@@ -40,7 +51,7 @@ class DrumSequencerMainPage : public Container {
       else fn();
   }
 
-  GroovePuter& mini_acid_;
+  MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
   int drum_step_cursor_;
   int drum_voice_cursor_;
@@ -57,7 +68,7 @@ class DrumSequencerMainPage : public Container {
 
 class GlobalDrumSettingsPage : public Container {
  public:
-  explicit GlobalDrumSettingsPage(GroovePuter& mini_acid);
+  explicit GlobalDrumSettingsPage(MiniAcid& mini_acid);
   bool handleEvent(UIEvent& ui_event) override;
  void draw(IGfx& gfx) override;
 
@@ -65,12 +76,12 @@ class GlobalDrumSettingsPage : public Container {
   void applyDrumEngineSelection();
   void syncDrumEngineSelection();
 
-  GroovePuter& mini_acid_;
+  MiniAcid& mini_acid_;
   std::vector<std::string> drum_engine_options_;
   std::shared_ptr<LabelOptionComponent> character_control_;
 };
 
-DrumSequencerMainPage::DrumSequencerMainPage(GroovePuter& mini_acid, AudioGuard audio_guard)
+DrumSequencerMainPage::DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard audio_guard)
   : mini_acid_(mini_acid),
     audio_guard_(std::move(audio_guard)),
     drum_step_cursor_(0),
@@ -246,17 +257,7 @@ bool DrumSequencerMainPage::bankRowFocused() const {
 }
 
 int DrumSequencerMainPage::patternIndexFromKey(char key) const {
-  switch (std::tolower(static_cast<unsigned char>(key))) {
-    case 'q': return 0;
-    case 'w': return 1;
-    case 'e': return 2;
-    case 'r': return 3;
-    case 't': return 4;
-    case 'y': return 5;
-    case 'u': return 6;
-    //case 'i': return 7;
-    default: return -1;
-  }
+  return qwertyToPatternIndex(key);
 }
 
 int DrumSequencerMainPage::bankIndexFromKey(char key) const {
@@ -453,6 +454,10 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   }
 
   int patternIdx = patternIndexFromKey(key);
+  if (patternIdx < 0) {
+      patternIdx = scancodeToPatternIndex(ui_event.scancode);
+  }
+  
   if (patternIdx >= 0) {
     if (mini_acid_.songModeEnabled()) return true;
     focusPatternRow();
@@ -478,50 +483,62 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   }
 
   char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
-  switch (lowerKey) {
-    case 'a': {
-      focusGrid();
-      int step = activeDrumStep();
-      withAudioGuard([&]() { mini_acid_.toggleDrumAccentStep(step); });
-      return true;
+  bool key_a = (lowerKey == 'a') || (ui_event.scancode == GROOVEPUTER_A);
+  bool key_g = (lowerKey == 'g') || (ui_event.scancode == GROOVEPUTER_G);
+  bool key_c = (lowerKey == 'c') || (ui_event.scancode == GROOVEPUTER_C);
+  bool key_v = (lowerKey == 'v') || (ui_event.scancode == GROOVEPUTER_V);
+
+  if (key_a) {
+    focusGrid();
+    int step = activeDrumStep();
+    withAudioGuard([&]() { mini_acid_.toggleDrumAccentStep(step); });
+    return true;
+  }
+  if (key_g) {
+    if (ui_event.ctrl) {
+      int voice = activeDrumVoice();
+      withAudioGuard([&]() { mini_acid_.randomizeDrumVoice(voice); });
+    } else if (ui_event.alt) {
+      withAudioGuard([&]() { mini_acid_.randomizeDrumPatternChaos(); });
+    } else {
+      withAudioGuard([&]() { mini_acid_.randomizeDrumPattern(); });
     }
-    case 'g': {
-      if (ui_event.ctrl) {
-        int voice = activeDrumVoice();
-        withAudioGuard([&]() { mini_acid_.randomizeDrumVoice(voice); });
-      } else if (ui_event.alt) {
-        withAudioGuard([&]() { mini_acid_.randomizeDrumPatternChaos(); });
-      } else {
-        withAudioGuard([&]() { mini_acid_.randomizeDrumPattern(); });
-      }
-      return true;
-    }
-    case 'c': {
-      if (ui_event.ctrl) {
-        UIEvent app_evt{};
-        app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
-        app_evt.app_event_type = GROOVEPUTER_APP_EVENT_COPY;
-        return handleEvent(app_evt);
-      }
-      break;
-    }
-    case 'v': {
-      if (ui_event.ctrl) {
-        UIEvent app_evt{};
-        app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
-        app_evt.app_event_type = GROOVEPUTER_APP_EVENT_PASTE;
-        return handleEvent(app_evt);
-      }
-      break;
-    }
-    default:
-      break;
+    return true;
+  }
+  if (key_c && ui_event.ctrl) {
+    UIEvent app_evt{};
+    app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    app_evt.app_event_type = GROOVEPUTER_APP_EVENT_COPY;
+    return handleEvent(app_evt);
+  }
+  if (key_v && ui_event.ctrl) {
+    UIEvent app_evt{};
+    app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    app_evt.app_event_type = GROOVEPUTER_APP_EVENT_PASTE;
+    return handleEvent(app_evt);
   }
 
   return false;
 }
 
 void DrumSequencerMainPage::draw(IGfx& gfx) {
+  GrooveboxStyle style = UI::currentStyle;
+  std::static_pointer_cast<DrumSequencerGridComponent>(grid_component_)->setStyle(style);
+
+  switch (style) {
+    case GrooveboxStyle::RETRO_CLASSIC:
+      drawRetroClassicStyle(gfx);
+      break;
+    case GrooveboxStyle::AMBER:
+      drawAmberStyle(gfx);
+      break;
+    default:
+      drawMinimalStyle(gfx);
+      break;
+  }
+}
+
+void DrumSequencerMainPage::drawMinimalStyle(IGfx& gfx) {
   bank_index_ = mini_acid_.currentDrumBankIndex();
   const Rect& bounds = getBoundaries();
   int x = bounds.x;
@@ -565,29 +582,115 @@ void DrumSequencerMainPage::draw(IGfx& gfx) {
   bank_state.show_cursor = bankFocus;
   bank_state.song_mode = songMode;
   bank_bar_->setState(bank_state);
-  bank_bar_->setBoundaries(Rect{x, body_y - 1, w, 0});
+  bank_bar_->setBoundaries(Rect{x, body_y + pattern_bar_h, w, 0});
   int bank_bar_h = bank_bar_->barHeight(gfx);
-  bank_bar_->setBoundaries(Rect{x, body_y - 1, w, bank_bar_h});
+  bank_bar_->setBoundaries(Rect{x, body_y + pattern_bar_h, w, bank_bar_h});
   bank_bar_->draw(gfx);
 
-  // labels for voices
-  int grid_top = body_y + pattern_bar_h + 5;
-  int grid_h = body_h - (grid_top - body_y);
+  int grid_y = body_y + pattern_bar_h + bank_bar_h;
+  int grid_h = body_h - (pattern_bar_h + bank_bar_h);
   if (grid_h <= 0) {
     if (grid_component_) {
       grid_component_->setBoundaries(Rect{0, 0, 0, 0});
     }
     return;
   }
-
-  if (grid_component_) {
-    grid_component_->setBoundaries(Rect{x, grid_top, w, grid_h});
-  }
-  Container::draw(gfx);
+  grid_component_->setBoundaries(Rect{x, grid_y, w, grid_h});
+  grid_component_->draw(gfx);
+  Container::draw(gfx); // This line was originally outside the if (grid_h <= 0) block, but inside the original draw.
+                        // It should probably be called after grid_component_->draw(gfx) if grid_component_ is a child.
+                        // For minimal style, it's fine here.
 }
-//} // namespace
 
-GlobalDrumSettingsPage::GlobalDrumSettingsPage(GroovePuter& mini_acid)
+void DrumSequencerMainPage::drawRetroClassicStyle(IGfx& gfx) {
+    const Rect& bounds = getBoundaries();
+    int x = bounds.x;
+    int y = bounds.y;
+    int w = bounds.w;
+    int h = bounds.h;
+
+    char modeBuf[32];
+    std::snprintf(modeBuf, sizeof(modeBuf), "%s", mini_acid_.currentDrumEngineName().c_str());
+    retro::drawHeaderBar(gfx, x, y, w, 12, "DRUMS", modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
+
+    bool songMode = mini_acid_.songModeEnabled();
+    int selectedPattern = mini_acid_.displayDrumPatternIndex();
+    
+    retro::SelectorConfig pCfg;
+    pCfg.x = x + 4; pCfg.y = y + 14; pCfg.w = w - 8; pCfg.h = 10;
+    pCfg.label = "PTRN";
+    pCfg.count = Bank<DrumPatternSet>::kPatterns;
+    pCfg.selected = selectedPattern;
+    pCfg.cursor = activeDrumPatternCursor();
+    pCfg.showCursor = !songMode && patternRowFocused();
+    pCfg.enabled = !songMode;
+    retro::drawSelector(gfx, pCfg);
+
+    retro::SelectorConfig bCfg;
+    bCfg.x = x + 4; bCfg.y = y + 26; bCfg.w = w - 8; bCfg.h = 10;
+    bCfg.label = "BANK";
+    bCfg.count = kBankCount;
+    bCfg.selected = mini_acid_.currentDrumBankIndex();
+    bCfg.cursor = activeBankCursor();
+    bCfg.showCursor = !songMode && bankRowFocused();
+    bCfg.enabled = !songMode;
+    retro::drawSelector(gfx, bCfg);
+
+    int grid_y = y + 38;
+    int grid_h = h - 38 - 12; // footer is 12
+    grid_component_->setBoundaries(Rect{x, grid_y, w, grid_h});
+    grid_component_->draw(gfx);
+
+    retro::drawFooterBar(gfx, x, y + h - 12, w, 12, "f:GEN Alt+G:ALL 1..8:Edit", "DRUM");
+}
+
+void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
+    const Rect& bounds = getBoundaries();
+    int x = bounds.x;
+    int y = bounds.y;
+    int w = bounds.w;
+    int h = bounds.h;
+
+    char modeBuf[32];
+    std::snprintf(modeBuf, sizeof(modeBuf), "%s", mini_acid_.currentDrumEngineName().c_str());
+    amber::drawHeaderBar(gfx, x, y, w, 12, "DRUMS", modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
+
+    bool songMode = mini_acid_.songModeEnabled();
+    int selectedPattern = mini_acid_.displayDrumPatternIndex();
+
+    amber::SelectionBarConfig pCfg;
+    pCfg.x = x + 4; pCfg.y = y + 14; pCfg.w = w - 8; pCfg.h = 10;
+    pCfg.label = "PTRN";
+    pCfg.count = Bank<DrumPatternSet>::kPatterns;
+    pCfg.selected = selectedPattern;
+    pCfg.cursor = activeDrumPatternCursor();
+    pCfg.showCursor = !songMode && patternRowFocused();
+    amber::drawSelectionBar(gfx, pCfg);
+
+    amber::SelectionBarConfig bCfg;
+    bCfg.x = x + 4; bCfg.y = y + 26; bCfg.w = w - 8; bCfg.h = 10;
+    bCfg.label = "BANK";
+    bCfg.count = kBankCount;
+    bCfg.selected = mini_acid_.currentDrumBankIndex();
+    bCfg.cursor = activeBankCursor();
+    bCfg.showCursor = !songMode && bankRowFocused();
+    amber::drawSelectionBar(gfx, bCfg);
+
+    int grid_y = y + 38;
+    int grid_h = h - 38 - 12;
+    grid_component_->setBoundaries(Rect{x, grid_y, w, grid_h});
+    grid_component_->draw(gfx);
+
+    amber::drawFooterBar(gfx, x, y + h - 12, w, 12, "f:GEN Alt+G:ALL 1..8:Edit", "DRUM");
+}
+#include "../retro_widgets.h"
+#include "../amber_widgets.h"
+#include "../retro_ui_theme.h"
+#include "../amber_ui_theme.h"
+
+
+
+GlobalDrumSettingsPage::GlobalDrumSettingsPage(MiniAcid& mini_acid)
   : mini_acid_(mini_acid) {
   character_control_ = std::make_shared<LabelOptionComponent>(
       "Character", COLOR_LABEL, COLOR_WHITE);
@@ -651,7 +754,9 @@ void GlobalDrumSettingsPage::syncDrumEngineSelection() {
   character_control_->setOptionIndex(target);
 }
 
-DrumSequencerPage::DrumSequencerPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard) {
+
+
+DrumSequencerPage::DrumSequencerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard) {
   (void)gfx;
   addPage(std::make_shared<DrumSequencerMainPage>(mini_acid, audio_guard));
   addPage(std::make_shared<GlobalDrumSettingsPage>(mini_acid));

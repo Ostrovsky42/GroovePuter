@@ -163,7 +163,7 @@ inline void drawHeaderBar(IGfx& gfx, int x, int y, int w, int h,
     
     drawGlowText(gfx, x + 4, y + 2, title, IGfxColor(AmberTheme::FOCUS_GLOW), IGfxColor(AmberTheme::NEON_CYAN));
     
-    int modeX = x + 80;
+    int modeX = x + 45; // Moved left
     gfx.setTextColor(IGfxColor(AmberTheme::TEXT_SECONDARY));
     gfx.drawText(modeX, y + 2, "MODE:");
     gfx.setTextColor(IGfxColor(AmberTheme::NEON_ORANGE));

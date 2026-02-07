@@ -1,30 +1,19 @@
 #pragma once
+#ifndef USE_RETRO_THEME
+#define USE_RETRO_THEME
+#endif
+#ifndef USE_AMBER_THEME
+#define USE_AMBER_THEME
+#endif
 
 #include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
-#include "../dsp/grooveputer_engine.h"
+#include "../dsp/miniacid_engine.h"
 #include "display.h"
-
-enum KeyScanCode {
-  GROOVEPUTER_NO_SCANCODE = 0,
-  GROOVEPUTER_DOWN,
-  GROOVEPUTER_UP,
-  GROOVEPUTER_LEFT,
-  GROOVEPUTER_RIGHT,
-  GROOVEPUTER_ESCAPE,
-  GROOVEPUTER_TAB,
-  GROOVEPUTER_F1,
-  GROOVEPUTER_F2,
-  GROOVEPUTER_F3,
-  GROOVEPUTER_F4,
-  GROOVEPUTER_F5,
-  GROOVEPUTER_F6,
-  GROOVEPUTER_F7,
-  GROOVEPUTER_F8,
-};
+#include "key_normalize.h"
 
 enum EventType {
   GROOVEPUTER_NO_TYPE = 0,
@@ -58,7 +47,8 @@ enum ApplicationEventType {
   GROOVEPUTER_APP_EVENT_SET_VISUAL_STYLE,
 };
 
-enum class VisualStyle { MINIMAL, RETRO_CLASSIC, AMBER };
+enum class GrooveboxStyle { MINIMAL, MINIMAL_DARK, RETRO_CLASSIC, AMBER };
+using VisualStyle = GrooveboxStyle;
 
 enum MouseButtonType {
   MOUSE_BUTTON_NONE = 0,
@@ -328,8 +318,16 @@ class IPage : public Container {
 
   // EventHandler methods
   virtual bool handleEvent(UIEvent& ui_event) = 0;
-  // Frame methods
-  virtual void draw(IGfx& gfx) = 0;
+  // Frame methods (standard contract)
+  void draw(IGfx& gfx) override {
+      drawHeader(gfx);
+      drawContent(gfx);
+      drawFooter(gfx);
+  }
+
+  virtual void drawHeader(IGfx& gfx) { (void)gfx; }
+  virtual void drawContent(IGfx& gfx) { (void)gfx; }
+  virtual void drawFooter(IGfx& gfx) { (void)gfx; }
 
   // Request transition to another page
   bool hasPageRequest() const { return requestedPage_ >= 0; }
@@ -337,8 +335,13 @@ class IPage : public Container {
   int getRequestedContext() const { return requestedContext_; }
   void clearPageRequest() { requestedPage_ = -1; requestedContext_ = -1; }
 
+  // lifecycle hooks
+  virtual void onEnter(int context) { (void)context; }
+  virtual void onExit() {}
+  virtual void tick() {}
+
   // Receive context when being navigated TO
-  virtual void setContext(int context) { (void)context; }
+  virtual void setContext(int context) { onEnter(context); }
 
  protected:
   void requestPageTransition(int pageIndex, int context = 0) {

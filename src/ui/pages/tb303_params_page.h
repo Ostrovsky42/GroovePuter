@@ -7,7 +7,7 @@
 
 class TB303ParamsPage : public IPage, public IMultiHelpFramesProvider {
  public:
-  TB303ParamsPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard, int voiceIndex);
+  TB303ParamsPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voiceIndex);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string& getTitle() const override;
@@ -33,7 +33,7 @@ class TB303ParamsPage : public IPage, public IMultiHelpFramesProvider {
   void loadModePreset(int index);
 
   IGfx& gfx_;
-  GroovePuter& mini_acid_;
+  MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
   int voice_index_;
   int current_preset_index_ = -1;

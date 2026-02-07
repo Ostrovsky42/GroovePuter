@@ -8,8 +8,8 @@
       <change beforePath="$PROJECT_DIR$/cardputer_display.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/cardputer_display.cpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/cardputer_display.h" beforeDir="false" afterPath="$PROJECT_DIR$/cardputer_display.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/display.h" beforeDir="false" afterPath="$PROJECT_DIR$/display.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/dist/miniacid.bin" beforeDir="false" afterPath="$PROJECT_DIR$/dist/miniacid.bin" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/miniacid.ino" beforeDir="false" afterPath="$PROJECT_DIR$/miniacid.ino" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/dist/grooveputer.bin" beforeDir="false" afterPath="$PROJECT_DIR$/dist/grooveputer.bin" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/grooveputer.ino" beforeDir="false" afterPath="$PROJECT_DIR$/grooveputer.ino" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/platform_sdl/Makefile" beforeDir="false" afterPath="$PROJECT_DIR$/platform_sdl/Makefile" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/platform_sdl/sdl_display.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/platform_sdl/sdl_display.cpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/platform_sdl/sdl_display.h" beforeDir="false" afterPath="$PROJECT_DIR$/platform_sdl/sdl_display.h" afterDir="false" />
@@ -21,13 +21,13 @@
       <change beforePath="$PROJECT_DIR$/src/dsp/genre_manager.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/dsp/genre_manager.cpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/dsp/mini_tb303.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/dsp/mini_tb303.cpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/dsp/mini_tb303.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/dsp/mini_tb303.h" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/dsp/miniacid_engine.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/dsp/miniacid_engine.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/dsp/miniacid_engine.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/dsp/miniacid_engine.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/dsp/grooveputer_engine.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/dsp/grooveputer_engine.cpp" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/dsp/grooveputer_engine.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/dsp/grooveputer_engine.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/dsp/perf_stats.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/dsp/perf_stats.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ui/components/label_option.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/ui/components/label_option.cpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ui/help_dialog_frames.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/ui/help_dialog_frames.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ui/led_manager.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/ui/led_manager.cpp" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/ui/miniacid_display.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/ui/miniacid_display.h" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/ui/grooveputer_display.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/ui/grooveputer_display.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ui/pages/drum_sequencer_page.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/ui/pages/drum_sequencer_page.cpp" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ui/pages/drum_sequencer_page.h" beforeDir="false" afterPath="$PROJECT_DIR$/src/ui/pages/drum_sequencer_page.h" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/ui/pages/genre_page.cpp" beforeDir="false" afterPath="$PROJECT_DIR$/src/ui/pages/genre_page.cpp" afterDir="false" />
@@ -75,7 +75,7 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
     "git-widget-placeholder": "new__bpm",
-    "last_opened_file_path": "/home/gg/Documents/arduino.ESP32-S3-Touch-AMOLED-1.75/cardputer/miniacid"
+    "last_opened_file_path": "/home/gg/Documents/arduino.ESP32-S3-Touch-AMOLED-1.75/cardputer/grooveputer"
   }
 }]]></component>
   <component name="SharedIndexes">

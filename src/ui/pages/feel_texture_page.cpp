@@ -50,7 +50,7 @@ void formatFeelDelta(const FeelSettings& before, const FeelSettings& after, char
 }
 }
 
-FeelTexturePage::FeelTexturePage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
+FeelTexturePage::FeelTexturePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
     (void)gfx;
 }
@@ -207,10 +207,14 @@ void FeelTexturePage::drawTimebaseSelector(IGfx& gfx, int x, int y) {
 }
 
 void FeelTexturePage::drawLengthSelector(IGfx& gfx, int x, int y) {
-    char buf[24];
+    char buf[32];
     int bars = mini_acid_.cycleBarCount();
+    if (bars < 1) bars = 1;
+    if (bars > 8) bars = 8;
     if (bars > 1) {
         int barIdx = mini_acid_.cycleBarIndex() + 1;
+        if (barIdx < 1) barIdx = 1;
+        if (barIdx > bars) barIdx = bars;
         std::snprintf(buf, sizeof(buf), "LEN   %s %d/%d", lengthToString(pattern_length_), barIdx, bars);
     } else {
         std::snprintf(buf, sizeof(buf), "LEN   %s", lengthToString(pattern_length_));

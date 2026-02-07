@@ -6,6 +6,9 @@
 #include <string>
 #include <iostream>
 #include <chrono>
+#include <thread>
+#include <cstdio>
+#include <cstdarg>
 
 // Basic types
 typedef uint8_t byte;
@@ -27,14 +30,7 @@ inline unsigned long micros() {
 }
 
 inline void delay(unsigned long ms) {
-    // Basic busy wait or sleep - for SDL loop usually handled differently but 
-    // for simple logic this might suffice if not blocking the main thread too long.
-    // However, in a game loop, extensive delays are bad.
-    // For now, no-op or simple sleep?
-    // Using SDL_Delay if available would be better but we don't want to enforce SDL dependency here if possible.
-    // But since this IS platform_sdl...
-    extern void SDL_Delay(uint32_t ms);
-    SDL_Delay(ms); 
+    std::this_thread::sleep_for(std::chrono::milliseconds(ms));
 }
 
 // Serial Mock
@@ -56,14 +52,11 @@ public:
         std::cout << std::endl;
     }
 
-    template<typename T, typename... Args>
-    void printf(const char* format, T val, Args... args) {
-        // Simple shim, might not handle Arduino Flash strings (F())
-        ::printf(format, val, args...);
-    }
-    
-    void printf(const char* format) {
-        ::printf("%s", format);
+    void printf(const char* format, ...) {
+        va_list args;
+        va_start(args, format);
+        ::vprintf(format, args);
+        va_end(args);
     }
     
     void flush() {
@@ -72,12 +65,31 @@ public:
 };
 
 extern SerialMock Serial;
-// Define instance in a cpp file or make it static/inline?
-// For simplicity in a single-binary build, we can perhaps cheat and define it here if guarded... 
-// But correct way is extern here.
-// Let's define a static instance to avoid linker errors in simple setups, 
-// or require including a .cpp. 
-// Actually, `sdl_main.cpp` can define it.
-// Let's go with extern and define in sdl_main.cpp.
+
+// SD/FS Mock
+class File {
+public:
+    operator bool() const { return false; }
+    size_t write(const uint8_t*, size_t) { return 0; }
+    size_t read(uint8_t*, size_t) { return 0; }
+    bool seek(size_t) { return false; }
+    void close() {}
+    size_t size() const { return 0; }
+    bool isDirectory() const { return false; }
+    File openNextFile() { return File(); }
+    const char* name() const { return ""; }
+};
+
+class SDMock {
+public:
+    bool exists(const char*) const { return false; }
+    bool mkdir(const char*) { return false; }
+    bool remove(const char*) { return false; }
+    File open(const char*, int mode = 0) { return File(); }
+};
+
+extern SDMock SD;
+#define FILE_WRITE 1
+#define FILE_READ 0
 
 #endif // !ARDUINO

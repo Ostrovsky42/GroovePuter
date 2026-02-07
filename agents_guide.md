@@ -14,21 +14,15 @@ GroovePuter is a portable, high-performance acid house groovebox.
 
 ## 🛠 Critical Technical Context
 
-### 1. Hardware Constraints (CRITICAL)
+### 1. Agentic Infrastructure (NEW)
+This project uses modern Agentic Skills and Workflows to guide development.
+- **Skills:** Check `.agent/skills/` for deep technical guidelines on `audio_engine` and `ui_system`.
+- **Workflows:** Use `.agent/workflows/` for `/build`, `/flash`, and `/monitor`.
+
+### 2. Hardware Constraints (CRITICAL)
 - **NO PSRAM:** The StampS3 in the Cardputer has zero PSRAM. Every byte of DRAM is precious.
-- **Memory Buffer:** Do NOT use large static buffers. Use `ArduinoJson` carefully (preferably streaming/evented).
-- **Core Split:** 
-  - **Core 1:** Audio Engine (strictly realtime).
-  - **Core 0:** UI, Logic, Networking, Storage.
-
-### 2. Thread Safety & Synchronization
-- **Avoid `volatile`:** For cross-core communication, use `std::atomic` and proper memory ordering.
-- **Waveform Buffer:** Uses internal atomic double-buffering. Access it via `mini_acid_.getWaveformBuffer()`.
-- **AudioGuard:** Use the provided locking mechanism when the UI thread modifies synth parameters to prevent audio glitches.
-
-### 3. Build Configuration
-- **Script:** Use `build-psram.sh` (Note: The name is legacy; it builds for DRAM-only by default).
-- **Retro Theme:** Enabled via `-DUSE_RETRO_THEME`. Use conditional guards `#ifdef USE_RETRO_THEME` around heavy UI/Widget code.
+- **Core Split:** Core 1 (Audio), Core 0 (UI/Logic).
+- **Keyboard:** Case-insensitive, Ctrl/Alt focus. See `ui_system` skill.
 
 ---
 

@@ -111,6 +111,7 @@ struct Song {
   static constexpr int kMaxPositions = 128;
   SongPosition positions[kMaxPositions];
   int length = 1;
+  bool reverse = false;
 };
 
 template <typename PatternType>
@@ -290,7 +291,8 @@ struct Scene {
   TapeState tape;
   FeelSettings feel;
   GenreSettings genre;
-  Song song;
+  Song songs[2];
+  int activeSongSlot = 0;
   GrooveboxMode mode = GrooveboxMode::Acid;
   float masterVolume = 0.6f;  // Default volume
   GeneratorParams generatorParams; 
@@ -382,6 +384,7 @@ private:
     Genre,
     Led,
     LedColorArray,
+    Songs,
     Song,
     SongPositions,
     SongPosition,
@@ -488,6 +491,7 @@ public:
   void setSongPattern(int position, SongTrack track, int patternIndex);
   void clearSongPattern(int position, SongTrack track);
   int songPattern(int position, SongTrack track) const;
+  int songPatternAtSlot(int slot, int position, SongTrack track) const;
   void setSongLength(int length);
   int songLength() const;
   void setSongPosition(int position);
@@ -499,6 +503,14 @@ public:
   void setLoopRange(int startRow, int endRow);
   int loopStartRow() const;
   int loopEndRow() const;
+  
+  void setSongReverse(bool reverse);
+  bool isSongReverse() const;
+  void mergeSongs();
+  void alternateSongs();
+  
+  int activeSongSlot() const;
+  void setActiveSongSlot(int slot);
 
   void setTrackVolume(int voiceIdx, float volume);
   float getTrackVolume(int voiceIdx) const;
@@ -701,37 +713,48 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeChar('{')) return false;
   if (!writeLiteral("\"drumBanks\":")) return false;
   if (!writeDrumBanks(scene_->drumBanks)) return false;
-  Serial.print(".");
 
   if (!writeLiteral(",\"synthABanks\":")) return false;
   if (!writeSynthBanks(scene_->synthABanks)) return false;
-  Serial.print(".");
 
   if (!writeLiteral(",\"synthBBanks\":")) return false;
   if (!writeSynthBanks(scene_->synthBBanks)) return false;
-  Serial.print(".");
 
-  if (!writeLiteral(",\"song\":{")) return false;
-  int songLen = songLength();
-  if (!writeLiteral("\"length\":")) return false;
-  if (!writeInt(songLen)) return false;
-  if (!writeLiteral(",\"positions\":[")) return false;
-  for (int i = 0; i < songLen; ++i) {
-    if (i > 0 && !writeChar(',')) return false;
+  auto writeSong = [&](const Song& s) -> bool {
     if (!writeChar('{')) return false;
-    if (!writeLiteral("\"a\":")) return false;
-    if (!writeInt(scene_->song.positions[i].patterns[0])) return false;
-    if (!writeLiteral(",\"b\":")) return false;
-    if (!writeInt(scene_->song.positions[i].patterns[1])) return false;
-    if (!writeLiteral(",\"drums\":")) return false;
-    if (!writeInt(scene_->song.positions[i].patterns[2])) return false;
-    if (!writeLiteral(",\"voice\":")) return false;
-    if (!writeInt(scene_->song.positions[i].patterns[3])) return false;
-    if (!writeChar('}')) return false;
-  }
+    int songLen = s.length;
+    if (songLen < 1) songLen = 1;
+    if (songLen > Song::kMaxPositions) songLen = Song::kMaxPositions;
+    
+    if (!writeLiteral("\"length\":")) return false;
+    if (!writeInt(songLen)) return false;
+    if (!writeLiteral(",\"positions\":[")) return false;
+    for (int i = 0; i < songLen; ++i) {
+      if (i > 0 && !writeChar(',')) return false;
+      if (!writeChar('{')) return false;
+      if (!writeLiteral("\"a\":")) return false;
+      if (!writeInt(s.positions[i].patterns[0])) return false;
+      if (!writeLiteral(",\"b\":")) return false;
+      if (!writeInt(s.positions[i].patterns[1])) return false;
+      if (!writeLiteral(",\"drums\":")) return false;
+      if (!writeInt(s.positions[i].patterns[2])) return false;
+      if (!writeLiteral(",\"voice\":")) return false;
+      if (!writeInt(s.positions[i].patterns[3])) return false;
+      if (!writeChar('}')) return false;
+    }
+    if (!writeChar(']')) return false;
+    // Add reverse flag
+    if (!writeLiteral(",\"reverse\":")) return false;
+    if (!writeBool(s.reverse)) return false;
+    
+    return writeChar('}');
+  };
+
+  if (!writeLiteral(",\"songs\":[")) return false;
+  if (!writeSong(scene_->songs[0])) return false;
+  if (!writeChar(',')) return false;
+  if (!writeSong(scene_->songs[1])) return false;
   if (!writeChar(']')) return false;
-  if (!writeChar('}')) return false;
-  Serial.print(".");
 
   if (!writeLiteral(",\"state\":{")) return false;
   if (!writeLiteral("\"drumPatternIndex\":")) return false;
@@ -742,6 +765,8 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeBool(songMode_)) return false;
   if (!writeLiteral(",\"songPosition\":")) return false;
   if (!writeInt(clampSongPosition(songPosition_))) return false;
+  if (!writeLiteral(",\"activeSongSlot\":")) return false;
+  if (!writeInt(scene_->activeSongSlot)) return false;
   if (!writeLiteral(",\"loopMode\":")) return false;
   if (!writeBool(loopMode_)) return false;
   if (!writeLiteral(",\"loopStart\":")) return false;
@@ -856,7 +881,7 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
     if (!writeChar('}')) return false;
   }
   if (!writeChar(']')) return false;
-  Serial.print(".");
+  // Serial.print(".");
 
   if (!writeLiteral(",\"tape\":{\"mode\":")) return false;
   if (!writeInt(static_cast<int>(scene_->tape.mode))) return false;
@@ -899,7 +924,7 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeLiteral(",\"fls\":")) return false;
   if (!writeInt(scene_->led.flashMs)) return false;
   if (!writeChar('}')) return false;  // Close led object
-  Serial.print(".");
+  // Serial.print(".");
   
   if (!writeLiteral(",\"vocal\":{\"pch\":")) return false;
   if (!writeFloat(scene_->vocal.pitch)) return false;
@@ -922,8 +947,8 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeChar(']')) return false;
   
   bool finalOk = writeLiteral("}}");  // Close state and root
-  if (finalOk) Serial.println(" Done.");
-  else Serial.println(" FAILED at final literal.");
+  // if (finalOk) Serial.println(" Done.");
+  // else Serial.println(" FAILED at final literal.");
   return finalOk;
 }
 
@@ -942,7 +967,6 @@ bool SceneManager::loadSceneEvented(TReader&& reader) {
   JsonVisitor::NextChar nextChar = [&reader]() -> int { 
     int c = reader.read();
     if (c >= 0) bytesRead++;
-    else Serial.printf("[Reader] EOF after %zu bytes\n", bytesRead);
     return c; 
   };
   return loadSceneEventedWithReader(nextChar);

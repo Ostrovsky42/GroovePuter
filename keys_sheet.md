@@ -1,6 +1,8 @@
-# GroovePuter Key Map (Cardputer)
+# MiniAcid Key Map (Cardputer)
 
 This is the canonical key map aligned with current code.
+Keyboard note: Cardputer workflow assumes no `Shift`/`Caps Lock`; use lowercase letters with `Ctrl`/`Alt` modifiers.
+Scope note: `Global` keys work on all pages. Keys inside page sections are `Local only` (work on that page).
 
 ## Global
 | Key | Action |
@@ -86,11 +88,16 @@ This is the canonical key map aligned with current code.
 ## Song Page
 | Key | Action |
 | --- | --- |
-| `Arrows` | Move cursor |
-| `Ctrl+Arrows` | Select area |
-| `Q..U` | Assign pattern 1..7 |
+| `Alt + J / K` | Select Song Slot A / B |
+| `Ctrl + R` | Toggle Reverse Playback |
+| `Ctrl + M` | Merge Slot A/B (Fill Gaps) |
+| `Ctrl + N` | Alternate Slots (Interleave) |
+| `Space` | Play/Stop |
+| `Arrows` | Navigation |
+| `Enter` | Toggle Edit |
+| `Ctrl+Arrows` | Select area (Shift-free selection) |
+| `Q..I` | Assign pattern 1..8 |
 | `Bksp` / `Tab` | Clear cell |
-| `M` | Toggle Song Mode |
 | `Ctrl+L` | Loop mode |
 | `G` | Generate cell |
 | `G` double-tap | Generate row |
