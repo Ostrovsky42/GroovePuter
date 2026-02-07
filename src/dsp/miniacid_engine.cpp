@@ -66,6 +66,25 @@ std::string toLowerCopy(std::string value) {
   }
   return value;
 }
+
+float clamp01(float v) {
+  if (v < 0.0f) return 0.0f;
+  if (v > 1.0f) return 1.0f;
+  return v;
+}
+
+float applyMotionCurve(float x, uint8_t curve) {
+  x = clamp01(x);
+  switch (curve) {
+    case static_cast<uint8_t>(MotionCurve::Linear):
+      return x;
+    case static_cast<uint8_t>(MotionCurve::Exp):
+      return x * x;
+    case static_cast<uint8_t>(MotionCurve::Soft):
+    default:
+      return x * x * (3.0f - 2.0f * x); // smoothstep
+  }
+}
 }
 
 TempoDelay::TempoDelay(float sampleRate)
@@ -171,6 +190,8 @@ void TempoDelay::setMix(float m) {
     m = 1.0f;
   mix = m;
 }
+
+float TempoDelay::mixValue() const { return mix; }
 
 void TempoDelay::setFeedback(float fb) {
   if (fb < 0.0f)
@@ -407,6 +428,7 @@ void MiniAcid::reset() {
   songPlayheadPosition_ = 0;
   songPlaybackSlot_ = sceneManager_.activeSongSlot();
   liveMixMode_ = false;
+  resetMotionRuntime();
   patternModeDrumPatternIndex_ = 0;
   patternModeSynthPatternIndex_[0] = 0;
   patternModeSynthPatternIndex_[1] = 0;
@@ -739,6 +761,257 @@ void MiniAcid::setLiveMixMode(bool enabled) {
   }
 }
 void MiniAcid::toggleLiveMixMode() { setLiveMixMode(!liveMixMode_); }
+
+void MiniAcid::setMotionAccel(float accelX, float accelY, float accelZ) {
+  motionAccelX_.store(accelX, std::memory_order_relaxed);
+  motionAccelY_.store(accelY, std::memory_order_relaxed);
+  motionAccelZ_.store(accelZ, std::memory_order_relaxed);
+}
+
+void MiniAcid::applyMotionPerBuffer_() {
+  MotionSettings& m = sceneManager_.currentScene().motion;
+  if (!m.enabled || !m.masterEnable) {
+    resetMotionRuntime();
+    return;
+  }
+
+  const float accelX = motionAccelX_.load(std::memory_order_relaxed);
+  const float accelY = motionAccelY_.load(std::memory_order_relaxed);
+  const float accelZ = motionAccelZ_.load(std::memory_order_relaxed);
+
+  float raw = 0.0f;
+  if (m.mode == static_cast<uint8_t>(MotionMode::Tilt)) {
+    raw = (m.axis == static_cast<uint8_t>(MotionAxis::X)) ? accelX : accelY;
+    raw = (raw + 1.0f) * 0.5f;
+    raw = clamp01(raw);
+  } else {
+    float energy = sqrtf(accelX * accelX + accelY * accelY + accelZ * accelZ);
+    raw = (energy - 1.0f) * 1.2f;
+    if (raw < 0.0f) raw = 0.0f;
+    if (raw > 1.0f) raw = 1.0f;
+  }
+
+  if (m.invert) raw = 1.0f - raw;
+
+  float dead = (float)m.deadzone * 0.01f;
+  if (raw <= dead) raw = 0.0f;
+  else raw = (raw - dead) / (1.0f - dead);
+  raw = clamp01(raw);
+
+  float alpha = 1.0f - ((float)m.smoothing * 0.01f);
+  if (alpha < 0.02f) alpha = 0.02f;
+  motionRuntime_.filtered += alpha * (raw - motionRuntime_.filtered);
+
+  float curved = applyMotionCurve(motionRuntime_.filtered, m.curve);
+  float depth = (float)m.depth * 0.01f;
+  float modulation = 0.0f;
+  if (m.mode == static_cast<uint8_t>(MotionMode::Tilt)) {
+    modulation = (curved - 0.5f) * 2.0f * depth; // bipolar
+  } else if (m.mode == static_cast<uint8_t>(MotionMode::Shake)) {
+    modulation = curved * depth; // unipolar continuous
+  } else {
+    // ShakeGate: detect transient from raw shake energy, quantize to step boundaries.
+    const float thr = clamp01((float)m.shakeThreshold * 0.01f);
+    const float releaseThr = thr * 0.6f;
+    if (motionRuntime_.shakeArmed && raw >= thr) {
+      motionRuntime_.shakeGatePending = true;
+      motionRuntime_.shakeArmed = false;
+    } else if (!motionRuntime_.shakeArmed && raw <= releaseThr) {
+      motionRuntime_.shakeArmed = true;
+    }
+
+    int quantStep = 1;
+    if (m.quantize == 1) quantStep = 2;      // 1/8
+    else if (m.quantize >= 2) quantStep = 4; // 1/4
+
+    bool stepChanged = (motionRuntime_.lastStepIndex != currentStepIndex);
+    if (stepChanged) {
+      motionRuntime_.lastStepIndex = currentStepIndex;
+      if (motionRuntime_.shakeGateActive) {
+        motionRuntime_.shakeGateStepsLeft--;
+        if (motionRuntime_.shakeGateStepsLeft <= 0) {
+          motionRuntime_.shakeGateActive = false;
+          motionRuntime_.shakeGateStepsLeft = 0;
+        }
+      }
+      if (motionRuntime_.shakeGatePending && (currentStepIndex % quantStep == 0)) {
+        motionRuntime_.shakeGatePending = false;
+        motionRuntime_.shakeGateActive = true;
+        motionRuntime_.shakeGateStepsLeft = std::max(1, (int)m.holdSteps);
+      }
+    }
+    modulation = motionRuntime_.shakeGateActive ? depth : 0.0f; // rhythmic gate pulse
+  }
+
+  float rate = (float)m.rateLimit * 0.01f;
+  if (rate < 0.01f) rate = 0.01f;
+  float d = modulation - motionRuntime_.lastApplied;
+  if (d > rate) d = rate;
+  if (d < -rate) d = -rate;
+  modulation = motionRuntime_.lastApplied + d;
+  motionRuntime_.lastApplied = modulation;
+
+  if (!motionRuntime_.hasLatch ||
+      motionRuntime_.target != m.target ||
+      motionRuntime_.voice != m.voice) {
+    motionRuntime_.hasLatch = true;
+    motionRuntime_.target = m.target;
+    motionRuntime_.voice = m.voice;
+    motionRuntime_.baseA = parameter303(TB303ParamId::Cutoff, 0).normalized();
+    motionRuntime_.baseB = parameter303(TB303ParamId::Cutoff, 1).normalized();
+    motionRuntime_.baseResA = parameter303(TB303ParamId::Resonance, 0).normalized();
+    motionRuntime_.baseResB = parameter303(TB303ParamId::Resonance, 1).normalized();
+    motionRuntime_.baseTextureAmount = sceneManager_.currentScene().genre.textureAmount;
+    motionRuntime_.baseTapeWow = sceneManager_.currentScene().tape.macro.wow;
+    motionRuntime_.baseTapeSat = sceneManager_.currentScene().tape.macro.sat;
+    motionRuntime_.baseDelayMixA = delay303.mixValue();
+    motionRuntime_.baseDelayMixB = delay3032.mixValue();
+  } else if (m.target == static_cast<uint8_t>(MotionTarget::TextureAmount)) {
+    // If user edited texture manually while motion is active, refresh the latch base.
+    int sceneAmount = sceneManager_.currentScene().genre.textureAmount;
+    if (sceneAmount != motionRuntime_.baseTextureAmount) {
+      motionRuntime_.baseTextureAmount = sceneAmount;
+    }
+  }
+
+  switch (m.target) {
+    case static_cast<uint8_t>(MotionTarget::Cutoff): {
+      float targetA = clamp01(motionRuntime_.baseA + modulation * 0.55f);
+      float targetB = clamp01(motionRuntime_.baseB + modulation * 0.55f);
+      if (m.voice == static_cast<uint8_t>(MotionVoice::A) || m.voice == static_cast<uint8_t>(MotionVoice::AB)) {
+        set303ParameterNormalized(TB303ParamId::Cutoff, targetA, 0);
+      }
+      if (m.voice == static_cast<uint8_t>(MotionVoice::B) || m.voice == static_cast<uint8_t>(MotionVoice::AB)) {
+        set303ParameterNormalized(TB303ParamId::Cutoff, targetB, 1);
+      }
+      break;
+    }
+    case static_cast<uint8_t>(MotionTarget::Resonance): {
+      float targetA = clamp01(motionRuntime_.baseResA + modulation * 0.35f);
+      float targetB = clamp01(motionRuntime_.baseResB + modulation * 0.35f);
+      if (m.voice == static_cast<uint8_t>(MotionVoice::A) || m.voice == static_cast<uint8_t>(MotionVoice::AB)) {
+        set303ParameterNormalized(TB303ParamId::Resonance, targetA, 0);
+      }
+      if (m.voice == static_cast<uint8_t>(MotionVoice::B) || m.voice == static_cast<uint8_t>(MotionVoice::AB)) {
+        set303ParameterNormalized(TB303ParamId::Resonance, targetB, 1);
+      }
+      break;
+    }
+    case static_cast<uint8_t>(MotionTarget::TextureAmount): {
+      int next = motionRuntime_.baseTextureAmount + (int)lrintf(modulation * 50.0f);
+      if (next < 0) next = 0;
+      if (next > 100) next = 100;
+      motionTextureOverrideActive_ = true;
+      motionTextureAmountOverride_ = static_cast<uint8_t>(next);
+      break;
+    }
+    case static_cast<uint8_t>(MotionTarget::TapeWow): {
+      int next = motionRuntime_.baseTapeWow + (int)lrintf(modulation * 45.0f);
+      if (next < 0) next = 0;
+      if (next > 100) next = 100;
+      motionTapeWowOverrideActive_ = true;
+      motionTapeWowOverride_ = static_cast<uint8_t>(next);
+      break;
+    }
+    case static_cast<uint8_t>(MotionTarget::TapeSat): {
+      int next = motionRuntime_.baseTapeSat + (int)lrintf(modulation * 45.0f);
+      if (next < 0) next = 0;
+      if (next > 100) next = 100;
+      motionTapeSatOverrideActive_ = true;
+      motionTapeSatOverride_ = static_cast<uint8_t>(next);
+      break;
+    }
+    case static_cast<uint8_t>(MotionTarget::DelayMix): {
+      float targetA = clamp01(motionRuntime_.baseDelayMixA + modulation * 0.45f);
+      float targetB = clamp01(motionRuntime_.baseDelayMixB + modulation * 0.45f);
+      if (m.voice == static_cast<uint8_t>(MotionVoice::A) || m.voice == static_cast<uint8_t>(MotionVoice::AB)) {
+        delay303.setMix(targetA);
+      }
+      if (m.voice == static_cast<uint8_t>(MotionVoice::B) || m.voice == static_cast<uint8_t>(MotionVoice::AB)) {
+        delay3032.setMix(targetB);
+      }
+      break;
+    }
+    default:
+      break;
+  }
+}
+
+void MiniAcid::resetMotionRuntime() {
+  if (motionRuntime_.hasLatch) {
+    switch (motionRuntime_.target) {
+      case static_cast<uint8_t>(MotionTarget::Cutoff):
+        set303ParameterNormalized(TB303ParamId::Cutoff, clamp01(motionRuntime_.baseA), 0);
+        set303ParameterNormalized(TB303ParamId::Cutoff, clamp01(motionRuntime_.baseB), 1);
+        break;
+      case static_cast<uint8_t>(MotionTarget::Resonance):
+        set303ParameterNormalized(TB303ParamId::Resonance, clamp01(motionRuntime_.baseResA), 0);
+        set303ParameterNormalized(TB303ParamId::Resonance, clamp01(motionRuntime_.baseResB), 1);
+        break;
+      case static_cast<uint8_t>(MotionTarget::TextureAmount): {
+        motionTextureOverrideActive_ = false;
+        motionTextureAmountOverride_ = 0;
+        break;
+      }
+      case static_cast<uint8_t>(MotionTarget::TapeWow): {
+        motionTapeWowOverrideActive_ = false;
+        motionTapeWowOverride_ = 0;
+        break;
+      }
+      case static_cast<uint8_t>(MotionTarget::TapeSat): {
+        motionTapeSatOverrideActive_ = false;
+        motionTapeSatOverride_ = 0;
+        break;
+      }
+      case static_cast<uint8_t>(MotionTarget::DelayMix):
+        delay303.setMix(clamp01(motionRuntime_.baseDelayMixA));
+        delay3032.setMix(clamp01(motionRuntime_.baseDelayMixB));
+        break;
+      default:
+        break;
+    }
+  }
+  motionRuntime_.hasLatch = false;
+  motionRuntime_.filtered = 0.0f;
+  motionRuntime_.lastApplied = 0.0f;
+  motionRuntime_.shakeGatePending = false;
+  motionRuntime_.shakeGateActive = false;
+  motionRuntime_.shakeGateStepsLeft = 0;
+  motionRuntime_.lastStepIndex = -1;
+  motionRuntime_.shakeArmed = true;
+  motionTextureOverrideActive_ = false;
+  motionTapeWowOverrideActive_ = false;
+  motionTapeSatOverrideActive_ = false;
+  // Force tape macro re-apply from scene values after motion overrides are removed.
+  tapeControlCached_ = false;
+}
+
+void MiniAcid::updateMotionInput(float accelX, float accelY, float accelZ, float dtSeconds) {
+  (void)dtSeconds;
+  setMotionAccel(accelX, accelY, accelZ);
+}
+
+uint8_t MiniAcid::effectiveTextureAmount() const {
+  return motionTextureOverrideActive_ ? motionTextureAmountOverride_
+                                      : sceneManager_.currentScene().genre.textureAmount;
+}
+
+void MiniAcid::onUserChangedTextureAmount(uint8_t amount0_100) {
+  if (motionRuntime_.hasLatch &&
+      motionRuntime_.target == static_cast<uint8_t>(MotionTarget::TextureAmount)) {
+    motionRuntime_.baseTextureAmount = amount0_100;
+  }
+}
+
+void MiniAcid::onUserChangedDelayMix(int voice, float mix01) {
+  int idx = (voice == 1) ? 1 : 0;
+  if (motionRuntime_.hasLatch &&
+      motionRuntime_.target == static_cast<uint8_t>(MotionTarget::DelayMix)) {
+    if (idx == 0) motionRuntime_.baseDelayMixA = clamp01(mix01);
+    else motionRuntime_.baseDelayMixB = clamp01(mix01);
+  }
+}
+
 void MiniAcid::mergeSongs() { sceneManager_.mergeSongs(); }
 void MiniAcid::alternateSongs() { sceneManager_.alternateSongs(); }
 void MiniAcid::setSongReverse(bool reverse) { sceneManager_.setSongReverse(reverse); }
@@ -1681,17 +1954,21 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   }
 
   updateSamplesPerStep();
+  applyMotionPerBuffer_();
   delay303.setBpm(bpmValue);
   delay3032.setBpm(bpmValue);
 
   // Update tape controls only on change (avoids per-buffer control overhead spikes).
   const TapeState& tapeState = sceneManager_.currentScene().tape;
+  TapeMacro effectiveTapeMacro = tapeState.macro;
+  if (motionTapeWowOverrideActive_) effectiveTapeMacro.wow = motionTapeWowOverride_;
+  if (motionTapeSatOverrideActive_) effectiveTapeMacro.sat = motionTapeSatOverride_;
   const bool macroChanged =
-      (tapeState.macro.wow != lastTapeMacro_.wow) ||
-      (tapeState.macro.age != lastTapeMacro_.age) ||
-      (tapeState.macro.sat != lastTapeMacro_.sat) ||
-      (tapeState.macro.tone != lastTapeMacro_.tone) ||
-      (tapeState.macro.crush != lastTapeMacro_.crush);
+      (effectiveTapeMacro.wow != lastTapeMacro_.wow) ||
+      (effectiveTapeMacro.age != lastTapeMacro_.age) ||
+      (effectiveTapeMacro.sat != lastTapeMacro_.sat) ||
+      (effectiveTapeMacro.tone != lastTapeMacro_.tone) ||
+      (effectiveTapeMacro.crush != lastTapeMacro_.crush);
   const bool minimalChanged =
       (tapeState.space != lastTapeSpace_) ||
       (tapeState.movement != lastTapeMovement_) ||
@@ -1701,8 +1978,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   const bool looperVolChanged = fabsf(tapeState.looperVolume - lastTapeLooperVolume_) > 0.0005f;
 
   if (!tapeControlCached_ || macroChanged) {
-    tapeFX->applyMacro(tapeState.macro);
-    lastTapeMacro_ = tapeState.macro;
+    tapeFX->applyMacro(effectiveTapeMacro);
+    lastTapeMacro_ = effectiveTapeMacro;
   }
   if (!tapeControlCached_ || minimalChanged) {
     tapeFX->applyMinimalParams(tapeState.space, tapeState.movement, tapeState.groove);
@@ -2226,6 +2503,7 @@ void MiniAcid::applySceneStateFromManager() {
   songMode_ = sceneManager_.songMode();
   songPlaybackSlot_ = sceneManager_.activeSongSlot();
   liveMixMode_ = false;
+  resetMotionRuntime();
   songPlayheadPosition_ = clampSongPosition(sceneManager_.getSongPosition());
   if (songMode_) {
     applySongPositionSelection();

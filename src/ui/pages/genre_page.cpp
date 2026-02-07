@@ -672,6 +672,7 @@ bool GenrePage::handleEvent(UIEvent& e) {
             int v = (int)gs.textureAmount - 5;
             if (v < 0) v = 0;
             gs.textureAmount = static_cast<uint8_t>(v);
+            mini_acid_.onUserChangedTextureAmount(gs.textureAmount);
         } else if (focus_ == FocusArea::PRESETS) {
             if (presetIndex_ >= 4) presetIndex_ -= 4;
         }
@@ -682,6 +683,7 @@ bool GenrePage::handleEvent(UIEvent& e) {
             int v = (int)gs.textureAmount + 5;
             if (v > 100) v = 100;
             gs.textureAmount = static_cast<uint8_t>(v);
+            mini_acid_.onUserChangedTextureAmount(gs.textureAmount);
         } else if (focus_ == FocusArea::PRESETS) {
             if (presetIndex_ < 4) presetIndex_ += 4;
         }

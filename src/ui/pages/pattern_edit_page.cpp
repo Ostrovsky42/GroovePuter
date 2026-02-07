@@ -239,12 +239,12 @@ void PatternEditPage::setContext(int context) {
 }
 
 bool PatternEditPage::handleEvent(UIEvent& ui_event) {
-  // CRITICAL: Block numeric quick-select BEFORE forwarding to components
-  // Otherwise BankSelectionBar/PatternSelectionBar intercept digits before we can block them
+  // Let global numeric mutes (1..0) pass through to MiniAcidDisplay.
+  // We intentionally skip local numeric quick-select on this page.
   if (ui_event.event_type == GROOVEPUTER_KEY_DOWN) {
     if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta &&
         ui_event.key >= '0' && ui_event.key <= '9') {
-      return true; // consume, do nothing
+      return false; // not handled here: global mute fallback will process it
     }
   }
 

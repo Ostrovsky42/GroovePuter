@@ -72,6 +72,7 @@ void clearSceneData(Scene& scene) {
   scene.generatorParams = GeneratorParams();
   scene.led = LedSettings();
   scene.tape = TapeState();
+  scene.motion = MotionSettings();
   scene.feel = FeelSettings();
 }
 
@@ -510,6 +511,7 @@ void SceneJsonObserver::onObjectStart() {
          path = Path::Song; 
       }
       else if (lastKey_ == "tape") path = Path::Tape;
+      else if (lastKey_ == "motion") path = Path::Motion;
       else if (lastKey_ == "feel") path = Path::Feel;
       else if (lastKey_ == "genre") path = Path::Genre;
       else if (lastKey_ == "led") path = Path::Led;
@@ -639,6 +641,50 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
       if (v < 0) v = 0;
       if (v > 100) v = 100;
       target_.feel.driveAmount = static_cast<uint8_t>(v);
+    }
+    return;
+  }
+  if (path == Path::Motion) {
+    int v = static_cast<int>(value);
+    if (lastKey_ == "preset") {
+      if (v < 0) v = 0; if (v > 3) v = 3;
+      target_.motion.preset = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "mode") {
+      if (v < 0) v = 0; if (v > 2) v = 0;
+      target_.motion.mode = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "axis") {
+      if (v < 0) v = 0; if (v > 1) v = 0;
+      target_.motion.axis = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "target") {
+      if (v < 0) v = 0; if (v > 5) v = 0;
+      target_.motion.target = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "voice") {
+      if (v < 0) v = 0; if (v > 2) v = 2;
+      target_.motion.voice = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "depth") {
+      if (v < 0) v = 0; if (v > 100) v = 100;
+      target_.motion.depth = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "deadzone") {
+      if (v < 0) v = 0; if (v > 50) v = 50;
+      target_.motion.deadzone = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "smoothing") {
+      if (v < 0) v = 0; if (v > 95) v = 95;
+      target_.motion.smoothing = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "rate") {
+      if (v < 1) v = 1; if (v > 20) v = 20;
+      target_.motion.rateLimit = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "curve") {
+      if (v < 0) v = 0; if (v > 2) v = 2;
+      target_.motion.curve = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "thr") {
+      if (v < 0) v = 0; if (v > 100) v = 100;
+      target_.motion.shakeThreshold = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "hold") {
+      if (v < 1) v = 1; if (v > 8) v = 8;
+      target_.motion.holdSteps = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "qz") {
+      if (v < 0) v = 0; if (v > 2) v = 2;
+      target_.motion.quantize = static_cast<uint8_t>(v);
     }
     return;
   }
@@ -940,6 +986,12 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
   if (path == Path::Genre) {
     if (lastKey_ == "regen") target_.genre.regenerateOnApply = value;
     else if (lastKey_ == "cur") target_.genre.curatedMode = value;
+    return;
+  }
+  if (path == Path::Motion) {
+    if (lastKey_ == "enabled") target_.motion.enabled = value;
+    else if (lastKey_ == "master") target_.motion.masterEnable = value;
+    else if (lastKey_ == "invert") target_.motion.invert = value;
     return;
   }
   if (path == Path::GeneratorParams) {
@@ -1836,6 +1888,24 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   tapeObj["space"] = scene_->tape.space;
   tapeObj["movement"] = scene_->tape.movement;
   tapeObj["groove"] = scene_->tape.groove;
+
+  ArduinoJson::JsonObject motionObj = root["motion"].to<ArduinoJson::JsonObject>();
+  motionObj["enabled"] = scene_->motion.enabled;
+  motionObj["master"] = scene_->motion.masterEnable;
+  motionObj["preset"] = scene_->motion.preset;
+  motionObj["mode"] = scene_->motion.mode;
+  motionObj["axis"] = scene_->motion.axis;
+  motionObj["invert"] = scene_->motion.invert;
+  motionObj["target"] = scene_->motion.target;
+  motionObj["voice"] = scene_->motion.voice;
+  motionObj["depth"] = scene_->motion.depth;
+  motionObj["deadzone"] = scene_->motion.deadzone;
+  motionObj["smoothing"] = scene_->motion.smoothing;
+  motionObj["rate"] = scene_->motion.rateLimit;
+  motionObj["curve"] = scene_->motion.curve;
+  motionObj["thr"] = scene_->motion.shakeThreshold;
+  motionObj["hold"] = scene_->motion.holdSteps;
+  motionObj["qz"] = scene_->motion.quantize;
 }
 
 bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
@@ -2142,6 +2212,28 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
       if (tObj["vol"].is<float>()) {
         loaded->tape.looperVolume = tObj["vol"].as<float>();
       }
+    }
+  }
+
+  if (obj["motion"].is<ArduinoJson::JsonObjectConst>()) {
+    auto mObj = obj["motion"].as<ArduinoJson::JsonObjectConst>();
+    if (!mObj.isNull()) {
+      loaded->motion.enabled = mObj["enabled"].is<bool>() ? mObj["enabled"].as<bool>() : loaded->motion.enabled;
+      loaded->motion.masterEnable = mObj["master"].is<bool>() ? mObj["master"].as<bool>() : loaded->motion.masterEnable;
+      loaded->motion.preset = static_cast<uint8_t>(std::min(3, std::max(0, valueToInt(mObj["preset"], loaded->motion.preset))));
+      loaded->motion.mode = static_cast<uint8_t>(std::min(2, std::max(0, valueToInt(mObj["mode"], loaded->motion.mode))));
+      loaded->motion.axis = static_cast<uint8_t>(std::min(1, std::max(0, valueToInt(mObj["axis"], loaded->motion.axis))));
+      loaded->motion.invert = mObj["invert"].is<bool>() ? mObj["invert"].as<bool>() : loaded->motion.invert;
+      loaded->motion.target = static_cast<uint8_t>(std::min(5, std::max(0, valueToInt(mObj["target"], loaded->motion.target))));
+      loaded->motion.voice = static_cast<uint8_t>(std::min(2, std::max(0, valueToInt(mObj["voice"], loaded->motion.voice))));
+      loaded->motion.depth = static_cast<uint8_t>(std::min(100, std::max(0, valueToInt(mObj["depth"], loaded->motion.depth))));
+      loaded->motion.deadzone = static_cast<uint8_t>(std::min(50, std::max(0, valueToInt(mObj["deadzone"], loaded->motion.deadzone))));
+      loaded->motion.smoothing = static_cast<uint8_t>(std::min(95, std::max(0, valueToInt(mObj["smoothing"], loaded->motion.smoothing))));
+      loaded->motion.rateLimit = static_cast<uint8_t>(std::min(20, std::max(1, valueToInt(mObj["rate"], loaded->motion.rateLimit))));
+      loaded->motion.curve = static_cast<uint8_t>(std::min(2, std::max(0, valueToInt(mObj["curve"], loaded->motion.curve))));
+      loaded->motion.shakeThreshold = static_cast<uint8_t>(std::min(100, std::max(0, valueToInt(mObj["thr"], loaded->motion.shakeThreshold))));
+      loaded->motion.holdSteps = static_cast<uint8_t>(std::min(8, std::max(1, valueToInt(mObj["hold"], loaded->motion.holdSteps))));
+      loaded->motion.quantize = static_cast<uint8_t>(std::min(2, std::max(0, valueToInt(mObj["qz"], loaded->motion.quantize))));
     }
   }
 

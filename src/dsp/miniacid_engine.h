@@ -6,6 +6,7 @@
 #include <vector>
 #include <string>
 #include <functional>
+#include <atomic>
 
 #include "mode_manager.h"
 #include "src/dsp/genre_manager.h"
@@ -47,6 +48,7 @@ public:
   void setBpm(float bpm);
   void setBeats(float beats);
   void setMix(float mix);
+  float mixValue() const;
   void setFeedback(float fb);
   void setEnabled(bool on);
   bool isEnabled() const;
@@ -173,6 +175,12 @@ public:
   bool liveMixModeEnabled() const;
   void setLiveMixMode(bool enabled);
   void toggleLiveMixMode();
+  void setMotionAccel(float accelX, float accelY, float accelZ);
+  void updateMotionInput(float accelX, float accelY, float accelZ, float dtSeconds);
+  void resetMotionRuntime();
+  uint8_t effectiveTextureAmount() const;
+  void onUserChangedTextureAmount(uint8_t amount0_100);
+  void onUserChangedDelayMix(int voice, float mix01);
   void mergeSongs();
   void alternateSongs();
   void setSongReverse(bool reverse);
@@ -382,6 +390,38 @@ private:
   int patternModeDrumBankIndex_;
   int patternModeSynthPatternIndex_[NUM_303_VOICES];
   int patternModeSynthBankIndex_[NUM_303_VOICES];
+
+  struct MotionRuntime {
+    bool hasLatch = false;
+    uint8_t target = 0;
+    uint8_t voice = 2;
+    float baseA = 0.0f;
+    float baseB = 0.0f;
+    float baseResA = 0.0f;
+    float baseResB = 0.0f;
+    int baseTextureAmount = 70;
+    int baseTapeWow = 0;
+    int baseTapeSat = 0;
+    float baseDelayMixA = 0.0f;
+    float baseDelayMixB = 0.0f;
+    float filtered = 0.0f;
+    float lastApplied = 0.0f;
+    bool shakeGatePending = false;
+    bool shakeGateActive = false;
+    int shakeGateStepsLeft = 0;
+    int lastStepIndex = -1;
+    bool shakeArmed = true;
+  } motionRuntime_;
+  std::atomic<float> motionAccelX_{0.0f};
+  std::atomic<float> motionAccelY_{0.0f};
+  std::atomic<float> motionAccelZ_{1.0f};
+  bool motionTextureOverrideActive_ = false;
+  uint8_t motionTextureAmountOverride_ = 0;
+  bool motionTapeWowOverrideActive_ = false;
+  uint8_t motionTapeWowOverride_ = 0;
+  bool motionTapeSatOverrideActive_ = false;
+  uint8_t motionTapeSatOverride_ = 0;
+  void applyMotionPerBuffer_();
 
   struct RetrigState {
     int interval = 0;       // Buffer samples between triggers

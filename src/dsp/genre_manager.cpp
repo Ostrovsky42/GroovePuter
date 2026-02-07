@@ -170,7 +170,7 @@ void GenreManager::applyGenreTimbre(MiniAcid& engine) {
 
 void GenreManager::applyTexture(MiniAcid& engine) {
     const TextureParams& params = getTextureParams();
-    const float amount = clamp01(engine.sceneManager().currentScene().genre.textureAmount / 100.0f);
+    const float amount = clamp01(engine.effectiveTextureAmount() / 100.0f);
     
     // Apply Tape FX macro
     TapeState& tape = engine.sceneManager().currentScene().tape;

@@ -283,12 +283,64 @@ struct GenreSettings {
     bool curatedMode = true;      // true: only allowed Genre x Texture combos
 };
 
+enum class MotionMode : uint8_t {
+    Tilt = 0,
+    Shake = 1,
+    ShakeGate = 2,
+};
+
+enum class MotionAxis : uint8_t {
+    X = 0,
+    Y = 1,
+};
+
+enum class MotionTarget : uint8_t {
+    Cutoff = 0,
+    Resonance = 1,
+    TextureAmount = 2,
+    TapeWow = 3,
+    TapeSat = 4,
+    DelayMix = 5,
+};
+
+enum class MotionVoice : uint8_t {
+    A = 0,
+    B = 1,
+    AB = 2,
+};
+
+enum class MotionCurve : uint8_t {
+    Linear = 0,
+    Soft = 1,
+    Exp = 2,
+};
+
+struct MotionSettings {
+    bool enabled = false;
+    bool masterEnable = true;
+    uint8_t preset = 0;      // 0..3 (UI preset slots 1..4)
+    uint8_t mode = static_cast<uint8_t>(MotionMode::Tilt);
+    uint8_t axis = static_cast<uint8_t>(MotionAxis::Y);
+    bool invert = false;
+    uint8_t target = static_cast<uint8_t>(MotionTarget::Cutoff);
+    uint8_t voice = static_cast<uint8_t>(MotionVoice::AB);
+    uint8_t depth = 55;      // 0..100
+    uint8_t deadzone = 12;   // 0..50
+    uint8_t smoothing = 70;  // 0..95
+    uint8_t rateLimit = 3;   // 1..20
+    uint8_t curve = static_cast<uint8_t>(MotionCurve::Soft);
+    uint8_t shakeThreshold = 45; // 0..100
+    uint8_t holdSteps = 2;       // 1..8
+    uint8_t quantize = 1;        // 0=1/16, 1=1/8, 2=1/4
+};
+
 struct Scene {
   Bank<DrumPatternSet> drumBanks[kBankCount];
   Bank<SynthPattern> synthABanks[kBankCount];
   Bank<SynthPattern> synthBBanks[kBankCount];
   SamplerPadState samplerPads[16];
   TapeState tape;
+  MotionSettings motion;
   FeelSettings feel;
   GenreSettings genre;
   Song songs[2];
@@ -380,6 +432,7 @@ private:
     SamplerPads,
     SamplerPad,
     Tape,
+    Motion,
     Feel,
     Genre,
     Led,
@@ -911,6 +964,38 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeInt(scene_->tape.movement)) return false;
   if (!writeLiteral(",\"groove\":")) return false;
   if (!writeInt(scene_->tape.groove)) return false;
+  if (!writeLiteral("},\"motion\":{\"enabled\":")) return false;
+  if (!writeBool(scene_->motion.enabled)) return false;
+  if (!writeLiteral(",\"master\":")) return false;
+  if (!writeBool(scene_->motion.masterEnable)) return false;
+  if (!writeLiteral(",\"preset\":")) return false;
+  if (!writeInt(scene_->motion.preset)) return false;
+  if (!writeLiteral(",\"mode\":")) return false;
+  if (!writeInt(scene_->motion.mode)) return false;
+  if (!writeLiteral(",\"axis\":")) return false;
+  if (!writeInt(scene_->motion.axis)) return false;
+  if (!writeLiteral(",\"invert\":")) return false;
+  if (!writeBool(scene_->motion.invert)) return false;
+  if (!writeLiteral(",\"target\":")) return false;
+  if (!writeInt(scene_->motion.target)) return false;
+  if (!writeLiteral(",\"voice\":")) return false;
+  if (!writeInt(scene_->motion.voice)) return false;
+  if (!writeLiteral(",\"depth\":")) return false;
+  if (!writeInt(scene_->motion.depth)) return false;
+  if (!writeLiteral(",\"deadzone\":")) return false;
+  if (!writeInt(scene_->motion.deadzone)) return false;
+  if (!writeLiteral(",\"smoothing\":")) return false;
+  if (!writeInt(scene_->motion.smoothing)) return false;
+  if (!writeLiteral(",\"rate\":")) return false;
+  if (!writeInt(scene_->motion.rateLimit)) return false;
+  if (!writeLiteral(",\"curve\":")) return false;
+  if (!writeInt(scene_->motion.curve)) return false;
+  if (!writeLiteral(",\"thr\":")) return false;
+  if (!writeInt(scene_->motion.shakeThreshold)) return false;
+  if (!writeLiteral(",\"hold\":")) return false;
+  if (!writeInt(scene_->motion.holdSteps)) return false;
+  if (!writeLiteral(",\"qz\":")) return false;
+  if (!writeInt(scene_->motion.quantize)) return false;
   if (!writeLiteral("},\"led\":{\"mode\":")) return false;
   if (!writeInt(static_cast<int>(scene_->led.mode))) return false;
   if (!writeLiteral(",\"src\":")) return false;

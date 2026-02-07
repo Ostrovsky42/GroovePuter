@@ -297,6 +297,18 @@ void loop() {
   M5Cardputer.update();
   LedManager::instance().update();
 
+  static unsigned long lastMotionPollMs = 0;
+  unsigned long nowMs = millis();
+  if (g_miniAcid && (nowMs - lastMotionPollMs) >= 16) { // ~60Hz, outside audio task
+    float ax = 0.0f, ay = 0.0f, az = 1.0f;
+    if (M5.Imu.isEnabled()) {
+      M5.Imu.update();
+      M5.Imu.getAccel(&ax, &ay, &az);
+    }
+    g_miniAcid->setMotionAccel(ax, ay, az);
+    lastMotionPollMs = nowMs;
+  }
+
   if (g_encoder8) g_encoder8->update();
 
   if (M5Cardputer.BtnA.wasClicked()) {

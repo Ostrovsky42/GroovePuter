@@ -20,6 +20,7 @@
 #include "pages/voice_page.h"
 #include "pages/color_test_page.h"
 #include "pages/waveform_page.h"
+#include "pages/motion_page.h"
 #include "pages/help_dialog.h"
 #include "ui_colors.h"
 #include "ui_input.h"
@@ -98,7 +99,7 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case 8:  return std::make_unique<FeelTexturePage>(gfx_, mini_acid_, audio_guard_);
         case 9:  return std::make_unique<SettingsPage>(gfx_, mini_acid_, audio_guard_);
         case 10: return std::make_unique<ProjectPage>(gfx_, mini_acid_,audio_guard_);        
-        //case 11: return std::make_unique<VoicePage>(gfx_, mini_acid_, audio_guard_);
+        case 11: return std::make_unique<MotionPage>(gfx_, mini_acid_, audio_guard_);
         //case 12: return std::make_unique<ColorTestPage>(gfx_, mini_acid_);
 
        // case 14: return std::make_unique<WaveformPage>(gfx_, mini_acid_, audio_guard_);
