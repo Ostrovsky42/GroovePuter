@@ -1,4 +1,13 @@
 #include "song_page.h"
+#include "../../../scenes.h"
+#include "../ui_common.h"
+#include "../retro_widgets.h"
+#include "../amber_widgets.h"
+#include "../retro_ui_theme.h"
+#include "../amber_ui_theme.h"
+
+namespace retro = RetroWidgets;
+namespace amber = AmberWidgets;
 
 #include <cctype>
 #include <cstdio>
@@ -72,7 +81,7 @@ SongAreaClipboard g_song_area_clipboard;
 UndoHistory g_undo_history;
 } // namespace
 
-SongPage::SongPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard)
+SongPage::SongPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
   : gfx_(gfx),
     mini_acid_(mini_acid),
     audio_guard_(audio_guard),
@@ -235,7 +244,7 @@ int SongPage::patternIndexFromKey(char key) const {
     case 't': return 4;
     case 'y': return 5;
     case 'u': return 6;
-    //case 'i': return 7;
+    case 'i': return 7;
     default: return -1;
   }
 }
@@ -628,6 +637,17 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return toggleLoopMode();
   }
 
+  if (ui_event.alt) {
+      if (key == 'j' || key == 'J') { withAudioGuard([&]() { mini_acid_.setActiveSongSlot(0); }); return true; }
+      if (key == 'k' || key == 'K') { withAudioGuard([&]() { mini_acid_.setActiveSongSlot(1); }); return true; }
+  }
+
+  if (ui_event.ctrl) {
+      if (key == 'r' || key == 'R') { withAudioGuard([&]() { mini_acid_.setSongReverse(!mini_acid_.isSongReverse()); }); return true; }
+      if (key == 'm' || key == 'M') { withAudioGuard([&]() { mini_acid_.mergeSongs(); }); return true; }
+      if (key == 'n' || key == 'N') { withAudioGuard([&]() { mini_acid_.alternateSongs(); }); return true; }
+  }
+
   if (cursorOnModeButton() && (key == '\n' || key == '\r')) {
     return toggleSongMode();
   }
@@ -719,6 +739,24 @@ const std::string & SongPage::getTitle() const {
 }
 
 void SongPage::draw(IGfx& gfx) {
+  switch (visual_style_) {
+    case VisualStyle::RETRO_CLASSIC:
+      drawRetroClassicStyle(gfx);
+      break;
+    case VisualStyle::AMBER:
+      drawAmberStyle(gfx);
+      break;
+    case VisualStyle::TE_GRID:
+      drawTEGridStyle(gfx);
+      break;
+    case VisualStyle::MINIMAL:
+    default:
+      drawMinimalStyle(gfx);
+      break;
+  }
+}
+
+void SongPage::drawMinimalStyle(IGfx& gfx) {
   const Rect& bounds = getBoundaries();
   int x = bounds.x;
   int y = bounds.y;
@@ -731,8 +769,8 @@ void SongPage::draw(IGfx& gfx) {
 
   int label_h = gfx.fontHeight();
   int header_h = label_h + 4;
-  int row_h = label_h + 4;  // Reduced from +6 to +4
-  if (row_h < 8) row_h = 8;  // Minimum 8px instead of 10px
+  int row_h = label_h + 4;
+  if (row_h < 8) row_h = 8;
   int usable_h = body_h - header_h;
   if (usable_h < row_h) usable_h = row_h;
   int visible_rows = usable_h / row_h;
@@ -759,8 +797,8 @@ void SongPage::draw(IGfx& gfx) {
   if (scroll_row_ > maxStart) scroll_row_ = maxStart;
 
   int pos_col_w = 20;
-  int spacing = 2;  // Reduced from 3px to 2px
-  int modeBtnW = 55;  // Reduced from 70px to 55px
+  int spacing = 2;
+  int modeBtnW = 55;
   int track_col_w = (w - pos_col_w - spacing * 6 - modeBtnW) / 4;
   if (track_col_w < 20) track_col_w = 20;
 
@@ -792,111 +830,450 @@ void SongPage::draw(IGfx& gfx) {
     gfx.setTextColor(IGfxColor::Yellow());
     gfx.drawText(loopX, body_y, loopBuf);
     gfx.setTextColor(COLOR_WHITE);
-    gfx.setTextColor(COLOR_WHITE);
   }
 
-  // Draw Generator Hint if active
   drawGeneratorHint(gfx);
 
-  int modeX = x + w - modeBtnW;
-  int modeY = body_y - 2 + 30;
-  int modeH = header_h + row_h;
-  
-  if (!mode_button_initialized_) {
-    initModeButton(modeX, modeY, modeBtnW - 2, modeH);
-  }
-  mode_button_container_.draw(gfx);
-  
-  bool modeSelected = cursorOnModeButton();
-  if (modeSelected) {
-    gfx.drawRect(modeX - 2, modeY - 2, modeBtnW + 2, modeH + 4, COLOR_STEP_SELECTED);
-  }
-
-  int row_y = body_y + header_h;
-  
-  // Get selection bounds for highlighting
-  int sel_min_row, sel_max_row, sel_min_track, sel_max_track;
-  if (has_selection_) {
-    getSelectionBounds(sel_min_row, sel_max_row, sel_min_track, sel_max_track);
-  }
-  
+  int grid_y = body_y + header_h;
   for (int i = 0; i < visible_rows; ++i) {
     int row_idx = scroll_row_ + i;
     if (row_idx >= Song::kMaxPositions) break;
-    bool isCursorRow = row_idx == cursor_row;
-    bool isPlayhead = playingSong && row_idx == playhead;
-    IGfxColor rowHighlight = isPlayhead ? IGfxColor::Magenta() : COLOR_DARKER;
-    if (isPlayhead) {
-      gfx.fillRect(x, row_y - 1, w - modeBtnW - 2, row_h, rowHighlight);
-    } else if (isCursorRow) {
-      gfx.fillRect(x, row_y - 1, w - modeBtnW - 2, row_h, COLOR_PANEL);
-    } else {
-      gfx.fillRect(x, row_y - 1, w - modeBtnW - 2, row_h, COLOR_DARKER);
+    int ry = grid_y + i * row_h;
+    if (row_idx == playhead && playingSong) {
+      gfx.fillRect(x, ry, w, row_h, COLOR_PANEL);
     }
+    char posBuf[16];
+    snprintf(posBuf, sizeof(posBuf), "%02d", row_idx + 1);
+    gfx.setTextColor(COLOR_MUTED);
+    gfx.drawText(x, ry + 2, posBuf);
 
-    char posLabel[16];
-    snprintf(posLabel, sizeof(posLabel), "%d", row_idx + 1);
-    gfx.setTextColor(row_idx < song_len ? COLOR_WHITE : COLOR_LABEL);
-    gfx.drawText(x, row_y + 2, posLabel);
-    gfx.setTextColor(COLOR_WHITE);
-
-    for (int t = 0; t < SongPosition::kTrackCount; ++t) {
-      int col_x = x + pos_col_w + spacing + t * (track_col_w + spacing);
-      bool trackValid = false;
-      SongTrack song_track = trackForColumn(t, trackValid);
-      int patternIdx = trackValid ? mini_acid_.songPatternAt(row_idx, song_track) : -1;
-      bool isSelected = isCursorRow && cursorTrack() == t;
-      bool inSelection = has_selection_ && 
-                        row_idx >= sel_min_row && row_idx <= sel_max_row &&
-                        t >= sel_min_track && t <= sel_max_track &&
-                        t <= 3; // Only valid track columns
-      
-      if (inSelection) {
-        // Draw selection highlight with a filled background
-        gfx.fillRect(col_x - 1, row_y - 2, track_col_w + 2, row_h + 2 - 1, IGfxColor(0x000080));
-        gfx.drawRect(col_x - 1, row_y - 2, track_col_w + 2, row_h + 2 - 1, IGfxColor::Cyan());
-      } else if (isSelected) {
-        IGfxColor selectedColor = COLOR_STEP_SELECTED;
-        if (song_track == SongTrack::SynthA) selectedColor = song303Color(0);
-        if (song_track == SongTrack::SynthB) selectedColor = song303Color(1);
-        gfx.drawRect(col_x - 1, row_y - 2, track_col_w + 2, row_h + 2 - 1, selectedColor);
-      }
-      char label[12];
-      if (patternIdx < 0) {
-        snprintf(label, sizeof(label), "--");
-        gfx.setTextColor(COLOR_LABEL);
+    for (int t = 0; t < 4; ++t) {
+      bool valid = false;
+      SongTrack track = trackForColumn(t, valid);
+      int pattern = mini_acid_.songPatternAt(row_idx, track);
+      int tx = x + pos_col_w + spacing + t * (track_col_w + spacing);
+      bool isSelected = false;
+      if (has_selection_) {
+          int min_r, max_r, min_t, max_t;
+          getSelectionBounds(min_r, max_r, min_t, max_t);
+          isSelected = row_idx >= min_r && row_idx <= max_r && t >= min_t && t <= max_t;
       } else {
-        if (song_track == SongTrack::Voice) {
-          int phraseIdx = patternIdx;
-          if (phraseIdx < 16) {
-             snprintf(label, sizeof(label), "B%d", phraseIdx + 1);
-             gfx.setTextColor(IGfxColor(0x00CED1)); // Voice color
-          } else {
-             snprintf(label, sizeof(label), "C%d", phraseIdx - 16 + 1);
-             gfx.setTextColor(IGfxColor(0x00FF7F)); // Custom color
-          }
-        } else {
-          int bankIdx = songPatternBank(patternIdx);
-          int bankPattern = songPatternIndexInBank(patternIdx);
-          if (bankIdx < 0 || bankIdx >= kBankCount || bankPattern < 0) {
-            snprintf(label, sizeof(label), "--");
-            gfx.setTextColor(COLOR_LABEL);
-          } else {
-            char bankLetter = static_cast<char>('A' + bankIdx);
-            snprintf(label, sizeof(label), "%c%d", bankLetter, bankPattern + 1);
-            if (song_track == SongTrack::SynthA) gfx.setTextColor(song303Color(0));
-            else if (song_track == SongTrack::SynthB) gfx.setTextColor(song303Color(1));
-            else gfx.setTextColor(COLOR_WHITE);
-          }
-        }
+          isSelected = row_idx == cursor_row && t == cursor_track_;
       }
-      int tw = textWidth(gfx, label);
-      int tx = col_x + (track_col_w - tw) / 2;
-      gfx.drawText(tx, row_y + (row_h - label_h) / 2 - 1, label);
-      gfx.setTextColor(COLOR_WHITE);
+      
+      if (isSelected) {
+        gfx.drawRect(tx - 1, ry, track_col_w + 1, row_h, isSelected && !has_selection_ ? COLOR_STEP_SELECTED : COLOR_STEP_HILIGHT);
+      }
+      if (pattern >= 0) {
+        char patBuf[16];
+        snprintf(patBuf, sizeof(patBuf), "%d-%d", (pattern / 8) + 1, (pattern % 8) + 1);
+        gfx.setTextColor(t < 2 ? song303Color(t) : COLOR_WHITE);
+        gfx.drawText(tx + 2, ry + 2, patBuf);
+      } else {
+        gfx.setTextColor(COLOR_GRAY);
+        gfx.drawText(tx + 2, ry + 2, "---");
+      }
     }
-    row_y += row_h;
+    if (row_idx == playhead) {
+      gfx.setTextColor(COLOR_ACCENT);
+      gfx.drawText(x + w - 15, ry + 2, ">>");
+    }
   }
+
+  int modeX = x + pos_col_w + spacing + track_col_w * 4 + spacing + 5;
+  int modeW = w - modeX - 5;
+  int modeY = body_y + header_h;
+  int modeH = visible_rows * row_h;
+  if (!mode_button_initialized_) {
+    initModeButton(modeX, modeY, modeW, modeH);
+  } else {
+    mode_button_container_.setBoundaries(Rect(modeX, modeY, modeW, modeH));
+    bool modeSelected = cursorOnModeButton();
+    if (modeSelected) {
+      gfx.drawRect(modeX - 2, modeY - 2, modeW + 4, modeH + 4, COLOR_STEP_SELECTED);
+    }
+    mode_button_container_.draw(gfx);
+  }
+}
+
+void SongPage::drawTEGridStyle(IGfx& gfx) {
+  const Rect& bounds = getBoundaries();
+  int x = bounds.x;
+  int y = bounds.y;
+  int w = bounds.w;
+  int h = bounds.h;
+
+  // TE color palette: strict monochrome
+  const IGfxColor TE_BLACK = IGfxColor::Black();
+  const IGfxColor TE_WHITE = IGfxColor::White();
+  const IGfxColor TE_GRID = IGfxColor(0x404040);
+  const IGfxColor TE_ACCENT = IGfxColor(0xC0C0C0);
+  const IGfxColor TE_DIM = IGfxColor(0x808080);
+
+  // Clear background
+  gfx.fillRect(x, y, w, h, TE_BLACK);
+
+  // === HEADER: Brutalist bar ===
+  int header_h = 11;
+  gfx.fillRect(x, y, w, header_h, TE_WHITE);
+  gfx.setTextColor(TE_BLACK);
+
+  // Title
+  char titleBuf[32];
+  int slot = mini_acid_.activeSongSlot();
+  bool reverse = mini_acid_.isSongReverse();
+  snprintf(titleBuf, sizeof(titleBuf), "SONG %c%s", 'A' + slot, reverse ? " REV" : "");
+  gfx.drawText(x + 2, y + 2, titleBuf);
+
+  // Status indicators (right-aligned)
+  char statusBuf[32];
+  int pos = mini_acid_.currentSongPosition() + 1;
+  int len = mini_acid_.songLength();
+  bool playing = mini_acid_.isPlaying();
+  bool songMode = mini_acid_.songModeEnabled();
+  snprintf(statusBuf, sizeof(statusBuf), "%s %03d/%03d",
+           playing ? (songMode ? ">" : "||") : "[]", pos, len);
+  int statusW = textWidth(gfx, statusBuf);
+  gfx.drawText(x + w - statusW - 2, y + 2, statusBuf);
+
+  // === GRID LAYOUT ===
+  int grid_y = y + header_h + 2;
+  int grid_h = h - header_h - 14; // Leave space for footer
+
+  // Grid parameters (TE style: tight, square cells)
+  int cell_h = 9;
+  int cell_w = 28;
+  int pos_w = 18;
+  int track_count = 4;
+  int spacing = 1;
+
+  int visible_rows = grid_h / (cell_h + spacing);
+  if (visible_rows < 1) visible_rows = 1;
+
+  // Scroll logic
+  int cursor_row = cursorRow();
+  int playhead = mini_acid_.songPlayheadPosition();
+
+  if (playing && songMode) {
+    int minTarget = std::min(cursor_row, playhead);
+    int maxTarget = std::max(cursor_row, playhead);
+    if (minTarget < scroll_row_) scroll_row_ = minTarget;
+    if (maxTarget >= scroll_row_ + visible_rows) scroll_row_ = maxTarget - visible_rows + 1;
+  } else {
+    if (cursor_row < scroll_row_) scroll_row_ = cursor_row;
+    if (cursor_row >= scroll_row_ + visible_rows) scroll_row_ = cursor_row - visible_rows + 1;
+  }
+  if (scroll_row_ < 0) scroll_row_ = 0;
+
+  // === COLUMN HEADERS ===
+  int header_y = grid_y;
+  gfx.setTextColor(TE_DIM);
+  gfx.drawText(x + 2, header_y, "#");
+
+  const char* track_labels[] = {"A", "B", "D", "V"};
+  for (int t = 0; t < track_count; ++t) {
+    int tx = x + pos_w + t * (cell_w + spacing);
+    gfx.drawText(tx + 2, header_y, track_labels[t]);
+  }
+
+  // Separator line
+  gfx.drawLine(x, header_y + 10, x + w - 1, header_y + 10, TE_GRID);
+
+  // === GRID CELLS ===
+  int cells_y = header_y + 12;
+
+  int min_sel_row, max_sel_row, min_sel_track, max_sel_track;
+  if (has_selection_) {
+    getSelectionBounds(min_sel_row, max_sel_row, min_sel_track, max_sel_track);
+  }
+
+  for (int i = 0; i < visible_rows; ++i) {
+    int row_idx = scroll_row_ + i;
+    if (row_idx >= Song::kMaxPositions) break;
+
+    int ry = cells_y + i * (cell_h + spacing);
+
+    // Row number
+    char rowBuf[8];
+    snprintf(rowBuf, sizeof(rowBuf), "%02d", row_idx + 1);
+    gfx.setTextColor(row_idx < len ? TE_ACCENT : TE_DIM);
+    gfx.drawText(x + 2, ry + 1, rowBuf);
+
+    // Playhead indicator
+    if (row_idx == playhead && playing && songMode) {
+      gfx.fillRect(x, ry, pos_w - 2, cell_h, TE_GRID);
+    }
+
+    // Track cells
+    for (int t = 0; t < track_count; ++t) {
+      int tx = x + pos_w + t * (cell_w + spacing);
+
+      bool valid = false;
+      SongTrack track = trackForColumn(t, valid);
+      int pattern = mini_acid_.songPatternAt(row_idx, track);
+
+      // Selection check
+      bool isSelected = false;
+      if (has_selection_) {
+        isSelected = row_idx >= min_sel_row && row_idx <= max_sel_row &&
+                     t >= min_sel_track && t <= max_sel_track;
+      } else {
+        isSelected = row_idx == cursor_row && t == cursor_track_;
+      }
+
+      // Cell background
+      IGfxColor cellBg = TE_BLACK;
+      if (isSelected) cellBg = TE_ACCENT;
+      else if (row_idx == playhead && playing && songMode) cellBg = TE_GRID;
+
+      gfx.fillRect(tx, ry, cell_w, cell_h, cellBg);
+
+      // Cell border (TE style: always visible grid)
+      gfx.drawRect(tx, ry, cell_w, cell_h, TE_GRID);
+
+      // Pattern content
+      if (pattern >= 0) {
+        int bank = (pattern / 8) + 1;
+        int slot = (pattern % 8) + 1;
+        char patBuf[8];
+        snprintf(patBuf, sizeof(patBuf), "%d-%d", bank, slot);
+
+        IGfxColor textColor = isSelected ? TE_BLACK : TE_WHITE;
+        gfx.setTextColor(textColor);
+        gfx.drawText(tx + 2, ry + 1, patBuf);
+      } else {
+        gfx.setTextColor(isSelected ? TE_BLACK : TE_DIM);
+        gfx.drawText(tx + 2, ry + 1, "--");
+      }
+    }
+  }
+
+  // === FOOTER: Command bar (TE style) ===
+  int footer_y = y + h - 11;
+  gfx.drawLine(x, footer_y - 1, x + w - 1, footer_y - 1, TE_GRID);
+
+  gfx.setTextColor(TE_DIM);
+  const char* cmd_text = "Q-I:PAT G:GEN A+J/K:SLOT C+R:REV C+M:MRG";
+  gfx.drawText(x + 2, footer_y + 2, cmd_text);
+
+  // Loop indicator
+  if (mini_acid_.loopModeEnabled()) {
+    int loopStart = mini_acid_.loopStartRow() + 1;
+    int loopEnd = mini_acid_.loopEndRow() + 1;
+    char loopBuf[16];
+    snprintf(loopBuf, sizeof(loopBuf), "LP:%d-%d", loopStart, loopEnd);
+    int loopW = textWidth(gfx, loopBuf);
+    gfx.fillRect(x + w - loopW - 4, footer_y, loopW + 4, 11, TE_WHITE);
+    gfx.setTextColor(TE_BLACK);
+    gfx.drawText(x + w - loopW - 2, footer_y + 2, loopBuf);
+  }
+
+  // Generator hint overlay
+  drawGeneratorHint(gfx);
+}
+
+void SongPage::drawRetroClassicStyle(IGfx& gfx) {
+    const Rect& bounds = getBoundaries();
+    int x = bounds.x;
+    int y = bounds.y;
+    int w = bounds.w;
+    int h = bounds.h;
+
+    char modeBuf[32];
+    std::snprintf(modeBuf, sizeof(modeBuf), "%s", mini_acid_.songModeEnabled() ? "PLAY" : "EDIT");
+    const char* title = mini_acid_.isSongReverse() ? "SONG REV" : "SONG";
+    retro::drawHeaderBar(gfx, x, y, w, 12, title, modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
+
+    int slotX = x + 4;
+    int slotY = y + 14;
+    retro::SelectorConfig slotCfg;
+    slotCfg.x = slotX; slotCfg.y = slotY; slotCfg.w = 60; slotCfg.h = 10;
+    slotCfg.label = "SLOT";
+    slotCfg.count = 2;
+    slotCfg.selected = mini_acid_.activeSongSlot();
+    slotCfg.cursor = slotCfg.selected;
+    slotCfg.showCursor = false;
+    slotCfg.enabled = true;
+    retro::drawSelector(gfx, slotCfg);
+
+    // Draw grid headers
+    int row_h = 10;
+    int header_y = y + 26;
+    int grid_y = header_y + 12;
+    int pos_w = 25;
+    int track_w = (w - pos_w - 4) / 4;
+
+    gfx.setTextColor(IGfxColor(RetroTheme::TEXT_SECONDARY));
+    gfx.drawText(x + 4, header_y, "POS");
+    gfx.setTextColor(IGfxColor(RetroTheme::NEON_ORANGE));
+    gfx.drawText(x + pos_w + 4, header_y, "A");
+    gfx.setTextColor(IGfxColor(RetroTheme::NEON_MAGENTA));
+    gfx.drawText(x + pos_w + track_w + 4, header_y, "B");
+    gfx.setTextColor(IGfxColor(RetroTheme::NEON_CYAN));
+    gfx.drawText(x + pos_w + track_w * 2 + 4, header_y, "DR");
+    gfx.setTextColor(IGfxColor(RetroTheme::TEXT_SECONDARY));
+    gfx.drawText(x + pos_w + track_w * 3 + 4, header_y, "VO");
+
+    int visible_rows = (h - grid_y - 12) / row_h;
+    if (visible_rows < 1) visible_rows = 1;
+    
+    int cursor_row = cursorRow();
+    int playhead = mini_acid_.songPlayheadPosition();
+    bool songMode = mini_acid_.songModeEnabled();
+
+    // Scroll logic
+    if (cursor_row < scroll_row_) scroll_row_ = cursor_row;
+    if (cursor_row >= scroll_row_ + visible_rows) scroll_row_ = cursor_row - visible_rows + 1;
+    if (scroll_row_ < 0) scroll_row_ = 0;
+
+    for (int i = 0; i < visible_rows; ++i) {
+        int ridx = scroll_row_ + i;
+        if (ridx >= Song::kMaxPositions) break;
+        int ry = grid_y + i * row_h;
+
+        if (ridx == playhead && mini_acid_.isPlaying() && songMode) {
+            gfx.fillRect(x, ry, w, row_h, IGfxColor(RetroTheme::BG_INSET));
+        }
+
+        char buf[16];
+        int rowLabel = ridx + 1;
+        if (rowLabel < 0) rowLabel = 0;
+        if (rowLabel > 9999) rowLabel = 9999;
+        std::snprintf(buf, sizeof(buf), "%02d", rowLabel);
+        gfx.setTextColor(IGfxColor(RetroTheme::TEXT_DIM));
+        gfx.drawText(x + 4, ry, buf);
+
+        for (int t = 0; t < 4; ++t) {
+            int tx = x + pos_w + t * track_w + 4;
+            bool valid = false;
+            int pattern = mini_acid_.songPatternAt(ridx, trackForColumn(t, valid));
+            bool isSelected = false;
+            if (has_selection_) {
+                int min_r, max_r, min_t, max_t;
+                getSelectionBounds(min_r, max_r, min_t, max_t);
+                isSelected = ridx >= min_r && ridx <= max_r && t >= min_t && t <= max_t;
+            } else {
+                isSelected = ridx == cursor_row && t == cursor_track_;
+            }
+
+            if (isSelected) {
+                gfx.drawRect(tx - 2, ry - 1, track_w, row_h, IGfxColor(RetroTheme::SELECT_BRIGHT));
+            }
+
+            if (pattern >= 0) {
+                int bank = (pattern / 8) + 1;
+                int slot = (pattern % 8) + 1;
+                if (bank < 0) bank = 0;
+                if (bank > 999) bank = 999;
+                if (slot < 0) slot = 0;
+                if (slot > 99) slot = 99;
+                std::snprintf(buf, sizeof(buf), "%d-%d", bank, slot);
+                IGfxColor pColor = IGfxColor(RetroTheme::TEXT_PRIMARY);
+                if (t == 0) pColor = IGfxColor(RetroTheme::NEON_ORANGE);
+                else if (t == 1) pColor = IGfxColor(RetroTheme::NEON_MAGENTA);
+                else if (t == 2) pColor = IGfxColor(RetroTheme::NEON_CYAN);
+                gfx.setTextColor(pColor);
+                gfx.drawText(tx, ry, buf);
+            } else {
+                gfx.setTextColor(IGfxColor(RetroTheme::GRID_DIM));
+                gfx.drawText(tx, ry, "--");
+            }
+        }
+    }
+
+    retro::drawFooterBar(gfx, x, y + h - 12, w, 12, "A+J/K:Slot C+R:Rev C+M:Mrg C+N:Alt", "SONG");
+}
+
+void SongPage::drawAmberStyle(IGfx& gfx) {
+    const Rect& bounds = getBoundaries();
+    int x = bounds.x;
+    int y = bounds.y;
+    int w = bounds.w;
+    int h = bounds.h;
+
+    char modeBuf[32];
+    std::snprintf(modeBuf, sizeof(modeBuf), "%s", mini_acid_.songModeEnabled() ? "PLAY" : "EDIT");
+    const char* title = mini_acid_.isSongReverse() ? "SONG REV" : "SONG";
+    amber::drawHeaderBar(gfx, x, y, w, 12, title, modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
+
+    amber::SelectionBarConfig slotCfg;
+    slotCfg.x = x + 4; slotCfg.y = y + 14; slotCfg.w = 60; slotCfg.h = 10;
+    slotCfg.label = "SLOT";
+    slotCfg.count = 2;
+    slotCfg.selected = mini_acid_.activeSongSlot();
+    slotCfg.cursor = slotCfg.selected;
+    slotCfg.showCursor = false;
+    // slotCfg.enabled = true; // remove if not in struct
+    amber::drawSelectionBar(gfx, slotCfg);
+
+    int row_h = 10;
+    int grid_y = y + 38;
+    int pos_w = 25;
+    int track_w = (w - pos_w - 4) / 4;
+
+    int visible_rows = (h - grid_y - 12) / row_h;
+    if (visible_rows < 1) visible_rows = 1;
+
+    int cursor_row = cursorRow();
+    int playhead = mini_acid_.songPlayheadPosition();
+    bool songMode = mini_acid_.songModeEnabled();
+
+    if (cursor_row < scroll_row_) scroll_row_ = cursor_row;
+    if (cursor_row >= scroll_row_ + visible_rows) scroll_row_ = cursor_row - visible_rows + 1;
+    if (scroll_row_ < 0) scroll_row_ = 0;
+
+    for (int i = 0; i < visible_rows; ++i) {
+        int ridx = scroll_row_ + i;
+        if (ridx >= Song::kMaxPositions) break;
+        int ry = grid_y + i * row_h;
+
+        if (ridx == playhead && mini_acid_.isPlaying() && songMode) {
+            gfx.fillRect(x, ry, w, row_h, IGfxColor(AmberTheme::BG_INSET));
+        }
+
+        char buf[16];
+        int rowLabel = ridx + 1;
+        if (rowLabel < 0) rowLabel = 0;
+        if (rowLabel > 9999) rowLabel = 9999;
+        std::snprintf(buf, sizeof(buf), "%02d", rowLabel);
+        gfx.setTextColor(IGfxColor(AmberTheme::TEXT_DIM));
+        gfx.drawText(x + 4, ry, buf);
+
+        for (int t = 0; t < 4; ++t) {
+            int tx = x + pos_w + t * track_w + 4;
+            bool valid = false;
+            int pattern = mini_acid_.songPatternAt(ridx, trackForColumn(t, valid));
+            bool isSelected = false;
+            if (has_selection_) {
+                int min_r, max_r, min_t, max_t;
+                getSelectionBounds(min_r, max_r, min_t, max_t);
+                isSelected = ridx >= min_r && ridx <= max_r && t >= min_t && t <= max_t;
+            } else {
+                isSelected = ridx == cursor_row && t == cursor_track_;
+            }
+
+            if (isSelected) {
+                gfx.drawRect(tx - 2, ry - 1, track_w, row_h, IGfxColor(AmberTheme::SELECT_BRIGHT));
+            }
+
+            if (pattern >= 0) {
+                int bank = (pattern / 8) + 1;
+                int slot = (pattern % 8) + 1;
+                if (bank < 0) bank = 0;
+                if (bank > 999) bank = 999;
+                if (slot < 0) slot = 0;
+                if (slot > 99) slot = 99;
+                std::snprintf(buf, sizeof(buf), "%d-%d", bank, slot);
+                gfx.setTextColor(IGfxColor(AmberTheme::TEXT_PRIMARY));
+                gfx.drawText(tx, ry, buf);
+            } else {
+                gfx.setTextColor(IGfxColor(AmberTheme::GRID_DIM));
+                gfx.drawText(tx, ry, "--");
+            }
+        }
+    }
+
+    amber::drawFooterBar(gfx, x, y + h - 12, w, 12, "A+J/K:Slot C+R:Rev C+M:Mrg C+N:Alt", "SONG");
 }
 
 std::unique_ptr<MultiPageHelpDialog> SongPage::getHelpDialog() {

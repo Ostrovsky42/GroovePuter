@@ -1,17 +1,10 @@
 #pragma once
 
 #include "../ui_core.h"
-#include "../../dsp/grooveputer_engine.h"
+#include "../../dsp/miniacid_engine.h"
 #include "../layout_manager.h"
 #include "../ui_widgets.h"
 #include "../components/drum_sequencer_grid.h"
-
-#ifndef USE_RETRO_THEME
-#define USE_RETRO_THEME
-#endif
-#ifndef USE_AMBER_THEME
-#define USE_AMBER_THEME
-#endif
 #include "../retro_ui_theme.h"
 #include "../retro_widgets.h"
 #include "../amber_ui_theme.h"
@@ -26,15 +19,24 @@ class SequencerHubPage : public IPage {
 public:
     enum class Mode { OVERVIEW, DETAIL };
     enum class FocusLane { GRID, PATTERN, BANK };
+    enum class HubStyle {
+        MINIMAL,        // Default minimal
+        RETRO_CLASSIC,  // Neon cyberpunk
+        AMBER,          // Amber terminal
+        TE_GRID         // Teenage Engineering brutalist
+    };
 
-    SequencerHubPage(IGfx& gfx, GroovePuter& mini_acid, AudioGuard audio_guard);
-    
+    SequencerHubPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
+
     void draw(IGfx& gfx) override;
     bool handleEvent(UIEvent& ui_event) override;
     const std::string& getTitle() const override { return title_; }
 
+    void setHubStyle(HubStyle style) { hub_style_ = style; }
+    HubStyle getHubStyle() const { return hub_style_; }
+
 private:
-    GroovePuter& mini_acid_;
+    MiniAcid& mini_acid_;
     AudioGuard audio_guard_;
     std::string title_ = "SEQUENCER HUB";
     
@@ -56,8 +58,11 @@ private:
     void drawRetroClassicStyle(IGfx& gfx);
     void drawAmberStyle(IGfx& gfx);
     void drawMinimalStyle(IGfx& gfx);
+    void drawTEGridStyle(IGfx& gfx);
     void drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool selected);
     void drawOverviewCursor(IGfx& gfx, int trackIdx, int stepIdx, int x, int y, int cellW, int cellH);
+
+    HubStyle hub_style_ = HubStyle::TE_GRID;
     
     bool handleModeSwitch(UIEvent& e);
     bool handleQuickKeys(UIEvent& e);
