@@ -27,6 +27,13 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   bool patternRowFocused() const;
   void movePatternCursor(int delta);
   void movePatternCursorVertical(int delta);
+  void startSelection();
+  void updateSelection();
+  void clearSelection();
+  bool hasSelection() const;
+  void getSelectionBounds(int& min_row, int& max_row, int& min_col, int& max_col) const;
+  bool isStepSelected(int stepIndex) const;
+  bool moveSelectionFrameBy(int deltaRow, int deltaCol);
   int voiceIndex() const { return voice_index_; }
 
  private:
@@ -61,4 +68,7 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   std::shared_ptr<PatternSelectionBarComponent> pattern_bar_;
   std::shared_ptr<BankSelectionBarComponent> bank_bar_;
   bool chaining_mode_ = false;
+  bool has_selection_ = false;
+  int selection_start_step_ = 0;
+  bool selection_locked_ = false;
 };

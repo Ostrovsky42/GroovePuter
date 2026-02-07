@@ -3,6 +3,7 @@
 
 #include <cctype>
 #include <utility>
+#include <vector>
 
 #include "../ui_input.h"
 #include "../help_dialog_frames.h"
@@ -19,6 +20,17 @@ namespace amber = AmberWidgets;
 #include "../ui_clipboard.h"
 #include "../../debug_log.h"
 #include "../key_normalize.h"
+
+namespace {
+struct DrumAreaClipboard {
+  bool has_area = false;
+  int step_count = 0;
+  int voice_count = 0;
+  std::vector<DrumStep> steps;
+};
+
+DrumAreaClipboard g_drum_area_clipboard;
+} // namespace
 
 class DrumSequencerMainPage : public Container {
  public:
@@ -38,9 +50,16 @@ class DrumSequencerMainPage : public Container {
   void setDrumPatternCursor(int cursorIndex);
   void moveDrumCursor(int delta);
   void moveDrumCursorVertical(int delta);
+  bool moveSelectionFrameBy(int deltaVoice, int deltaStep);
   void focusPatternRow();
   void focusGrid();
   bool patternRowFocused() const;
+  void startSelection();
+  void updateSelection();
+  void clearSelection();
+  bool hasSelection() const;
+  void getSelectionBounds(int& min_voice, int& max_voice, int& min_step, int& max_step) const;
+  bool isCellSelected(int step, int voice) const;
   int patternIndexFromKey(char key) const;
   int bankIndexFromKey(char key) const;
   void setBankIndex(int bankIndex);
@@ -64,6 +83,10 @@ class DrumSequencerMainPage : public Container {
   std::shared_ptr<PatternSelectionBarComponent> pattern_bar_;
   std::shared_ptr<BankSelectionBarComponent> bank_bar_;
   bool chaining_mode_ = false;
+  bool has_selection_ = false;
+  int selection_start_step_ = 0;
+  int selection_start_voice_ = 0;
+  bool selection_locked_ = false;
 };
 
 class GlobalDrumSettingsPage : public Container {
@@ -132,6 +155,7 @@ DrumSequencerMainPage::DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard aud
   callbacks.cursorVoice = [this]() { return activeDrumVoice(); };
   callbacks.gridFocused = [this]() { return !patternRowFocused() && !bankRowFocused(); };
   callbacks.currentStep = [this]() { return mini_acid_.currentStep(); };
+  callbacks.isSelected = [this](int step, int voice) { return isCellSelected(step, voice); };
   grid_component_ = std::make_shared<DrumSequencerGridComponent>(mini_acid_, std::move(callbacks));
   addChild(grid_component_);
 }
@@ -233,6 +257,74 @@ void DrumSequencerMainPage::moveDrumCursorVertical(int delta) {
   drum_voice_cursor_ = newVoice;
 }
 
+void DrumSequencerMainPage::startSelection() {
+  has_selection_ = true;
+  selection_locked_ = false;
+  selection_start_step_ = activeDrumStep();
+  selection_start_voice_ = activeDrumVoice();
+}
+
+void DrumSequencerMainPage::updateSelection() {
+  if (!has_selection_) startSelection();
+}
+
+void DrumSequencerMainPage::clearSelection() {
+  has_selection_ = false;
+  selection_locked_ = false;
+}
+
+bool DrumSequencerMainPage::hasSelection() const {
+  return has_selection_;
+}
+
+void DrumSequencerMainPage::getSelectionBounds(int& min_voice, int& max_voice, int& min_step, int& max_step) const {
+  int a_step = selection_start_step_;
+  if (a_step < 0) a_step = 0;
+  if (a_step >= SEQ_STEPS) a_step = SEQ_STEPS - 1;
+  int b_step = drum_step_cursor_;
+  if (b_step < 0) b_step = 0;
+  if (b_step >= SEQ_STEPS) b_step = SEQ_STEPS - 1;
+
+  int a_voice = selection_start_voice_;
+  if (a_voice < 0) a_voice = 0;
+  if (a_voice >= NUM_DRUM_VOICES) a_voice = NUM_DRUM_VOICES - 1;
+  int b_voice = drum_voice_cursor_;
+  if (b_voice < 0) b_voice = 0;
+  if (b_voice >= NUM_DRUM_VOICES) b_voice = NUM_DRUM_VOICES - 1;
+
+  min_step = std::min(a_step, b_step);
+  max_step = std::max(a_step, b_step);
+  min_voice = std::min(a_voice, b_voice);
+  max_voice = std::max(a_voice, b_voice);
+}
+
+bool DrumSequencerMainPage::isCellSelected(int step, int voice) const {
+  if (!has_selection_) return false;
+  int min_voice, max_voice, min_step, max_step;
+  getSelectionBounds(min_voice, max_voice, min_step, max_step);
+  return voice >= min_voice && voice <= max_voice &&
+         step >= min_step && step <= max_step;
+}
+
+bool DrumSequencerMainPage::moveSelectionFrameBy(int deltaVoice, int deltaStep) {
+  if (!has_selection_) return false;
+  int min_voice, max_voice, min_step, max_step;
+  getSelectionBounds(min_voice, max_voice, min_step, max_step);
+
+  int dst_min_voice = min_voice + deltaVoice;
+  int dst_max_voice = max_voice + deltaVoice;
+  int dst_min_step = min_step + deltaStep;
+  int dst_max_step = max_step + deltaStep;
+  if (dst_min_voice < 0 || dst_max_voice >= NUM_DRUM_VOICES) return false;
+  if (dst_min_step < 0 || dst_max_step >= SEQ_STEPS) return false;
+
+  selection_start_voice_ += deltaVoice;
+  selection_start_step_ += deltaStep;
+  drum_voice_cursor_ += deltaVoice;
+  drum_step_cursor_ += deltaStep;
+  return true;
+}
+
 void DrumSequencerMainPage::focusPatternRow() {
   setDrumPatternCursor(drum_pattern_cursor_);
   drum_pattern_focus_ = true;
@@ -323,6 +415,27 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
           mini_acid_.patternRimAccentSteps(),
           mini_acid_.patternClapAccentSteps()
         };
+        if (has_selection_) {
+          int min_voice, max_voice, min_step, max_step;
+          getSelectionBounds(min_voice, max_voice, min_step, max_step);
+          g_drum_area_clipboard.voice_count = max_voice - min_voice + 1;
+          g_drum_area_clipboard.step_count = max_step - min_step + 1;
+          g_drum_area_clipboard.steps.clear();
+          g_drum_area_clipboard.steps.reserve(g_drum_area_clipboard.voice_count * g_drum_area_clipboard.step_count);
+          for (int v = min_voice; v <= max_voice; ++v) {
+            for (int i = min_step; i <= max_step; ++i) {
+              DrumStep s{};
+              s.hit = hits[v][i];
+              s.accent = accents[v][i];
+              g_drum_area_clipboard.steps.push_back(s);
+            }
+          }
+          g_drum_area_clipboard.has_area = true;
+          selection_locked_ = true;
+          g_drum_pattern_clipboard.has_pattern = false;
+          return true;
+        }
+
         for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
           for (int i = 0; i < SEQ_STEPS; ++i) {
             g_drum_pattern_clipboard.pattern.voices[v].steps[i].hit = hits[v][i];
@@ -330,10 +443,11 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
           }
         }
         g_drum_pattern_clipboard.has_pattern = true;
+        g_drum_area_clipboard.has_area = false;
         return true;
       }
       case GROOVEPUTER_APP_EVENT_PASTE: {
-        if (!g_drum_pattern_clipboard.has_pattern) return false;
+        if (!g_drum_pattern_clipboard.has_pattern && !g_drum_area_clipboard.has_area) return false;
         bool current_hits[NUM_DRUM_VOICES][SEQ_STEPS];
         bool current_accents[NUM_DRUM_VOICES][SEQ_STEPS];
         const bool* hits[NUM_DRUM_VOICES] = {
@@ -364,19 +478,52 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
         }
         const DrumPatternSet& src = g_drum_pattern_clipboard.pattern;
         withAudioGuard([&]() {
-          for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
-            for (int i = 0; i < SEQ_STEPS; ++i) {
-              bool desiredHit = src.voices[v].steps[i].hit;
-              bool desiredAccent = src.voices[v].steps[i].accent && desiredHit;
-              if (current_hits[v][i] != desiredHit) {
-                mini_acid_.toggleDrumStep(v, i);
+          if (g_drum_area_clipboard.has_area) {
+            int start_step = activeDrumStep();
+            int start_voice = activeDrumVoice();
+            if (has_selection_) {
+              int min_voice, max_voice, min_step, max_step;
+              getSelectionBounds(min_voice, max_voice, min_step, max_step);
+              start_step = min_step;
+              start_voice = min_voice;
+            }
+            int idx = 0;
+            for (int v = 0; v < g_drum_area_clipboard.voice_count; ++v) {
+              for (int i = 0; i < g_drum_area_clipboard.step_count; ++i) {
+                if (idx >= static_cast<int>(g_drum_area_clipboard.steps.size())) break;
+                int tv = start_voice + v;
+                int ts = start_step + i;
+                if (tv < 0 || tv >= NUM_DRUM_VOICES || ts < 0 || ts >= SEQ_STEPS) {
+                  ++idx;
+                  continue;
+                }
+                bool desiredHit = g_drum_area_clipboard.steps[idx].hit;
+                bool desiredAccent = g_drum_area_clipboard.steps[idx].accent && desiredHit;
+                if (current_hits[tv][ts] != desiredHit) {
+                  mini_acid_.toggleDrumStep(tv, ts);
+                }
+                if (current_accents[tv][ts] != desiredAccent) {
+                  mini_acid_.setDrumAccentStep(tv, ts, desiredAccent);
+                }
+                ++idx;
               }
-              if (current_accents[v][i] != desiredAccent) {
-                mini_acid_.setDrumAccentStep(v, i, desiredAccent);
+            }
+          } else {
+            for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
+              for (int i = 0; i < SEQ_STEPS; ++i) {
+                bool desiredHit = src.voices[v].steps[i].hit;
+                bool desiredAccent = src.voices[v].steps[i].accent && desiredHit;
+                if (current_hits[v][i] != desiredHit) {
+                  mini_acid_.toggleDrumStep(v, i);
+                }
+                if (current_accents[v][i] != desiredAccent) {
+                  mini_acid_.setDrumAccentStep(v, i, desiredAccent);
+                }
               }
             }
           }
         });
+        if (has_selection_) clearSelection();
         return true;
       }
       default:
@@ -384,6 +531,12 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     }
   }
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+
+  // Local ESC/backtick: clear selection first.
+  if ((ui_event.scancode == GROOVEPUTER_ESCAPE || ui_event.key == '`' || ui_event.key == '~') && has_selection_) {
+    clearSelection();
+    return true;
+  }
 
   // Let parent handle global navigation ([ ] page jumps, help, back, etc.)
   // IMPORTANT: we do NOT want to steal them here.
@@ -394,20 +547,35 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   // Arrow-first: Cardputer may deliver arrows in scancode OR key.
   // Keep vim-keys only as silent fallback (not in footer hints).
   int nav = UIInput::navCode(ui_event);
+  bool extend_selection = ui_event.shift || ui_event.ctrl;
+  if (extend_selection && selection_locked_) selection_locked_ = false;
+  if (selection_locked_ && has_selection_ && !extend_selection && !patternRowFocused() && !bankRowFocused()) {
+    switch (nav) {
+      case GROOVEPUTER_LEFT: return moveSelectionFrameBy(0, -1);
+      case GROOVEPUTER_RIGHT: return moveSelectionFrameBy(0, 1);
+      case GROOVEPUTER_UP: return moveSelectionFrameBy(-1, 0);
+      case GROOVEPUTER_DOWN: return moveSelectionFrameBy(1, 0);
+      default: break;
+    }
+  }
   switch (nav) {
     case GROOVEPUTER_LEFT:
+      if (extend_selection && !patternRowFocused() && !bankRowFocused()) updateSelection();
       moveDrumCursor(-1);
       handled = true;
       break;
     case GROOVEPUTER_RIGHT:
+      if (extend_selection && !patternRowFocused() && !bankRowFocused()) updateSelection();
       moveDrumCursor(1);
       handled = true;
       break;
     case GROOVEPUTER_UP:
+      if (extend_selection && !patternRowFocused() && !bankRowFocused()) updateSelection();
       moveDrumCursorVertical(-1);
       handled = true;
       break;
     case GROOVEPUTER_DOWN:
+      if (extend_selection && !patternRowFocused() && !bankRowFocused()) updateSelection();
       moveDrumCursorVertical(1);
       handled = true;
       break;
@@ -419,6 +587,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
 
   char key = ui_event.key;
   if (!key) return false;
+  char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
 
   /*
   int bankIdx = bankIndexFromKey(key);
@@ -433,6 +602,14 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     */
 
   if (key == '\n' || key == '\r') {
+    if (has_selection_) {
+      int min_voice, max_voice, min_step, max_step;
+      getSelectionBounds(min_voice, max_voice, min_step, max_step);
+      if (min_voice == max_voice && min_step == max_step) {
+        clearSelection();
+        return true;
+      }
+    }
     if (bankRowFocused()) {
       if (mini_acid_.songModeEnabled()) return true;
       setBankIndex(activeBankCursor());
@@ -453,7 +630,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
       return true;
   }
 
-  int patternIdx = patternIndexFromKey(key);
+  int patternIdx = patternIndexFromKey(lowerKey);
   if (patternIdx < 0) {
       patternIdx = scancodeToPatternIndex(ui_event.scancode);
   }
@@ -482,7 +659,6 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
   bool key_a = (lowerKey == 'a') || (ui_event.scancode == GROOVEPUTER_A);
   bool key_g = (lowerKey == 'g') || (ui_event.scancode == GROOVEPUTER_G);
   bool key_c = (lowerKey == 'c') || (ui_event.scancode == GROOVEPUTER_C);

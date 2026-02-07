@@ -20,6 +20,7 @@ class DrumSequencerGridComponent : public Component {
     std::function<int()> cursorVoice;
     std::function<bool()> gridFocused;
     std::function<int()> currentStep;
+    std::function<bool(int step, int voice)> isSelected;
   };
 
   DrumSequencerGridComponent(MiniAcid& mini_acid, Callbacks callbacks);

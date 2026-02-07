@@ -43,6 +43,7 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   void startSelection();
   void updateSelection();
   void clearSelection();
+  bool moveSelectionFrameBy(int deltaRow, int deltaTrack);
   void updateLoopRangeFromSelection();
   void getSelectionBounds(int& min_row, int& max_row, int& min_track, int& max_track) const;
   int visibleTrackCount() const;
@@ -70,6 +71,7 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   bool has_selection_;
   int selection_start_row_;
   int selection_start_track_;
+  bool selection_locked_ = false;
   Container mode_button_container_;
   bool mode_button_initialized_ = false;
 

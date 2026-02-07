@@ -2,6 +2,7 @@
 
 #include <cctype>
 #include <utility>
+#include <vector>
 #include "../ui_common.h"
 
 #include "../retro_ui_theme.h"
@@ -34,6 +35,16 @@ inline IGfxColor retroVoiceColor(int voiceIndex) {
 inline IGfxColor amberVoiceColor(int voiceIndex) {
   return (voiceIndex == 0) ? IGfxColor(AmberTheme::NEON_CYAN) : IGfxColor(AmberTheme::NEON_MAGENTA);
 }
+
+struct PatternStepAreaClipboard {
+  bool has_data = false;
+  bool full_row = false;
+  int rows = 0;
+  int cols = 0;
+  std::vector<SynthStep> steps;
+};
+
+PatternStepAreaClipboard g_pattern_step_clipboard;
 } // namespace
 
 PatternEditPage::PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index)
@@ -218,6 +229,63 @@ void PatternEditPage::movePatternCursorVertical(int delta) {
   pattern_edit_cursor_ = newRow * 8 + col;
 }
 
+void PatternEditPage::startSelection() {
+  has_selection_ = true;
+  selection_locked_ = false;
+  selection_start_step_ = activePatternStep();
+}
+
+void PatternEditPage::updateSelection() {
+  if (!has_selection_) startSelection();
+}
+
+void PatternEditPage::clearSelection() {
+  has_selection_ = false;
+  selection_locked_ = false;
+}
+
+bool PatternEditPage::hasSelection() const {
+  return has_selection_;
+}
+
+void PatternEditPage::getSelectionBounds(int& min_row, int& max_row, int& min_col, int& max_col) const {
+  int a = selection_start_step_;
+  if (a < 0) a = 0;
+  if (a >= SEQ_STEPS) a = SEQ_STEPS - 1;
+  int b = pattern_edit_cursor_;
+  if (b < 0) b = 0;
+  if (b >= SEQ_STEPS) b = SEQ_STEPS - 1;
+  int ar = a / 8, ac = a % 8;
+  int br = b / 8, bc = b % 8;
+  min_row = std::min(ar, br);
+  max_row = std::max(ar, br);
+  min_col = std::min(ac, bc);
+  max_col = std::max(ac, bc);
+}
+
+bool PatternEditPage::isStepSelected(int stepIndex) const {
+  if (!has_selection_) return false;
+  int row = stepIndex / 8;
+  int col = stepIndex % 8;
+  int min_row, max_row, min_col, max_col;
+  getSelectionBounds(min_row, max_row, min_col, max_col);
+  return row >= min_row && row <= max_row && col >= min_col && col <= max_col;
+}
+
+bool PatternEditPage::moveSelectionFrameBy(int deltaRow, int deltaCol) {
+  if (!has_selection_) return false;
+  int min_row, max_row, min_col, max_col;
+  getSelectionBounds(min_row, max_row, min_col, max_col);
+  int dst_min_row = min_row + deltaRow;
+  int dst_max_row = max_row + deltaRow;
+  int dst_min_col = min_col + deltaCol;
+  int dst_max_col = max_col + deltaCol;
+  if (dst_min_row < 0 || dst_max_row > 1 || dst_min_col < 0 || dst_max_col > 7) return false;
+  selection_start_step_ += deltaRow * 8 + deltaCol;
+  pattern_edit_cursor_ += deltaRow * 8 + deltaCol;
+  return true;
+}
+
 const std::string & PatternEditPage::getTitle() const {
   return title_;
 }
@@ -239,12 +307,12 @@ void PatternEditPage::setContext(int context) {
 }
 
 bool PatternEditPage::handleEvent(UIEvent& ui_event) {
-  // CRITICAL: Block numeric quick-select BEFORE forwarding to components
-  // Otherwise BankSelectionBar/PatternSelectionBar intercept digits before we can block them
+  // Let global numeric mutes (1..0) pass through to MiniAcidDisplay.
+  // We intentionally skip local numeric quick-select on this page.
   if (ui_event.event_type == GROOVEPUTER_KEY_DOWN) {
     if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta &&
         ui_event.key >= '0' && ui_event.key <= '9') {
-      return true; // consume, do nothing
+      return false;
     }
   }
 
@@ -253,83 +321,92 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT) {
     switch (ui_event.app_event_type) {
       case GROOVEPUTER_APP_EVENT_COPY: {
-        int patIdx = mini_acid_.current303PatternIndex(voice_index_);
+        int patIdx = activePatternCursor();
         const SynthPattern& source = mini_acid_.sceneManager().getSynthPattern(voice_index_, patIdx);
-        for (int i = 0; i < SEQ_STEPS; ++i) {
-          g_pattern_clipboard.pattern.steps[i] = source.steps[i];
+        g_pattern_step_clipboard.has_data = true;
+        g_pattern_step_clipboard.steps.clear();
+        if (has_selection_) {
+          int min_row, max_row, min_col, max_col;
+          getSelectionBounds(min_row, max_row, min_col, max_col);
+          const bool single_cell = (min_row == max_row && min_col == max_col);
+          if (single_cell) {
+            // Single-cell selection: copy whole row (8 steps) as requested.
+            int row = min_row;
+            g_pattern_step_clipboard.full_row = true;
+            g_pattern_step_clipboard.rows = 1;
+            g_pattern_step_clipboard.cols = 8;
+            g_pattern_step_clipboard.steps.reserve(8);
+            for (int c = 0; c < 8; ++c) {
+              int step = row * 8 + c;
+              g_pattern_step_clipboard.steps.push_back(source.steps[step]);
+            }
+          } else {
+            g_pattern_step_clipboard.full_row = false;
+            g_pattern_step_clipboard.rows = max_row - min_row + 1;
+            g_pattern_step_clipboard.cols = max_col - min_col + 1;
+            g_pattern_step_clipboard.steps.reserve(g_pattern_step_clipboard.rows * g_pattern_step_clipboard.cols);
+            for (int r = min_row; r <= max_row; ++r) {
+              for (int c = min_col; c <= max_col; ++c) {
+                int step = r * 8 + c;
+                g_pattern_step_clipboard.steps.push_back(source.steps[step]);
+              }
+            }
+          }
+        } else {
+          // No selection: keep legacy full-pattern copy.
+          g_pattern_step_clipboard.full_row = false;
+          g_pattern_step_clipboard.rows = 2;
+          g_pattern_step_clipboard.cols = 8;
+          g_pattern_step_clipboard.steps.reserve(SEQ_STEPS);
+          for (int i = 0; i < SEQ_STEPS; ++i) {
+            g_pattern_step_clipboard.steps.push_back(source.steps[i]);
+          }
         }
-        g_pattern_clipboard.has_pattern = true;
+        if (has_selection_) {
+          // Area copy is authoritative; avoid stale full-pattern clipboard consumers.
+          g_pattern_clipboard.has_pattern = false;
+        } else {
+          g_pattern_clipboard.has_pattern = true;
+          for (int i = 0; i < SEQ_STEPS; ++i) g_pattern_clipboard.pattern.steps[i] = source.steps[i];
+        }
+        if (has_selection_) selection_locked_ = true;
         return true;
       }
       case GROOVEPUTER_APP_EVENT_PASTE: {
-        if (!g_pattern_clipboard.has_pattern) return false;
-        int current_notes[SEQ_STEPS];
-        bool current_accent[SEQ_STEPS];
-        bool current_slide[SEQ_STEPS];
-        const int8_t* notes = mini_acid_.pattern303Steps(voice_index_);
-        const bool* accent = mini_acid_.pattern303AccentSteps(voice_index_);
-        const bool* slide = mini_acid_.pattern303SlideSteps(voice_index_);
-        for (int i = 0; i < SEQ_STEPS; ++i) {
-          current_notes[i] = notes[i];
-          current_accent[i] = accent[i];
-          current_slide[i] = slide[i];
-        }
-        const SynthPattern& src = g_pattern_clipboard.pattern;
+        if (!g_pattern_step_clipboard.has_data && !g_pattern_clipboard.has_pattern) return false;
         withAudioGuard([&]() {
-          for (int i = 0; i < SEQ_STEPS; ++i) {
-            int target_note = src.steps[i].note;
-            int current_note = current_notes[i];
-            if (target_note < 0) {
-              if (current_note >= 0) {
-                mini_acid_.clear303StepNote(voice_index_, i);
-              }
-            } else if (current_note < 0) {
-              int delta = target_note - MiniAcid::kMin303Note;
-              if (delta == 0) {
-                mini_acid_.adjust303StepNote(voice_index_, i, 1);
-                mini_acid_.adjust303StepNote(voice_index_, i, -1);
-              } else {
-                mini_acid_.adjust303StepNote(voice_index_, i, delta);
-              }
-            } else {
-              int delta = target_note - current_note;
-              if (delta != 0) {
-                mini_acid_.adjust303StepNote(voice_index_, i, delta);
-              }
+          int vIdx = (voice_index_ < 0) ? 0 : (voice_index_ >= 2 ? 1 : voice_index_);
+          SynthPattern& dst = mini_acid_.sceneManager().editCurrentSynthPattern(vIdx);
+          if (g_pattern_step_clipboard.has_data) {
+            int start_row = activePatternStep() / 8;
+            int start_col = activePatternStep() % 8;
+            if (has_selection_) {
+              int min_row, max_row, min_col, max_col;
+              getSelectionBounds(min_row, max_row, min_col, max_col);
+              start_row = min_row;
+              start_col = min_col;
             }
 
-            if (current_accent[i] != src.steps[i].accent) {
-              mini_acid_.toggle303AccentStep(voice_index_, i);
+            int idx = 0;
+            for (int r = 0; r < g_pattern_step_clipboard.rows; ++r) {
+              for (int c = 0; c < g_pattern_step_clipboard.cols; ++c) {
+                if (idx >= static_cast<int>(g_pattern_step_clipboard.steps.size())) break;
+                int tr = start_row + r;
+                int tc = start_col + c;
+                if (tr < 0 || tr > 1 || tc < 0 || tc > 7) {
+                  ++idx;
+                  continue;
+                }
+                int step = tr * 8 + tc;
+                dst.steps[step] = g_pattern_step_clipboard.steps[idx++];
+              }
             }
-            if (current_slide[i] != src.steps[i].slide) {
-              mini_acid_.toggle303SlideStep(voice_index_, i);
-            }
-            
-            // FX Copy
-            // Direct access via friend or adding setter? 
-            // Better to use a setter or just brute force setting via pattern reference if possible?
-            // SceneManager returns reference via editCurrentSynthPattern?
-            // MiniAcid does not expose editSynthPattern directly.
-            // But we can use the cycle/adjust methods or just add a setStep method?
-            // Actually, we can just use the scene manager via MiniAcid if we want to bypass helper.
-            // But for now, let's assume we need to update FX manually or add a setter.
-            // Let's add set303StepFx(idx, step, fx, param) later? 
-            // Or since we are in PatternEditPage which includes Scenes.h and MiniAcid has SceneManager accessor:
-            // mini_acid_.sceneManager().editCurrentSynthPattern(clamp303Voice(voice_index_)).steps[i] = src.steps[i];
-            // But we need to be careful about thread safety (AudioGuard is used here).
-            // Yes, we are inside withAudioGuard.
-            // But we need 'editCurrentSynthPattern' which is private in MiniAcid?
-            // No, sceneManager() returns SceneManager&. SceneManager has editCurrentSynthPattern?
-            // Let's check SceneManager.
-            // For now, simplest is to just set note/acc/slide and leave FX until we have a setter?
-            // No, better to do it right.
-            // Let's use internal accessor if available.
-             
-             // Access via SceneManager directly
-             int vIdx = (voice_index_ < 0) ? 0 : (voice_index_ >= 2 ? 1 : voice_index_);
-             mini_acid_.sceneManager().editCurrentSynthPattern(vIdx).steps[i] = src.steps[i];
+          } else {
+            const SynthPattern& src = g_pattern_clipboard.pattern;
+            for (int i = 0; i < SEQ_STEPS; ++i) dst.steps[i] = src.steps[i];
           }
         });
+        if (has_selection_) clearSelection();
         return true;
       }
       default:
@@ -337,6 +414,14 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     }
   }
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+
+  // Handle local ESC/backtick selection clear before global nav steals the key.
+  const bool early_is_escape = (ui_event.scancode == GROOVEPUTER_ESCAPE) || (ui_event.key == 0x1B);
+  const bool early_is_backtick = (ui_event.key == '`' || ui_event.key == '~');
+  if ((early_is_escape || early_is_backtick) && has_selection_) {
+    clearSelection();
+    return true;
+  }
 
   // Let parent handle global navigation keys; do not steal them here.
   if (UIInput::isGlobalNav(ui_event)) return false;
@@ -346,15 +431,27 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   // Arrow-first: Cardputer may deliver arrows in scancode OR key.
   // Keep vim-keys only as silent fallback (not in footer hints).
   int nav = UIInput::navCode(ui_event);
+  bool extend_selection = (ui_event.shift || ui_event.ctrl) && !ui_event.alt;
+  if (extend_selection && selection_locked_) selection_locked_ = false;
+  if (selection_locked_ && has_selection_ && !extend_selection && focus_ == Focus::Steps) {
+    switch (nav) {
+      case GROOVEPUTER_LEFT: return moveSelectionFrameBy(0, -1);
+      case GROOVEPUTER_RIGHT: return moveSelectionFrameBy(0, 1);
+      case GROOVEPUTER_UP: return moveSelectionFrameBy(-1, 0);
+      case GROOVEPUTER_DOWN: return moveSelectionFrameBy(1, 0);
+      default: break;
+    }
+  }
   switch (nav) {
     case GROOVEPUTER_LEFT:
+      if (extend_selection && focus_ == Focus::Steps) updateSelection();
       movePatternCursor(-1);
       handled = true;
       break;
     case GROOVEPUTER_RIGHT:
+      if (extend_selection && focus_ == Focus::Steps) updateSelection();
       movePatternCursor(1);
       handled = true;
-      break;
       break;
     case GROOVEPUTER_UP:
       if (ui_event.alt) {
@@ -363,6 +460,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
            withAudioGuard([&]() { mini_acid_.adjust303StepFxParam(voice_index_, step, 1); });
            handled = true;
       } else {
+          if (extend_selection && focus_ == Focus::Steps) updateSelection();
           movePatternCursorVertical(-1);
           handled = true;
       }
@@ -374,6 +472,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
            withAudioGuard([&]() { mini_acid_.adjust303StepFxParam(voice_index_, step, -1); });
            handled = true;
       } else {
+          if (extend_selection && focus_ == Focus::Steps) updateSelection();
           movePatternCursorVertical(1);
           handled = true;
       }
@@ -398,8 +497,20 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   }
 
   char key = ui_event.key;
+  char lowerKey = key ? static_cast<char>(std::tolower(static_cast<unsigned char>(key))) : 0;
+  const bool is_escape = (ui_event.scancode == GROOVEPUTER_ESCAPE) || (key == 0x1B);
+  const bool is_backspace = (key == '\b' || key == 0x7F);
+
+  // Alt+ESC toggles chain mode when no selection is active.
+  if (is_escape && ui_event.alt) {
+    chaining_mode_ = !chaining_mode_;
+    return true;
+  }
+
+  // Let app-level back navigation handle ESC when nothing local to clear.
+  if (is_escape) return false;
+
   if (!key) return false;
-  char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
 
   // Q-I Pattern Selection (Standardized) - PRIORITIZED
   if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
@@ -450,6 +561,14 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     */
 
   if (key == '\n' || key == '\r') {
+    if (has_selection_) {
+      int min_row, max_row, min_col, max_col;
+      getSelectionBounds(min_row, max_row, min_col, max_col);
+      if (min_row == max_row && min_col == max_col) {
+        clearSelection();
+        return true;
+      }
+    }
     if (focus_ == Focus::BankRow) {
       if (mini_acid_.songModeEnabled()) return true;
       setBankIndex(activeBankCursor());
@@ -472,6 +591,23 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       ensureStepFocus();
     }
   };
+  auto applyToSelectionOrCursor = [&](auto&& fn) {
+    ensureStepFocusAndCursor();
+    if (has_selection_) {
+      int min_row, max_row, min_col, max_col;
+      getSelectionBounds(min_row, max_row, min_col, max_col);
+      withAudioGuard([&]() {
+        for (int r = min_row; r <= max_row; ++r) {
+          for (int c = min_col; c <= max_col; ++c) {
+            fn(r * 8 + c);
+          }
+        }
+      });
+    } else {
+      int step = activePatternStep();
+      withAudioGuard([&]() { fn(step); });
+    }
+  };
 
   bool key_a = (lowerKey == 'a') || (ui_event.scancode == GROOVEPUTER_A);
   bool key_s = (lowerKey == 's') || (ui_event.scancode == GROOVEPUTER_S);
@@ -484,35 +620,69 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   bool key_r = (lowerKey == 'r') || (ui_event.scancode == GROOVEPUTER_R);
 
   if (key_s) {
-    ensureStepFocusAndCursor();
-    int step = activePatternStep();
-    if (ui_event.alt) {
-      withAudioGuard([&]() { mini_acid_.toggle303SlideStep(voice_index_, step); });
+    if (ui_event.alt || ui_event.ctrl) {
+      ensureStepFocusAndCursor();
+      if (has_selection_) {
+        int min_row, max_row, min_col, max_col;
+        getSelectionBounds(min_row, max_row, min_col, max_col);
+        withAudioGuard([&]() {
+          int vIdx = (voice_index_ < 0) ? 0 : (voice_index_ >= 2 ? 1 : voice_index_);
+          SynthPattern& pattern = mini_acid_.sceneManager().editCurrentSynthPattern(vIdx);
+          bool target = !pattern.steps[min_row * 8 + min_col].slide;
+          for (int r = min_row; r <= max_row; ++r) {
+            for (int c = min_col; c <= max_col; ++c) {
+              pattern.steps[r * 8 + c].slide = target;
+            }
+          }
+        });
+      } else {
+        int step = activePatternStep();
+        withAudioGuard([&]() { mini_acid_.toggle303SlideStep(voice_index_, step); });
+      }
     } else {
-      withAudioGuard([&]() { mini_acid_.adjust303StepOctave(voice_index_, step, 1); });
+      applyToSelectionOrCursor([&](int step) {
+        mini_acid_.adjust303StepOctave(voice_index_, step, 1);
+      });
     }
     return true;
   }
   if (key_a) {
-    ensureStepFocusAndCursor();
-    int step = activePatternStep();
-    if (ui_event.alt) {
-      withAudioGuard([&]() { mini_acid_.toggle303AccentStep(voice_index_, step); });
+    if (ui_event.alt || ui_event.ctrl) {
+      ensureStepFocusAndCursor();
+      if (has_selection_) {
+        int min_row, max_row, min_col, max_col;
+        getSelectionBounds(min_row, max_row, min_col, max_col);
+        withAudioGuard([&]() {
+          int vIdx = (voice_index_ < 0) ? 0 : (voice_index_ >= 2 ? 1 : voice_index_);
+          SynthPattern& pattern = mini_acid_.sceneManager().editCurrentSynthPattern(vIdx);
+          bool target = !pattern.steps[min_row * 8 + min_col].accent;
+          for (int r = min_row; r <= max_row; ++r) {
+            for (int c = min_col; c <= max_col; ++c) {
+              pattern.steps[r * 8 + c].accent = target;
+            }
+          }
+        });
+      } else {
+        int step = activePatternStep();
+        withAudioGuard([&]() { mini_acid_.toggle303AccentStep(voice_index_, step); });
+      }
     } else {
-      withAudioGuard([&]() { mini_acid_.adjust303StepNote(voice_index_, step, 1); });
+      applyToSelectionOrCursor([&](int step) {
+        mini_acid_.adjust303StepNote(voice_index_, step, 1);
+      });
     }
     return true;
   }
   if (key_z) {
-    ensureStepFocusAndCursor();
-    int step = activePatternStep();
-    withAudioGuard([&]() { mini_acid_.adjust303StepNote(voice_index_, step, -1); });
+    applyToSelectionOrCursor([&](int step) {
+      mini_acid_.adjust303StepNote(voice_index_, step, -1);
+    });
     return true;
   }
   if (key_x) {
-    ensureStepFocusAndCursor();
-    int step = activePatternStep();
-    withAudioGuard([&]() { mini_acid_.adjust303StepOctave(voice_index_, step, -1); });
+    applyToSelectionOrCursor([&](int step) {
+      mini_acid_.adjust303StepOctave(voice_index_, step, -1);
+    });
     return true;
   }
   if (key_g) {
@@ -558,24 +728,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // Handle BACK/ESC for standard navigation (return to caller, e.g. Hub)
-  if (key == 0x1B && ui_event.alt) {
-      chaining_mode_ = !chaining_mode_;
-      return true;
-  }
-
-  if (key == '\b' || key == 0x1B || ui_event.key == '`') { 
-     // If we are in Steps, maybe clear note first?
-     // Existing logic: Backspace clears note at cursor.
-     // To allow navigation back, user might press ESC.
-     // Current code:
-     // if (key == '\b') { ... clear note ... }
-     
-     // Let's keep Backspace for clearing note, but allow ESC to fall through for navigation.
-     if (key == 0x1B) return false; // Let MiniAcidDisplay handle "Back"
-  }
-
-  if (key == '\b' || key == 0x7F) { // Backspace / Del = Clear Step (REST)
+  if (is_backspace) { // Backspace / Del = Clear Step (REST)
     ensureStepFocusAndCursor();
     int step = activePatternStep();
     withAudioGuard([&]() { mini_acid_.clear303Step(step, voice_index_); }); // Use full clear
@@ -706,6 +859,9 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
     if (stepFocus && stepCursor == i) {
       gfx.drawRect(cell_x - 2, note_box_y - 2, cell_size + 4, cell_size + 4, COLOR_STEP_SELECTED);
     }
+    if (stepFocus && isStepSelected(i)) {
+      gfx.drawRect(cell_x - 3, note_box_y - 3, cell_size + 6, cell_size + 6, COLOR_ACCENT);
+    }
 
     char note_label[8];
     formatNoteName(notes[i], note_label, sizeof(note_label));
@@ -833,6 +989,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
 
     bool isCurrent = (isPlayingPattern && playing == i); // Only show playhead if we are looking at the playing pattern
     bool isCursor = (stepFocus && stepCursor == i);
+    bool isSelected = stepFocus && isStepSelected(i);
     
     int8_t note = pattern.steps[i].note;
     bool acc = pattern.steps[i].accent;
@@ -845,11 +1002,14 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
 
     // Border: glow on cursor, simple otherwise
     // Border: glow on cursor, simple otherwise
+    if (isSelected) {
+      drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, IGfxColor(NEON_ORANGE), 1);
+    }
     if (isCursor) {
       // Use Voice Color for cursor to indicate which voice is being edited
       IGfxColor cursorColor = retroVoiceColor(voice_index_);
       drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, cursorColor, 1);
-    } else {
+    } else if (!isSelected) {
       gfx.drawRect(cellX, cellRowY, cellW, cellH, IGfxColor(GRID_MEDIUM));
     }
 
@@ -1030,6 +1190,7 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
 
     bool isCurrent = (isPlayingPattern && playing == i);
     bool isCursor = (stepFocus && stepCursor == i);
+    bool isSelected = stepFocus && isStepSelected(i);
     
     int8_t note = pattern.steps[i].note;
     bool acc = pattern.steps[i].accent;
@@ -1039,9 +1200,12 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
     IGfxColor bgColor = (col % 4 == 0) ? IGfxColor(AmberTheme::BG_INSET) : IGfxColor(AmberTheme::BG_PANEL);
     gfx.fillRect(cellX, cellRowY, cellW, cellH, bgColor);
 
+    if (isSelected) {
+      AmberWidgets::drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, IGfxColor(AmberTheme::NEON_ORANGE), 1);
+    }
     if (isCursor) {
       AmberWidgets::drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, IGfxColor(AmberTheme::SELECT_BRIGHT), 1);
-    } else {
+    } else if (!isSelected) {
       gfx.drawRect(cellX, cellRowY, cellW, cellH, IGfxColor(AmberTheme::GRID_MEDIUM));
     }
 

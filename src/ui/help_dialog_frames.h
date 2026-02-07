@@ -147,32 +147,34 @@ inline void drawHelpPage303PatternEdit(IGfx& gfx, int x, int y, int w, int h) {
   left_y += lh;
   drawHelpHeading(gfx, layout.left_x, left_y, "Navigation");
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "LEFT/RIGHT", "", COLOR_LABEL);
+  drawHelpItem(gfx, layout.left_x, left_y, "LEFT/RIGHT", "move", COLOR_LABEL);
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "UP/DOWN", "move", COLOR_LABEL);
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "ENTER", "Load pattern", IGfxColor::Green());
+  drawHelpItem(gfx, layout.left_x, left_y, "SHIFT/CTRL+ARW", "extend selection", IGfxColor::Cyan());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+C / CTRL+V", "copy/paste", IGfxColor::Cyan());
   left_y += lh;
 
   drawHelpHeading(gfx, layout.left_x, left_y, "Pattern slots");
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "Q..I", "Pick pattern", COLOR_PATTERN_SELECTED_FILL);
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "ALT+C / V", "Copy / Paste (WIP)", IGfxColor::Cyan());
+  drawHelpItem(gfx, layout.left_x, left_y, "TAB", "Toggle 303A / 303B", IGfxColor::Yellow());
   left_y += lh;
 
   int right_y = y + 4 + lh;
   drawHelpHeading(gfx, layout.right_x, right_y, "Step edits");
   right_y += lh;
-  drawHelpItem(gfx, layout.right_x, right_y, "ALT+S", "Toggle slide", COLOR_SLIDE);
+  drawHelpItem(gfx, layout.right_x, right_y, "ALT/CTRL+S", "Slide (uniform in sel)", COLOR_SLIDE);
   right_y += lh;
-  drawHelpItem(gfx, layout.right_x, right_y, "ALT+A", "Toggle accent", COLOR_ACCENT);
+  drawHelpItem(gfx, layout.right_x, right_y, "ALT/CTRL+A", "Accent (uniform in sel)", COLOR_ACCENT);
   right_y += lh;
   drawHelpItem(gfx, layout.right_x, right_y, "A / Z", "Note +1 / -1", COLOR_303_NOTE);
   right_y += lh;
   drawHelpItem(gfx, layout.right_x, right_y, "S / X", "Octave + / -", COLOR_LABEL);
   right_y += lh;
-  drawHelpItem(gfx, layout.right_x, right_y, "BACK", "Clear step", IGfxColor::Red());
+  drawHelpItem(gfx, layout.right_x, right_y, "ESC / ` / ~", "Clear selection", IGfxColor::Red());
 }
 
 inline void drawHelpPageDrumPatternEdit(IGfx& gfx, int x, int y, int w, int h) {
@@ -185,24 +187,26 @@ inline void drawHelpPageDrumPatternEdit(IGfx& gfx, int x, int y, int w, int h) {
   left_y += lh;
   drawHelpHeading(gfx, layout.left_x, left_y, "Navigation");
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "LEFT / RIGHT", "", COLOR_LABEL);
+  drawHelpItem(gfx, layout.left_x, left_y, "LEFT / RIGHT", "move", COLOR_LABEL);
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "UP / DOWN", "move", COLOR_LABEL);
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "ENTER", "Load/toggle ", IGfxColor::Green());
+  drawHelpItem(gfx, layout.left_x, left_y, "SHIFT/CTRL+ARW", "extend selection", IGfxColor::Cyan());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+C / CTRL+V", "copy/paste", IGfxColor::Cyan());
   left_y += lh;
 
   drawHelpHeading(gfx, layout.left_x, left_y, "Patterns");
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "Q..I", "Select drum pattern", COLOR_PATTERN_SELECTED_FILL);
-  left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "ALT+C / V", "Copy / Paste (WIP)", IGfxColor::Cyan());
 
   drawHelpHeading(gfx, layout.right_x, right_y, "Step edits");
   right_y += lh;
   drawHelpItem(gfx, layout.right_x, right_y, "ENTER", "Toggle hit", IGfxColor::Green());
   right_y += lh;
   drawHelpItem(gfx, layout.right_x, right_y, "A", "Toggle accent", COLOR_ACCENT);
+  right_y += lh;
+  drawHelpItem(gfx, layout.right_x, right_y, "ESC / ` / ~", "Clear selection", IGfxColor::Red());
 }
 
 inline void drawHelpPageSong(IGfx& gfx, int x, int y, int w, int h) {
@@ -218,14 +222,17 @@ inline void drawHelpPageSong(IGfx& gfx, int x, int y, int w, int h) {
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "UP/DOWN", "rows", COLOR_LABEL);
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "ALT+UP/DN", "slot +/-", IGfxColor::Yellow());
+  drawHelpItem(gfx, layout.left_x, left_y, "SHIFT/CTRL+ARW", "extend selection", IGfxColor::Cyan());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+C / CTRL+V", "copy/paste", IGfxColor::Cyan());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "ESC / ` / ~", "clear selection", IGfxColor::Red());
   left_y += lh;
 
   drawHelpHeading(gfx, layout.left_x, left_y, "Patterns");
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "Q..I", "set 1-8", COLOR_PATTERN_SELECTED_FILL);
-  // left_y += lh;
-  drawHelpItem(gfx, layout.right_x, left_y, "BACK", "clear slot", IGfxColor::Red());
+  drawHelpItem(gfx, layout.right_x, left_y, "BKSP/TAB", "clear cell/selection", IGfxColor::Red());
 }
 
 inline void drawHelpPageSongCont(IGfx& gfx, int x, int y, int w, int h) {
@@ -236,15 +243,20 @@ inline void drawHelpPageSongCont(IGfx& gfx, int x, int y, int w, int h) {
   drawHelpHeading(gfx, layout.left_x, left_y, "Song Page (cont.)");
   left_y += lh;
 
-  drawHelpHeading(gfx, layout.left_x, left_y, "Playhead");
+  drawHelpHeading(gfx, layout.left_x, left_y, "Slots / Mix");
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "ALT+UP/DN @PLAY", "nudge playhead", IGfxColor::Yellow());
+  drawHelpItem(gfx, layout.left_x, left_y, "ALT+B", "toggle edit slot A/B", IGfxColor::Yellow());
   left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+B", "toggle play slot A/B", IGfxColor::Yellow());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "ALT+X", "LiveMix ON/OFF", IGfxColor::Yellow());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "V / X", "DR<->VO lane / Split", IGfxColor::Yellow());
   left_y += lh;
 
-  drawHelpHeading(gfx, layout.left_x, left_y, "Mode");
+  drawHelpHeading(gfx, layout.left_x, left_y, "Song ops");
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "ENTER @ MODE", "Song/Pat toggle", IGfxColor::Green());
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+R", "Reverse", IGfxColor::Green());
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "M", "toggle mode", IGfxColor::Magenta());
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+M / CTRL+N", "Merge / Alternate", IGfxColor::Magenta());
 }

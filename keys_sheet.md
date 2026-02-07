@@ -45,15 +45,20 @@ Scope note: `Global` keys work on all pages. Keys inside page sections are `Loca
 | --- | --- |
 | `Q..I` | Select pattern 1..8 |
 | `Arrows` | Navigate steps |
+| `Shift/Ctrl+Arrows` | Extend selection |
+| `Ctrl+C` | Copy selection and lock frame |
+| `Arrows` (after `Ctrl+C`) | Move locked frame (paste target) |
+| `Ctrl+V` | Paste and clear selection |
 | `A/Z` | Note +/- |
 | `S/X` | Octave +/- |
-| `Alt+A` | Accent toggle |
-| `Alt+S` | Slide toggle |
+| `Alt/Ctrl+A` | Accent toggle (uniform if selected) |
+| `Alt/Ctrl+S` | Slide toggle (uniform if selected) |
 | `R` | REST (clear current step) |
 | `Bksp` / `Del` | Clear current step |
 | `Alt+Bksp` | Clear whole pattern |
+| `Esc` / `` ` `` / `~` | Clear selection |
 | `G` | Randomize pattern |
-| `Ctrl+C / Ctrl+V` | Copy / Paste |
+| `Tab` | Toggle 303A/303B |
 | `Alt+Esc` | Chain mode |
 
 ## Drum Sequencer
@@ -61,12 +66,16 @@ Scope note: `Global` keys work on all pages. Keys inside page sections are `Loca
 | --- | --- |
 | `Q..I` | Select pattern 1..8 |
 | `Arrows` | Navigate grid |
+| `Shift/Ctrl+Arrows` | Extend selection |
+| `Ctrl+C` | Copy selection and lock frame |
+| `Arrows` (after `Ctrl+C`) | Move locked frame (paste target) |
+| `Ctrl+V` | Paste and clear selection |
 | `Enter` | Toggle hit |
 | `A` | Toggle accent |
 | `G` | Randomize pattern |
 | `Ctrl+G` | Randomize focused voice |
 | `Alt+G` | Chaos random |
-| `Ctrl+C / Ctrl+V` | Copy / Paste |
+| `Esc` / `` ` `` / `~` | Clear selection |
 | `Alt+Esc` | Chain mode |
 
 ## TB303 Params
@@ -88,20 +97,27 @@ Scope note: `Global` keys work on all pages. Keys inside page sections are `Loca
 ## Song Page
 | Key | Action |
 | --- | --- |
-| `Alt + J / K` | Select Song Slot A / B |
+| `Alt+B` | Toggle edit slot A/B |
+| `Ctrl+B` | Toggle play slot A/B |
+| `Alt+X` | LiveMix ON/OFF |
 | `Ctrl + R` | Toggle Reverse Playback |
 | `Ctrl + M` | Merge Slot A/B (Fill Gaps) |
 | `Ctrl + N` | Alternate Slots (Interleave) |
 | `Space` | Play/Stop |
 | `Arrows` | Navigation |
-| `Enter` | Toggle Edit |
-| `Ctrl+Arrows` | Select area (Shift-free selection) |
+| `Shift/Ctrl+Arrows` | Select area |
+| `Ctrl+C` | Copy selection and lock frame |
+| `Arrows` (after `Ctrl+C`) | Move locked frame (paste target) |
+| `Ctrl+V` | Paste and clear selection |
+| `Esc` / `` ` `` / `~` | Clear selection |
 | `Q..I` | Assign pattern 1..8 |
 | `Bksp` / `Tab` | Clear cell |
 | `Ctrl+L` | Loop mode |
 | `G` | Generate cell |
 | `G` double-tap | Generate row |
 | `Alt+G` | Generate selected area |
+| `V` | Toggle DR/VO lane |
+| `X` | Toggle split compare |
 | `Alt+.` | Clear full arrangement |
 
 ## Project Page

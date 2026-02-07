@@ -67,6 +67,9 @@ void DrumSequencerGridComponent::drawMinimalStyle(IGfx& gfx, const GridLayout& l
   int cursorStep = callbacks_.cursorStep ? callbacks_.cursorStep() : 0;
   int cursorVoice = callbacks_.cursorVoice ? callbacks_.cursorVoice() : 0;
   bool gridFocus = callbacks_.gridFocused ? callbacks_.gridFocused() : false;
+  auto isSelected = [this](int step, int voice) {
+    return callbacks_.isSelected ? callbacks_.isSelected(step, voice) : false;
+  };
 
   const bool* kick = mini_acid_.patternKickSteps();
   const bool* snare = mini_acid_.patternSnareSteps();
@@ -113,6 +116,9 @@ void DrumSequencerGridComponent::drawMinimalStyle(IGfx& gfx, const GridLayout& l
       if (highlight == i) {
         gfx.drawRect(cx - 1, cy - 1, cw + 1, ch + 1, COLOR_STEP_HILIGHT);
       }
+      if (isSelected(i, v)) {
+        gfx.drawRect(cx - 1, cy - 1, cw + 1, ch + 1, COLOR_ACCENT);
+      }
       if (gridFocus && i == cursorStep && v == cursorVoice) {
         gfx.drawRect(cx, cy, cw - 1, ch - 1, COLOR_STEP_SELECTED);
       }
@@ -131,6 +137,9 @@ void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayo
     int cursorStep = callbacks_.cursorStep ? callbacks_.cursorStep() : 0;
     int cursorVoice = callbacks_.cursorVoice ? callbacks_.cursorVoice() : 0;
     bool gridFocus = callbacks_.gridFocused ? callbacks_.gridFocused() : false;
+    auto isSelected = [this](int step, int voice) {
+      return callbacks_.isSelected ? callbacks_.isSelected(step, voice) : false;
+    };
     int highlight = callbacks_.currentStep ? callbacks_.currentStep() : 0;
     const bool* accentSteps = mini_acid_.patternDrumAccentSteps();
 
@@ -165,6 +174,9 @@ void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayo
             if (highlight == i) {
                 retro::drawGlowBorder(gfx, cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(RetroTheme::STATUS_PLAYING), 1);
             }
+            if (isSelected(i, v)) {
+                retro::drawGlowBorder(gfx, cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(RetroTheme::STATUS_ACCENT), 1);
+            }
             if (gridFocus && i == cursorStep && v == cursorVoice) {
                 gfx.drawRect(cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(RetroTheme::SELECT_BRIGHT));
             }
@@ -183,6 +195,9 @@ void DrumSequencerGridComponent::drawAmberStyle(IGfx& gfx, const GridLayout& lay
     int cursorStep = callbacks_.cursorStep ? callbacks_.cursorStep() : 0;
     int cursorVoice = callbacks_.cursorVoice ? callbacks_.cursorVoice() : 0;
     bool gridFocus = callbacks_.gridFocused ? callbacks_.gridFocused() : false;
+    auto isSelected = [this](int step, int voice) {
+      return callbacks_.isSelected ? callbacks_.isSelected(step, voice) : false;
+    };
     int highlight = callbacks_.currentStep ? callbacks_.currentStep() : 0;
     const bool* accentSteps = mini_acid_.patternDrumAccentSteps();
 
@@ -216,6 +231,9 @@ void DrumSequencerGridComponent::drawAmberStyle(IGfx& gfx, const GridLayout& lay
 
             if (highlight == i) {
                 amber::drawGlowBorder(gfx, cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(AmberTheme::STATUS_PLAYING), 1);
+            }
+            if (isSelected(i, v)) {
+                amber::drawGlowBorder(gfx, cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(AmberTheme::NEON_ORANGE), 1);
             }
             if (gridFocus && i == cursorStep && v == cursorVoice) {
                 gfx.drawRect(cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(AmberTheme::SELECT_BRIGHT));

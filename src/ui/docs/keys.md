@@ -24,10 +24,10 @@ Keyboard constraint: assume no practical `Shift` / `Caps Lock`. Use lowercase le
 
 ## Local-Only Keys
 - `Genre Page`: `Tab`, `Arrows`, `Enter`, `Space`, `1..8`, `0`, `M`, `C`, `G`
-- `Pattern Edit (303)`: `Q..I`, `Arrows`, `A/Z`, `S/X`, `Alt+A`, `Alt+S`, `R`, `Bksp/Del`, `Alt+Bksp`, `G`, `Ctrl+C/V`, `Alt+Esc`
-- `Drum Sequencer`: `Q..I`, `Arrows`, `Enter`, `A`, `G`, `Ctrl+G`, `Alt+G`, `Ctrl+C/V`, `Alt+Esc`
+- `Pattern Edit (303)`: `Q..I`, `Arrows`, `Shift/Ctrl+Arrows` (selection), `A/Z`, `S/X`, `Alt/Ctrl+A`, `Alt/Ctrl+S`, `R`, `Bksp/Del`, `Alt+Bksp`, `G`, `Ctrl+C/V`, `Tab` (voice A/B), `Alt+Esc`, `Esc`/`` ` ``/`~` (clear selection)
+- `Drum Sequencer`: `Q..I`, `Arrows`, `Shift/Ctrl+Arrows` (selection), `Enter`, `A`, `G`, `Ctrl+G`, `Alt+G`, `Ctrl+C/V`, `Alt+Esc`, `Esc`/`` ` ``/`~` (clear selection)
 - `TB303 Params`: `Left/Right`, `Up/Down`, `Ctrl+Up/Down`, `A/Z`, `S/X`, `D/C`, `F/V`, `T/G`, `Y/H`, `N/M`, `Ctrl+Z/X/C/V`
-- `Song Page`: `Alt+J/K`, `Ctrl+R`, `Ctrl+M`, `Ctrl+N`, `Space`, `Arrows`, `Enter`, `Ctrl+Arrows` (selection without Shift), `Q..I`, `Bksp/Tab`, `Ctrl+L`, `G`, `G` double-tap, `Alt+G`, `Alt+.`
+- `Song Page`: `Alt+B` (edit slot), `Ctrl+B` (play slot), `Alt+X` (LiveMix), `Ctrl+R`, `Ctrl+M`, `Ctrl+N`, `Space`, `Arrows`, `Enter`, `Shift/Ctrl+Arrows` (selection), `Q..I`, `Bksp/Tab`, `Ctrl+L`, `G`, `G` double-tap, `Alt+G`, `Alt+.`, `V` (DR/VO lane), `X` (split compare), `Esc`/`` ` ``/`~` (clear selection)
 - `Project Page`: `Arrows`, `Enter`, `G`
 - `Settings Page`: `Tab`, `Up/Down`, `Left/Right`, `Ctrl/Alt + Left/Right`, `1..3`
 

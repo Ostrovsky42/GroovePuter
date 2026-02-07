@@ -83,6 +83,12 @@ If you are implementing new features, consider these planned items:
 2. **Review `deep_review.md`:** Check the last deep audit for context on architecture scores.
 3. **Use `IGfx`:** Never call display-specific functions directly. Use the abstraction.
 4. **Mind the Audio Thread:** Never perform I/O or allocate memory in the audio callback.
+5. **Selection v2 UX (Pattern/Drum/Song):**
+   - `Shift/Ctrl + Arrows` extends selection.
+   - `Ctrl+C` copies selection and locks frame as paste target.
+   - Arrows move locked frame (do not move source data).
+   - `Ctrl+V` pastes and clears selection.
+   - `ESC` / `` ` `` / `~` clears selection.
 
 ---
 

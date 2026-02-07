@@ -103,6 +103,7 @@ SongPage::SongPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     has_selection_(false),
     selection_start_row_(0),
     selection_start_track_(0),
+    selection_locked_(false),
     gen_mode_(SmartPatternGenerator::PG_RANDOM),
     show_genre_hint_(false),
     hint_timer_(0) {
@@ -167,6 +168,7 @@ bool SongPage::hasVoiceDataInActiveSlot() const {
 
 void SongPage::startSelection() {
   has_selection_ = true;
+  selection_locked_ = false;
   selection_start_row_ = cursor_row_;
   selection_start_track_ = cursor_track_;
   LOG_DEBUG_UI("Selection START anchor=(r%d,c%d)", selection_start_row_, selection_start_track_);
@@ -187,9 +189,33 @@ void SongPage::clearSelection() {
                  selection_start_row_, selection_start_track_, cursor_row_, cursor_track_);
   }
   has_selection_ = false;
+  selection_locked_ = false;
   if (mini_acid_.loopModeEnabled()) {
     audio_guard_([&]() { mini_acid_.setLoopMode(false); });
   }
+}
+
+bool SongPage::moveSelectionFrameBy(int deltaRow, int deltaTrack) {
+  if (!has_selection_) return false;
+  int min_row, max_row, min_track, max_track;
+  getSelectionBounds(min_row, max_row, min_track, max_track);
+
+  int dst_min_row = min_row + deltaRow;
+  int dst_max_row = max_row + deltaRow;
+  int dst_min_track = min_track + deltaTrack;
+  int dst_max_track = max_track + deltaTrack;
+
+  int maxTrack = visibleTrackCount() + 1;  // includes playhead + mode columns
+  if (dst_min_row < 0 || dst_max_row >= Song::kMaxPositions) return false;
+  if (dst_min_track < 0 || dst_max_track > maxTrack) return false;
+
+  selection_start_row_ += deltaRow;
+  selection_start_track_ += deltaTrack;
+  cursor_row_ += deltaRow;
+  cursor_track_ += deltaTrack;
+  syncSongPositionToCursor();
+  updateLoopRangeFromSelection();
+  return true;
 }
 
 void SongPage::updateLoopRangeFromSelection() {
@@ -562,6 +588,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
           }
           g_song_area_clipboard.has_area = true;
           g_song_pattern_clipboard.has_pattern = false; // Clear single-cell clipboard
+          selection_locked_ = true;
         } else {
           // Copy single cell
           int row = cursorRow();
@@ -765,6 +792,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
         } else {
           return false;
         }
+        if (has_selection_) clearSelection();
         return true;
       }
       case GROOVEPUTER_APP_EVENT_UNDO: {
@@ -821,6 +849,16 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
   bool handled = false;
   // Cardputer keyboard may not have a practical Shift key, allow Ctrl as selection modifier too.
   bool extend_selection = ui_event.shift || ui_event.ctrl;
+  if (extend_selection && selection_locked_) selection_locked_ = false;
+  if (selection_locked_ && has_selection_ && !extend_selection) {
+    switch (nav) {
+      case GROOVEPUTER_LEFT: return moveSelectionFrameBy(0, -1);
+      case GROOVEPUTER_RIGHT: return moveSelectionFrameBy(0, 1);
+      case GROOVEPUTER_UP: return moveSelectionFrameBy(-1, 0);
+      case GROOVEPUTER_DOWN: return moveSelectionFrameBy(1, 0);
+      default: break;
+    }
+  }
   switch (nav) {
     case GROOVEPUTER_LEFT:
       moveCursorHorizontal(-1, extend_selection);
@@ -862,13 +900,31 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
       key = static_cast<char>('a' + (u - 1));
     }
   }
+  char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
 
-  bool key_b = (key == 'b') || (ui_event.scancode == GROOVEPUTER_B);
-  bool key_l = (key == 'l') || (ui_event.scancode == GROOVEPUTER_L);
-  bool key_m = (key == 'm') || (ui_event.scancode == GROOVEPUTER_M);
-  bool key_n = (key == 'n') || (ui_event.scancode == GROOVEPUTER_N);
-  bool key_r = (key == 'r') || (ui_event.scancode == GROOVEPUTER_R);
-  bool key_x = (key == 'x') || (ui_event.scancode == GROOVEPUTER_X);
+  bool key_b = (lowerKey == 'b') || (ui_event.scancode == GROOVEPUTER_B);
+  bool key_c = (lowerKey == 'c') || (ui_event.scancode == GROOVEPUTER_C);
+  bool key_l = (lowerKey == 'l') || (ui_event.scancode == GROOVEPUTER_L);
+  bool key_m = (lowerKey == 'm') || (ui_event.scancode == GROOVEPUTER_M);
+  bool key_n = (lowerKey == 'n') || (ui_event.scancode == GROOVEPUTER_N);
+  bool key_r = (lowerKey == 'r') || (ui_event.scancode == GROOVEPUTER_R);
+  bool key_v = (lowerKey == 'v') || (ui_event.scancode == GROOVEPUTER_V);
+  bool key_x = (lowerKey == 'x') || (ui_event.scancode == GROOVEPUTER_X);
+
+  // Local fallback for Ctrl+C / Ctrl+V, same pattern as Pattern/Drum pages.
+  // Needed because some keyboard paths do not route app events globally.
+  if (ui_event.ctrl && key_c) {
+    UIEvent app_evt = ui_event;
+    app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    app_evt.app_event_type = GROOVEPUTER_APP_EVENT_COPY;
+    return handleEvent(app_evt);
+  }
+  if (ui_event.ctrl && key_v) {
+    UIEvent app_evt = ui_event;
+    app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    app_evt.app_event_type = GROOVEPUTER_APP_EVENT_PASTE;
+    return handleEvent(app_evt);
+  }
 
   if (ui_event.ctrl && key_l) {
     LOG_INFO_UI("Toggle loop mode");
@@ -949,7 +1005,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return toggleSongMode();
   }
 
-  if (!ui_event.ctrl && !ui_event.alt && (key == 'v' || key == 'V' || ui_event.scancode == GROOVEPUTER_V)) {
+  if (!ui_event.ctrl && !ui_event.alt && (lowerKey == 'v' || ui_event.scancode == GROOVEPUTER_V)) {
     if (!voice_lane_visible_ && !hasVoiceDataInActiveSlot()) {
       showToast("No VO data in slot", 1000);
       return true;
@@ -959,13 +1015,13 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  if (!ui_event.ctrl && !ui_event.alt && (key == 'x' || key == 'X' || ui_event.scancode == GROOVEPUTER_X)) {
+  if (!ui_event.ctrl && !ui_event.alt && (lowerKey == 'x' || ui_event.scancode == GROOVEPUTER_X)) {
     split_compare_ = !split_compare_;
     showToast(split_compare_ ? "Split: ON" : "Split: OFF", 900);
     return true;
   }
 
-  int patternIdx = patternIndexFromKey(key);
+  int patternIdx = patternIndexFromKey(lowerKey);
   if (patternIdx < 0) patternIdx = scancodeToPatternIndex(ui_event.scancode);
   if (cursorOnModeButton() && patternIdx >= 0) return false;
   if (patternIdx >= 0) return assignPattern(patternIdx);
@@ -993,7 +1049,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return clearPattern();
   }
 
-  if (key == 'g' || key == 'G') {
+  if (lowerKey == 'g') {
     if (ui_event.ctrl) {
         // Ctrl+G - Cycle Mode
         cycleGeneratorMode();
