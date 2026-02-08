@@ -164,3 +164,28 @@ Notes:
 | `Enter` | Stutter ON/OFF |
 | `Space` | Clear loop |
 | `Bksp` / `Del` | Eject/reset loop |
+| `Alt+Esc` | Chain mode (priority over Back) |
+
+## Sequencer Hub
+| Key | Action |
+| --- | --- |
+| `Arrows` | Navigate grid and tracks |
+| `Enter` | Open track detail sequencer |
+| `1..0` | Toggle track mutes (visually mapped) |
+| `Q..I` | Swap pattern `1..8` for selected track |
+| `X` | Toggle hit (drum track) |
+| `A` | Toggle accent (drum track) |
+| `Bksp` | Clear current step |
+| `Alt+Bksp` | Clear full track pattern |
+| `Esc` / `` ` `` | Back |
+
+## Groove Lab (Mode Page)
+| Key | Action |
+| --- | --- |
+| `Tab` | Focus next row |
+| `Up/Down` | Select row |
+| `Left/Right` | Change Mode/Flavor/Macro |
+| `Enter` / `Space` | Preview (Regeneration) |
+| `A` / `B` | Apply Mode settings to 303 `A/B` |
+| `T` | Apply Mode settings to Tape FX |
+| `M` | Toggle sound-macro application |

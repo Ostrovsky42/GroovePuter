@@ -17,10 +17,6 @@
 #include "pages/mode_page.h"
 #include "pages/tb303_params_page.h"
 #include "pages/song_page.h"
-#include "pages/tape_page.h"
-#include "pages/voice_page.h"
-#include "pages/color_test_page.h"
-#include "pages/waveform_page.h"
 #include "pages/help_dialog.h"
 #include "ui_colors.h"
 #include "ui_input.h"
@@ -99,11 +95,8 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case 8:  return std::make_unique<FeelTexturePage>(gfx_, mini_acid_, audio_guard_);
         case 9:  return std::make_unique<SettingsPage>(gfx_, mini_acid_, audio_guard_);
         case 10: return std::make_unique<ProjectPage>(gfx_, mini_acid_,audio_guard_);        
-        case 11: return std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_);
-
-        //case 11: return std::make_unique<VoicePage>(gfx_, mini_acid_, audio_guard_);
-        //case 12: return std::make_unique<ColorTestPage>(gfx_, mini_acid_);
-       // case 14: return std::make_unique<WaveformPage>(gfx_, mini_acid_, audio_guard_);
+        case 11: return std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_);
+        case 12: return std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_);
 
         default: return nullptr;
     }
@@ -118,7 +111,6 @@ IPage* MiniAcidDisplay::getPage_(int index) {
         for (int i = 0; i < kPageCount; ++i) {
             if (i != index && i != previous_page_index_) {
                 if (pages_[i]) {
-                    // Serial.printf("[UI] Purging page %d to free RAM\n", i);
                     pages_[i].reset();
                 }
             }
@@ -277,7 +269,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
 
         if (event.alt && (event.key == 'v' || event.key == 'V')) {
-            goToPage(11);
+            goToPage(11); // Tape
             return true;
         }
 

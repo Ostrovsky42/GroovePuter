@@ -139,7 +139,9 @@ constexpr const char* kFeelLines[] = {
 constexpr const char* kHubLines[] = {
     "=== SEQUENCER HUB ===",
     "Arrows     Navigate",
-    "Enter      Open selected page",
+    "Enter      Open track detail",
+    "Q..I       Swap pattern (local)",
+    "1..0       Toggle Track Mute",
     "Bksp/ESC   Back",
 };
 
@@ -152,14 +154,14 @@ constexpr const char* kSettingsLines[] = {
     "1..3       Apply preset (regen)",
 };
 
-constexpr const char* kVoiceLines[] = {
-    "=== VOICE PAGE ===",
-    "Arrows     Select/Adjust",
-    "Space      Preview phrase",
-    "M          Toggle mute",
-    "S          Stop speaking",
-    "R/H/D      Voice presets",
-    "1..0       Quick phrases",
+constexpr const char* kModeLines[] = {
+    "=== GROOVE LAB ===",
+    "Tab/Up/Dn  Focus row",
+    "Left/Right Change value",
+    "Enter/Space Preview (Regen)",
+    "A/B        Apply to 303 A/B",
+    "T          Apply to Tape FX",
+    "M          Toggle Macros",
 };
 
 inline const char* const* pageLines(int pageIndex, int& count) {
@@ -176,6 +178,7 @@ inline const char* const* pageLines(int pageIndex, int& count) {
         case 9: count = sizeof(kSettingsLines) / sizeof(kSettingsLines[0]); return kSettingsLines;
         case 10: count = sizeof(kProjectLines) / sizeof(kProjectLines[0]); return kProjectLines;
         case 11: count = sizeof(kTapeLines) / sizeof(kTapeLines[0]); return kTapeLines;
+        case 12: count = sizeof(kModeLines) / sizeof(kModeLines[0]); return kModeLines;
         default: count = 0; return nullptr;
     }
 }

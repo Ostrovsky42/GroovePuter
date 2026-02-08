@@ -135,18 +135,29 @@ if (ui_event.ctrl && ui_event.key == 'v') {
 }
 ```
 
+### 3. Numbered Mute Indicators (Mapped to Hardware)
+Added numerical indicators (1..0) to track labels on the Sequencer Hub page.
+
+**Why**:
+- Direct mapping to the hardware number keys (1-0).
+- Provides instant visual feedback on which key mutes which track.
+- Standardizes labeling across all UI themes.
+
+## Visual Styles Available
+... (truncated)
+
 ## Track Layout (TE Grid)
 
 ```
 ┌───────────────────────────────────────────┐
 │ Label LED  16-Step Grid         Volume    │
-│ A     ◉    ■ ■ □ □ ■ □ ■ ■     ▓▓▓▓▓░    │
-│ B     ○    □ ■ ■ □ □ ■ □ □     ▓▓▓░░░    │
-│ D0    ◉    ■ □ ■ □ ■ □ ■ □     ▓▓▓▓░░    │
+│ 1|A   ◉    ■ ■ □ □ ■ □ ■ ■     ▓▓▓▓▓░    │
+│ 2|B   ○    □ ■ ■ □ □ ■ □ □     ▓▓▓░░░    │
+│ 3|BD  ◉    ■ □ ■ □ ■ □ ■ □     ▓▓▓▓░░    │
 └───────────────────────────────────────────┘
 ```
 
-- **Label**: Track name (A/B/D0-D7)
+- **Label**: Numbered mnemonic (e.g., `1|A`) matching keyboard key.
 - **LED**: Activity indicator (solid = active)
 - **Grid**: 16 steps, filled = hit
 - **Volume**: Bar graph (0-100%)

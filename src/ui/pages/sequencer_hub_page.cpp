@@ -21,9 +21,9 @@ inline void buildHubTrackLabel(int trackIdx, char* out, size_t outSize) {
     if (!out || outSize == 0) return;
     int keyNum = (trackIdx + 1) % 10;
     if (trackIdx == 0) {
-        std::snprintf(out, outSize, "%d.303A", keyNum);
+        std::snprintf(out, outSize, "%d|A", keyNum);
     } else if (trackIdx == 1) {
-        std::snprintf(out, outSize, "%d.303B", keyNum);
+        std::snprintf(out, outSize, "%d|B", keyNum);
     } else {
         int drumVoice = trackIdx - 2;    // 0..7
         if (drumVoice < 0) drumVoice = 0;
@@ -310,7 +310,7 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
 
     const char* footer_text = (mode_ == Mode::OVERVIEW)
         ? "UP/DN:TRK L/R:STEP X:HIT A:ACC"
-        : "ESC:BACK A/Z:NOTE S/X:OCT";
+        : "ESC  A/Z:NOTE S/X:OCT";
     gfx.drawText(x + 2, footer_y + 2, footer_text);
 
     // Play indicator
@@ -755,7 +755,7 @@ void SequencerHubPage::drawDetail(IGfx& gfx) {
     }
 
     // Contextual Footer
-    const char* left = "[ESC] BACK  [SPACE] PLAY";
+    const char* left = "[ESC]  [SPACE] PLAY";
     const char* right = isDrumTrack(selectedTrack_) ? "[A] ACCENT" : "[A] ACC  [S] SLIDE";
     UI::drawStandardFooter(gfx, left, right);
 }

@@ -217,12 +217,6 @@ namespace UI {
             gfx.setTextColor(color);
             gfx.drawText(cx, y, num);
             
-            // TODO: Optional: Subtle underline for playing tracks to indicate activity even if not muted
-            /*
-            if (!muted && active && mini_acid.isPlaying()) {
-                 gfx.drawPixel(cx + 2, y + 9, color);
-            }
-            */
         }
     }
 

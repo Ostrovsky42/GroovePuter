@@ -1216,9 +1216,8 @@ const std::string & SongPage::getTitle() const {
 }
 
 void SongPage::draw(IGfx& gfx) {
-  // Split compare is currently implemented in TE grid renderer.
-  // Force that renderer while split is active so view switch is always visible.
-  if (split_compare_) {
+  // RETRO has native split renderer now. Other styles still use TE grid split.
+  if (split_compare_ && visual_style_ != ::VisualStyle::RETRO_CLASSIC) {
     drawTEGridStyle(gfx);
     return;
   }
@@ -1631,39 +1630,39 @@ void SongPage::drawRetroClassicStyle(IGfx& gfx) {
     int w = bounds.w;
     int h = bounds.h;
 
+    const int activeSlot = mini_acid_.activeSongSlot();
+    const int playSlot = mini_acid_.songPlaybackSlot();
+    const bool liveMix = mini_acid_.liveMixModeEnabled();
+    const bool reverse = mini_acid_.isSongReverse();
+
+    char titleBuf[32];
+    std::snprintf(titleBuf, sizeof(titleBuf), split_compare_ ? "SONG A|B" : "SONG %c", 'A' + activeSlot);
+    if (reverse) {
+      std::snprintf(titleBuf, sizeof(titleBuf), "%s REV", split_compare_ ? "SONG A|B" : (activeSlot == 0 ? "SONG A" : "SONG B"));
+    }
     char modeBuf[32];
-    std::snprintf(modeBuf, sizeof(modeBuf), "%s", mini_acid_.songModeEnabled() ? "PLAY" : "EDIT");
-    const char* title = mini_acid_.isSongReverse() ? "SONG REV" : "SONG";
-    retro::drawHeaderBar(gfx, x, y, w, 12, title, modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
+    std::snprintf(modeBuf, sizeof(modeBuf), "%s%s", mini_acid_.songModeEnabled() ? "PLAY" : "EDIT", liveMix ? " LM" : "");
+    retro::drawHeaderBar(gfx, x, y, w, 12, titleBuf, modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
 
-    int slotX = x + 4;
-    int slotY = y + 14;
-    retro::SelectorConfig slotCfg;
-    slotCfg.x = slotX; slotCfg.y = slotY; slotCfg.w = 60; slotCfg.h = 10;
-    slotCfg.label = "SLOT";
-    slotCfg.count = 2;
-    slotCfg.selected = mini_acid_.activeSongSlot();
-    slotCfg.cursor = slotCfg.selected;
-    slotCfg.showCursor = false;
-    slotCfg.enabled = true;
-    retro::drawSelector(gfx, slotCfg);
+    if (!split_compare_) {
+      int slotX = x + 4;
+      int slotY = y + 14;
+      retro::SelectorConfig slotCfg;
+      slotCfg.x = slotX; slotCfg.y = slotY; slotCfg.w = 60; slotCfg.h = 10;
+      slotCfg.label = "SLOT";
+      slotCfg.count = 2;
+      slotCfg.selected = activeSlot;
+      slotCfg.cursor = slotCfg.selected;
+      slotCfg.showCursor = false;
+      slotCfg.enabled = true;
+      retro::drawSelector(gfx, slotCfg);
+    }
 
-    // Draw grid headers
+    int row_h = split_compare_ ? 11 : 10;
+    int grid_top = split_compare_ ? (y + 30) : (y + 26);
+    int footer_h = 12;
     int track_count = visibleTrackCount();
-    int row_h = 10;
-    int header_y = y + 26;
-    int grid_y = header_y + 12;
-    int pos_w = 0;
-    int track_w = (w - pos_w - 4) / track_count;
-
-    gfx.setTextColor(IGfxColor(RetroTheme::NEON_ORANGE));
-    gfx.drawText(x + pos_w + 4, header_y, "A");
-    gfx.setTextColor(IGfxColor(RetroTheme::NEON_MAGENTA));
-    gfx.drawText(x + pos_w + track_w + 4, header_y, "B");
-    gfx.setTextColor(IGfxColor(RetroTheme::NEON_CYAN));
-    gfx.drawText(x + pos_w + track_w * 2 + 4, header_y, voice_lane_visible_ ? "VO" : "DR");
-
-    int visible_rows = (h - grid_y - 12) / row_h;
+    int visible_rows = (h - grid_top - footer_h - 2) / row_h;
     if (visible_rows < 1) visible_rows = 1;
     
     int cursor_row = cursorRow();
@@ -1675,46 +1674,111 @@ void SongPage::drawRetroClassicStyle(IGfx& gfx) {
     if (cursor_row >= scroll_row_ + visible_rows) scroll_row_ = cursor_row - visible_rows + 1;
     if (scroll_row_ < 0) scroll_row_ = 0;
 
-    for (int i = 0; i < visible_rows; ++i) {
+    int min_sel_row = 0, max_sel_row = -1, min_sel_track = 0, max_sel_track = -1;
+    if (has_selection_) getSelectionBounds(min_sel_row, max_sel_row, min_sel_track, max_sel_track);
+
+    // Status strip for split readability
+    if (split_compare_) {
+      char strip[40];
+      std::snprintf(strip, sizeof(strip), "EDIT:%c  PLAY:%c%s", 'A' + activeSlot, 'A' + playSlot, liveMix ? "  LM" : "");
+      gfx.fillRect(x, y + 14, w, 12, IGfxColor(RetroTheme::BG_PANEL));
+      gfx.drawLine(x, y + 25, x + w, y + 25, IGfxColor(RetroTheme::GRID_DIM));
+      gfx.setTextColor(IGfxColor(RetroTheme::TEXT_SECONDARY));
+      gfx.drawText(x + 4, y + 16, strip);
+    }
+
+    auto drawPane = [&, this](int paneX, int paneW, int paneSlot, bool editable) {
+      int headerY = grid_top;
+      int cell_w = (paneW - 2) / track_count;
+      if (cell_w < 12) cell_w = 12;
+
+      IGfxColor paneBg = editable ? IGfxColor(RetroTheme::BG_INSET) : IGfxColor(RetroTheme::BG_DEEP_BLACK);
+      gfx.fillRect(paneX, headerY - 2, paneW, 11, paneBg);
+
+      IGfxColor laneA = editable ? IGfxColor(RetroTheme::NEON_ORANGE) : IGfxColor(RetroTheme::TEXT_DIM);
+      IGfxColor laneB = editable ? IGfxColor(RetroTheme::NEON_MAGENTA) : IGfxColor(RetroTheme::TEXT_DIM);
+      IGfxColor laneC = editable ? IGfxColor(RetroTheme::NEON_CYAN) : IGfxColor(RetroTheme::TEXT_DIM);
+      gfx.setTextColor(laneA);
+      gfx.drawText(paneX + 2, headerY, "A");
+      gfx.setTextColor(laneB);
+      gfx.drawText(paneX + cell_w + 2, headerY, "B");
+      gfx.setTextColor(laneC);
+      gfx.drawText(paneX + 2 * cell_w + 2, headerY, laneShortLabel());
+
+      char slotBuf[8];
+      std::snprintf(slotBuf, sizeof(slotBuf), "S%c", 'A' + paneSlot);
+      gfx.setTextColor(editable ? IGfxColor(RetroTheme::SELECT_BRIGHT) : IGfxColor(RetroTheme::TEXT_DIM));
+      int slotW = textWidth(gfx, slotBuf);
+      gfx.drawText(paneX + paneW - slotW - 2, headerY, slotBuf);
+
+      int cellsY = headerY + 10;
+      int paneH = h - (cellsY - y) - footer_h;
+      if (editable) {
+        retro::drawGlowBorder(gfx, paneX - 1, headerY - 2, paneW + 2, paneH + 3, IGfxColor(RetroTheme::SELECT_BRIGHT), 1);
+      } else {
+        gfx.drawRect(paneX - 1, headerY - 2, paneW + 2, paneH + 3, IGfxColor(RetroTheme::GRID_DIM));
+      }
+
+      for (int i = 0; i < visible_rows; ++i) {
         int ridx = scroll_row_ + i;
         if (ridx >= Song::kMaxPositions) break;
-        int ry = grid_y + i * row_h;
+        int ry = cellsY + i * row_h;
+
+        uint16_t bg = (i & 1) ? IGfxColor(RetroTheme::BG_PANEL).color16() : IGfxColor(RetroTheme::BG_INSET).color16();
+        if (!editable) {
+          bg = (i & 1) ? IGfxColor(RetroTheme::BG_PANEL).color16() : IGfxColor(RetroTheme::BG_DEEP_BLACK).color16();
+        }
+        gfx.fillRect(paneX, ry, paneW, row_h, IGfxColor(bg));
 
         if (ridx == playhead && mini_acid_.isPlaying() && songMode) {
-            gfx.fillRect(x, ry, w, row_h, IGfxColor(RetroTheme::BG_INSET));
+          gfx.drawLine(paneX, ry + row_h - 1, paneX + paneW - 1, ry + row_h - 1,
+                       paneSlot == playSlot ? IGfxColor(RetroTheme::SELECT_BRIGHT) : IGfxColor(RetroTheme::GRID_DIM));
         }
 
-        char buf[16];
         for (int t = 0; t < track_count; ++t) {
-            int tx = x + pos_w + t * track_w + 4;
-            bool valid = false;
-            int pattern = mini_acid_.songPatternAt(ridx, trackForColumn(t, valid));
-            bool isSelected = false;
+          int tx = paneX + t * cell_w;
+          bool valid = false;
+          SongTrack track = trackForColumn(t, valid);
+          int pattern = valid ? mini_acid_.songPatternAtSlot(paneSlot, ridx, track) : -1;
+
+          bool isSelected = false;
+          if (editable) {
             if (has_selection_) {
-                int min_r, max_r, min_t, max_t;
-                getSelectionBounds(min_r, max_r, min_t, max_t);
-                isSelected = ridx >= min_r && ridx <= max_r && t >= min_t && t <= max_t;
+              isSelected = ridx >= min_sel_row && ridx <= max_sel_row &&
+                           t >= min_sel_track && t <= max_sel_track;
             } else {
-                isSelected = ridx == cursor_row && t == cursor_track_;
+              isSelected = ridx == cursor_row && t == cursor_track_;
             }
+          }
+          if (isSelected) {
+            gfx.fillRect(tx, ry, cell_w, row_h, IGfxColor(RetroTheme::SELECT_BRIGHT));
+            gfx.setTextColor(IGfxColor(RetroTheme::BG_DEEP_BLACK));
+          } else if (pattern >= 0) {
+            gfx.setTextColor(editable ? IGfxColor(RetroTheme::TEXT_PRIMARY) : IGfxColor(RetroTheme::TEXT_DIM));
+          } else {
+            gfx.setTextColor(IGfxColor(RetroTheme::GRID_DIM));
+          }
 
-            if (isSelected) {
-                gfx.drawRect(tx - 2, ry - 1, track_w, row_h, IGfxColor(RetroTheme::SELECT_BRIGHT));
-            }
-
-            if (pattern >= 0) {
-                formatSongPatternLabel(pattern, buf, sizeof(buf));
-                IGfxColor pColor = IGfxColor(RetroTheme::TEXT_PRIMARY);
-                if (t == 0) pColor = IGfxColor(RetroTheme::NEON_ORANGE);
-                else if (t == 1) pColor = IGfxColor(RetroTheme::NEON_MAGENTA);
-                else if (t == 2) pColor = IGfxColor(RetroTheme::NEON_CYAN);
-                gfx.setTextColor(pColor);
-                gfx.drawText(tx, ry, buf);
-            } else {
-                gfx.setTextColor(IGfxColor(RetroTheme::GRID_DIM));
-                gfx.drawText(tx, ry, "--");
-            }
+          if (pattern >= 0) {
+            char buf[10];
+            formatSongPatternLabel(pattern, buf, sizeof(buf));
+            gfx.drawText(tx + 1, ry, buf);
+          } else {
+            gfx.drawText(tx + 1, ry, "--");
+          }
         }
+      }
+    };
+
+    if (split_compare_) {
+      int gap = 6;
+      int paneW = (w - gap) / 2;
+      int divX = x + paneW + (gap / 2);
+      gfx.drawLine(divX, grid_top - 1, divX, y + h - footer_h - 1, IGfxColor(RetroTheme::GRID_MEDIUM));
+      drawPane(x, paneW, 0, activeSlot == 0);
+      drawPane(x + paneW + gap, w - paneW - gap, 1, activeSlot == 1);
+    } else {
+      drawPane(x, w, activeSlot, true);
     }
 
     retro::drawFooterBar(gfx, x, y + h - 12, w, 12, "B:Flip A+B:Edit C+B:Play CA+X:LM C+R:Rev", "SONG");
