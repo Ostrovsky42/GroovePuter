@@ -1,7 +1,6 @@
 #pragma once
 
 #include "mini_dsp_params.h"
-#include "mini_tb303.h"
 #include "../../scenes.h"
 
 struct PatternCorridors {

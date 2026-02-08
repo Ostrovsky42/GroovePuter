@@ -1,255 +1,32 @@
-# GenrePage Visual Style Switching
+# Genre Page Styles (Current)
 
-## Обзор
+`GenrePage` supports three runtime visual styles via global `Alt+\\`:
+- `MINIMAL` (carbon)
+- `RETRO_CLASSIC` (cyber)
+- `AMBER`
 
-`GenrePage` теперь поддерживает переключение между визуальными стилями:
+No page-specific compile flag is required for normal use.
 
-- **MINIMAL** (по умолчанию) — минималистичный "pro 80-x" стиль
-- **RETRO_CLASSIC** — кибerpанк стиль с неоновым свечением (опционально)
+## Layout Behavior
+- Header: `GENRE/TEXTURE` + transport info
+- Two lists: Genre and Texture (both scroll-aware)
+- Preset strip: `1..8`
+- Apply mode badge: `SND`, `S+P`, `S+T`
+- Footer hints change by focused area
 
-## Быстрый старт
+## Focus and Controls
+- `Tab`: focus cycle `Genre -> Texture -> Presets -> Apply`
+- `Arrows`: move/select/adjust
+- `Enter`: apply current choice (or toggle apply mode when Apply row focused)
+- `Space`: toggle apply mode in Apply row
+- `M`: cycle apply mode globally on Genre page
+- `C`: curated/advanced compatibility
+- `G`: cycle Groove mode (`ACID/MINIMAL/BREAKS/DUB/ELECTRO`)
 
-### Вариант 1: Использование только MINIMAL (без ретро-темы)
+## Apply Modes
+- `SND`: sound only, keep existing patterns
+- `S+P`: apply sound and regenerate patterns
+- `S+T`: apply sound, regenerate patterns, and apply target tempo
 
-**По умолчанию** проект компилируется без ретро-темы. Всё работает как раньше.
-
-```cpp
-// Ничего не нужно делать — MINIMAL стиль активен по умолчанию
-```
-
-### Вариант 2: Включение RETRO_CLASSIC стиля
-
-**Шаг 1:** Определите флаг `USE_RETRO_THEME` при компиляции
-
-В `platformio.ini` (если используете PlatformIO):
-```ini
-build_flags = 
-    -DUSE_RETRO_THEME
-```
-
-Или в Arduino IDE добавьте в начало `genre_page.cpp`:
-```cpp
-#define USE_RETRO_THEME
-```
-
-**Шаг 2:** Переключите стиль в коде
-
-```cpp
-// В grooveputer_display.cpp или где создаёте GenrePage:
-auto genrePage = std::make_unique<GenrePage>(gfx, mini_acid, audio_guard);
-genrePage->setVisualStyle(GenrePage::VisualStyle::RETRO_CLASSIC);
-pages_.push_back(std::move(genrePage));
-```
-
-## API
-
-### Методы GenrePage
-
-```cpp
-// Установить визуальный стиль
-void setVisualStyle(VisualStyle style);
-
-// Получить текущий стиль
-VisualStyle getVisualStyle() const;
-
-// Enum стилей
-enum class VisualStyle {
-    MINIMAL,       // Минималистичный (по умолчанию)
-    RETRO_CLASSIC  // Ретро-киберпанк (требует USE_RETRO_THEME)
-};
-```
-
-### Пример динамического переключения
-
-```cpp
-// Переключение по нажатию клавиши (добавьте в handleEvent):
-if (e.key == 'v') {  // 'v' для "visual"
-    if (visualStyle_ == VisualStyle::MINIMAL) {
-        setVisualStyle(VisualStyle::RETRO_CLASSIC);
-    } else {
-        setVisualStyle(VisualStyle::MINIMAL);
-    }
-    return true;
-}
-```
-
-## Визуальные различия
-
-### MINIMAL Style
-```
-┌─────────────────────────────────┐
-│ ACID/CLEAN               140 BPM│
-├─────────────────────────────────┤
-│ G>              T               │
-│ • ACID          • CLEAN         │
-│   MINIMAL         DUB           │
-│   TECHNO          DARK          │
-│   ELECTRO         HARD          │
-│   RAVE                          │
-│                                 │
-│ [303 ACID] [DUB TECH] ...       │
-└─────────────────────────────────┘
-```
-
-- Чистые границы
-- Минимум графики
-- Высокая читаемость
-- **Размер:** ~0 KB дополнительно
-
-### RETRO_CLASSIC Style
-```
-┌═════════════════════════════════┐
-║ ⚡ GENRE ║ ACID/CLEAN ║ 🔴 140  ║
-╠═════════════════════════════════╣
-║ G⊳              T⊳              ║
-║ ◉ ᴀᴄɪᴅ          ◉ ᴄʟᴇᴀɴ         ║
-║ ○ MINIMAL       ○ DUB           ║
-║ ○ TECHNO        ○ DARK          ║
-║ ○ ELECTRO       ○ HARD          ║
-║ ○ RAVE                          ║
-║                                 ║
-║ ┌─────┐ ┌─────┐ ┌─────┐         ║
-║ │◉ 303│ │ DUB │ │DARK │ ...     ║
-╚═════════════════════════════════╝
-```
-
-- Неоновое свечение текста
-- LED индикаторы
-- Светящиеся границы
-- Цветовое кодирование жанров
-- **Размер:** ~8 KB дополнительно (retro_ui_theme.h + retro_widgets.h)
-
-## Зависимости
-
-### MINIMAL (всегда доступен)
-- `ui_common.h/cpp`
-- `layout_manager.h`
-- Существующие цветовые константы
-
-### RETRO_CLASSIC (опционально)
-- `retro_ui_theme.h` — палитра цветов
-- `retro_widgets.h` — виджеты (drawLED, drawGlowText, etc.)
-- Флаг компиляции `USE_RETRO_THEME`
-
-## Расширение (будущие стили)
-
-В `genre_page.h` можно добавить:
-
-```cpp
-enum class VisualStyle {
-    MINIMAL,
-    RETRO_CLASSIC,
-    CYBER_MATRIX,    // Матричный стиль с "цифровым дождём"
-    TRON_GRID,       // Радиальная сетка в стиле Tron
-    BRUTALIST        // Чёрно-белый брутализм
-};
-```
-
-Затем в `genre_page.cpp`:
-
-```cpp
-void GenrePage::draw(IGfx& gfx) {
-    switch (visualStyle_) {
-        case VisualStyle::RETRO_CLASSIC:
-            drawRetroClassicStyle(gfx);
-            break;
-        case VisualStyle::CYBER_MATRIX:
-            drawCyberMatrixStyle(gfx);  // TODO
-            break;
-        case VisualStyle::MINIMAL:
-        default:
-            drawMinimalStyle(gfx);
-            break;
-    }
-}
-```
-
-## Производительность
-
-| Стиль          | Время отрисовки | Flash  | RAM   |
-|----------------|----------------|--------|-------|
-| MINIMAL        | ~8ms           | +0 KB  | +0 KB |
-| RETRO_CLASSIC  | ~12ms          | +8 KB  | +0 KB |
-
-**Рекомендация:** Используйте MINIMAL на слабом железе или для минимизации flash.
-
-## Troubleshooting
-
-### Ошибка: `'NEON_CYAN' was not declared`
-
-**Причина:** Забыли определить `USE_RETRO_THEME`
-
-**Решение:** 
-```cpp
-#define USE_RETRO_THEME
-```
-перед `#include "genre_page.cpp"` или в build flags.
-
-### Retro стиль отображается как Minimal
-
-**Причина:** `USE_RETRO_THEME` не определён при компиляции
-
-**Решение:** Проверьте флаги сборки:
-```bash
-# PlatformIO
-pio run -v | grep USE_RETRO_THEME
-
-# Arduino CLI
-arduino-cli compile --show-properties | grep USE_RETRO_THEME
-```
-
-### Медленная отрисовка
-
-**Причина:** Эффекты свечения тяжёлые на ESP32
-
-**Решение:** 
-- Закомментируйте `drawGlowText()` и замените на обычный `drawText()`
-- Используйте MINIMAL стиль
-- Уменьшите разрешение экрана
-
-## Примеры использования
-
-### Статическое переключение при запуске
-
-```cpp
-// В MiniAcidDisplay::MiniAcidDisplay()
-auto genre = std::make_unique<GenrePage>(gfx, mini_acid, audio_guard);
-
-#ifdef HARDWARE_REV_2  // Более мощное железо
-genre->setVisualStyle(GenrePage::VisualStyle::RETRO_CLASSIC);
-#else
-genre->setVisualStyle(GenrePage::VisualStyle::MINIMAL);
-#endif
-
-pages_.push_back(std::move(genre));
-```
-
-### Динамическое переключение через настройки
-
-```cpp
-// В SettingsPage добавьте опцию:
-class SettingsPage {
-    GenrePage* genrePage_;  // Сохраните указатель
-    
-    void applyVisualTheme(int themeIndex) {
-        if (genrePage_) {
-            auto style = (themeIndex == 0) 
-                ? GenrePage::VisualStyle::MINIMAL 
-                : GenrePage::VisualStyle::RETRO_CLASSIC;
-            genrePage_->setVisualStyle(style);
-        }
-    }
-};
-```
-
-## Совместимость
-
-- ✅ ESP32
-- ✅ ESP32-S3 (Cardputer)
-- ✅ SDL desktop build
-- ⚠️ ESP8266: Только MINIMAL (недостаточно RAM для ретро)
-
----
-
-**Создано для MiniAcid Sequencer**  
-*Простой код + красивая графика = профессиональный инструмент* 🎹✨
+## Practical Note
+Genre page is for musical selection + apply policy. Deep mode/flavor corridor inspection and macro routing now lives on `ModePage` (`GROOVE LAB`).

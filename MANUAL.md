@@ -1,5 +1,7 @@
 # MiniAcid User Manual
 
+> Status note: this manual contains legacy sections. For current controls and page behavior, use `keys_sheet.md` and focused docs in `docs/` first.
+
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [Getting Started](#getting-started)

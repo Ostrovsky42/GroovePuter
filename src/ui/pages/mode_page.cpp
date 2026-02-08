@@ -1,10 +1,12 @@
 #include "mode_page.h"
 
+#include <algorithm>
 #include <cstdio>
 
 #include "../layout_manager.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "../../dsp/groove_profile.h"
 
 ModePage::ModePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
@@ -58,6 +60,13 @@ void ModePage::draw(IGfx& gfx) {
   const GrooveboxMode mode = mini_acid_.grooveboxMode();
   const int flavor = mini_acid_.grooveFlavor();
   const bool macros = mini_acid_.sceneManager().currentScene().genre.applySoundMacros;
+  const float delayMix = std::max(mini_acid_.tempoDelay(0).mixValue(), mini_acid_.tempoDelay(1).mixValue());
+  const float tapeSpace = mini_acid_.sceneManager().currentScene().tape.space / 100.0f;
+  PatternCorridors c = GrooveProfile::getCorridors(mode, flavor);
+  const PatternCorridors before = c;
+  GrooveProfile::applyBudgetRules(mode, delayMix, tapeSpace, c);
+  const bool ducked = (c.notesMin != before.notesMin) || (c.notesMax != before.notesMax) ||
+                      (c.accentProbability != before.accentProbability);
 
   char title[48];
   std::snprintf(title, sizeof(title), "%s / %s", modeName(mode), flavorName(mode, flavor));
@@ -75,8 +84,20 @@ void ModePage::draw(IGfx& gfx) {
 
   drawRow(gfx, y0 + Layout::LINE_HEIGHT * 3, "PREVIEW", "SPACE/ENT = Regenerate", focus_ == FocusRow::Preview, cfg.accentColor);
 
+  char corridorLine[96];
+  std::snprintf(corridorLine, sizeof(corridorLine), "N %d..%d  A %.0f%%  S %.0f%%  SW %.0f%%",
+                c.notesMin, c.notesMax, c.accentProbability * 100.0f, c.slideProbability * 100.0f, c.swingAmount * 100.0f);
   gfx.setTextColor(IGfxColor(0x8AA4BA));
-  gfx.drawText(Layout::CONTENT.x + 2, y0 + Layout::LINE_HEIGHT * 5, "A:Apply 303A  B:Apply 303B  T:Apply Tape");
+  gfx.drawText(Layout::CONTENT.x + 2, y0 + Layout::LINE_HEIGHT * 4 + 1, corridorLine);
+
+  char budgetLine[64];
+  std::snprintf(budgetLine, sizeof(budgetLine), "BUDGET %s  dly %.2f  spc %.2f",
+                ducked ? "DUCK ON" : "DUCK OFF", delayMix, tapeSpace);
+  gfx.setTextColor(ducked ? cfg.accentColor : IGfxColor(0x5C7183));
+  gfx.drawText(Layout::CONTENT.x + 2, y0 + Layout::LINE_HEIGHT * 5 + 1, budgetLine);
+
+  gfx.setTextColor(IGfxColor(0x8AA4BA));
+  gfx.drawText(Layout::CONTENT.x + 2, y0 + Layout::LINE_HEIGHT * 6, "A:Apply 303A  B:Apply 303B  T:Apply Tape");
 
   UI::drawStandardFooter(gfx, "TAB:Focus  ARW:Adjust", "ENT:Action");
 }

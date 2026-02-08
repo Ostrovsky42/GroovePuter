@@ -1,95 +1,40 @@
-# GroovePuter - AI Agent Guide
+# MiniAcid Agent Guide
 
-Welcome, collaborator! This document provides essential context and technical guidelines for working on GroovePuter, a groovebox project optimized for the **M5Stack Cardputer**.
+Practical guardrails for contributors working in this repo.
 
----
+## Platform Constraints
+- Target: **M5Stack Cardputer (ESP32-S3)**
+- No PSRAM assumption for release path
+- Audio path is real-time: no allocations or blocking I/O in audio callback
 
-## 🚀 Project Vision
-GroovePuter is a portable, high-performance acid house groovebox.
-- **Goal:** Professional-grade DSP on constrained hardware.
-- **Style:** Retro 80s aesthetic (neon, scanlines) mixed with modern generative features.
-- **Hardware Target:** M5Stack Cardputer (ESP32-S3FN8).
+## Architecture Snapshot
+- DSP core: `src/dsp/*`
+- UI pages: `src/ui/pages/*`
+- Scene persistence: `scenes.cpp`, `scenes.h`
+- Groove corridors: `src/dsp/groove_profile.*`
 
----
+## Current UX Conventions
+- Global style: `Alt+\\` (`CARBON/CYBER/AMBER`)
+- Selection v2 (Pattern/Drum/Song):
+  - `Shift/Ctrl + Arrows` expand selection
+  - `Ctrl+C` copy and lock frame
+  - Arrows move locked frame
+  - `Ctrl+V` paste and clear selection
+  - `Esc` / `` ` `` / `~` clear selection
+- Song slots:
+  - `Alt+B` edit slot A/B
+  - `Ctrl+B` play slot A/B
 
-## 🛠 Critical Technical Context
+## Audio Safety
+- Master high-cut is currently hardcoded in DSP (`kMasterHighCutHz` in `src/dsp/miniacid_engine.h`).
+- Keep defaults conservative for compact speakers.
 
-### 1. Agentic Infrastructure (NEW)
-This project uses modern Agentic Skills and Workflows to guide development.
-- **Skills:** Check `.agent/skills/` for deep technical guidelines on `audio_engine` and `ui_system`.
-- **Workflows:** Use `.agent/workflows/` for `/build`, `/flash`, and `/monitor`.
+## Documentation Rule
+When changing controls/behavior, update in the same change set:
+- `keys_sheet.md`
+- relevant `docs/*.md` page docs
+- `README.md` if architecture/workflow changed
 
-### 2. Hardware Constraints (CRITICAL)
-- **NO PSRAM:** The StampS3 in the Cardputer has zero PSRAM. Every byte of DRAM is precious.
-- **Core Split:** Core 1 (Audio), Core 0 (UI/Logic).
-- **Keyboard:** Case-insensitive, Ctrl/Alt focus. See `ui_system` skill.
-
----
-
-## 🎨 UI/UX Guidelines
-
-### Compact Display (240x135)
-- **Primary Font:** 5x7 monospaced.
-- **Vertical Space:** Headers are 16-18px. Gain space by using 1px line spacing between list items.
-- **Abbreviations:** Use 3-letter uppercase for params (e.g., `CUT`, `RES`, `ENV`, `OSC`).
-- **Visual Feedback:** Use LED states and visual "glow" effects (optimized with single shadow on ESP32).
-
-### Page Patterns
-- Use the `UIPage` abstraction.
-- Use `LayoutManager` for consistent header/footer positioning.
-- **Page Numbers:** Always display `Current/Total` indicator in the header.
-
----
-
-## 🔉 Audio Engine Rules
-
-### DSP Standards
-- **Sample Rate:** Default 22050 Hz for Cardputer, 44100 Hz for Desktop/PCM.
-- **Normalization:** Internal parameters use 0.0 to 1.0. Voices should handle mapping to frequency/milliseconds.
-- **Soft Clamping:** Every voice should have a soft limiter at the end of its chain to prevent digital clipping before the master mix.
-
-### Genre System
-- Use `GenreManager` for switching visual/audio "flavors".
-- **Texture Bias:** Reset bias tracking when loading new scenes.
-
----
-
-## 💾 State & Persistence
-
-### Saving Reliability
-- **Auto-Save:** Implemented in `stop()`, `loadSceneByName()`, and `cleanup()`.
-- **Storage:** Uses SD card (Cardputer) or JSON files (Desktop/SDL).
-- **Hard-Flush:** Always call `file.flush()` before `file.close()` on ESP32 to prevent truncation.
-- **Verification:** After writing, re-open the file in `FILE_READ` mode and verify `file.size()` matches the bytes written.
-
-### JSON Streaming Pitfalls
-- **Structural Integrity:** Streaming writers (e.g., `writeSceneJson`) are sensitive. A missing `}` or `,` will cause "Unexpected EOF" on read.
-- **Nesting Alert:** Always double-check that fields are closed in the correct order. (e.g., `led` must be closed before `vocal` if they are siblings in `state`).
-- **Debugging:** For large streaming files, use `Serial.print(".")` during writing and a byte counter in the reader's lambda to pinpoint the exact failure offset.
-
----
-
-## 🤖 Future Roadmap
-
-If you are implementing new features, consider these planned items:
-1. **Formant Vocal Synth:** Robotic vocals using compact filter banks (~4KB ROM).
-2. **Song Mode Quick Actions:** Fast pattern layout generation.
-3. **Lazy Scene Loading:** Dynamic asset loading from LittleFS to save DRAM.
-
----
-
-## 📝 Tips for AI Agents
-1. **Check the Platform:** Always verify if you are editing `platform_sdl` (Desktop) or `src` (Common/ESP32).
-2. **Review `deep_review.md`:** Check the last deep audit for context on architecture scores.
-3. **Use `IGfx`:** Never call display-specific functions directly. Use the abstraction.
-4. **Mind the Audio Thread:** Never perform I/O or allocate memory in the audio callback.
-5. **Selection v2 UX (Pattern/Drum/Song):**
-   - `Shift/Ctrl + Arrows` extends selection.
-   - `Ctrl+C` copies selection and locks frame as paste target.
-   - Arrows move locked frame (do not move source data).
-   - `Ctrl+V` pastes and clears selection.
-   - `ESC` / `` ` `` / `~` clears selection.
-
----
-
-*Stay creative, stay efficient, keep the acid flowing.* 🎧💊
+## Build / Check
+- Quick build: `./build.sh`
+- Release build: `./release.sh`
