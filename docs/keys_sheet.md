@@ -56,6 +56,22 @@ Notes:
 | `Ctrl`/`Alt` + `Left/Right` | Fast adjust |
 | `1..3` | Apply regen preset |
 
+## Feel / Texture Page
+| Key | Action |
+| --- | --- |
+| `Tab` | Cycle focus (`FEEL -> DRUM -> PRESETS`) |
+| `Up/Down` | Select row in focused block |
+| `Left/Right` | Adjust selected value |
+| `1..4` | Apply FEEL/TEXTURE preset |
+| `Enter` / `Space` | Toggle/apply focused item |
+
+Drum rows in this page:
+- `DR CMP` (compression)
+- `DR ATT` (transient attack)
+- `DR SUS` (transient sustain)
+- `DR REV` (reverb mix)
+- `DR DEC` (reverb decay)
+
 ## Pattern Edit (303)
 | Key | Action |
 | --- | --- |
@@ -71,6 +87,7 @@ Notes:
 | `Fn+Arrows` | `Up/Down`: note +/- , `Left/Right`: octave +/- |
 | `Alt/Ctrl+A` | Accent toggle (uniform on selection) |
 | `Alt/Ctrl+S` | Slide toggle (uniform on selection) |
+| `Alt+Left/Right` | Rotate pattern |
 | `R` | Rest (clear note) |
 | `Bksp` / `Del` | Clear step / clear selection |
 | `Alt+Bksp` | Clear whole pattern |

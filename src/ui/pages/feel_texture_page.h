@@ -21,9 +21,9 @@ private:
     MiniAcid& mini_acid_;
     AudioGuard audio_guard_;
     VisualStyle style_ = VisualStyle::MINIMAL;
-    std::string title_ = "FEEL/TEXTURE";
+    std::string title_ = "FEEL/DRUM";
 
-    enum class FocusArea { FEEL, TEXTURE, PRESETS };
+    enum class FocusArea { FEEL, DRUM, PRESETS };
 
     enum class GridResolution : uint8_t {
         Eighth = 8,
@@ -44,34 +44,25 @@ private:
         Double = 2
     };
 
-    struct TextureSettings {
-        bool lofi_enabled = false;
-        float lofi_amount = 0.5f;   // 0..1
-        bool drive_enabled = false;
-        float drive_amount = 0.7f;  // 0..1
-        bool tape_enabled = false;
-    };
-
     GridResolution grid_resolution_ = GridResolution::Sixteenth;
     Timebase timebase_ = Timebase::Normal;
     PatternLength pattern_length_ = PatternLength::OneBar;
-    TextureSettings texture_;
 
     FocusArea focus_ = FocusArea::FEEL;
     int feel_row_ = 0;     // 0=GRID, 1=TIMEBASE, 2=LENGTH
     int texture_row_ = 0;  // 0=LOFI, 1=DRIVE, 2=TAPE
+    int drum_row_ = 0;     // 0=COMP, 1=ATT, 2=SUS, 3=REV MIX, 4=REV DEC
     int preset_index_ = 0; // 0..3
 
     void syncFromScene();
     void applyGridResolution();
     void applyTimebase();
     void applyPatternLength();
-    void applyTextureSettings();
 
     void drawGridSelector(IGfx& gfx, int x, int y);
     void drawTimebaseSelector(IGfx& gfx, int x, int y);
     void drawLengthSelector(IGfx& gfx, int x, int y);
-    void drawTextureControls(IGfx& gfx, int x, int y);
+    void drawDrumControls(IGfx& gfx, int x, int y);
     void drawPresets(IGfx& gfx, int x, int y, int width);
     void drawCursor(IGfx& gfx, int x, int y, int w, int h);
     void applyPreset(int index);

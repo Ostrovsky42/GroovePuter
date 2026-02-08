@@ -35,6 +35,10 @@ SOURCES := \
 	../src/dsp/pattern_generator.cpp \
 	../src/dsp/tape_fx.cpp \
 	../src/dsp/tape_looper.cpp \
+	../src/dsp/drum_reverb.cpp \
+	../src/dsp/one_knob_compressor.cpp \
+	../src/dsp/transient_shaper.cpp \
+	../src/dsp/groove_profile.cpp \
 	../src/ui/miniacid_display.cpp \
 	../src/ui/cassette_skin.cpp \
 	../src/ui/led_manager.cpp \

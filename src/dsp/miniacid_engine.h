@@ -26,6 +26,9 @@
 #include "../audio/vocal_mixer.h"
 #include "voice_compressor.h"
 #include "../audio/voice_cache.h"
+#include "drum_reverb.h"
+#include "one_knob_compressor.h"
+#include "transient_shaper.h"
 
 // ===================== Audio config =====================
 
@@ -237,6 +240,15 @@ public:
   void randomizeDrumPattern();
   void randomizeDrumVoice(int voiceIndex);
   void randomizeDrumPatternChaos();
+  
+  void rotatePattern(int voiceIndex, int steps);
+
+  // DRUM FX CONTROL
+  void updateDrumCompression(float value);
+  void updateDrumTransientAttack(float value);
+  void updateDrumTransientSustain(float value);
+  void updateDrumReverbMix(float value);
+  void updateDrumReverbDecay(float value);
   void setGrooveboxMode(GrooveboxMode mode);
   GrooveboxMode grooveboxMode() const;
   void toggleGrooveboxMode();
@@ -433,6 +445,11 @@ private:
   TempoDelay delay3032;
   TubeDistortion distortion303;
   TubeDistortion distortion3032;
+  
+  // Drum FX
+  OneKnobCompressor drumCompressor;
+  TransientShaper drumTransientShaper;
+  DrumReverb drumReverb;
   
   // Thread-safe waveform buffer for UI visualization
   // Uses double-buffering with atomic swap to avoid race conditions

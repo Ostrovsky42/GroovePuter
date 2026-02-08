@@ -252,6 +252,10 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
     currentTimingOffset_(0) {
   if (sampleRateValue <= 0.0f) sampleRateValue = 44100.0f;
   
+  // Initialize Drum FX
+  drumReverb.setSampleRate(sampleRateValue);
+  drumTransientShaper.setSampleRate(sampleRateValue);
+  
   // NEW: Configure voice processing chain
   // HPF @ 150Hz is built-in to compressor
   voiceCompressor_.setThreshold(0.3f);      // -10dB
@@ -394,6 +398,16 @@ void MiniAcid::reset() {
   vocalMixer_.setDuckAmount(0.0f);
   voiceCompressor_.reset();
   vocalSynth_.reset();
+  
+  drumCompressor.reset();
+  drumTransientShaper.reset();
+  drumReverb.reset();
+  
+  updateDrumCompression(0.0f);
+  updateDrumTransientAttack(0.0f);
+  updateDrumTransientSustain(0.0f);
+  updateDrumReverbMix(0.0f);
+  updateDrumReverbDecay(0.5f);
   
   distortion303.setEnabled(distortion303Enabled);
   distortion3032.setEnabled(distortion3032Enabled);
@@ -1878,6 +1892,12 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       if (!muteRim)     drumsMix += drums->processRim() * trackVolumes[(int)VoiceId::DrumRim];
       if (!muteClap)    drumsMix += drums->processClap() * trackVolumes[(int)VoiceId::DrumClap];
       drumsMix *= 0.60f;
+      
+      // Drum Bus Processing
+      drumsMix = drumTransientShaper.process(drumsMix);
+      drumsMix = drumCompressor.process(drumsMix);
+      drumsMix = drumReverb.process(drumsMix);
+      
       drumsMix = softLimit(drumsMix);
       sample += sample303 + drumsMix;
     }
@@ -2287,6 +2307,13 @@ void MiniAcid::applySceneStateFromManager() {
   distortion3032.setEnabled(distortion3032Enabled);
   delay303.setEnabled(delay303Enabled);
   delay3032.setEnabled(delay3032Enabled);
+  
+  const DrumFX& dfx = sceneManager_.currentScene().drumFX;
+  updateDrumCompression(dfx.compression);
+  updateDrumTransientAttack(dfx.transientAttack);
+  updateDrumTransientSustain(dfx.transientSustain);
+  updateDrumReverbMix(dfx.reverbMix);
+  updateDrumReverbDecay(dfx.reverbDecay);
 
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: syncing patterns...");
   patternModeDrumPatternIndex_ = sceneManager_.getCurrentDrumPatternIndex();
@@ -2775,4 +2802,48 @@ bool MiniAcid::renderProjectToWav(const std::string& filename, std::function<voi
   if (wasPlaying) start();
   
   return true;
+}
+
+void MiniAcid::rotatePattern(int voiceIndex, int steps) {
+    if (steps == 0) return;
+    
+    int idx = clamp303Voice(voiceIndex);
+    SynthPattern& pattern = editSynthPattern(idx);
+    
+    // Normalize steps to range [0, kSteps)
+    int shift = steps % SynthPattern::kSteps;
+    if (shift < 0) shift += SynthPattern::kSteps;
+    
+    // Standard rotation: std::rotate(begin, middle, end)
+    // To rotate RIGHT by K:
+    // middle = end - K
+    
+    auto& s = pattern.steps;
+    std::rotate(std::begin(s), std::end(s) - shift, std::end(s));
+    
+    // Also rotate slides/accents in the cache? 
+    // Wait, the cache is rebuilt from pattern.steps in refreshSynthCaches.
+    // So modifying pattern.steps is sufficient.
+}
+
+void MiniAcid::updateDrumCompression(float value) {
+  drumCompressor.setAmount(value);
+  bool on = (value > 0.01f);
+  drumCompressor.setEnabled(on);
+}
+
+void MiniAcid::updateDrumTransientAttack(float value) {
+  drumTransientShaper.setAttackAmount(value);
+}
+
+void MiniAcid::updateDrumTransientSustain(float value) {
+  drumTransientShaper.setSustainAmount(value);
+}
+
+void MiniAcid::updateDrumReverbMix(float value) {
+  drumReverb.setMix(value);
+}
+
+void MiniAcid::updateDrumReverbDecay(float value) {
+  drumReverb.setDecay(value);
 }

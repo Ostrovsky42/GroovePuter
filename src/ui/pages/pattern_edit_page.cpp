@@ -435,6 +435,15 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   // Arrow-first: Cardputer may deliver arrows in scancode OR key.
   // Keep vim-keys only as silent fallback (not in footer hints).
   int nav = UIInput::navCode(ui_event);
+
+  // Pattern Rotation: Alt + Left/Right
+  if (ui_event.alt && (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT)) {
+      int dir = (nav == GROOVEPUTER_RIGHT) ? 1 : -1;
+      withAudioGuard([&]() {
+          mini_acid_.rotatePattern(voice_index_, dir);
+      });
+      return true;
+  }
   bool extend_selection = (ui_event.shift || ui_event.ctrl) && !ui_event.alt;
   if (ui_event.meta) {
     auto applyMetaStep = [&](auto&& fn) {

@@ -6,9 +6,10 @@ set -e
 # and disabling PSRAM as a safe baseline for boot troubleshooting.
 # FlashMode=dio chosen to match the ROM detection seen in Serial logs.
 FQBN="m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,FlashMode=dio"
-OUT_DIR="dist"
-BIN_NAME="miniacid.bin"
-MERGED_BIN="miniacid.merged.bin"
+OUT_DIR="release_bins"
+APP_NAME="grooveputer"
+BIN_NAME="${APP_NAME}.bin"
+MERGED_BIN="${APP_NAME}.merged.bin"
 
 echo "=== Building MiniAcid Release (Stable Config: No PSRAM, Huge APP, DIO) ==="
 echo "FQBN: $FQBN"
@@ -21,15 +22,31 @@ mkdir -p "$OUT_DIR"
 echo "[BUILD] Compiling sketch..."
 arduino-cli compile --clean --fqbn "$FQBN" --output-dir "$OUT_DIR" .
 
-# Standard naming
-if [ -f "$OUT_DIR/grooveputer.ino.bin" ]; then
-    mv "$OUT_DIR/grooveputer.ino.bin" "$OUT_DIR/$BIN_NAME"
+# Normalize output names regardless of sketch filename
+APP_BIN_SRC=""
+MERGED_BIN_SRC=""
+for candidate in "$OUT_DIR"/*.ino.bin; do
+    if [ -f "$candidate" ]; then
+        APP_BIN_SRC="$candidate"
+        break
+    fi
+done
+
+for candidate in "$OUT_DIR"/*.ino.merged.bin; do
+    if [ -f "$candidate" ]; then
+        MERGED_BIN_SRC="$candidate"
+        break
+    fi
+done
+
+if [ -n "$APP_BIN_SRC" ]; then
+    cp -f "$APP_BIN_SRC" "$OUT_DIR/$BIN_NAME"
 fi
 
 # Merged binary creation (Application + Bootloader + Partition Table)
 # This resolve partition/segment mismatch issues by flashing the whole image at 0x0.
-if [ -f "$OUT_DIR/grooveputer.ino.merged.bin" ]; then
-    mv "$OUT_DIR/grooveputer.ino.merged.bin" "$OUT_DIR/$MERGED_BIN"
+if [ -n "$MERGED_BIN_SRC" ]; then
+    cp -f "$MERGED_BIN_SRC" "$OUT_DIR/$MERGED_BIN"
     echo "Success! Combined binary created at: $OUT_DIR/$MERGED_BIN"
 fi
 

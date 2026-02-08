@@ -73,6 +73,7 @@ void clearSceneData(Scene& scene) {
   scene.led = LedSettings();
   scene.tape = TapeState();
   scene.feel = FeelSettings();
+  scene.drumFX = DrumFX();
 }
 
 void serializeDrumPattern(const DrumPattern& pattern, ArduinoJson::JsonObject obj) {
@@ -516,6 +517,7 @@ void SceneJsonObserver::onObjectStart() {
       else if (lastKey_ == "generatorParams") path = Path::GeneratorParams;
       else if (lastKey_ == "vocal") path = Path::Vocal;
       else if (lastKey_ == "mute") path = Path::Mute;
+      else if (lastKey_ == "drumFX") path = Path::DrumFX;
     } else if (parent.path == Path::Led && lastKey_ == "vocal") {
       path = Path::Vocal;  // vocal is nested inside led in current format
     } else if (parent.path == Path::Led && lastKey_ == "samplerPads") {
@@ -822,6 +824,15 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     } else if (lastKey_ == "synthBankIndex") {
       synthBankIndex_[0] = intValue;
     }
+    return;
+  }
+  if (path == Path::DrumFX) {
+    float f = static_cast<float>(value);
+    if (lastKey_ == "comp") target_.drumFX.compression = f;
+    else if (lastKey_ == "tAtt") target_.drumFX.transientAttack = f;
+    else if (lastKey_ == "tSus") target_.drumFX.transientSustain = f;
+    else if (lastKey_ == "rMix") target_.drumFX.reverbMix = f;
+    else if (lastKey_ == "rDec") target_.drumFX.reverbDecay = f;
     return;
   }
   if (path == Path::Vocal) {
@@ -2157,6 +2168,15 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     loaded->genre.applyTempoOnApply = genreObj["tempo"].is<bool>() ? genreObj["tempo"].as<bool>() : loaded->genre.applyTempoOnApply;
     loaded->genre.curatedMode = genreObj["cur"].is<bool>() ? genreObj["cur"].as<bool>() : loaded->genre.curatedMode;
     loaded->genre.applySoundMacros = genreObj["sound"].is<bool>() ? genreObj["sound"].as<bool>() : loaded->genre.applySoundMacros;
+  }
+
+  ArduinoJson::JsonObjectConst drumFXObj = obj["drumFX"].as<ArduinoJson::JsonObjectConst>();
+  if (!drumFXObj.isNull()) {
+    loaded->drumFX.compression = valueToFloat(drumFXObj["comp"], loaded->drumFX.compression);
+    loaded->drumFX.transientAttack = valueToFloat(drumFXObj["tAtt"], loaded->drumFX.transientAttack);
+    loaded->drumFX.transientSustain = valueToFloat(drumFXObj["tSus"], loaded->drumFX.transientSustain);
+    loaded->drumFX.reverbMix = valueToFloat(drumFXObj["rMix"], loaded->drumFX.reverbMix);
+    loaded->drumFX.reverbDecay = valueToFloat(drumFXObj["rDec"], loaded->drumFX.reverbDecay);
   }
 
   if (obj["samplerPads"].is<ArduinoJson::JsonArrayConst>()) {

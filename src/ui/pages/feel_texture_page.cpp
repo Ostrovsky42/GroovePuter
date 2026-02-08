@@ -114,11 +114,6 @@ void FeelTexturePage::syncFromScene() {
             break;
     }
 
-    texture_.lofi_enabled = feel.lofiEnabled;
-    texture_.lofi_amount = clamp01(static_cast<float>(feel.lofiAmount) / 100.0f);
-    texture_.drive_enabled = feel.driveEnabled;
-    texture_.drive_amount = clamp01(static_cast<float>(feel.driveAmount) / 100.0f);
-    texture_.tape_enabled = feel.tapeEnabled;
 }
 
 void FeelTexturePage::applyGridResolution() {
@@ -144,18 +139,6 @@ void FeelTexturePage::applyPatternLength() {
     });
 }
 
-void FeelTexturePage::applyTextureSettings() {
-    withAudioGuard([&]() {
-        auto& feel = mini_acid_.sceneManager().currentScene().feel;
-        feel.lofiEnabled = texture_.lofi_enabled;
-        feel.lofiAmount = static_cast<uint8_t>(clamp01(texture_.lofi_amount) * 100.0f + 0.5f);
-        feel.driveEnabled = texture_.drive_enabled;
-        feel.driveAmount = static_cast<uint8_t>(clamp01(texture_.drive_amount) * 100.0f + 0.5f);
-        feel.tapeEnabled = texture_.tape_enabled;
-        mini_acid_.applyTextureFromScene_();
-    });
-}
-
 void FeelTexturePage::draw(IGfx& gfx) {
     syncFromScene();
 
@@ -170,18 +153,18 @@ void FeelTexturePage::draw(IGfx& gfx) {
     // Focus markers (GenrePage-like)
     gfx.setTextColor(COLOR_LABEL);
     gfx.drawText(col1X, headerY, (focus_ == FocusArea::FEEL) ? "F>" : "F ");
-    gfx.drawText(col2X, headerY, (focus_ == FocusArea::TEXTURE) ? "T>" : "T ");
+    gfx.drawText(col2X, headerY, (focus_ == FocusArea::DRUM) ? "D>" : "D ");
 
     // Lists
     drawGridSelector(gfx, col1X, LayoutManager::lineY(1));
     drawTimebaseSelector(gfx, col1X, LayoutManager::lineY(2));
     drawLengthSelector(gfx, col1X, LayoutManager::lineY(3));
-    drawTextureControls(gfx, col2X, LayoutManager::lineY(1));
+    drawDrumControls(gfx, col2X, LayoutManager::lineY(1));
 
     // Presets row
     gfx.setTextColor(COLOR_LABEL);
-    gfx.drawText(col1X, LayoutManager::lineY(4), (focus_ == FocusArea::PRESETS) ? "P>" : "P ");
-    drawPresets(gfx, col1X + 10, LayoutManager::lineY(5), Layout::CONTENT.w - 20);
+    gfx.drawText(col1X, LayoutManager::lineY(6), (focus_ == FocusArea::PRESETS) ? "P>" : "P ");
+    drawPresets(gfx, col1X + 10, LayoutManager::lineY(6), Layout::CONTENT.w - 20);
 
     const char* left = "[TAB] FOCUS  [ARROWS] SELECT";
     const char* right = currentHint();
@@ -223,31 +206,38 @@ void FeelTexturePage::drawLengthSelector(IGfx& gfx, int x, int y) {
                          focus_ == FocusArea::FEEL && feel_row_ == 2);
 }
 
-void FeelTexturePage::drawTextureControls(IGfx& gfx, int x, int y) {
+void FeelTexturePage::drawDrumControls(IGfx& gfx, int x, int y) {
+    const auto& dfx = mini_acid_.sceneManager().currentScene().drumFX;
     char buf[24];
-    int lofiPct = static_cast<int>(clamp01(texture_.lofi_amount) * 100.0f + 0.5f);
-    if (texture_.lofi_enabled) {
-        std::snprintf(buf, sizeof(buf), "LOFI  ON  %d%%", lofiPct);
-    } else {
-        std::snprintf(buf, sizeof(buf), "LOFI  OFF");
-    }
+
+    int compPct = static_cast<int>(clamp01(dfx.compression) * 100.0f + 0.5f);
+    std::snprintf(buf, sizeof(buf), "DR CMP %d%%", compPct);
     Widgets::drawListRow(gfx, x, y, Layout::COL_WIDTH, buf,
-                         focus_ == FocusArea::TEXTURE && texture_row_ == 0);
+                         focus_ == FocusArea::DRUM && drum_row_ == 0);
 
     y += kRowH;
-    int drivePct = static_cast<int>(clamp01(texture_.drive_amount) * 100.0f + 0.5f);
-    if (texture_.drive_enabled) {
-        std::snprintf(buf, sizeof(buf), "DRIVE ON  %d%%", drivePct);
-    } else {
-        std::snprintf(buf, sizeof(buf), "DRIVE OFF");
-    }
+    int attPct = static_cast<int>(std::clamp(dfx.transientAttack, -1.0f, 1.0f) * 100.0f + 0.5f);
+    std::snprintf(buf, sizeof(buf), "DR ATT %+d%%", attPct);
     Widgets::drawListRow(gfx, x, y, Layout::COL_WIDTH, buf,
-                         focus_ == FocusArea::TEXTURE && texture_row_ == 1);
+                         focus_ == FocusArea::DRUM && drum_row_ == 1);
 
     y += kRowH;
-    std::snprintf(buf, sizeof(buf), "TAPE  %s", texture_.tape_enabled ? "ON" : "OFF");
+    int susPct = static_cast<int>(std::clamp(dfx.transientSustain, -1.0f, 1.0f) * 100.0f + 0.5f);
+    std::snprintf(buf, sizeof(buf), "DR SUS %+d%%", susPct);
     Widgets::drawListRow(gfx, x, y, Layout::COL_WIDTH, buf,
-                         focus_ == FocusArea::TEXTURE && texture_row_ == 2);
+                         focus_ == FocusArea::DRUM && drum_row_ == 2);
+
+    y += kRowH;
+    int mixPct = static_cast<int>(clamp01(dfx.reverbMix) * 100.0f + 0.5f);
+    std::snprintf(buf, sizeof(buf), "DR REV %d%%", mixPct);
+    Widgets::drawListRow(gfx, x, y, Layout::COL_WIDTH, buf,
+                         focus_ == FocusArea::DRUM && drum_row_ == 3);
+
+    y += kRowH;
+    int decPct = static_cast<int>(std::clamp(dfx.reverbDecay, 0.05f, 0.95f) * 100.0f + 0.5f);
+    std::snprintf(buf, sizeof(buf), "DR DEC %d%%", decPct);
+    Widgets::drawListRow(gfx, x, y, Layout::COL_WIDTH, buf,
+                         focus_ == FocusArea::DRUM && drum_row_ == 4);
 }
 
 void FeelTexturePage::drawPresets(IGfx& gfx, int x, int y, int width) {
@@ -258,7 +248,7 @@ void FeelTexturePage::drawPresets(IGfx& gfx, int x, int y, int width) {
 
 int FeelTexturePage::maxRowForFocus(FocusArea focus) const {
     if (focus == FocusArea::FEEL) return 2;
-    if (focus == FocusArea::TEXTURE) return 2;
+    if (focus == FocusArea::DRUM) return 4;
     return 0;
 }
 
@@ -290,11 +280,26 @@ bool FeelTexturePage::handleEvent(UIEvent& ui_event) {
             }
             return true;
         }
-        if (focus_ == FocusArea::TEXTURE) {
-            if (texture_row_ == 0) texture_.lofi_enabled = !texture_.lofi_enabled;
-            else if (texture_row_ == 1) texture_.drive_enabled = !texture_.drive_enabled;
-            else if (texture_row_ == 2) texture_.tape_enabled = !texture_.tape_enabled;
-            applyTextureSettings();
+        if (focus_ == FocusArea::DRUM) {
+            withAudioGuard([&]() {
+                auto& dfx = mini_acid_.sceneManager().currentScene().drumFX;
+                if (drum_row_ == 0) {
+                    dfx.compression = std::clamp(dfx.compression - 0.05f, 0.0f, 1.0f);
+                    mini_acid_.updateDrumCompression(dfx.compression);
+                } else if (drum_row_ == 1) {
+                    dfx.transientAttack = std::clamp(dfx.transientAttack - 0.05f, -1.0f, 1.0f);
+                    mini_acid_.updateDrumTransientAttack(dfx.transientAttack);
+                } else if (drum_row_ == 2) {
+                    dfx.transientSustain = std::clamp(dfx.transientSustain - 0.05f, -1.0f, 1.0f);
+                    mini_acid_.updateDrumTransientSustain(dfx.transientSustain);
+                } else if (drum_row_ == 3) {
+                    dfx.reverbMix = std::clamp(dfx.reverbMix - 0.05f, 0.0f, 1.0f);
+                    mini_acid_.updateDrumReverbMix(dfx.reverbMix);
+                } else if (drum_row_ == 4) {
+                    dfx.reverbDecay = std::clamp(dfx.reverbDecay - 0.05f, 0.05f, 0.95f);
+                    mini_acid_.updateDrumReverbDecay(dfx.reverbDecay);
+                }
+            });
             return true;
         }
     }
@@ -322,11 +327,26 @@ bool FeelTexturePage::handleEvent(UIEvent& ui_event) {
             }
             return true;
         }
-        if (focus_ == FocusArea::TEXTURE) {
-            if (texture_row_ == 0) texture_.lofi_enabled = !texture_.lofi_enabled;
-            else if (texture_row_ == 1) texture_.drive_enabled = !texture_.drive_enabled;
-            else if (texture_row_ == 2) texture_.tape_enabled = !texture_.tape_enabled;
-            applyTextureSettings();
+        if (focus_ == FocusArea::DRUM) {
+            withAudioGuard([&]() {
+                auto& dfx = mini_acid_.sceneManager().currentScene().drumFX;
+                if (drum_row_ == 0) {
+                    dfx.compression = std::clamp(dfx.compression + 0.05f, 0.0f, 1.0f);
+                    mini_acid_.updateDrumCompression(dfx.compression);
+                } else if (drum_row_ == 1) {
+                    dfx.transientAttack = std::clamp(dfx.transientAttack + 0.05f, -1.0f, 1.0f);
+                    mini_acid_.updateDrumTransientAttack(dfx.transientAttack);
+                } else if (drum_row_ == 2) {
+                    dfx.transientSustain = std::clamp(dfx.transientSustain + 0.05f, -1.0f, 1.0f);
+                    mini_acid_.updateDrumTransientSustain(dfx.transientSustain);
+                } else if (drum_row_ == 3) {
+                    dfx.reverbMix = std::clamp(dfx.reverbMix + 0.05f, 0.0f, 1.0f);
+                    mini_acid_.updateDrumReverbMix(dfx.reverbMix);
+                } else if (drum_row_ == 4) {
+                    dfx.reverbDecay = std::clamp(dfx.reverbDecay + 0.05f, 0.05f, 0.95f);
+                    mini_acid_.updateDrumReverbDecay(dfx.reverbDecay);
+                }
+            });
             return true;
         }
     }
@@ -335,8 +355,8 @@ bool FeelTexturePage::handleEvent(UIEvent& ui_event) {
             if (feel_row_ > 0) feel_row_--;
             return true;
         }
-        if (focus_ == FocusArea::TEXTURE) {
-            if (texture_row_ > 0) texture_row_--;
+        if (focus_ == FocusArea::DRUM) {
+            if (drum_row_ > 0) drum_row_--;
             return true;
         }
         return false;
@@ -346,8 +366,8 @@ bool FeelTexturePage::handleEvent(UIEvent& ui_event) {
             if (feel_row_ < maxRowForFocus(focus_)) feel_row_++;
             return true;
         }
-        if (focus_ == FocusArea::TEXTURE) {
-            if (texture_row_ < maxRowForFocus(focus_)) texture_row_++;
+        if (focus_ == FocusArea::DRUM) {
+            if (drum_row_ < maxRowForFocus(focus_)) drum_row_++;
             return true;
         }
         return false;
@@ -355,8 +375,8 @@ bool FeelTexturePage::handleEvent(UIEvent& ui_event) {
 
     char key = ui_event.key;
     if (key == '\t') {
-        if (focus_ == FocusArea::FEEL) focus_ = FocusArea::TEXTURE;
-        else if (focus_ == FocusArea::TEXTURE) focus_ = FocusArea::PRESETS;
+        if (focus_ == FocusArea::FEEL) focus_ = FocusArea::DRUM;
+        else if (focus_ == FocusArea::DRUM) focus_ = FocusArea::PRESETS;
         else focus_ = FocusArea::FEEL;
         return true;
     }
@@ -380,41 +400,8 @@ bool FeelTexturePage::handleEvent(UIEvent& ui_event) {
             }
             return true;
         }
-        if (focus_ == FocusArea::TEXTURE) {
-            if (texture_row_ == 0) texture_.lofi_enabled = !texture_.lofi_enabled;
-            else if (texture_row_ == 1) texture_.drive_enabled = !texture_.drive_enabled;
-            else if (texture_row_ == 2) texture_.tape_enabled = !texture_.tape_enabled;
-            applyTextureSettings();
-            return true;
-        }
         if (focus_ == FocusArea::PRESETS) {
             applyPreset(preset_index_);
-            return true;
-        }
-    }
-
-    if (key == '+' || key == '=') {
-        if (focus_ == FocusArea::TEXTURE && texture_row_ == 0 && texture_.lofi_enabled) {
-            texture_.lofi_amount = clamp01(texture_.lofi_amount + 0.1f);
-            applyTextureSettings();
-            return true;
-        }
-        if (focus_ == FocusArea::TEXTURE && texture_row_ == 1 && texture_.drive_enabled) {
-            texture_.drive_amount = clamp01(texture_.drive_amount + 0.1f);
-            applyTextureSettings();
-            return true;
-        }
-    }
-
-    if (key == '-' || key == '_') {
-        if (focus_ == FocusArea::TEXTURE && texture_row_ == 0 && texture_.lofi_enabled) {
-            texture_.lofi_amount = clamp01(texture_.lofi_amount - 0.1f);
-            applyTextureSettings();
-            return true;
-        }
-        if (focus_ == FocusArea::TEXTURE && texture_row_ == 1 && texture_.drive_enabled) {
-            texture_.drive_amount = clamp01(texture_.drive_amount - 0.1f);
-            applyTextureSettings();
             return true;
         }
     }
@@ -438,35 +425,24 @@ void FeelTexturePage::applyPreset(int index) {
                 feel.gridSteps = 16;
                 feel.timebase = static_cast<uint8_t>(Timebase::Half);
                 feel.patternBars = 4;
-                feel.driveEnabled = false;
-                feel.lofiEnabled = false;
-                feel.tapeEnabled = false;
                 break;
             case 1: // NORM
                 feel.gridSteps = 16;
                 feel.timebase = static_cast<uint8_t>(Timebase::Normal);
                 feel.patternBars = 1;
-                feel.driveEnabled = false;
-                feel.lofiEnabled = false;
-                feel.tapeEnabled = false;
                 break;
             case 2: // WIDE
                 feel.patternBars = 8;
                 feel.gridSteps = 16;
                 feel.timebase = static_cast<uint8_t>(Timebase::Normal);
-                feel.driveEnabled = false;
-                feel.lofiEnabled = false;
-                feel.tapeEnabled = false;
                 break;
-            case 3: // GRIT
-                feel.driveEnabled = true;
-                feel.driveAmount = 45;
-                feel.lofiEnabled = true;
-                feel.lofiAmount = 35;
+            case 3: // SHORT
+                feel.patternBars = 1;
+                feel.gridSteps = 16;
+                feel.timebase = static_cast<uint8_t>(Timebase::Normal);
                 break;
         }
         mini_acid_.applyFeelTimingFromScene_();
-        mini_acid_.applyTextureFromScene_();
     });
     syncFromScene();
 
@@ -482,10 +458,12 @@ const char* FeelTexturePage::currentHint() const {
         if (feel_row_ == 1) return "TB: DBL densifies feel";
         return "LEN: longer cycle, same 16 steps";
     }
-    if (focus_ == FocusArea::TEXTURE) {
-        if (texture_row_ == 0) return "LOFI: bitcrush texture";
-        if (texture_row_ == 1) return "DRIVE: saturation";
-        return "TAPE: FX only";
+    if (focus_ == FocusArea::DRUM) {
+        if (drum_row_ == 0) return "DR COMP: one-knob compression";
+        if (drum_row_ == 1) return "DR ATT: transient attack";
+        if (drum_row_ == 2) return "DR SUS: transient sustain";
+        if (drum_row_ == 3) return "DR REV: reverb mix";
+        return "DR DEC: reverb decay";
     }
-    return (focus_ == FocusArea::PRESETS) ? "SPACE + LOOSE = Dub" : "1-4 apply preset";
+    return (focus_ == FocusArea::PRESETS) ? "1-4 feel presets" : "1-4 apply preset";
 }

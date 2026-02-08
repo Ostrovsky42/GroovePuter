@@ -202,6 +202,13 @@ void SDLDisplay::setTextColor(IGfxColor color) {
   text_color_ = color;
 }
 
+void SDLDisplay::setTextColor(uint16_t color) {
+  uint32_t r = ((color >> 11) & 0x1F) * 255 / 31;
+  uint32_t g = ((color >> 5) & 0x3F) * 255 / 63;
+  uint32_t b = (color & 0x1F) * 255 / 31;
+  text_color_ = IGfxColor((r << 16) | (g << 8) | b);
+}
+
 SDLDisplay::FontMetrics SDLDisplay::computeMetrics(const GFXfont& font) const {
   FontMetrics m;
   m.line_height = font.yAdvance;

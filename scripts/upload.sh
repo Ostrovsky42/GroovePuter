@@ -6,4 +6,4 @@ FQBN="m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app"
 PORT="${1:-/dev/ttyACM0}"
 
 echo "=== Uploading CardLooper to $PORT (Cardputer, DRAM-only) ==="
-./arduino-cli upload --fqbn "$FQBN" -p "$PORT"
+arduino-cli upload --fqbn "$FQBN" -p "$PORT"

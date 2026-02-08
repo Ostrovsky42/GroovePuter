@@ -32,45 +32,40 @@ Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtu
 * **Scene persistence:** safe load for older scenes (optional fields)
 
 
-## Architecture
+## Quick Keys 
+- `Space`: play/stop
+- `[` / `]`: previous/next page
+- `Arrows`: move cursor / navigate lists
+- `Enter`: confirm/apply/toggle focused item
+- `Tab`: switch focus/section on many pages
+- `Q..I`: choose pattern slot `1..8` in Pattern/Drum/Song contexts
+- `B`: quick A/B bank toggle (Pattern/Drum) or bank flip in Song cell/selection
+- `Alt+B`: edit song slot `A/B`
+- `Ctrl+B`: play song slot `A/B`
+- `X`: split compare (Song) or primary action on Tape page
+- `Esc`: back (or clear selection in editors)
 
-**Hard rule:** no hidden coupling.
+## Screenshots
 
-```text
-GENRE      → what is generated (musical logic)
-GENERATOR  → how patterns are generated (regen-time)
-FEEL       → how time is perceived (live)
-TEXTURE    → how sound is colored (live)
-```
+| Page | Preview |
+| :--- | :--- |
+| **Genre** | ![Genre](docs/screenshots/genre.png) |
+| **Sequencer Hub** | ![Sequencer Hub](docs/screenshots/sequencer_hub.png) |
+| **Drum Section** | ![Drum Page](docs/screenshots/drum_page_cyber.png) |
+| **Synth Params** | ![Synth Params](docs/screenshots/synth_params.png) |
+| **Pattern Edit** | ![Pattern Edit](docs/screenshots/pattern_edit.png) |
+| **Song Page** | ![Song Page](docs/screenshots/song_page.png) |
+| **Groove Lab** | ![Groove Lab](docs/screenshots/groove_lab.png) |
+| **Feel & Texture** | ![Feel & Texture](docs/screenshots/feel_texture.png) |
 
-Practical consequence:
-
-* You can change FEEL/TEXTURE to reshape a performance **without regenerating**.
-* You can change GENERATOR params to affect the next regenerate pass **without altering** the current pattern.
-
-Groove routing today:
-
-```text
-GrooveProfile  → corridor source-of-truth + budget rules
-ModeManager    → mode/flavor routing + preset application
-GenrePage      → genre/texture selection + apply policy
-```
-
----
 
 ## Requirements
 
-* **Hardware:** M5Stack Cardputer (ESP32-S3)
+* **Hardware:** M5Stack Cardputer ADV (ESP32-S3)
 * **Tooling:** `arduino-cli` (recommended) or Arduino IDE 2.x
 * **ESP32 core:** `esp32:esp32`
-* **Memory:** DRAM-only (Cardputer has no PSRAM)
-
-> If your project pins specific library versions, put them in `docs/REQUIREMENTS.md` and link it here.
-
----
 
 ## Build & Flash
-
 ### Recommended
 
 ```bash
@@ -92,41 +87,6 @@ arduino-cli upload \
   -p /dev/ttyACM0
 ```
 
----
-
-## Getting Started
-
-1. Flash the device.
-2. Open the keyboard map: [`docs/keys_sheet.md`](docs/keys_sheet.md)
-3. Pick a **GENRE** preset.
-4. Shape groove behavior in **GROOVE LAB** (`ModePage`).
-5. Shape time with **FEEL**.
-6. Add **TEXTURE** and **TAPE** for performance color.
-7. Arrange in **SONG** (split compare `X`, edit/play slots `Alt+B` / `Ctrl+B`).
-
----
-
-## Demos
-
-* **Screenshots:** see [Screenshots](#screenshots)
-* **Audio/video:** add links here when available (YouTube/SoundCloud/short clip)
-
----
-
-## Screenshots
-
-Drop images into `docs/screenshots/` and update the list below.
-
-* `docs/screenshots/genre.png` — GENRE page
-* `docs/screenshots/feel_texture.png` — FEEL/TEXTURE page
-* `docs/screenshots/generator.png` — GENERATOR page
-* `docs/screenshots/hud.png` — live HUD (G/T/L + cycle pulse)
-
-```text
-Tip: keep screenshots at the same zoom level and include the header/footer.
-```
-
----
 
 ## Troubleshooting
 
@@ -149,20 +109,6 @@ Tip: keep screenshots at the same zoom level and include the header/footer.
 * This build uses **adaptive FX safety** (FX dries out briefly instead of crackling).
 * If crackling persists: reduce FX intensity (Tape mix/feedback, delay mix), then re-test.
 
-## Quick Keys 
-- `Space`: play/stop
-- `[` / `]`: previous/next page
-- `Arrows`: move cursor / navigate lists
-- `Enter`: confirm/apply/toggle focused item
-- `Tab`: switch focus/section on many pages
-- `Q..I`: choose pattern slot `1..8` in Pattern/Drum/Song contexts
-- `B`: quick A/B bank toggle (Pattern/Drum) or bank flip in Song cell/selection
-- `Alt+B`: edit song slot `A/B`
-- `Ctrl+B`: play song slot `A/B`
-- `X`: split compare (Song) or primary action on Tape page
-- `Esc`: back (or clear selection in editors)
-
----
 
 ## Contributing
 
@@ -172,15 +118,12 @@ This is an **experimental instrument**. If you want to contribute:
 * Prefer changes that preserve the core rule: **GENRE ≠ FEEL ≠ GENERATOR ≠ TEXTURE**.
 * If you’re unsure where a change belongs, open an issue first.
 
----
 
 ## Credits
 
 * Original inspiration: [urtubia/miniacid](https://github.com/urtubia/miniacid)
 * Hardware: M5Stack Cardputer
 * References: TB-303 / TR-808 lineage 
-
----
 
 ## License
 

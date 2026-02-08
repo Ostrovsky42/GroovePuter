@@ -285,6 +285,14 @@ struct GenreSettings {
     bool applySoundMacros = false; // true: Flavor change overwrites 303/Tape
 };
 
+struct DrumFX {
+    float compression = 0.0f;
+    float transientAttack = 0.0f;
+    float transientSustain = 0.0f;
+    float reverbMix = 0.0f;
+    float reverbDecay = 0.5f;
+};
+
 struct Scene {
   Bank<DrumPatternSet> drumBanks[kBankCount];
   Bank<SynthPattern> synthABanks[kBankCount];
@@ -293,6 +301,7 @@ struct Scene {
   TapeState tape;
   FeelSettings feel;
   GenreSettings genre;
+  DrumFX drumFX;
   Song songs[2];
   int activeSongSlot = 0;
   GrooveboxMode mode = GrooveboxMode::Minimal;
@@ -395,6 +404,7 @@ private:
     CustomPhrase,
     Vocal,
     TrackVolumes,
+    DrumFX,
     Unknown,
   };
 
@@ -952,7 +962,19 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeInt(static_cast<int>(mode_))) return false;
   if (!writeLiteral(",\"flv\":")) return false;
   if (!writeInt(grooveFlavor_)) return false;
-  
+
+  if (!writeLiteral(",\"drumFX\":{\"comp\":")) return false;
+  if (!writeFloat(scene_->drumFX.compression)) return false;
+  if (!writeLiteral(",\"tAtt\":")) return false;
+  if (!writeFloat(scene_->drumFX.transientAttack)) return false;
+  if (!writeLiteral(",\"tSus\":")) return false;
+  if (!writeFloat(scene_->drumFX.transientSustain)) return false;
+  if (!writeLiteral(",\"rMix\":")) return false;
+  if (!writeFloat(scene_->drumFX.reverbMix)) return false;
+  if (!writeLiteral(",\"rDec\":")) return false;
+  if (!writeFloat(scene_->drumFX.reverbDecay)) return false;
+  if (!writeChar('}')) return false;
+
   if (!writeLiteral(",\"customPhrases\":[")) return false;
   for (int i = 0; i < Scene::kMaxCustomPhrases; ++i) {
       if (i > 0 && !writeChar(',')) return false;

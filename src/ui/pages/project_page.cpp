@@ -125,16 +125,16 @@ const char* sectionName(int section) {
 void sectionRange(int section, int& first, int& last) {
   switch (section) {
     case 0: // scenes
-      first = 0;  // Load
-      last = 2;   // New
+      first = (int)ProjectPage::MainFocus::Load;
+      last = (int)ProjectPage::MainFocus::New;
       return;
     case 1: // groove
-      first = 3;   // VisualStyle
-      last = 7;    // Volume (inclusive of ApplyMacros)
+      first = (int)ProjectPage::MainFocus::VisualStyle;
+      last = (int)ProjectPage::MainFocus::Volume;
       return;
     case 2: // led
-      first = 8;   // LedMode
-      last = 12;   // LedFlash
+      first = (int)ProjectPage::MainFocus::LedMode;
+      last = (int)ProjectPage::MainFocus::LedFlash;
       return;
     default:
       first = 0;
@@ -379,7 +379,6 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
     if (key == '\t') {
         int sectionIdx = static_cast<int>(section_);
         sectionIdx = (sectionIdx + 1) % 3;
-        section_ = static_cast<ProjectSection>(sectionIdx);
         section_ = static_cast<ProjectSection>(sectionIdx);
         int focusIdx = static_cast<int>(main_focus_);
         if (!focusInSection(sectionIdx, focusIdx)) {

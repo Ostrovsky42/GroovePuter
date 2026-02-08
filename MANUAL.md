@@ -32,7 +32,7 @@ MiniAcid separates responsibilities:
 - `Drum Sequencer`: drum grid editing with selection v2
 - `Song`: arrangement with dual slots `A/B`, split compare, live mix
 - `Sequencer Hub`: compact overview/edit surface
-- `Feel/Texture`: timing and coloration macros
+- `Feel/Texture`: timing, coloration, and Drum FX macros
 - `Generator`: generation parameters
 - `Project`: scenes, groove section, LED section
 - `Mode (GROOVE LAB)`: groove mode/flavor and budget-aware preview

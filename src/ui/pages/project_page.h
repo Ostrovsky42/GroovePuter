@@ -10,10 +10,10 @@ class ProjectPage : public IPage{
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string & getTitle() const override;
-
- private:
   enum class ProjectSection { Scenes = 0, Groove, Led };
   enum class MainFocus { Load = 0, SaveAs, New, VisualStyle, GrooveMode, GrooveFlavor, ApplyMacros, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash };
+
+ private:
   enum class DialogType { None = 0, Load, SaveAs };
   enum class DialogFocus { List = 0, Cancel };
   enum class SaveDialogFocus { Input = 0, Randomize, Save, Cancel };
