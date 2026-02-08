@@ -939,7 +939,7 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
     if (lastKey_ == "regen") target_.genre.regenerateOnApply = value;
     else if (lastKey_ == "tempo") target_.genre.applyTempoOnApply = value;
     else if (lastKey_ == "cur") target_.genre.curatedMode = value;
-    else if (lastKey_ == "applySoundMacros") target_.genre.applySoundMacros = value;
+    else if (lastKey_ == "sound") target_.genre.applySoundMacros = value;
     return;
   }
   if (path == Path::GeneratorParams) {
@@ -1872,8 +1872,8 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   genreObj["amt"] = scene_->genre.textureAmount;
   genreObj["regen"] = scene_->genre.regenerateOnApply;
   genreObj["tempo"] = scene_->genre.applyTempoOnApply;
-  genreObj["curated"] = scene_->genre.curatedMode;
-  genreObj["macros"] = scene_->genre.applySoundMacros;
+  genreObj["cur"] = scene_->genre.curatedMode;
+  genreObj["sound"] = scene_->genre.applySoundMacros;
 
   ArduinoJson::JsonObject genParams = root["generatorParams"].to<ArduinoJson::JsonObject>();
   serializeGeneratorParams(scene_->generatorParams, genParams);
@@ -2156,6 +2156,7 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     loaded->genre.regenerateOnApply = genreObj["regen"].is<bool>() ? genreObj["regen"].as<bool>() : loaded->genre.regenerateOnApply;
     loaded->genre.applyTempoOnApply = genreObj["tempo"].is<bool>() ? genreObj["tempo"].as<bool>() : loaded->genre.applyTempoOnApply;
     loaded->genre.curatedMode = genreObj["cur"].is<bool>() ? genreObj["cur"].as<bool>() : loaded->genre.curatedMode;
+    loaded->genre.applySoundMacros = genreObj["sound"].is<bool>() ? genreObj["sound"].as<bool>() : loaded->genre.applySoundMacros;
   }
 
   if (obj["samplerPads"].is<ArduinoJson::JsonArrayConst>()) {

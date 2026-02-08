@@ -131,7 +131,6 @@ struct ModeConfig {
         // Corridor boundaries (for the 0..4 Flavor system)
         struct {
             int notesMin[2];        // [0]=min, [1]=max
-            int restsMin[2];
             float accentProb[2];
             float slideProb[2];
             float swingRange[2];
@@ -179,11 +178,10 @@ const ModeConfig kAcidConfig = {
         .ghostVelocityMin = 35,           // ghosts still punchy
         .ghostVelocityMax = 55,
         .corridor = {
-            .notesMin = {8, 14},
-            .restsMin = {2, 6},
-            .accentProb = {0.25f, 0.45f},
-            .slideProb = {0.20f, 0.40f},
-            .swingRange = {0.0f, 0.06f}
+            .notesMin = {8, 13},
+            .accentProb = {0.28f, 0.48f},
+            .slideProb = {0.18f, 0.35f},
+            .swingRange = {0.0f, 0.05f}
         }
     },
     .drums = {
@@ -211,22 +209,21 @@ const ModeConfig kMinimalConfig = {
         .maxNotes = 5,
         .minOctave = 12,                  // C0 (deep!)
         .maxOctave = 48,                  // C3
-        .slideProbability = 0.08f,        // rare slides
+        .slideProbability = 0.06f,        // rare slides
         .accentProbability = 0.15f,       // subtle accents
         .chromaticProbability = 0.0f,     // stay in scale (hypnotic)
         .rootNoteBias = 0.70f,            // 70% root (hypnosis)
         .ghostProbability = 0.35f,        // many ghosts (texture)
-        .swingAmount = 0.22f,             // noticeable shuffle
+        .swingAmount = 0.10f,             // light groove
         .velocityMin = 70,                // narrow, consistent
         .velocityMax = 90,                // flat dynamics
         .ghostVelocityMin = 20,           // very quiet ghosts
         .ghostVelocityMax = 40,           // textural, not melodic
         .corridor = {
-            .notesMin = {3, 7},
-            .restsMin = {9, 13},
-            .accentProb = {0.08f, 0.20f},
-            .slideProb = {0.05f, 0.15f},
-            .swingRange = {0.12f, 0.24f}
+            .notesMin = {3, 6},
+            .accentProb = {0.08f, 0.18f},
+            .slideProb = {0.00f, 0.10f},
+            .swingRange = {0.04f, 0.14f}
         }
     },
     .drums = {
@@ -247,15 +244,14 @@ const ModeConfig kMinimalConfig = {
 const ModeConfig kBreaksConfig = {
     .pattern = {
         .minNotes = 4, .maxNotes = 9, .minOctave = 24, .maxOctave = 60,
-        .slideProbability = 0.16f, .accentProbability = 0.34f, .chromaticProbability = 0.06f,
-        .rootNoteBias = 0.38f, .ghostProbability = 0.22f, .swingAmount = 0.24f,
+        .slideProbability = 0.08f, .accentProbability = 0.30f, .chromaticProbability = 0.06f,
+        .rootNoteBias = 0.38f, .ghostProbability = 0.22f, .swingAmount = 0.18f,
         .velocityMin = 74, .velocityMax = 112, .ghostVelocityMin = 28, .ghostVelocityMax = 52,
         .corridor = {
-            .notesMin = {5, 10},
-            .restsMin = {6, 11},
-            .accentProb = {0.20f, 0.38f},
-            .slideProb = {0.08f, 0.18f},
-            .swingRange = {0.16f, 0.30f}
+            .notesMin = {5, 9},
+            .accentProb = {0.18f, 0.34f},
+            .slideProb = {0.04f, 0.12f},
+            .swingRange = {0.12f, 0.24f}
         }
     },
     .drums = {.sparseKick = false, .sparseHats = false, .noAccents = false, .fillProbability = 0.70f},
@@ -266,16 +262,15 @@ const ModeConfig kBreaksConfig = {
 
 const ModeConfig kDubConfig = {
     .pattern = {
-        .minNotes = 2, .maxNotes = 6, .minOctave = 12, .maxOctave = 48,
-        .slideProbability = 0.10f, .accentProbability = 0.18f, .chromaticProbability = 0.00f,
-        .rootNoteBias = 0.78f, .ghostProbability = 0.30f, .swingAmount = 0.18f,
+        .minNotes = 2, .maxNotes = 5, .minOctave = 12, .maxOctave = 48,
+        .slideProbability = 0.05f, .accentProbability = 0.24f, .chromaticProbability = 0.00f,
+        .rootNoteBias = 0.78f, .ghostProbability = 0.30f, .swingAmount = 0.10f,
         .velocityMin = 66, .velocityMax = 92, .ghostVelocityMin = 18, .ghostVelocityMax = 38,
         .corridor = {
-            .notesMin = {2, 6},
-            .restsMin = {10, 14},
-            .accentProb = {0.10f, 0.24f},
-            .slideProb = {0.04f, 0.12f},
-            .swingRange = {0.10f, 0.20f}
+            .notesMin = {2, 5},
+            .accentProb = {0.14f, 0.34f},
+            .slideProb = {0.00f, 0.08f},
+            .swingRange = {0.06f, 0.14f}
         }
     },
     .drums = {.sparseKick = true, .sparseHats = true, .noAccents = false, .fillProbability = 0.24f},
@@ -286,16 +281,15 @@ const ModeConfig kDubConfig = {
 
 const ModeConfig kElectroConfig = {
     .pattern = {
-        .minNotes = 6, .maxNotes = 11, .minOctave = 24, .maxOctave = 67,
-        .slideProbability = 0.12f, .accentProbability = 0.26f, .chromaticProbability = 0.08f,
-        .rootNoteBias = 0.42f, .ghostProbability = 0.12f, .swingAmount = 0.04f,
+        .minNotes = 6, .maxNotes = 10, .minOctave = 24, .maxOctave = 67,
+        .slideProbability = 0.04f, .accentProbability = 0.24f, .chromaticProbability = 0.08f,
+        .rootNoteBias = 0.42f, .ghostProbability = 0.12f, .swingAmount = 0.02f,
         .velocityMin = 82, .velocityMax = 116, .ghostVelocityMin = 30, .ghostVelocityMax = 48,
         .corridor = {
-            .notesMin = {6, 11},
-            .restsMin = {5, 10},
-            .accentProb = {0.18f, 0.35f},
-            .slideProb = {0.00f, 0.10f},
-            .swingRange = {0.00f, 0.04f}
+            .notesMin = {6, 10},
+            .accentProb = {0.16f, 0.30f},
+            .slideProb = {0.00f, 0.06f},
+            .swingRange = {0.00f, 0.03f}
         }
     },
     .drums = {.sparseKick = false, .sparseHats = false, .noAccents = true, .fillProbability = 0.40f},

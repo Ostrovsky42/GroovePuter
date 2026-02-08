@@ -13,10 +13,15 @@ class ProjectPage : public IPage{
 
  private:
   enum class ProjectSection { Scenes = 0, Groove, Led };
-  enum class MainFocus { Load = 0, SaveAs, New, VisualStyle, GrooveMode, GrooveFlavor, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash };
+  enum class MainFocus { Load = 0, SaveAs, New, VisualStyle, GrooveMode, GrooveFlavor, ApplyMacros, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash };
   enum class DialogType { None = 0, Load, SaveAs };
   enum class DialogFocus { List = 0, Cancel };
   enum class SaveDialogFocus { Input = 0, Randomize, Save, Cancel };
+
+  int firstFocusInSection(int sectionIdx);
+  int lastFocusInSection(int sectionIdx);
+  bool focusInSection(int sectionIdx, int focusIdx);
+  int sectionNextFocus(int section, int current, int delta);
 
   void refreshScenes();
   void openLoadDialog();

@@ -47,6 +47,7 @@ public:
   void setBpm(float bpm);
   void setBeats(float beats);
   void setMix(float mix);
+  float mixValue() const { return mix; }
   void setFeedback(float fb);
   void setEnabled(bool on);
   bool isEnabled() const;

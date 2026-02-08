@@ -130,45 +130,17 @@ void sectionRange(int section, int& first, int& last) {
       return;
     case 1: // groove
       first = 3;   // VisualStyle
-      last = 6;    // Volume
+      last = 7;    // Volume (inclusive of ApplyMacros)
       return;
     case 2: // led
-      first = 7;   // LedMode
-      last = 11;   // LedFlash
+      first = 8;   // LedMode
+      last = 12;   // LedFlash
       return;
     default:
       first = 0;
       last = 2;
       return;
   }
-}
-
-int sectionNextFocus(int section, int current, int delta) {
-  int first = 0;
-  int last = 0;
-  sectionRange(section, first, last);
-  int span = last - first + 1;
-  if (span <= 0) return first;
-  int idx = current;
-  if (idx < first || idx > last) idx = first;
-  idx -= first;
-  idx = (idx + delta + span) % span;
-  return first + idx;
-}
-
-bool focusInSection(int section, int focus) {
-  int first = 0;
-  int last = 0;
-  sectionRange(section, first, last);
-  return focus >= first && focus <= last;
-}
-
-int firstFocusInSection(int section) {
-  int first = 0;
-  int last = 0;
-  sectionRange(section, first, last);
-  (void)last;
-  return first;
 }
 
 } // namespace
@@ -408,6 +380,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         int sectionIdx = static_cast<int>(section_);
         sectionIdx = (sectionIdx + 1) % 3;
         section_ = static_cast<ProjectSection>(sectionIdx);
+        section_ = static_cast<ProjectSection>(sectionIdx);
         int focusIdx = static_cast<int>(main_focus_);
         if (!focusInSection(sectionIdx, focusIdx)) {
             main_focus_ = static_cast<MainFocus>(firstFocusInSection(sectionIdx));
@@ -451,6 +424,11 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             }
             if (main_focus_ == MainFocus::GrooveFlavor) {
                 withAudioGuard([&]() { mini_acid_.shiftGrooveFlavor(right ? 1 : -1); });
+                return true;
+            }
+            if (main_focus_ == MainFocus::ApplyMacros) {
+                auto& genre = mini_acid_.sceneManager().currentScene().genre;
+                genre.applySoundMacros = !genre.applySoundMacros;
                 return true;
             }
             if (main_focus_ == MainFocus::LedMode) {
@@ -641,6 +619,11 @@ void ProjectPage::draw(IGfx& gfx) {
         std::snprintf(line, sizeof(line), "Flavor     %s", grooveFlavorName(mini_acid_.grooveboxMode(), f));
         break;
       }
+      case MainFocus::ApplyMacros: {
+        bool on = mini_acid_.sceneManager().currentScene().genre.applySoundMacros;
+        std::snprintf(line, sizeof(line), "Apply Sound [%s]", on ? "ON" : "OFF");
+        break;
+      }
       case MainFocus::Volume: {
         int volPct = (int)(mini_acid_.miniParameter(MiniAcidParamId::MainVolume).normalized() * 100.0f + 0.5f);
         std::snprintf(line, sizeof(line), "Main Vol   %d%%", volPct);
@@ -799,4 +782,38 @@ void ProjectPage::draw(IGfx& gfx) {
       gfx.drawText(bx + (btnWidth - tw) / 2, btnAreaY + (btnAreaH - line_h) / 2, btnLabels[i]);
     }
   }
+}
+
+int ProjectPage::firstFocusInSection(int sectionIdx) {
+  if (sectionIdx == 0) return (int)ProjectPage::MainFocus::Load;
+  if (sectionIdx == 1) return (int)ProjectPage::MainFocus::VisualStyle;
+  if (sectionIdx == 2) return (int)ProjectPage::MainFocus::LedMode;
+  return 0;
+}
+
+int ProjectPage::lastFocusInSection(int sectionIdx) {
+  if (sectionIdx == 0) return (int)ProjectPage::MainFocus::New;
+  if (sectionIdx == 1) return (int)ProjectPage::MainFocus::Volume;
+  if (sectionIdx == 2) return (int)ProjectPage::MainFocus::LedFlash;
+  return 0;
+}
+
+bool ProjectPage::focusInSection(int sectionIdx, int focusIdx) {
+  ProjectPage::MainFocus f = static_cast<ProjectPage::MainFocus>(focusIdx);
+  if (sectionIdx == 0) return f >= ProjectPage::MainFocus::Load && f <= ProjectPage::MainFocus::New;
+  if (sectionIdx == 1) return f >= ProjectPage::MainFocus::VisualStyle && f <= ProjectPage::MainFocus::Volume;
+  if (sectionIdx == 2) return f >= ProjectPage::MainFocus::LedMode && f <= ProjectPage::MainFocus::LedFlash;
+  return false;
+}
+
+int ProjectPage::sectionNextFocus(int section, int current, int delta) {
+  int first = firstFocusInSection(section);
+  int last = lastFocusInSection(section);
+  int span = last - first + 1;
+  if (span <= 0) return first;
+  int idx = current;
+  if (idx < first || idx > last) idx = first;
+  idx -= first;
+  idx = (idx + delta + span) % span;
+  return first + idx;
 }

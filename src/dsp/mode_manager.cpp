@@ -99,40 +99,67 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm) con
     int adaptedMinNotes, adaptedMaxNotes;
     float adaptedChromaticProb, adaptedGhostProb, adaptedRootBias, adaptedSwing;
     
+    // --- MODE CORRIDORS (NEW) ---
+    const auto& corridors = cfg.pattern.corridor;
+    float flavorT = currentFlavor_ / 4.0f;
+    if (flavorT < 0.0f) flavorT = 0.0f;
+    if (flavorT > 1.0f) flavorT = 1.0f;
+
+    // Base parameters from flavor interpolation
+    int flavorMinNotes = corridors.notesMin[0] + (int)(flavorT * (corridors.notesMin[1] - corridors.notesMin[0]));
+    int flavorMaxNotes = flavorMinNotes + 3; // Keep range tight but varied
+    if (flavorMaxNotes > corridors.notesMin[1]) flavorMaxNotes = corridors.notesMin[1];
+    float flavorAccentProb = corridors.accentProb[0] + flavorT * (corridors.accentProb[1] - corridors.accentProb[0]);
+    float flavorSlideProb = corridors.slideProb[0] + flavorT * (corridors.slideProb[1] - corridors.slideProb[0]);
+    float flavorSwing = corridors.swingRange[0] + flavorT * (corridors.swingRange[1] - corridors.swingRange[0]);
+
+    // Apply BPM scaling to these flavor-based bases
     if (currentMode_ == GrooveboxMode::Acid || currentMode_ == GrooveboxMode::Electro) {
-        // ACID: Fast = tight & clean, Slow = busy & chromatic
-        adaptedMinNotes = (int)lerp(13.0f, 6.0f, t);
-        adaptedMaxNotes = (int)lerp(16.0f, 8.0f, t);
+        adaptedMinNotes = (int)lerp((float)flavorMinNotes * 1.2f, (float)flavorMinNotes * 0.7f, t);
+        adaptedMaxNotes = (int)lerp((float)flavorMaxNotes * 1.2f, (float)flavorMaxNotes * 0.7f, t);
         adaptedChromaticProb = lerp(0.18f, 0.06f, t);
         adaptedGhostProb = lerp(0.12f, 0.04f, t);
-        adaptedRootBias = cfg.pattern.rootNoteBias;  // Use base config
-        adaptedSwing = (currentMode_ == GrooveboxMode::Electro) ? 0.02f : 0.0f;
+        adaptedRootBias = cfg.pattern.rootNoteBias;
+        adaptedSwing = (currentMode_ == GrooveboxMode::Electro) ? 0.02f : flavorSwing;
     } else if (currentMode_ == GrooveboxMode::Breaks) {
-        adaptedMinNotes = (int)lerp(9.0f, 5.0f, t);
-        adaptedMaxNotes = (int)lerp(12.0f, 7.0f, t);
+        adaptedMinNotes = (int)lerp((float)flavorMinNotes * 1.1f, (float)flavorMinNotes * 0.8f, t);
+        adaptedMaxNotes = (int)lerp((float)flavorMaxNotes * 1.1f, (float)flavorMaxNotes * 0.8f, t);
         adaptedChromaticProb = lerp(0.10f, 0.04f, t);
         adaptedGhostProb = lerp(0.28f, 0.12f, t);
         adaptedRootBias = lerp(0.45f, 0.62f, t);
-        adaptedSwing = lerp(0.28f, 0.18f, t);
+        // Breaks: keep synth lane closer to grid; drum lane carries most microtiming.
+        adaptedSwing = lerp(flavorSwing * 0.45f, flavorSwing * 0.35f, t);
     } else if (currentMode_ == GrooveboxMode::Dub) {
-        adaptedMinNotes = (int)lerp(4.0f, 2.0f, t);
-        adaptedMaxNotes = (int)lerp(7.0f, 4.0f, t);
+        adaptedMinNotes = (int)lerp((float)flavorMinNotes, (float)flavorMinNotes * 0.7f, t);
+        adaptedMaxNotes = (int)lerp((float)flavorMaxNotes, (float)flavorMaxNotes * 0.7f, t);
         adaptedChromaticProb = 0.0f;
         adaptedGhostProb = lerp(0.38f, 0.18f, t);
         adaptedRootBias = lerp(0.80f, 0.90f, t);
-        adaptedSwing = lerp(0.20f, 0.12f, t);
+        adaptedSwing = flavorSwing;
+
+        // DUB density ducking by live delay mix budget.
+        float delayMix = std::max(engine_.tempoDelay(0).mixValue(), engine_.tempoDelay(1).mixValue());
+        if (delayMix > 0.35f) {
+            adaptedMinNotes = std::max(1, adaptedMinNotes - 2);
+            adaptedMaxNotes = std::max(adaptedMinNotes, adaptedMaxNotes - 3);
+            flavorAccentProb = std::max(0.05f, flavorAccentProb - 0.08f);
+        } else if (delayMix > 0.25f) {
+            adaptedMinNotes = std::max(1, adaptedMinNotes - 1);
+            adaptedMaxNotes = std::max(adaptedMinNotes, adaptedMaxNotes - 2);
+            flavorAccentProb = std::max(0.05f, flavorAccentProb - 0.04f);
+        }
     } else {
-        // MINIMAL: Fast = hypnotic & clean, Slow = deep & textured
-        adaptedMinNotes = (int)lerp(5.0f, 2.0f, t);
-        adaptedMaxNotes = (int)lerp(7.0f, 4.0f, t);
-        adaptedChromaticProb = cfg.pattern.chromaticProbability;  // Use base
+        adaptedMinNotes = (int)lerp((float)flavorMinNotes * 1.1f, (float)flavorMinNotes * 0.7f, t);
+        adaptedMaxNotes = (int)lerp((float)flavorMaxNotes * 1.1f, (float)flavorMaxNotes * 0.7f, t);
+        adaptedChromaticProb = cfg.pattern.chromaticProbability;
         adaptedGhostProb = lerp(0.35f, 0.12f, t);
         adaptedRootBias = lerp(0.70f, 0.85f, t);
-        
-        // Swing in milliseconds (18ms @ slow, 8ms @ fast)
-        float swingMs = lerp(18.0f, 8.0f, t);
-        adaptedSwing = swingMs / 100.0f;  // Normalize
+        adaptedSwing = flavorSwing;
     }
+    
+    // Safety clamp
+    if (adaptedMinNotes < 1) adaptedMinNotes = 1;
+    if (adaptedMaxNotes < adaptedMinNotes) adaptedMaxNotes = adaptedMinNotes;
     
     // Standardized probability helper (float 0-1 -> int 0-100)
     auto prob100 = [](float p){ return int(p * 100.0f + 0.5f); };
@@ -164,8 +191,16 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm) con
         // Probability cache (using adapted values)
         int minNotesProb = adaptedMinNotes * 100 / 16 + 10;
         int chromaticProb = prob100(adaptedChromaticProb);
-        int slideProb = prob100(cfg.pattern.slideProbability);
-        int accentProb = prob100(cfg.pattern.accentProbability);
+        float acidSlideProb = flavorSlideProb;
+        if (acidFamily) {
+            if (adaptedMinNotes >= 12) {
+                acidSlideProb = std::min(acidSlideProb, 0.32f);
+            } else if (adaptedMaxNotes <= 9) {
+                acidSlideProb = std::min(0.35f, acidSlideProb + 0.04f);
+            }
+        }
+        int slideProb = prob100(acidSlideProb);
+        int accentProb = prob100(flavorAccentProb);
         int ghostProbVal = prob100(adaptedGhostProb);
 
         for (int i = 0; i < 16; i++) {
@@ -233,8 +268,8 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm) con
         
         // Probability cache (using adapted values)
         int rootBiasProb = prob100(adaptedRootBias);
-        int accentProb = prob100(cfg.pattern.accentProbability);
-        int slideProb = prob100(cfg.pattern.slideProbability);
+        int accentProb = prob100(flavorAccentProb);
+        int slideProb = prob100(flavorSlideProb);
         int ghostProbVal = prob100(adaptedGhostProb);
 
         for (int i = 0; i < 16; i++) {
