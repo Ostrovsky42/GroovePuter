@@ -432,30 +432,53 @@ void MiniAcidDisplay::drawSplashScreen() {
     gfx_.drawText(x, y, text);
   };
 
-  gfx_.setFont(GfxFont::kFreeSerif18pt);
-  int title_h = gfx_.fontHeight();
+  unsigned long elapsed = millis() - splash_start_ms_;
+  
+  static const char* const logo[] = {
+    "_$$$$__$$$$$___$$$$___$$$$__$$__$$_$$$$$",
+    "$$_____$$__$$_$$__$$_$$__$$_$$__$$_$$___",
+    "$$_$$$_$$$$$__$$__$$_$$__$$_$$__$$_$$$$_",
+    "$$__$$_$$__$$_$$__$$_$$__$$__$$$$__$$___",
+    "_$$$$__$$__$$__$$$$___$$$$____$$___$$$$$",
+    "________________________________________",
+    "___$$$$$__$$__$$_$$$$$$_$$$$$_$$$$$____",
+    "___$$__$$_$$__$$___$$___$$____$$__$$___",
+    "___$$$$$__$$__$$___$$___$$$$__$$$$$____",
+    "___$$_____$$__$$___$$___$$____$$__$$___",
+    "___$$______$$$$____$$___$$$$$_$$__$$___",
+  };
+  constexpr int kLineCount = 11;
+  constexpr int kLineDelay = 140; // ms per line
+
   gfx_.setFont(GfxFont::kFont5x7);
   int small_h = gfx_.fontHeight();
+  int logo_h = kLineCount * (small_h + 1);
+  int start_y = (gfx_.height() - logo_h - 40) / 2;
+  if (start_y < 10) start_y = 10;
 
-  int gap = 6;
-  int total_h = title_h + gap + small_h * 2;
-  int start_y = (gfx_.height() - total_h) / 2;
-  if (start_y < 6) start_y = 6;
+  // Draw logo lines
+  for (int i = 0; i < kLineCount; ++i) {
+    unsigned long lineTrigger = i * kLineDelay;
+    if (elapsed < lineTrigger) continue;
 
-  gfx_.setFont(GfxFont::kFreeSerif18pt);
-  centerText(start_y, "MiniAcid", COLOR_ACCENT);
+    int y = start_y + i * (small_h + 1);
+    
+    // Flicker effect: first 50ms of a line's life is white
+    IGfxColor color = COLOR_ACCENT;
+    if (elapsed < lineTrigger + 50) {
+        color = COLOR_WHITE;
+    }
+    
+    centerText(y, logo[i], color);
+  }
 
-  gfx_.setFont(GfxFont::kFont5x7);
-  int info_y = start_y + title_h + gap;
-  centerText(info_y, "Use keys [ ] to move around", COLOR_WHITE);
-  centerText(info_y + small_h, "Space - to start/stop sound", COLOR_WHITE);
-  centerText(info_y + 2 * small_h, "ESC - for help on each page", COLOR_WHITE);
-  
-  centerText(info_y + 3 * small_h + 5, "v0.0.8", IGfxColor::Gray());
-  
-  // char build_info[64];
-  // snprintf(build_info, sizeof(build_info), "Built: %s %s", __DATE__, __TIME__);
-  // centerText(info_y + 4 * small_h + 6, build_info, IGfxColor::DarkGray());
+  // Draw info text after logo starts finishing
+  if (elapsed > kLineCount * kLineDelay + 200) {
+    int info_y = start_y + logo_h + 15;
+    centerText(info_y, "Use keys [ ] to move around", COLOR_WHITE);
+    centerText(info_y + small_h + 2, "Space - to start/stop sound", COLOR_WHITE);
+    centerText(info_y + 2 * small_h + 4, "ESC - for help on each page", COLOR_WHITE);
+  }
 }
 
 void MiniAcidDisplay::drawDebugOverlay() {

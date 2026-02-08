@@ -145,13 +145,13 @@ int SongPage::cursorRow() const {
 int SongPage::cursorTrack() const {
   int track = cursor_track_;
   if (track < 0) track = 0;
-  int maxTrack = visibleTrackCount() + 1;  // +playhead +mode
+  int maxTrack = maxEditableTrackColumn();
   if (track > maxTrack) track = maxTrack;
   return track;
 }
 
-bool SongPage::cursorOnModeButton() const { return cursorTrack() == visibleTrackCount() + 1; }
-bool SongPage::cursorOnPlayheadLabel() const { return cursorTrack() == visibleTrackCount(); }
+bool SongPage::cursorOnModeButton() const { return false; }
+bool SongPage::cursorOnPlayheadLabel() const { return false; }
 
 int SongPage::visibleTrackCount() const { return 3; }
 
@@ -185,7 +185,7 @@ void SongPage::startSelection() {
   has_selection_ = true;
   selection_locked_ = false;
   selection_start_row_ = cursor_row_;
-  selection_start_track_ = cursor_track_;
+  selection_start_track_ = cursorTrack();
   LOG_DEBUG_UI("Selection START anchor=(r%d,c%d)", selection_start_row_, selection_start_track_);
 }
 
@@ -220,7 +220,7 @@ bool SongPage::moveSelectionFrameBy(int deltaRow, int deltaTrack) {
   int dst_min_track = min_track + deltaTrack;
   int dst_max_track = max_track + deltaTrack;
 
-  int maxTrack = visibleTrackCount() + 1;  // includes playhead + mode columns
+  int maxTrack = maxEditableTrackColumn();
   if (dst_min_row < 0 || dst_max_row >= Song::kMaxPositions) return false;
   if (dst_min_track < 0 || dst_max_track > maxTrack) return false;
 
@@ -247,15 +247,23 @@ void SongPage::updateLoopRangeFromSelection() {
 }
 
 void SongPage::getSelectionBounds(int& min_row, int& max_row, int& min_track, int& max_track) const {
+  int maxTrack = maxEditableTrackColumn();
+  int currentTrack = cursor_track_;
+  if (currentTrack < 0) currentTrack = 0;
+  if (currentTrack > maxTrack) currentTrack = maxTrack;
+
   if (!has_selection_) {
     min_row = max_row = cursor_row_;
-    min_track = max_track = cursor_track_;
+    min_track = max_track = currentTrack;
     return;
   }
+  int startTrack = selection_start_track_;
+  if (startTrack < 0) startTrack = 0;
+  if (startTrack > maxTrack) startTrack = maxTrack;
   min_row = std::min(selection_start_row_, cursor_row_);
   max_row = std::max(selection_start_row_, cursor_row_);
-  min_track = std::min(selection_start_track_, cursor_track_);
-  max_track = std::max(selection_start_track_, cursor_track_);
+  min_track = std::min(startTrack, currentTrack);
+  max_track = std::max(startTrack, currentTrack);
 }
 
 void SongPage::moveCursorHorizontal(int delta, bool extend_selection) {
@@ -270,7 +278,7 @@ void SongPage::moveCursorHorizontal(int delta, bool extend_selection) {
   int track = cursorTrack();
   track += delta;
   if (track < 0) track = 0;
-  int maxTrack = visibleTrackCount() + 1;
+  int maxTrack = maxEditableTrackColumn();
   if (track > maxTrack) track = maxTrack;
   cursor_track_ = track;
   syncSongPositionToCursor();
@@ -1254,14 +1262,12 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
   if (scroll_row_ > maxStart) scroll_row_ = maxStart;
 
   int track_count = visibleTrackCount();
-  int pos_col_w = 20;
+  int pos_col_w = 0;
   int spacing = 2;
   int modeBtnW = 55;
   int track_col_w = (w - pos_col_w - spacing * (track_count + 2) - modeBtnW) / track_count;
   if (track_col_w < 20) track_col_w = 20;
 
-  gfx.setTextColor(COLOR_LABEL);
-  gfx.drawText(x, body_y, "POS");
   gfx.setTextColor(song303Color(0));
   gfx.drawText(x + pos_col_w + spacing, body_y, "303A");
   gfx.setTextColor(song303Color(1));
@@ -1299,11 +1305,6 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
     if (row_idx == playhead && playingSong) {
       gfx.fillRect(x, ry, w, row_h, COLOR_PANEL);
     }
-    char posBuf[16];
-    snprintf(posBuf, sizeof(posBuf), "%02d", row_idx + 1);
-    gfx.setTextColor(COLOR_MUTED);
-    gfx.drawText(x, ry + 2, posBuf);
-
     for (int t = 0; t < track_count; ++t) {
       bool valid = false;
       SongTrack track = trackForColumn(t, valid);
@@ -1462,7 +1463,7 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
 
   auto drawPane = [=, &gfx, this](int paneX, int paneW, int paneSlot, bool editable) {
     int tracks = visibleTrackCount();
-    int pos_w = 16;
+    int pos_w = 0;
     int col_gap = 1;
     int totalCellW = paneW - pos_w - 1 - col_gap * (tracks - 1);
     int cell_w = totalCellW / tracks;
@@ -1470,13 +1471,11 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
 
     // Dim inactive pane
     uint16_t headerColor = editable ? TE_ACCENT.color16() : TE_DIM.color16();
-    uint16_t rowColor = editable ? TE_ACCENT.color16() : TE_DIM.color16();
     uint16_t sepColor = editable ? TE_GRID.color16() : TE_DIM_GRID;
     
     // Header
     gfx.setTextColor(headerColor);
     int grid_y = y + header_h + 2; 
-    gfx.drawText(paneX + 1, grid_y, "#");
     
     if (!split_compare_ || cell_w > 20) {
         gfx.drawText(paneX + pos_w + 2, grid_y, "A");
@@ -1520,11 +1519,6 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
         gfx.drawLine(paneX, ry + cell_h - 1, paneX + paneW - 1, ry + cell_h - 1,
                      paneSlot == playSlot ? TE_ACCENT : TE_DIM);
       }
-
-      char rowBuf[6];
-      snprintf(rowBuf, sizeof(rowBuf), "%02d", row_idx + 1);
-      gfx.setTextColor(row_idx < len ? rowColor : TE_DIM.color16());
-      gfx.drawText(paneX + 1, ry + 1, rowBuf);
 
       for (int t = 0; t < tracks; ++t) {
         int tx = paneX + pos_w + t * (cell_w + col_gap);
@@ -1640,11 +1634,9 @@ void SongPage::drawRetroClassicStyle(IGfx& gfx) {
     int row_h = 10;
     int header_y = y + 26;
     int grid_y = header_y + 12;
-    int pos_w = 25;
+    int pos_w = 0;
     int track_w = (w - pos_w - 4) / track_count;
 
-    gfx.setTextColor(IGfxColor(RetroTheme::TEXT_SECONDARY));
-    gfx.drawText(x + 4, header_y, "POS");
     gfx.setTextColor(IGfxColor(RetroTheme::NEON_ORANGE));
     gfx.drawText(x + pos_w + 4, header_y, "A");
     gfx.setTextColor(IGfxColor(RetroTheme::NEON_MAGENTA));
@@ -1674,13 +1666,6 @@ void SongPage::drawRetroClassicStyle(IGfx& gfx) {
         }
 
         char buf[16];
-        int rowLabel = ridx + 1;
-        if (rowLabel < 0) rowLabel = 0;
-        if (rowLabel > 9999) rowLabel = 9999;
-        std::snprintf(buf, sizeof(buf), "%02d", rowLabel);
-        gfx.setTextColor(IGfxColor(RetroTheme::TEXT_DIM));
-        gfx.drawText(x + 4, ry, buf);
-
         for (int t = 0; t < track_count; ++t) {
             int tx = x + pos_w + t * track_w + 4;
             bool valid = false;
@@ -1741,7 +1726,7 @@ void SongPage::drawAmberStyle(IGfx& gfx) {
     int track_count = visibleTrackCount();
     int row_h = 10;
     int grid_y = y + 38;
-    int pos_w = 25;
+    int pos_w = 0;
     int track_w = (w - pos_w - 4) / track_count;
 
     int visible_rows = (h - grid_y - 12) / row_h;
@@ -1765,13 +1750,6 @@ void SongPage::drawAmberStyle(IGfx& gfx) {
         }
 
         char buf[16];
-        int rowLabel = ridx + 1;
-        if (rowLabel < 0) rowLabel = 0;
-        if (rowLabel > 9999) rowLabel = 9999;
-        std::snprintf(buf, sizeof(buf), "%02d", rowLabel);
-        gfx.setTextColor(IGfxColor(AmberTheme::TEXT_DIM));
-        gfx.drawText(x + 4, ry, buf);
-
         for (int t = 0; t < track_count; ++t) {
             int tx = x + pos_w + t * track_w + 4;
             bool valid = false;

@@ -27,12 +27,73 @@ namespace {
 constexpr int kGenreVisibleRows = 4;
 constexpr int kTextureVisibleRows = 4;
 
+enum class ApplyMode : uint8_t {
+    SoundOnly = 0,
+    SoundPattern = 1,
+    SoundPatternTempo = 2
+};
+
+ApplyMode currentApplyMode(const MiniAcid& mini) {
+    const auto& gs = mini.sceneManager().currentScene().genre;
+    if (!gs.regenerateOnApply) return ApplyMode::SoundOnly;
+    if (gs.applyTempoOnApply) return ApplyMode::SoundPatternTempo;
+    return ApplyMode::SoundPattern;
+}
+
+void setApplyMode(GenreSettings& gs, ApplyMode mode) {
+    switch (mode) {
+        case ApplyMode::SoundOnly:
+            gs.regenerateOnApply = false;
+            gs.applyTempoOnApply = false;
+            break;
+        case ApplyMode::SoundPattern:
+            gs.regenerateOnApply = true;
+            gs.applyTempoOnApply = false;
+            break;
+        case ApplyMode::SoundPatternTempo:
+            gs.regenerateOnApply = true;
+            gs.applyTempoOnApply = true;
+            break;
+    }
+}
+
+void cycleApplyMode(GenreSettings& gs) {
+    ApplyMode mode = ApplyMode::SoundOnly;
+    if (gs.regenerateOnApply) {
+        mode = gs.applyTempoOnApply ? ApplyMode::SoundPatternTempo : ApplyMode::SoundPattern;
+    }
+    switch (mode) {
+        case ApplyMode::SoundOnly: setApplyMode(gs, ApplyMode::SoundPattern); break;
+        case ApplyMode::SoundPattern: setApplyMode(gs, ApplyMode::SoundPatternTempo); break;
+        case ApplyMode::SoundPatternTempo: setApplyMode(gs, ApplyMode::SoundOnly); break;
+    }
+}
+
+const char* applyModeToast(const MiniAcid& mini) {
+    switch (currentApplyMode(mini)) {
+        case ApplyMode::SoundOnly: return "Apply Mode: SOUND ONLY (Keeps patterns)";
+        case ApplyMode::SoundPattern: return "Apply Mode: SOUND+PATTERN (Regenerates)";
+        case ApplyMode::SoundPatternTempo: return "Apply Mode: SOUND+PATTERN+TEMPO";
+    }
+    return "Apply Mode";
+}
+
 const char* applyModeShort(const MiniAcid& mini) {
-    return mini.sceneManager().currentScene().genre.regenerateOnApply ? "S+P" : "SND";
+    switch (currentApplyMode(mini)) {
+        case ApplyMode::SoundOnly: return "SND";
+        case ApplyMode::SoundPattern: return "S+P";
+        case ApplyMode::SoundPatternTempo: return "S+T";
+    }
+    return "SND";
 }
 
 const char* applyModeLong(const MiniAcid& mini) {
-    return mini.sceneManager().currentScene().genre.regenerateOnApply ? "[X] SOUND+PATTERN" : "[ ] SOUND ONLY";
+    switch (currentApplyMode(mini)) {
+        case ApplyMode::SoundOnly: return "[ ] SOUND ONLY";
+        case ApplyMode::SoundPattern: return "[X] SOUND+PATTERN";
+        case ApplyMode::SoundPatternTempo: return "[X] SOUND+PATTERN+TEMPO";
+    }
+    return "[ ] SOUND ONLY";
 }
 
 const char* curatedModeShort(const MiniAcid& mini) {
@@ -44,7 +105,11 @@ const char* grooveModeShort(const MiniAcid& mini) {
 }
 
 bool regenOnApply(const MiniAcid& mini) {
-    return mini.sceneManager().currentScene().genre.regenerateOnApply;
+    return currentApplyMode(mini) != ApplyMode::SoundOnly;
+}
+
+bool tempoOnApply(const MiniAcid& mini) {
+    return currentApplyMode(mini) == ApplyMode::SoundPatternTempo;
 }
 
 int computeScrollTop(int itemCount, int visibleRows, int selectedIndex, int currentTop) {
@@ -88,6 +153,11 @@ const char* GenrePage::presetNames[8] = {
     "DUB TECHNO", "RAVE", "DUB REGGAE",
     "TRIPHOP DUST", "BROKEN BEAT"
 };
+
+// Curated BPM targets for 1..8 preset buttons.
+static const uint8_t kPresetBpm[8] = {128, 112, 136, 118, 128, 92, 88, 122};
+// Manual genre/texture apply BPM hint by generative mode.
+static const uint8_t kGenreBpm[kGenerativeModeCount] = {128, 112, 136, 122, 138, 92, 88, 118, 140};
 
 namespace {
 const char* kPresetShortNames[8] = {
@@ -180,7 +250,7 @@ void GenrePage::drawFooter(IGfx& gfx) {
             break;
         case FocusArea::APPLY_MODE:
             left = "SPACE/M:Toggle Apply";
-            right = regenOnApply(mini_acid_) ? "S+P: REGENERATES" : "SND: KEEPS PATTERNS";
+            right = tempoOnApply(mini_acid_) ? "S+T: +BPM" : (regenOnApply(mini_acid_) ? "S+P: REGENERATES" : "SND: KEEPS PATTERNS");
             focusMode = nullptr;
             break;
     }
@@ -726,9 +796,8 @@ bool GenrePage::handleEvent(UIEvent& e) {
     if (key == '\n' || key == '\r') {
         if (focus_ == FocusArea::APPLY_MODE) {
             auto& gs = mini_acid_.sceneManager().currentScene().genre;
-            gs.regenerateOnApply = !gs.regenerateOnApply;
-            UI::showToast(gs.regenerateOnApply ? "Apply Mode: SOUND+PATTERN (Regenerates)"
-                                               : "Apply Mode: SOUND ONLY (Keeps patterns)", 1800);
+            cycleApplyMode(gs);
+            UI::showToast(applyModeToast(mini_acid_), 1800);
             return true;
         }
         applyCurrent();
@@ -738,18 +807,16 @@ bool GenrePage::handleEvent(UIEvent& e) {
     // SPACE: toggle apply mode when focused
     if (key == ' ' && focus_ == FocusArea::APPLY_MODE) {
         auto& gs = mini_acid_.sceneManager().currentScene().genre;
-        gs.regenerateOnApply = !gs.regenerateOnApply;
-        UI::showToast(gs.regenerateOnApply ? "Apply Mode: SOUND+PATTERN (Regenerates)"
-                                           : "Apply Mode: SOUND ONLY (Keeps patterns)", 1800);
+        cycleApplyMode(gs);
+        UI::showToast(applyModeToast(mini_acid_), 1800);
         return true;
     }
 
-    // M: toggle apply mode (SOUND+PATTERN / SOUND ONLY)
+    // M: toggle apply mode (SOUND / SOUND+PATTERN / SOUND+PATTERN+TEMPO)
     if (key == 'm' || key == 'M') {
         auto& gs = mini_acid_.sceneManager().currentScene().genre;
-        gs.regenerateOnApply = !gs.regenerateOnApply;
-        UI::showToast(gs.regenerateOnApply ? "Apply Mode: SOUND+PATTERN (Regenerates)"
-                                           : "Apply Mode: SOUND ONLY (Keeps patterns)", 1800);
+        cycleApplyMode(gs);
+        UI::showToast(applyModeToast(mini_acid_), 1800);
         return true;
     }
 
@@ -849,7 +916,10 @@ void GenrePage::buildTextureLabel(int textureIndex, char* out, size_t outSize) c
 
 void GenrePage::applyCurrent() {
     const bool doRegenerate = regenOnApply(mini_acid_);
+    const bool doApplyTempo = tempoOnApply(mini_acid_);
+    int targetBpm = kGenreBpm[genreIndex_ < 0 ? 0 : (genreIndex_ >= kGenerativeModeCount ? (kGenerativeModeCount - 1) : genreIndex_)];
     if (focus_ == FocusArea::PRESETS) {
+        targetBpm = kPresetBpm[presetIndex_ < 0 ? 0 : (presetIndex_ >= 8 ? 7 : presetIndex_)];
         withAudioGuard([&]() {
             mini_acid_.genreManager().setGenerativeMode(static_cast<GenerativeMode>(kPresetGenre[presetIndex_]));
             mini_acid_.genreManager().setTextureMode(static_cast<TextureMode>(kPresetTexture[presetIndex_]));
@@ -862,6 +932,7 @@ void GenrePage::applyCurrent() {
             gs.generativeMode = static_cast<uint8_t>(kPresetGenre[presetIndex_]);
             gs.textureMode = static_cast<uint8_t>(mini_acid_.genreManager().textureMode());
             if (doRegenerate) mini_acid_.regeneratePatternsWithGenre();
+            if (doApplyTempo) mini_acid_.setBpm(static_cast<float>(targetBpm));
         });
         updateFromEngine();
         prevGenreIndex_ = genreIndex_;
@@ -879,6 +950,7 @@ void GenrePage::applyCurrent() {
             gs.generativeMode = static_cast<uint8_t>(genreIndex_);
             gs.textureMode = static_cast<uint8_t>(textureIndex_);
             if (doRegenerate) mini_acid_.regeneratePatternsWithGenre();
+            if (doApplyTempo) mini_acid_.setBpm(static_cast<float>(targetBpm));
         });
         prevGenreIndex_ = genreIndex_;
         prevTextureIndex_ = textureIndex_;
@@ -887,9 +959,10 @@ void GenrePage::applyCurrent() {
     char toast[80];
     const int g = genreIndex_;
     const int t = textureIndex_;
-    std::snprintf(toast, sizeof(toast), "%s/%s applied (%s)",
+    std::snprintf(toast, sizeof(toast), "%s/%s applied (%s%s)",
                   genreNames[g], textureNames[t],
-                  doRegenerate ? "Regenerated" : "Patterns kept");
+                  doRegenerate ? "Regenerated" : "Patterns kept",
+                  doApplyTempo ? ", BPM set" : "");
     UI::showToast(toast, 1800);
 }
 

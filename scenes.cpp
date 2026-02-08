@@ -930,6 +930,7 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
   }
   if (path == Path::Genre) {
     if (lastKey_ == "regen") target_.genre.regenerateOnApply = value;
+    else if (lastKey_ == "tempo") target_.genre.applyTempoOnApply = value;
     else if (lastKey_ == "cur") target_.genre.curatedMode = value;
     return;
   }
@@ -1146,12 +1147,11 @@ void SceneManager::loadDefaultScene() {
   synthParameters_[0] = SynthParameters();
   synthParameters_[1] = SynthParameters();
   drumEngineName_ = "808";
-  setBpm(100.0f);
-  songMode_ = false;
-  songPosition_ = 0;
-  loopMode_ = false;
+  setBpm(70.0f);
+  songMode_ = true;
+  loopMode_ = true;
   loopStartRow_ = 0;
-  loopEndRow_ = 0;
+  loopEndRow_ = 7;
   mode_ = GrooveboxMode::Acid;
   scene_->activeSongSlot = 0;
   for (int i = 0; i < 2; ++i) {
@@ -1176,34 +1176,34 @@ void SceneManager::loadDefaultScene() {
     }
   }
 
-  int8_t notes[SynthPattern::kSteps] = {48, 48, 55, 55, 50, 50, 55, 55,
-                                        48, 48, 55, 55, 50, 55, 50, -1};
-  bool accent[SynthPattern::kSteps] = {false, true, false, true, false, true,
-                                       false, true, false, true, false, true,
-                                       false, true, false, false};
-  bool slide[SynthPattern::kSteps] = {false, true, false, true, false, true,
-                                      false, true, false, true, false, true,
-                                      false, true, false, false};
+  int8_t notes[SynthPattern::kSteps] = {64, 64, -1, 64, -1, 60, 64, -1,
+                                        67, -1, -1, -1, 55, -1, -1, -1};
+  bool accent[SynthPattern::kSteps] = {true, true, false, true, false, true,
+                                       true, false, true, false, false, false,
+                                       true, false, false, false};
+  bool slide[SynthPattern::kSteps] = {false, false, false, false, false, false,
+                                      false, false, false, false, false, false,
+                                      false, false, false, false};
 
-  int8_t notes2[SynthPattern::kSteps] = {48, 48, 55, 55, 50, 50, 55, 55,
-                                         48, 48, 55, 55, 50, 55, 50, -1};
-  bool accent2[SynthPattern::kSteps] = {true,  false, true,  false, true,  false,
-                                        true,  false, true,  false, true,  false,
-                                        true,  false, true,  false};
-  bool slide2[SynthPattern::kSteps] = {false, false, true,  false, false, false,
-                                       true,  false, false, false, true,  false,
-                                       false, false, true,  false};
+  int8_t notes2[SynthPattern::kSteps] = {52, 52, -1, 52, -1, 48, 52, -1,
+                                         55, -1, -1, -1, 43, -1, -1, -1};
+  bool accent2[SynthPattern::kSteps] = {true, true, false, true, false, true,
+                                        true, false, true, false, false, false,
+                                        true, false, false, false};
+  bool slide2[SynthPattern::kSteps] = {false, false, false, false, false, false,
+                                       false, false, false, false, false, false,
+                                       false, false, false, false};
 
-  bool kick[DrumPattern::kSteps] = {true,  false, false, false, true,  false,
-                                    false, false, true,  false, false, false,
+  bool kick[DrumPattern::kSteps] = {true,  true,  false, true,  false, true,
+                                    true,  false, true,  false, false, false,
                                     true,  false, false, false};
 
-  bool snare[DrumPattern::kSteps] = {false, false, true,  false, false, false,
-                                     true,  false, false, false, true,  false,
-                                     false, false, true,  false};
+  bool snare[DrumPattern::kSteps] = {false, false, false, false, false, true,
+                                     false, false, false, false, false, false,
+                                     false, false, false, false};
 
-  bool hat[DrumPattern::kSteps] = {true, true, true, true, true, true, true, true,
-                                   true, true, true, true, true, true, true, true};
+  bool hat[DrumPattern::kSteps] = {true, false, true, false, true, false, true, false,
+                                   true, false, true, false, true, false, true, false};
 
   bool openHat[DrumPattern::kSteps] = {false, false, false, true,  false, false, false, false,
                                        false, false, false, true,  false, false, false, false};
@@ -1220,14 +1220,87 @@ void SceneManager::loadDefaultScene() {
   bool clap[DrumPattern::kSteps] = {false, false, false, false, false, false, false, false,
                                     false, false, false, false, true,  false, false, false};
 
-  for (int i = 0; i < SynthPattern::kSteps; ++i) {
-    scene_->synthABanks[0].patterns[0].steps[i].note = notes[i];
-    scene_->synthABanks[0].patterns[0].steps[i].accent = accent[i];
-    scene_->synthABanks[0].patterns[0].steps[i].slide = slide[i];
+  // Pattern 0: Intro (A-1)
+  auto& introA = scene_->synthABanks[0].patterns[0];
+  auto& introB = scene_->synthBBanks[0].patterns[0];
+  for (int i = 0; i < 16; ++i) { introA.steps[i].accent = false; introB.steps[i].note = -1; }
+  introA.steps[0].note = 64;  // E4
+  introA.steps[1].note = 64;  // E4
+  introA.steps[3].note = 64;  // E4
+  introA.steps[5].note = 60;  // C4
+  introA.steps[6].note = 64;  // E4
+  introA.steps[8].note = 67;  // G4
+  introA.steps[8].accent = true;
+  introA.steps[12].note = 55; // G3
+  introB.steps[0].note = 52;  // E3
+  introB.steps[1].note = 52;
+  introB.steps[3].note = 52;
+  introB.steps[5].note = 48;  // C3
+  introB.steps[6].note = 52;
+  introB.steps[8].note = 43;  // G2
+  introB.steps[12].note = 31; // G1
 
-    scene_->synthBBanks[0].patterns[0].steps[i].note = notes2[i];
-    scene_->synthBBanks[0].patterns[0].steps[i].accent = accent2[i];
-    scene_->synthBBanks[0].patterns[0].steps[i].slide = slide2[i];
+  // Pattern 1: Main Theme Part A (A-2 / B-2)
+  auto& themeA_1 = scene_->synthABanks[0].patterns[1];
+  auto& themeB_1 = scene_->synthBBanks[0].patterns[1];
+  int8_t notesA1[16] = {60, -1, 55, -1, 52, -1, 57, -1, 59, -1, 58, 57, -1, 55, 64, 67};
+  for (int i = 0; i < 16; ++i) {
+      themeA_1.steps[i].note = notesA1[i];
+      themeA_1.steps[i].accent = (notesA1[i] != -1);
+      // Bass for A-1 (C-G-C-G hits)
+      if (i == 0 || i == 8) themeB_1.steps[i].note = 48; // C2
+      else if (i == 4 || i == 12) themeB_1.steps[i].note = 43; // G1
+      else themeB_1.steps[i].note = -1;
+  }
+
+  // Pattern 2: Main Theme Part B (A-3 / B-3)
+  auto& themeA_2 = scene_->synthABanks[0].patterns[2];
+  auto& themeB_2 = scene_->synthBBanks[0].patterns[2];
+  int8_t notesA2[16] = {69, -1, 65, 67, -1, 64, -1, 60, 62, 59, -1, -1, -1, -1, -1, -1};
+  for (int i = 0; i < 16; ++i) {
+      themeA_2.steps[i].note = notesA2[i];
+      themeA_2.steps[i].accent = (notesA2[i] != -1);
+      // Bass for A-2 (F-C-G)
+      if (i == 0) themeB_2.steps[i].note = 41; // F1
+      else if (i == 4) themeB_2.steps[i].note = 48; // C2
+      else if (i == 8) themeB_2.steps[i].note = 43; // G1
+      else themeB_2.steps[i].note = -1;
+  }
+
+  // Pattern 3: Ending/Trill (A-4 / B-4)
+  auto& themeA_3 = scene_->synthABanks[0].patterns[3];
+  auto& themeB_3 = scene_->synthBBanks[0].patterns[3];
+  int8_t notesA3[16] = {-1, 67, 66, 65, 63, -1, 64, -1, 56, 57, 60, -1, 57, 60, 62, -1};
+  for (int i = 0; i < 16; ++i) {
+      themeA_3.steps[i].note = notesA3[i];
+      themeA_3.steps[i].accent = (notesA3[i] != -1);
+      if (i % 4 == 0) themeB_3.steps[i].note = 36; // C1
+      else themeB_3.steps[i].note = -1;
+  }
+
+  // Patterns 4..7: variations/copies so full A-1..A-8 and B-1..B-8 are usable.
+  scene_->synthABanks[0].patterns[4] = scene_->synthABanks[0].patterns[0];
+  scene_->synthABanks[0].patterns[5] = scene_->synthABanks[0].patterns[1];
+  scene_->synthABanks[0].patterns[6] = scene_->synthABanks[0].patterns[2];
+  scene_->synthABanks[0].patterns[7] = scene_->synthABanks[0].patterns[3];
+  scene_->synthBBanks[0].patterns[4] = scene_->synthBBanks[0].patterns[0];
+  scene_->synthBBanks[0].patterns[5] = scene_->synthBBanks[0].patterns[1];
+  scene_->synthBBanks[0].patterns[6] = scene_->synthBBanks[0].patterns[2];
+  scene_->synthBBanks[0].patterns[7] = scene_->synthBBanks[0].patterns[3];
+
+  // Tiny variation for second half so cycle feels longer than a strict copy.
+  scene_->synthABanks[0].patterns[4].steps[8].accent = true;
+  scene_->synthABanks[0].patterns[5].steps[15].accent = true;
+  scene_->synthABanks[0].patterns[6].steps[0].accent = true;
+  scene_->synthABanks[0].patterns[7].steps[14].accent = true;
+
+  // Song Sequence
+  scene_->songs[0].length = 8;
+  for (int p = 0; p < 8; ++p) {
+    scene_->songs[0].positions[p].patterns[0] = p; // Synth A (Tracks A-1..A-8)
+    scene_->songs[0].positions[p].patterns[1] = p; // Synth B (Tracks B-1..B-8)
+    scene_->songs[0].positions[p].patterns[2] = 0; // Drums (DR-1 always)
+    scene_->songs[0].positions[p].patterns[3] = -1; // VO off
   }
 
   for (int i = 0; i < DrumPattern::kSteps; ++i) {
@@ -1773,6 +1846,7 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   genreObj["tex"] = scene_->genre.textureMode;
   genreObj["amt"] = scene_->genre.textureAmount;
   genreObj["regen"] = scene_->genre.regenerateOnApply;
+  genreObj["tempo"] = scene_->genre.applyTempoOnApply;
   genreObj["cur"] = scene_->genre.curatedMode;
 
   ArduinoJson::JsonObject genParams = root["generatorParams"].to<ArduinoJson::JsonObject>();
@@ -2052,6 +2126,7 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     loaded->genre.textureAmount = static_cast<uint8_t>(amt);
 
     loaded->genre.regenerateOnApply = genreObj["regen"].is<bool>() ? genreObj["regen"].as<bool>() : loaded->genre.regenerateOnApply;
+    loaded->genre.applyTempoOnApply = genreObj["tempo"].is<bool>() ? genreObj["tempo"].as<bool>() : loaded->genre.applyTempoOnApply;
     loaded->genre.curatedMode = genreObj["cur"].is<bool>() ? genreObj["cur"].as<bool>() : loaded->genre.curatedMode;
   }
 

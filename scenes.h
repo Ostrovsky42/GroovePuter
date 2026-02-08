@@ -280,6 +280,7 @@ struct GenreSettings {
     uint8_t textureMode = 0;      // TextureMode enum value
     uint8_t textureAmount = 70;   // 0..100 intensity
     bool regenerateOnApply = true; // true: SOUND+PATTERN, false: SOUND ONLY
+    bool applyTempoOnApply = false; // true: SOUND+PATTERN+TEMPO
     bool curatedMode = true;      // true: only allowed Genre x Texture combos
 };
 
@@ -851,6 +852,8 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeInt(scene_->genre.textureAmount)) return false;
   if (!writeLiteral(",\"regen\":")) return false;
   if (!writeBool(scene_->genre.regenerateOnApply)) return false;
+  if (!writeLiteral(",\"tempo\":")) return false;
+  if (!writeBool(scene_->genre.applyTempoOnApply)) return false;
   if (!writeLiteral(",\"cur\":")) return false;
   if (!writeBool(scene_->genre.curatedMode)) return false;
   if (!writeChar('}')) return false;

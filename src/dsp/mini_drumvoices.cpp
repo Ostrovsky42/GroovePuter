@@ -240,12 +240,12 @@ void TR808DrumSynthVoice::triggerHat(bool accent, uint8_t velocity) {
 void TR808DrumSynthVoice::triggerOpenHat(bool accent, uint8_t velocity) {
   openHatActive = true;
   float vel = velocity / 100.0f;
-  openHatEnvAmp = (accent ? 0.999f : 0.9f) * vel;
+  openHatEnvAmp = (accent ? 0.9975f : 0.86f) * vel;
   openHatToneEnv = 1.0f;
   openHatPhaseA = 0.0f;
   openHatPhaseB = 0.37f;
-  openHatAccentGain = accent ? 1.3f : 1.0f;
-  openHatBrightness = accent ? 1.25f : 1.0f;
+  openHatAccentGain = accent ? 1.15f : 1.0f;
+  openHatBrightness = accent ? 1.05f : 0.9f;
   openHatAccentDistortion = accent;
 }
 
@@ -527,22 +527,22 @@ float TR808DrumSynthVoice::processOpenHat() {
   if (!openHatActive)
     return 0.0f;
 
-  openHatEnvAmp *= 0.9993f;
-  openHatToneEnv *= 0.94f;
+  openHatEnvAmp *= 0.9989f;
+  openHatToneEnv *= 0.91f;
   if (openHatEnvAmp < 0.0004f) {
     openHatActive = false;
     return 0.0f;
   }
 
   float n = frand();
-  float alpha = 0.93f;
+  float alpha = 0.885f;
   openHatHp = alpha * (openHatHp + n - openHatPrev);
   openHatPrev = n;
 
-  openHatPhaseA += 5100.0f * invSampleRate;
+  openHatPhaseA += 4100.0f * invSampleRate;
   if (openHatPhaseA >= 1.0f)
     openHatPhaseA -= 1.0f;
-  openHatPhaseB += 6600.0f * invSampleRate;
+  openHatPhaseB += 5600.0f * invSampleRate;
   if (openHatPhaseB >= 1.0f)
     openHatPhaseB -= 1.0f;
   float tone =
@@ -550,8 +550,8 @@ float TR808DrumSynthVoice::processOpenHat() {
      Wavetable::lookupSine((uint32_t)(openHatPhaseB * kPhaseToUint32))) *
     0.5f * openHatToneEnv * openHatBrightness;
 
-  float out = openHatHp * 0.55f + tone * 0.95f;
-  out *= openHatEnvAmp * 0.7f * openHatAccentGain;
+  float out = openHatHp * 0.48f + tone * 0.62f;
+  out *= openHatEnvAmp * 0.55f * openHatAccentGain;
   float res = applyAccentDistortion(out, openHatAccentDistortion);
   return lofiEnabled ? lofi.process(res, OPEN_HAT) : res;
 }
@@ -851,12 +851,12 @@ void TR909DrumSynthVoice::triggerHat(bool accent, uint8_t velocity) {
 void TR909DrumSynthVoice::triggerOpenHat(bool accent, uint8_t velocity) {
   openHatActive = true;
   float vel = velocity / 100.0f;
-  openHatEnvAmp = (accent ? 0.9995f : 0.95f) * vel;
+  openHatEnvAmp = (accent ? 0.9985f : 0.88f) * vel;
   openHatToneEnv = 1.0f;
   openHatPhaseA = 0.0f;
   openHatPhaseB = 0.29f;
-  openHatAccentGain = accent ? 1.25f : 1.0f;
-  openHatBrightness = accent ? 1.35f : 1.1f;
+  openHatAccentGain = accent ? 1.15f : 1.0f;
+  openHatBrightness = accent ? 1.15f : 0.95f;
   openHatAccentDistortion = accent;
 }
 
@@ -1042,30 +1042,30 @@ float TR909DrumSynthVoice::processOpenHat() {
   if (!openHatActive)
     return 0.0f;
 
-  openHatEnvAmp *= 0.99955f;
-  openHatToneEnv *= 0.93f;
+  openHatEnvAmp *= 0.9991f;
+  openHatToneEnv *= 0.90f;
   if (openHatEnvAmp < 0.00035f) {
     openHatActive = false;
     return 0.0f;
   }
 
   float n = frand();
-  float alpha = 0.955f;
+  float alpha = 0.90f;
   openHatHp = alpha * (openHatHp + n - openHatPrev);
   openHatPrev = n;
 
-  openHatPhaseA += 6200.0f * invSampleRate;
+  openHatPhaseA += 5000.0f * invSampleRate;
   if (openHatPhaseA >= 1.0f)
     openHatPhaseA -= 1.0f;
-  openHatPhaseB += 8200.0f * invSampleRate;
+  openHatPhaseB += 6500.0f * invSampleRate;
   if (openHatPhaseB >= 1.0f)
     openHatPhaseB -= 1.0f;
   float tone =
     (sinf(2.0f * 3.14159265f * openHatPhaseA) + sinf(2.0f * 3.14159265f * openHatPhaseB)) *
     0.5f * openHatToneEnv * openHatBrightness;
 
-  float out = openHatHp * 0.5f + tone * 1.05f;
-  out *= openHatEnvAmp * 0.65f * openHatAccentGain;
+  float out = openHatHp * 0.45f + tone * 0.72f;
+  out *= openHatEnvAmp * 0.52f * openHatAccentGain;
   return applyAccentDistortion(out, openHatAccentDistortion);
 }
 
