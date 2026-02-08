@@ -47,7 +47,7 @@ Notes:
 | `M` | Toggle `applySoundMacros` |
 | `Space` | Preview regenerate + start playback |
 
-## Settings Page
+## Generator Page
 | Key | Action |
 | --- | --- |
 | `Tab` | Next group |

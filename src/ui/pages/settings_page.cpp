@@ -106,12 +106,12 @@ SettingsPage::SettingsPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_gua
 }
 
 const std::string& SettingsPage::getTitle() const {
-    static std::string title = "Generator Settings";
+    static std::string title = "Generator";
     return title;
 }
 
 void SettingsPage::draw(IGfx& gfx) {
-    UI::drawStandardHeader(gfx, mini_acid_, "SETTINGS");
+    UI::drawStandardHeader(gfx, mini_acid_, "GENERATOR");
     LayoutManager::clearContent(gfx);
 
 

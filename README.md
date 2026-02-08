@@ -7,32 +7,13 @@
 > **Portable real-time groove computer for M5Stack Cardputer.**
 > A **time-feel engine** that separates **what** is generated from **how it feels in time** and **how it sounds right now**.
 
-Based on the original **GroovePuter** idea by [urtubia/grooveputer](https://github.com/urtubia/grooveputer) — this fork focuses on **architecture**, **timing FEEL**, **scene persistence**, and **stress-tested DSP stability**.
+Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtubia/miniacid) — this fork focuses on **timing FEEL**, **scene persistence**.
 
----
 
-## Quick Look
-
-| Page         |              Scope | Updates sound *now*? | Notes                                                   |
-| ------------ | -----------------: | :------------------: | ------------------------------------------------------- |
-| **GENRE**    | *What to generate* |           ❌          | Controls musical generation style + curated combos      |
-| **FEEL**     |  *Time perception* |           ✅          | Grid / Timebase / Length (live timing)                  |
-| **TEXTURE**  |      *Sound color* |           ✅          | Lo-Fi / Drive / Tape (live)                             |
-| **SETTINGS** | *Generator params* |      ⚠️ (regen)      | Affects next regeneration, not the current stored steps |
-
----
 
 ## Status
 
 **Beta.** Core flow is playable and stable on device. APIs/UI may change as the instrument evolves.
-
-What’s already solid:
-
-* Scene persistence (GENRE/FEEL/TEXTURE/SETTINGS fields)
-* Heavy DSP load handling (adaptive FX safety)
-* FEEL model (Grid + Timebase + Length)
-
----
 
 ## Features
 
@@ -42,7 +23,6 @@ What’s already solid:
 * **Dual song slots (`A/B`)** with split compare and live mix controls
 * **RETRO split Song view** aligned with cyber theme styling
 * **FEEL system (live):**
-
   * Grid: `1/8 · 1/16 · 1/32`
   * Timebase: `HALF · NORMAL · DOUBLE`
   * Length: `1B … 8B` (cycle length)
@@ -50,25 +30,23 @@ What’s already solid:
 * **Genre-driven generator:** rhythmic masks, motif length, scale preference, density traits
 * **Groove Lab page:** mode/flavor/macros + corridor/budget preview
 * **Scene persistence:** safe load for older scenes (optional fields)
-* **Hi-Fi audio:** 44.1 kHz real-time synthesis, tuned for DRAM-only constraints
 
----
 
 ## Architecture
 
 **Hard rule:** no hidden coupling.
 
 ```text
-GENRE     → what is generated (musical logic)
-SETTINGS  → how patterns are generated (regen-time)
-FEEL      → how time is perceived (live)
-TEXTURE   → how sound is colored (live)
+GENRE      → what is generated (musical logic)
+GENERATOR  → how patterns are generated (regen-time)
+FEEL       → how time is perceived (live)
+TEXTURE    → how sound is colored (live)
 ```
 
 Practical consequence:
 
 * You can change FEEL/TEXTURE to reshape a performance **without regenerating**.
-* You can change SETTINGS to affect the next regenerate pass **without altering** the current pattern.
+* You can change GENERATOR params to affect the next regenerate pass **without altering** the current pattern.
 
 Groove routing today:
 
@@ -119,7 +97,7 @@ arduino-cli upload \
 ## Getting Started
 
 1. Flash the device.
-2. Open the keyboard map: [`keys_sheet.md`](keys_sheet.md)
+2. Open the keyboard map: [`docs/keys_sheet.md`](docs/keys_sheet.md)
 3. Pick a **GENRE** preset.
 4. Shape groove behavior in **GROOVE LAB** (`ModePage`).
 5. Shape time with **FEEL**.
@@ -141,7 +119,7 @@ Drop images into `docs/screenshots/` and update the list below.
 
 * `docs/screenshots/genre.png` — GENRE page
 * `docs/screenshots/feel_texture.png` — FEEL/TEXTURE page
-* `docs/screenshots/settings.png` — SETTINGS page
+* `docs/screenshots/generator.png` — GENERATOR page
 * `docs/screenshots/hud.png` — live HUD (G/T/L + cycle pulse)
 
 ```text
@@ -171,10 +149,18 @@ Tip: keep screenshots at the same zoom level and include the header/footer.
 * This build uses **adaptive FX safety** (FX dries out briefly instead of crackling).
 * If crackling persists: reduce FX intensity (Tape mix/feedback, delay mix), then re-test.
 
-
-### Key presses feel “dead”
-
-* Many keys are context/page-dependent → verify page and keymap in `keys_sheet.md`.
+## Quick Keys 
+- `Space`: play/stop
+- `[` / `]`: previous/next page
+- `Arrows`: move cursor / navigate lists
+- `Enter`: confirm/apply/toggle focused item
+- `Tab`: switch focus/section on many pages
+- `Q..I`: choose pattern slot `1..8` in Pattern/Drum/Song contexts
+- `B`: quick A/B bank toggle (Pattern/Drum) or bank flip in Song cell/selection
+- `Alt+B`: edit song slot `A/B`
+- `Ctrl+B`: play song slot `A/B`
+- `X`: split compare (Song) or primary action on Tape page
+- `Esc`: back (or clear selection in editors)
 
 ---
 
@@ -183,7 +169,7 @@ Tip: keep screenshots at the same zoom level and include the header/footer.
 This is an **experimental instrument**. If you want to contribute:
 
 * Keep PRs small and testable.
-* Prefer changes that preserve the core rule: **GENRE ≠ FEEL ≠ SETTINGS ≠ TEXTURE**.
+* Prefer changes that preserve the core rule: **GENRE ≠ FEEL ≠ GENERATOR ≠ TEXTURE**.
 * If you’re unsure where a change belongs, open an issue first.
 
 ---
@@ -192,7 +178,7 @@ This is an **experimental instrument**. If you want to contribute:
 
 * Original inspiration: [urtubia/miniacid](https://github.com/urtubia/miniacid)
 * Hardware: M5Stack Cardputer
-* References: TB-303 / TR-808 lineage (behavioral inspiration, not a 1:1 clone)
+* References: TB-303 / TR-808 lineage 
 
 ---
 

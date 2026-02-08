@@ -1,13 +1,26 @@
 # MiniAcid Manual (Current)
 
 This manual is the high-level guide for current firmware.
-For exact hotkeys use `keys_sheet.md`.
+For exact hotkeys use `docs/keys_sheet.md`.
 For page-deep behavior use focused docs in `docs/`.
+
+## Quick Keys (Most Used)
+- `Space`: play/stop
+- `[` / `]`: previous/next page
+- `Arrows`: move cursor / navigate lists
+- `Enter`: confirm/apply/toggle focused item
+- `Tab`: switch focus/section on many pages
+- `Q..I`: choose pattern slot `1..8` in Pattern/Drum/Song contexts
+- `B`: quick A/B bank toggle (Pattern/Drum) or bank flip in Song cell/selection
+- `Alt+B`: edit song slot `A/B`
+- `Ctrl+B`: play song slot `A/B`
+- `X`: split compare (Song) or primary action on Tape page
+- `Esc`: back (or clear selection in editors)
 
 ## 1. Core Concept
 MiniAcid separates responsibilities:
 - `GENRE`: what is generated
-- `SETTINGS`: generator constraints (regen-time)
+- `GENERATOR`: generator constraints (regen-time)
 - `FEEL`: timing perception (live)
 - `TEXTURE/TAPE`: sound color (live)
 - `GROOVE LAB`: mode/flavor/corridor control
@@ -20,7 +33,7 @@ MiniAcid separates responsibilities:
 - `Song`: arrangement with dual slots `A/B`, split compare, live mix
 - `Sequencer Hub`: compact overview/edit surface
 - `Feel/Texture`: timing and coloration macros
-- `Settings`: generation parameters
+- `Generator`: generation parameters
 - `Project`: scenes, groove section, LED section
 - `Mode (GROOVE LAB)`: groove mode/flavor and budget-aware preview
 - `Tape`: looper/FX performance workflow
@@ -69,7 +82,7 @@ Reference: `docs/TAPE_WORKFLOW.md`.
 
 ## 8. Docs Index
 - `README.md` — project overview
-- `keys_sheet.md` — canonical key map
+- `docs/keys_sheet.md` — canonical key map
 - `docs/GROOVE_LAB.md` — mode/flavor/corridors
 - `docs/SONG_PAGE_QUICKSTART.md` — Song operations
 - `docs/SONG_PAGE_STYLES.md` — Song style behavior
