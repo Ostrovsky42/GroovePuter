@@ -120,7 +120,7 @@ DrumSequencerMainPage::DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard aud
   bank_index_ = mini_acid_.currentDrumBankIndex();
   bank_cursor_ = bank_index_;
   pattern_bar_ = std::make_shared<PatternSelectionBarComponent>("PATTERN");
-  bank_bar_ = std::make_shared<BankSelectionBarComponent>("BANK", "ABCD");
+  bank_bar_ = std::make_shared<BankSelectionBarComponent>("BANK", "AB");
   PatternSelectionBarComponent::Callbacks pattern_callbacks;
   pattern_callbacks.onSelect = [this](int index) {
     if (mini_acid_.songModeEnabled()) return;
@@ -532,6 +532,12 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   }
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
+  // Alt+Esc must be handled before global Esc navigation.
+  if ((ui_event.scancode == GROOVEPUTER_ESCAPE || ui_event.key == 0x1B) && ui_event.alt) {
+    chaining_mode_ = !chaining_mode_;
+    return true;
+  }
+
   // Local ESC/backtick: clear selection first.
   if ((ui_event.scancode == GROOVEPUTER_ESCAPE || ui_event.key == '`' || ui_event.key == '~') && has_selection_) {
     clearSelection();
@@ -624,12 +630,6 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // Alt + ESC for Chaining Mode
-  if (ui_event.key == 0x1B && ui_event.alt) {
-      chaining_mode_ = !chaining_mode_;
-      return true;
-  }
-
   int patternIdx = patternIndexFromKey(lowerKey);
   if (patternIdx < 0) {
       patternIdx = scancodeToPatternIndex(ui_event.scancode);
@@ -660,6 +660,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   }
 
   bool key_a = (lowerKey == 'a') || (ui_event.scancode == GROOVEPUTER_A);
+  bool key_b = (lowerKey == 'b') || (ui_event.scancode == GROOVEPUTER_B);
   bool key_g = (lowerKey == 'g') || (ui_event.scancode == GROOVEPUTER_G);
   bool key_c = (lowerKey == 'c') || (ui_event.scancode == GROOVEPUTER_C);
   bool key_v = (lowerKey == 'v') || (ui_event.scancode == GROOVEPUTER_V);
@@ -668,6 +669,13 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     focusGrid();
     int step = activeDrumStep();
     withAudioGuard([&]() { mini_acid_.toggleDrumAccentStep(step); });
+    return true;
+  }
+  if (key_b && !ui_event.alt && !ui_event.ctrl) {
+    if (mini_acid_.songModeEnabled()) return true;
+    int nextBank = (activeBankCursor() + 1) % kBankCount;
+    bank_cursor_ = nextBank;
+    setBankIndex(nextBank);
     return true;
   }
   if (key_g) {
@@ -803,13 +811,14 @@ void DrumSequencerMainPage::drawRetroClassicStyle(IGfx& gfx) {
     retro::drawSelector(gfx, pCfg);
 
     retro::SelectorConfig bCfg;
-    bCfg.x = x + 4; bCfg.y = y + 26; bCfg.w = w - 8; bCfg.h = 10;
-    bCfg.label = "BANK";
+    bCfg.x = x + w - 52; bCfg.y = y + 26; bCfg.w = 48; bCfg.h = 10;
+    bCfg.label = "BK";
     bCfg.count = kBankCount;
     bCfg.selected = mini_acid_.currentDrumBankIndex();
     bCfg.cursor = activeBankCursor();
     bCfg.showCursor = !songMode && bankRowFocused();
     bCfg.enabled = !songMode;
+    bCfg.alphaLabels = true;
     retro::drawSelector(gfx, bCfg);
 
     int grid_y = y + 38;
@@ -817,7 +826,7 @@ void DrumSequencerMainPage::drawRetroClassicStyle(IGfx& gfx) {
     grid_component_->setBoundaries(Rect{x, grid_y, w, grid_h});
     grid_component_->draw(gfx);
 
-    retro::drawFooterBar(gfx, x, y + h - 12, w, 12, "f:GEN Alt+G:ALL 1..8:Edit", "DRUM");
+    retro::drawFooterBar(gfx, x, y + h - 12, w, 12, "f:GEN Alt+G:ALL 1..8:Edit B:Bank", "DRUM");
 }
 
 void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
@@ -844,12 +853,13 @@ void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
     amber::drawSelectionBar(gfx, pCfg);
 
     amber::SelectionBarConfig bCfg;
-    bCfg.x = x + 4; bCfg.y = y + 26; bCfg.w = w - 8; bCfg.h = 10;
-    bCfg.label = "BANK";
+    bCfg.x = x + w - 52; bCfg.y = y + 26; bCfg.w = 48; bCfg.h = 10;
+    bCfg.label = "BK";
     bCfg.count = kBankCount;
     bCfg.selected = mini_acid_.currentDrumBankIndex();
     bCfg.cursor = activeBankCursor();
     bCfg.showCursor = !songMode && bankRowFocused();
+    bCfg.alphaLabels = true;
     amber::drawSelectionBar(gfx, bCfg);
 
     int grid_y = y + 38;
@@ -857,7 +867,7 @@ void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
     grid_component_->setBoundaries(Rect{x, grid_y, w, grid_h});
     grid_component_->draw(gfx);
 
-    amber::drawFooterBar(gfx, x, y + h - 12, w, 12, "f:GEN Alt+G:ALL 1..8:Edit", "DRUM");
+    amber::drawFooterBar(gfx, x, y + h - 12, w, 12, "f:GEN Alt+G:ALL 1..8:Edit B:Bank", "DRUM");
 }
 #include "../retro_widgets.h"
 #include "../amber_widgets.h"

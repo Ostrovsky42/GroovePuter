@@ -31,7 +31,7 @@ public:
     // Attempts to allocate 'maxSeconds' long buffer
     // Priority: PSRAM, fallback: DRAM
     // Returns true if any buffer was allocated
-    bool init(uint32_t maxSeconds);
+    bool init(float maxSeconds);
 
     // Mode control (call with AudioGuard from UI thread!)
     void setMode(TapeMode mode);
@@ -59,6 +59,8 @@ public:
     float playheadProgress() const;  // 0.0..1.0
     float loopLengthSeconds() const;
     bool hasLoop() const { return length_ > 0; }
+    bool isFirstRecordPass() const { return mode_ == TapeMode::Rec && firstRecord_; }
+    float recordElapsedSeconds() const { return static_cast<float>(playheadSamples()) / static_cast<float>(kSampleRate); }
     uint32_t loopLengthSamples() const { return length_; }
     uint32_t playheadSamples() const { return static_cast<uint32_t>(playhead_); }
 

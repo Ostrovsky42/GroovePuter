@@ -31,10 +31,12 @@ constexpr const char* kGenreLines[] = {
 constexpr const char* kPatternLines[] = {
     "=== PATTERN EDIT (303) ===",
     "Q..I       Select pattern 1..8",
+    "B          Toggle bank A/B",
     "Arrows     Move cursor",
     "Shift/Ctrl+Arrows  Extend selection",
     "A/Z        Note +/-",
-    "S/X        Octave +/-",
+    "S          Octave +",
+    "Ctrl/Alt+X Octave -",
     "Alt/Ctrl+A Accent (uniform if selected)",
     "Alt/Ctrl+S Slide (uniform if selected)",
     "R          Clear step (REST)",
@@ -45,7 +47,7 @@ constexpr const char* kPatternLines[] = {
     "Ctrl+C     Lock selection frame",
     "Arrows     Move locked frame",
     "ESC/`/~    Clear selection",
-    "Alt+Esc    Chain mode",
+    "Alt+Esc    Chain mode (local)",
 };
 
 constexpr const char* kTB303Lines[] = {
@@ -63,6 +65,7 @@ constexpr const char* kTB303Lines[] = {
 constexpr const char* kDrumLines[] = {
     "=== DRUM PAGE ===",
     "Q..I       Select pattern 1..8",
+    "B          Toggle bank A/B",
     "Arrows     Move cursor",
     "Shift/Ctrl+Arrows  Extend selection",
     "Enter      Toggle hit",
@@ -74,7 +77,7 @@ constexpr const char* kDrumLines[] = {
     "Ctrl+C     Lock selection frame",
     "Arrows     Move locked frame",
     "ESC/`/~    Clear selection",
-    "Alt+Esc    Chain mode",
+    "Alt+Esc    Chain mode (local)",
 };
 
 constexpr const char* kSongLines[] = {
@@ -94,6 +97,7 @@ constexpr const char* kSongLines[] = {
     "Alt+G      Generate selection",
     "Alt+B      Toggle edit slot A/B",
     "Ctrl+B     Toggle play slot A/B",
+    "B          Flip pattern bank (A<->B)",
     "Alt+X      LiveMix ON/OFF",
     "Ctrl+R     Reverse playback",
     "Ctrl+M/N   Merge/Alternate",

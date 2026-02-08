@@ -46,7 +46,7 @@ static inline bool isGlobalNav(const UIEvent& e) {
   if (e.key == '[' || e.key == ']') return true;
 
   // Help/back remain global-ish.
-  if (e.key == 'h' || e.key == 'b' || e.key == 'B' || e.key == '`' || e.key == 0x1B || e.key == 0x08) {
+  if (e.key == 'h' || e.key == '`' || e.key == 0x1B || e.key == 0x08) {
     return true;
   }
 

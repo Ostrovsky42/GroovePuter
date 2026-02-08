@@ -64,7 +64,7 @@ PatternEditPage::PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audi
   bank_cursor_ = bank_index_;
   title_ = voice_index_ == 0 ? "303A PATTERNS" : "303B PATTERNS";
   pattern_bar_ = std::make_shared<PatternSelectionBarComponent>("PATTERNS");
-  bank_bar_ = std::make_shared<BankSelectionBarComponent>("BANK", "ABCD");
+  bank_bar_ = std::make_shared<BankSelectionBarComponent>("BANK", "AB");
   PatternSelectionBarComponent::Callbacks pattern_callbacks;
   pattern_callbacks.onSelect = [this](int index) {
     if (mini_acid_.songModeEnabled()) return;
@@ -106,8 +106,6 @@ int PatternEditPage::bankIndexFromKey(char key) const {
   switch (key) {
     case '1': return 0;
     case '2': return 1;
-    case '3': return 2;
-    case '4': return 3;
     default: return -1;
   }
 }
@@ -415,6 +413,12 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   }
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
+  // Alt+Esc must be handled before global Esc navigation.
+  if (((ui_event.scancode == GROOVEPUTER_ESCAPE) || (ui_event.key == 0x1B)) && ui_event.alt) {
+    chaining_mode_ = !chaining_mode_;
+    return true;
+  }
+
   // Handle local ESC/backtick selection clear before global nav steals the key.
   const bool early_is_escape = (ui_event.scancode == GROOVEPUTER_ESCAPE) || (ui_event.key == 0x1B);
   const bool early_is_backtick = (ui_event.key == '`' || ui_event.key == '~');
@@ -500,12 +504,6 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   char lowerKey = key ? static_cast<char>(std::tolower(static_cast<unsigned char>(key))) : 0;
   const bool is_escape = (ui_event.scancode == GROOVEPUTER_ESCAPE) || (key == 0x1B);
   const bool is_backspace = (key == '\b' || key == 0x7F);
-
-  // Alt+ESC toggles chain mode when no selection is active.
-  if (is_escape && ui_event.alt) {
-    chaining_mode_ = !chaining_mode_;
-    return true;
-  }
 
   // Let app-level back navigation handle ESC when nothing local to clear.
   if (is_escape) return false;
@@ -610,6 +608,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   };
 
   bool key_a = (lowerKey == 'a') || (ui_event.scancode == GROOVEPUTER_A);
+  bool key_b = (lowerKey == 'b') || (ui_event.scancode == GROOVEPUTER_B);
   bool key_s = (lowerKey == 's') || (ui_event.scancode == GROOVEPUTER_S);
   bool key_z = (lowerKey == 'z') || (ui_event.scancode == GROOVEPUTER_Z);
   bool key_x = (lowerKey == 'x') || (ui_event.scancode == GROOVEPUTER_X);
@@ -677,6 +676,13 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     applyToSelectionOrCursor([&](int step) {
       mini_acid_.adjust303StepNote(voice_index_, step, -1);
     });
+    return true;
+  }
+  if (key_b && !ui_event.alt && !ui_event.ctrl) {
+    if (mini_acid_.songModeEnabled()) return true;
+    int nextBank = (activeBankCursor() + 1) % kBankCount;
+    bank_cursor_ = nextBank;
+    setBankIndex(nextBank);
     return true;
   }
   if (key_x) {
@@ -917,9 +923,9 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
 
   // 3. Bank/Pattern Selectors (inline, with selective highlighting)
   gfx.setTextColor(IGfxColor(TEXT_SECONDARY));
-  gfx.drawText(x + 4, contentY + 2, "BANK");
+  gfx.drawText(x + 4, contentY + 2, "BK");
   for (int i = 0; i < kBankCount; i++) {
-    int slotX = x + 36 + i * 18;
+    int slotX = x + 22 + i * 18;
     bool sel = (i == bank_index_);
     bool cur = (i == bankCursor);
     bool focused = bankFocus && cur;
@@ -941,9 +947,9 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
   }
 
   gfx.setTextColor(IGfxColor(TEXT_SECONDARY));
-  gfx.drawText(x + 120, contentY + 2, "PTRN");
+  gfx.drawText(x + 72, contentY + 2, "PTRN");
   for (int i = 0; i < 8; i++) {
-    int slotX = x + 154 + i * 10;
+    int slotX = x + 106 + i * 10;
     bool sel = (i == selectedPattern);
     bool cur = (i == patternCursor);
     bool focused = patternFocus && cur;
@@ -1072,7 +1078,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
   const char* focusLabel = stepFocus ? "STEPS" : (bankFocus ? "BANK" : "PTRN");
   drawFooterBar(gfx, x, y + h - 12, w, 12, 
                 "A/Z:Nt F:FX Alt+Arw:Prm", 
-                "q..i:Ptrn TAB:Vce", 
+                "q..i:Ptrn B:Bank TAB:Vce", 
                 focusLabel);
 
   // NO scanlines - clean and readable
@@ -1123,9 +1129,9 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
   gfx.fillRect(x, contentY, w, contentH, IGfxColor(AmberTheme::BG_DEEP_BLACK));
 
   gfx.setTextColor(IGfxColor(AmberTheme::TEXT_SECONDARY));
-  gfx.drawText(x + 4, contentY + 2, "BANK");
+  gfx.drawText(x + 4, contentY + 2, "BK");
   for (int i = 0; i < kBankCount; i++) {
-    int slotX = x + 36 + i * 18;
+    int slotX = x + 22 + i * 18;
     bool sel = (i == bank_index_);
     bool cur = (i == bankCursor);
     bool focused = bankFocus && cur;
@@ -1146,9 +1152,9 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
   }
 
   gfx.setTextColor(IGfxColor(AmberTheme::TEXT_SECONDARY));
-  gfx.drawText(x + 120, contentY + 2, "PTRN");
+  gfx.drawText(x + 72, contentY + 2, "PTRN");
   for (int i = 0; i < 8; i++) {
-    int slotX = x + 154 + i * 10;
+    int slotX = x + 106 + i * 10;
     bool sel = (i == selectedPattern);
     bool cur = (i == patternCursor);
     bool focused = patternFocus && cur;
@@ -1245,7 +1251,7 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
   AmberWidgets::drawFooterBar(
       gfx, x, y + h - 12, w, 12,
       "A/Z:Note  Alt+S/A:Slide/Acc  G:Rand",
-      "q..i:Ptrn  TAB:Voice",
+      "q..i:Ptrn  B:Bank  TAB:Voice",
       focusLabel);
 #else
   drawMinimalStyle(gfx);

@@ -281,9 +281,9 @@ void MiniAcid::init() {
   } else {
     LOG_PRINTLN("  - MiniAcid::init: DRAM-only mode (constrained)");
     // DRAM: Constrained mode (44.1kHz is expensive!)
-    // 0.25s delay = 44KB -> Two of them = 88KB. Feasible but tight for DSP time.
-    // Reduced to 0.15s to be safe.
-    if (tapeLooper) tapeLooper->init(0.25f); 
+    // Keep a practical looper length so REC/PLAY is musically usable without PSRAM.
+    // 1.0s mono int16 looper ~= 88KB.
+    if (tapeLooper) tapeLooper->init(1.0f);
     if (sampleStore) sampleStore->setPoolSize(32 * 1024); // 32KB sampler pool
     delay303.init(0.15f);
     delay3032.init(0.15f);
@@ -2322,10 +2322,12 @@ void MiniAcid::applyTextureFromScene_() {
   distortion3032.setEnabled(driveOn);
 
   // --- Tape ---
-  // FEEL/TEXTURE Tape toggle is FX-only for now (no looper control in UI).
-  // Force looper to STOP to avoid hidden loop playback/glitches.
+  // FEEL/TEXTURE controls FX enable. Keep looper mode intact while enabled
+  // so Tape page REC/PLAY workflow is not interrupted.
   sc.tape.fxEnabled = f.tapeEnabled;
-  sc.tape.mode = TapeMode::Stop;
+  if (!f.tapeEnabled) {
+    sc.tape.mode = TapeMode::Stop;
+  }
 }
 
 void MiniAcid::applyFeelTimingFromScene_() {

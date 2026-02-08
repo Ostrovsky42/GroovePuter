@@ -164,7 +164,7 @@ void SettingsPage::draw(IGfx& gfx) {
     Widgets::drawButtonGrid(gfx, leftX, presetGridY, cellW, 10, 3, 1, kPresetNames, 3,
                             (row_ == kPresetRowIndex) ? preset_index_ : -1);
 
-    // Right-side comments
+    // Compact right-side info
     int infoCount = 0;
     const char* const* infoLines = commentLines(infoCount, params);
     if (infoLines && infoCount > 0) {
@@ -353,81 +353,100 @@ const char* SettingsPage::hintText() const {
 
 const char* const* SettingsPage::commentLines(int& count, const GeneratorParams& params) const {
     static char line1[48];
-    static const char* lines[1] = { line1 };
+    static char line2[48];
+    static char line3[48];
+    static char line4[48];
+    static const char* lines[4] = { line1, line2, line3, line4 };
+
+    auto set3 = [&](const char* a, const char* b, const char* c) -> const char* const* {
+        std::snprintf(line1, sizeof(line1), "%s", a ? a : "");
+        std::snprintf(line2, sizeof(line2), "%s", b ? b : "");
+        std::snprintf(line3, sizeof(line3), "%s", c ? c : "");
+        count = 3;
+        return lines;
+    };
+    auto set4 = [&](const char* a, const char* b, const char* c, const char* d) -> const char* const* {
+        std::snprintf(line1, sizeof(line1), "%s", a ? a : "");
+        std::snprintf(line2, sizeof(line2), "%s", b ? b : "");
+        std::snprintf(line3, sizeof(line3), "%s", c ? c : "");
+        std::snprintf(line4, sizeof(line4), "%s", d ? d : "");
+        count = 4;
+        return lines;
+    };
 
     if (row_ == kPresetRowIndex) {
-        static char presetLine[48];
-        snprintf(presetLine, sizeof(presetLine), "Presets apply on regen");
-        static const char* presetLines[1] = { presetLine };
-        count = 1;
-        return presetLines;
+        return set4(
+            "Preset writes multiple params",
+            "TIGHT  = lower swing/ghost",
+            "HUMAN  = balanced",
+            "LOOSE  = more groove (regen)");
     }
 
     SettingId id = static_cast<SettingId>(settingForRow());
     switch (id) {
         case SettingId::Swing: {
             int v = (int)(params.swingAmount * 100.0f + 0.5f);
-            std::snprintf(line1, sizeof(line1), "%d%% offbeat shuffle (regen)", v);
-            count = 1;
-            return lines;
+            char cur[48];
+            std::snprintf(cur, sizeof(cur), "Current: %d%% swing", v);
+            return set3(cur, "Shifts offbeats later", "Affects regeneration");
         }
         case SettingId::VelocityRange: {
             int v = (int)(params.velocityRange * 100.0f + 0.5f);
-            std::snprintf(line1, sizeof(line1), "%d%% dynamics range (regen)", v);
-            count = 1;
-            return lines;
+            char cur[48];
+            std::snprintf(cur, sizeof(cur), "Current: %d%% range", v);
+            return set3(cur, "Higher = more dynamics", "Affects regeneration");
         }
         case SettingId::GhostProb: {
             int v = (int)(params.ghostNoteProbability * 100.0f + 0.5f);
-            std::snprintf(line1, sizeof(line1), "%d%% ghost notes (regen)", v);
-            count = 1;
-            return lines;
+            char cur[48];
+            std::snprintf(cur, sizeof(cur), "Current: %d%% ghosts", v);
+            return set3(cur, "Adds low-velocity notes", "Affects regeneration");
         }
         case SettingId::MicroTiming: {
             int v = (int)(params.microTimingAmount * 100.0f + 0.5f);
-            std::snprintf(line1, sizeof(line1), "%d%% timing humanize (regen)", v);
-            count = 1;
-            return lines;
+            char cur[48];
+            std::snprintf(cur, sizeof(cur), "Current: %d%% microtime", v);
+            return set3(cur, "Random timing offsets", "Affects regeneration");
         }
         case SettingId::MinNotes: {
-            std::snprintf(line1, sizeof(line1), "Min %d notes (regen)", params.minNotes);
-            count = 1;
-            return lines;
+            char cur[48];
+            std::snprintf(cur, sizeof(cur), "Current min: %d notes", params.minNotes);
+            return set3(cur, "Lower density floor", "Must be <= Max Notes");
         }
         case SettingId::MaxNotes: {
-            std::snprintf(line1, sizeof(line1), "Max %d notes (regen)", params.maxNotes);
-            count = 1;
-            return lines;
+            char cur[48];
+            std::snprintf(cur, sizeof(cur), "Current max: %d notes", params.maxNotes);
+            return set3(cur, "Upper density ceiling", "Must be >= Min Notes");
         }
         case SettingId::MinOctave: {
-            std::snprintf(line1, sizeof(line1), "Min Oct %d (regen)", params.minOctave);
-            count = 1;
-            return lines;
+            char cur[48];
+            std::snprintf(cur, sizeof(cur), "Current min octave: %d", params.minOctave);
+            return set3(cur, "Lowest allowed octave", "Must be <= Max Oct");
         }
         case SettingId::MaxOctave: {
-            std::snprintf(line1, sizeof(line1), "Max Oct %d (regen)", params.maxOctave);
-            count = 1;
-            return lines;
+            char cur[48];
+            std::snprintf(cur, sizeof(cur), "Current max octave: %d", params.maxOctave);
+            return set3(cur, "Highest allowed octave", "Must be >= Min Oct");
         }
         case SettingId::ScaleRoot: {
-            std::snprintf(line1, sizeof(line1), "Root %s (regen)", noteToString(params.scaleRoot));
-            count = 1;
-            return lines;
+            char cur[48];
+            std::snprintf(cur, sizeof(cur), "Current root: %s", noteToString(params.scaleRoot));
+            return set3(cur, "Transposes note palette", "Affects regeneration");
         }
         case SettingId::ScaleType: {
-            std::snprintf(line1, sizeof(line1), "Scale %s (regen)", scaleTypeToString(params.scale));
-            count = 1;
-            return lines;
+            char cur[48];
+            std::snprintf(cur, sizeof(cur), "Current scale: %s", scaleTypeToString(params.scale));
+            return set3(cur, "Sets note collection", "Affects regeneration");
         }
         case SettingId::ScaleQuantize: {
-            std::snprintf(line1, sizeof(line1), "Quantize %s (regen)", params.scaleQuantize ? "ON" : "OFF");
-            count = 1;
-            return lines;
+            char cur[48];
+            std::snprintf(cur, sizeof(cur), "Quantize: %s", params.scaleQuantize ? "ON" : "OFF");
+            return set3(cur, "Locks notes to scale", "Affects regeneration");
         }
         case SettingId::PreferDownbeats: {
-            std::snprintf(line1, sizeof(line1), "Downbeats %s (regen)", params.preferDownbeats ? "ON" : "OFF");
-            count = 1;
-            return lines;
+            char cur[48];
+            std::snprintf(cur, sizeof(cur), "Downbeats: %s", params.preferDownbeats ? "ON" : "OFF");
+            return set3(cur, "Biases accents on 1/5/9/13", "Affects regeneration");
         }
         default:
             break;

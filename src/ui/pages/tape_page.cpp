@@ -1,10 +1,25 @@
 #include "tape_page.h"
 #include "../../dsp/tape_presets.h"
+#include "../ui_common.h"
 #include <cstdio>
 #include <algorithm>
 
 namespace {
 inline constexpr IGfxColor kFocusColor = IGfxColor(0xB36A00);
+
+TapeMode keyToTapeMode(char lowerKey) {
+  switch (lowerKey) {
+    case 'z': return TapeMode::Stop;
+    case 'x': return TapeMode::Rec;
+    case 'c': return TapeMode::Dub;
+    case 'v': return TapeMode::Play;
+    default: return TapeMode::Stop;
+  }
+}
+
+bool isDirectModeKey(char lowerKey) {
+  return lowerKey == 'z' || lowerKey == 'x' || lowerKey == 'c' || lowerKey == 'v';
+}
 }
 
 class TapePage::SliderComponent : public FocusableComponent {
@@ -239,20 +254,37 @@ void TapePage::draw(IGfx& gfx) {
   gfx.drawText(x, y, "SPD:");
   gfx.setTextColor(COLOR_WHITE);
   gfx.drawText(x + 28, y, tapeSpeedName(tape.speed));
+
+  // Mode indicator (explicit so it is visible even when mode row is unfocused)
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(x + 52, y, "MD:");
+  gfx.setTextColor(COLOR_WHITE);
+  gfx.drawText(x + 72, y, tapeModeName(tape.mode));
   
-  // Loop length
-  if (mini_acid_.tapeLooper->hasLoop()) {
+  // Recorder/loop status
+  if (tape.mode == TapeMode::Rec) {
     char buf[16];
-    snprintf(buf, sizeof(buf), "%.1fs", mini_acid_.tapeLooper->loopLengthSeconds());
-    gfx.setTextColor(COLOR_LABEL);
-    gfx.drawText(x + 70, y, "LEN:");
+    gfx.setTextColor(IGfxColor(0xFF3030));
+    gfx.drawText(x + 112, y, "REC:");
+    if (mini_acid_.tapeLooper->isFirstRecordPass()) {
+      std::snprintf(buf, sizeof(buf), "%.1fs", mini_acid_.tapeLooper->recordElapsedSeconds());
+    } else if (mini_acid_.tapeLooper->hasLoop()) {
+      std::snprintf(buf, sizeof(buf), "OVR");
+    } else {
+      std::snprintf(buf, sizeof(buf), "ARM");
+    }
     gfx.setTextColor(COLOR_WHITE);
-    gfx.drawText(x + 98, y, buf);
+    gfx.drawText(x + 140, y, buf);
+  } else if (mini_acid_.tapeLooper->hasLoop()) {
+    char buf[16];
+    std::snprintf(buf, sizeof(buf), "%.1fs", mini_acid_.tapeLooper->loopLengthSeconds());
+    gfx.setTextColor(COLOR_LABEL);
+    gfx.drawText(x + 112, y, "LEN:");
+    gfx.setTextColor(COLOR_WHITE);
+    gfx.drawText(x + 140, y, buf);
   }
-  
-  // FX status
-  gfx.setTextColor(tape.fxEnabled ? COLOR_KNOB_1 : COLOR_LABEL);
-  gfx.drawText(x + 140, y, tape.fxEnabled ? "FX:ON" : "FX:--");
+
+  UI::drawStandardFooter(gfx, "Z/X/C/V MODE  1/2/3 SPD  <-/-> ADJ", "F FX  SPC CLR  DEL EJ  ENT STUT");
 }
 
 bool TapePage::handleEvent(UIEvent& ui_event) {
@@ -283,6 +315,14 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
   }
   
   char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)));
+
+  auto setTapeMode = [this](TapeMode mode) {
+    audio_guard_([this, mode]() {
+      TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
+      tape.mode = mode;
+      mini_acid_.tapeLooper->setMode(mode);
+    });
+  };
   
   // Q-I Pattern Selection (Standardized)
   if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta) {
@@ -296,6 +336,11 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
   }
 
   // Hotkeys
+  if (isDirectModeKey(lowerKey)) {
+    setTapeMode(keyToTapeMode(lowerKey));
+    return true;
+  }
+
   switch (lowerKey) {
     case 'p':
     case 'P':
@@ -333,9 +378,10 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
         mini_acid_.tapeLooper->setSpeed(tape.speed);
       });
       return true;
-    case '\n': // Enter = stutter (TODO: hold detection)
+    case '\n': // Enter = stutter toggle
       audio_guard_([this](){
-        mini_acid_.tapeLooper->setStutter(true);
+        const bool active = mini_acid_.tapeLooper->stutterActive();
+        mini_acid_.tapeLooper->setStutter(!active);
       });
       return true;
     case '\b': // Backspace/Del = eject

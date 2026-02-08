@@ -9,6 +9,33 @@
 
 namespace AmberWidgets {
 
+inline void drawTextEllipsized(IGfx& gfx, int x, int y, const char* text, int maxPx) {
+    if (maxPx <= 0) return;
+    const char* src = text ? text : "";
+    int maxChars = maxPx / 6;
+    if (maxChars < 1) return;
+    int len = static_cast<int>(std::strlen(src));
+    if (len <= maxChars) {
+        gfx.drawText(x, y, src);
+        return;
+    }
+    char buf[64];
+    int copyChars = maxChars;
+    bool useDots = maxChars >= 3;
+    if (useDots) copyChars = maxChars - 2;
+    if (copyChars < 0) copyChars = 0;
+    if (copyChars > static_cast<int>(sizeof(buf) - 1)) copyChars = static_cast<int>(sizeof(buf) - 1);
+    std::memcpy(buf, src, static_cast<size_t>(copyChars));
+    if (useDots && copyChars + 2 < static_cast<int>(sizeof(buf))) {
+        buf[copyChars] = '.';
+        buf[copyChars + 1] = '.';
+        buf[copyChars + 2] = '\0';
+    } else {
+        buf[copyChars] = '\0';
+    }
+    gfx.drawText(x, y, buf);
+}
+
 // ═══════════════════════════════════════════════════════════
 // NEON GLOW EFFECTS
 // ═══════════════════════════════════════════════════════════
@@ -120,6 +147,7 @@ struct SelectionBarConfig {
     int cursor;
     bool showCursor;
     const char* label;
+    bool alphaLabels = false;
 };
 
 inline void drawSelectionBar(IGfx& gfx, const SelectionBarConfig& cfg) {
@@ -142,7 +170,9 @@ inline void drawSelectionBar(IGfx& gfx, const SelectionBarConfig& cfg) {
             gfx.drawRect(sx-1, cfg.y-1, slotW, cfg.h+2, IGfxColor(AmberTheme::SELECT_BRIGHT));
         }
         
-        char slotChar = (i < 8) ? ('1' + i) : ('A' + (i - 8));
+        char slotChar = cfg.alphaLabels ? static_cast<char>('A' + i)
+                                        : ((i < 8) ? static_cast<char>('1' + i)
+                                                   : static_cast<char>('A' + (i - 8)));
         char slotStr[2] = {slotChar, '\0'};
         IGfxColor textColor = (i == cfg.selected) ? IGfxColor(AmberTheme::BG_DEEP_BLACK) : IGfxColor(AmberTheme::TEXT_SECONDARY);
         gfx.setTextColor(textColor);
@@ -161,15 +191,20 @@ inline void drawHeaderBar(IGfx& gfx, int x, int y, int w, int h,
     gfx.fillRect(x, y, w, h, IGfxColor(AmberTheme::BG_DARK_GRAY));
     gfx.drawLine(x, y+h-1, x+w, y+h-1, IGfxColor(AmberTheme::GRID_MEDIUM));
     
-    drawGlowText(gfx, x + 4, y + 2, title, IGfxColor(AmberTheme::FOCUS_GLOW), IGfxColor(AmberTheme::NEON_CYAN));
-    
-    int modeX = x + 45; // Moved left
+    int titleX = x + 4;
+    int modeX = x + 45;
+    int statusX = x + w - 80;
+    int titleMaxPx = modeX - titleX - 4;
+    gfx.setTextColor(IGfxColor(AmberTheme::NEON_CYAN));
+    drawTextEllipsized(gfx, titleX, y + 2, title, titleMaxPx);
+
     gfx.setTextColor(IGfxColor(AmberTheme::TEXT_SECONDARY));
     gfx.drawText(modeX, y + 2, "MODE:");
     gfx.setTextColor(IGfxColor(AmberTheme::NEON_ORANGE));
-    gfx.drawText(modeX + 32, y + 2, mode);
-    
-    int statusX = x + w - 80;
+    int modeTextX = modeX + 32;
+    int modeMaxPx = statusX - modeTextX - 2;
+    drawTextEllipsized(gfx, modeTextX, y + 2, mode, modeMaxPx);
+
     drawLED(gfx, statusX, y + h/2, 3, playing, IGfxColor(AmberTheme::STATUS_PLAYING));
     gfx.setTextColor(IGfxColor(AmberTheme::TEXT_SECONDARY));
     gfx.drawText(statusX + 8, y + 2, playing ? "PLAY" : "STOP");
@@ -189,19 +224,31 @@ inline void drawFooterBar(IGfx& gfx, int x, int y, int w, int h,
     gfx.fillRect(x, y, w, h, IGfxColor(AmberTheme::BG_DARK_GRAY));
     gfx.drawLine(x, y, x+w, y, IGfxColor(AmberTheme::GRID_MEDIUM));
     
-    gfx.setTextColor(IGfxColor(AmberTheme::TEXT_SECONDARY));
-    gfx.drawText(x + 2, y + 2, leftHints);
-    
-    int rightW = strlen(rightHints) * 6;
-    gfx.drawText(x + w - rightW - 2, y + 2, rightHints);
-    
+    int leftX = x + 2;
+    int rightRegionW = w / 3;
+    if (rightRegionW < 42) rightRegionW = 42;
+    int rightX = x + w - rightRegionW - 2;
+
+    int focusLeft = x + w / 2;
+    int focusRight = focusLeft;
+    char focusBuf[32];
     if (focusMode) {
-        int centerX = x + w/2;
+        std::snprintf(focusBuf, sizeof(focusBuf), "[%s]", focusMode);
+        int focusW = static_cast<int>(std::strlen(focusBuf)) * 6;
+        focusLeft = x + (w - focusW) / 2;
+        focusRight = focusLeft + focusW;
+    }
+
+    gfx.setTextColor(IGfxColor(AmberTheme::TEXT_SECONDARY));
+    int leftMax = (focusMode ? (focusLeft - leftX - 2) : (rightX - leftX - 2));
+    drawTextEllipsized(gfx, leftX, y + 2, leftHints, leftMax);
+
+    int rightMax = x + w - 2 - rightX;
+    drawTextEllipsized(gfx, rightX, y + 2, rightHints, rightMax);
+
+    if (focusMode) {
         gfx.setTextColor(IGfxColor(AmberTheme::NEON_ORANGE));
-        char buf[32];
-        snprintf(buf, sizeof(buf), "[%s]", focusMode);
-        int focusW = strlen(buf) * 6;
-        gfx.drawText(centerX - focusW/2, y + 2, buf);
+        drawTextEllipsized(gfx, focusLeft, y + 2, focusBuf, focusRight - focusLeft);
     }
 }
 

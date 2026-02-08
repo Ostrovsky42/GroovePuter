@@ -56,6 +56,7 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   int bankIndexForTrack(SongTrack track) const;
   int patternIndexFromKey(char key) const;
   bool adjustSongPatternAtCursor(int delta);
+  bool flipSongPatternBankAtCursorOrSelection();
   bool adjustSongPlayhead(int delta);
   bool assignPattern(int patternIdx);
   bool clearPattern();

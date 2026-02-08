@@ -155,7 +155,7 @@ struct LedSettings {
   uint16_t flashMs = 40;
 };
 
-static constexpr int kBankCount = 4;
+static constexpr int kBankCount = 2;
 static constexpr int kSongPatternCount = kBankCount * Bank<SynthPattern>::kPatterns;
 
 inline int clampSongPatternIndex(int idx) {

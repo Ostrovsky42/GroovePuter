@@ -16,7 +16,7 @@ Scope note: `Global` keys work on all pages. Keys inside page sections are `Loca
 | `Alt+\` | Switch visual style |
 | `Ctrl+H` | Global help overlay |
 | `1..9`, `0` | Track mutes |
-| `Esc` / `Bksp` / `b` | Back |
+| `Esc` / `Bksp` | Back |
 
 ## Genre Page
 | Key | Action |
@@ -44,6 +44,7 @@ Scope note: `Global` keys work on all pages. Keys inside page sections are `Loca
 | Key | Action |
 | --- | --- |
 | `Q..I` | Select pattern 1..8 |
+| `B` | Toggle bank A/B |
 | `Arrows` | Navigate steps |
 | `Shift/Ctrl+Arrows` | Extend selection |
 | `Ctrl+C` | Copy selection and lock frame |
@@ -59,12 +60,13 @@ Scope note: `Global` keys work on all pages. Keys inside page sections are `Loca
 | `Esc` / `` ` `` / `~` | Clear selection |
 | `G` | Randomize pattern |
 | `Tab` | Toggle 303A/303B |
-| `Alt+Esc` | Chain mode |
+| `Alt+Esc` | Chain mode (priority over Back) |
 
 ## Drum Sequencer
 | Key | Action |
 | --- | --- |
 | `Q..I` | Select pattern 1..8 |
+| `B` | Toggle bank A/B |
 | `Arrows` | Navigate grid |
 | `Shift/Ctrl+Arrows` | Extend selection |
 | `Ctrl+C` | Copy selection and lock frame |
@@ -76,7 +78,7 @@ Scope note: `Global` keys work on all pages. Keys inside page sections are `Loca
 | `Ctrl+G` | Randomize focused voice |
 | `Alt+G` | Chaos random |
 | `Esc` / `` ` `` / `~` | Clear selection |
-| `Alt+Esc` | Chain mode |
+| `Alt+Esc` | Chain mode (priority over Back) |
 
 ## TB303 Params
 | Key | Action |
@@ -99,6 +101,7 @@ Scope note: `Global` keys work on all pages. Keys inside page sections are `Loca
 | --- | --- |
 | `Alt+B` | Toggle edit slot A/B |
 | `Ctrl+B` | Toggle play slot A/B |
+| `B` | Flip pattern bank A<->B at cursor/selection |
 | `Alt+X` | LiveMix ON/OFF |
 | `Ctrl + R` | Toggle Reverse Playback |
 | `Ctrl + M` | Merge Slot A/B (Fill Gaps) |

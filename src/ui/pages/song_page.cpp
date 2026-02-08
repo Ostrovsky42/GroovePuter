@@ -26,6 +26,21 @@ inline IGfxColor song303Color(int synthIndex) {
   return (synthIndex == 0) ? IGfxColor(0x00D7FF) : IGfxColor(0xFF4FD8);
 }
 
+inline void formatSongPatternLabel(int pattern, char* out, int outSize) {
+  if (!out || outSize <= 0) return;
+  if (pattern < 0) {
+    std::snprintf(out, outSize, "---");
+    return;
+  }
+  const int bank = songPatternBank(pattern);
+  const int slot = songPatternIndexInBank(pattern) + 1;
+  if (bank < 0 || slot <= 0) {
+    std::snprintf(out, outSize, "---");
+    return;
+  }
+  std::snprintf(out, outSize, "%c-%d", static_cast<char>('A' + bank), slot);
+}
+
 struct SongPatternClipboard {
   bool has_pattern = false;
   int pattern_index = -1;
@@ -346,6 +361,70 @@ bool SongPage::adjustSongPatternAtCursor(int delta) {
       mini_acid_.setSongPosition(row);
     }
   });
+  return true;
+}
+
+bool SongPage::flipSongPatternBankAtCursorOrSelection() {
+  auto flipPattern = [](int pattern) -> int {
+    if (pattern < 0) return pattern;
+    int bank = songPatternBank(pattern);
+    int slot = songPatternIndexInBank(pattern);
+    if (bank < 0 || slot < 0) return pattern;
+    int flippedBank = (bank == 0) ? 1 : 0;
+    return songPatternFromBank(flippedBank, slot);
+  };
+
+  if (has_selection_) {
+    int min_row, max_row, min_track, max_track;
+    getSelectionBounds(min_row, max_row, min_track, max_track);
+    if (min_track < 0) min_track = 0;
+    int maxCol = maxEditableTrackColumn();
+    if (max_track > maxCol) max_track = maxCol;
+    if (min_track > max_track) return false;
+
+    int changed = 0;
+    withAudioGuard([&]() {
+      for (int r = min_row; r <= max_row; ++r) {
+        for (int t = min_track; t <= max_track; ++t) {
+          bool valid = false;
+          SongTrack track = trackForColumn(t, valid);
+          if (!valid) continue;
+          int current = mini_acid_.songPatternAt(r, track);
+          int next = flipPattern(current);
+          if (next != current) {
+            mini_acid_.setSongPattern(r, track, next);
+            ++changed;
+          }
+        }
+      }
+      if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
+        mini_acid_.setSongPosition(min_row);
+      }
+    });
+
+    clearSelection();
+    if (changed > 0) {
+      char toast[40];
+      std::snprintf(toast, sizeof(toast), "Bank flip: %d", changed);
+      showToast(toast, 900);
+    }
+    return changed > 0;
+  }
+
+  bool trackValid = false;
+  SongTrack track = trackForColumn(cursorTrack(), trackValid);
+  if (!trackValid) return false;
+  int row = cursorRow();
+  int current = mini_acid_.songPatternAt(row, track);
+  int next = flipPattern(current);
+  if (next == current) return false;
+  withAudioGuard([&]() {
+    mini_acid_.setSongPattern(row, track, next);
+    if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
+      mini_acid_.setSongPosition(row);
+    }
+  });
+  showToast("Bank flip", 700);
   return true;
 }
 
@@ -956,6 +1035,10 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
+  if (!ui_event.alt && !ui_event.ctrl && key_b) {
+    return flipSongPatternBankAtCursorOrSelection();
+  }
+
   // Song operations (Ctrl held)
   if (ui_event.ctrl && key_r) {
     bool wasSongMode = mini_acid_.songModeEnabled();
@@ -1240,7 +1323,7 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
       }
       if (pattern >= 0) {
         char patBuf[16];
-        snprintf(patBuf, sizeof(patBuf), "%d-%d", (pattern / 8) + 1, (pattern % 8) + 1);
+        formatSongPatternLabel(pattern, patBuf, sizeof(patBuf));
         gfx.setTextColor(t < 2 ? song303Color(t) : COLOR_WHITE);
         gfx.drawText(tx + 2, ry + 2, patBuf);
       } else {
@@ -1475,10 +1558,8 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
         }
 
         if (pattern >= 0) {
-          int bank = (pattern / 8) + 1;
-          int pslot = (pattern % 8) + 1;
           char patBuf[10];
-          snprintf(patBuf, sizeof(patBuf), "%d-%d", bank, pslot);
+          formatSongPatternLabel(pattern, patBuf, sizeof(patBuf));
           gfx.drawText(tx + 1, ry + 1, patBuf);
         } else {
           gfx.drawText(tx + 1, ry + 1, "--");
@@ -1618,13 +1699,7 @@ void SongPage::drawRetroClassicStyle(IGfx& gfx) {
             }
 
             if (pattern >= 0) {
-                int bank = (pattern / 8) + 1;
-                int slot = (pattern % 8) + 1;
-                if (bank < 0) bank = 0;
-                if (bank > 999) bank = 999;
-                if (slot < 0) slot = 0;
-                if (slot > 99) slot = 99;
-                std::snprintf(buf, sizeof(buf), "%d-%d", bank, slot);
+                formatSongPatternLabel(pattern, buf, sizeof(buf));
                 IGfxColor pColor = IGfxColor(RetroTheme::TEXT_PRIMARY);
                 if (t == 0) pColor = IGfxColor(RetroTheme::NEON_ORANGE);
                 else if (t == 1) pColor = IGfxColor(RetroTheme::NEON_MAGENTA);
@@ -1638,7 +1713,7 @@ void SongPage::drawRetroClassicStyle(IGfx& gfx) {
         }
     }
 
-    retro::drawFooterBar(gfx, x, y + h - 12, w, 12, "A+B:Edit C+B:Play CA+X:LM C+R:Rev", "SONG");
+    retro::drawFooterBar(gfx, x, y + h - 12, w, 12, "B:Flip A+B:Edit C+B:Play CA+X:LM C+R:Rev", "SONG");
 }
 
 void SongPage::drawAmberStyle(IGfx& gfx) {
@@ -1715,13 +1790,7 @@ void SongPage::drawAmberStyle(IGfx& gfx) {
             }
 
             if (pattern >= 0) {
-                int bank = (pattern / 8) + 1;
-                int slot = (pattern % 8) + 1;
-                if (bank < 0) bank = 0;
-                if (bank > 999) bank = 999;
-                if (slot < 0) slot = 0;
-                if (slot > 99) slot = 99;
-                std::snprintf(buf, sizeof(buf), "%d-%d", bank, slot);
+                formatSongPatternLabel(pattern, buf, sizeof(buf));
                 gfx.setTextColor(IGfxColor(AmberTheme::TEXT_PRIMARY));
                 gfx.drawText(tx, ry, buf);
             } else {
@@ -1731,7 +1800,7 @@ void SongPage::drawAmberStyle(IGfx& gfx) {
         }
     }
 
-    amber::drawFooterBar(gfx, x, y + h - 12, w, 12, "A+B:Edit C+B:Play CA+X:LM C+R:Rev", "SONG");
+    amber::drawFooterBar(gfx, x, y + h - 12, w, 12, "B:Flip A+B:Edit C+B:Play CA+X:LM C+R:Rev", "SONG");
 }
 
 std::unique_ptr<MultiPageHelpDialog> SongPage::getHelpDialog() {

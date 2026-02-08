@@ -25,13 +25,22 @@ TapeLooper::~TapeLooper() {
     }
 }
 
-bool TapeLooper::init(uint32_t maxSeconds) {
+bool TapeLooper::init(float maxSeconds) {
     if (buffer_) {
         free(buffer_);
         buffer_ = nullptr;
     }
-    
-    maxSamples_ = maxSeconds * kSampleRate;
+
+    if (!(maxSeconds > 0.0f)) {
+        maxSamples_ = 0;
+        return false;
+    }
+
+    const float sampleCount = maxSeconds * static_cast<float>(kSampleRate);
+    maxSamples_ = static_cast<uint32_t>(sampleCount);
+    if (maxSamples_ == 0) {
+        maxSamples_ = 1;
+    }
     size_t size = maxSamples_ * sizeof(int16_t);
 
     // Try PSRAM first, then DRAM

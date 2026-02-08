@@ -160,6 +160,8 @@ inline void drawHelpPage303PatternEdit(IGfx& gfx, int x, int y, int w, int h) {
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "Q..I", "Pick pattern", COLOR_PATTERN_SELECTED_FILL);
   left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "B", "Toggle bank A/B", IGfxColor::Yellow());
+  left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "TAB", "Toggle 303A / 303B", IGfxColor::Yellow());
   left_y += lh;
 
@@ -172,7 +174,11 @@ inline void drawHelpPage303PatternEdit(IGfx& gfx, int x, int y, int w, int h) {
   right_y += lh;
   drawHelpItem(gfx, layout.right_x, right_y, "A / Z", "Note +1 / -1", COLOR_303_NOTE);
   right_y += lh;
-  drawHelpItem(gfx, layout.right_x, right_y, "S / X", "Octave + / -", COLOR_LABEL);
+  drawHelpItem(gfx, layout.right_x, right_y, "S", "Octave +", COLOR_LABEL);
+  right_y += lh;
+  drawHelpItem(gfx, layout.right_x, right_y, "CTRL/ALT+X", "Octave -", COLOR_LABEL);
+  right_y += lh;
+  drawHelpItem(gfx, layout.right_x, right_y, "ALT+ESC", "Chain mode", IGfxColor::Yellow());
   right_y += lh;
   drawHelpItem(gfx, layout.right_x, right_y, "ESC / ` / ~", "Clear selection", IGfxColor::Red());
 }
@@ -199,12 +205,16 @@ inline void drawHelpPageDrumPatternEdit(IGfx& gfx, int x, int y, int w, int h) {
   drawHelpHeading(gfx, layout.left_x, left_y, "Patterns");
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "Q..I", "Select drum pattern", COLOR_PATTERN_SELECTED_FILL);
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "B", "Toggle bank A/B", IGfxColor::Yellow());
 
   drawHelpHeading(gfx, layout.right_x, right_y, "Step edits");
   right_y += lh;
   drawHelpItem(gfx, layout.right_x, right_y, "ENTER", "Toggle hit", IGfxColor::Green());
   right_y += lh;
   drawHelpItem(gfx, layout.right_x, right_y, "A", "Toggle accent", COLOR_ACCENT);
+  right_y += lh;
+  drawHelpItem(gfx, layout.right_x, right_y, "ALT+ESC", "Chain mode", IGfxColor::Yellow());
   right_y += lh;
   drawHelpItem(gfx, layout.right_x, right_y, "ESC / ` / ~", "Clear selection", IGfxColor::Red());
 }
@@ -248,6 +258,8 @@ inline void drawHelpPageSongCont(IGfx& gfx, int x, int y, int w, int h) {
   drawHelpItem(gfx, layout.left_x, left_y, "ALT+B", "toggle edit slot A/B", IGfxColor::Yellow());
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "CTRL+B", "toggle play slot A/B", IGfxColor::Yellow());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "B", "flip pattern bank A/B", IGfxColor::Yellow());
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "ALT+X", "LiveMix ON/OFF", IGfxColor::Yellow());
   left_y += lh;

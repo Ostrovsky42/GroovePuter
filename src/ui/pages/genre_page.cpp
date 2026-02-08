@@ -89,6 +89,12 @@ const char* GenrePage::presetNames[8] = {
     "TRIPHOP DUST", "BROKEN BEAT"
 };
 
+namespace {
+const char* kPresetShortNames[8] = {
+    "ACID", "OUT", "EBM", "DUB", "RAVE", "REG", "TRI", "BRK"
+};
+}
+
 GenrePage::GenrePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
     (void)gfx;
@@ -158,24 +164,24 @@ void GenrePage::drawFooter(IGfx& gfx) {
 
     switch (focus_) {
         case FocusArea::GENRE:
-            left = "UP/DN:Scroll  ENT:Apply";
+            left = "UP/DN:Genre  ENT:Apply";
             right = "TAB:Texture";
-            focusMode = "GENRE";
+            focusMode = nullptr;
             break;
         case FocusArea::TEXTURE:
-            left = "UP/DN:Scroll  ENT:Apply";
+            left = "UP/DN:Texture  L/R:TX%";
             right = "TAB:Presets";
-            focusMode = "TEXTURE";
+            focusMode = nullptr;
             break;
         case FocusArea::PRESETS:
-            left = "[1-8] PICK  [ENT] LOAD";
-            right = "[TAB] NEXT [M]APPLY [C]CUR";
-            focusMode = "PRESETS";
+            left = "1..8/ARW:Pick  ENT:Load";
+            right = "TAB:Apply  M:Mode C:Cur";
+            focusMode = nullptr;
             break;
         case FocusArea::APPLY_MODE:
-            left = "[SPACE] TOGGLE APPLY MODE";
+            left = "SPACE/M:Toggle Apply";
             right = regenOnApply(mini_acid_) ? "S+P: REGENERATES" : "SND: KEEPS PATTERNS";
-            focusMode = "APPLY";
+            focusMode = nullptr;
             break;
     }
 
@@ -312,7 +318,7 @@ void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
         gfx.drawText(124, INDICATOR_Y, "T ");
     }
     char amtBuf[16];
-    std::snprintf(amtBuf, sizeof(amtBuf), "TX:%d", (int)mini_acid_.sceneManager().currentScene().genre.textureAmount);
+    std::snprintf(amtBuf, sizeof(amtBuf), "TX %d%%", (int)mini_acid_.sceneManager().currentScene().genre.textureAmount);
     gfx.setTextColor(TEXT_DIM);
     gfx.drawText(196, INDICATOR_Y, amtBuf);
     
@@ -457,7 +463,7 @@ void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
         if (focused) textColor = IGfxColor(RetroTheme::TEXT_PRIMARY);
         
         gfx.setTextColor(textColor);
-        const char* name = presetNames[i];
+        const char* name = kPresetShortNames[i];
         int textW = strlen(name) * 6;
         int textX = btnX + (BTN_W - textW) / 2;
         if (textX < btnX + 8) textX = btnX + 8;
@@ -499,7 +505,7 @@ void GenrePage::drawAmberStyle(IGfx& gfx) {
         gfx.drawText(124, INDICATOR_Y, "T ");
     }
     char amtBuf[16];
-    std::snprintf(amtBuf, sizeof(amtBuf), "TX:%d", (int)mini_acid_.sceneManager().currentScene().genre.textureAmount);
+    std::snprintf(amtBuf, sizeof(amtBuf), "TX %d%%", (int)mini_acid_.sceneManager().currentScene().genre.textureAmount);
     gfx.setTextColor(AmberTheme::TEXT_DIM);
     gfx.drawText(196, INDICATOR_Y, amtBuf);
     
@@ -614,7 +620,11 @@ void GenrePage::drawAmberStyle(IGfx& gfx) {
         gfx.fillRect(bx, by, BTN_W, BTN_H, AmberTheme::BG_PANEL);
         gfx.drawRect(bx, by, BTN_W, BTN_H, selected ? AmberTheme::NEON_ORANGE : AmberTheme::GRID_MEDIUM);
         gfx.setTextColor(selected ? AmberTheme::TEXT_PRIMARY : AmberTheme::TEXT_SECONDARY);
-        gfx.drawText(bx + 3, by + 2, presetNames[i]);
+        const char* shortName = kPresetShortNames[i];
+        int tw = strlen(shortName) * 6;
+        int tx = bx + (BTN_W - tw) / 2;
+        if (tx < bx + 2) tx = bx + 2;
+        gfx.drawText(tx, by + 2, shortName);
     }
 
     if (presetFocus) {
@@ -650,7 +660,9 @@ bool GenrePage::handleEvent(UIEvent& e) {
                 textureIndex_ = visibleTextureAt(vis);
             }
         }
-        else if (focus_ == FocusArea::PRESETS) presetIndex_ = (presetIndex_ - 1 + 8) % 8;
+        else if (focus_ == FocusArea::PRESETS) {
+            if (presetIndex_ >= 4) presetIndex_ -= 4;
+        }
     };
     auto moveDown = [&]() {
         if (focus_ == FocusArea::GENRE) {
@@ -664,7 +676,9 @@ bool GenrePage::handleEvent(UIEvent& e) {
                 textureIndex_ = visibleTextureAt(vis);
             }
         }
-        else if (focus_ == FocusArea::PRESETS) presetIndex_ = (presetIndex_ + 1) % 8;
+        else if (focus_ == FocusArea::PRESETS) {
+            if (presetIndex_ < 4) presetIndex_ += 4;
+        }
     };
     auto moveLeft = [&]() {
         if (focus_ == FocusArea::TEXTURE) {
@@ -673,7 +687,7 @@ bool GenrePage::handleEvent(UIEvent& e) {
             if (v < 0) v = 0;
             gs.textureAmount = static_cast<uint8_t>(v);
         } else if (focus_ == FocusArea::PRESETS) {
-            if (presetIndex_ >= 4) presetIndex_ -= 4;
+            if ((presetIndex_ % 4) > 0) --presetIndex_;
         }
     };
     auto moveRight = [&]() {
@@ -683,7 +697,7 @@ bool GenrePage::handleEvent(UIEvent& e) {
             if (v > 100) v = 100;
             gs.textureAmount = static_cast<uint8_t>(v);
         } else if (focus_ == FocusArea::PRESETS) {
-            if (presetIndex_ < 4) presetIndex_ += 4;
+            if ((presetIndex_ % 4) < 3) ++presetIndex_;
         }
     };
 
