@@ -8,7 +8,22 @@ void GrooveboxModeManager::setMode(GrooveboxMode mode) {
 }
 
 void GrooveboxModeManager::toggle() {
-    setMode((currentMode_ == GrooveboxMode::Acid) ? GrooveboxMode::Minimal : GrooveboxMode::Acid);
+    int idx = static_cast<int>(currentMode_);
+    idx = (idx + 1) % 5;
+    setMode(static_cast<GrooveboxMode>(idx));
+}
+
+void GrooveboxModeManager::setFlavor(int flavor) {
+    if (flavor < 0) flavor = 0;
+    if (flavor >= flavorCount()) flavor = flavorCount() - 1;
+    currentFlavor_ = flavor;
+}
+
+void GrooveboxModeManager::shiftFlavor(int delta) {
+    int v = currentFlavor_ + delta;
+    while (v < 0) v += flavorCount();
+    while (v >= flavorCount()) v -= flavorCount();
+    currentFlavor_ = v;
 }
 
 void GrooveboxModeManager::apply303Preset(int voiceIndex, int presetIndex) {
@@ -84,14 +99,28 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm) con
     int adaptedMinNotes, adaptedMaxNotes;
     float adaptedChromaticProb, adaptedGhostProb, adaptedRootBias, adaptedSwing;
     
-    if (currentMode_ == GrooveboxMode::Acid) {
+    if (currentMode_ == GrooveboxMode::Acid || currentMode_ == GrooveboxMode::Electro) {
         // ACID: Fast = tight & clean, Slow = busy & chromatic
         adaptedMinNotes = (int)lerp(13.0f, 6.0f, t);
         adaptedMaxNotes = (int)lerp(16.0f, 8.0f, t);
         adaptedChromaticProb = lerp(0.18f, 0.06f, t);
         adaptedGhostProb = lerp(0.12f, 0.04f, t);
         adaptedRootBias = cfg.pattern.rootNoteBias;  // Use base config
-        adaptedSwing = 0.0f;  // Always grid-tight
+        adaptedSwing = (currentMode_ == GrooveboxMode::Electro) ? 0.02f : 0.0f;
+    } else if (currentMode_ == GrooveboxMode::Breaks) {
+        adaptedMinNotes = (int)lerp(9.0f, 5.0f, t);
+        adaptedMaxNotes = (int)lerp(12.0f, 7.0f, t);
+        adaptedChromaticProb = lerp(0.10f, 0.04f, t);
+        adaptedGhostProb = lerp(0.28f, 0.12f, t);
+        adaptedRootBias = lerp(0.45f, 0.62f, t);
+        adaptedSwing = lerp(0.28f, 0.18f, t);
+    } else if (currentMode_ == GrooveboxMode::Dub) {
+        adaptedMinNotes = (int)lerp(4.0f, 2.0f, t);
+        adaptedMaxNotes = (int)lerp(7.0f, 4.0f, t);
+        adaptedChromaticProb = 0.0f;
+        adaptedGhostProb = lerp(0.38f, 0.18f, t);
+        adaptedRootBias = lerp(0.80f, 0.90f, t);
+        adaptedSwing = lerp(0.20f, 0.12f, t);
     } else {
         // MINIMAL: Fast = hypnotic & clean, Slow = deep & textured
         adaptedMinNotes = (int)lerp(5.0f, 2.0f, t);
@@ -119,11 +148,15 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm) con
     }
     
     // Pick a scale for this pattern
-    const Scale& scale = (currentMode_ == GrooveboxMode::Acid) ? kScales[0] : kScales[rand() % 4];
-    int rootNote = (currentMode_ == GrooveboxMode::Acid) ? 36 : 24; // C2 or C1
+    const bool acidFamily = (currentMode_ == GrooveboxMode::Acid);
+    const bool electroFamily = (currentMode_ == GrooveboxMode::Electro);
+    const bool breaksFamily = (currentMode_ == GrooveboxMode::Breaks);
+    const bool dubFamily = (currentMode_ == GrooveboxMode::Dub);
+    const Scale& scale = (acidFamily || electroFamily) ? kScales[0] : kScales[rand() % 4];
+    int rootNote = (acidFamily || electroFamily) ? 36 : 24; // C2 or C1
     int strategy = rand() % 3; // 0: Random Walk, 1: Arp/Rhythm, 2: Sequential
 
-    if (currentMode_ == GrooveboxMode::Acid) {
+    if (acidFamily || electroFamily) {
         // ACID STRATEGY: Melodic, chromatic, contrasting
         int currentScaleIdx = rand() % scale.count;
         int lastOctaveShift = 0;  // Track last octave shift to prevent ping-pong
@@ -175,7 +208,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm) con
                 pattern.steps[i].velocity = cfg.pattern.velocityMin + 
                     (rand() % (cfg.pattern.velocityMax - cfg.pattern.velocityMin + 1));
                 
-                if ((rand() % 100) < slideProb) {
+                if (!electroFamily && (rand() % 100) < slideProb) {
                     pattern.steps[i].slide = true;
                 }
                 if ((rand() % 100) < accentProb) {
@@ -208,6 +241,8 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm) con
             // Rhythmic anchors: strong beats for hypnotic pulse
             bool isAnchor = (i % 4 == 0) || (i == 3) || (i == 6) || (i == 10);
             float hitProb = isAnchor ? 70.0f : 12.0f;  // Very sparse off-beats
+            if (breaksFamily) hitProb = isAnchor ? 78.0f : 25.0f;
+            if (dubFamily) hitProb = isAnchor ? 60.0f : 8.0f;
             
             if ((rand() % 100) < hitProb) {
                 // Focus on root (hypnotic repetition)

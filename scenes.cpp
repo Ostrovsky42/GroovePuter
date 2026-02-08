@@ -901,7 +901,14 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
   } else if (path == Path::Root) {
     if (lastKey_ == "mode") {
       int m = static_cast<int>(value);
+      if (m < 0) m = 0;
+      if (m > 4) m = 4;
       target_.mode = static_cast<GrooveboxMode>(m);
+    } else if (lastKey_ == "flv") {
+      int v = static_cast<int>(value);
+      if (v < 0) v = 0;
+      if (v > 4) v = 4;
+      target_.grooveFlavor = static_cast<uint8_t>(v);
     }
     return;
   }
@@ -932,6 +939,7 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
     if (lastKey_ == "regen") target_.genre.regenerateOnApply = value;
     else if (lastKey_ == "tempo") target_.genre.applyTempoOnApply = value;
     else if (lastKey_ == "cur") target_.genre.curatedMode = value;
+    else if (lastKey_ == "applySoundMacros") target_.genre.applySoundMacros = value;
     return;
   }
   if (path == Path::GeneratorParams) {
@@ -1152,7 +1160,9 @@ void SceneManager::loadDefaultScene() {
   loopMode_ = true;
   loopStartRow_ = 0;
   loopEndRow_ = 7;
-  mode_ = GrooveboxMode::Acid;
+  mode_ = GrooveboxMode::Minimal;
+  grooveFlavor_ = 0;
+  scene_->grooveFlavor = 0;
   scene_->activeSongSlot = 0;
   for (int i = 0; i < 2; ++i) {
       clearSongData(scene_->songs[i]);
@@ -1471,12 +1481,27 @@ void SceneManager::setDrumEngineName(const std::string& name) { drumEngineName_ 
 const std::string& SceneManager::getDrumEngineName() const { return drumEngineName_; }
 
 void SceneManager::setMode(GrooveboxMode mode) {
+  int m = static_cast<int>(mode);
+  if (m < 0) m = 0;
+  if (m > 4) m = 4;
+  mode = static_cast<GrooveboxMode>(m);
   mode_ = mode;
   scene_->mode = mode;
 }
 
 GrooveboxMode SceneManager::getMode() const {
   return mode_;
+}
+
+void SceneManager::setGrooveFlavor(int flavor) {
+  if (flavor < 0) flavor = 0;
+  if (flavor > 4) flavor = 4;
+  grooveFlavor_ = flavor;
+  scene_->grooveFlavor = static_cast<uint8_t>(flavor);
+}
+
+int SceneManager::getGrooveFlavor() const {
+  return grooveFlavor_;
 }
 
 
@@ -1847,7 +1872,8 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   genreObj["amt"] = scene_->genre.textureAmount;
   genreObj["regen"] = scene_->genre.regenerateOnApply;
   genreObj["tempo"] = scene_->genre.applyTempoOnApply;
-  genreObj["cur"] = scene_->genre.curatedMode;
+  genreObj["curated"] = scene_->genre.curatedMode;
+  genreObj["macros"] = scene_->genre.applySoundMacros;
 
   ArduinoJson::JsonObject genParams = root["generatorParams"].to<ArduinoJson::JsonObject>();
   serializeGeneratorParams(scene_->generatorParams, genParams);
@@ -1883,6 +1909,8 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   tapeObj["space"] = scene_->tape.space;
   tapeObj["movement"] = scene_->tape.movement;
   tapeObj["groove"] = scene_->tape.groove;
+  root["mode"] = static_cast<int>(mode_);
+  root["flv"] = grooveFlavor_;
 }
 
 bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
@@ -2238,6 +2266,15 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
                                                              clampPatternIndex(drumPatternIndex));
   }
 
+  int loadedMode = valueToInt(obj["mode"], static_cast<int>(loaded->mode));
+  if (loadedMode < 0) loadedMode = 0;
+  if (loadedMode > 4) loadedMode = 4;
+  loaded->mode = static_cast<GrooveboxMode>(loadedMode);
+  int loadedFlavor = valueToInt(obj["flv"], static_cast<int>(loaded->grooveFlavor));
+  if (loadedFlavor < 0) loadedFlavor = 0;
+  if (loadedFlavor > 4) loadedFlavor = 4;
+  loaded->grooveFlavor = static_cast<uint8_t>(loadedFlavor);
+
   *scene_ = *loaded;
   // loadedSong is struct Song, scene_->songs is array.
   // We loaded into loadedSongs[2] array above. 
@@ -2272,6 +2309,8 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
   loopEndRow_ = loopEndRow;
   clampLoopRange();
   setBpm(bpm);
+  setMode(scene_->mode);
+  setGrooveFlavor(scene_->grooveFlavor);
   return true;
 }
 
@@ -2386,6 +2425,7 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   clampLoopRange();
   setBpm(observer.bpm());
   setMode(observer.mode());
+  setGrooveFlavor(scene_->grooveFlavor);
 
   // Restore Sampler/Tape from observer target (the loaded scene)
   // Observer target was 'loaded' unique_ptr, which we copied to scene_ at 1397.

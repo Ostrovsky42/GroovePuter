@@ -101,7 +101,14 @@ const char* curatedModeShort(const MiniAcid& mini) {
 }
 
 const char* grooveModeShort(const MiniAcid& mini) {
-    return mini.grooveboxMode() == GrooveboxMode::Acid ? "ACD" : "MIN";
+    switch (mini.grooveboxMode()) {
+        case GrooveboxMode::Acid: return "ACD";
+        case GrooveboxMode::Minimal: return "MIN";
+        case GrooveboxMode::Breaks: return "BRK";
+        case GrooveboxMode::Dub: return "DUB";
+        case GrooveboxMode::Electro: return "ELC";
+        default: return "MIN";
+    }
 }
 
 bool regenOnApply(const MiniAcid& mini) {
@@ -207,7 +214,7 @@ void GenrePage::drawHeader(IGfx& gfx) {
         case VisualStyle::MINIMAL:
         default:
             UI::drawStandardHeader(gfx, mini_acid_, titleStr);
-            UI::drawFeelHeaderHud(gfx, mini_acid_, 166, 9);
+            LayoutManager::clearContent(gfx);
             break;
     }
 }
@@ -324,9 +331,23 @@ void GenrePage::drawMinimalStyle(IGfx& gfx) {
         int rowY = listY + i * Layout::LINE_HEIGHT;
         bool selected = (idx == textureIndex_) && (focus_ == FocusArea::TEXTURE);
         bool hasIcon = (idx == prevTextureIndex_);
+        
+        bool recommended = GenreManager::isTextureAllowed(
+            static_cast<GenerativeMode>(genreIndex_),
+            static_cast<TextureMode>(idx));
+        bool showRecommendation = isCuratedMode() && recommended;
+
         char label[20];
         buildTextureLabel(idx, label, sizeof(label));
-        Widgets::drawListRow(gfx, Layout::COL_2, rowY, Layout::COL_WIDTH, label, selected, hasIcon);
+
+        IGfxColor textColor = selected ? COLOR_WHITE : (showRecommendation ? COLOR_ACCENT : COLOR_LABEL);
+        if (selected) {
+             Widgets::drawListRow(gfx, Layout::COL_2, rowY, Layout::COL_WIDTH, label, selected, hasIcon);
+        } else {
+             gfx.setTextColor(textColor);
+             gfx.drawText(Layout::COL_2 + 10, rowY, label);
+             if (hasIcon) gfx.drawText(Layout::COL_2 + 2, rowY, ">>");
+        }
     }
     drawScrollBar(gfx, Layout::COL_2 + Layout::COL_WIDTH - 3, listY,
                   kTextureVisibleRows * Layout::LINE_HEIGHT,
@@ -478,12 +499,18 @@ void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
         int ledY = rowY + ROW_H / 2;
         drawLED(gfx, ledX, ledY, 2, isActive, color);
         
+        bool recommended = GenreManager::isTextureAllowed(
+            static_cast<GenerativeMode>(genreIndex_),
+            static_cast<TextureMode>(idx));
+        bool showRecommendation = isCuratedMode() && recommended;
+
         if (focused) {
             char label[20];
             buildTextureLabel(idx, label, sizeof(label));
             drawGlowText(gfx, TEX_X + 12, rowY, label, color, TEXT_PRIMARY);
         } else {
-            IGfxColor textColor = (isActive || isCursor) ? IGfxColor(color) : IGfxColor(TEXT_SECONDARY);
+            IGfxColor textColor = (isActive || isCursor) ? IGfxColor(color) : 
+                                   (showRecommendation ? IGfxColor(color) : IGfxColor(TEXT_SECONDARY));
             gfx.setTextColor(textColor);
             char label[20];
             buildTextureLabel(idx, label, sizeof(label));
@@ -661,12 +688,18 @@ void GenrePage::drawAmberStyle(IGfx& gfx) {
         int ledY = rowY + ROW_H / 2;
         AmberWidgets::drawLED(gfx, ledX, ledY, 2, isActive, color);
         
+        bool recommended = GenreManager::isTextureAllowed(
+            static_cast<GenerativeMode>(genreIndex_),
+            static_cast<TextureMode>(idx));
+        bool showRecommendation = isCuratedMode() && recommended;
+
         if (focused) {
             char label[20];
             buildTextureLabel(idx, label, sizeof(label));
             AmberWidgets::drawGlowText(gfx, TEX_X + 12, rowY, label, color, AmberTheme::TEXT_PRIMARY);
         } else {
-            IGfxColor textColor = (isActive || isCursor) ? IGfxColor(color) : IGfxColor(AmberTheme::TEXT_SECONDARY);
+            IGfxColor textColor = (isActive || isCursor) ? IGfxColor(color) : 
+                                   (showRecommendation ? IGfxColor(color) : IGfxColor(AmberTheme::TEXT_SECONDARY));
             gfx.setTextColor(textColor);
             char label[20];
             buildTextureLabel(idx, label, sizeof(label));
@@ -823,7 +856,10 @@ bool GenrePage::handleEvent(UIEvent& e) {
     // G: toggle groovebox mode (ACID/MINIMAL) in genre context.
     if (key == 'g' || key == 'G') {
         withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
-        UI::showToast(mini_acid_.grooveboxMode() == GrooveboxMode::Acid ? "Groove Mode: ACID" : "Groove Mode: MINIMAL");
+        char toast[40];
+        const char* shortName = grooveModeShort(mini_acid_);
+        std::snprintf(toast, sizeof(toast), "Groove Mode: %s", shortName);
+        UI::showToast(toast);
         return true;
     }
 
@@ -904,14 +940,7 @@ void GenrePage::buildTextureLabel(int textureIndex, char* out, size_t outSize) c
         std::snprintf(out, outSize, "?");
         return;
     }
-    bool recommended = GenreManager::isTextureAllowed(
-        static_cast<GenerativeMode>(genreIndex_),
-        static_cast<TextureMode>(textureIndex));
-    if (isCuratedMode() && recommended) {
-        std::snprintf(out, outSize, "%s*", textureNames[textureIndex]);
-    } else {
-        std::snprintf(out, outSize, "%s", textureNames[textureIndex]);
-    }
+    std::snprintf(out, outSize, "%s", textureNames[textureIndex]);
 }
 
 void GenrePage::applyCurrent() {

@@ -3,7 +3,10 @@
 
 enum class GrooveboxMode {
   Acid = 0,
-  Minimal = 1
+  Minimal = 1,
+  Breaks = 2,
+  Dub = 3,
+  Electro = 4
 };
 
 

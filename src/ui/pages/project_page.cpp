@@ -12,6 +12,7 @@
 #include "../layout_manager.h"
 #include "../screen_geometry.h"
 #include "../help_dialog_frames.h"
+#include "../ui_widgets.h"
 
 namespace {
 std::string generateMemorableName() {
@@ -55,6 +56,120 @@ static const char* LED_MODE_NAMES[] = {"Off", "StepTrig", "Beat", "MuteState"};
 static const char* VOICE_ID_NAMES[] = {"303A", "303B", "Kick", "Snare", "HatC", "HatO", "TomM", "TomH", "Rim", "Clap"};
 static const uint8_t BRI_STEPS[] = {10, 25, 40, 60, 90};
 static const uint16_t FLASH_STEPS[] = {20, 40, 60, 90};
+
+const char* styleShortName(VisualStyle style) {
+  switch (style) {
+    case VisualStyle::MINIMAL: return "MINI";
+    case VisualStyle::RETRO_CLASSIC: return "RETRO";
+    case VisualStyle::AMBER: return "AMBER";
+    default: return "RETRO";
+  }
+}
+
+VisualStyle nextStyle(VisualStyle style) {
+  switch (style) {
+    case VisualStyle::MINIMAL: return VisualStyle::RETRO_CLASSIC;
+    case VisualStyle::RETRO_CLASSIC: return VisualStyle::AMBER;
+    case VisualStyle::AMBER: return VisualStyle::MINIMAL;
+    default: return VisualStyle::MINIMAL;
+  }
+}
+
+VisualStyle prevStyle(VisualStyle style) {
+  switch (style) {
+    case VisualStyle::MINIMAL: return VisualStyle::AMBER;
+    case VisualStyle::RETRO_CLASSIC: return VisualStyle::MINIMAL;
+    case VisualStyle::AMBER: return VisualStyle::RETRO_CLASSIC;
+    default: return VisualStyle::MINIMAL;
+  }
+}
+
+const char* grooveModeName(GrooveboxMode mode) {
+  switch (mode) {
+    case GrooveboxMode::Acid: return "ACID";
+    case GrooveboxMode::Minimal: return "MINIMAL";
+    case GrooveboxMode::Breaks: return "BREAKS";
+    case GrooveboxMode::Dub: return "DUB";
+    case GrooveboxMode::Electro: return "ELECTRO";
+    default: return "MINIMAL";
+  }
+}
+
+const char* grooveFlavorName(GrooveboxMode mode, int flavor) {
+  if (flavor < 0) flavor = 0;
+  if (flavor > 4) flavor = 4;
+  static const char* acid[5] = {"CLASSIC", "SHARP", "DEEP", "RUBBER", "RAVE"};
+  static const char* minimal[5] = {"TIGHT", "WARM", "AIRY", "DRY", "HYPNO"};
+  static const char* breaks[5] = {"NUSKOOL", "SKITTER", "ROLLER", "CRUNCH", "LIQUID"};
+  static const char* dub[5] = {"HEAVY", "SPACE", "STEPPERS", "TAPE", "FOG"};
+  static const char* electro[5] = {"ROBOT", "ZAP", "BOING", "MIAMI", "INDUS"};
+  switch (mode) {
+    case GrooveboxMode::Acid: return acid[flavor];
+    case GrooveboxMode::Minimal: return minimal[flavor];
+    case GrooveboxMode::Breaks: return breaks[flavor];
+    case GrooveboxMode::Dub: return dub[flavor];
+    case GrooveboxMode::Electro: return electro[flavor];
+    default: return minimal[flavor];
+  }
+}
+
+const char* sectionName(int section) {
+  switch (section) {
+    case 0: return "SCENES";
+    case 1: return "GROOVE";
+    case 2: return "LED";
+    default: return "SCENES";
+  }
+}
+
+void sectionRange(int section, int& first, int& last) {
+  switch (section) {
+    case 0: // scenes
+      first = 0;  // Load
+      last = 2;   // New
+      return;
+    case 1: // groove
+      first = 3;   // VisualStyle
+      last = 6;    // Volume
+      return;
+    case 2: // led
+      first = 7;   // LedMode
+      last = 11;   // LedFlash
+      return;
+    default:
+      first = 0;
+      last = 2;
+      return;
+  }
+}
+
+int sectionNextFocus(int section, int current, int delta) {
+  int first = 0;
+  int last = 0;
+  sectionRange(section, first, last);
+  int span = last - first + 1;
+  if (span <= 0) return first;
+  int idx = current;
+  if (idx < first || idx > last) idx = first;
+  idx -= first;
+  idx = (idx + delta + span) % span;
+  return first + idx;
+}
+
+bool focusInSection(int section, int focus) {
+  int first = 0;
+  int last = 0;
+  sectionRange(section, first, last);
+  return focus >= first && focus <= last;
+}
+
+int firstFocusInSection(int section) {
+  int first = 0;
+  int last = 0;
+  sectionRange(section, first, last);
+  (void)last;
+  return first;
+}
 
 } // namespace
 
@@ -144,6 +259,22 @@ void ProjectPage::ensureSelectionVisible(int visibleRows) {
     scroll_offset_ = selection_index_ - visibleRows + 1;
   }
   if (scroll_offset_ > maxScroll) scroll_offset_ = maxScroll;
+}
+
+void ProjectPage::ensureMainFocusVisible(int visibleRows) {
+  if (visibleRows < 1) visibleRows = 1;
+  const int focus = static_cast<int>(main_focus_);
+  const int maxFocus = static_cast<int>(MainFocus::LedFlash);
+  if (main_scroll_ < 0) main_scroll_ = 0;
+  if (main_scroll_ > maxFocus) main_scroll_ = maxFocus;
+  if (focus < main_scroll_) {
+    main_scroll_ = focus;
+  } else if (focus >= main_scroll_ + visibleRows) {
+    main_scroll_ = focus - visibleRows + 1;
+  }
+  int maxScroll = maxFocus - visibleRows + 1;
+  if (maxScroll < 0) maxScroll = 0;
+  if (main_scroll_ > maxScroll) main_scroll_ = maxScroll;
 }
 
 bool ProjectPage::loadSceneAtSelection() {
@@ -272,39 +403,122 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         return false;
     }
 
+    char key = ui_event.key;
+    if (key == '\t') {
+        int sectionIdx = static_cast<int>(section_);
+        sectionIdx = (sectionIdx + 1) % 3;
+        section_ = static_cast<ProjectSection>(sectionIdx);
+        int focusIdx = static_cast<int>(main_focus_);
+        if (!focusInSection(sectionIdx, focusIdx)) {
+            main_focus_ = static_cast<MainFocus>(firstFocusInSection(sectionIdx));
+        }
+        return true;
+    }
+
     switch (ui_event.scancode) {
+        case GROOVEPUTER_UP: {
+            int sectionIdx = static_cast<int>(section_);
+            int idx = sectionNextFocus(sectionIdx, static_cast<int>(main_focus_), -1);
+            main_focus_ = static_cast<MainFocus>(idx);
+            ensureMainFocusVisible(8);
+            return true;
+        }
+        case GROOVEPUTER_DOWN: {
+            int sectionIdx = static_cast<int>(section_);
+            int idx = sectionNextFocus(sectionIdx, static_cast<int>(main_focus_), 1);
+            main_focus_ = static_cast<MainFocus>(idx);
+            ensureMainFocusVisible(8);
+            return true;
+        }
         case GROOVEPUTER_LEFT:
-            if (main_focus_ == MainFocus::Volume) { mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, -1); return true; }
-            if (main_focus_ == MainFocus::SaveAs) main_focus_ = MainFocus::Load;
-            else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::SaveAs;
-            else if (main_focus_ == MainFocus::VisualStyle) main_focus_ = MainFocus::New;
-            else if (main_focus_ >= MainFocus::LedMode && main_focus_ <= MainFocus::LedFlash) {
-                if (main_focus_ == MainFocus::LedMode) main_focus_ = MainFocus::VisualStyle;
-                else main_focus_ = static_cast<MainFocus>(static_cast<int>(main_focus_) - 1);
+        case GROOVEPUTER_RIGHT: {
+            const bool right = (ui_event.scancode == GROOVEPUTER_RIGHT);
+            auto& led = mini_acid_.sceneManager().currentScene().led;
+            if (main_focus_ == MainFocus::Volume) {
+                mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, right ? 1 : -1);
+                return true;
             }
-            return true;
-        case GROOVEPUTER_RIGHT:
-            if (main_focus_ == MainFocus::Volume) { mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, 1); return true; }
-            if (main_focus_ == MainFocus::Load) main_focus_ = MainFocus::SaveAs;
-            else if (main_focus_ == MainFocus::SaveAs) main_focus_ = MainFocus::New;
-            else if (main_focus_ == MainFocus::New) main_focus_ = MainFocus::VisualStyle;
-            else if (main_focus_ == MainFocus::VisualStyle) main_focus_ = MainFocus::LedMode;
-            else if (main_focus_ >= MainFocus::LedMode && main_focus_ < MainFocus::LedFlash) {
-                main_focus_ = static_cast<MainFocus>(static_cast<int>(main_focus_) + 1);
+            if (main_focus_ == MainFocus::VisualStyle) {
+                UI::currentStyle = right ? nextStyle(UI::currentStyle) : prevStyle(UI::currentStyle);
+                return true;
             }
-            return true;
-        case GROOVEPUTER_UP:
-            if (main_focus_ == MainFocus::Volume) { main_focus_ = MainFocus::LedMode; return true; }
-            if (main_focus_ >= MainFocus::LedMode && main_focus_ <= MainFocus::LedFlash) { main_focus_ = MainFocus::Load; return true; }
-            break;
-        case GROOVEPUTER_DOWN:
-            if (main_focus_ <= MainFocus::VisualStyle) { main_focus_ = MainFocus::LedMode; return true; }
-            if (main_focus_ >= MainFocus::LedMode && main_focus_ <= MainFocus::LedFlash) { main_focus_ = MainFocus::Volume; return true; }
-            break;
+            if (main_focus_ == MainFocus::GrooveMode) {
+                withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
+                char toast[40];
+                std::snprintf(toast, sizeof(toast), "Groove Mode: %s", grooveModeName(mini_acid_.grooveboxMode()));
+                UI::showToast(toast);
+                return true;
+            }
+            if (main_focus_ == MainFocus::GrooveFlavor) {
+                withAudioGuard([&]() { mini_acid_.shiftGrooveFlavor(right ? 1 : -1); });
+                return true;
+            }
+            if (main_focus_ == MainFocus::LedMode) {
+                int m = static_cast<int>(led.mode);
+                m += right ? 1 : -1;
+                if (m < 0) m = 3;
+                if (m > 3) m = 0;
+                led.mode = static_cast<LedMode>(m);
+                return true;
+            }
+            if (main_focus_ == MainFocus::LedSource) {
+                int s = static_cast<int>(led.source);
+                s += right ? 1 : -1;
+                int max = static_cast<int>(VoiceId::Count) - 1;
+                if (s < 0) s = max;
+                if (s > max) s = 0;
+                led.source = static_cast<LedSource>(s);
+                return true;
+            }
+            if (main_focus_ == MainFocus::LedColor) {
+                int currentIdx = 0;
+                for (int i = 0; i < 6; ++i) {
+                    if (TAPE_PALETTE[i].rgb.r == led.color.r &&
+                        TAPE_PALETTE[i].rgb.g == led.color.g &&
+                        TAPE_PALETTE[i].rgb.b == led.color.b) {
+                        currentIdx = i;
+                        break;
+                    }
+                }
+                currentIdx += right ? 1 : -1;
+                if (currentIdx < 0) currentIdx = 5;
+                if (currentIdx > 5) currentIdx = 0;
+                led.color = TAPE_PALETTE[currentIdx].rgb;
+                return true;
+            }
+            if (main_focus_ == MainFocus::LedBri) {
+                int currentIdx = 0;
+                for (int i = 0; i < 5; ++i) {
+                    if (BRI_STEPS[i] == led.brightness) {
+                        currentIdx = i;
+                        break;
+                    }
+                }
+                currentIdx += right ? 1 : -1;
+                if (currentIdx < 0) currentIdx = 4;
+                if (currentIdx > 4) currentIdx = 0;
+                led.brightness = BRI_STEPS[currentIdx];
+                return true;
+            }
+            if (main_focus_ == MainFocus::LedFlash) {
+                int currentIdx = 0;
+                for (int i = 0; i < 4; ++i) {
+                    if (FLASH_STEPS[i] == led.flashMs) {
+                        currentIdx = i;
+                        break;
+                    }
+                }
+                currentIdx += right ? 1 : -1;
+                if (currentIdx < 0) currentIdx = 3;
+                if (currentIdx > 3) currentIdx = 0;
+                led.flashMs = FLASH_STEPS[currentIdx];
+                return true;
+            }
+            return false;
+        }
         default: break;
     }
 
-    char key = ui_event.key;
     if (key == 'g' || key == 'G') {
         requestPageTransition(0); // Genre Page
         return true;
@@ -315,14 +529,17 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         if (main_focus_ == MainFocus::SaveAs) { openSaveDialog(); return true; }
         if (main_focus_ == MainFocus::New) return createNewScene();
 
-        if (main_focus_ == MainFocus::VisualStyle) {
-             switch (UI::currentStyle) {
-                 case VisualStyle::MINIMAL: UI::currentStyle = VisualStyle::RETRO_CLASSIC; break;
-                 case VisualStyle::RETRO_CLASSIC: UI::currentStyle = VisualStyle::AMBER; break;
-                 case VisualStyle::AMBER: UI::currentStyle = VisualStyle::MINIMAL; break;
-                 default: UI::currentStyle = VisualStyle::MINIMAL; break;
-             }
-             return true;
+        if (main_focus_ == MainFocus::VisualStyle) { UI::currentStyle = nextStyle(UI::currentStyle); return true; }
+        if (main_focus_ == MainFocus::GrooveMode) {
+            withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
+            char toast[40];
+            std::snprintf(toast, sizeof(toast), "Groove Mode: %s", grooveModeName(mini_acid_.grooveboxMode()));
+            UI::showToast(toast);
+            return true;
+        }
+        if (main_focus_ == MainFocus::GrooveFlavor) {
+            withAudioGuard([&]() { mini_acid_.shiftGrooveFlavor(1); });
+            return true;
         }
         
         auto& led = mini_acid_.sceneManager().currentScene().led;
@@ -368,143 +585,124 @@ const std::string & ProjectPage::getTitle() const {
 
 void ProjectPage::draw(IGfx& gfx) {
   UI::drawStandardHeader(gfx, mini_acid_, "PROJECT");
-  UI::drawFeelHeaderHud(gfx, mini_acid_, 166, 9);
   LayoutManager::clearContent(gfx);
-  
-  // Use Layout::CONTENT for proper positioning
-  int x = Layout::CONTENT.x + Layout::CONTENT_PAD_X;
-  int y = Layout::CONTENT.y + Layout::CONTENT_PAD_Y;
-  int w = Layout::CONTENT.w - 2 * Layout::CONTENT_PAD_X;
-  int h = Layout::CONTENT.h - 2 * Layout::CONTENT_PAD_Y;
 
-  int body_y = y;
-  int body_h = h;
-  if (body_h <= 0) return;
+  const int x = Layout::COL_1;
+  const int y0 = LayoutManager::lineY(0);
+  const int line_h = gfx.fontHeight();
+  const int listW = Layout::COL_WIDTH;
+  const int infoX = Layout::COL_2;
+  const int infoW = Layout::CONTENT.w - infoX - 4;
+  int sectionIdx = static_cast<int>(section_);
+  int firstFocus = 0;
+  int lastFocus = 0;
+  sectionRange(sectionIdx, firstFocus, lastFocus);
+  auto& led = mini_acid_.sceneManager().currentScene().led;
 
-  int line_h = gfx.fontHeight();
-  std::string currentName = mini_acid_.currentSceneName();
+  // Top status line
   gfx.setTextColor(COLOR_LABEL);
-  gfx.drawText(x, body_y, "Current Scene");
+  gfx.drawText(x, y0, "SCENE");
   gfx.setTextColor(COLOR_WHITE);
-  gfx.drawText(x, body_y + line_h + 2, currentName.c_str());
+  Widgets::drawClippedText(gfx, x + 34, y0, listW - 34, mini_acid_.currentSceneName().c_str());
+  gfx.setTextColor(COLOR_LABEL);
+  char sectionBuf[24];
+  std::snprintf(sectionBuf, sizeof(sectionBuf), "INFO [%s]", sectionName(sectionIdx));
+  gfx.drawText(infoX, y0, sectionBuf);
 
-  int btn_w = 70;
-  if (btn_w > 90) btn_w = 90;
-  if (btn_w < 60) btn_w = 60;
-  int btn_h = line_h + 6;  // Reduced from +8 to +6
-  int btn_y = body_y + line_h * 2 + 8;
-  int spacing = 3;
-  const char* labels[4] = {"Load", "Save", "New", "Theme"};
-  if (UI::currentStyle == VisualStyle::MINIMAL) labels[3] = "Carb";
-  else if (UI::currentStyle == VisualStyle::RETRO_CLASSIC) labels[3] = "Cyb";
-  else labels[3] = "Amb";
-  
-  btn_w = 42;
-  // 4 controls in one row for 240x135 screen.
-  btn_w = 50; // Increased width since we have fewer buttons
-  spacing = 2;
-  int total_w = btn_w * 4 + spacing * 3;
-  int start_x = x + (w - total_w) / 2;
-  
-  for (int i = 0; i < 4; ++i) {
-    int btn_x = start_x + i * (btn_w + spacing);
-    bool focused = (dialog_type_ == DialogType::None && static_cast<int>(main_focus_) == i);
-    gfx.fillRect(btn_x, btn_y, btn_w, btn_h, COLOR_PANEL);
-    gfx.drawRect(btn_x, btn_y, btn_w, btn_h, focused ? COLOR_ACCENT : COLOR_LABEL);
-    int btn_tw = textWidth(gfx, labels[i]);
-    gfx.drawText(btn_x + (btn_w - btn_tw) / 2, btn_y + (btn_h - line_h) / 2, labels[i]);
+  const char* tabNames[3] = {"SCN", "GRV", "LED"};
+  for (int i = 0; i < 3; ++i) {
+    int tx = x + i * 28;
+    bool activeTab = (i == sectionIdx);
+    gfx.setTextColor(activeTab ? COLOR_ACCENT : COLOR_LABEL);
+    gfx.drawText(tx, LayoutManager::lineY(1), tabNames[i]);
   }
 
-  // Read-only reminder: musical mode is controlled on Genre page.
-  int mode_y = btn_y + btn_h + 2;
-  
-  // SYSTEM MONITOR
-  // Replaces the static mode text with useful stats
+  const int visibleRows = 8;
+  const int rowBase = 2;
+  for (int row = 0; row < visibleRows; ++row) {
+    int focusIdx = firstFocus + row;
+    if (focusIdx > lastFocus) break;
+    MainFocus focus = static_cast<MainFocus>(focusIdx);
+    bool selected = (focus == main_focus_) && dialog_type_ == DialogType::None;
+
+    char line[48];
+    switch (focus) {
+      case MainFocus::Load: std::snprintf(line, sizeof(line), "Load Scene"); break;
+      case MainFocus::SaveAs: std::snprintf(line, sizeof(line), "Save As"); break;
+      case MainFocus::New: std::snprintf(line, sizeof(line), "New ࿕"); break;
+      case MainFocus::VisualStyle:
+        std::snprintf(line, sizeof(line), "Theme      %s", styleShortName(UI::currentStyle));
+        break;
+      case MainFocus::GrooveMode:
+        std::snprintf(line, sizeof(line), "Groove     %s", grooveModeName(mini_acid_.grooveboxMode()));
+        break;
+      case MainFocus::GrooveFlavor: {
+        int f = mini_acid_.grooveFlavor();
+        std::snprintf(line, sizeof(line), "Flavor     %s", grooveFlavorName(mini_acid_.grooveboxMode(), f));
+        break;
+      }
+      case MainFocus::Volume: {
+        int volPct = (int)(mini_acid_.miniParameter(MiniAcidParamId::MainVolume).normalized() * 100.0f + 0.5f);
+        std::snprintf(line, sizeof(line), "Main Vol   %d%%", volPct);
+        break;
+      }
+      case MainFocus::LedMode:
+        std::snprintf(line, sizeof(line), "LED Mode   %s", LED_MODE_NAMES[static_cast<int>(led.mode)]);
+        break;
+      case MainFocus::LedSource:
+        std::snprintf(line, sizeof(line), "LED Src    %s", VOICE_ID_NAMES[static_cast<int>(led.source)]);
+        break;
+      case MainFocus::LedColor: {
+        int colorIdx = 0;
+        for (int i = 0; i < 6; ++i) {
+          if (TAPE_PALETTE[i].rgb.r == led.color.r &&
+              TAPE_PALETTE[i].rgb.g == led.color.g &&
+              TAPE_PALETTE[i].rgb.b == led.color.b) {
+            colorIdx = i;
+            break;
+          }
+        }
+        std::snprintf(line, sizeof(line), "LED Color  %s", TAPE_PALETTE[colorIdx].name);
+        break;
+      }
+      case MainFocus::LedBri:
+        std::snprintf(line, sizeof(line), "LED Bri    %u%%", (unsigned)led.brightness);
+        break;
+      case MainFocus::LedFlash:
+        std::snprintf(line, sizeof(line), "LED Flash  %ums", (unsigned)led.flashMs);
+        break;
+    }
+    Widgets::drawListRow(gfx, x, LayoutManager::lineY(rowBase + row), listW, line, selected);
+  }
+
   uint32_t freeInt = 0;
   uint32_t largestInt = 0;
 #if defined(ESP32) || defined(ESP_PLATFORM)
   freeInt = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
   largestInt = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
 #endif
-  
-  // Convert to KB/MB for readability
-  // layout: RAM: 120k/4.1M  CPU: 135%
-  char sysBuf[64];
-  int cpuLoad = (int)mini_acid_.perfStats.cpuAudioPctIdeal;
+  int cpuAvg = (int)mini_acid_.perfStats.cpuAudioPctIdeal;
   int cpuPeak = (int)mini_acid_.perfStats.cpuAudioPeakPct;
-  
-  snprintf(sysBuf, sizeof(sysBuf), "RAM:%uk L:%uk CPU:%d/(%d)%%", 
-           (unsigned int)(freeInt/1024), (unsigned int)(largestInt/1024), cpuLoad, cpuPeak);
-           
-  gfx.setTextColor(COLOR_ACCENT); // Highlight stats
-  gfx.drawText(start_x, mode_y, sysBuf);
+  char perf0[40];
+  char perf1[40];
+  char perf2[40];
+  std::snprintf(perf0, sizeof(perf0), "CPU:%d/%d%%", cpuAvg, cpuPeak);
+  std::snprintf(perf1, sizeof(perf1), "RAM:%uk/%uk",
+                (unsigned)(freeInt / 1024), (unsigned)(largestInt / 1024));
+  std::snprintf(perf2, sizeof(perf2), "Th:%s  M:%s",
+                styleShortName(UI::currentStyle), grooveModeName(mini_acid_.grooveboxMode()));
+  const char* infoLines[3] = {perf0, perf1, perf2};
+  Widgets::drawInfoBox(gfx, infoX, LayoutManager::lineY(2), infoW, infoLines, 3);
 
-  // LED Section
-  int led_y = mode_y + line_h + 1;
-  gfx.setTextColor(COLOR_LABEL);
-  gfx.drawText(x, led_y, "LED SETTINGS");
-  
-  int led_ctrl_y = led_y + line_h + 4;
-  int led_btn_w = 38;
-  int led_spacing = 2;
-  
-  auto& led = mini_acid_.sceneManager().currentScene().led;
-  char briBuf[8]; snprintf(briBuf, sizeof(briBuf), "%d%%", led.brightness);
-  char flsBuf[8]; snprintf(flsBuf, sizeof(flsBuf), "%dm", led.flashMs);
-  
-  const char* ledLabels[5] = { LED_MODE_NAMES[static_cast<int>(led.mode)], 
-                               VOICE_ID_NAMES[static_cast<int>(led.source)],
-                               "Color", briBuf, flsBuf };
-                               
-  for (int i=0; i<5; ++i) {
-      int bx = start_x + (i * (led_btn_w + led_spacing));
-      MainFocus focus = static_cast<MainFocus>(static_cast<int>(MainFocus::LedMode) + i);
-      bool focused = (dialog_type_ == DialogType::None && main_focus_ == focus);
-      
-      gfx.fillRect(bx, led_ctrl_y, led_btn_w, btn_h, COLOR_PANEL);
-      
-      IGfxColor btnColor = COLOR_LABEL;
-      if (focused) btnColor = COLOR_ACCENT;
-      else if (i == 2) {
-          btnColor = IGfxColor((led.color.r << 16) | (led.color.g << 8) | led.color.b);
-      }
-      gfx.drawRect(bx, led_ctrl_y, led_btn_w, btn_h, btnColor);
-      
-      int tw = textWidth(gfx, ledLabels[i]);
-      gfx.drawText(bx + (led_btn_w - tw) / 2, led_ctrl_y + (btn_h - line_h) / 2, ledLabels[i]);
-  }
-
-  // Volume Slider
-  int vol_y = led_ctrl_y + btn_h + 8;
-  int vol_h = 10;
-  int vol_label_w = 30;
-  int track_x = start_x + vol_label_w + 5;
-  int track_w = total_w - vol_label_w - 5;
-  
-  bool volFocused = (dialog_type_ == DialogType::None && static_cast<int>(main_focus_) == static_cast<int>(MainFocus::Volume));
-  
-  gfx.setTextColor(volFocused ? COLOR_ACCENT : COLOR_LABEL);
-  gfx.drawText(start_x, vol_y + (vol_h - line_h)/2, "Vol:");
-  
-  gfx.drawRect(track_x, vol_y, track_w, vol_h, volFocused ? COLOR_ACCENT : COLOR_DARKER);
-  float volVal = mini_acid_.miniParameter(MiniAcidParamId::MainVolume).value();
-  int fill_w = (int)(track_w * volVal);
-  if (fill_w > track_w - 2) fill_w = track_w - 2;
-  if (fill_w > 0) {
-      gfx.fillRect(track_x + 1, vol_y + 1, fill_w, vol_h - 2, volFocused ? COLOR_ACCENT : COLOR_GRAY);
-  }
-
-  // Warning
-  //gfx.setTextColor(COLOR_ACCENT);
- //gfx.drawText(x, vol_y + vol_h + 4, "NOTE: RGB needs Screen BL=100%");
-
-  // v1.1  Footer
-  UI::drawStandardFooter(gfx, "[ARROWS]NAV [ENT]SELECT", "[G]GENRE");
+  UI::drawStandardFooter(gfx, "[TAB] [UP/DN][L/R]", "[ENT],[G],[BSP]");
 
   if (dialog_type_ == DialogType::None) return;
 
   refreshScenes();
 
+  int w = Layout::CONTENT.w - 2 * Layout::CONTENT_PAD_X;
+  int h = Layout::CONTENT.h - 2 * Layout::CONTENT_PAD_Y;
+  int y = Layout::CONTENT.y + Layout::CONTENT_PAD_Y;
   int dialog_w = w - 16;
   if (dialog_w < 80) dialog_w = w - 4;
   if (dialog_w < 60) dialog_w = 60;

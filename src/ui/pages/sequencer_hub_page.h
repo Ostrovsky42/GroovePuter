@@ -45,6 +45,7 @@ private:
     Mode mode_ = Mode::OVERVIEW;
     FocusLane focus_ = FocusLane::GRID;
     int selectedTrack_ = 0; // 0-9: 2 synth + 8 drums
+    int overviewScroll_ = 0;
     
     // Cursors
     int stepCursor_ = 0;
@@ -76,6 +77,7 @@ private:
     // Helpers
     bool isDrumTrack(int trackIdx) { return trackIdx >= 2; }
     int getDrumVoiceIndex(int trackIdx) { return trackIdx - 2; }
+    void syncOverviewScroll();
     
     template <typename F>
     void withAudioGuard(F&& fn) {

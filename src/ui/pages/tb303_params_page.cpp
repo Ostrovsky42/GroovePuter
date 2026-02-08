@@ -382,13 +382,21 @@ void TB303ParamsPage::draw(IGfx& gfx) {
   const char* title = (voice_index_ == 0) ? "303A BASS" : "303B LEAD";
   IGfxColor headerColor = voiceColor(voice_index_);
   UI::drawStandardHeader(gfx, mini_acid_, title);
-  UI::drawFeelHeaderHud(gfx, mini_acid_, 166, 9);
   LayoutManager::clearContent(gfx);
+
 
   layoutComponents();
 
   GrooveboxMode mode = mini_acid_.grooveboxMode();
-  const char* modeName = (mode == GrooveboxMode::Acid) ? "ACID" : "MIN";
+  const char* modeName = "MIN";
+  switch (mode) {
+    case GrooveboxMode::Acid: modeName = "ACID"; break;
+    case GrooveboxMode::Minimal: modeName = "MIN"; break;
+    case GrooveboxMode::Breaks: modeName = "BRK"; break;
+    case GrooveboxMode::Dub: modeName = "DUB"; break;
+    case GrooveboxMode::Electro: modeName = "ELC"; break;
+    default: modeName = "MIN"; break;
+  }
   gfx.setTextColor(kDimText);
   gfx.drawText(Layout::CONTENT.x + Layout::CONTENT.w - 34, Layout::CONTENT.y + 2, modeName);
 

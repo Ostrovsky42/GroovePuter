@@ -297,7 +297,8 @@ void MiniAcid::init() {
   LOG_PRINTLN("  - MiniAcid::init: Memory strategy applied");
 
   // Replaces existing default params initialization
-  params[static_cast<int>(MiniAcidParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.0f, 0.6f, 1.0f / 64);
+  // Allow extra headroom for quiet built-in speakers; final stage is soft-limited.
+  params[static_cast<int>(MiniAcidParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.8f, 0.6f, 1.0f / 64);
   params[static_cast<int>(MiniAcidParamId::VoicePitch)] = Parameter("v_pch", "Hz", 60.0f, 400.0f, 150.0f, 1.0f); // Was 120
   params[static_cast<int>(MiniAcidParamId::VoiceSpeed)] = Parameter("v_spd", "x", 0.5f, 2.0f, 1.2f, 0.1f);   // Was 1.0
   params[static_cast<int>(MiniAcidParamId::VoiceRobotness)] = Parameter("v_rob", "%", 0.0f, 1.0f, 0.7f, 0.05f); // Was 0.8
@@ -1926,8 +1927,9 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     float preLimiter = dcOut;
     float limited = softLimit(dcOut);
     float vol = params[static_cast<int>(MiniAcidParamId::MainVolume)].value();
-    if (vol < 0.0f) vol = 0.0f; if (vol > 1.0f) vol = 1.0f;
-    float finalSample = limited * vol; 
+    if (vol < 0.0f) vol = 0.0f;
+    if (vol > 1.8f) vol = 1.8f;
+    float finalSample = softLimit(limited * vol);
     ditherState_ = ditherState_ * 1664525u + 1013904223u;
     float r1 = (float)(ditherState_ & 65535) * (1.0f / 65536.0f);
     ditherState_ = ditherState_ * 1664525u + 1013904223u;
@@ -2086,6 +2088,7 @@ void MiniAcid::toggleAudioDiag() {
 
 void MiniAcid::setGrooveboxMode(GrooveboxMode mode) {
   sceneManager_.setMode(mode);
+  modeManager_.setModeLocal(mode);
   syncModeToVoices();
 }
 
@@ -2113,6 +2116,33 @@ GrooveboxMode MiniAcid::grooveboxMode() const {
 
 void MiniAcid::toggleGrooveboxMode() {
   modeManager_.toggle();
+}
+
+void MiniAcid::setGrooveFlavor(int flavor) {
+  sceneManager_.setGrooveFlavor(flavor);
+  const int flv = sceneManager_.getGrooveFlavor();
+  modeManager_.setFlavorLocal(flv);
+  modeManager_.apply303Preset(0, flv);
+  modeManager_.apply303Preset(1, flv);
+  int tapeCount = 0;
+  const TapeModePreset* tapePresets = modeManager_.getTapePresets(tapeCount);
+  if (tapePresets && tapeCount > 0) {
+    int idx = flv;
+    if (idx < 0) idx = 0;
+    if (idx >= tapeCount) idx = tapeCount - 1;
+    sceneManager_.currentScene().tape.macro = tapePresets[idx].macro;
+  }
+}
+
+int MiniAcid::grooveFlavor() const {
+  return sceneManager_.getGrooveFlavor();
+}
+
+void MiniAcid::shiftGrooveFlavor(int delta) {
+  int flavor = sceneManager_.getGrooveFlavor() + delta;
+  while (flavor < 0) flavor += 5;
+  while (flavor >= 5) flavor -= 5;
+  setGrooveFlavor(flavor);
 }
 
 std::string MiniAcid::currentSceneName() const {
@@ -2199,6 +2229,8 @@ void MiniAcid::applySceneStateFromManager() {
   // Reset bias tracking since scene overwrites all params
   genreManager_.resetTextureBiasTracking();
   
+  modeManager_.setModeLocal(sceneManager_.getMode());
+  modeManager_.setFlavorLocal(sceneManager_.getGrooveFlavor());
   syncModeToVoices();
   setBpm(sceneManager_.getBpm());
   

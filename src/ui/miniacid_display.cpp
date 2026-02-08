@@ -480,8 +480,9 @@ void MiniAcidDisplay::drawSplashScreen() {
       
       for (int j = 0; j < len; ++j) {
           if (text[j] != ' ') {
-              // Interpolate color based on time and position
-              float t = 0.5f + 0.5f * sinf(timeShift * 0.005f + j * 0.2f + y * 0.05f);
+              // WIDER gradient bands: lower spatial frequencies (0.08f instead of 0.2f)
+              // SLOWER movement: lower time coefficient (0.003f instead of 0.005f)
+              float t = 0.5f + 0.5f * sinf(timeShift * 0.003f + j * 0.08f + y * 0.03f);
               
               // Simple manual interpolation
               uint8_t r = (uint8_t)(0x00 + (0x9D - 0x00) * t);
@@ -503,7 +504,7 @@ void MiniAcidDisplay::drawSplashScreen() {
     int y = start_y + i * (small_h + 1);
     
     // Decryption effect: characters are random for the first 150ms of line life
-    if (elapsed < lineTrigger + 150) {
+    if (elapsed < lineTrigger + 100) {
         char glitchLine[64];
         strncpy(glitchLine, logo[i], 63);
         glitchLine[63] = '\0';
@@ -519,8 +520,8 @@ void MiniAcidDisplay::drawSplashScreen() {
     }
   }
 
-  // Draw info text after logo starts finishing
-  if (elapsed > kLineCount * kLineDelay + 200) {
+  // Draw info text after logo starts finishing (Delayed as well)
+  if (elapsed > kLineCount * kLineDelay + 1000) {
     int info_y = start_y + logo_h + 15;
     
     uint8_t pulse = 160 + 95 * sinf(elapsed * 0.005f);

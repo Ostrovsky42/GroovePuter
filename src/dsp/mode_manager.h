@@ -10,34 +10,55 @@ class MiniAcid;
 
 class GrooveboxModeManager {
 public:
-    GrooveboxModeManager(MiniAcid& engine) : engine_(engine), currentMode_(GrooveboxMode::Acid) {}
+    GrooveboxModeManager(MiniAcid& engine) : engine_(engine), currentMode_(GrooveboxMode::Minimal), currentFlavor_(0) {}
     
     GrooveboxMode mode() const { return currentMode_; }
+    int flavor() const { return currentFlavor_; }
     
     void setMode(GrooveboxMode mode);
     void toggle();
+    void setFlavor(int flavor);
+    void shiftFlavor(int delta);
+    int flavorCount() const { return 5; }
+    void setModeLocal(GrooveboxMode mode) { currentMode_ = mode; }
+    void setFlavorLocal(int flavor) {
+        if (flavor < 0) flavor = 0;
+        if (flavor >= flavorCount()) flavor = flavorCount() - 1;
+        currentFlavor_ = flavor;
+    }
     
     const ModeConfig& config() const {
-        return (currentMode_ == GrooveboxMode::Acid) ? kAcidConfig : kMinimalConfig;
+        switch (currentMode_) {
+            case GrooveboxMode::Acid: return kAcidConfig;
+            case GrooveboxMode::Minimal: return kMinimalConfig;
+            case GrooveboxMode::Breaks: return kBreaksConfig;
+            case GrooveboxMode::Dub: return kDubConfig;
+            case GrooveboxMode::Electro: return kElectroConfig;
+            default: return kMinimalConfig;
+        }
     }
     
     const TB303ModePreset* get303Presets(int& count) const {
-        if (currentMode_ == GrooveboxMode::Acid) {
-            count = 4;
-            return kAcidPresets;
-        } else {
-            count = 4;
-            return kMinimalPresets;
+        count = 5;
+        switch (currentMode_) {
+            case GrooveboxMode::Acid: return kAcidPresets;
+            case GrooveboxMode::Minimal: return kMinimalPresets;
+            case GrooveboxMode::Breaks: return kBreaksPresets;
+            case GrooveboxMode::Dub: return kDubPresets;
+            case GrooveboxMode::Electro: return kElectroPresets;
+            default: return kMinimalPresets;
         }
     }
     
     const TapeModePreset* getTapePresets(int& count) const {
-        if (currentMode_ == GrooveboxMode::Acid) {
-            count = 4;
-            return kAcidTapePresets;
-        } else {
-            count = 4;
-            return kMinimalTapePresets;
+        count = 5;
+        switch (currentMode_) {
+            case GrooveboxMode::Acid: return kAcidTapePresets;
+            case GrooveboxMode::Minimal: return kMinimalTapePresets;
+            case GrooveboxMode::Breaks: return kBreaksTapePresets;
+            case GrooveboxMode::Dub: return kDubTapePresets;
+            case GrooveboxMode::Electro: return kElectroTapePresets;
+            default: return kMinimalTapePresets;
         }
     }
     
@@ -61,4 +82,5 @@ public:
 private:
     MiniAcid& engine_;
     GrooveboxMode currentMode_;
+    int currentFlavor_;
 };

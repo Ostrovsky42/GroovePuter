@@ -194,7 +194,7 @@ float TB303Voice::oscillatorSample() {
     case 4: out = oscSub(); break;
     default: {
       out = oscSaw();
-      if (mode_ == GrooveboxMode::Minimal) {
+      if (mode_ == GrooveboxMode::Minimal || mode_ == GrooveboxMode::Dub) {
         // Soft clipping for warmth
         if (out > 0.5f) out = 0.5f + (out - 0.5f) * 0.2f;
         else if (out < -0.5f) out = -0.5f + (out + 0.5f) * 0.2f;

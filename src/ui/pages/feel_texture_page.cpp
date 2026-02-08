@@ -160,8 +160,8 @@ void FeelTexturePage::draw(IGfx& gfx) {
     syncFromScene();
 
     UI::drawStandardHeader(gfx, mini_acid_, title_.c_str());
-    UI::drawFeelHeaderHud(gfx, mini_acid_, 166, 9);
     LayoutManager::clearContent(gfx);
+
 
     const int col1X = Layout::COL_1;
     const int col2X = Layout::COL_2;

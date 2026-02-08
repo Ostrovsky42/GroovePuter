@@ -239,6 +239,9 @@ public:
   void setGrooveboxMode(GrooveboxMode mode);
   GrooveboxMode grooveboxMode() const;
   void toggleGrooveboxMode();
+  void setGrooveFlavor(int flavor);
+  int grooveFlavor() const;
+  void shiftGrooveFlavor(int delta);
 
   // FEEL/TEXTURE: apply scene feel settings to DSP chain
   void applyTextureFromScene_();

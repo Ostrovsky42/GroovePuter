@@ -112,8 +112,8 @@ const std::string& SettingsPage::getTitle() const {
 
 void SettingsPage::draw(IGfx& gfx) {
     UI::drawStandardHeader(gfx, mini_acid_, "SETTINGS");
-    UI::drawFeelHeaderHud(gfx, mini_acid_, 166, 9);
     LayoutManager::clearContent(gfx);
+
 
     Scene& scene = mini_acid_.sceneManager().currentScene();
     GeneratorParams& params = scene.generatorParams;

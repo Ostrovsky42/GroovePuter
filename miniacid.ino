@@ -163,9 +163,9 @@ void setup() {
   
   // 1. Let M5Unified initialize the ES8311 codec over I2C.
   // This wakes up the codec, sets output volumes, etc.
-  M5Cardputer.Speaker.setVolume(160); 
+  M5Cardputer.Speaker.setVolume(220); 
   M5Cardputer.Speaker.begin();
-  M5Cardputer.Speaker.setVolume(160);
+  M5Cardputer.Speaker.setVolume(220);
   
   // 2. IMPORTANT: Release Port 0 immediately.
   // This uninstalls M5's I2S driver but keeps the ES8311 codec registers intact.

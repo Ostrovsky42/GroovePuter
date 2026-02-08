@@ -11,6 +11,66 @@
 #include "../../debug_log.h"
 #include "../key_normalize.h"
 
+namespace {
+constexpr int kHubTrackCount = 10;    // 303A, 303B, D1..D8
+constexpr int kHubVisibleTracks = 6;  // 303A, 303B, D1..D4 on one screen
+
+const char* kDrumLaneShort[8] = {"BD", "SD", "CH", "OH", "MT", "HT", "RM", "CP"};
+
+inline void buildHubTrackLabel(int trackIdx, char* out, size_t outSize) {
+    if (!out || outSize == 0) return;
+    if (trackIdx == 0) {
+        std::snprintf(out, outSize, "303A");
+    } else if (trackIdx == 1) {
+        std::snprintf(out, outSize, "303B");
+    } else {
+        int drumVoice = trackIdx - 2;    // 0..7
+        if (drumVoice < 0) drumVoice = 0;
+        if (drumVoice > 7) drumVoice = 7;
+        std::snprintf(out, outSize, "%s", kDrumLaneShort[drumVoice]);
+    }
+}
+
+inline bool hubTrackHitAt(MiniAcid& mini_acid, int trackIdx, int step) {
+    if (trackIdx < 2) return mini_acid.pattern303Steps(trackIdx)[step] >= 0;
+    int voice = trackIdx - 2;
+    switch (voice) {
+        case 0: return mini_acid.patternKickSteps()[step] > 0;
+        case 1: return mini_acid.patternSnareSteps()[step] > 0;
+        case 2: return mini_acid.patternHatSteps()[step] > 0;
+        case 3: return mini_acid.patternOpenHatSteps()[step] > 0;
+        case 4: return mini_acid.patternMidTomSteps()[step] > 0;
+        case 5: return mini_acid.patternHighTomSteps()[step] > 0;
+        case 6: return mini_acid.patternRimSteps()[step];
+        case 7: return mini_acid.patternClapSteps()[step];
+        default: return false;
+    }
+}
+
+inline void drawHubScrollbar(IGfx& gfx,
+                             int x,
+                             int y,
+                             int h,
+                             int total,
+                             int visible,
+                             int first,
+                             IGfxColor trackColor,
+                             IGfxColor thumbColor) {
+    if (total <= visible || visible <= 0 || h <= 4) return;
+    gfx.drawRect(x, y, 3, h, trackColor);
+    int thumbH = (h * visible) / total;
+    if (thumbH < 5) thumbH = 5;
+    int travel = h - thumbH - 2;
+    if (travel < 0) travel = 0;
+    int maxFirst = total - visible;
+    int thumbY = y + 1;
+    if (maxFirst > 0) {
+        thumbY += (travel * first) / maxFirst;
+    }
+    gfx.fillRect(x + 1, thumbY, 1, thumbH, thumbColor);
+}
+} // namespace
+
 SequencerHubPage::SequencerHubPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
     (void)gfx;
@@ -30,6 +90,7 @@ SequencerHubPage::SequencerHubPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard au
     cb.currentStep = [this]() { return mini_acid_.currentStep(); };
 
     drumGrid_ = std::make_unique<DrumSequencerGridComponent>(mini_acid_, cb);
+    syncOverviewScroll();
 }
 
 void SequencerHubPage::draw(IGfx& gfx) {
@@ -112,12 +173,12 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
     int content_h = h - header_h - 12; // Reserve footer
 
     if (mode_ == Mode::OVERVIEW) {
+        syncOverviewScroll();
         // === OVERVIEW MODE: Track grid ===
-
-        int row_h = 11;
-        int track_count = 10;
-        int visible_tracks = content_h / row_h;
-        if (visible_tracks > track_count) visible_tracks = track_count;
+        const int row_h = 14;
+        const int track_count = kHubTrackCount;
+        const int visible_tracks = kHubVisibleTracks;
+        const int first_track = overviewScroll_;
 
         // Draw grid lines first
         for (int i = 0; i <= visible_tracks; i++) {
@@ -126,10 +187,11 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
         }
 
         // Track rows
-        for (int i = 0; i < visible_tracks; i++) {
-            if (i >= track_count) break;
-            int ry = content_y + i * row_h;
-            bool selected = (i == selectedTrack_);
+        for (int row = 0; row < visible_tracks; row++) {
+            const int track_idx = first_track + row;
+            if (track_idx >= track_count) break;
+            int ry = content_y + row * row_h;
+            bool selected = (track_idx == selectedTrack_);
 
             // Selection highlight
             if (selected) {
@@ -137,46 +199,31 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
             }
 
             // Track label
-            char label[8];
-            if (i == 0) snprintf(label, sizeof(label), "A");
-            else if (i == 1) snprintf(label, sizeof(label), "B");
-            else snprintf(label, sizeof(label), "D%d", i - 1);
+            char label[12];
+            buildHubTrackLabel(track_idx, label, sizeof(label));
 
             gfx.setTextColor(selected ? TE_BLACK : TE_WHITE);
             gfx.drawText(x + 4, ry + 2, label);
 
-            // LED activity indicator (minimal dot)
-            bool active = mini_acid_.isTrackActive(i);
-            int led_x = x + 18;
-            int led_y = ry + row_h / 2 - 1;
+            // LED activity indicator
+            bool active = mini_acid_.isTrackActive(track_idx);
+            int led_x = x + 30;
+            int led_y = ry + row_h / 2 - 2;
             if (active && playing) {
-                gfx.fillRect(led_x, led_y, 3, 3, selected ? TE_BLACK : TE_ACTIVE);
+                gfx.fillRect(led_x, led_y, 4, 4, selected ? TE_BLACK : TE_ACTIVE);
             }
-            gfx.drawRect(led_x, led_y, 3, 3, selected ? TE_BLACK : TE_GRID);
+            gfx.drawRect(led_x, led_y, 4, 4, selected ? TE_BLACK : TE_GRID);
 
-            // Step grid (16 cells)
-            int grid_x = x + 30;
-            int cell_w = 9;
-            int cell_h = row_h - 3;
+            // Step grid (16 cells) - enlarged for readability
+            int grid_x = x + 42;
+            int cell_w = 12;
+            int cell_h = row_h - 4;
             int currentStep = mini_acid_.currentStep();
 
             for (int s = 0; s < 16; s++) {
                 int cx = grid_x + s * cell_w;
 
-                bool hit = false;
-                if (i < 2) {
-                    hit = mini_acid_.pattern303Steps(i)[s] >= 0;
-                } else {
-                    int voice = i - 2;
-                    if (voice == 0) hit = mini_acid_.patternKickSteps()[s] > 0;
-                    else if (voice == 1) hit = mini_acid_.patternSnareSteps()[s] > 0;
-                    else if (voice == 2) hit = mini_acid_.patternHatSteps()[s] > 0;
-                    else if (voice == 3) hit = mini_acid_.patternOpenHatSteps()[s] > 0;
-                    else if (voice == 4) hit = mini_acid_.patternMidTomSteps()[s] > 0;
-                    else if (voice == 5) hit = mini_acid_.patternHighTomSteps()[s] > 0;
-                    else if (voice == 6) hit = mini_acid_.patternRimSteps()[s];
-                    else if (voice == 7) hit = mini_acid_.patternClapSteps()[s];
-                }
+                bool hit = hubTrackHitAt(mini_acid_, track_idx, s);
 
                 // Cell background
                 IGfxColor cellBg = TE_BLACK;
@@ -184,28 +231,25 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
                 if (hit) cellBg = selected ? TE_BLACK : TE_WHITE;
                 if (selected && s == stepCursor_) cellBg = TE_BLACK;
 
-                gfx.fillRect(cx, ry + 1, cell_w - 1, cell_h, cellBg);
+                gfx.fillRect(cx, ry + 2, cell_w - 1, cell_h, cellBg);
 
                 // Cell border
                 IGfxColor borderColor = TE_GRID;
                 if (s % 4 == 0) borderColor = TE_ACCENT; // Emphasize beats
                 if (selected && s == stepCursor_) borderColor = TE_BLACK; // Cursor
 
-                gfx.drawRect(cx, ry + 1, cell_w - 1, cell_h, borderColor);
-            }
-
-            // Volume bar (compact)
-            float vol = mini_acid_.getTrackVolume((VoiceId)i);
-            int vol_x = x + w - 24;
-            int vol_w = 20;
-            int vol_h = row_h - 5;
-            int vol_fill = (int)(vol * vol_w);
-
-            gfx.drawRect(vol_x, ry + 2, vol_w, vol_h, selected ? TE_BLACK : TE_GRID);
-            if (vol_fill > 0) {
-                gfx.fillRect(vol_x + 1, ry + 3, vol_fill - 1, vol_h - 2, selected ? TE_BLACK : TE_WHITE);
+                gfx.drawRect(cx, ry + 2, cell_w - 1, cell_h, borderColor);
             }
         }
+        drawHubScrollbar(gfx,
+                         x + w - 3,
+                         content_y,
+                         visible_tracks * row_h,
+                         track_count,
+                         visible_tracks,
+                         first_track,
+                         TE_GRID,
+                         TE_ACTIVE);
 
     } else {
         // === DETAIL MODE ===
@@ -264,7 +308,7 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
     gfx.setTextColor(TE_DIM);
 
     const char* footer_text = (mode_ == Mode::OVERVIEW)
-        ? "UP/DN:TRK ENT:EDIT Q-I:PAT"
+        ? "UP/DN:TRK L/R:STEP X:HIT A:ACC"
         : "ESC:BACK A/Z:NOTE S/X:OCT";
     gfx.drawText(x + 2, footer_y + 2, footer_text);
 
@@ -304,12 +348,17 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
     gfx.fillRect(x, contentY, w, contentH, IGfxColor(BG_DEEP_BLACK));
 
     if (mode_ == Mode::OVERVIEW) {
+        syncOverviewScroll();
         // Simple List of 10 Tracks (Retro Style)
-        int rowH = 10;
-        int spacing = 1;
-        for (int i = 0; i < 10; i++) {
-            int ry = contentY + i * (rowH + spacing);
-            bool selected = (i == selectedTrack_);
+            int rowH = 13;
+            int spacing = 1;
+            int firstTrack = overviewScroll_;
+            for (int row = 0; row < kHubVisibleTracks; row++) {
+                int i = firstTrack + row;
+                if (i >= kHubTrackCount) break;
+                int ry = contentY + row * (rowH + spacing);
+                if (ry + rowH > contentY + contentH) break;
+                bool selected = (i == selectedTrack_);
             
             // Per-track colors based on instrument
             uint32_t trackColor = NEON_ORANGE; // Default for Drums
@@ -323,9 +372,7 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
 
             // Name with Glow if selected
             char name[16];
-            if (i == 0) std::strcpy(name, "303 A");
-            else if (i == 1) std::strcpy(name, "303 B");
-            else std::snprintf(name, sizeof(name), "DRM %d", i - 1);
+            buildHubTrackLabel(i, name, sizeof(name));
             
             if (selected) {
                 drawGlowText(gfx, x + 6, ry + 1, name, IGfxColor(FOCUS_GLOW), IGfxColor(TEXT_PRIMARY));
@@ -335,44 +382,40 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
             }
 
             // Tiny mask
-            int maskX = x + 65;
-            int cellW = (w - maskX - 10) / 16;
+            int maskX = x + 50;
+            int cellW = 11;
             for (int s = 0; s < 16; s++) {
-                bool hit = false;
-                if (i < 2) hit = mini_acid_.pattern303Steps(i)[s] >= 0;
-                else {
-                    int v = i - 2;
-                    if (v == 0) hit = mini_acid_.patternKickSteps()[s] > 0;
-                    else if (v == 1) hit = mini_acid_.patternSnareSteps()[s] > 0;
-                    else if (v == 2) hit = mini_acid_.patternHatSteps()[s] > 0;
-                }
+                bool hit = hubTrackHitAt(mini_acid_, i, s);
                 
                 IGfxColor color = hit ? (selected ? IGfxColor(trackColor) : IGfxColor(GRID_MEDIUM)) : IGfxColor(BG_INSET);
                 if (s == playingStep && isPlaying) color = IGfxColor(NEON_YELLOW);
                 gfx.fillRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, color);
+                IGfxColor border = (s % 4 == 0) ? IGfxColor(GRID_MEDIUM) : IGfxColor(GRID_DIM);
+                gfx.drawRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, border);
             }
             
             if (selected) {
                  drawOverviewCursor(gfx, i, stepCursor_, maskX, ry + 2, cellW, rowH - 4);
             }
 
-            // Volume indicator (Retro)
-            float vol = mini_acid_.getTrackVolume((VoiceId)i);
-            int volBarW = 20;
-            int volBarX = x + w - volBarW - 12;
-            int volW = (int)(vol * volBarW);
-            gfx.fillRect(volBarX, ry + 3, volBarW, rowH - 6, IGfxColor(BG_INSET));
-            gfx.fillRect(volBarX, ry + 4, volW, rowH - 8, IGfxColor(trackColor));
-            
             // Activity LED (Retro Hardware style)
             bool active = mini_acid_.isTrackActive(i);
-            RetroWidgets::drawLED(gfx, volBarX + volBarW + 5, ry + (rowH/2), 2, active && isPlaying, IGfxColor(trackColor));
+            RetroWidgets::drawLED(gfx, x + 42, ry + (rowH/2), 2, active && isPlaying, IGfxColor(trackColor));
         }
+            drawHubScrollbar(gfx,
+                             x + w - 4,
+                             contentY + 1,
+                             kHubVisibleTracks * (rowH + spacing) - spacing,
+                             kHubTrackCount,
+                             kHubVisibleTracks,
+                             firstTrack,
+                             IGfxColor(GRID_DIM),
+                             IGfxColor(SELECT_BRIGHT));
 
         // Removed redundant channel activity bar - LED indicators already show activity
 
         // Scanlines disabled: caused flicker on small TFT
-        RetroWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]Track [ENT]Detail", "SPACE:Play", "HUB");
+        RetroWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]TRK [L/R]STEP [X]HIT [A]ACC", "ENT:Open  Q-I:Pat", "HUB");
     } else {
         // DETAIL MODE
         if (isDrumTrack(selectedTrack_)) {
@@ -452,10 +495,15 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
     gfx.fillRect(x, contentY, w, contentH, IGfxColor(AmberTheme::BG_DEEP_BLACK));
 
     if (mode_ == Mode::OVERVIEW) {
-        int rowH = 10;
+        syncOverviewScroll();
+        int rowH = 13;
         int spacing = 1;
-        for (int i = 0; i < 10; i++) {
-            int ry = contentY + i * (rowH + spacing);
+        int firstTrack = overviewScroll_;
+        for (int row = 0; row < kHubVisibleTracks; row++) {
+            int i = firstTrack + row;
+            if (i >= kHubTrackCount) break;
+            int ry = contentY + row * (rowH + spacing);
+            if (ry + rowH > contentY + contentH) break;
             bool selected = (i == selectedTrack_);
             
             // Amber is more monochromatic but can use shades
@@ -469,9 +517,7 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
             }
 
             char name[16];
-            if (i == 0) std::strcpy(name, "303 A");
-            else if (i == 1) std::strcpy(name, "303 B");
-            else std::snprintf(name, sizeof(name), "DRM %d", i - 1);
+            buildHubTrackLabel(i, name, sizeof(name));
             
             if (selected) {
                 AmberWidgets::drawGlowText(gfx, x + 6, ry + 1, name, IGfxColor(AmberTheme::FOCUS_GLOW), IGfxColor(AmberTheme::TEXT_PRIMARY));
@@ -480,44 +526,40 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
                 gfx.drawText(x + 6, ry + 1, name);
             }
 
-            int maskX = x + 65;
-            int cellW = (w - maskX - 10) / 16;
+            int maskX = x + 50;
+            int cellW = 11;
             for (int s = 0; s < 16; s++) {
-                bool hit = false;
-                if (i < 2) hit = mini_acid_.pattern303Steps(i)[s] >= 0;
-                else {
-                    int v = i - 2;
-                    if (v == 0) hit = mini_acid_.patternKickSteps()[s] > 0;
-                    else if (v == 1) hit = mini_acid_.patternSnareSteps()[s] > 0;
-                    else if (v == 2) hit = mini_acid_.patternHatSteps()[s] > 0;
-                }
+                bool hit = hubTrackHitAt(mini_acid_, i, s);
                 
                 IGfxColor color = hit ? (selected ? IGfxColor(AmberTheme::NEON_CYAN) : IGfxColor(AmberTheme::GRID_MEDIUM)) : IGfxColor(AmberTheme::BG_INSET);
                 if (s == playingStep && isPlaying) color = IGfxColor(AmberTheme::NEON_YELLOW);
                 gfx.fillRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, color);
+                IGfxColor border = (s % 4 == 0) ? IGfxColor(AmberTheme::GRID_MEDIUM) : IGfxColor(AmberTheme::GRID_DIM);
+                gfx.drawRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, border);
             }
             
             if (selected) {
                  drawOverviewCursor(gfx, i, stepCursor_, maskX, ry + 2, cellW, rowH - 4);
             }
 
-            // Volume indicator (Amber)
-            float vol = mini_acid_.getTrackVolume((VoiceId)i);
-            int volBarW = 20;
-            int volBarX = x + w - volBarW - 12;
-            int volW = (int)(vol * volBarW);
-            gfx.fillRect(volBarX, ry + 3, volBarW, rowH - 6, IGfxColor(AmberTheme::BG_INSET));
-            gfx.fillRect(volBarX, ry + 4, volW, rowH - 8, IGfxColor(AmberTheme::NEON_CYAN));
-
             // Activity LED (Amber Hardware style)
             bool active = mini_acid_.isTrackActive(i);
-            AmberWidgets::drawLED(gfx, volBarX + volBarW + 5, ry + (rowH/2), 2, active && isPlaying, IGfxColor(AmberTrackColor));
+            AmberWidgets::drawLED(gfx, x + 42, ry + (rowH/2), 2, active && isPlaying, IGfxColor(AmberTrackColor));
         }
+        drawHubScrollbar(gfx,
+                         x + w - 4,
+                         contentY + 1,
+                         kHubVisibleTracks * (rowH + spacing) - spacing,
+                         kHubTrackCount,
+                         kHubVisibleTracks,
+                         firstTrack,
+                         IGfxColor(AmberTheme::GRID_DIM),
+                         IGfxColor(AmberTheme::SELECT_BRIGHT));
 
         // Removed redundant channel activity bar - LED indicators already show activity
 
         // Scanlines disabled: caused flicker on small TFT
-        AmberWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]Track [ENT]Detail", "SPACE:Play", "HUB");
+        AmberWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]TRK [L/R]STEP [X]HIT [A]ACC", "ENT:Open  Q-I:Pat", "HUB");
     } else {
         if (isDrumTrack(selectedTrack_)) {
             drumGrid_->setStyle(GrooveboxStyle::AMBER);
@@ -579,24 +621,35 @@ void SequencerHubPage::drawOverview(IGfx& gfx) {
     LayoutManager::clearContent(gfx);
 
     const int startY = LayoutManager::lineY(0);
-    const int rowH = 10;
-    
-    for (int i = 0; i < 10; i++) {
-        drawTrackRow(gfx, i, startY + i * (rowH + 1), rowH, i == selectedTrack_);
+    const int rowH = 13;
+    syncOverviewScroll();
+
+    for (int row = 0; row < kHubVisibleTracks; row++) {
+        int trackIdx = overviewScroll_ + row;
+        if (trackIdx >= kHubTrackCount) break;
+        drawTrackRow(gfx, trackIdx, startY + row * (rowH + 1), rowH, trackIdx == selectedTrack_);
     }
+    drawHubScrollbar(gfx,
+                     236,
+                     startY,
+                     kHubVisibleTracks * (rowH + 1) - 1,
+                     kHubTrackCount,
+                     kHubVisibleTracks,
+                     overviewScroll_,
+                     COLOR_GRAY_DARKER,
+                     COLOR_ACCENT);
 
     // Removed redundant channel activity bar - LED indicators already show activity
 
     UI::drawStandardFooter(gfx,
-        "[UP/DN] TRACK  [ENT] DETAIL",
-        "[SPACE] PLAY/STOP");
+        "[UP/DN]TRK [L/R]STEP [X]HIT [A]ACC",
+        "[ENT]OPEN [Q-I]PAT [SPACE]PLAY");
 }
 
 void SequencerHubPage::drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool selected) {
-    const int nameW = 60;
-    const int ledX = 65;
-    const int maskX = 80;
-    const int maskW = 150;
+    const int ledX = 50;
+    const int maskX = 60;
+    const int cellW = 11;
     
     // Background highlight
     if (selected) {
@@ -605,14 +658,7 @@ void SequencerHubPage::drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool 
     
     // Name
     char name[16];
-    if (trackIdx == 0) std::strcpy(name, "303 A");
-    else if (trackIdx == 1) std::strcpy(name, "303 B");
-    else {
-        int drumIdx = trackIdx - 1;
-        if (drumIdx < 0) drumIdx = 0;
-        if (drumIdx > 99) drumIdx = 99;
-        std::snprintf(name, sizeof(name), "DRUM %d", drumIdx);
-    }
+    buildHubTrackLabel(trackIdx, name, sizeof(name));
     
     gfx.setTextColor(selected ? COLOR_WHITE : COLOR_GRAY);
     gfx.drawText(4, y + 1, name);
@@ -626,42 +672,21 @@ void SequencerHubPage::drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool 
     bool isSynth = !isDrumTrack(trackIdx);
     int currentStep = mini_acid_.currentStep();
     
-    int cellW = maskW / SEQ_STEPS;
     for (int s = 0; s < SEQ_STEPS; s++) {
-        bool hit = false;
-        if (isSynth) {
-            hit = mini_acid_.pattern303Steps(trackIdx)[s] >= 0;
-        } else {
-            int voice = getDrumVoiceIndex(trackIdx);
-            // Different drums return different types, handle generically
-            if (voice == 0) hit = mini_acid_.patternKickSteps()[s] > 0;
-            else if (voice == 1) hit = mini_acid_.patternSnareSteps()[s] > 0;
-            else if (voice == 2) hit = mini_acid_.patternHatSteps()[s] > 0;
-            else if (voice == 3) hit = mini_acid_.patternOpenHatSteps()[s] > 0;
-            else if (voice == 4) hit = mini_acid_.patternMidTomSteps()[s] > 0;
-            else if (voice == 5) hit = mini_acid_.patternHighTomSteps()[s] > 0;
-            else if (voice == 6) hit = mini_acid_.patternRimSteps()[s];
-            else if (voice == 7) hit = mini_acid_.patternClapSteps()[s];
-        }
+        bool hit = hubTrackHitAt(mini_acid_, trackIdx, s);
         
         IGfxColor baseColor = isSynth ? (trackIdx == 0 ? COLOR_SYNTH_A : COLOR_SYNTH_B) : COLOR_TEXT;
         IGfxColor color = hit ? (selected ? baseColor : COLOR_GRAY) : COLOR_DARKER;
         if (s == currentStep && mini_acid_.isPlaying()) color = COLOR_WARN;
         
         gfx.fillRect(maskX + s * cellW, y + 2, cellW - 1, h - 4, color);
+        IGfxColor border = (s % 4 == 0) ? COLOR_ACCENT : COLOR_GRAY_DARKER;
+        gfx.drawRect(maskX + s * cellW, y + 2, cellW - 1, h - 4, border);
     }
 
-    // Volume indicator
-    float vol = mini_acid_.getTrackVolume((VoiceId)trackIdx);
-    int volBarW = 20;
-    int volBarX = 236 - volBarW - 4;
-    int volW = (int)(vol * volBarW);
-    gfx.drawRect(volBarX, y + 3, volBarW, h - 6, COLOR_GRAY);
-    gfx.fillRect(volBarX + 1, y + 4, volW - 2, h - 8, COLOR_ACCENT);
-    
-    // Activity bar indicator (the "bar" from play page)
-    if (active && mini_acid_.isPlaying()) {
-        gfx.fillRect(volBarX + volBarW + 2, y + 2, 2, h - 4, COLOR_WARN);
+    if (selected) {
+        int cx = maskX + stepCursor_ * cellW;
+        gfx.drawRect(cx, y + 2, cellW - 1, h - 4, COLOR_STEP_SELECTED);
     }
 }
 
@@ -800,6 +825,19 @@ bool SequencerHubPage::handleModeSwitch(UIEvent& e) {
 
 bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
     char lower = std::tolower(e.key);
+    
+    // Direct drum step editing from the HUB overview grid.
+    if (mode_ == Mode::OVERVIEW && !e.alt && !e.ctrl && !e.meta && isDrumTrack(selectedTrack_)) {
+        if (lower == 'x') {
+            int voice = getDrumVoiceIndex(selectedTrack_);
+            withAudioGuard([&]() { mini_acid_.toggleDrumStep(voice, stepCursor_); });
+            return true;
+        }
+        if (lower == 'a') {
+            withAudioGuard([&]() { mini_acid_.toggleDrumAccentStep(stepCursor_); });
+            return true;
+        }
+    }
     
     // Clear (Backspace / Alt+Backspace)
     if (e.key == '\b' || e.key == 0x7F) {
@@ -972,11 +1010,13 @@ bool SequencerHubPage::handleNavigation(UIEvent& e) {
 
     if (mode_ == Mode::OVERVIEW) {
         if (UIInput::isUp(e)) {
-            selectedTrack_ = (selectedTrack_ - 1 + 10) % 10;
+            selectedTrack_ = (selectedTrack_ - 1 + kHubTrackCount) % kHubTrackCount;
+            syncOverviewScroll();
             return true;
         }
         if (UIInput::isDown(e)) {
-            selectedTrack_ = (selectedTrack_ + 1) % 10;
+            selectedTrack_ = (selectedTrack_ + 1) % kHubTrackCount;
+            syncOverviewScroll();
             return true;
         }
 
@@ -1008,6 +1048,25 @@ bool SequencerHubPage::handleNavigation(UIEvent& e) {
         }
     }
     return false;
+}
+
+void SequencerHubPage::syncOverviewScroll() {
+    if (selectedTrack_ < 0) selectedTrack_ = 0;
+    if (selectedTrack_ >= kHubTrackCount) selectedTrack_ = kHubTrackCount - 1;
+
+    int maxScroll = kHubTrackCount - kHubVisibleTracks;
+    if (maxScroll < 0) maxScroll = 0;
+    if (overviewScroll_ < 0) overviewScroll_ = 0;
+    if (overviewScroll_ > maxScroll) overviewScroll_ = maxScroll;
+
+    if (selectedTrack_ < overviewScroll_) {
+        overviewScroll_ = selectedTrack_;
+    } else if (selectedTrack_ >= overviewScroll_ + kHubVisibleTracks) {
+        overviewScroll_ = selectedTrack_ - kHubVisibleTracks + 1;
+    }
+
+    if (overviewScroll_ < 0) overviewScroll_ = 0;
+    if (overviewScroll_ > maxScroll) overviewScroll_ = maxScroll;
 }
 
 bool SequencerHubPage::handleGridEdit(UIEvent& e) {

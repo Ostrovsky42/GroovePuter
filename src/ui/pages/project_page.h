@@ -12,7 +12,8 @@ class ProjectPage : public IPage{
   const std::string & getTitle() const override;
 
  private:
-  enum class MainFocus { Load = 0, SaveAs, New, VisualStyle, LedMode, LedSource, LedColor, LedBri, LedFlash, Volume };
+  enum class ProjectSection { Scenes = 0, Groove, Led };
+  enum class MainFocus { Load = 0, SaveAs, New, VisualStyle, GrooveMode, GrooveFlavor, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash };
   enum class DialogType { None = 0, Load, SaveAs };
   enum class DialogFocus { List = 0, Cancel };
   enum class SaveDialogFocus { Input = 0, Randomize, Save, Cancel };
@@ -28,6 +29,7 @@ class ProjectPage : public IPage{
   bool saveCurrentScene();
   bool createNewScene();
   bool handleSaveDialogInput(char key);
+  void ensureMainFocusVisible(int visibleRows);
   template <typename F>
   void withAudioGuard(F&& fn) {
       if (audio_guard_) audio_guard_(std::forward<F>(fn));
@@ -40,11 +42,13 @@ class ProjectPage : public IPage{
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
   MainFocus main_focus_;
+  ProjectSection section_ = ProjectSection::Scenes;
   DialogType dialog_type_;
   DialogFocus dialog_focus_;
   SaveDialogFocus save_dialog_focus_;
   int selection_index_;
   int scroll_offset_;
+  int main_scroll_ = 0;
   bool loadError_;
   std::vector<std::string> scenes_;
   std::string save_name_;

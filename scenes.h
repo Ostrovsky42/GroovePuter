@@ -282,6 +282,7 @@ struct GenreSettings {
     bool regenerateOnApply = true; // true: SOUND+PATTERN, false: SOUND ONLY
     bool applyTempoOnApply = false; // true: SOUND+PATTERN+TEMPO
     bool curatedMode = true;      // true: only allowed Genre x Texture combos
+    bool applySoundMacros = false; // true: Flavor change overwrites 303/Tape
 };
 
 struct Scene {
@@ -294,7 +295,8 @@ struct Scene {
   GenreSettings genre;
   Song songs[2];
   int activeSongSlot = 0;
-  GrooveboxMode mode = GrooveboxMode::Acid;
+  GrooveboxMode mode = GrooveboxMode::Minimal;
+  uint8_t grooveFlavor = 0;
   float masterVolume = 0.6f;  // Default volume
   GeneratorParams generatorParams; 
   VocalSettings vocal;
@@ -484,6 +486,8 @@ public:
   const std::string& getDrumEngineName() const;
   void setMode(GrooveboxMode mode);
   GrooveboxMode getMode() const;
+  void setGrooveFlavor(int flavor);
+  int getGrooveFlavor() const;
   void setBpm(float bpm);
   float getBpm() const;
 
@@ -558,7 +562,8 @@ private:
   int loopStartRow_ = 0;
   int loopEndRow_ = 0;
   std::string drumEngineName_ = "808";
-  GrooveboxMode mode_ = GrooveboxMode::Acid;
+  GrooveboxMode mode_ = GrooveboxMode::Minimal;
+  int grooveFlavor_ = 0;
 };
 
 // inline constexpr size_t SceneManager::sceneJsonCapacity() {
@@ -945,6 +950,8 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   
   if (!writeLiteral(",\"mode\":")) return false;
   if (!writeInt(static_cast<int>(mode_))) return false;
+  if (!writeLiteral(",\"flv\":")) return false;
+  if (!writeInt(grooveFlavor_)) return false;
   
   if (!writeLiteral(",\"customPhrases\":[")) return false;
   for (int i = 0; i < Scene::kMaxCustomPhrases; ++i) {
