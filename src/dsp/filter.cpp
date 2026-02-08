@@ -2,6 +2,13 @@
 
 #include <math.h>
 
+namespace {
+// Fast soft saturation to avoid expensive tanhf() in hot DSP paths.
+inline float fastSaturate(float x) {
+  return x / (1.0f + fabsf(x));
+}
+}  // namespace
+
 ChamberlinFilter::ChamberlinFilter(float sampleRate) : _lp(0.0f), _bp(0.0f), _sampleRate(sampleRate) {
   if (_sampleRate <= 0.0f) _sampleRate = 44100.0f;
 }
@@ -28,7 +35,7 @@ float ChamberlinFilter::process(float input, float cutoffHz, float resonance) {
   _bp += f * hp;
   _lp += f * _bp;
 
-  _bp = tanhf(_bp * 1.3f);
+  _bp = fastSaturate(_bp * 1.3f);
 
   // Keep states bounded to avoid numeric blowups
   const float kStateLimit = 50.0f;
@@ -50,7 +57,7 @@ float DiodeFilter::process(float input, float cutoffHz, float resonance) {
   float k = resonance * 17.0f; // Scale resonance to diode ranges
   for (int i=0; i<4; ++i) {
     float prev = (i == 0) ? (input - k * _s[3]) : _s[i-1];
-    _s[i] += f * (tanhf(prev) - tanhf(_s[i]));
+    _s[i] += f * (fastSaturate(prev) - fastSaturate(_s[i]));
   }
   return _s[3];
 }
@@ -70,4 +77,3 @@ float LadderFilter::process(float input, float cutoffHz, float resonance) {
   }
   return _s[3];
 }
-

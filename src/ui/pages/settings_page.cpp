@@ -376,10 +376,10 @@ const char* const* SettingsPage::commentLines(int& count, const GeneratorParams&
 
     if (row_ == kPresetRowIndex) {
         return set4(
-            "Preset writes multiple params",
-            "TIGHT  = lower swing/ghost",
-            "HUMAN  = balanced",
-            "LOOSE  = more groove (regen)");
+            "Presets:",
+            "T-lower swing/ghost",
+            "H-balanced",
+            "L-more groove");
     }
 
     SettingId id = static_cast<SettingId>(settingForRow());
@@ -388,45 +388,46 @@ const char* const* SettingsPage::commentLines(int& count, const GeneratorParams&
             int v = (int)(params.swingAmount * 100.0f + 0.5f);
             char cur[48];
             std::snprintf(cur, sizeof(cur), "Current: %d%% swing", v);
-            return set3(cur, "Shifts offbeats later", "Affects regeneration");
+            return set3(cur, "Shifts offbeats","later");
         }
         case SettingId::VelocityRange: {
             int v = (int)(params.velocityRange * 100.0f + 0.5f);
             char cur[48];
-            std::snprintf(cur, sizeof(cur), "Current: %d%% range", v);
-            return set3(cur, "Higher = more dynamics", "Affects regeneration");
+            std::snprintf(cur, sizeof(cur), "Current: %d%% vel range", v);
+            return set3(cur, "Higher = more","dynamics");
         }
         case SettingId::GhostProb: {
             int v = (int)(params.ghostNoteProbability * 100.0f + 0.5f);
             char cur[48];
             std::snprintf(cur, sizeof(cur), "Current: %d%% ghosts", v);
-            return set3(cur, "Adds low-velocity notes", "Affects regeneration");
+            return set3(cur, "Adds low-velocity","notes");
         }
         case SettingId::MicroTiming: {
             int v = (int)(params.microTimingAmount * 100.0f + 0.5f);
             char cur[48];
-            std::snprintf(cur, sizeof(cur), "Current: %d%% microtime", v);
-            return set3(cur, "Random timing offsets", "Affects regeneration");
+            std::snprintf(cur, sizeof(cur), "Current: %d%% microtiming", v);
+            return set3(cur, "Random timing","offsets");
         }
         case SettingId::MinNotes: {
             char cur[48];
             std::snprintf(cur, sizeof(cur), "Current min: %d notes", params.minNotes);
-            return set3(cur, "Lower density floor", "Must be <= Max Notes");
+            std::snprintf(cur, sizeof(cur), "Current min: %d notes", params.minNotes);
+            return set3(cur, "Lower floor", "<Max Notes");
         }
         case SettingId::MaxNotes: {
             char cur[48];
             std::snprintf(cur, sizeof(cur), "Current max: %d notes", params.maxNotes);
-            return set3(cur, "Upper density ceiling", "Must be >= Min Notes");
+            return set3(cur, "Upper ceiling", ">Min Notes");
         }
         case SettingId::MinOctave: {
             char cur[48];
             std::snprintf(cur, sizeof(cur), "Current min octave: %d", params.minOctave);
-            return set3(cur, "Lowest allowed octave", "Must be <= Max Oct");
+            return set3(cur, "Lowest octave", "<Max Oct");
         }
         case SettingId::MaxOctave: {
             char cur[48];
             std::snprintf(cur, sizeof(cur), "Current max octave: %d", params.maxOctave);
-            return set3(cur, "Highest allowed octave", "Must be >= Min Oct");
+            return set3(cur, "Highest octave", ">Min Oct");
         }
         case SettingId::ScaleRoot: {
             char cur[48];

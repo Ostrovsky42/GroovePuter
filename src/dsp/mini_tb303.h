@@ -98,6 +98,7 @@ private:
   float noiseAmount_ = 0.0f;
 
   int lastFilterType_ = -1;
+  float postLPF_ = 0.0f;  // 1-pole anti-harshness post-filter state
   struct LowShelfEQ {
     float cutoff = 0.01f;
     float boost = 1.25f; // ~2dB

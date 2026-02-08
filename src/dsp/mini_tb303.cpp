@@ -7,7 +7,44 @@
 namespace {
 const char* const kOscillatorOptions[] = {"saw", "sqr", "super", "pulse", "sub"};
 // Keep legacy names for compatibility and add lightweight voicing variants.
-const char* const kFilterTypeOptions[] = {"lp1", "acid", "moog", "bite", "soft"};
+const char* const kFilterTypeOptions[] = {"lp1", "acid", "moog", "warm", "soft", "retro", "drive"};
+
+inline float fastSaturate(float x) {
+  return x / (1.0f + fabsf(x));
+}
+
+enum class FilterCore : uint8_t { Chamberlin, Diode, Ladder };
+enum class PreProcessType : uint8_t { None, TanhDrive, Quantize };
+
+struct FilterProfile {
+  FilterCore core;
+  float cutoffMul;
+  float resMul;
+  float resOffset;
+  PreProcessType preType;
+  float preDrive;      // tanh drive amount, or quantize levels
+  float makeup;
+  float postLpfAlpha;  // 1-pole post-LPF coefficient (1.0 = bypass)
+};
+
+// Indexed by filter type option index.
+//                        core              cutMul resMul resOfs preType              drive  makeup postLPF
+constexpr FilterProfile kFilterProfiles[] = {
+  // 0: lp1 — neutral baseline (no post-LPF, preserve brightness)
+  { FilterCore::Chamberlin, 1.00f, 1.00f, 0.00f, PreProcessType::None,      0.0f,  1.00f, 1.0f },
+  // 1: acid — classic acid squelch (post-LPF tames aliasing from diode nonlinearity)
+  { FilterCore::Diode,      1.08f, 1.18f, 0.03f, PreProcessType::None,      0.0f,  1.45f, 0.9f },
+  // 2: moog — smooth round (no post-LPF, ladder is already smooth)
+  { FilterCore::Ladder,     0.88f, 0.90f, 0.00f, PreProcessType::None,      0.0f,  2.05f, 1.0f },
+  // 3: warm — synthwave warmth (post-LPF rounds off tanh harmonics)
+  { FilterCore::Chamberlin, 0.92f, 0.55f, 0.00f, PreProcessType::TanhDrive, 1.8f,  1.35f, 0.9f },
+  // 4: soft — dark smooth (no post-LPF, already very dark)
+  { FilterCore::Ladder,     0.80f, 0.72f, 0.00f, PreProcessType::None,      0.0f,  2.35f, 1.0f },
+  // 5: retro — retro game console (post-LPF smooths quantization steps)
+  { FilterCore::Chamberlin, 0.55f, 0.25f, 0.00f, PreProcessType::Quantize,  32.0f, 2.30f, 0.85f },
+  // 6: drive — overdriven growl (post-LPF tames heavy tanh + diode harmonics)
+  { FilterCore::Diode,      0.85f, 0.60f, 0.00f, PreProcessType::TanhDrive, 2.5f,  1.55f, 0.85f },
+};
 
 const TB303Preset kLoFiMinimalPresets[] = {
     // DEEP BASS
@@ -50,6 +87,7 @@ void TB303Voice::reset() {
   gate = false;
   slide = false;
   amp = 0.3f;
+  postLPF_ = 0.0f;
   filter->reset();
 }
 
@@ -197,68 +235,72 @@ float TB303Voice::svfProcess(float input) {
     env *= decayCoeff;
   }
 
-  float cutoffHz = parameterValue(TB303ParamId::Cutoff) + parameterValue(TB303ParamId::EnvAmount) * env;
+  // Hard cap: never let the filter cutoff above 8 kHz regardless of sample rate.
+  // At 22050 Hz SR, nyquist*0.9 ≈ 9.9 kHz — too close to fold-back zone.
+  float maxCutoff = fminf(nyquist * 0.9f, 8000.0f);
+
+  float baseCutoff = parameterValue(TB303ParamId::Cutoff);
+  float envMod = parameterValue(TB303ParamId::EnvAmount) * env;
+
+  // Soft-scale envelope when base cutoff is already high to prevent
+  // cutoff + env from slamming into the ceiling and creating harsh peaks.
+  float headroom = maxCutoff - baseCutoff;
+  if (headroom > 0.0f && envMod > headroom * 0.7f) {
+    // 4:1 compression above 70% of remaining headroom.
+    envMod = headroom * 0.7f + (envMod - headroom * 0.7f) * 0.25f;
+  }
+
+  float cutoffHz = baseCutoff + envMod;
   if (cutoffHz < 50.0f)
     cutoffHz = 50.0f;
-  float maxCutoff = nyquist * 0.9f;
   if (cutoffHz > maxCutoff)
     cutoffHz = maxCutoff;
   
   float resonance = parameterValue(TB303ParamId::Resonance);
   const int fltType = params[static_cast<int>(TB303ParamId::FilterType)].optionIndex();
+  constexpr int kNumProfiles = sizeof(kFilterProfiles) / sizeof(kFilterProfiles[0]);
+  const FilterProfile& prof = kFilterProfiles[fltType < kNumProfiles ? fltType : 0];
 
-  // TE-like "character" variants on top of the same lightweight cores.
-  switch (fltType) {
-    case 1: // acid
-      cutoffHz *= 1.08f;
-      resonance = resonance * 1.18f + 0.03f;
-      break;
-    case 2: // moog
-      cutoffHz *= 0.88f;
-      resonance *= 0.90f;
-      break;
-    case 3: // bite
-      cutoffHz *= 1.20f;
-      resonance = resonance * 1.10f + 0.06f;
-      break;
-    case 4: // soft
-      cutoffHz *= 0.80f;
-      resonance *= 0.72f;
-      break;
-    case 0: // lp1
-    default:
-      break;
-  }
+  // Apply character from profile table.
+  cutoffHz *= prof.cutoffMul;
+  resonance = resonance * prof.resMul + prof.resOffset;
 
   if (cutoffHz > maxCutoff) cutoffHz = maxCutoff;
   if (cutoffHz < 50.0f) cutoffHz = 50.0f;
   if (resonance < 0.0f) resonance = 0.0f;
   if (resonance > 0.95f) resonance = 0.95f;
 
-  float filtered = filter->process(input, cutoffHz, resonance);
-
-  // Gain-match alternative filter cores so FLT modes stay musical
-  // and don't feel "muted" compared to lp1.
-  float makeup = 1.0f;
-  switch (fltType) {
-    case 1: // acid (diode core)
-      makeup = 1.45f;
+  // Pre-processing (saturation / quantization) before the filter.
+  switch (prof.preType) {
+    case PreProcessType::TanhDrive:
+      input = fastSaturate(input * prof.preDrive);
       break;
-    case 2: // moog (ladder core)
-      makeup = 2.05f;
+    case PreProcessType::Quantize: {
+      // Dither: tiny noise before quantize to soften staircase artifacts.
+      noiseState_ = noiseState_ * 1664525 + 1013904223;
+      float dither = ((noiseState_ >> 16) & 0x7FFF) / 32768.0f - 0.5f;
+      input += dither * (1.0f / prof.preDrive); // ±0.5 LSB
+      input = floorf(input * prof.preDrive + 0.5f) / prof.preDrive;
       break;
-    case 4: // soft (ladder core, lower cutoff/res)
-      makeup = 2.35f;
-      break;
-    case 3: // bite (chamberlin variant)
-      makeup = 1.15f;
-      break;
+    }
     default:
       break;
   }
 
+  float filtered = filter->process(input, cutoffHz, resonance);
+
+  float makeup = prof.makeup;
+
   // Soft-limit after makeup to avoid harsh clipping at high resonance.
-  return tanhf(filtered * makeup);
+  float out = fastSaturate(filtered * makeup);
+
+  // Per-profile 1-pole post-filter to tame aliasing from nonlinearities.
+  // α=1.0 bypasses; α=0.9 ≈ 8 kHz; α=0.85 ≈ 6.6 kHz at 22050 Hz SR.
+  if (prof.postLpfAlpha < 1.0f) {
+    postLPF_ += prof.postLpfAlpha * (out - postLPF_);
+    out = postLPF_;
+  }
+  return out;
 }
 
 float TB303Voice::applyLoFiDegradation(float input) {
@@ -388,7 +430,7 @@ void TB303Voice::initParameters() {
   params[static_cast<int>(TB303ParamId::EnvAmount)] = Parameter("env", "Hz", 0.0f, 2000.0f, 400.0f, (2000.0f - 0.0f) / 128);
   params[static_cast<int>(TB303ParamId::EnvDecay)] = Parameter("dec", "ms", 20.0f, 2200.0f, 420.0f, (2200.0f - 20.0f) / 128);
   params[static_cast<int>(TB303ParamId::Oscillator)] = Parameter("osc", "", kOscillatorOptions, 5, 0);
-  params[static_cast<int>(TB303ParamId::FilterType)] = Parameter("flt", "", kFilterTypeOptions, 5, 0);
+  params[static_cast<int>(TB303ParamId::FilterType)] = Parameter("flt", "", kFilterTypeOptions, 7, 0);
   params[static_cast<int>(TB303ParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.0f, 0.8f, 1.0f / 128);
 }
 
@@ -396,15 +438,14 @@ void TB303Voice::updateFilterModel() {
   int currentType = params[static_cast<int>(TB303ParamId::FilterType)].optionIndex();
   if (currentType == lastFilterType_) return;
 
-  // 5 UI modes map to 3 filter cores:
-  // lp1/bite -> Chamberlin, acid -> Diode, moog/soft -> Ladder
-  switch (currentType) {
-    case 1: filter = std::make_unique<DiodeFilter>(sampleRate); break;
-    case 2:
-    case 4: filter = std::make_unique<LadderFilter>(sampleRate); break;
-    case 3:
-    case 0:
-    default: filter = std::make_unique<ChamberlinFilter>(sampleRate); break;
+  constexpr int kNumProfiles = sizeof(kFilterProfiles) / sizeof(kFilterProfiles[0]);
+  FilterCore core = kFilterProfiles[currentType < kNumProfiles ? currentType : 0].core;
+
+  switch (core) {
+    case FilterCore::Diode:      filter = std::make_unique<DiodeFilter>(sampleRate); break;
+    case FilterCore::Ladder:     filter = std::make_unique<LadderFilter>(sampleRate); break;
+    case FilterCore::Chamberlin:
+    default:                     filter = std::make_unique<ChamberlinFilter>(sampleRate); break;
   }
   lastFilterType_ = currentType;
 }

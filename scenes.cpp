@@ -661,10 +661,7 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
   }
   if (path == Path::SongPosition) {
     int posIdx = currentIndexFor(Path::SongPositions);
-    if (posIdx < 0 || posIdx >= Song::kMaxPositions) {
-      error_ = true;
-      return;
-    }
+    if (posIdx < 0 || posIdx >= Song::kMaxPositions) return;
     int trackIdx = -1;
     if (lastKey_ == "a") trackIdx = 0;
     else if (lastKey_ == "b") trackIdx = 1;
@@ -731,10 +728,7 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     int patternIdx = currentIndexFor(useBankB ? Path::SynthBBank : Path::SynthABank);
     if (stepIdx < 0 || stepIdx >= SynthPattern::kSteps ||
         patternIdx < 0 || patternIdx >= Bank<SynthPattern>::kPatterns ||
-        bankIdx < 0 || bankIdx >= kBankCount) {
-      error_ = true;
-      return;
-    }
+        bankIdx < 0 || bankIdx >= kBankCount) return;
     SynthPattern& pattern = useBankB ? target_.synthBBanks[bankIdx].patterns[patternIdx]
                                      : target_.synthABanks[bankIdx].patterns[patternIdx];
     if (lastKey_ == "note") {
@@ -767,10 +761,7 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
   }
   if (path == Path::SynthParam) {
     int synthIdx = currentIndexFor(Path::SynthParams);
-    if (synthIdx < 0 || synthIdx >= 2) {
-      error_ = true;
-      return;
-    }
+    if (synthIdx < 0 || synthIdx >= 2) return;
     float fval = static_cast<float>(value);
     if (lastKey_ == "cutoff") {
       synthParameters_[synthIdx].cutoff = fval;
@@ -956,10 +947,7 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
     if (patternIdx < 0 || patternIdx >= Bank<DrumPatternSet>::kPatterns ||
         voiceIdx < 0 || voiceIdx >= DrumPatternSet::kVoices ||
         stepIdx < 0 || stepIdx >= DrumPattern::kSteps ||
-        bankIdx < 0 || bankIdx >= kBankCount) {
-      error_ = true;
-      return;
-    }
+        bankIdx < 0 || bankIdx >= kBankCount) return;
     DrumStep& step = target_.drumBanks[bankIdx].patterns[patternIdx].voices[voiceIdx].steps[stepIdx];
     if (path == Path::DrumHitArray) {
       step.hit = value;
@@ -971,38 +959,26 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
 
   if (path == Path::MuteDrums) {
     int muteIdx = stack_[stackSize_ - 1].index;
-    if (muteIdx < 0 || muteIdx >= DrumPatternSet::kVoices) {
-      error_ = true;
-      return;
-    }
+    if (muteIdx < 0 || muteIdx >= DrumPatternSet::kVoices) return;
     drumMute_[muteIdx] = value;
     return;
   }
 
   if (path == Path::MuteSynth) {
     int muteIdx = stack_[stackSize_ - 1].index;
-    if (muteIdx < 0 || muteIdx >= 2) {
-      error_ = true;
-      return;
-    }
+    if (muteIdx < 0 || muteIdx >= 2) return;
     synthMute_[muteIdx] = value;
     return;
   }
   if (path == Path::SynthDistortion) {
     int idx = stack_[stackSize_ - 1].index;
-    if (idx < 0 || idx >= 2) {
-      error_ = true;
-      return;
-    }
+    if (idx < 0 || idx >= 2) return;
     synthDistortion_[idx] = value;
     return;
   }
   if (path == Path::SynthDelay) {
     int idx = stack_[stackSize_ - 1].index;
-    if (idx < 0 || idx >= 2) {
-      error_ = true;
-      return;
-    }
+    if (idx < 0 || idx >= 2) return;
     synthDelay_[idx] = value;
     return;
   }
@@ -1015,10 +991,7 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
     int patternIdx = currentIndexFor(useBankB ? Path::SynthBBank : Path::SynthABank);
     if (patternIdx < 0 || patternIdx >= Bank<SynthPattern>::kPatterns ||
         stepIdx < 0 || stepIdx >= SynthPattern::kSteps ||
-        bankIdx < 0 || bankIdx >= kBankCount) {
-      error_ = true;
-      return;
-    }
+        bankIdx < 0 || bankIdx >= kBankCount) return;
     SynthPattern& pattern = useBankB ? target_.synthBBanks[bankIdx].patterns[patternIdx]
                                      : target_.synthABanks[bankIdx].patterns[patternIdx];
     if (lastKey_ == "slide") {
