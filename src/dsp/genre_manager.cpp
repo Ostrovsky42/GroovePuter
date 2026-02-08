@@ -85,6 +85,7 @@ constexpr uint8_t kAllowedTextureMask[kGenerativeModeCount] = {
     0b11111, // Broken: Clean, Dub, LoFi, Industrial, Psy
     0b10101  // Chip: Clean, LoFi, Psy
 };
+
 } // namespace
 
 bool GenreManager::isTextureAllowed(GenerativeMode genre, TextureMode texture) {

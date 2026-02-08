@@ -607,7 +607,7 @@ void ProjectPage::draw(IGfx& gfx) {
     switch (focus) {
       case MainFocus::Load: std::snprintf(line, sizeof(line), "Load Scene"); break;
       case MainFocus::SaveAs: std::snprintf(line, sizeof(line), "Save As"); break;
-      case MainFocus::New: std::snprintf(line, sizeof(line), "New ࿕"); break;
+      case MainFocus::New: std::snprintf(line, sizeof(line), "New"); break;
       case MainFocus::VisualStyle:
         std::snprintf(line, sizeof(line), "Theme      %s", styleShortName(UI::currentStyle));
         break;

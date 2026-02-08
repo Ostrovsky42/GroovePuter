@@ -19,15 +19,16 @@ const char* kDrumLaneShort[8] = {"BD", "SD", "CH", "OH", "MT", "HT", "RM", "CP"}
 
 inline void buildHubTrackLabel(int trackIdx, char* out, size_t outSize) {
     if (!out || outSize == 0) return;
+    int keyNum = (trackIdx + 1) % 10;
     if (trackIdx == 0) {
-        std::snprintf(out, outSize, "303A");
+        std::snprintf(out, outSize, "%d.303A", keyNum);
     } else if (trackIdx == 1) {
-        std::snprintf(out, outSize, "303B");
+        std::snprintf(out, outSize, "%d.303B", keyNum);
     } else {
         int drumVoice = trackIdx - 2;    // 0..7
         if (drumVoice < 0) drumVoice = 0;
         if (drumVoice > 7) drumVoice = 7;
-        std::snprintf(out, outSize, "%s", kDrumLaneShort[drumVoice]);
+        std::snprintf(out, outSize, "%d|%s", keyNum, kDrumLaneShort[drumVoice]);
     }
 }
 
@@ -422,7 +423,7 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
             drumGrid_->setStyle(GrooveboxStyle::RETRO_CLASSIC);
             drumGrid_->setBoundaries(Rect(0, contentY + 2, 240, contentH - 4));
             drumGrid_->draw(gfx);
-            drawFooterBar(gfx, x, y + h - 12, w, 12, "[ARROWS]Grid [A]Accent", "ESC:Back", "DRUM");
+            drawFooterBar(gfx, x, y + h - 12, w, 12, "[ARROWS]Grid [A]Accent", "ESC", "DRUM");
         } else {
             // Enhanced 303 Detail (Retro Style with Teal & Orange)
             int cellW = (w - 20) / 16;
@@ -460,7 +461,7 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
                 }
             }
             // Scanlines disabled: caused flicker on small TFT
-            RetroWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[A/Z]±nt [S/X]±oct [Alt+S]Sld [Alt+A]Acc", "ESC:Back", "303");
+            RetroWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[A/Z]±nt [S/X]±oct [Alt+S]Sld [Alt+A]Acc", "ESC", "303");
         }
     }
 #else

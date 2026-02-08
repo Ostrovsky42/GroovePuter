@@ -128,13 +128,6 @@ struct ModeConfig {
         int ghostVelocityMin;            // ghost note velocity min
         int ghostVelocityMax;            // ghost note velocity max
         
-        // Corridor boundaries (for the 0..4 Flavor system)
-        struct {
-            int notesMin[2];        // [0]=min, [1]=max
-            float accentProb[2];
-            float slideProb[2];
-            float swingRange[2];
-        } corridor;
     } pattern;
     
     // Drum pattern parameters
@@ -176,13 +169,7 @@ const ModeConfig kAcidConfig = {
         .velocityMin = 85,                // wide dynamic range
         .velocityMax = 120,               // loud notes
         .ghostVelocityMin = 35,           // ghosts still punchy
-        .ghostVelocityMax = 55,
-        .corridor = {
-            .notesMin = {8, 13},
-            .accentProb = {0.28f, 0.48f},
-            .slideProb = {0.18f, 0.35f},
-            .swingRange = {0.0f, 0.05f}
-        }
+        .ghostVelocityMax = 55
     },
     .drums = {
         .sparseKick = false,
@@ -218,13 +205,7 @@ const ModeConfig kMinimalConfig = {
         .velocityMin = 70,                // narrow, consistent
         .velocityMax = 90,                // flat dynamics
         .ghostVelocityMin = 20,           // very quiet ghosts
-        .ghostVelocityMax = 40,           // textural, not melodic
-        .corridor = {
-            .notesMin = {3, 6},
-            .accentProb = {0.08f, 0.18f},
-            .slideProb = {0.00f, 0.10f},
-            .swingRange = {0.04f, 0.14f}
-        }
+        .ghostVelocityMax = 40            // textural, not melodic
     },
     .drums = {
         .sparseKick = true,
@@ -246,13 +227,7 @@ const ModeConfig kBreaksConfig = {
         .minNotes = 4, .maxNotes = 9, .minOctave = 24, .maxOctave = 60,
         .slideProbability = 0.08f, .accentProbability = 0.30f, .chromaticProbability = 0.06f,
         .rootNoteBias = 0.38f, .ghostProbability = 0.22f, .swingAmount = 0.18f,
-        .velocityMin = 74, .velocityMax = 112, .ghostVelocityMin = 28, .ghostVelocityMax = 52,
-        .corridor = {
-            .notesMin = {5, 9},
-            .accentProb = {0.18f, 0.34f},
-            .slideProb = {0.04f, 0.12f},
-            .swingRange = {0.12f, 0.24f}
-        }
+        .velocityMin = 74, .velocityMax = 112, .ghostVelocityMin = 28, .ghostVelocityMax = 52
     },
     .drums = {.sparseKick = false, .sparseHats = false, .noAccents = false, .fillProbability = 0.70f},
     .dsp = {.lofiDrums = false, .subOscillator = false, .noiseAmount = 0.01f},
@@ -265,13 +240,7 @@ const ModeConfig kDubConfig = {
         .minNotes = 2, .maxNotes = 5, .minOctave = 12, .maxOctave = 48,
         .slideProbability = 0.05f, .accentProbability = 0.24f, .chromaticProbability = 0.00f,
         .rootNoteBias = 0.78f, .ghostProbability = 0.30f, .swingAmount = 0.10f,
-        .velocityMin = 66, .velocityMax = 92, .ghostVelocityMin = 18, .ghostVelocityMax = 38,
-        .corridor = {
-            .notesMin = {2, 5},
-            .accentProb = {0.14f, 0.34f},
-            .slideProb = {0.00f, 0.08f},
-            .swingRange = {0.06f, 0.14f}
-        }
+        .velocityMin = 66, .velocityMax = 92, .ghostVelocityMin = 18, .ghostVelocityMax = 38
     },
     .drums = {.sparseKick = true, .sparseHats = true, .noAccents = false, .fillProbability = 0.24f},
     .dsp = {.lofiDrums = true, .subOscillator = true, .noiseAmount = 0.015f},
@@ -284,13 +253,7 @@ const ModeConfig kElectroConfig = {
         .minNotes = 6, .maxNotes = 10, .minOctave = 24, .maxOctave = 67,
         .slideProbability = 0.04f, .accentProbability = 0.24f, .chromaticProbability = 0.08f,
         .rootNoteBias = 0.42f, .ghostProbability = 0.12f, .swingAmount = 0.02f,
-        .velocityMin = 82, .velocityMax = 116, .ghostVelocityMin = 30, .ghostVelocityMax = 48,
-        .corridor = {
-            .notesMin = {6, 10},
-            .accentProb = {0.16f, 0.30f},
-            .slideProb = {0.00f, 0.06f},
-            .swingRange = {0.00f, 0.03f}
-        }
+        .velocityMin = 82, .velocityMax = 116, .ghostVelocityMin = 30, .ghostVelocityMax = 48
     },
     .drums = {.sparseKick = false, .sparseHats = false, .noAccents = true, .fillProbability = 0.40f},
     .dsp = {.lofiDrums = false, .subOscillator = false, .noiseAmount = 0.0f},

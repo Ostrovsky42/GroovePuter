@@ -137,6 +137,7 @@ struct GenreState {
     const char* getName() const { return cachedName_; }
 };
 
+
 // Forward declaration
 class MiniAcid;
 
@@ -207,6 +208,7 @@ public:
     static bool isTextureAllowed(GenerativeMode genre, TextureMode texture);
     static TextureMode firstAllowedTexture(GenerativeMode genre);
     static TextureMode nextAllowedTexture(GenerativeMode genre, TextureMode current, int direction = 1);
+
     
     // Apply texture to engine (implemented in cpp)
     void applyTexture(MiniAcid& engine);

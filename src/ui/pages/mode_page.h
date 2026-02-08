@@ -11,12 +11,19 @@ public:
     const std::string& getTitle() const;
 
 private:
+    enum class FocusRow : uint8_t { Mode = 0, Flavor = 1, Macros = 2, Preview = 3 };
+
     void toggleMode();
+    void shiftMode(int delta);
+    void shiftFlavor(int delta);
     void applyTo303(int voiceIdx);
     void applyToTape();
     void previewMode();
-    
-    void drawModeBox(IGfx& gfx, int x, int y, const char* name, bool active, uint32_t color, int w, int h);
+    void toggleMacros();
+    void moveFocus(int delta);
+    void drawRow(IGfx& gfx, int y, const char* label, const char* value, bool focused, IGfxColor accent);
+    const char* modeName(GrooveboxMode mode) const;
+    const char* flavorName(GrooveboxMode mode, int flavor) const;
     template <typename F>
     void withAudioGuard(F&& fn) {
         if (audio_guard_) audio_guard_(std::forward<F>(fn));
@@ -25,5 +32,6 @@ private:
 
     MiniAcid& mini_acid_;
     AudioGuard audio_guard_;
-    std::string title_ = "MODE";
+    FocusRow focus_ = FocusRow::Mode;
+    std::string title_ = "GROOVE LAB";
 };

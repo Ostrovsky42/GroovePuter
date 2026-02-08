@@ -5,7 +5,7 @@
 TubeDistortion::TubeDistortion()
   : drive_(8.0f),
     mix_(1.0f),
-    cachedComp_(1.0f / (1.0f + 0.3f * 8.0f)),
+    cachedComp_(1.0f / (1.0f + 0.06f * 8.0f)),
     enabled_(false) {}
 
 void TubeDistortion::setDrive(float drive) {
@@ -14,7 +14,9 @@ void TubeDistortion::setDrive(float drive) {
   if (drive > 10.0f)
     drive = 10.0f;
   drive_ = drive;
-  cachedComp_ = 1.0f / (1.0f + 0.3f * drive_);
+  // Keep perceived loudness closer to bypass.
+  // Old compensation attenuated too hard at medium/high drive.
+  cachedComp_ = 1.0f / (1.0f + 0.06f * drive_);
 }
 
 void TubeDistortion::setMix(float mix) {
@@ -36,5 +38,7 @@ float TubeDistortion::process(float input) {
   float driven = input * drive_;
   float shaped = driven / (1.0f + fabsf(driven));
   shaped *= cachedComp_;
-  return input * (1.0f - mix_) + shaped * mix_;
+  float out = input * (1.0f - mix_) + shaped * mix_;
+  // Gentle safety clip to avoid sudden overs while preserving body.
+  return out / (1.0f + 0.35f * fabsf(out));
 }

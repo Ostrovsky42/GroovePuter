@@ -592,8 +592,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   if (handled) return true;
 
   char key = ui_event.key;
-  if (!key) return false;
-  char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
+  char lowerKey = key ? static_cast<char>(std::tolower(static_cast<unsigned char>(key))) : 0;
 
   /*
   int bankIdx = bankIndexFromKey(key);

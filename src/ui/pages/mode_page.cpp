@@ -1,136 +1,207 @@
 #include "mode_page.h"
+
 #include <cstdio>
-#include "../ui_colors.h"
+
+#include "../layout_manager.h"
+#include "../ui_common.h"
+#include "../ui_input.h"
 
 ModePage::ModePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
+  (void)gfx;
+}
+
+const char* ModePage::modeName(GrooveboxMode mode) const {
+  switch (mode) {
+    case GrooveboxMode::Acid: return "ACID";
+    case GrooveboxMode::Minimal: return "MINIMAL";
+    case GrooveboxMode::Breaks: return "BREAKS";
+    case GrooveboxMode::Dub: return "DUB";
+    case GrooveboxMode::Electro: return "ELECTRO";
+    default: return "MINIMAL";
+  }
+}
+
+const char* ModePage::flavorName(GrooveboxMode mode, int flavor) const {
+  if (flavor < 0) flavor = 0;
+  if (flavor > 4) flavor = 4;
+  static const char* acid[5] = {"CLASSIC", "SHARP", "DEEP", "RUBBER", "RAVE"};
+  static const char* minimal[5] = {"TIGHT", "WARM", "AIRY", "DRY", "HYPNO"};
+  static const char* breaks[5] = {"NUSKOOL", "SKITTER", "ROLLER", "CRUNCH", "LIQUID"};
+  static const char* dub[5] = {"HEAVY", "SPACE", "STEPPERS", "TAPE", "FOG"};
+  static const char* electro[5] = {"ROBOT", "ZAP", "BOING", "MIAMI", "INDUS"};
+  switch (mode) {
+    case GrooveboxMode::Acid: return acid[flavor];
+    case GrooveboxMode::Minimal: return minimal[flavor];
+    case GrooveboxMode::Breaks: return breaks[flavor];
+    case GrooveboxMode::Dub: return dub[flavor];
+    case GrooveboxMode::Electro: return electro[flavor];
+    default: return minimal[flavor];
+  }
+}
+
+void ModePage::drawRow(IGfx& gfx, int y, const char* label, const char* value, bool focused, IGfxColor accent) {
+  const int x = Layout::CONTENT.x;
+  const int w = Layout::CONTENT.w;
+  const int h = 10;
+  if (focused) {
+    gfx.drawRect(x, y - 1, w, h, accent);
+  }
+  gfx.setTextColor(IGfxColor(0x8AA4BA));
+  gfx.drawText(x + 2, y + 1, label);
+  gfx.setTextColor(focused ? accent : COLOR_WHITE);
+  gfx.drawText(x + 56, y + 1, value);
 }
 
 void ModePage::draw(IGfx& gfx) {
-    const Rect& bounds = getBoundaries();
-    int x = bounds.x;
-    int y = bounds.y;
-    int w = bounds.w;
-    int h = bounds.h;
+  const ModeConfig& cfg = mini_acid_.modeManager().config();
+  const GrooveboxMode mode = mini_acid_.grooveboxMode();
+  const int flavor = mini_acid_.grooveFlavor();
+  const bool macros = mini_acid_.sceneManager().currentScene().genre.applySoundMacros;
 
-    GrooveboxMode currentMode = mini_acid_.grooveboxMode();
-    const ModeConfig& cfg = mini_acid_.modeManager().config();
+  char title[48];
+  std::snprintf(title, sizeof(title), "%s / %s", modeName(mode), flavorName(mode, flavor));
+  UI::drawStandardHeader(gfx, mini_acid_, title);
+  LayoutManager::clearContent(gfx);
 
-    // Clear background
-    gfx.fillRect(x, y, w, h, COLOR_BLACK);
+  const int y0 = LayoutManager::lineY(0);
+  drawRow(gfx, y0, "MODE", modeName(mode), focus_ == FocusRow::Mode, cfg.accentColor);
 
-    // Big Mode Indicators
-    int centerY = y + 25;  // Reduced from 30
-    int boxW = 50;  // Reduced from 60
-    int boxH = 24;  // Reduced from 30
-    
-    // Acid Box
-    drawModeBox(gfx, x + 25, centerY, "ACID", currentMode == GrooveboxMode::Acid, kAcidConfig.accentColor, boxW, boxH);
-    
-    // Minimal Box
-    drawModeBox(gfx, x + 160, centerY, "MNML", currentMode == GrooveboxMode::Minimal, kMinimalConfig.accentColor, boxW, boxH);
+  char flv[24];
+  std::snprintf(flv, sizeof(flv), "%s  [%d/5]", flavorName(mode, flavor), flavor + 1);
+  drawRow(gfx, y0 + Layout::LINE_HEIGHT, "FLAVOR", flv, focus_ == FocusRow::Flavor, cfg.accentColor);
 
-    // Arrow
-    gfx.setTextColor(COLOR_WHITE);
-    gfx.drawText(x + 105, centerY + 8, (currentMode == GrooveboxMode::Acid) ? "->" : "<-");
+  drawRow(gfx, y0 + Layout::LINE_HEIGHT * 2, "MACROS", macros ? "ON  (Flavor -> 303/Tape)" : "OFF (Safe)", focus_ == FocusRow::Macros, cfg.accentColor);
 
-    // Mode Info
-    int infoY = y + 55;  // Reduced from 75
-    gfx.setTextColor(cfg.accentColor);
-    gfx.drawText(x + 10, infoY, cfg.displayName);
+  drawRow(gfx, y0 + Layout::LINE_HEIGHT * 3, "PREVIEW", "SPACE/ENT = Regenerate", focus_ == FocusRow::Preview, cfg.accentColor);
 
-    gfx.setTextColor(COLOR_WHITE);
-    if (currentMode == GrooveboxMode::Acid) {
-        gfx.drawText(x + 10, infoY + 6, "CHARACTER: AGGRESSIVE");
-        
-        gfx.setTextColor(kAcidConfig.accentColor);
-       // gfx.drawText(x + 10, infoY + 20, "FOCUS: FREAK . RES . ACCENT");
-    } else {
-        gfx.drawText(x + 10, infoY + 6, "CHARACTER: HYPNOTIC");
-        
-        gfx.setTextColor(kMinimalConfig.accentColor);
-       // gfx.drawText(x + 10, infoY + 20, "FOCUS: TIME . SPACE . DUB");
-    }
+  gfx.setTextColor(IGfxColor(0x8AA4BA));
+  gfx.drawText(Layout::CONTENT.x + 2, y0 + Layout::LINE_HEIGHT * 5, "A:Apply 303A  B:Apply 303B  T:Apply Tape");
 
-    // Hints
-    int hintY = y + 75;  // Reduced from 115
-    gfx.setTextColor(COLOR_LABEL);
-    //gfx.drawText(x + 10, hintY, "[ENTER] Toggle   [A] Apply to 303A");
-    gfx.drawText(x + 10, hintY + 10, "[SPACE] Preview  [B] Apply to 303B");
+  UI::drawStandardFooter(gfx, "TAB:Focus  ARW:Adjust", "ENT:Action");
 }
 
-bool ModePage::handleEvent(UIEvent& ui_event) {
-    if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
-
-    switch (ui_event.key) {
-        case '\n':
-        case '\r':
-            toggleMode();
-            return true;
-        case 'a':
-        case 'A':
-            applyTo303(0);
-            return true;
-        case 'b':
-        case 'B':
-            applyTo303(1);
-            return true;
-        case ' ':
-            previewMode();
-            return true;
-    }
-
-    return false;
-}
-
-const std::string& ModePage::getTitle() const {
-    return title_;
+void ModePage::moveFocus(int delta) {
+  int f = static_cast<int>(focus_) + delta;
+  while (f < 0) f += 4;
+  while (f >= 4) f -= 4;
+  focus_ = static_cast<FocusRow>(f);
 }
 
 void ModePage::toggleMode() {
-    withAudioGuard([&]() {
-        mini_acid_.toggleGrooveboxMode();
-        // Presets are now applied manually via 'A' / 'B' to avoid overwriting genre sound
-        applyToTape();
-    });
+  withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
+}
+
+void ModePage::shiftMode(int delta) {
+  int idx = static_cast<int>(mini_acid_.grooveboxMode());
+  idx += delta;
+  while (idx < 0) idx += 5;
+  while (idx >= 5) idx -= 5;
+  withAudioGuard([&]() { mini_acid_.setGrooveboxMode(static_cast<GrooveboxMode>(idx)); });
+}
+
+void ModePage::shiftFlavor(int delta) {
+  withAudioGuard([&]() { mini_acid_.shiftGrooveFlavor(delta); });
 }
 
 void ModePage::applyTo303(int voiceIdx) {
-    withAudioGuard([&]() {
-        mini_acid_.modeManager().apply303Preset(voiceIdx, voiceIdx == 0 ? 0 : 1);
-    });
+  withAudioGuard([&]() { mini_acid_.modeManager().apply303Preset(voiceIdx, mini_acid_.grooveFlavor()); });
 }
 
 void ModePage::applyToTape() {
-    withAudioGuard([&]() {
-        int count;
-        const TapeModePreset* presets = mini_acid_.modeManager().getTapePresets(count);
-        if (count > 0) {
-            mini_acid_.sceneManager().currentScene().tape.macro = presets[0].macro;
-        }
-    });
+  withAudioGuard([&]() {
+    int count = 0;
+    const TapeModePreset* presets = mini_acid_.modeManager().getTapePresets(count);
+    if (!presets || count <= 0) return;
+    int idx = mini_acid_.grooveFlavor();
+    if (idx < 0) idx = 0;
+    if (idx >= count) idx = count - 1;
+    mini_acid_.sceneManager().currentScene().tape.macro = presets[idx].macro;
+  });
 }
 
 void ModePage::previewMode() {
-    withAudioGuard([&]() {
-        mini_acid_.randomize303Pattern(0);
-        mini_acid_.randomize303Pattern(1);
-        mini_acid_.randomizeDrumPattern();
-        if (!mini_acid_.isPlaying()) {
-            mini_acid_.start();
-        }
-    });
+  withAudioGuard([&]() {
+    mini_acid_.randomize303Pattern(0);
+    mini_acid_.randomize303Pattern(1);
+    mini_acid_.randomizeDrumPattern();
+    if (!mini_acid_.isPlaying()) mini_acid_.start();
+  });
 }
 
-void ModePage::drawModeBox(IGfx& gfx, int x, int y, const char* name, bool active, uint32_t color, int w, int h) {
-    if (active) {
-        gfx.fillRect(x, y, w, h, (IGfxColor)color);
-        gfx.setTextColor(COLOR_BLACK);
-        gfx.drawText(x + 10, y + 7, name);
-    } else {
-        gfx.drawRect(x, y, w, h, (IGfxColor)color);
-        gfx.setTextColor((IGfxColor)color);
-        gfx.drawText(x + 10, y + 7, name);
+void ModePage::toggleMacros() {
+  withAudioGuard([&]() {
+    auto& genre = mini_acid_.sceneManager().currentScene().genre;
+    genre.applySoundMacros = !genre.applySoundMacros;
+  });
+}
+
+bool ModePage::handleEvent(UIEvent& ui_event) {
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+
+  if (UIInput::isTab(ui_event)) {
+    moveFocus(1);
+    return true;
+  }
+
+  const int nav = UIInput::navCode(ui_event);
+  if (nav == GROOVEPUTER_UP) {
+    moveFocus(-1);
+    return true;
+  }
+  if (nav == GROOVEPUTER_DOWN) {
+    moveFocus(1);
+    return true;
+  }
+  if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
+    const int delta = (nav == GROOVEPUTER_RIGHT) ? 1 : -1;
+    switch (focus_) {
+      case FocusRow::Mode: shiftMode(delta); return true;
+      case FocusRow::Flavor: shiftFlavor(delta); return true;
+      case FocusRow::Macros: toggleMacros(); return true;
+      case FocusRow::Preview: return true;
     }
+  }
+
+  char key = ui_event.key;
+  if (!key) return false;
+
+  switch (key) {
+    case '\n':
+    case '\r':
+      switch (focus_) {
+        case FocusRow::Mode: toggleMode(); return true;
+        case FocusRow::Flavor: shiftFlavor(1); return true;
+        case FocusRow::Macros: toggleMacros(); return true;
+        case FocusRow::Preview: previewMode(); return true;
+      }
+      break;
+    case 'a':
+    case 'A':
+      applyTo303(0);
+      return true;
+    case 'b':
+    case 'B':
+      applyTo303(1);
+      return true;
+    case 't':
+    case 'T':
+      applyToTape();
+      return true;
+    case 'm':
+    case 'M':
+      toggleMacros();
+      return true;
+    case ' ':
+      previewMode();
+      return true;
+    default:
+      break;
+  }
+
+  return false;
 }
 
+const std::string& ModePage::getTitle() const {
+  return title_;
+}
