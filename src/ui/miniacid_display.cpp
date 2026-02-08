@@ -145,7 +145,7 @@ void MiniAcidDisplay::update() {
     gfx_.startWrite();
     if (splash_active_) {
         drawSplashScreen();
-        if (millis() - splash_start_ms_ > 1500) dismissSplash();
+        if (millis() - splash_start_ms_ > 2000) dismissSplash();
         if (splash_active_) {
             gfx_.flush();
             return;
@@ -307,6 +307,15 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             return true;
         }
 
+        if (event.ctrl && event.alt && (event.key == '\b' || event.key == 0x7F)) {
+            withAudioGuard([&]() {
+                mini_acid_.sceneManager().loadDefaultScene();
+                mini_acid_.reset();
+            });
+            showToast("PROJECT RESET", 1500);
+            return true;
+        }
+
         if (event.alt || event.ctrl || event.meta) {
             int targetPage = -1;
             switch (event.key) {
@@ -434,27 +443,57 @@ void MiniAcidDisplay::drawSplashScreen() {
 
   unsigned long elapsed = millis() - splash_start_ms_;
   
-  static const char* const logo[] = {
-    "_$$$$__$$$$$___$$$$___$$$$__$$__$$_$$$$$",
-    "$$_____$$__$$_$$__$$_$$__$$_$$__$$_$$___",
-    "$$_$$$_$$$$$__$$__$$_$$__$$_$$__$$_$$$$_",
-    "$$__$$_$$__$$_$$__$$_$$__$$__$$$$__$$___",
-    "_$$$$__$$__$$__$$$$___$$$$____$$___$$$$$",
-    "________________________________________",
-    "___$$$$$__$$__$$_$$$$$$_$$$$$_$$$$$____",
-    "___$$__$$_$$__$$___$$___$$____$$__$$___",
-    "___$$$$$__$$__$$___$$___$$$$__$$$$$____",
-    "___$$_____$$__$$___$$___$$____$$__$$___",
-    "___$$______$$$$____$$___$$$$$_$$__$$___",
-  };
+    static const char* const logo[] = {
+      "_$$$$__$$$$$___$$$$___$$$$__$$__$$_$$$$$",
+      "$$_____$$__$$_$$__$$_$$__$$_$$__$$_$$___",
+      "$$_$$$_$$$$$__$$__$$_$$__$$_$$__$$_$$$$_",
+      "$$__$$_$$__$$_$$__$$_$$__$$__$$$$__$$___",
+      "_$$$$__$$__$$__$$$$___$$$$____$$___$$$$$",
+      "________________________________________",
+      "___$$$$$__$$__$$_$$$$$$_$$$$$_$$$$$____",
+      "___$$__$$_$$__$$___$$___$$____$$__$$___",
+      "___$$$$$__$$__$$___$$___$$$$__$$$$$____",
+      "___$$_____$$__$$___$$___$$____$$__$$___",
+      "___$$______$$$$____$$___$$$$$_$$__$$___",
+    };
+
+
   constexpr int kLineCount = 11;
-  constexpr int kLineDelay = 140; // ms per line
+  constexpr int kLineDelay = 70; // ms per line
 
   gfx_.setFont(GfxFont::kFont5x7);
   int small_h = gfx_.fontHeight();
   int logo_h = kLineCount * (small_h + 1);
   int start_y = (gfx_.height() - logo_h - 40) / 2;
   if (start_y < 10) start_y = 10;
+
+  // Cyberpunk colors
+  const IGfxColor cyan(0x00E5FF);
+  const IGfxColor purple(0x9D00FF);
+
+  // Character-by-character gradient drawing
+  auto drawGradientText = [&](int y, const char* text, unsigned long timeShift) {
+      if (!text) return;
+      int len = strlen(text);
+      int tw = len * 6; // 5x7 font width
+      int sx = (gfx_.width() - tw) / 2;
+      
+      for (int j = 0; j < len; ++j) {
+          if (text[j] != ' ') {
+              // Interpolate color based on time and position
+              float t = 0.5f + 0.5f * sinf(timeShift * 0.005f + j * 0.2f + y * 0.05f);
+              
+              // Simple manual interpolation
+              uint8_t r = (uint8_t)(0x00 + (0x9D - 0x00) * t);
+              uint8_t g = (uint8_t)(0xE5 + (0x00 - 0xE5) * t);
+              uint8_t b = (uint8_t)(0xFF + (0xFF - 0xFF) * t);
+              
+              gfx_.setTextColor(IGfxColor((r << 16) | (g << 8) | b));
+              char tmp[2] = {text[j], 0};
+              gfx_.drawText(sx + j * 6, y, tmp);
+          }
+      }
+  };
 
   // Draw logo lines
   for (int i = 0; i < kLineCount; ++i) {
@@ -463,21 +502,33 @@ void MiniAcidDisplay::drawSplashScreen() {
 
     int y = start_y + i * (small_h + 1);
     
-    // Flicker effect: first 50ms of a line's life is white
-    IGfxColor color = COLOR_ACCENT;
-    if (elapsed < lineTrigger + 50) {
-        color = COLOR_WHITE;
+    // Decryption effect: characters are random for the first 150ms of line life
+    if (elapsed < lineTrigger + 150) {
+        char glitchLine[64];
+        strncpy(glitchLine, logo[i], 63);
+        glitchLine[63] = '\0';
+        int len = strlen(glitchLine);
+        for (int j = 0; j < len; ++j) {
+            if (glitchLine[j] != ' ') {
+                glitchLine[j] = "01#$%&@*"[rand() % 8];
+            }
+        }
+        centerText(y, glitchLine, COLOR_WHITE);
+    } else {
+        drawGradientText(y, logo[i], elapsed);
     }
-    
-    centerText(y, logo[i], color);
   }
 
   // Draw info text after logo starts finishing
   if (elapsed > kLineCount * kLineDelay + 200) {
     int info_y = start_y + logo_h + 15;
-    centerText(info_y, "Use keys [ ] to move around", COLOR_WHITE);
-    centerText(info_y + small_h + 2, "Space - to start/stop sound", COLOR_WHITE);
-    centerText(info_y + 2 * small_h + 4, "ESC - for help on each page", COLOR_WHITE);
+    
+    uint8_t pulse = 160 + 95 * sinf(elapsed * 0.005f);
+    IGfxColor pulseColor((pulse << 16) | (pulse << 8) | pulse);
+
+    centerText(info_y, "Use keys [ ] to move around", pulseColor);
+    centerText(info_y + small_h + 2, "Space - to start/stop sound", pulseColor);
+    centerText(info_y + 2 * small_h + 4, "ESC - for help on each page", pulseColor);
   }
 }
 

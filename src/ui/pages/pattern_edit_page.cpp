@@ -436,6 +436,45 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   // Keep vim-keys only as silent fallback (not in footer hints).
   int nav = UIInput::navCode(ui_event);
   bool extend_selection = (ui_event.shift || ui_event.ctrl) && !ui_event.alt;
+  if (ui_event.meta) {
+    auto applyMetaStep = [&](auto&& fn) {
+      if (patternRowFocused()) {
+        focusPatternSteps();
+      } else {
+        ensureStepFocus();
+      }
+      if (has_selection_) {
+        int min_row, max_row, min_col, max_col;
+        getSelectionBounds(min_row, max_row, min_col, max_col);
+        withAudioGuard([&]() {
+          for (int r = min_row; r <= max_row; ++r) {
+            for (int c = min_col; c <= max_col; ++c) {
+              fn(r * 8 + c);
+            }
+          }
+        });
+      } else {
+        int step = activePatternStep();
+        withAudioGuard([&]() { fn(step); });
+      }
+    };
+    switch (nav) {
+      case GROOVEPUTER_UP:
+        applyMetaStep([&](int step) { mini_acid_.adjust303StepNote(voice_index_, step, 1); });
+        return true;
+      case GROOVEPUTER_DOWN:
+        applyMetaStep([&](int step) { mini_acid_.adjust303StepNote(voice_index_, step, -1); });
+        return true;
+      case GROOVEPUTER_LEFT:
+        applyMetaStep([&](int step) { mini_acid_.adjust303StepOctave(voice_index_, step, -1); });
+        return true;
+      case GROOVEPUTER_RIGHT:
+        applyMetaStep([&](int step) { mini_acid_.adjust303StepOctave(voice_index_, step, 1); });
+        return true;
+      default:
+        break;
+    }
+  }
   if (extend_selection && selection_locked_) selection_locked_ = false;
   if (selection_locked_ && has_selection_ && !extend_selection && focus_ == Focus::Steps) {
     switch (nav) {
@@ -731,7 +770,24 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
             mini_acid_.clear303Step(i, voice_index_);
         }
     });
+    UI::showToast("Pattern Cleared");
     return true;
+  }
+
+  if (is_backspace && has_selection_) {
+      int min_row, max_row, min_col, max_col;
+      getSelectionBounds(min_row, max_row, min_col, max_col);
+      withAudioGuard([&]() {
+          for (int r = min_row; r <= max_row; ++r) {
+              for (int c = min_col; c <= max_col; ++c) {
+                  int stepIdx = r * 8 + c;
+                  mini_acid_.clear303Step(stepIdx, voice_index_);
+              }
+          }
+      });
+      clearSelection();
+      UI::showToast("Selection Cleared");
+      return true;
   }
 
   if (is_backspace) { // Backspace / Del = Clear Step (REST)

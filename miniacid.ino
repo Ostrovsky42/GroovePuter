@@ -53,14 +53,12 @@ void audioTask(void *param) {
     // Generate audio
     uint32_t now = micros();
     uint32_t start = now;
-    static uint32_t warmupBlocks = 256; // ~740ms at 44.1kHz/128 for hardware stability
+    static uint32_t warmupBlocks = 32; // ~90ms at 44.1kHz/128 for hardware stability
     if (warmupBlocks > 0) {
       std::fill(g_audioBuffer, g_audioBuffer + kBlockFrames, 0);
       warmupBlocks--;
       if (warmupBlocks == 0) {
-        // Soft-unmute: restore volume once stream is stable
-        M5Cardputer.Speaker.setVolume(160);
-        Serial.println("AudioTask: Warmup complete, codec unmuted");
+        Serial.println("AudioTask: Warmup complete, audio active");
       }
     } else if (g_miniAcid) {
       g_miniAcid->generateAudioBuffer(g_audioBuffer, kBlockFrames);
@@ -151,9 +149,8 @@ static void logHeapCaps(const char* tag) {
 }
 
 void setup() {
-  // IMMEDIATE HARDWARE LOCKDOWN to muffle startup pop
-  // G21 = PA_EN (amplifier enable), G42 = I2S_DOUT
-  pinMode(21, OUTPUT); digitalWrite(21, LOW);
+  // ENABLE hardware amplifier (PA_EN = G21)
+  pinMode(21, OUTPUT); digitalWrite(21, HIGH);
   pinMode(42, OUTPUT); digitalWrite(42, LOW);
   
   Serial.begin(115200);
@@ -166,9 +163,9 @@ void setup() {
   
   // 1. Let M5Unified initialize the ES8311 codec over I2C.
   // This wakes up the codec, sets output volumes, etc.
-  M5Cardputer.Speaker.setVolume(0); // Mute BEFORE initialization
+  M5Cardputer.Speaker.setVolume(160); 
   M5Cardputer.Speaker.begin();
-  M5Cardputer.Speaker.setVolume(0); // Ensure muted AFTER initialization
+  M5Cardputer.Speaker.setVolume(160);
   
   // 2. IMPORTANT: Release Port 0 immediately.
   // This uninstalls M5's I2S driver but keeps the ES8311 codec registers intact.
@@ -438,6 +435,7 @@ void loop() {
       evt.alt = ks.alt;
       evt.ctrl = ks.ctrl;
       evt.shift = ks.shift;
+      evt.meta = ks.fn;
       bool shouldSend = false;
       auto mapFKey = [&](uint8_t h, KeyScanCode& sc) -> bool {
         if (h >= 0x3A && h <= 0x41) {
@@ -498,6 +496,7 @@ void loop() {
       evt.alt = ks.alt;
       evt.ctrl = ks.ctrl;
       evt.shift = ks.shift;
+      evt.meta = ks.fn;
       evt.key = normalizeKeyChar(inputChar);
       evt.scancode = mapAsciiLetterScancode(evt.key);
 

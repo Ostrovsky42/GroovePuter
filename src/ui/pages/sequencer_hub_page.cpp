@@ -801,6 +801,38 @@ bool SequencerHubPage::handleModeSwitch(UIEvent& e) {
 bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
     char lower = std::tolower(e.key);
     
+    // Clear (Backspace / Alt+Backspace)
+    if (e.key == '\b' || e.key == 0x7F) {
+        if (e.alt) {
+            // Clear entire pattern for current track
+            withAudioGuard([&]() {
+                if (isDrumTrack(selectedTrack_)) {
+                    int voice = getDrumVoiceIndex(selectedTrack_);
+                    for (int i = 0; i < SEQ_STEPS; ++i) {
+                        mini_acid_.sceneManager().setDrumStep(voice, i, false, false);
+                    }
+                } else {
+                    for (int i = 0; i < SEQ_STEPS; ++i) {
+                        mini_acid_.clear303Step(i, selectedTrack_);
+                    }
+                }
+            });
+            UI::showToast("Track Cleared");
+            return true;
+        } else {
+            // Clear current step
+            withAudioGuard([&]() {
+                if (isDrumTrack(selectedTrack_)) {
+                    int voice = getDrumVoiceIndex(selectedTrack_);
+                    mini_acid_.sceneManager().setDrumStep(voice, stepCursor_, false, false);
+                } else {
+                    mini_acid_.clear303Step(stepCursor_, selectedTrack_);
+                }
+            });
+            return true;
+        }
+    }
+    
     // Transport
     if (e.key == ' ') {
         withAudioGuard([&]() {

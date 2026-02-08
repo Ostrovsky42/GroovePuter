@@ -800,16 +800,39 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
           // Paste area
           int start_row = cursorRow();
           int start_track = cursorTrack();
+          bool useSelectionAnchor = false;
+          if (has_selection_) {
+            int min_row, max_row, min_col, max_col;
+            getSelectionBounds(min_row, max_row, min_col, max_col);
+            start_row = min_row;
+            start_track = min_col;
+            useSelectionAnchor = true;
+          }
           int maxCol = maxEditableTrackColumn();
           if (start_track > maxCol) return false;
+          int source_tracks = g_song_area_clipboard.tracks;
+          int source_rows = g_song_area_clipboard.rows;
+          if (source_tracks <= 0 || source_rows <= 0) return false;
+
+          // Keep paste rectangular. With explicit selection anchor, never auto-shift
+          // (paste must match visible selection frame).
+          int paste_tracks = source_tracks;
+          int maxVisibleTracks = maxCol + 1;
+          if (paste_tracks > maxVisibleTracks) paste_tracks = maxVisibleTracks;
+          if (!useSelectionAnchor && start_track + paste_tracks - 1 > maxCol) {
+            start_track = maxCol - paste_tracks + 1;
+          }
+          if (start_track < 0) start_track = 0;
+          int availableToRight = maxCol - start_track + 1;
+          if (paste_tracks > availableToRight) paste_tracks = availableToRight;
+          if (paste_tracks <= 0) return false;
           
           // Save old patterns for undo
           std::vector<int> old_patterns;
           int min_row = start_row;
-          int max_row = start_row + g_song_area_clipboard.rows - 1;
+          int max_row = start_row + source_rows - 1;
           int min_track = start_track;
-          int max_track = start_track + g_song_area_clipboard.tracks - 1;
-          if (max_track > maxCol) max_track = maxCol;
+          int max_track = start_track + paste_tracks - 1;
           
           for (int r = min_row; r <= max_row; ++r) {
             for (int t = min_track; t <= max_track; ++t) {
@@ -825,15 +848,12 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
           }
           
           withAudioGuard([&]() {
-            int idx = 0;
-            for (int r = 0; r < g_song_area_clipboard.rows; ++r) {
-              for (int t = 0; t < g_song_area_clipboard.tracks; ++t) {
+            for (int r = 0; r < source_rows; ++r) {
+              for (int t = 0; t < paste_tracks; ++t) {
                 int target_row = start_row + r;
                 int target_track = start_track + t;
-                if (target_row >= Song::kMaxPositions || target_track > maxCol) {
-                  ++idx;
-                  continue;
-                }
+                int idx = r * source_tracks + t;  // left part of source block if source wider than grid
+                if (target_row >= Song::kMaxPositions || target_track > maxCol) continue;
                 bool valid = false;
                 SongTrack song_track = trackForColumn(target_track, valid);
                 if (valid && idx < static_cast<int>(g_song_area_clipboard.pattern_indices.size())) {
@@ -844,7 +864,6 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
                     mini_acid_.setSongPattern(target_row, song_track, pattern);
                   }
                 }
-                ++idx;
               }
             }
             if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
@@ -1117,8 +1136,8 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
   if (cursorOnModeButton() && patternIdx >= 0) return false;
   if (patternIdx >= 0) return assignPattern(patternIdx);
 
-  // Alt + dote = Reset Song
-  if (ui_event.alt && (key == '.' || ui_event.key == ',')) {
+  // Alt + Backspace = Reset Song
+  if (ui_event.alt && (key == '\b' || key == 0x7F)) {
       withAudioGuard([&]() {
           for (int r = 0; r < Song::kMaxPositions; ++r) {
               mini_acid_.clearSongPattern(r, SongTrack::SynthA);
@@ -1127,7 +1146,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
               mini_acid_.clearSongPattern(r, SongTrack::Voice);
           }
       });
-      // showToast("Song Cleared"); // Not available in IPage
+      UI::showToast("Song Cleared");
       return true;
   }
 

@@ -702,6 +702,41 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     return handleEvent(app_evt);
   }
 
+  if (key == '\b' || key == 0x7F) {
+    if (ui_event.alt) {
+        // Alt+Backspace = Clear Pattern
+        withAudioGuard([&]() {
+            for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
+                for (int i = 0; i < SEQ_STEPS; ++i) {
+                    mini_acid_.sceneManager().setDrumStep(v, i, false, false);
+                }
+            }
+        });
+        UI::showToast("Drums Cleared");
+        return true;
+    } else if (has_selection_) {
+        int min_v, max_v, min_s, max_s;
+        getSelectionBounds(min_v, max_v, min_s, max_s);
+        withAudioGuard([&]() {
+            for (int v = min_v; v <= max_v; ++v) {
+                for (int s = min_s; s <= max_s; ++s) {
+                    mini_acid_.sceneManager().setDrumStep(v, s, false, false);
+                }
+            }
+        });
+        clearSelection();
+        return true;
+    } else {
+        // Backspace = Clear current voice/step
+        int voice = activeDrumVoice();
+        int step = activeDrumStep();
+        if (!patternRowFocused() && !bankRowFocused()) {
+            withAudioGuard([&]() { mini_acid_.sceneManager().setDrumStep(voice, step, false, false); });
+            return true;
+        }
+    }
+  }
+
   return false;
 }
 

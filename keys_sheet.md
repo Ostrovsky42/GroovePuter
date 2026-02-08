@@ -15,7 +15,8 @@ Scope note: `Global` keys work on all pages. Keys inside page sections are `Loca
 | `Alt+\` | Switch visual style |
 | `Ctrl+H` | Global help overlay |
 | `1..9`, `0` | Track mutes |
-| `Esc` / `Bksp` | Back |
+| `Esc` | Back |
+| `Ctrl+Alt+Bksp` | **Project Reset** (Wipe all data) |
 
 ## Genre Page
 | Key | Action |
@@ -51,11 +52,12 @@ Scope note: `Global` keys work on all pages. Keys inside page sections are `Loca
 | `Ctrl+V` | Paste and clear selection |
 | `A/Z` | Note +/- |
 | `S/X` | Octave +/- |
+| `Fn+Arrows` | `Up/Down`: note +/- , `Left/Right`: octave +/- (selection-aware) |
 | `Alt/Ctrl+A` | Accent toggle (uniform if selected) |
 | `Alt/Ctrl+S` | Slide toggle (uniform if selected) |
 | `R` | REST (clear current step) |
-| `Bksp` / `Del` | Clear current step |
-| `Alt+Bksp` | Clear whole pattern |
+| `Bksp` / `Del` | Clear step / Clear selection |
+| `Alt+Bksp` | Clear whole pattern (all steps) |
 | `Esc` / `` ` `` / `~` | Clear selection |
 | `G` | Randomize pattern |
 | `Tab` | Toggle 303A/303B |
@@ -77,6 +79,8 @@ Scope note: `Global` keys work on all pages. Keys inside page sections are `Loca
 | `Ctrl+G` | Randomize focused voice |
 | `Alt+G` | Chaos random |
 | `Esc` / `` ` `` / `~` | Clear selection |
+| `Bksp` / `Del` | Clear hit / Clear selection |
+| `Alt+Bksp` | Clear whole pattern (all voices) |
 | `Alt+Esc` | Chain mode (priority over Back) |
 
 ## TB303 Params
@@ -120,7 +124,7 @@ Scope note: `Global` keys work on all pages. Keys inside page sections are `Loca
 | `Alt+G` | Generate selected area |
 | `V` | Toggle DR/VO lane |
 | `X` | Toggle split compare |
-| `Alt+.` | Clear full arrangement |
+| `Alt+Bksp` | Clear full arrangement |
 
 ## Project Page
 | Key | Action |

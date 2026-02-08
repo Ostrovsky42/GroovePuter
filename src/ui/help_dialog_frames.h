@@ -190,9 +190,9 @@ inline void drawHelpPage303PatternEdit(IGfx& gfx, int x, int y, int w, int h) {
   right_y += lh;
   drawHelpItem(gfx, layout.right_x, right_y, "A / Z", "Note +1 / -1", COLOR_303_NOTE);
   right_y += lh;
-  drawHelpItem(gfx, layout.right_x, right_y, "S", "Octave +", COLOR_LABEL);
+  drawHelpItem(gfx, layout.right_x, right_y, "S / X", "Octave +/-", COLOR_LABEL);
   right_y += lh;
-  drawHelpItem(gfx, layout.right_x, right_y, "CTRL/ALT+X", "Octave -", COLOR_LABEL);
+  drawHelpItem(gfx, layout.right_x, right_y, "FN+ARROWS", "UP/DN note, L/R oct", IGfxColor::Cyan());
   right_y += lh;
   drawHelpItem(gfx, layout.right_x, right_y, "ALT+ESC", "Chain mode", IGfxColor::Yellow());
   right_y += lh;
