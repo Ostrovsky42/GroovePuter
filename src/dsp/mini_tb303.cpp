@@ -235,7 +235,30 @@ float TB303Voice::svfProcess(float input) {
   if (resonance < 0.0f) resonance = 0.0f;
   if (resonance > 0.95f) resonance = 0.95f;
 
-  return filter->process(input, cutoffHz, resonance);
+  float filtered = filter->process(input, cutoffHz, resonance);
+
+  // Gain-match alternative filter cores so FLT modes stay musical
+  // and don't feel "muted" compared to lp1.
+  float makeup = 1.0f;
+  switch (fltType) {
+    case 1: // acid (diode core)
+      makeup = 1.45f;
+      break;
+    case 2: // moog (ladder core)
+      makeup = 2.05f;
+      break;
+    case 4: // soft (ladder core, lower cutoff/res)
+      makeup = 2.35f;
+      break;
+    case 3: // bite (chamberlin variant)
+      makeup = 1.15f;
+      break;
+    default:
+      break;
+  }
+
+  // Soft-limit after makeup to avoid harsh clipping at high resonance.
+  return tanhf(filtered * makeup);
 }
 
 float TB303Voice::applyLoFiDegradation(float input) {

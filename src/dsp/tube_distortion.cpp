@@ -5,6 +5,7 @@
 TubeDistortion::TubeDistortion()
   : drive_(8.0f),
     mix_(1.0f),
+    cachedComp_(1.0f / (1.0f + 0.3f * 8.0f)),
     enabled_(false) {}
 
 void TubeDistortion::setDrive(float drive) {

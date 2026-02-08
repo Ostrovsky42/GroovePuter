@@ -44,6 +44,10 @@ public:
     // Stutter: hold to freeze playhead in small loop
     void setStutter(bool active);
     bool stutterActive() const { return stutterActive_; }
+
+    // Safety overdub: when enabled, DUB auto-returns to PLAY after one loop cycle.
+    void setDubAutoExit(bool enabled) { dubAutoExit_ = enabled; }
+    bool dubAutoExit() const { return dubAutoExit_; }
     
     // Eject: full reset to clean state
     void eject();
@@ -81,13 +85,17 @@ private:
     
     bool stutterActive_ = false;
     float stutterStart_ = 0;
+    bool dubAutoExit_ = false;
     
     float volume_ = 1.0f;
     bool firstRecord_ = false;
 
     // Read sample with linear interpolation (for speed changes)
     float readInterpolated(float pos) const;
-    
+
     // Write sample to buffer (with soft clipping for overdub)
     void writeSample(uint32_t pos, float value);
+
+    // Pre-bake crossfade at loop boundary to eliminate clicks
+    void bakeLoopCrossfade();
 };

@@ -296,11 +296,6 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             return true;
         }
 
-        if (event.alt && (event.key == 'c' || event.key == 'C')) {
-            goToPage(12);
-            return true;
-        }
-
         if (event.alt && (event.key == 'm' || event.key == 'M')) {
             static uint32_t lastToggle = 0;
             if (millis() - lastToggle < 400) return true;
@@ -356,7 +351,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         if (event.key == '[') { previousPage(); return true; }
 
         if (event.key == 'h') {
-            showToast("[ ] nav  Ctrl+# pages  \\ style  v voice  c color  w wave  b back", 2200);
+            showToast("[ ] nav  Ctrl+# pages  \\ style  v tape  w wave  b back", 2200);
             return true;
         }
 

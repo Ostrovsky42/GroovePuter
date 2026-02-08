@@ -1,16 +1,22 @@
 #include "tape_page.h"
 #include "../../dsp/tape_presets.h"
 #include "../ui_common.h"
+#ifdef USE_RETRO_THEME
+#include "../retro_ui_theme.h"
+#include "../retro_widgets.h"
+#endif
 #include <cstdio>
 #include <algorithm>
 
 namespace {
 inline constexpr IGfxColor kFocusColor = IGfxColor(0xB36A00);
+inline constexpr uint8_t kWashSpace = 62;
+inline constexpr uint8_t kWashMovement = 55;
+inline constexpr uint8_t kWashGroove = 58;
 
 TapeMode keyToTapeMode(char lowerKey) {
   switch (lowerKey) {
     case 'z': return TapeMode::Stop;
-    case 'x': return TapeMode::Rec;
     case 'c': return TapeMode::Dub;
     case 'v': return TapeMode::Play;
     default: return TapeMode::Stop;
@@ -18,7 +24,7 @@ TapeMode keyToTapeMode(char lowerKey) {
 }
 
 bool isDirectModeKey(char lowerKey) {
-  return lowerKey == 'z' || lowerKey == 'x' || lowerKey == 'c' || lowerKey == 'v';
+  return lowerKey == 'z' || lowerKey == 'c' || lowerKey == 'v';
 }
 }
 
@@ -38,38 +44,67 @@ class TapePage::SliderComponent : public FocusableComponent {
 
   void draw(IGfx& gfx) override {
     const Rect& bounds = getBoundaries();
-    
-    // Label
+
+    if (UI::currentStyle == VisualStyle::RETRO_CLASSIC) {
+#ifdef USE_RETRO_THEME
+      // Cyber meter: segmented bar instead of plain slider.
+      gfx.setTextColor(isFocused() ? IGfxColor(RetroTheme::NEON_CYAN) : IGfxColor(RetroTheme::TEXT_SECONDARY));
+      gfx.drawText(bounds.x, bounds.y, label_);
+
+      int labelW = gfx.textWidth(label_);
+      int meterX = bounds.x + labelW + 6;
+      int meterW = bounds.w - labelW - 34;
+      int meterY = bounds.y + 2;
+      int meterH = 6;
+      int segments = 12;
+      int gap = 1;
+      int segW = (meterW - (segments - 1) * gap) / segments;
+      if (segW < 2) segW = 2;
+      int lit = (value_ * segments) / maxValue_;
+      if (value_ > 0 && lit == 0) lit = 1;
+
+      for (int i = 0; i < segments; ++i) {
+        int sx = meterX + i * (segW + gap);
+        bool on = i < lit;
+        IGfxColor c = on ? (isFocused() ? IGfxColor(RetroTheme::NEON_CYAN) : IGfxColor(RetroTheme::NEON_MAGENTA))
+                         : IGfxColor(RetroTheme::GRID_DIM);
+        gfx.fillRect(sx, meterY, segW, meterH, c);
+      }
+      gfx.drawRect(meterX - 1, meterY - 1, meterW + 2, meterH + 2, IGfxColor(RetroTheme::GRID_MEDIUM));
+
+      char buf[12];
+      if (maxValue_ == 100) std::snprintf(buf, sizeof(buf), "%d%%", value_);
+      else std::snprintf(buf, sizeof(buf), "%d", value_);
+      gfx.setTextColor(IGfxColor(RetroTheme::TEXT_PRIMARY));
+      gfx.drawText(meterX + meterW + 4, bounds.y, buf);
+
+      if (isFocused()) {
+        RetroWidgets::drawGlowBorder(gfx, bounds.x - 2, bounds.y - 1, bounds.w + 4, bounds.h + 2,
+                                     IGfxColor(RetroTheme::NEON_CYAN), 1);
+      }
+#else
+      gfx.setTextColor(isFocused() ? COLOR_KNOB_1 : COLOR_LABEL);
+      gfx.drawText(bounds.x, bounds.y, label_);
+#endif
+      return;
+    }
+
+    // Default minimal/amber rendering
     gfx.setTextColor(isFocused() ? COLOR_KNOB_1 : COLOR_LABEL);
     gfx.drawText(bounds.x, bounds.y, label_);
-    
-    // Slider bar (dynamic layout)
     int labelW = gfx.textWidth(label_);
     int barX = bounds.x + labelW + 6;
-    int barW = bounds.w - labelW - 35; // Save space for value text
+    int barW = bounds.w - labelW - 35;
     int barY = bounds.y + 3;
     int barH = 4;
-    
-    // Background
     gfx.fillRect(barX, barY, barW, barH, COLOR_BLACK);
-    
-    // Fill
     int fillW = (barW * value_) / maxValue_;
     gfx.fillRect(barX, barY, fillW, barH, isFocused() ? COLOR_KNOB_1 : COLOR_KNOB_2);
-    
-    // Value text
     char buf[12];
-    if (maxValue_ == 100) {
-        snprintf(buf, sizeof(buf), "%d%%", value_);
-    } else {
-        snprintf(buf, sizeof(buf), "%d", value_);
-    }
+    if (maxValue_ == 100) std::snprintf(buf, sizeof(buf), "%d%%", value_);
+    else std::snprintf(buf, sizeof(buf), "%d", value_);
     gfx.drawText(barX + barW + 4, bounds.y, buf);
-    
-    // Focus indicator
-    if (isFocused()) {
-      gfx.drawRect(bounds.x - 2, bounds.y - 1, bounds.w + 4, bounds.h + 2, kFocusColor);
-    }
+    if (isFocused()) gfx.drawRect(bounds.x - 2, bounds.y - 1, bounds.w + 4, bounds.h + 2, kFocusColor);
   }
 
  private:
@@ -198,6 +233,13 @@ void TapePage::initComponents() {
   sat_slider_ = std::make_shared<SliderComponent>("SAT", 35, 100, [=](int v){ updateMacro(2, v); });
   tone_slider_ = std::make_shared<SliderComponent>("TONE", 60, 100, [=](int v){ updateMacro(3, v); });
   crush_slider_ = std::make_shared<SliderComponent>("CRUSH", 0, 3, [=](int v){ updateMacro(4, v); });
+  looper_slider_ = std::make_shared<SliderComponent>("LOOP", 55, 100, [this](int v){
+    audio_guard_([this, v]() {
+      TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
+      tape.looperVolume = static_cast<float>(v) / 100.0f;
+      mini_acid_.tapeLooper->setVolume(tape.looperVolume);
+    });
+  });
 
   mode_ctrl_ = std::make_shared<ModeComponent>(mini_acid_, audio_guard_);
   preset_ctrl_ = std::make_shared<PresetComponent>(mini_acid_, audio_guard_);
@@ -207,24 +249,26 @@ void TapePage::initComponents() {
   addChild(sat_slider_);
   addChild(tone_slider_);
   addChild(crush_slider_);
+  addChild(looper_slider_);
   addChild(mode_ctrl_);
   addChild(preset_ctrl_);
 
   int x = dx() + 5;
   int y = dy() + 5;
-  int lh = 12;
+  int lh = 10;
   int sliderW = getBoundaries().w - 10;
 
   // Layout
   mode_ctrl_->setBoundaries(Rect(x, y, 80, lh)); 
   preset_ctrl_->setBoundaries(Rect(x + 85, y, 80, lh)); 
-  y += lh + 4;
+  y += lh + 2;
 
-  wow_slider_->setBoundaries(Rect(x, y, sliderW, lh)); y += lh + 2;
-  age_slider_->setBoundaries(Rect(x, y, sliderW, lh)); y += lh + 2;
-  sat_slider_->setBoundaries(Rect(x, y, sliderW, lh)); y += lh + 2;
-  tone_slider_->setBoundaries(Rect(x, y, sliderW, lh)); y += lh + 2;
-  crush_slider_->setBoundaries(Rect(x, y, sliderW, lh));
+  wow_slider_->setBoundaries(Rect(x, y, sliderW, lh)); y += lh + 1;
+  age_slider_->setBoundaries(Rect(x, y, sliderW, lh)); y += lh + 1;
+  sat_slider_->setBoundaries(Rect(x, y, sliderW, lh)); y += lh + 1;
+  tone_slider_->setBoundaries(Rect(x, y, sliderW, lh)); y += lh + 1;
+  crush_slider_->setBoundaries(Rect(x, y, sliderW, lh)); y += lh + 1;
+  looper_slider_->setBoundaries(Rect(x, y, sliderW, lh));
 
   initialized_ = true;
 }
@@ -236,10 +280,21 @@ void TapePage::syncFromState() {
   sat_slider_->setValue(macro.sat);
   tone_slider_->setValue(macro.tone);
   crush_slider_->setValue(macro.crush);
+  looper_slider_->setValue(static_cast<int>(mini_acid_.sceneManager().currentScene().tape.looperVolume * 100.0f + 0.5f));
 }
 
 void TapePage::draw(IGfx& gfx) {
   if (!initialized_) initComponents();
+#ifdef USE_RETRO_THEME
+  if (UI::currentStyle == VisualStyle::RETRO_CLASSIC) {
+    const Rect area = getBoundaries();
+    gfx.fillRect(area.x, area.y, area.w, area.h, IGfxColor(RetroTheme::BG_DEEP_BLACK));
+    for (int gy = area.y; gy < area.y + area.h; gy += 8) {
+      gfx.drawLine(area.x, gy, area.x + area.w - 1, gy, IGfxColor(RetroTheme::SCANLINE_COLOR));
+    }
+    gfx.drawRect(area.x + 2, area.y + 2, area.w - 4, area.h - 4, IGfxColor(RetroTheme::GRID_MEDIUM));
+  }
+#endif
   syncFromState();
   Container::draw(gfx);
   
@@ -255,17 +310,22 @@ void TapePage::draw(IGfx& gfx) {
   gfx.setTextColor(COLOR_WHITE);
   gfx.drawText(x + 28, y, tapeSpeedName(tape.speed));
 
+  char volBuf[12];
+  std::snprintf(volBuf, sizeof(volBuf), "LVL:%d%%", static_cast<int>(tape.looperVolume * 100.0f + 0.5f));
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(x + 52, y, volBuf);
+
   // Mode indicator (explicit so it is visible even when mode row is unfocused)
   gfx.setTextColor(COLOR_LABEL);
-  gfx.drawText(x + 52, y, "MD:");
+  gfx.drawText(x + 96, y, "MD:");
   gfx.setTextColor(COLOR_WHITE);
-  gfx.drawText(x + 72, y, tapeModeName(tape.mode));
+  gfx.drawText(x + 116, y, tapeModeName(tape.mode));
   
   // Recorder/loop status
   if (tape.mode == TapeMode::Rec) {
     char buf[16];
     gfx.setTextColor(IGfxColor(0xFF3030));
-    gfx.drawText(x + 112, y, "REC:");
+    gfx.drawText(x + 146, y, "REC:");
     if (mini_acid_.tapeLooper->isFirstRecordPass()) {
       std::snprintf(buf, sizeof(buf), "%.1fs", mini_acid_.tapeLooper->recordElapsedSeconds());
     } else if (mini_acid_.tapeLooper->hasLoop()) {
@@ -274,17 +334,21 @@ void TapePage::draw(IGfx& gfx) {
       std::snprintf(buf, sizeof(buf), "ARM");
     }
     gfx.setTextColor(COLOR_WHITE);
-    gfx.drawText(x + 140, y, buf);
+    gfx.drawText(x + 174, y, buf);
   } else if (mini_acid_.tapeLooper->hasLoop()) {
     char buf[16];
     std::snprintf(buf, sizeof(buf), "%.1fs", mini_acid_.tapeLooper->loopLengthSeconds());
     gfx.setTextColor(COLOR_LABEL);
-    gfx.drawText(x + 112, y, "LEN:");
+    gfx.drawText(x + 146, y, "LEN:");
     gfx.setTextColor(COLOR_WHITE);
-    gfx.drawText(x + 140, y, buf);
+    gfx.drawText(x + 174, y, buf);
   }
 
-  UI::drawStandardFooter(gfx, "Z/X/C/V MODE  1/2/3 SPD  <-/-> ADJ", "F FX  SPC CLR  DEL EJ  ENT STUT");
+  const bool safeDub = mini_acid_.tapeLooper->dubAutoExit();
+  UI::drawStandardFooter(
+      gfx,
+      safeDub ? "X SMART SAFE:DUB1  A CAP  S THK" : "X SMART  A CAP  S THK  D WSH  G MUTE",
+      "Z STOP C DUB V PLAY 1/2/3 SPD F FX");
 }
 
 bool TapePage::handleEvent(UIEvent& ui_event) {
@@ -304,6 +368,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
       else if (sat_slider_->isFocused()) sat_slider_->adjust(dir, shift);
       else if (tone_slider_->isFocused()) tone_slider_->adjust(dir, shift);
       else if (crush_slider_->isFocused()) crush_slider_->adjust(dir, shift);
+      else if (looper_slider_->isFocused()) looper_slider_->adjust(dir, shift);
       else if (mode_ctrl_->isFocused()) {
         std::static_pointer_cast<ModeComponent>(mode_ctrl_)->cycleMode();
       } else if (preset_ctrl_->isFocused()) {
@@ -320,6 +385,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
     audio_guard_([this, mode]() {
       TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
       tape.mode = mode;
+      mini_acid_.tapeLooper->setDubAutoExit(false);
       mini_acid_.tapeLooper->setMode(mode);
     });
   };
@@ -336,8 +402,99 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
   }
 
   // Hotkeys
+  if (lowerKey == 'x' && !ui_event.ctrl && !ui_event.alt && !ui_event.shift && !ui_event.meta) {
+    audio_guard_([this]() {
+      TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
+      const bool hasLoop = mini_acid_.tapeLooper->hasLoop();
+      const bool isFirstRec = mini_acid_.tapeLooper->isFirstRecordPass();
+
+      if (!hasLoop) {
+        // No loop yet: X arms/starts REC, second X closes take into PLAY.
+        tape.mode = (tape.mode == TapeMode::Rec && isFirstRec) ? TapeMode::Play : TapeMode::Rec;
+        mini_acid_.tapeLooper->setDubAutoExit(false);
+      } else {
+        // Existing loop: X toggles PLAY <-> DUB as performance workflow.
+        if (tape.mode == TapeMode::Dub) {
+          tape.mode = TapeMode::Play;
+          mini_acid_.tapeLooper->setDubAutoExit(false);
+        } else {
+          tape.mode = TapeMode::Dub;
+          mini_acid_.tapeLooper->setDubAutoExit(true);  // safety: one cycle only
+        }
+      }
+      mini_acid_.tapeLooper->setMode(tape.mode);
+    });
+    return true;
+  }
+
   if (isDirectModeKey(lowerKey)) {
     setTapeMode(keyToTapeMode(lowerKey));
+    return true;
+  }
+
+  // Performance actions for small-screen live workflow.
+  if (lowerKey == 'a' && !ui_event.ctrl && !ui_event.alt && !ui_event.shift && !ui_event.meta) {
+    audio_guard_([this]() {
+      TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
+      mini_acid_.tapeLooper->clear();
+      mini_acid_.tapeLooper->setDubAutoExit(false);
+      tape.mode = TapeMode::Rec;
+      tape.fxEnabled = true;
+      mini_acid_.tapeLooper->setMode(tape.mode);
+    });
+    UI::showToast("CAPTURE: REC", 1000);
+    return true;
+  }
+  if (lowerKey == 's' && !ui_event.ctrl && !ui_event.alt && !ui_event.shift && !ui_event.meta) {
+    audio_guard_([this]() {
+      TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
+      if (!mini_acid_.tapeLooper->hasLoop()) return;
+      tape.mode = TapeMode::Dub;
+      mini_acid_.tapeLooper->setDubAutoExit(true);  // one cycle safety
+      mini_acid_.tapeLooper->setMode(tape.mode);
+    });
+    if (mini_acid_.tapeLooper->hasLoop()) UI::showToast("THICKEN: DUB x1", 900);
+    else UI::showToast("THICKEN: NO LOOP", 900);
+    return true;
+  }
+  if (lowerKey == 'd' && !ui_event.ctrl && !ui_event.alt && !ui_event.shift && !ui_event.meta) {
+    audio_guard_([this]() {
+      TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
+      if (!perf_wash_active_) {
+        perf_prev_space_ = tape.space;
+        perf_prev_movement_ = tape.movement;
+        perf_prev_groove_ = tape.groove;
+        // Wash preset: reverby, moving, groove-heavy.
+        tape.space = kWashSpace;
+        tape.movement = kWashMovement;
+        tape.groove = kWashGroove;
+        tape.fxEnabled = true;
+        perf_wash_active_ = true;
+      } else {
+        tape.space = perf_prev_space_;
+        tape.movement = perf_prev_movement_;
+        tape.groove = perf_prev_groove_;
+        perf_wash_active_ = false;
+      }
+      mini_acid_.tapeFX->applyMinimalParams(tape.space, tape.movement, tape.groove);
+    });
+    UI::showToast(perf_wash_active_ ? "WASH: ON" : "WASH: OFF", 900);
+    return true;
+  }
+  if (lowerKey == 'g' && !ui_event.ctrl && !ui_event.alt && !ui_event.shift && !ui_event.meta) {
+    audio_guard_([this]() {
+      TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
+      if (!perf_loop_muted_) {
+        perf_prev_loop_volume_ = tape.looperVolume;
+        tape.looperVolume = 0.0f;
+        perf_loop_muted_ = true;
+      } else {
+        tape.looperVolume = perf_prev_loop_volume_;
+        perf_loop_muted_ = false;
+      }
+      mini_acid_.tapeLooper->setVolume(tape.looperVolume);
+    });
+    UI::showToast(perf_loop_muted_ ? "LOOP: MUTED" : "LOOP: UNMUTED", 900);
     return true;
   }
 
@@ -356,6 +513,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
         TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
         tape.fxEnabled = !tape.fxEnabled;
       });
+      UI::showToast(mini_acid_.sceneManager().currentScene().tape.fxEnabled ? "FX: ON" : "FX: OFF", 900);
       return true;
     case '1':
       audio_guard_([this](){

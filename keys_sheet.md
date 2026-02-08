@@ -11,8 +11,7 @@ Scope note: `Global` keys work on all pages. Keys inside page sections are `Loca
 | `Alt+1..0` or `Ctrl+1..0` | Direct page jump |
 | `Alt+M` | Toggle Song Mode |
 | `Alt+W` | Waveform overlay |
-| `Alt+V` | Voice page |
-| `Alt+C` | Color page |
+| `Alt+V` | Tape page |
 | `Alt+\` | Switch visual style |
 | `Ctrl+H` | Global help overlay |
 | `1..9`, `0` | Track mutes |
@@ -129,3 +128,18 @@ Scope note: `Global` keys work on all pages. Keys inside page sections are `Loca
 | `Arrows` | Navigate controls |
 | `Enter` | Activate control |
 | `G` | Jump to Genre page |
+
+## Tape Page
+| Key | Action |
+| --- | --- |
+| `X` | Smart workflow (REC/PLAY/DUB) |
+| `A` | CAPTURE (clear + REC + FX ON) |
+| `S` | THICKEN (safe DUB for 1 cycle) |
+| `D` | WASH ON/OFF |
+| `G` | Loop mute ON/OFF |
+| `Z` / `C` / `V` | STOP / DUB / PLAY |
+| `1` / `2` / `3` | Speed 0.5x / 1.0x / 2.0x |
+| `F` | Tape FX ON/OFF |
+| `Enter` | Stutter ON/OFF |
+| `Space` | Clear loop |
+| `Bksp` / `Del` | Eject/reset loop |

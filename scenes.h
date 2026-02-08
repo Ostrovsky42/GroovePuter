@@ -216,7 +216,7 @@ struct TapeState {
     TapeMacro macro;
     
     // Looper volume (mix level of loop playback)
-    float looperVolume = 1.0f;
+    float looperVolume = 0.55f;
     
     // Minimal extensions
     uint8_t space = 0;    // 0..100
@@ -822,6 +822,8 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeChar(',')) return false;
   if (!writeBool(synthDelay_[1])) return false;
   if (!writeChar(']')) return false;
+  if (!writeLiteral(",\"masterVolume\":")) return false;
+  if (!writeFloat(scene_->masterVolume)) return false;
 
   if (!writeLiteral(",\"feel\":{\"grid\":")) return false;
   if (!writeInt(scene_->feel.gridSteps)) return false;

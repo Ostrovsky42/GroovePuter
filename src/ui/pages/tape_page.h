@@ -38,9 +38,18 @@ class TapePage : public IPage {
   std::shared_ptr<SliderComponent> sat_slider_;
   std::shared_ptr<SliderComponent> tone_slider_;
   std::shared_ptr<SliderComponent> crush_slider_;
+  std::shared_ptr<SliderComponent> looper_slider_;
   
   std::shared_ptr<FocusableComponent> mode_ctrl_;
   std::shared_ptr<FocusableComponent> preset_ctrl_;
+
+  // Performance helpers
+  bool perf_wash_active_ = false;
+  uint8_t perf_prev_space_ = 0;
+  uint8_t perf_prev_movement_ = 0;
+  uint8_t perf_prev_groove_ = 0;
+  bool perf_loop_muted_ = false;
+  float perf_prev_loop_volume_ = 0.55f;
 
   std::string title_ = "TAPE";
 };

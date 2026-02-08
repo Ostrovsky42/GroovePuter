@@ -483,6 +483,17 @@ private:
 
   float dcBlockX1_ = 0.0f;
   float dcBlockY1_ = 0.0f;
+
+  // Global safety low-pass on master output.
+  // Recommended fixed cutoffs:
+  // - 12000 Hz: very safe for compact/bright speakers
+  // - 16000 Hz: balanced default
+  // - 18000 Hz: more air, less protection
+  static constexpr float kMasterHighCutHz = 16000.0f;
+  float masterOutputHighCutHz_ = 16000.0f;
+  float masterOutputLpState_ = 0.0f;
+  float masterOutputLpAlpha_ = 1.0f;
+  void setMasterOutputHighCutHz(float hz);
   
   // Test Tone State
   bool testToneEnabled_ = false;

@@ -118,24 +118,40 @@ inline void drawHelpPage303(IGfx& gfx, int x, int y, int w, int h) {
 inline void drawHelpPageTape(IGfx& gfx, int x, int y, int w, int h) {
   HelpLayout layout = makeHelpLayout(gfx, x, y, w, h);
   int left_y = layout.left_y;
+  int right_y = layout.right_y;
   int lh = layout.line_h;
 
-  drawHelpHeading(gfx, layout.left_x, left_y, "Tape Section");
+  drawHelpHeading(gfx, layout.left_x, left_y, "Tape Performance");
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+M", "Mode: STOP/REC/PLAY", IGfxColor::Red());
+  drawHelpItem(gfx, layout.left_x, left_y, "X", "Smart REC/PLAY/DUB", IGfxColor::Cyan());
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "1-6", "Load Tape Character", IGfxColor::Cyan());
+  drawHelpItem(gfx, layout.left_x, left_y, "A / S", "CAPTURE / THICKEN", IGfxColor::Green());
   left_y += lh;
-  
-  drawHelpHeading(gfx, layout.left_x, left_y, "DSP Effects");
+  drawHelpItem(gfx, layout.left_x, left_y, "D / G", "WASH / LOOP MUTE", IGfxColor::Yellow());
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "WOW", "Pitch instability", COLOR_LABEL);
+  drawHelpItem(gfx, layout.left_x, left_y, "Z / C / V", "STOP / DUB / PLAY", IGfxColor::Red());
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "AGE", "Tape wear/HF loss", COLOR_LABEL);
+  drawHelpItem(gfx, layout.left_x, left_y, "1 / 2 / 3", "Speed 0.5x / 1x / 2x", COLOR_LABEL);
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "SAT", "Saturation/Warmth", COLOR_LABEL);
+  drawHelpItem(gfx, layout.left_x, left_y, "F / Enter", "FX toggle / Stutter", COLOR_LABEL);
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "CRSH", "Lo-fi degradation", COLOR_LABEL);
+  drawHelpItem(gfx, layout.left_x, left_y, "Space / Del", "Clear / Eject", COLOR_LABEL);
+
+  drawHelpHeading(gfx, layout.right_x, right_y, "Master Safety");
+  right_y += lh;
+  drawHelpItem(gfx, layout.right_x, right_y, "Fixed LPF", "16kHz hard safety cut", IGfxColor::Cyan());
+  right_y += lh;
+  drawHelpItem(gfx, layout.right_x, right_y, "SAFE:DUB1", "Auto-back to PLAY", COLOR_LABEL);
+  right_y += lh;
+  drawHelpHeading(gfx, layout.right_x, right_y, "Tape Macro");
+  right_y += lh;
+  drawHelpItem(gfx, layout.right_x, right_y, "WOW", "Pitch drift", COLOR_LABEL);
+  right_y += lh;
+  drawHelpItem(gfx, layout.right_x, right_y, "AGE", "Wear/HF rolloff", COLOR_LABEL);
+  right_y += lh;
+  drawHelpItem(gfx, layout.right_x, right_y, "SAT/TONE", "Color + bright", COLOR_LABEL);
+  right_y += lh;
+  drawHelpItem(gfx, layout.right_x, right_y, "CRUSH/LOOP", "LoFi + loop level", COLOR_LABEL);
 }
 
 inline void drawHelpPage303PatternEdit(IGfx& gfx, int x, int y, int w, int h) {

@@ -74,6 +74,8 @@ private:
     // LFO decimation (update every N samples to save CPU)
     static constexpr uint16_t kLFOUpdateRate = 32;
     uint16_t lfoCounter_ = 0;
+    uint8_t lfoNormCounter_ = 0;
+    bool wowActive_ = false;
 
     // DSP parameters (derived from macros)
     float wowDepth_ = 0;          

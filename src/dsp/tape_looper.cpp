@@ -101,14 +101,21 @@ void TapeLooper::setMode(TapeMode mode) {
         if (length_ < 100) length_ = 0; // Too short, discard
         playhead_ = 0;
         firstRecord_ = false;
+        bakeLoopCrossfade();
     } else if (mode == TapeMode::Stop) {
         if (oldMode == TapeMode::Rec && firstRecord_) {
             // Stopping during first record - set loop length
             length_ = static_cast<uint32_t>(playhead_);
             if (length_ < 100) length_ = 0;
             firstRecord_ = false;
+            bakeLoopCrossfade();
         }
         playhead_ = 0;
+    }
+
+    // Auto-exit helper is only meaningful while overdubbing.
+    if (mode_ != TapeMode::Dub) {
+        dubAutoExit_ = false;
     }
 }
 
@@ -189,19 +196,9 @@ void TapeLooper::process(float input, float* loopPart) {
         }
     }
 
-    // Playback with crossfade at loop boundary
+    // Playback (crossfade is pre-baked into the buffer on loop finalization)
     if ((mode_ == TapeMode::Play || mode_ == TapeMode::Dub) && length_ > 0) {
-        // Check if we're near the loop wrap point
-        float distToEnd = static_cast<float>(length_) - effectivePlayhead;
-        if (distToEnd < static_cast<float>(kCrossfadeFrames) && distToEnd > 0) {
-            // Crossfade zone: blend end of loop with beginning
-            float fade = distToEnd / static_cast<float>(kCrossfadeFrames);
-            float sampleEnd = readInterpolated(effectivePlayhead);
-            float sampleStart = readInterpolated(effectivePlayhead - static_cast<float>(length_));
-            out = sampleEnd * fade + sampleStart * (1.0f - fade);
-        } else {
-            out = readInterpolated(effectivePlayhead);
-        }
+        out = readInterpolated(effectivePlayhead);
     }
 
     // Recording
@@ -223,7 +220,8 @@ void TapeLooper::process(float input, float* loopPart) {
     if (mode_ == TapeMode::Dub && length_ > 0) {
         uint32_t writePos = static_cast<uint32_t>(playhead_) % length_;
         float existing = buffer_[writePos] / 32768.0f;
-        float mixed = existing * 0.9f + input * 0.7f; // Feedback + input
+        // Keep overdub musical and bounded over long sessions.
+        float mixed = existing * 0.80f + input * 0.20f;
         writeSample(writePos, mixed);
     }
 
@@ -236,20 +234,60 @@ void TapeLooper::process(float input, float* loopPart) {
                 // Hit max length - finalize loop
                 length_ = maxSamples_;
                 firstRecord_ = false;
+                bakeLoopCrossfade();
                 mode_ = TapeMode::Play;
                 playhead_ = 0;
             }
         } else if (length_ > 0) {
             // Normal playback - use speed multiplier
             playhead_ += speedMultiplier_;
+            int wraps = 0;
             while (playhead_ >= static_cast<float>(length_)) {
                 playhead_ -= static_cast<float>(length_);
+                wraps++;
             }
             while (playhead_ < 0) {
                 playhead_ += static_cast<float>(length_);
+            }
+
+            // Safety overdub: after one full loop in DUB, return to PLAY.
+            if (mode_ == TapeMode::Dub && dubAutoExit_ && wraps > 0) {
+                mode_ = TapeMode::Play;
+                dubAutoExit_ = false;
             }
         }
     }
 
     *loopPart = out * volume_;
+}
+
+void TapeLooper::bakeLoopCrossfade() {
+    if (!buffer_ || length_ < kCrossfadeFrames * 2) return;
+    const uint32_t cf = kCrossfadeFrames;
+
+    // Two-sided crossfade: both ends converge to a shared junction value
+    // so buffer[length_-1] == buffer[0] == junction.  Zero discontinuity.
+    float junction = (buffer_[length_ - 1] / 32768.0f +
+                      buffer_[0] / 32768.0f) * 0.5f;
+
+    // End of loop → junction  (t goes 1/cf … 1.0)
+    for (uint32_t i = 0; i < cf; i++) {
+        float t = static_cast<float>(i + 1) / static_cast<float>(cf);
+        uint32_t idx = length_ - cf + i;
+        float orig = buffer_[idx] / 32768.0f;
+        float blended = orig + (junction - orig) * t;
+        if (blended > 1.0f) blended = 1.0f;
+        if (blended < -1.0f) blended = -1.0f;
+        buffer_[idx] = static_cast<int16_t>(blended * 32767.0f);
+    }
+
+    // Start of loop: junction → original  (t goes 0 … (cf-1)/cf)
+    for (uint32_t i = 0; i < cf; i++) {
+        float t = static_cast<float>(i) / static_cast<float>(cf);
+        float orig = buffer_[i] / 32768.0f;
+        float blended = junction + (orig - junction) * t;
+        if (blended > 1.0f) blended = 1.0f;
+        if (blended < -1.0f) blended = -1.0f;
+        buffer_[i] = static_cast<int16_t>(blended * 32767.0f);
+    }
 }

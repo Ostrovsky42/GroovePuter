@@ -6,7 +6,7 @@ constexpr const char* kGlobalLines[] = {
     "=== GLOBAL ===",
     "[ / ]      Prev/Next page",
     "Alt/Ctrl+1..0  Jump to page",
-    "Alt+V/C    Voice/Color page",
+    "Alt+V      Tape page",
     "Alt+\\      Switch visual style",
     "Alt+M      Song mode ON/OFF",
     "Alt+W      Waveform overlay",
@@ -113,6 +113,21 @@ constexpr const char* kProjectLines[] = {
     "G          Jump to Genre page",
 };
 
+constexpr const char* kTapeLines[] = {
+    "=== TAPE PAGE ===",
+    "X          Smart REC/PLAY/DUB workflow",
+    "A          CAPTURE (clear + REC + FX ON)",
+    "S          THICKEN (safe DUB x1 cycle)",
+    "D          WASH ON/OFF",
+    "G          Loop mute ON/OFF",
+    "Z/C/V      STOP / DUB / PLAY",
+    "1/2/3      Speed 0.5x / 1x / 2x",
+    "F          Toggle tape FX",
+    "Enter      Stutter ON/OFF",
+    "Space      Clear loop",
+    "Bksp/Del   Eject/reset loop",
+};
+
 constexpr const char* kFeelLines[] = {
     "=== FEEL/TEXTURE PAGE ===",
     "Tab        Focus lane",
@@ -150,18 +165,18 @@ constexpr const char* kVoiceLines[] = {
 
 inline const char* const* pageLines(int pageIndex, int& count) {
     switch (pageIndex) {
-        case 0: count = sizeof(kSettingsLines) / sizeof(kSettingsLines[0]); return kSettingsLines;
+        case 0: count = sizeof(kGenreLines) / sizeof(kGenreLines[0]); return kGenreLines;
         case 1:
         case 2: count = sizeof(kPatternLines) / sizeof(kPatternLines[0]); return kPatternLines;
         case 3:
         case 4: count = sizeof(kTB303Lines) / sizeof(kTB303Lines[0]); return kTB303Lines;
         case 5: count = sizeof(kDrumLines) / sizeof(kDrumLines[0]); return kDrumLines;
         case 6: count = sizeof(kSongLines) / sizeof(kSongLines[0]); return kSongLines;
-        case 7: count = sizeof(kGenreLines) / sizeof(kGenreLines[0]); return kGenreLines;
+        case 7: count = sizeof(kHubLines) / sizeof(kHubLines[0]); return kHubLines;
         case 8: count = sizeof(kFeelLines) / sizeof(kFeelLines[0]); return kFeelLines;
-        case 9: count = sizeof(kHubLines) / sizeof(kHubLines[0]); return kHubLines;
+        case 9: count = sizeof(kSettingsLines) / sizeof(kSettingsLines[0]); return kSettingsLines;
         case 10: count = sizeof(kProjectLines) / sizeof(kProjectLines[0]); return kProjectLines;
-        case 11: count = sizeof(kVoiceLines) / sizeof(kVoiceLines[0]); return kVoiceLines;
+        case 11: count = sizeof(kTapeLines) / sizeof(kTapeLines[0]); return kTapeLines;
         default: count = 0; return nullptr;
     }
 }

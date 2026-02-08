@@ -46,6 +46,7 @@ void TapeFX::updateInternalParams() {
     
     // WOW: 0..0.006 max depth
     wowDepth_ = (m.wow / 100.0f) * 0.006f;
+    wowActive_ = (wowDepth_ > 0.00001f);
     
     // Wow freq: 0.3 - 1.5 Hz
     float wowHz = 0.3f + (m.wow / 100.0f) * 1.2f;
@@ -123,15 +124,17 @@ void TapeFX::updateLFO() {
     flutterSin_ = fS;
     flutterCos_ = fC;
     
-    // Periodic normalization to prevent drift (every update is fine since we only 
-    // update every 32 samples now)
-    float wowRescale = 1.0f / sqrtf(wowSin_ * wowSin_ + wowCos_ * wowCos_ + 1e-10f);
-    wowSin_ *= wowRescale;
-    wowCos_ *= wowRescale;
-    
-    float flutRescale = 1.0f / sqrtf(flutterSin_ * flutterSin_ + flutterCos_ * flutterCos_ + 1e-10f);
-    flutterSin_ *= flutRescale;
-    flutterCos_ *= flutRescale;
+    // Periodic normalization to prevent drift (not every update to save CPU).
+    if (++lfoNormCounter_ >= 8) {
+        lfoNormCounter_ = 0;
+        float wowRescale = 1.0f / sqrtf(wowSin_ * wowSin_ + wowCos_ * wowCos_ + 1e-10f);
+        wowSin_ *= wowRescale;
+        wowCos_ *= wowRescale;
+
+        float flutRescale = 1.0f / sqrtf(flutterSin_ * flutterSin_ + flutterCos_ * flutterCos_ + 1e-10f);
+        flutterSin_ *= flutRescale;
+        flutterCos_ *= flutRescale;
+    }
 }
 
 float TapeFX::process(float input) {
@@ -139,15 +142,17 @@ float TapeFX::process(float input) {
 
     if (paramsDirty_) updateInternalParams();
     
-    if (++lfoCounter_ >= kLFOUpdateRate) {
-        lfoCounter_ = 0;
-        updateLFO();
+    if (wowActive_) {
+        if (++lfoCounter_ >= kLFOUpdateRate) {
+            lfoCounter_ = 0;
+            updateLFO();
+        }
     }
 
     float output = input;
 
     // 1. WOW/FLUTTER
-    if (wowDepth_ > 0) {
+    if (wowActive_) {
         float mod = wowSin_ * wowDepth_;
         if (flutterRatio_ > 0) {
             mod += flutterSin_ * wowDepth_ * 0.3f * flutterRatio_;

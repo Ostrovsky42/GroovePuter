@@ -302,6 +302,7 @@ void MiniAcid::init() {
   params[static_cast<int>(MiniAcidParamId::VoiceSpeed)] = Parameter("v_spd", "x", 0.5f, 2.0f, 1.2f, 0.1f);   // Was 1.0
   params[static_cast<int>(MiniAcidParamId::VoiceRobotness)] = Parameter("v_rob", "%", 0.0f, 1.0f, 0.7f, 0.05f); // Was 0.8
   params[static_cast<int>(MiniAcidParamId::VoiceVolume)] = Parameter("v_vol", "%", 0.0f, 1.0f, 0.8f, 0.05f); // Was 1.0
+  setMasterOutputHighCutHz(kMasterHighCutHz);
   
 
 
@@ -373,6 +374,7 @@ void MiniAcid::reset() {
   currentTimingOffset_ = 0;
   currentStepDurationSamples_ = 1;
   updateSamplesPerStep();
+  masterOutputLpState_ = 0.0f;
   
   delay303.reset();
   delay303.setBeats(0.5f); // eighth note
@@ -463,6 +465,18 @@ void MiniAcid::setBpm(float bpm) {
   updateSamplesPerStep();
   delay303.setBpm(bpmValue);
   delay3032.setBpm(bpmValue);
+}
+
+void MiniAcid::setMasterOutputHighCutHz(float hz) {
+  float nyquist = sampleRateValue * 0.5f - 200.0f;
+  if (nyquist < 4000.0f) nyquist = 4000.0f;
+  if (hz < 4000.0f) hz = 4000.0f;
+  if (hz > nyquist) hz = nyquist;
+  masterOutputHighCutHz_ = hz;
+  const float omega = 2.0f * 3.14159265f * masterOutputHighCutHz_ / sampleRateValue;
+  masterOutputLpAlpha_ = 1.0f - expf(-omega);
+  if (masterOutputLpAlpha_ < 0.0f) masterOutputLpAlpha_ = 0.0f;
+  if (masterOutputLpAlpha_ > 1.0f) masterOutputLpAlpha_ = 1.0f;
 }
 
 float MiniAcid::bpm() const { return bpmValue; }
@@ -1889,7 +1903,14 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     if (looperActive) {
       float loopSample = 0.0f;
       tapeLooper->process(sample, &loopSample);
-      sample += loopSample * fxSafetyMix_;
+      if (tapeLooper->hasLoop() && tapeState.mode == TapeMode::Play) {
+        // Crossfade live↔loop to prevent dissonant doubling.
+        // loopSample already has looperVolume baked in.
+        float lv = std::min(tapeState.looperVolume, 1.0f);
+        sample = sample * (1.0f - lv) + loopSample;
+      } else {
+        sample += loopSample * fxSafetyMix_;
+      }
     }
     if (tapeFxEnabled) {
       float wet = tapeFX->process(sample);
@@ -1897,6 +1918,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     }
 
     sample *= 0.65f;
+    masterOutputLpState_ += masterOutputLpAlpha_ * (sample - masterOutputLpState_);
+    sample = masterOutputLpState_;
     float dcIn = sample;
     float dcOut = dcIn - dcBlockX1_ + 0.995f * dcBlockY1_;
     dcBlockX1_ = dcIn; dcBlockY1_ = dcOut;
@@ -1923,6 +1946,13 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     perfStats.dspDrumsUs = tDrumsTotal;
     perfStats.dspSamplerUs = tSamplerTime + tVocalTotal;
     perfStats.dspFxUs = tFxTotal;
+  }
+
+  // Tape looper can change mode internally (e.g. REC->PLAY, safety DUB->PLAY).
+  // Mirror it back into scene state so UI/state remain consistent.
+  if (tapeState.mode != tapeLooper->mode()) {
+    sceneManager_.currentScene().tape.mode = tapeLooper->mode();
+    lastTapeMode_ = tapeLooper->mode();
   }
 
   size_t copyCount = std::min(numSamples, (size_t)AUDIO_BUFFER_SAMPLES);
@@ -1967,6 +1997,7 @@ void MiniAcid::setParameter(MiniAcidParamId id, float value) {
 
 void MiniAcid::adjustParameter(MiniAcidParamId id, int steps) {
   params[static_cast<int>(id)].addSteps(steps);
+  setParameter(id, params[static_cast<int>(id)].value());
 }
 
 void MiniAcid::randomizeDrumPattern() {
@@ -2174,6 +2205,8 @@ void MiniAcid::applySceneStateFromManager() {
   // Load master volume from scene
   float sceneVolume = sceneManager_.currentScene().masterVolume;
   params[static_cast<int>(MiniAcidParamId::MainVolume)].setValue(sceneVolume);
+  // Fixed master safety LPF: keep this independent from scene/UI state.
+  setMasterOutputHighCutHz(kMasterHighCutHz);
   LOG_DEBUG("  - MiniAcid::applySceneStateFromManager: loaded volume=%.2f\n", sceneVolume);
   
   const std::string& drumEngineName = sceneManager_.getDrumEngineName();
