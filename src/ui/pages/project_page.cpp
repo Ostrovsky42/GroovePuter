@@ -232,6 +232,8 @@ void ProjectPage::openImportMidiDialog() {
   selection_index_ = 0;
   scroll_offset_ = 0;
   midi_import_start_pattern_ = 0;
+  midi_import_from_bar_ = 0;
+  midi_import_length_bars_ = 16;
 }
 
 void ProjectPage::onEnter(int context) {
@@ -258,8 +260,14 @@ bool ProjectPage::importMidiAtSelection() {
   MidiImporter::ImportSettings settings;
   if (midi_import_start_pattern_ < 0) midi_import_start_pattern_ = 0;
   if (midi_import_start_pattern_ > 15) midi_import_start_pattern_ = 15;
+  if (midi_import_from_bar_ < 0) midi_import_from_bar_ = 0;
+  if (midi_import_from_bar_ > 511) midi_import_from_bar_ = 511;
+  if (midi_import_length_bars_ < 1) midi_import_length_bars_ = 1;
+  if (midi_import_length_bars_ > 256) midi_import_length_bars_ = 256;
   settings.targetPatternIndex = midi_import_start_pattern_;
   settings.startStepOffset = 0;
+  settings.sourceStartBar = midi_import_from_bar_;
+  settings.sourceLengthBars = midi_import_length_bars_;
   settings.omni = true;
   
   UI::showToast("Importing MIDI...");
@@ -486,6 +494,22 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             }
             if (key == '=' || key == '+') {
                 if (midi_import_start_pattern_ < 15) midi_import_start_pattern_++;
+                return true;
+            }
+            if (key == '[') {
+                if (midi_import_from_bar_ > 0) midi_import_from_bar_--;
+                return true;
+            }
+            if (key == ']') {
+                if (midi_import_from_bar_ < 511) midi_import_from_bar_++;
+                return true;
+            }
+            if (key == '9') {
+                if (midi_import_length_bars_ > 1) midi_import_length_bars_--;
+                return true;
+            }
+            if (key == '0') {
+                if (midi_import_length_bars_ < 256) midi_import_length_bars_++;
                 return true;
             }
         }
@@ -877,10 +901,16 @@ void ProjectPage::draw(IGfx& gfx) {
     const char* title = (dialog_type_ == DialogType::Load) ? "Load Scene" : "Import MIDI File";
     gfx.drawText(dialog_x + 4, dialog_y + 2, title);
     if (dialog_type_ == DialogType::ImportMidi) {
-      char startBuf[32];
+      char startBuf[34];
+      char fromBuf[34];
+      char lenBuf[34];
       std::snprintf(startBuf, sizeof(startBuf), "Start Pat %d", midi_import_start_pattern_ + 1);
+      std::snprintf(fromBuf, sizeof(fromBuf), "From Bar %d", midi_import_from_bar_ + 1);
+      std::snprintf(lenBuf, sizeof(lenBuf), "Length %d bars", midi_import_length_bars_);
       gfx.setTextColor(COLOR_LABEL);
       gfx.drawText(dialog_x + 4, dialog_y + 2 + line_h + 2, startBuf);
+      gfx.drawText(dialog_x + 4, dialog_y + 2 + line_h * 2 + 4, fromBuf);
+      gfx.drawText(dialog_x + 4, dialog_y + 2 + line_h * 3 + 6, lenBuf);
       gfx.setTextColor(COLOR_WHITE);
     }
     if (loadError_) {
@@ -891,7 +921,7 @@ void ProjectPage::draw(IGfx& gfx) {
     int row_h = line_h + 3;
     int cancel_h = line_h + 8;
     int list_y = dialog_y + header_h + 2;
-    if (dialog_type_ == DialogType::ImportMidi) list_y += line_h + 2;
+    if (dialog_type_ == DialogType::ImportMidi) list_y += line_h * 3 + 6;
     int list_h = dialog_h - header_h - cancel_h - 10;
     if (list_h < row_h) list_h = row_h;
     int visible_rows = list_h / row_h;

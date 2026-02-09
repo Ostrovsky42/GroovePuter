@@ -63,5 +63,7 @@ class ProjectPage : public IPage{
   std::vector<std::string> scenes_;
   std::vector<std::string> midi_files_;
   int midi_import_start_pattern_ = 0;
+  int midi_import_from_bar_ = 0;
+  int midi_import_length_bars_ = 16;
   std::string save_name_;
 };

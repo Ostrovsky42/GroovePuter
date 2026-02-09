@@ -24,6 +24,8 @@ public:
     struct ImportSettings {
         int targetPatternIndex = 0;   // Starting pattern index to fill
         int startStepOffset = 0;      // Skip this many steps before importing (16 steps per pattern)
+        int sourceStartBar = 0;       // Slice start in bars (relative to first routed note)
+        int sourceLengthBars = 0;     // Slice length in bars; <=0 means unlimited
         bool overwrite = true;        // Overwrite existing patterns
         int drumChannel = 10;         // MIDI channel for drums (1-indexed, usually 10)
         int synthAChannel = 1;        // MIDI channel for Synth A

@@ -88,9 +88,15 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
     static constexpr int kPatternsPerPage = kBankCount * Bank<SynthPattern>::kPatterns; // 16
     static constexpr int kMaxPages = 8;
     static constexpr int kMaxPatterns = kPatternsPerPage * kMaxPages; // 128 song patterns.
-    bool clearedPattern[kMaxPatterns] = {};
     bool importRegionCleared = false;
     int firstRoutedStep = -1;
+    int sourceStartSteps = settings.sourceStartBar * 16;
+    if (sourceStartSteps < 0) sourceStartSteps = 0;
+    int sourceLengthSteps = 0;
+    if (settings.sourceLengthBars > 0) {
+        sourceLengthSteps = settings.sourceLengthBars * 16;
+        if (sourceLengthSteps < 1) sourceLengthSteps = 1;
+    }
 
     for (int t = 0; t < header.numTracks; ++t) {
         if (file.readBytes(magic, 4) != 4 || memcmp(magic, "MTrk", 4) != 0) {
@@ -167,6 +173,19 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                         firstRoutedStep = stepIdx;
                     }
 
+                    int adjustedStep = stepIdx - firstRoutedStep - settings.startStepOffset - sourceStartSteps;
+                    if (adjustedStep < 0) {
+                        continue;
+                    }
+                    if (sourceLengthSteps > 0 && adjustedStep >= sourceLengthSteps) {
+                        continue;
+                    }
+                    int patternIdx = adjustedStep / 16 + settings.targetPatternIndex;
+                    int stepInPattern = adjustedStep % 16;
+                    if (patternIdx < 0 || patternIdx >= kMaxPatterns) {
+                        continue;
+                    }
+
                     if (settings.overwrite && !importRegionCleared) {
                         int clearFrom = settings.targetPatternIndex;
                         if (clearFrom < 0) clearFrom = 0;
@@ -184,19 +203,8 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                                     drums.voices[v].steps[i] = DrumStep{};
                                 }
                             }
-                            clearedPattern[p] = true;
                         }
                         importRegionCleared = true;
-                    }
-
-                    int adjustedStep = stepIdx - firstRoutedStep - settings.startStepOffset;
-                    if (adjustedStep < 0) {
-                        continue;
-                    }
-                    int patternIdx = adjustedStep / 16 + settings.targetPatternIndex;
-                    int stepInPattern = adjustedStep % 16;
-                    if (patternIdx < 0 || patternIdx >= kMaxPatterns) {
-                        continue;
                     }
 
                         if (routeToA) {
