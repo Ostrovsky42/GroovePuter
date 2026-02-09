@@ -8,6 +8,7 @@ class ProjectPage : public IPage{
  public:
   ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
+  void onEnter(int context = 0) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string & getTitle() const override;
   enum class ProjectSection { Scenes = 0, Groove, Led };

@@ -49,14 +49,14 @@ bool writeChunk(Writer& writer, const char* data, size_t len) {
 } // namespace scene_json_detail
 
 struct DrumStep {
-  bool hit = false;
-  bool accent = false;
+  uint8_t hit : 1 {0};
+  uint8_t accent : 1 {0};
+  uint8_t unused : 6 {0};
   uint8_t velocity = 100;
   int8_t timing = 0;
-  // New FX fields
-  uint8_t fx = 0;      // 0=None, 1=Retrig, 2=Reverse
-  uint8_t fxParam = 0; // Value for FX (e.g. retrig count)
-  uint8_t probability = 100; // 0-100% chance to play
+  uint8_t fx = 0;
+  uint8_t fxParam = 0;
+  uint8_t probability = 100;
 };
 
 struct DrumPattern {
@@ -70,14 +70,14 @@ struct DrumPatternSet {
 };
 
 struct SynthStep {
-  int note = 0; 
-  bool slide = false;
-  bool accent = false;
+  uint8_t note = 0;
+  uint8_t slide : 1 {0};
+  uint8_t accent : 1 {0};
+  uint8_t ghost : 1 {0};
+  uint8_t unused : 5 {0};
   uint8_t velocity = 100;
   int8_t timing = 0;
-  bool ghost = false;
-  // New FX fields
-  uint8_t fx = 0;      // 0=None, 1=Retrig, 2=Reverse
+  uint8_t fx = 0;
   uint8_t fxParam = 0;
   uint8_t probability = 100;
 };
@@ -455,6 +455,13 @@ class SceneManager {
 public:
   SceneManager();
   void loadDefaultScene();
+  
+  // Spotlight Paging
+  void setPage(int pageIndex);
+  int currentPageIndex() const { return currentPageIndex_; }
+  bool saveCurrentPage() const;
+  bool loadCurrentPage();
+  
   Scene& currentScene();
   const Scene& currentScene() const;
 
@@ -574,6 +581,7 @@ private:
   std::string drumEngineName_ = "808";
   GrooveboxMode mode_ = GrooveboxMode::Minimal;
   int grooveFlavor_ = 0;
+  int currentPageIndex_ = 0;
 };
 
 // inline constexpr size_t SceneManager::sceneJsonCapacity() {

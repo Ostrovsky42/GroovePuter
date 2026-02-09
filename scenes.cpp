@@ -1,6 +1,8 @@
 #include "ArduinoJson-v7.4.2.h"
 #include "scenes.h"
 #include "src/debug_log.h"
+#include "src/audio/pattern_paging.h"
+#include <SD.h>
 
 #include <memory>
 
@@ -1147,7 +1149,9 @@ GrooveboxMode SceneJsonObserver::mode() const { return target_.mode; }
 // Main processing scene (static to avoid heap fragmentation)
 static Scene g_mainScene;
 
-SceneManager::SceneManager() : scene_(&g_mainScene) {}
+SceneManager::SceneManager() : scene_(&g_mainScene) {
+  PatternPagingService::ensureDirectory();
+}
 
 void SceneManager::loadDefaultScene() {
   drumPatternIndex_ = 0;
@@ -1173,6 +1177,7 @@ void SceneManager::loadDefaultScene() {
   loopEndRow_ = 7;
   mode_ = GrooveboxMode::Minimal;
   grooveFlavor_ = 0;
+  currentPageIndex_ = 0;
   scene_->grooveFlavor = 0;
   scene_->activeSongSlot = 0;
   for (int i = 0; i < 2; ++i) {
@@ -1356,6 +1361,25 @@ void SceneManager::loadDefaultScene() {
 }
 
 Scene& SceneManager::currentScene() { return *scene_; }
+
+void SceneManager::setPage(int pageIndex) {
+  if (pageIndex < 0) return;
+  if (pageIndex == currentPageIndex_) return;
+  
+  saveCurrentPage();
+  currentPageIndex_ = pageIndex;
+  loadCurrentPage();
+}
+
+bool SceneManager::saveCurrentPage() const {
+  if (!scene_) return false;
+  return PatternPagingService::savePage(currentPageIndex_, *scene_);
+}
+
+bool SceneManager::loadCurrentPage() {
+  if (!scene_) return false;
+  return PatternPagingService::loadPage(currentPageIndex_, *scene_);
+}
 
 const Scene& SceneManager::currentScene() const { return *scene_; }
 

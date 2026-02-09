@@ -2,7 +2,6 @@
 
 #include <stdint.h>
 #include <string>
-#include <vector>
 #include "src/dsp/miniacid_engine.h"
 
 #include <FS.h>
@@ -18,7 +17,8 @@ public:
         FileNotFound,
         InvalidFormat,
         UnsupportedType, // Only Type 0 and 1 supported
-        ReadError
+        ReadError,
+        NoNotesFound    // No compatible notes found
     };
 
     struct ImportSettings {
@@ -49,6 +49,7 @@ public:
 
 private:
     MiniAcid& engine_;
+    int cachedPageIndex_ = -1;
 
     struct MidiHeader {
         uint16_t format;      // 0, 1, or 2
@@ -57,6 +58,13 @@ private:
     };
 
     Error parseFile(File& file, const ImportSettings& settings);
+
+    bool loadPageToCache(int pageIndex);
+    bool saveCacheToPage();
+    
+    SynthPattern& getSynthPattern(int synthIdx, int patternIdx);
+    DrumPatternSet& getDrumPatternSet(int patternIdx);
+
     bool readU8(File& file, uint8_t& out);
     bool readVarLen(File& file, uint32_t& value, uint32_t& bytesRead);
     bool readBE32(File& file, uint32_t& out);

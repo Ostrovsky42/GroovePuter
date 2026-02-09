@@ -82,24 +82,33 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid)
 MiniAcidDisplay::~MiniAcidDisplay() = default;
 
 std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
-    LOG_DEBUG_UI("Creating page at index %d", index);
+    uint32_t freeBefore = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    Serial.printf("[UI] Creating page %d (DRAM: %u bytes free)\n", index, (unsigned)freeBefore);
+    std::unique_ptr<IPage> page;
     switch (index) {
-        case 0:  return std::make_unique<GenrePage>(gfx_, mini_acid_, audio_guard_);
-        case 1:  return std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 0);
-        case 2:  return std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 1);
-        case 3:  return std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 0);
-        case 4:  return std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 1);
-        case 5:  return std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_);
-        case 6:  return std::make_unique<SongPage>(gfx_, mini_acid_, audio_guard_);
-        case 7:  return std::make_unique<SequencerHubPage>(gfx_, mini_acid_, audio_guard_);
-        case 8:  return std::make_unique<FeelTexturePage>(gfx_, mini_acid_, audio_guard_);
-        case 9:  return std::make_unique<SettingsPage>(gfx_, mini_acid_, audio_guard_);
-        case 10: return std::make_unique<ProjectPage>(gfx_, mini_acid_,audio_guard_);        
-        //case 11: return std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_);
-        case 11: return std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_);
+        case 0:  page = std::make_unique<GenrePage>(gfx_, mini_acid_, audio_guard_); break;
+        case 1:  page = std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 0); break;
+        case 2:  page = std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 1); break;
+        case 3:  page = std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 0); break;
+        case 4:  page = std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 1); break;
+        case 5:  page = std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_); break;
+        case 6:  page = std::make_unique<SongPage>(gfx_, mini_acid_, audio_guard_); break;
+        case 7:  page = std::make_unique<SequencerHubPage>(gfx_, mini_acid_, audio_guard_); break;
+        case 8:  page = std::make_unique<FeelTexturePage>(gfx_, mini_acid_, audio_guard_); break;
+        case 9:  page = std::make_unique<SettingsPage>(gfx_, mini_acid_, audio_guard_); break;
+        case 10: page = std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_); break;
+        case 11: page = std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_); break;
 
-        default: return nullptr;
+        default: page = nullptr; break;
     }
+    uint32_t freeAfter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (page) {
+        Serial.printf("[UI] Page %d created SUCCESS (size: %u, DRAM left: %u)\n", 
+                      index, (unsigned)(freeBefore - freeAfter), (unsigned)freeAfter);
+    } else {
+        Serial.printf("[UI] Page %d creation FAILED or INVALID\n", index);
+    }
+    return page;
 }
 
 IPage* MiniAcidDisplay::getPage_(int index) {
@@ -235,6 +244,8 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
 
     if (page_index_ == index && context == 0) return; // redundant
 
+    Serial.printf("[UI] transitionToPage: %d -> %d (ctx=%d)\n", page_index_, index, context);
+
     IPage* oldPage = getPage_(page_index_);
     if (oldPage) oldPage->onExit();
 
@@ -273,6 +284,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
 
         if (event.alt && (event.key == 'v' || event.key == 'V')) {
+            Serial.println("[UI] Shortcut Alt+V -> Page 11");
             goToPage(11); // Groove Lab
             return true;
         }
@@ -329,6 +341,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
                 default: break;
             }
             if (targetPage >= 0) {
+                Serial.printf("[UI] Shortcut Alt+%c -> Page %d\n", event.key, targetPage);
                 goToPage(targetPage);
                 return true;
             }

@@ -157,11 +157,16 @@ ProjectPage::ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     scroll_offset_(0),
     loadError_(false),
     save_name_(generateMemorableName()) {
+  Serial.printf("[ProjectPage] Constructor START: this=%p, type=%d, focus=%d\n", 
+                this, (int)dialog_type_, (int)main_focus_);
   refreshScenes();
+  Serial.printf("[ProjectPage] Constructor COMPLETE: scenes=%d, type=%d, selection=%d\n", 
+                (int)scenes_.size(), (int)dialog_type_, selection_index_);
 }
 
 void ProjectPage::refreshScenes() {
   scenes_ = mini_acid_.availableSceneNames();
+  Serial.printf("[ProjectPage] refreshScenes count=%d, type=%d\n", (int)scenes_.size(), (int)dialog_type_);
   if (scenes_.empty()) {
     selection_index_ = 0;
     scroll_offset_ = 0;
@@ -220,6 +225,7 @@ void ProjectPage::refreshMidiFiles() {
 }
 
 void ProjectPage::openImportMidiDialog() {
+  Serial.println("[ProjectPage] openImportMidiDialog called");
   refreshMidiFiles();
   dialog_type_ = DialogType::ImportMidi;
   dialog_focus_ = DialogFocus::List;
@@ -228,25 +234,42 @@ void ProjectPage::openImportMidiDialog() {
   midi_import_start_pattern_ = 0;
 }
 
+void ProjectPage::onEnter(int context) {
+  Serial.printf("[ProjectPage] onEnter: current type=%d, ctx=%d\n", (int)dialog_type_, context);
+  dialog_type_ = DialogType::None;
+  main_focus_ = MainFocus::Load;
+  section_ = ProjectSection::Scenes;
+  refreshScenes();
+}
+
 bool ProjectPage::importMidiAtSelection() {
+  Serial.println("[ProjectPage] importMidiAtSelection entry");
   if (midi_files_.empty()) return true;
   if (selection_index_ < 0 || selection_index_ >= (int)midi_files_.size()) return true;
   
-  std::string path = "/midi/" + midi_files_[selection_index_];
+  std::string filename = midi_files_[selection_index_];
+  std::string path = "/midi/" + filename;
+  Serial.printf("[ProjectPage] Target MIDI: %s\n", path.c_str());
+
+  Serial.println("[ProjectPage] Creating MidiImporter on stack...");
   MidiImporter importer(mini_acid_);
+  Serial.println("[ProjectPage] MidiImporter ready");
+
   MidiImporter::ImportSettings settings;
-  settings.targetPatternIndex = 0; // Or whatever makes sense
   if (midi_import_start_pattern_ < 0) midi_import_start_pattern_ = 0;
   if (midi_import_start_pattern_ > 15) midi_import_start_pattern_ = 15;
-  settings.startStepOffset = midi_import_start_pattern_ * 16;
+  settings.targetPatternIndex = midi_import_start_pattern_;
+  settings.startStepOffset = 0;
   settings.omni = true;
   
   UI::showToast("Importing MIDI...");
   
   MidiImporter::Error err;
+  Serial.println("[ProjectPage] Calling importer->importFile...");
   withAudioGuard([&]() {
     err = importer.importFile(path, settings);
   });
+  Serial.printf("[ProjectPage] importer result=%d\n", (int)err);
   
   if (err == MidiImporter::Error::None) {
       UI::showToast("Import Successful");
@@ -316,12 +339,18 @@ void ProjectPage::moveSelection(int delta) {
 
 void ProjectPage::ensureSelectionVisible(int visibleRows) {
   if (visibleRows < 1) visibleRows = 1;
-  if (scenes_.empty()) {
+
+  // Use appropriate list based on dialog type
+  const auto& list = (dialog_type_ == DialogType::Load) ? scenes_ :
+                     (dialog_type_ == DialogType::ImportMidi) ? midi_files_ :
+                     scenes_; // Default for main list or others
+
+  if (list.empty()) {
     scroll_offset_ = 0;
     selection_index_ = 0;
     return;
   }
-  int maxIdx = static_cast<int>(scenes_.size()) - 1;
+  int maxIdx = static_cast<int>(list.size()) - 1;
   if (selection_index_ < 0) selection_index_ = 0;
   if (selection_index_ > maxIdx) selection_index_ = maxIdx;
   if (scroll_offset_ < 0) scroll_offset_ = 0;
@@ -416,6 +445,8 @@ bool ProjectPage::handleSaveDialogInput(char key) {
 }
 
 bool ProjectPage::handleEvent(UIEvent& ui_event) {
+    Serial.printf("[ProjectPage] handleEvent: type=%d, scancode=%d, key=%d\n", 
+                  (int)ui_event.event_type, ui_event.scancode, ui_event.key);
     if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
     if (dialog_type_ == DialogType::Load || dialog_type_ == DialogType::ImportMidi) {
@@ -695,8 +726,10 @@ const std::string & ProjectPage::getTitle() const {
 }
 
 void ProjectPage::draw(IGfx& gfx) {
+  Serial.printf("[ProjectPage] draw START this=%p, type=%d\n", this, (int)dialog_type_);
   UI::drawStandardHeader(gfx, mini_acid_, "PROJECT");
   LayoutManager::clearContent(gfx);
+  Serial.println("[ProjectPage] draw 1: clear OK");
 
   const int x = Layout::COL_1;
   const int y0 = LayoutManager::lineY(0);
@@ -708,6 +741,7 @@ void ProjectPage::draw(IGfx& gfx) {
   int firstFocus = 0;
   int lastFocus = 0;
   sectionRange(sectionIdx, firstFocus, lastFocus);
+  Serial.println("[ProjectPage] draw 2: sectionRange OK");
   auto& led = mini_acid_.sceneManager().currentScene().led;
 
   // Top status line
@@ -719,6 +753,7 @@ void ProjectPage::draw(IGfx& gfx) {
   char sectionBuf[24];
   std::snprintf(sectionBuf, sizeof(sectionBuf), "INFO [%s]", sectionName(sectionIdx));
   gfx.drawText(infoX, y0, sectionBuf);
+  Serial.println("[ProjectPage] draw 3: info OK");
 
   const char* tabNames[3] = {"SCN", "GRV", "LED"};
   for (int i = 0; i < 3; ++i) {
@@ -791,6 +826,7 @@ void ProjectPage::draw(IGfx& gfx) {
     }
     Widgets::drawListRow(gfx, x, LayoutManager::lineY(rowBase + row), listW, line, selected);
   }
+  Serial.println("[ProjectPage] draw list OK");
 
   uint32_t freeInt = 0;
   uint32_t largestInt = 0;
@@ -800,9 +836,9 @@ void ProjectPage::draw(IGfx& gfx) {
 #endif
   int cpuAvg = (int)mini_acid_.perfStats.cpuAudioPctIdeal;
   int cpuPeak = (int)mini_acid_.perfStats.cpuAudioPeakPct;
-  char perf0[40];
-  char perf1[40];
-  char perf2[40];
+  static char perf0[42];
+  static char perf1[42];
+  static char perf2[42];
   std::snprintf(perf0, sizeof(perf0), "CPU:%d/%d%%", cpuAvg, cpuPeak);
   std::snprintf(perf1, sizeof(perf1), "RAM:%uk/%uk",
                 (unsigned)(freeInt / 1024), (unsigned)(largestInt / 1024));
@@ -810,16 +846,17 @@ void ProjectPage::draw(IGfx& gfx) {
                 styleShortName(UI::currentStyle), grooveModeName(mini_acid_.grooveboxMode()));
   const char* infoLines[3] = {perf0, perf1, perf2};
   Widgets::drawInfoBox(gfx, infoX, LayoutManager::lineY(2), infoW, infoLines, 3);
+  Serial.printf("[ProjectPage] draw 7: footer SKIPPED, type=%d\n", (int)dialog_type_);
 
-  UI::drawStandardFooter(gfx, "[TAB] [UP/DN][L/R]", "[ENT],[G],[BSP]");
+  if (dialog_type_ == DialogType::None) {
+      Serial.println("[ProjectPage] draw DONE");
+      return;
+  }
 
-  if (dialog_type_ == DialogType::None) return;
-
-  refreshScenes();
-
+  Serial.println("[ProjectPage] draw 8: Entering DIALOG draw block");
   int w = Layout::CONTENT.w - 2 * Layout::CONTENT_PAD_X;
   int h = Layout::CONTENT.h - 2 * Layout::CONTENT_PAD_Y;
-  int y = Layout::CONTENT.y + Layout::CONTENT_PAD_Y;
+  int y_start = Layout::CONTENT.y + Layout::CONTENT_PAD_Y;
   int dialog_w = w - 16;
   if (dialog_w < 80) dialog_w = w - 4;
   if (dialog_w < 60) dialog_w = 60;
@@ -827,10 +864,12 @@ void ProjectPage::draw(IGfx& gfx) {
   if (dialog_h < 70) dialog_h = h - 4;
   if (dialog_h < 50) dialog_h = 50;
   int dialog_x = x + (w - dialog_w) / 2;
-  int dialog_y = y + (h - dialog_h) / 2;
+  int dialog_y = y_start + (h - dialog_h) / 2;
+  Serial.printf("[ProjectPage] draw 9: coords (%d,%d %dx%d)\n", dialog_x, dialog_y, dialog_w, dialog_h);
 
   gfx.fillRect(dialog_x, dialog_y, dialog_w, dialog_h, COLOR_DARKER);
   gfx.drawRect(dialog_x, dialog_y, dialog_w, dialog_h, COLOR_ACCENT);
+  Serial.println("[ProjectPage] draw 10: base dialog OK");
 
   if (dialog_type_ == DialogType::Load || dialog_type_ == DialogType::ImportMidi) {
     int header_h = line_h + 4;
@@ -857,10 +896,13 @@ void ProjectPage::draw(IGfx& gfx) {
     if (list_h < row_h) list_h = row_h;
     int visible_rows = list_h / row_h;
     if (visible_rows < 1) visible_rows = 1;
+    Serial.printf("[ProjectPage] draw 11: list size checks, vrows=%d\n", visible_rows);
 
     ensureSelectionVisible(visible_rows);
+    Serial.println("[ProjectPage] draw 12: ensureVisible OK");
 
-    auto& list = (dialog_type_ == DialogType::Load) ? scenes_ : midi_files_;
+    const auto& list = (dialog_type_ == DialogType::Load) ? scenes_ : midi_files_;
+    Serial.printf("[ProjectPage] draw 13: list ptr=%p, size=%d\n", &list, (int)list.size());
 
     if (list.empty()) {
       gfx.setTextColor(COLOR_LABEL);
@@ -873,12 +915,17 @@ void ProjectPage::draw(IGfx& gfx) {
       }
       for (int i = 0; i < rowsToDraw; ++i) {
         int listIdx = scroll_offset_ + i;
+        if (listIdx < 0 || listIdx >= (int)list.size()) {
+            Serial.printf("[ProjectPage] ERROR: listIdx %d OOB (size %d)\n", listIdx, (int)list.size());
+            continue;
+        }
         int row_y = list_y + i * row_h;
         bool selected = listIdx == selection_index_;
         if (selected) {
           gfx.fillRect(dialog_x + 2, row_y, dialog_w - 4, row_h, COLOR_PANEL);
           gfx.drawRect(dialog_x + 2, row_y, dialog_w - 4, row_h, COLOR_ACCENT);
         }
+        Serial.printf("[ProjectPage] draw row %d: idx=%d, ptr=%p\n", i, listIdx, list[listIdx].c_str());
         Widgets::drawClippedText(gfx, dialog_x + 6, row_y + 1, dialog_w - 12, list[listIdx].c_str());
       }
     }

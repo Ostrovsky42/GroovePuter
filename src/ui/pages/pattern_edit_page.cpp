@@ -496,11 +496,23 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   }
   switch (nav) {
     case GROOVEPUTER_LEFT:
+      if (ui_event.alt) {
+        int next = mini_acid_.sceneManager().currentPageIndex() - 1;
+        if (next < 0) next = 0;
+        mini_acid_.sceneManager().setPage(next);
+        handled = true;
+        break;
+      }
       if (extend_selection && focus_ == Focus::Steps) updateSelection();
       movePatternCursor(-1);
       handled = true;
       break;
     case GROOVEPUTER_RIGHT:
+      if (ui_event.alt) {
+        mini_acid_.sceneManager().setPage(mini_acid_.sceneManager().currentPageIndex() + 1);
+        handled = true;
+        break;
+      }
       if (extend_selection && focus_ == Focus::Steps) updateSelection();
       movePatternCursor(1);
       handled = true;
@@ -898,6 +910,12 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
   int bank_bar_h = bank_bar_->barHeight(gfx);
   bank_bar_->setBoundaries(Rect{x, body_y - 1, w, bank_bar_h});
   bank_bar_->draw(gfx);
+
+  // Page Indicator
+  char pageBuf[8];
+  snprintf(pageBuf, sizeof(pageBuf), "P%d", mini_acid_.sceneManager().currentPageIndex() + 1);
+  gfx.setTextColor(COLOR_WHITE);
+  gfx.drawText(x + w - 24, y + 2, pageBuf);
 
   int spacing = 4;
   int grid_top = body_y + pattern_bar_h + 6;
