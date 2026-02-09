@@ -416,6 +416,32 @@ bool FeelTexturePage::handleEvent(UIEvent& ui_event) {
     // END: Number keys disabled
     */
 
+    // Bank Selection (Ctrl + 1..2)
+    if (ui_event.ctrl && !ui_event.alt && key >= '1' && key <= '2') {
+        int bankIdx = key - '1';
+        withAudioGuard([&]() {
+            mini_acid_.set303BankIndex(0, bankIdx);
+        });
+        UI::showToast(bankIdx == 0 ? "Bank: A" : "Bank: B", 800);
+        return true;
+    }
+
+    // Pattern quick select (Q-I) - Standardized Everywhere (ignore shift for CapsLock safety)
+    if (!ui_event.ctrl && !ui_event.meta) {
+        char lower = std::tolower(key);
+        int patIdx = qwertyToPatternIndex(lower);
+        if (patIdx >= 0) {
+            withAudioGuard([&]() {
+                // Default to Synth A on this global page
+                mini_acid_.set303PatternIndex(0, patIdx);
+            });
+            char buf[32];
+            std::snprintf(buf, sizeof(buf), "Synth A -> Pat %d", patIdx + 1);
+            UI::showToast(buf, 800);
+            return true;
+        }
+    }
+
     return false;
 }
 

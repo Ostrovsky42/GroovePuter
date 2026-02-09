@@ -150,12 +150,18 @@ int SongPage::cursorTrack() const {
   return track;
 }
 
-bool SongPage::cursorOnModeButton() const { return false; }
-bool SongPage::cursorOnPlayheadLabel() const { return false; }
+bool SongPage::cursorOnModeButton() const { 
+  return cursor_track_ == visibleTrackCount(); 
+}
+bool SongPage::cursorOnPlayheadLabel() const { 
+  return false; // Not implemented yet
+}
 
 int SongPage::visibleTrackCount() const { return 3; }
 
-int SongPage::maxEditableTrackColumn() const { return visibleTrackCount() - 1; }
+int SongPage::maxEditableTrackColumn() const { 
+  return visibleTrackCount(); // Grid (0..3) + Mode Button (4)
+}
 
 SongTrack SongPage::thirdLaneTrack() const {
   return voice_lane_visible_ ? SongTrack::Voice : SongTrack::Drums;
@@ -294,7 +300,14 @@ void SongPage::moveCursorVertical(int delta, bool extend_selection) {
   if (delta == 0) return;
   int before_row = cursor_row_;
   int before_track = cursor_track_;
-  if (cursorOnPlayheadLabel() || cursorOnModeButton()) {
+  if (cursorOnModeButton()) {
+    // If on sidebar, Up/Down does nothing or scrolls? 
+    // Let's allow vertical movement within the grid but keep focus on sidebar if it was meant to be a vertical list.
+    // However, SongPage mode button is one giant vertical bar.
+    // For now, let it fall through or just return true to consume.
+    return;
+  }
+  if (cursorOnPlayheadLabel()) {
     moveCursorHorizontal(delta, extend_selection);
     return;
   }
@@ -1109,7 +1122,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return toggleSongMode();
   }
 
-  // Song mode toggle - but NOT when Ctrl is held (avoid conflict with Ctrl+M = merge)
+  // Song mode toggle - but NOT when Ctrl or Alt is held
   if (!ui_event.ctrl && !ui_event.alt && key_m) {
     LOG_INFO_UI("Toggle song mode");
     return toggleSongMode();
@@ -1131,10 +1144,68 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
+  // Bank Selection (Ctrl + 1..2)
+  if (ui_event.ctrl && !ui_event.alt && key >= '1' && key <= '2') {
+    int bankIdx = key - '1';
+    bool valid = false;
+    SongTrack track = trackForColumn(cursor_track_, valid);
+    if (valid) {
+      LOG_INFO_UI("Switch track %d to Bank %d", (int)track, bankIdx + 1);
+      
+      int changed = 0;
+      withAudioGuard([&]() {
+        // 1. Update active bank for new patterns
+        if (track == SongTrack::SynthA) mini_acid_.set303BankIndex(0, bankIdx);
+        else if (track == SongTrack::SynthB) mini_acid_.set303BankIndex(1, bankIdx);
+        else if (track == SongTrack::Drums) mini_acid_.setDrumBankIndex(bankIdx);
+
+        // 2. Apply to selection/cursor
+        int min_row, max_row, min_track, max_track;
+        if (has_selection_) {
+          getSelectionBounds(min_row, max_row, min_track, max_track);
+        } else {
+          min_row = max_row = cursor_row_;
+          min_track = max_track = cursor_track_;
+        }
+
+        if (min_track < 0) min_track = 0;
+        int maxCol = maxEditableTrackColumn();
+        if (max_track > maxCol) max_track = maxCol;
+
+        for (int r = min_row; r <= max_row; ++r) {
+          for (int t = min_track; t <= max_track; ++t) {
+            bool t_valid = false;
+            SongTrack t_track = trackForColumn(t, t_valid);
+            if (!t_valid) continue;
+            int current = mini_acid_.songPatternAt(r, t_track);
+            if (current >= 0) {
+              int slot = songPatternIndexInBank(current);
+              int next = songPatternFromBank(bankIdx, slot);
+              if (next != current) {
+                mini_acid_.setSongPattern(r, t_track, next);
+                ++changed;
+              }
+            }
+          }
+        }
+      });
+
+      char buf[32];
+      if (changed > 0) snprintf(buf, sizeof(buf), "Bank %c applied (%d)", 'A' + bankIdx, changed);
+      else snprintf(buf, sizeof(buf), "Bank: %c", 'A' + bankIdx);
+      showToast(buf, 800);
+      return true;
+    }
+  }
+
   int patternIdx = patternIndexFromKey(lowerKey);
   if (patternIdx < 0) patternIdx = scancodeToPatternIndex(ui_event.scancode);
-  if (cursorOnModeButton() && patternIdx >= 0) return false;
-  if (patternIdx >= 0) return assignPattern(patternIdx);
+  
+  // Pattern assignment: only if NO modifiers (prevent Ctrl+R/Ctrl+C overlap)
+  if (patternIdx >= 0 && !ui_event.ctrl && !ui_event.alt) {
+    if (cursorOnModeButton()) return false;
+    return assignPattern(patternIdx);
+  }
 
   // Alt + Backspace = Reset Song
   if (ui_event.alt && (key == '\b' || key == 0x7F)) {

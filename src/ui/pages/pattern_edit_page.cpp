@@ -573,9 +573,8 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   // Let app-level back navigation handle ESC when nothing local to clear.
   if (is_escape) return false;
 
-  /*
-  // Q-I Pattern Selection (Standardized) - DISABLED per user request (presets not selected by buttons)
-  if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
+  // Q-I Pattern Selection (Standardized) - only if NO modifiers (ignore shift for CapsLock safety)
+  if (!ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
     int patternIdx = patternIndexFromKey(lowerKey);
     if (patternIdx < 0) {
         patternIdx = scancodeToPatternIndex(ui_event.scancode);
@@ -591,7 +590,6 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
           if (chaining_mode_) {
               // Find next empty position in song and append
               SongTrack track = (voice_index_ == 0) ? SongTrack::SynthA : SongTrack::SynthB;
-              int songLen = mini_acid_.songLength();
               int nextPos = -1;
               
               // Search for the first empty slot (-1) or the first slot after the last used one
@@ -604,7 +602,6 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
               
               if (nextPos != -1) {
                   // If we found an empty slot, put it there. 
-                  // If it's the first empty slot, it effectively appends if previous were full.
                   mini_acid_.setSongPattern(nextPos, track, patternIdx);
               }
           }
@@ -612,7 +609,20 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       return true;
     }
   }
-  */
+
+  // Bank Selection (Ctrl + 1..2)
+  if (ui_event.ctrl && !ui_event.alt && key >= '1' && key <= '2') {
+    int bankIdx = bankIndexFromKey(key);
+    if (bankIdx >= 0) {
+      bank_cursor_ = bankIdx;
+      setBankIndex(bankIdx);
+      if (!mini_acid_.songModeEnabled()) {
+        focus_ = Focus::BankRow;
+      }
+      UI::showToast(bankIdx == 0 ? "Bank: A" : "Bank: B", 800);
+      return true;
+    }
+  }
 
   /*
   int bankIdx = bankIndexFromKey(key);
@@ -782,11 +792,10 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     handleEvent(appEvent);
     return true;
   }
-  if (key_r) { // R for REST
-    ensureStepFocusAndCursor();
-    int step = activePatternStep();
-    withAudioGuard([&]() { mini_acid_.clear303Step(step, voice_index_); }); // Clean rest (clear all flags)
-    return true;
+  if (key_r && (ui_event.ctrl || ui_event.alt)) { 
+    // Ctrl+R is Reverse in SongMode, handle it specifically or let global handle.
+    // In PatternEdit, we just prevent it from being REST when modified.
+    return false; 
   }
 
   // Alt + Backspace = Reset Pattern

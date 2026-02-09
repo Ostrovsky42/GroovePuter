@@ -975,12 +975,38 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
         return true;
     }
 
-    /*
-    // Pattern quick select (Q-I) - DISABLED by user request (presets not selected by buttons)
-    // Preserves Q-I for other uses or prevents accidental switching.
-    int patIdx = qwertyToPatternIndex(lower);
-    if (patIdx >= 0) { ... } 
-    */
+    // Bank Selection (Ctrl + 1..2)
+    if (e.ctrl && !e.alt && e.key >= '1' && e.key <= '2') {
+        int bankIdx = e.key - '1';
+        withAudioGuard([&]() {
+            if (isDrumTrack(selectedTrack_)) {
+                mini_acid_.setDrumBankIndex(bankIdx);
+            } else {
+                mini_acid_.set303BankIndex(selectedTrack_, bankIdx);
+            }
+        });
+        UI::showToast(bankIdx == 0 ? "Bank: A" : "Bank: B", 800);
+        return true;
+    }
+
+    // Pattern quick select (Q-I) - Standardized Everywhere
+    if (!e.ctrl && !e.alt && !e.meta) {
+        int patIdx = qwertyToPatternIndex(lower);
+        if (patIdx >= 0) {
+            withAudioGuard([&]() {
+                if (isDrumTrack(selectedTrack_)) {
+                    mini_acid_.setDrumPatternIndex(patIdx);
+                } else {
+                    mini_acid_.set303PatternIndex(selectedTrack_, patIdx);
+                }
+            });
+            // Show toast for visual confirmation
+            char buf[32];
+            std::snprintf(buf, sizeof(buf), "Track %d -> Pat %d", selectedTrack_ + 1, patIdx + 1);
+            UI::showToast(buf, 800);
+            return true;
+        }
+    }
     
     // Copy/Paste (Ctrl+C / Ctrl+V)
     if (lower == 'c' && e.ctrl) {

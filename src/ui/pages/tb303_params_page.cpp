@@ -447,11 +447,26 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
     if (lowerKey == 'v') { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::EnvDecay, 420.0f, voice_index_); }); return true; }
   }
 
-  if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta) {
+  // Bank Selection (Ctrl + 1..2)
+  if (ui_event.ctrl && !ui_event.alt && key >= '1' && key <= '2') {
+    int bankIdx = key - '1';
+    withAudioGuard([&]() {
+      mini_acid_.set303BankIndex(voice_index_, bankIdx);
+    });
+    UI::showToast(bankIdx == 0 ? "Bank: A" : "Bank: B", 800);
+    return true;
+  }
+
+  // Pattern quick select (Q-I) - Standardized Everywhere (ignore shift for CapsLock safety)
+  if (!ui_event.ctrl && !ui_event.meta) {
     int patIdx = qwertyToPatternIndex(lowerKey);
     if (patIdx >= 0) {
       LOG_DEBUG_UI("303 Pattern Select: %d", patIdx);
       withAudioGuard([&]() { mini_acid_.set303PatternIndex(voice_index_, patIdx); });
+      // Show toast for visual confirmation
+      char buf[32];
+      std::snprintf(buf, sizeof(buf), "%s -> Pat %d", (voice_index_ == 0 ? "303A" : "303B"), patIdx + 1);
+      UI::showToast(buf, 800);
       return true;
     }
   }

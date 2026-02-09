@@ -325,7 +325,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             return true;
         }
 
-        if (event.alt || event.ctrl || event.meta) {
+        if ((event.alt || event.meta) && !event.ctrl) {
             int targetPage = -1;
             switch (event.key) {
                 case '1': targetPage = 1; break;
@@ -374,8 +374,8 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             return true;
         }
 
-        // Global Mutes (1-9) - only if no modifiers
-        if (!event.alt && !event.ctrl && !event.meta && !event.shift) {
+        // Global Mutes (1-9) - only if no secondary modifiers (ignore shift for CapsLock safety)
+        if (!event.alt && !event.ctrl && !event.meta) {
             if (event.key >= '1' && event.key <= '9') {
                 int trackIdx = event.key - '1';
                 withAudioGuard([&]() {

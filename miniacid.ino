@@ -468,6 +468,10 @@ void loop() {
       } else if (hid == KEY_TAB) {
         evt.key = '\t';
         shouldSend = true;
+      } else if (hid >= 0x1E && hid <= 0x27) { // numbers 1..0
+        if (hid == 0x27) evt.key = '0';
+        else evt.key = '1' + (hid - 0x1E);
+        shouldSend = true;
       } else if (applyCtrlLetter(ks, hid, evt)) {
         mapHidLetterScancode(hid, evt.scancode);
         shouldSend = true;
@@ -480,9 +484,8 @@ void loop() {
       }
     }
 
-    // do not send events only for ctlr/alt/shift changes
-    // so that we don't get double events when those are used as modifiers
-    if (ks.ctrl || ks.alt || ks.shift) {
+    // do not send events only for modifier changes (ctrl/alt/shift/fn alone)
+    if (ks.hid_keys.empty() && ks.word.empty()) {
       return;
     }
     for (auto inputChar : ks.word) {
@@ -494,7 +497,8 @@ void loop() {
         unsigned char u = static_cast<unsigned char>(inputChar);
         bool isLetter = (u >= 'a' && u <= 'z') || (u >= 'A' && u <= 'Z');
         bool isCtrlChar = (u >= 1 && u <= 26);
-        if (isLetter || isCtrlChar) continue;
+        bool isNumber = (u >= '0' && u <= '9');
+        if (isLetter || isCtrlChar || isNumber) continue;
       }
 
       UIEvent evt{};
