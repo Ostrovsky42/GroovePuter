@@ -15,9 +15,10 @@ class ProjectPage : public IPage{
   enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, VisualStyle, GrooveMode, GrooveFlavor, ApplyMacros, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash };
 
  private:
-  enum class DialogType { None = 0, Load, SaveAs, ImportMidi };
+ enum class DialogType { None = 0, Load, SaveAs, ImportMidi };
   enum class DialogFocus { List = 0, Cancel };
   enum class SaveDialogFocus { Input = 0, Randomize, Save, Cancel };
+  enum class MidiImportProfile { Clean = 0, Loud };
 
   int firstFocusInSection(int sectionIdx);
   int lastFocusInSection(int sectionIdx);
@@ -65,5 +66,6 @@ class ProjectPage : public IPage{
   int midi_import_start_pattern_ = 0;
   int midi_import_from_bar_ = 0;
   int midi_import_length_bars_ = 16;
+  MidiImportProfile midi_import_profile_ = MidiImportProfile::Loud;
   std::string save_name_;
 };

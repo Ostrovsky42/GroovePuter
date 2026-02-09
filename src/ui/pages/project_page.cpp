@@ -157,16 +157,11 @@ ProjectPage::ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     scroll_offset_(0),
     loadError_(false),
     save_name_(generateMemorableName()) {
-  Serial.printf("[ProjectPage] Constructor START: this=%p, type=%d, focus=%d\n", 
-                this, (int)dialog_type_, (int)main_focus_);
   refreshScenes();
-  Serial.printf("[ProjectPage] Constructor COMPLETE: scenes=%d, type=%d, selection=%d\n", 
-                (int)scenes_.size(), (int)dialog_type_, selection_index_);
 }
 
 void ProjectPage::refreshScenes() {
   scenes_ = mini_acid_.availableSceneNames();
-  Serial.printf("[ProjectPage] refreshScenes count=%d, type=%d\n", (int)scenes_.size(), (int)dialog_type_);
   if (scenes_.empty()) {
     selection_index_ = 0;
     scroll_offset_ = 0;
@@ -225,7 +220,6 @@ void ProjectPage::refreshMidiFiles() {
 }
 
 void ProjectPage::openImportMidiDialog() {
-  Serial.println("[ProjectPage] openImportMidiDialog called");
   refreshMidiFiles();
   dialog_type_ = DialogType::ImportMidi;
   dialog_focus_ = DialogFocus::List;
@@ -237,7 +231,6 @@ void ProjectPage::openImportMidiDialog() {
 }
 
 void ProjectPage::onEnter(int context) {
-  Serial.printf("[ProjectPage] onEnter: current type=%d, ctx=%d\n", (int)dialog_type_, context);
   dialog_type_ = DialogType::None;
   main_focus_ = MainFocus::Load;
   section_ = ProjectSection::Scenes;
@@ -245,21 +238,17 @@ void ProjectPage::onEnter(int context) {
 }
 
 bool ProjectPage::importMidiAtSelection() {
-  Serial.println("[ProjectPage] importMidiAtSelection entry");
   if (midi_files_.empty()) return true;
   if (selection_index_ < 0 || selection_index_ >= (int)midi_files_.size()) return true;
   
   std::string filename = midi_files_[selection_index_];
   std::string path = "/midi/" + filename;
-  Serial.printf("[ProjectPage] Target MIDI: %s\n", path.c_str());
-
-  Serial.println("[ProjectPage] Creating MidiImporter on stack...");
+  Serial.printf("[ProjectPage] Import MIDI: %s\n", path.c_str());
   MidiImporter importer(mini_acid_);
-  Serial.println("[ProjectPage] MidiImporter ready");
 
   MidiImporter::ImportSettings settings;
   if (midi_import_start_pattern_ < 0) midi_import_start_pattern_ = 0;
-  if (midi_import_start_pattern_ > 15) midi_import_start_pattern_ = 15;
+  if (midi_import_start_pattern_ > 127) midi_import_start_pattern_ = 127;
   if (midi_import_from_bar_ < 0) midi_import_from_bar_ = 0;
   if (midi_import_from_bar_ > 511) midi_import_from_bar_ = 511;
   if (midi_import_length_bars_ < 1) midi_import_length_bars_ = 1;
@@ -268,22 +257,72 @@ bool ProjectPage::importMidiAtSelection() {
   settings.startStepOffset = 0;
   settings.sourceStartBar = midi_import_from_bar_;
   settings.sourceLengthBars = midi_import_length_bars_;
-  settings.omni = true;
+  settings.omni = false;
+  settings.loudMode = (midi_import_profile_ == MidiImportProfile::Loud);
   
   UI::showToast("Importing MIDI...");
   
   MidiImporter::Error err;
-  Serial.println("[ProjectPage] Calling importer->importFile...");
+  bool omniFallbackUsed = false;
   withAudioGuard([&]() {
+    bool wasPlaying = mini_acid_.isPlaying();
+    if (wasPlaying) {
+      mini_acid_.stop();
+    }
     err = importer.importFile(path, settings);
+    if (err == MidiImporter::Error::NoNotesFound) {
+      settings.omni = true;
+      err = importer.importFile(path, settings);
+      if (err == MidiImporter::Error::None) {
+        omniFallbackUsed = true;
+      }
+    }
+    if (wasPlaying) {
+      mini_acid_.stop();
+      mini_acid_.start();
+    }
   });
-  Serial.printf("[ProjectPage] importer result=%d\n", (int)err);
+  Serial.printf("[ProjectPage] MIDI import result=%d\n", (int)err);
   
   if (err == MidiImporter::Error::None) {
-      UI::showToast("Import Successful");
+      withAudioGuard([&]() {
+        auto clampf = [](float v, float lo, float hi) -> float {
+          if (v < lo) return lo;
+          if (v > hi) return hi;
+          return v;
+        };
+        auto& sm = mini_acid_.sceneManager();
+        for (int voice = 0; voice < 2; ++voice) {
+          SynthParameters params = sm.getSynthParameters(voice);
+          // Keep imported MIDI cleaner: reduce resonant ringing and long filter tails.
+          if (midi_import_profile_ == MidiImportProfile::Loud) {
+            params.resonance = clampf(params.resonance, 0.05f, 0.46f);
+            params.envAmount = clampf(params.envAmount, 100.0f, 280.0f);
+            params.envDecay = clampf(params.envDecay, 90.0f, 250.0f);
+          } else {
+            params.resonance = clampf(params.resonance, 0.05f, 0.36f);
+            params.envAmount = clampf(params.envAmount, 80.0f, 220.0f);
+            params.envDecay = clampf(params.envDecay, 70.0f, 190.0f);
+          }
+          sm.setSynthParameters(voice, params);
+          mini_acid_.set303Parameter(TB303ParamId::Resonance, params.resonance, voice);
+          mini_acid_.set303Parameter(TB303ParamId::EnvAmount, params.envAmount, voice);
+          mini_acid_.set303Parameter(TB303ParamId::EnvDecay, params.envDecay, voice);
+        }
+      });
+      if (omniFallbackUsed) {
+        UI::showToast("Imported via OMNI (check channels)");
+      } else {
+        UI::showToast("Import Successful");
+      }
       closeDialog();
   } else {
-      UI::showToast(importer.getErrorString(err).c_str());
+      if (settings.omni && err != MidiImporter::Error::None) {
+        std::string msg = "OMNI fallback failed: " + importer.getErrorString(err);
+        UI::showToast(msg.c_str());
+      } else {
+        UI::showToast(importer.getErrorString(err).c_str());
+      }
   }
   return true;
 }
@@ -453,8 +492,6 @@ bool ProjectPage::handleSaveDialogInput(char key) {
 }
 
 bool ProjectPage::handleEvent(UIEvent& ui_event) {
-    Serial.printf("[ProjectPage] handleEvent: type=%d, scancode=%d, key=%d\n", 
-                  (int)ui_event.event_type, ui_event.scancode, ui_event.key);
     if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
     if (dialog_type_ == DialogType::Load || dialog_type_ == DialogType::ImportMidi) {
@@ -493,7 +530,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 return true;
             }
             if (key == '=' || key == '+') {
-                if (midi_import_start_pattern_ < 15) midi_import_start_pattern_++;
+                if (midi_import_start_pattern_ < 127) midi_import_start_pattern_++;
                 return true;
             }
             if (key == '[') {
@@ -510,6 +547,12 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             }
             if (key == '0') {
                 if (midi_import_length_bars_ < 256) midi_import_length_bars_++;
+                return true;
+            }
+            if (key == 'm' || key == 'M') {
+                midi_import_profile_ = (midi_import_profile_ == MidiImportProfile::Loud)
+                    ? MidiImportProfile::Clean
+                    : MidiImportProfile::Loud;
                 return true;
             }
         }
@@ -750,10 +793,8 @@ const std::string & ProjectPage::getTitle() const {
 }
 
 void ProjectPage::draw(IGfx& gfx) {
-  Serial.printf("[ProjectPage] draw START this=%p, type=%d\n", this, (int)dialog_type_);
   UI::drawStandardHeader(gfx, mini_acid_, "PROJECT");
   LayoutManager::clearContent(gfx);
-  Serial.println("[ProjectPage] draw 1: clear OK");
 
   const int x = Layout::COL_1;
   const int y0 = LayoutManager::lineY(0);
@@ -765,7 +806,6 @@ void ProjectPage::draw(IGfx& gfx) {
   int firstFocus = 0;
   int lastFocus = 0;
   sectionRange(sectionIdx, firstFocus, lastFocus);
-  Serial.println("[ProjectPage] draw 2: sectionRange OK");
   auto& led = mini_acid_.sceneManager().currentScene().led;
 
   // Top status line
@@ -777,7 +817,6 @@ void ProjectPage::draw(IGfx& gfx) {
   char sectionBuf[24];
   std::snprintf(sectionBuf, sizeof(sectionBuf), "INFO [%s]", sectionName(sectionIdx));
   gfx.drawText(infoX, y0, sectionBuf);
-  Serial.println("[ProjectPage] draw 3: info OK");
 
   const char* tabNames[3] = {"SCN", "GRV", "LED"};
   for (int i = 0; i < 3; ++i) {
@@ -850,7 +889,6 @@ void ProjectPage::draw(IGfx& gfx) {
     }
     Widgets::drawListRow(gfx, x, LayoutManager::lineY(rowBase + row), listW, line, selected);
   }
-  Serial.println("[ProjectPage] draw list OK");
 
   uint32_t freeInt = 0;
   uint32_t largestInt = 0;
@@ -870,14 +908,11 @@ void ProjectPage::draw(IGfx& gfx) {
                 styleShortName(UI::currentStyle), grooveModeName(mini_acid_.grooveboxMode()));
   const char* infoLines[3] = {perf0, perf1, perf2};
   Widgets::drawInfoBox(gfx, infoX, LayoutManager::lineY(2), infoW, infoLines, 3);
-  Serial.printf("[ProjectPage] draw 7: footer SKIPPED, type=%d\n", (int)dialog_type_);
 
   if (dialog_type_ == DialogType::None) {
-      Serial.println("[ProjectPage] draw DONE");
       return;
   }
 
-  Serial.println("[ProjectPage] draw 8: Entering DIALOG draw block");
   int w = Layout::CONTENT.w - 2 * Layout::CONTENT_PAD_X;
   int h = Layout::CONTENT.h - 2 * Layout::CONTENT_PAD_Y;
   int y_start = Layout::CONTENT.y + Layout::CONTENT_PAD_Y;
@@ -889,30 +924,15 @@ void ProjectPage::draw(IGfx& gfx) {
   if (dialog_h < 50) dialog_h = 50;
   int dialog_x = x + (w - dialog_w) / 2;
   int dialog_y = y_start + (h - dialog_h) / 2;
-  Serial.printf("[ProjectPage] draw 9: coords (%d,%d %dx%d)\n", dialog_x, dialog_y, dialog_w, dialog_h);
 
   gfx.fillRect(dialog_x, dialog_y, dialog_w, dialog_h, COLOR_DARKER);
   gfx.drawRect(dialog_x, dialog_y, dialog_w, dialog_h, COLOR_ACCENT);
-  Serial.println("[ProjectPage] draw 10: base dialog OK");
 
   if (dialog_type_ == DialogType::Load || dialog_type_ == DialogType::ImportMidi) {
     int header_h = line_h + 4;
     gfx.setTextColor(COLOR_WHITE);
     const char* title = (dialog_type_ == DialogType::Load) ? "Load Scene" : "Import MIDI File";
     gfx.drawText(dialog_x + 4, dialog_y + 2, title);
-    if (dialog_type_ == DialogType::ImportMidi) {
-      char startBuf[34];
-      char fromBuf[34];
-      char lenBuf[34];
-      std::snprintf(startBuf, sizeof(startBuf), "Start Pat %d", midi_import_start_pattern_ + 1);
-      std::snprintf(fromBuf, sizeof(fromBuf), "From Bar %d", midi_import_from_bar_ + 1);
-      std::snprintf(lenBuf, sizeof(lenBuf), "Length %d bars", midi_import_length_bars_);
-      gfx.setTextColor(COLOR_LABEL);
-      gfx.drawText(dialog_x + 4, dialog_y + 2 + line_h + 2, startBuf);
-      gfx.drawText(dialog_x + 4, dialog_y + 2 + line_h * 2 + 4, fromBuf);
-      gfx.drawText(dialog_x + 4, dialog_y + 2 + line_h * 3 + 6, lenBuf);
-      gfx.setTextColor(COLOR_WHITE);
-    }
     if (loadError_) {
       gfx.setTextColor(COLOR_ACCENT);
       gfx.drawText(dialog_x + dialog_w - 70, dialog_y + 2, "LOAD FAILED");
@@ -920,23 +940,72 @@ void ProjectPage::draw(IGfx& gfx) {
 
     int row_h = line_h + 3;
     int cancel_h = line_h + 8;
-    int list_y = dialog_y + header_h + 2;
-    if (dialog_type_ == DialogType::ImportMidi) list_y += line_h * 3 + 6;
-    int list_h = dialog_h - header_h - cancel_h - 10;
-    if (list_h < row_h) list_h = row_h;
+    int content_y = dialog_y + header_h + 2;
+    int content_h = dialog_h - header_h - cancel_h - 10;
+    if (content_h < row_h) content_h = row_h;
+    int list_x = dialog_x + 2;
+    int list_w = dialog_w - 4;
+    int list_y = content_y;
+    int list_h = content_h;
+    if (dialog_type_ == DialogType::ImportMidi) {
+      int info_w = dialog_w / 2;
+      if (info_w < 100) info_w = 100;
+      if (info_w > dialog_w - 86) info_w = dialog_w - 86;
+      int gap = 4;
+      list_w = dialog_w - info_w - gap - 4;
+      if (list_w < 78) list_w = 78;
+      int info_x = list_x + list_w + gap;
+      int info_h = content_h;
+      gfx.fillRect(info_x, content_y, info_w, info_h, COLOR_PANEL);
+      gfx.drawRect(info_x, content_y, info_w, info_h, COLOR_LABEL);
+
+      char startBuf[24];
+      char fromBuf[24];
+      char lenBuf[24];
+      char sliceBuf[24];
+      char writeBuf[28];
+      char modeBuf[20];
+      std::snprintf(startBuf, sizeof(startBuf), "Pat %d", midi_import_start_pattern_ + 1);
+      std::snprintf(fromBuf, sizeof(fromBuf), "Bar %d", midi_import_from_bar_ + 1);
+      std::snprintf(lenBuf, sizeof(lenBuf), "Len %d", midi_import_length_bars_);
+      std::snprintf(modeBuf, sizeof(modeBuf), "Mode %s",
+                    (midi_import_profile_ == MidiImportProfile::Loud) ? "LOUD" : "CLEAN");
+      int sourceStart = midi_import_from_bar_ + 1;
+      int sourceEnd = sourceStart + midi_import_length_bars_ - 1;
+      std::snprintf(sliceBuf, sizeof(sliceBuf), "B%d-%d", sourceStart, sourceEnd);
+      int targetStart = midi_import_start_pattern_ + 1;
+      int targetEnd = targetStart + midi_import_length_bars_ - 1;
+      bool truncated = false;
+      if (targetEnd > 128) {
+        targetEnd = 128;
+        truncated = true;
+      }
+      if (truncated) {
+        std::snprintf(writeBuf, sizeof(writeBuf), "P%d-%d *", targetStart, targetEnd);
+      } else {
+        std::snprintf(writeBuf, sizeof(writeBuf), "P%d-%d", targetStart, targetEnd);
+      }
+
+      gfx.setTextColor(COLOR_LABEL);
+      gfx.drawText(info_x + 4, content_y + 3, modeBuf);
+      gfx.drawText(info_x + 4, content_y + 3 + line_h + 2, startBuf);
+      gfx.drawText(info_x + 4, content_y + 3 + line_h * 2 + 4, fromBuf);
+      gfx.drawText(info_x + 4, content_y + 3 + line_h * 3 + 6, lenBuf);
+      gfx.drawText(info_x + 4, content_y + 3 + line_h * 4 + 8, sliceBuf);
+      gfx.drawText(info_x + 4, content_y + 3 + line_h * 5 + 10, writeBuf);
+      gfx.drawText(info_x + 4, content_y + info_h - line_h - 1, "-/+ [/] 9/0 M");
+      gfx.setTextColor(COLOR_WHITE);
+    }
     int visible_rows = list_h / row_h;
     if (visible_rows < 1) visible_rows = 1;
-    Serial.printf("[ProjectPage] draw 11: list size checks, vrows=%d\n", visible_rows);
 
     ensureSelectionVisible(visible_rows);
-    Serial.println("[ProjectPage] draw 12: ensureVisible OK");
 
     const auto& list = (dialog_type_ == DialogType::Load) ? scenes_ : midi_files_;
-    Serial.printf("[ProjectPage] draw 13: list ptr=%p, size=%d\n", &list, (int)list.size());
 
     if (list.empty()) {
       gfx.setTextColor(COLOR_LABEL);
-      gfx.drawText(dialog_x + 4, list_y, "No files found");
+      gfx.drawText(list_x + 4, list_y + 2, "No files found");
       gfx.setTextColor(COLOR_WHITE);
     } else {
       int rowsToDraw = visible_rows;
@@ -946,17 +1015,15 @@ void ProjectPage::draw(IGfx& gfx) {
       for (int i = 0; i < rowsToDraw; ++i) {
         int listIdx = scroll_offset_ + i;
         if (listIdx < 0 || listIdx >= (int)list.size()) {
-            Serial.printf("[ProjectPage] ERROR: listIdx %d OOB (size %d)\n", listIdx, (int)list.size());
             continue;
         }
         int row_y = list_y + i * row_h;
         bool selected = listIdx == selection_index_;
         if (selected) {
-          gfx.fillRect(dialog_x + 2, row_y, dialog_w - 4, row_h, COLOR_PANEL);
-          gfx.drawRect(dialog_x + 2, row_y, dialog_w - 4, row_h, COLOR_ACCENT);
+          gfx.fillRect(list_x, row_y, list_w, row_h, COLOR_PANEL);
+          gfx.drawRect(list_x, row_y, list_w, row_h, COLOR_ACCENT);
         }
-        Serial.printf("[ProjectPage] draw row %d: idx=%d, ptr=%p\n", i, listIdx, list[listIdx].c_str());
-        Widgets::drawClippedText(gfx, dialog_x + 6, row_y + 1, dialog_w - 12, list[listIdx].c_str());
+        Widgets::drawClippedText(gfx, list_x + 4, row_y + 1, list_w - 8, list[listIdx].c_str());
       }
     }
 

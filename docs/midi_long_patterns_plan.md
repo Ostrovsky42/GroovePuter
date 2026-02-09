@@ -1,45 +1,48 @@
-# Long MIDI Playback - Current Findings and Expansion Plan
+# Long MIDI Playback - Current State and Plan
 
 ## Summary
-We attempted to expand pattern banks beyond A/B to support long MIDI imports. On DRAM-only devices (no PSRAM), increasing bank count causes a crash (abort) due to higher RAM usage. The device log confirms PSRAM = 0 and an abort during UI navigation shortly after extending banks.
+DRAM-only hardware (no PSRAM) cannot hold expanded in-RAM bank counts safely. We keep only A/B banks in RAM and use SD-backed paging for import/edit. Import stability and audio quality were improved, but seamless long **playback** across many pages is still the remaining gap.
 
-## Current State (Stable Baseline)
-- Bank count remains 2 (A/B) for RAM safety.
-- Page paging prototype was removed after causing UI lag on hardware.
-- MIDI import supports start pattern offset (skip ahead).
+## Implemented (Current Build)
+- Bank count stays at 2 (A/B) for RAM safety.
+- SD page save/load exists (`SceneManager::setPage/saveCurrentPage/loadCurrentPage`).
+- MIDI import writes across pages (up to 128 patterns).
+- Import UI supports:
+  - `Start Pat` (1..128)
+  - source slice (`From Bar`, `Length`)
+  - `LOUD/CLEAN` import profiles
+  - OMNI fallback with user notification
+- Import-side crashes/log spam were addressed.
 
-## What We Learned
-- Scene data stores all banks in RAM.
-- Increasing banks multiplies the size of `Scene` and causes abort on DRAM-only hardware.
-- Long MIDI playback is possible only if we avoid keeping all banks resident.
+## Still Broken for Long Song Playback
+- Song rows currently reference combined pattern ids in the local A/B window semantics.
+- During song playback, pattern selection still resolves against current page-local banks.
+- Result: importing >16 patterns works, but playback does not yet transparently walk pages as one continuous long song.
 
-## Expansion Path ("Spotlight" Paging)
-Goal: Allow long MIDI playback without PSRAM by keeping only two banks (A/B) in RAM and paging the rest from SD.
+## Root Constraint
+- Seamless long playback requires page switching while the sequencer advances song rows.
+- Naively calling SD page load directly in real-time audio flow is risky (latency/underruns).
 
-### Approach
-- Treat A/B as a sliding window ("page") over a larger pattern set stored on SD.
-- On page change:
-  1. Save current A/B to SD.
-  2. Load requested page, or clear if missing.
-- MIDI import targets a specific page + offset.
+## Proposed Solution
+1. Introduce global pattern id mapping for song mode:
+   - `globalPattern = rowPattern` (0..127)
+   - `page = globalPattern / 16`
+   - `localCombined = globalPattern % 16`
+2. Add non-blocking page-switch handshake:
+   - Sequencer requests page change at safe boundary.
+   - Control/UI thread performs `setPage(page)` outside hard real-time region.
+   - Sequencer resumes with resolved local bank/slot.
+3. Keep old behavior fallback:
+   - If page switch is unavailable/failed, hold current page and report warning.
+4. Optional prefetch:
+   - Preload next page near end of current row to reduce gap risk.
 
-### UI Behavior
-- Add a page indicator (e.g., P1, P2, P3).
-- Add shortcuts to change pages (e.g., Fn + Left/Right or Alt + Left/Right).
-- Keep `B` for A/B within the current page.
+## Short-Term User Guidance
+- For reliable live playback right now, import in slices that fit active page workflow (16-pattern windows) or manually set page before the segment.
+- Use `LOUD/CLEAN` mode per file for better tone/noise tradeoff.
 
-### Storage Layout (Example)
-- `/patterns/303A/page_XX.bin`
-- `/patterns/303B/page_XX.bin`
-- `/patterns/drums/page_XX.bin`
-
-### Risks
-- SD I/O latency on page change.
-- Need robust dirty tracking to avoid data loss.
-- Must handle missing/corrupted SD files gracefully.
-
-## Next Steps (If We Proceed)
-1. Implement page store module with read/write and dirty flags.
-2. Add page navigation to Pattern Edit + Drum Sequencer.
-3. Update MIDI import to write directly to pages.
-4. Add a minimal fallback when SD is missing (stay on page 1).
+## Next Steps (Engineering)
+1. Add global-pattern song mapping in song playback path.
+2. Implement deferred page switch (non-audio-thread SD I/O).
+3. Add diagnostics: page-switch latency + underrun counters during long song test.
+4. Add "Long Song" integration test scenario (`>=64` patterns).

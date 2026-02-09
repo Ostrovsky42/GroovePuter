@@ -11,14 +11,16 @@ static inline int clampInt(int v, int lo, int hi) {
 }
 
 // Keep imported dynamics musical but avoid clipping-heavy accents on tiny hardware.
-static inline uint8_t normalizeSynthVelocity(uint8_t midiVelocity) {
+static inline uint8_t normalizeSynthVelocity(uint8_t midiVelocity, bool loudMode) {
     int v = clampInt(static_cast<int>(midiVelocity), 1, 127);
-    return static_cast<uint8_t>(58 + ((v * 42) / 127)); // ~58..100
+    if (loudMode) return static_cast<uint8_t>(68 + ((v * 26) / 127)); // ~68..94
+    return static_cast<uint8_t>(60 + ((v * 20) / 127));               // ~60..80
 }
 
-static inline uint8_t normalizeDrumVelocity(uint8_t midiVelocity) {
+static inline uint8_t normalizeDrumVelocity(uint8_t midiVelocity, bool loudMode) {
     int v = clampInt(static_cast<int>(midiVelocity), 1, 127);
-    return static_cast<uint8_t>(55 + ((v * 45) / 127)); // ~55..100
+    if (loudMode) return static_cast<uint8_t>(60 + ((v * 30) / 127)); // ~60..90
+    return static_cast<uint8_t>(54 + ((v * 24) / 127));               // ~54..78
 }
 } // namespace
 
@@ -98,29 +100,29 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
         if (sourceLengthSteps < 1) sourceLengthSteps = 1;
     }
 
-    for (int t = 0; t < header.numTracks; ++t) {
-        if (file.readBytes(magic, 4) != 4 || memcmp(magic, "MTrk", 4) != 0) {
-            return Error::InvalidFormat;
+    double ticksPerStep = static_cast<double>(header.division) / 4.0; // fixed 1/16 grid
+    if (ticksPerStep < 1.0) ticksPerStep = 1.0;
+
+    int tracksParsed = 0;
+    while (file.position() + 8 <= fileSize) {
+        if (file.readBytes(magic, 4) != 4) return Error::ReadError;
+
+        uint32_t chunkSize = 0;
+        if (!readBE32(file, chunkSize)) return Error::ReadError;
+        uint32_t chunkEnd = file.position() + chunkSize;
+        if (chunkEnd > fileSize) return Error::InvalidFormat;
+
+        if (memcmp(magic, "MTrk", 4) != 0) {
+            // Tolerate non-track chunks between tracks.
+            file.seek(chunkEnd);
+            continue;
         }
+        tracksParsed++;
+        if (tracksParsed > 128) break;
 
-        uint32_t trackSize = 0;
-        if (!readBE32(file, trackSize)) return Error::ReadError;
-        uint32_t trackEnd = file.position() + trackSize;
-        if (trackEnd > fileSize) return Error::InvalidFormat;
-
+        uint32_t trackEnd = chunkEnd;
         uint32_t absoluteTicks = 0;
         uint8_t lastStatus = 0;
-        uint8_t timeSigNum = 4;
-        uint8_t timeSigDenom = 4;
-
-        auto ticksPerStep = [&]() -> double {
-            double denom = static_cast<double>(timeSigDenom);
-            if (denom <= 0.0) denom = 4.0;
-            double barQuarters = static_cast<double>(timeSigNum) * (4.0 / denom);
-            double t = static_cast<double>(header.division) * barQuarters / 16.0;
-            if (t < 1.0) t = 1.0;
-            return t;
-        };
 
         while (file.position() < trackEnd) {
             if (file.position() > trackEnd) return Error::InvalidFormat;
@@ -136,11 +138,12 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
 
             if (!(status & 0x80)) {
                 // Running status
-                if (lastStatus == 0) return Error::InvalidFormat;
+                if (lastStatus < 0x80 || lastStatus >= 0xF0) return Error::InvalidFormat;
                 file.seek(file.position() - 1);
                 status = lastStatus;
             } else {
-                lastStatus = status;
+                // Running status is valid only for channel voice messages.
+                if (status < 0xF0) lastStatus = static_cast<uint8_t>(status);
             }
 
             uint8_t msgType = status & 0xF0;
@@ -156,10 +159,8 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                 bool isNoteOn = (msgType == 0x90 && velocity > 0);
 
                 if (isNoteOn) {
-                    // Quantize to 1/16 steps
-                    // 1 step = 1/16 of a bar based on current time signature
-                    double tps = ticksPerStep();
-                    int stepIdx = static_cast<int>((static_cast<double>(absoluteTicks) + (tps * 0.5)) / tps);
+                    // Quantize to fixed 1/16 grid.
+                    int stepIdx = static_cast<int>((static_cast<double>(absoluteTicks) + (ticksPerStep * 0.5)) / ticksPerStep);
                     bool routeToA = (channel == settings.synthAChannel);
                     bool routeToB = (channel == settings.synthBChannel);
                     bool routeToDrums = (channel == settings.drumChannel);
@@ -190,13 +191,22 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                         int clearFrom = settings.targetPatternIndex;
                         if (clearFrom < 0) clearFrom = 0;
                         if (clearFrom > kMaxPatterns) clearFrom = kMaxPatterns;
-                        for (int p = clearFrom; p < kMaxPatterns; ++p) {
+                        int clearTo = kMaxPatterns;
+                        if (sourceLengthSteps > 0) {
+                            // Overwrite only the selected import window, not the whole tail of the song.
+                            clearTo = clearFrom + ((sourceLengthSteps + 15) / 16);
+                            if (clearTo < clearFrom) clearTo = clearFrom;
+                            if (clearTo > kMaxPatterns) clearTo = kMaxPatterns;
+                        }
+                        for (int p = clearFrom; p < clearTo; ++p) {
                             SynthPattern& synthA = getSynthPattern(0, p);
                             SynthPattern& synthB = getSynthPattern(1, p);
                             DrumPatternSet& drums = getDrumPatternSet(p);
                             for (int i = 0; i < SynthPattern::kSteps; ++i) {
                                 synthA.steps[i] = SynthStep{};
                                 synthB.steps[i] = SynthStep{};
+                                synthA.steps[i].note = -1; // Rest (note=0 is a valid note and causes unwanted pulses)
+                                synthB.steps[i].note = -1;
                             }
                             for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
                                 for (int i = 0; i < DrumPattern::kSteps; ++i) {
@@ -209,25 +219,25 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
 
                         if (routeToA) {
                             SynthPattern& pat = getSynthPattern(0, patternIdx);
-                            if (!settings.overwrite && pat.steps[stepInPattern].note != 0) {
+                            if (!settings.overwrite && pat.steps[stepInPattern].note >= 0) {
                                 // Keep existing note
                             } else {
-                                int safeNote = clampInt(static_cast<int>(note), 24, 96);
-                                uint8_t safeVel = normalizeSynthVelocity(velocity);
+                                int safeNote = clampInt(static_cast<int>(note), MiniAcid::kMin303Note, MiniAcid::kMax303Note);
+                                uint8_t safeVel = normalizeSynthVelocity(velocity, settings.loudMode);
                                 pat.steps[stepInPattern].note = safeNote;
-                                pat.steps[stepInPattern].accent = (velocity >= 118);
+                                pat.steps[stepInPattern].accent = false;
                                 pat.steps[stepInPattern].velocity = safeVel;
                                 notesImported++;
                             }
                         } else if (routeToB) {
                             SynthPattern& pat = getSynthPattern(1, patternIdx);
-                            if (!settings.overwrite && pat.steps[stepInPattern].note != 0) {
+                            if (!settings.overwrite && pat.steps[stepInPattern].note >= 0) {
                                 // Keep existing note
                             } else {
-                                int safeNote = clampInt(static_cast<int>(note), 24, 96);
-                                uint8_t safeVel = normalizeSynthVelocity(velocity);
+                                int safeNote = clampInt(static_cast<int>(note), MiniAcid::kMin303Note, MiniAcid::kMax303Note);
+                                uint8_t safeVel = normalizeSynthVelocity(velocity, settings.loudMode);
                                 pat.steps[stepInPattern].note = safeNote;
-                                pat.steps[stepInPattern].accent = (velocity >= 118);
+                                pat.steps[stepInPattern].accent = false;
                                 pat.steps[stepInPattern].velocity = safeVel;
                                 notesImported++;
                             }
@@ -249,9 +259,9 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                                  if (!settings.overwrite && step.hit) {
                                      // Keep existing hit
                                  } else {
-                                     uint8_t safeVel = normalizeDrumVelocity(velocity);
+                                     uint8_t safeVel = normalizeDrumVelocity(velocity, settings.loudMode);
                                      step.hit = true;
-                                     step.accent = (velocity >= 124);
+                                     step.accent = false;
                                      step.velocity = safeVel;
                                      notesImported++;
                                  }
@@ -275,24 +285,16 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                 uint32_t metaLen = 0;
                 if (!readVarLen(file, metaLen, bytesRead)) return Error::ReadError;
                 if (metaType == 0x2F) { // End of Track
-                    if (metaLen != 0) return Error::InvalidFormat;
+                    // Be tolerant: some files may carry non-zero payload here.
+                    uint32_t newPos = file.position() + metaLen;
+                    if (newPos > trackEnd) return Error::InvalidFormat;
+                    file.seek(newPos);
                     file.seek(trackEnd);
                     break;
                 }
                 if (metaType == 0x58) { // Time Signature
-                    if (metaLen < 4) return Error::InvalidFormat;
-                    uint8_t nn = 0, ddPow = 0, cc = 0, bb = 0;
-                    if (!readU8(file, nn)) return Error::ReadError;
-                    if (!readU8(file, ddPow)) return Error::ReadError;
-                    if (!readU8(file, cc)) return Error::ReadError;
-                    if (!readU8(file, bb)) return Error::ReadError;
-                    if (ddPow < 8) {
-                        timeSigNum = (nn == 0) ? 4 : nn;
-                        timeSigDenom = static_cast<uint8_t>(1u << ddPow);
-                        if (timeSigDenom == 0) timeSigDenom = 4;
-                    }
-                    uint32_t remaining = metaLen - 4;
-                    uint32_t newPos = file.position() + remaining;
+                    // We quantize to fixed 1/16, so just skip this payload.
+                    uint32_t newPos = file.position() + metaLen;
                     if (newPos > trackEnd) return Error::InvalidFormat;
                     file.seek(newPos);
                 } else {
@@ -307,11 +309,28 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                 uint32_t newPos = file.position() + sysexLen;
                 if (newPos > trackEnd) return Error::InvalidFormat;
                 file.seek(newPos);
+            } else if (status == 0xF1 || status == 0xF3) {
+                if (file.position() + 1 > trackEnd) return Error::InvalidFormat;
+                uint8_t tmp = 0;
+                if (!readU8(file, tmp)) return Error::ReadError;
+            } else if (status == 0xF2) {
+                if (file.position() + 2 > trackEnd) return Error::InvalidFormat;
+                uint8_t tmp = 0;
+                if (!readU8(file, tmp)) return Error::ReadError;
+                if (!readU8(file, tmp)) return Error::ReadError;
+            } else if ((status >= 0xF4 && status <= 0xF6) || (status >= 0xF8 && status <= 0xFE)) {
+                // System common/realtime bytes with no payload in SMF stream.
             } else {
                 return Error::InvalidFormat;
             }
         }
+
+        // Ensure parser is aligned to the next chunk boundary.
+        if (file.position() != trackEnd) {
+            file.seek(trackEnd);
+        }
     }
+    if (tracksParsed == 0) return Error::InvalidFormat;
 
     if (notesImported == 0) return Error::NoNotesFound;
 

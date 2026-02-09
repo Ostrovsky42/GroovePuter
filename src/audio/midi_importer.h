@@ -32,6 +32,7 @@ public:
         int synthBChannel = 2;        // MIDI channel for Synth B
         bool quantize = true;         // Always true for now as engine is step-based
         bool omni = true;             // Route any non-drum notes to Synth A
+        bool loudMode = true;         // true=LOUD profile, false=CLEAN profile
     };
 
     explicit MidiImporter(MiniAcid& engine);
