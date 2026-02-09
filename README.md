@@ -34,6 +34,7 @@ Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtu
 
 ## Quick Keys 
 - `Space`: play/stop
+- `Fn+nums`: page routing
 - `[` / `]`: previous/next page
 - `Arrows`: move cursor / navigate lists
 - `Enter`: confirm/apply/toggle focused item
@@ -56,8 +57,6 @@ Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtu
 | **Pattern Edit** | ![Pattern Edit](docs/screenshots/pattern_edit.png) |
 | **Song Page** | ![Song Page](docs/screenshots/song_page.png) |
 | **Groove Lab** | ![Groove Lab](docs/screenshots/groove_lab.png) |
-| **Feel & Texture** | ![Feel & Texture](docs/screenshots/feel_texture.png) |
-
 
 ## Requirements
 

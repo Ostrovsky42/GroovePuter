@@ -1,5 +1,7 @@
 #include "project_page.h"
 #include "../ui_common.h"
+#include "../../audio/midi_importer.h"
+#include <SD.h>
 #if defined(ESP32) || defined(ESP_PLATFORM)
 #include <esp_heap_caps.h>
 #endif
@@ -126,7 +128,7 @@ void sectionRange(int section, int& first, int& last) {
   switch (section) {
     case 0: // scenes
       first = (int)ProjectPage::MainFocus::Load;
-      last = (int)ProjectPage::MainFocus::New;
+      last = (int)ProjectPage::MainFocus::ImportMidi;
       return;
     case 1: // groove
       first = (int)ProjectPage::MainFocus::VisualStyle;
@@ -194,6 +196,105 @@ void ProjectPage::openSaveDialog() {
   save_dialog_focus_ = SaveDialogFocus::Input;
   save_name_ = mini_acid_.currentSceneName();
   if (save_name_.empty()) save_name_ = generateMemorableName();
+}
+
+void ProjectPage::refreshMidiFiles() {
+  midi_files_.clear();
+  if (!SD.exists("/midi")) {
+      SD.mkdir("/midi");
+  }
+  File root = SD.open("/midi");
+  if (!root) return;
+  while (true) {
+    File entry = root.openNextFile();
+    if (!entry) break;
+    if (!entry.isDirectory()) {
+      std::string name = entry.name();
+      if (name.size() > 4 && name.substr(name.size() - 4) == ".mid") {
+        midi_files_.push_back(name);
+      }
+    }
+    entry.close();
+  }
+  root.close();
+}
+
+void ProjectPage::openImportMidiDialog() {
+  refreshMidiFiles();
+  dialog_type_ = DialogType::ImportMidi;
+  dialog_focus_ = DialogFocus::List;
+  selection_index_ = 0;
+  scroll_offset_ = 0;
+  midi_import_start_pattern_ = 0;
+}
+
+bool ProjectPage::importMidiAtSelection() {
+  if (midi_files_.empty()) return true;
+  if (selection_index_ < 0 || selection_index_ >= (int)midi_files_.size()) return true;
+  
+  std::string path = "/midi/" + midi_files_[selection_index_];
+  MidiImporter importer(mini_acid_);
+  MidiImporter::ImportSettings settings;
+  settings.targetPatternIndex = 0; // Or whatever makes sense
+  if (midi_import_start_pattern_ < 0) midi_import_start_pattern_ = 0;
+  if (midi_import_start_pattern_ > 15) midi_import_start_pattern_ = 15;
+  settings.startStepOffset = midi_import_start_pattern_ * 16;
+  settings.omni = true;
+  
+  UI::showToast("Importing MIDI...");
+  
+  MidiImporter::Error err;
+  withAudioGuard([&]() {
+    err = importer.importFile(path, settings);
+  });
+  
+  if (err == MidiImporter::Error::None) {
+      UI::showToast("Import Successful");
+      closeDialog();
+  } else {
+      UI::showToast(importer.getErrorString(err).c_str());
+  }
+  return true;
+}
+
+bool ProjectPage::deleteSelectionInDialog() {
+  if (dialog_focus_ != DialogFocus::List) return true;
+  if (dialog_type_ == DialogType::Load) {
+    if (scenes_.empty()) return true;
+    if (selection_index_ < 0 || selection_index_ >= (int)scenes_.size()) return true;
+    std::string name = scenes_[selection_index_];
+    std::string path = "/scenes/" + name + ".json";
+    std::string autoPath = "/scenes/" + name + ".auto.json";
+    bool removed = SD.remove(path.c_str());
+    SD.remove(autoPath.c_str());
+    if (removed) {
+      UI::showToast("Scene deleted");
+      refreshScenes();
+      if (selection_index_ >= (int)scenes_.size()) selection_index_ = (int)scenes_.size() - 1;
+      if (selection_index_ < 0) selection_index_ = 0;
+      ensureSelectionVisible(10);
+    } else {
+      UI::showToast("Delete failed");
+    }
+    return true;
+  }
+  if (dialog_type_ == DialogType::ImportMidi) {
+    if (midi_files_.empty()) return true;
+    if (selection_index_ < 0 || selection_index_ >= (int)midi_files_.size()) return true;
+    std::string path = "/midi/" + midi_files_[selection_index_];
+    bool removed = SD.remove(path.c_str());
+    if (removed) {
+      UI::showToast("MIDI deleted");
+      refreshMidiFiles();
+      if (selection_index_ >= (int)midi_files_.size()) selection_index_ = (int)midi_files_.size() - 1;
+      if (selection_index_ < 0) selection_index_ = 0;
+      ensureSelectionVisible(10);
+    } else {
+      UI::showToast("Delete failed");
+    }
+    return true;
+  }
+  return true;
 }
 
 void ProjectPage::closeDialog() {
@@ -317,7 +418,8 @@ bool ProjectPage::handleSaveDialogInput(char key) {
 bool ProjectPage::handleEvent(UIEvent& ui_event) {
     if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
-    if (dialog_type_ == DialogType::Load) {
+    if (dialog_type_ == DialogType::Load || dialog_type_ == DialogType::ImportMidi) {
+        auto& list = (dialog_type_ == DialogType::Load) ? scenes_ : midi_files_;
         switch (ui_event.scancode) {
             case GROOVEPUTER_LEFT:
                 if (dialog_focus_ == DialogFocus::Cancel) { dialog_focus_ = DialogFocus::List; return true; }
@@ -326,17 +428,43 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 if (dialog_focus_ == DialogFocus::List) { dialog_focus_ = DialogFocus::Cancel; return true; }
                 break;
             case GROOVEPUTER_UP:
-                if (dialog_focus_ == DialogFocus::List) { moveSelection(-1); return true; }
+                if (dialog_focus_ == DialogFocus::List) { 
+                    loadError_ = false;
+                    selection_index_--;
+                    if (selection_index_ < 0) selection_index_ = 0;
+                    ensureSelectionVisible(10);
+                    return true; 
+                }
                 break;
             case GROOVEPUTER_DOWN:
-                if (dialog_focus_ == DialogFocus::List) { moveSelection(1); return true; }
+                if (dialog_focus_ == DialogFocus::List) { 
+                    loadError_ = false;
+                    selection_index_++;
+                    if (!list.empty() && selection_index_ >= (int)list.size()) selection_index_ = (int)list.size() - 1;
+                    ensureSelectionVisible(10);
+                    return true; 
+                }
                 break;
             default: break;
         }
         char key = ui_event.key;
+        if (dialog_type_ == DialogType::ImportMidi) {
+            if (key == '-') {
+                if (midi_import_start_pattern_ > 0) midi_import_start_pattern_--;
+                return true;
+            }
+            if (key == '=' || key == '+') {
+                if (midi_import_start_pattern_ < 15) midi_import_start_pattern_++;
+                return true;
+            }
+        }
+        if (key == 'x' || key == 'X') {
+            return deleteSelectionInDialog();
+        }
         if (key == '\n' || key == '\r') {
             if (dialog_focus_ == DialogFocus::Cancel) { closeDialog(); return true; }
-            return loadSceneAtSelection();
+            if (dialog_type_ == DialogType::Load) return loadSceneAtSelection();
+            else return importMidiAtSelection();
         }
         if (key == '\b') { closeDialog(); return true; }
         return false;
@@ -362,6 +490,11 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             default: break;
         }
         char key = ui_event.key;
+        if (key == 0) {
+            if (ui_event.scancode >= GROOVEPUTER_F1 && ui_event.scancode <= GROOVEPUTER_F8) {
+                key = static_cast<char>('1' + (ui_event.scancode - GROOVEPUTER_F1));
+            }
+        }
         if (save_dialog_focus_ == SaveDialogFocus::Input && handleSaveDialogInput(key)) return true;
         if (key == '\n' || key == '\r') {
             if (save_dialog_focus_ == SaveDialogFocus::Randomize) { randomizeSaveName(); return true; }
@@ -505,6 +638,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         if (main_focus_ == MainFocus::Load) { openLoadDialog(); return true; }
         if (main_focus_ == MainFocus::SaveAs) { openSaveDialog(); return true; }
         if (main_focus_ == MainFocus::New) return createNewScene();
+        if (main_focus_ == MainFocus::ImportMidi) { openImportMidiDialog(); return true; }
 
         if (main_focus_ == MainFocus::VisualStyle) { UI::currentStyle = nextStyle(UI::currentStyle); return true; }
         if (main_focus_ == MainFocus::GrooveMode) {
@@ -607,6 +741,7 @@ void ProjectPage::draw(IGfx& gfx) {
       case MainFocus::Load: std::snprintf(line, sizeof(line), "Load Scene"); break;
       case MainFocus::SaveAs: std::snprintf(line, sizeof(line), "Save As"); break;
       case MainFocus::New: std::snprintf(line, sizeof(line), "New"); break;
+      case MainFocus::ImportMidi: std::snprintf(line, sizeof(line), "Import MIDI"); break;
       case MainFocus::VisualStyle:
         std::snprintf(line, sizeof(line), "Theme      %s", styleShortName(UI::currentStyle));
         break;
@@ -697,10 +832,18 @@ void ProjectPage::draw(IGfx& gfx) {
   gfx.fillRect(dialog_x, dialog_y, dialog_w, dialog_h, COLOR_DARKER);
   gfx.drawRect(dialog_x, dialog_y, dialog_w, dialog_h, COLOR_ACCENT);
 
-  if (dialog_type_ == DialogType::Load) {
+  if (dialog_type_ == DialogType::Load || dialog_type_ == DialogType::ImportMidi) {
     int header_h = line_h + 4;
     gfx.setTextColor(COLOR_WHITE);
-    gfx.drawText(dialog_x + 4, dialog_y + 2, "Load Scene");
+    const char* title = (dialog_type_ == DialogType::Load) ? "Load Scene" : "Import MIDI File";
+    gfx.drawText(dialog_x + 4, dialog_y + 2, title);
+    if (dialog_type_ == DialogType::ImportMidi) {
+      char startBuf[32];
+      std::snprintf(startBuf, sizeof(startBuf), "Start Pat %d", midi_import_start_pattern_ + 1);
+      gfx.setTextColor(COLOR_LABEL);
+      gfx.drawText(dialog_x + 4, dialog_y + 2 + line_h + 2, startBuf);
+      gfx.setTextColor(COLOR_WHITE);
+    }
     if (loadError_) {
       gfx.setTextColor(COLOR_ACCENT);
       gfx.drawText(dialog_x + dialog_w - 70, dialog_y + 2, "LOAD FAILED");
@@ -709,6 +852,7 @@ void ProjectPage::draw(IGfx& gfx) {
     int row_h = line_h + 3;
     int cancel_h = line_h + 8;
     int list_y = dialog_y + header_h + 2;
+    if (dialog_type_ == DialogType::ImportMidi) list_y += line_h + 2;
     int list_h = dialog_h - header_h - cancel_h - 10;
     if (list_h < row_h) list_h = row_h;
     int visible_rows = list_h / row_h;
@@ -716,24 +860,26 @@ void ProjectPage::draw(IGfx& gfx) {
 
     ensureSelectionVisible(visible_rows);
 
-    if (scenes_.empty()) {
+    auto& list = (dialog_type_ == DialogType::Load) ? scenes_ : midi_files_;
+
+    if (list.empty()) {
       gfx.setTextColor(COLOR_LABEL);
-      gfx.drawText(dialog_x + 4, list_y, "No scenes found");
+      gfx.drawText(dialog_x + 4, list_y, "No files found");
       gfx.setTextColor(COLOR_WHITE);
     } else {
       int rowsToDraw = visible_rows;
-      if (rowsToDraw > static_cast<int>(scenes_.size()) - scroll_offset_) {
-        rowsToDraw = static_cast<int>(scenes_.size()) - scroll_offset_;
+      if (rowsToDraw > static_cast<int>(list.size()) - scroll_offset_) {
+        rowsToDraw = static_cast<int>(list.size()) - scroll_offset_;
       }
       for (int i = 0; i < rowsToDraw; ++i) {
-        int sceneIdx = scroll_offset_ + i;
+        int listIdx = scroll_offset_ + i;
         int row_y = list_y + i * row_h;
-        bool selected = sceneIdx == selection_index_;
+        bool selected = listIdx == selection_index_;
         if (selected) {
           gfx.fillRect(dialog_x + 2, row_y, dialog_w - 4, row_h, COLOR_PANEL);
           gfx.drawRect(dialog_x + 2, row_y, dialog_w - 4, row_h, COLOR_ACCENT);
         }
-        gfx.drawText(dialog_x + 6, row_y + 1, scenes_[sceneIdx].c_str());
+        Widgets::drawClippedText(gfx, dialog_x + 6, row_y + 1, dialog_w - 12, list[listIdx].c_str());
       }
     }
 
@@ -791,7 +937,7 @@ int ProjectPage::firstFocusInSection(int sectionIdx) {
 }
 
 int ProjectPage::lastFocusInSection(int sectionIdx) {
-  if (sectionIdx == 0) return (int)ProjectPage::MainFocus::New;
+  if (sectionIdx == 0) return (int)ProjectPage::MainFocus::ImportMidi;
   if (sectionIdx == 1) return (int)ProjectPage::MainFocus::Volume;
   if (sectionIdx == 2) return (int)ProjectPage::MainFocus::LedFlash;
   return 0;
@@ -799,7 +945,7 @@ int ProjectPage::lastFocusInSection(int sectionIdx) {
 
 bool ProjectPage::focusInSection(int sectionIdx, int focusIdx) {
   ProjectPage::MainFocus f = static_cast<ProjectPage::MainFocus>(focusIdx);
-  if (sectionIdx == 0) return f >= ProjectPage::MainFocus::Load && f <= ProjectPage::MainFocus::New;
+  if (sectionIdx == 0) return f >= ProjectPage::MainFocus::Load && f <= ProjectPage::MainFocus::ImportMidi;
   if (sectionIdx == 1) return f >= ProjectPage::MainFocus::VisualStyle && f <= ProjectPage::MainFocus::Volume;
   if (sectionIdx == 2) return f >= ProjectPage::MainFocus::LedMode && f <= ProjectPage::MainFocus::LedFlash;
   return false;

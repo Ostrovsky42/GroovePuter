@@ -11,10 +11,10 @@ class ProjectPage : public IPage{
   bool handleEvent(UIEvent& ui_event) override;
   const std::string & getTitle() const override;
   enum class ProjectSection { Scenes = 0, Groove, Led };
-  enum class MainFocus { Load = 0, SaveAs, New, VisualStyle, GrooveMode, GrooveFlavor, ApplyMacros, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash };
+  enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, VisualStyle, GrooveMode, GrooveFlavor, ApplyMacros, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash };
 
  private:
-  enum class DialogType { None = 0, Load, SaveAs };
+  enum class DialogType { None = 0, Load, SaveAs, ImportMidi };
   enum class DialogFocus { List = 0, Cancel };
   enum class SaveDialogFocus { Input = 0, Randomize, Save, Cancel };
 
@@ -33,6 +33,10 @@ class ProjectPage : public IPage{
   void randomizeSaveName();
   bool saveCurrentScene();
   bool createNewScene();
+  void refreshMidiFiles();
+  void openImportMidiDialog();
+  bool importMidiAtSelection();
+  bool deleteSelectionInDialog();
   bool handleSaveDialogInput(char key);
   void ensureMainFocusVisible(int visibleRows);
   template <typename F>
@@ -56,5 +60,7 @@ class ProjectPage : public IPage{
   int main_scroll_ = 0;
   bool loadError_;
   std::vector<std::string> scenes_;
+  std::vector<std::string> midi_files_;
+  int midi_import_start_pattern_ = 0;
   std::string save_name_;
 };

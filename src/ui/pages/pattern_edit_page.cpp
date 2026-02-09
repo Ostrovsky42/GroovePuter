@@ -549,6 +549,11 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   }
 
   char key = ui_event.key;
+  if (key == 0) {
+    if (ui_event.scancode >= GROOVEPUTER_F1 && ui_event.scancode <= GROOVEPUTER_F8) {
+      key = static_cast<char>('1' + (ui_event.scancode - GROOVEPUTER_F1));
+    }
+  }
   char lowerKey = key ? static_cast<char>(std::tolower(static_cast<unsigned char>(key))) : 0;
   const bool is_escape = (ui_event.scancode == GROOVEPUTER_ESCAPE) || (key == 0x1B);
   const bool is_backspace = (key == '\b' || key == 0x7F);
@@ -968,7 +973,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
 
   // 1. Header (from RetroWidgets, like GenrePage)
   char modeBuf[16];
-  snprintf(modeBuf, sizeof(modeBuf), "P%d", selectedPattern + 1);
+  std::snprintf(modeBuf, sizeof(modeBuf), "P%d", selectedPattern + 1);
   char titleBuf[32];
   snprintf(titleBuf, sizeof(titleBuf), "%s%s", 
            voice_index_ == 0 ? "303 A" : "303 B",
@@ -1175,7 +1180,7 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
   int bankCursor = activeBankCursor();
 
   char modeBuf[16];
-  snprintf(modeBuf, sizeof(modeBuf), "P%d", selectedPattern + 1);
+  std::snprintf(modeBuf, sizeof(modeBuf), "P%d", selectedPattern + 1);
   char titleBuf[32];
   snprintf(titleBuf, sizeof(titleBuf), "%s%s", 
            voice_index_ == 0 ? "303 A" : "303 B",

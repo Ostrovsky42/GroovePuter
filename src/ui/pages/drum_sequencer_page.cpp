@@ -592,6 +592,11 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   if (handled) return true;
 
   char key = ui_event.key;
+  if (key == 0) {
+    if (ui_event.scancode >= GROOVEPUTER_F1 && ui_event.scancode <= GROOVEPUTER_F8) {
+      key = static_cast<char>('1' + (ui_event.scancode - GROOVEPUTER_F1));
+    }
+  }
   char lowerKey = key ? static_cast<char>(std::tolower(static_cast<unsigned char>(key))) : 0;
 
   /*

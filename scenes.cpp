@@ -1782,6 +1782,7 @@ void SceneManager::setSynthStep(int synthIdx, int step, int note, bool slide, bo
   pattern.steps[clampedStep].accent = accent;
 }
 
+
 void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   doc.clear();
   ArduinoJson::JsonObject root = doc.to<ArduinoJson::JsonObject>();
