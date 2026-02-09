@@ -381,6 +381,16 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
                 gfx.setTextColor(IGfxColor(TEXT_SECONDARY));
                 gfx.drawText(x + 6, ry + 1, name);
             }
+            
+            // Volume Indicator (OLD) - Removed as per new design
+            /*
+            float vol = mini_acid_.getTrackVolume((VoiceId)i);
+            int volW = (int)(vol * 12.0f);
+            if (volW > 12) volW = 12;
+            if (volW > 0) {
+                gfx.fillRect(x + 28, ry + rowH - 4, volW, 2, selected ? IGfxColor(trackColor) : IGfxColor(GRID_DIM));
+            }
+            */
 
             // Tiny mask
             int maskX = x + 50;
@@ -389,11 +399,36 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
                 bool hit = hubTrackHitAt(mini_acid_, i, s);
                 
                 IGfxColor color = hit ? (selected ? IGfxColor(trackColor) : IGfxColor(GRID_MEDIUM)) : IGfxColor(BG_INSET);
-                if (s == playingStep && isPlaying) color = IGfxColor(NEON_YELLOW);
+                
+                // Volume Visualization: A subtle stripe behind/under the grid or background
+                float vol = mini_acid_.getTrackVolume((VoiceId)i);
+                
+                // Method 1: Bottom stripe "under beads"
+                int gridW = 16 * cellW;
+                int volBarW = (int)(vol * gridW);
+                if (volBarW > gridW) volBarW = gridW;
+                
+                // Draw background for the row based on volume?
+                // Or just a stripe at the bottom. User said "stripe at the bottom under beads".
+                
                 gfx.fillRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, color);
+                
                 IGfxColor border = (s % 4 == 0) ? IGfxColor(GRID_MEDIUM) : IGfxColor(GRID_DIM);
                 gfx.drawRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, border);
             }
+            
+            // Draw Volume Stripe at the bottom of the grid area
+            float vol = mini_acid_.getTrackVolume((VoiceId)i);
+            int gridTotalW = 16 * cellW;
+            int volPixelW = (int)(vol * gridTotalW);
+            if (volPixelW > gridTotalW) volPixelW = gridTotalW;
+            
+            if (volPixelW > 0) {
+                // Stripe at the bottom of the row, 2px high
+                // "background slightly moved to left" -> This bar represents that.
+                gfx.fillRect(maskX, ry + rowH - 2, volPixelW, 2, selected ? IGfxColor(trackColor) : IGfxColor(GRID_MEDIUM));
+            }
+
             
             if (selected) {
                  drawOverviewCursor(gfx, i, stepCursor_, maskX, ry + 2, cellW, rowH - 4);
@@ -415,8 +450,7 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
 
         // Removed redundant channel activity bar - LED indicators already show activity
 
-        // Scanlines disabled: caused flicker on small TFT
-        RetroWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]TRK [L/R]STEP [X]HIT [A]ACC", "ENT:Open  Q-I:Pat", "HUB");
+        RetroWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]TRK [L/R]STEP [+/-]VOL", "ENT:Open [X]HIT", "HUB");
     } else {
         // DETAIL MODE
         if (isDrumTrack(selectedTrack_)) {
@@ -527,6 +561,16 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
                 gfx.drawText(x + 6, ry + 1, name);
             }
 
+            // Volume Indicator (OLD) - Removed
+            /*
+            float vol = mini_acid_.getTrackVolume((VoiceId)i);
+            int volW = (int)(vol * 12.0f);
+            if (volW > 12) volW = 12;
+            if (volW > 0) {
+                gfx.fillRect(x + 28, ry + rowH - 4, volW, 2, selected ? IGfxColor(AmberTheme::NEON_CYAN) : IGfxColor(AmberTheme::GRID_DIM));
+            }
+            */
+
             int maskX = x + 50;
             int cellW = 11;
             for (int s = 0; s < 16; s++) {
@@ -537,6 +581,16 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
                 gfx.fillRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, color);
                 IGfxColor border = (s % 4 == 0) ? IGfxColor(AmberTheme::GRID_MEDIUM) : IGfxColor(AmberTheme::GRID_DIM);
                 gfx.drawRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, border);
+            }
+            
+            // Amber Volume Stripe (New)
+            float vol = mini_acid_.getTrackVolume((VoiceId)i);
+            int gridTotalW = 16 * cellW;
+            int volPixelW = (int)(vol * gridTotalW);
+            if (volPixelW > gridTotalW) volPixelW = gridTotalW;
+            
+            if (volPixelW > 0) {
+                gfx.fillRect(maskX, ry + rowH - 2, volPixelW, 2, selected ? IGfxColor(AmberTheme::NEON_CYAN) : IGfxColor(AmberTheme::GRID_DIM));
             }
             
             if (selected) {
@@ -559,8 +613,7 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
 
         // Removed redundant channel activity bar - LED indicators already show activity
 
-        // Scanlines disabled: caused flicker on small TFT
-        AmberWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]TRK [L/R]STEP [X]HIT [A]ACC", "ENT:Open  Q-I:Pat", "HUB");
+        AmberWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]TRK [L/R]STEP [+/-]VOL", "ENT:Open [X]HIT", "HUB");
     } else {
         if (isDrumTrack(selectedTrack_)) {
             drumGrid_->setStyle(GrooveboxStyle::AMBER);
@@ -643,8 +696,8 @@ void SequencerHubPage::drawOverview(IGfx& gfx) {
     // Removed redundant channel activity bar - LED indicators already show activity
 
     UI::drawStandardFooter(gfx,
-        "[UP/DN]TRK [L/R]STEP [X]HIT [A]ACC",
-        "[ENT]OPEN [Q-I]PAT [SPACE]PLAY");
+        "[UP/DN]TRK [L/R]STEP [+/-]VOL",
+        "[ENT]OPEN [X]HIT [SPACE]PLAY");
 }
 
 void SequencerHubPage::drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool selected) {
@@ -663,6 +716,26 @@ void SequencerHubPage::drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool 
     
     gfx.setTextColor(selected ? COLOR_WHITE : COLOR_GRAY);
     gfx.drawText(4, y + 1, name);
+    
+    // Volume Indicator (OLD) - Removed
+    /*
+    float vol = mini_acid_.getTrackVolume((VoiceId)trackIdx);
+    int volW = (int)(vol * 14.0f);
+    if (volW > 14) volW = 14;
+    if (volW > 0) {
+        gfx.fillRect(30, y + h - 4, volW, 2, selected ? COLOR_WHITE : COLOR_GRAY);
+    }
+    */
+    // Draw Volume Stripe (Minimal)
+    float vol = mini_acid_.getTrackVolume((VoiceId)trackIdx);
+    // Minimal style doesn't have the same grid layout here often, but let's put it at the bottom of the row
+    int volMaxW = 236 - 46; // track name width + padding
+    int volPixelW = (int)(vol * volMaxW);
+    if (volPixelW > volMaxW) volPixelW = volMaxW;
+    
+    if (volPixelW > 0) {
+        gfx.fillRect(46, y + h - 2, volPixelW, 2, selected ? COLOR_ACCENT : COLOR_GRAY);
+    }
     
     // Activity LED
     bool active = mini_acid_.isTrackActive(trackIdx);
@@ -881,20 +954,33 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
         return true;
     }
 
-    // Pattern quick select (Q-I)
-    int patIdx = qwertyToPatternIndex(lower);
-    
-    if (patIdx >= 0) {
-        patternCursor_ = patIdx;
+    // Mutes are paramount: 1-0 toggles mutes directly in Hub
+    int muteTrackIdx = -1;
+    if (e.key >= '1' && e.key <= '9') muteTrackIdx = e.key - '1';
+    else if (e.key == '0') muteTrackIdx = 9;
+
+    if (muteTrackIdx >= 0 && !e.alt && !e.ctrl) {
         withAudioGuard([&]() {
-            if (isDrumTrack(selectedTrack_)) {
-                mini_acid_.setDrumPatternIndex(patIdx);
-            } else {
-                mini_acid_.set303PatternIndex(selectedTrack_, patIdx);
-            }
+            if (muteTrackIdx == 0) mini_acid_.toggleMute303(0);
+            else if (muteTrackIdx == 1) mini_acid_.toggleMute303(1);
+            else if (muteTrackIdx == 2) mini_acid_.toggleMuteKick();
+            else if (muteTrackIdx == 3) mini_acid_.toggleMuteSnare();
+            else if (muteTrackIdx == 4) mini_acid_.toggleMuteHat();
+            else if (muteTrackIdx == 5) mini_acid_.toggleMuteOpenHat();
+            else if (muteTrackIdx == 6) mini_acid_.toggleMuteMidTom();
+            else if (muteTrackIdx == 7) mini_acid_.toggleMuteHighTom();
+            else if (muteTrackIdx == 8) mini_acid_.toggleMuteRim();
+            else if (muteTrackIdx == 9) mini_acid_.toggleMuteClap();
         });
         return true;
     }
+
+    /*
+    // Pattern quick select (Q-I) - DISABLED by user request (presets not selected by buttons)
+    // Preserves Q-I for other uses or prevents accidental switching.
+    int patIdx = qwertyToPatternIndex(lower);
+    if (patIdx >= 0) { ... } 
+    */
     
     // Copy/Paste (Ctrl+C / Ctrl+V)
     if (lower == 'c' && e.ctrl) {
@@ -978,11 +1064,10 @@ bool SequencerHubPage::handleVolumeInput(UIEvent& e) {
     if (mode_ != Mode::OVERVIEW) return false;
 
     // Volume control: Per-track fader logic
-    // - Use Ctrl + Minus/Plus (overrides global master volume on this page)
+    // - Use Minus/Plus directly (overrides global master volume on this page)
     // - Use Alt + Left/Right (alternative)
-    // Note: Ctrl + '=' is often '+' without shift, checking both covers bases
-    bool isVolUp = (e.ctrl && (e.key == '=' || e.key == '+')) || (e.alt && UIInput::isRight(e));
-    bool isVolDn = (e.ctrl && (e.key == '-' || e.key == '_')) || (e.alt && UIInput::isLeft(e));
+    bool isVolUp = (e.key == '=' || e.key == '+') || (e.alt && UIInput::isRight(e));
+    bool isVolDn = (e.key == '-' || e.key == '_') || (e.alt && UIInput::isLeft(e));
 
     if (isVolUp || isVolDn) {
         float vol = mini_acid_.getTrackVolume((VoiceId)selectedTrack_);

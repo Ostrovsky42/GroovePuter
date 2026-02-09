@@ -18,7 +18,7 @@ This page is the operational UI for the new `groove_profile` pipeline.
 - `Enter`: action on focused row
 - `A`: apply flavor voicing preset to `303A`
 - `B`: apply flavor voicing preset to `303B`
-- `T`: apply flavor tape macro
+- `D`: randomize drum pattern using flavor rules
 - `M`: toggle `applySoundMacros`
 - `Space`: preview regenerate and start playback
 

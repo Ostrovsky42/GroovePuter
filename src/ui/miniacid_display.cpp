@@ -204,11 +204,15 @@ void MiniAcidDisplay::syncVisualStyle_() {
 }
 
 void MiniAcidDisplay::nextPage() {
-    transitionToPage_((page_index_ + 1) % kPageCount);
+    int next = (page_index_ + 1) % kPageCount;
+    LOG_DEBUG_UI("nextPage: %d -> %d", page_index_, next);
+    transitionToPage_(next);
 }
 
 void MiniAcidDisplay::previousPage() {
-    transitionToPage_((page_index_ - 1 + kPageCount) % kPageCount);
+    int prev = (page_index_ - 1 + kPageCount) % kPageCount;
+    LOG_DEBUG_UI("previousPage: %d -> %d", page_index_, prev);
+    transitionToPage_(prev);
 }
 
 void MiniAcidDisplay::goToPage(int index) {
@@ -269,7 +273,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
 
         if (event.alt && (event.key == 'v' || event.key == 'V')) {
-            goToPage(11); // Tape
+            goToPage(11); // Groove Lab
             return true;
         }
 

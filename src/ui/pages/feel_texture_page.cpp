@@ -406,11 +406,15 @@ bool FeelTexturePage::handleEvent(UIEvent& ui_event) {
         }
     }
 
+    /*
+    // START: Number keys disabled for Mute priority
     if (key >= '1' && key <= '4') {
         preset_index_ = key - '1';
         applyPreset(preset_index_);
         return true;
     }
+    // END: Number keys disabled
+    */
 
     return false;
 }

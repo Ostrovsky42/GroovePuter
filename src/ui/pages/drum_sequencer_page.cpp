@@ -629,6 +629,8 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
+  /*
+  // Pattern quick select (Q-I) - DISABLED by user request
   int patternIdx = patternIndexFromKey(lowerKey);
   if (patternIdx < 0) {
       patternIdx = scancodeToPatternIndex(ui_event.scancode);
@@ -657,6 +659,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     });
     return true;
   }
+  */
 
   bool key_a = (lowerKey == 'a') || (ui_event.scancode == GROOVEPUTER_A);
   bool key_b = (lowerKey == 'b') || (ui_event.scancode == GROOVEPUTER_B);

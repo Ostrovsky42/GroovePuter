@@ -16,7 +16,7 @@ Practical guardrails for contributors working in this repo.
 ## Current UX Conventions
 - Global style: `Alt+\\` (`CARBON/CYBER/AMBER`)
 - Selection v2 (Pattern/Drum/Song):
-  - `Shift/Ctrl + Arrows` expand selection
+  - `Ctrl + Arrows` expand selection
   - `Ctrl+C` copy and lock frame
   - Arrows move locked frame
   - `Ctrl+V` paste and clear selection

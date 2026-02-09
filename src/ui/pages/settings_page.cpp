@@ -221,11 +221,15 @@ bool SettingsPage::handleEvent(UIEvent& e) {
         }
     }
 
+    /*
+    // START: Number keys disabled for Mute priority
     if (e.key >= '1' && e.key <= '3') {
         preset_index_ = e.key - '1';
         applyPreset(preset_index_);
         return true;
     }
+    // END: Number keys disabled
+    */
     
     return false;
 }

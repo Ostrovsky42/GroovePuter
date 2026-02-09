@@ -872,6 +872,8 @@ bool GenrePage::handleEvent(UIEvent& e) {
         return true;
     }
 
+    /*
+    // START: Number keys disabled for Mute priority
     // Direct preset selection (1-8)
     if (key >= '1' && key <= '8') {
         presetIndex_ = key - '1';
@@ -898,6 +900,8 @@ bool GenrePage::handleEvent(UIEvent& e) {
         updateFromEngine();
         return true;
     }
+    // END: Number keys disabled
+    */
 
     return false;
 }

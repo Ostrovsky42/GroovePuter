@@ -124,8 +124,10 @@ void DrumReverb::updateMix() {
 }
 
 void DrumReverb::updateDecay() {
-  float shaped = std::pow(decay_, 1.2f);
-  float rt60 = 0.12f + (6.0f - 0.12f) * shaped;
+  // Make decay extremely obvious across the full control range.
+  // Very short at low values, very long at high values.
+  float shaped = std::pow(decay_, 2.5f);
+  float rt60 = 0.03f + (15.0f - 0.03f) * shaped;
   if (rt60 < 0.02f) rt60 = 0.02f;
   for (int i = 0; i < 4; ++i) {
     float delaySeconds = static_cast<float>(combDelay_[i].size()) / sampleRate_;
@@ -168,8 +170,8 @@ float DrumReverb::process(float input) {
   float wet = outputHpf_.process(y);
   wet = outputLpf_.process(wet);
 
-  // Slightly amplify wet signal to compensate for loss in perceived volume.
-  float wet_amplified = wet * 2.0f;
+  // Boost wet signal so decay changes are clearly audible.
+  float wet_amplified = wet * 3.0f;
 
   return dry_ * input + (wet_ * wet_amplified);
 }

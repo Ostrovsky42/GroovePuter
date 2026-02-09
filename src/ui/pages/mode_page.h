@@ -17,7 +17,7 @@ private:
     void shiftMode(int delta);
     void shiftFlavor(int delta);
     void applyTo303(int voiceIdx);
-    void applyToTape();
+    void applyToDrums();
     void previewMode();
     void toggleMacros();
     void moveFocus(int delta);

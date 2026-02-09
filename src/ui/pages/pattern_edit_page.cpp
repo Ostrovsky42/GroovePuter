@@ -556,7 +556,8 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   // Let app-level back navigation handle ESC when nothing local to clear.
   if (is_escape) return false;
 
-  // Q-I Pattern Selection (Standardized) - PRIORITIZED
+  /*
+  // Q-I Pattern Selection (Standardized) - DISABLED per user request (presets not selected by buttons)
   if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
     int patternIdx = patternIndexFromKey(lowerKey);
     if (patternIdx < 0) {
@@ -594,6 +595,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       return true;
     }
   }
+  */
 
   /*
   int bankIdx = bankIndexFromKey(key);

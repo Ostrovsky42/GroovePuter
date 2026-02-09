@@ -14,7 +14,7 @@ Notes:
 | `Alt+1..0` or `Ctrl+1..0` | Direct page jump |
 | `Alt+M` | Toggle Song mode |
 | `Alt+W` | Waveform overlay |
-| `Alt+V` | Jump to Tape page |
+| `Alt+V` | Jump to Groove Lab |
 | `Alt+\\` | Cycle visual style (`CARBON`/`CYBER`/`AMBER`) |
 | `Ctrl+H` | Global help overlay |
 | `1..9`, `0` | Track mutes |
@@ -43,7 +43,7 @@ Notes:
 | `Enter` | Action on focused row |
 | `A` | Apply flavor voicing to `303A` |
 | `B` | Apply flavor voicing to `303B` |
-| `T` | Apply flavor tape macro |
+| `D` | Randomize drum pattern using flavor rules |
 | `M` | Toggle `applySoundMacros` |
 | `Space` | Preview regenerate + start playback |
 
@@ -167,21 +167,6 @@ Drum rows in this page:
 | `Enter` | Execute/open focused action |
 | `G` | Jump to Genre page |
 
-## Tape Page
-| Key | Action |
-| --- | --- |
-| `X` | Smart workflow (`REC/PLAY/DUB`) |
-| `A` | CAPTURE (clear + REC + FX ON) |
-| `S` | THICKEN (safe DUB for 1 cycle) |
-| `D` | WASH ON/OFF |
-| `G` | Loop mute ON/OFF |
-| `Z` / `C` / `V` | `STOP` / `DUB` / `PLAY` |
-| `1` / `2` / `3` | Speed `0.5x / 1.0x / 2.0x` |
-| `F` | Tape FX ON/OFF |
-| `Enter` | Stutter ON/OFF |
-| `Space` | Clear loop |
-| `Bksp` / `Del` | Eject/reset loop |
-| `Alt+Esc` | Chain mode (priority over Back) |
 
 ## Sequencer Hub
 | Key | Action |
@@ -204,5 +189,5 @@ Drum rows in this page:
 | `Left/Right` | Change Mode/Flavor/Macro |
 | `Enter` / `Space` | Preview (Regeneration) |
 | `A` / `B` | Apply Mode settings to 303 `A/B` |
-| `T` | Apply Mode settings to Tape FX |
+| `D` | Randomize drum pattern using flavor rules |
 | `M` | Toggle sound-macro application |
