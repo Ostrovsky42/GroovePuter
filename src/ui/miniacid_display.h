@@ -41,7 +41,7 @@ private:
   void syncVisualStyle_();
   
   // Lazy page loading
-  static constexpr int kPageCount = 12;
+  static constexpr int kPageCount = 14;
   std::unique_ptr<IPage> createPage_(int index);
   IPage* getPage_(int index); // Returns existing or creates on-demand
   void transitionToPage_(int index, int context = 0);

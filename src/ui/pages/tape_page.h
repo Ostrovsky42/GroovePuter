@@ -4,6 +4,7 @@
 #include "../ui_colors.h"
 #include "../ui_utils.h"
 #include "src/dsp/miniacid_engine.h"
+#include "waveform_page.h"
 
 class TapePage : public IPage {
  public:
@@ -23,12 +24,27 @@ class TapePage : public IPage {
   class ModeComponent;
   class PresetComponent;
   
+  void drawCassette(IGfx& gfx);
+  void drawReel(IGfx& gfx, int x, int y, int radius, float rotation);
+  void drawTape(IGfx& gfx);
+  void updateAnimations();
+  
   void initComponents();
   void syncFromState();
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
+  
+  WaveformVisualization waveform_;
+
+  // Animation state
+  float left_reel_radius_ = 20.0f;
+  float right_reel_radius_ = 10.0f;
+  float reel_rotation_ = 0.0f;
+  bool direction_ = true;
+  unsigned long last_frame_time_ = 0;
+  static constexpr int kFrameDelay = 50;
   
   bool initialized_ = false;
   

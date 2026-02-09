@@ -18,6 +18,7 @@
 #include "pages/tb303_params_page.h"
 #include "pages/song_page.h"
 #include "pages/help_dialog.h"
+#include "pages/sampler_page.h"
 #include "ui_colors.h"
 #include "ui_input.h"
 #include "ui_common.h"
@@ -95,8 +96,9 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case 8:  return std::make_unique<FeelTexturePage>(gfx_, mini_acid_, audio_guard_);
         case 9:  return std::make_unique<SettingsPage>(gfx_, mini_acid_, audio_guard_);
         case 10: return std::make_unique<ProjectPage>(gfx_, mini_acid_,audio_guard_);        
-        //case 11: return std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_);
-        case 11: return std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_);
+        case 11: return std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_);
+        case 12: return std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_);
+        case 13: return std::make_unique<SamplerPage>(gfx_, mini_acid_, audio_guard_);
 
         default: return nullptr;
     }
