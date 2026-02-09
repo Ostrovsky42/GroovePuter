@@ -594,9 +594,8 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   char key = ui_event.key;
   char lowerKey = key ? static_cast<char>(std::tolower(static_cast<unsigned char>(key))) : 0;
 
-  /*
   int bankIdx = bankIndexFromKey(key);
-  if (bankIdx >= 0) {
+  if (bankIdx >= 0 && ui_event.alt) {
     setBankIndex(bankIdx);
     if (!mini_acid_.songModeEnabled()) {
       bank_focus_ = true;
@@ -604,7 +603,6 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     }
     return true;
   }
-    */
 
   if (key == '\n' || key == '\r') {
     if (has_selection_) {
@@ -629,8 +627,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  /*
-  // Pattern quick select (Q-I) - DISABLED by user request
+  // Pattern quick select (Q-I)
   int patternIdx = patternIndexFromKey(lowerKey);
   if (patternIdx < 0) {
       patternIdx = scancodeToPatternIndex(ui_event.scancode);
@@ -659,7 +656,6 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     });
     return true;
   }
-  */
 
   bool key_a = (lowerKey == 'a') || (ui_event.scancode == GROOVEPUTER_A);
   bool key_b = (lowerKey == 'b') || (ui_event.scancode == GROOVEPUTER_B);
