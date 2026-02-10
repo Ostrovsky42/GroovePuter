@@ -50,9 +50,16 @@ public:
      */
     std::string getErrorString(Error error) const;
 
+    /**
+     * @brief Get the last pattern index that was actually written to during import.
+     * Useful for determining the song length after a "Full" import.
+     */
+    int getLastImportedPatternIdx() const { return lastImportedPatternIdx_; }
+
 private:
     MiniAcid& engine_;
     int cachedPageIndex_ = -1;
+    int lastImportedPatternIdx_ = -1;
 
     struct MidiHeader {
         uint16_t format;      // 0, 1, or 2

@@ -36,6 +36,7 @@ MidiImporter::Error MidiImporter::importFile(const std::string& path, const Midi
     auto& sceneManager = engine_.sceneManager();
     const int originalPageIndex = sceneManager.currentPageIndex();
     cachedPageIndex_ = -1;
+    lastImportedPatternIdx_ = -1;
     Error err = parseFile(file, settings);
     saveCacheToPage(); // Flush final touched page.
     if (sceneManager.currentPageIndex() != originalPageIndex) {
@@ -87,9 +88,7 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
     }
 
     int notesImported = 0;
-    static constexpr int kPatternsPerPage = kBankCount * Bank<SynthPattern>::kPatterns; // 16
-    static constexpr int kMaxPages = 8;
-    static constexpr int kMaxPatterns = kPatternsPerPage * kMaxPages; // 128 song patterns.
+    // Using global constants from scenes.h: kPatternsPerPage, kMaxPages, kMaxPatterns
     bool importRegionCleared = false;
     int firstRoutedStep = -1;
     int sourceStartSteps = settings.sourceStartBar * 16;
@@ -228,6 +227,7 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                                 pat.steps[stepInPattern].accent = false;
                                 pat.steps[stepInPattern].velocity = safeVel;
                                 notesImported++;
+                                if (patternIdx > lastImportedPatternIdx_) lastImportedPatternIdx_ = patternIdx;
                             }
                         } else if (routeToB) {
                             SynthPattern& pat = getSynthPattern(1, patternIdx);
@@ -240,6 +240,7 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                                 pat.steps[stepInPattern].accent = false;
                                 pat.steps[stepInPattern].velocity = safeVel;
                                 notesImported++;
+                                if (patternIdx > lastImportedPatternIdx_) lastImportedPatternIdx_ = patternIdx;
                             }
                         } else if (routeToDrums) {
                          int drumVoice = -1;
@@ -261,9 +262,10 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                                  } else {
                                      uint8_t safeVel = normalizeDrumVelocity(velocity, settings.loudMode);
                                      step.hit = true;
-                                     step.accent = false;
+                                     step.hit = true;
                                      step.velocity = safeVel;
                                      notesImported++;
+                                     if (patternIdx > lastImportedPatternIdx_) lastImportedPatternIdx_ = patternIdx;
                                  }
                              }
                     }

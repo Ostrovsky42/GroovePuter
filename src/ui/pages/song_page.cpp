@@ -32,13 +32,14 @@ inline void formatSongPatternLabel(int pattern, char* out, int outSize) {
     std::snprintf(out, outSize, "---");
     return;
   }
+  const int page = songPatternPage(pattern) + 1;
   const int bank = songPatternBank(pattern);
   const int slot = songPatternIndexInBank(pattern) + 1;
   if (bank < 0 || slot <= 0) {
     std::snprintf(out, outSize, "---");
     return;
   }
-  std::snprintf(out, outSize, "%c-%d", static_cast<char>('A' + bank), slot);
+  std::snprintf(out, outSize, "%d%c%d", page, static_cast<char>('A' + bank), slot);
 }
 
 struct SongPatternClipboard {
@@ -157,7 +158,7 @@ bool SongPage::cursorOnPlayheadLabel() const {
   return false; // Not implemented yet
 }
 
-int SongPage::visibleTrackCount() const { return 3; }
+int SongPage::visibleTrackCount() const { return 4; }
 
 int SongPage::maxEditableTrackColumn() const { 
   return visibleTrackCount(); // Grid (0..3) + Mode Button (4)
@@ -336,11 +337,13 @@ void SongPage::syncSongPositionToCursor() {
 
 SongTrack SongPage::trackForColumn(int col, bool& valid) const {
   valid = true;
-  if (col == 0) return SongTrack::SynthA;
-  if (col == 1) return SongTrack::SynthB;
-  if (col == 2) return thirdLaneTrack();
-  valid = false;
-  return SongTrack::Drums;
+  switch (col) {
+    case 0: return SongTrack::SynthA;
+    case 1: return SongTrack::SynthB;
+    case 2: return SongTrack::Drums;
+    case 3: return SongTrack::Voice;
+    default: valid = false; return SongTrack::SynthA;
+  }
 }
 
 int SongPage::bankIndexForTrack(SongTrack track) const {
@@ -368,7 +371,7 @@ bool SongPage::adjustSongPatternAtCursor(int delta) {
   if (!trackValid) return false;
   int row = cursorRow();
   int current = mini_acid_.songPatternAt(row, track);
-  int maxPattern = kSongPatternCount - 1;
+  int maxPattern = kMaxGlobalPatterns - 1;
   int next = current;
   if (delta > 0) next = current < 0 ? 0 : current + 1;
   else if (delta < 0) next = current < 0 ? -1 : current - 1;
@@ -392,7 +395,8 @@ bool SongPage::flipSongPatternBankAtCursorOrSelection() {
     int slot = songPatternIndexInBank(pattern);
     if (bank < 0 || slot < 0) return pattern;
     int flippedBank = (bank == 0) ? 1 : 0;
-    return songPatternFromBank(flippedBank, slot);
+    int page = songPatternPage(pattern);
+    return songPatternFromPageBankIndex(page, flippedBank, slot);
   };
 
   if (has_selection_) {
@@ -491,7 +495,7 @@ bool SongPage::assignPattern(int patternIdx) {
           SongTrack track = trackForColumn(t, valid);
           if (!valid) continue;
           int bankIndex = bankIndexForTrack(track);
-          int combined = songPatternFromBank(bankIndex, patternIdx);
+          int combined = songPatternFromPageBankIndex(mini_acid_.currentPageIndex(), bankIndex, patternIdx);
           int before = mini_acid_.songPatternAt(r, track);
           mini_acid_.setSongPattern(r, track, combined);
           int after = mini_acid_.songPatternAt(r, track);
@@ -517,7 +521,7 @@ bool SongPage::assignPattern(int patternIdx) {
   if (!trackValid) return false;
   int row = cursorRow();
   int bankIndex = bankIndexForTrack(track);
-  int combined = songPatternFromBank(bankIndex, patternIdx);
+  int combined = songPatternFromPageBankIndex(mini_acid_.currentPageIndex(), bankIndex, patternIdx);
   withAudioGuard([&]() {
     mini_acid_.setSongPattern(row, track, combined);
     if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
@@ -1128,15 +1132,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return toggleSongMode();
   }
 
-  if (!ui_event.ctrl && !ui_event.alt && (lowerKey == 'v' || ui_event.scancode == GROOVEPUTER_V)) {
-    if (!voice_lane_visible_ && !hasVoiceDataInActiveSlot()) {
-      showToast("No VO data in slot", 1000);
-      return true;
-    }
-    voice_lane_visible_ = !voice_lane_visible_;
-    showToast(voice_lane_visible_ ? "Lane: VOICE" : "Lane: DRUMS", 1000);
-    return true;
-  }
+  // 'v' key was legacy lane toggle, now both are always visible.
 
   if (!ui_event.ctrl && !ui_event.alt && (lowerKey == 'x' || ui_event.scancode == GROOVEPUTER_X)) {
     split_compare_ = !split_compare_;
@@ -1180,7 +1176,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
             int current = mini_acid_.songPatternAt(r, t_track);
             if (current >= 0) {
               int slot = songPatternIndexInBank(current);
-              int next = songPatternFromBank(bankIdx, slot);
+              int next = songPatternFromPageBankIndex(mini_acid_.currentPageIndex(), bankIdx, slot);
               if (next != current) {
                 mini_acid_.setSongPattern(r, t_track, next);
                 ++changed;
@@ -1351,47 +1347,33 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
   if (scroll_row_ > maxStart) scroll_row_ = maxStart;
 
   int track_count = visibleTrackCount();
-  int pos_col_w = 0;
+  int pos_col_w = 20; // Column for Bar Numbers
   int spacing = 2;
-  int modeBtnW = 55;
-  int track_col_w = (w - pos_col_w - spacing * (track_count + 2) - modeBtnW) / track_count;
-  if (track_col_w < 20) track_col_w = 20;
+  int modeBtnW = 45;
+  int track_col_w = (w - pos_col_w - spacing * (track_count + 1) - modeBtnW) / track_count;
+  if (track_col_w < 18) track_col_w = 18;
 
+  // Header
+  gfx.setTextColor(COLOR_GRAY);
+  gfx.drawText(x + 2, body_y, "BAR");
+  
   gfx.setTextColor(song303Color(0));
   gfx.drawText(x + pos_col_w + spacing, body_y, "303A");
   gfx.setTextColor(song303Color(1));
-  gfx.drawText(x + pos_col_w + spacing + track_col_w, body_y, "303B");
+  gfx.drawText(x + pos_col_w + spacing + (track_col_w + spacing), body_y, "303B");
   gfx.setTextColor(COLOR_LABEL);
-  gfx.drawText(x + pos_col_w + spacing + track_col_w * 2, body_y, voice_lane_visible_ ? "Voice" : "Drums");
+  gfx.drawText(x + pos_col_w + spacing + (track_col_w + spacing) * 2, body_y, "DR");
+  gfx.drawText(x + pos_col_w + spacing + (track_col_w + spacing) * 3, body_y, "VO");
+
   char lenBuf[32];
-  snprintf(lenBuf, sizeof(lenBuf), "PLYHD %d:%d", playhead + 1, song_len);
-  int lenX = x + pos_col_w + spacing + track_col_w * track_count + spacing + 5;
-  int lenW = textWidth(gfx, lenBuf);
+  snprintf(lenBuf, sizeof(lenBuf), "P:%d/%d", playhead + 1, song_len);
+  int lenX = x + pos_col_w + spacing + track_count * (track_col_w + spacing) + 4;
   bool playheadSelected = cursorOnPlayheadLabel();
   if (playheadSelected) {
-    gfx.drawRect(lenX - 2, body_y - 1, lenW + 4, label_h + 2, COLOR_STEP_SELECTED);
+    gfx.drawRect(lenX - 2, body_y - 1, textWidth(gfx, lenBuf) + 4, label_h + 2, COLOR_STEP_SELECTED);
   }
+  gfx.setTextColor(COLOR_INFO);
   gfx.drawText(lenX, body_y, lenBuf);
-
-  if (loopMode) {
-    int loopStart = mini_acid_.loopStartRow();
-    int loopEnd = mini_acid_.loopEndRow();
-    char loopBuf[32];
-    snprintf(loopBuf, sizeof(loopBuf), "LOOP %d-%d", loopStart + 1, loopEnd + 1);
-    int loopX = lenX + lenW + 8;
-    gfx.setTextColor(IGfxColor::Yellow());
-    gfx.drawText(loopX, body_y, loopBuf);
-    gfx.setTextColor(COLOR_WHITE);
-  }
-
-  if (playingSong) {
-    // Dynamic 'PLAYING' bar in header
-    int anim_x = x + w - 40;
-    int anim_y = body_y;
-    bool blink = (millis() % 400) < 200;
-    gfx.setTextColor(blink ? COLOR_ACCENT : COLOR_GRAY);
-    gfx.drawText(anim_x, anim_y, "PLAY");
-  }
 
   drawGeneratorHint(gfx);
 
@@ -1400,13 +1382,20 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
     int row_idx = scroll_row_ + i;
     if (row_idx >= Song::kMaxPositions) break;
     int ry = grid_y + i * row_h;
+    
+    // Bar number
+    char barBuf[8];
+    snprintf(barBuf, sizeof(barBuf), "%03d", row_idx + 1);
+    gfx.setTextColor(row_idx == playhead ? COLOR_ACCENT : COLOR_GRAY);
+    gfx.drawText(x + 2, ry + 2, barBuf);
+
     if (row_idx == playhead && playingSong) {
       bool pulse = (millis() % 600) < 300;
       IGfxColor highlightColor = pulse ? IGfxColor(0x303030) : IGfxColor(0x202020);
-      gfx.fillRect(x, ry, w, row_h, highlightColor);
-      // Bright side bar for current playing row
-      gfx.fillRect(x, ry, 2, row_h, COLOR_ACCENT);
+      gfx.fillRect(x + pos_col_w, ry, w - pos_col_w, row_h, highlightColor);
     }
+
+    int modeX = x + pos_col_w + spacing + track_count * (track_col_w + spacing) + 5;
     for (int t = 0; t < track_count; ++t) {
       bool valid = false;
       SongTrack track = trackForColumn(t, valid);
@@ -1427,7 +1416,7 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
       if (pattern >= 0) {
         char patBuf[16];
         formatSongPatternLabel(pattern, patBuf, sizeof(patBuf));
-        gfx.setTextColor(t < 2 ? song303Color(t) : COLOR_WHITE);
+        gfx.setTextColor(t < 2 ? song303Color(t) : (t == 2 ? COLOR_WHITE : IGfxColor::Green()));
         gfx.drawText(tx + 2, ry + 2, patBuf);
       } else {
         gfx.setTextColor(COLOR_GRAY);
@@ -1437,7 +1426,8 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
     if (row_idx == playhead) {
       bool pulse = (millis() % 400) < 200;
       gfx.setTextColor(pulse ? COLOR_ACCENT : COLOR_WHITE);
-      gfx.drawText(x + w - 15, ry + 2, ">>");
+      // Moved playhead arrow to before mode button
+      gfx.drawText(modeX - 12, ry + 2, ">>");
       
       if (playingSong) {
           // MicroVU animation
@@ -1593,10 +1583,11 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
     gfx.setTextColor(headerColor);
     int grid_y = y + header_h + 2; 
     
-    if (!split_compare_ || cell_w > 20) {
+    if (!split_compare_ || cell_w > 18) {
         gfx.drawText(paneX + pos_w + 2, grid_y, "A");
         gfx.drawText(paneX + pos_w + (cell_w + col_gap) + 2, grid_y, "B");
-        gfx.drawText(paneX + pos_w + 2 * (cell_w + col_gap) + 2, grid_y, laneShortLabel()); 
+        gfx.drawText(paneX + pos_w + 2 * (cell_w + col_gap) + 2, grid_y, "DR");
+        gfx.drawText(paneX + pos_w + 3 * (cell_w + col_gap) + 2, grid_y, "VO");
     }
 
     // Slot Label in corner
@@ -1677,6 +1668,8 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
         if (pattern >= 0) {
           char patBuf[10];
           formatSongPatternLabel(pattern, patBuf, sizeof(patBuf));
+          IGfxColor patColor = (t < 2) ? (t == 0 ? song303Color(0) : song303Color(1)) : (t == 2 ? TE_WHITE : IGfxColor::Green());
+          gfx.setTextColor(patColor.color16());
           gfx.drawText(tx + 1, ry + 1, patBuf);
         } else {
           gfx.drawText(tx + 1, ry + 1, "--");
@@ -1813,7 +1806,9 @@ void SongPage::drawRetroClassicStyle(IGfx& gfx) {
       gfx.setTextColor(laneB);
       gfx.drawText(paneX + cell_w + 2, headerY, "B");
       gfx.setTextColor(laneC);
-      gfx.drawText(paneX + 2 * cell_w + 2, headerY, laneShortLabel());
+      gfx.drawText(paneX + 2 * cell_w + 2, headerY, "DR");
+      gfx.setTextColor(IGfxColor(RetroTheme::NEON_GREEN));
+      gfx.drawText(paneX + 3 * cell_w + 2, headerY, "VO");
 
       char slotBuf[8];
       std::snprintf(slotBuf, sizeof(slotBuf), "S%c", 'A' + paneSlot);
@@ -1968,7 +1963,8 @@ void SongPage::drawAmberStyle(IGfx& gfx) {
 
             if (pattern >= 0) {
                 formatSongPatternLabel(pattern, buf, sizeof(buf));
-                gfx.setTextColor(IGfxColor(AmberTheme::TEXT_PRIMARY));
+                IGfxColor pColor = (t < 2) ? IGfxColor(AmberTheme::TEXT_PRIMARY) : (t == 2 ? IGfxColor::White() : IGfxColor::Green());
+                gfx.setTextColor(pColor);
                 gfx.drawText(tx, ry, buf);
             } else {
                 gfx.setTextColor(IGfxColor(AmberTheme::GRID_DIM));

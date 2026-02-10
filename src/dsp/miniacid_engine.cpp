@@ -521,20 +521,20 @@ int MiniAcid::cycleBarIndex() const {
   return bar;
 }
 
-int MiniAcid::currentDrumPatternIndex() const {
+int16_t MiniAcid::currentDrumPatternIndex() const {
   return sceneManager_.getCurrentDrumPatternIndex();
 }
 
-int MiniAcid::current303PatternIndex(int voiceIndex) const {
+int16_t MiniAcid::current303PatternIndex(int voiceIndex) const {
   int idx = clamp303Voice(voiceIndex);
   return sceneManager_.getCurrentSynthPatternIndex(idx);
 }
 
-int MiniAcid::currentDrumBankIndex() const {
+int16_t MiniAcid::currentDrumBankIndex() const {
   return sceneManager_.getCurrentBankIndex(0);
 }
 
-int MiniAcid::current303BankIndex(int voiceIndex) const {
+int16_t MiniAcid::current303BankIndex(int voiceIndex) const {
   int idx = clamp303Voice(voiceIndex);
   return sceneManager_.getCurrentBankIndex(idx + 1);
 }
@@ -713,7 +713,7 @@ void MiniAcid::setSongPosition(int position) {
   if (songMode_) applySongPositionSelection();
 }
 
-void MiniAcid::setSongPattern(int position, SongTrack track, int patternIndex) {
+void MiniAcid::setSongPattern(int position, SongTrack track, int16_t patternIndex) {
   sceneManager_.setSongPattern(position, track, patternIndex);
   if (songMode_ && position == currentSongPosition() &&
       activeSongSlot() == songPlaybackSlot_) {
@@ -731,11 +731,11 @@ void MiniAcid::clearSongPattern(int position, SongTrack track) {
   }
 }
 
-int MiniAcid::songPatternAt(int position, SongTrack track) const {
+int16_t MiniAcid::songPatternAt(int position, SongTrack track) const {
   return sceneManager_.songPattern(position, track);
 }
 
-int MiniAcid::songPatternAtSlot(int slot, int position, SongTrack track) const {
+int16_t MiniAcid::songPatternAtSlot(int slot, int position, SongTrack track) const {
   return sceneManager_.songPatternAtSlot(slot, position, track);
 }
 
@@ -781,26 +781,42 @@ void MiniAcid::queueSongReverseToggle() {
 }
 bool MiniAcid::hasPendingSongReverseToggle() const { return songReverseTogglePending_; }
 
-int MiniAcid::display303PatternIndex(int voiceIndex) const {
+int16_t MiniAcid::display303PatternIndex(int voiceIndex) const {
   int idx = clamp303Voice(voiceIndex);
   if (songMode_) {
     int pos = clampSongPosition(sceneManager_.getSongPosition());
     int combined = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos,
                                                    idx == 0 ? SongTrack::SynthA : SongTrack::SynthB);
-    if (combined < 0) return -1;
-    return songPatternIndexInBank(combined);
+    return combined; // Return global ID
   }
-  return sceneManager_.getCurrentSynthPatternIndex(idx);
+  // Return global ID for pattern mode too
+  return songPatternFromPageBankIndex(currentPage_, sceneManager_.getCurrentBankIndex(idx + 1), sceneManager_.getCurrentSynthPatternIndex(idx));
 }
 
-int MiniAcid::displayDrumPatternIndex() const {
+int16_t MiniAcid::displayDrumPatternIndex() const {
   if (songMode_) {
     int pos = clampSongPosition(sceneManager_.getSongPosition());
     int combined = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos, SongTrack::Drums);
-    if (combined < 0) return -1;
-    return songPatternIndexInBank(combined);
+    return combined; // Return global ID
   }
-  return sceneManager_.getCurrentDrumPatternIndex();
+  // Return global ID for pattern mode too
+  return songPatternFromPageBankIndex(currentPage_, sceneManager_.getCurrentBankIndex(0), sceneManager_.getCurrentDrumPatternIndex());
+}
+
+int MiniAcid::display303LocalPatternIndex(int voiceIndex) const {
+  int16_t global = display303PatternIndex(voiceIndex);
+  if (global < 0) return -1;
+  if (songPatternPage(global) != currentPage_) return -1;
+  if (songPatternBank(global) != current303BankIndex(voiceIndex)) return -1;
+  return songPatternIndexInBank(global);
+}
+
+int MiniAcid::displayDrumLocalPatternIndex() const {
+  int16_t global = displayDrumPatternIndex();
+  if (global < 0) return -1;
+  if (songPatternPage(global) != currentPage_) return -1;
+  if (songPatternBank(global) != currentDrumBankIndex()) return -1;
+  return songPatternIndexInBank(global);
 }
 
 std::vector<std::string> MiniAcid::getAvailableDrumEngines() const {
@@ -959,7 +975,7 @@ void MiniAcid::set303DistortionEnabled(int voiceIndex, bool enabled) {
   }
 }
 
-void MiniAcid::setDrumPatternIndex(int patternIndex) {
+void MiniAcid::setDrumPatternIndex(int16_t patternIndex) {
   sceneManager_.setCurrentDrumPatternIndex(patternIndex);
 }
 
@@ -992,7 +1008,7 @@ void MiniAcid::set303ParameterNormalized(TB303ParamId id, float norm, int voiceI
   if (idx == 0) voice303.setParameterNormalized(id, norm);
   else voice3032.setParameterNormalized(id, norm);
 }
-void MiniAcid::set303PatternIndex(int voiceIndex, int patternIndex) {
+void MiniAcid::set303PatternIndex(int voiceIndex, int16_t patternIndex) {
   int idx = clamp303Voice(voiceIndex);
   sceneManager_.setCurrentSynthPatternIndex(idx, patternIndex);
 }
@@ -1008,6 +1024,24 @@ void MiniAcid::shift303PatternIndex(int voiceIndex, int delta) {
 void MiniAcid::set303BankIndex(int voiceIndex, int bankIndex) {
   int idx = clamp303Voice(voiceIndex);
   sceneManager_.setCurrentBankIndex(idx + 1, bankIndex);
+}
+
+void MiniAcid::requestPageSwitch(int pageIndex) {
+    if (pageIndex < 0 || pageIndex >= kMaxPages) return;
+    if (pageIndex == currentPage_ && targetPage_ == -1) return;
+    
+    targetPage_ = pageIndex;
+    
+    if (!approachB_Enabled_) {
+        // Approach A: Synchronous (Risky in audio thread!)
+        // Only use if SD test was < 2ms max.
+        // PatternPagingService::loadPage(pageIndex, sceneManager_.currentScene());
+        // currentPage_ = pageIndex;
+        // targetPage_ = -1;
+    } else {
+        // Approach B: Asynchronous (Signal UI thread)
+        pageLoading_.store(true, std::memory_order_release);
+    }
 }
 void MiniAcid::adjust303StepNote(int voiceIndex, int stepIndex, int semitoneDelta) {
   int idx = clamp303Voice(voiceIndex);
@@ -1210,6 +1244,19 @@ void MiniAcid::applySongPositionSelection() {
   int patB = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos, SongTrack::SynthB);
   int patD = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos, SongTrack::Drums);
   int patV = sceneManager_.songPatternAtSlot(songPlaybackSlot_, pos, SongTrack::Voice);
+
+  // Check for auto-paging
+  int firstGlobal = -1;
+  if (patA >= 0) firstGlobal = patA;
+  else if (patB >= 0) firstGlobal = patB;
+  else if (patD >= 0) firstGlobal = patD;
+
+  if (firstGlobal >= 0) {
+      int tPage = songPatternPage(firstGlobal);
+      if (tPage != currentPage_) {
+          requestPageSwitch(tPage);
+      }
+  }
 
   if (playing && patV >= 0) {
     if (patV < 16) {

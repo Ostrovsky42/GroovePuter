@@ -104,7 +104,7 @@ enum class SongTrack : uint8_t {
 
 struct SongPosition {
   static constexpr int kTrackCount = 4;
-  int8_t patterns[kTrackCount] = {-1, -1, -1, -1};
+  int16_t patterns[kTrackCount] = {-1, -1, -1, -1};
 };
 
 struct Song {
@@ -156,32 +156,42 @@ struct LedSettings {
 };
 
 static constexpr int kBankCount = 2;
-static constexpr int kSongPatternCount = kBankCount * Bank<SynthPattern>::kPatterns;
+static constexpr int kPatternsPerPage = kBankCount * Bank<SynthPattern>::kPatterns; // 16
+static constexpr int kMaxPages = 16;
+static constexpr int kMaxPatterns = kMaxPages * kPatternsPerPage; // e.g. 16 * 16 = 256
+static constexpr int kMaxGlobalPatterns = kMaxPatterns; // Alias for compatibility
 
 inline int clampSongPatternIndex(int idx) {
   if (idx < -1) return -1;
-  int max = kSongPatternCount - 1;
+  int max = kMaxGlobalPatterns - 1;
   if (idx > max) return max;
   return idx;
 }
 
-inline int songPatternBank(int songPatternIdx) {
-  if (songPatternIdx < 0) return -1;
-  return songPatternIdx / Bank<SynthPattern>::kPatterns;
+// Global ID Helpers
+inline int songPatternPage(int globalIdx) {
+  if (globalIdx < 0) return 0;
+  return globalIdx / kPatternsPerPage;
 }
 
-inline int songPatternIndexInBank(int songPatternIdx) {
-  if (songPatternIdx < 0) return -1;
-  return songPatternIdx % Bank<SynthPattern>::kPatterns;
+inline int songPatternBank(int globalIdx) {
+  if (globalIdx < 0) return -1;
+  return (globalIdx % kPatternsPerPage) / Bank<SynthPattern>::kPatterns;
 }
 
+inline int songPatternIndexInBank(int globalIdx) {
+  if (globalIdx < 0) return -1;
+  return globalIdx % Bank<SynthPattern>::kPatterns;
+}
+
+inline int songPatternFromPageBankIndex(int page, int bank, int idx) {
+  if (page < 0 || bank < 0 || idx < 0) return -1;
+  return (page * kPatternsPerPage) + (bank * Bank<SynthPattern>::kPatterns) + idx;
+}
+
+// Legacy helper compatibility (default to page 0)
 inline int songPatternFromBank(int bankIndex, int patternIndex) {
-  if (bankIndex < 0 || patternIndex < 0) return -1;
-  if (bankIndex >= kBankCount) bankIndex = kBankCount - 1;
-  if (patternIndex >= Bank<SynthPattern>::kPatterns) {
-    patternIndex = Bank<SynthPattern>::kPatterns - 1;
-  }
-  return bankIndex * Bank<SynthPattern>::kPatterns + patternIndex;
+  return songPatternFromPageBankIndex(0, bankIndex, patternIndex);
 }
 
 struct SamplerPadState {

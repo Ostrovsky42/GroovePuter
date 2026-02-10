@@ -251,7 +251,7 @@ bool ProjectPage::importMidiAtSelection() {
   if (midi_import_start_pattern_ > 127) midi_import_start_pattern_ = 127;
   if (midi_import_from_bar_ < 0) midi_import_from_bar_ = 0;
   if (midi_import_from_bar_ > 511) midi_import_from_bar_ = 511;
-  if (midi_import_length_bars_ < 1) midi_import_length_bars_ = 1;
+  if (midi_import_length_bars_ < 0) midi_import_length_bars_ = 0;
   if (midi_import_length_bars_ > 256) midi_import_length_bars_ = 256;
   settings.targetPatternIndex = midi_import_start_pattern_;
   settings.startStepOffset = 0;
@@ -308,6 +308,38 @@ bool ProjectPage::importMidiAtSelection() {
           mini_acid_.set303Parameter(TB303ParamId::Resonance, params.resonance, voice);
           mini_acid_.set303Parameter(TB303ParamId::EnvAmount, params.envAmount, voice);
           mini_acid_.set303Parameter(TB303ParamId::EnvDecay, params.envDecay, voice);
+        }
+
+        // --- NEW: Automate song population ---
+        int startPat = settings.targetPatternIndex;
+        int bars = settings.sourceLengthBars;
+        
+        // If AUTO (0), determine actual bars from the importer's last written pattern
+        if (bars == 0) {
+            int lastPat = importer.getLastImportedPatternIdx();
+            if (lastPat >= startPat) {
+                bars = lastPat - startPat + 1;
+            }
+        }
+        
+        int songPos = mini_acid_.currentSongPosition();
+        
+        // Populate patterns into the song timeline
+        for (int i = 0; i < bars; ++i) {
+            int targetPos = songPos + i;
+            if (targetPos >= Song::kMaxPositions) break;
+            int patToAssign = startPat + i;
+            if (patToAssign >= kMaxPatterns) break;
+            
+            // Assign to all 3 main tracks
+            mini_acid_.setSongPattern(targetPos, SongTrack::SynthA, patToAssign);
+            mini_acid_.setSongPattern(targetPos, SongTrack::SynthB, patToAssign);
+            mini_acid_.setSongPattern(targetPos, SongTrack::Drums, patToAssign);
+        }
+        
+        // Automatically extend song length if necessary
+        if (mini_acid_.songLength() < songPos + bars) {
+            mini_acid_.setSongLength(songPos + bars);
         }
       });
       if (omniFallbackUsed) {
@@ -542,7 +574,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 return true;
             }
             if (key == '9') {
-                if (midi_import_length_bars_ > 1) midi_import_length_bars_--;
+                if (midi_import_length_bars_ > 0) midi_import_length_bars_--;
                 return true;
             }
             if (key == '0') {
@@ -967,23 +999,32 @@ void ProjectPage::draw(IGfx& gfx) {
       char modeBuf[20];
       std::snprintf(startBuf, sizeof(startBuf), "Pat %d", midi_import_start_pattern_ + 1);
       std::snprintf(fromBuf, sizeof(fromBuf), "Bar %d", midi_import_from_bar_ + 1);
-      std::snprintf(lenBuf, sizeof(lenBuf), "Len %d", midi_import_length_bars_);
+      if (midi_import_length_bars_ == 0) {
+          std::snprintf(lenBuf, sizeof(lenBuf), "Len AUTO");
+      } else {
+          std::snprintf(lenBuf, sizeof(lenBuf), "Len %d", midi_import_length_bars_);
+      }
       std::snprintf(modeBuf, sizeof(modeBuf), "Mode %s",
                     (midi_import_profile_ == MidiImportProfile::Loud) ? "LOUD" : "CLEAN");
       int sourceStart = midi_import_from_bar_ + 1;
-      int sourceEnd = sourceStart + midi_import_length_bars_ - 1;
-      std::snprintf(sliceBuf, sizeof(sliceBuf), "B%d-%d", sourceStart, sourceEnd);
+      int sourceEnd = (midi_import_length_bars_ == 0) ? 0 : (sourceStart + midi_import_length_bars_ - 1);
       int targetStart = midi_import_start_pattern_ + 1;
-      int targetEnd = targetStart + midi_import_length_bars_ - 1;
-      bool truncated = false;
-      if (targetEnd > 128) {
-        targetEnd = 128;
-        truncated = true;
-      }
-      if (truncated) {
-        std::snprintf(writeBuf, sizeof(writeBuf), "P%d-%d *", targetStart, targetEnd);
+      if (midi_import_length_bars_ == 0) {
+          std::snprintf(sliceBuf, sizeof(sliceBuf), "B%d-ALL", sourceStart);
+          std::snprintf(writeBuf, sizeof(writeBuf), "P%d-AUTO", targetStart);
       } else {
-        std::snprintf(writeBuf, sizeof(writeBuf), "P%d-%d", targetStart, targetEnd);
+          std::snprintf(sliceBuf, sizeof(sliceBuf), "B%d-%d", sourceStart, sourceEnd);
+          int targetEnd = targetStart + midi_import_length_bars_ - 1;
+          bool truncated = false;
+          if (targetEnd > kMaxPatterns) {
+            targetEnd = kMaxPatterns;
+            truncated = true;
+          }
+          if (truncated) {
+            std::snprintf(writeBuf, sizeof(writeBuf), "P%d-%d *", targetStart, targetEnd);
+          } else {
+            std::snprintf(writeBuf, sizeof(writeBuf), "P%d-%d", targetStart, targetEnd);
+          }
       }
 
       gfx.setTextColor(COLOR_LABEL);

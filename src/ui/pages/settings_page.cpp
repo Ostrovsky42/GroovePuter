@@ -7,6 +7,8 @@
 #include "../ui_widgets.h"
 #include <cstdio>
 #include <cstring>
+#include <Arduino.h>
+#include <SD.h>
 
 namespace {
     enum class SettingId {
@@ -230,6 +232,11 @@ bool SettingsPage::handleEvent(UIEvent& e) {
     }
     // END: Number keys disabled
     */
+
+    if (e.key == 'T' || e.key == 't') {
+        measureSDPerformance();
+        return true;
+    }
     
     return false;
 }
@@ -541,5 +548,57 @@ void SettingsPage::applyPreset(int index) {
         snprintf(toast + used, sizeof(toast) - used, " (regen)");
     }
 
+    // Actually trigger regeneration!
+    withAudioGuard([&]() {
+        mini_acid_.regeneratePatternsWithGenre();
+    });
+
     UI::showToast(toast, 2000);
+}
+
+void SettingsPage::measureSDPerformance() {
+    UI::showToast("Testing SD...", 5000);
+    
+    // Create dummy file if not exists
+    if (!SD.exists("/sys/perf_test.bin")) {
+        File f = SD.open("/sys/perf_test.bin", FILE_WRITE);
+        if (f) {
+            uint8_t dummy[512];
+            memset(dummy, 0xAA, 512);
+            f.write(dummy, 512);
+            f.close();
+        }
+    }
+
+    const int TEST_SAMPLES = 50;
+    uint32_t totalTime = 0;
+    uint32_t maxTime = 0;
+
+    Serial.println("--- Long Song PoC: SD Performance ---");
+    for (int i = 0; i < TEST_SAMPLES; i++) {
+        uint32_t t0 = micros();
+        File f = SD.open("/sys/perf_test.bin", FILE_READ);
+        if (f) {
+            uint8_t buf[512];
+            f.read(buf, 512);
+            f.close();
+        }
+        uint32_t dt = micros() - t0;
+        totalTime += dt;
+        if (dt > maxTime) maxTime = dt;
+        delay(5); // yield
+    }
+    
+    float avg = (float)totalTime / TEST_SAMPLES;
+    Serial.printf("Long Song PoC: Avg %0.1f us, Max %u us\n", avg, maxTime);
+    
+    char result[64];
+    snprintf(result, sizeof(result), "Avg: %u Max: %u", (uint32_t)avg, maxTime);
+    UI::showToast(result, 3000);
+    
+    if (maxTime > 4000) {
+        Serial.println("RESULT: Max Latency > 4ms. Approach B (Deferred) REQUIRED.");
+    } else {
+        Serial.println("RESULT: Max Latency < 4ms. Approach A (Sync) POTENTIAL.");
+    }
 }

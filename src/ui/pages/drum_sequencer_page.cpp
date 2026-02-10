@@ -567,9 +567,9 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   switch (nav) {
     case GROOVEPUTER_LEFT:
       if (ui_event.alt) {
-        int next = mini_acid_.sceneManager().currentPageIndex() - 1;
-        if (next < 0) next = 0;
-        mini_acid_.sceneManager().setPage(next);
+        int next = mini_acid_.currentPageIndex() - 1;
+        if (next < 0) next = kMaxPages - 1;
+        mini_acid_.requestPageSwitch(next);
         handled = true;
         break;
       }
@@ -579,7 +579,8 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
       break;
     case GROOVEPUTER_RIGHT:
       if (ui_event.alt) {
-        mini_acid_.sceneManager().setPage(mini_acid_.sceneManager().currentPageIndex() + 1);
+        int next = (mini_acid_.currentPageIndex() + 1) % kMaxPages;
+        mini_acid_.requestPageSwitch(next);
         handled = true;
         break;
       }
@@ -829,7 +830,7 @@ void DrumSequencerMainPage::drawMinimalStyle(IGfx& gfx) {
 
   // Page Indicator
   char pageBuf[8];
-  snprintf(pageBuf, sizeof(pageBuf), "P%d", mini_acid_.sceneManager().currentPageIndex() + 1);
+  snprintf(pageBuf, sizeof(pageBuf), "P%d", mini_acid_.currentPageIndex() + 1);
   gfx.setTextColor(COLOR_WHITE);
   gfx.drawText(x + w - 24, y + 2, pageBuf);
 
@@ -857,10 +858,12 @@ void DrumSequencerMainPage::drawRetroClassicStyle(IGfx& gfx) {
 
     char modeBuf[32];
     std::snprintf(modeBuf, sizeof(modeBuf), "%s", mini_acid_.currentDrumEngineName().c_str());
-    retro::drawHeaderBar(gfx, x, y, w, 12, "DRUMS", modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
+    char titleBuf[16];
+    std::snprintf(titleBuf, sizeof(titleBuf), "DRUMS P%d", mini_acid_.currentPageIndex() + 1);
+    retro::drawHeaderBar(gfx, x, y, w, 12, titleBuf, modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
 
     bool songMode = mini_acid_.songModeEnabled();
-    int selectedPattern = mini_acid_.displayDrumPatternIndex();
+    int selectedPattern = mini_acid_.displayDrumLocalPatternIndex();
     
     retro::SelectorConfig pCfg;
     pCfg.x = x + 4; pCfg.y = y + 14; pCfg.w = w - 8; pCfg.h = 10;
@@ -900,10 +903,12 @@ void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
 
     char modeBuf[32];
     std::snprintf(modeBuf, sizeof(modeBuf), "%s", mini_acid_.currentDrumEngineName().c_str());
-    amber::drawHeaderBar(gfx, x, y, w, 12, "DRUMS", modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
+    char titleBuf[16];
+    std::snprintf(titleBuf, sizeof(titleBuf), "DRUMS P%d", mini_acid_.currentPageIndex() + 1);
+    amber::drawHeaderBar(gfx, x, y, w, 12, titleBuf, modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
 
     bool songMode = mini_acid_.songModeEnabled();
-    int selectedPattern = mini_acid_.displayDrumPatternIndex();
+    int selectedPattern = mini_acid_.displayDrumLocalPatternIndex();
 
     amber::SelectionBarConfig pCfg;
     pCfg.x = x + 4; pCfg.y = y + 14; pCfg.w = w - 8; pCfg.h = 10;

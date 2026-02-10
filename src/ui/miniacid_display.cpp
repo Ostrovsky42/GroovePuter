@@ -27,6 +27,7 @@
 #include <esp_partition.h>
 #endif
 #include "esp_heap_caps.h"
+#include "../audio/pattern_paging.h"
 #endif
 #include <cstdio>
 #include "../debug_log.h"
@@ -144,6 +145,7 @@ void MiniAcidDisplay::setAudioRecorder(IAudioRecorder* recorder) {
 
 void MiniAcidDisplay::update() {
     syncVisualStyle_();
+    handlePaging_();
     gfx_.startWrite();
     if (splash_active_) {
         drawSplashScreen();
@@ -280,6 +282,19 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     if (event.event_type == GROOVEPUTER_KEY_DOWN) {
         if (event.ctrl && (event.key == 'h' || event.key == 'H')) {
             global_help_overlay_.toggle();
+            return true;
+        }
+
+        // Global Page Flip (Alt + [ / ])
+        if (event.alt && (event.key == '[' || event.key == '{')) {
+            int prev = mini_acid_.currentPageIndex() - 1;
+            if (prev < 0) prev = kMaxPages - 1;
+            mini_acid_.requestPageSwitch(prev);
+            return true;
+        }
+        if (event.alt && (event.key == ']' || event.key == '}')) {
+            int next = (mini_acid_.currentPageIndex() + 1) % kMaxPages;
+            mini_acid_.requestPageSwitch(next);
             return true;
         }
 
@@ -609,5 +624,33 @@ void MiniAcidDisplay::updateCyclePulse_() {
     if (counter != last_cycle_pulse_counter_) {
         last_cycle_pulse_counter_ = counter;
         cycle_pulse_until_ms_ = millis() + 250;
+    }
+}
+
+void MiniAcidDisplay::handlePaging_() {
+    if (mini_acid_.pageLoading_.load(std::memory_order_acquire)) {
+        int target = mini_acid_.targetPage_;
+        if (target >= 0) {
+            // Serial.printf("[Page] Loading target %d\n", target);
+            char buf[32];
+            snprintf(buf, sizeof(buf), "Switching to Page %d...", target + 1);
+            showToast(buf, 800);
+            
+            withAudioGuard([&]() {
+                // AUTO-SAVE: Save current page before swapping data
+                PatternPagingService::savePage(mini_acid_.currentPageIndex(), mini_acid_.sceneManager().currentScene());
+
+                if (PatternPagingService::loadPage(target, mini_acid_.sceneManager().currentScene())) {
+                    mini_acid_.currentPage_ = target;
+                } else {
+                    // loadPage memsets to zero if missing
+                    mini_acid_.currentPage_ = target;
+                }
+                mini_acid_.targetPage_ = -1;
+                mini_acid_.pageLoading_.store(false, std::memory_order_release);
+            });
+        } else {
+            mini_acid_.pageLoading_.store(false, std::memory_order_release);
+        }
     }
 }
