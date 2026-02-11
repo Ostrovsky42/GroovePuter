@@ -194,23 +194,34 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
             int ry = content_y + row * row_h;
             bool selected = (track_idx == selectedTrack_);
 
-            // Row as volume strip: filled background shows track volume.
+            // Volume strip: entire row background shows track volume
             float vol = mini_acid_.getTrackVolume((VoiceId)track_idx);
             float vol_norm = vol / 1.2f;
             if (vol_norm < 0.0f) vol_norm = 0.0f;
             if (vol_norm > 1.0f) vol_norm = 1.0f;
             int row_w = w - 2;
             int fill_w = (int)(row_w * vol_norm + 0.5f);
-            gfx.fillRect(x + 1, ry + 1, row_w, row_h - 1, selected ? TE_GRID : TE_BLACK);
+
+            // TE monochrome: empty = pure black, filled = visible gray
+            const IGfxColor te_strip_empty = TE_BLACK;
+            const IGfxColor te_strip_fill = selected ? IGfxColor(0x606060) : IGfxColor(0x282828);
+            gfx.fillRect(x + 1, ry + 1, row_w, row_h - 1, te_strip_empty);
             if (fill_w > 0) {
-                gfx.fillRect(x + 1, ry + 1, fill_w, row_h - 1, selected ? TE_ACCENT : TE_GRID);
+                gfx.fillRect(x + 1, ry + 1, fill_w, row_h - 1, te_strip_fill);
+                // Hard edge at fill boundary
+                if (fill_w < row_w - 1) {
+                    gfx.drawLine(x + 1 + fill_w, ry + 1, x + 1 + fill_w, ry + row_h - 1, TE_ACCENT);
+                }
+            }
+            if (selected) {
+                gfx.drawRect(x + 1, ry + 1, row_w, row_h - 1, TE_WHITE);
             }
 
             // Track label
             char label[12];
             buildHubTrackLabel(track_idx, label, sizeof(label));
 
-            gfx.setTextColor(selected ? TE_BLACK : TE_WHITE);
+            gfx.setTextColor(selected ? TE_WHITE : TE_DIM);
             gfx.drawText(x + 4, ry + 2, label);
 
             // LED activity indicator
@@ -218,11 +229,11 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
             int led_x = x + 30;
             int led_y = ry + row_h / 2 - 2;
             if (active && playing) {
-                gfx.fillRect(led_x, led_y, 4, 4, selected ? TE_BLACK : TE_ACTIVE);
+                gfx.fillRect(led_x, led_y, 4, 4, TE_ACTIVE);
             }
-            gfx.drawRect(led_x, led_y, 4, 4, selected ? TE_BLACK : TE_GRID);
+            gfx.drawRect(led_x, led_y, 4, 4, selected ? TE_WHITE : TE_GRID);
 
-            // Step grid (16 cells) + explicit volume bar at right
+            // Step grid (16 cells)
             int grid_x = x + 40;
             int cell_w = 10;
             int cell_h = row_h - 4;
@@ -236,19 +247,26 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
                 // Cell background
                 IGfxColor cellBg = TE_BLACK;
                 if (s == currentStep && playing) cellBg = TE_GRID;
-                if (hit) cellBg = selected ? TE_BLACK : TE_WHITE;
+                if (hit) cellBg = selected ? TE_ACCENT : TE_WHITE;
                 if (selected && s == stepCursor_) cellBg = TE_BLACK;
 
                 gfx.fillRect(cx, ry + 2, cell_w - 1, cell_h, cellBg);
 
                 // Cell border
                 IGfxColor borderColor = TE_GRID;
-                if (s % 4 == 0) borderColor = TE_ACCENT; // Emphasize beats
-                if (selected && s == stepCursor_) borderColor = TE_BLACK; // Cursor
+                if (s % 4 == 0) borderColor = TE_ACCENT;
+                if (selected && s == stepCursor_) borderColor = TE_WHITE;
 
                 gfx.drawRect(cx, ry + 2, cell_w - 1, cell_h, borderColor);
             }
 
+            // Volume % at right edge
+            char volBuf[8];
+            int volPct = (int)(vol_norm * 100.0f + 0.5f);
+            std::snprintf(volBuf, sizeof(volBuf), "%d", volPct);
+            int volTextW = textWidth(gfx, volBuf);
+            gfx.setTextColor(selected ? TE_WHITE : TE_DIM);
+            gfx.drawText(x + w - volTextW - 4, ry + 2, volBuf);
         }
         drawHubScrollbar(gfx,
                          x + w - 3,
@@ -374,20 +392,35 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
             if (i == 0) trackColor = NEON_CYAN;
             else if (i == 1) trackColor = NEON_MAGENTA;
             
-            // Row as volume strip: filled background shows track volume.
+            // Volume strip: tinted by track color for strong visual identity
             float vol = mini_acid_.getTrackVolume((VoiceId)i);
             float volNorm = vol / 1.2f;
             if (volNorm < 0.0f) volNorm = 0.0f;
             if (volNorm > 1.0f) volNorm = 1.0f;
             int rowW = w - 4;
             int fillW = (int)(rowW * volNorm + 0.5f);
-            gfx.fillRect(x + 2, ry, rowW, rowH, IGfxColor(BG_INSET));
+
+            // Derive dim tint from track color: shift right 3 bits for ~12% brightness
+            uint32_t dimTint = ((trackColor >> 3) & 0x1F1F1F);
+            gfx.fillRect(x + 2, ry, rowW, rowH, IGfxColor(BG_DEEP_BLACK));
             if (fillW > 0) {
-                gfx.fillRect(x + 2, ry, fillW, rowH, IGfxColor(BG_PANEL));
+                gfx.fillRect(x + 2, ry, fillW, rowH, IGfxColor(dimTint));
+                // Hard edge at fill boundary
+                if (fillW < rowW - 1) {
+                    gfx.drawLine(x + 2 + fillW, ry, x + 2 + fillW, ry + rowH - 1, IGfxColor(GRID_MEDIUM));
+                }
             }
             if (selected) {
                  drawGlowBorder(gfx, x + 2, ry, w - 4, rowH, IGfxColor(trackColor), 1);
             }
+
+            // Volume % at right edge
+            char volBuf[8];
+            int volPct = (int)(volNorm * 100.0f + 0.5f);
+            std::snprintf(volBuf, sizeof(volBuf), "%d%%", volPct);
+            int volTextW = textWidth(gfx, volBuf);
+            gfx.setTextColor(selected ? IGfxColor(TEXT_PRIMARY) : IGfxColor(TEXT_DIM));
+            gfx.drawText(x + w - volTextW - 6, ry + 1, volBuf);
 
             // Name with Glow if selected
             char name[16];
@@ -531,20 +564,35 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
             if (i == 1) AmberTrackColor = AmberTheme::NEON_MAGENTA;
             else if (i >= 2) AmberTrackColor = AmberTheme::NEON_ORANGE;
 
-            // Row as volume strip: filled background shows track volume.
+            // Volume strip: tinted by track color for strong visual identity
             float vol = mini_acid_.getTrackVolume((VoiceId)i);
             float volNorm = vol / 1.2f;
             if (volNorm < 0.0f) volNorm = 0.0f;
             if (volNorm > 1.0f) volNorm = 1.0f;
             int rowW = w - 4;
             int fillW = (int)(rowW * volNorm + 0.5f);
-            gfx.fillRect(x + 2, ry, rowW, rowH, IGfxColor(AmberTheme::BG_INSET));
+
+            // Derive dim tint from track color: shift right 3 bits for ~12% brightness
+            uint32_t dimTint = ((AmberTrackColor >> 3) & 0x1F1F1F);
+            gfx.fillRect(x + 2, ry, rowW, rowH, IGfxColor(AmberTheme::BG_DEEP_BLACK));
             if (fillW > 0) {
-                gfx.fillRect(x + 2, ry, fillW, rowH, IGfxColor(AmberTheme::BG_PANEL));
+                gfx.fillRect(x + 2, ry, fillW, rowH, IGfxColor(dimTint));
+                // Hard edge at fill boundary
+                if (fillW < rowW - 1) {
+                    gfx.drawLine(x + 2 + fillW, ry, x + 2 + fillW, ry + rowH - 1, IGfxColor(AmberTheme::GRID_MEDIUM));
+                }
             }
             if (selected) {
                  AmberWidgets::drawGlowBorder(gfx, x + 2, ry, w - 4, rowH, IGfxColor(AmberTheme::NEON_CYAN), 1);
             }
+
+            // Volume % at right edge
+            char volBuf[8];
+            int volPct = (int)(volNorm * 100.0f + 0.5f);
+            std::snprintf(volBuf, sizeof(volBuf), "%d%%", volPct);
+            int volTextW = textWidth(gfx, volBuf);
+            gfx.setTextColor(selected ? IGfxColor(AmberTheme::TEXT_PRIMARY) : IGfxColor(AmberTheme::TEXT_DIM));
+            gfx.drawText(x + w - volTextW - 6, ry + 1, volBuf);
 
             char name[16];
             buildHubTrackLabel(i, name, sizeof(name));
@@ -561,7 +609,7 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
             for (int s = 0; s < 16; s++) {
                 bool hit = hubTrackHitAt(mini_acid_, i, s);
                 
-                IGfxColor color = hit ? (selected ? IGfxColor(AmberTheme::NEON_CYAN) : IGfxColor(AmberTheme::GRID_MEDIUM)) : IGfxColor(AmberTheme::BG_INSET);
+                IGfxColor color = hit ? (selected ? IGfxColor(AmberTrackColor) : IGfxColor(AmberTheme::GRID_MEDIUM)) : IGfxColor(AmberTheme::BG_INSET);
                 if (s == playingStep && isPlaying) color = IGfxColor(AmberTheme::NEON_YELLOW);
                 gfx.fillRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, color);
                 IGfxColor border = (s % 4 == 0) ? IGfxColor(AmberTheme::GRID_MEDIUM) : IGfxColor(AmberTheme::GRID_DIM);
@@ -680,45 +728,72 @@ void SequencerHubPage::drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool 
     const int ledX = 50;
     const int maskX = 58;
     const int cellW = 10;
-    
-    // Row as volume strip: filled background shows track volume.
+    const int rowW = 236;
+
+    // Track-type tint: synth A = green-ish, synth B = blue-ish, drums = warm
+    IGfxColor stripEmpty, stripFill;
+    if (trackIdx == 0) {
+        stripEmpty = IGfxColor(0x0B1A10);  // dark green-black
+        stripFill  = IGfxColor(0x164028);  // muted green
+    } else if (trackIdx == 1) {
+        stripEmpty = IGfxColor(0x0B1220);  // dark blue-black
+        stripFill  = IGfxColor(0x163060);  // muted blue
+    } else {
+        stripEmpty = IGfxColor(0x1A1410);  // dark warm-black
+        stripFill  = IGfxColor(0x3A2818);  // muted warm brown
+    }
+
+    // Volume strip: entire row background shows track volume
     float vol = mini_acid_.getTrackVolume((VoiceId)trackIdx);
     float volNorm = vol / 1.2f;
     if (volNorm < 0.0f) volNorm = 0.0f;
     if (volNorm > 1.0f) volNorm = 1.0f;
-    int rowW = 236;
     int fillW = (int)(rowW * volNorm + 0.5f);
-    gfx.fillRect(2, y, rowW, h, IGfxColor(0x14141f));
+
+    gfx.fillRect(2, y, rowW, h, stripEmpty);
     if (fillW > 0) {
-        gfx.fillRect(2, y, fillW, h, IGfxColor(0x282850));
+        gfx.fillRect(2, y, fillW, h, stripFill);
+        // Hard edge at fill boundary for clarity
+        if (fillW < rowW - 1) {
+            gfx.drawLine(2 + fillW, y, 2 + fillW, y + h - 1, COLOR_MUTED);
+        }
     }
     if (selected) {
         gfx.drawRect(2, y, rowW, h, COLOR_ACCENT);
     }
-    
+
+    // Volume % text at right edge
+    char volBuf[8];
+    int volPct = (int)(volNorm * 100.0f + 0.5f);
+    std::snprintf(volBuf, sizeof(volBuf), "%d%%", volPct);
+    int volTextW = textWidth(gfx, volBuf);
+    gfx.setTextColor(selected ? COLOR_WHITE : COLOR_MUTED);
+    gfx.drawText(rowW - volTextW, y + 1, volBuf);
+
     // Name
     char name[16];
     buildHubTrackLabel(trackIdx, name, sizeof(name));
-    
-    gfx.setTextColor(selected ? COLOR_WHITE : COLOR_GRAY);
+
+    gfx.setTextColor(selected ? COLOR_WHITE : COLOR_LABEL);
     gfx.drawText(4, y + 1, name);
-    
+
     // Activity LED
     bool active = mini_acid_.isTrackActive(trackIdx);
-    gfx.fillRect(ledX, y + 2, 6, 6, active ? COLOR_ACCENT : COLOR_BLACK);
+    IGfxColor ledColor = (trackIdx == 0) ? COLOR_SYNTH_A : (trackIdx == 1 ? COLOR_SYNTH_B : COLOR_WARN);
+    gfx.fillRect(ledX, y + 2, 6, 6, (active && mini_acid_.isPlaying()) ? ledColor : COLOR_BLACK);
     gfx.drawRect(ledX, y + 2, 6, 6, COLOR_GRAY);
-    
+
     // Mini step mask
     bool isSynth = !isDrumTrack(trackIdx);
     int currentStep = mini_acid_.currentStep();
-    
+
     for (int s = 0; s < SEQ_STEPS; s++) {
         bool hit = hubTrackHitAt(mini_acid_, trackIdx, s);
-        
+
         IGfxColor baseColor = isSynth ? (trackIdx == 0 ? COLOR_SYNTH_A : COLOR_SYNTH_B) : COLOR_TEXT;
-        IGfxColor color = hit ? (selected ? baseColor : COLOR_GRAY) : COLOR_DARKER;
+        IGfxColor color = hit ? (selected ? baseColor : COLOR_LIGHT_GRAY) : COLOR_DARKER;
         if (s == currentStep && mini_acid_.isPlaying()) color = COLOR_WARN;
-        
+
         gfx.fillRect(maskX + s * cellW, y + 2, cellW - 1, h - 4, color);
         IGfxColor border = (s % 4 == 0) ? COLOR_ACCENT : COLOR_GRAY_DARKER;
         gfx.drawRect(maskX + s * cellW, y + 2, cellW - 1, h - 4, border);

@@ -2,6 +2,7 @@
 #include "drum_automation_page.h"
 #include "../ui_common.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <utility>
@@ -15,6 +16,7 @@
 #include "../components/drum_sequencer_grid.h"
 #include "../retro_widgets.h"
 #include "../amber_widgets.h"
+#include "../ui_widgets.h"
 
 namespace retro = RetroWidgets;
 namespace amber = AmberWidgets;
@@ -113,12 +115,18 @@ class GlobalDrumSettingsPage : public Container {
  void draw(IGfx& gfx) override;
 
  private:
+  static constexpr int kDrumFxRows = 5;
+  static constexpr float kDrumStep = 0.05f;
+  static constexpr int kTotalRows = 1 + kDrumFxRows; // engine + FX rows
+
+  void adjustDrumFx(int row, float delta);
   void applyDrumEngineSelection();
   void syncDrumEngineSelection();
 
   MiniAcid& mini_acid_;
   std::vector<std::string> drum_engine_options_;
   std::shared_ptr<LabelOptionComponent> character_control_;
+  int selected_row_ = 0;
 };
 
 DrumSequencerMainPage::DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard audio_guard)
@@ -985,6 +993,23 @@ GlobalDrumSettingsPage::GlobalDrumSettingsPage(MiniAcid& mini_acid)
 }
 
 bool GlobalDrumSettingsPage::handleEvent(UIEvent& ui_event) {
+  if (ui_event.event_type == GROOVEPUTER_KEY_DOWN) {
+    const int nav = UIInput::navCode(ui_event);
+    if (nav == GROOVEPUTER_UP) {
+      if (selected_row_ > 0) selected_row_--;
+      return true;
+    }
+    if (nav == GROOVEPUTER_DOWN) {
+      if (selected_row_ < kTotalRows - 1) selected_row_++;
+      return true;
+    }
+    if (selected_row_ > 0 && (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT)) {
+      adjustDrumFx(selected_row_ - 1, nav == GROOVEPUTER_LEFT ? -kDrumStep : kDrumStep);
+      return true;
+    }
+  }
+
+  if (selected_row_ != 0) return false;
   int before = character_control_ ? character_control_->optionIndex() : -1;
   bool handled = Container::handleEvent(ui_event);
   int after = character_control_ ? character_control_->optionIndex() : -1;
@@ -1011,6 +1036,62 @@ void GlobalDrumSettingsPage::draw(IGfx& gfx) {
     character_control_->setBoundaries(Rect{x, row_y, w, gfx.fontHeight()});
   }
   Container::draw(gfx);
+
+  const DrumFX& dfx = mini_acid_.sceneManager().currentScene().drumFX;
+  int y_cursor = row_y + gfx.fontHeight() + 4;
+  char buf[24];
+
+  int compPct = static_cast<int>(std::clamp(dfx.compression, 0.0f, 1.0f) * 100.0f + 0.5f);
+  std::snprintf(buf, sizeof(buf), "DR CMP %d%%", compPct);
+  Widgets::drawListRow(gfx, x, y_cursor, w, buf, selected_row_ == 1);
+  y_cursor += gfx.fontHeight() + 2;
+
+  int attPct = static_cast<int>(std::clamp(dfx.transientAttack, -1.0f, 1.0f) * 100.0f + 0.5f);
+  std::snprintf(buf, sizeof(buf), "DR ATT %+d%%", attPct);
+  Widgets::drawListRow(gfx, x, y_cursor, w, buf, selected_row_ == 2);
+  y_cursor += gfx.fontHeight() + 2;
+
+  int susPct = static_cast<int>(std::clamp(dfx.transientSustain, -1.0f, 1.0f) * 100.0f + 0.5f);
+  std::snprintf(buf, sizeof(buf), "DR SUS %+d%%", susPct);
+  Widgets::drawListRow(gfx, x, y_cursor, w, buf, selected_row_ == 3);
+  y_cursor += gfx.fontHeight() + 2;
+
+  int mixPct = static_cast<int>(std::clamp(dfx.reverbMix, 0.0f, 1.0f) * 100.0f + 0.5f);
+  std::snprintf(buf, sizeof(buf), "DR REV %d%%", mixPct);
+  Widgets::drawListRow(gfx, x, y_cursor, w, buf, selected_row_ == 4);
+  y_cursor += gfx.fontHeight() + 2;
+
+  int decPct = static_cast<int>(std::clamp(dfx.reverbDecay, 0.05f, 0.95f) * 100.0f + 0.5f);
+  std::snprintf(buf, sizeof(buf), "DR DEC %d%%", decPct);
+  Widgets::drawListRow(gfx, x, y_cursor, w, buf, selected_row_ == 5);
+}
+
+void GlobalDrumSettingsPage::adjustDrumFx(int row, float delta) {
+  auto& dfx = mini_acid_.sceneManager().currentScene().drumFX;
+  if (row == 0) {
+    dfx.compression = std::clamp(dfx.compression + delta, 0.0f, 1.0f);
+    mini_acid_.updateDrumCompression(dfx.compression);
+    return;
+  }
+  if (row == 1) {
+    dfx.transientAttack = std::clamp(dfx.transientAttack + delta, -1.0f, 1.0f);
+    mini_acid_.updateDrumTransientAttack(dfx.transientAttack);
+    return;
+  }
+  if (row == 2) {
+    dfx.transientSustain = std::clamp(dfx.transientSustain + delta, -1.0f, 1.0f);
+    mini_acid_.updateDrumTransientSustain(dfx.transientSustain);
+    return;
+  }
+  if (row == 3) {
+    dfx.reverbMix = std::clamp(dfx.reverbMix + delta, 0.0f, 1.0f);
+    mini_acid_.updateDrumReverbMix(dfx.reverbMix);
+    return;
+  }
+  if (row == 4) {
+    dfx.reverbDecay = std::clamp(dfx.reverbDecay + delta, 0.05f, 0.95f);
+    mini_acid_.updateDrumReverbDecay(dfx.reverbDecay);
+  }
 }
 
 void GlobalDrumSettingsPage::applyDrumEngineSelection() {

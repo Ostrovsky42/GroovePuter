@@ -5,7 +5,6 @@
 #include "../ui_common.h"
 
 #include <string>
-#include <algorithm>
 
 class FeelTexturePage : public IPage {
 public:
@@ -21,9 +20,9 @@ private:
     MiniAcid& mini_acid_;
     AudioGuard audio_guard_;
     VisualStyle style_ = VisualStyle::MINIMAL;
-    std::string title_ = "FEEL/DRUM";
+    std::string title_ = "FEEL";
 
-    enum class FocusArea { FEEL, DRUM, PRESETS };
+    enum class FocusArea { FEEL, PRESETS };
 
     enum class GridResolution : uint8_t {
         Eighth = 8,
@@ -51,7 +50,6 @@ private:
     FocusArea focus_ = FocusArea::FEEL;
     int feel_row_ = 0;     // 0=GRID, 1=TIMEBASE, 2=LENGTH
     int texture_row_ = 0;  // 0=LOFI, 1=DRIVE, 2=TAPE
-    int drum_row_ = 0;     // 0=COMP, 1=ATT, 2=SUS, 3=REV MIX, 4=REV DEC
     int preset_index_ = 0; // 0..3
 
     void syncFromScene();
@@ -62,7 +60,6 @@ private:
     void drawGridSelector(IGfx& gfx, int x, int y);
     void drawTimebaseSelector(IGfx& gfx, int x, int y);
     void drawLengthSelector(IGfx& gfx, int x, int y);
-    void drawDrumControls(IGfx& gfx, int x, int y);
     void drawPresets(IGfx& gfx, int x, int y, int width);
     void drawCursor(IGfx& gfx, int x, int y, int w, int h);
     void applyPreset(int index);
@@ -71,10 +68,6 @@ private:
     static const char* gridToString(GridResolution g);
     static const char* lengthToString(PatternLength l);
     static const char* timebaseToString(Timebase t);
-
-    static float clamp01(float v) {
-        return std::max(0.0f, std::min(1.0f, v));
-    }
 
     template <typename F>
     void withAudioGuard(F&& fn) {

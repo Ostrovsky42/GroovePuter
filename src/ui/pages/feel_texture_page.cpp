@@ -8,7 +8,6 @@
 #include <cstdio>
 
 namespace {
-const int kRowH = Layout::LINE_HEIGHT;
 const char* kPresetNames[4] = { "SPACE", "NORM", "WIDE", "GRIT" };
 
 const char* gridLabel(uint8_t steps) {
@@ -166,19 +165,16 @@ void FeelTexturePage::draw(IGfx& gfx) {
 
 
     const int col1X = Layout::COL_1;
-    const int col2X = Layout::COL_2;
     const int headerY = LayoutManager::lineY(0);
 
     // Focus markers (GenrePage-like)
     gfx.setTextColor(COLOR_LABEL);
     gfx.drawText(col1X, headerY, (focus_ == FocusArea::FEEL) ? "F>" : "F ");
-    gfx.drawText(col2X, headerY, (focus_ == FocusArea::DRUM) ? "D>" : "D ");
 
     // Lists
     drawGridSelector(gfx, col1X, LayoutManager::lineY(1));
     drawTimebaseSelector(gfx, col1X, LayoutManager::lineY(2));
     drawLengthSelector(gfx, col1X, LayoutManager::lineY(3));
-    drawDrumControls(gfx, col2X, LayoutManager::lineY(1));
 
     // Presets row
     gfx.setTextColor(COLOR_LABEL);
@@ -225,40 +221,6 @@ void FeelTexturePage::drawLengthSelector(IGfx& gfx, int x, int y) {
                          focus_ == FocusArea::FEEL && feel_row_ == 2);
 }
 
-void FeelTexturePage::drawDrumControls(IGfx& gfx, int x, int y) {
-    const auto& dfx = mini_acid_.sceneManager().currentScene().drumFX;
-    char buf[24];
-
-    int compPct = static_cast<int>(clamp01(dfx.compression) * 100.0f + 0.5f);
-    std::snprintf(buf, sizeof(buf), "DR CMP %d%%", compPct);
-    Widgets::drawListRow(gfx, x, y, Layout::COL_WIDTH, buf,
-                         focus_ == FocusArea::DRUM && drum_row_ == 0);
-
-    y += kRowH;
-    int attPct = static_cast<int>(std::clamp(dfx.transientAttack, -1.0f, 1.0f) * 100.0f + 0.5f);
-    std::snprintf(buf, sizeof(buf), "DR ATT %+d%%", attPct);
-    Widgets::drawListRow(gfx, x, y, Layout::COL_WIDTH, buf,
-                         focus_ == FocusArea::DRUM && drum_row_ == 1);
-
-    y += kRowH;
-    int susPct = static_cast<int>(std::clamp(dfx.transientSustain, -1.0f, 1.0f) * 100.0f + 0.5f);
-    std::snprintf(buf, sizeof(buf), "DR SUS %+d%%", susPct);
-    Widgets::drawListRow(gfx, x, y, Layout::COL_WIDTH, buf,
-                         focus_ == FocusArea::DRUM && drum_row_ == 2);
-
-    y += kRowH;
-    int mixPct = static_cast<int>(clamp01(dfx.reverbMix) * 100.0f + 0.5f);
-    std::snprintf(buf, sizeof(buf), "DR REV %d%%", mixPct);
-    Widgets::drawListRow(gfx, x, y, Layout::COL_WIDTH, buf,
-                         focus_ == FocusArea::DRUM && drum_row_ == 3);
-
-    y += kRowH;
-    int decPct = static_cast<int>(std::clamp(dfx.reverbDecay, 0.05f, 0.95f) * 100.0f + 0.5f);
-    std::snprintf(buf, sizeof(buf), "DR DEC %d%%", decPct);
-    Widgets::drawListRow(gfx, x, y, Layout::COL_WIDTH, buf,
-                         focus_ == FocusArea::DRUM && drum_row_ == 4);
-}
-
 void FeelTexturePage::drawPresets(IGfx& gfx, int x, int y, int width) {
     (void)width;
     Widgets::drawButtonGrid(gfx, x, y, 52, 10, 4, 1, kPresetNames, 4,
@@ -267,7 +229,6 @@ void FeelTexturePage::drawPresets(IGfx& gfx, int x, int y, int width) {
 
 int FeelTexturePage::maxRowForFocus(FocusArea focus) const {
     if (focus == FocusArea::FEEL) return 2;
-    if (focus == FocusArea::DRUM) return 4;
     return 0;
 }
 
@@ -299,28 +260,6 @@ bool FeelTexturePage::handleEvent(UIEvent& ui_event) {
             }
             return true;
         }
-        if (focus_ == FocusArea::DRUM) {
-            withAudioGuard([&]() {
-                auto& dfx = mini_acid_.sceneManager().currentScene().drumFX;
-                if (drum_row_ == 0) {
-                    dfx.compression = std::clamp(dfx.compression - 0.05f, 0.0f, 1.0f);
-                    mini_acid_.updateDrumCompression(dfx.compression);
-                } else if (drum_row_ == 1) {
-                    dfx.transientAttack = std::clamp(dfx.transientAttack - 0.05f, -1.0f, 1.0f);
-                    mini_acid_.updateDrumTransientAttack(dfx.transientAttack);
-                } else if (drum_row_ == 2) {
-                    dfx.transientSustain = std::clamp(dfx.transientSustain - 0.05f, -1.0f, 1.0f);
-                    mini_acid_.updateDrumTransientSustain(dfx.transientSustain);
-                } else if (drum_row_ == 3) {
-                    dfx.reverbMix = std::clamp(dfx.reverbMix - 0.05f, 0.0f, 1.0f);
-                    mini_acid_.updateDrumReverbMix(dfx.reverbMix);
-                } else if (drum_row_ == 4) {
-                    dfx.reverbDecay = std::clamp(dfx.reverbDecay - 0.05f, 0.05f, 0.95f);
-                    mini_acid_.updateDrumReverbDecay(dfx.reverbDecay);
-                }
-            });
-            return true;
-        }
     }
     if (nav == GROOVEPUTER_RIGHT) {
         if (focus_ == FocusArea::PRESETS) {
@@ -346,36 +285,10 @@ bool FeelTexturePage::handleEvent(UIEvent& ui_event) {
             }
             return true;
         }
-        if (focus_ == FocusArea::DRUM) {
-            withAudioGuard([&]() {
-                auto& dfx = mini_acid_.sceneManager().currentScene().drumFX;
-                if (drum_row_ == 0) {
-                    dfx.compression = std::clamp(dfx.compression + 0.05f, 0.0f, 1.0f);
-                    mini_acid_.updateDrumCompression(dfx.compression);
-                } else if (drum_row_ == 1) {
-                    dfx.transientAttack = std::clamp(dfx.transientAttack + 0.05f, -1.0f, 1.0f);
-                    mini_acid_.updateDrumTransientAttack(dfx.transientAttack);
-                } else if (drum_row_ == 2) {
-                    dfx.transientSustain = std::clamp(dfx.transientSustain + 0.05f, -1.0f, 1.0f);
-                    mini_acid_.updateDrumTransientSustain(dfx.transientSustain);
-                } else if (drum_row_ == 3) {
-                    dfx.reverbMix = std::clamp(dfx.reverbMix + 0.05f, 0.0f, 1.0f);
-                    mini_acid_.updateDrumReverbMix(dfx.reverbMix);
-                } else if (drum_row_ == 4) {
-                    dfx.reverbDecay = std::clamp(dfx.reverbDecay + 0.05f, 0.05f, 0.95f);
-                    mini_acid_.updateDrumReverbDecay(dfx.reverbDecay);
-                }
-            });
-            return true;
-        }
     }
     if (nav == GROOVEPUTER_UP) {
         if (focus_ == FocusArea::FEEL) {
             if (feel_row_ > 0) feel_row_--;
-            return true;
-        }
-        if (focus_ == FocusArea::DRUM) {
-            if (drum_row_ > 0) drum_row_--;
             return true;
         }
         return false;
@@ -385,18 +298,12 @@ bool FeelTexturePage::handleEvent(UIEvent& ui_event) {
             if (feel_row_ < maxRowForFocus(focus_)) feel_row_++;
             return true;
         }
-        if (focus_ == FocusArea::DRUM) {
-            if (drum_row_ < maxRowForFocus(focus_)) drum_row_++;
-            return true;
-        }
         return false;
     }
 
     char key = ui_event.key;
     if (key == '\t') {
-        if (focus_ == FocusArea::FEEL) focus_ = FocusArea::DRUM;
-        else if (focus_ == FocusArea::DRUM) focus_ = FocusArea::PRESETS;
-        else focus_ = FocusArea::FEEL;
+        focus_ = (focus_ == FocusArea::FEEL) ? FocusArea::PRESETS : FocusArea::FEEL;
         return true;
     }
     if (key == '\n' || key == '\r' || key == ' ') {
@@ -522,13 +429,6 @@ const char* FeelTexturePage::currentHint() const {
         if (feel_row_ == 0) return "GRID: 1/32 for low BPM";
         if (feel_row_ == 1) return "TB: DBL densifies feel";
         return "LEN: longer cycle, same 16 steps";
-    }
-    if (focus_ == FocusArea::DRUM) {
-        if (drum_row_ == 0) return "DR COMP: one-knob compression";
-        if (drum_row_ == 1) return "DR ATT: transient attack";
-        if (drum_row_ == 2) return "DR SUS: transient sustain";
-        if (drum_row_ == 3) return "DR REV: reverb mix";
-        return "DR DEC: reverb decay";
     }
     return (focus_ == FocusArea::PRESETS) ? "1-4 feel presets" : "1-4 apply preset";
 }
