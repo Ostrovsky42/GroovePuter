@@ -111,6 +111,10 @@ void ModePage::moveFocus(int delta) {
 
 void ModePage::toggleMode() {
   withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
+  char toast[64];
+  std::snprintf(toast, sizeof(toast), "Groove: %s (override)",
+                modeName(mini_acid_.grooveboxMode()));
+  UI::showToast(toast, 1100);
 }
 
 void ModePage::shiftMode(int delta) {
@@ -119,6 +123,10 @@ void ModePage::shiftMode(int delta) {
   while (idx < 0) idx += 5;
   while (idx >= 5) idx -= 5;
   withAudioGuard([&]() { mini_acid_.setGrooveboxMode(static_cast<GrooveboxMode>(idx)); });
+  char toast[64];
+  std::snprintf(toast, sizeof(toast), "Groove: %s (override)",
+                modeName(mini_acid_.grooveboxMode()));
+  UI::showToast(toast, 900);
 }
 
 void ModePage::shiftFlavor(int delta) {

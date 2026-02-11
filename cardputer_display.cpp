@@ -19,7 +19,6 @@
 #include <algorithm>
 #include <cstring>
 #include <cstdlib>
-#include <iterator>
 
 #if defined(ARDUINO)
   #if __has_include(<M5Cardputer.h>)
@@ -222,66 +221,12 @@ void CardputerDisplay::drawCircle(int x, int y, int r, IGfxColor color) {
 void CardputerDisplay::drawKnobFace(int cx, int cy, int radius, IGfxColor ringColor,
                                     IGfxColor bgColor) {
   if (radius <= 0) return;
-  uint16_t ring565 = ringColor.toCardputerColor();
-  uint16_t bg565 = bgColor.toCardputerColor();
+  if (frame_.empty()) return;
 
-  auto it = std::find_if(knob_faces_.begin(), knob_faces_.end(),
-                         [&](const KnobFaceCache& cache) {
-                           return cache.matches(radius, ring565, bg565);
-                         });
-
-  if (it == knob_faces_.end()) {
-    knob_faces_.push_back({});
-    KnobFaceCache& cache = knob_faces_.back();
-    cache.radius = radius;
-    cache.ring_color = ring565;
-    cache.bg_color = bg565;
-    int size = radius * 2 + 1;
-    cache.pixels.assign(size * size, bg565);
-
-    auto plot = [&](int px, int py) {
-      if (px >= 0 && px < size && py >= 0 && py < size) {
-        cache.pixels[py * size + px] = ring565;
-      }
-    };
-
-    int cx0 = radius;
-    int cy0 = radius;
-    int f = 1 - radius;
-    int ddF_x = 1;
-    int ddF_y = -2 * radius;
-    int xx = 0;
-    int yy = radius;
-    plot(cx0, cy0 + radius);
-    plot(cx0, cy0 - radius);
-    plot(cx0 + radius, cy0);
-    plot(cx0 - radius, cy0);
-
-    while (xx < yy) {
-      if (f >= 0) {
-        yy--;
-        ddF_y += 2;
-        f += ddF_y;
-      }
-      xx++;
-      ddF_x += 2;
-      f += ddF_x;
-      plot(cx0 + xx, cy0 + yy);
-      plot(cx0 - xx, cy0 + yy);
-      plot(cx0 + xx, cy0 - yy);
-      plot(cx0 - xx, cy0 - yy);
-      plot(cx0 + yy, cy0 + xx);
-      plot(cx0 - yy, cy0 + xx);
-      plot(cx0 + yy, cy0 - xx);
-      plot(cx0 - yy, cy0 - xx);
-    }
-
-    it = std::prev(knob_faces_.end());
-  }
-
-  const KnobFaceCache& cache = *it;
-  int size = cache.radius * 2 + 1;
-  drawImage(cx - cache.radius, cy - cache.radius, cache.pixels.data(), size, size);
+  // Keep knob rendering allocation-free on Cardputer to avoid runtime aborts
+  // in DRAM-constrained states (e.g. page transitions).
+  fillCircle(cx, cy, radius, bgColor);
+  drawCircle(cx, cy, radius, ringColor);
 }
 
 void CardputerDisplay::fillRect(int x, int y, int w, int h, IGfxColor color) {

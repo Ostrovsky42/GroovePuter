@@ -287,6 +287,7 @@ public:
   const TempoDelay& tempoDelay(int voiceIndex) const { return (voiceIndex == 1) ? delay3032 : delay303; }
   
   void regeneratePatternsWithGenre();  // Regenerate patterns using current genre
+  void syncGrooveModeToGenre();        // Align 5-mode groove macro with current generative genre
 
   Parameter& miniParameter(MiniAcidParamId id);
   void setParameter(MiniAcidParamId id, float value);
@@ -328,6 +329,10 @@ private:
   void updateSamplesPerStep();
   void advanceStep();
   unsigned long computeStepDurationSamples_() const;
+  int timingTicksForStep_(int stepIndex) const;
+  int grooveOverrideTicksForStep_(const DrumPatternSet& patternSet, int stepIndex) const;
+  float evaluateAutomationLaneAtStep_(const AutomationLane& lane, int step) const;
+  void applyDrumAutomationLanesForStep_(const DrumPatternSet& patternSet, int step);
   float noteToFreq(int note);
   int clamp303Voice(int voiceIndex) const;
   int clamp303Step(int stepIndex) const;
@@ -419,8 +424,7 @@ private:
     int countRemaining = 0; // Number of retrigs left
     bool active = false;    // Is retrig active
     uint8_t flamGhostVelocity = 0; // >0 for flam: velocity of ghost hit
-    uint8_t rollCurve = 0;  // Roll velocity curve (0=flat, 1=cresc, 2=decresc)
-    int rollTotal = 0;      // Total roll hits (for velocity interpolation)
+    int rollTotal = 0;      // Scheduled roll retrigs (for velocity interpolation)
   };
   
   RetrigState retrigA_;

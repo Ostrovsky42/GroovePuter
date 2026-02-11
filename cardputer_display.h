@@ -38,16 +38,6 @@ private:
     int ascent = 0;
     int descent = 0;
   };
-  struct KnobFaceCache {
-    int radius = 0;
-    uint16_t ring_color = 0;
-    uint16_t bg_color = 0;
-    std::vector<uint16_t> pixels;
-
-    bool matches(int r, uint16_t ring, uint16_t bg) const {
-      return radius == r && ring_color == ring && bg_color == bg && !pixels.empty();
-    }
-  };
 
   int w_;
   int h_;
@@ -57,7 +47,6 @@ private:
   GfxFont font_ = GfxFont::kFont5x7;
   const GFXfont* gfx_font_ = nullptr;
   FontMetrics gfx_metrics_;
-  std::vector<KnobFaceCache> knob_faces_;
 
   void drawGlyph5x7(int x, int y, unsigned char glyph_idx);
   void drawGfxGlyph(int x, int y, unsigned char glyph_idx);

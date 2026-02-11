@@ -12,27 +12,28 @@
 // swingAmount, microTimingAmount,
 // velocityMin, velocityMax,
 // preferDownbeats, allowRepeats, rootNoteBias, ghostProbability, chromaticProbability,
-// sparseKick, sparseHats, noAccents, fillProbability
+// sparseKick, sparseHats, noAccents, fillProbability,
+// drumSyncopation, drumPreferOffbeat, drumVoiceCount
 
 const GenerativeParams kGenerativePresets[kGenerativeModeCount] = {
     // ACID - Melodic, slides, aggressive
-    { 8, 14, 36, 72,  0.40f, 0.50f, 0.8f,  0.0f, 0.1f,  85, 120,  false, true, 0.25f, 0.10f, 0.15f,  false, false, false, 0.6f },
+    { 8, 14, 36, 72,  0.40f, 0.50f, 0.8f,  0.0f, 0.1f,  85, 120,  false, true, 0.25f, 0.10f, 0.15f,  false, false, false, 0.6f,  0.20f, false, 8 },
     // MINIMAL (Outrun) - Bright lead/arp, 80s synthwave (swing LOW for drive)
-    { 10, 14, 48, 72,  0.12f, 0.25f, 0.70f,  0.08f, 0.01f,  90, 118,  false, true, 0.10f, 0.03f, 0.05f,  false, false, false, 0.4f },
+    { 10, 14, 48, 72,  0.12f, 0.25f, 0.70f,  0.08f, 0.01f,  90, 118,  false, true, 0.10f, 0.03f, 0.05f,  false, false, false, 0.4f,  0.12f, false, 6 },
     // TECHNO (Darksynth) - Evil bass (swing ZERO, repeats ON for bass anchor)
-    { 4, 7, 24, 48,  0.05f, 0.50f, 0.35f,  0.0f, 0.0f,  100, 125,  true, true, 0.70f, 0.0f, 0.03f,  false, true, false, 0.25f },
+    { 4, 7, 24, 48,  0.05f, 0.50f, 0.35f,  0.0f, 0.0f,  100, 125,  true, true, 0.70f, 0.0f, 0.03f,  false, true, false, 0.25f,  0.05f, false, 8 },
     // ELECTRO - Staccato, syncopated, mechanical
-    { 6, 10, 36, 60,  0.0f, 0.70f, 0.3f,  0.0f, 0.0f,  105, 115,  false, true, 0.30f, 0.05f, 0.10f,  false, false, false, 0.5f },
+    { 6, 10, 36, 60,  0.0f, 0.70f, 0.3f,  0.0f, 0.0f,  105, 115,  false, true, 0.30f, 0.05f, 0.10f,  false, false, false, 0.5f,  0.35f, false, 8 },
     // RAVE - Dense, high energy
-    { 12, 16, 36, 72,  0.20f, 0.80f, 0.5f,  0.0f, 0.0f,  110, 127,  false, true, 0.20f, 0.05f, 0.20f,  false, false, false, 0.7f },
+    { 12, 16, 36, 72,  0.20f, 0.80f, 0.5f,  0.0f, 0.0f,  110, 127,  false, true, 0.20f, 0.05f, 0.20f,  false, false, false, 0.7f,  0.08f, false, 8 },
     // REGGAE - Sparse, offbeat, warm bass
-    { 4, 8, 24, 48,  0.05f, 0.15f, 0.55f,  0.20f, 0.15f,  80, 110,  false, true, 0.60f, 0.12f, 0.05f,  true, true, true, 0.25f },
+    { 4, 8, 24, 48,  0.05f, 0.15f, 0.55f,  0.20f, 0.15f,  80, 110,  false, true, 0.60f, 0.12f, 0.05f,  true, true, true, 0.25f,  0.28f, true, 6 },
     // TRIPHOP - Slow, gritty, humanized
-    { 5, 9, 36, 60,  0.05f, 0.25f, 0.60f,  0.18f, 0.25f,  75, 108,  false, true, 0.35f, 0.18f, 0.10f,  true, true, false, 0.20f },
+    { 5, 9, 36, 60,  0.05f, 0.25f, 0.60f,  0.18f, 0.25f,  75, 108,  false, true, 0.35f, 0.18f, 0.10f,  true, true, false, 0.20f,  0.30f, true, 6 },
     // BROKEN - Syncopated, broken-beat feel
-    { 7, 12, 36, 72,  0.10f, 0.35f, 0.45f,  0.28f, 0.12f,  90, 120,  false, true, 0.20f, 0.08f, 0.12f,  false, false, false, 0.35f },
+    { 7, 12, 36, 72,  0.10f, 0.35f, 0.45f,  0.28f, 0.12f,  90, 120,  false, true, 0.20f, 0.08f, 0.12f,  false, false, false, 0.35f,  0.45f, true, 8 },
     // CHIP - Retro console style, very tight and quantized
-    { 8, 12, 48, 72,  0.02f, 0.15f, 0.38f,  0.0f, 0.0f,  96, 122,  true, true, 0.40f, 0.02f, 0.06f,  false, true, true, 0.12f }
+    { 8, 12, 48, 72,  0.02f, 0.15f, 0.38f,  0.0f, 0.0f,  96, 122,  true, true, 0.40f, 0.02f, 0.06f,  false, true, true, 0.12f,  0.02f, false, 4 }
 };
 
 // TextureParams fields in order:
@@ -94,6 +95,21 @@ bool GenreManager::isTextureAllowed(GenerativeMode genre, TextureMode texture) {
     if (g < 0 || g >= kGenerativeModeCount) return false;
     if (t < 0 || t >= kTextureModeCount) return false;
     return (kAllowedTextureMask[g] & (1u << t)) != 0;
+}
+
+GrooveboxMode GenreManager::grooveboxModeForGenerative(GenerativeMode mode) {
+    switch (mode) {
+        case GenerativeMode::Acid:      return GrooveboxMode::Acid;
+        case GenerativeMode::Outrun:    return GrooveboxMode::Minimal;
+        case GenerativeMode::Darksynth: return GrooveboxMode::Electro;
+        case GenerativeMode::Electro:   return GrooveboxMode::Electro;
+        case GenerativeMode::Rave:      return GrooveboxMode::Acid;
+        case GenerativeMode::Reggae:    return GrooveboxMode::Dub;
+        case GenerativeMode::TripHop:   return GrooveboxMode::Dub;
+        case GenerativeMode::Broken:    return GrooveboxMode::Breaks;
+        case GenerativeMode::Chip:      return GrooveboxMode::Electro;
+        default:                        return GrooveboxMode::Minimal;
+    }
 }
 
 TextureMode GenreManager::firstAllowedTexture(GenerativeMode genre) {

@@ -1,7 +1,9 @@
 #include "drum_sequencer_page.h"
+#include "drum_automation_page.h"
 #include "../ui_common.h"
 
 #include <cctype>
+#include <cstdio>
 #include <utility>
 #include <vector>
 
@@ -30,6 +32,21 @@ struct DrumAreaClipboard {
 };
 
 DrumAreaClipboard g_drum_area_clipboard;
+
+const char* drumGenreTag(GenerativeMode mode) {
+  switch (mode) {
+    case GenerativeMode::Acid: return "ACID";
+    case GenerativeMode::Outrun: return "MINIMAL";
+    case GenerativeMode::Darksynth: return "TECHNO";
+    case GenerativeMode::Electro: return "ELECTRO";
+    case GenerativeMode::Rave: return "RAVE";
+    case GenerativeMode::Reggae: return "REGGAE";
+    case GenerativeMode::TripHop: return "TRIPHOP";
+    case GenerativeMode::Broken: return "BROKEN";
+    case GenerativeMode::Chip: return "CHIP";
+    default: return "ACID";
+  }
+}
 } // namespace
 
 class DrumSequencerMainPage : public Container {
@@ -831,6 +848,14 @@ void DrumSequencerMainPage::drawMinimalStyle(IGfx& gfx) {
   // Page Indicator
   char pageBuf[8];
   snprintf(pageBuf, sizeof(pageBuf), "P%d", mini_acid_.currentPageIndex() + 1);
+  char genreBuf[20];
+  std::snprintf(genreBuf, sizeof(genreBuf), "[%s]",
+                drumGenreTag(mini_acid_.genreManager().generativeMode()));
+  gfx.setTextColor(COLOR_WHITE);
+  int genreX = x + w - 28 - gfx.textWidth(genreBuf);
+  if (genreX < x + 2) genreX = x + 2;
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(genreX, y + 2, genreBuf);
   gfx.setTextColor(COLOR_WHITE);
   gfx.drawText(x + w - 24, y + 2, pageBuf);
 
@@ -857,7 +882,9 @@ void DrumSequencerMainPage::drawRetroClassicStyle(IGfx& gfx) {
     int h = bounds.h;
 
     char modeBuf[32];
-    std::snprintf(modeBuf, sizeof(modeBuf), "%s", mini_acid_.currentDrumEngineName().c_str());
+    std::snprintf(modeBuf, sizeof(modeBuf), "%s [%s]",
+                  mini_acid_.currentDrumEngineName().c_str(),
+                  drumGenreTag(mini_acid_.genreManager().generativeMode()));
     char titleBuf[16];
     std::snprintf(titleBuf, sizeof(titleBuf), "DRUMS P%d", mini_acid_.currentPageIndex() + 1);
     retro::drawHeaderBar(gfx, x, y, w, 12, titleBuf, modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
@@ -902,7 +929,9 @@ void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
     int h = bounds.h;
 
     char modeBuf[32];
-    std::snprintf(modeBuf, sizeof(modeBuf), "%s", mini_acid_.currentDrumEngineName().c_str());
+    std::snprintf(modeBuf, sizeof(modeBuf), "%s [%s]",
+                  mini_acid_.currentDrumEngineName().c_str(),
+                  drumGenreTag(mini_acid_.genreManager().generativeMode()));
     char titleBuf[16];
     std::snprintf(titleBuf, sizeof(titleBuf), "DRUMS P%d", mini_acid_.currentPageIndex() + 1);
     amber::drawHeaderBar(gfx, x, y, w, 12, titleBuf, modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
@@ -1013,6 +1042,14 @@ DrumSequencerPage::DrumSequencerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard 
   (void)gfx;
   addPage(std::make_shared<DrumSequencerMainPage>(mini_acid, audio_guard));
   addPage(std::make_shared<GlobalDrumSettingsPage>(mini_acid));
+  addPage(std::make_shared<DrumAutomationPage>(mini_acid));
+}
+
+bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
+  if (ui_event.event_type == GROOVEPUTER_KEY_DOWN && UIInput::isTab(ui_event)) {
+    return stepActivePage(1);
+  }
+  return MultiPage::handleEvent(ui_event);
 }
 
 const std::string & DrumSequencerPage::getTitle() const {

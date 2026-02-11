@@ -39,6 +39,8 @@ void clearDrumPattern(DrumPattern& pattern) {
   for (int i = 0; i < DrumPattern::kSteps; ++i) {
     pattern.steps[i].hit = false;
     pattern.steps[i].accent = false;
+    pattern.steps[i].velocity = 100;
+    pattern.steps[i].timing = 0;
     pattern.steps[i].probability = 100;
     pattern.steps[i].fx = 0;
     pattern.steps[i].fxParam = 0;
@@ -78,6 +80,10 @@ void clearSceneData(Scene& scene) {
       for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
         clearDrumPattern(scene.drumBanks[b].patterns[p].voices[v]);
       }
+      for (int l = 0; l < DrumPatternSet::kMaxLanes; ++l) {
+        scene.drumBanks[b].patterns[p].lanes[l] = AutomationLane();
+      }
+      scene.drumBanks[b].patterns[p].groove = PatternGroove();
     }
     for (int p = 0; p < Bank<SynthPattern>::kPatterns; ++p) {
       clearSynthPattern(scene.synthABanks[b].patterns[p]);
@@ -242,7 +248,12 @@ bool deserializeDrumPattern(ArduinoJson::JsonVariantConst value, DrumPattern& pa
 }
 
 bool deserializeAutomationLane(ArduinoJson::JsonObjectConst obj, AutomationLane& lane) {
-  lane.targetParam = static_cast<uint8_t>(valueToInt(obj["t"], 255));
+  int target = valueToInt(obj["t"], DRUM_AUTOMATION_NONE);
+  if (target < 0) target = 0;
+  if (target > DRUM_AUTOMATION_ENGINE_SWITCH && target != DRUM_AUTOMATION_NONE) {
+    target = DRUM_AUTOMATION_NONE;
+  }
+  lane.targetParam = static_cast<uint8_t>(target);
   lane.nodeCount = 0;
   ArduinoJson::JsonArrayConst nodes = obj["n"].as<ArduinoJson::JsonArrayConst>();
   if (!nodes.isNull()) {
@@ -250,9 +261,18 @@ bool deserializeAutomationLane(ArduinoJson::JsonObjectConst obj, AutomationLane&
       if (lane.nodeCount >= AutomationLane::kMaxNodes) break;
       ArduinoJson::JsonObjectConst nObj = nVal.as<ArduinoJson::JsonObjectConst>();
       if (!nObj.isNull()) {
-        lane.nodes[lane.nodeCount].step = static_cast<uint8_t>(valueToInt(nObj["s"], 0));
-        lane.nodes[lane.nodeCount].value = valueToFloat(nObj["v"], 0.0f);
-        lane.nodes[lane.nodeCount].curveType = static_cast<uint8_t>(valueToInt(nObj["c"], 0));
+        int step = valueToInt(nObj["s"], 0);
+        if (step < 0) step = 0;
+        if (step > 15) step = 15;
+        float value = valueToFloat(nObj["v"], 0.0f);
+        if (value < 0.0f) value = 0.0f;
+        if (value > 1.0f) value = 1.0f;
+        int curve = valueToInt(nObj["c"], 0);
+        if (curve < 0) curve = 0;
+        if (curve > 2) curve = 2;
+        lane.nodes[lane.nodeCount].step = static_cast<uint8_t>(step);
+        lane.nodes[lane.nodeCount].value = value;
+        lane.nodes[lane.nodeCount].curveType = static_cast<uint8_t>(curve);
         ++lane.nodeCount;
       }
     }
@@ -285,8 +305,20 @@ bool deserializeDrumPatternSet(ArduinoJson::JsonVariantConst value, DrumPatternS
     // Optional: groove override
     ArduinoJson::JsonObjectConst grvObj = obj["grv"].as<ArduinoJson::JsonObjectConst>();
     if (!grvObj.isNull()) {
-      patternSet.groove.swing = valueToFloat(grvObj["sw"], -1.0f);
-      patternSet.groove.humanize = valueToFloat(grvObj["hz"], -1.0f);
+      float swing = valueToFloat(grvObj["sw"], -1.0f);
+      float humanize = valueToFloat(grvObj["hz"], -1.0f);
+      if (swing >= 0.0f) {
+        if (swing > 0.66f) swing = 0.66f;
+      } else {
+        swing = -1.0f;
+      }
+      if (humanize >= 0.0f) {
+        if (humanize > 1.0f) humanize = 1.0f;
+      } else {
+        humanize = -1.0f;
+      }
+      patternSet.groove.swing = swing;
+      patternSet.groove.humanize = humanize;
     }
     return true;
   }
@@ -517,6 +549,10 @@ SceneJsonObserver::Path SceneJsonObserver::deduceArrayPath(const Context& parent
     return Path::DrumBank;
   case Path::DrumBank:
     return Path::DrumPatternSet;
+  case Path::DrumLanes:
+    return Path::DrumLane;
+  case Path::DrumLaneNodes:
+    return Path::DrumLaneNode;
   case Path::SynthABanks:
     return Path::SynthABank;
   case Path::SynthABank:
@@ -546,8 +582,14 @@ SceneJsonObserver::Path SceneJsonObserver::deduceArrayPath(const Context& parent
 
 SceneJsonObserver::Path SceneJsonObserver::deduceObjectPath(const Context& parent) const {
   switch (parent.path) {
+  case Path::DrumBank:
+    return Path::DrumPatternSet;
   case Path::DrumPatternSet:
     return Path::DrumVoice;
+  case Path::DrumLanes:
+    return Path::DrumLane;
+  case Path::DrumLaneNodes:
+    return Path::DrumLaneNode;
   case Path::SynthPattern:
     return Path::SynthStep;
   case Path::SynthParams:
@@ -633,6 +675,8 @@ void SceneJsonObserver::onObjectStart() {
       path = Path::SamplerPads; // samplerPads can be inside led in some versions
     } else if (parent.path == Path::Songs) {
       path = Path::Song;
+    } else if (parent.path == Path::DrumPatternSet && lastKey_ == "grv") {
+      path = Path::DrumGroove;
     }
   }
   pushContext(Context::Type::Object, path);
@@ -678,6 +722,11 @@ void SceneJsonObserver::onArrayStart() {
             path = Path::LedColorArray;
         }
         else if (lastKey_ == "customPhrases") path = Path::CustomPhrases;
+      } else if (parent.path == Path::DrumPatternSet) {
+        if (lastKey_ == "v") path = Path::DrumPatternSet;
+        else if (lastKey_ == "lanes") path = Path::DrumLanes;
+      } else if (parent.path == Path::DrumLane) {
+        if (lastKey_ == "n") path = Path::DrumLaneNodes;
       } else if (parent.path == Path::DrumVoice) {
         if (lastKey_ == "hit") path = Path::DrumHitArray;
         else if (lastKey_ == "accent") path = Path::DrumAccentArray;
@@ -818,6 +867,84 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
         if (path == Path::DrumFxArray) step.fx = static_cast<uint8_t>(value);
         else if (path == Path::DrumFxParamArray) step.fxParam = static_cast<uint8_t>(value);
         else step.probability = clampProbability(static_cast<int>(value));
+    }
+    return;
+  }
+  if (path == Path::DrumLane) {
+    int bankIdx = currentIndexFor(Path::DrumBanks);
+    if (bankIdx < 0) bankIdx = 0;
+    int patternIdx = currentIndexFor(Path::DrumBank);
+    int laneIdx = currentIndexFor(Path::DrumLanes);
+    if (bankIdx < 0 || bankIdx >= kBankCount ||
+        patternIdx < 0 || patternIdx >= Bank<DrumPatternSet>::kPatterns ||
+        laneIdx < 0 || laneIdx >= DrumPatternSet::kMaxLanes) {
+      return;
+    }
+    AutomationLane& lane = target_.drumBanks[bankIdx].patterns[patternIdx].lanes[laneIdx];
+    if (lastKey_ == "t") {
+      int target = static_cast<int>(value);
+      if (target < 0) target = 0;
+      if (target > DRUM_AUTOMATION_ENGINE_SWITCH && target != DRUM_AUTOMATION_NONE) {
+        target = DRUM_AUTOMATION_NONE;
+      }
+      lane.targetParam = static_cast<uint8_t>(target);
+    }
+    return;
+  }
+  if (path == Path::DrumLaneNode) {
+    int bankIdx = currentIndexFor(Path::DrumBanks);
+    if (bankIdx < 0) bankIdx = 0;
+    int patternIdx = currentIndexFor(Path::DrumBank);
+    int laneIdx = currentIndexFor(Path::DrumLanes);
+    int nodeIdx = currentIndexFor(Path::DrumLaneNodes);
+    if (bankIdx < 0 || bankIdx >= kBankCount ||
+        patternIdx < 0 || patternIdx >= Bank<DrumPatternSet>::kPatterns ||
+        laneIdx < 0 || laneIdx >= DrumPatternSet::kMaxLanes ||
+        nodeIdx < 0 || nodeIdx >= AutomationLane::kMaxNodes) {
+      return;
+    }
+    AutomationLane& lane = target_.drumBanks[bankIdx].patterns[patternIdx].lanes[laneIdx];
+    if (lane.nodeCount < static_cast<uint8_t>(nodeIdx + 1)) {
+      lane.nodeCount = static_cast<uint8_t>(nodeIdx + 1);
+    }
+    AutomationNode& node = lane.nodes[nodeIdx];
+    if (lastKey_ == "s") {
+      int step = static_cast<int>(value);
+      if (step < 0) step = 0;
+      if (step > 15) step = 15;
+      node.step = static_cast<uint8_t>(step);
+    } else if (lastKey_ == "v") {
+      float v = static_cast<float>(value);
+      if (v < 0.0f) v = 0.0f;
+      if (v > 1.0f) v = 1.0f;
+      node.value = v;
+    } else if (lastKey_ == "c") {
+      int curve = static_cast<int>(value);
+      if (curve < 0) curve = 0;
+      if (curve > 2) curve = 2;
+      node.curveType = static_cast<uint8_t>(curve);
+    }
+    return;
+  }
+  if (path == Path::DrumGroove) {
+    int bankIdx = currentIndexFor(Path::DrumBanks);
+    if (bankIdx < 0) bankIdx = 0;
+    int patternIdx = currentIndexFor(Path::DrumBank);
+    if (bankIdx < 0 || bankIdx >= kBankCount ||
+        patternIdx < 0 || patternIdx >= Bank<DrumPatternSet>::kPatterns) {
+      return;
+    }
+    PatternGroove& groove = target_.drumBanks[bankIdx].patterns[patternIdx].groove;
+    if (lastKey_ == "sw") {
+      float swing = static_cast<float>(value);
+      if (swing < 0.0f) swing = -1.0f;
+      if (swing > 0.66f) swing = 0.66f;
+      groove.swing = swing;
+    } else if (lastKey_ == "hz") {
+      float humanize = static_cast<float>(value);
+      if (humanize < 0.0f) humanize = -1.0f;
+      if (humanize > 1.0f) humanize = 1.0f;
+      groove.humanize = humanize;
     }
     return;
   }

@@ -891,11 +891,19 @@ void ProjectPage::drawMidiAdvanceDialog(IGfx& gfx) {
     }
 
     // Bottom info / Channel Map
-    int mapX = x + w - 85; 
+    // Bottom info / Channel Map
+    int mapX = x + w - 90; 
     int mapY = y + 22;
     gfx.setTextColor(COLOR_LABEL);
     gfx.drawText(mapX - 5, mapY - 15, "MIDI TRACKS");
     
+    // 1. Scan max notes for visualization scale
+    int maxNotes = 0;
+    for (const auto& c : midi_scan_.channels) {
+        if (c.noteCount > maxNotes) maxNotes = c.noteCount;
+    }
+    if (maxNotes < 1) maxNotes = 1;
+
     for (int ch = 0; ch < 16; ch++) {
         int cy = mapY + ch * (lineH - 3);
         if (cy + lineH > y + h - 18) break;
@@ -911,24 +919,42 @@ void ProjectPage::drawMidiAdvanceDialog(IGfx& gfx) {
         if (isB) color = 0xFD20; // Orange/Yellow
         if (isD) color = 0x07E0; // Green
 
-        // Format: "10# Bass" or " 1. ...."
+        // Draw Channel Num and Tag
         char tag = ' ';
         if (isA) tag = 'A'; else if (isB) tag = 'B'; else if (isD) tag = 'D';
         
-        std::snprintf(buf, sizeof(buf), "%2d%c%c", ch + 1, isUsed ? '#' : '.', tag);
+        std::snprintf(buf, sizeof(buf), "%2d%c", ch + 1, tag);
         gfx.setTextColor(color);
         gfx.drawText(mapX, cy, buf);
 
         if (isUsed) {
-            // Show start of track name if exists, else note range
+            // Draw Visual Bar
+            int barMaxW = 35;
+            int barH = 5;
+            int barW = (ci.noteCount * barMaxW) / maxNotes;
+            if (barW < 2) barW = 2;
+            
+            int barX = mapX + 22;
+            int barY = cy + 3;
+            gfx.fillRect(barX, barY, barW, barH, color);
+
+            // Draw Note Range or Track Name
+            int infoX = barX + barMaxW + 4;
+            
             if (ci.trackName[0] != '\0') {
                 gfx.setTextColor(COLOR_LABEL);
-                gfx.drawText(mapX + 32, cy, ci.trackName);
+                Widgets::drawClippedText(gfx, infoX, cy, w - (infoX - x) - 4, ci.trackName);
             } else {
-                std::snprintf(buf, sizeof(buf), "n%d-n%d", ci.minNote, ci.maxNote);
+                char n1[8], n2[8];
+                formatNoteName(ci.minNote, n1, sizeof(n1));
+                formatNoteName(ci.maxNote, n2, sizeof(n2));
+                std::snprintf(buf, sizeof(buf), "%s-%s", n1, n2);
                 gfx.setTextColor(COLOR_GRAY);
-                gfx.drawText(mapX + 32, cy, buf);
+                gfx.drawText(infoX, cy, buf);
             }
+        } else {
+            gfx.setTextColor(COLOR_DARK_GRAY);
+            gfx.drawText(mapX + 22, cy, ".");
         }
     }
 
@@ -1262,8 +1288,9 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             }
             if (main_focus_ == MainFocus::GrooveMode) {
                 withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
-                char toast[40];
-                std::snprintf(toast, sizeof(toast), "Groove Mode: %s", grooveModeName(mini_acid_.grooveboxMode()));
+                char toast[64];
+                std::snprintf(toast, sizeof(toast), "Groove Mode: %s (override)",
+                              grooveModeName(mini_acid_.grooveboxMode()));
                 UI::showToast(toast);
                 return true;
             }
@@ -1357,8 +1384,9 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         if (main_focus_ == MainFocus::VisualStyle) { UI::currentStyle = nextStyle(UI::currentStyle); return true; }
         if (main_focus_ == MainFocus::GrooveMode) {
             withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
-            char toast[40];
-            std::snprintf(toast, sizeof(toast), "Groove Mode: %s", grooveModeName(mini_acid_.grooveboxMode()));
+            char toast[64];
+            std::snprintf(toast, sizeof(toast), "Groove Mode: %s (override)",
+                          grooveModeName(mini_acid_.grooveboxMode()));
             UI::showToast(toast);
             return true;
         }

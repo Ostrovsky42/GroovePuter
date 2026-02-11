@@ -1,5 +1,6 @@
 #include "mode_manager.h"
 #include "miniacid_engine.h"
+#include "advanced_pattern_generator.h"
 #include "groove_profile.h"
 #include "../debug_log.h"
 #include <algorithm>
@@ -474,9 +475,10 @@ void GrooveboxModeManager::generateDrumPattern(DrumPatternSet& patternSet, const
 void GrooveboxModeManager::generateDrumPattern(DrumPatternSet& patternSet, 
                                                const GenerativeParams& params,
                                                const GenreBehavior& behavior) const {
-    for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-        generateDrumVoice(patternSet.voices[v], v, params, behavior);
-    }
+    // Structural behavior is currently encoded by selected GenerativeMode via
+    // DrumGenreTemplate table; keep the parameter for API compatibility.
+    (void)behavior;
+    DrumPatternGenerator::generateDrumPattern(patternSet, params, engine_.genreManager().generativeMode());
 }
 
 void GrooveboxModeManager::generateDrumVoice(DrumPattern& pattern, int voiceIndex,

@@ -48,18 +48,15 @@ bool writeChunk(Writer& writer, const char* data, size_t len) {
 }
 } // namespace scene_json_detail
 
-// Extended drum step FX values — plain constexpr to stay compatible
-// with existing uint8_t fx field and (uint8_t)StepFx:: comparisons.
-namespace DrumStepFX {
-  constexpr uint8_t NONE     = 0; // == StepFx::None
-  constexpr uint8_t RETRIG   = 1; // == StepFx::Retrig (existing)
-  constexpr uint8_t REVERSE  = 2; // == StepFx::Reverse (existing)
-  constexpr uint8_t FLAM     = 3; // fxParam = gap in ms (10-30 typical)
-  constexpr uint8_t ROLL     = 4; // fxParam bits 0-3 = hit count (2-8),
-                                  //          bits 4-7 = curve (0=flat, 1=cresc, 2=decresc)
-  constexpr uint8_t PITCH_UP = 5; // fxParam = semitones
-  constexpr uint8_t PITCH_DN = 6; // fxParam = semitones
-}
+enum DrumStepFX : uint8_t {
+  DRUM_FX_NONE = 0,
+  DRUM_FX_RETRIG = 1,   // existing
+  DRUM_FX_REVERSE = 2,  // existing
+  DRUM_FX_FLAM = 3,     // NEW: double hit, fxParam = gap in ticks
+  DRUM_FX_ROLL = 4,     // NEW: rapid hits, fxParam = note count
+  DRUM_FX_PITCH_UP = 5, // NEW: pitch bend up
+  DRUM_FX_PITCH_DN = 6  // NEW: pitch bend down
+};
 
 struct DrumStep {
   uint8_t hit : 1 {0};
@@ -86,19 +83,27 @@ struct AutomationNode {
 
 struct AutomationLane {
   uint8_t targetParam = 255; // 255=None, 0=ReverbMix, 1=Compressor, etc.
-  static constexpr int kMaxNodes = 4;
+  static constexpr int kMaxNodes = 8;
   AutomationNode nodes[kMaxNodes];
   uint8_t nodeCount = 0;
 };
 
+enum DrumAutomationTarget : uint8_t {
+  DRUM_AUTOMATION_REVERB_MIX = 0,
+  DRUM_AUTOMATION_COMPRESSION = 1,
+  DRUM_AUTOMATION_TRANSIENT_ATTACK = 2,
+  DRUM_AUTOMATION_ENGINE_SWITCH = 3,
+  DRUM_AUTOMATION_NONE = 255
+};
+
 struct PatternGroove {
-  float swing = -1.0f;     // -1 = use global
-  float humanize = -1.0f;  // -1 = use global
+  float swing = -1.0f;     // -1 = use global, 0..0.66 override
+  float humanize = -1.0f;  // -1 = use global, 0..1 override
 };
 
 struct DrumPatternSet {
   static constexpr int kVoices = 8;
-  static constexpr int kMaxLanes = 2; // ReverbMix + Compressor
+  static constexpr int kMaxLanes = 4; // Reverb, Compression, TransientAttack, EngineSwitch
   DrumPattern voices[kVoices];
   AutomationLane lanes[kMaxLanes];
   PatternGroove groove;
@@ -247,8 +252,8 @@ enum class StepFx : uint8_t {
   None = 0, 
   Retrig = 1, 
   Reverse = 2,
-  Flam = 3,      // Drum-only: fxParam = gap in ms
-  Roll = 4,      // Drum-only: fxParam bits 0-3 = count, 4-7 = curve
+  Flam = 3,      // Drum-only: fxParam = gap in ticks
+  Roll = 4,      // Drum-only: fxParam = hit count
   PitchUp = 5,   // fxParam = semitones
   PitchDown = 6  // fxParam = semitones
 };
@@ -330,7 +335,7 @@ struct GenreSettings {
     uint8_t generativeMode = 0;   // GenerativeMode enum value
     uint8_t textureMode = 0;      // TextureMode enum value
     uint8_t textureAmount = 70;   // 0..100 intensity
-    bool regenerateOnApply = true; // true: SOUND+PATTERN, false: SOUND ONLY
+    bool regenerateOnApply = false; // true: SOUND+PATTERN, false: SOUND ONLY (default)
     bool applyTempoOnApply = false; // true: SOUND+PATTERN+TEMPO
     bool curatedMode = true;      // true: only allowed Genre x Texture combos
     bool applySoundMacros = false; // true: Flavor change overwrites 303/Tape
@@ -418,6 +423,11 @@ private:
     DrumBank,
     DrumPatternSet,
     DrumVoice,
+    DrumLanes,
+    DrumLane,
+    DrumLaneNodes,
+    DrumLaneNode,
+    DrumGroove,
     DrumHitArray,
     DrumAccentArray,
     DrumFxArray,
@@ -732,16 +742,65 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
     }
     return writeLiteral("]}");
   };
+  auto writeAutomationLane = [&](const AutomationLane& lane) -> bool {
+    if (!writeLiteral("{\"t\":")) return false;
+    if (!writeInt(lane.targetParam)) return false;
+    if (!writeLiteral(",\"n\":[")) return false;
+    int nodeCount = lane.nodeCount;
+    if (nodeCount < 0) nodeCount = 0;
+    if (nodeCount > AutomationLane::kMaxNodes) nodeCount = AutomationLane::kMaxNodes;
+    for (int i = 0; i < nodeCount; ++i) {
+      if (i > 0 && !writeChar(',')) return false;
+      if (!writeLiteral("{\"s\":")) return false;
+      if (!writeInt(lane.nodes[i].step)) return false;
+      if (!writeLiteral(",\"v\":")) return false;
+      if (!writeFloat(lane.nodes[i].value)) return false;
+      if (!writeLiteral(",\"c\":")) return false;
+      if (!writeInt(lane.nodes[i].curveType)) return false;
+      if (!writeChar('}')) return false;
+    }
+    return writeLiteral("]}");
+  };
   auto writeDrumBank = [&](const Bank<DrumPatternSet>& bank) -> bool {
     if (!writeChar('[')) return false;
     for (int p = 0; p < Bank<DrumPatternSet>::kPatterns; ++p) {
       if (p > 0 && !writeChar(',')) return false;
-      if (!writeChar('[')) return false;
+      const DrumPatternSet& patternSet = bank.patterns[p];
+      if (!writeLiteral("{\"v\":[")) return false;
       for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
         if (v > 0 && !writeChar(',')) return false;
-        if (!writeDrumPattern(bank.patterns[p].voices[v])) return false;
+        if (!writeDrumPattern(patternSet.voices[v])) return false;
       }
       if (!writeChar(']')) return false;
+
+      bool hasLanes = false;
+      for (int l = 0; l < DrumPatternSet::kMaxLanes; ++l) {
+        const AutomationLane& lane = patternSet.lanes[l];
+        if (lane.targetParam != DRUM_AUTOMATION_NONE && lane.nodeCount > 0) {
+          hasLanes = true;
+          break;
+        }
+      }
+      if (hasLanes) {
+        if (!writeLiteral(",\"lanes\":[")) return false;
+        for (int l = 0; l < DrumPatternSet::kMaxLanes; ++l) {
+          if (l > 0 && !writeChar(',')) return false;
+          if (!writeAutomationLane(patternSet.lanes[l])) return false;
+        }
+        if (!writeChar(']')) return false;
+      }
+
+      const PatternGroove& groove = patternSet.groove;
+      if (groove.swing >= 0.0f || groove.humanize >= 0.0f) {
+        if (!writeLiteral(",\"grv\":{")) return false;
+        if (!writeLiteral("\"sw\":")) return false;
+        if (!writeFloat(groove.swing)) return false;
+        if (!writeLiteral(",\"hz\":")) return false;
+        if (!writeFloat(groove.humanize)) return false;
+        if (!writeChar('}')) return false;
+      }
+
+      if (!writeChar('}')) return false;
     }
     return writeChar(']');
   };

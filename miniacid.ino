@@ -170,8 +170,9 @@ void setup() {
   pinMode(42, OUTPUT); digitalWrite(42, LOW);
   
   Serial.begin(115200);
-  // При желании сразу включить
-  AudioDiagnostics::instance().enable(true);
+  // Keep diagnostics off by default on hardware; detailed profiling can exceed
+  // the real-time audio budget and cause underruns.
+  AudioDiagnostics::instance().enable(false);
   delay(500);
   Serial.println("\n\n!! BOOTING !!");
   uint32_t prevBootStage = g_bootStage;

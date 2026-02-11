@@ -83,6 +83,7 @@ Canonical key map for current firmware.
 | --- | --- |
 | `Arrows` | Navigate grid |
 | `Shift/Ctrl+Arrows` | Extend selection |
+| `Tab` | Cycle Drum subpages: `Main -> Settings -> Automation` |
 | `Q..I` | **Select pattern 1..8** |
 | **`Ctrl+1..2`** | **Switch bank A/B** |
 | `Enter` | Toggle hit |
@@ -91,6 +92,16 @@ Canonical key map for current firmware.
 | `G` | Randomize pattern |
 | `Ctrl+G` | Randomize focused voice |
 | `Alt+Bksp` | Clear whole pattern |
+
+## Drum Automation (Drum Sequencer subpage)
+| Key | Action |
+| --- | --- |
+| `Arrows Up/Down` | Select row |
+| `Arrows Left/Right` | Adjust selected value |
+| `N` | Add node to current lane |
+| `X` | Remove selected node |
+| `Bksp` / `Del` | Remove selected node |
+| `Enter` on `SWING/HUMAN` | Reset override to `AUTO` (`-1`) |
 
 ## TB303 Params
 | Key | Action |
@@ -117,11 +128,23 @@ Canonical key map for current firmware.
 | --- | --- |
 | `Q..I` | Select Pattern 1..8 (Synth A) |
 | `Ctrl+1..2` | Switch Bank A/B |
-| `Arrows` | Select Genre / Texture / Preset |
-| `Enter` | Apply Genre + Texture |
-| `M` | Cycle Apply mode (Snd / Pat / BPM) |
-| `G` | Toggle Groovebox mode (Acid / Minimal) |
+| `Tab` | Focus cycle: `GENRE -> TEXTURE -> APPLY` |
+| `Up/Down` | Change Genre or Texture (depends on focus) |
+| `Left/Right` | `Texture Amount +/-` (when `TEXTURE` focused) |
+| `Enter` | Apply current Genre/Texture (or cycle Apply mode when `APPLY` focused) |
+| `Space` | Cycle Apply mode (when `APPLY` focused) |
+| `M` | Cycle Apply mode (`SND -> S+P -> S+T`) |
+| `G` | Toggle Groovebox mode override (cycles 5 modes) |
 | `C` | Toggle Curated mode (Recommendations) |
+
+`Apply` modes:
+- `SND`: sound/timbre only, keeps existing patterns
+- `S+P`: sound + pattern regeneration
+- `S+T`: sound + pattern regeneration + BPM set to genre default
+
+`Link` status on page:
+- `GEN`: Groove mode is aligned with current genre mapping
+- `OVR`: Groove mode manually overridden in Groove Lab / `G`
 
 > [!TIP]
 > **CapsLock Safety**: QWERTY pattern selection (`Q..I`) and Track Mutes (`1..0`) now work even if CapsLock is ON (Shift is ignored for these keys).

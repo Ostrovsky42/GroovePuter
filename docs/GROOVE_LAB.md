@@ -42,3 +42,19 @@ Displayed as:
 - `GrooveProfile` (`src/dsp/groove_profile.*`): source of truth for corridors + budget rules
 - `ModeManager`: applies selected mode/flavor to generator + presets
 - `GenrePage`: selection/apply workflow, not corridor authority
+
+## Important: Groove vs Genre
+- `GROOVE LAB` operates on `GrooveboxMode` (5 modes: ACID/MINIMAL/BREAKS/DUB/ELECTRO).
+- `GenrePage` operates on `GenerativeMode` (9 genres: Acid..Chip) + texture layer.
+- They are related but not identical systems.
+- When applying a genre in `GenrePage`, the engine now auto-maps genre to a compatible `GrooveboxMode` so voicing/feel are coherent.
+
+## Conflict Guard (5-mode vs 9-genre)
+To reduce "mode fights genre" behavior:
+- Genre apply keeps genre as source of truth for generation.
+- Groove mode is auto-realigned to mapped genre mode during apply/state sync.
+- This keeps macro voicing coherent while preserving per-genre rhythm identity.
+
+## Related Docs
+- `docs/drum_genre_templates.md`
+- `docs/DRUM_AUTOMATION.md`

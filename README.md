@@ -29,6 +29,7 @@ Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtu
 * **TEXTURE layer (live):** Lo-Fi / Drive / Tape
 * **Genre-driven generator:** rhythmic masks, motif length, scale preference, density traits
 * **Groove Lab page:** mode/flavor/macros + corridor/budget preview
+* **Drum Automation page:** 4 automation lanes + per-pattern groove override
 * **Scene persistence:** safe load for older scenes (optional fields)
 
 

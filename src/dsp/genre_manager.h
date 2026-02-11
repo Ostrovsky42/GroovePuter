@@ -2,6 +2,7 @@
 #define GENRE_MANAGER_H
 #include <stdint.h>
 #include <cstdio>
+#include "src/dsp/mini_dsp_params.h"
 #include "src/dsp/tape_defs.h"
 
 // ============================================================================
@@ -208,6 +209,9 @@ public:
         static const char* const names[] = {"Clean", "Dub", "LoFi", "Industrial", "Psychedelic"};
         return names[static_cast<int>(mode)];
     }
+
+    // Canonical bridge between 9 genres and 5 groovebox macro modes.
+    static GrooveboxMode grooveboxModeForGenerative(GenerativeMode mode);
 
     // Curated compatibility helpers
     static bool isTextureAllowed(GenerativeMode genre, TextureMode texture);

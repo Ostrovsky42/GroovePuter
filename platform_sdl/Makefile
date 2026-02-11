@@ -39,6 +39,7 @@ SOURCES := \
 	../src/dsp/one_knob_compressor.cpp \
 	../src/dsp/transient_shaper.cpp \
 	../src/dsp/groove_profile.cpp \
+	../src/dsp/advanced_pattern_generator.cpp \
 	../src/ui/miniacid_display.cpp \
 	../src/ui/cassette_skin.cpp \
 	../src/ui/led_manager.cpp \
@@ -56,6 +57,7 @@ SOURCES := \
 	../src/ui/pages/color_test_page.cpp \
 	../src/ui/pages/pattern_edit_page.cpp \
 	../src/ui/pages/drum_sequencer_page.cpp \
+	../src/ui/pages/drum_automation_page.cpp \
 	../src/ui/pages/song_page.cpp \
 	../src/ui/pages/project_page.cpp \
 	../src/ui/pages/mode_page.cpp \

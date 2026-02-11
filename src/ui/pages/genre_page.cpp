@@ -17,12 +17,6 @@ using namespace RetroWidgets;
 #include "../amber_widgets.h"
 #endif
 
-// Preset mappings: (genre, texture)
-// genre indices follow GenerativeMode order (see genre_manager.h)
-// texture: 0=Clean, 1=Dub, 2=LoFi, 3=Industrial
-static const uint8_t kPresetGenre[8]   = { 0, 1, 3, 2, 4, 5, 6, 7 };
-static const uint8_t kPresetTexture[8] = { 0, 0, 3, 1, 0, 1, 2, 4 };
-
 namespace {
 constexpr int kGenreVisibleRows = 4;
 constexpr int kTextureVisibleRows = 4;
@@ -119,6 +113,16 @@ bool tempoOnApply(const MiniAcid& mini) {
     return currentApplyMode(mini) == ApplyMode::SoundPatternTempo;
 }
 
+const char* onOff(bool v) {
+    return v ? "ON" : "OFF";
+}
+
+const char* linkStateShort(const MiniAcid& mini) {
+    const GrooveboxMode expected =
+        GenreManager::grooveboxModeForGenerative(mini.genreManager().generativeMode());
+    return (mini.grooveboxMode() == expected) ? "GEN" : "OVR";
+}
+
 int computeScrollTop(int itemCount, int visibleRows, int selectedIndex, int currentTop) {
     if (itemCount <= visibleRows) return 0;
     int top = currentTop;
@@ -154,23 +158,8 @@ const char* GenrePage::genreNames[kGenerativeModeCount] = {
 const char* GenrePage::textureNames[kTextureModeCount] = {
     "CLEAN", "DUB", "LOFI", "INDUS", "PSY"
 };
-
-const char* GenrePage::presetNames[8] = {
-    "CLASSIC ACID", "OUTRUN LEAD", "EBM INDUS",
-    "DUB TECHNO", "RAVE", "DUB REGGAE",
-    "TRIPHOP DUST", "BROKEN BEAT"
-};
-
-// Curated BPM targets for 1..8 preset buttons.
-static const uint8_t kPresetBpm[8] = {128, 112, 136, 118, 128, 92, 88, 122};
 // Manual genre/texture apply BPM hint by generative mode.
 static const uint8_t kGenreBpm[kGenerativeModeCount] = {128, 112, 136, 122, 138, 92, 88, 118, 140};
-
-namespace {
-const char* kPresetShortNames[8] = {
-    "ACID", "OUT", "EBM", "DUB", "RAVE", "REG", "TRI", "BRK"
-};
-}
 
 GenrePage::GenrePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
@@ -253,17 +242,12 @@ void GenrePage::drawFooter(IGfx& gfx) {
             break;
         case FocusArea::TEXTURE:
             left = "UP/DN:Texture  L/R:TX%";
-            right = "TAB:Presets";
-            focusMode = nullptr;
-            break;
-        case FocusArea::PRESETS:
-            left = "1..8/ARW:Pick  ENT:Load";
-            right = "TAB:Apply  M:Mode C:Cur";
+            right = "TAB:Apply";
             focusMode = nullptr;
             break;
         case FocusArea::APPLY_MODE:
             left = "SPACE/M:Toggle Apply";
-            right = tempoOnApply(mini_acid_) ? "S+T: +BPM" : (regenOnApply(mini_acid_) ? "S+P: REGENERATES" : "SND: KEEPS PATTERNS");
+            right = "C:Curated  G:Groove";
             focusMode = nullptr;
             break;
     }
@@ -370,18 +354,21 @@ void GenrePage::drawMinimalStyle(IGfx& gfx) {
         true
     );
 
-    // Presets grid: secondary lane, no label
-    const int gridY = LayoutManager::lineY(6);
+    // Status rows (replaces preset grid)
+    const int statusY = LayoutManager::lineY(6);
+    const auto& gs = mini_acid_.sceneManager().currentScene().genre;
 
-    UI::drawButtonGridHelper(
-        gfx,
-        Layout::COL_1,
-        gridY,
-        presetNames,
-        8,
-        presetIndex_,
-        focus_ == FocusArea::PRESETS
-    );
+    char status1[48];
+    std::snprintf(status1, sizeof(status1), "Apply:%s  Curated:%s",
+                  applyModeShort(mini_acid_), onOff(gs.curatedMode));
+    gfx.setTextColor((focus_ == FocusArea::APPLY_MODE) ? COLOR_ACCENT : COLOR_LABEL);
+    gfx.drawText(Layout::COL_1, statusY, status1);
+
+    char status2[40];
+    std::snprintf(status2, sizeof(status2), "Groove:%s  Link:%s",
+                  grooveModeShort(mini_acid_), linkStateShort(mini_acid_));
+    gfx.setTextColor(COLOR_LABEL);
+    gfx.drawText(Layout::COL_1, statusY + Layout::LINE_HEIGHT, status2);
 }
 
 // =================================================================
@@ -399,7 +386,6 @@ void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
     const int INDICATOR_Y = CONTENT_Y + 2;
     bool genreFocus = (focus_ == FocusArea::GENRE);
     bool textureFocus = (focus_ == FocusArea::TEXTURE);
-    bool presetFocus = (focus_ == FocusArea::PRESETS);
     
     if (genreFocus) {
         drawGlowText(gfx, 4, INDICATOR_Y, "G>", FOCUS_GLOW, NEON_CYAN);
@@ -527,52 +513,21 @@ void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
                   visibleTextureCount(), kTextureVisibleRows, textureScroll_,
                   GRID_MEDIUM, FOCUS_GLOW);
     
-    // Preset grid (bottom)
+    // Status block (bottom)
     const int GRID_Y = LIST_Y + kGenreVisibleRows * ROW_H + 4;
-    const int BTN_W = 56;
-    const int BTN_H = 10;
-    const int GAP = 2;
-    
-    for (int i = 0; i < 8; i++) {
-        int col = i % 4;
-        int row = i / 4;
-        int btnX = 4 + col * (BTN_W + GAP);
-        int btnY = GRID_Y + row * (BTN_H + GAP);
-        
-        bool selected = (i == presetIndex_);
-        bool focused = presetFocus && selected;
-        
-        uint16_t genreColor = genreColors[kPresetGenre[i]];
-        uint16_t texColor = textureColors[kPresetTexture[i]];
-        
-        if (selected) {
-            gfx.fillRect(btnX, btnY, BTN_W, BTN_H, BG_INSET);
-            if (focused) {
-                drawGlowBorder(gfx, btnX, btnY, BTN_W, BTN_H, genreColor, 1);
-                gfx.drawLine(btnX + 1, btnY + BTN_H - 2, btnX + BTN_W - 2, btnY + BTN_H - 2, texColor);
-            } else {
-                gfx.drawRect(btnX, btnY, BTN_W, BTN_H, GRID_MEDIUM);
-            }
-        } else {
-            gfx.fillRect(btnX, btnY, BTN_W, BTN_H, BG_DARK_GRAY);
-            gfx.drawRect(btnX, btnY, BTN_W, BTN_H, GRID_DIM);
-        }
-        
-        if (selected) {
-            drawLED(gfx, btnX + 3, btnY + 3, 1, true, genreColor);
-        }
-        
-        IGfxColor textColor = selected ? genreColor : IGfxColor(RetroTheme::TEXT_DIM);
-        if (focused) textColor = IGfxColor(RetroTheme::TEXT_PRIMARY);
-        
-        gfx.setTextColor(textColor);
-        const char* name = kPresetShortNames[i];
-        int textW = strlen(name) * 6;
-        int textX = btnX + (BTN_W - textW) / 2;
-        if (textX < btnX + 8) textX = btnX + 8;
-        
-        gfx.drawText(textX, btnY + 1, name);
-    }
+    const auto& gs = mini_acid_.sceneManager().currentScene().genre;
+    gfx.fillRect(4, GRID_Y, 232, 22, BG_DARK_GRAY);
+    gfx.drawRect(4, GRID_Y, 232, 22, (focus_ == FocusArea::APPLY_MODE) ? FOCUS_GLOW : GRID_MEDIUM);
+
+    char s1[64];
+    std::snprintf(s1, sizeof(s1), "APPLY:%s  CURATED:%s", applyModeShort(mini_acid_), onOff(gs.curatedMode));
+    gfx.setTextColor(TEXT_PRIMARY);
+    gfx.drawText(8, GRID_Y + 3, s1);
+
+    char s2[64];
+    std::snprintf(s2, sizeof(s2), "GROOVE:%s  LINK:%s", grooveModeShort(mini_acid_), linkStateShort(mini_acid_));
+    gfx.setTextColor(TEXT_SECONDARY);
+    gfx.drawText(8, GRID_Y + 12, s2);
 #else
     // Fallback to minimal if retro theme not included
     drawMinimalStyle(gfx);
@@ -592,7 +547,6 @@ void GenrePage::drawAmberStyle(IGfx& gfx) {
     const int INDICATOR_Y = CONTENT_Y + 2;
     bool genreFocus = (focus_ == FocusArea::GENRE);
     bool textureFocus = (focus_ == FocusArea::TEXTURE);
-    bool presetFocus = (focus_ == FocusArea::PRESETS);
     
     if (genreFocus) {
         AmberWidgets::drawGlowText(gfx, 4, INDICATOR_Y, "G>", AmberTheme::FOCUS_GLOW, AmberTheme::NEON_CYAN);
@@ -717,32 +671,20 @@ void GenrePage::drawAmberStyle(IGfx& gfx) {
                   AmberTheme::GRID_MEDIUM, AmberTheme::NEON_ORANGE);
     
     const int GRID_Y = LIST_Y + kGenreVisibleRows * ROW_H + 4;
-    const int BTN_W = 56;
-    const int BTN_H = 10;
-    const int GAP = 2;
-    
-    for (int i = 0; i < 8; i++) {
-        int bx = 4 + (i % 4) * (BTN_W + GAP);
-        int by = GRID_Y + (i / 4) * (BTN_H + GAP);
-        bool selected = (i == presetIndex_);
-        
-        gfx.fillRect(bx, by, BTN_W, BTN_H, AmberTheme::BG_PANEL);
-        gfx.drawRect(bx, by, BTN_W, BTN_H, selected ? AmberTheme::NEON_ORANGE : AmberTheme::GRID_MEDIUM);
-        gfx.setTextColor(selected ? AmberTheme::TEXT_PRIMARY : AmberTheme::TEXT_SECONDARY);
-        const char* shortName = kPresetShortNames[i];
-        int tw = strlen(shortName) * 6;
-        int tx = bx + (BTN_W - tw) / 2;
-        if (tx < bx + 2) tx = bx + 2;
-        gfx.drawText(tx, by + 2, shortName);
-    }
+    const auto& gs = mini_acid_.sceneManager().currentScene().genre;
+    gfx.fillRect(4, GRID_Y, 232, 22, AmberTheme::BG_PANEL);
+    gfx.drawRect(4, GRID_Y, 232, 22,
+                 (focus_ == FocusArea::APPLY_MODE) ? AmberTheme::NEON_ORANGE : AmberTheme::GRID_MEDIUM);
 
-    if (presetFocus) {
-        int fx = 4;
-        int fy = GRID_Y - 2;
-        int fw = 4 * (BTN_W + GAP) - GAP;
-        int fh = 2 * (BTN_H + GAP) - GAP + 2;
-        AmberWidgets::drawGlowBorder(gfx, fx, fy, fw, fh, AmberTheme::NEON_ORANGE, 1);
-    }
+    char s1[64];
+    std::snprintf(s1, sizeof(s1), "APPLY:%s  CURATED:%s", applyModeShort(mini_acid_), onOff(gs.curatedMode));
+    gfx.setTextColor(AmberTheme::TEXT_PRIMARY);
+    gfx.drawText(8, GRID_Y + 3, s1);
+
+    char s2[64];
+    std::snprintf(s2, sizeof(s2), "GROOVE:%s  LINK:%s", grooveModeShort(mini_acid_), linkStateShort(mini_acid_));
+    gfx.setTextColor(AmberTheme::TEXT_SECONDARY);
+    gfx.drawText(8, GRID_Y + 12, s2);
     
 #else
     drawMinimalStyle(gfx);
@@ -769,9 +711,6 @@ bool GenrePage::handleEvent(UIEvent& e) {
                 textureIndex_ = visibleTextureAt(vis);
             }
         }
-        else if (focus_ == FocusArea::PRESETS) {
-            if (presetIndex_ >= 4) presetIndex_ -= 4;
-        }
     };
     auto moveDown = [&]() {
         if (focus_ == FocusArea::GENRE) {
@@ -785,9 +724,6 @@ bool GenrePage::handleEvent(UIEvent& e) {
                 textureIndex_ = visibleTextureAt(vis);
             }
         }
-        else if (focus_ == FocusArea::PRESETS) {
-            if (presetIndex_ < 4) presetIndex_ += 4;
-        }
     };
     auto moveLeft = [&]() {
         if (focus_ == FocusArea::TEXTURE) {
@@ -795,8 +731,6 @@ bool GenrePage::handleEvent(UIEvent& e) {
             int v = (int)gs.textureAmount - 5;
             if (v < 0) v = 0;
             gs.textureAmount = static_cast<uint8_t>(v);
-        } else if (focus_ == FocusArea::PRESETS) {
-            if ((presetIndex_ % 4) > 0) --presetIndex_;
         }
     };
     auto moveRight = [&]() {
@@ -805,8 +739,6 @@ bool GenrePage::handleEvent(UIEvent& e) {
             int v = (int)gs.textureAmount + 5;
             if (v > 100) v = 100;
             gs.textureAmount = static_cast<uint8_t>(v);
-        } else if (focus_ == FocusArea::PRESETS) {
-            if ((presetIndex_ % 4) < 3) ++presetIndex_;
         }
     };
 
@@ -825,8 +757,7 @@ bool GenrePage::handleEvent(UIEvent& e) {
     // TAB: cycle focus
     if (key == '\t') {
         if (focus_ == FocusArea::GENRE)   focus_ = FocusArea::TEXTURE;
-        else if (focus_ == FocusArea::TEXTURE) focus_ = FocusArea::PRESETS;
-        else if (focus_ == FocusArea::PRESETS) focus_ = FocusArea::APPLY_MODE;
+        else if (focus_ == FocusArea::TEXTURE) focus_ = FocusArea::APPLY_MODE;
         else focus_ = FocusArea::GENRE;
         return true;
     }
@@ -862,9 +793,9 @@ bool GenrePage::handleEvent(UIEvent& e) {
     // G: toggle groovebox mode (ACID/MINIMAL) in genre context.
     if (key == 'g' || key == 'G') {
         withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
-        char toast[40];
+        char toast[64];
         const char* shortName = grooveModeShort(mini_acid_);
-        std::snprintf(toast, sizeof(toast), "Groove Mode: %s", shortName);
+        std::snprintf(toast, sizeof(toast), "Groove Mode: %s (override)", shortName);
         UI::showToast(toast);
         return true;
     }
@@ -875,14 +806,6 @@ bool GenrePage::handleEvent(UIEvent& e) {
         setCuratedMode(next);
         UI::showToast(next ? "Texture Mode: CURATED (recommended first)"
                            : "Texture Mode: ADVANCED (all combos)", 1800);
-        return true;
-    }
-
-    // Direct preset selection (1-8)
-    if (key >= '1' && key <= '8') {
-        presetIndex_ = key - '1';
-        focus_ = FocusArea::PRESETS;
-        applyCurrent();
         return true;
     }
 
@@ -897,6 +820,8 @@ bool GenrePage::handleEvent(UIEvent& e) {
             }
             mini_acid_.genreManager().setGenerativeMode(static_cast<GenerativeMode>(gen));
             mini_acid_.genreManager().setTextureMode(static_cast<TextureMode>(tex));
+            mini_acid_.setGrooveboxMode(
+                GenreManager::grooveboxModeForGenerative(static_cast<GenerativeMode>(gen)));
             auto& gs = mini_acid_.sceneManager().currentScene().genre;
             gs.generativeMode = static_cast<uint8_t>(gen);
             gs.textureMode = static_cast<uint8_t>(tex);
@@ -979,43 +904,24 @@ void GenrePage::applyCurrent() {
     const bool doRegenerate = regenOnApply(mini_acid_);
     const bool doApplyTempo = tempoOnApply(mini_acid_);
     int targetBpm = kGenreBpm[genreIndex_ < 0 ? 0 : (genreIndex_ >= kGenerativeModeCount ? (kGenerativeModeCount - 1) : genreIndex_)];
-    if (focus_ == FocusArea::PRESETS) {
-        targetBpm = kPresetBpm[presetIndex_ < 0 ? 0 : (presetIndex_ >= 8 ? 7 : presetIndex_)];
-        withAudioGuard([&]() {
-            mini_acid_.genreManager().setGenerativeMode(static_cast<GenerativeMode>(kPresetGenre[presetIndex_]));
-            mini_acid_.genreManager().setTextureMode(static_cast<TextureMode>(kPresetTexture[presetIndex_]));
-            
-            // Apply base timbre, reset bias tracking, then apply texture as delta from 0
-            mini_acid_.genreManager().applyGenreTimbre(mini_acid_);
-            mini_acid_.genreManager().resetTextureBiasTracking();
-            mini_acid_.genreManager().applyTexture(mini_acid_);
-            auto& gs = mini_acid_.sceneManager().currentScene().genre;
-            gs.generativeMode = static_cast<uint8_t>(kPresetGenre[presetIndex_]);
-            gs.textureMode = static_cast<uint8_t>(mini_acid_.genreManager().textureMode());
-            if (doRegenerate) mini_acid_.regeneratePatternsWithGenre();
-            if (doApplyTempo) mini_acid_.setBpm(static_cast<float>(targetBpm));
-        });
-        updateFromEngine();
-        prevGenreIndex_ = genreIndex_;
-        prevTextureIndex_ = textureIndex_;
-    } else {
-        withAudioGuard([&]() {
-            mini_acid_.genreManager().setGenerativeMode(static_cast<GenerativeMode>(genreIndex_));
-            mini_acid_.genreManager().setTextureMode(static_cast<TextureMode>(textureIndex_));
-            
-            // Apply base timbre, reset bias tracking, then apply texture as delta from 0
-            mini_acid_.genreManager().applyGenreTimbre(mini_acid_);
-            mini_acid_.genreManager().resetTextureBiasTracking();
-            mini_acid_.genreManager().applyTexture(mini_acid_);
-            auto& gs = mini_acid_.sceneManager().currentScene().genre;
-            gs.generativeMode = static_cast<uint8_t>(genreIndex_);
-            gs.textureMode = static_cast<uint8_t>(textureIndex_);
-            if (doRegenerate) mini_acid_.regeneratePatternsWithGenre();
-            if (doApplyTempo) mini_acid_.setBpm(static_cast<float>(targetBpm));
-        });
-        prevGenreIndex_ = genreIndex_;
-        prevTextureIndex_ = textureIndex_;
-    }
+    withAudioGuard([&]() {
+        mini_acid_.genreManager().setGenerativeMode(static_cast<GenerativeMode>(genreIndex_));
+        mini_acid_.genreManager().setTextureMode(static_cast<TextureMode>(textureIndex_));
+        mini_acid_.setGrooveboxMode(
+            GenreManager::grooveboxModeForGenerative(static_cast<GenerativeMode>(genreIndex_)));
+        
+        // Apply base timbre, reset bias tracking, then apply texture as delta from 0
+        mini_acid_.genreManager().applyGenreTimbre(mini_acid_);
+        mini_acid_.genreManager().resetTextureBiasTracking();
+        mini_acid_.genreManager().applyTexture(mini_acid_);
+        auto& gs = mini_acid_.sceneManager().currentScene().genre;
+        gs.generativeMode = static_cast<uint8_t>(genreIndex_);
+        gs.textureMode = static_cast<uint8_t>(textureIndex_);
+        if (doRegenerate) mini_acid_.regeneratePatternsWithGenre();
+        if (doApplyTempo) mini_acid_.setBpm(static_cast<float>(targetBpm));
+    });
+    prevGenreIndex_ = genreIndex_;
+    prevTextureIndex_ = textureIndex_;
 
     char toast[80];
     const int g = genreIndex_;

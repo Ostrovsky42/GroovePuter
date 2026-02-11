@@ -8,7 +8,7 @@
 
 class GenrePage : public IPage {
 public:
-    enum class FocusArea { GENRE, TEXTURE, PRESETS, APPLY_MODE };
+    enum class FocusArea { GENRE, TEXTURE, APPLY_MODE };
     
     GenrePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
     
@@ -33,14 +33,12 @@ private:
     int prevGenreIndex_ = -1;
     int textureIndex_ = 0;
     int prevTextureIndex_ = -1;
-    int presetIndex_ = 0;
     int genreScroll_ = 0;
     int textureScroll_ = 0;
     
     // Данные
     static const char* genreNames[kGenerativeModeCount];
     static const char* textureNames[kTextureModeCount];
-    static const char* presetNames[8];
     
     // Draw methods for different styles
     void drawMinimalStyle(IGfx& gfx);
