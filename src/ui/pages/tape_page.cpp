@@ -7,6 +7,7 @@
 #endif
 #include <cstdio>
 #include <algorithm>
+#include <cmath>
 
 namespace {
 inline constexpr IGfxColor kFocusColor = IGfxColor(0xB36A00);
@@ -205,7 +206,7 @@ class TapePage::PresetComponent : public FocusableComponent {
 };
 
 TapePage::TapePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
-    : gfx_(gfx), mini_acid_(mini_acid), audio_guard_(audio_guard) {}
+    : gfx_(gfx), mini_acid_(mini_acid), audio_guard_(audio_guard), waveform_(gfx) {}
 
 void TapePage::setBoundaries(const Rect& rect) {
   Frame::setBoundaries(rect);
@@ -296,6 +297,8 @@ void TapePage::draw(IGfx& gfx) {
   }
 #endif
   syncFromState();
+  updateAnimations();
+  drawCassette(gfx);
   Container::draw(gfx);
   
   // Draw looper info at bottom
@@ -562,3 +565,65 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
 }
 
 const std::string& TapePage::getTitle() const { return title_; }
+
+void TapePage::updateAnimations() {
+  if (millis() - last_frame_time_ >= kFrameDelay) {
+    TapeMode mode = mini_acid_.sceneManager().currentScene().tape.mode;
+    if (mode == TapeMode::Play || mode == TapeMode::Rec || mode == TapeMode::Dub) {
+      reel_rotation_ += 0.3f;
+      if (reel_rotation_ >= 6.28318f) reel_rotation_ -= 6.28318f;
+    }
+    
+    // Update waveform data from audio engine
+    const auto& buffer = mini_acid_.getWaveformBuffer();
+    waveform_.setWaveData(buffer.data, buffer.count);
+    
+    last_frame_time_ = millis();
+  }
+}
+
+void TapePage::drawCassette(IGfx& gfx) {
+  const Rect area = getBoundaries();
+  // Compact cassette layout for Cardputer (240x135)
+  // Positioned in the remaining space below sliders
+  int cx = area.x + area.w / 2 - 80;
+  int cy = area.y + 78;
+  int cw = 160;
+  int ch = 42;
+  
+  // Body background
+  IGfxColor bodyColor(0x333333);
+  gfx.fillRect(cx, cy, cw, ch, bodyColor);
+  gfx.drawRect(cx, cy, cw, ch, IGfxColor::Gray());
+  
+  // Sticker area
+  int sx = cx + 35;
+  int sy = cy + 4;
+  int sw = 90;
+  int sh = 28;
+  gfx.fillRect(sx, sy, sw, sh, IGfxColor(0x1a1a1a));
+  
+  // Waveform visualization on sticker
+  waveform_.drawWaveformInRegion(Rect(sx, sy, sw, sh), IGfxColor::Green());
+  
+  // Reels
+  drawReel(gfx, cx + 18, cy + 20, 14, reel_rotation_);
+  drawReel(gfx, cx + cw - 18, cy + 20, 14, -reel_rotation_);
+}
+
+void TapePage::drawReel(IGfx& gfx, int x, int y, int radius, float rotation) {
+  gfx.drawCircle(x, y, radius, IGfxColor::White());
+  gfx.fillCircle(x, y, 4, IGfxColor::White());
+  
+  // Mechanical hub spokes
+  for (int i = 0; i < 3; i++) {
+    float angle = rotation + i * (2.09439f); // 2*PI/3
+    int x1 = x + cos(angle) * (radius - 2);
+    int y1 = y + sin(angle) * (radius - 2);
+    gfx.drawLine(x, y, x1, y1, IGfxColor::White());
+  }
+}
+
+void TapePage::drawTape(IGfx& gfx) {
+    // Placeholder for tape path if needed later
+}

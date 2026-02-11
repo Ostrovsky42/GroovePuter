@@ -2391,14 +2391,7 @@ void MiniAcid::setGrooveFlavor(int flavor) {
   if (sceneManager_.currentScene().genre.applySoundMacros) {
     modeManager_.apply303Preset(0, flv);
     modeManager_.apply303Preset(1, flv);
-    int tapeCount = 0;
-    const TapeModePreset* tapePresets = modeManager_.getTapePresets(tapeCount);
-    if (tapePresets && tapeCount > 0) {
-      int idx = flv;
-      if (idx < 0) idx = 0;
-      if (idx >= tapeCount) idx = tapeCount - 1;
-      sceneManager_.currentScene().tape.macro = tapePresets[idx].macro;
-    }
+    // Note: Tape macros disabled per latest design
   }
 }
 

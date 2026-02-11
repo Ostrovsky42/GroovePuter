@@ -80,7 +80,7 @@ void ModePage::draw(IGfx& gfx) {
   std::snprintf(flv, sizeof(flv), "%s  [%d/5]", flavorName(mode, flavor), flavor + 1);
   drawRow(gfx, y0 + Layout::LINE_HEIGHT, "FLAVOR", flv, focus_ == FocusRow::Flavor, cfg.accentColor);
 
-  drawRow(gfx, y0 + Layout::LINE_HEIGHT * 2, "MACROS", macros ? "ON  (Flavor -> 303/Tape)" : "OFF (Safe)", focus_ == FocusRow::Macros, cfg.accentColor);
+  drawRow(gfx, y0 + Layout::LINE_HEIGHT * 2, "MACROS", macros ? "ON  (Flavor -> 303 Voices)" : "OFF (Safe)", focus_ == FocusRow::Macros, cfg.accentColor);
 
   drawRow(gfx, y0 + Layout::LINE_HEIGHT * 3, "PREVIEW", "SPACE/ENT = Regenerate", focus_ == FocusRow::Preview, cfg.accentColor);
 
@@ -97,7 +97,7 @@ void ModePage::draw(IGfx& gfx) {
   gfx.drawText(Layout::CONTENT.x + 2, y0 + Layout::LINE_HEIGHT * 5 + 1, budgetLine);
 
   gfx.setTextColor(IGfxColor(0x8AA4BA));
-  gfx.drawText(Layout::CONTENT.x + 2, y0 + Layout::LINE_HEIGHT * 6, "A:Apply 303A  B:Apply 303B  T:Apply Tape");
+  gfx.drawText(Layout::CONTENT.x + 2, y0 + Layout::LINE_HEIGHT * 6, "A:Apply 303A  B:Apply 303B  D:Apply Drums");
 
   UI::drawStandardFooter(gfx, "TAB:Focus  ARW:Adjust", "ENT:Action");
 }
@@ -137,15 +137,9 @@ void ModePage::applyTo303(int voiceIdx) {
   withAudioGuard([&]() { mini_acid_.modeManager().apply303Preset(voiceIdx, mini_acid_.grooveFlavor()); });
 }
 
-void ModePage::applyToTape() {
+void ModePage::applyToDrums() {
   withAudioGuard([&]() {
-    int count = 0;
-    const TapeModePreset* presets = mini_acid_.modeManager().getTapePresets(count);
-    if (!presets || count <= 0) return;
-    int idx = mini_acid_.grooveFlavor();
-    if (idx < 0) idx = 0;
-    if (idx >= count) idx = count - 1;
-    mini_acid_.sceneManager().currentScene().tape.macro = presets[idx].macro;
+    mini_acid_.randomizeDrumPattern();
   });
 }
 
@@ -213,9 +207,9 @@ bool ModePage::handleEvent(UIEvent& ui_event) {
     case 'B':
       applyTo303(1);
       return true;
-    case 't':
-    case 'T':
-      applyToTape();
+    case 'd':
+    case 'D':
+      applyToDrums();
       return true;
     case 'm':
     case 'M':

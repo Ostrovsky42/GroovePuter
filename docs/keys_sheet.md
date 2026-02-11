@@ -17,11 +17,11 @@ Canonical key map for current firmware.
 | `[` / `]` | Previous / Next page (Legacy) |
 | `Alt+M` | Toggle Song mode |
 | `Alt+W` | Waveform overlay |
-| `Alt+V` | Jump to Groove Lab |
+| `Alt+V` | Jump to Tape Page (Visualizer) |
 | `Alt+\\` | Cycle visual style (`CARBON`/`CYBER`/`AMBER`) |
 | `Ctrl+H` | Global help overlay (Highest Priority) |
 | `1..9`, `0` | Track mutes (Global - Handles Shift/CapsLock) |
-| `Esc` | Back / Dismiss |
+| `Esc` / \` | Back / Dismiss / Previous Page toggle |
 | `Ctrl+Alt+Bksp` | Project reset (wipe) |
 
 ## Priority & Interception Logic
@@ -32,96 +32,6 @@ Canonical key map for current firmware.
 4.  **Local Page Handlers**: Если страница не обработала клавишу, она уходит в глобальные мьюты (`0..9`).
 
 ---
-
-## Song Page
-| Key | Action |
-| --- | --- |
-| `Arrows` | Navigate grid |
-| `Shift/Ctrl+Arrows` | Extend selection |
-| `Q..I` | Assign pattern `1..8` (to cell or selection) |
-| **`Ctrl+1..8`** | **Switch edit page `1..8`** |
-| `B` | Flip bank `A/B` in cursor/selection |
-| `Alt+B` | Toggle edit slot `A/B` |
-| `Ctrl+B` | Toggle play slot `A/B` |
-| `Alt+X` | LiveMix ON/OFF |
-| `X` | Toggle split compare |
-| `V` | Lane focus cycle `ALL -> AB -> DR+VO` |
-| `Ctrl+W/S` | Jump by `8` rows |
-| `Ctrl+Alt+W/S` | Jump by `32` rows |
-| `Alt+Q/E/R/T` | Save row marker 1..4 |
-| `Ctrl+Alt+Q/E/R/T` | Jump to marker 1..4 |
-| `Ctrl+R` | Reverse song direction (Safe from Pattern 3 change) |
-| `Ctrl+M` | Merge slots |
-| `Ctrl+N` | Alternate slots |
-| `Ctrl+L` | Loop mode |
-| `Bksp` | Clear cell / selected area |
-| `G` | Generate cell |
-| `G` double-tap | Generate row |
-| `Alt+G` | Generate selected area |
-| `Alt+Bksp` | Clear full arrangement |
-
-## Pattern Edit (303)
-| Key | Action |
-| --- | --- |
-| `Arrows` | Navigate steps |
-| `Shift/Ctrl+Arrows` | Extend selection |
-| `Q..I` | **Select pattern 1..8** (R is now Pattern 3) |
-| **`Ctrl+1..2`** | **Switch bank A/B** |
-| `Bksp` / `Del` | **REST (Clear step)** / Clear selection |
-| `A/Z` | Note +/- |
-| `S/X` | Octave +/- |
-| `Alt+Left/Right` | Rotate pattern |
-| `Alt/Ctrl+A` | Accent toggle |
-| `Alt/Ctrl+S` | Slide toggle |
-| `Ctrl+C / Ctrl+V` | Copy / Paste |
-| `Alt+Bksp` | Clear whole pattern |
-| `G` | Randomize pattern |
-| `Tab` | Toggle `303A/303B` |
-
-## Drum Sequencer
-| Key | Action |
-| --- | --- |
-| `Arrows` | Navigate grid |
-| `Shift/Ctrl+Arrows` | Extend selection |
-| `Tab` | Cycle Drum subpages: `Main -> Settings -> Automation` |
-| `Q..I` | **Select pattern 1..8** |
-| **`Ctrl+1..2`** | **Switch bank A/B** |
-| `Enter` | Toggle hit |
-| `A` | Toggle accent |
-| `Bksp` / `Del` | **Clear hit** / Clear selection |
-| `G` | Randomize pattern |
-| `Ctrl+G` | Randomize focused voice |
-| `Alt+Bksp` | Clear whole pattern |
-
-## Drum Automation (Drum Sequencer subpage)
-| Key | Action |
-| --- | --- |
-| `Arrows Up/Down` | Select row |
-| `Arrows Left/Right` | Adjust selected value |
-| `N` | Add node to current lane |
-| `X` | Remove selected node |
-| `Bksp` / `Del` | Remove selected node |
-| `Enter` on `SWING/HUMAN` | Reset override to `AUTO` (`-1`) |
-
-## TB303 Params
-| Key | Action |
-| --- | --- |
-| `Q..I` | Quick pattern select `1..8` |
-| **`Ctrl+1..2`** | **Switch bank A/B** |
-| `Left/Right` | Focus control |
-| `Up/Down` | Adjust value |
-| `A/Z` | Cutoff +/- |
-| `S/X` | Resonance +/- |
-| `N` / `M` | Distortion / Delay toggle |
-
-## Feel & Texture
-| Key | Action |
-| --- | --- |
-| `Q..I` | Select Pattern 1..8 (Synth A) |
-| `Ctrl+1..2` | Switch Bank A/B |
-| `Arrows` | Select parameter / Adjust value |
-| `Tab` | Cycle focus (Feel / Drum FX / Presets) |
-| `1..4` | Apply feel preset (when Presets focused) |
 
 ## Genre Page
 | Key | Action |
@@ -142,9 +52,127 @@ Canonical key map for current firmware.
 - `S+P`: sound + pattern regeneration
 - `S+T`: sound + pattern regeneration + BPM set to genre default
 
-`Link` status on page:
-- `GEN`: Groove mode is aligned with current genre mapping
-- `OVR`: Groove mode manually overridden in Groove Lab / `G`
+---
+
+## Pattern Edit (303)
+| Key | Action |
+| --- | --- |
+| `Arrows` | Navigate steps |
+| `Shift/Ctrl+Arrows` | Extend selection |
+| `Q..I` | Select pattern 1..8 |
+| `Ctrl+1..2` | Switch bank A/B |
+| `Bksp` / `Del` | **REST (Clear step)** / Clear selection |
+| `A/Z` | Note +/- |
+| `S/X` | Octave +/- |
+| `Alt+Left/Right` | Rotate pattern |
+| `Alt/Ctrl+A` | Accent toggle |
+| `Alt/Ctrl+S` | Slide toggle |
+| `Ctrl+C / Ctrl+V` | Copy / Paste |
+| `Alt+Bksp` | Clear whole pattern |
+| `G` | Randomize pattern |
+| `Tab` | Toggle `303A/303B` |
+| `Alt+Esc` | Chain mode (priority over Back) |
+
+---
+
+## Drum Sequencer
+| Key | Action |
+| --- | --- |
+| `Arrows` | Navigate grid |
+| `Shift/Ctrl+Arrows` | Extend selection |
+| `Tab` | Cycle Drum subpages: `Main -> Settings -> Automation` |
+| `Q..I` | Select pattern 1..8 |
+| `Ctrl+1..2` | Switch bank A/B |
+| `Enter` | Toggle hit |
+| `A` | Toggle accent |
+| `Bksp` / `Del` | Clear hit / Clear selection |
+| `G` | Randomize pattern |
+| `Ctrl+G` | Randomize focused voice |
+| `Alt+G` | Chaos random |
+| `Alt+Bksp` | Clear whole pattern |
+| `Alt+Esc` | Chain mode |
+
+### Drum Settings (Drum subpage)
+| Key | Action |
+| --- | --- |
+| `Up/Down` | Select FX row |
+| `Left/Right` | Adjust value (Compressor, Attack, Sustain, Reverb) |
+| `Ctrl/Alt+L/R` | Fast adjust |
+
+### Drum Automation (Drum subpage)
+| Key | Action |
+| --- | --- |
+| `Arrows Up/Down` | Select row (parameter) |
+| `Arrows Left/Right` | Adjust selected value |
+| `N` | Add node to current lane |
+| `X` | Remove selected node |
+| `Enter` on `SWING/HUMAN` | Reset override to `AUTO` (`-1`) |
+
+---
+
+## Song Page
+| Key | Action |
+| --- | --- |
+| `Arrows` | Navigate grid |
+| `Shift/Ctrl+Arrows` | Extend selection |
+| `Q..I` | Assign pattern 1..8 (to cell or selection) |
+| `B` | Flip bank A/B in cursor/selection |
+| `Alt+B` | Toggle edit slot A/B |
+| `Ctrl+B` | Toggle play slot A/B |
+| `Alt+X` | LiveMix ON/OFF |
+| `X` | Toggle split compare |
+| `V` | Lane focus cycle `ALL -> AB -> DR+VO` |
+| `Ctrl+R` | Reverse song direction |
+| `Ctrl+M` | Merge slots |
+| `Ctrl+N` | Alternate slots |
+| `Ctrl+L` | Loop mode on/off |
+| `Bksp` | Clear cell / selected area |
+| `G` | Generate cell |
+| `G` double-tap | Generate row |
+| `Alt+G` | Generate selected area |
+| `Alt+Bksp` | Clear full arrangement |
+
+---
+
+## Sequencer Hub
+| Key | Action |
+| --- | --- |
+| `Arrows` | Navigate tracks / steps |
+| `Enter` | Open track detail / edit |
+| `Q..I` | Swap pattern for tracked track |
+| `Ctrl+1..2` | Switch bank for tracked track |
+| `-` / `=` | Decrease/Increase track volume |
+| `X` | Toggle hit (on Drum track) |
+| `A` | Toggle accent (on Drum track) |
+
+---
+
+## Groove Lab (Mode Page)
+| Key | Action |
+| --- | --- |
+| `Tab` / `Up/Dn` | Focus row |
+| `Left/Right` | Change value |
+| `Enter` / `Space` | Preview (Regenerate) |
+| `A` / `B` | Apply to 303 A/B |
+| `D` | Apply to Drums |
+| `M` | Toggle Sound Macros |
+
+---
+
+## Tape Page
+| Key | Action |
+| --- | --- |
+| `X` | Smart REC/PLAY/DUB workflow |
+| `A` | CAPTURE (clear + REC + FX ON) |
+| `S` | THICKEN (safe DUB x1 cycle) |
+| `D` | WASH ON/OFF |
+| `G` | Loop mute ON/OFF |
+| `Z` / `C` / `V` | STOP / DUB / PLAY |
+| `1` / `2` / `3` | Speed 0.5x / 1x / 2x |
+| `F` | Toggle tape FX |
+| `Enter` | Stutter ON/OFF |
+| `Space` | Clear loop |
+| `Bksp` | Eject / Reset loop |
 
 > [!TIP]
 > **CapsLock Safety**: QWERTY pattern selection (`Q..I`) and Track Mutes (`1..0`) now work even if CapsLock is ON (Shift is ignored for these keys).

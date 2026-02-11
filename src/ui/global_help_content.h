@@ -161,7 +161,7 @@ constexpr const char* kModeLines[] = {
     "Left/Right Change value",
     "Enter/Space Preview (Regen)",
     "A/B        Apply to 303 A/B",
-    "T          Apply to Tape FX",
+    "D          Apply to Drums",
     "M          Toggle Macros",
 };
 
@@ -178,8 +178,7 @@ inline const char* const* pageLines(int pageIndex, int& count) {
         case 8: count = sizeof(kFeelLines) / sizeof(kFeelLines[0]); return kFeelLines;
         case 9: count = sizeof(kSettingsLines) / sizeof(kSettingsLines[0]); return kSettingsLines;
         case 10: count = sizeof(kProjectLines) / sizeof(kProjectLines[0]); return kProjectLines;
-        case 11: count = sizeof(kTapeLines) / sizeof(kTapeLines[0]); return kTapeLines;
-        case 12: count = sizeof(kModeLines) / sizeof(kModeLines[0]); return kModeLines;
+        case 11: count = sizeof(kModeLines) / sizeof(kModeLines[0]); return kModeLines;
         default: count = 0; return nullptr;
     }
 }

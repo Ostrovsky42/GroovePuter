@@ -42,22 +42,25 @@ float OneKnobCompressor::process(float input) {
     return input;
   }
 
-  float level = fabsf(input);
+  // Drive the input harder at higher amounts so compression actually engages.
+  float drive = 1.0f + amount_ * 2.0f;
+  float driven = input * drive;
+  float level = fabsf(driven);
   if (level > envelope_) {
     envelope_ += (level - envelope_) * 0.25f;
   } else {
     envelope_ += (level - envelope_) * 0.02f;
   }
 
-  float threshold = 0.7f - 0.55f * amount_;
-  float ratio = 1.0f + amount_ * 7.0f;
+  float threshold = 0.45f - 0.40f * amount_;
+  float ratio = 1.0f + amount_ * 19.0f;
   float gain = 1.0f;
   if (envelope_ > threshold) {
     float compressed = threshold + (envelope_ - threshold) / ratio;
     gain = compressed / (envelope_ + 0.000001f);
   }
 
-  float makeup = 1.0f + amount_ * 0.5f;
-  float wet = input * gain * makeup;
+  float makeup = 1.0f + amount_ * 1.0f;
+  float wet = driven * gain * makeup;
   return input * (1.0f - mix_) + wet * mix_;
 }

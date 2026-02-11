@@ -26,7 +26,7 @@ Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtu
   * Grid: `1/8 · 1/16 · 1/32`
   * Timebase: `HALF · NORMAL · DOUBLE`
   * Length: `1B … 8B` (cycle length)
-* **TEXTURE layer (live):** Lo-Fi / Drive / Tape
+* **TEXTURE layer (live):** Lo-Fi / Drive / Drum FX
 * **Genre-driven generator:** rhythmic masks, motif length, scale preference, density traits
 * **Groove Lab page:** mode/flavor/macros + corridor/budget preview
 * **Drum Automation page:** 4 automation lanes + per-pattern groove override

@@ -1612,6 +1612,25 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
   gfx.setTextColor(COLOR_INFO);
   gfx.drawText(lenX, body_y, lenBuf);
 
+  if (loopMode) {
+    int loopStart = mini_acid_.loopStartRow();
+    int loopEnd = mini_acid_.loopEndRow();
+    char loopBuf[32];
+    snprintf(loopBuf, sizeof(loopBuf), "LOOP %d-%d", loopStart + 1, loopEnd + 1);
+    int loopX = lenX + textWidth(gfx, lenBuf) + 8;
+    gfx.setTextColor(IGfxColor::Yellow());
+    gfx.drawText(loopX, body_y, loopBuf);
+    gfx.setTextColor(COLOR_WHITE);
+  }
+
+  if (playingSong) {
+    // Dynamic 'PLAYING' bar in header
+    int anim_x = x + w - 40;
+    int anim_y = body_y;
+    bool blink = (millis() % 400) < 200;
+    gfx.setTextColor(blink ? COLOR_ACCENT : COLOR_GRAY);
+    gfx.drawText(anim_x, anim_y, "PLAY");
+  }
   drawGeneratorHint(gfx);
 
   int grid_y = body_y + header_h;
@@ -1631,7 +1650,9 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
     if (row_idx == playhead && playingSong) {
       bool pulse = (millis() % 600) < 300;
       IGfxColor highlightColor = pulse ? IGfxColor(0x303030) : IGfxColor(0x202020);
-      gfx.fillRect(x + pos_col_w, ry, w - pos_col_w, row_h, highlightColor);
+      gfx.fillRect(x, ry, w, row_h, highlightColor);
+      // Bright side bar for current playing row
+      gfx.fillRect(x, ry, 2, row_h, COLOR_ACCENT);
     }
 
     for (int t = 0; t < track_count; ++t) {
@@ -1811,6 +1832,11 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
   snprintf(statusBuf, sizeof(statusBuf), "%s %03d/%03d %s",
            playing ? (songMode ? ">" : "||") : "[]", pos, len, laneShortLabel());
   int statusW = textWidth(gfx, statusBuf);
+  if (playing && songMode) {
+      // Dynamic pulsing indicator in header
+      bool pulse = (millis() % 800) < 400;
+      if (pulse) gfx.drawRect(x + w - statusW - 4, y + 1, statusW + 4, header_h - 2, TE_BLACK);
+  }
   gfx.drawText(x + w - statusW - 2, y + 2, statusBuf);
 
   int footer_h = 11;
@@ -1896,8 +1922,15 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
 
       // Playhead (only on active slot if playing)
       if (row_idx == playhead && playing && songMode) {
+        bool pulse = (millis() % 600) < 300;
+        IGfxColor playColor = pulse ? TE_ACCENT : TE_DIM;
+        // Full row tint for playing row
+        gfx.fillRect(paneX, ry, paneW, cell_h, paneSlot == playSlot ? IGfxColor(0x303030) : IGfxColor(0x202020));
         gfx.drawLine(paneX, ry + cell_h - 1, paneX + paneW - 1, ry + cell_h - 1,
                      paneSlot == playSlot ? TE_ACCENT : TE_DIM);
+        // Play cursor indicator
+        gfx.setTextColor(playColor);
+        gfx.drawText(paneX + paneW - 10, ry + 1, ">");
       }
 
       for (int t = 0; t < tracks; ++t) {
@@ -1990,6 +2023,11 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
     gfx.fillRect(x + w - loopW - 4, footer_y, loopW + 4, footer_h, TE_WHITE);
     gfx.setTextColor(TE_BLACK);
     gfx.drawText(x + w - loopW - 2, footer_y + 2, loopBuf);
+  }
+  if (playing && songMode) {
+      // Running playhead glow at the bottom
+      int animX = (millis() / 10) % w;
+      gfx.fillRect(x + animX, footer_y - 1, 20, 1, TE_ACCENT);
   }
   drawGeneratorHint(gfx);
 }
@@ -2101,8 +2139,14 @@ void SongPage::drawRetroClassicStyle(IGfx& gfx) {
         gfx.fillRect(paneX, ry, paneW, row_h, IGfxColor(bg));
 
         if (ridx == playhead && mini_acid_.isPlaying() && songMode) {
+          bool pulse = (millis() % 600) < 300;
+          IGfxColor playColor = pulse ? IGfxColor(RetroTheme::SELECT_BRIGHT) : IGfxColor(RetroTheme::GRID_DIM);
+          // Full row tint for playing row
+          gfx.fillRect(paneX, ry, paneW, row_h, IGfxColor(pulse ? 0x202020 : 0x151515));
           gfx.drawLine(paneX, ry + row_h - 1, paneX + paneW - 1, ry + row_h - 1,
-                       paneSlot == playSlot ? IGfxColor(RetroTheme::SELECT_BRIGHT) : IGfxColor(RetroTheme::GRID_DIM));
+                       paneSlot == playSlot ? playColor : IGfxColor(RetroTheme::GRID_DIM));
+          // Side indicator for playing row
+          gfx.fillRect(paneX, ry, 2, row_h, IGfxColor(RetroTheme::SELECT_BRIGHT));
         }
 
         for (int t = 0; t < track_count; ++t) {

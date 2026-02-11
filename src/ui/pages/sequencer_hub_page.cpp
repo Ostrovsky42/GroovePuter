@@ -432,6 +432,16 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
                 gfx.setTextColor(IGfxColor(TEXT_SECONDARY));
                 gfx.drawText(x + 6, ry + 1, name);
             }
+            
+            // Volume Indicator (OLD) - Removed as per new design
+            /*
+            float vol = mini_acid_.getTrackVolume((VoiceId)i);
+            int volW = (int)(vol * 12.0f);
+            if (volW > 12) volW = 12;
+            if (volW > 0) {
+                gfx.fillRect(x + 28, ry + rowH - 4, volW, 2, selected ? IGfxColor(trackColor) : IGfxColor(GRID_DIM));
+            }
+            */
 
             // Tiny mask
             int maskX = x + 50;
@@ -440,11 +450,36 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
                 bool hit = hubTrackHitAt(mini_acid_, i, s);
                 
                 IGfxColor color = hit ? (selected ? IGfxColor(trackColor) : IGfxColor(GRID_MEDIUM)) : IGfxColor(BG_INSET);
-                if (s == playingStep && isPlaying) color = IGfxColor(NEON_YELLOW);
+                
+                // Volume Visualization: A subtle stripe behind/under the grid or background
+                float vol = mini_acid_.getTrackVolume((VoiceId)i);
+                
+                // Method 1: Bottom stripe "under beads"
+                int gridW = 16 * cellW;
+                int volBarW = (int)(vol * gridW);
+                if (volBarW > gridW) volBarW = gridW;
+                
+                // Draw background for the row based on volume?
+                // Or just a stripe at the bottom. User said "stripe at the bottom under beads".
+                
                 gfx.fillRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, color);
+                
                 IGfxColor border = (s % 4 == 0) ? IGfxColor(GRID_MEDIUM) : IGfxColor(GRID_DIM);
                 gfx.drawRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, border);
             }
+            
+            // Draw Volume Stripe at the bottom of the grid area
+            float vol = mini_acid_.getTrackVolume((VoiceId)i);
+            int gridTotalW = 16 * cellW;
+            int volPixelW = (int)(vol * gridTotalW);
+            if (volPixelW > gridTotalW) volPixelW = gridTotalW;
+            
+            if (volPixelW > 0) {
+                // Stripe at the bottom of the row, 2px high
+                // "background slightly moved to left" -> This bar represents that.
+                gfx.fillRect(maskX, ry + rowH - 2, volPixelW, 2, selected ? IGfxColor(trackColor) : IGfxColor(GRID_MEDIUM));
+            }
+
             
             if (selected) {
                  drawOverviewCursor(gfx, i, stepCursor_, maskX, ry + 2, cellW, rowH - 4);
@@ -604,6 +639,16 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
                 gfx.drawText(x + 6, ry + 1, name);
             }
 
+            // Volume Indicator (OLD) - Removed
+            /*
+            float vol = mini_acid_.getTrackVolume((VoiceId)i);
+            int volW = (int)(vol * 12.0f);
+            if (volW > 12) volW = 12;
+            if (volW > 0) {
+                gfx.fillRect(x + 28, ry + rowH - 4, volW, 2, selected ? IGfxColor(AmberTheme::NEON_CYAN) : IGfxColor(AmberTheme::GRID_DIM));
+            }
+            */
+
             int maskX = x + 50;
             int cellW = 10;
             for (int s = 0; s < 16; s++) {
@@ -614,6 +659,16 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
                 gfx.fillRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, color);
                 IGfxColor border = (s % 4 == 0) ? IGfxColor(AmberTheme::GRID_MEDIUM) : IGfxColor(AmberTheme::GRID_DIM);
                 gfx.drawRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, border);
+            }
+            
+            // Amber Volume Stripe (New)
+            float vol = mini_acid_.getTrackVolume((VoiceId)i);
+            int gridTotalW = 16 * cellW;
+            int volPixelW = (int)(vol * gridTotalW);
+            if (volPixelW > gridTotalW) volPixelW = gridTotalW;
+            
+            if (volPixelW > 0) {
+                gfx.fillRect(maskX, ry + rowH - 2, volPixelW, 2, selected ? IGfxColor(AmberTheme::NEON_CYAN) : IGfxColor(AmberTheme::GRID_DIM));
             }
             
             if (selected) {

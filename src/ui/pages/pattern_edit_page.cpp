@@ -637,15 +637,6 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     }
   }
 
-  /*
-  int bankIdx = bankIndexFromKey(key);
-  if (bankIdx >= 0) {
-    setBankIndex(bankIdx);
-    if (!mini_acid_.songModeEnabled()) focus_ = Focus::BankRow;
-    return true;
-  }
-    */
-
   if (key == '\n' || key == '\r') {
     if (has_selection_) {
       int min_row, max_row, min_col, max_col;
@@ -843,6 +834,42 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     int step = activePatternStep();
     withAudioGuard([&]() { mini_acid_.clear303Step(step, voice_index_); }); // Use full clear
     return true;
+  }
+
+  // Q-I Pattern Selection (Standardized)
+  if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
+    int patternIdx = patternIndexFromKey(lowerKey);
+    if (patternIdx < 0) {
+        patternIdx = scancodeToPatternIndex(ui_event.scancode);
+    }
+    
+    if (patternIdx >= 0) {
+      if (mini_acid_.songModeEnabled()) return true;
+      focusPatternRow();
+      setPatternCursor(patternIdx);
+      withAudioGuard([&]() { 
+          mini_acid_.set303PatternIndex(voice_index_, patternIdx);
+          
+          if (chaining_mode_) {
+              // Find next empty position in song and append
+              SongTrack track = (voice_index_ == 0) ? SongTrack::SynthA : SongTrack::SynthB;
+              int nextPos = -1;
+              
+              // Search for the first empty slot (-1) or the first slot after the last used one
+              for (int i = 0; i < Song::kMaxPositions; ++i) {
+                  if (mini_acid_.songPatternAt(i, track) == -1) {
+                      nextPos = i;
+                      break;
+                  }
+              }
+              
+              if (nextPos != -1) {
+                  mini_acid_.setSongPattern(nextPos, track, patternIdx);
+              }
+          }
+      });
+      return true;
+    }
   }
 
   return false;

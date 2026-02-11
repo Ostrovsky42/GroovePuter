@@ -18,6 +18,7 @@
 #include "pages/tb303_params_page.h"
 #include "pages/song_page.h"
 #include "pages/help_dialog.h"
+#include "pages/sampler_page.h"
 #include "ui_colors.h"
 #include "ui_input.h"
 #include "ui_common.h"
@@ -100,7 +101,9 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case 8:  page = std::make_unique<FeelTexturePage>(gfx_, mini_acid_, audio_guard_); break;
         case 9:  page = std::make_unique<SettingsPage>(gfx_, mini_acid_, audio_guard_); break;
         case 10: page = std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_); break;
-        case 11: page = std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_); break;
+        case 11: page = std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_); break;
+        case 12: page = std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_); break;
+        case 13: page = std::make_unique<SamplerPage>(gfx_, mini_acid_, audio_guard_); break;
 
         default: page = nullptr; break;
     }
@@ -219,11 +222,15 @@ void MiniAcidDisplay::syncVisualStyle_() {
 }
 
 void MiniAcidDisplay::nextPage() {
-    transitionToPage_((page_index_ + 1) % kPageCount);
+    int next = (page_index_ + 1) % kPageCount;
+    LOG_DEBUG_UI("nextPage: %d -> %d", page_index_, next);
+    transitionToPage_(next);
 }
 
 void MiniAcidDisplay::previousPage() {
-    transitionToPage_((page_index_ - 1 + kPageCount) % kPageCount);
+    int prev = (page_index_ - 1 + kPageCount) % kPageCount;
+    LOG_DEBUG_UI("previousPage: %d -> %d", page_index_, prev);
+    transitionToPage_(prev);
 }
 
 void MiniAcidDisplay::goToPage(int index) {
@@ -300,7 +307,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 
         if (event.alt && (event.key == 'v' || event.key == 'V')) {
             Serial.println("[UI] Shortcut Alt+V -> Page 11");
-            goToPage(11); // Groove Lab
+            goToPage(11); // Tape Page (was Groove Lab, but Tape is more 'visual' for V)
             return true;
         }
 

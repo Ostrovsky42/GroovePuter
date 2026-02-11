@@ -217,6 +217,12 @@ namespace UI {
             gfx.setTextColor(color);
             gfx.drawText(cx, y, num);
             
+            // Add 'Energy Pulse' dot for active tracks
+            if (active && !muted) {
+                bool blink = (millis() % 200) < 100;
+                if (blink) gfx.fillRect(cx + 3, y - 4, 2, 2, kActive);
+            }
+            
         }
     }
 

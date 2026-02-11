@@ -41,16 +41,25 @@ void TransientShaper::setSustainAmount(float amount) {
 float TransientShaper::process(float input) {
   float fast = fastEnv_.process(input);
   float slow = slowEnv_.process(input);
-  float transient = fast - slow;
-  if (transient < 0.0f) transient = 0.0f;
-  if (transient > 1.0f) transient = 1.0f;
+  
+  // Transient mask: how much "more" signal is in the fast vs slow follower
+  // Boost sensitivity so it responds to real-world drum levels
+  float delta = fast - slow;
+  if (delta < 0.0f) delta = 0.0f;
+  float transientMask = delta * 12.0f; 
+  if (transientMask > 1.0f) transientMask = 1.0f;
 
-  float attackGain = 1.0f + attackAmount_ * transient;
-  float sustainGain = 1.0f + sustainAmount_ * (1.0f - transient);
+  // Calculate gains. Use higher multipliers for audible effect.
+  // Attack: range from 0.1x to 5.0x
+  float attackLeverage = (attackAmount_ >= 0.0f) ? (attackAmount_ * 4.0f) : (attackAmount_ * 0.9f);
+  // Sustain: range from 0.1x to 3.0x
+  float sustainLeverage = (sustainAmount_ >= 0.0f) ? (sustainAmount_ * 2.0f) : (sustainAmount_ * 0.9f);
 
-  float transientPart = input * transient;
-  float sustainPart = input - transientPart;
-  return transientPart * attackGain + sustainPart * sustainGain;
+  float totalGain = 1.0f;
+  totalGain += attackLeverage * transientMask;
+  totalGain += sustainLeverage * (1.0f - transientMask);
+
+  return input * totalGain;
 }
 
 void TransientShaper::EnvelopeFollower::reset() {
