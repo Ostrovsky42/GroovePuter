@@ -32,13 +32,47 @@ inline void formatSongPatternLabel(int pattern, char* out, int outSize) {
     std::snprintf(out, outSize, "---");
     return;
   }
+  const int page = songPatternPage(pattern) + 1;
   const int bank = songPatternBank(pattern);
   const int slot = songPatternIndexInBank(pattern) + 1;
   if (bank < 0 || slot <= 0) {
     std::snprintf(out, outSize, "---");
     return;
   }
-  std::snprintf(out, outSize, "%c-%d", static_cast<char>('A' + bank), slot);
+  std::snprintf(out, outSize, "%d%c%d", page, static_cast<char>('A' + bank), slot);
+}
+
+inline int songQuarterFromRow(int row) {
+  if (row < 0) return 0;
+  int quarter = row / 32;
+  if (quarter < 0) quarter = 0;
+  if (quarter > 3) quarter = 3;
+  return quarter;
+}
+
+inline void drawQuarterStrip(IGfx& gfx, int x, int y, int height, int activeQuarter,
+                             IGfxColor onColor, IGfxColor offColor) {
+  if (height < 8) return;
+  int gap = 1;
+  int segH = (height - gap * 3) / 4;
+  if (segH < 1) segH = 1;
+  for (int q = 0; q < 4; ++q) {
+    int sy = y + q * (segH + gap);
+    gfx.fillRect(x, sy, 2, segH, q == activeQuarter ? onColor : offColor);
+  }
+}
+
+constexpr uint32_t kCtrlRRepeatGapMs = 220;
+constexpr uint32_t kCtrlRLongPressMs = 650;
+
+inline IGfxColor colorForSongTrack(SongTrack track) {
+  switch (track) {
+    case SongTrack::SynthA: return song303Color(0);
+    case SongTrack::SynthB: return song303Color(1);
+    case SongTrack::Drums: return COLOR_WHITE;
+    case SongTrack::Voice: return IGfxColor::Green();
+    default: return COLOR_WHITE;
+  }
 }
 
 struct SongPatternClipboard {
@@ -150,19 +184,173 @@ int SongPage::cursorTrack() const {
   return track;
 }
 
-bool SongPage::cursorOnModeButton() const { return false; }
-bool SongPage::cursorOnPlayheadLabel() const { return false; }
-
-int SongPage::visibleTrackCount() const { return 3; }
-
-int SongPage::maxEditableTrackColumn() const { return visibleTrackCount() - 1; }
-
-SongTrack SongPage::thirdLaneTrack() const {
-  return voice_lane_visible_ ? SongTrack::Voice : SongTrack::Drums;
+bool SongPage::cursorOnModeButton() const { 
+  return cursor_track_ == visibleTrackCount(); 
+}
+bool SongPage::cursorOnPlayheadLabel() const { 
+  return false; // Not implemented yet
 }
 
-const char* SongPage::laneShortLabel() const { return voice_lane_visible_ ? "VO" : "DR"; }
+int SongPage::logicalTrackCount() const { return 4; }
 
+int SongPage::visibleTrackCount() const {
+  return lane_focus_mode_ == LaneFocusMode::AllTracks ? 4 : 2;
+}
+
+int SongPage::maxEditableTrackColumn() const {
+  return visibleTrackCount(); // Grid + Mode Button
+}
+
+SongTrack SongPage::thirdLaneTrack() const {
+  return lane_focus_mode_ == LaneFocusMode::RhythmPair ? SongTrack::Voice : SongTrack::Drums;
+}
+
+const char* SongPage::laneShortLabel() const {
+  switch (lane_focus_mode_) {
+    case LaneFocusMode::AllTracks: return "ALL";
+    case LaneFocusMode::SynthPair: return "AB";
+    case LaneFocusMode::RhythmPair: return "DV";
+    default: return "ALL";
+  }
+}
+
+const char* SongPage::trackHeaderLabel(int col) const {
+  bool valid = false;
+  SongTrack track = trackForColumn(col, valid);
+  if (!valid) return "--";
+  switch (track) {
+    case SongTrack::SynthA: return "A";
+    case SongTrack::SynthB: return "B";
+    case SongTrack::Drums: return "DR";
+    case SongTrack::Voice: return "VO";
+    default: return "--";
+  }
+}
+
+int SongPage::visibleColumnForTrack(SongTrack track) const {
+  switch (lane_focus_mode_) {
+    case LaneFocusMode::AllTracks:
+      switch (track) {
+        case SongTrack::SynthA: return 0;
+        case SongTrack::SynthB: return 1;
+        case SongTrack::Drums: return 2;
+        case SongTrack::Voice: return 3;
+        default: return -1;
+      }
+    case LaneFocusMode::SynthPair:
+      if (track == SongTrack::SynthA) return 0;
+      if (track == SongTrack::SynthB) return 1;
+      return -1;
+    case LaneFocusMode::RhythmPair:
+      if (track == SongTrack::Drums) return 0;
+      if (track == SongTrack::Voice) return 1;
+      return -1;
+    default:
+      return -1;
+  }
+}
+
+void SongPage::normalizeCursorTrackAfterFocusChange(LaneFocusMode previous_mode) {
+  const int oldVisibleTracks = previous_mode == LaneFocusMode::AllTracks ? 4 : 2;
+  const bool wasModeButton = cursor_track_ == oldVisibleTracks;
+  if (wasModeButton) {
+    cursor_track_ = visibleTrackCount();
+    return;
+  }
+
+  SongTrack oldTrack = SongTrack::SynthA;
+  bool oldValid = true;
+  auto trackForPrevMode = [&](int col, bool& valid) -> SongTrack {
+    valid = true;
+    switch (previous_mode) {
+      case LaneFocusMode::AllTracks:
+        switch (col) {
+          case 0: return SongTrack::SynthA;
+          case 1: return SongTrack::SynthB;
+          case 2: return SongTrack::Drums;
+          case 3: return SongTrack::Voice;
+          default: valid = false; return SongTrack::SynthA;
+        }
+      case LaneFocusMode::SynthPair:
+        switch (col) {
+          case 0: return SongTrack::SynthA;
+          case 1: return SongTrack::SynthB;
+          default: valid = false; return SongTrack::SynthA;
+        }
+      case LaneFocusMode::RhythmPair:
+        switch (col) {
+          case 0: return SongTrack::Drums;
+          case 1: return SongTrack::Voice;
+          default: valid = false; return SongTrack::SynthA;
+        }
+      default:
+        valid = false;
+        return SongTrack::SynthA;
+    }
+  };
+
+  oldTrack = trackForPrevMode(cursor_track_, oldValid);
+  if (!oldValid) {
+    cursor_track_ = 0;
+    return;
+  }
+
+  int nextCol = visibleColumnForTrack(oldTrack);
+  if (nextCol < 0) {
+    cursor_track_ = 0;
+  } else {
+    cursor_track_ = nextCol;
+  }
+}
+
+void SongPage::cycleLaneFocusMode() {
+  LaneFocusMode previous = lane_focus_mode_;
+  switch (lane_focus_mode_) {
+    case LaneFocusMode::AllTracks:
+      lane_focus_mode_ = LaneFocusMode::SynthPair;
+      break;
+    case LaneFocusMode::SynthPair:
+      lane_focus_mode_ = LaneFocusMode::RhythmPair;
+      break;
+    case LaneFocusMode::RhythmPair:
+    default:
+      lane_focus_mode_ = LaneFocusMode::AllTracks;
+      break;
+  }
+  normalizeCursorTrackAfterFocusChange(previous);
+  if (has_selection_) {
+    clearSelection();
+  }
+}
+
+void SongPage::moveCursorToRow(int row) {
+  cursor_row_ = clampCursorRow(row);
+  syncSongPositionToCursor();
+}
+
+void SongPage::saveMarker(int marker_index) {
+  if (marker_index < 0 || marker_index >= 4) return;
+  row_markers_[marker_index] = cursorRow();
+  char toast[32];
+  std::snprintf(toast, sizeof(toast), "Mark %d: %03d", marker_index + 1, cursorRow() + 1);
+  showToast(toast, 900);
+}
+
+bool SongPage::jumpToMarker(int marker_index) {
+  if (marker_index < 0 || marker_index >= 4) return false;
+  int row = row_markers_[marker_index];
+  if (row < 0) {
+    char toast[24];
+    std::snprintf(toast, sizeof(toast), "Mark %d empty", marker_index + 1);
+    showToast(toast, 800);
+    return true;
+  }
+  moveCursorToRow(row);
+  char toast[32];
+  std::snprintf(toast, sizeof(toast), "Jump %d -> %03d", marker_index + 1, row + 1);
+  showToast(toast, 900);
+  return true;
+}
 bool SongPage::hasVoiceDataInSlot(int slot) const {
   if (slot < 0 || slot > 1) return false;
   int len = mini_acid_.songLength();
@@ -294,7 +482,14 @@ void SongPage::moveCursorVertical(int delta, bool extend_selection) {
   if (delta == 0) return;
   int before_row = cursor_row_;
   int before_track = cursor_track_;
-  if (cursorOnPlayheadLabel() || cursorOnModeButton()) {
+  if (cursorOnModeButton()) {
+    // If on sidebar, Up/Down does nothing or scrolls? 
+    // Let's allow vertical movement within the grid but keep focus on sidebar if it was meant to be a vertical list.
+    // However, SongPage mode button is one giant vertical bar.
+    // For now, let it fall through or just return true to consume.
+    return;
+  }
+  if (cursorOnPlayheadLabel()) {
     moveCursorHorizontal(delta, extend_selection);
     return;
   }
@@ -323,11 +518,31 @@ void SongPage::syncSongPositionToCursor() {
 
 SongTrack SongPage::trackForColumn(int col, bool& valid) const {
   valid = true;
-  if (col == 0) return SongTrack::SynthA;
-  if (col == 1) return SongTrack::SynthB;
-  if (col == 2) return thirdLaneTrack();
-  valid = false;
-  return SongTrack::Drums;
+  switch (lane_focus_mode_) {
+    case LaneFocusMode::AllTracks:
+      switch (col) {
+        case 0: return SongTrack::SynthA;
+        case 1: return SongTrack::SynthB;
+        case 2: return SongTrack::Drums;
+        case 3: return SongTrack::Voice;
+        default: valid = false; return SongTrack::SynthA;
+      }
+    case LaneFocusMode::SynthPair:
+      switch (col) {
+        case 0: return SongTrack::SynthA;
+        case 1: return SongTrack::SynthB;
+        default: valid = false; return SongTrack::SynthA;
+      }
+    case LaneFocusMode::RhythmPair:
+      switch (col) {
+        case 0: return SongTrack::Drums;
+        case 1: return SongTrack::Voice;
+        default: valid = false; return SongTrack::SynthA;
+      }
+    default:
+      valid = false;
+      return SongTrack::SynthA;
+  }
 }
 
 int SongPage::bankIndexForTrack(SongTrack track) const {
@@ -355,7 +570,7 @@ bool SongPage::adjustSongPatternAtCursor(int delta) {
   if (!trackValid) return false;
   int row = cursorRow();
   int current = mini_acid_.songPatternAt(row, track);
-  int maxPattern = kSongPatternCount - 1;
+  int maxPattern = kMaxGlobalPatterns - 1;
   int next = current;
   if (delta > 0) next = current < 0 ? 0 : current + 1;
   else if (delta < 0) next = current < 0 ? -1 : current - 1;
@@ -379,7 +594,8 @@ bool SongPage::flipSongPatternBankAtCursorOrSelection() {
     int slot = songPatternIndexInBank(pattern);
     if (bank < 0 || slot < 0) return pattern;
     int flippedBank = (bank == 0) ? 1 : 0;
-    return songPatternFromBank(flippedBank, slot);
+    int page = songPatternPage(pattern);
+    return songPatternFromPageBankIndex(page, flippedBank, slot);
   };
 
   if (has_selection_) {
@@ -478,7 +694,7 @@ bool SongPage::assignPattern(int patternIdx) {
           SongTrack track = trackForColumn(t, valid);
           if (!valid) continue;
           int bankIndex = bankIndexForTrack(track);
-          int combined = songPatternFromBank(bankIndex, patternIdx);
+          int combined = songPatternFromPageBankIndex(mini_acid_.currentPageIndex(), bankIndex, patternIdx);
           int before = mini_acid_.songPatternAt(r, track);
           mini_acid_.setSongPattern(r, track, combined);
           int after = mini_acid_.songPatternAt(r, track);
@@ -504,7 +720,7 @@ bool SongPage::assignPattern(int patternIdx) {
   if (!trackValid) return false;
   int row = cursorRow();
   int bankIndex = bankIndexForTrack(track);
-  int combined = songPatternFromBank(bankIndex, patternIdx);
+  int combined = songPatternFromPageBankIndex(mini_acid_.currentPageIndex(), bankIndex, patternIdx);
   withAudioGuard([&]() {
     mini_acid_.setSongPattern(row, track, combined);
     if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
@@ -982,9 +1198,37 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
       moveCursorVertical(1, extend_selection);
       handled = true;
       break;
+    case GROOVEPUTER_TAB:
+      // Cycle focus or toggle lane? 
+      // For now, let's allow it to fall through or just be handled.
+      break;
     default:
+      // Custom expert shortcuts for long songs
+      if (ui_event.ctrl) {
+        if (ui_event.key == 'w' || ui_event.key == 'W') {
+           int step = (ui_event.alt) ? 32 : 8;
+           moveCursorVertical(-step, extend_selection);
+           return true;
+        }
+        if (ui_event.key == 's' || ui_event.key == 'S') {
+           int step = (ui_event.alt) ? 32 : 8;
+           moveCursorVertical(step, extend_selection);
+           return true;
+        }
+      }
       break;
   }
+  
+  // Home/End approx via < and >
+  if (ui_event.key == '<' || ui_event.key == ',') {
+     moveCursorToRow(0);
+     return true;
+  }
+  if (ui_event.key == '>' || ui_event.key == '.') {
+     moveCursorToRow(mini_acid_.songLength() - 1);
+     return true;
+  }
+
   if (handled) return true;
 
   char key = ui_event.key;
@@ -1016,6 +1260,33 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
   bool key_r = (lowerKey == 'r') || (ui_event.scancode == GROOVEPUTER_R);
   bool key_v = (lowerKey == 'v') || (ui_event.scancode == GROOVEPUTER_V);
   bool key_x = (lowerKey == 'x') || (ui_event.scancode == GROOVEPUTER_X);
+
+  auto markerFromLetter = [&](char ch) -> int {
+    switch (ch) {
+      case 'q': return 0;
+      case 'e': return 1;
+      case 'r': return 2;
+      case 't': return 3;
+      default: return -1;
+    }
+  };
+  int markerIdx = markerFromLetter(lowerKey);
+  if (ui_event.alt && !ui_event.ctrl && markerIdx >= 0) {
+    saveMarker(markerIdx);
+    return true;
+  }
+  if (ui_event.ctrl && ui_event.alt && markerIdx >= 0) {
+    return jumpToMarker(markerIdx);
+  }
+
+  if (ui_event.ctrl && !ui_event.alt && key >= '1' && key <= '8') {
+    int targetPage = key - '1';
+    mini_acid_.requestPageSwitch(targetPage);
+    char buf[20];
+    std::snprintf(buf, sizeof(buf), "Page: %d", targetPage + 1);
+    showToast(buf, 800);
+    return true;
+  }
 
   // Local fallback for Ctrl+C / Ctrl+V, same pattern as Pattern/Drum pages.
   // Needed because some keyboard paths do not route app events globally.
@@ -1068,6 +1339,25 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
 
   // Song operations (Ctrl held)
   if (ui_event.ctrl && key_r) {
+    uint32_t now = millis();
+    bool sameHoldStream = (last_ctrl_r_event_ms_ != 0) &&
+                          (now - last_ctrl_r_event_ms_ <= kCtrlRRepeatGapMs);
+    last_ctrl_r_event_ms_ = now;
+
+    if (sameHoldStream) {
+      if (!ctrl_r_long_fired_ && (now - ctrl_r_hold_start_ms_ >= kCtrlRLongPressMs)) {
+        ctrl_r_long_fired_ = true;
+        withAudioGuard([&]() { mini_acid_.setSongPosition(0); });
+        moveCursorToRow(0);
+        setScrollToPlayhead(0);
+        showToast("Song: START", 1000);
+      }
+      return true;
+    }
+
+    ctrl_r_hold_start_ms_ = now;
+    ctrl_r_long_fired_ = false;
+
     bool wasSongMode = mini_acid_.songModeEnabled();
     bool newReverse = !mini_acid_.isSongReverse();
     int len = mini_acid_.songLength();
@@ -1076,6 +1366,8 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
                 (int)wasSongMode, len, mini_acid_.currentSongPosition());
     withAudioGuard([&]() {
       if (!mini_acid_.songModeEnabled()) {
+        // Keep reverse toggle anchored to the row user is editing.
+        mini_acid_.setSongPosition(cursorRow());
         mini_acid_.setSongMode(true);
       }
       mini_acid_.queueSongReverseToggle();
@@ -1109,19 +1401,26 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return toggleSongMode();
   }
 
-  // Song mode toggle - but NOT when Ctrl is held (avoid conflict with Ctrl+M = merge)
+  // Song mode toggle - but NOT when Ctrl or Alt is held
   if (!ui_event.ctrl && !ui_event.alt && key_m) {
     LOG_INFO_UI("Toggle song mode");
     return toggleSongMode();
   }
 
-  if (!ui_event.ctrl && !ui_event.alt && (lowerKey == 'v' || ui_event.scancode == GROOVEPUTER_V)) {
-    if (!voice_lane_visible_ && !hasVoiceDataInActiveSlot()) {
-      showToast("No VO data in slot", 1000);
-      return true;
+  if (!ui_event.ctrl && !ui_event.alt && key_v) {
+    cycleLaneFocusMode();
+    switch (lane_focus_mode_) {
+      case LaneFocusMode::AllTracks:
+        showToast("Lane: ALL", 900);
+        break;
+      case LaneFocusMode::SynthPair:
+        showToast("Lane: AB", 900);
+        break;
+      case LaneFocusMode::RhythmPair:
+      default:
+        showToast("Lane: DR+VO", 900);
+        break;
     }
-    voice_lane_visible_ = !voice_lane_visible_;
-    showToast(voice_lane_visible_ ? "Lane: VOICE" : "Lane: DRUMS", 1000);
     return true;
   }
 
@@ -1133,8 +1432,12 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
 
   int patternIdx = patternIndexFromKey(lowerKey);
   if (patternIdx < 0) patternIdx = scancodeToPatternIndex(ui_event.scancode);
-  if (cursorOnModeButton() && patternIdx >= 0) return false;
-  if (patternIdx >= 0) return assignPattern(patternIdx);
+  
+  // Pattern assignment: only if NO modifiers (prevent Ctrl+R/Ctrl+C overlap)
+  if (patternIdx >= 0 && !ui_event.ctrl && !ui_event.alt) {
+    if (cursorOnModeButton()) return false;
+    return assignPattern(patternIdx);
+  }
 
   // Alt + Backspace = Reset Song
   if (ui_event.alt && (key == '\b' || key == 0x7F)) {
@@ -1280,49 +1583,57 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
   if (scroll_row_ > maxStart) scroll_row_ = maxStart;
 
   int track_count = visibleTrackCount();
-  int pos_col_w = 0;
+  int pos_col_w = 20; // Column for Bar Numbers
   int spacing = 2;
-  int modeBtnW = 55;
-  int track_col_w = (w - pos_col_w - spacing * (track_count + 2) - modeBtnW) / track_count;
-  if (track_col_w < 20) track_col_w = 20;
+  int modeBtnW = 45;
+  int track_col_w = (w - pos_col_w - spacing * (track_count + 1) - modeBtnW) / track_count;
+  if (track_col_w < 18) track_col_w = 18;
 
-  gfx.setTextColor(song303Color(0));
-  gfx.drawText(x + pos_col_w + spacing, body_y, "303A");
-  gfx.setTextColor(song303Color(1));
-  gfx.drawText(x + pos_col_w + spacing + track_col_w, body_y, "303B");
-  gfx.setTextColor(COLOR_LABEL);
-  gfx.drawText(x + pos_col_w + spacing + track_col_w * 2, body_y, voice_lane_visible_ ? "Voice" : "Drums");
+  // Header
+  gfx.setTextColor(COLOR_GRAY);
+  gfx.drawText(x + 2, body_y, "BAR");
+  for (int t = 0; t < track_count; ++t) {
+    bool valid = false;
+    SongTrack track = trackForColumn(t, valid);
+    int hx = x + pos_col_w + spacing + (track_col_w + spacing) * t;
+    if (valid) {
+      gfx.setTextColor(colorForSongTrack(track));
+      gfx.drawText(hx, body_y, trackHeaderLabel(t));
+    }
+  }
+
   char lenBuf[32];
-  snprintf(lenBuf, sizeof(lenBuf), "PLYHD %d:%d", playhead + 1, song_len);
-  int lenX = x + pos_col_w + spacing + track_col_w * track_count + spacing + 5;
-  int lenW = textWidth(gfx, lenBuf);
+  snprintf(lenBuf, sizeof(lenBuf), "P:%d/%d", playhead + 1, song_len);
+  int lenX = x + pos_col_w + spacing + track_count * (track_col_w + spacing) + 4;
   bool playheadSelected = cursorOnPlayheadLabel();
   if (playheadSelected) {
-    gfx.drawRect(lenX - 2, body_y - 1, lenW + 4, label_h + 2, COLOR_STEP_SELECTED);
+    gfx.drawRect(lenX - 2, body_y - 1, textWidth(gfx, lenBuf) + 4, label_h + 2, COLOR_STEP_SELECTED);
   }
+  gfx.setTextColor(COLOR_INFO);
   gfx.drawText(lenX, body_y, lenBuf);
-
-  if (loopMode) {
-    int loopStart = mini_acid_.loopStartRow();
-    int loopEnd = mini_acid_.loopEndRow();
-    char loopBuf[32];
-    snprintf(loopBuf, sizeof(loopBuf), "LOOP %d-%d", loopStart + 1, loopEnd + 1);
-    int loopX = lenX + lenW + 8;
-    gfx.setTextColor(IGfxColor::Yellow());
-    gfx.drawText(loopX, body_y, loopBuf);
-    gfx.setTextColor(COLOR_WHITE);
-  }
 
   drawGeneratorHint(gfx);
 
   int grid_y = body_y + header_h;
+  int modeX = x + pos_col_w + spacing + track_count * (track_col_w + spacing) + 5;
+
   for (int i = 0; i < visible_rows; ++i) {
     int row_idx = scroll_row_ + i;
     if (row_idx >= Song::kMaxPositions) break;
     int ry = grid_y + i * row_h;
+    
+    // Bar number
+    char barBuf[8];
+    snprintf(barBuf, sizeof(barBuf), "%03d", row_idx + 1);
+    gfx.setTextColor(row_idx == playhead ? COLOR_ACCENT : COLOR_GRAY);
+    gfx.drawText(x + 2, ry + 2, barBuf);
+
     if (row_idx == playhead && playingSong) {
-      gfx.fillRect(x, ry, w, row_h, COLOR_PANEL);
+      bool pulse = (millis() % 600) < 300;
+      IGfxColor highlightColor = pulse ? IGfxColor(0x303030) : IGfxColor(0x202020);
+      gfx.fillRect(x + pos_col_w, ry, w - pos_col_w, row_h, highlightColor);
     }
+
     for (int t = 0; t < track_count; ++t) {
       bool valid = false;
       SongTrack track = trackForColumn(t, valid);
@@ -1343,20 +1654,53 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
       if (pattern >= 0) {
         char patBuf[16];
         formatSongPatternLabel(pattern, patBuf, sizeof(patBuf));
-        gfx.setTextColor(t < 2 ? song303Color(t) : COLOR_WHITE);
+        gfx.setTextColor(colorForSongTrack(track));
         gfx.drawText(tx + 2, ry + 2, patBuf);
       } else {
         gfx.setTextColor(COLOR_GRAY);
         gfx.drawText(tx + 2, ry + 2, "---");
       }
     }
+
     if (row_idx == playhead) {
-      gfx.setTextColor(COLOR_ACCENT);
-      gfx.drawText(x + w - 15, ry + 2, ">>");
+      bool pulse = (millis() % 400) < 200;
+      gfx.setTextColor(pulse ? COLOR_ACCENT : COLOR_WHITE);
+      // Moved playhead arrow to before mode button
+      gfx.drawText(modeX - 12, ry + 2, ">>");
+      
+      if (playingSong) {
+          // MicroVU animation
+          for (int v = 0; v < 4; ++v) {
+              int vh = (std::rand() % (row_h - 4));
+              gfx.fillRect(modeX - 4 + v * 2, ry + row_h - vh - 2, 1, vh, COLOR_ACCENT);
+          }
+      }
+    }
+    
+    // Loop indicators in the BAR column
+    if (loopMode) {
+      int ls = mini_acid_.loopStartRow();
+      int le = mini_acid_.loopEndRow();
+      if (row_idx == ls) {
+        gfx.drawText(x + 14, ry + 2, "[");
+      }
+      if (row_idx == le) {
+        gfx.drawText(x + 14, ry + 2, "]");
+      }
     }
   }
 
-  int modeX = x + pos_col_w + spacing + track_col_w * track_count + spacing + 5;
+  // Scrollbar
+  int scroll_total_h = visible_rows * row_h;
+  int sb_h = std::max(5, (visible_rows * scroll_total_h) / Song::kMaxPositions);
+  int sb_y = 0;
+  if (Song::kMaxPositions > visible_rows) {
+      sb_y = (scroll_row_ * (scroll_total_h - sb_h)) / (Song::kMaxPositions - visible_rows);
+  }
+  gfx.fillRect(x + pos_col_w - 4, grid_y + sb_y, 2, sb_h, COLOR_GRAY);
+  drawQuarterStrip(gfx, x + pos_col_w - 7, grid_y, scroll_total_h,
+                   songQuarterFromRow(cursor_row), COLOR_ACCENT, IGfxColor(0x303030));
+
   int modeW = w - modeX - 5;
   int modeY = body_y + header_h;
   int modeH = visible_rows * row_h;
@@ -1369,6 +1713,20 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
       gfx.drawRect(modeX - 2, modeY - 2, modeW + 4, modeH + 4, COLOR_STEP_SELECTED);
     }
     mode_button_container_.draw(gfx);
+  }
+
+  // Page Loading Overlay
+  if (mini_acid_.isPageLoading()) {
+    int targetP = mini_acid_.targetPageIndex() + 1;
+    char loadBuf[32];
+    snprintf(loadBuf, sizeof(loadBuf), "LOADING PAGE %d...", targetP);
+    int tw = textWidth(gfx, loadBuf);
+    int lx = x + (w - tw) / 2;
+    int ly = y + (h - 20) / 2;
+    gfx.fillRect(lx - 10, ly - 5, tw + 20, 20, COLOR_BLACK);
+    gfx.drawRect(lx - 10, ly - 5, tw + 20, 20, COLOR_ACCENT);
+    gfx.setTextColor(COLOR_ACCENT);
+    gfx.drawText(lx, ly, loadBuf);
   }
 }
 
@@ -1495,10 +1853,14 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
     gfx.setTextColor(headerColor);
     int grid_y = y + header_h + 2; 
     
-    if (!split_compare_ || cell_w > 20) {
-        gfx.drawText(paneX + pos_w + 2, grid_y, "A");
-        gfx.drawText(paneX + pos_w + (cell_w + col_gap) + 2, grid_y, "B");
-        gfx.drawText(paneX + pos_w + 2 * (cell_w + col_gap) + 2, grid_y, laneShortLabel()); 
+    if (!split_compare_ || cell_w > 18) {
+      for (int t = 0; t < tracks; ++t) {
+        bool valid = false;
+        SongTrack headerTrack = trackForColumn(t, valid);
+        if (!valid) continue;
+        gfx.setTextColor(editable ? colorForSongTrack(headerTrack).color16() : TE_DIM.color16());
+        gfx.drawText(paneX + pos_w + t * (cell_w + col_gap) + 2, grid_y, trackHeaderLabel(t));
+      }
     }
 
     // Slot Label in corner
@@ -1572,6 +1934,8 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
         if (pattern >= 0) {
           char patBuf[10];
           formatSongPatternLabel(pattern, patBuf, sizeof(patBuf));
+          IGfxColor patColor = colorForSongTrack(track);
+          gfx.setTextColor(patColor.color16());
           gfx.drawText(tx + 1, ry + 1, patBuf);
         } else {
           gfx.drawText(tx + 1, ry + 1, "--");
@@ -1592,6 +1956,13 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
 
   } else {
     drawPane(x, w, slot, true);
+  }
+
+  int quarterTop = grid_y + 11;
+  int quarterH = visible_rows * (cell_h + row_gap) - row_gap;
+  if (quarterH > 0) {
+    drawQuarterStrip(gfx, x + w - 3, quarterTop, quarterH,
+                     songQuarterFromRow(cursor_row), TE_ACCENT, TE_DIM);
   }
 
   int footer_y = y + h - footer_h;
@@ -1695,15 +2066,14 @@ void SongPage::drawRetroClassicStyle(IGfx& gfx) {
       IGfxColor paneBg = editable ? IGfxColor(RetroTheme::BG_INSET) : IGfxColor(RetroTheme::BG_DEEP_BLACK);
       gfx.fillRect(paneX, headerY - 2, paneW, 11, paneBg);
 
-      IGfxColor laneA = editable ? IGfxColor(RetroTheme::NEON_ORANGE) : IGfxColor(RetroTheme::TEXT_DIM);
-      IGfxColor laneB = editable ? IGfxColor(RetroTheme::NEON_MAGENTA) : IGfxColor(RetroTheme::TEXT_DIM);
-      IGfxColor laneC = editable ? IGfxColor(RetroTheme::NEON_CYAN) : IGfxColor(RetroTheme::TEXT_DIM);
-      gfx.setTextColor(laneA);
-      gfx.drawText(paneX + 2, headerY, "A");
-      gfx.setTextColor(laneB);
-      gfx.drawText(paneX + cell_w + 2, headerY, "B");
-      gfx.setTextColor(laneC);
-      gfx.drawText(paneX + 2 * cell_w + 2, headerY, laneShortLabel());
+      for (int t = 0; t < track_count; ++t) {
+        bool valid = false;
+        SongTrack headerTrack = trackForColumn(t, valid);
+        if (!valid) continue;
+        IGfxColor trackColor = editable ? colorForSongTrack(headerTrack) : IGfxColor(RetroTheme::TEXT_DIM);
+        gfx.setTextColor(trackColor);
+        gfx.drawText(paneX + t * cell_w + 2, headerY, trackHeaderLabel(t));
+      }
 
       char slotBuf[8];
       std::snprintf(slotBuf, sizeof(slotBuf), "S%c", 'A' + paneSlot);
@@ -1754,20 +2124,33 @@ void SongPage::drawRetroClassicStyle(IGfx& gfx) {
             gfx.fillRect(tx, ry, cell_w, row_h, IGfxColor(RetroTheme::SELECT_BRIGHT));
             gfx.setTextColor(IGfxColor(RetroTheme::BG_DEEP_BLACK));
           } else if (pattern >= 0) {
-            gfx.setTextColor(editable ? IGfxColor(RetroTheme::TEXT_PRIMARY) : IGfxColor(RetroTheme::TEXT_DIM));
+            gfx.setTextColor(editable ? colorForSongTrack(track) : IGfxColor(RetroTheme::TEXT_DIM));
+            char patBuf[10];
+            formatSongPatternLabel(pattern, patBuf, sizeof(patBuf));
+            gfx.drawText(tx + 2, ry, patBuf);
           } else {
             gfx.setTextColor(IGfxColor(RetroTheme::GRID_DIM));
+            gfx.drawText(tx + 2, ry, "---");
           }
-
-          if (pattern >= 0) {
-            char buf[10];
-            formatSongPatternLabel(pattern, buf, sizeof(buf));
-            gfx.drawText(tx + 1, ry, buf);
-          } else {
-            gfx.drawText(tx + 1, ry, "--");
+          
+          // Loop markers in Retro Style
+          if (mini_acid_.loopModeEnabled()) {
+             int ls = mini_acid_.loopStartRow();
+             int le = mini_acid_.loopEndRow();
+             if (ridx == ls || ridx == le) {
+                gfx.fillRect(paneX, ry, 2, row_h, IGfxColor(RetroTheme::NEON_YELLOW));
+             }
           }
         }
       }
+      
+      // Scrollbar for Pane
+      int sb_h = std::max(4, (visible_rows * paneH) / Song::kMaxPositions);
+      int sb_y = (scroll_row_ * (paneH - sb_h)) / (Song::kMaxPositions - visible_rows);
+      gfx.fillRect(paneX + paneW - 2, cellsY + sb_y, 2, sb_h, IGfxColor(RetroTheme::GRID_DIM));
+      drawQuarterStrip(gfx, paneX + paneW - 5, cellsY, paneH,
+                       songQuarterFromRow(cursor_row_), IGfxColor(RetroTheme::SELECT_BRIGHT),
+                       IGfxColor(RetroTheme::GRID_DIM));
     };
 
     if (split_compare_) {
@@ -1779,6 +2162,20 @@ void SongPage::drawRetroClassicStyle(IGfx& gfx) {
       drawPane(x + paneW + gap, w - paneW - gap, 1, activeSlot == 1);
     } else {
       drawPane(x, w, activeSlot, true);
+    }
+
+    // Page Loading Overlay (Retro Style)
+    if (mini_acid_.isPageLoading()) {
+        int targetP = mini_acid_.targetPageIndex() + 1;
+        char loadBuf[32];
+        snprintf(loadBuf, sizeof(loadBuf), "LOADING PAGE %d...", targetP);
+        int tw = textWidth(gfx, loadBuf);
+        int lx = x + (w - tw) / 2;
+        int ly = y + (h - 20) / 2;
+        gfx.fillRect(lx - 10, ly - 5, tw + 20, 20, IGfxColor(RetroTheme::BG_DEEP_BLACK));
+        gfx.drawRect(lx - 10, ly - 5, tw + 20, 20, IGfxColor(RetroTheme::NEON_YELLOW));
+        gfx.setTextColor(IGfxColor(RetroTheme::NEON_YELLOW));
+        gfx.drawText(lx, ly, loadBuf);
     }
 
     retro::drawFooterBar(gfx, x, y + h - 12, w, 12, "B:Flip A+B:Edit C+B:Play CA+X:LM C+R:Rev", "SONG");
@@ -1836,7 +2233,8 @@ void SongPage::drawAmberStyle(IGfx& gfx) {
         for (int t = 0; t < track_count; ++t) {
             int tx = x + pos_w + t * track_w + 4;
             bool valid = false;
-            int pattern = mini_acid_.songPatternAt(ridx, trackForColumn(t, valid));
+            SongTrack track = trackForColumn(t, valid);
+            int pattern = valid ? mini_acid_.songPatternAt(ridx, track) : -1;
             bool isSelected = false;
             if (has_selection_) {
                 int min_r, max_r, min_t, max_t;
@@ -1852,7 +2250,8 @@ void SongPage::drawAmberStyle(IGfx& gfx) {
 
             if (pattern >= 0) {
                 formatSongPatternLabel(pattern, buf, sizeof(buf));
-                gfx.setTextColor(IGfxColor(AmberTheme::TEXT_PRIMARY));
+                IGfxColor pColor = colorForSongTrack(track);
+                gfx.setTextColor(pColor);
                 gfx.drawText(tx, ry, buf);
             } else {
                 gfx.setTextColor(IGfxColor(AmberTheme::GRID_DIM));
@@ -1860,6 +2259,11 @@ void SongPage::drawAmberStyle(IGfx& gfx) {
             }
         }
     }
+
+    int quarterH = visible_rows * row_h;
+    drawQuarterStrip(gfx, x + w - 3, grid_y, quarterH,
+                     songQuarterFromRow(cursor_row), IGfxColor(AmberTheme::SELECT_BRIGHT),
+                     IGfxColor(AmberTheme::GRID_DIM));
 
     amber::drawFooterBar(gfx, x, y + h - 12, w, 12, "B:Flip A+B:Edit C+B:Play CA+X:LM C+R:Rev", "SONG");
 }

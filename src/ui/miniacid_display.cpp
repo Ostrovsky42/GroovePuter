@@ -27,6 +27,7 @@
 #include <esp_partition.h>
 #endif
 #include "esp_heap_caps.h"
+#include "../audio/pattern_paging.h"
 #endif
 #include <cstdio>
 #include "../debug_log.h"
@@ -82,24 +83,37 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid)
 MiniAcidDisplay::~MiniAcidDisplay() = default;
 
 std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
-    LOG_DEBUG_UI("Creating page at index %d", index);
+#if defined(ESP32) || defined(ESP_PLATFORM)
+    uint32_t freeBefore = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    Serial.printf("[UI] Creating page %d (DRAM: %u bytes free)\n", index, (unsigned)freeBefore);
+#endif
+    std::unique_ptr<IPage> page;
     switch (index) {
-        case 0:  return std::make_unique<GenrePage>(gfx_, mini_acid_, audio_guard_);
-        case 1:  return std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 0);
-        case 2:  return std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 1);
-        case 3:  return std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 0);
-        case 4:  return std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 1);
-        case 5:  return std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_);
-        case 6:  return std::make_unique<SongPage>(gfx_, mini_acid_, audio_guard_);
-        case 7:  return std::make_unique<SequencerHubPage>(gfx_, mini_acid_, audio_guard_);
-        case 8:  return std::make_unique<FeelTexturePage>(gfx_, mini_acid_, audio_guard_);
-        case 9:  return std::make_unique<SettingsPage>(gfx_, mini_acid_, audio_guard_);
-        case 10: return std::make_unique<ProjectPage>(gfx_, mini_acid_,audio_guard_);        
-        //case 11: return std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_);
-        case 11: return std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_);
+        case 0:  page = std::make_unique<GenrePage>(gfx_, mini_acid_, audio_guard_); break;
+        case 1:  page = std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 0); break;
+        case 2:  page = std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 1); break;
+        case 3:  page = std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 0); break;
+        case 4:  page = std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 1); break;
+        case 5:  page = std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_); break;
+        case 6:  page = std::make_unique<SongPage>(gfx_, mini_acid_, audio_guard_); break;
+        case 7:  page = std::make_unique<SequencerHubPage>(gfx_, mini_acid_, audio_guard_); break;
+        case 8:  page = std::make_unique<FeelTexturePage>(gfx_, mini_acid_, audio_guard_); break;
+        case 9:  page = std::make_unique<SettingsPage>(gfx_, mini_acid_, audio_guard_); break;
+        case 10: page = std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_); break;
+        case 11: page = std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_); break;
 
-        default: return nullptr;
+        default: page = nullptr; break;
     }
+#if defined(ESP32) || defined(ESP_PLATFORM)
+    uint32_t freeAfter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (page) {
+        Serial.printf("[UI] Page %d created SUCCESS (size: %u, DRAM left: %u)\n", 
+                      index, (unsigned)(freeBefore - freeAfter), (unsigned)freeAfter);
+    } else {
+        Serial.printf("[UI] Page %d creation FAILED or INVALID\n", index);
+    }
+#endif
+    return page;
 }
 
 IPage* MiniAcidDisplay::getPage_(int index) {
@@ -135,6 +149,7 @@ void MiniAcidDisplay::setAudioRecorder(IAudioRecorder* recorder) {
 
 void MiniAcidDisplay::update() {
     syncVisualStyle_();
+    handlePaging_();
     gfx_.startWrite();
     if (splash_active_) {
         drawSplashScreen();
@@ -231,6 +246,8 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
 
     if (page_index_ == index && context == 0) return; // redundant
 
+    Serial.printf("[UI] transitionToPage: %d -> %d (ctx=%d)\n", page_index_, index, context);
+
     IPage* oldPage = getPage_(page_index_);
     if (oldPage) oldPage->onExit();
 
@@ -263,13 +280,27 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 
     // 0) Hard-global shortcuts: handled before page logic so they work everywhere.
     if (event.event_type == GROOVEPUTER_KEY_DOWN) {
-        if (event.ctrl && (event.key == 'h' || event.key == 'H')) {
+        if (event.alt && (event.key == 'h' || event.key == 'H')) {
             global_help_overlay_.toggle();
             return true;
         }
 
+        // Global Page Flip (Alt + [ / ])
+        if (event.alt && (event.key == '[' || event.key == '{')) {
+            int prev = mini_acid_.currentPageIndex() - 1;
+            if (prev < 0) prev = kMaxPages - 1;
+            mini_acid_.requestPageSwitch(prev);
+            return true;
+        }
+        if (event.alt && (event.key == ']' || event.key == '}')) {
+            int next = (mini_acid_.currentPageIndex() + 1) % kMaxPages;
+            mini_acid_.requestPageSwitch(next);
+            return true;
+        }
+
         if (event.alt && (event.key == 'v' || event.key == 'V')) {
-            goToPage(11); // Tape
+            Serial.println("[UI] Shortcut Alt+V -> Page 11");
+            goToPage(11); // Groove Lab
             return true;
         }
 
@@ -309,7 +340,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             return true;
         }
 
-        if (event.alt || event.ctrl || event.meta) {
+        if ((event.alt || event.meta) && !event.ctrl) {
             int targetPage = -1;
             switch (event.key) {
                 case '1': targetPage = 1; break;
@@ -325,6 +356,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
                 default: break;
             }
             if (targetPage >= 0) {
+                Serial.printf("[UI] Shortcut Alt+%c -> Page %d\n", event.key, targetPage);
                 goToPage(targetPage);
                 return true;
             }
@@ -357,8 +389,8 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             return true;
         }
 
-        // Global Mutes (1-9) - only if no modifiers
-        if (!event.alt && !event.ctrl && !event.meta && !event.shift) {
+        // Global Mutes (1-9) - only if no secondary modifiers (ignore shift for CapsLock safety)
+        if (!event.alt && !event.ctrl && !event.meta) {
             if (event.key >= '1' && event.key <= '9') {
                 int trackIdx = event.key - '1';
                 withAudioGuard([&]() {
@@ -553,10 +585,8 @@ void MiniAcidDisplay::drawDebugOverlay() {
     uint32_t freeDRAM = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     uint32_t minDRAM = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     snprintf(buf, sizeof(buf), "DRAM:%u/%u", (unsigned)freeDRAM, (unsigned)minDRAM);
-#else
-    snprintf(buf, sizeof(buf), "DRAM: N/A");
-#endif
     gfx_.drawText(2, yy, buf); yy += 10;
+#endif
     
     // Note: PSRAM display disabled - this board has no PSRAM
     
@@ -592,5 +622,37 @@ void MiniAcidDisplay::updateCyclePulse_() {
     if (counter != last_cycle_pulse_counter_) {
         last_cycle_pulse_counter_ = counter;
         cycle_pulse_until_ms_ = millis() + 250;
+    }
+}
+
+void MiniAcidDisplay::handlePaging_() {
+    if (mini_acid_.isPageLoading()) {
+        int target = mini_acid_.targetPageIndex();
+        if (target >= 0) {
+            // Serial.printf("[Page] Loading target %d\n", target);
+            char buf[32];
+            snprintf(buf, sizeof(buf), "Switching to Page %d...", target + 1);
+            showToast(buf, 800);
+            
+            withAudioGuard([&]() {
+#if defined(ESP32) || defined(ESP_PLATFORM)
+                // AUTO-SAVE: Save current page before swapping data
+                PatternPagingService::savePage(mini_acid_.currentPageIndex(), mini_acid_.sceneManager().currentScene());
+
+                if (PatternPagingService::loadPage(target, mini_acid_.sceneManager().currentScene())) {
+                    mini_acid_.setCurrentPage(target);
+                } else {
+                    // loadPage memsets to zero if missing
+                    mini_acid_.setCurrentPage(target);
+                }
+#else
+                mini_acid_.setCurrentPage(target);
+#endif
+                mini_acid_.setTargetPage(-1);
+                mini_acid_.setPageLoading(false);
+            });
+        } else {
+            mini_acid_.setPageLoading(false);
+        }
     }
 }

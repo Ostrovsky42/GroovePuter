@@ -8,15 +8,25 @@ class ProjectPage : public IPage{
  public:
   ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
+  void onEnter(int context = 0) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string & getTitle() const override;
   enum class ProjectSection { Scenes = 0, Groove, Led };
-  enum class MainFocus { Load = 0, SaveAs, New, VisualStyle, GrooveMode, GrooveFlavor, ApplyMacros, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash };
+  enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, GrooveMode, GrooveFlavor, ApplyMacros, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash };
 
  private:
-  enum class DialogType { None = 0, Load, SaveAs };
+  enum class DialogType { None = 0, Load, SaveAs, ImportMidi, MidiAdvance, ConfirmClear };
   enum class DialogFocus { List = 0, Cancel };
   enum class SaveDialogFocus { Input = 0, Randomize, Save, Cancel };
+  enum class MidiImportProfile { Clean = 0, Loud };
+  enum class MidiAdvanceFocus { 
+      SynthA = 0, SynthB, Drums, 
+      Mode, 
+      StartPattern, AutoFind, 
+      FromBar, LengthBars, 
+      Import, Cancel,
+      Count
+  };
 
   int firstFocusInSection(int sectionIdx);
   int lastFocusInSection(int sectionIdx);
@@ -33,6 +43,15 @@ class ProjectPage : public IPage{
   void randomizeSaveName();
   bool saveCurrentScene();
   bool createNewScene();
+  void refreshMidiFiles();
+  void openImportMidiDialog();
+  void openMidiAdvanceDialog();
+  bool importMidiAtSelection();
+  void drawMidiAdvanceDialog(IGfx& gfx);
+  void openConfirmClearDialog();
+  void drawConfirmClearDialog(IGfx& gfx);
+  bool clearProject();
+  bool deleteSelectionInDialog();
   bool handleSaveDialogInput(char key);
   void ensureMainFocusVisible(int visibleRows);
   template <typename F>
@@ -51,10 +70,21 @@ class ProjectPage : public IPage{
   DialogType dialog_type_;
   DialogFocus dialog_focus_;
   SaveDialogFocus save_dialog_focus_;
+  MidiAdvanceFocus midi_advance_focus_ = MidiAdvanceFocus::SynthA;
   int selection_index_;
   int scroll_offset_;
   int main_scroll_ = 0;
   bool loadError_;
   std::vector<std::string> scenes_;
+  std::vector<std::string> midi_files_;
+  int midi_import_start_pattern_ = 0;
+  int midi_import_from_bar_ = 0;
+  int midi_import_length_bars_ = 16;
+  MidiImportProfile midi_import_profile_ = MidiImportProfile::Loud;
+  int midi_dest_a_ = 0;
+  int midi_dest_b_ = 1;
+  int midi_dest_d_ = 2;
+  bool midi_import_append_ = false;
+  int midi_adv_scroll_ = 0;
   std::string save_name_;
 };

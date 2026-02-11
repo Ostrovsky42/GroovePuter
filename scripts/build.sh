@@ -5,5 +5,7 @@
 
 FQBN="m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app"
 
+ARDUINO_CLI="./platform_sdl/bin/arduino-cli"
+
 echo "=== Building MiniAcid for Cardputer (DRAM-only) ==="
-arduino-cli compile --fqbn "$FQBN" "$@"
+$ARDUINO_CLI compile --fqbn "$FQBN" . "$@"

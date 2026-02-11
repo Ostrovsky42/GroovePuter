@@ -34,10 +34,12 @@ Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtu
 
 ## Quick Keys 
 - `Space`: play/stop
-- `[` / `]`: previous/next page
+- `Fn+nums`: page routing
 - `Arrows`: move cursor / navigate lists
 - `Enter`: confirm/apply/toggle focused item
 - `Tab`: switch focus/section on many pages
+- `[` / `]`: previous/next page
+- `Ctrl+[` / `Ctrl+]`: switch editing page context (Song Page)
 - `Q..I`: choose pattern slot `1..8` in Pattern/Drum/Song contexts
 - `B`: quick A/B bank toggle (Pattern/Drum) or bank flip in Song cell/selection
 - `Alt+B`: edit song slot `A/B`
@@ -56,8 +58,6 @@ Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtu
 | **Pattern Edit** | ![Pattern Edit](docs/screenshots/pattern_edit.png) |
 | **Song Page** | ![Song Page](docs/screenshots/song_page.png) |
 | **Groove Lab** | ![Groove Lab](docs/screenshots/groove_lab.png) |
-| **Feel & Texture** | ![Feel & Texture](docs/screenshots/feel_texture.png) |
-
 
 ## Requirements
 

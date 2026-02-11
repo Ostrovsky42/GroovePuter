@@ -13,6 +13,7 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
+  void tick() override;
   const std::string & getTitle() const override;
   void setContext(int context) override; // context = step index to focus
   std::unique_ptr<MultiPageHelpDialog> getHelpDialog() override;
@@ -71,4 +72,5 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   bool has_selection_ = false;
   int selection_start_step_ = 0;
   bool selection_locked_ = false;
+  int last_page_ = -1;
 };

@@ -18,6 +18,7 @@
 #include "src/ui/led_manager.h"
 #include "src/audio/audio_diagnostics.h"
 #include "src/ui/key_normalize.h"
+#include <new>
 
 static constexpr IGfxColor CP_BLACK = IGfxColor::Black();
 
@@ -38,6 +39,21 @@ TaskHandle_t g_audioTaskHandle = nullptr;
 static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);
 MiniAcid* volatile g_miniAcid = nullptr;
 Encoder8Miniacid* g_encoder8 = nullptr;
+
+#if defined(ESP32) || defined(ESP_PLATFORM)
+RTC_DATA_ATTR static uint32_t g_bootStage = 0;
+#else
+static uint32_t g_bootStage = 0;
+#endif
+
+static void markBootStage(uint32_t stage, const char* msg = nullptr) {
+  g_bootStage = stage;
+  if (msg) {
+    Serial.printf("[BOOT-STAGE] %u %s\n", (unsigned)stage, msg);
+  } else {
+    Serial.printf("[BOOT-STAGE] %u\n", (unsigned)stage);
+  }
+}
 
 void audioTask(void *param) {
   Serial.println("AudioTask: Starting begin()...");
@@ -158,11 +174,17 @@ void setup() {
   AudioDiagnostics::instance().enable(true);
   delay(500);
   Serial.println("\n\n!! BOOTING !!");
+  uint32_t prevBootStage = g_bootStage;
+  Serial.printf("[BOOT] Previous stage retained: %u\n", (unsigned)prevBootStage);
+  markBootStage(1, "setup-entry");
   auto cfg = M5.config();
+  markBootStage(10, "before M5Cardputer.begin");
   M5Cardputer.begin(cfg);
+  markBootStage(11, "after M5Cardputer.begin");
   
   // 1. Let M5Unified initialize the ES8311 codec over I2C.
   // This wakes up the codec, sets output volumes, etc.
+  markBootStage(20, "before Speaker.begin");
   M5Cardputer.Speaker.setVolume(220); 
   M5Cardputer.Speaker.begin();
   M5Cardputer.Speaker.setVolume(220);
@@ -171,6 +193,7 @@ void setup() {
   // This uninstalls M5's I2S driver but keeps the ES8311 codec registers intact.
   // This avoids the "I2S driver conflict" and allows us to use Port 0.
   M5Cardputer.Speaker.end();
+  markBootStage(21, "after Speaker.end");
   Serial.println("[Audio] ES8311 codec initialized, Speaker released Port 0");
   
   // Small delay to ensure the driver is fully uninstalled before our custom one starts
@@ -187,8 +210,10 @@ void setup() {
 
   Serial.println("Creating Display...");
   logHeapCaps("before-display");
+  markBootStage(30, "before display.begin");
   g_display.setRotation(1);
   g_display.begin();
+  markBootStage(31, "after display.begin");
   
   Serial.println("Clearing Display...");
   g_display.clear(CP_BLACK);
@@ -227,21 +252,32 @@ void setup() {
   // to avoid 'largest free block' issues on DRAM-only usage.
 
   screenLog("5. Creating Encoder8");
-  g_encoder8 = new Encoder8Miniacid(*g_miniAcid);
+  markBootStage(40, "before Encoder8 alloc");
+  g_encoder8 = new (std::nothrow) Encoder8Miniacid(*g_miniAcid);
+  if (!g_encoder8) {
+    Serial.println("[FATAL] Encoder8 allocation failed");
+    markBootStage(900, "fatal-encoder8-alloc");
+    while (true) { delay(1000); }
+  }
+  markBootStage(41, "after Encoder8 alloc");
 
   screenLog("6. Engine Init...");
   // Link sample store before init
   g_miniAcid->sampleStore = &g_sampleStore;
+  markBootStage(50, "before MiniAcid::init");
   g_miniAcid->init();
+  markBootStage(51, "after MiniAcid::init");
   
   // Scan samples from SD card (SD initialized by engine->init->sceneStorage)
   screenLog("6b. Scan /sd/samples...");
+  markBootStage(60, "before sample scan");
   g_miniAcid->sampleIndex.scanDirectory("/sd/samples");
   
   if (g_miniAcid->sampleIndex.getFiles().empty()) {
      // Fallback: try different path if /sd/samples is not right
      g_miniAcid->sampleIndex.scanDirectory("/samples");
   }
+  markBootStage(61, "after sample scan");
 
   for (const auto& file : g_miniAcid->sampleIndex.getFiles()) {
       Serial.printf("Found sample: %s (id=%u)\n", file.filename.c_str(), file.id.value);
@@ -252,7 +288,14 @@ void setup() {
 
   
   Serial.println("7a. UI Instance Created");
-  g_miniDisplay = new MiniAcidDisplay(g_display, *g_miniAcid);
+  markBootStage(70, "before MiniAcidDisplay alloc");
+  g_miniDisplay = new (std::nothrow) MiniAcidDisplay(g_display, *g_miniAcid);
+  if (!g_miniDisplay) {
+    Serial.println("[FATAL] MiniAcidDisplay allocation failed");
+    markBootStage(901, "fatal-display-alloc");
+    while (true) { delay(1000); }
+  }
+  markBootStage(71, "after MiniAcidDisplay alloc");
   Serial.println("7b. UI setAudioGuard");
   
   // Set audio guard to protect audio task from concurrent access
@@ -272,21 +315,35 @@ void setup() {
   // g_miniDisplay->setAudioRecorder(g_audioRecorder);
 
   Serial.println("8. Creating AudioTask...");
-  xTaskCreatePinnedToCore(audioTask, "AudioTask",
-                          8192, // stack
-                          nullptr,
-                          3, // priority
-                          &g_audioTaskHandle,
-                          1 // core
+  markBootStage(80, "before AudioTask create");
+  BaseType_t taskOk = xTaskCreatePinnedToCore(audioTask, "AudioTask",
+                                              8192, // stack
+                                              nullptr,
+                                              3, // priority
+                                              &g_audioTaskHandle,
+                                              1 // core
   );
+  if (taskOk != pdPASS) {
+    Serial.println("[FATAL] AudioTask create failed");
+    markBootStage(902, "fatal-audio-task");
+    while (true) { delay(1000); }
+  }
+  markBootStage(81, "after AudioTask create");
 
   Serial.println("9. Final Init...");
+  markBootStage(90, "before encoder init");
   g_encoder8->initialize();
+  markBootStage(91, "after encoder init");
+  markBootStage(92, "before led init");
   LedManager::instance().init();
+  markBootStage(93, "after led init");
 
   Serial.println("10. First drawUI...");
+  markBootStage(94, "before first drawUI");
   drawUI();
+  markBootStage(95, "after first drawUI");
   Serial.println("setup() complete");
+  markBootStage(100, "setup-complete");
 }
 
 
@@ -468,6 +525,10 @@ void loop() {
       } else if (hid == KEY_TAB) {
         evt.key = '\t';
         shouldSend = true;
+      } else if (hid >= 0x1E && hid <= 0x27) { // numbers 1..0
+        if (hid == 0x27) evt.key = '0';
+        else evt.key = '1' + (hid - 0x1E);
+        shouldSend = true;
       } else if (applyCtrlLetter(ks, hid, evt)) {
         mapHidLetterScancode(hid, evt.scancode);
         shouldSend = true;
@@ -480,21 +541,24 @@ void loop() {
       }
     }
 
-    // do not send events only for ctlr/alt/shift changes
-    // so that we don't get double events when those are used as modifiers
-    if (ks.ctrl || ks.alt || ks.shift) {
+    // do not send events only for modifier changes (ctrl/alt/shift/fn alone)
+    if (ks.hid_keys.empty() && ks.word.empty()) {
       return;
     }
     for (auto inputChar : ks.word) {
-      // Skip letter chars when Ctrl/Alt is held - already handled via HID path
-      // (applyCtrlLetter / applyAltLetter). Without this, every Ctrl/Alt+letter
-      // fires TWICE: once from HID, once from word. This breaks toggles like
-      // Ctrl+R (reverse ON then immediately OFF).
-      if ((ks.ctrl || ks.alt) && inputChar != 0) {
+      if (inputChar != 0) {
         unsigned char u = static_cast<unsigned char>(inputChar);
-        bool isLetter = (u >= 'a' && u <= 'z') || (u >= 'A' && u <= 'Z');
-        bool isCtrlChar = (u >= 1 && u <= 26);
-        if (isLetter || isCtrlChar) continue;
+        // Skip keys already handled via HID loop (numbers, navigation, special keys)
+        // This prevents "double-toggle" where a key on/off cycle happens in a single frame.
+        if (u >= '0' && u <= '9') continue;
+        if (u == '\n' || u == '\r' || u == '\b' || u == '\t') continue;
+
+        // Skip letters if Ctrl/Alt held (handled via HID path)
+        if (ks.ctrl || ks.alt) {
+          bool isLetter = (u >= 'a' && u <= 'z') || (u >= 'A' && u <= 'Z');
+          bool isCtrlChar = (u >= 1 && u <= 26);
+          if (isLetter || isCtrlChar) continue;
+        }
       }
 
       UIEvent evt{};

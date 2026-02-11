@@ -62,7 +62,9 @@ PatternEditPage::PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audi
   pattern_row_cursor_ = idx;
   bank_index_ = mini_acid_.current303BankIndex(voice_index_);
   bank_cursor_ = bank_index_;
-  title_ = voice_index_ == 0 ? "303A PATTERNS" : "303B PATTERNS";
+  char buf[32];
+  snprintf(buf, sizeof(buf), "303%c PATTERNS P%d", (voice_index_ == 0 ? 'A' : 'B'), mini_acid_.currentPageIndex() + 1);
+  title_ = buf;
   pattern_bar_ = std::make_shared<PatternSelectionBarComponent>("PATTERNS");
   bank_bar_ = std::make_shared<BankSelectionBarComponent>("BANK", "AB");
   PatternSelectionBarComponent::Callbacks pattern_callbacks;
@@ -496,11 +498,32 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   }
   switch (nav) {
     case GROOVEPUTER_LEFT:
+      if (ui_event.alt) {
+        if (mini_acid_.isPageLoading()) {
+          handled = true;
+          break;
+        }
+        int next = mini_acid_.currentPageIndex() - 1;
+        if (next < 0) next = kMaxPages - 1;
+        mini_acid_.requestPageSwitch(next);
+        handled = true;
+        break;
+      }
       if (extend_selection && focus_ == Focus::Steps) updateSelection();
       movePatternCursor(-1);
       handled = true;
       break;
     case GROOVEPUTER_RIGHT:
+      if (ui_event.alt) {
+        if (mini_acid_.isPageLoading()) {
+          handled = true;
+          break;
+        }
+        int next = (mini_acid_.currentPageIndex() + 1) % kMaxPages;
+        mini_acid_.requestPageSwitch(next);
+        handled = true;
+        break;
+      }
       if (extend_selection && focus_ == Focus::Steps) updateSelection();
       movePatternCursor(1);
       handled = true;
@@ -537,7 +560,9 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   // Handle TAB for voice toggle
   if (UIInput::isTab(ui_event)) {
       voice_index_ = (voice_index_ + 1) % 2; // Toggle 0 <-> 1
-      title_ = voice_index_ == 0 ? "303A PATTERNS" : "303B PATTERNS";
+      char buf[32];
+      snprintf(buf, sizeof(buf), "303%c PATTERNS P%d", (voice_index_ == 0 ? 'A' : 'B'), mini_acid_.currentPageIndex() + 1);
+      title_ = buf;
       
       // Refresh state for new voice
       bank_index_ = mini_acid_.current303BankIndex(voice_index_);
@@ -549,6 +574,11 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   }
 
   char key = ui_event.key;
+  if (key == 0) {
+    if (ui_event.scancode >= GROOVEPUTER_F1 && ui_event.scancode <= GROOVEPUTER_F8) {
+      key = static_cast<char>('1' + (ui_event.scancode - GROOVEPUTER_F1));
+    }
+  }
   char lowerKey = key ? static_cast<char>(std::tolower(static_cast<unsigned char>(key))) : 0;
   const bool is_escape = (ui_event.scancode == GROOVEPUTER_ESCAPE) || (key == 0x1B);
   const bool is_backspace = (key == '\b' || key == 0x7F);
@@ -556,8 +586,8 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   // Let app-level back navigation handle ESC when nothing local to clear.
   if (is_escape) return false;
 
-  // Q-I Pattern Selection (Standardized) - PRIORITIZED
-  if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
+  // Q-I Pattern Selection (Standardized) - only if NO modifiers (ignore shift for CapsLock safety)
+  if (!ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
     int patternIdx = patternIndexFromKey(lowerKey);
     if (patternIdx < 0) {
         patternIdx = scancodeToPatternIndex(ui_event.scancode);
@@ -573,7 +603,6 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
           if (chaining_mode_) {
               // Find next empty position in song and append
               SongTrack track = (voice_index_ == 0) ? SongTrack::SynthA : SongTrack::SynthB;
-              int songLen = mini_acid_.songLength();
               int nextPos = -1;
               
               // Search for the first empty slot (-1) or the first slot after the last used one
@@ -586,11 +615,24 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
               
               if (nextPos != -1) {
                   // If we found an empty slot, put it there. 
-                  // If it's the first empty slot, it effectively appends if previous were full.
                   mini_acid_.setSongPattern(nextPos, track, patternIdx);
               }
           }
       });
+      return true;
+    }
+  }
+
+  // Bank Selection (Ctrl + 1..2)
+  if (ui_event.ctrl && !ui_event.alt && key >= '1' && key <= '2') {
+    int bankIdx = bankIndexFromKey(key);
+    if (bankIdx >= 0) {
+      bank_cursor_ = bankIdx;
+      setBankIndex(bankIdx);
+      if (!mini_acid_.songModeEnabled()) {
+        focus_ = Focus::BankRow;
+      }
+      UI::showToast(bankIdx == 0 ? "Bank: A" : "Bank: B", 800);
       return true;
     }
   }
@@ -763,11 +805,10 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     handleEvent(appEvent);
     return true;
   }
-  if (key_r) { // R for REST
-    ensureStepFocusAndCursor();
-    int step = activePatternStep();
-    withAudioGuard([&]() { mini_acid_.clear303Step(step, voice_index_); }); // Clean rest (clear all flags)
-    return true;
+  if (key_r && (ui_event.ctrl || ui_event.alt)) { 
+    // Ctrl+R is Reverse in SongMode, handle it specifically or let global handle.
+    // In PatternEdit, we just prevent it from being REST when modified.
+    return false; 
   }
 
   // Alt + Backspace = Reset Pattern
@@ -805,6 +846,16 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   }
 
   return false;
+}
+
+void PatternEditPage::tick() {
+    int actualPage = mini_acid_.currentPageIndex();
+    if (actualPage != last_page_) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "303%c PATTERNS P%d", (voice_index_ == 0 ? 'A' : 'B'), actualPage + 1);
+        title_ = buf;
+        last_page_ = actualPage;
+    }
 }
 
 std::unique_ptr<MultiPageHelpDialog> PatternEditPage::getHelpDialog() {
@@ -860,7 +911,7 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
   const bool* slide = mini_acid_.pattern303SlideSteps(voice_index_);
   int stepCursor = pattern_edit_cursor_;
   int playing = mini_acid_.currentStep();
-  int selectedPattern = mini_acid_.display303PatternIndex(voice_index_);
+  int selectedPattern = mini_acid_.display303LocalPatternIndex(voice_index_);
   bool songMode = mini_acid_.songModeEnabled();
   bool patternFocus = !songMode && patternRowFocused();
   bool bankFocus = !songMode && focus_ == Focus::BankRow;
@@ -891,6 +942,12 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
   int bank_bar_h = bank_bar_->barHeight(gfx);
   bank_bar_->setBoundaries(Rect{x, body_y - 1, w, bank_bar_h});
   bank_bar_->draw(gfx);
+
+  // Page Indicator
+  char pageBuf[8];
+  snprintf(pageBuf, sizeof(pageBuf), "P%d", mini_acid_.currentPageIndex() + 1);
+  gfx.setTextColor(COLOR_WHITE);
+  gfx.drawText(x + w - 24, y + 2, pageBuf);
 
   int spacing = 4;
   int grid_top = body_y + pattern_bar_h + 6;
@@ -956,7 +1013,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
   const bool* slide = mini_acid_.pattern303SlideSteps(voice_index_);
   int stepCursor = pattern_edit_cursor_;
   int playing = mini_acid_.currentStep();
-  int selectedPattern = mini_acid_.display303PatternIndex(voice_index_);
+  int selectedPattern = mini_acid_.display303LocalPatternIndex(voice_index_);
   bool songMode = mini_acid_.songModeEnabled();
   bool patternFocus = !songMode && patternRowFocused();
   bool bankFocus = !songMode && focus_ == Focus::BankRow;
@@ -966,7 +1023,11 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
 
   // 1. Header (from RetroWidgets, like GenrePage)
   char modeBuf[16];
-  snprintf(modeBuf, sizeof(modeBuf), "P%d", selectedPattern + 1);
+  if (selectedPattern >= 0) {
+    std::snprintf(modeBuf, sizeof(modeBuf), "P%d", selectedPattern + 1);
+  } else {
+    std::snprintf(modeBuf, sizeof(modeBuf), "P-");
+  }
   char titleBuf[32];
   snprintf(titleBuf, sizeof(titleBuf), "%s%s", 
            voice_index_ == 0 ? "303 A" : "303 B",
@@ -1164,7 +1225,7 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
   const bool* slide = mini_acid_.pattern303SlideSteps(voice_index_);
   int stepCursor = pattern_edit_cursor_;
   int playing = mini_acid_.currentStep();
-  int selectedPattern = mini_acid_.display303PatternIndex(voice_index_);
+  int selectedPattern = mini_acid_.display303LocalPatternIndex(voice_index_);
   bool songMode = mini_acid_.songModeEnabled();
   bool patternFocus = !songMode && patternRowFocused();
   bool bankFocus = !songMode && focus_ == Focus::BankRow;
@@ -1173,7 +1234,11 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
   int bankCursor = activeBankCursor();
 
   char modeBuf[16];
-  snprintf(modeBuf, sizeof(modeBuf), "P%d", selectedPattern + 1);
+  if (selectedPattern >= 0) {
+    std::snprintf(modeBuf, sizeof(modeBuf), "P%d", selectedPattern + 1);
+  } else {
+    std::snprintf(modeBuf, sizeof(modeBuf), "P-");
+  }
   char titleBuf[32];
   snprintf(titleBuf, sizeof(titleBuf), "%s%s", 
            voice_index_ == 0 ? "303 A" : "303 B",

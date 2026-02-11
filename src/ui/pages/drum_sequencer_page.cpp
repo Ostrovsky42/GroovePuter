@@ -566,11 +566,24 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   }
   switch (nav) {
     case GROOVEPUTER_LEFT:
+      if (ui_event.alt) {
+        int next = mini_acid_.currentPageIndex() - 1;
+        if (next < 0) next = kMaxPages - 1;
+        mini_acid_.requestPageSwitch(next);
+        handled = true;
+        break;
+      }
       if (extend_selection && !patternRowFocused() && !bankRowFocused()) updateSelection();
       moveDrumCursor(-1);
       handled = true;
       break;
     case GROOVEPUTER_RIGHT:
+      if (ui_event.alt) {
+        int next = (mini_acid_.currentPageIndex() + 1) % kMaxPages;
+        mini_acid_.requestPageSwitch(next);
+        handled = true;
+        break;
+      }
       if (extend_selection && !patternRowFocused() && !bankRowFocused()) updateSelection();
       moveDrumCursor(1);
       handled = true;
@@ -592,19 +605,26 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   if (handled) return true;
 
   char key = ui_event.key;
+  if (key == 0) {
+    if (ui_event.scancode >= GROOVEPUTER_F1 && ui_event.scancode <= GROOVEPUTER_F8) {
+      key = static_cast<char>('1' + (ui_event.scancode - GROOVEPUTER_F1));
+    }
+  }
   char lowerKey = key ? static_cast<char>(std::tolower(static_cast<unsigned char>(key))) : 0;
 
-  /*
-  int bankIdx = bankIndexFromKey(key);
-  if (bankIdx >= 0) {
-    setBankIndex(bankIdx);
-    if (!mini_acid_.songModeEnabled()) {
-      bank_focus_ = true;
-      drum_pattern_focus_ = false;
+  // Bank Selection (Ctrl + 1..2)
+  if (ui_event.ctrl && !ui_event.alt && key >= '1' && key <= '2') {
+    int bankIdx = bankIndexFromKey(key);
+    if (bankIdx >= 0) {
+      setBankIndex(bankIdx);
+      if (!mini_acid_.songModeEnabled()) {
+        bank_focus_ = true;
+        drum_pattern_focus_ = false;
+      }
+      UI::showToast(bankIdx == 0 ? "Bank: A" : "Bank: B", 800);
+      return true;
     }
-    return true;
   }
-    */
 
   if (key == '\n' || key == '\r') {
     if (has_selection_) {
@@ -629,33 +649,36 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  int patternIdx = patternIndexFromKey(lowerKey);
-  if (patternIdx < 0) {
-      patternIdx = scancodeToPatternIndex(ui_event.scancode);
-  }
-  
-  if (patternIdx >= 0) {
-    if (mini_acid_.songModeEnabled()) return true;
-    focusPatternRow();
-    setDrumPatternCursor(patternIdx);
-    withAudioGuard([&]() { 
-        mini_acid_.setDrumPatternIndex(patternIdx); 
-        if (chaining_mode_) {
-            // Find next empty position in song and append
-            SongTrack track = SongTrack::Drums;
-            int nextPos = -1;
-            for (int i = 0; i < Song::kMaxPositions; ++i) {
-                if (mini_acid_.songPatternAt(i, track) == -1) {
-                    nextPos = i;
-                    break;
-                }
-            }
-            if (nextPos != -1) {
-                mini_acid_.setSongPattern(nextPos, track, patternIdx);
-            }
-        }
-    });
-    return true;
+  // Pattern quick select (Q-I) - only if NO modifiers
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
+    int patternIdx = patternIndexFromKey(lowerKey);
+    if (patternIdx < 0) {
+        patternIdx = scancodeToPatternIndex(ui_event.scancode);
+    }
+    
+    if (patternIdx >= 0) {
+      if (mini_acid_.songModeEnabled()) return true;
+      focusPatternRow();
+      setDrumPatternCursor(patternIdx);
+      withAudioGuard([&]() { 
+          mini_acid_.setDrumPatternIndex(patternIdx); 
+          if (chaining_mode_) {
+              // Find next empty position in song and append
+              SongTrack track = SongTrack::Drums;
+              int nextPos = -1;
+              for (int i = 0; i < Song::kMaxPositions; ++i) {
+                  if (mini_acid_.songPatternAt(i, track) == -1) {
+                      nextPos = i;
+                      break;
+                  }
+              }
+              if (nextPos != -1) {
+                  mini_acid_.setSongPattern(nextPos, track, patternIdx);
+              }
+          }
+      });
+      return true;
+    }
   }
 
   bool key_a = (lowerKey == 'a') || (ui_event.scancode == GROOVEPUTER_A);
@@ -805,6 +828,12 @@ void DrumSequencerMainPage::drawMinimalStyle(IGfx& gfx) {
   bank_bar_->setBoundaries(Rect{x, body_y + pattern_bar_h, w, bank_bar_h});
   bank_bar_->draw(gfx);
 
+  // Page Indicator
+  char pageBuf[8];
+  snprintf(pageBuf, sizeof(pageBuf), "P%d", mini_acid_.currentPageIndex() + 1);
+  gfx.setTextColor(COLOR_WHITE);
+  gfx.drawText(x + w - 24, y + 2, pageBuf);
+
   int grid_y = body_y + pattern_bar_h + bank_bar_h;
   int grid_h = body_h - (pattern_bar_h + bank_bar_h);
   if (grid_h <= 0) {
@@ -829,10 +858,12 @@ void DrumSequencerMainPage::drawRetroClassicStyle(IGfx& gfx) {
 
     char modeBuf[32];
     std::snprintf(modeBuf, sizeof(modeBuf), "%s", mini_acid_.currentDrumEngineName().c_str());
-    retro::drawHeaderBar(gfx, x, y, w, 12, "DRUMS", modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
+    char titleBuf[16];
+    std::snprintf(titleBuf, sizeof(titleBuf), "DRUMS P%d", mini_acid_.currentPageIndex() + 1);
+    retro::drawHeaderBar(gfx, x, y, w, 12, titleBuf, modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
 
     bool songMode = mini_acid_.songModeEnabled();
-    int selectedPattern = mini_acid_.displayDrumPatternIndex();
+    int selectedPattern = mini_acid_.displayDrumLocalPatternIndex();
     
     retro::SelectorConfig pCfg;
     pCfg.x = x + 4; pCfg.y = y + 14; pCfg.w = w - 8; pCfg.h = 10;
@@ -872,10 +903,12 @@ void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
 
     char modeBuf[32];
     std::snprintf(modeBuf, sizeof(modeBuf), "%s", mini_acid_.currentDrumEngineName().c_str());
-    amber::drawHeaderBar(gfx, x, y, w, 12, "DRUMS", modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
+    char titleBuf[16];
+    std::snprintf(titleBuf, sizeof(titleBuf), "DRUMS P%d", mini_acid_.currentPageIndex() + 1);
+    amber::drawHeaderBar(gfx, x, y, w, 12, titleBuf, modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
 
     bool songMode = mini_acid_.songModeEnabled();
-    int selectedPattern = mini_acid_.displayDrumPatternIndex();
+    int selectedPattern = mini_acid_.displayDrumLocalPatternIndex();
 
     amber::SelectionBarConfig pCfg;
     pCfg.x = x + 4; pCfg.y = y + 14; pCfg.w = w - 8; pCfg.h = 10;

@@ -10,6 +10,7 @@ OUT_DIR="release_bins"
 APP_NAME="grooveputer"
 BIN_NAME="${APP_NAME}.bin"
 MERGED_BIN="${APP_NAME}.merged.bin"
+ARDUINO_CLI="./platform_sdl/bin/arduino-cli"
 
 echo "=== Building MiniAcid Release (Stable Config: No PSRAM, Huge APP, DIO) ==="
 echo "FQBN: $FQBN"
@@ -20,7 +21,7 @@ mkdir -p "$OUT_DIR"
 
 # Build phase
 echo "[BUILD] Compiling sketch..."
-arduino-cli compile --clean --fqbn "$FQBN" --output-dir "$OUT_DIR" .
+$ARDUINO_CLI compile --clean --fqbn "$FQBN" --output-dir "$OUT_DIR" .
 
 # Normalize output names regardless of sketch filename
 APP_BIN_SRC=""

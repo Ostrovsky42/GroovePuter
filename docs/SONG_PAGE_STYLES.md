@@ -28,5 +28,17 @@ When split compare is enabled (`X`), SongPage forces `drawTEGridStyle` for reada
 - `Ctrl+R`: reverse song direction
 - `Ctrl+M`: merge slots
 - `Ctrl+N`: alternate slots
-- `V`: DR/VO lane toggle
+- `V`: lane focus cycle `ALL -> AB -> DR+VO`
 - `X`: split compare toggle
+
+## Long Song Keys
+- `Ctrl+W` / `Ctrl+S`: move `-8 / +8` rows
+- `Ctrl+Alt+W` / `Ctrl+Alt+S`: move `-32 / +32` rows
+- `Ctrl+1..8`: switch edit page `1..8`
+- `Alt+Q/E/R/T`: save row marker
+- `Ctrl+Alt+Q/E/R/T`: jump to marker
+
+## Future Notes
+- Add optional one-frame flash on marker jump target row for better spatial confirmation.
+- Consider tiny marker badges (`1..4`) in BAR column when marked rows are visible.
+- Keep `Ctrl+R` debounce window configurable if keyboard repeat differs between SDL and hardware.

@@ -25,4 +25,11 @@ private:
     const char* const* commentLines(int& count, const GeneratorParams& params) const;
     void adjustSetting(int delta, bool shift);
     void applyPreset(int index);
+    void measureSDPerformance();
+    
+    template <typename F>
+    void withAudioGuard(F&& fn) {
+        if (audio_guard_) audio_guard_(std::forward<F>(fn));
+        else fn();
+    }
 };

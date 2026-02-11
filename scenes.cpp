@@ -1,6 +1,10 @@
 #include "ArduinoJson-v7.4.2.h"
 #include "scenes.h"
 #include "src/debug_log.h"
+#include "src/audio/pattern_paging.h"
+#ifdef ARDUINO
+#include <SD.h>
+#endif
 
 #include <memory>
 
@@ -27,6 +31,7 @@ void clearDrumPattern(DrumPattern& pattern) {
   }
 }
 
+
 void clearSynthPattern(SynthPattern& pattern) {
   for (int i = 0; i < SynthPattern::kSteps; ++i) {
     pattern.steps[i].note = -1;
@@ -37,6 +42,7 @@ void clearSynthPattern(SynthPattern& pattern) {
     pattern.steps[i].fxParam = 0;
   }
 }
+
 
 void clearSong(Song& song) {
   for (int i = 0; i < Song::kMaxPositions; ++i) {
@@ -392,6 +398,27 @@ bool deserializeLedSettings(ArduinoJson::JsonObjectConst obj, LedSettings& led) 
   return true;
 }
 
+}
+
+bool DrumPattern::isEmpty() const {
+  for (int i = 0; i < kSteps; ++i) {
+    if (steps[i].hit) return false;
+  }
+  return true;
+}
+
+bool DrumPatternSet::isEmpty() const {
+  for (int i = 0; i < kVoices; ++i) {
+    if (!voices[i].isEmpty()) return false;
+  }
+  return true;
+}
+
+bool SynthPattern::isEmpty() const {
+  for (int i = 0; i < kSteps; ++i) {
+    if (steps[i].note >= 0) return false;
+  }
+  return true;
 }
 
 SceneJsonObserver::SceneJsonObserver(Scene& scene, float defaultBpm)
@@ -1147,7 +1174,9 @@ GrooveboxMode SceneJsonObserver::mode() const { return target_.mode; }
 // Main processing scene (static to avoid heap fragmentation)
 static Scene g_mainScene;
 
-SceneManager::SceneManager() : scene_(&g_mainScene) {}
+SceneManager::SceneManager() : scene_(&g_mainScene) {
+  PatternPagingService::ensureDirectory();
+}
 
 void SceneManager::loadDefaultScene() {
   drumPatternIndex_ = 0;
@@ -1173,6 +1202,7 @@ void SceneManager::loadDefaultScene() {
   loopEndRow_ = 7;
   mode_ = GrooveboxMode::Minimal;
   grooveFlavor_ = 0;
+  currentPageIndex_ = 0;
   scene_->grooveFlavor = 0;
   scene_->activeSongSlot = 0;
   for (int i = 0; i < 2; ++i) {
@@ -1355,7 +1385,97 @@ void SceneManager::loadDefaultScene() {
   }
 }
 
+void SceneManager::wipeToZero() {
+  drumPatternIndex_ = 0;
+  drumBankIndex_ = 0;
+  synthPatternIndex_[0] = 0;
+  synthPatternIndex_[1] = 0;
+  synthBankIndex_[0] = 0;
+  synthBankIndex_[1] = 0;
+  for (int i = 0; i < DrumPatternSet::kVoices; ++i) drumMute_[i] = false;
+  synthMute_[0] = false;
+  synthMute_[1] = false;
+  synthDistortion_[0] = false;
+  synthDistortion_[1] = false;
+  synthDelay_[0] = false;
+  synthDelay_[1] = false;
+  synthParameters_[0] = SynthParameters();
+  synthParameters_[1] = SynthParameters();
+  drumEngineName_ = "808";
+  setBpm(120.0f); // Standard techno start
+  songMode_ = false;
+  loopMode_ = false;
+  loopStartRow_ = 0;
+  loopEndRow_ = 0;
+  mode_ = GrooveboxMode::Minimal;
+  grooveFlavor_ = 0;
+  currentPageIndex_ = 0;
+  scene_->grooveFlavor = 0;
+  scene_->activeSongSlot = 0;
+  for (int i = 0; i < 2; ++i) {
+      clearSongData(scene_->songs[i]);
+      scene_->songs[i].length = 1;
+      scene_->songs[i].positions[0].patterns[0] = 0;
+      scene_->songs[i].positions[0].patterns[1] = 0;
+      scene_->songs[i].positions[0].patterns[2] = 0;
+      scene_->songs[i].positions[0].patterns[3] = -1;
+      scene_->songs[i].reverse = false;
+  }
+
+  for (int b = 0; b < kBankCount; ++b) {
+    for (int i = 0; i < Bank<DrumPatternSet>::kPatterns; ++i) {
+      for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
+        clearDrumPattern(scene_->drumBanks[b].patterns[i].voices[v]);
+      }
+    }
+    for (int i = 0; i < Bank<SynthPattern>::kPatterns; ++i) {
+      clearSynthPattern(scene_->synthABanks[b].patterns[i]);
+      clearSynthPattern(scene_->synthBBanks[b].patterns[i]);
+    }
+  }
+}
+
 Scene& SceneManager::currentScene() { return *scene_; }
+
+int SceneManager::findFirstFreePattern(int startIdx, SongTrack track, int length) const {
+  if (startIdx < 0) startIdx = 0;
+  if (length <= 0) length = 1;
+
+  for (int i = startIdx; i <= kMaxPatterns - length; ++i) {
+    bool blockEmpty = true;
+    for (int j = 0; j < length; ++j) {
+      int idx = i + j;
+      if (track == SongTrack::SynthA) {
+        if (!getSynthPattern(0, idx).isEmpty()) { blockEmpty = false; break; }
+      } else if (track == SongTrack::SynthB) {
+        if (!getSynthPattern(1, idx).isEmpty()) { blockEmpty = false; break; }
+      } else if (track == SongTrack::Drums) {
+        if (!getDrumPatternSet(idx).isEmpty()) { blockEmpty = false; break; }
+      }
+    }
+    if (blockEmpty) return i;
+  }
+  return -1;
+}
+
+void SceneManager::setPage(int pageIndex) {
+  if (pageIndex < 0) return;
+  if (pageIndex == currentPageIndex_) return;
+  
+  saveCurrentPage();
+  currentPageIndex_ = pageIndex;
+  loadCurrentPage();
+}
+
+bool SceneManager::saveCurrentPage() const {
+  if (!scene_) return false;
+  return PatternPagingService::savePage(currentPageIndex_, *scene_);
+}
+
+bool SceneManager::loadCurrentPage() {
+  if (!scene_) return false;
+  return PatternPagingService::loadPage(currentPageIndex_, *scene_);
+}
 
 const Scene& SceneManager::currentScene() const { return *scene_; }
 
@@ -1781,6 +1901,7 @@ void SceneManager::setSynthStep(int synthIdx, int step, int note, bool slide, bo
   pattern.steps[clampedStep].slide = slide;
   pattern.steps[clampedStep].accent = accent;
 }
+
 
 void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   doc.clear();

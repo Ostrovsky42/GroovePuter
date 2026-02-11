@@ -9,6 +9,12 @@
 
 class SongPage : public IPage, public IMultiHelpFramesProvider {
  public:
+  enum class LaneFocusMode {
+    AllTracks = 0,
+    SynthPair = 1,
+    RhythmPair = 2,
+  };
+
   SongPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
@@ -47,9 +53,17 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   void updateLoopRangeFromSelection();
   void getSelectionBounds(int& min_row, int& max_row, int& min_track, int& max_track) const;
   int visibleTrackCount() const;
+  int logicalTrackCount() const;
   int maxEditableTrackColumn() const;
   const char* laneShortLabel() const;
   SongTrack thirdLaneTrack() const;
+  const char* trackHeaderLabel(int col) const;
+  int visibleColumnForTrack(SongTrack track) const;
+  void cycleLaneFocusMode();
+  void normalizeCursorTrackAfterFocusChange(LaneFocusMode previous_mode);
+  void moveCursorToRow(int row);
+  void saveMarker(int marker_index);
+  bool jumpToMarker(int marker_index);
   bool hasVoiceDataInSlot(int slot) const;
   bool hasVoiceDataInActiveSlot() const;
   SongTrack trackForColumn(int col, bool& valid) const;
@@ -82,8 +96,12 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   bool show_genre_hint_;
   uint32_t hint_timer_;
   uint32_t last_g_press_ = 0; // For double-tap detection
-  bool voice_lane_visible_ = false;  // false: DR on col 3, true: VO on col 3
+  uint32_t last_ctrl_r_event_ms_ = 0;
+  uint32_t ctrl_r_hold_start_ms_ = 0;
+  bool ctrl_r_long_fired_ = false;
+  LaneFocusMode lane_focus_mode_ = LaneFocusMode::AllTracks;
   bool split_compare_ = true;        // show other slot read-only on right side by default
+  int row_markers_[4] = {-1, -1, -1, -1};
 
   bool generateCurrentCellPattern();
   void generateEntireRow();

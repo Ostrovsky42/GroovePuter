@@ -11,6 +11,10 @@ This guide is aligned with current implementation.
 5. Slot controls:
 - `Alt+B` = edit slot
 - `Ctrl+B` = play slot
+6. Long-song shortcuts do not break bank switch:
+- `Ctrl+1..8` = edit page select
+- `B` = bank flip A/B
+- `Alt+Q/E/R/T` / `Ctrl+Alt+Q/E/R/T` = row markers
 
 ## Test Matrix
 
@@ -62,6 +66,20 @@ Expected:
 - `Ctrl+M`: merge other slot into active slot
 - `Ctrl+N`: alternate/interleave active with other slot
 
+### F. Long Navigation + Lane Focus
+
+1. `Ctrl+W/S` and `Ctrl+Alt+W/S`
+2. `Ctrl+1..8` for page select
+3. Save markers on `Alt+Q/E/R/T`
+4. Jump markers on `Ctrl+Alt+Q/E/R/T`
+5. Press `V` repeatedly
+
+Expected:
+- jumps are `8` and `32` rows
+- marker save/jump does not trigger page select
+- lane focus cycles `ALL -> AB -> DR+VO -> ALL`
+- `B` flips bank A/B on cursor/selection
+
 ## Quick Diagnostics
 
 If `Ctrl+C` seems dead:
@@ -71,4 +89,3 @@ If `Ctrl+C` seems dead:
 If selection does not clear:
 - verify `Ctrl+V` path reaches `clearSelection()`
 - verify `ESC` / `` ` `` / `~` clears selection locally
-

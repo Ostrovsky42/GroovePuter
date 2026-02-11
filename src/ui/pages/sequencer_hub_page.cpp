@@ -147,7 +147,7 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
     const char* modeText = (mode_ == Mode::OVERVIEW) ? "SEQ" : "EDIT";
     char titleBuf[32];
     if (mode_ == Mode::OVERVIEW) {
-        snprintf(titleBuf, sizeof(titleBuf), "SEQ OVERVIEW");
+        snprintf(titleBuf, sizeof(titleBuf), "SEQ OVERVIEW P%d", mini_acid_.currentPageIndex() + 1);
     } else {
         const char* trackName = "?";
         if (selectedTrack_ == 0) trackName = "A";
@@ -157,7 +157,7 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
             snprintf(drumName, sizeof(drumName), "D%d", selectedTrack_ - 1);
             trackName = drumName;
         }
-        snprintf(titleBuf, sizeof(titleBuf), "SEQ %s", trackName);
+        snprintf(titleBuf, sizeof(titleBuf), "SEQ %s P%d", trackName, mini_acid_.currentPageIndex() + 1);
     }
     gfx.drawText(x + 2, y + 2, titleBuf);
 
@@ -483,10 +483,11 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
 
     char subTitle[32];
     if (mode_ == Mode::OVERVIEW) {
-        snprintf(subTitle, sizeof(subTitle), "OVERVIEW");
+        snprintf(subTitle, sizeof(subTitle), "OVERVIEW P%d", mini_acid_.currentPageIndex() + 1);
     } else {
-        snprintf(subTitle, sizeof(subTitle), "SEQ:%s", 
-            selectedTrack_ == 0 ? "303A" : (selectedTrack_ == 1 ? "303B" : "DRUM"));
+        snprintf(subTitle, sizeof(subTitle), "SEQ:%s P%d", 
+            selectedTrack_ == 0 ? "303A" : (selectedTrack_ == 1 ? "303B" : "DRUM"),
+            mini_acid_.currentPageIndex() + 1);
     }
     
     AmberWidgets::drawHeaderBar(gfx, x, y, w, 14, "SEQ HUB", subTitle, isPlaying, bpm, playingStep);
@@ -881,19 +882,37 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
         return true;
     }
 
-    // Pattern quick select (Q-I)
-    int patIdx = qwertyToPatternIndex(lower);
-    
-    if (patIdx >= 0) {
-        patternCursor_ = patIdx;
+    // Bank Selection (Ctrl + 1..2)
+    if (e.ctrl && !e.alt && e.key >= '1' && e.key <= '2') {
+        int bankIdx = e.key - '1';
         withAudioGuard([&]() {
             if (isDrumTrack(selectedTrack_)) {
-                mini_acid_.setDrumPatternIndex(patIdx);
+                mini_acid_.setDrumBankIndex(bankIdx);
             } else {
-                mini_acid_.set303PatternIndex(selectedTrack_, patIdx);
+                mini_acid_.set303BankIndex(selectedTrack_, bankIdx);
             }
         });
+        UI::showToast(bankIdx == 0 ? "Bank: A" : "Bank: B", 800);
         return true;
+    }
+
+    // Pattern quick select (Q-I) - Standardized Everywhere
+    if (!e.ctrl && !e.alt && !e.meta) {
+        int patIdx = qwertyToPatternIndex(lower);
+        if (patIdx >= 0) {
+            withAudioGuard([&]() {
+                if (isDrumTrack(selectedTrack_)) {
+                    mini_acid_.setDrumPatternIndex(patIdx);
+                } else {
+                    mini_acid_.set303PatternIndex(selectedTrack_, patIdx);
+                }
+            });
+            // Show toast for visual confirmation
+            char buf[32];
+            std::snprintf(buf, sizeof(buf), "Track %d -> Pat %d", selectedTrack_ + 1, patIdx + 1);
+            UI::showToast(buf, 800);
+            return true;
+        }
     }
     
     // Copy/Paste (Ctrl+C / Ctrl+V)

@@ -28,10 +28,17 @@ Notes:
 - `Ctrl+R`: toggle song reverse direction (queued on safe boundary while playing)
 - `Ctrl+M`: merge songs
 - `Ctrl+N`: alternate songs (interleave)
-
-## View / Lanes
+- `V`: lane focus cycle `ALL -> AB -> DR+VO`
 - `X`: split compare ON/OFF
-- `V`: `DR` / `VO` lane toggle
+
+## Long Song Navigation
+- `Ctrl+W` / `Ctrl+S`: jump `-8 / +8` rows
+- `Ctrl+Alt+W` / `Ctrl+Alt+S`: jump `-32 / +32` rows
+- `Ctrl+1..8`: switch edit page `1..8`
+- `Alt+Q/E/R/T`: save row marker `1..4`
+- `Ctrl+Alt+Q/E/R/T`: jump to marker `1..4`
+- `<` / `,`: jump to row `001`
+- `>` / `.`: jump to song end
 
 ## Generation
 - `G`: generate current cell
@@ -40,9 +47,11 @@ Notes:
 - `Ctrl+G`: cycle generator mode
 
 ## Quick Checklist
-- [ ] Selection expands with `Shift/Ctrl + Arrows`
-- [ ] `Ctrl+C` locks frame and arrows move target
-- [ ] `Ctrl+V` pastes and clears selection
-- [ ] `Alt+B` and `Ctrl+B` are independent (edit vs play)
-- [ ] `Ctrl+R` changes song direction (not pattern step reverse)
-- [ ] `X` split compare and `V` lane toggle both work
+- [x] Selection expands with `Shift/Ctrl + Arrows`
+- [x] `Ctrl+C` locks frame and arrows move target
+- [x] `Ctrl+V` pastes and clears selection
+- [x] `Alt+B` and `Ctrl+B` are independent (edit vs play)
+- [x] `Ctrl+R` changes song direction (not pattern step reverse)
+- [x] `X` split compare and `V` lane focus both work
+- [x] `Ctrl+1..8` switches edit page, `B` flips bank `A/B`
+- [x] Scrolling grid handles 128-row songs

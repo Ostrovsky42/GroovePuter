@@ -72,6 +72,7 @@ private:
   
   void showToast(const char* msg, int durationMs = 1500);
   void updateCyclePulse_();
+  void handlePaging_();
 
 private:
   char toastMsg_[32] = {0};

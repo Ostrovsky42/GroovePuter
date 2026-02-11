@@ -40,6 +40,7 @@ void drawClippedText(IGfx& gfx, int x, int y, int maxWidth, const char* text) {
     // 3. Ищем максимальную длину
     char buffer[96]; // increased to 96
     int srcLen = (int)strlen(text);
+    if (srcLen >= (int)sizeof(buffer)) srcLen = (int)sizeof(buffer) - 1;
     
     // Безопасное копирование
     strncpy(buffer, text, sizeof(buffer) - 1);

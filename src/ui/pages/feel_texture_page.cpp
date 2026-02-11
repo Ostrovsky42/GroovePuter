@@ -26,26 +26,45 @@ const char* timebaseLabel(uint8_t tb) {
     return "N";
 }
 
-void formatFeelDelta(const FeelSettings& before, const FeelSettings& after, char* out, size_t outSize) {
+void formatFeelDelta(const FeelSettings& bF, const FeelSettings& aF, 
+                    const DrumFX& bD, const DrumFX& aD,
+                    char* out, size_t outSize) {
     int n = 0;
     bool any = false;
-    if (before.gridSteps != after.gridSteps) {
-        n += snprintf(out + n, outSize - n, "%sG %s->%s", any ? ", " : "",
-                      gridLabel(before.gridSteps), gridLabel(after.gridSteps));
+    int shown = 0;
+
+    auto appendDelta = [&](const char* label, const char* from, const char* to) {
+        if (shown >= 3) return;
+        n += snprintf(out + n, outSize - n, "%s%s %s->%s", any ? ", " : "", label, from, to);
         any = true;
-    }
-    if (before.timebase != after.timebase) {
-        n += snprintf(out + n, outSize - n, "%sT %s->%s", any ? ", " : "",
-                      timebaseLabel(before.timebase), timebaseLabel(after.timebase));
+        shown++;
+    };
+
+    auto appendDeltaInt = [&](const char* label, int from, int to) {
+        if (from == to) return;
+        if (shown >= 3) return;
+        n += snprintf(out + n, outSize - n, "%s%s %d->%d", any ? ", " : "", label, from, to);
         any = true;
-    }
-    if (before.patternBars != after.patternBars) {
-        n += snprintf(out + n, outSize - n, "%sL %dB->%dB", any ? ", " : "",
-                      before.patternBars, after.patternBars);
-        any = true;
-    }
+        shown++;
+    };
+
+    if (bF.gridSteps != aF.gridSteps) appendDelta("G", gridLabel(bF.gridSteps), gridLabel(aF.gridSteps));
+    if (bF.timebase != aF.timebase) appendDelta("T", timebaseLabel(bF.timebase), timebaseLabel(aF.timebase));
+    if (bF.patternBars != aF.patternBars) appendDeltaInt("L", bF.patternBars, aF.patternBars);
+
+    // Drum FX Deltas (scaled to %)
+    auto pct = [](float f) { return (int)(f * 100.0f + 0.5f); };
+    bool fxChanged = false;
+    if (pct(bD.compression) != pct(aD.compression)) { appendDeltaInt("Cmp", pct(bD.compression), pct(aD.compression)); fxChanged = true; }
+    if (pct(bD.reverbMix) != pct(aD.reverbMix)) { appendDeltaInt("Rev", pct(bD.reverbMix), pct(aD.reverbMix)); fxChanged = true; }
+    if (pct(bD.transientAttack) != pct(aD.transientAttack)) { appendDeltaInt("Att", pct(bD.transientAttack), pct(aD.transientAttack)); fxChanged = true; }
+    if (pct(bD.transientSustain) != pct(aD.transientSustain)) { appendDeltaInt("Sus", pct(bD.transientSustain), pct(aD.transientSustain)); fxChanged = true; }
+
     if (!any) {
-        snprintf(out, outSize, "Preset applied");
+        if (fxChanged) snprintf(out, outSize, "Drum FX Refined");
+        else snprintf(out, outSize, "Feel applied");
+    } else if (shown >= 3) {
+        snprintf(out + n, outSize - n, "...");
     }
 }
 }
@@ -412,44 +431,90 @@ bool FeelTexturePage::handleEvent(UIEvent& ui_event) {
         return true;
     }
 
+    // Bank Selection (Ctrl + 1..2)
+    if (ui_event.ctrl && !ui_event.alt && key >= '1' && key <= '2') {
+        int bankIdx = key - '1';
+        withAudioGuard([&]() {
+            mini_acid_.set303BankIndex(0, bankIdx);
+        });
+        UI::showToast(bankIdx == 0 ? "Bank: A" : "Bank: B", 800);
+        return true;
+    }
+
+    // Pattern quick select (Q-I) - Standardized Everywhere (ignore shift for CapsLock safety)
+    if (!ui_event.ctrl && !ui_event.meta) {
+        char lower = std::tolower(key);
+        int patIdx = qwertyToPatternIndex(lower);
+        if (patIdx >= 0) {
+            withAudioGuard([&]() {
+                // Default to Synth A on this global page
+                mini_acid_.set303PatternIndex(0, patIdx);
+            });
+            char buf[32];
+            std::snprintf(buf, sizeof(buf), "Synth A -> Pat %d", patIdx + 1);
+            UI::showToast(buf, 800);
+            return true;
+        }
+    }
+
     return false;
 }
 
 void FeelTexturePage::applyPreset(int index) {
     if (index < 0 || index > 3) return;
-    FeelSettings before = mini_acid_.sceneManager().currentScene().feel;
+    FeelSettings bF = mini_acid_.sceneManager().currentScene().feel;
+    DrumFX bD = mini_acid_.sceneManager().currentScene().drumFX;
+
     withAudioGuard([&]() {
         auto& feel = mini_acid_.sceneManager().currentScene().feel;
+        auto& dfx = mini_acid_.sceneManager().currentScene().drumFX;
         switch (index) {
             case 0: // SPACE (dub/slow baseline)
                 feel.gridSteps = 16;
                 feel.timebase = static_cast<uint8_t>(Timebase::Half);
                 feel.patternBars = 4;
+                dfx.reverbMix = 0.40f;
+                dfx.reverbDecay = 0.80f;
+                dfx.compression = 0.20f;
                 break;
             case 1: // NORM
                 feel.gridSteps = 16;
                 feel.timebase = static_cast<uint8_t>(Timebase::Normal);
                 feel.patternBars = 1;
+                dfx.reverbMix = 0.15f;
+                dfx.compression = 0.30f;
                 break;
             case 2: // WIDE
                 feel.patternBars = 8;
                 feel.gridSteps = 16;
                 feel.timebase = static_cast<uint8_t>(Timebase::Normal);
+                dfx.reverbMix = 0.25f;
+                dfx.compression = 0.40f;
+                dfx.transientSustain = 0.20f;
                 break;
-            case 3: // SHORT
+            case 3: // GRIT (Punchy / Aggressive)
                 feel.patternBars = 1;
                 feel.gridSteps = 16;
                 feel.timebase = static_cast<uint8_t>(Timebase::Normal);
+                dfx.compression = 0.75f;
+                dfx.transientAttack = 0.40f;
+                dfx.reverbMix = 0.10f;
                 break;
         }
         mini_acid_.applyFeelTimingFromScene_();
+        mini_acid_.updateDrumCompression(dfx.compression);
+        mini_acid_.updateDrumTransientAttack(dfx.transientAttack);
+        mini_acid_.updateDrumTransientSustain(dfx.transientSustain);
+        mini_acid_.updateDrumReverbMix(dfx.reverbMix);
+        mini_acid_.updateDrumReverbDecay(dfx.reverbDecay);
     });
     syncFromScene();
 
-    char toast[64];
-    const FeelSettings& after = mini_acid_.sceneManager().currentScene().feel;
-    formatFeelDelta(before, after, toast, sizeof(toast));
-    UI::showToast(toast, 1800);
+    char toast[96];
+    const FeelSettings& aF = mini_acid_.sceneManager().currentScene().feel;
+    const DrumFX& aD = mini_acid_.sceneManager().currentScene().drumFX;
+    formatFeelDelta(bF, aF, bD, aD, toast, sizeof(toast));
+    UI::showToast(toast, 2000);
 }
 
 const char* FeelTexturePage::currentHint() const {

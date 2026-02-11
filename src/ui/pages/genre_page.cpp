@@ -189,10 +189,12 @@ void GenrePage::drawHeader(IGfx& gfx) {
                   genreNames[genreIndex_], textureNames[textureIndex_]);
 
     switch (visualStyle_) {
-        case VisualStyle::RETRO_CLASSIC:
+        case VisualStyle::RETRO_CLASSIC: {
 #ifdef USE_RETRO_THEME
+            char subTitle[16];
+            std::snprintf(subTitle, sizeof(subTitle), "GENRE P%d", mini_acid_.currentPageIndex() + 1);
             RetroWidgets::drawHeaderBar(gfx, 0, 0, 240, 14,
-                          "GENRE", titleStr,
+                          subTitle, titleStr,
                           mini_acid_.isPlaying(),
                           (int)(mini_acid_.bpm() + 0.5f),
                           mini_acid_.currentStep());
@@ -200,10 +202,13 @@ void GenrePage::drawHeader(IGfx& gfx) {
             UI::drawStandardHeader(gfx, mini_acid_, titleStr);
 #endif
             break;
-        case VisualStyle::AMBER:
+        }
+        case VisualStyle::AMBER: {
 #ifdef USE_AMBER_THEME
+            char subTitle[16];
+            std::snprintf(subTitle, sizeof(subTitle), "GENRE P%d", mini_acid_.currentPageIndex() + 1);
             AmberWidgets::drawHeaderBar(gfx, 0, 0, 240, 14,
-                          "GENRE", titleStr,
+                          subTitle, titleStr,
                           mini_acid_.isPlaying(),
                           (int)(mini_acid_.bpm() + 0.5f),
                           mini_acid_.currentStep());
@@ -211,6 +216,7 @@ void GenrePage::drawHeader(IGfx& gfx) {
             UI::drawStandardHeader(gfx, mini_acid_, titleStr);
 #endif
             break;
+        }
         case VisualStyle::MINIMAL:
         default:
             UI::drawStandardHeader(gfx, mini_acid_, titleStr);
@@ -897,6 +903,32 @@ bool GenrePage::handleEvent(UIEvent& e) {
         });
         updateFromEngine();
         return true;
+    }
+
+    // Bank Selection (Ctrl + 1..2)
+    if (e.ctrl && !e.alt && e.key >= '1' && e.key <= '2') {
+        int bankIdx = e.key - '1';
+        withAudioGuard([&]() {
+            mini_acid_.set303BankIndex(0, bankIdx);
+        });
+        UI::showToast(bankIdx == 0 ? "Bank: A" : "Bank: B", 800);
+        return true;
+    }
+
+    // Pattern quick select (Q-I) - Standardized Everywhere (ignore shift for CapsLock safety)
+    if (!e.ctrl && !e.meta) {
+        char lower = std::tolower(e.key);
+        int patIdx = qwertyToPatternIndex(lower);
+        if (patIdx >= 0) {
+            withAudioGuard([&]() {
+                // Default to Synth A on this global page
+                mini_acid_.set303PatternIndex(0, patIdx);
+            });
+            char buf[32];
+            std::snprintf(buf, sizeof(buf), "Synth A -> Pat %d", patIdx + 1);
+            UI::showToast(buf, 800);
+            return true;
+        }
     }
 
     return false;

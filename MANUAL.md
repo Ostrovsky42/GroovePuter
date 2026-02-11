@@ -6,10 +6,11 @@ For page-deep behavior use focused docs in `docs/`.
 
 ## Quick Keys (Most Used)
 - `Space`: play/stop
-- `[` / `]`: previous/next page
 - `Arrows`: move cursor / navigate lists
 - `Enter`: confirm/apply/toggle focused item
 - `Tab`: switch focus/section on many pages
+- `[` / `]`: previous/next page
+- `Ctrl+[` / `Ctrl+]`: switch editing page context (Song Page)
 - `Q..I`: choose pattern slot `1..8` in Pattern/Drum/Song contexts
 - `B`: quick A/B bank toggle (Pattern/Drum) or bank flip in Song cell/selection
 - `Alt+B`: edit song slot `A/B`
@@ -85,6 +86,8 @@ Reference: `docs/TAPE_WORKFLOW.md`.
 - `docs/keys_sheet.md` — canonical key map
 - `docs/GROOVE_LAB.md` — mode/flavor/corridors
 - `docs/SONG_PAGE_QUICKSTART.md` — Song operations
+- `docs/MIDI_IMPORT_GUIDE.md` — MIDI routing & smart import
 - `docs/SONG_PAGE_STYLES.md` — Song style behavior
 - `docs/GENRE_PAGE_STYLES.md` — Genre page behavior
 - `docs/TAPE_WORKFLOW.md` — tape performance flow
+- `docs/LONG_SONG_ARCHITECTURE.md` — paging & long song architecture

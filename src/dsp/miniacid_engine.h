@@ -108,10 +108,10 @@ public:
   int cycleBarIndex() const;
   int cycleBarCount() const;
   uint32_t cyclePulseCounter() const { return cyclePulseCounter_; }
-  int currentDrumPatternIndex() const;
-  int current303PatternIndex(int voiceIndex = 0) const;
-  int currentDrumBankIndex() const;
-  int current303BankIndex(int voiceIndex = 0) const;
+  int16_t currentDrumPatternIndex() const;
+  int16_t current303PatternIndex(int voiceIndex = 0) const;
+  int16_t currentDrumBankIndex() const;
+  int16_t current303BankIndex(int voiceIndex = 0) const;
   bool is303Muted(int voiceIndex = 0) const;
   bool isKickMuted() const;
   bool isSnareMuted() const;
@@ -160,15 +160,22 @@ public:
   void setLoopRange(int startRow, int endRow);
   int loopStartRow() const;
   int loopEndRow() const;
+  int currentPageIndex() const { return currentPage_.load(std::memory_order_acquire); }
+  int targetPageIndex() const { return targetPage_.load(std::memory_order_acquire); }
+  bool isPageLoading() const { return pageLoading_.load(std::memory_order_acquire); }
+  void setPageLoading(bool loading) { pageLoading_.store(loading, std::memory_order_release); }
+  void setTargetPage(int8_t page) { targetPage_.store(page, std::memory_order_release); }
+  void setCurrentPage(int8_t page) { currentPage_.store(page, std::memory_order_release); }
+  void requestPageSwitch(int pageIndex);
   int songLength() const;
   void setSongLength(int length);
   int currentSongPosition() const;
   int songPlayheadPosition() const;
   void setSongPosition(int position);
-  void setSongPattern(int position, SongTrack track, int patternIndex);
+  void setSongPattern(int position, SongTrack track, int16_t patternIndex);
   void clearSongPattern(int position, SongTrack track);
-  int songPatternAt(int position, SongTrack track) const;
-  int songPatternAtSlot(int slot, int position, SongTrack track) const;
+  int16_t songPatternAt(int position, SongTrack track) const;
+  int16_t songPatternAtSlot(int slot, int position, SongTrack track) const;
   const Song& song() const;
   int activeSongSlot() const;
   void setActiveSongSlot(int slot);
@@ -183,8 +190,10 @@ public:
   bool isSongReverse() const;
   void queueSongReverseToggle();
   bool hasPendingSongReverseToggle() const;
-  int display303PatternIndex(int voiceIndex) const;
-  int displayDrumPatternIndex() const;
+  int16_t display303PatternIndex(int voiceIndex) const;
+  int16_t displayDrumPatternIndex() const;
+  int display303LocalPatternIndex(int voiceIndex) const;
+  int displayDrumLocalPatternIndex() const;
   std::vector<std::string> getAvailableDrumEngines() const;
   void setDrumEngine(const std::string& engineName);
   std::string currentDrumEngineName() const;
@@ -213,13 +222,13 @@ public:
   void toggleDistortion303(int voiceIndex = 0);
   void set303DelayEnabled(int voiceIndex, bool enabled);
   void set303DistortionEnabled(int voiceIndex, bool enabled);
-  void setDrumPatternIndex(int patternIndex);
+  void setDrumPatternIndex(int16_t patternIndex);
   void shiftDrumPatternIndex(int delta);
   void setDrumBankIndex(int bankIndex);
   void adjust303Parameter(TB303ParamId id, int steps, int voiceIndex = 0);
   void set303Parameter(TB303ParamId id, float value, int voice_index = 0);
   void set303ParameterNormalized(TB303ParamId id, float norm, int voice_index = 0);
-  void set303PatternIndex(int voice_index, int patternIndex);
+  void set303PatternIndex(int voice_index, int16_t patternIndex);
   void shift303PatternIndex(int voiceIndex, int delta);
   void set303BankIndex(int voiceIndex, int bankIndex);
   void adjust303StepNote(int voiceIndex, int stepIndex, int semitoneDelta);
@@ -393,7 +402,12 @@ private:
   bool liveMixMode_ = false;
   int songStepCounter_ = 0;
   bool songReverseTogglePending_ = false;
+  std::atomic<int8_t> currentPage_{0};
+  std::atomic<int8_t> targetPage_{-1};
+  std::atomic<bool> pageLoading_{false};
+  bool approachB_Enabled_ = true;
   volatile uint32_t cyclePulseCounter_ = 0;
+
   int patternModeDrumPatternIndex_;
   int patternModeDrumBankIndex_;
   int patternModeSynthPatternIndex_[NUM_303_VOICES];
@@ -520,6 +534,7 @@ private:
   bool testToneEnabled_ = false;
   float testTonePhase_ = 0.0f;
   
+
   static float softLimit(float x) {
       float absX = (x > 0) ? x : -x;
       return x / (1.0f + absX); 
