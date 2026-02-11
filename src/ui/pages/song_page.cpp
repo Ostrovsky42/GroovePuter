@@ -64,6 +64,7 @@ inline void drawQuarterStrip(IGfx& gfx, int x, int y, int height, int activeQuar
 
 constexpr uint32_t kCtrlRRepeatGapMs = 220;
 constexpr uint32_t kCtrlRLongPressMs = 650;
+constexpr bool kVoiceLaneInSongEditor = false;
 
 inline IGfxColor colorForSongTrack(SongTrack track) {
   switch (track) {
@@ -191,10 +192,21 @@ bool SongPage::cursorOnPlayheadLabel() const {
   return false; // Not implemented yet
 }
 
-int SongPage::logicalTrackCount() const { return 4; }
+int SongPage::logicalTrackCount() const {
+  return kVoiceLaneInSongEditor ? 4 : 3;
+}
 
 int SongPage::visibleTrackCount() const {
-  return lane_focus_mode_ == LaneFocusMode::AllTracks ? 4 : 2;
+  switch (lane_focus_mode_) {
+    case LaneFocusMode::AllTracks:
+      return logicalTrackCount();
+    case LaneFocusMode::SynthPair:
+      return 2;
+    case LaneFocusMode::RhythmPair:
+      return kVoiceLaneInSongEditor ? 2 : 1;
+    default:
+      return logicalTrackCount();
+  }
 }
 
 int SongPage::maxEditableTrackColumn() const {
@@ -202,14 +214,17 @@ int SongPage::maxEditableTrackColumn() const {
 }
 
 SongTrack SongPage::thirdLaneTrack() const {
-  return lane_focus_mode_ == LaneFocusMode::RhythmPair ? SongTrack::Voice : SongTrack::Drums;
+  if (lane_focus_mode_ == LaneFocusMode::RhythmPair && kVoiceLaneInSongEditor) {
+    return SongTrack::Voice;
+  }
+  return SongTrack::Drums;
 }
 
 const char* SongPage::laneShortLabel() const {
   switch (lane_focus_mode_) {
     case LaneFocusMode::AllTracks: return "ALL";
     case LaneFocusMode::SynthPair: return "AB";
-    case LaneFocusMode::RhythmPair: return "DV";
+    case LaneFocusMode::RhythmPair: return kVoiceLaneInSongEditor ? "DV" : "DR";
     default: return "ALL";
   }
 }
@@ -234,7 +249,7 @@ int SongPage::visibleColumnForTrack(SongTrack track) const {
         case SongTrack::SynthA: return 0;
         case SongTrack::SynthB: return 1;
         case SongTrack::Drums: return 2;
-        case SongTrack::Voice: return 3;
+        case SongTrack::Voice: return kVoiceLaneInSongEditor ? 3 : -1;
         default: return -1;
       }
     case LaneFocusMode::SynthPair:
@@ -243,7 +258,7 @@ int SongPage::visibleColumnForTrack(SongTrack track) const {
       return -1;
     case LaneFocusMode::RhythmPair:
       if (track == SongTrack::Drums) return 0;
-      if (track == SongTrack::Voice) return 1;
+      if (kVoiceLaneInSongEditor && track == SongTrack::Voice) return 1;
       return -1;
     default:
       return -1;
@@ -251,7 +266,14 @@ int SongPage::visibleColumnForTrack(SongTrack track) const {
 }
 
 void SongPage::normalizeCursorTrackAfterFocusChange(LaneFocusMode previous_mode) {
-  const int oldVisibleTracks = previous_mode == LaneFocusMode::AllTracks ? 4 : 2;
+  const int oldVisibleTracks = [previous_mode]() -> int {
+    switch (previous_mode) {
+      case LaneFocusMode::AllTracks: return kVoiceLaneInSongEditor ? 4 : 3;
+      case LaneFocusMode::SynthPair: return 2;
+      case LaneFocusMode::RhythmPair: return kVoiceLaneInSongEditor ? 2 : 1;
+      default: return kVoiceLaneInSongEditor ? 4 : 3;
+    }
+  }();
   const bool wasModeButton = cursor_track_ == oldVisibleTracks;
   if (wasModeButton) {
     cursor_track_ = visibleTrackCount();
@@ -268,7 +290,10 @@ void SongPage::normalizeCursorTrackAfterFocusChange(LaneFocusMode previous_mode)
           case 0: return SongTrack::SynthA;
           case 1: return SongTrack::SynthB;
           case 2: return SongTrack::Drums;
-          case 3: return SongTrack::Voice;
+          case 3:
+            if (kVoiceLaneInSongEditor) return SongTrack::Voice;
+            valid = false;
+            return SongTrack::SynthA;
           default: valid = false; return SongTrack::SynthA;
         }
       case LaneFocusMode::SynthPair:
@@ -280,7 +305,10 @@ void SongPage::normalizeCursorTrackAfterFocusChange(LaneFocusMode previous_mode)
       case LaneFocusMode::RhythmPair:
         switch (col) {
           case 0: return SongTrack::Drums;
-          case 1: return SongTrack::Voice;
+          case 1:
+            if (kVoiceLaneInSongEditor) return SongTrack::Voice;
+            valid = false;
+            return SongTrack::SynthA;
           default: valid = false; return SongTrack::SynthA;
         }
       default:
@@ -524,7 +552,10 @@ SongTrack SongPage::trackForColumn(int col, bool& valid) const {
         case 0: return SongTrack::SynthA;
         case 1: return SongTrack::SynthB;
         case 2: return SongTrack::Drums;
-        case 3: return SongTrack::Voice;
+        case 3:
+          if (kVoiceLaneInSongEditor) return SongTrack::Voice;
+          valid = false;
+          return SongTrack::SynthA;
         default: valid = false; return SongTrack::SynthA;
       }
     case LaneFocusMode::SynthPair:
@@ -536,7 +567,10 @@ SongTrack SongPage::trackForColumn(int col, bool& valid) const {
     case LaneFocusMode::RhythmPair:
       switch (col) {
         case 0: return SongTrack::Drums;
-        case 1: return SongTrack::Voice;
+        case 1:
+          if (kVoiceLaneInSongEditor) return SongTrack::Voice;
+          valid = false;
+          return SongTrack::SynthA;
         default: valid = false; return SongTrack::SynthA;
       }
     default:
@@ -1418,9 +1452,18 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
         break;
       case LaneFocusMode::RhythmPair:
       default:
-        showToast("Lane: DR+VO", 900);
+        showToast(kVoiceLaneInSongEditor ? "Lane: DR+VO" : "Lane: DR", 900);
         break;
     }
+    return true;
+  }
+
+  if (!ui_event.ctrl && !ui_event.alt &&
+      (lowerKey == 'p' || ui_event.scancode == GROOVEPUTER_P)) {
+    int playhead = mini_acid_.songPlayheadPosition();
+    moveCursorToRow(playhead);
+    setScrollToPlayhead(playhead);
+    showToast("Cursor -> Playhead", 900);
     return true;
   }
 
@@ -1592,11 +1635,14 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
   // Header
   gfx.setTextColor(COLOR_GRAY);
   gfx.drawText(x + 2, body_y, "BAR");
+  gfx.drawLine(x, body_y + label_h + 1, x + w - 1, body_y + label_h + 1, IGfxColor(0x1F2730));
   for (int t = 0; t < track_count; ++t) {
     bool valid = false;
     SongTrack track = trackForColumn(t, valid);
     int hx = x + pos_col_w + spacing + (track_col_w + spacing) * t;
     if (valid) {
+      gfx.fillRect(hx - 1, body_y - 1, track_col_w - 1, label_h + 2, IGfxColor(0x121922));
+      gfx.fillRect(hx - 1, body_y - 1, 2, label_h + 2, colorForSongTrack(track));
       gfx.setTextColor(colorForSongTrack(track));
       gfx.drawText(hx, body_y, trackHeaderLabel(t));
     }
@@ -1621,6 +1667,9 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
     int row_idx = scroll_row_ + i;
     if (row_idx >= Song::kMaxPositions) break;
     int ry = grid_y + i * row_h;
+
+    IGfxColor rowBg = (i & 1) ? IGfxColor(0x0E1319) : IGfxColor(0x111721);
+    gfx.fillRect(x + pos_col_w, ry, w - pos_col_w, row_h, rowBg);
     
     // Bar number
     char barBuf[8];
@@ -1628,10 +1677,15 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
     gfx.setTextColor(row_idx == playhead ? COLOR_ACCENT : COLOR_GRAY);
     gfx.drawText(x + 2, ry + 2, barBuf);
 
-    if (row_idx == playhead && playingSong) {
+    if (row_idx == playhead) {
       bool pulse = (millis() % 600) < 300;
-      IGfxColor highlightColor = pulse ? IGfxColor(0x303030) : IGfxColor(0x202020);
+      IGfxColor highlightColor = playingSong
+          ? (pulse ? IGfxColor(0x303030) : IGfxColor(0x202020))
+          : IGfxColor(0x1A1F26);
       gfx.fillRect(x + pos_col_w, ry, w - pos_col_w, row_h, highlightColor);
+      gfx.drawRect(x + pos_col_w, ry, w - pos_col_w, row_h,
+                   playingSong ? COLOR_ACCENT : COLOR_INFO);
+      gfx.fillRect(x, ry, 2, row_h, playingSong ? COLOR_ACCENT : COLOR_INFO);
     }
 
     for (int t = 0; t < track_count; ++t) {
@@ -1639,6 +1693,10 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
       SongTrack track = trackForColumn(t, valid);
       int pattern = mini_acid_.songPatternAt(row_idx, track);
       int tx = x + pos_col_w + spacing + t * (track_col_w + spacing);
+      if (t > 0) {
+        int sx = tx - 1;
+        gfx.drawLine(sx, ry, sx, ry + row_h - 1, IGfxColor(0x202A36));
+      }
       bool isSelected = false;
       if (has_selection_) {
           int min_r, max_r, min_t, max_t;
@@ -1649,6 +1707,8 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
       }
       
       if (isSelected) {
+        gfx.fillRect(tx, ry, track_col_w, row_h,
+                     has_selection_ ? IGfxColor(0x26303A) : IGfxColor(0x2E3E4A));
         gfx.drawRect(tx - 1, ry, track_col_w + 1, row_h, isSelected && !has_selection_ ? COLOR_STEP_SELECTED : COLOR_STEP_HILIGHT);
       }
       if (pattern >= 0) {
@@ -1900,13 +1960,16 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
       gfx.fillRect(paneX, ry, paneW, cell_h, rowBg);
 
       // Playhead (only on active slot if playing)
-      if (row_idx == playhead && playing && songMode) {
+      if (row_idx == playhead) {
         bool pulse = (millis() % 600) < 300;
-        IGfxColor playColor = pulse ? TE_ACCENT : TE_DIM;
-        // Full row tint for playing row
-        gfx.fillRect(paneX, ry, paneW, cell_h, paneSlot == playSlot ? IGfxColor(0x303030) : IGfxColor(0x202020));
+        bool activePlay = playing && songMode;
+        IGfxColor playColor = activePlay ? (pulse ? TE_ACCENT : TE_DIM) : TE_DIM;
+        // Full row tint for playhead row
+        gfx.fillRect(paneX, ry, paneW, cell_h,
+                     activePlay ? (paneSlot == playSlot ? IGfxColor(0x303030) : IGfxColor(0x202020))
+                                : IGfxColor(0x1A1A1A));
         gfx.drawLine(paneX, ry + cell_h - 1, paneX + paneW - 1, ry + cell_h - 1,
-                     paneSlot == playSlot ? TE_ACCENT : TE_DIM);
+                     activePlay ? (paneSlot == playSlot ? TE_ACCENT : TE_DIM) : TE_DIM);
         // Play cursor indicator
         gfx.setTextColor(playColor);
         gfx.drawText(paneX + paneW - 10, ry + 1, ">");
@@ -1985,7 +2048,7 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
   // Show Edit Slot and Play Status if available
   // "EDIT:A PLAY:A" (future)
   int editSlot = mini_acid_.activeSongSlot();
-  std::snprintf(footerBuf, sizeof(footerBuf), "E:%c P:%c%s  A+B:EDIT C+B:PLAY CA+X:LM",
+  std::snprintf(footerBuf, sizeof(footerBuf), "E:%c P:%c%s  p:CUR->PH A+B:EDIT C+B:PLAY CA+X:LM",
                 'A' + editSlot,
                 'A' + playSlot,
                 liveMix ? " LM" : "");
@@ -2117,15 +2180,21 @@ void SongPage::drawRetroClassicStyle(IGfx& gfx) {
         }
         gfx.fillRect(paneX, ry, paneW, row_h, IGfxColor(bg));
 
-        if (ridx == playhead && mini_acid_.isPlaying() && songMode) {
+        if (ridx == playhead) {
           bool pulse = (millis() % 600) < 300;
-          IGfxColor playColor = pulse ? IGfxColor(RetroTheme::SELECT_BRIGHT) : IGfxColor(RetroTheme::GRID_DIM);
+          bool activePlay = mini_acid_.isPlaying() && songMode;
+          IGfxColor playColor = activePlay
+              ? (pulse ? IGfxColor(RetroTheme::SELECT_BRIGHT) : IGfxColor(RetroTheme::GRID_DIM))
+              : IGfxColor(RetroTheme::TEXT_DIM);
           // Full row tint for playing row
-          gfx.fillRect(paneX, ry, paneW, row_h, IGfxColor(pulse ? 0x202020 : 0x151515));
+          gfx.fillRect(paneX, ry, paneW, row_h, activePlay ? IGfxColor(pulse ? 0x202020 : 0x151515)
+                                                           : IGfxColor(0x121212));
           gfx.drawLine(paneX, ry + row_h - 1, paneX + paneW - 1, ry + row_h - 1,
-                       paneSlot == playSlot ? playColor : IGfxColor(RetroTheme::GRID_DIM));
+                       activePlay ? (paneSlot == playSlot ? playColor : IGfxColor(RetroTheme::GRID_DIM))
+                                  : IGfxColor(RetroTheme::TEXT_DIM));
           // Side indicator for playing row
-          gfx.fillRect(paneX, ry, 2, row_h, IGfxColor(RetroTheme::SELECT_BRIGHT));
+          gfx.fillRect(paneX, ry, 2, row_h, activePlay ? IGfxColor(RetroTheme::SELECT_BRIGHT)
+                                                       : IGfxColor(RetroTheme::TEXT_DIM));
         }
 
         for (int t = 0; t < track_count; ++t) {
@@ -2201,7 +2270,7 @@ void SongPage::drawRetroClassicStyle(IGfx& gfx) {
         gfx.drawText(lx, ly, loadBuf);
     }
 
-    retro::drawFooterBar(gfx, x, y + h - 12, w, 12, "B:Flip A+B:Edit C+B:Play CA+X:LM C+R:Rev", "SONG");
+    retro::drawFooterBar(gfx, x, y + h - 12, w, 12, "P:CUR->PH B:Flip A+B:Edit C+B:Play C+R:Rev", "SONG");
 }
 
 void SongPage::drawAmberStyle(IGfx& gfx) {
@@ -2248,8 +2317,13 @@ void SongPage::drawAmberStyle(IGfx& gfx) {
         if (ridx >= Song::kMaxPositions) break;
         int ry = grid_y + i * row_h;
 
-        if (ridx == playhead && mini_acid_.isPlaying() && songMode) {
-            gfx.fillRect(x, ry, w, row_h, IGfxColor(AmberTheme::BG_INSET));
+        if (ridx == playhead) {
+            bool activePlay = mini_acid_.isPlaying() && songMode;
+            gfx.fillRect(x, ry, w, row_h, activePlay ? IGfxColor(AmberTheme::BG_INSET) : IGfxColor(0x1A1A1A));
+            gfx.drawLine(x, ry + row_h - 1, x + w - 1, ry + row_h - 1,
+                         activePlay ? IGfxColor(AmberTheme::SELECT_BRIGHT) : IGfxColor(AmberTheme::TEXT_DIM));
+            gfx.fillRect(x, ry, 2, row_h,
+                         activePlay ? IGfxColor(AmberTheme::SELECT_BRIGHT) : IGfxColor(AmberTheme::TEXT_DIM));
         }
 
         char buf[16];
@@ -2288,7 +2362,7 @@ void SongPage::drawAmberStyle(IGfx& gfx) {
                      songQuarterFromRow(cursor_row), IGfxColor(AmberTheme::SELECT_BRIGHT),
                      IGfxColor(AmberTheme::GRID_DIM));
 
-    amber::drawFooterBar(gfx, x, y + h - 12, w, 12, "B:Flip A+B:Edit C+B:Play CA+X:LM C+R:Rev", "SONG");
+    amber::drawFooterBar(gfx, x, y + h - 12, w, 12, "P:CUR->PH B:Flip A+B:Edit C+B:Play C+R:Rev", "SONG");
 }
 
 std::unique_ptr<MultiPageHelpDialog> SongPage::getHelpDialog() {
