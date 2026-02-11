@@ -90,7 +90,6 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
 #endif
     std::unique_ptr<IPage> page;
     switch (index) {
-<<<<<<< HEAD
         case 0:  page = std::make_unique<GenrePage>(gfx_, mini_acid_, audio_guard_); break;
         case 1:  page = std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 0); break;
         case 2:  page = std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 1); break;
@@ -102,25 +101,9 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case 8:  page = std::make_unique<FeelTexturePage>(gfx_, mini_acid_, audio_guard_); break;
         case 9:  page = std::make_unique<SettingsPage>(gfx_, mini_acid_, audio_guard_); break;
         case 10: page = std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_); break;
-        case 11: page = std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_); break;
-=======
-        case 0:  return std::make_unique<GenrePage>(gfx_, mini_acid_, audio_guard_);
-        case 1:  return std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 0);
-        case 2:  return std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 1);
-        case 3:  return std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 0);
-        case 4:  return std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 1);
-        case 5:  return std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_);
-        case 6:  return std::make_unique<SongPage>(gfx_, mini_acid_, audio_guard_);
-        case 7:  return std::make_unique<SequencerHubPage>(gfx_, mini_acid_, audio_guard_);
-        case 8:  return std::make_unique<FeelTexturePage>(gfx_, mini_acid_, audio_guard_);
-        case 9:  return std::make_unique<SettingsPage>(gfx_, mini_acid_, audio_guard_);
-        case 10: return std::make_unique<ProjectPage>(gfx_, mini_acid_,audio_guard_);        
-        case 11: return std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_);
-        case 12: return std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_);
-        case 13: return std::make_unique<SamplerPage>(gfx_, mini_acid_, audio_guard_);
->>>>>>> main
-
-        default: page = nullptr; break;
+        case 11: page = std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_); break;
+        case 12: page = std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_); break;
+        case 13: page = std::make_unique<SamplerPage>(gfx_, mini_acid_, audio_guard_); break;
     }
 #if defined(ESP32) || defined(ESP_PLATFORM)
     uint32_t freeAfter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -321,10 +304,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
 
         if (event.alt && (event.key == 'v' || event.key == 'V')) {
-<<<<<<< HEAD
             Serial.println("[UI] Shortcut Alt+V -> Page 11");
-=======
->>>>>>> main
             goToPage(11); // Groove Lab
             return true;
         }

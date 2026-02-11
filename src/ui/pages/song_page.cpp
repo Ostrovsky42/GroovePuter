@@ -1612,29 +1612,6 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
   gfx.setTextColor(COLOR_INFO);
   gfx.drawText(lenX, body_y, lenBuf);
 
-<<<<<<< HEAD
-=======
-  if (loopMode) {
-    int loopStart = mini_acid_.loopStartRow();
-    int loopEnd = mini_acid_.loopEndRow();
-    char loopBuf[32];
-    snprintf(loopBuf, sizeof(loopBuf), "LOOP %d-%d", loopStart + 1, loopEnd + 1);
-    int loopX = lenX + lenW + 8;
-    gfx.setTextColor(IGfxColor::Yellow());
-    gfx.drawText(loopX, body_y, loopBuf);
-    gfx.setTextColor(COLOR_WHITE);
-  }
-
-  if (playingSong) {
-    // Dynamic 'PLAYING' bar in header
-    int anim_x = x + w - 40;
-    int anim_y = body_y;
-    bool blink = (millis() % 400) < 200;
-    gfx.setTextColor(blink ? COLOR_ACCENT : COLOR_GRAY);
-    gfx.drawText(anim_x, anim_y, "PLAY");
-  }
-
->>>>>>> main
   drawGeneratorHint(gfx);
 
   int grid_y = body_y + header_h;
@@ -1654,13 +1631,7 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
     if (row_idx == playhead && playingSong) {
       bool pulse = (millis() % 600) < 300;
       IGfxColor highlightColor = pulse ? IGfxColor(0x303030) : IGfxColor(0x202020);
-<<<<<<< HEAD
       gfx.fillRect(x + pos_col_w, ry, w - pos_col_w, row_h, highlightColor);
-=======
-      gfx.fillRect(x, ry, w, row_h, highlightColor);
-      // Bright side bar for current playing row
-      gfx.fillRect(x, ry, 2, row_h, COLOR_ACCENT);
->>>>>>> main
     }
 
     for (int t = 0; t < track_count; ++t) {
@@ -1694,7 +1665,6 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
     if (row_idx == playhead) {
       bool pulse = (millis() % 400) < 200;
       gfx.setTextColor(pulse ? COLOR_ACCENT : COLOR_WHITE);
-<<<<<<< HEAD
       // Moved playhead arrow to before mode button
       gfx.drawText(modeX - 12, ry + 2, ">>");
       
@@ -1717,17 +1687,6 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
       if (row_idx == le) {
         gfx.drawText(x + 14, ry + 2, "]");
       }
-=======
-      gfx.drawText(x + w - 15, ry + 2, ">>");
-      
-      if (playingSong) {
-          // MicroVU animation
-          for (int v = 0; v < 3; v++) {
-              int vh = (millis() + v * 150) % 8 + 2;
-              gfx.fillRect(x + w - 30 - v*4, ry + row_h - vh - 2, 2, vh, COLOR_ACCENT);
-          }
-      }
->>>>>>> main
     }
   }
 

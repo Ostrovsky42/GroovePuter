@@ -637,7 +637,6 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   }
   char lowerKey = key ? static_cast<char>(std::tolower(static_cast<unsigned char>(key))) : 0;
 
-<<<<<<< HEAD
   // Bank Selection (Ctrl + 1..2)
   if (ui_event.ctrl && !ui_event.alt && key >= '1' && key <= '2') {
     int bankIdx = bankIndexFromKey(key);
@@ -649,14 +648,6 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
       }
       UI::showToast(bankIdx == 0 ? "Bank: A" : "Bank: B", 800);
       return true;
-=======
-  int bankIdx = bankIndexFromKey(key);
-  if (bankIdx >= 0 && ui_event.alt) {
-    setBankIndex(bankIdx);
-    if (!mini_acid_.songModeEnabled()) {
-      bank_focus_ = true;
-      drum_pattern_focus_ = false;
->>>>>>> main
     }
   }
 
@@ -683,38 +674,6 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-<<<<<<< HEAD
-  // Pattern quick select (Q-I) - only if NO modifiers
-  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
-    int patternIdx = patternIndexFromKey(lowerKey);
-    if (patternIdx < 0) {
-        patternIdx = scancodeToPatternIndex(ui_event.scancode);
-    }
-    
-    if (patternIdx >= 0) {
-      if (mini_acid_.songModeEnabled()) return true;
-      focusPatternRow();
-      setDrumPatternCursor(patternIdx);
-      withAudioGuard([&]() { 
-          mini_acid_.setDrumPatternIndex(patternIdx); 
-          if (chaining_mode_) {
-              // Find next empty position in song and append
-              SongTrack track = SongTrack::Drums;
-              int nextPos = -1;
-              for (int i = 0; i < Song::kMaxPositions; ++i) {
-                  if (mini_acid_.songPatternAt(i, track) == -1) {
-                      nextPos = i;
-                      break;
-                  }
-              }
-              if (nextPos != -1) {
-                  mini_acid_.setSongPattern(nextPos, track, patternIdx);
-              }
-          }
-      });
-      return true;
-    }
-=======
   // Pattern quick select (Q-I)
   int patternIdx = patternIndexFromKey(lowerKey);
   if (patternIdx < 0) {
@@ -743,7 +702,6 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
         }
     });
     return true;
->>>>>>> main
   }
 
   bool key_a = (lowerKey == 'a') || (ui_event.scancode == GROOVEPUTER_A);

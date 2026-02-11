@@ -586,7 +586,6 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   // Let app-level back navigation handle ESC when nothing local to clear.
   if (is_escape) return false;
 
-<<<<<<< HEAD
   // Q-I Pattern Selection (Standardized) - only if NO modifiers (ignore shift for CapsLock safety)
   if (!ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
     int patternIdx = patternIndexFromKey(lowerKey);
@@ -636,18 +635,6 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       UI::showToast(bankIdx == 0 ? "Bank: A" : "Bank: B", 800);
       return true;
     }
-  }
-
-  /*
-=======
-
-
->>>>>>> main
-  int bankIdx = bankIndexFromKey(key);
-  if (bankIdx >= 0 && ui_event.alt) {
-    setBankIndex(bankIdx);
-    if (!mini_acid_.songModeEnabled()) focus_ = Focus::BankRow;
-    return true;
   }
 
   if (key == '\n' || key == '\r') {
@@ -809,15 +796,11 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     handleEvent(appEvent);
     return true;
   }
-<<<<<<< HEAD
   if (key_r && (ui_event.ctrl || ui_event.alt)) { 
     // Ctrl+R is Reverse in SongMode, handle it specifically or let global handle.
     // In PatternEdit, we just prevent it from being REST when modified.
     return false; 
   }
-=======
-
->>>>>>> main
 
   // Alt + Backspace = Reset Pattern
   if (ui_event.alt && (key == '\b' || key == 0x7F)) {

@@ -4,14 +4,9 @@ namespace HelpContent {
 
 constexpr const char* kGlobalLines[] = {
     "=== GLOBAL ===",
-<<<<<<< HEAD
     "[ / ]      Next/Prev UI page",
     "Alt+[ / ]  Next/Prev Patt page",
     "Alt/Ctrl+1..0  Jump to UI page",
-=======
-    "[ / ]      Prev/Next page",
-    "Alt/Ctrl+1..0  Jump to page",
->>>>>>> main
     "Alt+V      Groove Lab",
     "Alt+\\      Switch visual style",
     "Alt+M      Song mode ON/OFF",
