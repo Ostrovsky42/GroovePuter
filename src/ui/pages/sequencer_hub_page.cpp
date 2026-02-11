@@ -194,9 +194,16 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
             int ry = content_y + row * row_h;
             bool selected = (track_idx == selectedTrack_);
 
-            // Selection highlight
-            if (selected) {
-                gfx.fillRect(x + 1, ry + 1, w - 2, row_h - 1, TE_ACCENT);
+            // Row as volume strip: filled background shows track volume.
+            float vol = mini_acid_.getTrackVolume((VoiceId)track_idx);
+            float vol_norm = vol / 1.2f;
+            if (vol_norm < 0.0f) vol_norm = 0.0f;
+            if (vol_norm > 1.0f) vol_norm = 1.0f;
+            int row_w = w - 2;
+            int fill_w = (int)(row_w * vol_norm + 0.5f);
+            gfx.fillRect(x + 1, ry + 1, row_w, row_h - 1, selected ? TE_GRID : TE_BLACK);
+            if (fill_w > 0) {
+                gfx.fillRect(x + 1, ry + 1, fill_w, row_h - 1, selected ? TE_ACCENT : TE_GRID);
             }
 
             // Track label
@@ -215,9 +222,9 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
             }
             gfx.drawRect(led_x, led_y, 4, 4, selected ? TE_BLACK : TE_GRID);
 
-            // Step grid (16 cells) - enlarged for readability
-            int grid_x = x + 42;
-            int cell_w = 12;
+            // Step grid (16 cells) + explicit volume bar at right
+            int grid_x = x + 40;
+            int cell_w = 10;
             int cell_h = row_h - 4;
             int currentStep = mini_acid_.currentStep();
 
@@ -241,6 +248,7 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
 
                 gfx.drawRect(cx, ry + 2, cell_w - 1, cell_h, borderColor);
             }
+
         }
         drawHubScrollbar(gfx,
                          x + w - 3,
@@ -309,7 +317,7 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
     gfx.setTextColor(TE_DIM);
 
     const char* footer_text = (mode_ == Mode::OVERVIEW)
-        ? "UP/DN:TRK L/R:STEP X:HIT A:ACC"
+        ? "UP/DN:TRK  -/=:VOL  X:HIT  A:ACC"
         : "ESC  A/Z:NOTE S/X:OCT";
     gfx.drawText(x + 2, footer_y + 2, footer_text);
 
@@ -366,8 +374,18 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
             if (i == 0) trackColor = NEON_CYAN;
             else if (i == 1) trackColor = NEON_MAGENTA;
             
+            // Row as volume strip: filled background shows track volume.
+            float vol = mini_acid_.getTrackVolume((VoiceId)i);
+            float volNorm = vol / 1.2f;
+            if (volNorm < 0.0f) volNorm = 0.0f;
+            if (volNorm > 1.0f) volNorm = 1.0f;
+            int rowW = w - 4;
+            int fillW = (int)(rowW * volNorm + 0.5f);
+            gfx.fillRect(x + 2, ry, rowW, rowH, IGfxColor(BG_INSET));
+            if (fillW > 0) {
+                gfx.fillRect(x + 2, ry, fillW, rowH, IGfxColor(BG_PANEL));
+            }
             if (selected) {
-                 gfx.fillRect(x + 2, ry, w - 4, rowH, IGfxColor(BG_PANEL));
                  drawGlowBorder(gfx, x + 2, ry, w - 4, rowH, IGfxColor(trackColor), 1);
             }
 
@@ -384,7 +402,7 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
 
             // Tiny mask
             int maskX = x + 50;
-            int cellW = 11;
+            int cellW = 10;
             for (int s = 0; s < 16; s++) {
                 bool hit = hubTrackHitAt(mini_acid_, i, s);
                 
@@ -416,7 +434,7 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
         // Removed redundant channel activity bar - LED indicators already show activity
 
         // Scanlines disabled: caused flicker on small TFT
-        RetroWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]TRK [L/R]STEP [X]HIT [A]ACC", "ENT:Open  Q-I:Pat", "HUB");
+        RetroWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]TRK [L/R]STEP [-/=]VOL", "[X]HIT [A]ACC [ENT]OPEN", "HUB");
     } else {
         // DETAIL MODE
         if (isDrumTrack(selectedTrack_)) {
@@ -513,8 +531,18 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
             if (i == 1) AmberTrackColor = AmberTheme::NEON_MAGENTA;
             else if (i >= 2) AmberTrackColor = AmberTheme::NEON_ORANGE;
 
+            // Row as volume strip: filled background shows track volume.
+            float vol = mini_acid_.getTrackVolume((VoiceId)i);
+            float volNorm = vol / 1.2f;
+            if (volNorm < 0.0f) volNorm = 0.0f;
+            if (volNorm > 1.0f) volNorm = 1.0f;
+            int rowW = w - 4;
+            int fillW = (int)(rowW * volNorm + 0.5f);
+            gfx.fillRect(x + 2, ry, rowW, rowH, IGfxColor(AmberTheme::BG_INSET));
+            if (fillW > 0) {
+                gfx.fillRect(x + 2, ry, fillW, rowH, IGfxColor(AmberTheme::BG_PANEL));
+            }
             if (selected) {
-                 gfx.fillRect(x + 2, ry, w - 4, rowH, IGfxColor(AmberTheme::BG_PANEL));
                  AmberWidgets::drawGlowBorder(gfx, x + 2, ry, w - 4, rowH, IGfxColor(AmberTheme::NEON_CYAN), 1);
             }
 
@@ -529,7 +557,7 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
             }
 
             int maskX = x + 50;
-            int cellW = 11;
+            int cellW = 10;
             for (int s = 0; s < 16; s++) {
                 bool hit = hubTrackHitAt(mini_acid_, i, s);
                 
@@ -561,7 +589,7 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
         // Removed redundant channel activity bar - LED indicators already show activity
 
         // Scanlines disabled: caused flicker on small TFT
-        AmberWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]TRK [L/R]STEP [X]HIT [A]ACC", "ENT:Open  Q-I:Pat", "HUB");
+        AmberWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]TRK [L/R]STEP [-/=]VOL", "[X]HIT [A]ACC [ENT]OPEN", "HUB");
     } else {
         if (isDrumTrack(selectedTrack_)) {
             drumGrid_->setStyle(GrooveboxStyle::AMBER);
@@ -644,18 +672,28 @@ void SequencerHubPage::drawOverview(IGfx& gfx) {
     // Removed redundant channel activity bar - LED indicators already show activity
 
     UI::drawStandardFooter(gfx,
-        "[UP/DN]TRK [L/R]STEP [X]HIT [A]ACC",
-        "[ENT]OPEN [Q-I]PAT [SPACE]PLAY");
+        "[UP/DN]TRK [L/R]STEP [-/=]VOL",
+        "[X]HIT [A]ACC [ENT]OPEN");
 }
 
 void SequencerHubPage::drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool selected) {
     const int ledX = 50;
-    const int maskX = 60;
-    const int cellW = 11;
+    const int maskX = 58;
+    const int cellW = 10;
     
-    // Background highlight
+    // Row as volume strip: filled background shows track volume.
+    float vol = mini_acid_.getTrackVolume((VoiceId)trackIdx);
+    float volNorm = vol / 1.2f;
+    if (volNorm < 0.0f) volNorm = 0.0f;
+    if (volNorm > 1.0f) volNorm = 1.0f;
+    int rowW = 236;
+    int fillW = (int)(rowW * volNorm + 0.5f);
+    gfx.fillRect(2, y, rowW, h, IGfxColor(0x14141f));
+    if (fillW > 0) {
+        gfx.fillRect(2, y, fillW, h, IGfxColor(0x282850));
+    }
     if (selected) {
-        gfx.fillRect(2, y, 236, h, IGfxColor(0x282850));
+        gfx.drawRect(2, y, rowW, h, COLOR_ACCENT);
     }
     
     // Name
@@ -996,25 +1034,39 @@ bool SequencerHubPage::handleAppEvent(const UIEvent& e) {
 bool SequencerHubPage::handleVolumeInput(UIEvent& e) {
     if (mode_ != Mode::OVERVIEW) return false;
 
-    // Volume control: Per-track fader logic
-    // - Use Ctrl + Minus/Plus (overrides global master volume on this page)
-    // - Use Alt + Left/Right (alternative)
-    // Note: Ctrl + '=' is often '+' without shift, checking both covers bases
-    bool isVolUp = (e.ctrl && (e.key == '=' || e.key == '+')) || (e.alt && UIInput::isRight(e));
-    bool isVolDn = (e.ctrl && (e.key == '-' || e.key == '_')) || (e.alt && UIInput::isLeft(e));
+    // Simplified control:
+    // - Primary: '=' up, '-' down (no modifiers)
+    // - Also keep legacy: Ctrl+/- and Alt/Ctrl+Left/Right
+    bool isVolUp = (e.key == '=' || e.key == '+') ||
+                   (e.ctrl && (e.key == '=' || e.key == '+')) ||
+                   ((e.alt || e.ctrl) && UIInput::isRight(e));
+    bool isVolDn = (e.key == '-' || e.key == '_') ||
+                   (e.ctrl && (e.key == '-' || e.key == '_')) ||
+                   ((e.alt || e.ctrl) && UIInput::isLeft(e));
 
     if (isVolUp || isVolDn) {
         float vol = mini_acid_.getTrackVolume((VoiceId)selectedTrack_);
+        float step = e.shift ? 0.10f : 0.05f;
         if (isVolDn) {
-            vol -= 0.05f;
+            vol -= step;
             if (vol < 0.0f) vol = 0.0f;
-            mini_acid_.setTrackVolume((VoiceId)selectedTrack_, vol);
+            withAudioGuard([&]() { mini_acid_.setTrackVolume((VoiceId)selectedTrack_, vol); });
+            char label[12];
+            buildHubTrackLabel(selectedTrack_, label, sizeof(label));
+            char toast[32];
+            std::snprintf(toast, sizeof(toast), "%s VOL %d%%", label, (int)(vol * 100.0f + 0.5f));
+            UI::showToast(toast, 700);
             return true;
         }
         if (isVolUp) {
-            vol += 0.05f;
+            vol += step;
             if (vol > 1.2f) vol = 1.2f; // Slight boost allowed
-            mini_acid_.setTrackVolume((VoiceId)selectedTrack_, vol);
+            withAudioGuard([&]() { mini_acid_.setTrackVolume((VoiceId)selectedTrack_, vol); });
+            char label[12];
+            buildHubTrackLabel(selectedTrack_, label, sizeof(label));
+            char toast[32];
+            std::snprintf(toast, sizeof(toast), "%s VOL %d%%", label, (int)(vol * 100.0f + 0.5f));
+            UI::showToast(toast, 700);
             return true;
         }
     }

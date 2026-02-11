@@ -45,8 +45,10 @@ static inline bool isGlobalNav(const UIEvent& e) {
   // Page cycling is always global.
   if (e.key == '[' || e.key == ']') return true;
 
-  // Help/back remain global-ish.
-  if (e.key == 'h' || e.key == '`' || e.key == 0x1B || e.key == 0x08) {
+  // Help/backtick/ESC remain global-ish.
+  // Backspace is intentionally NOT global here: pages should get first chance
+  // to handle local clear actions (REST, clear step/selection/pattern).
+  if (e.key == 'h' || e.key == '`' || e.key == 0x1B) {
     return true;
   }
 
@@ -55,7 +57,7 @@ static inline bool isGlobalNav(const UIEvent& e) {
   switch (e.key) {
     case 'g': case 'd': case 'e':
     case 'y': case 'Y':
-    case 't': case 'm': case 's': case 'p':
+    case 't': case 'm': case 'p':
       return true;
     default:
       return false;
