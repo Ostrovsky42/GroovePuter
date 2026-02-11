@@ -44,6 +44,11 @@ class ProjectPage : public IPage{
   bool saveCurrentScene();
   bool createNewScene();
   void refreshMidiFiles();
+  bool navigateIntoMidiDir(const std::string& dirName);
+  bool navigateUpMidiDir();
+  bool isMidiDirEntry(int index) const;
+  int midiDirCount() const { return (int)midi_dirs_.size(); }
+  std::string midiDisplayName(int index) const;
   void openImportMidiDialog();
   void openMidiAdvanceDialog();
   bool importMidiAtSelection();
@@ -76,7 +81,9 @@ class ProjectPage : public IPage{
   int main_scroll_ = 0;
   bool loadError_;
   std::vector<std::string> scenes_;
+  std::vector<std::string> midi_dirs_;
   std::vector<std::string> midi_files_;
+  std::string midi_current_path_ = "/midi";
   int midi_import_start_pattern_ = 0;
   int midi_import_from_bar_ = 0;
   int midi_import_length_bars_ = 16;
