@@ -809,6 +809,41 @@ bool GenrePage::handleEvent(UIEvent& e) {
         return true;
     }
 
+<<<<<<< HEAD
+=======
+    /*
+    // START: Number keys disabled for Mute priority
+    // Direct preset selection (1-8)
+    if (key >= '1' && key <= '8') {
+        presetIndex_ = key - '1';
+        focus_ = FocusArea::PRESETS;
+        applyCurrent();
+        return true;
+    }
+
+>>>>>>> main
+    // '0': randomize
+    if (key == '0') {
+        withAudioGuard([&]() {
+            int gen = std::rand() % kGenerativeModeCount;
+            int tex = std::rand() % kTextureModeCount;
+            if (isCuratedMode()) {
+                // Curated mode biases random to recommended texture.
+                tex = static_cast<int>(GenreManager::firstAllowedTexture(static_cast<GenerativeMode>(gen)));
+            }
+            mini_acid_.genreManager().setGenerativeMode(static_cast<GenerativeMode>(gen));
+            mini_acid_.genreManager().setTextureMode(static_cast<TextureMode>(tex));
+            mini_acid_.setGrooveboxMode(
+                GenreManager::grooveboxModeForGenerative(static_cast<GenerativeMode>(gen)));
+            auto& gs = mini_acid_.sceneManager().currentScene().genre;
+            gs.generativeMode = static_cast<uint8_t>(gen);
+            gs.textureMode = static_cast<uint8_t>(tex);
+        });
+        updateFromEngine();
+        return true;
+    }
+    // END: Number keys disabled
+    */
 
     // Bank Selection (Ctrl + 1..2)
     if (e.ctrl && !e.alt && e.key >= '1' && e.key <= '2') {

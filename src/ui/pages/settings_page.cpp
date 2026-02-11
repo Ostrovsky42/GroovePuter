@@ -234,13 +234,16 @@ bool SettingsPage::handleEvent(UIEvent& e) {
         applyPreset(preset_index_);
         return true;
     }
+<<<<<<< HEAD
 
     if (e.key == 'T' || e.key == 't') {
         measureSDPerformance();
         return true;
     }
+=======
     // END: Number keys disabled
     */
+>>>>>>> main
     
     return false;
 }

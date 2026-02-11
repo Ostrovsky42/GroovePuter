@@ -501,8 +501,12 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
 
         // Removed redundant channel activity bar - LED indicators already show activity
 
+<<<<<<< HEAD
         // Scanlines disabled: caused flicker on small TFT
         RetroWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]TRK [L/R]STEP [-/=]VOL", "[X]HIT [A]ACC [ENT]OPEN", "HUB");
+=======
+        RetroWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]TRK [L/R]STEP [+/-]VOL", "ENT:Open [X]HIT", "HUB");
+>>>>>>> main
     } else {
         // DETAIL MODE
         if (isDrumTrack(selectedTrack_)) {
@@ -691,8 +695,12 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
 
         // Removed redundant channel activity bar - LED indicators already show activity
 
+<<<<<<< HEAD
         // Scanlines disabled: caused flicker on small TFT
         AmberWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]TRK [L/R]STEP [-/=]VOL", "[X]HIT [A]ACC [ENT]OPEN", "HUB");
+=======
+        AmberWidgets::drawFooterBar(gfx, x, y + h - 12, w, 12, "[UP/DN]TRK [L/R]STEP [+/-]VOL", "ENT:Open [X]HIT", "HUB");
+>>>>>>> main
     } else {
         if (isDrumTrack(selectedTrack_)) {
             drumGrid_->setStyle(GrooveboxStyle::AMBER);
@@ -775,8 +783,13 @@ void SequencerHubPage::drawOverview(IGfx& gfx) {
     // Removed redundant channel activity bar - LED indicators already show activity
 
     UI::drawStandardFooter(gfx,
+<<<<<<< HEAD
         "[UP/DN]TRK [L/R]STEP [-/=]VOL",
         "[X]HIT [A]ACC [ENT]OPEN");
+=======
+        "[UP/DN]TRK [L/R]STEP [+/-]VOL",
+        "[ENT]OPEN [X]HIT [SPACE]PLAY");
+>>>>>>> main
 }
 
 void SequencerHubPage::drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool selected) {
@@ -831,7 +844,31 @@ void SequencerHubPage::drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool 
 
     gfx.setTextColor(selected ? COLOR_WHITE : COLOR_LABEL);
     gfx.drawText(4, y + 1, name);
+<<<<<<< HEAD
 
+=======
+    
+    // Volume Indicator (OLD) - Removed
+    /*
+    float vol = mini_acid_.getTrackVolume((VoiceId)trackIdx);
+    int volW = (int)(vol * 14.0f);
+    if (volW > 14) volW = 14;
+    if (volW > 0) {
+        gfx.fillRect(30, y + h - 4, volW, 2, selected ? COLOR_WHITE : COLOR_GRAY);
+    }
+    */
+    // Draw Volume Stripe (Minimal)
+    float vol = mini_acid_.getTrackVolume((VoiceId)trackIdx);
+    // Minimal style doesn't have the same grid layout here often, but let's put it at the bottom of the row
+    int volMaxW = 236 - 46; // track name width + padding
+    int volPixelW = (int)(vol * volMaxW);
+    if (volPixelW > volMaxW) volPixelW = volMaxW;
+    
+    if (volPixelW > 0) {
+        gfx.fillRect(46, y + h - 2, volPixelW, 2, selected ? COLOR_ACCENT : COLOR_GRAY);
+    }
+    
+>>>>>>> main
     // Activity LED
     bool active = mini_acid_.isTrackActive(trackIdx);
     IGfxColor ledColor = (trackIdx == 0) ? COLOR_SYNTH_A : (trackIdx == 1 ? COLOR_SYNTH_B : COLOR_WARN);
@@ -1050,6 +1087,7 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
         return true;
     }
 
+<<<<<<< HEAD
     // Bank Selection (Ctrl + 1..2)
     if (e.ctrl && !e.alt && e.key >= '1' && e.key <= '2') {
         int bankIdx = e.key - '1';
@@ -1059,11 +1097,31 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
             } else {
                 mini_acid_.set303BankIndex(selectedTrack_, bankIdx);
             }
+=======
+    // Mutes are paramount: 1-0 toggles mutes directly in Hub
+    int muteTrackIdx = -1;
+    if (e.key >= '1' && e.key <= '9') muteTrackIdx = e.key - '1';
+    else if (e.key == '0') muteTrackIdx = 9;
+
+    if (muteTrackIdx >= 0 && !e.alt && !e.ctrl) {
+        withAudioGuard([&]() {
+            if (muteTrackIdx == 0) mini_acid_.toggleMute303(0);
+            else if (muteTrackIdx == 1) mini_acid_.toggleMute303(1);
+            else if (muteTrackIdx == 2) mini_acid_.toggleMuteKick();
+            else if (muteTrackIdx == 3) mini_acid_.toggleMuteSnare();
+            else if (muteTrackIdx == 4) mini_acid_.toggleMuteHat();
+            else if (muteTrackIdx == 5) mini_acid_.toggleMuteOpenHat();
+            else if (muteTrackIdx == 6) mini_acid_.toggleMuteMidTom();
+            else if (muteTrackIdx == 7) mini_acid_.toggleMuteHighTom();
+            else if (muteTrackIdx == 8) mini_acid_.toggleMuteRim();
+            else if (muteTrackIdx == 9) mini_acid_.toggleMuteClap();
+>>>>>>> main
         });
         UI::showToast(bankIdx == 0 ? "Bank: A" : "Bank: B", 800);
         return true;
     }
 
+<<<<<<< HEAD
     // Pattern quick select (Q-I) - Standardized Everywhere
     if (!e.ctrl && !e.alt && !e.meta) {
         int patIdx = qwertyToPatternIndex(lower);
@@ -1082,6 +1140,14 @@ bool SequencerHubPage::handleQuickKeys(UIEvent& e) {
             return true;
         }
     }
+=======
+    /*
+    // Pattern quick select (Q-I) - DISABLED by user request (presets not selected by buttons)
+    // Preserves Q-I for other uses or prevents accidental switching.
+    int patIdx = qwertyToPatternIndex(lower);
+    if (patIdx >= 0) { ... } 
+    */
+>>>>>>> main
     
     // Copy/Paste (Ctrl+C / Ctrl+V)
     if (lower == 'c' && e.ctrl) {
@@ -1164,6 +1230,7 @@ bool SequencerHubPage::handleAppEvent(const UIEvent& e) {
 bool SequencerHubPage::handleVolumeInput(UIEvent& e) {
     if (mode_ != Mode::OVERVIEW) return false;
 
+<<<<<<< HEAD
     // Simplified control:
     // - Primary: '=' up, '-' down (no modifiers)
     // - Also keep legacy: Ctrl+/- and Alt/Ctrl+Left/Right
@@ -1173,6 +1240,13 @@ bool SequencerHubPage::handleVolumeInput(UIEvent& e) {
     bool isVolDn = (e.key == '-' || e.key == '_') ||
                    (e.ctrl && (e.key == '-' || e.key == '_')) ||
                    ((e.alt || e.ctrl) && UIInput::isLeft(e));
+=======
+    // Volume control: Per-track fader logic
+    // - Use Minus/Plus directly (overrides global master volume on this page)
+    // - Use Alt + Left/Right (alternative)
+    bool isVolUp = (e.key == '=' || e.key == '+') || (e.alt && UIInput::isRight(e));
+    bool isVolDn = (e.key == '-' || e.key == '_') || (e.alt && UIInput::isLeft(e));
+>>>>>>> main
 
     if (isVolUp || isVolDn) {
         float vol = mini_acid_.getTrackVolume((VoiceId)selectedTrack_);
