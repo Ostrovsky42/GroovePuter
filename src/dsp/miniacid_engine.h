@@ -418,11 +418,15 @@ private:
     int counter = 0;        // Countdown to next trigger
     int countRemaining = 0; // Number of retrigs left
     bool active = false;    // Is retrig active
+    uint8_t flamGhostVelocity = 0; // >0 for flam: velocity of ghost hit
+    uint8_t rollCurve = 0;  // Roll velocity curve (0=flat, 1=cresc, 2=decresc)
+    int rollTotal = 0;      // Total roll hits (for velocity interpolation)
   };
   
   RetrigState retrigA_;
   RetrigState retrigB_;
   RetrigState retrigDrums_[NUM_DRUM_VOICES];
+  void setupDrumStepFx_(int voiceIdx, uint8_t fx, uint8_t fxParam, uint8_t velocity);
 
   struct SoftLimiter {
     float threshold = 0.95f;
@@ -464,6 +468,10 @@ private:
   OneKnobCompressor drumCompressor;
   TransientShaper drumTransientShaper;
   DrumReverb drumReverb;
+  
+  // DC blocker for drum bus (removes sub-5Hz DC offset)
+  float dcBlockPrev_ = 0.0f;
+  float dcBlockOut_ = 0.0f;
   
   // Thread-safe waveform buffer for UI visualization
   // Uses double-buffering with atomic swap to avoid race conditions

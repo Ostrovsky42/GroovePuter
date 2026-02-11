@@ -316,6 +316,8 @@ private:
   float applyAccentDistortion(float input, bool accent);
   void updateClapFilter();
 
+  uint32_t noiseState_ = 54321;
+
   float kickPhase;
   float kickFreq;
   float kickEnvAmp;
@@ -385,6 +387,8 @@ private:
   bool clapActive;
   float clapDelay;
   float clapTime;
+  float clapTailEnv;
+  float clapTailDecay;
   float clapAccentGain;
   bool clapAccentDistortion;
   Biquad clapBandpass;
@@ -475,6 +479,7 @@ private:
   };
 
   float frand();
+  uint32_t noiseState_ = 98765;
   float decayCoeff(float timeSeconds) const;
   float onePoleCoeff(float cutoffHz) const;
   float square(float phase) const;

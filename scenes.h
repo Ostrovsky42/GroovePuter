@@ -48,6 +48,19 @@ bool writeChunk(Writer& writer, const char* data, size_t len) {
 }
 } // namespace scene_json_detail
 
+// Extended drum step FX values — plain constexpr to stay compatible
+// with existing uint8_t fx field and (uint8_t)StepFx:: comparisons.
+namespace DrumStepFX {
+  constexpr uint8_t NONE     = 0; // == StepFx::None
+  constexpr uint8_t RETRIG   = 1; // == StepFx::Retrig (existing)
+  constexpr uint8_t REVERSE  = 2; // == StepFx::Reverse (existing)
+  constexpr uint8_t FLAM     = 3; // fxParam = gap in ms (10-30 typical)
+  constexpr uint8_t ROLL     = 4; // fxParam bits 0-3 = hit count (2-8),
+                                  //          bits 4-7 = curve (0=flat, 1=cresc, 2=decresc)
+  constexpr uint8_t PITCH_UP = 5; // fxParam = semitones
+  constexpr uint8_t PITCH_DN = 6; // fxParam = semitones
+}
+
 struct DrumStep {
   uint8_t hit : 1 {0};
   uint8_t accent : 1 {0};
@@ -65,9 +78,30 @@ struct DrumPattern {
   bool isEmpty() const;
 };
 
+struct AutomationNode {
+  uint8_t step = 0;        // 0-15
+  float value = 0.0f;      // 0.0-1.0
+  uint8_t curveType = 0;   // 0=Linear, 1=EaseIn, 2=EaseOut
+};
+
+struct AutomationLane {
+  uint8_t targetParam = 255; // 255=None, 0=ReverbMix, 1=Compressor, etc.
+  static constexpr int kMaxNodes = 4;
+  AutomationNode nodes[kMaxNodes];
+  uint8_t nodeCount = 0;
+};
+
+struct PatternGroove {
+  float swing = -1.0f;     // -1 = use global
+  float humanize = -1.0f;  // -1 = use global
+};
+
 struct DrumPatternSet {
   static constexpr int kVoices = 8;
+  static constexpr int kMaxLanes = 2; // ReverbMix + Compressor
   DrumPattern voices[kVoices];
+  AutomationLane lanes[kMaxLanes];
+  PatternGroove groove;
   bool isEmpty() const;
 };
 
@@ -212,7 +246,11 @@ struct SamplerPadState {
 enum class StepFx : uint8_t { 
   None = 0, 
   Retrig = 1, 
-  Reverse = 2 
+  Reverse = 2,
+  Flam = 3,      // Drum-only: fxParam = gap in ms
+  Roll = 4,      // Drum-only: fxParam bits 0-3 = count, 4-7 = curve
+  PitchUp = 5,   // fxParam = semitones
+  PitchDown = 6  // fxParam = semitones
 };
 
 // Tape mode enum for looper state machine

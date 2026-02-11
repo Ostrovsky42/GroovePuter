@@ -46,6 +46,141 @@ MidiImporter::Error MidiImporter::importFile(const std::string& path, const Midi
     return err;
 }
 
+// ---------------------------------------------------------------------------
+// scanFile — lightweight per-channel statistics without importing
+// ---------------------------------------------------------------------------
+MidiImporter::ScanResult MidiImporter::scanFile(const std::string& path) {
+    ScanResult result;
+#ifdef ARDUINO
+    File file = SD.open(path.c_str(), FILE_READ);
+    if (!file) return result;
+
+    char magic[4];
+    if (file.readBytes(magic, 4) != 4 || memcmp(magic, "MThd", 4) != 0) {
+        file.close(); return result;
+    }
+    uint32_t headerSize = 0;
+    if (!readBE32(file, headerSize)) { file.close(); return result; }
+    if (headerSize < 6) { file.close(); return result; }
+    if (!readBE16(file, result.format))    { file.close(); return result; }
+    if (!readBE16(file, result.numTracks)) { file.close(); return result; }
+    if (!readBE16(file, result.division))  { file.close(); return result; }
+    if (result.division == 0 || (result.division & 0x8000)) { file.close(); return result; }
+    if (headerSize > 6) {
+        file.seek(file.position() + (headerSize - 6));
+    }
+
+    uint32_t fileSize = file.size();
+    uint32_t maxAbsoluteTicks = 0;
+    int currentTrackChannel = -1; // for track name→channel mapping
+
+    int tracksParsed = 0;
+    while (file.position() + 8 <= fileSize) {
+        if (file.readBytes(magic, 4) != 4) break;
+        uint32_t chunkSize = 0;
+        if (!readBE32(file, chunkSize)) break;
+        uint32_t chunkEnd = file.position() + chunkSize;
+        if (chunkEnd > fileSize) break;
+
+        if (memcmp(magic, "MTrk", 4) != 0) {
+            file.seek(chunkEnd);
+            continue;
+        }
+        tracksParsed++;
+        if (tracksParsed > 128) break;
+
+        uint32_t absoluteTicks = 0;
+        uint8_t lastStatus = 0;
+        currentTrackChannel = -1;
+
+        while (file.position() < chunkEnd) {
+            uint32_t bytesRead = 0;
+            uint32_t deltaTime = 0;
+            if (!readVarLen(file, deltaTime, bytesRead)) break;
+            absoluteTicks += deltaTime;
+
+            int status = file.read();
+            if (status < 0) break;
+
+            if (!(status & 0x80)) {
+                if (lastStatus < 0x80 || lastStatus >= 0xF0) break;
+                file.seek(file.position() - 1);
+                status = lastStatus;
+            } else {
+                if (status < 0xF0) lastStatus = (uint8_t)status;
+            }
+
+            uint8_t msgType = status & 0xF0;
+            uint8_t channel = status & 0x0F; // 0-indexed
+
+            if (msgType == 0x80 || msgType == 0x90) {
+                uint8_t note = 0, velocity = 0;
+                if (!readU8(file, note)) break;
+                if (!readU8(file, velocity)) break;
+                if (msgType == 0x90 && velocity > 0) {
+                    auto& ci = result.channels[channel];
+                    ci.noteCount++;
+                    if (note < ci.minNote) ci.minNote = note;
+                    if (note > ci.maxNote) ci.maxNote = note;
+                    result.totalNotes++;
+                    if (absoluteTicks > maxAbsoluteTicks) maxAbsoluteTicks = absoluteTicks;
+                    if (currentTrackChannel < 0) currentTrackChannel = channel;
+                }
+            } else if (msgType == 0xA0 || msgType == 0xB0 || msgType == 0xE0) {
+                uint8_t tmp; readU8(file, tmp); readU8(file, tmp);
+            } else if (msgType == 0xC0 || msgType == 0xD0) {
+                uint8_t tmp; readU8(file, tmp);
+            } else if (status == 0xFF) {
+                uint8_t metaType = 0;
+                if (!readU8(file, metaType)) break;
+                uint32_t metaLen = 0;
+                if (!readVarLen(file, metaLen, bytesRead)) break;
+                if (metaType == 0x03 && metaLen > 0) {
+                    // Track Name — read up to 15 chars
+                    int tgtCh = (currentTrackChannel >= 0) ? currentTrackChannel : (tracksParsed - 1);
+                    if (tgtCh >= 0 && tgtCh < 16 && result.channels[tgtCh].trackName[0] == '\0') {
+                        int readLen = (metaLen < 15) ? metaLen : 15;
+                        file.readBytes(result.channels[tgtCh].trackName, readLen);
+                        result.channels[tgtCh].trackName[readLen] = '\0';
+                        if (metaLen > (uint32_t)readLen) file.seek(file.position() + (metaLen - readLen));
+                    } else {
+                        file.seek(file.position() + metaLen);
+                    }
+                } else if (metaType == 0x2F) { // End of Track
+                    file.seek(file.position() + metaLen);
+                    file.seek(chunkEnd);
+                    break;
+                } else {
+                    file.seek(file.position() + metaLen);
+                }
+            } else if (status == 0xF0 || status == 0xF7) {
+                uint32_t sysexLen = 0;
+                if (!readVarLen(file, sysexLen, bytesRead)) break;
+                file.seek(file.position() + sysexLen);
+            } else if (status == 0xF1 || status == 0xF3) {
+                uint8_t tmp; readU8(file, tmp);
+            } else if (status == 0xF2) {
+                uint8_t tmp; readU8(file, tmp); readU8(file, tmp);
+            }
+            // else: system realtime, no payload
+        }
+        if (file.position() != chunkEnd) file.seek(chunkEnd);
+    }
+    file.close();
+
+    // Compute summary
+    for (int i = 0; i < 16; i++) {
+        if (result.channels[i].used()) result.usedChannels++;
+    }
+    if (result.division > 0 && maxAbsoluteTicks > 0) {
+        uint32_t ticksPerBar = result.division * 4; // 4/4 assumed
+        result.estimatedBars = (int)((maxAbsoluteTicks + ticksPerBar - 1) / ticksPerBar);
+    }
+    result.valid = (tracksParsed > 0 && result.totalNotes > 0);
+#endif
+    return result;
+}
+
 std::string MidiImporter::getErrorString(Error error) const {
     switch (error) {
         case Error::None: return "Success";

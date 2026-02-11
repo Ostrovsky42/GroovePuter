@@ -1155,6 +1155,45 @@ int MiniAcid::clampDrumVoice(int voiceIndex) const {
   if (voiceIndex >= NUM_DRUM_VOICES) return NUM_DRUM_VOICES - 1;
   return voiceIndex;
 }
+
+// Helper: set up retrig/flam/roll state for a drum voice from its step FX.
+// Called from advanceStep after a drum hit triggers.
+void MiniAcid::setupDrumStepFx_(int voiceIdx, uint8_t fx, uint8_t fxParam, uint8_t velocity) {
+  RetrigState& rs = retrigDrums_[voiceIdx];
+  rs.flamGhostVelocity = 0;
+  rs.rollCurve = 0;
+  rs.rollTotal = 0;
+
+  if (fx == DrumStepFX::RETRIG && fxParam > 0) {
+    rs.countRemaining = fxParam;
+    rs.interval = (int)(samplesPerStep / (fxParam + 1));
+    rs.counter = rs.interval;
+    rs.active = true;
+  } else if (fx == DrumStepFX::FLAM) {
+    // Flam = single ghost hit after fxParam ms at ~70% velocity
+    int gapMs = (fxParam > 0) ? fxParam : 20; // default 20ms
+    rs.countRemaining = 1;
+    rs.interval = (int)(sampleRateValue * gapMs / 1000.0f);
+    if (rs.interval < 1) rs.interval = 1;
+    rs.counter = rs.interval;
+    rs.flamGhostVelocity = (uint8_t)(velocity * 0.7f);
+    rs.active = true;
+  } else if (fx == DrumStepFX::ROLL) {
+    // fxParam bits 0-3 = hit count (2-8), bits 4-7 = curve
+    int hitCount = (fxParam & 0x0F);
+    if (hitCount < 2) hitCount = 2;
+    if (hitCount > 8) hitCount = 8;
+    rs.rollCurve = (fxParam >> 4) & 0x0F;
+    rs.rollTotal = hitCount;
+    rs.countRemaining = hitCount;
+    rs.interval = (int)(samplesPerStep / (hitCount + 1));
+    if (rs.interval < 1) rs.interval = 1;
+    rs.counter = rs.interval;
+    rs.active = true;
+  } else {
+    rs.active = false;
+  }
+}
 int MiniAcid::clamp303Step(int stepIndex) const {
   if (stepIndex < 0) return 0;
   if (stepIndex >= SEQ_STEPS) return SEQ_STEPS - 1;
@@ -1573,14 +1612,7 @@ void MiniAcid::advanceStep() {
     drums->triggerKick(stepAccent, kick.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack->triggerPad(0, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumKick, sceneManager_.currentScene().led);
-    if (kick.steps[currentStepIndex].fx == (uint8_t)StepFx::Retrig && kick.steps[currentStepIndex].fxParam > 0) {
-      retrigDrums_[kDrumKickVoice].countRemaining = kick.steps[currentStepIndex].fxParam;
-      retrigDrums_[kDrumKickVoice].interval = (int)(samplesPerStep / (kick.steps[currentStepIndex].fxParam + 1));
-      retrigDrums_[kDrumKickVoice].counter = retrigDrums_[kDrumKickVoice].interval;
-      retrigDrums_[kDrumKickVoice].active = true;
-    } else {
-      retrigDrums_[kDrumKickVoice].active = false;
-    }
+    setupDrumStepFx_(kDrumKickVoice, kick.steps[currentStepIndex].fx, kick.steps[currentStepIndex].fxParam, kick.steps[currentStepIndex].velocity);
   } else {
     retrigDrums_[kDrumKickVoice].active = false;
   }
@@ -1590,14 +1622,7 @@ void MiniAcid::advanceStep() {
     drums->triggerSnare(stepAccent, snare.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack->triggerPad(1, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumSnare, sceneManager_.currentScene().led);
-    if (snare.steps[currentStepIndex].fx == (uint8_t)StepFx::Retrig && snare.steps[currentStepIndex].fxParam > 0) {
-      retrigDrums_[kDrumSnareVoice].countRemaining = snare.steps[currentStepIndex].fxParam;
-      retrigDrums_[kDrumSnareVoice].interval = (int)(samplesPerStep / (snare.steps[currentStepIndex].fxParam + 1));
-      retrigDrums_[kDrumSnareVoice].counter = retrigDrums_[kDrumSnareVoice].interval;
-      retrigDrums_[kDrumSnareVoice].active = true;
-    } else {
-      retrigDrums_[kDrumSnareVoice].active = false;
-    }
+    setupDrumStepFx_(kDrumSnareVoice, snare.steps[currentStepIndex].fx, snare.steps[currentStepIndex].fxParam, snare.steps[currentStepIndex].velocity);
   } else {
     retrigDrums_[kDrumSnareVoice].active = false;
   }
@@ -1607,14 +1632,7 @@ void MiniAcid::advanceStep() {
     drums->triggerHat(stepAccent, hat.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack->triggerPad(2, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumHatC, sceneManager_.currentScene().led);
-    if (hat.steps[currentStepIndex].fx == (uint8_t)StepFx::Retrig && hat.steps[currentStepIndex].fxParam > 0) {
-      retrigDrums_[kDrumHatVoice].countRemaining = hat.steps[currentStepIndex].fxParam;
-      retrigDrums_[kDrumHatVoice].interval = (int)(samplesPerStep / (hat.steps[currentStepIndex].fxParam + 1));
-      retrigDrums_[kDrumHatVoice].counter = retrigDrums_[kDrumHatVoice].interval;
-      retrigDrums_[kDrumHatVoice].active = true;
-    } else {
-      retrigDrums_[kDrumHatVoice].active = false;
-    }
+    setupDrumStepFx_(kDrumHatVoice, hat.steps[currentStepIndex].fx, hat.steps[currentStepIndex].fxParam, hat.steps[currentStepIndex].velocity);
   } else {
     retrigDrums_[kDrumHatVoice].active = false;
   }
@@ -1624,14 +1642,7 @@ void MiniAcid::advanceStep() {
     drums->triggerOpenHat(stepAccent, openHat.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack->triggerPad(3, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumHatO, sceneManager_.currentScene().led);
-    if (openHat.steps[currentStepIndex].fx == (uint8_t)StepFx::Retrig && openHat.steps[currentStepIndex].fxParam > 0) {
-      retrigDrums_[kDrumOpenHatVoice].countRemaining = openHat.steps[currentStepIndex].fxParam;
-      retrigDrums_[kDrumOpenHatVoice].interval = (int)(samplesPerStep / (openHat.steps[currentStepIndex].fxParam + 1));
-      retrigDrums_[kDrumOpenHatVoice].counter = retrigDrums_[kDrumOpenHatVoice].interval;
-      retrigDrums_[kDrumOpenHatVoice].active = true;
-    } else {
-      retrigDrums_[kDrumOpenHatVoice].active = false;
-    }
+    setupDrumStepFx_(kDrumOpenHatVoice, openHat.steps[currentStepIndex].fx, openHat.steps[currentStepIndex].fxParam, openHat.steps[currentStepIndex].velocity);
   } else {
     retrigDrums_[kDrumOpenHatVoice].active = false;
   }
@@ -1641,14 +1652,7 @@ void MiniAcid::advanceStep() {
     drums->triggerMidTom(stepAccent, midTom.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack->triggerPad(4, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumTomM, sceneManager_.currentScene().led);
-    if (midTom.steps[currentStepIndex].fx == (uint8_t)StepFx::Retrig && midTom.steps[currentStepIndex].fxParam > 0) {
-      retrigDrums_[kDrumMidTomVoice].countRemaining = midTom.steps[currentStepIndex].fxParam;
-      retrigDrums_[kDrumMidTomVoice].interval = (int)(samplesPerStep / (midTom.steps[currentStepIndex].fxParam + 1));
-      retrigDrums_[kDrumMidTomVoice].counter = retrigDrums_[kDrumMidTomVoice].interval;
-      retrigDrums_[kDrumMidTomVoice].active = true;
-    } else {
-      retrigDrums_[kDrumMidTomVoice].active = false;
-    }
+    setupDrumStepFx_(kDrumMidTomVoice, midTom.steps[currentStepIndex].fx, midTom.steps[currentStepIndex].fxParam, midTom.steps[currentStepIndex].velocity);
   } else {
     retrigDrums_[kDrumMidTomVoice].active = false;
   }
@@ -1658,14 +1662,7 @@ void MiniAcid::advanceStep() {
     drums->triggerHighTom(stepAccent, highTom.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack->triggerPad(5, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumTomH, sceneManager_.currentScene().led);
-    if (highTom.steps[currentStepIndex].fx == (uint8_t)StepFx::Retrig && highTom.steps[currentStepIndex].fxParam > 0) {
-      retrigDrums_[kDrumHighTomVoice].countRemaining = highTom.steps[currentStepIndex].fxParam;
-      retrigDrums_[kDrumHighTomVoice].interval = (int)(samplesPerStep / (highTom.steps[currentStepIndex].fxParam + 1));
-      retrigDrums_[kDrumHighTomVoice].counter = retrigDrums_[kDrumHighTomVoice].interval;
-      retrigDrums_[kDrumHighTomVoice].active = true;
-    } else {
-      retrigDrums_[kDrumHighTomVoice].active = false;
-    }
+    setupDrumStepFx_(kDrumHighTomVoice, highTom.steps[currentStepIndex].fx, highTom.steps[currentStepIndex].fxParam, highTom.steps[currentStepIndex].velocity);
   } else {
     retrigDrums_[kDrumHighTomVoice].active = false;
   }
@@ -1675,14 +1672,7 @@ void MiniAcid::advanceStep() {
     drums->triggerRim(stepAccent, rim.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack->triggerPad(6, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumRim, sceneManager_.currentScene().led);
-    if (rim.steps[currentStepIndex].fx == (uint8_t)StepFx::Retrig && rim.steps[currentStepIndex].fxParam > 0) {
-      retrigDrums_[kDrumRimVoice].countRemaining = rim.steps[currentStepIndex].fxParam;
-      retrigDrums_[kDrumRimVoice].interval = (int)(samplesPerStep / (rim.steps[currentStepIndex].fxParam + 1));
-      retrigDrums_[kDrumRimVoice].counter = retrigDrums_[kDrumRimVoice].interval;
-      retrigDrums_[kDrumRimVoice].active = true;
-    } else {
-      retrigDrums_[kDrumRimVoice].active = false;
-    }
+    setupDrumStepFx_(kDrumRimVoice, rim.steps[currentStepIndex].fx, rim.steps[currentStepIndex].fxParam, rim.steps[currentStepIndex].velocity);
   } else {
     retrigDrums_[kDrumRimVoice].active = false;
   }
@@ -1692,14 +1682,7 @@ void MiniAcid::advanceStep() {
     drums->triggerClap(stepAccent, clap.steps[currentStepIndex].velocity);
     if (sampleStore) samplerTrack->triggerPad(7, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
     LedManager::instance().onVoiceTriggered(VoiceId::DrumClap, sceneManager_.currentScene().led);
-    if (clap.steps[currentStepIndex].fx == (uint8_t)StepFx::Retrig && clap.steps[currentStepIndex].fxParam > 0) {
-      retrigDrums_[kDrumClapVoice].countRemaining = clap.steps[currentStepIndex].fxParam;
-      retrigDrums_[kDrumClapVoice].interval = (int)(samplesPerStep / (clap.steps[currentStepIndex].fxParam + 1));
-      retrigDrums_[kDrumClapVoice].counter = retrigDrums_[kDrumClapVoice].interval;
-      retrigDrums_[kDrumClapVoice].active = true;
-    } else {
-      retrigDrums_[kDrumClapVoice].active = false;
-    }
+    setupDrumStepFx_(kDrumClapVoice, clap.steps[currentStepIndex].fx, clap.steps[currentStepIndex].fxParam, clap.steps[currentStepIndex].velocity);
   } else {
     retrigDrums_[kDrumClapVoice].active = false;
   }
@@ -1741,7 +1724,15 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     for (size_t i = 0; i < numSamples; ++i) {
       testTonePhase_ += 440.0f / sampleRateValue;
       if (testTonePhase_ >= 1.0f) testTonePhase_ -= 1.0f;
-      float val = sinf(2.0f * 3.14159265f * testTonePhase_) * 0.707f; 
+      float val = sinf(2.0f * 3.14159265f * testTonePhase_) * 0.707f;
+      // 1-bit triangular dither for test tone
+      ditherState_ = ditherState_ * 1664525u + 1013904223u;
+      float r1 = (float)(ditherState_ & 65535) * (1.0f / 65536.0f);
+      ditherState_ = ditherState_ * 1664525u + 1013904223u;
+      float r2 = (float)(ditherState_ & 65535) * (1.0f / 65536.0f);
+      val += (r1 - r2) * (1.0f / 32768.0f);
+      if (val > 1.0f) val = 1.0f;
+      if (val < -1.0f) val = -1.0f;
       buffer[i] = static_cast<int16_t>(val * 32767.0f);
     }
     // Copy to waveform buffer for UI
@@ -1937,6 +1928,11 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       if (!muteClap)    drumsMix += drums->processClap() * trackVolumes[(int)VoiceId::DrumClap];
       drumsMix *= 0.60f;
       
+      // DC blocker: y[n] = x[n] - x[n-1] + 0.995 * y[n-1]
+      dcBlockOut_ = drumsMix - dcBlockPrev_ + 0.995f * dcBlockOut_;
+      dcBlockPrev_ = drumsMix;
+      drumsMix = dcBlockOut_;
+
       // Drum Bus Processing
       drumsMix = drumTransientShaper.process(drumsMix);
       drumsMix = drumCompressor.process(drumsMix);

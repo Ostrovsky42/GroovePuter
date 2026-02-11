@@ -897,6 +897,9 @@ void TR909DrumSynthVoice::triggerClap(bool accent, uint8_t velocity) {
   clapTime = 0.0f;
   clapAccentGain = accent ? 1.35f : 1.0f;
   clapAccentDistortion = accent;
+  clapTailEnv = 0.0f;
+  // Pre-compute tail decay: expf(-18.0/sampleRate) per sample
+  clapTailDecay = expf(-18.0f * invSampleRate);
   clapBandpass.reset();
 }
 
@@ -913,7 +916,8 @@ void TR909DrumSynthVoice::triggerCymbal(bool accent, uint8_t velocity) {
 }
 
 float TR909DrumSynthVoice::frand() {
-  return (float)rand() / (float)RAND_MAX * 2.0f - 1.0f;
+  noiseState_ = noiseState_ * 1664525u + 1013904223u;
+  return ((noiseState_ >> 16) & 0x7FFF) / 16384.0f - 1.0f;
 }
 
 float TR909DrumSynthVoice::applyAccentDistortion(float input, bool accent) {
@@ -962,8 +966,8 @@ float TR909DrumSynthVoice::processKick() {
   if (kickPhase >= 1.0f)
     kickPhase -= 1.0f;
 
-  float body = sinf(2.0f * 3.14159265f * kickPhase);
-  float transient = sinf(2.0f * 3.14159265f * kickPhase * 4.0f) * pitchFactor * 0.2f;
+  float body = Wavetable::lookupSine((uint32_t)(kickPhase * kPhaseToUint32));
+  float transient = Wavetable::lookupSine((uint32_t)(kickPhase * 4.0f * kPhaseToUint32)) * pitchFactor * 0.2f;
   float click = (frand() * 0.4f + 0.6f) * kickClickEnv * 0.2f;
   float driven = fast_tanh(body * (2.4f + 0.7f * kickEnvAmp));
 
@@ -998,8 +1002,8 @@ float TR909DrumSynthVoice::processSnare() {
   snareTonePhase2 += 200.0f * invSampleRate;
   if (snareTonePhase2 >= 1.0f) snareTonePhase2 -= 1.0f;
 
-  float toneA = sinf(2.0f * 3.14159265f * snareTonePhase);
-  float toneB = sinf(2.0f * 3.14159265f * snareTonePhase2);
+  float toneA = Wavetable::lookupSine((uint32_t)(snareTonePhase * kPhaseToUint32));
+  float toneB = Wavetable::lookupSine((uint32_t)(snareTonePhase2 * kPhaseToUint32));
   float tone = (toneA * 0.6f + toneB * 0.4f) * snareToneEnv * snareToneGain;
 
   float out = (noiseOut * 0.6f + tone * 0.85f) * 1.25f;
@@ -1030,7 +1034,7 @@ float TR909DrumSynthVoice::processHat() {
   if (hatPhaseB >= 1.0f)
     hatPhaseB -= 1.0f;
   float tone =
-    (sinf(2.0f * 3.14159265f * hatPhaseA) + sinf(2.0f * 3.14159265f * hatPhaseB)) *
+    (Wavetable::lookupSine((uint32_t)(hatPhaseA * kPhaseToUint32)) + Wavetable::lookupSine((uint32_t)(hatPhaseB * kPhaseToUint32))) *
     0.5f * hatToneEnv * hatBrightness;
 
   float out = hatHp * 0.6f + tone * 0.85f;
@@ -1061,7 +1065,7 @@ float TR909DrumSynthVoice::processOpenHat() {
   if (openHatPhaseB >= 1.0f)
     openHatPhaseB -= 1.0f;
   float tone =
-    (sinf(2.0f * 3.14159265f * openHatPhaseA) + sinf(2.0f * 3.14159265f * openHatPhaseB)) *
+    (Wavetable::lookupSine((uint32_t)(openHatPhaseA * kPhaseToUint32)) + Wavetable::lookupSine((uint32_t)(openHatPhaseB * kPhaseToUint32))) *
     0.5f * openHatToneEnv * openHatBrightness;
 
   float out = openHatHp * 0.45f + tone * 0.72f;
@@ -1084,7 +1088,7 @@ float TR909DrumSynthVoice::processMidTom() {
   if (midTomPhase >= 1.0f)
     midTomPhase -= 1.0f;
 
-  float tone = sinf(2.0f * 3.14159265f * midTomPhase);
+  float tone = Wavetable::lookupSine((uint32_t)(midTomPhase * kPhaseToUint32));
   float slightNoise = frand() * 0.03f;
   float out = (tone * 0.92f + slightNoise) * midTomEnv * 0.8f * midTomAccentGain;
   return applyAccentDistortion(out, midTomAccentDistortion);
@@ -1105,7 +1109,7 @@ float TR909DrumSynthVoice::processHighTom() {
   if (highTomPhase >= 1.0f)
     highTomPhase -= 1.0f;
 
-  float tone = sinf(2.0f * 3.14159265f * highTomPhase);
+  float tone = Wavetable::lookupSine((uint32_t)(highTomPhase * kPhaseToUint32));
   float slightNoise = frand() * 0.025f;
   float out = (tone * 0.9f + slightNoise) * highTomEnv * 0.78f * highTomAccentGain;
   return applyAccentDistortion(out, highTomAccentDistortion);
@@ -1124,7 +1128,7 @@ float TR909DrumSynthVoice::processRim() {
   rimPhase += 1200.0f * invSampleRate;
   if (rimPhase >= 1.0f)
     rimPhase -= 1.0f;
-  float tone = sinf(2.0f * 3.14159265f * rimPhase);
+  float tone = Wavetable::lookupSine((uint32_t)(rimPhase * kPhaseToUint32));
   float click = (frand() * 0.5f + 0.5f) * rimEnv;
   float out = (tone * 0.6f + click) * rimEnv * 0.85f * rimAccentGain;
   return applyAccentDistortion(out, rimAccentDistortion);
@@ -1155,9 +1159,9 @@ float TR909DrumSynthVoice::processClap() {
 
   float tail = 0.0f;
   if (clapTime >= 0.02f) {
-    float t = clapTime - 0.02f;
-    float env = expf(-t * 18.0f);
-    tail = frand() * env;
+    if (clapTailEnv <= 0.0f) clapTailEnv = 1.0f; // first entry
+    clapTailEnv *= clapTailDecay;
+    tail = frand() * clapTailEnv;
   }
 
   float out = clapBandpass.process(bursts + tail);
@@ -1188,7 +1192,7 @@ float TR909DrumSynthVoice::processCymbal() {
   if (cymbalPhaseB >= 1.0f)
     cymbalPhaseB -= 1.0f;
   float tone =
-    (sinf(2.0f * 3.14159265f * cymbalPhaseA) + sinf(2.0f * 3.14159265f * cymbalPhaseB)) *
+    (Wavetable::lookupSine((uint32_t)(cymbalPhaseA * kPhaseToUint32)) + Wavetable::lookupSine((uint32_t)(cymbalPhaseB * kPhaseToUint32))) *
     0.5f * cymbalToneEnv * cymbalBrightness;
 
   float out = cymbalHp * 0.55f + tone * 1.05f;
@@ -1387,7 +1391,7 @@ float TR606DrumSynthVoice::processKick() {
   kickPhase += (baseFreq + fmHz) * invSampleRate;
   if (kickPhase >= 1.0f) kickPhase -= 1.0f;
 
-  float out = sinf(2.0f * 3.14159265f * kickPhase) * kickAmpEnv;
+  float out = Wavetable::lookupSine((uint32_t)(kickPhase * kPhaseToUint32)) * kickAmpEnv;
   return out;
 }
 
@@ -1408,8 +1412,8 @@ float TR606DrumSynthVoice::processSnare() {
   if (snareTonePhaseB >= 1.0f) snareTonePhaseB -= 1.0f;
 
   float tone =
-    (sinf(2.0f * 3.14159265f * snareTonePhaseA) +
-     sinf(2.0f * 3.14159265f * snareTonePhaseB)) * 0.5f * snareToneEnv;
+    (Wavetable::lookupSine((uint32_t)(snareTonePhaseA * kPhaseToUint32)) +
+     Wavetable::lookupSine((uint32_t)(snareTonePhaseB * kPhaseToUint32))) * 0.5f * snareToneEnv;
 
   float noise = frand();
   snareNoiseLp.a = snareNoiseLpCoeff;
@@ -1475,7 +1479,7 @@ float TR606DrumSynthVoice::processMidTom() {
   midTomPhase += (baseFreq + fmHz) * invSampleRate;
   if (midTomPhase >= 1.0f) midTomPhase -= 1.0f;
 
-  return sinf(2.0f * 3.14159265f * midTomPhase) * midTomAmpEnv;
+  return Wavetable::lookupSine((uint32_t)(midTomPhase * kPhaseToUint32)) * midTomAmpEnv;
 }
 
 float TR606DrumSynthVoice::processHighTom() {
@@ -1494,7 +1498,7 @@ float TR606DrumSynthVoice::processHighTom() {
   highTomPhase += (baseFreq + fmHz) * invSampleRate;
   if (highTomPhase >= 1.0f) highTomPhase -= 1.0f;
 
-  return sinf(2.0f * 3.14159265f * highTomPhase) * highTomAmpEnv;
+  return Wavetable::lookupSine((uint32_t)(highTomPhase * kPhaseToUint32)) * highTomAmpEnv;
 }
 
 float TR606DrumSynthVoice::processRim() {
@@ -1529,7 +1533,8 @@ void TR606DrumSynthVoice::setParameter(DrumParamId id, float value) {
 }
 
 float TR606DrumSynthVoice::frand() {
-  return (float)rand() / (float)RAND_MAX * 2.0f - 1.0f;
+  noiseState_ = noiseState_ * 1664525u + 1013904223u;
+  return ((noiseState_ >> 16) & 0x7FFF) / 16384.0f - 1.0f;
 }
 
 float TR606DrumSynthVoice::decayCoeff(float timeSeconds) const {

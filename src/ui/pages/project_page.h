@@ -3,6 +3,7 @@
 #include "../ui_core.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
+#include "../../audio/midi_importer.h"
 
 class ProjectPage : public IPage{
  public:
@@ -22,6 +23,7 @@ class ProjectPage : public IPage{
   enum class MidiAdvanceFocus { 
       SynthA = 0, SynthB, Drums, 
       Mode, 
+      SourceChanA, SourceChanB, SourceChanD,
       StartPattern, AutoFind, 
       FromBar, LengthBars, 
       Import, Cancel,
@@ -65,7 +67,7 @@ class ProjectPage : public IPage{
       else fn();
   }
   
-  void updateFromEngine();
+  void autoRouteMidi();
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;
@@ -84,6 +86,7 @@ class ProjectPage : public IPage{
   std::vector<std::string> midi_dirs_;
   std::vector<std::string> midi_files_;
   std::string midi_current_path_ = "/midi";
+  MidiImporter::ScanResult midi_scan_;
   int midi_import_start_pattern_ = 0;
   int midi_import_from_bar_ = 0;
   int midi_import_length_bars_ = 16;
@@ -91,6 +94,9 @@ class ProjectPage : public IPage{
   int midi_dest_a_ = 0;
   int midi_dest_b_ = 1;
   int midi_dest_d_ = 2;
+  int midi_synth_a_chan_ = 1;
+  int midi_synth_b_chan_ = 2;
+  int midi_drums_chan_ = 10;
   bool midi_import_append_ = false;
   int midi_adv_scroll_ = 0;
   std::string save_name_;

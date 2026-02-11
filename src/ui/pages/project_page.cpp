@@ -1,6 +1,8 @@
 #include "project_page.h"
 #include "../ui_common.h"
 #include "../../audio/midi_importer.h"
+#include <algorithm>
+#include <vector>
 #ifdef ARDUINO
 #include <SD.h>
 #endif
@@ -293,6 +295,9 @@ void ProjectPage::openImportMidiDialog() {
   midi_import_start_pattern_ = 0;
   midi_import_from_bar_ = 0;
   midi_import_length_bars_ = 16;
+  midi_synth_a_chan_ = 1;
+  midi_synth_b_chan_ = 2;
+  midi_drums_chan_ = 10;
   midi_dest_a_ = 0;
   midi_dest_b_ = 1;
   midi_dest_d_ = 2;
@@ -304,6 +309,98 @@ void ProjectPage::openMidiAdvanceDialog() {
   dialog_type_ = DialogType::MidiAdvance;
   midi_advance_focus_ = MidiAdvanceFocus::SynthA;
   midi_adv_scroll_ = 0;
+  
+  // Resolve selected file path
+  bool hasParent = (midi_current_path_ != "/midi");
+  int offset = hasParent ? 1 : 0;
+  int fileIdx = selection_index_ - offset - (int)midi_dirs_.size();
+  
+  if (fileIdx >= 0 && fileIdx < (int)midi_files_.size()) {
+      std::string path = midi_current_path_ + "/" + midi_files_[fileIdx];
+      UI::showToast("Scanning MIDI...");
+      MidiImporter importer(mini_acid_);
+      midi_scan_ = importer.scanFile(path);
+      
+      if (midi_scan_.valid) {
+          autoRouteMidi();
+          if (midi_scan_.estimatedBars > 0) {
+              midi_import_length_bars_ = midi_scan_.estimatedBars;
+          }
+      }
+  } else {
+      midi_scan_ = MidiImporter::ScanResult(); // Invalid scan
+  }
+
+  // Final fallbacks if scan failed or was skipped
+  if (!midi_scan_.valid) {
+      if (midi_synth_a_chan_ == 0) midi_synth_a_chan_ = 1;
+      if (midi_synth_b_chan_ == 0) midi_synth_b_chan_ = 2;
+      if (midi_drums_chan_ == 0) midi_drums_chan_ = 10;
+  }
+}
+
+void ProjectPage::autoRouteMidi() {
+    // 1. Drums: Preference for Ch 10 OR track names containing "drum", "perc", "hit"
+    midi_drums_chan_ = 10;
+    int maxNotes = 0;
+    
+    // Scan for drum keywords in names first
+    for(int i=0; i<16; i++) {
+        std::string name = midi_scan_.channels[i].trackName;
+        std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+        if (name.find("drum") != std::string::npos || name.find("perc") != std::string::npos) {
+            midi_drums_chan_ = i + 1;
+            break; 
+        }
+        if (midi_scan_.channels[i].noteCount > maxNotes) {
+            maxNotes = midi_scan_.channels[i].noteCount;
+            if (!midi_scan_.channels[9].used()) midi_drums_chan_ = i + 1; // Only switch from 10 if 10 is empty
+        }
+    }
+    if (midi_scan_.channels[9].used()) midi_drums_chan_ = 10; // Ch 10 is king for GM
+
+    // 2. Synths: Find candidate channels
+    std::vector<int> candidates;
+    for (int i = 0; i < 16; i++) {
+        if (i == (midi_drums_chan_ - 1)) continue;
+        if (midi_scan_.channels[i].used()) candidates.push_back(i + 1);
+    }
+
+    // Keyword scan for A (Bass) and B (Acid/Lead)
+    int foundA = -1, foundB = -1;
+    for (int chNum : candidates) {
+        std::string name = midi_scan_.channels[chNum-1].trackName;
+        std::transform(name.begin(), name.end(), name.begin(), ::tolower);
+        if (foundA < 0 && (name.find("bass") != std::string::npos || name.find("303") != std::string::npos)) {
+            foundA = chNum;
+        } else if (foundB < 0 && (name.find("acid") != std::string::npos || name.find("lead") != std::string::npos || name.find("arp") != std::string::npos)) {
+            foundB = chNum;
+        }
+    }
+
+    // Sort remainders by pitch
+    std::sort(candidates.begin(), candidates.end(), [this](int a, int b) {
+        return midi_scan_.channels[a-1].minNote < midi_scan_.channels[b-1].minNote;
+    });
+
+    if (foundA > 0) midi_synth_a_chan_ = foundA;
+    else if (candidates.size() >= 1) midi_synth_a_chan_ = candidates[0];
+    else if (midi_synth_a_chan_ == 0) midi_synth_a_chan_ = 1;
+
+    if (foundB > 0) midi_synth_b_chan_ = foundB;
+    else if (candidates.size() >= 2) {
+        // Pick the next one that isn't foundA
+        for(int c : candidates) { if(c != midi_synth_a_chan_) { midi_synth_b_chan_ = c; break; } }
+    } else {
+        if (midi_synth_b_chan_ == 0) midi_synth_b_chan_ = (midi_synth_a_chan_ == 1) ? 2 : 1;
+    }
+    
+    // Auto-profile: Loud for Perturbator/Hotline
+    std::string path = midi_current_path_;
+    std::transform(path.begin(), path.end(), path.begin(), ::tolower);
+    if (path.find("hotline") != std::string::npos || path.find("perturbator") != std::string::npos || path.find("disco") != std::string::npos) {
+        midi_import_profile_ = MidiImportProfile::Loud;
+    }
 }
 
 void ProjectPage::openConfirmClearDialog() {
@@ -366,6 +463,16 @@ bool ProjectPage::importMidiAtSelection() {
   std::string filename = midi_files_[fileIdx];
   std::string path = midi_current_path_ + "/" + filename;
   Serial.printf("[ProjectPage] Import MIDI: %s\n", path.c_str());
+  
+  // Auto-switch engine for specific genres/files
+  std::string lowerPath = path;
+  std::transform(lowerPath.begin(), lowerPath.end(), lowerPath.begin(), ::tolower);
+  if (lowerPath.find("disco") != std::string::npos || lowerPath.find("perturbator") != std::string::npos || lowerPath.find("909") != std::string::npos) {
+      mini_acid_.setDrumEngine("909");
+  } else if (lowerPath.find("808") != std::string::npos || lowerPath.find("trap") != std::string::npos || lowerPath.find("hiphop") != std::string::npos) {
+      mini_acid_.setDrumEngine("808");
+  }
+
   MidiImporter importer(mini_acid_);
 
   MidiImporter::ImportSettings settings;
@@ -394,6 +501,9 @@ bool ProjectPage::importMidiAtSelection() {
   settings.destSynthA = midi_dest_a_;
   settings.destSynthB = midi_dest_b_;
   settings.destDrums = midi_dest_d_;
+  settings.synthAChannel = midi_synth_a_chan_;
+  settings.synthBChannel = midi_synth_b_chan_;
+  settings.drumChannel = midi_drums_chan_;
   
   UI::showToast("Importing MIDI...");
   
@@ -706,12 +816,12 @@ void ProjectPage::drawMidiAdvanceDialog(IGfx& gfx) {
     auto drawRow = [&](int rowIdx, const char* label, const char* value, bool focus) {
         int ry = startY + rowIdx * lineH;
         if (focus) {
-            gfx.fillRect(x + 4, ry - 2, w - 8, lineH, COLOR_PANEL);
+            gfx.fillRect(x + 2, ry - 2, w - 4, lineH, COLOR_PANEL);
         }
         gfx.setTextColor(focus ? COLOR_ACCENT : COLOR_LABEL);
-        gfx.drawText(x + 10, ry, label);
+        gfx.drawText(x + 4, ry, label);
         gfx.setTextColor(COLOR_WHITE);
-        gfx.drawText(x + 110, ry, value);
+        gfx.drawText(x + 70, ry, value); // Shifted left significantly (was 110)
     };
 
     char buf[64];
@@ -739,19 +849,31 @@ void ProjectPage::drawMidiAdvanceDialog(IGfx& gfx) {
             case MidiAdvanceFocus::Drums:
                 drawRow(i, "Track D:", getDestName(midi_dest_d_), focused);
                 break;
+            case MidiAdvanceFocus::SourceChanA:
+                std::snprintf(buf, sizeof(buf), "Ch %d", midi_synth_a_chan_);
+                drawRow(i, "Src A:", buf, focused);
+                break;
+            case MidiAdvanceFocus::SourceChanB:
+                std::snprintf(buf, sizeof(buf), "Ch %d", midi_synth_b_chan_);
+                drawRow(i, "Src B:", buf, focused);
+                break;
+            case MidiAdvanceFocus::SourceChanD:
+                std::snprintf(buf, sizeof(buf), "Ch %d", midi_drums_chan_);
+                drawRow(i, "Src D:", buf, focused);
+                break;
             case MidiAdvanceFocus::Mode:
                 drawRow(i, "Profile:", (midi_import_profile_ == MidiImportProfile::Loud) ? "LOUD" : "CLEAN", focused);
                 break;
             case MidiAdvanceFocus::StartPattern:
-                std::snprintf(buf, sizeof(buf), "Pattern %d", midi_import_start_pattern_ + 1);
+                std::snprintf(buf, sizeof(buf), "Ptn %d", midi_import_start_pattern_);
                 drawRow(i, "Target:", buf, focused);
                 break;
             case MidiAdvanceFocus::AutoFind:
-                drawRow(i, "Mode:", midi_import_append_ ? "APPEND" : "OVERWRITE", focused);
+                drawRow(i, "Method:", midi_import_append_ ? "APPEND" : "OVERWRT", focused);
                 break;
             case MidiAdvanceFocus::FromBar:
-                std::snprintf(buf, sizeof(buf), "Source:", (midi_import_from_bar_ == 0) ? "START" : ("Bar " + std::to_string(midi_import_from_bar_ + 1)).c_str());
-                drawRow(i, "From:", (midi_import_from_bar_ == 0) ? "Start" : ("Bar " + std::to_string(midi_import_from_bar_ + 1)).c_str(), focused);
+                std::snprintf(buf, sizeof(buf), (midi_import_from_bar_ == 0) ? "START" : "Bar %d", midi_import_from_bar_ + 1);
+                drawRow(i, "Start:", buf, focused);
                 break;
             case MidiAdvanceFocus::LengthBars:
                 if (midi_import_length_bars_ <= 0) std::strcpy(buf, "AUTO");
@@ -768,7 +890,48 @@ void ProjectPage::drawMidiAdvanceDialog(IGfx& gfx) {
         }
     }
 
-    // Bottom info
+    // Bottom info / Channel Map
+    int mapX = x + w - 85; 
+    int mapY = y + 22;
+    gfx.setTextColor(COLOR_LABEL);
+    gfx.drawText(mapX - 5, mapY - 15, "MIDI TRACKS");
+    
+    for (int ch = 0; ch < 16; ch++) {
+        int cy = mapY + ch * (lineH - 3);
+        if (cy + lineH > y + h - 18) break;
+
+        auto& ci = midi_scan_.channels[ch];
+        bool isUsed = ci.used();
+        bool isA = (ch == midi_synth_a_chan_ - 1);
+        bool isB = (ch == midi_synth_b_chan_ - 1);
+        bool isD = (ch == midi_drums_chan_ - 1);
+
+        IGfxColor color = isUsed ? COLOR_WHITE : COLOR_GRAY;
+        if (isA) color = COLOR_ACCENT;
+        if (isB) color = 0xFD20; // Orange/Yellow
+        if (isD) color = 0x07E0; // Green
+
+        // Format: "10# Bass" or " 1. ...."
+        char tag = ' ';
+        if (isA) tag = 'A'; else if (isB) tag = 'B'; else if (isD) tag = 'D';
+        
+        std::snprintf(buf, sizeof(buf), "%2d%c%c", ch + 1, isUsed ? '#' : '.', tag);
+        gfx.setTextColor(color);
+        gfx.drawText(mapX, cy, buf);
+
+        if (isUsed) {
+            // Show start of track name if exists, else note range
+            if (ci.trackName[0] != '\0') {
+                gfx.setTextColor(COLOR_LABEL);
+                gfx.drawText(mapX + 32, cy, ci.trackName);
+            } else {
+                std::snprintf(buf, sizeof(buf), "n%d-n%d", ci.minNote, ci.maxNote);
+                gfx.setTextColor(COLOR_GRAY);
+                gfx.drawText(mapX + 32, cy, buf);
+            }
+        }
+    }
+
     float bpm = mini_acid_.bpm();
     int bars = (midi_import_length_bars_ > 0) ? midi_import_length_bars_ : 16;
     float seconds = (bars * 4.0f) * (60.0f / bpm);
@@ -778,14 +941,14 @@ void ProjectPage::drawMidiAdvanceDialog(IGfx& gfx) {
     gfx.setTextColor(COLOR_LABEL);
     gfx.drawText(x + 10, y + h - 13, buf);
 
-    // Scrollbar indicator if needed
+    // Scrollbar indicator if needed (shifted left to avoid map)
     if ((int)MidiAdvanceFocus::Count > visibleRows) {
         int sbH = h - 40;
         int sbY = startY;
         int knobH = sbH * visibleRows / (int)MidiAdvanceFocus::Count;
         int knobY = sbY + (sbH - knobH) * midi_adv_scroll_ / ((int)MidiAdvanceFocus::Count - visibleRows);
-        gfx.fillRect(x + w - 4, sbY, 2, sbH, COLOR_PANEL);
-        gfx.fillRect(x + w - 4, knobY, 2, knobH, COLOR_ACCENT);
+        gfx.fillRect(mapX - 8, sbY, 2, sbH, COLOR_PANEL);
+        gfx.fillRect(mapX - 8, knobY, 2, knobH, COLOR_ACCENT);
     }
 }
 
@@ -925,6 +1088,30 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                     midi_dest_d_ += (delta != 0) ? delta : 1;
                     if (midi_dest_d_ > 2) midi_dest_d_ = -1;
                     if (midi_dest_d_ < -1) midi_dest_d_ = 2;
+                    return true;
+                }
+                break;
+            case MidiAdvanceFocus::SourceChanA:
+                if (delta != 0) {
+                    midi_synth_a_chan_ += delta;
+                    if (midi_synth_a_chan_ < 1) midi_synth_a_chan_ = 16;
+                    if (midi_synth_a_chan_ > 16) midi_synth_a_chan_ = 1;
+                    return true;
+                }
+                break;
+            case MidiAdvanceFocus::SourceChanB:
+                if (delta != 0) {
+                    midi_synth_b_chan_ += delta;
+                    if (midi_synth_b_chan_ < 1) midi_synth_b_chan_ = 16;
+                    if (midi_synth_b_chan_ > 16) midi_synth_b_chan_ = 1;
+                    return true;
+                }
+                break;
+            case MidiAdvanceFocus::SourceChanD:
+                if (delta != 0) {
+                    midi_drums_chan_ += delta;
+                    if (midi_drums_chan_ < 1) midi_drums_chan_ = 16;
+                    if (midi_drums_chan_ > 16) midi_drums_chan_ = 1;
                     return true;
                 }
                 break;

@@ -69,6 +69,11 @@ struct GenerativeParams {
     bool sparseHats;
     bool noAccents;
     float fillProbability;
+
+    // Drum groove (fields only — preset values filled by user)
+    float drumSyncopation = 0.0f;     // 0-1, syncopation amount
+    bool  drumPreferOffbeat = false;   // prefer offbeat hat placement
+    int   drumVoiceCount = 8;          // active voices (1-8)
 };
 
 // === TEXTURE PARAMETERS ===

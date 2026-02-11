@@ -21,6 +21,20 @@ uint8_t clampProbability(int value) {
   return static_cast<uint8_t>(value);
 }
 
+int valueToInt(ArduinoJson::JsonVariantConst value, int defaultValue) {
+  if (value.is<int>()) {
+    return value.as<int>();
+  }
+  return defaultValue;
+}
+
+float valueToFloat(ArduinoJson::JsonVariantConst value, float defaultValue) {
+  if (value.is<float>() || value.is<int>()) {
+    return value.as<float>();
+  }
+  return defaultValue;
+}
+
 void clearDrumPattern(DrumPattern& pattern) {
   for (int i = 0; i < DrumPattern::kSteps; ++i) {
     pattern.steps[i].hit = false;
@@ -97,12 +111,44 @@ void serializeDrumPattern(const DrumPattern& pattern, ArduinoJson::JsonObject ob
   }
 }
 
+void serializeAutomationLane(const AutomationLane& lane, ArduinoJson::JsonObject obj) {
+  obj["t"] = lane.targetParam;
+  ArduinoJson::JsonArray nodes = obj["n"].to<ArduinoJson::JsonArray>();
+  for (int i = 0; i < lane.nodeCount && i < AutomationLane::kMaxNodes; ++i) {
+    ArduinoJson::JsonObject node = nodes.add<ArduinoJson::JsonObject>();
+    node["s"] = lane.nodes[i].step;
+    node["v"] = lane.nodes[i].value;
+    node["c"] = lane.nodes[i].curveType;
+  }
+}
+
 void serializeDrumBank(const Bank<DrumPatternSet>& bank, ArduinoJson::JsonArray patterns) {
   for (int p = 0; p < Bank<DrumPatternSet>::kPatterns; ++p) {
-    ArduinoJson::JsonArray voices = patterns.add<ArduinoJson::JsonArray>();
+    ArduinoJson::JsonObject patObj = patterns.add<ArduinoJson::JsonObject>();
+    ArduinoJson::JsonArray voices = patObj["v"].to<ArduinoJson::JsonArray>();
     for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
       ArduinoJson::JsonObject voice = voices.add<ArduinoJson::JsonObject>();
       serializeDrumPattern(bank.patterns[p].voices[v], voice);
+    }
+    // Automation lanes — only write if any lane is active
+    bool hasLanes = false;
+    for (int l = 0; l < DrumPatternSet::kMaxLanes; ++l) {
+      if (bank.patterns[p].lanes[l].targetParam != 255 && bank.patterns[p].lanes[l].nodeCount > 0) {
+        hasLanes = true; break;
+      }
+    }
+    if (hasLanes) {
+      ArduinoJson::JsonArray lanesArr = patObj["lanes"].to<ArduinoJson::JsonArray>();
+      for (int l = 0; l < DrumPatternSet::kMaxLanes; ++l) {
+        ArduinoJson::JsonObject laneObj = lanesArr.add<ArduinoJson::JsonObject>();
+        serializeAutomationLane(bank.patterns[p].lanes[l], laneObj);
+      }
+    }
+    // Groove override — only write if not default (-1)
+    if (bank.patterns[p].groove.swing >= 0.0f || bank.patterns[p].groove.humanize >= 0.0f) {
+      ArduinoJson::JsonObject grooveObj = patObj["grv"].to<ArduinoJson::JsonObject>();
+      grooveObj["sw"] = bank.patterns[p].groove.swing;
+      grooveObj["hz"] = bank.patterns[p].groove.humanize;
     }
   }
 }
@@ -195,7 +241,56 @@ bool deserializeDrumPattern(ArduinoJson::JsonVariantConst value, DrumPattern& pa
   return true;
 }
 
+bool deserializeAutomationLane(ArduinoJson::JsonObjectConst obj, AutomationLane& lane) {
+  lane.targetParam = static_cast<uint8_t>(valueToInt(obj["t"], 255));
+  lane.nodeCount = 0;
+  ArduinoJson::JsonArrayConst nodes = obj["n"].as<ArduinoJson::JsonArrayConst>();
+  if (!nodes.isNull()) {
+    for (ArduinoJson::JsonVariantConst nVal : nodes) {
+      if (lane.nodeCount >= AutomationLane::kMaxNodes) break;
+      ArduinoJson::JsonObjectConst nObj = nVal.as<ArduinoJson::JsonObjectConst>();
+      if (!nObj.isNull()) {
+        lane.nodes[lane.nodeCount].step = static_cast<uint8_t>(valueToInt(nObj["s"], 0));
+        lane.nodes[lane.nodeCount].value = valueToFloat(nObj["v"], 0.0f);
+        lane.nodes[lane.nodeCount].curveType = static_cast<uint8_t>(valueToInt(nObj["c"], 0));
+        ++lane.nodeCount;
+      }
+    }
+  }
+  return true;
+}
+
 bool deserializeDrumPatternSet(ArduinoJson::JsonVariantConst value, DrumPatternSet& patternSet) {
+  // New format: object with "v" (voices), optional "lanes", optional "grv"
+  ArduinoJson::JsonObjectConst obj = value.as<ArduinoJson::JsonObjectConst>();
+  if (!obj.isNull() && !obj["v"].isNull()) {
+    ArduinoJson::JsonArrayConst voices = obj["v"].as<ArduinoJson::JsonArrayConst>();
+    if (voices.isNull() || static_cast<int>(voices.size()) != DrumPatternSet::kVoices) return false;
+    int v = 0;
+    for (ArduinoJson::JsonVariantConst voice : voices) {
+      if (!deserializeDrumPattern(voice, patternSet.voices[v])) return false;
+      ++v;
+    }
+    // Optional: automation lanes
+    ArduinoJson::JsonArrayConst lanesArr = obj["lanes"].as<ArduinoJson::JsonArrayConst>();
+    if (!lanesArr.isNull()) {
+      int l = 0;
+      for (ArduinoJson::JsonVariantConst lVal : lanesArr) {
+        if (l >= DrumPatternSet::kMaxLanes) break;
+        ArduinoJson::JsonObjectConst lObj = lVal.as<ArduinoJson::JsonObjectConst>();
+        if (!lObj.isNull()) deserializeAutomationLane(lObj, patternSet.lanes[l]);
+        ++l;
+      }
+    }
+    // Optional: groove override
+    ArduinoJson::JsonObjectConst grvObj = obj["grv"].as<ArduinoJson::JsonObjectConst>();
+    if (!grvObj.isNull()) {
+      patternSet.groove.swing = valueToFloat(grvObj["sw"], -1.0f);
+      patternSet.groove.humanize = valueToFloat(grvObj["hz"], -1.0f);
+    }
+    return true;
+  }
+  // Legacy format: flat array of voices
   ArduinoJson::JsonArrayConst voices = value.as<ArduinoJson::JsonArrayConst>();
   if (voices.isNull() || static_cast<int>(voices.size()) != DrumPatternSet::kVoices) return false;
   int v = 0;
@@ -291,19 +386,6 @@ bool deserializeSynthBanks(ArduinoJson::JsonVariantConst value, Bank<SynthPatter
     ++b;
   }
   return true;
-}
-int valueToInt(ArduinoJson::JsonVariantConst value, int defaultValue) {
-  if (value.is<int>()) {
-    return value.as<int>();
-  }
-  return defaultValue;
-}
-
-float valueToFloat(ArduinoJson::JsonVariantConst value, float defaultValue) {
-  if (value.is<float>() || value.is<int>()) {
-    return value.as<float>();
-  }
-  return defaultValue;
 }
 
 bool deserializeSynthParameters(ArduinoJson::JsonVariantConst value, SynthParameters& params) {

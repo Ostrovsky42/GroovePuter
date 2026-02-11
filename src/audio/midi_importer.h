@@ -42,6 +42,27 @@ public:
         int destDrums = 2;
     };
 
+    /// Per-channel statistics collected by scanFile()
+    struct ChannelInfo {
+        int noteCount = 0;       ///< Total note-on events
+        uint8_t minNote = 127;   ///< Lowest note seen
+        uint8_t maxNote = 0;     ///< Highest note seen
+        char trackName[16] = {}; ///< First track name for this channel (truncated)
+        bool used() const { return noteCount > 0; }
+    };
+
+    /// Result of scanFile()
+    struct ScanResult {
+        bool valid = false;
+        uint16_t format = 0;
+        uint16_t numTracks = 0;
+        uint16_t division = 0;
+        int totalNotes = 0;
+        int usedChannels = 0;
+        int estimatedBars = 0;   ///< Rough bar count based on tick range
+        ChannelInfo channels[16]; ///< 1-indexed channels stored at [ch-1]
+    };
+
     explicit MidiImporter(MiniAcid& engine);
 
     /**
@@ -51,6 +72,13 @@ public:
      * @return Error code.
      */
     Error importFile(const std::string& path, const ImportSettings& settings);
+
+    /**
+     * @brief Scan a MIDI file and return per-channel statistics without importing.
+     * @param path Full path to the .mid file.
+     * @return ScanResult with channel info.
+     */
+    ScanResult scanFile(const std::string& path);
 
     /**
      * @brief Get a descriptive error message.
