@@ -141,6 +141,20 @@ SongAreaClipboard g_song_area_clipboard;
 SongSlotClipboard g_song_slot_clipboard;
 UndoHistory g_undo_history;
 
+// Little lock icon (5x6) for LiveMix/Edit Protection
+inline void drawLockIcon(IGfx& gfx, int x, int y, IGfxColor color) {
+  // Shackle (3x2)
+  gfx.drawPixel(x + 1, y, color);
+  gfx.drawPixel(x + 2, y, color);
+  gfx.drawPixel(x + 3, y, color);
+  gfx.drawPixel(x + 1, y + 1, color);
+  gfx.drawPixel(x + 3, y + 1, color);
+  // Body (5x4)
+  gfx.fillRect(x, y + 2, 5, 4, color);
+  // Keyhole (optional contrast pixel) - assuming light color on dark bg
+  gfx.drawPixel(x + 2, y + 4, IGfxColor(0)); 
+}
+
 } // namespace
 
 SongPage::SongPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
@@ -1285,13 +1299,15 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
       break;
   }
   
-  // Home/End approx via < and >
-  if (ui_event.key == '<' || ui_event.key == ',') {
+  // Home/End via Alt + < / > (prevent accidental jumps with plain comma/dot)
+  if (ui_event.alt && (ui_event.key == '<' || ui_event.key == ',')) {
      moveCursorToRow(0);
+     showToast("Top", 500);
      return true;
   }
-  if (ui_event.key == '>' || ui_event.key == '.') {
+  if (ui_event.alt && (ui_event.key == '>' || ui_event.key == '.')) {
      moveCursorToRow(mini_acid_.songLength() - 1);
+     showToast("End", 500);
      return true;
   }
 
@@ -1797,8 +1813,9 @@ void SongPage::drawMinimalStyle(IGfx& gfx) {
       }
       
       if (isSelected) {
-        gfx.fillRect(tx, ry, track_col_w, row_h,
-                     has_selection_ ? IGfxColor(0x26303A) : IGfxColor(0x2E3E4A));
+        if (has_selection_) {
+           gfx.fillRect(tx, ry, track_col_w, row_h, IGfxColor(0x26303A));
+        }
         gfx.drawRect(tx - 1, ry, track_col_w + 1, row_h, isSelected && !has_selection_ ? COLOR_STEP_SELECTED : COLOR_STEP_HILIGHT);
       }
       if (pattern >= 0) {
@@ -1947,9 +1964,9 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
   bool reverse = mini_acid_.isSongReverse();
   char titleBuf[40];
   if (split_compare_) {
-    snprintf(titleBuf, sizeof(titleBuf), "SONG A|B%s%s", reverse ? " REV" : "", liveMix ? " LM" : "");
+    snprintf(titleBuf, sizeof(titleBuf), "SONG A|B%s", reverse ? " REV" : "");
   } else {
-    snprintf(titleBuf, sizeof(titleBuf), "SONG %c%s%s", 'A' + slot, reverse ? " REV" : "", liveMix ? " LM" : "");
+    snprintf(titleBuf, sizeof(titleBuf), "SONG %c%s", 'A' + slot, reverse ? " REV" : "");
   }
   gfx.drawText(x + 2, y + 2, titleBuf);
 
@@ -1967,6 +1984,11 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
       if (pulse) gfx.drawRect(x + w - statusW - 4, y + 1, statusW + 4, header_h - 2, TE_BLACK);
   }
   gfx.drawText(x + w - statusW - 2, y + 2, statusBuf);
+
+  // LiveMix Lock Icon
+  if (liveMix) {
+    drawLockIcon(gfx, x + w - statusW - 10, y + 3, TE_BLACK);
+  }
 
   int footer_h = 11;
   int grid_y = y + header_h + 1;
@@ -2085,8 +2107,14 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
         }
 
         if (isSelected) {
-          gfx.fillRect(tx, ry, cell_w, cell_h, TE_ACCENT);
-          gfx.setTextColor(TE_BLACK);
+          if (has_selection_) {
+             gfx.fillRect(tx, ry, cell_w, cell_h, TE_ACCENT);
+             gfx.setTextColor(TE_BLACK);
+          } else {
+             // Hollow cursor for single selection
+             gfx.drawRect(tx - 1, ry - 1, cell_w + 2, cell_h + 2, TE_ACCENT);
+             gfx.setTextColor(pattern >= 0 ? TE_WHITE.color16() : TE_DIM.color16());
+          }
         } else {
           // Logic for dimmed text
           if (pattern >= 0) {
@@ -2141,7 +2169,9 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
   std::snprintf(footerBuf, sizeof(footerBuf), "E:%c P:%c%s  N:ins M:del X:split p:PH A+B:EDIT",
                 'A' + editSlot,
                 'A' + playSlot,
-                liveMix ? " LM" : "");
+                'A' + editSlot,
+                'A' + playSlot,
+                "");
   
   gfx.setTextColor(TE_DIM);
   gfx.drawText(x + 2, footer_y + 2, footerBuf);
@@ -2182,8 +2212,17 @@ void SongPage::drawRetroClassicStyle(IGfx& gfx) {
       std::snprintf(titleBuf, sizeof(titleBuf), "%s REV", split_compare_ ? "SONG A|B" : (activeSlot == 0 ? "SONG A" : "SONG B"));
     }
     char modeBuf[32];
-    std::snprintf(modeBuf, sizeof(modeBuf), "%s%s", mini_acid_.songModeEnabled() ? "PLAY" : "EDIT", liveMix ? " LM" : "");
-    retro::drawHeaderBar(gfx, x, y, w, 12, titleBuf, modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
+    std::snprintf(modeBuf, sizeof(modeBuf), "%s", mini_acid_.songModeEnabled() ? "PLAY" : "EDIT");
+    const int headerH = 12;
+    retro::drawHeaderBar(gfx, x, y, w, headerH, titleBuf, modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
+
+    if (liveMix) {
+       // Draw lock icon next to mode text (approximate position, header is right-aligned)
+       // Mode text is usually at right edge. We'll put lock icon to the left of it.
+       // "EDIT" is approx 24px wide. "PLAY" is 24px.
+       int lockX = x + w - 35; 
+       drawLockIcon(gfx, lockX, y + 3, IGfxColor(RetroTheme::TEXT_PRIMARY));
+    }
 
     if (!split_compare_) {
       int slotX = x + 4;
@@ -2386,8 +2425,7 @@ void SongPage::drawRetroClassicStyle(IGfx& gfx) {
           } else {
             // Empty cell
             if (isSelected && !has_selection_) {
-               // Subtle background hint for empty cell cursor
-               gfx.fillRect(tx, ry, cell_w - 1, row_h, IGfxColor(0x06080A));
+               // No background fill, just hollow frame
             } else if (!isSelected) {
               gfx.setTextColor(IGfxColor(0x181818));
               gfx.drawText(tx + (cell_w - 4) / 2, ry, ".");
@@ -2461,6 +2499,11 @@ void SongPage::drawAmberStyle(IGfx& gfx) {
     std::snprintf(modeBuf, sizeof(modeBuf), "%s", mini_acid_.songModeEnabled() ? "PLAY" : "EDIT");
     const char* title = mini_acid_.isSongReverse() ? "SONG REV" : "SONG";
     amber::drawHeaderBar(gfx, x, y, w, 12, title, modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
+
+    if (mini_acid_.liveMixModeEnabled()) {
+       int lockX = x + w - 35;
+       drawLockIcon(gfx, lockX, y + 3, IGfxColor(AmberTheme::TEXT_PRIMARY));
+    }
 
     amber::SelectionBarConfig slotCfg;
     slotCfg.x = x + 4; slotCfg.y = y + 14; slotCfg.w = 60; slotCfg.h = 10;
