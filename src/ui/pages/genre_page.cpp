@@ -716,63 +716,85 @@ bool GenrePage::handleEvent(UIEvent& e) {
     if (e.event_type != GROOVEPUTER_KEY_DOWN) return false;
     
     // Helper lambdas for navigation
-    auto moveUp = [&]() {
+    auto moveUp = [&]() -> bool {
         if (focus_ == FocusArea::GENRE) {
             genreIndex_ = (genreIndex_ - 1 + kGenerativeModeCount) % kGenerativeModeCount;
             ensureTextureAllowedForCurrentGenre();
+            return true;
         } else if (focus_ == FocusArea::TEXTURE) {
             int vis = textureToVisibleIndex(textureIndex_);
             int cnt = visibleTextureCount();
             if (cnt > 0) {
                 vis = (vis - 1 + cnt) % cnt;
                 textureIndex_ = visibleTextureAt(vis);
+                return true;
             }
         } else if (focus_ == FocusArea::APPLY_MODE) {
-            if (e.meta) adjustMorphAmount(16);
+            if (e.meta) {
+                adjustMorphAmount(16);
+                return true;
+            }
         }
+        return false;
     };
-    auto moveDown = [&]() {
+    auto moveDown = [&]() -> bool {
         if (focus_ == FocusArea::GENRE) {
             genreIndex_ = (genreIndex_ + 1) % kGenerativeModeCount;
             ensureTextureAllowedForCurrentGenre();
+            return true;
         } else if (focus_ == FocusArea::TEXTURE) {
             int vis = textureToVisibleIndex(textureIndex_);
             int cnt = visibleTextureCount();
             if (cnt > 0) {
                 vis = (vis + 1) % cnt;
                 textureIndex_ = visibleTextureAt(vis);
+                return true;
             }
         } else if (focus_ == FocusArea::APPLY_MODE) {
-            if (e.meta) adjustMorphAmount(-16);
+            if (e.meta) {
+                adjustMorphAmount(-16);
+                return true;
+            }
         }
+        return false;
     };
-    auto moveLeft = [&]() {
+    auto moveLeft = [&]() -> bool {
         if (focus_ == FocusArea::TEXTURE) {
             auto& gs = mini_acid_.sceneManager().currentScene().genre;
             int v = (int)gs.textureAmount - 5;
             if (v < 0) v = 0;
             gs.textureAmount = static_cast<uint8_t>(v);
+            return true;
         } else if (focus_ == FocusArea::APPLY_MODE) {
-            if (e.meta) cycleRecipeSelection(-1);
+            if (e.meta) {
+                cycleRecipeSelection(-1);
+                return true;
+            }
         }
+        return false;
     };
-    auto moveRight = [&]() {
+    auto moveRight = [&]() -> bool {
         if (focus_ == FocusArea::TEXTURE) {
             auto& gs = mini_acid_.sceneManager().currentScene().genre;
             int v = (int)gs.textureAmount + 5;
             if (v > 100) v = 100;
             gs.textureAmount = static_cast<uint8_t>(v);
+            return true;
         } else if (focus_ == FocusArea::APPLY_MODE) {
-            if (e.meta) cycleRecipeSelection(1);
+            if (e.meta) {
+                cycleRecipeSelection(1);
+                return true;
+            }
         }
+        return false;
     };
 
     int nav = UIInput::navCode(e);
     switch (nav) {
-        case GROOVEPUTER_UP:    moveUp();    return true;
-        case GROOVEPUTER_DOWN:  moveDown();  return true;
-        case GROOVEPUTER_LEFT:  moveLeft();  return true;
-        case GROOVEPUTER_RIGHT: moveRight(); return true;
+        case GROOVEPUTER_UP:    if (moveUp()) return true; break;
+        case GROOVEPUTER_DOWN:  if (moveDown()) return true; break;
+        case GROOVEPUTER_LEFT:  if (moveLeft()) return true; break;
+        case GROOVEPUTER_RIGHT: if (moveRight()) return true; break;
         default: break;
     }
 
@@ -884,12 +906,15 @@ void GenrePage::cycleRecipeSelection(int direction) {
     withAudioGuard([&]() {
         if (mini_acid_.isPlaying()) {
             mini_acid_.genreManager().queueRecipe(static_cast<GenreRecipeId>(recipeIndex_));
+            mini_acid_.genreManager().queueMorphTarget(
+                morphAmount_ > 0 ? static_cast<GenreRecipeId>(recipeIndex_) : kBaseRecipeId);
+            mini_acid_.genreManager().queueMorphAmount(static_cast<uint8_t>(morphAmount_));
         } else {
             mini_acid_.genreManager().setRecipe(static_cast<GenreRecipeId>(recipeIndex_));
+            mini_acid_.genreManager().setMorphTarget(
+                morphAmount_ > 0 ? static_cast<GenreRecipeId>(recipeIndex_) : kBaseRecipeId);
+            mini_acid_.genreManager().setMorphAmount(static_cast<uint8_t>(morphAmount_));
         }
-        mini_acid_.genreManager().setMorphTarget(
-            morphAmount_ > 0 ? static_cast<GenreRecipeId>(recipeIndex_) : kBaseRecipeId);
-        mini_acid_.genreManager().setMorphAmount(static_cast<uint8_t>(morphAmount_));
     });
 
     char toast[72];
@@ -907,16 +932,25 @@ void GenrePage::adjustMorphAmount(int delta) {
 
     auto& gs = mini_acid_.sceneManager().currentScene().genre;
     gs.morphAmount = static_cast<uint8_t>(morphAmount_);
-    gs.morphTarget = static_cast<uint8_t>(morphAmount_ > 0 ? recipeIndex_ : 0);
+    const GenreRecipeId nextTarget =
+        morphAmount_ > 0 ? static_cast<GenreRecipeId>(recipeIndex_) : kBaseRecipeId;
+    gs.morphTarget = static_cast<uint8_t>(nextTarget);
 
+    const uint8_t nextAmount = static_cast<uint8_t>(morphAmount_);
     withAudioGuard([&]() {
-        mini_acid_.genreManager().setMorphTarget(
-            morphAmount_ > 0 ? static_cast<GenreRecipeId>(recipeIndex_) : kBaseRecipeId);
-        mini_acid_.genreManager().setMorphAmount(static_cast<uint8_t>(morphAmount_));
+        if (mini_acid_.isPlaying()) {
+            mini_acid_.genreManager().queueMorphTarget(nextTarget);
+            mini_acid_.genreManager().queueMorphAmount(nextAmount);
+        } else {
+            mini_acid_.genreManager().setMorphTarget(nextTarget);
+            mini_acid_.genreManager().setMorphAmount(nextAmount);
+        }
     });
 
     char toast[64];
-    std::snprintf(toast, sizeof(toast), "Morph: %d%%", (morphAmount_ * 100) / 255);
+    std::snprintf(toast, sizeof(toast), "Morph: %d%%%s",
+                  (morphAmount_ * 100) / 255,
+                  mini_acid_.isPlaying() ? " (queued)" : "");
     UI::showToast(toast, 700);
 }
 

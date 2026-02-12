@@ -243,6 +243,19 @@ GrooveboxMode GenreManager::grooveboxModeForGenerative(GenerativeMode mode) {
     }
 }
 
+GrooveboxMode GenreManager::grooveboxModeForRecipe(GenreRecipeId id, GenerativeMode fallbackMode) {
+    switch (id) {
+        case 1: return GrooveboxMode::Breaks; // UK Garage
+        case 2: return GrooveboxMode::Breaks; // DnB
+        case 3: return GrooveboxMode::Breaks; // Footwork
+        case 4: return GrooveboxMode::Acid;   // Psytrance
+        case 5: return GrooveboxMode::Dub;    // Dub Techno
+        case 0: break;                        // base layer: use fallback
+        default: break;                       // unknown recipe: safe fallback
+    }
+    return grooveboxModeForGenerative(fallbackMode);
+}
+
 TextureMode GenreManager::firstAllowedTexture(GenerativeMode genre) {
     for (int t = 0; t < kTextureModeCount; ++t) {
         TextureMode mode = static_cast<TextureMode>(t);
@@ -440,7 +453,7 @@ void GenreManager::ensureCompiled_() const {
     }
 
     const GenreRecipeDef* morphRecipe = findRecipe(state_.morphTarget);
-    if (morphRecipe && state_.morphAmount > 0) {
+    if (morphRecipe && state_.morphAmount > 0 && state_.morphTarget != state_.recipe) {
         GenerativeParams target = kGenerativePresets[static_cast<int>(state_.generative)];
         applyRecipeOverride(target, morphRecipe->params);
         clampGenerativeParams(target);

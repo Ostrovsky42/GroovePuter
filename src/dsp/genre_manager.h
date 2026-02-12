@@ -202,12 +202,29 @@ public:
         pendingRecipe_ = recipe;
         pendingRecipeDirty_ = true;
     }
+    void queueMorphTarget(GenreRecipeId target) {
+        pendingMorphTarget_ = target;
+        pendingMorphDirty_ = true;
+    }
+    void queueMorphAmount(uint8_t amount) {
+        pendingMorphAmount_ = amount;
+        pendingMorphDirty_ = true;
+    }
     bool commitPendingRecipe() {
-        if (!pendingRecipeDirty_) return false;
-        state_.recipe = pendingRecipe_;
-        pendingRecipeDirty_ = false;
-        cachedDirty_ = true;
-        return true;
+        bool changed = false;
+        if (pendingRecipeDirty_) {
+            state_.recipe = pendingRecipe_;
+            pendingRecipeDirty_ = false;
+            changed = true;
+        }
+        if (pendingMorphDirty_) {
+            state_.morphTarget = pendingMorphTarget_;
+            state_.morphAmount = pendingMorphAmount_;
+            pendingMorphDirty_ = false;
+            changed = true;
+        }
+        if (changed) cachedDirty_ = true;
+        return changed;
     }
     
     // Getters
@@ -252,6 +269,7 @@ public:
     }
     static const char* recipeName(GenreRecipeId id);
     static uint8_t recipeCount();
+    static GrooveboxMode grooveboxModeForRecipe(GenreRecipeId id, GenerativeMode fallbackMode);
 
     // Canonical bridge between 9 genres and 5 groovebox macro modes.
     static GrooveboxMode grooveboxModeForGenerative(GenerativeMode mode);
@@ -285,6 +303,9 @@ private:
     GenreState state_;
     GenreRecipeId pendingRecipe_ = 0;
     bool pendingRecipeDirty_ = false;
+    GenreRecipeId pendingMorphTarget_ = 0;
+    uint8_t pendingMorphAmount_ = 0;
+    bool pendingMorphDirty_ = false;
     mutable bool cachedDirty_ = true;
     mutable GenerativeParams cachedGenerativeParams_{};
     mutable const DrumGenreTemplate* cachedDrumOverride_ = nullptr;
