@@ -2004,87 +2004,111 @@ bool SceneManager::isSongReverseAtSlot(int slot) const {
 }
 
 void SceneManager::mergeSongs() {
-  // Merge Slot B into Slot A
-  // Rule: Target[i] = (A[i] != empty) ? A[i] : B[i]
-  // Note: If A is empty at i, we take B. If A has data, we keep A.
-  // This is a "fill gaps" merge.
-  // Merge OTHER slot into ACTIVE slot
+  // Per-track merge: for each (row, track), prefer Active if it has data,
+  // fall back to Other otherwise. This way a row with drums in A but no
+  // bass still picks up B's bass, instead of skipping the whole row.
   int active = scene_->activeSongSlot;
-  int other = (active == 0) ? 1 : 0;
+  int other  = (active == 0) ? 1 : 0;
 
-  Song& a = scene_->songs[active];
+  Song&       a = scene_->songs[active];
   const Song& b = scene_->songs[other];
-  int originalLen = a.length;
-  // Determine new length: max of A and B
+
   int newLen = std::max(a.length, b.length);
   if (newLen > Song::kMaxPositions) newLen = Song::kMaxPositions;
-  
+
   for (int i = 0; i < newLen; ++i) {
-      bool aHasData = false;
-      for (int t = 0; t < SongPosition::kTrackCount; ++t) {
-          if (a.positions[i].patterns[t] >= 0) {
-              aHasData = true;
-              break;
-          }
+    for (int t = 0; t < SongPosition::kTrackCount; ++t) {
+      // Only write B's track data when A genuinely has nothing there.
+      if (a.positions[i].patterns[t] < 0 && i < b.length) {
+        a.positions[i].patterns[t] = b.positions[i].patterns[t];
       }
-      
-      if (!aHasData && i < b.length) {
-          // A is empty at this position, try to copy from B
-          bool bHasData = false;
-           for (int t = 0; t < SongPosition::kTrackCount; ++t) {
-              if (b.positions[i].patterns[t] >= 0) {
-                  bHasData = true;
-                  break;
-              }
-           }
-           if (bHasData) {
-               a.positions[i] = b.positions[i];
-           }
-      }
+    }
   }
+
   a.length = newLen;
-  trimSongLength(); // Recalculate true length based on content
+  trimSongLength();
 }
 
 void SceneManager::alternateSongs() {
-    // Interleave Slot A and Slot B into Slot A
-    // Rule: Target[i] = (i % 2 == 0) ? A[i/2] : B[i/2]
-    // Wait, alternate meant interleave 1 from A, 1 from B? 
-    // "alternate: четные A, нечетные B" -> Evens from A, Odds from B.
-    // DOES NOT IMPLY 2x LENGTH.
-    // It implies taking step 0 from A, step 1 from B, step 2 from A...
-    // Let's implement that strict rule.
-    
-    // Interleave Active and Other into Active
-    int active = scene_->activeSongSlot;
-    int other = (active == 0) ? 1 : 0;
-    
-    Song& target = scene_->songs[active];
-    Song a = scene_->songs[active]; // Copy original Active
-    const Song& b = scene_->songs[other];
-    
-    int maxLen = std::max(a.length, b.length);
-    if (maxLen > Song::kMaxPositions) maxLen = Song::kMaxPositions;
+  // True interleave: weave A and B into a new sequence that is up to 2x
+  // longer. Result[0]=A[0], Result[1]=B[0], Result[2]=A[1], Result[3]=B[1]…
+  // This preserves the musical content of both slots in playback order.
+  int active = scene_->activeSongSlot;
+  int other  = (active == 0) ? 1 : 0;
 
-    for (int i = 0; i < maxLen; ++i) {
-        if (i % 2 == 0) {
-            // Even: Take from A 
-            if (i < a.length) target.positions[i] = a.positions[i];
-            else {
-                 // A out of bounds, clear or keep? strict logic says A[i].
-                 // If A ended, it's empty.
-                 for(int t=0; t<SongPosition::kTrackCount; ++t) target.positions[i].patterns[t] = -1;
-            }
-        } else {
-            // Odd: Take from B
-            if (i < b.length) target.positions[i] = b.positions[i];
-            else {
-                 for(int t=0; t<SongPosition::kTrackCount; ++t) target.positions[i].patterns[t] = -1;
-            }
-        }
+  const Song a = scene_->songs[active]; // snapshot before we overwrite
+  const Song& b = scene_->songs[other];
+
+  int steps   = std::max(a.length, b.length);
+  int newLen  = std::min(steps * 2, Song::kMaxPositions);
+
+  Song& target = scene_->songs[active];
+
+  for (int i = 0; i < steps; ++i) {
+    int slotA = i * 2;       // even positions  → A's rows
+    int slotB = i * 2 + 1;  // odd  positions  → B's rows
+
+    if (slotA < Song::kMaxPositions) {
+      target.positions[slotA] = (i < a.length)
+          ? a.positions[i]
+          : SongPosition{};  // pad with empty if A is shorter
     }
-    target.length = maxLen;
-    trimSongLength();
+
+    if (slotB < Song::kMaxPositions) {
+      target.positions[slotB] = (i < b.length)
+          ? b.positions[i]
+          : SongPosition{};  // pad with empty if B is shorter
+    }
+  }
+
+  target.length = newLen;
+  trimSongLength();
+}
+
+void SceneManager::insertSongRow(int position) {
+    if (position < 0) position = 0;
+    if (position >= Song::kMaxPositions) return;
+
+    Song& song = editSong();
+    int len = song.length;
+
+    // Shift rows down
+    int lastRow = std::min(len, Song::kMaxPositions - 1);
+    for (int r = lastRow; r > position; --r) {
+        song.positions[r] = song.positions[r - 1];
+    }
+
+    // Clear new row
+    for (int t = 0; t < SongPosition::kTrackCount; ++t) {
+        song.positions[position].patterns[t] = -1;
+    }
+
+    if (len < Song::kMaxPositions) {
+        song.length = len + 1;
+    }
+}
+
+void SceneManager::deleteSongRow(int position) {
+    if (position < 0) return;
+
+    Song& song = editSong();
+    int len = song.length;
+    if (len <= 0 || position >= len) return;
+
+    // Shift rows up
+    for (int r = position; r < len - 1; ++r) {
+        song.positions[r] = song.positions[r + 1];
+    }
+
+    // Clear dangling last row
+    int last = len - 1;
+    for (int t = 0; t < SongPosition::kTrackCount; ++t) {
+        song.positions[last].patterns[t] = -1;
+    }
+
+    if (len > 1) {
+        song.length = len - 1;
+    }
 }
 
 int SceneManager::loopStartRow() const { return loopStartRow_; }

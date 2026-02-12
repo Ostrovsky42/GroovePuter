@@ -600,6 +600,10 @@ public:
   void mergeSongs();
   void alternateSongs();
   
+  // Song row manipulation
+  void insertSongRow(int position);
+  void deleteSongRow(int position);
+  
   int activeSongSlot() const;
   void setActiveSongSlot(int slot);
 

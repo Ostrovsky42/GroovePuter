@@ -284,7 +284,13 @@ inline void drawHelpPageSongCont(IGfx& gfx, int x, int y, int w, int h) {
 
   drawHelpHeading(gfx, layout.left_x, left_y, "Song ops");
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+R", "Reverse", IGfxColor::Green());
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+R", "Reverse song order", IGfxColor::Green());
   left_y += lh;
-  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+M / CTRL+N", "Merge / Alternate", IGfxColor::Magenta());
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+M", "Merge A+B into one", IGfxColor::Magenta());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+N", "Alternate A/B patterns", IGfxColor::Magenta());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "M", "Toggle song mode", IGfxColor::Yellow());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "G", "Generate new song", IGfxColor::Cyan());
 }

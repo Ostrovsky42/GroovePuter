@@ -770,6 +770,8 @@ void MiniAcid::setLiveMixMode(bool enabled) {
 void MiniAcid::toggleLiveMixMode() { setLiveMixMode(!liveMixMode_); }
 void MiniAcid::mergeSongs() { sceneManager_.mergeSongs(); }
 void MiniAcid::alternateSongs() { sceneManager_.alternateSongs(); }
+void MiniAcid::insertSongRow(int position) { sceneManager_.insertSongRow(position); }
+void MiniAcid::deleteSongRow(int position) { sceneManager_.deleteSongRow(position); }
 void MiniAcid::setSongReverse(bool reverse) { sceneManager_.setSongReverse(reverse); }
 bool MiniAcid::isSongReverse() const { return sceneManager_.isSongReverse(); }
 void MiniAcid::queueSongReverseToggle() {
@@ -1356,6 +1358,14 @@ void MiniAcid::applySongPositionSelection() {
 }
 
 // REWRITTEN LOGIC
+void MiniAcid::acknowledgeRehearsal() {
+  if (waitingForRehearsal_) {
+    waitingForRehearsal_ = false;
+    rehearsalAcknowledged_ = true;
+    LOG_PRINTLN("Rehearsal acknowledged, resuming playback");
+  }
+}
+
 void MiniAcid::advanceSongPlayhead() {
   int len = sceneManager_.songLengthAtSlot(songPlaybackSlot_);
   if (len < 1) len = 1;
@@ -1406,6 +1416,26 @@ void MiniAcid::advanceSongPlayhead() {
           if (nextPos >= len) nextPos = 0;
       }
   }
+
+  // REHEARSAL MODE (Pause Rows)
+  // Check if next row contains the pause sentinel (-2) on any track
+  bool rowIsPause = false;
+  for (int t = 0; t < SongPosition::kTrackCount; ++t) {
+      if (sceneManager_.songPatternAtSlot(songPlaybackSlot_, nextPos, (SongTrack)t) == -2) {
+          rowIsPause = true;
+          break;
+      }
+  }
+
+  if (rowIsPause && !rehearsalAcknowledged_) {
+      waitingForRehearsal_ = true;
+      // DO NOT advance nextPos - stay on current row
+      return;
+  }
+  
+  // Clear acknowledgment once we move past a pause row or hit a normal row
+  rehearsalAcknowledged_ = false;
+  waitingForRehearsal_ = false;
 
   // Final Safety clamp
   if (nextPos < 0) nextPos = 0;

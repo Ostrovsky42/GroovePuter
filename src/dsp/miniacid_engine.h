@@ -186,6 +186,13 @@ public:
   void toggleLiveMixMode();
   void mergeSongs();
   void alternateSongs();
+  void insertSongRow(int position);
+  void deleteSongRow(int position);
+  
+  // Rehearsal Mode (Pause rows)
+  void acknowledgeRehearsal();
+  bool isWaitingForRehearsal() const { return waitingForRehearsal_; }
+
   void setSongReverse(bool reverse);
   bool isSongReverse() const;
   void queueSongReverseToggle();
@@ -527,6 +534,10 @@ private:
   uint16_t fxSafetyHold_ = 0;
   uint32_t lastUnderrunCount_ = 0;
   uint32_t perfDetailCounter_ = 0;
+
+  // Rehearsal Mode
+  bool waitingForRehearsal_ = false;
+  bool rehearsalAcknowledged_ = false;
 
   float dcBlockX1_ = 0.0f;
   float dcBlockY1_ = 0.0f;
