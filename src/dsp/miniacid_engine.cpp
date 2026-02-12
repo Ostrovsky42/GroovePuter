@@ -822,7 +822,7 @@ int MiniAcid::displayDrumLocalPatternIndex() const {
 }
 
 std::vector<std::string> MiniAcid::getAvailableDrumEngines() const {
-  return {"808", "909", "606"};
+  return {"808", "909", "606", "CR78", "KPR77", "SP12"};
 }
 
 
@@ -835,6 +835,12 @@ void MiniAcid::setDrumEngine(const std::string& engineName) {
     targetEngine = "606";
   } else if (name.find("808") != std::string::npos) {
     targetEngine = "808";
+  } else if (name.find("cr78") != std::string::npos) {
+    targetEngine = "CR78";
+  } else if (name.find("kpr77") != std::string::npos) {
+    targetEngine = "KPR77";
+  } else if (name.find("sp12") != std::string::npos) {
+    targetEngine = "SP12";
   }
   LOG_DEBUG("    - MiniAcid::setDrumEngine: setting to %s\n", name.c_str());
   if (targetEngine.empty()) {
@@ -854,6 +860,15 @@ void MiniAcid::setDrumEngine(const std::string& engineName) {
   } else if (targetEngine == "808") {
     drums = std::make_unique<TR808DrumSynthVoice>(sampleRateValue);
     drumEngineName_ = "808";
+  } else if (targetEngine == "CR78") {
+    drums = std::make_unique<CR78DrumSynthVoice>(sampleRateValue);
+    drumEngineName_ = "CR78";
+  } else if (targetEngine == "KPR77") {
+    drums = std::make_unique<KPR77DrumSynthVoice>(sampleRateValue);
+    drumEngineName_ = "KPR77";
+  } else if (targetEngine == "SP12") {
+    drums = std::make_unique<SP12DrumSynthVoice>(sampleRateValue);
+    drumEngineName_ = "SP12";
   }
   if (drums) {
     LOG_PRINTLN("    - MiniAcid::setDrumEngine: resetting drums...");
@@ -1601,7 +1616,7 @@ float MiniAcid::evaluateAutomationLaneAtStep_(const AutomationLane& lane, int st
 
 void MiniAcid::applyDrumAutomationLanesForStep_(const DrumPatternSet& patternSet, int step) {
   Scene& scene = sceneManager_.currentScene();
-  static const char* kEngineByLaneValue[] = {"808", "909", "606"};
+  static const char* kEngineByLaneValue[] = {"808", "909", "606", "CR78", "KPR77", "SP12"};
   constexpr int kEngineCount = static_cast<int>(sizeof(kEngineByLaneValue) / sizeof(kEngineByLaneValue[0]));
 
   for (int i = 0; i < DrumPatternSet::kMaxLanes; ++i) {

@@ -1592,3 +1592,386 @@ void TR606DrumSynthVoice::updateCymbalFilter(float accent, Biquad& filter) {
   filter.b1 = a1 / a0;
   filter.b2 = a2 / a0;
 }
+
+// -----------------------------------------------------------------------------
+// CR-78 Implementation
+// -----------------------------------------------------------------------------
+
+CR78DrumSynthVoice::CR78DrumSynthVoice(float sampleRate) : sampleRate(sampleRate) {
+  setSampleRate(sampleRate);
+  reset();
+}
+
+void CR78DrumSynthVoice::reset() {
+  kickEnv = 0.0f; kickPhase = 0.0f;
+  snareEnv = 0.0f; snareNoiseEnv = 0.0f;
+  hatEnv = 0.0f;
+  for(int i=0; i<4; i++) hatMetalPhase[i] = 0.0f;
+  for(int i=0; i<2; i++) { tomEnv[i] = 0.0f; tomPhase[i] = 0.0f; }
+  rimEnv = 0.0f; rimPhase = 0.0f;
+  clapEnv = 0.0f; 
+  cymbalEnv = 0.0f; cymbalPhase = 0.0f;
+  
+  params[static_cast<int>(DrumParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.0f, 0.8f, 1.0f/128);
+}
+
+void CR78DrumSynthVoice::setSampleRate(float sr) {
+  if (sr <= 0) sr = 44100.0f;
+  sampleRate = sr;
+}
+
+float CR78DrumSynthVoice::decayCoef(float ms) {
+  return expf(-1.0f / (ms * 0.001f * sampleRate));
+}
+
+float CR78DrumSynthVoice::lcgFrand() {
+  noiseState = noiseState * 1664525u + 1013904223u;
+  return ((noiseState >> 16) & 0x7FFF) / 16384.0f - 1.0f;
+}
+
+const Parameter& CR78DrumSynthVoice::parameter(DrumParamId id) const { return params[static_cast<int>(id)]; }
+void CR78DrumSynthVoice::setParameter(DrumParamId id, float value) { params[static_cast<int>(id)].setValue(value); }
+
+void CR78DrumSynthVoice::triggerKick(bool accent, uint8_t velocity) {
+  kickEnv = (velocity / 127.0f) * (accent ? 1.0f : 0.8f);
+  kickPhase = 0.0f; 
+}
+
+float CR78DrumSynthVoice::processKick() {
+  if (kickEnv < 0.001f) return 0.0f;
+  kickEnv *= decayCoef(200.0f);
+  
+  float freq = 55.0f * (1.0f + kickEnv * 0.5f);
+  kickPhase += freq / sampleRate;
+  if(kickPhase >= 1.0f) kickPhase -= 1.0f;
+  
+  float out = Wavetable::lookupSine((uint32_t)(kickPhase * kPhaseToUint32)) * kickEnv;
+  return lofiEnabled ? lofi.process(out, KICK) : out;
+}
+
+void CR78DrumSynthVoice::triggerSnare(bool accent, uint8_t velocity) {
+  float v = velocity/127.0f;
+  snareEnv = v;
+  snareNoiseEnv = v * 0.8f;
+}
+
+float CR78DrumSynthVoice::processSnare() {
+  if (snareEnv < 0.001f && snareNoiseEnv < 0.001f) return 0.0f;
+  snareEnv *= decayCoef(100.0f);
+  snareNoiseEnv *= decayCoef(200.0f); 
+  
+  float noise = lcgFrand() * snareNoiseEnv;
+  static float lastNoise = 0;
+  float hp_noise = noise - lastNoise;
+  lastNoise = noise;
+  
+  return lofiEnabled ? lofi.process(hp_noise, SNARE) : hp_noise;
+}
+
+void CR78DrumSynthVoice::triggerHat(bool accent, uint8_t velocity) {
+  hatEnv = (velocity/127.0f) * 0.7f;
+}
+void CR78DrumSynthVoice::triggerOpenHat(bool accent, uint8_t velocity) {
+  hatEnv = (velocity/127.0f) * 0.9f; 
+}
+
+float CR78DrumSynthVoice::processHat() {
+  if (hatEnv < 0.001f) return 0.0f;
+  hatEnv *= decayCoef(50.0f); 
+  
+  float sig = 0.0f;
+  float freqs[] = {300.0f, 450.0f, 800.0f, 1100.0f};
+  for(int i=0; i<4; i++) {
+    hatMetalPhase[i] += freqs[i] / sampleRate;
+    if(hatMetalPhase[i] >= 1.0f) hatMetalPhase[i] -= 1.0f;
+    sig += (hatMetalPhase[i] > 0.5f ? 1.0f : -1.0f);
+  }
+  
+  static float hpVal = 0;
+  float out = sig - hpVal;
+  hpVal = sig;
+  
+  return lofiEnabled ? lofi.process(out * hatEnv * 0.2f, CLOSED_HAT) : out * hatEnv * 0.2f;
+}
+float CR78DrumSynthVoice::processOpenHat() { return processHat(); }
+
+void CR78DrumSynthVoice::triggerMidTom(bool accent, uint8_t velocity) { tomEnv[0] = velocity/127.0f; tomPhase[0] = 0.0f; }
+void CR78DrumSynthVoice::triggerHighTom(bool accent, uint8_t velocity) { tomEnv[1] = velocity/127.0f; tomPhase[1] = 0.0f; }
+
+float CR78DrumSynthVoice::processMidTom() {
+  if (tomEnv[0] < 0.001f) return 0.0f;
+  tomEnv[0] *= decayCoef(150.0f);
+  tomPhase[0] += 150.0f / sampleRate;
+  if(tomPhase[0] >= 1.0f) tomPhase[0] -= 1.0f;
+  float out = Wavetable::lookupSine((uint32_t)(tomPhase[0] * kPhaseToUint32)) * tomEnv[0];
+  return lofiEnabled ? lofi.process(out, MID_TOM) : out;
+}
+float CR78DrumSynthVoice::processHighTom() {
+  if (tomEnv[1] < 0.001f) return 0.0f;
+  tomEnv[1] *= decayCoef(120.0f);
+  tomPhase[1] += 220.0f / sampleRate;
+  if(tomPhase[1] >= 1.0f) tomPhase[1] -= 1.0f;
+  float out = Wavetable::lookupSine((uint32_t)(tomPhase[1] * kPhaseToUint32)) * tomEnv[1];
+  return lofiEnabled ? lofi.process(out, HIGH_TOM) : out;
+}
+
+void CR78DrumSynthVoice::triggerRim(bool accent, uint8_t velocity) { rimEnv = velocity/127.0f; }
+float CR78DrumSynthVoice::processRim() {
+  if (rimEnv < 0.001f) return 0.0f;
+  rimEnv *= decayCoef(30.0f);
+  float val = Wavetable::lookupSine((uint32_t)(rimPhase * kPhaseToUint32)) * rimEnv;
+  rimPhase += 1800.0f / sampleRate; 
+  if (rimPhase >= 1.0f) rimPhase -= 1.0f;
+  return lofiEnabled ? lofi.process(val, RIM) : val;
+}
+
+void CR78DrumSynthVoice::triggerClap(bool accent, uint8_t velocity) { clapEnv = velocity/127.0f; }
+float CR78DrumSynthVoice::processClap() {
+  if (clapEnv < 0.001f) return 0.0f;
+  clapEnv *= decayCoef(60.0f);
+  float noise = lcgFrand();
+  float scrap =  Wavetable::lookupSine((uint32_t)(rimPhase * 0.1f * kPhaseToUint32)); 
+  return noise * clapEnv * (scrap * 0.5f + 0.5f);
+}
+
+void CR78DrumSynthVoice::triggerCymbal(bool accent, uint8_t velocity) { cymbalEnv = velocity/127.0f; }
+float CR78DrumSynthVoice::processCymbal() {
+  if (cymbalEnv < 0.001f) return 0.0f;
+  cymbalEnv *= decayCoef(700.0f);
+  float out = (lcgFrand() + (hatMetalPhase[0] > 0.5f ? 0.5f : -0.5f)) * 0.5f; 
+  return out * cymbalEnv * 0.3f;
+}
+
+
+// -----------------------------------------------------------------------------
+// KPR-77 Implementation
+// -----------------------------------------------------------------------------
+
+KPR77DrumSynthVoice::KPR77DrumSynthVoice(float sampleRate) : sampleRate(sampleRate) {
+  setSampleRate(sampleRate);
+  reset();
+}
+
+void KPR77DrumSynthVoice::reset() {
+  kickEnv=0; kickPhase=0;
+  snareEnva=0; snareEnvb=0;
+  hatEnv=0;
+  tomEnv[0]=0; tomEnv[1]=0;
+  clapEnv=0; clapState=0; clapPulseTimer=0;
+  cymbalEnv=0;
+  
+  params[static_cast<int>(DrumParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.0f, 0.8f, 1.0f/128);
+}
+void KPR77DrumSynthVoice::setSampleRate(float sr) { if(sr<=0) sr=44100; sampleRate=sr; }
+float KPR77DrumSynthVoice::decayCoef(float ms) { return expf(-1.0f / (ms * 0.001f * sampleRate)); }
+float KPR77DrumSynthVoice::lcgFrand() {
+  noiseState = noiseState * 1664525u + 1013904223u;
+  return ((noiseState >> 16) & 0x7FFF) / 16384.0f - 1.0f;
+}
+
+const Parameter& KPR77DrumSynthVoice::parameter(DrumParamId id) const { return params[static_cast<int>(id)]; }
+void KPR77DrumSynthVoice::setParameter(DrumParamId id, float value) { params[static_cast<int>(id)].setValue(value); }
+
+void KPR77DrumSynthVoice::triggerKick(bool accent, uint8_t velocity) {
+  kickEnv = (velocity/127.0f);
+  kickPhase = 0.0f;
+}
+float KPR77DrumSynthVoice::processKick() {
+  if(kickEnv < 0.001f) return 0.0f;
+  kickEnv *= decayCoef(250.0f);
+  kickPhase += (50.0f + kickEnv * 20.0f) / sampleRate;
+  if(kickPhase>=1.0f) kickPhase-=1.0f;
+  float out = Wavetable::lookupSine((uint32_t)(kickPhase*kPhaseToUint32)) * kickEnv;
+  if(out > 0.8f) out = 0.8f; if(out < -0.8f) out = -0.8f;
+  return lofiEnabled ? lofi.process(out, KICK) : out;
+}
+
+void KPR77DrumSynthVoice::triggerSnare(bool accent, uint8_t velocity) {
+  snareEnva = (velocity/127.0f); 
+  snareEnvb = snareEnva;         
+}
+float KPR77DrumSynthVoice::processSnare() {
+  if(snareEnva < 0.001f && snareEnvb < 0.001f) return 0.0f;
+  snareEnva *= decayCoef(120.0f);
+  snareEnvb *= decayCoef(200.0f);
+  
+  static float ph = 0;
+  ph += 180.0f / sampleRate;
+  if(ph>=1.0f) ph-=1.0f;
+  float tone = Wavetable::lookupSine((uint32_t)(ph * kPhaseToUint32)) * snareEnva;
+  float noise = lcgFrand() * snareEnvb;
+  return (tone*0.4f + noise*0.6f);
+}
+
+void KPR77DrumSynthVoice::triggerHat(bool accent, uint8_t velocity) { hatEnv = velocity/127.0f; }
+void KPR77DrumSynthVoice::triggerOpenHat(bool accent, uint8_t velocity) { hatEnv = velocity/127.0f * 1.5f; }
+float KPR77DrumSynthVoice::processHat() {
+  if (hatEnv < 0.001f) return 0.0f;
+  hatEnv *= decayCoef(50.0f);
+  return lcgFrand() * hatEnv * 0.3f; 
+}
+float KPR77DrumSynthVoice::processOpenHat() {
+   if (hatEnv < 0.001f) return 0.0f;
+   hatEnv *= decayCoef(200.0f);
+   return lcgFrand() * hatEnv * 0.3f;
+}
+
+void KPR77DrumSynthVoice::triggerMidTom(bool accent, uint8_t velocity) { tomEnv[0] = velocity/127.0f; }
+void KPR77DrumSynthVoice::triggerHighTom(bool accent, uint8_t velocity) { tomEnv[1] = velocity/127.0f; }
+float KPR77DrumSynthVoice::processMidTom() {
+  if (tomEnv[0] < 0.001f) return 0.0f;
+  tomEnv[0] *= decayCoef(180.0f);
+  tomPhase[0] += (100.0f - tomEnv[0] * 10.0f) / sampleRate;
+  if(tomPhase[0]>=1.0f) tomPhase[0]-=1.0f;
+  return Wavetable::lookupSine((uint32_t)(tomPhase[0]*kPhaseToUint32)) * tomEnv[0];
+}
+float KPR77DrumSynthVoice::processHighTom() {
+  if (tomEnv[1] < 0.001f) return 0.0f;
+  tomEnv[1] *= decayCoef(150.0f);
+  tomPhase[1] += 150.0f / sampleRate; 
+  if(tomPhase[1]>=1.0f) tomPhase[1]-=1.0f;
+  return Wavetable::lookupSine((uint32_t)(tomPhase[1]*kPhaseToUint32)) * tomEnv[1];
+}
+
+void KPR77DrumSynthVoice::triggerClap(bool accent, uint8_t velocity) {
+  clapEnv = velocity/127.0f;
+  clapState = 0; 
+  clapPulseTimer = 0.0f;
+}
+float KPR77DrumSynthVoice::processClap() {
+  if(clapEnv < 0.001f) return 0.0f;
+  
+  clapEnv *= decayCoef(180.0f);
+  float noise = lcgFrand();
+  static float bp = 0;
+  bp += 0.4f * (noise - bp);
+  return bp * clapEnv * 1.5f; 
+}
+float KPR77DrumSynthVoice::processRim() { return 0.0f; } 
+float KPR77DrumSynthVoice::processCymbal() { return 0.0f; } 
+void KPR77DrumSynthVoice::triggerRim(bool a, uint8_t v) {}
+void KPR77DrumSynthVoice::triggerCymbal(bool a, uint8_t v) {}
+
+
+// -----------------------------------------------------------------------------
+// SP-12 Implementation (12-bit PCM)
+// -----------------------------------------------------------------------------
+
+bool SP12DrumSynthVoice::romBuilt = false;
+
+static int8_t sp12_kick[2000];
+static int8_t sp12_snare[2000];
+static int8_t sp12_hat[1000];
+static int8_t sp12_clap[3000];
+
+void SP12DrumSynthVoice::buildROM() {
+  if(romBuilt) return;
+  
+  for(int i=0; i<2000; i++) {
+    float t = i / 2000.0f;
+    float ph = powf(t, 2.0f) * 100.0f; 
+    float val = sinf(ph * 6.28f) * (1.0f - t);
+    if(i < 50) val += (rand() % 100 / 100.0f) * 0.5f; 
+    sp12_kick[i] = (int8_t)(val * 127.0f);
+  }
+  
+  for(int i=0; i<2000; i++) {
+    float t = i / 2000.0f;
+    float noise = (rand() % 200 / 100.0f - 1.0f);
+    float tone = sinf(i * 0.3f);
+    float val = (noise * 0.7f + tone * 0.3f) * (1.0f - t);
+    sp12_snare[i] = (int8_t)(val * 127.0f);
+  }
+  
+  for(int i=0; i<1000; i++) {
+     float t = i / 1000.0f;
+     float val = (rand() % 200 / 100.0f - 1.0f) * (1.0f - t);
+     sp12_hat[i] = (int8_t)(val * 100.0f);
+  }
+  
+  for(int i=0; i<3000; i++) {
+     float t = i / 3000.0f;
+     float burst = (i % 300 < 50) ? 1.0f : 0.0f;
+     if(i > 800) burst = 1.0f; 
+     float noise = (rand() % 200 / 100.0f - 1.0f);
+     float val = noise * burst * (1.0f - t);
+     sp12_clap[i] = (int8_t)(val * 127.0f);
+  }
+  
+  romBuilt = true;
+}
+
+SP12DrumSynthVoice::SP12DrumSynthVoice(float sampleRate) : sampleRate(sampleRate) {
+  if(!romBuilt) buildROM();
+  setSampleRate(sampleRate);
+  reset();
+}
+
+void SP12DrumSynthVoice::reset() {
+  for(int i=0; i<9; i++) {
+    voices[i].curPos = -1;
+  }
+  params[static_cast<int>(DrumParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.0f, 0.8f, 1.0f/128);
+}
+
+void SP12DrumSynthVoice::setSampleRate(float sr) {
+  sampleRate = sr;
+  float pcmRate = 22050.0f; 
+  float inc = pcmRate / sr;
+  for(int i=0; i<9; i++) voices[i].increment = inc;
+}
+
+const Parameter& SP12DrumSynthVoice::parameter(DrumParamId id) const { return params[static_cast<int>(id)]; }
+void SP12DrumSynthVoice::setParameter(DrumParamId id, float value) { params[static_cast<int>(id)].setValue(value); }
+
+float SP12DrumSynthVoice::processPCM(int idx) {
+  VG& v = voices[idx];
+  if (v.curPos < 0 || !v.curData) return 0.0f;
+  
+  int p = (int)v.phase;
+  if (p >= v.curLen) {
+    v.curPos = -1;
+    return 0.0f;
+  }
+  
+  float samp = v.curData[p] / 128.0f;
+  v.phase += v.increment;
+  
+  return quantize12(samp) * v.volume;
+}
+
+float SP12DrumSynthVoice::quantize12(float s) {
+  float steps = 2048.0f;
+  int q = (int)(s * steps);
+  return q / steps; 
+}
+
+void SP12DrumSynthVoice::triggerKick(bool accent, uint8_t velocity) {
+  voices[KICK].curData = sp12_kick; voices[KICK].curLen = 2000; voices[KICK].phase=0; voices[KICK].curPos=0; voices[KICK].volume = velocity/127.0f;
+}
+void SP12DrumSynthVoice::triggerSnare(bool accent, uint8_t velocity) {
+  voices[SNARE].curData = sp12_snare; voices[SNARE].curLen = 2000; voices[SNARE].phase=0; voices[SNARE].curPos=0; voices[SNARE].volume = velocity/127.0f;
+}
+void SP12DrumSynthVoice::triggerHat(bool accent, uint8_t velocity) {
+  voices[CLOSED_HAT].curData = sp12_hat; voices[CLOSED_HAT].curLen = 1000; voices[CLOSED_HAT].phase=0; voices[CLOSED_HAT].curPos=0; voices[CLOSED_HAT].volume = velocity/127.0f;
+}
+void SP12DrumSynthVoice::triggerOpenHat(bool accent, uint8_t velocity) {
+   voices[OPEN_HAT].curData = sp12_hat; voices[OPEN_HAT].curLen = 1000; voices[OPEN_HAT].phase=0; voices[OPEN_HAT].curPos=0; voices[OPEN_HAT].volume = velocity/127.0f;
+}
+void SP12DrumSynthVoice::triggerClap(bool accent, uint8_t velocity) {
+  voices[CLAP].curData = sp12_clap; voices[CLAP].curLen = 3000; voices[CLAP].phase=0; voices[CLAP].curPos=0; voices[CLAP].volume = velocity/127.0f;
+}
+void SP12DrumSynthVoice::triggerMidTom(bool a, uint8_t v) {} 
+void SP12DrumSynthVoice::triggerHighTom(bool a, uint8_t v) {}
+void SP12DrumSynthVoice::triggerRim(bool a, uint8_t v) {}
+void SP12DrumSynthVoice::triggerCymbal(bool a, uint8_t v) {}
+
+float SP12DrumSynthVoice::processKick() { return processPCM(KICK); }
+float SP12DrumSynthVoice::processSnare() { return processPCM(SNARE); }
+float SP12DrumSynthVoice::processHat() { return processPCM(CLOSED_HAT); }
+float SP12DrumSynthVoice::processOpenHat() { return processPCM(OPEN_HAT); } 
+float SP12DrumSynthVoice::processMidTom() { return 0.0f; }
+float SP12DrumSynthVoice::processHighTom() { return 0.0f; }
+float SP12DrumSynthVoice::processRim() { return 0.0f; }
+float SP12DrumSynthVoice::processClap() { return processPCM(CLAP); }
+float SP12DrumSynthVoice::processCymbal() { return 0.0f; }
