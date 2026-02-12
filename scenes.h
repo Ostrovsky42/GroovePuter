@@ -335,6 +335,9 @@ struct GenreSettings {
     uint8_t generativeMode = 0;   // GenerativeMode enum value
     uint8_t textureMode = 0;      // TextureMode enum value
     uint8_t textureAmount = 70;   // 0..100 intensity
+    uint8_t recipe = 0;           // 0 = base (no subgenre recipe)
+    uint8_t morphTarget = 0;      // 0 = none
+    uint8_t morphAmount = 0;      // 0..255
     bool regenerateOnApply = false; // true: SOUND+PATTERN, false: SOUND ONLY (default)
     bool applyTempoOnApply = false; // true: SOUND+PATTERN+TEMPO
     bool curatedMode = true;      // true: only allowed Genre x Texture combos
@@ -986,12 +989,20 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeInt(scene_->genre.textureMode)) return false;
   if (!writeLiteral(",\"amt\":")) return false;
   if (!writeInt(scene_->genre.textureAmount)) return false;
+  if (!writeLiteral(",\"rcp\":")) return false;
+  if (!writeInt(scene_->genre.recipe)) return false;
+  if (!writeLiteral(",\"mto\":")) return false;
+  if (!writeInt(scene_->genre.morphTarget)) return false;
+  if (!writeLiteral(",\"mam\":")) return false;
+  if (!writeInt(scene_->genre.morphAmount)) return false;
   if (!writeLiteral(",\"regen\":")) return false;
   if (!writeBool(scene_->genre.regenerateOnApply)) return false;
   if (!writeLiteral(",\"tempo\":")) return false;
   if (!writeBool(scene_->genre.applyTempoOnApply)) return false;
   if (!writeLiteral(",\"cur\":")) return false;
   if (!writeBool(scene_->genre.curatedMode)) return false;
+  if (!writeLiteral(",\"sound\":")) return false;
+  if (!writeBool(scene_->genre.applySoundMacros)) return false;
   if (!writeChar('}')) return false;
 
   if (!writeLiteral(",\"trackVolumes\":[")) return false;

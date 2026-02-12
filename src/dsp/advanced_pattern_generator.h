@@ -9,6 +9,8 @@
 #include "../../platform_sdl/arduino_compat.h"
 #endif
 
+struct DrumGenreTemplate;
+
 
 class AdvancedPatternGenerator {
 public:
@@ -28,7 +30,8 @@ class DrumPatternGenerator {
 public:
     static void generateDrumPattern(DrumPatternSet& patternSet, 
                                     const GenerativeParams& params,
-                                    GenerativeMode mode);
+                                    GenerativeMode mode,
+                                    const DrumGenreTemplate* templateOverride = nullptr);
     
 private:
     static void applyDrumSwing(DrumPatternSet& ps, float amount);

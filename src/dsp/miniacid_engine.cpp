@@ -1660,6 +1660,12 @@ void MiniAcid::advanceStep() {
     }
   }
   */
+  if (prevStep >= 0 && currentStepIndex == 0) {
+    if (genreManager_.commitPendingRecipe()) {
+      regeneratePatternsWithGenre();
+    }
+  }
+
   int songPatternA = songPatternIndexForTrack(SongTrack::SynthA);
   int songPatternB = songPatternIndexForTrack(SongTrack::SynthB);
   int songPatternDrums = songPatternIndexForTrack(SongTrack::Drums);
@@ -2611,6 +2617,9 @@ void MiniAcid::applySceneStateFromManager() {
   const auto& gs = sceneManager_.currentScene().genre;
   genreManager_.setGenerativeMode(static_cast<GenerativeMode>(gs.generativeMode));
   genreManager_.setTextureMode(static_cast<TextureMode>(gs.textureMode));
+  genreManager_.setRecipe(gs.recipe);
+  genreManager_.setMorphTarget(gs.morphTarget);
+  genreManager_.setMorphAmount(gs.morphAmount);
   syncGrooveModeToGenre();
 
   // 1. Enforce Genre Timbre BASE (overwrites scene params to ensure genre identity)
@@ -2692,6 +2701,9 @@ void MiniAcid::syncSceneStateToManager() {
   sceneManager_.currentScene().masterVolume = params[static_cast<int>(MiniAcidParamId::MainVolume)].value();
   sceneManager_.currentScene().genre.generativeMode = static_cast<uint8_t>(genreManager_.generativeMode());
   sceneManager_.currentScene().genre.textureMode = static_cast<uint8_t>(genreManager_.textureMode());
+  sceneManager_.currentScene().genre.recipe = static_cast<uint8_t>(genreManager_.recipe());
+  sceneManager_.currentScene().genre.morphTarget = static_cast<uint8_t>(genreManager_.morphTarget());
+  sceneManager_.currentScene().genre.morphAmount = genreManager_.morphAmount();
   
   sceneManager_.setSynthMute(0, mute303);
   sceneManager_.setSynthMute(1, mute303_2);

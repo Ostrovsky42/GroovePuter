@@ -478,7 +478,11 @@ void GrooveboxModeManager::generateDrumPattern(DrumPatternSet& patternSet,
     // Structural behavior is currently encoded by selected GenerativeMode via
     // DrumGenreTemplate table; keep the parameter for API compatibility.
     (void)behavior;
-    DrumPatternGenerator::generateDrumPattern(patternSet, params, engine_.genreManager().generativeMode());
+    DrumPatternGenerator::generateDrumPattern(
+        patternSet,
+        params,
+        engine_.genreManager().generativeMode(),
+        engine_.genreManager().drumTemplateOverride());
 }
 
 void GrooveboxModeManager::generateDrumVoice(DrumPattern& pattern, int voiceIndex,

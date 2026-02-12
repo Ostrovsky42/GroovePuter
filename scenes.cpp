@@ -816,6 +816,18 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
       if (v < 0) v = 0;
       if (v > 100) v = 100;
       target_.genre.textureAmount = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "rcp") {
+      if (v < 0) v = 0;
+      if (v > 255) v = 255;
+      target_.genre.recipe = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "mto") {
+      if (v < 0) v = 0;
+      if (v > 255) v = 255;
+      target_.genre.morphTarget = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "mam") {
+      if (v < 0) v = 0;
+      if (v > 255) v = 255;
+      target_.genre.morphAmount = static_cast<uint8_t>(v);
     }
     return;
   }
@@ -2211,6 +2223,9 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   genreObj["gen"] = scene_->genre.generativeMode;
   genreObj["tex"] = scene_->genre.textureMode;
   genreObj["amt"] = scene_->genre.textureAmount;
+  genreObj["rcp"] = scene_->genre.recipe;
+  genreObj["mto"] = scene_->genre.morphTarget;
+  genreObj["mam"] = scene_->genre.morphAmount;
   genreObj["regen"] = scene_->genre.regenerateOnApply;
   genreObj["tempo"] = scene_->genre.applyTempoOnApply;
   genreObj["cur"] = scene_->genre.curatedMode;
@@ -2493,6 +2508,21 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     if (amt < 0) amt = 0;
     if (amt > 100) amt = 100;
     loaded->genre.textureAmount = static_cast<uint8_t>(amt);
+
+    int recipe = valueToInt(genreObj["rcp"], loaded->genre.recipe);
+    if (recipe < 0) recipe = 0;
+    if (recipe > 255) recipe = 255;
+    loaded->genre.recipe = static_cast<uint8_t>(recipe);
+
+    int morphTarget = valueToInt(genreObj["mto"], loaded->genre.morphTarget);
+    if (morphTarget < 0) morphTarget = 0;
+    if (morphTarget > 255) morphTarget = 255;
+    loaded->genre.morphTarget = static_cast<uint8_t>(morphTarget);
+
+    int morphAmount = valueToInt(genreObj["mam"], loaded->genre.morphAmount);
+    if (morphAmount < 0) morphAmount = 0;
+    if (morphAmount > 255) morphAmount = 255;
+    loaded->genre.morphAmount = static_cast<uint8_t>(morphAmount);
 
     loaded->genre.regenerateOnApply = genreObj["regen"].is<bool>() ? genreObj["regen"].as<bool>() : loaded->genre.regenerateOnApply;
     loaded->genre.applyTempoOnApply = genreObj["tempo"].is<bool>() ? genreObj["tempo"].as<bool>() : loaded->genre.applyTempoOnApply;

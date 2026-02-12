@@ -33,6 +33,8 @@ private:
     int prevGenreIndex_ = -1;
     int textureIndex_ = 0;
     int prevTextureIndex_ = -1;
+    int recipeIndex_ = 0;
+    int morphAmount_ = 0;
     int genreScroll_ = 0;
     int textureScroll_ = 0;
     
@@ -53,6 +55,8 @@ private:
     void setCuratedMode(bool enabled);
     void ensureTextureAllowedForCurrentGenre();
     void buildTextureLabel(int textureIndex, char* out, size_t outSize) const;
+    void cycleRecipeSelection(int direction);
+    void adjustMorphAmount(int delta);
     template <typename F>
     void withAudioGuard(F&& fn) {
         if (audio_guard_) audio_guard_(std::forward<F>(fn));

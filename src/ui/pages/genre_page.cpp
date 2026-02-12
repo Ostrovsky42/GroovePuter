@@ -123,6 +123,13 @@ const char* linkStateShort(const MiniAcid& mini) {
     return (mini.grooveboxMode() == expected) ? "GEN" : "OVR";
 }
 
+int clampRecipeIndex(int recipe) {
+    const int maxId = static_cast<int>(GenreManager::recipeCount()) - 1;
+    if (recipe < 0) return 0;
+    if (recipe > maxId) return maxId;
+    return recipe;
+}
+
 int computeScrollTop(int itemCount, int visibleRows, int selectedIndex, int currentTop) {
     if (itemCount <= visibleRows) return 0;
     int top = currentTop;
@@ -246,8 +253,8 @@ void GenrePage::drawFooter(IGfx& gfx) {
             focusMode = nullptr;
             break;
         case FocusArea::APPLY_MODE:
-            left = "SPACE/M:Toggle Apply";
-            right = "C:Curated  G:Groove";
+            left = "FN+L/R:Recipe  FN+U/D:Morph";
+            right = "M:ApplyMode C/G:Flags";
             focusMode = nullptr;
             break;
     }
@@ -359,14 +366,16 @@ void GenrePage::drawMinimalStyle(IGfx& gfx) {
     const auto& gs = mini_acid_.sceneManager().currentScene().genre;
 
     char status1[48];
-    std::snprintf(status1, sizeof(status1), "Apply:%s  Curated:%s",
-                  applyModeShort(mini_acid_), onOff(gs.curatedMode));
+    std::snprintf(status1, sizeof(status1), "Apply:%s Cur:%s R:%s",
+                  applyModeShort(mini_acid_), onOff(gs.curatedMode),
+                  GenreManager::recipeName(static_cast<GenreRecipeId>(recipeIndex_)));
     gfx.setTextColor((focus_ == FocusArea::APPLY_MODE) ? COLOR_ACCENT : COLOR_LABEL);
     gfx.drawText(Layout::COL_1, statusY, status1);
 
-    char status2[40];
-    std::snprintf(status2, sizeof(status2), "Groove:%s  Link:%s",
-                  grooveModeShort(mini_acid_), linkStateShort(mini_acid_));
+    char status2[56];
+    std::snprintf(status2, sizeof(status2), "Groove:%s Link:%s Morph:%d%%",
+                  grooveModeShort(mini_acid_), linkStateShort(mini_acid_),
+                  (morphAmount_ * 100) / 255);
     gfx.setTextColor(COLOR_LABEL);
     gfx.drawText(Layout::COL_1, statusY + Layout::LINE_HEIGHT, status2);
 }
@@ -520,12 +529,16 @@ void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
     gfx.drawRect(4, GRID_Y, 232, 22, (focus_ == FocusArea::APPLY_MODE) ? FOCUS_GLOW : GRID_MEDIUM);
 
     char s1[64];
-    std::snprintf(s1, sizeof(s1), "APPLY:%s  CURATED:%s", applyModeShort(mini_acid_), onOff(gs.curatedMode));
+    std::snprintf(s1, sizeof(s1), "APPLY:%s CUR:%s R:%s",
+                  applyModeShort(mini_acid_), onOff(gs.curatedMode),
+                  GenreManager::recipeName(static_cast<GenreRecipeId>(recipeIndex_)));
     gfx.setTextColor(TEXT_PRIMARY);
     gfx.drawText(8, GRID_Y + 3, s1);
 
     char s2[64];
-    std::snprintf(s2, sizeof(s2), "GROOVE:%s  LINK:%s", grooveModeShort(mini_acid_), linkStateShort(mini_acid_));
+    std::snprintf(s2, sizeof(s2), "GROOVE:%s LINK:%s M:%d%%",
+                  grooveModeShort(mini_acid_), linkStateShort(mini_acid_),
+                  (morphAmount_ * 100) / 255);
     gfx.setTextColor(TEXT_SECONDARY);
     gfx.drawText(8, GRID_Y + 12, s2);
 #else
@@ -677,12 +690,16 @@ void GenrePage::drawAmberStyle(IGfx& gfx) {
                  (focus_ == FocusArea::APPLY_MODE) ? AmberTheme::NEON_ORANGE : AmberTheme::GRID_MEDIUM);
 
     char s1[64];
-    std::snprintf(s1, sizeof(s1), "APPLY:%s  CURATED:%s", applyModeShort(mini_acid_), onOff(gs.curatedMode));
+    std::snprintf(s1, sizeof(s1), "APPLY:%s CUR:%s R:%s",
+                  applyModeShort(mini_acid_), onOff(gs.curatedMode),
+                  GenreManager::recipeName(static_cast<GenreRecipeId>(recipeIndex_)));
     gfx.setTextColor(AmberTheme::TEXT_PRIMARY);
     gfx.drawText(8, GRID_Y + 3, s1);
 
     char s2[64];
-    std::snprintf(s2, sizeof(s2), "GROOVE:%s  LINK:%s", grooveModeShort(mini_acid_), linkStateShort(mini_acid_));
+    std::snprintf(s2, sizeof(s2), "GROOVE:%s LINK:%s M:%d%%",
+                  grooveModeShort(mini_acid_), linkStateShort(mini_acid_),
+                  (morphAmount_ * 100) / 255);
     gfx.setTextColor(AmberTheme::TEXT_SECONDARY);
     gfx.drawText(8, GRID_Y + 12, s2);
     
@@ -710,6 +727,8 @@ bool GenrePage::handleEvent(UIEvent& e) {
                 vis = (vis - 1 + cnt) % cnt;
                 textureIndex_ = visibleTextureAt(vis);
             }
+        } else if (focus_ == FocusArea::APPLY_MODE) {
+            if (e.meta) adjustMorphAmount(16);
         }
     };
     auto moveDown = [&]() {
@@ -723,6 +742,8 @@ bool GenrePage::handleEvent(UIEvent& e) {
                 vis = (vis + 1) % cnt;
                 textureIndex_ = visibleTextureAt(vis);
             }
+        } else if (focus_ == FocusArea::APPLY_MODE) {
+            if (e.meta) adjustMorphAmount(-16);
         }
     };
     auto moveLeft = [&]() {
@@ -731,6 +752,8 @@ bool GenrePage::handleEvent(UIEvent& e) {
             int v = (int)gs.textureAmount - 5;
             if (v < 0) v = 0;
             gs.textureAmount = static_cast<uint8_t>(v);
+        } else if (focus_ == FocusArea::APPLY_MODE) {
+            if (e.meta) cycleRecipeSelection(-1);
         }
     };
     auto moveRight = [&]() {
@@ -739,6 +762,8 @@ bool GenrePage::handleEvent(UIEvent& e) {
             int v = (int)gs.textureAmount + 5;
             if (v > 100) v = 100;
             gs.textureAmount = static_cast<uint8_t>(v);
+        } else if (focus_ == FocusArea::APPLY_MODE) {
+            if (e.meta) cycleRecipeSelection(1);
         }
     };
 
@@ -843,6 +868,58 @@ bool GenrePage::handleEvent(UIEvent& e) {
 // INTERNAL METHODS (unchanged)
 // =================================================================
 
+void GenrePage::cycleRecipeSelection(int direction) {
+    const int count = static_cast<int>(GenreManager::recipeCount());
+    if (count <= 0) return;
+    int next = recipeIndex_ + direction;
+    while (next < 0) next += count;
+    while (next >= count) next -= count;
+    recipeIndex_ = next;
+
+    auto& gs = mini_acid_.sceneManager().currentScene().genre;
+    gs.recipe = static_cast<uint8_t>(recipeIndex_);
+    if (morphAmount_ > 0) gs.morphTarget = static_cast<uint8_t>(recipeIndex_);
+    gs.morphAmount = static_cast<uint8_t>(morphAmount_);
+
+    withAudioGuard([&]() {
+        if (mini_acid_.isPlaying()) {
+            mini_acid_.genreManager().queueRecipe(static_cast<GenreRecipeId>(recipeIndex_));
+        } else {
+            mini_acid_.genreManager().setRecipe(static_cast<GenreRecipeId>(recipeIndex_));
+        }
+        mini_acid_.genreManager().setMorphTarget(
+            morphAmount_ > 0 ? static_cast<GenreRecipeId>(recipeIndex_) : kBaseRecipeId);
+        mini_acid_.genreManager().setMorphAmount(static_cast<uint8_t>(morphAmount_));
+    });
+
+    char toast[72];
+    std::snprintf(toast, sizeof(toast), "Recipe: %s%s",
+                  GenreManager::recipeName(static_cast<GenreRecipeId>(recipeIndex_)),
+                  mini_acid_.isPlaying() ? " (queued)" : "");
+    UI::showToast(toast, 900);
+}
+
+void GenrePage::adjustMorphAmount(int delta) {
+    int next = morphAmount_ + delta;
+    if (next < 0) next = 0;
+    if (next > 255) next = 255;
+    morphAmount_ = next;
+
+    auto& gs = mini_acid_.sceneManager().currentScene().genre;
+    gs.morphAmount = static_cast<uint8_t>(morphAmount_);
+    gs.morphTarget = static_cast<uint8_t>(morphAmount_ > 0 ? recipeIndex_ : 0);
+
+    withAudioGuard([&]() {
+        mini_acid_.genreManager().setMorphTarget(
+            morphAmount_ > 0 ? static_cast<GenreRecipeId>(recipeIndex_) : kBaseRecipeId);
+        mini_acid_.genreManager().setMorphAmount(static_cast<uint8_t>(morphAmount_));
+    });
+
+    char toast[64];
+    std::snprintf(toast, sizeof(toast), "Morph: %d%%", (morphAmount_ * 100) / 255);
+    UI::showToast(toast, 700);
+}
+
 bool GenrePage::isCuratedMode() const {
     return mini_acid_.sceneManager().currentScene().genre.curatedMode;
 }
@@ -887,6 +964,10 @@ void GenrePage::applyCurrent() {
     withAudioGuard([&]() {
         mini_acid_.genreManager().setGenerativeMode(static_cast<GenerativeMode>(genreIndex_));
         mini_acid_.genreManager().setTextureMode(static_cast<TextureMode>(textureIndex_));
+        mini_acid_.genreManager().setRecipe(static_cast<GenreRecipeId>(recipeIndex_));
+        mini_acid_.genreManager().setMorphTarget(
+            morphAmount_ > 0 ? static_cast<GenreRecipeId>(recipeIndex_) : kBaseRecipeId);
+        mini_acid_.genreManager().setMorphAmount(static_cast<uint8_t>(morphAmount_));
         mini_acid_.setGrooveboxMode(
             GenreManager::grooveboxModeForGenerative(static_cast<GenerativeMode>(genreIndex_)));
         
@@ -897,6 +978,9 @@ void GenrePage::applyCurrent() {
         auto& gs = mini_acid_.sceneManager().currentScene().genre;
         gs.generativeMode = static_cast<uint8_t>(genreIndex_);
         gs.textureMode = static_cast<uint8_t>(textureIndex_);
+        gs.recipe = static_cast<uint8_t>(recipeIndex_);
+        gs.morphTarget = static_cast<uint8_t>(morphAmount_ > 0 ? recipeIndex_ : 0);
+        gs.morphAmount = static_cast<uint8_t>(morphAmount_);
         if (doRegenerate) mini_acid_.regeneratePatternsWithGenre();
         if (doApplyTempo) mini_acid_.setBpm(static_cast<float>(targetBpm));
     });
@@ -906,8 +990,9 @@ void GenrePage::applyCurrent() {
     char toast[80];
     const int g = genreIndex_;
     const int t = textureIndex_;
-    std::snprintf(toast, sizeof(toast), "%s/%s applied (%s%s)",
+    std::snprintf(toast, sizeof(toast), "%s/%s %s (%s%s)",
                   genreNames[g], textureNames[t],
+                  GenreManager::recipeName(static_cast<GenreRecipeId>(recipeIndex_)),
                   doRegenerate ? "Regenerated" : "Patterns kept",
                   doApplyTempo ? ", BPM set" : "");
     UI::showToast(toast, 1800);
@@ -916,6 +1001,8 @@ void GenrePage::applyCurrent() {
 void GenrePage::updateFromEngine() {
     genreIndex_ = static_cast<int>(mini_acid_.genreManager().generativeMode());
     textureIndex_ = static_cast<int>(mini_acid_.genreManager().textureMode());
+    recipeIndex_ = clampRecipeIndex(static_cast<int>(mini_acid_.genreManager().recipe()));
+    morphAmount_ = static_cast<int>(mini_acid_.genreManager().morphAmount());
     prevGenreIndex_ = genreIndex_;
     prevTextureIndex_ = textureIndex_;
 }

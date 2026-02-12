@@ -55,6 +55,15 @@ To reduce "mode fights genre" behavior:
 - Groove mode is auto-realigned to mapped genre mode during apply/state sync.
 - This keeps macro voicing coherent while preserving per-genre rhythm identity.
 
+## Recipe Layer (New DSP Core)
+Genre now has a second layer (subgenre recipe) that does not change `GenerativeMode` count:
+- base = `GenerativeMode` preset
+- recipe = parameter/drum override
+- morph = optional blend to target recipe
+
+This is compiled inside `GenreManager` and consumed by DSP as already-compiled params.  
+Bar-safe switching is done with queued recipe commit on step `0` (bar boundary) to avoid mid-bar mask jumps.
+
 ## Related Docs
 - `docs/drum_genre_templates.md`
 - `docs/DRUM_AUTOMATION.md`

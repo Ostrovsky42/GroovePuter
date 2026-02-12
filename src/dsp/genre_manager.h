@@ -34,6 +34,8 @@ enum class TextureMode : uint8_t {
 
 static constexpr int kGenerativeModeCount = 9;
 static constexpr int kTextureModeCount = 5;
+using GenreRecipeId = uint8_t;
+static constexpr GenreRecipeId kBaseRecipeId = 0;
 
 // === GENERATIVE PARAMETERS ===
 struct GenerativeParams {
@@ -126,6 +128,9 @@ extern const TextureParams kTexturePresets[kTextureModeCount];
 struct GenreState {
     GenerativeMode generative = GenerativeMode::Acid;
     TextureMode texture = TextureMode::Clean;
+    GenreRecipeId recipe = 0;      // 0 = base, no subgenre recipe override
+    GenreRecipeId morphTarget = 0; // 0 = none
+    uint8_t morphAmount = 0;       // 0..255
     char cachedName_[32] = "Acid";  // Cached, not recalculated in draw()
     
     // Call when mode changes
@@ -146,6 +151,7 @@ struct GenreState {
 
 // Forward declaration
 class MiniAcid;
+struct DrumGenreTemplate;
 
 // === GENRE MANAGER ===
 class GenreManager {
@@ -158,10 +164,24 @@ public:
     void setGenerativeMode(GenerativeMode mode) { 
         state_.generative = mode; 
         state_.updateCachedName();
+        cachedDirty_ = true;
     }
     void setTextureMode(TextureMode mode) { 
         state_.texture = mode; 
         state_.updateCachedName();
+        cachedDirty_ = true;
+    }
+    void setRecipe(GenreRecipeId recipe) {
+        state_.recipe = recipe;
+        cachedDirty_ = true;
+    }
+    void setMorphTarget(GenreRecipeId target) {
+        state_.morphTarget = target;
+        cachedDirty_ = true;
+    }
+    void setMorphAmount(uint8_t amount) {
+        state_.morphAmount = amount;
+        cachedDirty_ = true;
     }
     
     // Cyclers
@@ -169,25 +189,46 @@ public:
         int next = (static_cast<int>(state_.generative) + direction + kGenerativeModeCount) % kGenerativeModeCount;
         state_.generative = static_cast<GenerativeMode>(next);
         state_.updateCachedName();
+        cachedDirty_ = true;
     }
     
     void cycleTexture(int direction = 1) {
         int next = (static_cast<int>(state_.texture) + direction + kTextureModeCount) % kTextureModeCount;
         state_.texture = static_cast<TextureMode>(next);
         state_.updateCachedName();
+        cachedDirty_ = true;
+    }
+    void queueRecipe(GenreRecipeId recipe) {
+        pendingRecipe_ = recipe;
+        pendingRecipeDirty_ = true;
+    }
+    bool commitPendingRecipe() {
+        if (!pendingRecipeDirty_) return false;
+        state_.recipe = pendingRecipe_;
+        pendingRecipeDirty_ = false;
+        cachedDirty_ = true;
+        return true;
     }
     
     // Getters
     GenerativeMode generativeMode() const { return state_.generative; }
     TextureMode textureMode() const { return state_.texture; }
+    GenreRecipeId recipe() const { return state_.recipe; }
+    GenreRecipeId morphTarget() const { return state_.morphTarget; }
+    uint8_t morphAmount() const { return state_.morphAmount; }
+    void cycleRecipe(int direction = 1);
     const char* getCurrentGenreName() const { return state_.getName(); }
     GenreState& state() { return state_; }
     const GenreState& state() const { return state_; }
     
     // Get parameters
-    const GenerativeParams& getGenerativeParams() const {
-        return kGenerativePresets[static_cast<int>(state_.generative)];
-    }
+    const GenerativeParams& getGenerativeParams() const { return getCompiledGenerativeParams(); }
+
+    // Compiled params (base preset + recipe + morph)
+    const GenerativeParams& getCompiledGenerativeParams() const;
+
+    // Optional drum override from recipe (nullptr => fallback to kDrumTemplates)
+    const DrumGenreTemplate* drumTemplateOverride() const;
     
     const TextureParams& getTextureParams() const {
         return kTexturePresets[static_cast<int>(state_.texture)];
@@ -209,6 +250,8 @@ public:
         static const char* const names[] = {"Clean", "Dub", "LoFi", "Industrial", "Psychedelic"};
         return names[static_cast<int>(mode)];
     }
+    static const char* recipeName(GenreRecipeId id);
+    static uint8_t recipeCount();
 
     // Canonical bridge between 9 genres and 5 groovebox macro modes.
     static GrooveboxMode grooveboxModeForGenerative(GenerativeMode mode);
@@ -240,6 +283,11 @@ public:
     
 private:
     GenreState state_;
+    GenreRecipeId pendingRecipe_ = 0;
+    bool pendingRecipeDirty_ = false;
+    mutable bool cachedDirty_ = true;
+    mutable GenerativeParams cachedGenerativeParams_{};
+    mutable const DrumGenreTemplate* cachedDrumOverride_ = nullptr;
     
     // Track last applied filter bias for delta calculation (idempotent)
     int lastAppliedCutoffBias_ = 0;
@@ -255,6 +303,8 @@ private:
         const TextureParams& p = getTextureParams();
         return (int)(p.filterResonanceBias * 40.0f);
     }
+
+    void ensureCompiled_() const;
 };
 
 // === F-KEY PRESET COMBINATIONS ===

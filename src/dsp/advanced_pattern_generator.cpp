@@ -164,7 +164,8 @@ static inline int8_t randomTimingOffset(float microTimingAmount) {
 
 void DrumPatternGenerator::generateDrumPattern(DrumPatternSet& patternSet,
                                                const GenerativeParams& params,
-                                               GenerativeMode mode) {
+                                               GenerativeMode mode,
+                                               const DrumGenreTemplate* templateOverride) {
     for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
         for (int s = 0; s < DrumPattern::kSteps; ++s) {
             patternSet.voices[v].steps[s] = DrumStep();
@@ -175,7 +176,7 @@ void DrumPatternGenerator::generateDrumPattern(DrumPatternSet& patternSet,
     if (modeIdx < 0 || modeIdx >= kGenerativeModeCount) {
         modeIdx = 0;
     }
-    const DrumGenreTemplate& tmpl = kDrumTemplates[modeIdx];
+    const DrumGenreTemplate& tmpl = templateOverride ? *templateOverride : kDrumTemplates[modeIdx];
 
     const int activeVoices = std::max(1, std::min(DrumPatternSet::kVoices, params.drumVoiceCount));
     const uint8_t kickMainVel = baseToGenreRange(tmpl.kickVelBase, params);

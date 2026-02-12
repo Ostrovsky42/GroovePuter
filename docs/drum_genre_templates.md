@@ -64,3 +64,26 @@ Node curves:
 - `EaseOut`
 
 See `docs/DRUM_AUTOMATION.md` for data format, UI, and runtime details.
+
+## Recipe Compiler Layer (Phase 1.5 DSP Core)
+To avoid exploding `GenerativeMode` and keep backward compatibility, the engine now has a recipe layer:
+
+- Scene fields (`genre` object):
+- `rcp` = recipe id (`0` = base/no override)
+- `mto` = morph target recipe id
+- `mam` = morph amount `0..255`
+
+- Compile path:
+- `GenreManager::getGenerativeParams()` now returns compiled params (`base preset + recipe + optional morph`)
+- `GenreManager::drumTemplateOverride()` returns optional recipe drum template
+
+- Drum fallback contract:
+- `DrumPatternGenerator::generateDrumPattern(..., templateOverride)` uses override when present
+- if override is `nullptr`, it falls back to canonical `kDrumTemplates[GenerativeMode]`
+
+Current built-in recipe ids:
+- `1` UK Garage
+- `2` Drum&Bass
+- `3` Footwork
+- `4` Psytrance
+- `5` Dub Techno
