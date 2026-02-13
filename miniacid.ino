@@ -421,10 +421,12 @@ void loop() {
       g_miniAcid->toggleMuteHighTom();
       drawUI();
     } else if (c == '9') {
-      g_miniAcid->toggleMuteRim();
+      if (g_miniAcid->currentDrumEngineName() == "SP12") g_miniAcid->toggleMuteClap();
+      else g_miniAcid->toggleMuteRim();
       drawUI();
     } else if (c == '0') {
-      g_miniAcid->toggleMuteClap();
+      if (g_miniAcid->currentDrumEngineName() == "SP12") g_miniAcid->toggleMuteRim();
+      else g_miniAcid->toggleMuteClap();
       drawUI();
     } else if (c == 'k' || c == 'K') {
       g_miniAcid->setBpm(g_miniAcid->bpm() - 2.5f);

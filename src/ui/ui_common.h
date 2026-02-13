@@ -88,4 +88,9 @@ namespace UI {
      */
     void drawFeelHeaderHud(IGfx& gfx, MiniAcid& mini_acid, int x, int y);
 
+    /**
+     * Draw global LiveMix lock badge in header area (all themes).
+     */
+    void drawLiveMixLockBadge(IGfx& gfx, MiniAcid& mini_acid);
+
 }

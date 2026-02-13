@@ -17,7 +17,11 @@ constexpr int kHubVisibleTracks = 6;  // 303A, 303B, D1..D4 on one screen
 
 const char* kDrumLaneShort[8] = {"BD", "SD", "CH", "OH", "MT", "HT", "RM", "CP"};
 
-inline void buildHubTrackLabel(int trackIdx, char* out, size_t outSize) {
+inline bool isSp12Engine(MiniAcid& mini_acid) {
+    return mini_acid.currentDrumEngineName() == "SP12";
+}
+
+inline void buildHubTrackLabel(int trackIdx, char* out, size_t outSize, bool sp12Swap90 = false) {
     if (!out || outSize == 0) return;
     int keyNum = (trackIdx + 1) % 10;
     if (trackIdx == 0) {
@@ -28,6 +32,11 @@ inline void buildHubTrackLabel(int trackIdx, char* out, size_t outSize) {
         int drumVoice = trackIdx - 2;    // 0..7
         if (drumVoice < 0) drumVoice = 0;
         if (drumVoice > 7) drumVoice = 7;
+        if (sp12Swap90) {
+            // SP-12 layout expectation: 9=CLAP, 0=RIM (swap last two labels only).
+            if (drumVoice == 6) drumVoice = 7;
+            else if (drumVoice == 7) drumVoice = 6;
+        }
         std::snprintf(out, outSize, "%d|%s", keyNum, kDrumLaneShort[drumVoice]);
     }
 }
@@ -219,7 +228,7 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
 
             // Track label
             char label[12];
-            buildHubTrackLabel(track_idx, label, sizeof(label));
+            buildHubTrackLabel(track_idx, label, sizeof(label), isSp12Engine(mini_acid_));
 
             gfx.setTextColor(selected ? TE_WHITE : TE_DIM);
             gfx.drawText(x + 4, ry + 2, label);
@@ -424,7 +433,7 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
 
             // Name with Glow if selected
             char name[16];
-            buildHubTrackLabel(i, name, sizeof(name));
+            buildHubTrackLabel(i, name, sizeof(name), isSp12Engine(mini_acid_));
             
             if (selected) {
                 drawGlowText(gfx, x + 6, ry + 1, name, IGfxColor(FOCUS_GLOW), IGfxColor(TEXT_PRIMARY));
@@ -626,7 +635,7 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
             gfx.drawText(x + w - volTextW - 6, ry + 1, volBuf);
 
             char name[16];
-            buildHubTrackLabel(i, name, sizeof(name));
+            buildHubTrackLabel(i, name, sizeof(name), isSp12Engine(mini_acid_));
             
             if (selected) {
                 AmberWidgets::drawGlowText(gfx, x + 6, ry + 1, name, IGfxColor(AmberTheme::FOCUS_GLOW), IGfxColor(AmberTheme::TEXT_PRIMARY));
@@ -822,7 +831,7 @@ void SequencerHubPage::drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool 
 
     // Name
     char name[16];
-    buildHubTrackLabel(trackIdx, name, sizeof(name));
+    buildHubTrackLabel(trackIdx, name, sizeof(name), isSp12Engine(mini_acid_));
 
     gfx.setTextColor(selected ? COLOR_WHITE : COLOR_LABEL);
     gfx.drawText(4, y + 1, name);
@@ -1176,7 +1185,7 @@ bool SequencerHubPage::handleVolumeInput(UIEvent& e) {
             if (vol < 0.0f) vol = 0.0f;
             withAudioGuard([&]() { mini_acid_.setTrackVolume((VoiceId)selectedTrack_, vol); });
             char label[12];
-            buildHubTrackLabel(selectedTrack_, label, sizeof(label));
+            buildHubTrackLabel(selectedTrack_, label, sizeof(label), isSp12Engine(mini_acid_));
             char toast[32];
             std::snprintf(toast, sizeof(toast), "%s VOL %d%%", label, (int)(vol * 100.0f + 0.5f));
             UI::showToast(toast, 700);
@@ -1187,7 +1196,7 @@ bool SequencerHubPage::handleVolumeInput(UIEvent& e) {
             if (vol > 1.2f) vol = 1.2f; // Slight boost allowed
             withAudioGuard([&]() { mini_acid_.setTrackVolume((VoiceId)selectedTrack_, vol); });
             char label[12];
-            buildHubTrackLabel(selectedTrack_, label, sizeof(label));
+            buildHubTrackLabel(selectedTrack_, label, sizeof(label), isSp12Engine(mini_acid_));
             char toast[32];
             std::snprintf(toast, sizeof(toast), "%s VOL %d%%", label, (int)(vol * 100.0f + 0.5f));
             UI::showToast(toast, 700);

@@ -41,6 +41,38 @@ namespace UI {
                                  title, mini_acid.isRecording());
     }
 
+    void drawLiveMixLockBadge(IGfx& gfx, MiniAcid& mini_acid) {
+        if (!mini_acid.liveMixModeEnabled()) return;
+
+        IGfxColor fg = COLOR_WHITE;
+        IGfxColor bg = COLOR_DANGER;
+        if (currentStyle == VisualStyle::RETRO_CLASSIC) {
+            fg = IGfxColor(RetroTheme::BG_DEEP_BLACK);
+            bg = IGfxColor(RetroTheme::NEON_YELLOW);
+        } else if (currentStyle == VisualStyle::AMBER) {
+            fg = IGfxColor(AmberTheme::BG_DEEP_BLACK);
+            bg = IGfxColor(AmberTheme::NEON_ORANGE);
+        }
+
+        // Compact lock icon placed below header to avoid text overlap.
+        const int boxW = 10;
+        const int boxH = 10;
+        const int x = gfx.width() - boxW - 2;
+        const int y = 13;
+
+        gfx.fillRect(x, y, boxW, boxH, bg);
+        gfx.drawRect(x, y, boxW, boxH, fg);
+
+        // Shackle
+        gfx.drawLine(x + 3, y + 3, x + 3, y + 5, fg);
+        gfx.drawLine(x + 6, y + 3, x + 6, y + 5, fg);
+        gfx.drawLine(x + 3, y + 3, x + 6, y + 3, fg);
+        // Body
+        gfx.fillRect(x + 2, y + 5, 6, 4, fg);
+        // Keyhole
+        gfx.drawPixel(x + 4, y + 7, bg);
+    }
+
     void drawStandardFooter(IGfx& gfx, const char* left, const char* right) {
         LayoutManager::drawFooter(gfx, left, right);
     }

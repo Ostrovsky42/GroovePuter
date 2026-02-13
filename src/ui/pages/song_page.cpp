@@ -2169,9 +2169,7 @@ void SongPage::drawTEGridStyle(IGfx& gfx) {
   std::snprintf(footerBuf, sizeof(footerBuf), "E:%c P:%c%s  N:ins M:del X:split p:PH A+B:EDIT",
                 'A' + editSlot,
                 'A' + playSlot,
-                'A' + editSlot,
-                'A' + playSlot,
-                "");
+                liveMix ? " LM" : "");
   
   gfx.setTextColor(TE_DIM);
   gfx.drawText(x + 2, footer_y + 2, footerBuf);

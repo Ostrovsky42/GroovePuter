@@ -700,6 +700,7 @@ private:
     float phase = 0.0f;
     float increment = 1.0f;
     float volume = 1.0f; 
+    float reconLP = 0.0f;
   };
   VG voices[9]; // Map to DrumVoiceType
 

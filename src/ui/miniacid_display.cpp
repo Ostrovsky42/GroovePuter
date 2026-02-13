@@ -190,6 +190,7 @@ void MiniAcidDisplay::update() {
     
     // Waveform overlay (if enabled)
     UI::drawWaveformOverlay(gfx_, mini_acid_);
+    UI::drawLiveMixLockBadge(gfx_, mini_acid_);
     
     updateCyclePulse_();
     UI::drawFeelOverlay(gfx_, mini_acid_, millis() < cycle_pulse_until_ms_);
@@ -314,6 +315,23 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             return true;
         }
 
+        if (event.alt && (event.key == 'x' || event.key == 'X')) {
+            bool enable = !mini_acid_.liveMixModeEnabled();
+            withAudioGuard([&]() { mini_acid_.setLiveMixMode(enable); });
+            showToast(enable ? "LiveMix: ON" : "LiveMix: OFF", 900);
+            return true;
+        }
+
+        // Global transport toggle: always available, independent from page handlers.
+        if (event.key == ' ') {
+            withAudioGuard([&]() {
+                if (mini_acid_.isPlaying()) mini_acid_.stop();
+                else mini_acid_.start();
+            });
+            showToast(mini_acid_.isPlaying() ? "Play" : "Stop", 500);
+            return true;
+        }
+
         if (event.alt && (event.key == '\\' || event.key == '|')) {
             UI::currentStyle = nextVisualStyle(UI::currentStyle);
             for (auto& p : pages_) {
@@ -396,6 +414,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 
         // Global Mutes (1-9) - only if no secondary modifiers (ignore shift for CapsLock safety)
         if (!event.alt && !event.ctrl && !event.meta) {
+            const bool sp12Swap90 = (mini_acid_.currentDrumEngineName() == "SP12");
             if (event.key >= '1' && event.key <= '9') {
                 int trackIdx = event.key - '1';
                 withAudioGuard([&]() {
@@ -407,13 +426,16 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
                     else if (trackIdx == 5) mini_acid_.toggleMuteOpenHat();
                     else if (trackIdx == 6) mini_acid_.toggleMuteMidTom();
                     else if (trackIdx == 7) mini_acid_.toggleMuteHighTom();
-                    else if (trackIdx == 8) mini_acid_.toggleMuteRim();
-                    // Note: 9th key can toggle Rim/Clap together or just Rim
+                    else if (trackIdx == 8) {
+                        if (sp12Swap90) mini_acid_.toggleMuteClap(); // SP-12: key 9 -> Clap
+                        else mini_acid_.toggleMuteRim();
+                    }
                 });
                 return true;
             } else if (event.key == '0') {
                 withAudioGuard([&]() {
-                    mini_acid_.toggleMuteClap();
+                    if (sp12Swap90) mini_acid_.toggleMuteRim();      // SP-12: key 0 -> Rim
+                    else mini_acid_.toggleMuteClap();
                 });
                 return true;
             }

@@ -1867,33 +1867,45 @@ static int8_t sp12_clap[3000];
 void SP12DrumSynthVoice::buildROM() {
   if(romBuilt) return;
   
+  uint32_t s = 12345;
+  auto nextNoise = [&s]() {
+    s = s * 1664525u + 1013904223u;
+    return ((s >> 16) & 0x7FFF) / 16384.0f - 1.0f;
+  };
+
+  // 1. KICK: Low frequency drop + click
   for(int i=0; i<2000; i++) {
     float t = i / 2000.0f;
-    float ph = powf(t, 2.0f) * 100.0f; 
+    float ph = powf(t, 1.8f) * 120.0f; 
     float val = sinf(ph * 6.28f) * (1.0f - t);
-    if(i < 50) val += (rand() % 100 / 100.0f) * 0.5f; 
+    if(i < 80) val += nextNoise() * 0.4f; 
     sp12_kick[i] = (int8_t)(val * 127.0f);
   }
   
+  // 2. SNARE: Noise + Body tone (180Hz approx at 27.5kHz)
   for(int i=0; i<2000; i++) {
     float t = i / 2000.0f;
-    float noise = (rand() % 200 / 100.0f - 1.0f);
-    float tone = sinf(i * 0.3f);
+    float ph = (float)i / 27500.0f;
+    float tone = sinf(2.0f * 3.14159f * 180.0f * ph) * (1.0f - t * 2.0f);
+    if (tone < 0) tone = 0; // Half wave body
+    float noise = nextNoise();
     float val = (noise * 0.7f + tone * 0.3f) * (1.0f - t);
-    sp12_snare[i] = (int8_t)(val * 127.0f);
+    sp12_snare[i] = (int8_t)(val * 120.0f);
   }
   
+  // 3. HAT: Short Noise burst (simulated high frequency)
   for(int i=0; i<1000; i++) {
      float t = i / 1000.0f;
-     float val = (rand() % 200 / 100.0f - 1.0f) * (1.0f - t);
-     sp12_hat[i] = (int8_t)(val * 100.0f);
+     float val = nextNoise() * (1.0f - t);
+     sp12_hat[i] = (int8_t)(val * 90.0f);
   }
   
+  // 4. CLAP: Burst noise
   for(int i=0; i<3000; i++) {
      float t = i / 3000.0f;
-     float burst = (i % 300 < 50) ? 1.0f : 0.0f;
-     if(i > 800) burst = 1.0f; 
-     float noise = (rand() % 200 / 100.0f - 1.0f);
+     float burst = (i % 500 < 80) ? 1.0f : 0.0f;
+     if(i > 1500) burst = 1.0f; 
+     float noise = nextNoise();
      float val = noise * burst * (1.0f - t);
      sp12_clap[i] = (int8_t)(val * 127.0f);
   }
@@ -1916,13 +1928,29 @@ void SP12DrumSynthVoice::reset() {
 
 void SP12DrumSynthVoice::setSampleRate(float sr) {
   sampleRate = sr;
-  float pcmRate = 22050.0f; 
+  float pcmRate = 27500.0f; // Standard SP-12 PCM rate (approx)
   float inc = pcmRate / sr;
-  for(int i=0; i<9; i++) voices[i].increment = inc;
+  for (int i = 0; i < 9; i++) voices[i].increment = inc;
 }
 
 const Parameter& SP12DrumSynthVoice::parameter(DrumParamId id) const { return params[static_cast<int>(id)]; }
 void SP12DrumSynthVoice::setParameter(DrumParamId id, float value) { params[static_cast<int>(id)].setValue(value); }
+
+static inline float vel01(uint8_t v) {
+  float x = v * (1.0f / 100.0f);
+  if (x < 0.0f) x = 0.0f;
+  if (x > 1.0f) x = 1.0f;
+  return x;
+}
+
+static inline float dac12_fast(float x) {
+  if (x >  1.0f) x =  1.0f;
+  if (x < -1.0f) x = -1.0f;
+  int q = (int)(x * 2047.0f + (x >= 0.0f ? 0.5f : -0.5f));
+  if (q >  2047) q =  2047;
+  if (q < -2048) q = -2048;
+  return (float)q * (1.0f / 2047.0f);
+}
 
 float SP12DrumSynthVoice::processPCM(int idx) {
   VG& v = voices[idx];
@@ -1937,41 +1965,57 @@ float SP12DrumSynthVoice::processPCM(int idx) {
   float samp = v.curData[p] / 128.0f;
   v.phase += v.increment;
   
-  return quantize12(samp) * v.volume;
-}
-
-float SP12DrumSynthVoice::quantize12(float s) {
-  float steps = 2048.0f;
-  int q = (int)(s * steps);
-  return q / steps; 
+  // Apply per-voice reconstruction filter (approx 8kHz at 44.1k)
+  // SP-12 has 12-bit DAC then fixed analog filtering.
+  float q = dac12_fast(samp);
+  v.reconLP += 0.6f * (q - v.reconLP);
+  
+  return v.reconLP * v.volume;
 }
 
 void SP12DrumSynthVoice::triggerKick(bool accent, uint8_t velocity) {
-  voices[KICK].curData = sp12_kick; voices[KICK].curLen = 2000; voices[KICK].phase=0; voices[KICK].curPos=0; voices[KICK].volume = velocity/127.0f;
+  voices[KICK].curData = sp12_kick; voices[KICK].curLen = 2000; voices[KICK].phase=0; voices[KICK].curPos=0; voices[KICK].volume = vel01(velocity);
+  voices[KICK].reconLP = 0.0f;
 }
 void SP12DrumSynthVoice::triggerSnare(bool accent, uint8_t velocity) {
-  voices[SNARE].curData = sp12_snare; voices[SNARE].curLen = 2000; voices[SNARE].phase=0; voices[SNARE].curPos=0; voices[SNARE].volume = velocity/127.0f;
+  voices[SNARE].curData = sp12_snare; voices[SNARE].curLen = 2000; voices[SNARE].phase=0; voices[SNARE].curPos=0; voices[SNARE].volume = vel01(velocity);
+  voices[SNARE].reconLP = 0.0f;
 }
 void SP12DrumSynthVoice::triggerHat(bool accent, uint8_t velocity) {
-  voices[CLOSED_HAT].curData = sp12_hat; voices[CLOSED_HAT].curLen = 1000; voices[CLOSED_HAT].phase=0; voices[CLOSED_HAT].curPos=0; voices[CLOSED_HAT].volume = velocity/127.0f;
+  voices[CLOSED_HAT].curData = sp12_hat; voices[CLOSED_HAT].curLen = 1000; voices[CLOSED_HAT].phase=0; voices[CLOSED_HAT].curPos=0; voices[CLOSED_HAT].volume = vel01(velocity);
+  voices[CLOSED_HAT].reconLP = 0.0f;
 }
 void SP12DrumSynthVoice::triggerOpenHat(bool accent, uint8_t velocity) {
-   voices[OPEN_HAT].curData = sp12_hat; voices[OPEN_HAT].curLen = 1000; voices[OPEN_HAT].phase=0; voices[OPEN_HAT].curPos=0; voices[OPEN_HAT].volume = velocity/127.0f;
+   voices[OPEN_HAT].curData = sp12_hat; voices[OPEN_HAT].curLen = 1000; voices[OPEN_HAT].phase=0; voices[OPEN_HAT].curPos=0; voices[OPEN_HAT].volume = vel01(velocity);
+   voices[OPEN_HAT].reconLP = 0.0f;
 }
 void SP12DrumSynthVoice::triggerClap(bool accent, uint8_t velocity) {
-  voices[CLAP].curData = sp12_clap; voices[CLAP].curLen = 3000; voices[CLAP].phase=0; voices[CLAP].curPos=0; voices[CLAP].volume = velocity/127.0f;
+  voices[CLAP].curData = sp12_clap; voices[CLAP].curLen = 3000; voices[CLAP].phase=0; voices[CLAP].curPos=0; voices[CLAP].volume = vel01(velocity);
+  voices[CLAP].reconLP = 0.0f;
 }
-void SP12DrumSynthVoice::triggerMidTom(bool a, uint8_t v) {} 
-void SP12DrumSynthVoice::triggerHighTom(bool a, uint8_t v) {}
-void SP12DrumSynthVoice::triggerRim(bool a, uint8_t v) {}
-void SP12DrumSynthVoice::triggerCymbal(bool a, uint8_t v) {}
+void SP12DrumSynthVoice::triggerMidTom(bool a, uint8_t v) {
+  voices[MID_TOM].curData = sp12_kick; voices[MID_TOM].curLen = 2000; voices[MID_TOM].phase=0; voices[MID_TOM].curPos=0; voices[MID_TOM].volume = vel01(v) * 0.8f;
+  voices[MID_TOM].reconLP = 0.0f;
+}
+void SP12DrumSynthVoice::triggerHighTom(bool a, uint8_t v) {
+  voices[HIGH_TOM].curData = sp12_kick; voices[HIGH_TOM].curLen = 2000; voices[HIGH_TOM].phase=0; voices[HIGH_TOM].curPos=0; voices[HIGH_TOM].volume = vel01(v) * 0.7f;
+  voices[HIGH_TOM].reconLP = 0.0f;
+}
+void SP12DrumSynthVoice::triggerRim(bool a, uint8_t v) {
+  voices[RIM].curData = sp12_snare; voices[RIM].curLen = 1000; voices[RIM].phase=0; voices[RIM].curPos=0; voices[RIM].volume = vel01(v) * 0.6f;
+  voices[RIM].reconLP = 0.0f;
+}
+void SP12DrumSynthVoice::triggerCymbal(bool a, uint8_t v) {
+  voices[CYMBAL].curData = sp12_hat; voices[CYMBAL].curLen = 1000; voices[CYMBAL].phase=0; voices[CYMBAL].curPos=0; voices[CYMBAL].volume = vel01(v) * 1.2f;
+  voices[CYMBAL].reconLP = 0.0f;
+}
 
 float SP12DrumSynthVoice::processKick() { return processPCM(KICK); }
 float SP12DrumSynthVoice::processSnare() { return processPCM(SNARE); }
 float SP12DrumSynthVoice::processHat() { return processPCM(CLOSED_HAT); }
 float SP12DrumSynthVoice::processOpenHat() { return processPCM(OPEN_HAT); } 
-float SP12DrumSynthVoice::processMidTom() { return 0.0f; }
-float SP12DrumSynthVoice::processHighTom() { return 0.0f; }
-float SP12DrumSynthVoice::processRim() { return 0.0f; }
+float SP12DrumSynthVoice::processMidTom() { return processPCM(MID_TOM); }
+float SP12DrumSynthVoice::processHighTom() { return processPCM(HIGH_TOM); }
+float SP12DrumSynthVoice::processRim() { return processPCM(RIM); }
 float SP12DrumSynthVoice::processClap() { return processPCM(CLAP); }
-float SP12DrumSynthVoice::processCymbal() { return 0.0f; }
+float SP12DrumSynthVoice::processCymbal() { return processPCM(CYMBAL); }
