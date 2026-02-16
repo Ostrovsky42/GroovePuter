@@ -1141,7 +1141,7 @@ std::unique_ptr<MultiPageHelpDialog> DrumSequencerPage::getHelpDialog() {
 }
 
 int DrumSequencerPage::getHelpFrameCount() const {
-  return 1;
+  return 3;
 }
 
 void DrumSequencerPage::drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const {
@@ -1149,6 +1149,12 @@ void DrumSequencerPage::drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) co
   switch (frameIndex) {
     case 0:
       drawHelpPageDrumPatternEdit(gfx, bounds.x, bounds.y, bounds.w, bounds.h);
+      break;
+    case 1:
+      drawHelpPageMIDI(gfx, bounds.x, bounds.y, bounds.w, bounds.h);
+      break;
+    case 2:
+      drawHelpPageTransport(gfx, bounds.x, bounds.y, bounds.w, bounds.h);
       break;
     default:
       break;

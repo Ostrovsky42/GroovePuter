@@ -212,6 +212,39 @@ namespace UI {
         const int totalW = (10 * itemW) + (9 * spacing);
         const int x = gfx.width() - totalW - 4; // Right aligned
         const int y = Layout::FOOTER.y - 10;
+        const bool playing = mini_acid.isPlaying();
+        int step = mini_acid.currentStep();
+        if (step < 0 || step >= 16) step = 0;
+        const bool sp12Swap90 = (mini_acid.currentDrumEngineName() == "SP12");
+
+        // Step-hit lookup for flash behavior.
+        const int8_t* s303a = mini_acid.pattern303Steps(0);
+        const int8_t* s303b = mini_acid.pattern303Steps(1);
+        const bool* dKick = mini_acid.patternKickSteps();
+        const bool* dSnare = mini_acid.patternSnareSteps();
+        const bool* dHat = mini_acid.patternHatSteps();
+        const bool* dOpenHat = mini_acid.patternOpenHatSteps();
+        const bool* dMidTom = mini_acid.patternMidTomSteps();
+        const bool* dHighTom = mini_acid.patternHighTomSteps();
+        const bool* dRim = mini_acid.patternRimSteps();
+        const bool* dClap = mini_acid.patternClapSteps();
+
+        auto keyHitNow = [&](int keyIndex) -> bool {
+            // keyIndex: 0..9 for keys 1..0
+            switch (keyIndex) {
+                case 0: return s303a && (s303a[step] >= 0);
+                case 1: return s303b && (s303b[step] >= 0);
+                case 2: return dKick && dKick[step];
+                case 3: return dSnare && dSnare[step];
+                case 4: return dHat && dHat[step];
+                case 5: return dOpenHat && dOpenHat[step];
+                case 6: return dMidTom && dMidTom[step];
+                case 7: return dHighTom && dHighTom[step];
+                case 8: return (sp12Swap90 ? (dClap && dClap[step]) : (dRim && dRim[step]));
+                case 9: return (sp12Swap90 ? (dRim && dRim[step]) : (dClap && dClap[step]));
+                default: return false;
+            }
+        };
         
         // 3. Draw Loop
         for (int i = 0; i < 10; ++i) {
@@ -228,18 +261,27 @@ namespace UI {
                 case 5: muted = mini_acid.isOpenHatMuted(); break;
                 case 6: muted = mini_acid.isMidTomMuted(); break;
                 case 7: muted = mini_acid.isHighTomMuted(); break;
-                case 8: muted = mini_acid.isRimMuted(); break;
-                case 9: muted = mini_acid.isClapMuted(); break;
+                case 8: muted = sp12Swap90 ? mini_acid.isClapMuted() : mini_acid.isRimMuted(); break;
+                case 9: muted = sp12Swap90 ? mini_acid.isRimMuted() : mini_acid.isClapMuted(); break;
             }
             
             // Determine Color & Style
-            bool active = mini_acid.isTrackActive(i);
+            bool active = !muted;
+            bool hitNow = playing && keyHitNow(i);
+            bool blink = (millis() % 170) < 95;
             IGfxColor color = kIdle;
             
             if (muted) {
                 color = kMuted;
             } else if (active) {
                 color = kActive;
+            }
+
+            // Compact flash block on musical trigger, keeps palette consistent per theme.
+            if (hitNow && blink) {
+                IGfxColor flashBg = muted ? kMuted : kActive;
+                gfx.fillRect(cx - 1, y - 1, itemW, 9, flashBg);
+                color = COLOR_BLACK;
             }
             
             // Draw Number
@@ -249,10 +291,9 @@ namespace UI {
             gfx.setTextColor(color);
             gfx.drawText(cx, y, num);
             
-            // Add 'Energy Pulse' dot for active tracks
-            if (active && !muted) {
-                bool blink = (millis() % 200) < 100;
-                if (blink) gfx.fillRect(cx + 3, y - 4, 2, 2, kActive);
+            // Small timing tick above active lane.
+            if (active && !muted && blink) {
+                gfx.fillRect(cx + 3, y - 4, 2, 2, hitNow ? kActive : kIdle);
             }
             
         }

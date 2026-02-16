@@ -3,15 +3,20 @@
 #include "../ui_core.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
+#include "help_dialog.h"
 #include "../../audio/midi_importer.h"
 
-class ProjectPage : public IPage{
+class ProjectPage : public IPage, public IMultiHelpFramesProvider {
  public:
   ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   void onEnter(int context = 0) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string & getTitle() const override;
+  
+  std::unique_ptr<MultiPageHelpDialog> getHelpDialog() override;
+  int getHelpFrameCount() const override;
+  void drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const override;
   enum class ProjectSection { Scenes = 0, Groove, Led };
   enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, GrooveMode, GrooveFlavor, ApplyMacros, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash };
 
@@ -21,11 +26,10 @@ class ProjectPage : public IPage{
   enum class SaveDialogFocus { Input = 0, Randomize, Save, Cancel };
   enum class MidiImportProfile { Clean = 0, Loud };
   enum class MidiAdvanceFocus { 
-      SynthA = 0, SynthB, Drums, 
-      Mode, 
-      SourceChanA, SourceChanB, SourceChanD,
+      Mode = 0, 
       StartPattern, AutoFind, 
       FromBar, LengthBars, 
+      TrackMap,
       Import, Cancel,
       Count
   };
@@ -77,7 +81,7 @@ class ProjectPage : public IPage{
   DialogType dialog_type_;
   DialogFocus dialog_focus_;
   SaveDialogFocus save_dialog_focus_;
-  MidiAdvanceFocus midi_advance_focus_ = MidiAdvanceFocus::SynthA;
+  MidiAdvanceFocus midi_advance_focus_ = MidiAdvanceFocus::Mode;
   int selection_index_;
   int scroll_offset_;
   int main_scroll_ = 0;
@@ -91,12 +95,13 @@ class ProjectPage : public IPage{
   int midi_import_from_bar_ = 0;
   int midi_import_length_bars_ = 16;
   MidiImportProfile midi_import_profile_ = MidiImportProfile::Loud;
-  int midi_dest_a_ = 0;
-  int midi_dest_b_ = 1;
-  int midi_dest_d_ = 2;
-  int midi_synth_a_chan_ = 1;
-  int midi_synth_b_chan_ = 2;
-  int midi_drums_chan_ = 10;
+  
+  // Matrix Routing Masks
+  uint16_t midi_mask_a_ = 0;
+  uint16_t midi_mask_b_ = 0;
+  uint16_t midi_mask_d_ = 0;
+  int midi_map_cursor_ = 0; // 0-15, for TrackMap navigation
+  
   bool midi_import_append_ = false;
   int midi_adv_scroll_ = 0;
   std::string save_name_;

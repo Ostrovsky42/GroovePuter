@@ -47,6 +47,7 @@ This guide is aligned with the current firmware key map in `keys_sheet.md`.
 ### Arrangement
 - `Song Page`
 - `Q..U` assign pattern.
+- `Enter` **Quick Jump** to pattern editor for track at cursor.
 - `Ctrl+Arrows` select area.
 - `G` generate cell, double `G` generate row, `Alt+G` batch generate area.
 

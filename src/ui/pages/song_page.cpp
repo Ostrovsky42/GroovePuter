@@ -1520,12 +1520,44 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return toggleSongMode();
   }
 
-  // ENTER: Acknowledge Rehearsal Pause
+  // ENTER: Acknowledge Rehearsal Pause or jump to pattern editor
   if (!ui_event.ctrl && !ui_event.alt && (key == '\n' || key == '\r')) {
     if (mini_acid_.isWaitingForRehearsal()) {
       withAudioGuard([&]() { mini_acid_.acknowledgeRehearsal(); });
       showToast("RESUME", 800);
       return true;
+    }
+
+    // Quick jump to pattern editor
+    bool validTrk = false;
+    SongTrack trk = trackForColumn(cursorTrack(), validTrk);
+    if (validTrk) {
+        int patIndex = mini_acid_.songPatternAt(cursorRow(), trk);
+        int targetPage = -1;
+        char patLabel[16] = "---";
+        
+        if (patIndex >= 0) {
+            formatSongPatternLabel(patIndex, patLabel, sizeof(patLabel));
+        }
+
+        if (trk == SongTrack::SynthA) {
+            targetPage = 1;
+            if (patIndex >= 0) withAudioGuard([&]() { mini_acid_.set303PatternIndex(0, patIndex); });
+        } else if (trk == SongTrack::SynthB) {
+            targetPage = 2;
+            if (patIndex >= 0) withAudioGuard([&]() { mini_acid_.set303PatternIndex(1, patIndex); });
+        } else if (trk == SongTrack::Drums) {
+            targetPage = 5;
+            if (patIndex >= 0) withAudioGuard([&]() { mini_acid_.setDrumPatternIndex(patIndex); });
+        }
+
+        if (targetPage >= 0) {
+            char toast[32];
+            snprintf(toast, sizeof(toast), "Edit: %s", patLabel);
+            showToast(toast, 800);
+            requestPageTransition(targetPage);
+            return true;
+        }
     }
   }
 

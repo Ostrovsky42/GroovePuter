@@ -94,7 +94,7 @@ public:
             return true;
         }
         
-        if (event.ctrl && (event.key == 'h' || event.key == 'H')) {
+        if ((event.ctrl || event.alt) && (event.key == 'h' || event.key == 'H')) {
             close();
             return true;
         }

@@ -258,7 +258,74 @@ inline void drawHelpPageSong(IGfx& gfx, int x, int y, int w, int h) {
   drawHelpHeading(gfx, layout.left_x, left_y, "Patterns");
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "Q..I", "set 1-8", COLOR_PATTERN_SELECTED_FILL);
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "ENTER", "Jump to Editor", IGfxColor::Green());
   drawHelpItem(gfx, layout.right_x, left_y, "BKSP/TAB", "clear cell/selection", IGfxColor::Red());
+}
+
+inline void drawHelpPageMIDI(IGfx& gfx, int x, int y, int w, int h) {
+  HelpLayout layout = makeHelpLayout(gfx, x, y, w, h);
+  int left_y = layout.left_y;
+  int lh = layout.line_h;
+
+  drawHelpHeading(gfx, layout.left_x, left_y, "MIDI Matrix Routing");
+  left_y += lh;
+  drawHelpHeading(gfx, layout.left_x, left_y, "Track Map (4x4)");
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "ARROWS", "Move channel cursor", COLOR_LABEL);
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "ENTER / SPC", "Toggle A -> B -> D", IGfxColor::Yellow());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "A", "Auto-Route tracks", IGfxColor::Cyan());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "F", "Find free patterns", IGfxColor::Cyan());
+  left_y += lh;
+  
+  int right_y = y + 4 + lh;
+  drawHelpHeading(gfx, layout.right_x, right_y, "Destination");
+  right_y += lh;
+  drawHelpItem(gfx, layout.right_x, right_y, "A", "Synth A (TB-303)", COLOR_SYNTH_A);
+  right_y += lh;
+  drawHelpItem(gfx, layout.right_x, right_y, "B", "Synth B (TB-303)", COLOR_SYNTH_B);
+  right_y += lh;
+  drawHelpItem(gfx, layout.right_x, right_y, "D", "Drum Machine", COLOR_WHITE);
+}
+
+inline void drawHelpPageProject(IGfx& gfx, int x, int y, int w, int h) {
+  HelpLayout layout = makeHelpLayout(gfx, x, y, w, h);
+  int left_y = layout.left_y;
+  int lh = layout.line_h;
+
+  drawHelpHeading(gfx, layout.left_x, left_y, "Project / Scenes");
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "UP / DOWN", "Navigate list", COLOR_LABEL);
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "ENTER", "Open / Confirm", IGfxColor::Green());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "TAB", "Switch Section", IGfxColor::Yellow());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "X", "Delete Scene", IGfxColor::Red());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "G", "Jump to Genre Page", IGfxColor::Cyan());
+}
+
+inline void drawHelpPageSettings(IGfx& gfx, int x, int y, int w, int h) {
+  HelpLayout layout = makeHelpLayout(gfx, x, y, w, h);
+  int left_y = layout.left_y;
+  int lh = layout.line_h;
+
+  drawHelpHeading(gfx, layout.left_x, left_y, "Global Settings");
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "LEFT / RIGHT", "Adjust parameter", COLOR_LABEL);
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "ENTER", "Toggle / Next", COLOR_LABEL);
+  left_y += lh;
+  
+  drawHelpHeading(gfx, layout.left_x, left_y, "LED Lighting");
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "Mode", "Cycle visual FX", COLOR_LABEL);
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "Src", "Reactive source", COLOR_LABEL);
 }
 
 inline void drawHelpPageSongCont(IGfx& gfx, int x, int y, int w, int h) {
