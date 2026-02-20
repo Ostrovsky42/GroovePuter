@@ -2,6 +2,7 @@
 #include "ui_core.h"
 #include "layout_manager.h"
 #include "ui_widgets.h"
+#include "ui_config.h"
 
 // Forward declaration if needed, but ui_core/layout_manager should cover it
 #include "src/dsp/miniacid_engine.h"
@@ -19,6 +20,8 @@ namespace UI {
     // Global overlay state (extern, defined in ui_common.cpp)
     extern WaveformOverlayState waveformOverlay;
     extern VisualStyle currentStyle;
+    
+    // Page count moved to ui_config.h
 
     // Standard wave colors used by both page and overlay
     constexpr int kNumWaveColors = 5;

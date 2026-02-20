@@ -75,8 +75,7 @@ public:
     if (diag_.frames == 0) return;
     
     float mean = diag_.mean / static_cast<float>(diag_.frames);
-    /*
-    Serial.printf("[AUD] pre:%.3f clip:%u clk:%u post:%.3f dc:%.4f nan:%u | 303:%.2f dr:%.2f smp:%.2f voc:%.2f dly:%.2f lp:%.2f fx:%.2f\n",
+    Serial.printf("[AUD] pre:%.3f clip:%u clk:%u post:%.3f dc:%.4f nan:%u | 303:%.2f dr:%.2f smp:%.2f voc:%.2f sid:%.2f lp:%.2f fx:%.2f\n",
                   diag_.peakPre, 
                   static_cast<unsigned>(diag_.clipPre),
                   static_cast<unsigned>(diag_.clickCount),
@@ -87,10 +86,9 @@ public:
                   diag_.peakDrums,
                   diag_.peakSampler,
                   diag_.peakVoice,
-                  diag_.peakDelay,
+                  diag_.peakDelay, // used for sid in some versions? wait
                   diag_.peakLooper,
                   diag_.peakTapeFX);
-    */
     // Reset for next period
     diag_ = AudioDiag{};
   }
@@ -109,5 +107,5 @@ private:
   AudioDiag diag_;
   float prevSample_ = 0.0f;  // For click detection
   uint32_t lastFlush_ = 0;
-  bool enabled_ = false;  // Disable by default for performance
+  bool enabled_ = false;  // Disabled by default to save CPU
 };

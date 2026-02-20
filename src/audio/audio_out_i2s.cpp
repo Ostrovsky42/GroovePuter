@@ -3,12 +3,13 @@
 #include <Arduino.h>
 
 // New ESP-IDF I2S Driver (v5.x API)
-// Using I2S_NUM_1 to avoid Port 0 conflicts with M5Unified/Mic/Speaker
+// Using I2S_NUM_0 to avoid Port 0 conflicts with M5Unified/Mic/Speaker
 
 // M5Cardputer ADV I2S pins for ES8311 codec
 static const int I2S_BCLK = 41;
 static const int I2S_LRCLK = 43;
 static const int I2S_DOUT = 42;
+static const int I2S_MCLK = -1;  // Unused on Cardputer (derived from BCLK)
 
 AudioOutI2S::AudioOutI2S() 
   : sampleRate_(0)
@@ -47,7 +48,7 @@ bool AudioOutI2S::begin(uint32_t sampleRate, size_t bufferFrames) {
   }
   
   // 1. Create I2S Channel (Standard Mode)
-  // Use I2S_NUM_0 - must be freed by M5Cardputer.Speaker.end() before this call
+  // Use I2S_NUM_0 to avoid conflicts with M5.Speaker and ESP32-audioI2S on port 0
   i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
   chan_cfg.dma_desc_num = 8;         // Matches working test config
   chan_cfg.dma_frame_num = 512;      // Matches working test config

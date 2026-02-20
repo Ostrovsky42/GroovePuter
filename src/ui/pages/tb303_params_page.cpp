@@ -438,6 +438,8 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
   }
 
   if (UIInput::isGlobalNav(ui_event)) return false;
+  
+  if (UIInput::isTab(ui_event)) return false;
 
   int nav = UIInput::navCode(ui_event);
   bool fine = ui_event.shift || ui_event.ctrl;

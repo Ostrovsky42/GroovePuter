@@ -67,6 +67,7 @@ public:
     float recordElapsedSeconds() const { return static_cast<float>(playheadSamples()) / static_cast<float>(kSampleRate); }
     uint32_t loopLengthSamples() const { return length_; }
     uint32_t playheadSamples() const { return static_cast<uint32_t>(playhead_); }
+    float getPeak() { float p = peak_; peak_ = 0; return p; } // logically read-and-clear
 
     // Process a single sample
     // input: signal to be potentially recorded
@@ -89,6 +90,7 @@ private:
     
     float volume_ = 1.0f;
     bool firstRecord_ = false;
+    float peak_ = 0.0f;
 
     // Read sample with linear interpolation (for speed changes)
     float readInterpolated(float pos) const;

@@ -144,12 +144,23 @@ void ModePage::applyToDrums() {
 }
 
 void ModePage::previewMode() {
+  bool wasPlaying = mini_acid_.isPlaying();
+  if (wasPlaying) {
+      mini_acid_.stop(); // Stop before locking to prevent buffer underrun/stutter
+  }
+
   withAudioGuard([&]() {
     mini_acid_.randomize303Pattern(0);
     mini_acid_.randomize303Pattern(1);
     mini_acid_.randomizeDrumPattern();
-    if (!mini_acid_.isPlaying()) mini_acid_.start();
   });
+
+  if (wasPlaying) {
+      mini_acid_.start(); // Restart after generation
+  } else {
+      // If it wasn't playing, preview means start playing now
+      mini_acid_.start();
+  }
 }
 
 void ModePage::toggleMacros() {

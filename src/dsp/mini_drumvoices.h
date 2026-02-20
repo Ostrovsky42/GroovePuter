@@ -29,6 +29,7 @@ public:
   float process(float input, DrumVoiceType voice);
   void setAmount(float amount);
   void setEnabled(bool enabled);
+  void setSampleRate(float sampleRate);
 
 private:
   float bitcrush(float input, int bits);
@@ -38,6 +39,7 @@ private:
 
   bool enabled_ = false;
   float amount_ = 0.0f;
+  float sampleRate_ = 44100.0f;
   uint32_t noiseState_;
   float driftPhase_ = 0;
   

@@ -16,6 +16,7 @@ LoFiDrumFX::LoFiDrumFX() : noiseState_(12345) {}
 
 void LoFiDrumFX::setEnabled(bool enabled) { enabled_ = enabled; }
 void LoFiDrumFX::setAmount(float amount) { amount_ = amount; }
+void LoFiDrumFX::setSampleRate(float sampleRate) { sampleRate_ = sampleRate; }
 
 float LoFiDrumFX::process(float input, DrumVoiceType voice) {
   if (!enabled_ || amount_ <= 0.001f) return input;
@@ -30,7 +31,7 @@ float LoFiDrumFX::process(float input, DrumVoiceType voice) {
   output = fastTanh(output * (1.0f + amount_ * 0.5f));
   
   // 3. Highpass (subtle)
-  output = hipass_.process(output, 60.0f + amount_ * 100.0f, 22050.0f);
+  output = hipass_.process(output, 60.0f + amount_ * 100.0f, sampleRate_);
   
   // 4. Vinyl noise (very quiet)
   output += vinyl() * 0.01f * amount_;
@@ -192,6 +193,7 @@ void TR808DrumSynthVoice::setSampleRate(float sampleRateHz) {
   if (sampleRateHz <= 0.0f) sampleRateHz = 44100.0f;
   sampleRate = sampleRateHz;
   invSampleRate = 1.0f / sampleRate;
+  lofi.setSampleRate(sampleRate);
   updateClapFilters(clapAccentAmount);
 }
 
@@ -805,6 +807,7 @@ void TR909DrumSynthVoice::setSampleRate(float sampleRateHz) {
   if (sampleRateHz <= 0.0f) sampleRateHz = 44100.0f;
   sampleRate = sampleRateHz;
   invSampleRate = 1.0f / sampleRate;
+  lofi.setSampleRate(sampleRate);
   updateClapFilter();
 }
 
@@ -1282,6 +1285,7 @@ void TR606DrumSynthVoice::setSampleRate(float sampleRateHz) {
   if (sampleRateHz <= 0.0f) sampleRateHz = 44100.0f;
   sampleRate = sampleRateHz;
   invSampleRate = 1.0f / sampleRate;
+  lofi.setSampleRate(sampleRate);
   kickAmpDecay = decayCoeff(0.180f);
   kickFmDecay = decayCoeff(0.012f);
   snareToneDecay = decayCoeff(0.075f);
@@ -1618,6 +1622,7 @@ void CR78DrumSynthVoice::reset() {
 void CR78DrumSynthVoice::setSampleRate(float sr) {
   if (sr <= 0) sr = 44100.0f;
   sampleRate = sr;
+  lofi.setSampleRate(sr);
 }
 
 float CR78DrumSynthVoice::decayCoef(float ms) {
@@ -1762,7 +1767,11 @@ void KPR77DrumSynthVoice::reset() {
   
   params[static_cast<int>(DrumParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.0f, 0.8f, 1.0f/128);
 }
-void KPR77DrumSynthVoice::setSampleRate(float sr) { if(sr<=0) sr=44100; sampleRate=sr; }
+void KPR77DrumSynthVoice::setSampleRate(float sr) { 
+  if(sr<=0) sr=44100; 
+  sampleRate=sr; 
+  lofi.setSampleRate(sr);
+}
 float KPR77DrumSynthVoice::decayCoef(float ms) { return expf(-1.0f / (ms * 0.001f * sampleRate)); }
 float KPR77DrumSynthVoice::lcgFrand() {
   noiseState = noiseState * 1664525u + 1013904223u;
@@ -1928,6 +1937,7 @@ void SP12DrumSynthVoice::reset() {
 
 void SP12DrumSynthVoice::setSampleRate(float sr) {
   sampleRate = sr;
+  lofi.setSampleRate(sr);
   float pcmRate = 27500.0f; // Standard SP-12 PCM rate (approx)
   float inc = pcmRate / sr;
   for (int i = 0; i < 9; i++) voices[i].increment = inc;

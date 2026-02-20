@@ -707,6 +707,7 @@ void SceneJsonObserver::onArrayStart() {
         else if (lastKey_ == "customPhrases") path = Path::CustomPhrases;
         else if (lastKey_ == "synthPatternIndex") path = Path::SynthPatternIndex;
         else if (lastKey_ == "synthBankIndex") path = Path::SynthBankIndex;
+        else if (lastKey_ == "synthEngines") path = Path::SynthEngines;
         else if (lastKey_ == "synthDistortion") path = Path::SynthDistortion;
         else if (lastKey_ == "synthDelay") path = Path::SynthDelay;
         else if (lastKey_ == "synthParams") path = Path::SynthParams;
@@ -1315,6 +1316,11 @@ void SceneJsonObserver::onString(const std::string& value) {
         std::strncpy(target_.customPhrases[idx], value.c_str(), Scene::kMaxPhraseLength - 1);
         target_.customPhrases[idx][Scene::kMaxPhraseLength - 1] = '\0';
       }
+    } else if (context.path == Path::SynthEngines) {
+      int idx = context.index;
+      if (idx >= 0 && idx < 2) {
+        synthEngineNames_[idx] = value;
+      }
     }
   }
 }
@@ -1389,6 +1395,10 @@ int SceneJsonObserver::loopStartRow() const { return loopStartRow_; }
 int SceneJsonObserver::loopEndRow() const { return loopEndRow_; }
 
 const std::string& SceneJsonObserver::drumEngineName() const { return drumEngineName_; }
+const std::string& SceneJsonObserver::synthEngineName(int synthIdx) const {
+  int idx = synthIdx < 0 ? 0 : synthIdx > 1 ? 1 : synthIdx;
+  return synthEngineNames_[idx];
+}
 
 GrooveboxMode SceneJsonObserver::mode() const { return target_.mode; }
 
@@ -1416,6 +1426,8 @@ void SceneManager::loadDefaultScene() {
   synthParameters_[0] = SynthParameters();
   synthParameters_[1] = SynthParameters();
   drumEngineName_ = "808";
+  synthEngineNames_[0] = "TB303";
+  synthEngineNames_[1] = "TB303";
   setBpm(70.0f);
   songMode_ = true;
   loopMode_ = true;
@@ -1623,6 +1635,8 @@ void SceneManager::wipeToZero() {
   synthParameters_[0] = SynthParameters();
   synthParameters_[1] = SynthParameters();
   drumEngineName_ = "808";
+  synthEngineNames_[0] = "TB303";
+  synthEngineNames_[1] = "TB303";
   setBpm(120.0f); // Standard techno start
   songMode_ = false;
   loopMode_ = false;
@@ -1831,6 +1845,16 @@ const SynthParameters& SceneManager::getSynthParameters(int synthIdx) const {
 void SceneManager::setDrumEngineName(const std::string& name) { drumEngineName_ = name; }
 
 const std::string& SceneManager::getDrumEngineName() const { return drumEngineName_; }
+
+void SceneManager::setSynthEngineName(int synthIdx, const std::string& name) {
+  int idx = clampSynthIndex(synthIdx);
+  synthEngineNames_[idx] = name;
+}
+
+const std::string& SceneManager::getSynthEngineName(int synthIdx) const {
+  int idx = clampSynthIndex(synthIdx);
+  return synthEngineNames_[idx];
+}
 
 void SceneManager::setMode(GrooveboxMode mode) {
   int m = static_cast<int>(mode);

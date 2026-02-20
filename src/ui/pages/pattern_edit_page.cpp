@@ -581,26 +581,9 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   }
   if (handled) return true;
 
-  // Legacy direct-page behavior: TAB toggles A/B voice.
-  // In SynthSequencerPage wrapper TAB is intercepted for sub-page switching.
+  // Let TAB pass through to parent wrappers
   if (UIInput::isTab(ui_event)) {
-      voice_index_ = (voice_index_ + 1) % 2; // Toggle 0 <-> 1
-      title_ = makePatternPageTitle(mini_acid_, voice_index_, mini_acid_.currentPageIndex());
-      
-      // Refresh state for new voice
-      bank_index_ = mini_acid_.current303BankIndex(voice_index_);
-      bank_cursor_ = bank_index_;
-      pattern_row_cursor_ = mini_acid_.current303PatternIndex(voice_index_);
-      if (pattern_row_cursor_ < 0) pattern_row_cursor_ = 0;
-
-      const std::string engine = currentEngineName(mini_acid_, voice_index_);
-      char toast[32];
-      std::snprintf(toast, sizeof(toast), "SYNTH %c: %s",
-                    (voice_index_ == 0 ? 'A' : 'B'),
-                    engine.c_str());
-      UI::showToast(toast, 900);
-      
-      return true;
+      return false;
   }
 
   char key = ui_event.key;

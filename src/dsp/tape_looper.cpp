@@ -259,6 +259,7 @@ void TapeLooper::process(float input, float* loopPart) {
     }
 
     *loopPart = out * volume_;
+    if (fabsf(*loopPart) > peak_) peak_ = fabsf(*loopPart);
 }
 
 void TapeLooper::bakeLoopCrossfade() {
