@@ -8,10 +8,12 @@
 #include "mono_synth_voice.h"
 #include "mini_tb303.h"
 #include "sid_synth_voice.h"
+#include "ay_synth_voice.h"
 
 enum class SynthEngineType : uint8_t {
   TB303 = 0,
   SID = 1,
+  AY = 2,
 };
 
 struct SynthVoiceState {
@@ -52,14 +54,19 @@ private:
   static std::unique_ptr<IMonoSynthVoice> createVoice(SynthEngineType type, float sampleRate);
   static const char* toEngineName(SynthEngineType type);
   static int engineIndex(SynthEngineType type) {
-    return type == SynthEngineType::SID ? 1 : 0;
+    switch (type) {
+      case SynthEngineType::SID: return 1;
+      case SynthEngineType::AY: return 2;
+      case SynthEngineType::TB303:
+      default: return 0;
+    }
   }
 
   float sampleRate_ = 44100.0f;
   SynthEngineType type_ = SynthEngineType::TB303;
   SynthEngineType pendingType_ = SynthEngineType::TB303;
 
-  std::unique_ptr<IMonoSynthVoice> engines_[2];
+  std::unique_ptr<IMonoSynthVoice> engines_[3];
   IMonoSynthVoice* current_ = nullptr;
   IMonoSynthVoice* next_ = nullptr;
 

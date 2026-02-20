@@ -886,6 +886,11 @@ void MiniAcid::setSynthEngine(int voiceIndex, const std::string& engineName) {
   if (name.find("SID") != std::string::npos) {
     target = SynthEngineType::SID;
     targetName = "SID";
+  } else if (name.find("AY") != std::string::npos ||
+             name.find("YM2149") != std::string::npos ||
+             name.find("PSG") != std::string::npos) {
+    target = SynthEngineType::AY;
+    targetName = "AY";
   } else if (name.find("TB303") != std::string::npos || name.find("303") != std::string::npos) {
     target = SynthEngineType::TB303;
     targetName = "TB303";
@@ -918,7 +923,7 @@ std::vector<std::string> MiniAcid::getAvailableDrumEngines() const {
 }
 
 std::vector<std::string> MiniAcid::getAvailableSynthEngines() const {
-  return {"TB303", "SID"};
+  return {"TB303", "SID", "AY"};
 }
 
 std::string MiniAcid::currentSynthEngineName(int voiceIndex) const {

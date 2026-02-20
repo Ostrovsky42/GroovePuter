@@ -18,6 +18,8 @@ inline SynthEngineType parseEngineName(const std::string& name) {
     c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
   }
   if (upper.find("SID") != std::string::npos) return SynthEngineType::SID;
+  if (upper.find("AY") != std::string::npos || upper.find("YM2149") != std::string::npos ||
+      upper.find("PSG") != std::string::npos) return SynthEngineType::AY;
   return SynthEngineType::TB303;
 }
 } // namespace
@@ -32,6 +34,8 @@ SwappableSynthVoice::SwappableSynthVoice(float sampleRate, SynthEngineType initi
       createVoice(SynthEngineType::TB303, sampleRate_);
   engines_[engineIndex(SynthEngineType::SID)] =
       createVoice(SynthEngineType::SID, sampleRate_);
+  engines_[engineIndex(SynthEngineType::AY)] =
+      createVoice(SynthEngineType::AY, sampleRate_);
 
   current_ = engines_[engineIndex(type_)].get();
   for (auto& engine : engines_) {
@@ -46,6 +50,8 @@ std::unique_ptr<IMonoSynthVoice> SwappableSynthVoice::createVoice(SynthEngineTyp
   switch (type) {
     case SynthEngineType::SID:
       return std::make_unique<SidSynthVoice>(sampleRate);
+    case SynthEngineType::AY:
+      return std::make_unique<AySynthVoice>(sampleRate);
     case SynthEngineType::TB303:
     default:
       return std::make_unique<TB303Voice>(sampleRate);
@@ -55,6 +61,7 @@ std::unique_ptr<IMonoSynthVoice> SwappableSynthVoice::createVoice(SynthEngineTyp
 const char* SwappableSynthVoice::toEngineName(SynthEngineType type) {
   switch (type) {
     case SynthEngineType::SID: return "SID";
+    case SynthEngineType::AY: return "AY";
     case SynthEngineType::TB303:
     default: return "TB303";
   }
