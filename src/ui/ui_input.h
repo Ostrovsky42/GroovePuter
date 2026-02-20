@@ -35,7 +35,7 @@ static inline bool isBack(const UIEvent& e) {
 }
 
 static inline bool isTab(const UIEvent& e) {
-  return e.key == '\t';
+  return e.key == '\t' || e.scancode == GROOVEPUTER_TAB;
 }
 
 // Global navigation keys are reserved at the app level.

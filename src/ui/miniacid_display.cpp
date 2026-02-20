@@ -9,7 +9,7 @@
 #include "pages/sequencer_hub_page.h"
 #include "pages/genre_page.h"
 #include "pages/drum_sequencer_page.h"
-#include "pages/pattern_edit_page.h"
+#include "pages/synth_sequencer_page.h"
 #include "pages/tape_page.h"
 #include "pages/feel_texture_page.h"
 #include "pages/settings_page.h"
@@ -91,8 +91,8 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
     std::unique_ptr<IPage> page;
     switch (index) {
         case 0:  page = std::make_unique<GenrePage>(gfx_, mini_acid_, audio_guard_); break;
-        case 1:  page = std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 0); break;
-        case 2:  page = std::make_unique<PatternEditPage>(gfx_, mini_acid_, audio_guard_, 1); break;
+        case 1:  page = std::make_unique<SynthSequencerPage>(gfx_, mini_acid_, audio_guard_, 0); break;
+        case 2:  page = std::make_unique<SynthSequencerPage>(gfx_, mini_acid_, audio_guard_, 1); break;
         case 3:  page = std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 0); break;
         case 4:  page = std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 1); break;
         case 5:  page = std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_); break;
@@ -101,9 +101,7 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case 8:  page = std::make_unique<FeelTexturePage>(gfx_, mini_acid_, audio_guard_); break;
         case 9:  page = std::make_unique<SettingsPage>(gfx_, mini_acid_, audio_guard_); break;
         case 10: page = std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_); break;
-       // case 11: page = std::make_unique<TapePage>(gfx_, mini_acid_, audio_guard_); break;
         case 11: page = std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_); break;
-        //case 13: page = std::make_unique<SamplerPage>(gfx_, mini_acid_, audio_guard_); break;
     }
 #if defined(ESP32) || defined(ESP_PLATFORM)
     uint32_t freeAfter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -294,12 +292,12 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         // Global Page Flip (Alt + [ / ])
         if (event.alt && (event.key == '[' || event.key == '{')) {
             int prev = mini_acid_.currentPageIndex() - 1;
-            if (prev < 0) prev = kMaxPages - 1;
+            if (prev < 0) prev = kPageCount - 1;
             mini_acid_.requestPageSwitch(prev);
             return true;
         }
         if (event.alt && (event.key == ']' || event.key == '}')) {
-            int next = (mini_acid_.currentPageIndex() + 1) % kMaxPages;
+            int next = (mini_acid_.currentPageIndex() + 1) % kPageCount;
             mini_acid_.requestPageSwitch(next);
             return true;
         }
@@ -308,7 +306,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             Serial.println("[UI] Shortcut Alt+V -> Page 11");
             goToPage(11); // Groove Lab
             return true;
-        }
+        }      
 
         if (event.alt && (event.key == 'w' || event.key == 'W')) {
             UI::waveformOverlay.enabled = !UI::waveformOverlay.enabled;

@@ -158,6 +158,9 @@ static void handleEvents(AppState& s) {
         case SDL_SCANCODE_ESCAPE:
           grooveputerEvent.scancode = GROOVEPUTER_ESCAPE;
           break;
+        case SDL_SCANCODE_TAB:
+          grooveputerEvent.scancode = GROOVEPUTER_TAB;
+          break;
         default:
           break;
       }

@@ -207,6 +207,7 @@ public:
   int displayDrumLocalPatternIndex() const;
   
   const Parameter& synthParameter(int voiceIndex, int knobIndex) const;
+  uint8_t synthParameterCount(int voiceIndex) const;
   void adjustSynthParameter(int voiceIndex, int knobIndex, int steps);
   void setSynthEngine(int voiceIndex, const std::string& engineName);
   std::vector<std::string> getAvailableSynthEngines() const;

@@ -56,7 +56,8 @@ static void markBootStage(uint32_t stage, const char* msg = nullptr) {
 }
 
 void audioTask(void *param) {
-  Serial.println("AudioTask: Starting begin()...");
+  Serial.println("AudioTask: Starting...");
+
   // Initialize I2S audio output
   if (!g_audioOut.begin(kSampleRate, kBlockFrames)) {
     Serial.println("[FATAL] I2S audio init failed");
@@ -65,86 +66,60 @@ void audioTask(void *param) {
   Serial.println("AudioTask: Loop start");
   
   while (true) {
-    // Serial.println("A1"); Serial.flush();
-    // Generate audio
     uint32_t now = micros();
     uint32_t start = now;
     static uint32_t warmupBlocks = 32; // ~90ms at 44.1kHz/128 for hardware stability
+
     if (warmupBlocks > 0) {
       std::fill(g_audioBuffer, g_audioBuffer + kBlockFrames, 0);
       warmupBlocks--;
-      if (warmupBlocks == 0) {
-        Serial.println("AudioTask: Warmup complete, audio active");
-      }
+      if (warmupBlocks == 0) Serial.println("AudioTask: Warmup complete");
     } else if (g_miniAcid) {
       g_miniAcid->generateAudioBuffer(g_audioBuffer, kBlockFrames);
     } else {
       std::fill(g_audioBuffer, g_audioBuffer + kBlockFrames, 0);
     }
+    
     uint32_t dsp_time = micros() - start;
     
-    // Update performance stats with lock-free snapshot
-    constexpr uint32_t ideal_period_us = (1000000UL * kBlockFrames) / kSampleRate;
+    // Update performance stats
     if (g_miniAcid) {
         auto& stats = g_miniAcid->perfStats;
+        constexpr uint32_t ideal_period_us = (1000000UL * kBlockFrames) / kSampleRate;
+        uint32_t actual_period_us = (stats.lastCallbackMicros > 0) ? (now - stats.lastCallbackMicros) : ideal_period_us;
         
-        // Measure actual callback period
-        uint32_t actual_period_us = ideal_period_us;  // default
-        if (stats.lastCallbackMicros > 0) {
-            actual_period_us = now - stats.lastCallbackMicros;
-        }
-        
-        // Start snapshot write (seq becomes odd)
-        stats.seq++;
-        
-        // Update peak
-        static uint32_t peakBlockCounter = 0;
-        static float peakAccum = 0;
-        float currentPct = (float)dsp_time * 100.0f / (float)ideal_period_us;
-        if (currentPct > peakAccum) peakAccum = currentPct;
-        
-        if (++peakBlockCounter >= 22 || stats.cpuAudioPeakPct == 0) {
-            stats.cpuAudioPeakPct = peakAccum;
-            peakAccum = 0;
-            peakBlockCounter = 0;
+        static int heartbeat = 0;
+        if (heartbeat++ % 1000 == 0) {
+            // Serial.printf("[AUDIO] pulse... seq=%u dsp=%uus acid=%p\n", 
+            //               (unsigned)stats.seq, (unsigned)dsp_time, (void*)g_miniAcid);
         }
 
-        // Core stats
-        stats.audioUnderruns = (dsp_time > ideal_period_us) ? stats.audioUnderruns + 1 : stats.audioUnderruns;
+        stats.seq++;
+        float currentPct = (float)dsp_time * 100.0f / (float)ideal_period_us;
         stats.cpuAudioPctIdeal = currentPct;
         stats.cpuAudioPctActual = (float)dsp_time * 100.0f / (float)actual_period_us;
         stats.dspTimeUs = dsp_time;
         stats.lastCallbackMicros = now;
-
-        // End snapshot write (seq becomes even)
         stats.seq++;
-        
-        // Log underruns
-        if (dsp_time > ideal_period_us) {
-           // Serial.printf("[UNDERRUN] dsp:%uus ideal:%uus actual:%uus total:%u\n", dsp_time, ideal_period_us, actual_period_us, (unsigned)stats.audioUnderruns);
-        }
     }
 
-    // Write to recorder if recording
     if (g_audioRecorder) {
-      // Serial.println("A4"); Serial.flush();
       g_audioRecorder->writeSamples(g_audioBuffer, kBlockFrames);
     }
     
-    // Flush diagnostics periodically
     if (AudioDiagnostics::instance().isEnabled()) {
-      // Serial.println("A5"); Serial.flush();
       AudioDiagnostics::instance().flushIfReady(millis());
     }
 
-    // Write to I2S (blocks until DMA accepts the buffer)
+    // Write to I2S
     if (!g_audioOut.writeMono16(g_audioBuffer, kBlockFrames)) {
-      // Serial.println("A6"); Serial.flush();
-      // If write fails (usually because it was never initialized),
-      // we MUST sleep to avoid starving lower priority tasks (like the UI/Keys!)
-      vTaskDelay(10 / portTICK_PERIOD_MS);
+      static uint32_t lastErrorLog = 0;
+      if (millis() - lastErrorLog > 1000) {
+        Serial.println("[I2S] Write Timeout / Error");
+        lastErrorLog = millis();
+      }
+      vTaskDelay(pdMS_TO_TICKS(10));
     }
-    // Serial.println("A7"); Serial.flush();
   }
 }
 
@@ -167,7 +142,7 @@ static void logHeapCaps(const char* tag) {
 void setup() {
   // ENABLE hardware amplifier (PA_EN = G21)
   pinMode(21, OUTPUT); digitalWrite(21, HIGH);
-  pinMode(42, OUTPUT); digitalWrite(42, LOW);
+  // pinMode(42, OUTPUT); digitalWrite(42, LOW); // Possible I2S conflict
   
   Serial.begin(115200);
   // Keep diagnostics off by default on hardware; detailed profiling can exceed
@@ -190,15 +165,24 @@ void setup() {
   M5Cardputer.Speaker.begin();
   M5Cardputer.Speaker.setVolume(220);
   
-  // 2. IMPORTANT: Release Port 0 immediately.
-  // This uninstalls M5's I2S driver but keeps the ES8311 codec registers intact.
-  // This avoids the "I2S driver conflict" and allows us to use Port 0.
-  M5Cardputer.Speaker.end();
-  markBootStage(21, "after Speaker.end");
-  Serial.println("[Audio] ES8311 codec initialized, Speaker released Port 0");
+  // 2. Release Port 0 while keeping I2C settings
+  // Speaker.end() releases I2S but powers down the codec (0x01 = 0x80).
+  // We MUST re-enable power (0x01 = 0x32) manually via I2C and ensure unmute.
+  M5Cardputer.Speaker.end(); 
   
-  // Small delay to ensure the driver is fully uninstalled before our custom one starts
-  delay(50);
+  // 3. Re-initialize ES8311 registers specifically for custom I2S
+  // This matches M5Unified CardputerADV init sequence for ES8311 exactly
+  const uint8_t es8311_addr = 0x18;
+  M5Cardputer.In_I2C.writeRegister8(es8311_addr, 0x00, 0x80, 100000); // RESET / CSM POWER ON
+  M5Cardputer.In_I2C.writeRegister8(es8311_addr, 0x01, 0xB5, 100000); // CLOCK_MANAGER: MCLK=BCLK
+  M5Cardputer.In_I2C.writeRegister8(es8311_addr, 0x02, 0x18, 100000); // CLOCK_MANAGER/ MULT_PRE=3
+  M5Cardputer.In_I2C.writeRegister8(es8311_addr, 0x0D, 0x01, 100000); // SYSTEM: Power up analog circuitry
+  M5Cardputer.In_I2C.writeRegister8(es8311_addr, 0x12, 0x00, 100000); // SYSTEM: power-up DAC
+  M5Cardputer.In_I2C.writeRegister8(es8311_addr, 0x13, 0x10, 100000); // SYSTEM: Enable output to HP drive
+  M5Cardputer.In_I2C.writeRegister8(es8311_addr, 0x32, 0xBF, 100000); // DAC: DAC volume max (0xBF == +/-0 dB)
+  M5Cardputer.In_I2C.writeRegister8(es8311_addr, 0x37, 0x08, 100000); // DAC: Bypass DAC equalizer
+  
+  Serial.println("[Audio] ES8311 custom I2C Config complete (MCLK derived from BCLK)");
   
   // Seed random number generator with hardware RNG
   srand(esp_random());
@@ -244,8 +228,8 @@ void setup() {
 
   // Points to static instance
   g_miniAcid = &g_miniAcidInstance;
-  Serial.printf("[DEBUG] g_miniAcid addr: %p (instance: %p)\n", (void*)g_miniAcid, (void*)&g_miniAcidInstance);
-  Serial.printf("[DEBUG] MiniAcid size: %u bytes\n", (unsigned)sizeof(MiniAcid));
+  // Serial.printf("[DEBUG] g_miniAcid addr: %p (instance: %p)\n", (void*)g_miniAcid, (void*)&g_miniAcidInstance);
+  // Serial.printf("[DEBUG] MiniAcid size: %u bytes\n", (unsigned)sizeof(MiniAcid));
   
   screenLog("4. Engine Static OK");
   
@@ -317,17 +301,20 @@ void setup() {
 
   Serial.println("8. Creating AudioTask...");
   markBootStage(80, "before AudioTask create");
+  g_audioTaskHandle = nullptr;
   BaseType_t taskOk = xTaskCreatePinnedToCore(audioTask, "AudioTask",
-                                              8192, // stack
+                                              8192, // Reverted to 8192 for stability
                                               nullptr,
                                               3, // priority
                                               &g_audioTaskHandle,
                                               1 // core
   );
   if (taskOk != pdPASS) {
-    Serial.println("[FATAL] AudioTask create failed");
+    Serial.printf("[FATAL] AudioTask create failed: %d\n", (int)taskOk);
     markBootStage(902, "fatal-audio-task");
     while (true) { delay(1000); }
+  } else {
+    Serial.printf("[DEBUG] AudioTask created successful, handle: %p\n", (void*)g_audioTaskHandle);
   }
   markBootStage(81, "after AudioTask create");
 
@@ -378,6 +365,15 @@ void loop() {
     }
 
     char c = evt.key;
+    if (c == '\t' && g_miniDisplay) {
+      UIEvent app_evt{};
+      app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
+      app_evt.app_event_type = GROOVEPUTER_APP_EVENT_MULTIPAGE_DOWN;
+      if (g_miniDisplay->handleEvent(app_evt)) {
+        drawUI();
+        return;
+      }
+    }
     if (c == '\n' || c == '\r') {
       if (g_miniDisplay) g_miniDisplay->dismissSplash();
       drawUI();
@@ -525,8 +521,9 @@ void loop() {
       } else if (hid == KEY_BACKSPACE) {
         evt.key = '\b';
         shouldSend = true;
-      } else if (hid == KEY_TAB) {
+      } else if (hid == KEY_TAB || hid == 0x2B) { // 0x2B = USB HID TAB
         evt.key = '\t';
+        evt.scancode = GROOVEPUTER_TAB;
         shouldSend = true;
       } else if (hid >= 0x1E && hid <= 0x27) { // numbers 1..0
         if (hid == 0x27) evt.key = '0';
@@ -554,7 +551,7 @@ void loop() {
         // Skip keys already handled via HID loop (numbers, navigation, special keys)
         // This prevents "double-toggle" where a key on/off cycle happens in a single frame.
         if (u >= '0' && u <= '9') continue;
-        if (u == '\n' || u == '\r' || u == '\b' || u == '\t') continue;
+        if (u == '\n' || u == '\r' || u == '\b') continue;
 
         // Skip letters if Ctrl/Alt held (handled via HID path)
         if (ks.ctrl || ks.alt) {
@@ -571,6 +568,9 @@ void loop() {
       evt.meta = ks.fn;
       evt.key = normalizeKeyChar(inputChar);
       evt.scancode = mapAsciiLetterScancode(evt.key);
+      if (evt.key == '\t') {
+        evt.scancode = GROOVEPUTER_TAB;
+      }
 
       if (evt.key == '`' || evt.key == '~') { // escape
         evt.scancode = GROOVEPUTER_ESCAPE;
@@ -621,7 +621,7 @@ void loop() {
   static unsigned long lastMemLog = 0;
   if (millis() - lastMemLog > 5000) {
     lastMemLog = millis();
-    logHeapCaps("periodic");
+    // logHeapCaps("periodic");
     if (g_miniAcid) {
        auto& stats = g_miniAcid->perfStats;
        uint32_t s1 = 0, s2 = 0;
@@ -640,10 +640,10 @@ void loop() {
            df = stats.dspFxUs;
            s2 = stats.seq;
        } while (s1 != s2 || (s1 & 1));
-       Serial.printf("[PERF] CPU: avg %.1f%% / peak %.1f%% (underruns %u)\n",
-           cpuAvg, cpuPeak, (unsigned)underruns);
-       Serial.printf("       DSP: v:%uus d:%uus s:%uus f:%uus\n",
-           (unsigned)dv, (unsigned)dd, (unsigned)ds, (unsigned)df);
+       // Serial.printf("[PERF] CPU: avg %.1f%% / peak %.1f%% (underruns %u)\n",
+       //     cpuAvg, cpuPeak, (unsigned)underruns);
+       // Serial.printf("       DSP: v:%uus d:%uus s:%uus f:%uus\n",
+       //     (unsigned)dv, (unsigned)dd, (unsigned)ds, (unsigned)df);
     }
   }
 

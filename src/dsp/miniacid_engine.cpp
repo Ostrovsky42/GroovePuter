@@ -849,6 +849,12 @@ const Parameter& MiniAcid::synthParameter(int voiceIndex, int knobIndex) const {
   return dummyParam;
 }
 
+uint8_t MiniAcid::synthParameterCount(int voiceIndex) const {
+  int idx = clamp303Voice(voiceIndex);
+  if (synthVoices_[idx]) return synthVoices_[idx]->parameterCount();
+  return 0;
+}
+
 void MiniAcid::adjustSynthParameter(int voiceIndex, int knobIndex, int steps) {
   int idx = clamp303Voice(voiceIndex);
   if (synthVoices_[idx]) {

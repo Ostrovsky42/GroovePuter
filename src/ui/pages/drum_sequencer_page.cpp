@@ -593,7 +593,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     case GROOVEPUTER_LEFT:
       if (ui_event.alt) {
         int next = mini_acid_.currentPageIndex() - 1;
-        if (next < 0) next = kMaxPages - 1;
+        if (next < 0) next = UI::kPageCount - 1;
         mini_acid_.requestPageSwitch(next);
         handled = true;
         break;
@@ -604,7 +604,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
       break;
     case GROOVEPUTER_RIGHT:
       if (ui_event.alt) {
-        int next = (mini_acid_.currentPageIndex() + 1) % kMaxPages;
+        int next = (mini_acid_.currentPageIndex() + 1) % UI::kPageCount;
         mini_acid_.requestPageSwitch(next);
         handled = true;
         break;
@@ -1126,6 +1126,10 @@ DrumSequencerPage::DrumSequencerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard 
 
 bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type == GROOVEPUTER_KEY_DOWN && UIInput::isTab(ui_event)) {
+    static uint32_t last_tab_ms = 0;
+    uint32_t now = millis();
+    if (last_tab_ms != 0 && (now - last_tab_ms) < 250u) return true;
+    last_tab_ms = now;
     return stepActivePage(1);
   }
   return MultiPage::handleEvent(ui_event);
