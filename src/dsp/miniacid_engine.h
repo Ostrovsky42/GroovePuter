@@ -1,4 +1,6 @@
 #pragma once
+#ifndef MINIACID_ENGINE_H
+#define MINIACID_ENGINE_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -11,7 +13,9 @@
 #include "src/dsp/genre_manager.h"
 #include "../../scene_storage.h"
 #include "../../scenes.h"
+#include "mono_synth_voice.h"
 #include "mini_tb303.h"
+#include "swappable_synth_voice.h"
 #include "mini_drumvoices.h"
 #include "tube_distortion.h"
 #include "perf_stats.h"
@@ -201,6 +205,13 @@ public:
   int16_t displayDrumPatternIndex() const;
   int display303LocalPatternIndex(int voiceIndex) const;
   int displayDrumLocalPatternIndex() const;
+  
+  const Parameter& synthParameter(int voiceIndex, int knobIndex) const;
+  void adjustSynthParameter(int voiceIndex, int knobIndex, int steps);
+  void setSynthEngine(int voiceIndex, const std::string& engineName);
+  std::vector<std::string> getAvailableSynthEngines() const;
+  std::string currentSynthEngineName(int voiceIndex) const;
+
   std::vector<std::string> getAvailableDrumEngines() const;
   void setDrumEngine(const std::string& engineName);
   std::string currentDrumEngineName() const;
@@ -225,6 +236,7 @@ public:
   bool isTrackActive(int index) const; // 0=303A, 1=303B, 2=KICK, 3=SNARE, 4=HAT, etc.
   void setTrackVolume(VoiceId id, float volume);
   float getTrackVolume(VoiceId id) const;
+
   void toggleDelay303(int voiceIndex = 0);
   void toggleDistortion303(int voiceIndex = 0);
   void set303DelayEnabled(int voiceIndex, bool enabled);
@@ -342,6 +354,8 @@ private:
   void applyDrumAutomationLanesForStep_(const DrumPatternSet& patternSet, int step);
   float noteToFreq(int note);
   int clamp303Voice(int voiceIndex) const;
+  TB303Voice* tb303Voice(int voiceIndex);
+  const TB303Voice* tb303Voice(int voiceIndex) const;
   int clamp303Step(int stepIndex) const;
   int clamp303Note(int note) const;
   const SynthPattern& synthPattern(int synthIndex) const;
@@ -359,8 +373,9 @@ private:
   void advanceSongPlayhead();
   int clampSongPosition(int position) const;
 
-  TB303Voice voice303;
-  TB303Voice voice3032;
+  std::unique_ptr<SwappableSynthVoice> synthVoices_[NUM_303_VOICES];
+  std::string synthEngineNames_[NUM_303_VOICES];
+  
   std::unique_ptr<DrumSynthVoice> drums;
   float sampleRateValue;
   std::string drumEngineName_;
@@ -451,7 +466,7 @@ private:
   } masterLimiter;
 
   struct MasterBassBoost {
-    float f_coeff = 80.0f / 22050.0f; 
+    float f_coeff = 80.0f / (float)kSampleRate; 
     float boost = 1.25f; 
     float lpf = 0.0f;
     float process(float in) {
@@ -463,7 +478,7 @@ private:
   // High-frequency dampening to soften harsh highs
   struct HighShelfCut {
     float lpf = 0.0f;
-    float coeff = 0.15f; // ~3kHz rolloff at 22050Hz 
+    float coeff = 0.08f; // ~3kHz rolloff at 44100Hz 
     float process(float in) {
       lpf += coeff * (in - lpf);
       return lpf; // Lowpass output
@@ -573,3 +588,4 @@ public:
 inline Parameter& MiniAcid::miniParameter(MiniAcidParamId id) {
   return params[static_cast<int>(id)];
 }
+#endif // MINIACID_ENGINE_H
