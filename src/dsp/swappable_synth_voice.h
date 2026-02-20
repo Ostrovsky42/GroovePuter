@@ -9,11 +9,13 @@
 #include "mini_tb303.h"
 #include "sid_synth_voice.h"
 #include "ay_synth_voice.h"
+#include "opl2_synth_voice.h"
 
 enum class SynthEngineType : uint8_t {
   TB303 = 0,
   SID = 1,
   AY = 2,
+  OPL2 = 3,
 };
 
 struct SynthVoiceState {
@@ -57,6 +59,7 @@ private:
     switch (type) {
       case SynthEngineType::SID: return 1;
       case SynthEngineType::AY: return 2;
+      case SynthEngineType::OPL2: return 3;
       case SynthEngineType::TB303:
       default: return 0;
     }
@@ -66,7 +69,7 @@ private:
   SynthEngineType type_ = SynthEngineType::TB303;
   SynthEngineType pendingType_ = SynthEngineType::TB303;
 
-  std::unique_ptr<IMonoSynthVoice> engines_[3];
+  std::unique_ptr<IMonoSynthVoice> engines_[4];
   IMonoSynthVoice* current_ = nullptr;
   IMonoSynthVoice* next_ = nullptr;
 
