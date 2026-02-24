@@ -36,6 +36,7 @@ private:
   float modPhase_ = 0.0f;
   float feedbackSample_ = 0.0f;
   float env_ = 0.0f;
+  float envSlew_ = 0.0f;
   bool gate_ = false;
 
   GrooveboxMode mode_ = GrooveboxMode::Acid;

@@ -2,17 +2,18 @@
 set -e
 
 # Configuration
-# Aligning with build.sh: using huge_app (3MB) for better compatibility with audio projects
-# and disabling PSRAM as a safe baseline for boot troubleshooting.
-# FlashMode=dio chosen to match the ROM detection seen in Serial logs.
-FQBN="m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,FlashMode=dio"
+# Keep this exactly aligned with scripts/build.sh (known-good runtime on hardware).
+# OLD (caused mismatch vs regular upload path):
+# FQBN="m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,FlashMode=dio"
+FQBN="m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app"
 OUT_DIR="release_bins"
 APP_NAME="grooveputer"
 TIMESTAMP=$(date +"%H%MI%m%d")
 BIN_NAME="${APP_NAME}_${TIMESTAMP}.bin"
+MERGED_NAME="${APP_NAME}_${TIMESTAMP}.merged.bin"
 ARDUINO_CLI="./platform_sdl/bin/arduino-cli"
 
-echo "=== Building MiniAcid Release (Stable Config: No PSRAM, Huge APP, DIO) ==="
+echo "=== Building MiniAcid Dev Release (No PSRAM, Huge APP) ==="
 echo "FQBN: $FQBN"
 echo "Output: $OUT_DIR/$BIN_NAME"
 
@@ -20,27 +21,28 @@ echo "Output: $OUT_DIR/$BIN_NAME"
 mkdir -p "$OUT_DIR"
 
 # Build phase
-echo "[BUILD] Compiling sketch... (Incremental)"
-# Removed --clean for speed
-$ARDUINO_CLI compile --fqbn "$FQBN" --output-dir "$OUT_DIR" .
+echo "[BUILD] Compiling sketch... (--clean for deterministic binaries)"
+# OLD fast path (kept for reference):
+# $ARDUINO_CLI compile --fqbn "$FQBN" --output-dir "$OUT_DIR" .
+$ARDUINO_CLI compile --clean --fqbn "$FQBN" --output-dir "$OUT_DIR" .
 
 # Normalize output names regardless of sketch filename
-# arduino-cli with --output-dir puts files as <sketch_name>.ino.bin
-APP_BIN_SRC=""
-for candidate in "$OUT_DIR"/*.ino.bin; do
-    if [ -f "$candidate" ]; then
-        APP_BIN_SRC="$candidate"
-        break
-    fi
-done
+APP_BIN_SRC="$OUT_DIR/miniacid.ino.bin"
+MERGED_BIN_SRC="$OUT_DIR/miniacid.ino.merged.bin"
 
-if [ -n "$APP_BIN_SRC" ]; then
+if [ -f "$APP_BIN_SRC" ]; then
     cp -f "$APP_BIN_SRC" "$OUT_DIR/$BIN_NAME"
-    # Create a 'latest' symlink or copy for convenience
     cp -f "$APP_BIN_SRC" "$OUT_DIR/${APP_NAME}_latest.bin"
-    echo "Success! Application binary created at: $OUT_DIR/$BIN_NAME"
-    echo "Latest link: $OUT_DIR/${APP_NAME}_latest.bin"
+    echo "Success! App binary: $OUT_DIR/$BIN_NAME"
+    echo "Latest app:   $OUT_DIR/${APP_NAME}_latest.bin"
 else
     echo "Error: Application binary not found!"
     exit 1
+fi
+
+if [ -f "$MERGED_BIN_SRC" ]; then
+    cp -f "$MERGED_BIN_SRC" "$OUT_DIR/$MERGED_NAME"
+    cp -f "$MERGED_BIN_SRC" "$OUT_DIR/${APP_NAME}_latest.merged.bin"
+    echo "Merged binary: $OUT_DIR/$MERGED_NAME"
+    echo "Latest merged: $OUT_DIR/${APP_NAME}_latest.merged.bin"
 fi

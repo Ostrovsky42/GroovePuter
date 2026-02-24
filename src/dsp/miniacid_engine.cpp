@@ -292,10 +292,10 @@ void MiniAcid::init() {
     // DRAM: Constrained mode (44.1kHz is expensive!)
     // Keep a practical looper length so REC/PLAY is musically usable without PSRAM.
     // 1.0s mono int16 looper ~= 88KB.
-    if (tapeLooper) tapeLooper->init(1.0f);
+    if (tapeLooper) tapeLooper->init(0.5f);
     if (sampleStore) sampleStore->setPoolSize(32 * 1024); // 32KB sampler pool
-    delay303.init(0.15f);
-    delay3032.init(0.15f);
+    delay303.init(0.1f);
+    delay3032.init(0.1f);
     
     // TAPE FX DISABLED BY DEFAULT IN DRAM MODE
     if (tapeFX) tapeFX->setEnabled(false);

@@ -35,6 +35,7 @@ void AySynthVoice::reset() {
   phaseC_ = 0.0f;
   noisePhase_ = 0.0f;
   env_ = 0.0f;
+  ampSlew_ = 0.0f;
   gate_ = false;
   lfsr_ = 0x1FFFFu;
   noiseSample_ = -1.0f;
@@ -45,7 +46,7 @@ void AySynthVoice::setSampleRate(float sampleRate) {
   sampleRate_ = sampleRate;
 }
 
-void AySynthVoice::startNote(float freqHz, bool /*accent*/, bool /*slideFlag*/, uint8_t velocity) {
+void AySynthVoice::startNote(float freqHz, bool /*accent*/, bool slideFlag, uint8_t velocity) {
   if (freqHz <= 0.0f) return;
 
   // AY/YM tone frequency quantization: f = clock / (16 * period).
@@ -56,6 +57,7 @@ void AySynthVoice::startNote(float freqHz, bool /*accent*/, bool /*slideFlag*/, 
 
   gate_ = true;
   env_ = 1.0f;
+  if (!slideFlag) ampSlew_ = 0.0f;
   velocityGain_ = std::clamp(static_cast<float>(velocity) / 127.0f, 0.05f, 1.0f);
 }
 
@@ -120,7 +122,12 @@ float AySynthVoice::process() {
 
   // AY volume is quantized (4-bit style).
   const float v4 = std::floor(env_ * 15.0f + 0.5f) * (1.0f / 15.0f);
-  float out = mixed * v4 * velocityGain_ * 0.30f;
+  
+  // 1-2ms anti-click smoothing on the quantized amplitude step
+  const float targetAmp = v4 * velocityGain_ * 0.30f;
+  ampSlew_ += (targetAmp - ampSlew_) * (1000.0f / sampleRate_);
+
+  float out = mixed * ampSlew_;
 
   // Optional light extra crunch from global lo-fi amount.
   if (loFiAmount_ > 0.001f) {

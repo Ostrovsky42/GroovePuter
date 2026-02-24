@@ -57,16 +57,19 @@ class GlobalSynthSettingsPage final : public Container {
       const int max_row = visibleParamCount();
       if (nav == GROOVEPUTER_UP) {
         if (selected_row_ > 0) --selected_row_;
+        resetAdjustRamp();
         return true;
       }
       if (nav == GROOVEPUTER_DOWN) {
         if (selected_row_ < max_row) ++selected_row_;
+        resetAdjustRamp();
         return true;
       }
       if (selected_row_ > 0 && (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT)) {
-        int delta = (nav == GROOVEPUTER_LEFT) ? -1 : 1;
-        if (!ui_event.ctrl && !ui_event.shift) delta *= kCoarseStep;
-        adjustParam(selected_row_ - 1, delta);
+        const int direction = (nav == GROOVEPUTER_LEFT) ? -1 : 1;
+        const int param_index = selected_row_ - 1;
+        const int delta = computeAdjustDelta(param_index, direction, ui_event);
+        adjustParam(param_index, delta);
         return true;
       }
     }
@@ -119,7 +122,7 @@ class GlobalSynthSettingsPage final : public Container {
 
  private:
   static constexpr int kMaxParamRows = 6;
-  static constexpr int kCoarseStep = 3;
+  static constexpr uint32_t kRepeatWindowMs = 140;
 
   template <typename F>
   void withAudioGuard(F&& fn) {
@@ -143,6 +146,70 @@ class GlobalSynthSettingsPage final : public Container {
   void adjustParam(int param_index, int steps) {
     if (param_index < 0 || param_index >= visibleParamCount()) return;
     withAudioGuard([&]() { mini_acid_.adjustSynthParameter(voice_index_, param_index, steps); });
+  }
+
+  void resetAdjustRamp() {
+    last_adjust_ms_ = 0;
+    last_adjust_row_ = -1;
+    last_adjust_dir_ = 0;
+    adjust_repeat_count_ = 0;
+  }
+
+  int baseStepFromParameter(const Parameter& p) const {
+    if (p.hasOptions()) return 1;
+
+    const float range = p.max() - p.min();
+    const float step = std::fabs(p.step());
+    if (range <= 0.0001f || step <= 0.000001f) return 1;
+
+    const float steps_across = range / step;
+    if (steps_across >= 8000.0f) return 32;
+    if (steps_across >= 4000.0f) return 24;
+    if (steps_across >= 2000.0f) return 16;
+    if (steps_across >= 1000.0f) return 12;
+    if (steps_across >= 400.0f) return 8;
+    if (steps_across >= 150.0f) return 4;
+    if (steps_across >= 60.0f) return 2;
+    return 1;
+  }
+
+  int repeatMultiplier(int row, int direction) {
+    const uint32_t now = millis();
+    const bool same_adjust =
+        (row == last_adjust_row_) &&
+        (direction == last_adjust_dir_) &&
+        (last_adjust_ms_ != 0) &&
+        ((now - last_adjust_ms_) <= kRepeatWindowMs);
+
+    if (same_adjust) {
+      if (adjust_repeat_count_ < 255) ++adjust_repeat_count_;
+    } else {
+      adjust_repeat_count_ = 0;
+    }
+
+    last_adjust_ms_ = now;
+    last_adjust_row_ = row;
+    last_adjust_dir_ = direction;
+
+    if (adjust_repeat_count_ >= 12) return 8;
+    if (adjust_repeat_count_ >= 7) return 4;
+    if (adjust_repeat_count_ >= 3) return 2;
+    return 1;
+  }
+
+  int computeAdjustDelta(int param_index, int direction, const UIEvent& ui_event) {
+    if (param_index < 0 || param_index >= visibleParamCount()) return 0;
+    const Parameter& p = mini_acid_.synthParameter(voice_index_, param_index);
+
+    const bool fine = ui_event.shift || ui_event.ctrl;
+    if (fine || p.hasOptions()) {
+      resetAdjustRamp();
+      return direction;
+    }
+
+    const int base = baseStepFromParameter(p);
+    const int mul = repeatMultiplier(param_index, direction);
+    return direction * base * mul;
   }
 
   void applyEngineSelection() {
@@ -197,6 +264,10 @@ class GlobalSynthSettingsPage final : public Container {
   std::vector<std::string> synth_engine_options_;
   std::shared_ptr<LabelOptionComponent> engine_control_;
   int selected_row_ = 0;
+  uint32_t last_adjust_ms_ = 0;
+  int last_adjust_row_ = -1;
+  int last_adjust_dir_ = 0;
+  uint8_t adjust_repeat_count_ = 0;
 };
 } // namespace
 
@@ -215,12 +286,18 @@ SynthSequencerPage::SynthSequencerPage(IGfx& gfx,
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type == GROOVEPUTER_KEY_DOWN && UIInput::isTab(ui_event)) {
+    Serial.println("[UI] SynthSequencerPage captured TAB event!");
     const uint32_t now = millis();
     // Ignore key-repeat bounce for TAB so one physical press == one section step.
-    if (last_tab_switch_ms_ != 0 && (now - last_tab_switch_ms_) < 250u) return true;
+    if (last_tab_switch_ms_ != 0 && (now - last_tab_switch_ms_) < 250u) {
+       Serial.printf("[UI] TAB ignored by 250ms debounce (delta=%u ms)\n", now - last_tab_switch_ms_);
+       return true;
+    }
     last_tab_switch_ms_ = now;
 
-    if (!stepActivePage(1)) return false;
+    bool stepped = stepActivePage(1);
+    Serial.printf("[UI] stepActivePage(1) returned %d, new active_index_=%d\n", stepped, activePageIndex());
+    if (!stepped) return false;
     const bool patternActive = (activePageIndex() == 0);
     char toast[40];
     std::snprintf(toast, sizeof(toast), "SYNTH %c: %s",

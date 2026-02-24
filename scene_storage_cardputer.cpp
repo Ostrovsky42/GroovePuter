@@ -7,6 +7,10 @@
 #include <SPI.h>
 #include <SD.h>
 
+#if defined(ESP32) || defined(ESP_PLATFORM)
+#include <esp_heap_caps.h>
+#endif
+
 #include "scenes.h"
 
 #define SD_SPI_SCK_PIN  40
@@ -315,6 +319,12 @@ std::vector<std::string> SceneStorageCardputer::getAvailableSceneNames() const {
   }
 
   while (true) {
+#if defined(ESP32) || defined(ESP_PLATFORM)
+    if (heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) < 2048) {
+      Serial.println("Scene list near OOM, truncating directly");
+      break;
+    }
+#endif
     File entry = root.openNextFile();
     if (!entry) break;
     if (!entry.isDirectory()) {

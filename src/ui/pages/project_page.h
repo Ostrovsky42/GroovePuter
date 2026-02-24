@@ -54,7 +54,7 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   bool navigateUpMidiDir();
   bool isMidiDirEntry(int index) const;
   int midiDirCount() const { return (int)midi_dirs_.size(); }
-  std::string midiDisplayName(int index) const;
+  const char* midiDisplayName(int index) const;
   void openImportMidiDialog();
   void openMidiAdvanceDialog();
   bool importMidiAtSelection();

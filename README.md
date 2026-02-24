@@ -17,7 +17,7 @@ Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtu
 
 ## Features
 
-* **Two TB-303–style voices** (bass + lead)
+* **Two Swappable Synth Voices:** swap engines on the fly (click-free) between TB-303, OPL2 (FM), AY/YM2149 (PSG), and SID.
 * **TR-808–inspired drum section**
 * **Pattern + song arrangement**
 * **Dual song slots (`A/B`)** with split compare and live mix controls

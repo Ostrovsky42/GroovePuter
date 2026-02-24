@@ -1,13 +1,10 @@
 #include "sid_synth.h"
+
 #include <cmath>
 #include <algorithm>
 
-// Placeholder/Skeleton implementation for SidSynth.
-// In a full implementation, this would wrap ESP32-DASH-SID.
-
-SidSynth::SidSynth() : sampleRate_(44100.0f) {}
-
-SidSynth::~SidSynth() {}
+SidSynth::SidSynth() = default;
+SidSynth::~SidSynth() = default;
 
 void SidSynth::init(float sampleRate) {
     sampleRate_ = sampleRate;
@@ -18,16 +15,22 @@ void SidSynth::reset() {
     active_ = false;
     phase_ = 0.0f;
     currentMidiNote_ = -1;
+
     lpState_ = 0.0f;
     peak_ = 0.0f;
+
+    // параметры оставляем как “патч” (не сбрасываем), как обычно в синтах
 }
 
 void SidSynth::startNote(uint8_t note, uint8_t velocity) {
-    // Convert MIDI note to frequency and retrigger phase envelope.
     active_ = true;
     currentMidiNote_ = static_cast<int>(note);
+
     freqHz_ = 440.0f * std::pow(2.0f, (static_cast<float>(note) - 69.0f) / 12.0f);
-    amp_ = std::clamp(static_cast<float>(velocity) / 127.0f, 0.05f, 1.0f);
+    const float v = std::clamp(static_cast<float>(velocity) / 127.0f, 0.0f, 1.0f);
+    amp_ = std::clamp(v, 0.05f, 1.0f);
+
+    // ретриггер фазы — примитивно, но предсказуемо
     phase_ = 0.0f;
 }
 
@@ -39,10 +42,12 @@ void SidSynth::stopNote() {
 void SidSynth::process(float* buffer, size_t numSamples) {
     if (!active_ || !buffer || numSamples == 0) return;
 
-    const float nyquist = sampleRate_ * 0.5f;
-    const float cutoffHz = std::clamp(static_cast<float>(filterCutoff_), 20.0f, nyquist * 0.99f);
-    const float cutoffNorm = std::clamp(cutoffHz / nyquist, 0.001f, 0.99f);
+    const float nyq = sampleRate_ * 0.5f;
+    const float cutoffHz = std::clamp(static_cast<float>(filterCutoff_), 20.0f, nyq * 0.99f);
+    const float cutoffNorm = std::clamp(cutoffHz / nyq, 0.001f, 0.99f);
     const float resNorm = std::clamp(static_cast<float>(filterResonance_) / 255.0f, 0.0f, 1.0f);
+
+    // “честный” SID тут не моделируем — это заглушка.
     const float alpha = std::clamp(cutoffNorm * (0.20f + (1.0f - resNorm) * 0.80f), 0.001f, 0.50f);
     const float duty = std::clamp(static_cast<float>(pulseWidth_) / 4095.0f, 0.02f, 0.98f);
 
@@ -51,20 +56,20 @@ void SidSynth::process(float* buffer, size_t numSamples) {
         if (phase_ >= 1.0f) phase_ -= 1.0f;
 
         const float osc = (phase_ < duty) ? 1.0f : -1.0f;
+
         lpState_ += alpha * (osc - lpState_);
         const float hp = osc - lpState_;
 
         float shaped = osc;
         switch (filterType_) {
-            case 0: shaped = lpState_; break;           // LP
-            case 1: shaped = (osc + hp) * 0.5f; break;  // BP-ish
-            case 2: shaped = hp; break;                 // HP
-            case 3:
-            default: shaped = osc; break;               // OFF
+            case 0: shaped = lpState_; break;                 // LP
+            case 1: shaped = (osc + hp) * 0.5f; break;        // BP-ish
+            case 2: shaped = hp; break;                       // HP
+            case 3: default: shaped = osc; break;             // OFF
         }
 
-        float out = shaped * amp_ * volume_ * 0.25f;
-        if (std::fabs(out) > peak_) peak_ = std::fabs(out);
+        const float out = shaped * amp_ * volume_ * 0.25f;
+        peak_ = std::max(peak_, std::fabs(out));
         buffer[i] += out;
     }
 }
@@ -73,8 +78,8 @@ void SidSynth::setPulseWidth(uint16_t pw) {
     pulseWidth_ = std::clamp<uint16_t>(pw, 64, 4095);
 }
 
-void SidSynth::setFilterCutoff(uint16_t cutoff) {
-    filterCutoff_ = std::clamp<uint16_t>(cutoff, 20, 12000);
+void SidSynth::setFilterCutoff(uint16_t cutoffHz) {
+    filterCutoff_ = std::clamp<uint16_t>(cutoffHz, 20, 12000);
 }
 
 void SidSynth::setFilterResonance(uint8_t res) {

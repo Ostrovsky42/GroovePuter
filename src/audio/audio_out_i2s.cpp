@@ -9,7 +9,9 @@
 static const int I2S_BCLK = 41;
 static const int I2S_LRCLK = 43;
 static const int I2S_DOUT = 42;
-static const int I2S_MCLK = -1;  // Unused on Cardputer (derived from BCLK)
+static const int I2S_MCLK = 0;   // GPIO 0 on Cardputer (optional MCLK output)
+static constexpr bool kEnableHardwareMclk = false;
+// static constexpr bool kEnableHardwareMclk = true; // Optional 44.1k experiments
 
 AudioOutI2S::AudioOutI2S() 
   : sampleRate_(0)
@@ -68,13 +70,16 @@ bool AudioOutI2S::begin(uint32_t sampleRate, size_t bufferFrames) {
   // Clock: Use default source (usually PLL or XTAL)
   std_cfg.clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(sampleRate);
   std_cfg.clk_cfg.clk_src = I2S_CLK_SRC_DEFAULT;
+  if (kEnableHardwareMclk) {
+    std_cfg.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;
+  }
 
   
   // Slot: Standard Philips I2S (Option B from before, matching i2s_test.ino)
   std_cfg.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO);
   
   // GPIOs
-  std_cfg.gpio_cfg.mclk = I2S_GPIO_UNUSED;
+  std_cfg.gpio_cfg.mclk = kEnableHardwareMclk ? (gpio_num_t)I2S_MCLK : I2S_GPIO_UNUSED;
   std_cfg.gpio_cfg.bclk = (gpio_num_t)I2S_BCLK;
   std_cfg.gpio_cfg.ws = (gpio_num_t)I2S_LRCLK;
   std_cfg.gpio_cfg.dout = (gpio_num_t)I2S_DOUT;
@@ -104,8 +109,8 @@ bool AudioOutI2S::begin(uint32_t sampleRate, size_t bufferFrames) {
     return false;
   }
   
-  Serial.printf("[AudioOutI2S] Initialized on I2S_NUM_0: %u Hz, %u frames\n", 
-                sampleRate, (unsigned)bufferFrames);
+  Serial.printf("[AudioOutI2S] Initialized on I2S_NUM_0: %u Hz, %u frames, MCLK=%s\n",
+                sampleRate, (unsigned)bufferFrames, kEnableHardwareMclk ? "ON" : "OFF");
   return true;
 }
 

@@ -357,6 +357,8 @@ void loop() {
   static unsigned long nextRepeatAt = 0;
 
   auto handleWithFallback = [&](UIEvent evt) {
+    Serial.printf("[DIAG] handleWithFallback: key=0x%02X (%c), scancode=%d, app_event=%d\n", 
+      (uint8_t)evt.key, evt.key >= 32 && evt.key < 127 ? evt.key : '.', evt.scancode, evt.app_event_type);
     evt.event_type = GROOVEPUTER_KEY_DOWN;
     bool handled = g_miniDisplay ? g_miniDisplay->handleEvent(evt) : false;
     if (handled) {

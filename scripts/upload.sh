@@ -15,9 +15,13 @@ for arg in "$@"; do
     esac
 done
 
-if [ "$USE_PREBUILT" -eq 1 ] && [ -f "release_bins/grooveputer_latest.bin" ]; then
-    echo "Using pre-built binary: release_bins/grooveputer_latest.bin"
-    arduino-cli upload --fqbn "$FQBN" -p "$PORT" --input-file "release_bins/grooveputer_latest.bin"
+if [ "$USE_PREBUILT" -eq 1 ] && [ -f "release_bins/miniacid.ino.bin" ]; then
+    # arduino-cli upload expects sibling *.bootloader.bin and *.partitions.bin
+    # with the same base name, so use the canonical compile artifact.
+    echo "Using pre-built binary: release_bins/miniacid.ino.bin"
+    # OLD (kept for reference, fails without matching companion files):
+    # arduino-cli upload --fqbn "$FQBN" -p "$PORT" --input-file "release_bins/grooveputer_latest.bin"
+    arduino-cli upload --fqbn "$FQBN" -p "$PORT" --input-file "release_bins/miniacid.ino.bin"
 else
     echo "Using current source build path..."
     arduino-cli upload --fqbn "$FQBN" -p "$PORT"

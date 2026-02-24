@@ -14,6 +14,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <new>
 
 #include "../layout_manager.h"
 #include "../screen_geometry.h"
@@ -149,6 +150,12 @@ void sectionRange(int section, int& first, int& last) {
   }
 }
 
+constexpr size_t kMaxMidiDirsInUi = 24;
+constexpr size_t kMaxMidiFilesInUi = 48;
+#if defined(ESP32) || defined(ESP_PLATFORM)
+constexpr size_t kMidiListLowMemGuardBytes = 4096;
+#endif
+
 } // namespace
 
 ProjectPage::ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
@@ -184,7 +191,7 @@ void ProjectPage::openLoadDialog() {
   selection_index_ = 0;
   scroll_offset_ = 0;
   loadError_ = false;
-  refreshScenes();
+  if (scenes_.empty()) refreshScenes();
   std::string current = mini_acid_.currentSceneName();
   for (size_t i = 0; i < scenes_.size(); ++i) {
     if (scenes_[i] == current) {
@@ -205,34 +212,76 @@ void ProjectPage::openSaveDialog() {
 void ProjectPage::refreshMidiFiles() {
   midi_files_.clear();
   midi_dirs_.clear();
+  try {
+    midi_files_.reserve(8);
+    midi_dirs_.reserve(8);
+  } catch (const std::bad_alloc&) {
+    Serial.println("MIDI list reserve OOM");
+    return;
+  }
+  if (midi_current_path_.empty()) midi_current_path_ = "/midi";
   if (!SD.exists(midi_current_path_.c_str())) {
       SD.mkdir(midi_current_path_.c_str());
   }
   File root = SD.open(midi_current_path_.c_str());
   if (!root) return;
+  bool truncated = false;
   while (true) {
+#if defined(ESP32) || defined(ESP_PLATFORM)
+    if (heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) < kMidiListLowMemGuardBytes) {
+      Serial.println("MIDI list near OOM, truncating");
+      truncated = true;
+      break;
+    }
+#endif
     File entry = root.openNextFile();
     if (!entry) break;
-    std::string name = entry.name();
-    if (entry.isDirectory()) {
-      // Only show immediate child name, not full path
-      size_t lastSlash = name.rfind('/');
-      if (lastSlash != std::string::npos) name = name.substr(lastSlash + 1);
-      if (!name.empty() && name[0] != '.') {
-        midi_dirs_.push_back(name);
-      }
-    } else {
-      size_t lastSlash = name.rfind('/');
-      if (lastSlash != std::string::npos) name = name.substr(lastSlash + 1);
-      if (name.size() > 4 && name.substr(name.size() - 4) == ".mid") {
-        midi_files_.push_back(name);
-      }
+
+    const bool isDir = entry.isDirectory();
+    if ((isDir && midi_dirs_.size() >= kMaxMidiDirsInUi) ||
+        (!isDir && midi_files_.size() >= kMaxMidiFilesInUi)) {
+      truncated = true;
+      entry.close();
+      continue;
     }
+
+    try {
+      const char* rawName = entry.name();
+      if (!rawName) {
+        entry.close();
+        continue;
+      }
+      std::string name(rawName);
+
+      // Keep only immediate child name, not full path.
+      size_t lastSlash = name.rfind('/');
+      if (lastSlash != std::string::npos) name.erase(0, lastSlash + 1);
+
+      if (!name.empty() && name[0] == '.') {
+        entry.close();
+        continue;
+      }
+
+      if (isDir) {
+        midi_dirs_.emplace_back(std::move(name));
+      } else if (name.size() > 4 && name.compare(name.size() - 4, 4, ".mid") == 0) {
+        midi_files_.emplace_back(std::move(name));
+      }
+    } catch (const std::bad_alloc&) {
+      Serial.println("MIDI list OOM, truncating");
+      truncated = true;
+      entry.close();
+      break;
+    }
+
     entry.close();
   }
   root.close();
   std::sort(midi_dirs_.begin(), midi_dirs_.end());
   std::sort(midi_files_.begin(), midi_files_.end());
+  if (truncated) {
+    Serial.printf("MIDI list truncated: dirs=%d files=%d\n", (int)midi_dirs_.size(), (int)midi_files_.size());
+  }
 }
 
 bool ProjectPage::navigateIntoMidiDir(const std::string& dirName) {
@@ -270,23 +319,24 @@ bool ProjectPage::isMidiDirEntry(int index) const {
   return index < (int)midi_dirs_.size();
 }
 
-std::string ProjectPage::midiDisplayName(int index) const {
+const char* ProjectPage::midiDisplayName(int index) const {
   bool hasParent = (midi_current_path_ != "/midi");
   if (hasParent) {
     if (index == 0) return "..";
     index--;
   }
   if (index < (int)midi_dirs_.size()) {
-    return midi_dirs_[index];
+    return midi_dirs_[index].c_str();
   }
   int fileIdx = index - (int)midi_dirs_.size();
   if (fileIdx >= 0 && fileIdx < (int)midi_files_.size()) {
-    return midi_files_[fileIdx];
+    return midi_files_[fileIdx].c_str();
   }
   return "?";
 }
 
 void ProjectPage::openImportMidiDialog() {
+  midi_current_path_ = "/midi";
   refreshMidiFiles();
   dialog_type_ = DialogType::ImportMidi;
   dialog_focus_ = DialogFocus::List;
@@ -299,7 +349,6 @@ void ProjectPage::openImportMidiDialog() {
   midi_mask_b_ = 0;
   midi_mask_d_ = 0;
   midi_import_append_ = false;
-  midi_current_path_ = "/midi";
 }
 
 void ProjectPage::openMidiAdvanceDialog() {
@@ -461,7 +510,7 @@ void ProjectPage::onEnter(int context) {
   dialog_type_ = DialogType::None;
   main_focus_ = MainFocus::Load;
   section_ = ProjectSection::Scenes;
-  refreshScenes();
+  if (scenes_.empty()) refreshScenes();
 }
 
 bool ProjectPage::importMidiAtSelection() {
@@ -1072,11 +1121,14 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             if (dialog_type_ == DialogType::Load) return loadSceneAtSelection();
             // MIDI import: folder navigation
             if (isMidiDirEntry(selection_index_)) {
-                std::string name = midiDisplayName(selection_index_);
-                if (name == "..") {
+                bool hasParent = (midi_current_path_ != "/midi");
+                if (hasParent && selection_index_ == 0) {
                     navigateUpMidiDir();
                 } else {
-                    navigateIntoMidiDir(name);
+                    int dirIndex = selection_index_ - (hasParent ? 1 : 0);
+                    if (dirIndex >= 0 && dirIndex < (int)midi_dirs_.size()) {
+                        navigateIntoMidiDir(midi_dirs_[dirIndex]);
+                    }
                 }
                 return true;
             }
@@ -1236,24 +1288,6 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 }
                 break;
             default: break;
-        }
-
-        if (midi_advance_focus_ == MidiAdvanceFocus::AutoFind && (key == 'f' || key == 'F' || (key == '\r' || key == '\n'))) {
-                int patternsNeeded = midi_import_length_bars_;
-                if (patternsNeeded <= 0) patternsNeeded = 16;
-                SongTrack track = SongTrack::SynthA;
-                if (midi_mask_a_ == 0) {
-                    if (midi_mask_b_ != 0) track = SongTrack::SynthB;
-                    else if (midi_mask_d_ != 0) track = SongTrack::Drums;
-                }
-                int freeIdx = mini_acid_.sceneManager().findFirstFreePattern(midi_import_start_pattern_, track, patternsNeeded);
-                if (freeIdx >= 0) {
-                    midi_import_start_pattern_ = freeIdx;
-                    UI::showToast("Found free block");
-                } else {
-                    UI::showToast("No free space");
-                }
-                return true;
         }
 
         if (midi_advance_focus_ == MidiAdvanceFocus::AutoFind && (key == 'f' || key == 'F' || (key == '\r' || key == '\n'))) {
@@ -1587,12 +1621,18 @@ void ProjectPage::draw(IGfx& gfx) {
             gfx.drawText(dialog_x + 4, dialog_y + 2, "Load Scene");
         } else {
             // Breadcrumb for MIDI folder navigation
-            std::string breadcrumb = midi_current_path_;
-            if (breadcrumb.size() > (size_t)(dialog_w / 6 - 2)) {
-                // Truncate from the left
-                breadcrumb = ".." + breadcrumb.substr(breadcrumb.size() - dialog_w / 6 + 4);
+            const char* breadcrumb = midi_current_path_.c_str();
+            char breadcrumbBuf[64];
+            int maxChars = dialog_w / 6 - 2;
+            if (maxChars < 4) maxChars = 4;
+            const int pathLen = static_cast<int>(midi_current_path_.size());
+            if (pathLen > maxChars) {
+                const int tailLen = maxChars - 2;
+                const int start = pathLen - tailLen;
+                std::snprintf(breadcrumbBuf, sizeof(breadcrumbBuf), "..%s", breadcrumb + start);
+                breadcrumb = breadcrumbBuf;
             }
-            gfx.drawText(dialog_x + 4, dialog_y + 2, breadcrumb.c_str());
+            gfx.drawText(dialog_x + 4, dialog_y + 2, breadcrumb);
         }
         
         int row_h = line_h + 3;
@@ -1640,16 +1680,17 @@ void ProjectPage::draw(IGfx& gfx) {
                         gfx.fillRect(dialog_x + 2, ry, dialog_w - 4, row_h, COLOR_PANEL);
                         gfx.drawRect(dialog_x + 2, ry, dialog_w - 4, row_h, COLOR_ACCENT);
                     }
-                    std::string displayName = midiDisplayName(idx);
+                    const char* displayName = midiDisplayName(idx);
                     if (isDir) {
                         // Folder marker
-                        std::string label = "[DIR] " + displayName;
+                        char label[80];
+                        std::snprintf(label, sizeof(label), "[DIR] %s", displayName);
                         if (sel) gfx.setTextColor(COLOR_ACCENT);
                         else gfx.setTextColor(IGfxColor(0xB4DCFF));
-                        Widgets::drawClippedText(gfx, dialog_x + 6, ry + 1, dialog_w - 12, label.c_str());
+                        Widgets::drawClippedText(gfx, dialog_x + 6, ry + 1, dialog_w - 12, label);
                     } else {
                         gfx.setTextColor(sel ? COLOR_WHITE : COLOR_LABEL);
-                        Widgets::drawClippedText(gfx, dialog_x + 6, ry + 1, dialog_w - 12, displayName.c_str());
+                        Widgets::drawClippedText(gfx, dialog_x + 6, ry + 1, dialog_w - 12, displayName);
                     }
                 }
             }

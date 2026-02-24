@@ -1,8 +1,9 @@
 #pragma once
 
-#include <array>
-#include <cstdint>
 #include <memory>
+#include <cstdint>
+#include <array>
+#include <algorithm>
 #include <string>
 
 #include "mono_synth_voice.h"
@@ -12,77 +13,76 @@
 #include "opl2_synth_voice.h"
 
 enum class SynthEngineType : uint8_t {
-  TB303 = 0,
-  SID = 1,
-  AY = 2,
-  OPL2 = 3,
+    TB303 = 0,
+    SID   = 1,
+    AY    = 2,
+    OPL2  = 3
 };
 
 struct SynthVoiceState {
-  SynthEngineType engineType = SynthEngineType::TB303;
-  std::array<float, 16> params{};
-  uint8_t paramCount = 0;
+    SynthEngineType engineType{SynthEngineType::TB303};
+    std::array<float, 16> params{};
+    uint8_t paramCount{0};
 };
 
-class SwappableSynthVoice : public IMonoSynthVoice {
+class SwappableSynthVoice final : public IMonoSynthVoice {
 public:
-  explicit SwappableSynthVoice(float sampleRate, SynthEngineType initialType = SynthEngineType::TB303);
-  ~SwappableSynthVoice() override = default;
+    SwappableSynthVoice(float sampleRate, SynthEngineType initialType);
+    ~SwappableSynthVoice() override = default;
 
-  void setEngineType(SynthEngineType type);
-  void setEngineName(const std::string& name);
-  SynthEngineType engineType() const { return type_; }
+    void setEngineType(SynthEngineType type);
+    SynthEngineType engineType() const { return type_; }
+    
+    // Compatibility helpers
+    void setEngineName(const std::string& name);
+    IMonoSynthVoice* activeVoice() { return current_ ? current_.get() : nullptr; }
+    const IMonoSynthVoice* activeVoice() const { return current_ ? current_.get() : nullptr; }
 
-  SynthVoiceState getState() const;
-  void setState(const SynthVoiceState& state);
+    SynthVoiceState getState() const;
+    void setState(const SynthVoiceState& st);
 
-  IMonoSynthVoice* activeVoice() { return current_; }
-  const IMonoSynthVoice* activeVoice() const { return current_; }
+    // IMonoSynthVoice
+    void reset() override;
+    void setSampleRate(float sampleRate) override;
 
-  void reset() override;
-  void setSampleRate(float sampleRate) override;
-  void startNote(float freqHz, bool accent, bool slideFlag, uint8_t velocity = 100) override;
-  void release() override;
-  float process() override;
-  uint8_t parameterCount() const override;
-  void setParameterNormalized(uint8_t index, float norm) override;
-  float getParameterNormalized(uint8_t index) const override;
-  const Parameter& getParameter(uint8_t index) const override;
-  const char* getEngineName() const override;
-  void setMode(GrooveboxMode mode) override;
-  void setLoFiAmount(float amount) override;
+    void startNote(float freqHz, bool accent, bool slideFlag, uint8_t velocity = 100) override;
+    void release() override;
+    float process() override;
+
+    uint8_t parameterCount() const override;
+    void setParameterNormalized(uint8_t index, float norm) override;
+    float getParameterNormalized(uint8_t index) const override;
+    const Parameter& getParameter(uint8_t index) const override;
+
+    void setMode(GrooveboxMode mode) override;
+    void setLoFiAmount(float amount) override;
+    const char* getEngineName() const override;
 
 private:
-  static std::unique_ptr<IMonoSynthVoice> createVoice(SynthEngineType type, float sampleRate);
-  static const char* toEngineName(SynthEngineType type);
-  static int engineIndex(SynthEngineType type) {
-    switch (type) {
-      case SynthEngineType::SID: return 1;
-      case SynthEngineType::AY: return 2;
-      case SynthEngineType::OPL2: return 3;
-      case SynthEngineType::TB303:
-      default: return 0;
-    }
-  }
+    static std::unique_ptr<IMonoSynthVoice> createVoice(SynthEngineType type, float sampleRate);
+    static SynthEngineType parseEngineName(const std::string& name);
 
-  float sampleRate_ = 44100.0f;
-  SynthEngineType type_ = SynthEngineType::TB303;
-  SynthEngineType pendingType_ = SynthEngineType::TB303;
+    float sampleRate_{44100.0f};
 
-  std::unique_ptr<IMonoSynthVoice> engines_[4];
-  IMonoSynthVoice* current_ = nullptr;
-  IMonoSynthVoice* next_ = nullptr;
+    SynthEngineType type_{SynthEngineType::TB303};
+    SynthEngineType pendingType_{SynthEngineType::TB303};
 
-  bool switching_ = false;
-  uint32_t xfadeTotal_ = 0;
-  uint32_t xfadePos_ = 0;
+    std::unique_ptr<IMonoSynthVoice> current_{};
+    std::unique_ptr<IMonoSynthVoice> next_{};
 
-  bool noteHeld_ = false;
-  float lastFreqHz_ = 0.0f;
-  bool lastAccent_ = false;
-  bool lastSlide_ = false;
-  uint8_t lastVelocity_ = 100;
+    // click-free switching
+    bool switching_{false};
+    uint32_t xfadeTotal_{0};
+    uint32_t xfadePos_{0};
 
-  GrooveboxMode mode_ = GrooveboxMode::Acid;
-  float loFiAmount_ = 0.0f;
+    // last note context (to keep sound continuous across swap)
+    bool noteHeld_{false};
+    float lastFreqHz_{0.0f};
+    bool lastAccent_{false};
+    bool lastSlide_{false};
+    uint8_t lastVelocity_{0};
+
+    // forward mode/lofi to engines
+    GrooveboxMode mode_{GrooveboxMode::Acid};
+    float loFi_{0.0f};
 };

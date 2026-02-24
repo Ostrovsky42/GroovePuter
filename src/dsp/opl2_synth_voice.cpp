@@ -32,6 +32,7 @@ void Opl2SynthVoice::reset() {
   modPhase_ = 0.0f;
   feedbackSample_ = 0.0f;
   env_ = 0.0f;
+  envSlew_ = 0.0f;
   gate_ = false;
 }
 
@@ -40,12 +41,16 @@ void Opl2SynthVoice::setSampleRate(float sampleRate) {
   sampleRate_ = sampleRate;
 }
 
-void Opl2SynthVoice::startNote(float freqHz, bool /*accent*/, bool /*slideFlag*/, uint8_t velocity) {
+void Opl2SynthVoice::startNote(float freqHz, bool /*accent*/, bool slideFlag, uint8_t velocity) {
   if (freqHz <= 0.0f) return;
+  // Serial.printf("[OPL2] startNote f=%.1f vel=%u\n", freqHz, velocity);
   baseFreqHz_ = freqHz;
   velocityGain_ = std::clamp(static_cast<float>(velocity) / 127.0f, 0.05f, 1.0f);
   env_ = 1.0f;
   gate_ = true;
+  if (!slideFlag) {
+    envSlew_ = 0.0f;
+  }
 }
 
 void Opl2SynthVoice::release() {
@@ -83,7 +88,10 @@ float Opl2SynthVoice::process() {
   env_ *= coef;
   if (!gate_ && env_ < 0.0001f) env_ = 0.0f;
 
-  out *= env_ * velocityGain_ * 0.35f;
+  // 1-2 ms attack slew to prevent clicks at start of note
+  envSlew_ += (env_ - envSlew_) * (1000.0f / sampleRate_);
+  
+  out *= envSlew_ * velocityGain_ * 0.75f; // Increased from 0.35f
 
   if (loFiAmount_ > 0.001f) {
     const float levels = 256.0f - loFiAmount_ * 192.0f;

@@ -44,6 +44,7 @@ private:
 
   uint32_t lfsr_ = 0x1FFFFu;
   float noiseSample_ = -1.0f;
+  float ampSlew_ = 0.0f;
 
   GrooveboxMode mode_ = GrooveboxMode::Acid;
   float loFiAmount_ = 0.0f;

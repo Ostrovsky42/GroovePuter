@@ -121,11 +121,20 @@ IPage* MiniAcidDisplay::getPage_(int index) {
     // Memory Relief: Purge all pages EXCEPT the one we need AND the previous one (for fast back-toggling)
     // This prevents DRAM accumulation on constrained devices like the Cardputer.
     if (!pages_[index]) {
+        // Aggressive Memory Management for Cardputer/DRAM-only devices
+#if defined(ESP32) || defined(ESP_PLATFORM)
+        uint32_t freeDRAM = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+        bool aggressive = (freeDRAM < 16384); // 16KB threshold
+#else
+        bool aggressive = false;
+#endif
+
         for (int i = 0; i < kPageCount; ++i) {
-            if (i != index && i != previous_page_index_) {
-                if (pages_[i]) {
-                    pages_[i].reset();
-                }
+            bool keep = (i == index);
+            if (!aggressive && i == previous_page_index_) keep = true;
+            
+            if (!keep && pages_[i]) {
+                pages_[i].reset();
             }
         }
 
