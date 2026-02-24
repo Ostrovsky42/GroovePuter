@@ -260,6 +260,13 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
                 if (selected && s == stepCursor_) cellBg = TE_BLACK;
 
                 gfx.fillRect(cx, ry + 2, cell_w - 1, cell_h, cellBg);
+                
+                // Smooth scanning line in hub overview
+                if (s == currentStep && playing) {
+                    float prog = mini_acid_.getStepProgress();
+                    int scanX = cx + (int)(prog * (float)(cell_w - 1));
+                    gfx.drawLine(scanX, ry + 2, scanX, ry + 2 + cell_h - 1, TE_WHITE);
+                }
 
                 // Cell border
                 IGfxColor borderColor = TE_GRID;
@@ -660,8 +667,16 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
                 bool hit = hubTrackHitAt(mini_acid_, i, s);
                 
                 IGfxColor color = hit ? (selected ? IGfxColor(AmberTrackColor) : IGfxColor(AmberTheme::GRID_MEDIUM)) : IGfxColor(AmberTheme::BG_INSET);
-                if (s == playingStep && isPlaying) color = IGfxColor(AmberTheme::NEON_YELLOW);
+                if (s == playingStep && isPlaying) {
+                    color = IGfxColor(AmberTheme::NEON_YELLOW);
+                }
                 gfx.fillRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, color);
+                
+                if (s == playingStep && isPlaying) {
+                    float prog = mini_acid_.getStepProgress();
+                    int scanX = maskX + s * cellW + (int)(prog * (float)(cellW - 1));
+                    gfx.drawLine(scanX, ry + 2, scanX, ry + 2 + rowH - 4 - 1, IGfxColor(AmberTheme::TEXT_PRIMARY));
+                }
                 IGfxColor border = (s % 4 == 0) ? IGfxColor(AmberTheme::GRID_MEDIUM) : IGfxColor(AmberTheme::GRID_DIM);
                 gfx.drawRect(maskX + s * cellW, ry + 2, cellW - 1, rowH - 4, border);
             }
@@ -853,6 +868,12 @@ void SequencerHubPage::drawTrackRow(IGfx& gfx, int trackIdx, int y, int h, bool 
         if (s == currentStep && mini_acid_.isPlaying()) color = COLOR_WARN;
 
         gfx.fillRect(maskX + s * cellW, y + 2, cellW - 1, h - 4, color);
+        
+        if (s == currentStep && mini_acid_.isPlaying()) {
+            float prog = mini_acid_.getStepProgress();
+            int scanX = maskX + s * cellW + (int)(prog * (float)(cellW - 1));
+            gfx.drawLine(scanX, y + 2, scanX, y + 2 + h - 4 - 1, COLOR_WHITE);
+        }
         IGfxColor border = (s % 4 == 0) ? COLOR_ACCENT : COLOR_GRAY_DARKER;
         gfx.drawRect(maskX + s * cellW, y + 2, cellW - 1, h - 4, border);
     }

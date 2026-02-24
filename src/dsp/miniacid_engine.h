@@ -39,6 +39,7 @@
 static const int SAMPLE_RATE = kSampleRate;        // Hz
 static const int AUDIO_BUFFER_SAMPLES = kBlockFrames; // per buffer, mono
 static const int SEQ_STEPS = 16;             // 16-step sequencer
+static const int kPPQN = 96;                 // Pulses Per Quarter Note
 static const int NUM_303_VOICES = 2;
 static const int NUM_DRUM_VOICES = DrumPatternSet::kVoices;
 
@@ -109,6 +110,7 @@ public:
   float sampleRate() const;
   bool isPlaying() const;
   int currentStep() const;
+  float getStepProgress() const; // Returns 0.0-1.0 progress within current 1/16th step
   int cycleBarIndex() const;
   int cycleBarCount() const;
   uint32_t cyclePulseCounter() const { return cyclePulseCounter_; }
@@ -346,9 +348,13 @@ public:
   void generateAudioBuffer(int16_t *buffer, size_t numSamples);
 
 private:
-  void updateSamplesPerStep();
-  void advanceStep();
-  unsigned long computeStepDurationSamples_() const;
+  void updateTickIncrement();
+  void advanceTick();
+  void processSequencerEvents(uint32_t absoluteTick);
+  void triggerSynthStep_(int synthIdx, int stepIdx);
+  void triggerDrumVoice_(int voiceIdx, int stepIdx);
+  void advanceSongStep_();
+
   int timingTicksForStep_(int stepIndex) const;
   int grooveOverrideTicksForStep_(const DrumPatternSet& patternSet, int stepIndex) const;
   float evaluateAutomationLaneAtStep_(const AutomationLane& lane, int step) const;
@@ -416,9 +422,10 @@ private:
   
   volatile float bpmValue;
   volatile int currentStepIndex;
-  unsigned long samplesIntoStep;
-  unsigned long currentStepDurationSamples_ = 1;
-  float samplesPerStep;
+  uint64_t tickPhaseAccum_ = 0;
+  uint64_t tickPhaseInc_ = 0;
+  uint32_t currentTick_ = 0;
+  float samplesPerStep_ = 10000.0f;
   
   // Gate length countdown (samples until release, 0 = released)
   long gateCountdownA_ = 0;

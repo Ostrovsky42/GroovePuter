@@ -480,3 +480,30 @@ const DrumGenreTemplate* GenreManager::drumTemplateOverride() const {
     ensureCompiled_();
     return cachedDrumOverride_;
 }
+
+GrooveRecipe GenreManager::getGrooveRecipe() const {
+    const GenerativeParams& p = getCompiledGenerativeParams();
+    GrooveRecipe r;
+    r.stepsPerBar = 16; // Core arrays are still 16 in this version
+    
+    // Map swingAmount (0-0.66) to swingPercent (50-75+)
+    // 0.25 (25% shift) => 75% swing
+    r.swingPercent = 50 + (uint8_t)std::round(p.swingAmount * 100.0f);
+    if (r.swingPercent < 50) r.swingPercent = 50;
+    if (r.swingPercent > 75) r.swingPercent = 75;
+    
+    r.gateLengthRatio = p.gateLengthMultiplier;
+    r.densityMin = (float)p.minNotes / 16.0f;
+    r.densityMax = (float)p.maxNotes / 16.0f;
+    r.velMin = (uint8_t)p.velocityMin;
+    r.velMax = (uint8_t)p.velocityMax;
+    
+    // By default, everyone respects the swing mask
+    r.swingMask = 0xFFFF; 
+    
+    r.sparseKick = p.sparseKick;
+    r.noAccents = p.noAccents;
+    r.preferDownbeats = p.preferDownbeats;
+    
+    return r;
+}

@@ -1021,6 +1021,10 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
 
     if (playing == i) {
       gfx.drawRect(cell_x - 1, note_box_y - 1, cell_size + 2, cell_size + 2, COLOR_STEP_HILIGHT);
+      // Scanning line for smooth sub-step progress
+      float prog = mini_acid_.getStepProgress();
+      int scanX = cell_x + (int)(prog * (float)(cell_size - 1));
+      gfx.drawLine(scanX, note_box_y, scanX, note_box_y + cell_size - 1, COLOR_WHITE);
     }
     if (stepFocus && stepCursor == i) {
       gfx.drawRect(cell_x - 2, note_box_y - 2, cell_size + 4, cell_size + 4, COLOR_STEP_SELECTED);
@@ -1184,6 +1188,11 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     if (isCurrent) {
       IGfxColor playColor = retroVoiceColor(voice_index_);
       drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, playColor, 2);
+      
+      // Scanning LED bar for smooth progress
+      float prog = mini_acid_.getStepProgress();
+      int scanX = cellX + (int)(prog * (float)(cellW - 1));
+      gfx.drawLine(scanX, cellRowY + 1, scanX, cellRowY + cellH - 2, IGfxColor(TEXT_PRIMARY));
     }
 
     // Note content
@@ -1379,6 +1388,11 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
 
     if (isCurrent) {
       AmberWidgets::drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, IGfxColor(AmberTheme::STATUS_PLAYING), 2);
+      
+      // Smooth scanning line
+      float prog = mini_acid_.getStepProgress();
+      int scanX = cellX + (int)(prog * (float)(cellW - 1));
+      gfx.drawLine(scanX, cellRowY + 1, scanX, cellRowY + cellH - 2, IGfxColor(AmberTheme::NEON_YELLOW));
     }
 
     if (hasNote) {

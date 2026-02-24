@@ -1,4 +1,4 @@
-# GroovePuter
+# GroovePuter v0.1.0
 
 [![Status](https://img.shields.io/badge/status-beta-yellow)](#status)
 [![Platform](https://img.shields.io/badge/platform-M5Stack%20Cardputer%20\(ESP32--S3\)-blue)](#requirements)

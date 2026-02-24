@@ -324,6 +324,8 @@ struct FeelSettings {
     uint8_t gridSteps = 16;   // 8,16,32
     uint8_t timebase = 1;     // 0=Half, 1=Normal, 2=Double
     uint8_t patternBars = 1;  // 1,2,4,8
+    uint8_t swingPct = 50;    // 50..75 (MPC Style)
+    uint16_t swingMask = 0xFFFF; // Bitmask of VoiceId
     bool lofiEnabled = false;
     uint8_t lofiAmount = 50;  // 0..100
     bool driveEnabled = false;
