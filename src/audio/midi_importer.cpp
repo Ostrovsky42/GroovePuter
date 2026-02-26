@@ -126,10 +126,16 @@ MidiImporter::ScanResult MidiImporter::scanFile(const std::string& path) {
                     if (absoluteTicks > maxAbsoluteTicks) maxAbsoluteTicks = absoluteTicks;
                     if (currentTrackChannel < 0) currentTrackChannel = channel;
                 }
+            } else if (msgType == 0xC0) {
+                uint8_t prog = 0;
+                if (readU8(file, prog)) {
+                    if (result.channels[channel].program == 255) {
+                        result.channels[channel].program = prog;
+                    }
+                }
             } else if (msgType == 0xA0 || msgType == 0xB0 || msgType == 0xE0) {
                 uint8_t tmp; readU8(file, tmp); readU8(file, tmp);
-            } else if (msgType == 0xC0 || msgType == 0xD0) {
-                uint8_t tmp; readU8(file, tmp);
+            } else if (msgType == 0xD0) {
             } else if (status == 0xFF) {
                 uint8_t metaType = 0;
                 if (!readU8(file, metaType)) break;
@@ -295,13 +301,13 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                 if (isNoteOn) {
                     // Quantize to fixed 1/16 grid.
                     int stepIdx = static_cast<int>((static_cast<double>(absoluteTicks) + (ticksPerStep * 0.5)) / ticksPerStep);
-                    int targetDest = -1;
-                    if (channel == settings.synthAChannel) targetDest = settings.destSynthA;
-                    else if (channel == settings.synthBChannel) targetDest = settings.destSynthB;
-                    else if (channel == settings.drumChannel) targetDest = settings.destDrums;
-                    else if (settings.omni) targetDest = settings.destSynthA;
+                    
+                    bool toA = (settings.synthAMask >> (channel - 1)) & 1;
+                    bool toB = (settings.synthBMask >> (channel - 1)) & 1;
+                    bool toD = (settings.drumMask >> (channel - 1)) & 1;
 
-                    if (targetDest < 0) continue;
+                    if (!toA && !toB && !toD) continue; // Skip if not routed
+
                     if (firstRoutedStep < 0) {
                         firstRoutedStep = stepIdx;
                     }
@@ -330,21 +336,21 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                             if (clearTo > kMaxPatterns) clearTo = kMaxPatterns;
                         }
                         for (int p = clearFrom; p < clearTo; ++p) {
-                            if (settings.destSynthA == 0 || settings.destSynthB == 0 || settings.destDrums == 0) {
+                            if (settings.synthAMask != 0) {
                                 SynthPattern& synthA = getSynthPattern(0, p);
                                 for (int i = 0; i < SynthPattern::kSteps; ++i) {
                                     synthA.steps[i] = SynthStep{};
                                     synthA.steps[i].note = -1;
                                 }
                             }
-                            if (settings.destSynthA == 1 || settings.destSynthB == 1 || settings.destDrums == 1) {
+                            if (settings.synthBMask != 0) {
                                 SynthPattern& synthB = getSynthPattern(1, p);
                                 for (int i = 0; i < SynthPattern::kSteps; ++i) {
                                     synthB.steps[i] = SynthStep{};
                                     synthB.steps[i].note = -1;
                                 }
                             }
-                            if (settings.destSynthA == 2 || settings.destSynthB == 2 || settings.destDrums == 2) {
+                            if (settings.drumMask != 0) {
                                 DrumPatternSet& drums = getDrumPatternSet(p);
                                 for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
                                     for (int i = 0; i < DrumPattern::kSteps; ++i) {
@@ -356,69 +362,59 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                         importRegionCleared = true;
                     }
 
-                        if (targetDest == 0) {
-                            SynthPattern& pat = getSynthPattern(0, patternIdx);
-                            if (!settings.overwrite && pat.steps[stepInPattern].note >= 0) {
-                                // Keep existing note
-                            } else {
-                                int safeNote = static_cast<int>(note);
-                                while (safeNote < MiniAcid::kMin303Note) safeNote += 12;
-                                while (safeNote > MiniAcid::kMax303Note) safeNote -= 12;
-                                if (safeNote < MiniAcid::kMin303Note) safeNote = MiniAcid::kMin303Note; // Safety fallback
+                    // Import to destinations
+                    auto importSynth = [&](int destFuncIdx) {
+                        SynthPattern& pat = getSynthPattern(destFuncIdx, patternIdx);
+                        if (!settings.overwrite && pat.steps[stepInPattern].note >= 0) {
+                            // Keep existing note
+                        } else {
+                            int safeNote = static_cast<int>(note);
+                            while (safeNote < MiniAcid::kMin303Note) safeNote += 12;
+                            while (safeNote > MiniAcid::kMax303Note) safeNote -= 12;
+                            if (safeNote < MiniAcid::kMin303Note) safeNote = MiniAcid::kMin303Note; 
 
-                                uint8_t safeVel = normalizeSynthVelocity(velocity, settings.loudMode);
-                                pat.steps[stepInPattern].note = static_cast<int8_t>(safeNote);
-                                pat.steps[stepInPattern].accent = false;
-                                pat.steps[stepInPattern].velocity = safeVel;
-                                notesImported++;
-                                if (patternIdx > lastImportedPatternIdx_) lastImportedPatternIdx_ = patternIdx;
-                            }
-                        } else if (targetDest == 1) {
-                            SynthPattern& pat = getSynthPattern(1, patternIdx);
-                            if (!settings.overwrite && pat.steps[stepInPattern].note >= 0) {
-                                // Keep existing note
-                            } else {
-                                int safeNote = static_cast<int>(note);
-                                while (safeNote < MiniAcid::kMin303Note) safeNote += 12;
-                                while (safeNote > MiniAcid::kMax303Note) safeNote -= 12;
-                                if (safeNote < MiniAcid::kMin303Note) safeNote = MiniAcid::kMin303Note; // Safety fallback
+                            uint8_t safeVel = normalizeSynthVelocity(velocity, settings.loudMode);
+                            pat.steps[stepInPattern].note = static_cast<int8_t>(safeNote);
+                            pat.steps[stepInPattern].accent = false;
+                            pat.steps[stepInPattern].velocity = safeVel;
+                        }
+                    };
 
-                                uint8_t safeVel = normalizeSynthVelocity(velocity, settings.loudMode);
-                                pat.steps[stepInPattern].note = static_cast<int8_t>(safeNote);
-                                pat.steps[stepInPattern].accent = false;
-                                pat.steps[stepInPattern].velocity = safeVel;
-                                notesImported++;
-                                if (patternIdx > lastImportedPatternIdx_) lastImportedPatternIdx_ = patternIdx;
+                    if (toA) importSynth(0);
+                    if (toB) importSynth(1);
+                    
+                    if (toD) {
+                        int drumVoice = -1;
+                        switch(note) {
+                            case 35: case 36: drumVoice = 0; break; // Kick
+                            case 38: case 40: drumVoice = 1; break; // Snare
+                            case 42: case 44: drumVoice = 2; break; // CHat
+                            case 46: drumVoice = 3; break;           // OHat
+                            case 49: case 57: drumVoice = 3; break;  // Crash (mapped to OHat)
+                            case 51: case 53: case 59: drumVoice = 3; break; // Ride (mapped to OHat)
+                            case 54:          drumVoice = 2; break;  // Tambourine (mapped to CHat)
+                            case 56:          drumVoice = 6; break;  // Cowbell (mapped to Rim)
+                            case 41: case 43: case 50: drumVoice = 4; break; // MTom
+                            case 45: case 47: case 48: drumVoice = 5; break; // HTom
+                            case 37: drumVoice = 6; break;           // Rim
+                            case 39: drumVoice = 7; break;           // Clap
+                        }
+                        if (drumVoice >= 0) {
+                            DrumPatternSet& patSet = getDrumPatternSet(patternIdx);
+                            auto& step = patSet.voices[drumVoice].steps[stepInPattern];
+                            if (!settings.overwrite && step.hit) {
+                                // Keep existing
+                            } else {
+                                uint8_t safeVel = normalizeDrumVelocity(velocity, settings.loudMode);
+                                step.hit = true;
+                                step.velocity = safeVel;
                             }
-                        } else if (targetDest == 2) {
-                         int drumVoice = -1;
-                         switch(note) {
-                             case 35: case 36: drumVoice = 0; break; // Kick
-                             case 38: case 40: drumVoice = 1; break; // Snare
-                             case 42: case 44: drumVoice = 2; break; // CHat
-                             case 46: drumVoice = 3; break;           // OHat
-                             case 49: case 57: drumVoice = 3; break;  // Crash (mapped to OHat)
-                             case 51: case 53: case 59: drumVoice = 3; break; // Ride (mapped to OHat)
-                             case 54:          drumVoice = 2; break;  // Tambourine (mapped to CHat)
-                             case 56:          drumVoice = 6; break;  // Cowbell (mapped to Rim)
-                             case 41: case 43: case 50: drumVoice = 4; break; // MTom
-                             case 45: case 47: case 48: drumVoice = 5; break; // HTom
-                             case 37: drumVoice = 6; break;           // Rim
-                             case 39: drumVoice = 7; break;           // Clap
-                         }
-                         if (drumVoice >= 0) {
-                             DrumPatternSet& patSet = getDrumPatternSet(patternIdx);
-                             auto& step = patSet.voices[drumVoice].steps[stepInPattern];
-                                 if (!settings.overwrite && step.hit) {
-                                     // Keep existing hit
-                                 } else {
-                                     uint8_t safeVel = normalizeDrumVelocity(velocity, settings.loudMode);
-                                     step.hit = true;
-                                     step.velocity = safeVel;
-                                     notesImported++;
-                                     if (patternIdx > lastImportedPatternIdx_) lastImportedPatternIdx_ = patternIdx;
-                                 }
-                             }
+                        }
+                    }
+
+                    if (toA || toB || toD) {
+                         notesImported++;
+                         if (patternIdx > lastImportedPatternIdx_) lastImportedPatternIdx_ = patternIdx;
                     }
                 }
             } else if (msgType == 0xA0 || msgType == 0xB0 || msgType == 0xE0) {

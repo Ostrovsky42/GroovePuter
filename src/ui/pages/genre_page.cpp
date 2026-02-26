@@ -995,6 +995,17 @@ void GenrePage::applyCurrent() {
     const bool doRegenerate = regenOnApply(mini_acid_);
     const bool doApplyTempo = tempoOnApply(mini_acid_);
     int targetBpm = kGenreBpm[genreIndex_ < 0 ? 0 : (genreIndex_ >= kGenerativeModeCount ? (kGenerativeModeCount - 1) : genreIndex_)];
+    
+    // ------------------------------------------------------------------
+    // HACK/FIX: Regenerating structural patterns and rebuilding FX graphs 
+    // takes too long and starves the I2S audio callback, causing stutters.
+    // Pause playback before grasping the audio guard, then restart after.
+    // ------------------------------------------------------------------
+    bool wasPlaying = mini_acid_.isPlaying();
+    if (wasPlaying && doRegenerate) {
+        mini_acid_.stop();
+    }
+
     withAudioGuard([&]() {
         mini_acid_.genreManager().setGenerativeMode(static_cast<GenerativeMode>(genreIndex_));
         mini_acid_.genreManager().setTextureMode(static_cast<TextureMode>(textureIndex_));
@@ -1018,6 +1029,10 @@ void GenrePage::applyCurrent() {
         if (doRegenerate) mini_acid_.regeneratePatternsWithGenre();
         if (doApplyTempo) mini_acid_.setBpm(static_cast<float>(targetBpm));
     });
+
+    if (wasPlaying && doRegenerate) {
+        mini_acid_.start(); // Resume audio
+    }
     prevGenreIndex_ = genreIndex_;
     prevTextureIndex_ = textureIndex_;
 

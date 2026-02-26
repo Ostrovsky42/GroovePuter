@@ -29,17 +29,13 @@ public:
         int sourceStartBar = 0;       // Slice start in bars (relative to first routed note)
         int sourceLengthBars = 0;     // Slice length in bars; <=0 means unlimited
         bool overwrite = true;        // Overwrite existing patterns (ignored if target is occupied and we find free block)
-        int drumChannel = 10;         // MIDI channel for drums (1-indexed, usually 10)
-        int synthAChannel = 1;        // MIDI channel for Synth A
-        int synthBChannel = 2;        // MIDI channel for Synth B
-        bool quantize = true;         // Always true for now as engine is step-based
-        bool omni = true;             // Route any non-drum notes to Synth A
-        bool loudMode = true;         // true=LOUD profile, false=CLEAN profile
         
-        // Track routing: 0=Synth A, 1=Synth B, 2=Drums, -1=Skip
-        int destSynthA = 0;
-        int destSynthB = 1;
-        int destDrums = 2;
+        uint16_t drumMask = 0;    ///< Bitmask of channels routing to Drums (bit 0 = Ch1)
+        uint16_t synthAMask = 0;  ///< Bitmask of channels routing to Synth A (Internal Voice 0)
+        uint16_t synthBMask = 0;  ///< Bitmask of channels routing to Synth B (Internal Voice 1)
+        
+        bool quantize = true;         // Always true for now as engine is step-based
+        bool loudMode = true;         // true=LOUD profile, false=CLEAN profile
     };
 
     /// Per-channel statistics collected by scanFile()
@@ -47,6 +43,7 @@ public:
         int noteCount = 0;       ///< Total note-on events
         uint8_t minNote = 127;   ///< Lowest note seen
         uint8_t maxNote = 0;     ///< Highest note seen
+        uint8_t program = 255;   ///< Program Change number (255=unset)
         char trackName[16] = {}; ///< First track name for this channel (truncated)
         bool used() const { return noteCount > 0; }
     };

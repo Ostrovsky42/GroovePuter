@@ -1,7 +1,9 @@
 #ifndef MINI_DSP_PARAMS_H
 #define MINI_DSP_PARAMS_H
 
-enum class GrooveboxMode {
+#include <stdint.h>
+
+enum class GrooveboxMode : uint8_t {
   Acid = 0,
   Minimal = 1,
   Breaks = 2,

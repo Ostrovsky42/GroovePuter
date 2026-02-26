@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "ui_core.h"
+#include "ui_config.h"
 #include "cassette_skin.h"
 #include "global_help_overlay.h"
 
@@ -41,7 +42,8 @@ private:
   void syncVisualStyle_();
   
   // Lazy page loading
-  static constexpr int kPageCount = 12;
+  static constexpr int kPageCount = UI::kPageCount;
+private:
   std::unique_ptr<IPage> createPage_(int index);
   IPage* getPage_(int index); // Returns existing or creates on-demand
   void transitionToPage_(int index, int context = 0);

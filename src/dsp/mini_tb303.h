@@ -5,6 +5,7 @@
 
 #include "filter.h"
 #include "mini_dsp_params.h"
+#include "mono_synth_voice.h"
 
 enum class TB303ParamId : uint8_t {
   Cutoff = 0,
@@ -27,25 +28,33 @@ struct TB303Preset {
   const char* name;
 };
 
-class TB303Voice {
+class TB303Voice : public IMonoSynthVoice {
 public:
   explicit TB303Voice(float sampleRate);
 
-  void reset();
-  void setSampleRate(float sampleRate);
-  void startNote(float freqHz, bool accent, bool slideFlag, uint8_t velocity = 100);
-  void release();
-  float process();
   const Parameter& parameter(TB303ParamId id) const;
   void setParameter(TB303ParamId id, float value);
   void setParameterNormalized(TB303ParamId id, float norm);
+  
+  // IMonoSynthVoice implementations
+  void reset() override;
+  void setSampleRate(float sampleRate) override;
+  void startNote(float freqHz, bool accent, bool slideFlag, uint8_t velocity = 100) override;
+  void release() override;
+  float process() override;
+  uint8_t parameterCount() const override;
+  void setParameterNormalized(uint8_t index, float norm) override;
+  float getParameterNormalized(uint8_t index) const override;
+  const Parameter& getParameter(uint8_t index) const override;
+  const char* getEngineName() const override { return "TB303"; }
+  void setMode(GrooveboxMode mode) override;
+  void setLoFiAmount(float amount) override; // 0..1 for various degradations
+
   void adjustParameter(TB303ParamId id, int steps);
   float parameterValue(TB303ParamId id) const;
   int oscillatorIndex() const;
 
   void applyLoFiPreset(int index);
-  void setMode(GrooveboxMode mode);
-  void setLoFiAmount(float amount); // 0..1 for various degradations
   void setSubOscillator(bool enabled);
   void setNoiseAmount(float amount);
 

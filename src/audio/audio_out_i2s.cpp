@@ -3,12 +3,15 @@
 #include <Arduino.h>
 
 // New ESP-IDF I2S Driver (v5.x API)
-// Using I2S_NUM_1 to avoid Port 0 conflicts with M5Unified/Mic/Speaker
+// Using I2S_NUM_0 to avoid Port 0 conflicts with M5Unified/Mic/Speaker
 
 // M5Cardputer ADV I2S pins for ES8311 codec
 static const int I2S_BCLK = 41;
 static const int I2S_LRCLK = 43;
 static const int I2S_DOUT = 42;
+static const int I2S_MCLK = 0;   // GPIO 0 on Cardputer (optional MCLK output)
+static constexpr bool kEnableHardwareMclk = false;
+// static constexpr bool kEnableHardwareMclk = true; // Optional 44.1k experiments
 
 AudioOutI2S::AudioOutI2S() 
   : sampleRate_(0)
@@ -47,7 +50,7 @@ bool AudioOutI2S::begin(uint32_t sampleRate, size_t bufferFrames) {
   }
   
   // 1. Create I2S Channel (Standard Mode)
-  // Use I2S_NUM_0 - must be freed by M5Cardputer.Speaker.end() before this call
+  // Use I2S_NUM_0 to avoid conflicts with M5.Speaker and ESP32-audioI2S on port 0
   i2s_chan_config_t chan_cfg = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
   chan_cfg.dma_desc_num = 8;         // Matches working test config
   chan_cfg.dma_frame_num = 512;      // Matches working test config
@@ -67,13 +70,16 @@ bool AudioOutI2S::begin(uint32_t sampleRate, size_t bufferFrames) {
   // Clock: Use default source (usually PLL or XTAL)
   std_cfg.clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(sampleRate);
   std_cfg.clk_cfg.clk_src = I2S_CLK_SRC_DEFAULT;
+  if (kEnableHardwareMclk) {
+    std_cfg.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;
+  }
 
   
   // Slot: Standard Philips I2S (Option B from before, matching i2s_test.ino)
   std_cfg.slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO);
   
   // GPIOs
-  std_cfg.gpio_cfg.mclk = I2S_GPIO_UNUSED;
+  std_cfg.gpio_cfg.mclk = kEnableHardwareMclk ? (gpio_num_t)I2S_MCLK : I2S_GPIO_UNUSED;
   std_cfg.gpio_cfg.bclk = (gpio_num_t)I2S_BCLK;
   std_cfg.gpio_cfg.ws = (gpio_num_t)I2S_LRCLK;
   std_cfg.gpio_cfg.dout = (gpio_num_t)I2S_DOUT;
@@ -103,8 +109,8 @@ bool AudioOutI2S::begin(uint32_t sampleRate, size_t bufferFrames) {
     return false;
   }
   
-  Serial.printf("[AudioOutI2S] Initialized on I2S_NUM_0: %u Hz, %u frames\n", 
-                sampleRate, (unsigned)bufferFrames);
+  Serial.printf("[AudioOutI2S] Initialized on I2S_NUM_0: %u Hz, %u frames, MCLK=%s\n",
+                sampleRate, (unsigned)bufferFrames, kEnableHardwareMclk ? "ON" : "OFF");
   return true;
 }
 

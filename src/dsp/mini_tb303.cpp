@@ -1,5 +1,6 @@
 #include "mini_tb303.h"
 #include "audio_wavetables.h"
+#include "../audio/audio_config.h"
 
 #include <math.h>
 #include <stdlib.h>
@@ -121,7 +122,7 @@ float TB303Voice::oscSaw() {
   float output = Wavetable::lookupSaw(phaseAcc_);
   
   // Advance phase using fixed-point for precision
-  uint32_t phaseInc = static_cast<uint32_t>(freq * 190359.1689f); // 2^32 / 22050
+  uint32_t phaseInc = static_cast<uint32_t>(freq * (4294967296.0f / (float)kSampleRate)); 
   phaseAcc_ += phaseInc;
   
   return output;
@@ -135,7 +136,7 @@ float TB303Voice::oscPulse() {
   // Square wave lookup with 30% duty cycle
   float output = Wavetable::lookupSquare(phaseAcc_);
   
-  uint32_t phaseInc = static_cast<uint32_t>(freq * 190359.1689f);
+  uint32_t phaseInc = static_cast<uint32_t>(freq * (4294967296.0f / (float)kSampleRate));
   phaseAcc_ += phaseInc;
   
   return output;
@@ -146,7 +147,7 @@ float TB303Voice::oscSub() {
   float saw = Wavetable::lookupSaw(phaseAcc_);
   
   static uint32_t subPhase = 0;
-  uint32_t subInc = static_cast<uint32_t>((freq * 0.5f) * 190359.1689f);
+  uint32_t subInc = static_cast<uint32_t>((freq * 0.5f) * (4294967296.0f / (float)kSampleRate));
   subPhase += subInc;
   
   float sub = Wavetable::lookupSquare(subPhase);
@@ -165,13 +166,13 @@ float TB303Voice::oscSuperSaw() {
   // Main oscillator with wavetable
   float sum = Wavetable::lookupSaw(phaseAcc_);
   
-  uint32_t baseInc = static_cast<uint32_t>(freq * 190359.1689f);
+  uint32_t baseInc = static_cast<uint32_t>(freq * (4294967296.0f / (float)kSampleRate));
   phaseAcc_ += baseInc;
 
   // Detuned oscillators
   for (int i = 0; i < kSuperSawOscCount; ++i) {
     float detunedFreq = freq * (1.0f + kSuperSawDetune[i]);
-    uint32_t detunedInc = static_cast<uint32_t>(detunedFreq * 190359.1689f);
+    uint32_t detunedInc = static_cast<uint32_t>(detunedFreq * (4294967296.0f / (float)kSampleRate));
     superPhasesAcc_[i] += detunedInc;
     sum += Wavetable::lookupSaw(superPhasesAcc_[i]);
   }
@@ -367,6 +368,10 @@ float TB303Voice::process() {
   return out * amp;
 }
 
+uint8_t TB303Voice::parameterCount() const {
+  return 4;
+}
+
 const Parameter& TB303Voice::parameter(TB303ParamId id) const {
   return params[static_cast<int>(id)];
 }
@@ -377,6 +382,42 @@ void TB303Voice::setParameter(TB303ParamId id, float value) {
 
 void TB303Voice::setParameterNormalized(TB303ParamId id, float norm) {
   params[static_cast<int>(id)].setNormalized(norm);
+}
+
+void TB303Voice::setParameterNormalized(uint8_t index, float norm) {
+  TB303ParamId mappedId = TB303ParamId::Cutoff;
+  switch (index) {
+    case 0: mappedId = TB303ParamId::Cutoff; break;
+    case 1: mappedId = TB303ParamId::Resonance; break;
+    case 2: mappedId = TB303ParamId::EnvAmount; break;
+    case 3: mappedId = TB303ParamId::EnvDecay; break;
+    default: return; // Only map the 4 main knobs for now
+  }
+  setParameterNormalized(mappedId, norm);
+}
+
+float TB303Voice::getParameterNormalized(uint8_t index) const {
+  TB303ParamId mappedId = TB303ParamId::Cutoff;
+  switch (index) {
+    case 0: mappedId = TB303ParamId::Cutoff; break;
+    case 1: mappedId = TB303ParamId::Resonance; break;
+    case 2: mappedId = TB303ParamId::EnvAmount; break;
+    case 3: mappedId = TB303ParamId::EnvDecay; break;
+    default: return 0.0f;
+  }
+  return params[static_cast<int>(mappedId)].normalized();
+}
+
+const Parameter& TB303Voice::getParameter(uint8_t index) const {
+  TB303ParamId mappedId = TB303ParamId::Cutoff;
+  switch (index) {
+    case 0: mappedId = TB303ParamId::Cutoff; break;
+    case 1: mappedId = TB303ParamId::Resonance; break;
+    case 2: mappedId = TB303ParamId::EnvAmount; break;
+    case 3: mappedId = TB303ParamId::EnvDecay; break;
+    default: break;
+  }
+  return params[static_cast<int>(mappedId)];
 }
 
 void TB303Voice::adjustParameter(TB303ParamId id, int steps) {
@@ -425,13 +466,13 @@ void TB303Voice::setNoiseAmount(float amount) {
 }
 
 void TB303Voice::initParameters() {
-  params[static_cast<int>(TB303ParamId::Cutoff)] = Parameter("cut", "Hz", 60.0f, 2500.0f, 800.0f, (2500.f - 60.0f) / 128);
-  params[static_cast<int>(TB303ParamId::Resonance)] = Parameter("res", "", 0.0f, 0.85f, 0.0f, 0.85f / 128);
-  params[static_cast<int>(TB303ParamId::EnvAmount)] = Parameter("env", "Hz", 0.0f, 2000.0f, 400.0f, (2000.0f - 0.0f) / 128);
-  params[static_cast<int>(TB303ParamId::EnvDecay)] = Parameter("dec", "ms", 20.0f, 2200.0f, 420.0f, (2200.0f - 20.0f) / 128);
-  params[static_cast<int>(TB303ParamId::Oscillator)] = Parameter("osc", "", kOscillatorOptions, 5, 0);
-  params[static_cast<int>(TB303ParamId::FilterType)] = Parameter("flt", "", kFilterTypeOptions, 7, 0);
-  params[static_cast<int>(TB303ParamId::MainVolume)] = Parameter("vol", "", 0.0f, 1.0f, 0.8f, 1.0f / 128);
+  params[static_cast<int>(TB303ParamId::Cutoff)] = Parameter("Cutoff", "Hz", 60.0f, 2500.0f, 800.0f, (2500.f - 60.0f) / 128);
+  params[static_cast<int>(TB303ParamId::Resonance)] = Parameter("Reso", "", 0.0f, 0.85f, 0.0f, 0.85f / 128);
+  params[static_cast<int>(TB303ParamId::EnvAmount)] = Parameter("Env", "Hz", 0.0f, 2000.0f, 400.0f, (2000.0f - 0.0f) / 128);
+  params[static_cast<int>(TB303ParamId::EnvDecay)] = Parameter("Decay", "ms", 20.0f, 2200.0f, 420.0f, (2200.0f - 20.0f) / 128);
+  params[static_cast<int>(TB303ParamId::Oscillator)] = Parameter("Oscillator", "", kOscillatorOptions, 5, 0);
+  params[static_cast<int>(TB303ParamId::FilterType)] = Parameter("Filter", "", kFilterTypeOptions, 7, 0);
+  params[static_cast<int>(TB303ParamId::MainVolume)] = Parameter("Volume", "", 0.0f, 1.0f, 0.8f, 1.0f / 128);
 }
 
 void TB303Voice::updateFilterModel() {

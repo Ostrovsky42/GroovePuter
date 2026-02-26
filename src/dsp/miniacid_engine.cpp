@@ -24,6 +24,7 @@
 #endif
 
 #include "../platform/log.h"
+#include "swappable_synth_voice.h"
 #include "advanced_pattern_generator.h"
 
 namespace {
@@ -207,9 +208,7 @@ float TempoDelay::process(float input) {
 }
 
 MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
-  : voice303(sampleRate),
-    voice3032(sampleRate),
-    drums(std::make_unique<TR808DrumSynthVoice>(sampleRate)),
+  : drums(std::make_unique<TR808DrumSynthVoice>(sampleRate)),
     sampleRateValue(sampleRate),
     drumEngineName_("808"),
     sceneStorage_(sceneStorage),
@@ -234,8 +233,10 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
     distortion3032Enabled(false),
     bpmValue(100.0f),
     currentStepIndex(-1),
-    samplesIntoStep(0),
-    samplesPerStep(0.0f),
+    tickPhaseAccum_(0),
+    tickPhaseInc_(0),
+    currentTick_(0),
+    samplesPerStep_(10000.0f),
     songMode_(false),
     drumCycleIndex_(0),
     songPlayheadPosition_(0),
@@ -262,6 +263,12 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
   voiceCompressor_.setRatio(4.0f);          // 4:1 compression
   voiceCompressor_.setMakeupGain(2.8f);     // +9dB boost
   voiceCompressor_.setPresenceBoost(0.5f);  // +3dB @ 2kHz
+
+  // Initialize synth engines (default to TB303 for both)
+  synthVoices_[0] = std::make_unique<SwappableSynthVoice>(sampleRate, SynthEngineType::TB303);
+  synthEngineNames_[0] = "TB303";
+  synthVoices_[1] = std::make_unique<SwappableSynthVoice>(sampleRate, SynthEngineType::TB303);
+  synthEngineNames_[1] = "TB303";
 }
 
 
@@ -287,10 +294,10 @@ void MiniAcid::init() {
     // DRAM: Constrained mode (44.1kHz is expensive!)
     // Keep a practical looper length so REC/PLAY is musically usable without PSRAM.
     // 1.0s mono int16 looper ~= 88KB.
-    if (tapeLooper) tapeLooper->init(1.0f);
+    if (tapeLooper) tapeLooper->init(0.5f);
     if (sampleStore) sampleStore->setPoolSize(32 * 1024); // 32KB sampler pool
-    delay303.init(0.15f);
-    delay3032.init(0.15f);
+    delay303.init(0.1f);
+    delay3032.init(0.1f);
     
     // TAPE FX DISABLED BY DEFAULT IN DRAM MODE
     if (tapeFX) tapeFX->setEnabled(false);
@@ -334,8 +341,10 @@ void MiniAcid::init() {
     setDrumEngine("909"); 
   }
 
+  playing = false; // Safety
   LOG_PRINTLN("  - MiniAcid::init: reset()...");
   reset();
+  AudioDiagnostics::instance().enable(false);
   LOG_PRINTLN("  - MiniAcid::init: applySceneStateFromManager()...");
   applySceneStateFromManager();
   LOG_PRINTLN("  - MiniAcid::init: Done");
@@ -343,14 +352,17 @@ void MiniAcid::init() {
 
 void MiniAcid::reset() {
   LOG_PRINTLN("    - MiniAcid::reset: Start");
-  voice303.reset();
-  voice3032.reset();
+  if (synthVoices_[0]) synthVoices_[0]->reset();
+  if (synthVoices_[1]) synthVoices_[1]->reset();
   LOG_PRINTLN("    - MiniAcid::reset: voices reset");
   
   // Make the second voice have different params (intentional base offset)
-  voice3032.adjustParameter(TB303ParamId::Cutoff, -3);
-  voice3032.adjustParameter(TB303ParamId::Resonance, -3);
-  voice3032.adjustParameter(TB303ParamId::EnvAmount, -1);
+  // TB303 Param mapping: 0=Cutoff, 1=Res, 2=Env, 3=Decay
+  if (TB303Voice* v303 = tb303Voice(1)) {
+      v303->adjustParameter(TB303ParamId::Cutoff, -3);
+      v303->adjustParameter(TB303ParamId::Resonance, -3);
+      v303->adjustParameter(TB303ParamId::EnvAmount, -1);
+  }
   
   if (drums) {
     LOG_PRINTLN("    - MiniAcid::reset: resetting drums...");
@@ -375,10 +387,11 @@ void MiniAcid::reset() {
   distortion3032Enabled = false;
   bpmValue = 100.0f;
   currentStepIndex = -1;
-  samplesIntoStep = 0;
+  tickPhaseAccum_ = 0;
+  currentTick_ = 0;
+  songStepCounter_ = 0;
   currentTimingOffset_ = 0;
-  currentStepDurationSamples_ = 1;
-  updateSamplesPerStep();
+  updateTickIncrement();
   masterOutputLpState_ = 0.0f;
   
   delay303.reset();
@@ -427,7 +440,6 @@ void MiniAcid::reset() {
   patternModeDrumPatternIndex_ = 0;
   patternModeSynthPatternIndex_[0] = 0;
   patternModeSynthPatternIndex_[1] = 0;
-  
   // NOW reset bias tracking (after all base params are set)
   genreManager_.resetTextureBiasTracking();
   // Apply texture to bring engine into consistent state with current genre
@@ -442,12 +454,13 @@ void MiniAcid::reset() {
 }
 
 void MiniAcid::start() {
+  LOG_PRINTLN("[DSP] START command received");
   playing = true;
   currentStepIndex = -1;
   // Force immediate first step trigger.
-  samplesIntoStep = 0;
+  tickPhaseAccum_ = 0x100000000ULL; // Trigger advance on first sample
+  currentTick_ = 383; // Set to end of bar so first modulo triggers step 0
   currentTimingOffset_ = 0;
-  currentStepDurationSamples_ = 1;
   if (songMode_) {
     if (!liveMixMode_) {
       songPlaybackSlot_ = sceneManager_.activeSongSlot();
@@ -459,12 +472,18 @@ void MiniAcid::start() {
 }
 
 void MiniAcid::stop() {
+  LOG_PRINTLN("[DSP] STOP command received");
   playing = false;
   currentStepIndex = -1;
-  samplesIntoStep = 0;
-  currentStepDurationSamples_ = 1;
-  voice303.release();
-  voice3032.release();
+  tickPhaseAccum_ = 0;
+  currentTick_ = 0;
+  gateCountdownA_ = 0;
+  gateCountdownB_ = 0;
+  retrigA_ = {};
+  retrigB_ = {};
+  for (int i = 0; i < NUM_DRUM_VOICES; ++i) retrigDrums_[i] = {};
+  if (synthVoices_[0]) synthVoices_[0]->release();
+  if (synthVoices_[1]) synthVoices_[1]->release();
   drums->reset();
   if (songMode_) {
     sceneManager_.setSongPosition(clampSongPosition(songPlayheadPosition_));
@@ -477,7 +496,7 @@ void MiniAcid::setBpm(float bpm) {
     bpmValue = 10.0f;
   if (bpmValue > 250.0f)
     bpmValue = 250.0f;
-  updateSamplesPerStep();
+  updateTickIncrement();
   delay303.setBpm(bpmValue);
   delay3032.setBpm(bpmValue);
 }
@@ -499,7 +518,19 @@ float MiniAcid::sampleRate() const { return sampleRateValue; }
 
 bool MiniAcid::isPlaying() const { return playing; }
 
-int MiniAcid::currentStep() const { return currentStepIndex; }
+int MiniAcid::currentStep() const { 
+    if (!playing) return 0;
+    return (currentTick_ % 384) / 24; 
+}
+
+float MiniAcid::getStepProgress() const {
+    if (!playing) return 0.0f;
+    uint32_t barTick = currentTick_ % 384;
+    uint32_t tickInStep = barTick % 24;
+    // Account for fractional phase for sub-tick visual smoothness
+    double frac = (double)(tickPhaseAccum_ & 0xFFFFFFFF) / 4294967296.0;
+    return (float)(tickInStep + frac) / 24.0f;
+}
 
 int MiniAcid::cycleBarCount() const {
   int bars = sceneManager_.currentScene().feel.patternBars;
@@ -560,8 +591,10 @@ bool MiniAcid::is303DistortionEnabled(int voiceIndex) const {
   return idx == 0 ? distortion303Enabled : distortion3032Enabled;
 }
 const Parameter& MiniAcid::parameter303(TB303ParamId id, int voiceIndex) const {
-  int idx = clamp303Voice(voiceIndex);
-  return idx == 0 ? voice303.parameter(id) : voice3032.parameter(id);
+  static Parameter dummyParam("dummy", "", 0, 1, 0);
+  const TB303Voice* v303 = tb303Voice(voiceIndex);
+  if (v303) return v303->parameter(id);
+  return dummyParam;
 }
 const int8_t* MiniAcid::pattern303Steps(int voiceIndex) const {
   int idx = clamp303Voice(voiceIndex);
@@ -770,6 +803,8 @@ void MiniAcid::setLiveMixMode(bool enabled) {
 void MiniAcid::toggleLiveMixMode() { setLiveMixMode(!liveMixMode_); }
 void MiniAcid::mergeSongs() { sceneManager_.mergeSongs(); }
 void MiniAcid::alternateSongs() { sceneManager_.alternateSongs(); }
+void MiniAcid::insertSongRow(int position) { sceneManager_.insertSongRow(position); }
+void MiniAcid::deleteSongRow(int position) { sceneManager_.deleteSongRow(position); }
 void MiniAcid::setSongReverse(bool reverse) { sceneManager_.setSongReverse(reverse); }
 bool MiniAcid::isSongReverse() const { return sceneManager_.isSongReverse(); }
 void MiniAcid::queueSongReverseToggle() {
@@ -819,8 +854,107 @@ int MiniAcid::displayDrumLocalPatternIndex() const {
   return songPatternIndexInBank(global);
 }
 
+const Parameter& MiniAcid::synthParameter(int voiceIndex, int knobIndex) const {
+  static Parameter dummyParam("dummy", "", 0, 1, 0);
+  int idx = clamp303Voice(voiceIndex);
+  if (synthVoices_[idx]) {
+    return synthVoices_[idx]->getParameter(knobIndex);
+  }
+  return dummyParam;
+}
+
+uint8_t MiniAcid::synthParameterCount(int voiceIndex) const {
+  int idx = clamp303Voice(voiceIndex);
+  if (synthVoices_[idx]) return synthVoices_[idx]->parameterCount();
+  return 0;
+}
+
+void MiniAcid::adjustSynthParameter(int voiceIndex, int knobIndex, int steps) {
+  int idx = clamp303Voice(voiceIndex);
+  if (synthVoices_[idx]) {
+    // We get a non-const copy or pointer if possible? 
+    // No, we use setParameterNormalized.
+    const Parameter& p = synthVoices_[idx]->getParameter(knobIndex);
+    float val = p.value();
+    float step = p.step();
+    // If step is 0, we use a default 1/128 increment
+    if (step <= 0.00001f) step = (p.max() - p.min()) / 128.0f;
+    
+    float newValue = val + step * steps;
+    // Normalized calculation
+    float norm = (newValue - p.min()) / (p.max() - p.min());
+    if (p.max() <= p.min()) norm = 0.0f;
+    synthVoices_[idx]->setParameterNormalized(knobIndex, norm);
+  }
+}
+
+void MiniAcid::setSynthEngine(int voiceIndex, const std::string& engineName) {
+  int idx = clamp303Voice(voiceIndex);
+  if (!synthVoices_[idx]) {
+    synthVoices_[idx] = std::make_unique<SwappableSynthVoice>(sampleRateValue, SynthEngineType::TB303);
+    synthVoices_[idx]->setMode(sceneManager_.getMode());
+    const float loFiAmt = sceneManager_.currentScene().feel.lofiAmount / 100.0f;
+    synthVoices_[idx]->setLoFiAmount(loFiAmt);
+  }
+
+  std::string name = engineName;
+  for (auto& c : name) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+  LOG_DEBUG("[Synth] %d -> %s\n", idx, name.c_str());
+
+  SynthEngineType target = SynthEngineType::TB303;
+  const char* targetName = "TB303";
+  if (name.find("SID") != std::string::npos) {
+    target = SynthEngineType::SID;
+    targetName = "SID";
+  } else if (name.find("OPL2") != std::string::npos ||
+             name.find("YM3812") != std::string::npos ||
+             name.find("FM") != std::string::npos) {
+    target = SynthEngineType::OPL2;
+    targetName = "OPL2";
+  } else if (name.find("AY") != std::string::npos ||
+             name.find("YM2149") != std::string::npos ||
+             name.find("PSG") != std::string::npos) {
+    target = SynthEngineType::AY;
+    targetName = "AY";
+  } else if (name.find("TB303") != std::string::npos || name.find("303") != std::string::npos) {
+    target = SynthEngineType::TB303;
+    targetName = "TB303";
+  }
+
+  if (synthEngineNames_[idx] == targetName) {
+    return;
+  }
+
+  if (!playing) {
+    SynthVoiceState blankState;
+    blankState.engineType = target;
+    blankState.paramCount = 0;
+    synthVoices_[idx]->setState(blankState);
+  } else {
+    synthVoices_[idx]->setEngineType(target);
+  }
+  synthEngineNames_[idx] = synthVoices_[idx]->getEngineName();
+  sceneManager_.setSynthEngineName(idx, synthEngineNames_[idx]);
+
+  if (TB303Voice* v303 = tb303Voice(idx)) {
+    const ModeConfig& cfg = modeManager_.config();
+    v303->setSubOscillator(cfg.dsp.subOscillator);
+    v303->setNoiseAmount(cfg.dsp.noiseAmount);
+  }
+}
+
 std::vector<std::string> MiniAcid::getAvailableDrumEngines() const {
-  return {"808", "909", "606"};
+  return {"808", "909", "606", "CR78", "KPR77", "SP12"};
+}
+
+std::vector<std::string> MiniAcid::getAvailableSynthEngines() const {
+  return {"TB303", "SID", "AY", "OPL2"};
+}
+
+std::string MiniAcid::currentSynthEngineName(int voiceIndex) const {
+  int idx = clamp303Voice(voiceIndex);
+  if (synthVoices_[idx]) return synthVoices_[idx]->getEngineName();
+  return synthEngineNames_[idx];
 }
 
 
@@ -833,6 +967,12 @@ void MiniAcid::setDrumEngine(const std::string& engineName) {
     targetEngine = "606";
   } else if (name.find("808") != std::string::npos) {
     targetEngine = "808";
+  } else if (name.find("cr78") != std::string::npos) {
+    targetEngine = "CR78";
+  } else if (name.find("kpr77") != std::string::npos) {
+    targetEngine = "KPR77";
+  } else if (name.find("sp12") != std::string::npos) {
+    targetEngine = "SP12";
   }
   LOG_DEBUG("    - MiniAcid::setDrumEngine: setting to %s\n", name.c_str());
   if (targetEngine.empty()) {
@@ -852,6 +992,15 @@ void MiniAcid::setDrumEngine(const std::string& engineName) {
   } else if (targetEngine == "808") {
     drums = std::make_unique<TR808DrumSynthVoice>(sampleRateValue);
     drumEngineName_ = "808";
+  } else if (targetEngine == "CR78") {
+    drums = std::make_unique<CR78DrumSynthVoice>(sampleRateValue);
+    drumEngineName_ = "CR78";
+  } else if (targetEngine == "KPR77") {
+    drums = std::make_unique<KPR77DrumSynthVoice>(sampleRateValue);
+    drumEngineName_ = "KPR77";
+  } else if (targetEngine == "SP12") {
+    drums = std::make_unique<SP12DrumSynthVoice>(sampleRateValue);
+    drumEngineName_ = "SP12";
   }
   if (drums) {
     LOG_PRINTLN("    - MiniAcid::setDrumEngine: resetting drums...");
@@ -1005,21 +1154,16 @@ void MiniAcid::setDrumBankIndex(int bankIndex) {
 }
 
 void MiniAcid::adjust303Parameter(TB303ParamId id, int steps, int voiceIndex) {
-  int idx = clamp303Voice(voiceIndex);
-  if (idx == 0)
-    voice303.adjustParameter(id, steps);
-  else
-    voice3032.adjustParameter(id, steps);
+  if (TB303Voice* v303 = tb303Voice(voiceIndex)) v303->adjustParameter(id, steps);
 }
 void MiniAcid::set303Parameter(TB303ParamId id, float value, int voiceIndex) {
-  int idx = clamp303Voice(voiceIndex);
-  if (idx == 0) voice303.setParameter(id, value);
-  else voice3032.setParameter(id, value);
+  if (TB303Voice* v303 = tb303Voice(voiceIndex)) v303->setParameter(id, value);
 }
 void MiniAcid::set303ParameterNormalized(TB303ParamId id, float norm, int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
-  if (idx == 0) voice303.setParameterNormalized(id, norm);
-  else voice3032.setParameterNormalized(id, norm);
+  if (synthVoices_[idx]) {
+      synthVoices_[idx]->setParameterNormalized(static_cast<uint8_t>(id), norm);
+  }
 }
 void MiniAcid::set303PatternIndex(int voiceIndex, int16_t patternIndex) {
   int idx = clamp303Voice(voiceIndex);
@@ -1158,6 +1302,20 @@ void MiniAcid::adjust303StepFxParam(int voiceIndex, int stepIndex, int delta) {
   pattern.steps[step].fxParam = (uint8_t)val;
 }
 
+TB303Voice* MiniAcid::tb303Voice(int voiceIndex) {
+  int idx = clamp303Voice(voiceIndex);
+  if (!synthVoices_[idx]) return nullptr;
+  if (synthVoices_[idx]->engineType() != SynthEngineType::TB303) return nullptr;
+  return static_cast<TB303Voice*>(synthVoices_[idx]->activeVoice());
+}
+
+const TB303Voice* MiniAcid::tb303Voice(int voiceIndex) const {
+  int idx = clamp303Voice(voiceIndex);
+  if (!synthVoices_[idx]) return nullptr;
+  if (synthVoices_[idx]->engineType() != SynthEngineType::TB303) return nullptr;
+  return static_cast<const TB303Voice*>(synthVoices_[idx]->activeVoice());
+}
+
 int MiniAcid::clamp303Voice(int voiceIndex) const {
   if (voiceIndex < 0) return 0;
   if (voiceIndex >= NUM_303_VOICES) return NUM_303_VOICES - 1;
@@ -1178,7 +1336,7 @@ void MiniAcid::setupDrumStepFx_(int voiceIdx, uint8_t fx, uint8_t fxParam, uint8
 
   if (fx == DRUM_FX_RETRIG && fxParam > 0) {
     rs.countRemaining = fxParam;
-    rs.interval = (int)(samplesPerStep / (fxParam + 1));
+    rs.interval = (int)(samplesPerStep_ / (fxParam + 1));
     if (rs.interval < 1) rs.interval = 1;
     rs.counter = rs.interval;
     rs.active = true;
@@ -1187,7 +1345,7 @@ void MiniAcid::setupDrumStepFx_(int voiceIdx, uint8_t fx, uint8_t fxParam, uint8
     int gapTicks = (fxParam > 0) ? fxParam : 2;
     if (gapTicks > 23) gapTicks = 23;
     rs.countRemaining = 1;
-    rs.interval = (int)((samplesPerStep * gapTicks) / 24.0f);
+    rs.interval = (int)((samplesPerStep_ * gapTicks) / 24.0f);
     if (rs.interval < 1) rs.interval = 1;
     rs.counter = rs.interval;
     rs.flamGhostVelocity = (uint8_t)((int)velocity * 72 / 100);
@@ -1202,7 +1360,7 @@ void MiniAcid::setupDrumStepFx_(int voiceIdx, uint8_t fx, uint8_t fxParam, uint8
     if (hitCount > 12) hitCount = 12;
     rs.rollTotal = hitCount - 1;   // Base hit already played in advanceStep().
     rs.countRemaining = rs.rollTotal;
-    rs.interval = (int)(samplesPerStep / hitCount);
+    rs.interval = (int)(samplesPerStep_ / hitCount);
     if (rs.interval < 1) rs.interval = 1;
     rs.counter = rs.interval;
     rs.active = true;
@@ -1356,6 +1514,14 @@ void MiniAcid::applySongPositionSelection() {
 }
 
 // REWRITTEN LOGIC
+void MiniAcid::acknowledgeRehearsal() {
+  if (waitingForRehearsal_) {
+    waitingForRehearsal_ = false;
+    rehearsalAcknowledged_ = true;
+    LOG_PRINTLN("Rehearsal acknowledged, resuming playback");
+  }
+}
+
 void MiniAcid::advanceSongPlayhead() {
   int len = sceneManager_.songLengthAtSlot(songPlaybackSlot_);
   if (len < 1) len = 1;
@@ -1407,6 +1573,26 @@ void MiniAcid::advanceSongPlayhead() {
       }
   }
 
+  // REHEARSAL MODE (Pause Rows)
+  // Check if next row contains the pause sentinel (-2) on any track
+  bool rowIsPause = false;
+  for (int t = 0; t < SongPosition::kTrackCount; ++t) {
+      if (sceneManager_.songPatternAtSlot(songPlaybackSlot_, nextPos, (SongTrack)t) == -2) {
+          rowIsPause = true;
+          break;
+      }
+  }
+
+  if (rowIsPause && !rehearsalAcknowledged_) {
+      waitingForRehearsal_ = true;
+      // DO NOT advance nextPos - stay on current row
+      return;
+  }
+  
+  // Clear acknowledgment once we move past a pause row or hit a normal row
+  rehearsalAcknowledged_ = false;
+  waitingForRehearsal_ = false;
+
   // Final Safety clamp
   if (nextPos < 0) nextPos = 0;
   if (nextPos >= len) nextPos = len - 1;
@@ -1437,18 +1623,14 @@ void MiniAcid::refreshDrumCache(int drumVoiceIndex) const {
   }
 }
 
-void MiniAcid::updateSamplesPerStep() {
-  int steps = sceneManager_.currentScene().feel.gridSteps;
-  if (steps != 8 && steps != 16 && steps != 32) steps = 16;
-  int tb = sceneManager_.currentScene().feel.timebase;
-  if (tb < 0) tb = 0;
-  if (tb > 2) tb = 2;
-  float timebaseMul = 1.0f;
-  if (tb == 0) timebaseMul = 0.5f;
-  else if (tb == 2) timebaseMul = 2.0f;
-  float effectiveSteps = steps * timebaseMul;
-  if (effectiveSteps < 1.0f) effectiveSteps = 1.0f;
-  samplesPerStep = sampleRateValue * 240.0f / (bpmValue * effectiveSteps);
+void MiniAcid::updateTickIncrement() {
+  // Q32.32 math: inc = (ticksPerSec * 2^32) / sampleRate
+  double ticksPerSec = (double)bpmValue * (double)kPPQN / 60.0;
+  tickPhaseInc_ = (uint64_t)((ticksPerSec * 4294967296.0) / (double)SAMPLE_RATE);
+
+  // Legacy fallback for gate lengths and envelope durations expecting sample counts
+  float effectiveSteps = 16.0f; 
+  samplesPerStep_ = (float)SAMPLE_RATE * 240.0f / (bpmValue * effectiveSteps);
 }
 
 float MiniAcid::noteToFreq(int note) {
@@ -1571,7 +1753,7 @@ float MiniAcid::evaluateAutomationLaneAtStep_(const AutomationLane& lane, int st
 
 void MiniAcid::applyDrumAutomationLanesForStep_(const DrumPatternSet& patternSet, int step) {
   Scene& scene = sceneManager_.currentScene();
-  static const char* kEngineByLaneValue[] = {"808", "909", "606"};
+  static const char* kEngineByLaneValue[] = {"808", "909", "606", "CR78", "KPR77", "SP12"};
   constexpr int kEngineCount = static_cast<int>(sizeof(kEngineByLaneValue) / sizeof(kEngineByLaneValue[0]));
 
   for (int i = 0; i < DrumPatternSet::kMaxLanes; ++i) {
@@ -1605,289 +1787,70 @@ void MiniAcid::applyDrumAutomationLanesForStep_(const DrumPatternSet& patternSet
   }
 }
 
-unsigned long MiniAcid::computeStepDurationSamples_() const {
-  // Compute once per step:
-  // target = nominalStep + nextOffset - currentOffset
-  int nextStepIndex = (currentStepIndex + 1) % SEQ_STEPS;
-  const int nextTiming = timingTicksForStep_(nextStepIndex);
-
-  long samplesPerTick = static_cast<long>(samplesPerStep / 24.0f);
-  if (samplesPerTick < 1) samplesPerTick = 1;
-  long nextOffset = static_cast<long>(nextTiming) * samplesPerTick;
-
-  long targetDuration = static_cast<long>(samplesPerStep) + nextOffset - currentTimingOffset_;
-  if (targetDuration < 1) targetDuration = 1;
-  return static_cast<unsigned long>(targetDuration);
+void MiniAcid::advanceTick() {
+    // Current monolithic implementation - Stage 1
+    // We trigger everything at the start of the 16th note (tick % 24 == 0)
+    processSequencerEvents(currentTick_);
 }
 
-void MiniAcid::advanceStep() {
-  int patternBars = sceneManager_.currentScene().feel.patternBars;
-  if (patternBars != 1 && patternBars != 2 && patternBars != 4 && patternBars != 8) patternBars = 1;
-  int cycleSteps = SEQ_STEPS * patternBars;
-  if (cycleSteps <= 0) cycleSteps = SEQ_STEPS;
-  if (songStepCounter_ >= cycleSteps) songStepCounter_ = 0;
+void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
+  uint32_t barTick = absoluteTick % 384;
+  currentStepIndex = barTick / 24;
 
-  int prevStep = currentStepIndex;
-  if (songMode_ && prevStep < 0) {
-    songPlayheadPosition_ = clampSongPosition(sceneManager_.getSongPosition());
-    sceneManager_.setSongPosition(songPlayheadPosition_);
-    applySongPositionSelection();
-    songStepCounter_ = 0;
-  }
-
-  // Song reverse affects only SONG position order, not step order inside patterns.
-  currentStepIndex = songStepCounter_ % SEQ_STEPS;
-
-  LedManager::instance().onBeat(currentStepIndex, sceneManager_.currentScene().led);
-
-  if (songMode_) {
-    // song position advance happens after step increment (see below)
-  }
-
-  // DEBUG: toggle drum kit every measure for testing
-  /*
-  if (prevStep >= 0 && currentStepIndex == 0) {
-    drumCycleIndex_ = (drumCycleIndex_ + 1) % 3;
-    if (drumCycleIndex_ == 0) {
-      drums = std::make_unique<TR808DrumSynthVoice>(sampleRateValue);
-      // printf("Switched to TR-808 drum kit\n");
-    } else if (drumCycleIndex_ == 1) {
-      drums = std::make_unique<TR909DrumSynthVoice>(sampleRateValue);
-      // printf("Switched to TR-909 drum kit\n");
-    } else {
-      drums = std::make_unique<TR606DrumSynthVoice>(sampleRateValue);
-      // printf("Switched to TR-606 drum kit\n");
-    }
-  }
-  */
-  if (prevStep >= 0 && currentStepIndex == 0) {
+  if (barTick == 0) {
+    advanceSongStep_();
+    // Also regenerate if needed at bar start
     if (genreManager_.commitPendingRecipe()) {
       regeneratePatternsWithGenre();
     }
+    LedManager::instance().onBeat(currentStepIndex, sceneManager_.currentScene().led);
+  } else if (barTick % 24 == 0) {
+    LedManager::instance().onBeat(currentStepIndex, sceneManager_.currentScene().led);
   }
 
-  int songPatternA = songPatternIndexForTrack(SongTrack::SynthA);
-  int songPatternB = songPatternIndexForTrack(SongTrack::SynthB);
-  int songPatternDrums = songPatternIndexForTrack(SongTrack::Drums);
-  if (songPatternDrums >= 0) {
-    const DrumPatternSet& currentDrumPatternSet = sceneManager_.getCurrentDrumPattern();
-    applyDrumAutomationLanesForStep_(currentDrumPatternSet, currentStepIndex);
-  }
+  // Timing constants
+  int swingPct = sceneManager_.currentScene().feel.swingPct;
+  if (swingPct < 50) swingPct = 50;
+  if (swingPct > 75) swingPct = 75;
+  int swingDelay = (int)std::round((swingPct - 50.0f) * 24.0f / 50.0f);
+  uint16_t swingMask = sceneManager_.currentScene().feel.swingMask;
 
-  // 303 voices
-  const SynthPattern& synthA = activeSynthPattern(0);
-  const SynthPattern& synthB = activeSynthPattern(1);
-  const SynthStep& stepA = synthA.steps[currentStepIndex];
-  const SynthStep& stepB = synthB.steps[currentStepIndex];
-  
-  // Get gate length multiplier from genre params
-  float gateMult = genreManager_.getGenerativeParams().gateLengthMultiplier;
-  if (gateMult < 0.1f) gateMult = 0.5f; // Default fallback
-  if (gateMult > 1.0f) gateMult = 1.0f;
-  
-  // Voice A (Bass): slightly shorter gate for tighter feel
-  float gateMultA = gateMult * 0.85f;
-  if (gateMultA < 0.15f) gateMultA = 0.15f;
-  
-  // Voice B (Lead): slightly longer gate for more legato
-  float gateMultB = gateMult * 1.05f;
-  if (gateMultB > 0.98f) gateMultB = 0.98f;
-  
-  // Note: ghost notes handled by velocity < 50 usually
-  retrigA_.active = false;
-  if (!mute303 && songPatternA >= 0) {
-      if (stepA.note == -2) { // TIE (Note Continue)
-          // Extend gate if active
-          if (gateCountdownA_ > 0) gateCountdownA_ += (long)(samplesPerStep * gateMultA);
-          else if (stepA.slide) {
-               // If sliding into a TIE from silence, maybe start? 
-               // For now, TIE only extends.
-          }
-      } else if (stepA.note >= 0 && (!stepA.ghost || (rand() % 100 < 80))) {
-        // Probability check
-        if (stepA.probability >= 100 || (rand() % 100 < stepA.probability)) {
-            voice303.startNote(noteToFreq(stepA.note), stepA.accent, stepA.slide, stepA.velocity);
-            // Set gate countdown: gate_samples = step_duration * multiplier
-            gateCountdownA_ = (long)(samplesPerStep * gateMultA);
-            LedManager::instance().onVoiceTriggered(VoiceId::SynthA, sceneManager_.currentScene().led);
-            
-            // Setup Retrig
-            if (stepA.fx == (uint8_t)StepFx::Retrig && stepA.fxParam > 0) {
-                retrigA_.countRemaining = stepA.fxParam;
-                // Retrigger interval should be relative to current step duration
-                retrigA_.interval = (int)(samplesPerStep / (stepA.fxParam + 1));
-                retrigA_.counter = retrigA_.interval;
-                retrigA_.active = true;
-            }
-        }
-      }
-  }
-  // Note: release is now handled by gate countdown, not here
-
-  retrigB_.active = false;
-  if (!mute303_2 && songPatternB >= 0) {
-      if (stepB.note == -2) { // TIE
-          if (gateCountdownB_ > 0) gateCountdownB_ += (long)(samplesPerStep * gateMultB);
-      } else if (stepB.note >= 0 && (!stepB.ghost || (rand() % 100 < 80))) {
-        if (stepB.probability >= 100 || (rand() % 100 < stepB.probability)) {
-            voice3032.startNote(noteToFreq(stepB.note), stepB.accent, stepB.slide, stepB.velocity);
-            gateCountdownB_ = (long)(samplesPerStep * gateMultB);
-            LedManager::instance().onVoiceTriggered(VoiceId::SynthB, sceneManager_.currentScene().led);
-            
-            if (stepB.fx == (uint8_t)StepFx::Retrig && stepB.fxParam > 0) {
-                retrigB_.countRemaining = stepB.fxParam;
-                retrigB_.interval = (int)(samplesPerStep / (stepB.fxParam + 1));
-                retrigB_.counter = retrigB_.interval;
-                retrigB_.active = true;
-            }
-        }
-      }
-  }
-
-  // Drums
-  const DrumPattern& kick = activeDrumPattern(kDrumKickVoice);
-  const DrumPattern& snare = activeDrumPattern(kDrumSnareVoice);
-  const DrumPattern& hat = activeDrumPattern(kDrumHatVoice);
-  const DrumPattern& openHat = activeDrumPattern(kDrumOpenHatVoice);
-  const DrumPattern& midTom = activeDrumPattern(kDrumMidTomVoice);
-  const DrumPattern& highTom = activeDrumPattern(kDrumHighTomVoice);
-  const DrumPattern& rim = activeDrumPattern(kDrumRimVoice);
-  const DrumPattern& clap = activeDrumPattern(kDrumClapVoice);
-
-  bool drumsActive = songPatternDrums >= 0;
-
-  auto shouldPlay = [&](const DrumStep& step, bool muted) -> bool {
-    if (!drumsActive || muted || !step.hit) return false;
-    if (step.probability >= 100) return true;
-    return (rand() % 100) < step.probability;
-  };
-
-  const bool kickPlay = shouldPlay(kick.steps[currentStepIndex], muteKick);
-  const bool snarePlay = shouldPlay(snare.steps[currentStepIndex], muteSnare);
-  const bool hatPlay = shouldPlay(hat.steps[currentStepIndex], muteHat);
-  const bool openHatPlay = shouldPlay(openHat.steps[currentStepIndex], muteOpenHat);
-  const bool midTomPlay = shouldPlay(midTom.steps[currentStepIndex], muteMidTom);
-  const bool highTomPlay = shouldPlay(highTom.steps[currentStepIndex], muteHighTom);
-  const bool rimPlay = shouldPlay(rim.steps[currentStepIndex], muteRim);
-  const bool clapPlay = shouldPlay(clap.steps[currentStepIndex], muteClap);
-
-  const bool stepAccent =
-    (kickPlay && kick.steps[currentStepIndex].accent) ||
-    (snarePlay && snare.steps[currentStepIndex].accent) ||
-    (hatPlay && hat.steps[currentStepIndex].accent) ||
-    (openHatPlay && openHat.steps[currentStepIndex].accent) ||
-    (midTomPlay && midTom.steps[currentStepIndex].accent) ||
-    (highTomPlay && highTom.steps[currentStepIndex].accent) ||
-    (rimPlay && rim.steps[currentStepIndex].accent) ||
-    (clapPlay && clap.steps[currentStepIndex].accent);
-
-  if (kickPlay) {
-    bool rev = (kick.steps[currentStepIndex].fx == (uint8_t)StepFx::Reverse);
-    drums->triggerKick(stepAccent, kick.steps[currentStepIndex].velocity);
-    if (sampleStore) samplerTrack->triggerPad(0, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
-    LedManager::instance().onVoiceTriggered(VoiceId::DrumKick, sceneManager_.currentScene().led);
-    setupDrumStepFx_(kDrumKickVoice, kick.steps[currentStepIndex].fx, kick.steps[currentStepIndex].fxParam, kick.steps[currentStepIndex].velocity);
-  } else {
-    retrigDrums_[kDrumKickVoice].active = false;
-  }
-
-  if (snarePlay) {
-    bool rev = (snare.steps[currentStepIndex].fx == (uint8_t)StepFx::Reverse);
-    drums->triggerSnare(stepAccent, snare.steps[currentStepIndex].velocity);
-    if (sampleStore) samplerTrack->triggerPad(1, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
-    LedManager::instance().onVoiceTriggered(VoiceId::DrumSnare, sceneManager_.currentScene().led);
-    setupDrumStepFx_(kDrumSnareVoice, snare.steps[currentStepIndex].fx, snare.steps[currentStepIndex].fxParam, snare.steps[currentStepIndex].velocity);
-  } else {
-    retrigDrums_[kDrumSnareVoice].active = false;
-  }
-
-  if (hatPlay) {
-    bool rev = (hat.steps[currentStepIndex].fx == (uint8_t)StepFx::Reverse);
-    drums->triggerHat(stepAccent, hat.steps[currentStepIndex].velocity);
-    if (sampleStore) samplerTrack->triggerPad(2, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
-    LedManager::instance().onVoiceTriggered(VoiceId::DrumHatC, sceneManager_.currentScene().led);
-    setupDrumStepFx_(kDrumHatVoice, hat.steps[currentStepIndex].fx, hat.steps[currentStepIndex].fxParam, hat.steps[currentStepIndex].velocity);
-  } else {
-    retrigDrums_[kDrumHatVoice].active = false;
-  }
-
-  if (openHatPlay) {
-    bool rev = (openHat.steps[currentStepIndex].fx == (uint8_t)StepFx::Reverse);
-    drums->triggerOpenHat(stepAccent, openHat.steps[currentStepIndex].velocity);
-    if (sampleStore) samplerTrack->triggerPad(3, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
-    LedManager::instance().onVoiceTriggered(VoiceId::DrumHatO, sceneManager_.currentScene().led);
-    setupDrumStepFx_(kDrumOpenHatVoice, openHat.steps[currentStepIndex].fx, openHat.steps[currentStepIndex].fxParam, openHat.steps[currentStepIndex].velocity);
-  } else {
-    retrigDrums_[kDrumOpenHatVoice].active = false;
-  }
-
-  if (midTomPlay) {
-    bool rev = (midTom.steps[currentStepIndex].fx == (uint8_t)StepFx::Reverse);
-    drums->triggerMidTom(stepAccent, midTom.steps[currentStepIndex].velocity);
-    if (sampleStore) samplerTrack->triggerPad(4, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
-    LedManager::instance().onVoiceTriggered(VoiceId::DrumTomM, sceneManager_.currentScene().led);
-    setupDrumStepFx_(kDrumMidTomVoice, midTom.steps[currentStepIndex].fx, midTom.steps[currentStepIndex].fxParam, midTom.steps[currentStepIndex].velocity);
-  } else {
-    retrigDrums_[kDrumMidTomVoice].active = false;
-  }
-
-  if (highTomPlay) {
-    bool rev = (highTom.steps[currentStepIndex].fx == (uint8_t)StepFx::Reverse);
-    drums->triggerHighTom(stepAccent, highTom.steps[currentStepIndex].velocity);
-    if (sampleStore) samplerTrack->triggerPad(5, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
-    LedManager::instance().onVoiceTriggered(VoiceId::DrumTomH, sceneManager_.currentScene().led);
-    setupDrumStepFx_(kDrumHighTomVoice, highTom.steps[currentStepIndex].fx, highTom.steps[currentStepIndex].fxParam, highTom.steps[currentStepIndex].velocity);
-  } else {
-    retrigDrums_[kDrumHighTomVoice].active = false;
-  }
-
-  if (rimPlay) {
-    bool rev = (rim.steps[currentStepIndex].fx == (uint8_t)StepFx::Reverse);
-    drums->triggerRim(stepAccent, rim.steps[currentStepIndex].velocity);
-    if (sampleStore) samplerTrack->triggerPad(6, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
-    LedManager::instance().onVoiceTriggered(VoiceId::DrumRim, sceneManager_.currentScene().led);
-    setupDrumStepFx_(kDrumRimVoice, rim.steps[currentStepIndex].fx, rim.steps[currentStepIndex].fxParam, rim.steps[currentStepIndex].velocity);
-  } else {
-    retrigDrums_[kDrumRimVoice].active = false;
-  }
-
-  if (clapPlay) {
-    bool rev = (clap.steps[currentStepIndex].fx == (uint8_t)StepFx::Reverse);
-    drums->triggerClap(stepAccent, clap.steps[currentStepIndex].velocity);
-    if (sampleStore) samplerTrack->triggerPad(7, stepAccent ? 1.0f : 0.6f, *sampleStore, rev);
-    LedManager::instance().onVoiceTriggered(VoiceId::DrumClap, sceneManager_.currentScene().led);
-    setupDrumStepFx_(kDrumClapVoice, clap.steps[currentStepIndex].fx, clap.steps[currentStepIndex].fxParam, clap.steps[currentStepIndex].velocity);
-  } else {
-    retrigDrums_[kDrumClapVoice].active = false;
-  }
-
-  bool wrapped = false;
-  songStepCounter_++;
-  if (songStepCounter_ >= cycleSteps) {
-    songStepCounter_ = 0;
-    wrapped = true;
-  }
-
-  if (wrapped) {
-    cyclePulseCounter_++;
-  }
-
-  if (songMode_ && prevStep >= 0 && wrapped) {
-    if (songReverseTogglePending_) {
-      sceneManager_.setSongReverse(!sceneManager_.isSongReverse());
-      songReverseTogglePending_ = false;
+  // For efficiency, we only check steps that could logically trigger at this tick.
+  // Microtiming is typically ±12 ticks, so Step S can trigger in [(S-1)*24+12, (S+1)*24+12]
+  // We'll check nominal, previous, and next step slots.
+  int nominalStep = barTick / 24;
+  for (int sIdx = nominalStep - 1; sIdx <= nominalStep + 1; ++sIdx) {
+    int s = (sIdx + 16) % 16;
+    uint32_t nominalT = s * 24;
+    
+    // Synth A
+    int swingA = (s % 2 != 0 && (swingMask & (1 << (int)VoiceId::SynthA))) ? swingDelay : 0;
+    int microA = activeSynthPattern(0).steps[s].timing;
+    if ((nominalT + swingA + microA + 384) % 384 == barTick) {
+       triggerSynthStep_(0, s);
     }
-    advanceSongPlayhead();
-  }
 
-  // Cache duration for the just-started step.
-  // Update timing offset only after target is computed.
-  currentStepDurationSamples_ = computeStepDurationSamples_();
-  int nextStepIndex = (currentStepIndex + 1) % SEQ_STEPS;
-  long samplesPerTick = static_cast<long>(samplesPerStep / 24.0f);
-  if (samplesPerTick < 1) samplesPerTick = 1;
-  currentTimingOffset_ = static_cast<long>(timingTicksForStep_(nextStepIndex)) * samplesPerTick;
+    // Synth B
+    int swingB = (s % 2 != 0 && (swingMask & (1 << (int)VoiceId::SynthB))) ? swingDelay : 0;
+    int microB = activeSynthPattern(1).steps[s].timing;
+    if ((nominalT + swingB + microB + 384) % 384 == barTick) {
+       triggerSynthStep_(1, s);
+    }
+
+    // Drums
+    const DrumPatternSet& dSet = sceneManager_.getCurrentDrumPattern();
+    for (int v = 0; v < 8; ++v) {
+        VoiceId vId = (VoiceId)((int)VoiceId::DrumKick + v);
+        int swingD = (s % 2 != 0 && (swingMask & (1 << (int)vId))) ? swingDelay : 0;
+        int microD = dSet.voices[v].steps[s].timing;
+        if ((nominalT + swingD + microD + 384) % 384 == barTick) {
+           triggerDrumVoice_(v, s);
+        }
+    }
+  }
 }
+
+
 
 void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   if (!buffer || numSamples == 0) return;
@@ -1917,7 +1880,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     return;
   }
 
-  updateSamplesPerStep();
+  updateTickIncrement();
   delay303.setBpm(bpmValue);
   delay3032.setBpm(bpmValue);
 
@@ -1976,13 +1939,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   const bool tapeFxEnabled = tapeState.fxEnabled;
   AudioDiagnostics& diag = AudioDiagnostics::instance();
   const bool diagEnabled = diag.isEnabled();
-  // Fine-grained profiling uses many micros() calls per-sample and is too
-  // expensive for Cardputer real-time audio. Keep it desktop-only for now.
-#if defined(ARDUINO_M5STACK_CARDPUTER)
-  const bool detailedProfile = false;
-#else
-  const bool detailedProfile = diagEnabled && ((perfDetailCounter_++ & 0xFFu) == 0);
-#endif
+  // Fine-grained profiling is expensive, so we do it periodically.
+  const bool detailedProfile = diagEnabled && ((perfDetailCounter_++ & 0x7Fu) == 0);
 
   // FX safety guard: if previous callback was near/over budget, reduce FX wet path
   // first (Tape/Looper) to avoid audible underruns, then recover gradually.
@@ -2017,13 +1975,21 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
 
   for (size_t i = 0; i < numSamples; ++i) {
     if (playing) {
-      if (samplesIntoStep >= currentStepDurationSamples_) {
-        samplesIntoStep = 0;
-        advanceStep();
+      tickPhaseAccum_ += tickPhaseInc_;
+      if (tickPhaseAccum_ >= 0x100000000ULL) {
+        uint32_t ticksToAdvance = (uint32_t)(tickPhaseAccum_ >> 32);
+        tickPhaseAccum_ &= 0xFFFFFFFFULL;
+        
+        while (ticksToAdvance--) {
+          currentTick_++;
+          // For Stage 2: We trigger patterns every 24 ticks (1/16th note @ 96 PPQN)
+          if (currentTick_ % 24 == 0) {
+              advanceTick();
+          }
+        }
       }
-      samplesIntoStep++;
-      if (gateCountdownA_ > 0 && --gateCountdownA_ <= 0) voice303.release();
-      if (gateCountdownB_ > 0 && --gateCountdownB_ <= 0) voice3032.release();
+      if (gateCountdownA_ > 0 && --gateCountdownA_ <= 0) if (synthVoices_[0]) synthVoices_[0]->release();
+      if (gateCountdownB_ > 0 && --gateCountdownB_ <= 0) if (synthVoices_[1]) synthVoices_[1]->release();
     }
 
     float sample = 0.0f;
@@ -2033,20 +1999,24 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
 
     // Retrig Logic (omitted for brevity in this view? No, I must keep it!)
     // [Keeping retrig logic as it was in the file]
-    if (retrigA_.active) {
+    if (playing && currentStepIndex >= 0 && retrigA_.active) {
         if (--retrigA_.counter <= 0 && retrigA_.countRemaining > 0) {
             const SynthStep& step = activeSynthPattern(0).steps[currentStepIndex];
-            voice303.startNote(noteToFreq(step.note), step.accent, step.slide, step.velocity);
+            if (synthVoices_[0]) {
+                synthVoices_[0]->startNote(noteToFreq(step.note), step.accent, step.slide, step.velocity);
+            }
             LedManager::instance().onVoiceTriggered(VoiceId::SynthA, sceneManager_.currentScene().led);
             retrigA_.counter = retrigA_.interval;
             retrigA_.countRemaining--;
             if (retrigA_.countRemaining <= 0) retrigA_.active = false;
         }
     }
-    if (retrigB_.active) {
+    if (playing && currentStepIndex >= 0 && retrigB_.active) {
         if (--retrigB_.counter <= 0 && retrigB_.countRemaining > 0) {
             const SynthStep& step = activeSynthPattern(1).steps[currentStepIndex];
-            voice3032.startNote(noteToFreq(step.note), step.accent, step.slide, step.velocity);
+            if (synthVoices_[1]) {
+                synthVoices_[1]->startNote(noteToFreq(step.note), step.accent, step.slide, step.velocity);
+            }
             LedManager::instance().onVoiceTriggered(VoiceId::SynthB, sceneManager_.currentScene().led);
             retrigB_.counter = retrigB_.interval;
             retrigB_.countRemaining--;
@@ -2054,6 +2024,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
         }
     }
     for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
+        if (!playing || currentStepIndex < 0) continue;
         if (retrigDrums_[v].active) {
              if (--retrigDrums_[v].counter <= 0 && retrigDrums_[v].countRemaining > 0) {
                  const DrumPattern& pattern = activeDrumPattern(v);
@@ -2099,14 +2070,14 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     uint32_t tV0 = 0;
     if (detailedProfile) tV0 = micros();
     if (playing) {
-      if (!mute303) {
-        float v = voice303.process() * 0.5f;
+      if (!mute303 && synthVoices_[0]) {
+        float v = synthVoices_[0]->process() * 0.5f;
         v = distortion303.process(v);
         v *= trackVolumes[(int)VoiceId::SynthA];
         sample303 += delay303.process(v);
       } else delay303.process(0.0f);
-      if (!mute303_2) {
-        float v = voice3032.process() * 0.5f;
+      if (!mute303_2 && synthVoices_[1]) {
+        float v = synthVoices_[1]->process() * 0.5f;
         v = distortion3032.process(v);
         v *= trackVolumes[(int)VoiceId::SynthB];
         sample303 += delay3032.process(v);
@@ -2157,8 +2128,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
 
     uint32_t tF0 = 0;
     if (detailedProfile) tF0 = micros();
-    if (detailedProfile) {
-      diag.trackSource(sample303, drumsMix, samplerSample, 0.0f, vocalSample, 0.0f, 0.0f);
+    if (diagEnabled) {
+      diag.trackSource(sample303, drumsMix, samplerSample, 0.0f, vocalSample, tapeLooper->getPeak(), 0.0f);
     }
     if (looperActive) {
       float loopSample = 0.0f;
@@ -2196,10 +2167,11 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     finalSample += (r1 - r2) * (1.0f / 32768.0f); 
     if (finalSample > 1.0f) finalSample = 1.0f;
     if (finalSample < -1.0f) finalSample = -1.0f;
-    if (detailedProfile) diag.accumulate(preLimiter, limited);
+    if (diagEnabled) diag.accumulate(preLimiter, limited);
     buffer[i] = (int16_t)(finalSample * 32767.0f);
     if (detailedProfile) tFxTotal += (micros() - tF0);
   }
+  // seq handled by wrapper for accuracy
 
   perfStats.dspTimeUs = (micros() - tLoopStart) + tSamplerTime;
   if (detailedProfile) {
@@ -2221,13 +2193,13 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   waveformBuffers_[writeBufferIndex_].count = copyCount;
   displayBufferIndex_.store(writeBufferIndex_, std::memory_order_release);
   writeBufferIndex_ = 1 - writeBufferIndex_;
-  if (detailedProfile) diag.flushIfReady(millis());
+  if (diagEnabled) diag.flushIfReady(millis());
 }
 
 void MiniAcid::randomize303Pattern(int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
   // Use genre-aware generator with voice role (0=bass, 1=lead)
-  const auto& params = genreManager_.getGenerativeParams();
+  const auto recipe = genreManager_.getGrooveRecipe();
   auto behavior = genreManager_.getBehavior();
   if (genreManager_.generativeMode() == GenerativeMode::Reggae) {
     // Reggae split: bass anchors downbeats, lead handles offbeat movement.
@@ -2243,7 +2215,7 @@ void MiniAcid::randomize303Pattern(int voiceIndex) {
       behavior.forceOctaveJump = false;
     }
   }
-  modeManager_.generatePattern(editSynthPattern(idx), bpmValue, params, behavior, idx);
+  modeManager_.generatePattern(editSynthPattern(idx), bpmValue, recipe, behavior, idx);
 }
 
 void MiniAcid::setParameter(MiniAcidParamId id, float value) {
@@ -2263,16 +2235,16 @@ void MiniAcid::adjustParameter(MiniAcidParamId id, int steps) {
 
 void MiniAcid::randomizeDrumPattern() {
   // Use genre-aware drum generator
-  const auto& params = genreManager_.getGenerativeParams();
+  const auto recipe = genreManager_.getGrooveRecipe();
   const auto behavior = genreManager_.getBehavior();
-  modeManager_.generateDrumPattern(sceneManager_.editCurrentDrumPattern(), params, behavior);
+  modeManager_.generateDrumPattern(sceneManager_.editCurrentDrumPattern(), recipe, behavior);
 }
 
 void MiniAcid::randomizeDrumVoice(int voiceIndex) {
   int idx = clampDrumVoice(voiceIndex);
-  const auto& params = genreManager_.getGenerativeParams();
+  const auto recipe = genreManager_.getGrooveRecipe();
   const auto behavior = genreManager_.getBehavior();
-  modeManager_.generateDrumVoice(sceneManager_.editCurrentDrumPattern().voices[idx], idx, params, behavior);
+  modeManager_.generateDrumVoice(sceneManager_.editCurrentDrumPattern().voices[idx], idx, recipe, behavior);
 }
 
 // Helper to clear a step for REST
@@ -2291,7 +2263,7 @@ void MiniAcid::clear303Step(int stepIndex, int synthIndex) {
 }
 
 void MiniAcid::randomizeDrumPatternChaos() {
-  const auto& params = genreManager_.getGenerativeParams();
+  const auto recipe = genreManager_.getGrooveRecipe();
   
   // Scramble EVERYTHING
   DrumPatternSet& patternSet = sceneManager_.editCurrentDrumPattern();
@@ -2305,7 +2277,7 @@ void MiniAcid::randomizeDrumPatternChaos() {
       chaosBehavior.allowChromatic = true;
       chaosBehavior.forceOctaveJump = true;
       
-      modeManager_.generateDrumVoice(patternSet.voices[v], v, params, chaosBehavior);
+      modeManager_.generateDrumVoice(patternSet.voices[v], v, recipe, chaosBehavior);
   }
 }
 
@@ -2314,7 +2286,7 @@ void MiniAcid::regeneratePatternsWithGenre() {
   // This prevents double-application which would cause delta-bias drift
   syncGrooveModeToGenre();
   
-  const auto& params = genreManager_.getGenerativeParams();
+  const auto recipe = genreManager_.getGrooveRecipe();
   const auto behavior = genreManager_.getBehavior();
 
   // Regenerate 303 patterns using generative mode + structural behavior
@@ -2333,11 +2305,11 @@ void MiniAcid::regeneratePatternsWithGenre() {
     leadBehavior.avoidClusters = false;
     leadBehavior.forceOctaveJump = false;
   }
-  modeManager_.generatePattern(editSynthPattern(0), bpmValue, params, bassBehavior, 0); // Bass
-  modeManager_.generatePattern(editSynthPattern(1), bpmValue, params, leadBehavior, 1); // Lead
+  modeManager_.generatePattern(editSynthPattern(0), bpmValue, recipe, bassBehavior, 0); // Bass
+  modeManager_.generatePattern(editSynthPattern(1), bpmValue, recipe, leadBehavior, 1); // Lead
 
   // Regenerate drum pattern
-  modeManager_.generateDrumPattern(sceneManager_.editCurrentDrumPattern(), params, behavior);
+  modeManager_.generateDrumPattern(sceneManager_.editCurrentDrumPattern(), recipe, behavior);
 }
 
 void MiniAcid::syncGrooveModeToGenre() {
@@ -2366,13 +2338,21 @@ void MiniAcid::syncModeToVoices() {
   GrooveboxMode mode = sceneManager_.getMode();
   const ModeConfig& cfg = modeManager_.config();
   
-  voice303.setMode(mode);
-  voice303.setSubOscillator(cfg.dsp.subOscillator);
-  voice303.setNoiseAmount(cfg.dsp.noiseAmount);
+  if (synthVoices_[0]) {
+    synthVoices_[0]->setMode(mode);
+    if (TB303Voice* v303 = tb303Voice(0)) {
+      v303->setSubOscillator(cfg.dsp.subOscillator);
+      v303->setNoiseAmount(cfg.dsp.noiseAmount);
+    }
+  }
   
-  voice3032.setMode(mode);
-  voice3032.setSubOscillator(cfg.dsp.subOscillator);
-  voice3032.setNoiseAmount(cfg.dsp.noiseAmount);
+  if (synthVoices_[1]) {
+    synthVoices_[1]->setMode(mode);
+    if (TB303Voice* v303 = tb303Voice(1)) {
+      v303->setSubOscillator(cfg.dsp.subOscillator);
+      v303->setNoiseAmount(cfg.dsp.noiseAmount);
+    }
+  }
   
   if (drums) {
     drums->setLoFiMode(cfg.dsp.lofiDrums);
@@ -2506,13 +2486,19 @@ void MiniAcid::applySceneStateFromManager() {
   params[static_cast<int>(MiniAcidParamId::MainVolume)].setValue(sceneVolume);
   // Fixed master safety LPF: keep this independent from scene/UI state.
   setMasterOutputHighCutHz(kMasterHighCutHz);
-  LOG_DEBUG("  - MiniAcid::applySceneStateFromManager: loaded volume=%.2f\n", sceneVolume);
-  
   const std::string& drumEngineName = sceneManager_.getDrumEngineName();
   if (!drumEngineName.empty()) {
     LOG_DEBUG("  - MiniAcid::applySceneStateFromManager: setting drum engine to %s\n", drumEngineName.c_str());
     setDrumEngine(drumEngineName);
   }
+
+  for (int i = 0; i < 2; ++i) {
+    const std::string& sname = sceneManager_.getSynthEngineName(i);
+    if (!sname.empty()) {
+      setSynthEngine(i, sname);
+    }
+  }
+
   mute303 = sceneManager_.getSynthMute(0);
   mute303_2 = sceneManager_.getSynthMute(1);
 
@@ -2533,17 +2519,33 @@ void MiniAcid::applySceneStateFromManager() {
   const SynthParameters& paramsA = sceneManager_.getSynthParameters(0);
   const SynthParameters& paramsB = sceneManager_.getSynthParameters(1);
 
-  voice303.setParameter(TB303ParamId::Cutoff, paramsA.cutoff);
-  voice303.setParameter(TB303ParamId::Resonance, paramsA.resonance);
-  voice303.setParameter(TB303ParamId::EnvAmount, paramsA.envAmount);
-  voice303.setParameter(TB303ParamId::EnvDecay, paramsA.envDecay);
-  voice303.setParameter(TB303ParamId::Oscillator, static_cast<float>(paramsA.oscType));
+  auto clamp01 = [](float v) -> float {
+    if (v < 0.0f) return 0.0f;
+    if (v > 1.0f) return 1.0f;
+    return v;
+  };
 
-  voice3032.setParameter(TB303ParamId::Cutoff, paramsB.cutoff);
-  voice3032.setParameter(TB303ParamId::Resonance, paramsB.resonance);
-  voice3032.setParameter(TB303ParamId::EnvAmount, paramsB.envAmount);
-  voice3032.setParameter(TB303ParamId::EnvDecay, paramsB.envDecay);
-  voice3032.setParameter(TB303ParamId::Oscillator, static_cast<float>(paramsB.oscType));
+  auto applySynthParams = [&](int idx, const SynthParameters& sp) {
+    if (!synthVoices_[idx]) return;
+    if (TB303Voice* v303 = tb303Voice(idx)) {
+      v303->setParameter(TB303ParamId::Cutoff, sp.cutoff);
+      v303->setParameter(TB303ParamId::Resonance, sp.resonance);
+      v303->setParameter(TB303ParamId::EnvAmount, sp.envAmount);
+      v303->setParameter(TB303ParamId::EnvDecay, sp.envDecay);
+      v303->setParameter(TB303ParamId::Oscillator, static_cast<float>(sp.oscType));
+      return;
+    }
+
+    const uint8_t count = synthVoices_[idx]->parameterCount();
+    if (count > 0) synthVoices_[idx]->setParameterNormalized(0, clamp01(sp.cutoff));
+    if (count > 1) synthVoices_[idx]->setParameterNormalized(1, clamp01(sp.resonance));
+    if (count > 2) synthVoices_[idx]->setParameterNormalized(2, clamp01(sp.envAmount));
+    if (count > 3) synthVoices_[idx]->setParameterNormalized(3, clamp01(sp.envDecay));
+    if (count > 4) synthVoices_[idx]->setParameterNormalized(4, clamp01(static_cast<float>(sp.oscType) / 100.0f));
+  };
+
+  applySynthParams(0, paramsA);
+  applySynthParams(1, paramsB);
   
   
   distortion303.setEnabled(distortion303Enabled);
@@ -2648,8 +2650,8 @@ void MiniAcid::applyTextureFromScene_() {
 
   // --- LoFi ---
   const float lofiAmt = f.lofiEnabled ? (static_cast<float>(f.lofiAmount) / 100.0f) : 0.0f;
-  voice303.setLoFiAmount(lofiAmt);
-  voice3032.setLoFiAmount(lofiAmt);
+  if (synthVoices_[0]) synthVoices_[0]->setLoFiAmount(lofiAmt);
+  if (synthVoices_[1]) synthVoices_[1]->setLoFiAmount(lofiAmt);
   if (drums) {
     drums->setLoFiMode(f.lofiEnabled);
     drums->setLoFiAmount(lofiAmt);
@@ -2687,15 +2689,15 @@ void MiniAcid::applyTextureFromScene_() {
 }
 
 void MiniAcid::applyFeelTimingFromScene_() {
-  updateSamplesPerStep();
-  samplesIntoStep = 0;
-  currentTimingOffset_ = 0;
-  currentStepDurationSamples_ = 1;
+  updateTickIncrement();
+  tickPhaseAccum_ = 0;
 }
 
 void MiniAcid::syncSceneStateToManager() {
   sceneManager_.setBpm(bpmValue);
   sceneManager_.setDrumEngineName(drumEngineName_);
+  sceneManager_.setSynthEngineName(0, currentSynthEngineName(0));
+  sceneManager_.setSynthEngineName(1, currentSynthEngineName(1));
   
   // Save master volume to scene
   sceneManager_.currentScene().masterVolume = params[static_cast<int>(MiniAcidParamId::MainVolume)].value();
@@ -2724,20 +2726,38 @@ void MiniAcid::syncSceneStateToManager() {
   int songPosToStore = songMode_ ? songPlayheadPosition_ : sceneManager_.getSongPosition();
   sceneManager_.setSongPosition(clampSongPosition(songPosToStore));
 
-  SynthParameters paramsA;
-  paramsA.cutoff = voice303.parameterValue(TB303ParamId::Cutoff);
-  paramsA.resonance = voice303.parameterValue(TB303ParamId::Resonance);
-  paramsA.envAmount = voice303.parameterValue(TB303ParamId::EnvAmount);
-  paramsA.envDecay = voice303.parameterValue(TB303ParamId::EnvDecay);
-  paramsA.oscType = voice303.oscillatorIndex();
+  auto clamp01 = [](float v) -> float {
+    if (v < 0.0f) return 0.0f;
+    if (v > 1.0f) return 1.0f;
+    return v;
+  };
+
+  auto buildSynthParams = [&](int idx) -> SynthParameters {
+    SynthParameters out;
+    if (TB303Voice* v303 = tb303Voice(idx)) {
+      out.cutoff = v303->parameterValue(TB303ParamId::Cutoff);
+      out.resonance = v303->parameterValue(TB303ParamId::Resonance);
+      out.envAmount = v303->parameterValue(TB303ParamId::EnvAmount);
+      out.envDecay = v303->parameterValue(TB303ParamId::EnvDecay);
+      out.oscType = v303->oscillatorIndex();
+      return out;
+    }
+
+    if (synthVoices_[idx]) {
+      const uint8_t count = synthVoices_[idx]->parameterCount();
+      if (count > 0) out.cutoff = clamp01(synthVoices_[idx]->getParameterNormalized(0));
+      if (count > 1) out.resonance = clamp01(synthVoices_[idx]->getParameterNormalized(1));
+      if (count > 2) out.envAmount = clamp01(synthVoices_[idx]->getParameterNormalized(2));
+      if (count > 3) out.envDecay = clamp01(synthVoices_[idx]->getParameterNormalized(3));
+      if (count > 4) out.oscType = static_cast<int>(clamp01(synthVoices_[idx]->getParameterNormalized(4)) * 100.0f + 0.5f);
+    }
+    return out;
+  };
+
+  SynthParameters paramsA = buildSynthParams(0);
   sceneManager_.setSynthParameters(0, paramsA);
 
-  SynthParameters paramsB;
-  paramsB.cutoff = voice3032.parameterValue(TB303ParamId::Cutoff);
-  paramsB.resonance = voice3032.parameterValue(TB303ParamId::Resonance);
-  paramsB.envAmount = voice3032.parameterValue(TB303ParamId::EnvAmount);
-  paramsB.envDecay = voice3032.parameterValue(TB303ParamId::EnvDecay);
-  paramsB.oscType = voice3032.oscillatorIndex();
+  SynthParameters paramsB = buildSynthParams(1);
   sceneManager_.setSynthParameters(1, paramsB);
 
   // Save voice parameters to scene
@@ -2979,9 +2999,8 @@ bool MiniAcid::renderProjectToWav(const std::string& filename, std::function<voi
 
   // Reset Engine State for rendering
   currentStepIndex = 0;
-  samplesIntoStep = 0;
-  currentTimingOffset_ = 0;
-  currentStepDurationSamples_ = 1;
+  tickPhaseAccum_ = 0;
+  currentTick_ = 0;
   
   // 4. Write WAV Header placeholder
   WavHeader header;
@@ -3016,8 +3035,8 @@ bool MiniAcid::renderProjectToWav(const std::string& filename, std::function<voi
   playing = true; // Force playing flag for generateAudioBuffer
   
   // Hack: Reset internal counters
-  samplesIntoStep = 0;
-  currentStepDurationSamples_ = 1;
+  tickPhaseAccum_ = 0;
+  currentTick_ = 0;
   
   uint32_t bytesWritten = 0;
   int lastStepIndex = 0;
@@ -3109,4 +3128,156 @@ void MiniAcid::updateDrumReverbMix(float value) {
 
 void MiniAcid::updateDrumReverbDecay(float value) {
   drumReverb.setDecay(value);
+}
+
+void MiniAcid::triggerSynthStep_(int synthIdx, int stepIdx) {
+  int songPattern = songPatternIndexForTrack(synthIdx == 0 ? SongTrack::SynthA : SongTrack::SynthB);
+  if (songPattern < 0) return;
+  if (synthIdx == 0 && mute303) return;
+  if (synthIdx == 1 && mute303_2) return;
+
+  const SynthPattern& pattern = activeSynthPattern(synthIdx);
+  const SynthStep& step = pattern.steps[stepIdx];
+
+  const auto recipe = genreManager_.getGrooveRecipe();
+  float gateMult = recipe.gateLengthRatio;
+  if (gateMult < 0.1f) gateMult = 0.5f;
+  float vMult = (synthIdx == 0) ? 0.85f : 1.05f;
+  float effectiveGateMult = gateMult * vMult;
+  if (synthIdx == 0 && effectiveGateMult < 0.15f) effectiveGateMult = 0.15f;
+  if (synthIdx == 1 && effectiveGateMult > 0.98f) effectiveGateMult = 0.98f;
+
+  if (step.note == -2) { // TIE
+    if (synthIdx == 0 && gateCountdownA_ > 0) gateCountdownA_ += (long)(samplesPerStep_ * effectiveGateMult);
+    else if (synthIdx == 1 && gateCountdownB_ > 0) gateCountdownB_ += (long)(samplesPerStep_ * effectiveGateMult);
+  } else if (step.note >= 0 && (!step.ghost || (rand() % 100 < 80))) {
+    if (step.probability >= 100 || (rand() % 100 < step.probability)) {
+        if (synthVoices_[synthIdx]) synthVoices_[synthIdx]->startNote(noteToFreq(step.note), step.accent, step.slide, (uint8_t)step.velocity);
+        long dur = (long)(samplesPerStep_ * effectiveGateMult);
+        if (synthIdx == 0) {
+            gateCountdownA_ = dur;
+            retrigA_.active = false;
+            if (step.fx == (uint8_t)StepFx::Retrig && step.fxParam > 0) {
+                retrigA_.countRemaining = step.fxParam;
+                retrigA_.interval = (int)(samplesPerStep_ / (step.fxParam + 1));
+                retrigA_.counter = retrigA_.interval;
+                retrigA_.active = true;
+            }
+        } else {
+            gateCountdownB_ = dur;
+            retrigB_.active = false;
+            if (step.fx == (uint8_t)StepFx::Retrig && step.fxParam > 0) {
+                retrigB_.countRemaining = step.fxParam;
+                retrigB_.interval = (int)(samplesPerStep_ / (step.fxParam + 1));
+                retrigB_.counter = retrigB_.interval;
+                retrigB_.active = true;
+            }
+        }
+        LedManager::instance().onVoiceTriggered(synthIdx == 0 ? VoiceId::SynthA : VoiceId::SynthB, sceneManager_.currentScene().led);
+    }
+  }
+}
+
+void MiniAcid::triggerDrumVoice_(int voiceIdx, int stepIdx) {
+  int songPatternDrums = songPatternIndexForTrack(SongTrack::Drums);
+  if (songPatternDrums < 0) return;
+
+  const DrumPatternSet& currentDrumPatternSet = sceneManager_.getCurrentDrumPattern();
+  if (stepIdx == currentStepIndex) {
+      applyDrumAutomationLanesForStep_(currentDrumPatternSet, stepIdx);
+  }
+
+  const DrumPattern& pattern = currentDrumPatternSet.voices[voiceIdx];
+  const DrumStep& step = pattern.steps[stepIdx];
+
+  bool muted = false;
+  switch(voiceIdx) {
+      case kDrumKickVoice: muted = muteKick; break;
+      case kDrumSnareVoice: muted = muteSnare; break;
+      case kDrumHatVoice: muted = muteHat; break;
+      case kDrumOpenHatVoice: muted = muteOpenHat; break;
+      case kDrumMidTomVoice: muted = muteMidTom; break;
+      case kDrumHighTomVoice: muted = muteHighTom; break;
+      case kDrumRimVoice: muted = muteRim; break;
+      case kDrumClapVoice: muted = muteClap; break;
+  }
+
+  if (muted || !step.hit) return;
+  if (step.probability < 100 && (rand() % 100 >= step.probability)) return;
+
+  bool accent = step.accent;
+  bool rev = (step.fx == (uint8_t)StepFx::Reverse);
+  
+  switch(voiceIdx) {
+    case kDrumKickVoice: 
+        drums->triggerKick(accent, (uint8_t)step.velocity);
+        if (sampleStore) samplerTrack->triggerPad(0, accent ? 1.0f : 0.6f, *sampleStore, rev);
+        LedManager::instance().onVoiceTriggered(VoiceId::DrumKick, sceneManager_.currentScene().led);
+        break;
+    case kDrumSnareVoice:
+        drums->triggerSnare(accent, (uint8_t)step.velocity);
+        if (sampleStore) samplerTrack->triggerPad(1, accent ? 1.0f : 0.6f, *sampleStore, rev);
+        LedManager::instance().onVoiceTriggered(VoiceId::DrumSnare, sceneManager_.currentScene().led);
+        break;
+    case kDrumHatVoice:
+        drums->triggerHat(accent, (uint8_t)step.velocity);
+        if (sampleStore) samplerTrack->triggerPad(2, accent ? 1.0f : 0.6f, *sampleStore, rev);
+        LedManager::instance().onVoiceTriggered(VoiceId::DrumHatC, sceneManager_.currentScene().led);
+        break;
+    case kDrumOpenHatVoice:
+        drums->triggerOpenHat(accent, (uint8_t)step.velocity);
+        if (sampleStore) samplerTrack->triggerPad(3, accent ? 1.0f : 0.6f, *sampleStore, rev);
+        LedManager::instance().onVoiceTriggered(VoiceId::DrumHatO, sceneManager_.currentScene().led);
+        break;
+    case kDrumMidTomVoice:
+        drums->triggerMidTom(accent, (uint8_t)step.velocity);
+        if (sampleStore) samplerTrack->triggerPad(4, accent ? 1.0f : 0.6f, *sampleStore, rev);
+        LedManager::instance().onVoiceTriggered(VoiceId::DrumTomM, sceneManager_.currentScene().led);
+        break;
+    case kDrumHighTomVoice:
+        drums->triggerHighTom(accent, (uint8_t)step.velocity);
+        if (sampleStore) samplerTrack->triggerPad(5, accent ? 1.0f : 0.6f, *sampleStore, rev);
+        LedManager::instance().onVoiceTriggered(VoiceId::DrumTomH, sceneManager_.currentScene().led);
+        break;
+    case kDrumRimVoice:
+        drums->triggerRim(accent, (uint8_t)step.velocity);
+        if (sampleStore) samplerTrack->triggerPad(6, accent ? 1.0f : 0.6f, *sampleStore, rev);
+        LedManager::instance().onVoiceTriggered(VoiceId::DrumRim, sceneManager_.currentScene().led);
+        break;
+    case kDrumClapVoice:
+        drums->triggerClap(accent, (uint8_t)step.velocity);
+        if (sampleStore) samplerTrack->triggerPad(7, accent ? 1.0f : 0.6f, *sampleStore, rev);
+        LedManager::instance().onVoiceTriggered(VoiceId::DrumClap, sceneManager_.currentScene().led);
+        break;
+  }
+  
+  if (step.fx != (uint8_t)StepFx::Reverse) {
+      setupDrumStepFx_(voiceIdx, step.fx, step.fxParam, (uint8_t)step.velocity);
+  } else {
+      retrigDrums_[voiceIdx].active = false;
+  }
+}
+
+void MiniAcid::advanceSongStep_() {
+  int patternBars = sceneManager_.currentScene().feel.patternBars;
+  if (patternBars != 1 && patternBars != 2 && patternBars != 4 && patternBars != 8) patternBars = 1;
+  int cycleSteps = SEQ_STEPS * patternBars;
+
+  bool wrapped = false;
+  songStepCounter_++;
+  if (songStepCounter_ >= cycleSteps) {
+    songStepCounter_ = 0;
+    wrapped = true;
+  }
+
+  if (wrapped) {
+    cyclePulseCounter_++;
+    if (songMode_) {
+      if (songReverseTogglePending_) {
+        sceneManager_.setSongReverse(!sceneManager_.isSongReverse());
+        songReverseTogglePending_ = false;
+      }
+      advanceSongPlayhead();
+    }
+  }
 }

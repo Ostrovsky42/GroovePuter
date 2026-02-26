@@ -1,4 +1,4 @@
-# GroovePuter
+# GroovePuter v0.1.0
 
 [![Status](https://img.shields.io/badge/status-beta-yellow)](#status)
 [![Platform](https://img.shields.io/badge/platform-M5Stack%20Cardputer%20\(ESP32--S3\)-blue)](#requirements)
@@ -17,7 +17,7 @@ Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtu
 
 ## Features
 
-* **Two TB-303–style voices** (bass + lead)
+* **Two Swappable Synth Voices:** swap engines on the fly (click-free) between TB-303, OPL2 (FM), AY/YM2149 (PSG), and SID.
 * **TR-808–inspired drum section**
 * **Pattern + song arrangement**
 * **Dual song slots (`A/B`)** with split compare and live mix controls
@@ -26,7 +26,8 @@ Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtu
   * Grid: `1/8 · 1/16 · 1/32`
   * Timebase: `HALF · NORMAL · DOUBLE`
   * Length: `1B … 8B` (cycle length)
-* **TEXTURE layer (live):** Lo-Fi / Drive / Drum FX
+* **TEXTURE layer (live):** Lo-Fi / Drive / Drum FX (Comp, Transient, Reverb)
+* **MIDI Routing:** Interactive grid for mapping MIDI channels to instruments
 * **Genre-driven generator:** rhythmic masks, motif length, scale preference, density traits
 * **Groove Lab page:** mode/flavor/macros + corridor/budget preview
 * **Drum Automation page:** 4 automation lanes + per-pattern groove override
@@ -59,6 +60,19 @@ Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtu
 | **Pattern Edit** | ![Pattern Edit](docs/screenshots/pattern_edit.png) |
 | **Song Page** | ![Song Page](docs/screenshots/song_page.png) |
 | **Groove Lab** | ![Groove Lab](docs/screenshots/groove_lab.png) |
+
+## MIDI & Drums
+
+### MIDI Matrix Routing
+The `MidiAdvance` dialog now features a unified **Track Map** (4x4 grid). This allows you to import complex MIDI files and route multiple source channels to any internal track (`Synth A`, `Synth B`, `Drums`). 
+- **Auto-Routing:** Smart detection scans track names for keywords like "bass" or "percussion" to pre-configure imports.
+- **Smart Destination:** Automatically finds empty patterns for a seamless workflow.
+
+### Advanced Drum FX
+The drum section now includes a dedicated FX chain to ensure your percussion cuts through the mix:
+- **One-Knob Compressor:** Parallel compression for punch and weight.
+- **Transient Shaper:** Independent control over attack snap and sustain tail.
+- **Drum Reverb:** Algorithmic reverb specifically tuned for percussion.
 
 ## Requirements
 

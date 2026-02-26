@@ -28,8 +28,8 @@ MiniAcid separates responsibilities:
 
 ## 2. Main Pages
 - `Genre`: style + apply policy (`SND`, `S+P`, `S+T`)
-- `Pattern Edit 303A/303B`: note/accent/slide editing with selection v2
-- `TB303 Params A/B`: synth voicing
+- `Pattern Edit (A/B)`: note/accent/slide editing with selection v2
+- `Synth Params (A/B)`: swappable synth voicing (TB-303, OPL2, AY/PSG, SID)
 - `Drum Sequencer`: drum grid editing with selection v2
 - `Song`: arrangement with dual slots `A/B`, split compare, live mix
 - `Sequencer Hub`: compact overview/edit surface

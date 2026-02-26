@@ -1,6 +1,7 @@
 #include "pattern_edit_page.h"
 
 #include <cctype>
+#include <string>
 #include <utility>
 #include <vector>
 #include "../ui_common.h"
@@ -45,6 +46,31 @@ struct PatternStepAreaClipboard {
 };
 
 PatternStepAreaClipboard g_pattern_step_clipboard;
+
+inline std::string currentEngineName(MiniAcid& mini_acid, int voiceIndex) {
+  std::string name = mini_acid.currentSynthEngineName(voiceIndex);
+  if (name.empty()) name = "TB303";
+  return name;
+}
+
+inline std::string makePatternPageTitle(MiniAcid& mini_acid, int voiceIndex, int pageIndex) {
+  const std::string engine = currentEngineName(mini_acid, voiceIndex);
+  char buf[48];
+  std::snprintf(buf, sizeof(buf), "SYNTH %c %s P%d",
+                (voiceIndex == 0 ? 'A' : 'B'),
+                engine.c_str(),
+                pageIndex + 1);
+  return std::string(buf);
+}
+
+inline void formatPatternMode(char* dst, size_t dstSize, int patternIndex, const std::string& engine) {
+  if (!dst || dstSize == 0) return;
+  if (patternIndex >= 0) {
+    std::snprintf(dst, dstSize, "P%d %s", patternIndex + 1, engine.c_str());
+  } else {
+    std::snprintf(dst, dstSize, "P- %s", engine.c_str());
+  }
+}
 } // namespace
 
 PatternEditPage::PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index)
@@ -62,9 +88,7 @@ PatternEditPage::PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audi
   pattern_row_cursor_ = idx;
   bank_index_ = mini_acid_.current303BankIndex(voice_index_);
   bank_cursor_ = bank_index_;
-  char buf[32];
-  snprintf(buf, sizeof(buf), "303%c PATTERNS P%d", (voice_index_ == 0 ? 'A' : 'B'), mini_acid_.currentPageIndex() + 1);
-  title_ = buf;
+  title_ = makePatternPageTitle(mini_acid_, voice_index_, mini_acid_.currentPageIndex());
   pattern_bar_ = std::make_shared<PatternSelectionBarComponent>("PATTERNS");
   bank_bar_ = std::make_shared<BankSelectionBarComponent>("BANK", "AB");
   PatternSelectionBarComponent::Callbacks pattern_callbacks;
@@ -504,7 +528,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
           break;
         }
         int next = mini_acid_.currentPageIndex() - 1;
-        if (next < 0) next = kMaxPages - 1;
+        if (next < 0) next = UI::kPageCount - 1;
         mini_acid_.requestPageSwitch(next);
         handled = true;
         break;
@@ -519,7 +543,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
           handled = true;
           break;
         }
-        int next = (mini_acid_.currentPageIndex() + 1) % kMaxPages;
+        int next = (mini_acid_.currentPageIndex() + 1) % UI::kPageCount;
         mini_acid_.requestPageSwitch(next);
         handled = true;
         break;
@@ -557,20 +581,9 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   }
   if (handled) return true;
 
-  // Handle TAB for voice toggle
+  // Let TAB pass through to parent wrappers
   if (UIInput::isTab(ui_event)) {
-      voice_index_ = (voice_index_ + 1) % 2; // Toggle 0 <-> 1
-      char buf[32];
-      snprintf(buf, sizeof(buf), "303%c PATTERNS P%d", (voice_index_ == 0 ? 'A' : 'B'), mini_acid_.currentPageIndex() + 1);
-      title_ = buf;
-      
-      // Refresh state for new voice
-      bank_index_ = mini_acid_.current303BankIndex(voice_index_);
-      bank_cursor_ = bank_index_;
-      pattern_row_cursor_ = mini_acid_.current303PatternIndex(voice_index_);
-      if (pattern_row_cursor_ < 0) pattern_row_cursor_ = 0;
-      
-      return true;
+      return false;
   }
 
   char key = ui_event.key;
@@ -877,10 +890,9 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
 
 void PatternEditPage::tick() {
     int actualPage = mini_acid_.currentPageIndex();
-    if (actualPage != last_page_) {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "303%c PATTERNS P%d", (voice_index_ == 0 ? 'A' : 'B'), actualPage + 1);
-        title_ = buf;
+    const std::string freshTitle = makePatternPageTitle(mini_acid_, voice_index_, actualPage);
+    if (actualPage != last_page_ || title_ != freshTitle) {
+        title_ = freshTitle;
         last_page_ = actualPage;
     }
 }
@@ -971,10 +983,11 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
   bank_bar_->draw(gfx);
 
   // Page Indicator
-  char pageBuf[8];
-  snprintf(pageBuf, sizeof(pageBuf), "P%d", mini_acid_.currentPageIndex() + 1);
+  const std::string engineName = currentEngineName(mini_acid_, voice_index_);
+  char pageBuf[20];
+  snprintf(pageBuf, sizeof(pageBuf), "P%d %s", mini_acid_.currentPageIndex() + 1, engineName.c_str());
   gfx.setTextColor(COLOR_WHITE);
-  gfx.drawText(x + w - 24, y + 2, pageBuf);
+  gfx.drawText(x + w - textWidth(gfx, pageBuf) - 2, y + 2, pageBuf);
 
   int spacing = 4;
   int grid_top = body_y + pattern_bar_h + 6;
@@ -1008,6 +1021,10 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
 
     if (playing == i) {
       gfx.drawRect(cell_x - 1, note_box_y - 1, cell_size + 2, cell_size + 2, COLOR_STEP_HILIGHT);
+      // Scanning line for smooth sub-step progress
+      float prog = mini_acid_.getStepProgress();
+      int scanX = cell_x + (int)(prog * (float)(cell_size - 1));
+      gfx.drawLine(scanX, note_box_y, scanX, note_box_y + cell_size - 1, COLOR_WHITE);
     }
     if (stepFocus && stepCursor == i) {
       gfx.drawRect(cell_x - 2, note_box_y - 2, cell_size + 4, cell_size + 4, COLOR_STEP_SELECTED);
@@ -1050,11 +1067,8 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
 
   // 1. Header (from RetroWidgets, like GenrePage)
   char modeBuf[16];
-  if (selectedPattern >= 0) {
-    std::snprintf(modeBuf, sizeof(modeBuf), "P%d", selectedPattern + 1);
-  } else {
-    std::snprintf(modeBuf, sizeof(modeBuf), "P-");
-  }
+  const std::string engineName = currentEngineName(mini_acid_, voice_index_);
+  formatPatternMode(modeBuf, sizeof(modeBuf), selectedPattern, engineName);
   char titleBuf[32];
   snprintf(titleBuf, sizeof(titleBuf), "%s%s", 
            voice_index_ == 0 ? "303 A" : "303 B",
@@ -1174,6 +1188,11 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
     if (isCurrent) {
       IGfxColor playColor = retroVoiceColor(voice_index_);
       drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, playColor, 2);
+      
+      // Scanning LED bar for smooth progress
+      float prog = mini_acid_.getStepProgress();
+      int scanX = cellX + (int)(prog * (float)(cellW - 1));
+      gfx.drawLine(scanX, cellRowY + 1, scanX, cellRowY + cellH - 2, IGfxColor(TEXT_PRIMARY));
     }
 
     // Note content
@@ -1229,7 +1248,7 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
   const char* focusLabel = stepFocus ? "STEPS" : (bankFocus ? "BANK" : "PTRN");
   drawFooterBar(gfx, x, y + h - 12, w, 12, 
                 "A/Z:Nt F:FX Alt+Arw:Prm", 
-                "q..i:Ptrn B:Bank TAB:Vce", 
+                "q..i:Ptrn B:Bank TAB:Sub", 
                 focusLabel);
 
   // NO scanlines - clean and readable
@@ -1261,11 +1280,8 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
   int bankCursor = activeBankCursor();
 
   char modeBuf[16];
-  if (selectedPattern >= 0) {
-    std::snprintf(modeBuf, sizeof(modeBuf), "P%d", selectedPattern + 1);
-  } else {
-    std::snprintf(modeBuf, sizeof(modeBuf), "P-");
-  }
+  const std::string engineName = currentEngineName(mini_acid_, voice_index_);
+  formatPatternMode(modeBuf, sizeof(modeBuf), selectedPattern, engineName);
   char titleBuf[32];
   snprintf(titleBuf, sizeof(titleBuf), "%s%s", 
            voice_index_ == 0 ? "303 A" : "303 B",
@@ -1372,6 +1388,11 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
 
     if (isCurrent) {
       AmberWidgets::drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, IGfxColor(AmberTheme::STATUS_PLAYING), 2);
+      
+      // Smooth scanning line
+      float prog = mini_acid_.getStepProgress();
+      int scanX = cellX + (int)(prog * (float)(cellW - 1));
+      gfx.drawLine(scanX, cellRowY + 1, scanX, cellRowY + cellH - 2, IGfxColor(AmberTheme::NEON_YELLOW));
     }
 
     if (hasNote) {
@@ -1406,7 +1427,7 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
   AmberWidgets::drawFooterBar(
       gfx, x, y + h - 12, w, 12,
       "A/Z:Note  Alt+S/A:Slide/Acc  G:Rand",
-      "q..i:Ptrn  B:Bank  TAB:Voice",
+      "q..i:Ptrn  B:Bank  TAB:SubPg",
       focusLabel);
 #else
   drawMinimalStyle(gfx);

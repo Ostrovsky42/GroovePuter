@@ -4,6 +4,7 @@ Current behavior in `src/ui/pages/song_page.cpp`.
 
 ## Core Editing
 - `Arrows`: move cursor
+- `Enter`: **Quick Jump** to pattern editor for track at cursor
 - `Shift/Ctrl + Arrows`: rectangular selection
 - `Q..I`: assign pattern `1..8`
 - `B`: flip pattern bank `A<->B` in current cell or entire selected area

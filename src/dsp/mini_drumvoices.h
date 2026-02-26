@@ -29,6 +29,7 @@ public:
   float process(float input, DrumVoiceType voice);
   void setAmount(float amount);
   void setEnabled(bool enabled);
+  void setSampleRate(float sampleRate);
 
 private:
   float bitcrush(float input, int bits);
@@ -38,6 +39,7 @@ private:
 
   bool enabled_ = false;
   float amount_ = 0.0f;
+  float sampleRate_ = 44100.0f;
   uint32_t noiseState_;
   float driftPhase_ = 0;
   
@@ -544,6 +546,173 @@ private:
   float metalPhases[6];
   float metalSignal;
   const float metalFreqs[6] = {330.0f, 558.0f, 880.0f, 1320.0f, 1760.0f, 2640.0f};
+
+  Parameter params[static_cast<int>(DrumParamId::Count)];
+};
+
+class CR78DrumSynthVoice : public DrumSynthVoice {
+public:
+  explicit CR78DrumSynthVoice(float sampleRate);
+
+  void reset() override;
+  void setSampleRate(float sampleRate) override;
+  void triggerKick(bool accent, uint8_t velocity) override;
+  void triggerSnare(bool accent, uint8_t velocity) override;
+  void triggerHat(bool accent, uint8_t velocity) override;
+  void triggerOpenHat(bool accent, uint8_t velocity) override;
+  void triggerMidTom(bool accent, uint8_t velocity) override;
+  void triggerHighTom(bool accent, uint8_t velocity) override;
+  void triggerRim(bool accent, uint8_t velocity) override;
+  void triggerClap(bool accent, uint8_t velocity) override;
+  void triggerCymbal(bool accent, uint8_t velocity) override;
+
+  float processKick() override;
+  float processSnare() override;
+  float processHat() override;
+  float processOpenHat() override;
+  float processMidTom() override;
+  float processHighTom() override;
+  float processRim() override;
+  float processClap() override;
+  float processCymbal() override;
+
+  const Parameter& parameter(DrumParamId id) const override;
+  void setParameter(DrumParamId id, float value) override;
+
+  void setLoFiMode(bool enabled) override { lofiEnabled = enabled; }
+  void setLoFiAmount(float amount) override { lofi.setAmount(amount); }
+
+private:
+  bool lofiEnabled = false;
+  LoFiDrumFX lofi;
+  float sampleRate;
+  uint32_t noiseState = 12345;
+
+  // CR-78 specific state
+  float kickEnv, kickPhase;
+  float snareEnv, snareNoiseEnv;
+  float hatEnv, hatMetalPhase[4];
+  float tomEnv[2], tomPhase[2]; // Low/High
+  float rimEnv, rimPhase;
+  float clapEnv; // CR-78 doesn't really have a clap, mapping to Guiro or similar? KPR-77 has the clap.
+                 // Actually CR-78 usually has "Tambourine" or "Guiro". We will synthesize a simple distinctive CR-78 clicky noise/guiro for Clap slot.
+  float cymbalEnv, cymbalPhase;
+  
+  float decayCoef(float ms);
+  float lcgFrand();
+  
+  Parameter params[static_cast<int>(DrumParamId::Count)];
+};
+
+class KPR77DrumSynthVoice : public DrumSynthVoice {
+public:
+  explicit KPR77DrumSynthVoice(float sampleRate);
+
+  void reset() override;
+  void setSampleRate(float sampleRate) override;
+  void triggerKick(bool accent, uint8_t velocity) override;
+  void triggerSnare(bool accent, uint8_t velocity) override;
+  void triggerHat(bool accent, uint8_t velocity) override;
+  void triggerOpenHat(bool accent, uint8_t velocity) override;
+  void triggerMidTom(bool accent, uint8_t velocity) override;
+  void triggerHighTom(bool accent, uint8_t velocity) override;
+  void triggerRim(bool accent, uint8_t velocity) override;
+  void triggerClap(bool accent, uint8_t velocity) override;
+  void triggerCymbal(bool accent, uint8_t velocity) override;
+
+  float processKick() override;
+  float processSnare() override;
+  float processHat() override;
+  float processOpenHat() override;
+  float processMidTom() override;
+  float processHighTom() override;
+  float processRim() override;
+  float processClap() override;
+  float processCymbal() override;
+
+  const Parameter& parameter(DrumParamId id) const override;
+  void setParameter(DrumParamId id, float value) override;
+
+  void setLoFiMode(bool enabled) override { lofiEnabled = enabled; }
+  void setLoFiAmount(float amount) override { lofi.setAmount(amount); }
+
+private:
+  bool lofiEnabled = false;
+  LoFiDrumFX lofi;
+  float sampleRate;
+  uint32_t noiseState = 67890;
+
+  float kickEnv, kickPhase;
+  float snareEnva, snareEnvb; // Body/Noise
+  float hatEnv;
+  float tomEnv[2], tomPhase[2];
+  float clapEnv, clapPulseTimer; // KPR-77 Clap is distinctive
+  int clapState; 
+  float cymbalEnv;
+
+  // Simple one-pole definitions if needed, or inline
+  float decayCoef(float ms);
+  float lcgFrand();
+
+  Parameter params[static_cast<int>(DrumParamId::Count)];
+};
+
+class SP12DrumSynthVoice : public DrumSynthVoice {
+public:
+  explicit SP12DrumSynthVoice(float sampleRate);
+
+  void reset() override;
+  void setSampleRate(float sampleRate) override;
+  void triggerKick(bool accent, uint8_t velocity) override;
+  void triggerSnare(bool accent, uint8_t velocity) override;
+  void triggerHat(bool accent, uint8_t velocity) override;
+  void triggerOpenHat(bool accent, uint8_t velocity) override;
+  void triggerMidTom(bool accent, uint8_t velocity) override;
+  void triggerHighTom(bool accent, uint8_t velocity) override;
+  void triggerRim(bool accent, uint8_t velocity) override;
+  void triggerClap(bool accent, uint8_t velocity) override;
+  void triggerCymbal(bool accent, uint8_t velocity) override;
+
+  float processKick() override;
+  float processSnare() override;
+  float processHat() override;
+  float processOpenHat() override;
+  float processMidTom() override;
+  float processHighTom() override;
+  float processRim() override;
+  float processClap() override;
+  float processCymbal() override;
+
+  const Parameter& parameter(DrumParamId id) const override;
+  void setParameter(DrumParamId id, float value) override;
+
+  void setLoFiMode(bool enabled) override { lofiEnabled = enabled; }
+  void setLoFiAmount(float amount) override { lofi.setAmount(amount); }
+
+private:
+  bool lofiEnabled = false;
+  LoFiDrumFX lofi;
+  float sampleRate;
+
+  // PCM State
+  struct VG {
+    const int8_t* curData;
+    int curLen;
+    int curPos = -1; // -1 = inactive
+    float phase = 0.0f;
+    float increment = 1.0f;
+    float volume = 1.0f; 
+    float reconLP = 0.0f;
+  };
+  VG voices[9]; // Map to DrumVoiceType
+
+  // ROM data storage (static would be better, but member for now to avoid global pollution if desired, or static members)
+  // We'll declare buildROM in cpp
+  static void buildROM(); 
+  static bool romBuilt;
+
+  float processPCM(int voiceIdx);
+  float quantize12(float sample); // SP-12 12-bit DAC emulation
 
   Parameter params[static_cast<int>(DrumParamId::Count)];
 };

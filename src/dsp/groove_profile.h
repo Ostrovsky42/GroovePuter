@@ -2,6 +2,9 @@
 
 #include "mini_dsp_params.h"
 #include "../../scenes.h"
+#include "mono_synth_voice.h"
+
+enum class GrooveboxMode : uint8_t;
 
 struct PatternCorridors {
   int notesMin;

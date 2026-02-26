@@ -2,9 +2,14 @@
 
 #include <cctype>
 #include <cstring>
+#include <new>
 #include <M5Cardputer.h>
 #include <SPI.h>
 #include <SD.h>
+
+#if defined(ESP32) || defined(ESP_PLATFORM)
+#include <esp_heap_caps.h>
+#endif
 
 #include "scenes.h"
 
@@ -14,6 +19,7 @@
 #define SD_SPI_CS_PIN   12
 
 namespace {
+constexpr size_t kMaxSceneNamesInUi = 24;
 
 bool endsWith(const std::string& value, const char* suffix) {
   size_t suffixLen = std::strlen(suffix);
@@ -301,6 +307,7 @@ bool SceneStorageCardputer::readSceneAuto(SceneManager& manager) {
 std::vector<std::string> SceneStorageCardputer::getAvailableSceneNames() const {
   std::vector<std::string> names;
   if (!isInitialized_) return names;
+  names.reserve(8);
 
   File root = SD.open(kScenesDirectory);
   if (!root) {
@@ -312,6 +319,12 @@ std::vector<std::string> SceneStorageCardputer::getAvailableSceneNames() const {
   }
 
   while (true) {
+#if defined(ESP32) || defined(ESP_PLATFORM)
+    if (heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) < 2048) {
+      Serial.println("Scene list near OOM, truncating directly");
+      break;
+    }
+#endif
     File entry = root.openNextFile();
     if (!entry) break;
     if (!entry.isDirectory()) {
@@ -319,13 +332,27 @@ std::vector<std::string> SceneStorageCardputer::getAvailableSceneNames() const {
       if (!fileName.empty() && fileName.front() == '/') fileName.erase(0, 1);
       if (endsWith(fileName, kSceneExtension)) {
         fileName.resize(fileName.size() - std::strlen(kSceneExtension));
-        names.push_back(fileName);
+        if (names.size() < kMaxSceneNamesInUi) {
+          try {
+            names.emplace_back(std::move(fileName));
+          } catch (const std::bad_alloc&) {
+            Serial.println("Scene list OOM, truncating");
+            entry.close();
+            break;
+          }
+        }
       }
     }
     entry.close();
   }
   root.close();
-  if (names.empty()) names.push_back(currentSceneName_);
+  if (names.empty()) {
+    try {
+      names.emplace_back(currentSceneName_);
+    } catch (const std::bad_alloc&) {
+      // Keep empty list on extreme memory pressure.
+    }
+  }
   return names;
 }
 

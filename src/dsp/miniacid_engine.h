@@ -1,4 +1,6 @@
 #pragma once
+#ifndef MINIACID_ENGINE_H
+#define MINIACID_ENGINE_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -11,7 +13,9 @@
 #include "src/dsp/genre_manager.h"
 #include "../../scene_storage.h"
 #include "../../scenes.h"
+#include "mono_synth_voice.h"
 #include "mini_tb303.h"
+#include "swappable_synth_voice.h"
 #include "mini_drumvoices.h"
 #include "tube_distortion.h"
 #include "perf_stats.h"
@@ -35,6 +39,7 @@
 static const int SAMPLE_RATE = kSampleRate;        // Hz
 static const int AUDIO_BUFFER_SAMPLES = kBlockFrames; // per buffer, mono
 static const int SEQ_STEPS = 16;             // 16-step sequencer
+static const int kPPQN = 96;                 // Pulses Per Quarter Note
 static const int NUM_303_VOICES = 2;
 static const int NUM_DRUM_VOICES = DrumPatternSet::kVoices;
 
@@ -105,6 +110,7 @@ public:
   float sampleRate() const;
   bool isPlaying() const;
   int currentStep() const;
+  float getStepProgress() const; // Returns 0.0-1.0 progress within current 1/16th step
   int cycleBarIndex() const;
   int cycleBarCount() const;
   uint32_t cyclePulseCounter() const { return cyclePulseCounter_; }
@@ -186,6 +192,13 @@ public:
   void toggleLiveMixMode();
   void mergeSongs();
   void alternateSongs();
+  void insertSongRow(int position);
+  void deleteSongRow(int position);
+  
+  // Rehearsal Mode (Pause rows)
+  void acknowledgeRehearsal();
+  bool isWaitingForRehearsal() const { return waitingForRehearsal_; }
+
   void setSongReverse(bool reverse);
   bool isSongReverse() const;
   void queueSongReverseToggle();
@@ -194,6 +207,14 @@ public:
   int16_t displayDrumPatternIndex() const;
   int display303LocalPatternIndex(int voiceIndex) const;
   int displayDrumLocalPatternIndex() const;
+  
+  const Parameter& synthParameter(int voiceIndex, int knobIndex) const;
+  uint8_t synthParameterCount(int voiceIndex) const;
+  void adjustSynthParameter(int voiceIndex, int knobIndex, int steps);
+  void setSynthEngine(int voiceIndex, const std::string& engineName);
+  std::vector<std::string> getAvailableSynthEngines() const;
+  std::string currentSynthEngineName(int voiceIndex) const;
+
   std::vector<std::string> getAvailableDrumEngines() const;
   void setDrumEngine(const std::string& engineName);
   std::string currentDrumEngineName() const;
@@ -218,6 +239,7 @@ public:
   bool isTrackActive(int index) const; // 0=303A, 1=303B, 2=KICK, 3=SNARE, 4=HAT, etc.
   void setTrackVolume(VoiceId id, float volume);
   float getTrackVolume(VoiceId id) const;
+
   void toggleDelay303(int voiceIndex = 0);
   void toggleDistortion303(int voiceIndex = 0);
   void set303DelayEnabled(int voiceIndex, bool enabled);
@@ -326,15 +348,21 @@ public:
   void generateAudioBuffer(int16_t *buffer, size_t numSamples);
 
 private:
-  void updateSamplesPerStep();
-  void advanceStep();
-  unsigned long computeStepDurationSamples_() const;
+  void updateTickIncrement();
+  void advanceTick();
+  void processSequencerEvents(uint32_t absoluteTick);
+  void triggerSynthStep_(int synthIdx, int stepIdx);
+  void triggerDrumVoice_(int voiceIdx, int stepIdx);
+  void advanceSongStep_();
+
   int timingTicksForStep_(int stepIndex) const;
   int grooveOverrideTicksForStep_(const DrumPatternSet& patternSet, int stepIndex) const;
   float evaluateAutomationLaneAtStep_(const AutomationLane& lane, int step) const;
   void applyDrumAutomationLanesForStep_(const DrumPatternSet& patternSet, int step);
   float noteToFreq(int note);
   int clamp303Voice(int voiceIndex) const;
+  TB303Voice* tb303Voice(int voiceIndex);
+  const TB303Voice* tb303Voice(int voiceIndex) const;
   int clamp303Step(int stepIndex) const;
   int clamp303Note(int note) const;
   const SynthPattern& synthPattern(int synthIndex) const;
@@ -352,8 +380,9 @@ private:
   void advanceSongPlayhead();
   int clampSongPosition(int position) const;
 
-  TB303Voice voice303;
-  TB303Voice voice3032;
+  std::unique_ptr<SwappableSynthVoice> synthVoices_[NUM_303_VOICES];
+  std::string synthEngineNames_[NUM_303_VOICES];
+  
   std::unique_ptr<DrumSynthVoice> drums;
   float sampleRateValue;
   std::string drumEngineName_;
@@ -393,9 +422,10 @@ private:
   
   volatile float bpmValue;
   volatile int currentStepIndex;
-  unsigned long samplesIntoStep;
-  unsigned long currentStepDurationSamples_ = 1;
-  float samplesPerStep;
+  uint64_t tickPhaseAccum_ = 0;
+  uint64_t tickPhaseInc_ = 0;
+  uint32_t currentTick_ = 0;
+  float samplesPerStep_ = 10000.0f;
   
   // Gate length countdown (samples until release, 0 = released)
   long gateCountdownA_ = 0;
@@ -444,7 +474,7 @@ private:
   } masterLimiter;
 
   struct MasterBassBoost {
-    float f_coeff = 80.0f / 22050.0f; 
+    float f_coeff = 80.0f / (float)kSampleRate; 
     float boost = 1.25f; 
     float lpf = 0.0f;
     float process(float in) {
@@ -456,7 +486,7 @@ private:
   // High-frequency dampening to soften harsh highs
   struct HighShelfCut {
     float lpf = 0.0f;
-    float coeff = 0.15f; // ~3kHz rolloff at 22050Hz 
+    float coeff = 0.08f; // ~3kHz rolloff at 44100Hz 
     float process(float in) {
       lpf += coeff * (in - lpf);
       return lpf; // Lowpass output
@@ -528,6 +558,10 @@ private:
   uint32_t lastUnderrunCount_ = 0;
   uint32_t perfDetailCounter_ = 0;
 
+  // Rehearsal Mode
+  bool waitingForRehearsal_ = false;
+  bool rehearsalAcknowledged_ = false;
+
   float dcBlockX1_ = 0.0f;
   float dcBlockY1_ = 0.0f;
 
@@ -562,3 +596,4 @@ public:
 inline Parameter& MiniAcid::miniParameter(MiniAcidParamId id) {
   return params[static_cast<int>(id)];
 }
+#endif // MINIACID_ENGINE_H

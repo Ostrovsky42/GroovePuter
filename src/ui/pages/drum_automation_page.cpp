@@ -361,9 +361,14 @@ void DrumAutomationPage::draw(IGfx& gfx) {
   }
 
   int playStep = mini_acid_.currentStep();
+  float stepProg = mini_acid_.getStepProgress();
   if (playStep < 0) playStep = 0;
   if (playStep > 15) playStep %= 16;
-  int playheadX = gx + 1 + (playStep * (gw - 3)) / 15;
+  
+  // Use floating point for sub-step smooth playhead motion
+  float smoothStep = (float)playStep + stepProg;
+  int playheadX = gx + 1 + (int)(smoothStep * (float)(gw - 3) / 15.0f);
+  
   gfx.drawLine(playheadX, gy + 1, playheadX, gy + gh - 2, COLOR_STEP_HILIGHT);
 
   if (activeLane.nodeCount > 0) {

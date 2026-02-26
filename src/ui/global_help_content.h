@@ -11,10 +11,11 @@ constexpr const char* kGlobalLines[] = {
     "Alt+\\      Switch visual style",
     "Alt+M      Song mode ON/OFF",
     "Alt+W      Waveform overlay",
-    "Ctrl+H     Toggle this help",
+    "Alt/Ctrl+H Toggle this help",
     "ESC/Bksp   Back",
     "",
 };
+
 
 constexpr const char* kGenreLines[] = {
     "=== GENRE PAGE ===",
@@ -83,6 +84,7 @@ constexpr const char* kDrumLines[] = {
 constexpr const char* kSongLines[] = {
     "=== SONG PAGE (LOCAL) ===",
     "Arrows     Move cursor",
+    "Enter      Quick Jump to Editor",
     "Shift/Ctrl+Arrows  Select area",
     "Ctrl+C     Lock selection frame",
     "Arrows     Move locked frame",

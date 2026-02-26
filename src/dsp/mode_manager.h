@@ -79,6 +79,11 @@ public:
     void generateDrumPattern(DrumPatternSet& patternSet, const GenerativeParams& params, const GenreBehavior& behavior) const;
     void generateDrumVoice(DrumPattern& pattern, int voiceIndex, const GenerativeParams& params, const GenreBehavior& behavior) const;
     
+    // Pattern generation (Data-Driven Recipe)
+    void generatePattern(SynthPattern& pattern, float bpm, const GrooveRecipe& recipe, const GenreBehavior& behavior, int voiceIndex = 0) const;
+    void generateDrumPattern(DrumPatternSet& patternSet, const GrooveRecipe& recipe, const GenreBehavior& behavior) const;
+    void generateDrumVoice(DrumPattern& pattern, int voiceIndex, const GrooveRecipe& recipe, const GenreBehavior& behavior) const;
+    
 private:
     MiniAcid& engine_;
     GrooveboxMode currentMode_;

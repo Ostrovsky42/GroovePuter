@@ -79,6 +79,20 @@ struct GenerativeParams {
     int   drumVoiceCount = 8;          // active voices (1-8)
 };
 
+// === GROOVE RECIPE (Data-Driven bridge for generators) ===
+struct GrooveRecipe {
+    uint8_t      stepsPerBar = 16;     // 8, 16, 32
+    uint8_t      swingPercent = 50;    // 50–75
+    float        gateLengthRatio = 0.5f;
+    float        densityMin = 0.25f;   // percentage of steps filled
+    float        densityMax = 0.75f;
+    uint8_t      velMin = 60, velMax = 127;
+    uint16_t     swingMask = 0;        // Bitmask for which voices swing (VoiceId bits)
+    bool         sparseKick = false;
+    bool         noAccents = false;
+    bool         preferDownbeats = true;
+};
+
 // === TEXTURE PARAMETERS ===
 struct TextureParams {
     // Tape FX
@@ -243,6 +257,9 @@ public:
 
     // Compiled params (base preset + recipe + morph)
     const GenerativeParams& getCompiledGenerativeParams() const;
+
+    // Get the high-level recipe for a specific generative mode (or current if none)
+    GrooveRecipe getGrooveRecipe() const;
 
     // Optional drum override from recipe (nullptr => fallback to kDrumTemplates)
     const DrumGenreTemplate* drumTemplateOverride() const;

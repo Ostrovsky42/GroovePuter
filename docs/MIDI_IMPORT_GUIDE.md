@@ -10,13 +10,16 @@ The GroovePuter features a sophisticated MIDI import engine designed for long so
 
 ## Advanced Settings
 
-### 1. Multi-Track Routing
-Each of the three MIDI source types can be independently routed to any internal hardware track or skipped:
-- **Track A** (from `synthAChannel`): Route to `> HW A`, `> HW B`, `> DRUMS`, or `SKIP`.
-- **Track B** (from `synthBChannel`): Route to `> HW A`, `> HW B`, `> DRUMS`, or `SKIP`.
-- **Track D** (from `drumChannel`): Route to `> HW A`, `> HW B`, `> DRUMS`, or `SKIP`.
+### 1. Matrix Routing (Track Map)
+The GroovePuter uses an interactive 4x4 **Track Map** for flexible MIDI routing. Each of the 16 MIDI channels can be routed to one of the internal tracks:
+- **Navigation:** Use `Arrows` to move the cursor within the 4x4 grid (Channels 1-16).
+- **Toggle Routing:** Press `Enter` or `Space` to cycle a channel's destination:
+    - `·` (None): Skip this channel.
+    - `A` (Synth A): Route to the first TB-303 voice.
+    - `B` (Synth B): Route to the second TB-303 voice.
+    - `D` (Drums): Route to the internal drum machine.
 
-*Tip: You can route both A and B to the same Synth HW for complex layered sequences.*
+*Tip: You can route multiple MIDI channels to the same internal track (e.g., merging a Kick track on Ch 1 and Snare on Ch 2 into > DRUMS).*
 
 ### 2. Import Profiles
 - **LOUD**: Maximizes dynamics, ensuring accents are clearly triggered.

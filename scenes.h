@@ -324,6 +324,8 @@ struct FeelSettings {
     uint8_t gridSteps = 16;   // 8,16,32
     uint8_t timebase = 1;     // 0=Half, 1=Normal, 2=Double
     uint8_t patternBars = 1;  // 1,2,4,8
+    uint8_t swingPct = 50;    // 50..75 (MPC Style)
+    uint16_t swingMask = 0xFFFF; // Bitmask of VoiceId
     bool lofiEnabled = false;
     uint8_t lofiAmount = 50;  // 0..100
     bool driveEnabled = false;
@@ -417,6 +419,7 @@ public:
   int loopStartRow() const;
   int loopEndRow() const;
   const std::string& drumEngineName() const;
+  const std::string& synthEngineName(int synthIdx) const;
   GrooveboxMode mode() const;
 
 private:
@@ -469,6 +472,7 @@ private:
     Vocal,
     TrackVolumes,
     DrumFX,
+    SynthEngines,
     Unknown,
   };
 
@@ -513,6 +517,7 @@ private:
   int loopStartRow_ = 0;
   int loopEndRow_ = 0;
   std::string drumEngineName_ = "808";
+  std::string synthEngineNames_[2] = {"TB303", "TB303"};
 };
 
 class SceneManager {
@@ -568,6 +573,8 @@ public:
   const SynthParameters& getSynthParameters(int synthIdx) const;
   void setDrumEngineName(const std::string& name);
   const std::string& getDrumEngineName() const;
+  void setSynthEngineName(int synthIdx, const std::string& name);
+  const std::string& getSynthEngineName(int synthIdx) const;
   void setMode(GrooveboxMode mode);
   GrooveboxMode getMode() const;
   void setGrooveFlavor(int flavor);
@@ -599,6 +606,10 @@ public:
   bool isSongReverseAtSlot(int slot) const;
   void mergeSongs();
   void alternateSongs();
+  
+  // Song row manipulation
+  void insertSongRow(int position);
+  void deleteSongRow(int position);
   
   int activeSongSlot() const;
   void setActiveSongSlot(int slot);
@@ -646,6 +657,7 @@ private:
   int loopStartRow_ = 0;
   int loopEndRow_ = 0;
   std::string drumEngineName_ = "808";
+  std::string synthEngineNames_[2] = {"TB303", "TB303"};
   GrooveboxMode mode_ = GrooveboxMode::Minimal;
   int grooveFlavor_ = 0;
   int currentPageIndex_ = 0;
@@ -924,6 +936,11 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeInt(drumBankIndex_)) return false;
   if (!writeLiteral(",\"drumEngine\":")) return false;
   if (!writeString(drumEngineName_)) return false;
+  if (!writeLiteral(",\"synthEngines\":[")) return false;
+  if (!writeString(synthEngineNames_[0])) return false;
+  if (!writeChar(',')) return false;
+  if (!writeString(synthEngineNames_[1])) return false;
+  if (!writeChar(']')) return false;
   if (!writeLiteral(",\"synthBankIndex\":[")) return false;
   if (!writeInt(synthBankIndex_[0])) return false;
   if (!writeChar(',')) return false;
@@ -1091,7 +1108,7 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeChar('}')) return false;  // Close vocal object
   
   if (!writeLiteral(",\"mode\":")) return false;
-  if (!writeInt(static_cast<int>(mode_))) return false;
+  if (!writeInt(static_cast<int>(this->mode_))) return false;
   if (!writeLiteral(",\"flv\":")) return false;
   if (!writeInt(grooveFlavor_)) return false;
 

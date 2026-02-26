@@ -76,6 +76,9 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   bool clearPattern();
   bool toggleSongMode();
   bool toggleLoopMode();
+  // NEW: Row manipulation
+  bool insertRowAtCursor();
+  bool deleteRowAtCursor();
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;

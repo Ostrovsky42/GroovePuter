@@ -42,6 +42,7 @@ class TB303ParamsPage : public IPage, public IMultiHelpFramesProvider {
   std::shared_ptr<KnobComponent> resonance_knob_;
   std::shared_ptr<KnobComponent> env_amount_knob_;
   std::shared_ptr<KnobComponent> env_decay_knob_;
+  std::shared_ptr<LabelValueComponent> engine_type_control_;
   std::shared_ptr<LabelValueComponent> osc_control_;
   std::shared_ptr<LabelValueComponent> filter_control_;
   std::shared_ptr<LabelValueComponent> delay_control_;

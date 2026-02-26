@@ -73,7 +73,7 @@ constexpr Phoneme CONSONANT_PHONEMES[] = {
 
 class FormantSynth {
 public:
-    FormantSynth(float sampleRate = 22050.0f);
+    FormantSynth(float sampleRate = 44100.0f);
     
     // Reset state
     void reset();

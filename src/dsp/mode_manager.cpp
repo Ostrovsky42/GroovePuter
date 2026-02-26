@@ -609,3 +609,58 @@ void GrooveboxModeManager::generateDrumVoice(DrumPattern& pattern, int voiceInde
         }
     }
 }
+
+// ============================================================================
+// GROOVE RECIPE OVERLOADS
+// ============================================================================
+
+void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm, 
+                                           const GrooveRecipe& recipe, 
+                                           const GenreBehavior& behavior, 
+                                           int voiceIndex) const {
+    GenerativeParams params;
+    params.minNotes = (int)std::round(recipe.densityMin * 16.0f);
+    params.maxNotes = (int)std::round(recipe.densityMax * 16.0f);
+    params.swingAmount = (recipe.swingPercent - 50.0f) / 100.0f;
+    params.gateLengthMultiplier = recipe.gateLengthRatio;
+    params.velocityMin = recipe.velMin;
+    params.velocityMax = recipe.velMax;
+    params.sparseKick = recipe.sparseKick;
+    params.noAccents = recipe.noAccents;
+    params.preferDownbeats = recipe.preferDownbeats;
+    
+    generatePattern(pattern, bpm, params, behavior, voiceIndex);
+}
+
+void GrooveboxModeManager::generateDrumPattern(DrumPatternSet& patternSet, 
+                                               const GrooveRecipe& recipe, 
+                                               const GenreBehavior& behavior) const {
+    GenerativeParams params;
+    params.minNotes = (int)std::round(recipe.densityMin * 16.0f);
+    params.maxNotes = (int)std::round(recipe.densityMax * 16.0f);
+    params.swingAmount = (recipe.swingPercent - 50.0f) / 100.0f;
+    params.velocityMin = recipe.velMin;
+    params.velocityMax = recipe.velMax;
+    params.sparseKick = recipe.sparseKick;
+    params.noAccents = recipe.noAccents;
+    params.preferDownbeats = recipe.preferDownbeats;
+    params.drumVoiceCount = 8;
+    
+    generateDrumPattern(patternSet, params, behavior);
+}
+
+void GrooveboxModeManager::generateDrumVoice(DrumPattern& pattern, int voiceIndex, 
+                                              const GrooveRecipe& recipe, 
+                                              const GenreBehavior& behavior) const {
+    GenerativeParams params;
+    params.minNotes = (int)std::round(recipe.densityMin * 16.0f);
+    params.maxNotes = (int)std::round(recipe.densityMax * 16.0f);
+    params.swingAmount = (recipe.swingPercent - 50.0f) / 100.0f;
+    params.velocityMin = recipe.velMin;
+    params.velocityMax = recipe.velMax;
+    params.sparseKick = recipe.sparseKick;
+    params.noAccents = recipe.noAccents;
+    params.preferDownbeats = recipe.preferDownbeats;
+    
+    generateDrumVoice(pattern, voiceIndex, params, behavior);
+}
