@@ -15,31 +15,49 @@ void SamplerVoice::reset() {
 }
 
 void SamplerVoice::trigger(const Params& params, ISampleStore& store) {
-  // Release previous handle if active
   if (active_ && handle_.valid()) {
     store.releaseHandle(handle_);
   }
-  
-  // Acquire new handle (binds us to a specific slot)
+
   handle_ = store.acquireHandle(params.id);
   if (!handle_.valid()) {
     active_ = false;
     return;
   }
-  
-  startFrame_ = params.startFrame;
-  endFrame_ = params.endFrame;
+
+  const SampleView view = store.viewHandle(handle_);
+  if (view.empty()) {
+    store.releaseHandle(handle_);
+    handle_ = SampleHandle::invalid();
+    active_ = false;
+    return;
+  }
+
+  const uint32_t actualEnd =
+      (params.endFrame == 0 || params.endFrame > view.frames)
+          ? view.frames
+          : params.endFrame;
+  const uint32_t actualStart =
+      (params.startFrame < actualEnd) ? params.startFrame : 0;
+
+  if (actualEnd <= actualStart) {
+    store.releaseHandle(handle_);
+    handle_ = SampleHandle::invalid();
+    active_ = false;
+    return;
+  }
+
+  startFrame_ = actualStart;
+  endFrame_ = actualEnd;
   reverse_ = params.reverse;
   loop_ = params.loop;
-  playbackRate_ = params.pitch;
+  playbackRate_ = std::max(0.0f, params.pitch);
   gain_ = params.gain;
-  
-  if (reverse_) {
-    position_ = (endFrame_ > 0) ? (double)endFrame_ - 1.0 : 0; 
-  } else {
-    position_ = (double)startFrame_;
-  }
-  
+
+  position_ = reverse_
+      ? static_cast<double>(actualEnd - 1)
+      : static_cast<double>(actualStart);
+
   active_ = true;
   fadingOut_ = false;
   fadeCounter_ = kFadeFrames;
@@ -53,10 +71,9 @@ void SamplerVoice::stop() {
 }
 
 void SamplerVoice::process(float* output, uint32_t numFrames, ISampleStore& store) {
-  if (!active_) return;
+  if (!active_ || !output || numFrames == 0) return;
 
-  // O(1) view via handle - no search
-  SampleView view = store.viewHandle(handle_);
+  const SampleView view = store.viewHandle(handle_);
   if (view.empty()) {
     if (handle_.valid()) store.releaseHandle(handle_);
     handle_ = SampleHandle::invalid();
@@ -65,69 +82,86 @@ void SamplerVoice::process(float* output, uint32_t numFrames, ISampleStore& stor
   }
 
   const int16_t* pcm = view.pcm;
-  uint32_t totalFrames = view.frames;
-  
-  uint32_t actualEnd = (endFrame_ == 0 || endFrame_ > totalFrames) ? totalFrames : endFrame_;
-  uint32_t actualStart = (startFrame_ >= actualEnd) ? 0 : startFrame_;
+  const uint32_t totalFrames = view.frames;
+  const uint32_t actualEnd =
+      (endFrame_ == 0 || endFrame_ > totalFrames) ? totalFrames : endFrame_;
+  const uint32_t actualStart = (startFrame_ < actualEnd) ? startFrame_ : 0;
 
-  float srScale = (float)view.sampleRate / (float)kSampleRate;
+  if (actualEnd <= actualStart) {
+    store.releaseHandle(handle_);
+    handle_ = SampleHandle::invalid();
+    active_ = false;
+    return;
+  }
+
+  const float srScale = static_cast<float>(view.sampleRate) /
+                        static_cast<float>(kSampleRate);
   double step = playbackRate_ * srScale;
   if (reverse_) step = -step;
 
   for (uint32_t i = 0; i < numFrames; ++i) {
-    double pos = position_;
-    int i0 = (int)pos;
-    int i1 = i0 + 1;
-    
-    if (i0 < 0 || i0 >= (int)totalFrames) {
-      if (handle_.valid()) store.releaseHandle(handle_);
+    const double pos = position_;
+    const int i0 = static_cast<int>(std::floor(pos));
+    const int i1 = i0 + 1;
+
+    if (i0 < static_cast<int>(actualStart) ||
+        i0 >= static_cast<int>(actualEnd)) {
+      store.releaseHandle(handle_);
       handle_ = SampleHandle::invalid();
-      active_ = false; 
+      active_ = false;
       break;
     }
-    
-    float s0 = (float)pcm[i0] / 32768.0f;
-    float s1 = s0;
-    if (i1 < (int)totalFrames) {
-      s1 = (float)pcm[i1] / 32768.0f;
-    }
-    
-    float frac = (float)(pos - i0);
-    float sample = s0 + frac * (s1 - s0);
 
-    float gain = 1.0f;
+    const float s0 = static_cast<float>(pcm[i0]) / 32768.0f;
+    float s1 = s0;
+    if (i1 < static_cast<int>(actualEnd)) {
+      s1 = static_cast<float>(pcm[i1]) / 32768.0f;
+    }
+
+    const float frac = static_cast<float>(pos - static_cast<double>(i0));
+    const float sample = s0 + frac * (s1 - s0);
+
+    float fadeGain = 1.0f;
     if (fadingOut_) {
-      gain = (float)fadeCounter_ / (float)kFadeFrames;
-      if (fadeCounter_ > 0) fadeCounter_--;
-      else {
-        if (handle_.valid()) store.releaseHandle(handle_);
+      fadeGain = static_cast<float>(fadeCounter_) /
+                 static_cast<float>(kFadeFrames);
+      if (fadeCounter_ > 0) {
+        --fadeCounter_;
+      } else {
+        store.releaseHandle(handle_);
         handle_ = SampleHandle::invalid();
         active_ = false;
         break;
       }
     } else if (fadeCounter_ > 0) {
-      gain = 1.0f - ((float)fadeCounter_ / (float)kFadeFrames);
-      fadeCounter_--;
+      fadeGain = 1.0f -
+                 (static_cast<float>(fadeCounter_) /
+                  static_cast<float>(kFadeFrames));
+      --fadeCounter_;
     }
 
-    output[i] += sample * gain * gain_;
+    output[i] += sample * fadeGain * gain_;
     position_ += step;
 
     bool finished = false;
     if (reverse_) {
-      if (position_ < (double)actualStart) {
-        if (loop_) position_ = (double)actualEnd - 1.0;
-        else finished = true;
+      if (position_ < static_cast<double>(actualStart)) {
+        if (loop_) {
+          position_ = static_cast<double>(actualEnd - 1);
+        } else {
+          finished = true;
+        }
       }
-    } else {
-      if (position_ >= (double)actualEnd - 1.0) {
-        if (loop_) position_ = (double)actualStart;
-        else finished = true;
+    } else if (position_ >= static_cast<double>(actualEnd)) {
+      if (loop_) {
+        position_ = static_cast<double>(actualStart);
+      } else {
+        finished = true;
       }
     }
 
     if (finished) {
-      if (handle_.valid()) store.releaseHandle(handle_);
+      store.releaseHandle(handle_);
       handle_ = SampleHandle::invalid();
       active_ = false;
       break;
