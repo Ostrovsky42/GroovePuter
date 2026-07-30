@@ -13,7 +13,10 @@ uint8_t UsbMidiOutput::clampChannel(uint8_t channel) {
 bool UsbMidiOutput::begin() {
     clearActiveState();
     begun_ = transport_.begin();
-    mounted_ = begun_ && transport_.mounted();
+    // Do not query the platform USB singleton during static sink bootstrap.
+    // Arduino app_main() starts the CDC-on-boot composite after global
+    // constructors; the first control-loop event will reconcile mount state.
+    mounted_ = false;
     return begun_;
 }
 
