@@ -1,0 +1,38 @@
+name: USB MIDI toolchain probe
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Inspect Cardputer USB options and MIDI API
+        shell: bash
+        run: |
+          set -euo pipefail
+          CORE="$HOME/.arduino15/packages/m5stack/hardware/esp32/3.2.2"
+          echo "=== Cardputer board definition ==="
+          awk '/^m5stack_cardputer\./ { print }' "$CORE/boards.txt" | grep -E '(^m5stack_cardputer\.name=|usb|USB|build\.extra_flags|upload_mode|cdc)' || true
+
+          echo "=== Board details ==="
+          arduino-cli board details --fqbn m5stack:esp32:m5stack_cardputer --show-properties || true
+
+          echo "=== USB MIDI header ==="
+          find "$CORE" -path '*/libraries/USB/src/USBMIDI.h' -print -exec sed -n '1,180p' {} \;
+
+          echo "=== USB MIDI controller example ==="
+          find "$CORE" -path '*/libraries/USB/examples/MIDI/MidiController/MidiController.ino' -print -exec sed -n '1,180p' {} \;
