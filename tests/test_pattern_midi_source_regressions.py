@@ -66,6 +66,14 @@ def main() -> None:
         require(token not in queue, f"realtime queue must not allocate: {token}")
     require("takePendingAllNotesOffMask" in queue,
             "critical queue overflow must degrade to a target-scoped panic")
+    require("pcTaskGetName(nullptr)" in queue and '"AudioTask"' in queue,
+            "Cardputer queue must accept realtime pattern events only from AudioTask")
+    require("suppressedNonRealtime_" in queue,
+            "offline render suppression must remain observable")
+    render_start = engine.index("bool MiniAcid::renderProjectToWav")
+    render_body = engine[render_start:render_start + 5200]
+    require("stop();" in render_body and "generateAudioBuffer" in render_body,
+            "offline render must remain a stopped, synchronous non-AudioTask lifecycle")
 
     setup_start = sketch.index("void setup()")
     loop_start = sketch.index("void loop()")
@@ -75,6 +83,8 @@ def main() -> None:
             "control loop must drain PatternPlayer events into the shared router")
     require("g_musicalEventRouter.route(event)" in sketch,
             "queued PatternPlayer events must use MusicalEventRouter")
+    require('xTaskCreatePinnedToCore(audioTask, "AudioTask"' in sketch,
+            "offline-render suppression depends on the pinned AudioTask identity")
 
     require("router.addSink(g_output)" in transport,
             "USB MIDI must remain an independent router sink")
