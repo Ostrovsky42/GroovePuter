@@ -56,9 +56,12 @@ void UsbMidiOutput::replaceActiveNote(uint8_t note, uint8_t velocity) {
     bool wrotePacket = false;
 
     if (activeNote_ >= 0) {
-        wrotePacket = transport_.sendNoteOff(
-            channel_, static_cast<uint8_t>(activeNote_), 0) || wrotePacket;
+        const uint8_t oldNote = static_cast<uint8_t>(activeNote_);
+        // Never layer a new host note when the required old NoteOff could not
+        // be queued. Retain ownership so a later event or Panic can retry.
+        if (!transport_.sendNoteOff(channel_, oldNote, 0)) return;
         activeNote_ = -1;
+        wrotePacket = true;
     }
 
     if (transport_.sendNoteOn(channel_, note, velocity)) {
@@ -70,11 +73,13 @@ void UsbMidiOutput::replaceActiveNote(uint8_t note, uint8_t velocity) {
 }
 
 void UsbMidiOutput::releaseActiveNote(uint8_t velocity) {
-    if (activeNote_ < 0) return;
+    if (activeNote_ < 0 || !mounted_) return;
 
     const uint8_t note = static_cast<uint8_t>(activeNote_);
-    activeNote_ = -1;
-    if (mounted_ && transport_.sendNoteOff(channel_, note, velocity)) {
+    // Preserve local ownership on a queue-full failure so Panic or the next
+    // matching NoteOff can retry instead of silently forgetting a host note.
+    if (transport_.sendNoteOff(channel_, note, velocity)) {
+        activeNote_ = -1;
         transport_.flush();
     }
 }
