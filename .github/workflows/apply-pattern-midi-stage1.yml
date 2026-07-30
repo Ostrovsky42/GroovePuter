@@ -1,0 +1,38 @@
+name: Apply Pattern MIDI Stage 1
+
+on:
+  push:
+    branches:
+      - feature/pattern-midi-output
+    paths:
+      - .github/workflows/apply-pattern-midi-stage1.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/pattern-midi-output
+          fetch-depth: 0
+
+      - name: Apply implementation patch
+        run: python3 scripts/apply_pattern_midi_stage1.py
+
+      - name: Run host regressions
+        run: bash tests/run_host_tests.sh
+
+      - name: Commit implementation and remove temporary patch tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm scripts/apply_pattern_midi_stage1.py
+          git rm .github/workflows/apply-pattern-midi-stage1.yml
+          git add -A
+          git commit -m "feat(midi): route PatternPlayer synth events to USB MIDI"
+          git push origin HEAD:feature/pattern-midi-output
