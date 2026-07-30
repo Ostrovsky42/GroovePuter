@@ -26,6 +26,7 @@
 #include "../platform/log.h"
 #include "swappable_synth_voice.h"
 #include "advanced_pattern_generator.h"
+#include "atlas_runtime.h"
 
 namespace {
 constexpr int kDrumKickVoice = 0;
@@ -2289,7 +2290,24 @@ void MiniAcid::regeneratePatternsWithGenre() {
   // NOTE: applyTexture is NOT called here - it's applied separately by UI on texture change
   // This prevents double-application which would cause delta-bias drift
   syncGrooveModeToGenre();
-  
+
+  AtlasRuntimeMetadata atlasMetadata{};
+  if (AtlasRuntime::applyRecipe(
+          genreManager_.recipe(), 0,
+          editSynthPattern(0), editSynthPattern(1),
+          sceneManager_.editCurrentDrumPattern(), &atlasMetadata)) {
+    Scene& scene = sceneManager_.currentScene();
+    scene.feel.swingPct = atlasMetadata.swingPercent;
+    if (scene.genre.applyTempoOnApply) {
+      setBpm(static_cast<float>(atlasMetadata.bpm));
+    }
+    LOG_DEBUG("  - Atlas recipe applied: %s %s bpm=%u swing=%u\n",
+              atlasMetadata.displayName, atlasMetadata.slotId,
+              static_cast<unsigned>(atlasMetadata.bpm),
+              static_cast<unsigned>(atlasMetadata.swingPercent));
+    return;
+  }
+
   const GenerativeParams& genreParams =
       genreManager_.getCompiledGenerativeParams();
   const auto behavior = genreManager_.getBehavior();

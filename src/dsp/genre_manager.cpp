@@ -188,6 +188,12 @@ static const GenreRecipeDef kGenreRecipes[] = {
      {3, 6, 0.12f, 0.16f, 72, 108, 0.78f, 0.28f, 0.05f, 0.18f, 1, 1, 1, 0.30f, 1, 6},
      true,
      {0x8080, 0x0808, 0x2222, 0x0202, 0.10f, 0.06f, 0.22f, 92, 88, 70, true, false}},
+    // Atlas v2.6 vertical slice. Exact P1/P2/P3 events are compiled into
+    // AtlasRuntime; this fallback remains useful for manual randomize actions.
+    {6, "Chicago Jack",
+     {8, 13, 0.02f, 0.04f, 76, 122, 0.58f, 0.04f, 0.08f, 0.35f, 0, 0, 0, 0.20f, 0, 8},
+     true,
+     {0x8888, 0x0808, 0x2222, 0x0202, 0.04f, 0.04f, 0.18f, 122, 102, 82, false, true}},
 };
 
 static const GenreRecipeDef* findRecipe(GenreRecipeId id) {
@@ -250,6 +256,7 @@ GrooveboxMode GenreManager::grooveboxModeForRecipe(GenreRecipeId id, GenerativeM
         case 3: return GrooveboxMode::Breaks; // Footwork
         case 4: return GrooveboxMode::Acid;   // Psytrance
         case 5: return GrooveboxMode::Dub;    // Dub Techno
+        case 6: return GrooveboxMode::Acid;   // Atlas: Chicago Jack
         case 0: break;                        // base layer: use fallback
         default: break;                       // unknown recipe: safe fallback
     }
@@ -436,6 +443,19 @@ GenreBehavior GenreManager::getBehavior() const {
     };
 
     GenreBehavior b = kBase[static_cast<int>(state_.generative)];
+
+    if (state_.recipe == 6) {
+        // GroovePuter preview sound profile. Atlas supplies musical events but
+        // intentionally does not claim verified SEQTRAK preset mappings.
+        b.stepMask = 0xFFFF;
+        b.motifLength = 4;
+        b.preferredScale = 1;  // Phrygian
+        b.useMotif = true;
+        b.allowChromatic = true;
+        b.forceOctaveJump = false;
+        b.avoidClusters = false;
+        b.timbre = {0.0f, 0.52f, 0.55f, 0.82f, 0.25f};
+    }
 
     return b;
 }
