@@ -8,6 +8,7 @@ CXX="${CXX:-g++}"
 mkdir -p "${BUILD_DIR}"
 
 python3 "${ROOT_DIR}/tests/test_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
 
 "${CXX}" \
   -std=c++17 \
