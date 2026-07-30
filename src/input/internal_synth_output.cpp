@@ -10,7 +10,8 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
     // PatternPlayer already owns and renders the internal voices inside the
     // audio task. Its router fan-out is for additive outputs; taking the control
     // mutation gate here would deadlock the audio producer and double-trigger.
-    if (event.source != MusicalEventSource::PerformanceKeyboard) return;
+    // Other sources remain eligible for future internal routing.
+    if (event.source == MusicalEventSource::PatternPlayer) return;
 
     // The logical channel is intentionally ignored by the internal engine.
     AudioMutationScope mutationScope(mutationGate_);
@@ -24,8 +25,8 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
             break;
         case MusicalEventType::AllNotesOff: {
             // This event belongs to one logical target. Release only a note
-            // currently owned by live input on that voice; never interrupt a
-            // PatternPlayer-owned Synth A/B voice while transport is running.
+            // currently owned by live-style input on that voice; never interrupt
+            // a PatternPlayer-owned Synth A/B voice while transport is running.
             const int liveNote = engine_.liveNote(voice);
             if (liveNote >= 0) {
                 engine_.liveNoteOff(voice, static_cast<uint8_t>(liveNote));
