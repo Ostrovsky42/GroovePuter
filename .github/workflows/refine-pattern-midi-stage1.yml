@@ -37,11 +37,6 @@ jobs:
 
           replace_once(
               'src/dsp/miniacid_engine.cpp',
-              '  if (velocity < 1) velocity = 1;\n  if (velocity > 127) velocity = 127;\n',
-              '  if (velocity < 1) velocity = 1;\n')
-
-          replace_once(
-              'src/dsp/miniacid_engine.cpp',
               'void MiniAcid::applySceneStateFromManager() {\n  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: Start");\n',
               'void MiniAcid::applySceneStateFromManager() {\n  if (playing) publishPatternAllNotesOff_();\n  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: Start");\n')
 
