@@ -1,0 +1,361 @@
+name: Apply guarded scene round-trip patch
+
+on:
+  push:
+    branches:
+      - agent/fix-core-reliability
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-core-reliability
+          fetch-depth: 0
+
+      - name: Patch scene writer and streaming parser
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: found {count}, expected 1")
+              return text.replace(old, new, 1)
+
+          header_path = Path("scenes.h")
+          header = header_path.read_text(encoding="utf-8")
+
+          header = replace_once(
+              header,
+              """    DrumFxParamArray,
+              DrumProbabilityArray,
+              SynthABanks,
+          """,
+              """    DrumFxParamArray,
+              DrumProbabilityArray,
+              DrumVelocityArray,
+              DrumTimingArray,
+              SynthABanks,
+          """,
+              "path enum",
+          )
+
+          header = replace_once(
+              header,
+              r'''  auto writeString = [&](const std::string& value) -> bool {
+              if (!writeChar('"')) return false;
+              for (char ch : value) {
+                if (ch == '"' || ch == '\\') {
+                  if (!writeChar('\\')) return false;
+                }
+                if (!writeChar(ch)) return false;
+              }
+              return writeChar('"');
+            };
+          ''',
+              r'''  auto writeString = [&](const std::string& value) -> bool {
+              if (!writeChar('"')) return false;
+              for (char ch : value) {
+                const unsigned char byte = static_cast<unsigned char>(ch);
+                switch (ch) {
+                  case '"': if (!writeLiteral("\\\"")) return false; break;
+                  case '\\': if (!writeLiteral("\\\\")) return false; break;
+                  case '\b': if (!writeLiteral("\\b")) return false; break;
+                  case '\f': if (!writeLiteral("\\f")) return false; break;
+                  case '\n': if (!writeLiteral("\\n")) return false; break;
+                  case '\r': if (!writeLiteral("\\r")) return false; break;
+                  case '\t': if (!writeLiteral("\\t")) return false; break;
+                  default:
+                    if (byte < 0x20) {
+                      char escaped[7];
+                      int written = std::snprintf(escaped, sizeof(escaped), "\\u%04x", byte);
+                      if (written != 6 || !writeChunk(escaped, 6)) return false;
+                    } else if (!writeChar(ch)) {
+                      return false;
+                    }
+                    break;
+                }
+              }
+              return writeChar('"');
+            };
+          ''',
+              "JSON escaping",
+          )
+
+          header = replace_once(
+              header,
+              """    // New FX arrays (only write if needed to save space? strict JSON usually requires consistency, but we can make them optional in parser)
+          """,
+              """    if (!writeLiteral("],\"vel\":[")) return false;
+              for (int i = 0; i < DrumPattern::kSteps; ++i) {
+                if (i > 0 && !writeChar(',')) return false;
+                if (!writeInt(pattern.steps[i].velocity)) return false;
+              }
+              if (!writeLiteral("],\"tim\":[")) return false;
+              for (int i = 0; i < DrumPattern::kSteps; ++i) {
+                if (i > 0 && !writeChar(',')) return false;
+                if (!writeInt(pattern.steps[i].timing)) return false;
+              }
+              // FX arrays remain explicit so the streaming and document formats agree.
+          """,
+              "drum velocity/timing writer",
+          )
+
+          header = replace_once(
+              header,
+              """      if (!writeLiteral(",\"accent\":")) return false;
+              if (!writeBool(pattern.steps[i].accent)) return false;
+              if (!writeLiteral(",\"fx\":")) return false;
+          """,
+              """      if (!writeLiteral(",\"accent\":")) return false;
+              if (!writeBool(pattern.steps[i].accent)) return false;
+              if (!writeLiteral(",\"ghost\":")) return false;
+              if (!writeBool(pattern.steps[i].ghost)) return false;
+              if (!writeLiteral(",\"vel\":")) return false;
+              if (!writeInt(pattern.steps[i].velocity)) return false;
+              if (!writeLiteral(",\"tim\":")) return false;
+              if (!writeInt(pattern.steps[i].timing)) return false;
+              if (!writeLiteral(",\"fx\":")) return false;
+          """,
+              "synth dynamic writer",
+          )
+
+          header = replace_once(
+              header,
+              """  if (!writeInt(scene_->feel.patternBars)) return false;
+            if (!writeLiteral(",\"lofi\":")) return false;
+          """,
+              """  if (!writeInt(scene_->feel.patternBars)) return false;
+            if (!writeLiteral(",\"swing\":")) return false;
+            if (!writeInt(scene_->feel.swingPct)) return false;
+            if (!writeLiteral(",\"mask\":")) return false;
+            if (!writeInt(scene_->feel.swingMask)) return false;
+            if (!writeLiteral(",\"lofi\":")) return false;
+          """,
+              "feel swing writer",
+          )
+
+          header = replace_once(
+              header,
+              """  if (!writeChar('}')) return false;
+
+            if (!writeLiteral(",\"trackVolumes\":[")) return false;
+          """,
+              """  if (!writeChar('}')) return false;
+
+            if (!writeLiteral(",\"generatorParams\":{\"minNotes\":")) return false;
+            if (!writeInt(scene_->generatorParams.minNotes)) return false;
+            if (!writeLiteral(",\"maxNotes\":")) return false;
+            if (!writeInt(scene_->generatorParams.maxNotes)) return false;
+            if (!writeLiteral(",\"minOctave\":")) return false;
+            if (!writeInt(scene_->generatorParams.minOctave)) return false;
+            if (!writeLiteral(",\"maxOctave\":")) return false;
+            if (!writeInt(scene_->generatorParams.maxOctave)) return false;
+            if (!writeLiteral(",\"swingAmount\":")) return false;
+            if (!writeFloat(scene_->generatorParams.swingAmount)) return false;
+            if (!writeLiteral(",\"velocityRange\":")) return false;
+            if (!writeFloat(scene_->generatorParams.velocityRange)) return false;
+            if (!writeLiteral(",\"ghostNoteProbability\":")) return false;
+            if (!writeFloat(scene_->generatorParams.ghostNoteProbability)) return false;
+            if (!writeLiteral(",\"microTimingAmount\":")) return false;
+            if (!writeFloat(scene_->generatorParams.microTimingAmount)) return false;
+            if (!writeLiteral(",\"preferDownbeats\":")) return false;
+            if (!writeBool(scene_->generatorParams.preferDownbeats)) return false;
+            if (!writeLiteral(",\"scaleQuantize\":")) return false;
+            if (!writeBool(scene_->generatorParams.scaleQuantize)) return false;
+            if (!writeLiteral(",\"scaleRoot\":")) return false;
+            if (!writeInt(scene_->generatorParams.scaleRoot)) return false;
+            if (!writeLiteral(",\"scale\":")) return false;
+            if (!writeInt(static_cast<int>(scene_->generatorParams.scale))) return false;
+            if (!writeChar('}')) return false;
+
+            if (!writeLiteral(",\"trackVolumes\":[")) return false;
+          """,
+              "generator parameters writer",
+          )
+
+          header_path.write_text(header, encoding="utf-8")
+
+          source_path = Path("scenes.cpp")
+          source = source_path.read_text(encoding="utf-8")
+
+          source = replace_once(
+              source,
+              """    pattern.steps[i].accent = false;
+              pattern.steps[i].probability = 100;
+          """,
+              """    pattern.steps[i].accent = false;
+              pattern.steps[i].ghost = false;
+              pattern.steps[i].velocity = 100;
+              pattern.steps[i].timing = 0;
+              pattern.steps[i].probability = 100;
+          """,
+              "clear synth metadata",
+          )
+
+          source = replace_once(
+              source,
+              """  scene.generatorParams = GeneratorParams();
+            scene.led = LedSettings();
+            scene.tape = TapeState();
+            scene.feel = FeelSettings();
+            scene.drumFX = DrumFX();
+          """,
+              """  for (auto& pad : scene.samplerPads) pad = SamplerPadState();
+            scene.generatorParams = GeneratorParams();
+            scene.led = LedSettings();
+            scene.tape = TapeState();
+            scene.feel = FeelSettings();
+            scene.genre = GenreSettings();
+            scene.vocal = VocalSettings();
+            scene.drumFX = DrumFX();
+            scene.activeSongSlot = 0;
+            scene.mode = GrooveboxMode::Minimal;
+            scene.grooveFlavor = 0;
+            for (float& volume : scene.trackVolumes) volume = 1.0f;
+          """,
+              "clear complete scene defaults",
+          )
+
+          source = replace_once(
+              source,
+              """        else if (lastKey_ == "prb") path = Path::DrumProbabilityArray;
+                    else if (lastKey_ == "fx") path = Path::DrumFxArray;
+          """,
+              """        else if (lastKey_ == "prb") path = Path::DrumProbabilityArray;
+                    else if (lastKey_ == "vel") path = Path::DrumVelocityArray;
+                    else if (lastKey_ == "tim") path = Path::DrumTimingArray;
+                    else if (lastKey_ == "fx") path = Path::DrumFxArray;
+          """,
+              "drum array paths",
+          )
+
+          source = replace_once(
+              source,
+              """    } else if (lastKey_ == "lofiAmt") {
+          """,
+              """    } else if (lastKey_ == "swing") {
+                  if (v < 50) v = 50;
+                  if (v > 75) v = 75;
+                  target_.feel.swingPct = static_cast<uint8_t>(v);
+                } else if (lastKey_ == "mask") {
+                  if (v < 0) v = 0;
+                  if (v > 0xFFFF) v = 0xFFFF;
+                  target_.feel.swingMask = static_cast<uint16_t>(v);
+                } else if (lastKey_ == "lofiAmt") {
+          """,
+              "feel swing parser",
+          )
+
+          source = replace_once(
+              source,
+              """  if (path == Path::DrumFxArray || path == Path::DrumFxParamArray || path == Path::DrumProbabilityArray) {
+                int bankIdx = currentIndexFor(Path::DrumBanks);
+                if (bankIdx < 0) bankIdx = 0;
+                int patternIdx = currentIndexFor(Path::DrumBank);
+                int voiceIdx = currentIndexFor(Path::DrumPatternSet);
+                int stepIdx = stack_[stackSize_ - 1].index;
+                if (patternIdx >= 0 && patternIdx < Bank<DrumPatternSet>::kPatterns &&
+                    voiceIdx >= 0 && voiceIdx < DrumPatternSet::kVoices &&
+                    stepIdx >= 0 && stepIdx < DrumPattern::kSteps &&
+                    bankIdx >= 0 && bankIdx < kBankCount) {
+                    DrumStep& step = target_.drumBanks[bankIdx].patterns[patternIdx].voices[voiceIdx].steps[stepIdx];
+                    if (path == Path::DrumFxArray) step.fx = static_cast<uint8_t>(value);
+                    else if (path == Path::DrumFxParamArray) step.fxParam = static_cast<uint8_t>(value);
+                    else step.probability = clampProbability(static_cast<int>(value));
+                }
+                return;
+              }
+          """,
+              """  if (path == Path::DrumFxArray || path == Path::DrumFxParamArray ||
+                  path == Path::DrumProbabilityArray || path == Path::DrumVelocityArray ||
+                  path == Path::DrumTimingArray) {
+                int bankIdx = currentIndexFor(Path::DrumBanks);
+                if (bankIdx < 0) bankIdx = 0;
+                int patternIdx = currentIndexFor(Path::DrumBank);
+                int voiceIdx = currentIndexFor(Path::DrumPatternSet);
+                int stepIdx = stack_[stackSize_ - 1].index;
+                if (patternIdx >= 0 && patternIdx < Bank<DrumPatternSet>::kPatterns &&
+                    voiceIdx >= 0 && voiceIdx < DrumPatternSet::kVoices &&
+                    stepIdx >= 0 && stepIdx < DrumPattern::kSteps &&
+                    bankIdx >= 0 && bankIdx < kBankCount) {
+                    DrumStep& step = target_.drumBanks[bankIdx].patterns[patternIdx].voices[voiceIdx].steps[stepIdx];
+                    const int intValue = static_cast<int>(value);
+                    if (path == Path::DrumFxArray) step.fx = static_cast<uint8_t>(intValue);
+                    else if (path == Path::DrumFxParamArray) step.fxParam = static_cast<uint8_t>(intValue);
+                    else if (path == Path::DrumProbabilityArray) step.probability = clampProbability(intValue);
+                    else if (path == Path::DrumVelocityArray) {
+                      const int velocity = intValue < 0 ? 0 : intValue > 127 ? 127 : intValue;
+                      step.velocity = static_cast<uint8_t>(velocity);
+                    } else {
+                      const int timing = intValue < -23 ? -23 : intValue > 23 ? 23 : intValue;
+                      step.timing = static_cast<int8_t>(timing);
+                    }
+                }
+                return;
+              }
+          """,
+              "drum dynamic parser",
+          )
+
+          source = replace_once(
+              source,
+              """    } else if (lastKey_ == "prb") {
+                  pattern.steps[stepIdx].probability = clampProbability(static_cast<int>(value));
+                } else if (lastKey_ == "fx") {
+          """,
+              """    } else if (lastKey_ == "vel") {
+                  int velocity = static_cast<int>(value);
+                  if (velocity < 0) velocity = 0;
+                  if (velocity > 127) velocity = 127;
+                  pattern.steps[stepIdx].velocity = static_cast<uint8_t>(velocity);
+                } else if (lastKey_ == "tim") {
+                  int timing = static_cast<int>(value);
+                  if (timing < -23) timing = -23;
+                  if (timing > 23) timing = 23;
+                  pattern.steps[stepIdx].timing = static_cast<int8_t>(timing);
+                } else if (lastKey_ == "prb") {
+                  pattern.steps[stepIdx].probability = clampProbability(static_cast<int>(value));
+                } else if (lastKey_ == "fx") {
+          """,
+              "synth numeric dynamics parser",
+          )
+
+          source = replace_once(
+              source,
+              """    } else if (lastKey_ == "accent") {
+                  pattern.steps[stepIdx].accent = value;
+                }
+          """,
+              """    } else if (lastKey_ == "accent") {
+                  pattern.steps[stepIdx].accent = value;
+                } else if (lastKey_ == "ghost") {
+                  pattern.steps[stepIdx].ghost = value;
+                }
+          """,
+              "synth ghost parser",
+          )
+
+          source_path.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Commit scene round-trip fix
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No scene diff produced"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scenes.h scenes.cpp
+          git commit -m "fix: preserve groove dynamics in scene round trips"
+          git push origin HEAD:agent/fix-core-reliability
