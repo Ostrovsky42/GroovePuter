@@ -30,10 +30,14 @@ def main() -> None:
     require("AudioMutationGate" not in sink and "AudioMutationGate" not in transport,
             "USB output must not pause or mutate the audio renderer")
 
-    require("g_musicalEventRouter.addSink(g_usbMidiOutput)" in integration,
+    require("registerCardputerUsbMidiSink(g_musicalEventRouter)" in integration,
+            "sketch bootstrap must connect the shared router to the platform sink")
+    require("router.addSink(output)" in transport,
             "USB MIDI must be registered as an independent router sink")
-    require("UsbMidiRouteConfig" in integration and "7," in integration,
+    require("UsbMidiRouteConfig" in transport and "7," in transport,
             "SynthA must route to zero-based channel 7 / MIDI channel 8")
+    require("USBMIDI.h" not in integration and "USB.h" not in integration,
+            "TinyUSB headers must stay isolated from the main UI translation unit")
 
     tinyusb_options = "USBMode=default,CDCOnBoot=cdc,UploadMode=cdc"
     require(tinyusb_options in build,
