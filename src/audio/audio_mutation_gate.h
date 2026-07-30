@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_AUDIO_MUTATION_GATE_H
+#define GROOVEPUTER_AUDIO_MUTATION_GATE_H
 
 #include <atomic>
 #include <cstdint>
@@ -92,3 +94,5 @@ public:
 private:
   AudioMutationGate& gate_;
 };
+
+#endif  // GROOVEPUTER_AUDIO_MUTATION_GATE_H
