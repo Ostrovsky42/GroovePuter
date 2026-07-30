@@ -14,6 +14,10 @@ public:
     static bool savePage(int pageIndex, const Scene& scene);
     static bool loadPage(int pageIndex, Scene& scene);
 
+    // Restore the previous validated page version created by savePage().
+    // Used by multi-page import transactions when a later page fails.
+    static bool restoreBackup(int pageIndex);
+
     // Initialize only pattern banks. Scene metadata, songs, sampler settings,
     // genre and mix state remain unchanged.
     static void initializeEmptyPage(Scene& scene);
