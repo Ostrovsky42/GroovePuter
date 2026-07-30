@@ -23,9 +23,10 @@ enum class UsbMidiStatus : uint8_t {
     Ready,
 };
 
-// Translates normalized GroovePuter events into fixed monophonic ownership
-// lanes. Separate source/target lanes prevent live-key panic or replacement
-// from cancelling PatternPlayer Synth A/B ownership.
+// Translates normalized GroovePuter events into fixed monophonic logical lanes.
+// Lanes remain source/target scoped, while wire-level channel+note ownership is
+// reference counted so two logical owners sharing one physical MIDI note cannot
+// accidentally silence each other.
 class UsbMidiOutput final : public IMusicalEventSink {
 public:
     explicit UsbMidiOutput(IUsbMidiTransport& transport,
@@ -42,6 +43,7 @@ public:
     int activeNote(MusicalEventTarget target) const;
     uint8_t channelFor(MusicalEventSource source,
                        MusicalEventTarget target) const;
+    uint8_t wireOwnerCount(uint8_t zeroBasedChannel, uint8_t note) const;
     uint8_t synthAChannel() const {
         return channelFor(MusicalEventSource::PerformanceKeyboard,
                           MusicalEventTarget::SynthA);
@@ -56,23 +58,34 @@ private:
         uint8_t channel{7};
         int16_t activeNote{-1};
         bool enabled{false};
+        bool pendingRelease{false};
     };
 
     static constexpr std::size_t kLaneCount = 3;
+    static constexpr std::size_t kMidiChannelCount = 16;
+    static constexpr std::size_t kMidiNoteCount = 128;
+
     static uint8_t clampChannel(uint8_t channel);
+    static uint8_t clampDataByte(uint8_t value);
 
     MidiVoiceLane* laneFor(MusicalEventSource source,
                            MusicalEventTarget target);
     const MidiVoiceLane* laneFor(MusicalEventSource source,
                                  MusicalEventTarget target) const;
     bool accepts(const MidiVoiceLane* lane) const;
-    void replaceActiveNote(MidiVoiceLane& lane, uint8_t note, uint8_t velocity);
-    void releaseActiveNote(MidiVoiceLane& lane, uint8_t velocity = 0);
+    bool acquireActiveNote(MidiVoiceLane& lane,
+                           uint8_t note,
+                           uint8_t velocity);
+    bool replaceActiveNote(MidiVoiceLane& lane,
+                           uint8_t note,
+                           uint8_t velocity);
+    bool releaseActiveNote(MidiVoiceLane& lane, uint8_t velocity = 0);
     void releaseAllActiveNotes();
     void clearActiveState();
 
     IUsbMidiTransport& transport_;
     MidiVoiceLane lanes_[kLaneCount]{};
+    uint8_t wireOwners_[kMidiChannelCount][kMidiNoteCount]{};
     bool enabled_{true};
     bool begun_{false};
     bool mounted_{false};
