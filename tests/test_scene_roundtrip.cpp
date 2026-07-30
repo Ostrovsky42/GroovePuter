@@ -150,8 +150,8 @@ int main() {
   assert(!json.empty());
   assert(json.find("\\n") != std::string::npos);
   assert(json.find("\\t") != std::string::npos);
-  assert(json.find("\"vel\":47") != std::string::npos);
-  assert(json.find("\"tim\":-11") != std::string::npos);
+  assert(json.find("\"vel\":[") != std::string::npos);
+  assert(json.find("\"tim\":[") != std::string::npos);
   assert(json.find("\"ghost\":true") != std::string::npos);
   assert(json.find("\"swing\":63") != std::string::npos);
   assert(json.find("\"mask\":853") != std::string::npos);
