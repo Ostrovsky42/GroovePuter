@@ -34,6 +34,14 @@ bool PerformPage::handleEvent(UIEvent& event) {
         case '3':
             requestPageTransition(WorkflowPages::kArrange);
             return true;
+        case 'n':
+        case 'N':
+            keyboard_.toggleNoteMode();
+            UI::showToast(keyboard_.noteModeEnabled()
+                              ? "NOTE MODE: ON"
+                              : "NOTE MODE: OFF",
+                          900);
+            return true;
         case '[':
             keyboard_.cycleScale(-1);
             return true;
@@ -50,7 +58,7 @@ bool PerformPage::handleEvent(UIEvent& event) {
         case 'x':
         case 'X':
             keyboard_.panic();
-            UI::showToast("PANIC: ALL NOTES OFF", 1000);
+            UI::showToast("PANIC: LIVE SYNTH A OFF", 1000);
             return true;
         default:
             return false;
@@ -68,18 +76,29 @@ void PerformPage::drawContent(IGfx& gfx) {
     char line[48];
 
     gfx.setTextColor(COLOR_ACCENT);
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(0),
-                 miniAcid_.isPlaying() ? "PATTERN PLAYER OWNS SYNTH A"
-                                       : "LIVE KEYBOARD -> SYNTH A");
+    std::snprintf(line, sizeof(line), "NOTE MODE: %s",
+                  keyboard_.noteModeEnabled() ? "ON" : "OFF");
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(0), line);
 
     gfx.setTextColor(COLOR_TEXT);
+    if (!keyboard_.noteModeEnabled()) {
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(1),
+                     "LEGACY KEY COMMANDS ACTIVE");
+    } else if (miniAcid_.isPlaying()) {
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(1),
+                     "PATTERN PLAYER OWNS SYNTH A");
+    } else {
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(1),
+                     "LIVE KEYBOARD -> SYNTH A");
+    }
+
     std::snprintf(line, sizeof(line), "ROOT:C  SCALE:%s", keyboard_.scaleName());
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(1), line);
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), line);
 
     std::snprintf(line, sizeof(line), "OCT:%+d  HELD:%u",
                   static_cast<int>(keyboard_.octaveShift()),
                   static_cast<unsigned>(keyboard_.heldCount()));
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), line);
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(3), line);
 
     if (active >= 0) {
         const int octave = active / 12 - 1;
@@ -88,18 +107,15 @@ void PerformPage::drawContent(IGfx& gfx) {
     } else {
         std::snprintf(line, sizeof(line), "NOTE:--");
     }
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(3), line);
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(4), line);
 
     gfx.setTextColor(COLOR_LABEL);
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(4), "QWERTYUIOP");
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(5), "ASDFGHJKL");
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(6),
-                 miniAcid_.isPlaying() ? "STOP TRANSPORT TO PLAY"
-                                       : "LAST NOTE PRIORITY");
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(5), "QWERTYUIOP  +12");
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(6), "ASDFGHJKL   BASE");
 }
 
 void PerformPage::drawFooter(IGfx& gfx) {
     UI::drawStandardFooter(gfx,
-                           "[ ]:Scale  -/=:Oct  X:Panic",
-                           "1:PERF 2:PAT 3:ARR");
+                           "N:Note [ ]:Scale -/=:Oct",
+                           "X:Panic 1:PERF 2:PAT 3:ARR");
 }
