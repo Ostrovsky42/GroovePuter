@@ -14,6 +14,10 @@ public:
     static bool savePage(int pageIndex, const Scene& scene);
     static bool loadPage(int pageIndex, Scene& scene);
 
+    // Initialize only pattern banks. Scene metadata, songs, sampler settings,
+    // genre and mix state remain unchanged.
+    static void initializeEmptyPage(Scene& scene);
+
     static bool pageExists(int pageIndex);
     static bool removePage(int pageIndex);
 
