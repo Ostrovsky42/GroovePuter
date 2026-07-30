@@ -15,6 +15,17 @@ python3 "${ROOT_DIR}/tests/test_source_regressions.py"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_genre_defaults.cpp" \
+  -o "${BUILD_DIR}/test_genre_defaults"
+
+"${BUILD_DIR}/test_genre_defaults"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_sampler_voice.cpp" \
   "${ROOT_DIR}/src/sampler/sampler_voice.cpp" \
   -o "${BUILD_DIR}/test_sampler_voice"
