@@ -61,6 +61,7 @@ SOURCES := \
 	../src/ui/pages/voice_page.cpp \
 	../src/ui/pages/color_test_page.cpp \
 	../src/ui/pages/pattern_edit_page.cpp \
+	../src/ui/pages/synth_sequencer_page.cpp \
 	../src/ui/pages/drum_sequencer_page.cpp \
 	../src/ui/pages/drum_automation_page.cpp \
 	../src/ui/pages/song_page.cpp \
@@ -79,6 +80,7 @@ SOURCES := \
 	../src/audio/desktop_audio_recorder.cpp \
 	../src/audio/wasm_audio_recorder.cpp \
 	../src/audio/pattern_paging.cpp \
+	../src/audio/midi_importer.cpp \
 	../src/sampler/sample_loader.cpp \
 	../src/sampler/ram_sample_store.cpp \
 	../src/sampler/sample_index.cpp \
