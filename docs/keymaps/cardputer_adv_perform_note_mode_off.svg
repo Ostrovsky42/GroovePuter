@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1110" height="610" viewBox="0 0 1110 610" role="img" aria-labelledby="title desc">
+<title id="title">GroovePuter Cardputer ADV PERFORM keymap — NOTE MODE OFF</title>
+<desc id="desc">Legacy command keymap for GroovePuter PERFORM mode when NOTE mode is disabled.</desc>
+<style>
+text{font-family:Inter,ui-sans-serif,system-ui,sans-serif} .base{fill:#2a3039;stroke:#4b5563} .workflow{fill:#6547a8;stroke:#a88cf2} .setting{fill:#257057;stroke:#5ed3a6} .legacy{fill:#8a671c;stroke:#ffd45e} .panic{fill:#9b3f4c;stroke:#ff8794} .transport{fill:#8a5b20;stroke:#ffbf66} .combo{fill:#4d4a7f;stroke:#a5a1ff} .key{stroke-width:1.5} .label{fill:#f4f7fb;font-size:13px;font-weight:700;text-anchor:middle} .sub{fill:#dce8f5;font-size:8.5px;font-weight:600;text-anchor:middle} .idle{fill:#9aa7b6;font-size:13px;font-weight:600;text-anchor:middle} .body{fill:#9aa7b6;font-size:12.5px}
+</style>
+<rect width="1110" height="610" rx="18" fill="#0f141b"/>
+<rect x="18" y="18" width="1074" height="574" rx="14" fill="#151c25" stroke="#253040"/>
+<text x="555" y="48" text-anchor="middle" fill="#f4f7fb" font-size="24" font-weight="700">PERFORM Keymap — NOTE MODE: OFF</text>
+<text x="555" y="72" text-anchor="middle" fill="#9aa7b6" font-size="13">Legacy command layer; musical letters no longer emit or reserve notes</text>
+<g><rect class="key base" x="34" y="88" width="58" height="48" rx="7"/><text class="idle" x="63" y="118">ESC</text></g>
+<g><rect class="key workflow" x="99" y="88" width="58" height="48" rx="7"/><text class="label" x="128" y="106">1</text><text class="sub" x="128" y="124">PERF</text></g>
+<g><rect class="key workflow" x="164" y="88" width="58" height="48" rx="7"/><text class="label" x="193" y="106">2</text><text class="sub" x="193" y="124">PAT</text></g>
+<g><rect class="key workflow" x="229" y="88" width="58" height="48" rx="7"/><text class="label" x="258" y="106">3</text><text class="sub" x="258" y="124">ARR</text></g>
+<g><rect class="key base" x="294" y="88" width="58" height="48" rx="7"/><text class="idle" x="323" y="118">4</text></g>
+<g><rect class="key base" x="359" y="88" width="58" height="48" rx="7"/><text class="idle" x="388" y="118">5</text></g>
+<g><rect class="key base" x="424" y="88" width="58" height="48" rx="7"/><text class="idle" x="453" y="118">6</text></g>
+<g><rect class="key base" x="489" y="88" width="58" height="48" rx="7"/><text class="idle" x="518" y="118">7</text></g>
+<g><rect class="key base" x="554" y="88" width="58" height="48" rx="7"/><text class="idle" x="583" y="118">8</text></g>
+<g><rect class="key base" x="619" y="88" width="58" height="48" rx="7"/><text class="idle" x="648" y="118">9</text></g>
+<g><rect class="key base" x="684" y="88" width="58" height="48" rx="7"/><text class="idle" x="713" y="118">0</text></g>
+<g><rect class="key setting" x="749" y="88" width="58" height="48" rx="7"/><text class="label" x="778" y="106">-</text><text class="sub" x="778" y="124">OCT −</text></g>
+<g><rect class="key setting" x="814" y="88" width="58" height="48" rx="7"/><text class="label" x="843" y="106">=</text><text class="sub" x="843" y="124">OCT +</text></g>
+<g><rect class="key base" x="879" y="88" width="58" height="48" rx="7"/><text class="idle" x="908" y="118">DEL</text></g>
+<g><rect class="key combo" x="34" y="146" width="58" height="48" rx="7"/><text class="label" x="63" y="164">TAB</text><text class="sub" x="63" y="182">WORKFLOW</text></g>
+<g><rect class="key base" x="99" y="146" width="58" height="48" rx="7"/><text class="idle" x="128" y="176">Q</text></g>
+<g><rect class="key base" x="164" y="146" width="58" height="48" rx="7"/><text class="idle" x="193" y="176">W</text></g>
+<g><rect class="key base" x="229" y="146" width="58" height="48" rx="7"/><text class="idle" x="258" y="176">E</text></g>
+<g><rect class="key base" x="294" y="146" width="58" height="48" rx="7"/><text class="idle" x="323" y="176">R</text></g>
+<g><rect class="key base" x="359" y="146" width="58" height="48" rx="7"/><text class="idle" x="388" y="176">T</text></g>
+<g><rect class="key base" x="424" y="146" width="58" height="48" rx="7"/><text class="idle" x="453" y="176">Y</text></g>
+<g><rect class="key base" x="489" y="146" width="58" height="48" rx="7"/><text class="idle" x="518" y="176">U</text></g>
+<g><rect class="key legacy" x="554" y="146" width="58" height="48" rx="7"/><text class="label" x="583" y="164">I</text><text class="sub" x="583" y="182">RAND A</text></g>
+<g><rect class="key legacy" x="619" y="146" width="58" height="48" rx="7"/><text class="label" x="648" y="164">O</text><text class="sub" x="648" y="182">RAND B</text></g>
+<g><rect class="key legacy" x="684" y="146" width="58" height="48" rx="7"/><text class="label" x="713" y="164">P</text><text class="sub" x="713" y="182">RAND DR</text></g>
+<g><rect class="key setting" x="749" y="146" width="58" height="48" rx="7"/><text class="label" x="778" y="164">[</text><text class="sub" x="778" y="182">SCALE −</text></g>
+<g><rect class="key setting" x="814" y="146" width="58" height="48" rx="7"/><text class="label" x="843" y="164">]</text><text class="sub" x="843" y="182">SCALE +</text></g>
+<g><rect class="key base" x="879" y="146" width="58" height="48" rx="7"/><text class="idle" x="908" y="176">\</text></g>
+<g><rect class="key combo" x="34" y="204" width="58" height="48" rx="7"/><text class="label" x="63" y="222">FN</text><text class="sub" x="63" y="240">MOD</text></g>
+<g><rect class="key base" x="99" y="204" width="58" height="48" rx="7"/><text class="idle" x="128" y="234">A</text></g>
+<g><rect class="key base" x="164" y="204" width="58" height="48" rx="7"/><text class="idle" x="193" y="234">S</text></g>
+<g><rect class="key base" x="229" y="204" width="58" height="48" rx="7"/><text class="idle" x="258" y="234">D</text></g>
+<g><rect class="key base" x="294" y="204" width="58" height="48" rx="7"/><text class="idle" x="323" y="234">F</text></g>
+<g><rect class="key base" x="359" y="204" width="58" height="48" rx="7"/><text class="idle" x="388" y="234">G</text></g>
+<g><rect class="key base" x="424" y="204" width="58" height="48" rx="7"/><text class="idle" x="453" y="234">H</text></g>
+<g><rect class="key base" x="489" y="204" width="58" height="48" rx="7"/><text class="idle" x="518" y="234">J</text></g>
+<g><rect class="key legacy" x="554" y="204" width="58" height="48" rx="7"/><text class="label" x="583" y="222">K</text><text class="sub" x="583" y="240">BPM −</text></g>
+<g><rect class="key legacy" x="619" y="204" width="58" height="48" rx="7"/><text class="label" x="648" y="222">L</text><text class="sub" x="648" y="240">BPM +</text></g>
+<g><rect class="key base" x="684" y="204" width="58" height="48" rx="7"/><text class="idle" x="713" y="234">;</text></g>
+<g><rect class="key base" x="749" y="204" width="58" height="48" rx="7"/><text class="idle" x="778" y="234">'</text></g>
+<g><rect class="key base" x="814" y="204" width="58" height="48" rx="7"/><text class="idle" x="843" y="234">OK</text></g>
+<g><rect class="key base" x="34" y="262" width="58" height="48" rx="7"/><text class="idle" x="63" y="292">CTRL</text></g>
+<g><rect class="key base" x="99" y="262" width="58" height="48" rx="7"/><text class="idle" x="128" y="292">OPT</text></g>
+<g><rect class="key base" x="164" y="262" width="58" height="48" rx="7"/><text class="idle" x="193" y="292">ALT</text></g>
+<g><rect class="key base" x="229" y="262" width="58" height="48" rx="7"/><text class="idle" x="258" y="292">Z</text></g>
+<g><rect class="key panic" x="294" y="262" width="58" height="48" rx="7"/><text class="label" x="323" y="280">X</text><text class="sub" x="323" y="298">PANIC</text></g>
+<g><rect class="key base" x="359" y="262" width="58" height="48" rx="7"/><text class="idle" x="388" y="292">C</text></g>
+<g><rect class="key base" x="424" y="262" width="58" height="48" rx="7"/><text class="idle" x="453" y="292">V</text></g>
+<g><rect class="key base" x="489" y="262" width="58" height="48" rx="7"/><text class="idle" x="518" y="292">B</text></g>
+<g><rect class="key setting" x="554" y="262" width="58" height="48" rx="7"/><text class="label" x="583" y="280">N</text><text class="sub" x="583" y="298">NOTE</text></g>
+<g><rect class="key base" x="619" y="262" width="58" height="48" rx="7"/><text class="idle" x="648" y="292">M</text></g>
+<g><rect class="key base" x="684" y="262" width="58" height="48" rx="7"/><text class="idle" x="713" y="292">,</text></g>
+<g><rect class="key base" x="749" y="262" width="58" height="48" rx="7"/><text class="idle" x="778" y="292">.</text></g>
+<g><rect class="key base" x="814" y="262" width="58" height="48" rx="7"/><text class="idle" x="843" y="292">/</text></g>
+<g><rect class="key transport" x="879" y="262" width="126" height="48" rx="7"/><text class="label" x="942" y="280">SPACE</text><text class="sub" x="942" y="298">PLAY / STOP</text></g>
+<line x1="34" x2="1076" y1="350" y2="350" stroke="#2d3948"/>
+<text x="34" y="379" fill="#f4f7fb" font-size="15" font-weight="700">Legend</text>
+<rect x="34" y="391" width="22" height="22" rx="5" class="legacy"/><text x="66" y="407" fill="#f4f7fb" font-size="13">Legacy performance command</text>
+<rect x="379" y="391" width="22" height="22" rx="5" class="workflow"/><text x="411" y="407" fill="#f4f7fb" font-size="13">Workflow shortcut</text>
+<rect x="724" y="391" width="22" height="22" rx="5" class="setting"/><text x="756" y="407" fill="#f4f7fb" font-size="13">Performance setting / NOTE toggle</text>
+<rect x="34" y="429" width="22" height="22" rx="5" class="combo"/><text x="66" y="445" fill="#f4f7fb" font-size="13">Fn + Tab workflow cycle</text>
+<rect x="379" y="429" width="22" height="22" rx="5" class="panic"/><text x="411" y="445" fill="#f4f7fb" font-size="13">Live Synth A panic</text>
+<rect x="724" y="429" width="22" height="22" rx="5" class="transport"/><text x="756" y="445" fill="#f4f7fb" font-size="13">Transport play / stop</text>
+<rect x="34" y="472" width="1042" height="92" rx="10" fill="#101720" stroke="#2d3948"/>
+<text class="body" x="52" y="497">NOTE mode OFF: note rows are no longer reserved by the performance keyboard.</text>
+<text class="body" x="52" y="521">Confirmed legacy commands: I randomizes Synth A, O Synth B, P drums, K/L adjust BPM.</text>
+<text class="body" x="52" y="545">Press N to return to NOTE mode before playing. Page-local commands still have priority.</text>
+</svg>
