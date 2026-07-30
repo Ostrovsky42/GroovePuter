@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_USB_MIDI_TRANSPORT_H
+#define GROOVEPUTER_USB_MIDI_TRANSPORT_H
 
 #include <cstdint>
 
@@ -19,3 +21,5 @@ public:
                              uint8_t velocity) = 0;
     virtual void flush() = 0;
 };
+
+#endif  // GROOVEPUTER_USB_MIDI_TRANSPORT_H
