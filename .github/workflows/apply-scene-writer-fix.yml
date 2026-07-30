@@ -1,0 +1,146 @@
+name: Apply guarded scene writer fix
+
+on:
+  push:
+    branches:
+      - agent/fix-core-reliability
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-core-reliability
+          fetch-depth: 0
+      - name: Patch streaming scene writer
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('scenes.h')
+          text = path.read_text(encoding='utf-8')
+
+          start = text.index('  auto writeString = [&](const std::string& value) -> bool {')
+          end = text.index('  auto writeDrumPattern =', start)
+          replacement = r'''  auto writeString = [&](const std::string& value) -> bool {
+            if (!writeChar('"')) return false;
+            for (char ch : value) {
+              const unsigned char byte = static_cast<unsigned char>(ch);
+              switch (ch) {
+                case '"': if (!writeLiteral("\\\"")) return false; break;
+                case '\\': if (!writeLiteral("\\\\")) return false; break;
+                case '\b': if (!writeLiteral("\\b")) return false; break;
+                case '\f': if (!writeLiteral("\\f")) return false; break;
+                case '\n': if (!writeLiteral("\\n")) return false; break;
+                case '\r': if (!writeLiteral("\\r")) return false; break;
+                case '\t': if (!writeLiteral("\\t")) return false; break;
+                default:
+                  if (byte < 0x20) {
+                    char escaped[7];
+                    int written = std::snprintf(escaped, sizeof(escaped), "\\u%04x", byte);
+                    if (written != 6 || !writeChunk(escaped, 6)) return false;
+                  } else if (!writeChar(ch)) {
+                    return false;
+                  }
+                  break;
+              }
+            }
+            return writeChar('"');
+          };
+'''
+          text = text[:start] + replacement + text[end:]
+
+          marker = '    // New FX arrays (only write if needed to save space? strict JSON usually requires consistency, but we can make them optional in parser)\n'
+          if text.count(marker) != 1:
+              raise SystemExit(f'drum writer marker count={text.count(marker)}')
+          dynamics = '''    if (!writeLiteral("],\\"vel\\":[")) return false;
+            for (int i = 0; i < DrumPattern::kSteps; ++i) {
+              if (i > 0 && !writeChar(',')) return false;
+              if (!writeInt(pattern.steps[i].velocity)) return false;
+            }
+            if (!writeLiteral("],\\"tim\\":[")) return false;
+            for (int i = 0; i < DrumPattern::kSteps; ++i) {
+              if (i > 0 && !writeChar(',')) return false;
+              if (!writeInt(pattern.steps[i].timing)) return false;
+            }
+            // FX arrays remain explicit so both scene serializers agree.\n'''
+          text = text.replace(marker, dynamics, 1)
+
+          old = '''      if (!writeLiteral(",\\"accent\\":")) return false;
+                if (!writeBool(pattern.steps[i].accent)) return false;
+                if (!writeLiteral(",\\"fx\\":")) return false;
+          '''
+          new = '''      if (!writeLiteral(",\\"accent\\":")) return false;
+                if (!writeBool(pattern.steps[i].accent)) return false;
+                if (!writeLiteral(",\\"ghost\\":")) return false;
+                if (!writeBool(pattern.steps[i].ghost)) return false;
+                if (!writeLiteral(",\\"vel\\":")) return false;
+                if (!writeInt(pattern.steps[i].velocity)) return false;
+                if (!writeLiteral(",\\"tim\\":")) return false;
+                if (!writeInt(pattern.steps[i].timing)) return false;
+                if (!writeLiteral(",\\"fx\\":")) return false;
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(f'synth writer block count={text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          old = '''  if (!writeInt(scene_->feel.patternBars)) return false;
+            if (!writeLiteral(",\\"lofi\\":")) return false;
+          '''
+          new = '''  if (!writeInt(scene_->feel.patternBars)) return false;
+            if (!writeLiteral(",\\"swing\\":")) return false;
+            if (!writeInt(scene_->feel.swingPct)) return false;
+            if (!writeLiteral(",\\"mask\\":")) return false;
+            if (!writeInt(scene_->feel.swingMask)) return false;
+            if (!writeLiteral(",\\"lofi\\":")) return false;
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(f'feel writer block count={text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          marker = '  if (!writeLiteral(",\\"trackVolumes\\":[")) return false;\n'
+          if text.count(marker) != 1:
+              raise SystemExit(f'track volume marker count={text.count(marker)}')
+          generator = '''  if (!writeLiteral(",\\"generatorParams\\":{\\"minNotes\\":")) return false;
+            if (!writeInt(scene_->generatorParams.minNotes)) return false;
+            if (!writeLiteral(",\\"maxNotes\\":")) return false;
+            if (!writeInt(scene_->generatorParams.maxNotes)) return false;
+            if (!writeLiteral(",\\"minOctave\\":")) return false;
+            if (!writeInt(scene_->generatorParams.minOctave)) return false;
+            if (!writeLiteral(",\\"maxOctave\\":")) return false;
+            if (!writeInt(scene_->generatorParams.maxOctave)) return false;
+            if (!writeLiteral(",\\"swingAmount\\":")) return false;
+            if (!writeFloat(scene_->generatorParams.swingAmount)) return false;
+            if (!writeLiteral(",\\"velocityRange\\":")) return false;
+            if (!writeFloat(scene_->generatorParams.velocityRange)) return false;
+            if (!writeLiteral(",\\"ghostNoteProbability\\":")) return false;
+            if (!writeFloat(scene_->generatorParams.ghostNoteProbability)) return false;
+            if (!writeLiteral(",\\"microTimingAmount\\":")) return false;
+            if (!writeFloat(scene_->generatorParams.microTimingAmount)) return false;
+            if (!writeLiteral(",\\"preferDownbeats\\":")) return false;
+            if (!writeBool(scene_->generatorParams.preferDownbeats)) return false;
+            if (!writeLiteral(",\\"scaleQuantize\\":")) return false;
+            if (!writeBool(scene_->generatorParams.scaleQuantize)) return false;
+            if (!writeLiteral(",\\"scaleRoot\\":")) return false;
+            if (!writeInt(scene_->generatorParams.scaleRoot)) return false;
+            if (!writeLiteral(",\\"scale\\":")) return false;
+            if (!writeInt(static_cast<int>(scene_->generatorParams.scale))) return false;
+            if (!writeChar('}')) return false;
+
+          ''' + marker
+          text = text.replace(marker, generator, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Commit scene writer fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scenes.h
+          git commit -m "fix: preserve groove dynamics in scene writer"
+          git push origin HEAD:agent/fix-core-reliability
