@@ -72,7 +72,7 @@ void audioTask(void *param) {
     g_audioMutationGate.waitAtAudioBoundary();
     uint32_t now = micros();
     uint32_t start = now;
-    static uint32_t warmupBlocks = 32; // ~90ms at 44.1kHz/128 for hardware stability
+    static uint32_t warmupBlocks = 32; // ~743ms at 22.05kHz/512 for codec/DMA stability
 
     if (warmupBlocks > 0) {
       std::fill(g_audioBuffer, g_audioBuffer + kBlockFrames, 0);
@@ -86,25 +86,36 @@ void audioTask(void *param) {
     
     uint32_t dsp_time = micros() - start;
     
-    // Update performance stats
+    // Publish one coherent cross-core telemetry snapshot.
     if (g_miniAcid) {
-        auto& stats = g_miniAcid->perfStats;
-        constexpr uint32_t ideal_period_us = (1000000UL * kBlockFrames) / kSampleRate;
-        uint32_t actual_period_us = (stats.lastCallbackMicros > 0) ? (now - stats.lastCallbackMicros) : ideal_period_us;
-        
-        static int heartbeat = 0;
-        if (heartbeat++ % 1000 == 0) {
-            // Serial.printf("[AUDIO] pulse... seq=%u dsp=%uus acid=%p\n", 
-            //               (unsigned)stats.seq, (unsigned)dsp_time, (void*)g_miniAcid);
-        }
+      auto& stats = g_miniAcid->perfStats;
+      constexpr uint32_t idealPeriodUs =
+          (1000000UL * kBlockFrames) / kSampleRate;
+      const uint32_t previousCallback =
+          stats.lastCallbackMicros.load(std::memory_order_relaxed);
+      uint32_t actualPeriodUs = previousCallback > 0
+          ? now - previousCallback
+          : idealPeriodUs;
+      if (actualPeriodUs == 0) actualPeriodUs = idealPeriodUs;
 
-        stats.seq++;
-        float currentPct = (float)dsp_time * 100.0f / (float)ideal_period_us;
-        stats.cpuAudioPctIdeal = currentPct;
-        stats.cpuAudioPctActual = (float)dsp_time * 100.0f / (float)actual_period_us;
-        stats.dspTimeUs = dsp_time;
-        stats.lastCallbackMicros = now;
-        stats.seq++;
+      const float idealCpu =
+          static_cast<float>(dsp_time) * 100.0f /
+          static_cast<float>(idealPeriodUs);
+      const float actualCpu =
+          static_cast<float>(dsp_time) * 100.0f /
+          static_cast<float>(actualPeriodUs);
+
+      stats.beginWrite();
+      stats.cpuAudioPctIdeal.store(idealCpu, std::memory_order_relaxed);
+      stats.cpuAudioPctActual.store(actualCpu, std::memory_order_relaxed);
+      stats.dspTimeUs.store(dsp_time, std::memory_order_relaxed);
+      stats.lastCallbackMicros.store(now, std::memory_order_relaxed);
+      const float previousPeak =
+          stats.cpuAudioPeakPct.load(std::memory_order_relaxed);
+      if (idealCpu > previousPeak) {
+        stats.cpuAudioPeakPct.store(idealCpu, std::memory_order_relaxed);
+      }
+      stats.endWrite();
     }
 
     if (g_audioRecorder) {
@@ -115,14 +126,19 @@ void audioTask(void *param) {
       AudioDiagnostics::instance().flushIfReady(millis());
     }
 
-    // Write to I2S
+    // Write to I2S. Failed writes are real output underruns and must be
+    // visible to diagnostics and the adaptive FX safety path.
     if (!g_audioOut.writeMono16(g_audioBuffer, kBlockFrames)) {
+      if (g_miniAcid) {
+        g_miniAcid->perfStats.audioUnderruns.fetch_add(
+            1, std::memory_order_relaxed);
+      }
       static uint32_t lastErrorLog = 0;
       if (millis() - lastErrorLog > 1000) {
         Serial.println("[I2S] Write Timeout / Error");
         lastErrorLog = millis();
       }
-      vTaskDelay(pdMS_TO_TICKS(10));
+      taskYIELD();
     }
   }
 }
@@ -177,7 +193,7 @@ void setup() {
   
   // 3. Re-initialize ES8311 registers specifically for custom I2S
   // This matches M5Unified CardputerADV init sequence for ES8311 exactly
-  const uint8_t es8311_addr = 0x18;
+  const uint8_t es8311_addr = GroovePuterHardware::kEs8311I2cAddress;
   M5Cardputer.In_I2C.writeRegister8(es8311_addr, 0x00, 0x80, 100000); // RESET / CSM POWER ON
   M5Cardputer.In_I2C.writeRegister8(es8311_addr, 0x01, 0xB5, 100000); // CLOCK_MANAGER: MCLK=BCLK
   M5Cardputer.In_I2C.writeRegister8(es8311_addr, 0x02, 0x18, 100000); // CLOCK_MANAGER/ MULT_PRE=3

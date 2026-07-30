@@ -262,6 +262,14 @@ bool PatternPagingService::loadPage(int pageIndex, Scene& scene) {
     return true;
 }
 
+void PatternPagingService::initializeEmptyPage(Scene& scene) {
+    for (int bank = 0; bank < kBankCount; ++bank) {
+        scene.synthABanks[bank] = Bank<SynthPattern>{};
+        scene.synthBBanks[bank] = Bank<SynthPattern>{};
+        scene.drumBanks[bank] = Bank<DrumPatternSet>{};
+    }
+}
+
 bool PatternPagingService::pageExists(int pageIndex) {
     if (!validPageIndex(pageIndex)) return false;
     return SD.exists(pagePath(pageIndex).c_str()) ||

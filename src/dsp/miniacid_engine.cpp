@@ -2437,9 +2437,8 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
 
 bool MiniAcid::saveSceneAs(const std::string& name) {
   if (!sceneStorage_) return false;
-  sceneStorage_->setCurrentSceneName(name);
-  saveSceneToStorage();
-  return true;
+  if (!sceneStorage_->setCurrentSceneName(name)) return false;
+  return saveSceneToStorage();
 }
 
 bool MiniAcid::createNewSceneWithName(const std::string& name) {
@@ -2461,10 +2460,10 @@ void MiniAcid::loadSceneFromStorage() {
   sceneManager_.loadDefaultScene();
 }
 
-void MiniAcid::saveSceneToStorage() {
-  if (!sceneStorage_) return;
+bool MiniAcid::saveSceneToStorage() {
+  if (!sceneStorage_) return false;
   syncSceneStateToManager();
-  sceneStorage_->writeScene(sceneManager_);
+  return sceneStorage_->writeScene(sceneManager_);
 }
 
 void MiniAcid::applySceneStateFromManager() {

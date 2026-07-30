@@ -519,7 +519,7 @@ private:
   bool voiceTrackMuted_ = false;
 
   void loadSceneFromStorage();
-  void saveSceneToStorage();
+  bool saveSceneToStorage();
   void applySceneStateFromManager();
   void syncSceneStateToManager();
 

@@ -660,33 +660,80 @@ void MiniAcidDisplay::updateCyclePulse_() {
 }
 
 void MiniAcidDisplay::handlePaging_() {
-    if (mini_acid_.isPageLoading()) {
-        int target = mini_acid_.targetPageIndex();
-        if (target >= 0) {
-            // Serial.printf("[Page] Loading target %d\n", target);
-            char buf[32];
-            snprintf(buf, sizeof(buf), "Switching to Page %d...", target + 1);
-            showToast(buf, 800);
-            
-            withAudioGuard([&]() {
-#if defined(ESP32) || defined(ESP_PLATFORM)
-                // AUTO-SAVE: Save current page before swapping data
-                PatternPagingService::savePage(mini_acid_.currentPageIndex(), mini_acid_.sceneManager().currentScene());
+    if (!mini_acid_.isPageLoading()) return;
 
-                if (PatternPagingService::loadPage(target, mini_acid_.sceneManager().currentScene())) {
-                    mini_acid_.setCurrentPage(target);
-                } else {
-                    // loadPage memsets to zero if missing
-                    mini_acid_.setCurrentPage(target);
-                }
-#else
+    const int target = mini_acid_.targetPageIndex();
+    if (target < 0 || target >= kMaxPages) {
+        mini_acid_.setTargetPage(-1);
+        mini_acid_.setPageLoading(false);
+        showToast("Invalid pattern page", 1500);
+        return;
+    }
+
+    enum class PageSwitchResult {
+        Switched,
+        Created,
+        SaveCurrentFailed,
+        LoadTargetFailed,
+        CreateTargetFailed,
+        RollbackFailed,
+    };
+
+    PageSwitchResult result = PageSwitchResult::LoadTargetFailed;
+    const int current = mini_acid_.currentPageIndex();
+
+    withAudioGuard([&]() {
+#if defined(ESP32) || defined(ESP_PLATFORM)
+        Scene& scene = mini_acid_.sceneManager().currentScene();
+        if (!PatternPagingService::savePage(current, scene)) {
+            result = PageSwitchResult::SaveCurrentFailed;
+        } else if (PatternPagingService::pageExists(target)) {
+            if (PatternPagingService::loadPage(target, scene)) {
                 mini_acid_.setCurrentPage(target);
-#endif
-                mini_acid_.setTargetPage(-1);
-                mini_acid_.setPageLoading(false);
-            });
+                result = PageSwitchResult::Switched;
+            } else {
+                result = PageSwitchResult::LoadTargetFailed;
+            }
         } else {
-            mini_acid_.setPageLoading(false);
+            PatternPagingService::initializeEmptyPage(scene);
+            if (PatternPagingService::savePage(target, scene)) {
+                mini_acid_.setCurrentPage(target);
+                result = PageSwitchResult::Created;
+            } else if (PatternPagingService::loadPage(current, scene)) {
+                result = PageSwitchResult::CreateTargetFailed;
+            } else {
+                result = PageSwitchResult::RollbackFailed;
+            }
         }
+#else
+        mini_acid_.setCurrentPage(target);
+        result = PageSwitchResult::Switched;
+#endif
+        mini_acid_.setTargetPage(-1);
+        mini_acid_.setPageLoading(false);
+    });
+
+    char message[32];
+    switch (result) {
+        case PageSwitchResult::Switched:
+            std::snprintf(message, sizeof(message), "Pattern Page %d", target + 1);
+            showToast(message, 900);
+            break;
+        case PageSwitchResult::Created:
+            std::snprintf(message, sizeof(message), "New Pattern Page %d", target + 1);
+            showToast(message, 1200);
+            break;
+        case PageSwitchResult::SaveCurrentFailed:
+            showToast("Page save failed", 1800);
+            break;
+        case PageSwitchResult::LoadTargetFailed:
+            showToast("Page corrupt/unreadable", 1800);
+            break;
+        case PageSwitchResult::CreateTargetFailed:
+            showToast("New page save failed", 1800);
+            break;
+        case PageSwitchResult::RollbackFailed:
+            showToast("PAGE ROLLBACK FAILED", 2500);
+            break;
     }
 }
