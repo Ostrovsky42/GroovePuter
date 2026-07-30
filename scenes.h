@@ -439,6 +439,8 @@ private:
     DrumFxArray,
     DrumFxParamArray,
     DrumProbabilityArray,
+    DrumVelocityArray,
+    DrumTimingArray,
     SynthABanks,
     SynthABank,
     SynthBBanks,
