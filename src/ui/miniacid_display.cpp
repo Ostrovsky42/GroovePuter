@@ -19,6 +19,8 @@
 #include "pages/song_page.h"
 #include "pages/help_dialog.h"
 #include "pages/sampler_page.h"
+#include "pages/perform_page.h"
+#include "workflow_mode.h"
 #include "ui_colors.h"
 #include "ui_input.h"
 #include "ui_common.h"
@@ -53,8 +55,12 @@ const char* visualStyleName(VisualStyle style) {
 }
 } // namespace
 
-MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid)
-    : gfx_(gfx), mini_acid_(mini_acid) {
+MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx,
+                                 MiniAcid& mini_acid,
+                                 PerformanceKeyboard& performance_keyboard)
+    : gfx_(gfx),
+      mini_acid_(mini_acid),
+      performance_keyboard_(performance_keyboard) {
     
     LOG_FUNC_ENTRY("UI");
     LOG_INFO_UI("Initializing MiniAcidDisplay...");
@@ -69,8 +75,9 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid)
     // Pages will be created on-demand via getPage()
     pages_.resize(kPageCount);  // All nullptr initially
     
-    // Only create the first page (PlayPage) to start with
-    pages_[0] = createPage_(0);
+    // PERFORM is the startup context; legacy page indices remain stable.
+    pages_[page_index_] = createPage_(page_index_);
+    mini_acid_.setCurrentPage(static_cast<int8_t>(page_index_));
     
     applyPageBounds_();
     applied_visual_style_ = UI::currentStyle;
@@ -102,6 +109,7 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case 9:  page = std::make_unique<SettingsPage>(gfx_, mini_acid_, audio_guard_); break;
         case 10: page = std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_); break;
         case 11: page = std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_); break;
+        case 12: page = std::make_unique<PerformPage>(gfx_, mini_acid_, performance_keyboard_); break;
     }
 #if defined(ESP32) || defined(ESP_PLATFORM)
     uint32_t freeAfter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -267,6 +275,7 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
 
     previous_page_index_ = page_index_;
     page_index_ = index;
+    mini_acid_.setCurrentPage(static_cast<int8_t>(page_index_));
 
     IPage* newPage = getPage_(index);
     if (newPage) {
@@ -294,6 +303,16 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 
     // 0) Hard-global shortcuts: handled before page logic so they work everywhere.
     if (event.event_type == GROOVEPUTER_KEY_DOWN) {
+        // Fn+Tab cycles the three product-level workflow contexts without
+        // changing the existing detailed page carousel.
+        if (event.meta && (event.key == '\t' || event.scancode == GROOVEPUTER_TAB)) {
+            const WorkflowMode current = WorkflowPages::modeForPage(page_index_);
+            const int direction = event.shift ? -1 : 1;
+            goToPage(WorkflowPages::pageForMode(
+                WorkflowPages::nextMode(current, direction)));
+            return true;
+        }
+
         if (event.alt && (event.key == 'h' || event.key == 'H')) {
             global_help_overlay_.toggle();
             return true;
@@ -332,10 +351,12 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 
         // Global transport toggle: always available, independent from page handlers.
         if (event.key == ' ') {
+            if (!mini_acid_.isPlaying()) performance_keyboard_.setTransportPlaying(true);
             withAudioGuard([&]() {
                 if (mini_acid_.isPlaying()) mini_acid_.stop();
                 else mini_acid_.start();
             });
+            performance_keyboard_.setTransportPlaying(mini_acid_.isPlaying());
             showToast(mini_acid_.isPlaying() ? "Play" : "Stop", 500);
             return true;
         }
@@ -363,6 +384,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
 
         if (event.ctrl && event.alt && (event.key == '\b' || event.key == 0x7F)) {
+            performance_keyboard_.panic();
             withAudioGuard([&]() {
                 mini_acid_.sceneManager().loadDefaultScene();
                 mini_acid_.reset();

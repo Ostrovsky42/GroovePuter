@@ -355,6 +355,9 @@ void MiniAcid::reset() {
   LOG_PRINTLN("    - MiniAcid::reset: Start");
   if (synthVoices_[0]) synthVoices_[0]->reset();
   if (synthVoices_[1]) synthVoices_[1]->reset();
+  liveNotes_[0] = -1;
+  liveNotes_[1] = -1;
+  ++liveInputEpoch_;
   LOG_PRINTLN("    - MiniAcid::reset: voices reset");
   
   // Make the second voice have different params (intentional base offset)
@@ -456,6 +459,8 @@ void MiniAcid::reset() {
 
 void MiniAcid::start() {
   LOG_PRINTLN("[DSP] START command received");
+  // PatternPlayer takes exclusive ownership of the monophonic voices.
+  allLiveNotesOff();
   playing = true;
   currentStepIndex = -1;
   // Force immediate first step trigger.
@@ -485,10 +490,46 @@ void MiniAcid::stop() {
   for (int i = 0; i < NUM_DRUM_VOICES; ++i) retrigDrums_[i] = {};
   if (synthVoices_[0]) synthVoices_[0]->release();
   if (synthVoices_[1]) synthVoices_[1]->release();
+  liveNotes_[0] = -1;
+  liveNotes_[1] = -1;
   drums->reset();
   if (songMode_) {
     sceneManager_.setSongPosition(clampSongPosition(songPlayheadPosition_));
   }
+}
+
+void MiniAcid::liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity) {
+  if (playing) return;
+  const int idx = clamp303Voice(synthIndex);
+  const int note = clamp303Note(static_cast<int>(midiNote));
+  if (!synthVoices_[idx]) return;
+  if (velocity < 1) velocity = 1;
+  if (velocity > 127) velocity = 127;
+
+  synthVoices_[idx]->startNote(noteToFreq(note), false, false, velocity);
+  liveNotes_[idx] = static_cast<int16_t>(note);
+  if (idx == 0) gateCountdownA_ = 0;
+  else gateCountdownB_ = 0;
+}
+
+void MiniAcid::liveNoteOff(int synthIndex, uint8_t midiNote) {
+  const int idx = clamp303Voice(synthIndex);
+  if (liveNotes_[idx] != static_cast<int16_t>(midiNote)) return;
+  if (synthVoices_[idx]) synthVoices_[idx]->release();
+  liveNotes_[idx] = -1;
+}
+
+void MiniAcid::allLiveNotesOff() {
+  for (int idx = 0; idx < NUM_303_VOICES; ++idx) {
+    if (synthVoices_[idx]) synthVoices_[idx]->release();
+    liveNotes_[idx] = -1;
+  }
+  gateCountdownA_ = 0;
+  gateCountdownB_ = 0;
+}
+
+int MiniAcid::liveNote(int synthIndex) const {
+  return liveNotes_[clamp303Voice(synthIndex)];
 }
 
 void MiniAcid::setBpm(float bpm) {
@@ -925,6 +966,10 @@ void MiniAcid::setSynthEngine(int voiceIndex, const std::string& engineName) {
   if (synthEngineNames_[idx] == targetName) {
     return;
   }
+
+  if (synthVoices_[idx]) synthVoices_[idx]->release();
+  liveNotes_[idx] = -1;
+  ++liveInputEpoch_;
 
   if (!playing) {
     SynthVoiceState blankState;

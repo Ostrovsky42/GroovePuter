@@ -20,6 +20,9 @@
 #include "src/audio/audio_mutation_gate.h"
 #include "src/platform/cardputer_adv_hardware.h"
 #include "src/ui/key_normalize.h"
+#include "src/input/performance_keyboard.h"
+#include "src/input/internal_synth_output.h"
+#include "src/ui/workflow_mode.h"
 #include <new>
 
 static constexpr IGfxColor CP_BLACK = IGfxColor::Black();
@@ -42,6 +45,10 @@ static uint32_t g_peakUiDrawUs = 0;
 
 // Static engine instance to avoid heap fragmentation
 static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);
+static MusicalEventRouter g_musicalEventRouter;
+static PerformanceKeyboard g_performanceKeyboard(g_musicalEventRouter);
+static InternalSynthOutput g_internalSynthOutput(g_miniAcidInstance, g_audioMutationGate);
+static uint32_t g_lastLiveInputEpoch = 0;
 MiniAcid* volatile g_miniAcid = nullptr;
 Encoder8Miniacid* g_encoder8 = nullptr;
 
@@ -279,6 +286,8 @@ void setup() {
   g_miniAcid->sampleStore = &g_sampleStore;
   markBootStage(50, "before MiniAcid::init");
   g_miniAcid->init();
+  g_musicalEventRouter.addSink(g_internalSynthOutput);
+  g_lastLiveInputEpoch = g_miniAcid->liveInputEpoch();
   markBootStage(51, "after MiniAcid::init");
   
   // Scan samples from SD card (SD initialized by engine->init->sceneStorage)
@@ -302,7 +311,8 @@ void setup() {
   
   Serial.println("7a. UI Instance Created");
   markBootStage(70, "before MiniAcidDisplay alloc");
-  g_miniDisplay = new (std::nothrow) MiniAcidDisplay(g_display, *g_miniAcid);
+  g_miniDisplay = new (std::nothrow) MiniAcidDisplay(
+      g_display, *g_miniAcid, g_performanceKeyboard);
   if (!g_miniDisplay) {
     Serial.println("[FATAL] MiniAcidDisplay allocation failed");
     markBootStage(901, "fatal-display-alloc");
@@ -370,6 +380,17 @@ void loop() {
   M5Cardputer.update();
   LedManager::instance().update();
 
+  if (g_miniAcid && g_miniDisplay) {
+    g_performanceKeyboard.setEnabled(
+        WorkflowPages::allowsPerformanceKeyboard(g_miniDisplay->currentPageIndex()));
+    g_performanceKeyboard.setTransportPlaying(g_miniAcid->isPlaying());
+    const uint32_t epoch = g_miniAcid->liveInputEpoch();
+    if (epoch != g_lastLiveInputEpoch) {
+      g_performanceKeyboard.panic();
+      g_lastLiveInputEpoch = epoch;
+    }
+  }
+
   if (g_encoder8) g_encoder8->update();
 
   if (M5Cardputer.BtnA.wasClicked()) {
@@ -378,9 +399,11 @@ void loop() {
       if (g_miniAcid->isPlaying()) {
         g_miniAcid->stop();
       } else {
+        g_performanceKeyboard.setTransportPlaying(true);
         g_miniAcid->start();
       }
     }
+    g_performanceKeyboard.setTransportPlaying(g_miniAcid->isPlaying());
     drawUI();
   }
 
@@ -400,7 +423,17 @@ void loop() {
       AudioMutationScope mutationScope(g_audioMutationGate);
       handled = g_miniDisplay ? g_miniDisplay->handleEvent(evt) : false;
     }
+    g_performanceKeyboard.setTransportPlaying(g_miniAcid->isPlaying());
     if (handled) {
+      drawUI();
+      return;
+    }
+
+    // Page commands have priority. Only unhandled plain keys become notes.
+    if (!evt.alt && !evt.ctrl && !evt.shift && !evt.meta &&
+        g_miniDisplay &&
+        WorkflowPages::allowsPerformanceKeyboard(g_miniDisplay->currentPageIndex()) &&
+        g_performanceKeyboard.keyDown(evt.key)) {
       drawUI();
       return;
     }
@@ -517,6 +550,23 @@ void loop() {
     return static_cast<KeyScanCode>(GROOVEPUTER_A + (c - 'a'));
   };
 
+  auto reconcilePerformanceKeys = [&](const Keyboard_Class::KeysState& ks) {
+    char pressed[PerformanceKeyboard::kMaxHeldNotes]{};
+    size_t count = 0;
+    if (!ks.alt && !ks.ctrl && !ks.shift && !ks.fn) {
+      for (auto hid : ks.hid_keys) {
+        if (hid < 0x04 || hid > 0x1D) continue;
+        const char key = static_cast<char>('a' + (hid - 0x04));
+        uint8_t degree = 0;
+        if (PerformanceKeyboard::scaleDegreeForKey(key, degree) &&
+            count < PerformanceKeyboard::kMaxHeldNotes) {
+          pressed[count++] = key;
+        }
+      }
+    }
+    g_performanceKeyboard.releaseMissingKeys(pressed, count);
+  };
+
   auto processKeys = [&](const Keyboard_Class::KeysState& ks) {
     for (auto hid : ks.hid_keys) {
       UIEvent evt{};
@@ -618,12 +668,14 @@ void loop() {
   if (keyChanged && keyPressed) {
     if (g_miniDisplay) g_miniDisplay->dismissSplash();
     Keyboard_Class::KeysState ks = M5Cardputer.Keyboard.keysState();
+    reconcilePerformanceKeys(ks);
     processKeys(ks);
     lastKeysState = ks;
     hasLastKeys = true;
     nextRepeatAt = millis() + KEY_REPEAT_DELAY_MS;
     repeatCount = 0;
   } else if (!keyPressed) {
+    g_performanceKeyboard.releaseMissingKeys(nullptr, 0);
     if (hasLastKeys) {
         // Serial.println("[Keys] Released");
     }

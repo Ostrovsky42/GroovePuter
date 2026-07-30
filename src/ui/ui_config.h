@@ -2,5 +2,5 @@
 
 namespace UI {
     // Total number of UI pages
-    static constexpr int kPageCount = 12;
+    static constexpr int kPageCount = 13;
 }

@@ -105,6 +105,15 @@ public:
   void reset();
   void start();
   void stop();
+
+  // Live performance input is deliberately separate from pattern storage.
+  // PatternPlayer owns both synth voices while transport is running.
+  void liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity);
+  void liveNoteOff(int synthIndex, uint8_t midiNote);
+  void allLiveNotesOff();
+  int liveNote(int synthIndex) const;
+  uint32_t liveInputEpoch() const { return liveInputEpoch_; }
+
   void setBpm(float bpm);
   float bpm() const;
   float sampleRate() const;
@@ -430,6 +439,8 @@ private:
   // Gate length countdown (samples until release, 0 = released)
   long gateCountdownA_ = 0;
   long gateCountdownB_ = 0;
+  int16_t liveNotes_[NUM_303_VOICES] = {-1, -1};
+  uint32_t liveInputEpoch_ = 0;
   bool songMode_;
   int drumCycleIndex_;
   int songPlayheadPosition_;
