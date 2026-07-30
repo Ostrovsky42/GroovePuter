@@ -204,6 +204,30 @@ def test_atlas_compiler_matches_manifest_contract() -> None:
             "compiler must be scoped to the reviewed Chicago Jack recipe")
 
 
+
+def test_ui_redraw_does_not_hold_audio_pause() -> None:
+    sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
+    start = sketch.index("auto handleWithFallback")
+    end = sketch.index("auto applyCtrlLetter", start)
+    block = sketch[start:end]
+
+    require("bool needsDraw = false;" in block,
+            "key handling must defer drawing until mutations are complete")
+    require("if (needsDraw) drawUI();" in block,
+            "UI redraw must happen after the mutation scope exits")
+    last_scope_end = block.rfind("    }\n\n    if (needsDraw) drawUI();")
+    require(last_scope_end >= 0,
+            "audio mutation scope must close before the full UI redraw")
+
+
+def test_splash_closes_display_transaction() -> None:
+    display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
+    splash_start = display.index("if (splash_active_)")
+    splash_end = display.index("// Draw background", splash_start)
+    block = display[splash_start:splash_end]
+    require("gfx_.flush();\n            gfx_.endWrite();\n            return;" in block,
+            "splash early return must balance startWrite/endWrite")
+
 def main() -> None:
     test_ppqn_dispatch_is_not_step_gated()
     test_all_substep_offsets_are_reachable()
@@ -216,6 +240,8 @@ def main() -> None:
     test_atlas_recipe_precedes_random_fallback()
     test_genre_page_uses_recipe_mode_and_tempo_order()
     test_atlas_compiler_matches_manifest_contract()
+    test_ui_redraw_does_not_hold_audio_pause()
+    test_splash_closes_display_transaction()
     print("source regressions: OK")
 
 

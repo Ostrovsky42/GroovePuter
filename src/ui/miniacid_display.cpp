@@ -164,6 +164,7 @@ void MiniAcidDisplay::update() {
         if (millis() - splash_start_ms_ > 2000) dismissSplash();
         if (splash_active_) {
             gfx_.flush();
+            gfx_.endWrite();
             return;
         }
     }

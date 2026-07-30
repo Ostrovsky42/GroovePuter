@@ -37,6 +37,8 @@ static int16_t g_audioBuffer[kBlockFrames];
 
 TaskHandle_t g_audioTaskHandle = nullptr;
 static AudioMutationGate g_audioMutationGate;
+static uint32_t g_lastUiDrawUs = 0;
+static uint32_t g_peakUiDrawUs = 0;
 
 // Static engine instance to avoid heap fragmentation
 static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);
@@ -145,7 +147,12 @@ void audioTask(void *param) {
 
 
 void drawUI() {
+  const uint32_t startedAt = micros();
   if (g_miniDisplay) g_miniDisplay->update();
+  g_lastUiDrawUs = micros() - startedAt;
+  if (g_lastUiDrawUs > g_peakUiDrawUs) {
+    g_peakUiDrawUs = g_lastUiDrawUs;
+  }
 }
 
 static void logHeapCaps(const char* tag) {
@@ -384,108 +391,103 @@ void loop() {
   static unsigned long nextRepeatAt = 0;
 
   auto handleWithFallback = [&](UIEvent evt) {
-    AudioMutationScope mutationScope(g_audioMutationGate);
-    Serial.printf("[DIAG] handleWithFallback: key=0x%02X (%c), scancode=%d, app_event=%d\n", 
+    Serial.printf("[DIAG] handleWithFallback: key=0x%02X (%c), scancode=%d, app_event=%d\n",
       (uint8_t)evt.key, evt.key >= 32 && evt.key < 127 ? evt.key : '.', evt.scancode, evt.app_event_type);
     evt.event_type = GROOVEPUTER_KEY_DOWN;
-    bool handled = g_miniDisplay ? g_miniDisplay->handleEvent(evt) : false;
+
+    bool handled = false;
+    {
+      AudioMutationScope mutationScope(g_audioMutationGate);
+      handled = g_miniDisplay ? g_miniDisplay->handleEvent(evt) : false;
+    }
     if (handled) {
       drawUI();
       return;
     }
 
-    char c = evt.key;
-    if (c == '\t' && g_miniDisplay) {
-      UIEvent app_evt{};
-      app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
-      app_evt.app_event_type = GROOVEPUTER_APP_EVENT_MULTIPAGE_DOWN;
-      if (g_miniDisplay->handleEvent(app_evt)) {
-        drawUI();
-        return;
+    bool needsDraw = false;
+    {
+      // Guard only control-plane mutations. Releasing the gate before drawUI()
+      // prevents a full display redraw from intentionally pausing audio output.
+      AudioMutationScope mutationScope(g_audioMutationGate);
+      char c = evt.key;
+      if (c == '\t' && g_miniDisplay) {
+        UIEvent app_evt{};
+        app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
+        app_evt.app_event_type = GROOVEPUTER_APP_EVENT_MULTIPAGE_DOWN;
+        needsDraw = g_miniDisplay->handleEvent(app_evt);
+      } else if (c == '\n' || c == '\r') {
+        if (g_miniDisplay) g_miniDisplay->dismissSplash();
+        needsDraw = true;
+      } else if (c == '[') {
+        if (g_miniDisplay) g_miniDisplay->previousPage();
+        needsDraw = true;
+      } else if (c == ']') {
+        if (g_miniDisplay) g_miniDisplay->nextPage();
+        needsDraw = true;
+      } else if (c == 'i' || c == 'I') {
+        g_miniAcid->randomize303Pattern(0);
+        needsDraw = true;
+      } else if (c == 'o' || c == 'O') {
+        g_miniAcid->randomize303Pattern(1);
+        needsDraw = true;
+      } else if (c == 'p' || c == 'P') {
+        g_miniAcid->randomizeDrumPattern();
+        needsDraw = true;
+      } else if (c == '1') {
+        g_miniAcid->toggleMute303(0);
+        needsDraw = true;
+      } else if (c == '2') {
+        g_miniAcid->toggleMute303(1);
+        needsDraw = true;
+      } else if (c == '3') {
+        g_miniAcid->toggleMuteKick();
+        needsDraw = true;
+      } else if (c == '4') {
+        g_miniAcid->toggleMuteSnare();
+        needsDraw = true;
+      } else if (c == '5') {
+        g_miniAcid->toggleMuteHat();
+        needsDraw = true;
+      } else if (c == '6') {
+        g_miniAcid->toggleMuteOpenHat();
+        needsDraw = true;
+      } else if (c == '7') {
+        g_miniAcid->toggleMuteMidTom();
+        needsDraw = true;
+      } else if (c == '8') {
+        g_miniAcid->toggleMuteHighTom();
+        needsDraw = true;
+      } else if (c == '9') {
+        if (g_miniAcid->currentDrumEngineName() == "SP12") g_miniAcid->toggleMuteClap();
+        else g_miniAcid->toggleMuteRim();
+        needsDraw = true;
+      } else if (c == '0') {
+        if (g_miniAcid->currentDrumEngineName() == "SP12") g_miniAcid->toggleMuteRim();
+        else g_miniAcid->toggleMuteClap();
+        needsDraw = true;
+      } else if (c == 'k' || c == 'K') {
+        g_miniAcid->setBpm(g_miniAcid->bpm() - 2.5f);
+        needsDraw = true;
+      } else if (c == 'l' || c == 'L') {
+        g_miniAcid->setBpm(g_miniAcid->bpm() + 2.5f);
+        needsDraw = true;
+      } else if (c == '-' || c == '_') {
+        g_miniAcid->adjustParameter(MiniAcidParamId::MainVolume, -3);
+        needsDraw = true;
+      } else if (c == '=' || c == '+') {
+        g_miniAcid->adjustParameter(MiniAcidParamId::MainVolume, 3);
+        needsDraw = true;
+      } else if (c == ';' || c == '\'') {
+        needsDraw = true;
+      } else if (c == ' ') {
+        if (g_miniAcid->isPlaying()) g_miniAcid->stop();
+        else g_miniAcid->start();
+        needsDraw = true;
       }
     }
-    if (c == '\n' || c == '\r') {
-      if (g_miniDisplay) g_miniDisplay->dismissSplash();
-      drawUI();
-    } else if (c == '[') {
-      if (g_miniDisplay) g_miniDisplay->previousPage();
-      drawUI();
-    } else if (c == ']') {
-      if (g_miniDisplay) g_miniDisplay->nextPage();
-      drawUI();
-    } else if (c == 'i' || c == 'I') {
-      g_miniAcid->randomize303Pattern(0);
-      drawUI();
-    } else if (c == 'o' || c == 'O') {
-      g_miniAcid->randomize303Pattern(1);
-      drawUI();
-    } else if (c == 'p' || c == 'P') {
-      g_miniAcid->randomizeDrumPattern();
-      drawUI();
-    } else if (c == '1') {
-      g_miniAcid->toggleMute303(0);
-      drawUI();
-    } else if (c == '2') {
-      g_miniAcid->toggleMute303(1);
-      drawUI();
-    } else if (c == '3') {
-      g_miniAcid->toggleMuteKick();
-      drawUI();
-    } else if (c == '4') {
-      g_miniAcid->toggleMuteSnare();
-      drawUI();
-    } else if (c == '5') {
-      g_miniAcid->toggleMuteHat();
-      drawUI();
-    } else if (c == '6') {
-      g_miniAcid->toggleMuteOpenHat();
-      drawUI();
-    } else if (c == '7') {
-      g_miniAcid->toggleMuteMidTom();
-      drawUI();
-    } else if (c == '8') {
-      g_miniAcid->toggleMuteHighTom();
-      drawUI();
-    } else if (c == '9') {
-      if (g_miniAcid->currentDrumEngineName() == "SP12") g_miniAcid->toggleMuteClap();
-      else g_miniAcid->toggleMuteRim();
-      drawUI();
-    } else if (c == '0') {
-      if (g_miniAcid->currentDrumEngineName() == "SP12") g_miniAcid->toggleMuteRim();
-      else g_miniAcid->toggleMuteClap();
-      drawUI();
-    } else if (c == 'k' || c == 'K') {
-      g_miniAcid->setBpm(g_miniAcid->bpm() - 2.5f);
-      drawUI();
-    } else if (c == 'l' || c == 'L') {
-      g_miniAcid->setBpm(g_miniAcid->bpm() + 2.5f);
-      drawUI();
-    } else if (c == '-' || c == '_') {
-      // Volume down (larger step: 3 * 1/64 ≈ 5%)
-      g_miniAcid->adjustParameter(MiniAcidParamId::MainVolume, -3);
-      drawUI();
-    } else if (c == '=' || c == '+') {
-      // Volume up (larger step: 3 * 1/64 ≈ 5%)
-      g_miniAcid->adjustParameter(MiniAcidParamId::MainVolume, 3);
-      drawUI();
 
-    } else if (c == ';') {
-     // g_miniAcid->toggleAudioDiag();
-     // Serial.println("[UI] Toggled Audio Diagnostics");
-      drawUI();
-    } else if (c == '\'') {
-     // bool newState = !g_miniAcid->isTestToneEnabled();
-      //g_miniAcid->setTestTone(newState);
-      //Serial.printf("[UI] Test Tone: %s\n", newState ? "ON" : "OFF");
-      drawUI();
-    } else if (c == ' ') {
-      if (g_miniAcid->isPlaying()) {
-        g_miniAcid->stop();
-      } else {
-        g_miniAcid->start();
-      }
-      drawUI();
-    }
+    if (needsDraw) drawUI();
   };
 
   auto applyCtrlLetter = [](const Keyboard_Class::KeysState& ks, uint8_t hid, UIEvent& evt) -> bool {
@@ -670,10 +672,14 @@ void loop() {
            df = stats.dspFxUs;
            s2 = stats.seq;
        } while (s1 != s2 || (s1 & 1));
-       // Serial.printf("[PERF] CPU: avg %.1f%% / peak %.1f%% (underruns %u)\n",
-       //     cpuAvg, cpuPeak, (unsigned)underruns);
-       // Serial.printf("       DSP: v:%uus d:%uus s:%uus f:%uus\n",
-       //     (unsigned)dv, (unsigned)dd, (unsigned)ds, (unsigned)df);
+       const uint32_t freeInt = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+       const uint32_t largestInt = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+       Serial.printf("[PERF] audio=%.1f%% peak=%.1f%% underruns=%u ui=%uus uiPeak=%uus freeInt=%u largest=%u dsp=%u/%u/%u/%u\n",
+           cpuAvg, cpuPeak, (unsigned)underruns,
+           (unsigned)g_lastUiDrawUs, (unsigned)g_peakUiDrawUs,
+           (unsigned)freeInt, (unsigned)largestInt,
+           (unsigned)dv, (unsigned)dd, (unsigned)ds, (unsigned)df);
+       g_peakUiDrawUs = g_lastUiDrawUs;
     }
   }
 
