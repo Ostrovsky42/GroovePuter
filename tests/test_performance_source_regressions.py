@@ -26,9 +26,10 @@ def test_blocked_note_mode_keys_are_consumed() -> None:
             "layout membership must be decided before transport blocks NoteOn")
     require("return true;" in block[blocked_pos:note_pos],
             "transport-blocked performance keys must remain consumed")
-    for key in "iopkl":
-        require(key in "asdfghjklqwertyuiop",
-                f"legacy collision key {key} must stay in performance layout")
+    require('constexpr char kLowerRow[] = "asdfghjkl";' in keyboard,
+            "lower performance row must retain K/L collision keys")
+    require('constexpr char kUpperRow[] = "qwertyuiop";' in keyboard,
+            "upper performance row must retain I/O/P collision keys")
 
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
     route_pos = display.index("performance_keyboard_.keyDown(event.key)")
