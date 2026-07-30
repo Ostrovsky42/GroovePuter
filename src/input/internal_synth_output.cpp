@@ -7,6 +7,11 @@ int InternalSynthOutput::synthIndex(MusicalEventTarget target) {
 }
 
 void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
+    // PatternPlayer already owns and renders the internal voices inside the
+    // audio task. Its router fan-out is for additive outputs; taking the control
+    // mutation gate here would deadlock the audio producer and double-trigger.
+    if (event.source != MusicalEventSource::PerformanceKeyboard) return;
+
     // The logical channel is intentionally ignored by the internal engine.
     AudioMutationScope mutationScope(mutationGate_);
     const int voice = synthIndex(event.target);

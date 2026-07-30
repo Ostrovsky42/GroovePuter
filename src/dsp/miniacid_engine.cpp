@@ -14,6 +14,7 @@
 #include <string>
 
 #include "../audio/audio_diagnostics.h"
+#include "../input/musical_event_queue.h"
 
 #include "../sampler/sample_index.h"
 #include "../ui/led_manager.h"
@@ -357,6 +358,7 @@ void MiniAcid::reset() {
   if (synthVoices_[1]) synthVoices_[1]->reset();
   liveNotes_[0] = -1;
   liveNotes_[1] = -1;
+  publishPatternAllNotesOff_();
   ++liveInputEpoch_;
   LOG_PRINTLN("    - MiniAcid::reset: voices reset");
   
@@ -461,6 +463,7 @@ void MiniAcid::start() {
   LOG_PRINTLN("[DSP] START command received");
   // PatternPlayer takes exclusive ownership of the monophonic voices.
   allLiveNotesOff();
+  publishPatternAllNotesOff_();
   playing = true;
   currentStepIndex = -1;
   // Force immediate first step trigger.
@@ -479,6 +482,7 @@ void MiniAcid::start() {
 
 void MiniAcid::stop() {
   LOG_PRINTLN("[DSP] STOP command received");
+  publishPatternAllNotesOff_();
   playing = false;
   currentStepIndex = -1;
   tickPhaseAccum_ = 0;
@@ -526,6 +530,72 @@ void MiniAcid::allLiveNotesOff() {
   }
   gateCountdownA_ = 0;
   gateCountdownB_ = 0;
+}
+
+void MiniAcid::setPatternEventQueue(MusicalEventQueue* queue) {
+  patternEventQueue_ = queue;
+  patternMidiNotes_[0] = -1;
+  patternMidiNotes_[1] = -1;
+}
+
+void MiniAcid::publishPatternNoteOn_(int synthIdx,
+                                     uint8_t note,
+                                     uint8_t velocity) {
+  const int idx = clamp303Voice(synthIdx);
+  if (!patternEventQueue_) return;
+  if (velocity < 1) velocity = 1;
+  if (velocity > 127) velocity = 127;
+  const MusicalEventTarget target = idx == 0
+      ? MusicalEventTarget::SynthA
+      : MusicalEventTarget::SynthB;
+  const MusicalEvent event{
+      MusicalEventType::NoteOn,
+      MusicalEventSource::PatternPlayer,
+      target,
+      0,
+      note,
+      velocity,
+  };
+  if (patternEventQueue_->tryPush(event)) {
+    patternMidiNotes_[idx] = static_cast<int16_t>(note);
+  }
+}
+
+void MiniAcid::publishPatternNoteOff_(int synthIdx, uint8_t velocity) {
+  const int idx = clamp303Voice(synthIdx);
+  const int16_t note = patternMidiNotes_[idx];
+  if (note < 0) return;
+  if (patternEventQueue_) {
+    const MusicalEventTarget target = idx == 0
+        ? MusicalEventTarget::SynthA
+        : MusicalEventTarget::SynthB;
+    patternEventQueue_->tryPush(MusicalEvent{
+        MusicalEventType::NoteOff,
+        MusicalEventSource::PatternPlayer,
+        target,
+        0,
+        static_cast<uint8_t>(note),
+        velocity,
+    });
+  }
+  // A failed critical enqueue records a target-scoped panic in the queue.
+  patternMidiNotes_[idx] = -1;
+}
+
+void MiniAcid::publishPatternAllNotesOff_() {
+  for (int idx = 0; idx < NUM_303_VOICES; ++idx) {
+    if (patternEventQueue_) {
+      patternEventQueue_->tryPush(MusicalEvent{
+          MusicalEventType::AllNotesOff,
+          MusicalEventSource::PatternPlayer,
+          idx == 0 ? MusicalEventTarget::SynthA : MusicalEventTarget::SynthB,
+          0,
+          0,
+          0,
+      });
+    }
+    patternMidiNotes_[idx] = -1;
+  }
 }
 
 int MiniAcid::liveNote(int synthIndex) const {
@@ -738,6 +808,7 @@ bool MiniAcid::songModeEnabled() const { return songMode_; }
 
 void MiniAcid::setSongMode(bool enabled) {
   if (enabled == songMode_) return;
+  if (playing) publishPatternAllNotesOff_();
   if (enabled) {
     patternModeDrumPatternIndex_ = sceneManager_.getCurrentDrumPatternIndex();
     patternModeSynthPatternIndex_[0] = sceneManager_.getCurrentSynthPatternIndex(0);
@@ -967,6 +1038,7 @@ void MiniAcid::setSynthEngine(int voiceIndex, const std::string& engineName) {
     return;
   }
 
+  if (playing) publishPatternNoteOff_(idx);
   if (synthVoices_[idx]) synthVoices_[idx]->release();
   liveNotes_[idx] = -1;
   ++liveInputEpoch_;
@@ -1074,6 +1146,7 @@ void MiniAcid::toggleMute303(int voiceIndex) {
     mute303_2 = !mute303_2;
     muted = mute303_2;
   }
+  if (muted) publishPatternNoteOff_(idx);
   LedManager::instance().onMuteChanged(muted, sceneManager_.currentScene().led);
 }
 void MiniAcid::toggleMuteKick() {
@@ -1113,6 +1186,7 @@ void MiniAcid::setMute303(int voiceIndex, bool muted) {
   int idx = clamp303Voice(voiceIndex);
   if (idx == 0) mute303 = muted;
   else mute303_2 = muted;
+  if (muted) publishPatternNoteOff_(idx);
   LedManager::instance().onMuteChanged(muted, sceneManager_.currentScene().led);
 }
 
@@ -1213,10 +1287,12 @@ void MiniAcid::set303ParameterNormalized(TB303ParamId id, float norm, int voiceI
 }
 void MiniAcid::set303PatternIndex(int voiceIndex, int16_t patternIndex) {
   int idx = clamp303Voice(voiceIndex);
+  if (playing) publishPatternNoteOff_(idx);
   sceneManager_.setCurrentSynthPatternIndex(idx, patternIndex);
 }
 void MiniAcid::shift303PatternIndex(int voiceIndex, int delta) {
   int idx = clamp303Voice(voiceIndex);
+  if (playing) publishPatternNoteOff_(idx);
   int current = sceneManager_.getCurrentSynthPatternIndex(idx);
   int next = current + delta;
   if (next < 0) next = Bank<SynthPattern>::kPatterns - 1;
@@ -1226,6 +1302,7 @@ void MiniAcid::shift303PatternIndex(int voiceIndex, int delta) {
 
 void MiniAcid::set303BankIndex(int voiceIndex, int bankIndex) {
   int idx = clamp303Voice(voiceIndex);
+  if (playing) publishPatternNoteOff_(idx);
   sceneManager_.setCurrentBankIndex(idx + 1, bankIndex);
 }
 
@@ -1493,6 +1570,7 @@ int MiniAcid::clampSongPosition(int position) const {
 
 void MiniAcid::applySongPositionSelection() {
   if (!songMode_) return;
+  if (playing) publishPatternAllNotesOff_();
   int pos = clampSongPosition(sceneManager_.getSongPosition());
   sceneManager_.setSongPosition(pos);
   songPlayheadPosition_ = pos;
@@ -2031,8 +2109,14 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
           advanceTick();
         }
       }
-      if (gateCountdownA_ > 0 && --gateCountdownA_ <= 0) if (synthVoices_[0]) synthVoices_[0]->release();
-      if (gateCountdownB_ > 0 && --gateCountdownB_ <= 0) if (synthVoices_[1]) synthVoices_[1]->release();
+      if (gateCountdownA_ > 0 && --gateCountdownA_ <= 0) {
+        if (synthVoices_[0]) synthVoices_[0]->release();
+        publishPatternNoteOff_(0);
+      }
+      if (gateCountdownB_ > 0 && --gateCountdownB_ <= 0) {
+        if (synthVoices_[1]) synthVoices_[1]->release();
+        publishPatternNoteOff_(1);
+      }
     }
 
     float sample = 0.0f;
@@ -2048,6 +2132,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
             if (synthVoices_[0]) {
                 synthVoices_[0]->startNote(noteToFreq(step.note), step.accent, step.slide, step.velocity);
             }
+            publishPatternNoteOn_(0, static_cast<uint8_t>(step.note), step.velocity);
             LedManager::instance().onVoiceTriggered(VoiceId::SynthA, sceneManager_.currentScene().led);
             retrigA_.counter = retrigA_.interval;
             retrigA_.countRemaining--;
@@ -2060,6 +2145,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
             if (synthVoices_[1]) {
                 synthVoices_[1]->startNote(noteToFreq(step.note), step.accent, step.slide, step.velocity);
             }
+            publishPatternNoteOn_(1, static_cast<uint8_t>(step.note), step.velocity);
             LedManager::instance().onVoiceTriggered(VoiceId::SynthB, sceneManager_.currentScene().led);
             retrigB_.counter = retrigB_.interval;
             retrigB_.countRemaining--;
@@ -2243,6 +2329,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
 
 void MiniAcid::randomize303Pattern(int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
+  if (playing) publishPatternNoteOff_(idx);
   // Use the complete compiled genre profile. GrooveRecipe is a compact legacy
   // view and cannot represent pitch, articulation or microtiming parameters.
   const GenerativeParams& genreParams =
@@ -3226,6 +3313,7 @@ void MiniAcid::triggerSynthStep_(int synthIdx, int stepIdx) {
   } else if (step.note >= 0 && (!step.ghost || (rand() % 100 < 80))) {
     if (step.probability >= 100 || (rand() % 100 < step.probability)) {
         if (synthVoices_[synthIdx]) synthVoices_[synthIdx]->startNote(noteToFreq(step.note), step.accent, step.slide, (uint8_t)step.velocity);
+        publishPatternNoteOn_(synthIdx, static_cast<uint8_t>(step.note), static_cast<uint8_t>(step.velocity));
         long dur = (long)(samplesPerStep_ * effectiveGateMult);
         if (synthIdx == 0) {
             gateCountdownA_ = dur;

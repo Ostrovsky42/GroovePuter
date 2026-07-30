@@ -19,7 +19,10 @@ CardputerUsbMidiTransport g_transport;
 UsbMidiOutput g_output(
     g_transport,
     UsbMidiRouteConfig{
-        7,     // zero-based channel 7 == MIDI channel 8 / SEQTRAK SYNTH 1
+        7,     // live Synth A -> MIDI channel 8
+        7,     // PatternPlayer Synth A -> MIDI channel 8
+        8,     // PatternPlayer Synth B -> MIDI channel 9
+        true,
         true,
     });
 bool g_registered = false;

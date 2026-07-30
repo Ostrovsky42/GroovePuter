@@ -22,6 +22,7 @@
 #include "src/ui/key_normalize.h"
 #include "src/input/performance_keyboard.h"
 #include "src/input/internal_synth_output.h"
+#include "src/input/musical_event_queue.h"
 #include "src/ui/workflow_mode.h"
 #include <new>
 
@@ -48,6 +49,7 @@ static uint32_t g_peakUiDrawUs = 0;
 // Static engine instance to avoid heap fragmentation
 static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);
 static MusicalEventRouter g_musicalEventRouter;
+static MusicalEventQueue g_patternMusicalEventQueue;
 static PerformanceKeyboard g_performanceKeyboard(g_musicalEventRouter);
 static InternalSynthOutput g_internalSynthOutput(g_miniAcidInstance, g_audioMutationGate);
 static uint32_t g_lastLiveInputEpoch = 0;
@@ -154,6 +156,36 @@ void audioTask(void *param) {
   }
 }
 
+
+static void drainPatternMusicalEvents() {
+  MusicalEvent event{};
+  std::size_t drained = 0;
+  while (drained < MusicalEventQueue::kCapacity &&
+         g_patternMusicalEventQueue.tryPop(event)) {
+    g_musicalEventRouter.route(event);
+    ++drained;
+  }
+
+  // Critical events that could not enter a full queue degrade to a final
+  // target-scoped PatternPlayer panic after all queued events are drained.
+  const uint8_t panicMask = g_patternMusicalEventQueue.takePendingAllNotesOffMask();
+  if (panicMask & MusicalEventQueue::kSynthAMask) {
+    g_musicalEventRouter.route(MusicalEvent{
+        MusicalEventType::AllNotesOff,
+        MusicalEventSource::PatternPlayer,
+        MusicalEventTarget::SynthA,
+        0, 0, 0,
+    });
+  }
+  if (panicMask & MusicalEventQueue::kSynthBMask) {
+    g_musicalEventRouter.route(MusicalEvent{
+        MusicalEventType::AllNotesOff,
+        MusicalEventSource::PatternPlayer,
+        MusicalEventTarget::SynthB,
+        0, 0, 0,
+    });
+  }
+}
 
 void drawUI() {
   const uint32_t startedAt = micros();
@@ -288,6 +320,7 @@ void setup() {
   g_miniAcid->sampleStore = &g_sampleStore;
   markBootStage(50, "before MiniAcid::init");
   g_miniAcid->init();
+  g_miniAcid->setPatternEventQueue(&g_patternMusicalEventQueue);
   g_musicalEventRouter.addSink(g_internalSynthOutput);
   g_lastLiveInputEpoch = g_miniAcid->liveInputEpoch();
   markBootStage(51, "after MiniAcid::init");
@@ -389,6 +422,7 @@ void setup() {
 void loop() {
   M5Cardputer.update();
   LedManager::instance().update();
+  drainPatternMusicalEvents();
 
   if (g_miniAcid && g_miniDisplay) {
     g_performanceKeyboard.setEnabled(

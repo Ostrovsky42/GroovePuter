@@ -167,3 +167,26 @@ bash scripts/upload.sh /dev/ttyACM0
 - Confirm build and upload use the same TinyUSB FQBN options.
 - Use a MIDI monitor before diagnosing SEQTRAK routing.
 - A working live keyboard with missing pattern events indicates the PatternPlayer event publication path, not the TinyUSB transport.
+
+
+## Implementation status
+
+The Stage 1 implementation uses a fixed 64-entry audio-to-control event queue.
+PatternPlayer publishes normalized NoteOn/NoteOff/AllNotesOff events from the
+same gate and retrig lifecycle that drives the internal voices. The control loop
+drains those events through `MusicalEventRouter`; TinyUSB is never called from
+the DSP engine or audio callback.
+
+USB ownership lanes are fixed for this stage:
+
+```text
+PerformanceKeyboard / Synth A -> channel 8
+PatternPlayer / Synth A        -> channel 8
+PatternPlayer / Synth B        -> channel 9
+```
+
+Hardware acceptance is documented in:
+
+```text
+docs/tests/PATTERN_MIDI_OUTPUT_CARDPUTER_ADV.md
+```
