@@ -5,12 +5,45 @@ on:
     branches:
       - main
       - agent/fix-core-reliability
+      - feature/performance-workflow
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  migrate-performance-workflow:
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/feature/performance-workflow')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/performance-workflow
+          fetch-depth: 0
+
+      - name: Apply guarded performance integration
+        run: |
+          if grep -q "void MiniAcid::liveNoteOn" src/dsp/miniacid_engine.cpp; then
+            echo "Performance integration already applied"
+            exit 0
+          fi
+          python3 scripts/migrate_performance_integration.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            GroovePuter.ino \
+            src/dsp/miniacid_engine.h \
+            src/dsp/miniacid_engine.cpp \
+            src/ui/ui_config.h \
+            src/ui/miniacid_display.h \
+            src/ui/miniacid_display.cpp \
+            platform_sdl/sdl_main.cpp \
+            platform_sdl/Makefile \
+            tests/test_source_regressions.py
+          git commit -m "feat: integrate performance keyboard workflow"
+          git pull --rebase origin feature/performance-workflow
+          git push origin HEAD:feature/performance-workflow
+
   host-tests:
     runs-on: ubuntu-latest
     steps:
