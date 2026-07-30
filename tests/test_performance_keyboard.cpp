@@ -37,7 +37,14 @@ int main() {
     PerformanceKeyboard keyboard(router);
     assert(std::strcmp(keyboard.scaleName(), "NAT MINOR") == 0);
     assert(keyboard.octaveShift() == 0);
+    assert(keyboard.noteModeEnabled());
     assert(keyboard.liveInputAllowed());
+
+    for (char key : std::string("iopkl")) {
+        assert(PerformanceKeyboard::isPerformanceKey(key));
+    }
+    assert(!PerformanceKeyboard::isPerformanceKey('n'));
+    assert(!PerformanceKeyboard::isPerformanceKey('z'));
 
     uint8_t note = 0;
     assert(keyboard.noteForKey('a', note) && note == 36);
@@ -96,7 +103,8 @@ int main() {
     assert(keyboard.activeNote() == 36);
     expectEvent(sink.events.back(), MusicalEventType::NoteOn, 36);
 
-    // Starting transport returns Synth A to PatternPlayer and blocks live input.
+    // Starting transport returns Synth A to PatternPlayer. NOTE-mode keys are
+    // still consumed, but no NoteOn is emitted and legacy fallbacks cannot run.
     sink.clear();
     keyboard.setTransportPlaying(true);
     assert(keyboard.transportPlaying());
@@ -104,10 +112,31 @@ int main() {
     assert(keyboard.heldCount() == 0);
     assert(sink.events.size() == 1);
     expectEvent(sink.events[0], MusicalEventType::AllNotesOff, 0);
-    assert(!keyboard.keyDown('a'));
-    assert(sink.events.size() == 1);
+
+    const std::size_t blockedEventCount = sink.events.size();
+    for (char key : std::string("aiopkl")) {
+        assert(keyboard.keyDown(key));
+        assert(sink.events.size() == blockedEventCount);
+    }
+    assert(!keyboard.keyDown('z'));
 
     keyboard.setTransportPlaying(false);
+    assert(keyboard.liveInputAllowed());
+
+    // NOTE mode is explicit. Turning it off releases live ownership and allows
+    // the same letters to reach legacy commands; turning it on reserves them.
+    sink.clear();
+    keyboard.setNoteModeEnabled(false);
+    assert(!keyboard.noteModeEnabled());
+    assert(!keyboard.liveInputAllowed());
+    assert(sink.events.size() == 1);
+    expectEvent(sink.events[0], MusicalEventType::AllNotesOff, 0);
+    sink.clear();
+    assert(!keyboard.keyDown('i'));
+    assert(sink.events.empty());
+
+    keyboard.setNoteModeEnabled(true);
+    assert(keyboard.noteModeEnabled());
     assert(keyboard.liveInputAllowed());
     assert(keyboard.keyDown('q'));
     assert(keyboard.activeNote() == 48);
