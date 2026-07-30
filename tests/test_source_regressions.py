@@ -118,27 +118,43 @@ def test_generative_params_have_safe_defaults() -> None:
                 f"missing safe default in GenerativeParams: {declaration}")
 
 
-def test_chicago_jack_is_a_real_atlas_recipe() -> None:
+def test_atlas_recipe_catalog_and_legacy_fallbacks() -> None:
     index = (ROOT / "src/generated/atlas_runtime.generated.h").read_text(
-        encoding="utf-8"
-    )
-    data = (ROOT / "src/generated/rec_acid_chicago_jack.generated.h").read_text(
         encoding="utf-8"
     )
     manager = (ROOT / "src/dsp/genre_manager.cpp").read_text(encoding="utf-8")
 
-    require("kRecipe_REC_ACID_CHICAGO_JACK" in index,
-            "generated Atlas index must publish Chicago Jack")
-    require('"P1", "BASE"' in data,
-            "Chicago Jack must include the P1 base pattern")
-    require('"P2", "DEVELOPMENT"' in data,
-            "Chicago Jack must include the P2 development pattern")
-    require('"P3", "BREAKDOWN"' in data,
-            "Chicago Jack must include the P3 breakdown pattern")
-    require('{6, "Chicago Jack"' in manager,
-            "GenreManager must expose Chicago Jack as recipe id 6")
-    require("case 6: return GrooveboxMode::Acid" in manager,
-            "Chicago Jack must select the Acid macro mode")
+    atlas_recipes = (
+        (6, "Chicago Jack", "REC_ACID_CHICAGO_JACK", "rec_acid_chicago_jack.generated.h", "Acid"),
+        (7, "Rolling Acid", "REC_ACID_ROLLING", "rec_acid_rolling.generated.h", "Acid"),
+        (8, "Classic 2-Step", "REC_UKG_CLASSIC_2STEP", "rec_ukg_classic_2step.generated.h", "Breaks"),
+        (9, "Dark Skippy", "REC_UKG_DARK_SKIPPY", "rec_ukg_dark_skippy.generated.h", "Breaks"),
+        (10, "Deep Chord", "REC_DUB_DEEP_CHORD", "rec_dub_deep_chord.generated.h", "Dub"),
+        (11, "Minimal Space", "REC_DUB_MINIMAL_SPACE", "rec_dub_minimal_space.generated.h", "Dub"),
+    )
+    for runtime_id, name, atlas_id, filename, groove in atlas_recipes:
+        data = (ROOT / "src/generated" / filename).read_text(encoding="utf-8")
+        require(f"kRecipe_{atlas_id}" in index,
+                f"generated Atlas index must publish {name}")
+        require('"P1", "BASE"' in data, f"{name} must include P1")
+        require('"P2", "DEVELOPMENT"' in data, f"{name} must include P2")
+        require('"P3",' in data, f"{name} must include P3")
+        require(f'{{{runtime_id}, "{name}"' in manager,
+                f"GenreManager must expose {name} as recipe id {runtime_id}")
+        require(f"case {runtime_id}: return GrooveboxMode::{groove}" in manager,
+                f"{name} must select {groove} macro mode")
+
+    # The original probabilistic generators remain independent fallbacks.
+    legacy_recipes = (
+        (1, "UK Garage"),
+        (2, "Drum&Bass"),
+        (3, "Footwork"),
+        (4, "Psytrance"),
+        (5, "Dub Techno"),
+    )
+    for runtime_id, name in legacy_recipes:
+        require(f'{{{runtime_id}, "{name}"' in manager,
+                f"legacy recipe generator was removed: {name}")
 
 
 def test_atlas_recipe_precedes_random_fallback() -> None:
@@ -180,11 +196,11 @@ def test_genre_page_uses_recipe_mode_and_tempo_order() -> None:
 
 
 def test_atlas_compiler_matches_manifest_contract() -> None:
-    compiler = (ROOT / "tools/atlas/compile_chicago_runtime.py").read_text(
+    compiler = (ROOT / "tools/atlas/compile_atlas_runtime.py").read_text(
         encoding="utf-8"
     )
     manifest = json.loads(
-        (ROOT / "tools/atlas/atlas_v2_6_chicago_manifest.json").read_text(
+        (ROOT / "tools/atlas/atlas_v2_6_runtime_manifest.json").read_text(
             encoding="utf-8"
         )
     )
@@ -193,16 +209,35 @@ def test_atlas_compiler_matches_manifest_contract() -> None:
     require(expected_hash in compiler,
             "Atlas compiler and provenance manifest must pin the same archive")
     require(manifest["atlas_schema_version"] == "2.6.0",
-            "Chicago compiler is defined only for Atlas schema 2.6.0")
-    require(manifest["runtime_recipe_id"] == 6,
-            "Chicago Jack runtime recipe id must remain stable")
-    require(manifest["source_event_count"] == 107,
-            "manifest must preserve the reviewed source event count")
-    require(manifest["ignored_sampler_event_count"] == 5,
+            "runtime compiler is defined only for Atlas schema 2.6.0")
+    require(len(manifest["recipes"]) == 6,
+            "runtime manifest must contain all six reviewed recipes")
+    require(manifest["ignored_sampler_events"] == 40,
             "ignored sampler data must remain explicit")
-    require("REC_ACID_CHICAGO_JACK" in compiler,
-            "compiler must be scoped to the reviewed Chicago Jack recipe")
+    expected_ids = {
+        "REC_ACID_CHICAGO_JACK",
+        "REC_ACID_ROLLING",
+        "REC_UKG_CLASSIC_2STEP",
+        "REC_UKG_DARK_SKIPPY",
+        "REC_DUB_DEEP_CHORD",
+        "REC_DUB_MINIMAL_SPACE",
+    }
+    require({item["atlas_recipe_id"] for item in manifest["recipes"]} == expected_ids,
+            "manifest recipe catalog drifted")
+    for atlas_id in expected_ids:
+        require(atlas_id in compiler, f"compiler missing recipe: {atlas_id}")
 
+
+def test_recipe_selector_is_visible_and_navigable() -> None:
+    page = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
+    require("void drawRecipeOverlay" in page,
+            "recipe selection must be visible instead of Fn-only hidden state")
+    require("RECIPE SELECT" in page,
+            "recipe overlay needs an explicit title")
+    require("drawRecipeOverlay(gfx, recipeIndex_)" in page,
+            "Apply focus must render the recipe list")
+    require("cycleRecipeSelection(-1);" in page and "cycleRecipeSelection(1);" in page,
+            "UP/DOWN must navigate visible recipes while Fn+UP/DOWN keeps morph")
 
 
 def test_ui_redraw_does_not_hold_audio_pause() -> None:
@@ -236,10 +271,11 @@ def main() -> None:
     test_recipe_selects_the_matching_groovebox_mode()
     test_legacy_recipe_adapters_start_from_compiled_params()
     test_generative_params_have_safe_defaults()
-    test_chicago_jack_is_a_real_atlas_recipe()
+    test_atlas_recipe_catalog_and_legacy_fallbacks()
     test_atlas_recipe_precedes_random_fallback()
     test_genre_page_uses_recipe_mode_and_tempo_order()
     test_atlas_compiler_matches_manifest_contract()
+    test_recipe_selector_is_visible_and_navigable()
     test_ui_redraw_does_not_hold_audio_pause()
     test_splash_closes_display_transaction()
     print("source regressions: OK")

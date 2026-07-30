@@ -188,12 +188,33 @@ static const GenreRecipeDef kGenreRecipes[] = {
      {3, 6, 0.12f, 0.16f, 72, 108, 0.78f, 0.28f, 0.05f, 0.18f, 1, 1, 1, 0.30f, 1, 6},
      true,
      {0x8080, 0x0808, 0x2222, 0x0202, 0.10f, 0.06f, 0.22f, 92, 88, 70, true, false}},
-    // Atlas v2.6 vertical slice. Exact P1/P2/P3 events are compiled into
-    // AtlasRuntime; this fallback remains useful for manual randomize actions.
+    // Atlas v2.6 vertical slices. Exact P1/P2/P3 events are compiled into
+    // AtlasRuntime; these fallback profiles remain available for manual
+    // randomize actions and do not replace the legacy recipe generators above.
     {6, "Chicago Jack",
      {8, 13, 0.02f, 0.04f, 76, 122, 0.58f, 0.04f, 0.08f, 0.35f, 0, 0, 0, 0.20f, 0, 8},
      true,
      {0x8888, 0x0808, 0x2222, 0x0202, 0.04f, 0.04f, 0.18f, 122, 102, 82, false, true}},
+    {7, "Rolling Acid",
+     {10, 16, 0.04f, 0.06f, 82, 124, 0.42f, 0.05f, 0.10f, 0.42f, 0, 0, 0, 0.24f, 0, 8},
+     true,
+     {0x8888, 0x0808, 0xAAAA, 0x2222, 0.04f, 0.05f, 0.20f, 124, 104, 84, false, true}},
+    {8, "Classic 2-Step",
+     {4, 8, 0.32f, 0.18f, 82, 116, 0.52f, 0.14f, 0.08f, 0.28f, 0, 0, 0, 0.58f, 1, 8},
+     true,
+     {0x8121, 0x0808, 0xFFFF, 0x2222, 0.08f, 0.10f, 0.35f, 104, 102, 82, false, true}},
+    {9, "Dark Skippy",
+     {4, 9, 0.34f, 0.20f, 80, 116, 0.48f, 0.16f, 0.10f, 0.32f, 0, 0, 0, 0.66f, 1, 8},
+     true,
+     {0x8121, 0x0808, 0xAAAA, 0x2222, 0.10f, 0.12f, 0.40f, 106, 102, 80, false, true}},
+    {10, "Deep Chord",
+     {3, 6, 0.10f, 0.10f, 72, 108, 0.80f, 0.24f, 0.04f, 0.16f, 1, 1, 1, 0.28f, 1, 6},
+     true,
+     {0x8888, 0x0808, 0x2222, 0x0202, 0.08f, 0.06f, 0.20f, 94, 88, 70, true, false}},
+    {11, "Minimal Space",
+     {2, 5, 0.02f, 0.08f, 68, 104, 0.84f, 0.20f, 0.03f, 0.12f, 1, 1, 1, 0.22f, 1, 6},
+     true,
+     {0x8080, 0x0808, 0x2222, 0x0202, 0.06f, 0.05f, 0.16f, 90, 84, 68, true, false}},
 };
 
 static const GenreRecipeDef* findRecipe(GenreRecipeId id) {
@@ -255,8 +276,13 @@ GrooveboxMode GenreManager::grooveboxModeForRecipe(GenreRecipeId id, GenerativeM
         case 2: return GrooveboxMode::Breaks; // DnB
         case 3: return GrooveboxMode::Breaks; // Footwork
         case 4: return GrooveboxMode::Acid;   // Psytrance
-        case 5: return GrooveboxMode::Dub;    // Dub Techno
+        case 5: return GrooveboxMode::Dub;    // Legacy Dub Techno generator
         case 6: return GrooveboxMode::Acid;   // Atlas: Chicago Jack
+        case 7: return GrooveboxMode::Acid;   // Atlas: Rolling Acid
+        case 8: return GrooveboxMode::Breaks; // Atlas: Classic 2-Step
+        case 9: return GrooveboxMode::Breaks; // Atlas: Dark Skippy
+        case 10: return GrooveboxMode::Dub;   // Atlas: Deep Chord
+        case 11: return GrooveboxMode::Dub;   // Atlas: Minimal Space
         case 0: break;                        // base layer: use fallback
         default: break;                       // unknown recipe: safe fallback
     }
@@ -283,18 +309,27 @@ TextureMode GenreManager::nextAllowedTexture(GenerativeMode genre, TextureMode c
 }
 
 void GenreManager::applyGenreTimbre(MiniAcid& engine) {
-    // Atlas Chicago Jack is authored for an acid voice. Parameter IDs below
-    // are TB303-specific and must not be sent to SID/AY/OPL2 engines where the
-    // same numeric indices control unrelated synthesis parameters.
-    if (state_.recipe == 6) {
+    // Atlas recipes carry musical events, not verified device preset IDs.
+    // Select a bounded GroovePuter preview profile before any engine-specific
+    // parameter writes. Legacy recipe generators keep the user's engine choice.
+    const bool atlasAcidRecipe = (state_.recipe == 6 || state_.recipe == 7);
+    const bool atlasHybridRecipe = (state_.recipe >= 8 && state_.recipe <= 11);
+    if (atlasAcidRecipe) {
         engine.setSynthEngine(0, "TB303");
         engine.setSynthEngine(1, "TB303");
+    } else if (atlasHybridRecipe) {
+        engine.setSynthEngine(0, "TB303");
+        engine.setSynthEngine(1, "OPL2");
     }
 
     const GenreBehavior b = getBehavior();
     const GenreTimbre& t = b.timbre;
 
     for (int v = 0; v < 2; ++v) {
+        // TB303 parameter IDs are not portable to SID/AY/OPL2. Non-TB303
+        // preview voices retain their own engine defaults.
+        if (engine.currentSynthEngineName(v) != "TB303") continue;
+
         // Apply base synthesis parameters (BEFORE texture bias)
         // Oscillator uses normalized index mapping
         engine.set303ParameterNormalized(TB303ParamId::Oscillator, t.osc, v);
@@ -382,14 +417,20 @@ void GenreManager::applyTexture(MiniAcid& engine) {
     int resDelta = newResBias - lastAppliedResBias_;
     
     if (cutoffDelta != 0) {
-        engine.adjust303Parameter(TB303ParamId::Cutoff, cutoffDelta, 0);
-        engine.adjust303Parameter(TB303ParamId::Cutoff, cutoffDelta, 1);
+        for (int voice = 0; voice < 2; ++voice) {
+            if (engine.currentSynthEngineName(voice) == "TB303") {
+                engine.adjust303Parameter(TB303ParamId::Cutoff, cutoffDelta, voice);
+            }
+        }
         lastAppliedCutoffBias_ = newCutoffBias;
     }
     
     if (resDelta != 0) {
-        engine.adjust303Parameter(TB303ParamId::Resonance, resDelta, 0);
-        engine.adjust303Parameter(TB303ParamId::Resonance, resDelta, 1);
+        for (int voice = 0; voice < 2; ++voice) {
+            if (engine.currentSynthEngineName(voice) == "TB303") {
+                engine.adjust303Parameter(TB303ParamId::Resonance, resDelta, voice);
+            }
+        }
         lastAppliedResBias_ = newResBias;
     }
 }
@@ -453,8 +494,7 @@ GenreBehavior GenreManager::getBehavior() const {
     GenreBehavior b = kBase[static_cast<int>(state_.generative)];
 
     if (state_.recipe == 6) {
-        // GroovePuter preview sound profile. Atlas supplies musical events but
-        // intentionally does not claim verified SEQTRAK preset mappings.
+        // Chicago Jack: clipped, resonant phrase with clear accent/slide motion.
         b.stepMask = 0xFFFF;
         b.motifLength = 4;
         b.preferredScale = 1;  // Phrygian
@@ -463,6 +503,38 @@ GenreBehavior GenreManager::getBehavior() const {
         b.forceOctaveJump = false;
         b.avoidClusters = false;
         b.timbre = {0.0f, 0.52f, 0.55f, 0.82f, 0.25f};
+    } else if (state_.recipe == 7) {
+        // Rolling Acid: denser line, slightly more open filter and longer decay.
+        b.stepMask = 0xFFFF;
+        b.motifLength = 6;
+        b.preferredScale = 1;
+        b.useMotif = true;
+        b.allowChromatic = true;
+        b.forceOctaveJump = false;
+        b.avoidClusters = false;
+        b.timbre = {0.0f, 0.60f, 0.62f, 0.88f, 0.32f};
+    } else if (state_.recipe == 8 || state_.recipe == 9) {
+        // UK Garage preview: syncopated bass on TB303 plus an OPL2 chord-root
+        // voice. Atlas owns the actual P1/P2/P3 event structure.
+        b.stepMask = 0xAA55;
+        b.motifLength = 4;
+        b.preferredScale = 3;  // Dorian
+        b.useMotif = true;
+        b.allowChromatic = false;
+        b.forceOctaveJump = false;
+        b.avoidClusters = true;
+        b.timbre = {0.2f, 0.46f, 0.24f, 0.58f, 0.22f};
+    } else if (state_.recipe == 10 || state_.recipe == 11) {
+        // Dub Techno preview: sparse warm bass plus a restrained OPL2 root
+        // voice; delay/space remain controlled by the selected texture layer.
+        b.stepMask = 0x8888;
+        b.motifLength = 4;
+        b.preferredScale = 3;
+        b.useMotif = true;
+        b.allowChromatic = false;
+        b.forceOctaveJump = false;
+        b.avoidClusters = true;
+        b.timbre = {1.0f, 0.30f, 0.34f, 0.50f, 0.20f};
     }
 
     return b;

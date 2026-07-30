@@ -20,6 +20,7 @@ using namespace RetroWidgets;
 namespace {
 constexpr int kGenreVisibleRows = 4;
 constexpr int kTextureVisibleRows = 4;
+constexpr int kRecipeVisibleRows = 5;
 
 enum class ApplyMode : uint8_t {
     SoundOnly = 0,
@@ -157,6 +158,37 @@ void drawScrollBar(IGfx& gfx, int x, int y, int h,
     }
     gfx.fillRect(x + 1, thumbY, 1, thumbH, thumb);
 }
+
+void drawRecipeOverlay(IGfx& gfx, int selectedIndex) {
+    const int count = static_cast<int>(GenreManager::recipeCount());
+    const int top = computeScrollTop(count, kRecipeVisibleRows, selectedIndex, 0);
+    constexpr int x = 4;
+    constexpr int y = 18;
+    constexpr int w = 232;
+    constexpr int h = 96;
+    constexpr int rowH = 14;
+
+    gfx.fillRect(x, y, w, h, IGfxColor(0x101010));
+    gfx.drawRect(x, y, w, h, COLOR_ACCENT);
+    gfx.setTextColor(COLOR_ACCENT);
+    gfx.drawText(x + 6, y + 4, "RECIPE SELECT");
+
+    for (int row = 0; row < kRecipeVisibleRows; ++row) {
+        const int recipe = top + row;
+        if (recipe >= count) break;
+        const int rowY = y + 19 + row * rowH;
+        const bool selected = recipe == selectedIndex;
+        if (selected) {
+            gfx.fillRect(x + 5, rowY - 1, w - 10, rowH - 1, IGfxColor(0x303030));
+            gfx.drawRect(x + 5, rowY - 1, w - 10, rowH - 1, COLOR_ACCENT);
+        }
+        char label[36];
+        std::snprintf(label, sizeof(label), "%02d %s", recipe,
+                      GenreManager::recipeName(static_cast<GenreRecipeId>(recipe)));
+        gfx.setTextColor(selected ? COLOR_WHITE : COLOR_LABEL);
+        gfx.drawText(x + 10, rowY, label);
+    }
+}
 } // namespace
 
 const char* GenrePage::genreNames[kGenerativeModeCount] = {
@@ -235,6 +267,9 @@ void GenrePage::drawContent(IGfx& gfx) {
             drawMinimalStyle(gfx);
             break;
     }
+    if (focus_ == FocusArea::APPLY_MODE) {
+        drawRecipeOverlay(gfx, recipeIndex_);
+    }
 }
 
 void GenrePage::drawFooter(IGfx& gfx) {
@@ -254,8 +289,8 @@ void GenrePage::drawFooter(IGfx& gfx) {
             focusMode = nullptr;
             break;
         case FocusArea::APPLY_MODE:
-            left = "FN+L/R:Recipe  FN+U/D:Morph";
-            right = "M:ApplyMode C/G:Flags";
+            left = "UP/DN:Recipe FN+U/D:Morph";
+            right = "FN+L/R:Recipe M:ApplyMode";
             focusMode = nullptr;
             break;
     }
@@ -731,10 +766,9 @@ bool GenrePage::handleEvent(UIEvent& e) {
                 return true;
             }
         } else if (focus_ == FocusArea::APPLY_MODE) {
-            if (e.meta) {
-                adjustMorphAmount(16);
-                return true;
-            }
+            if (e.meta) adjustMorphAmount(16);
+            else cycleRecipeSelection(-1);
+            return true;
         }
         return false;
     };
@@ -752,10 +786,9 @@ bool GenrePage::handleEvent(UIEvent& e) {
                 return true;
             }
         } else if (focus_ == FocusArea::APPLY_MODE) {
-            if (e.meta) {
-                adjustMorphAmount(-16);
-                return true;
-            }
+            if (e.meta) adjustMorphAmount(-16);
+            else cycleRecipeSelection(1);
+            return true;
         }
         return false;
     };

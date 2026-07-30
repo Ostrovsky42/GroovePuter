@@ -44,32 +44,52 @@ void validateRanges(const DrumPatternSet& pattern) {
   }
 }
 
+struct RecipeExpectation {
+  uint8_t id;
+  const char* atlasId;
+  uint16_t bpm;
+  uint8_t swing;
+  int minSynthA;
+  int minSynthB;
+  int minDrums;
+};
+
+constexpr RecipeExpectation kRecipes[] = {
+    {6, "REC_ACID_CHICAGO_JACK", 124, 52, 8, 3, 15},
+    {7, "REC_ACID_ROLLING", 128, 54, 8, 3, 15},
+    {8, "REC_UKG_CLASSIC_2STEP", 134, 66, 3, 3, 16},
+    {9, "REC_UKG_DARK_SKIPPY", 136, 68, 3, 3, 16},
+    {10, "REC_DUB_DEEP_CHORD", 120, 54, 2, 3, 10},
+    {11, "REC_DUB_MINIMAL_SPACE", 116, 51, 2, 3, 9},
+};
+
 }  // namespace
 
 int main() {
-  constexpr uint8_t kChicagoJackRecipe = 6;
-  assert(AtlasRuntime::hasRecipe(kChicagoJackRecipe));
-  assert(AtlasRuntime::variationCount(kChicagoJackRecipe) == 3);
+  for (const RecipeExpectation& expected : kRecipes) {
+    assert(AtlasRuntime::hasRecipe(expected.id));
+    assert(AtlasRuntime::variationCount(expected.id) == 3);
 
-  for (uint8_t variation = 0; variation < 3; ++variation) {
-    SynthPattern synthA{};
-    SynthPattern synthB{};
-    DrumPatternSet drums{};
-    AtlasRuntimeMetadata metadata{};
+    for (uint8_t variation = 0; variation < 3; ++variation) {
+      SynthPattern synthA{};
+      SynthPattern synthB{};
+      DrumPatternSet drums{};
+      AtlasRuntimeMetadata metadata{};
 
-    assert(AtlasRuntime::applyRecipe(
-        kChicagoJackRecipe, variation, synthA, synthB, drums, &metadata));
-    assert(metadata.atlasRecipeId != nullptr);
-    assert(std::strcmp(metadata.atlasRecipeId, "REC_ACID_CHICAGO_JACK") == 0);
-    assert(metadata.slotId != nullptr);
-    assert(metadata.bpm == 124);
-    assert(metadata.swingPercent == 52);
-    assert(countSynthNotes(synthA) >= 8);
-    assert(countSynthNotes(synthB) >= 3);
-    assert(countDrumHits(drums) >= 10);
-    validateRanges(synthA);
-    validateRanges(synthB);
-    validateRanges(drums);
+      assert(AtlasRuntime::applyRecipe(
+          expected.id, variation, synthA, synthB, drums, &metadata));
+      assert(metadata.atlasRecipeId != nullptr);
+      assert(std::strcmp(metadata.atlasRecipeId, expected.atlasId) == 0);
+      assert(metadata.slotId != nullptr);
+      assert(metadata.bpm == expected.bpm);
+      assert(metadata.swingPercent == expected.swing);
+      assert(countSynthNotes(synthA) >= expected.minSynthA);
+      assert(countSynthNotes(synthB) >= expected.minSynthB);
+      assert(countDrumHits(drums) >= expected.minDrums);
+      validateRanges(synthA);
+      validateRanges(synthB);
+      validateRanges(drums);
+    }
   }
 
   SynthPattern sentinelA{};

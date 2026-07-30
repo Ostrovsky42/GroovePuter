@@ -1,0 +1,183 @@
+{
+  "source_archive_sha256": "5b155937b8d05f0f0f9f1a02f10d9afe76a917d6035897695cce739eb8d6b1fd",
+  "atlas_schema_version": "2.6.0",
+  "ignored_sampler_events": 40,
+  "ignored_unsupported_tracks": 0,
+  "ignored_unrepresentable_pitch_events": 0,
+  "recipes": [
+    {
+      "atlas_recipe_id": "REC_ACID_CHICAGO_JACK",
+      "runtime_recipe_id": 6,
+      "display_name": "Chicago Jack",
+      "bpm": 124,
+      "swing_percent": 52,
+      "source_event_count": 107,
+      "runtime_event_count": 102,
+      "ignored_sampler_event_count": 5,
+      "ignored_unsupported_track_events": 0,
+      "ignored_unrepresentable_pitch_events": 0,
+      "slots": [
+        {
+          "slot_id": "P1",
+          "slot_function": "BASE",
+          "pattern_id": "PAT_ED_ACID_CHICAGO_JACK_P1"
+        },
+        {
+          "slot_id": "P2",
+          "slot_function": "DEVELOPMENT",
+          "pattern_id": "PAT_ED_ACID_CHICAGO_JACK_P2"
+        },
+        {
+          "slot_id": "P3",
+          "slot_function": "BREAKDOWN",
+          "pattern_id": "PAT_ED_ACID_CHICAGO_JACK_P3"
+        }
+      ]
+    },
+    {
+      "atlas_recipe_id": "REC_ACID_ROLLING",
+      "runtime_recipe_id": 7,
+      "display_name": "Rolling Acid",
+      "bpm": 128,
+      "swing_percent": 54,
+      "source_event_count": 111,
+      "runtime_event_count": 106,
+      "ignored_sampler_event_count": 5,
+      "ignored_unsupported_track_events": 0,
+      "ignored_unrepresentable_pitch_events": 0,
+      "slots": [
+        {
+          "slot_id": "P1",
+          "slot_function": "BASE",
+          "pattern_id": "PAT_ED_ACID_ROLLING_P1"
+        },
+        {
+          "slot_id": "P2",
+          "slot_function": "DEVELOPMENT",
+          "pattern_id": "PAT_ED_ACID_ROLLING_P2"
+        },
+        {
+          "slot_id": "P3",
+          "slot_function": "BREAKDOWN",
+          "pattern_id": "PAT_ED_ACID_ROLLING_P3"
+        }
+      ]
+    },
+    {
+      "atlas_recipe_id": "REC_UKG_CLASSIC_2STEP",
+      "runtime_recipe_id": 8,
+      "display_name": "Classic 2-Step",
+      "bpm": 134,
+      "swing_percent": 66,
+      "source_event_count": 100,
+      "runtime_event_count": 93,
+      "ignored_sampler_event_count": 7,
+      "ignored_unsupported_track_events": 0,
+      "ignored_unrepresentable_pitch_events": 0,
+      "slots": [
+        {
+          "slot_id": "P1",
+          "slot_function": "BASE",
+          "pattern_id": "PAT_ED_UKG_CLASSIC_2STEP_P1"
+        },
+        {
+          "slot_id": "P2",
+          "slot_function": "DEVELOPMENT",
+          "pattern_id": "PAT_ED_UKG_CLASSIC_2STEP_P2"
+        },
+        {
+          "slot_id": "P3",
+          "slot_function": "ENDING_FILL",
+          "pattern_id": "PAT_ED_UKG_CLASSIC_2STEP_P3"
+        }
+      ]
+    },
+    {
+      "atlas_recipe_id": "REC_UKG_DARK_SKIPPY",
+      "runtime_recipe_id": 9,
+      "display_name": "Dark Skippy",
+      "bpm": 136,
+      "swing_percent": 68,
+      "source_event_count": 98,
+      "runtime_event_count": 91,
+      "ignored_sampler_event_count": 7,
+      "ignored_unsupported_track_events": 0,
+      "ignored_unrepresentable_pitch_events": 0,
+      "slots": [
+        {
+          "slot_id": "P1",
+          "slot_function": "BASE",
+          "pattern_id": "PAT_ED_UKG_DARK_SKIPPY_P1"
+        },
+        {
+          "slot_id": "P2",
+          "slot_function": "DEVELOPMENT",
+          "pattern_id": "PAT_ED_UKG_DARK_SKIPPY_P2"
+        },
+        {
+          "slot_id": "P3",
+          "slot_function": "ENDING_FILL",
+          "pattern_id": "PAT_ED_UKG_DARK_SKIPPY_P3"
+        }
+      ]
+    },
+    {
+      "atlas_recipe_id": "REC_DUB_DEEP_CHORD",
+      "runtime_recipe_id": 10,
+      "display_name": "Deep Chord",
+      "bpm": 120,
+      "swing_percent": 54,
+      "source_event_count": 81,
+      "runtime_event_count": 73,
+      "ignored_sampler_event_count": 8,
+      "ignored_unsupported_track_events": 0,
+      "ignored_unrepresentable_pitch_events": 0,
+      "slots": [
+        {
+          "slot_id": "P1",
+          "slot_function": "BASE",
+          "pattern_id": "PAT_ED_DUB_DEEP_CHORD_P1"
+        },
+        {
+          "slot_id": "P2",
+          "slot_function": "DEVELOPMENT",
+          "pattern_id": "PAT_ED_DUB_DEEP_CHORD_P2"
+        },
+        {
+          "slot_id": "P3",
+          "slot_function": "SPACE_BREAK",
+          "pattern_id": "PAT_ED_DUB_DEEP_CHORD_P3"
+        }
+      ]
+    },
+    {
+      "atlas_recipe_id": "REC_DUB_MINIMAL_SPACE",
+      "runtime_recipe_id": 11,
+      "display_name": "Minimal Space",
+      "bpm": 116,
+      "swing_percent": 51,
+      "source_event_count": 78,
+      "runtime_event_count": 70,
+      "ignored_sampler_event_count": 8,
+      "ignored_unsupported_track_events": 0,
+      "ignored_unrepresentable_pitch_events": 0,
+      "slots": [
+        {
+          "slot_id": "P1",
+          "slot_function": "BASE",
+          "pattern_id": "PAT_ED_DUB_MINIMAL_SPACE_P1"
+        },
+        {
+          "slot_id": "P2",
+          "slot_function": "DEVELOPMENT",
+          "pattern_id": "PAT_ED_DUB_MINIMAL_SPACE_P2"
+        },
+        {
+          "slot_id": "P3",
+          "slot_function": "EMPTY_BREAK",
+          "pattern_id": "PAT_ED_DUB_MINIMAL_SPACE_P3"
+        }
+      ]
+    }
+  ]
+}
