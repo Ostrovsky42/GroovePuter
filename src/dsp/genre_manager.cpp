@@ -283,6 +283,14 @@ TextureMode GenreManager::nextAllowedTexture(GenerativeMode genre, TextureMode c
 }
 
 void GenreManager::applyGenreTimbre(MiniAcid& engine) {
+    // Atlas Chicago Jack is authored for an acid voice. Parameter IDs below
+    // are TB303-specific and must not be sent to SID/AY/OPL2 engines where the
+    // same numeric indices control unrelated synthesis parameters.
+    if (state_.recipe == 6) {
+        engine.setSynthEngine(0, "TB303");
+        engine.setSynthEngine(1, "TB303");
+    }
+
     const GenreBehavior b = getBehavior();
     const GenreTimbre& t = b.timbre;
 
