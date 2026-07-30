@@ -66,7 +66,7 @@ arduino-cli monitor -p /dev/ttyACM0 -c baudrate=115200
 
 ### Workflow
 
-- Startup: `PERFORM`.
+- Startup: the original Genre/groovebox page.
 - `Fn + Tab`: cycle `PERFORM → PATTERN → ARRANGE`.
 - `Fn + Shift + Tab`: cycle backward.
 - On PERFORM: `1` = PERFORM, `2` = PATTERN, `3` = ARRANGE.
@@ -93,7 +93,8 @@ Both rows use the same scale-degree layout. The upper row is exactly one octave 
 
 ### Performance settings
 
-- `[` / `]`: previous / next scale.
+- `[` / `]`: previous / next page in the original carousel.
+- `,` / `.` on PERFORM: previous / next scale.
 - `-` / `=`: octave down / up.
 - `X`: live Synth A Panic / All Notes Off.
 - `Space` or the Cardputer action button: transport start/stop.
@@ -244,11 +245,12 @@ This is intentional when the active page owns that key. Page commands have prior
 
 ### Screen and mode
 
-- [ ] Firmware starts on PERFORM.
+- [ ] Firmware starts on the original Genre/groovebox page.
 - [ ] Screen shows `NOTE MODE: ON` after reboot.
 - [ ] `N` toggles NOTE mode and the displayed state.
 - [ ] Screen shows root C, Natural Minor, octave, held count, and active MIDI note.
-- [ ] `Fn + Tab` cycles PERFORM, PATTERN, and ARRANGE.
+- [ ] `[` / `]` still cycles every original GroovePuter page.
+- [ ] `Fn + Tab` provides the additional PERFORM/PATTERN/ARRANGE shortcut.
 - [ ] Existing detailed pages remain accessible.
 
 ### P0 regressions

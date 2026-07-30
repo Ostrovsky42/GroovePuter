@@ -42,10 +42,12 @@ bool PerformPage::handleEvent(UIEvent& event) {
                               : "NOTE MODE: OFF",
                           900);
             return true;
-        case '[':
+        case ',':
+        case '<':
             keyboard_.cycleScale(-1);
             return true;
-        case ']':
+        case '.':
+        case '>':
             keyboard_.cycleScale(1);
             return true;
         case '-':
@@ -116,6 +118,6 @@ void PerformPage::drawContent(IGfx& gfx) {
 
 void PerformPage::drawFooter(IGfx& gfx) {
     UI::drawStandardFooter(gfx,
-                           "N:Note [ ]:Scale -/=:Oct",
+                           "N:Note ,/.:Scale -/=:Oct",
                            "X:Panic 1:PERF 2:PAT 3:ARR");
 }

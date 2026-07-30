@@ -53,8 +53,8 @@ private:
   IGfx& gfx_;
   MiniAcid& mini_acid_;
   PerformanceKeyboard& performance_keyboard_;
-  int page_index_ = 12;
-  int previous_page_index_ = 12;  // For Backspace/` toggle
+  int page_index_ = 0;
+  int previous_page_index_ = 0;  // For Backspace/` toggle
   unsigned long splash_start_ms_ = 0;
   bool splash_active_ = true;
   bool help_dialog_visible_ = false;
