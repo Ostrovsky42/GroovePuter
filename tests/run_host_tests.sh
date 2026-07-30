@@ -24,6 +24,17 @@ python3 "${ROOT_DIR}/tests/test_source_regressions.py"
   -std=c++17 \
   -Wall \
   -Wextra \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_atlas_runtime.cpp" \
+  "${ROOT_DIR}/src/dsp/atlas_runtime.cpp" \
+  -o "${BUILD_DIR}/test_atlas_runtime"
+
+"${BUILD_DIR}/test_atlas_runtime"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_sampler_voice.cpp" \
