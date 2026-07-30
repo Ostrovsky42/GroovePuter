@@ -19,6 +19,9 @@ static MusicalEvent event(MusicalEventType type,
 int main() {
     MusicalEventQueue queue;
 
+    static_assert(MusicalEventQueue::kStorageSize == 64);
+    static_assert(MusicalEventQueue::kCapacity == 63);
+
     assert(queue.tryPush(event(MusicalEventType::NoteOn,
                                MusicalEventTarget::SynthA, 36)));
     assert(queue.tryPush(event(MusicalEventType::NoteOff,
@@ -32,8 +35,7 @@ int main() {
     assert(out.type == MusicalEventType::NoteOff);
     assert(!queue.tryPop(out));
 
-    // A ring with one sentinel slot holds capacity - 1 events.
-    for (std::size_t i = 0; i < MusicalEventQueue::kCapacity - 1; ++i) {
+    for (std::size_t i = 0; i < MusicalEventQueue::kCapacity; ++i) {
         assert(queue.tryPush(event(MusicalEventType::NoteOn,
                                    MusicalEventTarget::SynthA,
                                    static_cast<uint8_t>(24 + (i % 40)))));
@@ -46,10 +48,10 @@ int main() {
 
     std::size_t popped = 0;
     while (queue.tryPop(out)) ++popped;
-    assert(popped == MusicalEventQueue::kCapacity - 1);
+    assert(popped == MusicalEventQueue::kCapacity);
 
     // Dropped NoteOn is observable but does not request a destructive panic.
-    for (std::size_t i = 0; i < MusicalEventQueue::kCapacity - 1; ++i) {
+    for (std::size_t i = 0; i < MusicalEventQueue::kCapacity; ++i) {
         assert(queue.tryPush(event(MusicalEventType::NoteOn,
                                    MusicalEventTarget::SynthA, 36)));
     }
@@ -57,6 +59,13 @@ int main() {
                                 MusicalEventTarget::SynthA, 37)));
     assert(queue.takePendingAllNotesOffMask() == 0);
     assert(queue.droppedCount() == 2);
+
+    queue.discardPending();
+    assert(!queue.tryPop(out));
+    assert(queue.tryPush(event(MusicalEventType::NoteOn,
+                               MusicalEventTarget::SynthA, 40)));
+    assert(queue.tryPop(out));
+    assert(out.note == 40);
 
     return 0;
 }
