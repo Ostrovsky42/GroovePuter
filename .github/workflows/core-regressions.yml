@@ -8,36 +8,9 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  patch-reliability-round2:
-    if: github.actor != 'github-actions[bot]' && github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'agent/fix-core-reliability'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/fix-core-reliability
-          fetch-depth: 0
-
-      - name: Apply guarded reliability migration
-        run: python3 scripts/run_reliability_round2.py
-
-      - name: Commit source migration
-        run: |
-          git diff --check
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            miniacid.ino \
-            scenes.cpp \
-            src/audio/pattern_paging.cpp \
-            src/dsp/miniacid_engine.cpp \
-            src/dsp/miniacid_engine.h \
-            src/ui/miniacid_display.cpp
-          git commit -m "fix: make paging and scene writes transactional"
-          git push origin HEAD:agent/fix-core-reliability
-
   host-tests:
     runs-on: ubuntu-latest
     steps:
