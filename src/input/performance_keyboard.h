@@ -29,6 +29,9 @@ public:
     explicit PerformanceKeyboard(MusicalEventRouter& router)
         : router_(router) {}
 
+    // Returns true when the key belongs to NOTE mode and must not fall through
+    // to legacy shortcuts. A transport-blocked performance key is consumed but
+    // does not emit a NoteOn.
     bool keyDown(char physicalKey, uint8_t velocity = 100);
     bool keyUp(char physicalKey);
 
@@ -39,11 +42,17 @@ public:
     void setEnabled(bool enabled);
     bool enabled() const { return enabled_; }
 
+    void setNoteModeEnabled(bool enabled);
+    void toggleNoteMode() { setNoteModeEnabled(!noteModeEnabled_); }
+    bool noteModeEnabled() const { return noteModeEnabled_; }
+
     // PatternPlayer owns Synth A while transport is running. Starting transport
     // clears live notes and disables new performance events until it stops.
     void setTransportPlaying(bool playing);
     bool transportPlaying() const { return transportPlaying_; }
-    bool liveInputAllowed() const { return enabled_ && !transportPlaying_; }
+    bool liveInputAllowed() const {
+        return enabled_ && noteModeEnabled_ && !transportPlaying_;
+    }
 
     void panic();
 
@@ -59,6 +68,7 @@ public:
     std::size_t heldCount() const { return heldCount_; }
 
     bool noteForKey(char physicalKey, uint8_t& note) const;
+    static bool isPerformanceKey(char physicalKey);
     static bool scaleDegreeForKey(char physicalKey, uint8_t& degree);
 
 private:
@@ -84,5 +94,6 @@ private:
     PerformanceScale scale_{PerformanceScale::NaturalMinor};
     int8_t octaveShift_{0};
     bool enabled_{true};
+    bool noteModeEnabled_{true};
     bool transportPlaying_{false};
 };
