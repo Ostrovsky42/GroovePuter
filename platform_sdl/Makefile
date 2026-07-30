@@ -78,6 +78,7 @@ SOURCES := \
 	../src/ui/components/drum_sequencer_grid.cpp \
 	../src/audio/desktop_audio_recorder.cpp \
 	../src/audio/wasm_audio_recorder.cpp \
+	../src/audio/pattern_paging.cpp \
 	../src/sampler/sample_loader.cpp \
 	../src/sampler/ram_sample_store.cpp \
 	../src/sampler/sample_index.cpp \
