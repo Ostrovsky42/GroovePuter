@@ -8,9 +8,36 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  apply-performance-hardware-fix:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'feature/performance-workflow'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Apply guarded live-audio and navigation fix
+        run: python3 tools/migrations/apply_live_audio_and_navigation_fix.py
+
+      - name: Commit migration result
+        run: |
+          if git diff --quiet; then
+            echo "No migration changes required"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: restore groovebox navigation and live synth audio"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+
   host-tests:
     runs-on: ubuntu-latest
     steps:
