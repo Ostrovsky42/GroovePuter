@@ -11,7 +11,7 @@ permissions:
   contents: write
 
 jobs:
-  patch-scene-writer:
+  patch-scene-parser:
     if: github.actor != 'github-actions[bot]' && github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'agent/fix-core-reliability'
     runs-on: ubuntu-latest
     steps:
@@ -20,18 +20,17 @@ jobs:
           ref: agent/fix-core-reliability
           fetch-depth: 0
 
-      - name: Apply guarded scene writer migration
-        run: python3 scripts/migrate_scene_writer.py
+      - name: Apply guarded scene parser migration
+        run: python3 scripts/migrate_scene_parser.py
 
       - name: Commit migration
         run: |
-          rm -f .github/workflows/apply-scene-writer-once.yml
-          rm -f scripts/migrate_scene_writer.py
+          rm -f scripts/migrate_scene_parser.py
           git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scenes.h .github/workflows/apply-scene-writer-once.yml scripts/migrate_scene_writer.py
-          git commit -m "fix: preserve dynamics in streaming scene writer"
+          git add scenes.cpp scripts/migrate_scene_parser.py
+          git commit -m "fix: restore dynamics in streaming scene parser"
           git push origin HEAD:agent/fix-core-reliability
 
   host-tests:
