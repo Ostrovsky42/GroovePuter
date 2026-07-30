@@ -1788,9 +1788,9 @@ void MiniAcid::applyDrumAutomationLanesForStep_(const DrumPatternSet& patternSet
 }
 
 void MiniAcid::advanceTick() {
-    // Current monolithic implementation - Stage 1
-    // We trigger everything at the start of the 16th note (tick % 24 == 0)
-    processSequencerEvents(currentTick_);
+  // Dispatch every PPQN tick. processSequencerEvents() keeps logical
+  // step and bar-boundary side effects on their exact boundaries.
+  processSequencerEvents(currentTick_);
 }
 
 void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
@@ -1981,11 +1981,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
         tickPhaseAccum_ &= 0xFFFFFFFFULL;
         
         while (ticksToAdvance--) {
-          currentTick_++;
-          // For Stage 2: We trigger patterns every 24 ticks (1/16th note @ 96 PPQN)
-          if (currentTick_ % 24 == 0) {
-              advanceTick();
-          }
+          ++currentTick_;
+          advanceTick();
         }
       }
       if (gateCountdownA_ > 0 && --gateCountdownA_ <= 0) if (synthVoices_[0]) synthVoices_[0]->release();
