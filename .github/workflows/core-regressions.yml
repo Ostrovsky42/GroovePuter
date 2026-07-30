@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   migrate-atlas-recipes:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/agent/fix-core-reliability'
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/agent/fix-core-reliability')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
