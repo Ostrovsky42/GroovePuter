@@ -27,6 +27,10 @@ public:
         return true;
     }
     bool sendNoteOff(uint8_t channel, uint8_t note, uint8_t velocity) override {
+        if (noteOffFailuresRemaining > 0) {
+            --noteOffFailuresRemaining;
+            return false;
+        }
         if (!mountedState || !sendResult) return false;
         packets.push_back({PacketType::NoteOff, channel, note, velocity});
         return true;
@@ -37,6 +41,7 @@ public:
     bool beginResult{true};
     bool mountedState{false};
     bool sendResult{true};
+    int noteOffFailuresRemaining{0};
     int beginCalls{0};
     int flushCalls{0};
     std::vector<Packet> packets;
@@ -88,7 +93,7 @@ int main() {
     assert(output.channelFor(MusicalEventSource::PatternPlayer,
                              MusicalEventTarget::SynthB) == 8);
 
-    // Three independent ownership lanes: live A, pattern A and pattern B.
+    // Three independent logical lanes: live A, pattern A and pattern B.
     output.handleMusicalEvent(event(MusicalEventType::NoteOn, 36, 100));
     output.handleMusicalEvent(event(MusicalEventType::NoteOn, 48, 90,
                                     MusicalEventSource::PatternPlayer,
@@ -145,6 +150,30 @@ int main() {
     assert(transport.packets.size() == 8);
     expectPacket(transport.packets[7], PacketType::NoteOff, 8, 52, 0);
 
+    // Live and Pattern Synth A share channel 8. Equal pitches are reference
+    // counted at wire level, so live panic cannot silence the pattern owner.
+    transport.clear();
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 90,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::SynthA));
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 110));
+    assert(transport.packets.size() == 1);
+    expectPacket(transport.packets[0], PacketType::NoteOn, 7, 60, 90);
+    assert(output.wireOwnerCount(7, 60) == 2);
+
+    output.handleMusicalEvent(event(MusicalEventType::AllNotesOff, 0));
+    assert(transport.packets.size() == 1);
+    assert(output.wireOwnerCount(7, 60) == 1);
+    assert(output.activeNote(MusicalEventSource::PatternPlayer,
+                             MusicalEventTarget::SynthA) == 60);
+
+    output.handleMusicalEvent(event(MusicalEventType::AllNotesOff, 0, 0,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::SynthA));
+    assert(transport.packets.size() == 2);
+    expectPacket(transport.packets[1], PacketType::NoteOff, 7, 60, 0);
+    assert(output.wireOwnerCount(7, 60) == 0);
+
     // Unsupported sources and live Synth B remain outside this stage.
     transport.clear();
     output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 100,
@@ -168,20 +197,23 @@ int main() {
     assert(transport.packets.size() == 1);
     expectPacket(transport.packets[0], PacketType::NoteOn, 7, 55, 88);
 
-    // Queue-full NoteOff failure retains ownership and prevents layering.
-    transport.sendResult = false;
+    // Failed old-note release is retried before a later mismatched NoteOff. The
+    // natural sequencer timeline must finish inactive without requiring Panic.
+    transport.noteOffFailuresRemaining = 1;
     output.handleMusicalEvent(event(MusicalEventType::NoteOn, 57, 77,
                                     MusicalEventSource::PatternPlayer,
                                     MusicalEventTarget::SynthA));
     assert(transport.packets.size() == 1);
     assert(output.activeNote(MusicalEventSource::PatternPlayer,
                              MusicalEventTarget::SynthA) == 55);
-    transport.sendResult = true;
-    output.handleMusicalEvent(event(MusicalEventType::AllNotesOff, 0, 0,
+    output.handleMusicalEvent(event(MusicalEventType::NoteOff, 57, 0,
                                     MusicalEventSource::PatternPlayer,
                                     MusicalEventTarget::SynthA));
     assert(transport.packets.size() == 2);
     expectPacket(transport.packets[1], PacketType::NoteOff, 7, 55, 0);
+    assert(output.activeNote(MusicalEventSource::PatternPlayer,
+                             MusicalEventTarget::SynthA) == -1);
+    assert(output.wireOwnerCount(7, 55) == 0);
 
     // Disconnect clears every lane and does not replay stale notes.
     output.handleMusicalEvent(event(MusicalEventType::NoteOn, 64, 100,
@@ -192,6 +224,7 @@ int main() {
     assert(output.status() == UsbMidiStatus::Wait);
     assert(output.activeNote(MusicalEventSource::PatternPlayer,
                              MusicalEventTarget::SynthB) == -1);
+    assert(output.wireOwnerCount(8, 64) == 0);
     transport.mountedState = true;
     output.pollConnection();
     output.handleMusicalEvent(event(MusicalEventType::NoteOn, 65, 70,
