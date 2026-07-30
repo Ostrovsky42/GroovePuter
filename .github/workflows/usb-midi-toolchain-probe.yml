@@ -28,11 +28,19 @@ jobs:
           echo "=== Cardputer board definition ==="
           awk '/^m5stack_cardputer\./ { print }' "$CORE/boards.txt" | grep -E '(^m5stack_cardputer\.name=|usb|USB|build\.extra_flags|upload_mode|cdc)' || true
 
-          echo "=== Board details ==="
-          arduino-cli board details --fqbn m5stack:esp32:m5stack_cardputer --show-properties || true
+          echo "=== TinyUSB board details ==="
+          arduino-cli board details \
+            --fqbn 'm5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc' \
+            --show-properties || true
+
+          echo "=== USB facade ==="
+          find "$CORE" -path '*/libraries/USB/src/USB.h' -print -exec sed -n '1,260p' {} \;
 
           echo "=== USB MIDI header ==="
-          find "$CORE" -path '*/libraries/USB/src/USBMIDI.h' -print -exec sed -n '1,180p' {} \;
+          find "$CORE" -path '*/libraries/USB/src/USBMIDI.h' -print -exec sed -n '1,220p' {} \;
+
+          echo "=== USB MIDI implementation ==="
+          find "$CORE" -path '*/libraries/USB/src/USBMIDI.cpp' -print -exec sed -n '1,320p' {} \;
 
           echo "=== USB MIDI controller example ==="
           find "$CORE" -path '*/libraries/USB/examples/MIDI/MidiController/MidiController.ino' -print -exec sed -n '1,180p' {} \;
