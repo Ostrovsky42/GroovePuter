@@ -19,9 +19,12 @@ public:
     static constexpr std::size_t kMaxHeldNotes = 19;
     static constexpr uint8_t kMinNote = 24;
     static constexpr uint8_t kMaxNote = 71;
-    static constexpr uint8_t kRootC2 = 36;
-    static constexpr int8_t kMinOctaveShift = -1;
-    static constexpr int8_t kMaxOctaveShift = 1;
+    static constexpr uint8_t kRootC3 = 48;
+    // The Cardputer layout spans less than two octaves. C3 is the highest
+    // default root that keeps every supported scale/key inside the 303 range;
+    // users can shift down two octaves and back up to the default.
+    static constexpr int8_t kMinOctaveShift = -2;
+    static constexpr int8_t kMaxOctaveShift = 0;
 
     explicit PerformanceKeyboard(MusicalEventRouter& router)
         : router_(router) {}
