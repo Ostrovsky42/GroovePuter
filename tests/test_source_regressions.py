@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -156,6 +157,53 @@ def test_atlas_recipe_precedes_random_fallback() -> None:
             "Atlas BPM must respect the existing tempo opt-in")
 
 
+def test_genre_page_uses_recipe_mode_and_tempo_order() -> None:
+    page = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
+
+    link_start = page.index("const char* linkStateShort")
+    link_end = page.index("int clampRecipeIndex", link_start)
+    link_block = page[link_start:link_end]
+    require("grooveboxModeForRecipe" in link_block,
+            "Genre page LINK state must account for the active recipe")
+
+    apply_start = page.index("void GenrePage::applyCurrent()")
+    apply_end = page.index("void GenrePage::updateFromEngine()", apply_start)
+    apply_block = page[apply_start:apply_end]
+    require("grooveboxModeForRecipe" in apply_block,
+            "Genre Apply must select recipe-aware macro mode")
+    tempo_pos = apply_block.index("if (doApplyTempo)")
+    regenerate_pos = apply_block.index("if (doRegenerate)")
+    require(tempo_pos < regenerate_pos,
+            "tempo must be set before generation so BPM adaptation is correct")
+    require(apply_block.count("if (doApplyTempo)") == 1,
+            "generic tempo must not overwrite Atlas BPM after regeneration")
+
+
+def test_atlas_compiler_matches_manifest_contract() -> None:
+    compiler = (ROOT / "tools/atlas/compile_chicago_runtime.py").read_text(
+        encoding="utf-8"
+    )
+    manifest = json.loads(
+        (ROOT / "tools/atlas/atlas_v2_6_chicago_manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    expected_hash = manifest["source_archive_sha256"]
+    require(expected_hash in compiler,
+            "Atlas compiler and provenance manifest must pin the same archive")
+    require(manifest["atlas_schema_version"] == "2.6.0",
+            "Chicago compiler is defined only for Atlas schema 2.6.0")
+    require(manifest["runtime_recipe_id"] == 6,
+            "Chicago Jack runtime recipe id must remain stable")
+    require(manifest["source_event_count"] == 107,
+            "manifest must preserve the reviewed source event count")
+    require(manifest["ignored_sampler_event_count"] == 5,
+            "ignored sampler data must remain explicit")
+    require("REC_ACID_CHICAGO_JACK" in compiler,
+            "compiler must be scoped to the reviewed Chicago Jack recipe")
+
+
 def main() -> None:
     test_ppqn_dispatch_is_not_step_gated()
     test_all_substep_offsets_are_reachable()
@@ -166,6 +214,8 @@ def main() -> None:
     test_generative_params_have_safe_defaults()
     test_chicago_jack_is_a_real_atlas_recipe()
     test_atlas_recipe_precedes_random_fallback()
+    test_genre_page_uses_recipe_mode_and_tempo_order()
+    test_atlas_compiler_matches_manifest_contract()
     print("source regressions: OK")
 
 
