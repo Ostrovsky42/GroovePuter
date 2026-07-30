@@ -21,8 +21,11 @@ public:
     static bool pageExists(int pageIndex);
     static bool removePage(int pageIndex);
 
-private:
+    // Compatibility entry point for the existing SceneManager constructor.
+    // It will be removed when early SD access is migrated out of static init.
     static bool ensureDirectory();
+
+private:
     static bool validPageIndex(int pageIndex);
     static std::string pagePath(int pageIndex);
     static std::string tempPath(int pageIndex);
