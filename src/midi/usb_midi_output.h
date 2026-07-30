@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_USB_MIDI_OUTPUT_H
+#define GROOVEPUTER_USB_MIDI_OUTPUT_H
 
 #include <cstdint>
 
@@ -52,3 +54,5 @@ private:
     bool begun_{false};
     bool mounted_{false};
 };
+
+#endif  // GROOVEPUTER_USB_MIDI_OUTPUT_H
