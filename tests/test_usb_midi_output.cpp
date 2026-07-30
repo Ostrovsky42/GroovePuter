@@ -160,27 +160,41 @@ int main() {
     assert(transport.packets.size() == 1);
     expectPacket(transport.packets[0], PacketType::NoteOn, 7, 55, 88);
 
+    // Queue-full replacement fails closed: retain the old active-note state and
+    // do not layer a new NoteOn without first delivering the required NoteOff.
+    transport.sendResult = false;
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 57, 77));
+    assert(transport.packets.size() == 1);
+    assert(output.activeNote(MusicalEventTarget::SynthA) == 55);
+
+    transport.sendResult = true;
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 57, 77));
+    assert(transport.packets.size() == 3);
+    expectPacket(transport.packets[1], PacketType::NoteOff, 7, 55, 0);
+    expectPacket(transport.packets[2], PacketType::NoteOn, 7, 57, 77);
+    assert(output.activeNote(MusicalEventTarget::SynthA) == 57);
+
     // Disconnect clears local ownership and never queues stale note state.
     transport.mountedState = false;
     output.pollConnection();
     assert(output.status() == UsbMidiStatus::Wait);
     assert(output.activeNote(MusicalEventTarget::SynthA) == -1);
-    output.handleMusicalEvent(event(MusicalEventType::NoteOff, 55));
-    assert(transport.packets.size() == 1);
+    output.handleMusicalEvent(event(MusicalEventType::NoteOff, 57));
+    assert(transport.packets.size() == 3);
 
     transport.mountedState = true;
     output.pollConnection();
     output.handleMusicalEvent(event(MusicalEventType::NoteOn, 57, 77));
-    assert(transport.packets.size() == 2);
-    expectPacket(transport.packets[1], PacketType::NoteOn, 7, 57, 77);
+    assert(transport.packets.size() == 4);
+    expectPacket(transport.packets[3], PacketType::NoteOn, 7, 57, 77);
 
     // Runtime disable releases a currently owned note, then becomes inert.
     output.setEnabled(false);
     assert(output.status() == UsbMidiStatus::Off);
-    assert(transport.packets.size() == 3);
-    expectPacket(transport.packets[2], PacketType::NoteOff, 7, 57, 0);
+    assert(transport.packets.size() == 5);
+    expectPacket(transport.packets[4], PacketType::NoteOff, 7, 57, 0);
     output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 100));
-    assert(transport.packets.size() == 3);
+    assert(transport.packets.size() == 5);
 
     output.setEnabled(true);
     output.pollConnection();
