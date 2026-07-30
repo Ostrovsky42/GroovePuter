@@ -20,6 +20,7 @@ Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtu
 * **Two Swappable Synth Voices:** swap engines on the fly (click-free) between TB-303, OPL2 (FM), AY/YM2149 (PSG), and SID.
 * **TR-808–inspired drum section**
 * **Pattern + song arrangement**
+* **PERFORM / PATTERN / ARRANGE workflow:** scale-aware two-row keyboard, explicit NOTE mode, monophonic last-note priority, and transport-safe Synth A ownership.
 * **Dual song slots (`A/B`)** with split compare and live mix controls
 * **RETRO split Song view** aligned with cyber theme styling
 * **FEEL system (live):**
@@ -33,21 +34,64 @@ Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtu
 * **Drum Automation page:** 4 automation lanes + per-pattern groove override
 * **Scene persistence:** safe load for older scenes (optional fields)
 
+## Controls
 
-## Quick Keys 
-- `Space`: play/stop
-- `Fn+nums`: page routing
-- `Arrows`: move cursor / navigate lists
-- `Enter`: confirm/apply/toggle focused item
-- `Tab`: switch focus/section on many pages
-- `[` / `]`: previous/next page
-- `Ctrl+[` / `Ctrl+]`: switch editing page context (Song Page)
-- `Q..I`: choose pattern slot `1..8` in Pattern/Drum/Song contexts
-- `B`: quick A/B bank toggle (Pattern/Drum) or bank flip in Song cell/selection
-- `Alt+B`: edit song slot `A/B`
-- `Ctrl+B`: play song slot `A/B`
-- `X`: split compare (Song) or primary action on Tape page
-- `Esc`: back (or clear selection in editors)
+### Workflow quick reference
+
+| Key | Action |
+|---|---|
+| `Fn + Tab` | Cycle `PERFORM → PATTERN → ARRANGE` |
+| `Fn + Shift + Tab` | Cycle backward |
+| `1` / `2` / `3` on PERFORM | Open PERFORM / PATTERN / ARRANGE |
+| `Space` | Transport play / stop |
+| `N` on PERFORM | Toggle NOTE mode |
+| `[` / `]` on PERFORM | Previous / next scale |
+| `-` / `=` on PERFORM | Octave down / up |
+| `X` on PERFORM | Release the live-owned Synth A note |
+
+### PERFORM — NOTE MODE: ON
+
+![GroovePuter PERFORM keymap with NOTE mode enabled](docs/keymaps/cardputer_adv_perform_note_mode_on.svg)
+
+`NOTE MODE: ON` is the default after reboot.
+
+* `QWERTYUIOP` is the upper scale-aware manual.
+* `ASDFGHJKL` is the lower scale-aware manual.
+* The upper row is exactly one octave above the matching lower-row scale degree.
+* Synth A is monophonic and uses last-note priority.
+* While transport runs, note keys remain **reserved and consumed**, but emit no `NoteOn`. They cannot fall through to legacy randomize or BPM commands.
+* `X` is a target-scoped live panic. It does not release PatternPlayer-owned Synth A/B voices.
+
+### PERFORM — NOTE MODE: OFF
+
+![GroovePuter PERFORM keymap with NOTE mode disabled](docs/keymaps/cardputer_adv_perform_note_mode_off.svg)
+
+`NOTE MODE: OFF` returns the musical letters to the legacy command layer.
+
+| Key | Legacy action |
+|---|---|
+| `I` | Randomize Synth A pattern |
+| `O` | Randomize Synth B pattern |
+| `P` | Randomize drums |
+| `K` / `L` | BPM down / up |
+| `N` | Return to NOTE mode |
+
+> [!IMPORTANT]
+> Page commands always get first refusal. NOTE mode only receives an unmodified key after the active page declines it. The step editor therefore keeps its own editing controls.
+
+### Editor conventions
+
+| Key | Common action |
+|---|---|
+| `Arrows` | Move cursor or navigate lists |
+| `Enter` | Confirm, apply, or toggle the focused item |
+| `Tab` | Change focus or section on supported pages |
+| `Esc` | Back or dismiss |
+| `Alt/Fn + 1..0` | Direct jump to detailed pages |
+| `Q..I` | Pattern slots `1..8` in Pattern, Drum, and Song contexts |
+| `1..9`, `0` | Track mutes when the active page does not consume the digit |
+
+The canonical page-by-page reference is in [`src/ui/docs/keys.md`](src/ui/docs/keys.md). The Cardputer-ADV performance acceptance procedure is in [`docs/tests/PERFORMANCE_WORKFLOW_CARDPUTER_ADV.md`](docs/tests/PERFORMANCE_WORKFLOW_CARDPUTER_ADV.md).
 
 ## Screenshots
 
