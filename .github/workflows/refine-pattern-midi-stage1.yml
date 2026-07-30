@@ -1,0 +1,84 @@
+name: Refine Pattern MIDI Stage 1
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/refine-pattern-midi-stage1.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refine:
+    if: github.event.pull_request.head.ref == 'feature/pattern-midi-output'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/pattern-midi-output
+          fetch-depth: 0
+
+      - name: Apply lifecycle refinements
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, found {count}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          replace_once(
+              'src/dsp/miniacid_engine.cpp',
+              '  if (velocity < 1) velocity = 1;\n  if (velocity > 127) velocity = 127;\n',
+              '  if (velocity < 1) velocity = 1;\n')
+
+          replace_once(
+              'src/dsp/miniacid_engine.cpp',
+              'void MiniAcid::applySceneStateFromManager() {\n  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: Start");\n',
+              'void MiniAcid::applySceneStateFromManager() {\n  if (playing) publishPatternAllNotesOff_();\n  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: Start");\n')
+
+          replace_once(
+              'src/midi/usb_midi_output.h',
+              '    bool accepts(const MusicalEvent& event, const MidiVoiceLane* lane) const;\n',
+              '    bool accepts(const MidiVoiceLane* lane) const;\n')
+
+          replace_once(
+              'src/midi/usb_midi_output.cpp',
+              'bool UsbMidiOutput::accepts(const MusicalEvent&,\n                            const MidiVoiceLane* lane) const {\n',
+              'bool UsbMidiOutput::accepts(const MidiVoiceLane* lane) const {\n')
+
+          replace_once(
+              'src/midi/usb_midi_output.cpp',
+              '    if (!accepts(event, lane)) return;\n',
+              '    if (!accepts(lane)) return;\n')
+
+          replace_once(
+              'tests/test_pattern_midi_source_regressions.py',
+              '    require("publishPatternNoteOn_" in engine and\n            "publishPatternNoteOff_" in engine and\n            "publishPatternAllNotesOff_" in engine,\n            "PatternPlayer lifecycle must publish normalized events")\n',
+              '    require("publishPatternNoteOn_" in engine and\n            "publishPatternNoteOff_" in engine and\n            "publishPatternAllNotesOff_" in engine,\n            "PatternPlayer lifecycle must publish normalized events")\n    scene_apply = engine.index("void MiniAcid::applySceneStateFromManager()")\n    scene_body = engine[scene_apply:scene_apply + 240]\n    require("if (playing) publishPatternAllNotesOff_();" in scene_body,\n            "scene application must release stale PatternPlayer MIDI ownership")\n')
+
+          replace_once(
+              'docs/tests/PATTERN_MIDI_OUTPUT_CARDPUTER_ADV.md',
+              '- Pattern or Song-row changes do not leave stale notes.\n',
+              '- Pattern, Song-row, or scene changes do not leave stale notes.\n')
+          PY
+
+      - name: Run host regressions and publish refinements
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/run_host_tests.sh
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/refine-pattern-midi-stage1.yml
+          git add -A
+          git commit -m "fix(midi): complete PatternPlayer lifecycle cleanup"
+          git push origin HEAD:feature/pattern-midi-output
