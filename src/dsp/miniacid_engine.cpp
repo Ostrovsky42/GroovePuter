@@ -2195,8 +2195,10 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
 
 void MiniAcid::randomize303Pattern(int voiceIndex) {
   int idx = clamp303Voice(voiceIndex);
-  // Use genre-aware generator with voice role (0=bass, 1=lead)
-  const auto recipe = genreManager_.getGrooveRecipe();
+  // Use the complete compiled genre profile. GrooveRecipe is a compact legacy
+  // view and cannot represent pitch, articulation or microtiming parameters.
+  const GenerativeParams& genreParams =
+      genreManager_.getCompiledGenerativeParams();
   auto behavior = genreManager_.getBehavior();
   if (genreManager_.generativeMode() == GenerativeMode::Reggae) {
     // Reggae split: bass anchors downbeats, lead handles offbeat movement.
@@ -2212,7 +2214,7 @@ void MiniAcid::randomize303Pattern(int voiceIndex) {
       behavior.forceOctaveJump = false;
     }
   }
-  modeManager_.generatePattern(editSynthPattern(idx), bpmValue, recipe, behavior, idx);
+  modeManager_.generatePattern(editSynthPattern(idx), bpmValue, genreParams, behavior, idx);
 }
 
 void MiniAcid::setParameter(MiniAcidParamId id, float value) {
@@ -2231,17 +2233,21 @@ void MiniAcid::adjustParameter(MiniAcidParamId id, int steps) {
 }
 
 void MiniAcid::randomizeDrumPattern() {
-  // Use genre-aware drum generator
-  const auto recipe = genreManager_.getGrooveRecipe();
+  const GenerativeParams& genreParams =
+      genreManager_.getCompiledGenerativeParams();
   const auto behavior = genreManager_.getBehavior();
-  modeManager_.generateDrumPattern(sceneManager_.editCurrentDrumPattern(), recipe, behavior);
+  modeManager_.generateDrumPattern(
+      sceneManager_.editCurrentDrumPattern(), genreParams, behavior);
 }
 
 void MiniAcid::randomizeDrumVoice(int voiceIndex) {
   int idx = clampDrumVoice(voiceIndex);
-  const auto recipe = genreManager_.getGrooveRecipe();
+  const GenerativeParams& genreParams =
+      genreManager_.getCompiledGenerativeParams();
   const auto behavior = genreManager_.getBehavior();
-  modeManager_.generateDrumVoice(sceneManager_.editCurrentDrumPattern().voices[idx], idx, recipe, behavior);
+  modeManager_.generateDrumVoice(
+      sceneManager_.editCurrentDrumPattern().voices[idx], idx,
+      genreParams, behavior);
 }
 
 // Helper to clear a step for REST
@@ -2260,9 +2266,10 @@ void MiniAcid::clear303Step(int stepIndex, int synthIndex) {
 }
 
 void MiniAcid::randomizeDrumPatternChaos() {
-  const auto recipe = genreManager_.getGrooveRecipe();
-  
-  // Scramble EVERYTHING
+  const GenerativeParams& genreParams =
+      genreManager_.getCompiledGenerativeParams();
+
+  // Scramble structural placement while retaining bounded genre parameters.
   DrumPatternSet& patternSet = sceneManager_.editCurrentDrumPattern();
   for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
       // Use random behavior for each voice for "chaos"
@@ -2274,7 +2281,7 @@ void MiniAcid::randomizeDrumPatternChaos() {
       chaosBehavior.allowChromatic = true;
       chaosBehavior.forceOctaveJump = true;
       
-      modeManager_.generateDrumVoice(patternSet.voices[v], v, recipe, chaosBehavior);
+      modeManager_.generateDrumVoice(patternSet.voices[v], v, genreParams, chaosBehavior);
   }
 }
 
@@ -2283,10 +2290,11 @@ void MiniAcid::regeneratePatternsWithGenre() {
   // This prevents double-application which would cause delta-bias drift
   syncGrooveModeToGenre();
   
-  const auto recipe = genreManager_.getGrooveRecipe();
+  const GenerativeParams& genreParams =
+      genreManager_.getCompiledGenerativeParams();
   const auto behavior = genreManager_.getBehavior();
 
-  // Regenerate 303 patterns using generative mode + structural behavior
+  // Regenerate synth patterns using the complete compiled genre profile.
   // Voice 0 = bass (low, repetitive), Voice 1 = lead/arp (high, melodic)
   auto bassBehavior = behavior;
   auto leadBehavior = behavior;
@@ -2302,16 +2310,20 @@ void MiniAcid::regeneratePatternsWithGenre() {
     leadBehavior.avoidClusters = false;
     leadBehavior.forceOctaveJump = false;
   }
-  modeManager_.generatePattern(editSynthPattern(0), bpmValue, recipe, bassBehavior, 0); // Bass
-  modeManager_.generatePattern(editSynthPattern(1), bpmValue, recipe, leadBehavior, 1); // Lead
+  modeManager_.generatePattern(
+      editSynthPattern(0), bpmValue, genreParams, bassBehavior, 0); // Bass
+  modeManager_.generatePattern(
+      editSynthPattern(1), bpmValue, genreParams, leadBehavior, 1); // Lead
 
   // Regenerate drum pattern
-  modeManager_.generateDrumPattern(sceneManager_.editCurrentDrumPattern(), recipe, behavior);
+  modeManager_.generateDrumPattern(
+      sceneManager_.editCurrentDrumPattern(), genreParams, behavior);
 }
 
 void MiniAcid::syncGrooveModeToGenre() {
   const GrooveboxMode linkedMode =
-      GenreManager::grooveboxModeForGenerative(genreManager_.generativeMode());
+      GenreManager::grooveboxModeForRecipe(
+          genreManager_.recipe(), genreManager_.generativeMode());
   if (sceneManager_.getMode() != linkedMode) {
     LOG_DEBUG("  - MiniAcid::syncGrooveModeToGenre: mode realigned to genre (%d)\n",
               static_cast<int>(linkedMode));
