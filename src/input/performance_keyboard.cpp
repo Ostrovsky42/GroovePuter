@@ -52,9 +52,10 @@ bool PerformanceKeyboard::scaleDegreeForKey(char physicalKey, uint8_t& degree) {
     }
     for (uint8_t i = 0; i < sizeof(kUpperRow) - 1; ++i) {
         if (kUpperRow[i] == physicalKey) {
-            // The upper row overlaps the lower row by six scale degrees. It is
-            // a higher manual, not a second independent voice.
-            degree = static_cast<uint8_t>(i + 3);
+            // The upper manual starts one scale degree above the lower manual.
+            // Its maximum degree stays bounded so every supported scale remains
+            // inside MiniAcid's 24..71 note range at every allowed octave.
+            degree = static_cast<uint8_t>(i + 1);
             return true;
         }
     }
@@ -75,7 +76,7 @@ bool PerformanceKeyboard::noteForKey(char physicalKey, uint8_t& note) const {
     uint8_t degree = 0;
     if (!scaleDegreeForKey(physicalKey, degree)) return false;
 
-    const int value = static_cast<int>(kRootC2) + octaveShift_ * 12 +
+    const int value = static_cast<int>(kRootC3) + octaveShift_ * 12 +
                       intervalForDegree(scale_, degree);
     if (value < kMinNote || value > kMaxNote) return false;
     note = static_cast<uint8_t>(value);
