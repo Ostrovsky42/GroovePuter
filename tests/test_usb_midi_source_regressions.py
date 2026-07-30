@@ -14,6 +14,7 @@ def main() -> None:
     sink = (ROOT / "src/midi/usb_midi_output.cpp").read_text(encoding="utf-8")
     transport = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
+    engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
     build = (ROOT / "scripts/build.sh").read_text(encoding="utf-8")
     upload = (ROOT / "scripts/upload.sh").read_text(encoding="utf-8")
     scenes_h = (ROOT / "scenes.h").read_text(encoding="utf-8")
@@ -21,12 +22,6 @@ def main() -> None:
 
     require("MidiOutput" not in event_header,
             "USB MIDI must remain an output sink, not a MusicalEventTarget")
-    require("event.source == MusicalEventSource::PerformanceKeyboard" in sink,
-            "first USB spike must explicitly accept only PerformanceKeyboard events")
-    require("event.target == MusicalEventTarget::SynthA" in sink,
-            "first USB spike must explicitly accept only SynthA events")
-    require("MusicalEventSource::PatternPlayer" not in sink,
-            "PatternPlayer USB routing belongs to a later PR")
     require("AudioMutationGate" not in sink and "AudioMutationGate" not in transport,
             "USB output must not pause or mutate the audio renderer")
 
@@ -42,10 +37,12 @@ def main() -> None:
             "USB sink registration must follow engine/internal sink initialization")
     require("router.addSink(g_output)" in transport,
             "USB MIDI must be registered as an independent router sink")
-    require("UsbMidiRouteConfig" in transport and "7," in transport,
-            "SynthA must route to zero-based channel 7 / MIDI channel 8")
     require("USBMIDI.h" not in sketch and "USB.h" not in sketch,
             "TinyUSB headers must stay isolated from the main UI translation unit")
+    require("USBMIDI" not in engine and "TinyUSB" not in engine,
+            "DSP and PatternPlayer code must remain independent from TinyUSB")
+    require("CardputerUsbMidiTransport g_transport;" in transport,
+            "USBMIDI descriptor owner must be constructed before Arduino app_main")
     require("static CardputerUsbMidiTransport transport" not in transport,
             "USB transport must not be lazily constructed after TinyUSB starts")
     require("UsbMidiSinkRegistration" not in sketch,
@@ -70,10 +67,10 @@ def main() -> None:
     )
     for token in forbidden_transport_tokens:
         require(token not in transport and token not in sink,
-                f"out-of-scope MIDI feature entered first spike: {token}")
+                f"out-of-scope MIDI feature entered USB transport: {token}")
 
     require("UsbMidi" not in scenes_h and "UsbMidi" not in scenes_cpp,
-            "USB MIDI settings must remain runtime-only in this PR")
+            "USB MIDI settings must remain runtime-only in this stage")
     require("usbMidi" not in scenes_h and "usbMidi" not in scenes_cpp,
             "scene schema must not gain USB MIDI fields")
 
