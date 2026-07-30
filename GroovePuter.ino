@@ -25,6 +25,8 @@
 #include "src/ui/workflow_mode.h"
 #include <new>
 
+void registerCardputerUsbMidiSink(MusicalEventRouter& router);
+
 static constexpr IGfxColor CP_BLACK = IGfxColor::Black();
 
 CardputerDisplay g_display;
@@ -289,6 +291,14 @@ void setup() {
   g_musicalEventRouter.addSink(g_internalSynthOutput);
   g_lastLiveInputEpoch = g_miniAcid->liveInputEpoch();
   markBootStage(51, "after MiniAcid::init");
+
+  // The platform transport registers its descriptor before app_main starts
+  // USB. Defer begin() and router mutation until setup, when Arduino and the
+  // shared event router are fully initialized.
+  screenLog("6c. USB MIDI...");
+  markBootStage(52, "before USB MIDI sink");
+  registerCardputerUsbMidiSink(g_musicalEventRouter);
+  markBootStage(53, "after USB MIDI sink");
   
   // Scan samples from SD card (SD initialized by engine->init->sceneStorage)
   screenLog("6b. Scan /sd/samples...");

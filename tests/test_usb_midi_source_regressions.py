@@ -13,7 +13,7 @@ def main() -> None:
     event_header = (ROOT / "src/input/musical_event.h").read_text(encoding="utf-8")
     sink = (ROOT / "src/midi/usb_midi_output.cpp").read_text(encoding="utf-8")
     transport = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
-    integration = (ROOT / "UsbMidiIntegration.ino").read_text(encoding="utf-8")
+    sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
     build = (ROOT / "scripts/build.sh").read_text(encoding="utf-8")
     upload = (ROOT / "scripts/upload.sh").read_text(encoding="utf-8")
     scenes_h = (ROOT / "scenes.h").read_text(encoding="utf-8")
@@ -30,14 +30,26 @@ def main() -> None:
     require("AudioMutationGate" not in sink and "AudioMutationGate" not in transport,
             "USB output must not pause or mutate the audio renderer")
 
-    require("registerCardputerUsbMidiSink(g_musicalEventRouter)" in integration,
-            "sketch bootstrap must connect the shared router to the platform sink")
-    require("router.addSink(output)" in transport,
+    setup_start = sketch.index("void setup()")
+    registration_call = "  registerCardputerUsbMidiSink(g_musicalEventRouter);"
+    require(registration_call in sketch[setup_start:],
+            "setup must connect the shared router to the platform sink")
+    require(registration_call not in sketch[:setup_start],
+            "USB sink registration must not run from global initialization")
+    require("g_musicalEventRouter.addSink(g_internalSynthOutput)" in sketch and
+            sketch.index("g_musicalEventRouter.addSink(g_internalSynthOutput)") <
+            sketch.index(registration_call, setup_start),
+            "USB sink registration must follow engine/internal sink initialization")
+    require("router.addSink(g_output)" in transport,
             "USB MIDI must be registered as an independent router sink")
     require("UsbMidiRouteConfig" in transport and "7," in transport,
             "SynthA must route to zero-based channel 7 / MIDI channel 8")
-    require("USBMIDI.h" not in integration and "USB.h" not in integration,
+    require("USBMIDI.h" not in sketch and "USB.h" not in sketch,
             "TinyUSB headers must stay isolated from the main UI translation unit")
+    require("static CardputerUsbMidiTransport transport" not in transport,
+            "USB transport must not be lazily constructed after TinyUSB starts")
+    require("UsbMidiSinkRegistration" not in sketch,
+            "application/router mutation must not run from a global constructor")
 
     tinyusb_options = "USBMode=default,CDCOnBoot=cdc,UploadMode=cdc"
     require(tinyusb_options in build,

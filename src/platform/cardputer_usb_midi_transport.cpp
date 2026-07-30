@@ -11,6 +11,18 @@ constexpr uint8_t kCinNoteOff = 0x08;
 constexpr uint8_t kCinNoteOn = 0x09;
 constexpr uint8_t kStatusNoteOff = 0x80;
 constexpr uint8_t kStatusNoteOn = 0x90;
+
+// Construction of USBMIDI registers its interface descriptor before Arduino
+// starts the TinyUSB composite. No USB methods or application state are touched
+// during global initialization.
+CardputerUsbMidiTransport g_transport;
+UsbMidiOutput g_output(
+    g_transport,
+    UsbMidiRouteConfig{
+        7,     // zero-based channel 7 == MIDI channel 8 / SEQTRAK SYNTH 1
+        true,
+    });
+bool g_registered = false;
 }
 
 uint8_t CardputerUsbMidiTransport::clamp7Bit(uint8_t value) {
@@ -77,19 +89,7 @@ void CardputerUsbMidiTransport::flush() {
 }
 
 void registerCardputerUsbMidiSink(MusicalEventRouter& router) {
-    // Function-local statics guarantee construction exactly once at the first
-    // bootstrap call. This call happens before Arduino app_main() starts USB,
-    // which is required so USBMIDI can contribute its interface descriptor.
-    static CardputerUsbMidiTransport transport;
-    static UsbMidiOutput output(
-        transport,
-        UsbMidiRouteConfig{
-            7,     // zero-based channel 7 == MIDI channel 8 / SEQTRAK SYNTH 1
-            true,
-        });
-    static bool registered = false;
-
-    if (registered) return;
-    output.begin();
-    registered = router.addSink(output);
+    if (g_registered) return;
+    if (!g_output.begin()) return;
+    g_registered = router.addSink(g_output);
 }

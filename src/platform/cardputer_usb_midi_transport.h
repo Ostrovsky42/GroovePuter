@@ -13,9 +13,9 @@
 
 // Native ESP32-S3 TinyUSB MIDI transport for Cardputer-Adv.
 //
-// The USBMIDI member is intentionally constructed as part of a global
-// CardputerUsbMidiTransport instance. Its constructor registers the MIDI
-// interface before Arduino's app_main() starts the TinyUSB CDC composite.
+// The platform owns one global instance so USBMIDI can register its descriptor
+// before Arduino's app_main() starts the TinyUSB CDC composite. begin() and
+// router registration are deliberately deferred until setup().
 class CardputerUsbMidiTransport final : public IUsbMidiTransport {
 public:
     CardputerUsbMidiTransport() = default;
