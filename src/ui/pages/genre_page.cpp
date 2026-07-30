@@ -1,6 +1,8 @@
 #include "genre_page.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "../key_normalize.h"
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include "../../debug_log.h"
@@ -20,6 +22,7 @@ using namespace RetroWidgets;
 namespace {
 constexpr int kGenreVisibleRows = 4;
 constexpr int kTextureVisibleRows = 4;
+constexpr int kRecipeVisibleRows = 5;
 
 enum class ApplyMode : uint8_t {
     SoundOnly = 0,
@@ -119,7 +122,8 @@ const char* onOff(bool v) {
 
 const char* linkStateShort(const MiniAcid& mini) {
     const GrooveboxMode expected =
-        GenreManager::grooveboxModeForGenerative(mini.genreManager().generativeMode());
+        GenreManager::grooveboxModeForRecipe(
+            mini.genreManager().recipe(), mini.genreManager().generativeMode());
     return (mini.grooveboxMode() == expected) ? "GEN" : "OVR";
 }
 
@@ -155,6 +159,37 @@ void drawScrollBar(IGfx& gfx, int x, int y, int h,
         thumbY = y + 1 + (trackH - thumbH) * topIndex / maxTop;
     }
     gfx.fillRect(x + 1, thumbY, 1, thumbH, thumb);
+}
+
+void drawRecipeOverlay(IGfx& gfx, int selectedIndex) {
+    const int count = static_cast<int>(GenreManager::recipeCount());
+    const int top = computeScrollTop(count, kRecipeVisibleRows, selectedIndex, 0);
+    constexpr int x = 4;
+    constexpr int y = 18;
+    constexpr int w = 232;
+    constexpr int h = 96;
+    constexpr int rowH = 14;
+
+    gfx.fillRect(x, y, w, h, IGfxColor(0x101010));
+    gfx.drawRect(x, y, w, h, COLOR_ACCENT);
+    gfx.setTextColor(COLOR_ACCENT);
+    gfx.drawText(x + 6, y + 4, "RECIPE SELECT");
+
+    for (int row = 0; row < kRecipeVisibleRows; ++row) {
+        const int recipe = top + row;
+        if (recipe >= count) break;
+        const int rowY = y + 19 + row * rowH;
+        const bool selected = recipe == selectedIndex;
+        if (selected) {
+            gfx.fillRect(x + 5, rowY - 1, w - 10, rowH - 1, IGfxColor(0x303030));
+            gfx.drawRect(x + 5, rowY - 1, w - 10, rowH - 1, COLOR_ACCENT);
+        }
+        char label[36];
+        std::snprintf(label, sizeof(label), "%02d %s", recipe,
+                      GenreManager::recipeName(static_cast<GenreRecipeId>(recipe)));
+        gfx.setTextColor(selected ? COLOR_WHITE : COLOR_LABEL);
+        gfx.drawText(x + 10, rowY, label);
+    }
 }
 } // namespace
 
@@ -234,6 +269,9 @@ void GenrePage::drawContent(IGfx& gfx) {
             drawMinimalStyle(gfx);
             break;
     }
+    if (focus_ == FocusArea::APPLY_MODE) {
+        drawRecipeOverlay(gfx, recipeIndex_);
+    }
 }
 
 void GenrePage::drawFooter(IGfx& gfx) {
@@ -253,8 +291,8 @@ void GenrePage::drawFooter(IGfx& gfx) {
             focusMode = nullptr;
             break;
         case FocusArea::APPLY_MODE:
-            left = "FN+L/R:Recipe  FN+U/D:Morph";
-            right = "M:ApplyMode C/G:Flags";
+            left = "UP/DN:Recipe FN+U/D:Morph";
+            right = "ENTER:Apply M:ApplyMode";
             focusMode = nullptr;
             break;
     }
@@ -730,10 +768,9 @@ bool GenrePage::handleEvent(UIEvent& e) {
                 return true;
             }
         } else if (focus_ == FocusArea::APPLY_MODE) {
-            if (e.meta) {
-                adjustMorphAmount(16);
-                return true;
-            }
+            if (e.meta) adjustMorphAmount(16);
+            else cycleRecipeSelection(-1);
+            return true;
         }
         return false;
     };
@@ -751,10 +788,9 @@ bool GenrePage::handleEvent(UIEvent& e) {
                 return true;
             }
         } else if (focus_ == FocusArea::APPLY_MODE) {
-            if (e.meta) {
-                adjustMorphAmount(-16);
-                return true;
-            }
+            if (e.meta) adjustMorphAmount(-16);
+            else cycleRecipeSelection(1);
+            return true;
         }
         return false;
     };
@@ -800,6 +836,11 @@ bool GenrePage::handleEvent(UIEvent& e) {
 
     char key = e.key;
     if (!key) return false;
+    const char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
+    const bool plainKey = !e.ctrl && !e.alt && !e.meta;
+    const bool keyM = (lowerKey == 'm') || (e.scancode == GROOVEPUTER_M);
+    const bool keyG = (lowerKey == 'g') || (e.scancode == GROOVEPUTER_G);
+    const bool keyC = (lowerKey == 'c') || (e.scancode == GROOVEPUTER_C);
 
     // TAB: cycle focus
     if (key == '\t') {
@@ -809,14 +850,9 @@ bool GenrePage::handleEvent(UIEvent& e) {
         return true;
     }
 
-    // ENTER: apply current selection / toggle apply mode
+    // ENTER: apply the current genre/texture/recipe selection.
+    // Apply mode is changed explicitly with M or Space.
     if (key == '\n' || key == '\r') {
-        if (focus_ == FocusArea::APPLY_MODE) {
-            auto& gs = mini_acid_.sceneManager().currentScene().genre;
-            cycleApplyMode(gs);
-            UI::showToast(applyModeToast(mini_acid_), 1800);
-            return true;
-        }
         applyCurrent();
         return true;
     }
@@ -830,7 +866,7 @@ bool GenrePage::handleEvent(UIEvent& e) {
     }
 
     // M: toggle apply mode (SOUND / SOUND+PATTERN / SOUND+PATTERN+TEMPO)
-    if (key == 'm' || key == 'M') {
+    if (plainKey && keyM) {
         auto& gs = mini_acid_.sceneManager().currentScene().genre;
         cycleApplyMode(gs);
         UI::showToast(applyModeToast(mini_acid_), 1800);
@@ -838,7 +874,7 @@ bool GenrePage::handleEvent(UIEvent& e) {
     }
 
     // G: toggle groovebox mode (ACID/MINIMAL) in genre context.
-    if (key == 'g' || key == 'G') {
+    if (plainKey && keyG) {
         withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
         char toast[64];
         const char* shortName = grooveModeShort(mini_acid_);
@@ -848,7 +884,7 @@ bool GenrePage::handleEvent(UIEvent& e) {
     }
 
     // C: toggle curated compatibility mode
-    if (key == 'c' || key == 'C') {
+    if (plainKey && keyC) {
         bool next = !isCuratedMode();
         setCuratedMode(next);
         UI::showToast(next ? "Texture Mode: CURATED (recommended first)"
@@ -868,9 +904,8 @@ bool GenrePage::handleEvent(UIEvent& e) {
     }
 
     // Pattern quick select (Q-I) - Standardized Everywhere (ignore shift for CapsLock safety)
-    if (!e.ctrl && !e.meta) {
-        char lower = std::tolower(e.key);
-        int patIdx = qwertyToPatternIndex(lower);
+    if (!e.ctrl && !e.alt && !e.meta) {
+        int patIdx = qwertyToPatternIndex(lowerKey);
         if (patIdx >= 0) {
             withAudioGuard([&]() {
                 // Default to Synth A on this global page
@@ -1014,8 +1049,15 @@ void GenrePage::applyCurrent() {
             morphAmount_ > 0 ? static_cast<GenreRecipeId>(recipeIndex_) : kBaseRecipeId);
         mini_acid_.genreManager().setMorphAmount(static_cast<uint8_t>(morphAmount_));
         mini_acid_.setGrooveboxMode(
-            GenreManager::grooveboxModeForGenerative(static_cast<GenerativeMode>(genreIndex_)));
-        
+            GenreManager::grooveboxModeForRecipe(
+                static_cast<GenreRecipeId>(recipeIndex_),
+                static_cast<GenerativeMode>(genreIndex_)));
+
+        // Set the requested tempo before generation so BPM-dependent density
+        // and articulation use the final corridor. Atlas recipes may refine the
+        // generic genre hint to their own reviewed BPM during regeneration.
+        if (doApplyTempo) mini_acid_.setBpm(static_cast<float>(targetBpm));
+
         // Apply base timbre, reset bias tracking, then apply texture as delta from 0
         mini_acid_.genreManager().applyGenreTimbre(mini_acid_);
         mini_acid_.genreManager().resetTextureBiasTracking();
@@ -1027,7 +1069,6 @@ void GenrePage::applyCurrent() {
         gs.morphTarget = static_cast<uint8_t>(morphAmount_ > 0 ? recipeIndex_ : 0);
         gs.morphAmount = static_cast<uint8_t>(morphAmount_);
         if (doRegenerate) mini_acid_.regeneratePatternsWithGenre();
-        if (doApplyTempo) mini_acid_.setBpm(static_cast<float>(targetBpm));
     });
 
     if (wasPlaying && doRegenerate) {

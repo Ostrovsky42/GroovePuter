@@ -39,44 +39,48 @@ static constexpr GenreRecipeId kBaseRecipeId = 0;
 
 // === GENERATIVE PARAMETERS ===
 struct GenerativeParams {
-    // Pattern density
-    int minNotes;
-    int maxNotes;
-    
-    // Note range
-    int minOctave;  // MIDI note for lowest octave
-    int maxOctave;  // MIDI note for highest octave
-    
-    // Articulation
-    float slideProbability;     // 0-1
-    float accentProbability;    // 0-1
-    float gateLengthMultiplier; // 0.1-1.0
-    
-    // Timing
-    float swingAmount;          // 0-0.66
-    float microTimingAmount;    // 0-1 human feel
-    
-    // Velocity
-    int velocityMin;
-    int velocityMax;
-    
-    // Structure
-    bool preferDownbeats;
-    bool allowRepeats;
-    float rootNoteBias;         // 0-1, probability of root
-    float ghostProbability;     // 0-1
-    float chromaticProbability; // 0-1
-    
-    // Drum settings
-    bool sparseKick;
-    bool sparseHats;
-    bool noAccents;
-    float fillProbability;
+    // Safe neutral defaults are required because this type is also used by
+    // compatibility adapters. No default construction may expose stack data to
+    // note, timing, articulation or drum probability generation.
 
-    // Drum groove (fields only — preset values filled by user)
-    float drumSyncopation = 0.0f;     // 0-1, syncopation amount
-    bool  drumPreferOffbeat = false;   // prefer offbeat hat placement
-    int   drumVoiceCount = 8;          // active voices (1-8)
+    // Pattern density
+    int minNotes = 4;
+    int maxNotes = 8;
+
+    // Note range (MIDI notes)
+    int minOctave = 36;
+    int maxOctave = 60;
+
+    // Articulation
+    float slideProbability = 0.10f;
+    float accentProbability = 0.25f;
+    float gateLengthMultiplier = 0.50f;
+
+    // Timing
+    float swingAmount = 0.0f;
+    float microTimingAmount = 0.0f;
+
+    // Velocity
+    int velocityMin = 80;
+    int velocityMax = 110;
+
+    // Structure
+    bool preferDownbeats = true;
+    bool allowRepeats = true;
+    float rootNoteBias = 0.40f;
+    float ghostProbability = 0.05f;
+    float chromaticProbability = 0.0f;
+
+    // Drum settings
+    bool sparseKick = false;
+    bool sparseHats = false;
+    bool noAccents = false;
+    float fillProbability = 0.15f;
+
+    // Drum groove
+    float drumSyncopation = 0.0f;
+    bool drumPreferOffbeat = false;
+    int drumVoiceCount = 8;
 };
 
 // === GROOVE RECIPE (Data-Driven bridge for generators) ===

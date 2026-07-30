@@ -17,6 +17,8 @@
 #include "scene_storage_cardputer.h"
 #include "src/ui/led_manager.h"
 #include "src/audio/audio_diagnostics.h"
+#include "src/audio/audio_mutation_gate.h"
+#include "src/platform/cardputer_adv_hardware.h"
 #include "src/ui/key_normalize.h"
 #include <new>
 
@@ -34,6 +36,9 @@ static AudioOutI2S g_audioOut;
 static int16_t g_audioBuffer[kBlockFrames];
 
 TaskHandle_t g_audioTaskHandle = nullptr;
+static AudioMutationGate g_audioMutationGate;
+static uint32_t g_lastUiDrawUs = 0;
+static uint32_t g_peakUiDrawUs = 0;
 
 // Static engine instance to avoid heap fragmentation
 static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);
@@ -66,9 +71,10 @@ void audioTask(void *param) {
   Serial.println("AudioTask: Loop start");
   
   while (true) {
+    g_audioMutationGate.waitAtAudioBoundary();
     uint32_t now = micros();
     uint32_t start = now;
-    static uint32_t warmupBlocks = 32; // ~90ms at 44.1kHz/128 for hardware stability
+    static uint32_t warmupBlocks = 32; // ~743ms at 22.05kHz/512 for codec/DMA stability
 
     if (warmupBlocks > 0) {
       std::fill(g_audioBuffer, g_audioBuffer + kBlockFrames, 0);
@@ -82,25 +88,36 @@ void audioTask(void *param) {
     
     uint32_t dsp_time = micros() - start;
     
-    // Update performance stats
+    // Publish one coherent cross-core telemetry snapshot.
     if (g_miniAcid) {
-        auto& stats = g_miniAcid->perfStats;
-        constexpr uint32_t ideal_period_us = (1000000UL * kBlockFrames) / kSampleRate;
-        uint32_t actual_period_us = (stats.lastCallbackMicros > 0) ? (now - stats.lastCallbackMicros) : ideal_period_us;
-        
-        static int heartbeat = 0;
-        if (heartbeat++ % 1000 == 0) {
-            // Serial.printf("[AUDIO] pulse... seq=%u dsp=%uus acid=%p\n", 
-            //               (unsigned)stats.seq, (unsigned)dsp_time, (void*)g_miniAcid);
-        }
+      auto& stats = g_miniAcid->perfStats;
+      constexpr uint32_t idealPeriodUs =
+          (1000000UL * kBlockFrames) / kSampleRate;
+      const uint32_t previousCallback =
+          stats.lastCallbackMicros.load(std::memory_order_relaxed);
+      uint32_t actualPeriodUs = previousCallback > 0
+          ? now - previousCallback
+          : idealPeriodUs;
+      if (actualPeriodUs == 0) actualPeriodUs = idealPeriodUs;
 
-        stats.seq++;
-        float currentPct = (float)dsp_time * 100.0f / (float)ideal_period_us;
-        stats.cpuAudioPctIdeal = currentPct;
-        stats.cpuAudioPctActual = (float)dsp_time * 100.0f / (float)actual_period_us;
-        stats.dspTimeUs = dsp_time;
-        stats.lastCallbackMicros = now;
-        stats.seq++;
+      const float idealCpu =
+          static_cast<float>(dsp_time) * 100.0f /
+          static_cast<float>(idealPeriodUs);
+      const float actualCpu =
+          static_cast<float>(dsp_time) * 100.0f /
+          static_cast<float>(actualPeriodUs);
+
+      stats.beginWrite();
+      stats.cpuAudioPctIdeal.store(idealCpu, std::memory_order_relaxed);
+      stats.cpuAudioPctActual.store(actualCpu, std::memory_order_relaxed);
+      stats.dspTimeUs.store(dsp_time, std::memory_order_relaxed);
+      stats.lastCallbackMicros.store(now, std::memory_order_relaxed);
+      const float previousPeak =
+          stats.cpuAudioPeakPct.load(std::memory_order_relaxed);
+      if (idealCpu > previousPeak) {
+        stats.cpuAudioPeakPct.store(idealCpu, std::memory_order_relaxed);
+      }
+      stats.endWrite();
     }
 
     if (g_audioRecorder) {
@@ -111,21 +128,31 @@ void audioTask(void *param) {
       AudioDiagnostics::instance().flushIfReady(millis());
     }
 
-    // Write to I2S
+    // Write to I2S. Failed writes are real output underruns and must be
+    // visible to diagnostics and the adaptive FX safety path.
     if (!g_audioOut.writeMono16(g_audioBuffer, kBlockFrames)) {
+      if (g_miniAcid) {
+        g_miniAcid->perfStats.audioUnderruns.fetch_add(
+            1, std::memory_order_relaxed);
+      }
       static uint32_t lastErrorLog = 0;
       if (millis() - lastErrorLog > 1000) {
         Serial.println("[I2S] Write Timeout / Error");
         lastErrorLog = millis();
       }
-      vTaskDelay(pdMS_TO_TICKS(10));
+      taskYIELD();
     }
   }
 }
 
 
 void drawUI() {
+  const uint32_t startedAt = micros();
   if (g_miniDisplay) g_miniDisplay->update();
+  g_lastUiDrawUs = micros() - startedAt;
+  if (g_lastUiDrawUs > g_peakUiDrawUs) {
+    g_peakUiDrawUs = g_lastUiDrawUs;
+  }
 }
 
 static void logHeapCaps(const char* tag) {
@@ -140,8 +167,9 @@ static void logHeapCaps(const char* tag) {
 }
 
 void setup() {
-  // ENABLE hardware amplifier (PA_EN = G21)
-  pinMode(21, OUTPUT); digitalWrite(21, HIGH);
+  // Enable the Cardputer ADV power amplifier. This pin is not RGB data.
+  pinMode(GroovePuterHardware::kPowerAmplifierEnablePin, OUTPUT);
+  digitalWrite(GroovePuterHardware::kPowerAmplifierEnablePin, HIGH);
   // pinMode(42, OUTPUT); digitalWrite(42, LOW); // Possible I2S conflict
   
   Serial.begin(115200);
@@ -172,7 +200,7 @@ void setup() {
   
   // 3. Re-initialize ES8311 registers specifically for custom I2S
   // This matches M5Unified CardputerADV init sequence for ES8311 exactly
-  const uint8_t es8311_addr = 0x18;
+  const uint8_t es8311_addr = GroovePuterHardware::kEs8311I2cAddress;
   M5Cardputer.In_I2C.writeRegister8(es8311_addr, 0x00, 0x80, 100000); // RESET / CSM POWER ON
   M5Cardputer.In_I2C.writeRegister8(es8311_addr, 0x01, 0xB5, 100000); // CLOCK_MANAGER: MCLK=BCLK
   M5Cardputer.In_I2C.writeRegister8(es8311_addr, 0x02, 0x18, 100000); // CLOCK_MANAGER/ MULT_PRE=3
@@ -283,14 +311,16 @@ void setup() {
   markBootStage(71, "after MiniAcidDisplay alloc");
   Serial.println("7b. UI setAudioGuard");
   
-  // Set audio guard to protect audio task from concurrent access
-  // Configure Audio Guard for synchronization
+  // Pause the renderer only at a block boundary while existing UI mutation
+  // lambdas update engine state. No mutex is held while DSP is rendering.
   AudioGuard guard;
-  guard.lock = [](void*) {
-      // In a real dual-core ESP32 setup, we could use a mutex here
-      // For now, grooveputer uses a single-threaded DSP model with volatile flags
+  guard.context = &g_audioMutationGate;
+  guard.lock = [](void* context) {
+      static_cast<AudioMutationGate*>(context)->lockControl();
   };
-  guard.unlock = [](void*) {};
+  guard.unlock = [](void* context) {
+      static_cast<AudioMutationGate*>(context)->unlockControl();
+  };
   g_miniDisplay->setAudioGuard(guard);
   
   Serial.println("7c. UI setAudioRecorder");
@@ -315,6 +345,7 @@ void setup() {
     while (true) { delay(1000); }
   } else {
     Serial.printf("[DEBUG] AudioTask created successful, handle: %p\n", (void*)g_audioTaskHandle);
+    g_audioMutationGate.setAudioTaskActive(true);
   }
   markBootStage(81, "after AudioTask create");
 
@@ -342,10 +373,13 @@ void loop() {
   if (g_encoder8) g_encoder8->update();
 
   if (M5Cardputer.BtnA.wasClicked()) {
-    if (g_miniAcid->isPlaying()) {
-      g_miniAcid->stop();
-    } else {
-      g_miniAcid->start();
+    {
+      AudioMutationScope mutationScope(g_audioMutationGate);
+      if (g_miniAcid->isPlaying()) {
+        g_miniAcid->stop();
+      } else {
+        g_miniAcid->start();
+      }
     }
     drawUI();
   }
@@ -357,107 +391,103 @@ void loop() {
   static unsigned long nextRepeatAt = 0;
 
   auto handleWithFallback = [&](UIEvent evt) {
-    Serial.printf("[DIAG] handleWithFallback: key=0x%02X (%c), scancode=%d, app_event=%d\n", 
+    Serial.printf("[DIAG] handleWithFallback: key=0x%02X (%c), scancode=%d, app_event=%d\n",
       (uint8_t)evt.key, evt.key >= 32 && evt.key < 127 ? evt.key : '.', evt.scancode, evt.app_event_type);
     evt.event_type = GROOVEPUTER_KEY_DOWN;
-    bool handled = g_miniDisplay ? g_miniDisplay->handleEvent(evt) : false;
+
+    bool handled = false;
+    {
+      AudioMutationScope mutationScope(g_audioMutationGate);
+      handled = g_miniDisplay ? g_miniDisplay->handleEvent(evt) : false;
+    }
     if (handled) {
       drawUI();
       return;
     }
 
-    char c = evt.key;
-    if (c == '\t' && g_miniDisplay) {
-      UIEvent app_evt{};
-      app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
-      app_evt.app_event_type = GROOVEPUTER_APP_EVENT_MULTIPAGE_DOWN;
-      if (g_miniDisplay->handleEvent(app_evt)) {
-        drawUI();
-        return;
+    bool needsDraw = false;
+    {
+      // Guard only control-plane mutations. Releasing the gate before drawUI()
+      // prevents a full display redraw from intentionally pausing audio output.
+      AudioMutationScope mutationScope(g_audioMutationGate);
+      char c = evt.key;
+      if (c == '\t' && g_miniDisplay) {
+        UIEvent app_evt{};
+        app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
+        app_evt.app_event_type = GROOVEPUTER_APP_EVENT_MULTIPAGE_DOWN;
+        needsDraw = g_miniDisplay->handleEvent(app_evt);
+      } else if (c == '\n' || c == '\r') {
+        if (g_miniDisplay) g_miniDisplay->dismissSplash();
+        needsDraw = true;
+      } else if (c == '[') {
+        if (g_miniDisplay) g_miniDisplay->previousPage();
+        needsDraw = true;
+      } else if (c == ']') {
+        if (g_miniDisplay) g_miniDisplay->nextPage();
+        needsDraw = true;
+      } else if (c == 'i' || c == 'I') {
+        g_miniAcid->randomize303Pattern(0);
+        needsDraw = true;
+      } else if (c == 'o' || c == 'O') {
+        g_miniAcid->randomize303Pattern(1);
+        needsDraw = true;
+      } else if (c == 'p' || c == 'P') {
+        g_miniAcid->randomizeDrumPattern();
+        needsDraw = true;
+      } else if (c == '1') {
+        g_miniAcid->toggleMute303(0);
+        needsDraw = true;
+      } else if (c == '2') {
+        g_miniAcid->toggleMute303(1);
+        needsDraw = true;
+      } else if (c == '3') {
+        g_miniAcid->toggleMuteKick();
+        needsDraw = true;
+      } else if (c == '4') {
+        g_miniAcid->toggleMuteSnare();
+        needsDraw = true;
+      } else if (c == '5') {
+        g_miniAcid->toggleMuteHat();
+        needsDraw = true;
+      } else if (c == '6') {
+        g_miniAcid->toggleMuteOpenHat();
+        needsDraw = true;
+      } else if (c == '7') {
+        g_miniAcid->toggleMuteMidTom();
+        needsDraw = true;
+      } else if (c == '8') {
+        g_miniAcid->toggleMuteHighTom();
+        needsDraw = true;
+      } else if (c == '9') {
+        if (g_miniAcid->currentDrumEngineName() == "SP12") g_miniAcid->toggleMuteClap();
+        else g_miniAcid->toggleMuteRim();
+        needsDraw = true;
+      } else if (c == '0') {
+        if (g_miniAcid->currentDrumEngineName() == "SP12") g_miniAcid->toggleMuteRim();
+        else g_miniAcid->toggleMuteClap();
+        needsDraw = true;
+      } else if (c == 'k' || c == 'K') {
+        g_miniAcid->setBpm(g_miniAcid->bpm() - 2.5f);
+        needsDraw = true;
+      } else if (c == 'l' || c == 'L') {
+        g_miniAcid->setBpm(g_miniAcid->bpm() + 2.5f);
+        needsDraw = true;
+      } else if (c == '-' || c == '_') {
+        g_miniAcid->adjustParameter(MiniAcidParamId::MainVolume, -3);
+        needsDraw = true;
+      } else if (c == '=' || c == '+') {
+        g_miniAcid->adjustParameter(MiniAcidParamId::MainVolume, 3);
+        needsDraw = true;
+      } else if (c == ';' || c == '\'') {
+        needsDraw = true;
+      } else if (c == ' ') {
+        if (g_miniAcid->isPlaying()) g_miniAcid->stop();
+        else g_miniAcid->start();
+        needsDraw = true;
       }
     }
-    if (c == '\n' || c == '\r') {
-      if (g_miniDisplay) g_miniDisplay->dismissSplash();
-      drawUI();
-    } else if (c == '[') {
-      if (g_miniDisplay) g_miniDisplay->previousPage();
-      drawUI();
-    } else if (c == ']') {
-      if (g_miniDisplay) g_miniDisplay->nextPage();
-      drawUI();
-    } else if (c == 'i' || c == 'I') {
-      g_miniAcid->randomize303Pattern(0);
-      drawUI();
-    } else if (c == 'o' || c == 'O') {
-      g_miniAcid->randomize303Pattern(1);
-      drawUI();
-    } else if (c == 'p' || c == 'P') {
-      g_miniAcid->randomizeDrumPattern();
-      drawUI();
-    } else if (c == '1') {
-      g_miniAcid->toggleMute303(0);
-      drawUI();
-    } else if (c == '2') {
-      g_miniAcid->toggleMute303(1);
-      drawUI();
-    } else if (c == '3') {
-      g_miniAcid->toggleMuteKick();
-      drawUI();
-    } else if (c == '4') {
-      g_miniAcid->toggleMuteSnare();
-      drawUI();
-    } else if (c == '5') {
-      g_miniAcid->toggleMuteHat();
-      drawUI();
-    } else if (c == '6') {
-      g_miniAcid->toggleMuteOpenHat();
-      drawUI();
-    } else if (c == '7') {
-      g_miniAcid->toggleMuteMidTom();
-      drawUI();
-    } else if (c == '8') {
-      g_miniAcid->toggleMuteHighTom();
-      drawUI();
-    } else if (c == '9') {
-      if (g_miniAcid->currentDrumEngineName() == "SP12") g_miniAcid->toggleMuteClap();
-      else g_miniAcid->toggleMuteRim();
-      drawUI();
-    } else if (c == '0') {
-      if (g_miniAcid->currentDrumEngineName() == "SP12") g_miniAcid->toggleMuteRim();
-      else g_miniAcid->toggleMuteClap();
-      drawUI();
-    } else if (c == 'k' || c == 'K') {
-      g_miniAcid->setBpm(g_miniAcid->bpm() - 2.5f);
-      drawUI();
-    } else if (c == 'l' || c == 'L') {
-      g_miniAcid->setBpm(g_miniAcid->bpm() + 2.5f);
-      drawUI();
-    } else if (c == '-' || c == '_') {
-      // Volume down (larger step: 3 * 1/64 ≈ 5%)
-      g_miniAcid->adjustParameter(MiniAcidParamId::MainVolume, -3);
-      drawUI();
-    } else if (c == '=' || c == '+') {
-      // Volume up (larger step: 3 * 1/64 ≈ 5%)
-      g_miniAcid->adjustParameter(MiniAcidParamId::MainVolume, 3);
-      drawUI();
 
-    } else if (c == ';') {
-     // g_miniAcid->toggleAudioDiag();
-     // Serial.println("[UI] Toggled Audio Diagnostics");
-      drawUI();
-    } else if (c == '\'') {
-     // bool newState = !g_miniAcid->isTestToneEnabled();
-      //g_miniAcid->setTestTone(newState);
-      //Serial.printf("[UI] Test Tone: %s\n", newState ? "ON" : "OFF");
-      drawUI();
-    } else if (c == ' ') {
-      if (g_miniAcid->isPlaying()) {
-        g_miniAcid->stop();
-      } else {
-        g_miniAcid->start();
-      }
-      drawUI();
-    }
+    if (needsDraw) drawUI();
   };
 
   auto applyCtrlLetter = [](const Keyboard_Class::KeysState& ks, uint8_t hid, UIEvent& evt) -> bool {
@@ -642,10 +672,14 @@ void loop() {
            df = stats.dspFxUs;
            s2 = stats.seq;
        } while (s1 != s2 || (s1 & 1));
-       // Serial.printf("[PERF] CPU: avg %.1f%% / peak %.1f%% (underruns %u)\n",
-       //     cpuAvg, cpuPeak, (unsigned)underruns);
-       // Serial.printf("       DSP: v:%uus d:%uus s:%uus f:%uus\n",
-       //     (unsigned)dv, (unsigned)dd, (unsigned)ds, (unsigned)df);
+       const uint32_t freeInt = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+       const uint32_t largestInt = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+       Serial.printf("[PERF] audio=%.1f%% peak=%.1f%% underruns=%u ui=%uus uiPeak=%uus freeInt=%u largest=%u dsp=%u/%u/%u/%u\n",
+           cpuAvg, cpuPeak, (unsigned)underruns,
+           (unsigned)g_lastUiDrawUs, (unsigned)g_peakUiDrawUs,
+           (unsigned)freeInt, (unsigned)largestInt,
+           (unsigned)dv, (unsigned)dd, (unsigned)ds, (unsigned)df);
+       g_peakUiDrawUs = g_lastUiDrawUs;
     }
   }
 

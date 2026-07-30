@@ -53,6 +53,9 @@ void clearSynthPattern(SynthPattern& pattern) {
     pattern.steps[i].note = -1;
     pattern.steps[i].slide = false;
     pattern.steps[i].accent = false;
+    pattern.steps[i].ghost = false;
+    pattern.steps[i].velocity = 100;
+    pattern.steps[i].timing = 0;
     pattern.steps[i].probability = 100;
     pattern.steps[i].fx = 0;
     pattern.steps[i].fxParam = 0;
@@ -66,6 +69,8 @@ void clearSong(Song& song) {
       song.positions[i].patterns[t] = -1;
     }
   }
+  song.length = 1;
+  song.reverse = false;
 }
 
 void clearCustomPhrases(Scene& scene) {
@@ -94,26 +99,37 @@ void clearSceneData(Scene& scene) {
     clearSong(scene.songs[i]);
   }
   clearCustomPhrases(scene);
+  for (auto& pad : scene.samplerPads) pad = SamplerPadState();
+  for (float& volume : scene.trackVolumes) volume = 1.0f;
   scene.masterVolume = 0.6f;
   scene.generatorParams = GeneratorParams();
   scene.led = LedSettings();
   scene.tape = TapeState();
   scene.feel = FeelSettings();
+  scene.genre = GenreSettings();
+  scene.vocal = VocalSettings();
   scene.drumFX = DrumFX();
+  scene.activeSongSlot = 0;
+  scene.mode = GrooveboxMode::Minimal;
+  scene.grooveFlavor = 0;
 }
 
 void serializeDrumPattern(const DrumPattern& pattern, ArduinoJson::JsonObject obj) {
   ArduinoJson::JsonArray hit = obj["hit"].to<ArduinoJson::JsonArray>();
   ArduinoJson::JsonArray accent = obj["accent"].to<ArduinoJson::JsonArray>();
+  ArduinoJson::JsonArray velocity = obj["vel"].to<ArduinoJson::JsonArray>();
+  ArduinoJson::JsonArray timing = obj["tim"].to<ArduinoJson::JsonArray>();
   ArduinoJson::JsonArray fx = obj["fx"].to<ArduinoJson::JsonArray>();
   ArduinoJson::JsonArray fxp = obj["fxp"].to<ArduinoJson::JsonArray>();
-  ArduinoJson::JsonArray prb = obj["prb"].to<ArduinoJson::JsonArray>();
+  ArduinoJson::JsonArray probability = obj["prb"].to<ArduinoJson::JsonArray>();
   for (int i = 0; i < DrumPattern::kSteps; ++i) {
     hit.add(pattern.steps[i].hit);
     accent.add(pattern.steps[i].accent);
+    velocity.add(pattern.steps[i].velocity);
+    timing.add(pattern.steps[i].timing);
     fx.add(pattern.steps[i].fx);
     fxp.add(pattern.steps[i].fxParam);
-    prb.add(pattern.steps[i].probability);
+    probability.add(pattern.steps[i].probability);
   }
 }
 
@@ -172,6 +188,9 @@ void serializeSynthPattern(const SynthPattern& pattern, ArduinoJson::JsonArray s
     step["note"] = pattern.steps[i].note;
     step["slide"] = pattern.steps[i].slide;
     step["accent"] = pattern.steps[i].accent;
+    step["ghost"] = pattern.steps[i].ghost;
+    step["vel"] = pattern.steps[i].velocity;
+    step["tim"] = pattern.steps[i].timing;
     step["fx"] = pattern.steps[i].fx;
     step["fxp"] = pattern.steps[i].fxParam;
     step["prb"] = pattern.steps[i].probability;
@@ -205,44 +224,62 @@ bool deserializeBoolArray(ArduinoJson::JsonArrayConst arr, bool* dst, int expect
 bool deserializeDrumPattern(ArduinoJson::JsonVariantConst value, DrumPattern& pattern) {
   ArduinoJson::JsonObjectConst obj = value.as<ArduinoJson::JsonObjectConst>();
   if (obj.isNull()) return false;
+
   ArduinoJson::JsonArrayConst hit = obj["hit"].as<ArduinoJson::JsonArrayConst>();
   ArduinoJson::JsonArrayConst accent = obj["accent"].as<ArduinoJson::JsonArrayConst>();
-  ArduinoJson::JsonArrayConst fx = obj["fx"].as<ArduinoJson::JsonArrayConst>();
-  ArduinoJson::JsonArrayConst fxp = obj["fxp"].as<ArduinoJson::JsonArrayConst>();
   if (hit.isNull() || accent.isNull()) return false;
+
   bool hits[DrumPattern::kSteps];
   bool accents[DrumPattern::kSteps];
-  if (!deserializeBoolArray(hit, hits, DrumPattern::kSteps)) return false;
-  if (!deserializeBoolArray(accent, accents, DrumPattern::kSteps)) return false;
-  
-  // Optional FX arrays
-  int fxs[DrumPattern::kSteps] = {0};
-  int fxps[DrumPattern::kSteps] = {0};
-  int probs[DrumPattern::kSteps];
-  for(int i=0; i<DrumPattern::kSteps; ++i) probs[i] = 100; // Default
+  if (!deserializeBoolArray(hit, hits, DrumPattern::kSteps) ||
+      !deserializeBoolArray(accent, accents, DrumPattern::kSteps)) {
+    return false;
+  }
 
-  if (!fx.isNull()) {
-      int idx = 0;
-      for (ArduinoJson::JsonVariantConst v : fx) { if (idx < DrumPattern::kSteps) fxs[idx++] = v.as<int>(); }
-  }
-  if (!fxp.isNull()) {
-      int idx = 0;
-      for (ArduinoJson::JsonVariantConst v : fxp) { if (idx < DrumPattern::kSteps) fxps[idx++] = v.as<int>(); }
-  }
-  ArduinoJson::JsonArrayConst prb = obj["prb"];
-  if (!prb.isNull()) {
-      int idx = 0;
-      for (ArduinoJson::JsonVariantConst v : prb) { if (idx < DrumPattern::kSteps) probs[idx++] = v.as<int>(); }
+  auto readOptionalInts = [&](const char* key, int* output, int defaultValue) {
+    for (int i = 0; i < DrumPattern::kSteps; ++i) output[i] = defaultValue;
+    ArduinoJson::JsonArrayConst array = obj[key].as<ArduinoJson::JsonArrayConst>();
+    if (array.isNull()) return true;
+    if (static_cast<int>(array.size()) != DrumPattern::kSteps) return false;
+    int index = 0;
+    for (ArduinoJson::JsonVariantConst item : array) {
+      if (!item.is<int>()) return false;
+      output[index++] = item.as<int>();
+    }
+    return true;
+  };
+
+  int velocities[DrumPattern::kSteps];
+  int timings[DrumPattern::kSteps];
+  int effects[DrumPattern::kSteps];
+  int effectParams[DrumPattern::kSteps];
+  int probabilities[DrumPattern::kSteps];
+  if (!readOptionalInts("vel", velocities, 100) ||
+      !readOptionalInts("tim", timings, 0) ||
+      !readOptionalInts("fx", effects, 0) ||
+      !readOptionalInts("fxp", effectParams, 0) ||
+      !readOptionalInts("prb", probabilities, 100)) {
+    return false;
   }
 
   for (int i = 0; i < DrumPattern::kSteps; ++i) {
+    int velocity = velocities[i];
+    if (velocity < 0) velocity = 0;
+    if (velocity > 127) velocity = 127;
+    int timing = timings[i];
+    if (timing < -23) timing = -23;
+    if (timing > 23) timing = 23;
+    int probability = probabilities[i];
+    if (probability < 0) probability = 0;
+    if (probability > 100) probability = 100;
+
     pattern.steps[i].hit = hits[i];
     pattern.steps[i].accent = accents[i];
-    pattern.steps[i].fx = static_cast<uint8_t>(fxs[i]);
-    pattern.steps[i].fxParam = static_cast<uint8_t>(fxps[i]);
-    int p = probs[i];
-    if (p < 0) p = 0; if (p > 100) p = 100;
-    pattern.steps[i].probability = static_cast<uint8_t>(p);
+    pattern.steps[i].velocity = static_cast<uint8_t>(velocity);
+    pattern.steps[i].timing = static_cast<int8_t>(timing);
+    pattern.steps[i].fx = static_cast<uint8_t>(effects[i]);
+    pattern.steps[i].fxParam = static_cast<uint8_t>(effectParams[i]);
+    pattern.steps[i].probability = static_cast<uint8_t>(probability);
   }
   return true;
 }
@@ -361,35 +398,41 @@ bool deserializeDrumBanks(ArduinoJson::JsonVariantConst value, Bank<DrumPatternS
 
 bool deserializeSynthPattern(ArduinoJson::JsonVariantConst value, SynthPattern& pattern) {
   ArduinoJson::JsonArrayConst steps = value.as<ArduinoJson::JsonArrayConst>();
-  if (steps.isNull() || static_cast<int>(steps.size()) != SynthPattern::kSteps) return false;
-  int i = 0;
+  if (steps.isNull() || static_cast<int>(steps.size()) != SynthPattern::kSteps) {
+    return false;
+  }
+
+  int index = 0;
   for (ArduinoJson::JsonVariantConst stepValue : steps) {
     ArduinoJson::JsonObjectConst obj = stepValue.as<ArduinoJson::JsonObjectConst>();
-    if (obj.isNull()) return false;
-    auto note = obj["note"];
-    auto slide = obj["slide"];
-    auto accent = obj["accent"];
-    auto fx = obj["fx"];
-    auto fxp = obj["fxp"];
-    if (!note.is<int>() || !slide.is<bool>() || !accent.is<bool>()) return false;
-    pattern.steps[i].note = note.as<int>();
-    pattern.steps[i].slide = slide.as<bool>();
-    pattern.steps[i].accent = accent.as<bool>();
-    if (!fx.isNull()) pattern.steps[i].fx = static_cast<uint8_t>(fx.as<int>());
-    else pattern.steps[i].fx = 0;
-    if (!fxp.isNull()) pattern.steps[i].fxParam = static_cast<uint8_t>(fxp.as<int>());
-    else pattern.steps[i].fxParam = 0;
-    auto prb = obj["prb"];
-    if (!prb.isNull()) {
-      int p = prb.as<int>();
-      if (p < 0) p = 0; if (p > 100) p = 100;
-      pattern.steps[i].probability = static_cast<uint8_t>(p);
-    } else {
-      pattern.steps[i].probability = 100;
+    if (obj.isNull() || !obj["note"].is<int>() ||
+        !obj["slide"].is<bool>() || !obj["accent"].is<bool>()) {
+      return false;
     }
 
+    int note = obj["note"].as<int>();
+    if (note < -2) note = -2;
+    if (note > 127) note = 127;
+    int velocity = valueToInt(obj["vel"], 100);
+    if (velocity < 0) velocity = 0;
+    if (velocity > 127) velocity = 127;
+    int timing = valueToInt(obj["tim"], 0);
+    if (timing < -23) timing = -23;
+    if (timing > 23) timing = 23;
+    int probability = valueToInt(obj["prb"], 100);
+    if (probability < 0) probability = 0;
+    if (probability > 100) probability = 100;
 
-    ++i;
+    SynthStep& step = pattern.steps[index++];
+    step.note = static_cast<int8_t>(note);
+    step.slide = obj["slide"].as<bool>();
+    step.accent = obj["accent"].as<bool>();
+    step.ghost = obj["ghost"].is<bool>() ? obj["ghost"].as<bool>() : false;
+    step.velocity = static_cast<uint8_t>(velocity);
+    step.timing = static_cast<int8_t>(timing);
+    step.fx = static_cast<uint8_t>(valueToInt(obj["fx"], 0));
+    step.fxParam = static_cast<uint8_t>(valueToInt(obj["fxp"], 0));
+    step.probability = static_cast<uint8_t>(probability);
   }
   return true;
 }
@@ -732,6 +775,8 @@ void SceneJsonObserver::onArrayStart() {
         if (lastKey_ == "hit") path = Path::DrumHitArray;
         else if (lastKey_ == "accent") path = Path::DrumAccentArray;
         else if (lastKey_ == "prb") path = Path::DrumProbabilityArray;
+        else if (lastKey_ == "vel") path = Path::DrumVelocityArray;
+        else if (lastKey_ == "tim") path = Path::DrumTimingArray;
         else if (lastKey_ == "fx") path = Path::DrumFxArray;
         else if (lastKey_ == "fxp") path = Path::DrumFxParamArray;
       } else if (parent.path == Path::Mute) {
@@ -792,6 +837,14 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     } else if (lastKey_ == "bars") {
       if (v != 1 && v != 2 && v != 4 && v != 8) v = 1;
       target_.feel.patternBars = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "swing") {
+      if (v < 50) v = 50;
+      if (v > 75) v = 75;
+      target_.feel.swingPct = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "mask") {
+      if (v < 0) v = 0;
+      if (v > 0xFFFF) v = 0xFFFF;
+      target_.feel.swingMask = static_cast<uint16_t>(v);
     } else if (lastKey_ == "lofiAmt") {
       if (v < 0) v = 0;
       if (v > 100) v = 100;
@@ -866,7 +919,9 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     handlePrimitiveBool(value != 0);
     return;
   }
-  if (path == Path::DrumFxArray || path == Path::DrumFxParamArray || path == Path::DrumProbabilityArray) {
+  if (path == Path::DrumFxArray || path == Path::DrumFxParamArray ||
+      path == Path::DrumProbabilityArray || path == Path::DrumVelocityArray ||
+      path == Path::DrumTimingArray) {
     int bankIdx = currentIndexFor(Path::DrumBanks);
     if (bankIdx < 0) bankIdx = 0;
     int patternIdx = currentIndexFor(Path::DrumBank);
@@ -876,10 +931,25 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
         voiceIdx >= 0 && voiceIdx < DrumPatternSet::kVoices &&
         stepIdx >= 0 && stepIdx < DrumPattern::kSteps &&
         bankIdx >= 0 && bankIdx < kBankCount) {
-        DrumStep& step = target_.drumBanks[bankIdx].patterns[patternIdx].voices[voiceIdx].steps[stepIdx];
-        if (path == Path::DrumFxArray) step.fx = static_cast<uint8_t>(value);
-        else if (path == Path::DrumFxParamArray) step.fxParam = static_cast<uint8_t>(value);
-        else step.probability = clampProbability(static_cast<int>(value));
+      DrumStep& step = target_.drumBanks[bankIdx].patterns[patternIdx].voices[voiceIdx].steps[stepIdx];
+      const int intValue = static_cast<int>(value);
+      if (path == Path::DrumFxArray) {
+        step.fx = static_cast<uint8_t>(intValue);
+      } else if (path == Path::DrumFxParamArray) {
+        step.fxParam = static_cast<uint8_t>(intValue);
+      } else if (path == Path::DrumProbabilityArray) {
+        step.probability = clampProbability(intValue);
+      } else if (path == Path::DrumVelocityArray) {
+        int velocity = intValue;
+        if (velocity < 0) velocity = 0;
+        if (velocity > 127) velocity = 127;
+        step.velocity = static_cast<uint8_t>(velocity);
+      } else {
+        int timing = intValue;
+        if (timing < -23) timing = -23;
+        if (timing > 23) timing = 23;
+        step.timing = static_cast<int8_t>(timing);
+      }
     }
     return;
   }
@@ -988,6 +1058,16 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
       pattern.steps[stepIdx].slide = value != 0;
     } else if (lastKey_ == "accent") {
       pattern.steps[stepIdx].accent = value != 0;
+    } else if (lastKey_ == "vel") {
+      int velocity = static_cast<int>(value);
+      if (velocity < 0) velocity = 0;
+      if (velocity > 127) velocity = 127;
+      pattern.steps[stepIdx].velocity = static_cast<uint8_t>(velocity);
+    } else if (lastKey_ == "tim") {
+      int timing = static_cast<int>(value);
+      if (timing < -23) timing = -23;
+      if (timing > 23) timing = 23;
+      pattern.steps[stepIdx].timing = static_cast<int8_t>(timing);
     } else if (lastKey_ == "prb") {
       pattern.steps[stepIdx].probability = clampProbability(static_cast<int>(value));
     } else if (lastKey_ == "fx") {
@@ -1267,6 +1347,8 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
       pattern.steps[stepIdx].slide = value;
     } else if (lastKey_ == "accent") {
       pattern.steps[stepIdx].accent = value;
+    } else if (lastKey_ == "ghost") {
+      pattern.steps[stepIdx].ghost = value;
     }
     return;
   }
@@ -1694,12 +1776,22 @@ int SceneManager::findFirstFreePattern(int startIdx, SongTrack track, int length
 }
 
 void SceneManager::setPage(int pageIndex) {
-  if (pageIndex < 0) return;
-  if (pageIndex == currentPageIndex_) return;
-  
-  saveCurrentPage();
+  if (pageIndex < 0 || pageIndex >= kMaxPages) return;
+  if (pageIndex == currentPageIndex_ || !scene_) return;
+
+  const int previousPage = currentPageIndex_;
+  if (!PatternPagingService::savePage(previousPage, *scene_)) return;
+
+  if (PatternPagingService::pageExists(pageIndex)) {
+    if (!PatternPagingService::loadPage(pageIndex, *scene_)) return;
+  } else {
+    PatternPagingService::initializeEmptyPage(*scene_);
+    if (!PatternPagingService::savePage(pageIndex, *scene_)) {
+      PatternPagingService::loadPage(previousPage, *scene_);
+      return;
+    }
+  }
   currentPageIndex_ = pageIndex;
-  loadCurrentPage();
 }
 
 bool SceneManager::saveCurrentPage() const {
@@ -1980,9 +2072,10 @@ int SceneManager::getSongPosition() const {
 }
 
 void SceneManager::setTrackVolume(int voiceIdx, float volume) {
-  if (voiceIdx >= 0 && voiceIdx < (int)VoiceId::Count) {
-    scene_->trackVolumes[voiceIdx] = volume;
-  }
+  if (voiceIdx < 0 || voiceIdx >= static_cast<int>(VoiceId::Count)) return;
+  if (volume < 0.0f) volume = 0.0f;
+  if (volume > 1.5f) volume = 1.5f;
+  scene_->trackVolumes[voiceIdx] = volume;
 }
 
 float SceneManager::getTrackVolume(int voiceIdx) const {

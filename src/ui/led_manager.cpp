@@ -1,4 +1,7 @@
 #include "led_manager.h"
+#include "../platform/cardputer_adv_hardware.h"
+
+#include <algorithm>
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -16,92 +19,107 @@ LedManager::LedManager() {
 }
 
 void LedManager::init() {
-    // M5Cardputer.begin() already initializes RGB if configured
     setLedColor({0, 0, 0}, 0);
 }
 
 void LedManager::setLedColor(Rgb8 color, uint8_t brightness) {
-    // Cardputer uses a single NeoPixel on GPIO 21
-    uint8_t r = (uint16_t(color.r) * brightness) >> 8;
-    uint8_t g = (uint16_t(color.g) * brightness) >> 8;
-    uint8_t b = (uint16_t(color.b) * brightness) >> 8;
-    
-#if defined(ESP32)
-    // Use the built-in function for WS2812 on functionality for ESP32-S3
-    neopixelWrite(21, r, g, b);
+    const uint8_t r = (uint16_t(color.r) * brightness) >> 8;
+    const uint8_t g = (uint16_t(color.g) * brightness) >> 8;
+    const uint8_t b = (uint16_t(color.b) * brightness) >> 8;
+
+#if defined(ESP32) && GROOVEPUTER_CARDPUTER_ADV_RGB_LED_PIN >= 0
+    neopixelWrite(GROOVEPUTER_CARDPUTER_ADV_RGB_LED_PIN, r, g, b);
+#else
+    // Cardputer ADV uses GPIO21 as PA_EN. RGB output is deliberately disabled
+    // until a distinct LED data pin is verified for this hardware profile.
+    (void)r;
+    (void)g;
+    (void)b;
 #endif
+}
+
+bool LedManager::publishPulse_(const LedPulseEvent& event) {
+    uint8_t expected = 0;
+    if (!ledPulseState_.compare_exchange_strong(
+            expected, 2, std::memory_order_acq_rel, std::memory_order_relaxed)) {
+        return false;
+    }
+
+    ledPulse_ = event;
+    ledPulseState_.store(1, std::memory_order_release);
+    return true;
+}
+
+bool LedManager::consumePulse_(LedPulseEvent& event) {
+    uint8_t expected = 1;
+    if (!ledPulseState_.compare_exchange_strong(
+            expected, 2, std::memory_order_acq_rel, std::memory_order_relaxed)) {
+        return false;
+    }
+
+    event = ledPulse_;
+    ledPulseState_.store(0, std::memory_order_release);
+    return true;
 }
 
 void LedManager::onVoiceTriggered(VoiceId v, const LedSettings& settings) {
     if (settings.mode != LedMode::StepTrig) return;
     if (static_cast<uint8_t>(settings.source) != static_cast<uint8_t>(v)) return;
 
-    LedPulseEvent e{ (uint32_t)millis(), settings.color, settings.brightness, settings.flashMs };
-
-    // Single-slot aggregation
-    if (!ledPulsePending_.load(std::memory_order_acquire)) {
-        ledPulse_ = e;
-        ledPulsePending_.store(true, std::memory_order_release);
-    } else {
-        // Boost existing pulse
-        ledPulse_.brightness = std::max(ledPulse_.brightness, e.brightness);
-        ledPulse_.durationMs = std::max(ledPulse_.durationMs, e.durationMs);
-    }
+    const LedPulseEvent event{
+        static_cast<uint32_t>(millis()),
+        settings.color,
+        settings.brightness,
+        settings.flashMs,
+    };
+    publishPulse_(event);
 }
 
 void LedManager::onMuteChanged(bool muted, const LedSettings& settings) {
     if (settings.mode != LedMode::MuteState) return;
-    lastMuteActive_ = !muted; // active if not muted
+    lastMuteActive_ = !muted;
     lastSettings_ = settings;
     muteStateDirty_ = true;
 }
 
 void LedManager::onBeat(int step, const LedSettings& settings) {
+    (void)step;
     if (settings.mode != LedMode::Beat) return;
-    
-    // Pulse on every step or just downbeats? User said 1/5/9/13 or just every step.
-    // Let's do a short pulse on every step for now.
-    LedPulseEvent e{ (uint32_t)millis(), settings.color, settings.brightness, 20 };
 
-    if (!ledPulsePending_.load(std::memory_order_acquire)) {
-        ledPulse_ = e;
-        ledPulsePending_.store(true, std::memory_order_release);
-    }
+    const LedPulseEvent event{
+        static_cast<uint32_t>(millis()),
+        settings.color,
+        settings.brightness,
+        20,
+    };
+    publishPulse_(event);
 }
 
 void LedManager::update() {
-    uint32_t now = millis();
-    
-    // Handle new pulse triggers
-    if (ledPulsePending_.exchange(false)) {
-        setLedColor(ledPulse_.color, ledPulse_.brightness);
-        pulseEndMs_ = now + ledPulse_.durationMs;
+    const uint32_t now = millis();
+
+    LedPulseEvent event{};
+    if (consumePulse_(event)) {
+        setLedColor(event.color, event.brightness);
+        pulseEndMs_ = now + event.durationMs;
         isPulsing_ = true;
         return;
     }
 
-    // Handle pulse expiration
     if (isPulsing_ && now >= pulseEndMs_) {
         isPulsing_ = false;
-        muteStateDirty_ = true; // Refresh mute state if that's the mode
+        muteStateDirty_ = true;
     }
 
-    // Handle MuteState or Idle (Off)
     if (!isPulsing_) {
-        // If mode is MuteState, keep it dim
-        // We only update if dirty or if settings changed (detected via dirty flag usually)
         if (muteStateDirty_ || (now - lastUpdateMs_ > 500)) {
             if (lastSettings_.mode == LedMode::MuteState) {
                 if (lastMuteActive_) {
-                    // Dimly lit if active
                     setLedColor(lastSettings_.color, lastSettings_.brightness / 4);
                 } else {
                     setLedColor({0, 0, 0}, 0);
                 }
-            } else if (lastSettings_.mode == LedMode::Off) {
-                setLedColor({0, 0, 0}, 0);
             } else {
-                // StepTrig or Beat mode but not pulsing -> Off
                 setLedColor({0, 0, 0}, 0);
             }
             muteStateDirty_ = false;

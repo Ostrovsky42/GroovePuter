@@ -361,3 +361,29 @@ inline void drawHelpPageSongCont(IGfx& gfx, int x, int y, int w, int h) {
   left_y += lh;
   drawHelpItem(gfx, layout.left_x, left_y, "G", "Generate new song", IGfxColor::Cyan());
 }
+
+inline void drawHelpPageSongSelectionLoop(IGfx& gfx, int x, int y, int w, int h) {
+  HelpLayout layout = makeHelpLayout(gfx, x, y, w, h);
+  int left_y = layout.left_y;
+  int lh = layout.line_h;
+
+  drawHelpHeading(gfx, layout.left_x, left_y, "Song Page (selection)");
+  left_y += lh;
+
+  drawHelpHeading(gfx, layout.left_x, left_y, "Selection");
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "SHIFT+ARROWS", "extend range", COLOR_LABEL);
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+ARROWS", "extend range", COLOR_LABEL);
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "ESC / ` / ~", "clear selection", IGfxColor::Red());
+  left_y += lh;
+
+  drawHelpHeading(gfx, layout.left_x, left_y, "Loop");
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "CTRL+L", "toggle loop on selection", IGfxColor::Yellow());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "FN+L", "same as CTRL+L", IGfxColor::Yellow());
+  left_y += lh;
+  drawHelpItem(gfx, layout.left_x, left_y, "L", "lock around playhead", IGfxColor::Yellow());
+}

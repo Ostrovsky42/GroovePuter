@@ -439,6 +439,8 @@ private:
     DrumFxArray,
     DrumFxParamArray,
     DrumProbabilityArray,
+    DrumVelocityArray,
+    DrumTimingArray,
     SynthABanks,
     SynthABank,
     SynthBBanks,
@@ -720,10 +722,26 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   auto writeString = [&](const std::string& value) -> bool {
     if (!writeChar('"')) return false;
     for (char ch : value) {
-      if (ch == '"' || ch == '\\') {
-        if (!writeChar('\\')) return false;
+      const unsigned char byte = static_cast<unsigned char>(ch);
+      switch (ch) {
+        case '"': if (!writeLiteral("\\\"")) return false; break;
+        case '\\': if (!writeLiteral("\\\\")) return false; break;
+        case '\b': if (!writeLiteral("\\b")) return false; break;
+        case '\f': if (!writeLiteral("\\f")) return false; break;
+        case '\n': if (!writeLiteral("\\n")) return false; break;
+        case '\r': if (!writeLiteral("\\r")) return false; break;
+        case '\t': if (!writeLiteral("\\t")) return false; break;
+        default:
+          if (byte < 0x20) {
+            char escaped[7];
+            int written = std::snprintf(
+                escaped, sizeof(escaped), "\\u%04x", byte);
+            if (written != 6 || !writeChunk(escaped, 6)) return false;
+          } else if (!writeChar(ch)) {
+            return false;
+          }
+          break;
       }
-      if (!writeChar(ch)) return false;
     }
     return writeChar('"');
   };
@@ -740,6 +758,16 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
     }
     // New FX arrays (only write if needed to save space? strict JSON usually requires consistency, but we can make them optional in parser)
     // For now, let's write them to be safe
+    if (!writeLiteral("],\"vel\":[")) return false;
+    for (int i = 0; i < DrumPattern::kSteps; ++i) {
+      if (i > 0 && !writeChar(',')) return false;
+      if (!writeInt(pattern.steps[i].velocity)) return false;
+    }
+    if (!writeLiteral("],\"tim\":[")) return false;
+    for (int i = 0; i < DrumPattern::kSteps; ++i) {
+      if (i > 0 && !writeChar(',')) return false;
+      if (!writeInt(pattern.steps[i].timing)) return false;
+    }
     if (!writeLiteral("],\"fx\":[")) return false;
     for (int i = 0; i < DrumPattern::kSteps; ++i) {
       if (i > 0 && !writeChar(',')) return false;
@@ -837,6 +865,12 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
       if (!writeBool(pattern.steps[i].slide)) return false;
       if (!writeLiteral(",\"accent\":")) return false;
       if (!writeBool(pattern.steps[i].accent)) return false;
+      if (!writeLiteral(",\"ghost\":")) return false;
+      if (!writeBool(pattern.steps[i].ghost)) return false;
+      if (!writeLiteral(",\"vel\":")) return false;
+      if (!writeInt(pattern.steps[i].velocity)) return false;
+      if (!writeLiteral(",\"tim\":")) return false;
+      if (!writeInt(pattern.steps[i].timing)) return false;
       if (!writeLiteral(",\"fx\":")) return false;
       if (!writeInt(pattern.steps[i].fx)) return false;
       if (!writeLiteral(",\"fxp\":")) return false;
@@ -988,6 +1022,10 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeInt(scene_->feel.timebase)) return false;
   if (!writeLiteral(",\"bars\":")) return false;
   if (!writeInt(scene_->feel.patternBars)) return false;
+  if (!writeLiteral(",\"swing\":")) return false;
+  if (!writeInt(scene_->feel.swingPct)) return false;
+  if (!writeLiteral(",\"mask\":")) return false;
+  if (!writeInt(scene_->feel.swingMask)) return false;
   if (!writeLiteral(",\"lofi\":")) return false;
   if (!writeBool(scene_->feel.lofiEnabled)) return false;
   if (!writeLiteral(",\"lofiAmt\":")) return false;
@@ -1020,6 +1058,32 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeBool(scene_->genre.curatedMode)) return false;
   if (!writeLiteral(",\"sound\":")) return false;
   if (!writeBool(scene_->genre.applySoundMacros)) return false;
+  if (!writeChar('}')) return false;
+
+  if (!writeLiteral(",\"generatorParams\":{\"minNotes\":")) return false;
+  if (!writeInt(scene_->generatorParams.minNotes)) return false;
+  if (!writeLiteral(",\"maxNotes\":")) return false;
+  if (!writeInt(scene_->generatorParams.maxNotes)) return false;
+  if (!writeLiteral(",\"minOctave\":")) return false;
+  if (!writeInt(scene_->generatorParams.minOctave)) return false;
+  if (!writeLiteral(",\"maxOctave\":")) return false;
+  if (!writeInt(scene_->generatorParams.maxOctave)) return false;
+  if (!writeLiteral(",\"swingAmount\":")) return false;
+  if (!writeFloat(scene_->generatorParams.swingAmount)) return false;
+  if (!writeLiteral(",\"velocityRange\":")) return false;
+  if (!writeFloat(scene_->generatorParams.velocityRange)) return false;
+  if (!writeLiteral(",\"ghostNoteProbability\":")) return false;
+  if (!writeFloat(scene_->generatorParams.ghostNoteProbability)) return false;
+  if (!writeLiteral(",\"microTimingAmount\":")) return false;
+  if (!writeFloat(scene_->generatorParams.microTimingAmount)) return false;
+  if (!writeLiteral(",\"preferDownbeats\":")) return false;
+  if (!writeBool(scene_->generatorParams.preferDownbeats)) return false;
+  if (!writeLiteral(",\"scaleQuantize\":")) return false;
+  if (!writeBool(scene_->generatorParams.scaleQuantize)) return false;
+  if (!writeLiteral(",\"scaleRoot\":")) return false;
+  if (!writeInt(scene_->generatorParams.scaleRoot)) return false;
+  if (!writeLiteral(",\"scale\":")) return false;
+  if (!writeInt(static_cast<int>(scene_->generatorParams.scale))) return false;
   if (!writeChar('}')) return false;
 
   if (!writeLiteral(",\"trackVolumes\":[")) return false;

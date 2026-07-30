@@ -1403,13 +1403,13 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return handleEvent(app_evt);
   }
 
-  if (ui_event.ctrl && key_l) {
+  if ((ui_event.ctrl || ui_event.meta) && key_l) {
     LOG_INFO_UI("Toggle loop mode");
     return toggleLoopMode();
   }
 
   // L (plain): Loop Lock (loop ±4 bars around playhead)
-  if (!ui_event.ctrl && !ui_event.alt && lowerKey == 'l') {
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lowerKey == 'l') {
     int ph = mini_acid_.songPlayheadPosition();
     int lockRadius = 4;
     int len = mini_acid_.songLength();
@@ -2620,7 +2620,7 @@ std::unique_ptr<MultiPageHelpDialog> SongPage::getHelpDialog() {
 }
 
 int SongPage::getHelpFrameCount() const {
-  return 2;
+  return 3;
 }
 
 void SongPage::drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const {
@@ -2631,6 +2631,9 @@ void SongPage::drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const {
       break;
     case 1:
       drawHelpPageSongCont(gfx, bounds.x, bounds.y, bounds.w, bounds.h);
+      break;
+    case 2:
+      drawHelpPageSongSelectionLoop(gfx, bounds.x, bounds.y, bounds.w, bounds.h);
       break;
     default:
       break;

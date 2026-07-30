@@ -1,0 +1,38 @@
+{
+  "atlas_schema_version": "2.6.0",
+  "source_archive": "seqtrak_pattern_atlas_csv_v2_6.zip",
+  "source_archive_sha256": "5b155937b8d05f0f0f9f1a02f10d9afe76a917d6035897695cce739eb8d6b1fd",
+  "validation_checks": 281,
+  "validation_failures": 0,
+  "validation_warnings": [
+    "DUPLICATE_ARTIFACT_HASHES"
+  ],
+  "runtime_recipe_id": 6,
+  "atlas_recipe_id": "REC_ACID_CHICAGO_JACK",
+  "compiled_patterns": [
+    "PAT_ED_ACID_CHICAGO_JACK_P1",
+    "PAT_ED_ACID_CHICAGO_JACK_P2",
+    "PAT_ED_ACID_CHICAGO_JACK_P3"
+  ],
+  "source_event_count": 107,
+  "ignored_sampler_event_count": 5,
+  "track_mapping": {
+    "KICK": "DrumKick",
+    "SNARE": "DrumSnare",
+    "HAT1": "DrumHatClosed",
+    "HAT2": "DrumHatOpen",
+    "PERC1": "DrumMidTom",
+    "PERC2": "DrumHighTom",
+    "CLAP": "DrumClap",
+    "SYNTH1": "SynthA",
+    "SYNTH2": "SynthBChordRootPreview",
+    "DX": "SynthBMelodyPreview",
+    "SAMPLER": "IgnoredUntilSamplerSlotMapping"
+  },
+  "limitations": [
+    "SEQTRAK sound preset IDs are not present in Atlas runtime capabilities.",
+    "Chord events are reduced to a monophonic chord-root preview on Synth B.",
+    "Sampler events are not applied until sampler-slot semantics are defined.",
+    "The firmware Apply path currently selects P1; P2 and P3 are compiled and tested but not yet exposed in UI."
+  ]
+}

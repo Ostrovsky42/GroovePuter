@@ -12,13 +12,48 @@
 // External WAV loader
 bool loadWavFile(const char* path, WavInfo& info, int16_t** outPcm);
 
-RamSampleStore::RamSampleStore() : currentPoolUsage_(0), maxPoolBytes_(256 * 1024), timeCounter_(0) {
+namespace {
+
+bool tryAcquireSlot(SampleSlot& slot, uint32_t expectedId) {
+  if (expectedId == 0) return false;
+  if (slot.id.load(std::memory_order_acquire) != expectedId) return false;
+  if (!slot.ready.load(std::memory_order_acquire)) return false;
+
+  slot.refCount.fetch_add(1, std::memory_order_acq_rel);
+
+  // Eviction first withdraws ready, then checks refCount. Revalidate after
+  // taking the reference so a concurrent withdrawal cannot publish a handle.
+  if (slot.ready.load(std::memory_order_acquire) &&
+      slot.id.load(std::memory_order_acquire) == expectedId) {
+    return true;
+  }
+
+  slot.refCount.fetch_sub(1, std::memory_order_acq_rel);
+  return false;
+}
+
+void releaseSlotReference(SampleSlot& slot) {
+  uint32_t count = slot.refCount.load(std::memory_order_acquire);
+  while (count > 0) {
+    if (slot.refCount.compare_exchange_weak(
+            count, count - 1,
+            std::memory_order_acq_rel,
+            std::memory_order_acquire)) {
+      return;
+    }
+  }
+}
+
+}  // namespace
+
+RamSampleStore::RamSampleStore()
+    : currentPoolUsage_(0), maxPoolBytes_(256 * 1024), timeCounter_(0) {
   for (auto& slot : slots_) {
-    slot.id.store(0);
-    slot.ready.store(false);
-    slot.data.store(nullptr);
-    slot.refCount.store(0);
-    slot.lastAccess.store(0);
+    slot.id.store(0, std::memory_order_relaxed);
+    slot.ready.store(false, std::memory_order_relaxed);
+    slot.data.store(nullptr, std::memory_order_relaxed);
+    slot.refCount.store(0, std::memory_order_relaxed);
+    slot.lastAccess.store(0, std::memory_order_relaxed);
   }
 }
 
@@ -31,9 +66,7 @@ uint32_t RamSampleStore::nextTime() {
 SampleHandle RamSampleStore::acquireHandle(SampleId id) {
   for (uint16_t i = 0; i < kMaxSampleSlots; ++i) {
     auto& slot = slots_[i];
-    if (slot.id.load(std::memory_order_relaxed) == id.value &&
-        slot.ready.load(std::memory_order_acquire)) {
-      slot.refCount.fetch_add(1, std::memory_order_relaxed);
+    if (tryAcquireSlot(slot, id.value)) {
       slot.lastAccess.store(nextTime(), std::memory_order_relaxed);
       return {i, id};
     }
@@ -44,19 +77,17 @@ SampleHandle RamSampleStore::acquireHandle(SampleId id) {
 void RamSampleStore::releaseHandle(SampleHandle h) {
   if (!h.valid() || h.slot >= kMaxSampleSlots) return;
   auto& slot = slots_[h.slot];
-  // Verify ID still matches (defensive)
-  if (slot.id.load(std::memory_order_relaxed) == h.id.value) {
-    slot.refCount.fetch_sub(1, std::memory_order_relaxed);
+  if (slot.id.load(std::memory_order_acquire) == h.id.value) {
+    releaseSlotReference(slot);
   }
 }
 
 SampleView RamSampleStore::viewHandle(SampleHandle h) const {
   if (!h.valid() || h.slot >= kMaxSampleSlots) return {nullptr, 0, 0};
   const auto& slot = slots_[h.slot];
-  // O(1) direct access, no search
-  if (slot.id.load(std::memory_order_relaxed) == h.id.value &&
+  if (slot.id.load(std::memory_order_acquire) == h.id.value &&
       slot.ready.load(std::memory_order_acquire)) {
-    const int16_t* p = slot.data.load(std::memory_order_relaxed);
+    const int16_t* p = slot.data.load(std::memory_order_acquire);
     if (p) return {p, slot.frames, slot.sampleRate};
   }
   return {nullptr, 0, 0};
@@ -66,8 +97,7 @@ SampleView RamSampleStore::viewHandle(SampleHandle h) const {
 
 void RamSampleStore::acquire(SampleId id) {
   for (auto& slot : slots_) {
-    if (slot.id.load(std::memory_order_relaxed) == id.value) {
-      slot.refCount.fetch_add(1, std::memory_order_relaxed);
+    if (tryAcquireSlot(slot, id.value)) {
       slot.lastAccess.store(nextTime(), std::memory_order_relaxed);
       return;
     }
@@ -76,8 +106,8 @@ void RamSampleStore::acquire(SampleId id) {
 
 void RamSampleStore::release(SampleId id) {
   for (auto& slot : slots_) {
-    if (slot.id.load(std::memory_order_relaxed) == id.value) {
-      slot.refCount.fetch_sub(1, std::memory_order_relaxed);
+    if (slot.id.load(std::memory_order_acquire) == id.value) {
+      releaseSlotReference(slot);
       return;
     }
   }
@@ -85,12 +115,10 @@ void RamSampleStore::release(SampleId id) {
 
 SampleView RamSampleStore::view(SampleId id) const {
   for (const auto& slot : slots_) {
-    if (slot.id.load(std::memory_order_relaxed) == id.value &&
+    if (slot.id.load(std::memory_order_acquire) == id.value &&
         slot.ready.load(std::memory_order_acquire)) {
-      const int16_t* p = slot.data.load(std::memory_order_relaxed);
-      if (p) {
-        return {p, slot.frames, slot.sampleRate};
-      }
+      const int16_t* p = slot.data.load(std::memory_order_acquire);
+      if (p) return {p, slot.frames, slot.sampleRate};
     }
   }
   return {nullptr, 0, 0};
@@ -102,84 +130,93 @@ void RamSampleStore::registerFile(SampleId id, const std::string& path) {
 }
 
 bool RamSampleStore::preload(SampleId id) {
-  // 1. Check if already loaded
+  // 1. Check if already loaded and fully published.
   for (auto& slot : slots_) {
-    if (slot.id.load(std::memory_order_acquire) == id.value) {
+    if (slot.id.load(std::memory_order_acquire) == id.value &&
+        slot.ready.load(std::memory_order_acquire)) {
       slot.lastAccess.store(nextTime(), std::memory_order_relaxed);
       return true;
     }
   }
 
-  // 2. Find path
+  // 2. Find path.
   std::string path;
   {
     std::lock_guard<std::mutex> lk(pathsMutex_);
     auto it = filePaths_.find(id.value);
     if (it == filePaths_.end()) {
-        printf("Preload: ID %u not found in registry\n", id.value);
-        return false;
+      printf("Preload: ID %u not found in registry\n", id.value);
+      return false;
     }
     path = it->second;
   }
 
   printf("Preload: Loading %s ...\n", path.c_str());
 
-  // 3. Load from disk
-  WavInfo info;
+  // 3. Load from disk.
+  WavInfo info{};
   int16_t* pcm = nullptr;
   if (!loadWavFile(path.c_str(), info, &pcm)) {
     printf("Preload: loadWavFile failed for %s\n", path.c_str());
     return false;
   }
-  
-  std::size_t size = info.numFrames * sizeof(int16_t);
-  printf("Preload: Loaded %u frames (%u bytes). Pool usage: %u/%u\n", 
-         info.numFrames, (unsigned)size, (unsigned)currentPoolUsage_, (unsigned)maxPoolBytes_);
-  
-  // 4. Find free slot or evict
-  int slotIdx = -1;
-  while (currentPoolUsage_ + size > maxPoolBytes_) {
-    printf("Preload: Evicting LRU to make space...\n");
-    evictLRU();
-    // Safety break if eviction didn't help (e.g. all locked?)
-    if (freePoolBytes() < size && currentPoolUsage_ == 0) break; // Should not happen if evict works
-  }
-  
-  if (currentPoolUsage_ + size > maxPoolBytes_) {
-      printf("Preload: Pool full! Needed %u, have %u free. Max: %u\n", 
-             (unsigned)size, (unsigned)freePoolBytes(), (unsigned)maxPoolBytes_);
-      free(pcm);
-      return false;
+
+  const std::size_t size = info.numFrames * sizeof(int16_t);
+  printf("Preload: Loaded %u frames (%u bytes). Pool usage: %u/%u\n",
+         info.numFrames, static_cast<unsigned>(size),
+         static_cast<unsigned>(currentPoolUsage_),
+         static_cast<unsigned>(maxPoolBytes_));
+
+  if (size > maxPoolBytes_) {
+    printf("Preload: Sample is larger than the entire pool\n");
+    free(pcm);
+    return false;
   }
 
-  // Find empty slot
+  // 4. Evict until enough capacity exists. Abort when eviction makes no
+  // progress; all candidates are then referenced by active audio voices.
+  while (currentPoolUsage_ + size > maxPoolBytes_) {
+    const std::size_t usageBefore = currentPoolUsage_;
+    evictLRU();
+    if (currentPoolUsage_ >= usageBefore) {
+      printf("Preload: Pool is busy; no evictable sample slots\n");
+      free(pcm);
+      return false;
+    }
+  }
+
+  // 5. Find a fully quiescent empty slot. A withdrawn slot may temporarily
+  // retain a rollback reference from an acquisition that lost a race.
+  int slotIdx = -1;
   for (int i = 0; i < kMaxSampleSlots; ++i) {
-    if (slots_[i].id.load(std::memory_order_relaxed) == 0) {
+    auto& slot = slots_[i];
+    if (slot.id.load(std::memory_order_acquire) == 0 &&
+        !slot.ready.load(std::memory_order_acquire) &&
+        slot.refCount.load(std::memory_order_acquire) == 0 &&
+        slot.data.load(std::memory_order_acquire) == nullptr) {
       slotIdx = i;
       break;
     }
   }
 
   if (slotIdx < 0) {
-    printf("Preload: No free slots!\n");
-    if (pcm) free(pcm);
+    printf("Preload: No quiescent free slots\n");
+    free(pcm);
     return false;
   }
 
-  // 5. Fill slot
-  slots_[slotIdx].frames = info.numFrames;
-  slots_[slotIdx].sampleRate = info.sampleRate;
-  slots_[slotIdx].sizeBytes = size;
-  slots_[slotIdx].data.store(pcm, std::memory_order_relaxed);
-  slots_[slotIdx].lastAccess.store(nextTime(), std::memory_order_relaxed);
-  slots_[slotIdx].refCount.store(0, std::memory_order_relaxed);
-  
-  // Publish ID
-  slots_[slotIdx].id.store(id.value, std::memory_order_relaxed);
-  
-  // Publish ready LAST with release semantics
-  slots_[slotIdx].ready.store(true, std::memory_order_release);
-  
+  // 6. Fill and publish the slot. Non-atomic metadata is protected by the
+  // final ready release and matching acquire in readers.
+  auto& slot = slots_[slotIdx];
+  slot.frames = info.numFrames;
+  slot.sampleRate = info.sampleRate;
+  slot.sizeBytes = size;
+  slot.data.store(pcm, std::memory_order_relaxed);
+  slot.lastAccess.store(nextTime(), std::memory_order_relaxed);
+  slot.refCount.store(0, std::memory_order_relaxed);
+  slot.id.store(id.value, std::memory_order_relaxed);
+  slot.ready.store(true, std::memory_order_release);
+
   currentPoolUsage_ += size;
   return true;
 }
@@ -189,26 +226,50 @@ void RamSampleStore::evictLRU() {
   uint32_t oldestTime = std::numeric_limits<uint32_t>::max();
 
   for (int i = 0; i < kMaxSampleSlots; ++i) {
-    uint32_t tid = slots_[i].id.load(std::memory_order_relaxed);
-    if (tid != 0 && slots_[i].refCount.load(std::memory_order_relaxed) == 0) {
-      uint32_t t = slots_[i].lastAccess.load(std::memory_order_relaxed);
-      if (t < oldestTime) {
-         oldestTime = t;
-         candidateIdx = i;
+    auto& slot = slots_[i];
+    const uint32_t id = slot.id.load(std::memory_order_acquire);
+    if (id != 0 && slot.ready.load(std::memory_order_acquire) &&
+        slot.refCount.load(std::memory_order_acquire) == 0) {
+      const uint32_t access = slot.lastAccess.load(std::memory_order_relaxed);
+      if (access < oldestTime) {
+        oldestTime = access;
+        candidateIdx = i;
       }
     }
   }
 
-  if (candidateIdx >= 0) {
-    // Clear ready first to stop new acquisitions
-    slots_[candidateIdx].ready.store(false, std::memory_order_release);
-    slots_[candidateIdx].id.store(0, std::memory_order_relaxed);
-    int16_t* ptr = (int16_t*)slots_[candidateIdx].data.exchange(nullptr, std::memory_order_acquire);
-    if (ptr) free(ptr); 
-    
-    currentPoolUsage_ -= slots_[candidateIdx].sizeBytes;
-    slots_[candidateIdx].sizeBytes = 0;
+  if (candidateIdx < 0) return;
+
+  auto& slot = slots_[candidateIdx];
+
+  // Withdraw publication first. Any acquisition that observed the old ready
+  // value must increment and then revalidate it before returning a handle.
+  bool expectedReady = true;
+  if (!slot.ready.compare_exchange_strong(
+          expectedReady, false,
+          std::memory_order_acq_rel,
+          std::memory_order_acquire)) {
+    return;
   }
+
+  if (slot.refCount.load(std::memory_order_acquire) != 0) {
+    slot.ready.store(true, std::memory_order_release);
+    return;
+  }
+
+  slot.id.store(0, std::memory_order_release);
+  int16_t* ptr = const_cast<int16_t*>(
+      slot.data.exchange(nullptr, std::memory_order_acq_rel));
+  if (ptr) free(ptr);
+
+  if (slot.sizeBytes <= currentPoolUsage_) {
+    currentPoolUsage_ -= slot.sizeBytes;
+  } else {
+    currentPoolUsage_ = 0;
+  }
+  slot.frames = 0;
+  slot.sampleRate = 0;
+  slot.sizeBytes = 0;
 }
 
 std::size_t RamSampleStore::freePoolBytes() const {
