@@ -8,31 +8,9 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  migrate-audio-stall-fix:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/agent/fix-core-reliability'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/fix-core-reliability
-          fetch-depth: 0
-
-      - name: Apply guarded migration
-        run: |
-          if grep -q "if (needsDraw) drawUI();" GroovePuter.ino; then
-            echo "audio stall migration already applied"
-            exit 0
-          fi
-          python3 scripts/migrate_audio_stall_fix.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add GroovePuter.ino src/ui/miniacid_display.cpp tests/test_source_regressions.py
-          git commit -m "fix: keep UI redraw outside audio pause"
-          git push origin HEAD:agent/fix-core-reliability
-
   host-tests:
     runs-on: ubuntu-latest
     steps:
