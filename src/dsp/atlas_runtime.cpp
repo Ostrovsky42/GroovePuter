@@ -26,6 +26,30 @@ bool validatePattern(const AtlasGenerated::Pattern& pattern) {
   return true;
 }
 
+bool resolveVariation(uint8_t runtimeRecipeId,
+                      uint8_t variationIndex,
+                      const AtlasGenerated::Recipe*& recipe,
+                      const AtlasGenerated::Pattern*& pattern) {
+  recipe = findRecipe(runtimeRecipeId);
+  if (!recipe || variationIndex >= recipe->patternCount) return false;
+
+  pattern = &recipe->patterns[variationIndex];
+  return validatePattern(*pattern);
+}
+
+AtlasRuntimeMetadata makeMetadata(const AtlasGenerated::Recipe& recipe,
+                                  const AtlasGenerated::Pattern& pattern) {
+  AtlasRuntimeMetadata metadata{};
+  metadata.atlasRecipeId = recipe.atlasRecipeId;
+  metadata.displayName = recipe.displayName;
+  metadata.atlasPatternId = pattern.atlasPatternId;
+  metadata.slotId = pattern.slotId;
+  metadata.slotFunction = pattern.slotFunction;
+  metadata.bpm = recipe.bpm;
+  metadata.swingPercent = recipe.swingPercent;
+  return metadata;
+}
+
 void clearSynth(SynthPattern& pattern) {
   for (int step = 0; step < SynthPattern::kSteps; ++step) {
     pattern.steps[step] = SynthStep{};
@@ -49,31 +73,10 @@ void clearDrums(DrumPatternSet& pattern) {
   }
 }
 
-}  // namespace
-
-namespace AtlasRuntime {
-
-bool hasRecipe(uint8_t runtimeRecipeId) {
-  return findRecipe(runtimeRecipeId) != nullptr;
-}
-
-uint8_t variationCount(uint8_t runtimeRecipeId) {
-  const AtlasGenerated::Recipe* recipe = findRecipe(runtimeRecipeId);
-  return recipe ? recipe->patternCount : 0;
-}
-
-bool applyRecipe(uint8_t runtimeRecipeId,
-                 uint8_t variationIndex,
-                 SynthPattern& synthA,
-                 SynthPattern& synthB,
-                 DrumPatternSet& drums,
-                 AtlasRuntimeMetadata* metadata) {
-  const AtlasGenerated::Recipe* recipe = findRecipe(runtimeRecipeId);
-  if (!recipe || variationIndex >= recipe->patternCount) return false;
-
-  const AtlasGenerated::Pattern& pattern = recipe->patterns[variationIndex];
-  if (!validatePattern(pattern)) return false;
-
+void materializePattern(const AtlasGenerated::Pattern& pattern,
+                        SynthPattern& synthA,
+                        SynthPattern& synthB,
+                        DrumPatternSet& drums) {
   clearSynth(synthA);
   clearSynth(synthB);
   clearDrums(drums);
@@ -102,16 +105,57 @@ bool applyRecipe(uint8_t runtimeRecipeId,
     step.timing = event.timing;
     step.probability = event.probability;
   }
+}
 
-  if (metadata) {
-    metadata->atlasRecipeId = recipe->atlasRecipeId;
-    metadata->displayName = recipe->displayName;
-    metadata->atlasPatternId = pattern.atlasPatternId;
-    metadata->slotId = pattern.slotId;
-    metadata->slotFunction = pattern.slotFunction;
-    metadata->bpm = recipe->bpm;
-    metadata->swingPercent = recipe->swingPercent;
+}  // namespace
+
+namespace AtlasRuntime {
+
+bool hasRecipe(uint8_t runtimeRecipeId) {
+  return findRecipe(runtimeRecipeId) != nullptr;
+}
+
+uint8_t variationCount(uint8_t runtimeRecipeId) {
+  const AtlasGenerated::Recipe* recipe = findRecipe(runtimeRecipeId);
+  return recipe ? recipe->patternCount : 0;
+}
+
+bool describeVariation(uint8_t runtimeRecipeId,
+                       uint8_t variationIndex,
+                       AtlasRuntimeMetadata& metadata) {
+  const AtlasGenerated::Recipe* recipe = nullptr;
+  const AtlasGenerated::Pattern* pattern = nullptr;
+  if (!resolveVariation(runtimeRecipeId, variationIndex, recipe, pattern)) {
+    return false;
   }
+
+  metadata = makeMetadata(*recipe, *pattern);
+  return true;
+}
+
+bool applyRecipe(uint8_t runtimeRecipeId,
+                 uint8_t variationIndex,
+                 SynthPattern& synthA,
+                 SynthPattern& synthB,
+                 DrumPatternSet& drums,
+                 AtlasRuntimeMetadata* metadata) {
+  const AtlasGenerated::Recipe* recipe = nullptr;
+  const AtlasGenerated::Pattern* pattern = nullptr;
+  if (!resolveVariation(runtimeRecipeId, variationIndex, recipe, pattern)) {
+    return false;
+  }
+
+  SynthPattern nextSynthA{};
+  SynthPattern nextSynthB{};
+  DrumPatternSet nextDrums{};
+  materializePattern(*pattern, nextSynthA, nextSynthB, nextDrums);
+
+  const AtlasRuntimeMetadata nextMetadata = makeMetadata(*recipe, *pattern);
+
+  synthA = nextSynthA;
+  synthB = nextSynthB;
+  drums = nextDrums;
+  if (metadata) *metadata = nextMetadata;
   return true;
 }
 
