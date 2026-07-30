@@ -11,16 +11,28 @@
 // Fixed-capacity event handoff from the audio-side PatternPlayer to the control
 // loop. The realtime producer never allocates or blocks. Control-plane engine
 // mutations are already serialized against the audio task by AudioMutationGate,
-// so producer calls never run concurrently with the audio producer.
+// so producer calls never run concurrently with control-plane lifecycle resets.
 class MusicalEventQueue {
 public:
-    static constexpr std::size_t kCapacity = 64;
+    // One ring slot remains empty as the head/tail sentinel. The storage size is
+    // 64 entries and the actual usable event capacity is therefore 63.
+    static constexpr std::size_t kStorageSize = 64;
+    static constexpr std::size_t kCapacity = kStorageSize - 1;
     static constexpr uint8_t kSynthAMask = 1u << 0;
     static constexpr uint8_t kSynthBMask = 1u << 1;
 
+#if defined(__GNUC__)
+    static_assert(__atomic_always_lock_free(sizeof(uint8_t), nullptr),
+                  "8-bit atomics must remain lock-free on the pinned toolchain");
+    static_assert(__atomic_always_lock_free(sizeof(uint16_t), nullptr),
+                  "16-bit atomics must remain lock-free on the pinned toolchain");
+    static_assert(__atomic_always_lock_free(sizeof(uint32_t), nullptr),
+                  "32-bit atomics must remain lock-free on the pinned toolchain");
+#endif
+
     bool tryPush(const MusicalEvent& event) {
         const uint16_t head = head_.load(std::memory_order_relaxed);
-        const uint16_t next = static_cast<uint16_t>((head + 1u) % kCapacity);
+        const uint16_t next = static_cast<uint16_t>((head + 1u) % kStorageSize);
         if (next == tail_.load(std::memory_order_acquire)) {
             dropped_.fetch_add(1u, std::memory_order_relaxed);
             if (event.type != MusicalEventType::NoteOn) {
@@ -40,13 +52,21 @@ public:
         if (tail == head_.load(std::memory_order_acquire)) return false;
 
         event = events_[tail];
-        tail_.store(static_cast<uint16_t>((tail + 1u) % kCapacity),
+        tail_.store(static_cast<uint16_t>((tail + 1u) % kStorageSize),
                     std::memory_order_release);
         return true;
     }
 
     uint8_t takePendingAllNotesOffMask() {
         return pendingAllNotesOffMask_.exchange(0u, std::memory_order_acq_rel);
+    }
+
+    // Control-plane lifecycle helper. Call only while the audio producer is
+    // quiescent (for example, after transport stop under AudioMutationGate).
+    void discardPending() {
+        const uint16_t head = head_.load(std::memory_order_acquire);
+        tail_.store(head, std::memory_order_release);
+        pendingAllNotesOffMask_.store(0u, std::memory_order_release);
     }
 
     uint32_t droppedCount() const {
@@ -58,7 +78,7 @@ private:
         return target == MusicalEventTarget::SynthB ? kSynthBMask : kSynthAMask;
     }
 
-    MusicalEvent events_[kCapacity]{};
+    MusicalEvent events_[kStorageSize]{};
     std::atomic<uint16_t> head_{0};
     std::atomic<uint16_t> tail_{0};
     std::atomic<uint8_t> pendingAllNotesOffMask_{0};
