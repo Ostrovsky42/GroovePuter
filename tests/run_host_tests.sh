@@ -20,4 +20,19 @@ python3 "${ROOT_DIR}/tests/test_source_regressions.py"
   -o "${BUILD_DIR}/test_sampler_voice"
 
 "${BUILD_DIR}/test_sampler_voice"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -I"${ROOT_DIR}" \
+  -I"${ROOT_DIR}/platform_sdl" \
+  -include "${ROOT_DIR}/platform_sdl/arduino_compat.h" \
+  "${ROOT_DIR}/tests/test_scene_roundtrip.cpp" \
+  "${ROOT_DIR}/scenes.cpp" \
+  "${ROOT_DIR}/json_evented.cpp" \
+  "${ROOT_DIR}/src/audio/pattern_paging.cpp" \
+  -o "${BUILD_DIR}/test_scene_roundtrip"
+
+"${BUILD_DIR}/test_scene_roundtrip"
 echo "host regressions: OK"
