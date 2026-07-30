@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 // Canonical hardware profile for M5Stack Cardputer ADV.
 //
 // GPIO21 is the power-amplifier enable line on the ADV audio path. It must
