@@ -19,8 +19,15 @@ namespace AtlasRuntime {
 bool hasRecipe(uint8_t runtimeRecipeId);
 uint8_t variationCount(uint8_t runtimeRecipeId);
 
-// Apply one compiled P1/P2/P3 Atlas pattern. Validation happens before any
-// destination pattern is modified.
+// Read variation metadata without touching active or destination patterns.
+// The output is assigned only after the recipe, variation and event payload
+// have passed the same validation used by applyRecipe().
+bool describeVariation(uint8_t runtimeRecipeId,
+                       uint8_t variationIndex,
+                       AtlasRuntimeMetadata& metadata);
+
+// Apply one compiled P1/P2/P3 Atlas pattern. Validation and materialization
+// happen in temporary patterns before all destinations are committed together.
 bool applyRecipe(uint8_t runtimeRecipeId,
                  uint8_t variationIndex,
                  SynthPattern& synthA,
