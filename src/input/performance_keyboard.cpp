@@ -52,10 +52,10 @@ bool PerformanceKeyboard::scaleDegreeForKey(char physicalKey, uint8_t& degree) {
     }
     for (uint8_t i = 0; i < sizeof(kUpperRow) - 1; ++i) {
         if (kUpperRow[i] == physicalKey) {
-            // The upper manual starts one scale degree above the lower manual.
-            // Its maximum degree stays bounded so every supported scale remains
-            // inside MiniAcid's 24..71 note range at every allowed octave.
-            degree = static_cast<uint8_t>(i + 1);
+            // The upper manual mirrors the same bounded scale-degree span.
+            // This keeps all nineteen physical keys valid for every supported
+            // scale and octave while preserving a two-row playing surface.
+            degree = i;
             return true;
         }
     }
