@@ -64,6 +64,14 @@ jobs:
               raise SystemExit('setSynthEngine lifecycle block not found')
           engine.write_text(text.replace(old, new, 1), encoding='utf-8')
 
+          sink = Path('src/midi/usb_midi_output.cpp')
+          text = sink.read_text(encoding='utf-8')
+          old = 'bool UsbMidiOutput::accepts(const MusicalEvent& event,\n'
+          new = 'bool UsbMidiOutput::accepts(const MusicalEvent&,\n'
+          if old not in text:
+              raise SystemExit('UsbMidiOutput::accepts signature not found')
+          sink.write_text(text.replace(old, new, 1), encoding='utf-8')
+
           tests = Path('tests/run_host_tests.sh')
           text = tests.read_text(encoding='utf-8')
           obsolete = 'python3 "${ROOT_DIR}/tests/test_usb_midi_source_regressions.py"\n'
@@ -82,8 +90,8 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm scripts/apply_pattern_midi_stage1.py
-          git rm .github/workflows/apply-pattern-midi-stage1.yml
+          git rm -f scripts/apply_pattern_midi_stage1.py
+          git rm -f .github/workflows/apply-pattern-midi-stage1.yml
           git add -A
           git commit -m "feat(midi): route PatternPlayer synth events to USB MIDI"
           git push origin HEAD:feature/pattern-midi-output
