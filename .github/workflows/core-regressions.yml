@@ -8,31 +8,9 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  patch-audio-gate:
-    if: github.actor != 'github-actions[bot]' && github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'agent/fix-core-reliability'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/fix-core-reliability
-          fetch-depth: 0
-
-      - name: Apply guarded audio gate migration
-        run: python3 scripts/migrate_audio_gate.py
-
-      - name: Commit migration
-        run: |
-          rm -f scripts/migrate_audio_gate.py
-          git diff --check
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add miniacid.ino scripts/migrate_audio_gate.py
-          git commit -m "fix: guard Cardputer engine mutations at audio block boundaries"
-          git push origin HEAD:agent/fix-core-reliability
-
   host-tests:
     runs-on: ubuntu-latest
     steps:
