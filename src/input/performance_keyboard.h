@@ -19,11 +19,11 @@ public:
     static constexpr std::size_t kMaxHeldNotes = 19;
     static constexpr uint8_t kMinNote = 24;
     static constexpr uint8_t kMaxNote = 71;
-    static constexpr uint8_t kRootC3 = 48;
-    // The Cardputer layout spans less than two octaves. C3 is the highest
-    // default root that keeps every supported scale/key inside the 303 range;
-    // users can shift down two octaves and back up to the default.
-    static constexpr int8_t kMinOctaveShift = -2;
+    static constexpr uint8_t kRootC2 = 36;
+    // The lower manual starts at C2 and the upper manual one octave higher.
+    // One safe downward shift keeps every supported scale/key inside 24..71;
+    // octave-up returns to the default position.
+    static constexpr int8_t kMinOctaveShift = -1;
     static constexpr int8_t kMaxOctaveShift = 0;
 
     explicit PerformanceKeyboard(MusicalEventRouter& router)
@@ -69,6 +69,7 @@ private:
     };
 
     static char normalizeKey(char key);
+    static bool isUpperRowKey(char key);
     static bool containsKey(const char* keys, std::size_t count, char key);
     static uint8_t intervalForDegree(PerformanceScale scale, uint8_t degree);
 
