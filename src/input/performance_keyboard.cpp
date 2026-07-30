@@ -31,6 +31,15 @@ char PerformanceKeyboard::normalizeKey(char key) {
     return static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
 }
 
+bool PerformanceKeyboard::isUpperRowKey(char key) {
+    key = normalizeKey(key);
+    for (char candidate : kUpperRow) {
+        if (candidate == '\0') break;
+        if (candidate == key) return true;
+    }
+    return false;
+}
+
 bool PerformanceKeyboard::containsKey(const char* keys,
                                       std::size_t count,
                                       char key) {
@@ -52,9 +61,6 @@ bool PerformanceKeyboard::scaleDegreeForKey(char physicalKey, uint8_t& degree) {
     }
     for (uint8_t i = 0; i < sizeof(kUpperRow) - 1; ++i) {
         if (kUpperRow[i] == physicalKey) {
-            // The upper manual mirrors the same bounded scale-degree span.
-            // This keeps all nineteen physical keys valid for every supported
-            // scale and octave while preserving a two-row playing surface.
             degree = i;
             return true;
         }
@@ -73,11 +79,13 @@ uint8_t PerformanceKeyboard::intervalForDegree(PerformanceScale scale,
 }
 
 bool PerformanceKeyboard::noteForKey(char physicalKey, uint8_t& note) const {
+    physicalKey = normalizeKey(physicalKey);
     uint8_t degree = 0;
     if (!scaleDegreeForKey(physicalKey, degree)) return false;
 
-    const int value = static_cast<int>(kRootC3) + octaveShift_ * 12 +
-                      intervalForDegree(scale_, degree);
+    const int manualOffset = isUpperRowKey(physicalKey) ? 12 : 0;
+    const int value = static_cast<int>(kRootC2) + octaveShift_ * 12 +
+                      manualOffset + intervalForDegree(scale_, degree);
     if (value < kMinNote || value > kMaxNote) return false;
     note = static_cast<uint8_t>(value);
     return true;
