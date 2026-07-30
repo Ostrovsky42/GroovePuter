@@ -51,6 +51,18 @@ python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_usb_midi_output.cpp" \
+  "${ROOT_DIR}/src/midi/usb_midi_output.cpp" \
+  -o "${BUILD_DIR}/test_usb_midi_output"
+
+"${BUILD_DIR}/test_usb_midi_output"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_sampler_voice.cpp" \
   "${ROOT_DIR}/src/sampler/sampler_voice.cpp" \
   -o "${BUILD_DIR}/test_sampler_voice"
