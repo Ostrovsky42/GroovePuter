@@ -1,5 +1,7 @@
 #include "cardputer_usb_midi_transport.h"
 
+#include "src/midi/usb_midi_output.h"
+
 #if ARDUINO_USB_MODE
 #error "USB MIDI requires Cardputer USBMode=default (USB-OTG/TinyUSB)"
 #endif
@@ -20,11 +22,10 @@ uint8_t CardputerUsbMidiTransport::clampChannel(uint8_t channel) {
 }
 
 bool CardputerUsbMidiTransport::begin() {
-    // The global USBMIDI member constructor has already registered the MIDI
-    // interface. With CDCOnBoot enabled, Arduino app_main() starts the complete
-    // TinyUSB composite before setup(). USBMIDI::begin() is intentionally a
-    // no-op in the pinned M5Stack core, so this remains safe during static
-    // GroovePuter sink registration.
+    // The USBMIDI member constructor has already registered the MIDI interface.
+    // With CDCOnBoot enabled, Arduino app_main() starts the complete TinyUSB
+    // composite before setup(). USBMIDI::begin() is a no-op in the pinned core,
+    // so registration remains safe during static GroovePuter sink bootstrap.
     midi_.begin();
     begun_ = true;
     return true;
@@ -73,4 +74,22 @@ bool CardputerUsbMidiTransport::sendNoteOff(uint8_t zeroBasedChannel,
 void CardputerUsbMidiTransport::flush() {
     // USBMIDI::writePacket() queues a complete four-byte USB-MIDI event packet.
     // The pinned TinyUSB API exposes no additional flush operation.
+}
+
+void registerCardputerUsbMidiSink(MusicalEventRouter& router) {
+    // Function-local statics guarantee construction exactly once at the first
+    // bootstrap call. This call happens before Arduino app_main() starts USB,
+    // which is required so USBMIDI can contribute its interface descriptor.
+    static CardputerUsbMidiTransport transport;
+    static UsbMidiOutput output(
+        transport,
+        UsbMidiRouteConfig{
+            7,     // zero-based channel 7 == MIDI channel 8 / SEQTRAK SYNTH 1
+            true,
+        });
+    static bool registered = false;
+
+    if (registered) return;
+    output.begin();
+    registered = router.addSink(output);
 }
