@@ -109,8 +109,7 @@ uint8_t UsbMidiOutput::channelFor(MusicalEventSource source,
     return lane ? lane->channel : 0;
 }
 
-bool UsbMidiOutput::accepts(const MusicalEvent&,
-                            const MidiVoiceLane* lane) const {
+bool UsbMidiOutput::accepts(const MidiVoiceLane* lane) const {
     return enabled_ && begun_ && mounted_ && lane && lane->enabled;
 }
 
@@ -162,7 +161,7 @@ void UsbMidiOutput::clearActiveState() {
 void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
     pollConnection();
     MidiVoiceLane* lane = laneFor(event.source, event.target);
-    if (!accepts(event, lane)) return;
+    if (!accepts(lane)) return;
 
     switch (event.type) {
         case MusicalEventType::NoteOn:

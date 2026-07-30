@@ -2631,6 +2631,7 @@ bool MiniAcid::saveSceneToStorage() {
 }
 
 void MiniAcid::applySceneStateFromManager() {
+  if (playing) publishPatternAllNotesOff_();
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: Start");
   
   // Reset bias tracking since scene overwrites all params

@@ -65,7 +65,7 @@ private:
                            MusicalEventTarget target);
     const MidiVoiceLane* laneFor(MusicalEventSource source,
                                  MusicalEventTarget target) const;
-    bool accepts(const MusicalEvent& event, const MidiVoiceLane* lane) const;
+    bool accepts(const MidiVoiceLane* lane) const;
     void replaceActiveNote(MidiVoiceLane& lane, uint8_t note, uint8_t velocity);
     void releaseActiveNote(MidiVoiceLane& lane, uint8_t velocity = 0);
     void releaseAllActiveNotes();

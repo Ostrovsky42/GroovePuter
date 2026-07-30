@@ -72,7 +72,7 @@ Prepare different audible patterns for Synth A and Synth B, then start GroovePut
 - Stop releases both pattern lanes.
 - Muting Synth A releases only PatternPlayer Synth A.
 - Muting Synth B releases only PatternPlayer Synth B.
-- Pattern or Song-row changes do not leave stale notes.
+- Pattern, Song-row, or scene changes do not leave stale notes.
 - Internal Synth A and Synth B continue to sound at the same time.
 - Live NOTE panic does not cancel PatternPlayer lanes.
 

@@ -41,6 +41,10 @@ def main() -> None:
             "publishPatternNoteOff_" in engine and
             "publishPatternAllNotesOff_" in engine,
             "PatternPlayer lifecycle must publish normalized events")
+    scene_apply = engine.index("void MiniAcid::applySceneStateFromManager()")
+    scene_body = engine[scene_apply:scene_apply + 240]
+    require("if (playing) publishPatternAllNotesOff_();" in scene_body,
+            "scene application must release stale PatternPlayer MIDI ownership")
     require("MusicalEventSource::PatternPlayer" in engine,
             "engine events must identify PatternPlayer as their source")
     require("USBMIDI" not in engine and "TinyUSB" not in engine,
