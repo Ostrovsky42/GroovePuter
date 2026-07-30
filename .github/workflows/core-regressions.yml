@@ -5,40 +5,12 @@ on:
     branches:
       - main
       - agent/fix-core-reliability
-      - feature/performance-workflow
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  migrate-performance-workflow:
-    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/feature/performance-workflow')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: feature/performance-workflow
-          fetch-depth: 0
-
-      - name: Apply guarded input ordering fix
-        run: |
-          if grep -q "Centralized performance input" src/ui/miniacid_display.cpp; then
-            echo "Performance input ordering already fixed"
-            exit 0
-          fi
-          python3 scripts/fix_performance_input_order.py
-          git config user.name "github-actions[bot]"
-          git config user.email "4189822+github-actions[bot]@users.noreply.github.com"
-          git add \
-            GroovePuter.ino \
-            src/ui/miniacid_display.cpp \
-            platform_sdl/sdl_main.cpp \
-            tests/test_source_regressions.py
-          git commit -m "fix: separate UI and pattern pages in performance input"
-          git pull --rebase origin feature/performance-workflow
-          git push origin HEAD:feature/performance-workflow
-
   host-tests:
     runs-on: ubuntu-latest
     steps:
