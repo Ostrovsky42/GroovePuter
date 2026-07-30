@@ -122,6 +122,8 @@ int main() {
 
     // Runtime-only scale/octave state always remains inside the synth range.
     const char playableKeys[] = "asdfghjklqwertyuiop";
+    const char lowerManual[] = "asdfghjkl";
+    const char upperManual[] = "qwertyuio";
     for (int scaleIndex = 0;
          scaleIndex < static_cast<int>(PerformanceScale::Count);
          ++scaleIndex) {
@@ -136,6 +138,13 @@ int main() {
                 assert(keyboard.noteForKey(key, note));
                 assert(note >= PerformanceKeyboard::kMinNote);
                 assert(note <= PerformanceKeyboard::kMaxNote);
+            }
+            for (std::size_t i = 0; i < sizeof(lowerManual) - 1; ++i) {
+                uint8_t lower = 0;
+                uint8_t upper = 0;
+                assert(keyboard.noteForKey(lowerManual[i], lower));
+                assert(keyboard.noteForKey(upperManual[i], upper));
+                assert(upper == static_cast<uint8_t>(lower + 12));
             }
         }
     }
