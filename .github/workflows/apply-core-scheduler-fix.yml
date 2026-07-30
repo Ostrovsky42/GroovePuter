@@ -1,0 +1,78 @@
+name: Apply guarded scheduler patch
+
+on:
+  push:
+    branches:
+      - agent/fix-core-reliability
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-core-reliability
+          fetch-depth: 0
+
+      - name: Apply exact scheduler replacements
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/dsp/miniacid_engine.cpp")
+          text = path.read_text(encoding="utf-8")
+
+          old_advance = """void MiniAcid::advanceTick() {
+              // Current monolithic implementation - Stage 1
+              // We trigger everything at the start of the 16th note (tick % 24 == 0)
+              processSequencerEvents(currentTick_);
+          }
+          """
+          new_advance = """void MiniAcid::advanceTick() {
+            // Dispatch every PPQN tick. processSequencerEvents() keeps logical
+            // step and bar-boundary side effects on their exact boundaries.
+            processSequencerEvents(currentTick_);
+          }
+          """
+
+          old_dispatch = """        while (ticksToAdvance--) {
+                    currentTick_++;
+                    // For Stage 2: We trigger patterns every 24 ticks (1/16th note @ 96 PPQN)
+                    if (currentTick_ % 24 == 0) {
+                        advanceTick();
+                    }
+                  }
+          """
+          new_dispatch = """        while (ticksToAdvance--) {
+                    ++currentTick_;
+                    advanceTick();
+                  }
+          """
+
+          if text.count(old_advance) != 1:
+              raise SystemExit(f"advanceTick block count is {text.count(old_advance)}, expected 1")
+          if text.count(old_dispatch) != 1:
+              raise SystemExit(f"dispatch block count is {text.count(old_dispatch)}, expected 1")
+
+          text = text.replace(old_advance, new_advance)
+          text = text.replace(old_dispatch, new_dispatch)
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Commit scheduler fix
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No scheduler diff produced"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/dsp/miniacid_engine.cpp
+          git commit -m "fix: dispatch sequencer events on every PPQN tick"
+          git push origin HEAD:agent/fix-core-reliability
