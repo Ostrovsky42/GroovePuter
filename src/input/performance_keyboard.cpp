@@ -68,6 +68,11 @@ bool PerformanceKeyboard::scaleDegreeForKey(char physicalKey, uint8_t& degree) {
     return false;
 }
 
+bool PerformanceKeyboard::isPerformanceKey(char physicalKey) {
+    uint8_t degree = 0;
+    return scaleDegreeForKey(physicalKey, degree);
+}
+
 uint8_t PerformanceKeyboard::intervalForDegree(PerformanceScale scale,
                                                uint8_t degree) {
     const uint8_t scaleIndex = static_cast<uint8_t>(scale);
@@ -133,17 +138,23 @@ void PerformanceKeyboard::emitAllNotesOff() {
 }
 
 bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
-    if (!liveInputAllowed()) return false;
-
     physicalKey = normalizeKey(physicalKey);
+
+    // Layout membership and emission permission are separate decisions. When
+    // NOTE mode is active, a performance key remains consumed even if transport
+    // temporarily blocks NoteOn, so it cannot reach legacy I/O/P/K/L commands.
+    if (!isPerformanceKey(physicalKey)) return false;
+    if (!noteModeEnabled_) return false;
+    if (!enabled_ || transportPlaying_) return true;
+
     uint8_t note = 0;
-    if (!noteForKey(physicalKey, note)) return false;
+    if (!noteForKey(physicalKey, note)) return true;
 
     // Matrix repeats must not grow the stack or retrigger the voice.
     if (findHeld(physicalKey) >= 0) return true;
     if (heldCount_ >= kMaxHeldNotes) {
         panic();
-        return false;
+        return true;
     }
 
     held_[heldCount_++] = HeldNote{physicalKey, note, velocity};
@@ -197,6 +208,12 @@ void PerformanceKeyboard::setEnabled(bool enabled) {
     if (enabled_ == enabled) return;
     if (!enabled) panic();
     enabled_ = enabled;
+}
+
+void PerformanceKeyboard::setNoteModeEnabled(bool enabled) {
+    if (noteModeEnabled_ == enabled) return;
+    if (!enabled) panic();
+    noteModeEnabled_ = enabled;
 }
 
 void PerformanceKeyboard::setTransportPlaying(bool playing) {
