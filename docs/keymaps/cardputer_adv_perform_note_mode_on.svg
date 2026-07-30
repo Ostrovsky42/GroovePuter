@@ -1,0 +1,168 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1110" height="610" viewBox="0 0 1110 610" role="img" aria-labelledby="title desc">
+  <title id="title">GroovePuter Cardputer ADV PERFORM keymap — NOTE MODE ON</title>
+  <desc id="desc">Color-coded Cardputer ADV keyboard controls for GroovePuter PERFORM mode.</desc>
+  <rect width="1110" height="610" rx="18" fill="#0f141b"/>
+  <rect x="18" y="18" width="1074" height="574" rx="14" fill="#151c25" stroke="#253040"/>
+  <text x="555.0" y="48" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="24" font-weight="700">PERFORM Keymap — NOTE MODE: ON</text>
+  <text x="555.0" y="72" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13">Scale-aware live keyboard; note keys stay reserved while transport runs</text>
+
+  <rect x="34" y="88" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="63.0" y="118" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">ESC</text>
+  <rect x="99" y="88" width="58" height="48" rx="7" fill="#6547a8" stroke="#a88cf2" stroke-width="1.5"/>
+  <text x="128.0" y="106" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">1</text>
+  <text x="128.0" y="124" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">PERF</text>
+  <rect x="164" y="88" width="58" height="48" rx="7" fill="#6547a8" stroke="#a88cf2" stroke-width="1.5"/>
+  <text x="193.0" y="106" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">2</text>
+  <text x="193.0" y="124" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">PAT</text>
+  <rect x="229" y="88" width="58" height="48" rx="7" fill="#6547a8" stroke="#a88cf2" stroke-width="1.5"/>
+  <text x="258.0" y="106" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">3</text>
+  <text x="258.0" y="124" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">ARR</text>
+  <rect x="294" y="88" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="323.0" y="118" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">4</text>
+  <rect x="359" y="88" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="388.0" y="118" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">5</text>
+  <rect x="424" y="88" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="453.0" y="118" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">6</text>
+  <rect x="489" y="88" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="518.0" y="118" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">7</text>
+  <rect x="554" y="88" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="583.0" y="118" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">8</text>
+  <rect x="619" y="88" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="648.0" y="118" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">9</text>
+  <rect x="684" y="88" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="713.0" y="118" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">0</text>
+  <rect x="749" y="88" width="58" height="48" rx="7" fill="#257057" stroke="#5ed3a6" stroke-width="1.5"/>
+  <text x="778.0" y="106" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">-</text>
+  <text x="778.0" y="124" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">OCT −</text>
+  <rect x="814" y="88" width="58" height="48" rx="7" fill="#257057" stroke="#5ed3a6" stroke-width="1.5"/>
+  <text x="843.0" y="106" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">=</text>
+  <text x="843.0" y="124" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">OCT +</text>
+  <rect x="879" y="88" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="908.0" y="118" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">DEL</text>
+  <rect x="34" y="146" width="58" height="48" rx="7" fill="#4d4a7f" stroke="#a5a1ff" stroke-width="1.5"/>
+  <text x="63.0" y="164" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">TAB</text>
+  <text x="63.0" y="182" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">WORKFLOW</text>
+  <rect x="99" y="146" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="128.0" y="164" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">Q</text>
+  <text x="128.0" y="182" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="164" y="146" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="193.0" y="164" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">W</text>
+  <text x="193.0" y="182" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="229" y="146" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="258.0" y="164" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">E</text>
+  <text x="258.0" y="182" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="294" y="146" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="323.0" y="164" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">R</text>
+  <text x="323.0" y="182" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="359" y="146" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="388.0" y="164" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">T</text>
+  <text x="388.0" y="182" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="424" y="146" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="453.0" y="164" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">Y</text>
+  <text x="453.0" y="182" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="489" y="146" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="518.0" y="164" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">U</text>
+  <text x="518.0" y="182" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="554" y="146" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="583.0" y="164" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">I</text>
+  <text x="583.0" y="182" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="619" y="146" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="648.0" y="164" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">O</text>
+  <text x="648.0" y="182" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="684" y="146" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="713.0" y="164" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">P</text>
+  <text x="713.0" y="182" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="749" y="146" width="58" height="48" rx="7" fill="#257057" stroke="#5ed3a6" stroke-width="1.5"/>
+  <text x="778.0" y="164" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">[</text>
+  <text x="778.0" y="182" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">SCALE −</text>
+  <rect x="814" y="146" width="58" height="48" rx="7" fill="#257057" stroke="#5ed3a6" stroke-width="1.5"/>
+  <text x="843.0" y="164" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">]</text>
+  <text x="843.0" y="182" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">SCALE +</text>
+  <rect x="879" y="146" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="908.0" y="176" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">\</text>
+  <rect x="34" y="204" width="58" height="48" rx="7" fill="#4d4a7f" stroke="#a5a1ff" stroke-width="1.5"/>
+  <text x="63.0" y="222" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">FN</text>
+  <text x="63.0" y="240" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">MOD</text>
+  <rect x="99" y="204" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="128.0" y="222" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">A</text>
+  <text x="128.0" y="240" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="164" y="204" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="193.0" y="222" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">S</text>
+  <text x="193.0" y="240" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="229" y="204" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="258.0" y="222" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">D</text>
+  <text x="258.0" y="240" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="294" y="204" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="323.0" y="222" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">F</text>
+  <text x="323.0" y="240" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="359" y="204" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="388.0" y="222" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">G</text>
+  <text x="388.0" y="240" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="424" y="204" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="453.0" y="222" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">H</text>
+  <text x="453.0" y="240" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="489" y="204" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="518.0" y="222" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">J</text>
+  <text x="518.0" y="240" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="554" y="204" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="583.0" y="222" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">K</text>
+  <text x="583.0" y="240" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="619" y="204" width="58" height="48" rx="7" fill="#185a8f" stroke="#58b5f5" stroke-width="1.5"/>
+  <text x="648.0" y="222" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">L</text>
+  <text x="648.0" y="240" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="684" y="204" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="713.0" y="234" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">;</text>
+  <rect x="749" y="204" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="778.0" y="234" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">'</text>
+  <rect x="814" y="204" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="843.0" y="234" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">OK</text>
+  <rect x="34" y="262" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="63.0" y="292" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">CTRL</text>
+  <rect x="99" y="262" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="128.0" y="292" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">OPT</text>
+  <rect x="164" y="262" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="193.0" y="292" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">ALT</text>
+  <rect x="229" y="262" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="258.0" y="292" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">Z</text>
+  <rect x="294" y="262" width="58" height="48" rx="7" fill="#9b3f4c" stroke="#ff8794" stroke-width="1.5"/>
+  <text x="323.0" y="280" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">X</text>
+  <text x="323.0" y="298" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">PANIC</text>
+  <rect x="359" y="262" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="388.0" y="292" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">C</text>
+  <rect x="424" y="262" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="453.0" y="292" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">V</text>
+  <rect x="489" y="262" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="518.0" y="292" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">B</text>
+  <rect x="554" y="262" width="58" height="48" rx="7" fill="#257057" stroke="#5ed3a6" stroke-width="1.5"/>
+  <text x="583.0" y="280" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">N</text>
+  <text x="583.0" y="298" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">NOTE</text>
+  <rect x="619" y="262" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="648.0" y="292" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">M</text>
+  <rect x="684" y="262" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="713.0" y="292" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">,</text>
+  <rect x="749" y="262" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="778.0" y="292" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">.</text>
+  <rect x="814" y="262" width="58" height="48" rx="7" fill="#2a3039" stroke="#4b5563" stroke-width="1.5"/>
+  <text x="843.0" y="292" text-anchor="middle" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="600">/</text>
+  <rect x="879" y="262" width="126" height="48" rx="7" fill="#8a5b20" stroke="#ffbf66" stroke-width="1.5"/>
+  <text x="942.0" y="280" text-anchor="middle" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" font-weight="700">SPACE</text>
+  <text x="942.0" y="298" text-anchor="middle" fill="#dce8f5" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="8.5" font-weight="600">PLAY / STOP</text>
+  <line x1="34" x2="1076" y1="350" y2="350" stroke="#2d3948"/>
+  <text x="34" y="379" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="15" font-weight="700">Legend</text>
+  <rect x="34" y="391" width="22" height="22" rx="5" fill="#185a8f" stroke="#58b5f5"/>
+  <text x="66" y="407" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13">Scale note</text>
+  <rect x="379" y="391" width="22" height="22" rx="5" fill="#6547a8" stroke="#a88cf2"/>
+  <text x="411" y="407" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13">Workflow shortcut</text>
+  <rect x="724" y="391" width="22" height="22" rx="5" fill="#257057" stroke="#5ed3a6"/>
+  <text x="756" y="407" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13">Performance setting / NOTE toggle</text>
+  <rect x="34" y="429" width="22" height="22" rx="5" fill="#4d4a7f" stroke="#a5a1ff"/>
+  <text x="66" y="445" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13">Fn + Tab workflow cycle</text>
+  <rect x="379" y="429" width="22" height="22" rx="5" fill="#9b3f4c" stroke="#ff8794"/>
+  <text x="411" y="445" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13">Live Synth A panic</text>
+  <rect x="724" y="429" width="22" height="22" rx="5" fill="#8a5b20" stroke="#ffbf66"/>
+  <text x="756" y="445" fill="#f4f7fb" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13">Transport play / stop</text>
+  <rect x="34" y="472" width="1042" height="92" rx="10" fill="#101720" stroke="#2d3948"/>
+  <text x="52" y="497" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="12.5">Transport stopped: QWERTYUIOP + ASDFGHJKL play Synth A with last-note priority.</text>
+  <text x="52" y="521" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="12.5">Transport running: note keys are consumed but emit no NoteOn; I/O/P/K/L cannot reach legacy randomize/BPM commands.</text>
+  <text x="52" y="545" fill="#9aa7b6" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="12.5">N disables NOTE mode. X releases only the live-owned Synth A note; it does not cut PatternPlayer or Synth B.</text>
+</svg>
