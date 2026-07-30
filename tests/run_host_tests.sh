@@ -47,4 +47,17 @@ python3 "${ROOT_DIR}/tests/test_source_regressions.py"
   -o "${BUILD_DIR}/test_scene_roundtrip"
 
 "${BUILD_DIR}/test_scene_roundtrip"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -I"${ROOT_DIR}" \
+  -I"${ROOT_DIR}/platform_sdl" \
+  -include "${ROOT_DIR}/platform_sdl/arduino_compat.h" \
+  "${ROOT_DIR}/tests/test_pattern_paging.cpp" \
+  "${ROOT_DIR}/src/audio/pattern_paging.cpp" \
+  -o "${BUILD_DIR}/test_pattern_paging"
+
+"${BUILD_DIR}/test_pattern_paging"
 echo "host regressions: OK"
