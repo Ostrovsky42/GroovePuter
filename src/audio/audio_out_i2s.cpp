@@ -46,10 +46,16 @@ bool AudioOutI2S::begin(uint32_t sampleRate, size_t bufferFrames) {
     return false;
   }
 
+  // Cardputer ADV routes the ES8311 speaker bus through I2S1.  I2S0 is used
+  // by other board peripherals and accepts a channel allocation but rejects
+  // standard-mode initialization when that controller is already configured.
   i2s_chan_config_t channelConfig =
-      I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
-  channelConfig.dma_desc_num = 8;
-  channelConfig.dma_frame_num = 512;
+      I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_1, I2S_ROLE_MASTER);
+  // Reserve DMA before the engine/UI heap is fragmented. Four 256-frame
+  // descriptors provide about 46 ms of queued stereo audio at 22.05 kHz,
+  // while leaving enough internal RAM for the realtime task and UI pages.
+  channelConfig.dma_desc_num = 4;
+  channelConfig.dma_frame_num = 256;
   channelConfig.auto_clear = true;
 
   esp_err_t error = i2s_new_channel(&channelConfig, &tx_handle_, nullptr);
@@ -60,6 +66,19 @@ bool AudioOutI2S::begin(uint32_t sampleRate, size_t bufferFrames) {
     stereoBuffer_ = nullptr;
     return false;
   }
+
+  i2s_chan_info_t channelInfo = {};
+  const esp_err_t infoError =
+      i2s_channel_get_info(tx_handle_, &channelInfo);
+  Serial.printf(
+      "[AudioOutI2S] registered handle=%p info=%d port=%d mode=%d dma=%u\n",
+      static_cast<void*>(tx_handle_),
+      static_cast<int>(infoError),
+      infoError == ESP_OK ? static_cast<int>(channelInfo.id) : -1,
+      infoError == ESP_OK ? static_cast<int>(channelInfo.mode) : -1,
+      infoError == ESP_OK
+          ? static_cast<unsigned>(channelInfo.total_dma_buf_size)
+          : 0U);
 
   i2s_std_config_t standardConfig = {};
   standardConfig.clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(sampleRate);
@@ -107,7 +126,7 @@ bool AudioOutI2S::begin(uint32_t sampleRate, size_t bufferFrames) {
   }
 
   Serial.printf(
-      "[AudioOutI2S] ADV I2S0: %u Hz, %u frames, BCLK=%d, WS=%d, DOUT=%d, MCLK=%s\n",
+      "[AudioOutI2S] ADV I2S1: %u Hz, %u frames, BCLK=%d, WS=%d, DOUT=%d, MCLK=%s\n",
       sampleRate,
       static_cast<unsigned>(bufferFrames),
       GroovePuterHardware::kI2sBitClockPin,
