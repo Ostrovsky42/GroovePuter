@@ -37,7 +37,7 @@ No GPIO, PORT.A or external power wiring is used.
 
 ## Build and flash
 
-Use the repository-pinned M5Stack ESP32 core 3.2.2:
+Use the repository-pinned M5Stack ESP32 core 3.2.2. A build made with core 3.2.5 is not an acceptance result for this PR.
 
 ```bash
 bash scripts/install_arduino_deps.sh
@@ -93,7 +93,7 @@ There is no production per-note Serial logging. Periodic performance output must
 2. Connect Cardputer-Adv directly to SEQTRAK with the same data cable.
 3. Configure/observe SYNTH 1 on MIDI channel 8 and SYNTH 2 on MIDI channel 9.
 4. Start a GroovePuter pattern containing distinct Synth A and Synth B notes.
-5. Stop, mute each synth independently, and change patterns while listening for stale notes.
+5. Stop, mute each synth independently, and change patterns/scenes while listening for stale notes.
 
 ## Troubleshooting
 
@@ -116,6 +116,7 @@ There is no production per-note Serial logging. Periodic performance output must
 - [ ] Synth A mute does not cancel Synth B
 - [ ] Synth B mute does not cancel Synth A
 - [ ] pattern change leaves no stuck note
+- [ ] scene change leaves no stuck note
 - [ ] direct SEQTRAK test succeeds
 - [ ] internal Synth A and Synth B remain audible
 - [ ] no reboot, watchdog, heap corruption or continual underrun growth
