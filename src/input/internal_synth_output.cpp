@@ -17,8 +17,15 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
         case MusicalEventType::NoteOff:
             engine_.liveNoteOff(voice, event.note);
             break;
-        case MusicalEventType::AllNotesOff:
-            engine_.allLiveNotesOff();
+        case MusicalEventType::AllNotesOff: {
+            // This event belongs to one logical target. Release only a note
+            // currently owned by live input on that voice; never interrupt a
+            // PatternPlayer-owned Synth A/B voice while transport is running.
+            const int liveNote = engine_.liveNote(voice);
+            if (liveNote >= 0) {
+                engine_.liveNoteOff(voice, static_cast<uint8_t>(liveNote));
+            }
             break;
+        }
     }
 }
