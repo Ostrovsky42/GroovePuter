@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <vector>
 
 class FakeSampleStore final : public ISampleStore {
