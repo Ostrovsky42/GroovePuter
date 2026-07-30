@@ -17,6 +17,8 @@
 #include "scene_storage_cardputer.h"
 #include "src/ui/led_manager.h"
 #include "src/audio/audio_diagnostics.h"
+#include "src/audio/audio_mutation_gate.h"
+#include "src/platform/cardputer_adv_hardware.h"
 #include "src/ui/key_normalize.h"
 #include <new>
 
@@ -34,6 +36,7 @@ static AudioOutI2S g_audioOut;
 static int16_t g_audioBuffer[kBlockFrames];
 
 TaskHandle_t g_audioTaskHandle = nullptr;
+static AudioMutationGate g_audioMutationGate;
 
 // Static engine instance to avoid heap fragmentation
 static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);
@@ -66,6 +69,7 @@ void audioTask(void *param) {
   Serial.println("AudioTask: Loop start");
   
   while (true) {
+    g_audioMutationGate.waitAtAudioBoundary();
     uint32_t now = micros();
     uint32_t start = now;
     static uint32_t warmupBlocks = 32; // ~90ms at 44.1kHz/128 for hardware stability
@@ -140,8 +144,9 @@ static void logHeapCaps(const char* tag) {
 }
 
 void setup() {
-  // ENABLE hardware amplifier (PA_EN = G21)
-  pinMode(21, OUTPUT); digitalWrite(21, HIGH);
+  // Enable the Cardputer ADV power amplifier. This pin is not RGB data.
+  pinMode(GroovePuterHardware::kPowerAmplifierEnablePin, OUTPUT);
+  digitalWrite(GroovePuterHardware::kPowerAmplifierEnablePin, HIGH);
   // pinMode(42, OUTPUT); digitalWrite(42, LOW); // Possible I2S conflict
   
   Serial.begin(115200);
@@ -283,14 +288,16 @@ void setup() {
   markBootStage(71, "after MiniAcidDisplay alloc");
   Serial.println("7b. UI setAudioGuard");
   
-  // Set audio guard to protect audio task from concurrent access
-  // Configure Audio Guard for synchronization
+  // Pause the renderer only at a block boundary while existing UI mutation
+  // lambdas update engine state. No mutex is held while DSP is rendering.
   AudioGuard guard;
-  guard.lock = [](void*) {
-      // In a real dual-core ESP32 setup, we could use a mutex here
-      // For now, grooveputer uses a single-threaded DSP model with volatile flags
+  guard.context = &g_audioMutationGate;
+  guard.lock = [](void* context) {
+      static_cast<AudioMutationGate*>(context)->lockControl();
   };
-  guard.unlock = [](void*) {};
+  guard.unlock = [](void* context) {
+      static_cast<AudioMutationGate*>(context)->unlockControl();
+  };
   g_miniDisplay->setAudioGuard(guard);
   
   Serial.println("7c. UI setAudioRecorder");
@@ -315,6 +322,7 @@ void setup() {
     while (true) { delay(1000); }
   } else {
     Serial.printf("[DEBUG] AudioTask created successful, handle: %p\n", (void*)g_audioTaskHandle);
+    g_audioMutationGate.setAudioTaskActive(true);
   }
   markBootStage(81, "after AudioTask create");
 
@@ -342,10 +350,13 @@ void loop() {
   if (g_encoder8) g_encoder8->update();
 
   if (M5Cardputer.BtnA.wasClicked()) {
-    if (g_miniAcid->isPlaying()) {
-      g_miniAcid->stop();
-    } else {
-      g_miniAcid->start();
+    {
+      AudioMutationScope mutationScope(g_audioMutationGate);
+      if (g_miniAcid->isPlaying()) {
+        g_miniAcid->stop();
+      } else {
+        g_miniAcid->start();
+      }
     }
     drawUI();
   }
@@ -357,6 +368,7 @@ void loop() {
   static unsigned long nextRepeatAt = 0;
 
   auto handleWithFallback = [&](UIEvent evt) {
+    AudioMutationScope mutationScope(g_audioMutationGate);
     Serial.printf("[DIAG] handleWithFallback: key=0x%02X (%c), scancode=%d, app_event=%d\n", 
       (uint8_t)evt.key, evt.key >= 32 && evt.key < 127 ? evt.key : '.', evt.scancode, evt.app_event_type);
     evt.event_type = GROOVEPUTER_KEY_DOWN;
