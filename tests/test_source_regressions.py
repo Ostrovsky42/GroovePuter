@@ -240,6 +240,19 @@ def test_recipe_selector_is_visible_and_navigable() -> None:
             "UP/DOWN must navigate visible recipes while Fn+UP/DOWN keeps morph")
 
 
+def test_enter_applies_selected_recipe() -> None:
+    page = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
+    start = page.index("// ENTER: apply the current genre/texture/recipe selection.")
+    end = page.index("// SPACE: toggle apply mode", start)
+    enter_block = page[start:end]
+    require("applyCurrent();" in enter_block,
+            "Enter must apply the selected recipe")
+    require("cycleApplyMode" not in enter_block,
+            "Enter must not cycle the apply mode")
+    require('right = "ENTER:Apply M:ApplyMode";' in page,
+            "Apply footer must document Enter and M controls")
+
+
 def test_ui_redraw_does_not_hold_audio_pause() -> None:
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
     start = sketch.index("auto handleWithFallback")
@@ -276,6 +289,7 @@ def main() -> None:
     test_genre_page_uses_recipe_mode_and_tempo_order()
     test_atlas_compiler_matches_manifest_contract()
     test_recipe_selector_is_visible_and_navigable()
+    test_enter_applies_selected_recipe()
     test_ui_redraw_does_not_hold_audio_pause()
     test_splash_closes_display_transaction()
     print("source regressions: OK")

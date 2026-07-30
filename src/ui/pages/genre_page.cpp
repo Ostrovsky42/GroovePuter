@@ -290,7 +290,7 @@ void GenrePage::drawFooter(IGfx& gfx) {
             break;
         case FocusArea::APPLY_MODE:
             left = "UP/DN:Recipe FN+U/D:Morph";
-            right = "FN+L/R:Recipe M:ApplyMode";
+            right = "ENTER:Apply M:ApplyMode";
             focusMode = nullptr;
             break;
     }
@@ -843,14 +843,9 @@ bool GenrePage::handleEvent(UIEvent& e) {
         return true;
     }
 
-    // ENTER: apply current selection / toggle apply mode
+    // ENTER: apply the current genre/texture/recipe selection.
+    // Apply mode is changed explicitly with M or Space.
     if (key == '\n' || key == '\r') {
-        if (focus_ == FocusArea::APPLY_MODE) {
-            auto& gs = mini_acid_.sceneManager().currentScene().genre;
-            cycleApplyMode(gs);
-            UI::showToast(applyModeToast(mini_acid_), 1800);
-            return true;
-        }
         applyCurrent();
         return true;
     }
