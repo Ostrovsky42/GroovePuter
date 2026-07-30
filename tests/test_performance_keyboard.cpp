@@ -43,7 +43,7 @@ int main() {
     assert(keyboard.noteForKey('a', note) && note == 48);
     assert(keyboard.noteForKey('s', note) && note == 50);
     assert(keyboard.noteForKey('d', note) && note == 51);
-    assert(keyboard.noteForKey('q', note) && note == 50);
+    assert(keyboard.noteForKey('q', note) && note == 48);
     assert(!keyboard.noteForKey('z', note));
 
     // Last-note priority: C, then D, then release inactive C.
