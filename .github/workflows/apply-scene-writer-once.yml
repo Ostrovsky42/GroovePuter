@@ -1,16 +1,16 @@
 name: Apply scene writer once
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/fix-core-reliability
+      - main
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
+    if: github.actor != 'github-actions[bot]' && github.event.pull_request.head.ref == 'agent/fix-core-reliability'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
