@@ -271,6 +271,12 @@ static void handleEvents(AppState& s) {
         s.audio.synth.setBpm(s.audio.synth.bpm() + 5.0f);
         SDL_UnlockAudioDevice(s.audio.device);
       }
+    } else if (e.type == SDL_KEYUP) {
+      const SDL_Keycode keycode = e.key.keysym.sym;
+      const bool modified = (e.key.keysym.mod & (KMOD_ALT | KMOD_CTRL | KMOD_SHIFT | KMOD_GUI)) != 0;
+      if (!modified && keycode >= 32 && keycode < 127) {
+        s.keyboard.keyUp(static_cast<char>(keycode));
+      }
     }
   }
 }

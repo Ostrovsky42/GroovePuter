@@ -279,12 +279,16 @@ def test_performance_workflow_boundaries() -> None:
     live_end = engine.index("void MiniAcid::liveNoteOff", live_start)
     require("if (playing) return;" in engine[live_start:live_end],
             "PatternPlayer must exclusively own Synth A while transport runs")
-    require("g_performanceKeyboard.keyDown" in sketch,
-            "hardware input must route unhandled keys through PerformanceKeyboard")
+    require("performance_keyboard_.keyDown" in display,
+            "display input policy must route unhandled page keys through PerformanceKeyboard")
+    require("g_performanceKeyboard.keyDown" not in sketch,
+            "hardware sketch must not duplicate normalized note routing")
     require("releaseMissingKeys" in sketch,
             "keyboard matrix must recover missed key-up events")
     require("case 12: page = std::make_unique<PerformPage>" in display,
             "PERFORM page must remain an additive page instead of reindexing editors")
+    require("setCurrentPage(static_cast<int8_t>(page_index_))" not in display,
+            "UI page indices must never overwrite pattern-storage page indices")
 
 
 def test_performance_settings_are_runtime_only() -> None:

@@ -77,7 +77,6 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx,
     
     // PERFORM is the startup context; legacy page indices remain stable.
     pages_[page_index_] = createPage_(page_index_);
-    mini_acid_.setCurrentPage(static_cast<int8_t>(page_index_));
     
     applyPageBounds_();
     applied_visual_style_ = UI::currentStyle;
@@ -275,7 +274,6 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
 
     previous_page_index_ = page_index_;
     page_index_ = index;
-    mini_acid_.setCurrentPage(static_cast<int8_t>(page_index_));
 
     IPage* newPage = getPage_(index);
     if (newPage) {
@@ -432,7 +430,16 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
     }
 
-    // 2) Global navigation fallback
+    // 2) Centralized performance input. The active page gets first refusal;
+    // only an unhandled plain key can become a live note.
+    if (event.event_type == GROOVEPUTER_KEY_DOWN &&
+        !event.alt && !event.ctrl && !event.shift && !event.meta &&
+        WorkflowPages::allowsPerformanceKeyboard(page_index_) &&
+        performance_keyboard_.keyDown(event.key)) {
+        return true;
+    }
+
+    // 3) Global navigation fallback
     if (event.event_type == GROOVEPUTER_KEY_DOWN) {
         if (event.key == ']') { nextPage(); return true; }
         if (event.key == '[') { previousPage(); return true; }

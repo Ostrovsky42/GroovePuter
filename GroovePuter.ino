@@ -429,15 +429,6 @@ void loop() {
       return;
     }
 
-    // Page commands have priority. Only unhandled plain keys become notes.
-    if (!evt.alt && !evt.ctrl && !evt.shift && !evt.meta &&
-        g_miniDisplay &&
-        WorkflowPages::allowsPerformanceKeyboard(g_miniDisplay->currentPageIndex()) &&
-        g_performanceKeyboard.keyDown(evt.key)) {
-      drawUI();
-      return;
-    }
-
     bool needsDraw = false;
     {
       // Guard only control-plane mutations. Releasing the gate before drawUI()
