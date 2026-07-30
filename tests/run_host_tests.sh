@@ -25,6 +25,18 @@ python3 "${ROOT_DIR}/tests/test_source_regressions.py"
   -std=c++17 \
   -Wall \
   -Wextra \
+  -Werror \
+  -pthread \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_audio_mutation_gate.cpp" \
+  -o "${BUILD_DIR}/test_audio_mutation_gate"
+
+"${BUILD_DIR}/test_audio_mutation_gate"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
   -I"${ROOT_DIR}" \
   -I"${ROOT_DIR}/platform_sdl" \
   -include "${ROOT_DIR}/platform_sdl/arduino_compat.h" \
