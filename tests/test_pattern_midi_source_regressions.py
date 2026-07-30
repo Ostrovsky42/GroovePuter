@@ -33,6 +33,10 @@ def main() -> None:
             "Stage 1 must route both synth targets")
     require("kLaneCount = 3" in sink_h,
             "Stage 1 must keep exactly three fixed ownership lanes")
+    require("wireOwners_[kMidiChannelCount][kMidiNoteCount]" in sink_h,
+            "logical lanes sharing a MIDI channel need wire-level note ownership")
+    require("pendingRelease" in sink_h and "pendingRelease" in sink,
+            "failed replacement NoteOff must remain retryable")
     require("patternSynthAChannel{7}" in sink_h and
             "patternSynthBChannel{8}" in sink_h,
             "fixed Stage 1 routes must be MIDI channels 8 and 9")
@@ -49,8 +53,8 @@ def main() -> None:
             "engine events must identify PatternPlayer as their source")
     require("USBMIDI" not in engine and "TinyUSB" not in engine,
             "DSP engine must not depend on hardware USB APIs")
-    require("event.source != MusicalEventSource::PerformanceKeyboard" in internal,
-            "internal live sink must ignore PatternPlayer fan-out without locking audio")
+    require("event.source == MusicalEventSource::PatternPlayer" in internal,
+            "internal sink must ignore only already-rendered PatternPlayer fan-out")
 
     require("std::atomic" in queue and "kCapacity = 64" in queue,
             "audio-to-control handoff must be fixed and lock-free")
