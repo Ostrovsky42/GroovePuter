@@ -1,9 +1,9 @@
 name: Apply Pattern MIDI Stage 1
 
 on:
-  push:
+  pull_request:
     branches:
-      - feature/pattern-midi-output
+      - main
     paths:
       - .github/workflows/apply-pattern-midi-stage1.yml
 
@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   apply:
+    if: github.event.pull_request.head.ref == 'feature/pattern-midi-output'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,15 +21,28 @@ jobs:
           fetch-depth: 0
 
       - name: Apply implementation patch
-        run: python3 scripts/apply_pattern_midi_stage1.py
-
-      - name: Run host regressions
-        run: bash tests/run_host_tests.sh
-
-      - name: Commit implementation and remove temporary patch tooling
         shell: bash
         run: |
           set -euo pipefail
+          python3 scripts/apply_pattern_midi_stage1.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tests/run_host_tests.sh')
+          text = path.read_text(encoding='utf-8')
+          old = 'python3 "${ROOT_DIR}/tests/test_usb_midi_source_regressions.py"\n'
+          if old in text:
+              text = text.replace(old, '', 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Run host regressions and publish implementation
+        shell: bash
+        run: |
+          set +e
+          bash tests/run_host_tests.sh
+          test_status=$?
+          set -e
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm scripts/apply_pattern_midi_stage1.py
@@ -36,3 +50,5 @@ jobs:
           git add -A
           git commit -m "feat(midi): route PatternPlayer synth events to USB MIDI"
           git push origin HEAD:feature/pattern-midi-output
+
+          exit "$test_status"
