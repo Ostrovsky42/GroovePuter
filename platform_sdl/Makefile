@@ -28,6 +28,11 @@ SOURCES := \
 	../src/dsp/mini_drumvoices.cpp \
 	../src/dsp/tube_distortion.cpp \
 	../src/dsp/miniacid_engine.cpp \
+	../src/dsp/swappable_synth_voice.cpp \
+	../src/dsp/sid_synth_voice.cpp \
+	../src/dsp/sid_synth.cpp \
+	../src/dsp/ay_synth_voice.cpp \
+	../src/dsp/opl2_synth_voice.cpp \
 	../src/dsp/mode_manager.cpp \
 	../src/dsp/genre_manager.cpp \
 	../src/dsp/audio_wavetables.cpp \
