@@ -47,10 +47,84 @@ def test_adv_amp_pin_is_not_used_as_rgb_data() -> None:
             "GPIO21 must never receive WS2812 timing on Cardputer ADV")
 
 
+def test_genre_regeneration_uses_full_compiled_params() -> None:
+    engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
+    start = engine.index("void MiniAcid::regeneratePatternsWithGenre()")
+    end = engine.index("void MiniAcid::syncGrooveModeToGenre()", start)
+    block = engine[start:end]
+
+    require("getCompiledGenerativeParams()" in block,
+            "genre regeneration must use the complete compiled parameter set")
+    require("getGrooveRecipe()" not in block,
+            "genre regeneration must not collapse to the lossy GrooveRecipe adapter")
+
+
+def test_recipe_selects_the_matching_groovebox_mode() -> None:
+    engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
+    start = engine.index("void MiniAcid::syncGrooveModeToGenre()")
+    end = engine.index("void MiniAcid::toggleAudioDiag()", start)
+    block = engine[start:end]
+
+    require("grooveboxModeForRecipe" in block,
+            "active recipes must select their Breaks/Acid/Dub groovebox mode")
+    require("genreManager_.recipe()" in block,
+            "groovebox mode selection must include the active recipe id")
+
+
+def test_legacy_recipe_adapters_start_from_compiled_params() -> None:
+    manager = (ROOT / "src/dsp/mode_manager.cpp").read_text(encoding="utf-8")
+    marker = "// GROOVE RECIPE OVERLOADS"
+    adapters = manager[manager.index(marker):]
+
+    require(adapters.count(
+        "GenerativeParams params = engine_.genreManager().getCompiledGenerativeParams();"
+    ) == 3,
+            "all legacy GrooveRecipe adapters must preserve omitted genre fields")
+    require("GenerativeParams params;" not in adapters,
+            "partially initialized GenerativeParams reintroduces random/noisy genres")
+
+
+def test_generative_params_have_safe_defaults() -> None:
+    header = (ROOT / "src/dsp/genre_manager.h").read_text(encoding="utf-8")
+    start = header.index("struct GenerativeParams")
+    end = header.index("// === GROOVE RECIPE", start)
+    block = header[start:end]
+
+    required_defaults = (
+        "int minNotes =",
+        "int maxNotes =",
+        "int minOctave =",
+        "int maxOctave =",
+        "float slideProbability =",
+        "float accentProbability =",
+        "float gateLengthMultiplier =",
+        "float swingAmount =",
+        "float microTimingAmount =",
+        "int velocityMin =",
+        "int velocityMax =",
+        "bool preferDownbeats =",
+        "bool allowRepeats =",
+        "float rootNoteBias =",
+        "float ghostProbability =",
+        "float chromaticProbability =",
+        "bool sparseKick =",
+        "bool sparseHats =",
+        "bool noAccents =",
+        "float fillProbability =",
+    )
+    for declaration in required_defaults:
+        require(declaration in block,
+                f"missing safe default in GenerativeParams: {declaration}")
+
+
 def main() -> None:
     test_ppqn_dispatch_is_not_step_gated()
     test_all_substep_offsets_are_reachable()
     test_adv_amp_pin_is_not_used_as_rgb_data()
+    test_genre_regeneration_uses_full_compiled_params()
+    test_recipe_selects_the_matching_groovebox_mode()
+    test_legacy_recipe_adapters_start_from_compiled_params()
+    test_generative_params_have_safe_defaults()
     print("source regressions: OK")
 
 
