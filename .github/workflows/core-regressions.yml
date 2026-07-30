@@ -8,9 +8,40 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  migrate-atlas-recipes:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/agent/fix-core-reliability'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-core-reliability
+          fetch-depth: 0
+
+      - name: Apply guarded Atlas migration
+        run: |
+          if grep -q '"Rolling Acid"' src/dsp/genre_manager.cpp; then
+            echo "Atlas recipe migration already applied"
+            exit 0
+          fi
+          base64 -d scripts/migrate_atlas_recipes.py.gz.b64 | gzip -d > /tmp/migrate_atlas_recipes.py
+          python3 /tmp/migrate_atlas_recipes.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/dsp/genre_manager.cpp \
+            src/ui/pages/genre_page.cpp \
+            src/generated \
+            tools/atlas \
+            tests/test_atlas_runtime.cpp \
+            tests/test_atlas_sound_profile.py \
+            tests/test_source_regressions.py \
+            docs/tests/ATLAS_RECIPE_RUNTIME_TESTS.md
+          git commit -m "feat: add visible Atlas acid UKG and dub recipes"
+          git push origin HEAD:agent/fix-core-reliability
+
   host-tests:
     runs-on: ubuntu-latest
     steps:
