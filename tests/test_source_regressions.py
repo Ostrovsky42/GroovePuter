@@ -54,7 +54,7 @@ def test_genre_regeneration_uses_full_compiled_params() -> None:
     block = engine[start:end]
 
     require("getCompiledGenerativeParams()" in block,
-            "genre regeneration must use the complete compiled parameter set")
+            "genre regeneration must keep the complete fallback parameter set")
     require("getGrooveRecipe()" not in block,
             "genre regeneration must not collapse to the lossy GrooveRecipe adapter")
 
@@ -117,6 +117,45 @@ def test_generative_params_have_safe_defaults() -> None:
                 f"missing safe default in GenerativeParams: {declaration}")
 
 
+def test_chicago_jack_is_a_real_atlas_recipe() -> None:
+    index = (ROOT / "src/generated/atlas_runtime.generated.h").read_text(
+        encoding="utf-8"
+    )
+    data = (ROOT / "src/generated/rec_acid_chicago_jack.generated.h").read_text(
+        encoding="utf-8"
+    )
+    manager = (ROOT / "src/dsp/genre_manager.cpp").read_text(encoding="utf-8")
+
+    require("kRecipe_REC_ACID_CHICAGO_JACK" in index,
+            "generated Atlas index must publish Chicago Jack")
+    require('"P1", "BASE"' in data,
+            "Chicago Jack must include the P1 base pattern")
+    require('"P2", "DEVELOPMENT"' in data,
+            "Chicago Jack must include the P2 development pattern")
+    require('"P3", "BREAKDOWN"' in data,
+            "Chicago Jack must include the P3 breakdown pattern")
+    require('{6, "Chicago Jack"' in manager,
+            "GenreManager must expose Chicago Jack as recipe id 6")
+    require("case 6: return GrooveboxMode::Acid" in manager,
+            "Chicago Jack must select the Acid macro mode")
+
+
+def test_atlas_recipe_precedes_random_fallback() -> None:
+    engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
+    start = engine.index("void MiniAcid::regeneratePatternsWithGenre()")
+    end = engine.index("void MiniAcid::syncGrooveModeToGenre()", start)
+    block = engine[start:end]
+
+    atlas_pos = block.index("AtlasRuntime::applyRecipe")
+    fallback_pos = block.index("getCompiledGenerativeParams()")
+    require(atlas_pos < fallback_pos,
+            "compiled Atlas patterns must be attempted before random fallback")
+    require("scene.feel.swingPct = atlasMetadata.swingPercent" in block,
+            "Atlas recipe swing must be applied with the pattern")
+    require("scene.genre.applyTempoOnApply" in block,
+            "Atlas BPM must respect the existing tempo opt-in")
+
+
 def main() -> None:
     test_ppqn_dispatch_is_not_step_gated()
     test_all_substep_offsets_are_reachable()
@@ -125,6 +164,8 @@ def main() -> None:
     test_recipe_selects_the_matching_groovebox_mode()
     test_legacy_recipe_adapters_start_from_compiled_params()
     test_generative_params_have_safe_defaults()
+    test_chicago_jack_is_a_real_atlas_recipe()
+    test_atlas_recipe_precedes_random_fallback()
     print("source regressions: OK")
 
 
