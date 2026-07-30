@@ -39,8 +39,7 @@ def test_performance_all_notes_off_is_target_scoped() -> None:
         encoding="utf-8"
     )
     start = sink.index("case MusicalEventType::AllNotesOff")
-    end = sink.index("\n        }\n    }", start)
-    block = sink[start:end]
+    block = sink[start:]
 
     require("engine_.liveNote(voice)" in block,
             "AllNotesOff must inspect only the event target voice")
