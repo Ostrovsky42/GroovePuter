@@ -56,8 +56,12 @@ def main() -> None:
     require("event.source == MusicalEventSource::PatternPlayer" in internal,
             "internal sink must ignore only already-rendered PatternPlayer fan-out")
 
-    require("std::atomic" in queue and "kCapacity = 64" in queue,
-            "audio-to-control handoff must be fixed and lock-free")
+    require("std::atomic" in queue and
+            "kStorageSize = 64" in queue and
+            "kCapacity = kStorageSize - 1" in queue,
+            "audio-to-control handoff must expose its 64-slot/63-event bounds")
+    require("__atomic_always_lock_free" in queue,
+            "pinned realtime atomics must be compile-time lock-free")
     for token in ("std::vector", "std::deque", "new ", "malloc("):
         require(token not in queue, f"realtime queue must not allocate: {token}")
     require("takePendingAllNotesOffMask" in queue,
