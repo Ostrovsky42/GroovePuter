@@ -15,6 +15,7 @@
 #include "../src/audio/audio_config.h"
 #include "scene_storage_sdl.h"
 #include "../src/sampler/ram_sample_store.h"
+#include "../src/input/performance_keyboard.h"
 #include "arduino_compat.h"
 
 // Define Serial and SD instances for SDL build
@@ -41,8 +42,10 @@ struct AudioContext {
 };
 
 struct AppState {
-  AppState() : audio(kSampleRate) {}
+  AppState() : audio(kSampleRate), keyboard(router) {}
   AudioContext audio;
+  MusicalEventRouter router;
+  PerformanceKeyboard keyboard;
   IGfx* gfx = nullptr;
   SDLDisplay* sdl = nullptr;
   CardputerDisplay* card = nullptr;
@@ -268,6 +271,12 @@ static void handleEvents(AppState& s) {
         s.audio.synth.setBpm(s.audio.synth.bpm() + 5.0f);
         SDL_UnlockAudioDevice(s.audio.device);
       }
+    } else if (e.type == SDL_KEYUP) {
+      const SDL_Keycode keycode = e.key.keysym.sym;
+      const bool modified = (e.key.keysym.mod & (KMOD_ALT | KMOD_CTRL | KMOD_SHIFT | KMOD_GUI)) != 0;
+      if (!modified && keycode >= 32 && keycode < 127) {
+        s.keyboard.keyUp(static_cast<char>(keycode));
+      }
     }
   }
 }
@@ -373,7 +382,7 @@ int main(int argc, char **argv) {
 
   SDL_PauseAudioDevice(state.audio.device, 0); // start playback
 
-  state.ui = new MiniAcidDisplay(*state.gfx, state.audio.synth);
+  state.ui = new MiniAcidDisplay(*state.gfx, state.audio.synth, state.keyboard);
   AudioGuard guard;
   guard.lock = [](void* ctx) { SDL_LockAudioDevice((SDL_AudioDeviceID)(uintptr_t)ctx); };
   guard.unlock = [](void* ctx) { SDL_UnlockAudioDevice((SDL_AudioDeviceID)(uintptr_t)ctx); };

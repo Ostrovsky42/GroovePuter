@@ -8,10 +8,11 @@
 #include "global_help_overlay.h"
 
 class IAudioRecorder;
+class PerformanceKeyboard;
 
 class MiniAcidDisplay {
 public:
-  MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid);
+  MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid, PerformanceKeyboard& performance_keyboard);
   ~MiniAcidDisplay();
   void setAudioGuard(AudioGuard guard);
   void setAudioRecorder(IAudioRecorder* recorder);
@@ -29,6 +30,7 @@ public:
   void togglePreviousPage();
   void dismissSplash();
   bool handleEvent(UIEvent event);
+  int currentPageIndex() const { return page_index_; }
 
 private:
   void initMuteButtons(int x, int y, int w, int h);
@@ -50,6 +52,7 @@ private:
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;
+  PerformanceKeyboard& performance_keyboard_;
   int page_index_ = 0;
   int previous_page_index_ = 0;  // For Backspace/` toggle
   unsigned long splash_start_ms_ = 0;

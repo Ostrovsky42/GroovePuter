@@ -253,6 +253,52 @@ def test_enter_applies_selected_recipe() -> None:
             "Apply footer must document Enter and M controls")
 
 
+
+def test_performance_workflow_boundaries() -> None:
+    keyboard = (ROOT / "src/input/performance_keyboard.cpp").read_text(encoding="utf-8")
+    header = (ROOT / "src/input/musical_event.h").read_text(encoding="utf-8")
+    engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
+    sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
+    display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
+
+    require('constexpr char kLowerRow[] = "asdfghjkl";' in keyboard,
+            "performance key mapping must stay centralized")
+    require('constexpr char kUpperRow[] = "qwertyuiop";' in keyboard,
+            "performance key mapping must stay centralized")
+    for path in (ROOT / "src/ui/pages").glob("*.cpp"):
+        page = path.read_text(encoding="utf-8")
+        require("asdfghjkl" not in page and "qwertyuiop" not in page,
+                f"keyboard mapping duplicated in {path.name}")
+
+    require("MidiOutput" not in header,
+            "MusicalEventTarget must describe logical voices, not output sinks")
+    require("USBMIDI" not in sketch and "USB-MIDI" not in sketch,
+            "USB MIDI belongs to the later spike")
+
+    live_start = engine.index("void MiniAcid::liveNoteOn")
+    live_end = engine.index("void MiniAcid::liveNoteOff", live_start)
+    require("if (playing) return;" in engine[live_start:live_end],
+            "PatternPlayer must exclusively own Synth A while transport runs")
+    require("performance_keyboard_.keyDown" in display,
+            "display input policy must route unhandled page keys through PerformanceKeyboard")
+    require("g_performanceKeyboard.keyDown" not in sketch,
+            "hardware sketch must not duplicate normalized note routing")
+    require("releaseMissingKeys" in sketch,
+            "keyboard matrix must recover missed key-up events")
+    require("case 12: page = std::make_unique<PerformPage>" in display,
+            "PERFORM page must remain an additive page instead of reindexing editors")
+    require("setCurrentPage(static_cast<int8_t>(page_index_))" not in display,
+            "UI page indices must never overwrite pattern-storage page indices")
+
+
+def test_performance_settings_are_runtime_only() -> None:
+    scenes = (ROOT / "scenes.h").read_text(encoding="utf-8")
+    storage = (ROOT / "scenes.cpp").read_text(encoding="utf-8")
+    require("PerformanceScale" not in scenes and "octaveShift" not in scenes,
+            "performance scale/octave must not expand scene schema in this PR")
+    require("PerformanceScale" not in storage and "octaveShift" not in storage,
+            "performance settings must reset to runtime defaults after reboot")
+
 def test_ui_redraw_does_not_hold_audio_pause() -> None:
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
     start = sketch.index("auto handleWithFallback")
@@ -290,6 +336,8 @@ def main() -> None:
     test_atlas_compiler_matches_manifest_contract()
     test_recipe_selector_is_visible_and_navigable()
     test_enter_applies_selected_recipe()
+    test_performance_workflow_boundaries()
+    test_performance_settings_are_runtime_only()
     test_ui_redraw_does_not_hold_audio_pause()
     test_splash_closes_display_transaction()
     print("source regressions: OK")

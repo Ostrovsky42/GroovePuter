@@ -1,37 +1,79 @@
 # MiniAcid Key Map (Cardputer)
 
-Canonical key map for currently active firmware version.
+Canonical key map for the currently active firmware version.
 
 ## Стандартизация (Base Rules)
 | Класс клавиш | Сочетание | Описание | Приоритет |
 | --- | --- | --- | --- |
-| **Паттерны** | `Q..I` | Выбор паттерна 1..8 | Локальный (блокируется фокусом на меню) |
+| **Performance notes** | `QWERTYUIOP` + `ASDFGHJKL` | Scale-aware Synth A keyboard while NOTE mode is ON | После локальной команды страницы, до legacy fallback |
+| **Паттерны** | `Q..I` | Выбор паттерна 1..8 вне активного performance-note context | Локальный |
 | **Банки** | `Ctrl + 1..2` | Переключение банков A/B (для тек. трека/страницы) | Локальный |
 | **Страницы** | `Alt / Fn + 0..9` | Переключение страниц (Song, Pattern, Drum и др.) | **Глобальный** |
-| **Мьюты** | `1..9`, `0` | Звук дорожек 1..9 (Rim), 0 (Clap). Игнорируют CapsLock. | **Глобальный** |
+| **Мьюты** | `1..9`, `0` | Звук дорожек 1..9 (Rim), 0 (Clap). Игнорируют CapsLock. | **Глобальный fallback** |
 
 ## Global Shortcuts
 | Key | Action |
 | --- | --- |
+| `Fn+Tab` | Cycle `PERFORM → PATTERN → ARRANGE` |
+| `Fn+Shift+Tab` | Cycle workflow backward |
+| `Space` | Transport Play / Stop |
 | `Alt/Fn + 1..0` | Direct page jump (Global) |
-| `[` / `]` | Previous / Next page (Legacy) |
+| `[` / `]` | Previous / Next page outside PERFORM; scale select on PERFORM |
 | `Alt+M` | Toggle Song mode |
 | `Alt+W` | Waveform overlay |
 | `Alt+V` | Jump to Groove Lab |
-| `Alt+\\` | Cycle visual style (`CARBON`/`CYBER`/`AMBER`) |
+| `Alt+\` | Cycle visual style (`CARBON`/`CYBER`/`AMBER`) |
 | `Ctrl+H` | Global help overlay (Highest Priority) |
-| `1..9`, `0` | Track mutes (Global - Handles Shift/CapsLock) |
+| `1..9`, `0` | Track mutes when the active page does not consume the digit |
 | `Esc` | Back / Dismiss |
 | `Ctrl+Alt+Bksp` | Project reset (wipe) |
 
 ## Priority & Interception Logic
-1.  **Global Help Overlay**: Перехватывает всё, когда открыто.
-2.  **Hard-Global Shortcuts**: `Alt/Fn + 0..9`, `Ctrl+H`, `Alt+W` всегда работают первыми.
-3.  **Local Page Focus**: 
-    - В **Song Page**: если курсор в правой колонке (на кнопке режима), горячие клавиши `Q..I` отключаются, чтобы не мешать управлению меню.
-4.  **Local Page Handlers**: Если страница не обработала клавишу, она уходит в глобальные мьюты (`0..9`).
+1. **Global Help Overlay**: intercepts input while visible.
+2. **Hard-Global Shortcuts**: `Fn+Tab`, transport, `Alt/Fn + 0..9`, `Ctrl+H`, `Alt+W`.
+3. **Local Page Handler**: the active page gets first refusal.
+4. **Performance NOTE Layer**: on supported pages, an unmodified performance key is routed to `PerformanceKeyboard`.
+   - NOTE mode ON + transport stopped: emit live note events.
+   - NOTE mode ON + transport running: consume the key without emitting `NoteOn`.
+   - NOTE mode OFF: return the key to legacy fallback commands.
+5. **Legacy Global Fallback**: page navigation, help, track mutes, randomize/BPM shortcuts.
+
+This order prevents `I/O/P/K/L` from reaching randomize/BPM commands while NOTE mode is active, even when transport temporarily owns Synth A.
 
 ---
+
+## PERFORM Page
+
+### Workflow and performance controls
+| Key | Action |
+| --- | --- |
+| `1` | Open PERFORM |
+| `2` | Open PATTERN |
+| `3` | Open ARRANGE |
+| `N` | Toggle NOTE mode ON/OFF |
+| `[` / `]` | Previous / next scale |
+| `-` / `=` | Octave down / up |
+| `X` | Release the live-owned Synth A note |
+| `Space` | Transport Play / Stop |
+
+### NOTE MODE: ON
+| Keys | Action |
+| --- | --- |
+| `ASDFGHJKL` | Lower scale-aware manual, starting at C2 by default |
+| `QWERTYUIOP` | Upper manual, exactly one octave above the lower row |
+
+Synth A is monophonic and uses last-note priority. Starting transport clears held performance notes and gives PatternPlayer exclusive ownership. Performance keys remain consumed while transport runs, so legacy pattern/BPM commands cannot fire accidentally.
+
+### NOTE MODE: OFF
+| Key | Legacy action |
+| --- | --- |
+| `I` | Randomize Synth A pattern |
+| `O` | Randomize Synth B pattern |
+| `P` | Randomize drums |
+| `K` / `L` | BPM down / up |
+| `N` | Return to NOTE mode |
+
+NOTE mode, scale, root, and octave are runtime-only in this stage and are not written to scene JSON.
 
 ## Song Page
 | Key | Action |
@@ -105,18 +147,18 @@ Canonical key map for currently active firmware version.
 ## TB303 Params
 | Key | Action |
 | --- | --- |
-| `Q..I` | Quick pattern select `1..8` |
+| `Q..I` | Quick pattern select `1..8` when NOTE mode is OFF; live notes when NOTE mode is ON |
 | **`Ctrl+1..2`** | **Switch bank A/B** |
 | `Left/Right` | Focus control |
 | `Up/Down` | Adjust value |
-| `A/Z` | Cutoff +/- |
-| `S/X` | Resonance +/- |
-| `N` / `M` | Distortion / Delay toggle |
+| `A/Z` | Cutoff +/- when consumed by the page |
+| `S/X` | Resonance +/- when consumed by the page |
+| `N` / `M` | Distortion / Delay toggle when consumed by the page |
 
 ## Feel & Texture
 | Key | Action |
 | --- | --- |
-| `Q..I` | Select Pattern 1..8 (Synth A) |
+| `Q..I` | Select Pattern 1..8 when consumed by the page; otherwise live notes in NOTE mode |
 | `Ctrl+1..2` | Switch Bank A/B |
 | `Arrows` | Select parameter / Adjust value |
 | `Tab` | Cycle focus (Feel / Drum FX / Presets) |

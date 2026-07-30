@@ -355,6 +355,9 @@ void MiniAcid::reset() {
   LOG_PRINTLN("    - MiniAcid::reset: Start");
   if (synthVoices_[0]) synthVoices_[0]->reset();
   if (synthVoices_[1]) synthVoices_[1]->reset();
+  liveNotes_[0] = -1;
+  liveNotes_[1] = -1;
+  ++liveInputEpoch_;
   LOG_PRINTLN("    - MiniAcid::reset: voices reset");
   
   // Make the second voice have different params (intentional base offset)
@@ -456,6 +459,8 @@ void MiniAcid::reset() {
 
 void MiniAcid::start() {
   LOG_PRINTLN("[DSP] START command received");
+  // PatternPlayer takes exclusive ownership of the monophonic voices.
+  allLiveNotesOff();
   playing = true;
   currentStepIndex = -1;
   // Force immediate first step trigger.
@@ -485,10 +490,46 @@ void MiniAcid::stop() {
   for (int i = 0; i < NUM_DRUM_VOICES; ++i) retrigDrums_[i] = {};
   if (synthVoices_[0]) synthVoices_[0]->release();
   if (synthVoices_[1]) synthVoices_[1]->release();
+  liveNotes_[0] = -1;
+  liveNotes_[1] = -1;
   drums->reset();
   if (songMode_) {
     sceneManager_.setSongPosition(clampSongPosition(songPlayheadPosition_));
   }
+}
+
+void MiniAcid::liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity) {
+  if (playing) return;
+  const int idx = clamp303Voice(synthIndex);
+  const int note = clamp303Note(static_cast<int>(midiNote));
+  if (!synthVoices_[idx]) return;
+  if (velocity < 1) velocity = 1;
+  if (velocity > 127) velocity = 127;
+
+  synthVoices_[idx]->startNote(noteToFreq(note), false, false, velocity);
+  liveNotes_[idx] = static_cast<int16_t>(note);
+  if (idx == 0) gateCountdownA_ = 0;
+  else gateCountdownB_ = 0;
+}
+
+void MiniAcid::liveNoteOff(int synthIndex, uint8_t midiNote) {
+  const int idx = clamp303Voice(synthIndex);
+  if (liveNotes_[idx] != static_cast<int16_t>(midiNote)) return;
+  if (synthVoices_[idx]) synthVoices_[idx]->release();
+  liveNotes_[idx] = -1;
+}
+
+void MiniAcid::allLiveNotesOff() {
+  for (int idx = 0; idx < NUM_303_VOICES; ++idx) {
+    if (synthVoices_[idx]) synthVoices_[idx]->release();
+    liveNotes_[idx] = -1;
+  }
+  gateCountdownA_ = 0;
+  gateCountdownB_ = 0;
+}
+
+int MiniAcid::liveNote(int synthIndex) const {
+  return liveNotes_[clamp303Voice(synthIndex)];
 }
 
 void MiniAcid::setBpm(float bpm) {
@@ -925,6 +966,10 @@ void MiniAcid::setSynthEngine(int voiceIndex, const std::string& engineName) {
   if (synthEngineNames_[idx] == targetName) {
     return;
   }
+
+  if (synthVoices_[idx]) synthVoices_[idx]->release();
+  liveNotes_[idx] = -1;
+  ++liveInputEpoch_;
 
   if (!playing) {
     SynthVoiceState blankState;
@@ -2067,20 +2112,21 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
 
     uint32_t tV0 = 0;
     if (detailedProfile) tV0 = micros();
-    if (playing) {
-      if (!mute303 && synthVoices_[0]) {
-        float v = synthVoices_[0]->process() * 0.5f;
-        v = distortion303.process(v);
-        v *= trackVolumes[(int)VoiceId::SynthA];
-        sample303 += delay303.process(v);
-      } else delay303.process(0.0f);
-      if (!mute303_2 && synthVoices_[1]) {
-        float v = synthVoices_[1]->process() * 0.5f;
-        v = distortion3032.process(v);
-        v *= trackVolumes[(int)VoiceId::SynthB];
-        sample303 += delay3032.process(v);
-      } else delay3032.process(0.0f);
-    }
+    // Synth voices are instruments as well as sequencer voices. Their envelopes
+    // must be rendered while transport is stopped so live NoteOn/NoteOff reaches
+    // the audio output and release tails can complete naturally.
+    if (!mute303 && synthVoices_[0]) {
+      float v = synthVoices_[0]->process() * 0.5f;
+      v = distortion303.process(v);
+      v *= trackVolumes[(int)VoiceId::SynthA];
+      sample303 += delay303.process(v);
+    } else delay303.process(0.0f);
+    if (!mute303_2 && synthVoices_[1]) {
+      float v = synthVoices_[1]->process() * 0.5f;
+      v = distortion3032.process(v);
+      v *= trackVolumes[(int)VoiceId::SynthB];
+      sample303 += delay3032.process(v);
+    } else delay3032.process(0.0f);
     if (detailedProfile) tVoicesTotal += (micros() - tV0);
 
     uint32_t tD0 = 0;
@@ -2107,8 +2153,9 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       drumsMix = drumReverb.process(drumsMix);
       
       drumsMix = softLimit(drumsMix);
-      sample += sample303 + drumsMix;
+      sample += drumsMix;
     }
+    sample += sample303;
     if (detailedProfile) tDrumsTotal += (micros() - tD0);
 
     uint32_t tS0 = 0;

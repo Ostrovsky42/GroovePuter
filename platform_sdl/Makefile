@@ -46,6 +46,8 @@ SOURCES := \
 	../src/dsp/transient_shaper.cpp \
 	../src/dsp/groove_profile.cpp \
 	../src/dsp/advanced_pattern_generator.cpp \
+	../src/input/performance_keyboard.cpp \
+	../src/input/internal_synth_output.cpp \
 	../src/ui/miniacid_display.cpp \
 	../src/ui/cassette_skin.cpp \
 	../src/ui/led_manager.cpp \
@@ -69,6 +71,7 @@ SOURCES := \
 	../src/ui/pages/project_page.cpp \
 	../src/ui/pages/mode_page.cpp \
 	../src/ui/pages/genre_page.cpp \
+	../src/ui/pages/perform_page.cpp \
 	../src/ui/pages/feel_texture_page.cpp \
 	../src/ui/pages/sequencer_hub_page.cpp \
 	../src/ui/pages/settings_page.cpp \
