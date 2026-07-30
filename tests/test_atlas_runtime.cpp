@@ -70,19 +70,36 @@ int main() {
     assert(AtlasRuntime::hasRecipe(expected.id));
     assert(AtlasRuntime::variationCount(expected.id) == 3);
 
+    const char* patternIds[3] = {nullptr, nullptr, nullptr};
+    const char* slotIds[3] = {nullptr, nullptr, nullptr};
+
     for (uint8_t variation = 0; variation < 3; ++variation) {
+      AtlasRuntimeMetadata preview{};
+      assert(AtlasRuntime::describeVariation(expected.id, variation, preview));
+      assert(preview.atlasRecipeId != nullptr);
+      assert(std::strcmp(preview.atlasRecipeId, expected.atlasId) == 0);
+      assert(preview.displayName != nullptr);
+      assert(preview.atlasPatternId != nullptr);
+      assert(preview.slotId != nullptr);
+      assert(preview.slotFunction != nullptr);
+      assert(preview.bpm == expected.bpm);
+      assert(preview.swingPercent == expected.swing);
+      patternIds[variation] = preview.atlasPatternId;
+      slotIds[variation] = preview.slotId;
+
       SynthPattern synthA{};
       SynthPattern synthB{};
       DrumPatternSet drums{};
-      AtlasRuntimeMetadata metadata{};
+      AtlasRuntimeMetadata applied{};
 
       assert(AtlasRuntime::applyRecipe(
-          expected.id, variation, synthA, synthB, drums, &metadata));
-      assert(metadata.atlasRecipeId != nullptr);
-      assert(std::strcmp(metadata.atlasRecipeId, expected.atlasId) == 0);
-      assert(metadata.slotId != nullptr);
-      assert(metadata.bpm == expected.bpm);
-      assert(metadata.swingPercent == expected.swing);
+          expected.id, variation, synthA, synthB, drums, &applied));
+      assert(std::strcmp(applied.atlasRecipeId, preview.atlasRecipeId) == 0);
+      assert(std::strcmp(applied.atlasPatternId, preview.atlasPatternId) == 0);
+      assert(std::strcmp(applied.slotId, preview.slotId) == 0);
+      assert(std::strcmp(applied.slotFunction, preview.slotFunction) == 0);
+      assert(applied.bpm == preview.bpm);
+      assert(applied.swingPercent == preview.swingPercent);
       assert(countSynthNotes(synthA) >= expected.minSynthA);
       assert(countSynthNotes(synthB) >= expected.minSynthB);
       assert(countDrumHits(drums) >= expected.minDrums);
@@ -90,15 +107,41 @@ int main() {
       validateRanges(synthB);
       validateRanges(drums);
     }
+
+    for (int lhs = 0; lhs < 3; ++lhs) {
+      for (int rhs = lhs + 1; rhs < 3; ++rhs) {
+        const bool samePattern = std::strcmp(patternIds[lhs], patternIds[rhs]) == 0;
+        const bool sameSlot = std::strcmp(slotIds[lhs], slotIds[rhs]) == 0;
+        assert(!(samePattern && sameSlot));
+      }
+    }
   }
 
   SynthPattern sentinelA{};
   SynthPattern sentinelB{};
   DrumPatternSet sentinelDrums{};
   sentinelA.steps[0].note = 55;
+  sentinelB.steps[1].note = 67;
+  sentinelDrums.voices[0].steps[2].hit = true;
+
   assert(!AtlasRuntime::applyRecipe(
       250, 0, sentinelA, sentinelB, sentinelDrums, nullptr));
   assert(sentinelA.steps[0].note == 55);
+  assert(sentinelB.steps[1].note == 67);
+  assert(sentinelDrums.voices[0].steps[2].hit);
+
+  assert(!AtlasRuntime::applyRecipe(
+      6, 3, sentinelA, sentinelB, sentinelDrums, nullptr));
+  assert(sentinelA.steps[0].note == 55);
+  assert(sentinelB.steps[1].note == 67);
+  assert(sentinelDrums.voices[0].steps[2].hit);
+
+  AtlasRuntimeMetadata sentinelMetadata{};
+  sentinelMetadata.displayName = "sentinel";
+  sentinelMetadata.bpm = 999;
+  assert(!AtlasRuntime::describeVariation(6, 3, sentinelMetadata));
+  assert(std::strcmp(sentinelMetadata.displayName, "sentinel") == 0);
+  assert(sentinelMetadata.bpm == 999);
 
   return 0;
 }
