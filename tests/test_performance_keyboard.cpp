@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstring>
+#include <string>
 #include <vector>
 
 #include "src/input/performance_keyboard.h"
