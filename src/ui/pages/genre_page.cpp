@@ -119,7 +119,8 @@ const char* onOff(bool v) {
 
 const char* linkStateShort(const MiniAcid& mini) {
     const GrooveboxMode expected =
-        GenreManager::grooveboxModeForGenerative(mini.genreManager().generativeMode());
+        GenreManager::grooveboxModeForRecipe(
+            mini.genreManager().recipe(), mini.genreManager().generativeMode());
     return (mini.grooveboxMode() == expected) ? "GEN" : "OVR";
 }
 
@@ -1014,8 +1015,15 @@ void GenrePage::applyCurrent() {
             morphAmount_ > 0 ? static_cast<GenreRecipeId>(recipeIndex_) : kBaseRecipeId);
         mini_acid_.genreManager().setMorphAmount(static_cast<uint8_t>(morphAmount_));
         mini_acid_.setGrooveboxMode(
-            GenreManager::grooveboxModeForGenerative(static_cast<GenerativeMode>(genreIndex_)));
-        
+            GenreManager::grooveboxModeForRecipe(
+                static_cast<GenreRecipeId>(recipeIndex_),
+                static_cast<GenerativeMode>(genreIndex_)));
+
+        // Set the requested tempo before generation so BPM-dependent density
+        // and articulation use the final corridor. Atlas recipes may refine the
+        // generic genre hint to their own reviewed BPM during regeneration.
+        if (doApplyTempo) mini_acid_.setBpm(static_cast<float>(targetBpm));
+
         // Apply base timbre, reset bias tracking, then apply texture as delta from 0
         mini_acid_.genreManager().applyGenreTimbre(mini_acid_);
         mini_acid_.genreManager().resetTextureBiasTracking();
@@ -1027,7 +1035,6 @@ void GenrePage::applyCurrent() {
         gs.morphTarget = static_cast<uint8_t>(morphAmount_ > 0 ? recipeIndex_ : 0);
         gs.morphAmount = static_cast<uint8_t>(morphAmount_);
         if (doRegenerate) mini_acid_.regeneratePatternsWithGenre();
-        if (doApplyTempo) mini_acid_.setBpm(static_cast<float>(targetBpm));
     });
 
     if (wasPlaying && doRegenerate) {
