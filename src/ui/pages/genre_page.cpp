@@ -1,6 +1,8 @@
 #include "genre_page.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "../key_normalize.h"
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include "../../debug_log.h"
@@ -834,6 +836,11 @@ bool GenrePage::handleEvent(UIEvent& e) {
 
     char key = e.key;
     if (!key) return false;
+    const char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
+    const bool plainKey = !e.ctrl && !e.alt && !e.meta;
+    const bool keyM = (lowerKey == 'm') || (e.scancode == GROOVEPUTER_M);
+    const bool keyG = (lowerKey == 'g') || (e.scancode == GROOVEPUTER_G);
+    const bool keyC = (lowerKey == 'c') || (e.scancode == GROOVEPUTER_C);
 
     // TAB: cycle focus
     if (key == '\t') {
@@ -859,7 +866,7 @@ bool GenrePage::handleEvent(UIEvent& e) {
     }
 
     // M: toggle apply mode (SOUND / SOUND+PATTERN / SOUND+PATTERN+TEMPO)
-    if (key == 'm' || key == 'M') {
+    if (plainKey && keyM) {
         auto& gs = mini_acid_.sceneManager().currentScene().genre;
         cycleApplyMode(gs);
         UI::showToast(applyModeToast(mini_acid_), 1800);
@@ -867,7 +874,7 @@ bool GenrePage::handleEvent(UIEvent& e) {
     }
 
     // G: toggle groovebox mode (ACID/MINIMAL) in genre context.
-    if (key == 'g' || key == 'G') {
+    if (plainKey && keyG) {
         withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
         char toast[64];
         const char* shortName = grooveModeShort(mini_acid_);
@@ -877,7 +884,7 @@ bool GenrePage::handleEvent(UIEvent& e) {
     }
 
     // C: toggle curated compatibility mode
-    if (key == 'c' || key == 'C') {
+    if (plainKey && keyC) {
         bool next = !isCuratedMode();
         setCuratedMode(next);
         UI::showToast(next ? "Texture Mode: CURATED (recommended first)"
@@ -897,9 +904,8 @@ bool GenrePage::handleEvent(UIEvent& e) {
     }
 
     // Pattern quick select (Q-I) - Standardized Everywhere (ignore shift for CapsLock safety)
-    if (!e.ctrl && !e.meta) {
-        char lower = std::tolower(e.key);
-        int patIdx = qwertyToPatternIndex(lower);
+    if (!e.ctrl && !e.alt && !e.meta) {
+        int patIdx = qwertyToPatternIndex(lowerKey);
         if (patIdx >= 0) {
             withAudioGuard([&]() {
                 // Default to Synth A on this global page
