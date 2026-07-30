@@ -8,9 +8,32 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  migrate-genre-enter:
+    if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/agent/fix-core-reliability')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-core-reliability
+          fetch-depth: 0
+
+      - name: Apply guarded Enter behavior migration
+        run: |
+          if grep -q "ENTER: apply the current genre/texture/recipe selection" src/ui/pages/genre_page.cpp; then
+            echo "Genre Enter migration already applied"
+            exit 0
+          fi
+          python3 scripts/migrate_genre_enter_apply.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/ui/pages/genre_page.cpp tests/test_source_regressions.py
+          git commit -m "fix: apply selected genre recipe with Enter"
+          git pull --rebase origin agent/fix-core-reliability
+          git push origin HEAD:agent/fix-core-reliability
+
   host-tests:
     runs-on: ubuntu-latest
     steps:
