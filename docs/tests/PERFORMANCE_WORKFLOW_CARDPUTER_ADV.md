@@ -74,11 +74,11 @@ arduino-cli monitor -p /dev/ttyACM0 -c baudrate=115200
 ### Musical keyboard
 
 ```text
-Q W E R T Y U I O P
-A S D F G H J K L
+Q W E R T Y U I O P   upper manual, one octave higher
+A S D F G H J K L     lower manual
 ```
 
-Both rows use the same bounded scale-degree span. Synth A is monophonic and uses last-note priority.
+Both rows use the same scale-degree layout. The upper row is transposed exactly one octave above the lower row. Synth A is monophonic and uses last-note priority.
 
 ### Performance settings
 
@@ -91,6 +91,8 @@ Defaults after every reboot:
 
 ```text
 Root: C
+Lower manual: C2
+Upper manual: C3
 Scale: Natural Minor
 Octave shift: 0
 ```
@@ -159,7 +161,7 @@ Wait for the splash to close automatically or press a non-musical key once, then
 
 ### Octave does not move higher
 
-The default root is already the highest safe runtime octave for all supported scales and all nineteen keys. Two downward shifts are available; `=` returns toward the default.
+The default two-manual range is already the highest safe runtime position for all supported scales and all nineteen keys. One downward shift is available; `=` returns to the default position.
 
 ### A key edits the page instead of playing
 
@@ -177,6 +179,7 @@ This is intentional when the active page owns that key. Page commands have prior
 ### Sound and key ownership
 
 - [ ] Both physical rows play Synth A while transport is stopped.
+- [ ] Upper-row notes sound one octave above matching lower-row scale degrees.
 - [ ] Last pressed held note becomes active.
 - [ ] Releasing an inactive note does not interrupt the active note.
 - [ ] Releasing the active note restores the previous held note.
