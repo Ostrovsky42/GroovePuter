@@ -40,31 +40,32 @@ int main() {
     assert(keyboard.liveInputAllowed());
 
     uint8_t note = 0;
-    assert(keyboard.noteForKey('a', note) && note == 48);
-    assert(keyboard.noteForKey('s', note) && note == 50);
-    assert(keyboard.noteForKey('d', note) && note == 51);
+    assert(keyboard.noteForKey('a', note) && note == 36);
+    assert(keyboard.noteForKey('s', note) && note == 38);
+    assert(keyboard.noteForKey('d', note) && note == 39);
     assert(keyboard.noteForKey('q', note) && note == 48);
+    assert(keyboard.noteForKey('w', note) && note == 50);
     assert(!keyboard.noteForKey('z', note));
 
-    // Last-note priority: C, then D, then release inactive C.
+    // Last-note priority: C2, then D2, then release inactive C2.
     assert(keyboard.keyDown('a', 90));
     assert(keyboard.keyDown('s', 110));
     assert(keyboard.heldCount() == 2);
-    assert(keyboard.activeNote() == 50);
+    assert(keyboard.activeNote() == 38);
     assert(sink.events.size() == 2);
-    expectEvent(sink.events[0], MusicalEventType::NoteOn, 48);
-    expectEvent(sink.events[1], MusicalEventType::NoteOn, 50);
+    expectEvent(sink.events[0], MusicalEventType::NoteOn, 36);
+    expectEvent(sink.events[1], MusicalEventType::NoteOn, 38);
     assert(sink.events[1].velocity == 110);
 
     assert(keyboard.keyUp('a'));
     assert(keyboard.heldCount() == 1);
-    assert(keyboard.activeNote() == 50);
+    assert(keyboard.activeNote() == 38);
     assert(sink.events.size() == 2);  // inactive release does not touch voice
 
     assert(keyboard.keyUp('s'));
     assert(keyboard.heldCount() == 0);
     assert(sink.events.size() == 3);
-    expectEvent(sink.events.back(), MusicalEventType::NoteOff, 50);
+    expectEvent(sink.events.back(), MusicalEventType::NoteOff, 38);
 
     // Releasing the active key restores the previous held note.
     sink.clear();
@@ -72,8 +73,8 @@ int main() {
     assert(keyboard.keyDown('d'));
     assert(keyboard.keyUp('d'));
     assert(sink.events.size() == 3);
-    expectEvent(sink.events[2], MusicalEventType::NoteOn, 48);
-    assert(keyboard.activeNote() == 48);
+    expectEvent(sink.events[2], MusicalEventType::NoteOn, 36);
+    assert(keyboard.activeNote() == 36);
 
     // Matrix repeats do not duplicate held state or retrigger.
     const std::size_t beforeRepeat = sink.events.size();
@@ -84,7 +85,7 @@ int main() {
     // Matrix reconciliation recovers a missing key-up.
     keyboard.releaseMissingKeys(nullptr, 0);
     assert(keyboard.heldCount() == 0);
-    expectEvent(sink.events.back(), MusicalEventType::NoteOff, 48);
+    expectEvent(sink.events.back(), MusicalEventType::NoteOff, 36);
 
     sink.clear();
     assert(keyboard.keyDown('a'));
@@ -92,8 +93,8 @@ int main() {
     const char onlyA[] = {'a'};
     keyboard.releaseMissingKeys(onlyA, 1);
     assert(keyboard.heldCount() == 1);
-    assert(keyboard.activeNote() == 48);
-    expectEvent(sink.events.back(), MusicalEventType::NoteOn, 48);
+    assert(keyboard.activeNote() == 36);
+    expectEvent(sink.events.back(), MusicalEventType::NoteOn, 36);
 
     // Starting transport returns Synth A to PatternPlayer and blocks live input.
     sink.clear();
@@ -108,7 +109,7 @@ int main() {
 
     keyboard.setTransportPlaying(false);
     assert(keyboard.liveInputAllowed());
-    assert(keyboard.keyDown('a'));
+    assert(keyboard.keyDown('q'));
     assert(keyboard.activeNote() == 48);
 
     // Panic is deterministic even if the source has already lost key-up state.
