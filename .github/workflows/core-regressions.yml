@@ -1,86 +1,53 @@
-name: Diagnose PR 8 MIDI materialization
+name: Core regressions
 
 on:
   push:
     branches:
+      - main
       - agent/fix-core-reliability
+  pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  diagnose:
+  host-tests:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout PR 8 branch
-        uses: actions/checkout@v4
-        with:
-          ref: fix/usb-midi-dispatch-timing
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
-      - name: Materialize and capture result
-        shell: bash
+      - name: Run core host regressions
+        run: bash tests/run_host_tests.sh
+
+  sdl-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL dependencies
         run: |
-          set +e
-          mkdir -p docs/stages
-          awk '
-            /python3 - <<'"'"'PY'"'"'/ { capture=1; next }
-            capture && /^          PY$/ { exit }
-            capture { sub(/^          /, ""); print }
-          ' .github/workflows/apply-midi-dispatch-timing.yml > /tmp/apply_midi_dispatch.py
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path("/tmp/apply_midi_dispatch.py")
-          text = path.read_text(encoding="utf-8")
-          text = text.replace(
-              'marker = \'"${BUILD_DIR}/test_scheduled_musical_event"\\n\\n\'',
-              'marker = \'\\n"${BUILD_DIR}/test_scheduled_musical_event"\\n\\n\'',
-              1,
-          )
-          path.write_text(text, encoding="utf-8")
-          PY
-          python3 /tmp/apply_midi_dispatch.py > /tmp/apply.log 2>&1
-          apply_status=$?
-          if [ "$apply_status" -eq 0 ]; then
-            python3 - <<'PY' > /tmp/assertion-fix.log 2>&1
-          from pathlib import Path
-          path = Path("tests/test_pattern_midi_source_regressions.py")
-          text = path.read_text(encoding="utf-8")
-          old = '''    require("patternEventQueue_->tryPush(event," in engine,
-            "Pattern events must include block and frame timing")
-'''
-          new = '''    require("patternEventQueue_->tryPush(" in engine and
-            "midiBlockSequence_, midiFrameOffset_" in engine,
-            "Pattern events must include block and frame timing")
-'''
-          if old in text:
-              text = text.replace(old, new, 1)
-          path.write_text(text, encoding="utf-8")
-          PY
-            assertion_status=$?
-            bash tests/run_host_tests.sh > /tmp/tests.log 2>&1
-            test_status=$?
-          else
-            assertion_status=99
-            test_status=99
-          fi
-          {
-            echo "apply_status=$apply_status"
-            echo "assertion_status=$assertion_status"
-            echo "test_status=$test_status"
-            echo
-            echo "=== APPLY LOG ==="
-            cat /tmp/apply.log
-            echo
-            echo "=== ASSERTION FIX LOG ==="
-            cat /tmp/assertion-fix.log 2>/dev/null
-            echo
-            echo "=== TEST LOG ==="
-            cat /tmp/tests.log 2>/dev/null
-          } > docs/stages/PR8_MATERIALIZER_RESULT.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "chore: capture PR 8 materialization result"
-          git push --force origin HEAD:debug/pr8-materialized
-          exit 0
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Build desktop target
+        working-directory: platform_sdl
+        run: make clean all CXX=g++
+
+  cardputer-adv-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
