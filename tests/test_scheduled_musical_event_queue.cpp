@@ -21,11 +21,9 @@ MusicalEvent noteEvent(MusicalEventType type,
 void testTimestampAndPublicationOrder() {
     ScheduledMusicalEventQueue queue;
     assert(queue.tryPush(noteEvent(MusicalEventType::NoteOn,
-                                   MusicalEventTarget::SynthA, 60),
-                         9, 32));
+                                   MusicalEventTarget::SynthA, 60), 9, 32));
     assert(queue.tryPush(noteEvent(MusicalEventType::NoteOff,
-                                   MusicalEventTarget::SynthA, 60),
-                         9, 96));
+                                   MusicalEventTarget::SynthA, 60), 9, 96));
 
     ScheduledMusicalEvent first{};
     ScheduledMusicalEvent second{};
@@ -50,11 +48,33 @@ void testGenerationInvalidation() {
     assert(queue.takePendingAllNotesOffMask() == 0);
 
     assert(queue.tryPush(noteEvent(MusicalEventType::NoteOn,
-                                   MusicalEventTarget::SynthA, 64),
-                         11, 4));
+                                   MusicalEventTarget::SynthA, 64), 11, 4));
     ScheduledMusicalEvent scheduled{};
     assert(queue.tryPop(scheduled));
     assert(scheduled.generation == 1);
+}
+
+void testLifecycleBarrier() {
+    ScheduledMusicalEventQueue queue;
+    assert(queue.tryPush(noteEvent(MusicalEventType::NoteOn,
+                                   MusicalEventTarget::SynthA, 60), 20, 10));
+    assert(queue.tryPush(noteEvent(MusicalEventType::AllNotesOff,
+                                   MusicalEventTarget::SynthA, 0), 20, 20));
+    assert(queue.generationFor(MusicalEventTarget::SynthA) == 1);
+    assert(queue.takePendingAllNotesOffMask() ==
+           ScheduledMusicalEventQueue::kSynthAMask);
+    assert(queue.tryPush(noteEvent(MusicalEventType::NoteOn,
+                                   MusicalEventTarget::SynthA, 62), 20, 20));
+
+    ScheduledMusicalEvent stale{};
+    ScheduledMusicalEvent current{};
+    assert(queue.tryPop(stale));
+    assert(queue.tryPop(current));
+    assert(stale.event.note == 60);
+    assert(stale.generation == 0);
+    assert(current.event.note == 62);
+    assert(current.generation == 1);
+    assert(!queue.tryPop(stale));
 }
 
 void testNoteOnOverflowIsObservableWithoutPanic() {
@@ -67,8 +87,7 @@ void testNoteOnOverflowIsObservableWithoutPanic() {
                              static_cast<uint16_t>(i % 512)));
     }
     assert(!queue.tryPush(noteEvent(MusicalEventType::NoteOn,
-                                    MusicalEventTarget::SynthA, 70),
-                          99, 10));
+                                    MusicalEventTarget::SynthA, 70), 99, 10));
     assert(queue.droppedNoteOnCount() == 1);
     assert(queue.droppedCriticalCount() == 0);
     assert(queue.takePendingAllNotesOffMask() == 0);
@@ -84,8 +103,7 @@ void testCriticalOverflowInvalidatesTarget() {
                              static_cast<uint16_t>(i % 512)));
     }
     assert(!queue.tryPush(noteEvent(MusicalEventType::NoteOff,
-                                    MusicalEventTarget::SynthB, 72),
-                          99, 11));
+                                    MusicalEventTarget::SynthB, 72), 99, 11));
     assert(queue.droppedCriticalCount() == 1);
     assert(queue.generationFor(MusicalEventTarget::SynthB) == 1);
     assert(queue.takePendingAllNotesOffMask() ==
@@ -96,8 +114,7 @@ void testApproximateSizeAndDiscard() {
     ScheduledMusicalEventQueue queue;
     assert(queue.approximateSize() == 0);
     assert(queue.tryPush(noteEvent(MusicalEventType::NoteOn,
-                                   MusicalEventTarget::SynthA, 60),
-                         1, 0));
+                                   MusicalEventTarget::SynthA, 60), 1, 0));
     assert(queue.approximateSize() == 1);
     queue.discardPending();
     assert(queue.approximateSize() == 0);
@@ -108,6 +125,7 @@ void testApproximateSizeAndDiscard() {
 int main() {
     testTimestampAndPublicationOrder();
     testGenerationInvalidation();
+    testLifecycleBarrier();
     testNoteOnOverflowIsObservableWithoutPanic();
     testCriticalOverflowInvalidatesTarget();
     testApproximateSizeAndDiscard();
