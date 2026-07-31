@@ -17,14 +17,14 @@ enum class PerformanceScale : uint8_t {
 class PerformanceKeyboard {
 public:
     static constexpr std::size_t kMaxHeldNotes = 19;
-    static constexpr uint8_t kMinNote = 24;
-    static constexpr uint8_t kMaxNote = 71;
+    // Live performance uses a wider range than the original two-octave keyboard.
+    // C0..B6 safely covers the -2..+2 octave shifts for every supported scale
+    // while remaining inside normal 7-bit MIDI note values.
+    static constexpr uint8_t kMinNote = 12;
+    static constexpr uint8_t kMaxNote = 95;
     static constexpr uint8_t kRootC2 = 36;
-    // The lower manual starts at C2 and the upper manual one octave higher.
-    // One safe downward shift keeps every supported scale/key inside 24..71;
-    // octave-up returns to the default position.
-    static constexpr int8_t kMinOctaveShift = -1;
-    static constexpr int8_t kMaxOctaveShift = 0;
+    static constexpr int8_t kMinOctaveShift = -2;
+    static constexpr int8_t kMaxOctaveShift = 2;
 
     explicit PerformanceKeyboard(MusicalEventRouter& router)
         : router_(router) {}
