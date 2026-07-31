@@ -25,21 +25,32 @@ def main() -> None:
 
     require("MidiOutput" not in event_header,
             "USB MIDI must remain an output sink, not a MusicalEventTarget")
+    require("MusicalEventTarget::Drums" in event_header,
+            "live keyboard routing must expose the Drums target")
     require("MusicalEventSource::PerformanceKeyboard" in sink and
             "MusicalEventSource::PatternPlayer" in sink,
             "USB sink must expose separate live and PatternPlayer lanes")
     require("MusicalEventTarget::SynthA" in sink and
             "MusicalEventTarget::SynthB" in sink,
-            "Stage 1 must route both synth targets")
-    require("kLaneCount = 3" in sink_h,
-            "Stage 1 must keep exactly three fixed ownership lanes")
+            "Pattern MIDI must route both synth targets")
+    require("kLaneCount = 5" in sink_h,
+            "USB output must keep five fixed live/pattern ownership lanes")
+    constructor_end = sink.index("uint8_t UsbMidiOutput::clampChannel")
+    constructor = sink[:constructor_end]
+    require("MusicalEventSource::PerformanceKeyboard,\n        MusicalEventTarget::Drums" in constructor,
+            "Drums must be a live keyboard lane")
+    require("MusicalEventSource::PatternPlayer,\n        MusicalEventTarget::Drums" not in constructor,
+            "PatternPlayer must remain limited to Synth A/B")
     require("wireOwners_[kMidiChannelCount][kMidiNoteCount]" in sink_h,
             "logical lanes sharing a MIDI channel need wire-level note ownership")
     require("pendingRelease" in sink_h and "pendingRelease" in sink,
             "failed replacement NoteOff must remain retryable")
     require("patternSynthAChannel{7}" in sink_h and
             "patternSynthBChannel{8}" in sink_h,
-            "fixed Stage 1 routes must be MIDI channels 8 and 9")
+            "fixed PatternPlayer routes must remain MIDI channels 8 and 9")
+    require("performanceSynthBChannel{8}" in sink_h and
+            "performanceDrumsChannel{9}" in sink_h,
+            "live B/Drums routes must be MIDI channels 9 and 10")
 
     require("publishPatternNoteOn_" in engine and
             "publishPatternNoteOff_" in engine and
@@ -54,7 +65,9 @@ def main() -> None:
     require("USBMIDI" not in engine and "TinyUSB" not in engine,
             "DSP engine must not depend on hardware USB APIs")
     require("event.source == MusicalEventSource::PatternPlayer" in internal,
-            "internal sink must ignore only already-rendered PatternPlayer fan-out")
+            "internal sink must ignore already-rendered PatternPlayer fan-out")
+    require("event.target == MusicalEventTarget::Drums" in internal,
+            "external Drums target must not alias to an internal synth voice")
 
     require("kStorageSize = 64" in queue and
             "kCapacity = kStorageSize - 1" in queue,
@@ -92,7 +105,9 @@ def main() -> None:
     require("router.addSink(g_output)" in transport,
             "USB MIDI must remain an independent router sink")
     require("UsbMidiRouteConfig" in transport and "7," in transport and "8," in transport,
-            "platform route config must retain channels 8/9")
+            "platform route config must retain PatternPlayer channels 8/9")
+    require("9,     // live Drums" in transport,
+            "platform route config must map live Drums to channel 10")
     require("USBMIDI.h" not in sketch and "USB.h" not in sketch,
             "TinyUSB headers must stay isolated from the main UI translation unit")
 
