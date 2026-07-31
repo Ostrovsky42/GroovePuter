@@ -23,8 +23,10 @@ def main() -> None:
             "foundation must retain generic and user-editable profiles")
     require("DrumMidiRoute" in settings_h and "kMidiDrumVoiceCount = 8" in settings_h,
             "all eight GroovePuter drum voices need explicit routes")
-    require("MidiLiveTarget" in settings_h,
-            "live Synth A/B selection must be represented without UI coupling")
+    require("MidiLiveTarget" in settings_h and "    Drums = 2," in settings_h,
+            "live Synth A/B/Drums selection must be represented without UI coupling")
+    require("case MidiLiveTarget::Drums:" in settings_cpp,
+            "Drums must remain a valid persisted live target")
     require("kSchemaVersion = 1" in codec_h and "kEncodedSize = 44" in codec_h,
             "global settings persistence must be fixed-size and versioned")
     require("crc32" in codec_cpp and "'G', 'P', 'M', 'D'" in codec_cpp,
