@@ -2,6 +2,7 @@
 #ifndef GROOVEPUTER_PROJECT_TRANSPORT_TIMELINE_H
 #define GROOVEPUTER_PROJECT_TRANSPORT_TIMELINE_H
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <cstdint>
