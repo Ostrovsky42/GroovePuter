@@ -25,15 +25,6 @@ bool PerformPage::handleEvent(UIEvent& event) {
     }
 
     switch (event.key) {
-        case '1':
-            requestPageTransition(WorkflowPages::kPerform);
-            return true;
-        case '2':
-            requestPageTransition(WorkflowPages::kPattern);
-            return true;
-        case '3':
-            requestPageTransition(WorkflowPages::kArrange);
-            return true;
         case 'n':
         case 'N':
             keyboard_.toggleNoteMode();
@@ -109,7 +100,7 @@ void PerformPage::drawContent(IGfx& gfx) {
                      "PATTERN PLAYER BLOCKS LIVE");
     } else if (keyboard_.target() == MusicalEventTarget::Drums) {
         gfx.drawText(Layout::COL_1, LayoutManager::lineY(2),
-                     "LIVE USB MIDI (EXTERNAL)");
+                     "DRUM ROUTING PENDING");
     } else {
         gfx.drawText(Layout::COL_1, LayoutManager::lineY(2),
                      "LIVE INTERNAL + USB MIDI");
@@ -140,6 +131,6 @@ void PerformPage::drawContent(IGfx& gfx) {
 
 void PerformPage::drawFooter(IGfx& gfx) {
     UI::drawStandardFooter(gfx,
-                           "\\:Target N:Note ,/.:Scale",
-                           "-/=:Oct X:Panic 1/2/3:Page");
+                           "\\:A/B N:Note ,/.:Scale",
+                           "-/=:Oct X:Panic Fn+Tab:Mode");
 }
