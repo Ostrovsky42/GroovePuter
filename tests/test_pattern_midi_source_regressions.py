@@ -25,7 +25,8 @@ def main() -> None:
 
     require("MidiOutput" not in event_header,
             "USB MIDI must remain an output sink, not a MusicalEventTarget")
-    require("MusicalEventTarget::Drums" in event_header,
+    require("enum class MusicalEventTarget" in event_header and
+            "    Drums," in event_header,
             "live keyboard routing must expose the Drums target")
     require("MusicalEventSource::PerformanceKeyboard" in sink and
             "MusicalEventSource::PatternPlayer" in sink,
