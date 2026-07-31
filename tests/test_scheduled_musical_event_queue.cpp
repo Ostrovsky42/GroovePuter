@@ -7,12 +7,13 @@ namespace {
 
 MusicalEvent noteEvent(MusicalEventType type,
                        MusicalEventTarget target,
-                       uint8_t note) {
+                       uint8_t note,
+                       uint8_t channel = 0) {
     return MusicalEvent{
         type,
         MusicalEventSource::PatternPlayer,
         target,
-        0,
+        channel,
         note,
         100,
     };
@@ -52,6 +53,30 @@ void testGenerationInvalidation() {
     ScheduledMusicalEvent scheduled{};
     assert(queue.tryPop(scheduled));
     assert(scheduled.generation == 1);
+}
+
+void testDrumGenerationIsIndependent() {
+    ScheduledMusicalEventQueue queue;
+    assert(queue.generationFor(MusicalEventTarget::Drums) == 0);
+    assert(queue.generationFor(MusicalEventTarget::SynthA) == 0);
+    assert(queue.generationFor(MusicalEventTarget::SynthB) == 0);
+
+    assert(queue.tryPush(noteEvent(MusicalEventType::NoteOn,
+                                   MusicalEventTarget::Drums, 60, 4), 12, 55));
+    queue.invalidateTarget(MusicalEventTarget::Drums);
+    assert(queue.generationFor(MusicalEventTarget::Drums) == 1);
+    assert(queue.generationFor(MusicalEventTarget::SynthA) == 0);
+    assert(queue.generationFor(MusicalEventTarget::SynthB) == 0);
+    assert(queue.takePendingAllNotesOffMask() ==
+           ScheduledMusicalEventQueue::kDrumsMask);
+
+    ScheduledMusicalEvent stale{};
+    assert(queue.tryPop(stale));
+    assert(stale.event.target == MusicalEventTarget::Drums);
+    assert(stale.event.channel == 4);
+    assert(stale.generation == 0);
+    assert(!scheduledMusicalEventGenerationIsCurrent(
+        stale, queue.generationFor(MusicalEventTarget::Drums)));
 }
 
 void testLifecycleBarrier() {
@@ -110,14 +135,33 @@ void testCriticalOverflowInvalidatesTarget() {
            ScheduledMusicalEventQueue::kSynthBMask);
 }
 
+void testDrumCriticalOverflowRequestsDrumPanic() {
+    ScheduledMusicalEventQueue queue;
+    for (std::size_t i = 0; i < ScheduledMusicalEventQueue::kCapacity; ++i) {
+        assert(queue.tryPush(noteEvent(MusicalEventType::NoteOn,
+                                       MusicalEventTarget::SynthA,
+                                       static_cast<uint8_t>(i % 128)),
+                             static_cast<uint32_t>(i / 8),
+                             static_cast<uint16_t>(i % 512)));
+    }
+    assert(!queue.tryPush(noteEvent(MusicalEventType::NoteOff,
+                                    MusicalEventTarget::Drums, 60, 2), 99, 12));
+    assert(queue.droppedCriticalCount() == 1);
+    assert(queue.generationFor(MusicalEventTarget::Drums) == 1);
+    assert(queue.takePendingAllNotesOffMask() ==
+           ScheduledMusicalEventQueue::kDrumsMask);
+}
+
 void testApproximateSizeAndDiscard() {
     ScheduledMusicalEventQueue queue;
     assert(queue.approximateSize() == 0);
     assert(queue.tryPush(noteEvent(MusicalEventType::NoteOn,
                                    MusicalEventTarget::SynthA, 60), 1, 0));
     assert(queue.approximateSize() == 1);
+    queue.invalidateTarget(MusicalEventTarget::Drums);
     queue.discardPending();
     assert(queue.approximateSize() == 0);
+    assert(queue.takePendingAllNotesOffMask() == 0);
 }
 
 }  // namespace
@@ -125,8 +169,10 @@ void testApproximateSizeAndDiscard() {
 int main() {
     testTimestampAndPublicationOrder();
     testGenerationInvalidation();
+    testDrumGenerationIsIndependent();
     testLifecycleBarrier();
     testNoteOnOverflowIsObservableWithoutPanic();
     testCriticalOverflowInvalidatesTarget();
+    testDrumCriticalOverflowRequestsDrumPanic();
     testApproximateSizeAndDiscard();
 }
