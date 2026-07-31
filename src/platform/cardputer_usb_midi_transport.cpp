@@ -190,6 +190,12 @@ void dispatchControlPanics() {
                        MusicalEventTarget::Drums));
         ++g_diagnostics.controlPanics;
     }
+    if (mask & MidiControlEventQueue::kDxMask) {
+        g_output.handleMusicalEvent(
+            panicEvent(MusicalEventSource::PerformanceKeyboard,
+                       MusicalEventTarget::Dx));
+        ++g_diagnostics.controlPanics;
+    }
 }
 
 void drainControlEvents(std::size_t budget = kControlDrainBudget) {
