@@ -166,6 +166,12 @@ void dispatchControlPanics() {
                        MusicalEventTarget::SynthB));
         ++g_diagnostics.controlPanics;
     }
+    if (mask & MidiControlEventQueue::kDrumsMask) {
+        g_output.handleMusicalEvent(
+            panicEvent(MusicalEventSource::PerformanceKeyboard,
+                       MusicalEventTarget::Drums));
+        ++g_diagnostics.controlPanics;
+    }
 }
 
 void drainControlEvents() {

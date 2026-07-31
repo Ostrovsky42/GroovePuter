@@ -18,10 +18,11 @@ enum class MusicalEventSource : uint8_t {
 enum class MusicalEventTarget : uint8_t {
     SynthA,
     SynthB,
+    Drums,
 };
 
 // channel is a zero-based logical channel. Internal synth outputs ignore it;
-// a future MIDI sink may map 0..15 to MIDI channels 1..16.
+// USB MIDI outputs map targets to their configured physical MIDI channels.
 struct MusicalEvent {
     MusicalEventType type{MusicalEventType::AllNotesOff};
     MusicalEventSource source{MusicalEventSource::PerformanceKeyboard};

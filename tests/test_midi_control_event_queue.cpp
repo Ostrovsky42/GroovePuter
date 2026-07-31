@@ -18,6 +18,15 @@ MusicalEvent liveEvent(MusicalEventType type,
     };
 }
 
+void fillQueue(MidiControlEventQueue& queue,
+               MusicalEventTarget target) {
+    for (std::size_t i = 0; i < MidiControlEventQueue::kCapacity; ++i) {
+        assert(queue.tryPush(liveEvent(MusicalEventType::NoteOn,
+                                       target,
+                                       static_cast<uint8_t>(i % 128))));
+    }
+}
+
 void testFifo() {
     MidiControlEventQueue queue;
     assert(queue.tryPush(liveEvent(MusicalEventType::NoteOn,
@@ -36,11 +45,7 @@ void testFifo() {
 
 void testNoteOnOverflowDoesNotPanic() {
     MidiControlEventQueue queue;
-    for (std::size_t i = 0; i < MidiControlEventQueue::kCapacity; ++i) {
-        assert(queue.tryPush(liveEvent(MusicalEventType::NoteOn,
-                                       MusicalEventTarget::SynthA,
-                                       static_cast<uint8_t>(i % 128))));
-    }
+    fillQueue(queue, MusicalEventTarget::SynthA);
     assert(!queue.tryPush(liveEvent(MusicalEventType::NoteOn,
                                     MusicalEventTarget::SynthA, 70)));
     assert(queue.droppedNoteOnCount() == 1);
@@ -48,19 +53,41 @@ void testNoteOnOverflowDoesNotPanic() {
     assert(queue.takePendingAllNotesOffMask() == 0);
 }
 
-void testCriticalOverflowRequestsTargetPanic() {
+void testCriticalOverflowRequestsSynthBPanic() {
     MidiControlEventQueue queue;
-    for (std::size_t i = 0; i < MidiControlEventQueue::kCapacity; ++i) {
-        assert(queue.tryPush(liveEvent(MusicalEventType::NoteOn,
-                                       MusicalEventTarget::SynthB,
-                                       static_cast<uint8_t>(i % 128))));
-    }
+    fillQueue(queue, MusicalEventTarget::SynthB);
     assert(!queue.tryPush(liveEvent(MusicalEventType::NoteOff,
                                     MusicalEventTarget::SynthB, 72)));
     assert(queue.droppedCriticalCount() == 1);
     assert(queue.takePendingAllNotesOffMask() ==
            MidiControlEventQueue::kSynthBMask);
     assert(queue.takePendingAllNotesOffMask() == 0);
+}
+
+void testCriticalOverflowRequestsDrumsPanic() {
+    MidiControlEventQueue queue;
+    fillQueue(queue, MusicalEventTarget::Drums);
+    assert(!queue.tryPush(liveEvent(MusicalEventType::AllNotesOff,
+                                    MusicalEventTarget::Drums, 0)));
+    assert(queue.droppedCriticalCount() == 1);
+    assert(queue.takePendingAllNotesOffMask() ==
+           MidiControlEventQueue::kDrumsMask);
+    assert(queue.takePendingAllNotesOffMask() == 0);
+}
+
+void testIndependentPanicMasks() {
+    MidiControlEventQueue queue;
+    fillQueue(queue, MusicalEventTarget::SynthA);
+    assert(!queue.tryPush(liveEvent(MusicalEventType::NoteOff,
+                                    MusicalEventTarget::SynthA, 60)));
+    assert(!queue.tryPush(liveEvent(MusicalEventType::NoteOff,
+                                    MusicalEventTarget::SynthB, 61)));
+    assert(!queue.tryPush(liveEvent(MusicalEventType::NoteOff,
+                                    MusicalEventTarget::Drums, 62)));
+    assert(queue.takePendingAllNotesOffMask() ==
+           static_cast<uint8_t>(MidiControlEventQueue::kSynthAMask |
+                                MidiControlEventQueue::kSynthBMask |
+                                MidiControlEventQueue::kDrumsMask));
 }
 
 void testApproximateSize() {
@@ -79,6 +106,8 @@ void testApproximateSize() {
 int main() {
     testFifo();
     testNoteOnOverflowDoesNotPanic();
-    testCriticalOverflowRequestsTargetPanic();
+    testCriticalOverflowRequestsSynthBPanic();
+    testCriticalOverflowRequestsDrumsPanic();
+    testIndependentPanicMasks();
     testApproximateSize();
 }

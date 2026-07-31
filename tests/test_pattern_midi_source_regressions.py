@@ -29,21 +29,34 @@ def main() -> None:
 
     require("MidiOutput" not in event_header,
             "USB MIDI must remain an output sink, not a MusicalEventTarget")
+    require("enum class MusicalEventTarget" in event_header and
+            "    Drums," in event_header,
+            "live keyboard routing must expose the Drums target")
     require("MusicalEventSource::PerformanceKeyboard" in sink and
             "MusicalEventSource::PatternPlayer" in sink,
             "USB sink must expose separate live and PatternPlayer lanes")
     require("MusicalEventTarget::SynthA" in sink and
-            "MusicalEventTarget::SynthB" in sink,
-            "timing repair must retain both synth targets")
-    require("kLaneCount = 3" in sink_h,
-            "timing repair must keep exactly three fixed ownership lanes")
+            "MusicalEventTarget::SynthB" in sink and
+            "MusicalEventTarget::Drums" in sink,
+            "USB output must retain Synth A, Synth B and live Drums targets")
+    require("kLaneCount = 5" in sink_h,
+            "USB output must keep five fixed live/pattern ownership lanes")
+    constructor_end = sink.index("uint8_t UsbMidiOutput::clampChannel")
+    constructor = sink[:constructor_end]
+    require("MusicalEventSource::PerformanceKeyboard,\n        MusicalEventTarget::Drums" in constructor,
+            "Drums must be a live keyboard lane")
+    require("MusicalEventSource::PatternPlayer,\n        MusicalEventTarget::Drums" not in constructor,
+            "PatternPlayer must remain limited to Synth A/B in this integration step")
     require("wireOwners_[kMidiChannelCount][kMidiNoteCount]" in sink_h,
             "logical lanes sharing a MIDI channel need wire-level ownership")
     require("pendingRelease" in sink_h and "pendingRelease" in sink,
             "failed replacement NoteOff must remain retryable")
     require("patternSynthAChannel{7}" in sink_h and
             "patternSynthBChannel{8}" in sink_h,
-            "fixed routes must remain MIDI channels 8 and 9")
+            "PatternPlayer routes must remain MIDI channels 8 and 9")
+    require("performanceSynthBChannel{8}" in sink_h and
+            "performanceDrumsChannel{9}" in sink_h,
+            "live B and Drums defaults must be MIDI channels 9 and 10")
 
     for token in ("blockSequence", "frameOffset", "generation",
                   "publicationSequence"):
@@ -64,9 +77,11 @@ def main() -> None:
             "invalidateTarget(event.target)" in queue,
             "AllNotesOff must invalidate stale scheduled generations")
     require("takePendingAllNotesOffMask" in queue,
-            "critical overflow must degrade to target-scoped cleanup")
+            "critical Pattern overflow must degrade to target-scoped cleanup")
     require("kStorageSize = 32" in control_queue,
             "live USB handoff must remain a bounded queue")
+    require("kDrumsMask" in control_queue and "pendingDrumsEpoch_" in control_queue,
+            "live Drums overflow must retain a scoped cleanup path")
     for path_text in (queue, facade, control_queue):
         for token in ("std::vector", "std::deque", "new ", "malloc("):
             require(token not in path_text,
@@ -104,7 +119,9 @@ def main() -> None:
     require("USBMIDI" not in engine and "TinyUSB" not in engine,
             "DSP engine must not depend on hardware USB APIs")
     require("event.source == MusicalEventSource::PatternPlayer" in internal,
-            "internal sink must ignore only already-rendered PatternPlayer fan-out")
+            "internal sink must ignore already-rendered PatternPlayer fan-out")
+    require("event.target == MusicalEventTarget::Drums" in internal,
+            "external live Drums must not alias to an internal synth voice")
 
     render_start = engine.index("bool MiniAcid::renderProjectToWav")
     render_body = engine[render_start:render_start + 5200]
@@ -132,6 +149,8 @@ def main() -> None:
             "setup must register the single USB owner with the scheduled queue")
     require("router.addSink(g_queueSink)" in transport,
             "live USB events must enter the dispatcher through a bounded sink")
+    require("router.addSink(g_output)" not in transport,
+            "UsbMidiOutput must not regain direct router ownership")
     require("midiDispatchTask" in transport and
             "scheduledMusicalEventGenerationIsCurrent" in transport,
             "dispatcher must reject stale generations")
@@ -139,6 +158,9 @@ def main() -> None:
             "dispatcher must convert sample offsets into deadlines")
     require("g_output.handleMusicalEvent" in transport,
             "only the dispatcher translation unit may mutate UsbMidiOutput")
+    require("MidiControlEventQueue::kDrumsMask" in transport and
+            "MusicalEventTarget::Drums" in transport,
+            "dispatcher must perform scoped recovery for dropped live Drums cleanup")
     require("USBMIDI.h" not in sketch and "USB.h" not in sketch,
             "TinyUSB headers must stay isolated from the main UI translation unit")
 
@@ -154,10 +176,10 @@ def main() -> None:
     )
     for token in forbidden_tokens:
         require(token not in transport and token not in sink and token not in engine,
-                f"out-of-scope MIDI feature entered timing repair: {token}")
+                f"out-of-scope MIDI feature entered companion integration: {token}")
 
     require("UsbMidi" not in scenes_h and "UsbMidi" not in scenes_cpp,
-            "USB MIDI settings must remain runtime-only")
+            "USB MIDI settings must remain device-global, not scene data")
     require("usbMidi" not in scenes_h and "usbMidi" not in scenes_cpp,
             "scene schema must not gain USB MIDI fields")
 

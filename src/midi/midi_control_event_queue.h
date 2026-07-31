@@ -17,6 +17,7 @@ public:
     static constexpr std::size_t kCapacity = kStorageSize - 1;
     static constexpr uint8_t kSynthAMask = 1u << 0;
     static constexpr uint8_t kSynthBMask = 1u << 1;
+    static constexpr uint8_t kDrumsMask = 1u << 2;
 
     bool tryPush(const MusicalEvent& event) {
         const uint32_t head = head_.loadRelaxed();
@@ -49,6 +50,7 @@ public:
         uint8_t mask = 0;
         const uint32_t synthAEpoch = pendingSynthAEpoch_.loadAcquire();
         const uint32_t synthBEpoch = pendingSynthBEpoch_.loadAcquire();
+        const uint32_t drumsEpoch = pendingDrumsEpoch_.loadAcquire();
         if (synthAEpoch != consumedSynthAEpoch_) {
             consumedSynthAEpoch_ = synthAEpoch;
             mask |= kSynthAMask;
@@ -56,6 +58,10 @@ public:
         if (synthBEpoch != consumedSynthBEpoch_) {
             consumedSynthBEpoch_ = synthBEpoch;
             mask |= kSynthBMask;
+        }
+        if (drumsEpoch != consumedDrumsEpoch_) {
+            consumedDrumsEpoch_ = drumsEpoch;
+            mask |= kDrumsMask;
         }
         return mask;
     }
@@ -78,10 +84,16 @@ public:
 
 private:
     void markPendingAllNotesOff(MusicalEventTarget target) {
-        if (target == MusicalEventTarget::SynthB) {
-            pendingSynthBEpoch_.incrementRelaxed();
-        } else {
-            pendingSynthAEpoch_.incrementRelaxed();
+        switch (target) {
+            case MusicalEventTarget::SynthA:
+                pendingSynthAEpoch_.incrementRelaxed();
+                break;
+            case MusicalEventTarget::SynthB:
+                pendingSynthBEpoch_.incrementRelaxed();
+                break;
+            case MusicalEventTarget::Drums:
+                pendingDrumsEpoch_.incrementRelaxed();
+                break;
         }
     }
 
@@ -90,10 +102,12 @@ private:
     MidiRealtimeWord tail_;
     MidiRealtimeWord pendingSynthAEpoch_;
     MidiRealtimeWord pendingSynthBEpoch_;
+    MidiRealtimeWord pendingDrumsEpoch_;
     MidiRealtimeWord droppedNoteOn_;
     MidiRealtimeWord droppedCritical_;
     uint32_t consumedSynthAEpoch_{0};
     uint32_t consumedSynthBEpoch_{0};
+    uint32_t consumedDrumsEpoch_{0};
 };
 
 #endif  // GROOVEPUTER_MIDI_CONTROL_EVENT_QUEUE_H

@@ -108,7 +108,7 @@ void PerformanceKeyboard::emitNoteOn(const HeldNote& held) {
     router_.route(MusicalEvent{
         MusicalEventType::NoteOn,
         MusicalEventSource::PerformanceKeyboard,
-        MusicalEventTarget::SynthA,
+        target_,
         0,
         held.note,
         held.velocity,
@@ -119,7 +119,7 @@ void PerformanceKeyboard::emitNoteOff(uint8_t note) {
     router_.route(MusicalEvent{
         MusicalEventType::NoteOff,
         MusicalEventSource::PerformanceKeyboard,
-        MusicalEventTarget::SynthA,
+        target_,
         0,
         note,
         0,
@@ -130,7 +130,7 @@ void PerformanceKeyboard::emitAllNotesOff() {
     router_.route(MusicalEvent{
         MusicalEventType::AllNotesOff,
         MusicalEventSource::PerformanceKeyboard,
-        MusicalEventTarget::SynthA,
+        target_,
         0,
         0,
         0,
@@ -139,18 +139,12 @@ void PerformanceKeyboard::emitAllNotesOff() {
 
 bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
     physicalKey = normalizeKey(physicalKey);
-
-    // Layout membership and emission permission are separate decisions. When
-    // NOTE mode is active, a performance key remains consumed even if transport
-    // temporarily blocks NoteOn, so it cannot reach legacy I/O/P/K/L commands.
     if (!isPerformanceKey(physicalKey)) return false;
     if (!noteModeEnabled_) return false;
     if (!enabled_ || transportPlaying_) return true;
 
     uint8_t note = 0;
     if (!noteForKey(physicalKey, note)) return true;
-
-    // Matrix repeats must not grow the stack or retrigger the voice.
     if (findHeld(physicalKey) >= 0) return true;
     if (heldCount_ >= kMaxHeldNotes) {
         panic();
@@ -170,9 +164,7 @@ bool PerformanceKeyboard::keyUp(char physicalKey) {
     const std::size_t index = static_cast<std::size_t>(found);
     const bool wasActive = index + 1 == heldCount_;
     const uint8_t releasedNote = held_[index].note;
-    for (std::size_t i = index + 1; i < heldCount_; ++i) {
-        held_[i - 1] = held_[i];
-    }
+    for (std::size_t i = index + 1; i < heldCount_; ++i) held_[i - 1] = held_[i];
     held_[--heldCount_] = HeldNote{};
 
     if (!wasActive) return true;
@@ -220,6 +212,44 @@ void PerformanceKeyboard::setTransportPlaying(bool playing) {
     if (transportPlaying_ == playing) return;
     if (playing) panic();
     transportPlaying_ = playing;
+}
+
+void PerformanceKeyboard::setTarget(MusicalEventTarget target) {
+    if (target_ == target) return;
+    panic();
+    target_ = target;
+}
+
+void PerformanceKeyboard::cycleTarget(int direction) {
+    // Hardware acceptance showed that SEQTRAK channel 10 is not a native drum
+    // destination. Keep the Drums backend target for the upcoming per-voice
+    // routing stage, but expose only the two currently valid live synth targets.
+    constexpr int kPlayableTargetCount = 2;
+    int next = static_cast<int>(target_) + direction;
+    if (target_ == MusicalEventTarget::Drums) next = direction < 0 ? 1 : 0;
+    while (next < 0) next += kPlayableTargetCount;
+    while (next >= kPlayableTargetCount) next -= kPlayableTargetCount;
+    setTarget(static_cast<MusicalEventTarget>(next));
+}
+
+const char* PerformanceKeyboard::targetName() const {
+    switch (target_) {
+        case MusicalEventTarget::SynthA: return "SYNTH A";
+        case MusicalEventTarget::SynthB: return "SYNTH B";
+        case MusicalEventTarget::Drums: return "DRUMS";
+    }
+    return "UNKNOWN";
+}
+
+uint8_t PerformanceKeyboard::targetMidiChannel() const {
+    switch (target_) {
+        case MusicalEventTarget::SynthA: return 8;
+        case MusicalEventTarget::SynthB: return 9;
+        // Reserved backend route only. Native SEQTRAK drums will use per-voice
+        // channels 1..7 once MidiOutputSettings is applied at runtime.
+        case MusicalEventTarget::Drums: return 10;
+    }
+    return 8;
 }
 
 void PerformanceKeyboard::panic() {
