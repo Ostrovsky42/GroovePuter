@@ -55,6 +55,18 @@ python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_midi_targets.cpp" \
+  "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
+  -o "${BUILD_DIR}/test_performance_midi_targets"
+
+"${BUILD_DIR}/test_performance_midi_targets"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_song_cycle_boundary.cpp" \
   -o "${BUILD_DIR}/test_song_cycle_boundary"
 
