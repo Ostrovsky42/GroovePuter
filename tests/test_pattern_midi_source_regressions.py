@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -150,7 +151,7 @@ def main() -> None:
             "AudioTask must establish and publish sample-block timing")
     require("readPatternSequencerPhase" in sketch,
             "AudioTask timing must use MiniAcid's sequencer phase")
-    require('xTaskCreatePinnedToCore(audioTask, "AudioTask"' in sketch,
+    require(re.search(r'xTaskCreatePinnedToCore\(\s*audioTask\s*,\s*"AudioTask"', sketch) is not None,
             "realtime publication depends on the pinned AudioTask identity")
 
     registration_call = "registerCardputerUsbMidiSink(\n      g_musicalEventRouter, g_patternMusicalEventQueue)"
