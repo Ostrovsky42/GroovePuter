@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstdint>
 
+#include "src/dsp/pattern_drum_event_tap.h"
 #include "src/input/musical_event_queue.h"
 
 namespace {
@@ -57,6 +58,58 @@ void testRenderPhaseBecomesFrameOffset() {
     assert(second.frameOffset == 96);
     assert(first.publicationSequence < second.publicationSequence);
     assert(!queue.tryPop(first));
+}
+
+void testPatternDrumTapUsesCurrentRenderPhase() {
+    MusicalEventQueue queue;
+    PatternEventQueueHandle handle;
+    handle = &queue;
+    FakeSequencerPhase phase{};
+    queue.setPhaseReader(readPhase, &phase);
+
+    constexpr float sampleRate = 22050.0f;
+    constexpr float bpm = 120.0f;
+    constexpr float samplesPerStep = (sampleRate * 60.0f) / (bpm * 4.0f);
+    queue.beginMidiRenderBlock(14, 512, 0.0f, bpm, sampleRate, true);
+    phase.phaseSteps = 121.0f / samplesPerStep;
+    publishPatternDrumTrigger(7, 93);
+    queue.endMidiRenderBlock();
+
+    ScheduledMusicalEvent scheduled{};
+    assert(queue.tryPop(scheduled));
+    assert(scheduled.event.type == MusicalEventType::NoteOn);
+    assert(scheduled.event.source == MusicalEventSource::PatternPlayer);
+    assert(scheduled.event.target == MusicalEventTarget::Drums);
+    assert(scheduled.event.channel == 7);
+    assert(scheduled.event.note == 60);
+    assert(scheduled.event.velocity == 93);
+    assert(scheduled.blockSequence == 14);
+    assert(scheduled.frameOffset == 120);
+    handle = nullptr;
+}
+
+void testPatternLifecycleAlsoInvalidatesDrums() {
+    MusicalEventQueue queue;
+    PatternEventQueueHandle handle;
+    handle = &queue;
+
+    // MiniAcid's existing publishPatternAllNotesOff_() sequence ends on SynthB.
+    // The handle couples that final barrier to Pattern Drums without requiring a
+    // second lifecycle path in the engine.
+    assert(!handle->tryPush(MusicalEvent{
+        MusicalEventType::AllNotesOff,
+        MusicalEventSource::PatternPlayer,
+        MusicalEventTarget::SynthB,
+        0,
+        0,
+        0,
+    }));
+    assert(queue.generationFor(MusicalEventTarget::SynthB) == 1);
+    assert(queue.generationFor(MusicalEventTarget::Drums) == 1);
+    assert(queue.takePendingAllNotesOffMask() ==
+           static_cast<uint8_t>(MusicalEventQueue::kSynthBMask |
+                                MusicalEventQueue::kDrumsMask));
+    handle = nullptr;
 }
 
 void testForcedTransportStartMapsToFrameZero() {
@@ -125,6 +178,8 @@ void testBoundedOverflowContract() {
 
 int main() {
     testRenderPhaseBecomesFrameOffset();
+    testPatternDrumTapUsesCurrentRenderPhase();
+    testPatternLifecycleAlsoInvalidatesDrums();
     testForcedTransportStartMapsToFrameZero();
     testOutsideRenderIsSuppressedAndCleansUp();
     testBoundedOverflowContract();
