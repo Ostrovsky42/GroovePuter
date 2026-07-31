@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_MUSICAL_EVENT_H
+#define GROOVEPUTER_MUSICAL_EVENT_H
 
 #include <cstdint>
 
@@ -33,3 +35,5 @@ struct MusicalEvent {
     uint8_t note{0};
     uint8_t velocity{0};
 };
+
+#endif  // GROOVEPUTER_MUSICAL_EVENT_H
