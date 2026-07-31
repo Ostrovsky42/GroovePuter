@@ -68,14 +68,17 @@ public:
     void handleMusicalEvent(const MusicalEvent& event) override;
 
 private:
+    // Intentionally POD with no default member initializers. The global
+    // UsbMidiOutput exists before Arduino setup(), so expanded routing must not
+    // execute a large per-lane constructor during static initialization.
     struct MidiVoiceLane {
-        MusicalEventSource source{MusicalEventSource::PerformanceKeyboard};
-        MusicalEventTarget target{MusicalEventTarget::SynthA};
-        uint8_t logicalChannel{0};
-        uint8_t channel{7};
-        int16_t activeNote{-1};
-        bool enabled{false};
-        bool pendingRelease{false};
+        MusicalEventSource source;
+        MusicalEventTarget target;
+        uint8_t logicalChannel;
+        uint8_t channel;
+        int16_t activeNote;
+        bool enabled;
+        bool pendingRelease;
     };
 
     static constexpr std::size_t kLaneCount = 12;
@@ -85,6 +88,7 @@ private:
     static uint8_t clampChannel(uint8_t channel);
     static uint8_t clampDataByte(uint8_t value);
 
+    void configureLanes();
     MidiVoiceLane* laneFor(MusicalEventSource source,
                            MusicalEventTarget target,
                            uint8_t logicalChannel = 0);
@@ -105,11 +109,12 @@ private:
     void clearActiveState();
 
     IUsbMidiTransport& transport_;
-    MidiVoiceLane lanes_[kLaneCount]{};
-    uint8_t wireOwners_[kMidiChannelCount][kMidiNoteCount]{};
-    bool enabled_{true};
-    bool begun_{false};
-    bool mounted_{false};
+    UsbMidiRouteConfig config_;
+    MidiVoiceLane lanes_[kLaneCount];
+    uint8_t wireOwners_[kMidiChannelCount][kMidiNoteCount];
+    bool enabled_;
+    bool begun_;
+    bool mounted_;
 };
 
 #endif  // GROOVEPUTER_USB_MIDI_OUTPUT_H
