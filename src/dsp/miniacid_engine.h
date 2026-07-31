@@ -17,6 +17,7 @@
 #include "mini_tb303.h"
 #include "swappable_synth_voice.h"
 #include "mini_drumvoices.h"
+#include "pattern_drum_event_tap.h"
 #include "tube_distortion.h"
 #include "perf_stats.h"
 #include "tape_fx.h"
@@ -65,9 +66,8 @@ public:
   float process(float input);
 
 private:
-  // for 2 voices at 22050 Hz, this is the max that the cardputer can handle.
 #if defined(ARDUINO_M5STACK_CARDPUTER)
-  static constexpr float kMaxDelaySeconds = 0.25f; // reduced for memory constrained device
+  static constexpr float kMaxDelaySeconds = 0.25f;
 #else
   static constexpr float kMaxDelaySeconds = 1.0f;
 #endif
@@ -77,9 +77,9 @@ private:
   int delaySamples;
   float sampleRate;
   int maxDelaySamples;
-  float beats;    // delay length in beats
-  float mix;      // wet mix 0..1
-  float feedback; // feedback 0..1
+  float beats;
+  float mix;
+  float feedback;
   bool enabled;
 };
 
@@ -96,9 +96,6 @@ class MiniAcid {
 public:
   static constexpr int kMin303Note = 24; // C1
   static constexpr int kMax303Note = 71; // B4
-  // Fixed v1 percussion gate. The gate is counted in AudioTask samples and is
-  // deliberately not a wall-clock timer. Device settings can bind this later.
-  static constexpr uint16_t kPatternDrumGateMs = 80;
 
   MiniAcid(float sampleRate, SceneStorage* sceneStorage);
 
@@ -107,8 +104,6 @@ public:
   void start();
   void stop();
 
-  // Live performance input is deliberately separate from pattern storage.
-  // PatternPlayer owns both synth voices while transport is running.
   void liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity);
   void liveNoteOff(int synthIndex, uint8_t midiNote);
   void allLiveNotesOff();
@@ -352,8 +347,6 @@ private:
   void triggerSynthStep_(int synthIdx, int stepIdx);
   void publishPatternNoteOn_(int synthIdx, uint8_t note, uint8_t velocity);
   void publishPatternNoteOff_(int synthIdx, uint8_t velocity = 0);
-  void publishPatternDrumHit_(int voiceIdx, uint8_t velocity);
-  void publishPatternDrumNoteOff_(int voiceIdx, uint8_t velocity = 0);
   void publishPatternAllNotesOff_();
   void triggerDrumVoice_(int voiceIdx, int stepIdx);
   void advanceSongBar_();
@@ -386,7 +379,7 @@ private:
   std::unique_ptr<SwappableSynthVoice> synthVoices_[NUM_303_VOICES];
   std::string synthEngineNames_[NUM_303_VOICES];
 
-  std::unique_ptr<DrumSynthVoice> drums;
+  PatternPublishingDrumVoice drums;
   float sampleRateValue;
   std::string drumEngineName_;
 
@@ -430,10 +423,8 @@ private:
   long gateCountdownA_ = 0;
   long gateCountdownB_ = 0;
   int16_t liveNotes_[NUM_303_VOICES] = {-1, -1};
-  MusicalEventQueue* patternEventQueue_ = nullptr;
+  PatternEventQueueHandle patternEventQueue_;
   int16_t patternMidiNotes_[NUM_303_VOICES] = {-1, -1};
-  long patternDrumGateCountdown_[NUM_DRUM_VOICES]{};
-  bool patternDrumMidiActive_[NUM_DRUM_VOICES]{};
   uint32_t liveInputEpoch_ = 0;
   bool songMode_;
   int drumCycleIndex_;
