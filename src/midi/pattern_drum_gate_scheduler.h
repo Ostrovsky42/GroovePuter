@@ -10,8 +10,10 @@
 // MidiDispatchTask-local scheduler. There is no second task and no wall-clock
 // timer: each gate deadline is derived from the original sample-timed Pattern
 // NoteOn position. One slot per internal drum voice is sufficient because a
-// retrigger extends that voice's gate; it must not leave an older NoteOff that
-// can cut the retrigger short.
+// retrigger extends that voice's deadline instead of leaving an old NoteOff that
+// could cut the newer hit short. releaseCount mirrors every accepted retrigger
+// so UsbMidiOutput can unwind its reference-counted wire ownership at the final
+// gate without dropping the repeated NoteOn packets themselves.
 class PatternDrumGateScheduler {
 public:
     static constexpr uint8_t kVoiceCount = 8;
@@ -28,8 +30,12 @@ public:
             return false;
         }
 
+        Slot& slot = slots_[noteOn.event.channel];
+        if (slot.active && slot.releaseCount == UINT8_MAX) return false;
+
         uint32_t gateFrames =
-            (static_cast<uint64_t>(sampleRate) * gateMs + 999u) / 1000u;
+            static_cast<uint32_t>(
+                (static_cast<uint64_t>(sampleRate) * gateMs + 999u) / 1000u);
         if (gateFrames == 0) gateFrames = 1;
 
         const uint64_t absoluteFrame =
@@ -49,9 +55,9 @@ public:
         gate.generation = noteOn.generation;
         gate.publicationSequence = noteOn.publicationSequence;
 
-        Slot& slot = slots_[noteOn.event.channel];
         slot.active = true;
         slot.gate = gate;
+        ++slot.releaseCount;
         return true;
     }
 
@@ -69,17 +75,19 @@ public:
         return true;
     }
 
+    uint8_t releaseCount(uint8_t logicalVoice) const {
+        return logicalVoice < kVoiceCount
+            ? slots_[logicalVoice].releaseCount
+            : 0;
+    }
+
     void consume(uint8_t logicalVoice) {
         if (logicalVoice >= kVoiceCount) return;
-        slots_[logicalVoice].active = false;
-        slots_[logicalVoice].gate = ScheduledMusicalEvent{};
+        slots_[logicalVoice] = Slot{};
     }
 
     void clear() {
-        for (auto& slot : slots_) {
-            slot.active = false;
-            slot.gate = ScheduledMusicalEvent{};
-        }
+        for (auto& slot : slots_) slot = Slot{};
     }
 
     bool active(uint8_t logicalVoice) const {
@@ -97,6 +105,7 @@ public:
 private:
     struct Slot {
         bool active{false};
+        uint8_t releaseCount{0};
         ScheduledMusicalEvent gate{};
     };
 
