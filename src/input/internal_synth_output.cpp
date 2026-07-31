@@ -10,8 +10,12 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
     // PatternPlayer already owns and renders the internal voices inside the
     // audio task. Its router fan-out is for additive outputs; taking the control
     // mutation gate here would deadlock the audio producer and double-trigger.
-    // Other sources remain eligible for future internal routing.
-    if (event.source == MusicalEventSource::PatternPlayer) return;
+    // Drums is an external USB-MIDI target; GroovePuter has no live chromatic
+    // internal drum-note contract, so it must not alias to Synth A.
+    if (event.source == MusicalEventSource::PatternPlayer ||
+        event.target == MusicalEventTarget::Drums) {
+        return;
+    }
 
     // The logical channel is intentionally ignored by the internal engine.
     AudioMutationScope mutationScope(mutationGate_);
