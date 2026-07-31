@@ -38,6 +38,21 @@ jobs:
           path.write_text(text.replace(old, new, 1), encoding="utf-8")
           PY
           python3 /tmp/apply_midi_dispatch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("tests/test_pattern_midi_source_regressions.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''    require("patternEventQueue_->tryPush(event," in engine,
+            "Pattern events must include block and frame timing")
+'''
+          new = '''    require("patternEventQueue_->tryPush(" in engine and
+            "midiBlockSequence_, midiFrameOffset_" in engine,
+            "Pattern events must include block and frame timing")
+'''
+          if old not in text:
+              raise RuntimeError("Pattern MIDI publication assertion not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
 
       - name: Run host regressions
         run: bash tests/run_host_tests.sh
