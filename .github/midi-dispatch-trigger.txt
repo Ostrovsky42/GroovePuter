@@ -1,3 +1,4 @@
 Trigger the corrected one-shot sample-timed MIDI integration workflow for PR #8.
 
 Manual continuation trigger: 2026-07-31T04:50+02:00.
+Bootstrap job enabled in Core regressions.
