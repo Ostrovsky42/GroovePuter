@@ -11,6 +11,7 @@ python3 "${ROOT_DIR}/tests/test_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_performance_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_usb_midi_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_pattern_midi_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_midi_transport_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_song_playhead_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_midi_companion_foundation_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
@@ -93,6 +94,17 @@ python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
   -o "${BUILD_DIR}/test_scheduled_musical_event_queue"
 
 "${BUILD_DIR}/test_scheduled_musical_event_queue"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_midi_transport_sync.cpp" \
+  -o "${BUILD_DIR}/test_midi_transport_sync"
+
+"${BUILD_DIR}/test_midi_transport_sync"
 
 "${CXX}" \
   -std=c++17 \

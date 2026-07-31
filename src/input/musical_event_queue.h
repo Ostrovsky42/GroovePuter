@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "../midi/midi_transport_clock_publisher.h"
 #include "../midi/scheduled_musical_event_queue.h"
 
 // Compatibility facade used by MiniAcid's existing PatternPlayer publication
@@ -13,6 +14,10 @@
 // where the per-sample renderer triggers them. AudioTask brackets each render
 // block here, and this facade converts the current sequencer phase into the
 // ScheduledMusicalEvent frame offset consumed by MidiDispatchTask.
+//
+// The same render bracket also publishes MIDI Clock/Start/Stop into a separate
+// bounded transport queue. Both queues share blockSequence+frameOffset timing,
+// while TinyUSB ownership remains entirely in MidiDispatchTask.
 //
 // This keeps USB/TinyUSB concerns out of the DSP engine and avoids any heap,
 // lock or Arduino-loop dependency in the realtime producer path.
@@ -49,6 +54,15 @@ public:
         } else {
             renderStartPhaseSteps_ = normalizedStart;
         }
+
+        transportClockPublisher_.beginBlock(
+            transportQueue_,
+            blockSequence,
+            blockFrames,
+            renderStartPhaseSteps_,
+            renderBpm_,
+            renderSampleRate_,
+            transportPlaying);
 
         previousTransportPlaying_ = transportPlaying;
         renderBlockActive_ = true;
@@ -94,6 +108,14 @@ public:
             static_cast<uint16_t>(frame));
     }
 
+    ScheduledMidiTransportEventQueue& transportQueue() {
+        return transportQueue_;
+    }
+
+    const ScheduledMidiTransportEventQueue& transportQueue() const {
+        return transportQueue_;
+    }
+
     uint32_t droppedCount() const {
         return droppedNoteOnCount() + droppedCriticalCount();
     }
@@ -115,6 +137,8 @@ private:
     float renderSampleRate_{44100.0f};
     bool renderBlockActive_{false};
     bool previousTransportPlaying_{false};
+    ScheduledMidiTransportEventQueue transportQueue_;
+    MidiTransportClockPublisher transportClockPublisher_;
 };
 
 #endif  // GROOVEPUTER_MUSICAL_EVENT_QUEUE_H
