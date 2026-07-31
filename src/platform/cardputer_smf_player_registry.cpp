@@ -41,6 +41,10 @@ public:
         return ensureStarted() && player_.toggleRouting();
     }
 
+    bool toggleTempoMode() override {
+        return ensureStarted() && player_.toggleTempoMode();
+    }
+
     bool adjustTempoBpm(int deltaBpm) override {
         return ensureStarted() && player_.adjustTempoBpm(deltaBpm);
     }
