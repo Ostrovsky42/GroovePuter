@@ -2,89 +2,100 @@
 
 ## Status
 
-Implementation branch rebased onto the hardware-accepted Song repair:
+Production integration is implemented on:
 
 ```text
+branch: fix/usb-midi-dispatch-timing
 base: b97783942b81032049fc060b75f171c1de11bc5d
-includes: merged Song playhead repair from PR #10
+includes: hardware-accepted Song playhead repair from PR #10
 ```
 
-The Song contract for correct `1B / 2B / 4B / 8B` row duration and lifecycle phase resets is now part of the implementation baseline and must remain unchanged.
+The PR must remain draft until direct Cardputer-Adv → Yamaha SEQTRAK timing acceptance is recorded.
 
 ## Purpose
 
-Remove the perceptible unevenness observed when GroovePuter PatternPlayer drives Yamaha SEQTRAK over USB-MIDI.
+Remove the audible unevenness caused by dispatching PatternPlayer USB-MIDI from the Arduino UI loop.
 
-The merged Stage 1 path is functionally correct but timing information is lost between the sample timeline and TinyUSB:
+Old path:
 
 ```text
-sample-accurate PatternPlayer event
-→ MusicalEvent without timestamp
-→ fixed queue
-→ Arduino loop
+sample-timeline event
+→ untimed MusicalEvent queue
+→ Arduino loop / display cadence
 → TinyUSB
 ```
 
-The Arduino loop and display redraws are not a musical clock. In addition, a 512-frame audio block is rendered faster than realtime, so several events generated at different sample offsets can become an untimed USB burst.
+Implemented path:
 
-This stage repairs timing only. It must not add drums, MIDI Clock, Program Change, BLE-MIDI, or a general MIDI settings page.
+```text
+MiniAcid per-sample renderer
+→ MusicalEventQueue timing facade
+→ ScheduledMusicalEventQueue
+→ MidiDispatchTask
+→ UsbMidiOutput
+→ TinyUSB
+```
 
-## Hardware assumptions
+The change is timing-only. It does not add drums, MIDI Clock, Program Change, BLE-MIDI, a channel settings page, or a new Song renderer.
 
-- M5Stack Cardputer-Adv, ESP32-S3, no PSRAM.
-- Yamaha SEQTRAK connected through the Cardputer native USB-C data port.
-- Repository-pinned M5Stack ESP32 core `3.2.2`.
-- TinyUSB CDC + MIDI composite:
+## Hardware list
+
+- M5Stack Cardputer-Adv, ESP32-S3, no PSRAM required.
+- Yamaha SEQTRAK.
+- USB-C data cable supporting device data, not a charge-only cable.
+- Optional Linux computer for `aseqdump` timing capture.
+
+## Wiring
+
+```text
+Cardputer-Adv native USB-C data port
+→ Yamaha SEQTRAK USB host/device-compatible MIDI connection
+```
+
+No PORT.A, GPIO, I2C, or external level shifting is used.
+
+Internal sound remains on the Cardputer-Adv ES8311 / I2S path. An AUX cable is optional for the separate audio workflow and is not required for USB-MIDI validation.
+
+## Toolchain assumptions
+
+Use the repository-pinned M5Stack ESP32 core `3.2.2` and this TinyUSB composite configuration:
 
 ```text
 USBMode=default
 CDCOnBoot=cdc
 UploadMode=cdc
+PSRAM=disabled
 ```
 
-- Existing internal audio remains on ES8311 / I2S1.
-- No GPIO or PORT.A wiring is used.
-
-## Current confirmed behavior
+Existing routes remain fixed:
 
 ```text
 Live keyboard / Synth A → MIDI channel 8
 PatternPlayer / Synth A → MIDI channel 8
 PatternPlayer / Synth B → MIDI channel 9
-Song rows advance with the merged 1B / 2B / 4B / 8B contract
 ```
 
-Direct SEQTRAK playback works, but the PatternPlayer stream feels uneven. This observation is the reproduction basis for the stage.
+## Implementation
 
-## Scope
+### Render-time timestamps
 
-Implement only:
+`MiniAcid` already publishes normalized PatternPlayer events from inside its per-sample render loop. The existing engine API remains unchanged:
 
-- timestamped PatternPlayer MIDI queue entries;
-- preservation of event order and relative sample offsets inside each audio block;
-- a dedicated low-latency MIDI dispatch owner outside the UI loop;
-- one serialized owner for `UsbMidiOutput` and TinyUSB writes;
-- bounded queues with no per-event heap allocation;
-- target-scoped overflow recovery;
-- timing diagnostics suitable for Linux `aseqdump` and Cardputer serial summaries;
-- host tests, SDL build, Cardputer build, and physical SEQTRAK acceptance.
+```cpp
+patternEventQueue_->tryPush(event);
+```
 
-## Explicitly out of scope
+`src/input/musical_event_queue.h` is now a compatibility facade over `ScheduledMusicalEventQueue`. `AudioTask` brackets every production render block with:
 
-- drum MIDI;
-- MIDI Clock, Start, Stop, or Continue;
-- Song-specific external renderer;
-- Program Change, Bank Select, CC, Pitch Bend, Aftertouch, or SysEx;
-- dynamic MIDI channel UI;
-- live target Synth A/B selector;
-- BLE-MIDI;
-- MIDI input;
-- scene persistence changes;
-- Atlas, genre, Pattern, or Song data-model changes.
+```cpp
+beginMidiRenderBlock(...);
+generateAudioBuffer(...);
+endMidiRenderBlock();
+```
 
-## Timing contract
+At the exact event publication point, the facade reads MiniAcid sequencer phase and converts it to a bounded `frameOffset` for the current block. The transport-start discontinuity at tick 383 is explicitly normalized so the first step maps to frame zero rather than one PPQN tick late.
 
-Do not add timing fields to the normalized `MusicalEvent` unless every source requires them. Use a queue wrapper:
+Scheduled entries use:
 
 ```cpp
 struct ScheduledMusicalEvent {
@@ -96,106 +107,104 @@ struct ScheduledMusicalEvent {
 };
 ```
 
-Required invariants:
+Required ordering is preserved:
 
 ```text
-frameOffset < kBlockFrames
-same block: lower frameOffset dispatches first
-same frameOffset: original publication order is preserved
-cross-block order is monotonic by blockSequence
-NoteOff before replacement NoteOn remains ordered
-AllNotesOff is never delayed behind stale notes from an invalid lifecycle
-stale generation events are discarded before reaching UsbMidiOutput
+lower blockSequence first
+within a block: lower frameOffset first
+same frameOffset: publication order
+replacement: old NoteOff before new NoteOn
 ```
 
-The implementation may use an absolute microsecond deadline internally, but the source of truth remains the audio sample position.
+The queue is fixed-size:
 
-## Dispatch ownership
+```text
+128 storage slots
+127 usable scheduled events
+no per-event allocation
+single AudioTask producer
+single MidiDispatchTask consumer
+```
 
-TinyUSB and mutable `UsbMidiOutput` state must have one task owner.
+### Playback anchors
 
-Target architecture:
+After each rendered block, `AudioTask` publishes the block sequence and the render-start microsecond anchor. The dispatcher applies one documented audio-block output-latency compensation:
+
+```text
+kOutputLatencyUs = one 512-frame block
+```
+
+This constant shifts all external MIDI by the same amount. It does not change relative note spacing.
+
+### Single USB owner
+
+`MidiDispatchTask` is the only task allowed to mutate `UsbMidiOutput` or write TinyUSB packets.
 
 ```text
 AudioTask / PatternPlayer
-→ timestamped fixed queue
+→ scheduled fixed queue
                          \
                           → MidiDispatchTask → UsbMidiOutput → TinyUSB
                          /
 Arduino loop / live keys
-→ bounded live-event handoff
-
-Arduino loop / live keys
-→ MusicalEventRouter → InternalSynthOutput
+→ bounded control queue
 ```
 
-The internal Synth A response to live input remains immediate. Only the external USB sink is asynchronous.
+The Arduino loop still routes live events immediately to `InternalSynthOutput`; only external USB delivery is queued. The old `drainPatternMusicalEvents()` UI-loop path has been removed.
 
-Do not call TinyUSB from:
+### Lifecycle and failure recovery
 
-- AudioTask;
-- DSP render code;
-- display/UI rendering;
-- ISR callbacks.
+`AllNotesOff` is a target-scoped generation barrier:
 
-## Scheduler policy
+1. increment the Synth A or Synth B generation;
+2. request a target-scoped PatternPlayer panic;
+3. discard queued events from older generations before USB delivery;
+4. allow following events to use the next generation.
 
-A dedicated task alone is insufficient because events generated within one 512-frame render block already lose their spacing. The scheduler must preserve the relative time represented by `frameOffset`.
+A dropped critical event also invalidates only its target. A dropped NoteOn is counted but does not destructively panic an unrelated active note.
 
-Implementation order:
+Offline WAV rendering remains synchronous on the control task. Events outside the active `AudioTask` render bracket are suppressed, so WAV export cannot accumulate a render-speed USB-MIDI burst. Critical suppressed events still request final target cleanup.
 
-1. Define `ScheduledMusicalEvent`, generation semantics, ordering, and host tests.
-2. Capture PatternPlayer event offsets during `generateAudioBuffer()`.
-3. Publish a monotonic block sequence and timing anchor from AudioTask.
-4. Convert queued offsets to dispatch deadlines outside DSP.
-5. Dispatch from one task without depending on `loop()` frequency.
-6. Move live/control USB delivery to a bounded handoff owned by the same task.
-7. Add lifecycle invalidation, overflow recovery, diagnostics, and hardware acceptance.
+### Diagnostics
 
-A constant output-latency compensation is allowed only as a documented runtime constant. It must not alter relative spacing between events.
-
-## Realtime constraints
-
-- No `new`, `malloc`, STL containers, JSON, file I/O, or Serial printing per event.
-- AudioTask publication must never block.
-- MidiDispatchTask may sleep until the next deadline but must not busy-spin continuously.
-- Queue overflow must remain observable and must end in target-scoped cleanup.
-- UI redraw must not delay PatternPlayer MIDI dispatch.
-- Internal audio must not gain underruns as a result of MIDI scheduling.
-
-## Song mode
-
-Internal Song mode already exists and is toggled with:
+Every five seconds the dispatcher prints a bounded summary:
 
 ```text
-Alt + M
+[MIDI-DISPATCH] sched=<depth> live=<depth> sent=<pattern>/<live>
+late=<count> maxLateUs=<value> stale=<count> badFrame=<count>
+drop=<noteOn>/<critical> liveDrop=<noteOn>/<critical>
+suppressed=<count> panic=<pattern>/<live>
 ```
 
-PatternPlayer MIDI follows the active Synth A/B patterns as Song rows change because events are emitted from the same active engine timeline.
-
-The merged Song repair guarantees correct row durations and phase resets. This stage must preserve that behavior while invalidating stale scheduled MIDI events from the previous lifecycle generation at row transitions.
-
-This timing stage does not add an external SEQTRAK Song mode, MIDI Clock, or transport synchronization. A visible PERFORM-page Song toggle and live target A/B selector belong to the following performance-controls stage.
+No Serial logging occurs per event.
 
 ## Build and flash
 
 ```bash
 bash scripts/install_arduino_deps.sh
+bash tests/run_host_tests.sh
 bash scripts/build.sh --warnings all
 bash scripts/upload.sh /dev/ttyACM0
 ```
 
-Use only M5Stack ESP32 core `3.2.2`.
+Do not upgrade the M5Stack core while validating this PR.
 
 ## Linux timing capture
+
+List MIDI ports:
 
 ```bash
 aconnect -l
 aseqdump -l
+```
+
+Capture GroovePuter output:
+
+```bash
 aseqdump -p <client:port>
 ```
 
-Capture these cases:
+Recommended cases:
 
 ```text
 120 BPM, plain 1/16 notes
@@ -203,39 +212,54 @@ maximum practical BPM
 maximum Synth A retrig
 maximum Synth B retrig
 both synths active
-page navigation and redraw during playback
-Song mode row changes
+page navigation during playback
+Song row transitions
 Stop during a sustained note
 ```
 
+For plain 1/16 notes, compare successive NoteOn deltas. They should follow the musical interval and should not collapse into redraw-related batches.
+
 ## Expected behavior
 
-- Channel 8 and channel 9 routes remain unchanged.
-- Note spacing follows the PatternPlayer timeline instead of Arduino loop cadence.
-- UI redraw does not create audible event batches.
-- Retrig remains ordered and does not collapse into a burst.
-- Stop, mute, pattern change, scene change, and Song-row change leave no stale note.
-- Song row duration remains correct for `1B / 2B / 4B / 8B`.
-- Internal audio remains continuous.
-- Live keyboard remains responsive while transport is stopped.
-- No old event is replayed after USB reconnect.
+### Screen
 
-## Host tests
+- Existing GroovePuter pages and Song workflow remain available.
+- Pattern, Song, scene, keyboard, and internal audio behavior remain unchanged.
+- No new MIDI settings screen is added in this PR.
 
-- [ ] Events in one block dispatch by ascending `frameOffset`.
-- [ ] Equal-offset events preserve publication order.
-- [ ] Cross-block ordering is monotonic.
-- [ ] Generation comparison rejects stale lifecycle events.
-- [ ] Replacement remains `NoteOff old → NoteOn new`.
-- [ ] TIE does not add an unnecessary NoteOn.
-- [ ] Retrig preserves scheduled intervals.
-- [ ] Late dispatch is measured, not silently ignored.
-- [ ] Lifecycle Panic invalidates stale scheduled events.
-- [ ] Queue overflow produces target-scoped cleanup.
-- [ ] Live and Pattern Synth A same-note ownership remains correct.
-- [ ] TinyUSB is called only by the dispatch owner.
-- [ ] No dynamic allocation exists in the realtime path.
-- [ ] Existing Pattern, Song, scene, and WAV-render regressions remain green.
+### Serial
+
+- Boot reaches `setup-complete` without watchdog or reset.
+- `[MIDI-DISPATCH]` appears approximately every five seconds.
+- `badFrame` remains `0`.
+- `drop` and `liveDrop` remain `0/0` in ordinary use.
+- `late` may increment occasionally, but `maxLateUs` must not continually grow with page redraws.
+- Audio underruns must not continually increase after enabling USB-MIDI playback.
+
+### SEQTRAK
+
+- Synth A arrives on channel 8.
+- Synth B arrives on channel 9.
+- Plain 1/16 notes sound even at 120 BPM.
+- Retrigs preserve spacing instead of becoming an immediate burst.
+- Page navigation does not alter PatternPlayer rhythm.
+- Stop, mute, scene changes, pattern changes, Song row changes, and reconnect leave no stuck note.
+
+## Automated acceptance checklist
+
+- [x] Scheduled events carry block, frame, generation, and publication sequence.
+- [x] Phase-derived frame offsets are covered by a host test.
+- [x] Forced transport start maps the first event to frame zero.
+- [x] Equal-block publication order is retained.
+- [x] Lifecycle `AllNotesOff` invalidates older generations.
+- [x] Critical queue overflow produces target-scoped cleanup.
+- [x] Non-realtime/offline events are suppressed.
+- [x] Live and Pattern same-note wire ownership tests remain present.
+- [x] Failed replacement NoteOff recovery tests remain present.
+- [x] TinyUSB ownership is restricted to `MidiDispatchTask` by source contract.
+- [x] Host tests pass.
+- [x] SDL build passes.
+- [x] Cardputer-Adv firmware compiles with the pinned toolchain.
 
 ## Cardputer-Adv acceptance checklist
 
@@ -243,39 +267,52 @@ Stop during a sustained note
 - [ ] Internal Synth A/B and drums remain audible.
 - [ ] SEQTRAK receives Synth A on channel 8.
 - [ ] SEQTRAK receives Synth B on channel 9.
-- [ ] Plain 1/16 pattern sounds even at 120 BPM.
-- [ ] High BPM does not create audible batches.
-- [ ] Maximum retrig remains regular enough for performance use.
-- [ ] Navigating pages does not change MIDI rhythm.
+- [ ] Plain 1/16 Pattern sounds even at 120 BPM.
+- [ ] High BPM does not create audible event batches.
+- [ ] Maximum Synth A retrig remains regular.
+- [ ] Maximum Synth B retrig remains regular.
+- [ ] Navigating all pages does not change MIDI rhythm.
 - [ ] Song row transitions do not create a burst or stuck note.
 - [ ] Song `1B / 2B / 4B / 8B` row duration remains correct.
 - [ ] Stop releases both external synth notes.
-- [ ] Same-pitch live/pattern ownership still passes.
+- [ ] Same-pitch live/Pattern ownership still passes.
+- [ ] WAV export sends no render-speed or post-render MIDI burst.
 - [ ] USB reconnect does not replay stale notes.
-- [ ] No continual increase in audio underruns.
+- [ ] Serial `badFrame`, queue drops, and continual underrun growth remain absent.
 
 ## Troubleshooting
 
+### SEQTRAK does not see GroovePuter
+
+- Confirm the cable supports USB data.
+- Confirm the build uses `USBMode=default,CDCOnBoot=cdc,UploadMode=cdc`.
+- Reconnect USB after the firmware has booted.
+- Check that live keyboard notes still reach the expected channel.
+
 ### Pattern still sounds uneven
 
-Capture timestamped `aseqdump` output and compare event deltas with the intended step interval. Check scheduler lateness counters and UI draw duration. Do not compensate by adding arbitrary delays to NoteOn or NoteOff.
+Run `aseqdump` and compare NoteOn deltas. Record the corresponding `[MIDI-DISPATCH] late` and `maxLateUs` values. Do not add arbitrary delays inside MiniAcid or TinyUSB.
 
 ### Events are evenly spaced but consistently early or late
 
-This is constant latency, not jitter. Adjust only the documented output-latency compensation after relative timing is verified.
+That is constant latency rather than jitter. Adjust only the documented `kOutputLatencyUs` after relative spacing is confirmed on hardware.
 
-### Live notes work but PatternPlayer is late
+### `badFrame` or queue drops increase
 
-Check block anchors, `frameOffset`, queue sequence ordering, and dispatch-task wakeups. Do not move TinyUSB calls back into AudioTask.
+Capture the full serial summary and the Pattern/BPM/retrig settings. Do not enlarge queues before identifying whether the producer is generating an invalid offset or the dispatcher is starved.
 
-### Internal audio underruns increase
+### WAV export produces external notes
 
-Lower the dispatch task priority or reduce diagnostic work. Do not reduce I2S safety buffers without a separate hardware measurement.
+The render must execute outside the active `AudioTask` block bracket. Confirm `suppressed` increases during export and no queued burst follows completion.
 
 ### Song changes leave a stale note
 
-Verify that the Song-row lifecycle generation invalidates queued events from the previous row before the next row is scheduled. Do not alter the merged Song bar counter to solve MIDI cleanup.
+Check `stale` and Pattern panic counters. Song-row cleanup must invalidate the previous generation; do not change the merged Song bar counter to hide a MIDI lifecycle problem.
 
-## Acceptance gate
+### Internal audio underruns increase
 
-This stage is complete only when direct SEQTRAK playback no longer feels tied to UI-loop timing and the timestamp capture shows no large redraw-related event batches. A constant USB/audio latency offset may remain documented; audible unevenness may not.
+Capture `[PERF]` and `[MIDI-DISPATCH]` summaries. Do not move TinyUSB writes into `AudioTask`, increase task priority above audio, or add per-event logging.
+
+## Merge gate
+
+The PR may leave draft only after all Cardputer-Adv checklist items are confirmed against a real SEQTRAK. It must not be merged solely from automated CI because the blocking defect is perceptual and timing-dependent on the physical USB path.
