@@ -12,6 +12,22 @@ UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
         false,
     };
     lanes_[1] = MidiVoiceLane{
+        MusicalEventSource::PerformanceKeyboard,
+        MusicalEventTarget::SynthB,
+        clampChannel(config.performanceSynthBChannel),
+        -1,
+        config.performanceKeyboardEnabled,
+        false,
+    };
+    lanes_[2] = MidiVoiceLane{
+        MusicalEventSource::PerformanceKeyboard,
+        MusicalEventTarget::Drums,
+        clampChannel(config.performanceDrumsChannel),
+        -1,
+        config.performanceKeyboardEnabled,
+        false,
+    };
+    lanes_[3] = MidiVoiceLane{
         MusicalEventSource::PatternPlayer,
         MusicalEventTarget::SynthA,
         clampChannel(config.patternSynthAChannel),
@@ -19,7 +35,7 @@ UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
         config.patternPlayerEnabled,
         false,
     };
-    lanes_[2] = MidiVoiceLane{
+    lanes_[4] = MidiVoiceLane{
         MusicalEventSource::PatternPlayer,
         MusicalEventTarget::SynthB,
         clampChannel(config.patternSynthBChannel),
@@ -47,9 +63,6 @@ bool UsbMidiOutput::begin() {
 void UsbMidiOutput::pollConnection() {
     const bool nextMounted = begun_ && transport_.mounted();
     if (nextMounted == mounted_) return;
-
-    // Never replay state across a USB disconnect. A new physical or sequencer
-    // event after reconnect starts fresh logical and wire-level ownership.
     clearActiveState();
     mounted_ = nextMounted;
 }
@@ -97,16 +110,12 @@ int UsbMidiOutput::activeNote(MusicalEventSource source,
 }
 
 int UsbMidiOutput::activeNote(MusicalEventTarget target) const {
-    if (target == MusicalEventTarget::SynthA) {
-        const MidiVoiceLane* live = laneFor(MusicalEventSource::PerformanceKeyboard,
-                                            MusicalEventTarget::SynthA);
-        if (live && live->activeNote >= 0) return live->activeNote;
-        const MidiVoiceLane* pattern = laneFor(MusicalEventSource::PatternPlayer,
-                                               MusicalEventTarget::SynthA);
-        return pattern ? pattern->activeNote : -1;
-    }
+    const MidiVoiceLane* live = laneFor(MusicalEventSource::PerformanceKeyboard,
+                                        target);
+    if (live && live->activeNote >= 0) return live->activeNote;
+
     const MidiVoiceLane* pattern = laneFor(MusicalEventSource::PatternPlayer,
-                                           MusicalEventTarget::SynthB);
+                                           target);
     return pattern ? pattern->activeNote : -1;
 }
 
@@ -152,17 +161,12 @@ bool UsbMidiOutput::releaseActiveNote(MidiVoiceLane& lane, uint8_t velocity) {
 
     const uint8_t note = clampDataByte(static_cast<uint8_t>(lane.activeNote));
     uint8_t& owners = wireOwners_[lane.channel][note];
-
-    // Another logical lane still owns the same physical channel+note. Release
-    // only this lane; a wire NoteOff would incorrectly silence the other owner.
     if (owners > 1) {
         --owners;
         lane.activeNote = -1;
         lane.pendingRelease = false;
         return true;
     }
-
-    // Recover conservatively from any local bookkeeping mismatch.
     if (owners == 0) {
         lane.activeNote = -1;
         lane.pendingRelease = false;
@@ -171,8 +175,6 @@ bool UsbMidiOutput::releaseActiveNote(MidiVoiceLane& lane, uint8_t velocity) {
 
     velocity = clampDataByte(velocity);
     if (!mounted_ || !transport_.sendNoteOff(lane.channel, note, velocity)) {
-        // Keep the actual old note as lane ownership. The next event for this
-        // lane must retry this release even when that event names a newer note.
         lane.pendingRelease = true;
         return false;
     }
@@ -214,9 +216,6 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
     pollConnection();
     MidiVoiceLane* lane = laneFor(event.source, event.target);
     if (!accepts(lane)) return;
-
-    // A failed replacement NoteOff leaves the old physical note as the only
-    // truth. Retry it before interpreting any later event from the sequencer.
     if (lane->pendingRelease && !releaseActiveNote(*lane)) return;
 
     switch (event.type) {
@@ -229,8 +228,6 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
             }
             break;
         case MusicalEventType::AllNotesOff:
-            // Panic is source+target scoped logically. Wire ownership prevents a
-            // shared channel+note from being silenced while another lane owns it.
             releaseActiveNote(*lane);
             break;
     }
