@@ -85,8 +85,8 @@ def test_note_mode_is_explicit_and_runtime_only() -> None:
 
     require("keyboard_.toggleNoteMode();" in page,
             "PERFORM must expose an explicit NOTE-mode toggle")
-    require("NOTE MODE: %s" in page,
-            "PERFORM must display NOTE-mode state")
+    require('noteMode ? "NOTE ON" : "NOTE OFF"' in page,
+            "PERFORM must expose NOTE-mode state as a stage-readable badge")
     require("bool noteModeEnabled_{true};" in header,
             "PERFORM must remain immediately playable by default")
     require("noteModeEnabled" not in scenes and "noteModeEnabled" not in storage,
@@ -126,6 +126,37 @@ def test_perform_is_additive_to_legacy_carousel() -> None:
             "PERFORM scale controls must use non-navigation keys")
 
 
+def test_stage_visuals_remain_lightweight_and_state_driven() -> None:
+    visuals = (ROOT / "src/ui/components/music_visuals.h").read_text(
+        encoding="utf-8"
+    )
+    perform = (ROOT / "src/ui/pages/perform_page.cpp").read_text(encoding="utf-8")
+    keyboard = (ROOT / "src/input/performance_keyboard.h").read_text(encoding="utf-8")
+    player = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(encoding="utf-8")
+
+    require("drawPiano" in visuals and "drawDrumPads" in visuals,
+            "PERFORM must retain instrument-shaped piano/pad visuals")
+    require("drawProgressBar" in visuals and "drawChip" in visuals,
+            "stage UI must retain reusable high-contrast progress/chip primitives")
+    require("isPitchClassHeld" in keyboard and "isPhysicalKeyHeld" in keyboard,
+            "visuals must read held-note state instead of inventing animation state")
+    require("activeVelocity" in keyboard,
+            "PERFORM must expose the actual active-note velocity to the UI")
+    require("MusicVisuals::drawPiano" in perform and
+            "MusicVisuals::drawDrumPads" in perform,
+            "PERFORM must switch between piano and native drum pads")
+    require("MusicVisuals::drawProgressBar" in player and
+            "smfPlayerStateName(state.state)" in player,
+            "MIDI Player must keep camera-readable state and progress")
+
+    forbidden = ("Sprite", "Canvas", "createSprite", "pushSprite", "delay(")
+    for token in forbidden:
+        require(token not in visuals,
+                f"music visuals must stay immediate-mode and allocation-free: {token}")
+    require("millis()" not in visuals,
+            "music visuals must not introduce timer-driven flicker/animation")
+
+
 def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
     ui_config = (ROOT / "src/ui/ui_config.h").read_text(encoding="utf-8")
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
@@ -155,7 +186,7 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
     require("event.shift" not in display[display.index("// On the MIDI Player page Space"):display.index("if (event.key == ' ')", display.index("// On the MIDI Player page Space") + 1)],
             "SMF Space handling must not depend on unavailable Cardputer Shift")
 
-    require('"PLAY FROM %.30s"' in player_page and
+    require('"MIDI LIBRARY  %.24s"' in player_page and
             "currentPath_.c_str()" in player_page and
             "requestLoadAndPlay" in player_page,
             "MIDI Player page must expose selectable SD playback and its path")
@@ -166,7 +197,7 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
             "player page must expose scoped panic")
     require("event.key == 'r' || event.key == 'R'" in player_page and
             "player_->restart(SmfPlayerRestartOrigin::MusicStart)" in player_page and
-            "R Restart" in player_page,
+            "R RESTART" in player_page,
             "physical R must restart playback from MUSIC START without Shift")
     require("event.key == 'd' || event.key == 'D'" in player_page and
             "drawPerformance" in player_page and
@@ -224,6 +255,7 @@ def main() -> None:
     test_note_mode_is_explicit_and_runtime_only()
     test_live_synth_render_is_not_transport_gated()
     test_perform_is_additive_to_legacy_carousel()
+    test_stage_visuals_remain_lightweight_and_state_driven()
     test_smf_player_is_additive_and_keeps_single_usb_owner()
     print("performance + SMF source regressions: OK")
 
