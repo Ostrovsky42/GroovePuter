@@ -8,6 +8,7 @@ enum class SmfPlayerState : uint8_t {
     Unloaded = 0,
     Loading,
     Stopped,
+    Armed,
     Playing,
     Paused,
     Error,
@@ -16,6 +17,16 @@ enum class SmfPlayerState : uint8_t {
 enum class SmfPlayerRestartOrigin : uint8_t {
     MusicStart = 0,
     FileStart,
+};
+
+enum class SmfTempoMode : uint8_t {
+    Original = 0,
+    Project,
+};
+
+enum class SmfLaunchMode : uint8_t {
+    Immediate = 0,
+    NextBar,
 };
 
 struct SmfPlayerPerformanceSnapshot {
@@ -47,6 +58,8 @@ struct SmfPlayerSnapshot {
     uint16_t tempoScalePermille{1000};
     uint8_t velocityBoost{0};
     bool rawRouting{true};
+    SmfTempoMode tempoMode{SmfTempoMode::Original};
+    SmfLaunchMode launchMode{SmfLaunchMode::NextBar};
     SmfPlayerPerformanceSnapshot performance{};
 };
 
@@ -64,6 +77,7 @@ public:
     virtual bool panic() = 0;
     virtual bool seekBars(int deltaBars) = 0;
     virtual bool toggleRouting() = 0;
+    virtual bool toggleTempoMode() = 0;
     virtual bool adjustTempoBpm(int deltaBpm) = 0;
     virtual bool resetTempo() = 0;
     virtual bool cycleVelocityBoost() = 0;
@@ -90,9 +104,26 @@ inline const char* smfPlayerStateName(SmfPlayerState state) {
         case SmfPlayerState::Unloaded: return "NO FILE";
         case SmfPlayerState::Loading: return "LOADING";
         case SmfPlayerState::Stopped: return "STOPPED";
+        case SmfPlayerState::Armed: return "ARMED";
         case SmfPlayerState::Playing: return "PLAYING";
         case SmfPlayerState::Paused: return "PAUSED";
         case SmfPlayerState::Error: return "ERROR";
+    }
+    return "?";
+}
+
+inline const char* smfTempoModeName(SmfTempoMode mode) {
+    switch (mode) {
+        case SmfTempoMode::Original: return "ORIGINAL";
+        case SmfTempoMode::Project: return "PROJECT";
+    }
+    return "?";
+}
+
+inline const char* smfLaunchModeName(SmfLaunchMode mode) {
+    switch (mode) {
+        case SmfLaunchMode::Immediate: return "NOW";
+        case SmfLaunchMode::NextBar: return "NEXT BAR";
     }
     return "?";
 }
