@@ -60,8 +60,6 @@ Pattern drum NoteOff uses a fixed-size gate state inside `MidiDispatchTask`. The
 
 ### SEQTRAK playable targets
 
-The routing model keeps distinct playable destinations:
-
 ```text
 CH1..7  DRUMS
 CH8     SYNTH 1
@@ -85,48 +83,11 @@ They are not playable `MusicalEventTarget` note destinations.
 
 ## Remaining MIDI Companion work
 
-### Global Cardputer storage adapter
-
-- bind `MidiOutputSettings` to the accepted dispatcher;
-- use NVS/Preferences or the selected global device store;
-- distinguish missing, corrupt, and backend error;
-- do not modify scene JSON.
-
-### MIDI settings UI
-
-Minimum useful surface:
-
-```text
-USB MIDI       ON/OFF
-PROFILE        SEQTRAK / GENERAL MIDI / CUSTOM
-LIVE TARGET    SYNTH A / SYNTH B / DX / DRUMS
-SYNTH A CH     1..16
-SYNTH B CH     1..16
-PATTERN A/B    ON/OFF
-DRUM OUT       ON/OFF
-DRUM ROUTES    explicit rows
-DRUM GATE      1..500 ms
-STATUS         OFF / WAIT / READY
-PANIC
-```
-
-The currently accepted v1 Pattern drum gate remains 80 ms until this settings binding is implemented.
-
-Use partial redraws. Do not redraw the full display for dispatcher counters.
-
-### Song controls and diagnostics
-
-- expose Song mode, slot A/B, and position without a second MIDI renderer;
-- continue to use active PatternPlayer events;
-- show bounded aggregate diagnostics only;
-- verify 1B/2B/4B/8B row transitions through A/B/Drums external routes.
-
-### SMF routing follow-up
-
-- per-track CUSTOM destination editing;
-- track mute/solo;
-- optional A-B loop;
-- preserve explicit SYNTH1/SYNTH2/DX/SAMPLER roles.
+- bind `MidiOutputSettings` to global device storage and runtime routing;
+- expose compact MIDI settings UI;
+- add per-track CUSTOM SMF routing and mute/solo;
+- optionally expose the current 80 ms drum gate as a 1..500 ms device setting;
+- continue using PatternPlayer for Song output instead of a separate Song MIDI renderer.
 
 ## Hardware acceptance for Pattern Drums stage
 
