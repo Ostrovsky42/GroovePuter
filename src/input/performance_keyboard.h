@@ -25,6 +25,8 @@ public:
     static constexpr uint8_t kRootC2 = 36;
     static constexpr int8_t kMinOctaveShift = -2;
     static constexpr int8_t kMaxOctaveShift = 2;
+    static constexpr uint8_t kSeqtrakDrumNote = 60;
+    static constexpr uint8_t kSeqtrakDrumChannelCount = 7;
 
     explicit PerformanceKeyboard(MusicalEventRouter& router)
         : router_(router) {}
@@ -59,6 +61,8 @@ public:
     MusicalEventTarget target() const { return target_; }
     void cycleTarget(int direction);
     const char* targetName() const;
+    // Returns the single MIDI channel for melodic targets. Drums returns the
+    // first channel in its native CH1..7 range for legacy callers/UI helpers.
     uint8_t targetMidiChannel() const;
 
     void panic();
@@ -83,16 +87,18 @@ private:
         char physicalKey{0};
         uint8_t note{0};
         uint8_t velocity{0};
+        uint8_t channel{0};
     };
 
     static char normalizeKey(char key);
     static bool isUpperRowKey(char key);
     static bool containsKey(const char* keys, std::size_t count, char key);
     static uint8_t intervalForDegree(PerformanceScale scale, uint8_t degree);
+    static bool drumChannelForKey(char physicalKey, uint8_t& zeroBasedChannel);
 
     int findHeld(char physicalKey) const;
     void emitNoteOn(const HeldNote& held);
-    void emitNoteOff(uint8_t note);
+    void emitNoteOff(uint8_t note, uint8_t channel = 0);
     void emitAllNotesOff();
 
     MusicalEventRouter& router_;
