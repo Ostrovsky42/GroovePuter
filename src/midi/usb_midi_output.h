@@ -11,6 +11,8 @@
 struct UsbMidiRouteConfig {
     // Channels are zero-based internally and displayed as 1..16 externally.
     uint8_t performanceSynthAChannel{7};
+    uint8_t performanceSynthBChannel{8};
+    uint8_t performanceDrumsChannel{9};
     uint8_t patternSynthAChannel{7};
     uint8_t patternSynthBChannel{8};
     bool performanceKeyboardEnabled{true};
@@ -61,7 +63,7 @@ private:
         bool pendingRelease{false};
     };
 
-    static constexpr std::size_t kLaneCount = 3;
+    static constexpr std::size_t kLaneCount = 5;
     static constexpr std::size_t kMidiChannelCount = 16;
     static constexpr std::size_t kMidiNoteCount = 128;
 
