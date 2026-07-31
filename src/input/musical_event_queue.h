@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "../midi/midi_transport_clock_publisher.h"
+#include "../midi/project_transport_timeline.h"
 #include "../midi/scheduled_musical_event_queue.h"
 
 // Compatibility facade used by MiniAcid's existing PatternPlayer publication
@@ -18,6 +19,10 @@
 // The same render bracket also publishes MIDI Clock/Start/Stop into a separate
 // bounded transport queue. Both queues share blockSequence+frameOffset timing,
 // while TinyUSB ownership remains entirely in MidiDispatchTask.
+//
+// PROJECT-tempo SMF playback reads the same block anchor through the bounded
+// ProjectTransportTimeline snapshot. No second wall-clock, transport task or
+// USB owner is introduced.
 //
 // This keeps USB/TinyUSB concerns out of the DSP engine and avoids any heap,
 // lock or Arduino-loop dependency in the realtime producer path.
@@ -54,6 +59,14 @@ public:
         } else {
             renderStartPhaseSteps_ = normalizedStart;
         }
+
+        GroovePuterMidi::projectTransportTimeline().publishBlock(
+            blockSequence,
+            blockFrames,
+            renderStartPhaseSteps_,
+            renderBpm_,
+            renderSampleRate_,
+            transportPlaying);
 
         transportClockPublisher_.beginBlock(
             transportQueue_,
