@@ -221,10 +221,14 @@ void PerformanceKeyboard::setTarget(MusicalEventTarget target) {
 }
 
 void PerformanceKeyboard::cycleTarget(int direction) {
-    constexpr int kTargetCount = 3;
+    // Hardware acceptance showed that SEQTRAK channel 10 is not a native drum
+    // destination. Keep the Drums backend target for the upcoming per-voice
+    // routing stage, but expose only the two currently valid live synth targets.
+    constexpr int kPlayableTargetCount = 2;
     int next = static_cast<int>(target_) + direction;
-    while (next < 0) next += kTargetCount;
-    while (next >= kTargetCount) next -= kTargetCount;
+    if (target_ == MusicalEventTarget::Drums) next = direction < 0 ? 1 : 0;
+    while (next < 0) next += kPlayableTargetCount;
+    while (next >= kPlayableTargetCount) next -= kPlayableTargetCount;
     setTarget(static_cast<MusicalEventTarget>(next));
 }
 
@@ -241,6 +245,8 @@ uint8_t PerformanceKeyboard::targetMidiChannel() const {
     switch (target_) {
         case MusicalEventTarget::SynthA: return 8;
         case MusicalEventTarget::SynthB: return 9;
+        // Reserved backend route only. Native SEQTRAK drums will use per-voice
+        // channels 1..7 once MidiOutputSettings is applied at runtime.
         case MusicalEventTarget::Drums: return 10;
     }
     return 8;
