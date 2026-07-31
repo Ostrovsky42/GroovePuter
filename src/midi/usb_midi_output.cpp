@@ -3,41 +3,60 @@
 UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
                              UsbMidiRouteConfig config)
     : transport_(transport) {
-    lanes_[0] = MidiVoiceLane{
+    std::size_t lane = 0;
+    lanes_[lane++] = MidiVoiceLane{
         MusicalEventSource::PerformanceKeyboard,
         MusicalEventTarget::SynthA,
+        0,
         clampChannel(config.performanceSynthAChannel),
         -1,
         config.performanceKeyboardEnabled,
         false,
     };
-    lanes_[1] = MidiVoiceLane{
+    lanes_[lane++] = MidiVoiceLane{
         MusicalEventSource::PerformanceKeyboard,
         MusicalEventTarget::SynthB,
+        0,
         clampChannel(config.performanceSynthBChannel),
         -1,
         config.performanceKeyboardEnabled,
         false,
     };
-    lanes_[2] = MidiVoiceLane{
+    lanes_[lane++] = MidiVoiceLane{
         MusicalEventSource::PerformanceKeyboard,
-        MusicalEventTarget::Drums,
-        clampChannel(config.performanceDrumsChannel),
+        MusicalEventTarget::Dx,
+        0,
+        clampChannel(config.performanceDxChannel),
         -1,
         config.performanceKeyboardEnabled,
         false,
     };
-    lanes_[3] = MidiVoiceLane{
+    for (uint8_t drumChannel = 0;
+         drumChannel < kSeqtrakDrumLaneCount;
+         ++drumChannel) {
+        lanes_[lane++] = MidiVoiceLane{
+            MusicalEventSource::PerformanceKeyboard,
+            MusicalEventTarget::Drums,
+            drumChannel,
+            drumChannel,
+            -1,
+            config.performanceKeyboardEnabled,
+            false,
+        };
+    }
+    lanes_[lane++] = MidiVoiceLane{
         MusicalEventSource::PatternPlayer,
         MusicalEventTarget::SynthA,
+        0,
         clampChannel(config.patternSynthAChannel),
         -1,
         config.patternPlayerEnabled,
         false,
     };
-    lanes_[4] = MidiVoiceLane{
+    lanes_[lane++] = MidiVoiceLane{
         MusicalEventSource::PatternPlayer,
         MusicalEventTarget::SynthB,
+        0,
         clampChannel(config.patternSynthBChannel),
         -1,
         config.patternPlayerEnabled,
@@ -83,45 +102,68 @@ UsbMidiStatus UsbMidiOutput::status() const {
 
 UsbMidiOutput::MidiVoiceLane* UsbMidiOutput::laneFor(
     MusicalEventSource source,
-    MusicalEventTarget target) {
+    MusicalEventTarget target,
+    uint8_t logicalChannel) {
     for (std::size_t i = 0; i < kLaneCount; ++i) {
-        if (lanes_[i].source == source && lanes_[i].target == target) {
-            return &lanes_[i];
+        if (lanes_[i].source != source || lanes_[i].target != target) continue;
+        if (target == MusicalEventTarget::Drums &&
+            lanes_[i].logicalChannel != logicalChannel) {
+            continue;
         }
+        return &lanes_[i];
     }
     return nullptr;
 }
 
 const UsbMidiOutput::MidiVoiceLane* UsbMidiOutput::laneFor(
     MusicalEventSource source,
-    MusicalEventTarget target) const {
+    MusicalEventTarget target,
+    uint8_t logicalChannel) const {
     for (std::size_t i = 0; i < kLaneCount; ++i) {
-        if (lanes_[i].source == source && lanes_[i].target == target) {
-            return &lanes_[i];
+        if (lanes_[i].source != source || lanes_[i].target != target) continue;
+        if (target == MusicalEventTarget::Drums &&
+            lanes_[i].logicalChannel != logicalChannel) {
+            continue;
         }
+        return &lanes_[i];
     }
     return nullptr;
 }
 
 int UsbMidiOutput::activeNote(MusicalEventSource source,
                               MusicalEventTarget target) const {
-    const MidiVoiceLane* lane = laneFor(source, target);
+    if (target == MusicalEventTarget::Drums) {
+        for (uint8_t channel = 0; channel < kSeqtrakDrumLaneCount; ++channel) {
+            const int note = activeNote(source, target, channel);
+            if (note >= 0) return note;
+        }
+        return -1;
+    }
+    return activeNote(source, target, 0);
+}
+
+int UsbMidiOutput::activeNote(MusicalEventSource source,
+                              MusicalEventTarget target,
+                              uint8_t logicalChannel) const {
+    const MidiVoiceLane* lane = laneFor(source, target, logicalChannel);
     return lane ? lane->activeNote : -1;
 }
 
 int UsbMidiOutput::activeNote(MusicalEventTarget target) const {
-    const MidiVoiceLane* live = laneFor(MusicalEventSource::PerformanceKeyboard,
-                                        target);
-    if (live && live->activeNote >= 0) return live->activeNote;
-
-    const MidiVoiceLane* pattern = laneFor(MusicalEventSource::PatternPlayer,
-                                           target);
-    return pattern ? pattern->activeNote : -1;
+    const int live = activeNote(MusicalEventSource::PerformanceKeyboard, target);
+    if (live >= 0) return live;
+    return activeNote(MusicalEventSource::PatternPlayer, target);
 }
 
 uint8_t UsbMidiOutput::channelFor(MusicalEventSource source,
                                   MusicalEventTarget target) const {
-    const MidiVoiceLane* lane = laneFor(source, target);
+    return channelFor(source, target, 0);
+}
+
+uint8_t UsbMidiOutput::channelFor(MusicalEventSource source,
+                                  MusicalEventTarget target,
+                                  uint8_t logicalChannel) const {
+    const MidiVoiceLane* lane = laneFor(source, target, logicalChannel);
     return lane ? lane->channel : 0;
 }
 
@@ -194,6 +236,15 @@ bool UsbMidiOutput::replaceActiveNote(MidiVoiceLane& lane,
     return acquireActiveNote(lane, note, velocity);
 }
 
+void UsbMidiOutput::releaseTargetAllNotes(MusicalEventSource source,
+                                          MusicalEventTarget target) {
+    for (std::size_t i = 0; i < kLaneCount; ++i) {
+        if (lanes_[i].source == source && lanes_[i].target == target) {
+            releaseActiveNote(lanes_[i]);
+        }
+    }
+}
+
 void UsbMidiOutput::releaseAllActiveNotes() {
     for (std::size_t i = 0; i < kLaneCount; ++i) {
         releaseActiveNote(lanes_[i]);
@@ -214,7 +265,13 @@ void UsbMidiOutput::clearActiveState() {
 
 void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
     pollConnection();
-    MidiVoiceLane* lane = laneFor(event.source, event.target);
+
+    if (event.type == MusicalEventType::AllNotesOff) {
+        releaseTargetAllNotes(event.source, event.target);
+        return;
+    }
+
+    MidiVoiceLane* lane = laneFor(event.source, event.target, event.channel);
     if (!accepts(lane)) return;
     if (lane->pendingRelease && !releaseActiveNote(*lane)) return;
 
@@ -228,7 +285,6 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
             }
             break;
         case MusicalEventType::AllNotesOff:
-            releaseActiveNote(*lane);
             break;
     }
 }
