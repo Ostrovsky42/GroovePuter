@@ -75,6 +75,7 @@ bool validLiveTarget(MidiLiveTarget target) {
     switch (target) {
         case MidiLiveTarget::SynthA:
         case MidiLiveTarget::SynthB:
+        case MidiLiveTarget::Drums:
             return true;
     }
     return false;
