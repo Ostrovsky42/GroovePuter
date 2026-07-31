@@ -2,186 +2,119 @@
 #ifndef GROOVEPUTER_MUSICAL_EVENT_QUEUE_H
 #define GROOVEPUTER_MUSICAL_EVENT_QUEUE_H
 
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 
-#if defined(ESP32) || defined(ESP_PLATFORM)
-#include <cstring>
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-#else
-#include <atomic>
-#endif
+#include "../midi/scheduled_musical_event_queue.h"
 
-#include "musical_event.h"
-
-// ESP32-S3's pinned GCC does not advertise std::atomic as always lock-free.
-// Use native aligned 32-bit SPSC words there so the audio producer never enters
-// a libatomic lock. Host builds retain standard atomics for race-safe tests.
-class RealtimeQueueWord {
+// Compatibility facade used by MiniAcid's existing PatternPlayer publication
+// API. MiniAcid still emits normalized MusicalEvent values at the exact point
+// where the per-sample renderer triggers them. AudioTask brackets each render
+// block here, and this facade converts the current sequencer phase into the
+// ScheduledMusicalEvent frame offset consumed by MidiDispatchTask.
+//
+// This keeps USB/TinyUSB concerns out of the DSP engine and avoids any heap,
+// lock or Arduino-loop dependency in the realtime producer path.
+class MusicalEventQueue final : public ScheduledMusicalEventQueue {
 public:
-    uint32_t loadRelaxed() const {
-#if defined(ESP32) || defined(ESP_PLATFORM)
-        return value_;
-#else
-        return value_.load(std::memory_order_relaxed);
-#endif
+    using PhaseReader = float (*)(void* context);
+    using ScheduledMusicalEventQueue::tryPop;
+    using ScheduledMusicalEventQueue::tryPush;
+
+    void setPhaseReader(PhaseReader reader, void* context) {
+        phaseReader_ = reader;
+        phaseReaderContext_ = context;
     }
 
-    uint32_t loadAcquire() const {
-#if defined(ESP32) || defined(ESP_PLATFORM)
-        const uint32_t value = value_;
-        asm volatile("memw" ::: "memory");
-        return value;
-#else
-        return value_.load(std::memory_order_acquire);
-#endif
+    void beginMidiRenderBlock(uint32_t blockSequence,
+                              uint16_t blockFrames,
+                              float startPhaseSteps,
+                              float bpm,
+                              float sampleRate,
+                              bool transportPlaying) {
+        renderBlockSequence_ = blockSequence;
+        renderBlockFrames_ = blockFrames;
+        renderBpm_ = bpm > 0.0f ? bpm : 120.0f;
+        renderSampleRate_ = sampleRate > 0.0f ? sampleRate : 44100.0f;
+
+        const float normalizedStart = normalizePhase(startPhaseSteps);
+        // MiniAcid::start() deliberately places currentTick_ at tick 383 and
+        // forces the first tick on sample zero. Treat that rising-edge state as
+        // the exact end of the bar, otherwise phase arithmetic would place the
+        // first step roughly one PPQN tick late.
+        if (transportPlaying && !previousTransportPlaying_ &&
+            normalizedStart > 15.0f) {
+            renderStartPhaseSteps_ = 16.0f;
+        } else {
+            renderStartPhaseSteps_ = normalizedStart;
+        }
+
+        previousTransportPlaying_ = transportPlaying;
+        renderBlockActive_ = true;
     }
 
-    void storeRelease(uint32_t value) {
-#if defined(ESP32) || defined(ESP_PLATFORM)
-        asm volatile("memw" ::: "memory");
-        value_ = value;
-#else
-        value_.store(value, std::memory_order_release);
-#endif
+    void endMidiRenderBlock() {
+        renderBlockActive_ = false;
     }
-
-    // Only the producer writes counters and panic epochs.
-    void incrementRelaxed() {
-#if defined(ESP32) || defined(ESP_PLATFORM)
-        value_ = value_ + 1u;
-#else
-        value_.fetch_add(1u, std::memory_order_relaxed);
-#endif
-    }
-
-private:
-#if defined(ESP32) || defined(ESP_PLATFORM)
-    alignas(4) volatile uint32_t value_{0};
-#else
-    std::atomic<uint32_t> value_{0};
-#endif
-};
-
-// Fixed-capacity event handoff from the audio-side PatternPlayer to the control
-// loop. The realtime producer never allocates or blocks. Control-plane engine
-// mutations are already serialized against the audio task by AudioMutationGate.
-class MusicalEventQueue {
-public:
-    // One ring slot remains empty as the head/tail sentinel. The storage size is
-    // 64 entries and the actual usable event capacity is therefore 63.
-    static constexpr std::size_t kStorageSize = 64;
-    static constexpr std::size_t kCapacity = kStorageSize - 1;
-    static constexpr uint8_t kSynthAMask = 1u << 0;
-    static constexpr uint8_t kSynthBMask = 1u << 1;
 
     bool tryPush(const MusicalEvent& event) {
-        // On Cardputer, realtime PatternPlayer publication is owned by the
-        // dedicated AudioTask. Offline WAV rendering runs synchronously on the
-        // Arduino loop task and must never enqueue a burst of untimed MIDI.
-        // Control-plane cleanup events degrade to a target-scoped panic.
-        if (!isRealtimeProducerContext()) {
-            suppressedNonRealtime_.incrementRelaxed();
-            if (event.type == MusicalEventType::AllNotesOff) {
-                // Stop/scene/render lifecycle is serialized against AudioTask.
-                // Discard stale queued notes before the final panic is routed.
-                const uint32_t head = head_.loadAcquire();
-                tail_.storeRelease(head);
-            }
-            if (event.type != MusicalEventType::NoteOn) {
-                markPendingAllNotesOff(event.target);
-            }
-            return false;
+        if (!renderBlockActive_) {
+            return suppressNonRealtimeEvent(event);
         }
 
-        const uint32_t head = head_.loadRelaxed();
-        const uint32_t next = (head + 1u) % kStorageSize;
-        if (next == tail_.loadAcquire()) {
-            dropped_.incrementRelaxed();
-            if (event.type != MusicalEventType::NoteOn) {
-                markPendingAllNotesOff(event.target);
-            }
-            return false;
+        // The base queue turns AllNotesOff into an immediate generation barrier;
+        // it does not need a meaningful frame position.
+        if (event.type == MusicalEventType::AllNotesOff) {
+            return ScheduledMusicalEventQueue::tryPush(
+                event, renderBlockSequence_, 0);
         }
 
-        events_[head] = event;
-        head_.storeRelease(next);
-        return true;
-    }
-
-    bool tryPop(MusicalEvent& event) {
-        const uint32_t tail = tail_.loadRelaxed();
-        if (tail == head_.loadAcquire()) return false;
-
-        event = events_[tail];
-        tail_.storeRelease((tail + 1u) % kStorageSize);
-        return true;
-    }
-
-    uint8_t takePendingAllNotesOffMask() {
-        uint8_t mask = 0;
-        const uint32_t synthAEpoch = pendingSynthAEpoch_.loadAcquire();
-        const uint32_t synthBEpoch = pendingSynthBEpoch_.loadAcquire();
-        if (synthAEpoch != consumedSynthAEpoch_) {
-            consumedSynthAEpoch_ = synthAEpoch;
-            mask |= kSynthAMask;
+        if (phaseReader_ == nullptr || renderBlockFrames_ == 0) {
+            return suppressNonRealtimeEvent(event);
         }
-        if (synthBEpoch != consumedSynthBEpoch_) {
-            consumedSynthBEpoch_ = synthBEpoch;
-            mask |= kSynthBMask;
-        }
-        return mask;
-    }
 
-    // Control-plane lifecycle helper. Call only while the audio producer is
-    // quiescent (for example, after transport stop under AudioMutationGate).
-    void discardPending() {
-        const uint32_t head = head_.loadAcquire();
-        tail_.storeRelease(head);
-        consumedSynthAEpoch_ = pendingSynthAEpoch_.loadAcquire();
-        consumedSynthBEpoch_ = pendingSynthBEpoch_.loadAcquire();
+        const float currentPhase = normalizePhase(
+            phaseReader_(phaseReaderContext_));
+        float deltaSteps = currentPhase - renderStartPhaseSteps_;
+        if (deltaSteps < 0.0f) deltaSteps += 16.0f;
+
+        const float samplesPerStep =
+            (renderSampleRate_ * 60.0f) / (renderBpm_ * 4.0f);
+        long frame = static_cast<long>(
+            std::lround(deltaSteps * samplesPerStep)) - 1L;
+        if (frame < 0) frame = 0;
+        if (frame >= static_cast<long>(renderBlockFrames_)) {
+            frame = static_cast<long>(renderBlockFrames_) - 1L;
+        }
+
+        return ScheduledMusicalEventQueue::tryPush(
+            event,
+            renderBlockSequence_,
+            static_cast<uint16_t>(frame));
     }
 
     uint32_t droppedCount() const {
-        return dropped_.loadRelaxed();
-    }
-
-    uint32_t suppressedNonRealtimeCount() const {
-        return suppressedNonRealtime_.loadRelaxed();
+        return droppedNoteOnCount() + droppedCriticalCount();
     }
 
 private:
-    static bool isRealtimeProducerContext() {
-#if defined(ESP32) || defined(ESP_PLATFORM)
-        const char* taskName = pcTaskGetName(nullptr);
-        return taskName != nullptr && std::strcmp(taskName, "AudioTask") == 0;
-#else
-        return true;
-#endif
+    static float normalizePhase(float phaseSteps) {
+        if (!std::isfinite(phaseSteps)) return 0.0f;
+        float normalized = std::fmod(phaseSteps, 16.0f);
+        if (normalized < 0.0f) normalized += 16.0f;
+        return normalized;
     }
 
-    static constexpr uint8_t targetMask(MusicalEventTarget target) {
-        return target == MusicalEventTarget::SynthB ? kSynthBMask : kSynthAMask;
-    }
-
-    void markPendingAllNotesOff(MusicalEventTarget target) {
-        if (targetMask(target) == kSynthBMask) {
-            pendingSynthBEpoch_.incrementRelaxed();
-        } else {
-            pendingSynthAEpoch_.incrementRelaxed();
-        }
-    }
-
-    MusicalEvent events_[kStorageSize]{};
-    RealtimeQueueWord head_;
-    RealtimeQueueWord tail_;
-    RealtimeQueueWord pendingSynthAEpoch_;
-    RealtimeQueueWord pendingSynthBEpoch_;
-    RealtimeQueueWord dropped_;
-    RealtimeQueueWord suppressedNonRealtime_;
-    uint32_t consumedSynthAEpoch_{0};
-    uint32_t consumedSynthBEpoch_{0};
+    PhaseReader phaseReader_{nullptr};
+    void* phaseReaderContext_{nullptr};
+    uint32_t renderBlockSequence_{0};
+    uint16_t renderBlockFrames_{0};
+    float renderStartPhaseSteps_{0.0f};
+    float renderBpm_{120.0f};
+    float renderSampleRate_{44100.0f};
+    bool renderBlockActive_{false};
+    bool previousTransportPlaying_{false};
 };
 
 #endif  // GROOVEPUTER_MUSICAL_EVENT_QUEUE_H

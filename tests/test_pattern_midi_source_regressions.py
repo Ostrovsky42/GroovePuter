@@ -15,8 +15,12 @@ def main() -> None:
     sink_h = (ROOT / "src/midi/usb_midi_output.h").read_text(encoding="utf-8")
     transport = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
+    engine_h = (ROOT / "src/dsp/miniacid_engine.h").read_text(encoding="utf-8")
     internal = (ROOT / "src/input/internal_synth_output.cpp").read_text(encoding="utf-8")
-    queue = (ROOT / "src/input/musical_event_queue.h").read_text(encoding="utf-8")
+    scheduled = (ROOT / "src/midi/scheduled_musical_event.h").read_text(encoding="utf-8")
+    queue = (ROOT / "src/midi/scheduled_musical_event_queue.h").read_text(encoding="utf-8")
+    facade = (ROOT / "src/input/musical_event_queue.h").read_text(encoding="utf-8")
+    control_queue = (ROOT / "src/midi/midi_control_event_queue.h").read_text(encoding="utf-8")
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
     build = (ROOT / "scripts/build.sh").read_text(encoding="utf-8")
     upload = (ROOT / "scripts/upload.sh").read_text(encoding="utf-8")
@@ -30,25 +34,71 @@ def main() -> None:
             "USB sink must expose separate live and PatternPlayer lanes")
     require("MusicalEventTarget::SynthA" in sink and
             "MusicalEventTarget::SynthB" in sink,
-            "Stage 1 must route both synth targets")
+            "timing repair must retain both synth targets")
     require("kLaneCount = 3" in sink_h,
-            "Stage 1 must keep exactly three fixed ownership lanes")
+            "timing repair must keep exactly three fixed ownership lanes")
     require("wireOwners_[kMidiChannelCount][kMidiNoteCount]" in sink_h,
-            "logical lanes sharing a MIDI channel need wire-level note ownership")
+            "logical lanes sharing a MIDI channel need wire-level ownership")
     require("pendingRelease" in sink_h and "pendingRelease" in sink,
             "failed replacement NoteOff must remain retryable")
     require("patternSynthAChannel{7}" in sink_h and
             "patternSynthBChannel{8}" in sink_h,
-            "fixed Stage 1 routes must be MIDI channels 8 and 9")
+            "fixed routes must remain MIDI channels 8 and 9")
+
+    for token in ("blockSequence", "frameOffset", "generation",
+                  "publicationSequence"):
+        require(token in scheduled,
+                f"scheduled event contract must include {token}")
+    require("scheduledMusicalEventBefore" in scheduled and
+            "scheduledMusicalEventGenerationIsCurrent" in scheduled,
+            "scheduled event ordering and lifecycle checks must be explicit")
+
+    require("kStorageSize = 128" in queue and
+            "kCapacity = kStorageSize - 1" in queue,
+            "Pattern MIDI queue must remain fixed and bounded")
+    require("pcTaskGetName(nullptr)" in queue and '"AudioTask"' in queue,
+            "only AudioTask may publish realtime Pattern events")
+    require("invalidateTarget" in queue and "generationFor" in queue,
+            "lifecycle invalidation must be target scoped")
+    require("event.type == MusicalEventType::AllNotesOff" in queue and
+            "invalidateTarget(event.target)" in queue,
+            "AllNotesOff must invalidate stale scheduled generations")
+    require("takePendingAllNotesOffMask" in queue,
+            "critical overflow must degrade to target-scoped cleanup")
+    require("kStorageSize = 32" in control_queue,
+            "live USB handoff must remain a bounded queue")
+    for path_text in (queue, facade, control_queue):
+        for token in ("std::vector", "std::deque", "new ", "malloc("):
+            require(token not in path_text,
+                    f"realtime MIDI queues must not allocate: {token}")
+
+    require("class MusicalEventQueue final : public ScheduledMusicalEventQueue" in facade,
+            "existing MiniAcid publication API must feed the scheduled queue")
+    require("beginMidiRenderBlock" in facade and
+            "endMidiRenderBlock" in facade and
+            "setPhaseReader" in facade,
+            "compatibility facade must own the render timing bracket")
+    require("phaseReader_(phaseReaderContext_)" in facade and
+            "renderBlockSequence_" in facade and
+            "frame" in facade,
+            "frame offsets must be calculated at the exact event publication point")
+    require("if (!renderBlockActive_)" in facade and
+            "suppressNonRealtimeEvent(event)" in facade,
+            "offline rendering must not enqueue render-speed MIDI bursts")
 
     require("publishPatternNoteOn_" in engine and
             "publishPatternNoteOff_" in engine and
             "publishPatternAllNotesOff_" in engine,
             "PatternPlayer lifecycle must publish normalized events")
+    require("MusicalEventQueue* patternEventQueue_" in engine_h,
+            "engine must retain the established queue abstraction")
+    require("patternEventQueue_->tryPush(event)" in engine,
+            "Pattern events must enter the timing facade at publication time")
+
     scene_apply = engine.index("void MiniAcid::applySceneStateFromManager()")
-    scene_body = engine[scene_apply:scene_apply + 240]
+    scene_body = engine[scene_apply:scene_apply + 260]
     require("if (playing) publishPatternAllNotesOff_();" in scene_body,
-            "scene application must release stale PatternPlayer MIDI ownership")
+            "scene application must release stale PatternPlayer ownership")
     require("MusicalEventSource::PatternPlayer" in engine,
             "engine events must identify PatternPlayer as their source")
     require("USBMIDI" not in engine and "TinyUSB" not in engine,
@@ -56,43 +106,39 @@ def main() -> None:
     require("event.source == MusicalEventSource::PatternPlayer" in internal,
             "internal sink must ignore only already-rendered PatternPlayer fan-out")
 
-    require("kStorageSize = 64" in queue and
-            "kCapacity = kStorageSize - 1" in queue,
-            "audio-to-control handoff must expose its 64-slot/63-event bounds")
-    require('asm volatile("memw"' in queue and
-            "alignas(4) volatile uint32_t" in queue,
-            "ESP32-S3 realtime publication must use aligned native words and barriers")
-    require("__atomic_always_lock_free" not in queue and
-            "is_always_lock_free" not in queue,
-            "queue must not rely on unsupported pinned-toolchain atomic traits")
-    for token in ("std::vector", "std::deque", "new ", "malloc("):
-        require(token not in queue, f"realtime queue must not allocate: {token}")
-    require("takePendingAllNotesOffMask" in queue,
-            "critical queue overflow must degrade to a target-scoped panic")
-    require("pcTaskGetName(nullptr)" in queue and '"AudioTask"' in queue,
-            "Cardputer queue must accept realtime pattern events only from AudioTask")
-    require("suppressedNonRealtime_" in queue,
-            "offline render suppression must remain observable")
     render_start = engine.index("bool MiniAcid::renderProjectToWav")
     render_body = engine[render_start:render_start + 5200]
     require("stop();" in render_body and "generateAudioBuffer" in render_body,
-            "offline render must remain a stopped, synchronous non-AudioTask lifecycle")
+            "offline render must remain synchronous")
 
     setup_start = sketch.index("void setup()")
     loop_start = sketch.index("void loop()")
-    require("setPatternEventQueue(&g_patternMusicalEventQueue)" in sketch[setup_start:loop_start],
-            "setup must connect PatternPlayer to the fixed event queue")
-    require("drainPatternMusicalEvents();" in sketch[loop_start:],
-            "control loop must drain PatternPlayer events into the shared router")
-    require("g_musicalEventRouter.route(event)" in sketch,
-            "queued PatternPlayer events must use MusicalEventRouter")
+    require("setPhaseReader" in sketch[setup_start:loop_start] and
+            "setPatternEventQueue(&g_patternMusicalEventQueue)" in sketch[setup_start:loop_start],
+            "setup must connect MiniAcid phase and events to the scheduled facade")
+    require("drainPatternMusicalEvents" not in sketch,
+            "Arduino loop must no longer dispatch Pattern MIDI")
+    require("beginMidiRenderBlock" in sketch and
+            "endMidiRenderBlock" in sketch and
+            "publishCardputerUsbMidiBlockAnchor" in sketch,
+            "AudioTask must establish and publish sample-block timing")
+    require("readPatternSequencerPhase" in sketch,
+            "AudioTask timing must use MiniAcid's sequencer phase")
     require('xTaskCreatePinnedToCore(audioTask, "AudioTask"' in sketch,
-            "offline-render suppression depends on the pinned AudioTask identity")
+            "realtime publication depends on the pinned AudioTask identity")
 
-    require("router.addSink(g_output)" in transport,
-            "USB MIDI must remain an independent router sink")
-    require("UsbMidiRouteConfig" in transport and "7," in transport and "8," in transport,
-            "platform route config must retain channels 8/9")
+    registration_call = "registerCardputerUsbMidiSink(\n      g_musicalEventRouter, g_patternMusicalEventQueue)"
+    require(registration_call in sketch[setup_start:loop_start],
+            "setup must register the single USB owner with the scheduled queue")
+    require("router.addSink(g_queueSink)" in transport,
+            "live USB events must enter the dispatcher through a bounded sink")
+    require("midiDispatchTask" in transport and
+            "scheduledMusicalEventGenerationIsCurrent" in transport,
+            "dispatcher must reject stale generations")
+    require("deadlineFor" in transport and "frameOffset" in transport,
+            "dispatcher must convert sample offsets into deadlines")
+    require("g_output.handleMusicalEvent" in transport,
+            "only the dispatcher translation unit may mutate UsbMidiOutput")
     require("USBMIDI.h" not in sketch and "USB.h" not in sketch,
             "TinyUSB headers must stay isolated from the main UI translation unit")
 
@@ -108,10 +154,10 @@ def main() -> None:
     )
     for token in forbidden_tokens:
         require(token not in transport and token not in sink and token not in engine,
-                f"out-of-scope MIDI feature entered Stage 1: {token}")
+                f"out-of-scope MIDI feature entered timing repair: {token}")
 
     require("UsbMidi" not in scenes_h and "UsbMidi" not in scenes_cpp,
-            "USB MIDI settings must remain runtime-only in Stage 1")
+            "USB MIDI settings must remain runtime-only")
     require("usbMidi" not in scenes_h and "usbMidi" not in scenes_cpp,
             "scene schema must not gain USB MIDI fields")
 

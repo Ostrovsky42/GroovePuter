@@ -65,6 +65,28 @@ python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_scheduled_musical_event.cpp" \
+  -o "${BUILD_DIR}/test_scheduled_musical_event"
+
+"${BUILD_DIR}/test_scheduled_musical_event"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_scheduled_musical_event_queue.cpp" \
+  -o "${BUILD_DIR}/test_scheduled_musical_event_queue"
+
+"${BUILD_DIR}/test_scheduled_musical_event_queue"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_usb_midi_output.cpp" \
   "${ROOT_DIR}/src/midi/usb_midi_output.cpp" \
   -o "${BUILD_DIR}/test_usb_midi_output"
