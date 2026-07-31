@@ -108,7 +108,7 @@ void PerformanceKeyboard::emitNoteOn(const HeldNote& held) {
     router_.route(MusicalEvent{
         MusicalEventType::NoteOn,
         MusicalEventSource::PerformanceKeyboard,
-        MusicalEventTarget::SynthA,
+        target_,
         0,
         held.note,
         held.velocity,
@@ -119,7 +119,7 @@ void PerformanceKeyboard::emitNoteOff(uint8_t note) {
     router_.route(MusicalEvent{
         MusicalEventType::NoteOff,
         MusicalEventSource::PerformanceKeyboard,
-        MusicalEventTarget::SynthA,
+        target_,
         0,
         note,
         0,
@@ -130,7 +130,7 @@ void PerformanceKeyboard::emitAllNotesOff() {
     router_.route(MusicalEvent{
         MusicalEventType::AllNotesOff,
         MusicalEventSource::PerformanceKeyboard,
-        MusicalEventTarget::SynthA,
+        target_,
         0,
         0,
         0,
@@ -220,6 +220,38 @@ void PerformanceKeyboard::setTransportPlaying(bool playing) {
     if (transportPlaying_ == playing) return;
     if (playing) panic();
     transportPlaying_ = playing;
+}
+
+void PerformanceKeyboard::setTarget(MusicalEventTarget target) {
+    if (target_ == target) return;
+    panic();
+    target_ = target;
+}
+
+void PerformanceKeyboard::cycleTarget(int direction) {
+    constexpr int kTargetCount = 3;
+    int next = static_cast<int>(target_) + direction;
+    while (next < 0) next += kTargetCount;
+    while (next >= kTargetCount) next -= kTargetCount;
+    setTarget(static_cast<MusicalEventTarget>(next));
+}
+
+const char* PerformanceKeyboard::targetName() const {
+    switch (target_) {
+        case MusicalEventTarget::SynthA: return "SYNTH A";
+        case MusicalEventTarget::SynthB: return "SYNTH B";
+        case MusicalEventTarget::Drums: return "DRUMS";
+    }
+    return "UNKNOWN";
+}
+
+uint8_t PerformanceKeyboard::targetMidiChannel() const {
+    switch (target_) {
+        case MusicalEventTarget::SynthA: return 8;
+        case MusicalEventTarget::SynthB: return 9;
+        case MusicalEventTarget::Drums: return 10;
+    }
+    return 8;
 }
 
 void PerformanceKeyboard::panic() {
