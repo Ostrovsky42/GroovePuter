@@ -46,13 +46,20 @@ public:
     void toggleNoteMode() { setNoteModeEnabled(!noteModeEnabled_); }
     bool noteModeEnabled() const { return noteModeEnabled_; }
 
-    // PatternPlayer owns Synth A while transport is running. Starting transport
-    // clears live notes and disables new performance events until it stops.
+    // PatternPlayer owns the internal synth voices while transport is running.
+    // Starting transport clears live notes and disables new performance events
+    // until it stops. The selected target remains unchanged.
     void setTransportPlaying(bool playing);
     bool transportPlaying() const { return transportPlaying_; }
     bool liveInputAllowed() const {
         return enabled_ && noteModeEnabled_ && !transportPlaying_;
     }
+
+    void setTarget(MusicalEventTarget target);
+    MusicalEventTarget target() const { return target_; }
+    void cycleTarget(int direction);
+    const char* targetName() const;
+    uint8_t targetMidiChannel() const;
 
     void panic();
 
@@ -92,6 +99,7 @@ private:
     HeldNote held_[kMaxHeldNotes]{};
     std::size_t heldCount_{0};
     PerformanceScale scale_{PerformanceScale::NaturalMinor};
+    MusicalEventTarget target_{MusicalEventTarget::SynthA};
     int8_t octaveShift_{0};
     bool enabled_{true};
     bool noteModeEnabled_{true};
