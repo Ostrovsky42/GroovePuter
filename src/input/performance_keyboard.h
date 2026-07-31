@@ -76,7 +76,23 @@ public:
     int8_t octaveShift() const { return octaveShift_; }
 
     int activeNote() const;
+    int activeVelocity() const {
+        return heldCount_ > 0 ? static_cast<int>(held_[heldCount_ - 1].velocity) : -1;
+    }
     std::size_t heldCount() const { return heldCount_; }
+
+    // Read-only UI helpers. They expose held-state only; routing and ownership
+    // remain private to PerformanceKeyboard and the accepted MIDI dispatcher.
+    bool isPhysicalKeyHeld(char physicalKey) const {
+        return findHeld(normalizeKey(physicalKey)) >= 0;
+    }
+    bool isPitchClassHeld(uint8_t pitchClass) const {
+        pitchClass %= 12;
+        for (std::size_t i = 0; i < heldCount_; ++i) {
+            if ((held_[i].note % 12) == pitchClass) return true;
+        }
+        return false;
+    }
 
     bool noteForKey(char physicalKey, uint8_t& note) const;
     static bool isPerformanceKey(char physicalKey);
