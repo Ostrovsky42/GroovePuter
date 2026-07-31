@@ -92,14 +92,13 @@ enum class MiniAcidParamId : uint8_t {
   Count
 };
 
-
-
-
-
 class MiniAcid {
 public:
   static constexpr int kMin303Note = 24; // C1
   static constexpr int kMax303Note = 71; // B4
+  // Fixed v1 percussion gate. The gate is counted in AudioTask samples and is
+  // deliberately not a wall-clock timer. Device settings can bind this later.
+  static constexpr uint16_t kPatternDrumGateMs = 80;
 
   MiniAcid(float sampleRate, SceneStorage* sceneStorage);
 
@@ -122,7 +121,7 @@ public:
   float sampleRate() const;
   bool isPlaying() const;
   int currentStep() const;
-  float getStepProgress() const; // Returns 0.0-1.0 progress within current 1/16th step
+  float getStepProgress() const;
   int cycleBarIndex() const;
   int cycleBarCount() const;
   uint32_t cyclePulseCounter() const { return cyclePulseCounter_; }
@@ -142,14 +141,13 @@ public:
   bool is303DelayEnabled(int voiceIndex = 0) const;
   bool is303DistortionEnabled(int voiceIndex = 0) const;
   const Parameter& parameter303(TB303ParamId id, int voiceIndex = 0) const;
-  
-  // Thread-safe waveform buffer access for UI visualization
+
   struct WaveformBuffer {
     int16_t data[AUDIO_BUFFER_SAMPLES];
     size_t count;
   };
   const WaveformBuffer& getWaveformBuffer() const;
-  
+
   const int8_t* pattern303Steps(int voiceIndex = 0) const;
   const bool* pattern303AccentSteps(int voiceIndex = 0) const;
   const bool* pattern303SlideSteps(int voiceIndex = 0) const;
@@ -206,8 +204,7 @@ public:
   void alternateSongs();
   void insertSongRow(int position);
   void deleteSongRow(int position);
-  
-  // Rehearsal Mode (Pause rows)
+
   void acknowledgeRehearsal();
   bool isWaitingForRehearsal() const { return waitingForRehearsal_; }
 
@@ -219,7 +216,7 @@ public:
   int16_t displayDrumPatternIndex() const;
   int display303LocalPatternIndex(int voiceIndex) const;
   int displayDrumLocalPatternIndex() const;
-  
+
   const Parameter& synthParameter(int voiceIndex, int knobIndex) const;
   uint8_t synthParameterCount(int voiceIndex) const;
   void adjustSynthParameter(int voiceIndex, int knobIndex, int steps);
@@ -247,8 +244,8 @@ public:
   void toggleMuteHighTom();
   void toggleMuteRim();
   void toggleMuteClap();
-  
-  bool isTrackActive(int index) const; // 0=303A, 1=303B, 2=KICK, 3=SNARE, 4=HAT, etc.
+
+  bool isTrackActive(int index) const;
   void setTrackVolume(VoiceId id, float volume);
   float getTrackVolume(VoiceId id) const;
 
@@ -269,13 +266,13 @@ public:
   void adjust303StepOctave(int voiceIndex, int stepIndex, int octaveDelta);
 
   void clear303StepNote(int voiceIndex, int stepIndex);
-  void clear303Step(int stepIndex, int voiceIndex); // Clears entire step
+  void clear303Step(int stepIndex, int voiceIndex);
   void toggle303AccentStep(int voiceIndex, int stepIndex);
   void toggle303SlideStep(int voiceIndex, int stepIndex);
   void toggleDrumStep(int voiceIndex, int stepIndex);
   void toggleDrumAccentStep(int stepIndex);
   void setDrumAccentStep(int voiceIndex, int stepIndex, bool accent);
-  
+
   void cycle303StepFx(int voiceIndex, int stepIndex);
   void adjust303StepFxParam(int voiceIndex, int stepIndex, int delta);
 
@@ -283,10 +280,9 @@ public:
   void randomizeDrumPattern();
   void randomizeDrumVoice(int voiceIndex);
   void randomizeDrumPatternChaos();
-  
+
   void rotatePattern(int voiceIndex, int steps);
 
-  // DRUM FX CONTROL
   void updateDrumCompression(float value);
   void updateDrumTransientAttack(float value);
   void updateDrumTransientSustain(float value);
@@ -299,63 +295,53 @@ public:
   int grooveFlavor() const;
   void shiftGrooveFlavor(int delta);
 
-  // FEEL/TEXTURE: apply scene feel settings to DSP chain
   void applyTextureFromScene_();
   void applyFeelTimingFromScene_();
 
-  // UI Convenience
   int currentScene() const { return current303BankIndex(0); }
   bool isRecording() const { return sceneManager().currentScene().tape.mode == TapeMode::Rec; }
   float swing() const { return genreManager().getGenerativeParams().swingAmount; }
 
   GrooveboxModeManager& modeManager() { return modeManager_; }
   const GrooveboxModeManager& modeManager() const { return modeManager_; }
-  
+
   GenreManager& genreManager() { return genreManager_; }
   const GenreManager& genreManager() const { return genreManager_; }
-  
-  TempoDelay& tempoDelay() { return delay303; }  // Main delay for texture (Legacy/Voice 0)
+
+  TempoDelay& tempoDelay() { return delay303; }
   const TempoDelay& tempoDelay() const { return delay303; }
-  
+
   TempoDelay& tempoDelay(int voiceIndex) { return (voiceIndex == 1) ? delay3032 : delay303; }
   const TempoDelay& tempoDelay(int voiceIndex) const { return (voiceIndex == 1) ? delay3032 : delay303; }
-  
-  void regeneratePatternsWithGenre();  // Regenerate patterns using current genre
-  void syncGrooveModeToGenre();        // Align 5-mode groove macro with current generative genre
+
+  void regeneratePatternsWithGenre();
+  void syncGrooveModeToGenre();
 
   Parameter& miniParameter(MiniAcidParamId id);
   void setParameter(MiniAcidParamId id, float value);
   void adjustParameter(MiniAcidParamId id, int steps);
-  
-  // Audio diagnostics toggle (hotkey: Ctrl+D or similar)
+
   void toggleAudioDiag();
-  
-  // Test Tone Mode (Diagnose hardware vs DSP)
+
   void setTestTone(bool enabled);
   bool isTestToneEnabled() const { return testToneEnabled_; }
 
-  // ════════════════════════════════════════════════════════════
-  // Vocal Synth (Formant-based robotic speech)
-  // ════════════════════════════════════════════════════════════
   FormantSynth& vocalSynth() { return vocalSynth_; }
   const FormantSynth& vocalSynth() const { return vocalSynth_; }
-  
-  // Quick speech methods
+
   void speak(const char* text);
-  void speakPhrase(int phraseIndex);  // Built-in phrases
-  void speakCustomPhrase(int index);  // User-defined phrases
+  void speakPhrase(int phraseIndex);
+  void speakCustomPhrase(int index);
   void stopSpeaking();
-  
-  // Voice track in song mode
+
   bool isVoiceTrackMuted() const { return voiceTrackMuted_; }
   void toggleVoiceTrackMute();
   void setVoiceTrackMute(bool muted);
   float getVoiceDuckingLevel() const { return vocalMixer_.getDuckAmount(); }
-  
-  // Voice Cache (SD card)
+
   VoiceCache& voiceCache() { return voiceCache_; }
   const VoiceCache& voiceCache() const { return voiceCache_; }
-  bool speakCached(const char* text); // Play from cache or fallback to synth
+  bool speakCached(const char* text);
 
   void generateAudioBuffer(int16_t *buffer, size_t numSamples);
 
@@ -366,6 +352,8 @@ private:
   void triggerSynthStep_(int synthIdx, int stepIdx);
   void publishPatternNoteOn_(int synthIdx, uint8_t note, uint8_t velocity);
   void publishPatternNoteOff_(int synthIdx, uint8_t velocity = 0);
+  void publishPatternDrumHit_(int voiceIdx, uint8_t velocity);
+  void publishPatternDrumNoteOff_(int voiceIdx, uint8_t velocity = 0);
   void publishPatternAllNotesOff_();
   void triggerDrumVoice_(int voiceIdx, int stepIdx);
   void advanceSongBar_();
@@ -397,7 +385,7 @@ private:
 
   std::unique_ptr<SwappableSynthVoice> synthVoices_[NUM_303_VOICES];
   std::string synthEngineNames_[NUM_303_VOICES];
-  
+
   std::unique_ptr<DrumSynthVoice> drums;
   float sampleRateValue;
   std::string drumEngineName_;
@@ -411,11 +399,9 @@ private:
   mutable bool drumAccentCache_[NUM_DRUM_VOICES][SEQ_STEPS];
   mutable bool drumStepAccentCache_[SEQ_STEPS];
 
-  // Vocal mixing
   VocalMixer vocalMixer_;
   VoiceCompressor voiceCompressor_;
-  
-  // Internal state
+
   volatile bool playing;
   volatile bool mute303;
   volatile bool mute303_2;
@@ -431,23 +417,23 @@ private:
   volatile bool delay3032Enabled;
   volatile bool distortion303Enabled = false;
   bool distortion3032Enabled = false;
-  
-  // Timing state
+
   int currentTimingOffset_ = 0;
-  
+
   volatile float bpmValue;
   volatile int currentStepIndex;
   uint64_t tickPhaseAccum_ = 0;
   uint64_t tickPhaseInc_ = 0;
   uint32_t currentTick_ = 0;
   float samplesPerStep_ = 10000.0f;
-  
-  // Gate length countdown (samples until release, 0 = released)
+
   long gateCountdownA_ = 0;
   long gateCountdownB_ = 0;
   int16_t liveNotes_[NUM_303_VOICES] = {-1, -1};
   MusicalEventQueue* patternEventQueue_ = nullptr;
   int16_t patternMidiNotes_[NUM_303_VOICES] = {-1, -1};
+  long patternDrumGateCountdown_[NUM_DRUM_VOICES]{};
+  bool patternDrumMidiActive_[NUM_DRUM_VOICES]{};
   uint32_t liveInputEpoch_ = 0;
   bool songMode_;
   int drumCycleIndex_;
@@ -468,14 +454,14 @@ private:
   int patternModeSynthBankIndex_[NUM_303_VOICES];
 
   struct RetrigState {
-    int interval = 0;       // Buffer samples between triggers
-    int counter = 0;        // Countdown to next trigger
-    int countRemaining = 0; // Number of retrigs left
-    bool active = false;    // Is retrig active
-    uint8_t flamGhostVelocity = 0; // >0 for flam: velocity of ghost hit
-    int rollTotal = 0;      // Scheduled roll retrigs (for velocity interpolation)
+    int interval = 0;
+    int counter = 0;
+    int countRemaining = 0;
+    bool active = false;
+    uint8_t flamGhostVelocity = 0;
+    int rollTotal = 0;
   };
-  
+
   RetrigState retrigA_;
   RetrigState retrigB_;
   RetrigState retrigDrums_[NUM_DRUM_VOICES];
@@ -487,14 +473,14 @@ private:
       float absIn = fabsf(in);
       if (absIn <= threshold) return in;
       float over = absIn - threshold;
-      float comp = threshold + tanhf(over * 3.0f) * 0.15f; 
+      float comp = threshold + tanhf(over * 3.0f) * 0.15f;
       return (in > 0) ? comp : -comp;
     }
   } masterLimiter;
 
   struct MasterBassBoost {
-    float f_coeff = 80.0f / (float)kSampleRate; 
-    float boost = 1.25f; 
+    float f_coeff = 80.0f / (float)kSampleRate;
+    float boost = 1.25f;
     float lpf = 0.0f;
     float process(float in) {
       lpf += f_coeff * (in - lpf);
@@ -502,13 +488,12 @@ private:
     }
   } masterBass;
 
-  // High-frequency dampening to soften harsh highs
   struct HighShelfCut {
     float lpf = 0.0f;
-    float coeff = 0.08f; // ~3kHz rolloff at 44100Hz 
+    float coeff = 0.08f;
     float process(float in) {
       lpf += coeff * (in - lpf);
-      return lpf; // Lowpass output
+      return lpf;
     }
   } masterHighCut;
 
@@ -516,23 +501,18 @@ private:
   TempoDelay delay3032;
   TubeDistortion distortion303;
   TubeDistortion distortion3032;
-  
-  // Drum FX
+
   OneKnobCompressor drumCompressor;
   TransientShaper drumTransientShaper;
   DrumReverb drumReverb;
-  
-  // DC blocker for drum bus (removes sub-5Hz DC offset)
+
   float dcBlockPrev_ = 0.0f;
   float dcBlockOut_ = 0.0f;
-  
-  // Thread-safe waveform buffer for UI visualization
-  // Uses double-buffering with atomic swap to avoid race conditions
+
   WaveformBuffer waveformBuffers_[2];
   std::atomic<int> displayBufferIndex_{0};
   int writeBufferIndex_ = 1;
 
-  // Vocal synthesizer (formant-based robotic speech)
   FormantSynth vocalSynth_;
   VoiceCache voiceCache_;
   bool voiceTrackMuted_ = false;
@@ -543,9 +523,8 @@ private:
   void syncSceneStateToManager();
 
   Parameter params[static_cast<int>(MiniAcidParamId::Count)];
-  
+
 public:
-  // Public access to stats and sample bank for now
   PerfStats perfStats;
   ISampleStore* sampleStore = nullptr;
   std::unique_ptr<float[]> samplerOutBuffer;
@@ -553,16 +532,14 @@ public:
   std::unique_ptr<DrumSamplerTrack> samplerTrack;
   std::unique_ptr<TapeFX> tapeFX;
   std::unique_ptr<TapeLooper> tapeLooper;
-  
-  // Scene manager accessor for UI tape state
+
   SceneManager& sceneManager() { return sceneManager_; }
   const SceneManager& sceneManager() const { return sceneManager_; }
 
 private:
   GrooveboxModeManager modeManager_{*this};
   GenreManager genreManager_;
-  
-  // DSP State for Audio Quality
+
   uint32_t ditherState_ = 12345;
   bool tapeControlCached_ = false;
   TapeMacro lastTapeMacro_{};
@@ -577,32 +554,24 @@ private:
   uint32_t lastUnderrunCount_ = 0;
   uint32_t perfDetailCounter_ = 0;
 
-  // Rehearsal Mode
   bool waitingForRehearsal_ = false;
   bool rehearsalAcknowledged_ = false;
 
   float dcBlockX1_ = 0.0f;
   float dcBlockY1_ = 0.0f;
 
-  // Global safety low-pass on master output.
-  // Recommended fixed cutoffs:
-  // - 12000 Hz: very safe for compact/bright speakers
-  // - 16000 Hz: balanced default
-  // - 18000 Hz: more air, less protection
   static constexpr float kMasterHighCutHz = 16000.0f;
   float masterOutputHighCutHz_ = 16000.0f;
   float masterOutputLpState_ = 0.0f;
   float masterOutputLpAlpha_ = 1.0f;
   void setMasterOutputHighCutHz(float hz);
-  
-  // Test Tone State
+
   bool testToneEnabled_ = false;
   float testTonePhase_ = 0.0f;
-  
 
   static float softLimit(float x) {
       float absX = (x > 0) ? x : -x;
-      return x / (1.0f + absX); 
+      return x / (1.0f + absX);
   }
 };
 
