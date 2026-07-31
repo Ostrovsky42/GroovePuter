@@ -32,13 +32,18 @@ enum class UsbMidiStatus : uint8_t {
 
 // Translates normalized GroovePuter events into fixed logical lanes.
 // Synth/DX lanes are monophonic. Live Drums owns seven independent native
-// SEQTRAK lanes (logical 0..6 -> MIDI CH1..7), allowing simultaneous pads.
+// SEQTRAK lanes (logical 0..6 -> MIDI CH1..7). Pattern Drums retains all eight
+// internal drum voices and maps them onto the seven native SEQTRAK drum tracks;
+// Mid Tom and Rim intentionally share PERC1 / CH6. Percussive lanes count
+// overlapping gates so retrig/flam/roll NoteOffs cannot cut newer hits short.
 // Wire-level channel+note ownership remains reference counted. The SMF player
 // adds a separate polyphonic ownership matrix but shares the same final wire
 // owner counts so player cleanup cannot silence PERFORM or Pattern ownership.
 class UsbMidiOutput final : public IMusicalEventSink {
 public:
     static constexpr uint8_t kSeqtrakDrumLaneCount = 7;
+    static constexpr uint8_t kPatternDrumVoiceCount = 8;
+    static constexpr uint8_t kSeqtrakDrumNote = 60;
 
     explicit UsbMidiOutput(IUsbMidiTransport& transport,
                            UsbMidiRouteConfig config = {});
@@ -55,6 +60,9 @@ public:
                    MusicalEventTarget target,
                    uint8_t logicalChannel) const;
     int activeNote(MusicalEventTarget target) const;
+    uint8_t activeGateCount(MusicalEventSource source,
+                            MusicalEventTarget target,
+                            uint8_t logicalChannel) const;
     uint8_t channelFor(MusicalEventSource source,
                        MusicalEventTarget target) const;
     uint8_t channelFor(MusicalEventSource source,
@@ -91,16 +99,18 @@ private:
         uint8_t logicalChannel;
         uint8_t channel;
         int16_t activeNote;
+        uint8_t activeCount;
         bool enabled;
         bool pendingRelease;
     };
 
-    static constexpr std::size_t kLaneCount = 12;
+    static constexpr std::size_t kLaneCount = 20;
     static constexpr std::size_t kMidiChannelCount = 16;
     static constexpr std::size_t kMidiNoteCount = 128;
 
     static uint8_t clampChannel(uint8_t channel);
     static uint8_t clampDataByte(uint8_t value);
+    static uint8_t patternDrumChannel(uint8_t logicalVoice);
 
     void configureLanes();
     MidiVoiceLane* laneFor(MusicalEventSource source,
@@ -117,6 +127,13 @@ private:
                            uint8_t note,
                            uint8_t velocity);
     bool releaseActiveNote(MidiVoiceLane& lane, uint8_t velocity = 0);
+    bool acquirePercussiveNote(MidiVoiceLane& lane,
+                               uint8_t note,
+                               uint8_t velocity);
+    bool releasePercussiveNote(MidiVoiceLane& lane,
+                               uint8_t velocity = 0);
+    bool releasePercussiveLane(MidiVoiceLane& lane,
+                               uint8_t velocity = 0);
     void releaseTargetAllNotes(MusicalEventSource source,
                                MusicalEventTarget target);
     void releaseAllActiveNotes();
