@@ -26,6 +26,7 @@ enum class MidiDeviceProfile : uint8_t {
 enum class MidiLiveTarget : uint8_t {
     SynthA = 0,
     SynthB = 1,
+    Drums = 2,
 };
 
 enum class MidiDrumVoice : uint8_t {
