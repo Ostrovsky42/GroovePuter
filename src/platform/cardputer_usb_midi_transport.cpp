@@ -20,12 +20,12 @@ UsbMidiOutput g_output(
     g_transport,
     UsbMidiRouteConfig{
         7,     // live Synth A -> MIDI channel 8
-        8,     // live Synth B -> MIDI channel 9
-        9,     // live Drums   -> MIDI channel 10
         7,     // PatternPlayer Synth A -> MIDI channel 8
         8,     // PatternPlayer Synth B -> MIDI channel 9
         true,
         true,
+        8,     // live Synth B -> MIDI channel 9
+        9,     // live Drums   -> MIDI channel 10
     });
 bool g_registered = false;
 }
