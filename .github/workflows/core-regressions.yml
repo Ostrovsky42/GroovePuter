@@ -50,20 +50,4 @@ jobs:
         run: bash scripts/install_arduino_deps.sh
 
       - name: Compile Cardputer ADV firmware
-        id: cardputer_compile
-        shell: bash
-        run: |
-          set +e
-          bash scripts/build.sh --warnings all > cardputer-build.log 2>&1
-          status=$?
-          tail -n 200 cardputer-build.log
-          exit "$status"
-
-      - name: Upload Cardputer compile diagnostics
-        if: failure() && steps.cardputer_compile.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: cardputer-compile-diagnostics
-          path: cardputer-build.log
-          if-no-files-found: error
-          retention-days: 1
+        run: bash scripts/build.sh --warnings all
