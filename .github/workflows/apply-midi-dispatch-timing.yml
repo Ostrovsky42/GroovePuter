@@ -1,0 +1,311 @@
+name: Apply sample-timed MIDI integration
+
+on:
+  push:
+    branches:
+      - fix/usb-midi-dispatch-timing
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout timing branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/usb-midi-dispatch-timing
+          fetch-depth: 0
+
+      - name: Apply bounded integration patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"{label}: expected one match, found {count}: {old[:120]!r}")
+              return text.replace(old, new, 1)
+
+          header_path = Path("src/dsp/miniacid_engine.h")
+          engine_path = Path("src/dsp/miniacid_engine.cpp")
+          sketch_path = Path("GroovePuter.ino")
+          runner_path = Path("tests/run_host_tests.sh")
+
+          header = header_path.read_text(encoding="utf-8")
+          header = replace_once(
+              header,
+              "class MusicalEventQueue;",
+              "class ScheduledMusicalEventQueue;",
+              "engine queue forward declaration",
+          )
+          header = replace_once(
+              header,
+              "  void setPatternEventQueue(MusicalEventQueue* queue);",
+              "  void setPatternEventQueue(ScheduledMusicalEventQueue* queue);\n"
+              "  void beginMidiRenderBlock(uint32_t blockSequence);\n"
+              "  void endMidiRenderBlock();",
+              "engine public MIDI block API",
+          )
+          header = replace_once(
+              header,
+              "  MusicalEventQueue* patternEventQueue_ = nullptr;\n"
+              "  int16_t patternMidiNotes_[NUM_303_VOICES] = {-1, -1};",
+              "  ScheduledMusicalEventQueue* patternEventQueue_ = nullptr;\n"
+              "  uint32_t midiBlockSequence_ = 0;\n"
+              "  uint16_t midiFrameOffset_ = 0;\n"
+              "  bool midiRenderBlockActive_ = false;\n"
+              "  int16_t patternMidiNotes_[NUM_303_VOICES] = {-1, -1};",
+              "engine MIDI scheduling fields",
+          )
+          header_path.write_text(header, encoding="utf-8")
+
+          engine = engine_path.read_text(encoding="utf-8")
+          engine = replace_once(
+              engine,
+              '#include "../input/musical_event_queue.h"',
+              '#include "../midi/scheduled_musical_event_queue.h"',
+              "engine scheduled queue include",
+          )
+
+          lifecycle_start = engine.index("void MiniAcid::setPatternEventQueue(")
+          lifecycle_end = engine.index("int MiniAcid::liveNote(", lifecycle_start)
+          lifecycle = '''void MiniAcid::setPatternEventQueue(ScheduledMusicalEventQueue* queue) {
+            patternEventQueue_ = queue;
+            patternMidiNotes_[0] = -1;
+            patternMidiNotes_[1] = -1;
+          }
+
+          void MiniAcid::beginMidiRenderBlock(uint32_t blockSequence) {
+            midiBlockSequence_ = blockSequence;
+            midiFrameOffset_ = 0;
+            midiRenderBlockActive_ = true;
+          }
+
+          void MiniAcid::endMidiRenderBlock() {
+            midiRenderBlockActive_ = false;
+            midiFrameOffset_ = 0;
+          }
+
+          void MiniAcid::publishPatternNoteOn_(int synthIdx,
+                                               uint8_t note,
+                                               uint8_t velocity) {
+            const int idx = clamp303Voice(synthIdx);
+            if (!patternEventQueue_ || !midiRenderBlockActive_) return;
+            if (velocity < 1) velocity = 1;
+            if (velocity > 127) velocity = 127;
+            const MusicalEventTarget target = idx == 0
+                ? MusicalEventTarget::SynthA
+                : MusicalEventTarget::SynthB;
+            const MusicalEvent event{
+                MusicalEventType::NoteOn,
+                MusicalEventSource::PatternPlayer,
+                target,
+                0,
+                note,
+                velocity,
+            };
+            if (patternEventQueue_->tryPush(
+                    event, midiBlockSequence_, midiFrameOffset_)) {
+              patternMidiNotes_[idx] = static_cast<int16_t>(note);
+            }
+          }
+
+          void MiniAcid::publishPatternNoteOff_(int synthIdx, uint8_t velocity) {
+            const int idx = clamp303Voice(synthIdx);
+            const int16_t note = patternMidiNotes_[idx];
+            if (note < 0) return;
+            const MusicalEventTarget target = idx == 0
+                ? MusicalEventTarget::SynthA
+                : MusicalEventTarget::SynthB;
+            if (patternEventQueue_) {
+              if (midiRenderBlockActive_) {
+                patternEventQueue_->tryPush(MusicalEvent{
+                    MusicalEventType::NoteOff,
+                    MusicalEventSource::PatternPlayer,
+                    target,
+                    0,
+                    static_cast<uint8_t>(note),
+                    velocity,
+                }, midiBlockSequence_, midiFrameOffset_);
+              } else {
+                patternEventQueue_->invalidateTarget(target);
+              }
+            }
+            patternMidiNotes_[idx] = -1;
+          }
+
+          void MiniAcid::publishPatternAllNotesOff_() {
+            for (int idx = 0; idx < NUM_303_VOICES; ++idx) {
+              if (patternEventQueue_) {
+                patternEventQueue_->invalidateTarget(
+                    idx == 0 ? MusicalEventTarget::SynthA
+                             : MusicalEventTarget::SynthB);
+              }
+              patternMidiNotes_[idx] = -1;
+            }
+          }
+
+          '''
+          # Remove workflow indentation from the generated C++ block.
+          lifecycle = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in lifecycle.splitlines()
+          ) + "\n"
+          engine = engine[:lifecycle_start] + lifecycle + engine[lifecycle_end:]
+          engine = replace_once(
+              engine,
+              "  for (size_t i = 0; i < numSamples; ++i) {\n    if (playing) {",
+              "  for (size_t i = 0; i < numSamples; ++i) {\n"
+              "    if (midiRenderBlockActive_) {\n"
+              "      midiFrameOffset_ = static_cast<uint16_t>(i);\n"
+              "    }\n"
+              "    if (playing) {",
+              "engine per-sample MIDI offset",
+          )
+          engine_path.write_text(engine, encoding="utf-8")
+
+          sketch = sketch_path.read_text(encoding="utf-8")
+          sketch = replace_once(
+              sketch,
+              '#include "src/input/musical_event_queue.h"',
+              '#include "src/midi/scheduled_musical_event_queue.h"\n'
+              '#include "src/platform/cardputer_usb_midi_service.h"',
+              "sketch scheduled MIDI includes",
+          )
+          sketch = replace_once(
+              sketch,
+              "\nvoid registerCardputerUsbMidiSink(MusicalEventRouter& router);\n",
+              "\n",
+              "remove legacy platform forward declaration",
+          )
+          sketch = replace_once(
+              sketch,
+              "static bool g_audioOutputReady = false;",
+              "static bool g_audioOutputReady = false;\n"
+              "static uint32_t g_midiBlockSequence = 0;",
+              "sketch MIDI block sequence",
+          )
+          sketch = replace_once(
+              sketch,
+              "static MusicalEventQueue g_patternMusicalEventQueue;",
+              "static ScheduledMusicalEventQueue g_patternMusicalEventQueue;",
+              "sketch scheduled queue type",
+          )
+
+          audio_start = sketch.index("void audioTask(void *param)")
+          render_start = sketch.index("    if (warmupBlocks > 0) {", audio_start)
+          render_end = sketch.index("    uint32_t dsp_time = micros() - start;", render_start)
+          render_block = '''    uint32_t midiBlockSequence = 0;
+              bool midiBlockGenerated = false;
+              if (warmupBlocks > 0) {
+                std::fill(g_audioBuffer, g_audioBuffer + kBlockFrames, 0);
+                warmupBlocks--;
+                if (warmupBlocks == 0) Serial.println("AudioTask: Warmup complete");
+              } else if (g_miniAcid) {
+                midiBlockSequence = g_midiBlockSequence++;
+                g_miniAcid->beginMidiRenderBlock(midiBlockSequence);
+                g_miniAcid->generateAudioBuffer(g_audioBuffer, kBlockFrames);
+                g_miniAcid->endMidiRenderBlock();
+                midiBlockGenerated = true;
+              } else {
+                std::fill(g_audioBuffer, g_audioBuffer + kBlockFrames, 0);
+              }
+
+          '''
+          render_block = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in render_block.splitlines()
+          ) + "\n"
+          sketch = sketch[:render_start] + render_block + sketch[render_end:]
+          sketch = replace_once(
+              sketch,
+              "    // Write to I2S. Failed writes are real output underruns and must be\n"
+              "    // visible to diagnostics and the adaptive FX safety path.\n"
+              "    if (!g_audioOut.writeMono16(g_audioBuffer, kBlockFrames)) {",
+              "    if (midiBlockGenerated) {\n"
+              "      publishCardputerUsbMidiBlockAnchor(\n"
+              "          midiBlockSequence, micros());\n"
+              "    }\n\n"
+              "    // Write to I2S. Failed writes are real output underruns and must be\n"
+              "    // visible to diagnostics and the adaptive FX safety path.\n"
+              "    if (!g_audioOut.writeMono16(g_audioBuffer, kBlockFrames)) {",
+              "AudioTask MIDI playback anchor",
+          )
+
+          drain_start = sketch.index("static void drainPatternMusicalEvents()")
+          drain_end = sketch.index("void drawUI()", drain_start)
+          sketch = sketch[:drain_start] + sketch[drain_end:]
+          sketch = replace_once(
+              sketch,
+              "  drainPatternMusicalEvents();\n",
+              "",
+              "remove Arduino loop Pattern drain",
+          )
+          sketch = replace_once(
+              sketch,
+              "  registerCardputerUsbMidiSink(g_musicalEventRouter);\n"
+              "  markBootStage(53, \"after USB MIDI sink\");",
+              "  const bool usbMidiReady = registerCardputerUsbMidiSink(\n"
+              "      g_musicalEventRouter, g_patternMusicalEventQueue);\n"
+              "  markBootStage(usbMidiReady ? 53 : 953,\n"
+              "                usbMidiReady ? \"after USB MIDI dispatcher\"\n"
+              "                             : \"USB MIDI dispatcher failed\");",
+              "sketch dispatcher registration",
+          )
+          sketch_path.write_text(sketch, encoding="utf-8")
+
+          runner = runner_path.read_text(encoding="utf-8")
+          marker = '"${BUILD_DIR}/test_scheduled_musical_event"\n\n'
+          queue_tests = '''"${CXX}" \\
+            -std=c++17 \\
+            -Wall \\
+            -Wextra \\
+            -Werror \\
+            -I"${ROOT_DIR}" \\
+            "${ROOT_DIR}/tests/test_scheduled_musical_event_queue.cpp" \\
+            -o "${BUILD_DIR}/test_scheduled_musical_event_queue"
+
+          "${BUILD_DIR}/test_scheduled_musical_event_queue"
+
+          "${CXX}" \\
+            -std=c++17 \\
+            -Wall \\
+            -Wextra \\
+            -Werror \\
+            -I"${ROOT_DIR}" \\
+            "${ROOT_DIR}/tests/test_midi_control_event_queue.cpp" \\
+            -o "${BUILD_DIR}/test_midi_control_event_queue"
+
+          "${BUILD_DIR}/test_midi_control_event_queue"
+
+          '''
+          queue_tests = "\n".join(
+              line[10:] if line.startswith("          ") else line
+              for line in queue_tests.splitlines()
+          ) + "\n"
+          runner = replace_once(
+              runner,
+              marker,
+              marker + queue_tests,
+              "host runner queue coverage",
+          )
+          runner_path.write_text(runner, encoding="utf-8")
+          PY
+
+      - name: Run host regressions
+        run: bash tests/run_host_tests.sh
+
+      - name: Commit timing integration
+        shell: bash
+        run: |
+          rm .github/workflows/apply-midi-dispatch-timing.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: route Pattern MIDI through sample-timed dispatcher"
+          git push origin HEAD:fix/usb-midi-dispatch-timing
