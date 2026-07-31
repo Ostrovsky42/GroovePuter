@@ -19,6 +19,7 @@ def main() -> None:
     internal = (ROOT / "src/input/internal_synth_output.cpp").read_text(encoding="utf-8")
     scheduled = (ROOT / "src/midi/scheduled_musical_event.h").read_text(encoding="utf-8")
     queue = (ROOT / "src/midi/scheduled_musical_event_queue.h").read_text(encoding="utf-8")
+    facade = (ROOT / "src/input/musical_event_queue.h").read_text(encoding="utf-8")
     control_queue = (ROOT / "src/midi/midi_control_event_queue.h").read_text(encoding="utf-8")
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
     build = (ROOT / "scripts/build.sh").read_text(encoding="utf-8")
@@ -59,29 +60,40 @@ def main() -> None:
             "only AudioTask may publish realtime Pattern events")
     require("invalidateTarget" in queue and "generationFor" in queue,
             "lifecycle invalidation must be target scoped")
+    require("event.type == MusicalEventType::AllNotesOff" in queue and
+            "invalidateTarget(event.target)" in queue,
+            "AllNotesOff must invalidate stale scheduled generations")
     require("takePendingAllNotesOffMask" in queue,
             "critical overflow must degrade to target-scoped cleanup")
     require("kStorageSize = 32" in control_queue,
             "live USB handoff must remain a bounded queue")
-    for path_text in (queue, control_queue):
+    for path_text in (queue, facade, control_queue):
         for token in ("std::vector", "std::deque", "new ", "malloc("):
             require(token not in path_text,
                     f"realtime MIDI queues must not allocate: {token}")
+
+    require("class MusicalEventQueue final : public ScheduledMusicalEventQueue" in facade,
+            "existing MiniAcid publication API must feed the scheduled queue")
+    require("beginMidiRenderBlock" in facade and
+            "endMidiRenderBlock" in facade and
+            "setPhaseReader" in facade,
+            "compatibility facade must own the render timing bracket")
+    require("phaseReader_(phaseReaderContext_)" in facade and
+            "renderBlockSequence_" in facade and
+            "frame" in facade,
+            "frame offsets must be calculated at the exact event publication point")
+    require("if (!renderBlockActive_)" in facade and
+            "suppressNonRealtimeEvent(event)" in facade,
+            "offline rendering must not enqueue render-speed MIDI bursts")
 
     require("publishPatternNoteOn_" in engine and
             "publishPatternNoteOff_" in engine and
             "publishPatternAllNotesOff_" in engine,
             "PatternPlayer lifecycle must publish normalized events")
-    require("beginMidiRenderBlock" in engine and
-            "endMidiRenderBlock" in engine and
-            "midiFrameOffset_ = static_cast<uint16_t>(i)" in engine,
-            "engine must attach the current sample offset to Pattern events")
-    require("ScheduledMusicalEventQueue* patternEventQueue_" in engine_h,
-            "engine must publish to the timestamped queue")
-    require("patternEventQueue_->tryPush(event," in engine,
-            "Pattern events must include block and frame timing")
-    require("patternEventQueue_->invalidateTarget" in engine,
-            "lifecycle cleanup must invalidate stale queued events")
+    require("MusicalEventQueue* patternEventQueue_" in engine_h,
+            "engine must retain the established queue abstraction")
+    require("patternEventQueue_->tryPush(event)" in engine,
+            "Pattern events must enter the timing facade at publication time")
 
     scene_apply = engine.index("void MiniAcid::applySceneStateFromManager()")
     scene_body = engine[scene_apply:scene_apply + 260]
@@ -98,21 +110,26 @@ def main() -> None:
     render_body = engine[render_start:render_start + 5200]
     require("stop();" in render_body and "generateAudioBuffer" in render_body,
             "offline render must remain synchronous")
-    require("if (!patternEventQueue_ || !midiRenderBlockActive_) return;" in engine,
-            "offline render must not publish render-speed NoteOn bursts")
 
     setup_start = sketch.index("void setup()")
     loop_start = sketch.index("void loop()")
-    require("setPatternEventQueue(&g_patternMusicalEventQueue)" in sketch[setup_start:loop_start],
-            "setup must connect PatternPlayer to the scheduled queue")
+    require("setPhaseReader" in sketch[setup_start:loop_start] and
+            "setPatternEventQueue(&g_patternMusicalEventQueue)" in sketch[setup_start:loop_start],
+            "setup must connect MiniAcid phase and events to the scheduled facade")
     require("drainPatternMusicalEvents" not in sketch,
             "Arduino loop must no longer dispatch Pattern MIDI")
     require("beginMidiRenderBlock" in sketch and
+            "endMidiRenderBlock" in sketch and
             "publishCardputerUsbMidiBlockAnchor" in sketch,
-            "AudioTask must establish sample block timing")
+            "AudioTask must establish and publish sample-block timing")
+    require("readPatternSequencerPhase" in sketch,
+            "AudioTask timing must use MiniAcid's sequencer phase")
     require('xTaskCreatePinnedToCore(audioTask, "AudioTask"' in sketch,
             "realtime publication depends on the pinned AudioTask identity")
 
+    registration_call = "registerCardputerUsbMidiSink(\n      g_musicalEventRouter, g_patternMusicalEventQueue)"
+    require(registration_call in sketch[setup_start:loop_start],
+            "setup must register the single USB owner with the scheduled queue")
     require("router.addSink(g_queueSink)" in transport,
             "live USB events must enter the dispatcher through a bounded sink")
     require("midiDispatchTask" in transport and
