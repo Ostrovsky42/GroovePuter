@@ -19,6 +19,14 @@ public:
     virtual bool sendNoteOff(uint8_t zeroBasedChannel,
                              uint8_t note,
                              uint8_t velocity) = 0;
+
+    // Strict System Real-Time surface: callers cannot use this interface as an
+    // arbitrary System Common/SysEx escape hatch. Default false implementations
+    // preserve non-transport test doubles while hardware transports opt in.
+    virtual bool sendTimingClock() { return false; }
+    virtual bool sendStart() { return false; }
+    virtual bool sendStop() { return false; }
+
     virtual void flush() = 0;
 };
 

@@ -29,6 +29,9 @@ public:
     bool sendNoteOff(uint8_t zeroBasedChannel,
                      uint8_t note,
                      uint8_t velocity) override;
+    bool sendTimingClock() override;
+    bool sendStart() override;
+    bool sendStop() override;
     void flush() override;
 
 private:
@@ -39,6 +42,7 @@ private:
                             uint8_t zeroBasedChannel,
                             uint8_t note,
                             uint8_t velocity);
+    bool writeRealtimePacket(uint8_t status);
 
     USBMIDI midi_;
     bool begun_{false};
