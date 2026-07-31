@@ -1,3 +1,4 @@
+#include "../src/midi/pattern_drum_gate_scheduler.h"
 #include "../src/midi/scheduled_musical_event_queue.h"
 
 #include <cassert>
@@ -17,6 +18,21 @@ MusicalEvent noteEvent(MusicalEventType type,
         note,
         100,
     };
+}
+
+ScheduledMusicalEvent scheduledDrumHit(uint8_t voice,
+                                       uint32_t block,
+                                       uint16_t frame,
+                                       uint32_t generation = 0,
+                                       uint32_t publication = 1) {
+    ScheduledMusicalEvent scheduled{};
+    scheduled.event = noteEvent(
+        MusicalEventType::NoteOn, MusicalEventTarget::Drums, 60, voice);
+    scheduled.blockSequence = block;
+    scheduled.frameOffset = frame;
+    scheduled.generation = generation;
+    scheduled.publicationSequence = publication;
+    return scheduled;
 }
 
 void testTimestampAndPublicationOrder() {
@@ -102,6 +118,77 @@ void testLifecycleBarrier() {
     assert(!queue.tryPop(stale));
 }
 
+void testPatternDrumGateUsesSampleTimeline() {
+    PatternDrumGateScheduler gates;
+    const ScheduledMusicalEvent kick = scheduledDrumHit(0, 10, 50);
+    assert(gates.scheduleOrExtend(kick, 80, 1000, 100));
+    assert(gates.activeCount() == 1);
+    assert(gates.releaseCount(0) == 1);
+
+    ScheduledMusicalEvent gate{};
+    assert(gates.peekEarliest(gate));
+    assert(gate.event.type == MusicalEventType::NoteOff);
+    assert(gate.event.target == MusicalEventTarget::Drums);
+    assert(gate.event.channel == 0);
+    assert(gate.event.note == 60);
+    // 80 frames after block 10 / frame 50 => block 11 / frame 30.
+    assert(gate.blockSequence == 11);
+    assert(gate.frameOffset == 30);
+}
+
+void testPatternDrumRetrigExtendsGateAndRetainsReleaseCount() {
+    PatternDrumGateScheduler gates;
+    assert(gates.scheduleOrExtend(scheduledDrumHit(2, 10, 50, 3, 1),
+                                  80, 1000, 100));
+    assert(gates.scheduleOrExtend(scheduledDrumHit(2, 11, 0, 3, 2),
+                                  80, 1000, 100));
+    assert(gates.releaseCount(2) == 2);
+
+    ScheduledMusicalEvent gate{};
+    assert(gates.peekEarliest(gate));
+    assert(gate.event.channel == 2);
+    // The stale block 11 / frame 30 gate was replaced; the retrigger owns an
+    // extended deadline at block 11 / frame 80.
+    assert(gate.blockSequence == 11);
+    assert(gate.frameOffset == 80);
+    assert(gate.generation == 3);
+    assert(gate.publicationSequence == 2);
+}
+
+void testPatternDrumGateOrderingAndClear() {
+    PatternDrumGateScheduler gates;
+    assert(gates.scheduleOrExtend(scheduledDrumHit(6, 20, 90),
+                                  50, 1000, 100));
+    assert(gates.scheduleOrExtend(scheduledDrumHit(1, 20, 10),
+                                  50, 1000, 100));
+
+    ScheduledMusicalEvent earliest{};
+    assert(gates.peekEarliest(earliest));
+    assert(earliest.event.channel == 1);
+    assert(earliest.blockSequence == 20);
+    assert(earliest.frameOffset == 60);
+
+    gates.consume(1);
+    assert(!gates.active(1));
+    assert(gates.active(6));
+    assert(gates.releaseCount(1) == 0);
+    gates.clear();
+    assert(gates.activeCount() == 0);
+    assert(!gates.peekEarliest(earliest));
+}
+
+void testPatternDrumGateRejectsInvalidEvents() {
+    PatternDrumGateScheduler gates;
+    ScheduledMusicalEvent invalid = scheduledDrumHit(8, 1, 0);
+    assert(!gates.scheduleOrExtend(invalid, 80, 1000, 100));
+    invalid = scheduledDrumHit(0, 1, 0);
+    invalid.event.target = MusicalEventTarget::SynthA;
+    assert(!gates.scheduleOrExtend(invalid, 80, 1000, 100));
+    invalid = scheduledDrumHit(0, 1, 0);
+    invalid.event.type = MusicalEventType::NoteOff;
+    assert(!gates.scheduleOrExtend(invalid, 80, 1000, 100));
+}
+
 void testNoteOnOverflowIsObservableWithoutPanic() {
     ScheduledMusicalEventQueue queue;
     for (std::size_t i = 0; i < ScheduledMusicalEventQueue::kCapacity; ++i) {
@@ -171,6 +258,10 @@ int main() {
     testGenerationInvalidation();
     testDrumGenerationIsIndependent();
     testLifecycleBarrier();
+    testPatternDrumGateUsesSampleTimeline();
+    testPatternDrumRetrigExtendsGateAndRetainsReleaseCount();
+    testPatternDrumGateOrderingAndClear();
+    testPatternDrumGateRejectsInvalidEvents();
     testNoteOnOverflowIsObservableWithoutPanic();
     testCriticalOverflowInvalidatesTarget();
     testDrumCriticalOverflowRequestsDrumPanic();
