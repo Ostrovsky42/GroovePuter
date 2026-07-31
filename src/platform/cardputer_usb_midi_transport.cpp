@@ -750,7 +750,10 @@ bool CardputerUsbMidiTransport::begin() {
 }
 
 bool CardputerUsbMidiTransport::mounted() const {
-    return begun_ && static_cast<bool>(USB);
+    // ESPUSB reports the whole composite as mounted once CDC is configured.
+    // MIDI can still be unavailable while its interface is being claimed, so
+    // use the class-specific TinyUSB state before accepting output packets.
+    return begun_ && tud_midi_mounted();
 }
 
 bool CardputerUsbMidiTransport::writeChannelPacket(uint8_t codeIndex,
