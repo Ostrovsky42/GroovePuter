@@ -22,9 +22,13 @@
 // Master switch - comment out to disable ALL logging
 #define DEBUG_ENABLED 1
 
-// Default log level (0=OFF, 1=ERROR, 2=WARN, 3=INFO, 4=DEBUG)
+// Default hardware/runtime level is WARN. DEBUG/INFO serial output is useful
+// when explicitly requested, but synchronous verbose logging competes with UI
+// transitions and the realtime audio workload on Cardputer-Adv.
+// Override with -DDEBUG_LEVEL=3/4 for focused diagnostics.
+// Levels: 0=OFF, 1=ERROR, 2=WARN, 3=INFO, 4=DEBUG.
 #ifndef DEBUG_LEVEL
-  #define DEBUG_LEVEL 4
+  #define DEBUG_LEVEL 2
 #endif
 
 // ============================================================================
