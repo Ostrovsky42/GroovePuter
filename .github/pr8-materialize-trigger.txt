@@ -1,1 +1,1 @@
-Trigger PR #8 materialization after the helper workflow exists on the branch.
+Trigger PR #8 materialization diagnostics after the diagnostic workflow exists.
