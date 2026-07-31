@@ -22,6 +22,7 @@
 #include "src/ui/key_normalize.h"
 #include "src/input/performance_keyboard.h"
 #include "src/input/internal_synth_output.h"
+#include "src/input/musical_event_queue.h"
 #include "src/ui/workflow_mode.h"
 #include <new>
 
@@ -39,6 +40,7 @@ RamSampleStore g_sampleStore;
 
 static AudioOutI2S g_audioOut;
 static int16_t g_audioBuffer[kBlockFrames];
+static bool g_audioOutputReady = false;
 
 TaskHandle_t g_audioTaskHandle = nullptr;
 static AudioMutationGate g_audioMutationGate;
@@ -48,6 +50,7 @@ static uint32_t g_peakUiDrawUs = 0;
 // Static engine instance to avoid heap fragmentation
 static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);
 static MusicalEventRouter g_musicalEventRouter;
+static MusicalEventQueue g_patternMusicalEventQueue;
 static PerformanceKeyboard g_performanceKeyboard(g_musicalEventRouter);
 static InternalSynthOutput g_internalSynthOutput(g_miniAcidInstance, g_audioMutationGate);
 static uint32_t g_lastLiveInputEpoch = 0;
@@ -72,8 +75,7 @@ static void markBootStage(uint32_t stage, const char* msg = nullptr) {
 void audioTask(void *param) {
   Serial.println("AudioTask: Starting...");
 
-  // Initialize I2S audio output
-  if (!g_audioOut.begin(kSampleRate, kBlockFrames)) {
+  if (!g_audioOutputReady) {
     Serial.println("[FATAL] I2S audio init failed");
     while (true) { delay(1000); }
   }
@@ -155,6 +157,36 @@ void audioTask(void *param) {
 }
 
 
+static void drainPatternMusicalEvents() {
+  MusicalEvent event{};
+  std::size_t drained = 0;
+  while (drained < MusicalEventQueue::kCapacity &&
+         g_patternMusicalEventQueue.tryPop(event)) {
+    g_musicalEventRouter.route(event);
+    ++drained;
+  }
+
+  // Critical events that could not enter a full queue degrade to a final
+  // target-scoped PatternPlayer panic after all queued events are drained.
+  const uint8_t panicMask = g_patternMusicalEventQueue.takePendingAllNotesOffMask();
+  if (panicMask & MusicalEventQueue::kSynthAMask) {
+    g_musicalEventRouter.route(MusicalEvent{
+        MusicalEventType::AllNotesOff,
+        MusicalEventSource::PatternPlayer,
+        MusicalEventTarget::SynthA,
+        0, 0, 0,
+    });
+  }
+  if (panicMask & MusicalEventQueue::kSynthBMask) {
+    g_musicalEventRouter.route(MusicalEvent{
+        MusicalEventType::AllNotesOff,
+        MusicalEventSource::PatternPlayer,
+        MusicalEventTarget::SynthB,
+        0, 0, 0,
+    });
+  }
+}
+
 void drawUI() {
   const uint32_t startedAt = micros();
   if (g_miniDisplay) g_miniDisplay->update();
@@ -191,24 +223,17 @@ void setup() {
   Serial.printf("[BOOT] Previous stage retained: %u\n", (unsigned)prevBootStage);
   markBootStage(1, "setup-entry");
   auto cfg = M5.config();
+  // GroovePuter owns the ES8311 I2S bus. Keep M5Unified from creating either
+  // audio channel; the codec is configured directly below over I2C.
+  cfg.internal_mic = false;
+  cfg.internal_spk = false;
   markBootStage(10, "before M5Cardputer.begin");
   M5Cardputer.begin(cfg);
   markBootStage(11, "after M5Cardputer.begin");
-  
-  // 1. Let M5Unified initialize the ES8311 codec over I2C.
-  // This wakes up the codec, sets output volumes, etc.
-  markBootStage(20, "before Speaker.begin");
-  M5Cardputer.Speaker.setVolume(220); 
-  M5Cardputer.Speaker.begin();
-  M5Cardputer.Speaker.setVolume(220);
-  
-  // 2. Release Port 0 while keeping I2C settings
-  // Speaker.end() releases I2S but powers down the codec (0x01 = 0x80).
-  // We MUST re-enable power (0x01 = 0x32) manually via I2C and ensure unmute.
-  M5Cardputer.Speaker.end(); 
-  
-  // 3. Re-initialize ES8311 registers specifically for custom I2S
-  // This matches M5Unified CardputerADV init sequence for ES8311 exactly
+
+  // Configure ES8311 without creating a temporary M5Unified I2S channel.
+  // These values match M5Unified's Cardputer ADV speaker callback.
+  markBootStage(20, "before ES8311 config");
   const uint8_t es8311_addr = GroovePuterHardware::kEs8311I2cAddress;
   M5Cardputer.In_I2C.writeRegister8(es8311_addr, 0x00, 0x80, 100000); // RESET / CSM POWER ON
   M5Cardputer.In_I2C.writeRegister8(es8311_addr, 0x01, 0xB5, 100000); // CLOCK_MANAGER: MCLK=BCLK
@@ -220,6 +245,15 @@ void setup() {
   M5Cardputer.In_I2C.writeRegister8(es8311_addr, 0x37, 0x08, 100000); // DAC: Bypass DAC equalizer
   
   Serial.println("[Audio] ES8311 custom I2C Config complete (MCLK derived from BCLK)");
+
+  // Reserve the I2S channel and DMA while internal RAM is still contiguous.
+  // Starting the audio task later keeps setup and driver initialization
+  // serialized on one task.
+  markBootStage(21, "before direct I2S init");
+  g_audioOutputReady = g_audioOut.begin(kSampleRate, kBlockFrames);
+  markBootStage(g_audioOutputReady ? 22 : 922,
+                g_audioOutputReady ? "after direct I2S init"
+                                   : "direct I2S init failed");
   
   // Seed random number generator with hardware RNG
   srand(esp_random());
@@ -288,6 +322,7 @@ void setup() {
   g_miniAcid->sampleStore = &g_sampleStore;
   markBootStage(50, "before MiniAcid::init");
   g_miniAcid->init();
+  g_miniAcid->setPatternEventQueue(&g_patternMusicalEventQueue);
   g_musicalEventRouter.addSink(g_internalSynthOutput);
   g_lastLiveInputEpoch = g_miniAcid->liveInputEpoch();
   markBootStage(51, "after MiniAcid::init");
@@ -389,6 +424,7 @@ void setup() {
 void loop() {
   M5Cardputer.update();
   LedManager::instance().update();
+  drainPatternMusicalEvents();
 
   if (g_miniAcid && g_miniDisplay) {
     g_performanceKeyboard.setEnabled(

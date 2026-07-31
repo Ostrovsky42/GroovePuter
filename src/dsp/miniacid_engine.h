@@ -43,6 +43,8 @@ static const int kPPQN = 96;                 // Pulses Per Quarter Note
 static const int NUM_303_VOICES = 2;
 static const int NUM_DRUM_VOICES = DrumPatternSet::kVoices;
 
+class MusicalEventQueue;
+
 // ===================== Parameters =====================
 
 class TempoDelay {
@@ -111,6 +113,7 @@ public:
   void liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity);
   void liveNoteOff(int synthIndex, uint8_t midiNote);
   void allLiveNotesOff();
+  void setPatternEventQueue(MusicalEventQueue* queue);
   int liveNote(int synthIndex) const;
   uint32_t liveInputEpoch() const { return liveInputEpoch_; }
 
@@ -361,6 +364,9 @@ private:
   void advanceTick();
   void processSequencerEvents(uint32_t absoluteTick);
   void triggerSynthStep_(int synthIdx, int stepIdx);
+  void publishPatternNoteOn_(int synthIdx, uint8_t note, uint8_t velocity);
+  void publishPatternNoteOff_(int synthIdx, uint8_t velocity = 0);
+  void publishPatternAllNotesOff_();
   void triggerDrumVoice_(int voiceIdx, int stepIdx);
   void advanceSongStep_();
 
@@ -440,6 +446,8 @@ private:
   long gateCountdownA_ = 0;
   long gateCountdownB_ = 0;
   int16_t liveNotes_[NUM_303_VOICES] = {-1, -1};
+  MusicalEventQueue* patternEventQueue_ = nullptr;
+  int16_t patternMidiNotes_[NUM_303_VOICES] = {-1, -1};
   uint32_t liveInputEpoch_ = 0;
   bool songMode_;
   int drumCycleIndex_;
