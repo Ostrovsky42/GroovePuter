@@ -28,11 +28,17 @@ public:
                  uint32_t blockSequence,
                  uint16_t frameOffset) {
         if (!isRealtimeProducerContext()) {
-            suppressedNonRealtime_.incrementRelaxed();
-            if (event.type != MusicalEventType::NoteOn) {
-                invalidateTarget(event.target);
-            }
-            return false;
+            return suppressNonRealtimeEvent(event);
+        }
+
+        // AllNotesOff is a lifecycle barrier rather than an ordinary scheduled
+        // note. Advance the target generation immediately so already queued
+        // events cannot be replayed after Stop, scene/Song changes or recovery.
+        // MidiDispatchTask consumes the pending target-scoped panic before it
+        // dispatches any event from the new generation.
+        if (event.type == MusicalEventType::AllNotesOff) {
+            invalidateTarget(event.target);
+            return true;
         }
 
         const uint32_t head = head_.loadRelaxed();
@@ -96,6 +102,18 @@ public:
             mask |= kSynthBMask;
         }
         return mask;
+    }
+
+    // Used by the compatibility facade when publication happens outside the
+    // realtime AudioTask render bracket (notably synchronous WAV export and
+    // control-plane lifecycle calls). NoteOn is suppressed; critical events
+    // invalidate the target and request final cleanup.
+    bool suppressNonRealtimeEvent(const MusicalEvent& event) {
+        suppressedNonRealtime_.incrementRelaxed();
+        if (event.type != MusicalEventType::NoteOn) {
+            invalidateTarget(event.target);
+        }
+        return false;
     }
 
     // Call only when AudioTask publication is quiescent under AudioMutationGate.
