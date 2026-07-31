@@ -17,6 +17,8 @@ def main() -> None:
     transport = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
     engine_h = (ROOT / "src/dsp/miniacid_engine.h").read_text(encoding="utf-8")
+    drum_tap = (ROOT / "src/dsp/pattern_drum_event_tap.h").read_text(encoding="utf-8")
+    drum_gate = (ROOT / "src/midi/pattern_drum_gate_scheduler.h").read_text(encoding="utf-8")
     internal = (ROOT / "src/input/internal_synth_output.cpp").read_text(encoding="utf-8")
     scheduled = (ROOT / "src/midi/scheduled_musical_event.h").read_text(encoding="utf-8")
     queue = (ROOT / "src/midi/scheduled_musical_event_queue.h").read_text(encoding="utf-8")
@@ -40,9 +42,9 @@ def main() -> None:
             "MusicalEventTarget::SynthB" in sink and
             "MusicalEventTarget::Drums" in sink and
             "MusicalEventTarget::Dx" in sink,
-            "USB output must retain Synth A/B and add live Drums/DX targets")
-    require("kLaneCount = 12" in sink_h,
-            "USB output must keep fixed ownership for A/B/DX, seven drums and Pattern A/B")
+            "USB output must retain Synth A/B, Drums and DX targets")
+    require("kLaneCount = 20" in sink_h,
+            "USB output must own live A/B/DX + seven live drums + Pattern A/B + eight Pattern drum voices")
     constructor_end = sink.index("uint8_t UsbMidiOutput::clampChannel")
     constructor = sink[:constructor_end]
     require("MusicalEventSource::PerformanceKeyboard,\n        MusicalEventTarget::Dx" in constructor,
@@ -50,20 +52,27 @@ def main() -> None:
     require("drumChannel < kSeqtrakDrumLaneCount" in constructor and
             "MusicalEventTarget::Drums" in constructor,
             "native Drums must construct seven live lanes")
-    require("MusicalEventSource::PatternPlayer,\n        MusicalEventTarget::Drums" not in constructor,
-            "PatternPlayer must remain limited to Synth A/B in this integration step")
+    require("voice < kPatternDrumVoiceCount" in constructor and
+            "MusicalEventSource::PatternPlayer,\n            MusicalEventTarget::Drums" in constructor,
+            "PatternPlayer must construct all eight internal drum voice lanes")
+    require("patternDrumChannel" in sink and
+            "0, 1, 3, 4, 5, 6, 5, 2" in sink,
+            "Pattern drums must map eight internal voices onto native SEQTRAK CH1..7")
     require("wireOwners_[kMidiChannelCount][kMidiNoteCount]" in sink_h,
             "logical lanes sharing a MIDI channel need wire-level ownership")
+    require("activeCount" in sink_h and "acquirePercussiveNote" in sink,
+            "retriggered Pattern drums must retain bounded per-lane ownership")
     require("pendingRelease" in sink_h and "pendingRelease" in sink,
             "failed replacement NoteOff must remain retryable")
     require("patternSynthAChannel{7}" in sink_h and
             "patternSynthBChannel{8}" in sink_h,
-            "PatternPlayer routes must remain MIDI channels 8 and 9")
+            "PatternPlayer synth routes must remain MIDI channels 8 and 9")
     require("performanceSynthBChannel{8}" in sink_h and
             "performanceDxChannel{9}" in sink_h,
             "live Synth B and DX defaults must be MIDI channels 9 and 10")
-    require("kSeqtrakDrumLaneCount = 7" in sink_h,
-            "live native Drums must expose exactly SEQTRAK CH1..7")
+    require("kSeqtrakDrumLaneCount = 7" in sink_h and
+            "kPatternDrumVoiceCount = 8" in sink_h,
+            "live and Pattern drum topology must remain explicit")
 
     for token in ("blockSequence", "frameOffset", "generation",
                   "publicationSequence"):
@@ -78,6 +87,9 @@ def main() -> None:
             "Pattern MIDI queue must remain fixed and bounded")
     require("pcTaskGetName(nullptr)" in queue and '"AudioTask"' in queue,
             "only AudioTask may publish realtime Pattern events")
+    require("kDrumsMask" in queue and "drumsGeneration_" in queue and
+            "pendingDrumsEpoch_" in queue,
+            "Pattern Drums must have independent generation and panic state")
     require("invalidateTarget" in queue and "generationFor" in queue,
             "lifecycle invalidation must be target scoped")
     require("event.type == MusicalEventType::AllNotesOff" in queue and
@@ -91,10 +103,10 @@ def main() -> None:
             "live Drums overflow must retain a scoped cleanup path")
     require("kDxMask" in control_queue and "pendingDxEpoch_" in control_queue,
             "live DX overflow must retain a scoped cleanup path")
-    for path_text in (queue, facade, control_queue):
+    for path_text in (queue, facade, control_queue, drum_gate):
         for token in ("std::vector", "std::deque", "new ", "malloc("):
             require(token not in path_text,
-                    f"realtime MIDI queues must not allocate: {token}")
+                    f"realtime MIDI queues/gates must not allocate: {token}")
 
     require("class MusicalEventQueue final : public ScheduledMusicalEventQueue" in facade,
             "existing MiniAcid publication API must feed the scheduled queue")
@@ -113,18 +125,45 @@ def main() -> None:
     require("publishPatternNoteOn_" in engine and
             "publishPatternNoteOff_" in engine and
             "publishPatternAllNotesOff_" in engine,
-            "PatternPlayer lifecycle must publish normalized events")
-    require("MusicalEventQueue* patternEventQueue_" in engine_h,
-            "engine must retain the established queue abstraction")
+            "PatternPlayer synth lifecycle must keep normalized publication")
+    require("PatternEventQueueHandle patternEventQueue_" in engine_h and
+            'include "pattern_drum_event_tap.h"' in engine_h,
+            "MiniAcid must retain one facade while enabling the drum trigger tap")
+    require("PatternPublishingDrumVoice drums" in engine_h,
+            "all internal drum engines must pass through the shared Pattern trigger decorator")
     require("patternEventQueue_->tryPush(event)" in engine,
-            "Pattern events must enter the timing facade at publication time")
+            "Pattern synth events must enter the timing facade at publication time")
+    require("publishPatternDrumTrigger" in drum_tap and
+            "MusicalEventSource::PatternPlayer" in drum_tap and
+            "MusicalEventTarget::Drums" in drum_tap,
+            "actual drum trigger calls must publish normalized PatternPlayer/Drums NoteOn events")
+    for trigger in ("triggerKick", "triggerSnare", "triggerHat", "triggerOpenHat",
+                    "triggerMidTom", "triggerHighTom", "triggerRim", "triggerClap"):
+        require(trigger in drum_tap,
+                f"drum tap must cover sequenced voice trigger {trigger}")
+    require("event.target == MusicalEventTarget::SynthB" in drum_tap and
+            "MusicalEventType::AllNotesOff" in drum_tap and
+            "MusicalEventTarget::Drums" in drum_tap,
+            "existing Pattern lifecycle barriers must also invalidate Drums")
+    require("USBMIDI" not in drum_tap and "TinyUSB" not in drum_tap,
+            "DSP drum tap must not know the physical USB transport")
+
+    require("class PatternDrumGateScheduler" in drum_gate and
+            "scheduleOrExtend" in drum_gate and "releaseCount" in drum_gate,
+            "Pattern drum NoteOff must use a bounded retrigger-aware gate scheduler")
+    require("blockSequence" in drum_gate and "frameOffset" in drum_gate and
+            "sampleRate" in drum_gate and "blockFrames" in drum_gate,
+            "drum gate timing must remain in the sample/block timeline")
+    require("millis()" not in drum_gate and "micros()" not in drum_gate and
+            "vTaskDelay" not in drum_gate and "delay(" not in drum_gate,
+            "Pattern drum gate scheduler must not become a wall-clock scheduler")
 
     scene_apply = engine.index("void MiniAcid::applySceneStateFromManager()")
     scene_body = engine[scene_apply:scene_apply + 260]
     require("if (playing) publishPatternAllNotesOff_();" in scene_body,
             "scene application must release stale PatternPlayer ownership")
     require("MusicalEventSource::PatternPlayer" in engine,
-            "engine events must identify PatternPlayer as their source")
+            "engine synth events must identify PatternPlayer as their source")
     require("USBMIDI" not in engine and "TinyUSB" not in engine,
             "DSP engine must not depend on hardware USB APIs")
     require("event.source == MusicalEventSource::PatternPlayer" in internal,
@@ -166,6 +205,15 @@ def main() -> None:
             "dispatcher must reject stale generations")
     require("deadlineFor" in transport and "frameOffset" in transport,
             "dispatcher must convert sample offsets into deadlines")
+    require("PatternDrumGateScheduler g_patternDrumGates" in transport and
+            "g_patternDrumGates.scheduleOrExtend" in transport and
+            "PatternDrumGateScheduler" in transport,
+            "existing MidiDispatchTask must own the bounded Pattern drum gate state")
+    require("GroovePuterMidi::kDefaultDrumGateMs" in transport,
+            "Pattern drums must use the companion profile gate default")
+    require("ScheduledMusicalEventQueue::kDrumsMask" in transport and
+            "g_patternDrumGates.clear()" in transport,
+            "Pattern drum lifecycle cleanup must clear both gates and wire ownership")
     require("g_output.handleMusicalEvent" in transport,
             "only the dispatcher translation unit may mutate UsbMidiOutput")
     require("MidiControlEventQueue::kDrumsMask" in transport and
