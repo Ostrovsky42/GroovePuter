@@ -103,6 +103,7 @@ void UsbMidiOutput::setEnabled(bool enabled) {
     if (!enabled) {
         pollConnection();
         releaseAllActiveNotes();
+        releaseAllSmfNotes();
     }
     enabled_ = enabled;
 }
@@ -189,6 +190,12 @@ uint8_t UsbMidiOutput::wireOwnerCount(uint8_t zeroBasedChannel,
     return wireOwners_[clampChannel(zeroBasedChannel)][clampDataByte(note)];
 }
 
+uint8_t UsbMidiOutput::smfOwnerCount(uint8_t zeroBasedChannel,
+                                     uint8_t note) const {
+    if (!begun_) return 0;
+    return smfOwners_[clampChannel(zeroBasedChannel)][clampDataByte(note)];
+}
+
 bool UsbMidiOutput::accepts(const MidiVoiceLane* lane) const {
     return enabled_ && begun_ && mounted_ && lane && lane->enabled;
 }
@@ -269,6 +276,93 @@ void UsbMidiOutput::releaseAllActiveNotes() {
     }
 }
 
+bool UsbMidiOutput::handleSmfNoteOn(uint8_t zeroBasedChannel,
+                                    uint8_t note,
+                                    uint8_t velocity) {
+    pollConnection();
+    if (!enabled_ || !begun_ || !mounted_) return false;
+
+    const uint8_t channel = clampChannel(zeroBasedChannel);
+    note = clampDataByte(note);
+    velocity = clampDataByte(velocity);
+    if (velocity < 1) velocity = 1;
+
+    if (!transport_.sendNoteOn(channel, note, velocity)) return false;
+    transport_.flush();
+
+    uint8_t& smfOwners = smfOwners_[channel][note];
+    uint8_t& wireOwners = wireOwners_[channel][note];
+    if (smfOwners < 255) ++smfOwners;
+    if (wireOwners < 255) ++wireOwners;
+    return true;
+}
+
+bool UsbMidiOutput::handleSmfNoteOff(uint8_t zeroBasedChannel,
+                                     uint8_t note,
+                                     uint8_t velocity) {
+    pollConnection();
+    const uint8_t channel = clampChannel(zeroBasedChannel);
+    note = clampDataByte(note);
+    velocity = clampDataByte(velocity);
+
+    uint8_t& smfOwners = smfOwners_[channel][note];
+    uint8_t& wireOwners = wireOwners_[channel][note];
+    if (smfOwners == 0) return true;
+
+    if (wireOwners > 1) {
+        --smfOwners;
+        --wireOwners;
+        return true;
+    }
+
+    if (wireOwners == 0) {
+        smfOwners = 0;
+        return true;
+    }
+
+    if (!mounted_ || !transport_.sendNoteOff(channel, note, velocity)) {
+        return false;
+    }
+    transport_.flush();
+    smfOwners = 0;
+    wireOwners = 0;
+    return true;
+}
+
+bool UsbMidiOutput::releaseAllSmfNotes() {
+    pollConnection();
+    bool allReleased = true;
+    for (std::size_t channel = 0; channel < kMidiChannelCount; ++channel) {
+        for (std::size_t note = 0; note < kMidiNoteCount; ++note) {
+            uint8_t& smfOwners = smfOwners_[channel][note];
+            if (smfOwners == 0) continue;
+
+            uint8_t& wireOwners = wireOwners_[channel][note];
+            const uint8_t otherOwners = wireOwners > smfOwners
+                ? static_cast<uint8_t>(wireOwners - smfOwners)
+                : 0;
+
+            if (otherOwners > 0) {
+                wireOwners = otherOwners;
+                smfOwners = 0;
+                continue;
+            }
+
+            if (!mounted_ || !transport_.sendNoteOff(
+                    static_cast<uint8_t>(channel),
+                    static_cast<uint8_t>(note),
+                    0)) {
+                allReleased = false;
+                continue;
+            }
+            transport_.flush();
+            wireOwners = 0;
+            smfOwners = 0;
+        }
+    }
+    return allReleased;
+}
+
 void UsbMidiOutput::clearActiveState() {
     for (std::size_t i = 0; i < kLaneCount; ++i) {
         lanes_[i].activeNote = -1;
@@ -277,6 +371,7 @@ void UsbMidiOutput::clearActiveState() {
     for (std::size_t channel = 0; channel < kMidiChannelCount; ++channel) {
         for (std::size_t note = 0; note < kMidiNoteCount; ++note) {
             wireOwners_[channel][note] = 0;
+            smfOwners_[channel][note] = 0;
         }
     }
 }

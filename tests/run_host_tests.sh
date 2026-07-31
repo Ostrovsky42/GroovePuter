@@ -113,6 +113,66 @@ python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_document.cpp" \
+  "${ROOT_DIR}/src/midi/smf_document.cpp" \
+  -o "${BUILD_DIR}/test_smf_document"
+
+"${BUILD_DIR}/test_smf_document"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_timing.cpp" \
+  "${ROOT_DIR}/src/midi/smf_timing.cpp" \
+  -o "${BUILD_DIR}/test_smf_timing"
+
+"${BUILD_DIR}/test_smf_timing"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_scheduler.cpp" \
+  "${ROOT_DIR}/src/midi/smf_scheduler.cpp" \
+  "${ROOT_DIR}/src/midi/smf_timing.cpp" \
+  -o "${BUILD_DIR}/test_smf_scheduler"
+
+"${BUILD_DIR}/test_smf_scheduler"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_stream.cpp" \
+  "${ROOT_DIR}/src/midi/smf_stream.cpp" \
+  -o "${BUILD_DIR}/test_smf_stream"
+
+"${BUILD_DIR}/test_smf_stream"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_scheduled_smf_midi_event_queue.cpp" \
+  -o "${BUILD_DIR}/test_scheduled_smf_midi_event_queue"
+
+"${BUILD_DIR}/test_scheduled_smf_midi_event_queue"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_midi_control_event_queue.cpp" \
   -o "${BUILD_DIR}/test_midi_control_event_queue"
 
@@ -142,6 +202,18 @@ python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
   -o "${BUILD_DIR}/test_usb_midi_output"
 
 "${BUILD_DIR}/test_usb_midi_output"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_usb_midi_smf_output.cpp" \
+  "${ROOT_DIR}/src/midi/usb_midi_output.cpp" \
+  -o "${BUILD_DIR}/test_usb_midi_smf_output"
+
+"${BUILD_DIR}/test_usb_midi_smf_output"
 
 "${CXX}" \
   -std=c++17 \
