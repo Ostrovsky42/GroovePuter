@@ -19,14 +19,13 @@
 #include "src/audio/audio_diagnostics.h"
 #include "src/audio/audio_mutation_gate.h"
 #include "src/platform/cardputer_adv_hardware.h"
+#include "src/platform/cardputer_usb_midi_service.h"
 #include "src/ui/key_normalize.h"
 #include "src/input/performance_keyboard.h"
 #include "src/input/internal_synth_output.h"
 #include "src/input/musical_event_queue.h"
 #include "src/ui/workflow_mode.h"
 #include <new>
-
-void registerCardputerUsbMidiSink(MusicalEventRouter& router);
 
 static constexpr IGfxColor CP_BLACK = IGfxColor::Black();
 
@@ -41,6 +40,7 @@ RamSampleStore g_sampleStore;
 static AudioOutI2S g_audioOut;
 static int16_t g_audioBuffer[kBlockFrames];
 static bool g_audioOutputReady = false;
+static uint32_t g_audioMidiBlockSequence = 0;
 
 TaskHandle_t g_audioTaskHandle = nullptr;
 static AudioMutationGate g_audioMutationGate;
@@ -72,6 +72,12 @@ static void markBootStage(uint32_t stage, const char* msg = nullptr) {
   }
 }
 
+static float readPatternSequencerPhase(void* context) {
+  auto* engine = static_cast<MiniAcid*>(context);
+  if (!engine || !engine->isPlaying()) return 0.0f;
+  return static_cast<float>(engine->currentStep()) + engine->getStepProgress();
+}
+
 void audioTask(void *param) {
   Serial.println("AudioTask: Starting...");
 
@@ -92,7 +98,18 @@ void audioTask(void *param) {
       warmupBlocks--;
       if (warmupBlocks == 0) Serial.println("AudioTask: Warmup complete");
     } else if (g_miniAcid) {
+      const uint32_t midiBlockSequence = g_audioMidiBlockSequence++;
+      const float phaseAtBlockStart = readPatternSequencerPhase(g_miniAcid);
+      g_patternMusicalEventQueue.beginMidiRenderBlock(
+          midiBlockSequence,
+          static_cast<uint16_t>(kBlockFrames),
+          phaseAtBlockStart,
+          g_miniAcid->bpm(),
+          static_cast<float>(kSampleRate),
+          g_miniAcid->isPlaying());
       g_miniAcid->generateAudioBuffer(g_audioBuffer, kBlockFrames);
+      g_patternMusicalEventQueue.endMidiRenderBlock();
+      publishCardputerUsbMidiBlockAnchor(midiBlockSequence, now);
     } else {
       std::fill(g_audioBuffer, g_audioBuffer + kBlockFrames, 0);
     }
@@ -153,37 +170,6 @@ void audioTask(void *param) {
       }
       taskYIELD();
     }
-  }
-}
-
-
-static void drainPatternMusicalEvents() {
-  MusicalEvent event{};
-  std::size_t drained = 0;
-  while (drained < MusicalEventQueue::kCapacity &&
-         g_patternMusicalEventQueue.tryPop(event)) {
-    g_musicalEventRouter.route(event);
-    ++drained;
-  }
-
-  // Critical events that could not enter a full queue degrade to a final
-  // target-scoped PatternPlayer panic after all queued events are drained.
-  const uint8_t panicMask = g_patternMusicalEventQueue.takePendingAllNotesOffMask();
-  if (panicMask & MusicalEventQueue::kSynthAMask) {
-    g_musicalEventRouter.route(MusicalEvent{
-        MusicalEventType::AllNotesOff,
-        MusicalEventSource::PatternPlayer,
-        MusicalEventTarget::SynthA,
-        0, 0, 0,
-    });
-  }
-  if (panicMask & MusicalEventQueue::kSynthBMask) {
-    g_musicalEventRouter.route(MusicalEvent{
-        MusicalEventType::AllNotesOff,
-        MusicalEventSource::PatternPlayer,
-        MusicalEventTarget::SynthB,
-        0, 0, 0,
-    });
   }
 }
 
@@ -322,6 +308,8 @@ void setup() {
   g_miniAcid->sampleStore = &g_sampleStore;
   markBootStage(50, "before MiniAcid::init");
   g_miniAcid->init();
+  g_patternMusicalEventQueue.setPhaseReader(
+      readPatternSequencerPhase, g_miniAcid);
   g_miniAcid->setPatternEventQueue(&g_patternMusicalEventQueue);
   g_musicalEventRouter.addSink(g_internalSynthOutput);
   g_lastLiveInputEpoch = g_miniAcid->liveInputEpoch();
@@ -332,7 +320,8 @@ void setup() {
   // shared event router are fully initialized.
   screenLog("6c. USB MIDI...");
   markBootStage(52, "before USB MIDI sink");
-  registerCardputerUsbMidiSink(g_musicalEventRouter);
+  registerCardputerUsbMidiSink(
+      g_musicalEventRouter, g_patternMusicalEventQueue);
   markBootStage(53, "after USB MIDI sink");
   
   // Scan samples from SD card (SD initialized by engine->init->sceneStorage)
@@ -424,7 +413,6 @@ void setup() {
 void loop() {
   M5Cardputer.update();
   LedManager::instance().update();
-  drainPatternMusicalEvents();
 
   if (g_miniAcid && g_miniDisplay) {
     g_performanceKeyboard.setEnabled(
