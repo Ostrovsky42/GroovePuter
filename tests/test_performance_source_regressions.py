@@ -173,6 +173,12 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
             "state.performance" in player_page and
             "snapshot_.performance = performance" in player_service,
             "physical D must expose SMF performance without Serial or SD logging")
+    require("player_->adjustTempoBpm(deltaBpm)" in player_page and
+            "player_->resetTempo()" in player_page and
+            "player_->cycleVelocityBoost()" in player_page and
+            "applySmfVelocityBoost" in player_service and
+            "tempoScalePermille_" in player_service,
+            "SMF UI must expose bounded BPM and velocity controls")
     require("B Files" in player_page and "toggleRouting()" in player_page,
             "player must expose file return and RAW/SEQTRAK routing controls")
 
