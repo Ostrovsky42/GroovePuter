@@ -6,7 +6,7 @@ Correct Song row duration so `patternBars` is interpreted as musical bars. The a
 
 ## Root cause
 
-The current implementation calls `advanceSongStep_()` only at `barTick == 0`, but advances the row after `SEQ_STEPS * patternBars` calls. This makes a `1B` row last 16 bars, a `2B` row last 32 bars, and so on.
+The previous implementation called `advanceSongStep_()` only at `barTick == 0`, but advanced the row after `SEQ_STEPS * patternBars` calls. This made a `1B` row last 16 bars, a `2B` row last 32 bars, and so on.
 
 ## Required behavior
 
@@ -18,6 +18,14 @@ The current implementation calls `advanceSongStep_()` only at `barTick == 0`, bu
 ```
 
 The first boundary after Start establishes bar 1 and must not immediately change the row. Start, Stop, Song-mode changes, manual row selection, playback-slot changes, LiveMix changes, and scene application restart the row phase.
+
+## Implementation
+
+- `songStepCounter_` is replaced by `songBarIndex_` with an explicit pre-first-bar value of `-1`;
+- `advanceSongBar_()` consumes one callback per musical bar;
+- `nextSongCycleBoundary()` contains the deterministic 1/2/4/8-bar transition rule;
+- `cycleBarIndex()` exposes the current bar directly without sixteenth-step conversion;
+- reverse, loop-range, rehearsal rows, Pattern mode, internal audio, and current USB-MIDI routes remain in their existing paths.
 
 ## Scope
 
@@ -36,7 +44,8 @@ The first boundary after Start establishes bar 1 and must not immediately change
 
 ## Merge gate
 
-- [ ] host tests pass
+- [x] focused host tests pass
+- [ ] full pull-request CI passes on the final head
 - [ ] SDL build passes
 - [ ] Cardputer-Adv build passes with core `3.2.2`
 - [ ] `1B`, `2B`, `4B`, and `8B` durations pass on hardware
