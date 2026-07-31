@@ -1,1 +1,1 @@
-Trigger the one-shot sample-timed MIDI integration workflow after reopening PR #8.
+Trigger the corrected one-shot sample-timed MIDI integration workflow for PR #8.
