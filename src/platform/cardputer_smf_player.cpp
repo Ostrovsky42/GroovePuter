@@ -131,6 +131,26 @@ bool CardputerSmfPlayerService::toggleRouting() {
     return enqueue(command);
 }
 
+bool CardputerSmfPlayerService::adjustTempoBpm(int deltaBpm) {
+    if (deltaBpm == 0) return true;
+    Command command{};
+    command.type = CommandType::AdjustTempoBpm;
+    command.value = deltaBpm;
+    return enqueue(command);
+}
+
+bool CardputerSmfPlayerService::resetTempo() {
+    Command command{};
+    command.type = CommandType::ResetTempo;
+    return enqueue(command);
+}
+
+bool CardputerSmfPlayerService::cycleVelocityBoost() {
+    Command command{};
+    command.type = CommandType::CycleVelocityBoost;
+    return enqueue(command);
+}
+
 SmfPlayerSnapshot CardputerSmfPlayerService::snapshot() const {
     portENTER_CRITICAL(&snapshotMux_);
     const SmfPlayerSnapshot copy = snapshot_;
@@ -329,6 +349,52 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
             }
             break;
         }
+        case CommandType::AdjustTempoBpm: {
+            if (!loaded_ || !timing_.valid()) break;
+            const SmfPlayerState previous = snapshot().state;
+            if (previous == SmfPlayerState::Playing) pauseAtCurrentPosition();
+
+            const uint16_t originalBpmX10 = originalBpmX10At(pausedTick_);
+            const int32_t currentBpmX10 = effectiveBpmX10At(pausedTick_);
+            const int32_t targetBpmX10 = std::max<int32_t>(
+                kMinBpmX10,
+                std::min<int32_t>(kMaxBpmX10,
+                                  currentBpmX10 + command.value * 10));
+            const uint32_t scale =
+                (static_cast<uint32_t>(targetBpmX10) *
+                     kSmfOriginalTempoScalePermille + originalBpmX10 / 2u) /
+                originalBpmX10;
+            applyTempoScale(static_cast<uint16_t>(std::min<uint32_t>(
+                scale, std::numeric_limits<uint16_t>::max())));
+            publishSnapshot(previous == SmfPlayerState::Playing
+                                ? SmfPlayerState::Paused
+                                : previous,
+                            previous == SmfPlayerState::Playing
+                                ? "TEMPO SET - SPACE TO PLAY"
+                                : "TEMPO SET");
+            updatePlaybackSnapshot();
+            break;
+        }
+        case CommandType::ResetTempo: {
+            if (!loaded_ || !timing_.valid()) break;
+            const SmfPlayerState previous = snapshot().state;
+            if (previous == SmfPlayerState::Playing) pauseAtCurrentPosition();
+            applyTempoScale(kSmfOriginalTempoScalePermille);
+            publishSnapshot(previous == SmfPlayerState::Playing
+                                ? SmfPlayerState::Paused
+                                : previous,
+                            "TEMPO ORIGINAL");
+            updatePlaybackSnapshot();
+            break;
+        }
+        case CommandType::CycleVelocityBoost:
+            velocityBoost_ = velocityBoost_ == 0
+                ? 8
+                : (velocityBoost_ == 8 ? 16 : 0);
+            portENTER_CRITICAL(&snapshotMux_);
+            snapshot_.velocityBoost = velocityBoost_;
+            portEXIT_CRITICAL(&snapshotMux_);
+            break;
     }
 }
 
@@ -402,6 +468,8 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
 
     stream_.reset();
     loaded_ = true;
+    tempoScalePermille_ = kSmfOriginalTempoScalePermille;
+    velocityBoost_ = 0;
     pausedTick_ = musicStartTick_;
     hasPendingEvent_ = false;
     streamEnded_ = false;
@@ -412,6 +480,8 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
     snapshot_.endTick = endTick_;
     snapshot_.totalBars = timing_.barBeatForTick(endTick_).bar;
     snapshot_.rawRouting = routingMode_ == SmfRoutingMode::Raw;
+    snapshot_.tempoScalePermille = tempoScalePermille_;
+    snapshot_.velocityBoost = velocityBoost_;
     portEXIT_CRITICAL(&snapshotMux_);
 
     publishSnapshot(SmfPlayerState::Stopped,
@@ -590,7 +660,8 @@ void CardputerSmfPlayerService::scheduleAhead() {
                              event.event.tick,
                              kSampleRate,
                              static_cast<uint16_t>(kBlockFrames),
-                             position)) {
+                             position,
+                             tempoScalePermille_)) {
             publishSnapshot(SmfPlayerState::Error, "Schedule conversion failed");
             eventQueue_.invalidateAndRequestPanic();
             return;
@@ -608,7 +679,7 @@ void CardputerSmfPlayerService::scheduleAhead() {
             pushed = eventQueue_.tryPushNoteOn(
                 routed.channel,
                 routed.note,
-                event.event.data2,
+                applySmfVelocityBoost(event.event.data2, velocityBoost_),
                 position.blockSequence,
                 position.frameOffset);
         } else {
@@ -715,8 +786,32 @@ uint32_t CardputerSmfPlayerService::currentTickFromAudioClock() const {
     const int32_t elapsed = static_cast<int32_t>(now - playbackOriginMicros_);
     if (elapsed <= 0) return playbackOriginTick_;
     const uint64_t fileMicros = timing_.tickToMicros(playbackOriginTick_) +
-                                static_cast<uint32_t>(elapsed);
+        scaleSmfFileMicros(static_cast<uint32_t>(elapsed), tempoScalePermille_);
     return std::min(timing_.microsToTick(fileMicros), endTick_);
+}
+
+void CardputerSmfPlayerService::applyTempoScale(uint16_t scalePermille) {
+    tempoScalePermille_ = scalePermille == 0
+        ? kSmfOriginalTempoScalePermille
+        : scalePermille;
+    portENTER_CRITICAL(&snapshotMux_);
+    snapshot_.tempoScalePermille = tempoScalePermille_;
+    portEXIT_CRITICAL(&snapshotMux_);
+}
+
+uint16_t CardputerSmfPlayerService::originalBpmX10At(uint32_t tick) const {
+    const uint32_t mpq = timing_.microsPerQuarterAtTick(tick);
+    return mpq > 0
+        ? static_cast<uint16_t>(std::min<uint32_t>(65535, 600000000u / mpq))
+        : 1200;
+}
+
+uint16_t CardputerSmfPlayerService::effectiveBpmX10At(uint32_t tick) const {
+    const uint32_t scaled =
+        (static_cast<uint32_t>(originalBpmX10At(tick)) * tempoScalePermille_ +
+         kSmfOriginalTempoScalePermille / 2u) /
+        kSmfOriginalTempoScalePermille;
+    return static_cast<uint16_t>(std::min<uint32_t>(65535, scaled));
 }
 
 void CardputerSmfPlayerService::updatePlaybackSnapshot() {
@@ -727,16 +822,17 @@ void CardputerSmfPlayerService::updatePlaybackSnapshot() {
         tick = currentTickFromAudioClock();
     }
     const SmfBarBeat pos = timing_.barBeatForTick(tick);
-    const uint32_t mpq = timing_.microsPerQuarterAtTick(tick);
-    const uint16_t bpmX10 = mpq > 0
-        ? static_cast<uint16_t>(std::min<uint32_t>(65535, 600000000u / mpq))
-        : 1200;
+    const uint16_t originalBpmX10 = originalBpmX10At(tick);
+    const uint16_t bpmX10 = effectiveBpmX10At(tick);
 
     portENTER_CRITICAL(&snapshotMux_);
     snapshot_.currentTick = tick;
     snapshot_.bar = pos.bar;
     snapshot_.beat = pos.beat;
+    snapshot_.originalBpmX10 = originalBpmX10;
     snapshot_.bpmX10 = bpmX10;
+    snapshot_.tempoScalePermille = tempoScalePermille_;
+    snapshot_.velocityBoost = velocityBoost_;
     portEXIT_CRITICAL(&snapshotMux_);
 }
 

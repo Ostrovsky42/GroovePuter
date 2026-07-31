@@ -14,6 +14,13 @@ struct SmfRoutedNote {
     uint8_t note{0};
 };
 
+inline constexpr uint8_t applySmfVelocityBoost(uint8_t velocity,
+                                                uint8_t boost) {
+    if (velocity == 0) return 0;
+    const uint16_t boosted = static_cast<uint16_t>(velocity) + boost;
+    return static_cast<uint8_t>(boosted > 127u ? 127u : boosted);
+}
+
 inline constexpr SmfRoutedNote routeSmfNote(SmfRoutingMode mode,
                                              uint8_t sourceChannel,
                                              uint8_t sourceNote) {

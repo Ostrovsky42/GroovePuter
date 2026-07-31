@@ -254,6 +254,23 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         player_->seekBars(event.shift ? 4 : 1);
         return true;
     }
+    if (event.scancode == GROOVEPUTER_UP ||
+        event.scancode == GROOVEPUTER_DOWN) {
+        const int deltaBpm = event.scancode == GROOVEPUTER_UP ? 1 : -1;
+        const bool queued = player_->adjustTempoBpm(deltaBpm);
+        UI::showToast(queued ? "MIDI: BPM SET / PAUSE" : "MIDI PLAYER BUSY", 800);
+        return true;
+    }
+    if (event.key == 'o' || event.key == 'O') {
+        const bool queued = player_->resetTempo();
+        UI::showToast(queued ? "MIDI: TEMPO ORIGINAL" : "MIDI PLAYER BUSY", 800);
+        return true;
+    }
+    if (event.key == 'v' || event.key == 'V') {
+        const bool queued = player_->cycleVelocityBoost();
+        UI::showToast(queued ? "MIDI: VELOCITY BOOST" : "MIDI PLAYER BUSY", 800);
+        return true;
+    }
     if (event.key == 'r' || event.key == 'R') {
         const bool queued = player_->restart(SmfPlayerRestartOrigin::MusicStart);
         UI::showToast(queued ? "MIDI: RESTART" : "MIDI PLAYER BUSY", 800);
@@ -352,9 +369,17 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
                   static_cast<unsigned long>(state.totalBars));
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), line);
 
-    std::snprintf(line, sizeof(line), "TEMPO ORIGINAL  %u.%u BPM",
-                  static_cast<unsigned>(state.bpmX10 / 10),
-                  static_cast<unsigned>(state.bpmX10 % 10));
+    if (state.tempoScalePermille == 1000u) {
+        std::snprintf(line, sizeof(line), "TEMPO %u.%u BPM  ORIGINAL",
+                      static_cast<unsigned>(state.bpmX10 / 10),
+                      static_cast<unsigned>(state.bpmX10 % 10));
+    } else {
+        std::snprintf(line, sizeof(line), "TEMPO %u.%u  ORIG %u.%u BPM",
+                      static_cast<unsigned>(state.bpmX10 / 10),
+                      static_cast<unsigned>(state.bpmX10 % 10),
+                      static_cast<unsigned>(state.originalBpmX10 / 10),
+                      static_cast<unsigned>(state.originalBpmX10 % 10));
+    }
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(3), line);
 
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(4),
@@ -368,6 +393,11 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
     const int y = LayoutManager::lineY(5) + 2;
     gfx.drawRect(Layout::COL_1, y, barW, 7, COLOR_LABEL);
     if (filled > 0) gfx.fillRect(Layout::COL_1 + 1, y + 1, filled - 1, 5, COLOR_ACCENT);
+
+    gfx.setTextColor(COLOR_TEXT);
+    std::snprintf(line, sizeof(line), "VELOCITY +%u  UP/DN BPM  O ORIGINAL",
+                  static_cast<unsigned>(state.velocityBoost));
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(6), line);
 
     gfx.setTextColor(COLOR_LABEL);
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), state.message);
@@ -430,9 +460,9 @@ void SmfPlayerPage::drawFooter(IGfx& gfx) {
     if (browserVisible_) {
         UI::drawStandardFooter(gfx, "Up/Dn Select Enter Open", "Bksp Up  M Route  [ ] Pages");
     } else if (performanceVisible_) {
-        UI::drawStandardFooter(gfx, "D Player B Files", "Space Play R Restart");
+        UI::drawStandardFooter(gfx, "D Player Up/Dn BPM", "V Vel O Orig B Files");
     } else {
-        UI::drawStandardFooter(gfx, "Space Play R Restart", "< > Seek B Files M/X/D");
+        UI::drawStandardFooter(gfx, "Up/Dn BPM V Vel O Orig", "Spc Play R Restart");
     }
 }
 

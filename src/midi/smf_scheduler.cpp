@@ -10,9 +10,10 @@ bool scheduleSmfTick(const SmfTimingMap& timing,
                      uint32_t eventTick,
                      uint32_t sampleRate,
                      uint16_t blockFrames,
-                     SmfScheduledPosition& out) {
+                     SmfScheduledPosition& out,
+                     uint16_t tempoScalePermille) {
     if (!timing.valid() || sampleRate == 0 || blockFrames == 0 ||
-        eventTick < originTick) {
+        tempoScalePermille == 0 || eventTick < originTick) {
         return false;
     }
 
@@ -20,7 +21,8 @@ bool scheduleSmfTick(const SmfTimingMap& timing,
     const uint64_t eventMicros = timing.tickToMicros(eventTick);
     if (eventMicros < originMicros) return false;
 
-    const uint64_t deltaMicros = eventMicros - originMicros;
+    const uint64_t deltaMicros = scaleSmfPlaybackMicros(
+        eventMicros - originMicros, tempoScalePermille);
     // Convert once to a sample position so fractional block durations cannot
     // accumulate rounding error over long files.
     const uint64_t totalFrames =

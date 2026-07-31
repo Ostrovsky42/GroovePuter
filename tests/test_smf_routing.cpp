@@ -5,6 +5,11 @@
 using namespace GroovePuterMidi;
 
 int main() {
+    assert(applySmfVelocityBoost(0, 16) == 0);
+    assert(applySmfVelocityBoost(64, 0) == 64);
+    assert(applySmfVelocityBoost(64, 8) == 72);
+    assert(applySmfVelocityBoost(120, 16) == 127);
+
     const SmfRoutedNote raw = routeSmfNote(SmfRoutingMode::Raw, 9, 36);
     assert(raw.channel == 9 && raw.note == 36);
 

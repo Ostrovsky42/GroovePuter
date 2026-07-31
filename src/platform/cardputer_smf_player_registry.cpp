@@ -41,6 +41,18 @@ public:
         return ensureStarted() && player_.toggleRouting();
     }
 
+    bool adjustTempoBpm(int deltaBpm) override {
+        return ensureStarted() && player_.adjustTempoBpm(deltaBpm);
+    }
+
+    bool resetTempo() override {
+        return ensureStarted() && player_.resetTempo();
+    }
+
+    bool cycleVelocityBoost() override {
+        return ensureStarted() && player_.cycleVelocityBoost();
+    }
+
     SmfPlayerSnapshot snapshot() const override {
         return player_.snapshot();
     }

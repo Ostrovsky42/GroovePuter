@@ -27,6 +27,9 @@ public:
     bool panic() override;
     bool seekBars(int deltaBars) override;
     bool toggleRouting() override;
+    bool adjustTempoBpm(int deltaBpm) override;
+    bool resetTempo() override;
+    bool cycleVelocityBoost() override;
     GroovePuterMidi::SmfPlayerSnapshot snapshot() const override;
 
 private:
@@ -51,6 +54,9 @@ private:
         Panic,
         SeekBars,
         ToggleRouting,
+        AdjustTempoBpm,
+        ResetTempo,
+        CycleVelocityBoost,
     };
 
     struct Command {
@@ -101,6 +107,9 @@ private:
     void scheduleAhead();
     void logPerformance();
     void updatePlaybackSnapshot();
+    void applyTempoScale(uint16_t scalePermille);
+    uint16_t originalBpmX10At(uint32_t tick) const;
+    uint16_t effectiveBpmX10At(uint32_t tick) const;
     uint32_t currentTickFromAudioClock() const;
     bool takeNextNote(GroovePuterMidi::SmfStreamEvent& event);
     void publishSnapshot(GroovePuterMidi::SmfPlayerState state,
@@ -130,6 +139,11 @@ private:
     uint32_t lastScheduledBlock_{0};
     uint32_t pausedTick_{0};
     bool loaded_{false};
+    static constexpr uint16_t kMinBpmX10 = 400;
+    static constexpr uint16_t kMaxBpmX10 = 2500;
+    uint16_t tempoScalePermille_{
+        GroovePuterMidi::kSmfOriginalTempoScalePermille};
+    uint8_t velocityBoost_{0};
 
     static constexpr uint32_t kPerfUnsetDepth = 0xFFFFFFFFu;
     static constexpr uint32_t kPerfLogIntervalMs = 2000;
