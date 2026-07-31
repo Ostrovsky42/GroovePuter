@@ -10,13 +10,15 @@
 
 struct UsbMidiRouteConfig {
     // Channels are zero-based internally and displayed as 1..16 externally.
+    // Keep the original five fields first so existing aggregate initializers
+    // preserve their meaning; live B/Drums extend the contract at the end.
     uint8_t performanceSynthAChannel{7};
-    uint8_t performanceSynthBChannel{8};
-    uint8_t performanceDrumsChannel{9};
     uint8_t patternSynthAChannel{7};
     uint8_t patternSynthBChannel{8};
     bool performanceKeyboardEnabled{true};
     bool patternPlayerEnabled{true};
+    uint8_t performanceSynthBChannel{8};
+    uint8_t performanceDrumsChannel{9};
 };
 
 enum class UsbMidiStatus : uint8_t {
