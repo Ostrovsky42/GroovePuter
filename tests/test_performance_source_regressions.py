@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -7,6 +8,25 @@ ROOT = Path(__file__).resolve().parents[1]
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def test_default_runtime_logging_budget() -> None:
+    text = (ROOT / "src/debug_log.h").read_text(encoding="utf-8")
+
+    match = re.search(
+        r"#ifndef\s+DEBUG_LEVEL\s*\n\s*#define\s+DEBUG_LEVEL\s+(\d+)",
+        text,
+    )
+    require(match is not None,
+            "debug_log.h must keep an explicit default DEBUG_LEVEL")
+    require(int(match.group(1)) <= 2,
+            "Cardputer runtime must not default to INFO/DEBUG synchronous logging")
+    require("-DDEBUG_LEVEL=3/4" in text,
+            "verbose diagnostics must remain explicitly opt-in")
+    require("DEBUG_PRESET_PERFORMANCE" in text,
+            "focused performance profiling preset must remain available")
+    require("DEBUG_PRESET_SILENT" in text,
+            "silent production preset must remain available")
 
 
 def test_blocked_note_mode_keys_are_consumed() -> None:
@@ -192,6 +212,7 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
 
 
 def main() -> None:
+    test_default_runtime_logging_budget()
     test_blocked_note_mode_keys_are_consumed()
     test_performance_all_notes_off_is_target_scoped()
     test_note_mode_is_explicit_and_runtime_only()
