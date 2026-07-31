@@ -27,6 +27,16 @@ jobs:
             capture && /^          PY$/ { exit }
             capture { sub(/^          /, ""); print }
           ' .github/workflows/apply-midi-dispatch-timing.yml > /tmp/apply_midi_dispatch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("/tmp/apply_midi_dispatch.py")
+          text = path.read_text(encoding="utf-8")
+          old = 'marker = \'"${BUILD_DIR}/test_scheduled_musical_event"\\n\\n\''
+          new = 'marker = \'\\n"${BUILD_DIR}/test_scheduled_musical_event"\\n\\n\''
+          if old not in text:
+              raise RuntimeError("scheduled-event runner marker not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
           python3 /tmp/apply_midi_dispatch.py
 
       - name: Run host regressions
