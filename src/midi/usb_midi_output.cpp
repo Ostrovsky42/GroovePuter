@@ -12,6 +12,22 @@ UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
         false,
     };
     lanes_[1] = MidiVoiceLane{
+        MusicalEventSource::PerformanceKeyboard,
+        MusicalEventTarget::SynthB,
+        clampChannel(config.performanceSynthBChannel),
+        -1,
+        config.performanceKeyboardEnabled,
+        false,
+    };
+    lanes_[2] = MidiVoiceLane{
+        MusicalEventSource::PerformanceKeyboard,
+        MusicalEventTarget::Drums,
+        clampChannel(config.performanceDrumsChannel),
+        -1,
+        config.performanceKeyboardEnabled,
+        false,
+    };
+    lanes_[3] = MidiVoiceLane{
         MusicalEventSource::PatternPlayer,
         MusicalEventTarget::SynthA,
         clampChannel(config.patternSynthAChannel),
@@ -19,7 +35,7 @@ UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
         config.patternPlayerEnabled,
         false,
     };
-    lanes_[2] = MidiVoiceLane{
+    lanes_[4] = MidiVoiceLane{
         MusicalEventSource::PatternPlayer,
         MusicalEventTarget::SynthB,
         clampChannel(config.patternSynthBChannel),
@@ -97,16 +113,12 @@ int UsbMidiOutput::activeNote(MusicalEventSource source,
 }
 
 int UsbMidiOutput::activeNote(MusicalEventTarget target) const {
-    if (target == MusicalEventTarget::SynthA) {
-        const MidiVoiceLane* live = laneFor(MusicalEventSource::PerformanceKeyboard,
-                                            MusicalEventTarget::SynthA);
-        if (live && live->activeNote >= 0) return live->activeNote;
-        const MidiVoiceLane* pattern = laneFor(MusicalEventSource::PatternPlayer,
-                                               MusicalEventTarget::SynthA);
-        return pattern ? pattern->activeNote : -1;
-    }
+    const MidiVoiceLane* live = laneFor(MusicalEventSource::PerformanceKeyboard,
+                                        target);
+    if (live && live->activeNote >= 0) return live->activeNote;
+
     const MidiVoiceLane* pattern = laneFor(MusicalEventSource::PatternPlayer,
-                                           MusicalEventTarget::SynthB);
+                                           target);
     return pattern ? pattern->activeNote : -1;
 }
 
