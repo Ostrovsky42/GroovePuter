@@ -11,6 +11,7 @@ python3 "${ROOT_DIR}/tests/test_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_performance_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_usb_midi_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_pattern_midi_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_song_playhead_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
 
 "${CXX}" \
@@ -46,6 +47,17 @@ python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
   -o "${BUILD_DIR}/test_performance_keyboard"
 
 "${BUILD_DIR}/test_performance_keyboard"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_song_cycle_boundary.cpp" \
+  -o "${BUILD_DIR}/test_song_cycle_boundary"
+
+"${BUILD_DIR}/test_song_cycle_boundary"
 
 "${CXX}" \
   -std=c++17 \
