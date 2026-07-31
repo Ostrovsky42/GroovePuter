@@ -120,7 +120,7 @@ void testProfileApplicationPreservesRuntimeToggles() {
     settings.patternSynthAEnabled = false;
     settings.patternSynthBEnabled = true;
     settings.drumsEnabled = false;
-    settings.liveTarget = MidiLiveTarget::SynthB;
+    settings.liveTarget = MidiLiveTarget::Drums;
 
     applyMidiDeviceProfile(MidiDeviceProfile::GeneralMidi, settings);
 
@@ -130,9 +130,10 @@ void testProfileApplicationPreservesRuntimeToggles() {
     assert(!settings.patternSynthAEnabled);
     assert(settings.patternSynthBEnabled);
     assert(!settings.drumsEnabled);
-    assert(settings.liveTarget == MidiLiveTarget::SynthB);
+    assert(settings.liveTarget == MidiLiveTarget::Drums);
     assert(settings.liveChannel == 0);
     assert(settings.synthBChannel == 1);
+    assert(isValidMidiOutputSettings(settings));
 }
 
 void testCustomProfilePreservesRoutes() {
@@ -141,12 +142,14 @@ void testCustomProfilePreservesRoutes() {
     settings.liveChannel = 12;
     settings.synthAChannel = 13;
     settings.synthBChannel = 14;
+    settings.liveTarget = MidiLiveTarget::Drums;
     settings.drumRoutes[0] = DrumMidiRoute{false, 11, 71};
     settings.drumGateMs = 222;
 
     applyMidiDeviceProfile(MidiDeviceProfile::Custom, settings);
 
     assert(settings.profile == MidiDeviceProfile::Custom);
+    assert(settings.liveTarget == MidiLiveTarget::Drums);
     assert(settings.liveChannel == 12);
     assert(settings.synthAChannel == 13);
     assert(settings.synthBChannel == 14);
@@ -189,7 +192,7 @@ void testCodecRoundTrip() {
     source.patternSynthAEnabled = false;
     source.patternSynthBEnabled = true;
     source.drumsEnabled = true;
-    source.liveTarget = MidiLiveTarget::SynthB;
+    source.liveTarget = MidiLiveTarget::Drums;
     source.liveChannel = 14;
     source.synthAChannel = 2;
     source.synthBChannel = 12;
@@ -231,12 +234,13 @@ void testPersistence() {
 
     MidiOutputSettings saved =
         makeDefaultMidiOutputSettings(MidiDeviceProfile::GeneralMidi);
-    saved.liveTarget = MidiLiveTarget::SynthB;
+    saved.liveTarget = MidiLiveTarget::Drums;
     saved.drumGateMs = 123;
     assert(persistence.save(saved));
     storage.readStatus = MidiSettingsStorageReadStatus::Ok;
     assert(persistence.load(output) == MidiSettingsLoadStatus::Loaded);
     assert(output == saved);
+    assert(output.liveTarget == MidiLiveTarget::Drums);
 
     storage.bytes[9] ^= 0x80u;
     assert(persistence.load(output, MidiDeviceProfile::GeneralMidi) ==
