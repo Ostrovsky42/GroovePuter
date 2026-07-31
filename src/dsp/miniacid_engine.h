@@ -368,7 +368,7 @@ private:
   void publishPatternNoteOff_(int synthIdx, uint8_t velocity = 0);
   void publishPatternAllNotesOff_();
   void triggerDrumVoice_(int voiceIdx, int stepIdx);
-  void advanceSongStep_();
+  void advanceSongBar_();
 
   int timingTicksForStep_(int stepIndex) const;
   int grooveOverrideTicksForStep_(const DrumPatternSet& patternSet, int stepIndex) const;
@@ -454,7 +454,7 @@ private:
   int songPlayheadPosition_;
   int songPlaybackSlot_ = 0;
   bool liveMixMode_ = false;
-  int songStepCounter_ = 0;
+  int songBarIndex_ = -1;
   bool songReverseTogglePending_ = false;
   std::atomic<int8_t> currentPage_{0};
   std::atomic<int8_t> targetPage_{-1};

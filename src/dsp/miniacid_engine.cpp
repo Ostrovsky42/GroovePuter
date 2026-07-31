@@ -1,4 +1,5 @@
 #include "miniacid_engine.h"
+#include "song_cycle_boundary.h"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -395,7 +396,7 @@ void MiniAcid::reset() {
   currentStepIndex = -1;
   tickPhaseAccum_ = 0;
   currentTick_ = 0;
-  songStepCounter_ = 0;
+  songBarIndex_ = -1;
   currentTimingOffset_ = 0;
   updateTickIncrement();
   masterOutputLpState_ = 0.0f;
@@ -470,6 +471,7 @@ void MiniAcid::start() {
   tickPhaseAccum_ = 0x100000000ULL; // Trigger advance on first sample
   currentTick_ = 383; // Set to end of bar so first modulo triggers step 0
   currentTimingOffset_ = 0;
+  songBarIndex_ = -1;
   if (songMode_) {
     if (!liveMixMode_) {
       songPlaybackSlot_ = sceneManager_.activeSongSlot();
@@ -487,6 +489,7 @@ void MiniAcid::stop() {
   currentStepIndex = -1;
   tickPhaseAccum_ = 0;
   currentTick_ = 0;
+  songBarIndex_ = -1;
   gateCountdownA_ = 0;
   gateCountdownB_ = 0;
   retrigA_ = {};
@@ -652,13 +655,7 @@ int MiniAcid::cycleBarCount() const {
 
 int MiniAcid::cycleBarIndex() const {
   int bars = cycleBarCount();
-  int cycleSteps = SEQ_STEPS * bars;
-  if (cycleSteps <= 0) return 0;
-  int step = songStepCounter_ - 1;
-  if (step < 0) step = cycleSteps - 1;
-  if (step < 0) step = 0;
-  step %= cycleSteps;
-  int bar = step / SEQ_STEPS;
+  int bar = songBarIndex_;
   if (bar < 0) bar = 0;
   if (bar >= bars) bar = bars - 1;
   return bar;
@@ -808,6 +805,7 @@ bool MiniAcid::songModeEnabled() const { return songMode_; }
 
 void MiniAcid::setSongMode(bool enabled) {
   if (enabled == songMode_) return;
+  songBarIndex_ = -1;
   if (playing) publishPatternAllNotesOff_();
   if (enabled) {
     patternModeDrumPatternIndex_ = sceneManager_.getCurrentDrumPatternIndex();
@@ -855,6 +853,7 @@ int MiniAcid::songPlayheadPosition() const { return songPlayheadPosition_; }
 void MiniAcid::setSongPosition(int position) {
   int pos = clampSongPosition(position);
   sceneManager_.setSongPosition(pos);
+  songBarIndex_ = -1;
   if (!playing) songPlayheadPosition_ = pos;
   if (songMode_) applySongPositionSelection();
 }
@@ -889,6 +888,7 @@ const Song& MiniAcid::song() const { return sceneManager_.song(); }
 int MiniAcid::activeSongSlot() const { return sceneManager_.activeSongSlot(); }
 void MiniAcid::setActiveSongSlot(int slot) {
   sceneManager_.setActiveSongSlot(slot);
+  songBarIndex_ = -1;
   if (!liveMixMode_) {
     songPlaybackSlot_ = sceneManager_.activeSongSlot();
   }
@@ -902,12 +902,14 @@ void MiniAcid::setSongPlaybackSlot(int slot) {
   if (slot > 1) slot = 1;
   if (songPlaybackSlot_ == slot) return;
   songPlaybackSlot_ = slot;
+  songBarIndex_ = -1;
   if (songMode_) applySongPositionSelection();
 }
 bool MiniAcid::liveMixModeEnabled() const { return liveMixMode_; }
 void MiniAcid::setLiveMixMode(bool enabled) {
   if (liveMixMode_ == enabled) return;
   liveMixMode_ = enabled;
+  songBarIndex_ = -1;
   if (!liveMixMode_) {
     songPlaybackSlot_ = sceneManager_.activeSongSlot();
     if (songMode_) applySongPositionSelection();
@@ -1922,7 +1924,7 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
   currentStepIndex = barTick / 24;
 
   if (barTick == 0) {
-    advanceSongStep_();
+    advanceSongBar_();
     // Also regenerate if needed at bar start
     if (genreManager_.commitPendingRecipe()) {
       regeneratePatternsWithGenre();
@@ -2729,6 +2731,7 @@ void MiniAcid::applySceneStateFromManager() {
   songPlaybackSlot_ = sceneManager_.activeSongSlot();
   liveMixMode_ = false;
   songPlayheadPosition_ = clampSongPosition(sceneManager_.getSongPosition());
+  songBarIndex_ = -1;
   if (songMode_) {
     applySongPositionSelection();
   }
@@ -3420,19 +3423,12 @@ void MiniAcid::triggerDrumVoice_(int voiceIdx, int stepIdx) {
   }
 }
 
-void MiniAcid::advanceSongStep_() {
-  int patternBars = sceneManager_.currentScene().feel.patternBars;
-  if (patternBars != 1 && patternBars != 2 && patternBars != 4 && patternBars != 8) patternBars = 1;
-  int cycleSteps = SEQ_STEPS * patternBars;
+void MiniAcid::advanceSongBar_() {
+  const SongCycleBoundary boundary = nextSongCycleBoundary(
+      songBarIndex_, sceneManager_.currentScene().feel.patternBars);
+  songBarIndex_ = boundary.barIndex;
 
-  bool wrapped = false;
-  songStepCounter_++;
-  if (songStepCounter_ >= cycleSteps) {
-    songStepCounter_ = 0;
-    wrapped = true;
-  }
-
-  if (wrapped) {
+  if (boundary.advanceRow) {
     cyclePulseCounter_++;
     if (songMode_) {
       if (songReverseTogglePending_) {
