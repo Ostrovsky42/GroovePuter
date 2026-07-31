@@ -25,6 +25,7 @@ constexpr ScaleDefinition kScales[] = {
 
 constexpr char kLowerRow[] = "asdfghjkl";
 constexpr char kUpperRow[] = "qwertyuiop";
+constexpr char kSeqtrakDrumKeys[] = "asdfghj";
 }  // namespace
 
 char PerformanceKeyboard::normalizeKey(char key) {
@@ -73,6 +74,18 @@ bool PerformanceKeyboard::isPerformanceKey(char physicalKey) {
     return scaleDegreeForKey(physicalKey, degree);
 }
 
+bool PerformanceKeyboard::drumChannelForKey(char physicalKey,
+                                            uint8_t& zeroBasedChannel) {
+    physicalKey = normalizeKey(physicalKey);
+    for (uint8_t i = 0; i < sizeof(kSeqtrakDrumKeys) - 1; ++i) {
+        if (kSeqtrakDrumKeys[i] == physicalKey) {
+            zeroBasedChannel = i;
+            return true;
+        }
+    }
+    return false;
+}
+
 uint8_t PerformanceKeyboard::intervalForDegree(PerformanceScale scale,
                                                uint8_t degree) {
     const uint8_t scaleIndex = static_cast<uint8_t>(scale);
@@ -109,18 +122,18 @@ void PerformanceKeyboard::emitNoteOn(const HeldNote& held) {
         MusicalEventType::NoteOn,
         MusicalEventSource::PerformanceKeyboard,
         target_,
-        0,
+        held.channel,
         held.note,
         held.velocity,
     });
 }
 
-void PerformanceKeyboard::emitNoteOff(uint8_t note) {
+void PerformanceKeyboard::emitNoteOff(uint8_t note, uint8_t channel) {
     router_.route(MusicalEvent{
         MusicalEventType::NoteOff,
         MusicalEventSource::PerformanceKeyboard,
         target_,
-        0,
+        channel,
         note,
         0,
     });
@@ -142,16 +155,28 @@ bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
     if (!isPerformanceKey(physicalKey)) return false;
     if (!noteModeEnabled_) return false;
     if (!enabled_ || transportPlaying_) return true;
-
-    uint8_t note = 0;
-    if (!noteForKey(physicalKey, note)) return true;
     if (findHeld(physicalKey) >= 0) return true;
     if (heldCount_ >= kMaxHeldNotes) {
         panic();
         return true;
     }
 
-    held_[heldCount_++] = HeldNote{physicalKey, note, velocity};
+    if (target_ == MusicalEventTarget::Drums) {
+        uint8_t drumChannel = 0;
+        if (!drumChannelForKey(physicalKey, drumChannel)) return true;
+        held_[heldCount_++] = HeldNote{
+            physicalKey,
+            kSeqtrakDrumNote,
+            velocity,
+            drumChannel,
+        };
+        emitNoteOn(held_[heldCount_ - 1]);
+        return true;
+    }
+
+    uint8_t note = 0;
+    if (!noteForKey(physicalKey, note)) return true;
+    held_[heldCount_++] = HeldNote{physicalKey, note, velocity, 0};
     emitNoteOn(held_[heldCount_ - 1]);
     return true;
 }
@@ -162,20 +187,39 @@ bool PerformanceKeyboard::keyUp(char physicalKey) {
     if (found < 0) return false;
 
     const std::size_t index = static_cast<std::size_t>(found);
+    const HeldNote released = held_[index];
     const bool wasActive = index + 1 == heldCount_;
-    const uint8_t releasedNote = held_[index].note;
     for (std::size_t i = index + 1; i < heldCount_; ++i) held_[i - 1] = held_[i];
     held_[--heldCount_] = HeldNote{};
 
+    if (target_ == MusicalEventTarget::Drums) {
+        emitNoteOff(released.note, released.channel);
+        return true;
+    }
+
     if (!wasActive) return true;
     if (heldCount_ > 0) emitNoteOn(held_[heldCount_ - 1]);
-    else emitNoteOff(releasedNote);
+    else emitNoteOff(released.note);
     return true;
 }
 
 void PerformanceKeyboard::releaseMissingKeys(const char* pressedKeys,
                                              std::size_t pressedCount) {
     if (heldCount_ == 0) return;
+
+    if (target_ == MusicalEventTarget::Drums) {
+        std::size_t write = 0;
+        for (std::size_t read = 0; read < heldCount_; ++read) {
+            if (containsKey(pressedKeys, pressedCount, held_[read].physicalKey)) {
+                held_[write++] = held_[read];
+            } else {
+                emitNoteOff(held_[read].note, held_[read].channel);
+            }
+        }
+        for (std::size_t i = write; i < heldCount_; ++i) held_[i] = HeldNote{};
+        heldCount_ = write;
+        return;
+    }
 
     const char oldActiveKey = held_[heldCount_ - 1].physicalKey;
     const uint8_t oldActiveNote = held_[heldCount_ - 1].note;
@@ -221,15 +265,25 @@ void PerformanceKeyboard::setTarget(MusicalEventTarget target) {
 }
 
 void PerformanceKeyboard::cycleTarget(int direction) {
-    // Hardware acceptance showed that SEQTRAK channel 10 is not a native drum
-    // destination. Keep the Drums backend target for the upcoming per-voice
-    // routing stage, but expose only the two currently valid live synth targets.
-    constexpr int kPlayableTargetCount = 2;
-    int next = static_cast<int>(target_) + direction;
-    if (target_ == MusicalEventTarget::Drums) next = direction < 0 ? 1 : 0;
-    while (next < 0) next += kPlayableTargetCount;
-    while (next >= kPlayableTargetCount) next -= kPlayableTargetCount;
-    setTarget(static_cast<MusicalEventTarget>(next));
+    constexpr MusicalEventTarget kTargets[] = {
+        MusicalEventTarget::SynthA,
+        MusicalEventTarget::SynthB,
+        MusicalEventTarget::Dx,
+        MusicalEventTarget::Drums,
+    };
+    constexpr int kTargetCount = static_cast<int>(sizeof(kTargets) / sizeof(kTargets[0]));
+
+    int current = 0;
+    for (int i = 0; i < kTargetCount; ++i) {
+        if (kTargets[i] == target_) {
+            current = i;
+            break;
+        }
+    }
+    int next = current + direction;
+    while (next < 0) next += kTargetCount;
+    while (next >= kTargetCount) next -= kTargetCount;
+    setTarget(kTargets[next]);
 }
 
 const char* PerformanceKeyboard::targetName() const {
@@ -237,6 +291,7 @@ const char* PerformanceKeyboard::targetName() const {
         case MusicalEventTarget::SynthA: return "SYNTH A";
         case MusicalEventTarget::SynthB: return "SYNTH B";
         case MusicalEventTarget::Drums: return "DRUMS";
+        case MusicalEventTarget::Dx: return "DX";
     }
     return "UNKNOWN";
 }
@@ -245,9 +300,8 @@ uint8_t PerformanceKeyboard::targetMidiChannel() const {
     switch (target_) {
         case MusicalEventTarget::SynthA: return 8;
         case MusicalEventTarget::SynthB: return 9;
-        // Reserved backend route only. Native SEQTRAK drums will use per-voice
-        // channels 1..7 once MidiOutputSettings is applied at runtime.
-        case MusicalEventTarget::Drums: return 10;
+        case MusicalEventTarget::Dx: return 10;
+        case MusicalEventTarget::Drums: return 1;
     }
     return 8;
 }

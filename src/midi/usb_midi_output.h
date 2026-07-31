@@ -11,14 +11,17 @@
 struct UsbMidiRouteConfig {
     // Channels are zero-based internally and displayed as 1..16 externally.
     // Keep the original five fields first so existing aggregate initializers
-    // preserve their meaning; live B/Drums extend the contract at the end.
+    // preserve their meaning. Later live-target fields extend the contract.
     uint8_t performanceSynthAChannel{7};
     uint8_t patternSynthAChannel{7};
     uint8_t patternSynthBChannel{8};
     bool performanceKeyboardEnabled{true};
     bool patternPlayerEnabled{true};
     uint8_t performanceSynthBChannel{8};
+    // Kept for source compatibility with the previous single-lane Drums stage.
+    // Native SEQTRAK performance drums now use fixed channels 0..6 (CH1..7).
     uint8_t performanceDrumsChannel{9};
+    uint8_t performanceDxChannel{9};
 };
 
 enum class UsbMidiStatus : uint8_t {
@@ -27,12 +30,15 @@ enum class UsbMidiStatus : uint8_t {
     Ready,
 };
 
-// Translates normalized GroovePuter events into fixed monophonic logical lanes.
-// Lanes remain source/target scoped, while wire-level channel+note ownership is
-// reference counted so two logical owners sharing one physical MIDI note cannot
-// accidentally silence each other.
+// Translates normalized GroovePuter events into fixed logical lanes.
+// Synth/DX lanes are monophonic. Live Drums owns seven independent native
+// SEQTRAK lanes (logical 0..6 -> MIDI CH1..7), allowing simultaneous pads.
+// Wire-level channel+note ownership remains reference counted so two logical
+// owners sharing one physical MIDI note cannot accidentally silence each other.
 class UsbMidiOutput final : public IMusicalEventSink {
 public:
+    static constexpr uint8_t kSeqtrakDrumLaneCount = 7;
+
     explicit UsbMidiOutput(IUsbMidiTransport& transport,
                            UsbMidiRouteConfig config = {});
 
@@ -44,9 +50,15 @@ public:
     UsbMidiStatus status() const;
 
     int activeNote(MusicalEventSource source, MusicalEventTarget target) const;
+    int activeNote(MusicalEventSource source,
+                   MusicalEventTarget target,
+                   uint8_t logicalChannel) const;
     int activeNote(MusicalEventTarget target) const;
     uint8_t channelFor(MusicalEventSource source,
                        MusicalEventTarget target) const;
+    uint8_t channelFor(MusicalEventSource source,
+                       MusicalEventTarget target,
+                       uint8_t logicalChannel) const;
     uint8_t wireOwnerCount(uint8_t zeroBasedChannel, uint8_t note) const;
     uint8_t synthAChannel() const {
         return channelFor(MusicalEventSource::PerformanceKeyboard,
@@ -56,26 +68,33 @@ public:
     void handleMusicalEvent(const MusicalEvent& event) override;
 
 private:
+    // Intentionally POD with no default member initializers. The global
+    // UsbMidiOutput exists before Arduino setup(), so expanded routing must not
+    // execute a large per-lane constructor during static initialization.
     struct MidiVoiceLane {
-        MusicalEventSource source{MusicalEventSource::PerformanceKeyboard};
-        MusicalEventTarget target{MusicalEventTarget::SynthA};
-        uint8_t channel{7};
-        int16_t activeNote{-1};
-        bool enabled{false};
-        bool pendingRelease{false};
+        MusicalEventSource source;
+        MusicalEventTarget target;
+        uint8_t logicalChannel;
+        uint8_t channel;
+        int16_t activeNote;
+        bool enabled;
+        bool pendingRelease;
     };
 
-    static constexpr std::size_t kLaneCount = 5;
+    static constexpr std::size_t kLaneCount = 12;
     static constexpr std::size_t kMidiChannelCount = 16;
     static constexpr std::size_t kMidiNoteCount = 128;
 
     static uint8_t clampChannel(uint8_t channel);
     static uint8_t clampDataByte(uint8_t value);
 
+    void configureLanes();
     MidiVoiceLane* laneFor(MusicalEventSource source,
-                           MusicalEventTarget target);
+                           MusicalEventTarget target,
+                           uint8_t logicalChannel = 0);
     const MidiVoiceLane* laneFor(MusicalEventSource source,
-                                 MusicalEventTarget target) const;
+                                 MusicalEventTarget target,
+                                 uint8_t logicalChannel = 0) const;
     bool accepts(const MidiVoiceLane* lane) const;
     bool acquireActiveNote(MidiVoiceLane& lane,
                            uint8_t note,
@@ -84,15 +103,18 @@ private:
                            uint8_t note,
                            uint8_t velocity);
     bool releaseActiveNote(MidiVoiceLane& lane, uint8_t velocity = 0);
+    void releaseTargetAllNotes(MusicalEventSource source,
+                               MusicalEventTarget target);
     void releaseAllActiveNotes();
     void clearActiveState();
 
     IUsbMidiTransport& transport_;
-    MidiVoiceLane lanes_[kLaneCount]{};
-    uint8_t wireOwners_[kMidiChannelCount][kMidiNoteCount]{};
-    bool enabled_{true};
-    bool begun_{false};
-    bool mounted_{false};
+    UsbMidiRouteConfig config_;
+    MidiVoiceLane lanes_[kLaneCount];
+    uint8_t wireOwners_[kMidiChannelCount][kMidiNoteCount];
+    bool enabled_;
+    bool begun_;
+    bool mounted_;
 };
 
 #endif  // GROOVEPUTER_USB_MIDI_OUTPUT_H

@@ -18,6 +18,7 @@ public:
     static constexpr uint8_t kSynthAMask = 1u << 0;
     static constexpr uint8_t kSynthBMask = 1u << 1;
     static constexpr uint8_t kDrumsMask = 1u << 2;
+    static constexpr uint8_t kDxMask = 1u << 3;
 
     bool tryPush(const MusicalEvent& event) {
         const uint32_t head = head_.loadRelaxed();
@@ -51,6 +52,7 @@ public:
         const uint32_t synthAEpoch = pendingSynthAEpoch_.loadAcquire();
         const uint32_t synthBEpoch = pendingSynthBEpoch_.loadAcquire();
         const uint32_t drumsEpoch = pendingDrumsEpoch_.loadAcquire();
+        const uint32_t dxEpoch = pendingDxEpoch_.loadAcquire();
         if (synthAEpoch != consumedSynthAEpoch_) {
             consumedSynthAEpoch_ = synthAEpoch;
             mask |= kSynthAMask;
@@ -62,6 +64,10 @@ public:
         if (drumsEpoch != consumedDrumsEpoch_) {
             consumedDrumsEpoch_ = drumsEpoch;
             mask |= kDrumsMask;
+        }
+        if (dxEpoch != consumedDxEpoch_) {
+            consumedDxEpoch_ = dxEpoch;
+            mask |= kDxMask;
         }
         return mask;
     }
@@ -94,6 +100,9 @@ private:
             case MusicalEventTarget::Drums:
                 pendingDrumsEpoch_.incrementRelaxed();
                 break;
+            case MusicalEventTarget::Dx:
+                pendingDxEpoch_.incrementRelaxed();
+                break;
         }
     }
 
@@ -103,11 +112,13 @@ private:
     MidiRealtimeWord pendingSynthAEpoch_;
     MidiRealtimeWord pendingSynthBEpoch_;
     MidiRealtimeWord pendingDrumsEpoch_;
+    MidiRealtimeWord pendingDxEpoch_;
     MidiRealtimeWord droppedNoteOn_;
     MidiRealtimeWord droppedCritical_;
     uint32_t consumedSynthAEpoch_{0};
     uint32_t consumedSynthBEpoch_{0};
     uint32_t consumedDrumsEpoch_{0};
+    uint32_t consumedDxEpoch_{0};
 };
 
 #endif  // GROOVEPUTER_MIDI_CONTROL_EVENT_QUEUE_H

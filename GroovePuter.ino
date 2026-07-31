@@ -193,6 +193,26 @@ static void logHeapCaps(const char* tag) {
                 (unsigned)free8, (unsigned)larg8);
 }
 
+static void startAudioTask() {
+  // Reserve the realtime stack before allocating lazy UI pages. Reducing this
+  // stack masks the allocation failure but risks an audio-task overflow.
+  Serial.println("8. Creating AudioTask...");
+  markBootStage(80, "before AudioTask create");
+  g_audioTaskHandle = nullptr;
+  const BaseType_t taskOk = xTaskCreatePinnedToCore(
+      audioTask, "AudioTask", 8192, nullptr, 3, &g_audioTaskHandle, 1);
+  if (taskOk != pdPASS) {
+    Serial.printf("[FATAL] AudioTask create failed: %d\n", (int)taskOk);
+    markBootStage(902, "fatal-audio-task");
+    while (true) { delay(1000); }
+  }
+
+  Serial.printf("[DEBUG] AudioTask created successful, handle: %p\n",
+                (void*)g_audioTaskHandle);
+  g_audioMutationGate.setAudioTaskActive(true);
+  markBootStage(81, "after AudioTask create");
+}
+
 void setup() {
   // Enable the Cardputer ADV power amplifier. This pin is not RGB data.
   pinMode(GroovePuterHardware::kPowerAmplifierEnablePin, OUTPUT);
@@ -283,19 +303,17 @@ void setup() {
   snprintf(buf, sizeof(buf), "2. PSRAM: %d KB free", (int)(ESP.getFreePsram() / 1024));
   screenLog(buf);
 
-  // Points to static instance
-  g_miniAcid = &g_miniAcidInstance;
-  // Serial.printf("[DEBUG] g_miniAcid addr: %p (instance: %p)\n", (void*)g_miniAcid, (void*)&g_miniAcidInstance);
-  // Serial.printf("[DEBUG] MiniAcid size: %u bytes\n", (unsigned)sizeof(MiniAcid));
-  
   screenLog("4. Engine Static OK");
-  
-  // Previously we tried PSRAM allocation here, but now we use BSS
-  // to avoid 'largest free block' issues on DRAM-only usage.
+  // Reserve the realtime stack while the display allocation is still the only
+  // large heap consumer. audioTask outputs silence until g_miniAcid is set
+  // after MiniAcid::init() completes below.
+  logHeapCaps("before-audio-task");
+  startAudioTask();
+  logHeapCaps("after-audio-task");
 
   screenLog("5. Creating Encoder8");
   markBootStage(40, "before Encoder8 alloc");
-  g_encoder8 = new (std::nothrow) Encoder8Miniacid(*g_miniAcid);
+  g_encoder8 = new (std::nothrow) Encoder8Miniacid(g_miniAcidInstance);
   if (!g_encoder8) {
     Serial.println("[FATAL] Encoder8 allocation failed");
     markBootStage(900, "fatal-encoder8-alloc");
@@ -305,9 +323,10 @@ void setup() {
 
   screenLog("6. Engine Init...");
   // Link sample store before init
-  g_miniAcid->sampleStore = &g_sampleStore;
+  g_miniAcidInstance.sampleStore = &g_sampleStore;
   markBootStage(50, "before MiniAcid::init");
-  g_miniAcid->init();
+  g_miniAcidInstance.init();
+  g_miniAcid = &g_miniAcidInstance;
   g_patternMusicalEventQueue.setPhaseReader(
       readPatternSequencerPhase, g_miniAcid);
   g_miniAcid->setPatternEventQueue(&g_patternMusicalEventQueue);
@@ -323,7 +342,7 @@ void setup() {
   registerCardputerUsbMidiSink(
       g_musicalEventRouter, g_patternMusicalEventQueue);
   markBootStage(53, "after USB MIDI sink");
-  
+
   // Scan samples from SD card (SD initialized by engine->init->sceneStorage)
   screenLog("6b. Scan /sd/samples...");
   markBootStage(60, "before sample scan");
@@ -372,26 +391,6 @@ void setup() {
   // DISABLING FOR CRASH DEBUGGING
   // g_audioRecorder = new CardputerAudioRecorder();
   // g_miniDisplay->setAudioRecorder(g_audioRecorder);
-
-  Serial.println("8. Creating AudioTask...");
-  markBootStage(80, "before AudioTask create");
-  g_audioTaskHandle = nullptr;
-  BaseType_t taskOk = xTaskCreatePinnedToCore(audioTask, "AudioTask",
-                                              8192, // Reverted to 8192 for stability
-                                              nullptr,
-                                              3, // priority
-                                              &g_audioTaskHandle,
-                                              1 // core
-  );
-  if (taskOk != pdPASS) {
-    Serial.printf("[FATAL] AudioTask create failed: %d\n", (int)taskOk);
-    markBootStage(902, "fatal-audio-task");
-    while (true) { delay(1000); }
-  } else {
-    Serial.printf("[DEBUG] AudioTask created successful, handle: %p\n", (void*)g_audioTaskHandle);
-    g_audioMutationGate.setAudioTaskActive(true);
-  }
-  markBootStage(81, "after AudioTask create");
 
   Serial.println("9. Final Init...");
   markBootStage(90, "before encoder init");

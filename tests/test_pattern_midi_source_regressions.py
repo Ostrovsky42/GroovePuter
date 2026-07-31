@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,21 +31,25 @@ def main() -> None:
     require("MidiOutput" not in event_header,
             "USB MIDI must remain an output sink, not a MusicalEventTarget")
     require("enum class MusicalEventTarget" in event_header and
-            "    Drums," in event_header,
-            "live keyboard routing must expose the Drums target")
+            "    Drums," in event_header and "    Dx," in event_header,
+            "live keyboard routing must expose Drums and DX targets")
     require("MusicalEventSource::PerformanceKeyboard" in sink and
             "MusicalEventSource::PatternPlayer" in sink,
             "USB sink must expose separate live and PatternPlayer lanes")
     require("MusicalEventTarget::SynthA" in sink and
             "MusicalEventTarget::SynthB" in sink and
-            "MusicalEventTarget::Drums" in sink,
-            "USB output must retain Synth A, Synth B and live Drums targets")
-    require("kLaneCount = 5" in sink_h,
-            "USB output must keep five fixed live/pattern ownership lanes")
+            "MusicalEventTarget::Drums" in sink and
+            "MusicalEventTarget::Dx" in sink,
+            "USB output must retain Synth A/B and add live Drums/DX targets")
+    require("kLaneCount = 12" in sink_h,
+            "USB output must keep fixed ownership for A/B/DX, seven drums and Pattern A/B")
     constructor_end = sink.index("uint8_t UsbMidiOutput::clampChannel")
     constructor = sink[:constructor_end]
-    require("MusicalEventSource::PerformanceKeyboard,\n        MusicalEventTarget::Drums" in constructor,
-            "Drums must be a live keyboard lane")
+    require("MusicalEventSource::PerformanceKeyboard,\n        MusicalEventTarget::Dx" in constructor,
+            "DX must be a live keyboard lane")
+    require("drumChannel < kSeqtrakDrumLaneCount" in constructor and
+            "MusicalEventTarget::Drums" in constructor,
+            "native Drums must construct seven live lanes")
     require("MusicalEventSource::PatternPlayer,\n        MusicalEventTarget::Drums" not in constructor,
             "PatternPlayer must remain limited to Synth A/B in this integration step")
     require("wireOwners_[kMidiChannelCount][kMidiNoteCount]" in sink_h,
@@ -55,8 +60,10 @@ def main() -> None:
             "patternSynthBChannel{8}" in sink_h,
             "PatternPlayer routes must remain MIDI channels 8 and 9")
     require("performanceSynthBChannel{8}" in sink_h and
-            "performanceDrumsChannel{9}" in sink_h,
-            "live B and Drums defaults must be MIDI channels 9 and 10")
+            "performanceDxChannel{9}" in sink_h,
+            "live Synth B and DX defaults must be MIDI channels 9 and 10")
+    require("kSeqtrakDrumLaneCount = 7" in sink_h,
+            "live native Drums must expose exactly SEQTRAK CH1..7")
 
     for token in ("blockSequence", "frameOffset", "generation",
                   "publicationSequence"):
@@ -82,6 +89,8 @@ def main() -> None:
             "live USB handoff must remain a bounded queue")
     require("kDrumsMask" in control_queue and "pendingDrumsEpoch_" in control_queue,
             "live Drums overflow must retain a scoped cleanup path")
+    require("kDxMask" in control_queue and "pendingDxEpoch_" in control_queue,
+            "live DX overflow must retain a scoped cleanup path")
     for path_text in (queue, facade, control_queue):
         for token in ("std::vector", "std::deque", "new ", "malloc("):
             require(token not in path_text,
@@ -120,8 +129,9 @@ def main() -> None:
             "DSP engine must not depend on hardware USB APIs")
     require("event.source == MusicalEventSource::PatternPlayer" in internal,
             "internal sink must ignore already-rendered PatternPlayer fan-out")
-    require("event.target == MusicalEventTarget::Drums" in internal,
-            "external live Drums must not alias to an internal synth voice")
+    require("event.target == MusicalEventTarget::Drums" in internal and
+            "event.target == MusicalEventTarget::Dx" in internal,
+            "external live Drums/DX must never alias to an internal synth voice")
 
     render_start = engine.index("bool MiniAcid::renderProjectToWav")
     render_body = engine[render_start:render_start + 5200]
@@ -141,7 +151,7 @@ def main() -> None:
             "AudioTask must establish and publish sample-block timing")
     require("readPatternSequencerPhase" in sketch,
             "AudioTask timing must use MiniAcid's sequencer phase")
-    require('xTaskCreatePinnedToCore(audioTask, "AudioTask"' in sketch,
+    require(re.search(r'xTaskCreatePinnedToCore\(\s*audioTask\s*,\s*"AudioTask"', sketch) is not None,
             "realtime publication depends on the pinned AudioTask identity")
 
     registration_call = "registerCardputerUsbMidiSink(\n      g_musicalEventRouter, g_patternMusicalEventQueue)"
@@ -161,6 +171,9 @@ def main() -> None:
     require("MidiControlEventQueue::kDrumsMask" in transport and
             "MusicalEventTarget::Drums" in transport,
             "dispatcher must perform scoped recovery for dropped live Drums cleanup")
+    require("MidiControlEventQueue::kDxMask" in transport and
+            "MusicalEventTarget::Dx" in transport,
+            "dispatcher must perform scoped recovery for dropped live DX cleanup")
     require("USBMIDI.h" not in sketch and "USB.h" not in sketch,
             "TinyUSB headers must stay isolated from the main UI translation unit")
 
