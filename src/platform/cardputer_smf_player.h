@@ -6,6 +6,7 @@
 #include <freertos/queue.h>
 #include <freertos/task.h>
 
+#include "src/midi/project_transport_timeline.h"
 #include "src/midi/scheduled_smf_midi_event_queue.h"
 #include "src/midi/smf_player_service.h"
 #include "src/midi/smf_routing.h"
@@ -27,6 +28,7 @@ public:
     bool panic() override;
     bool seekBars(int deltaBars) override;
     bool toggleRouting() override;
+    bool toggleTempoMode() override;
     bool adjustTempoBpm(int deltaBpm) override;
     bool resetTempo() override;
     bool cycleVelocityBoost() override;
@@ -42,6 +44,8 @@ private:
     // costs no RAM and absorbs SD latency spikes; dense files remain bounded by
     // kQueueFillLimit rather than by this window.
     static constexpr uint32_t kScheduleLookaheadBlocks = 32;
+    static constexpr uint32_t kProjectScheduleLookaheadBlocks = 12;
+    static constexpr uint32_t kProjectLaunchLeadBlocks = 2;
     static constexpr std::size_t kQueueFillLimit =
         ScheduledSmfMidiEventQueue::kCapacity - 24;
 
@@ -54,6 +58,7 @@ private:
         Panic,
         SeekBars,
         ToggleRouting,
+        ToggleTempoMode,
         AdjustTempoBpm,
         ResetTempo,
         CycleVelocityBoost,
@@ -95,6 +100,9 @@ private:
     static void taskEntry(void* context);
     void taskLoop();
     void handleTransportFailure();
+    void handleProjectTransport();
+    void reanchorProjectTempo(
+        const GroovePuterMidi::ProjectTransportBlockSnapshot& transport);
     bool enqueue(const Command& command);
     void handleCommand(const Command& command);
 
@@ -102,6 +110,10 @@ private:
     bool scanMetadata();
     bool prepareStreamAt(uint32_t tick);
     bool startFromTick(uint32_t tick);
+    bool startOriginalFromTick(uint32_t tick);
+    bool armProjectFromTick(uint32_t tick);
+    bool planProjectLaunch(
+        const GroovePuterMidi::ProjectTransportBlockSnapshot& transport);
     void pauseAtCurrentPosition();
     void stopAndCleanup(bool resetToMusicStart);
     void scheduleAhead();
@@ -111,6 +123,8 @@ private:
     uint16_t originalBpmX10At(uint32_t tick) const;
     uint16_t effectiveBpmX10At(uint32_t tick) const;
     uint32_t currentTickFromAudioClock() const;
+    uint32_t currentProjectTick(
+        const GroovePuterMidi::ProjectTransportBlockSnapshot& transport) const;
     bool takeNextNote(GroovePuterMidi::SmfStreamEvent& event);
     void publishSnapshot(GroovePuterMidi::SmfPlayerState state,
                          const char* message = nullptr);
@@ -135,6 +149,7 @@ private:
     uint32_t endTick_{0};
     uint32_t playbackOriginTick_{0};
     uint32_t playbackOriginBlock_{0};
+    uint16_t playbackOriginFrame_{0};
     uint32_t playbackOriginMicros_{0};
     uint32_t lastScheduledBlock_{0};
     uint32_t pausedTick_{0};
@@ -144,6 +159,14 @@ private:
     uint16_t tempoScalePermille_{
         GroovePuterMidi::kSmfOriginalTempoScalePermille};
     uint8_t velocityBoost_{0};
+
+    GroovePuterMidi::SmfTempoMode tempoMode_{
+        GroovePuterMidi::SmfTempoMode::Original};
+    GroovePuterMidi::SmfLaunchMode launchMode_{
+        GroovePuterMidi::SmfLaunchMode::NextBar};
+    bool projectLaunchPlanned_{false};
+    double projectOriginStep_{0.0};
+    uint16_t projectBpmX10_{1200};
 
     static constexpr uint32_t kPerfUnsetDepth = 0xFFFFFFFFu;
     static constexpr uint32_t kPerfLogIntervalMs = 2000;
