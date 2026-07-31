@@ -31,8 +31,37 @@ public:
     }
 
     explicit operator bool() const { return queue_ != nullptr; }
-    MusicalEventQueue* operator->() { return queue_; }
-    const MusicalEventQueue* operator->() const { return queue_; }
+
+    // MiniAcid already calls patternEventQueue_->tryPush(...). Returning the
+    // handle itself lets us preserve that source API while adding exactly one
+    // Drums lifecycle barrier whenever publishPatternAllNotesOff_() finishes its
+    // existing Synth A/B cleanup sequence. No MiniAcid sequencer fork is added.
+    PatternEventQueueHandle* operator->() { return this; }
+    const PatternEventQueueHandle* operator->() const { return this; }
+
+    bool tryPush(const MusicalEvent& event) {
+        if (!queue_) return false;
+        const bool primary = queue_->tryPush(event);
+
+        // publishPatternAllNotesOff_() always emits Synth A followed by Synth B.
+        // Piggy-back on the second barrier so Song/scene/Stop lifecycle changes
+        // invalidate Pattern Drums in the same generation-safe handoff.
+        if (event.type == MusicalEventType::AllNotesOff &&
+            event.source == MusicalEventSource::PatternPlayer &&
+            event.target == MusicalEventTarget::SynthB) {
+            const bool drums = queue_->tryPush(MusicalEvent{
+                MusicalEventType::AllNotesOff,
+                MusicalEventSource::PatternPlayer,
+                MusicalEventTarget::Drums,
+                0,
+                0,
+                0,
+            });
+            return primary && drums;
+        }
+        return primary;
+    }
+
     operator MusicalEventQueue*() const { return queue_; }
 
 private:
