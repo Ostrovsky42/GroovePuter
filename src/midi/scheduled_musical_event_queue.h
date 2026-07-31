@@ -35,7 +35,7 @@ public:
         // note. Advance the target generation immediately so already queued
         // events cannot be replayed after Stop, scene/Song changes or recovery.
         // MidiDispatchTask consumes the pending target-scoped panic before it
-        // dispatches any event from the new generation.
+        // dispatches any event from the following generation.
         if (event.type == MusicalEventType::AllNotesOff) {
             invalidateTarget(event.target);
             return true;
