@@ -119,7 +119,7 @@ The v1 gate uses the existing companion default:
 80 ms
 ```
 
-A retrigger, flam or roll extends the logical voice's gate to 80 ms after the newest hit. Repeated NoteOn packets are still sent; older gate deadlines are replaced so they cannot cut a newer retrigger short.
+A retrigger, flam or roll extends the logical voice's gate to 80 ms after the newest hit. Repeated NoteOn packets are still sent; older gate deadlines are replaced so they cannot cut a newer retrigger short. The bounded gate slot also retains how many accepted retriggers must be released when the final deadline arrives.
 
 ## Ownership contract
 
@@ -131,8 +131,9 @@ This matters for both:
 same voice retrig
 Kick ON
 Kick ON
-... final gate ...
-Kick OFF
+... extended final gate ...
+logical release
+logical release -> physical Kick OFF
 ```
 
 and shared destinations:
