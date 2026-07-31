@@ -33,8 +33,9 @@ enum class UsbMidiStatus : uint8_t {
 // Translates normalized GroovePuter events into fixed logical lanes.
 // Synth/DX lanes are monophonic. Live Drums owns seven independent native
 // SEQTRAK lanes (logical 0..6 -> MIDI CH1..7), allowing simultaneous pads.
-// Wire-level channel+note ownership remains reference counted so two logical
-// owners sharing one physical MIDI note cannot accidentally silence each other.
+// Wire-level channel+note ownership remains reference counted. The SMF player
+// adds a separate polyphonic ownership matrix but shares the same final wire
+// owner counts so player cleanup cannot silence PERFORM or Pattern ownership.
 class UsbMidiOutput final : public IMusicalEventSink {
 public:
     static constexpr uint8_t kSeqtrakDrumLaneCount = 7;
@@ -60,12 +61,25 @@ public:
                        MusicalEventTarget target,
                        uint8_t logicalChannel) const;
     uint8_t wireOwnerCount(uint8_t zeroBasedChannel, uint8_t note) const;
+    uint8_t smfOwnerCount(uint8_t zeroBasedChannel, uint8_t note) const;
     uint8_t synthAChannel() const {
         return channelFor(MusicalEventSource::PerformanceKeyboard,
                           MusicalEventTarget::SynthA);
     }
 
     void handleMusicalEvent(const MusicalEvent& event) override;
+
+    // Polyphonic RAW MIDI path used only by MidiDispatchTask. Repeated SMF
+    // NoteOn messages are emitted to preserve retriggers; NoteOff is held until
+    // the final logical owner of that channel+note is gone.
+    bool handleSmfNoteOn(uint8_t zeroBasedChannel,
+                         uint8_t note,
+                         uint8_t velocity);
+    bool handleSmfNoteOff(uint8_t zeroBasedChannel,
+                          uint8_t note,
+                          uint8_t velocity = 0);
+    bool releaseAllSmfNotes();
+    void abandonAllSmfNotes();
 
 private:
     // Intentionally POD with no default member initializers. The global
@@ -112,6 +126,7 @@ private:
     UsbMidiRouteConfig config_;
     MidiVoiceLane lanes_[kLaneCount];
     uint8_t wireOwners_[kMidiChannelCount][kMidiNoteCount];
+    uint8_t smfOwners_[kMidiChannelCount][kMidiNoteCount];
     bool enabled_;
     bool begun_;
     bool mounted_;

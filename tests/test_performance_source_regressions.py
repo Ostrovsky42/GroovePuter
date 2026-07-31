@@ -33,7 +33,9 @@ def test_blocked_note_mode_keys_are_consumed() -> None:
 
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
     route_pos = display.index("performance_keyboard_.keyDown(event.key)")
-    fallback_pos = display.index("// 3) Global navigation fallback", route_pos)
+    fallback_pos = display.index(
+        "if (event.key == ']') { nextPage(); return true; }", route_pos
+    )
     require(route_pos < fallback_pos,
             "NOTE-mode routing must run before legacy global fallback")
 
@@ -71,7 +73,6 @@ def test_note_mode_is_explicit_and_runtime_only() -> None:
             "NOTE mode must remain runtime-only in this PR")
 
 
-
 def test_live_synth_render_is_not_transport_gated() -> None:
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
     start = engine.index("uint32_t tV0 = 0;")
@@ -104,13 +105,100 @@ def test_perform_is_additive_to_legacy_carousel() -> None:
     require("case ',':" in perform and "case '.':" in perform,
             "PERFORM scale controls must use non-navigation keys")
 
+
+def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
+    ui_config = (ROOT / "src/ui/ui_config.h").read_text(encoding="utf-8")
+    display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
+    player_page = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(
+        encoding="utf-8"
+    )
+    player_service = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(
+        encoding="utf-8"
+    )
+    player_registry = (ROOT / "src/platform/cardputer_smf_player_registry.cpp").read_text(
+        encoding="utf-8"
+    )
+    usb_dispatch = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(
+        encoding="utf-8"
+    )
+    project = (ROOT / "src/ui/pages/project_page.cpp").read_text(encoding="utf-8")
+
+    require("kPageCount = 14" in ui_config,
+            "MIDI Player must remain a real lazy-loaded UI page")
+    require("case kSmfPlayerPage:" in display and
+            "std::make_unique<SmfPlayerPage>" in display,
+            "MiniAcidDisplay must construct the MIDI Player page")
+    require("event.alt && (event.key == 'p' || event.key == 'P')" in display,
+            "Alt+P must provide a deterministic hardware shortcut to MIDI Player")
+    require("player->togglePlayPause()" in display,
+            "Space must own SMF Play/Pause on the player page")
+    require("event.shift" not in display[display.index("// On the MIDI Player page Space"):display.index("if (event.key == ' ')", display.index("// On the MIDI Player page Space") + 1)],
+            "SMF Space handling must not depend on unavailable Cardputer Shift")
+
+    require('"PLAY FROM %.30s"' in player_page and
+            "currentPath_.c_str()" in player_page and
+            "requestLoadAndPlay" in player_page,
+            "MIDI Player page must expose selectable SD playback and its path")
+    require("seekBars(event.shift ? -4 : -1)" in player_page and
+            "seekBars(event.shift ? 4 : 1)" in player_page,
+            "player seek must preserve +/-1 and Shift +/-4 bar UX")
+    require("MIDI PANIC / PAUSE" in player_page,
+            "player page must expose scoped panic")
+    require("event.key == 'r' || event.key == 'R'" in player_page and
+            "player_->restart(SmfPlayerRestartOrigin::MusicStart)" in player_page and
+            "R Restart" in player_page,
+            "physical R must restart playback from MUSIC START without Shift")
+    require("event.key == 'd' || event.key == 'D'" in player_page and
+            "drawPerformance" in player_page and
+            "state.performance" in player_page and
+            "snapshot_.performance = performance" in player_service,
+            "physical D must expose SMF performance without Serial or SD logging")
+    require("B Files" in player_page and "toggleRouting()" in player_page,
+            "player must expose file return and RAW/SEQTRAK routing controls")
+
+    require("MidiImporter importer" in project and "importFile" in project,
+            "existing quantized MIDI importer must remain available beside PLAY")
+
+    forbidden_usb = ("USBMIDI", "TinyUSB", "writePacket(", "sendNoteOn(", "sendNoteOff(")
+    for token in forbidden_usb:
+        require(token not in player_service,
+                f"SmfPlayerTask must not own USB/TinyUSB directly: found {token}")
+        require(token not in player_registry,
+                f"SMF service registry must stay free of USB writes: found {token}")
+
+    require("registerCardputerSmfMidiQueue" in player_registry,
+            "Cardputer SMF service must publish only through the scheduled queue")
+    require("beginCardputerSmfPlayerService" in player_registry and
+            "beginCardputerSmfPlayerService" in
+                (ROOT / "GroovePuter.ino").read_text(encoding="utf-8"),
+            "SMF runtime must be reserved explicitly during setup")
+    require("kMaxTimingEvents = 32" in
+                (ROOT / "src/platform/cardputer_smf_player.h").read_text(encoding="utf-8") and
+            "timingDocument_ = SmfDocument{}" not in player_service,
+            "Cardputer SMF metadata must stay bounded and preserve setup capacity")
+    require("catch (const std::bad_alloc&)" in player_service,
+            "SMF loading must report allocation failure instead of resetting")
+    require("ScheduledSmfMidiEventQueue* g_smfQueue" in usb_dispatch,
+            "existing MidiDispatchTask must consume the SMF scheduled queue")
+    require("smfSendFailureAction" in usb_dispatch and
+            "vTaskDelay(kSmfRetryDelay)" in usb_dispatch and
+            "kSmfStaleNoteOnThresholdUs" in usb_dispatch,
+            "USB backpressure must use bounded paced retries and stale NoteOn drops")
+    require("g_output.handleSmfNoteOn" in usb_dispatch and
+            "g_output.handleSmfNoteOff" in usb_dispatch,
+            "MidiDispatchTask must remain the physical SMF note owner")
+    require("midiDispatchTask" in usb_dispatch,
+            "accepted single USB owner task must remain present")
+
+
 def main() -> None:
     test_blocked_note_mode_keys_are_consumed()
     test_performance_all_notes_off_is_target_scoped()
     test_note_mode_is_explicit_and_runtime_only()
     test_live_synth_render_is_not_transport_gated()
     test_perform_is_additive_to_legacy_carousel()
-    print("performance source regressions: OK")
+    test_smf_player_is_additive_and_keeps_single_usb_owner()
+    print("performance + SMF source regressions: OK")
 
 
 if __name__ == "__main__":

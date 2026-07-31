@@ -15,6 +15,8 @@
 #include "src/midi/midi_control_event_queue.h"
 #include "src/midi/scheduled_midi_transport_event.h"
 #include "src/midi/scheduled_musical_event_queue.h"
+#include "src/midi/smf_dispatch_policy.h"
+#include "src/midi/scheduled_smf_midi_event_queue.h"
 #include "src/midi/usb_midi_output.h"
 
 #if ARDUINO_USB_MODE
@@ -41,6 +43,12 @@ constexpr uint32_t kDiagnosticsPeriodMs = 5000;
 // pulse more than 5 ms late is stale: dropping it avoids catch-up bursts while
 // retaining at most the currently useful pulse.
 constexpr uint32_t kClockStaleThresholdUs = 5000;
+// A stale NoteOn has no cleanup responsibility and must not create a catch-up
+// burst after USB endpoint backpressure. NoteOff remains cleanup-critical.
+constexpr uint32_t kSmfStaleNoteOnThresholdUs = 100000;
+constexpr TickType_t kSmfRetryDelay = pdMS_TO_TICKS(1);
+constexpr uint32_t kSmfCleanupRetryDelayMs = 10;
+constexpr uint8_t kSmfCleanupAttemptLimit = 8;
 constexpr std::size_t kControlDrainBudget = 8;
 
 class MidiBlockAnchorClock {
@@ -103,6 +111,14 @@ struct MidiDispatchDiagnostics {
     uint32_t startSent{0};
     uint32_t stopSent{0};
     uint32_t transportSendFailures{0};
+    uint32_t smfSent{0};
+    uint32_t smfStaleGenerationDrops{0};
+    uint32_t smfPanics{0};
+    uint32_t smfSendRetries{0};
+    uint32_t smfSendDrops{0};
+    uint32_t smfLateNoteOnDrops{0};
+    uint32_t smfCleanupRetries{0};
+    uint32_t smfTransportAborts{0};
 };
 
 // Construction of USBMIDI registers its interface descriptor before Arduino
@@ -120,10 +136,15 @@ UsbMidiOutput g_output(
     });
 MidiControlEventQueue g_controlQueue;
 MusicalEventQueue* g_patternQueue = nullptr;
+ScheduledSmfMidiEventQueue* g_smfQueue = nullptr;
 MidiBlockAnchorClock g_anchorClock;
 MidiDispatchDiagnostics g_diagnostics;
 TaskHandle_t g_dispatchTaskHandle = nullptr;
 bool g_registered = false;
+bool g_smfCleanupPending = false;
+bool g_smfCleanupMustAbort = false;
+uint32_t g_nextSmfCleanupAttemptMs = 0;
+uint8_t g_smfCleanupAttempts = 0;
 
 void notifyDispatcher() {
     if (g_dispatchTaskHandle != nullptr) {
@@ -140,6 +161,28 @@ public:
 };
 
 QueuedUsbMidiSink g_queueSink;
+
+void beginSmfCleanup(bool transportFailure = false) {
+    if (!g_smfCleanupPending) {
+        g_nextSmfCleanupAttemptMs = 0;
+        g_smfCleanupAttempts = 0;
+        g_smfCleanupMustAbort = transportFailure;
+    } else if (transportFailure) {
+        g_smfCleanupMustAbort = true;
+    }
+    g_smfCleanupPending = true;
+}
+
+void reportSmfTransportFailure() {
+    g_output.abandonAllSmfNotes();
+    g_smfQueue->reportTransportFailure();
+    g_smfCleanupPending = false;
+    g_smfCleanupMustAbort = false;
+    g_nextSmfCleanupAttemptMs = 0;
+    g_smfCleanupAttempts = 0;
+    ++g_diagnostics.smfTransportAborts;
+    Serial.println("[SMF-ERROR] USB MIDI endpoint blocked; playback stopped");
+}
 
 MusicalEvent panicEvent(MusicalEventSource source,
                         MusicalEventTarget target) {
@@ -198,6 +241,44 @@ void dispatchControlPanics() {
     }
 }
 
+void dispatchSmfPanic() {
+    if (g_smfQueue == nullptr) return;
+    uint32_t generation = 0;
+    if (g_smfQueue->takePendingPanic(generation)) {
+        (void)generation;
+        beginSmfCleanup();
+        ++g_diagnostics.smfPanics;
+    }
+    if (!g_smfCleanupPending) return;
+
+    const uint32_t nowMs = millis();
+    if (g_nextSmfCleanupAttemptMs != 0 &&
+        static_cast<int32_t>(nowMs - g_nextSmfCleanupAttemptMs) < 0) {
+        return;
+    }
+    if (g_output.releaseAllSmfNotes()) {
+        if (g_smfCleanupMustAbort) {
+            reportSmfTransportFailure();
+            return;
+        }
+        g_smfCleanupPending = false;
+        g_smfCleanupMustAbort = false;
+        g_nextSmfCleanupAttemptMs = 0;
+        g_smfCleanupAttempts = 0;
+    } else {
+        if (g_smfCleanupAttempts < UINT8_MAX) ++g_smfCleanupAttempts;
+        g_nextSmfCleanupAttemptMs = nowMs + kSmfCleanupRetryDelayMs;
+        ++g_diagnostics.smfCleanupRetries;
+        if (g_smfCleanupAttempts >= kSmfCleanupAttemptLimit) {
+            // A host that does not consume the USB MIDI IN endpoint can keep
+            // every NoteOff rejected indefinitely. Give up only SMF ownership,
+            // invalidate queued events, and let the player surface the fault.
+            // Other live/Pattern owners remain accounted for locally.
+            reportSmfTransportFailure();
+        }
+    }
+}
+
 void drainControlEvents(std::size_t budget = kControlDrainBudget) {
     MusicalEvent event{};
     std::size_t drained = 0;
@@ -240,8 +321,30 @@ bool transportBeforeMusical(const ScheduledMidiTransportEvent& transport,
     if (transport.frameOffset != musical.frameOffset) {
         return transport.frameOffset < musical.frameOffset;
     }
-    // System realtime transport owns an equal sample timestamp. Within the
-    // transport queue, Start/Stop is published before Clock at that timestamp.
+    return true;
+}
+
+bool transportBeforeSmf(const ScheduledMidiTransportEvent& transport,
+                        const ScheduledSmfMidiEvent& smf) {
+    if (transport.blockSequence != smf.blockSequence) {
+        return midiSequenceBefore(transport.blockSequence, smf.blockSequence);
+    }
+    if (transport.frameOffset != smf.frameOffset) {
+        return transport.frameOffset < smf.frameOffset;
+    }
+    return true;
+}
+
+bool musicalBeforeSmf(const ScheduledMusicalEvent& musical,
+                      const ScheduledSmfMidiEvent& smf) {
+    if (musical.blockSequence != smf.blockSequence) {
+        return midiSequenceBefore(musical.blockSequence, smf.blockSequence);
+    }
+    if (musical.frameOffset != smf.frameOffset) {
+        return musical.frameOffset < smf.frameOffset;
+    }
+    // Pattern playback retains priority at an identical sample timestamp. The
+    // ordering within the SMF queue itself remains deterministic and stable.
     return true;
 }
 
@@ -276,6 +379,15 @@ bool dispatchTransportEvent(const ScheduledMidiTransportEvent& event) {
     return sent;
 }
 
+bool dispatchSmfEvent(const ScheduledSmfMidiEvent& event) {
+    if (event.type == ScheduledSmfMidiEventType::NoteOn) {
+        return g_output.handleSmfNoteOn(
+            event.channel, event.note, event.velocity);
+    }
+    return g_output.handleSmfNoteOff(
+        event.channel, event.note, event.velocity);
+}
+
 void logDiagnosticsIfDue() {
     static uint32_t lastLogMs = 0;
     const uint32_t nowMs = millis();
@@ -287,6 +399,9 @@ void logDiagnosticsIfDue() {
         : 0;
     const std::size_t transportDepth = g_patternQueue
         ? g_patternQueue->transportQueue().approximateSize()
+        : 0;
+    const std::size_t smfDepth = g_smfQueue
+        ? g_smfQueue->approximateSize()
         : 0;
     const uint32_t scheduledNoteDrops = g_patternQueue
         ? g_patternQueue->droppedNoteOnCount()
@@ -308,16 +423,27 @@ void logDiagnosticsIfDue() {
         : 0;
 
     Serial.printf(
-        "[MIDI-DISPATCH] sched=%u transport=%u live=%u sent=%u/%u "
+        "[MIDI-DISPATCH] sched=%u transport=%u smf=%u live=%u sent=%u/%u "
+        "smfSent=%u smfStale=%u smfPanic=%u smfRetry=%u smfDrop=%u "
+        "smfLateDrop=%u smfCleanRetry=%u smfAbort=%u "
         "clockSent=%u clockLate=%u clockDropped=%u start=%u stop=%u "
         "transportFail=%u late=%u maxLateUs=%u stale=%u/%u badFrame=%u "
         "drop=%u/%u transportDrop=%u overflow=%u recovery=%u "
         "liveDrop=%u/%u suppressed=%u panic=%u/%u\n",
         static_cast<unsigned>(scheduledDepth),
         static_cast<unsigned>(transportDepth),
+        static_cast<unsigned>(smfDepth),
         static_cast<unsigned>(g_controlQueue.approximateSize()),
         static_cast<unsigned>(g_diagnostics.dispatchedScheduled),
         static_cast<unsigned>(g_diagnostics.dispatchedControl),
+        static_cast<unsigned>(g_diagnostics.smfSent),
+        static_cast<unsigned>(g_diagnostics.smfStaleGenerationDrops),
+        static_cast<unsigned>(g_diagnostics.smfPanics),
+        static_cast<unsigned>(g_diagnostics.smfSendRetries),
+        static_cast<unsigned>(g_diagnostics.smfSendDrops),
+        static_cast<unsigned>(g_diagnostics.smfLateNoteOnDrops),
+        static_cast<unsigned>(g_diagnostics.smfCleanupRetries),
+        static_cast<unsigned>(g_diagnostics.smfTransportAborts),
         static_cast<unsigned>(g_diagnostics.clockSent),
         static_cast<unsigned>(g_diagnostics.clockLate),
         static_cast<unsigned>(g_diagnostics.clockDropped),
@@ -341,6 +467,13 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(g_diagnostics.controlPanics));
 }
 
+enum class PendingKind : uint8_t {
+    None = 0,
+    Transport,
+    Pattern,
+    Smf,
+};
+
 void midiDispatchTask(void*) {
     if (!g_output.begin()) {
         Serial.println("[MIDI-DISPATCH] USB MIDI begin failed");
@@ -348,18 +481,26 @@ void midiDispatchTask(void*) {
 
     ScheduledMusicalEvent pendingMusical{};
     ScheduledMidiTransportEvent pendingTransport{};
+    ScheduledSmfMidiEvent pendingSmf{};
     bool hasPendingMusical = false;
     bool hasPendingTransport = false;
+    bool hasPendingSmf = false;
+    uint8_t smfFailedAttempts = 0;
+
+    auto clearPendingSmf = [&]() {
+        hasPendingSmf = false;
+        smfFailedAttempts = 0;
+    };
 
     while (true) {
         g_output.pollConnection();
 
-        // Existing PatternPlayer cleanup stays ahead of Stop. This preserves the
-        // accepted NoteOff/AllNotesOff lifecycle: release owned notes first,
-        // then deliver the transport Stop boundary. No queue drain depends on
-        // Arduino loop scheduling.
+        // Existing PatternPlayer and live cleanup remain ahead of scheduled
+        // lifecycle traffic. SMF cleanup is independent and cannot silence a
+        // Pattern/PERFORM owner of the same physical channel+note.
         dispatchPatternPanics();
         dispatchControlPanics();
+        dispatchSmfPanic();
 
         if (g_patternQueue != nullptr) {
             if (!hasPendingTransport) {
@@ -373,6 +514,9 @@ void midiDispatchTask(void*) {
             if (!hasPendingMusical) {
                 hasPendingMusical = g_patternQueue->tryPop(pendingMusical);
             }
+        }
+        if (g_smfQueue != nullptr && !hasPendingSmf && !g_smfCleanupPending) {
+            hasPendingSmf = g_smfQueue->tryPop(pendingSmf);
         }
 
         if (hasPendingTransport &&
@@ -415,22 +559,79 @@ void midiDispatchTask(void*) {
             }
         }
 
-        if (!hasPendingTransport && !hasPendingMusical) {
+        if (hasPendingSmf &&
+            !scheduledSmfMidiEventFrameIsValid(pendingSmf, kBlockFrames)) {
+            ++g_diagnostics.invalidFrameDrops;
+            beginSmfCleanup();
+            clearPendingSmf();
+            continue;
+        }
+
+        if (hasPendingSmf && g_smfQueue != nullptr &&
+            g_smfQueue->transportFailed()) {
+            ++g_diagnostics.smfStaleGenerationDrops;
+            clearPendingSmf();
+            continue;
+        }
+
+        if (hasPendingSmf && g_smfQueue != nullptr &&
+            !scheduledSmfMidiEventGenerationIsCurrent(
+                pendingSmf, g_smfQueue->generation())) {
+            ++g_diagnostics.smfStaleGenerationDrops;
+            clearPendingSmf();
+            continue;
+        }
+
+        if (!hasPendingTransport && !hasPendingMusical && !hasPendingSmf) {
             drainControlEvents();
             logDiagnosticsIfDue();
             ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(2));
             continue;
         }
 
-        const bool dispatchTransport = hasPendingTransport &&
-            (!hasPendingMusical ||
-             transportBeforeMusical(pendingTransport, pendingMusical));
-        const uint32_t blockSequence = dispatchTransport
-            ? pendingTransport.blockSequence
-            : pendingMusical.blockSequence;
-        const uint16_t frameOffset = dispatchTransport
-            ? pendingTransport.frameOffset
-            : pendingMusical.frameOffset;
+        PendingKind kind = PendingKind::None;
+        if (hasPendingTransport) kind = PendingKind::Transport;
+        if (hasPendingMusical) {
+            if (kind == PendingKind::None ||
+                (kind == PendingKind::Transport &&
+                 !transportBeforeMusical(pendingTransport, pendingMusical))) {
+                kind = PendingKind::Pattern;
+            }
+        }
+        if (hasPendingSmf && !g_smfCleanupPending) {
+            bool smfWins = kind == PendingKind::None;
+            if (kind == PendingKind::Transport) {
+                smfWins = !transportBeforeSmf(pendingTransport, pendingSmf);
+            } else if (kind == PendingKind::Pattern) {
+                smfWins = !musicalBeforeSmf(pendingMusical, pendingSmf);
+            }
+            if (smfWins) kind = PendingKind::Smf;
+        }
+
+        if (kind == PendingKind::None) {
+            drainControlEvents();
+            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
+            continue;
+        }
+
+        uint32_t blockSequence = 0;
+        uint16_t frameOffset = 0;
+        switch (kind) {
+            case PendingKind::Transport:
+                blockSequence = pendingTransport.blockSequence;
+                frameOffset = pendingTransport.frameOffset;
+                break;
+            case PendingKind::Pattern:
+                blockSequence = pendingMusical.blockSequence;
+                frameOffset = pendingMusical.frameOffset;
+                break;
+            case PendingKind::Smf:
+                blockSequence = pendingSmf.blockSequence;
+                frameOffset = pendingSmf.frameOffset;
+                break;
+            case PendingKind::None:
+                break;
+        }
 
         uint32_t deadlineMicros = 0;
         if (!deadlineFor(blockSequence, frameOffset, deadlineMicros)) {
@@ -443,9 +644,6 @@ void midiDispatchTask(void*) {
         const int32_t untilDeadline = static_cast<int32_t>(
             deadlineMicros - nowMicros);
         if (untilDeadline > 1500) {
-            // Service a bounded amount of non-scheduled live input while the
-            // next sample deadline is safely in the future. Clock timing can no
-            // longer be delayed by draining the entire control queue.
             drainControlEvents();
             ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
             continue;
@@ -458,7 +656,7 @@ void midiDispatchTask(void*) {
             if (lateness > g_diagnostics.maximumLatenessUs) {
                 g_diagnostics.maximumLatenessUs = lateness;
             }
-            if (dispatchTransport &&
+            if (kind == PendingKind::Transport &&
                 pendingTransport.type == MidiTransportEventType::Clock) {
                 ++g_diagnostics.clockLate;
                 if (lateness > kClockStaleThresholdUs) {
@@ -467,12 +665,16 @@ void midiDispatchTask(void*) {
                     continue;
                 }
             }
+            if (kind == PendingKind::Smf &&
+                pendingSmf.type == ScheduledSmfMidiEventType::NoteOn &&
+                lateness > kSmfStaleNoteOnThresholdUs) {
+                ++g_diagnostics.smfLateNoteOnDrops;
+                clearPendingSmf();
+                continue;
+            }
         }
 
-        if (dispatchTransport) {
-            // Stop can invalidate a Clock while this task is waiting for its
-            // sample deadline. Re-check the transport generation immediately
-            // before the USB write so a stale pulse can never arrive post-Stop.
+        if (kind == PendingKind::Transport) {
             if (pendingTransport.type == MidiTransportEventType::Clock &&
                 !scheduledMidiTransportEventGenerationIsCurrent(
                     pendingTransport,
@@ -482,9 +684,7 @@ void midiDispatchTask(void*) {
                 dispatchTransportEvent(pendingTransport);
             }
             hasPendingTransport = false;
-        } else {
-            // Re-check after waiting: a lifecycle transition may have invalidated
-            // the target while this event was pending.
+        } else if (kind == PendingKind::Pattern) {
             if (scheduledMusicalEventGenerationIsCurrent(
                     pendingMusical,
                     g_patternQueue->generationFor(
@@ -495,6 +695,34 @@ void midiDispatchTask(void*) {
                 ++g_diagnostics.staleGenerationDrops;
             }
             hasPendingMusical = false;
+        } else {
+            if (g_smfQueue == nullptr ||
+                !scheduledSmfMidiEventGenerationIsCurrent(
+                    pendingSmf, g_smfQueue->generation())) {
+                ++g_diagnostics.smfStaleGenerationDrops;
+                clearPendingSmf();
+            } else if (dispatchSmfEvent(pendingSmf)) {
+                ++g_diagnostics.smfSent;
+                clearPendingSmf();
+            } else {
+                ++g_diagnostics.smfSendRetries;
+                if (smfFailedAttempts < UINT8_MAX) ++smfFailedAttempts;
+                const SmfSendFailureAction action = smfSendFailureAction(
+                    pendingSmf, smfFailedAttempts);
+                if (action == SmfSendFailureAction::DropNoteOn) {
+                    ++g_diagnostics.smfSendDrops;
+                    beginSmfCleanup(true);
+                    clearPendingSmf();
+                } else if (action == SmfSendFailureAction::BeginCleanup) {
+                    // UsbMidiOutput retains ownership after a failed NoteOff.
+                    // Move recovery to the paced all-notes-off path.
+                    beginSmfCleanup(true);
+                    clearPendingSmf();
+                }
+                // A pending task notification must not turn USB backpressure
+                // into a zero-delay retry loop that starves UI and TinyUSB.
+                vTaskDelay(kSmfRetryDelay);
+            }
         }
 
         drainControlEvents(2);
@@ -549,9 +777,6 @@ bool CardputerUsbMidiTransport::writeRealtimePacket(uint8_t status) {
         return false;
     }
 
-    // USB MIDI 1.0 uses CIN 0xF for a one-byte System Real-Time message.
-    // The pinned Arduino-ESP32 3.2.2 USBMIDI API accepts the complete 4-byte
-    // midiEventPacket_t via writePacket(). Cable number remains zero.
     midiEventPacket_t packet{
         kCinSingleByte,
         status,
@@ -628,10 +853,20 @@ bool registerCardputerUsbMidiSink(
     return true;
 }
 
+void registerCardputerSmfMidiQueue(ScheduledSmfMidiEventQueue* queue) {
+    g_smfQueue = queue;
+    notifyDispatcher();
+}
+
 void publishCardputerUsbMidiBlockAnchor(uint32_t blockSequence,
                                         uint32_t playbackStartMicros) {
     g_anchorClock.publish(blockSequence,
                           playbackStartMicros + kOutputLatencyUs);
     g_anchorClock.markPublished();
     notifyDispatcher();
+}
+
+bool snapshotCardputerUsbMidiBlockAnchor(uint32_t& blockSequence,
+                                         uint32_t& playbackStartMicros) {
+    return g_anchorClock.snapshot(blockSequence, playbackStartMicros);
 }

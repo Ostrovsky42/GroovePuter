@@ -19,6 +19,7 @@
 #include "src/audio/audio_diagnostics.h"
 #include "src/audio/audio_mutation_gate.h"
 #include "src/platform/cardputer_adv_hardware.h"
+#include "src/platform/cardputer_smf_player_registry.h"
 #include "src/platform/cardputer_usb_midi_service.h"
 #include "src/ui/key_normalize.h"
 #include "src/input/performance_keyboard.h"
@@ -310,6 +311,23 @@ void setup() {
   logHeapCaps("before-audio-task");
   startAudioTask();
   logHeapCaps("after-audio-task");
+
+  // Mount SD while enough contiguous internal memory remains. MiniAcid::init()
+  // calls initializeStorage() again, but SceneStorageCardputer treats that as
+  // an idempotent readiness check instead of remounting the shared SD object.
+  screenLog("4b. SD Init...");
+  markBootStage(82, "before early SD init");
+  g_sceneStorage.initializeStorage();
+  markBootStage(83, "after early SD init");
+
+  // Reserve the SMF task stack and bounded timing buffers before DSP and lazy
+  // UI allocations fragment the DRAM-only Cardputer ADV heap.
+  screenLog("4c. SMF Runtime...");
+  markBootStage(84, "before SMF runtime init");
+  if (!beginCardputerSmfPlayerService()) {
+    Serial.println("[WARN] SMF runtime unavailable; groovebox remains usable");
+  }
+  markBootStage(85, "after SMF runtime init");
 
   screenLog("5. Creating Encoder8");
   markBootStage(40, "before Encoder8 alloc");

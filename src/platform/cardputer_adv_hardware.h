@@ -26,4 +26,10 @@ inline constexpr int kI2sBitClockPin = 41;
 inline constexpr int kI2sWordSelectPin = 43;
 inline constexpr int kI2sDataOutPin = 42;
 inline constexpr int kI2sMasterClockPin = 0;
+
+inline constexpr int kSdClockPin = 40;
+inline constexpr int kSdMisoPin = 39;
+inline constexpr int kSdMosiPin = 14;
+inline constexpr int kSdChipSelectPin = 12;
+inline constexpr uint32_t kSdFrequencyHz = 25000000;
 }  // namespace GroovePuterHardware

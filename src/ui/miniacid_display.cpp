@@ -1,10 +1,10 @@
 #include "miniacid_display.h"
 #include "src/dsp/miniacid_engine.h"
+#include "src/midi/smf_player_service.h"
 
 #ifndef ARDUINO
 #include "../../platform_sdl/arduino_compat.h"
 #endif
-
 
 #include "pages/sequencer_hub_page.h"
 #include "pages/genre_page.h"
@@ -20,6 +20,7 @@
 #include "pages/help_dialog.h"
 #include "pages/sampler_page.h"
 #include "pages/perform_page.h"
+#include "pages/smf_player_page.h"
 #include "workflow_mode.h"
 #include "ui_colors.h"
 #include "ui_input.h"
@@ -36,6 +37,8 @@
 #include "../debug_log.h"
 
 namespace {
+constexpr int kSmfPlayerPage = 13;
+
 VisualStyle nextVisualStyle(VisualStyle style) {
     switch (style) {
         case VisualStyle::MINIMAL: return VisualStyle::RETRO_CLASSIC;
@@ -67,15 +70,10 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx,
     splash_start_ms_ = millis();
     splash_active_ = true;
 
-    // Initialize Cassette Skin as the main frame/theme
     LOG_DEBUG_UI("Initializing skin and pages...");
     skin_ = std::make_unique<CassetteSkin>(gfx, CassetteTheme::WarmTape);
     
-    // LAZY LOADING: Reserve space but don't create pages yet
-    // Pages will be created on-demand via getPage()
-    pages_.resize(kPageCount);  // All nullptr initially
-    
-    // PERFORM is the startup context; legacy page indices remain stable.
+    pages_.resize(kPageCount);
     pages_[page_index_] = createPage_(page_index_);
     
     applyPageBounds_();
@@ -85,7 +83,6 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx,
     LOG_SUCCESS_UI("MiniAcidDisplay initialization complete");
     mute_buttons_initialized_ = true; 
 }
-
 
 MiniAcidDisplay::~MiniAcidDisplay() = default;
 
@@ -109,6 +106,7 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case 10: page = std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_); break;
         case 11: page = std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_); break;
         case 12: page = std::make_unique<PerformPage>(gfx_, mini_acid_, performance_keyboard_); break;
+        case kSmfPlayerPage: page = std::make_unique<SmfPlayerPage>(gfx_, mini_acid_); break;
     }
 #if defined(ESP32) || defined(ESP_PLATFORM)
     uint32_t freeAfter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -125,13 +123,10 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
 IPage* MiniAcidDisplay::getPage_(int index) {
     if (index < 0 || index >= kPageCount) return nullptr;
     
-    // Memory Relief: Purge all pages EXCEPT the one we need AND the previous one (for fast back-toggling)
-    // This prevents DRAM accumulation on constrained devices like the Cardputer.
     if (!pages_[index]) {
-        // Aggressive Memory Management for Cardputer/DRAM-only devices
 #if defined(ESP32) || defined(ESP_PLATFORM)
         uint32_t freeDRAM = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-        bool aggressive = (freeDRAM < 16384); // 16KB threshold
+        bool aggressive = (freeDRAM < 16384);
 #else
         bool aggressive = false;
 #endif
@@ -139,10 +134,7 @@ IPage* MiniAcidDisplay::getPage_(int index) {
         for (int i = 0; i < kPageCount; ++i) {
             bool keep = (i == index);
             if (!aggressive && i == previous_page_index_) keep = true;
-            
-            if (!keep && pages_[i]) {
-                pages_[i].reset();
-            }
+            if (!keep && pages_[i]) pages_[i].reset();
         }
 
         pages_[index] = createPage_(index);
@@ -175,8 +167,8 @@ void MiniAcidDisplay::update() {
             return;
         }
     }
-    
-    // Draw background (Cassette Skin)
+
+    // Draw background
     if (skin_) {
         skin_->drawBackground();
         skin_->tick();
@@ -184,15 +176,12 @@ void MiniAcidDisplay::update() {
         gfx_.clear(COLOR_BLACK);
     }
     
-    // Draw active page (lazy loading)
     IPage* currentPage = getPage_(page_index_);
     if (currentPage) {
-        // CRITICAL: setBoundaries() MUST be called before draw() every frame
         currentPage->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
-        currentPage->tick(); // Modern contract: update state before draw
+        currentPage->tick();
         currentPage->draw(gfx_);
     } else {
-        // "Dark screen" fix: show WIP/Invalid placeholder
         LayoutManager::drawHeader(gfx_, "--", mini_acid_.bpm(), "WIP/INVALID PAGE", false);
         LayoutManager::clearContent(gfx_);
         gfx_.setTextColor(COLOR_WHITE);
@@ -203,24 +192,19 @@ void MiniAcidDisplay::update() {
         LayoutManager::drawFooter(gfx_, "[ ] pages", "[b] back");
     }
     
-    // Waveform overlay (if enabled)
     UI::drawWaveformOverlay(gfx_, mini_acid_);
     UI::drawLiveMixLockBadge(gfx_, mini_acid_);
     
     updateCyclePulse_();
     UI::drawFeelOverlay(gfx_, mini_acid_, millis() < cycle_pulse_until_ms_);
-
-    // Mutes overlay (always on for now as per user request)
     UI::drawMutesOverlay(gfx_, mini_acid_);
     
-    // Global Help Overlay (fullscreen, on top of everything)
     if (global_help_overlay_.isVisible()) {
         global_help_overlay_.setPageContext(page_index_);
         global_help_overlay_.draw(gfx_);
     }
     
     drawToast();
-    // drawDebugOverlay();
     gfx_.flush();
     gfx_.endWrite();
 }
@@ -252,10 +236,9 @@ void MiniAcidDisplay::goToPage(int index) {
 }
 
 void MiniAcidDisplay::togglePreviousPage() {
-    // clamp current
     int next = (page_index_ < 0 || page_index_ >= kPageCount) ? 0 : page_index_;
+    (void)next;
     int prev = (previous_page_index_ < 0 || previous_page_index_ >= kPageCount) ? 0 : previous_page_index_;
-
     transitionToPage_(prev);
 }
 
@@ -265,7 +248,7 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
         return;
     }
 
-    if (page_index_ == index && context == 0) return; // redundant
+    if (page_index_ == index && context == 0) return;
 
     Serial.printf("[UI] transitionToPage: %d -> %d (ctx=%d)\n", page_index_, index, context);
 
@@ -289,7 +272,6 @@ void MiniAcidDisplay::dismissSplash() {
 }
 
 bool MiniAcidDisplay::handleEvent(UIEvent event) {
-    // Global Help Overlay takes priority when visible
     if (global_help_overlay_.isVisible()) {
         if (global_help_overlay_.handleEvent(event)) return true;
     }
@@ -299,10 +281,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         return true;
     }
 
-    // 0) Hard-global shortcuts: handled before page logic so they work everywhere.
     if (event.event_type == GROOVEPUTER_KEY_DOWN) {
-        // Fn+Tab cycles the three product-level workflow contexts without
-        // changing the existing detailed page carousel.
         if (event.meta && (event.key == '\t' || event.scancode == GROOVEPUTER_TAB)) {
             const WorkflowMode current = WorkflowPages::modeForPage(page_index_);
             const int direction = event.shift ? -1 : 1;
@@ -316,7 +295,6 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             return true;
         }
 
-        // Global Page Flip (Alt + [ / ])
         if (event.alt && (event.key == '[' || event.key == '{')) {
             int prev = mini_acid_.currentPageIndex() - 1;
             if (prev < 0) prev = kPageCount - 1;
@@ -331,9 +309,14 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 
         if (event.alt && (event.key == 'v' || event.key == 'V')) {
             Serial.println("[UI] Shortcut Alt+V -> Page 11");
-            goToPage(11); // Groove Lab
+            goToPage(11);
             return true;
-        }      
+        }
+
+        if (event.alt && (event.key == 'p' || event.key == 'P')) {
+            goToPage(kSmfPlayerPage);
+            return true;
+        }
 
         if (event.alt && (event.key == 'w' || event.key == 'W')) {
             UI::waveformOverlay.enabled = !UI::waveformOverlay.enabled;
@@ -347,7 +330,17 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             return true;
         }
 
-        // Global transport toggle: always available, independent from page handlers.
+        // On the MIDI Player page Space belongs to the SMF transport. Everywhere
+        // else the long-standing GroovePuter transport behavior is unchanged.
+        if (event.key == ' ' && page_index_ == kSmfPlayerPage) {
+            if (auto* player = GroovePuterMidi::smfPlayerService()) {
+                const bool queued = player->togglePlayPause();
+                showToast(queued ? "MIDI: PLAY/PAUSE" : "MIDI PLAYER BUSY",
+                    700);
+                return true;
+            }
+        }
+
         if (event.key == ' ') {
             if (!mini_acid_.isPlaying()) performance_keyboard_.setTransportPlaying(true);
             withAudioGuard([&]() {
@@ -414,12 +407,9 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
     }
     
- 
-    // 1) Page handling (after hard-global shortcuts)
     IPage* currentPage = getPage_(page_index_);
     if (currentPage) {
         if (currentPage->handleEvent(event)) {
-            // Check for requested page transition - Page handled it AND wants to conform transition
             if (currentPage->hasPageRequest()) {
                 int nextIndex = currentPage->getRequestedPage();
                 int context = currentPage->getRequestedContext();
@@ -430,8 +420,6 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
     }
 
-    // 2) Centralized performance input. The active page gets first refusal;
-    // only an unhandled plain key can become a live note.
     if (event.event_type == GROOVEPUTER_KEY_DOWN &&
         !event.alt && !event.ctrl && !event.shift && !event.meta &&
         WorkflowPages::allowsPerformanceKeyboard(page_index_) &&
@@ -439,17 +427,15 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         return true;
     }
 
-    // 3) Global navigation fallback
     if (event.event_type == GROOVEPUTER_KEY_DOWN) {
         if (event.key == ']') { nextPage(); return true; }
         if (event.key == '[') { previousPage(); return true; }
 
         if (event.key == 'h') {
-            showToast("[ ] nav  Ctrl+# pages  \\ style  v tape  w wave  b back", 2200);
+            showToast("[ ] nav  Alt+P MIDI  Fn+Tab modes", 2200);
             return true;
         }
 
-        // Global Mutes (1-9) - only if no secondary modifiers (ignore shift for CapsLock safety)
         if (!event.alt && !event.ctrl && !event.meta) {
             const bool sp12Swap90 = (mini_acid_.currentDrumEngineName() == "SP12");
             if (event.key >= '1' && event.key <= '9') {
@@ -464,14 +450,14 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
                     else if (trackIdx == 6) mini_acid_.toggleMuteMidTom();
                     else if (trackIdx == 7) mini_acid_.toggleMuteHighTom();
                     else if (trackIdx == 8) {
-                        if (sp12Swap90) mini_acid_.toggleMuteClap(); // SP-12: key 9 -> Clap
+                        if (sp12Swap90) mini_acid_.toggleMuteClap();
                         else mini_acid_.toggleMuteRim();
                     }
                 });
                 return true;
             } else if (event.key == '0') {
                 withAudioGuard([&]() {
-                    if (sp12Swap90) mini_acid_.toggleMuteRim();      // SP-12: key 0 -> Rim
+                    if (sp12Swap90) mini_acid_.toggleMuteRim();
                     else mini_acid_.toggleMuteClap();
                 });
                 return true;
@@ -479,13 +465,9 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
     }
     
-    
-    // 2.5) App Events (Inter-page communication)
     if (event.event_type == GROOVEPUTER_APPLICATION_EVENT) {
         if (event.app_event_type == GROOVEPUTER_APP_EVENT_SET_VISUAL_STYLE) {
             UI::currentStyle = nextVisualStyle(UI::currentStyle);
-            
-            // Propagate to existing (loaded) pages only
             for (auto& p : pages_) {
                 if (p) p->setVisualStyle(UI::currentStyle);
             }
@@ -497,10 +479,9 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
     }
     
-    // 3) Global Fallback "Back" (if page didn't handle it)
     if (event.event_type == GROOVEPUTER_KEY_DOWN) {
         const bool isBack = 
-            (event.key == '`' || event.key == 0x08 /*backspace*/ || event.key == 0x1B /*esc*/);
+            (event.key == '`' || event.key == 0x08 || event.key == 0x1B);
              
         if (isBack) {
             togglePreviousPage();
@@ -511,13 +492,10 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     return false;
 }
 
-
-// Private stubs
 void MiniAcidDisplay::initMuteButtons(int x, int y, int w, int h) {}
 void MiniAcidDisplay::initPageHint(int x, int y, int w) {}
 void MiniAcidDisplay::drawMutesSection(int x, int y, int w, int h) {}
 int MiniAcidDisplay::drawPageTitle(int x, int y, int w, const char* text) { return 0; }
-
 
 void MiniAcidDisplay::drawSplashScreen() {
   gfx_.clear(COLOR_BLACK);
@@ -546,9 +524,8 @@ void MiniAcidDisplay::drawSplashScreen() {
       "___$$______$$$$____$$___$$$$$_$$__$$___",
     };
 
-
   constexpr int kLineCount = 11;
-  constexpr int kLineDelay = 70; // ms per line
+  constexpr int kLineDelay = 70;
 
   gfx_.setFont(GfxFont::kFont5x7);
   int small_h = gfx_.fontHeight();
@@ -556,28 +533,18 @@ void MiniAcidDisplay::drawSplashScreen() {
   int start_y = (gfx_.height() - logo_h - 40) / 2;
   if (start_y < 10) start_y = 10;
 
-  // Cyberpunk colors
-  const IGfxColor cyan(0x00E5FF);
-  const IGfxColor purple(0x9D00FF);
-
-  // Character-by-character gradient drawing
   auto drawGradientText = [&](int y, const char* text, unsigned long timeShift) {
       if (!text) return;
       int len = strlen(text);
-      int tw = len * 6; // 5x7 font width
+      int tw = len * 6;
       int sx = (gfx_.width() - tw) / 2;
       
       for (int j = 0; j < len; ++j) {
           if (text[j] != ' ') {
-              // WIDER gradient bands: lower spatial frequencies (0.08f instead of 0.2f)
-              // SLOWER movement: lower time coefficient (0.003f instead of 0.005f)
               float t = 0.5f + 0.5f * sinf(timeShift * 0.003f + j * 0.08f + y * 0.03f);
-              
-              // Simple manual interpolation
               uint8_t r = (uint8_t)(0x00 + (0x9D - 0x00) * t);
               uint8_t g = (uint8_t)(0xE5 + (0x00 - 0xE5) * t);
               uint8_t b = (uint8_t)(0xFF + (0xFF - 0xFF) * t);
-              
               gfx_.setTextColor(IGfxColor((r << 16) | (g << 8) | b));
               char tmp[2] = {text[j], 0};
               gfx_.drawText(sx + j * 6, y, tmp);
@@ -585,14 +552,11 @@ void MiniAcidDisplay::drawSplashScreen() {
       }
   };
 
-  // Draw logo lines
   for (int i = 0; i < kLineCount; ++i) {
     unsigned long lineTrigger = i * kLineDelay;
     if (elapsed < lineTrigger) continue;
 
     int y = start_y + i * (small_h + 1);
-    
-    // Decryption effect: characters are random for the first 150ms of line life
     if (elapsed < lineTrigger + 100) {
         char glitchLine[64];
         strncpy(glitchLine, logo[i], 63);
@@ -609,10 +573,8 @@ void MiniAcidDisplay::drawSplashScreen() {
     }
   }
 
-  // Draw info text after logo starts finishing (Delayed as well)
   if (elapsed > kLineCount * kLineDelay + 1000) {
     int info_y = start_y + logo_h + 15;
-    
     uint8_t pulse = 160 + 95 * sinf(elapsed * 0.005f);
     IGfxColor pulseColor((pulse << 16) | (pulse << 8) | pulse);
 
@@ -623,44 +585,35 @@ void MiniAcidDisplay::drawSplashScreen() {
 }
 
 void MiniAcidDisplay::drawDebugOverlay() {
-    // Lock-free snapshot of performance stats
     auto& stats = mini_acid_.perfStats;
     uint32_t s1, s2;
     uint32_t underruns;
     float cpuIdeal, cpuActual;
     
-    // Retry loop until we get a consistent snapshot
     do {
         s1 = stats.seq;
         underruns = stats.audioUnderruns;
         cpuIdeal = stats.cpuAudioPctIdeal;
         cpuActual = stats.cpuAudioPctActual;
         s2 = stats.seq;
-    } while (s1 != s2 || (s1 & 1));  // Retry if torn read or mid-write
+    } while (s1 != s2 || (s1 & 1));
     
     char buf[64];
     int yy = 2;
-    
-    // Using small text, green for debug info
-    gfx_.setTextColor(IGfxColor(0x00FF00)); // Bright Green
-    
-    // DRAM (8-bit internal heap)
+    gfx_.setTextColor(IGfxColor(0x00FF00));
 #if defined(ESP32) || defined(ESP_PLATFORM)
     uint32_t freeDRAM = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     uint32_t minDRAM = heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     snprintf(buf, sizeof(buf), "DRAM:%u/%u", (unsigned)freeDRAM, (unsigned)minDRAM);
     gfx_.drawText(2, yy, buf); yy += 10;
 #endif
-    
-    // Note: PSRAM display disabled - this board has no PSRAM
-    
-    // CPU% - show both ideal and actual if they differ significantly
+    (void)cpuIdeal;
+    (void)cpuActual;
     gfx_.drawText(2, yy, buf); yy += 10;
-    
-    // Underruns
     snprintf(buf, sizeof(buf), "UNDR:%u", underruns);
     gfx_.drawText(2, yy, buf); yy += 10;
 }
+
 bool MiniAcidDisplay::translateToApplicationEvent(UIEvent& event) { return false; }
 
 void MiniAcidDisplay::applyPageBounds_() {

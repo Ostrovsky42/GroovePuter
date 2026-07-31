@@ -5,6 +5,8 @@
 #include <cstring>
 #include <M5Cardputer.h>
 
+#include "../platform/cardputer_sd.h"
+
 namespace {
 
 void writeLE16(std::uint8_t* dst, std::uint16_t value) {
@@ -32,8 +34,7 @@ bool CardputerAudioRecorder::start(int sampleRate, int channels) {
     return false;
   }
 
-  // Initialize SD card if not already initialized
-  if (!SD.begin()) {
+  if (!GroovePuterPlatform::ensureCardputerSdMounted()) {
     Serial.println("SD card initialization failed!");
     return false;
   }
