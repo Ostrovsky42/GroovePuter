@@ -24,8 +24,22 @@ int main() {
     assert(closedHat.channel == 3 && closedHat.note == 60);
     assert(openHat.channel == 4 && openHat.note == 60);
 
-    assert(routeSmfNote(SmfRoutingMode::Seqtrak, 0, 64).channel == 7);
-    assert(routeSmfNote(SmfRoutingMode::Seqtrak, 1, 64).channel == 8);
-    assert(routeSmfNote(SmfRoutingMode::Seqtrak, 2, 64).channel == 9);
+    const SmfRoutedNote synth1 = routeSmfNote(SmfRoutingMode::Seqtrak, 0, 64);
+    const SmfRoutedNote synth2 = routeSmfNote(SmfRoutingMode::Seqtrak, 1, 64);
+    const SmfRoutedNote dx = routeSmfNote(SmfRoutingMode::Seqtrak, 2, 64);
+    const SmfRoutedNote sampler = routeSmfNote(SmfRoutingMode::Seqtrak, 3, 64);
+    const SmfRoutedNote extraMelodic = routeSmfNote(SmfRoutingMode::Seqtrak, 14, 67);
+
+    assert(synth1.channel == 7 && synth1.note == 64);
+    assert(synth2.channel == 8 && synth2.note == 64);
+    assert(dx.channel == 9 && dx.note == 64);
+    assert(sampler.channel == 10 && sampler.note == 64);
+
+    // DX is a dedicated CH10 destination, never the fallback bucket. Until
+    // per-track CUSTOM routing exists, additional melodic channels use the
+    // distinct SEQTRAK SAMPLER destination on CH11.
+    assert(extraMelodic.channel == 10 && extraMelodic.note == 67);
+    assert(extraMelodic.channel != dx.channel);
+
     return 0;
 }
