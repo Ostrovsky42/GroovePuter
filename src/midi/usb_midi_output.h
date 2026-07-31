@@ -34,8 +34,9 @@ enum class UsbMidiStatus : uint8_t {
 // Synth/DX lanes are monophonic. Live Drums owns seven independent native
 // SEQTRAK lanes (logical 0..6 -> MIDI CH1..7). Pattern Drums retains all eight
 // internal drum voices and maps them onto the seven native SEQTRAK drum tracks;
-// Mid Tom and Rim intentionally share PERC1 / CH6. Percussive lanes count
-// overlapping gates so retrig/flam/roll NoteOffs cannot cut newer hits short.
+// Mid Tom and Rim intentionally share PERC1 / CH6. Repeated Pattern drum
+// NoteOns remain repeated on the wire while activeCount/reference ownership is
+// unwound by the final retrigger-aware gate deadline in MidiDispatchTask.
 // Wire-level channel+note ownership remains reference counted. The SMF player
 // adds a separate polyphonic ownership matrix but shares the same final wire
 // owner counts so player cleanup cannot silence PERFORM or Pattern ownership.
