@@ -280,6 +280,11 @@ void CardputerSmfPlayerService::handleProjectTransport() {
             publishSnapshot(SmfPlayerState::Armed, "WAIT PROJECT PLAY");
             return;
         }
+        if (projectLaunchPlanned_ && transport.bpmX10 != projectBpmX10_) {
+            eventQueue_.invalidateAndRequestPanic();
+            projectLaunchPlanned_ = false;
+            prepareStreamAt(pausedTick_);
+        }
         if (!projectLaunchPlanned_ && !planProjectLaunch(transport)) return;
         if (projectLaunchPlanned_ &&
             transport.absoluteSteps() + kProjectBoundaryEpsilon >= projectOriginStep_) {
