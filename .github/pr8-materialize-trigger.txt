@@ -1,1 +1,0 @@
-Trigger PR #8 materialization diagnostics after the diagnostic workflow exists.
