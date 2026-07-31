@@ -90,6 +90,8 @@ void PerformPage::drawContent(IGfx& gfx) {
     const bool noteMode = keyboard_.noteModeEnabled();
     char line[64];
 
+    // Primary stage-readable layer: three stable badges that remain legible in
+    // photos/video without turning the whole screen into large typography.
     int x = Layout::COL_1;
     const int chipY = LayoutManager::lineY(0);
     x += MusicVisuals::drawChip(gfx, x, chipY,
@@ -108,12 +110,14 @@ void PerformPage::drawContent(IGfx& gfx) {
     }
     MusicVisuals::drawChip(gfx, x, chipY, channel, false);
 
+    // Secondary information density stays compact/dim: useful at arm's length,
+    // but it does not compete with target/piano/pads when filmed from farther away.
     gfx.setTextColor(COLOR_LABEL);
     if (drums) {
-        std::snprintf(line, sizeof(line), "SEQTRAK NATIVE PADS   HELD:%u",
-                      static_cast<unsigned>(keyboard_.heldCount()));
+        std::snprintf(line, sizeof(line), "NATIVE 7-LANE  HELD:%u  VEL:%d",
+                      static_cast<unsigned>(keyboard_.heldCount()), velocity);
     } else {
-        std::snprintf(line, sizeof(line), "C %-8s  OCT:%+d  HELD:%u",
+        std::snprintf(line, sizeof(line), "ROOT:C  %-8s OCT:%+d  HELD:%u",
                       keyboard_.scaleName(),
                       static_cast<int>(keyboard_.octaveShift()),
                       static_cast<unsigned>(keyboard_.heldCount()));
@@ -131,29 +135,34 @@ void PerformPage::drawContent(IGfx& gfx) {
                                 visualW, visualH, keyboard_);
     }
 
-    gfx.setTextColor(COLOR_TEXT);
+    // Micro-HUD: keep operational detail available without shrinking the main
+    // instrument geometry. These rows intentionally use normal 5x7 UI text.
+    gfx.setTextColor(COLOR_LABEL);
     if (!noteMode) {
-        std::snprintf(line, sizeof(line), "LEGACY COMMANDS ACTIVE");
+        std::snprintf(line, sizeof(line), "LEGACY KEYS | N ENABLE NOTE MODE");
     } else if (miniAcid_.isPlaying()) {
-        std::snprintf(line, sizeof(line), "PATTERN PLAYER OWNS LIVE INPUT");
+        std::snprintf(line, sizeof(line), "INPUT LOCK | PATTERN PLAYER OWNS LIVE");
     } else if (drums) {
-        std::snprintf(line, sizeof(line), "A S D F G H J  ->  SEQTRAK CH1-7");
+        std::snprintf(line, sizeof(line), "USB CH1-7 | A/S/D/F/G/H/J NATIVE PADS");
     } else if (keyboard_.target() == MusicalEventTarget::Dx) {
-        std::snprintf(line, sizeof(line), "SEQTRAK DX  •  USB MIDI ONLY");
+        std::snprintf(line, sizeof(line), "USB ONLY | ASDF BASE | QWERTY +12");
     } else {
-        std::snprintf(line, sizeof(line), "LIVE INTERNAL + USB MIDI");
+        std::snprintf(line, sizeof(line), "INT+USB | ASDF BASE | QWERTY +12");
     }
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(6), line);
 
     gfx.setTextColor(active >= 0 ? MusicVisuals::accentForStyle() : COLOR_LABEL);
     if (!drums && active >= 0) {
         const int octave = active / 12 - 1;
-        std::snprintf(line, sizeof(line), "NOTE %s%d  MIDI %d  VEL %d",
-                      noteName(active), octave, active, velocity);
+        std::snprintf(line, sizeof(line), "NOTE %s%d | MIDI:%d | VEL:%d | H:%u",
+                      noteName(active), octave, active, velocity,
+                      static_cast<unsigned>(keyboard_.heldCount()));
     } else if (drums && keyboard_.heldCount() > 0) {
-        std::snprintf(line, sizeof(line), "PAD ACTIVE  •  VELOCITY %d", velocity);
+        std::snprintf(line, sizeof(line), "PAD ACTIVE | N60 | VEL:%d | LANES:7", velocity);
+    } else if (drums) {
+        std::snprintf(line, sizeof(line), "READY | NOTE60 | CH1..7 | LANES:7");
     } else {
-        std::snprintf(line, sizeof(line), "READY");
+        std::snprintf(line, sizeof(line), "READY | RANGE:C0-B6 | OCT:-2..+2");
     }
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), line);
 }
