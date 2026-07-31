@@ -13,6 +13,7 @@ def main() -> None:
     event_header = (ROOT / "src/input/musical_event.h").read_text(encoding="utf-8")
     sink = (ROOT / "src/midi/usb_midi_output.cpp").read_text(encoding="utf-8")
     transport = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
+    service = (ROOT / "src/platform/cardputer_usb_midi_service.h").read_text(encoding="utf-8")
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
     build = (ROOT / "scripts/build.sh").read_text(encoding="utf-8")
@@ -26,17 +27,29 @@ def main() -> None:
             "USB output must not pause or mutate the audio renderer")
 
     setup_start = sketch.index("void setup()")
-    registration_call = "  registerCardputerUsbMidiSink(g_musicalEventRouter);"
+    registration_call = "registerCardputerUsbMidiSink(\n      g_musicalEventRouter, g_patternMusicalEventQueue)"
     require(registration_call in sketch[setup_start:],
-            "setup must connect the shared router to the platform sink")
+            "setup must connect the router and scheduled Pattern queue")
     require(registration_call not in sketch[:setup_start],
             "USB sink registration must not run from global initialization")
     require("g_musicalEventRouter.addSink(g_internalSynthOutput)" in sketch and
             sketch.index("g_musicalEventRouter.addSink(g_internalSynthOutput)") <
             sketch.index(registration_call, setup_start),
-            "USB sink registration must follow engine/internal sink initialization")
-    require("router.addSink(g_output)" in transport,
-            "USB MIDI must be registered as an independent router sink")
+            "queued USB registration must follow the immediate internal sink")
+
+    require("router.addSink(g_queueSink)" in transport,
+            "router must enqueue live USB events instead of mutating UsbMidiOutput")
+    require("router.addSink(g_output)" not in transport,
+            "UsbMidiOutput must never be called by the Arduino loop router")
+    require('"MidiDispatchTask"' in transport and
+            "midiDispatchTask" in transport,
+            "Cardputer must create one named USB-MIDI owner task")
+    require("g_output.handleMusicalEvent" in transport,
+            "the dispatcher must own UsbMidiOutput event delivery")
+    require("publishCardputerUsbMidiBlockAnchor" in service and
+            "publishCardputerUsbMidiBlockAnchor" in sketch,
+            "AudioTask must publish sample-block playback anchors")
+
     require("USBMIDI.h" not in sketch and "USB.h" not in sketch,
             "TinyUSB headers must stay isolated from the main UI translation unit")
     require("USBMIDI" not in engine and "TinyUSB" not in engine,
