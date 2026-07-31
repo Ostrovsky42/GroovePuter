@@ -139,7 +139,25 @@ CH10 DX
 CH11 SAMPLER
 ```
 
-A GM drum track on source CH10 must eventually split by drum note into SEQTRAK drum tracks 1..7; it must not be forwarded as a single "drums CH10" lane.
+The current deterministic melodic mapping is deliberately explicit:
+
+```text
+source CH1 -> SEQTRAK SYNTH1 / CH8
+source CH2 -> SEQTRAK SYNTH2 / CH9
+source CH3 -> SEQTRAK DX     / CH10
+source CH4+ -> SEQTRAK SAMPLER / CH11
+```
+
+DX is never a generic fallback destination. Additional melodic channels use
+SAMPLER only as the temporary fallback until per-track `CUSTOM` routing is
+implemented.
+
+Effects are not playable note destinations. Track FX, Delay/Reverb sends and
+Master FX belong to a future control/CC domain and must not be represented by
+routing arbitrary NoteOn events to DX.
+
+A GM drum track on source CH10 splits by drum note into SEQTRAK drum tracks
+CH1..7; it is not forwarded as a single "drums CH10" lane.
 
 ### v1 event support
 
@@ -215,11 +233,15 @@ Foundation host tests prove:
 - simultaneous notes stay simultaneous;
 - restart from FILE START exposes tick-zero setup events;
 - restart from MUSIC START lands on the first musical NoteOn;
-- EOF Play restarts from MUSIC START;
+- EOF Play restarts from `MUSIC START`;
 - SMPTE and truncated files fail safely;
 - long files can be streamed with bounded cursor/cache state instead of retaining every event;
 - scheduled NoteOn cannot consume cleanup reserve;
-- seek/restart/stop can invalidate stale queued SMF events and request panic cleanup.
+- seek/restart/stop can invalidate stale queued SMF events and request panic cleanup;
+- RAW routing preserves source channel/note;
+- SEQTRAK routing keeps DX dedicated to source melodic CH3;
+- additional non-drum melodic channels route to the distinct CH11 SAMPLER destination;
+- GM source CH10 drums continue to split across native SEQTRAK CH1..7.
 
 ## Troubleshooting
 
@@ -228,6 +250,9 @@ Foundation host tests prove:
 - **Unexpected silence at restart:** compare `MUSIC START` vs `FILE START`.
 - **Stuck notes after seek/restart:** runtime integration is invalid unless it releases player ownership and invalidates old scheduled events before changing position.
 - **Clock bursts:** never derive SMF scheduling from `millis()` or a second timer task; use the accepted sample-timed dispatcher.
+- **Extra melodic tracks still reach DX:** verify `smf_routing.h` has an explicit source CH3 -> CH10 DX route followed by the CH11 SAMPLER fallback.
+- **GM drums reach SAMPLER:** the source CH10 drum split must run before melodic fallback routing.
+- **Expecting Reverb/Delay/Master FX control:** out of scope for note routing. FX belongs to a separate future control/CC domain.
 
 ## Acceptance checklist
 
@@ -245,6 +270,13 @@ Foundation host tests prove:
 - [ ] malformed/truncated input fails without out-of-bounds access.
 - [ ] production stream state is bounded and does not retain the whole MIDI event list.
 - [ ] scheduled queue reserves NoteOff cleanup capacity and supports generation invalidation.
+- [ ] RAW routing preserves source channel/note.
+- [ ] source melodic CH1 -> SEQTRAK CH8 SYNTH1.
+- [ ] source melodic CH2 -> SEQTRAK CH9 SYNTH2.
+- [ ] source melodic CH3 -> SEQTRAK CH10 DX.
+- [ ] source melodic CH4+ does not route to DX.
+- [ ] source melodic CH4+ routes to SEQTRAK CH11 SAMPLER.
+- [ ] source GM CH10 drums remain split across native SEQTRAK CH1..7.
 
 ### Runtime / hardware gate before merge
 
@@ -261,4 +293,6 @@ Foundation host tests prove:
 - [ ] player may continue while leaving the Now Playing page.
 - [ ] PERFORM can later coexist with external SMF playback under separate ownership.
 - [ ] Cardputer-Adv -> SEQTRAK timing is stable under UI navigation.
+- [ ] SEQTRAK DX receives only the explicitly mapped melodic source role.
+- [ ] additional generic melodic source channels reach SAMPLER CH11 instead of DX.
 - [ ] no internal audio underrun/watchdog regression.
