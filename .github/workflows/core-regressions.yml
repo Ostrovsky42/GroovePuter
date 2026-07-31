@@ -1,72 +1,53 @@
-name: Materialize PR 8 MIDI timing
+name: Core regressions
 
 on:
   push:
     branches:
+      - main
       - agent/fix-core-reliability
+  pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  materialize-midi-dispatch:
+  host-tests:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout PR 8 branch
-        uses: actions/checkout@v4
-        with:
-          ref: fix/usb-midi-dispatch-timing
-          fetch-depth: 0
+      - uses: actions/checkout@v4
 
-      - name: Apply corrected integration patch
-        shell: bash
-        run: |
-          awk '
-            /python3 - <<'"'"'PY'"'"'/ { capture=1; next }
-            capture && /^          PY$/ { exit }
-            capture { sub(/^          /, ""); print }
-          ' .github/workflows/apply-midi-dispatch-timing.yml > /tmp/apply_midi_dispatch.py
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path("/tmp/apply_midi_dispatch.py")
-          text = path.read_text(encoding="utf-8")
-          old = 'marker = \'"${BUILD_DIR}/test_scheduled_musical_event"\\n\\n\''
-          new = 'marker = \'\\n"${BUILD_DIR}/test_scheduled_musical_event"\\n\\n\''
-          if old not in text:
-              raise RuntimeError("scheduled-event runner marker not found")
-          path.write_text(text.replace(old, new, 1), encoding="utf-8")
-          PY
-          python3 /tmp/apply_midi_dispatch.py
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path("tests/test_pattern_midi_source_regressions.py")
-          text = path.read_text(encoding="utf-8")
-          old = '''    require("patternEventQueue_->tryPush(event," in engine,
-            "Pattern events must include block and frame timing")
-'''
-          new = '''    require("patternEventQueue_->tryPush(" in engine and
-            "midiBlockSequence_, midiFrameOffset_" in engine,
-            "Pattern events must include block and frame timing")
-'''
-          if old not in text:
-              raise RuntimeError("Pattern MIDI publication assertion not found")
-          path.write_text(text.replace(old, new, 1), encoding="utf-8")
-          PY
-
-      - name: Run host regressions
+      - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 
-      - name: Commit materialized implementation
-        shell: bash
+  sdl-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL dependencies
         run: |
-          git fetch origin main
-          git checkout origin/main -- .github/workflows/core-regressions.yml
-          rm -f .github/workflows/apply-midi-dispatch-timing.yml
-          rm -f .github/workflows/apply-midi-dispatch-timing-v2.yml
-          rm -f .github/workflows/kick-midi-dispatch-timing-v2.yml
-          rm -f .github/midi-dispatch-trigger.txt
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "feat: route Pattern MIDI through sample-timed dispatcher"
-          git push origin HEAD:fix/usb-midi-dispatch-timing
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Build desktop target
+        working-directory: platform_sdl
+        run: make clean all CXX=g++
+
+  cardputer-adv-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
