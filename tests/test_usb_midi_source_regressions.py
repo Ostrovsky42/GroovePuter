@@ -68,6 +68,11 @@ def main() -> None:
             "Cardputer upload must use the same TinyUSB FQBN")
     require("#if ARDUINO_USB_MODE" in transport,
             "hardware transport must fail closed outside TinyUSB OTG mode")
+    require("kSmfCleanupAttemptLimit" in transport and
+            "reportTransportFailure" in transport and
+            "abandonAllSmfNotes" in transport and
+            "beginSmfCleanup(true)" in transport,
+            "SMF cleanup must terminate and report a blocked USB endpoint")
 
     forbidden_transport_tokens = (
         "controlChange(",

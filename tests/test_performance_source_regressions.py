@@ -130,19 +130,31 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
             "MiniAcidDisplay must construct the MIDI Player page")
     require("event.alt && (event.key == 'p' || event.key == 'P')" in display,
             "Alt+P must provide a deterministic hardware shortcut to MIDI Player")
-    require("player->restart(GroovePuterMidi::SmfPlayerRestartOrigin::MusicStart)" in display,
-            "Shift+Space must use the explicit MUSIC START restart path")
     require("player->togglePlayPause()" in display,
-            "plain Space must own SMF Play/Pause on the player page")
+            "Space must own SMF Play/Pause on the player page")
+    require("event.shift" not in display[display.index("// On the MIDI Player page Space"):display.index("if (event.key == ' ')", display.index("// On the MIDI Player page Space") + 1)],
+            "SMF Space handling must not depend on unavailable Cardputer Shift")
 
-    require("PLAY FROM /midi" in player_page and
+    require('"PLAY FROM %.30s"' in player_page and
+            "currentPath_.c_str()" in player_page and
             "requestLoadAndPlay" in player_page,
-            "MIDI Player page must expose selectable SD playback")
+            "MIDI Player page must expose selectable SD playback and its path")
     require("seekBars(event.shift ? -4 : -1)" in player_page and
             "seekBars(event.shift ? 4 : 1)" in player_page,
             "player seek must preserve +/-1 and Shift +/-4 bar UX")
     require("MIDI PANIC / PAUSE" in player_page,
             "player page must expose scoped panic")
+    require("event.key == 'r' || event.key == 'R'" in player_page and
+            "player_->restart(SmfPlayerRestartOrigin::MusicStart)" in player_page and
+            "R Restart" in player_page,
+            "physical R must restart playback from MUSIC START without Shift")
+    require("event.key == 'd' || event.key == 'D'" in player_page and
+            "drawPerformance" in player_page and
+            "state.performance" in player_page and
+            "snapshot_.performance = performance" in player_service,
+            "physical D must expose SMF performance without Serial or SD logging")
+    require("B Files" in player_page and "toggleRouting()" in player_page,
+            "player must expose file return and RAW/SEQTRAK routing controls")
 
     require("MidiImporter importer" in project and "importFile" in project,
             "existing quantized MIDI importer must remain available beside PLAY")
@@ -156,8 +168,22 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
 
     require("registerCardputerSmfMidiQueue" in player_registry,
             "Cardputer SMF service must publish only through the scheduled queue")
+    require("beginCardputerSmfPlayerService" in player_registry and
+            "beginCardputerSmfPlayerService" in
+                (ROOT / "GroovePuter.ino").read_text(encoding="utf-8"),
+            "SMF runtime must be reserved explicitly during setup")
+    require("kMaxTimingEvents = 32" in
+                (ROOT / "src/platform/cardputer_smf_player.h").read_text(encoding="utf-8") and
+            "timingDocument_ = SmfDocument{}" not in player_service,
+            "Cardputer SMF metadata must stay bounded and preserve setup capacity")
+    require("catch (const std::bad_alloc&)" in player_service,
+            "SMF loading must report allocation failure instead of resetting")
     require("ScheduledSmfMidiEventQueue* g_smfQueue" in usb_dispatch,
             "existing MidiDispatchTask must consume the SMF scheduled queue")
+    require("smfSendFailureAction" in usb_dispatch and
+            "vTaskDelay(kSmfRetryDelay)" in usb_dispatch and
+            "kSmfStaleNoteOnThresholdUs" in usb_dispatch,
+            "USB backpressure must use bounded paced retries and stale NoteOn drops")
     require("g_output.handleSmfNoteOn" in usb_dispatch and
             "g_output.handleSmfNoteOff" in usb_dispatch,
             "MidiDispatchTask must remain the physical SMF note owner")

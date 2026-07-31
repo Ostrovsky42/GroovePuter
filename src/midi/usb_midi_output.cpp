@@ -363,6 +363,21 @@ bool UsbMidiOutput::releaseAllSmfNotes() {
     return allReleased;
 }
 
+void UsbMidiOutput::abandonAllSmfNotes() {
+    for (std::size_t channel = 0; channel < kMidiChannelCount; ++channel) {
+        for (std::size_t note = 0; note < kMidiNoteCount; ++note) {
+            uint8_t& smfOwners = smfOwners_[channel][note];
+            if (smfOwners == 0) continue;
+
+            uint8_t& wireOwners = wireOwners_[channel][note];
+            wireOwners = wireOwners > smfOwners
+                ? static_cast<uint8_t>(wireOwners - smfOwners)
+                : 0;
+            smfOwners = 0;
+        }
+    }
+}
+
 void UsbMidiOutput::clearActiveState() {
     for (std::size_t i = 0; i < kLaneCount; ++i) {
         lanes_[i].activeNote = -1;

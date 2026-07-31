@@ -30,6 +30,7 @@ struct SmfBarBeat {
 
 class SmfTimingMap {
 public:
+    bool reserveForEvents(std::size_t maxTimingEvents);
     bool build(const SmfDocument& document);
 
     bool valid() const { return division_ != 0 && !tempo_.empty() && !signatures_.empty(); }

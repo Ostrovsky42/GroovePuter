@@ -79,6 +79,7 @@ public:
                           uint8_t note,
                           uint8_t velocity = 0);
     bool releaseAllSmfNotes();
+    void abandonAllSmfNotes();
 
 private:
     // Intentionally POD with no default member initializers. The global

@@ -10,6 +10,7 @@ ARDUINO_CLI="${ARDUINO_CLI:-arduino-cli}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_PATH="${BUILD_PATH:-${PROJECT_ROOT}/build/cardputer-adv-current}"
+ARDUINO_BUILD_PATH="${ARDUINO_BUILD_PATH:-${BUILD_PATH}/.arduino-build}"
 
 if ! command -v "${ARDUINO_CLI}" >/dev/null 2>&1; then
   echo "arduino-cli was not found: ${ARDUINO_CLI}" >&2
@@ -32,6 +33,7 @@ trap cleanup EXIT
 
 mkdir -p "${TEMP_ROOT}/GroovePuter"
 mkdir -p "${BUILD_PATH}"
+mkdir -p "${ARDUINO_BUILD_PATH}"
 rsync -a --delete \
   --exclude '.git' \
   --exclude 'build' \
@@ -41,6 +43,7 @@ rsync -a --delete \
 "${ARDUINO_CLI}" compile \
   --clean \
   --fqbn "${FQBN}" \
+  --build-path "${ARDUINO_BUILD_PATH}" \
   --output-dir "${BUILD_PATH}" \
   "$@" \
   "${TEMP_ROOT}/GroovePuter"

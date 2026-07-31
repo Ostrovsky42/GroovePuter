@@ -23,15 +23,19 @@ public:
             return false;
         }
         if (length > maxRead_) maxRead_ = length;
+        ++reads_;
         std::memcpy(dst, bytes_.data() + offset, length);
         return true;
     }
 
     std::size_t maxRead() const { return maxRead_; }
+    std::size_t reads() const { return reads_; }
+    void resetReads() { reads_ = 0; }
 
 private:
     std::vector<uint8_t> bytes_;
     std::size_t maxRead_{0};
+    std::size_t reads_{0};
 };
 
 void be16(std::vector<uint8_t>& out, uint16_t value) {
@@ -142,6 +146,15 @@ int main() {
     assert(event.event.tick == 0);
 
     assert(source.maxRead() <= kSmfTrackReadCacheBytes);
+    // Two tracks share the pool, so each slice is sector-aligned and large
+    // enough to hold the whole fixture track: one read per track per pass.
+    assert(stream.trackCacheBytes() == kSmfTrackReadCacheBytes);
+    assert(stream.trackCacheBytes() % kSmfSectorBytes == 0);
+    source.resetReads();
+    stream.reset();
+    while (stream.next(event)) {
+    }
+    assert(source.reads() == indexed.index.trackCount);
 
     std::vector<uint8_t> tooMany = fixture();
     tooMany[10] = 0x00;

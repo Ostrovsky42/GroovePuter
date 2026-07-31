@@ -18,6 +18,21 @@ enum class SmfPlayerRestartOrigin : uint8_t {
     FileStart,
 };
 
+struct SmfPlayerPerformanceSnapshot {
+    uint16_t trackCount{0};
+    uint16_t cacheBytesPerTrack{0};
+    uint32_t reads{0};
+    uint32_t seeks{0};
+    uint32_t bytes{0};
+    uint32_t maxReadMicros{0};
+    uint32_t scheduleCalls{0};
+    uint32_t queuedEvents{0};
+    uint32_t maxScheduleMicros{0};
+    int16_t minQueueDepth{-1};
+    uint16_t queueFillLimit{0};
+    uint16_t lookaheadMs{0};
+};
+
 struct SmfPlayerSnapshot {
     SmfPlayerState state{SmfPlayerState::Unloaded};
     char filename[48]{};
@@ -29,6 +44,7 @@ struct SmfPlayerSnapshot {
     uint32_t totalBars{1};
     uint16_t bpmX10{1200};
     bool rawRouting{true};
+    SmfPlayerPerformanceSnapshot performance{};
 };
 
 class ISmfPlayerService {
@@ -44,6 +60,7 @@ public:
     virtual bool stop() = 0;
     virtual bool panic() = 0;
     virtual bool seekBars(int deltaBars) = 0;
+    virtual bool toggleRouting() = 0;
     virtual SmfPlayerSnapshot snapshot() const = 0;
 };
 

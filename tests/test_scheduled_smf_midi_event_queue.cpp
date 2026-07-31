@@ -84,5 +84,21 @@ int main() {
     assert(event.generation == 2);
     assert(scheduledSmfMidiEventGenerationIsCurrent(event, queue.generation()));
 
+    queue.reportTransportFailure();
+    assert(queue.transportFailed());
+    assert(!queue.tryPushNoteOn(0, 60, 100, 60, 0));
+    assert(!queue.tryPushNoteOff(0, 60, 0, 60, 0));
+
+    uint32_t reportedGeneration = 0;
+    assert(queue.takePendingTransportFailure(reportedGeneration));
+    assert(reportedGeneration == 3);
+    assert(!queue.takePendingTransportFailure(reportedGeneration));
+
+    queue.clearTransportFailure();
+    assert(!queue.transportFailed());
+    assert(queue.tryPushNoteOn(1, 65, 90, 61, 12));
+    assert(queue.tryPop(event));
+    assert(event.generation == reportedGeneration);
+
     return 0;
 }

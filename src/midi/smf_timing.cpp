@@ -2,8 +2,20 @@
 
 #include <algorithm>
 #include <limits>
+#include <new>
 
 namespace GroovePuterMidi {
+
+bool SmfTimingMap::reserveForEvents(std::size_t maxTimingEvents) {
+    try {
+        // Each map has one implicit default point in addition to file events.
+        tempo_.reserve(maxTimingEvents + 1u);
+        signatures_.reserve(maxTimingEvents + 1u);
+        return true;
+    } catch (const std::bad_alloc&) {
+        return false;
+    }
+}
 
 uint32_t SmfTimingMap::ticksPerBeat(uint16_t division, uint8_t denominatorPow2) {
     if (division == 0 || denominatorPow2 > 7) return 0;

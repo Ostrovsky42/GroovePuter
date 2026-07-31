@@ -22,6 +22,7 @@ public:
                        uint8_t velocity,
                        uint32_t blockSequence,
                        uint16_t frameOffset) {
+        if (transportFailed()) return false;
         if (!validData(channel, note, velocity)) {
             invalidEvent_.incrementRelaxed();
             return false;
@@ -47,6 +48,7 @@ public:
                         uint8_t velocity,
                         uint32_t blockSequence,
                         uint16_t frameOffset) {
+        if (transportFailed()) return false;
         if (!validData(channel, note, velocity)) {
             invalidEvent_.incrementRelaxed();
             return false;
@@ -89,6 +91,33 @@ public:
         consumedPanicEpoch_ = epoch;
         panicRecovery_.incrementRelaxed();
         return true;
+    }
+
+    // Consumer-to-producer mailbox used when USB backpressure prevents even
+    // bounded NoteOff cleanup. Blocking new publications keeps the player from
+    // refilling the queue until it has observed and surfaced the failure.
+    void reportTransportFailure() {
+        transportFailed_.storeRelease(1u);
+        const uint32_t epoch = transportFailureEpoch_.loadRelaxed() + 1u;
+        transportFailureEpoch_.storeRelease(epoch);
+    }
+
+    bool takePendingTransportFailure(uint32_t& generation) {
+        const uint32_t epoch = transportFailureEpoch_.loadAcquire();
+        if (epoch == consumedTransportFailureEpoch_) return false;
+        consumedTransportFailureEpoch_ = epoch;
+        // Generation remains single-writer: only the SMF producer task mutates
+        // it, while the dispatcher merely publishes the failure mailbox.
+        generation = generation_.incrementRelaxed();
+        return true;
+    }
+
+    bool transportFailed() const {
+        return transportFailed_.loadAcquire() != 0u;
+    }
+
+    void clearTransportFailure() {
+        transportFailed_.storeRelease(0u);
     }
 
     uint32_t generation() const { return generation_.loadAcquire(); }
@@ -151,5 +180,8 @@ private:
     MidiRealtimeWord invalidEvent_;
     MidiRealtimeWord panicGeneration_;
     MidiRealtimeWord panicEpoch_;
+    MidiRealtimeWord transportFailed_;
+    MidiRealtimeWord transportFailureEpoch_;
     uint32_t consumedPanicEpoch_{0};
+    uint32_t consumedTransportFailureEpoch_{0};
 };

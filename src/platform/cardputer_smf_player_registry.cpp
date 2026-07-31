@@ -1,4 +1,5 @@
 #include "cardputer_smf_player.h"
+#include "cardputer_smf_player_registry.h"
 
 #include "src/midi/smf_player_service.h"
 #include "src/platform/cardputer_usb_midi_service.h"
@@ -36,8 +37,16 @@ public:
         return ensureStarted() && player_.seekBars(deltaBars);
     }
 
+    bool toggleRouting() override {
+        return ensureStarted() && player_.toggleRouting();
+    }
+
     SmfPlayerSnapshot snapshot() const override {
         return player_.snapshot();
+    }
+
+    bool begin() {
+        return ensureStarted();
     }
 
 private:
@@ -55,3 +64,7 @@ private:
 
 LazyCardputerSmfPlayer g_smfPlayer;
 }  // namespace
+
+bool beginCardputerSmfPlayerService() {
+    return g_smfPlayer.begin();
+}

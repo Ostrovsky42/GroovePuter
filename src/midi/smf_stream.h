@@ -8,7 +8,16 @@
 namespace GroovePuterMidi {
 
 constexpr std::size_t kSmfMaxTracks = 64;
-constexpr std::size_t kSmfTrackReadCacheBytes = 64;
+// SD cards transfer whole sectors, so a read smaller than this still costs a
+// full sector fetch plus a FAT layer seek. Windows are aligned and sized in
+// sector units whenever the per-track budget allows it.
+constexpr std::size_t kSmfSectorBytes = 512;
+// The merger owns one shared cache pool and hands each track a slice sized by
+// the file's actual track count. A 64-track file still gets the historical
+// 64 bytes per track, while the common 2-16 track file gets 256-2048 bytes and
+// therefore 4-32x fewer SD reads. Total footprint is unchanged.
+constexpr std::size_t kSmfStreamCacheBytes = 4096;
+constexpr std::size_t kSmfTrackReadCacheBytes = 2048;
 
 class ISmfByteSource {
 public:
@@ -50,6 +59,9 @@ struct SmfStreamEvent {
 class SmfTrackStream {
 public:
     bool open(ISmfByteSource& source, SmfTrackSpan span, uint16_t trackIndex);
+    // Without a cache slice the stream still parses correctly, one byte per
+    // source read. The merger always assigns a slice before playback.
+    void setCache(uint8_t* buffer, uint32_t capacity);
     void reset();
     bool next(SmfStreamEvent& out);
     bool ended() const { return ended_; }
@@ -73,8 +85,9 @@ private:
     bool ended_{true};
 
     uint32_t cacheStart_{0};
-    uint8_t cacheLen_{0};
-    uint8_t cache_[kSmfTrackReadCacheBytes]{};
+    uint32_t cacheLen_{0};
+    uint32_t cacheCapacity_{0};
+    uint8_t* cache_{nullptr};
 };
 
 class SmfEventStreamMerger {
@@ -84,6 +97,7 @@ public:
     bool next(SmfStreamEvent& out);
     bool peek(SmfStreamEvent& out) const;
     bool ended() const;
+    uint32_t trackCacheBytes() const { return trackCacheBytes_; }
 
 private:
     bool prime(std::size_t track);
@@ -94,6 +108,12 @@ private:
     SmfTrackStream streams_[kSmfMaxTracks]{};
     SmfStreamEvent next_[kSmfMaxTracks]{};
     bool hasNext_[kSmfMaxTracks]{};
+    uint32_t trackCacheBytes_{0};
+    // Recomputing the winning track for every peek()/ended()/next() call scans
+    // all tracks three times per event; cache it until the winner is consumed.
+    mutable int selected_{-1};
+    mutable bool selectedValid_{false};
+    uint8_t cachePool_[kSmfStreamCacheBytes]{};
 };
 
 }  // namespace GroovePuterMidi

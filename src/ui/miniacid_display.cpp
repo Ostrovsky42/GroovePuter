@@ -334,12 +334,8 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         // else the long-standing GroovePuter transport behavior is unchanged.
         if (event.key == ' ' && page_index_ == kSmfPlayerPage) {
             if (auto* player = GroovePuterMidi::smfPlayerService()) {
-                const bool queued = event.shift
-                    ? player->restart(GroovePuterMidi::SmfPlayerRestartOrigin::MusicStart)
-                    : player->togglePlayPause();
-                showToast(queued
-                    ? (event.shift ? "MIDI: RESTART" : "MIDI: PLAY/PAUSE")
-                    : "MIDI PLAYER BUSY",
+                const bool queued = player->togglePlayPause();
+                showToast(queued ? "MIDI: PLAY/PAUSE" : "MIDI PLAYER BUSY",
                     700);
                 return true;
             }

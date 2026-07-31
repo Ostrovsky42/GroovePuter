@@ -101,6 +101,23 @@ int main() {
     assert(output.handleSmfNoteOff(5, 72));
     assert(output.smfOwnerCount(5, 72) == 0);
 
+    // A terminal transport failure abandons only SMF ownership. It must not
+    // send more packets or erase a live owner sharing the same wire note.
+    output.handleMusicalEvent(liveEvent(MusicalEventType::NoteOn, 69));
+    assert(output.handleSmfNoteOn(7, 69, 95));
+    assert(output.handleSmfNoteOn(5, 74, 95));
+    const std::size_t beforeAbandon = transport.packets.size();
+    transport.sendOk = false;
+    output.abandonAllSmfNotes();
+    assert(transport.packets.size() == beforeAbandon);
+    assert(output.smfOwnerCount(7, 69) == 0);
+    assert(output.wireOwnerCount(7, 69) == 1);
+    assert(output.smfOwnerCount(5, 74) == 0);
+    assert(output.wireOwnerCount(5, 74) == 0);
+    transport.sendOk = true;
+    output.handleMusicalEvent(liveEvent(MusicalEventType::NoteOff, 69));
+    assert(output.wireOwnerCount(7, 69) == 0);
+
     // Disconnect clears local ownership and stale notes are never replayed.
     assert(output.handleSmfNoteOn(4, 55, 90));
     transport.mountedState = false;

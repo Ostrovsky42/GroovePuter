@@ -8,6 +8,7 @@
 
 #include "src/midi/scheduled_smf_midi_event_queue.h"
 #include "src/midi/smf_player_service.h"
+#include "src/midi/smf_routing.h"
 #include "src/midi/smf_scheduler.h"
 #include "src/midi/smf_stream.h"
 #include "src/midi/smf_timing.h"
@@ -25,13 +26,19 @@ public:
     bool stop() override;
     bool panic() override;
     bool seekBars(int deltaBars) override;
+    bool toggleRouting() override;
     GroovePuterMidi::SmfPlayerSnapshot snapshot() const override;
 
 private:
     static constexpr std::size_t kCommandDepth = 4;
     static constexpr std::size_t kPathBytes = 128;
-    static constexpr std::size_t kMaxTimingEvents = 256;
-    static constexpr uint32_t kScheduleLookaheadBlocks = 16;
+    // Tempo and time-signature metadata is bounded independently from notes.
+    // Keeping this small is essential on the DRAM-only Cardputer ADV.
+    static constexpr std::size_t kMaxTimingEvents = 32;
+    // 32 blocks at 512 frames / 22050 Hz is roughly 740 ms of lookahead. It
+    // costs no RAM and absorbs SD latency spikes; dense files remain bounded by
+    // kQueueFillLimit rather than by this window.
+    static constexpr uint32_t kScheduleLookaheadBlocks = 32;
     static constexpr std::size_t kQueueFillLimit =
         ScheduledSmfMidiEventQueue::kCapacity - 24;
 
@@ -43,6 +50,7 @@ private:
         Stop,
         Panic,
         SeekBars,
+        ToggleRouting,
     };
 
     struct Command {
@@ -53,18 +61,34 @@ private:
 
     class SdByteSource final : public GroovePuterMidi::ISmfByteSource {
     public:
+        struct Stats {
+            uint32_t reads{0};
+            uint32_t seeks{0};
+            uint32_t bytes{0};
+            uint32_t maxReadMicros{0};
+        };
+
         bool open(const char* path);
         void close();
         uint32_t size() const override;
         bool readAt(uint32_t offset, uint8_t* dst, std::size_t length) override;
         bool valid() const { return static_cast<bool>(file_); }
+        const Stats& stats() const { return stats_; }
+        void resetStats() { stats_ = Stats{}; }
 
     private:
+        static constexpr uint32_t kUnknownPosition = 0xFFFFFFFFu;
+
         File file_;
+        // Tracks the file cursor so sequential reads skip the seek() syscall,
+        // which is the dominant cost for single-track and Format-0 files.
+        uint32_t position_{kUnknownPosition};
+        Stats stats_{};
     };
 
     static void taskEntry(void* context);
     void taskLoop();
+    void handleTransportFailure();
     bool enqueue(const Command& command);
     void handleCommand(const Command& command);
 
@@ -75,6 +99,7 @@ private:
     void pauseAtCurrentPosition();
     void stopAndCleanup(bool resetToMusicStart);
     void scheduleAhead();
+    void logPerformance();
     void updatePlaybackSnapshot();
     uint32_t currentTickFromAudioClock() const;
     bool takeNextNote(GroovePuterMidi::SmfStreamEvent& event);
@@ -93,6 +118,10 @@ private:
     GroovePuterMidi::SmfStreamEvent pendingEvent_{};
     bool hasPendingEvent_{false};
     bool streamEnded_{true};
+    // Memo of the tick prepareStreamAt() last positioned the stream at, so a
+    // repeat request skips the scan entirely.
+    uint32_t streamPreparedTick_{0};
+    bool streamPreparedValid_{false};
     uint32_t musicStartTick_{0};
     uint32_t endTick_{0};
     uint32_t playbackOriginTick_{0};
@@ -101,6 +130,17 @@ private:
     uint32_t lastScheduledBlock_{0};
     uint32_t pausedTick_{0};
     bool loaded_{false};
+
+    static constexpr uint32_t kPerfUnsetDepth = 0xFFFFFFFFu;
+    static constexpr uint32_t kPerfLogIntervalMs = 2000;
+    uint32_t perfLastLogMs_{0};
+    uint32_t perfScheduleCalls_{0};
+    uint32_t perfMaxScheduleMicros_{0};
+    uint32_t perfMinQueueDepth_{kPerfUnsetDepth};
+    uint32_t perfQueuedEvents_{0};
+
+    GroovePuterMidi::SmfRoutingMode routingMode_{
+        GroovePuterMidi::SmfRoutingMode::Seqtrak};
 
     mutable portMUX_TYPE snapshotMux_ = portMUX_INITIALIZER_UNLOCKED;
     GroovePuterMidi::SmfPlayerSnapshot snapshot_{};

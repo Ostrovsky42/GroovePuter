@@ -3,7 +3,10 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <limits>
+#include <new>
 
+#include <esp_heap_caps.h>
 #include "src/audio/audio_config.h"
 #include "src/platform/cardputer_usb_midi_service.h"
 
@@ -18,18 +21,42 @@ constexpr TickType_t kIdleDelay = pdMS_TO_TICKS(2);
 
 CardputerSmfPlayerService::CardputerSmfPlayerService() {
     snapshot_.state = SmfPlayerState::Unloaded;
-    snapshot_.rawRouting = true;
+    snapshot_.rawRouting = false;
     copyText(snapshot_.message, sizeof(snapshot_.message), "Select a MIDI file");
 }
 
 bool CardputerSmfPlayerService::begin() {
     if (taskHandle_ != nullptr) return true;
+
+    const uint32_t freeBefore = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    const uint32_t largestBefore = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+    Serial.printf("[SMF-INIT] begin freeInt=%u largest=%u\n",
+                  static_cast<unsigned>(freeBefore),
+                  static_cast<unsigned>(largestBefore));
+
+    try {
+        timingDocument_.events.reserve(kMaxTimingEvents);
+    } catch (const std::bad_alloc&) {
+        Serial.println("[SMF-INIT] timing document reserve failed");
+        publishSnapshot(SmfPlayerState::Error, "SMF memory unavailable");
+        return false;
+    }
+    if (!timing_.reserveForEvents(kMaxTimingEvents)) {
+        Serial.println("[SMF-INIT] timing map reserve failed");
+        publishSnapshot(SmfPlayerState::Error, "SMF memory unavailable");
+        return false;
+    }
+
     commandQueue_ = xQueueCreateStatic(
         kCommandDepth,
         sizeof(Command),
         commandQueueStorage_,
         &commandQueueStruct_);
-    if (commandQueue_ == nullptr) return false;
+    if (commandQueue_ == nullptr) {
+        Serial.println("[SMF-INIT] command queue creation failed");
+        publishSnapshot(SmfPlayerState::Error, "SMF queue unavailable");
+        return false;
+    }
 
     const BaseType_t result = xTaskCreatePinnedToCore(
         taskEntry,
@@ -41,8 +68,18 @@ bool CardputerSmfPlayerService::begin() {
         kPlayerTaskCore);
     if (result != pdPASS) {
         taskHandle_ = nullptr;
+        Serial.printf("[SMF-INIT] task creation failed: %d freeInt=%u largest=%u\n",
+                      static_cast<int>(result),
+                      static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+                      static_cast<unsigned>(
+                          heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
+        publishSnapshot(SmfPlayerState::Error, "SMF task unavailable");
         return false;
     }
+    Serial.printf("[SMF-INIT] ready freeInt=%u largest=%u\n",
+                  static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+                  static_cast<unsigned>(
+                      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
     return true;
 }
 
@@ -88,6 +125,12 @@ bool CardputerSmfPlayerService::seekBars(int deltaBars) {
     return enqueue(command);
 }
 
+bool CardputerSmfPlayerService::toggleRouting() {
+    Command command{};
+    command.type = CommandType::ToggleRouting;
+    return enqueue(command);
+}
+
 SmfPlayerSnapshot CardputerSmfPlayerService::snapshot() const {
     portENTER_CRITICAL(&snapshotMux_);
     const SmfPlayerSnapshot copy = snapshot_;
@@ -98,11 +141,14 @@ SmfPlayerSnapshot CardputerSmfPlayerService::snapshot() const {
 bool CardputerSmfPlayerService::SdByteSource::open(const char* path) {
     close();
     file_ = SD.open(path, FILE_READ);
+    position_ = kUnknownPosition;
+    stats_ = Stats{};
     return static_cast<bool>(file_);
 }
 
 void CardputerSmfPlayerService::SdByteSource::close() {
     if (file_) file_.close();
+    position_ = kUnknownPosition;
 }
 
 uint32_t CardputerSmfPlayerService::SdByteSource::size() const {
@@ -116,8 +162,27 @@ bool CardputerSmfPlayerService::SdByteSource::readAt(
     if (!file_ || !dst) return false;
     const uint32_t fileSize = static_cast<uint32_t>(file_.size());
     if (offset > fileSize || length > fileSize - offset) return false;
-    if (!file_.seek(offset)) return false;
-    return file_.read(dst, length) == static_cast<int>(length);
+
+    const uint32_t started = micros();
+    if (position_ != offset) {
+        if (!file_.seek(offset)) {
+            position_ = kUnknownPosition;
+            return false;
+        }
+        position_ = offset;
+        ++stats_.seeks;
+    }
+    if (file_.read(dst, length) != static_cast<int>(length)) {
+        position_ = kUnknownPosition;
+        return false;
+    }
+    position_ = offset + static_cast<uint32_t>(length);
+
+    const uint32_t elapsed = micros() - started;
+    ++stats_.reads;
+    stats_.bytes += static_cast<uint32_t>(length);
+    if (elapsed > stats_.maxReadMicros) stats_.maxReadMicros = elapsed;
+    return true;
 }
 
 void CardputerSmfPlayerService::taskEntry(void* context) {
@@ -126,6 +191,8 @@ void CardputerSmfPlayerService::taskEntry(void* context) {
 
 void CardputerSmfPlayerService::taskLoop() {
     while (true) {
+        handleTransportFailure();
+
         Command command{};
         while (commandQueue_ != nullptr &&
                xQueueReceive(commandQueue_, &command, 0) == pdTRUE) {
@@ -141,9 +208,25 @@ void CardputerSmfPlayerService::taskLoop() {
         if (state == SmfPlayerState::Playing) {
             scheduleAhead();
             updatePlaybackSnapshot();
+            logPerformance();
         }
         vTaskDelay(kIdleDelay);
     }
+}
+
+void CardputerSmfPlayerService::handleTransportFailure() {
+    uint32_t generation = 0;
+    if (!eventQueue_.takePendingTransportFailure(generation)) return;
+
+    if (loaded_) {
+        pausedTick_ = currentTickFromAudioClock();
+        hasPendingEvent_ = false;
+        publishSnapshot(SmfPlayerState::Error, "USB MIDI BLOCKED");
+        updatePlaybackSnapshot();
+    }
+    Serial.printf("[SMF-ERROR] transport failure generation=%u tick=%u\n",
+                  static_cast<unsigned>(generation),
+                  static_cast<unsigned>(pausedTick_));
 }
 
 bool CardputerSmfPlayerService::enqueue(const Command& command) {
@@ -155,8 +238,20 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
     switch (command.type) {
         case CommandType::LoadAndPlay:
             publishSnapshot(SmfPlayerState::Loading, "Scanning MIDI...");
-            if (loadFile(command.path)) {
-                startFromTick(musicStartTick_);
+            try {
+                if (loadFile(command.path)) {
+                    startFromTick(musicStartTick_);
+                }
+            } catch (const std::bad_alloc&) {
+                stopAndCleanup(false);
+                source_.close();
+                loaded_ = false;
+                publishSnapshot(SmfPlayerState::Error, "Not enough memory");
+                Serial.printf("[SMF-LOAD] allocation failed freeInt=%u largest=%u\n",
+                              static_cast<unsigned>(
+                                  heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+                              static_cast<unsigned>(
+                                  heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
             }
             break;
         case CommandType::TogglePlayPause: {
@@ -211,6 +306,29 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
             }
             break;
         }
+        case CommandType::ToggleRouting: {
+            const SmfPlayerState previous = snapshot().state;
+            const uint32_t resumeTick = previous == SmfPlayerState::Playing
+                ? currentTickFromAudioClock()
+                : pausedTick_;
+            eventQueue_.invalidateAndRequestPanic();
+            routingMode_ = routingMode_ == SmfRoutingMode::Raw
+                ? SmfRoutingMode::Seqtrak
+                : SmfRoutingMode::Raw;
+            portENTER_CRITICAL(&snapshotMux_);
+            snapshot_.rawRouting = routingMode_ == SmfRoutingMode::Raw;
+            portEXIT_CRITICAL(&snapshotMux_);
+            if (loaded_ && previous == SmfPlayerState::Playing) {
+                startFromTick(resumeTick);
+            } else if (loaded_) {
+                prepareStreamAt(resumeTick);
+                publishSnapshot(previous,
+                    routingMode_ == SmfRoutingMode::Raw
+                        ? "RAW / ORIGINAL"
+                        : "SEQTRAK / GM MAP");
+            }
+            break;
+        }
     }
 }
 
@@ -239,10 +357,14 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
         return false;
     }
 
-    timingDocument_ = SmfDocument{};
+    // Preserve the storage reserved during setup; assigning a temporary
+    // document here would discard capacity and reintroduce runtime allocation.
+    timingDocument_.events.clear();
+    timingDocument_.tracks.clear();
     timingDocument_.format = fileIndex_.format;
     timingDocument_.division = fileIndex_.division;
-    timingDocument_.events.reserve(kMaxTimingEvents);
+    timingDocument_.musicStartTick = 0;
+    timingDocument_.endTick = 0;
     musicStartTick_ = 0;
     endTick_ = 0;
     bool foundMusic = false;
@@ -283,15 +405,25 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
     pausedTick_ = musicStartTick_;
     hasPendingEvent_ = false;
     streamEnded_ = false;
+    streamPreparedValid_ = false;
 
     portENTER_CRITICAL(&snapshotMux_);
     copyText(snapshot_.filename, sizeof(snapshot_.filename), basename(path));
     snapshot_.endTick = endTick_;
     snapshot_.totalBars = timing_.barBeatForTick(endTick_).bar;
-    snapshot_.rawRouting = true;
+    snapshot_.rawRouting = routingMode_ == SmfRoutingMode::Raw;
     portEXIT_CRITICAL(&snapshotMux_);
 
-    publishSnapshot(SmfPlayerState::Stopped, "RAW / ORIGINAL");
+    publishSnapshot(SmfPlayerState::Stopped,
+        routingMode_ == SmfRoutingMode::Raw
+            ? "RAW / ORIGINAL"
+            : "SEQTRAK / GM MAP");
+    Serial.printf("[SMF-LOAD] ready events=%u freeInt=%u largest=%u stackFree=%u\n",
+                  static_cast<unsigned>(timingDocument_.events.size()),
+                  static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+                  static_cast<unsigned>(
+                      heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+                  static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
     return true;
 }
 
@@ -301,9 +433,26 @@ bool CardputerSmfPlayerService::scanMetadata() {
 
 bool CardputerSmfPlayerService::prepareStreamAt(uint32_t tick) {
     if (!loaded_) return false;
-    stream_.reset();
+    // The stream is already positioned exactly where this call would leave it,
+    // which is the common pause -> resume and routing-toggle case.
+    if (streamPreparedValid_ && streamPreparedTick_ == tick) return true;
+
+    // A full rescan re-reads every track from its first tick, which costs
+    // seconds on a long file. Only backward seeks need it: when the stream head
+    // is still behind the target, keep scanning forward from where we are.
+    bool forward = false;
+    if (hasPendingEvent_) {
+        forward = pendingEvent_.event.tick < tick;
+    } else if (!streamEnded_) {
+        SmfStreamEvent head{};
+        forward = stream_.peek(head) && head.event.tick < tick;
+    }
+    if (!forward) stream_.reset();
+
     hasPendingEvent_ = false;
     streamEnded_ = false;
+    streamPreparedTick_ = tick;
+    streamPreparedValid_ = true;
 
     SmfStreamEvent event{};
     while (stream_.next(event)) {
@@ -320,6 +469,7 @@ bool CardputerSmfPlayerService::startFromTick(uint32_t tick) {
     if (!loaded_ || !timing_.valid()) return false;
     if (tick > endTick_) tick = musicStartTick_;
 
+    eventQueue_.clearTransportFailure();
     eventQueue_.invalidateAndRequestPanic();
     if (!prepareStreamAt(tick)) return false;
 
@@ -347,8 +497,14 @@ bool CardputerSmfPlayerService::startFromTick(uint32_t tick) {
     playbackOriginMicros_ = anchorMicros + static_cast<uint32_t>(leadMicros);
     lastScheduledBlock_ = playbackOriginBlock_;
     pausedTick_ = tick;
+    // Start a fresh measurement window so load/seek scans are not attributed to
+    // steady-state playback.
+    perfLastLogMs_ = 0;
 
-    publishSnapshot(SmfPlayerState::Playing, "RAW / ORIGINAL");
+    publishSnapshot(SmfPlayerState::Playing,
+        routingMode_ == SmfRoutingMode::Raw
+            ? "RAW / ORIGINAL"
+            : "SEQTRAK / GM MAP");
     scheduleAhead();
     updatePlaybackSnapshot();
     return true;
@@ -359,7 +515,10 @@ void CardputerSmfPlayerService::pauseAtCurrentPosition() {
     pausedTick_ = currentTickFromAudioClock();
     eventQueue_.invalidateAndRequestPanic();
     prepareStreamAt(pausedTick_);
-    publishSnapshot(SmfPlayerState::Paused, "RAW / ORIGINAL");
+    publishSnapshot(SmfPlayerState::Paused,
+        routingMode_ == SmfRoutingMode::Raw
+            ? "RAW / ORIGINAL"
+            : "SEQTRAK / GM MAP");
     updatePlaybackSnapshot();
 }
 
@@ -368,12 +527,17 @@ void CardputerSmfPlayerService::stopAndCleanup(bool resetToMusicStart) {
     if (resetToMusicStart && loaded_) pausedTick_ = musicStartTick_;
     if (loaded_) {
         prepareStreamAt(pausedTick_);
-        publishSnapshot(SmfPlayerState::Stopped, "RAW / ORIGINAL");
+        publishSnapshot(SmfPlayerState::Stopped,
+            routingMode_ == SmfRoutingMode::Raw
+                ? "RAW / ORIGINAL"
+                : "SEQTRAK / GM MAP");
         updatePlaybackSnapshot();
     }
 }
 
 bool CardputerSmfPlayerService::takeNextNote(SmfStreamEvent& event) {
+    // Consuming events moves the stream past the prepared position.
+    streamPreparedValid_ = false;
     while (true) {
         if (hasPendingEvent_) {
             event = pendingEvent_;
@@ -391,12 +555,20 @@ bool CardputerSmfPlayerService::takeNextNote(SmfStreamEvent& event) {
 }
 
 void CardputerSmfPlayerService::scheduleAhead() {
-    if (!loaded_ || snapshot().state != SmfPlayerState::Playing) return;
+    if (!loaded_ || snapshot().state != SmfPlayerState::Playing ||
+        eventQueue_.transportFailed()) {
+        return;
+    }
 
     uint32_t anchorBlock = 0;
     uint32_t anchorMicros = 0;
     if (!snapshotCardputerUsbMidiBlockAnchor(anchorBlock, anchorMicros)) return;
     (void)anchorMicros;
+
+    const uint32_t scheduleStarted = micros();
+    ++perfScheduleCalls_;
+    const uint32_t entryDepth = static_cast<uint32_t>(eventQueue_.approximateSize());
+    if (entryDepth < perfMinQueueDepth_) perfMinQueueDepth_ = entryDepth;
 
     while (eventQueue_.approximateSize() < kQueueFillLimit) {
         SmfStreamEvent event{};
@@ -430,23 +602,26 @@ void CardputerSmfPlayerService::scheduleAhead() {
         }
 
         bool pushed = false;
+        const SmfRoutedNote routed = routeSmfNote(
+            routingMode_, event.event.channel, event.event.data1);
         if (event.event.kind == SmfEventKind::NoteOn) {
             pushed = eventQueue_.tryPushNoteOn(
-                event.event.channel,
-                event.event.data1,
+                routed.channel,
+                routed.note,
                 event.event.data2,
                 position.blockSequence,
                 position.frameOffset);
         } else {
             pushed = eventQueue_.tryPushNoteOff(
-                event.event.channel,
-                event.event.data1,
+                routed.channel,
+                routed.note,
                 event.event.data2,
                 position.blockSequence,
                 position.frameOffset);
         }
 
         if (!pushed) {
+            if (eventQueue_.transportFailed()) return;
             if (event.event.kind == SmfEventKind::NoteOff) {
                 publishSnapshot(SmfPlayerState::Error, "MIDI cleanup overflow");
             }
@@ -454,6 +629,12 @@ void CardputerSmfPlayerService::scheduleAhead() {
         }
         lastScheduledBlock_ = position.blockSequence;
         hasPendingEvent_ = false;
+        ++perfQueuedEvents_;
+    }
+
+    const uint32_t scheduleMicros = micros() - scheduleStarted;
+    if (scheduleMicros > perfMaxScheduleMicros_) {
+        perfMaxScheduleMicros_ = scheduleMicros;
     }
 
     if (streamEnded_ && !hasPendingEvent_ &&
@@ -461,6 +642,71 @@ void CardputerSmfPlayerService::scheduleAhead() {
         pausedTick_ = musicStartTick_;
         publishSnapshot(SmfPlayerState::Stopped, "END - Space to replay");
     }
+}
+
+void CardputerSmfPlayerService::logPerformance() {
+    const uint32_t nowMs = millis();
+    if (perfLastLogMs_ != 0 && nowMs - perfLastLogMs_ < kPerfLogIntervalMs) return;
+    const uint32_t windowMs = perfLastLogMs_ == 0 ? 0 : nowMs - perfLastLogMs_;
+    perfLastLogMs_ = nowMs;
+    if (windowMs == 0) {
+        source_.resetStats();
+        perfScheduleCalls_ = 0;
+        perfQueuedEvents_ = 0;
+        perfMaxScheduleMicros_ = 0;
+        perfMinQueueDepth_ = kPerfUnsetDepth;
+        return;
+    }
+
+    const SdByteSource::Stats sd = source_.stats();
+    SmfPlayerPerformanceSnapshot performance{};
+    performance.trackCount = fileIndex_.trackCount;
+    performance.cacheBytesPerTrack = static_cast<uint16_t>(
+        std::min<uint32_t>(stream_.trackCacheBytes(),
+                           std::numeric_limits<uint16_t>::max()));
+    performance.reads = sd.reads;
+    performance.seeks = sd.seeks;
+    performance.bytes = sd.bytes;
+    performance.maxReadMicros = sd.maxReadMicros;
+    performance.scheduleCalls = perfScheduleCalls_;
+    performance.queuedEvents = perfQueuedEvents_;
+    performance.maxScheduleMicros = perfMaxScheduleMicros_;
+    performance.minQueueDepth = perfMinQueueDepth_ == kPerfUnsetDepth
+        ? -1
+        : static_cast<int16_t>(std::min<uint32_t>(
+              perfMinQueueDepth_, std::numeric_limits<int16_t>::max()));
+    performance.queueFillLimit = static_cast<uint16_t>(kQueueFillLimit);
+    performance.lookaheadMs = static_cast<uint16_t>(
+        (kScheduleLookaheadBlocks * kBlockFrames * 1000u) / kSampleRate);
+
+    portENTER_CRITICAL(&snapshotMux_);
+    snapshot_.performance = performance;
+    portEXIT_CRITICAL(&snapshotMux_);
+
+    // minQueue near zero means the producer (SD + parser) is falling behind;
+    // minQueue pinned at the fill limit means the USB consumer is the limit.
+    Serial.printf(
+        "[SMF-PERF] tracks=%u cache=%u reads=%u seeks=%u bytes=%u "
+        "maxReadUs=%u sched=%u queued=%u maxSchedUs=%u minQueue=%d fill=%u "
+        "lookahead=%ums\n",
+        static_cast<unsigned>(performance.trackCount),
+        static_cast<unsigned>(performance.cacheBytesPerTrack),
+        static_cast<unsigned>(performance.reads),
+        static_cast<unsigned>(performance.seeks),
+        static_cast<unsigned>(performance.bytes),
+        static_cast<unsigned>(performance.maxReadMicros),
+        static_cast<unsigned>(performance.scheduleCalls),
+        static_cast<unsigned>(performance.queuedEvents),
+        static_cast<unsigned>(performance.maxScheduleMicros),
+        static_cast<int>(performance.minQueueDepth),
+        static_cast<unsigned>(performance.queueFillLimit),
+        static_cast<unsigned>(performance.lookaheadMs));
+
+    source_.resetStats();
+    perfScheduleCalls_ = 0;
+    perfQueuedEvents_ = 0;
+    perfMaxScheduleMicros_ = 0;
+    perfMinQueueDepth_ = kPerfUnsetDepth;
 }
 
 uint32_t CardputerSmfPlayerService::currentTickFromAudioClock() const {

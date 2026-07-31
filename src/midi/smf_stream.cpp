@@ -114,6 +114,13 @@ bool SmfTrackStream::open(ISmfByteSource& source,
     return true;
 }
 
+void SmfTrackStream::setCache(uint8_t* buffer, uint32_t capacity) {
+    cache_ = capacity > 0 ? buffer : nullptr;
+    cacheCapacity_ = cache_ != nullptr ? capacity : 0;
+    cacheStart_ = 0;
+    cacheLen_ = 0;
+}
+
 void SmfTrackStream::reset() {
     pos_ = span_.offset;
     tick_ = 0;
@@ -129,13 +136,24 @@ bool SmfTrackStream::readByte(uint8_t& value) {
     const uint32_t trackEnd = span_.offset + span_.length;
     if (pos_ >= trackEnd) return false;
 
+    if (cache_ == nullptr) {
+        if (!source_->readAt(pos_, &value, 1)) return false;
+        ++pos_;
+        return true;
+    }
+
     if (cacheLen_ == 0 || pos_ < cacheStart_ ||
         pos_ >= cacheStart_ + cacheLen_) {
-        cacheStart_ = pos_;
-        const uint32_t remaining = trackEnd - pos_;
-        const std::size_t want = std::min<std::size_t>(remaining, sizeof(cache_));
-        if (want == 0 || !source_->readAt(cacheStart_, cache_, want)) return false;
-        cacheLen_ = static_cast<uint8_t>(want);
+        uint32_t start = pos_;
+        if (cacheCapacity_ >= kSmfSectorBytes) {
+            const uint32_t aligned =
+                pos_ & ~static_cast<uint32_t>(kSmfSectorBytes - 1u);
+            start = std::max(aligned, span_.offset);
+        }
+        const uint32_t want = std::min<uint32_t>(cacheCapacity_, trackEnd - start);
+        if (want == 0 || !source_->readAt(start, cache_, want)) return false;
+        cacheStart_ = start;
+        cacheLen_ = want;
     }
 
     value = cache_[pos_ - cacheStart_];
@@ -319,12 +337,24 @@ bool SmfEventStreamMerger::open(ISmfByteSource& source,
     source_ = &source;
     index_ = index;
     for (std::size_t i = 0; i < kSmfMaxTracks; ++i) hasNext_[i] = false;
+    selectedValid_ = false;
+
+    // Split the shared pool across the tracks this file actually uses, keeping
+    // each slice sector-sized so SD transfers stay aligned.
+    uint32_t perTrack = static_cast<uint32_t>(
+        std::min<std::size_t>(kSmfTrackReadCacheBytes,
+                              kSmfStreamCacheBytes / index_.trackCount));
+    if (perTrack >= kSmfSectorBytes) {
+        perTrack = (perTrack / kSmfSectorBytes) * kSmfSectorBytes;
+    }
+    trackCacheBytes_ = perTrack;
 
     for (std::size_t i = 0; i < index_.trackCount; ++i) {
         if (!streams_[i].open(source, index_.tracks[i], static_cast<uint16_t>(i))) {
             source_ = nullptr;
             return false;
         }
+        streams_[i].setCache(cachePool_ + i * perTrack, perTrack);
         prime(i);
     }
     return true;
@@ -332,6 +362,7 @@ bool SmfEventStreamMerger::open(ISmfByteSource& source,
 
 void SmfEventStreamMerger::reset() {
     if (!source_) return;
+    selectedValid_ = false;
     for (std::size_t i = 0; i < index_.trackCount; ++i) {
         streams_[i].reset();
         prime(i);
@@ -340,11 +371,14 @@ void SmfEventStreamMerger::reset() {
 
 bool SmfEventStreamMerger::prime(std::size_t track) {
     if (track >= index_.trackCount) return false;
+    selectedValid_ = false;
     hasNext_[track] = streams_[track].next(next_[track]);
     return hasNext_[track];
 }
 
 int SmfEventStreamMerger::selectedTrack() const {
+    if (selectedValid_) return selected_;
+
     int selected = -1;
     for (std::size_t i = 0; i < index_.trackCount; ++i) {
         if (!hasNext_[i]) continue;
@@ -362,6 +396,8 @@ int SmfEventStreamMerger::selectedTrack() const {
             selected = static_cast<int>(i);
         }
     }
+    selected_ = selected;
+    selectedValid_ = true;
     return selected;
 }
 

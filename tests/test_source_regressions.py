@@ -48,6 +48,53 @@ def test_adv_amp_pin_is_not_used_as_rgb_data() -> None:
             "GPIO21 must never receive WS2812 timing on Cardputer ADV")
 
 
+def test_cardputer_sd_has_one_hardware_mount_path() -> None:
+    profile = (ROOT / "src/platform/cardputer_adv_hardware.h").read_text(
+        encoding="utf-8"
+    )
+    sd_mount = (ROOT / "src/platform/cardputer_sd.cpp").read_text(
+        encoding="utf-8"
+    )
+    scene_storage = (ROOT / "scene_storage_cardputer.cpp").read_text(
+        encoding="utf-8"
+    )
+    recorder = (ROOT / "src/audio/cardputer_audio_recorder.cpp").read_text(
+        encoding="utf-8"
+    )
+    smf_page = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(
+        encoding="utf-8"
+    )
+    sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
+
+    for declaration in (
+        "kSdClockPin = 40",
+        "kSdMisoPin = 39",
+        "kSdMosiPin = 14",
+        "kSdChipSelectPin = 12",
+    ):
+        require(declaration in profile,
+                f"Cardputer ADV SD profile is missing {declaration}")
+
+    require("SPI.begin(" in sd_mount and "SD.begin(" in sd_mount,
+            "platform SD owner must configure and mount the card")
+    require("SD.begin(" not in scene_storage,
+            "scene storage must use the shared platform SD mount")
+    require("SD.begin(" not in recorder,
+            "audio recorder must not remount SD with default pins")
+    require("SD.begin(" not in smf_page,
+            "SMF UI must not own hardware SD initialization")
+
+    audio_task_pos = sketch.index("startAudioTask();")
+    early_sd_pos = sketch.index("g_sceneStorage.initializeStorage();")
+    engine_init_pos = sketch.index("g_miniAcidInstance.init();")
+    require(audio_task_pos < early_sd_pos < engine_init_pos,
+            "SD must mount after reserving AudioTask and before DSP heap allocation")
+
+    smf_runtime_pos = sketch.index("beginCardputerSmfPlayerService();")
+    require(early_sd_pos < smf_runtime_pos < engine_init_pos,
+            "SMF task and timing storage must be reserved before DSP/UI fragmentation")
+
+
 def test_genre_regeneration_uses_full_compiled_params() -> None:
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
     start = engine.index("void MiniAcid::regeneratePatternsWithGenre()")
