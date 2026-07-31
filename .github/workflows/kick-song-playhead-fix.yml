@@ -27,6 +27,23 @@ jobs:
             capture && /^          PY$/ { exit }
             capture { sub(/^          /, ""); print }
           ' .github/workflows/apply-song-playhead-fix.yml > /tmp/apply_song_playhead.py
+
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('/tmp/apply_song_playhead.py')
+          text = path.read_text(encoding='utf-8')
+          old = 'replace_once(engine, "  songStepCounter_ = 0;", "  songBarIndex_ = -1;")'
+          new = '''replace_once(
+              engine,
+              "  currentTick_ = 0;\\n  songStepCounter_ = 0;\\n  currentTimingOffset_ = 0;",
+              "  currentTick_ = 0;\\n  songBarIndex_ = -1;\\n  currentTimingOffset_ = 0;",
+          )'''
+          count = text.count(old)
+          if count != 1:
+              raise RuntimeError(f'expected one repair-script match, found {count}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
           python3 /tmp/apply_song_playhead.py
 
       - name: Run host regressions
