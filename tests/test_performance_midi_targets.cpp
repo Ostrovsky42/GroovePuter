@@ -54,30 +54,22 @@ int main() {
     expectEvent(sink.events[2], MusicalEventType::NoteOn,
                 MusicalEventTarget::SynthB, 38);
 
+    // User-visible target cycling exposes only routes that are valid on the
+    // current SEQTRAK runtime. Drums remains a reserved backend target until
+    // native per-voice channels 1..7 are applied from MidiOutputSettings.
     keyboard.cycleTarget(1);
     assert(sink.events.size() == 4);
     expectEvent(sink.events[3], MusicalEventType::AllNotesOff,
                 MusicalEventTarget::SynthB, 0);
-    assert(keyboard.target() == MusicalEventTarget::Drums);
-    assert(std::strcmp(keyboard.targetName(), "DRUMS") == 0);
-    assert(keyboard.targetMidiChannel() == 10);
-
-    assert(keyboard.keyDown('d', 102));
-    assert(sink.events.size() == 5);
-    expectEvent(sink.events[4], MusicalEventType::NoteOn,
-                MusicalEventTarget::Drums, 39);
-
-    keyboard.cycleTarget(1);
-    assert(sink.events.size() == 6);
-    expectEvent(sink.events[5], MusicalEventType::AllNotesOff,
-                MusicalEventTarget::Drums, 0);
     assert(keyboard.target() == MusicalEventTarget::SynthA);
+    assert(keyboard.targetMidiChannel() == 8);
 
     keyboard.cycleTarget(-1);
-    assert(sink.events.size() == 7);
-    expectEvent(sink.events[6], MusicalEventType::AllNotesOff,
+    assert(sink.events.size() == 5);
+    expectEvent(sink.events[4], MusicalEventType::AllNotesOff,
                 MusicalEventTarget::SynthA, 0);
-    assert(keyboard.target() == MusicalEventTarget::Drums);
+    assert(keyboard.target() == MusicalEventTarget::SynthB);
+    assert(keyboard.targetMidiChannel() == 9);
 
     return 0;
 }
