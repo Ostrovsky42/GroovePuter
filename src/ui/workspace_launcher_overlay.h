@@ -17,7 +17,8 @@ public:
     void open(Workspace workspace) {
         visible_ = true;
         selected_ = entryForWorkspace(workspace);
-        child_ = 0;
+        child_ = WorkflowPages::pageIndexInMode(
+            WorkflowPages::pageForWorkspace(workspace));
         page_request_ = -1;
         help_request_ = false;
     }
@@ -61,8 +62,6 @@ public:
             return true;
         }
 
-        // Theme preview stays available while the launcher is open. The main
-        // display loop observes currentStyle and propagates it to live pages.
         if (event.alt && (event.key == '\\' || event.key == '|')) {
             UI::currentStyle = UI::nextThemeStyle(UI::currentStyle);
             return true;
@@ -106,10 +105,10 @@ public:
         const int headerH = 14;
         const int footerH = 12;
         const int leftX = 4;
-        const int leftW = 94;
-        const int rightX = 104;
+        const int leftW = 88;
+        const int rightX = 98;
         const int rightW = w - rightX - 4;
-        const int rowH = 13;
+        const int rowH = 14;
         const int rowsY = headerH + 4;
 
         gfx.fillRect(0, 0, w, h, p.background);
@@ -153,116 +152,137 @@ public:
         if (line1) gfx.drawText(rightX + 5, panelY + 37, line1);
         if (line2) gfx.drawText(rightX + 5, panelY + 49, line2);
 
-        if (count > 1) {
+        if (selected_ < kWorkflowEntryCount) {
             char pos[24];
-            std::snprintf(pos, sizeof(pos), "L/R  %d/%d", safeChild + 1, count);
+            std::snprintf(pos, sizeof(pos), "PAGE %d/%d", safeChild + 1, count);
             gfx.setTextColor(p.accent2);
             gfx.drawText(rightX + 5, panelY + 67, pos);
+
+            gfx.setTextColor(p.dim);
+            gfx.drawText(rightX + 5, panelY + 80,
+                         count > 1 ? "[ / ] SAME WORKFLOW" : "FN+TAB NEXT WORKFLOW");
         }
 
         gfx.fillRect(0, h - footerH, w, footerH, p.panel);
         gfx.drawLine(0, h - footerH, w - 1, h - footerH, p.dim);
         gfx.setTextColor(p.secondary);
-        gfx.drawText(4, h - footerH + 2, "UP/DN ENT  L/R SECTION");
+        gfx.drawText(4, h - footerH + 2, "UP/DN ENT  L/R PAGE");
         gfx.setTextColor(p.text);
         gfx.drawText(w - gfx.textWidth("ALT+\\ THEME") - 4,
                      h - footerH + 2, "ALT+\\ THEME");
     }
 
 private:
-    static constexpr int kEntryCount = 7;
+    static constexpr int kWorkflowEntryCount = 5;
+    static constexpr int kEntryCount = 6;
 
     static int entryForWorkspace(Workspace workspace) {
-        switch (workspace) {
-            case Workspace::Perform: return 0;
-            case Workspace::Pattern: return 1;
-            case Workspace::Arrange: return 2;
-            case Workspace::Player: return 3;
-            case Workspace::Groove: return 4;
+        switch (WorkflowPages::modeForWorkspace(workspace)) {
+            case WorkflowMode::Perform: return 0;
+            case WorkflowMode::Generate: return 1;
+            case WorkflowMode::Hub: return 2;
+            case WorkflowMode::Song: return 3;
+            case WorkflowMode::Settings: return 4;
         }
-        return 0;
+        return 1;
     }
 
-    static const char* workspaceNameForEntry(int entry) {
+    static WorkflowMode entryMode(int entry) {
         switch (entry) {
-            case 0: return "PERFORM";
-            case 1: return "PATTERN";
-            case 2: return "ARRANGE";
-            case 3: return "PLAYER";
-            case 4: return "GROOVE";
-            case 5: return "PROJECT";
-            case 6: return "HELP";
-            default: return "NAV";
+            case 0: return WorkflowMode::Perform;
+            case 1: return WorkflowMode::Generate;
+            case 2: return WorkflowMode::Hub;
+            case 3: return WorkflowMode::Song;
+            case 4: return WorkflowMode::Settings;
+            default: return WorkflowMode::Generate;
         }
     }
 
     static const char* entryLabel(int entry) {
         switch (entry) {
             case 0: return "PERFORM";
-            case 1: return "PATTERN";
-            case 2: return "ARRANGE";
-            case 3: return "MIDI PLAYER";
-            case 4: return "GROOVE";
-            case 5: return "PROJECT";
-            case 6: return "HELP";
+            case 1: return "GENERATE";
+            case 2: return "HUB";
+            case 3: return "SONG";
+            case 4: return "SETTINGS";
+            case 5: return "HELP";
             default: return "?";
         }
     }
 
     static int childCount(int entry) {
-        switch (entry) {
-            case 1: return 4;
-            case 4: return 4;
-            default: return 1;
-        }
+        if (entry >= kWorkflowEntryCount) return 1;
+        return WorkflowPages::pageCountForMode(entryMode(entry));
     }
 
     static int childPage(int entry, int child) {
-        switch (entry) {
-            case 0: return WorkflowPages::kPerform;
-            case 1:
-                switch (child) {
-                    case 1: return WorkflowPages::kSynthA;
-                    case 2: return WorkflowPages::kSynthB;
-                    case 3: return WorkflowPages::kDrums;
-                    default: return WorkflowPages::kPattern;
-                }
-            case 2: return WorkflowPages::kArrange;
-            case 3: return WorkflowPages::kPlayer;
-            case 4:
-                switch (child) {
-                    case 1: return WorkflowPages::kMode;
-                    case 2: return WorkflowPages::kFeelTexture;
-                    case 3: return WorkflowPages::kGenerator;
-                    default: return WorkflowPages::kGenre;
-                }
-            case 5: return WorkflowPages::kProject;
-            default: return -1;
-        }
+        if (entry >= kWorkflowEntryCount) return -1;
+        return WorkflowPages::pageAt(entryMode(entry), child);
     }
 
     static const char* childLabel(int entry, int child) {
-        switch (entry) {
-            case 0: return "LIVE INSTRUMENT";
-            case 1:
-                switch (child) {
-                    case 1: return "SYNTH A";
-                    case 2: return "SYNTH B";
-                    case 3: return "DRUMS";
-                    default: return "OVERVIEW";
-                }
-            case 2: return "SONG";
-            case 3: return "NOW PLAYING";
-            case 4:
-                switch (child) {
-                    case 1: return "MODE / FLAVOR";
-                    case 2: return "FEEL / TEXTURE";
-                    case 3: return "GENERATOR";
-                    default: return "GENRE";
-                }
-            case 5: return "SCENES / SETUP";
-            case 6: return "CONTROLS";
-            default: return "";
+        if (entry == 5) return "CONTROLS";
+        return WorkflowPages::pageName(childPage(entry, child));
+    }
+
+    static void descriptionForPage(int page,
+                                   const char*& line1,
+                                   const char*& line2) {
+        switch (page) {
+            case WorkflowPages::kPerform:
+                line1 = "A / B / DX / DRUMS";
+                line2 = "live MIDI keyboard";
+                return;
+            case WorkflowPages::kPlayer:
+                line1 = "SD MIDI playback";
+                line2 = "tempo / route / progress";
+                return;
+            case WorkflowPages::kGenre:
+                line1 = "genre / texture / recipe";
+                line2 = "musical direction";
+                return;
+            case WorkflowPages::kMode:
+                line1 = "groove family / flavor";
+                line2 = "macro generation style";
+                return;
+            case WorkflowPages::kFeelTexture:
+                line1 = "grid / timebase / length";
+                line2 = "timing character";
+                return;
+            case WorkflowPages::kGenerator:
+                line1 = "swing / notes / scale";
+                line2 = "TAB local groups";
+                return;
+            case WorkflowPages::kPattern:
+                line1 = "all lanes / 16 steps";
+                line2 = "open concrete editor";
+                return;
+            case WorkflowPages::kSynthA:
+            case WorkflowPages::kSynthB:
+                line1 = "pattern editor";
+                line2 = "TAB local section";
+                return;
+            case WorkflowPages::kDrums:
+                line1 = "pattern / sound / auto";
+                line2 = "TAB local section";
+                return;
+            case WorkflowPages::kSynthAParameters:
+            case WorkflowPages::kSynthBParameters:
+                line1 = "synth sound controls";
+                line2 = "live-note capable";
+                return;
+            case WorkflowPages::kArrange:
+                line1 = "arrange / loop / marks";
+                line2 = "song-level edit";
+                return;
+            case WorkflowPages::kProject:
+                line1 = "load / save / MIDI";
+                line2 = "UI / routing / LED";
+                return;
+            default:
+                line1 = "";
+                line2 = "";
+                return;
         }
     }
 
@@ -270,63 +290,16 @@ private:
                                  int child,
                                  const char*& line1,
                                  const char*& line2) {
-        line1 = "";
-        line2 = "";
-        switch (entry) {
-            case 0:
-                line1 = "A / B / DX / DRUMS";
-                line2 = "live instrument";
-                return;
-            case 1:
-                if (child == 0) {
-                    line1 = "all lanes / 16 steps";
-                    line2 = "open editor from hub";
-                } else if (child == 1 || child == 2) {
-                    line1 = "pattern + synth setup";
-                    line2 = "TAB local section";
-                } else {
-                    line1 = "pattern / sound / auto";
-                    line2 = "TAB local section";
-                }
-                return;
-            case 2:
-                line1 = "arrange / loop / marks";
-                line2 = "song-level edit";
-                return;
-            case 3:
-                line1 = "SD MIDI playback";
-                line2 = "seek / tempo / route";
-                return;
-            case 4:
-                if (child == 0) {
-                    line1 = "genre/texture/recipe";
-                    line2 = "musical direction";
-                } else if (child == 1) {
-                    line1 = "groove family/flavor";
-                    line2 = "sound macro setup";
-                } else if (child == 2) {
-                    line1 = "grid/timebase/length";
-                    line2 = "timing character";
-                } else {
-                    line1 = "notes/scale/timing";
-                    line2 = "advanced generator";
-                }
-                return;
-            case 5:
-                line1 = "load / save / MIDI";
-                line2 = "UI / groove / LED";
-                return;
-            case 6:
-                line1 = "page-aware help";
-                line2 = "shortcuts / controls";
-                return;
-            default:
-                return;
+        if (entry == 5) {
+            line1 = "page-aware help";
+            line2 = "shortcuts / controls";
+            return;
         }
+        descriptionForPage(childPage(entry, child), line1, line2);
     }
 
     void activateSelection() {
-        if (selected_ == 6) {
+        if (selected_ == 5) {
             help_request_ = true;
             visible_ = false;
             return;
