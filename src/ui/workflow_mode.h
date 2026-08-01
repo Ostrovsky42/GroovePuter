@@ -10,10 +10,11 @@ enum class WorkflowMode : uint8_t {
     Settings,
 };
 
-// Workspace stores the active page inside a workflow.  Keeping this state
+// Workspace stores the active page inside a workflow. Keeping this state
 // page-aware lets the existing MiniAcidDisplay nextPage()/previousPage()
 // methods restore [ / ] navigation without adding another navigation owner.
 enum class Workspace : uint8_t {
+    // PERFORM
     Perform = 0,
     Player,
 
@@ -21,7 +22,6 @@ enum class Workspace : uint8_t {
     Groove,
     Mode,
     FeelTexture,
-    Generator,
 
     // HUB
     Pattern,
@@ -31,9 +31,12 @@ enum class Workspace : uint8_t {
     SynthAParameters,
     SynthBParameters,
 
-    // SONG / SETTINGS
+    // SONG
     Arrange,
+
+    // SETTINGS
     Project,
+    Generator,
 };
 
 namespace WorkflowPages {
@@ -59,8 +62,7 @@ inline bool isPerformWorkflowPage(int page) {
 inline bool isGenerateWorkflowPage(int page) {
     return page == kGenre ||
            page == kMode ||
-           page == kFeelTexture ||
-           page == kGenerator;
+           page == kFeelTexture;
 }
 
 inline bool isHubWorkflowPage(int page) {
@@ -72,7 +74,11 @@ inline bool isHubWorkflowPage(int page) {
            page == kSynthBParameters;
 }
 
-// Compatibility name used by older source-level checks and call sites.
+inline bool isSettingsWorkflowPage(int page) {
+    return page == kProject || page == kGenerator;
+}
+
+// Compatibility names used by older source-level checks and call sites.
 inline bool isPatternWorkspacePage(int page) {
     return isHubWorkflowPage(page);
 }
@@ -86,7 +92,7 @@ inline bool isWorkspacePage(int page) {
            isGenerateWorkflowPage(page) ||
            isHubWorkflowPage(page) ||
            page == kArrange ||
-           page == kProject;
+           isSettingsWorkflowPage(page);
 }
 
 inline Workspace workspaceForPage(int page) {
@@ -96,7 +102,6 @@ inline Workspace workspaceForPage(int page) {
         case kGenre: return Workspace::Groove;
         case kMode: return Workspace::Mode;
         case kFeelTexture: return Workspace::FeelTexture;
-        case kGenerator: return Workspace::Generator;
         case kPattern: return Workspace::Pattern;
         case kSynthA: return Workspace::SynthA;
         case kSynthB: return Workspace::SynthB;
@@ -105,6 +110,7 @@ inline Workspace workspaceForPage(int page) {
         case kSynthBParameters: return Workspace::SynthBParameters;
         case kArrange: return Workspace::Arrange;
         case kProject: return Workspace::Project;
+        case kGenerator: return Workspace::Generator;
         default: return Workspace::Groove;
     }
 }
@@ -116,7 +122,6 @@ inline int pageForWorkspace(Workspace workspace) {
         case Workspace::Groove: return kGenre;
         case Workspace::Mode: return kMode;
         case Workspace::FeelTexture: return kFeelTexture;
-        case Workspace::Generator: return kGenerator;
         case Workspace::Pattern: return kPattern;
         case Workspace::SynthA: return kSynthA;
         case Workspace::SynthB: return kSynthB;
@@ -125,6 +130,7 @@ inline int pageForWorkspace(Workspace workspace) {
         case Workspace::SynthBParameters: return kSynthBParameters;
         case Workspace::Arrange: return kArrange;
         case Workspace::Project: return kProject;
+        case Workspace::Generator: return kGenerator;
     }
     return kGenre;
 }
@@ -163,7 +169,6 @@ inline const char* pageName(int page) {
         case kGenre: return "GENRE";
         case kMode: return "MODE / FLAVOR";
         case kFeelTexture: return "FEEL / TEXTURE";
-        case kGenerator: return "ADV GENERATOR";
         case kPattern: return "OVERVIEW";
         case kSynthA: return "SYNTH A";
         case kSynthB: return "SYNTH B";
@@ -172,6 +177,7 @@ inline const char* pageName(int page) {
         case kSynthBParameters: return "SYNTH B SOUND";
         case kArrange: return "SONG";
         case kProject: return "PROJECT / SETUP";
+        case kGenerator: return "ADV GENERATOR";
         default: return "PAGE";
     }
 }
@@ -179,10 +185,10 @@ inline const char* pageName(int page) {
 inline int pageCountForMode(WorkflowMode mode) {
     switch (mode) {
         case WorkflowMode::Perform: return 2;
-        case WorkflowMode::Generate: return 4;
+        case WorkflowMode::Generate: return 3;
         case WorkflowMode::Hub: return 6;
         case WorkflowMode::Song: return 1;
-        case WorkflowMode::Settings: return 1;
+        case WorkflowMode::Settings: return 2;
     }
     return 1;
 }
@@ -192,11 +198,14 @@ inline int pageAt(WorkflowMode mode, int index) {
         kPerform, kPlayer,
     };
     static constexpr int kGeneratePages[] = {
-        kGenre, kMode, kFeelTexture, kGenerator,
+        kGenre, kMode, kFeelTexture,
     };
     static constexpr int kHubPages[] = {
         kPattern, kSynthA, kSynthB, kDrums,
         kSynthAParameters, kSynthBParameters,
+    };
+    static constexpr int kSettingsPages[] = {
+        kProject, kGenerator,
     };
 
     const int count = pageCountForMode(mode);
@@ -208,7 +217,7 @@ inline int pageAt(WorkflowMode mode, int index) {
         case WorkflowMode::Generate: return kGeneratePages[index];
         case WorkflowMode::Hub: return kHubPages[index];
         case WorkflowMode::Song: return kArrange;
-        case WorkflowMode::Settings: return kProject;
+        case WorkflowMode::Settings: return kSettingsPages[index];
     }
     return kGenre;
 }
