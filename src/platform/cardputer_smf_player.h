@@ -179,6 +179,9 @@ private:
     GroovePuterMidi::SmfLaunchMode launchMode_{
         GroovePuterMidi::SmfLaunchMode::NextBar};
     bool projectLaunchPlanned_{false};
+    // Only an SMF that was actively playing before external Stop gets the
+    // bounded Continue resume path. A newly armed file still observes NEXT BAR.
+    bool projectResumeOnExternalContinue_{false};
     double projectOriginStep_{0.0};
     double projectOriginSmfTick_{0.0};
     uint16_t projectBpmX10_{1200};
