@@ -113,5 +113,26 @@ int main() {
     assert(stopped.valid);
     assert(!stopped.playing);
 
+    // With the authoritative global transport running, future SMF events are
+    // scheduled from its live phase/block anchor rather than from the stale
+    // launch projection supplied by the caller. At phase ~= 8 steps, an event
+    // at step 10 is about 5512 frames ahead, regardless of the old origin block.
+    auto& liveTimeline = projectTransportTimeline();
+    liveTimeline.resetPublisher();
+    liveTimeline.publishBlock(300, 512, 8.0f, 120.0f, 22050.0f, true);
+    ProjectScheduledPosition liveAnchored{};
+    assert(scheduleProjectSmfTick(480,
+                                  0,
+                                  0.0,
+                                  5,
+                                  0,
+                                  1200,
+                                  1200,
+                                  22050,
+                                  512,
+                                  liveAnchored));
+    assert(liveAnchored.blockSequence == 310u);
+    assert(liveAnchored.frameOffset == 392u);
+
     return 0;
 }
