@@ -13,6 +13,7 @@ namespace GroovePuterMidi {
 struct TransportClockRuntimeSnapshot {
     TransportClockSource source{TransportClockSource::GroovePuterInternal};
     ExternalClockLockState externalState{ExternalClockLockState::Waiting};
+    bool externalFollowEnabled{true};
     bool externalRunning{false};
     bool externalTempoValid{false};
     // The displayed BPM is the actual SEQTRAK source tempo. The small local PLL
@@ -57,6 +58,22 @@ public:
         return next;
     }
 
+    // Zero-initialized runtime state intentionally means FOLLOW ON. This keeps
+    // the common path usable without static initialization order dependencies.
+    bool externalFollowEnabled() const {
+        return externalFollowDisabled_.loadAcquire() == 0u;
+    }
+
+    void setExternalFollowEnabled(bool enabled) {
+        externalFollowDisabled_.storeRelease(enabled ? 0u : 1u);
+    }
+
+    bool toggleExternalFollowEnabled() {
+        const bool enabled = !externalFollowEnabled();
+        setExternalFollowEnabled(enabled);
+        return enabled;
+    }
+
     void publishExternalEstimate(const ExternalClockEstimate& estimate,
                                  uint32_t failureCount) {
         const uint32_t version = version_.loadRelaxed();
@@ -84,6 +101,7 @@ public:
             const uint32_t before = version_.loadAcquire();
             if (before & 1u) continue;
             out.source = source();
+            out.externalFollowEnabled = externalFollowEnabled();
             out.externalState = static_cast<ExternalClockLockState>(
                 externalState_.loadRelaxed());
             out.externalRunning = externalRunning_.loadRelaxed() != 0u;
@@ -105,7 +123,10 @@ public:
 
     TransportClockRuntimeSnapshot snapshot() const {
         TransportClockRuntimeSnapshot out{};
-        if (!trySnapshot(out)) out.source = source();
+        if (!trySnapshot(out)) {
+            out.source = source();
+            out.externalFollowEnabled = externalFollowEnabled();
+        }
         return out;
     }
 
@@ -124,6 +145,7 @@ private:
     }
 
     MidiRealtimeWord source_;
+    MidiRealtimeWord externalFollowDisabled_;
     MidiRealtimeWord version_;
     MidiRealtimeWord externalState_;
     MidiRealtimeWord externalRunning_;
