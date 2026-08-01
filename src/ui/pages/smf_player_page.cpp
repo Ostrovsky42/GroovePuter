@@ -6,6 +6,7 @@
 
 #include "../components/music_visuals.h"
 #include "src/dsp/miniacid_engine.h"
+#include "src/midi/smf_track_mute.h"
 
 #ifdef ARDUINO
 #include <SD.h>
@@ -353,6 +354,38 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         }
         return true;
     }
+    if (event.key == 'j' || event.key == 'J' ||
+        event.key == 'l' || event.key == 'L') {
+        smfTrackMuteState().selectRelative(
+            (event.key == 'j' || event.key == 'J') ? -1 : 1);
+        const SmfTrackMuteSnapshot tracks = smfTrackMuteState().snapshot();
+        char toast[40];
+        if (tracks.trackCount == 0) {
+            std::snprintf(toast, sizeof(toast), "NO MIDI TRACKS");
+        } else {
+            std::snprintf(toast, sizeof(toast), "TRACK %u/%u %s",
+                          static_cast<unsigned>(tracks.selectedTrack + 1u),
+                          static_cast<unsigned>(tracks.trackCount),
+                          tracks.selectedMuted() ? "MUTED" : "ON");
+        }
+        UI::showToast(toast, 800);
+        return true;
+    }
+    if (event.key == 'k' || event.key == 'K') {
+        if (event.shift) {
+            smfTrackMuteState().clear();
+            UI::showToast("ALL MIDI TRACKS ON", 900);
+        } else if (smfTrackMuteState().toggleSelected()) {
+            const SmfTrackMuteSnapshot tracks = smfTrackMuteState().snapshot();
+            UI::showToast(tracks.selectedMuted()
+                              ? "TRACK MUTE: NEXT NOTES"
+                              : "TRACK UNMUTED",
+                          900);
+        } else {
+            UI::showToast("NO MIDI TRACKS", 900);
+        }
+        return true;
+    }
     if (event.key == 'v' || event.key == 'V') {
         const bool queued = player_->cycleVelocityBoost();
         UI::showToast(queued ? "MIDI: VELOCITY BOOST" : "MIDI PLAYER BUSY", 800);
@@ -446,6 +479,7 @@ void SmfPlayerPage::drawBrowser(IGfx& gfx) {
 void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
     player_ = smfPlayerService();
     const SmfPlayerSnapshot state = player_ ? player_->snapshot() : SmfPlayerSnapshot{};
+    const SmfTrackMuteSnapshot tracks = smfTrackMuteState().snapshot();
 
     const bool playing = state.state == SmfPlayerState::Playing;
     const bool armed = state.state == SmfPlayerState::Armed;
@@ -498,13 +532,24 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
 
     const unsigned percent = static_cast<unsigned>(
         (static_cast<uint64_t>(current) * 100u) / total);
-    gfx.setTextColor(COLOR_LABEL);
-    std::snprintf(line, sizeof(line), "%lu / %lu BARS    %u%%",
-                  static_cast<unsigned long>(state.bar),
-                  static_cast<unsigned long>(state.totalBars),
-                  percent);
+    gfx.setTextColor(tracks.selectedMuted() ? COLOR_WARN : COLOR_LABEL);
+    if (tracks.trackCount > 0) {
+        std::snprintf(line, sizeof(line), "BAR %lu/%lu %u%%  TRK %u/%u %s",
+                      static_cast<unsigned long>(state.bar),
+                      static_cast<unsigned long>(state.totalBars),
+                      percent,
+                      static_cast<unsigned>(tracks.selectedTrack + 1u),
+                      static_cast<unsigned>(tracks.trackCount),
+                      tracks.selectedMuted() ? "MUTE" : "ON");
+    } else {
+        std::snprintf(line, sizeof(line), "%lu / %lu BARS    %u%%",
+                      static_cast<unsigned long>(state.bar),
+                      static_cast<unsigned long>(state.totalBars),
+                      percent);
+    }
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(4), line);
 
+    gfx.setTextColor(COLOR_LABEL);
     if (state.tempoMode == SmfTempoMode::Project) {
         std::snprintf(line, sizeof(line), "PROJECT CLOCK   LAUNCH %s",
                       smfLaunchModeName(state.launchMode));
@@ -519,7 +564,7 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
 
     gfx.setTextColor(COLOR_TEXT);
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(6),
-                 "SPACE PLAY/PAUSE   R RESTART   < > SEEK");
+                 "SPACE PLAY  R RESTART  J/L TRK K MUTE");
 
     gfx.setTextColor(error ? COLOR_DANGER : COLOR_LABEL);
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), state.message);
