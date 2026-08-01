@@ -107,8 +107,9 @@ int main() {
     assert(closeEnough(
         tracker.estimate(now).absoluteProjectSteps, 0.0, 1.0e-9));
 
-    // A rejected timestamp interval cannot advance musical phase even though
-    // its ordinal is consumed for subsequent gap reconstruction.
+    // A valid F8 remains one musical pulse even if its receive timestamp cannot
+    // be used for tempo measurement. The rejected timing sample does not move
+    // the accepted tempo anchor; a later ordinal gap reconstructs the interval.
     ExternalMidiClockTracker outlier;
     uint32_t outlierNow = 2000000;
     uint32_t outlierOrdinal = 0;
@@ -122,9 +123,13 @@ int main() {
     assert(!outlier.onClock(outlierNow + 1u, outlierOrdinal));
     assert(closeEnough(
         outlier.estimate(outlierNow + 1u).absoluteProjectSteps,
-        beforeOutlier,
-        1.0e-9));
+        beforeOutlier + ExternalMidiClockTracker::kProjectStepsPerClockPulse,
+        0.001));
     assert(outlier.intervalOutlierCount() == 1);
+    const double bpmBeforeRecovery = bpm(outlier);
+    ++outlierOrdinal;
+    assert(outlier.onClock(outlierNow + 41666u, outlierOrdinal));
+    assert(closeEnough(bpm(outlier), bpmBeforeRecovery, 0.1));
 
     // Range endpoints remain valid.
     ExternalMidiClockTracker slow;
