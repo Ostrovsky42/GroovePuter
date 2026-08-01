@@ -6,6 +6,8 @@
 #include "ui_config.h"
 #include "cassette_skin.h"
 #include "global_help_overlay.h"
+#include "workflow_mode.h"
+#include "workspace_launcher_overlay.h"
 
 class IAudioRecorder;
 class PerformanceKeyboard;
@@ -55,11 +57,13 @@ private:
   PerformanceKeyboard& performance_keyboard_;
   int page_index_ = 0;
   int previous_page_index_ = 0;  // For Backspace/` toggle
+  Workspace active_workspace_ = Workspace::Groove;
   unsigned long splash_start_ms_ = 0;
   bool splash_active_ = true;
   bool help_dialog_visible_ = false;
   std::unique_ptr<MultiPageHelpDialog> help_dialog_;
   GlobalHelpOverlay global_help_overlay_;
+  WorkspaceLauncherOverlay workspace_launcher_;
 
   AudioGuard audio_guard_;
   IAudioRecorder* audio_recorder_ = nullptr;

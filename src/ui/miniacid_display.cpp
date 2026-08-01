@@ -37,7 +37,7 @@
 #include "../debug_log.h"
 
 namespace {
-constexpr int kSmfPlayerPage = 13;
+constexpr int kSmfPlayerPage = WorkflowPages::kPlayer;
 
 VisualStyle nextVisualStyle(VisualStyle style) {
     switch (style) {
@@ -189,7 +189,7 @@ void MiniAcidDisplay::update() {
         char buf[32];
         snprintf(buf, sizeof(buf), "idx=%d kPageCount=%d", page_index_, kPageCount);
         gfx_.drawText(Layout::COL_1, LayoutManager::lineY(3), buf);
-        LayoutManager::drawFooter(gfx_, "[ ] pages", "[b] back");
+        LayoutManager::drawFooter(gfx_, "[ ] workspaces", "Fn+M menu");
     }
     
     UI::drawWaveformOverlay(gfx_, mini_acid_);
@@ -198,6 +198,10 @@ void MiniAcidDisplay::update() {
     updateCyclePulse_();
     UI::drawFeelOverlay(gfx_, mini_acid_, millis() < cycle_pulse_until_ms_);
     UI::drawMutesOverlay(gfx_, mini_acid_);
+
+    if (workspace_launcher_.isVisible()) {
+        workspace_launcher_.draw(gfx_);
+    }
     
     if (global_help_overlay_.isVisible()) {
         global_help_overlay_.setPageContext(page_index_);
@@ -220,15 +224,21 @@ void MiniAcidDisplay::syncVisualStyle_() {
 }
 
 void MiniAcidDisplay::nextPage() {
-    int next = (page_index_ + 1) % kPageCount;
-    LOG_DEBUG_UI("nextPage: %d -> %d", page_index_, next);
+    const Workspace nextWorkspace = WorkflowPages::nextWorkspace(active_workspace_, 1);
+    const int next = WorkflowPages::pageForWorkspace(nextWorkspace);
+    LOG_DEBUG_UI("nextWorkspace: %s -> %s",
+                 WorkflowPages::workspaceName(active_workspace_),
+                 WorkflowPages::workspaceName(nextWorkspace));
     transitionToPage_(next);
 }
 
 void MiniAcidDisplay::previousPage() {
-    int prev = (page_index_ - 1 + kPageCount) % kPageCount;
-    LOG_DEBUG_UI("previousPage: %d -> %d", page_index_, prev);
-    transitionToPage_(prev);
+    const Workspace previousWorkspace = WorkflowPages::nextWorkspace(active_workspace_, -1);
+    const int previous = WorkflowPages::pageForWorkspace(previousWorkspace);
+    LOG_DEBUG_UI("previousWorkspace: %s -> %s",
+                 WorkflowPages::workspaceName(active_workspace_),
+                 WorkflowPages::workspaceName(previousWorkspace));
+    transitionToPage_(previous);
 }
 
 void MiniAcidDisplay::goToPage(int index) {
@@ -257,6 +267,9 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
 
     previous_page_index_ = page_index_;
     page_index_ = index;
+    if (WorkflowPages::isWorkspacePage(index)) {
+        active_workspace_ = WorkflowPages::workspaceForPage(index);
+    }
 
     IPage* newPage = getPage_(index);
     if (newPage) {
@@ -275,6 +288,19 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     if (global_help_overlay_.isVisible()) {
         if (global_help_overlay_.handleEvent(event)) return true;
     }
+
+    if (workspace_launcher_.isVisible()) {
+        if (workspace_launcher_.handleEvent(event)) {
+            int requestedPage = -1;
+            if (workspace_launcher_.takePageRequest(requestedPage)) {
+                transitionToPage_(requestedPage);
+            } else if (workspace_launcher_.takeHelpRequest()) {
+                global_help_overlay_.setPageContext(page_index_);
+                global_help_overlay_.toggle();
+            }
+            return true;
+        }
+    }
     
     if (splash_active_) {
         dismissSplash();
@@ -282,6 +308,12 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     }
 
     if (event.event_type == GROOVEPUTER_KEY_DOWN) {
+        if (event.meta && (event.key == 'm' || event.key == 'M')) {
+            global_help_overlay_.close();
+            workspace_launcher_.toggle(active_workspace_);
+            return true;
+        }
+
         if (event.meta && (event.key == '\t' || event.scancode == GROOVEPUTER_TAB)) {
             const WorkflowMode current = WorkflowPages::modeForPage(page_index_);
             const int direction = event.shift ? -1 : 1;
@@ -291,6 +323,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
 
         if (event.alt && (event.key == 'h' || event.key == 'H')) {
+            workspace_launcher_.close();
             global_help_overlay_.toggle();
             return true;
         }
@@ -432,7 +465,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         if (event.key == '[') { previousPage(); return true; }
 
         if (event.key == 'h') {
-            showToast("[ ] nav  Alt+P MIDI  Fn+Tab modes", 2200);
+            showToast("[ ] workspaces  Fn+M menu  Alt+H help", 2200);
             return true;
         }
 
@@ -578,9 +611,9 @@ void MiniAcidDisplay::drawSplashScreen() {
     uint8_t pulse = 160 + 95 * sinf(elapsed * 0.005f);
     IGfxColor pulseColor((pulse << 16) | (pulse << 8) | pulse);
 
-    centerText(info_y, "Use keys [ ] to move around", pulseColor);
-    centerText(info_y + small_h + 2, "Space - to start/stop sound", pulseColor);
-    centerText(info_y + 2 * small_h + 4, "ESC - for help on each page", pulseColor);
+    centerText(info_y, "[ ] Workspaces  Fn+M Menu", pulseColor);
+    centerText(info_y + small_h + 2, "Space - start/stop sound", pulseColor);
+    centerText(info_y + 2 * small_h + 4, "Alt+H - page-aware help", pulseColor);
   }
 }
 
