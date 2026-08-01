@@ -5,7 +5,7 @@
 Validate the compact PERFORM visual update:
 
 ```text
-Melodic targets: two physical keyboard rows
+Melodic targets: two piano-shaped note rows
 Drums target:    seven equal square pads
 ```
 
@@ -36,7 +36,7 @@ PORT.A is not used. If PORT.A hardware remains connected, keep GPIO2 as SDA and 
 ## Build / flash
 
 ```bash
-git switch feature/perform-key-geometry
+git switch feature/perform-piano-key-shapes
 git pull
 bash scripts/build.sh --warnings all
 bash scripts/upload.sh /dev/ttyACM0
@@ -48,30 +48,34 @@ Use the exact PR head recorded in the PR description.
 
 ### Synth A / Synth B / DX
 
-The PERFORM page shows two long rows matching the physical Cardputer keyboard:
+The PERFORM page shows two compact piano rows corresponding to the two physical Cardputer note rows.
+
+Each row uses piano geometry:
+
+- natural notes are long light keys;
+- sharp notes are shorter dark keys drawn above the white-key bed;
+- the upper and lower input rows remain visually separate;
+- the physical Cardputer letters are not printed on melodic keys.
+
+Each playable key shows only the resolved note and octave using a compact 3x5 label:
 
 ```text
-Q W E R T Y U I O P   upper octave
-A S D F G H J K L     base octave
+C4
+D#4
+A2
 ```
 
-Each visual key contains:
-
-- its physical key letter;
-- the resolved MIDI note name and octave;
-- a strong held-state fill and focus strip.
-
-Pressing `Q` must highlight only `Q`, not the lower-row key with the same pitch class. Multiple held keys must remain independently visible.
+Scale and octave changes must update those labels. Pressing `Q` must affect only the note owned by `Q`, not the lower-row key with the same pitch class. Multiple held keys must remain independently visible.
 
 ### Drums
 
-The PERFORM page shows seven equal square pads in one row:
+The PERFORM page keeps seven equal square pads in one row:
 
 ```text
 A KICK | S SNR | D CLAP | F H1 | G H2 | H P1 | J P2
 ```
 
-All pads must have the same width and height. Pressing a drum key highlights only its matching pad.
+Drum letters remain visible because they are the direct mapping for the seven fixed native lanes. All pads must have the same width and height. Pressing a drum key highlights only its matching pad.
 
 ## Troubleshooting
 
@@ -81,7 +85,11 @@ The visual must use `PerformanceKeyboard::isPhysicalKeyHeld()`, not pitch-class-
 
 ### Note labels are clipped
 
-Confirm the display is using the normal 240x135 Cardputer-Adv geometry and the standard 5x7 font. Labels should fit within the calculated key width.
+The piano labels use a local 3x5 immediate-mode glyph renderer rather than the standard 5x7 UI font. Confirm `C4` and `D#4` fit inside both white and black keys without overlapping the next key.
+
+### Black keys do not look shorter
+
+Confirm `drawPianoKeyRow()` performs two drawing passes: the long white-key bed first, then black keys using the calculated `blackW` and `blackH`.
 
 ### Drum pads are not square
 
@@ -104,27 +112,28 @@ BUILD
 [ ] Cardputer-Adv build SUCCESS
 
 PIANO GEOMETRY
-[ ] two rows are visible
-[ ] QWERTYUIOP is the upper row
-[ ] ASDFGHJKL is the lower row
-[ ] keys use most of the available width
-[ ] keys are visibly longer than before
-[ ] physical key letters are readable
-[ ] resolved note labels are readable
+[ ] two piano rows are visible
+[ ] natural notes use long light keys
+[ ] sharp notes use shorter dark keys
+[ ] both rows use most of the available width
+[ ] no Q/W/A/S physical letters appear on melodic keys
+[ ] resolved note labels such as C4 and D#4 are readable
+[ ] note labels do not overlap adjacent keys
 
 PIANO STATE
-[ ] A highlights only A
-[ ] Q highlights only Q
-[ ] A + Q can remain highlighted together
+[ ] upper-row and lower-row keys highlight independently
 [ ] several held notes remain independently visible
-[ ] scale and octave changes update note labels
+[ ] white-key held state is clear in CYBER and CARBON
+[ ] black-key held state is clear in CYBER and CARBON
+[ ] scale changes update key shapes and note labels
+[ ] octave changes update note labels
 [ ] Synth A/B/DX routing is unchanged
 
 DRUM GEOMETRY
 [ ] seven pads are visible in one row
 [ ] every pad is square
 [ ] every pad has identical dimensions
-[ ] labels remain readable
+[ ] drum key letters and lane labels remain readable
 
 DRUM STATE
 [ ] A/S/D/F/G/H/J highlight their matching pads
