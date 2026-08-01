@@ -69,12 +69,31 @@ public:
             return result;
         }
 
+        // USB and SD stalls can leave several F8 packets ready in one drain.
+        // Feeding each packet with nearly identical micros() values would create
+        // false zero-length intervals. Keep the latest ordinal/timestamp for a
+        // consecutive Clock run; the tracker reconstructs the average interval
+        // and every missing musical pulse from the ordinal gap.
+        ExternalMidiTransportEvent pendingClock{};
+        bool havePendingClock = false;
+        auto flushPendingClock = [&]() {
+            if (!havePendingClock) return;
+            tracker_.onClock(pendingClock.timestampMicros,
+                             pendingClock.pulseOrdinal);
+            havePendingClock = false;
+        };
+
         ExternalMidiTransportEvent event{};
         while (queue.tryPop(event)) {
+            if (event.type == ExternalMidiTransportEventType::Clock) {
+                pendingClock = event;
+                havePendingClock = true;
+                continue;
+            }
+
+            flushPendingClock();
             switch (event.type) {
                 case ExternalMidiTransportEventType::Clock:
-                    tracker_.onClock(event.timestampMicros,
-                                     event.pulseOrdinal);
                     break;
                 case ExternalMidiTransportEventType::Start:
                     tracker_.onStart(event.timestampMicros);
@@ -90,6 +109,7 @@ public:
                     break;
             }
         }
+        flushPendingClock();
 
         const bool wasRunning = tracker_.transportRunning();
         tracker_.update(nowMicros);
