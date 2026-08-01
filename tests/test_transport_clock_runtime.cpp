@@ -15,7 +15,10 @@ int main() {
     estimate.state = ExternalClockLockState::Locked;
     estimate.transportRunning = true;
     estimate.validTempo = true;
-    estimate.bpmQ16 = 123u << 16;
+    estimate.sourceBpmQ16 = 123u << 16;
+    estimate.bpmQ16 = 126u << 16;  // local PLL drive tempo, not UI tempo
+    estimate.phaseErrorSteps = -0.375;
+    estimate.phaseCorrectionSteps = 0.0078125;
     estimate.transportEpoch = 9;
     estimate.pulseCount = 456;
     runtime.publishExternalEstimate(estimate, 3);
@@ -27,8 +30,21 @@ int main() {
     assert(snapshot.externalRunning);
     assert(snapshot.externalTempoValid);
     assert(std::fabs(snapshot.externalBpm() - 123.0) < 1.0e-9);
+    assert(std::fabs(snapshot.externalPhaseErrorSteps() + 0.375) < 1.0e-9);
+    assert(std::fabs(snapshot.externalPhaseCorrectionSteps() - 0.0078125) <
+           1.0e-9);
     assert(snapshot.externalEpoch == 9);
     assert(snapshot.externalPulseCount == 456);
     assert(snapshot.externalFailureCount == 3);
+
+    // Trackers without a distinct source field remain backward-compatible.
+    estimate.sourceBpmQ16 = 0;
+    estimate.bpmQ16 = 95u << 16;
+    estimate.phaseErrorSteps = 0.0;
+    estimate.phaseCorrectionSteps = 0.0;
+    runtime.publishExternalEstimate(estimate, 4);
+    assert(runtime.trySnapshot(snapshot));
+    assert(std::fabs(snapshot.externalBpm() - 95.0) < 1.0e-9);
+    assert(snapshot.externalFailureCount == 4);
     return 0;
 }
