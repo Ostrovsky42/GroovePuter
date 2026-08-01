@@ -19,11 +19,16 @@ struct ExternalClockEstimate {
     ExternalClockLockState state{ExternalClockLockState::Waiting};
     bool transportRunning{false};
     bool validTempo{false};
+    // bpmQ16 is the bounded drive tempo applied to the local sequencer. The
+    // source value remains separate so UI/diagnostics report SEQTRAK tempo
+    // rather than the small PLL correction.
     uint32_t bpmQ16{0};
+    uint32_t sourceBpmQ16{0};
     uint32_t filteredPulsePeriodUs{0};
     uint32_t transportEpoch{0};
     uint64_t pulseCount{0};
     double absoluteProjectSteps{0.0};
+    double phaseErrorSteps{0.0};
     double phaseCorrectionSteps{0.0};
 };
 
@@ -63,23 +68,27 @@ public:
             ++intervalOutliers_;
             return false;
         }
-        if (ordinalGap > 1) pulseGaps_ += ordinalGap - 1u;
-        if (transportRunning_) {
-            absoluteProjectSteps_ +=
-                static_cast<double>(ordinalGap) * kProjectStepsPerClockPulse;
-        }
 
         const uint32_t perPulseUs = static_cast<uint32_t>(
             (static_cast<uint64_t>(elapsedUs) + ordinalGap / 2u) /
             ordinalGap);
         if (perPulseUs < kMinimumPulsePeriodUs ||
             perPulseUs > kMaximumPulsePeriodUs) {
+            // A rejected interval must not advance musical phase. Otherwise a
+            // corrupt timestamp can move the slave even though it was excluded
+            // from the tempo estimate.
             ++intervalOutliers_;
             consecutiveValidIntervals_ = 0;
             if (state_ != ExternalClockLockState::Lost) {
                 state_ = ExternalClockLockState::Locking;
             }
             return false;
+        }
+
+        if (ordinalGap > 1) pulseGaps_ += ordinalGap - 1u;
+        if (transportRunning_) {
+            absoluteProjectSteps_ +=
+                static_cast<double>(ordinalGap) * kProjectStepsPerClockPulse;
         }
 
         intervals_[intervalWriteIndex_] = perPulseUs;
@@ -159,7 +168,8 @@ public:
         out.state = state_;
         out.transportRunning = transportRunning_;
         out.validTempo = filteredPulsePeriodUs_ != 0;
-        out.bpmQ16 = bpmQ16();
+        out.sourceBpmQ16 = bpmQ16();
+        out.bpmQ16 = out.sourceBpmQ16;
         out.filteredPulsePeriodUs = filteredPulsePeriodUs_;
         out.transportEpoch = transportEpoch_;
         out.pulseCount = pulseCount_;
