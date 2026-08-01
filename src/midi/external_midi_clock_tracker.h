@@ -47,8 +47,14 @@ public:
         *this = ExternalMidiClockTracker{};
     }
 
-    bool onClock(uint32_t timestampMicros, uint32_t pulseOrdinal) {
-        ++pulseCount_;
+    // observedPulseCount tells the tracker how many actual F8 packets were
+    // coalesced into this timestamp/ordinal observation. The ordinal gap still
+    // advances musical phase in full, while pulseGaps counts only pulses that
+    // were not present in the queue at all.
+    bool onClock(uint32_t timestampMicros,
+                 uint32_t pulseOrdinal,
+                 uint32_t observedPulseCount = 1u) {
+        if (observedPulseCount == 0) observedPulseCount = 1u;
         if (!havePhasePulse_) {
             havePhasePulse_ = true;
             haveTimingPulse_ = true;
@@ -56,8 +62,11 @@ public:
             lastTimingPulseOrdinal_ = pulseOrdinal;
             lastTimingPulseMicros_ = timestampMicros;
             lastObservedPulseMicros_ = timestampMicros;
+            pulseCount_ += observedPulseCount;
             if (transportRunning_) {
-                absoluteProjectSteps_ += kProjectStepsPerClockPulse;
+                absoluteProjectSteps_ +=
+                    static_cast<double>(observedPulseCount) *
+                    kProjectStepsPerClockPulse;
             }
             if (state_ == ExternalClockLockState::Waiting) {
                 state_ = ExternalClockLockState::Locking;
@@ -72,7 +81,10 @@ public:
         }
         lastPhasePulseOrdinal_ = pulseOrdinal;
         lastObservedPulseMicros_ = timestampMicros;
-        if (phaseGap > 1) pulseGaps_ += phaseGap - 1u;
+        pulseCount_ += phaseGap;
+        if (phaseGap > observedPulseCount) {
+            pulseGaps_ += phaseGap - observedPulseCount;
+        }
         if (transportRunning_) {
             absoluteProjectSteps_ +=
                 static_cast<double>(phaseGap) * kProjectStepsPerClockPulse;
