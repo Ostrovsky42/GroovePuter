@@ -44,6 +44,7 @@ int main() {
     const auto stoppedEstimate = tracker.estimate(now);
     assert(!stoppedEstimate.transportRunning);
     assert(closeEnough(stoppedEstimate.absoluteProjectSteps, 0.0, 1.0e-9));
+    assert(stoppedEstimate.sourceBpmQ16 == stoppedEstimate.bpmQ16);
 
     tracker.onStart(now);
     assert(tracker.transportRunning());
@@ -105,6 +106,25 @@ int main() {
     assert(tracker.transportEpoch() == 2);
     assert(closeEnough(
         tracker.estimate(now).absoluteProjectSteps, 0.0, 1.0e-9));
+
+    // A rejected timestamp interval cannot advance musical phase even though
+    // its ordinal is consumed for subsequent gap reconstruction.
+    ExternalMidiClockTracker outlier;
+    uint32_t outlierNow = 2000000;
+    uint32_t outlierOrdinal = 0;
+    outlier.onClock(outlierNow, ++outlierOrdinal);
+    feedFixed(outlier, outlierNow, outlierOrdinal, 20833, 6);
+    outlier.onStart(outlierNow);
+    feedFixed(outlier, outlierNow, outlierOrdinal, 20833, 2);
+    const double beforeOutlier =
+        outlier.estimate(outlierNow).absoluteProjectSteps;
+    ++outlierOrdinal;
+    assert(!outlier.onClock(outlierNow + 1u, outlierOrdinal));
+    assert(closeEnough(
+        outlier.estimate(outlierNow + 1u).absoluteProjectSteps,
+        beforeOutlier,
+        1.0e-9));
+    assert(outlier.intervalOutlierCount() == 1);
 
     // Range endpoints remain valid.
     ExternalMidiClockTracker slow;
