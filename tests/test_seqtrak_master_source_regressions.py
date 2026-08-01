@@ -70,8 +70,11 @@ def main() -> None:
     codec_cpp = (ROOT / "src/midi/midi_companion_settings_codec.cpp").read_text(
         encoding="utf-8"
     )
-    settings_session = (
+    settings_session_h = (
         ROOT / "src/platform/cardputer_midi_settings_session.h"
+    ).read_text(encoding="utf-8")
+    settings_session_cpp = (
+        ROOT / "src/platform/cardputer_midi_settings_session.cpp"
     ).read_text(encoding="utf-8")
     display_h = (ROOT / "src/ui/miniacid_display.h").read_text(encoding="utf-8")
 
@@ -146,11 +149,18 @@ def main() -> None:
     require("recordShapeIsSupported" in codec_cpp and
             "normalizeTransportClockSource" in codec_cpp,
             "decoder must accept the legacy record and sanitize clock source")
-    require("Preferences" in settings_session and
-            'kKey = "midi_cfg"' in settings_session and
-            "applyPersistedControl" in settings_session and
-            "setControlChangedCallback" in settings_session,
-            "Cardputer must load and save clock controls through bounded NVS UI paths")
+    require("Preferences" not in settings_session_h and
+            "midi_companion_settings_codec" not in settings_session_h and
+            "transport_clock_runtime" not in settings_session_h,
+            "public UI binding must not leak NVS or realtime headers")
+    require("#ifdef ARDUINO" in settings_session_h and
+            "initializeCardputerMidiSettingsSession" in settings_session_h,
+            "desktop binding must be a no-op while Cardputer restores settings")
+    require("Preferences" in settings_session_cpp and
+            'kKey = "midi_cfg"' in settings_session_cpp and
+            "applyPersistedControl" in settings_session_cpp and
+            "setControlChangedCallback" in settings_session_cpp,
+            "Arduino platform unit must load and save clock controls through NVS")
     require("CardputerMidiSettingsBinding midi_settings_binding_" in display_h,
             "root UI construction must restore persisted transport controls")
     require("Preferences" not in sketch and "Preferences" not in transport and
