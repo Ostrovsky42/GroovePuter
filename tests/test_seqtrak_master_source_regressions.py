@@ -1,12 +1,35 @@
 #!/usr/bin/env python3
+import os
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+BUILD = ROOT / "build" / "host-tests"
 
 
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
+
+
+def compile_continue_regression() -> None:
+    BUILD.mkdir(parents=True, exist_ok=True)
+    output = BUILD / "test_project_transport_continue"
+    subprocess.run(
+        [
+            os.environ.get("CXX", "g++"),
+            "-std=c++17",
+            "-Wall",
+            "-Wextra",
+            "-Werror",
+            f"-I{ROOT}",
+            str(ROOT / "tests" / "test_project_transport_continue.cpp"),
+            "-o",
+            str(output),
+        ],
+        check=True,
+    )
+    subprocess.run([str(output)], check=True)
 
 
 def main() -> None:
@@ -18,6 +41,9 @@ def main() -> None:
         encoding="utf-8"
     )
     player = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(
+        encoding="utf-8"
+    )
+    smf_service = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(
         encoding="utf-8"
     )
     parser = (ROOT / "src/midi/usb_midi_realtime_parser.h").read_text(
@@ -65,10 +91,17 @@ def main() -> None:
     require("sourceBpmQ16" in tracker and
             "A rejected interval must not advance musical phase" in tracker,
             "source tempo and rejected-pulse phase safety must remain explicit")
-    require("restartedFromBeginning" in timeline and
-            "kContinuePrefillBlocks" in timeline,
-            "PROJECT SMF must distinguish Start from bounded Continue resume")
+    require("restartedFromBeginning" in timeline,
+            "project timeline must distinguish Start from Continue epochs")
+    require("projectResumeOnExternalContinue_" in smf_service and
+            "kContinuePrefillBlocks" in smf_service and
+            "transport.restartedFromBeginning" in smf_service and
+            '"ARMED / CONTINUE"' in smf_service,
+            "only an active PROJECT SMF may use bounded Continue resume")
+    require("kContinuePrefillBlocks" not in timeline,
+            "generic project bar quantization must not own SMF resume policy")
 
+    compile_continue_regression()
     print("seqtrak master source regressions: OK")
 
 
