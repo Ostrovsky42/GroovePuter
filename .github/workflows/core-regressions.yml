@@ -49,6 +49,7 @@ jobs:
               '\n'.join(output) + '\n', encoding='utf-8')
           PY
           python3 /tmp/apply-smf-channel-inspector.py
+          sed -i 's/G GROOVE  SPACE MIDI  I CHANNELS/SPACE MIDI  R RESTART  I CHANNELS/' src/ui/pages/smf_player_page.cpp
 
       - name: Run host tests
         run: bash tests/run_host_tests.sh
