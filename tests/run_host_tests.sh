@@ -125,6 +125,17 @@ python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_project_transport_safety.cpp" \
+  -o "${BUILD_DIR}/test_project_transport_safety"
+
+"${BUILD_DIR}/test_project_transport_safety"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_smf_document.cpp" \
   "${ROOT_DIR}/src/midi/smf_document.cpp" \
   -o "${BUILD_DIR}/test_smf_document"

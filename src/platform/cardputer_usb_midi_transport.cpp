@@ -15,6 +15,7 @@
 #include "src/midi/midi_companion_settings.h"
 #include "src/midi/midi_control_event_queue.h"
 #include "src/midi/pattern_drum_gate_scheduler.h"
+#include "src/midi/project_smf_dispatch_policy.h"
 #include "src/midi/project_transport_timeline.h"
 #include "src/midi/scheduled_midi_transport_event.h"
 #include "src/midi/scheduled_musical_event_queue.h"
@@ -407,6 +408,13 @@ bool dispatchSmfEvent(const ScheduledSmfMidiEvent& event) {
     }
     return g_output.handleSmfNoteOff(
         event.channel, event.note, event.velocity);
+}
+
+bool projectSmfNoteOnStillCurrent(const ScheduledSmfMidiEvent& event) {
+    if (event.projectTransportEpoch == 0) return true;
+    GroovePuterMidi::ProjectTransportBlockSnapshot transport{};
+    return GroovePuterMidi::projectTransportTimeline().trySnapshot(transport) &&
+           GroovePuterMidi::projectSmfNoteOnStillCurrent(event, transport);
 }
 
 void logDiagnosticsIfDue() {
@@ -829,6 +837,12 @@ void midiDispatchTask(void*) {
                 !scheduledSmfMidiEventGenerationIsCurrent(
                     pendingSmf, g_smfQueue->generation())) {
                 ++g_diagnostics.smfStaleGenerationDrops;
+                clearPendingSmf();
+            } else if (pendingSmf.type == ScheduledSmfMidiEventType::NoteOn &&
+                       !projectSmfNoteOnStillCurrent(pendingSmf)) {
+                // Stop/Restart can happen during the final <=1.5 ms busy-wait.
+                // Recheck the live transport immediately before the USB write.
+                ++g_diagnostics.smfTransportEpochDrops;
                 clearPendingSmf();
             } else if (dispatchSmfEvent(pendingSmf)) {
                 ++g_diagnostics.smfSent;

@@ -277,11 +277,15 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
     reanchor = player_service[player_service.index(
         "void CardputerSmfPlayerService::reanchorProjectTempo"):
         player_service.index("bool CardputerSmfPlayerService::enqueue")]
-    require("invalidateScheduledEvents()" in reanchor and
-            "invalidateAndRequestPanic()" not in reanchor and
+    invalidate_pos = reanchor.index("invalidateScheduledEvents()")
+    first_scan_pos = reanchor.index("prepareStreamAt(streamTick)")
+    require(invalidate_pos < first_scan_pos and
+            "auto failReanchor" in reanchor and
+            "invalidateAndRequestPanic()" in reanchor and
+            "TEMPO REANCHOR FAILED" in reanchor and
             "futureTick" not in reanchor and
             "projectOriginSmfTick_ = currentTick" in reanchor,
-            "tempo re-anchor must preserve musical position without panic or skip")
+            "tempo re-anchor must invalidate before scan and cleanup only on failure")
     schedule_ahead = player_service[player_service.index(
         "void CardputerSmfPlayerService::scheduleAhead"):
         player_service.index("void CardputerSmfPlayerService::logPerformance")]
@@ -290,9 +294,10 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
             "DroppedLateNoteOn" in schedule_ahead,
             "one PROJECT snapshot must govern each scheduling pass and late NoteOn")
     require("trySnapshot(candidate)" in player_service and
+            "projectTimelineIsStale(candidate.blockSequence" in player_service and
             "ProjectTransportReadResult::Unavailable" in player_service and
             "GP CLOCK STALE / MIDI PAUSED" in player_service,
-            "timeline contention and stale publication must be distinct from Stop")
+            "timeline contention and signed freshness must remain distinct from Stop")
     require("B Files" in player_page and "toggleRouting()" in player_page,
             "player must expose file return and RAW/SEQTRAK routing controls")
 
@@ -329,6 +334,22 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
             "smfLateNoteOffSent" in usb_dispatch and
             "smfTransportEpochDrops" in usb_dispatch,
             "dispatcher must enforce one-block late policy and expose diagnostics")
+    final_smf_dispatch = usb_dispatch[usb_dispatch.index(
+        "if (g_smfQueue == nullptr ||\n"
+        "                !scheduledSmfMidiEventGenerationIsCurrent"):
+        usb_dispatch.index("drainControlEvents(2);")]
+    require("pendingSmf.type == ScheduledSmfMidiEventType::NoteOn" in
+                final_smf_dispatch and
+            "!projectSmfNoteOnStillCurrent(pendingSmf)" in final_smf_dispatch and
+            final_smf_dispatch.index("!projectSmfNoteOnStillCurrent(pendingSmf)") <
+                final_smf_dispatch.index("dispatchSmfEvent(pendingSmf)"),
+            "PROJECT NoteOn must recheck playing/epoch after the final busy-wait")
+    project_note_gate = usb_dispatch[usb_dispatch.index(
+        "bool projectSmfNoteOnStillCurrent"):
+        usb_dispatch.index("void logDiagnosticsIfDue")]
+    require("if (event.projectTransportEpoch == 0) return true;" in
+                project_note_gate,
+            "ORIGINAL NoteOn must not depend on the PROJECT timeline seqlock")
     require("g_output.handleSmfNoteOn" in usb_dispatch and
             "g_output.handleSmfNoteOff" in usb_dispatch,
             "MidiDispatchTask must remain the physical SMF note owner")

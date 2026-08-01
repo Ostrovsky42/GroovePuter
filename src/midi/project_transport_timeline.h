@@ -46,6 +46,29 @@ struct ProjectScheduledPosition {
     uint16_t frameOffset{0};
 };
 
+inline bool projectTimelineIsStale(uint32_t timelineBlock,
+                                   uint32_t anchorBlock,
+                                   uint32_t anchorMicros,
+                                   uint32_t nowMicros,
+                                   uint32_t blockDurationMicros,
+                                   uint32_t maxAgeBlocks) {
+    const int32_t blockAge = static_cast<int32_t>(
+        anchorBlock - timelineBlock);
+    // The playback anchor intentionally points one output-latency block into
+    // the future. Signed subtraction treats that normal state as a negative
+    // age while retaining uint32_t micros() rollover semantics.
+    const int32_t wallAgeMicros = static_cast<int32_t>(
+        nowMicros - anchorMicros);
+    const uint64_t maximumWallAge =
+        static_cast<uint64_t>(blockDurationMicros) * maxAgeBlocks;
+    const int32_t boundedMaximumWallAge = maximumWallAge >
+            static_cast<uint64_t>(std::numeric_limits<int32_t>::max())
+        ? std::numeric_limits<int32_t>::max()
+        : static_cast<int32_t>(maximumWallAge);
+    return blockAge > static_cast<int32_t>(maxAgeBlocks) ||
+           wallAgeMicros > boundedMaximumWallAge;
+}
+
 class ProjectTransportTimeline {
 public:
     void publishBlock(uint32_t blockSequence,

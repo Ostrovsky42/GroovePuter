@@ -356,14 +356,15 @@ CardputerSmfPlayerService::readProjectTransport(
             ++perfTimelineReadMisses_;
             return ProjectTransportReadResult::Unavailable;
         }
-        const int32_t blockAge = static_cast<int32_t>(
-            anchorBlock - candidate.blockSequence);
-        const uint64_t blockDurationMicros =
+        const uint32_t blockDurationMicros = static_cast<uint32_t>(
             (static_cast<uint64_t>(candidate.blockFrames) * 1000000ull) /
-            candidate.sampleRate;
-        const uint32_t wallAgeMicros = micros() - anchorMicros;
-        if (blockAge > static_cast<int32_t>(kProjectTimelineMaxAgeBlocks) ||
-            wallAgeMicros > blockDurationMicros * kProjectTimelineMaxAgeBlocks) {
+            candidate.sampleRate);
+        if (projectTimelineIsStale(candidate.blockSequence,
+                                   anchorBlock,
+                                   anchorMicros,
+                                   micros(),
+                                   blockDurationMicros,
+                                   kProjectTimelineMaxAgeBlocks)) {
             transport = candidate;
             return ProjectTransportReadResult::Stale;
         }
@@ -398,20 +399,48 @@ void CardputerSmfPlayerService::reanchorProjectTempo(
 
     double currentTick = currentProjectSmfTick(transport);
     uint32_t streamTick = static_cast<uint32_t>(std::floor(currentTick));
-    if (!prepareStreamAt(streamTick)) return;
+
+    // Stop the old-BPM generation before a potentially long SD rescan. Active
+    // wire-owned notes remain alive; only their future deadlines are rebuilt.
+    eventQueue_.invalidateScheduledEvents();
+
+    auto failReanchor = [this, &streamTick](SmfPlayerState state,
+                                            const char* message) {
+        // Old queued NoteOffs were invalidated before the scan. If rebuilding
+        // cannot finish, scoped cleanup is mandatory to avoid stuck notes.
+        eventQueue_.invalidateAndRequestPanic();
+        projectLaunchPlanned_ = false;
+        pausedTick_ = streamTick;
+        publishSnapshot(state, message);
+        updatePlaybackSnapshot();
+    };
+
+    if (!prepareStreamAt(streamTick)) {
+        failReanchor(SmfPlayerState::Error, "TEMPO REANCHOR FAILED");
+        return;
+    }
 
     // A long SD scan may span several audio blocks. Refresh the anchor and
     // advance the parser to the corresponding tick before replacing deadlines.
     ProjectTransportBlockSnapshot anchor{};
     ProjectTransportBlockSnapshot refreshed{};
-    const ProjectTransportReadResult readResult = readProjectTransport(refreshed);
-    if (readResult == ProjectTransportReadResult::Unavailable) return;
+    ProjectTransportReadResult readResult = ProjectTransportReadResult::Unavailable;
+    for (int attempt = 0; attempt < 4; ++attempt) {
+        readResult = readProjectTransport(refreshed);
+        if (readResult != ProjectTransportReadResult::Unavailable) break;
+        vTaskDelay(pdMS_TO_TICKS(1));
+    }
+    if (readResult == ProjectTransportReadResult::Unavailable) {
+        failReanchor(SmfPlayerState::Error, "TEMPO CLOCK UNAVAILABLE");
+        return;
+    }
     if (readResult == ProjectTransportReadResult::Stale) {
         pauseForStaleProjectTimeline();
         return;
     }
     if (!refreshed.valid || !refreshed.playing ||
         refreshed.transportEpoch != transport.transportEpoch) {
+        failReanchor(SmfPlayerState::Paused, "GP TRANSPORT CHANGED");
         return;
     }
     anchor = refreshed;
@@ -420,13 +449,13 @@ void CardputerSmfPlayerService::reanchorProjectTempo(
         static_cast<uint32_t>(std::floor(currentTick));
     if (refreshedStreamTick != streamTick &&
         !prepareStreamAt(refreshedStreamTick)) {
+        failReanchor(SmfPlayerState::Error, "TEMPO REANCHOR FAILED");
         return;
     }
     streamTick = refreshedStreamTick;
 
     // Existing wire-owned notes remain active. Their future NoteOff events are
     // rebuilt from streamTick under the new generation and BPM.
-    eventQueue_.invalidateScheduledEvents();
     playbackOriginTick_ = streamTick;
     projectOriginSmfTick_ = currentTick;
     playbackOriginBlock_ = anchor.blockSequence;

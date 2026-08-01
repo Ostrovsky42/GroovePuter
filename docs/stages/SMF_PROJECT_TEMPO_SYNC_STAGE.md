@@ -164,13 +164,17 @@ A complete song containing internal tempo changes is not a clean PROJECT drift t
 - A transient seqlock read miss leaves the player state unchanged. It is not a
   synthetic Stop.
 - A timeline older than two audio blocks causes a controlled PROJECT pause and
-  SMF-scoped cleanup.
+  SMF-scoped cleanup. Freshness uses signed time distance because the playback
+  anchor normally points one output-latency block into the future.
 - Tempo re-anchor preserves the exact fractional SMF tick. It invalidates only
-  future scheduled deadlines and does not request panic.
+  future scheduled deadlines before any SD rescan and does not request panic
+  on the successful path. An incomplete rebuild performs scoped cleanup.
 - A PROJECT NoteOn already behind the live phase is dropped and counted. A late
   NoteOff remains cleanup-eligible and is scheduled on the current block.
 - Dispatcher NoteOn lateness is limited to one audio block. Sent-late NoteOn,
   maximum NoteOn lateness, late NoteOff and epoch drops are separate metrics.
+- PROJECT NoteOn rechecks playing state and transport epoch immediately before
+  the USB write, after the dispatcher's final busy-wait.
 
 ### 6. Routing
 
@@ -231,9 +235,11 @@ Press `X`, capture serial diagnostics and record whether the issue followed Stop
 [ ] 90 -> 110 BPM changes Clock and SMF together
 [ ] 90 -> 110 BPM does not panic or cut an active long note
 [ ] repeated BPM changes do not skip an SMF fragment
+[ ] no old-BPM NoteOn is emitted while a tempo re-anchor rescans SD
 [ ] no catch-up burst
 [ ] projectLateDrop and smfLateDrop remain explainable and bounded
 [ ] timelineStale remains zero during normal playback
+[ ] G Stop immediately before a NoteOn emits no new NoteOn after Stop
 [ ] triplets and syncopation remain recognizable
 [ ] RAW routing unchanged
 [ ] source CH1 -> CH8
