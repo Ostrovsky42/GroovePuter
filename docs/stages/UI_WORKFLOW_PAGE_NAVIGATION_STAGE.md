@@ -2,13 +2,16 @@
 
 ## Purpose
 
-Validate the revised GroovePuter navigation model:
+Validate the revised GroovePuter navigation model on M5Stack Cardputer-Adv:
 
 ```text
-Fn+Tab  changes the top-level workflow
-[ / ]   changes the page inside that workflow
+Fn+Tab  enters the next top-level workflow
+[ / ]   moves between pages and crosses workflow edges
 Tab     changes local subpages owned by the current editor
+Fn+M    opens the discoverable launcher
 ```
+
+There is no dedicated Shift key on the Cardputer-Adv keyboard. Reverse navigation must therefore work with plain `[` and must not depend on `Shift+Fn+Tab`.
 
 The five top-level workflows are:
 
@@ -16,18 +19,18 @@ The five top-level workflows are:
 PERFORM -> GENERATE -> HUB -> SONG -> SETTINGS
 ```
 
-This stage changes navigation only. It must not change audio generation, MIDI routing, SMF scheduling, transport ownership, pattern contents or project persistence.
+This stage changes UI navigation only. Audio generation, MIDI routing, SMF scheduling, transport ownership, pattern contents and project persistence must remain unchanged.
 
 ## Hardware list
 
 - M5Stack Cardputer-Adv
 - USB-C data/power cable
-- Yamaha SEQTRAK optional for concurrent USB-MIDI regression checks
-- microSD card containing at least one `.mid` file for Player/import checks
+- Yamaha SEQTRAK optional for USB-MIDI regression checks
+- microSD card with at least one `.mid` file for Player/import checks
 
 ## Wiring
 
-Standalone navigation test:
+Standalone:
 
 ```text
 USB power/data -> Cardputer-Adv
@@ -39,7 +42,7 @@ Optional MIDI regression:
 Cardputer-Adv USB-C data -> Yamaha SEQTRAK USB
 ```
 
-PORT.A is not used. If PORT.A hardware remains attached, preserve the project invariant GPIO2 SDA / GPIO1 SCL and keep the Cardputer keyboard and Scroll Unit on the shared `Wire` bus.
+PORT.A is not used. If PORT.A hardware remains attached, preserve GPIO2 SDA / GPIO1 SCL and keep the Cardputer keyboard and Scroll Unit on the shared `Wire` bus.
 
 ## Build / flash
 
@@ -50,39 +53,53 @@ bash scripts/build.sh --warnings all
 bash scripts/upload.sh /dev/ttyACM0
 ```
 
-Use the exact PR head recorded in the PR description.
+Use the exact PR head recorded in PR #26.
 
 ## Navigation map
 
 ### PERFORM
 
 ```text
-[ / ]
 MIDI KEYBOARD <-> MIDI PLAYER
 ```
+
+- `]` from MIDI Keyboard opens MIDI Player.
+- `[` from MIDI Player returns to MIDI Keyboard.
+- `[` from MIDI Keyboard enters the previous workflow, SETTINGS.
+- `]` from MIDI Player enters the next workflow, GENERATE.
 
 ### GENERATE
 
 ```text
-[ / ]
-GENRE -> MODE / FLAVOR -> FEEL / TEXTURE
+GENRE <-> MODE / FLAVOR <-> FEEL / TEXTURE
 ```
 
-This workflow covers musical direction and generated-pattern character.
+At the edges:
+
+```text
+[ from GENRE          -> PERFORM / MIDI KEYBOARD
+] from FEEL / TEXTURE -> HUB / OVERVIEW
+```
 
 ### HUB
 
 ```text
-[ / ]
 OVERVIEW
--> SYNTH A
--> SYNTH B
--> DRUMS
--> SYNTH A SOUND
--> SYNTH B SOUND
+<-> SYNTH A
+<-> SYNTH B
+<-> DRUMS
+<-> SYNTH A SOUND
+<-> SYNTH B SOUND
 ```
 
 Existing local `Tab` behavior inside synth/drum editors remains unchanged.
+
+At the edges:
+
+```text
+[ from OVERVIEW       -> GENERATE / GENRE
+] from SYNTH B SOUND  -> SONG
+```
 
 ### SONG
 
@@ -90,69 +107,75 @@ Existing local `Tab` behavior inside synth/drum editors remains unchanged.
 SONG
 ```
 
-This workflow has one page, so `[` and `]` remain on SONG.
+Because SONG has one page:
+
+```text
+[ -> HUB / OVERVIEW
+] -> SETTINGS / PROJECT SETUP
+```
 
 ### SETTINGS
 
 ```text
-[ / ]
 PROJECT / SETUP <-> ADV GENERATOR
 ```
 
-`PROJECT / SETUP` keeps load, save, scene management, MIDI import, routing, display and LED controls.
+Project keeps load, save, scene management, MIDI import, routing, display and LED controls.
 
-Inside `ADV GENERATOR`, plain `Tab` must still cycle:
+Inside `ADV GENERATOR`, plain `Tab` cycles:
 
 ```text
 TIMING -> NOTES -> SCALE
 ```
 
-Swing, velocity range, ghost probability and microtiming remain in the TIMING local group.
+TIMING includes Swing, Velocity Range, Ghost Probability and Microtiming.
+
+At the edges:
+
+```text
+[ from PROJECT / SETUP -> SONG
+] from ADV GENERATOR    -> PERFORM / MIDI KEYBOARD
+```
 
 ## Expected behavior
 
-- `Fn+Tab` moves forward through all five workflows.
-- `Shift+Fn+Tab` moves backward through all five workflows when Shift is available.
-- Entering a workflow opens its first page.
-- `[` and `]` wrap only inside the active workflow.
-- `PERFORM ]` opens MIDI Player; another `]` returns to MIDI Keyboard.
-- `GENERATE ]` reaches Mode and Feel without leaving GENERATE.
-- `HUB ]` reaches each concrete instrument/editor page.
-- `SETTINGS ]` opens Advanced Generator; another `]` returns to Project / Setup.
-- plain `Tab` is still handled by the current page before global navigation.
-- `Fn+M` launcher lists the same five workflows and previews their pages with Left/Right.
-- old direct hotkeys remain available as accelerators.
-- Backspace/Back still toggles the previous actual page.
+- `Fn+Tab` always enters the first page of the next workflow.
+- Plain `[` provides one-key backward navigation across workflow boundaries.
+- Plain `]` provides one-key forward navigation across workflow boundaries.
+- Inside a multi-page workflow, `[` and `]` move one page at a time.
+- Current pages receive input before the global bracket handler, so local controls keep working.
+- `Fn+M` lists the same five workflows and previews their pages.
+- Direct hotkeys and Back remain available.
+- No navigation action mutates transport, MIDI routing or synthesis state.
 
 ## Troubleshooting
 
-### Brackets still jump between workflows
+### `[` wraps inside the same workflow
 
-Confirm `src/ui/workflow_mode.h` contains page-aware `Workspace` states and `nextWorkspace()` uses `pageIndexInMode()` plus `pageAt()`.
+Confirm `WorkflowPages::nextWorkspace()` checks:
 
-### Fn+Tab only shows three modes
+```text
+direction < 0 && index == 0
+direction > 0 && index == count - 1
+```
 
-Confirm `WorkflowMode` contains `Perform`, `Generate`, `Hub`, `Song` and `Settings`, and `nextMode()` uses a count of five.
+and uses `nextMode()` at workflow boundaries.
+
+### Reverse navigation requires Shift
+
+This is a regression. The Cardputer-Adv has no dedicated Shift key. Plain `[` on the first page must enter the previous workflow.
 
 ### Generator Tab leaves the page
 
-The current page must get first refusal before the global bracket handler. Confirm `SettingsPage::handleEvent()` still consumes plain `Tab` for TIMING / NOTES / SCALE.
+The current page must receive the event before the global bracket handler. Confirm `SettingsPage::handleEvent()` still consumes plain `Tab` for TIMING / NOTES / SCALE.
 
 ### Player cannot be reached from PERFORM
 
-Open MIDI Keyboard, press `]`, and confirm the second PERFORM page is MIDI Player. Also verify `Alt+P` still works as a direct shortcut.
-
-### Advanced Generator cannot be reached
-
-Open SETTINGS with `Fn+Tab`, then press `]`. Confirm the second SETTINGS page is `ADV GENERATOR`.
-
-### SETTINGS still looks dense
-
-This PR restores navigation and grouping but intentionally preserves the current Project implementation. A later visual PR can split Project, MIDI, display, LED and system controls into polished local subpages without changing this workflow contract.
+Open MIDI Keyboard and press `]`. `Alt+P` must also remain available as a direct shortcut.
 
 ### Audio or MIDI changes during navigation
 
-Treat this as a regression. Workflow navigation must only change UI page ownership and must not mutate transport, MIDI queues, synthesis state or routing.
+Treat this as a regression. Workflow navigation may only change UI page ownership.
 
 ## Acceptance checklist
 
@@ -162,60 +185,48 @@ BOOT
 [ ] current project/pattern is unchanged
 [ ] no watchdog/reset
 
-FN+TAB WORKFLOWS
+FN+TAB
 [ ] PERFORM -> GENERATE
 [ ] GENERATE -> HUB
 [ ] HUB -> SONG
 [ ] SONG -> SETTINGS
 [ ] SETTINGS -> PERFORM
-[ ] reverse workflow navigation works when Shift is available
+[ ] no Shift key is required
 
-PERFORM [ / ]
-[ ] MIDI KEYBOARD -> MIDI PLAYER
-[ ] MIDI PLAYER -> MIDI KEYBOARD
-[ ] Player transport and route controls still work
-[ ] live keyboard routing remains unchanged
+ONE-KEY BACKWARD NAVIGATION
+[ ] GENERATE/GENRE [ -> PERFORM/MIDI KEYBOARD
+[ ] HUB/OVERVIEW [ -> GENERATE/GENRE
+[ ] SONG [ -> HUB/OVERVIEW
+[ ] SETTINGS/PROJECT [ -> SONG
+[ ] PERFORM/MIDI KEYBOARD [ -> SETTINGS/PROJECT
 
-GENERATE [ / ]
-[ ] GENRE -> MODE / FLAVOR
-[ ] MODE / FLAVOR -> FEEL / TEXTURE
-[ ] FEEL / TEXTURE -> GENRE
+FORWARD EDGE NAVIGATION
+[ ] PERFORM/MIDI PLAYER ] -> GENERATE/GENRE
+[ ] GENERATE/FEEL ] -> HUB/OVERVIEW
+[ ] HUB/SYNTH B SOUND ] -> SONG
+[ ] SONG ] -> SETTINGS/PROJECT
+[ ] SETTINGS/ADV GENERATOR ] -> PERFORM/MIDI KEYBOARD
 
-HUB [ / ]
-[ ] OVERVIEW -> SYNTH A
-[ ] SYNTH A -> SYNTH B
-[ ] SYNTH B -> DRUMS
-[ ] DRUMS -> SYNTH A SOUND
-[ ] SYNTH A SOUND -> SYNTH B SOUND
-[ ] SYNTH B SOUND -> OVERVIEW
-[ ] synth/drum local Tab behavior remains unchanged
-
-SONG
-[ ] [ and ] remain inside SONG
-[ ] arrangement editing remains unchanged
-
-SETTINGS [ / ]
-[ ] PROJECT / SETUP -> ADV GENERATOR
-[ ] ADV GENERATOR -> PROJECT / SETUP
-[ ] load dialog opens/closes
-[ ] save/save-as works
-[ ] MIDI import browser opens
-[ ] MIDI advanced import dialog still uses Tab locally
-[ ] routing/display/LED controls remain accessible
+LOCAL PAGES
+[ ] PERFORM Keyboard <-> Player
+[ ] GENERATE Genre <-> Mode <-> Feel
+[ ] HUB reaches Overview, A, B, Drums, A Sound, B Sound
+[ ] SETTINGS Project <-> Advanced Generator
 [ ] Generator Tab cycles TIMING / NOTES / SCALE
-[ ] Swing and microtiming remain editable
+[ ] Swing and Microtiming remain editable
+[ ] synth/drum local Tab behavior remains unchanged
 
 LAUNCHER / UI
 [ ] Fn+M lists PERFORM / GENERATE / HUB / SONG / SETTINGS / HELP
-[ ] Left/Right previews pages inside selected workflow
+[ ] Left/Right previews pages
 [ ] launcher shows PAGE n/N
 [ ] CYBER/CARBON switching still works
-[ ] no new permanent HUD or full-screen flashes
+[ ] no new full-screen flashes
 
 REALTIME
 [ ] rapid [ / ] navigation causes no audible glitch
 [ ] Fn+Tab during playback causes no timing change
-[ ] MIDI Player playback survives launcher/navigation use
+[ ] MIDI Player survives launcher/navigation use
 [ ] USB MIDI timing remains stable
 
 BUILD GATES
