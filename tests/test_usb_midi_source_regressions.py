@@ -68,6 +68,10 @@ def main() -> None:
             "Cardputer upload must use the same TinyUSB FQBN")
     require("#if ARDUINO_USB_MODE" in transport,
             "hardware transport must fail closed outside TinyUSB OTG mode")
+    require("return begun_ && tud_midi_mounted();" in transport,
+            "USB MIDI readiness must use the MIDI interface, not composite CDC mount")
+    require("return begun_ && static_cast<bool>(USB);" not in transport,
+            "composite USB mount must not be treated as MIDI endpoint readiness")
     require("kSmfCleanupAttemptLimit" in transport and
             "reportTransportFailure" in transport and
             "abandonAllSmfNotes" in transport and

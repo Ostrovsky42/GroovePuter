@@ -19,6 +19,17 @@ int main() {
     assert(pos.blockSequence == 121);
     assert(pos.frameOffset == 273);
 
+    // 200% tempo halves playback duration without changing the SMF tempo map.
+    assert(scheduleSmfTick(timing, 0, 100, 480, 22050, 512, pos, 2000));
+    assert(pos.blockSequence == 110);
+    assert(pos.frameOffset == 393);
+    assert(scaleSmfFileMicros(250000, 2000) == 500000);
+
+    // 50% tempo doubles playback duration.
+    assert(scheduleSmfTick(timing, 0, 100, 480, 22050, 512, pos, 500));
+    assert(pos.blockSequence == 143);
+    assert(pos.frameOffset == 34);
+
     assert(scheduleSmfTick(timing, 0, 100, 960, 22050, 512, pos));
     assert(pos.blockSequence == 143);
     assert(pos.frameOffset == 34);
@@ -38,6 +49,7 @@ int main() {
     assert(!scheduleSmfTick(timing, 480, 0, 479, 22050, 512, pos));
     assert(!scheduleSmfTick(timing, 0, 0, 480, 0, 512, pos));
     assert(!scheduleSmfTick(timing, 0, 0, 480, 22050, 0, pos));
+    assert(!scheduleSmfTick(timing, 0, 0, 480, 22050, 512, pos, 0));
 
     // Inverse map supports pause/seek position recovery from the accepted audio anchor.
     assert(timing.microsToTick(500000) == 480);

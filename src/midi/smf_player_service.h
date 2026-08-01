@@ -42,7 +42,10 @@ struct SmfPlayerSnapshot {
     uint32_t bar{1};
     uint16_t beat{1};
     uint32_t totalBars{1};
+    uint16_t originalBpmX10{1200};
     uint16_t bpmX10{1200};
+    uint16_t tempoScalePermille{1000};
+    uint8_t velocityBoost{0};
     bool rawRouting{true};
     SmfPlayerPerformanceSnapshot performance{};
 };
@@ -61,6 +64,9 @@ public:
     virtual bool panic() = 0;
     virtual bool seekBars(int deltaBars) = 0;
     virtual bool toggleRouting() = 0;
+    virtual bool adjustTempoBpm(int deltaBpm) = 0;
+    virtual bool resetTempo() = 0;
+    virtual bool cycleVelocityBoost() = 0;
     virtual SmfPlayerSnapshot snapshot() const = 0;
 };
 
