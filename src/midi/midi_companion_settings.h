@@ -6,6 +6,8 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "transport_clock_source.h"
+
 namespace GroovePuterMidi {
 
 constexpr std::size_t kMidiDrumVoiceCount = 8;
@@ -62,6 +64,13 @@ struct MidiOutputSettings {
 
     std::array<DrumMidiRoute, kMidiDrumVoiceCount> drumRoutes{};
     uint16_t drumGateMs{kDefaultDrumGateMs};
+
+    // Transport ownership is persisted alongside the existing MIDI companion
+    // settings. Schema-v1 records did not contain these fields and decode to
+    // the safe legacy behavior: GP MASTER with external follow enabled.
+    TransportClockSource transportClockSource{
+        TransportClockSource::GroovePuterInternal};
+    bool externalFollowEnabled{true};
 };
 
 constexpr std::size_t drumVoiceIndex(MidiDrumVoice voice) {
