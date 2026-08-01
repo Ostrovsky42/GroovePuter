@@ -76,6 +76,24 @@ int main() {
     assert(result.estimate.phaseCorrectionSteps < 0.0);
     assert(result.estimate.bpmQ16 < result.estimate.sourceBpmQ16);
 
+    // Three F8 packets drained with one receive timestamp represent three real
+    // musical pulses. The follower coalesces the run, advances half a project
+    // step and keeps the source tempo stable instead of measuring 0 us gaps.
+    const double beforeBuffered = result.estimate.absoluteProjectSteps;
+    now += 3u * 20833u;
+    for (int i = 0; i < 3; ++i) {
+        assert(queue.tryPushClock(now, ++ordinal));
+    }
+    result = follower.processBlock(
+        queue, TransportClockSource::SeqtrakExternal, now);
+    assert(closeEnough(result.estimate.absoluteProjectSteps,
+                       beforeBuffered + 0.5,
+                       0.001));
+    assert(closeEnough(
+        static_cast<double>(result.estimate.sourceBpmQ16) / 65536.0,
+        120.0,
+        0.2));
+
     assert(queue.tryPushCritical(
         ExternalMidiTransportEventType::Stop, now, ordinal));
     result = follower.processBlock(
