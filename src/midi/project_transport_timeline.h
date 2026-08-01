@@ -210,6 +210,19 @@ inline ProjectTransportTimeline& projectTransportTimeline() {
 
 inline double nextProjectBarStep(const ProjectTransportBlockSnapshot& snapshot) {
     const double current = snapshot.absoluteSteps();
+    if (!snapshot.restartedFromBeginning && snapshot.blockFrames > 0 &&
+        snapshot.sampleRate > 0 && snapshot.bpmQ16 > 0) {
+        // MIDI Continue must resume the saved SMF tick rather than wait for a
+        // whole new bar. Three render blocks preserve the existing bounded
+        // parser/queue prefill contract while keeping resume latency around
+        // 70 ms at 512 frames / 22.05 kHz.
+        constexpr double kContinuePrefillBlocks = 3.0;
+        const double stepsPerBlock =
+            static_cast<double>(snapshot.blockFrames) * snapshot.bpm() *
+            kProjectStepsPerQuarter /
+            (60.0 * static_cast<double>(snapshot.sampleRate));
+        return current + stepsPerBlock * kContinuePrefillBlocks;
+    }
     const double bar = std::floor(current / kProjectStepsPerBar);
     return (bar + 1.0) * kProjectStepsPerBar;
 }
