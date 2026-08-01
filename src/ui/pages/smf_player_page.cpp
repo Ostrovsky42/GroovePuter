@@ -204,6 +204,9 @@ bool SmfPlayerPage::playSelected() {
     if (playerState.tempoMode == SmfTempoMode::Original) {
         if (miniAcid_.isPlaying()) miniAcid_.stop();
     } else if (!miniAcid_.isPlaying()) {
+        // handleEvent() is invoked inside the existing AudioMutationScope on
+        // Cardputer, so this transport mutation stays on the accepted control
+        // path rather than being performed by the SMF task.
         miniAcid_.start();
     }
 
@@ -327,6 +330,10 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     if (event.key == 't' || event.key == 'T') {
         const bool wasActive = smfStateIsActive(state.state);
         const bool toProject = state.tempoMode == SmfTempoMode::Original;
+
+        // Tempo mode is not a sound on/off switch. Preserve active playback by
+        // enqueueing mode-change then resume in order. The UI owns MiniAcid
+        // Start/Stop, so the player task never mutates project transport cross-core.
         if (wasActive) {
             if (toProject && !miniAcid_.isPlaying()) {
                 miniAcid_.start();
@@ -623,7 +630,7 @@ void SmfPlayerPage::drawFooter(IGfx& gfx) {
     } else if (performanceVisible_) {
         UI::drawStandardFooter(gfx, "D Player  B Files", "Space Play  T TempoSrc");
     } else {
-        UI::drawStandardFooter(gfx, "J/L Track  K Mute  Sh+K All", "T TempoSrc  M Route  B Files");
+        UI::drawStandardFooter(gfx, "Up/Dn BPM  T TempoSrc  V Vel", "B Files  M Route  X Panic");
     }
 }
 
