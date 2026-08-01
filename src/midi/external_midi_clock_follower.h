@@ -22,14 +22,12 @@ struct ExternalClockBlockResult {
     ExternalTransportCommand command{ExternalTransportCommand::None};
     ExternalClockEstimate estimate{};
     bool sourceChanged{false};
+    bool followChanged{false};
     bool queueFailure{false};
 };
 
 class ExternalMidiClockFollower {
 public:
-    // The PLL uses a three-state tempo trim instead of changing bpmQ16 on every
-    // render block. This prevents PROJECT SMF from treating normal phase error
-    // convergence as a continuous tempo-reanchor storm.
     static constexpr double kMaximumTempoTrim = 0.02;
     static constexpr double kMaximumCorrectionSteps = 1.0 / 96.0;
     static constexpr double kPhaseTrimEnterSteps = 1.0 / 32.0;
@@ -41,7 +39,8 @@ public:
     ExternalClockBlockResult processBlock(
             ExternalMidiTransportEventQueue& queue,
             TransportClockSource source,
-            uint32_t nowMicros) {
+            uint32_t nowMicros,
+            bool followEnabled = true) {
         ExternalClockBlockResult result{};
         if (!haveSource_ || source != source_) {
             source_ = source;
@@ -54,6 +53,18 @@ public:
             result.command = ExternalTransportCommand::Stop;
             if (source != TransportClockSource::SeqtrakExternal) {
                 queue.discardPending();
+            }
+        }
+
+        if (!haveFollowState_ || followEnabled != followEnabled_) {
+            const bool wasEnabled = haveFollowState_ && followEnabled_;
+            followEnabled_ = followEnabled;
+            haveFollowState_ = true;
+            result.followChanged = true;
+            phaseTrimDirection_ = 0;
+            if (wasEnabled && !followEnabled_) {
+                tracker_.onStop(nowMicros);
+                result.command = ExternalTransportCommand::Stop;
             }
         }
 
@@ -77,10 +88,6 @@ public:
             return result;
         }
 
-        // USB and SD stalls can leave several F8 packets with effectively one
-        // receive timestamp. Only those compressed packets are coalesced.
-        // Normal clocks are at least 8.3 ms apart at 300 BPM and are flushed
-        // individually, preserving the intervals needed for initial lock.
         ExternalMidiTransportEvent pendingClock{};
         uint32_t pendingClockCount = 0;
         bool havePendingClock = false;
@@ -113,16 +120,22 @@ public:
                 case ExternalMidiTransportEventType::Clock:
                     break;
                 case ExternalMidiTransportEventType::Start:
-                    tracker_.onStart(event.timestampMicros);
-                    result.command = ExternalTransportCommand::Start;
+                    if (followEnabled_) {
+                        tracker_.onStart(event.timestampMicros);
+                        result.command = ExternalTransportCommand::Start;
+                    }
                     break;
                 case ExternalMidiTransportEventType::Continue:
-                    tracker_.onContinue(event.timestampMicros);
-                    result.command = ExternalTransportCommand::Continue;
+                    if (followEnabled_) {
+                        tracker_.onContinue(event.timestampMicros);
+                        result.command = ExternalTransportCommand::Continue;
+                    }
                     break;
                 case ExternalMidiTransportEventType::Stop:
                     tracker_.onStop(event.timestampMicros);
-                    result.command = ExternalTransportCommand::Stop;
+                    if (followEnabled_) {
+                        result.command = ExternalTransportCommand::Stop;
+                    }
                     break;
             }
         }
@@ -135,7 +148,7 @@ public:
             result.command = ExternalTransportCommand::Stop;
         }
         result.estimate = tracker_.estimate(nowMicros);
-        applyBoundedPhaseLock(result, result.sourceChanged);
+        applyBoundedPhaseLock(result, result.sourceChanged || result.followChanged);
         return result;
     }
 
@@ -182,42 +195,31 @@ private:
 
     void updateTrimDirection(double errorSteps) {
         if (phaseTrimDirection_ == 0) {
-            if (errorSteps > kPhaseTrimEnterSteps) {
-                phaseTrimDirection_ = 1;
-            } else if (errorSteps < -kPhaseTrimEnterSteps) {
-                phaseTrimDirection_ = -1;
-            }
+            if (errorSteps > kPhaseTrimEnterSteps) phaseTrimDirection_ = 1;
+            else if (errorSteps < -kPhaseTrimEnterSteps) phaseTrimDirection_ = -1;
             return;
         }
-
         if (phaseTrimDirection_ > 0) {
-            if (errorSteps < -kPhaseTrimEnterSteps) {
-                phaseTrimDirection_ = -1;
-            } else if (errorSteps < kPhaseTrimExitSteps) {
-                phaseTrimDirection_ = 0;
-            }
+            if (errorSteps < -kPhaseTrimEnterSteps) phaseTrimDirection_ = -1;
+            else if (errorSteps < kPhaseTrimExitSteps) phaseTrimDirection_ = 0;
             return;
         }
-
-        if (errorSteps > kPhaseTrimEnterSteps) {
-            phaseTrimDirection_ = 1;
-        } else if (errorSteps > -kPhaseTrimExitSteps) {
-            phaseTrimDirection_ = 0;
-        }
+        if (errorSteps > kPhaseTrimEnterSteps) phaseTrimDirection_ = 1;
+        else if (errorSteps > -kPhaseTrimExitSteps) phaseTrimDirection_ = 0;
     }
 
     void applyBoundedPhaseLock(ExternalClockBlockResult& result,
-                               bool sourceChanged) {
+                               bool controlChanged) {
         ExternalClockEstimate& estimate = result.estimate;
         estimate.phaseErrorSteps = 0.0;
         estimate.phaseCorrectionSteps = 0.0;
 
         const bool driveBaseChanged = updateDriveBase(
             estimate.sourceBpmQ16,
-            sourceChanged || result.command == ExternalTransportCommand::Start);
+            controlChanged || result.command == ExternalTransportCommand::Start);
         if (driveBaseBpmQ16_ != 0) estimate.bpmQ16 = driveBaseBpmQ16_;
 
-        if (sourceChanged || driveBaseChanged ||
+        if (controlChanged || driveBaseChanged || !followEnabled_ ||
             result.command == ExternalTransportCommand::Start ||
             result.command == ExternalTransportCommand::Stop ||
             !estimate.transportRunning || !estimate.validTempo ||
@@ -230,18 +232,15 @@ private:
         const ProjectTransportBlockSnapshot local =
             projectTransportTimeline().snapshot();
         if (!local.valid || !local.playing || local.blockFrames == 0 ||
-            local.sampleRate == 0 || local.bpmQ16 == 0) {
-            return;
-        }
+            local.sampleRate == 0 || local.bpmQ16 == 0) return;
 
-        const double localBpm = local.bpm();
         const double renderedSteps =
-            static_cast<double>(local.blockFrames) * localBpm *
+            static_cast<double>(local.blockFrames) * local.bpm() *
             kProjectStepsPerQuarter /
             (60.0 * static_cast<double>(local.sampleRate));
-        const double localAtNextBlock = local.absoluteSteps() + renderedSteps;
         const double error = wrapProjectPhaseError(
-            estimate.absoluteProjectSteps - localAtNextBlock);
+            estimate.absoluteProjectSteps -
+            (local.absoluteSteps() + renderedSteps));
         estimate.phaseErrorSteps = error;
         updateTrimDirection(error);
 
@@ -257,10 +256,9 @@ private:
         correction = std::max(-kMaximumCorrectionSteps,
                               std::min(kMaximumCorrectionSteps, correction));
         estimate.phaseCorrectionSteps = correction;
-        const double driveBpm = baseBpm *
-            (1.0 + kMaximumTempoTrim *
-                       static_cast<double>(phaseTrimDirection_));
-        estimate.bpmQ16 = bpmToQ16(driveBpm);
+        estimate.bpmQ16 = bpmToQ16(
+            baseBpm * (1.0 + kMaximumTempoTrim *
+                                static_cast<double>(phaseTrimDirection_)));
     }
 
     ExternalMidiClockTracker tracker_;
@@ -269,6 +267,8 @@ private:
     uint32_t failureCount_{0};
     int8_t phaseTrimDirection_{0};
     bool haveSource_{false};
+    bool followEnabled_{true};
+    bool haveFollowState_{false};
 };
 
 }  // namespace GroovePuterMidi
