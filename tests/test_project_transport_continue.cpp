@@ -15,7 +15,7 @@ int main() {
     ProjectTransportTimeline timeline;
 
     timeline.publishBlock(1, 512, 0.0f, 120.0f, 22050.0f, true, true);
-    auto started = timeline.snapshot();
+    const auto started = timeline.snapshot();
     assert(started.valid);
     assert(started.playing);
     assert(started.restartedFromBeginning);
@@ -40,7 +40,8 @@ int main() {
     assert(closeEnough(nextProjectBarStep(continued), 32.0));
 
     timeline.publishBlock(6, 512, 0.5f, 120.0f, 22050.0f, false, false);
-    timeline.publishBlock(7, 512, 0.5f, 120.0f, timeline.snapshot();
+    timeline.publishBlock(7, 512, 0.5f, 120.0f, 22050.0f, true, true);
+    const auto restarted = timeline.snapshot();
     assert(restarted.restartedFromBeginning);
     assert(restarted.transportEpoch == 3);
     assert(restarted.barCounter == 0);
