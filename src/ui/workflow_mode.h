@@ -2,6 +2,10 @@
 
 #include <cstdint>
 
+#ifdef ARDUINO
+#include <M5Cardputer.h>
+#endif
+
 enum class WorkflowMode : uint8_t {
     Perform = 0,
     Generate,
@@ -243,20 +247,33 @@ inline int pageForMode(WorkflowMode mode) {
     return pageAt(mode, 0);
 }
 
-inline Workspace nextWorkspace(Workspace workspace, int direction) {
+inline bool hardwareWorkflowModifierHeld() {
+#ifdef ARDUINO
+    return M5Cardputer.Keyboard.keysState().fn;
+#else
+    return false;
+#endif
+}
+
+// Explicit overload keeps the behavior deterministic and host-testable:
+//   modifier=false -> move/wrap inside the current workflow
+//   modifier=true  -> move to the first page of the adjacent workflow
+inline Workspace nextWorkspace(Workspace workspace,
+                               int direction,
+                               bool workflowModifier) {
     const int page = pageForWorkspace(workspace);
     const WorkflowMode mode = modeForPage(page);
-    const int index = pageIndexInMode(page);
-    const int count = pageCountForMode(mode);
 
-    if (direction < 0 && index == 0) {
-        return workspaceForPage(pageForMode(nextMode(mode, -1)));
-    }
-    if (direction > 0 && index == count - 1) {
-        return workspaceForPage(pageForMode(nextMode(mode, 1)));
+    if (workflowModifier) {
+        return workspaceForPage(pageForMode(nextMode(mode, direction)));
     }
 
-    return workspaceForPage(pageAt(mode, index + direction));
+    const int nextIndex = pageIndexInMode(page) + direction;
+    return workspaceForPage(pageAt(mode, nextIndex));
+}
+
+inline Workspace nextWorkspace(Workspace workspace, int direction) {
+    return nextWorkspace(workspace, direction, hardwareWorkflowModifierHeld());
 }
 
 inline bool allowsPerformanceKeyboard(int page) {
