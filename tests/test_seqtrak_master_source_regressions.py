@@ -88,9 +88,13 @@ def main() -> None:
             "phaseCorrectionSteps" in follower and
             "projectTransportTimeline().snapshot()" in follower,
             "SEQ MASTER must phase-lock through bounded tempo trim")
+    require("pendingClock" in follower and "flushPendingClock" in follower,
+            "buffered F8 packets must be coalesced before tempo measurement")
     require("sourceBpmQ16" in tracker and
-            "A rejected interval must not advance musical phase" in tracker,
-            "source tempo and rejected-pulse phase safety must remain explicit")
+            "lastTimingPulseOrdinal_" in tracker and
+            "lastPhasePulseOrdinal_" in tracker and
+            "timestamp is not allowed to poison" in tracker,
+            "source tempo, musical phase and timing anchors must remain separate")
     require("restartedFromBeginning" in timeline,
             "project timeline must distinguish Start from Continue epochs")
     require("projectResumeOnExternalContinue_" in smf_service and
