@@ -160,7 +160,7 @@ public:
 
             gfx.setTextColor(p.dim);
             gfx.drawText(rightX + 5, panelY + 80,
-                         count > 1 ? "[ / ] SAME WORKFLOW" : "FN+TAB NEXT WORKFLOW");
+                         count > 1 ? "[ ] PAGE  FN+[ ] FLOW" : "FN+[ ] WORKFLOW");
         }
 
         gfx.fillRect(0, h - footerH, w, footerH, p.panel);
