@@ -81,6 +81,93 @@ void expectPacket(const Packet& packet,
     assert(packet.note == note);
     assert(packet.velocity == velocity);
 }
+
+void testPatternDrumRoutingAndRetrig() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+
+    // Internal voices: Kick, Snare, ClosedHat, OpenHat, MidTom, HighTom,
+    // Rim, Clap -> native CH1,2,4,5,6,7,6,3.
+    constexpr uint8_t expectedChannels[] = {0, 1, 3, 4, 5, 6, 5, 2};
+    for (uint8_t voice = 0; voice < 8; ++voice) {
+        assert(output.channelFor(MusicalEventSource::PatternPlayer,
+                                 MusicalEventTarget::Drums,
+                                 voice) == expectedChannels[voice]);
+    }
+
+    // Every retrigger must physically emit another NoteOn. Wire ownership stays
+    // reference-counted until the final gate release, so an older logical
+    // release cannot silence a newer hit.
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 100,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::Drums, 0));
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 83,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::Drums, 0));
+    assert(transport.packets.size() == 2);
+    expectPacket(transport.packets[0], PacketType::NoteOn, 0, 60, 100);
+    expectPacket(transport.packets[1], PacketType::NoteOn, 0, 60, 83);
+    assert(output.activeGateCount(MusicalEventSource::PatternPlayer,
+                                  MusicalEventTarget::Drums, 0) == 2);
+    assert(output.wireOwnerCount(0, 60) == 2);
+
+    output.handleMusicalEvent(event(MusicalEventType::NoteOff, 60, 0,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::Drums, 0));
+    assert(transport.packets.size() == 2);
+    assert(output.activeGateCount(MusicalEventSource::PatternPlayer,
+                                  MusicalEventTarget::Drums, 0) == 1);
+    assert(output.wireOwnerCount(0, 60) == 1);
+    output.handleMusicalEvent(event(MusicalEventType::NoteOff, 60, 0,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::Drums, 0));
+    assert(transport.packets.size() == 3);
+    expectPacket(transport.packets.back(), PacketType::NoteOff, 0, 60, 0);
+    assert(output.wireOwnerCount(0, 60) == 0);
+
+    // MidTom and Rim are distinct logical voices sharing native PERC1 / CH6.
+    // Releasing one must not send a physical NoteOff while the other owns N60.
+    transport.clear();
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 91,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::Drums, 4));
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 74,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::Drums, 6));
+    assert(transport.packets.size() == 2);
+    expectPacket(transport.packets[0], PacketType::NoteOn, 5, 60, 91);
+    expectPacket(transport.packets[1], PacketType::NoteOn, 5, 60, 74);
+    assert(output.wireOwnerCount(5, 60) == 2);
+
+    output.handleMusicalEvent(event(MusicalEventType::NoteOff, 60, 0,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::Drums, 4));
+    assert(transport.packets.size() == 2);
+    assert(output.wireOwnerCount(5, 60) == 1);
+    output.handleMusicalEvent(event(MusicalEventType::NoteOff, 60, 0,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::Drums, 6));
+    assert(transport.packets.size() == 3);
+    expectPacket(transport.packets.back(), PacketType::NoteOff, 5, 60, 0);
+    assert(output.wireOwnerCount(5, 60) == 0);
+
+    // Scoped Pattern Drums panic releases only Pattern drum ownership.
+    transport.clear();
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 95,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::Drums, 7));
+    assert(output.wireOwnerCount(2, 60) == 1);
+    output.handleMusicalEvent(event(MusicalEventType::AllNotesOff, 0, 0,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::Drums));
+    assert(transport.packets.size() == 2);
+    expectPacket(transport.packets[0], PacketType::NoteOn, 2, 60, 95);
+    expectPacket(transport.packets[1], PacketType::NoteOff, 2, 60, 0);
+    assert(output.wireOwnerCount(2, 60) == 0);
+}
 }  // namespace
 
 int main() {
@@ -111,6 +198,10 @@ int main() {
                              MusicalEventTarget::SynthA) == 7);
     assert(output.channelFor(MusicalEventSource::PatternPlayer,
                              MusicalEventTarget::SynthB) == 8);
+    assert(output.channelFor(MusicalEventSource::PatternPlayer,
+                             MusicalEventTarget::Drums, 0) == 0);
+    assert(output.channelFor(MusicalEventSource::PatternPlayer,
+                             MusicalEventTarget::Drums, 7) == 2);
 
     output.handleMusicalEvent(event(MusicalEventType::NoteOn, 36, 100));
     output.handleMusicalEvent(event(MusicalEventType::NoteOn, 40, 95,
@@ -213,17 +304,16 @@ int main() {
     assert(output.activeNote(MusicalEventSource::PatternPlayer,
                              MusicalEventTarget::SynthA) == -1);
 
-    // Unsupported producers and PatternPlayer drums stay outside this live-only
-    // integration stage.
+    // Unsupported producer sources still fail closed. Pattern Drums are now a
+    // first-class scheduled PatternPlayer route and are tested separately.
     transport.clear();
     output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 100,
                                     MusicalEventSource::Arpeggiator));
     output.handleMusicalEvent(event(MusicalEventType::NoteOn, 61, 100,
                                     MusicalEventSource::MidiInput));
-    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 62, 100,
-                                    MusicalEventSource::PatternPlayer,
-                                    MusicalEventTarget::Drums, 0));
     assert(transport.packets.empty());
+
+    testPatternDrumRoutingAndRetrig();
 
     MusicalEventRouter router;
     CountingSink internalLikeSink;
@@ -236,17 +326,24 @@ int main() {
     assert(transport.packets.size() == 1);
     expectPacket(transport.packets[0], PacketType::NoteOn, 3, 60, 70);
 
-    // Invalid drum logical channels fail closed instead of aliasing to CH7.
+    // Invalid live drum logical channels fail closed instead of aliasing CH7.
     transport.clear();
     output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 70,
                                     MusicalEventSource::PerformanceKeyboard,
                                     MusicalEventTarget::Drums, 7));
+    assert(transport.packets.empty());
+    // Invalid Pattern drum logical channels likewise fail closed.
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 70,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::Drums, 8));
     assert(transport.packets.empty());
 
     transport.mountedState = false;
     output.pollConnection();
     assert(output.status() == UsbMidiStatus::Wait);
     assert(output.activeNote(MusicalEventSource::PerformanceKeyboard,
+                             MusicalEventTarget::Drums) == -1);
+    assert(output.activeNote(MusicalEventSource::PatternPlayer,
                              MusicalEventTarget::Drums) == -1);
     assert(output.activeNote(MusicalEventSource::PerformanceKeyboard,
                              MusicalEventTarget::Dx) == -1);
@@ -286,6 +383,9 @@ int main() {
     liveOnly.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 100,
                                       MusicalEventSource::PatternPlayer,
                                       MusicalEventTarget::SynthA));
+    liveOnly.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 100,
+                                      MusicalEventSource::PatternPlayer,
+                                      MusicalEventTarget::Drums, 5));
     assert(liveOnlyTransport.packets.empty());
     liveOnly.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 100,
                                       MusicalEventSource::PerformanceKeyboard,

@@ -2,111 +2,120 @@
 
 ## Current status
 
-This branch currently contains only the pure configuration foundation. It is
-based on `main` after the merged Song playhead repair and intentionally does not
-implement runtime integration before PR #8 is accepted.
+The accepted MIDI companion line now includes:
 
-## Required dependency
+```text
+PERFORM A/B/DX/DRUMS
+PatternPlayer Synth A/B
+sample-timed Pattern dispatcher
+MIDI Clock / Start / Stop
+realtime SMF playback
+```
+
+This stage completes the missing PatternPlayer Drums path while keeping the accepted single-dispatcher architecture.
+
+## Accepted dependency chain
 
 ```text
 PR #8 sample-timed MIDI dispatcher
--> hardware acceptance
--> squash merge to main
--> rebase this branch onto updated main
+-> MIDI companion routing/settings foundation
+-> transport sync
+-> realtime SMF player
+-> stage-ready player/PERFORM UI
+-> Pattern Drums + SEQTRAK target cleanup
 ```
 
-The integration stage must reuse PR #8 queues, deadlines, generation
-invalidation, urgent cleanup, and single TinyUSB task ownership. It must not
-introduce a parallel MIDI scheduler.
+All Pattern Drums work must reuse the accepted queue deadlines, generation invalidation, urgent cleanup, and single TinyUSB task ownership. It must not introduce a parallel MIDI scheduler.
 
-## Ordered integration commits after PR #8
+## Integrated runtime model
 
-### 1. Runtime settings adapter
-
-- bind `MidiOutputSettings` to the accepted dispatcher;
-- apply channel changes through generation invalidation;
-- release old wire ownership before route replacement;
-- keep settings global and outside `Scene`.
-
-### 2. Live Synth A/B target
-
-- select internal and external live target together;
-- preserve immediate internal performance response;
-- route external events through the dispatcher live/control queue;
-- retain same-channel same-note ownership protection.
-
-### 3. Drum event model
-
-- add `MusicalEventTarget::Drums` or the accepted PR #8 equivalent;
-- map the existing eight internal voices to `MidiDrumVoice`;
-- preserve velocity, source order, deadline, and generation;
-- keep internal drums active.
-
-### 4. Drum gate scheduler
-
-- emit percussive NoteOn without synth-style note-owner collapsing;
-- schedule bounded NoteOff gates;
-- preserve retrig, flam, roll, and simultaneous hits;
-- use target-scoped cleanup on overflow.
-
-### 5. Global Cardputer storage adapter
-
-- implement `IMidiSettingsStorage` outside the pure codec;
-- use NVS/Preferences or the selected global device store;
-- distinguish missing, corrupt, and backend error;
-- do not modify scene JSON.
-
-### 6. MIDI settings UI
-
-Minimum surface:
+### Live targets
 
 ```text
-USB MIDI       ON/OFF
-PROFILE        SEQTRAK / GENERAL MIDI / CUSTOM
-LIVE TARGET    SYNTH A / SYNTH B
-LIVE CH        1..16
-SYNTH A CH     1..16
-SYNTH B CH     1..16
-PATTERN A/B    ON/OFF
-DRUM OUT       ON/OFF
-DRUM ROUTES    8 explicit rows
-DRUM GATE      1..500 ms
-STATUS         OFF / WAIT / READY
-PANIC
+PERFORM Synth A -> CH8
+PERFORM Synth B -> CH9
+PERFORM DX      -> CH10
+PERFORM Drums   -> native CH1..7
 ```
 
-Use partial redraws. Do not redraw the full display for dispatcher counters.
+### Pattern targets
 
-### 7. Song controls and diagnostics
+```text
+Pattern Synth A -> CH8
+Pattern Synth B -> CH9
+Pattern Drums:
+  Kick       -> CH1
+  Snare      -> CH2
+  Clap       -> CH3
+  Closed Hat -> CH4
+  Open Hat   -> CH5
+  Mid Tom    -> CH6
+  Rim        -> CH6
+  High Tom   -> CH7
+```
 
-- expose Song mode, slot A/B, and position without a second MIDI renderer;
-- continue to use active PatternPlayer events;
-- show bounded aggregate diagnostics only;
-- verify 1B/2B/4B/8B row transitions through external routes.
+Pattern drum NoteOn events are published from the actual internal drum trigger API, so base hits, retrig, flam and roll share one timing source with internal audio. The events enter the same `MusicalEventQueue` used by Pattern Synth A/B and receive AudioTask block/frame timestamps.
 
-## Final hardware acceptance
+Pattern drum NoteOff uses a fixed-size gate state inside `MidiDispatchTask`. The deadline is derived from the sample-timed NoteOn position. Retriggers extend the gate; there is no `millis()` gate, no FreeRTOS gate task and no second sequencer.
 
-- live Synth A and Synth B;
-- Pattern Synth A on external channel 8 by default;
-- Pattern Synth B on external channel 9 by default;
-- same-note Live/Pattern ownership in both release orders;
-- all eight drum voices produce configured external events;
+### SEQTRAK playable targets
+
+```text
+CH1..7  DRUMS
+CH8     SYNTH 1
+CH9     SYNTH 2
+CH10    DX
+CH11    SAMPLER
+```
+
+DX is not the fallback bucket for unrelated melodic/texture material. SMF SEQTRAK mode keeps source CH3 explicit on DX and sends additional melodic source channels to SAMPLER until per-track custom routing exists.
+
+FX remain a future control domain:
+
+```text
+TRACK FX
+DELAY SEND
+REVERB SEND
+MASTER FX
+```
+
+They are not playable `MusicalEventTarget` note destinations.
+
+## Remaining MIDI Companion work
+
+- bind `MidiOutputSettings` to global device storage and runtime routing;
+- expose compact MIDI settings UI;
+- add per-track CUSTOM SMF routing and mute/solo;
+- optionally expose the current 80 ms drum gate as a 1..500 ms device setting;
+- continue using PatternPlayer for Song output instead of a separate Song MIDI renderer.
+
+## Hardware acceptance for Pattern Drums stage
+
+- live Synth A/B/DX/Drums remain unchanged;
+- Pattern Synth A remains external CH8;
+- Pattern Synth B remains external CH9;
+- all eight internal drum voices reach the configured native SEQTRAK destinations;
 - simultaneous kick and hat;
-- retrig, flam, and roll remain ordered;
+- Mid Tom + Rim shared CH6 ownership;
+- retrig, flam and roll remain ordered;
+- final drum NoteOff follows the newest retrigger gate;
 - Song rows preserve 1B/2B/4B/8B durations;
-- route disable and channel change release old ownership;
+- route/lifecycle cleanup releases old Pattern Drums ownership;
 - Panic leaves no active notes;
 - reconnect performs no stale replay;
 - UI navigation does not change MIDI timing;
 - internal synths and drums remain audible;
 - no reset, watchdog, heap collapse, or audio-underrun regression.
 
-## Explicitly out of scope
+Detailed procedure: `docs/stages/PATTERN_DRUM_MIDI_STAGE.md`.
 
-- MIDI Clock, Start, Stop, Continue;
-- SMF realtime playback;
+## Explicitly out of scope for this stage
+
+- adding SAMPLER to the live PERFORM target cycle;
+- runtime user editing of the 80 ms Pattern drum gate;
+- Track FX / Delay / Reverb / Master FX control;
+- CC, Program Change output, Pitch Bend, Aftertouch, SysEx;
 - BLE-MIDI;
-- MIDI input;
-- CC, Program Change, Pitch Bend, Aftertouch, SysEx;
+- MIDI input/slave mode;
 - scene schema changes;
 - a separate Song MIDI renderer.

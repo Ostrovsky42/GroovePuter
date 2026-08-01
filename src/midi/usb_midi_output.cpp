@@ -13,6 +13,18 @@ UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
     // begin(), which runs inside MidiDispatchTask after setup has started.
 }
 
+uint8_t UsbMidiOutput::patternDrumChannel(uint8_t logicalVoice) {
+    // Internal GroovePuter drum voices -> native SEQTRAK tracks.
+    // KICK, SNARE, CLOSED HAT, OPEN HAT, MID TOM, HIGH TOM, RIM, CLAP
+    // map to CH1, CH2, CH4, CH5, CH6, CH7, CH6, CH3 respectively.
+    static constexpr uint8_t kChannels[kPatternDrumVoiceCount] = {
+        0, 1, 3, 4, 5, 6, 5, 2,
+    };
+    return logicalVoice < kPatternDrumVoiceCount
+        ? kChannels[logicalVoice]
+        : 0;
+}
+
 void UsbMidiOutput::configureLanes() {
     std::size_t lane = 0;
     lanes_[lane++] = MidiVoiceLane{
@@ -21,6 +33,7 @@ void UsbMidiOutput::configureLanes() {
         0,
         clampChannel(config_.performanceSynthAChannel),
         -1,
+        0,
         config_.performanceKeyboardEnabled,
         false,
     };
@@ -30,6 +43,7 @@ void UsbMidiOutput::configureLanes() {
         0,
         clampChannel(config_.performanceSynthBChannel),
         -1,
+        0,
         config_.performanceKeyboardEnabled,
         false,
     };
@@ -39,6 +53,7 @@ void UsbMidiOutput::configureLanes() {
         0,
         clampChannel(config_.performanceDxChannel),
         -1,
+        0,
         config_.performanceKeyboardEnabled,
         false,
     };
@@ -51,6 +66,7 @@ void UsbMidiOutput::configureLanes() {
             drumChannel,
             drumChannel,
             -1,
+            0,
             config_.performanceKeyboardEnabled,
             false,
         };
@@ -61,6 +77,7 @@ void UsbMidiOutput::configureLanes() {
         0,
         clampChannel(config_.patternSynthAChannel),
         -1,
+        0,
         config_.patternPlayerEnabled,
         false,
     };
@@ -70,9 +87,22 @@ void UsbMidiOutput::configureLanes() {
         0,
         clampChannel(config_.patternSynthBChannel),
         -1,
+        0,
         config_.patternPlayerEnabled,
         false,
     };
+    for (uint8_t voice = 0; voice < kPatternDrumVoiceCount; ++voice) {
+        lanes_[lane++] = MidiVoiceLane{
+            MusicalEventSource::PatternPlayer,
+            MusicalEventTarget::Drums,
+            voice,
+            patternDrumChannel(voice),
+            -1,
+            0,
+            config_.patternPlayerEnabled,
+            false,
+        };
+    }
 }
 
 uint8_t UsbMidiOutput::clampChannel(uint8_t channel) {
@@ -147,7 +177,10 @@ int UsbMidiOutput::activeNote(MusicalEventSource source,
                               MusicalEventTarget target) const {
     if (!begun_) return -1;
     if (target == MusicalEventTarget::Drums) {
-        for (uint8_t channel = 0; channel < kSeqtrakDrumLaneCount; ++channel) {
+        const uint8_t count = source == MusicalEventSource::PatternPlayer
+            ? kPatternDrumVoiceCount
+            : kSeqtrakDrumLaneCount;
+        for (uint8_t channel = 0; channel < count; ++channel) {
             const int note = activeNote(source, target, channel);
             if (note >= 0) return note;
         }
@@ -169,6 +202,14 @@ int UsbMidiOutput::activeNote(MusicalEventTarget target) const {
     const int live = activeNote(MusicalEventSource::PerformanceKeyboard, target);
     if (live >= 0) return live;
     return activeNote(MusicalEventSource::PatternPlayer, target);
+}
+
+uint8_t UsbMidiOutput::activeGateCount(MusicalEventSource source,
+                                       MusicalEventTarget target,
+                                       uint8_t logicalChannel) const {
+    if (!begun_) return 0;
+    const MidiVoiceLane* lane = laneFor(source, target, logicalChannel);
+    return lane ? lane->activeCount : 0;
 }
 
 uint8_t UsbMidiOutput::channelFor(MusicalEventSource source,
@@ -215,12 +256,14 @@ bool UsbMidiOutput::acquireActiveNote(MidiVoiceLane& lane,
 
     if (owners < 255) ++owners;
     lane.activeNote = static_cast<int16_t>(note);
+    lane.activeCount = 1;
     lane.pendingRelease = false;
     return true;
 }
 
 bool UsbMidiOutput::releaseActiveNote(MidiVoiceLane& lane, uint8_t velocity) {
     if (lane.activeNote < 0) {
+        lane.activeCount = 0;
         lane.pendingRelease = false;
         return true;
     }
@@ -230,11 +273,13 @@ bool UsbMidiOutput::releaseActiveNote(MidiVoiceLane& lane, uint8_t velocity) {
     if (owners > 1) {
         --owners;
         lane.activeNote = -1;
+        lane.activeCount = 0;
         lane.pendingRelease = false;
         return true;
     }
     if (owners == 0) {
         lane.activeNote = -1;
+        lane.activeCount = 0;
         lane.pendingRelease = false;
         return true;
     }
@@ -247,6 +292,7 @@ bool UsbMidiOutput::releaseActiveNote(MidiVoiceLane& lane, uint8_t velocity) {
 
     owners = 0;
     lane.activeNote = -1;
+    lane.activeCount = 0;
     lane.pendingRelease = false;
     transport_.flush();
     return true;
@@ -260,10 +306,121 @@ bool UsbMidiOutput::replaceActiveNote(MidiVoiceLane& lane,
     return acquireActiveNote(lane, note, velocity);
 }
 
+bool UsbMidiOutput::acquirePercussiveNote(MidiVoiceLane& lane,
+                                          uint8_t note,
+                                          uint8_t velocity) {
+    note = clampDataByte(note);
+    velocity = clampDataByte(velocity);
+    if (velocity < 1) velocity = 1;
+
+    if (lane.pendingRelease && !releasePercussiveLane(lane)) return false;
+    if (lane.activeNote >= 0 && lane.activeNote != static_cast<int16_t>(note) &&
+        !releasePercussiveLane(lane)) {
+        return false;
+    }
+
+    uint8_t& owners = wireOwners_[lane.channel][note];
+    if (lane.activeCount == 255 || owners == 255) return false;
+
+    // Percussive retriggers must remain audible even when an older gate for the
+    // same channel+note is still open. Ownership counting only controls when a
+    // physical NoteOff is finally safe to emit.
+    if (!transport_.sendNoteOn(lane.channel, note, velocity)) return false;
+    transport_.flush();
+
+    ++lane.activeCount;
+    ++owners;
+    lane.activeNote = static_cast<int16_t>(note);
+    lane.pendingRelease = false;
+    return true;
+}
+
+bool UsbMidiOutput::releasePercussiveNote(MidiVoiceLane& lane,
+                                          uint8_t velocity) {
+    if (lane.activeNote < 0 || lane.activeCount == 0) {
+        lane.activeNote = -1;
+        lane.activeCount = 0;
+        lane.pendingRelease = false;
+        return true;
+    }
+
+    const uint8_t note = clampDataByte(static_cast<uint8_t>(lane.activeNote));
+    uint8_t& owners = wireOwners_[lane.channel][note];
+    if (owners == 0) {
+        lane.activeNote = -1;
+        lane.activeCount = 0;
+        lane.pendingRelease = false;
+        return true;
+    }
+
+    if (owners > 1) {
+        --owners;
+        --lane.activeCount;
+        if (lane.activeCount == 0) lane.activeNote = -1;
+        lane.pendingRelease = false;
+        return true;
+    }
+
+    velocity = clampDataByte(velocity);
+    if (!mounted_ || !transport_.sendNoteOff(lane.channel, note, velocity)) {
+        lane.pendingRelease = true;
+        return false;
+    }
+
+    owners = 0;
+    lane.activeCount = 0;
+    lane.activeNote = -1;
+    lane.pendingRelease = false;
+    transport_.flush();
+    return true;
+}
+
+bool UsbMidiOutput::releasePercussiveLane(MidiVoiceLane& lane,
+                                          uint8_t velocity) {
+    if (lane.activeNote < 0 || lane.activeCount == 0) {
+        lane.activeNote = -1;
+        lane.activeCount = 0;
+        lane.pendingRelease = false;
+        return true;
+    }
+
+    const uint8_t note = clampDataByte(static_cast<uint8_t>(lane.activeNote));
+    uint8_t& owners = wireOwners_[lane.channel][note];
+    const uint8_t laneOwners = lane.activeCount;
+    const uint8_t otherOwners = owners > laneOwners
+        ? static_cast<uint8_t>(owners - laneOwners)
+        : 0;
+
+    if (otherOwners > 0) {
+        owners = otherOwners;
+        lane.activeNote = -1;
+        lane.activeCount = 0;
+        lane.pendingRelease = false;
+        return true;
+    }
+
+    velocity = clampDataByte(velocity);
+    if (owners > 0 &&
+        (!mounted_ || !transport_.sendNoteOff(lane.channel, note, velocity))) {
+        lane.pendingRelease = true;
+        return false;
+    }
+    if (owners > 0) transport_.flush();
+
+    owners = 0;
+    lane.activeNote = -1;
+    lane.activeCount = 0;
+    lane.pendingRelease = false;
+    return true;
+}
+
 void UsbMidiOutput::releaseTargetAllNotes(MusicalEventSource source,
                                           MusicalEventTarget target) {
     for (std::size_t i = 0; i < kLaneCount; ++i) {
-        if (lanes_[i].source == source && lanes_[i].target == target) {
+        if (lanes_[i].source != source || lanes_[i].target != target) continue;
+        if (target == MusicalEventTarget::Drums) {
+            releasePercussiveLane(lanes_[i]);
+        } else {
             releaseActiveNote(lanes_[i]);
         }
     }
@@ -272,7 +429,11 @@ void UsbMidiOutput::releaseTargetAllNotes(MusicalEventSource source,
 void UsbMidiOutput::releaseAllActiveNotes() {
     if (!begun_) return;
     for (std::size_t i = 0; i < kLaneCount; ++i) {
-        releaseActiveNote(lanes_[i]);
+        if (lanes_[i].target == MusicalEventTarget::Drums) {
+            releasePercussiveLane(lanes_[i]);
+        } else {
+            releaseActiveNote(lanes_[i]);
+        }
     }
 }
 
@@ -381,6 +542,7 @@ void UsbMidiOutput::abandonAllSmfNotes() {
 void UsbMidiOutput::clearActiveState() {
     for (std::size_t i = 0; i < kLaneCount; ++i) {
         lanes_[i].activeNote = -1;
+        lanes_[i].activeCount = 0;
         lanes_[i].pendingRelease = false;
     }
     for (std::size_t channel = 0; channel < kMidiChannelCount; ++channel) {
@@ -402,7 +564,29 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
 
     MidiVoiceLane* lane = laneFor(event.source, event.target, event.channel);
     if (!accepts(lane)) return;
-    if (lane->pendingRelease && !releaseActiveNote(*lane)) return;
+    if (lane->pendingRelease) {
+        const bool released = event.target == MusicalEventTarget::Drums
+            ? releasePercussiveLane(*lane)
+            : releaseActiveNote(*lane);
+        if (!released) return;
+    }
+
+    if (event.target == MusicalEventTarget::Drums) {
+        switch (event.type) {
+            case MusicalEventType::NoteOn:
+                acquirePercussiveNote(*lane, event.note, event.velocity);
+                break;
+            case MusicalEventType::NoteOff:
+                if (lane->activeNote ==
+                    static_cast<int16_t>(clampDataByte(event.note))) {
+                    releasePercussiveNote(*lane, event.velocity);
+                }
+                break;
+            case MusicalEventType::AllNotesOff:
+                break;
+        }
+        return;
+    }
 
     switch (event.type) {
         case MusicalEventType::NoteOn:

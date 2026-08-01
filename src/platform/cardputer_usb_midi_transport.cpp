@@ -12,7 +12,9 @@
 #include "src/audio/audio_config.h"
 #include "src/input/musical_event_queue.h"
 #include "src/input/musical_event_router.h"
+#include "src/midi/midi_companion_settings.h"
 #include "src/midi/midi_control_event_queue.h"
+#include "src/midi/pattern_drum_gate_scheduler.h"
 #include "src/midi/scheduled_midi_transport_event.h"
 #include "src/midi/scheduled_musical_event_queue.h"
 #include "src/midi/smf_dispatch_policy.h"
@@ -103,6 +105,9 @@ struct MidiDispatchDiagnostics {
     uint32_t lateEvents{0};
     uint32_t maximumLatenessUs{0};
     uint32_t patternPanics{0};
+    uint32_t patternDrumGates{0};
+    uint32_t patternDrumGateReleases{0};
+    uint32_t patternDrumGateFailures{0};
     uint32_t controlPanics{0};
     uint32_t clockSent{0};
     uint32_t clockLate{0};
@@ -137,6 +142,7 @@ UsbMidiOutput g_output(
 MidiControlEventQueue g_controlQueue;
 MusicalEventQueue* g_patternQueue = nullptr;
 ScheduledSmfMidiEventQueue* g_smfQueue = nullptr;
+PatternDrumGateScheduler g_patternDrumGates;
 MidiBlockAnchorClock g_anchorClock;
 MidiDispatchDiagnostics g_diagnostics;
 TaskHandle_t g_dispatchTaskHandle = nullptr;
@@ -209,6 +215,13 @@ void dispatchPatternPanics() {
         g_output.handleMusicalEvent(
             panicEvent(MusicalEventSource::PatternPlayer,
                        MusicalEventTarget::SynthB));
+        ++g_diagnostics.patternPanics;
+    }
+    if (mask & ScheduledMusicalEventQueue::kDrumsMask) {
+        g_patternDrumGates.clear();
+        g_output.handleMusicalEvent(
+            panicEvent(MusicalEventSource::PatternPlayer,
+                       MusicalEventTarget::Drums));
         ++g_diagnostics.patternPanics;
     }
 }
@@ -424,6 +437,7 @@ void logDiagnosticsIfDue() {
 
     Serial.printf(
         "[MIDI-DISPATCH] sched=%u transport=%u smf=%u live=%u sent=%u/%u "
+        "drumGate=%u/%u/%u active=%u "
         "smfSent=%u smfStale=%u smfPanic=%u smfRetry=%u smfDrop=%u "
         "smfLateDrop=%u smfCleanRetry=%u smfAbort=%u "
         "clockSent=%u clockLate=%u clockDropped=%u start=%u stop=%u "
@@ -436,6 +450,10 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(g_controlQueue.approximateSize()),
         static_cast<unsigned>(g_diagnostics.dispatchedScheduled),
         static_cast<unsigned>(g_diagnostics.dispatchedControl),
+        static_cast<unsigned>(g_diagnostics.patternDrumGates),
+        static_cast<unsigned>(g_diagnostics.patternDrumGateReleases),
+        static_cast<unsigned>(g_diagnostics.patternDrumGateFailures),
+        static_cast<unsigned>(g_patternDrumGates.activeCount()),
         static_cast<unsigned>(g_diagnostics.smfSent),
         static_cast<unsigned>(g_diagnostics.smfStaleGenerationDrops),
         static_cast<unsigned>(g_diagnostics.smfPanics),
@@ -471,6 +489,7 @@ enum class PendingKind : uint8_t {
     None = 0,
     Transport,
     Pattern,
+    PatternDrumGate,
     Smf,
 };
 
@@ -480,6 +499,7 @@ void midiDispatchTask(void*) {
     }
 
     ScheduledMusicalEvent pendingMusical{};
+    ScheduledMusicalEvent pendingDrumGate{};
     ScheduledMidiTransportEvent pendingTransport{};
     ScheduledSmfMidiEvent pendingSmf{};
     bool hasPendingMusical = false;
@@ -541,9 +561,7 @@ void midiDispatchTask(void*) {
             !scheduledMusicalEventFrameIsValid(
                 pendingMusical, kBlockFrames)) {
             ++g_diagnostics.invalidFrameDrops;
-            g_output.handleMusicalEvent(
-                panicEvent(MusicalEventSource::PatternPlayer,
-                           pendingMusical.event.target));
+            g_patternQueue->invalidateTarget(pendingMusical.event.target);
             hasPendingMusical = false;
             continue;
         }
@@ -557,6 +575,27 @@ void midiDispatchTask(void*) {
                 hasPendingMusical = false;
                 continue;
             }
+        }
+
+        bool hasPendingDrumGate =
+            g_patternDrumGates.peekEarliest(pendingDrumGate);
+        if (hasPendingDrumGate &&
+            !scheduledMusicalEventFrameIsValid(
+                pendingDrumGate, kBlockFrames)) {
+            ++g_diagnostics.invalidFrameDrops;
+            g_patternDrumGates.consume(pendingDrumGate.event.channel);
+            if (g_patternQueue != nullptr) {
+                g_patternQueue->invalidateTarget(MusicalEventTarget::Drums);
+            }
+            continue;
+        }
+        if (hasPendingDrumGate && g_patternQueue != nullptr &&
+            !scheduledMusicalEventGenerationIsCurrent(
+                pendingDrumGate,
+                g_patternQueue->generationFor(MusicalEventTarget::Drums))) {
+            ++g_diagnostics.staleGenerationDrops;
+            g_patternDrumGates.consume(pendingDrumGate.event.channel);
+            continue;
         }
 
         if (hasPendingSmf &&
@@ -582,7 +621,8 @@ void midiDispatchTask(void*) {
             continue;
         }
 
-        if (!hasPendingTransport && !hasPendingMusical && !hasPendingSmf) {
+        if (!hasPendingTransport && !hasPendingMusical &&
+            !hasPendingDrumGate && !hasPendingSmf) {
             drainControlEvents();
             logDiagnosticsIfDue();
             ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(2));
@@ -598,12 +638,25 @@ void midiDispatchTask(void*) {
                 kind = PendingKind::Pattern;
             }
         }
+        if (hasPendingDrumGate) {
+            bool gateWins = kind == PendingKind::None;
+            if (kind == PendingKind::Transport) {
+                gateWins = !transportBeforeMusical(
+                    pendingTransport, pendingDrumGate);
+            } else if (kind == PendingKind::Pattern) {
+                gateWins = scheduledMusicalEventBefore(
+                    pendingDrumGate, pendingMusical);
+            }
+            if (gateWins) kind = PendingKind::PatternDrumGate;
+        }
         if (hasPendingSmf && !g_smfCleanupPending) {
             bool smfWins = kind == PendingKind::None;
             if (kind == PendingKind::Transport) {
                 smfWins = !transportBeforeSmf(pendingTransport, pendingSmf);
             } else if (kind == PendingKind::Pattern) {
                 smfWins = !musicalBeforeSmf(pendingMusical, pendingSmf);
+            } else if (kind == PendingKind::PatternDrumGate) {
+                smfWins = !musicalBeforeSmf(pendingDrumGate, pendingSmf);
             }
             if (smfWins) kind = PendingKind::Smf;
         }
@@ -624,6 +677,10 @@ void midiDispatchTask(void*) {
             case PendingKind::Pattern:
                 blockSequence = pendingMusical.blockSequence;
                 frameOffset = pendingMusical.frameOffset;
+                break;
+            case PendingKind::PatternDrumGate:
+                blockSequence = pendingDrumGate.blockSequence;
+                frameOffset = pendingDrumGate.frameOffset;
                 break;
             case PendingKind::Smf:
                 blockSequence = pendingSmf.blockSequence;
@@ -689,12 +746,49 @@ void midiDispatchTask(void*) {
                     pendingMusical,
                     g_patternQueue->generationFor(
                         pendingMusical.event.target))) {
-                g_output.handleMusicalEvent(pendingMusical.event);
-                ++g_diagnostics.dispatchedScheduled;
+                bool dispatch = true;
+                if (pendingMusical.event.source ==
+                        MusicalEventSource::PatternPlayer &&
+                    pendingMusical.event.target == MusicalEventTarget::Drums &&
+                    pendingMusical.event.type == MusicalEventType::NoteOn) {
+                    dispatch = g_patternDrumGates.scheduleOrExtend(
+                        pendingMusical,
+                        GroovePuterMidi::kDefaultDrumGateMs,
+                        kSampleRate,
+                        static_cast<uint16_t>(kBlockFrames));
+                    if (dispatch) {
+                        ++g_diagnostics.patternDrumGates;
+                    } else {
+                        ++g_diagnostics.patternDrumGateFailures;
+                        g_patternQueue->invalidateTarget(
+                            MusicalEventTarget::Drums);
+                    }
+                }
+                if (dispatch) {
+                    g_output.handleMusicalEvent(pendingMusical.event);
+                    ++g_diagnostics.dispatchedScheduled;
+                }
             } else {
                 ++g_diagnostics.staleGenerationDrops;
             }
             hasPendingMusical = false;
+        } else if (kind == PendingKind::PatternDrumGate) {
+            if (g_patternQueue == nullptr ||
+                !scheduledMusicalEventGenerationIsCurrent(
+                    pendingDrumGate,
+                    g_patternQueue->generationFor(
+                        MusicalEventTarget::Drums))) {
+                ++g_diagnostics.staleGenerationDrops;
+                g_patternDrumGates.consume(pendingDrumGate.event.channel);
+            } else {
+                const uint8_t releases = g_patternDrumGates.releaseCount(
+                    pendingDrumGate.event.channel);
+                for (uint8_t i = 0; i < releases; ++i) {
+                    g_output.handleMusicalEvent(pendingDrumGate.event);
+                    ++g_diagnostics.patternDrumGateReleases;
+                }
+                g_patternDrumGates.consume(pendingDrumGate.event.channel);
+            }
         } else {
             if (g_smfQueue == nullptr ||
                 !scheduledSmfMidiEventGenerationIsCurrent(
@@ -832,6 +926,7 @@ bool registerCardputerUsbMidiSink(
     if (g_registered) return true;
 
     g_patternQueue = &patternQueue;
+    g_patternDrumGates.clear();
     if (!router.addSink(g_queueSink)) {
         g_patternQueue = nullptr;
         return false;
