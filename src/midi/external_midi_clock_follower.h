@@ -82,12 +82,15 @@ public:
         // Normal clocks are at least 8.3 ms apart at 300 BPM and are flushed
         // individually, preserving the intervals needed for initial lock.
         ExternalMidiTransportEvent pendingClock{};
+        uint32_t pendingClockCount = 0;
         bool havePendingClock = false;
         auto flushPendingClock = [&]() {
             if (!havePendingClock) return;
             tracker_.onClock(pendingClock.timestampMicros,
-                             pendingClock.pulseOrdinal);
+                             pendingClock.pulseOrdinal,
+                             pendingClockCount);
             havePendingClock = false;
+            pendingClockCount = 0;
         };
 
         ExternalMidiTransportEvent event{};
@@ -100,6 +103,7 @@ public:
                     flushPendingClock();
                 }
                 pendingClock = event;
+                ++pendingClockCount;
                 havePendingClock = true;
                 continue;
             }
