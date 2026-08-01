@@ -56,6 +56,31 @@ def test_theme_selection() -> None:
             "music visuals must not bypass the shared palette with legacy accent constants")
 
 
+def test_perform_piano_key_shapes() -> None:
+    visuals = (ROOT / "src/ui/components/music_visuals.h").read_text(
+        encoding="utf-8"
+    )
+
+    row_start = visuals.index("inline void drawPianoKeyRow")
+    row_end = visuals.index("inline void drawPiano(", row_start)
+    row = visuals[row_start:row_end]
+
+    require("isBlackPianoPitch(note)" in row and
+            "const int blackH" in row and "const int blackW" in row,
+            "melodic rows must retain long white keys with shorter black keys")
+    require("drawTinyNoteLabel" in row and "keyboard.noteForKey" in row,
+            "piano keys must show compact resolved note names")
+    require("keyboard.isPhysicalKeyHeld(physical)" in row,
+            "two piano rows must preserve independent physical-key held state")
+    require("char keyLabel" not in row and "gfx.drawText" not in row,
+            "piano rows must not print Cardputer key letters or large 5x7 labels")
+    require('constexpr char kUpperRow[] = "qwertyuiop";' in visuals and
+            'constexpr char kLowerRow[] = "asdfghjkl";' in visuals,
+            "both physical note rows must remain represented")
+    require("tinyGlyph" in visuals and "gfx.fillRect(cursorX + column" in visuals,
+            "compact note labels must remain immediate-mode and allocation-free")
+
+
 def test_workflow_local_page_navigation() -> None:
     workflow = (ROOT / "src/ui/workflow_mode.h").read_text(encoding="utf-8")
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
@@ -127,6 +152,7 @@ def test_workflow_local_page_navigation() -> None:
 
 def main() -> None:
     test_theme_selection()
+    test_perform_piano_key_shapes()
     test_workflow_local_page_navigation()
     print("theme + workflow navigation source regressions: OK")
 
