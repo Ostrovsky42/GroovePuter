@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cmath>
 #include <cstdint>
+#include <limits>
 
 #include "external_midi_clock_tracker.h"
 #include "midi_realtime_word.h"
@@ -13,13 +15,25 @@ struct TransportClockRuntimeSnapshot {
     ExternalClockLockState externalState{ExternalClockLockState::Waiting};
     bool externalRunning{false};
     bool externalTempoValid{false};
+    // The displayed BPM is the actual SEQTRAK source tempo. The small local PLL
+    // trim is exposed separately as a phase correction diagnostic.
     uint32_t externalBpmQ16{0};
+    int32_t externalPhaseErrorQ16{0};
+    int32_t externalPhaseCorrectionQ16{0};
     uint32_t externalEpoch{0};
     uint32_t externalPulseCount{0};
     uint32_t externalFailureCount{0};
 
     double externalBpm() const {
         return static_cast<double>(externalBpmQ16) / 65536.0;
+    }
+
+    double externalPhaseErrorSteps() const {
+        return static_cast<double>(externalPhaseErrorQ16) / 65536.0;
+    }
+
+    double externalPhaseCorrectionSteps() const {
+        return static_cast<double>(externalPhaseCorrectionQ16) / 65536.0;
     }
 };
 
@@ -50,7 +64,14 @@ public:
         externalState_.storeRelaxed(static_cast<uint32_t>(estimate.state));
         externalRunning_.storeRelaxed(estimate.transportRunning ? 1u : 0u);
         externalTempoValid_.storeRelaxed(estimate.validTempo ? 1u : 0u);
-        externalBpmQ16_.storeRelaxed(estimate.bpmQ16);
+        externalBpmQ16_.storeRelaxed(
+            estimate.sourceBpmQ16 != 0 ? estimate.sourceBpmQ16
+                                       : estimate.bpmQ16);
+        externalPhaseErrorQ16_.storeRelaxed(
+            static_cast<uint32_t>(toSignedQ16(estimate.phaseErrorSteps)));
+        externalPhaseCorrectionQ16_.storeRelaxed(
+            static_cast<uint32_t>(toSignedQ16(
+                estimate.phaseCorrectionSteps)));
         externalEpoch_.storeRelaxed(estimate.transportEpoch);
         externalPulseCount_.storeRelaxed(
             static_cast<uint32_t>(estimate.pulseCount));
@@ -69,6 +90,10 @@ public:
             out.externalTempoValid =
                 externalTempoValid_.loadRelaxed() != 0u;
             out.externalBpmQ16 = externalBpmQ16_.loadRelaxed();
+            out.externalPhaseErrorQ16 = static_cast<int32_t>(
+                externalPhaseErrorQ16_.loadRelaxed());
+            out.externalPhaseCorrectionQ16 = static_cast<int32_t>(
+                externalPhaseCorrectionQ16_.loadRelaxed());
             out.externalEpoch = externalEpoch_.loadRelaxed();
             out.externalPulseCount = externalPulseCount_.loadRelaxed();
             out.externalFailureCount = externalFailureCount_.loadRelaxed();
@@ -85,12 +110,27 @@ public:
     }
 
 private:
+    static int32_t toSignedQ16(double value) {
+        const double scaled = value * 65536.0;
+        if (scaled >= static_cast<double>(
+                std::numeric_limits<int32_t>::max())) {
+            return std::numeric_limits<int32_t>::max();
+        }
+        if (scaled <= static_cast<double>(
+                std::numeric_limits<int32_t>::min())) {
+            return std::numeric_limits<int32_t>::min();
+        }
+        return static_cast<int32_t>(std::llround(scaled));
+    }
+
     MidiRealtimeWord source_;
     MidiRealtimeWord version_;
     MidiRealtimeWord externalState_;
     MidiRealtimeWord externalRunning_;
     MidiRealtimeWord externalTempoValid_;
     MidiRealtimeWord externalBpmQ16_;
+    MidiRealtimeWord externalPhaseErrorQ16_;
+    MidiRealtimeWord externalPhaseCorrectionQ16_;
     MidiRealtimeWord externalEpoch_;
     MidiRealtimeWord externalPulseCount_;
     MidiRealtimeWord externalFailureCount_;
