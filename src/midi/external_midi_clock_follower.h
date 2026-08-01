@@ -27,12 +27,15 @@ struct ExternalClockBlockResult {
 
 class ExternalMidiClockFollower {
 public:
-    // The PLL deliberately trims tempo instead of seeking the sequencer phase.
-    // At 120 BPM / 512 frames / 22.05 kHz, five percent is roughly 0.0093
-    // project steps per block, below one quarter of a 96-PPQN tick.
-    static constexpr double kPhaseErrorGain = 0.125;
-    static constexpr double kMaximumTempoTrim = 0.05;
+    // The PLL uses a three-state tempo trim instead of changing bpmQ16 on every
+    // render block. This prevents PROJECT SMF from treating normal phase error
+    // convergence as a continuous tempo-reanchor storm.
+    static constexpr double kMaximumTempoTrim = 0.02;
     static constexpr double kMaximumCorrectionSteps = 1.0 / 96.0;
+    static constexpr double kPhaseTrimEnterSteps = 1.0 / 32.0;
+    static constexpr double kPhaseTrimExitSteps = 1.0 / 96.0;
+    static constexpr double kSourceBpmQuantum = 0.1;
+    static constexpr double kSourceBpmHysteresis = 0.15;
 
     ExternalClockBlockResult processBlock(
             ExternalMidiTransportEventQueue& queue,
@@ -43,6 +46,8 @@ public:
             source_ = source;
             haveSource_ = true;
             tracker_.reset();
+            driveBaseBpmQ16_ = 0;
+            phaseTrimDirection_ = 0;
             queue.clearFailure();
             result.sourceChanged = true;
             result.command = ExternalTransportCommand::Stop;
@@ -62,6 +67,8 @@ public:
             queue.discardPending();
             queue.clearFailure();
             tracker_.onFailure(nowMicros);
+            driveBaseBpmQ16_ = 0;
+            phaseTrimDirection_ = 0;
             ++failureCount_;
             result.command = ExternalTransportCommand::Stop;
             result.queueFailure = true;
@@ -142,16 +149,71 @@ private:
         return static_cast<uint32_t>(std::llround(bpm * 65536.0));
     }
 
+    static double q16ToBpm(uint32_t bpmQ16) {
+        return static_cast<double>(bpmQ16) / 65536.0;
+    }
+
+    bool updateDriveBase(uint32_t sourceBpmQ16, bool force) {
+        if (sourceBpmQ16 == 0) return false;
+        const double sourceBpm = q16ToBpm(sourceBpmQ16);
+        const double quantized =
+            std::round(sourceBpm / kSourceBpmQuantum) * kSourceBpmQuantum;
+        if (!force && driveBaseBpmQ16_ != 0 &&
+            std::fabs(quantized - q16ToBpm(driveBaseBpmQ16_)) <
+                kSourceBpmHysteresis) {
+            return false;
+        }
+        const uint32_t next = bpmToQ16(quantized);
+        if (next == driveBaseBpmQ16_) return false;
+        driveBaseBpmQ16_ = next;
+        phaseTrimDirection_ = 0;
+        return true;
+    }
+
+    void updateTrimDirection(double errorSteps) {
+        if (phaseTrimDirection_ == 0) {
+            if (errorSteps > kPhaseTrimEnterSteps) {
+                phaseTrimDirection_ = 1;
+            } else if (errorSteps < -kPhaseTrimEnterSteps) {
+                phaseTrimDirection_ = -1;
+            }
+            return;
+        }
+
+        if (phaseTrimDirection_ > 0) {
+            if (errorSteps < -kPhaseTrimEnterSteps) {
+                phaseTrimDirection_ = -1;
+            } else if (errorSteps < kPhaseTrimExitSteps) {
+                phaseTrimDirection_ = 0;
+            }
+            return;
+        }
+
+        if (errorSteps > kPhaseTrimEnterSteps) {
+            phaseTrimDirection_ = 1;
+        } else if (errorSteps > -kPhaseTrimExitSteps) {
+            phaseTrimDirection_ = 0;
+        }
+    }
+
     void applyBoundedPhaseLock(ExternalClockBlockResult& result,
-                               bool sourceChanged) const {
+                               bool sourceChanged) {
         ExternalClockEstimate& estimate = result.estimate;
         estimate.phaseErrorSteps = 0.0;
         estimate.phaseCorrectionSteps = 0.0;
-        if (sourceChanged || result.command == ExternalTransportCommand::Start ||
+
+        const bool driveBaseChanged = updateDriveBase(
+            estimate.sourceBpmQ16,
+            sourceChanged || result.command == ExternalTransportCommand::Start);
+        if (driveBaseBpmQ16_ != 0) estimate.bpmQ16 = driveBaseBpmQ16_;
+
+        if (sourceChanged || driveBaseChanged ||
+            result.command == ExternalTransportCommand::Start ||
             result.command == ExternalTransportCommand::Stop ||
             !estimate.transportRunning || !estimate.validTempo ||
             (estimate.state != ExternalClockLockState::Locked &&
              estimate.state != ExternalClockLockState::Hold)) {
+            phaseTrimDirection_ = 0;
             return;
         }
 
@@ -171,31 +233,31 @@ private:
         const double error = wrapProjectPhaseError(
             estimate.absoluteProjectSteps - localAtNextBlock);
         estimate.phaseErrorSteps = error;
+        updateTrimDirection(error);
 
-        const double sourceBpm =
-            static_cast<double>(estimate.sourceBpmQ16) / 65536.0;
+        const double baseBpm = q16ToBpm(driveBaseBpmQ16_);
         const double naturalSteps =
-            static_cast<double>(local.blockFrames) * sourceBpm *
+            static_cast<double>(local.blockFrames) * baseBpm *
             kProjectStepsPerQuarter /
             (60.0 * static_cast<double>(local.sampleRate));
         if (naturalSteps <= 0.0) return;
 
-        const double maximumCorrection = std::min(
-            kMaximumCorrectionSteps,
-            naturalSteps * kMaximumTempoTrim);
-        const double correction = std::max(
-            -maximumCorrection,
-            std::min(maximumCorrection, error * kPhaseErrorGain));
+        double correction = naturalSteps * kMaximumTempoTrim *
+                            static_cast<double>(phaseTrimDirection_);
+        correction = std::max(-kMaximumCorrectionSteps,
+                              std::min(kMaximumCorrectionSteps, correction));
         estimate.phaseCorrectionSteps = correction;
-
-        const double driveBpm = sourceBpm *
-            (1.0 + correction / naturalSteps);
+        const double driveBpm = baseBpm *
+            (1.0 + kMaximumTempoTrim *
+                       static_cast<double>(phaseTrimDirection_));
         estimate.bpmQ16 = bpmToQ16(driveBpm);
     }
 
     ExternalMidiClockTracker tracker_;
     TransportClockSource source_{TransportClockSource::GroovePuterInternal};
+    uint32_t driveBaseBpmQ16_{0};
     uint32_t failureCount_{0};
+    int8_t phaseTrimDirection_{0};
     bool haveSource_{false};
 };
 
