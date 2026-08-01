@@ -13,9 +13,15 @@ void pushClock(ExternalMidiTransportEventQueue& queue,
     now += 20833;
     assert(queue.tryPushClock(now, ++ordinal));
 }
+
+bool closeEnough(double a, double b, double epsilon) {
+    return std::fabs(a - b) <= epsilon;
+}
 }
 
 int main() {
+    projectTransportTimeline().resetPublisher();
+
     ExternalMidiTransportEventQueue queue;
     ExternalMidiClockFollower follower;
     uint32_t now = 1000000;
@@ -38,19 +44,50 @@ int main() {
     assert(result.command == ExternalTransportCommand::Start);
     assert(result.estimate.transportRunning);
     assert(result.estimate.state == ExternalClockLockState::Locked);
-    assert(std::fabs(
-        static_cast<double>(result.estimate.bpmQ16) / 65536.0 - 120.0) < 0.1);
+    assert(closeEnough(
+        static_cast<double>(result.estimate.sourceBpmQ16) / 65536.0,
+        120.0,
+        0.1));
+    assert(result.estimate.bpmQ16 == result.estimate.sourceBpmQ16);
+    assert(closeEnough(result.estimate.phaseCorrectionSteps, 0.0, 1.0e-12));
+
+    // The previous audio block is behind the external timeline. A bounded PLL
+    // trim must speed the local sequencer up without changing the source BPM
+    // displayed to the user or seeking the phase directly.
+    projectTransportTimeline().publishBlock(
+        10, 512, 0.0f, 120.0f, 22050.0f, true);
+    pushClock(queue, now, ordinal);
+    result = follower.processBlock(
+        queue, TransportClockSource::SeqtrakExternal, now);
+    assert(result.command == ExternalTransportCommand::None);
+    assert(result.estimate.phaseErrorSteps > 0.0);
+    assert(result.estimate.phaseCorrectionSteps > 0.0);
+    assert(result.estimate.phaseCorrectionSteps <=
+           ExternalMidiClockFollower::kMaximumCorrectionSteps + 1.0e-12);
+    assert(result.estimate.bpmQ16 > result.estimate.sourceBpmQ16);
+
+    // If the local sequencer is ahead, the bounded trim changes sign.
+    projectTransportTimeline().publishBlock(
+        11, 512, 3.0f, 120.0f, 22050.0f, true);
+    pushClock(queue, now, ordinal);
+    result = follower.processBlock(
+        queue, TransportClockSource::SeqtrakExternal, now);
+    assert(result.estimate.phaseErrorSteps < 0.0);
+    assert(result.estimate.phaseCorrectionSteps < 0.0);
+    assert(result.estimate.bpmQ16 < result.estimate.sourceBpmQ16);
 
     assert(queue.tryPushCritical(
         ExternalMidiTransportEventType::Stop, now, ordinal));
     result = follower.processBlock(
         queue, TransportClockSource::SeqtrakExternal, now);
     assert(result.command == ExternalTransportCommand::Stop);
+    assert(closeEnough(result.estimate.phaseCorrectionSteps, 0.0, 1.0e-12));
     const double stoppedAt = result.estimate.absoluteProjectSteps;
     pushClock(queue, now, ordinal);
     result = follower.processBlock(
         queue, TransportClockSource::SeqtrakExternal, now);
     assert(std::fabs(result.estimate.absoluteProjectSteps - stoppedAt) < 0.001);
+    assert(closeEnough(result.estimate.phaseCorrectionSteps, 0.0, 1.0e-12));
 
     assert(queue.tryPushCritical(
         ExternalMidiTransportEventType::Continue, now, ordinal));
