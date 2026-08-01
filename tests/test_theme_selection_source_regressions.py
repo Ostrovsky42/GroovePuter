@@ -70,15 +70,16 @@ def test_workflow_local_page_navigation() -> None:
 
     require("kPerform, kPlayer" in workflow,
             "PERFORM workflow must contain keyboard then MIDI Player")
-    require("kGenre, kMode, kFeelTexture, kGenerator" in workflow,
-            "GENERATE workflow must expose genre through advanced generator")
+    require("kGenre, kMode, kFeelTexture" in workflow,
+            "GENERATE workflow must expose genre, mode and feel")
     require("kPattern, kSynthA, kSynthB, kDrums" in workflow and
             "kSynthAParameters, kSynthBParameters" in workflow,
             "HUB workflow must expose overview, instruments and synth controls")
     require("case WorkflowMode::Song: return kArrange;" in workflow,
             "SONG workflow must resolve to the song editor")
-    require("case WorkflowMode::Settings: return kProject;" in workflow,
-            "SETTINGS workflow must resolve to project/import/setup")
+    require("kProject, kGenerator" in workflow and
+            "case WorkflowMode::Settings: return kSettingsPages[index];" in workflow,
+            "SETTINGS must expose project/setup and advanced generator pages")
 
     next_start = workflow.index("inline Workspace nextWorkspace")
     next_end = workflow.index("inline int pageForMode", next_start)
