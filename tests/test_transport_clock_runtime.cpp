@@ -8,6 +8,12 @@ using namespace GroovePuterMidi;
 int main() {
     TransportClockRuntime runtime;
     assert(runtime.source() == TransportClockSource::GroovePuterInternal);
+    assert(runtime.externalFollowEnabled());
+    assert(!runtime.toggleExternalFollowEnabled());
+    assert(!runtime.externalFollowEnabled());
+    runtime.setExternalFollowEnabled(true);
+    assert(runtime.externalFollowEnabled());
+
     assert(runtime.toggleSource() == TransportClockSource::SeqtrakExternal);
     assert(runtime.source() == TransportClockSource::SeqtrakExternal);
 
@@ -26,6 +32,7 @@ int main() {
     TransportClockRuntimeSnapshot snapshot{};
     assert(runtime.trySnapshot(snapshot));
     assert(snapshot.source == TransportClockSource::SeqtrakExternal);
+    assert(snapshot.externalFollowEnabled);
     assert(snapshot.externalState == ExternalClockLockState::Locked);
     assert(snapshot.externalRunning);
     assert(snapshot.externalTempoValid);
@@ -36,6 +43,10 @@ int main() {
     assert(snapshot.externalEpoch == 9);
     assert(snapshot.externalPulseCount == 456);
     assert(snapshot.externalFailureCount == 3);
+
+    runtime.setExternalFollowEnabled(false);
+    assert(runtime.trySnapshot(snapshot));
+    assert(!snapshot.externalFollowEnabled);
 
     // Trackers without a distinct source field remain backward-compatible.
     estimate.sourceBpmQ16 = 0;
