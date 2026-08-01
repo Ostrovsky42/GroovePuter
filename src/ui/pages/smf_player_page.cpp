@@ -212,11 +212,13 @@ bool SmfPlayerPage::playSelected() {
         return true;
     }
     browserVisible_ = false;
-    const bool followSeqtrak = transportClockRuntime().source() ==
-        TransportClockSource::SeqtrakExternal;
+    const TransportClockRuntimeSnapshot clock = transportClockRuntime().snapshot();
+    const bool followSeqtrak = clock.source == TransportClockSource::SeqtrakExternal;
     UI::showToast(playerState.tempoMode == SmfTempoMode::Project
                       ? (followSeqtrak
-                             ? "LOADING / SPACE ARM / SEQ PLAY"
+                             ? (clock.externalFollowEnabled
+                                    ? "LOADING / SPACE ARM / SEQ PLAY"
+                                    : "LOADING / FOLLOW OFF")
                              : "LOADING / G THEN SPACE")
                       : "LOADING / SPACE TO PLAY",
                   1000);
@@ -238,11 +240,10 @@ bool SmfPlayerPage::togglePlayerTransport() {
     }
 
     const bool wasActive = smfStateIsActive(state.state);
-    const TransportClockSource clockSource =
-        transportClockRuntime().source();
+    const TransportClockRuntimeSnapshot clock = transportClockRuntime().snapshot();
     if (!wasActive && state.tempoMode == SmfTempoMode::Project &&
         !miniAcid_.isPlaying() &&
-        clockSource == TransportClockSource::GroovePuterInternal) {
+        clock.source == TransportClockSource::GroovePuterInternal) {
         UI::showToast("G START FIRST / THEN SPACE", 1100);
         return true;
     }
@@ -252,8 +253,10 @@ bool SmfPlayerPage::togglePlayerTransport() {
     } else if (wasActive) {
         UI::showToast("MIDI: PAUSE", 700);
     } else if (state.tempoMode == SmfTempoMode::Project) {
-        UI::showToast(clockSource == TransportClockSource::SeqtrakExternal
-                          ? "MIDI ARMED / PLAY SEQTRAK"
+        UI::showToast(clock.source == TransportClockSource::SeqtrakExternal
+                          ? (clock.externalFollowEnabled
+                                 ? "MIDI ARMED / PLAY SEQTRAK"
+                                 : "MIDI ARMED / FOLLOW OFF")
                           : "MIDI: ARM NEXT BAR",
                       900);
     } else {
@@ -263,9 +266,13 @@ bool SmfPlayerPage::togglePlayerTransport() {
 }
 
 void SmfPlayerPage::toggleGrooveTransport() {
-    if (transportClockRuntime().source() ==
-        TransportClockSource::SeqtrakExternal) {
-        UI::showToast("SEQ MASTER: USE SEQTRAK", 900);
+    TransportClockRuntime& clockRuntime = transportClockRuntime();
+    if (clockRuntime.source() == TransportClockSource::SeqtrakExternal) {
+        const bool enabled = clockRuntime.toggleExternalFollowEnabled();
+        UI::showToast(enabled
+                          ? "EXT FOLLOW ON / WAIT SEQ"
+                          : "EXT FOLLOW OFF / STOP",
+                      1000);
         return;
     }
     player_ = smfPlayerService();
@@ -297,9 +304,13 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     player_ = smfPlayerService();
 
     if (event.key == 'c' || event.key == 'C') {
-        const TransportClockSource source =
-            transportClockRuntime().toggleSource();
-        UI::showToast(transportClockSourceName(source), 1000);
+        const TransportClockSource source = transportClockRuntime().toggleSource();
+        const TransportClockRuntimeSnapshot clock = transportClockRuntime().snapshot();
+        UI::showToast(source == TransportClockSource::SeqtrakExternal &&
+                              !clock.externalFollowEnabled
+                          ? "SEQ MASTER / FOLLOW OFF"
+                          : transportClockSourceName(source),
+                      1000);
         return true;
     }
 
@@ -379,8 +390,7 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         event.scancode == GROOVEPUTER_DOWN) {
         const int deltaBpm = event.scancode == GROOVEPUTER_UP ? 1 : -1;
         if (state.tempoMode == SmfTempoMode::Project) {
-            if (transportClockRuntime().source() ==
-                TransportClockSource::SeqtrakExternal) {
+            if (transportClockRuntime().source() == TransportClockSource::SeqtrakExternal) {
                 UI::showToast("SEQ MASTER BPM", 700);
             } else {
                 withAudioGuard([this, deltaBpm]() {
@@ -400,8 +410,7 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     }
     if (event.key == 'o' || event.key == 'O') {
         if (state.tempoMode == SmfTempoMode::Project) {
-            UI::showToast(transportClockRuntime().source() ==
-                                  TransportClockSource::SeqtrakExternal
+            UI::showToast(transportClockRuntime().source() == TransportClockSource::SeqtrakExternal
                               ? "SEQ MASTER uses SEQTRAK BPM"
                               : "GP MASTER uses GroovePuter BPM",
                           900);
@@ -418,8 +427,7 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         if (!modeQueued) {
             UI::showToast("MIDI PLAYER BUSY", 900);
         } else if (toProject) {
-            if (transportClockRuntime().source() ==
-                TransportClockSource::SeqtrakExternal) {
+            if (transportClockRuntime().source() == TransportClockSource::SeqtrakExternal) {
                 UI::showToast("SEQ MASTER: SPACE ARM / SEQ PLAY", 1000);
             } else {
                 UI::showToast(miniAcid_.isPlaying()
@@ -439,11 +447,9 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     }
     if (event.key == 'r' || event.key == 'R') {
         const bool queued = player_->restart(SmfPlayerRestartOrigin::MusicStart);
-        const bool followSeqtrak = transportClockRuntime().source() ==
-            TransportClockSource::SeqtrakExternal;
+        const bool followSeqtrak = transportClockRuntime().source() == TransportClockSource::SeqtrakExternal;
         UI::showToast(queued
-                          ? (state.tempoMode == SmfTempoMode::Project &&
-                                     !miniAcid_.isPlaying()
+                          ? (state.tempoMode == SmfTempoMode::Project && !miniAcid_.isPlaying()
                                  ? (followSeqtrak
                                         ? "MIDI RESTART ARMED - SEQ PLAY"
                                         : "MIDI RESTART ARMED - G START")
@@ -479,8 +485,7 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
 }
 
 void SmfPlayerPage::drawHeader(IGfx& gfx) {
-    UI::drawStandardHeader(
-        gfx, miniAcid_, performanceVisible_ ? "MIDI PERF" : "MIDI PLAYER");
+    UI::drawStandardHeader(gfx, miniAcid_, performanceVisible_ ? "MIDI PERF" : "MIDI PLAYER");
 }
 
 void SmfPlayerPage::drawContent(IGfx& gfx) {
@@ -523,8 +528,7 @@ void SmfPlayerPage::drawBrowser(IGfx& gfx) {
         char line[42];
         const bool isDir = isDirEntry(index);
         std::snprintf(line, sizeof(line), "%c%s%.32s",
-                      selected ? '>' : ' ', isDir ? "/" : " ",
-                      displayName(index).c_str());
+                      selected ? '>' : ' ', isDir ? "/" : " ", displayName(index).c_str());
         gfx.drawText(Layout::COL_1 + 2, y, line);
     }
 }
@@ -554,8 +558,7 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
                                     : MusicVisuals::secondaryForStyle()) + 3;
 
     char chip[20];
-    std::snprintf(chip, sizeof(chip), "+%uV",
-                  static_cast<unsigned>(state.velocityBoost));
+    std::snprintf(chip, sizeof(chip), "+%uV", static_cast<unsigned>(state.velocityBoost));
     MusicVisuals::drawChip(gfx, x, chipY, chip, state.velocityBoost > 0);
 
     gfx.setTextColor(COLOR_TEXT);
@@ -582,8 +585,7 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
                                   total,
                                   stateColor);
 
-    const unsigned percent = static_cast<unsigned>(
-        (static_cast<uint64_t>(current) * 100u) / total);
+    const unsigned percent = static_cast<unsigned>((static_cast<uint64_t>(current) * 100u) / total);
     gfx.setTextColor(COLOR_LABEL);
     std::snprintf(line, sizeof(line), "%lu / %lu BARS    %u%%",
                   static_cast<unsigned long>(state.bar),
@@ -592,12 +594,15 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(4), line);
 
     if (state.tempoMode == SmfTempoMode::Project) {
-        const TransportClockRuntimeSnapshot clock =
-            transportClockRuntime().snapshot();
+        const TransportClockRuntimeSnapshot clock = transportClockRuntime().snapshot();
         if (clock.source == TransportClockSource::SeqtrakExternal) {
-            std::snprintf(line, sizeof(line), "SEQ MASTER: %s %5.1f BPM",
-                          externalClockLockStateName(clock.externalState),
-                          clock.externalTempoValid ? clock.externalBpm() : 0.0);
+            if (!clock.externalFollowEnabled) {
+                std::snprintf(line, sizeof(line), "SEQ MASTER: FOLLOW OFF");
+            } else {
+                std::snprintf(line, sizeof(line), "SEQ MASTER: %s %5.1f BPM",
+                              externalClockLockStateName(clock.externalState),
+                              clock.externalTempoValid ? clock.externalBpm() : 0.0);
+            }
         } else {
             std::snprintf(line, sizeof(line), "GP MASTER: %s > USB CLOCK",
                           miniAcid_.isPlaying() ? "RUN" : "STOP");
@@ -613,7 +618,9 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
 
     gfx.setTextColor(COLOR_TEXT);
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(6),
-                 "G GROOVE   SPACE MIDI   R RESTART");
+                 transportClockRuntime().source() == TransportClockSource::SeqtrakExternal
+                     ? "G FOLLOW   SPACE MIDI   R RESTART"
+                     : "G GROOVE   SPACE MIDI   R RESTART");
 
     gfx.setTextColor(error ? COLOR_DANGER : COLOR_LABEL);
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), state.message);
@@ -674,21 +681,27 @@ void SmfPlayerPage::drawPerformance(IGfx& gfx) {
 }
 
 void SmfPlayerPage::drawFooter(IGfx& gfx) {
+    const bool seqMaster = transportClockRuntime().source() == TransportClockSource::SeqtrakExternal;
     if (browserVisible_) {
-        UI::drawStandardFooter(gfx, "UP/DN Select  Enter Load", "C Master  Space MIDI  T Tempo");
+        UI::drawStandardFooter(gfx, "UP/DN Select  Enter Load",
+                               seqMaster ? "C Master  G Follow  T Tempo"
+                                         : "C Master  Space MIDI  T Tempo");
     } else if (performanceVisible_) {
-        UI::drawStandardFooter(gfx, "D Player  B Files", "C Master  Space MIDI  T Tempo");
+        UI::drawStandardFooter(gfx, "D Player  B Files",
+                               seqMaster ? "C Master  G Follow  T Tempo"
+                                         : "C Master  Space MIDI  T Tempo");
     } else {
-        UI::drawStandardFooter(gfx, "Space MIDI  C Master  R Restart", "B Files  T Tempo  V Vel  X Panic");
+        UI::drawStandardFooter(gfx,
+                               seqMaster ? "Space MIDI  G Follow  C Master"
+                                         : "Space MIDI  C Master  R Restart",
+                               "B Files  T Tempo  V Vel  X Panic");
     }
 }
 
 void SmfPlayerPage::ensureSelectionVisible(int visibleRows) {
     if (visibleRows < 1) visibleRows = 1;
     if (selection_ < scroll_) scroll_ = selection_;
-    if (selection_ >= scroll_ + visibleRows) {
-        scroll_ = selection_ - visibleRows + 1;
-    }
+    if (selection_ >= scroll_ + visibleRows) scroll_ = selection_ - visibleRows + 1;
     const int maxScroll = std::max(0, entryCount() - visibleRows);
     if (scroll_ > maxScroll) scroll_ = maxScroll;
     if (scroll_ < 0) scroll_ = 0;
