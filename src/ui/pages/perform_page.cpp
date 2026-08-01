@@ -2,6 +2,8 @@
 
 #include <cstdio>
 
+#include "../components/music_visuals.h"
+
 PerformPage::PerformPage(IGfx& gfx,
                          MiniAcid& miniAcid,
                          PerformanceKeyboard& keyboard)
@@ -83,76 +85,90 @@ void PerformPage::drawContent(IGfx& gfx) {
     LayoutManager::clearContent(gfx);
 
     const int active = keyboard_.activeNote();
-    char line[48];
+    const int velocity = keyboard_.activeVelocity();
+    const bool drums = keyboard_.target() == MusicalEventTarget::Drums;
+    const bool noteMode = keyboard_.noteModeEnabled();
+    char line[64];
 
-    gfx.setTextColor(COLOR_ACCENT);
-    std::snprintf(line, sizeof(line), "NOTE MODE: %s",
-                  keyboard_.noteModeEnabled() ? "ON" : "OFF");
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(0), line);
+    // Primary stage-readable layer: three stable badges that remain legible in
+    // photos/video without turning the whole screen into large typography.
+    int x = Layout::COL_1;
+    const int chipY = LayoutManager::lineY(0);
+    x += MusicVisuals::drawChip(gfx, x, chipY,
+                                noteMode ? "NOTE ON" : "NOTE OFF",
+                                noteMode,
+                                noteMode ? MusicVisuals::accentForStyle() : COLOR_DANGER) + 3;
 
-    gfx.setTextColor(COLOR_TEXT);
-    if (keyboard_.target() == MusicalEventTarget::Drums) {
-        std::snprintf(line, sizeof(line), "TARGET:DRUMS  MIDI CH:1-7");
+    x += MusicVisuals::drawChip(gfx, x, chipY, keyboard_.targetName(), true) + 3;
+
+    char channel[12];
+    if (drums) {
+        std::snprintf(channel, sizeof(channel), "CH1-7");
     } else {
-        std::snprintf(line, sizeof(line), "TARGET:%s  MIDI CH:%u",
-                      keyboard_.targetName(),
+        std::snprintf(channel, sizeof(channel), "CH%u",
                       static_cast<unsigned>(keyboard_.targetMidiChannel()));
+    }
+    MusicVisuals::drawChip(gfx, x, chipY, channel, false);
+
+    // Secondary information density stays compact/dim: useful at arm's length,
+    // but it does not compete with target/piano/pads when filmed from farther away.
+    gfx.setTextColor(COLOR_LABEL);
+    if (drums) {
+        std::snprintf(line, sizeof(line), "NATIVE 7-LANE  HELD:%u  VEL:%d",
+                      static_cast<unsigned>(keyboard_.heldCount()), velocity);
+    } else {
+        std::snprintf(line, sizeof(line), "ROOT:C  %-8s OCT:%+d  HELD:%u",
+                      keyboard_.scaleName(),
+                      static_cast<int>(keyboard_.octaveShift()),
+                      static_cast<unsigned>(keyboard_.heldCount()));
     }
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(1), line);
 
-    if (!keyboard_.noteModeEnabled()) {
-        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2),
-                     "LEGACY KEY COMMANDS ACTIVE");
-    } else if (miniAcid_.isPlaying()) {
-        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2),
-                     "PATTERN PLAYER BLOCKS LIVE");
-    } else if (keyboard_.target() == MusicalEventTarget::Drums) {
-        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2),
-                     "A-J:K/S/C/H1/H2/P1/P2");
-    } else if (keyboard_.target() == MusicalEventTarget::Dx) {
-        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2),
-                     "SEQTRAK DX - USB MIDI ONLY");
+    const int visualY = LayoutManager::lineY(2);
+    const int visualH = LayoutManager::lineY(6) - visualY - 2;
+    const int visualW = Layout::CONTENT.w - 8;
+    if (drums) {
+        MusicVisuals::drawDrumPads(gfx, Layout::COL_1, visualY,
+                                   visualW, visualH, keyboard_);
     } else {
-        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2),
-                     "LIVE INTERNAL + USB MIDI");
+        MusicVisuals::drawPiano(gfx, Layout::COL_1, visualY,
+                                visualW, visualH, keyboard_);
     }
 
-    if (keyboard_.target() == MusicalEventTarget::Drums) {
-        std::snprintf(line, sizeof(line), "PAD NOTE:60  7 NATIVE LANES");
-    } else {
-        std::snprintf(line, sizeof(line), "ROOT:C SCALE:%s OCT:%+d",
-                      keyboard_.scaleName(),
-                      static_cast<int>(keyboard_.octaveShift()));
-    }
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(3), line);
-
-    std::snprintf(line, sizeof(line), "HELD:%u",
-                  static_cast<unsigned>(keyboard_.heldCount()));
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(4), line);
-
-    if (keyboard_.target() == MusicalEventTarget::Drums) {
-        std::snprintf(line, sizeof(line), "A1 S2 D3 F4 G5 H6 J7");
-    } else if (active >= 0) {
-        const int octave = active / 12 - 1;
-        std::snprintf(line, sizeof(line), "NOTE:%s%d MIDI:%d",
-                      noteName(active), octave, active);
-    } else {
-        std::snprintf(line, sizeof(line), "NOTE:--");
-    }
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(5), line);
-
+    // Micro-HUD: keep operational detail available without shrinking the main
+    // instrument geometry. These rows intentionally use normal 5x7 UI text.
     gfx.setTextColor(COLOR_LABEL);
-    if (keyboard_.target() == MusicalEventTarget::Drums) {
-        gfx.drawText(Layout::COL_1, LayoutManager::lineY(6),
-                     "CH1 KICK ... CH7 PERC2");
+    if (!noteMode) {
+        std::snprintf(line, sizeof(line), "LEGACY KEYS | N ENABLE NOTE MODE");
+    } else if (miniAcid_.isPlaying()) {
+        std::snprintf(line, sizeof(line), "INPUT LOCK | PATTERN PLAYER OWNS LIVE");
+    } else if (drums) {
+        std::snprintf(line, sizeof(line), "USB CH1-7 | A/S/D/F/G/H/J NATIVE PADS");
+    } else if (keyboard_.target() == MusicalEventTarget::Dx) {
+        std::snprintf(line, sizeof(line), "USB ONLY | ASDF BASE | QWERTY +12");
     } else {
-        gfx.drawText(Layout::COL_1, LayoutManager::lineY(6),
-                     "QWERTY:+12  ASDF:BASE");
+        std::snprintf(line, sizeof(line), "INT+USB | ASDF BASE | QWERTY +12");
     }
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(6), line);
+
+    gfx.setTextColor(active >= 0 ? MusicVisuals::accentForStyle() : COLOR_LABEL);
+    if (!drums && active >= 0) {
+        const int octave = active / 12 - 1;
+        std::snprintf(line, sizeof(line), "NOTE %s%d | MIDI:%d | VEL:%d | H:%u",
+                      noteName(active), octave, active, velocity,
+                      static_cast<unsigned>(keyboard_.heldCount()));
+    } else if (drums && keyboard_.heldCount() > 0) {
+        std::snprintf(line, sizeof(line), "PAD ACTIVE | N60 | VEL:%d | LANES:7", velocity);
+    } else if (drums) {
+        std::snprintf(line, sizeof(line), "READY | NOTE60 | CH1..7 | LANES:7");
+    } else {
+        std::snprintf(line, sizeof(line), "READY | RANGE:C0-B6 | OCT:-2..+2");
+    }
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), line);
 }
 
 void PerformPage::drawFooter(IGfx& gfx) {
     UI::drawStandardFooter(gfx,
-                           "\\:A/B/DX/DR N:Note",
-                           "-/=:Oct X:Panic Fn+Tab:Mode");
+                           "\\ Target  N Note  ,/. Scale",
+                           "-/+ Oct  X Panic");
 }

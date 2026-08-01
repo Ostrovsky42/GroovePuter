@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cstdio>
 
+#include "../components/music_visuals.h"
 #include "src/dsp/miniacid_engine.h"
 
 #ifdef ARDUINO
@@ -133,7 +134,7 @@ bool SmfPlayerPage::navigateUpDir() {
     } else {
         currentPath_ = currentPath_.substr(0, lastSlash);
     }
-    if (currentPath_.size() < 5) currentPath_ = "/midi";  // safety
+    if (currentPath_.size() < 5) currentPath_ = "/midi";
     refreshFiles();
     selection_ = 0;
     scroll_ = 0;
@@ -149,7 +150,7 @@ int SmfPlayerPage::entryCount() const {
 
 bool SmfPlayerPage::isDirEntry(int index) const {
     if (hasParentEntry()) {
-        if (index == 0) return true;  // ".." entry
+        if (index == 0) return true;
         index--;
     }
     return index >= 0 && index < static_cast<int>(dirs_.size());
@@ -193,9 +194,6 @@ bool SmfPlayerPage::playSelected() {
         return true;
     }
 
-    // Cardputer UI events are already executed under AudioMutationScope. Close
-    // the accepted GroovePuter transport lifecycle before RAW SMF playback so
-    // its F8 clock cannot run at an unrelated BPM beside the file timeline.
     if (miniAcid_.isPlaying()) miniAcid_.stop();
 
     std::string path = currentPath_ + "/" + files_[fileIdx];
@@ -312,19 +310,19 @@ void SmfPlayerPage::drawContent(IGfx& gfx) {
 }
 
 void SmfPlayerPage::drawBrowser(IGfx& gfx) {
-    gfx.setTextColor(COLOR_ACCENT);
-    char header[42];
-    std::snprintf(header, sizeof(header), "PLAY FROM %.30s", currentPath_.c_str());
+    char header[48];
+    std::snprintf(header, sizeof(header), "MIDI LIBRARY  %.24s", currentPath_.c_str());
+    gfx.setTextColor(MusicVisuals::accentForStyle());
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(0), header);
 
     const int total = entryCount();
     if (total == 0) {
         gfx.setTextColor(COLOR_LABEL);
 #ifdef ARDUINO
-        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), "No .mid files found");
-        gfx.drawText(Layout::COL_1, LayoutManager::lineY(3), "Copy files to /midi");
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), "NO MIDI FILES");
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(3), "COPY .MID TO /MIDI");
 #else
-        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), "SD browser: Cardputer only");
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), "SD BROWSER: CARDPUTER ONLY");
 #endif
         return;
     }
@@ -338,15 +336,15 @@ void SmfPlayerPage::drawBrowser(IGfx& gfx) {
         if (selected) {
             gfx.fillRect(Layout::CONTENT.x + 2, y - 1,
                          Layout::CONTENT.w - 4, gfx.fontHeight() + 2,
-                         COLOR_PANEL);
+                         MusicVisuals::accentForStyle());
         }
-        gfx.setTextColor(selected ? COLOR_ACCENT : COLOR_TEXT);
+        gfx.setTextColor(selected ? COLOR_BG : COLOR_TEXT);
         char line[42];
         const bool isDir = isDirEntry(index);
         std::snprintf(line, sizeof(line), "%c%s%.32s",
                       selected ? '>' : ' ', isDir ? "/" : " ",
                       displayName(index).c_str());
-        gfx.drawText(Layout::COL_1, y, line);
+        gfx.drawText(Layout::COL_1 + 2, y, line);
     }
 }
 
@@ -354,52 +352,70 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
     player_ = smfPlayerService();
     const SmfPlayerSnapshot state = player_ ? player_->snapshot() : SmfPlayerSnapshot{};
 
-    char line[64];
-    gfx.setTextColor(state.state == SmfPlayerState::Error ? COLOR_DANGER : COLOR_ACCENT);
-    std::snprintf(line, sizeof(line), "%s", smfPlayerStateName(state.state));
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(0), line);
+    const bool playing = state.state == SmfPlayerState::Playing;
+    const bool error = state.state == SmfPlayerState::Error;
+    const IGfxColor stateColor = error ? COLOR_DANGER
+                                      : (playing ? MusicVisuals::accentForStyle() : COLOR_WARN);
+
+    int x = Layout::COL_1;
+    const int chipY = LayoutManager::lineY(0);
+    x += MusicVisuals::drawChip(gfx, x, chipY, smfPlayerStateName(state.state), true, stateColor) + 3;
+    x += MusicVisuals::drawChip(gfx, x, chipY,
+                                state.rawRouting ? "RAW" : "SEQTRAK", true,
+                                MusicVisuals::secondaryForStyle()) + 3;
+
+    char chip[20];
+    std::snprintf(chip, sizeof(chip), "+%u VEL",
+                  static_cast<unsigned>(state.velocityBoost));
+    MusicVisuals::drawChip(gfx, x, chipY, chip, state.velocityBoost > 0);
 
     gfx.setTextColor(COLOR_TEXT);
+    char line[64];
     std::snprintf(line, sizeof(line), "%.38s", state.filename[0] ? state.filename : "--");
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(1), line);
 
-    std::snprintf(line, sizeof(line), "BAR %lu : BEAT %u / %lu",
+    gfx.setTextColor(MusicVisuals::accentForStyle());
+    std::snprintf(line, sizeof(line), "BAR %lu.%u     %u.%u BPM",
                   static_cast<unsigned long>(state.bar),
                   static_cast<unsigned>(state.beat),
-                  static_cast<unsigned long>(state.totalBars));
+                  static_cast<unsigned>(state.bpmX10 / 10),
+                  static_cast<unsigned>(state.bpmX10 % 10));
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), line);
-
-    if (state.tempoScalePermille == 1000u) {
-        std::snprintf(line, sizeof(line), "TEMPO %u.%u BPM  ORIGINAL",
-                      static_cast<unsigned>(state.bpmX10 / 10),
-                      static_cast<unsigned>(state.bpmX10 % 10));
-    } else {
-        std::snprintf(line, sizeof(line), "TEMPO %u.%u  ORIG %u.%u BPM",
-                      static_cast<unsigned>(state.bpmX10 / 10),
-                      static_cast<unsigned>(state.bpmX10 % 10),
-                      static_cast<unsigned>(state.originalBpmX10 / 10),
-                      static_cast<unsigned>(state.originalBpmX10 % 10));
-    }
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(3), line);
-
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(4),
-                 state.rawRouting ? "ROUTE RAW  CH1..16" : "ROUTE SEQTRAK GM MAP");
 
     const uint32_t total = state.endTick > 0 ? state.endTick : 1;
     const uint32_t current = std::min(state.currentTick, total);
-    const int barW = Layout::CONTENT.w - 12;
-    const int filled = static_cast<int>(
-        (static_cast<uint64_t>(current) * barW) / total);
-    const int y = LayoutManager::lineY(5) + 2;
-    gfx.drawRect(Layout::COL_1, y, barW, 7, COLOR_LABEL);
-    if (filled > 0) gfx.fillRect(Layout::COL_1 + 1, y + 1, filled - 1, 5, COLOR_ACCENT);
+    MusicVisuals::drawProgressBar(gfx,
+                                  Layout::COL_1,
+                                  LayoutManager::lineY(3) + 1,
+                                  Layout::CONTENT.w - 12,
+                                  9,
+                                  current,
+                                  total,
+                                  stateColor);
+
+    const unsigned percent = static_cast<unsigned>(
+        (static_cast<uint64_t>(current) * 100u) / total);
+    gfx.setTextColor(COLOR_LABEL);
+    std::snprintf(line, sizeof(line), "%lu / %lu BARS    %u%%",
+                  static_cast<unsigned long>(state.bar),
+                  static_cast<unsigned long>(state.totalBars),
+                  percent);
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(4), line);
+
+    if (state.tempoScalePermille == 1000u) {
+        std::snprintf(line, sizeof(line), "TEMPO ORIGINAL   UP/DN ADJUST");
+    } else {
+        std::snprintf(line, sizeof(line), "ORIGINAL %u.%u BPM   O RESET",
+                      static_cast<unsigned>(state.originalBpmX10 / 10),
+                      static_cast<unsigned>(state.originalBpmX10 % 10));
+    }
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(5), line);
 
     gfx.setTextColor(COLOR_TEXT);
-    std::snprintf(line, sizeof(line), "VELOCITY +%u  UP/DN BPM  O ORIGINAL",
-                  static_cast<unsigned>(state.velocityBoost));
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(6), line);
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(6),
+                 "SPACE PLAY/PAUSE   R RESTART   < > SEEK");
 
-    gfx.setTextColor(COLOR_LABEL);
+    gfx.setTextColor(error ? COLOR_DANGER : COLOR_LABEL);
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), state.message);
 }
 
@@ -458,11 +474,11 @@ void SmfPlayerPage::drawPerformance(IGfx& gfx) {
 
 void SmfPlayerPage::drawFooter(IGfx& gfx) {
     if (browserVisible_) {
-        UI::drawStandardFooter(gfx, "Up/Dn Select Enter Open", "Bksp Up  M Route  [ ] Pages");
+        UI::drawStandardFooter(gfx, "UP/DN Select  Enter Play", "Bksp Up  M Route");
     } else if (performanceVisible_) {
-        UI::drawStandardFooter(gfx, "D Player Up/Dn BPM", "V Vel O Orig B Files");
+        UI::drawStandardFooter(gfx, "D Player  B Files", "Space Play  R Restart");
     } else {
-        UI::drawStandardFooter(gfx, "Up/Dn BPM V Vel O Orig", "Spc Play R Restart");
+        UI::drawStandardFooter(gfx, "Up/Dn BPM  V Vel  O Orig", "B Files  M Route  X Panic");
     }
 }
 
