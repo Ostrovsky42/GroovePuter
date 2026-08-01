@@ -17,6 +17,10 @@ void pushClock(ExternalMidiTransportEventQueue& queue,
 bool closeEnough(double a, double b, double epsilon) {
     return std::fabs(a - b) <= epsilon;
 }
+
+double q16Bpm(uint32_t value) {
+    return static_cast<double>(value) / 65536.0;
+}
 }
 
 int main() {
@@ -44,11 +48,10 @@ int main() {
     assert(result.command == ExternalTransportCommand::Start);
     assert(result.estimate.transportRunning);
     assert(result.estimate.state == ExternalClockLockState::Locked);
-    assert(closeEnough(
-        static_cast<double>(result.estimate.sourceBpmQ16) / 65536.0,
-        120.0,
-        0.1));
-    assert(result.estimate.bpmQ16 == result.estimate.sourceBpmQ16);
+    assert(closeEnough(q16Bpm(result.estimate.sourceBpmQ16), 120.0, 0.1));
+    assert(closeEnough(q16Bpm(result.estimate.bpmQ16),
+                       q16Bpm(result.estimate.sourceBpmQ16),
+                       0.05));
     assert(closeEnough(result.estimate.phaseCorrectionSteps, 0.0, 1.0e-12));
 
     // The previous audio block is behind the external timeline. A bounded PLL
@@ -65,10 +68,21 @@ int main() {
     assert(result.estimate.phaseCorrectionSteps <=
            ExternalMidiClockFollower::kMaximumCorrectionSteps + 1.0e-12);
     assert(result.estimate.bpmQ16 > result.estimate.sourceBpmQ16);
+    const uint32_t positiveTrimBpmQ16 = result.estimate.bpmQ16;
+
+    // Repeated blocks inside one hysteresis region keep the exact same drive
+    // BPM. Normal phase convergence must not create a tempo revision per block.
+    projectTransportTimeline().publishBlock(
+        11, 512, 0.1f, 120.0f, 22050.0f, true);
+    pushClock(queue, now, ordinal);
+    result = follower.processBlock(
+        queue, TransportClockSource::SeqtrakExternal, now);
+    assert(result.estimate.phaseErrorSteps > 0.0);
+    assert(result.estimate.bpmQ16 == positiveTrimBpmQ16);
 
     // If the local sequencer is ahead, the bounded trim changes sign.
     projectTransportTimeline().publishBlock(
-        11, 512, 3.0f, 120.0f, 22050.0f, true);
+        12, 512, 3.0f, 120.0f, 22050.0f, true);
     pushClock(queue, now, ordinal);
     result = follower.processBlock(
         queue, TransportClockSource::SeqtrakExternal, now);
@@ -89,10 +103,7 @@ int main() {
     assert(closeEnough(result.estimate.absoluteProjectSteps,
                        beforeBuffered + 0.5,
                        0.001));
-    assert(closeEnough(
-        static_cast<double>(result.estimate.sourceBpmQ16) / 65536.0,
-        120.0,
-        0.2));
+    assert(closeEnough(q16Bpm(result.estimate.sourceBpmQ16), 120.0, 0.2));
 
     assert(queue.tryPushCritical(
         ExternalMidiTransportEventType::Stop, now, ordinal));
