@@ -55,7 +55,12 @@ constexpr uint32_t kClockStaleThresholdUs = 5000;
 constexpr uint32_t kSmfStaleNoteOnThresholdUs = kBlockDurationUs;
 constexpr TickType_t kSmfRetryDelay = pdMS_TO_TICKS(1);
 constexpr uint32_t kSmfCleanupRetryDelayMs = 10;
-constexpr uint8_t kSmfCleanupAttemptLimit = 8;
+// The TinyUSB MIDI TX FIFO holds only CFG_TUD_MIDI_TX_BUFSIZE bytes (16 event
+// packets), so a chord or a catch-up burst can fill it until the host polls the
+// bulk IN endpoint again. Declaring the endpoint dead after 80 ms turned every
+// such burst into a stopped transport; a receiver that never drains still gets
+// surfaced, just after a window that real backpressure can survive.
+constexpr uint8_t kSmfCleanupAttemptLimit = 32;
 constexpr std::size_t kControlDrainBudget = 8;
 
 class MidiBlockAnchorClock {
@@ -133,6 +138,9 @@ struct MidiDispatchDiagnostics {
     uint32_t smfTransportEpochDrops{0};
     uint32_t smfCleanupRetries{0};
     uint32_t smfTransportAborts{0};
+    // Longest continuous stretch where the USB MIDI TX FIFO refused writes and
+    // then recovered. Separates a short burst from a host that stopped reading.
+    uint32_t smfMaxSendBlockUs{0};
 };
 
 // Construction of USBMIDI registers its interface descriptor before Arduino
@@ -157,9 +165,11 @@ MidiDispatchDiagnostics g_diagnostics;
 TaskHandle_t g_dispatchTaskHandle = nullptr;
 bool g_registered = false;
 bool g_smfCleanupPending = false;
-bool g_smfCleanupMustAbort = false;
 uint32_t g_nextSmfCleanupAttemptMs = 0;
 uint8_t g_smfCleanupAttempts = 0;
+// Timestamp of the first failed SMF write of the current stall, used to report
+// how long the endpoint actually refused data.
+uint32_t g_smfSendBlockStartedUs = 0;
 
 void notifyDispatcher() {
     if (g_dispatchTaskHandle != nullptr) {
@@ -177,26 +187,47 @@ public:
 
 QueuedUsbMidiSink g_queueSink;
 
-void beginSmfCleanup(bool transportFailure = false) {
+// Cleanup is a recovery step, not a verdict: a completed all-notes-off means the
+// wire is consistent again and playback may continue. Only cleanup that cannot
+// complete within kSmfCleanupAttemptLimit reports a transport failure.
+void beginSmfCleanup() {
     if (!g_smfCleanupPending) {
         g_nextSmfCleanupAttemptMs = 0;
         g_smfCleanupAttempts = 0;
-        g_smfCleanupMustAbort = transportFailure;
-    } else if (transportFailure) {
-        g_smfCleanupMustAbort = true;
     }
     g_smfCleanupPending = true;
 }
 
+void recordRecoveredSmfSendBlock() {
+    if (g_smfSendBlockStartedUs == 0) return;
+    const uint32_t blockedUs = micros() - g_smfSendBlockStartedUs;
+    if (blockedUs > g_diagnostics.smfMaxSendBlockUs) {
+        g_diagnostics.smfMaxSendBlockUs = blockedUs;
+    }
+    g_smfSendBlockStartedUs = 0;
+}
+
 void reportSmfTransportFailure() {
+    const uint8_t attempts = g_smfCleanupAttempts;
+    const uint32_t blockedUs = g_smfSendBlockStartedUs != 0
+        ? micros() - g_smfSendBlockStartedUs
+        : 0;
     g_output.abandonAllSmfNotes();
     g_smfQueue->reportTransportFailure();
     g_smfCleanupPending = false;
-    g_smfCleanupMustAbort = false;
     g_nextSmfCleanupAttemptMs = 0;
     g_smfCleanupAttempts = 0;
+    g_smfSendBlockStartedUs = 0;
     ++g_diagnostics.smfTransportAborts;
-    Serial.println("[SMF-ERROR] USB MIDI endpoint blocked; playback stopped");
+    // mounted=1 means the host has the interface configured but is not draining
+    // the bulk IN endpoint (no application reading the port, or a suspended
+    // device). mounted=0 is a real disconnect.
+    Serial.printf(
+        "[SMF-ERROR] USB MIDI endpoint blocked; playback stopped "
+        "mounted=%u blockedUs=%u attempts=%u\n",
+        static_cast<unsigned>(g_transport.mounted() ? 1 : 0),
+        static_cast<unsigned>(blockedUs),
+        static_cast<unsigned>(attempts));
 }
 
 MusicalEvent panicEvent(MusicalEventSource source,
@@ -279,12 +310,10 @@ void dispatchSmfPanic() {
         return;
     }
     if (g_output.releaseAllSmfNotes()) {
-        if (g_smfCleanupMustAbort) {
-            reportSmfTransportFailure();
-            return;
-        }
+        // Every SMF-owned note is released and the wire is consistent again.
+        // Backpressure that recovers is not a transport failure.
+        recordRecoveredSmfSendBlock();
         g_smfCleanupPending = false;
-        g_smfCleanupMustAbort = false;
         g_nextSmfCleanupAttemptMs = 0;
         g_smfCleanupAttempts = 0;
     } else {
@@ -456,7 +485,7 @@ void logDiagnosticsIfDue() {
         "drumGate=%u/%u/%u active=%u "
         "smfSent=%u smfStale=%u smfPanic=%u smfRetry=%u smfDrop=%u "
         "smfLateDrop=%u smfLateSent=%u smfMaxLateOnUs=%u smfLateOff=%u "
-        "smfEpochDrop=%u smfCleanRetry=%u smfAbort=%u "
+        "smfEpochDrop=%u smfCleanRetry=%u smfAbort=%u smfMaxBlockUs=%u "
         "clockSent=%u clockLate=%u clockDropped=%u start=%u stop=%u "
         "transportFail=%u late=%u maxLateUs=%u stale=%u/%u badFrame=%u "
         "drop=%u/%u transportDrop=%u overflow=%u recovery=%u "
@@ -483,6 +512,7 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(g_diagnostics.smfTransportEpochDrops),
         static_cast<unsigned>(g_diagnostics.smfCleanupRetries),
         static_cast<unsigned>(g_diagnostics.smfTransportAborts),
+        static_cast<unsigned>(g_diagnostics.smfMaxSendBlockUs),
         static_cast<unsigned>(g_diagnostics.clockSent),
         static_cast<unsigned>(g_diagnostics.clockLate),
         static_cast<unsigned>(g_diagnostics.clockDropped),
@@ -846,6 +876,7 @@ void midiDispatchTask(void*) {
                 clearPendingSmf();
             } else if (dispatchSmfEvent(pendingSmf)) {
                 ++g_diagnostics.smfSent;
+                recordRecoveredSmfSendBlock();
                 if (pendingSmfLatenessUs > 0) {
                     if (pendingSmf.type == ScheduledSmfMidiEventType::NoteOn) {
                         ++g_diagnostics.smfLateNoteOnSent;
@@ -862,16 +893,23 @@ void midiDispatchTask(void*) {
             } else {
                 ++g_diagnostics.smfSendRetries;
                 if (smfFailedAttempts < UINT8_MAX) ++smfFailedAttempts;
+                if (g_smfSendBlockStartedUs == 0) {
+                    g_smfSendBlockStartedUs = micros();
+                }
                 const SmfSendFailureAction action = smfSendFailureAction(
                     pendingSmf, smfFailedAttempts);
                 if (action == SmfSendFailureAction::DropNoteOn) {
+                    // The write never reached the wire, so nothing is owned and
+                    // there is nothing to clean up. Shedding the NoteOn is the
+                    // whole point of this action; escalating to a transport
+                    // failure here stopped playback on any burst that briefly
+                    // filled the TX FIFO.
                     ++g_diagnostics.smfSendDrops;
-                    beginSmfCleanup(true);
                     clearPendingSmf();
                 } else if (action == SmfSendFailureAction::BeginCleanup) {
                     // UsbMidiOutput retains ownership after a failed NoteOff.
                     // Move recovery to the paced all-notes-off path.
-                    beginSmfCleanup(true);
+                    beginSmfCleanup();
                     clearPendingSmf();
                 }
                 // A pending task notification must not turn USB backpressure
