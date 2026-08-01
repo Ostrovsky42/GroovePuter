@@ -20,6 +20,8 @@ public:
 private:
     void refreshFiles();
     bool playSelected();
+    bool togglePlayerTransport();
+    void toggleGrooveTransport();
     void drawBrowser(IGfx& gfx);
     void drawNowPlaying(IGfx& gfx);
     void drawPerformance(IGfx& gfx);

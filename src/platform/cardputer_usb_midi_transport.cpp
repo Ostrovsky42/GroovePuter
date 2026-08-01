@@ -28,9 +28,11 @@
 namespace {
 constexpr uint8_t kCinNoteOff = 0x08;
 constexpr uint8_t kCinNoteOn = 0x09;
+constexpr uint8_t kCinControlChange = 0x0B;
 constexpr uint8_t kCinSingleByte = 0x0F;
 constexpr uint8_t kStatusNoteOff = 0x80;
 constexpr uint8_t kStatusNoteOn = 0x90;
+constexpr uint8_t kStatusControlChange = 0xB0;
 constexpr uint8_t kStatusTimingClock = 0xF8;
 constexpr uint8_t kStatusStart = 0xFA;
 constexpr uint8_t kStatusStop = 0xFC;
@@ -894,13 +896,23 @@ bool CardputerUsbMidiTransport::sendNoteOn(uint8_t zeroBasedChannel,
 }
 
 bool CardputerUsbMidiTransport::sendNoteOff(uint8_t zeroBasedChannel,
-                                            uint8_t note,
-                                            uint8_t velocity) {
+                                           uint8_t note,
+                                           uint8_t velocity) {
     return writeChannelPacket(kCinNoteOff,
                               kStatusNoteOff,
                               zeroBasedChannel,
                               note,
                               velocity);
+}
+
+bool CardputerUsbMidiTransport::sendControlChange(uint8_t zeroBasedChannel,
+                                                  uint8_t controller,
+                                                  uint8_t value) {
+    return writeChannelPacket(kCinControlChange,
+                              kStatusControlChange,
+                              zeroBasedChannel,
+                              controller,
+                              value);
 }
 
 bool CardputerUsbMidiTransport::sendTimingClock() {

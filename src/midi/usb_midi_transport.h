@@ -20,6 +20,18 @@ public:
                              uint8_t note,
                              uint8_t velocity) = 0;
 
+    // Optional channel-mode surface used only for terminal recovery. CC123
+    // lets the SMF player clear a remote synth after USB backpressure made the
+    // exact NoteOff ownership state unrecoverable.
+    virtual bool sendControlChange(uint8_t zeroBasedChannel,
+                                   uint8_t controller,
+                                   uint8_t value) {
+        (void)zeroBasedChannel;
+        (void)controller;
+        (void)value;
+        return false;
+    }
+
     // Strict System Real-Time surface: callers cannot use this interface as an
     // arbitrary System Common/SysEx escape hatch. Default false implementations
     // preserve non-transport test doubles while hardware transports opt in.

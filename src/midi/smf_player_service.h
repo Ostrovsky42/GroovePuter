@@ -115,7 +115,7 @@ inline const char* smfPlayerStateName(SmfPlayerState state) {
 inline const char* smfTempoModeName(SmfTempoMode mode) {
     switch (mode) {
         case SmfTempoMode::Original: return "ORIGINAL";
-        case SmfTempoMode::Project: return "PROJECT";
+        case SmfTempoMode::Project: return "GP MASTER";
     }
     return "?";
 }

@@ -277,7 +277,7 @@ void CardputerSmfPlayerService::handleProjectTransport() {
                 eventQueue_.invalidateAndRequestPanic();
                 projectLaunchPlanned_ = false;
             }
-            publishSnapshot(SmfPlayerState::Armed, "WAIT PROJECT PLAY");
+            publishSnapshot(SmfPlayerState::Armed, "WAIT GP MASTER PLAY");
             return;
         }
         if (projectLaunchPlanned_ && transport.bpmX10 != projectBpmX10_) {
@@ -288,7 +288,7 @@ void CardputerSmfPlayerService::handleProjectTransport() {
         if (!projectLaunchPlanned_ && !planProjectLaunch(transport)) return;
         if (projectLaunchPlanned_ &&
             transport.absoluteSteps() + kProjectBoundaryEpsilon >= projectOriginStep_) {
-            publishSnapshot(SmfPlayerState::Playing, "PROJECT / SYNC");
+            publishSnapshot(SmfPlayerState::Playing, "GP MASTER / SYNC");
         }
         return;
     }
@@ -300,7 +300,7 @@ void CardputerSmfPlayerService::handleProjectTransport() {
         eventQueue_.invalidateAndRequestPanic();
         prepareStreamAt(pausedTick_);
         projectLaunchPlanned_ = false;
-        publishSnapshot(SmfPlayerState::Stopped, "PROJECT TRANSPORT STOPPED");
+        publishSnapshot(SmfPlayerState::Stopped, "GP MASTER STOPPED");
         updatePlaybackSnapshot();
         return;
     }
@@ -346,7 +346,7 @@ void CardputerSmfPlayerService::reanchorProjectTempo(
     lastScheduledBlock_ = playbackOriginBlock_;
     projectLaunchPlanned_ = true;
     perfLastLogMs_ = 0;
-    publishSnapshot(SmfPlayerState::Playing, "PROJECT TEMPO SYNC");
+    publishSnapshot(SmfPlayerState::Playing, "GP MASTER TEMPO SYNC");
 }
 
 bool CardputerSmfPlayerService::enqueue(const Command& command) {
@@ -455,6 +455,8 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
         }
         case CommandType::ToggleTempoMode: {
             const SmfPlayerState previous = snapshot().state;
+            const bool wasActive = previous == SmfPlayerState::Playing ||
+                                   previous == SmfPlayerState::Armed;
             const uint32_t resumeTick = loaded_ && previous == SmfPlayerState::Playing
                 ? currentTickFromAudioClock()
                 : pausedTick_;
@@ -474,16 +476,21 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
             snapshot_.tempoMode = tempoMode_;
             snapshot_.launchMode = launchMode_;
             portEXIT_CRITICAL(&snapshotMux_);
-            if (loaded_) {
-                publishSnapshot(SmfPlayerState::Paused,
+            if (loaded_ && wasActive) {
+                // Switching the clock source is one player command. Keeping
+                // resume here avoids a second UI command racing or being lost
+                // when the bounded command queue is busy.
+                startFromTick(resumeTick);
+            } else if (loaded_) {
+                publishSnapshot(previous,
                     tempoMode_ == SmfTempoMode::Project
-                        ? "PROJECT / NEXT BAR"
+                        ? "GP MASTER / NEXT BAR"
                         : "TEMPO ORIGINAL");
                 updatePlaybackSnapshot();
             } else {
                 publishSnapshot(previous,
                     tempoMode_ == SmfTempoMode::Project
-                        ? "PROJECT TEMPO"
+                        ? "GP MASTER TEMPO"
                         : "ORIGINAL TEMPO");
             }
             break;
@@ -491,7 +498,7 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
         case CommandType::AdjustTempoBpm: {
             if (!loaded_ || !timing_.valid()) break;
             if (tempoMode_ == SmfTempoMode::Project) {
-                publishSnapshot(snapshot().state, "PROJECT BPM = GROOVE");
+                publishSnapshot(snapshot().state, "GP MASTER BPM");
                 updatePlaybackSnapshot();
                 break;
             }
@@ -522,7 +529,7 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
         case CommandType::ResetTempo: {
             if (!loaded_ || !timing_.valid()) break;
             if (tempoMode_ == SmfTempoMode::Project) {
-                publishSnapshot(snapshot().state, "PROJECT BPM = GROOVE");
+                publishSnapshot(snapshot().state, "GP MASTER BPM");
                 updatePlaybackSnapshot();
                 break;
             }
@@ -638,7 +645,7 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
 
     publishSnapshot(SmfPlayerState::Stopped,
         tempoMode_ == SmfTempoMode::Project
-            ? "PROJECT / NEXT BAR"
+            ? "GP MASTER / NEXT BAR"
             : (routingMode_ == SmfRoutingMode::Raw
                 ? "RAW / ORIGINAL"
                 : "SEQTRAK / ORIGINAL"));
@@ -827,7 +834,7 @@ void CardputerSmfPlayerService::pauseAtCurrentPosition() {
     prepareStreamAt(pausedTick_);
     publishSnapshot(SmfPlayerState::Paused,
         tempoMode_ == SmfTempoMode::Project
-            ? "PROJECT / PAUSED"
+            ? "GP MASTER / PAUSED"
             : (routingMode_ == SmfRoutingMode::Raw
                 ? "RAW / ORIGINAL"
                 : "SEQTRAK / ORIGINAL"));
@@ -842,7 +849,7 @@ void CardputerSmfPlayerService::stopAndCleanup(bool resetToMusicStart) {
         prepareStreamAt(pausedTick_);
         publishSnapshot(SmfPlayerState::Stopped,
             tempoMode_ == SmfTempoMode::Project
-                ? "PROJECT / STOPPED"
+                ? "GP MASTER / STOPPED"
                 : (routingMode_ == SmfRoutingMode::Raw
                     ? "RAW / ORIGINAL"
                     : "SEQTRAK / ORIGINAL"));

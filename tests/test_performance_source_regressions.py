@@ -181,10 +181,33 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
             "MiniAcidDisplay must construct the MIDI Player page")
     require("event.alt && (event.key == 'p' || event.key == 'P')" in display,
             "Alt+P must provide a deterministic hardware shortcut to MIDI Player")
-    require("player->togglePlayPause()" in display,
-            "Space must own SMF Play/Pause on the player page")
-    require("event.shift" not in display[display.index("// On the MIDI Player page Space"):display.index("if (event.key == ' ')", display.index("// On the MIDI Player page Space") + 1)],
-            "SMF Space handling must not depend on unavailable Cardputer Shift")
+    require("player->togglePlayPause()" not in display,
+            "display-global Space handling must not bypass MIDI Player policy")
+    page_dispatch = display.index("currentPage->handleEvent(event)")
+    global_space = display.index("event.key == ' '", page_dispatch)
+    require(page_dispatch < global_space,
+            "pages must get first refusal before global GroovePuter Space")
+    require("return togglePlayerTransport();" in player_page and
+            "player_->togglePlayPause()" in player_page,
+            "MIDI Player page must own Space Play/Pause")
+    player_space = player_page[player_page.index("bool SmfPlayerPage::togglePlayerTransport()"):
+                               player_page.index("void SmfPlayerPage::toggleGrooveTransport()")]
+    require("miniAcid_.start()" not in player_space and
+            "miniAcid_.stop()" not in player_space,
+            "MIDI Space must not mutate the GroovePuter transport")
+    require("event.key == 'g' || event.key == 'G'" in player_page and
+            '"GROOVE: PLAY"' in player_page and '"GROOVE: STOP"' in player_page,
+            "G must expose separate, explicit GroovePuter transport control")
+    require(player_page.count("miniAcid_.start();") == 1 and
+            player_page.count("miniAcid_.stop();") == 1,
+            "only explicit G control may mutate the GroovePuter transport")
+    require("player_->togglePlayPause()" not in
+            player_page[player_page.index("if (event.key == 't' || event.key == 'T')"):],
+            "tempo source switching must not depend on a second UI command")
+    require('"GP MASTER: %s > USB CLOCK"' in player_page,
+            "PROJECT mode must identify GroovePuter as the outbound clock master")
+    require('queued ? "MIDI PANIC / PAUSE" : "PANIC QUEUE BUSY"' in player_page,
+            "player panic must report command-queue failure")
 
     require('"MIDI LIBRARY  %.24s"' in player_page and
             "currentPath_.c_str()" in player_page and
