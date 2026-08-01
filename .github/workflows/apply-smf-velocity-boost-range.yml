@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - feature/smf-velocity-boost-range
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -147,6 +150,7 @@ inline constexpr uint8_t nextSmfVelocityBoost(uint8_t current) {
         run: bash tests/run_host_tests.sh
 
       - name: Remove patch workflow and commit
+        if: github.event_name == 'push'
         shell: bash
         run: |
           rm -f .github/workflows/apply-smf-velocity-boost-range.yml
