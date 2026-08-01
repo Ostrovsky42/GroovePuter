@@ -8,7 +8,18 @@ int main() {
     assert(applySmfVelocityBoost(0, 16) == 0);
     assert(applySmfVelocityBoost(64, 0) == 64);
     assert(applySmfVelocityBoost(64, 8) == 72);
-    assert(applySmfVelocityBoost(120, 16) == 127);
+    assert(applySmfVelocityBoost(20, 48) == 68);
+    assert(applySmfVelocityBoost(64, 48) == 112);
+    assert(applySmfVelocityBoost(96, 48) == 127);
+    assert(applySmfVelocityBoost(127, 48) == 127);
+
+    uint8_t boost = 0;
+    constexpr uint8_t kExpectedBoosts[] = {8, 16, 24, 32, 48, 0};
+    for (uint8_t expected : kExpectedBoosts) {
+        boost = nextSmfVelocityBoost(boost);
+        assert(boost == expected);
+    }
+    assert(nextSmfVelocityBoost(7) == 0);
 
     const SmfRoutedNote raw = routeSmfNote(SmfRoutingMode::Raw, 9, 36);
     assert(raw.channel == 9 && raw.note == 36);

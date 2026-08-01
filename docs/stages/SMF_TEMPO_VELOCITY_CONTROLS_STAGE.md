@@ -57,6 +57,8 @@ bash scripts/upload.sh /dev/ttyACM0
 
 Use the repository-pinned dependencies. Do not update the ESP32/M5Stack core as part of this stage.
 
+Velocity boost is intentionally session-sticky: loading another MIDI file keeps the selected value. A reboot creates a new player service and restores the safe `+0` default.
+
 ## Expected behavior
 
 Open the accepted MIDI Player and start a known file:
