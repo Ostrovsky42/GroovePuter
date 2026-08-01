@@ -3,9 +3,9 @@
 #include <cstdio>
 
 #include "display.h"
-#include "ui_colors.h"
 #include "ui_core.h"
 #include "ui_input.h"
+#include "ui_theme.h"
 #include "workflow_mode.h"
 
 class WorkspaceLauncherOverlay {
@@ -61,6 +61,13 @@ public:
             return true;
         }
 
+        // Theme preview stays available while the launcher is open. The main
+        // display loop observes currentStyle and propagates it to live pages.
+        if (event.alt && (event.key == '\\' || event.key == '|')) {
+            UI::currentStyle = UI::nextThemeStyle(UI::currentStyle);
+            return true;
+        }
+
         const int nav = UIInput::navCode(event);
         if (nav == GROOVEPUTER_UP) {
             selected_ = (selected_ + kEntryCount - 1) % kEntryCount;
@@ -93,6 +100,7 @@ public:
     void draw(IGfx& gfx) const {
         if (!visible_) return;
 
+        const UI::ThemePalette p = UI::themePalette();
         const int w = gfx.width();
         const int h = gfx.height();
         const int headerH = 14;
@@ -104,57 +112,61 @@ public:
         const int rowH = 13;
         const int rowsY = headerH + 4;
 
-        gfx.fillRect(0, 0, w, h, COLOR_BLACK);
-        gfx.fillRect(0, 0, w, headerH, COLOR_DARKER);
-        gfx.setTextColor(COLOR_ACCENT);
+        gfx.fillRect(0, 0, w, h, p.background);
+        gfx.fillRect(0, 0, w, headerH, p.panel);
+        gfx.drawLine(0, headerH - 1, w - 1, headerH - 1, p.dim);
+        gfx.setTextColor(p.accent);
         gfx.drawText(4, 2, "GROOVEPUTER / NAV");
 
-        char workspaceBuf[24];
-        std::snprintf(workspaceBuf, sizeof(workspaceBuf), "[%s]", workspaceNameForEntry(selected_));
-        gfx.setTextColor(COLOR_LABEL);
-        gfx.drawText(w - gfx.textWidth(workspaceBuf) - 4, 2, workspaceBuf);
+        char themeBuf[20];
+        std::snprintf(themeBuf, sizeof(themeBuf), "[%s]", UI::themeName(UI::currentStyle));
+        gfx.setTextColor(p.secondary);
+        gfx.drawText(w - gfx.textWidth(themeBuf) - 4, 2, themeBuf);
 
         for (int i = 0; i < kEntryCount; ++i) {
             const int y = rowsY + i * rowH;
             const bool selected = i == selected_;
             if (selected) {
-                gfx.fillRect(leftX, y - 1, leftW, rowH - 1, COLOR_ACCENT);
+                gfx.fillRect(leftX, y - 1, leftW, rowH - 1, p.focus);
             }
-            gfx.setTextColor(selected ? COLOR_BLACK : COLOR_WHITE);
+            gfx.setTextColor(selected ? p.invert : p.text);
             gfx.drawText(leftX + 4, y + 1, entryLabel(i));
         }
 
         const int panelY = rowsY;
         const int panelH = h - panelY - footerH - 2;
-        gfx.drawRect(rightX, panelY - 1, rightW, panelH, COLOR_PANEL);
+        gfx.fillRect(rightX, panelY - 1, rightW, panelH, p.inset);
+        gfx.drawRect(rightX, panelY - 1, rightW, panelH, p.dim);
 
-        gfx.setTextColor(COLOR_ACCENT);
+        gfx.setTextColor(p.accent);
         gfx.drawText(rightX + 5, panelY + 4, entryLabel(selected_));
 
         const int count = childCount(selected_);
         const int safeChild = (child_ < count) ? child_ : 0;
-        gfx.setTextColor(COLOR_WHITE);
+        gfx.setTextColor(p.text);
         gfx.drawText(rightX + 5, panelY + 20, childLabel(selected_, safeChild));
 
         const char* line1 = nullptr;
         const char* line2 = nullptr;
         descriptionLines(selected_, safeChild, line1, line2);
-        gfx.setTextColor(COLOR_LABEL);
+        gfx.setTextColor(p.secondary);
         if (line1) gfx.drawText(rightX + 5, panelY + 37, line1);
         if (line2) gfx.drawText(rightX + 5, panelY + 49, line2);
 
         if (count > 1) {
             char pos[24];
             std::snprintf(pos, sizeof(pos), "L/R  %d/%d", safeChild + 1, count);
-            gfx.setTextColor(COLOR_ACCENT);
+            gfx.setTextColor(p.accent2);
             gfx.drawText(rightX + 5, panelY + 67, pos);
         }
 
-        gfx.fillRect(0, h - footerH, w, footerH, COLOR_DARKER);
-        gfx.setTextColor(COLOR_LABEL);
+        gfx.fillRect(0, h - footerH, w, footerH, p.panel);
+        gfx.drawLine(0, h - footerH, w - 1, h - footerH, p.dim);
+        gfx.setTextColor(p.secondary);
         gfx.drawText(4, h - footerH + 2, "UP/DN ENT  L/R SECTION");
-        gfx.setTextColor(COLOR_WHITE);
-        gfx.drawText(w - gfx.textWidth("ESC CLOSE") - 4, h - footerH + 2, "ESC CLOSE");
+        gfx.setTextColor(p.text);
+        gfx.drawText(w - gfx.textWidth("ALT+\\ THEME") - 4,
+                     h - footerH + 2, "ALT+\\ THEME");
     }
 
 private:

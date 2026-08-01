@@ -4,30 +4,17 @@
 #include <cstdint>
 #include <cstring>
 
-#include "../ui_colors.h"
-#include "../ui_common.h"
+#include "../ui_theme.h"
 #include "src/input/performance_keyboard.h"
 
 namespace MusicVisuals {
 
 inline IGfxColor accentForStyle() {
-    switch (UI::currentStyle) {
-        case VisualStyle::RETRO_CLASSIC: return COLOR_INFO;
-        case VisualStyle::AMBER: return COLOR_WARN;
-        case VisualStyle::MINIMAL_DARK: return COLOR_ACCENT;
-        case VisualStyle::MINIMAL:
-        default: return COLOR_ACCENT;
-    }
+    return UI::themePalette().accent;
 }
 
 inline IGfxColor secondaryForStyle() {
-    switch (UI::currentStyle) {
-        case VisualStyle::RETRO_CLASSIC: return COLOR_WARN;
-        case VisualStyle::AMBER: return COLOR_INFO;
-        case VisualStyle::MINIMAL_DARK: return COLOR_INFO;
-        case VisualStyle::MINIMAL:
-        default: return COLOR_INFO;
-    }
+    return UI::themePalette().accent2;
 }
 
 inline int chipWidth(const char* label) {
@@ -43,9 +30,10 @@ inline int drawChip(IGfx& gfx,
                     IGfxColor activeColor = accentForStyle()) {
     const int w = chipWidth(label);
     const int h = 10;
-    const IGfxColor border = active ? activeColor : COLOR_LIGHT_GRAY;
-    const IGfxColor fill = active ? activeColor : COLOR_PANEL;
-    const IGfxColor text = active ? COLOR_BG : COLOR_TEXT;
+    const UI::ThemePalette palette = UI::themePalette();
+    const IGfxColor border = active ? activeColor : palette.dim;
+    const IGfxColor fill = active ? activeColor : palette.panel;
+    const IGfxColor text = active ? palette.invert : palette.text;
 
     gfx.fillRect(x, y, w, h, fill);
     gfx.drawRect(x, y, w, h, border);
@@ -66,7 +54,8 @@ inline void drawProgressBar(IGfx& gfx,
     if (total == 0) total = 1;
     if (current > total) current = total;
 
-    gfx.drawRect(x, y, w, h, COLOR_LIGHT_GRAY);
+    const UI::ThemePalette palette = UI::themePalette();
+    gfx.drawRect(x, y, w, h, palette.dim);
     const int innerW = w - 2;
     const int filled = static_cast<int>((static_cast<uint64_t>(current) * innerW) / total);
     if (filled > 0) gfx.fillRect(x + 1, y + 1, filled, h - 2, fillColor);
@@ -88,15 +77,15 @@ inline void drawPiano(IGfx& gfx,
     const int whiteW = std::max(1, w / 7);
     const int blackW = std::max(5, whiteW / 2);
     const int blackH = std::max(12, (h * 3) / 5);
-    const IGfxColor accent = accentForStyle();
+    const UI::ThemePalette palette = UI::themePalette();
 
     for (int i = 0; i < 7; ++i) {
         const int wx = x + i * whiteW;
         const int ww = (i == 6) ? (x + w - wx) : whiteW;
         const bool held = keyboard.isPitchClassHeld(kWhitePitchClasses[i]);
-        gfx.fillRect(wx, y, ww, h, held ? accent : COLOR_TEXT);
-        gfx.drawRect(wx, y, ww, h, COLOR_DARKER);
-        gfx.setTextColor(held ? COLOR_BG : COLOR_DARKER);
+        gfx.fillRect(wx, y, ww, h, held ? palette.active : palette.text);
+        gfx.drawRect(wx, y, ww, h, palette.inset);
+        gfx.setTextColor(held ? palette.invert : palette.inset);
         gfx.drawText(wx + 2, y + h - 9, kWhiteLabels[i]);
     }
 
@@ -104,8 +93,8 @@ inline void drawPiano(IGfx& gfx,
         const int boundary = x + (static_cast<int>(kBlackAfterWhite[i]) + 1) * whiteW;
         const int bx = boundary - blackW / 2;
         const bool held = keyboard.isPitchClassHeld(kBlackPitchClasses[i]);
-        gfx.fillRect(bx, y, blackW, blackH, held ? secondaryForStyle() : COLOR_DARKER);
-        gfx.drawRect(bx, y, blackW, blackH, held ? COLOR_TEXT : COLOR_PANEL);
+        gfx.fillRect(bx, y, blackW, blackH, held ? palette.accent2 : palette.inset);
+        gfx.drawRect(bx, y, blackW, blackH, held ? palette.text : palette.panel);
     }
 }
 
@@ -125,7 +114,7 @@ inline void drawDrumPads(IGfx& gfx,
     const int rowH = std::max(12, (h - gap) / 2);
     const int topW = std::max(20, (w - gap * 3) / 4);
     const int bottomW = std::max(20, (w - gap * 2) / 3);
-    const IGfxColor accent = accentForStyle();
+    const UI::ThemePalette palette = UI::themePalette();
 
     for (int i = 0; i < 7; ++i) {
         const bool bottom = i >= 4;
@@ -135,9 +124,9 @@ inline void drawDrumPads(IGfx& gfx,
         const int py = y + (bottom ? rowH + gap : 0);
         const bool held = keyboard.isPhysicalKeyHeld(kKeys[i]);
 
-        gfx.fillRect(px, py, padW, rowH, held ? accent : COLOR_PANEL);
-        gfx.drawRect(px, py, padW, rowH, held ? COLOR_TEXT : COLOR_LIGHT_GRAY);
-        gfx.setTextColor(held ? COLOR_BG : COLOR_TEXT);
+        gfx.fillRect(px, py, padW, rowH, held ? palette.active : palette.panel);
+        gfx.drawRect(px, py, padW, rowH, held ? palette.focus : palette.dim);
+        gfx.setTextColor(held ? palette.invert : palette.text);
         gfx.drawText(px + 3, py + 3, kLabels[i]);
     }
 }

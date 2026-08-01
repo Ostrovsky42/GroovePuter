@@ -25,6 +25,7 @@
 #include "ui_colors.h"
 #include "ui_input.h"
 #include "ui_common.h"
+#include "ui_theme.h"
 #include "screen_geometry.h"
 #if defined(ESP32) || defined(ESP_PLATFORM)
 #ifdef ARDUINO
@@ -40,12 +41,7 @@ namespace {
 constexpr int kSmfPlayerPage = WorkflowPages::kPlayer;
 
 VisualStyle nextVisualStyle(VisualStyle style) {
-    switch (style) {
-        case VisualStyle::MINIMAL: return VisualStyle::RETRO_CLASSIC;
-        case VisualStyle::RETRO_CLASSIC: return VisualStyle::AMBER;
-        case VisualStyle::AMBER: return VisualStyle::MINIMAL;
-        default: return VisualStyle::MINIMAL;
-    }
+    return UI::nextThemeStyle(style);
 }
 
 const char* visualStyleName(VisualStyle style) {
