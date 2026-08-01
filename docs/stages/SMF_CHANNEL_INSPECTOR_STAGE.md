@@ -18,6 +18,8 @@ current RAW or SEQTRAK-safe destination
 
 Metadata is accumulated during the existing load-time stream pass used to build the tempo map. The realtime scheduler, `MidiDispatchTask`, TinyUSB ownership, internal audio, PatternPlayer and MIDI Clock remain unchanged.
 
+Maximum polyphony is the highest number of active NoteOn voices observed on a source channel after balanced NoteOff events are applied. It counts overlapping voices rather than unique pitch classes, so retriggered or layered notes remain visible in the diagnostic.
+
 ## Hardware list
 
 - M5Stack Cardputer-Adv / ESP32-S3, PSRAM disabled.
