@@ -190,6 +190,33 @@ inline bool scheduleProjectSmfTick(uint16_t division,
     const double tickDelta = static_cast<double>(eventTick - originTick);
     const double eventProjectStep = originProjectStep +
         tickDelta * kProjectStepsPerQuarter / static_cast<double>(division);
+
+    // While the real project transport is running, calculate every not-yet-due
+    // SMF deadline from the same freshly published phase/block snapshot used by
+    // MIDI Clock. The previous implementation projected every event forever
+    // from one launch BPM/block anchor. Tiny differences between that idealized
+    // projection and the engine's Q32.32 phase could accumulate during a long
+    // SEQTRAK recording and feel like notes slowly moving against the groove.
+    //
+    // Keep the explicit origin fallback for deterministic host tests, stopped
+    // transport and already-late cleanup events. NoteOff cleanup therefore keeps
+    // its original deadline semantics rather than being pulled forward in a
+    // catch-up burst.
+    const ProjectTransportBlockSnapshot live = projectTransportTimeline().snapshot();
+    constexpr double kLivePhaseEpsilon = 1.0e-6;
+    if (live.valid && live.playing && live.bpmX10 > 0 &&
+        live.sampleRate > 0 && live.blockFrames > 0 &&
+        eventProjectStep + kLivePhaseEpsilon >= live.absoluteSteps()) {
+        return scheduleProjectStep(live.absoluteSteps(),
+                                   live.blockSequence,
+                                   0,
+                                   eventProjectStep,
+                                   live.bpmX10,
+                                   live.sampleRate,
+                                   live.blockFrames,
+                                   out);
+    }
+
     return scheduleProjectStep(originProjectStep,
                                originBlockSequence,
                                originFrameOffset,
