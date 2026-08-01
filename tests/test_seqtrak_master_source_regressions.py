@@ -12,9 +12,10 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def compile_continue_regression() -> None:
+def compile_and_run(source_name: str) -> None:
     BUILD.mkdir(parents=True, exist_ok=True)
-    output = BUILD / "test_project_transport_continue"
+    source = ROOT / "tests" / source_name
+    output = BUILD / source.stem
     subprocess.run(
         [
             os.environ.get("CXX", "g++"),
@@ -23,7 +24,7 @@ def compile_continue_regression() -> None:
             "-Wextra",
             "-Werror",
             f"-I{ROOT}",
-            str(ROOT / "tests" / "test_project_transport_continue.cpp"),
+            str(source),
             "-o",
             str(output),
         ],
@@ -85,11 +86,14 @@ def main() -> None:
             "USB access must stay out of AudioTask and UI")
 
     require("kMaximumTempoTrim" in follower and
-            "phaseCorrectionSteps" in follower and
+            "kPhaseTrimEnterSteps" in follower and
+            "kSourceBpmHysteresis" in follower and
+            "phaseTrimDirection_" in follower and
             "projectTransportTimeline().snapshot()" in follower,
-            "SEQ MASTER must phase-lock through bounded tempo trim")
-    require("pendingClock" in follower and "flushPendingClock" in follower,
-            "buffered F8 packets must be coalesced before tempo measurement")
+            "SEQ MASTER needs a stable hysteretic phase PLL")
+    require("pendingClock" in follower and "flushPendingClock" in follower and
+            "kClockCoalesceWindowUs" in follower,
+            "only compressed buffered F8 packets may be coalesced")
     require("sourceBpmQ16" in tracker and
             "lastTimingPulseOrdinal_" in tracker and
             "lastPhasePulseOrdinal_" in tracker and
@@ -105,7 +109,8 @@ def main() -> None:
     require("kContinuePrefillBlocks" not in timeline,
             "generic project bar quantization must not own SMF resume policy")
 
-    compile_continue_regression()
+    compile_and_run("test_project_transport_continue.cpp")
+    compile_and_run("test_external_midi_clock_startup.cpp")
     print("seqtrak master source regressions: OK")
 
 
