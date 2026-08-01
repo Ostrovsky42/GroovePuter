@@ -82,15 +82,20 @@ def test_workflow_local_page_navigation() -> None:
             "SETTINGS must expose project/setup and advanced generator pages")
 
     next_start = workflow.index("inline Workspace nextWorkspace")
-    next_end = workflow.index("inline int pageForMode", next_start)
+    next_end = workflow.index("inline bool allowsPerformanceKeyboard", next_start)
     next_block = workflow[next_start:next_end]
-    require("pageIndexInMode(page) + direction" in next_block and
-            "pageAt(mode, nextIndex)" in next_block,
-            "[ / ] must move to the previous/next page inside the active workflow")
+    require("direction < 0 && index == 0" in next_block and
+            "pageForMode(nextMode(mode, -1))" in next_block,
+            "[ on the first page must enter the previous workflow without Shift")
+    require("direction > 0 && index == count - 1" in next_block and
+            "pageForMode(nextMode(mode, 1))" in next_block,
+            "] on the last page must enter the next workflow")
+    require("pageAt(mode, index + direction)" in next_block,
+            "brackets must still move locally between pages inside a workflow")
 
     require("WorkflowPages::nextWorkspace(active_workspace_, 1)" in display and
             "WorkflowPages::nextWorkspace(active_workspace_, -1)" in display,
-            "display [ / ] handlers must use workflow-local page navigation")
+            "display [ / ] handlers must use page-aware workflow navigation")
     require("WorkflowPages::nextMode(current, direction)" in display and
             "WorkflowPages::pageForMode" in display,
             "Fn+Tab must switch the five top-level workflows")
@@ -109,8 +114,6 @@ def test_workflow_local_page_navigation() -> None:
                 f"launcher must expose workflow label: {label}")
     require("L/R PAGE" in launcher and "PAGE %d/%d" in launcher,
             "launcher must preview pages inside each workflow")
-    require("[ / ] SAME WORKFLOW" in launcher,
-            "launcher must explain restored bracket navigation")
 
 
 def main() -> None:
