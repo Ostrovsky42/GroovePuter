@@ -127,10 +127,10 @@ PERFORM <-> GENERATE <-> HUB <-> SONG <-> SETTINGS
 Examples:
 
 ```text
-GENERATE / FEEL + Fn+[ -> PERFORM / MIDI KEYBOARD
+GENERATE / FEEL + Fn+[  -> PERFORM / MIDI KEYBOARD
 GENERATE / GENRE + Fn+] -> HUB / OVERVIEW
-SONG + Fn+[ -> HUB / OVERVIEW
-SONG + Fn+] -> SETTINGS / PROJECT SETUP
+SONG + Fn+[             -> HUB / OVERVIEW
+SONG + Fn+]             -> SETTINGS / PROJECT SETUP
 ```
 
 No Shift key is required or assumed.
