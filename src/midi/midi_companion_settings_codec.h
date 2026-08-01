@@ -12,13 +12,18 @@ namespace GroovePuterMidi {
 
 class MidiSettingsCodec {
 public:
-    static constexpr uint16_t kSchemaVersion = 1;
-    static constexpr std::size_t kPayloadSize = 32;
-    static constexpr std::size_t kEncodedSize = 44;
+    static constexpr uint16_t kLegacySchemaVersion = 1;
+    static constexpr uint16_t kSchemaVersion = 2;
+    static constexpr std::size_t kLegacyPayloadSize = 32;
+    static constexpr std::size_t kPayloadSize = 34;
+    static constexpr std::size_t kLegacyEncodedSize = 44;
+    static constexpr std::size_t kEncodedSize = 46;
     using EncodedSettings = std::array<uint8_t, kEncodedSize>;
 
     static EncodedSettings encode(const MidiOutputSettings& settings);
 
+    // Accepts both schema-v2 records and the original 44-byte schema-v1
+    // record. Legacy records migrate to GP MASTER / FOLLOW ON.
     static bool decode(const uint8_t* data,
                        std::size_t size,
                        MidiOutputSettings& output);
