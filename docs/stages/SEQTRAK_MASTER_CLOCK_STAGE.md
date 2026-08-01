@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Add a second explicit transport-clock source without changing GroovePuter's role as a groovebox, MIDI instrument, PatternPlayer and SMF companion.
+Add two explicit transport roles while preserving Cardputer-Adv as a groovebox, MIDI instrument, PatternPlayer and SMF companion.
 
 ```text
 GP MASTER
@@ -12,7 +12,7 @@ SEQ MASTER
 SEQTRAK MIDI Clock/Start/Continue/Stop -> GroovePuter transport
 ```
 
-In both modes Cardputer-Adv continues to send musical MIDI events to SEQTRAK. `SEQ MASTER` suppresses only outbound transport realtime messages; it must not suppress PatternPlayer, PERFORM or SMF NoteOn/NoteOff traffic.
+In both modes Cardputer-Adv continues sending musical MIDI events to SEQTRAK. `SEQ MASTER` suppresses only outbound transport realtime messages; PERFORM, PatternPlayer and SMF NoteOn/NoteOff remain enabled.
 
 ## Hardware list
 
@@ -20,7 +20,7 @@ In both modes Cardputer-Adv continues to send musical MIDI events to SEQTRAK. `S
 - Yamaha SEQTRAK
 - data-capable USB-C cable
 - optional powered USB-C hub if power negotiation is unstable
-- optional 3.5 mm cable from Cardputer audio output to SEQTRAK AUDIO IN for GroovePuter internal synth audio
+- optional 3.5 mm cable from Cardputer audio output to SEQTRAK AUDIO IN
 
 ## Wiring
 
@@ -33,7 +33,7 @@ Cardputer audio out ----> SEQTRAK AUDIO IN  (optional)
 SEQTRAK audio out ------> headphones / speakers
 ```
 
-PORT.A is not used by this stage. If unrelated I2C hardware is connected, Cardputer-Adv PORT.A remains:
+PORT.A is not used. If unrelated I2C hardware is connected:
 
 ```text
 SDA GPIO2
@@ -41,28 +41,42 @@ SCL GPIO1
 3.3 V logic
 ```
 
+## Controls
+
+On the MIDI Player page:
+
+```text
+C       GP MASTER / SEQ MASTER
+Space   SMF Arm / Pause
+T       ORIGINAL / PROJECT
+G       local Run / Stop in GP MASTER
+        use SEQTRAK transport in SEQ MASTER
+Up/Down BPM control in GP MASTER
+        read-only source BPM in SEQ MASTER
+X       player-scoped panic
+```
+
+The source selection is runtime-only and safely defaults to `GP MASTER` after reboot. Persistence is intentionally deferred until the hardware clock-follow gate is accepted.
+
 ## Transport contract
 
 ### GP MASTER
 
-- `G` starts or stops GroovePuter.
-- On the MIDI Player page, `C` changes the master source.
-- GroovePuter publishes MIDI Clock at 24 PPQN.
-- GroovePuter publishes Start/Stop.
-- PROJECT SMF follows GroovePuter's AudioTask timeline.
 - Existing PR #22 behavior remains unchanged.
+- `G` starts or stops GroovePuter.
+- AudioTask publishes the project timeline and outbound MIDI Clock at 24 PPQN.
+- PROJECT SMF follows GroovePuter phase and BPM.
 
 ### SEQ MASTER
 
-- `C` on the MIDI Player page returns to `GP MASTER`.
-- `G`, the hardware transport button and global Space fallback do not start the local transport; use SEQTRAK Play/Stop.
-- Incoming `0xF8` measures tempo and project phase.
-- Incoming `0xFA` starts from project phase zero and creates a new transport epoch.
-- Incoming `0xFB` continues from the preserved position.
-- Incoming `0xFC` stops new NoteOn traffic and preserves position for Continue.
-- GroovePuter does not echo `F8/FA/FB/FC` back to SEQTRAK.
-- PatternPlayer, PERFORM, PROJECT SMF and internal audio follow the same recovered project timeline.
-- Changing the master source safely stops the current transport at the next audio-block boundary.
+- TinyUSB input is read only by the existing `MidiDispatchTask`.
+- `0xF8` disciplines tempo and project phase.
+- `0xFA` starts a new session from phase zero and creates a new epoch.
+- `0xFB` continues the preserved position.
+- `0xFC` stops new project NoteOn traffic and preserves position for Continue.
+- Outbound `F8/FA/FB/FC` is suppressed both before queue publication and immediately before physical USB write.
+- PERFORM, PatternPlayer, SMF notes and cleanup traffic remain enabled.
+- Changing the master source safely stops the current transport at an AudioTask boundary.
 
 One MIDI Clock pulse equals:
 
@@ -72,7 +86,7 @@ One MIDI Clock pulse equals:
 1 / 6 project sixteenth-step
 ```
 
-Swing is not transmitted by MIDI Clock. Match swing manually when both devices play dense sixteenth-note percussion.
+MIDI Clock does not carry swing. Match swing manually when both devices play dense sixteenth-note percussion.
 
 ## Realtime architecture
 
@@ -89,8 +103,8 @@ ExternalMidiTransportEventQueue
 AudioTask block boundary
   |
   +-> ExternalMidiClockTracker
-  +-> MiniAcid transport
-  +-> PatternPlayer
+  +-> bounded phase PLL
+  +-> MiniAcid / PatternPlayer
   +-> ProjectTransportTimeline
           |
           +-> PROJECT SMF scheduler
@@ -99,50 +113,85 @@ AudioTask block boundary
 Constraints:
 
 - `MidiDispatchTask` remains the only mutable TinyUSB owner.
-- No USB reads in UI, Arduino `loop()` or AudioTask.
-- No direct MiniAcid mutation from `MidiDispatchTask`.
-- No heap allocation in the realtime path.
-- Start/Continue/Stop have reserved queue capacity.
-- A critical queue overflow forces a safe external-clock failure state.
+- No USB reads occur in UI, Arduino `loop()` or AudioTask.
+- No MiniAcid mutation occurs from `MidiDispatchTask`.
+- No heap allocation occurs in the realtime path.
+- The queue is fixed at 128 events with eight entries reserved for Start/Continue/Stop.
+- Critical overflow moves the follower to `LOST` and requests a safe local stop.
+- Transport mutation occurs only at an AudioTask block boundary.
 
-## Implemented vertical slice
+## Clock recovery and phase lock
 
-The current draft provides:
+The tracker uses:
 
-- `TransportClockSource` with `GP MASTER` and `SEQ MASTER`;
-- outbound-clock policy helper;
-- compact 16-byte external transport event;
-- 128-slot SPSC transport queue with eight critical-reserve entries;
-- external Clock tracker with a five-sample median and 1/8 EMA;
-- pulse-ordinal gap handling;
-- `WAIT`, `LOCKING`, `LOCKED`, `HOLD`, `LOST` states;
-- adaptive Hold/Lost timeout;
-- bounded polling of `USBMIDI::readPacket()` in the existing `MidiDispatchTask`;
-- pure CIN `0x0f` parsing for `F8`, `FA`, `FB` and `FC`;
-- application of transport and filtered BPM at the AudioTask block boundary;
-- position-preserving `pauseTransport()` / `continueTransport()` engine paths;
-- preservation of ProjectTransportTimeline bar position across Continue;
-- producer-side and final-dispatch suppression of outbound realtime traffic;
-- PROJECT SMF arming while SEQTRAK is stopped and automatic wait for Play/Continue;
-- a runtime `C` master-source toggle on the MIDI Player page;
-- `[MIDI-RX]` lock, queue, receive and echo-suppression diagnostics;
-- deterministic host regressions.
+```text
+five-sample median
+1/8 EMA pulse-period filter
+pulseOrdinal gap reconstruction
+WAIT -> LOCKING -> LOCKED -> HOLD -> LOST
+adaptive timeout for 5-300 BPM
+```
 
-The pinned Arduino-ESP32/M5Stack core exposes no MIDI receive callback and no TX-free-space API. The implementation therefore uses a bounded maximum of 32 `readPacket()` calls per dispatcher pass and retains the existing single TinyUSB owner.
+Consecutive F8 packets accumulated during a USB or SD stall are coalesced to the latest timestamp and ordinal before tempo measurement. The ordinal gap preserves every musical pulse without treating nearly identical receive timestamps as zero-length clock intervals.
 
-The source selection is runtime-only in this slice and defaults to `GP MASTER` after reboot. Scene/project persistence remains deliberately out of scope until the hardware clock-follow gate is accepted.
+Musical pulse position and accepted timing anchors are independent:
 
-Clock pulses discipline the engine through the median/EMA BPM estimate. Start and Continue are applied on the next 512-frame AudioTask boundary, so the expected fixed control latency is at most one block (about 23.2 ms at 22050 Hz). This stage does not claim sample-exact reconstruction of the USB receive timestamp; the 32-bar hardware recording remains the acceptance gate for long-term phase behavior.
+- every valid F8 advances the external musical pulse count;
+- an unusable timestamp cannot poison the median or accepted tempo anchor;
+- later ordinal gaps recover timing across the rejected sample.
 
-## Build and validation
+The follower does not hard-seek the local sequencer on every F8. It compares external absolute project steps with the previously published local timeline and applies a bounded tempo trim:
 
-Run host regressions:
+```text
+phase proportional gain: 1/8
+maximum drive-tempo trim: +/-5%
+maximum correction:       1/96 project step per audio block
+```
+
+The UI continues to show the actual SEQTRAK source BPM. The corrected drive BPM is internal to the follower. This avoids repeated note triggers and audible phase jumps while removing long-term drift.
+
+At 512 frames / 22050 Hz, Start/Continue/Stop application latency is at most one render block, approximately 23.2 ms.
+
+## Start, Stop and Continue
+
+### Start (`FA`)
+
+```text
+new transport epoch
+project phase resets to zero
+MiniAcid and PatternPlayer start from beginning
+active PROJECT SMF returns to MUSIC START
+SMF follows its normal Immediate / NEXT BAR launch policy
+```
+
+### Stop (`FC`)
+
+```text
+new project NoteOn stops
+active ownership receives scoped cleanup
+MiniAcid and PatternPlayer pause
+PROJECT SMF preserves its current tick
+```
+
+### Continue (`FB`)
+
+```text
+MiniAcid and PatternPlayer continue preserved phase
+```
+
+Only a PROJECT SMF that was actively playing before external Stop uses the Continue resume path. It resumes from its preserved tick after a bounded three-audio-block prefill, approximately 70 ms at the current audio configuration.
+
+A newly loaded or manually armed file during an existing Continue session still uses normal NEXT BAR quantization. This prevents a new phrase from entering immediately merely because the master session was resumed rather than started.
+
+## Build and flash
+
+Run:
 
 ```bash
 ./tests/run_host_tests.sh
 ```
 
-Then run the repository's existing clean SDL build and pinned Cardputer-Adv Arduino build.
+Then run the repository's clean SDL build and pinned Cardputer-Adv Arduino build. Flash the produced binary using the existing repository procedure.
 
 Record:
 
@@ -152,115 +201,104 @@ sdl-build result
 cardputer-adv-build result
 Flash bytes and percentage
 DRAM globals and remaining bytes
+firmware SHA-256
 ```
 
 ## Expected behavior
 
-### Clock stopped
+### SEQTRAK stopped
 
 ```text
 CLOCK SEQ MASTER
-STATE LOCKED or WAIT
+STATE WAIT / LOCKING / LOCKED
 TRANSPORT STOPPED
 ```
 
-F8 may establish tempo lock, but GroovePuter does not start until Start or Continue arrives and external follow is enabled.
+F8 may establish tempo lock, but GroovePuter does not start until `FA` or `FB` arrives.
 
-On the MIDI Player page:
+### SEQTRAK Play
 
 ```text
-C      GP MASTER <-> SEQ MASTER
-Space  arm/pause the selected MIDI file
-G      local transport only in GP MASTER
+FA -> project phase zero
+PatternPlayer and internal audio start
+armed PROJECT SMF follows its launch policy
+Cardputer continues transmitting musical MIDI notes
+no outbound realtime echo
 ```
 
-### Start
+### SEQTRAK Stop / Continue
 
 ```text
-SEQTRAK Play
-  -> FA
-  -> GroovePuter starts from phase zero
-  -> PatternPlayer starts from phase zero
-  -> PROJECT SMF enters by Immediate or Next Bar policy
-```
-
-### Continue
-
-```text
-SEQTRAK Continue
-  -> FB
-  -> GroovePuter resumes preserved phase
-```
-
-### Stop
-
-```text
-SEQTRAK Stop
-  -> FC
-  -> no new project NoteOn after the stop boundary
-  -> active owners receive scoped cleanup
-  -> position remains available for Continue
+FC -> no new project NoteOn; position preserved
+FB -> local transport continues preserved phase
+previously active PROJECT SMF resumes after bounded prefill
 ```
 
 ### Tempo change
 
-Changing SEQTRAK tempo changes the spacing of incoming F8 pulses. The tracker filters USB scheduling jitter and updates GroovePuter without restarting transport or producing catch-up bursts.
+Changing SEQTRAK tempo changes incoming F8 spacing. Source BPM converges through the median/EMA filter. The bounded PLL briefly trims local drive tempo without transport restart, panic, hard phase seek or catch-up burst.
+
+## Serial diagnostics
+
+Current transport diagnostics include source, lock state, running state, source BPM, received realtime counts, queue pressure/failure and outbound suppression. Runtime state also carries signed phase error and per-block phase correction for debugger/UI inspection.
+
+Representative line:
+
+```text
+[MIDI-RX] source=SEQ MASTER state=LOCKED running=1 bpm=120.00
+          rx=clock/start/continue/stop ignored=...
+          queue=... clockDrop=... criticalOverflow=... failures=...
+          txSuppressed=...
+```
 
 ## Troubleshooting
 
 ### State remains WAIT
 
-- Verify the USB cable carries data.
+- Verify the cable carries data.
 - Verify SEQTRAK MIDI Clock output is enabled.
 - Confirm the TinyUSB MIDI interface is mounted.
-- Inspect `externalRxClock` diagnostics.
-
-The current serial line is:
-
-```text
-[MIDI-RX] source=SEQ MASTER state=LOCKED running=1 bpm=120.00
-          rx=clock/start/continue/stop ignored=... masterIgnored=...
-          queue=... clockDrop=... criticalOverflow=... failures=...
-          txSuppressed=...
-```
+- Inspect `externalRxClock`.
 
 ### State remains LOCKING
 
-- Verify F8 intervals are inside the supported 5-300 BPM range.
-- Check `externalIntervalOutliers` and `externalPulseGaps`.
+- Verify F8 intervals remain within 5-300 BPM.
+- Inspect pulse gaps and interval outliers.
 - Disable MIDI Thru loops.
 
 ### State changes to HOLD or LOST
 
 - Check cable and USB power.
-- Confirm SEQTRAK continues sending Clock while stopped if pre-lock is expected.
-- Inspect the filtered pulse period and adaptive timeout diagnostics.
+- Confirm SEQTRAK continues producing Clock when expected.
+- Verify no critical inbound queue overflow occurred.
 
-### SEQTRAK receives duplicate or unstable Clock
+### SEQTRAK receives duplicate Clock
 
-Treat this as a failure. In `SEQ MASTER`, GroovePuter must suppress outbound `F8/FA/FB/FC` regardless of SEQTRAK MIDI Thru settings.
+Treat this as a failure. In `SEQ MASTER`, GroovePuter must not transmit `F8/FA/FB/FC` regardless of SEQTRAK MIDI Thru settings.
 
-### Notes stop in SEQ MASTER
+### Notes disappear in SEQ MASTER
 
-Transport suppression must not suppress musical queues. Verify PatternPlayer, PERFORM and SMF NoteOn/NoteOff counters independently from realtime transport counters.
+Transport suppression must not suppress musical traffic. Verify PERFORM, PatternPlayer and SMF NoteOn/NoteOff independently from realtime transport counters.
 
-### Internal audio and SEQTRAK sound feel different
+### Internal audio and SEQTRAK feel different
 
-MIDI Clock does not carry swing. Avoid duplicating dense hats on both devices unless their swing settings are matched manually.
+MIDI Clock does not transmit swing. Avoid duplicating dense hats on both devices unless swing settings are matched manually.
 
 ## Acceptance checklist
 
 ```text
-[ ] GP MASTER remains the default after upgrade
-[ ] invalid persisted source normalizes to GP MASTER
-[ ] GP MASTER outbound Clock/Start/Stop remains unchanged
+[ ] GP MASTER is the safe default after reboot
+[ ] GP MASTER Clock/Start/Stop behavior remains unchanged
 [ ] SEQ MASTER receives F8/FA/FB/FC through MidiDispatchTask only
 [ ] no second TinyUSB owner or USB task exists
-[ ] F8 before Start may lock tempo but does not start GroovePuter
-[ ] Start resets project phase and creates a new epoch
-[ ] Stop blocks new NoteOn and preserves Continue position
+[ ] F8 before Start can lock tempo but cannot start GroovePuter
+[ ] Start resets phase and creates a new transport epoch
+[ ] Stop prevents new project NoteOn and preserves position
 [ ] Continue resumes without phase-zero restart
-[ ] one missing queued F8 is reconstructed from pulseOrdinal
+[ ] active PROJECT SMF resumes after bounded three-block prefill
+[ ] newly armed PROJECT SMF still enters on NEXT BAR
+[ ] buffered F8 packets preserve pulse count without BPM collapse
+[ ] missing queued F8 is reconstructed from pulseOrdinal
 [ ] normal USB jitter remains LOCKED
 [ ] 5 BPM and 300 BPM endpoints lock correctly
 [ ] Clock loss progresses LOCKED -> HOLD -> LOST
@@ -269,10 +307,10 @@ MIDI Clock does not carry swing. Avoid duplicating dense hats on both devices un
 [ ] SEQ MASTER continues PERFORM MIDI output
 [ ] SEQ MASTER continues PatternPlayer MIDI output
 [ ] SEQ MASTER continues SMF NoteOn/NoteOff output
-[ ] PROJECT SMF follows recovered project timeline
+[ ] PROJECT SMF follows the recovered project timeline
 [ ] ORIGINAL SMF remains independent
-[ ] Cardputer internal audio remains available through AUDIO IN
-[ ] 32-bar recording shows no accumulating drift
+[ ] bounded phase correction converges instead of accumulating drift
+[ ] 32-bar recording shows no accumulating phase drift
 [ ] no catch-up burst after USB or scheduling delay
 [ ] no stuck notes after Stop, loss or reconnect
 [ ] no watchdog/reset or sustained audio underrun
@@ -284,14 +322,20 @@ MIDI Clock does not carry swing. Avoid duplicating dense hats on both devices un
 ## Cardputer-Adv hardware pass
 
 ```text
-1. Direct-flash the current branch build.
+1. Flash the current branch build.
 2. Open MIDI PLAYER and press C until SEQ MASTER is visible.
-3. With SEQTRAK stopped, verify F8 can reach LOCKED without starting audio.
-4. Load a PROJECT-tempo MIDI file and press Space; it must remain ARMED.
-5. Press Play on SEQTRAK; verify FA starts PatternPlayer, internal audio and PROJECT SMF.
-6. Press Stop; verify no new NoteOn and no stuck note.
-7. Press Continue; verify position is preserved rather than restarting at bar one.
-8. Change SEQTRAK from 90 to 110 BPM; verify the displayed BPM converges without restart.
-9. Press C to return to GP MASTER; verify transport stops, then G starts normal GP-master output.
-10. Record 32 bars and retain [MIDI-RX], [MIDI-DISPATCH] and [PERF] excerpts.
+3. With SEQTRAK stopped, confirm F8 reaches LOCKED without starting audio.
+4. Load a PROJECT MIDI and press Space; it remains ARMED.
+5. Press Play on SEQTRAK; FA starts internal audio and PatternPlayer from zero.
+6. Verify the armed SMF follows its normal launch boundary.
+7. Press Stop immediately before an expected note; no new NoteOn follows FC.
+8. Press Continue; local phase and the previously active SMF resume, not bar one.
+9. Arm a different SMF after Continue; it must still wait for NEXT BAR.
+10. Change SEQTRAK 90 -> 110 BPM and then 120 -> 80 -> 140 BPM.
+11. Confirm no restart, panic, Clock echo or note burst.
+12. Exercise dense MIDI while observing queue drops and USB backpressure metrics.
+13. Disconnect the cable; verify LOCKED -> HOLD -> LOST and no stuck notes.
+14. Reconnect; transport must not start until a new FA or FB.
+15. Record at least 32 bars and compare beginning, middle and end against SEQTRAK drums/metronome.
+16. Return to GP MASTER with C and verify normal G-controlled transport.
 ```
