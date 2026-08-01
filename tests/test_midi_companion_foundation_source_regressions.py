@@ -27,8 +27,14 @@ def main() -> None:
             "live Synth A/B/Drums selection must be represented without UI coupling")
     require("case MidiLiveTarget::Drums:" in settings_cpp,
             "Drums must remain a valid persisted live target")
-    require("kSchemaVersion = 1" in codec_h and "kEncodedSize = 44" in codec_h,
-            "global settings persistence must be fixed-size and versioned")
+    require("kSchemaVersion = 2" in codec_h and
+            "kEncodedSize = 46" in codec_h and
+            "kLegacySchemaVersion = 1" in codec_h and
+            "kLegacyEncodedSize = 44" in codec_h,
+            "global settings persistence must be fixed-size, versioned and legacy-readable")
+    require("recordShapeIsSupported" in codec_cpp and
+            "schemaVersion == kSchemaVersion" in codec_cpp,
+            "settings decoder must explicitly branch between supported schemas")
     require("crc32" in codec_cpp and "'G', 'P', 'M', 'D'" in codec_cpp,
             "settings blobs need an integrity check and stable magic")
     require("DefaultsFromMissing" in codec_h and "DefaultsFromCorrupt" in codec_h,
