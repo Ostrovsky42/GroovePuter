@@ -679,9 +679,7 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
             break;
         }
         case CommandType::CycleVelocityBoost:
-            velocityBoost_ = velocityBoost_ == 0
-                ? 8
-                : (velocityBoost_ == 8 ? 16 : 0);
+            velocityBoost_ = nextSmfVelocityBoost(velocityBoost_);
             portENTER_CRITICAL(&snapshotMux_);
             snapshot_.velocityBoost = velocityBoost_;
             portEXIT_CRITICAL(&snapshotMux_);
@@ -762,7 +760,8 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
     stream_.reset();
     loaded_ = true;
     tempoScalePermille_ = kSmfOriginalTempoScalePermille;
-    velocityBoost_ = 0;
+    // Velocity is a player-session preference: keep the selected boost while
+    // browsing and loading another file, but still default to +0 after reboot.
     pausedTick_ = musicStartTick_;
     hasPendingEvent_ = false;
     streamEnded_ = false;

@@ -21,6 +21,17 @@ inline constexpr uint8_t applySmfVelocityBoost(uint8_t velocity,
     return static_cast<uint8_t>(boosted > 127u ? 127u : boosted);
 }
 
+inline constexpr uint8_t nextSmfVelocityBoost(uint8_t current) {
+    switch (current) {
+        case 0: return 8;
+        case 8: return 16;
+        case 16: return 24;
+        case 24: return 32;
+        case 32: return 48;
+        default: return 0;
+    }
+}
+
 inline constexpr SmfRoutedNote routeSmfNote(SmfRoutingMode mode,
                                              uint8_t sourceChannel,
                                              uint8_t sourceNote) {

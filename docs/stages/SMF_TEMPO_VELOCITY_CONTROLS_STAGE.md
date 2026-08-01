@@ -9,7 +9,7 @@ This stage adds:
 ```text
 Up / Down   effective playback BPM -/+ 1
 O           restore ORIGINAL SMF tempo map
-V           velocity boost +0 -> +8 -> +16 -> +0
+V           velocity boost +0 -> +8 -> +16 -> +24 -> +32 -> +48 -> +0
 ```
 
 Tempo adjustment preserves the relative timing encoded by the SMF tempo map. It scales the playback timeline; it does not quantize notes, triplets, note lengths, or bar positions.
@@ -57,6 +57,8 @@ bash scripts/upload.sh /dev/ttyACM0
 
 Use the repository-pinned dependencies. Do not update the ESP32/M5Stack core as part of this stage.
 
+Velocity boost is intentionally session-sticky: loading another MIDI file keeps the selected value. A reboot creates a new player service and restores the safe `+0` default.
+
 ## Expected behavior
 
 Open the accepted MIDI Player and start a known file:
@@ -90,14 +92,15 @@ Expected musical result:
 `V` cycles:
 
 ```text
-+0 -> +8 -> +16 -> +0
++0 -> +8 -> +16 -> +24 -> +32 -> +48 -> +0
 ```
 
 The boost is applied to NoteOn velocity only:
 
 ```text
 velocity 64 + 8  -> 72
-velocity 120 +16 -> 127
+velocity 64 +48  -> 112
+velocity 96 +48  -> 127
 ```
 
 Velocity zero remains zero so NoteOn-with-zero velocity cannot be turned into an accidental sounding note.
@@ -163,8 +166,10 @@ Check routing mode. `RAW` preserves source channels; `SEQTRAK` applies the accep
 
 ### Velocity
 
-- [ ] `V` cycles +0 / +8 / +16 / +0.
+- [ ] `V` cycles +0 / +8 / +16 / +24 / +32 / +48 / +0.
 - [ ] velocity boost is audibly stronger on a velocity-sensitive SEQTRAK sound.
+- [ ] loading another MIDI keeps the selected boost for the current session.
+- [ ] reboot restores the safe +0 default.
 - [ ] high velocities saturate without wraparound.
 - [ ] NoteOn velocity zero remains silent.
 - [ ] changing velocity boost leaves no stuck notes.

@@ -366,7 +366,33 @@ def main() -> None:
     test_perform_is_additive_to_legacy_carousel()
     test_stage_visuals_remain_lightweight_and_state_driven()
     test_smf_player_is_additive_and_keeps_single_usb_owner()
+    test_smf_velocity_boost_range_is_session_sticky()
     print("performance + SMF source regressions: OK")
+
+
+def test_smf_velocity_boost_range_is_session_sticky() -> None:
+    routing = (ROOT / "src/midi/smf_routing.h").read_text(encoding="utf-8")
+    player = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(
+        encoding="utf-8"
+    )
+
+    require("nextSmfVelocityBoost" in routing,
+            "velocity boost cycle must stay in the testable SMF routing core")
+    for value in ("case 0: return 8", "case 8: return 16",
+                  "case 16: return 24", "case 24: return 32",
+                  "case 32: return 48"):
+        require(value in routing,
+                f"velocity boost cycle is missing {value}")
+
+    cycle_start = player.index("case CommandType::CycleVelocityBoost:")
+    cycle = player[cycle_start:player.index("break;", cycle_start)]
+    require("nextSmfVelocityBoost(velocityBoost_)" in cycle,
+            "Cardputer player must use the shared +0..+48 cycle")
+
+    load = player[player.index("bool CardputerSmfPlayerService::loadFile"):
+                  player.index("bool CardputerSmfPlayerService::scanMetadata")]
+    require("velocityBoost_ = 0" not in load,
+            "loading another MIDI must keep the session velocity boost")
 
 
 if __name__ == "__main__":
