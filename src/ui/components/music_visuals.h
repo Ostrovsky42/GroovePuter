@@ -99,7 +99,7 @@ inline void drawPianoKeyRow(IGfx& gfx,
         gfx.fillRect(keyX, y, keyW, h, fill);
         gfx.drawRect(keyX, y, keyW, h, border);
         if (held && keyW > 6 && h > 8) {
-            gfx.fillRect(keyX + 2, y + 2, keyW - 4, 3, palette.focus);
+            gfx.fillRect(keyX + 2, y + 2, keyW - 4, 3, palette.accent2);
         }
 
         char keyLabel[2] = {
