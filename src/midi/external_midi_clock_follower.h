@@ -7,6 +7,7 @@
 #include "external_midi_clock_tracker.h"
 #include "external_midi_transport_event_queue.h"
 #include "project_transport_timeline.h"
+#include "transport_clock_runtime.h"
 #include "transport_clock_source.h"
 
 namespace GroovePuterMidi {
@@ -40,7 +41,8 @@ public:
             ExternalMidiTransportEventQueue& queue,
             TransportClockSource source,
             uint32_t nowMicros,
-            bool followEnabled = true) {
+            bool followEnabled =
+                transportClockRuntime().externalFollowEnabled()) {
         ExternalClockBlockResult result{};
         if (!haveSource_ || source != source_) {
             source_ = source;
