@@ -23,6 +23,7 @@ public:
     static constexpr std::size_t kCapacity = kStorageSize - 1;
     static constexpr uint8_t kSynthAMask = 1u << 0;
     static constexpr uint8_t kSynthBMask = 1u << 1;
+    static constexpr uint8_t kDrumsMask = 1u << 2;
 
     bool tryPush(const MusicalEvent& event,
                  uint32_t blockSequence,
@@ -74,25 +75,45 @@ public:
     }
 
     void invalidateTarget(MusicalEventTarget target) {
-        if (target == MusicalEventTarget::SynthB) {
-            synthBGeneration_.incrementRelaxed();
-            pendingSynthBEpoch_.incrementRelaxed();
-        } else {
-            synthAGeneration_.incrementRelaxed();
-            pendingSynthAEpoch_.incrementRelaxed();
+        switch (target) {
+            case MusicalEventTarget::SynthA:
+                synthAGeneration_.incrementRelaxed();
+                pendingSynthAEpoch_.incrementRelaxed();
+                break;
+            case MusicalEventTarget::SynthB:
+                synthBGeneration_.incrementRelaxed();
+                pendingSynthBEpoch_.incrementRelaxed();
+                break;
+            case MusicalEventTarget::Drums:
+                drumsGeneration_.incrementRelaxed();
+                pendingDrumsEpoch_.incrementRelaxed();
+                break;
+            case MusicalEventTarget::Dx:
+                // PatternPlayer does not publish DX in the accepted routing
+                // model. Fail closed instead of aliasing its lifecycle to A/B.
+                break;
         }
     }
 
     uint32_t generationFor(MusicalEventTarget target) const {
-        return target == MusicalEventTarget::SynthB
-            ? synthBGeneration_.loadAcquire()
-            : synthAGeneration_.loadAcquire();
+        switch (target) {
+            case MusicalEventTarget::SynthA:
+                return synthAGeneration_.loadAcquire();
+            case MusicalEventTarget::SynthB:
+                return synthBGeneration_.loadAcquire();
+            case MusicalEventTarget::Drums:
+                return drumsGeneration_.loadAcquire();
+            case MusicalEventTarget::Dx:
+                return 0;
+        }
+        return 0;
     }
 
     uint8_t takePendingAllNotesOffMask() {
         uint8_t mask = 0;
         const uint32_t synthAEpoch = pendingSynthAEpoch_.loadAcquire();
         const uint32_t synthBEpoch = pendingSynthBEpoch_.loadAcquire();
+        const uint32_t drumsEpoch = pendingDrumsEpoch_.loadAcquire();
         if (synthAEpoch != consumedSynthAEpoch_) {
             consumedSynthAEpoch_ = synthAEpoch;
             mask |= kSynthAMask;
@@ -100,6 +121,10 @@ public:
         if (synthBEpoch != consumedSynthBEpoch_) {
             consumedSynthBEpoch_ = synthBEpoch;
             mask |= kSynthBMask;
+        }
+        if (drumsEpoch != consumedDrumsEpoch_) {
+            consumedDrumsEpoch_ = drumsEpoch;
+            mask |= kDrumsMask;
         }
         return mask;
     }
@@ -122,6 +147,7 @@ public:
         tail_.storeRelease(head);
         consumedSynthAEpoch_ = pendingSynthAEpoch_.loadAcquire();
         consumedSynthBEpoch_ = pendingSynthBEpoch_.loadAcquire();
+        consumedDrumsEpoch_ = pendingDrumsEpoch_.loadAcquire();
     }
 
     std::size_t approximateSize() const {
@@ -159,14 +185,17 @@ private:
     MidiRealtimeWord tail_;
     MidiRealtimeWord synthAGeneration_;
     MidiRealtimeWord synthBGeneration_;
+    MidiRealtimeWord drumsGeneration_;
     MidiRealtimeWord pendingSynthAEpoch_;
     MidiRealtimeWord pendingSynthBEpoch_;
+    MidiRealtimeWord pendingDrumsEpoch_;
     MidiRealtimeWord publicationSequence_;
     MidiRealtimeWord droppedNoteOn_;
     MidiRealtimeWord droppedCritical_;
     MidiRealtimeWord suppressedNonRealtime_;
     uint32_t consumedSynthAEpoch_{0};
     uint32_t consumedSynthBEpoch_{0};
+    uint32_t consumedDrumsEpoch_{0};
 };
 
 #endif  // GROOVEPUTER_SCHEDULED_MUSICAL_EVENT_QUEUE_H

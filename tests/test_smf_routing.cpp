@@ -24,8 +24,23 @@ int main() {
     assert(closedHat.channel == 3 && closedHat.note == 60);
     assert(openHat.channel == 4 && openHat.note == 60);
 
-    assert(routeSmfNote(SmfRoutingMode::Seqtrak, 0, 64).channel == 7);
-    assert(routeSmfNote(SmfRoutingMode::Seqtrak, 1, 64).channel == 8);
-    assert(routeSmfNote(SmfRoutingMode::Seqtrak, 2, 64).channel == 9);
+    const SmfRoutedNote synth1 = routeSmfNote(SmfRoutingMode::Seqtrak, 0, 64);
+    const SmfRoutedNote synth2 = routeSmfNote(SmfRoutingMode::Seqtrak, 1, 64);
+    const SmfRoutedNote dx = routeSmfNote(SmfRoutingMode::Seqtrak, 2, 64);
+    const SmfRoutedNote unmapped = routeSmfNote(SmfRoutingMode::Seqtrak, 3, 64);
+    const SmfRoutedNote extraMelodic = routeSmfNote(SmfRoutingMode::Seqtrak, 14, 67);
+
+    assert(synth1.channel == 7 && synth1.note == 64);
+    assert(synth2.channel == 8 && synth2.note == 64);
+    assert(dx.channel == 9 && dx.note == 64);
+
+    // DX is a dedicated CH10 destination, never the fallback bucket. Extra
+    // melodic lanes must not fire previously recorded user samples on CH11;
+    // they use the intentionally unused CH16 sink until CUSTOM routing exists.
+    assert(unmapped.channel == 15 && unmapped.note == 64);
+    assert(extraMelodic.channel == 15 && extraMelodic.note == 67);
+    assert(extraMelodic.channel != dx.channel);
+    assert(extraMelodic.channel != 10);
+
     return 0;
 }
