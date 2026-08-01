@@ -24,14 +24,17 @@ public:
         if (trackCount > 64u) trackCount = 64u;
         trackCount_.store(trackCount, std::memory_order_release);
         selectedTrack_.store(0, std::memory_order_release);
-        mutedMask_.store(0, std::memory_order_release);
+        mutedMaskLow_.store(0, std::memory_order_release);
+        mutedMaskHigh_.store(0, std::memory_order_release);
     }
 
     SmfTrackMuteSnapshot snapshot() const {
         SmfTrackMuteSnapshot result{};
         result.trackCount = trackCount_.load(std::memory_order_acquire);
         result.selectedTrack = selectedTrack_.load(std::memory_order_acquire);
-        result.mutedMask = mutedMask_.load(std::memory_order_acquire);
+        const uint64_t low = mutedMaskLow_.load(std::memory_order_acquire);
+        const uint64_t high = mutedMaskHigh_.load(std::memory_order_acquire);
+        result.mutedMask = low | (high << 32u);
         if (result.trackCount == 0) {
             result.selectedTrack = 0;
         } else if (result.selectedTrack >= result.trackCount) {
@@ -54,25 +57,37 @@ public:
     bool toggleSelected() {
         const SmfTrackMuteSnapshot state = snapshot();
         if (state.trackCount == 0 || state.selectedTrack >= 64u) return false;
-        const uint64_t bit = uint64_t{1} << state.selectedTrack;
-        mutedMask_.fetch_xor(bit, std::memory_order_acq_rel);
+        if (state.selectedTrack < 32u) {
+            mutedMaskLow_.fetch_xor(uint32_t{1} << state.selectedTrack,
+                                    std::memory_order_acq_rel);
+        } else {
+            mutedMaskHigh_.fetch_xor(
+                uint32_t{1} << (state.selectedTrack - 32u),
+                std::memory_order_acq_rel);
+        }
         return true;
     }
 
     void clear() {
-        mutedMask_.store(0, std::memory_order_release);
+        mutedMaskLow_.store(0, std::memory_order_release);
+        mutedMaskHigh_.store(0, std::memory_order_release);
     }
 
     bool isMuted(uint16_t trackIndex) const {
         if (trackIndex >= 64u) return false;
-        return (mutedMask_.load(std::memory_order_acquire) &
-                (uint64_t{1} << trackIndex)) != 0;
+        if (trackIndex < 32u) {
+            return (mutedMaskLow_.load(std::memory_order_acquire) &
+                    (uint32_t{1} << trackIndex)) != 0;
+        }
+        return (mutedMaskHigh_.load(std::memory_order_acquire) &
+                (uint32_t{1} << (trackIndex - 32u))) != 0;
     }
 
 private:
     std::atomic<uint16_t> trackCount_{0};
     std::atomic<uint16_t> selectedTrack_{0};
-    std::atomic<uint64_t> mutedMask_{0};
+    std::atomic<uint32_t> mutedMaskLow_{0};
+    std::atomic<uint32_t> mutedMaskHigh_{0};
 };
 
 inline SmfTrackMuteState& smfTrackMuteState() {
