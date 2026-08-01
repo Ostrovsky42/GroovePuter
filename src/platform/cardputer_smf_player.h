@@ -126,6 +126,8 @@ private:
     bool armProjectFromTick(uint32_t tick);
     bool planProjectLaunch(
         const GroovePuterMidi::ProjectTransportBlockSnapshot& transport);
+    bool resumeProjectAtCurrentStep(
+        const GroovePuterMidi::ProjectTransportBlockSnapshot& transport);
     void pauseAtCurrentPosition();
     void stopAndCleanup(bool resetToMusicStart);
     void scheduleAhead();
@@ -179,6 +181,10 @@ private:
     GroovePuterMidi::SmfLaunchMode launchMode_{
         GroovePuterMidi::SmfLaunchMode::NextBar};
     bool projectLaunchPlanned_{false};
+    // Set only when an active PROJECT file was stopped by SEQTRAK. A following
+    // MIDI Continue resumes at the saved tick immediately; a MIDI Start resets
+    // to musicStartTick_ and follows the normal launch policy.
+    bool projectResumeOnExternalContinue_{false};
     double projectOriginStep_{0.0};
     double projectOriginSmfTick_{0.0};
     uint16_t projectBpmX10_{1200};
