@@ -2,41 +2,26 @@
 
 ## Purpose
 
-Add a second realtime SMF timing mode for playing recognizable MIDI material together with GroovePuter and Yamaha SEQTRAK.
+Synchronize Standard MIDI File playback with GroovePuter transport so Yamaha SEQTRAK receives MIDI Clock and SMF notes from one musical timeline.
 
-`ORIGINAL` keeps the existing faithful SMF tempo-map player.
-
-`PROJECT` keeps the MIDI file's tick positions and note lengths but converts them onto GroovePuter's existing musical transport. GroovePuter remains the clock master and SEQTRAK receives the already accepted MIDI Start / Clock / Stop stream from the same audio-block timeline.
-
-The intended workflow is:
+Two tempo sources are available:
 
 ```text
-GroovePuter project tempo
-        |
-        +--> 24 PPQN USB MIDI Clock --> SEQTRAK
-        |
-        +--> SMF PROJECT timeline
-                 |
-                 +--> quantized NEXT BAR notes --> SEQTRAK
+ORIGINAL
+SMF tempo map -> realtime playback
+
+PROJECT
+SMF tick positions -> GroovePuter BPM / project phase
 ```
 
-This stage is deliberately smaller than the future Phrase Engine. It adds the synchronized timing foundation only; track isolation, 1/2/4/8-bar phrase slicing and phrase slots belong in later PRs.
+`PROJECT` changes absolute speed without flattening native tick spacing, note lengths, triplets or syncopation.
 
 ## Hardware list
 
 - M5Stack Cardputer-Adv (ESP32-S3, no PSRAM assumed)
 - Yamaha SEQTRAK
-- data-capable USB-C connection between Cardputer-Adv and SEQTRAK
-- microSD card containing one or more `.mid` files under `/midi`
-
-No PORT.A I2C accessory is required for this test.
-
-If PORT.A is attached for unrelated testing, Cardputer-Adv uses:
-
-```text
-SDA GPIO2
-SCL GPIO1
-```
+- data-capable USB-C cable
+- microSD card with `.mid` files under `/midi`
 
 ## Wiring
 
@@ -48,35 +33,28 @@ Cardputer-Adv USB-C
 Yamaha SEQTRAK USB
 ```
 
-GroovePuter internal audio remains active independently.
-
-## Timing contract
-
-Existing project transport remains authoritative:
+PORT.A is not required. If unrelated I2C hardware is connected:
 
 ```text
-GroovePuter internal sequencer: 96 PPQN
-USB MIDI Clock:                 24 PPQN
-SMF file:                       native PPQN division
+SDA GPIO2
+SCL GPIO1
 ```
 
-`PROJECT` mode does not quantize SMF notes to 1/16. Instead:
+## Timing model
 
 ```text
-SMF tick delta
-    -> quarter-note fraction from file division
-    -> GroovePuter project steps
-    -> project BPM
-    -> blockSequence + frameOffset
+GroovePuter sequencer: 96 PPQN / Q32.32 phase
+USB MIDI Clock:       24 PPQN
+SMF:                  native PPQN division
 ```
 
-Therefore triplets, syncopation and note lengths remain musical-time relative while the absolute duration follows the current GroovePuter BPM.
+The AudioTask publishes the same live project phase/block snapshot used by MIDI Clock. Future PROJECT SMF events are scheduled from that current snapshot, not projected indefinitely from one launch-time BPM/block anchor.
 
-The project transport snapshot is published from the same `MusicalEventQueue::beginMidiRenderBlock()` bracket that already publishes MIDI Clock. There is no independent wall-clock scheduler and no second TinyUSB owner.
+This distinction matters during longer SEQTRAK recordings: Clock and NoteOn/NoteOff must continue to reference the same evolving project phase.
+
+No independent wall-clock scheduler, transport task or second TinyUSB owner is introduced.
 
 ## SEQTRAK routing assumptions
-
-The routing model inherited from the preceding SEQTRAK target PR remains unchanged:
 
 ```text
 CH1  KICK
@@ -92,123 +70,127 @@ CH10 DX
 CH11 SAMPLER
 ```
 
-GM source CH10 drums continue to split onto native SEQTRAK drum lanes CH1..7.
+Safe SMF mapping:
 
-DX remains an explicit destination and is never used as the generic fallback for extra melodic channels.
+```text
+source CH1       -> SYNTH 1 / CH8
+source CH2       -> SYNTH 2 / CH9
+source CH3       -> DX / CH10
+source GM CH10   -> native drums / CH1..7
+source CH4+      -> unmapped CH16 sink
+```
+
+Extra melodic channels must not trigger the user's recorded SAMPLER pads. Use RAW when faithful whole-file channel preservation is more important than reducing the arrangement to SEQTRAK targets.
 
 ## Controls
 
-On the MIDI Player page:
-
 ```text
-T           ORIGINAL <-> PROJECT
-Space       SMF Play / Pause
-Up / Down   ORIGINAL: adjust SMF BPM by 1
-            PROJECT:  adjust GroovePuter project BPM by 1
+T           ORIGINAL / PROJECT tempo source
+Space       Play / Pause
+Up / Down   ORIGINAL: change SMF tempo
+            PROJECT:  change GroovePuter BPM / Clock
 R           restart from MUSIC START
 Left/Right  seek -/+ 1 bar
-M           RAW / SEQTRAK routing
+M           RAW / SEQTRAK SAFE routing
 V           velocity boost
-O           ORIGINAL tempo reset
-X           player-scoped panic / pause
-B           file browser
+O           original tempo reset
+X           player panic / pause
+B           browser
 D           diagnostics
 ```
 
-In PROJECT mode, selecting a MIDI file does not stop an already running GroovePuter transport. If GroovePuter is stopped, the MIDI page starts project transport through the existing UI/control path before arming the file.
-
-The player then shows `ARMED` and schedules its first MIDI event for a future project bar boundary. If the immediate next boundary is too close to prefill safely, it deliberately chooses the following bar rather than generating a late burst.
+Switching `T` while playing preserves playback intent. PROJECT enters `ARMED` and resumes on NEXT BAR; ORIGINAL resumes file-tempo playback. `T` is not a sound-off command.
 
 ## Build / flash
 
-Use the repository's existing Cardputer-Adv build and upload scripts. Do not switch to ESP-IDF for this Arduino firmware.
-
-Run host regressions first:
+Run:
 
 ```bash
 ./tests/run_host_tests.sh
 ```
 
-Then run the existing Cardputer-Adv build workflow/script used by the repository and flash over the normal CDC upload path.
-
-The supported M5Stack ESP32 Arduino core remains pinned by the repository build configuration.
+Then use the repository's existing pinned Cardputer-Adv Arduino build and flash procedure.
 
 ## Test procedure
 
 ### 1. Baseline
 
-1. Boot Cardputer-Adv normally.
-2. Confirm internal GroovePuter audio still works.
-3. Confirm PERFORM A / B / DX / DRUMS still reaches expected SEQTRAK targets.
-4. Confirm ordinary GroovePuter Start / Clock / Stop still drives SEQTRAK.
+1. Boot normally.
+2. Verify internal GroovePuter audio.
+3. Verify PERFORM A/B/DX/DRUMS.
+4. Verify Start/Clock/Stop reaches SEQTRAK.
 
 ### 2. ORIGINAL regression
 
-1. Open MIDI Player.
-2. Ensure `TEMPO ORIGINAL` is selected.
-3. Load a known MIDI.
-4. Verify current faithful realtime playback, seek, restart, velocity and routing behavior remains unchanged.
+1. Select ORIGINAL.
+2. Load a known MIDI.
+3. Verify normal full-file playback, seek, restart, velocity and RAW routing.
 
 ### 3. PROJECT launch
 
-1. Press `T` until the MIDI Player shows `PROJECT`.
+1. Use a short constant-tempo MIDI for the first test.
 2. Set GroovePuter to 90 BPM.
-3. Start GroovePuter transport if it is not already running.
-4. Build or play a simple drum groove on SEQTRAK while it follows GroovePuter Clock.
-5. Select a recognizable MIDI file.
-6. Observe `ARMED`.
-7. Verify the MIDI enters on a bar boundary without manually catching beat 1.
+3. Start transport and a simple SEQTRAK drum pattern/metronome.
+4. Select PROJECT with `T`.
+5. Observe `ARMED`.
+6. Verify entry on a bar boundary without manually catching beat 1.
 
-### 4. Tempo follow
+### 4. Long recording stability
 
-1. While PROJECT playback is active, change GroovePuter BPM from 90 to 110 using Up/Down on the MIDI page or normal project tempo controls.
-2. Verify SEQTRAK Clock follows the new BPM.
-3. Verify future SMF events continue using project timing without a catch-up burst.
-4. Verify no stuck notes remain after the bounded tempo re-anchor cleanup.
+1. Record the incoming MIDI into SEQTRAK for at least 32 bars.
+2. Compare the beginning, middle and end against SEQTRAK drums/metronome.
+3. Listen for accumulating early/late movement, alternating jitter or changed note lengths.
+4. Stop and verify no hanging notes.
 
-### 5. Musical timing
+A complete song containing internal tempo changes is not a clean PROJECT drift test: PROJECT intentionally follows one GroovePuter BPM rather than the file's tempo map.
 
-Use a MIDI containing triplets or obvious syncopation.
+### 5. Tempo change
 
-Verify that PROJECT mode changes tempo but does not flatten the phrase to a 1/16 grid.
+1. While PROJECT plays, change 90 -> 110 BPM.
+2. Verify SEQTRAK Clock and SMF notes change together.
+3. Verify no catch-up burst or stuck notes.
+
+### 6. Routing
+
+1. In SEQTRAK SAFE, verify extra melodic lanes do not fire SAMPLER pads.
+2. Compare RAW for full-arrangement fidelity.
+3. Verify CH1/CH2/CH3 and GM drums reach expected targets.
 
 ## Expected behavior
 
-- `ORIGINAL` behaves as before this PR.
-- `PROJECT` displays `ARMED` before quantized entry.
-- GroovePuter remains transport master.
-- SEQTRAK receives one coherent Start / Clock / Stop timeline.
-- SMF tick spacing follows current project BPM.
-- triplets and syncopation remain recognizable.
-- pausing SMF does not automatically stop project transport.
-- stopping GroovePuter transport stops/disarms PROJECT SMF and releases SMF-owned notes.
-- no unrelated PERFORM or PatternPlayer note ownership is cleared by player-scoped cleanup.
+- ORIGINAL remains faithful to the MIDI tempo map.
+- PROJECT displays ARMED before quantized entry.
+- MIDI Clock and PROJECT notes remain phase-aligned over a long recording.
+- `T` changes tempo source without unexplained silence.
+- Extra channels do not trigger recorded sampler sounds.
+- RAW remains available for faithful channel preservation.
+- Pause/Stop/Restart/Panic leave no stuck notes.
 
 ## Troubleshooting
 
-### PROJECT remains `WAIT PROJECT PLAY`
+### T changes mode but playback is silent
 
-GroovePuter transport is not running or the audio-block timeline has not published a valid block yet. Start project transport and confirm normal MIDI Clock is reaching SEQTRAK.
+Check the displayed state. Active playback should move through PROJECT `ARMED` to `PLAYING`, or resume ORIGINAL. If it remains PAUSED, record the exact state/message and serial output.
 
-### Phrase starts one bar later than expected
+### PROJECT waits on `WAIT PROJECT PLAY`
 
-This is intentional when the nearest bar boundary is too close for the bounded SD/parser prefill lead. The scheduler chooses the following bar instead of sending late notes.
+GroovePuter transport is stopped or the AudioTask has not published a valid project block. Start project transport and confirm MIDI Clock reaches SEQTRAK.
 
-### SEQTRAK tempo changes but SMF does not
+### Phrase starts one bar later
 
-Confirm the MIDI Player still shows `PROJECT`, not `ORIGINAL`.
+The nearest bar boundary was too close for bounded SD/parser prefill. The scheduler deliberately selects the following bar instead of sending a late burst.
 
-### Wrong instrument on SEQTRAK
+### Playback gradually moves against SEQTRAK
 
-Check `RAW` versus `SEQTRAK` routing. In SEQTRAK mode the established target model is CH8/CH9/CH10/CH11 plus native drum CH1..7.
+Treat this as a failure. Reproduce with a short constant-tempo MIDI, fixed BPM, no tempo changes and at least 32 recorded bars. Note whether the error accumulates continuously or alternates around the beat.
 
-### Hanging note after Stop or tempo change
+### RAW sounds better
 
-Treat this as a failure. Capture serial diagnostics and reproduce with `X` panic. PROJECT transitions must use the existing SMF generation invalidation and ownership cleanup.
+This is expected for many complete arrangements. RAW preserves original MIDI channels. SEQTRAK SAFE deliberately maps only three melodic source channels plus drums and silences additional channels until custom routing exists.
 
-### UI/audio stutter
+### Hanging notes
 
-Open `D` diagnostics and compare queue depth / schedule latency with the previous player stage. PROJECT uses a shorter bounded lookahead than ORIGINAL to make project BPM changes responsive.
+Press `X`, capture serial diagnostics and record whether the issue followed Stop, BPM change, route change or mode change.
 
 ## Acceptance checklist
 
@@ -216,30 +198,26 @@ Open `D` diagnostics and compare queue depth / schedule latency with the previou
 [ ] normal boot succeeds
 [ ] internal GroovePuter audio unchanged
 [ ] PERFORM A/B/DX/DRUMS unchanged
-[ ] PatternPlayer behavior unchanged
-[ ] existing MIDI Start/Clock/Stop reaches SEQTRAK
-[ ] ORIGINAL SMF playback unchanged
-[ ] T switches ORIGINAL <-> PROJECT
-[ ] PROJECT file load does not stop an already running project transport
-[ ] stopped project transport can be started through the existing UI/control path
-[ ] PROJECT shows ARMED before launch
-[ ] first PROJECT notes enter on a project bar boundary
-[ ] no manual beat-catching is required
-[ ] project BPM 90 -> 110 changes both SEQTRAK Clock and SMF timing
-[ ] no catch-up MIDI burst after BPM change
-[ ] triplets remain triplets
-[ ] syncopation remains recognizable
-[ ] SMF pause can leave project transport running
-[ ] project Stop releases/disarms SMF-owned notes
-[ ] restart/seek/panic leave no stuck notes
+[ ] PatternPlayer unchanged
+[ ] MIDI Start/Clock/Stop reaches SEQTRAK
+[ ] ORIGINAL playback unchanged
+[ ] T visibly selects ORIGINAL / PROJECT
+[ ] active T switch does not end in unexplained silence
+[ ] PROJECT shows ARMED
+[ ] first notes enter on a bar boundary
+[ ] 32-bar recording shows no accumulating drift
+[ ] 90 -> 110 BPM changes Clock and SMF together
+[ ] no catch-up burst
+[ ] triplets and syncopation remain recognizable
 [ ] RAW routing unchanged
-[ ] source melodic CH1 -> SEQTRAK CH8
-[ ] source melodic CH2 -> SEQTRAK CH9
-[ ] source melodic CH3 -> DX CH10 only
-[ ] source melodic CH4+ -> SAMPLER CH11
+[ ] source CH1 -> CH8
+[ ] source CH2 -> CH9
+[ ] source CH3 -> DX CH10
+[ ] source CH4+ does not trigger SAMPLER
 [ ] GM source CH10 drums -> native CH1..7
+[ ] Stop/Pause/Restart/Panic leave no stuck notes
 [ ] no watchdog/reset
-[ ] no sustained audio-underrun regression
+[ ] no sustained underrun regression
 [ ] host-tests green
 [ ] SDL build green
 [ ] Cardputer-Adv build green
