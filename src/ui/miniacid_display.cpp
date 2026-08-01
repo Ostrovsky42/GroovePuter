@@ -101,7 +101,9 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case 10: page = std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_); break;
         case 11: page = std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_); break;
         case 12: page = std::make_unique<PerformPage>(gfx_, mini_acid_, performance_keyboard_); break;
-        case kSmfPlayerPage: page = std::make_unique<SmfPlayerPage>(gfx_, mini_acid_); break;
+        case kSmfPlayerPage:
+            page = std::make_unique<SmfPlayerPage>(gfx_, mini_acid_, audio_guard_);
+            break;
     }
 #if defined(ESP32) || defined(ESP_PLATFORM)
     uint32_t freeAfter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);

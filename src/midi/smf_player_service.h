@@ -69,8 +69,9 @@ public:
 
     // All commands are non-blocking from the UI perspective. File I/O and
     // scanning belong to the platform player task, never the display handler.
-    virtual bool requestLoadAndPlay(const char* path) = 0;
+    virtual bool requestLoad(const char* path) = 0;
     virtual bool togglePlayPause() = 0;
+    virtual bool pause() = 0;
     virtual bool restart(SmfPlayerRestartOrigin origin =
                          SmfPlayerRestartOrigin::MusicStart) = 0;
     virtual bool stop() = 0;

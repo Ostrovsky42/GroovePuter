@@ -13,12 +13,16 @@ public:
         registerSmfPlayerService(this);
     }
 
-    bool requestLoadAndPlay(const char* path) override {
-        return ensureStarted() && player_.requestLoadAndPlay(path);
+    bool requestLoad(const char* path) override {
+        return ensureStarted() && player_.requestLoad(path);
     }
 
     bool togglePlayPause() override {
         return ensureStarted() && player_.togglePlayPause();
+    }
+
+    bool pause() override {
+        return ensureStarted() && player_.pause();
     }
 
     bool restart(SmfPlayerRestartOrigin origin) override {

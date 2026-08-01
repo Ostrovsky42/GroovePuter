@@ -86,7 +86,9 @@ Extra melodic channels must not trigger the user's recorded SAMPLER pads. Use RA
 
 ```text
 T           ORIGINAL / PROJECT tempo source
-Space       Play / Pause
+Enter       load selected file; never starts playback
+G           GroovePuter transport only
+Space       SMF Play / Pause only
 Up / Down   ORIGINAL: change SMF tempo
             PROJECT:  change GroovePuter BPM / Clock
 R           restart from MUSIC START
@@ -99,7 +101,9 @@ B           browser
 D           diagnostics
 ```
 
-Switching `T` while playing preserves playback intent. PROJECT enters `ARMED` and resumes on NEXT BAR; ORIGINAL resumes file-tempo playback. `T` is not a sound-off command.
+PROJECT has explicit transport ownership. Start GroovePuter with `G`, then arm SMF with `Space`; the SMF begins on NEXT BAR. `Space` cannot create a hidden arm while the project master is stopped. Stopping GroovePuter with `G` pauses PROJECT-SMF at its last published tick and requests immediate player-scoped note cleanup.
+
+Switching `T` while playing preserves playback intent only when the destination clock is already running. Switching an active file to PROJECT while GroovePuter is stopped leaves SMF paused until `G`, then `Space`. `T` is not a sound-off command.
 
 ## Build / flash
 

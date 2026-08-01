@@ -21,8 +21,9 @@ public:
     bool begin();
     ScheduledSmfMidiEventQueue& eventQueue() { return eventQueue_; }
 
-    bool requestLoadAndPlay(const char* path) override;
+    bool requestLoad(const char* path) override;
     bool togglePlayPause() override;
+    bool pause() override;
     bool restart(GroovePuterMidi::SmfPlayerRestartOrigin origin) override;
     bool stop() override;
     bool panic() override;
@@ -50,8 +51,9 @@ private:
         ScheduledSmfMidiEventQueue::kCapacity - 24;
 
     enum class CommandType : uint8_t {
-        LoadAndPlay,
+        Load,
         TogglePlayPause,
+        Pause,
         RestartMusic,
         RestartFile,
         Stop,

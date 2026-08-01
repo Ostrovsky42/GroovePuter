@@ -87,10 +87,10 @@ bool CardputerSmfPlayerService::begin() {
     return true;
 }
 
-bool CardputerSmfPlayerService::requestLoadAndPlay(const char* path) {
+bool CardputerSmfPlayerService::requestLoad(const char* path) {
     if (!path || !path[0]) return false;
     Command command{};
-    command.type = CommandType::LoadAndPlay;
+    command.type = CommandType::Load;
     copyText(command.path, sizeof(command.path), path);
     return enqueue(command);
 }
@@ -98,6 +98,12 @@ bool CardputerSmfPlayerService::requestLoadAndPlay(const char* path) {
 bool CardputerSmfPlayerService::togglePlayPause() {
     Command command{};
     command.type = CommandType::TogglePlayPause;
+    return enqueue(command);
+}
+
+bool CardputerSmfPlayerService::pause() {
+    Command command{};
+    command.type = CommandType::Pause;
     return enqueue(command);
 }
 
@@ -272,12 +278,17 @@ void CardputerSmfPlayerService::handleProjectTransport() {
     const SmfPlayerState state = snapshot().state;
 
     if (state == SmfPlayerState::Armed) {
-        if (!transport.valid || !transport.playing) {
-            if (projectLaunchPlanned_) {
-                eventQueue_.invalidateAndRequestPanic();
-                projectLaunchPlanned_ = false;
-            }
+        if (!transport.valid) {
             publishSnapshot(SmfPlayerState::Armed, "WAIT GP MASTER PLAY");
+            return;
+        }
+        if (!transport.playing) {
+            pausedTick_ = snapshot().currentTick;
+            eventQueue_.invalidateAndRequestPanic();
+            projectLaunchPlanned_ = false;
+            prepareStreamAt(pausedTick_);
+            publishSnapshot(SmfPlayerState::Paused, "GP STOP / MIDI PAUSED");
+            updatePlaybackSnapshot();
             return;
         }
         if (projectLaunchPlanned_ && transport.bpmX10 != projectBpmX10_) {
@@ -296,11 +307,13 @@ void CardputerSmfPlayerService::handleProjectTransport() {
     if (state != SmfPlayerState::Playing) return;
 
     if (!transport.valid || !transport.playing) {
-        pausedTick_ = transport.valid ? currentProjectTick(transport) : pausedTick_;
+        // A stopped engine publishes phase zero. Reconstructing from that phase
+        // can jump backwards, so preserve the last playing snapshot instead.
+        pausedTick_ = snapshot().currentTick;
         eventQueue_.invalidateAndRequestPanic();
         prepareStreamAt(pausedTick_);
         projectLaunchPlanned_ = false;
-        publishSnapshot(SmfPlayerState::Stopped, "GP MASTER STOPPED");
+        publishSnapshot(SmfPlayerState::Paused, "GP STOP / MIDI PAUSED");
         updatePlaybackSnapshot();
         return;
     }
@@ -356,12 +369,10 @@ bool CardputerSmfPlayerService::enqueue(const Command& command) {
 
 void CardputerSmfPlayerService::handleCommand(const Command& command) {
     switch (command.type) {
-        case CommandType::LoadAndPlay:
+        case CommandType::Load:
             publishSnapshot(SmfPlayerState::Loading, "Scanning MIDI...");
             try {
-                if (loadFile(command.path)) {
-                    startFromTick(musicStartTick_);
-                }
+                loadFile(command.path);
             } catch (const std::bad_alloc&) {
                 stopAndCleanup(false);
                 source_.close();
@@ -383,6 +394,14 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
                 startFromTick(pausedTick_);
             } else {
                 startFromTick(musicStartTick_);
+            }
+            break;
+        }
+        case CommandType::Pause: {
+            const SmfPlayerState state = snapshot().state;
+            if (loaded_ &&
+                (state == SmfPlayerState::Playing || state == SmfPlayerState::Armed)) {
+                pauseAtCurrentPosition();
             }
             break;
         }
@@ -476,15 +495,22 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
             snapshot_.tempoMode = tempoMode_;
             snapshot_.launchMode = launchMode_;
             portEXIT_CRITICAL(&snapshotMux_);
-            if (loaded_ && wasActive) {
+            const ProjectTransportBlockSnapshot projectTransport =
+                projectTransportTimeline().snapshot();
+            if (loaded_ && wasActive &&
+                (tempoMode_ != SmfTempoMode::Project ||
+                 (projectTransport.valid && projectTransport.playing))) {
                 // Switching the clock source is one player command. Keeping
                 // resume here avoids a second UI command racing or being lost
                 // when the bounded command queue is busy.
                 startFromTick(resumeTick);
             } else if (loaded_) {
-                publishSnapshot(previous,
+                publishSnapshot(
+                    tempoMode_ == SmfTempoMode::Project && wasActive
+                        ? SmfPlayerState::Paused
+                        : previous,
                     tempoMode_ == SmfTempoMode::Project
-                        ? "GP MASTER / NEXT BAR"
+                        ? "G START / SPACE MIDI"
                         : "TEMPO ORIGINAL");
                 updatePlaybackSnapshot();
             } else {
@@ -645,10 +671,10 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
 
     publishSnapshot(SmfPlayerState::Stopped,
         tempoMode_ == SmfTempoMode::Project
-            ? "GP MASTER / NEXT BAR"
+            ? "LOADED / G THEN SPACE"
             : (routingMode_ == SmfRoutingMode::Raw
-                ? "RAW / ORIGINAL"
-                : "SEQTRAK / ORIGINAL"));
+                ? "LOADED / RAW"
+                : "LOADED / SEQTRAK"));
     Serial.printf("[SMF-LOAD] ready events=%u freeInt=%u largest=%u stackFree=%u\n",
                   static_cast<unsigned>(timingDocument_.events.size()),
                   static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
@@ -1075,7 +1101,12 @@ uint32_t CardputerSmfPlayerService::currentProjectTick(
 uint32_t CardputerSmfPlayerService::currentTickFromAudioClock() const {
     if (!loaded_ || !timing_.valid()) return 0;
     if (tempoMode_ == SmfTempoMode::Project) {
-        return currentProjectTick(projectTransportTimeline().snapshot());
+        const ProjectTransportBlockSnapshot transport =
+            projectTransportTimeline().snapshot();
+        if (!transport.valid || !transport.playing) {
+            return snapshot().currentTick;
+        }
+        return currentProjectTick(transport);
     }
 
     const uint32_t now = micros();

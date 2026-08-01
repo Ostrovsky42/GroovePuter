@@ -105,7 +105,9 @@ Velocity zero remains zero so NoteOn-with-zero velocity cannot be turned into an
 ### Existing controls remain
 
 ```text
-Space       Play / Pause
+Enter       load selected file
+G           GroovePuter transport
+Space       SMF Play / Pause
 R           Restart from MUSIC START
 Left/Right  seek -/+ 1 bar
 X           player-scoped Panic / Pause

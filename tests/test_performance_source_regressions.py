@@ -166,6 +166,9 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
     player_service = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(
         encoding="utf-8"
     )
+    smf_service = (ROOT / "src/midi/smf_player_service.h").read_text(
+        encoding="utf-8"
+    )
     player_registry = (ROOT / "src/platform/cardputer_smf_player_registry.cpp").read_text(
         encoding="utf-8"
     )
@@ -196,7 +199,8 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
             "miniAcid_.stop()" not in player_space,
             "MIDI Space must not mutate the GroovePuter transport")
     require("event.key == 'g' || event.key == 'G'" in player_page and
-            '"GROOVE: PLAY"' in player_page and '"GROOVE: STOP"' in player_page,
+            '"GROOVE PLAY / SPACE MIDI"' in player_page and
+            '"GROOVE STOP / MIDI PAUSED"' in player_page,
             "G must expose separate, explicit GroovePuter transport control")
     require(player_page.count("miniAcid_.start();") == 1 and
             player_page.count("miniAcid_.stop();") == 1,
@@ -209,9 +213,38 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
     require('queued ? "MIDI PANIC / PAUSE" : "PANIC QUEUE BUSY"' in player_page,
             "player panic must report command-queue failure")
 
+    require("requestLoad(path.c_str())" in player_page and
+            "requestLoadAndPlay" not in player_page,
+            "Enter must load an SMF without creating hidden playback intent")
+    load_case = player_service[player_service.index("case CommandType::Load:"):
+                               player_service.index("case CommandType::TogglePlayPause:")]
+    require("loadFile(command.path);" in load_case and
+            "startFromTick" not in load_case,
+            "the platform Load command must leave the player stopped")
+    player_space = player_page[player_page.index("bool SmfPlayerPage::togglePlayerTransport()"):
+                               player_page.index("void SmfPlayerPage::toggleGrooveTransport()")]
+    require('"G START FIRST / THEN SPACE"' in player_space and
+            player_space.index('"G START FIRST / THEN SPACE"') <
+            player_space.index("player_->togglePlayPause()"),
+            "PROJECT Space must not arm SMF while the master is stopped")
+    groove_toggle = player_page[player_page.index("void SmfPlayerPage::toggleGrooveTransport()"):
+                                player_page.index("bool SmfPlayerPage::handleEvent")]
+    require("player_->pause()" in groove_toggle and
+            "withAudioGuard" in groove_toggle,
+            "G stop must pause PROJECT SMF and guard engine transport mutation")
+    require("virtual bool pause() = 0" in smf_service and
+            "case CommandType::Pause:" in player_service,
+            "SMF transport needs an explicit idempotent Pause command")
+    require('publishSnapshot(SmfPlayerState::Paused, "GP STOP / MIDI PAUSED")' in
+            player_service and
+            player_service.count(
+                'publishSnapshot(SmfPlayerState::Paused, "GP STOP / MIDI PAUSED")'
+            ) >= 2,
+            "a stopped project master must pause playing and pre-boundary ARMED SMF")
+
     require('"MIDI LIBRARY  %.24s"' in player_page and
             "currentPath_.c_str()" in player_page and
-            "requestLoadAndPlay" in player_page,
+            "requestLoad" in player_page,
             "MIDI Player page must expose selectable SD playback and its path")
     require("seekBars(event.shift ? -4 : -1)" in player_page and
             "seekBars(event.shift ? 4 : 1)" in player_page,
