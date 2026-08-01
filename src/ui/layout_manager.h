@@ -10,9 +10,7 @@ public:
         return Layout::CONTENT.y + Layout::CONTENT_PAD_Y + lineNumber * Layout::LINE_HEIGHT;
     }
 
-    static void clearContent(IGfx& gfx) {
-        gfx.fillRect(Layout::CONTENT.x, Layout::CONTENT.y, Layout::CONTENT.w, Layout::CONTENT.h, COLOR_BLACK);
-    }
+    static void clearContent(IGfx& gfx);
 
     static void drawHeader(IGfx& gfx,
                            const char* scene,

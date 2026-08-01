@@ -1,4 +1,5 @@
 #include "ui_widgets.h"
+#include "ui_theme.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -11,10 +12,8 @@ namespace {
 
     constexpr int TEXT_Y_OFFSET = 1;
 
-    // Safe strlen for null
     int safeLen(const char* s) { return s ? (int)strlen(s) : 0; }
 
-    // Draw ASCII icon: ">" (no Unicode)
     void drawIcon(IGfx& gfx, int x, int y) {
         gfx.drawText(x, y, ">");
     }
@@ -24,53 +23,46 @@ namespace Widgets {
 
 void drawClippedText(IGfx& gfx, int x, int y, int maxWidth, const char* text) {
     if (!text || maxWidth <= 0) return;
-    
-    // 1. Если текст влезает - рисуем как есть
+
     int txWidth = gfx.measureText(text);
     if (txWidth <= maxWidth) {
         gfx.drawText(x, y, text);
         return;
     }
-    
-    // 2. Если даже "..." не влезает - ничего не рисуем
+
     const char* ellipsis = "...";
     int ellipsisWidth = gfx.measureText(ellipsis);
     if (ellipsisWidth > maxWidth) return;
-    
-    // 3. Ищем максимальную длину
-    char buffer[96]; // increased to 96
+
+    char buffer[96];
     int srcLen = (int)strlen(text);
     if (srcLen >= (int)sizeof(buffer)) srcLen = (int)sizeof(buffer) - 1;
-    
-    // Безопасное копирование
+
     strncpy(buffer, text, sizeof(buffer) - 1);
     buffer[sizeof(buffer) - 1] = '\0';
-    
-    // Укорачиваем с конца
+
     for (int len = srcLen; len > 0; len--) {
         buffer[len] = '\0';
         if (gfx.measureText(buffer) + ellipsisWidth <= maxWidth) {
-            // Нашли подходящую длину
             strcat(buffer, ellipsis);
             gfx.drawText(x, y, buffer);
             return;
         }
     }
-    
-    // Если ничего не нашли - рисуем только "..."
+
     gfx.drawText(x, y, ellipsis);
 }
 
 void drawListRow(IGfx& gfx, int x, int y, int width,
                  const char* label, bool selected, bool hasIcon) {
-    // Clear row
-    gfx.fillRect(x, y, width, Layout::LIST_ITEM_H, COLOR_BLACK);
+    const UI::ThemePalette p = UI::themePalette();
+    gfx.fillRect(x, y, width, Layout::LIST_ITEM_H, p.background);
 
     if (selected) {
-        gfx.fillRect(x, y, width, Layout::LIST_ITEM_H, COLOR_KNOB_1);
-        gfx.setTextColor(COLOR_BLACK);
+        gfx.fillRect(x, y, width, Layout::LIST_ITEM_H, p.focus);
+        gfx.setTextColor(p.invert);
     } else {
-        gfx.setTextColor(COLOR_WHITE);
+        gfx.setTextColor(p.text);
     }
 
     int tx = x + 2;
@@ -84,16 +76,14 @@ void drawListRow(IGfx& gfx, int x, int y, int width,
 
 void drawBarRow(IGfx& gfx, int x, int y, int width,
                 const char* label, float value, bool showPercent) {
+    const UI::ThemePalette p = UI::themePalette();
     value = clamp01(value);
 
-    // Clear area
-    gfx.fillRect(x, y, width, Layout::BAR_HEIGHT + 3, COLOR_BLACK);
+    gfx.fillRect(x, y, width, Layout::BAR_HEIGHT + 3, p.background);
 
-    // Label
-    gfx.setTextColor(COLOR_WHITE);
+    gfx.setTextColor(p.text);
     drawClippedText(gfx, x, y + TEXT_Y_OFFSET, 54, label ? label : "");
 
-    // Bar geometry
     const int labelW = 56;
     const int rightW = showPercent ? 28 : 0;
     int barW = width - labelW - rightW - 2;
@@ -109,82 +99,68 @@ void drawBarRow(IGfx& gfx, int x, int y, int width,
         int sw = segW - 1;
         if (sw < 1) sw = 1;
         if (i < filled) {
-            gfx.fillRect(sx, y, sw, Layout::BAR_HEIGHT, COLOR_KNOB_2);
+            gfx.fillRect(sx, y, sw, Layout::BAR_HEIGHT, p.accent);
         } else {
-            gfx.drawRect(sx, y, sw, Layout::BAR_HEIGHT, COLOR_LABEL);
+            gfx.drawRect(sx, y, sw, Layout::BAR_HEIGHT, p.dim);
         }
     }
 
     if (showPercent) {
-        char p[8];
-        snprintf(p, sizeof(p), "%d%%", (int)(value * 100.0f + 0.5f));
-        gfx.setTextColor(COLOR_LABEL);
-        gfx.drawText(x + width - rightW, y + TEXT_Y_OFFSET, p);
+        char percent[8];
+        snprintf(percent, sizeof(percent), "%3d%%", (int)(value * 100.0f + 0.5f));
+        gfx.setTextColor(p.secondary);
+        gfx.drawText(x + width - rightW, y + TEXT_Y_OFFSET, percent);
     }
 }
 
 void drawStepRow(IGfx& gfx, int x, int y, int width,
                  const char* label, uint16_t stepMask, int currentStep,
                  bool compact) {
-    // Высота в зависимости от режима
+    const UI::ThemePalette p = UI::themePalette();
     int rowHeight = compact ? (Layout::BAR_HEIGHT + 2) : Layout::STEP_ROW_H;
-    
-    // Очистка
-    gfx.fillRect(x, y, width, rowHeight, COLOR_BLACK);
-    
-    // Метка
-    gfx.setTextColor(COLOR_WHITE);
+
+    gfx.fillRect(x, y, width, rowHeight, p.background);
+
+    gfx.setTextColor(p.text);
     int labelW = compact ? 36 : 44;
     drawClippedText(gfx, x, y + 1, labelW - 2, label ? label : "");
-    
-    // Геометрия шагов
+
     const int steps = 16;
     int availW = width - labelW - 2;
     if (availW < 100) availW = 100;
-    
-    // Автоподбор ширины шага
+
     int spacing = compact ? 1 : 2;
     int stepW = (availW - (steps - 1) * spacing) / steps;
     if (stepW < 4) {
         stepW = 4;
         spacing = 0;
     }
-    
+
     int startX = x + labelW;
     int barY = y + (compact ? 1 : 0);
     int barH = compact ? 6 : Layout::BAR_HEIGHT;
-    
-    // Рисуем шаги
+
     for (int i = 0; i < steps; i++) {
         int sx = startX + i * (stepW + spacing);
         bool active = (stepMask & (1u << i)) != 0;
         bool cur = (i == currentStep);
-        
-        // Цвет в зависимости от состояния
-        IGfxColor color;
-        if (cur) {
-            color = COLOR_KNOB_1;
-        } else if (active) {
-            color = COLOR_KNOB_2;
-        } else {
-            color = COLOR_LABEL;
-        }
-        
-        // Заполненный или контур
+
+        IGfxColor color = p.dim;
+        if (cur) color = p.warning;
+        else if (active) color = p.accent;
+
         if (cur || active) {
             gfx.fillRect(sx, barY, stepW, barH, color);
         } else {
             gfx.drawRect(sx, barY, stepW, barH, color);
         }
     }
-    
-    // Номера шагов (только в не-compact режиме)
+
     if (!compact) {
         int numY = y + Layout::BAR_HEIGHT + 2;
-        gfx.setTextColor(COLOR_LABEL);
-        
+        gfx.setTextColor(p.secondary);
+
         for (int i = 0; i < steps; i++) {
-            // Показываем только ключевые номера
             if (i == 0 || i == 7 || i == 8 || i == 15) {
                 int sx = startX + i * (stepW + spacing);
                 char num[4];
@@ -197,13 +173,14 @@ void drawStepRow(IGfx& gfx, int x, int y, int width,
 
 void drawToggleRow(IGfx& gfx, int x, int y, int width,
                    const char* label, bool enabled, const char* valueStr) {
-    gfx.fillRect(x, y, width, Layout::LINE_HEIGHT, COLOR_BLACK);
+    const UI::ThemePalette p = UI::themePalette();
+    gfx.fillRect(x, y, width, Layout::LINE_HEIGHT, p.background);
 
-    gfx.setTextColor(COLOR_WHITE);
+    gfx.setTextColor(p.text);
     drawClippedText(gfx, x, y + TEXT_Y_OFFSET, 60, label ? label : "");
 
     const char* st = enabled ? "ON" : "OFF";
-    gfx.setTextColor(enabled ? COLOR_KNOB_2 : COLOR_LABEL);
+    gfx.setTextColor(enabled ? p.active : p.dim);
 
     char buf[32];
     if (valueStr && safeLen(valueStr) > 0) {
@@ -212,7 +189,6 @@ void drawToggleRow(IGfx& gfx, int x, int y, int width,
         snprintf(buf, sizeof(buf), "%s", st);
     }
 
-    // Right align-ish
     int tw = gfx.measureText(buf);
     int tx = x + width - tw - 2;
     if (tx < x + 64) tx = x + 64;
@@ -221,9 +197,10 @@ void drawToggleRow(IGfx& gfx, int x, int y, int width,
 
 void drawValueRow(IGfx& gfx, int x, int y, int width,
                   const char* label, int value, const char* unit) {
-    gfx.fillRect(x, y, width, Layout::LINE_HEIGHT, COLOR_BLACK);
+    const UI::ThemePalette p = UI::themePalette();
+    gfx.fillRect(x, y, width, Layout::LINE_HEIGHT, p.background);
 
-    gfx.setTextColor(COLOR_WHITE);
+    gfx.setTextColor(p.text);
     drawClippedText(gfx, x, y + TEXT_Y_OFFSET, 60, label ? label : "");
 
     char buf[24];
@@ -233,7 +210,7 @@ void drawValueRow(IGfx& gfx, int x, int y, int width,
         snprintf(buf, sizeof(buf), "%d", value);
     }
 
-    gfx.setTextColor(COLOR_KNOB_2);
+    gfx.setTextColor(p.accent);
     int tw = gfx.measureText(buf);
     int tx = x + width - tw - 2;
     if (tx < x + 64) tx = x + 64;
@@ -241,8 +218,9 @@ void drawValueRow(IGfx& gfx, int x, int y, int width,
 }
 
 void drawButtonGrid(IGfx& gfx, int x, int y, int cellW, int cellH,
-                    int cols, int rows, const char* const* labels, 
+                    int cols, int rows, const char* const* labels,
                     int labelsCount, int selectedIndex) {
+    const UI::ThemePalette p = UI::themePalette();
     int cellCount = cols * rows;
     for (int i = 0; i < cellCount; i++) {
         int cx = x + (i % cols) * cellW;
@@ -250,19 +228,17 @@ void drawButtonGrid(IGfx& gfx, int x, int y, int cellW, int cellH,
 
         bool sel = (i == selectedIndex);
         bool hasLabel = (labels && i < labelsCount && labels[i]);
-        
+
         if (sel && hasLabel) {
-            gfx.fillRect(cx, cy, cellW - 1, cellH - 1, COLOR_KNOB_1);
-            gfx.setTextColor(COLOR_BLACK);
+            gfx.fillRect(cx, cy, cellW - 1, cellH - 1, p.focus);
+            gfx.setTextColor(p.invert);
         } else if (hasLabel) {
-            gfx.drawRect(cx, cy, cellW - 1, cellH - 1, COLOR_LABEL);
-            gfx.setTextColor(COLOR_WHITE);
+            gfx.drawRect(cx, cy, cellW - 1, cellH - 1, p.dim);
+            gfx.setTextColor(p.text);
         } else {
-            // Empty/disabled cell (no label or out of bounds)
-            gfx.drawRect(cx, cy, cellW - 1, cellH - 1, COLOR_BLACK);
+            gfx.drawRect(cx, cy, cellW - 1, cellH - 1, p.background);
         }
 
-        // SAFE: Only read labels[i] if i < labelsCount
         if (hasLabel) {
             int pad = 2;
             drawClippedText(gfx, cx + pad, cy + pad, cellW - 2 * pad, labels[i]);
@@ -271,8 +247,8 @@ void drawButtonGrid(IGfx& gfx, int x, int y, int cellW, int cellH,
 }
 
 void drawKeyHelp(IGfx& gfx, int x, int y, int maxWidth, const char* text) {
-    // single line clipped
-    gfx.setTextColor(COLOR_LABEL);
+    const UI::ThemePalette p = UI::themePalette();
+    gfx.setTextColor(p.secondary);
     drawClippedText(gfx, x, y, maxWidth, text ? text : "");
 }
 
@@ -280,12 +256,13 @@ void drawInfoBox(IGfx& gfx, int x, int y, int width,
                  const char* const* lines, int linesCount) {
     if (!lines || linesCount <= 0) return;
 
+    const UI::ThemePalette p = UI::themePalette();
     int h = linesCount * Layout::LINE_HEIGHT + 2;
-    gfx.drawRect(x, y, width, h, COLOR_LABEL);
+    gfx.drawRect(x, y, width, h, p.dim);
 
     for (int i = 0; i < linesCount; i++) {
         int ly = y + 1 + i * Layout::LINE_HEIGHT;
-        gfx.setTextColor(COLOR_WHITE);
+        gfx.setTextColor(i == 0 ? p.text : p.secondary);
         drawClippedText(gfx, x + 2, ly + TEXT_Y_OFFSET, width - 4, lines[i] ? lines[i] : "");
     }
 }

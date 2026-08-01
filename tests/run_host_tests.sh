@@ -9,6 +9,7 @@ mkdir -p "${BUILD_DIR}"
 
 python3 "${ROOT_DIR}/tests/test_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_performance_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_theme_selection_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_usb_midi_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_pattern_midi_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_midi_static_init_source_regressions.py"
