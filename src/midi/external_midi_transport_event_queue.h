@@ -51,6 +51,11 @@ public:
         return true;
     }
 
+    // Consumer-side recovery used after a critical overflow or source switch.
+    void discardPending() {
+        tail_.storeRelease(head_.loadAcquire());
+    }
+
     std::size_t approximateSize() const {
         return sizeFrom(head_.loadAcquire(), tail_.loadAcquire());
     }

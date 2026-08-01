@@ -5,13 +5,15 @@
 class MusicalEventRouter;
 class MusicalEventQueue;
 class ScheduledSmfMidiEventQueue;
+class ExternalMidiTransportEventQueue;
 
 // Registers a bounded live-event sink and starts the sole Cardputer USB-MIDI
 // owner task. Pattern and transport queues remain owned by AudioTask (producer)
 // and MidiDispatchTask (consumer).
 bool registerCardputerUsbMidiSink(
     MusicalEventRouter& router,
-    MusicalEventQueue& patternQueue);
+    MusicalEventQueue& patternQueue,
+    ExternalMidiTransportEventQueue& externalTransportQueue);
 
 // Registers the separate SPSC queue produced by SmfPlayerTask. The queue does
 // not write USB itself; MidiDispatchTask remains the only consumer/USB owner.

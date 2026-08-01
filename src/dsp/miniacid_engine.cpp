@@ -505,6 +505,41 @@ void MiniAcid::stop() {
   }
 }
 
+void MiniAcid::pauseTransport() {
+  if (!playing) return;
+  LOG_PRINTLN("[DSP] PAUSE command received");
+  publishPatternAllNotesOff_();
+  playing = false;
+  currentStepIndex = -1;
+  gateCountdownA_ = 0;
+  gateCountdownB_ = 0;
+  retrigA_ = {};
+  retrigB_ = {};
+  for (int i = 0; i < NUM_DRUM_VOICES; ++i) retrigDrums_[i] = {};
+  if (synthVoices_[0]) synthVoices_[0]->release();
+  if (synthVoices_[1]) synthVoices_[1]->release();
+  liveNotes_[0] = -1;
+  liveNotes_[1] = -1;
+  drums->reset();
+  if (songMode_) {
+    sceneManager_.setSongPosition(clampSongPosition(songPlayheadPosition_));
+  }
+}
+
+void MiniAcid::continueTransport() {
+  if (playing) return;
+  LOG_PRINTLN("[DSP] CONTINUE command received");
+  allLiveNotesOff();
+  publishPatternAllNotesOff_();
+  // Continue from a never-started engine behaves like MIDI Continue at song
+  // position zero: step zero must still fire on the first rendered sample.
+  if (currentTick_ == 0 && tickPhaseAccum_ == 0) {
+    currentTick_ = 383;
+    tickPhaseAccum_ = 0x100000000ULL;
+  }
+  playing = true;
+}
+
 void MiniAcid::liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity) {
   if (playing) return;
   const int idx = clamp303Voice(synthIndex);
@@ -616,6 +651,15 @@ void MiniAcid::setBpm(float bpm) {
   delay3032.setBpm(bpmValue);
 }
 
+void MiniAcid::setExternalClockBpm(float bpm) {
+  bpmValue = bpm;
+  if (bpmValue < 5.0f) bpmValue = 5.0f;
+  if (bpmValue > 300.0f) bpmValue = 300.0f;
+  updateTickIncrement();
+  delay303.setBpm(bpmValue);
+  delay3032.setBpm(bpmValue);
+}
+
 void MiniAcid::setMasterOutputHighCutHz(float hz) {
   float nyquist = sampleRateValue * 0.5f - 200.0f;
   if (nyquist < 4000.0f) nyquist = 4000.0f;
@@ -645,6 +689,15 @@ float MiniAcid::getStepProgress() const {
     // Account for fractional phase for sub-tick visual smoothness
     double frac = (double)(tickPhaseAccum_ & 0xFFFFFFFF) / 4294967296.0;
     return (float)(tickInStep + frac) / 24.0f;
+}
+
+float MiniAcid::transportPhaseSteps() const {
+    const uint32_t barTick = currentTick_ % 384;
+    const double fractionalTick =
+        static_cast<double>(tickPhaseAccum_ & 0xFFFFFFFFULL) /
+        4294967296.0;
+    return static_cast<float>(
+        (static_cast<double>(barTick) + fractionalTick) / 24.0);
 }
 
 int MiniAcid::cycleBarCount() const {

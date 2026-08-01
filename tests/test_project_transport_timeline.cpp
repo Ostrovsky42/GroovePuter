@@ -228,5 +228,18 @@ int main() {
     }
     assert(closeEnough(exactTick, 888.0, 1.0e-9));
 
+    // MIDI Continue creates a fresh scheduling epoch without losing the
+    // absolute bar accumulated before Stop.
+    ProjectTransportTimeline continued;
+    continued.publishBlock(1, 512, 0.0f, 120.0f, 22050.0f, true);
+    continued.publishBlock(2, 512, 15.5f, 120.0f, 22050.0f, true);
+    continued.publishBlock(3, 512, 0.5f, 120.0f, 22050.0f, true);
+    assert(continued.snapshot().barCounter == 1);
+    continued.publishBlock(4, 512, 0.5f, 120.0f, 22050.0f, false);
+    continued.publishBlock(5, 512, 0.5f, 120.0f, 22050.0f, true, false);
+    const auto resumed = continued.snapshot();
+    assert(resumed.barCounter == 1);
+    assert(resumed.transportEpoch == 2);
+
     return 0;
 }

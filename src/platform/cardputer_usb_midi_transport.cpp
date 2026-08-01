@@ -14,6 +14,7 @@
 #include "src/input/musical_event_router.h"
 #include "src/midi/midi_companion_settings.h"
 #include "src/midi/midi_control_event_queue.h"
+#include "src/midi/external_midi_transport_event_queue.h"
 #include "src/midi/pattern_drum_gate_scheduler.h"
 #include "src/midi/project_smf_dispatch_policy.h"
 #include "src/midi/project_transport_timeline.h"
@@ -23,6 +24,8 @@
 #include "src/midi/smf_late_policy.h"
 #include "src/midi/scheduled_smf_midi_event_queue.h"
 #include "src/midi/usb_midi_output.h"
+#include "src/midi/transport_clock_runtime.h"
+#include "src/midi/usb_midi_realtime_parser.h"
 
 #if ARDUINO_USB_MODE
 #error "USB MIDI requires Cardputer USBMode=default (USB-OTG/TinyUSB)"
@@ -62,6 +65,7 @@ constexpr uint32_t kSmfCleanupRetryDelayMs = 10;
 // surfaced, just after a window that real backpressure can survive.
 constexpr uint8_t kSmfCleanupAttemptLimit = 32;
 constexpr std::size_t kControlDrainBudget = 8;
+constexpr std::size_t kMidiRxDrainBudget = 32;
 
 class MidiBlockAnchorClock {
 public:
@@ -141,6 +145,13 @@ struct MidiDispatchDiagnostics {
     // Longest continuous stretch where the USB MIDI TX FIFO refused writes and
     // then recovered. Separates a short burst from a host that stopped reading.
     uint32_t smfMaxSendBlockUs{0};
+    uint32_t externalRxClock{0};
+    uint32_t externalRxStart{0};
+    uint32_t externalRxContinue{0};
+    uint32_t externalRxStop{0};
+    uint32_t externalRxIgnored{0};
+    uint32_t externalRxMasterIgnored{0};
+    uint32_t outboundTransportSuppressed{0};
 };
 
 // Construction of USBMIDI registers its interface descriptor before Arduino
@@ -159,6 +170,7 @@ UsbMidiOutput g_output(
 MidiControlEventQueue g_controlQueue;
 MusicalEventQueue* g_patternQueue = nullptr;
 ScheduledSmfMidiEventQueue* g_smfQueue = nullptr;
+ExternalMidiTransportEventQueue* g_externalTransportQueue = nullptr;
 PatternDrumGateScheduler g_patternDrumGates;
 MidiBlockAnchorClock g_anchorClock;
 MidiDispatchDiagnostics g_diagnostics;
@@ -170,6 +182,7 @@ uint8_t g_smfCleanupAttempts = 0;
 // Timestamp of the first failed SMF write of the current stall, used to report
 // how long the endpoint actually refused data.
 uint32_t g_smfSendBlockStartedUs = 0;
+uint32_t g_externalRxPulseOrdinal = 0;
 
 void notifyDispatcher() {
     if (g_dispatchTaskHandle != nullptr) {
@@ -337,6 +350,56 @@ void drainControlEvents(std::size_t budget = kControlDrainBudget) {
         g_output.handleMusicalEvent(event);
         ++g_diagnostics.dispatchedControl;
         ++drained;
+    }
+}
+
+void drainIncomingMidiPackets() {
+    if (g_externalTransportQueue == nullptr) return;
+
+    midiEventPacket_t packet{};
+    for (std::size_t drained = 0;
+         drained < kMidiRxDrainBudget && g_transport.readPacket(packet);
+         ++drained) {
+        ExternalMidiTransportEventType type{};
+        if (!GroovePuterMidi::parseUsbMidiRealtimeTransport(
+                packet.header, packet.byte1, type)) {
+            ++g_diagnostics.externalRxIgnored;
+            continue;
+        }
+        if (GroovePuterMidi::transportClockRuntime().source() !=
+            GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
+            ++g_diagnostics.externalRxMasterIgnored;
+            continue;
+        }
+
+        const uint32_t receivedAtMicros = micros();
+        switch (type) {
+            case ExternalMidiTransportEventType::Clock:
+                ++g_externalRxPulseOrdinal;
+                if (g_externalTransportQueue->tryPushClock(
+                        receivedAtMicros, g_externalRxPulseOrdinal)) {
+                    ++g_diagnostics.externalRxClock;
+                }
+                break;
+            case ExternalMidiTransportEventType::Start:
+                if (g_externalTransportQueue->tryPushCritical(
+                        type, receivedAtMicros, g_externalRxPulseOrdinal)) {
+                    ++g_diagnostics.externalRxStart;
+                }
+                break;
+            case ExternalMidiTransportEventType::Continue:
+                if (g_externalTransportQueue->tryPushCritical(
+                        type, receivedAtMicros, g_externalRxPulseOrdinal)) {
+                    ++g_diagnostics.externalRxContinue;
+                }
+                break;
+            case ExternalMidiTransportEventType::Stop:
+                if (g_externalTransportQueue->tryPushCritical(
+                        type, receivedAtMicros, g_externalRxPulseOrdinal)) {
+                    ++g_diagnostics.externalRxStop;
+                }
+                break;
+        }
     }
 }
 
@@ -534,6 +597,30 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(suppressed),
         static_cast<unsigned>(g_diagnostics.patternPanics),
         static_cast<unsigned>(g_diagnostics.controlPanics));
+
+    const auto clock = GroovePuterMidi::transportClockRuntime().snapshot();
+    Serial.printf(
+        "[MIDI-RX] source=%s state=%s running=%u bpm=%.2f "
+        "rx=%u/%u/%u/%u ignored=%u masterIgnored=%u queue=%u "
+        "clockDrop=%u criticalOverflow=%u failures=%u txSuppressed=%u\n",
+        GroovePuterMidi::transportClockSourceName(clock.source),
+        GroovePuterMidi::externalClockLockStateName(clock.externalState),
+        static_cast<unsigned>(clock.externalRunning ? 1 : 0),
+        clock.externalBpm(),
+        static_cast<unsigned>(g_diagnostics.externalRxClock),
+        static_cast<unsigned>(g_diagnostics.externalRxStart),
+        static_cast<unsigned>(g_diagnostics.externalRxContinue),
+        static_cast<unsigned>(g_diagnostics.externalRxStop),
+        static_cast<unsigned>(g_diagnostics.externalRxIgnored),
+        static_cast<unsigned>(g_diagnostics.externalRxMasterIgnored),
+        static_cast<unsigned>(g_externalTransportQueue
+            ? g_externalTransportQueue->approximateSize() : 0),
+        static_cast<unsigned>(g_externalTransportQueue
+            ? g_externalTransportQueue->droppedClockCount() : 0),
+        static_cast<unsigned>(g_externalTransportQueue
+            ? g_externalTransportQueue->criticalOverflowCount() : 0),
+        static_cast<unsigned>(clock.externalFailureCount),
+        static_cast<unsigned>(g_diagnostics.outboundTransportSuppressed));
 }
 
 enum class PendingKind : uint8_t {
@@ -567,6 +654,7 @@ void midiDispatchTask(void*) {
 
     while (true) {
         g_output.pollConnection();
+        drainIncomingMidiPackets();
 
         // Existing PatternPlayer and live cleanup remain ahead of scheduled
         // lifecycle traffic. SMF cleanup is independent and cannot silence a
@@ -590,6 +678,18 @@ void midiDispatchTask(void*) {
         }
         if (g_smfQueue != nullptr && !hasPendingSmf && !g_smfCleanupPending) {
             hasPendingSmf = g_smfQueue->tryPop(pendingSmf);
+        }
+
+        // Drain queued GP-master realtime traffic immediately after a source
+        // switch. The second check at the physical write closes the <=1.5 ms
+        // deadline-wait race; this early check prevents stale lifecycle packets
+        // from surviving a quick SEQ MASTER -> GP MASTER round trip.
+        if (hasPendingTransport &&
+            !GroovePuterMidi::transportClockSourcePublishesOutboundClock(
+                GroovePuterMidi::transportClockRuntime().source())) {
+            ++g_diagnostics.outboundTransportSuppressed;
+            hasPendingTransport = false;
+            continue;
         }
 
         if (hasPendingTransport &&
@@ -805,7 +905,10 @@ void midiDispatchTask(void*) {
         }
 
         if (kind == PendingKind::Transport) {
-            if (pendingTransport.type == MidiTransportEventType::Clock &&
+            if (!GroovePuterMidi::transportClockSourcePublishesOutboundClock(
+                    GroovePuterMidi::transportClockRuntime().source())) {
+                ++g_diagnostics.outboundTransportSuppressed;
+            } else if (pendingTransport.type == MidiTransportEventType::Clock &&
                 !scheduledMidiTransportEventGenerationIsCurrent(
                     pendingTransport,
                     g_patternQueue->transportQueue().generation())) {
@@ -949,6 +1052,10 @@ bool CardputerUsbMidiTransport::mounted() const {
     return begun_ && tud_midi_mounted();
 }
 
+bool CardputerUsbMidiTransport::readPacket(midiEventPacket_t& packet) {
+    return begun_ && midi_.readPacket(&packet);
+}
+
 bool CardputerUsbMidiTransport::writeChannelPacket(uint8_t codeIndex,
                                                     uint8_t statusBase,
                                                     uint8_t zeroBasedChannel,
@@ -1031,13 +1138,16 @@ void CardputerUsbMidiTransport::flush() {
 
 bool registerCardputerUsbMidiSink(
     MusicalEventRouter& router,
-    MusicalEventQueue& patternQueue) {
+    MusicalEventQueue& patternQueue,
+    ExternalMidiTransportEventQueue& externalTransportQueue) {
     if (g_registered) return true;
 
     g_patternQueue = &patternQueue;
+    g_externalTransportQueue = &externalTransportQueue;
     g_patternDrumGates.clear();
     if (!router.addSink(g_queueSink)) {
         g_patternQueue = nullptr;
+        g_externalTransportQueue = nullptr;
         return false;
     }
 
@@ -1052,6 +1162,7 @@ bool registerCardputerUsbMidiSink(
     if (taskResult != pdPASS) {
         router.removeSink(g_queueSink);
         g_patternQueue = nullptr;
+        g_externalTransportQueue = nullptr;
         g_dispatchTaskHandle = nullptr;
         return false;
     }

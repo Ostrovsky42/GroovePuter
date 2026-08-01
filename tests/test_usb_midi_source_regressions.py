@@ -27,7 +27,7 @@ def main() -> None:
             "USB output must not pause or mutate the audio renderer")
 
     setup_start = sketch.index("void setup()")
-    registration_call = "registerCardputerUsbMidiSink(\n      g_musicalEventRouter, g_patternMusicalEventQueue)"
+    registration_call = "registerCardputerUsbMidiSink(\n      g_musicalEventRouter,\n      g_patternMusicalEventQueue,\n      g_externalMidiTransportQueue)"
     require(registration_call in sketch[setup_start:],
             "setup must connect the router and scheduled Pattern queue")
     require(registration_call not in sketch[:setup_start],

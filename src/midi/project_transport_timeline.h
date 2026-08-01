@@ -76,10 +76,11 @@ public:
                       float phaseSteps,
                       float bpm,
                       float sampleRate,
-                      bool playing) {
+                      bool playing,
+                      bool restartFromBeginning = true) {
         const double phase = normalizePhase(phaseSteps);
         if (playing && !previousPlaying_) {
-            barCounter_ = 0;
+            if (restartFromBeginning) barCounter_ = 0;
             ++transportEpoch_;
         } else if (playing && previousPlaying_) {
             // One render block cannot span a whole bar at supported tempos.

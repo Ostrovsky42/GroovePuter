@@ -22,6 +22,7 @@ public:
 
     bool begin() override;
     bool mounted() const override;
+    bool readPacket(midiEventPacket_t& packet);
 
     bool sendNoteOn(uint8_t zeroBasedChannel,
                     uint8_t note,

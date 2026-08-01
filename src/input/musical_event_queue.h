@@ -42,7 +42,9 @@ public:
                               float startPhaseSteps,
                               float bpm,
                               float sampleRate,
-                              bool transportPlaying) {
+                              bool transportPlaying,
+                              bool publishOutboundTransport = true,
+                              bool restartFromBeginning = true) {
         renderBlockSequence_ = blockSequence;
         renderBlockFrames_ = blockFrames;
         renderBpm_ = bpm > 0.0f ? bpm : 120.0f;
@@ -54,7 +56,7 @@ public:
         // the exact end of the bar, otherwise phase arithmetic would place the
         // first step roughly one PPQN tick late.
         if (transportPlaying && !previousTransportPlaying_ &&
-            normalizedStart > 15.0f) {
+            restartFromBeginning && normalizedStart > 15.0f) {
             renderStartPhaseSteps_ = 16.0f;
         } else {
             renderStartPhaseSteps_ = normalizedStart;
@@ -66,16 +68,21 @@ public:
             renderStartPhaseSteps_,
             renderBpm_,
             renderSampleRate_,
-            transportPlaying);
+            transportPlaying,
+            restartFromBeginning);
 
-        transportClockPublisher_.beginBlock(
-            transportQueue_,
-            blockSequence,
-            blockFrames,
-            renderStartPhaseSteps_,
-            renderBpm_,
-            renderSampleRate_,
-            transportPlaying);
+        if (publishOutboundTransport) {
+            transportClockPublisher_.beginBlock(
+                transportQueue_,
+                blockSequence,
+                blockFrames,
+                renderStartPhaseSteps_,
+                renderBpm_,
+                renderSampleRate_,
+                transportPlaying);
+        } else {
+            transportClockPublisher_.reset();
+        }
 
         previousTransportPlaying_ = transportPlaying;
         renderBlockActive_ = true;

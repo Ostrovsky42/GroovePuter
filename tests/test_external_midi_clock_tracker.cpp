@@ -123,5 +123,10 @@ int main() {
     assert(fast.state() == ExternalClockLockState::Locked);
     assert(closeEnough(bpm(fast), 300.0, 0.1));
 
+    fast.onFailure(fastNow);
+    assert(fast.state() == ExternalClockLockState::Lost);
+    assert(!fast.transportRunning());
+    assert(fast.lostTransitionCount() == 1);
+
     return 0;
 }

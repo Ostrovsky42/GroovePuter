@@ -16,6 +16,7 @@ python3 "${ROOT_DIR}/tests/test_midi_static_init_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_midi_transport_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_song_playhead_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_midi_companion_foundation_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_seqtrak_master_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
 
 "${CXX}" \
@@ -291,3 +292,36 @@ python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
   -o "${BUILD_DIR}/test_external_midi_clock_tracker"
 
 "${BUILD_DIR}/test_external_midi_clock_tracker"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_usb_midi_realtime_parser.cpp" \
+  -o "${BUILD_DIR}/test_usb_midi_realtime_parser"
+
+"${BUILD_DIR}/test_usb_midi_realtime_parser"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_transport_clock_runtime.cpp" \
+  -o "${BUILD_DIR}/test_transport_clock_runtime"
+
+"${BUILD_DIR}/test_transport_clock_runtime"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_external_midi_clock_follower.cpp" \
+  -o "${BUILD_DIR}/test_external_midi_clock_follower"
+
+"${BUILD_DIR}/test_external_midi_clock_follower"

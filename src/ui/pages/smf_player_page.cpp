@@ -6,6 +6,7 @@
 
 #include "../components/music_visuals.h"
 #include "src/dsp/miniacid_engine.h"
+#include "src/midi/transport_clock_runtime.h"
 
 #ifdef ARDUINO
 #include <SD.h>
@@ -211,8 +212,12 @@ bool SmfPlayerPage::playSelected() {
         return true;
     }
     browserVisible_ = false;
+    const bool followSeqtrak = transportClockRuntime().source() ==
+        TransportClockSource::SeqtrakExternal;
     UI::showToast(playerState.tempoMode == SmfTempoMode::Project
-                      ? "LOADING / G THEN SPACE"
+                      ? (followSeqtrak
+                             ? "LOADING / SPACE ARM / SEQ PLAY"
+                             : "LOADING / G THEN SPACE")
                       : "LOADING / SPACE TO PLAY",
                   1000);
     return true;
@@ -233,8 +238,11 @@ bool SmfPlayerPage::togglePlayerTransport() {
     }
 
     const bool wasActive = smfStateIsActive(state.state);
+    const TransportClockSource clockSource =
+        transportClockRuntime().source();
     if (!wasActive && state.tempoMode == SmfTempoMode::Project &&
-        !miniAcid_.isPlaying()) {
+        !miniAcid_.isPlaying() &&
+        clockSource == TransportClockSource::GroovePuterInternal) {
         UI::showToast("G START FIRST / THEN SPACE", 1100);
         return true;
     }
@@ -244,7 +252,10 @@ bool SmfPlayerPage::togglePlayerTransport() {
     } else if (wasActive) {
         UI::showToast("MIDI: PAUSE", 700);
     } else if (state.tempoMode == SmfTempoMode::Project) {
-        UI::showToast("MIDI: ARM NEXT BAR", 900);
+        UI::showToast(clockSource == TransportClockSource::SeqtrakExternal
+                          ? "MIDI ARMED / PLAY SEQTRAK"
+                          : "MIDI: ARM NEXT BAR",
+                      900);
     } else {
         UI::showToast("MIDI: PLAY", 700);
     }
@@ -252,6 +263,11 @@ bool SmfPlayerPage::togglePlayerTransport() {
 }
 
 void SmfPlayerPage::toggleGrooveTransport() {
+    if (transportClockRuntime().source() ==
+        TransportClockSource::SeqtrakExternal) {
+        UI::showToast("SEQ MASTER: USE SEQTRAK", 900);
+        return;
+    }
     player_ = smfPlayerService();
     if (miniAcid_.isPlaying()) {
         bool playerPauseQueued = true;
@@ -279,6 +295,13 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     }
 
     player_ = smfPlayerService();
+
+    if (event.key == 'c' || event.key == 'C') {
+        const TransportClockSource source =
+            transportClockRuntime().toggleSource();
+        UI::showToast(transportClockSourceName(source), 1000);
+        return true;
+    }
 
     if (event.key == ' ') return togglePlayerTransport();
     if (event.key == 'g' || event.key == 'G') {
@@ -325,8 +348,14 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
                 const SmfPlayerSnapshot state = player_->snapshot();
                 const bool toProject = state.tempoMode == SmfTempoMode::Original;
                 const bool queued = player_->toggleTempoMode();
+                const bool followSeqtrak = transportClockRuntime().source() ==
+                    TransportClockSource::SeqtrakExternal;
                 UI::showToast(queued
-                                  ? (toProject ? "TEMPO: GP MASTER > USB" : "TEMPO: FILE ORIGINAL")
+                                  ? (toProject
+                                         ? (followSeqtrak
+                                                ? "TEMPO: SEQ MASTER"
+                                                : "TEMPO: GP MASTER > USB")
+                                         : "TEMPO: FILE ORIGINAL")
                                   : "MIDI PLAYER BUSY",
                               900);
             }
@@ -350,14 +379,19 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         event.scancode == GROOVEPUTER_DOWN) {
         const int deltaBpm = event.scancode == GROOVEPUTER_UP ? 1 : -1;
         if (state.tempoMode == SmfTempoMode::Project) {
-            withAudioGuard([this, deltaBpm]() {
-                const float targetBpm = std::max(
-                    10.0f,
-                    std::min(250.0f,
-                             miniAcid_.bpm() + static_cast<float>(deltaBpm)));
-                miniAcid_.setBpm(targetBpm);
-            });
-            UI::showToast("GP MASTER BPM / USB CLOCK", 700);
+            if (transportClockRuntime().source() ==
+                TransportClockSource::SeqtrakExternal) {
+                UI::showToast("SEQ MASTER BPM", 700);
+            } else {
+                withAudioGuard([this, deltaBpm]() {
+                    const float targetBpm = std::max(
+                        10.0f,
+                        std::min(250.0f,
+                                 miniAcid_.bpm() + static_cast<float>(deltaBpm)));
+                    miniAcid_.setBpm(targetBpm);
+                });
+                UI::showToast("GP MASTER BPM / USB CLOCK", 700);
+            }
         } else {
             const bool queued = player_->adjustTempoBpm(deltaBpm);
             UI::showToast(queued ? "MIDI: BPM SET / PAUSE" : "MIDI PLAYER BUSY", 800);
@@ -366,7 +400,11 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     }
     if (event.key == 'o' || event.key == 'O') {
         if (state.tempoMode == SmfTempoMode::Project) {
-            UI::showToast("GP MASTER uses GroovePuter BPM", 900);
+            UI::showToast(transportClockRuntime().source() ==
+                                  TransportClockSource::SeqtrakExternal
+                              ? "SEQ MASTER uses SEQTRAK BPM"
+                              : "GP MASTER uses GroovePuter BPM",
+                          900);
         } else {
             const bool queued = player_->resetTempo();
             UI::showToast(queued ? "MIDI: TEMPO ORIGINAL" : "MIDI PLAYER BUSY", 800);
@@ -380,10 +418,15 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         if (!modeQueued) {
             UI::showToast("MIDI PLAYER BUSY", 900);
         } else if (toProject) {
-            UI::showToast(miniAcid_.isPlaying()
-                              ? "GP MASTER: ARM NEXT BAR"
-                              : "GP MASTER: G START FIRST",
-                          1000);
+            if (transportClockRuntime().source() ==
+                TransportClockSource::SeqtrakExternal) {
+                UI::showToast("SEQ MASTER: SPACE ARM / SEQ PLAY", 1000);
+            } else {
+                UI::showToast(miniAcid_.isPlaying()
+                                  ? "GP MASTER: ARM NEXT BAR"
+                                  : "GP MASTER: G START FIRST",
+                              1000);
+            }
         } else {
             UI::showToast("FILE TEMPO / ORIGINAL", 1000);
         }
@@ -396,10 +439,14 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     }
     if (event.key == 'r' || event.key == 'R') {
         const bool queued = player_->restart(SmfPlayerRestartOrigin::MusicStart);
+        const bool followSeqtrak = transportClockRuntime().source() ==
+            TransportClockSource::SeqtrakExternal;
         UI::showToast(queued
                           ? (state.tempoMode == SmfTempoMode::Project &&
                                      !miniAcid_.isPlaying()
-                                 ? "MIDI RESTART ARMED - G START"
+                                 ? (followSeqtrak
+                                        ? "MIDI RESTART ARMED - SEQ PLAY"
+                                        : "MIDI RESTART ARMED - G START")
                                  : "MIDI: RESTART")
                           : "MIDI PLAYER BUSY",
                       900);
@@ -545,8 +592,16 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(4), line);
 
     if (state.tempoMode == SmfTempoMode::Project) {
-        std::snprintf(line, sizeof(line), "GP MASTER: %s > USB CLOCK",
-                      miniAcid_.isPlaying() ? "RUN" : "STOP");
+        const TransportClockRuntimeSnapshot clock =
+            transportClockRuntime().snapshot();
+        if (clock.source == TransportClockSource::SeqtrakExternal) {
+            std::snprintf(line, sizeof(line), "SEQ MASTER: %s %5.1f BPM",
+                          externalClockLockStateName(clock.externalState),
+                          clock.externalTempoValid ? clock.externalBpm() : 0.0);
+        } else {
+            std::snprintf(line, sizeof(line), "GP MASTER: %s > USB CLOCK",
+                          miniAcid_.isPlaying() ? "RUN" : "STOP");
+        }
     } else if (state.tempoScalePermille == 1000u) {
         std::snprintf(line, sizeof(line), "TEMPO SOURCE: FILE / ORIGINAL");
     } else {
@@ -620,11 +675,11 @@ void SmfPlayerPage::drawPerformance(IGfx& gfx) {
 
 void SmfPlayerPage::drawFooter(IGfx& gfx) {
     if (browserVisible_) {
-        UI::drawStandardFooter(gfx, "UP/DN Select  Enter Load", "Space MIDI  G Groove  T Tempo");
+        UI::drawStandardFooter(gfx, "UP/DN Select  Enter Load", "C Master  Space MIDI  T Tempo");
     } else if (performanceVisible_) {
-        UI::drawStandardFooter(gfx, "D Player  B Files", "Space MIDI  G Groove  T Tempo");
+        UI::drawStandardFooter(gfx, "D Player  B Files", "C Master  Space MIDI  T Tempo");
     } else {
-        UI::drawStandardFooter(gfx, "Space MIDI  G Groove  R Restart", "B Files  T Tempo  V Vel  X Panic");
+        UI::drawStandardFooter(gfx, "Space MIDI  C Master  R Restart", "B Files  T Tempo  V Vel  X Panic");
     }
 }
 

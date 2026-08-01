@@ -125,6 +125,13 @@ public:
         ++stopCount_;
     }
 
+    void onFailure(uint32_t timestampMicros) {
+        (void)timestampMicros;
+        if (state_ != ExternalClockLockState::Lost) ++lostTransitions_;
+        state_ = ExternalClockLockState::Lost;
+        transportRunning_ = false;
+    }
+
     void update(uint32_t nowMicros) {
         if (!haveLastPulse_ || filteredPulsePeriodUs_ == 0) return;
         const uint32_t elapsedUs = nowMicros - lastPulseMicros_;

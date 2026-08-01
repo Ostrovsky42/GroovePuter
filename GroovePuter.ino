@@ -22,9 +22,13 @@
 #include "src/platform/cardputer_smf_player_registry.h"
 #include "src/platform/cardputer_usb_midi_service.h"
 #include "src/ui/key_normalize.h"
+#include "src/ui/ui_common.h"
 #include "src/input/performance_keyboard.h"
 #include "src/input/internal_synth_output.h"
 #include "src/input/musical_event_queue.h"
+#include "src/midi/external_midi_clock_follower.h"
+#include "src/midi/external_midi_transport_event_queue.h"
+#include "src/midi/transport_clock_runtime.h"
 #include "src/ui/workflow_mode.h"
 #include <new>
 
@@ -52,6 +56,8 @@ static uint32_t g_peakUiDrawUs = 0;
 static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);
 static MusicalEventRouter g_musicalEventRouter;
 static MusicalEventQueue g_patternMusicalEventQueue;
+static ExternalMidiTransportEventQueue g_externalMidiTransportQueue;
+static GroovePuterMidi::ExternalMidiClockFollower g_externalClockFollower;
 static PerformanceKeyboard g_performanceKeyboard(g_musicalEventRouter);
 static InternalSynthOutput g_internalSynthOutput(g_miniAcidInstance, g_audioMutationGate);
 static uint32_t g_lastLiveInputEpoch = 0;
@@ -75,8 +81,7 @@ static void markBootStage(uint32_t stage, const char* msg = nullptr) {
 
 static float readPatternSequencerPhase(void* context) {
   auto* engine = static_cast<MiniAcid*>(context);
-  if (!engine || !engine->isPlaying()) return 0.0f;
-  return static_cast<float>(engine->currentStep()) + engine->getStepProgress();
+  return engine ? engine->transportPhaseSteps() : 0.0f;
 }
 
 void audioTask(void *param) {
@@ -100,6 +105,40 @@ void audioTask(void *param) {
       if (warmupBlocks == 0) Serial.println("AudioTask: Warmup complete");
     } else if (g_miniAcid) {
       const uint32_t midiBlockSequence = g_audioMidiBlockSequence++;
+      const auto clockSource =
+          GroovePuterMidi::transportClockRuntime().source();
+      const auto externalClock = g_externalClockFollower.processBlock(
+          g_externalMidiTransportQueue, clockSource, now);
+      GroovePuterMidi::transportClockRuntime().publishExternalEstimate(
+          externalClock.estimate, g_externalClockFollower.failureCount());
+
+      bool restartFromBeginning = true;
+      if (clockSource ==
+          GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
+        if (externalClock.estimate.validTempo) {
+          const float externalBpm =
+              static_cast<float>(externalClock.estimate.bpmQ16) / 65536.0f;
+          const float bpmDelta = externalBpm - g_miniAcid->bpm();
+          if (bpmDelta > 0.001f || bpmDelta < -0.001f) {
+            g_miniAcid->setExternalClockBpm(externalBpm);
+          }
+        }
+      }
+      switch (externalClock.command) {
+        case GroovePuterMidi::ExternalTransportCommand::Start:
+          g_miniAcid->start();
+          break;
+        case GroovePuterMidi::ExternalTransportCommand::Continue:
+          g_miniAcid->continueTransport();
+          restartFromBeginning = false;
+          break;
+        case GroovePuterMidi::ExternalTransportCommand::Stop:
+          g_miniAcid->pauseTransport();
+          break;
+        case GroovePuterMidi::ExternalTransportCommand::None:
+          break;
+      }
+
       const float phaseAtBlockStart = readPatternSequencerPhase(g_miniAcid);
       g_patternMusicalEventQueue.beginMidiRenderBlock(
           midiBlockSequence,
@@ -107,7 +146,10 @@ void audioTask(void *param) {
           phaseAtBlockStart,
           g_miniAcid->bpm(),
           static_cast<float>(kSampleRate),
-          g_miniAcid->isPlaying());
+          g_miniAcid->isPlaying(),
+          GroovePuterMidi::transportClockSourcePublishesOutboundClock(
+              clockSource),
+          restartFromBeginning);
       g_miniAcid->generateAudioBuffer(g_audioBuffer, kBlockFrames);
       g_patternMusicalEventQueue.endMidiRenderBlock();
       publishCardputerUsbMidiBlockAnchor(midiBlockSequence, now);
@@ -358,7 +400,9 @@ void setup() {
   screenLog("6c. USB MIDI...");
   markBootStage(52, "before USB MIDI sink");
   registerCardputerUsbMidiSink(
-      g_musicalEventRouter, g_patternMusicalEventQueue);
+      g_musicalEventRouter,
+      g_patternMusicalEventQueue,
+      g_externalMidiTransportQueue);
   markBootStage(53, "after USB MIDI sink");
 
   // Scan samples from SD card (SD initialized by engine->init->sceneStorage)
@@ -445,7 +489,10 @@ void loop() {
   if (g_encoder8) g_encoder8->update();
 
   if (M5Cardputer.BtnA.wasClicked()) {
-    {
+    if (GroovePuterMidi::transportClockRuntime().source() ==
+        GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
+      UI::showToast("SEQ MASTER: USE SEQTRAK", 900);
+    } else {
       AudioMutationScope mutationScope(g_audioMutationGate);
       if (g_miniAcid->isPlaying()) {
         g_miniAcid->stop();
@@ -542,10 +589,20 @@ void loop() {
         else g_miniAcid->toggleMuteClap();
         needsDraw = true;
       } else if (c == 'k' || c == 'K') {
-        g_miniAcid->setBpm(g_miniAcid->bpm() - 2.5f);
+        if (GroovePuterMidi::transportClockRuntime().source() ==
+            GroovePuterMidi::TransportClockSource::GroovePuterInternal) {
+          g_miniAcid->setBpm(g_miniAcid->bpm() - 2.5f);
+        } else {
+          UI::showToast("SEQ MASTER BPM", 700);
+        }
         needsDraw = true;
       } else if (c == 'l' || c == 'L') {
-        g_miniAcid->setBpm(g_miniAcid->bpm() + 2.5f);
+        if (GroovePuterMidi::transportClockRuntime().source() ==
+            GroovePuterMidi::TransportClockSource::GroovePuterInternal) {
+          g_miniAcid->setBpm(g_miniAcid->bpm() + 2.5f);
+        } else {
+          UI::showToast("SEQ MASTER BPM", 700);
+        }
         needsDraw = true;
       } else if (c == '-' || c == '_') {
         g_miniAcid->adjustParameter(MiniAcidParamId::MainVolume, -3);
@@ -556,8 +613,14 @@ void loop() {
       } else if (c == ';' || c == '\'') {
         needsDraw = true;
       } else if (c == ' ') {
-        if (g_miniAcid->isPlaying()) g_miniAcid->stop();
-        else g_miniAcid->start();
+        if (GroovePuterMidi::transportClockRuntime().source() ==
+            GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
+          UI::showToast("SEQ MASTER: USE SEQTRAK", 900);
+        } else if (g_miniAcid->isPlaying()) {
+          g_miniAcid->stop();
+        } else {
+          g_miniAcid->start();
+        }
         needsDraw = true;
       }
     }

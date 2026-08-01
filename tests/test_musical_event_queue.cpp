@@ -135,6 +135,24 @@ void testForcedTransportStartMapsToFrameZero() {
     assert(scheduled.frameOffset == 0);
 }
 
+void testExternalMasterSuppressesOnlyOutboundTransport() {
+    MusicalEventQueue queue;
+    FakeSequencerPhase phase{};
+    queue.setPhaseReader(readPhase, &phase);
+
+    queue.beginMidiRenderBlock(
+        33, 512, 4.0f, 120.0f, 22050.0f, true, false, false);
+    assert(queue.transportQueue().approximateSize() == 0);
+    assert(GroovePuterMidi::projectTransportTimeline().snapshot().playing);
+    assert(queue.tryPush(event(MusicalEventType::NoteOn,
+                               MusicalEventTarget::SynthA, 52)));
+    queue.endMidiRenderBlock();
+
+    ScheduledMusicalEvent scheduled{};
+    assert(queue.tryPop(scheduled));
+    assert(scheduled.event.note == 52);
+}
+
 void testOutsideRenderIsSuppressedAndCleansUp() {
     MusicalEventQueue queue;
     assert(!queue.tryPush(event(MusicalEventType::NoteOn,
@@ -181,6 +199,7 @@ int main() {
     testPatternDrumTapUsesCurrentRenderPhase();
     testPatternLifecycleAlsoInvalidatesDrums();
     testForcedTransportStartMapsToFrameZero();
+    testExternalMasterSuppressesOnlyOutboundTransport();
     testOutsideRenderIsSuppressedAndCleansUp();
     testBoundedOverflowContract();
     return 0;

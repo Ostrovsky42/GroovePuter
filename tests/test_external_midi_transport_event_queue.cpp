@@ -71,6 +71,8 @@ int main() {
     assert(pressure.criticalOverflowCount() == 1);
     pressure.clearFailure();
     assert(!pressure.failed());
+    pressure.discardPending();
+    assert(pressure.approximateSize() == 0);
 
     ExternalMidiTransportEventQueue wrap;
     for (uint32_t round = 0; round < 3; ++round) {
