@@ -17,6 +17,10 @@ inline constexpr uint32_t kProjectPhaseScale = 65535u;
 struct ProjectTransportBlockSnapshot {
     bool valid{false};
     bool playing{false};
+    // True for a Start/restart epoch and false for a MIDI Continue epoch.
+    // Consumers use this only on an epoch transition; it remains stable for the
+    // lifetime of that playing session.
+    bool restartedFromBeginning{true};
     uint32_t blockSequence{0};
     uint16_t blockFrames{0};
     uint32_t sampleRate{0};
@@ -80,6 +84,7 @@ public:
                       bool restartFromBeginning = true) {
         const double phase = normalizePhase(phaseSteps);
         if (playing && !previousPlaying_) {
+            transportRestartedFromBeginning_ = restartFromBeginning;
             if (restartFromBeginning) barCounter_ = 0;
             ++transportEpoch_;
         } else if (playing && previousPlaying_) {
@@ -92,6 +97,7 @@ public:
                 // A backwards move that is not a natural bar wrap starts a new
                 // scheduling epoch. Old PROJECT events must not cross it.
                 barCounter_ = 0;
+                transportRestartedFromBeginning_ = true;
                 ++transportEpoch_;
             }
         }
@@ -121,7 +127,10 @@ public:
         transportEpochPublished_.store(transportEpoch_, std::memory_order_relaxed);
         barCounterPublished_.store(barCounter_, std::memory_order_relaxed);
         phaseQ16_.store(encodedPhase, std::memory_order_relaxed);
-        flags_.store(static_cast<uint8_t>(kValidFlag | (playing ? kPlayingFlag : 0u)),
+        flags_.store(static_cast<uint8_t>(
+                         kValidFlag |
+                         (playing ? kPlayingFlag : 0u) |
+                         (transportRestartedFromBeginning_ ? kRestartFlag : 0u)),
                      std::memory_order_relaxed);
         sequence_.fetch_add(1, std::memory_order_release);
     }
@@ -134,6 +143,7 @@ public:
             const uint8_t flags = flags_.load(std::memory_order_relaxed);
             out.valid = (flags & kValidFlag) != 0;
             out.playing = (flags & kPlayingFlag) != 0;
+            out.restartedFromBeginning = (flags & kRestartFlag) != 0;
             out.blockSequence = blockSequence_.load(std::memory_order_relaxed);
             out.blockFrames = blockFrames_.load(std::memory_order_relaxed);
             out.sampleRate = sampleRate_.load(std::memory_order_relaxed);
@@ -159,11 +169,13 @@ public:
         previousPlaying_ = false;
         previousPhase_ = 0.0;
         barCounter_ = 0;
+        transportRestartedFromBeginning_ = true;
     }
 
 private:
     static constexpr uint8_t kValidFlag = 0x01;
     static constexpr uint8_t kPlayingFlag = 0x02;
+    static constexpr uint8_t kRestartFlag = 0x04;
 
     static double normalizePhase(float phaseSteps) {
         if (!std::isfinite(phaseSteps)) return 0.0;
@@ -185,6 +197,7 @@ private:
 
     // Publisher-side state. Only AudioTask calls publishBlock().
     bool previousPlaying_{false};
+    bool transportRestartedFromBeginning_{true};
     double previousPhase_{0.0};
     uint32_t barCounter_{0};
     uint32_t transportEpoch_{0};
