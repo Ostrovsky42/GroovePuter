@@ -58,12 +58,13 @@ inline constexpr SmfRoutedNote routeSmfNote(SmfRoutingMode mode,
 
     // SEQTRAK melodic destinations are distinct instruments. DX is never a
     // generic catch-all: source CH1/CH2/CH3 explicitly select SYNTH1/SYNTH2/DX.
-    // Additional generic melodic channels fold to the SAMPLER track (CH11)
-    // until the per-track CUSTOM routing UI can assign them individually.
+    // Extra source channels are deliberately sent to unused CH16 instead of
+    // triggering the user's SAMPLER pads. Per-track CUSTOM routing will replace
+    // this conservative silent sink in a later stage.
     if (sourceChannel == 0) return SmfRoutedNote{7, sourceNote};   // SYNTH1
     if (sourceChannel == 1) return SmfRoutedNote{8, sourceNote};   // SYNTH2
     if (sourceChannel == 2) return SmfRoutedNote{9, sourceNote};   // DX
-    return SmfRoutedNote{10, sourceNote};                          // SAMPLER
+    return SmfRoutedNote{15, sourceNote};                          // UNMAPPED / CH16
 }
 
 }  // namespace GroovePuterMidi
