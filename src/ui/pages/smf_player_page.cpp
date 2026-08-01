@@ -24,6 +24,23 @@ bool smfStateIsActive(GroovePuterMidi::SmfPlayerState state) {
     return state == GroovePuterMidi::SmfPlayerState::Playing ||
            state == GroovePuterMidi::SmfPlayerState::Armed;
 }
+
+void formatMidiNote(uint8_t note, char* dst, std::size_t size) {
+    static constexpr const char* kNames[] = {
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+    };
+    const int octave = static_cast<int>(note / 12u) - 1;
+    std::snprintf(dst, size, "%s%d", kNames[note % 12u], octave);
+}
+
+const char* inspectorRouteLabel(bool raw, uint8_t sourceChannel) {
+    if (raw) return "RAW";
+    if (sourceChannel == 0) return "S1";
+    if (sourceChannel == 1) return "S2";
+    if (sourceChannel == 2) return "DX";
+    if (sourceChannel == 9) return "DRM";
+    return "OFF";
+}
 }  // namespace
 
 using namespace GroovePuterMidi;
@@ -338,6 +355,33 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     if (!player_) return false;
     const SmfPlayerSnapshot state = player_->snapshot();
 
+    if (event.key == 'i' || event.key == 'I') {
+        channelInspectorVisible_ = !channelInspectorVisible_;
+        if (channelInspectorVisible_) {
+            performanceVisible_ = false;
+            channelInspectorScroll_ = 0;
+        }
+        return true;
+    }
+    if (channelInspectorVisible_) {
+        const SmfChannelInspectorSnapshot inspector = player_->channelInspector();
+        constexpr int kVisibleRows = 6;
+        const int maxScroll = std::max(
+            0, static_cast<int>(inspector.usedChannelCount()) - kVisibleRows);
+        if (event.scancode == GROOVEPUTER_UP) {
+            channelInspectorScroll_ = std::max(0, channelInspectorScroll_ - 1);
+            return true;
+        }
+        if (event.scancode == GROOVEPUTER_DOWN) {
+            channelInspectorScroll_ = std::min(maxScroll, channelInspectorScroll_ + 1);
+            return true;
+        }
+        if (event.scancode == GROOVEPUTER_LEFT ||
+            event.scancode == GROOVEPUTER_RIGHT) {
+            return true;
+        }
+    }
+
     if (event.scancode == GROOVEPUTER_LEFT) {
         player_->seekBars(event.shift ? -4 : -1);
         return true;
@@ -407,6 +451,7 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     }
     if (event.key == 'd' || event.key == 'D') {
         performanceVisible_ = !performanceVisible_;
+        if (performanceVisible_) channelInspectorVisible_ = false;
         return true;
     }
     if (event.key == 'x' || event.key == 'X') {
@@ -417,6 +462,7 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     if (event.key == 'b' || event.key == 'B' ||
         event.key == '\n' || event.key == '\r' || event.key == '\b') {
         browserVisible_ = true;
+        channelInspectorVisible_ = false;
         refreshFiles();
         return true;
     }
@@ -433,12 +479,15 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
 
 void SmfPlayerPage::drawHeader(IGfx& gfx) {
     UI::drawStandardHeader(
-        gfx, miniAcid_, performanceVisible_ ? "MIDI PERF" : "MIDI PLAYER");
+        gfx, miniAcid_, channelInspectorVisible_
+            ? "MIDI CHANNELS"
+            : (performanceVisible_ ? "MIDI PERF" : "MIDI PLAYER"));
 }
 
 void SmfPlayerPage::drawContent(IGfx& gfx) {
     LayoutManager::clearContent(gfx);
     if (browserVisible_) drawBrowser(gfx);
+    else if (channelInspectorVisible_) drawChannelInspector(gfx);
     else if (performanceVisible_) drawPerformance(gfx);
     else drawNowPlaying(gfx);
 }
@@ -558,10 +607,87 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
 
     gfx.setTextColor(COLOR_TEXT);
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(6),
-                 "G GROOVE   SPACE MIDI   R RESTART");
+                 "SPACE MIDI  R RESTART  I CHANNELS");
 
     gfx.setTextColor(error ? COLOR_DANGER : COLOR_LABEL);
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), state.message);
+}
+
+void SmfPlayerPage::drawChannelInspector(IGfx& gfx) {
+    player_ = smfPlayerService();
+    const SmfPlayerSnapshot state = player_ ? player_->snapshot() : SmfPlayerSnapshot{};
+    const SmfChannelInspectorSnapshot inspector = player_
+        ? player_->channelInspector()
+        : SmfChannelInspectorSnapshot{};
+
+    char line[64];
+    gfx.setTextColor(MusicVisuals::accentForStyle());
+    std::snprintf(line, sizeof(line), "F%u  PPQN %u  TRK %u  USED %u",
+                  static_cast<unsigned>(inspector.format),
+                  static_cast<unsigned>(inspector.division),
+                  static_cast<unsigned>(inspector.trackCount),
+                  static_cast<unsigned>(inspector.usedChannelCount()));
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(0), line);
+
+    uint8_t used[kSmfMidiChannelCount]{};
+    int usedCount = 0;
+    for (uint8_t channel = 0; channel < kSmfMidiChannelCount; ++channel) {
+        if ((inspector.usedChannelMask & (1u << channel)) != 0) {
+            used[usedCount++] = channel;
+        }
+    }
+
+    constexpr int kVisibleRows = 6;
+    const int maxScroll = std::max(0, usedCount - kVisibleRows);
+    channelInspectorScroll_ = std::max(0, std::min(channelInspectorScroll_, maxScroll));
+
+    if (usedCount == 0) {
+        gfx.setTextColor(COLOR_LABEL);
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), "NO NOTE OR PROGRAM CHANNELS");
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(3), "LOAD A MIDI FILE FIRST");
+        return;
+    }
+
+    for (int row = 0; row < kVisibleRows; ++row) {
+        const int index = channelInspectorScroll_ + row;
+        if (index >= usedCount) break;
+        const uint8_t channel = used[index];
+        const SmfChannelInfo& info = inspector.channels[channel];
+
+        char low[5] = "--";
+        char high[5] = "--";
+        if (info.hasNotes()) {
+            formatMidiNote(info.minNote, low, sizeof(low));
+            formatMidiNote(info.maxNote, high, sizeof(high));
+        }
+        char program[6] = "P---";
+        if (info.hasProgramChange) {
+            std::snprintf(program, sizeof(program), "P%03u",
+                          static_cast<unsigned>(info.firstProgram));
+        }
+        const unsigned shownNotes = static_cast<unsigned>(
+            info.noteCount > 9999u ? 9999u : info.noteCount);
+        const unsigned shownPoly = static_cast<unsigned>(
+            info.maxPolyphony > 99u ? 99u : info.maxPolyphony);
+        std::snprintf(line, sizeof(line),
+                      "C%02u N%04u %-3s-%-3s V%03u X%02u %s %-3s",
+                      static_cast<unsigned>(channel + 1u),
+                      shownNotes,
+                      low,
+                      high,
+                      static_cast<unsigned>(info.averageVelocity()),
+                      shownPoly,
+                      program,
+                      inspectorRouteLabel(state.rawRouting, channel));
+        gfx.setTextColor(info.likelyDrums
+                             ? MusicVisuals::accentForStyle()
+                             : COLOR_TEXT);
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(row + 1), line);
+    }
+
+    gfx.setTextColor(COLOR_LABEL);
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(7),
+                 "I PLAYER  UP/DN SCROLL  P=PROGRAM");
 }
 
 void SmfPlayerPage::drawPerformance(IGfx& gfx) {
@@ -621,10 +747,12 @@ void SmfPlayerPage::drawPerformance(IGfx& gfx) {
 void SmfPlayerPage::drawFooter(IGfx& gfx) {
     if (browserVisible_) {
         UI::drawStandardFooter(gfx, "UP/DN Select  Enter Load", "Space MIDI  G Groove  T Tempo");
+    } else if (channelInspectorVisible_) {
+        UI::drawStandardFooter(gfx, "UP/DN Scroll  I Player", "D Perf  B Files  Space MIDI");
     } else if (performanceVisible_) {
-        UI::drawStandardFooter(gfx, "D Player  B Files", "Space MIDI  G Groove  T Tempo");
+        UI::drawStandardFooter(gfx, "D Player  B Files", "I Channels  Space MIDI  G Groove");
     } else {
-        UI::drawStandardFooter(gfx, "Space MIDI  G Groove  R Restart", "B Files  T Tempo  V Vel  X Panic");
+        UI::drawStandardFooter(gfx, "Space MIDI  G Groove  R Restart", "I Channels  B Files  V Vel  X Panic");
     }
 }
 

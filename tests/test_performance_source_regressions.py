@@ -367,6 +367,7 @@ def main() -> None:
     test_stage_visuals_remain_lightweight_and_state_driven()
     test_smf_player_is_additive_and_keeps_single_usb_owner()
     test_smf_velocity_boost_range_is_session_sticky()
+    test_smf_channel_inspector_is_bounded_and_read_only()
     print("performance + SMF source regressions: OK")
 
 
@@ -393,6 +394,33 @@ def test_smf_velocity_boost_range_is_session_sticky() -> None:
                   player.index("bool CardputerSmfPlayerService::scanMetadata")]
     require("velocityBoost_ = 0" not in load,
             "loading another MIDI must keep the session velocity boost")
+
+
+def test_smf_channel_inspector_is_bounded_and_read_only() -> None:
+    service = (ROOT / "src/midi/smf_player_service.h").read_text(encoding="utf-8")
+    player = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(
+        encoding="utf-8"
+    )
+    page = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(encoding="utf-8")
+
+    require("SmfChannelInspectorSnapshot channelInspector() const" in service,
+            "SMF service must expose a separate bounded inspector snapshot")
+    load = player[player.index("bool CardputerSmfPlayerService::loadFile"):
+                  player.index("bool CardputerSmfPlayerService::scanMetadata")]
+    require("inspectorBuilder.observe(event.event)" in load,
+            "channel metadata must be collected during the existing load scan")
+    require(load.count("while (stream_.next(event))") == 1,
+            "channel inspector must not add a second full stream scan")
+    require("event.key == 'i' || event.key == 'I'" in page and
+            "drawChannelInspector" in page,
+            "MIDI Player must expose an explicit read-only I inspector")
+    inspector = page[page.index("void SmfPlayerPage::drawChannelInspector"):]
+    for token in ("noteCount", "averageVelocity", "maxPolyphony",
+                  "firstProgram", "inspectorRouteLabel"):
+        require(token in inspector,
+                f"channel inspector is missing {token}")
+    require("toggleRouting" not in inspector and "adjustTempoBpm" not in inspector,
+            "drawing the inspector must not mutate routing or playback")
 
 
 if __name__ == "__main__":

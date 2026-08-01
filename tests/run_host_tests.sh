@@ -229,6 +229,17 @@ python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_channel_inspector.cpp" \
+  -o "${BUILD_DIR}/test_smf_channel_inspector"
+
+"${BUILD_DIR}/test_smf_channel_inspector"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_midi_control_event_queue.cpp" \
   -o "${BUILD_DIR}/test_midi_control_event_queue"
 
