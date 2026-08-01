@@ -5,7 +5,7 @@
 #include "src/midi/usb_midi_output.h"
 
 namespace {
-enum class Kind : uint8_t { On, Off };
+enum class Kind : uint8_t { On, Off, Control };
 struct Packet { Kind kind; uint8_t channel; uint8_t note; uint8_t velocity; };
 
 class FakeTransport final : public IUsbMidiTransport {
@@ -20,6 +20,11 @@ public:
     bool sendNoteOff(uint8_t ch, uint8_t note, uint8_t vel) override {
         if (!mountedState || !sendOk) return false;
         packets.push_back({Kind::Off, ch, note, vel});
+        return true;
+    }
+    bool sendControlChange(uint8_t ch, uint8_t controller, uint8_t value) override {
+        if (!mountedState || !sendOk) return false;
+        packets.push_back({Kind::Control, ch, controller, value});
         return true;
     }
     void flush() override {}
@@ -115,8 +120,26 @@ int main() {
     assert(output.smfOwnerCount(5, 74) == 0);
     assert(output.wireOwnerCount(5, 74) == 0);
     transport.sendOk = true;
+    assert(output.releaseAllSmfNotes());
+    assert(transport.packets.back().kind == Kind::Control);
+    assert(transport.packets.back().channel == 5);
+    assert(transport.packets.back().note == 123);
     output.handleMusicalEvent(liveEvent(MusicalEventType::NoteOff, 69));
     assert(output.wireOwnerCount(7, 69) == 0);
+
+    // CC123 recovery must wait while another known owner uses that channel.
+    output.handleMusicalEvent(liveEvent(MusicalEventType::NoteOn, 71));
+    assert(output.handleSmfNoteOn(7, 74, 95));
+    transport.sendOk = false;
+    output.abandonAllSmfNotes();
+    transport.sendOk = true;
+    const std::size_t beforeDeferredRecovery = transport.packets.size();
+    assert(!output.releaseAllSmfNotes());
+    assert(transport.packets.size() == beforeDeferredRecovery);
+    output.handleMusicalEvent(liveEvent(MusicalEventType::NoteOff, 71));
+    assert(output.releaseAllSmfNotes());
+    assert(transport.packets.back().kind == Kind::Control);
+    assert(transport.packets.back().channel == 7);
 
     // Disconnect clears local ownership and stale notes are never replayed.
     assert(output.handleSmfNoteOn(4, 55, 90));
@@ -126,6 +149,9 @@ int main() {
     assert(output.wireOwnerCount(4, 55) == 0);
     transport.mountedState = true;
     output.pollConnection();
+    assert(transport.packets.back().kind == Kind::Control);
+    assert(transport.packets.back().channel == 4);
+    assert(transport.packets.back().note == 123);
 
     return 0;
 }

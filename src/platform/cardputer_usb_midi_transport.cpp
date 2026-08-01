@@ -15,9 +15,12 @@
 #include "src/midi/midi_companion_settings.h"
 #include "src/midi/midi_control_event_queue.h"
 #include "src/midi/pattern_drum_gate_scheduler.h"
+#include "src/midi/project_smf_dispatch_policy.h"
+#include "src/midi/project_transport_timeline.h"
 #include "src/midi/scheduled_midi_transport_event.h"
 #include "src/midi/scheduled_musical_event_queue.h"
 #include "src/midi/smf_dispatch_policy.h"
+#include "src/midi/smf_late_policy.h"
 #include "src/midi/scheduled_smf_midi_event_queue.h"
 #include "src/midi/usb_midi_output.h"
 
@@ -28,9 +31,11 @@
 namespace {
 constexpr uint8_t kCinNoteOff = 0x08;
 constexpr uint8_t kCinNoteOn = 0x09;
+constexpr uint8_t kCinControlChange = 0x0B;
 constexpr uint8_t kCinSingleByte = 0x0F;
 constexpr uint8_t kStatusNoteOff = 0x80;
 constexpr uint8_t kStatusNoteOn = 0x90;
+constexpr uint8_t kStatusControlChange = 0xB0;
 constexpr uint8_t kStatusTimingClock = 0xF8;
 constexpr uint8_t kStatusStart = 0xFA;
 constexpr uint8_t kStatusStop = 0xFC;
@@ -47,10 +52,15 @@ constexpr uint32_t kDiagnosticsPeriodMs = 5000;
 constexpr uint32_t kClockStaleThresholdUs = 5000;
 // A stale NoteOn has no cleanup responsibility and must not create a catch-up
 // burst after USB endpoint backpressure. NoteOff remains cleanup-critical.
-constexpr uint32_t kSmfStaleNoteOnThresholdUs = 100000;
+constexpr uint32_t kSmfStaleNoteOnThresholdUs = kBlockDurationUs;
 constexpr TickType_t kSmfRetryDelay = pdMS_TO_TICKS(1);
 constexpr uint32_t kSmfCleanupRetryDelayMs = 10;
-constexpr uint8_t kSmfCleanupAttemptLimit = 8;
+// The TinyUSB MIDI TX FIFO holds only CFG_TUD_MIDI_TX_BUFSIZE bytes (16 event
+// packets), so a chord or a catch-up burst can fill it until the host polls the
+// bulk IN endpoint again. Declaring the endpoint dead after 80 ms turned every
+// such burst into a stopped transport; a receiver that never drains still gets
+// surfaced, just after a window that real backpressure can survive.
+constexpr uint8_t kSmfCleanupAttemptLimit = 32;
 constexpr std::size_t kControlDrainBudget = 8;
 
 class MidiBlockAnchorClock {
@@ -122,8 +132,15 @@ struct MidiDispatchDiagnostics {
     uint32_t smfSendRetries{0};
     uint32_t smfSendDrops{0};
     uint32_t smfLateNoteOnDrops{0};
+    uint32_t smfLateNoteOnSent{0};
+    uint32_t smfMaxNoteOnLatenessUs{0};
+    uint32_t smfLateNoteOffSent{0};
+    uint32_t smfTransportEpochDrops{0};
     uint32_t smfCleanupRetries{0};
     uint32_t smfTransportAborts{0};
+    // Longest continuous stretch where the USB MIDI TX FIFO refused writes and
+    // then recovered. Separates a short burst from a host that stopped reading.
+    uint32_t smfMaxSendBlockUs{0};
 };
 
 // Construction of USBMIDI registers its interface descriptor before Arduino
@@ -148,9 +165,11 @@ MidiDispatchDiagnostics g_diagnostics;
 TaskHandle_t g_dispatchTaskHandle = nullptr;
 bool g_registered = false;
 bool g_smfCleanupPending = false;
-bool g_smfCleanupMustAbort = false;
 uint32_t g_nextSmfCleanupAttemptMs = 0;
 uint8_t g_smfCleanupAttempts = 0;
+// Timestamp of the first failed SMF write of the current stall, used to report
+// how long the endpoint actually refused data.
+uint32_t g_smfSendBlockStartedUs = 0;
 
 void notifyDispatcher() {
     if (g_dispatchTaskHandle != nullptr) {
@@ -168,26 +187,47 @@ public:
 
 QueuedUsbMidiSink g_queueSink;
 
-void beginSmfCleanup(bool transportFailure = false) {
+// Cleanup is a recovery step, not a verdict: a completed all-notes-off means the
+// wire is consistent again and playback may continue. Only cleanup that cannot
+// complete within kSmfCleanupAttemptLimit reports a transport failure.
+void beginSmfCleanup() {
     if (!g_smfCleanupPending) {
         g_nextSmfCleanupAttemptMs = 0;
         g_smfCleanupAttempts = 0;
-        g_smfCleanupMustAbort = transportFailure;
-    } else if (transportFailure) {
-        g_smfCleanupMustAbort = true;
     }
     g_smfCleanupPending = true;
 }
 
+void recordRecoveredSmfSendBlock() {
+    if (g_smfSendBlockStartedUs == 0) return;
+    const uint32_t blockedUs = micros() - g_smfSendBlockStartedUs;
+    if (blockedUs > g_diagnostics.smfMaxSendBlockUs) {
+        g_diagnostics.smfMaxSendBlockUs = blockedUs;
+    }
+    g_smfSendBlockStartedUs = 0;
+}
+
 void reportSmfTransportFailure() {
+    const uint8_t attempts = g_smfCleanupAttempts;
+    const uint32_t blockedUs = g_smfSendBlockStartedUs != 0
+        ? micros() - g_smfSendBlockStartedUs
+        : 0;
     g_output.abandonAllSmfNotes();
     g_smfQueue->reportTransportFailure();
     g_smfCleanupPending = false;
-    g_smfCleanupMustAbort = false;
     g_nextSmfCleanupAttemptMs = 0;
     g_smfCleanupAttempts = 0;
+    g_smfSendBlockStartedUs = 0;
     ++g_diagnostics.smfTransportAborts;
-    Serial.println("[SMF-ERROR] USB MIDI endpoint blocked; playback stopped");
+    // mounted=1 means the host has the interface configured but is not draining
+    // the bulk IN endpoint (no application reading the port, or a suspended
+    // device). mounted=0 is a real disconnect.
+    Serial.printf(
+        "[SMF-ERROR] USB MIDI endpoint blocked; playback stopped "
+        "mounted=%u blockedUs=%u attempts=%u\n",
+        static_cast<unsigned>(g_transport.mounted() ? 1 : 0),
+        static_cast<unsigned>(blockedUs),
+        static_cast<unsigned>(attempts));
 }
 
 MusicalEvent panicEvent(MusicalEventSource source,
@@ -270,12 +310,10 @@ void dispatchSmfPanic() {
         return;
     }
     if (g_output.releaseAllSmfNotes()) {
-        if (g_smfCleanupMustAbort) {
-            reportSmfTransportFailure();
-            return;
-        }
+        // Every SMF-owned note is released and the wire is consistent again.
+        // Backpressure that recovers is not a transport failure.
+        recordRecoveredSmfSendBlock();
         g_smfCleanupPending = false;
-        g_smfCleanupMustAbort = false;
         g_nextSmfCleanupAttemptMs = 0;
         g_smfCleanupAttempts = 0;
     } else {
@@ -401,6 +439,13 @@ bool dispatchSmfEvent(const ScheduledSmfMidiEvent& event) {
         event.channel, event.note, event.velocity);
 }
 
+bool projectSmfNoteOnStillCurrent(const ScheduledSmfMidiEvent& event) {
+    if (event.projectTransportEpoch == 0) return true;
+    GroovePuterMidi::ProjectTransportBlockSnapshot transport{};
+    return GroovePuterMidi::projectTransportTimeline().trySnapshot(transport) &&
+           GroovePuterMidi::projectSmfNoteOnStillCurrent(event, transport);
+}
+
 void logDiagnosticsIfDue() {
     static uint32_t lastLogMs = 0;
     const uint32_t nowMs = millis();
@@ -439,7 +484,8 @@ void logDiagnosticsIfDue() {
         "[MIDI-DISPATCH] sched=%u transport=%u smf=%u live=%u sent=%u/%u "
         "drumGate=%u/%u/%u active=%u "
         "smfSent=%u smfStale=%u smfPanic=%u smfRetry=%u smfDrop=%u "
-        "smfLateDrop=%u smfCleanRetry=%u smfAbort=%u "
+        "smfLateDrop=%u smfLateSent=%u smfMaxLateOnUs=%u smfLateOff=%u "
+        "smfEpochDrop=%u smfCleanRetry=%u smfAbort=%u smfMaxBlockUs=%u "
         "clockSent=%u clockLate=%u clockDropped=%u start=%u stop=%u "
         "transportFail=%u late=%u maxLateUs=%u stale=%u/%u badFrame=%u "
         "drop=%u/%u transportDrop=%u overflow=%u recovery=%u "
@@ -460,8 +506,13 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(g_diagnostics.smfSendRetries),
         static_cast<unsigned>(g_diagnostics.smfSendDrops),
         static_cast<unsigned>(g_diagnostics.smfLateNoteOnDrops),
+        static_cast<unsigned>(g_diagnostics.smfLateNoteOnSent),
+        static_cast<unsigned>(g_diagnostics.smfMaxNoteOnLatenessUs),
+        static_cast<unsigned>(g_diagnostics.smfLateNoteOffSent),
+        static_cast<unsigned>(g_diagnostics.smfTransportEpochDrops),
         static_cast<unsigned>(g_diagnostics.smfCleanupRetries),
         static_cast<unsigned>(g_diagnostics.smfTransportAborts),
+        static_cast<unsigned>(g_diagnostics.smfMaxSendBlockUs),
         static_cast<unsigned>(g_diagnostics.clockSent),
         static_cast<unsigned>(g_diagnostics.clockLate),
         static_cast<unsigned>(g_diagnostics.clockDropped),
@@ -506,10 +557,12 @@ void midiDispatchTask(void*) {
     bool hasPendingTransport = false;
     bool hasPendingSmf = false;
     uint8_t smfFailedAttempts = 0;
+    uint32_t pendingSmfLatenessUs = 0;
 
     auto clearPendingSmf = [&]() {
         hasPendingSmf = false;
         smfFailedAttempts = 0;
+        pendingSmfLatenessUs = 0;
     };
 
     while (true) {
@@ -621,6 +674,21 @@ void midiDispatchTask(void*) {
             continue;
         }
 
+        if (hasPendingSmf && pendingSmf.projectTransportEpoch != 0) {
+            GroovePuterMidi::ProjectTransportBlockSnapshot transport{};
+            if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(transport)) {
+                ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
+                continue;
+            }
+            if (!transport.valid || !transport.playing ||
+                !scheduledSmfMidiEventTransportEpochIsCurrent(
+                    pendingSmf, transport.transportEpoch)) {
+                ++g_diagnostics.smfTransportEpochDrops;
+                clearPendingSmf();
+                continue;
+            }
+        }
+
         if (!hasPendingTransport && !hasPendingMusical &&
             !hasPendingDrumGate && !hasPendingSmf) {
             drainControlEvents();
@@ -722,12 +790,17 @@ void midiDispatchTask(void*) {
                     continue;
                 }
             }
-            if (kind == PendingKind::Smf &&
-                pendingSmf.type == ScheduledSmfMidiEventType::NoteOn &&
-                lateness > kSmfStaleNoteOnThresholdUs) {
-                ++g_diagnostics.smfLateNoteOnDrops;
-                clearPendingSmf();
-                continue;
+            if (kind == PendingKind::Smf) {
+                const SmfLateDispatchAction action = smfLateDispatchAction(
+                    pendingSmf.type,
+                    lateness,
+                    kSmfStaleNoteOnThresholdUs);
+                if (action == SmfLateDispatchAction::DropLateNoteOn) {
+                    ++g_diagnostics.smfLateNoteOnDrops;
+                    clearPendingSmf();
+                    continue;
+                }
+                pendingSmfLatenessUs = lateness;
             }
         }
 
@@ -795,22 +868,48 @@ void midiDispatchTask(void*) {
                     pendingSmf, g_smfQueue->generation())) {
                 ++g_diagnostics.smfStaleGenerationDrops;
                 clearPendingSmf();
+            } else if (pendingSmf.type == ScheduledSmfMidiEventType::NoteOn &&
+                       !projectSmfNoteOnStillCurrent(pendingSmf)) {
+                // Stop/Restart can happen during the final <=1.5 ms busy-wait.
+                // Recheck the live transport immediately before the USB write.
+                ++g_diagnostics.smfTransportEpochDrops;
+                clearPendingSmf();
             } else if (dispatchSmfEvent(pendingSmf)) {
                 ++g_diagnostics.smfSent;
+                recordRecoveredSmfSendBlock();
+                if (pendingSmfLatenessUs > 0) {
+                    if (pendingSmf.type == ScheduledSmfMidiEventType::NoteOn) {
+                        ++g_diagnostics.smfLateNoteOnSent;
+                        if (pendingSmfLatenessUs >
+                            g_diagnostics.smfMaxNoteOnLatenessUs) {
+                            g_diagnostics.smfMaxNoteOnLatenessUs =
+                                pendingSmfLatenessUs;
+                        }
+                    } else {
+                        ++g_diagnostics.smfLateNoteOffSent;
+                    }
+                }
                 clearPendingSmf();
             } else {
                 ++g_diagnostics.smfSendRetries;
                 if (smfFailedAttempts < UINT8_MAX) ++smfFailedAttempts;
+                if (g_smfSendBlockStartedUs == 0) {
+                    g_smfSendBlockStartedUs = micros();
+                }
                 const SmfSendFailureAction action = smfSendFailureAction(
                     pendingSmf, smfFailedAttempts);
                 if (action == SmfSendFailureAction::DropNoteOn) {
+                    // The write never reached the wire, so nothing is owned and
+                    // there is nothing to clean up. Shedding the NoteOn is the
+                    // whole point of this action; escalating to a transport
+                    // failure here stopped playback on any burst that briefly
+                    // filled the TX FIFO.
                     ++g_diagnostics.smfSendDrops;
-                    beginSmfCleanup(true);
                     clearPendingSmf();
                 } else if (action == SmfSendFailureAction::BeginCleanup) {
                     // UsbMidiOutput retains ownership after a failed NoteOff.
                     // Move recovery to the paced all-notes-off path.
-                    beginSmfCleanup(true);
+                    beginSmfCleanup();
                     clearPendingSmf();
                 }
                 // A pending task notification must not turn USB backpressure
@@ -894,13 +993,23 @@ bool CardputerUsbMidiTransport::sendNoteOn(uint8_t zeroBasedChannel,
 }
 
 bool CardputerUsbMidiTransport::sendNoteOff(uint8_t zeroBasedChannel,
-                                            uint8_t note,
-                                            uint8_t velocity) {
+                                           uint8_t note,
+                                           uint8_t velocity) {
     return writeChannelPacket(kCinNoteOff,
                               kStatusNoteOff,
                               zeroBasedChannel,
                               note,
                               velocity);
+}
+
+bool CardputerUsbMidiTransport::sendControlChange(uint8_t zeroBasedChannel,
+                                                  uint8_t controller,
+                                                  uint8_t value) {
+    return writeChannelPacket(kCinControlChange,
+                              kStatusControlChange,
+                              zeroBasedChannel,
+                              controller,
+                              value);
 }
 
 bool CardputerUsbMidiTransport::sendTimingClock() {

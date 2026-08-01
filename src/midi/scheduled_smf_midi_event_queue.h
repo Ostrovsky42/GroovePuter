@@ -21,7 +21,8 @@ public:
                        uint8_t note,
                        uint8_t velocity,
                        uint32_t blockSequence,
-                       uint16_t frameOffset) {
+                       uint16_t frameOffset,
+                       uint32_t projectTransportEpoch = 0) {
         if (transportFailed()) return false;
         if (!validData(channel, note, velocity)) {
             invalidEvent_.incrementRelaxed();
@@ -40,14 +41,16 @@ public:
                                  note,
                                  velocity,
                                  blockSequence,
-                                 frameOffset));
+                                 frameOffset,
+                                 projectTransportEpoch));
     }
 
     bool tryPushNoteOff(uint8_t channel,
                         uint8_t note,
                         uint8_t velocity,
                         uint32_t blockSequence,
-                        uint16_t frameOffset) {
+                        uint16_t frameOffset,
+                        uint32_t projectTransportEpoch = 0) {
         if (transportFailed()) return false;
         if (!validData(channel, note, velocity)) {
             invalidEvent_.incrementRelaxed();
@@ -59,7 +62,8 @@ public:
                               note,
                               velocity,
                               blockSequence,
-                              frameOffset))) {
+                              frameOffset,
+                              projectTransportEpoch))) {
             return true;
         }
 
@@ -77,11 +81,17 @@ public:
     }
 
     uint32_t invalidateAndRequestPanic() {
-        const uint32_t generation = generation_.incrementRelaxed();
+        const uint32_t generation = invalidateScheduledEvents();
         panicGeneration_.storeRelaxed(generation);
         const uint32_t epoch = panicEpoch_.loadRelaxed() + 1u;
         panicEpoch_.storeRelease(epoch);
         return generation;
+    }
+
+    // Rebuild future deadlines without releasing notes already owned by the
+    // USB output. The new generation will re-publish their future NoteOffs.
+    uint32_t invalidateScheduledEvents() {
+        return generation_.incrementRelaxed();
     }
 
     bool takePendingPanic(uint32_t& generation) {
@@ -147,7 +157,8 @@ private:
                                     uint8_t note,
                                     uint8_t velocity,
                                     uint32_t blockSequence,
-                                    uint16_t frameOffset) {
+                                    uint16_t frameOffset,
+                                    uint32_t projectTransportEpoch) {
         ScheduledSmfMidiEvent event{};
         event.type = type;
         event.channel = channel;
@@ -157,6 +168,8 @@ private:
         event.frameOffset = frameOffset;
         event.generation = generation_.loadAcquire();
         event.publicationSequence = publicationSequence_.incrementRelaxed();
+        event.projectTransportEpoch =
+            scheduledSmfMidiEventTransportEpochTag(projectTransportEpoch);
         return event;
     }
 

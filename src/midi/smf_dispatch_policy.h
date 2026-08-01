@@ -10,7 +10,10 @@ enum class SmfSendFailureAction : uint8_t {
     BeginCleanup,
 };
 
-inline constexpr uint8_t kSmfSendRetryLimit = 8;
+// Retries are spaced one millisecond apart. The USB MIDI TX FIFO holds only 16
+// event packets, so a chord or a catch-up burst needs several host polls to
+// drain; eight attempts shed notes while the endpoint was merely busy.
+inline constexpr uint8_t kSmfSendRetryLimit = 24;
 
 inline constexpr SmfSendFailureAction smfSendFailureAction(
         const ScheduledSmfMidiEvent& event,

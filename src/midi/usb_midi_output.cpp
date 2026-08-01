@@ -4,6 +4,7 @@ UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
                              UsbMidiRouteConfig config)
     : transport_(transport),
       config_(config),
+      abandonedSmfChannels_(0),
       enabled_(true),
       begun_(false),
       mounted_(false) {
@@ -115,6 +116,7 @@ uint8_t UsbMidiOutput::clampDataByte(uint8_t value) {
 
 bool UsbMidiOutput::begin() {
     configureLanes();
+    abandonedSmfChannels_ = 0;
     clearActiveState();
     begun_ = transport_.begin();
     mounted_ = false;
@@ -124,8 +126,15 @@ bool UsbMidiOutput::begin() {
 void UsbMidiOutput::pollConnection() {
     const bool nextMounted = begun_ && transport_.mounted();
     if (nextMounted == mounted_) return;
+
+    if (mounted_ && !nextMounted) {
+        // The remote device may retain sounding notes across a transient USB
+        // disconnect. Preserve only channels that have no non-SMF owner.
+        abandonAllSmfNotes();
+    }
     clearActiveState();
     mounted_ = nextMounted;
+    if (mounted_) releaseAbandonedSmfChannels();
 }
 
 void UsbMidiOutput::setEnabled(bool enabled) {
@@ -521,7 +530,7 @@ bool UsbMidiOutput::releaseAllSmfNotes() {
             smfOwners = 0;
         }
     }
-    return allReleased;
+    return releaseAbandonedSmfChannels() && allReleased;
 }
 
 void UsbMidiOutput::abandonAllSmfNotes() {
@@ -531,12 +540,47 @@ void UsbMidiOutput::abandonAllSmfNotes() {
             if (smfOwners == 0) continue;
 
             uint8_t& wireOwners = wireOwners_[channel][note];
+            if (wireOwners <= smfOwners) {
+                abandonedSmfChannels_ |= static_cast<uint16_t>(1u << channel);
+            }
             wireOwners = wireOwners > smfOwners
                 ? static_cast<uint8_t>(wireOwners - smfOwners)
                 : 0;
             smfOwners = 0;
         }
     }
+}
+
+bool UsbMidiOutput::releaseAbandonedSmfChannels() {
+    if (abandonedSmfChannels_ == 0) return true;
+    if (!mounted_) return false;
+
+    bool allReleased = true;
+    for (std::size_t channel = 0; channel < kMidiChannelCount; ++channel) {
+        const uint16_t mask = static_cast<uint16_t>(1u << channel);
+        if ((abandonedSmfChannels_ & mask) == 0) continue;
+
+        bool hasKnownOwner = false;
+        for (std::size_t note = 0; note < kMidiNoteCount; ++note) {
+            if (wireOwners_[channel][note] != 0) {
+                hasKnownOwner = true;
+                break;
+            }
+        }
+        if (hasKnownOwner) {
+            allReleased = false;
+            continue;
+        }
+        if (!transport_.sendControlChange(static_cast<uint8_t>(channel),
+                                          123,
+                                          0)) {
+            allReleased = false;
+            continue;
+        }
+        transport_.flush();
+        abandonedSmfChannels_ &= static_cast<uint16_t>(~mask);
+    }
+    return allReleased;
 }
 
 void UsbMidiOutput::clearActiveState() {

@@ -23,7 +23,7 @@ def main() -> None:
             "global UsbMidiOutput constructor must not clear wire ownership")
     require("configureLanes();" in source[source.index("bool UsbMidiOutput::begin"):],
             "routing lanes must be configured from begin() after Arduino startup")
-    require("configureLanes();\n    clearActiveState();\n    begun_ = transport_.begin();" in source,
+    require("configureLanes();\n    abandonedSmfChannels_ = 0;\n    clearActiveState();\n    begun_ = transport_.begin();" in source,
             "begin() must configure/clear routing before starting MIDI transport")
     require("MidiVoiceLane lanes_[kLaneCount];" in header,
             "lane storage must remain passive static storage before begin()")

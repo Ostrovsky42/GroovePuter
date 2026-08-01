@@ -6,6 +6,7 @@
 #include <freertos/queue.h>
 #include <freertos/task.h>
 
+#include "src/midi/project_transport_timeline.h"
 #include "src/midi/scheduled_smf_midi_event_queue.h"
 #include "src/midi/smf_player_service.h"
 #include "src/midi/smf_routing.h"
@@ -20,13 +21,15 @@ public:
     bool begin();
     ScheduledSmfMidiEventQueue& eventQueue() { return eventQueue_; }
 
-    bool requestLoadAndPlay(const char* path) override;
+    bool requestLoad(const char* path) override;
     bool togglePlayPause() override;
+    bool pause() override;
     bool restart(GroovePuterMidi::SmfPlayerRestartOrigin origin) override;
     bool stop() override;
     bool panic() override;
     bool seekBars(int deltaBars) override;
     bool toggleRouting() override;
+    bool toggleTempoMode() override;
     bool adjustTempoBpm(int deltaBpm) override;
     bool resetTempo() override;
     bool cycleVelocityBoost() override;
@@ -42,21 +45,32 @@ private:
     // costs no RAM and absorbs SD latency spikes; dense files remain bounded by
     // kQueueFillLimit rather than by this window.
     static constexpr uint32_t kScheduleLookaheadBlocks = 32;
+    static constexpr uint32_t kProjectScheduleLookaheadBlocks = 12;
+    static constexpr uint32_t kProjectLaunchLeadBlocks = 2;
+    static constexpr uint32_t kProjectTimelineMaxAgeBlocks = 2;
     static constexpr std::size_t kQueueFillLimit =
         ScheduledSmfMidiEventQueue::kCapacity - 24;
 
     enum class CommandType : uint8_t {
-        LoadAndPlay,
+        Load,
         TogglePlayPause,
+        Pause,
         RestartMusic,
         RestartFile,
         Stop,
         Panic,
         SeekBars,
         ToggleRouting,
+        ToggleTempoMode,
         AdjustTempoBpm,
         ResetTempo,
         CycleVelocityBoost,
+    };
+
+    enum class ProjectTransportReadResult : uint8_t {
+        Fresh = 0,
+        Unavailable,
+        Stale,
     };
 
     struct Command {
@@ -95,6 +109,12 @@ private:
     static void taskEntry(void* context);
     void taskLoop();
     void handleTransportFailure();
+    void handleProjectTransport();
+    ProjectTransportReadResult readProjectTransport(
+        GroovePuterMidi::ProjectTransportBlockSnapshot& transport);
+    void pauseForStaleProjectTimeline();
+    void reanchorProjectTempo(
+        const GroovePuterMidi::ProjectTransportBlockSnapshot& transport);
     bool enqueue(const Command& command);
     void handleCommand(const Command& command);
 
@@ -102,6 +122,10 @@ private:
     bool scanMetadata();
     bool prepareStreamAt(uint32_t tick);
     bool startFromTick(uint32_t tick);
+    bool startOriginalFromTick(uint32_t tick);
+    bool armProjectFromTick(uint32_t tick);
+    bool planProjectLaunch(
+        const GroovePuterMidi::ProjectTransportBlockSnapshot& transport);
     void pauseAtCurrentPosition();
     void stopAndCleanup(bool resetToMusicStart);
     void scheduleAhead();
@@ -110,7 +134,11 @@ private:
     void applyTempoScale(uint16_t scalePermille);
     uint16_t originalBpmX10At(uint32_t tick) const;
     uint16_t effectiveBpmX10At(uint32_t tick) const;
-    uint32_t currentTickFromAudioClock() const;
+    uint32_t currentTickFromAudioClock();
+    uint32_t currentProjectTick(
+        const GroovePuterMidi::ProjectTransportBlockSnapshot& transport) const;
+    double currentProjectSmfTick(
+        const GroovePuterMidi::ProjectTransportBlockSnapshot& transport) const;
     bool takeNextNote(GroovePuterMidi::SmfStreamEvent& event);
     void publishSnapshot(GroovePuterMidi::SmfPlayerState state,
                          const char* message = nullptr);
@@ -135,6 +163,7 @@ private:
     uint32_t endTick_{0};
     uint32_t playbackOriginTick_{0};
     uint32_t playbackOriginBlock_{0};
+    uint16_t playbackOriginFrame_{0};
     uint32_t playbackOriginMicros_{0};
     uint32_t lastScheduledBlock_{0};
     uint32_t pausedTick_{0};
@@ -145,6 +174,19 @@ private:
         GroovePuterMidi::kSmfOriginalTempoScalePermille};
     uint8_t velocityBoost_{0};
 
+    GroovePuterMidi::SmfTempoMode tempoMode_{
+        GroovePuterMidi::SmfTempoMode::Original};
+    GroovePuterMidi::SmfLaunchMode launchMode_{
+        GroovePuterMidi::SmfLaunchMode::NextBar};
+    bool projectLaunchPlanned_{false};
+    double projectOriginStep_{0.0};
+    double projectOriginSmfTick_{0.0};
+    uint16_t projectBpmX10_{1200};
+    uint32_t projectBpmQ16_{120u << 16};
+    uint32_t projectTransportEpoch_{0};
+    GroovePuterMidi::ProjectTransportBlockSnapshot lastProjectTransport_{};
+    bool haveLastProjectTransport_{false};
+
     static constexpr uint32_t kPerfUnsetDepth = 0xFFFFFFFFu;
     static constexpr uint32_t kPerfLogIntervalMs = 2000;
     uint32_t perfLastLogMs_{0};
@@ -152,6 +194,10 @@ private:
     uint32_t perfMaxScheduleMicros_{0};
     uint32_t perfMinQueueDepth_{kPerfUnsetDepth};
     uint32_t perfQueuedEvents_{0};
+    uint32_t perfProjectLateNoteOnDrops_{0};
+    uint32_t perfTimelineReadMisses_{0};
+    uint32_t perfTimelineStalePauses_{0};
+    uint32_t perfTempoReanchors_{0};
 
     GroovePuterMidi::SmfRoutingMode routingMode_{
         GroovePuterMidi::SmfRoutingMode::Seqtrak};

@@ -3,6 +3,9 @@
 #include "src/midi/smf_dispatch_policy.h"
 
 int main() {
+    static_assert(kSmfSendRetryLimit == 24,
+                  "SMF retry budget must cover a full TinyUSB FIFO drain");
+
     ScheduledSmfMidiEvent noteOn{};
     noteOn.type = ScheduledSmfMidiEventType::NoteOn;
     ScheduledSmfMidiEvent noteOff{};

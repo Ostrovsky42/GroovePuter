@@ -9,6 +9,13 @@ int main() {
     assert(queue.generation() == 0);
     assert(queue.approximateSize() == 0);
 
+    // Tempo re-anchoring invalidates future deadlines without requesting a
+    // wire panic, so active notes can retain ownership until rebuilt NoteOffs.
+    const uint32_t tempoGeneration = queue.invalidateScheduledEvents();
+    assert(tempoGeneration == 1);
+    uint32_t noPanicGeneration = 0;
+    assert(!queue.takePendingPanic(noPanicGeneration));
+
     assert(!queue.tryPushNoteOn(16, 60, 100, 1, 0));
     assert(!queue.tryPushNoteOn(0, 128, 100, 1, 0));
     assert(queue.invalidEventCount() == 2);
@@ -42,18 +49,18 @@ int main() {
 
     assert(!queue.tryPushNoteOff(0, 60, 0, 10, 0));
     assert(queue.criticalOverflowCount() == 1);
-    assert(queue.generation() == 1);
+    assert(queue.generation() == 2);
 
     uint32_t panicGeneration = 0;
     assert(queue.takePendingPanic(panicGeneration));
-    assert(panicGeneration == 1);
+    assert(panicGeneration == 2);
     assert(queue.panicRecoveryCount() == 1);
     assert(!queue.takePendingPanic(panicGeneration));
 
     ScheduledSmfMidiEvent event{};
     std::size_t popped = 0;
     while (queue.tryPop(event)) {
-        assert(event.generation == 0);
+        assert(event.generation == 1);
         assert(!scheduledSmfMidiEventGenerationIsCurrent(
             event, queue.generation()));
         ++popped;
@@ -68,21 +75,27 @@ int main() {
     assert(event.velocity == 127);
     assert(event.blockSequence == 42);
     assert(event.frameOffset == 511);
-    assert(event.generation == 1);
+    assert(event.generation == 2);
     assert(scheduledSmfMidiEventFrameIsValid(event, 512));
     assert(!scheduledSmfMidiEventFrameIsValid(event, 511));
 
     const uint32_t generation2 = queue.invalidateAndRequestPanic();
-    assert(generation2 == 2);
-    assert(queue.generation() == 2);
+    assert(generation2 == 3);
+    assert(queue.generation() == 3);
     assert(queue.takePendingPanic(panicGeneration));
-    assert(panicGeneration == 2);
+    assert(panicGeneration == 3);
 
     assert(queue.tryPushNoteOff(3, 72, 12, 50, 10));
     assert(queue.tryPop(event));
     assert(event.type == ScheduledSmfMidiEventType::NoteOff);
-    assert(event.generation == 2);
+    assert(event.generation == 3);
     assert(scheduledSmfMidiEventGenerationIsCurrent(event, queue.generation()));
+
+    assert(queue.tryPushNoteOn(7, 60, 100, 70, 20, 9));
+    assert(queue.tryPop(event));
+    assert(event.projectTransportEpoch == 9);
+    assert(scheduledSmfMidiEventTransportEpochIsCurrent(event, 9));
+    assert(!scheduledSmfMidiEventTransportEpochIsCurrent(event, 10));
 
     queue.reportTransportFailure();
     assert(queue.transportFailed());
@@ -91,7 +104,7 @@ int main() {
 
     uint32_t reportedGeneration = 0;
     assert(queue.takePendingTransportFailure(reportedGeneration));
-    assert(reportedGeneration == 3);
+    assert(reportedGeneration == 4);
     assert(!queue.takePendingTransportFailure(reportedGeneration));
 
     queue.clearTransportFailure();

@@ -166,6 +166,9 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
     player_service = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(
         encoding="utf-8"
     )
+    smf_service = (ROOT / "src/midi/smf_player_service.h").read_text(
+        encoding="utf-8"
+    )
     player_registry = (ROOT / "src/platform/cardputer_smf_player_registry.cpp").read_text(
         encoding="utf-8"
     )
@@ -181,14 +184,67 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
             "MiniAcidDisplay must construct the MIDI Player page")
     require("event.alt && (event.key == 'p' || event.key == 'P')" in display,
             "Alt+P must provide a deterministic hardware shortcut to MIDI Player")
-    require("player->togglePlayPause()" in display,
-            "Space must own SMF Play/Pause on the player page")
-    require("event.shift" not in display[display.index("// On the MIDI Player page Space"):display.index("if (event.key == ' ')", display.index("// On the MIDI Player page Space") + 1)],
-            "SMF Space handling must not depend on unavailable Cardputer Shift")
+    require("player->togglePlayPause()" not in display,
+            "display-global Space handling must not bypass MIDI Player policy")
+    page_dispatch = display.index("currentPage->handleEvent(event)")
+    global_space = display.index("event.key == ' '", page_dispatch)
+    require(page_dispatch < global_space,
+            "pages must get first refusal before global GroovePuter Space")
+    require("return togglePlayerTransport();" in player_page and
+            "player_->togglePlayPause()" in player_page,
+            "MIDI Player page must own Space Play/Pause")
+    player_space = player_page[player_page.index("bool SmfPlayerPage::togglePlayerTransport()"):
+                               player_page.index("void SmfPlayerPage::toggleGrooveTransport()")]
+    require("miniAcid_.start()" not in player_space and
+            "miniAcid_.stop()" not in player_space,
+            "MIDI Space must not mutate the GroovePuter transport")
+    require("event.key == 'g' || event.key == 'G'" in player_page and
+            '"GROOVE PLAY / SPACE MIDI"' in player_page and
+            '"GROOVE STOP / MIDI PAUSED"' in player_page,
+            "G must expose separate, explicit GroovePuter transport control")
+    require(player_page.count("miniAcid_.start();") == 1 and
+            player_page.count("miniAcid_.stop();") == 1,
+            "only explicit G control may mutate the GroovePuter transport")
+    require("player_->togglePlayPause()" not in
+            player_page[player_page.index("if (event.key == 't' || event.key == 'T')"):],
+            "tempo source switching must not depend on a second UI command")
+    require('"GP MASTER: %s > USB CLOCK"' in player_page,
+            "PROJECT mode must identify GroovePuter as the outbound clock master")
+    require('queued ? "MIDI PANIC / PAUSE" : "PANIC QUEUE BUSY"' in player_page,
+            "player panic must report command-queue failure")
+
+    require("requestLoad(path.c_str())" in player_page and
+            "requestLoadAndPlay" not in player_page,
+            "Enter must load an SMF without creating hidden playback intent")
+    load_case = player_service[player_service.index("case CommandType::Load:"):
+                               player_service.index("case CommandType::TogglePlayPause:")]
+    require("loadFile(command.path);" in load_case and
+            "startFromTick" not in load_case,
+            "the platform Load command must leave the player stopped")
+    player_space = player_page[player_page.index("bool SmfPlayerPage::togglePlayerTransport()"):
+                               player_page.index("void SmfPlayerPage::toggleGrooveTransport()")]
+    require('"G START FIRST / THEN SPACE"' in player_space and
+            player_space.index('"G START FIRST / THEN SPACE"') <
+            player_space.index("player_->togglePlayPause()"),
+            "PROJECT Space must not arm SMF while the master is stopped")
+    groove_toggle = player_page[player_page.index("void SmfPlayerPage::toggleGrooveTransport()"):
+                                player_page.index("bool SmfPlayerPage::handleEvent")]
+    require("player_->pause()" in groove_toggle and
+            "withAudioGuard" in groove_toggle,
+            "G stop must pause PROJECT SMF and guard engine transport mutation")
+    require("virtual bool pause() = 0" in smf_service and
+            "case CommandType::Pause:" in player_service,
+            "SMF transport needs an explicit idempotent Pause command")
+    require('publishSnapshot(SmfPlayerState::Paused, "GP STOP / MIDI PAUSED")' in
+            player_service and
+            player_service.count(
+                'publishSnapshot(SmfPlayerState::Paused, "GP STOP / MIDI PAUSED")'
+            ) >= 2,
+            "a stopped project master must pause playing and pre-boundary ARMED SMF")
 
     require('"MIDI LIBRARY  %.24s"' in player_page and
             "currentPath_.c_str()" in player_page and
-            "requestLoadAndPlay" in player_page,
+            "requestLoad" in player_page,
             "MIDI Player page must expose selectable SD playback and its path")
     require("seekBars(event.shift ? -4 : -1)" in player_page and
             "seekBars(event.shift ? 4 : 1)" in player_page,
@@ -210,6 +266,38 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
             "applySmfVelocityBoost" in player_service and
             "tempoScalePermille_" in player_service,
             "SMF UI must expose bounded BPM and velocity controls")
+    project_bpm = player_page[player_page.index(
+        "if (state.tempoMode == SmfTempoMode::Project)"):
+        player_page.index("if (event.key == 'o' || event.key == 'O')")]
+    require("withAudioGuard" in project_bpm and
+            "miniAcid_.setBpm(targetBpm)" in project_bpm and
+            "10.0f" in project_bpm and "250.0f" in project_bpm,
+            "PROJECT BPM mutation must be guarded and use the engine range")
+
+    reanchor = player_service[player_service.index(
+        "void CardputerSmfPlayerService::reanchorProjectTempo"):
+        player_service.index("bool CardputerSmfPlayerService::enqueue")]
+    invalidate_pos = reanchor.index("invalidateScheduledEvents()")
+    first_scan_pos = reanchor.index("prepareStreamAt(streamTick)")
+    require(invalidate_pos < first_scan_pos and
+            "auto failReanchor" in reanchor and
+            "invalidateAndRequestPanic()" in reanchor and
+            "TEMPO REANCHOR FAILED" in reanchor and
+            "futureTick" not in reanchor and
+            "projectOriginSmfTick_ = currentTick" in reanchor,
+            "tempo re-anchor must invalidate before scan and cleanup only on failure")
+    schedule_ahead = player_service[player_service.index(
+        "void CardputerSmfPlayerService::scheduleAhead"):
+        player_service.index("void CardputerSmfPlayerService::logPerformance")]
+    require("ProjectTransportBlockSnapshot projectTransport" in schedule_ahead and
+            "scheduleProjectSmfTick(\n                projectTransport" in schedule_ahead and
+            "DroppedLateNoteOn" in schedule_ahead,
+            "one PROJECT snapshot must govern each scheduling pass and late NoteOn")
+    require("trySnapshot(candidate)" in player_service and
+            "projectTimelineIsStale(candidate.blockSequence" in player_service and
+            "ProjectTransportReadResult::Unavailable" in player_service and
+            "GP CLOCK STALE / MIDI PAUSED" in player_service,
+            "timeline contention and signed freshness must remain distinct from Stop")
     require("B Files" in player_page and "toggleRouting()" in player_page,
             "player must expose file return and RAW/SEQTRAK routing controls")
 
@@ -241,6 +329,27 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
             "vTaskDelay(kSmfRetryDelay)" in usb_dispatch and
             "kSmfStaleNoteOnThresholdUs" in usb_dispatch,
             "USB backpressure must use bounded paced retries and stale NoteOn drops")
+    require("kSmfStaleNoteOnThresholdUs = kBlockDurationUs" in usb_dispatch and
+            "smfLateNoteOnSent" in usb_dispatch and
+            "smfLateNoteOffSent" in usb_dispatch and
+            "smfTransportEpochDrops" in usb_dispatch,
+            "dispatcher must enforce one-block late policy and expose diagnostics")
+    final_smf_dispatch = usb_dispatch[usb_dispatch.index(
+        "if (g_smfQueue == nullptr ||\n"
+        "                !scheduledSmfMidiEventGenerationIsCurrent"):
+        usb_dispatch.index("drainControlEvents(2);")]
+    require("pendingSmf.type == ScheduledSmfMidiEventType::NoteOn" in
+                final_smf_dispatch and
+            "!projectSmfNoteOnStillCurrent(pendingSmf)" in final_smf_dispatch and
+            final_smf_dispatch.index("!projectSmfNoteOnStillCurrent(pendingSmf)") <
+                final_smf_dispatch.index("dispatchSmfEvent(pendingSmf)"),
+            "PROJECT NoteOn must recheck playing/epoch after the final busy-wait")
+    project_note_gate = usb_dispatch[usb_dispatch.index(
+        "bool projectSmfNoteOnStillCurrent"):
+        usb_dispatch.index("void logDiagnosticsIfDue")]
+    require("if (event.projectTransportEpoch == 0) return true;" in
+                project_note_gate,
+            "ORIGINAL NoteOn must not depend on the PROJECT timeline seqlock")
     require("g_output.handleSmfNoteOn" in usb_dispatch and
             "g_output.handleSmfNoteOff" in usb_dispatch,
             "MidiDispatchTask must remain the physical SMF note owner")

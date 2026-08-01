@@ -88,6 +88,9 @@ public:
                           uint8_t note,
                           uint8_t velocity = 0);
     bool releaseAllSmfNotes();
+    // Preserve channels whose exact NoteOff ownership had to be abandoned
+    // after terminal USB backpressure. The next panic/reconnect can then send
+    // CC123 without affecting channels that still have known shared owners.
     void abandonAllSmfNotes();
 
 private:
@@ -138,6 +141,7 @@ private:
     void releaseTargetAllNotes(MusicalEventSource source,
                                MusicalEventTarget target);
     void releaseAllActiveNotes();
+    bool releaseAbandonedSmfChannels();
     void clearActiveState();
 
     IUsbMidiTransport& transport_;
@@ -145,6 +149,7 @@ private:
     MidiVoiceLane lanes_[kLaneCount];
     uint8_t wireOwners_[kMidiChannelCount][kMidiNoteCount];
     uint8_t smfOwners_[kMidiChannelCount][kMidiNoteCount];
+    uint16_t abandonedSmfChannels_;
     bool enabled_;
     bool begun_;
     bool mounted_;

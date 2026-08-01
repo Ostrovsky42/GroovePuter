@@ -114,6 +114,28 @@ python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_project_transport_timeline.cpp" \
+  -o "${BUILD_DIR}/test_project_transport_timeline"
+
+"${BUILD_DIR}/test_project_transport_timeline"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_project_transport_safety.cpp" \
+  -o "${BUILD_DIR}/test_project_transport_safety"
+
+"${BUILD_DIR}/test_project_transport_safety"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_smf_document.cpp" \
   "${ROOT_DIR}/src/midi/smf_document.cpp" \
   -o "${BUILD_DIR}/test_smf_document"
@@ -167,6 +189,17 @@ python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
   -o "${BUILD_DIR}/test_scheduled_smf_midi_event_queue"
 
 "${BUILD_DIR}/test_scheduled_smf_midi_event_queue"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_late_policy.cpp" \
+  -o "${BUILD_DIR}/test_smf_late_policy"
+
+"${BUILD_DIR}/test_smf_late_policy"
 
 "${CXX}" \
   -std=c++17 \

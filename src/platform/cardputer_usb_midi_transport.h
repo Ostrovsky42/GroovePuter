@@ -29,6 +29,9 @@ public:
     bool sendNoteOff(uint8_t zeroBasedChannel,
                      uint8_t note,
                      uint8_t velocity) override;
+    bool sendControlChange(uint8_t zeroBasedChannel,
+                           uint8_t controller,
+                           uint8_t value) override;
     bool sendTimingClock() override;
     bool sendStart() override;
     bool sendStop() override;

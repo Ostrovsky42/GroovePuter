@@ -19,12 +19,21 @@ namespace {
 constexpr size_t kMaxSmfDirsInUi = 24;
 constexpr size_t kMaxSmfFilesInUi = 48;
 constexpr size_t kSmfListLowMemGuardBytes = 4096;
+
+bool smfStateIsActive(GroovePuterMidi::SmfPlayerState state) {
+    return state == GroovePuterMidi::SmfPlayerState::Playing ||
+           state == GroovePuterMidi::SmfPlayerState::Armed;
+}
 }  // namespace
 
 using namespace GroovePuterMidi;
 
-SmfPlayerPage::SmfPlayerPage(IGfx& gfx, MiniAcid& miniAcid)
-    : miniAcid_(miniAcid), player_(smfPlayerService()) {
+SmfPlayerPage::SmfPlayerPage(IGfx& gfx,
+                             MiniAcid& miniAcid,
+                             AudioGuard audioGuard)
+    : miniAcid_(miniAcid),
+      audioGuard_(audioGuard),
+      player_(smfPlayerService()) {
     (void)gfx;
 }
 
@@ -194,21 +203,87 @@ bool SmfPlayerPage::playSelected() {
         return true;
     }
 
-    if (miniAcid_.isPlaying()) miniAcid_.stop();
+    const SmfPlayerSnapshot playerState = player_->snapshot();
 
     std::string path = currentPath_ + "/" + files_[fileIdx];
-    if (!player_->requestLoadAndPlay(path.c_str())) {
+    if (!player_->requestLoad(path.c_str())) {
         UI::showToast("Player queue busy", 1000);
         return true;
     }
     browserVisible_ = false;
-    UI::showToast("Loading MIDI...", 800);
+    UI::showToast(playerState.tempoMode == SmfTempoMode::Project
+                      ? "LOADING / G THEN SPACE"
+                      : "LOADING / SPACE TO PLAY",
+                  1000);
     return true;
+}
+
+bool SmfPlayerPage::togglePlayerTransport() {
+    player_ = smfPlayerService();
+    if (!player_) {
+        UI::showToast("SMF player unavailable", 1200);
+        return true;
+    }
+
+    const SmfPlayerSnapshot state = player_->snapshot();
+    if (state.state == SmfPlayerState::Unloaded ||
+        state.state == SmfPlayerState::Error) {
+        UI::showToast("ENTER: LOAD MIDI", 900);
+        return true;
+    }
+
+    const bool wasActive = smfStateIsActive(state.state);
+    if (!wasActive && state.tempoMode == SmfTempoMode::Project &&
+        !miniAcid_.isPlaying()) {
+        UI::showToast("G START FIRST / THEN SPACE", 1100);
+        return true;
+    }
+    const bool queued = player_->togglePlayPause();
+    if (!queued) {
+        UI::showToast("MIDI PLAYER BUSY", 800);
+    } else if (wasActive) {
+        UI::showToast("MIDI: PAUSE", 700);
+    } else if (state.tempoMode == SmfTempoMode::Project) {
+        UI::showToast("MIDI: ARM NEXT BAR", 900);
+    } else {
+        UI::showToast("MIDI: PLAY", 700);
+    }
+    return true;
+}
+
+void SmfPlayerPage::toggleGrooveTransport() {
+    player_ = smfPlayerService();
+    if (miniAcid_.isPlaying()) {
+        bool playerPauseQueued = true;
+        if (player_) {
+            const SmfPlayerSnapshot state = player_->snapshot();
+            if (state.tempoMode == SmfTempoMode::Project &&
+                smfStateIsActive(state.state)) {
+                playerPauseQueued = player_->pause();
+            }
+        }
+        withAudioGuard([this]() { miniAcid_.stop(); });
+        UI::showToast(playerPauseQueued
+                          ? "GROOVE STOP / MIDI PAUSED"
+                          : "GROOVE STOP / MIDI BUSY",
+                      900);
+    } else {
+        withAudioGuard([this]() { miniAcid_.start(); });
+        UI::showToast("GROOVE PLAY / SPACE MIDI", 900);
+    }
 }
 
 bool SmfPlayerPage::handleEvent(UIEvent& event) {
     if (event.event_type != GROOVEPUTER_KEY_DOWN || event.alt || event.ctrl || event.meta) {
         return false;
+    }
+
+    player_ = smfPlayerService();
+
+    if (event.key == ' ') return togglePlayerTransport();
+    if (event.key == 'g' || event.key == 'G') {
+        toggleGrooveTransport();
+        return true;
     }
 
     if (browserVisible_) {
@@ -235,14 +310,33 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
             return true;
         }
         if (event.key == 'm' || event.key == 'M') {
-            if (player_) player_->toggleRouting();
+            if (player_) {
+                const SmfPlayerSnapshot state = player_->snapshot();
+                const bool queued = player_->toggleRouting();
+                UI::showToast(queued
+                                  ? (state.rawRouting ? "ROUTE: SEQTRAK SAFE" : "ROUTE: RAW")
+                                  : "MIDI PLAYER BUSY",
+                              850);
+            }
+            return true;
+        }
+        if (event.key == 't' || event.key == 'T') {
+            if (player_) {
+                const SmfPlayerSnapshot state = player_->snapshot();
+                const bool toProject = state.tempoMode == SmfTempoMode::Original;
+                const bool queued = player_->toggleTempoMode();
+                UI::showToast(queued
+                                  ? (toProject ? "TEMPO: GP MASTER > USB" : "TEMPO: FILE ORIGINAL")
+                                  : "MIDI PLAYER BUSY",
+                              900);
+            }
             return true;
         }
         return false;
     }
 
-    player_ = smfPlayerService();
     if (!player_) return false;
+    const SmfPlayerSnapshot state = player_->snapshot();
 
     if (event.scancode == GROOVEPUTER_LEFT) {
         player_->seekBars(event.shift ? -4 : -1);
@@ -255,13 +349,44 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     if (event.scancode == GROOVEPUTER_UP ||
         event.scancode == GROOVEPUTER_DOWN) {
         const int deltaBpm = event.scancode == GROOVEPUTER_UP ? 1 : -1;
-        const bool queued = player_->adjustTempoBpm(deltaBpm);
-        UI::showToast(queued ? "MIDI: BPM SET / PAUSE" : "MIDI PLAYER BUSY", 800);
+        if (state.tempoMode == SmfTempoMode::Project) {
+            withAudioGuard([this, deltaBpm]() {
+                const float targetBpm = std::max(
+                    10.0f,
+                    std::min(250.0f,
+                             miniAcid_.bpm() + static_cast<float>(deltaBpm)));
+                miniAcid_.setBpm(targetBpm);
+            });
+            UI::showToast("GP MASTER BPM / USB CLOCK", 700);
+        } else {
+            const bool queued = player_->adjustTempoBpm(deltaBpm);
+            UI::showToast(queued ? "MIDI: BPM SET / PAUSE" : "MIDI PLAYER BUSY", 800);
+        }
         return true;
     }
     if (event.key == 'o' || event.key == 'O') {
-        const bool queued = player_->resetTempo();
-        UI::showToast(queued ? "MIDI: TEMPO ORIGINAL" : "MIDI PLAYER BUSY", 800);
+        if (state.tempoMode == SmfTempoMode::Project) {
+            UI::showToast("GP MASTER uses GroovePuter BPM", 900);
+        } else {
+            const bool queued = player_->resetTempo();
+            UI::showToast(queued ? "MIDI: TEMPO ORIGINAL" : "MIDI PLAYER BUSY", 800);
+        }
+        return true;
+    }
+    if (event.key == 't' || event.key == 'T') {
+        const bool toProject = state.tempoMode == SmfTempoMode::Original;
+
+        const bool modeQueued = player_->toggleTempoMode();
+        if (!modeQueued) {
+            UI::showToast("MIDI PLAYER BUSY", 900);
+        } else if (toProject) {
+            UI::showToast(miniAcid_.isPlaying()
+                              ? "GP MASTER: ARM NEXT BAR"
+                              : "GP MASTER: G START FIRST",
+                          1000);
+        } else {
+            UI::showToast("FILE TEMPO / ORIGINAL", 1000);
+        }
         return true;
     }
     if (event.key == 'v' || event.key == 'V') {
@@ -271,7 +396,13 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     }
     if (event.key == 'r' || event.key == 'R') {
         const bool queued = player_->restart(SmfPlayerRestartOrigin::MusicStart);
-        UI::showToast(queued ? "MIDI: RESTART" : "MIDI PLAYER BUSY", 800);
+        UI::showToast(queued
+                          ? (state.tempoMode == SmfTempoMode::Project &&
+                                     !miniAcid_.isPlaying()
+                                 ? "MIDI RESTART ARMED - G START"
+                                 : "MIDI: RESTART")
+                          : "MIDI PLAYER BUSY",
+                      900);
         return true;
     }
     if (event.key == 'd' || event.key == 'D') {
@@ -279,8 +410,8 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         return true;
     }
     if (event.key == 'x' || event.key == 'X') {
-        player_->panic();
-        UI::showToast("MIDI PANIC / PAUSE", 900);
+        const bool queued = player_->panic();
+        UI::showToast(queued ? "MIDI PANIC / PAUSE" : "PANIC QUEUE BUSY", 900);
         return true;
     }
     if (event.key == 'b' || event.key == 'B' ||
@@ -290,8 +421,11 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         return true;
     }
     if (event.key == 'm' || event.key == 'M') {
-        player_->toggleRouting();
-        UI::showToast("MIDI route changed", 800);
+        const bool queued = player_->toggleRouting();
+        UI::showToast(queued
+                          ? (state.rawRouting ? "ROUTE: SEQTRAK SAFE" : "ROUTE: RAW")
+                          : "MIDI PLAYER BUSY",
+                      850);
         return true;
     }
     return false;
@@ -353,9 +487,12 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
     const SmfPlayerSnapshot state = player_ ? player_->snapshot() : SmfPlayerSnapshot{};
 
     const bool playing = state.state == SmfPlayerState::Playing;
+    const bool armed = state.state == SmfPlayerState::Armed;
     const bool error = state.state == SmfPlayerState::Error;
     const IGfxColor stateColor = error ? COLOR_DANGER
-                                      : (playing ? MusicVisuals::accentForStyle() : COLOR_WARN);
+                                      : ((playing || armed)
+                                          ? MusicVisuals::accentForStyle()
+                                          : COLOR_WARN);
 
     int x = Layout::COL_1;
     const int chipY = LayoutManager::lineY(0);
@@ -363,9 +500,14 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
     x += MusicVisuals::drawChip(gfx, x, chipY,
                                 state.rawRouting ? "RAW" : "SEQTRAK", true,
                                 MusicVisuals::secondaryForStyle()) + 3;
+    x += MusicVisuals::drawChip(gfx, x, chipY,
+                                smfTempoModeName(state.tempoMode), true,
+                                state.tempoMode == SmfTempoMode::Project
+                                    ? MusicVisuals::accentForStyle()
+                                    : MusicVisuals::secondaryForStyle()) + 3;
 
     char chip[20];
-    std::snprintf(chip, sizeof(chip), "+%u VEL",
+    std::snprintf(chip, sizeof(chip), "+%uV",
                   static_cast<unsigned>(state.velocityBoost));
     MusicVisuals::drawChip(gfx, x, chipY, chip, state.velocityBoost > 0);
 
@@ -402,8 +544,11 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
                   percent);
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(4), line);
 
-    if (state.tempoScalePermille == 1000u) {
-        std::snprintf(line, sizeof(line), "TEMPO ORIGINAL   UP/DN ADJUST");
+    if (state.tempoMode == SmfTempoMode::Project) {
+        std::snprintf(line, sizeof(line), "GP MASTER: %s > USB CLOCK",
+                      miniAcid_.isPlaying() ? "RUN" : "STOP");
+    } else if (state.tempoScalePermille == 1000u) {
+        std::snprintf(line, sizeof(line), "TEMPO SOURCE: FILE / ORIGINAL");
     } else {
         std::snprintf(line, sizeof(line), "ORIGINAL %u.%u BPM   O RESET",
                       static_cast<unsigned>(state.originalBpmX10 / 10),
@@ -413,7 +558,7 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
 
     gfx.setTextColor(COLOR_TEXT);
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(6),
-                 "SPACE PLAY/PAUSE   R RESTART   < > SEEK");
+                 "G GROOVE   SPACE MIDI   R RESTART");
 
     gfx.setTextColor(error ? COLOR_DANGER : COLOR_LABEL);
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), state.message);
@@ -467,18 +612,19 @@ void SmfPlayerPage::drawPerformance(IGfx& gfx) {
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(6), line);
 
     gfx.setTextColor(COLOR_LABEL);
-    std::snprintf(line, sizeof(line), "LOOKAHEAD %u MS",
-                  static_cast<unsigned>(perf.lookaheadMs));
+    std::snprintf(line, sizeof(line), "LOOKAHEAD %u MS  %s",
+                  static_cast<unsigned>(perf.lookaheadMs),
+                  smfTempoModeName(state.tempoMode));
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), line);
 }
 
 void SmfPlayerPage::drawFooter(IGfx& gfx) {
     if (browserVisible_) {
-        UI::drawStandardFooter(gfx, "UP/DN Select  Enter Play", "Bksp Up  M Route");
+        UI::drawStandardFooter(gfx, "UP/DN Select  Enter Load", "Space MIDI  G Groove  T Tempo");
     } else if (performanceVisible_) {
-        UI::drawStandardFooter(gfx, "D Player  B Files", "Space Play  R Restart");
+        UI::drawStandardFooter(gfx, "D Player  B Files", "Space MIDI  G Groove  T Tempo");
     } else {
-        UI::drawStandardFooter(gfx, "Up/Dn BPM  V Vel  O Orig", "B Files  M Route  X Panic");
+        UI::drawStandardFooter(gfx, "Space MIDI  G Groove  R Restart", "B Files  T Tempo  V Vel  X Panic");
     }
 }
 

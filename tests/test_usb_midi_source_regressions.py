@@ -74,9 +74,34 @@ def main() -> None:
             "composite USB mount must not be treated as MIDI endpoint readiness")
     require("kSmfCleanupAttemptLimit" in transport and
             "reportTransportFailure" in transport and
-            "abandonAllSmfNotes" in transport and
-            "beginSmfCleanup(true)" in transport,
+            "abandonAllSmfNotes" in transport,
             "SMF cleanup must terminate and report a blocked USB endpoint")
+    require("kSmfCleanupAttemptLimit = 32" in transport,
+            "SMF cleanup must allow the TinyUSB endpoint 320 ms to recover")
+    require("beginSmfCleanup(true)" not in transport and
+            "MustAbort" not in transport,
+            "backpressure that recovers must not be escalated to a transport "
+            "failure: only cleanup that cannot complete may stop playback")
+    drop_note_on = transport[
+        transport.index("if (action == SmfSendFailureAction::DropNoteOn)"):
+        transport.index("else if (action == SmfSendFailureAction::BeginCleanup")
+    ]
+    require("beginSmfCleanup" not in drop_note_on and
+            "reportSmfTransportFailure" not in drop_note_on,
+            "a NoteOn rejected before wire ownership must be dropped without "
+            "cleanup or transport failure")
+    require("SmfSendFailureAction::BeginCleanup" in transport and
+            "beginSmfCleanup();" in transport,
+            "a failed NoteOff must hand recovery to the paced all-notes-off path")
+    require("smfMaxSendBlockUs" in transport,
+            "USB backpressure duration must be observable in diagnostics")
+    cleanup_success = transport[
+        transport.index("if (g_output.releaseAllSmfNotes())"):
+        transport.index("} else {", transport.index(
+            "if (g_output.releaseAllSmfNotes())"))
+    ]
+    require("recordRecoveredSmfSendBlock();" in cleanup_success,
+            "successful cleanup must close the USB backpressure metric")
 
     forbidden_transport_tokens = (
         "controlChange(",

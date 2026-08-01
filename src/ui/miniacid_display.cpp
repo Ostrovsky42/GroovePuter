@@ -1,6 +1,5 @@
 #include "miniacid_display.h"
 #include "src/dsp/miniacid_engine.h"
-#include "src/midi/smf_player_service.h"
 
 #ifndef ARDUINO
 #include "../../platform_sdl/arduino_compat.h"
@@ -102,7 +101,9 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case 10: page = std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_); break;
         case 11: page = std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_); break;
         case 12: page = std::make_unique<PerformPage>(gfx_, mini_acid_, performance_keyboard_); break;
-        case kSmfPlayerPage: page = std::make_unique<SmfPlayerPage>(gfx_, mini_acid_); break;
+        case kSmfPlayerPage:
+            page = std::make_unique<SmfPlayerPage>(gfx_, mini_acid_, audio_guard_);
+            break;
     }
 #if defined(ESP32) || defined(ESP_PLATFORM)
     uint32_t freeAfter = heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
@@ -359,28 +360,6 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             return true;
         }
 
-        // On the MIDI Player page Space belongs to the SMF transport. Everywhere
-        // else the long-standing GroovePuter transport behavior is unchanged.
-        if (event.key == ' ' && page_index_ == kSmfPlayerPage) {
-            if (auto* player = GroovePuterMidi::smfPlayerService()) {
-                const bool queued = player->togglePlayPause();
-                showToast(queued ? "MIDI: PLAY/PAUSE" : "MIDI PLAYER BUSY",
-                    700);
-                return true;
-            }
-        }
-
-        if (event.key == ' ') {
-            if (!mini_acid_.isPlaying()) performance_keyboard_.setTransportPlaying(true);
-            withAudioGuard([&]() {
-                if (mini_acid_.isPlaying()) mini_acid_.stop();
-                else mini_acid_.start();
-            });
-            performance_keyboard_.setTransportPlaying(mini_acid_.isPlaying());
-            showToast(mini_acid_.isPlaying() ? "Play" : "Stop", 500);
-            return true;
-        }
-
         if (event.alt && (event.key == '\\' || event.key == '|')) {
             UI::currentStyle = nextVisualStyle(UI::currentStyle);
             for (auto& p : pages_) {
@@ -447,6 +426,19 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             }
             return true;
         }
+    }
+
+    // Pages get first refusal on Space. This lets MIDI Player own its transport
+    // without also toggling the global GroovePuter transport.
+    if (event.event_type == GROOVEPUTER_KEY_DOWN && event.key == ' ') {
+        if (!mini_acid_.isPlaying()) performance_keyboard_.setTransportPlaying(true);
+        withAudioGuard([&]() {
+            if (mini_acid_.isPlaying()) mini_acid_.stop();
+            else mini_acid_.start();
+        });
+        performance_keyboard_.setTransportPlaying(mini_acid_.isPlaying());
+        showToast(mini_acid_.isPlaying() ? "Play" : "Stop", 500);
+        return true;
     }
 
     if (event.event_type == GROOVEPUTER_KEY_DOWN &&

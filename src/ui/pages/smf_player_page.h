@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../ui_common.h"
@@ -8,7 +9,7 @@
 
 class SmfPlayerPage final : public IPage {
 public:
-    SmfPlayerPage(IGfx& gfx, MiniAcid& miniAcid);
+    SmfPlayerPage(IGfx& gfx, MiniAcid& miniAcid, AudioGuard audioGuard);
 
     const std::string& getTitle() const override { return title_; }
     void onEnter(int context) override;
@@ -20,6 +21,8 @@ public:
 private:
     void refreshFiles();
     bool playSelected();
+    bool togglePlayerTransport();
+    void toggleGrooveTransport();
     void drawBrowser(IGfx& gfx);
     void drawNowPlaying(IGfx& gfx);
     void drawPerformance(IGfx& gfx);
@@ -32,6 +35,7 @@ private:
     const std::string& displayName(int index) const;
 
     MiniAcid& miniAcid_;
+    AudioGuard audioGuard_;
     GroovePuterMidi::ISmfPlayerService* player_{nullptr};
     std::string title_{"MIDI PLAYER"};
     std::vector<std::string> dirs_;
@@ -41,4 +45,10 @@ private:
     int scroll_{0};
     bool browserVisible_{true};
     bool performanceVisible_{false};
+
+    template <typename F>
+    void withAudioGuard(F&& fn) {
+        if (audioGuard_) audioGuard_(std::forward<F>(fn));
+        else fn();
+    }
 };
