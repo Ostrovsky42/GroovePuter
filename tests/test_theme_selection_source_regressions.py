@@ -9,7 +9,7 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def main() -> None:
+def test_theme_selection() -> None:
     theme = (ROOT / "src/ui/ui_theme.h").read_text(encoding="utf-8")
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
     launcher = (ROOT / "src/ui/workspace_launcher_overlay.h").read_text(encoding="utf-8")
@@ -55,7 +55,106 @@ def main() -> None:
             "COLOR_WARN" not in visuals,
             "music visuals must not bypass the shared palette with legacy accent constants")
 
-    print("theme selection + music visuals source regressions: OK")
+
+def test_perform_piano_key_shapes() -> None:
+    visuals = (ROOT / "src/ui/components/music_visuals.h").read_text(
+        encoding="utf-8"
+    )
+
+    row_start = visuals.index("inline void drawPianoKeyRow")
+    row_end = visuals.index("inline void drawPiano(", row_start)
+    row = visuals[row_start:row_end]
+
+    require("isBlackPianoPitch(note)" in row and
+            "const int blackH" in row and "const int blackW" in row,
+            "melodic rows must retain long white keys with shorter black keys")
+    require("drawTinyNoteLabel" in row and "keyboard.noteForKey" in row,
+            "piano keys must show compact resolved note names")
+    require("keyboard.isPhysicalKeyHeld(physical)" in row,
+            "two piano rows must preserve independent physical-key held state")
+    require("char keyLabel" not in row and "gfx.drawText" not in row,
+            "piano rows must not print Cardputer key letters or large 5x7 labels")
+    require('constexpr char kUpperRow[] = "qwertyuiop";' in visuals and
+            'constexpr char kLowerRow[] = "asdfghjkl";' in visuals,
+            "both physical note rows must remain represented")
+    require("tinyGlyph" in visuals and "gfx.fillRect(cursorX + column" in visuals,
+            "compact note labels must remain immediate-mode and allocation-free")
+
+
+def test_workflow_local_page_navigation() -> None:
+    workflow = (ROOT / "src/ui/workflow_mode.h").read_text(encoding="utf-8")
+    display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
+    launcher = (ROOT / "src/ui/workspace_launcher_overlay.h").read_text(encoding="utf-8")
+    settings = (ROOT / "src/ui/pages/settings_page.cpp").read_text(encoding="utf-8")
+
+    for mode in ("Perform", "Generate", "Hub", "Song", "Settings"):
+        require(f"WorkflowMode::{mode}" in workflow,
+                f"missing top-level workflow: {mode}")
+    require("constexpr int count = 5;" in workflow,
+            "Fn+Tab must remain a bounded five-workflow ring")
+
+    require("kPerform, kPlayer" in workflow,
+            "PERFORM workflow must contain keyboard then MIDI Player")
+    require("kGenre, kMode, kFeelTexture" in workflow,
+            "GENERATE workflow must expose genre, mode and feel")
+    require("kPattern, kSynthA, kSynthB, kDrums" in workflow and
+            "kSynthAParameters, kSynthBParameters" in workflow,
+            "HUB workflow must expose overview, instruments and synth controls")
+    require("case WorkflowMode::Song: return kArrange;" in workflow,
+            "SONG workflow must resolve to the song editor")
+    require("kProject, kGenerator" in workflow and
+            "case WorkflowMode::Settings: return kSettingsPages[index];" in workflow,
+            "SETTINGS must expose project/setup and advanced generator pages")
+
+    require("#include <M5Cardputer.h>" in workflow and
+            "M5Cardputer.Keyboard.keysState().fn" in workflow,
+            "hardware workflow navigation must read the physical Fn state")
+    require("inline Workspace nextWorkspace(Workspace workspace," in workflow and
+            "bool workflowModifier" in workflow,
+            "workflow navigation needs an explicit modifier-aware overload")
+
+    next_start = workflow.index("inline Workspace nextWorkspace(Workspace workspace,")
+    next_end = workflow.index("inline bool allowsPerformanceKeyboard", next_start)
+    next_block = workflow[next_start:next_end]
+    require("if (workflowModifier)" in next_block and
+            "pageForMode(nextMode(mode, direction))" in next_block,
+            "Fn+[ / ] must move to the adjacent workflow")
+    require("pageIndexInMode(page) + direction" in next_block and
+            "pageAt(mode, nextIndex)" in next_block,
+            "plain [ / ] must continue to wrap inside the current workflow")
+    require("hardwareWorkflowModifierHeld()" in next_block,
+            "the existing display bracket handlers must consume the physical Fn state")
+
+    require("WorkflowPages::nextWorkspace(active_workspace_, 1)" in display and
+            "WorkflowPages::nextWorkspace(active_workspace_, -1)" in display,
+            "display [ / ] handlers must use page-aware workflow navigation")
+    require("WorkflowPages::nextMode(current, direction)" in display and
+            "WorkflowPages::pageForMode" in display,
+            "Fn+Tab must still switch the five top-level workflows")
+
+    page_dispatch = display.index("currentPage->handleEvent(event)")
+    brackets = display.index("if (event.key == ']')", page_dispatch)
+    require(page_dispatch < brackets,
+            "pages must keep first refusal so local editors can own their controls")
+    require("if (e.key == '\\t')" in settings and
+            "Group::Timing" in settings and "Group::Notes" in settings and
+            "Group::Scale" in settings,
+            "plain Tab must retain local Generator subpage navigation")
+
+    for label in ("PERFORM", "GENERATE", "HUB", "SONG", "SETTINGS", "HELP"):
+        require(f'return "{label}";' in launcher,
+                f"launcher must expose workflow label: {label}")
+    require("L/R PAGE" in launcher and "PAGE %d/%d" in launcher,
+            "launcher must preview pages inside each workflow")
+    require("FN+[ ] WORKFLOW" in launcher and "[ ] PAGE" in launcher,
+            "launcher must explain the two navigation levels")
+
+
+def main() -> None:
+    test_theme_selection()
+    test_perform_piano_key_shapes()
+    test_workflow_local_page_navigation()
+    print("theme + workflow navigation source regressions: OK")
 
 
 if __name__ == "__main__":
