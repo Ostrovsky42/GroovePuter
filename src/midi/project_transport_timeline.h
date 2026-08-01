@@ -21,6 +21,8 @@ struct ProjectTransportBlockSnapshot {
     uint16_t blockFrames{0};
     uint32_t sampleRate{0};
     uint16_t bpmX10{1200};
+    uint32_t bpmQ16{120u << 16};
+    uint32_t transportEpoch{0};
     uint32_t barCounter{0};
     uint16_t phaseQ16{0};
 
@@ -32,6 +34,10 @@ struct ProjectTransportBlockSnapshot {
     double absoluteSteps() const {
         return static_cast<double>(barCounter) * kProjectStepsPerBar +
                phaseSteps();
+    }
+
+    double bpm() const {
+        return static_cast<double>(bpmQ16) / 65536.0;
     }
 };
 
@@ -51,11 +57,19 @@ public:
         const double phase = normalizePhase(phaseSteps);
         if (playing && !previousPlaying_) {
             barCounter_ = 0;
+            ++transportEpoch_;
         } else if (playing && previousPlaying_) {
             // One render block cannot span a whole bar at supported tempos.
             // A large backwards phase jump therefore means the 16-step phase
             // wrapped and a new project bar began.
-            if (phase + 8.0 < previousPhase_) ++barCounter_;
+            if (phase + 8.0 < previousPhase_) {
+                ++barCounter_;
+            } else if (phase + 1.0e-3 < previousPhase_) {
+                // A backwards move that is not a natural bar wrap starts a new
+                // scheduling epoch. Old PROJECT events must not cross it.
+                barCounter_ = 0;
+                ++transportEpoch_;
+            }
         }
         previousPlaying_ = playing;
         previousPhase_ = phase;
@@ -65,6 +79,11 @@ public:
             kProjectStepsPerBar));
         const uint16_t encodedBpm = static_cast<uint16_t>(std::max<long>(
             1L, std::min<long>(65535L, std::lround(static_cast<double>(bpm) * 10.0))));
+        const uint32_t encodedBpmQ16 = static_cast<uint32_t>(std::max<double>(
+            1.0,
+            std::min<double>(
+                static_cast<double>(std::numeric_limits<uint32_t>::max()),
+                std::round(static_cast<double>(bpm) * 65536.0))));
         const uint32_t encodedRate = sampleRate > 0.0f
             ? static_cast<uint32_t>(std::lround(sampleRate))
             : 0u;
@@ -74,6 +93,8 @@ public:
         blockFrames_.store(blockFrames, std::memory_order_relaxed);
         sampleRate_.store(encodedRate, std::memory_order_relaxed);
         bpmX10_.store(encodedBpm, std::memory_order_relaxed);
+        bpmQ16_.store(encodedBpmQ16, std::memory_order_relaxed);
+        transportEpochPublished_.store(transportEpoch_, std::memory_order_relaxed);
         barCounterPublished_.store(barCounter_, std::memory_order_relaxed);
         phaseQ16_.store(encodedPhase, std::memory_order_relaxed);
         flags_.store(static_cast<uint8_t>(kValidFlag | (playing ? kPlayingFlag : 0u)),
@@ -81,8 +102,7 @@ public:
         sequence_.fetch_add(1, std::memory_order_release);
     }
 
-    ProjectTransportBlockSnapshot snapshot() const {
-        ProjectTransportBlockSnapshot out{};
+    bool trySnapshot(ProjectTransportBlockSnapshot& out) const {
         for (int attempt = 0; attempt < 4; ++attempt) {
             const uint32_t before = sequence_.load(std::memory_order_acquire);
             if (before & 1u) continue;
@@ -94,13 +114,21 @@ public:
             out.blockFrames = blockFrames_.load(std::memory_order_relaxed);
             out.sampleRate = sampleRate_.load(std::memory_order_relaxed);
             out.bpmX10 = bpmX10_.load(std::memory_order_relaxed);
+            out.bpmQ16 = bpmQ16_.load(std::memory_order_relaxed);
+            out.transportEpoch = transportEpochPublished_.load(
+                std::memory_order_relaxed);
             out.barCounter = barCounterPublished_.load(std::memory_order_relaxed);
             out.phaseQ16 = phaseQ16_.load(std::memory_order_relaxed);
 
             const uint32_t after = sequence_.load(std::memory_order_acquire);
-            if (before == after && !(after & 1u)) return out;
+            if (before == after && !(after & 1u)) return true;
         }
-        return ProjectTransportBlockSnapshot{};
+        return false;
+    }
+
+    ProjectTransportBlockSnapshot snapshot() const {
+        ProjectTransportBlockSnapshot out{};
+        return trySnapshot(out) ? out : ProjectTransportBlockSnapshot{};
     }
 
     void resetPublisher() {
@@ -125,6 +153,8 @@ private:
     std::atomic<uint16_t> blockFrames_{0};
     std::atomic<uint32_t> sampleRate_{0};
     std::atomic<uint16_t> bpmX10_{1200};
+    std::atomic<uint32_t> bpmQ16_{120u << 16};
+    std::atomic<uint32_t> transportEpochPublished_{0};
     std::atomic<uint32_t> barCounterPublished_{0};
     std::atomic<uint16_t> phaseQ16_{0};
     std::atomic<uint8_t> flags_{0};
@@ -133,6 +163,7 @@ private:
     bool previousPlaying_{false};
     double previousPhase_{0.0};
     uint32_t barCounter_{0};
+    uint32_t transportEpoch_{0};
 };
 
 inline ProjectTransportTimeline& projectTransportTimeline() {
@@ -146,20 +177,19 @@ inline double nextProjectBarStep(const ProjectTransportBlockSnapshot& snapshot) 
     return (bar + 1.0) * kProjectStepsPerBar;
 }
 
-inline bool scheduleProjectStep(double originProjectStep,
-                                uint32_t originBlockSequence,
-                                uint16_t originFrameOffset,
-                                double eventProjectStep,
-                                uint16_t bpmX10,
-                                uint32_t sampleRate,
-                                uint16_t blockFrames,
-                                ProjectScheduledPosition& out) {
-    if (eventProjectStep < originProjectStep || bpmX10 == 0 || sampleRate == 0 ||
-        blockFrames == 0) {
+inline bool scheduleProjectStepAtBpm(double originProjectStep,
+                                     uint32_t originBlockSequence,
+                                     uint16_t originFrameOffset,
+                                     double eventProjectStep,
+                                     double bpm,
+                                     uint32_t sampleRate,
+                                     uint16_t blockFrames,
+                                     ProjectScheduledPosition& out) {
+    if (eventProjectStep < originProjectStep || !std::isfinite(bpm) ||
+        bpm <= 0.0 || sampleRate == 0 || blockFrames == 0) {
         return false;
     }
 
-    const double bpm = static_cast<double>(bpmX10) / 10.0;
     const double framesPerStep =
         static_cast<double>(sampleRate) * 60.0 /
         (bpm * kProjectStepsPerQuarter);
@@ -176,8 +206,40 @@ inline bool scheduleProjectStep(double originProjectStep,
     return true;
 }
 
-inline bool scheduleProjectSmfTick(uint16_t division,
-                                   uint32_t originTick,
+inline bool scheduleProjectStep(double originProjectStep,
+                                uint32_t originBlockSequence,
+                                uint16_t originFrameOffset,
+                                double eventProjectStep,
+                                uint16_t bpmX10,
+                                uint32_t sampleRate,
+                                uint16_t blockFrames,
+                                ProjectScheduledPosition& out) {
+    return scheduleProjectStepAtBpm(originProjectStep,
+                                    originBlockSequence,
+                                    originFrameOffset,
+                                    eventProjectStep,
+                                    static_cast<double>(bpmX10) / 10.0,
+                                    sampleRate,
+                                    blockFrames,
+                                    out);
+}
+
+enum class ProjectSmfLatePolicy : uint8_t {
+    DropNoteOn = 0,
+    DispatchNoteOffImmediately,
+};
+
+enum class ProjectSmfScheduleResult : uint8_t {
+    Scheduled = 0,
+    DroppedLateNoteOn,
+    Invalid,
+};
+
+inline ProjectSmfScheduleResult scheduleProjectSmfTick(
+                                   const ProjectTransportBlockSnapshot& live,
+                                   ProjectSmfLatePolicy latePolicy,
+                                   uint16_t division,
+                                   double originTick,
                                    double originProjectStep,
                                    uint32_t originBlockSequence,
                                    uint16_t originFrameOffset,
@@ -186,45 +248,73 @@ inline bool scheduleProjectSmfTick(uint16_t division,
                                    uint32_t sampleRate,
                                    uint16_t blockFrames,
                                    ProjectScheduledPosition& out) {
-    if (division == 0 || eventTick < originTick) return false;
-    const double tickDelta = static_cast<double>(eventTick - originTick);
+    if (division == 0 || !std::isfinite(originTick) || originTick < 0.0) {
+        return ProjectSmfScheduleResult::Invalid;
+    }
+    const double tickDelta = static_cast<double>(eventTick) - originTick;
     const double eventProjectStep = originProjectStep +
         tickDelta * kProjectStepsPerQuarter / static_cast<double>(division);
-
-    // While the real project transport is running, calculate every not-yet-due
-    // SMF deadline from the same freshly published phase/block snapshot used by
-    // MIDI Clock. The previous implementation projected every event forever
-    // from one launch BPM/block anchor. Tiny differences between that idealized
-    // projection and the engine's Q32.32 phase could accumulate during a long
-    // SEQTRAK recording and feel like notes slowly moving against the groove.
-    //
-    // Keep the explicit origin fallback for deterministic host tests, stopped
-    // transport and already-late cleanup events. NoteOff cleanup therefore keeps
-    // its original deadline semantics rather than being pulled forward in a
-    // catch-up burst.
-    const ProjectTransportBlockSnapshot live = projectTransportTimeline().snapshot();
-    constexpr double kLivePhaseEpsilon = 1.0e-6;
-    if (live.valid && live.playing && live.bpmX10 > 0 &&
-        live.sampleRate > 0 && live.blockFrames > 0 &&
-        eventProjectStep + kLivePhaseEpsilon >= live.absoluteSteps()) {
-        return scheduleProjectStep(live.absoluteSteps(),
-                                   live.blockSequence,
-                                   0,
-                                   eventProjectStep,
-                                   live.bpmX10,
-                                   live.sampleRate,
-                                   live.blockFrames,
-                                   out);
+    if (!std::isfinite(eventProjectStep)) {
+        return ProjectSmfScheduleResult::Invalid;
     }
 
-    return scheduleProjectStep(originProjectStep,
-                               originBlockSequence,
-                               originFrameOffset,
-                               eventProjectStep,
-                               bpmX10,
-                               sampleRate,
-                               blockFrames,
-                               out);
+    constexpr double kLivePhaseEpsilon = 1.0e-6;
+    if (live.valid && live.playing && live.bpmX10 > 0 &&
+        live.sampleRate > 0 && live.blockFrames > 0) {
+        const double liveStep = live.absoluteSteps();
+        if (eventProjectStep + kLivePhaseEpsilon < liveStep) {
+            if (latePolicy == ProjectSmfLatePolicy::DropNoteOn) {
+                return ProjectSmfScheduleResult::DroppedLateNoteOn;
+            }
+            // NoteOff owns cleanup. Put it on the current audio block so the
+            // dispatcher sends it as soon as that block's wall-clock anchor is
+            // published instead of reconstructing a deadline in the past.
+            out.blockSequence = live.blockSequence;
+            out.frameOffset = 0;
+            return ProjectSmfScheduleResult::Scheduled;
+        }
+
+        const bool scheduled = scheduleProjectStepAtBpm(
+            liveStep,
+            live.blockSequence,
+            0,
+            std::max(eventProjectStep, liveStep),
+            live.bpm(),
+            live.sampleRate,
+            live.blockFrames,
+            out);
+        return scheduled
+            ? ProjectSmfScheduleResult::Scheduled
+            : ProjectSmfScheduleResult::Invalid;
+    }
+
+    const bool scheduled = scheduleProjectStep(originProjectStep,
+                                                originBlockSequence,
+                                                originFrameOffset,
+                                                eventProjectStep,
+                                                bpmX10,
+                                                sampleRate,
+                                                blockFrames,
+                                                out);
+    return scheduled
+        ? ProjectSmfScheduleResult::Scheduled
+        : ProjectSmfScheduleResult::Invalid;
+}
+
+inline double projectSmfTickAtStep(uint16_t division,
+                                   double originTick,
+                                   double originProjectStep,
+                                   double currentProjectStep,
+                                   uint32_t endTick) {
+    if (division == 0 || !std::isfinite(originTick) ||
+        currentProjectStep <= originProjectStep) {
+        return std::max(0.0, originTick);
+    }
+    const double tick = originTick +
+        (currentProjectStep - originProjectStep) *
+        static_cast<double>(division) / kProjectStepsPerQuarter;
+    if (!std::isfinite(tick)) return std::max(0.0, originTick);
+    return std::max(0.0, std::min(tick, static_cast<double>(endTick)));
 }
 
 inline uint32_t projectTickAtStep(uint16_t division,
@@ -232,14 +322,12 @@ inline uint32_t projectTickAtStep(uint16_t division,
                                   double originProjectStep,
                                   double currentProjectStep,
                                   uint32_t endTick) {
-    if (division == 0 || currentProjectStep <= originProjectStep) return originTick;
-    const double stepDelta = currentProjectStep - originProjectStep;
-    const double tickDelta = stepDelta * static_cast<double>(division) /
-                             kProjectStepsPerQuarter;
-    if (!std::isfinite(tickDelta) || tickDelta <= 0.0) return originTick;
-    const uint64_t tick = static_cast<uint64_t>(originTick) +
-                          static_cast<uint64_t>(std::llround(tickDelta));
-    return static_cast<uint32_t>(std::min<uint64_t>(tick, endTick));
+    const double tick = projectSmfTickAtStep(division,
+                                             static_cast<double>(originTick),
+                                             originProjectStep,
+                                             currentProjectStep,
+                                             endTick);
+    return static_cast<uint32_t>(std::llround(tick));
 }
 
 }  // namespace GroovePuterMidi

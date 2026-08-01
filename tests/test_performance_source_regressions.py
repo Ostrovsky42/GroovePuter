@@ -266,6 +266,33 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
             "applySmfVelocityBoost" in player_service and
             "tempoScalePermille_" in player_service,
             "SMF UI must expose bounded BPM and velocity controls")
+    project_bpm = player_page[player_page.index(
+        "if (state.tempoMode == SmfTempoMode::Project)"):
+        player_page.index("if (event.key == 'o' || event.key == 'O')")]
+    require("withAudioGuard" in project_bpm and
+            "miniAcid_.setBpm(targetBpm)" in project_bpm and
+            "10.0f" in project_bpm and "250.0f" in project_bpm,
+            "PROJECT BPM mutation must be guarded and use the engine range")
+
+    reanchor = player_service[player_service.index(
+        "void CardputerSmfPlayerService::reanchorProjectTempo"):
+        player_service.index("bool CardputerSmfPlayerService::enqueue")]
+    require("invalidateScheduledEvents()" in reanchor and
+            "invalidateAndRequestPanic()" not in reanchor and
+            "futureTick" not in reanchor and
+            "projectOriginSmfTick_ = currentTick" in reanchor,
+            "tempo re-anchor must preserve musical position without panic or skip")
+    schedule_ahead = player_service[player_service.index(
+        "void CardputerSmfPlayerService::scheduleAhead"):
+        player_service.index("void CardputerSmfPlayerService::logPerformance")]
+    require("ProjectTransportBlockSnapshot projectTransport" in schedule_ahead and
+            "scheduleProjectSmfTick(\n                projectTransport" in schedule_ahead and
+            "DroppedLateNoteOn" in schedule_ahead,
+            "one PROJECT snapshot must govern each scheduling pass and late NoteOn")
+    require("trySnapshot(candidate)" in player_service and
+            "ProjectTransportReadResult::Unavailable" in player_service and
+            "GP CLOCK STALE / MIDI PAUSED" in player_service,
+            "timeline contention and stale publication must be distinct from Stop")
     require("B Files" in player_page and "toggleRouting()" in player_page,
             "player must expose file return and RAW/SEQTRAK routing controls")
 
@@ -297,6 +324,11 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
             "vTaskDelay(kSmfRetryDelay)" in usb_dispatch and
             "kSmfStaleNoteOnThresholdUs" in usb_dispatch,
             "USB backpressure must use bounded paced retries and stale NoteOn drops")
+    require("kSmfStaleNoteOnThresholdUs = kBlockDurationUs" in usb_dispatch and
+            "smfLateNoteOnSent" in usb_dispatch and
+            "smfLateNoteOffSent" in usb_dispatch and
+            "smfTransportEpochDrops" in usb_dispatch,
+            "dispatcher must enforce one-block late policy and expose diagnostics")
     require("g_output.handleSmfNoteOn" in usb_dispatch and
             "g_output.handleSmfNoteOff" in usb_dispatch,
             "MidiDispatchTask must remain the physical SMF note owner")

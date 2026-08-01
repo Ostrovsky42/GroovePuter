@@ -350,7 +350,13 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         event.scancode == GROOVEPUTER_DOWN) {
         const int deltaBpm = event.scancode == GROOVEPUTER_UP ? 1 : -1;
         if (state.tempoMode == SmfTempoMode::Project) {
-            miniAcid_.setBpm(miniAcid_.bpm() + static_cast<float>(deltaBpm));
+            withAudioGuard([this, deltaBpm]() {
+                const float targetBpm = std::max(
+                    10.0f,
+                    std::min(250.0f,
+                             miniAcid_.bpm() + static_cast<float>(deltaBpm)));
+                miniAcid_.setBpm(targetBpm);
+            });
             UI::showToast("GP MASTER BPM / USB CLOCK", 700);
         } else {
             const bool queued = player_->adjustTempoBpm(deltaBpm);

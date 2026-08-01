@@ -185,6 +185,17 @@ python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_late_policy.cpp" \
+  -o "${BUILD_DIR}/test_smf_late_policy"
+
+"${BUILD_DIR}/test_smf_late_policy"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_smf_dispatch_policy.cpp" \
   -o "${BUILD_DIR}/test_smf_dispatch_policy"
 

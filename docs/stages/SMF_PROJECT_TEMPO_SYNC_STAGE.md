@@ -153,6 +153,24 @@ A complete song containing internal tempo changes is not a clean PROJECT drift t
 1. While PROJECT plays, change 90 -> 110 BPM.
 2. Verify SEQTRAK Clock and SMF notes change together.
 3. Verify no catch-up burst or stuck notes.
+4. Hold a long note across the change and verify it is not cut by CC123.
+5. Repeat several Up/Down changes and verify the musical position is not skipped.
+
+## Scheduler hardening contract
+
+- One coherent PROJECT timeline snapshot is captured for each scheduling pass.
+- The timeline carries a transport epoch and Q16.16 BPM. Events from an older
+  transport session are rejected by `MidiDispatchTask`.
+- A transient seqlock read miss leaves the player state unchanged. It is not a
+  synthetic Stop.
+- A timeline older than two audio blocks causes a controlled PROJECT pause and
+  SMF-scoped cleanup.
+- Tempo re-anchor preserves the exact fractional SMF tick. It invalidates only
+  future scheduled deadlines and does not request panic.
+- A PROJECT NoteOn already behind the live phase is dropped and counted. A late
+  NoteOff remains cleanup-eligible and is scheduled on the current block.
+- Dispatcher NoteOn lateness is limited to one audio block. Sent-late NoteOn,
+  maximum NoteOn lateness, late NoteOff and epoch drops are separate metrics.
 
 ### 6. Routing
 
@@ -211,7 +229,11 @@ Press `X`, capture serial diagnostics and record whether the issue followed Stop
 [ ] first notes enter on a bar boundary
 [ ] 32-bar recording shows no accumulating drift
 [ ] 90 -> 110 BPM changes Clock and SMF together
+[ ] 90 -> 110 BPM does not panic or cut an active long note
+[ ] repeated BPM changes do not skip an SMF fragment
 [ ] no catch-up burst
+[ ] projectLateDrop and smfLateDrop remain explainable and bounded
+[ ] timelineStale remains zero during normal playback
 [ ] triplets and syncopation remain recognizable
 [ ] RAW routing unchanged
 [ ] source CH1 -> CH8

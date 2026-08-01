@@ -42,6 +42,10 @@ struct SmfPlayerPerformanceSnapshot {
     int16_t minQueueDepth{-1};
     uint16_t queueFillLimit{0};
     uint16_t lookaheadMs{0};
+    uint32_t projectLateNoteOnDrops{0};
+    uint32_t timelineReadMisses{0};
+    uint32_t timelineStalePauses{0};
+    uint32_t tempoReanchors{0};
 };
 
 struct SmfPlayerSnapshot {

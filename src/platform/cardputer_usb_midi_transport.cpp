@@ -15,9 +15,11 @@
 #include "src/midi/midi_companion_settings.h"
 #include "src/midi/midi_control_event_queue.h"
 #include "src/midi/pattern_drum_gate_scheduler.h"
+#include "src/midi/project_transport_timeline.h"
 #include "src/midi/scheduled_midi_transport_event.h"
 #include "src/midi/scheduled_musical_event_queue.h"
 #include "src/midi/smf_dispatch_policy.h"
+#include "src/midi/smf_late_policy.h"
 #include "src/midi/scheduled_smf_midi_event_queue.h"
 #include "src/midi/usb_midi_output.h"
 
@@ -49,7 +51,7 @@ constexpr uint32_t kDiagnosticsPeriodMs = 5000;
 constexpr uint32_t kClockStaleThresholdUs = 5000;
 // A stale NoteOn has no cleanup responsibility and must not create a catch-up
 // burst after USB endpoint backpressure. NoteOff remains cleanup-critical.
-constexpr uint32_t kSmfStaleNoteOnThresholdUs = 100000;
+constexpr uint32_t kSmfStaleNoteOnThresholdUs = kBlockDurationUs;
 constexpr TickType_t kSmfRetryDelay = pdMS_TO_TICKS(1);
 constexpr uint32_t kSmfCleanupRetryDelayMs = 10;
 constexpr uint8_t kSmfCleanupAttemptLimit = 8;
@@ -124,6 +126,10 @@ struct MidiDispatchDiagnostics {
     uint32_t smfSendRetries{0};
     uint32_t smfSendDrops{0};
     uint32_t smfLateNoteOnDrops{0};
+    uint32_t smfLateNoteOnSent{0};
+    uint32_t smfMaxNoteOnLatenessUs{0};
+    uint32_t smfLateNoteOffSent{0};
+    uint32_t smfTransportEpochDrops{0};
     uint32_t smfCleanupRetries{0};
     uint32_t smfTransportAborts{0};
 };
@@ -441,7 +447,8 @@ void logDiagnosticsIfDue() {
         "[MIDI-DISPATCH] sched=%u transport=%u smf=%u live=%u sent=%u/%u "
         "drumGate=%u/%u/%u active=%u "
         "smfSent=%u smfStale=%u smfPanic=%u smfRetry=%u smfDrop=%u "
-        "smfLateDrop=%u smfCleanRetry=%u smfAbort=%u "
+        "smfLateDrop=%u smfLateSent=%u smfMaxLateOnUs=%u smfLateOff=%u "
+        "smfEpochDrop=%u smfCleanRetry=%u smfAbort=%u "
         "clockSent=%u clockLate=%u clockDropped=%u start=%u stop=%u "
         "transportFail=%u late=%u maxLateUs=%u stale=%u/%u badFrame=%u "
         "drop=%u/%u transportDrop=%u overflow=%u recovery=%u "
@@ -462,6 +469,10 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(g_diagnostics.smfSendRetries),
         static_cast<unsigned>(g_diagnostics.smfSendDrops),
         static_cast<unsigned>(g_diagnostics.smfLateNoteOnDrops),
+        static_cast<unsigned>(g_diagnostics.smfLateNoteOnSent),
+        static_cast<unsigned>(g_diagnostics.smfMaxNoteOnLatenessUs),
+        static_cast<unsigned>(g_diagnostics.smfLateNoteOffSent),
+        static_cast<unsigned>(g_diagnostics.smfTransportEpochDrops),
         static_cast<unsigned>(g_diagnostics.smfCleanupRetries),
         static_cast<unsigned>(g_diagnostics.smfTransportAborts),
         static_cast<unsigned>(g_diagnostics.clockSent),
@@ -508,10 +519,12 @@ void midiDispatchTask(void*) {
     bool hasPendingTransport = false;
     bool hasPendingSmf = false;
     uint8_t smfFailedAttempts = 0;
+    uint32_t pendingSmfLatenessUs = 0;
 
     auto clearPendingSmf = [&]() {
         hasPendingSmf = false;
         smfFailedAttempts = 0;
+        pendingSmfLatenessUs = 0;
     };
 
     while (true) {
@@ -623,6 +636,21 @@ void midiDispatchTask(void*) {
             continue;
         }
 
+        if (hasPendingSmf && pendingSmf.projectTransportEpoch != 0) {
+            GroovePuterMidi::ProjectTransportBlockSnapshot transport{};
+            if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(transport)) {
+                ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
+                continue;
+            }
+            if (!transport.valid || !transport.playing ||
+                !scheduledSmfMidiEventTransportEpochIsCurrent(
+                    pendingSmf, transport.transportEpoch)) {
+                ++g_diagnostics.smfTransportEpochDrops;
+                clearPendingSmf();
+                continue;
+            }
+        }
+
         if (!hasPendingTransport && !hasPendingMusical &&
             !hasPendingDrumGate && !hasPendingSmf) {
             drainControlEvents();
@@ -724,12 +752,17 @@ void midiDispatchTask(void*) {
                     continue;
                 }
             }
-            if (kind == PendingKind::Smf &&
-                pendingSmf.type == ScheduledSmfMidiEventType::NoteOn &&
-                lateness > kSmfStaleNoteOnThresholdUs) {
-                ++g_diagnostics.smfLateNoteOnDrops;
-                clearPendingSmf();
-                continue;
+            if (kind == PendingKind::Smf) {
+                const SmfLateDispatchAction action = smfLateDispatchAction(
+                    pendingSmf.type,
+                    lateness,
+                    kSmfStaleNoteOnThresholdUs);
+                if (action == SmfLateDispatchAction::DropLateNoteOn) {
+                    ++g_diagnostics.smfLateNoteOnDrops;
+                    clearPendingSmf();
+                    continue;
+                }
+                pendingSmfLatenessUs = lateness;
             }
         }
 
@@ -799,6 +832,18 @@ void midiDispatchTask(void*) {
                 clearPendingSmf();
             } else if (dispatchSmfEvent(pendingSmf)) {
                 ++g_diagnostics.smfSent;
+                if (pendingSmfLatenessUs > 0) {
+                    if (pendingSmf.type == ScheduledSmfMidiEventType::NoteOn) {
+                        ++g_diagnostics.smfLateNoteOnSent;
+                        if (pendingSmfLatenessUs >
+                            g_diagnostics.smfMaxNoteOnLatenessUs) {
+                            g_diagnostics.smfMaxNoteOnLatenessUs =
+                                pendingSmfLatenessUs;
+                        }
+                    } else {
+                        ++g_diagnostics.smfLateNoteOffSent;
+                    }
+                }
                 clearPendingSmf();
             } else {
                 ++g_diagnostics.smfSendRetries;

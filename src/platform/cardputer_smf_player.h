@@ -47,6 +47,7 @@ private:
     static constexpr uint32_t kScheduleLookaheadBlocks = 32;
     static constexpr uint32_t kProjectScheduleLookaheadBlocks = 12;
     static constexpr uint32_t kProjectLaunchLeadBlocks = 2;
+    static constexpr uint32_t kProjectTimelineMaxAgeBlocks = 2;
     static constexpr std::size_t kQueueFillLimit =
         ScheduledSmfMidiEventQueue::kCapacity - 24;
 
@@ -64,6 +65,12 @@ private:
         AdjustTempoBpm,
         ResetTempo,
         CycleVelocityBoost,
+    };
+
+    enum class ProjectTransportReadResult : uint8_t {
+        Fresh = 0,
+        Unavailable,
+        Stale,
     };
 
     struct Command {
@@ -103,6 +110,9 @@ private:
     void taskLoop();
     void handleTransportFailure();
     void handleProjectTransport();
+    ProjectTransportReadResult readProjectTransport(
+        GroovePuterMidi::ProjectTransportBlockSnapshot& transport);
+    void pauseForStaleProjectTimeline();
     void reanchorProjectTempo(
         const GroovePuterMidi::ProjectTransportBlockSnapshot& transport);
     bool enqueue(const Command& command);
@@ -124,8 +134,10 @@ private:
     void applyTempoScale(uint16_t scalePermille);
     uint16_t originalBpmX10At(uint32_t tick) const;
     uint16_t effectiveBpmX10At(uint32_t tick) const;
-    uint32_t currentTickFromAudioClock() const;
+    uint32_t currentTickFromAudioClock();
     uint32_t currentProjectTick(
+        const GroovePuterMidi::ProjectTransportBlockSnapshot& transport) const;
+    double currentProjectSmfTick(
         const GroovePuterMidi::ProjectTransportBlockSnapshot& transport) const;
     bool takeNextNote(GroovePuterMidi::SmfStreamEvent& event);
     void publishSnapshot(GroovePuterMidi::SmfPlayerState state,
@@ -168,7 +180,12 @@ private:
         GroovePuterMidi::SmfLaunchMode::NextBar};
     bool projectLaunchPlanned_{false};
     double projectOriginStep_{0.0};
+    double projectOriginSmfTick_{0.0};
     uint16_t projectBpmX10_{1200};
+    uint32_t projectBpmQ16_{120u << 16};
+    uint32_t projectTransportEpoch_{0};
+    GroovePuterMidi::ProjectTransportBlockSnapshot lastProjectTransport_{};
+    bool haveLastProjectTransport_{false};
 
     static constexpr uint32_t kPerfUnsetDepth = 0xFFFFFFFFu;
     static constexpr uint32_t kPerfLogIntervalMs = 2000;
@@ -177,6 +194,10 @@ private:
     uint32_t perfMaxScheduleMicros_{0};
     uint32_t perfMinQueueDepth_{kPerfUnsetDepth};
     uint32_t perfQueuedEvents_{0};
+    uint32_t perfProjectLateNoteOnDrops_{0};
+    uint32_t perfTimelineReadMisses_{0};
+    uint32_t perfTimelineStalePauses_{0};
+    uint32_t perfTempoReanchors_{0};
 
     GroovePuterMidi::SmfRoutingMode routingMode_{
         GroovePuterMidi::SmfRoutingMode::Seqtrak};
