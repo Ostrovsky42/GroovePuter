@@ -2,6 +2,7 @@
 import os
 import subprocess
 from pathlib import Path
+from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "build" / "host-tests"
@@ -12,24 +13,22 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def compile_and_run(source_name: str) -> None:
+def compile_and_run(source_name: str, extra_sources: Iterable[str] = ()) -> None:
     BUILD.mkdir(parents=True, exist_ok=True)
     source = ROOT / "tests" / source_name
     output = BUILD / source.stem
-    subprocess.run(
-        [
-            os.environ.get("CXX", "g++"),
-            "-std=c++17",
-            "-Wall",
-            "-Wextra",
-            "-Werror",
-            f"-I{ROOT}",
-            str(source),
-            "-o",
-            str(output),
-        ],
-        check=True,
-    )
+    command = [
+        os.environ.get("CXX", "g++"),
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        f"-I{ROOT}",
+        str(source),
+    ]
+    command.extend(str(ROOT / path) for path in extra_sources)
+    command.extend(["-o", str(output)])
+    subprocess.run(command, check=True)
     subprocess.run([str(output)], check=True)
 
 
@@ -62,6 +61,19 @@ def main() -> None:
     timeline = (ROOT / "src/midi/project_transport_timeline.h").read_text(
         encoding="utf-8"
     )
+    settings_h = (ROOT / "src/midi/midi_companion_settings.h").read_text(
+        encoding="utf-8"
+    )
+    codec_h = (ROOT / "src/midi/midi_companion_settings_codec.h").read_text(
+        encoding="utf-8"
+    )
+    codec_cpp = (ROOT / "src/midi/midi_companion_settings_codec.cpp").read_text(
+        encoding="utf-8"
+    )
+    settings_session = (
+        ROOT / "src/platform/cardputer_midi_settings_session.h"
+    ).read_text(encoding="utf-8")
+    display_h = (ROOT / "src/ui/miniacid_display.h").read_text(encoding="utf-8")
 
     require("midi_.readPacket(&packet)" in transport,
             "the sole platform transport must own TinyUSB RX")
@@ -123,9 +135,38 @@ def main() -> None:
     require("kContinuePrefillBlocks" not in timeline,
             "generic project bar quantization must not own SMF resume policy")
 
+    require("transportClockSource" in settings_h and
+            "externalFollowEnabled" in settings_h,
+            "transport controls must belong to versioned MIDI settings")
+    require("kLegacySchemaVersion = 1" in codec_h and
+            "kSchemaVersion = 2" in codec_h and
+            "kLegacyEncodedSize = 44" in codec_h and
+            "kEncodedSize = 46" in codec_h,
+            "codec must explicitly support schema-v1 to schema-v2 migration")
+    require("recordShapeIsSupported" in codec_cpp and
+            "normalizeTransportClockSource" in codec_cpp,
+            "decoder must accept the legacy record and sanitize clock source")
+    require("Preferences" in settings_session and
+            'kKey = "midi_cfg"' in settings_session and
+            "applyPersistedControl" in settings_session and
+            "setControlChangedCallback" in settings_session,
+            "Cardputer must load and save clock controls through bounded NVS UI paths")
+    require("CardputerMidiSettingsBinding midi_settings_binding_" in display_h,
+            "root UI construction must restore persisted transport controls")
+    require("Preferences" not in sketch and "Preferences" not in transport and
+            "Preferences" not in smf_service,
+            "NVS access must stay out of AudioTask, MidiDispatchTask and SmfPlayerTask")
+
     compile_and_run("test_project_transport_continue.cpp")
     compile_and_run("test_external_midi_clock_startup.cpp")
     compile_and_run("test_external_follow_gate.cpp")
+    compile_and_run(
+        "test_midi_transport_settings_persistence.cpp",
+        (
+            "src/midi/midi_companion_settings.cpp",
+            "src/midi/midi_companion_settings_codec.cpp",
+        ),
+    )
     print("seqtrak master source regressions: OK")
 
 
