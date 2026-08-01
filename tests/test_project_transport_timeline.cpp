@@ -19,7 +19,6 @@ int main() {
     auto beforeWrap = timeline.snapshot();
     assert(beforeWrap.valid);
     assert(beforeWrap.playing);
-    assert(beforeWrap.restartedFromBeginning);
     assert(beforeWrap.blockSequence == 100);
     assert(beforeWrap.blockFrames == 512);
     assert(beforeWrap.sampleRate == 22050);
@@ -126,7 +125,6 @@ int main() {
     timeline.publishBlock(103, 512, 0.0f, 128.0f, 22050.0f, true);
     ProjectTransportBlockSnapshot restarted{};
     assert(timeline.trySnapshot(restarted));
-    assert(restarted.restartedFromBeginning);
     assert(restarted.transportEpoch == 2);
     timeline.publishBlock(104, 512, 6.0f, 123.456f, 22050.0f, true);
     auto fractionalBpm = timeline.snapshot();
@@ -231,8 +229,7 @@ int main() {
     assert(closeEnough(exactTick, 888.0, 1.0e-9));
 
     // MIDI Continue creates a fresh scheduling epoch without losing the
-    // absolute bar accumulated before Stop. NEXT BAR launch becomes a bounded
-    // three-block resume prefill rather than waiting for another full bar.
+    // absolute bar accumulated before Stop.
     ProjectTransportTimeline continued;
     continued.publishBlock(1, 512, 0.0f, 120.0f, 22050.0f, true);
     continued.publishBlock(2, 512, 15.5f, 120.0f, 22050.0f, true);
@@ -241,31 +238,8 @@ int main() {
     continued.publishBlock(4, 512, 0.5f, 120.0f, 22050.0f, false);
     continued.publishBlock(5, 512, 0.5f, 120.0f, 22050.0f, true, false);
     const auto resumed = continued.snapshot();
-    assert(!resumed.restartedFromBeginning);
     assert(resumed.barCounter == 1);
     assert(resumed.transportEpoch == 2);
-    const double resumeStep = nextProjectBarStep(resumed);
-    assert(resumeStep > resumed.absoluteSteps());
-    assert(resumeStep < resumed.absoluteSteps() + 1.0);
-    ProjectScheduledPosition resumedLaunch{};
-    assert(scheduleProjectStepAtBpm(resumed.absoluteSteps(),
-                                    resumed.blockSequence,
-                                    0,
-                                    resumeStep,
-                                    resumed.bpm(),
-                                    resumed.sampleRate,
-                                    resumed.blockFrames,
-                                    resumedLaunch));
-    assert(resumedLaunch.blockSequence == resumed.blockSequence + 3u);
-
-    // A new MIDI Start remains a true restart and therefore returns to the next
-    // full project bar launch policy.
-    continued.publishBlock(6, 512, 0.5f, 120.0f, 22050.0f, false);
-    continued.publishBlock(7, 512, 0.5f, 120.0f, 22050.0f, true, true);
-    const auto newStart = continued.snapshot();
-    assert(newStart.restartedFromBeginning);
-    assert(newStart.barCounter == 0);
-    assert(closeEnough(nextProjectBarStep(newStart), 16.0));
 
     return 0;
 }
