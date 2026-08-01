@@ -56,6 +56,9 @@ public:
             lastTimingPulseOrdinal_ = pulseOrdinal;
             lastTimingPulseMicros_ = timestampMicros;
             lastObservedPulseMicros_ = timestampMicros;
+            if (transportRunning_) {
+                absoluteProjectSteps_ += kProjectStepsPerClockPulse;
+            }
             if (state_ == ExternalClockLockState::Waiting) {
                 state_ = ExternalClockLockState::Locking;
             }
