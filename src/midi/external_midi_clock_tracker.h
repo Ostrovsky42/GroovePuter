@@ -49,34 +49,54 @@ public:
 
     bool onClock(uint32_t timestampMicros, uint32_t pulseOrdinal) {
         ++pulseCount_;
-        if (!haveLastPulse_) {
-            haveLastPulse_ = true;
-            lastPulseMicros_ = timestampMicros;
-            lastPulseOrdinal_ = pulseOrdinal;
+        if (!havePhasePulse_) {
+            havePhasePulse_ = true;
+            haveTimingPulse_ = true;
+            lastPhasePulseOrdinal_ = pulseOrdinal;
+            lastTimingPulseOrdinal_ = pulseOrdinal;
+            lastTimingPulseMicros_ = timestampMicros;
+            lastObservedPulseMicros_ = timestampMicros;
             if (state_ == ExternalClockLockState::Waiting) {
                 state_ = ExternalClockLockState::Locking;
             }
             return false;
         }
 
-        const uint32_t ordinalGap = pulseOrdinal - lastPulseOrdinal_;
-        const uint32_t elapsedUs = timestampMicros - lastPulseMicros_;
-        lastPulseMicros_ = timestampMicros;
-        lastPulseOrdinal_ = pulseOrdinal;
+        const uint32_t phaseGap = pulseOrdinal - lastPhasePulseOrdinal_;
+        if (phaseGap == 0) {
+            ++intervalOutliers_;
+            return false;
+        }
+        lastPhasePulseOrdinal_ = pulseOrdinal;
+        lastObservedPulseMicros_ = timestampMicros;
+        if (phaseGap > 1) pulseGaps_ += phaseGap - 1u;
+        if (transportRunning_) {
+            absoluteProjectSteps_ +=
+                static_cast<double>(phaseGap) * kProjectStepsPerClockPulse;
+        }
 
-        if (ordinalGap == 0 || elapsedUs == 0) {
+        if (!haveTimingPulse_) {
+            haveTimingPulse_ = true;
+            lastTimingPulseOrdinal_ = pulseOrdinal;
+            lastTimingPulseMicros_ = timestampMicros;
+            return false;
+        }
+
+        const uint32_t timingGap = pulseOrdinal - lastTimingPulseOrdinal_;
+        const uint32_t elapsedUs = timestampMicros - lastTimingPulseMicros_;
+        if (timingGap == 0 || elapsedUs == 0) {
             ++intervalOutliers_;
             return false;
         }
 
         const uint32_t perPulseUs = static_cast<uint32_t>(
-            (static_cast<uint64_t>(elapsedUs) + ordinalGap / 2u) /
-            ordinalGap);
+            (static_cast<uint64_t>(elapsedUs) + timingGap / 2u) /
+            timingGap);
         if (perPulseUs < kMinimumPulsePeriodUs ||
             perPulseUs > kMaximumPulsePeriodUs) {
-            // A rejected interval must not advance musical phase. Otherwise a
-            // corrupt timestamp can move the slave even though it was excluded
-            // from the tempo estimate.
+            // The F8 pulse remains musically real and has already advanced the
+            // phase ordinal, but its timestamp is not allowed to poison the
+            // accepted tempo anchor or median window.
             ++intervalOutliers_;
             consecutiveValidIntervals_ = 0;
             if (state_ != ExternalClockLockState::Lost) {
@@ -85,12 +105,8 @@ public:
             return false;
         }
 
-        if (ordinalGap > 1) pulseGaps_ += ordinalGap - 1u;
-        if (transportRunning_) {
-            absoluteProjectSteps_ +=
-                static_cast<double>(ordinalGap) * kProjectStepsPerClockPulse;
-        }
-
+        lastTimingPulseOrdinal_ = pulseOrdinal;
+        lastTimingPulseMicros_ = timestampMicros;
         intervals_[intervalWriteIndex_] = perPulseUs;
         intervalWriteIndex_ = (intervalWriteIndex_ + 1u) % kMedianWindow;
         if (intervalCount_ < kMedianWindow) ++intervalCount_;
@@ -142,8 +158,8 @@ public:
     }
 
     void update(uint32_t nowMicros) {
-        if (!haveLastPulse_ || filteredPulsePeriodUs_ == 0) return;
-        const uint32_t elapsedUs = nowMicros - lastPulseMicros_;
+        if (!havePhasePulse_ || filteredPulsePeriodUs_ == 0) return;
+        const uint32_t elapsedUs = nowMicros - lastObservedPulseMicros_;
         const uint32_t holdTimeoutUs = std::max<uint32_t>(
             filteredPulsePeriodUs_ * 2u, 100000u);
         const uint32_t lostTimeoutUs = std::min<uint32_t>(
@@ -193,7 +209,7 @@ public:
             state_ == ExternalClockLockState::Lost) {
             return absoluteProjectSteps_;
         }
-        const uint32_t elapsedUs = nowMicros - lastPulseMicros_;
+        const uint32_t elapsedUs = nowMicros - lastObservedPulseMicros_;
         const double predictedPulses =
             static_cast<double>(elapsedUs) / filteredPulsePeriodUs_;
         return absoluteProjectSteps_ +
@@ -227,12 +243,15 @@ private:
     std::size_t intervalCount_{0};
     uint32_t filteredPulsePeriodUs_{0};
     uint32_t consecutiveValidIntervals_{0};
-    uint32_t lastPulseMicros_{0};
-    uint32_t lastPulseOrdinal_{0};
+    uint32_t lastTimingPulseMicros_{0};
+    uint32_t lastObservedPulseMicros_{0};
+    uint32_t lastTimingPulseOrdinal_{0};
+    uint32_t lastPhasePulseOrdinal_{0};
     uint32_t transportEpoch_{0};
     uint64_t pulseCount_{0};
     double absoluteProjectSteps_{0.0};
-    bool haveLastPulse_{false};
+    bool haveTimingPulse_{false};
+    bool havePhasePulse_{false};
     bool transportRunning_{false};
     uint32_t pulseGaps_{0};
     uint32_t intervalOutliers_{0};
