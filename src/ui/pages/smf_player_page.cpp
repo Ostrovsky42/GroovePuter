@@ -557,7 +557,7 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
 
     gfx.setTextColor(COLOR_TEXT);
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(6),
-                 "SPACE PLAY   J/L TRACK   K MUTE");
+                 "SPACE PLAY  R RESTART  J/L TRK K MUTE");
 
     gfx.setTextColor(error ? COLOR_DANGER : COLOR_LABEL);
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), state.message);
