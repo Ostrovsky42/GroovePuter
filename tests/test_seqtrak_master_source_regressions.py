@@ -56,6 +56,9 @@ def main() -> None:
     tracker = (ROOT / "src/midi/external_midi_clock_tracker.h").read_text(
         encoding="utf-8"
     )
+    runtime = (ROOT / "src/midi/transport_clock_runtime.h").read_text(
+        encoding="utf-8"
+    )
     timeline = (ROOT / "src/midi/project_transport_timeline.h").read_text(
         encoding="utf-8"
     )
@@ -81,6 +84,16 @@ def main() -> None:
     require("event.key == 'c' || event.key == 'C'" in player and
             "transportClockRuntime().toggleSource()" in player,
             "MIDI Player must expose an explicit master-source control")
+    require("toggleExternalFollowEnabled()" in player and
+            '"EXT FOLLOW OFF / STOP"' in player and
+            '"SEQ MASTER: FOLLOW OFF"' in player,
+            "G must expose an explicit SEQ MASTER follow safety gate")
+    require("externalFollowDisabled_" in runtime and
+            "externalFollowEnabled()" in runtime,
+            "follow state must remain lock-free and default ON")
+    require("transportClockRuntime().externalFollowEnabled()" in follower and
+            "followEnabled_" in follower,
+            "AudioTask follower must read and enforce the runtime follow gate")
     require("USBMIDI" not in sketch and "tud_midi" not in sketch and
             "USBMIDI" not in player and "tud_midi" not in player,
             "USB access must stay out of AudioTask and UI")
@@ -97,6 +110,7 @@ def main() -> None:
     require("sourceBpmQ16" in tracker and
             "lastTimingPulseOrdinal_" in tracker and
             "lastPhasePulseOrdinal_" in tracker and
+            "observedPulseCount" in tracker and
             "timestamp is not allowed to poison" in tracker,
             "source tempo, musical phase and timing anchors must remain separate")
     require("restartedFromBeginning" in timeline,
@@ -111,6 +125,7 @@ def main() -> None:
 
     compile_and_run("test_project_transport_continue.cpp")
     compile_and_run("test_external_midi_clock_startup.cpp")
+    compile_and_run("test_external_follow_gate.cpp")
     print("seqtrak master source regressions: OK")
 
 
