@@ -38,6 +38,10 @@ struct TransportClockRuntimeSnapshot {
     }
 };
 
+using TransportClockControlChangedCallback = void (*)(
+    TransportClockSource source,
+    bool externalFollowEnabled);
+
 class TransportClockRuntime {
 public:
     TransportClockSource source() const {
@@ -46,7 +50,11 @@ public:
     }
 
     void setSource(TransportClockSource source) {
-        source_.storeRelease(static_cast<uint32_t>(source));
+        const TransportClockSource normalized = normalizeTransportClockSource(
+            static_cast<uint8_t>(source));
+        if (normalized == this->source()) return;
+        source_.storeRelease(static_cast<uint32_t>(normalized));
+        notifyControlChanged();
     }
 
     TransportClockSource toggleSource() {
@@ -65,13 +73,30 @@ public:
     }
 
     void setExternalFollowEnabled(bool enabled) {
+        if (enabled == externalFollowEnabled()) return;
         externalFollowDisabled_.storeRelease(enabled ? 0u : 1u);
+        notifyControlChanged();
     }
 
     bool toggleExternalFollowEnabled() {
         const bool enabled = !externalFollowEnabled();
         setExternalFollowEnabled(enabled);
         return enabled;
+    }
+
+    // Applies decoded settings before registering the persistence callback.
+    // This avoids rewriting NVS merely because a record was loaded or migrated.
+    void applyPersistedControl(TransportClockSource source,
+                               bool externalFollowEnabled) {
+        source_.storeRelease(static_cast<uint32_t>(
+            normalizeTransportClockSource(static_cast<uint8_t>(source))));
+        externalFollowDisabled_.storeRelease(
+            externalFollowEnabled ? 0u : 1u);
+    }
+
+    void setControlChangedCallback(
+            TransportClockControlChangedCallback callback) {
+        controlChangedCallback_ = callback;
     }
 
     void publishExternalEstimate(const ExternalClockEstimate& estimate,
@@ -144,6 +169,12 @@ private:
         return static_cast<int32_t>(std::llround(scaled));
     }
 
+    void notifyControlChanged() {
+        if (controlChangedCallback_ != nullptr) {
+            controlChangedCallback_(source(), externalFollowEnabled());
+        }
+    }
+
     MidiRealtimeWord source_;
     MidiRealtimeWord externalFollowDisabled_;
     MidiRealtimeWord version_;
@@ -156,6 +187,7 @@ private:
     MidiRealtimeWord externalEpoch_;
     MidiRealtimeWord externalPulseCount_;
     MidiRealtimeWord externalFailureCount_;
+    TransportClockControlChangedCallback controlChangedCallback_{nullptr};
 };
 
 inline TransportClockRuntime& transportClockRuntime() {
