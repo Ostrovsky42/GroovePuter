@@ -231,23 +231,32 @@ inline int pageIndexInMode(int page) {
     return 0;
 }
 
-inline Workspace nextWorkspace(Workspace workspace, int direction) {
-    const int page = pageForWorkspace(workspace);
-    const WorkflowMode mode = modeForPage(page);
-    const int nextIndex = pageIndexInMode(page) + direction;
-    return workspaceForPage(pageAt(mode, nextIndex));
-}
-
-inline int pageForMode(WorkflowMode mode) {
-    return pageAt(mode, 0);
-}
-
 inline WorkflowMode nextMode(WorkflowMode mode, int direction) {
     int value = static_cast<int>(mode) + direction;
     constexpr int count = 5;
     while (value < 0) value += count;
     while (value >= count) value -= count;
     return static_cast<WorkflowMode>(value);
+}
+
+inline int pageForMode(WorkflowMode mode) {
+    return pageAt(mode, 0);
+}
+
+inline Workspace nextWorkspace(Workspace workspace, int direction) {
+    const int page = pageForWorkspace(workspace);
+    const WorkflowMode mode = modeForPage(page);
+    const int index = pageIndexInMode(page);
+    const int count = pageCountForMode(mode);
+
+    if (direction < 0 && index == 0) {
+        return workspaceForPage(pageForMode(nextMode(mode, -1)));
+    }
+    if (direction > 0 && index == count - 1) {
+        return workspaceForPage(pageForMode(nextMode(mode, 1)));
+    }
+
+    return workspaceForPage(pageAt(mode, index + direction));
 }
 
 inline bool allowsPerformanceKeyboard(int page) {
