@@ -23,13 +23,32 @@ jobs:
       - name: Extract and apply focused patch
         shell: bash
         run: |
-          ruby -ryaml -e '
-            workflow = YAML.load_file(".github/workflows/apply-smf-channel-inspector.yml")
-            step = workflow.fetch("jobs").fetch("apply").fetch("steps").find { |item| item["name"] == "Apply focused channel inspector patch" }
-            abort "patch step missing" unless step && step["run"]
-            print step["run"]
-          ' > /tmp/apply-smf-channel-inspector.sh
-          bash /tmp/apply-smf-channel-inspector.sh
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path('.github/workflows/apply-smf-channel-inspector.yml').read_text(encoding='utf-8').splitlines()
+          output = []
+          capture = False
+          in_triple = False
+          for raw in source:
+              if not capture:
+                  if "python3 - <<'PY'" in raw:
+                      capture = True
+                  continue
+              if not in_triple and raw.strip() == 'PY':
+                  break
+              line = raw
+              if not in_triple and line.startswith('          '):
+                  line = line[10:]
+              output.append(line)
+              if line.count("'''") % 2 == 1:
+                  in_triple = not in_triple
+          if not output or in_triple:
+              raise SystemExit('embedded patch extraction failed')
+          Path('/tmp/apply-smf-channel-inspector.py').write_text(
+              '\n'.join(output) + '\n', encoding='utf-8')
+          PY
+          python3 /tmp/apply-smf-channel-inspector.py
 
       - name: Run host tests
         run: bash tests/run_host_tests.sh
