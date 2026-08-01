@@ -23,6 +23,15 @@ def main() -> None:
     parser = (ROOT / "src/midi/usb_midi_realtime_parser.h").read_text(
         encoding="utf-8"
     )
+    follower = (ROOT / "src/midi/external_midi_clock_follower.h").read_text(
+        encoding="utf-8"
+    )
+    tracker = (ROOT / "src/midi/external_midi_clock_tracker.h").read_text(
+        encoding="utf-8"
+    )
+    timeline = (ROOT / "src/midi/project_transport_timeline.h").read_text(
+        encoding="utf-8"
+    )
 
     require("midi_.readPacket(&packet)" in transport,
             "the sole platform transport must own TinyUSB RX")
@@ -48,6 +57,17 @@ def main() -> None:
     require("USBMIDI" not in sketch and "tud_midi" not in sketch and
             "USBMIDI" not in player and "tud_midi" not in player,
             "USB access must stay out of AudioTask and UI")
+
+    require("kMaximumTempoTrim" in follower and
+            "phaseCorrectionSteps" in follower and
+            "projectTransportTimeline().snapshot()" in follower,
+            "SEQ MASTER must phase-lock through bounded tempo trim")
+    require("sourceBpmQ16" in tracker and
+            "A rejected interval must not advance musical phase" in tracker,
+            "source tempo and rejected-pulse phase safety must remain explicit")
+    require("restartedFromBeginning" in timeline and
+            "kContinuePrefillBlocks" in timeline,
+            "PROJECT SMF must distinguish Start from bounded Continue resume")
 
     print("seqtrak master source regressions: OK")
 
