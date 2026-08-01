@@ -9,7 +9,7 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def main() -> None:
+def test_theme_selection() -> None:
     theme = (ROOT / "src/ui/ui_theme.h").read_text(encoding="utf-8")
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
     launcher = (ROOT / "src/ui/workspace_launcher_overlay.h").read_text(encoding="utf-8")
@@ -55,7 +55,67 @@ def main() -> None:
             "COLOR_WARN" not in visuals,
             "music visuals must not bypass the shared palette with legacy accent constants")
 
-    print("theme selection + music visuals source regressions: OK")
+
+def test_workflow_local_page_navigation() -> None:
+    workflow = (ROOT / "src/ui/workflow_mode.h").read_text(encoding="utf-8")
+    display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
+    launcher = (ROOT / "src/ui/workspace_launcher_overlay.h").read_text(encoding="utf-8")
+    settings = (ROOT / "src/ui/pages/settings_page.cpp").read_text(encoding="utf-8")
+
+    for mode in ("Perform", "Generate", "Hub", "Song", "Settings"):
+        require(f"WorkflowMode::{mode}" in workflow,
+                f"missing top-level workflow: {mode}")
+    require("constexpr int count = 5;" in workflow,
+            "Fn+Tab must remain a bounded five-workflow ring")
+
+    require("kPerform, kPlayer" in workflow,
+            "PERFORM workflow must contain keyboard then MIDI Player")
+    require("kGenre, kMode, kFeelTexture, kGenerator" in workflow,
+            "GENERATE workflow must expose genre through advanced generator")
+    require("kPattern, kSynthA, kSynthB, kDrums" in workflow and
+            "kSynthAParameters, kSynthBParameters" in workflow,
+            "HUB workflow must expose overview, instruments and synth controls")
+    require("case WorkflowMode::Song: return kArrange;" in workflow,
+            "SONG workflow must resolve to the song editor")
+    require("case WorkflowMode::Settings: return kProject;" in workflow,
+            "SETTINGS workflow must resolve to project/import/setup")
+
+    next_start = workflow.index("inline Workspace nextWorkspace")
+    next_end = workflow.index("inline int pageForMode", next_start)
+    next_block = workflow[next_start:next_end]
+    require("pageIndexInMode(page) + direction" in next_block and
+            "pageAt(mode, nextIndex)" in next_block,
+            "[ / ] must move to the previous/next page inside the active workflow")
+
+    require("WorkflowPages::nextWorkspace(active_workspace_, 1)" in display and
+            "WorkflowPages::nextWorkspace(active_workspace_, -1)" in display,
+            "display [ / ] handlers must use workflow-local page navigation")
+    require("WorkflowPages::nextMode(current, direction)" in display and
+            "WorkflowPages::pageForMode" in display,
+            "Fn+Tab must switch the five top-level workflows")
+
+    page_dispatch = display.index("currentPage->handleEvent(event)")
+    brackets = display.index("if (event.key == ']')", page_dispatch)
+    require(page_dispatch < brackets,
+            "pages must keep first refusal so local editors can own their controls")
+    require("if (e.key == '\\t')" in settings and
+            "Group::Timing" in settings and "Group::Notes" in settings and
+            "Group::Scale" in settings,
+            "plain Tab must retain local Generator subpage navigation")
+
+    for label in ("PERFORM", "GENERATE", "HUB", "SONG", "SETTINGS", "HELP"):
+        require(f'return "{label}";' in launcher,
+                f"launcher must expose workflow label: {label}")
+    require("L/R PAGE" in launcher and "PAGE %d/%d" in launcher,
+            "launcher must preview pages inside each workflow")
+    require("[ / ] SAME WORKFLOW" in launcher,
+            "launcher must explain restored bracket navigation")
+
+
+def main() -> None:
+    test_theme_selection()
+    test_workflow_local_page_navigation()
+    print("theme + workflow navigation source regressions: OK")
 
 
 if __name__ == "__main__":
