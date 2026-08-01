@@ -81,24 +81,31 @@ def test_workflow_local_page_navigation() -> None:
             "case WorkflowMode::Settings: return kSettingsPages[index];" in workflow,
             "SETTINGS must expose project/setup and advanced generator pages")
 
-    next_start = workflow.index("inline Workspace nextWorkspace")
+    require("#include <M5Cardputer.h>" in workflow and
+            "M5Cardputer.Keyboard.keysState().fn" in workflow,
+            "hardware workflow navigation must read the physical Fn state")
+    require("inline Workspace nextWorkspace(Workspace workspace," in workflow and
+            "bool workflowModifier" in workflow,
+            "workflow navigation needs an explicit modifier-aware overload")
+
+    next_start = workflow.index("inline Workspace nextWorkspace(Workspace workspace,")
     next_end = workflow.index("inline bool allowsPerformanceKeyboard", next_start)
     next_block = workflow[next_start:next_end]
-    require("direction < 0 && index == 0" in next_block and
-            "pageForMode(nextMode(mode, -1))" in next_block,
-            "[ on the first page must enter the previous workflow without Shift")
-    require("direction > 0 && index == count - 1" in next_block and
-            "pageForMode(nextMode(mode, 1))" in next_block,
-            "] on the last page must enter the next workflow")
-    require("pageAt(mode, index + direction)" in next_block,
-            "brackets must still move locally between pages inside a workflow")
+    require("if (workflowModifier)" in next_block and
+            "pageForMode(nextMode(mode, direction))" in next_block,
+            "Fn+[ / ] must move to the adjacent workflow")
+    require("pageIndexInMode(page) + direction" in next_block and
+            "pageAt(mode, nextIndex)" in next_block,
+            "plain [ / ] must continue to wrap inside the current workflow")
+    require("hardwareWorkflowModifierHeld()" in next_block,
+            "the existing display bracket handlers must consume the physical Fn state")
 
     require("WorkflowPages::nextWorkspace(active_workspace_, 1)" in display and
             "WorkflowPages::nextWorkspace(active_workspace_, -1)" in display,
             "display [ / ] handlers must use page-aware workflow navigation")
     require("WorkflowPages::nextMode(current, direction)" in display and
             "WorkflowPages::pageForMode" in display,
-            "Fn+Tab must switch the five top-level workflows")
+            "Fn+Tab must still switch the five top-level workflows")
 
     page_dispatch = display.index("currentPage->handleEvent(event)")
     brackets = display.index("if (event.key == ']')", page_dispatch)
@@ -114,6 +121,8 @@ def test_workflow_local_page_navigation() -> None:
                 f"launcher must expose workflow label: {label}")
     require("L/R PAGE" in launcher and "PAGE %d/%d" in launcher,
             "launcher must preview pages inside each workflow")
+    require("FN+[ ] WORKFLOW" in launcher and "[ ] PAGE" in launcher,
+            "launcher must explain the two navigation levels")
 
 
 def main() -> None:
