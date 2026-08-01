@@ -91,9 +91,11 @@ int main() {
     assert(result.estimate.bpmQ16 < result.estimate.sourceBpmQ16);
 
     // Three F8 packets drained with one receive timestamp represent three real
-    // musical pulses. The follower coalesces the run, advances half a project
-    // step and keeps the source tempo stable instead of measuring 0 us gaps.
+    // musical pulses. Coalescing advances all three, but it must not report two
+    // false pulse gaps because every packet was present in the queue.
     const double beforeBuffered = result.estimate.absoluteProjectSteps;
+    const uint64_t beforeBufferedPulseCount = result.estimate.pulseCount;
+    const uint32_t beforeBufferedGaps = follower.tracker().pulseGapCount();
     now += 3u * 20833u;
     for (int i = 0; i < 3; ++i) {
         assert(queue.tryPushClock(now, ++ordinal));
@@ -103,6 +105,8 @@ int main() {
     assert(closeEnough(result.estimate.absoluteProjectSteps,
                        beforeBuffered + 0.5,
                        0.001));
+    assert(result.estimate.pulseCount == beforeBufferedPulseCount + 3u);
+    assert(follower.tracker().pulseGapCount() == beforeBufferedGaps);
     assert(closeEnough(q16Bpm(result.estimate.sourceBpmQ16), 120.0, 0.2));
 
     assert(queue.tryPushCritical(
