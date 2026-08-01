@@ -36,6 +36,7 @@ public:
     static constexpr double kPhaseTrimExitSteps = 1.0 / 96.0;
     static constexpr double kSourceBpmQuantum = 0.1;
     static constexpr double kSourceBpmHysteresis = 0.15;
+    static constexpr uint32_t kClockCoalesceWindowUs = 1000;
 
     ExternalClockBlockResult processBlock(
             ExternalMidiTransportEventQueue& queue,
@@ -76,11 +77,10 @@ public:
             return result;
         }
 
-        // USB and SD stalls can leave several F8 packets ready in one drain.
-        // Feeding each packet with nearly identical micros() values would create
-        // false zero-length intervals. Keep the latest ordinal/timestamp for a
-        // consecutive Clock run; the tracker reconstructs the average interval
-        // and every missing musical pulse from the ordinal gap.
+        // USB and SD stalls can leave several F8 packets with effectively one
+        // receive timestamp. Only those compressed packets are coalesced.
+        // Normal clocks are at least 8.3 ms apart at 300 BPM and are flushed
+        // individually, preserving the intervals needed for initial lock.
         ExternalMidiTransportEvent pendingClock{};
         bool havePendingClock = false;
         auto flushPendingClock = [&]() {
@@ -93,6 +93,12 @@ public:
         ExternalMidiTransportEvent event{};
         while (queue.tryPop(event)) {
             if (event.type == ExternalMidiTransportEventType::Clock) {
+                if (havePendingClock &&
+                    static_cast<uint32_t>(event.timestampMicros -
+                                          pendingClock.timestampMicros) >
+                        kClockCoalesceWindowUs) {
+                    flushPendingClock();
+                }
                 pendingClock = event;
                 havePendingClock = true;
                 continue;
