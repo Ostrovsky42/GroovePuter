@@ -65,16 +65,10 @@ MIDI KEYBOARD <-> MIDI PLAYER
 
 ```text
 [ / ]
-GENRE -> MODE / FLAVOR -> FEEL / TEXTURE -> ADV GENERATOR
+GENRE -> MODE / FLAVOR -> FEEL / TEXTURE
 ```
 
-Inside `ADV GENERATOR`, plain `Tab` must still cycle:
-
-```text
-TIMING -> NOTES -> SCALE
-```
-
-Swing, velocity range, ghost probability and microtiming remain in the TIMING local group.
+This workflow covers musical direction and generated-pattern character.
 
 ### HUB
 
@@ -101,10 +95,19 @@ This workflow has one page, so `[` and `]` remain on SONG.
 ### SETTINGS
 
 ```text
-PROJECT / SETUP
+[ / ]
+PROJECT / SETUP <-> ADV GENERATOR
 ```
 
-Load, save, scene management, MIDI import, routing, display and LED controls remain available through the existing Project page and dialogs. A future PROJECT/SETTINGS redesign can split these into local subpages without changing the workflow contract introduced here.
+`PROJECT / SETUP` keeps load, save, scene management, MIDI import, routing, display and LED controls.
+
+Inside `ADV GENERATOR`, plain `Tab` must still cycle:
+
+```text
+TIMING -> NOTES -> SCALE
+```
+
+Swing, velocity range, ghost probability and microtiming remain in the TIMING local group.
 
 ## Expected behavior
 
@@ -113,8 +116,9 @@ Load, save, scene management, MIDI import, routing, display and LED controls rem
 - Entering a workflow opens its first page.
 - `[` and `]` wrap only inside the active workflow.
 - `PERFORM ]` opens MIDI Player; another `]` returns to MIDI Keyboard.
-- `GENERATE ]` reaches Mode, Feel and advanced Generator without leaving GENERATE.
+- `GENERATE ]` reaches Mode and Feel without leaving GENERATE.
 - `HUB ]` reaches each concrete instrument/editor page.
+- `SETTINGS ]` opens Advanced Generator; another `]` returns to Project / Setup.
 - plain `Tab` is still handled by the current page before global navigation.
 - `Fn+M` launcher lists the same five workflows and previews their pages with Left/Right.
 - old direct hotkeys remain available as accelerators.
@@ -138,9 +142,13 @@ The current page must get first refusal before the global bracket handler. Confi
 
 Open MIDI Keyboard, press `]`, and confirm the second PERFORM page is MIDI Player. Also verify `Alt+P` still works as a direct shortcut.
 
-### SETTINGS appears incomplete
+### Advanced Generator cannot be reached
 
-This PR intentionally keeps the existing Project page intact. It reorganizes access but does not yet split Project, MIDI, display, LED and system settings into separate visual pages.
+Open SETTINGS with `Fn+Tab`, then press `]`. Confirm the second SETTINGS page is `ADV GENERATOR`.
+
+### SETTINGS still looks dense
+
+This PR restores navigation and grouping but intentionally preserves the current Project implementation. A later visual PR can split Project, MIDI, display, LED and system controls into polished local subpages without changing this workflow contract.
 
 ### Audio or MIDI changes during navigation
 
@@ -171,10 +179,7 @@ PERFORM [ / ]
 GENERATE [ / ]
 [ ] GENRE -> MODE / FLAVOR
 [ ] MODE / FLAVOR -> FEEL / TEXTURE
-[ ] FEEL / TEXTURE -> ADV GENERATOR
-[ ] ADV GENERATOR -> GENRE
-[ ] Generator Tab cycles TIMING / NOTES / SCALE
-[ ] Swing and microtiming remain editable
+[ ] FEEL / TEXTURE -> GENRE
 
 HUB [ / ]
 [ ] OVERVIEW -> SYNTH A
@@ -189,13 +194,16 @@ SONG
 [ ] [ and ] remain inside SONG
 [ ] arrangement editing remains unchanged
 
-SETTINGS
-[ ] Project page opens
+SETTINGS [ / ]
+[ ] PROJECT / SETUP -> ADV GENERATOR
+[ ] ADV GENERATOR -> PROJECT / SETUP
 [ ] load dialog opens/closes
 [ ] save/save-as works
 [ ] MIDI import browser opens
 [ ] MIDI advanced import dialog still uses Tab locally
 [ ] routing/display/LED controls remain accessible
+[ ] Generator Tab cycles TIMING / NOTES / SCALE
+[ ] Swing and microtiming remain editable
 
 LAUNCHER / UI
 [ ] Fn+M lists PERFORM / GENERATE / HUB / SONG / SETTINGS / HELP
