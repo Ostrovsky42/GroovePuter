@@ -23,12 +23,13 @@ jobs:
       - name: Extract and apply focused patch
         shell: bash
         run: |
-          awk '
-            /python3 - <<'\''PY'\''/ { capture=1; next }
-            capture && /^          PY$/ { exit }
-            capture { sub(/^          /, ""); print }
-          ' .github/workflows/apply-smf-channel-inspector.yml > /tmp/apply-smf-channel-inspector.py
-          python3 /tmp/apply-smf-channel-inspector.py
+          ruby -ryaml -e '
+            workflow = YAML.load_file(".github/workflows/apply-smf-channel-inspector.yml")
+            step = workflow.fetch("jobs").fetch("apply").fetch("steps").find { |item| item["name"] == "Apply focused channel inspector patch" }
+            abort "patch step missing" unless step && step["run"]
+            print step["run"]
+          ' > /tmp/apply-smf-channel-inspector.sh
+          bash /tmp/apply-smf-channel-inspector.sh
 
       - name: Run host tests
         run: bash tests/run_host_tests.sh
