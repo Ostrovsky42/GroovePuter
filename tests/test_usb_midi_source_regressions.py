@@ -58,6 +58,15 @@ def main() -> None:
 
     require("USBMIDI.h" not in sketch and "USB.h" not in sketch,
             "TinyUSB headers must stay isolated from the main UI translation unit")
+    serial_begin = sketch[
+        sketch.index("void setup()"):
+        sketch.index("AudioDiagnostics::instance().enable(false)")
+    ]
+    require("#if ARDUINO_USB_CDC_ON_BOOT" in serial_begin and
+            serial_begin.index("#if ARDUINO_USB_CDC_ON_BOOT") <
+            serial_begin.index("Serial.begin(115200)"),
+            "the MIDI-only profile must not start UART0 on GPIO43, which is "
+            "the Cardputer-Adv I2S word-select pin")
     require("USBMIDI" not in engine and "TinyUSB" not in engine,
             "DSP and PatternPlayer code must remain independent from TinyUSB")
     require("CardputerUsbMidiTransport g_transport;" in transport,
@@ -66,6 +75,20 @@ def main() -> None:
             "USB transport must not be lazily constructed after TinyUSB starts")
     require("UsbMidiSinkRegistration" not in sketch,
             "application/router mutation must not run from a global constructor")
+
+    transport_begin = transport[
+        transport.index("bool CardputerUsbMidiTransport::begin()"):
+        transport.index("bool CardputerUsbMidiTransport::mounted()")
+    ]
+    require("#if !ARDUINO_USB_CDC_ON_BOOT" in transport_begin and
+            "USB.begin()" in transport_begin and
+            transport_begin.index("USB.begin()") <
+            transport_begin.index("midi_.begin()"),
+            "the MIDI-only profile must explicitly start TinyUSB: Arduino "
+            "app_main only starts it when an on-boot USB interface is enabled")
+    require("if (!USB.begin())" in transport_begin and
+            "return false;" in transport_begin,
+            "MIDI-only TinyUSB startup failure must fail transport registration")
 
     tinyusb_options = "USBMode=default,CDCOnBoot=cdc,UploadMode=cdc"
     require(tinyusb_options in build,
@@ -118,6 +141,16 @@ def main() -> None:
             "a failed NoteOff must hand recovery to the paced all-notes-off path")
     require("smfMaxSendBlockUs" in transport,
             "USB backpressure duration must be observable in diagnostics")
+    # A suspended bus stops the host polling the IN endpoint entirely while
+    # TinyUSB still reports the interface mounted, which is indistinguishable
+    # from a receiver refusing data unless suspend state is logged.
+    require("tud_suspended()" in transport and
+            "pollSuspendState" in transport,
+            "USB suspend must be observable: the Arduino core owns the TinyUSB "
+            "suspend callbacks, so edges are polled")
+    require("[USB-EDGE]" in transport,
+            "entering and leaving a stall must be timestamped against mount and "
+            "suspend edges, not only summarised every five seconds")
     require("[USB-DIAG]" in transport and
             "tx=attempt/ok/reject/noMount" in transport and
             "live=q/dispatched/drop" in transport,
@@ -128,13 +161,30 @@ def main() -> None:
             "txRejected" in transport_header,
             "Cardputer transport must count MIDI mount transitions and "
             "TinyUSB write rejection")
+    # Pin the invariant, not the call form: every branch of the single physical
+    # write must report its outcome to the shared time-based health state.
+    write_packet = transport[
+        transport.index("bool CardputerUsbMidiTransport::writePacket("):
+        transport.index("bool CardputerUsbMidiTransport::writeChannelPacket(")
+    ]
     require("UsbEndpointHealth" in transport and
             "kUsbEndpointStallThresholdMs = 50" in transport and
-            "observeWrite(true, false" in transport and
-            "observeWrite(true, true" in transport and
             "UsbEndpointHealthState::Stalled" in endpoint_health,
-            "every physical TX result must feed the shared time-based endpoint "
-            "health state before pacing policy is introduced")
+            "endpoint health must be shared and time-based, not per-producer")
+    require(write_packet.count("observeEndpointWrite(") == 3 and
+            "observeEndpointWrite(false, false)" in write_packet and
+            "observeEndpointWrite(true, false)" in write_packet and
+            "observeEndpointWrite(true, true)" in write_packet,
+            "every physical TX result - not mounted, rejected, accepted - must "
+            "feed the shared endpoint health state")
+    require("txPacer_.waitMicros" in write_packet and
+            write_packet.index("txPacer_.waitMicros") <
+            write_packet.index("midi_.writePacket") and
+            "kPacketSpacingMicros = 1000" in transport_header,
+            "the sole physical writer must pace USB bursts at DIN-compatible "
+            "packet spacing before touching the TinyUSB FIFO")
+    require("g_endpointHealth.observeWrite(mounted, accepted, nowMs)" in transport,
+            "the logging wrapper must forward the outcome unchanged")
     # The dispatcher only blocks on the branches that wait for a deadline. A
     # backlog of already-due events kept it runnable until the CPU0 task
     # watchdog fired, so fairness must not depend on the event mix.

@@ -300,6 +300,44 @@ USBMode=default,CDCOnBoot=cdc,UploadMode=cdc
 4. Capture the computer-side USB descriptors for comparison.
 5. Do not add clock, CC, SysEx, or MIDI input while diagnosing enumeration.
 
+### SEQTRAK receives only the first TinyUSB FIFO
+
+If pacing is active but only roughly 16 packets are accepted before every
+write is rejected, test the MIDI-only USB profile. This distinguishes receiver
+throughput from an embedded-host incompatibility with the normal CDC + MIDI
+composite descriptor:
+
+```bash
+./scripts/build_seqtrak_midi_only.sh
+./scripts/upload_seqtrak_midi_only.sh /dev/ttyACM0
+```
+
+The MIDI-only uploader defaults to `115200`, which is more reliable for the
+Cardputer USB-Serial/JTAG ROM loader. The normal uploader keeps `921600`; use
+`UPLOAD_SPEED=115200 ./scripts/upload.sh /dev/ttyACM0` if that link is noisy.
+
+The MIDI-only firmware intentionally has no CDC serial monitor. Use the on-screen
+USB diagnostics and reproduce the same track directly with SEQTRAK.
+
+In this profile Arduino-ESP32 does not auto-start TinyUSB because
+`ARDUINO_USB_CDC_ON_BOOT` is disabled. `CardputerUsbMidiTransport::begin()`
+therefore starts `USB` explicitly after the global `USBMIDI` object has
+registered its descriptor. A build that only changes `CDCOnBoot=default` but
+does not call `USB.begin()` exposes neither MIDI nor CDC and is not a valid
+SEQTRAK compatibility test.
+
+The same profile does not call `Serial.begin()`: without USB CDC, Arduino maps
+`Serial` to UART0 TX on GPIO43, which Cardputer-Adv uses for the ES8311 I2S word
+select signal. Diagnostics remain available on screen; the normal composite
+build retains CDC logging.
+
+To restore the normal diagnostic build, enter the Cardputer-Adv download mode:
+
+1. Set the side power switch to OFF.
+2. Hold the top-side `G0` button.
+3. Connect USB to the computer and power on, then release `G0`.
+4. Find the bootloader port and run `./scripts/upload.sh /dev/ttyACM<N>`.
+
 ## Acceptance checklist
 
 ### Build

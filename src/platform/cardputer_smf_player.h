@@ -197,6 +197,7 @@ private:
     uint32_t perfMaxScheduleMicros_{0};
     uint32_t perfMinQueueDepth_{kPerfUnsetDepth};
     uint32_t perfQueuedEvents_{0};
+    uint32_t perfUnmappedEventsFiltered_{0};
     uint32_t perfProjectLateNoteOnDrops_{0};
     uint32_t perfTimelineReadMisses_{0};
     uint32_t perfTimelineStalePauses_{0};

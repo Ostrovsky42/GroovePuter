@@ -12,6 +12,7 @@ enum class SmfRoutingMode : uint8_t {
 struct SmfRoutedNote {
     uint8_t channel{0};
     uint8_t note{0};
+    bool mapped{true};
 };
 
 inline constexpr uint8_t applySmfVelocityBoost(uint8_t velocity,
@@ -58,13 +59,13 @@ inline constexpr SmfRoutedNote routeSmfNote(SmfRoutingMode mode,
 
     // SEQTRAK melodic destinations are distinct instruments. DX is never a
     // generic catch-all: source CH1/CH2/CH3 explicitly select SYNTH1/SYNTH2/DX.
-    // Extra source channels are deliberately sent to unused CH16 instead of
-    // triggering the user's SAMPLER pads. Per-track CUSTOM routing will replace
-    // this conservative silent sink in a later stage.
+    // Extra source channels have no deterministic SEQTRAK destination. Drop
+    // them before the scheduler queue instead of spending USB bandwidth on an
+    // unused channel. Per-track CUSTOM routing can expose them later.
     if (sourceChannel == 0) return SmfRoutedNote{7, sourceNote};   // SYNTH1
     if (sourceChannel == 1) return SmfRoutedNote{8, sourceNote};   // SYNTH2
     if (sourceChannel == 2) return SmfRoutedNote{9, sourceNote};   // DX
-    return SmfRoutedNote{15, sourceNote};                          // UNMAPPED / CH16
+    return SmfRoutedNote{0, sourceNote, false};                    // UNMAPPED
 }
 
 }  // namespace GroovePuterMidi

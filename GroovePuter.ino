@@ -263,7 +263,9 @@ void setup() {
   digitalWrite(GroovePuterHardware::kPowerAmplifierEnablePin, HIGH);
   // pinMode(42, OUTPUT); digitalWrite(42, LOW); // Possible I2S conflict
   
+#if ARDUINO_USB_CDC_ON_BOOT
   Serial.begin(115200);
+#endif
   // Keep diagnostics off by default on hardware; detailed profiling can exceed
   // the real-time audio budget and cause underruns.
   AudioDiagnostics::instance().enable(false);

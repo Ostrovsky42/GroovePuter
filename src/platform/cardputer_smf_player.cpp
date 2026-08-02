@@ -1236,6 +1236,11 @@ void CardputerSmfPlayerService::scheduleAhead() {
         bool pushed = false;
         const SmfRoutedNote routed = routeSmfNote(
             routingMode_, event.event.channel, event.event.data1);
+        if (!routed.mapped) {
+            hasPendingEvent_ = false;
+            ++perfUnmappedEventsFiltered_;
+            continue;
+        }
         if (event.event.kind == SmfEventKind::NoteOn) {
             pushed = eventQueue_.tryPushNoteOn(
                 routed.channel,
@@ -1293,6 +1298,7 @@ void CardputerSmfPlayerService::logPerformance() {
         source_.resetStats();
         perfScheduleCalls_ = 0;
         perfQueuedEvents_ = 0;
+        perfUnmappedEventsFiltered_ = 0;
         perfMaxScheduleMicros_ = 0;
         perfMinQueueDepth_ = kPerfUnsetDepth;
         perfProjectLateNoteOnDrops_ = 0;
@@ -1325,6 +1331,7 @@ void CardputerSmfPlayerService::logPerformance() {
         : kScheduleLookaheadBlocks;
     performance.lookaheadMs = static_cast<uint16_t>(
         (lookaheadBlocks * kBlockFrames * 1000u) / kSampleRate);
+    performance.unmappedEventsFiltered = perfUnmappedEventsFiltered_;
     performance.projectLateNoteOnDrops = perfProjectLateNoteOnDrops_;
     performance.timelineReadMisses = perfTimelineReadMisses_;
     performance.timelineStalePauses = perfTimelineStalePauses_;
@@ -1337,7 +1344,7 @@ void CardputerSmfPlayerService::logPerformance() {
     Serial.printf(
         "[SMF-PERF] tracks=%u cache=%u reads=%u seeks=%u bytes=%u "
         "maxReadUs=%u sched=%u queued=%u maxSchedUs=%u minQueue=%d fill=%u "
-        "lookahead=%ums projectLateDrop=%u timelineMiss=%u "
+        "lookahead=%ums filtered=%u projectLateDrop=%u timelineMiss=%u "
         "timelineStale=%u reanchor=%u mode=%s\n",
         static_cast<unsigned>(performance.trackCount),
         static_cast<unsigned>(performance.cacheBytesPerTrack),
@@ -1351,6 +1358,7 @@ void CardputerSmfPlayerService::logPerformance() {
         static_cast<int>(performance.minQueueDepth),
         static_cast<unsigned>(performance.queueFillLimit),
         static_cast<unsigned>(performance.lookaheadMs),
+        static_cast<unsigned>(performance.unmappedEventsFiltered),
         static_cast<unsigned>(performance.projectLateNoteOnDrops),
         static_cast<unsigned>(performance.timelineReadMisses),
         static_cast<unsigned>(performance.timelineStalePauses),
@@ -1360,6 +1368,7 @@ void CardputerSmfPlayerService::logPerformance() {
     source_.resetStats();
     perfScheduleCalls_ = 0;
     perfQueuedEvents_ = 0;
+    perfUnmappedEventsFiltered_ = 0;
     perfMaxScheduleMicros_ = 0;
     perfMinQueueDepth_ = kPerfUnsetDepth;
     perfProjectLateNoteOnDrops_ = 0;

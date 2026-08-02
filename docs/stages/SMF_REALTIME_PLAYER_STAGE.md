@@ -125,7 +125,7 @@ The deterministic v1 SEQTRAK melodic mapping is:
 source CH1  -> SYNTH1  / CH8
 source CH2  -> SYNTH2  / CH9
 source CH3  -> DX      / CH10
-source CH4+ -> SAMPLER / CH11
+source CH4+ -> filtered until CUSTOM routing exists
 ```
 
 A GM drum track on source CH10 is split by drum note into SEQTRAK drum tracks 1..7.
@@ -144,15 +144,26 @@ bash scripts/upload.sh /dev/ttyACM0
 - NoteOn/NoteOff durations and simultaneous notes survive playback.
 - tempo/time-signature maps remain intact.
 - seek/restart/stop invalidate stale scheduled events.
-- SEQTRAK routing keeps SYNTH1/SYNTH2/DX/SAMPLER distinct.
-- extra melodic source channels do not alias to DX.
+- SEQTRAK routing keeps SYNTH1/SYNTH2/DX distinct.
+- extra melodic source channels are filtered before the scheduler queue, so
+  they neither alias to an instrument nor consume SEQTRAK USB bandwidth.
+- the sole TinyUSB writer spaces packets by 1 ms, matching three-byte DIN MIDI
+  throughput and preventing dense USB bursts from filling the 16-packet TX FIFO
+  before SEQTRAK polls its IN endpoint.
 - GM drums split onto native SEQTRAK CH1..7.
 
 ## Troubleshooting
 
 - **MIDI sounds quantized:** that is the destructive `MidiImporter`; realtime PLAY is a separate path.
 - **Stuck notes after seek/restart:** player ownership must be released before generation invalidation changes position.
-- **Too many unrelated parts play on DX:** only source CH3 belongs to DX/CH10 in fixed SEQTRAK mode; CH4+ uses SAMPLER/CH11 until custom routing exists.
+- **Missing source CH4+ parts:** fixed SEQTRAK mode only has deterministic
+  destinations for source CH1..3. CH4+ is counted as `filtered=N` in
+  `[SMF-PERF]` and requires future CUSTOM routing. Use RAW only when the target
+  accepts the file's original channel layout.
+- **`USB MIDI BLOCKED` still appears:** inspect `[USB-DIAG]`. `pace=waits/ms`
+  confirms that compatibility pacing is active. A growing `reject` count with
+  `susp=0` after pacing means the host's sustained receive rate is below DIN
+  MIDI throughput, not merely that one chord exceeded the TinyUSB FIFO.
 - **Folder becomes empty or shows only its first files after playback:** inspect
 `[SMF-BROWSE]`. `exists=1`, `root.open ok=1` and `complete=1` mean SD is still
 mounted and the complete directory was counted. Older builds stopped scanning
@@ -171,7 +182,7 @@ same truncation reproducible; it was not an SD disconnect.
 - [ ] source CH1 -> CH8 SYNTH1.
 - [ ] source CH2 -> CH9 SYNTH2.
 - [ ] source CH3 -> CH10 DX.
-- [ ] source CH4+ -> CH11 SAMPLER.
+- [ ] source CH4+ is filtered before queue publication.
 - [ ] GM source CH10 drums split across native CH1..7.
 - [ ] original note lengths remain recognizable.
 - [ ] chords remain polyphonic.

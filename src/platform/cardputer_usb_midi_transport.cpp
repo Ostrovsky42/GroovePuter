@@ -202,6 +202,35 @@ uint8_t g_smfCleanupAttempts = 0;
 uint32_t g_smfSendBlockStartedUs = 0;
 uint32_t g_externalRxPulseOrdinal = 0;
 
+// Logged at the exact moment the endpoint enters or leaves a stall, so a phase
+// change can be aligned with mount and suspend edges. A momentary
+// Ready<->Backpressured flap during a chord is normal and stays silent.
+void observeEndpointWrite(bool mounted, bool accepted) {
+    const uint32_t nowMs = millis();
+    const UsbEndpointHealthState before = g_endpointHealth.snapshot(nowMs).state;
+    g_endpointHealth.observeWrite(mounted, accepted, nowMs);
+    const UsbEndpointHealthSnapshot after = g_endpointHealth.snapshot(nowMs);
+    const bool wasStalled = before == UsbEndpointHealthState::Stalled;
+    const bool isStalled = after.state == UsbEndpointHealthState::Stalled;
+    if (wasStalled == isStalled) return;
+
+    const CardputerUsbMidiTransportDiagnostics usb = g_transport.diagnostics();
+    Serial.printf(
+        "[USB-EDGE] %s mounted=%u suspended=%u mountUp/Down=%u/%u "
+        "susp/res=%u/%u ok=%u reject=%u block=%ums up=%ums\n",
+        isStalled ? "STALL" : "CLEAR",
+        static_cast<unsigned>(g_transport.mounted() ? 1 : 0),
+        static_cast<unsigned>(g_transport.suspended() ? 1 : 0),
+        static_cast<unsigned>(usb.mountUpEvents),
+        static_cast<unsigned>(usb.mountDownEvents),
+        static_cast<unsigned>(usb.suspendEvents),
+        static_cast<unsigned>(usb.resumeEvents),
+        static_cast<unsigned>(usb.txAccepted),
+        static_cast<unsigned>(usb.txRejected),
+        static_cast<unsigned>(after.maximumBlockedMs),
+        static_cast<unsigned>(nowMs));
+}
+
 void notifyDispatcher() {
     if (g_dispatchTaskHandle != nullptr) {
         xTaskNotifyGive(g_dispatchTaskHandle);
@@ -661,9 +690,10 @@ void logDiagnosticsIfDue() {
     const auto endpoint = g_endpointHealth.snapshot(millis());
     Serial.printf(
         "[USB-DIAG] midiMounted=%u edge=up/down=%u/%u "
-        "tx=attempt/ok/reject/noMount=%u/%u/%u/%u rx=%u "
+        "tx=attempt/ok/reject/noMount=%u/%u/%u/%u pace=%u/%ums rx=%u "
         "live=q/dispatched/drop=%u/%u/%u/%u smf=cleanup/stalled=%u/%u "
-        "health=%u reject=%u stall=%u/%u block=%ums max=%ums\n",
+        "health=%u reject=%u stall=%u/%u block=%ums max=%ums "
+        "susp=%u/%u/%u up=%ums\n",
         static_cast<unsigned>(g_transport.mounted() ? 1 : 0),
         static_cast<unsigned>(usb.mountUpEvents),
         static_cast<unsigned>(usb.mountDownEvents),
@@ -671,6 +701,8 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(usb.txAccepted),
         static_cast<unsigned>(usb.txRejected),
         static_cast<unsigned>(usb.txNotMounted),
+        static_cast<unsigned>(usb.txPacingWaits),
+        static_cast<unsigned>(usb.txPacingWaitMicros / 1000u),
         static_cast<unsigned>(usb.rxPackets),
         static_cast<unsigned>(g_controlQueue.approximateSize()),
         static_cast<unsigned>(g_diagnostics.dispatchedControl),
@@ -683,7 +715,11 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(endpoint.stalledTransitions),
         static_cast<unsigned>(endpoint.recoveredTransitions),
         static_cast<unsigned>(endpoint.currentBlockedMs),
-        static_cast<unsigned>(endpoint.maximumBlockedMs));
+        static_cast<unsigned>(endpoint.maximumBlockedMs),
+        static_cast<unsigned>(g_transport.suspended() ? 1 : 0),
+        static_cast<unsigned>(usb.suspendEvents),
+        static_cast<unsigned>(usb.resumeEvents),
+        static_cast<unsigned>(millis()));
 }
 
 enum class PendingKind : uint8_t {
@@ -718,6 +754,7 @@ void midiDispatchTask(void*) {
 
     while (true) {
         g_output.pollConnection();
+        g_transport.pollSuspendState();
         drainIncomingMidiPackets();
 
         // Existing PatternPlayer and live cleanup remain ahead of scheduled
@@ -1115,13 +1152,26 @@ uint8_t CardputerUsbMidiTransport::clampChannel(uint8_t channel) {
 
 bool CardputerUsbMidiTransport::begin() {
     // The USBMIDI member constructor has already registered the MIDI interface.
-    // With CDCOnBoot enabled, Arduino app_main() starts the complete TinyUSB
-    // composite before setup(). USBMIDI::begin() is a no-op in the pinned core.
-    midi_.begin();
-    begun_ = true;
     diagnostics_ = {};
     mountStateKnown_ = false;
     lastMounted_ = false;
+    suspendStateKnown_ = false;
+    lastSuspended_ = false;
+    txPacer_.reset();
+
+    // Arduino app_main() starts TinyUSB only when an on-boot USB interface such
+    // as CDC is enabled. The MIDI-only SEQTRAK profile has no such interface,
+    // and USBMIDI::begin() is a no-op in the pinned core, so start the already
+    // registered MIDI descriptor explicitly in that configuration.
+#if !ARDUINO_USB_CDC_ON_BOOT
+    if (!USB.begin()) {
+        begun_ = false;
+        return false;
+    }
+#endif
+
+    midi_.begin();
+    begun_ = true;
     return true;
 }
 
@@ -1132,6 +1182,27 @@ bool CardputerUsbMidiTransport::mounted() const {
     const bool nextMounted = begun_ && tud_midi_mounted();
     observeMountState(nextMounted);
     return nextMounted;
+}
+
+bool CardputerUsbMidiTransport::suspended() const {
+    return begun_ && tud_suspended();
+}
+
+void CardputerUsbMidiTransport::pollSuspendState() const {
+    if (!begun_) return;
+    const bool nowSuspended = tud_suspended();
+    if (!suspendStateKnown_) {
+        suspendStateKnown_ = true;
+        lastSuspended_ = nowSuspended;
+        return;
+    }
+    if (nowSuspended == lastSuspended_) return;
+    lastSuspended_ = nowSuspended;
+    if (nowSuspended) {
+        ++diagnostics_.suspendEvents;
+    } else {
+        ++diagnostics_.resumeEvents;
+    }
 }
 
 bool CardputerUsbMidiTransport::readPacket(midiEventPacket_t& packet) {
@@ -1161,16 +1232,26 @@ bool CardputerUsbMidiTransport::writePacket(midiEventPacket_t& packet) {
     ++diagnostics_.txAttempts;
     if (!mounted()) {
         ++diagnostics_.txNotMounted;
-        g_endpointHealth.observeWrite(false, false, millis());
+        txPacer_.reset();
+        observeEndpointWrite(false, false);
         return false;
     }
+
+    const uint32_t pacingWaitUs = txPacer_.waitMicros(micros());
+    if (pacingWaitUs > 0) {
+        ++diagnostics_.txPacingWaits;
+        diagnostics_.txPacingWaitMicros += pacingWaitUs;
+        esp_rom_delay_us(pacingWaitUs);
+    }
+    txPacer_.recordAttempt(micros());
+
     if (!midi_.writePacket(&packet)) {
         ++diagnostics_.txRejected;
-        g_endpointHealth.observeWrite(true, false, millis());
+        observeEndpointWrite(true, false);
         return false;
     }
     ++diagnostics_.txAccepted;
-    g_endpointHealth.observeWrite(true, true, millis());
+    observeEndpointWrite(true, true);
     return true;
 }
 

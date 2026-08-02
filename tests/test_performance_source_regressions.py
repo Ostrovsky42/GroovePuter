@@ -292,6 +292,12 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
             "scheduleProjectSmfTick(\n                projectTransport" in schedule_ahead and
             "DroppedLateNoteOn" in schedule_ahead,
             "one PROJECT snapshot must govern each scheduling pass and late NoteOn")
+    route_pos = schedule_ahead.index("routeSmfNote(")
+    filter_pos = schedule_ahead.index("if (!routed.mapped)")
+    queue_pos = schedule_ahead.index("eventQueue_.tryPushNoteOn(")
+    require(route_pos < filter_pos < queue_pos and
+            "perfUnmappedEventsFiltered_" in schedule_ahead,
+            "unmapped SEQTRAK notes must be filtered before queue publication")
     require("trySnapshot(candidate)" in player_service and
             "projectTimelineIsStale(candidate.blockSequence" in player_service and
             "ProjectTransportReadResult::Unavailable" in player_service and
