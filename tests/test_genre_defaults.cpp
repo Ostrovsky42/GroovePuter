@@ -120,6 +120,14 @@ void testPhraseAllocatorSkipsUsedSlots() {
   assert(PhraseGenerator::roleForBar(4, 1) == PhraseGenerator::PhraseBarRole::MicroVariation);
   assert(PhraseGenerator::roleForBar(4, 2) == PhraseGenerator::PhraseBarRole::Return);
   assert(PhraseGenerator::roleForBar(4, 3) == PhraseGenerator::PhraseBarRole::Fill);
+
+  Scene nonDefaultSteps{};
+  nonDefaultSteps.synthABanks[0].patterns[0].steps[0].note = -2;  // TIE
+  nonDefaultSteps.synthABanks[0].patterns[1].steps[0].fx =
+      static_cast<uint8_t>(StepFx::Retrig);
+  nonDefaultSteps.drumBanks[0].patterns[2].voices[0].steps[0].fx =
+      static_cast<uint8_t>(StepFx::Roll);
+  assert(PhraseGenerator::findContiguousEmptySlots(nonDefaultSteps, 1) == 3);
 }
 
 void testPhraseGenerationFailureRollsBack() {
