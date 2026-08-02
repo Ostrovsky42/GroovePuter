@@ -1,0 +1,42 @@
+name: Apply project MIDI fix
+
+on:
+  push:
+    branches:
+      - fix/project-midi-import-persistence
+    paths:
+      - .github/patches/project-midi-fix.patch
+      - .github/workflows/apply-project-midi-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fix branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/project-midi-import-persistence
+          fetch-depth: 0
+
+      - name: Apply focused UI patch
+        run: |
+          git apply --check .github/patches/project-midi-fix.patch
+          git apply .github/patches/project-midi-fix.patch
+
+      - name: Remove one-shot patch machinery
+        run: |
+          rm .github/patches/project-midi-fix.patch
+          rm .github/workflows/apply-project-midi-fix.yml
+          rmdir .github/patches 2>/dev/null || true
+
+      - name: Commit patched source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix project MIDI import and persistence UI"
+          git push origin HEAD:fix/project-midi-import-persistence
