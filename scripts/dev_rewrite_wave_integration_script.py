@@ -95,5 +95,20 @@ replace_once(
     "anchor visual test runner",
 )
 
+replace_once(
+    '''text = replace_once(
+    text,
+    '                     ? "G FOLLOW   SPACE MIDI   R RESTART"\\n'
+    '                     : "G GROOVE   SPACE MIDI   R RESTART");\\n',
+    '                     ? "G FOLLOW SPACE MIDI J/L/K TRK"\\n'
+    '                     : "G GROOVE SPACE MIDI J/L/K TRK");\\n',
+    "track control line")
+''',
+    '''# Preserve the accepted physical R restart label in the main control row.
+# Inspector and J/L/K track controls are exposed in the footer.
+''',
+    "preserve R restart control row",
+)
+
 target.write_text(text, encoding="utf-8")
 print("wave integration lifecycle replacements narrowed")
