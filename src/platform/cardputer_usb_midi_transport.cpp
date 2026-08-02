@@ -64,7 +64,15 @@ constexpr uint32_t kSmfCleanupRetryDelayMs = 10;
 // such burst into a stopped transport; a receiver that never drains still gets
 // surfaced, just after a window that real backpressure can survive.
 constexpr uint8_t kSmfCleanupAttemptLimit = 32;
+// Once stalled the retry is no longer a race against a busy FIFO but a probe for
+// a host that may stay silent for minutes. One second keeps it negligible: the
+// fast 10 ms phase stays bounded by kSmfCleanupAttemptLimit.
+constexpr uint32_t kSmfStallProbeDelayMs = 1000;
 constexpr std::size_t kControlDrainBudget = 8;
+// Upper bound on how long the dispatcher may stay runnable without blocking.
+// The task watchdog window is seconds; 10 ms keeps sample-accurate dispatch
+// intact while guaranteeing the CPU0 idle task runs.
+constexpr uint32_t kDispatchFairnessYieldMs = 10;
 constexpr std::size_t kMidiRxDrainBudget = 32;
 
 class MidiBlockAnchorClock {
@@ -142,6 +150,8 @@ struct MidiDispatchDiagnostics {
     uint32_t smfTransportEpochDrops{0};
     uint32_t smfCleanupRetries{0};
     uint32_t smfTransportAborts{0};
+    uint32_t smfTransportRecoveries{0};
+    uint32_t dispatchFairnessYields{0};
     // Longest continuous stretch where the USB MIDI TX FIFO refused writes and
     // then recovered. Separates a short burst from a host that stopped reading.
     uint32_t smfMaxSendBlockUs{0};
@@ -177,6 +187,9 @@ MidiDispatchDiagnostics g_diagnostics;
 TaskHandle_t g_dispatchTaskHandle = nullptr;
 bool g_registered = false;
 bool g_smfCleanupPending = false;
+// Set once cleanup has exceeded its attempt budget. Playback stays paused and
+// the cleanup keeps probing until the endpoint accepts a write again.
+bool g_smfTransportStalled = false;
 uint32_t g_nextSmfCleanupAttemptMs = 0;
 uint8_t g_smfCleanupAttempts = 0;
 // Timestamp of the first failed SMF write of the current stall, used to report
@@ -220,27 +233,40 @@ void recordRecoveredSmfSendBlock() {
     g_smfSendBlockStartedUs = 0;
 }
 
-void reportSmfTransportFailure() {
-    const uint8_t attempts = g_smfCleanupAttempts;
+// A host that has the interface configured but never reads the bulk IN endpoint
+// (no application holding the port open, or a suspended device) blocks cleanup
+// indefinitely. That is recoverable: hold SMF note ownership, publish a stall so
+// the player pauses, and keep retrying the all-notes-off. Each retry doubles as
+// the write probe that detects the host reading again.
+void enterSmfTransportStall() {
     const uint32_t blockedUs = g_smfSendBlockStartedUs != 0
         ? micros() - g_smfSendBlockStartedUs
         : 0;
-    g_output.abandonAllSmfNotes();
+    if (g_smfTransportStalled) return;
+    g_smfTransportStalled = true;
     g_smfQueue->reportTransportFailure();
-    g_smfCleanupPending = false;
-    g_nextSmfCleanupAttemptMs = 0;
-    g_smfCleanupAttempts = 0;
-    g_smfSendBlockStartedUs = 0;
     ++g_diagnostics.smfTransportAborts;
     // mounted=1 means the host has the interface configured but is not draining
     // the bulk IN endpoint (no application reading the port, or a suspended
     // device). mounted=0 is a real disconnect.
     Serial.printf(
-        "[SMF-ERROR] USB MIDI endpoint blocked; playback stopped "
+        "[SMF-WAIT] USB MIDI endpoint not draining; playback paused "
         "mounted=%u blockedUs=%u attempts=%u\n",
         static_cast<unsigned>(g_transport.mounted() ? 1 : 0),
         static_cast<unsigned>(blockedUs),
-        static_cast<unsigned>(attempts));
+        static_cast<unsigned>(g_smfCleanupAttempts));
+}
+
+// Recovery requires a write that actually succeeded while the interface is
+// mounted. Cleanup can also complete because pollConnection() abandoned every
+// SMF note on an unplug, which proves nothing about the endpoint.
+void leaveSmfTransportStall() {
+    if (!g_smfTransportStalled) return;
+    if (!g_transport.mounted()) return;
+    g_smfTransportStalled = false;
+    g_smfQueue->reportTransportRecovery();
+    ++g_diagnostics.smfTransportRecoveries;
+    Serial.println("[SMF-WAIT] USB MIDI endpoint draining again; resuming");
 }
 
 MusicalEvent panicEvent(MusicalEventSource source,
@@ -326,20 +352,23 @@ void dispatchSmfPanic() {
         // Every SMF-owned note is released and the wire is consistent again.
         // Backpressure that recovers is not a transport failure.
         recordRecoveredSmfSendBlock();
+        leaveSmfTransportStall();
         g_smfCleanupPending = false;
         g_nextSmfCleanupAttemptMs = 0;
         g_smfCleanupAttempts = 0;
     } else {
         if (g_smfCleanupAttempts < UINT8_MAX) ++g_smfCleanupAttempts;
-        g_nextSmfCleanupAttemptMs = nowMs + kSmfCleanupRetryDelayMs;
         ++g_diagnostics.smfCleanupRetries;
         if (g_smfCleanupAttempts >= kSmfCleanupAttemptLimit) {
-            // A host that does not consume the USB MIDI IN endpoint can keep
-            // every NoteOff rejected indefinitely. Give up only SMF ownership,
-            // invalidate queued events, and let the player surface the fault.
-            // Other live/Pattern owners remain accounted for locally.
-            reportSmfTransportFailure();
+            // A host that does not consume the USB MIDI IN endpoint keeps every
+            // NoteOff rejected for as long as it stays silent. Pause playback,
+            // keep note ownership, and let the paced retry below act as the
+            // probe that notices the host reading again.
+            enterSmfTransportStall();
         }
+        g_nextSmfCleanupAttemptMs = nowMs + (g_smfTransportStalled
+            ? kSmfStallProbeDelayMs
+            : kSmfCleanupRetryDelayMs);
     }
 }
 
@@ -548,7 +577,7 @@ void logDiagnosticsIfDue() {
         "drumGate=%u/%u/%u active=%u "
         "smfSent=%u smfStale=%u smfPanic=%u smfRetry=%u smfDrop=%u "
         "smfLateDrop=%u smfLateSent=%u smfMaxLateOnUs=%u smfLateOff=%u "
-        "smfEpochDrop=%u smfCleanRetry=%u smfAbort=%u smfMaxBlockUs=%u "
+        "smfEpochDrop=%u smfCleanRetry=%u smfStall=%u/%u smfMaxBlockUs=%u "
         "clockSent=%u clockLate=%u clockDropped=%u start=%u stop=%u "
         "transportFail=%u late=%u maxLateUs=%u stale=%u/%u badFrame=%u "
         "drop=%u/%u transportDrop=%u overflow=%u recovery=%u "
@@ -575,6 +604,7 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(g_diagnostics.smfTransportEpochDrops),
         static_cast<unsigned>(g_diagnostics.smfCleanupRetries),
         static_cast<unsigned>(g_diagnostics.smfTransportAborts),
+        static_cast<unsigned>(g_diagnostics.smfTransportRecoveries),
         static_cast<unsigned>(g_diagnostics.smfMaxSendBlockUs),
         static_cast<unsigned>(g_diagnostics.clockSent),
         static_cast<unsigned>(g_diagnostics.clockLate),
@@ -621,6 +651,26 @@ void logDiagnosticsIfDue() {
             ? g_externalTransportQueue->criticalOverflowCount() : 0),
         static_cast<unsigned>(clock.externalFailureCount),
         static_cast<unsigned>(g_diagnostics.outboundTransportSuppressed));
+
+    const auto usb = g_transport.diagnostics();
+    Serial.printf(
+        "[USB-DIAG] midiMounted=%u edge=up/down=%u/%u "
+        "tx=attempt/ok/reject/noMount=%u/%u/%u/%u rx=%u "
+        "live=q/dispatched/drop=%u/%u/%u/%u smf=cleanup/stalled=%u/%u\n",
+        static_cast<unsigned>(g_transport.mounted() ? 1 : 0),
+        static_cast<unsigned>(usb.mountUpEvents),
+        static_cast<unsigned>(usb.mountDownEvents),
+        static_cast<unsigned>(usb.txAttempts),
+        static_cast<unsigned>(usb.txAccepted),
+        static_cast<unsigned>(usb.txRejected),
+        static_cast<unsigned>(usb.txNotMounted),
+        static_cast<unsigned>(usb.rxPackets),
+        static_cast<unsigned>(g_controlQueue.approximateSize()),
+        static_cast<unsigned>(g_diagnostics.dispatchedControl),
+        static_cast<unsigned>(g_controlQueue.droppedNoteOnCount()),
+        static_cast<unsigned>(g_controlQueue.droppedCriticalCount()),
+        static_cast<unsigned>(g_diagnostics.smfCleanupRetries),
+        static_cast<unsigned>(g_smfTransportStalled ? 1 : 0));
 }
 
 enum class PendingKind : uint8_t {
@@ -644,6 +694,7 @@ void midiDispatchTask(void*) {
     bool hasPendingTransport = false;
     bool hasPendingSmf = false;
     uint8_t smfFailedAttempts = 0;
+    uint32_t lastFairnessYieldMs = millis();
     uint32_t pendingSmfLatenessUs = 0;
 
     auto clearPendingSmf = [&]() {
@@ -1023,6 +1074,19 @@ void midiDispatchTask(void*) {
 
         drainControlEvents(2);
         logDiagnosticsIfDue();
+
+        // Every branch that waits for a deadline blocks, but the branch that
+        // dispatches a due event does not. A backlog of already-due events -
+        // a saturated queue, or a resume anchored in the past - therefore keeps
+        // this loop runnable indefinitely and starves the CPU0 idle task until
+        // the task watchdog fires. Yield on a wall-clock budget so the fast
+        // path stays fast while fairness is guaranteed.
+        const uint32_t nowMs = millis();
+        if (nowMs - lastFairnessYieldMs >= kDispatchFairnessYieldMs) {
+            lastFairnessYieldMs = nowMs;
+            ++g_diagnostics.dispatchFairnessYields;
+            vTaskDelay(1);
+        }
     }
 }
 
@@ -1042,6 +1106,9 @@ bool CardputerUsbMidiTransport::begin() {
     // composite before setup(). USBMIDI::begin() is a no-op in the pinned core.
     midi_.begin();
     begun_ = true;
+    diagnostics_ = {};
+    mountStateKnown_ = false;
+    lastMounted_ = false;
     return true;
 }
 
@@ -1049,11 +1116,46 @@ bool CardputerUsbMidiTransport::mounted() const {
     // ESPUSB reports the whole composite as mounted once CDC is configured.
     // MIDI can still be unavailable while its interface is being claimed, so
     // use the class-specific TinyUSB state before accepting output packets.
-    return begun_ && tud_midi_mounted();
+    const bool nextMounted = begun_ && tud_midi_mounted();
+    observeMountState(nextMounted);
+    return nextMounted;
 }
 
 bool CardputerUsbMidiTransport::readPacket(midiEventPacket_t& packet) {
-    return begun_ && midi_.readPacket(&packet);
+    if (!begun_) return false;
+    const bool received = midi_.readPacket(&packet);
+    if (received) ++diagnostics_.rxPackets;
+    return received;
+}
+
+void CardputerUsbMidiTransport::observeMountState(bool mounted) const {
+    if (!mountStateKnown_) {
+        mountStateKnown_ = true;
+        lastMounted_ = mounted;
+        if (mounted) ++diagnostics_.mountUpEvents;
+        return;
+    }
+    if (mounted == lastMounted_) return;
+    lastMounted_ = mounted;
+    if (mounted) {
+        ++diagnostics_.mountUpEvents;
+    } else {
+        ++diagnostics_.mountDownEvents;
+    }
+}
+
+bool CardputerUsbMidiTransport::writePacket(midiEventPacket_t& packet) {
+    ++diagnostics_.txAttempts;
+    if (!mounted()) {
+        ++diagnostics_.txNotMounted;
+        return false;
+    }
+    if (!midi_.writePacket(&packet)) {
+        ++diagnostics_.txRejected;
+        return false;
+    }
+    ++diagnostics_.txAccepted;
+    return true;
 }
 
 bool CardputerUsbMidiTransport::writeChannelPacket(uint8_t codeIndex,
@@ -1061,19 +1163,16 @@ bool CardputerUsbMidiTransport::writeChannelPacket(uint8_t codeIndex,
                                                     uint8_t zeroBasedChannel,
                                                     uint8_t note,
                                                     uint8_t velocity) {
-    if (!mounted()) return false;
-
     midiEventPacket_t packet{
         codeIndex,
         static_cast<uint8_t>(statusBase | clampChannel(zeroBasedChannel)),
         clamp7Bit(note),
         clamp7Bit(velocity),
     };
-    return midi_.writePacket(&packet);
+    return writePacket(packet);
 }
 
 bool CardputerUsbMidiTransport::writeRealtimePacket(uint8_t status) {
-    if (!mounted()) return false;
     if (status != kStatusTimingClock &&
         status != kStatusStart &&
         status != kStatusStop) {
@@ -1086,7 +1185,7 @@ bool CardputerUsbMidiTransport::writeRealtimePacket(uint8_t status) {
         0,
         0,
     };
-    return midi_.writePacket(&packet);
+    return writePacket(packet);
 }
 
 bool CardputerUsbMidiTransport::sendNoteOn(uint8_t zeroBasedChannel,

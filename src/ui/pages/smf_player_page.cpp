@@ -754,7 +754,8 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
                      ? "G FOLLOW   SPACE MIDI   R RESTART"
                      : "G GROOVE   SPACE MIDI   R RESTART");
 
-    gfx.setTextColor(error ? COLOR_DANGER : COLOR_LABEL);
+    const bool usbBlocked = std::strncmp(state.message, "USB MIDI BLOCKED", 16) == 0;
+    gfx.setTextColor((error || usbBlocked) ? COLOR_DANGER : COLOR_LABEL);
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), state.message);
 }
 

@@ -11,6 +11,16 @@
 #include "USB.h"
 #include "USBMIDI.h"
 
+struct CardputerUsbMidiTransportDiagnostics {
+    uint32_t mountUpEvents{0};
+    uint32_t mountDownEvents{0};
+    uint32_t txAttempts{0};
+    uint32_t txAccepted{0};
+    uint32_t txRejected{0};
+    uint32_t txNotMounted{0};
+    uint32_t rxPackets{0};
+};
+
 // Native ESP32-S3 TinyUSB MIDI transport for Cardputer-Adv.
 //
 // The platform owns one global instance so USBMIDI can register its descriptor
@@ -23,6 +33,9 @@ public:
     bool begin() override;
     bool mounted() const override;
     bool readPacket(midiEventPacket_t& packet);
+    CardputerUsbMidiTransportDiagnostics diagnostics() const {
+        return diagnostics_;
+    }
 
     bool sendNoteOn(uint8_t zeroBasedChannel,
                     uint8_t note,
@@ -41,6 +54,8 @@ public:
 private:
     static uint8_t clamp7Bit(uint8_t value);
     static uint8_t clampChannel(uint8_t channel);
+    void observeMountState(bool mounted) const;
+    bool writePacket(midiEventPacket_t& packet);
     bool writeChannelPacket(uint8_t codeIndex,
                             uint8_t statusBase,
                             uint8_t zeroBasedChannel,
@@ -50,4 +65,7 @@ private:
 
     USBMIDI midi_;
     bool begun_{false};
+    mutable CardputerUsbMidiTransportDiagnostics diagnostics_{};
+    mutable bool mountStateKnown_{false};
+    mutable bool lastMounted_{false};
 };

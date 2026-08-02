@@ -13,6 +13,10 @@ def main() -> None:
     event_header = (ROOT / "src/input/musical_event.h").read_text(encoding="utf-8")
     sink = (ROOT / "src/midi/usb_midi_output.cpp").read_text(encoding="utf-8")
     transport = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
+    transport_header = (ROOT / "src/platform/cardputer_usb_midi_transport.h").read_text(
+        encoding="utf-8")
+    player_service = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(
+        encoding="utf-8")
     service = (ROOT / "src/platform/cardputer_usb_midi_service.h").read_text(encoding="utf-8")
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
@@ -68,14 +72,31 @@ def main() -> None:
             "Cardputer upload must use the same TinyUSB FQBN")
     require("#if ARDUINO_USB_MODE" in transport,
             "hardware transport must fail closed outside TinyUSB OTG mode")
-    require("return begun_ && tud_midi_mounted();" in transport,
+    require("tud_midi_mounted()" in transport,
             "USB MIDI readiness must use the MIDI interface, not composite CDC mount")
     require("return begun_ && static_cast<bool>(USB);" not in transport,
             "composite USB mount must not be treated as MIDI endpoint readiness")
     require("kSmfCleanupAttemptLimit" in transport and
-            "reportTransportFailure" in transport and
-            "abandonAllSmfNotes" in transport,
-            "SMF cleanup must terminate and report a blocked USB endpoint")
+            "reportTransportFailure" in transport,
+            "SMF cleanup must bound its attempts and surface a blocked endpoint")
+    require("enterSmfTransportStall" in transport and
+            "leaveSmfTransportStall" in transport and
+            "reportTransportRecovery" in transport,
+            "a host that stops reading the endpoint must park playback in a "
+            "resumable stall, not end it")
+    require("kSmfStallProbeDelayMs = 1000" in transport,
+            "a stalled endpoint is probed on a slow cadence: the fast 10 ms "
+            "phase stays bounded by kSmfCleanupAttemptLimit")
+    require("abandonAllSmfNotes" not in transport,
+            "a stalled endpoint must keep SMF note ownership so the paced retry "
+            "stays a real write probe instead of trivially succeeding")
+    stall_exit = transport[
+        transport.index("void leaveSmfTransportStall()"):
+        transport.index("}", transport.index("Serial.println(\"[SMF-WAIT]"))
+    ]
+    require("g_transport.mounted()" in stall_exit,
+            "recovery must require a mounted interface: cleanup can also "
+            "complete because an unplug abandoned every note")
     require("kSmfCleanupAttemptLimit = 32" in transport,
             "SMF cleanup must allow the TinyUSB endpoint 320 ms to recover")
     require("beginSmfCleanup(true)" not in transport and
@@ -95,6 +116,53 @@ def main() -> None:
             "a failed NoteOff must hand recovery to the paced all-notes-off path")
     require("smfMaxSendBlockUs" in transport,
             "USB backpressure duration must be observable in diagnostics")
+    require("[USB-DIAG]" in transport and
+            "tx=attempt/ok/reject/noMount" in transport and
+            "live=q/dispatched/drop" in transport,
+            "USB diagnostics must distinguish endpoint rejection from an "
+            "undrained live-control queue")
+    require("mountUpEvents" in transport_header and
+            "mountDownEvents" in transport_header and
+            "txRejected" in transport_header,
+            "Cardputer transport must count MIDI mount transitions and "
+            "TinyUSB write rejection")
+    # The dispatcher only blocks on the branches that wait for a deadline. A
+    # backlog of already-due events kept it runnable until the CPU0 task
+    # watchdog fired, so fairness must not depend on the event mix.
+    dispatch_tail = transport[transport.index("void midiDispatchTask("):]
+    require("kDispatchFairnessYieldMs" in dispatch_tail and
+            "lastFairnessYieldMs" in dispatch_tail,
+            "the dispatch loop must yield on a wall-clock budget so a saturated "
+            "queue cannot starve the CPU0 idle task")
+    # Auto-resume replayed a multi-second backlog and oscillated
+    # stall -> resume -> stall; continuing after a stall is a user action.
+    recovery = player_service[
+        player_service.index("takePendingTransportRecovery()"):
+        player_service.index("void CardputerSmfPlayerService::handleProjectTransport")
+    ]
+    require("startFromTick" not in recovery and "startOriginalFromTick" not in recovery,
+            "endpoint recovery must not restart playback by itself")
+    require("PRESS PLAY" in recovery,
+            "recovery must tell the user that continuing is available")
+    start_from_tick = player_service[
+        player_service.index("bool CardputerSmfPlayerService::startFromTick"):
+        player_service.index("bool CardputerSmfPlayerService::startOriginalFromTick")
+    ]
+    require("eventQueue_.transportFailed()" in start_from_tick,
+            "manual playback commands must not schedule stale deadlines while "
+            "the USB endpoint is stalled")
+    original_start = player_service[
+        player_service.index("bool CardputerSmfPlayerService::startOriginalFromTick"):
+        player_service.index("bool CardputerSmfPlayerService::armProjectFromTick")
+    ]
+    project_start = player_service[
+        player_service.index("bool CardputerSmfPlayerService::armProjectFromTick"):
+        player_service.index("bool CardputerSmfPlayerService::planProjectLaunch")
+    ]
+    require("clearTransportFailure" not in original_start and
+            "clearTransportFailure" not in project_start,
+            "only dispatcher-confirmed endpoint recovery may clear the USB "
+            "transport failure")
     cleanup_success = transport[
         transport.index("if (g_output.releaseAllSmfNotes())"):
         transport.index("} else {", transport.index(

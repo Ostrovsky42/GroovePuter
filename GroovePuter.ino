@@ -21,6 +21,7 @@
 #include "src/platform/cardputer_adv_hardware.h"
 #include "src/platform/cardputer_smf_player_registry.h"
 #include "src/platform/cardputer_usb_midi_service.h"
+#include "src/platform/cardputer_wdt_diagnostics.h"
 #include "src/ui/key_normalize.h"
 #include "src/ui/ui_common.h"
 #include "src/input/performance_keyboard.h"
@@ -312,6 +313,7 @@ void setup() {
   esp_reset_reason_t reason = esp_reset_reason();
   Serial.println("\n\n=== MiniAcid STARTUP DIAGNOSTICS ===");
   Serial.printf("Reset Reason: %d\n", (int)reason);
+  printAndClearCardputerWdtDiagnostic();
 
   Serial.println("Creating Display...");
   logHeapCaps("before-display");

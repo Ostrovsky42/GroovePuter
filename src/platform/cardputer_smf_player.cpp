@@ -264,19 +264,38 @@ void CardputerSmfPlayerService::taskLoop() {
 
 void CardputerSmfPlayerService::handleTransportFailure() {
     uint32_t generation = 0;
-    if (!eventQueue_.takePendingTransportFailure(generation)) return;
-
-    if (loaded_) {
-        pausedTick_ = currentTickFromAudioClock();
-        hasPendingEvent_ = false;
-        projectLaunchPlanned_ = false;
-        projectResumeOnExternalContinue_ = false;
-        publishSnapshot(SmfPlayerState::Error, "USB MIDI BLOCKED");
-        updatePlaybackSnapshot();
+    if (eventQueue_.takePendingTransportFailure(generation)) {
+        // A host that stopped reading the endpoint is a wait condition, not a
+        // broken file or a broken player: hold the position and keep the state
+        // resumable instead of ending playback with an error.
+        if (loaded_) {
+            pausedTick_ = currentTickFromAudioClock();
+            hasPendingEvent_ = false;
+            projectLaunchPlanned_ = false;
+            projectRelaunchAfterExternalStop_ = false;
+            publishSnapshot(SmfPlayerState::Paused,
+                            "USB MIDI BLOCKED - KEYS WAIT");
+            updatePlaybackSnapshot();
+        }
+        Serial.printf("[SMF-WAIT] transport stalled generation=%u tick=%u\n",
+                      static_cast<unsigned>(generation),
+                      static_cast<unsigned>(pausedTick_));
     }
-    Serial.printf("[SMF-ERROR] transport failure generation=%u tick=%u\n",
-                  static_cast<unsigned>(generation),
-                  static_cast<unsigned>(pausedTick_));
+
+    if (eventQueue_.takePendingTransportRecovery()) {
+        // Restarting playback here is not safe: the endpoint accepting one write
+        // says nothing about the audio anchor, and resuming automatically both
+        // replayed a multi-second backlog and oscillated stall -> resume -> stall
+        // until the dispatcher starved the CPU0 idle task. Recovery only makes
+        // the transport available again; continuing is the user's call.
+        if (loaded_) {
+            publishSnapshot(SmfPlayerState::Paused,
+                            "USB MIDI READY - PRESS PLAY");
+            updatePlaybackSnapshot();
+        }
+        Serial.printf("[SMF-WAIT] transport available again tick=%u\n",
+                      static_cast<unsigned>(pausedTick_));
+    }
 }
 
 void CardputerSmfPlayerService::handleProjectTransport() {
@@ -900,6 +919,15 @@ bool CardputerSmfPlayerService::prepareStreamAt(uint32_t tick) {
 }
 
 bool CardputerSmfPlayerService::startFromTick(uint32_t tick) {
+    // Only a successful mounted USB write may clear endpoint backpressure.
+    // User commands can cancel automatic resume, but must not schedule events
+    // against an endpoint that is still stalled: those deadlines would all be
+    // stale by the time the receiver returns.
+    if (eventQueue_.transportFailed()) {
+        publishSnapshot(SmfPlayerState::Paused,
+                        "USB MIDI BLOCKED - KEYS WAIT");
+        return false;
+    }
     return tempoMode_ == SmfTempoMode::Project
         ? armProjectFromTick(tick)
         : startOriginalFromTick(tick);
