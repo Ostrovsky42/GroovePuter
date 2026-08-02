@@ -7,6 +7,7 @@ on:
     paths:
       - .github/workflows/integrate-open-smf-prs.yml
       - scripts/dev_integrate_smf_ui_and_wave.py
+      - scripts/dev_apply_track_mute_core.py
 
 permissions:
   contents: write
@@ -48,16 +49,18 @@ jobs:
       - name: Integrate PR 24 track mute core
         run: |
           set -euo pipefail
-          git diff --binary \
-            76ef225308fc70267c3945de4feb485214f37937 \
-            35c08dd451ed65125480bf965c8b549a1b0336a0 \
-            -- \
+          git show origin/feature/smf-track-mute:src/midi/smf_track_mute.h \
+            > src/midi/smf_track_mute.h
+          git show origin/feature/smf-track-mute:docs/stages/SMF_TRACK_MUTE_STAGE.md \
+            > docs/stages/SMF_TRACK_MUTE_STAGE.md
+          git show origin/integration/run-open-smf-prs:scripts/dev_apply_track_mute_core.py \
+            > /tmp/dev_apply_track_mute_core.py
+          python3 /tmp/dev_apply_track_mute_core.py
+          git add \
             docs/stages/SMF_TRACK_MUTE_STAGE.md \
             src/midi/smf_stream.cpp \
             src/midi/smf_track_mute.h \
-            tests/test_smf_stream.cpp \
-            > /tmp/pr24-track-mute-core.patch
-          git apply --3way --index /tmp/pr24-track-mute-core.patch
+            tests/test_smf_stream.cpp
           git commit -m "feat(dev): integrate runtime SMF track mute core (#24)"
 
       - name: Integrate combined MIDI Player UI and wave overlay
@@ -78,8 +81,31 @@ jobs:
             docs/stages/SMF_MIDI_WAVE_OVERLAY_STAGE.md
           git commit -m "feat(dev): integrate SMF inspector mute and MIDI wave overlay"
 
-      - name: Run host regressions before publishing
+      - name: Run host regressions
         run: bash tests/run_host_tests.sh
+
+      - name: Install SDL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Build desktop target
+        working-directory: platform_sdl
+        run: make clean all CXX=g++
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
 
       - name: Remove one-shot integration workflow
         run: |
