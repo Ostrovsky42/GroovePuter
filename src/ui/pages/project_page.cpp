@@ -380,87 +380,90 @@ void ProjectPage::openMidiAdvanceDialog() {
 
 
 void ProjectPage::autoRouteMidi() {
-    // Reset masks
-    midi_mask_a_ = 0;
-    midi_mask_b_ = 0;
-    midi_mask_d_ = 0;
+  midi_mask_a_ = 0;
+  midi_mask_b_ = 0;
+  midi_mask_d_ = 0;
 
-    // 1. Drums: Preference for Ch 10 OR track names containing "drum", "perc", "hit"
-    int drumCh = 10;
-    int maxNotes = 0;
-    
-    // Scan for drum keywords in names first
-    for(int i=0; i<16; i++) {
-        std::string name = midi_scan_.channels[i].trackName;
-        std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-        if (name.find("drum") != std::string::npos || name.find("perc") != std::string::npos) {
-            drumCh = i + 1;
-            break; 
-        }
-        if (midi_scan_.channels[i].noteCount > maxNotes) {
-            maxNotes = midi_scan_.channels[i].noteCount;
-            if (!midi_scan_.channels[9].used()) drumCh = i + 1; // Only switch from 10 if 10 is empty
-        }
+  // Channel 10 is the only unconditional GM drum route. Otherwise
+  // require an explicit percussion-like track name; never steal a
+  // melodic channel just because it has the most notes.
+  int drumCh = midi_scan_.channels[9].used() ? 10 : -1;
+  if (drumCh < 0) {
+    for (int i = 0; i < 16; ++i) {
+      if (!midi_scan_.channels[i].used()) continue;
+      std::string name = midi_scan_.channels[i].trackName;
+      std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) {
+        return static_cast<char>(std::tolower(ch));
+      });
+      if (name.find("drum") != std::string::npos ||
+          name.find("perc") != std::string::npos ||
+          name.find("beat") != std::string::npos ||
+          name.find("kick") != std::string::npos ||
+          name.find("snare") != std::string::npos) {
+        drumCh = i + 1;
+        break;
+      }
     }
-    if (midi_scan_.channels[9].used()) drumCh = 10; // Ch 10 is king for GM
+  }
+  if (drumCh > 0) midi_mask_d_ |= (1u << (drumCh - 1));
 
-    midi_mask_d_ |= (1 << (drumCh - 1));
+  std::vector<int> candidates;
+  for (int i = 0; i < 16; ++i) {
+    if (drumCh > 0 && i == drumCh - 1) continue;
+    if (midi_scan_.channels[i].used()) candidates.push_back(i + 1);
+  }
 
-    // 2. Synths: Find candidate channels
-    std::vector<int> candidates;
-    for (int i = 0; i < 16; i++) {
-        if (i == (drumCh - 1)) continue;
-        if (midi_scan_.channels[i].used()) candidates.push_back(i + 1);
-    }
-
-    // Keyword scan for A (Bass) and B (Acid/Lead)
-    int foundA = -1, foundB = -1;
-    for (int chNum : candidates) {
-        std::string name = midi_scan_.channels[chNum-1].trackName;
-        std::transform(name.begin(), name.end(), name.begin(), ::tolower);
-        if (foundA < 0 && (name.find("bass") != std::string::npos || name.find("303") != std::string::npos)) {
-            foundA = chNum;
-        } else if (foundB < 0 && (name.find("acid") != std::string::npos || name.find("lead") != std::string::npos || name.find("arp") != std::string::npos)) {
-            foundB = chNum;
-        }
-    }
-
-    // Sort remainders by pitch
-    std::sort(candidates.begin(), candidates.end(), [this](int a, int b) {
-        return midi_scan_.channels[a-1].minNote < midi_scan_.channels[b-1].minNote;
+  int foundA = -1;
+  int foundB = -1;
+  for (int chNum : candidates) {
+    std::string name = midi_scan_.channels[chNum - 1].trackName;
+    std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) {
+      return static_cast<char>(std::tolower(ch));
     });
-
-    if (foundA > 0) midi_mask_a_ |= (1 << (foundA - 1));
-    else if (candidates.size() >= 1) midi_mask_a_ |= (1 << (candidates[0] - 1));
-    
-    // Default fallback
-    if (midi_mask_a_ == 0 && midi_scan_.channels[0].used()) midi_mask_a_ |= 1;
-
-    if (foundB > 0) midi_mask_b_ |= (1 << (foundB - 1));
-    else if (candidates.size() >= 2) {
-        // Pick the next one that isn't routed to A
-        for(int c : candidates) { 
-            if(!((midi_mask_a_ >> (c-1)) & 1)) { 
-                midi_mask_b_ |= (1 << (c - 1)); 
-                break; 
-            } 
-        }
-    } else {
-        // If B empty, map to A2 or just 2
-         if (midi_mask_b_ == 0) {
-             int ch2 = 2;
-             if (!((midi_mask_a_ >> (ch2-1)) & 1) && !((midi_mask_d_ >> (ch2-1)) & 1)) {
-                 midi_mask_b_ |= (1 << (ch2 - 1));
-             }
-         }
+    if (foundA < 0 &&
+        (name.find("bass") != std::string::npos ||
+         name.find("303") != std::string::npos)) {
+      foundA = chNum;
+    } else if (foundB < 0 &&
+               (name.find("acid") != std::string::npos ||
+                name.find("lead") != std::string::npos ||
+                name.find("arp") != std::string::npos ||
+                name.find("melody") != std::string::npos)) {
+      foundB = chNum;
     }
-    
-    // Auto-profile: Loud for Perturbator/Hotline
-    std::string path = midi_current_path_;
-    std::transform(path.begin(), path.end(), path.begin(), ::tolower);
-    if (path.find("hotline") != std::string::npos || path.find("perturbator") != std::string::npos || path.find("disco") != std::string::npos) {
-        midi_import_profile_ = MidiImportProfile::Loud;
+  }
+
+  std::sort(candidates.begin(), candidates.end(), [this](int a, int b) {
+    return midi_scan_.channels[a - 1].minNote <
+           midi_scan_.channels[b - 1].minNote;
+  });
+
+  if (foundA > 0) {
+    midi_mask_a_ |= (1u << (foundA - 1));
+  } else if (!candidates.empty()) {
+    midi_mask_a_ |= (1u << (candidates.front() - 1));
+  }
+
+  if (foundB > 0 && !((midi_mask_a_ >> (foundB - 1)) & 1u)) {
+    midi_mask_b_ |= (1u << (foundB - 1));
+  } else {
+    for (int chNum : candidates) {
+      if (!((midi_mask_a_ >> (chNum - 1)) & 1u)) {
+        midi_mask_b_ |= (1u << (chNum - 1));
+        break;
+      }
     }
+  }
+
+  std::string path = midi_current_path_;
+  std::transform(path.begin(), path.end(), path.begin(), [](unsigned char ch) {
+    return static_cast<char>(std::tolower(ch));
+  });
+  if (path.find("hotline") != std::string::npos ||
+      path.find("perturbator") != std::string::npos ||
+      path.find("disco") != std::string::npos) {
+    midi_import_profile_ = MidiImportProfile::Loud;
+  }
 }
 
 void ProjectPage::openConfirmClearDialog() {
@@ -514,156 +517,134 @@ void ProjectPage::onEnter(int context) {
 }
 
 bool ProjectPage::importMidiAtSelection() {
-  // Map from combined list index to actual file
-  bool hasParent = (midi_current_path_ != "/midi");
-  int offset = hasParent ? 1 : 0;
-  int fileIdx = selection_index_ - offset - (int)midi_dirs_.size();
-  if (fileIdx < 0 || fileIdx >= (int)midi_files_.size()) return true;
-  
-  std::string filename = midi_files_[fileIdx];
-  std::string path = midi_current_path_ + "/" + filename;
-  Serial.printf("[ProjectPage] Import MIDI: %s\n", path.c_str());
-  
-  // Auto-switch engine for specific genres/files
-  std::string lowerPath = path;
-  std::transform(lowerPath.begin(), lowerPath.end(), lowerPath.begin(), ::tolower);
-  if (lowerPath.find("disco") != std::string::npos || lowerPath.find("perturbator") != std::string::npos || lowerPath.find("909") != std::string::npos) {
-      mini_acid_.setDrumEngine("909");
-  } else if (lowerPath.find("808") != std::string::npos || lowerPath.find("trap") != std::string::npos || lowerPath.find("hiphop") != std::string::npos) {
-      mini_acid_.setDrumEngine("808");
+  const bool hasParent = (midi_current_path_ != "/midi");
+  const int offset = hasParent ? 1 : 0;
+  const int fileIdx = selection_index_ - offset - static_cast<int>(midi_dirs_.size());
+  if (fileIdx < 0 || fileIdx >= static_cast<int>(midi_files_.size())) return true;
+
+  if ((midi_mask_a_ | midi_mask_b_ | midi_mask_d_) == 0) {
+    UI::showToast("Select at least one MIDI route");
+    return true;
   }
 
-  MidiImporter importer(mini_acid_);
+  const std::string path = midi_current_path_ + "/" + midi_files_[fileIdx];
+  Serial.printf("[ProjectPage] Import MIDI: %s\n", path.c_str());
 
   MidiImporter::ImportSettings settings;
   if (midi_import_start_pattern_ < 0) midi_import_start_pattern_ = 0;
-  if (midi_import_start_pattern_ > 127) midi_import_start_pattern_ = 127;
-  
-  int actualStartPattern = midi_import_start_pattern_;
-  if (midi_import_append_) {
-    int lastRow = mini_acid_.sceneManager().currentScene().songs[mini_acid_.sceneManager().activeSongSlot()].length;
-    // For simplicity, we just find a free block after pattern 100 or something?
-    // Actually, "Append" in song context usually means after the last used pattern in song.
-    // But here we'll just use the pattern index the user picked, 
-    // OR if they used 'F' they already have a good pattern index.
+  if (midi_import_start_pattern_ >= kMaxPatterns) {
+    midi_import_start_pattern_ = kMaxPatterns - 1;
   }
-
   if (midi_import_from_bar_ < 0) midi_import_from_bar_ = 0;
   if (midi_import_from_bar_ > 511) midi_import_from_bar_ = 511;
   if (midi_import_length_bars_ < 0) midi_import_length_bars_ = 0;
   if (midi_import_length_bars_ > 256) midi_import_length_bars_ = 256;
-  settings.targetPatternIndex = actualStartPattern;
+
+  settings.targetPatternIndex = midi_import_start_pattern_;
   settings.startStepOffset = 0;
   settings.sourceStartBar = midi_import_from_bar_;
   settings.sourceLengthBars = midi_import_length_bars_;
-  settings.overwrite = true; // Implicit
+  settings.overwrite = true;
   settings.loudMode = (midi_import_profile_ == MidiImportProfile::Loud);
   settings.synthAMask = midi_mask_a_;
   settings.synthBMask = midi_mask_b_;
   settings.drumMask = midi_mask_d_;
-  
+
+  MidiImporter importer(mini_acid_);
+  MidiImporter::Error err = MidiImporter::Error::ReadError;
+  bool persisted = false;
+
   UI::showToast("Importing MIDI...");
-  
-  MidiImporter::Error err;
-  bool omniFallbackUsed = false;
   withAudioGuard([&]() {
-    bool wasPlaying = mini_acid_.isPlaying();
-    if (wasPlaying) {
-      mini_acid_.stop();
+    const bool wasPlaying = mini_acid_.isPlaying();
+    if (wasPlaying) mini_acid_.stop();
+
+    std::string lowerPath = path;
+    std::transform(lowerPath.begin(), lowerPath.end(), lowerPath.begin(),
+                   [](unsigned char ch) {
+                     return static_cast<char>(std::tolower(ch));
+                   });
+    if (lowerPath.find("disco") != std::string::npos ||
+        lowerPath.find("perturbator") != std::string::npos ||
+        lowerPath.find("909") != std::string::npos) {
+      mini_acid_.setDrumEngine("909");
+    } else if (lowerPath.find("808") != std::string::npos ||
+               lowerPath.find("trap") != std::string::npos ||
+               lowerPath.find("hiphop") != std::string::npos) {
+      mini_acid_.setDrumEngine("808");
     }
+
     err = importer.importFile(path, settings);
-    // Omni fallback removed as matrix routing replaces it
-    
-    // If successful and append mode is on, update the song structure
-    if (err == MidiImporter::Error::None && midi_import_append_) {
-        auto& sm = mini_acid_.sceneManager();
-        int songLen = sm.currentScene().songs[sm.activeSongSlot()].length;
-        int importLenPatterns = (midi_import_length_bars_ > 0) ? midi_import_length_bars_ : 
-                                (importer.getLastImportedPatternIdx() - settings.targetPatternIndex + 1);
-        if (importLenPatterns < 1) importLenPatterns = 1;
-        
-        for (int i = 0; i < importLenPatterns; ++i) {
-            int songPos = songLen + i;
-            if (songPos < Song::kMaxPositions) {
-                if (midi_mask_a_) sm.setSongPattern(songPos, SongTrack::SynthA, settings.targetPatternIndex + i);
-                if (midi_mask_b_) sm.setSongPattern(songPos, SongTrack::SynthB, settings.targetPatternIndex + i);
-                if (midi_mask_d_) sm.setSongPattern(songPos, SongTrack::Drums, settings.targetPatternIndex + i);
-            }
-        }
-    }
+    if (err == MidiImporter::Error::None) {
+      auto clampf = [](float value, float lo, float hi) {
+        if (value < lo) return lo;
+        if (value > hi) return hi;
+        return value;
+      };
 
-    if (wasPlaying) {
-      mini_acid_.start();
-    }
-  });
-  Serial.printf("[ProjectPage] MIDI import result=%d\n", (int)err);
-  
-  if (err == MidiImporter::Error::None) {
-      withAudioGuard([&]() {
-        auto clampf = [](float v, float lo, float hi) -> float {
-          if (v < lo) return lo;
-          if (v > hi) return hi;
-          return v;
-        };
-        auto& sm = mini_acid_.sceneManager();
-        for (int voice = 0; voice < 2; ++voice) {
-          SynthParameters params = sm.getSynthParameters(voice);
-          // Keep imported MIDI cleaner: reduce resonant ringing and long filter tails.
-          if (midi_import_profile_ == MidiImportProfile::Loud) {
-            params.resonance = clampf(params.resonance, 0.05f, 0.46f);
-            params.envAmount = clampf(params.envAmount, 100.0f, 280.0f);
-            params.envDecay = clampf(params.envDecay, 90.0f, 250.0f);
-          } else {
-            params.resonance = clampf(params.resonance, 0.05f, 0.36f);
-            params.envAmount = clampf(params.envAmount, 80.0f, 220.0f);
-            params.envDecay = clampf(params.envDecay, 70.0f, 190.0f);
-          }
-          sm.setSynthParameters(voice, params);
-          mini_acid_.set303Parameter(TB303ParamId::Resonance, params.resonance, voice);
-          mini_acid_.set303Parameter(TB303ParamId::EnvAmount, params.envAmount, voice);
-          mini_acid_.set303Parameter(TB303ParamId::EnvDecay, params.envDecay, voice);
+      auto& sm = mini_acid_.sceneManager();
+      for (int voice = 0; voice < 2; ++voice) {
+        SynthParameters params = sm.getSynthParameters(voice);
+        if (midi_import_profile_ == MidiImportProfile::Loud) {
+          params.resonance = clampf(params.resonance, 0.05f, 0.46f);
+          params.envAmount = clampf(params.envAmount, 100.0f, 280.0f);
+          params.envDecay = clampf(params.envDecay, 90.0f, 250.0f);
+        } else {
+          params.resonance = clampf(params.resonance, 0.05f, 0.36f);
+          params.envAmount = clampf(params.envAmount, 80.0f, 220.0f);
+          params.envDecay = clampf(params.envDecay, 70.0f, 190.0f);
         }
-
-        // --- NEW: Automate song population ---
-        int startPat = settings.targetPatternIndex;
-        int bars = settings.sourceLengthBars;
-        
-        // If AUTO (0), determine actual bars from the importer's last written pattern
-        if (bars == 0) {
-            int lastPat = importer.getLastImportedPatternIdx();
-            if (lastPat >= startPat) {
-                bars = lastPat - startPat + 1;
-            }
-        }
-        
-        int songPos = mini_acid_.currentSongPosition();
-        
-        // Populate patterns into the song timeline
-        for (int i = 0; i < bars; ++i) {
-            int targetPos = songPos + i;
-            if (targetPos >= Song::kMaxPositions) break;
-            int patToAssign = startPat + i;
-            if (patToAssign >= kMaxPatterns) break;
-            
-            // Assign to all 3 main tracks
-            mini_acid_.setSongPattern(targetPos, SongTrack::SynthA, patToAssign);
-            mini_acid_.setSongPattern(targetPos, SongTrack::SynthB, patToAssign);
-            mini_acid_.setSongPattern(targetPos, SongTrack::Drums, patToAssign);
-        }
-        
-        // Automatically extend song length if necessary
-        if (mini_acid_.songLength() < songPos + bars) {
-            mini_acid_.setSongLength(songPos + bars);
-        }
-      });
-      if (omniFallbackUsed) {
-        UI::showToast("Imported via OMNI (check channels)");
-      } else {
-        UI::showToast("Import Successful");
+        sm.setSynthParameters(voice, params);
+        mini_acid_.set303Parameter(TB303ParamId::Resonance,
+                                  params.resonance, voice);
+        mini_acid_.set303Parameter(TB303ParamId::EnvAmount,
+                                  params.envAmount, voice);
+        mini_acid_.set303Parameter(TB303ParamId::EnvDecay,
+                                  params.envDecay, voice);
       }
-      closeDialog();
+
+      const int startPattern = settings.targetPatternIndex;
+      const int lastPattern = importer.getLastImportedPatternIdx();
+      const int importedBars = lastPattern >= startPattern
+          ? lastPattern - startPattern + 1
+          : 0;
+
+      int songPosition = sm.getSongPosition();
+      if (midi_import_append_) songPosition = sm.songLength();
+
+      for (int i = 0; i < importedBars; ++i) {
+        const int targetPosition = songPosition + i;
+        const int patternIndex = startPattern + i;
+        if (targetPosition >= Song::kMaxPositions ||
+            patternIndex >= kMaxPatterns) {
+          break;
+        }
+        if (midi_mask_a_) {
+          sm.setSongPattern(targetPosition, SongTrack::SynthA, patternIndex);
+        }
+        if (midi_mask_b_) {
+          sm.setSongPattern(targetPosition, SongTrack::SynthB, patternIndex);
+        }
+        if (midi_mask_d_) {
+          sm.setSongPattern(targetPosition, SongTrack::Drums, patternIndex);
+        }
+      }
+
+      persisted = mini_acid_.saveSceneAs(mini_acid_.currentSceneName());
+    }
+
+    if (wasPlaying) mini_acid_.start();
+  });
+
+  Serial.printf("[ProjectPage] MIDI import result=%d saved=%d\n",
+                static_cast<int>(err), persisted ? 1 : 0);
+  if (err == MidiImporter::Error::None) {
+    UI::showToast(persisted
+        ? "MIDI imported and saved"
+        : "MIDI imported; save failed");
+    closeDialog();
   } else {
-      UI::showToast(importer.getErrorString(err).c_str());
+    UI::showToast(importer.getErrorString(err).c_str());
   }
   return true;
 }
@@ -801,13 +782,16 @@ void ProjectPage::randomizeSaveName() {
 bool ProjectPage::saveCurrentScene() {
   if (save_name_.empty()) randomizeSaveName();
   bool saved = false;
-  std::string name = save_name_;
+  const std::string name = save_name_;
   withAudioGuard([&]() {
     saved = mini_acid_.saveSceneAs(name);
   });
   if (saved) {
     closeDialog();
     refreshScenes();
+    UI::showToast("Project and songs saved");
+  } else {
+    UI::showToast("Project save failed");
   }
   return true;
 }
@@ -815,17 +799,18 @@ bool ProjectPage::saveCurrentScene() {
 bool ProjectPage::createNewScene() {
   randomizeSaveName();
   bool created = false;
-  std::string name = save_name_;
+  const std::string name = save_name_;
   withAudioGuard([&]() {
     created = mini_acid_.createNewSceneWithName(name);
   });
   if (created) {
     refreshScenes();
+    UI::showToast("Blank project created");
+  } else {
+    UI::showToast("New project save failed");
   }
   return true;
 }
-
-
 
 bool ProjectPage::handleSaveDialogInput(char key) {
   if (key == '\b') {
@@ -1073,6 +1058,14 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
     if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
     if (dialog_type_ == DialogType::Load || dialog_type_ == DialogType::ImportMidi) {
+        if (ui_event.scancode == GROOVEPUTER_ESCAPE) {
+            if (dialog_type_ == DialogType::ImportMidi && midi_current_path_ != "/midi") {
+                navigateUpMidiDir();
+            } else {
+                closeDialog();
+            }
+            return true;
+        }
         // For MIDI dialog, combined list size = [..] + dirs + files
         int listSize;
         if (dialog_type_ == DialogType::ImportMidi) {
@@ -1145,6 +1138,10 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
     }
 
     if (dialog_type_ == DialogType::MidiAdvance) {
+        if (ui_event.scancode == GROOVEPUTER_ESCAPE) {
+            dialog_type_ = DialogType::ImportMidi;
+            return true;
+        }
         int focus = (int)midi_advance_focus_;
 
         // UP / DOWN
@@ -1264,7 +1261,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 if (delta != 0) {
                     midi_import_start_pattern_ += delta;
                     if (midi_import_start_pattern_ < 0) midi_import_start_pattern_ = 0;
-                    if (midi_import_start_pattern_ > 127) midi_import_start_pattern_ = 127;
+                    if (midi_import_start_pattern_ >= kMaxPatterns) midi_import_start_pattern_ = kMaxPatterns - 1;
                     return true;
                 }
                 break;
