@@ -8,6 +8,7 @@
 #include "global_help_overlay.h"
 #include "workflow_mode.h"
 #include "workspace_launcher_overlay.h"
+#include "src/platform/cardputer_midi_settings_session.h"
 
 class IAudioRecorder;
 class PerformanceKeyboard;
@@ -52,6 +53,9 @@ private:
   IPage* getPage_(int index); // Returns existing or creates on-demand
   void transitionToPage_(int index, int context = 0);
 
+  // Lightweight on desktop; on Cardputer this restores schema-v1/v2 MIDI
+  // transport controls before the first user event.
+  GroovePuterPlatform::CardputerMidiSettingsBinding midi_settings_binding_;
   IGfx& gfx_;
   MiniAcid& mini_acid_;
   PerformanceKeyboard& performance_keyboard_;

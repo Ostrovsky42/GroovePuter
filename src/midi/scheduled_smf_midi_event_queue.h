@@ -122,12 +122,25 @@ public:
         return true;
     }
 
-    bool transportFailed() const {
-        return transportFailed_.loadAcquire() != 0u;
+    // Consumer-to-producer mailbox announcing that the endpoint accepts data
+    // again. A host that stops reading the bulk IN endpoint is a recoverable
+    // condition, so the stall is published as a pause and withdrawn here rather
+    // than ending playback.
+    void reportTransportRecovery() {
+        transportFailed_.storeRelease(0u);
+        const uint32_t epoch = transportRecoveryEpoch_.loadRelaxed() + 1u;
+        transportRecoveryEpoch_.storeRelease(epoch);
     }
 
-    void clearTransportFailure() {
-        transportFailed_.storeRelease(0u);
+    bool takePendingTransportRecovery() {
+        const uint32_t epoch = transportRecoveryEpoch_.loadAcquire();
+        if (epoch == consumedTransportRecoveryEpoch_) return false;
+        consumedTransportRecoveryEpoch_ = epoch;
+        return true;
+    }
+
+    bool transportFailed() const {
+        return transportFailed_.loadAcquire() != 0u;
     }
 
     uint32_t generation() const { return generation_.loadAcquire(); }
@@ -195,6 +208,8 @@ private:
     MidiRealtimeWord panicEpoch_;
     MidiRealtimeWord transportFailed_;
     MidiRealtimeWord transportFailureEpoch_;
+    MidiRealtimeWord transportRecoveryEpoch_;
     uint32_t consumedPanicEpoch_{0};
     uint32_t consumedTransportFailureEpoch_{0};
+    uint32_t consumedTransportRecoveryEpoch_{0};
 };

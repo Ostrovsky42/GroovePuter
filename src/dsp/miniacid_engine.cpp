@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cctype>
+#include <new>
 #include <string>
 
 #include "../audio/audio_diagnostics.h"
@@ -108,14 +109,21 @@ void TempoDelay::init(float maxSeconds) {
   LOG_DEBUG("TempoDelay::init: sr=%.1f maxSeconds=%.3f => samples=%d\n",
           sampleRate, maxSeconds, newMaxSamples);
   
-  maxDelaySamples = newMaxSamples;
-  size_t required = static_cast<size_t>(maxDelaySamples);
+  const size_t required = static_cast<size_t>(newMaxSamples);
   
   // Log allocation attempt
   LOG_DEBUG("TempoDelay::init: Allocating %d samples (%.1f KB)...\n", 
-                maxDelaySamples, (maxDelaySamples * sizeof(float)) / 1024.0f);
+                newMaxSamples, (newMaxSamples * sizeof(float)) / 1024.0f);
 
-  buffer.assign(required, 0.0f);
+  try {
+    buffer.assign(required, 0.0f);
+  } catch (const std::bad_alloc&) {
+    buffer.clear();
+    maxDelaySamples = 0;
+    LOG_PRINTLN("TempoDelay::init: allocation failed; delay disabled");
+    return;
+  }
+  maxDelaySamples = newMaxSamples;
   
   reset();
 }
@@ -272,6 +280,13 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
   synthEngineNames_[0] = "TB303";
   synthVoices_[1] = std::make_unique<SwappableSynthVoice>(sampleRate, SynthEngineType::TB303);
   synthEngineNames_[1] = "TB303";
+}
+
+void MiniAcid::preallocateConstrainedDelayBuffers() {
+  // Cardputer ADV has no PSRAM. Reserve both equal-sized vectors before SD and
+  // SMF task allocations split the remaining internal heap into small blocks.
+  delay303.init(0.1f);
+  delay3032.init(0.1f);
 }
 
 
@@ -505,6 +520,41 @@ void MiniAcid::stop() {
   }
 }
 
+void MiniAcid::pauseTransport() {
+  if (!playing) return;
+  LOG_PRINTLN("[DSP] PAUSE command received");
+  publishPatternAllNotesOff_();
+  playing = false;
+  currentStepIndex = -1;
+  gateCountdownA_ = 0;
+  gateCountdownB_ = 0;
+  retrigA_ = {};
+  retrigB_ = {};
+  for (int i = 0; i < NUM_DRUM_VOICES; ++i) retrigDrums_[i] = {};
+  if (synthVoices_[0]) synthVoices_[0]->release();
+  if (synthVoices_[1]) synthVoices_[1]->release();
+  liveNotes_[0] = -1;
+  liveNotes_[1] = -1;
+  drums->reset();
+  if (songMode_) {
+    sceneManager_.setSongPosition(clampSongPosition(songPlayheadPosition_));
+  }
+}
+
+void MiniAcid::continueTransport() {
+  if (playing) return;
+  LOG_PRINTLN("[DSP] CONTINUE command received");
+  allLiveNotesOff();
+  publishPatternAllNotesOff_();
+  // Continue from a never-started engine behaves like MIDI Continue at song
+  // position zero: step zero must still fire on the first rendered sample.
+  if (currentTick_ == 0 && tickPhaseAccum_ == 0) {
+    currentTick_ = 383;
+    tickPhaseAccum_ = 0x100000000ULL;
+  }
+  playing = true;
+}
+
 void MiniAcid::liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity) {
   if (playing) return;
   const int idx = clamp303Voice(synthIndex);
@@ -616,6 +666,15 @@ void MiniAcid::setBpm(float bpm) {
   delay3032.setBpm(bpmValue);
 }
 
+void MiniAcid::setExternalClockBpm(float bpm) {
+  bpmValue = bpm;
+  if (bpmValue < 5.0f) bpmValue = 5.0f;
+  if (bpmValue > 300.0f) bpmValue = 300.0f;
+  updateTickIncrement();
+  delay303.setBpm(bpmValue);
+  delay3032.setBpm(bpmValue);
+}
+
 void MiniAcid::setMasterOutputHighCutHz(float hz) {
   float nyquist = sampleRateValue * 0.5f - 200.0f;
   if (nyquist < 4000.0f) nyquist = 4000.0f;
@@ -645,6 +704,15 @@ float MiniAcid::getStepProgress() const {
     // Account for fractional phase for sub-tick visual smoothness
     double frac = (double)(tickPhaseAccum_ & 0xFFFFFFFF) / 4294967296.0;
     return (float)(tickInStep + frac) / 24.0f;
+}
+
+float MiniAcid::transportPhaseSteps() const {
+    const uint32_t barTick = currentTick_ % 384;
+    const double fractionalTick =
+        static_cast<double>(tickPhaseAccum_ & 0xFFFFFFFFULL) /
+        4294967296.0;
+    return static_cast<float>(
+        (static_cast<double>(barTick) + fractionalTick) / 24.0);
 }
 
 int MiniAcid::cycleBarCount() const {

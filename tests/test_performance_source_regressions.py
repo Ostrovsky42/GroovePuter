@@ -224,9 +224,10 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
     player_space = player_page[player_page.index("bool SmfPlayerPage::togglePlayerTransport()"):
                                player_page.index("void SmfPlayerPage::toggleGrooveTransport()")]
     require('"G START FIRST / THEN SPACE"' in player_space and
+            "TransportClockSource::GroovePuterInternal" in player_space and
             player_space.index('"G START FIRST / THEN SPACE"') <
             player_space.index("player_->togglePlayPause()"),
-            "PROJECT Space must not arm SMF while the master is stopped")
+            "stopped GP MASTER must not arm SMF before GroovePuter starts")
     groove_toggle = player_page[player_page.index("void SmfPlayerPage::toggleGrooveTransport()"):
                                 player_page.index("bool SmfPlayerPage::handleEvent")]
     require("player_->pause()" in groove_toggle and
@@ -235,12 +236,10 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
     require("virtual bool pause() = 0" in smf_service and
             "case CommandType::Pause:" in player_service,
             "SMF transport needs an explicit idempotent Pause command")
-    require('publishSnapshot(SmfPlayerState::Paused, "GP STOP / MIDI PAUSED")' in
-            player_service and
-            player_service.count(
-                'publishSnapshot(SmfPlayerState::Paused, "GP STOP / MIDI PAUSED")'
-            ) >= 2,
-            "a stopped project master must pause playing and pre-boundary ARMED SMF")
+    require('"GP STOP / MIDI PAUSED"' in player_service and
+            '"WAIT SEQTRAK PLAY"' in player_service and
+            "projectRelaunchAfterExternalStop_" in player_service,
+            "project stop must pause GP MASTER but preserve SEQ MASTER arming")
 
     require('"MIDI LIBRARY  %.24s"' in player_page and
             "currentPath_.c_str()" in player_page and
@@ -293,6 +292,12 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
             "scheduleProjectSmfTick(\n                projectTransport" in schedule_ahead and
             "DroppedLateNoteOn" in schedule_ahead,
             "one PROJECT snapshot must govern each scheduling pass and late NoteOn")
+    route_pos = schedule_ahead.index("routeSmfNote(")
+    filter_pos = schedule_ahead.index("if (!routed.mapped)")
+    queue_pos = schedule_ahead.index("eventQueue_.tryPushNoteOn(")
+    require(route_pos < filter_pos < queue_pos and
+            "perfUnmappedEventsFiltered_" in schedule_ahead,
+            "unmapped SEQTRAK notes must be filtered before queue publication")
     require("trySnapshot(candidate)" in player_service and
             "projectTimelineIsStale(candidate.blockSequence" in player_service and
             "ProjectTransportReadResult::Unavailable" in player_service and

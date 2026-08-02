@@ -100,9 +100,12 @@ public:
   MiniAcid(float sampleRate, SceneStorage* sceneStorage);
 
   void init();
+  void preallocateConstrainedDelayBuffers();
   void reset();
   void start();
   void stop();
+  void pauseTransport();
+  void continueTransport();
 
   void liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity);
   void liveNoteOff(int synthIndex, uint8_t midiNote);
@@ -112,11 +115,13 @@ public:
   uint32_t liveInputEpoch() const { return liveInputEpoch_; }
 
   void setBpm(float bpm);
+  void setExternalClockBpm(float bpm);
   float bpm() const;
   float sampleRate() const;
   bool isPlaying() const;
   int currentStep() const;
   float getStepProgress() const;
+  float transportPhaseSteps() const;
   int cycleBarIndex() const;
   int cycleBarCount() const;
   uint32_t cyclePulseCounter() const { return cyclePulseCounter_; }

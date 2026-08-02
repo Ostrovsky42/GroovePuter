@@ -29,6 +29,31 @@ enum class SmfLaunchMode : uint8_t {
     NextBar,
 };
 
+// SEQTRAK transmits Start and Stop but not Continue. Keep true MIDI Continue
+// support for other controllers while giving both post-Stop commands the same
+// bounded scheduling path instead of making either wait for NEXT BAR.
+enum class SmfExternalRelaunchMode : uint8_t {
+    Normal = 0,
+    Restart,
+    Continue,
+};
+
+inline SmfExternalRelaunchMode smfExternalRelaunchMode(
+        bool wasActiveBeforeExternalStop,
+        bool transportRestartedFromBeginning) {
+    if (!wasActiveBeforeExternalStop) {
+        return SmfExternalRelaunchMode::Normal;
+    }
+    return transportRestartedFromBeginning
+        ? SmfExternalRelaunchMode::Restart
+        : SmfExternalRelaunchMode::Continue;
+}
+
+inline bool smfExternalRelaunchUsesBoundedPrefill(
+        SmfExternalRelaunchMode mode) {
+    return mode != SmfExternalRelaunchMode::Normal;
+}
+
 struct SmfPlayerPerformanceSnapshot {
     uint16_t trackCount{0};
     uint16_t cacheBytesPerTrack{0};
@@ -42,6 +67,7 @@ struct SmfPlayerPerformanceSnapshot {
     int16_t minQueueDepth{-1};
     uint16_t queueFillLimit{0};
     uint16_t lookaheadMs{0};
+    uint32_t unmappedEventsFiltered{0};
     uint32_t projectLateNoteOnDrops{0};
     uint32_t timelineReadMisses{0};
     uint32_t timelineStalePauses{0};

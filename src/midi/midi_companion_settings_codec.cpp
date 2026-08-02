@@ -6,7 +6,6 @@ namespace {
 constexpr uint8_t kMagic[4] = {'G', 'P', 'M', 'D'};
 constexpr std::size_t kHeaderSize = 8;
 constexpr std::size_t kChecksumSize = 4;
-constexpr std::size_t kChecksumOffset = MidiSettingsCodec::kEncodedSize - kChecksumSize;
 
 constexpr uint8_t kEnabledFlag = 1u << 0;
 constexpr uint8_t kLiveEnabledFlag = 1u << 1;
@@ -48,6 +47,20 @@ uint8_t settingsFlags(const MidiOutputSettings& settings) {
     return flags;
 }
 
+bool recordShapeIsSupported(uint16_t schemaVersion,
+                            uint16_t payloadSize,
+                            std::size_t encodedSize) {
+    if (schemaVersion == MidiSettingsCodec::kSchemaVersion) {
+        return payloadSize == MidiSettingsCodec::kPayloadSize &&
+               encodedSize == MidiSettingsCodec::kEncodedSize;
+    }
+    if (schemaVersion == MidiSettingsCodec::kLegacySchemaVersion) {
+        return payloadSize == MidiSettingsCodec::kLegacyPayloadSize &&
+               encodedSize == MidiSettingsCodec::kLegacyEncodedSize;
+    }
+    return false;
+}
+
 }  // namespace
 
 MidiSettingsCodec::EncodedSettings MidiSettingsCodec::encode(
@@ -79,27 +92,40 @@ MidiSettingsCodec::EncodedSettings MidiSettingsCodec::encode(
         encoded[cursor++] = route.note;
     }
 
-    const uint32_t checksum = crc32(encoded.data(), kChecksumOffset);
-    writeU32(&encoded[kChecksumOffset], checksum);
+    encoded[cursor++] = static_cast<uint8_t>(settings.transportClockSource);
+    encoded[cursor++] = settings.externalFollowEnabled ? 1u : 0u;
+
+    const std::size_t checksumOffset = kEncodedSize - kChecksumSize;
+    const uint32_t checksum = crc32(encoded.data(), checksumOffset);
+    writeU32(&encoded[checksumOffset], checksum);
     return encoded;
 }
 
 bool MidiSettingsCodec::decode(const uint8_t* data,
                                std::size_t size,
                                MidiOutputSettings& output) {
-    if (!data || size != kEncodedSize) return false;
+    if (!data ||
+        (size != kEncodedSize && size != kLegacyEncodedSize)) {
+        return false;
+    }
     if (data[0] != kMagic[0] || data[1] != kMagic[1] ||
         data[2] != kMagic[2] || data[3] != kMagic[3]) {
         return false;
     }
-    if (readU16(&data[4]) != kSchemaVersion ||
-        readU16(&data[6]) != kPayloadSize) {
-        return false;
-    }
-    if (readU32(&data[kChecksumOffset]) != crc32(data, kChecksumOffset)) {
+
+    const uint16_t schemaVersion = readU16(&data[4]);
+    const uint16_t payloadSize = readU16(&data[6]);
+    if (!recordShapeIsSupported(schemaVersion, payloadSize, size)) {
         return false;
     }
 
+    const std::size_t checksumOffset = size - kChecksumSize;
+    if (readU32(&data[checksumOffset]) != crc32(data, checksumOffset)) {
+        return false;
+    }
+
+    // Defaults intentionally provide the schema-v1 migration values for the
+    // two transport fields that did not exist in the old record.
     MidiOutputSettings decoded{};
     std::size_t cursor = kHeaderSize;
     decoded.profile = static_cast<MidiDeviceProfile>(data[cursor++]);
@@ -124,7 +150,15 @@ bool MidiSettingsCodec::decode(const uint8_t* data,
         route.note = data[cursor++];
     }
 
-    if (cursor != kChecksumOffset || !isValidMidiOutputSettings(decoded)) {
+    if (schemaVersion == kSchemaVersion) {
+        decoded.transportClockSource = normalizeTransportClockSource(
+            data[cursor++]);
+        const uint8_t followEnabled = data[cursor++];
+        if (followEnabled > 1u) return false;
+        decoded.externalFollowEnabled = followEnabled != 0;
+    }
+
+    if (cursor != checksumOffset || !isValidMidiOutputSettings(decoded)) {
         return false;
     }
 
@@ -167,8 +201,7 @@ MidiSettingsLoadStatus MidiSettingsPersistence::load(
     }
 
     MidiOutputSettings decoded{};
-    if (bytesRead != encoded.size() ||
-        !MidiSettingsCodec::decode(encoded.data(), bytesRead, decoded)) {
+    if (!MidiSettingsCodec::decode(encoded.data(), bytesRead, decoded)) {
         output = makeDefaultMidiOutputSettings(fallbackProfile);
         return MidiSettingsLoadStatus::DefaultsFromCorrupt;
     }

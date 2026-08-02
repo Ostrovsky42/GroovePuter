@@ -179,6 +179,9 @@ private:
     GroovePuterMidi::SmfLaunchMode launchMode_{
         GroovePuterMidi::SmfLaunchMode::NextBar};
     bool projectLaunchPlanned_{false};
+    // Only an SMF that was active before external Stop gets bounded relaunch.
+    // SEQTRAK's next FA restarts it; a real FB from another controller resumes.
+    bool projectRelaunchAfterExternalStop_{false};
     double projectOriginStep_{0.0};
     double projectOriginSmfTick_{0.0};
     uint16_t projectBpmX10_{1200};
@@ -194,6 +197,7 @@ private:
     uint32_t perfMaxScheduleMicros_{0};
     uint32_t perfMinQueueDepth_{kPerfUnsetDepth};
     uint32_t perfQueuedEvents_{0};
+    uint32_t perfUnmappedEventsFiltered_{0};
     uint32_t perfProjectLateNoteOnDrops_{0};
     uint32_t perfTimelineReadMisses_{0};
     uint32_t perfTimelineStalePauses_{0};

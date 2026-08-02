@@ -113,8 +113,9 @@ def main() -> None:
 
     combined_transport = "\n".join((event_header, queue, publisher, facade,
                                      transport_api, transport_h, transport))
-    require("0xFB" not in combined_transport and "Continue" not in combined_transport,
-            "MIDI Continue is explicitly out of scope")
+    require("sendContinue" not in combined_transport and
+            "Continue" not in event_header and "Continue" not in publisher,
+            "GP MASTER outbound transport must remain Start/Stop without Continue")
     require("Preferences" not in combined_transport and "NVS" not in combined_transport,
             "transport sync must not depend on PR #11 settings persistence")
     require("MidiTransport" not in scenes_h and "MidiTransport" not in scenes_cpp and

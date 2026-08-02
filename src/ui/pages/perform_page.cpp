@@ -1,8 +1,10 @@
 #include "perform_page.h"
 
 #include <cstdio>
+#include <cstring>
 
 #include "../components/music_visuals.h"
+#include "src/midi/smf_player_service.h"
 
 PerformPage::PerformPage(IGfx& gfx,
                          MiniAcid& miniAcid,
@@ -137,7 +139,22 @@ void PerformPage::drawContent(IGfx& gfx) {
     }
 
     // Keep one fixed status row below the larger instrument geometry.
-    if (!noteMode) {
+    const GroovePuterMidi::ISmfPlayerService* player =
+        GroovePuterMidi::smfPlayerService();
+    const GroovePuterMidi::SmfPlayerSnapshot playerState =
+        player ? player->snapshot() : GroovePuterMidi::SmfPlayerSnapshot{};
+    const bool usbBlocked = std::strncmp(playerState.message,
+                                         "USB MIDI BLOCKED", 16) == 0;
+    const bool usbReady = std::strncmp(playerState.message,
+                                       "USB MIDI READY", 14) == 0;
+
+    if (usbBlocked) {
+        gfx.setTextColor(COLOR_DANGER);
+        std::snprintf(line, sizeof(line), "USB MIDI BLOCKED - KEYS WAIT");
+    } else if (usbReady) {
+        gfx.setTextColor(COLOR_WARN);
+        std::snprintf(line, sizeof(line), "USB MIDI READY - PRESS PLAY");
+    } else if (!noteMode) {
         gfx.setTextColor(COLOR_LABEL);
         std::snprintf(line, sizeof(line), "NOTE MODE OFF | N ENABLE");
     } else if (miniAcid_.isPlaying()) {

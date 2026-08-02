@@ -81,6 +81,15 @@ bool validLiveTarget(MidiLiveTarget target) {
     return false;
 }
 
+bool validTransportClockSource(TransportClockSource source) {
+    switch (source) {
+        case TransportClockSource::GroovePuterInternal:
+        case TransportClockSource::SeqtrakExternal:
+            return true;
+    }
+    return false;
+}
+
 }  // namespace
 
 const char* midiDeviceProfileName(MidiDeviceProfile profile) {
@@ -152,6 +161,9 @@ void applyMidiDeviceProfile(MidiDeviceProfile profile,
     const bool patternSynthBEnabled = settings.patternSynthBEnabled;
     const bool drumsEnabled = settings.drumsEnabled;
     const MidiLiveTarget liveTarget = settings.liveTarget;
+    const TransportClockSource transportClockSource =
+        settings.transportClockSource;
+    const bool externalFollowEnabled = settings.externalFollowEnabled;
 
     settings = MidiOutputSettings{};
     settings.enabled = enabled;
@@ -160,6 +172,9 @@ void applyMidiDeviceProfile(MidiDeviceProfile profile,
     settings.patternSynthBEnabled = patternSynthBEnabled;
     settings.drumsEnabled = drumsEnabled;
     settings.liveTarget = liveTarget;
+    settings.transportClockSource = normalizeTransportClockSource(
+        static_cast<uint8_t>(transportClockSource));
+    settings.externalFollowEnabled = externalFollowEnabled;
     settings.profile = profile;
     settings.drumGateMs = kDefaultDrumGateMs;
 
@@ -182,7 +197,9 @@ void applyMidiDeviceProfile(MidiDeviceProfile profile,
 }
 
 bool isValidMidiOutputSettings(const MidiOutputSettings& settings) {
-    if (!validProfile(settings.profile) || !validLiveTarget(settings.liveTarget)) {
+    if (!validProfile(settings.profile) ||
+        !validLiveTarget(settings.liveTarget) ||
+        !validTransportClockSource(settings.transportClockSource)) {
         return false;
     }
     if (settings.liveChannel > kMidiChannelMax ||
@@ -210,6 +227,8 @@ void sanitizeMidiOutputSettings(MidiOutputSettings& settings) {
     if (!validLiveTarget(settings.liveTarget)) {
         settings.liveTarget = MidiLiveTarget::SynthA;
     }
+    settings.transportClockSource = normalizeTransportClockSource(
+        static_cast<uint8_t>(settings.transportClockSource));
     settings.liveChannel = clampChannel(settings.liveChannel);
     settings.synthAChannel = clampChannel(settings.synthAChannel);
     settings.synthBChannel = clampChannel(settings.synthBChannel);
@@ -237,7 +256,9 @@ bool operator==(const MidiOutputSettings& lhs,
            lhs.synthAChannel == rhs.synthAChannel &&
            lhs.synthBChannel == rhs.synthBChannel &&
            lhs.drumRoutes == rhs.drumRoutes &&
-           lhs.drumGateMs == rhs.drumGateMs;
+           lhs.drumGateMs == rhs.drumGateMs &&
+           lhs.transportClockSource == rhs.transportClockSource &&
+           lhs.externalFollowEnabled == rhs.externalFollowEnabled;
 }
 
 }  // namespace GroovePuterMidi

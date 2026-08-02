@@ -107,8 +107,10 @@ int main() {
     assert(reportedGeneration == 4);
     assert(!queue.takePendingTransportFailure(reportedGeneration));
 
-    queue.clearTransportFailure();
+    queue.reportTransportRecovery();
     assert(!queue.transportFailed());
+    assert(queue.takePendingTransportRecovery());
+    assert(!queue.takePendingTransportRecovery());
     assert(queue.tryPushNoteOn(1, 65, 90, 61, 12));
     assert(queue.tryPop(event));
     assert(event.generation == reportedGeneration);

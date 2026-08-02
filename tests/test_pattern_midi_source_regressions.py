@@ -193,7 +193,7 @@ def main() -> None:
     require(re.search(r'xTaskCreatePinnedToCore\(\s*audioTask\s*,\s*"AudioTask"', sketch) is not None,
             "realtime publication depends on the pinned AudioTask identity")
 
-    registration_call = "registerCardputerUsbMidiSink(\n      g_musicalEventRouter, g_patternMusicalEventQueue)"
+    registration_call = "registerCardputerUsbMidiSink(\n      g_musicalEventRouter,\n      g_patternMusicalEventQueue,\n      g_externalMidiTransportQueue)"
     require(registration_call in sketch[setup_start:loop_start],
             "setup must register the single USB owner with the scheduled queue")
     require("router.addSink(g_queueSink)" in transport,

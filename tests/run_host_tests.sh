@@ -16,7 +16,9 @@ python3 "${ROOT_DIR}/tests/test_midi_static_init_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_midi_transport_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_song_playhead_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_midi_companion_foundation_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_seqtrak_master_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
+python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${CXX}" \
   -std=c++17 \
@@ -229,6 +231,17 @@ python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_usb_midi_packet_pacer.cpp" \
+  -o "${BUILD_DIR}/test_usb_midi_packet_pacer"
+
+"${BUILD_DIR}/test_usb_midi_packet_pacer"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_midi_control_event_queue.cpp" \
   -o "${BUILD_DIR}/test_midi_control_event_queue"
 
@@ -265,22 +278,10 @@ python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
-  "${ROOT_DIR}/tests/test_usb_midi_smf_output.cpp" \
-  "${ROOT_DIR}/src/midi/usb_midi_output.cpp" \
-  -o "${BUILD_DIR}/test_usb_midi_smf_output"
+  "${ROOT_DIR}/tests/test_transport_clock_source.cpp" \
+  -o "${BUILD_DIR}/test_transport_clock_source"
 
-"${BUILD_DIR}/test_usb_midi_smf_output"
-
-"${CXX}" \
-  -std=c++17 \
-  -Wall \
-  -Wextra \
-  -Werror \
-  -I"${ROOT_DIR}" \
-  "${ROOT_DIR}/tests/test_musical_event_queue.cpp" \
-  -o "${BUILD_DIR}/test_musical_event_queue"
-
-"${BUILD_DIR}/test_musical_event_queue"
+"${BUILD_DIR}/test_transport_clock_source"
 
 "${CXX}" \
   -std=c++17 \
@@ -288,49 +289,73 @@ python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
-  "${ROOT_DIR}/tests/test_sampler_voice.cpp" \
-  "${ROOT_DIR}/src/sampler/sampler_voice.cpp" \
-  -o "${BUILD_DIR}/test_sampler_voice"
+  "${ROOT_DIR}/tests/test_external_midi_transport_event_queue.cpp" \
+  -o "${BUILD_DIR}/test_external_midi_transport_event_queue"
 
-"${BUILD_DIR}/test_sampler_voice"
+"${BUILD_DIR}/test_external_midi_transport_event_queue"
 
 "${CXX}" \
   -std=c++17 \
   -Wall \
   -Wextra \
   -Werror \
-  -pthread \
   -I"${ROOT_DIR}" \
-  "${ROOT_DIR}/tests/test_audio_mutation_gate.cpp" \
-  -o "${BUILD_DIR}/test_audio_mutation_gate"
+  "${ROOT_DIR}/tests/test_external_midi_clock_tracker.cpp" \
+  -o "${BUILD_DIR}/test_external_midi_clock_tracker"
 
-"${BUILD_DIR}/test_audio_mutation_gate"
+"${BUILD_DIR}/test_external_midi_clock_tracker"
 
 "${CXX}" \
   -std=c++17 \
   -Wall \
   -Wextra \
+  -Werror \
   -I"${ROOT_DIR}" \
-  -I"${ROOT_DIR}/platform_sdl" \
-  -include "${ROOT_DIR}/platform_sdl/arduino_compat.h" \
-  "${ROOT_DIR}/tests/test_scene_roundtrip.cpp" \
-  "${ROOT_DIR}/scenes.cpp" \
-  "${ROOT_DIR}/json_evented.cpp" \
-  "${ROOT_DIR}/src/audio/pattern_paging.cpp" \
-  -o "${BUILD_DIR}/test_scene_roundtrip"
+  "${ROOT_DIR}/tests/test_usb_midi_realtime_parser.cpp" \
+  -o "${BUILD_DIR}/test_usb_midi_realtime_parser"
 
-"${BUILD_DIR}/test_scene_roundtrip"
+"${BUILD_DIR}/test_usb_midi_realtime_parser"
 
 "${CXX}" \
   -std=c++17 \
   -Wall \
   -Wextra \
+  -Werror \
   -I"${ROOT_DIR}" \
-  -I"${ROOT_DIR}/platform_sdl" \
-  -include "${ROOT_DIR}/platform_sdl/arduino_compat.h" \
-  "${ROOT_DIR}/tests/test_pattern_paging.cpp" \
-  "${ROOT_DIR}/src/audio/pattern_paging.cpp" \
-  -o "${BUILD_DIR}/test_pattern_paging"
+  "${ROOT_DIR}/tests/test_transport_clock_runtime.cpp" \
+  -o "${BUILD_DIR}/test_transport_clock_runtime"
 
-"${BUILD_DIR}/test_pattern_paging"
-echo "host regressions: OK"
+"${BUILD_DIR}/test_transport_clock_runtime"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_external_midi_clock_follower.cpp" \
+  -o "${BUILD_DIR}/test_external_midi_clock_follower"
+
+"${BUILD_DIR}/test_external_midi_clock_follower"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_usb_endpoint_health.cpp" \
+  -o "${BUILD_DIR}/test_usb_endpoint_health"
+
+"${BUILD_DIR}/test_usb_endpoint_health"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_external_transport_policy.cpp" \
+  -o "${BUILD_DIR}/test_smf_external_transport_policy"
+
+"${BUILD_DIR}/test_smf_external_transport_policy"
