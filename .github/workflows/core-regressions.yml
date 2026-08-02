@@ -94,3 +94,5 @@ jobs:
 
       - name: Compile Cardputer ADV firmware
         run: bash scripts/build.sh --warnings all
+
+# Synchronize the open PR after the temporary apply job is present.
