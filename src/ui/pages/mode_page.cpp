@@ -2,11 +2,33 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstdlib>
 
 #include "../layout_manager.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "../../dsp/atlas_runtime.h"
 #include "../../dsp/groove_profile.h"
+#include "../../dsp/phrase_generator.h"
+
+namespace {
+uint8_t atlasVariationForRole(PhraseGenerator::PhraseBarRole role) {
+  switch (role) {
+    case PhraseGenerator::PhraseBarRole::Base:
+    case PhraseGenerator::PhraseBarRole::Return:
+      return 0;
+    case PhraseGenerator::PhraseBarRole::MicroVariation:
+    case PhraseGenerator::PhraseBarRole::Development:
+    case PhraseGenerator::PhraseBarRole::Build:
+      return 1;
+    case PhraseGenerator::PhraseBarRole::Breakdown:
+    case PhraseGenerator::PhraseBarRole::Fill:
+    case PhraseGenerator::PhraseBarRole::EndingFill:
+      return 2;
+  }
+  return 0;
+}
+}  // namespace
 
 ModePage::ModePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
@@ -77,35 +99,45 @@ void ModePage::draw(IGfx& gfx) {
   drawRow(gfx, y0, "MODE", modeName(mode), focus_ == FocusRow::Mode, cfg.accentColor);
 
   char flv[24];
-  std::snprintf(flv, sizeof(flv), "%s  [%d/5]", flavorName(mode, flavor), flavor + 1);
+  std::snprintf(flv, sizeof(flv), "%s [%d/5]", flavorName(mode, flavor), flavor + 1);
   drawRow(gfx, y0 + Layout::LINE_HEIGHT, "FLAVOR", flv, focus_ == FocusRow::Flavor, cfg.accentColor);
 
-  drawRow(gfx, y0 + Layout::LINE_HEIGHT * 2, "MACROS", macros ? "ON  (Flavor -> 303 Voices)" : "OFF (Safe)", focus_ == FocusRow::Macros, cfg.accentColor);
+  char phraseLength[24];
+  std::snprintf(phraseLength, sizeof(phraseLength), "%u BARS -> SONG", static_cast<unsigned>(phrase_bars_));
+  drawRow(gfx, y0 + Layout::LINE_HEIGHT * 2, "PHRASE", phraseLength,
+          focus_ == FocusRow::PhraseLength, cfg.accentColor);
 
-  drawRow(gfx, y0 + Layout::LINE_HEIGHT * 3, "PREVIEW", "SPACE/ENT = Regenerate", focus_ == FocusRow::Preview, cfg.accentColor);
+  char generateLabel[40];
+  std::snprintf(generateLabel, sizeof(generateLabel), "ENTER @ ROW %d",
+                std::max(0, mini_acid_.currentSongPosition()) + 1);
+  drawRow(gfx, y0 + Layout::LINE_HEIGHT * 3, "GENERATE", generateLabel,
+          focus_ == FocusRow::GeneratePhrase, cfg.accentColor);
+
+  drawRow(gfx, y0 + Layout::LINE_HEIGHT * 4, "MACROS",
+          macros ? "ON (Flavor -> Sound)" : "OFF (Safe)",
+          focus_ == FocusRow::Macros, cfg.accentColor);
 
   char corridorLine[96];
-  std::snprintf(corridorLine, sizeof(corridorLine), "N %d..%d  A %.0f%%  S %.0f%%  SW %.0f%%",
-                c.notesMin, c.notesMax, c.accentProbability * 100.0f, c.slideProbability * 100.0f, c.swingAmount * 100.0f);
+  std::snprintf(corridorLine, sizeof(corridorLine), "N %d..%d A %.0f%% S %.0f%% SW %.0f%%",
+                c.notesMin, c.notesMax, c.accentProbability * 100.0f,
+                c.slideProbability * 100.0f, c.swingAmount * 100.0f);
   gfx.setTextColor(IGfxColor(0x8AA4BA));
-  gfx.drawText(Layout::CONTENT.x + 2, y0 + Layout::LINE_HEIGHT * 4 + 1, corridorLine);
+  gfx.drawText(Layout::CONTENT.x + 2, y0 + Layout::LINE_HEIGHT * 5 + 1, corridorLine);
 
   char budgetLine[64];
-  std::snprintf(budgetLine, sizeof(budgetLine), "BUDGET %s  dly %.2f  spc %.2f",
-                ducked ? "DUCK ON" : "DUCK OFF", delayMix, tapeSpace);
+  std::snprintf(budgetLine, sizeof(budgetLine), "BUDGET %s dly %.2f spc %.2f",
+                ducked ? "DUCK" : "FREE", delayMix, tapeSpace);
   gfx.setTextColor(ducked ? cfg.accentColor : IGfxColor(0x5C7183));
-  gfx.drawText(Layout::CONTENT.x + 2, y0 + Layout::LINE_HEIGHT * 5 + 1, budgetLine);
+  gfx.drawText(Layout::CONTENT.x + 2, y0 + Layout::LINE_HEIGHT * 6 + 1, budgetLine);
 
-  gfx.setTextColor(IGfxColor(0x8AA4BA));
-  gfx.drawText(Layout::CONTENT.x + 2, y0 + Layout::LINE_HEIGHT * 6, "A:Apply 303A  B:Apply 303B  D:Apply Drums");
-
-  UI::drawStandardFooter(gfx, "TAB:Focus  ARW:Adjust", "ENT:Action");
+  UI::drawStandardFooter(gfx, "TAB/ARW:Edit  ENT:Action", "SPACE:Preview  A/B/D:Apply");
 }
 
 void ModePage::moveFocus(int delta) {
+  constexpr int kFocusCount = 5;
   int f = static_cast<int>(focus_) + delta;
-  while (f < 0) f += 4;
-  while (f >= 4) f -= 4;
+  while (f < 0) f += kFocusCount;
+  while (f >= kFocusCount) f -= kFocusCount;
   focus_ = static_cast<FocusRow>(f);
 }
 
@@ -133,6 +165,82 @@ void ModePage::shiftFlavor(int delta) {
   withAudioGuard([&]() { mini_acid_.shiftGrooveFlavor(delta); });
 }
 
+void ModePage::shiftPhraseLength(int delta) {
+  static constexpr uint8_t kLengths[4] = {1, 2, 4, 8};
+  int index = 0;
+  for (int i = 0; i < 4; ++i) {
+    if (kLengths[i] == phrase_bars_) {
+      index = i;
+      break;
+    }
+  }
+  index = (index + delta + 4) % 4;
+  phrase_bars_ = kLengths[index];
+}
+
+void ModePage::generatePhrase() {
+  const bool wasPlaying = mini_acid_.isPlaying();
+  if (wasPlaying) mini_acid_.stop();
+
+  PhraseGenerator::PhraseResult result{};
+  withAudioGuard([&]() {
+    PhraseGenerator::PhraseRequest request{};
+    request.bars = phrase_bars_;
+    request.songStart = std::max(0, mini_acid_.currentSongPosition());
+    request.pageIndex = mini_acid_.currentPageIndex();
+    request.seed = static_cast<uint32_t>(rand());
+
+    Scene& scene = mini_acid_.sceneManager().currentScene();
+    const GenreRecipeId recipe = mini_acid_.genreManager().recipe();
+    const bool atlasPhrase = AtlasRuntime::hasRecipe(recipe) &&
+                             AtlasRuntime::variationCount(recipe) >= 3;
+
+    if (atlasPhrase) {
+      result = PhraseGenerator::generateBarsToSong(
+          scene, request,
+          [&](PhraseGenerator::PhraseBar& bar,
+              PhraseGenerator::PhraseBarRole role,
+              int barIndex) {
+            (void)barIndex;
+            return AtlasRuntime::applyRecipe(
+                recipe, atlasVariationForRole(role),
+                bar.synthA, bar.synthB, bar.drums, nullptr);
+          });
+    } else {
+      result = PhraseGenerator::generateToSong(
+          scene, request, [&](PhraseGenerator::PhraseBar& base) {
+            const GenerativeParams& params =
+                mini_acid_.genreManager().getCompiledGenerativeParams();
+            const GenreBehavior behavior = mini_acid_.genreManager().getBehavior();
+            mini_acid_.modeManager().generatePattern(
+                base.synthA, mini_acid_.bpm(), params, behavior, 0);
+            mini_acid_.modeManager().generatePattern(
+                base.synthB, mini_acid_.bpm(), params, behavior, 1);
+            mini_acid_.modeManager().generateDrumPattern(
+                base.drums, params, behavior);
+          });
+    }
+
+    if (result) {
+      mini_acid_.setSongMode(true);
+      mini_acid_.setSongPlaybackSlot(scene.activeSongSlot);
+      mini_acid_.setSongPosition(result.songStart);
+    }
+  });
+
+  if (result) {
+    char toast[80];
+    std::snprintf(toast, sizeof(toast), "%dB phrase -> Song %d..%d (rows 1B)",
+                  result.bars, result.songStart + 1,
+                  result.songStart + result.bars);
+    UI::showToast(toast, 1800);
+  } else {
+    UI::showToast(PhraseGenerator::errorText(result.error), 1600);
+  }
+
+  if (wasPlaying) mini_acid_.start();
+}
+
 void ModePage::applyTo303(int voiceIdx) {
   withAudioGuard([&]() { mini_acid_.modeManager().apply303Preset(voiceIdx, mini_acid_.grooveFlavor()); });
 }
@@ -146,7 +254,7 @@ void ModePage::applyToDrums() {
 void ModePage::previewMode() {
   bool wasPlaying = mini_acid_.isPlaying();
   if (wasPlaying) {
-      mini_acid_.stop(); // Stop before locking to prevent buffer underrun/stutter
+      mini_acid_.stop();
   }
 
   withAudioGuard([&]() {
@@ -156,9 +264,8 @@ void ModePage::previewMode() {
   });
 
   if (wasPlaying) {
-      mini_acid_.start(); // Restart after generation
+      mini_acid_.start();
   } else {
-      // If it wasn't playing, preview means start playing now
       mini_acid_.start();
   }
 }
@@ -192,8 +299,9 @@ bool ModePage::handleEvent(UIEvent& ui_event) {
     switch (focus_) {
       case FocusRow::Mode: shiftMode(delta); return true;
       case FocusRow::Flavor: shiftFlavor(delta); return true;
+      case FocusRow::PhraseLength: shiftPhraseLength(delta); return true;
+      case FocusRow::GeneratePhrase: return true;
       case FocusRow::Macros: toggleMacros(); return true;
-      case FocusRow::Preview: return true;
     }
   }
 
@@ -206,8 +314,9 @@ bool ModePage::handleEvent(UIEvent& ui_event) {
       switch (focus_) {
         case FocusRow::Mode: toggleMode(); return true;
         case FocusRow::Flavor: shiftFlavor(1); return true;
+        case FocusRow::PhraseLength: shiftPhraseLength(1); return true;
+        case FocusRow::GeneratePhrase: generatePhrase(); return true;
         case FocusRow::Macros: toggleMacros(); return true;
-        case FocusRow::Preview: previewMode(); return true;
       }
       break;
     case 'a':
@@ -221,6 +330,10 @@ bool ModePage::handleEvent(UIEvent& ui_event) {
     case 'd':
     case 'D':
       applyToDrums();
+      return true;
+    case 'g':
+    case 'G':
+      generatePhrase();
       return true;
     case 'm':
     case 'M':
