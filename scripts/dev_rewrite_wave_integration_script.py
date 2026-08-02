@@ -83,5 +83,17 @@ replace_once(
     "anchor playback snapshot replacement",
 )
 
+replace_once(
+    '''if 'test_smf_midi_visual' not in text:
+    marker = '\"${BUILD_DIR}/test_smf_stream\"\\n'
+    text = replace_once(text, marker, marker + blocks, "visual test runner")
+''',
+    '''if 'test_smf_midi_visual' not in text:
+    marker = '\\n\"${BUILD_DIR}/test_smf_stream\"\\n\\n'
+    text = replace_once(text, marker, marker + blocks + "\\n", "visual test runner")
+''',
+    "anchor visual test runner",
+)
+
 target.write_text(text, encoding="utf-8")
 print("wave integration lifecycle replacements narrowed")
