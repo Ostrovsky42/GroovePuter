@@ -55,6 +55,8 @@ jobs:
             > docs/stages/SMF_TRACK_MUTE_STAGE.md
           git show origin/integration/run-open-smf-prs:scripts/dev_apply_track_mute_core.py \
             > /tmp/dev_apply_track_mute_core.py
+          sed -i 's|ROOT = Path(__file__).resolve().parents\[1\]|ROOT = Path.cwd()|' \
+            /tmp/dev_apply_track_mute_core.py
           python3 /tmp/dev_apply_track_mute_core.py
           git add \
             docs/stages/SMF_TRACK_MUTE_STAGE.md \
@@ -67,6 +69,8 @@ jobs:
         run: |
           git show origin/integration/run-open-smf-prs:scripts/dev_integrate_smf_ui_and_wave.py \
             > /tmp/dev_integrate_smf_ui_and_wave.py
+          sed -i 's|ROOT = Path(__file__).resolve().parents\[1\]|ROOT = Path.cwd()|' \
+            /tmp/dev_integrate_smf_ui_and_wave.py
           python3 /tmp/dev_integrate_smf_ui_and_wave.py
           git add \
             src/midi/smf_midi_visual.h \
