@@ -11,11 +11,19 @@ public:
     const std::string& getTitle() const;
 
 private:
-    enum class FocusRow : uint8_t { Mode = 0, Flavor = 1, Macros = 2, Preview = 3 };
+    enum class FocusRow : uint8_t {
+        Mode = 0,
+        Flavor = 1,
+        PhraseLength = 2,
+        GeneratePhrase = 3,
+        Macros = 4
+    };
 
     void toggleMode();
     void shiftMode(int delta);
     void shiftFlavor(int delta);
+    void shiftPhraseLength(int delta);
+    void generatePhrase();
     void applyTo303(int voiceIdx);
     void applyToDrums();
     void previewMode();
@@ -33,5 +41,6 @@ private:
     MiniAcid& mini_acid_;
     AudioGuard audio_guard_;
     FocusRow focus_ = FocusRow::Mode;
+    uint8_t phrase_bars_ = 4;
     std::string title_ = "GROOVE LAB";
 };
