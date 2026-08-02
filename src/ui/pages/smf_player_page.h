@@ -37,6 +37,7 @@ private:
     void drawBrowser(IGfx& gfx);
     void drawNowPlaying(IGfx& gfx);
     void drawPerformance(IGfx& gfx);
+    void drawChannelInspector(IGfx& gfx);
     void ensureSelectionVisible(int visibleRows);
     bool navigateIntoDir(const std::string& dirName);
     bool navigateUpDir();
@@ -60,6 +61,8 @@ private:
     bool browserStorageReady_{false};
     bool browserVisible_{true};
     bool performanceVisible_{false};
+    bool channelInspectorVisible_{false};
+    int channelInspectorScroll_{0};
 
     template <typename F>
     void withAudioGuard(F&& fn) {

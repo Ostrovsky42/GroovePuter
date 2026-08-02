@@ -181,6 +181,13 @@ SmfPlayerSnapshot CardputerSmfPlayerService::snapshot() const {
     return copy;
 }
 
+SmfChannelInspectorSnapshot CardputerSmfPlayerService::channelInspector() const {
+    portENTER_CRITICAL(&snapshotMux_);
+    const SmfChannelInspectorSnapshot copy = channelInspector_;
+    portEXIT_CRITICAL(&snapshotMux_);
+    return copy;
+}
+
 bool CardputerSmfPlayerService::SdByteSource::open(const char* path) {
     close();
     file_ = SD.open(path, FILE_READ);
@@ -776,6 +783,9 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
     haveLastProjectTransport_ = false;
     lastProjectTransport_ = ProjectTransportBlockSnapshot{};
     timingDocument_.events.clear();
+    portENTER_CRITICAL(&snapshotMux_);
+    channelInspector_ = SmfChannelInspectorSnapshot{};
+    portEXIT_CRITICAL(&snapshotMux_);
 
     if (!source_.open(path)) {
         publishSnapshot(SmfPlayerState::Error, "Cannot open MIDI");
@@ -789,6 +799,10 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
         return false;
     }
     fileIndex_ = indexed.index;
+    SmfChannelInspectorBuilder inspectorBuilder;
+    inspectorBuilder.reset(fileIndex_.format,
+                           fileIndex_.division,
+                           fileIndex_.trackCount);
 
     if (!stream_.open(source_, fileIndex_)) {
         publishSnapshot(SmfPlayerState::Error, "Stream init failed");
@@ -810,6 +824,7 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
 
     SmfStreamEvent event{};
     while (stream_.next(event)) {
+        inspectorBuilder.observe(event.event);
         endTick_ = std::max(endTick_, event.event.tick);
         if (!foundMusic && event.event.kind == SmfEventKind::NoteOn) {
             musicStartTick_ = event.event.tick;
@@ -838,6 +853,10 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
         source_.close();
         return false;
     }
+
+    portENTER_CRITICAL(&snapshotMux_);
+    channelInspector_ = inspectorBuilder.snapshot();
+    portEXIT_CRITICAL(&snapshotMux_);
 
     stream_.reset();
     loaded_ = true;

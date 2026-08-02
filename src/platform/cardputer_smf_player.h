@@ -34,6 +34,7 @@ public:
     bool resetTempo() override;
     bool cycleVelocityBoost() override;
     GroovePuterMidi::SmfPlayerSnapshot snapshot() const override;
+    GroovePuterMidi::SmfChannelInspectorSnapshot channelInspector() const override;
 
 private:
     static constexpr std::size_t kCommandDepth = 4;
@@ -208,6 +209,7 @@ private:
 
     mutable portMUX_TYPE snapshotMux_ = portMUX_INITIALIZER_UNLOCKED;
     GroovePuterMidi::SmfPlayerSnapshot snapshot_{};
+    GroovePuterMidi::SmfChannelInspectorSnapshot channelInspector_{};
 
     StaticQueue_t commandQueueStruct_{};
     alignas(4) uint8_t commandQueueStorage_[kCommandDepth * sizeof(Command)]{};

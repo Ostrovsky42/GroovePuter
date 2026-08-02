@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "smf_channel_inspector.h"
+
 namespace GroovePuterMidi {
 
 enum class SmfPlayerState : uint8_t {
@@ -113,6 +115,7 @@ public:
     virtual bool resetTempo() = 0;
     virtual bool cycleVelocityBoost() = 0;
     virtual SmfPlayerSnapshot snapshot() const = 0;
+    virtual SmfChannelInspectorSnapshot channelInspector() const = 0;
 };
 
 // Tiny service registry keeps UI pages platform-neutral. Cardputer registers
