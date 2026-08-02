@@ -9,7 +9,7 @@ GP MASTER
 GroovePuter Clock / Start / Stop -> SEQTRAK
 
 SEQ MASTER
-SEQTRAK Clock / Start / Continue / Stop -> GroovePuter
+SEQTRAK Clock / Start / Stop -> GroovePuter
 ```
 
 Both modes continue sending PERFORM, PatternPlayer and SMF musical MIDI to SEQTRAK. `SEQ MASTER` suppresses only outbound system-realtime transport.
@@ -22,11 +22,24 @@ Both modes continue sending PERFORM, PatternPlayer and SMF musical MIDI to SEQTR
 - optional powered USB-C hub if power is unstable
 - optional 3.5 mm cable: Cardputer audio out -> SEQTRAK AUDIO IN
 
+Configure SEQTRAK before connecting Cardputer:
+
+```text
+USB Role                    To Device
+USB MIDI In/Out             On
+MIDI Clock Out              On
+Transmit Sequencer Control  On
+MIDI Sync                   Internal
+```
+
+SEQTRAK transmits `F8`, `FA` and `FC`, but not `FB`. GroovePuter still accepts
+`FB Continue` from other MIDI controllers.
+
 ## Wiring
 
 ```text
 SEQTRAK USB-C <----------> Cardputer-Adv USB-C
-  F8/FA/FB/FC  ---------> GroovePuter transport
+  F8/FA/FC     ---------> GroovePuter transport
   MIDI notes   <--------- PERFORM / PatternPlayer / SMF
 
 Cardputer audio out ----> SEQTRAK AUDIO IN  (optional)
@@ -107,7 +120,7 @@ EXT FOLLOW ON
 ## Realtime architecture
 
 ```text
-SEQTRAK F8 / FA / FB / FC
+SEQTRAK F8 / FA / FC
           |
           v
 MidiDispatchTask             sole mutable TinyUSB owner
@@ -171,6 +184,78 @@ max correction/block: 1/96 step
 
 This avoids hard phase jumps and prevents a constant external Clock from causing an SMF tempo-reanchor every audio block.
 
+## Hardware finding: SEQTRAK does not transmit Continue
+
+The first hardware run exposed an incorrect assumption in the original stage
+contract. MIDI Start, Continue and Stop are symmetric in the MIDI protocol, but
+they are not symmetric in SEQTRAK's implementation:
+
+```text
+SEQTRAK transmit: F8 Clock, FA Start, FC Stop
+SEQTRAK receive:  F8 Clock, FA Start, FB Continue, FC Stop
+```
+
+The authoritative transmit flow is documented in the Yamaha SEQTRAK Data List:
+
+```text
+https://usa.yamaha.com/files/download/other_assets/5/2226075/SEQTRAK_data_list_En_D0.pdf
+```
+
+### Previous behavior
+
+After an active PROJECT SMF received `FC`, GroovePuter preserved its tick and
+waited for a possible `FB`. Pressing Play on the physical SEQTRAK sent `FA`
+instead. GroovePuter correctly interpreted that as a new transport epoch, but
+then applied the ordinary launch policy. With `NEXT BAR`, this looked like:
+
+```text
+PAUSE -> manual RESTART MIDI / full-bar wait
+```
+
+There was no firmware error, but the workflow depended on a message SEQTRAK
+cannot transmit and therefore was not usable from the hardware controls alone.
+
+### Corrected behavior
+
+An SMF that was active before external Stop now records a bounded relaunch
+intent. The next transport command is classified explicitly:
+
+```text
+FC -> FA  Restart
+    return SMF to MUSIC START
+    use bounded three-block prefill
+    do not require R
+    do not wait for NEXT BAR
+
+FC -> FB  Continue
+    preserve the saved SMF tick
+    use bounded three-block prefill
+
+newly armed SMF
+    retain ordinary Immediate / NEXT BAR launch policy
+```
+
+This distinction is implemented in:
+
+```text
+src/midi/smf_player_service.h
+    SmfExternalRelaunchMode
+    smfExternalRelaunchMode()
+
+src/platform/cardputer_smf_player.{h,cpp}
+    projectRelaunchAfterExternalStop_
+    ARMED / RESTART
+    ARMED / CONTINUE
+
+tests/test_smf_external_transport_policy.cpp
+    normal launch vs post-Stop Restart vs post-Stop Continue
+```
+
+The firmware cannot infer a preserved-position Continue from `FA`: MIDI defines
+`FA` as Start, and SEQTRAK resets its own transport. Therefore physical
+SEQTRAK Stop/Play restarts the SMF from MUSIC START. Preserved-position Continue
+remains available only from a controller or test host that actually sends `FB`.
+
 ## Start, Stop and Continue
 
 ### Start (`FA`)
@@ -180,7 +265,8 @@ new transport epoch
 project phase resets to zero
 MiniAcid and PatternPlayer restart
 active stopped PROJECT SMF returns to MUSIC START
-SMF uses its normal Immediate / NEXT BAR policy
+active stopped SMF relaunches after bounded three-block prefill
+newly armed SMF uses its normal Immediate / NEXT BAR policy
 ```
 
 ### Stop (`FC`)
@@ -200,6 +286,10 @@ previously active PROJECT SMF resumes its saved tick
 ```
 
 The active PROJECT SMF uses a bounded three-block prefill, approximately 70 ms at 512 frames / 22.05 kHz. It does not wait for another full bar. A newly loaded or manually armed file still uses its ordinary NEXT BAR policy.
+
+SEQTRAK itself does not transmit `FB`. Its physical Stop/Play sequence is
+`FC -> FA`, so GroovePuter automatically restarts an SMF that was active before
+Stop. No manual `R` press and no full-bar wait are required.
 
 ## Build / flash
 
@@ -238,7 +328,8 @@ SEQ MASTER  WAIT / LOCKING / LOCKED
 TRANSPORT   STOPPED
 ```
 
-F8 may establish BPM lock, but GroovePuter does not run until FA or FB while Follow is ON.
+F8 may establish BPM lock, but GroovePuter does not run until SEQTRAK sends FA
+while Follow is ON. A third-party controller may also start it with FB.
 
 ### SEQ MASTER Play
 
@@ -251,12 +342,14 @@ SEQTRAK FA
   -> no outbound realtime echo
 ```
 
-### Stop / Continue
+### Stop / Play
 
 ```text
 FC -> no new NoteOn; local and SMF position retained
-FB -> local phase continues; active SMF resumes after bounded prefill
+FA -> local phase and active SMF restart after bounded prefill
 ```
+
+Synthetic or third-party `FB` input still continues the preserved position.
 
 ### Reboot
 
@@ -275,7 +368,8 @@ The last selected master and Follow setting are restored before user interaction
 
 - check whether the screen says `FOLLOW OFF`;
 - press `G` to enable Follow;
-- issue a new FA or FB.
+- press Play again so SEQTRAK emits a new FA;
+- when using a different controller, a new FB is also accepted.
 
 ### Master choice is not restored
 
@@ -293,7 +387,7 @@ A missing or invalid record intentionally falls back to GP MASTER / FOLLOW ON.
 - inspect USB power and cable;
 - confirm Clock is still transmitted;
 - inspect inbound critical-overflow diagnostics;
-- reconnect, then send a new FA/FB.
+- reconnect, then press SEQTRAK Play to send a new FA.
 
 ### Duplicate Clock at SEQTRAK
 
@@ -313,8 +407,9 @@ MIDI Clock does not carry swing. Match swing manually when both devices play den
 [ ] first F8 after FA advances the first real pulse
 [ ] FA starts MiniAcid and PatternPlayer at phase zero
 [ ] FC prevents NoteOn after the Stop boundary
-[ ] FB continues preserved local phase
-[ ] active PROJECT SMF resumes without NEXT BAR delay
+[ ] FC -> FA restarts active PROJECT SMF without manual R or NEXT BAR delay
+[ ] synthetic FB continues preserved local phase
+[ ] active PROJECT SMF relaunches without NEXT BAR delay
 [ ] newly armed PROJECT SMF still uses NEXT BAR
 [ ] Follow OFF ignores FA/FB but keeps BPM visible
 [ ] Follow ON does not replay an ignored command
@@ -344,15 +439,17 @@ MIDI Clock does not carry swing. Match swing manually when both devices play den
 5. Press G for FOLLOW ON; verify no automatic start occurs.
 6. Send a new FA; verify internal audio and PatternPlayer start at phase zero.
 7. Arm PROJECT SMF with Space; verify normal launch behavior.
-8. Send FC immediately before a note; verify no NoteOn follows Stop.
-9. Send FB; verify local and active SMF continuation without NEXT BAR wait.
-10. Arm a different SMF after Continue; verify it still waits for NEXT BAR.
-11. Test 90 -> 110 and 120 -> 80 -> 140 BPM changes.
-12. Verify no restart, panic, realtime echo or catch-up burst.
-13. Disconnect USB; verify HOLD -> LOST and no stuck notes.
-14. Reconnect; require a new FA/FB before transport runs.
-15. Select SEQ MASTER and desired Follow state, reboot, and verify restoration.
-16. Return to GP MASTER, reboot, and verify GP MASTER restoration.
-17. Record at least 32 bars and compare beginning, middle and end.
-18. Confirm tempoReanchor is event-driven, not one increment per block.
+8. Press SEQTRAK Stop immediately before a note; verify no NoteOn follows FC.
+9. Press SEQTRAK Play; verify active SMF restarts without R or NEXT BAR wait.
+10. Inject FB only with a controller/test host that can transmit Continue;
+    verify preserved-position continuation.
+11. Arm a different SMF after relaunch; verify it still waits for NEXT BAR.
+12. Test 90 -> 110 and 120 -> 80 -> 140 BPM changes.
+13. Verify no panic, realtime echo or catch-up burst.
+14. Disconnect USB; verify HOLD -> LOST and no stuck notes.
+15. Reconnect; require a new SEQTRAK Play/FA before transport runs.
+16. Select SEQ MASTER and desired Follow state, reboot, and verify restoration.
+17. Return to GP MASTER, reboot, and verify GP MASTER restoration.
+18. Record at least 32 bars and compare beginning, middle and end.
+19. Confirm tempoReanchor is event-driven, not one increment per block.
 ```

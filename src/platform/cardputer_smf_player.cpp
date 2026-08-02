@@ -20,7 +20,7 @@ constexpr UBaseType_t kPlayerTaskPriority = 1;
 constexpr BaseType_t kPlayerTaskCore = 0;
 constexpr TickType_t kIdleDelay = pdMS_TO_TICKS(2);
 constexpr double kProjectBoundaryEpsilon = 1.0e-3;
-constexpr double kContinuePrefillBlocks = 3.0;
+constexpr double kExternalRelaunchPrefillBlocks = 3.0;
 
 bool followsSeqtrakClock() {
     return transportClockRuntime().source() ==
@@ -303,32 +303,30 @@ void CardputerSmfPlayerService::handleProjectTransport() {
             if (transportClockRuntime().source() ==
                 TransportClockSource::SeqtrakExternal) {
                 publishSnapshot(SmfPlayerState::Armed,
-                                projectResumeOnExternalContinue_
-                                    ? "WAIT SEQTRAK CONTINUE"
-                                    : "WAIT SEQTRAK PLAY");
+                                "WAIT SEQTRAK PLAY");
                 return;
             }
             pausedTick_ = snapshot().currentTick;
             eventQueue_.invalidateAndRequestPanic();
             projectLaunchPlanned_ = false;
-            projectResumeOnExternalContinue_ = false;
+            projectRelaunchAfterExternalStop_ = false;
             prepareStreamAt(pausedTick_);
             publishSnapshot(SmfPlayerState::Paused, "GP STOP / MIDI PAUSED");
             updatePlaybackSnapshot();
             return;
         }
-        if (!projectLaunchPlanned_ && projectResumeOnExternalContinue_ &&
+        if (!projectLaunchPlanned_ && projectRelaunchAfterExternalStop_ &&
             transport.restartedFromBeginning) {
-            // FA is a new transport session, not a resume. Return the active
-            // file to MUSIC START and retain its normal launch quantization.
+            // SEQTRAK emits FA after FC and has no FB transmit path. Return the
+            // active file to MUSIC START, then use bounded relaunch below so
+            // the user does not need R or wait for NEXT BAR.
             pausedTick_ = musicStartTick_;
             if (!prepareStreamAt(pausedTick_)) {
-                projectResumeOnExternalContinue_ = false;
+                projectRelaunchAfterExternalStop_ = false;
                 publishSnapshot(SmfPlayerState::Error,
                                 "SMF START RESET FAILED");
                 return;
             }
-            projectResumeOnExternalContinue_ = false;
         }
         if (projectLaunchPlanned_ &&
             transport.transportEpoch != projectTransportEpoch_) {
@@ -361,12 +359,12 @@ void CardputerSmfPlayerService::handleProjectTransport() {
         prepareStreamAt(pausedTick_);
         projectLaunchPlanned_ = false;
         const bool followExternal = followsSeqtrakClock();
-        projectResumeOnExternalContinue_ = followExternal;
+        projectRelaunchAfterExternalStop_ = followExternal;
         publishSnapshot(followExternal
                             ? SmfPlayerState::Armed
                             : SmfPlayerState::Paused,
                         followExternal
-                            ? "WAIT SEQTRAK CONTINUE"
+                            ? "WAIT SEQTRAK PLAY"
                             : "GP STOP / MIDI PAUSED");
         updatePlaybackSnapshot();
         return;
@@ -428,7 +426,7 @@ void CardputerSmfPlayerService::pauseForStaleProjectTimeline() {
         : snapshot().currentTick;
     eventQueue_.invalidateAndRequestPanic();
     projectLaunchPlanned_ = false;
-    projectResumeOnExternalContinue_ = false;
+    projectRelaunchAfterExternalStop_ = false;
     prepareStreamAt(pausedTick_);
     publishSnapshot(SmfPlayerState::Paused,
                     followsSeqtrakClock()
@@ -457,7 +455,7 @@ void CardputerSmfPlayerService::reanchorProjectTempo(
         // cannot finish, scoped cleanup is mandatory to avoid stuck notes.
         eventQueue_.invalidateAndRequestPanic();
         projectLaunchPlanned_ = false;
-        projectResumeOnExternalContinue_ = false;
+        projectRelaunchAfterExternalStop_ = false;
         pausedTick_ = streamTick;
         publishSnapshot(state, message);
         updatePlaybackSnapshot();
@@ -579,7 +577,7 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
                 pausedTick_ = currentTickFromAudioClock();
                 eventQueue_.invalidateAndRequestPanic();
                 projectLaunchPlanned_ = false;
-                projectResumeOnExternalContinue_ = false;
+                projectRelaunchAfterExternalStop_ = false;
                 publishSnapshot(SmfPlayerState::Paused, "PANIC / PAUSED");
             }
             break;
@@ -598,7 +596,7 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
                 static_cast<uint32_t>(targetBar));
             eventQueue_.invalidateAndRequestPanic();
             projectLaunchPlanned_ = false;
-            projectResumeOnExternalContinue_ = false;
+            projectRelaunchAfterExternalStop_ = false;
             if (previous == SmfPlayerState::Playing || previous == SmfPlayerState::Armed) {
                 startFromTick(targetTick);
             } else {
@@ -616,7 +614,7 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
                 : pausedTick_;
             eventQueue_.invalidateAndRequestPanic();
             projectLaunchPlanned_ = false;
-            projectResumeOnExternalContinue_ = false;
+            projectRelaunchAfterExternalStop_ = false;
             routingMode_ = routingMode_ == SmfRoutingMode::Raw
                 ? SmfRoutingMode::Seqtrak
                 : SmfRoutingMode::Raw;
@@ -645,7 +643,7 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
             if (loaded_) {
                 eventQueue_.invalidateAndRequestPanic();
                 projectLaunchPlanned_ = false;
-                projectResumeOnExternalContinue_ = false;
+                projectRelaunchAfterExternalStop_ = false;
                 pausedTick_ = resumeTick;
                 prepareStreamAt(resumeTick);
             }
@@ -833,7 +831,7 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
     streamEnded_ = false;
     streamPreparedValid_ = false;
     projectLaunchPlanned_ = false;
-    projectResumeOnExternalContinue_ = false;
+    projectRelaunchAfterExternalStop_ = false;
 
     portENTER_CRITICAL(&snapshotMux_);
     copyText(snapshot_.filename, sizeof(snapshot_.filename), basename(path));
@@ -911,10 +909,9 @@ bool CardputerSmfPlayerService::startOriginalFromTick(uint32_t tick) {
     if (!loaded_ || !timing_.valid()) return false;
     if (tick > endTick_) tick = musicStartTick_;
 
-    eventQueue_.clearTransportFailure();
     eventQueue_.invalidateAndRequestPanic();
     projectLaunchPlanned_ = false;
-    projectResumeOnExternalContinue_ = false;
+    projectRelaunchAfterExternalStop_ = false;
     if (!prepareStreamAt(tick)) return false;
 
     uint32_t anchorBlock = 0;
@@ -957,13 +954,12 @@ bool CardputerSmfPlayerService::armProjectFromTick(uint32_t tick) {
     if (!loaded_ || !timing_.valid()) return false;
     if (tick > endTick_) tick = musicStartTick_;
 
-    eventQueue_.clearTransportFailure();
     eventQueue_.invalidateAndRequestPanic();
     if (!prepareStreamAt(tick)) return false;
 
     pausedTick_ = tick;
     projectLaunchPlanned_ = false;
-    projectResumeOnExternalContinue_ = false;
+    projectRelaunchAfterExternalStop_ = false;
     perfLastLogMs_ = 0;
     publishSnapshot(SmfPlayerState::Armed, "WAIT NEXT BAR");
 
@@ -983,16 +979,19 @@ bool CardputerSmfPlayerService::planProjectLaunch(
         return false;
     }
 
-    const bool resumeExternal = projectResumeOnExternalContinue_ &&
-                                !transport.restartedFromBeginning;
+    const SmfExternalRelaunchMode externalRelaunch =
+        smfExternalRelaunchMode(projectRelaunchAfterExternalStop_,
+                                transport.restartedFromBeginning);
+    const bool boundedExternalRelaunch =
+        smfExternalRelaunchUsesBoundedPrefill(externalRelaunch);
     double targetStep = 0.0;
-    if (resumeExternal) {
+    if (boundedExternalRelaunch) {
         const double stepsPerBlock =
             static_cast<double>(transport.blockFrames) * transport.bpm() *
             kProjectStepsPerQuarter /
             (60.0 * static_cast<double>(transport.sampleRate));
         targetStep = transport.absoluteSteps() +
-                     stepsPerBlock * kContinuePrefillBlocks;
+                     stepsPerBlock * kExternalRelaunchPrefillBlocks;
     } else {
         targetStep = launchMode_ == SmfLaunchMode::Immediate
             ? transport.absoluteSteps()
@@ -1013,9 +1012,9 @@ bool CardputerSmfPlayerService::planProjectLaunch(
 
     // Give the SD/parser task enough time to prefill before the boundary. If
     // the next bar is already too close, use the following bar rather than
-    // knowingly delivering a late burst. Continue already uses a dedicated
-    // three-block prefill and must not be pushed to another full bar.
-    if (!resumeExternal && launchMode_ == SmfLaunchMode::NextBar &&
+    // knowingly delivering a late burst. External relaunch already uses a
+    // bounded three-block prefill and must not wait for another full bar.
+    if (!boundedExternalRelaunch && launchMode_ == SmfLaunchMode::NextBar &&
         static_cast<int32_t>(launch.blockSequence -
                              (transport.blockSequence + kProjectLaunchLeadBlocks)) <= 0) {
         targetStep += kProjectStepsPerBar;
@@ -1041,14 +1040,16 @@ bool CardputerSmfPlayerService::planProjectLaunch(
     projectTransportEpoch_ = transport.transportEpoch;
     lastScheduledBlock_ = playbackOriginBlock_;
     projectLaunchPlanned_ = true;
-    projectResumeOnExternalContinue_ = false;
+    projectRelaunchAfterExternalStop_ = false;
 
     publishSnapshot(SmfPlayerState::Armed,
-                    resumeExternal
-                        ? "ARMED / CONTINUE"
-                        : (launchMode_ == SmfLaunchMode::NextBar
-                               ? "ARMED / NEXT BAR"
-                               : "ARMED / NOW"));
+                    externalRelaunch == SmfExternalRelaunchMode::Restart
+                        ? "ARMED / RESTART"
+                        : (externalRelaunch == SmfExternalRelaunchMode::Continue
+                               ? "ARMED / CONTINUE"
+                               : (launchMode_ == SmfLaunchMode::NextBar
+                                      ? "ARMED / NEXT BAR"
+                                      : "ARMED / NOW")));
     scheduleAhead();
     return true;
 }
@@ -1058,7 +1059,7 @@ void CardputerSmfPlayerService::pauseAtCurrentPosition() {
     pausedTick_ = currentTickFromAudioClock();
     eventQueue_.invalidateAndRequestPanic();
     projectLaunchPlanned_ = false;
-    projectResumeOnExternalContinue_ = false;
+    projectRelaunchAfterExternalStop_ = false;
     prepareStreamAt(pausedTick_);
     publishSnapshot(SmfPlayerState::Paused,
         tempoMode_ == SmfTempoMode::Project
@@ -1074,7 +1075,7 @@ void CardputerSmfPlayerService::pauseAtCurrentPosition() {
 void CardputerSmfPlayerService::stopAndCleanup(bool resetToMusicStart) {
     eventQueue_.invalidateAndRequestPanic();
     projectLaunchPlanned_ = false;
-    projectResumeOnExternalContinue_ = false;
+    projectRelaunchAfterExternalStop_ = false;
     if (resetToMusicStart && loaded_) pausedTick_ = musicStartTick_;
     if (loaded_) {
         prepareStreamAt(pausedTick_);
@@ -1250,7 +1251,7 @@ void CardputerSmfPlayerService::scheduleAhead() {
         static_cast<int32_t>(anchorBlock - lastScheduledBlock_) > 1) {
         pausedTick_ = musicStartTick_;
         projectLaunchPlanned_ = false;
-        projectResumeOnExternalContinue_ = false;
+        projectRelaunchAfterExternalStop_ = false;
         publishSnapshot(SmfPlayerState::Stopped, "END - Space to replay");
     }
 }

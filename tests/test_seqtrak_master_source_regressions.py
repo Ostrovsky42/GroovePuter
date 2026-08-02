@@ -130,12 +130,13 @@ def main() -> None:
             "source tempo, musical phase and timing anchors must remain separate")
     require("restartedFromBeginning" in timeline,
             "project timeline must distinguish Start from Continue epochs")
-    require("projectResumeOnExternalContinue_" in smf_service and
-            "kContinuePrefillBlocks" in smf_service and
+    require("projectRelaunchAfterExternalStop_" in smf_service and
+            "kExternalRelaunchPrefillBlocks" in smf_service and
             "transport.restartedFromBeginning" in smf_service and
+            '"ARMED / RESTART"' in smf_service and
             '"ARMED / CONTINUE"' in smf_service,
-            "only an active PROJECT SMF may use bounded Continue resume")
-    require("kContinuePrefillBlocks" not in timeline,
+            "an active PROJECT SMF needs bounded restart/Continue relaunch")
+    require("kExternalRelaunchPrefillBlocks" not in timeline,
             "generic project bar quantization must not own SMF resume policy")
 
     require("transportClockSource" in settings_h and

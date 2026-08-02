@@ -238,7 +238,7 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
             "SMF transport needs an explicit idempotent Pause command")
     require('"GP STOP / MIDI PAUSED"' in player_service and
             '"WAIT SEQTRAK PLAY"' in player_service and
-            '"WAIT SEQTRAK CONTINUE"' in player_service,
+            "projectRelaunchAfterExternalStop_" in player_service,
             "project stop must pause GP MASTER but preserve SEQ MASTER arming")
 
     require('"MIDI LIBRARY  %.24s"' in player_page and

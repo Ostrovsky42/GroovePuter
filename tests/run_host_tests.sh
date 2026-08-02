@@ -325,3 +325,14 @@ python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
   -o "${BUILD_DIR}/test_external_midi_clock_follower"
 
 "${BUILD_DIR}/test_external_midi_clock_follower"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_external_transport_policy.cpp" \
+  -o "${BUILD_DIR}/test_smf_external_transport_policy"
+
+"${BUILD_DIR}/test_smf_external_transport_policy"
