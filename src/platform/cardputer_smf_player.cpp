@@ -778,6 +778,7 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
 
 bool CardputerSmfPlayerService::loadFile(const char* path) {
     stopAndCleanup(false);
+    resetMidiVisual();
     source_.close();
     loaded_ = false;
     haveLastProjectTransport_ = false;
@@ -956,6 +957,7 @@ bool CardputerSmfPlayerService::startOriginalFromTick(uint32_t tick) {
     if (tick > endTick_) tick = musicStartTick_;
 
     eventQueue_.invalidateAndRequestPanic();
+    resetMidiVisual();
     projectLaunchPlanned_ = false;
     projectRelaunchAfterExternalStop_ = false;
     if (!prepareStreamAt(tick)) return false;
@@ -1001,6 +1003,7 @@ bool CardputerSmfPlayerService::armProjectFromTick(uint32_t tick) {
     if (tick > endTick_) tick = musicStartTick_;
 
     eventQueue_.invalidateAndRequestPanic();
+    resetMidiVisual();
     if (!prepareStreamAt(tick)) return false;
 
     pausedTick_ = tick;
@@ -1104,6 +1107,7 @@ void CardputerSmfPlayerService::pauseAtCurrentPosition() {
     if (!loaded_) return;
     pausedTick_ = currentTickFromAudioClock();
     eventQueue_.invalidateAndRequestPanic();
+    resetMidiVisual();
     projectLaunchPlanned_ = false;
     projectRelaunchAfterExternalStop_ = false;
     prepareStreamAt(pausedTick_);
@@ -1120,6 +1124,7 @@ void CardputerSmfPlayerService::pauseAtCurrentPosition() {
 
 void CardputerSmfPlayerService::stopAndCleanup(bool resetToMusicStart) {
     eventQueue_.invalidateAndRequestPanic();
+    resetMidiVisual();
     projectLaunchPlanned_ = false;
     projectRelaunchAfterExternalStop_ = false;
     if (resetToMusicStart && loaded_) pausedTick_ = musicStartTick_;
@@ -1259,11 +1264,13 @@ void CardputerSmfPlayerService::scheduleAhead() {
             ++perfUnmappedEventsFiltered_;
             continue;
         }
+        uint8_t visualVelocity = 0;
         if (event.event.kind == SmfEventKind::NoteOn) {
+            visualVelocity = applySmfVelocityBoost(event.event.data2, velocityBoost_);
             pushed = eventQueue_.tryPushNoteOn(
                 routed.channel,
                 routed.note,
-                applySmfVelocityBoost(event.event.data2, velocityBoost_),
+                visualVelocity,
                 position.blockSequence,
                 position.frameOffset,
                 tempoMode_ == SmfTempoMode::Project
@@ -1287,6 +1294,9 @@ void CardputerSmfPlayerService::scheduleAhead() {
                 publishSnapshot(SmfPlayerState::Error, "MIDI cleanup overflow");
             }
             break;
+        }
+        if (event.event.kind == SmfEventKind::NoteOn) {
+            queueMidiVisualNote(event.event.tick, routed.note, visualVelocity, routed.channel);
         }
         lastScheduledBlock_ = position.blockSequence;
         hasPendingEvent_ = false;
@@ -1466,6 +1476,20 @@ uint16_t CardputerSmfPlayerService::effectiveBpmX10At(uint32_t tick) const {
     return static_cast<uint16_t>(std::min<uint32_t>(65535, scaled));
 }
 
+
+void CardputerSmfPlayerService::resetMidiVisual() {
+    midiVisualTimeline_.reset();
+    const SmfMidiVisualSnapshot visual = midiVisualTimeline_.snapshot();
+    portENTER_CRITICAL(&snapshotMux_);
+    snapshot_.midiVisual = visual;
+    portEXIT_CRITICAL(&snapshotMux_);
+}
+
+void CardputerSmfPlayerService::queueMidiVisualNote(
+        uint32_t tick, uint8_t note, uint8_t velocity, uint8_t channel) {
+    midiVisualTimeline_.queue(tick, note, velocity, channel);
+}
+
 void CardputerSmfPlayerService::updatePlaybackSnapshot() {
     if (!loaded_ || !timing_.valid()) return;
     const SmfPlayerState state = snapshot().state;
@@ -1476,6 +1500,7 @@ void CardputerSmfPlayerService::updatePlaybackSnapshot() {
     const SmfBarBeat pos = timing_.barBeatForTick(tick);
     const uint16_t originalBpmX10 = originalBpmX10At(tick);
     const uint16_t bpmX10 = effectiveBpmX10At(tick);
+    const SmfMidiVisualSnapshot midiVisual = midiVisualTimeline_.advanceTo(tick);
 
     portENTER_CRITICAL(&snapshotMux_);
     snapshot_.currentTick = tick;
@@ -1487,6 +1512,7 @@ void CardputerSmfPlayerService::updatePlaybackSnapshot() {
     snapshot_.velocityBoost = velocityBoost_;
     snapshot_.tempoMode = tempoMode_;
     snapshot_.launchMode = launchMode_;
+    snapshot_.midiVisual = midiVisual;
     portEXIT_CRITICAL(&snapshotMux_);
 }
 

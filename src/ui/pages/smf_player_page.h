@@ -38,6 +38,10 @@ private:
     void drawNowPlaying(IGfx& gfx);
     void drawPerformance(IGfx& gfx);
     void drawChannelInspector(IGfx& gfx);
+    void drawMidiWaveOverlay(IGfx& gfx,
+                             const GroovePuterMidi::SmfPlayerSnapshot& state,
+                             const Rect& region,
+                             IGfxColor color);
     void ensureSelectionVisible(int visibleRows);
     bool navigateIntoDir(const std::string& dirName);
     bool navigateUpDir();
@@ -63,6 +67,10 @@ private:
     bool performanceVisible_{false};
     bool channelInspectorVisible_{false};
     int channelInspectorScroll_{0};
+    uint32_t lastMidiVisualEpoch_{0};
+    uint32_t lastMidiVisualPulse_{0};
+    uint16_t midiWavePhase_{0};
+    uint8_t midiWaveEnvelope_{0};
 
     template <typename F>
     void withAudioGuard(F&& fn) {

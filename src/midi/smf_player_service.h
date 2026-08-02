@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "smf_channel_inspector.h"
+#include "smf_midi_visual.h"
 
 namespace GroovePuterMidi {
 
@@ -93,6 +94,7 @@ struct SmfPlayerSnapshot {
     SmfTempoMode tempoMode{SmfTempoMode::Original};
     SmfLaunchMode launchMode{SmfLaunchMode::NextBar};
     SmfPlayerPerformanceSnapshot performance{};
+    SmfMidiVisualSnapshot midiVisual{};
 };
 
 class ISmfPlayerService {

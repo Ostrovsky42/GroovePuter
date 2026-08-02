@@ -132,6 +132,8 @@ private:
     void scheduleAhead();
     void logPerformance();
     void updatePlaybackSnapshot();
+    void resetMidiVisual();
+    void queueMidiVisualNote(uint32_t tick, uint8_t note, uint8_t velocity, uint8_t channel);
     void applyTempoScale(uint16_t scalePermille);
     uint16_t originalBpmX10At(uint32_t tick) const;
     uint16_t effectiveBpmX10At(uint32_t tick) const;
@@ -152,6 +154,7 @@ private:
     GroovePuterMidi::SmfEventStreamMerger stream_;
     GroovePuterMidi::SmfTimingMap timing_;
     GroovePuterMidi::SmfDocument timingDocument_;
+    GroovePuterMidi::SmfMidiVisualTimeline midiVisualTimeline_;
 
     GroovePuterMidi::SmfStreamEvent pendingEvent_{};
     bool hasPendingEvent_{false};

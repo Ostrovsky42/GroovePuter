@@ -8,6 +8,7 @@
 #include "../components/music_visuals.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/transport_clock_runtime.h"
+#include "src/midi/smf_track_mute.h"
 
 #ifdef ARDUINO
 #include <SD.h>
@@ -42,6 +43,23 @@ bool browserNameIsMidi(const char* name) {
            std::tolower(static_cast<unsigned char>(ext[1])) == 'm' &&
            std::tolower(static_cast<unsigned char>(ext[2])) == 'i' &&
            std::tolower(static_cast<unsigned char>(ext[3])) == 'd';
+}
+
+void formatMidiNote(uint8_t note, char* dst, std::size_t size) {
+    static constexpr const char* kNames[] = {
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+    };
+    const int octave = static_cast<int>(note / 12u) - 1;
+    std::snprintf(dst, size, "%s%d", kNames[note % 12u], octave);
+}
+
+const char* inspectorRouteLabel(bool raw, uint8_t sourceChannel) {
+    if (raw) return "RAW";
+    if (sourceChannel == 0) return "S1";
+    if (sourceChannel == 1) return "S2";
+    if (sourceChannel == 2) return "DX";
+    if (sourceChannel == 9) return "DRM";
+    return "OFF";
 }
 }  // namespace
 
@@ -506,6 +524,33 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     if (!player_) return false;
     const SmfPlayerSnapshot state = player_->snapshot();
 
+    if (event.key == 'i' || event.key == 'I') {
+        channelInspectorVisible_ = !channelInspectorVisible_;
+        if (channelInspectorVisible_) {
+            performanceVisible_ = false;
+            channelInspectorScroll_ = 0;
+        }
+        return true;
+    }
+    if (channelInspectorVisible_) {
+        const SmfChannelInspectorSnapshot inspector = player_->channelInspector();
+        constexpr int kVisibleRows = 6;
+        const int maxScroll = std::max(
+            0, static_cast<int>(inspector.usedChannelCount()) - kVisibleRows);
+        if (event.scancode == GROOVEPUTER_UP) {
+            channelInspectorScroll_ = std::max(0, channelInspectorScroll_ - 1);
+            return true;
+        }
+        if (event.scancode == GROOVEPUTER_DOWN) {
+            channelInspectorScroll_ = std::min(maxScroll, channelInspectorScroll_ + 1);
+            return true;
+        }
+        if (event.scancode == GROOVEPUTER_LEFT ||
+            event.scancode == GROOVEPUTER_RIGHT) {
+            return true;
+        }
+    }
+
     if (event.scancode == GROOVEPUTER_LEFT) {
         player_->seekBars(event.shift ? -4 : -1);
         return true;
@@ -568,6 +613,38 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         }
         return true;
     }
+    if (event.key == 'j' || event.key == 'J' ||
+        event.key == 'l' || event.key == 'L') {
+        smfTrackMuteState().selectRelative(
+            (event.key == 'j' || event.key == 'J') ? -1 : 1);
+        const SmfTrackMuteSnapshot tracks = smfTrackMuteState().snapshot();
+        char toast[40];
+        if (tracks.trackCount == 0) {
+            std::snprintf(toast, sizeof(toast), "NO MIDI TRACKS");
+        } else {
+            std::snprintf(toast, sizeof(toast), "TRACK %u/%u %s",
+                          static_cast<unsigned>(tracks.selectedTrack + 1u),
+                          static_cast<unsigned>(tracks.trackCount),
+                          tracks.selectedMuted() ? "MUTED" : "ON");
+        }
+        UI::showToast(toast, 800);
+        return true;
+    }
+    if (event.key == 'k' || event.key == 'K') {
+        if (event.shift) {
+            smfTrackMuteState().clear();
+            UI::showToast("ALL MIDI TRACKS ON", 900);
+        } else if (smfTrackMuteState().toggleSelected()) {
+            const SmfTrackMuteSnapshot tracks = smfTrackMuteState().snapshot();
+            UI::showToast(tracks.selectedMuted()
+                              ? "TRACK MUTE: NEXT NOTES"
+                              : "TRACK UNMUTED",
+                          900);
+        } else {
+            UI::showToast("NO MIDI TRACKS", 900);
+        }
+        return true;
+    }
     if (event.key == 'v' || event.key == 'V') {
         const bool queued = player_->cycleVelocityBoost();
         UI::showToast(queued ? "MIDI: VELOCITY BOOST" : "MIDI PLAYER BUSY", 800);
@@ -588,6 +665,7 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     }
     if (event.key == 'd' || event.key == 'D') {
         performanceVisible_ = !performanceVisible_;
+        if (performanceVisible_) channelInspectorVisible_ = false;
         return true;
     }
     if (event.key == 'x' || event.key == 'X') {
@@ -598,6 +676,7 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     if (event.key == 'b' || event.key == 'B' ||
         event.key == '\n' || event.key == '\r' || event.key == '\b') {
         browserVisible_ = true;
+        channelInspectorVisible_ = false;
         refreshFiles();
         return true;
     }
@@ -613,12 +692,15 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
 }
 
 void SmfPlayerPage::drawHeader(IGfx& gfx) {
-    UI::drawStandardHeader(gfx, miniAcid_, performanceVisible_ ? "MIDI PERF" : "MIDI PLAYER");
+    UI::drawStandardHeader(gfx, miniAcid_, channelInspectorVisible_
+        ? "MIDI CHANNELS"
+        : (performanceVisible_ ? "MIDI PERF" : "MIDI PLAYER"));
 }
 
 void SmfPlayerPage::drawContent(IGfx& gfx) {
     LayoutManager::clearContent(gfx);
     if (browserVisible_) drawBrowser(gfx);
+    else if (channelInspectorVisible_) drawChannelInspector(gfx);
     else if (performanceVisible_) drawPerformance(gfx);
     else drawNowPlaying(gfx);
 }
@@ -668,6 +750,7 @@ void SmfPlayerPage::drawBrowser(IGfx& gfx) {
 void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
     player_ = smfPlayerService();
     const SmfPlayerSnapshot state = player_ ? player_->snapshot() : SmfPlayerSnapshot{};
+    const SmfTrackMuteSnapshot tracks = smfTrackMuteState().snapshot();
 
     const bool playing = state.state == SmfPlayerState::Playing;
     const bool armed = state.state == SmfPlayerState::Armed;
@@ -716,13 +799,27 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
                                   current,
                                   total,
                                   stateColor);
+    drawMidiWaveOverlay(gfx, state,
+                        Rect(Layout::COL_1 + 2, LayoutManager::lineY(3) + 3,
+                             Layout::CONTENT.w - 16, 5),
+                        MusicVisuals::secondaryForStyle());
 
     const unsigned percent = static_cast<unsigned>((static_cast<uint64_t>(current) * 100u) / total);
-    gfx.setTextColor(COLOR_LABEL);
-    std::snprintf(line, sizeof(line), "%lu / %lu BARS    %u%%",
-                  static_cast<unsigned long>(state.bar),
-                  static_cast<unsigned long>(state.totalBars),
-                  percent);
+    gfx.setTextColor(tracks.selectedMuted() ? COLOR_WARN : COLOR_LABEL);
+    if (tracks.trackCount > 0) {
+        std::snprintf(line, sizeof(line), "%lu/%lu BAR %u%%  TRK %u/%u %s",
+                      static_cast<unsigned long>(state.bar),
+                      static_cast<unsigned long>(state.totalBars),
+                      percent,
+                      static_cast<unsigned>(tracks.selectedTrack + 1u),
+                      static_cast<unsigned>(tracks.trackCount),
+                      tracks.selectedMuted() ? "MUTE" : "ON");
+    } else {
+        std::snprintf(line, sizeof(line), "%lu / %lu BARS    %u%%",
+                      static_cast<unsigned long>(state.bar),
+                      static_cast<unsigned long>(state.totalBars),
+                      percent);
+    }
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(4), line);
 
     if (state.tempoMode == SmfTempoMode::Project) {
@@ -757,6 +854,133 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
     const bool usbBlocked = std::strncmp(state.message, "USB MIDI BLOCKED", 16) == 0;
     gfx.setTextColor((error || usbBlocked) ? COLOR_DANGER : COLOR_LABEL);
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), state.message);
+}
+
+
+void SmfPlayerPage::drawMidiWaveOverlay(
+        IGfx& gfx,
+        const SmfPlayerSnapshot& state,
+        const Rect& region,
+        IGfxColor color) {
+    const SmfMidiVisualSnapshot& visual = state.midiVisual;
+    if (visual.epoch != lastMidiVisualEpoch_) {
+        lastMidiVisualEpoch_ = visual.epoch;
+        lastMidiVisualPulse_ = visual.pulseCounter;
+        midiWaveEnvelope_ = 0;
+        midiWavePhase_ = 0;
+    } else if (state.state == SmfPlayerState::Playing &&
+               visual.pulseCounter != lastMidiVisualPulse_) {
+        lastMidiVisualPulse_ = visual.pulseCounter;
+        midiWaveEnvelope_ = std::max<uint8_t>(24, visual.velocity);
+        midiWavePhase_ = static_cast<uint16_t>(
+            midiWavePhase_ + visual.note * 3u + visual.channel * 11u + 7u);
+    } else if (midiWaveEnvelope_ > 0) {
+        midiWaveEnvelope_ = midiWaveEnvelope_ > 7u
+            ? static_cast<uint8_t>(midiWaveEnvelope_ - 7u)
+            : 0u;
+    }
+
+    const int midY = region.y + region.h / 2;
+    gfx.drawLine(region.x, midY, region.x + region.w - 1, midY, COLOR_LABEL);
+    if (midiWaveEnvelope_ == 0 || region.w < 3 || region.h < 3) return;
+
+    const int amplitude = std::max(
+        1, ((region.h / 2) * static_cast<int>(midiWaveEnvelope_)) / 127);
+    const int cycles = 2 + static_cast<int>(visual.note % 7u);
+    int previousX = region.x;
+    int previousY = midY;
+    constexpr int kPoints = 32;
+    for (int point = 1; point < kPoints; ++point) {
+        const int x = region.x + (point * (region.w - 1)) / (kPoints - 1);
+        const int phase = static_cast<int>(
+            (midiWavePhase_ + point * cycles * 4u) & 63u);
+        const int triangle = phase < 32 ? phase - 16 : 48 - phase;
+        const int accent = ((point + static_cast<int>(visual.pulseCounter)) & 7) == 0
+            ? (visual.velocity > 96 ? 5 : 2)
+            : 0;
+        const int y = midY - ((triangle + accent) * amplitude) / 16;
+        gfx.drawLine(previousX, previousY, x, y, color);
+        previousX = x;
+        previousY = y;
+    }
+    midiWavePhase_ = static_cast<uint16_t>(midiWavePhase_ + 3u + cycles);
+}
+
+void SmfPlayerPage::drawChannelInspector(IGfx& gfx) {
+    player_ = smfPlayerService();
+    const SmfPlayerSnapshot state = player_ ? player_->snapshot() : SmfPlayerSnapshot{};
+    const SmfChannelInspectorSnapshot inspector = player_
+        ? player_->channelInspector()
+        : SmfChannelInspectorSnapshot{};
+
+    char line[64];
+    gfx.setTextColor(MusicVisuals::accentForStyle());
+    std::snprintf(line, sizeof(line), "F%u PPQN %u TRK %u USED %u",
+                  static_cast<unsigned>(inspector.format),
+                  static_cast<unsigned>(inspector.division),
+                  static_cast<unsigned>(inspector.trackCount),
+                  static_cast<unsigned>(inspector.usedChannelCount()));
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(0), line);
+
+    uint8_t used[kSmfMidiChannelCount]{};
+    int usedCount = 0;
+    for (uint8_t channel = 0; channel < kSmfMidiChannelCount; ++channel) {
+        if ((inspector.usedChannelMask & (1u << channel)) != 0) {
+            used[usedCount++] = channel;
+        }
+    }
+
+    constexpr int kVisibleRows = 6;
+    const int maxScroll = std::max(0, usedCount - kVisibleRows);
+    channelInspectorScroll_ = std::max(0, std::min(channelInspectorScroll_, maxScroll));
+
+    if (usedCount == 0) {
+        gfx.setTextColor(COLOR_LABEL);
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), "NO NOTE OR PROGRAM CHANNELS");
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(3), "LOAD A MIDI FILE FIRST");
+        return;
+    }
+
+    for (int row = 0; row < kVisibleRows; ++row) {
+        const int index = channelInspectorScroll_ + row;
+        if (index >= usedCount) break;
+        const uint8_t channel = used[index];
+        const SmfChannelInfo& info = inspector.channels[channel];
+
+        char low[5] = "--";
+        char high[5] = "--";
+        if (info.hasNotes()) {
+            formatMidiNote(info.minNote, low, sizeof(low));
+            formatMidiNote(info.maxNote, high, sizeof(high));
+        }
+        char program[6] = "P---";
+        if (info.hasProgramChange) {
+            std::snprintf(program, sizeof(program), "P%03u",
+                          static_cast<unsigned>(info.firstProgram));
+        }
+        const unsigned shownNotes = static_cast<unsigned>(
+            info.noteCount > 9999u ? 9999u : info.noteCount);
+        const unsigned shownPoly = static_cast<unsigned>(
+            info.maxPolyphony > 99u ? 99u : info.maxPolyphony);
+        std::snprintf(line, sizeof(line),
+                      "C%02u N%04u %-3s-%-3s V%03u X%02u %s %-3s",
+                      static_cast<unsigned>(channel + 1u),
+                      shownNotes,
+                      low,
+                      high,
+                      static_cast<unsigned>(info.averageVelocity()),
+                      shownPoly,
+                      program,
+                      inspectorRouteLabel(state.rawRouting, channel));
+        gfx.setTextColor(info.likelyDrums
+                             ? MusicVisuals::accentForStyle()
+                             : COLOR_TEXT);
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(row + 1), line);
+    }
+
+    gfx.setTextColor(COLOR_LABEL);
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(7),
+                 "I PLAYER UP/DN SCROLL P=PROGRAM");
 }
 
 void SmfPlayerPage::drawPerformance(IGfx& gfx) {
@@ -816,18 +1040,21 @@ void SmfPlayerPage::drawPerformance(IGfx& gfx) {
 void SmfPlayerPage::drawFooter(IGfx& gfx) {
     const bool seqMaster = transportClockRuntime().source() == TransportClockSource::SeqtrakExternal;
     if (browserVisible_) {
-        UI::drawStandardFooter(gfx, "UP/DN Select  Enter Load",
-                               seqMaster ? "C Master  G Follow  T Tempo"
-                                         : "C Master  Space MIDI  T Tempo");
+        UI::drawStandardFooter(gfx, "UP/DN Select Enter Load",
+                               seqMaster ? "C Master G Follow T Tempo"
+                                         : "C Master Space MIDI T Tempo");
+    } else if (channelInspectorVisible_) {
+        UI::drawStandardFooter(gfx, "UP/DN Scroll I Player",
+                               "D Perf B Files Space MIDI");
     } else if (performanceVisible_) {
-        UI::drawStandardFooter(gfx, "D Player  B Files",
-                               seqMaster ? "C Master  G Follow  T Tempo"
-                                         : "C Master  Space MIDI  T Tempo");
+        UI::drawStandardFooter(gfx, "D Player B Files I Channels",
+                               seqMaster ? "C Master G Follow T Tempo"
+                                         : "C Master Space MIDI T Tempo");
     } else {
         UI::drawStandardFooter(gfx,
-                               seqMaster ? "Space MIDI  G Follow  C Master"
-                                         : "Space MIDI  C Master  R Restart",
-                               "B Files  T Tempo  V Vel  X Panic");
+                               seqMaster ? "Space MIDI G Follow C Master"
+                                         : "Space MIDI C Master R Restart",
+                               "I Channels J/L Track K Mute");
     }
 }
 

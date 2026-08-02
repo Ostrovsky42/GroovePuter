@@ -17,6 +17,7 @@ python3 "${ROOT_DIR}/tests/test_midi_transport_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_song_playhead_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_midi_companion_foundation_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_seqtrak_master_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_smf_midi_wave_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
 python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
@@ -180,6 +181,30 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -o "${BUILD_DIR}/test_smf_stream"
 
 "${BUILD_DIR}/test_smf_stream"
+
+
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_channel_inspector.cpp" \
+  -o "${BUILD_DIR}/test_smf_channel_inspector"
+
+"${BUILD_DIR}/test_smf_channel_inspector"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_midi_visual.cpp" \
+  -o "${BUILD_DIR}/test_smf_midi_visual"
+
+"${BUILD_DIR}/test_smf_midi_visual"
 
 "${CXX}" \
   -std=c++17 \
