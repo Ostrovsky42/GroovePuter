@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "src/midi/smf_stream.h"
+#include "src/midi/smf_track_mute.h"
 
 using namespace GroovePuterMidi;
 
@@ -100,6 +101,8 @@ int main() {
 
     SmfEventStreamMerger stream;
     assert(stream.open(source, indexed.index));
+    assert(smfTrackMuteState().snapshot().trackCount == 2);
+    assert(smfTrackMuteState().snapshot().mutedMask == 0);
 
     std::vector<SmfStreamEvent> events;
     SmfStreamEvent event;
@@ -155,6 +158,23 @@ int main() {
     while (stream.next(event)) {
     }
     assert(source.reads() == indexed.index.trackCount);
+
+    // Muting one source track removes only its future NoteOn events.
+    // NoteOff remains cleanup-critical for notes queued before the mute.
+    smfTrackMuteState().selectRelative(1);
+    assert(smfTrackMuteState().snapshot().selectedTrack == 1);
+    assert(smfTrackMuteState().toggleSelected());
+    assert(smfTrackMuteState().snapshot().selectedMuted());
+    stream.reset();
+    events.clear();
+    while (stream.next(event)) events.push_back(event);
+    assert(events.size() == 5);
+    assert(events[0].event.kind == SmfEventKind::Tempo);
+    assert(events[1].event.kind == SmfEventKind::TimeSignature);
+    assert(events[2].event.kind == SmfEventKind::NoteOff);
+    assert(events[3].event.kind == SmfEventKind::NoteOff);
+    assert(events[4].event.kind == SmfEventKind::ProgramChange);
+    smfTrackMuteState().clear();
 
     std::vector<uint8_t> tooMany = fixture();
     tooMany[10] = 0x00;

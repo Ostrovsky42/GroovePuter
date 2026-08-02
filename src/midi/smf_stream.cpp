@@ -4,6 +4,8 @@
 #include <cstring>
 #include <limits>
 
+#include "smf_track_mute.h"
+
 namespace GroovePuterMidi {
 namespace {
 
@@ -336,6 +338,7 @@ bool SmfEventStreamMerger::open(ISmfByteSource& source,
     if (index.trackCount == 0 || index.trackCount > kSmfMaxTracks) return false;
     source_ = &source;
     index_ = index;
+    smfTrackMuteState().reset(index.trackCount);
     for (std::size_t i = 0; i < kSmfMaxTracks; ++i) hasNext_[i] = false;
     selectedValid_ = false;
 
@@ -402,12 +405,16 @@ int SmfEventStreamMerger::selectedTrack() const {
 }
 
 bool SmfEventStreamMerger::next(SmfStreamEvent& out) {
-    const int selected = selectedTrack();
-    if (selected < 0) return false;
-    const std::size_t track = static_cast<std::size_t>(selected);
-    out = next_[track];
-    prime(track);
-    return true;
+    while (true) {
+        const int selected = selectedTrack();
+        if (selected < 0) return false;
+        const std::size_t track = static_cast<std::size_t>(selected);
+        out = next_[track];
+        prime(track);
+
+        const bool noteOn = out.event.kind == SmfEventKind::NoteOn;
+        if (shouldEmitSmfTrackEvent(noteOn, out.trackIndex)) return true;
+    }
 }
 
 bool SmfEventStreamMerger::peek(SmfStreamEvent& out) const {
