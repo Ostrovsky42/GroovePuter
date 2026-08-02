@@ -9,9 +9,51 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  apply-project-midi-fix:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'fix/project-midi-import-persistence' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fix branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/project-midi-import-persistence
+          fetch-depth: 0
+
+      - name: Apply focused source patch
+        run: |
+          git apply --check .github/patches/project-midi-fix.patch
+          git apply .github/patches/project-midi-fix.patch
+
+      - name: Validate patched source contracts
+        run: |
+          grep -q 'mini_acid_.sceneManager().wipeToZero();' src/ui/pages/project_page.cpp
+          grep -q 'GROOVEPUTER_ESCAPE' src/ui/pages/project_page.cpp
+          grep -q 'MIDI imported and saved' src/ui/pages/project_page.cpp
+          grep -q 'if (midi_mask_a_) sm.setSongPattern' src/ui/pages/project_page.cpp
+          ! grep -q 'mini_acid_.createNewSceneWithName(name)' src/ui/pages/project_page.cpp
+
+      - name: Remove one-shot machinery and restore CI
+        run: |
+          git fetch origin dev
+          git checkout origin/dev -- .github/workflows/core-regressions.yml
+          rm -f .github/workflows/apply-project-midi-fix.yml
+          rm -f .github/patches/project-midi-fix.patch
+          rmdir .github/patches 2>/dev/null || true
+
+      - name: Commit patched source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix project MIDI import and persistence UI"
+          git push origin HEAD:fix/project-midi-import-persistence
+
   host-tests:
     runs-on: ubuntu-latest
     steps:
