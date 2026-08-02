@@ -8,6 +8,7 @@ on:
       - .github/workflows/integrate-open-smf-prs.yml
       - scripts/dev_integrate_smf_ui_and_wave.py
       - scripts/dev_apply_track_mute_core.py
+      - scripts/dev_rewrite_wave_integration_script.py
 
 permissions:
   contents: write
@@ -69,7 +70,11 @@ jobs:
         run: |
           git show origin/integration/run-open-smf-prs:scripts/dev_integrate_smf_ui_and_wave.py \
             > /tmp/dev_integrate_smf_ui_and_wave.py
+          git show origin/integration/run-open-smf-prs:scripts/dev_rewrite_wave_integration_script.py \
+            > /tmp/dev_rewrite_wave_integration_script.py
           sed -i 's|ROOT = Path(__file__).resolve().parents\[1\]|ROOT = Path.cwd()|' \
+            /tmp/dev_integrate_smf_ui_and_wave.py
+          python3 /tmp/dev_rewrite_wave_integration_script.py \
             /tmp/dev_integrate_smf_ui_and_wave.py
           python3 /tmp/dev_integrate_smf_ui_and_wave.py
           git add \
