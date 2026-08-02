@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - dev
       - agent/fix-core-reliability
   pull_request:
 
