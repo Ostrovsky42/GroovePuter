@@ -1,0 +1,68 @@
+name: Integrate open SMF PRs into dev
+
+on:
+  push:
+    branches:
+      - dev
+    paths:
+      - .github/workflows/integrate-open-smf-prs.yml
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - name: Configure integration identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch feature histories
+        run: |
+          git fetch --no-tags origin \
+            feature/smf-channel-inspector \
+            feature/smf-track-mute
+
+      - name: Integrate PR 30 channel inspector
+        run: |
+          set -euo pipefail
+          git diff --binary \
+            b0b513f07bf4514e834708d430c38c725ee5ee0c \
+            719ec5188e2e2c62c2fd2e3e87a3dd45b14e6dde \
+            > /tmp/pr30.patch
+          git apply --3way --index /tmp/pr30.patch
+          git commit -m "feat(dev): integrate bounded SMF channel inspector (#30)"
+
+      - name: Integrate PR 24 track mute only
+        run: |
+          set -euo pipefail
+          git diff --binary \
+            76ef225308fc70267c3945de4feb485214f37937 \
+            35c08dd451ed65125480bf965c8b549a1b0336a0 \
+            -- \
+            docs/stages/SMF_TRACK_MUTE_STAGE.md \
+            src/midi/smf_stream.cpp \
+            src/midi/smf_track_mute.h \
+            src/ui/pages/smf_player_page.cpp \
+            tests/test_smf_stream.cpp \
+            > /tmp/pr24-track-mute.patch
+          git apply --3way --index /tmp/pr24-track-mute.patch
+          git commit -m "feat(dev): integrate runtime SMF track mute (#24)"
+
+      - name: Run host regressions before publishing
+        run: bash tests/run_host_tests.sh
+
+      - name: Remove one-shot integration workflow
+        run: |
+          git rm .github/workflows/integrate-open-smf-prs.yml
+          git commit -m "chore(dev): remove one-shot SMF integration workflow"
+
+      - name: Publish integrated dev
+        run: git push origin HEAD:dev
