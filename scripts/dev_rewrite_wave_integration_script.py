@@ -53,11 +53,25 @@ replace_once(
 ''',
     '''text = replace_once(
     text,
+    '    const SmfMidiVisualSnapshot midiVisual = midiVisualTimeline_.advanceTo(tick);\\n\\n'
+    '    portENTER_CRITICAL(&snapshotMux_);\\n'
+    '    snapshot_.currentTick = tick;\\n'
+    '    snapshot_.bar = pos.bar;\\n'
+    '    snapshot_.beat = pos.beat;\\n'
+    '    snapshot_.originalBpmX10 = originalBpmX10;\\n'
+    '    snapshot_.bpmX10 = bpmX10;\\n'
     '    snapshot_.tempoScalePermille = tempoScalePermille_;\\n'
     '    snapshot_.velocityBoost = velocityBoost_;\\n'
     '    snapshot_.tempoMode = tempoMode_;\\n'
     '    snapshot_.launchMode = launchMode_;\\n'
     '    portEXIT_CRITICAL(&snapshotMux_);\\n',
+    '    const SmfMidiVisualSnapshot midiVisual = midiVisualTimeline_.advanceTo(tick);\\n\\n'
+    '    portENTER_CRITICAL(&snapshotMux_);\\n'
+    '    snapshot_.currentTick = tick;\\n'
+    '    snapshot_.bar = pos.bar;\\n'
+    '    snapshot_.beat = pos.beat;\\n'
+    '    snapshot_.originalBpmX10 = originalBpmX10;\\n'
+    '    snapshot_.bpmX10 = bpmX10;\\n'
     '    snapshot_.tempoScalePermille = tempoScalePermille_;\\n'
     '    snapshot_.velocityBoost = velocityBoost_;\\n'
     '    snapshot_.tempoMode = tempoMode_;\\n'
@@ -66,7 +80,7 @@ replace_once(
     '    portEXIT_CRITICAL(&snapshotMux_);\\n',
     "publish visual snapshot")
 ''',
-    "narrow playback snapshot replacement",
+    "anchor playback snapshot replacement",
 )
 
 target.write_text(text, encoding="utf-8")
