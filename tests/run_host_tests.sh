@@ -333,6 +333,17 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_usb_endpoint_health.cpp" \
+  -o "${BUILD_DIR}/test_usb_endpoint_health"
+
+"${BUILD_DIR}/test_usb_endpoint_health"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_smf_external_transport_policy.cpp" \
   -o "${BUILD_DIR}/test_smf_external_transport_policy"
 

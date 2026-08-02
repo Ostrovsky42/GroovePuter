@@ -24,6 +24,7 @@
 #include "src/midi/smf_late_policy.h"
 #include "src/midi/scheduled_smf_midi_event_queue.h"
 #include "src/midi/usb_midi_output.h"
+#include "src/midi/usb_endpoint_health.h"
 #include "src/midi/transport_clock_runtime.h"
 #include "src/midi/usb_midi_realtime_parser.h"
 
@@ -68,6 +69,9 @@ constexpr uint8_t kSmfCleanupAttemptLimit = 32;
 // a host that may stay silent for minutes. One second keeps it negligible: the
 // fast 10 ms phase stays bounded by kSmfCleanupAttemptLimit.
 constexpr uint32_t kSmfStallProbeDelayMs = 1000;
+// A 16-packet TinyUSB FIFO can reject a short chord while the receiver catches
+// up. This threshold classifies only sustained backpressure for diagnostics.
+constexpr uint32_t kUsbEndpointStallThresholdMs = 50;
 constexpr std::size_t kControlDrainBudget = 8;
 // Upper bound on how long the dispatcher may stay runnable without blocking.
 // The task watchdog window is seconds; 10 ms keeps sample-accurate dispatch
@@ -168,6 +172,7 @@ struct MidiDispatchDiagnostics {
 // starts the TinyUSB composite. No USB methods or application state are touched
 // during global initialization.
 CardputerUsbMidiTransport g_transport;
+UsbEndpointHealth g_endpointHealth(kUsbEndpointStallThresholdMs);
 UsbMidiOutput g_output(
     g_transport,
     UsbMidiRouteConfig{
@@ -653,10 +658,12 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(g_diagnostics.outboundTransportSuppressed));
 
     const auto usb = g_transport.diagnostics();
+    const auto endpoint = g_endpointHealth.snapshot(millis());
     Serial.printf(
         "[USB-DIAG] midiMounted=%u edge=up/down=%u/%u "
         "tx=attempt/ok/reject/noMount=%u/%u/%u/%u rx=%u "
-        "live=q/dispatched/drop=%u/%u/%u/%u smf=cleanup/stalled=%u/%u\n",
+        "live=q/dispatched/drop=%u/%u/%u/%u smf=cleanup/stalled=%u/%u "
+        "health=%u reject=%u stall=%u/%u block=%ums max=%ums\n",
         static_cast<unsigned>(g_transport.mounted() ? 1 : 0),
         static_cast<unsigned>(usb.mountUpEvents),
         static_cast<unsigned>(usb.mountDownEvents),
@@ -670,7 +677,13 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(g_controlQueue.droppedNoteOnCount()),
         static_cast<unsigned>(g_controlQueue.droppedCriticalCount()),
         static_cast<unsigned>(g_diagnostics.smfCleanupRetries),
-        static_cast<unsigned>(g_smfTransportStalled ? 1 : 0));
+        static_cast<unsigned>(g_smfTransportStalled ? 1 : 0),
+        static_cast<unsigned>(endpoint.state),
+        static_cast<unsigned>(endpoint.writeRejected),
+        static_cast<unsigned>(endpoint.stalledTransitions),
+        static_cast<unsigned>(endpoint.recoveredTransitions),
+        static_cast<unsigned>(endpoint.currentBlockedMs),
+        static_cast<unsigned>(endpoint.maximumBlockedMs));
 }
 
 enum class PendingKind : uint8_t {
@@ -1148,13 +1161,16 @@ bool CardputerUsbMidiTransport::writePacket(midiEventPacket_t& packet) {
     ++diagnostics_.txAttempts;
     if (!mounted()) {
         ++diagnostics_.txNotMounted;
+        g_endpointHealth.observeWrite(false, false, millis());
         return false;
     }
     if (!midi_.writePacket(&packet)) {
         ++diagnostics_.txRejected;
+        g_endpointHealth.observeWrite(true, false, millis());
         return false;
     }
     ++diagnostics_.txAccepted;
+    g_endpointHealth.observeWrite(true, true, millis());
     return true;
 }
 

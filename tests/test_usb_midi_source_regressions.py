@@ -15,6 +15,8 @@ def main() -> None:
     transport = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
     transport_header = (ROOT / "src/platform/cardputer_usb_midi_transport.h").read_text(
         encoding="utf-8")
+    endpoint_health = (ROOT / "src/midi/usb_endpoint_health.h").read_text(
+        encoding="utf-8")
     player_service = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(
         encoding="utf-8")
     service = (ROOT / "src/platform/cardputer_usb_midi_service.h").read_text(encoding="utf-8")
@@ -126,6 +128,13 @@ def main() -> None:
             "txRejected" in transport_header,
             "Cardputer transport must count MIDI mount transitions and "
             "TinyUSB write rejection")
+    require("UsbEndpointHealth" in transport and
+            "kUsbEndpointStallThresholdMs = 50" in transport and
+            "observeWrite(true, false" in transport and
+            "observeWrite(true, true" in transport and
+            "UsbEndpointHealthState::Stalled" in endpoint_health,
+            "every physical TX result must feed the shared time-based endpoint "
+            "health state before pacing policy is introduced")
     # The dispatcher only blocks on the branches that wait for a deadline. A
     # backlog of already-due events kept it runnable until the CPU0 task
     # watchdog fired, so fairness must not depend on the event mix.
