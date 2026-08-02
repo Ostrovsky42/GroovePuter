@@ -40,3 +40,5 @@ jobs:
           git add -A
           git commit -m "fix project MIDI import and persistence UI"
           git push origin HEAD:fix/project-midi-import-persistence
+
+# This second commit intentionally triggers the workflow after it already exists.
