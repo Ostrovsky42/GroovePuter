@@ -6,6 +6,7 @@ on:
       - dev
     paths:
       - .github/workflows/integrate-open-smf-prs.yml
+      - scripts/dev_integrate_smf_ui_and_wave.py
 
 permissions:
   contents: write
@@ -24,23 +25,27 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Fetch feature histories
+      - name: Fetch feature and integration histories
         run: |
           git fetch --no-tags origin \
             feature/smf-channel-inspector \
-            feature/smf-track-mute
+            feature/smf-track-mute \
+            integration/run-open-smf-prs
 
-      - name: Integrate PR 30 channel inspector
+      - name: Integrate PR 30 channel inspector core
         run: |
           set -euo pipefail
           git diff --binary \
             b0b513f07bf4514e834708d430c38c725ee5ee0c \
             719ec5188e2e2c62c2fd2e3e87a3dd45b14e6dde \
-            > /tmp/pr30.patch
-          git apply --3way --index /tmp/pr30.patch
-          git commit -m "feat(dev): integrate bounded SMF channel inspector (#30)"
+            -- . \
+            ':(exclude)src/ui/pages/smf_player_page.cpp' \
+            ':(exclude)tests/run_host_tests.sh' \
+            > /tmp/pr30-core.patch
+          git apply --3way --index /tmp/pr30-core.patch
+          git commit -m "feat(dev): integrate bounded SMF channel inspector core (#30)"
 
-      - name: Integrate PR 24 track mute only
+      - name: Integrate PR 24 track mute core
         run: |
           set -euo pipefail
           git diff --binary \
@@ -50,11 +55,28 @@ jobs:
             docs/stages/SMF_TRACK_MUTE_STAGE.md \
             src/midi/smf_stream.cpp \
             src/midi/smf_track_mute.h \
-            src/ui/pages/smf_player_page.cpp \
             tests/test_smf_stream.cpp \
-            > /tmp/pr24-track-mute.patch
-          git apply --3way --index /tmp/pr24-track-mute.patch
-          git commit -m "feat(dev): integrate runtime SMF track mute (#24)"
+            > /tmp/pr24-track-mute-core.patch
+          git apply --3way --index /tmp/pr24-track-mute-core.patch
+          git commit -m "feat(dev): integrate runtime SMF track mute core (#24)"
+
+      - name: Integrate combined MIDI Player UI and wave overlay
+        run: |
+          git show origin/integration/run-open-smf-prs:scripts/dev_integrate_smf_ui_and_wave.py \
+            > /tmp/dev_integrate_smf_ui_and_wave.py
+          python3 /tmp/dev_integrate_smf_ui_and_wave.py
+          git add \
+            src/midi/smf_midi_visual.h \
+            src/midi/smf_player_service.h \
+            src/platform/cardputer_smf_player.cpp \
+            src/platform/cardputer_smf_player.h \
+            src/ui/pages/smf_player_page.cpp \
+            src/ui/pages/smf_player_page.h \
+            tests/run_host_tests.sh \
+            tests/test_smf_midi_visual.cpp \
+            tests/test_smf_midi_wave_source_regressions.py \
+            docs/stages/SMF_MIDI_WAVE_OVERLAY_STAGE.md
+          git commit -m "feat(dev): integrate SMF inspector mute and MIDI wave overlay"
 
       - name: Run host regressions before publishing
         run: bash tests/run_host_tests.sh
