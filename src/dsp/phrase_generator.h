@@ -98,7 +98,12 @@ inline PhraseBarRole roleForBar(int bars, int barIndex) {
 
 inline bool synthPatternIsEmpty(const SynthPattern& pattern) {
   for (int step = 0; step < SynthPattern::kSteps; ++step) {
-    if (pattern.steps[step].note >= 0) return false;
+    const SynthStep& value = pattern.steps[step];
+    if (value.note != -1 || value.slide || value.accent || value.ghost ||
+        value.velocity != 100 || value.timing != 0 || value.fx != 0 ||
+        value.fxParam != 0 || value.probability != 100) {
+      return false;
+    }
   }
   return true;
 }
@@ -106,7 +111,12 @@ inline bool synthPatternIsEmpty(const SynthPattern& pattern) {
 inline bool drumPatternSetIsEmpty(const DrumPatternSet& pattern) {
   for (int voice = 0; voice < DrumPatternSet::kVoices; ++voice) {
     for (int step = 0; step < DrumPattern::kSteps; ++step) {
-      if (pattern.voices[voice].steps[step].hit) return false;
+      const DrumStep& value = pattern.voices[voice].steps[step];
+      if (value.hit || value.accent || value.velocity != 100 ||
+          value.timing != 0 || value.fx != 0 || value.fxParam != 0 ||
+          value.probability != 100) {
+        return false;
+      }
     }
   }
   for (int lane = 0; lane < DrumPatternSet::kMaxLanes; ++lane) {
@@ -237,14 +247,16 @@ inline void thinDrums(DrumPatternSet& drums) {
 
 inline void buildDrums(DrumPatternSet& drums) {
   for (int step = 9; step < DrumPattern::kSteps; step += 2) {
-    placeDrumHit(drums, 2, step, static_cast<uint8_t>(68 + (step - 9) * 4), false);
+    placeDrumHit(drums, 2, step,
+                 static_cast<uint8_t>(68 + (step - 9) * 4), false);
   }
 }
 
 inline void fillDrums(DrumPatternSet& drums, bool ending) {
   static constexpr int kVoices[4] = {1, 4, 5, 1};
   for (int i = 0; i < 4; ++i) {
-    const uint8_t velocity = static_cast<uint8_t>((ending ? 82 : 70) + i * 10);
+    const uint8_t velocity =
+        static_cast<uint8_t>((ending ? 82 : 70) + i * 10);
     placeDrumHit(drums, kVoices[i], 12 + i, velocity, ending || i == 3);
   }
 }
@@ -255,7 +267,8 @@ inline void deriveBar(const PhraseBar& base,
                       int barIndex,
                       PhraseBar& output) {
   output = base;
-  uint32_t randomState = seed ^ (0x9E3779B9u * static_cast<uint32_t>(barIndex + 1));
+  uint32_t randomState =
+      seed ^ (0x9E3779B9u * static_cast<uint32_t>(barIndex + 1));
 
   switch (role) {
     case PhraseBarRole::Base:
@@ -295,9 +308,9 @@ inline void deriveBar(const PhraseBar& base,
 }
 
 inline void clearCommittedBar(Scene& scene,
-                             Song& song,
-                             int songRow,
-                             int localSlot) {
+                              Song& song,
+                              int songRow,
+                              int localSlot) {
   const int bank = localSlot / Bank<SynthPattern>::kPatterns;
   const int index = localSlot % Bank<SynthPattern>::kPatterns;
   scene.synthABanks[bank].patterns[index] = SynthPattern{};
