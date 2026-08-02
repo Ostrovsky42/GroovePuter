@@ -381,13 +381,6 @@ std::vector<std::string> SceneStorageCardputer::getAvailableSceneNames() const {
 
   std::sort(names.begin(), names.end());
   names.erase(std::unique(names.begin(), names.end()), names.end());
-
-  if (names.empty()) {
-    try {
-      names.emplace_back(currentSceneName_);
-    } catch (const std::bad_alloc&) {
-    }
-  }
   return names;
 }
 
@@ -404,7 +397,17 @@ bool SceneStorageCardputer::setCurrentSceneName(const std::string& name) {
 
   const std::string previous = currentSceneName_;
   currentSceneName_ = normalized;
+
+  const std::string path = currentScenePath();
+  const std::string backupPath = siblingPath(path, kBackupSuffix);
+  const bool sceneAlreadyExists =
+      SD.exists(path.c_str()) || SD.exists(backupPath.c_str());
+
+  // Existing scenes are selections and should become the next boot target now.
+  // New scene names are only committed after the scene data itself is written.
+  if (!sceneAlreadyExists) return true;
   if (persistCurrentSceneName()) return true;
+
   currentSceneName_ = previous;
   return false;
 }

@@ -2631,10 +2631,6 @@ std::string MiniAcid::currentSceneName() const {
 std::vector<std::string> MiniAcid::availableSceneNames() const {
   if (!sceneStorage_) return {};
   std::vector<std::string> names = sceneStorage_->getAvailableSceneNames();
-  if (names.empty() && sceneStorage_) {
-    std::string current = sceneStorage_->getCurrentSceneName();
-    if (!current.empty()) names.push_back(current);
-  }
   std::sort(names.begin(), names.end());
   names.erase(std::unique(names.begin(), names.end()), names.end());
   return names;
@@ -2652,7 +2648,10 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
   // Scene persistence is explicit via Save/Save As.
   std::string previousName = sceneStorage_->getCurrentSceneName();
   
-  sceneStorage_->setCurrentSceneName(name);
+  if (!sceneStorage_->setCurrentSceneName(name)) {
+    Serial.printf("[LoadScene] Failed to select scene: %s\n", name.c_str());
+    return false;
+  }
 
   bool loaded = sceneStorage_->readScene(sceneManager_);
   Serial.printf("[LoadScene] readScene returned: %s\n", loaded ? "TRUE" : "FALSE");
@@ -2671,17 +2670,24 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
 
 bool MiniAcid::saveSceneAs(const std::string& name) {
   if (!sceneStorage_) return false;
+  const std::string previousName = sceneStorage_->getCurrentSceneName();
   if (!sceneStorage_->setCurrentSceneName(name)) return false;
-  return saveSceneToStorage();
+  if (saveSceneToStorage()) return true;
+  sceneStorage_->setCurrentSceneName(previousName);
+  return false;
 }
 
 bool MiniAcid::createNewSceneWithName(const std::string& name) {
   if (!sceneStorage_) return false;
-  sceneStorage_->setCurrentSceneName(name);
-  sceneManager_.loadDefaultScene();
+  const std::string previousName = sceneStorage_->getCurrentSceneName();
+  if (!sceneStorage_->setCurrentSceneName(name)) return false;
+
+  sceneManager_.wipeToZero();
   applySceneStateFromManager();
-  saveSceneToStorage();
-  return true;
+  if (saveSceneToStorage()) return true;
+
+  sceneStorage_->setCurrentSceneName(previousName);
+  return false;
 }
 
 void MiniAcid::loadSceneFromStorage() {

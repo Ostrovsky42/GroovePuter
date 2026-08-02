@@ -1732,9 +1732,6 @@ void SceneManager::wipeToZero() {
   for (int i = 0; i < 2; ++i) {
       clearSongData(scene_->songs[i]);
       scene_->songs[i].length = 1;
-      scene_->songs[i].positions[0].patterns[0] = 0;
-      scene_->songs[i].positions[0].patterns[1] = 0;
-      scene_->songs[i].positions[0].patterns[2] = 0;
       scene_->songs[i].positions[0].patterns[3] = -1;
       scene_->songs[i].reverse = false;
   }

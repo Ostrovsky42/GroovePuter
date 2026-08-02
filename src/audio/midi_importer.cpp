@@ -37,12 +37,23 @@ MidiImporter::Error MidiImporter::importFile(const std::string& path, const Midi
     const int originalPageIndex = sceneManager.currentPageIndex();
     cachedPageIndex_ = -1;
     lastImportedPatternIdx_ = -1;
+
     Error err = parseFile(file, settings);
-    saveCacheToPage(); // Flush final touched page.
+    const bool finalPageSaved = saveCacheToPage();
+
+    bool originalPageRestored = true;
     if (sceneManager.currentPageIndex() != originalPageIndex) {
         sceneManager.setPage(originalPageIndex);
+        originalPageRestored = sceneManager.currentPageIndex() == originalPageIndex;
     }
+
     file.close();
+
+    if (err == Error::None && (!finalPageSaved || !originalPageRestored)) {
+        Serial.printf("[MidiImporter] page persistence failed: save=%d restore=%d\n",
+                      finalPageSaved ? 1 : 0, originalPageRestored ? 1 : 0);
+        return Error::ReadError;
+    }
     return err;
 }
 
@@ -136,6 +147,7 @@ MidiImporter::ScanResult MidiImporter::scanFile(const std::string& path) {
             } else if (msgType == 0xA0 || msgType == 0xB0 || msgType == 0xE0) {
                 uint8_t tmp; readU8(file, tmp); readU8(file, tmp);
             } else if (msgType == 0xD0) {
+                uint8_t tmp; readU8(file, tmp);
             } else if (status == 0xFF) {
                 uint8_t metaType = 0;
                 if (!readU8(file, metaType)) break;
@@ -193,13 +205,17 @@ std::string MidiImporter::getErrorString(Error error) const {
         case Error::FileNotFound: return "File not found";
         case Error::InvalidFormat: return "Invalid MIDI format";
         case Error::UnsupportedType: return "Unsupported MIDI type (use 0 or 1)";
-        case Error::ReadError: return "Read error";
-        case Error::NoNotesFound: return "No compatible notes found";
+        case Error::ReadError: return "Read or save error";
+        case Error::NoNotesFound: return "No compatible routed notes";
         default: return "Unknown error";
     }
 }
 
 MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::ImportSettings& settings) {
+    if ((settings.synthAMask | settings.synthBMask | settings.drumMask) == 0) {
+        return Error::NoNotesFound;
+    }
+
     char magic[4];
     if (file.readBytes(magic, 4) != 4 || memcmp(magic, "MThd", 4) != 0) {
         return Error::InvalidFormat;
@@ -301,7 +317,7 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                 if (isNoteOn) {
                     // Quantize to fixed 1/16 grid.
                     int stepIdx = static_cast<int>((static_cast<double>(absoluteTicks) + (ticksPerStep * 0.5)) / ticksPerStep);
-                    
+
                     bool toA = (settings.synthAMask >> (channel - 1)) & 1;
                     bool toB = (settings.synthBMask >> (channel - 1)) & 1;
                     bool toD = (settings.drumMask >> (channel - 1)) & 1;
@@ -362,27 +378,30 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                         importRegionCleared = true;
                     }
 
-                    // Import to destinations
-                    auto importSynth = [&](int destFuncIdx) {
+                    bool importedThisNote = false;
+
+                    // Import to destinations.
+                    auto importSynth = [&](int destFuncIdx) -> bool {
                         SynthPattern& pat = getSynthPattern(destFuncIdx, patternIdx);
                         if (!settings.overwrite && pat.steps[stepInPattern].note >= 0) {
-                            // Keep existing note
-                        } else {
-                            int safeNote = static_cast<int>(note);
-                            while (safeNote < MiniAcid::kMin303Note) safeNote += 12;
-                            while (safeNote > MiniAcid::kMax303Note) safeNote -= 12;
-                            if (safeNote < MiniAcid::kMin303Note) safeNote = MiniAcid::kMin303Note; 
-
-                            uint8_t safeVel = normalizeSynthVelocity(velocity, settings.loudMode);
-                            pat.steps[stepInPattern].note = static_cast<int8_t>(safeNote);
-                            pat.steps[stepInPattern].accent = false;
-                            pat.steps[stepInPattern].velocity = safeVel;
+                            return true; // Compatible routed note, intentionally preserved.
                         }
+
+                        int safeNote = static_cast<int>(note);
+                        while (safeNote < MiniAcid::kMin303Note) safeNote += 12;
+                        while (safeNote > MiniAcid::kMax303Note) safeNote -= 12;
+                        if (safeNote < MiniAcid::kMin303Note) safeNote = MiniAcid::kMin303Note;
+
+                        uint8_t safeVel = normalizeSynthVelocity(velocity, settings.loudMode);
+                        pat.steps[stepInPattern].note = static_cast<int8_t>(safeNote);
+                        pat.steps[stepInPattern].accent = false;
+                        pat.steps[stepInPattern].velocity = safeVel;
+                        return true;
                     };
 
-                    if (toA) importSynth(0);
-                    if (toB) importSynth(1);
-                    
+                    if (toA) importedThisNote = importSynth(0) || importedThisNote;
+                    if (toB) importedThisNote = importSynth(1) || importedThisNote;
+
                     if (toD) {
                         int drumVoice = -1;
                         switch(note) {
@@ -402,19 +421,18 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                         if (drumVoice >= 0) {
                             DrumPatternSet& patSet = getDrumPatternSet(patternIdx);
                             auto& step = patSet.voices[drumVoice].steps[stepInPattern];
-                            if (!settings.overwrite && step.hit) {
-                                // Keep existing
-                            } else {
+                            if (settings.overwrite || !step.hit) {
                                 uint8_t safeVel = normalizeDrumVelocity(velocity, settings.loudMode);
                                 step.hit = true;
                                 step.velocity = safeVel;
                             }
+                            importedThisNote = true;
                         }
                     }
 
-                    if (toA || toB || toD) {
-                         notesImported++;
-                         if (patternIdx > lastImportedPatternIdx_) lastImportedPatternIdx_ = patternIdx;
+                    if (importedThisNote) {
+                        notesImported++;
+                        if (patternIdx > lastImportedPatternIdx_) lastImportedPatternIdx_ = patternIdx;
                     }
                 }
             } else if (msgType == 0xA0 || msgType == 0xB0 || msgType == 0xE0) {
@@ -441,16 +459,9 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                     file.seek(trackEnd);
                     break;
                 }
-                if (metaType == 0x58) { // Time Signature
-                    // We quantize to fixed 1/16, so just skip this payload.
-                    uint32_t newPos = file.position() + metaLen;
-                    if (newPos > trackEnd) return Error::InvalidFormat;
-                    file.seek(newPos);
-                } else {
-                    uint32_t newPos = file.position() + metaLen;
-                    if (newPos > trackEnd) return Error::InvalidFormat;
-                    file.seek(newPos);
-                }
+                uint32_t newPos = file.position() + metaLen;
+                if (newPos > trackEnd) return Error::InvalidFormat;
+                file.seek(newPos);
             } else if (status == 0xF0 || status == 0xF7) {
                 // SysEx
                 uint32_t sysexLen = 0;
@@ -501,8 +512,8 @@ bool MidiImporter::readVarLen(File& file, uint32_t& value, uint32_t& bytesRead) 
         if (!readU8(file, byte)) return false;
         bytesRead++;
         value = (value << 7) | (byte & 0x7F);
-    } while (byte & 0x80 && bytesRead < 4);
-    return true;
+    } while ((byte & 0x80) && bytesRead < 4);
+    return (byte & 0x80) == 0;
 }
 
 bool MidiImporter::readBE32(File& file, uint32_t& out) {
