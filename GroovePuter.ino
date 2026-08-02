@@ -354,6 +354,14 @@ void setup() {
   startAudioTask();
   logHeapCaps("after-audio-task");
 
+  // Each TempoDelay needs one contiguous 8.6KB block. Reserve both before SD
+  // and SMF runtime fragment the DRAM-only Cardputer ADV heap.
+  screenLog("4a. DSP Buffers...");
+  markBootStage(86, "before critical DSP buffers");
+  g_miniAcidInstance.preallocateConstrainedDelayBuffers();
+  markBootStage(87, "after critical DSP buffers");
+  logHeapCaps("after-critical-dsp-buffers");
+
   // Mount SD while enough contiguous internal memory remains. MiniAcid::init()
   // calls initializeStorage() again, but SceneStorageCardputer treats that as
   // an idempotent readiness check instead of remounting the shared SD object.

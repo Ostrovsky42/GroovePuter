@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cctype>
+#include <new>
 #include <string>
 
 #include "../audio/audio_diagnostics.h"
@@ -108,14 +109,21 @@ void TempoDelay::init(float maxSeconds) {
   LOG_DEBUG("TempoDelay::init: sr=%.1f maxSeconds=%.3f => samples=%d\n",
           sampleRate, maxSeconds, newMaxSamples);
   
-  maxDelaySamples = newMaxSamples;
-  size_t required = static_cast<size_t>(maxDelaySamples);
+  const size_t required = static_cast<size_t>(newMaxSamples);
   
   // Log allocation attempt
   LOG_DEBUG("TempoDelay::init: Allocating %d samples (%.1f KB)...\n", 
-                maxDelaySamples, (maxDelaySamples * sizeof(float)) / 1024.0f);
+                newMaxSamples, (newMaxSamples * sizeof(float)) / 1024.0f);
 
-  buffer.assign(required, 0.0f);
+  try {
+    buffer.assign(required, 0.0f);
+  } catch (const std::bad_alloc&) {
+    buffer.clear();
+    maxDelaySamples = 0;
+    LOG_PRINTLN("TempoDelay::init: allocation failed; delay disabled");
+    return;
+  }
+  maxDelaySamples = newMaxSamples;
   
   reset();
 }
@@ -272,6 +280,13 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
   synthEngineNames_[0] = "TB303";
   synthVoices_[1] = std::make_unique<SwappableSynthVoice>(sampleRate, SynthEngineType::TB303);
   synthEngineNames_[1] = "TB303";
+}
+
+void MiniAcid::preallocateConstrainedDelayBuffers() {
+  // Cardputer ADV has no PSRAM. Reserve both equal-sized vectors before SD and
+  // SMF task allocations split the remaining internal heap into small blocks.
+  delay303.init(0.1f);
+  delay3032.init(0.1f);
 }
 
 

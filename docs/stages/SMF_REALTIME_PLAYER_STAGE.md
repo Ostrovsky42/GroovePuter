@@ -51,6 +51,41 @@ INFO / ROUTING
 
 The existing `/midi` browser and file scan are reused; do not add a second browser.
 
+### Directory browser memory contract
+
+Cardputer-Adv has no PSRAM, and a loaded SMF intentionally keeps its stream,
+queues and file state alive while playback is paused. The browser therefore
+must not retain every directory entry as a `std::string`.
+
+The browser uses three bounded operations:
+
+```text
+refresh / enter directory
+    -> scan the complete directory and count folders plus .mid files
+
+draw / scroll
+    -> scan only far enough to fill a fixed seven-row display window
+
+Enter
+    -> resolve the selected full filename with one bounded rescan
+```
+
+Only truncated display labels for seven rows remain resident. The full name is
+resolved again before loading, so display truncation cannot select a different
+file. Directories remain before MIDI files; FAT directory order is preserved
+within each group to avoid a heap-backed sort.
+
+The diagnostic contract is:
+
+```text
+[SMF-BROWSE] root.open ok=1 isDir=1 ...
+[SMF-BROWSE] scanned=... dirs=... files=... complete=1 ...
+```
+
+`complete=1` means the entire directory was counted. The browser must never
+stop because free heap crossed a threshold and then present the partial result
+as a complete folder.
+
 ## Playback model
 
 ### Tempo
@@ -118,6 +153,17 @@ bash scripts/upload.sh /dev/ttyACM0
 - **MIDI sounds quantized:** that is the destructive `MidiImporter`; realtime PLAY is a separate path.
 - **Stuck notes after seek/restart:** player ownership must be released before generation invalidation changes position.
 - **Too many unrelated parts play on DX:** only source CH3 belongs to DX/CH10 in fixed SEQTRAK mode; CH4+ uses SAMPLER/CH11 until custom routing exists.
+- **Folder becomes empty or shows only its first files after playback:** inspect
+`[SMF-BROWSE]`. `exists=1`, `root.open ok=1` and `complete=1` mean SD is still
+mounted and the complete directory was counted. Older builds stopped scanning
+at a low-memory guard while retaining filenames, so a pause/error made the
+same truncation reproducible; it was not an SD disconnect.
+- **Screen shows `SD UNAVAILABLE`:** the directory could not be opened even
+  after the shared platform mount retry. This is a real storage-path failure;
+  reseat the card and press `R`. Do not call `SD.begin()` from the page: SD pin
+  ownership belongs to `src/platform/cardputer_sd.cpp`.
+  `[SMF-BROWSE] window.open failed` means the count pass succeeded but the
+  bounded seven-row window could not reopen the same directory.
 
 ## Acceptance checklist
 
@@ -134,3 +180,5 @@ bash scripts/upload.sh /dev/ttyACM0
 - [ ] seek/restart/stop leave no stuck notes.
 - [ ] Cardputer-Adv -> SEQTRAK timing is stable under UI navigation.
 - [ ] no internal audio underrun/watchdog regression.
+- [ ] a large `/midi` folder reports `complete=1` and all entries remain reachable after Play, Pause, USB WAIT and Error.
+- [ ] a failed directory open displays `SD UNAVAILABLE`, not `NO MIDI FILES`.

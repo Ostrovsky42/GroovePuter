@@ -64,6 +64,9 @@ def test_cardputer_sd_has_one_hardware_mount_path() -> None:
     smf_page = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(
         encoding="utf-8"
     )
+    smf_page_header = (ROOT / "src/ui/pages/smf_player_page.h").read_text(
+        encoding="utf-8"
+    )
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
 
     for declaration in (
@@ -83,6 +86,19 @@ def test_cardputer_sd_has_one_hardware_mount_path() -> None:
             "audio recorder must not remount SD with default pins")
     require("SD.begin(" not in smf_page,
             "SMF UI must not own hardware SD initialization")
+    require("std::array<BrowserRow, kBrowserVisibleRows>" in smf_page_header and
+            "browserStorageReady_" in smf_page_header and
+            "fillVisibleEntries()" in smf_page and
+            "resolveEntry(" in smf_page and
+            "complete=1" in smf_page and
+            "SD UNAVAILABLE" in smf_page,
+            "SMF browser must stream a complete directory into a fixed visible "
+            "window and distinguish an SD failure from an empty directory")
+    require("bounded break" not in smf_page and
+            "low-mem break" not in smf_page and
+            "std::vector<std::string>" not in smf_page_header,
+            "SMF browser must not present a partial directory as complete when "
+            "runtime heap is low")
 
     audio_task_pos = sketch.index("startAudioTask();")
     early_sd_pos = sketch.index("g_sceneStorage.initializeStorage();")

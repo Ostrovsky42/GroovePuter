@@ -100,6 +100,7 @@ public:
   MiniAcid(float sampleRate, SceneStorage* sceneStorage);
 
   void init();
+  void preallocateConstrainedDelayBuffers();
   void reset();
   void start();
   void stop();
