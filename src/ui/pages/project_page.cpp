@@ -610,7 +610,16 @@ bool ProjectPage::importMidiAtSelection() {
           : 0;
 
       int songPosition = sm.getSongPosition();
-      if (midi_import_append_) songPosition = sm.songLength();
+      if (midi_import_append_) {
+        songPosition = sm.songLength();
+        const bool firstRowEmpty =
+            sm.songLength() == 1 &&
+            sm.songPattern(0, SongTrack::SynthA) < 0 &&
+            sm.songPattern(0, SongTrack::SynthB) < 0 &&
+            sm.songPattern(0, SongTrack::Drums) < 0 &&
+            sm.songPattern(0, SongTrack::Voice) < 0;
+        if (firstRowEmpty) songPosition = 0;
+      }
 
       for (int i = 0; i < importedBars; ++i) {
         const int targetPosition = songPosition + i;

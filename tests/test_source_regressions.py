@@ -385,6 +385,99 @@ def test_splash_closes_display_transaction() -> None:
     require("gfx_.flush();\n            gfx_.endWrite();\n            return;" in block,
             "splash early return must balance startWrite/endWrite")
 
+
+def test_project_midi_import_and_persistence_contracts() -> None:
+    project = (ROOT / "src/ui/pages/project_page.cpp").read_text(
+        encoding="utf-8"
+    )
+    engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(
+        encoding="utf-8"
+    )
+    scenes = (ROOT / "scenes.cpp").read_text(encoding="utf-8")
+    importer = (ROOT / "src/audio/midi_importer.cpp").read_text(
+        encoding="utf-8"
+    )
+    storage = (ROOT / "scene_storage_cardputer.cpp").read_text(
+        encoding="utf-8"
+    )
+
+    auto_start = project.index("void ProjectPage::autoRouteMidi()")
+    auto_end = project.index("void ProjectPage::openConfirmClearDialog()", auto_start)
+    auto_route = project[auto_start:auto_end]
+    require("channels[9].used() ? 10 : -1" in auto_route,
+            "MIDI auto-route must reserve unconditional drums for GM channel 10")
+    require("maxNotes" not in auto_route,
+            "the busiest melodic channel must not be guessed as drums")
+    require('name.find("drum")' in auto_route and
+            'name.find("perc")' in auto_route,
+            "non-GM drum routing must require an explicit percussion name")
+
+    import_start = project.index("bool ProjectPage::importMidiAtSelection()")
+    import_end = project.index("bool ProjectPage::deleteSelectionInDialog()", import_start)
+    import_block = project[import_start:import_end]
+    require("Select at least one MIDI route" in import_block,
+            "MIDI import must reject an empty routing matrix")
+    require("if (midi_mask_a_)" in import_block and
+            "if (midi_mask_b_)" in import_block and
+            "if (midi_mask_d_)" in import_block,
+            "song population must respect the A/B/Drums routing matrix")
+    require("firstRowEmpty" in import_block and
+            "if (firstRowEmpty) songPosition = 0;" in import_block,
+            "APPEND must reuse row zero in a genuinely blank song")
+    require("saveSceneAs(mini_acid_.currentSceneName())" in import_block,
+            "successful MIDI import must persist patterns and song rows")
+    require("MIDI imported and saved" in import_block,
+            "the UI must distinguish persisted imports from save failures")
+
+    require(project.count("GROOVEPUTER_ESCAPE") >= 2 and
+            "navigateUpMidiDir();" in project,
+            "Escape must go to the parent MIDI directory and back from matrix")
+    require("midi_import_start_pattern_ >= kMaxPatterns" in project,
+            "MIDI target selection must support the complete pattern range")
+
+    new_start = engine.index("bool MiniAcid::createNewSceneWithName")
+    new_end = engine.index("void MiniAcid::loadSceneFromStorage", new_start)
+    new_block = engine[new_start:new_end]
+    require("sceneManager_.wipeToZero();" in new_block,
+            "New must create a blank scene instead of the Mario demo")
+    require("loadDefaultScene" not in new_block,
+            "the demo fallback must not be reused for user-created projects")
+
+    save_start = engine.index("bool MiniAcid::saveSceneAs")
+    save_end = engine.index("bool MiniAcid::createNewSceneWithName", save_start)
+    save_block = engine[save_start:save_end]
+    require("previousName" in save_block and
+            "setCurrentSceneName(previousName)" in save_block,
+            "failed Save As must restore the previous current-scene pointer")
+
+    names_start = engine.index("std::vector<std::string> MiniAcid::availableSceneNames")
+    names_end = engine.index("bool MiniAcid::loadSceneByName", names_start)
+    names_block = engine[names_start:names_end]
+    require("getCurrentSceneName" not in names_block,
+            "the scene list must not invent an entry without a JSON file")
+
+    wipe_start = scenes.index("void SceneManager::wipeToZero()")
+    wipe_end = scenes.index("Scene& SceneManager::currentScene()", wipe_start)
+    wipe_block = scenes[wipe_start:wipe_end]
+    require("positions[0].patterns[0] = 0" not in wipe_block and
+            "positions[0].patterns[1] = 0" not in wipe_block and
+            "positions[0].patterns[2] = 0" not in wipe_block,
+            "blank songs must not be pre-populated with pattern zero")
+
+    require("bool importedThisNote = false;" in importer and
+            "if (importedThisNote)" in importer,
+            "unsupported drum notes must not produce false import success")
+    require("msgType == 0xD0" in importer and
+            "uint8_t tmp; readU8(file, tmp);" in importer,
+            "MIDI scan must consume Channel Pressure payload bytes")
+    require("finalPageSaved" in importer and "originalPageRestored" in importer,
+            "MIDI import must report pattern-page persistence failures")
+
+    require("if (!sceneAlreadyExists) return true;" in storage,
+            "new scene names must not become the boot target before data is saved")
+    require("persistCurrentSceneName()" in storage,
+            "existing scene selection must remain persistent")
+
 def main() -> None:
     test_ppqn_dispatch_is_not_step_gated()
     test_all_substep_offsets_are_reachable()
@@ -403,6 +496,7 @@ def main() -> None:
     test_performance_settings_are_runtime_only()
     test_ui_redraw_does_not_hold_audio_pause()
     test_splash_closes_display_transaction()
+    test_project_midi_import_and_persistence_contracts()
     print("source regressions: OK")
 
 
