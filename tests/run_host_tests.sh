@@ -18,6 +18,7 @@ python3 "${ROOT_DIR}/tests/test_song_playhead_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_midi_companion_foundation_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_seqtrak_master_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
+python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${CXX}" \
   -std=c++17 \
