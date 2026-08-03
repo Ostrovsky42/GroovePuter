@@ -42,6 +42,7 @@ constexpr uint8_t kStatusNoteOn = 0x90;
 constexpr uint8_t kStatusControlChange = 0xB0;
 constexpr uint8_t kStatusTimingClock = 0xF8;
 constexpr uint8_t kStatusStart = 0xFA;
+constexpr uint8_t kStatusContinue = 0xFB;
 constexpr uint8_t kStatusStop = 0xFC;
 constexpr uint32_t kBlockDurationUs = static_cast<uint32_t>(
     (1000000ULL * static_cast<uint64_t>(kBlockFrames)) /
@@ -140,6 +141,7 @@ struct MidiDispatchDiagnostics {
     uint32_t clockDropped{0};
     uint32_t clockStaleGenerationDrops{0};
     uint32_t startSent{0};
+    uint32_t continueSent{0};
     uint32_t stopSent{0};
     uint32_t transportSendFailures{0};
     uint32_t smfSent{0};
@@ -544,6 +546,14 @@ bool dispatchTransportEvent(const ScheduledMidiTransportEvent& event) {
                 ++g_diagnostics.transportSendFailures;
             }
             break;
+        case MidiTransportEventType::Continue:
+            sent = g_transport.sendContinue();
+            if (sent) {
+                ++g_diagnostics.continueSent;
+            } else {
+                ++g_diagnostics.transportSendFailures;
+            }
+            break;
         case MidiTransportEventType::Stop:
             sent = g_transport.sendStop();
             if (sent) {
@@ -612,7 +622,7 @@ void logDiagnosticsIfDue() {
         "smfSent=%u smfStale=%u smfPanic=%u smfRetry=%u smfDrop=%u "
         "smfLateDrop=%u smfLateSent=%u smfMaxLateOnUs=%u smfLateOff=%u "
         "smfEpochDrop=%u smfCleanRetry=%u smfStall=%u/%u smfMaxBlockUs=%u "
-        "clockSent=%u clockLate=%u clockDropped=%u start=%u stop=%u "
+        "clockSent=%u clockLate=%u clockDropped=%u start=%u continue=%u stop=%u "
         "transportFail=%u late=%u maxLateUs=%u stale=%u/%u badFrame=%u "
         "drop=%u/%u transportDrop=%u overflow=%u recovery=%u "
         "liveDrop=%u/%u suppressed=%u panic=%u/%u\n",
@@ -644,6 +654,7 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(g_diagnostics.clockLate),
         static_cast<unsigned>(g_diagnostics.clockDropped),
         static_cast<unsigned>(g_diagnostics.startSent),
+        static_cast<unsigned>(g_diagnostics.continueSent),
         static_cast<unsigned>(g_diagnostics.stopSent),
         static_cast<unsigned>(g_diagnostics.transportSendFailures),
         static_cast<unsigned>(g_diagnostics.lateEvents),
@@ -1272,6 +1283,7 @@ bool CardputerUsbMidiTransport::writeChannelPacket(uint8_t codeIndex,
 bool CardputerUsbMidiTransport::writeRealtimePacket(uint8_t status) {
     if (status != kStatusTimingClock &&
         status != kStatusStart &&
+        status != kStatusContinue &&
         status != kStatusStop) {
         return false;
     }

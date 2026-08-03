@@ -32,8 +32,9 @@ def main() -> None:
     )
 
     require("enum class MidiTransportEventType" in event_header and
-            "Clock" in event_header and "Start" in event_header and "Stop" in event_header,
-            "transport events need a dedicated Clock/Start/Stop model")
+            "Clock" in event_header and "Start" in event_header and
+            "Continue" in event_header and "Stop" in event_header,
+            "transport events need a dedicated Clock/Start/Continue/Stop model")
     require("MidiTransport" not in musical_event,
             "transport must not be represented as MusicalEvent/MusicalEventTarget")
 
@@ -107,11 +108,14 @@ def main() -> None:
 
     require("sendTimingClock() override" in transport_h and
             "sendStart() override" in transport_h and
-            "sendStop() override" in transport_h,
-            "Cardputer transport must retain the accepted realtime surface")
+            "sendContinue() override" in transport_h and
+            "sendStop() override" in transport_h and
+            "sendSongPositionPointer(uint16_t sixteenthNotes) override" in transport_h,
+            "Cardputer transport must implement the extended lifecycle surface")
     require("kCinSingleByte = 0x0F" in transport and
             "kStatusTimingClock = 0xF8" in transport and
             "kStatusStart = 0xFA" in transport and
+            "kStatusContinue = 0xFB" in transport and
             "kStatusStop = 0xFC" in transport,
             "USB-MIDI realtime packets must use CIN 0xF and standard status bytes")
     require("midiEventPacket_t packet" in transport and
@@ -130,8 +134,9 @@ def main() -> None:
             "queued Clock must be invalidated before and after deadline waits")
     require("g_transport.sendTimingClock()" in transport and
             "g_transport.sendStart()" in transport and
+            "g_transport.sendContinue()" in transport and
             "g_transport.sendStop()" in transport,
-            "MidiDispatchTask translation unit must own all accepted realtime USB writes")
+            "MidiDispatchTask translation unit must own all realtime USB writes")
     require("kControlDrainBudget" in transport,
             "live controls must be bounded so they cannot starve Clock deadlines")
 
