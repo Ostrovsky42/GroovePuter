@@ -61,6 +61,34 @@ public:
     bool sendTimingClock() override;
     bool sendStart() override;
     bool sendStop() override;
+
+    // Continue and Song Position Pointer are optional at the platform-neutral
+    // interface, but this concrete TinyUSB backend can encode both safely. The
+    // caller still has to gate them through the selected device capability
+    // profile before they reach the dispatcher.
+    bool sendContinue() override {
+        midiEventPacket_t packet{
+            0x0F,  // USB-MIDI CIN: single-byte realtime message
+            0xFB,  // MIDI Continue
+            0,
+            0,
+        };
+        return writePacket(packet);
+    }
+
+    bool sendSongPositionPointer(uint16_t sixteenthNotes) override {
+        const uint16_t value = sixteenthNotes > 0x3FFFu
+            ? 0x3FFFu
+            : sixteenthNotes;
+        midiEventPacket_t packet{
+            0x03,  // USB-MIDI CIN: three-byte system common message
+            0xF2,  // Song Position Pointer
+            static_cast<uint8_t>(value & 0x7Fu),
+            static_cast<uint8_t>((value >> 7u) & 0x7Fu),
+        };
+        return writePacket(packet);
+    }
+
     void flush() override;
 
 private:
