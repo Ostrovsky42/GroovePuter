@@ -33,6 +33,8 @@ def main() -> None:
             "Project import does not route input through the shared manager")
     require("midiFileManager().draw" in project_cpp,
             "Project import does not draw the shared manager")
+    require("const Rect midiBrowserBounds" in project_cpp,
+            "Project import must adapt the reserved layout bounds explicitly")
     require("refreshMidiFiles" not in project_h and "midi_dirs_" not in project_h,
             "Project still owns a duplicate MIDI browser model")
 
@@ -42,6 +44,8 @@ def main() -> None:
             "SMF Player does not route input through the shared manager")
     require("midiFileManager().draw" in player_cpp,
             "SMF Player does not draw the shared manager")
+    require("const Rect midiBrowserBounds" in player_cpp,
+            "SMF Player must adapt the reserved layout bounds explicitly")
     require("BrowserRow" not in player_h and "refreshFiles" not in player_h,
             "SMF Player still owns a duplicate MIDI browser model")
     require("SD.remove" not in player_cpp and "SD.rename" not in player_cpp,
