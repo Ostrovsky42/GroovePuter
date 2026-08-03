@@ -58,6 +58,23 @@ public:
         return false;
     }
 
+    // Consumer-side iterator used by the SPSC SMF queue. Each call removes one
+    // logical owner and returns the channel/note that needs an immediate scoped
+    // NoteOff. Repeated NoteOn ownership therefore produces repeated releases.
+    bool takeNextForTrack(uint8_t track, uint8_t& channel, uint8_t& note) {
+        for (Entry& entry : entries_) {
+            if (entry.count == 0 || entry.track != track) continue;
+            channel = entry.channel;
+            note = entry.note;
+            if (--entry.count == 0) {
+                entry = {};
+                if (activeEntries_ != 0) --activeEntries_;
+            }
+            return true;
+        }
+        return false;
+    }
+
     template <typename ReleaseFn>
     std::size_t releaseTrack(uint8_t track, ReleaseFn&& releaseFn) {
         std::size_t released = 0;
