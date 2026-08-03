@@ -14,10 +14,10 @@
 // queued, the producer invalidates the generation and publishes a fixed panic
 // mailbox; the consumer must release all SMF-owned wire notes for that epoch.
 //
-// Immediate track mute is also consumer-owned. tryPop() records only events
-// that can reach the dispatcher, consumes the bounded mute mailbox, and emits
-// scoped NoteOff events before returning to normal queue traffic. TinyUSB still
-// has one writer and Pattern/PERFORM ownership is untouched.
+// Immediate track mute and seek SPP are also consumer-owned. tryPop() records
+// only events that can reach the dispatcher, consumes bounded mailboxes, and
+// emits scoped cleanup/system-common events before normal queue traffic.
+// TinyUSB still has one writer and Pattern/PERFORM ownership is untouched.
 class ScheduledSmfMidiEventQueue {
 public:
     static constexpr std::size_t kStorageSize = 128;
@@ -83,6 +83,24 @@ public:
         return false;
     }
 
+    // Latest seek wins. The mailbox is separate from normal queue capacity so
+    // a dense chord cannot prevent the transport position from being published.
+    // Generation tagging still lets a subsequent route/stop/panic invalidate it.
+    bool tryPushSongPositionPointer(uint16_t midiBeats,
+                                    uint32_t blockSequence,
+                                    uint16_t frameOffset) {
+        if (transportFailed()) return false;
+        const uint16_t value = midiBeats > 0x3FFFu ? 0x3FFFu : midiBeats;
+        pendingSppValue_.storeRelaxed(value);
+        pendingSppBlockSequence_.storeRelaxed(blockSequence);
+        pendingSppFrameOffset_.storeRelaxed(frameOffset);
+        pendingSppGeneration_.storeRelaxed(generation_.loadAcquire());
+        const uint32_t epoch = pendingSppEpoch_.loadRelaxed() + 1u;
+        pendingSppEpoch_.storeRelease(epoch);
+        sppRequests_.incrementRelaxed();
+        return true;
+    }
+
     bool tryPop(ScheduledSmfMidiEvent& event) {
         for (;;) {
             if (releaseTrackActive_) {
@@ -106,6 +124,8 @@ public:
                 continue;
             }
 
+            if (takePendingSongPositionPointer(event)) return true;
+
             const uint32_t tail = tail_.loadRelaxed();
             if (tail == head_.loadAcquire()) return false;
             event = events_[tail];
@@ -118,6 +138,10 @@ public:
             // its accepted diagnostics and drop policy. They must not mutate
             // active ownership: an invalidated NoteOff never reached the wire.
             if (event.generation != generation_.loadAcquire()) return true;
+
+            if (event.type == ScheduledSmfMidiEventType::SongPositionPointer) {
+                return true;
+            }
 
             const bool noteOn =
                 event.type == ScheduledSmfMidiEventType::NoteOn;
@@ -232,6 +256,9 @@ public:
     uint32_t ownershipOverflowDropCount() const {
         return ownershipOverflowDrops_.loadRelaxed();
     }
+    uint32_t songPositionRequestCount() const {
+        return sppRequests_.loadRelaxed();
+    }
 
 private:
     static bool validData(uint8_t channel, uint8_t note, uint8_t velocity) {
@@ -265,6 +292,26 @@ private:
         event.projectTransportEpoch =
             scheduledSmfMidiEventTransportEpochTag(projectTransportEpoch);
         return event;
+    }
+
+    bool takePendingSongPositionPointer(ScheduledSmfMidiEvent& event) {
+        const uint32_t epoch = pendingSppEpoch_.loadAcquire();
+        if (epoch == consumedSppEpoch_) return false;
+        consumedSppEpoch_ = epoch;
+
+        const uint16_t value = static_cast<uint16_t>(
+            pendingSppValue_.loadRelaxed() & 0x3FFFu);
+        event = ScheduledSmfMidiEvent{};
+        event.type = ScheduledSmfMidiEventType::SongPositionPointer;
+        event.note = static_cast<uint8_t>(value & 0x7Fu);
+        event.velocity = static_cast<uint8_t>((value >> 7u) & 0x7Fu);
+        event.blockSequence = pendingSppBlockSequence_.loadRelaxed();
+        event.frameOffset = static_cast<uint16_t>(
+            pendingSppFrameOffset_.loadRelaxed());
+        event.generation = pendingSppGeneration_.loadRelaxed();
+        event.publicationSequence = publicationSequence_.incrementRelaxed();
+        event.projectTransportEpoch = 0;
+        return true;
     }
 
     ScheduledSmfMidiEvent makeImmediateTrackRelease(uint8_t trackIndex,
@@ -313,10 +360,17 @@ private:
     MidiRealtimeWord mutedNoteOnDrops_;
     MidiRealtimeWord immediateTrackReleases_;
     MidiRealtimeWord ownershipOverflowDrops_;
+    MidiRealtimeWord pendingSppValue_;
+    MidiRealtimeWord pendingSppBlockSequence_;
+    MidiRealtimeWord pendingSppFrameOffset_;
+    MidiRealtimeWord pendingSppGeneration_;
+    MidiRealtimeWord pendingSppEpoch_;
+    MidiRealtimeWord sppRequests_;
     GroovePuterMidi::SmfTrackNoteOwnership<> activeNotes_;
     uint32_t consumedPanicEpoch_{0};
     uint32_t consumedTransportFailureEpoch_{0};
     uint32_t consumedTransportRecoveryEpoch_{0};
+    uint32_t consumedSppEpoch_{0};
     uint32_t lastPoppedBlockSequence_{0};
     uint16_t lastPoppedFrameOffset_{0};
     uint8_t releaseTrack_{0};
