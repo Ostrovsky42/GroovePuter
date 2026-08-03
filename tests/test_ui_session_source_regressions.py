@@ -24,6 +24,12 @@ def main() -> None:
             "UI session RAM contract is missing")
     require("lastPageByWorkflow" in state and "workflowNavigationTarget" in state,
             "per-workflow page memory model is missing")
+    for forbidden_include in (
+            "ui_core.h", "ui_config.h", "workflow_mode.h", "key_normalize.h"):
+        require(forbidden_include not in state,
+                f"session codec must not include Arduino-fragile UI header: {forbidden_include}")
+    require("SessionWorkflow" in state and "SessionPages" in state,
+            "session codec needs an independent fixed page/workflow wire map")
     require("Preferences" in platform and 'kSessionNamespace = "gp-session"' in platform,
             "Cardputer UI session must use a bounded NVS namespace")
     require("checksumRecord" in platform and "sanitizeUiSessionState" in platform,
