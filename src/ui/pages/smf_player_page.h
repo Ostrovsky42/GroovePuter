@@ -26,6 +26,17 @@ private:
         char displayName[40]{};
     };
 
+    // The old browser diagnostics wrote synchronously to UART during every
+    // page entry, refresh, and visible-window refill. UI feedback already uses
+    // toasts and the player snapshot, so suppress only those page-local routine
+    // logs. USB/SMF failure diagnostics in platform tasks remain untouched.
+    struct BrowserDiagnosticSink {
+        template <typename... Args>
+        void printf(const char*, Args&&...) const {}
+        void println(const char*) const {}
+    };
+    inline static constexpr BrowserDiagnosticSink Serial{};
+
     static constexpr int kBrowserVisibleRows = 7;
 
     void refreshFiles();
