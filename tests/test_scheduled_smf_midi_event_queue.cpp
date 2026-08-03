@@ -3,8 +3,11 @@
 #include <cstdint>
 
 #include "src/midi/scheduled_smf_midi_event_queue.h"
+#include "src/midi/smf_track_mute.h"
 
 int main() {
+    GroovePuterMidi::smfTrackMuteState().reset(64);
+
     ScheduledSmfMidiEventQueue queue;
     assert(queue.generation() == 0);
     assert(queue.approximateSize() == 0);
@@ -67,6 +70,8 @@ int main() {
     }
     assert(popped == ScheduledSmfMidiEventQueue::kCapacity);
 
+    // A dispatched NoteOn is tracked by source track. Muting that track emits
+    // an immediately due scoped NoteOff without requiring a global SMF panic.
     assert(queue.tryPushNoteOn(8, 64, 127, 42, 511, 0, 37));
     assert(queue.tryPop(event));
     assert(event.type == ScheduledSmfMidiEventType::NoteOn);
@@ -80,6 +85,30 @@ int main() {
     assert(scheduledSmfMidiEventFrameIsValid(event, 512));
     assert(!scheduledSmfMidiEventFrameIsValid(event, 511));
 
+    GroovePuterMidi::smfTrackMuteState().selectRelative(37);
+    assert(GroovePuterMidi::smfTrackMuteState().toggleSelected());
+    assert(queue.tryPop(event));
+    assert(event.type == ScheduledSmfMidiEventType::NoteOff);
+    assert(event.trackIndex == 37);
+    assert(event.channel == 8);
+    assert(event.note == 64);
+    assert(event.velocity == 0);
+    assert(event.blockSequence == 42);
+    assert(event.frameOffset == 511);
+    assert(queue.immediateTrackReleaseCount() == 1);
+    assert(!queue.tryPop(event));
+
+    // Future NoteOn events from a muted track are discarded by the queue. A
+    // NoteOff remains cleanup-critical and is still delivered.
+    assert(queue.tryPushNoteOn(8, 65, 100, 43, 0, 0, 37));
+    assert(!queue.tryPop(event));
+    assert(queue.mutedNoteOnDropCount() == 1);
+    assert(queue.tryPushNoteOff(8, 65, 0, 43, 1, 0, 37));
+    assert(queue.tryPop(event));
+    assert(event.type == ScheduledSmfMidiEventType::NoteOff);
+    assert(event.trackIndex == 37);
+    assert(GroovePuterMidi::smfTrackMuteState().toggleSelected());
+
     const uint32_t generation2 = queue.invalidateAndRequestPanic();
     assert(generation2 == 3);
     assert(queue.generation() == 3);
@@ -92,6 +121,33 @@ int main() {
     assert(event.trackIndex == 63);
     assert(event.generation == 3);
     assert(scheduledSmfMidiEventGenerationIsCurrent(event, queue.generation()));
+
+    // Two SMF tracks may share the same physical channel+note. Muting one must
+    // release only that logical track owner; the second owner remains tracked.
+    GroovePuterMidi::smfTrackMuteState().reset(64);
+    assert(queue.tryPushNoteOn(8, 60, 100, 60, 0, 0, 1));
+    assert(queue.tryPushNoteOn(8, 60, 110, 60, 1, 0, 2));
+    assert(queue.tryPop(event));
+    assert(event.trackIndex == 1);
+    assert(queue.tryPop(event));
+    assert(event.trackIndex == 2);
+
+    GroovePuterMidi::smfTrackMuteState().selectRelative(1);
+    assert(GroovePuterMidi::smfTrackMuteState().toggleSelected());
+    assert(queue.tryPop(event));
+    assert(event.type == ScheduledSmfMidiEventType::NoteOff);
+    assert(event.trackIndex == 1);
+    assert(event.channel == 8 && event.note == 60);
+    assert(!queue.tryPop(event));
+
+    GroovePuterMidi::smfTrackMuteState().selectRelative(1);
+    assert(GroovePuterMidi::smfTrackMuteState().toggleSelected());
+    assert(queue.tryPop(event));
+    assert(event.type == ScheduledSmfMidiEventType::NoteOff);
+    assert(event.trackIndex == 2);
+    assert(event.channel == 8 && event.note == 60);
+    assert(queue.immediateTrackReleaseCount() == 3);
+    GroovePuterMidi::smfTrackMuteState().clear();
 
     assert(queue.tryPushNoteOn(7, 60, 100, 70, 20, 9));
     assert(queue.tryPop(event));
