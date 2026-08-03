@@ -3,6 +3,7 @@
 #include "../ui_core.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
+#include "src/state/scene_revision.h"
 
 class SamplerPage : public IPage {
  public:

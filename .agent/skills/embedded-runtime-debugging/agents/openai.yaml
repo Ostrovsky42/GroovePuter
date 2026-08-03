@@ -1,0 +1,4 @@
+interface:
+  display_name: "Embedded Runtime Debugging"
+  short_description: "Diagnose constrained firmware with measurable contracts"
+  default_prompt: "Use $embedded-runtime-debugging to isolate this firmware failure and produce a minimal, verifiable fix."

@@ -110,6 +110,25 @@ def test_cardputer_sd_has_one_hardware_mount_path() -> None:
     require(early_sd_pos < smf_runtime_pos < engine_init_pos,
             "SMF task and timing storage must be reserved before DSP/UI fragmentation")
 
+    midi_runtime_pos = sketch.index("registerCardputerUsbMidiSink(")
+    require(smf_runtime_pos < midi_runtime_pos < engine_init_pos,
+            "MIDI dispatcher stack must be reserved before engine heap fragmentation")
+
+
+def test_scene_and_page_validation_share_one_scratch_buffer() -> None:
+    scenes_header = (ROOT / "scenes.h").read_text(encoding="utf-8")
+    scenes = (ROOT / "scenes.cpp").read_text(encoding="utf-8")
+    paging = (ROOT / "src/audio/pattern_paging.cpp").read_text(encoding="utf-8")
+
+    require("Scene& sceneTransactionScratch();" in scenes_header and
+            "Scene& sceneTransactionScratch()" in scenes,
+            "scene parsing and page validation need an explicit shared scratch contract")
+    require("PageStaging" not in paging and "g_stagingPage" not in paging,
+            "pattern paging must not retain a second 22 KiB static staging buffer")
+    require("Scene& staging = sceneTransactionScratch();" in paging and
+            "readAndValidatePage(const std::string& path, Scene& staging)" in paging,
+            "page validation must use the shared scene transaction scratch")
+
 
 def test_genre_regeneration_uses_full_compiled_params() -> None:
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
@@ -390,6 +409,9 @@ def test_project_midi_import_and_persistence_contracts() -> None:
     project = (ROOT / "src/ui/pages/project_page.cpp").read_text(
         encoding="utf-8"
     )
+    midi_manager = (ROOT / "src/ui/midi_file_manager.cpp").read_text(
+        encoding="utf-8"
+    )
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(
         encoding="utf-8"
     )
@@ -429,9 +451,13 @@ def test_project_midi_import_and_persistence_contracts() -> None:
     require("MIDI imported and saved" in import_block,
             "the UI must distinguish persisted imports from save failures")
 
-    require(project.count("GROOVEPUTER_ESCAPE") >= 2 and
-            "navigateUpMidiDir();" in project,
-            "Escape must go to the parent MIDI directory and back from matrix")
+    require("GROOVEPUTER_ESCAPE" in project and
+            "dialog_type_ = DialogType::ImportMidi;" in project,
+            "Escape from the routing matrix must return to MIDI browsing")
+    require("GROOVEPUTER_ESCAPE" in midi_manager and
+            "navigateUp()" in midi_manager and
+            "EntryKind::Parent" in midi_manager,
+            "the shared MIDI manager must own parent-directory navigation")
     require("midi_import_start_pattern_ >= kMaxPatterns" in project,
             "MIDI target selection must support the complete pattern range")
 
@@ -497,6 +523,7 @@ def main() -> None:
     test_ui_redraw_does_not_hold_audio_pause()
     test_splash_closes_display_transaction()
     test_project_midi_import_and_persistence_contracts()
+    test_scene_and_page_validation_share_one_scratch_buffer()
     print("source regressions: OK")
 
 

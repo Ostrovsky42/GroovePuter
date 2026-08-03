@@ -1,5 +1,6 @@
 #include "miniacid_display.h"
 #include "src/dsp/miniacid_engine.h"
+#include "src/state/scene_revision.h"
 
 #ifndef ARDUINO
 #include "../../platform_sdl/arduino_compat.h"
@@ -378,6 +379,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 
             bool newState = !mini_acid_.songModeEnabled();
             withAudioGuard([&]() { mini_acid_.setSongMode(newState); });
+            GroovePuterState::markSceneMutated();
             showToast(newState ? "Song: ON" : "Song: OFF");
             return true;
         }
@@ -388,6 +390,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
                 mini_acid_.sceneManager().loadDefaultScene();
                 mini_acid_.reset();
             });
+            GroovePuterState::markSceneMutated();
             showToast("PROJECT RESET", 1500);
             return true;
         }
@@ -475,12 +478,14 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
                         else mini_acid_.toggleMuteRim();
                     }
                 });
+                GroovePuterState::markSceneMutated();
                 return true;
             } else if (event.key == '0') {
                 withAudioGuard([&]() {
                     if (sp12Swap90) mini_acid_.toggleMuteRim();
                     else mini_acid_.toggleMuteClap();
                 });
+                GroovePuterState::markSceneMutated();
                 return true;
             }
         }

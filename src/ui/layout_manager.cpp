@@ -16,8 +16,7 @@ void LayoutManager::drawHeader(IGfx& gfx,
     const UI::ThemePalette p = UI::themePalette();
     gfx.fillRect(Layout::HEADER.x, Layout::HEADER.y, Layout::HEADER.w, Layout::HEADER.h, p.background);
     gfx.drawLine(Layout::HEADER.x, Layout::HEADER.y + Layout::HEADER.h - 1,
-                 Layout::HEADER.x + Layout::HEADER.w - 1,
-                 Layout::HEADER.y + Layout::HEADER.h - 1, p.dim);
+                 Layout::HEADER.x + Layout::HEADER.w - 1, Layout::HEADER.y + Layout::HEADER.h - 1, p.dim);
 
     // Left: scene. Label is secondary; the actual value gets the warm accent.
     gfx.setTextColor(p.secondary);

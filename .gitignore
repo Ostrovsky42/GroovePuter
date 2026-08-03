@@ -25,3 +25,11 @@ platform_sdl/grooveputer
 # Misc local scratch
 *.tmp
 *.orig
+
+# Keep the reusable embedded runtime debugging skill under version control.
+!.agent/
+.agent/*
+!.agent/skills/
+.agent/skills/*
+!.agent/skills/embedded-runtime-debugging/
+!.agent/skills/embedded-runtime-debugging/**

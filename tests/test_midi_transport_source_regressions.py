@@ -19,6 +19,7 @@ def main() -> None:
     transport = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
     transport_h = (ROOT / "src/platform/cardputer_usb_midi_transport.h").read_text(encoding="utf-8")
     service = (ROOT / "src/platform/cardputer_usb_midi_service.h").read_text(encoding="utf-8")
+    settings_session = (ROOT / "src/platform/cardputer_midi_settings_session.cpp").read_text(encoding="utf-8")
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
     musical_event = (ROOT / "src/input/musical_event.h").read_text(encoding="utf-8")
@@ -55,16 +56,19 @@ def main() -> None:
             "publisher must encode 24 PPQN / six clocks per 1/16 step")
     require("previousTransportPlaying_" in publisher and
             "MidiTransportEventType::Start" in publisher and
+            "MidiTransportEventType::Continue" in publisher and
             "MidiTransportEventType::Stop" in publisher,
-            "Start/Stop must be lifecycle transitions, not UI actions")
-    require("startPulsePosition" in publisher and
+            "Start/Continue/Stop must be lifecycle transitions, not UI actions")
+    require("restartFromBeginning" in publisher and
+            "startPulsePosition" in publisher and
             "samplesPerStep" in publisher,
-            "Clock timing must derive from sequencer phase and audio sample timing")
+            "Clock timing and resume semantics must derive from the audio block")
     for token in ("millis(", "delay(", "vTaskDelay("):
         require(token not in publisher,
                 f"transport publisher must not use wall-clock loops: {token}")
 
     require("transportClockPublisher_.beginBlock" in facade and
+            "restartFromBeginning" in facade and
             "transportQueue_" in facade,
             "AudioTask render bracket must publish transport timing")
     require("MusicalEventQueue& patternQueue" in service,
@@ -91,20 +95,42 @@ def main() -> None:
             "MidiContinueBehavior" in capabilities and
             "songPositionTx" in capabilities,
             "optional transport behavior must be capability-gated")
+    require("midiTransportCapabilitiesForProfile" in capabilities and
+            "MidiDeviceProfile::GeneralMidi" in capabilities and
+            "MidiDeviceProfile::Custom" in capabilities and
+            "MidiTransportCapabilityRuntime" in capabilities,
+            "device profile must select the runtime transport capability policy")
     require("clampSongPositionPointer" in capabilities and
+            "songPositionPointerFromPpqnTicks" in capabilities and
             "0x3FFFu" in capabilities and
             "songPositionPointerLsb" in capabilities and
             "songPositionPointerMsb" in capabilities,
-            "SPP helpers must preserve the standard 14-bit payload")
+            "SPP helpers must preserve PPQN conversion and the 14-bit payload")
+    require("midiTransportCapabilityRuntime().setDeviceProfile" in settings_session and
+            "settings_.profile" in settings_session,
+            "persisted MIDI device profile must initialize transport capabilities")
 
     seqtrak_start = capabilities.index(
         "constexpr MidiTransportCapabilities seqtrakValidatedTransportCapabilities()")
     seqtrak_end = capabilities.index(
-        "constexpr uint16_t clampSongPositionPointer", seqtrak_start)
+        "constexpr MidiTransportCapabilities conservativeCustomTransportCapabilities()",
+        seqtrak_start,
+    )
     seqtrak_profile = capabilities[seqtrak_start:seqtrak_end]
     require("capabilities.continueTx = true" not in seqtrak_profile and
             "capabilities.songPositionTx = true" not in seqtrak_profile,
             "SEQTRAK profile must not claim unvalidated Continue/SPP TX")
+
+    generic_start = capabilities.index(
+        "constexpr MidiTransportCapabilities genericClassCompliantTransportCapabilities()")
+    generic_end = capabilities.index(
+        "constexpr MidiTransportCapabilities seqtrakValidatedTransportCapabilities()",
+        generic_start,
+    )
+    generic_profile = capabilities[generic_start:generic_end]
+    require("capabilities.continueTx = true" in generic_profile and
+            "capabilities.songPositionTx = true" in generic_profile,
+            "General MIDI profile must opt into class-compliant Continue/SPP")
 
     require("sendTimingClock() override" in transport_h and
             "sendStart() override" in transport_h and
@@ -112,6 +138,29 @@ def main() -> None:
             "sendStop() override" in transport_h and
             "sendSongPositionPointer(uint16_t sixteenthNotes) override" in transport_h,
             "Cardputer transport must implement the extended lifecycle surface")
+    continue_start = transport_h.index("bool sendContinue() override")
+    continue_end = transport_h.index("bool sendSongPositionPointer", continue_start)
+    continue_block = transport_h[continue_start:continue_end]
+    require("capabilities.songPositionTx" in continue_block and
+            "songPositionPointerFromPpqnTicks" in continue_block and
+            "sendSongPositionPointer(position)" in continue_block,
+            "PROJECT resume must derive and send capability-gated SPP")
+    require(continue_block.index("sendSongPositionPointer(position)") <
+            continue_block.index("0xFB"),
+            "SPP must be serialized before Continue by the sole dispatcher owner")
+    require("MidiContinueBehavior::RestartFromBeginning" in continue_block and
+            "writeRealtimePacket(0xFA)" in continue_block,
+            "unsupported Continue must use the validated Start fallback")
+
+    spp_start = transport_h.index("bool sendSongPositionPointer")
+    spp_end = transport_h.index("void flush()", spp_start)
+    spp_block = transport_h[spp_start:spp_end]
+    require("capabilities().songPositionTx" in spp_block and
+            "0x03" in spp_block and "0xF2" in spp_block and
+            "songPositionPointerLsb" in spp_block and
+            "songPositionPointerMsb" in spp_block,
+            "SPP packet must be profile-gated and use USB-MIDI CIN 0x3")
+
     require("kCinSingleByte = 0x0F" in transport and
             "kStatusTimingClock = 0xF8" in transport and
             "kStatusStart = 0xFA" in transport and

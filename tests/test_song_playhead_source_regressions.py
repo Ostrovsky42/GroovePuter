@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import runpy
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -31,7 +32,7 @@ def main() -> None:
     require("songBarIndex_" in cycle and "SEQ_STEPS" not in cycle,
   "UI cycle bar must expose bars directly")
 
-    advance = engine[engine.index("void MiniAcid::advanceSongBar_()"):]
+    advance = engine[engine.index("void MiniAcid::advanceSongBar_()") :]
     require("nextSongCycleBoundary(" in advance,
   "bar callback must use the tested helper")
     require("if (boundary.advanceRow)" in advance,
@@ -60,6 +61,14 @@ def main() -> None:
   "rehearsal pause rows must remain intact")
 
     print("Song playhead source regressions: OK")
+
+    # This file is already part of the canonical host runner. Keep the stacked
+    # completion source gate in that runner without adding a second shell-test
+    # entry or a parallel validation path.
+    runpy.run_path(
+        str(ROOT / "tests/test_smf_panel_completion_source_regressions.py"),
+        run_name="__main__",
+    )
 
 
 if __name__ == "__main__":

@@ -28,6 +28,30 @@ Canonical key map for the currently active firmware version.
 | `Esc` | Back / Dismiss |
 | `Ctrl+Alt+Bksp` | Project reset (wipe) |
 
+## Постоянный status chrome
+
+Верхняя строка всегда использует один порядок приоритетов:
+
+```text
+CONTEXT SOURCE STATE BAR CLOCK OUTPUT [LM] [*]
+GEN PAT PLAY B3/4 INT BOTH
+PLYR SMF ARM B8/128 EXT MIDI
+```
+
+| Поле | Значения |
+| --- | --- |
+| `CONTEXT` | краткое имя текущей страницы: `KEY`, `GEN`, `S-A`, `SONG`, `PROJ` и т. п. |
+| `SOURCE` | `PAT`, `SONG`, `SMF` |
+| `STATE` | `STOP`, `PLAY`, `PAUS`, `ARM`, `LOAD`, `ERR` |
+| `BAR` | текущий такт и активная длина, например `B3/4` |
+| `CLOCK` | `INT` — внутренний clock, `EXT` — SEQTRAK master, `FILE` — tempo map MIDI-файла |
+| `OUTPUT` | `BOTH` — Pattern/Song идут во внутренний синтез и USB-MIDI sink; `MIDI` — SMF MIDI output |
+| `LM` | LiveMix lock включён |
+| `*` | persistent state отличается от последнего успешного Save/Load |
+
+Status chrome не меняет обработку клавиш. Dirty marker реализован задачей Wave 1 A2. Точные состояния
+`NOTE/CMD/LOCAL/LOCK` добавляются отдельной задачей B.
+
 ## Priority & Interception Logic
 1. **Global Help Overlay**: intercepts input while visible.
 2. **Hard-Global Shortcuts**: `Fn+Tab`, transport, `Alt/Fn + 0..9`, `Ctrl+H`, `Alt+W`.

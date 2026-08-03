@@ -35,6 +35,7 @@ public:
     bool cycleVelocityBoost() override;
     GroovePuterMidi::SmfPlayerSnapshot snapshot() const override;
     GroovePuterMidi::SmfChannelInspectorSnapshot channelInspector() const override;
+    bool currentFilePath(char* output, std::size_t outputSize) const override;
 
 private:
     static constexpr std::size_t kCommandDepth = 4;
@@ -127,6 +128,7 @@ private:
     bool armProjectFromTick(uint32_t tick);
     bool planProjectLaunch(
         const GroovePuterMidi::ProjectTransportBlockSnapshot& transport);
+    bool queueSongPositionPointerAtCurrentAnchor(uint32_t tick);
     void pauseAtCurrentPosition();
     void stopAndCleanup(bool resetToMusicStart);
     void scheduleAhead();
@@ -213,6 +215,7 @@ private:
     mutable portMUX_TYPE snapshotMux_ = portMUX_INITIALIZER_UNLOCKED;
     GroovePuterMidi::SmfPlayerSnapshot snapshot_{};
     GroovePuterMidi::SmfChannelInspectorSnapshot channelInspector_{};
+    char loadedPath_[kPathBytes]{};
 
     StaticQueue_t commandQueueStruct_{};
     alignas(4) uint8_t commandQueueStorage_[kCommandDepth * sizeof(Command)]{};

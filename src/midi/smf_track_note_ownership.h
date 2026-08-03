@@ -20,6 +20,23 @@ public:
         uint8_t count{0};
     };
 
+    bool canAcquire(uint8_t track, uint8_t channel, uint8_t note) const {
+        channel &= 0x0Fu;
+        note &= 0x7Fu;
+        bool hasFree = false;
+        for (const Entry& entry : entries_) {
+            if (entry.count == 0) {
+                hasFree = true;
+                continue;
+            }
+            if (entry.track == track && entry.channel == channel &&
+                entry.note == note) {
+                return true;
+            }
+        }
+        return hasFree;
+    }
+
     bool acquire(uint8_t track, uint8_t channel, uint8_t note) {
         channel &= 0x0Fu;
         note &= 0x7Fu;
@@ -49,6 +66,23 @@ public:
                 entry.channel != channel || entry.note != note) {
                 continue;
             }
+            if (--entry.count == 0) {
+                entry = {};
+                if (activeEntries_ != 0) --activeEntries_;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    // Consumer-side iterator used by the SPSC SMF queue. Each call removes one
+    // logical owner and returns the channel/note that needs an immediate scoped
+    // NoteOff. Repeated NoteOn ownership therefore produces repeated releases.
+    bool takeNextForTrack(uint8_t track, uint8_t& channel, uint8_t& note) {
+        for (Entry& entry : entries_) {
+            if (entry.count == 0 || entry.track != track) continue;
+            channel = entry.channel;
+            note = entry.note;
             if (--entry.count == 0) {
                 entry = {};
                 if (activeEntries_ != 0) --activeEntries_;

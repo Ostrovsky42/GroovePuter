@@ -3,6 +3,7 @@
 #include "../ui_core.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
+#include "src/state/scene_revision.h"
 
 /**
  * VoicePage - Formant Vocal Synthesizer Control
@@ -23,6 +24,13 @@ class VoicePage : public IPage {
   
   template <typename F>
   void withAudioGuard(F&& fn) {
+      if (audio_guard_) audio_guard_(std::forward<F>(fn));
+      else fn();
+      GroovePuterState::markSceneMutated();
+  }
+
+  template <typename F>
+  void withRuntimeAudioGuard(F&& fn) {
       if (audio_guard_) audio_guard_(std::forward<F>(fn));
       else fn();
   }

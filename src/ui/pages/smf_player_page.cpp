@@ -9,6 +9,7 @@
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/transport_clock_runtime.h"
 #include "src/midi/smf_track_mute.h"
+#include "src/platform/cardputer_usb_midi_service.h"
 
 #ifdef ARDUINO
 #include <SD.h>
@@ -22,27 +23,6 @@ namespace {
 bool smfStateIsActive(GroovePuterMidi::SmfPlayerState state) {
     return state == GroovePuterMidi::SmfPlayerState::Playing ||
            state == GroovePuterMidi::SmfPlayerState::Armed;
-}
-
-const char* browserBasename(const char* path) {
-    if (path == nullptr) return "";
-    const char* slash = std::strrchr(path, '/');
-    return slash == nullptr ? path : slash + 1;
-}
-
-bool browserNameIsVisible(const char* name) {
-    return name != nullptr && name[0] != '\0' && name[0] != '.';
-}
-
-bool browserNameIsMidi(const char* name) {
-    if (!browserNameIsVisible(name)) return false;
-    const std::size_t length = std::strlen(name);
-    if (length < 4) return false;
-    const char* ext = name + length - 4;
-    return ext[0] == '.' &&
-           std::tolower(static_cast<unsigned char>(ext[1])) == 'm' &&
-           std::tolower(static_cast<unsigned char>(ext[2])) == 'i' &&
-           std::tolower(static_cast<unsigned char>(ext[3])) == 'd';
 }
 
 void formatMidiNote(uint8_t note, char* dst, std::size_t size) {
@@ -80,268 +60,12 @@ void SmfPlayerPage::onEnter(int context) {
     const SmfPlayerSnapshot state = player_ ? player_->snapshot() : SmfPlayerSnapshot{};
     browserVisible_ = state.state == SmfPlayerState::Unloaded ||
                       state.state == SmfPlayerState::Error;
-    if (entryCount() == 0) refreshFiles();
+    if (browserVisible_) GroovePuterUi::midiFileManager().open();
 }
 
-void SmfPlayerPage::refreshFiles() {
-    directoryCount_ = 0;
-    fileCount_ = 0;
-    totalEntries_ = 0;
-    visibleWindowStart_ = -1;
-    browserStorageReady_ = false;
-    for (BrowserRow& row : browserRows_) row = {};
-#ifdef ARDUINO
-    if (currentPath_.empty()) currentPath_ = "/midi";
-    bool exists = SD.exists(currentPath_.c_str());
-    Serial.printf("[SMF-BROWSE] path=%s exists=%d\n", currentPath_.c_str(), (int)exists);
-    if (!exists) {
-        const bool reinit = GroovePuterPlatform::ensureCardputerSdMounted();
-        Serial.printf("[SMF-BROWSE] SD mount retry ok=%d\n", (int)reinit);
-        exists = SD.exists(currentPath_.c_str());
-        Serial.printf("[SMF-BROWSE] path=%s exists-after-retry=%d\n", currentPath_.c_str(),
-                      (int)exists);
-    }
-    if (!exists) SD.mkdir(currentPath_.c_str());
-#if defined(ESP32) || defined(ESP_PLATFORM)
-    const size_t freeBeforeOpen =
-        heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-#endif
-    File root = SD.open(currentPath_.c_str());
-    Serial.printf(
-        "[SMF-BROWSE] root.open ok=%d isDir=%d"
-#if defined(ESP32) || defined(ESP_PLATFORM)
-        " freeBefore=%u freeOpen=%u"
-#endif
-        "\n",
-        (int)(bool)root,
-        root ? (int)root.isDirectory() : -1
-#if defined(ESP32) || defined(ESP_PLATFORM)
-        , static_cast<unsigned>(freeBeforeOpen),
-        static_cast<unsigned>(
-            heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT))
-#endif
-    );
-    if (root && root.isDirectory()) {
-        browserStorageReady_ = true;
-        int seen = 0;
-        while (true) {
-            File entry = root.openNextFile();
-            if (!entry) break;
-            ++seen;
-
-            const bool isDir = entry.isDirectory();
-            const char* name = browserBasename(entry.name());
-            if (browserNameIsVisible(name)) {
-                if (isDir) {
-                    ++directoryCount_;
-                } else if (browserNameIsMidi(name)) {
-                    ++fileCount_;
-                }
-            }
-            entry.close();
-        }
-        root.close();
-        totalEntries_ = (hasParentEntry() ? 1 : 0) +
-                        directoryCount_ + fileCount_;
-        Serial.printf(
-            "[SMF-BROWSE] scanned=%d dirs=%d files=%d complete=1"
-#if defined(ESP32) || defined(ESP_PLATFORM)
-            " freeAfter=%u"
-#endif
-            "\n",
-            seen, directoryCount_, fileCount_
-#if defined(ESP32) || defined(ESP_PLATFORM)
-            , static_cast<unsigned>(
-                heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT))
-#endif
-        );
-    } else {
-        if (root) root.close();
-        Serial.println("[SMF-BROWSE] complete=0 reason=root-unavailable");
-    }
-#endif
-    const int total = entryCount();
-    if (selection_ >= total) selection_ = total > 0 ? total - 1 : 0;
-    if (selection_ < 0) selection_ = 0;
-    ensureSelectionVisible(kBrowserVisibleRows);
-}
-
-void SmfPlayerPage::fillVisibleEntries() {
-    visibleWindowStart_ = scroll_;
-    for (BrowserRow& row : browserRows_) row = {};
-
-    if (hasParentEntry() && scroll_ == 0) {
-        browserRows_[0].logicalIndex = 0;
-        std::snprintf(browserRows_[0].displayName,
-                      sizeof(browserRows_[0].displayName), "..");
-    }
-
-#ifdef ARDUINO
-    File root = SD.open(currentPath_.c_str());
-    if (!root || !root.isDirectory()) {
-        if (root) root.close();
-        browserStorageReady_ = false;
-        directoryCount_ = 0;
-        fileCount_ = 0;
-        totalEntries_ = 0;
-        Serial.println("[SMF-BROWSE] window.open failed");
-        return;
-    }
-
-    const int parentOffset = hasParentEntry() ? 1 : 0;
-    const int requiredRows =
-        std::min(kBrowserVisibleRows, std::max(0, totalEntries_ - scroll_));
-    int filledRows = hasParentEntry() && scroll_ == 0 ? 1 : 0;
-    int directoryIndex = 0;
-    int fileIndex = 0;
-    while (filledRows < requiredRows) {
-        File entry = root.openNextFile();
-        if (!entry) break;
-
-        const bool isDir = entry.isDirectory();
-        const char* name = browserBasename(entry.name());
-        int logicalIndex = -1;
-        if (browserNameIsVisible(name)) {
-            if (isDir) {
-                logicalIndex = parentOffset + directoryIndex++;
-            } else if (browserNameIsMidi(name)) {
-                logicalIndex = parentOffset + directoryCount_ + fileIndex++;
-            }
-        }
-
-        const int slot = logicalIndex - scroll_;
-        if (slot >= 0 && slot < kBrowserVisibleRows) {
-            BrowserRow& row = browserRows_[slot];
-            row.logicalIndex = logicalIndex;
-            std::snprintf(row.displayName, sizeof(row.displayName), "%s", name);
-            ++filledRows;
-        }
-        entry.close();
-    }
-    root.close();
-#endif
-}
-
-bool SmfPlayerPage::resolveEntry(int logicalIndex,
-                                 std::string& name,
-                                 bool& isDirectory) const {
-    name.clear();
-    isDirectory = false;
-    if (hasParentEntry() && logicalIndex == 0) {
-        name = "..";
-        isDirectory = true;
-        return true;
-    }
-
-#ifdef ARDUINO
-    const int parentOffset = hasParentEntry() ? 1 : 0;
-    const bool targetIsDirectory =
-        logicalIndex >= parentOffset &&
-        logicalIndex < parentOffset + directoryCount_;
-    const int targetOrdinal = targetIsDirectory
-        ? logicalIndex - parentOffset
-        : logicalIndex - parentOffset - directoryCount_;
-    if (targetOrdinal < 0) return false;
-
-    File root = SD.open(currentPath_.c_str());
-    if (!root || !root.isDirectory()) {
-        if (root) root.close();
-        return false;
-    }
-
-    int ordinal = 0;
-    while (true) {
-        File entry = root.openNextFile();
-        if (!entry) break;
-        const bool entryIsDirectory = entry.isDirectory();
-        const char* entryName = browserBasename(entry.name());
-        const bool matches = browserNameIsVisible(entryName) &&
-            (targetIsDirectory
-                 ? entryIsDirectory
-                 : (!entryIsDirectory && browserNameIsMidi(entryName)));
-        if (matches && ordinal++ == targetOrdinal) {
-            name = entryName;
-            isDirectory = entryIsDirectory;
-            entry.close();
-            root.close();
-            return true;
-        }
-        entry.close();
-    }
-    root.close();
-#else
-    (void)logicalIndex;
-#endif
-    return false;
-}
-
-bool SmfPlayerPage::navigateIntoDir(const std::string& dirName) {
-#ifdef ARDUINO
-    std::string newPath = currentPath_ + "/" + dirName;
-    if (!SD.exists(newPath.c_str())) return false;
-    currentPath_ = newPath;
-    selection_ = 0;
-    scroll_ = 0;
-    refreshFiles();
-    return true;
-#else
-    (void)dirName;
-    return false;
-#endif
-}
-
-bool SmfPlayerPage::navigateUpDir() {
-    if (currentPath_ == "/midi" || currentPath_.empty()) return false;
-    const std::size_t lastSlash = currentPath_.rfind('/');
-    if (lastSlash == std::string::npos || lastSlash == 0) {
-        currentPath_ = "/midi";
-    } else {
-        currentPath_ = currentPath_.substr(0, lastSlash);
-    }
-    if (currentPath_.size() < 5) currentPath_ = "/midi";
-    selection_ = 0;
-    scroll_ = 0;
-    refreshFiles();
-    return true;
-}
-
-bool SmfPlayerPage::hasParentEntry() const { return currentPath_ != "/midi"; }
-
-int SmfPlayerPage::entryCount() const {
-    return totalEntries_;
-}
-
-bool SmfPlayerPage::isDirEntry(int index) const {
-    if (hasParentEntry()) {
-        if (index == 0) return true;
-        --index;
-    }
-    return index >= 0 && index < directoryCount_;
-}
-
-const char* SmfPlayerPage::displayName(int index) const {
-    const int slot = index - visibleWindowStart_;
-    if (slot < 0 || slot >= kBrowserVisibleRows) return "?";
-    const BrowserRow& row = browserRows_[slot];
-    return row.logicalIndex == index ? row.displayName : "?";
-}
-
-bool SmfPlayerPage::playSelected() {
-    if (hasParentEntry() && selection_ == 0) {
-        navigateUpDir();
-        return true;
-    }
-
-    std::string selectedName;
-    bool selectedIsDirectory = false;
-    if (!resolveEntry(selection_, selectedName, selectedIsDirectory)) {
+bool SmfPlayerPage::loadMidiPath(const char* path) {
+    if (!path || path[0] == '\0') {
         UI::showToast("MIDI entry unavailable", 900);
-        return true;
-    }
-    if (selectedIsDirectory) {
-        if (!navigateIntoDir(selectedName)) {
-            UI::showToast("MIDI folder unavailable", 900);
-        }
         return true;
     }
 
@@ -351,9 +75,7 @@ bool SmfPlayerPage::playSelected() {
         return true;
     }
     const SmfPlayerSnapshot playerState = player_->snapshot();
-
-    std::string path = currentPath_ + "/" + selectedName;
-    if (!player_->requestLoad(path.c_str())) {
+    if (!player_->requestLoad(path)) {
         UI::showToast("Player queue busy", 1000);
         return true;
     }
@@ -467,26 +189,24 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     }
 
     if (browserVisible_) {
-        if (event.scancode == GROOVEPUTER_UP) {
-            if (selection_ > 0) --selection_;
-            ensureSelectionVisible(kBrowserVisibleRows);
-            return true;
+        char activatedPath[GroovePuterUi::MidiFileManager::kPathBytes]{};
+        const auto result = GroovePuterUi::midiFileManager().handleEvent(
+            event, activatedPath, sizeof(activatedPath));
+        if (result == GroovePuterUi::MidiFileManager::EventResult::FileActivated) {
+            return loadMidiPath(activatedPath);
         }
-        if (event.scancode == GROOVEPUTER_DOWN) {
-            if (selection_ + 1 < entryCount()) ++selection_;
-            ensureSelectionVisible(kBrowserVisibleRows);
-            return true;
-        }
-        if (event.key == '\n' || event.key == '\r') return playSelected();
-        if (event.key == '\b') {
-            if (currentPath_ != "/midi") {
-                navigateUpDir();
-                return true;
+        if (result == GroovePuterUi::MidiFileManager::EventResult::CloseRequested) {
+            if (player_) {
+                const SmfPlayerSnapshot state = player_->snapshot();
+                if (state.state != SmfPlayerState::Unloaded &&
+                    state.state != SmfPlayerState::Error) {
+                    browserVisible_ = false;
+                    return true;
+                }
             }
             return false;
         }
-        if (event.key == 'r' || event.key == 'R') {
-            refreshFiles();
+        if (result == GroovePuterUi::MidiFileManager::EventResult::Consumed) {
             return true;
         }
         if (event.key == 'm' || event.key == 'M') {
@@ -677,7 +397,7 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         event.key == '\n' || event.key == '\r' || event.key == '\b') {
         browserVisible_ = true;
         channelInspectorVisible_ = false;
-        refreshFiles();
+        GroovePuterUi::midiFileManager().open();
         return true;
     }
     if (event.key == 'm' || event.key == 'M') {
@@ -706,45 +426,9 @@ void SmfPlayerPage::drawContent(IGfx& gfx) {
 }
 
 void SmfPlayerPage::drawBrowser(IGfx& gfx) {
-    char header[48];
-    std::snprintf(header, sizeof(header), "MIDI LIBRARY  %.24s", currentPath_.c_str());
-    gfx.setTextColor(MusicVisuals::accentForStyle());
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(0), header);
-
-    const int total = entryCount();
-    if (total == 0) {
-        gfx.setTextColor(COLOR_LABEL);
-#ifdef ARDUINO
-        if (browserStorageReady_) {
-            gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), "NO MIDI FILES");
-            gfx.drawText(Layout::COL_1, LayoutManager::lineY(3), "COPY .MID TO /MIDI");
-        } else {
-            gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), "SD UNAVAILABLE");
-            gfx.drawText(Layout::COL_1, LayoutManager::lineY(3), "R: RETRY BROWSER");
-        }
-#else
-        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), "SD BROWSER: CARDPUTER ONLY");
-#endif
-        return;
-    }
-
-    for (int row = 0; row < kBrowserVisibleRows; ++row) {
-        const int index = scroll_ + row;
-        if (index >= total) break;
-        const int y = LayoutManager::lineY(row + 1);
-        const bool selected = index == selection_;
-        if (selected) {
-            gfx.fillRect(Layout::CONTENT.x + 2, y - 1,
-                         Layout::CONTENT.w - 4, gfx.fontHeight() + 2,
-                         MusicVisuals::accentForStyle());
-        }
-        gfx.setTextColor(selected ? COLOR_BG : COLOR_TEXT);
-        char line[42];
-        const bool isDir = isDirEntry(index);
-        std::snprintf(line, sizeof(line), "%c%s%.32s",
-                      selected ? '>' : ' ', isDir ? "/" : " ", displayName(index));
-        gfx.drawText(Layout::COL_1 + 2, y, line);
-    }
+    const Rect midiBrowserBounds(Layout::CONTENT.x, Layout::CONTENT.y,
+                                 Layout::CONTENT.w, Layout::CONTENT.h);
+    GroovePuterUi::midiFileManager().draw(gfx, midiBrowserBounds, "PLAYER");
 }
 
 void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
@@ -845,11 +529,20 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
     }
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(5), line);
 
-    gfx.setTextColor(COLOR_TEXT);
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(6),
-                 transportClockRuntime().source() == TransportClockSource::SeqtrakExternal
-                     ? "G FOLLOW   SPACE MIDI   R RESTART"
-                     : "G GROOVE   SPACE MIDI   R RESTART");
+    const CardputerUsbMidiStatusSnapshot usb = snapshotCardputerUsbMidiStatus();
+    const char* usbState = !usb.registered || !usb.mounted
+        ? "WAIT"
+        : (usb.suspended ? "SLEEP" : (usb.stalled ? "BLOCKED" : "READY"));
+    gfx.setTextColor(usb.stalled || !usb.mounted ? COLOR_DANGER : COLOR_TEXT);
+    std::snprintf(line, sizeof(line), "USB %s M%u OK%lu NO%lu B%lu H%lu Q%u",
+                  usbState,
+                  static_cast<unsigned>(usb.mounted),
+                  static_cast<unsigned long>(usb.txAccepted),
+                  static_cast<unsigned long>(usb.txRejected),
+                  static_cast<unsigned long>(usb.txRejectedEndpointBusy),
+                  static_cast<unsigned long>(usb.txRejectedEndpointStalled),
+                  static_cast<unsigned>(usb.queuedSmfEvents));
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(6), line);
 
     const bool usbBlocked = std::strncmp(state.message, "USB MIDI BLOCKED", 16) == 0;
     gfx.setTextColor((error || usbBlocked) ? COLOR_DANGER : COLOR_LABEL);
@@ -1040,9 +733,9 @@ void SmfPlayerPage::drawPerformance(IGfx& gfx) {
 void SmfPlayerPage::drawFooter(IGfx& gfx) {
     const bool seqMaster = transportClockRuntime().source() == TransportClockSource::SeqtrakExternal;
     if (browserVisible_) {
-        UI::drawStandardFooter(gfx, "UP/DN Select Enter Load",
-                               seqMaster ? "C Master G Follow T Tempo"
-                                         : "C Master Space MIDI T Tempo");
+        UI::drawStandardFooter(gfx, "ENT Open R Name X Delete",
+                               seqMaster ? "F Refresh C Master G Follow"
+                                         : "F Refresh C Master T Tempo");
     } else if (channelInspectorVisible_) {
         UI::drawStandardFooter(gfx, "UP/DN Scroll I Player",
                                "D Perf B Files Space MIDI");
@@ -1053,17 +746,7 @@ void SmfPlayerPage::drawFooter(IGfx& gfx) {
     } else {
         UI::drawStandardFooter(gfx,
                                seqMaster ? "Space MIDI G Follow C Master"
-                                         : "Space MIDI C Master R Restart",
+                                         : "Space MIDI C Master R RESTART",
                                "I Channels J/L Track K Mute");
     }
-}
-
-void SmfPlayerPage::ensureSelectionVisible(int visibleRows) {
-    if (visibleRows < 1) visibleRows = 1;
-    if (selection_ < scroll_) scroll_ = selection_;
-    if (selection_ >= scroll_ + visibleRows) scroll_ = selection_ - visibleRows + 1;
-    const int maxScroll = std::max(0, entryCount() - visibleRows);
-    if (scroll_ > maxScroll) scroll_ = maxScroll;
-    if (scroll_ < 0) scroll_ = 0;
-    if (visibleWindowStart_ != scroll_) fillVisibleEntries();
 }

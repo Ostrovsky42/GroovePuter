@@ -1,6 +1,7 @@
 #include "drum_sequencer_page.h"
 #include "drum_automation_page.h"
 #include "../ui_common.h"
+#include "src/state/scene_revision.h"
 
 #include <algorithm>
 #include <cctype>
@@ -87,6 +88,7 @@ class DrumSequencerMainPage : public Container {
   void withAudioGuard(F&& fn) {
       if (audio_guard_) audio_guard_(std::forward<F>(fn));
       else fn();
+      GroovePuterState::markSceneMutated();
   }
 
   MiniAcid& mini_acid_;
@@ -1066,37 +1068,45 @@ void GlobalDrumSettingsPage::draw(IGfx& gfx) {
 
 void GlobalDrumSettingsPage::adjustDrumFx(int row, float delta) {
   auto& dfx = mini_acid_.sceneManager().currentScene().drumFX;
+  bool changed = false;
   if (row == 0) {
+    const float before = dfx.compression;
     dfx.compression = std::clamp(dfx.compression + delta, 0.0f, 1.0f);
+    changed = dfx.compression != before;
     mini_acid_.updateDrumCompression(dfx.compression);
-    return;
-  }
-  if (row == 1) {
+  } else if (row == 1) {
+    const float before = dfx.transientAttack;
     dfx.transientAttack = std::clamp(dfx.transientAttack + delta, -1.0f, 1.0f);
+    changed = dfx.transientAttack != before;
     mini_acid_.updateDrumTransientAttack(dfx.transientAttack);
-    return;
-  }
-  if (row == 2) {
+  } else if (row == 2) {
+    const float before = dfx.transientSustain;
     dfx.transientSustain = std::clamp(dfx.transientSustain + delta, -1.0f, 1.0f);
+    changed = dfx.transientSustain != before;
     mini_acid_.updateDrumTransientSustain(dfx.transientSustain);
-    return;
-  }
-  if (row == 3) {
+  } else if (row == 3) {
+    const float before = dfx.reverbMix;
     dfx.reverbMix = std::clamp(dfx.reverbMix + delta, 0.0f, 1.0f);
+    changed = dfx.reverbMix != before;
     mini_acid_.updateDrumReverbMix(dfx.reverbMix);
-    return;
-  }
-  if (row == 4) {
+  } else if (row == 4) {
+    const float before = dfx.reverbDecay;
     dfx.reverbDecay = std::clamp(dfx.reverbDecay + delta, 0.05f, 0.95f);
+    changed = dfx.reverbDecay != before;
     mini_acid_.updateDrumReverbDecay(dfx.reverbDecay);
   }
+  if (changed) GroovePuterState::markSceneMutated();
 }
 
 void GlobalDrumSettingsPage::applyDrumEngineSelection() {
   if (!character_control_) return;
   int index = character_control_->optionIndex();
   if (index < 0 || index >= static_cast<int>(drum_engine_options_.size())) return;
+  const std::string before = mini_acid_.currentDrumEngineName();
   mini_acid_.setDrumEngine(drum_engine_options_[index]);
+  if (mini_acid_.currentDrumEngineName() != before) {
+    GroovePuterState::markSceneMutated();
+  }
 }
 
 void GlobalDrumSettingsPage::syncDrumEngineSelection() {

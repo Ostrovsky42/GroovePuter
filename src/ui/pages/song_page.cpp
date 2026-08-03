@@ -1426,17 +1426,17 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
 
   if (ui_event.alt && key_x) {// отображать замочек если заблокированно
     bool enable = !mini_acid_.liveMixModeEnabled();
-    withAudioGuard([&]() { mini_acid_.setLiveMixMode(enable); });
+    withRuntimeAudioGuard([&]() { mini_acid_.setLiveMixMode(enable); });
     showToast(enable ? "LiveMix: ON" : "LiveMix: OFF", 900);
     return true;
   }
 
   if (ui_event.ctrl && key_b) {
     if (!mini_acid_.liveMixModeEnabled()) {
-      withAudioGuard([&]() { mini_acid_.setLiveMixMode(true); });
+      withRuntimeAudioGuard([&]() { mini_acid_.setLiveMixMode(true); });
     }
     int nextPlaySlot = mini_acid_.songPlaybackSlot() == 0 ? 1 : 0;
-    withAudioGuard([&]() { mini_acid_.setSongPlaybackSlot(nextPlaySlot); });
+    withRuntimeAudioGuard([&]() { mini_acid_.setSongPlaybackSlot(nextPlaySlot); });
     showToast(nextPlaySlot == 0 ? "Play: A" : "Play: B", 900);
     return true;
   }

@@ -17,7 +17,8 @@ struct SmfMidiVisualSnapshot {
 
 class SmfMidiVisualTimeline {
 public:
-    static constexpr std::size_t kCapacity = 64;
+    // This queue drives a UI pulse only; musical delivery has its own queue.
+    static constexpr std::size_t kCapacity = 16;
 
     void reset() {
         head_ = 0;
@@ -85,7 +86,7 @@ private:
     SmfMidiVisualSnapshot snapshot_{};
 };
 
-static_assert(sizeof(SmfMidiVisualTimeline) < 1024,
-              "SMF MIDI visual timeline must remain bounded");
+static_assert(sizeof(SmfMidiVisualTimeline) <= 192,
+              "SMF MIDI visual timeline must stay below 192 bytes");
 
 }  // namespace GroovePuterMidi
