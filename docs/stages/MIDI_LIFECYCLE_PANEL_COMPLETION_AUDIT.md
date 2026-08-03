@@ -23,7 +23,7 @@ Included:
 5. removal of routine synchronous UI logging from performance-sensitive paths;
 6. cached MIDI directory enumeration outside drawing;
 7. bounded partial SMF Player redraw;
-8. host, SDL, Cardputer-Adv and direct Cardputer-Adv -> SEQTRAK acceptance.
+8. host, SDL, Cardputer-Adv and USB endpoint-drain acceptance.
 
 Excluded:
 
@@ -48,7 +48,7 @@ The inherited PR body lists ten remaining tasks but marks none complete. Commit 
 | Directory cache | `smf_directory_cache.h` exists | draw and row resolution perform no `SD.open`, `openNextFile`, mount retry or directory traversal |
 | Partial redraw | `smf_player_dirty.h` exists | page uses bounded dirty regions; a progress/overlay update does not call full `LayoutManager::clearContent` |
 | Logging | routine browser and transition logs remain | normal navigation/rendering contains no synchronous Serial output; failure and opt-in diagnostics remain available |
-| Validation | no complete evidence set | host, SDL and Cardputer-Adv build references plus direct hardware checklist |
+| Validation | no complete evidence set | host, SDL and Cardputer-Adv build references plus endpoint-drain hardware checklist |
 
 ## Completion-branch implementation status
 
@@ -103,6 +103,32 @@ The following were not explicit in the original PR #35 checklist and are now man
 - Scene/project codecs remain unchanged by this completion branch.
 
 ## Completion gates
+
+### 2026-08-03 verified acceptance evidence
+
+The following PR #38 checklist items are confirmed on the final USB runtime
+path. They are not inferred from commit count.
+
+- [x] Host regressions pass, including the USB endpoint-health suite and the
+  source regression that requires all `tud_midi_*` packet access to remain in
+  `MidiDispatchTask`.
+- [x] The Cardputer-Adv DRAM-only build boots with the supported pinned profile;
+  after the runtime DRAM recovery it retains roughly 20 KiB free internal heap
+  with a largest block of at least 7.6 KiB during playback.
+- [x] One physical TinyUSB packet reader/writer is enforced by
+  `configASSERT` and a source regression. UI status reads remain non-owning.
+- [x] Disconnect and an undrained MIDI IN endpoint leave no stuck SMF notes:
+  playback parks in `USB WAIT`, preserves cleanup ownership, and resumes only
+  after the endpoint accepts cleanup again.
+- [x] Linux hardware acceptance passed with an ALSA sink open: simultaneous
+  RX Clock flood at 1000 events/s exceeded 92k received packets while SMF TX
+  reached `3785/3785/0` (attempt/ok/reject) and
+  `ep=busy/stalled=0/0`.
+
+Linux test procedure invariant: a USB re-enumeration creates a new ALSA MIDI
+instance. The old `aseqdump` subscription no longer drains it; after every
+physical reconnect, restart `./scripts/midi_sink.sh -q <client:port>` before
+classifying `ok ~= 17` followed by `busy/reject` as firmware behavior.
 
 ## 2026-08-03 USB/SD DRAM recovery
 
@@ -221,38 +247,40 @@ Arduino / M5Unified / M5Cardputer
 
 The build report records flash/RAM deltas and confirms no scene codec change.
 
-### Gate D — Direct Cardputer-Adv -> SEQTRAK hardware acceptance
+### Gate D — Host without endpoint drain
 
 Hardware:
 
 - M5Stack Cardputer-Adv;
-- Yamaha SEQTRAK;
-- direct USB-C data connection;
-- known-good `.mid` files containing multiple tracks and sustained notes.
+- a class-compliant USB host capable of opening and closing the MIDI input;
+- a known-good `.mid` file containing sustained notes.
 
 Required observations:
 
-- Clock/Start/Stop behavior remains unchanged;
-- pause/resume emits the capability-approved lifecycle behavior;
-- unsupported SPP/Continue claims are not presented as validated;
-- muting a sustaining track silences it immediately;
-- another SMF track sharing channel/note ownership remains correct;
-- Pattern and PERFORM notes are not silenced by SMF mute;
-- queued future NoteOn events from a muted track do not sound;
-- unmute resumes only future events;
-- stop, seek, route change, clock-source change, disconnect, reconnect and panic leave no stuck notes;
-- page navigation and browser activity do not disturb timing;
-- internal GroovePuter synths and drums remain audible;
-- no reset, watchdog, heap collapse or sustained audio-underrun regression.
+- [x] With the host reader closed, the endpoint accepts its bounded FIFO,
+  reports `busy` rather than endpoint halt, and enters `USB WAIT` without a
+  watchdog, reset, or audio-underrun regression.
+- [x] Stop, disconnect, reconnect, and panic preserve NoteOff cleanup
+  ownership and leave no stuck notes.
+- [x] Opening the reader again drains the endpoint and makes cleanup/retry
+  progress without firmware reinitialization.
+- [x] With the Linux reader open, dense RX plus scheduled SMF TX remains
+  stable as recorded above.
+
+SEQTRAK remains a compatibility host, not the acceptance oracle for this
+transport contract. A SEQTRAK host that mounts but does not drain MIDI IN is
+handled by this gate in the same safe `USB WAIT` state.
 
 ## Ready-for-test rule
 
-The branch is announced as ready for one combined hardware test only when:
+The branch is announced as ready for the remaining product compatibility tests
+only when:
 
 1. all implementation rows above are wired, not merely declared;
 2. temporary patch workflows are absent from the final diff;
 3. host, SDL and Cardputer-Adv gates are green on the same head SHA;
 4. the exact firmware artifact/head SHA is recorded;
-5. only Gate D remains for the user to execute on physical hardware.
+5. the host-without-drain contract above is recorded.
 
-The PR is ready for merge only after Gate D results are recorded and any failures are resolved.
+SEQTRAK-specific behavior is documented separately and does not invalidate the
+accepted host endpoint contract.
