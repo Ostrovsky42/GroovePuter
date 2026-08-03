@@ -1,0 +1,41 @@
+name: Apply deterministic Cardputer input patch
+
+on:
+  push:
+    branches:
+      - agent/deterministic-cardputer-input
+
+permissions:
+  contents: write
+
+jobs:
+  apply-production-patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/deterministic-cardputer-input
+          fetch-depth: 0
+
+      - name: Apply production patch
+        run: python3 tools/apply_deterministic_input_patch.py
+
+      - name: Run focused host tests
+        run: |
+          python3 tests/test_cardputer_input_source_regressions.py
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_cardputer_input_edges.cpp \
+            -o build/host-tests/test_cardputer_input_edges
+          build/host-tests/test_cardputer_input_edges
+
+      - name: Commit production files
+        run: |
+          rm -f tools/apply_deterministic_input_patch.py
+          rm -f .github/workflows/apply-deterministic-input.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: make Cardputer input edges deterministic"
+          git push origin HEAD:agent/deterministic-cardputer-input
