@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "../ui_common.h"
+#include "smf_player_session_state.h"
 #include "src/midi/smf_player_service.h"
 
 class SmfPlayerPage final : public IPage {
@@ -13,6 +14,7 @@ public:
 
     const std::string& getTitle() const override { return title_; }
     void onEnter(int context) override;
+    void onExit() override { sessionBinding_.setActive(false); }
     bool handleEvent(UIEvent& event) override;
     void drawHeader(IGfx& gfx) override;
     void drawContent(IGfx& gfx) override;
@@ -63,14 +65,25 @@ private:
     int selection_{0};
     int scroll_{0};
     bool browserStorageReady_{false};
-    bool browserVisible_{true};
-    bool performanceVisible_{false};
-    bool channelInspectorVisible_{false};
+    GroovePuterUi::SmfPlayerTrackedFlag browserVisible_{
+        GroovePuterUi::SmfPlayerSessionFlag::BrowserVisible, true};
+    GroovePuterUi::SmfPlayerTrackedFlag performanceVisible_{
+        GroovePuterUi::SmfPlayerSessionFlag::PerformanceVisible, false};
+    GroovePuterUi::SmfPlayerTrackedFlag channelInspectorVisible_{
+        GroovePuterUi::SmfPlayerSessionFlag::InspectorVisible, false};
     int channelInspectorScroll_{0};
     uint32_t lastMidiVisualEpoch_{0};
     uint32_t lastMidiVisualPulse_{0};
     uint16_t midiWavePhase_{0};
     uint8_t midiWaveEnvelope_{0};
+    GroovePuterUi::SmfPlayerSessionBinding sessionBinding_{
+        currentPath_,
+        selection_,
+        scroll_,
+        channelInspectorScroll_,
+        browserVisible_,
+        performanceVisible_,
+        channelInspectorVisible_};
 
     template <typename F>
     void withAudioGuard(F&& fn) {
