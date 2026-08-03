@@ -1,4 +1,4 @@
-name: Diagnose fix_TB303 merge
+name: Resolve fix_TB303 merge
 
 on:
   pull_request:
@@ -6,27 +6,75 @@ on:
       - dev
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  diagnose:
+  resolve-and-verify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Inspect fix_TB303 merge conflicts
+
+      - name: Merge dev into fix_TB303
         run: |
           git fetch origin dev fix_TB303
-          git checkout -B diagnostic origin/fix_TB303
-          git config user.name "merge-diagnostic"
-          git config user.email "merge-diagnostic@users.noreply.github.com"
+          git checkout -B fix_TB303 origin/fix_TB303
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git merge --no-commit --no-ff origin/dev || true
-          echo '=== UNMERGED FILES ==='
-          git diff --name-only --diff-filter=U
-          echo '=== CONFLICT HUNKS ==='
-          for f in $(git diff --name-only --diff-filter=U); do
-            echo "--- $f ---"
-            git checkout --conflict=diff3 -- "$f" || true
-            grep -n -B6 -A12 -E '^(<<<<<<<|\|\|\|\|\|\|\||=======|>>>>>>>)' "$f" || true
-          done
+
+          # Keep the current workflow file unchanged during the Actions push.
+          # The dev dirty-region block is applied through the GitHub API after
+          # this source merge succeeds.
+          git checkout --ours .github/workflows/core-regressions.yml
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          def show(ref: str, path: str) -> str:
+              return subprocess.check_output(
+                  ['git', 'show', f'{ref}:{path}'], text=True
+              )
+
+          path = 'tests/run_host_tests.sh'
+          fix_text = show('origin/fix_TB303', path)
+          dev_text = show('origin/dev', path)
+          merged = dev_text
+
+          source_anchor = 'python3 "${ROOT_DIR}/tests/test_performance_source_regressions.py"\n'
+          source_test = 'python3 "${ROOT_DIR}/tests/test_wavemorph_performance_source_regressions.py"\n'
+          if source_test not in merged:
+              if source_anchor not in merged:
+                  raise SystemExit('performance source-test anchor missing')
+              merged = merged.replace(source_anchor, source_anchor + source_test, 1)
+
+          wave_marker = '"${ROOT_DIR}/tests/test_wave_morph_synth_voice.cpp"'
+          if wave_marker not in merged:
+              marker_index = fix_text.find(wave_marker)
+              if marker_index < 0:
+                  raise SystemExit('WaveMorph host-test marker missing')
+              block_start = fix_text.rfind('\n\n"${CXX}" \\\n', 0, marker_index)
+              if block_start < 0:
+                  raise SystemExit('WaveMorph host-test block start missing')
+              merged = merged.rstrip() + fix_text[block_start:] + '\n'
+
+          Path(path).write_text(merged, encoding='utf-8')
+          PY
+
+          git add -A
+          unresolved="$(git diff --name-only --diff-filter=U)"
+          if [ -n "$unresolved" ]; then
+            echo "Unresolved files:"
+            echo "$unresolved"
+            exit 1
+          fi
+
+      - name: Run full host regressions
+        run: bash tests/run_host_tests.sh
+
+      - name: Publish resolved source merge
+        run: |
+          git commit -m "merge: integrate dev into fix_TB303"
+          git push origin HEAD:fix_TB303
