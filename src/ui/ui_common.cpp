@@ -1,13 +1,13 @@
 #include "ui_common.h"
 #include "ui_utils.h"
 #include "ui_widgets.h"
-#include "workflow_mode.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/smf_player_service.h"
 #include "src/midi/transport_clock_runtime.h"
 #include "retro_ui_theme.h"
 #include "amber_ui_theme.h"
 #include <cstdio>
+#include <cstring>
 #ifndef ARDUINO
 #include "../../platform_sdl/arduino_compat.h"
 #endif
@@ -36,27 +36,74 @@ namespace UI {
         unsigned long gToastEndMs = 0;
 
         UiStatusSnapshot gStatusSnapshot{};
+        UiStatusContext gStatusContext = UiStatusContext::Unknown;
         char gStatusLine[48] = {0};
         bool gStatusInitialized = false;
 
-        UiStatusContext statusContextForPage(int page) {
-            switch (page) {
-                case WorkflowPages::kPerform: return UiStatusContext::Perform;
-                case WorkflowPages::kPlayer: return UiStatusContext::Player;
-                case WorkflowPages::kGenre: return UiStatusContext::Genre;
-                case WorkflowPages::kMode: return UiStatusContext::Mode;
-                case WorkflowPages::kFeelTexture: return UiStatusContext::Feel;
-                case WorkflowPages::kPattern: return UiStatusContext::Overview;
-                case WorkflowPages::kSynthA: return UiStatusContext::SynthA;
-                case WorkflowPages::kSynthB: return UiStatusContext::SynthB;
-                case WorkflowPages::kDrums: return UiStatusContext::Drums;
-                case WorkflowPages::kSynthAParameters: return UiStatusContext::SoundA;
-                case WorkflowPages::kSynthBParameters: return UiStatusContext::SoundB;
-                case WorkflowPages::kArrange: return UiStatusContext::Song;
-                case WorkflowPages::kProject: return UiStatusContext::Project;
-                case WorkflowPages::kGenerator: return UiStatusContext::Generator;
-                default: return UiStatusContext::Unknown;
+        bool titleContains(const char* title, const char* token) {
+            return title != nullptr && token != nullptr &&
+                   std::strstr(title, token) != nullptr;
+        }
+
+        UiStatusContext statusContextForTitle(const char* title) {
+            if (titleContains(title, "MIDI PLAYER")) {
+                return UiStatusContext::Player;
             }
+            if (titleContains(title, "MIDI KEYBOARD") ||
+                titleContains(title, "PERFORM")) {
+                return UiStatusContext::Perform;
+            }
+            if (titleContains(title, "SYNTH A SOUND") ||
+                titleContains(title, "SYNTH A PARAM") ||
+                titleContains(title, "303A PARAM")) {
+                return UiStatusContext::SoundA;
+            }
+            if (titleContains(title, "SYNTH B SOUND") ||
+                titleContains(title, "SYNTH B PARAM") ||
+                titleContains(title, "303B PARAM")) {
+                return UiStatusContext::SoundB;
+            }
+            if (titleContains(title, "SYNTH A") ||
+                titleContains(title, "303A")) {
+                return UiStatusContext::SynthA;
+            }
+            if (titleContains(title, "SYNTH B") ||
+                titleContains(title, "303B")) {
+                return UiStatusContext::SynthB;
+            }
+            if (titleContains(title, "FEEL") ||
+                titleContains(title, "TEXTURE")) {
+                return UiStatusContext::Feel;
+            }
+            if (titleContains(title, "MODE") ||
+                titleContains(title, "FLAVOR") ||
+                titleContains(title, "GROOVE LAB")) {
+                return UiStatusContext::Mode;
+            }
+            if (titleContains(title, "GENRE")) {
+                return UiStatusContext::Genre;
+            }
+            if (titleContains(title, "DRUM")) {
+                return UiStatusContext::Drums;
+            }
+            if (titleContains(title, "SONG") ||
+                titleContains(title, "ARRANGE")) {
+                return UiStatusContext::Song;
+            }
+            if (titleContains(title, "PROJECT") ||
+                titleContains(title, "SETUP")) {
+                return UiStatusContext::Project;
+            }
+            if (titleContains(title, "ADV") ||
+                titleContains(title, "GENERATOR")) {
+                return UiStatusContext::Generator;
+            }
+            if (titleContains(title, "OVERVIEW") ||
+                titleContains(title, "PATTERN") ||
+                titleContains(title, "SEQUENCER HUB")) {
+                return UiStatusContext::Overview;
+            }
+            return UiStatusContext::Unknown;
         }
 
         uint16_t statusCount(uint32_t value) {
@@ -96,8 +143,7 @@ namespace UI {
 
         UiStatusSnapshot buildUiStatusSnapshot(MiniAcid& miniAcid) {
             UiStatusSnapshot status{};
-            const int page = miniAcid.currentPageIndex();
-            status.context = statusContextForPage(page);
+            status.context = gStatusContext;
             status.liveMixLocked = miniAcid.liveMixModeEnabled();
 
             const GroovePuterMidi::TransportClockRuntimeSnapshot clock =
@@ -111,7 +157,8 @@ namespace UI {
                 GroovePuterMidi::smfPlayerService();
             if (player != nullptr) {
                 const GroovePuterMidi::SmfPlayerSnapshot smf = player->snapshot();
-                const bool playerPageSelected = page == WorkflowPages::kPlayer;
+                const bool playerPageSelected =
+                    status.context == UiStatusContext::Player;
                 const bool loadedPlayerSelected =
                     playerPageSelected &&
                     smf.state != GroovePuterMidi::SmfPlayerState::Unloaded;
@@ -154,6 +201,8 @@ namespace UI {
     }
 
     void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title) {
+        gStatusContext = statusContextForTitle(title);
+
         char sceneStr[16];
         snprintf(sceneStr, sizeof(sceneStr), "%02d", mini_acid.currentScene() + 1);
         
