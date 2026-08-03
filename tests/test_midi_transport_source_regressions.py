@@ -15,6 +15,7 @@ def main() -> None:
     publisher = (ROOT / "src/midi/midi_transport_clock_publisher.h").read_text(encoding="utf-8")
     facade = (ROOT / "src/input/musical_event_queue.h").read_text(encoding="utf-8")
     transport_api = (ROOT / "src/midi/usb_midi_transport.h").read_text(encoding="utf-8")
+    capabilities = (ROOT / "src/midi/midi_transport_capabilities.h").read_text(encoding="utf-8")
     transport = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
     transport_h = (ROOT / "src/platform/cardputer_usb_midi_transport.h").read_text(encoding="utf-8")
     service = (ROOT / "src/platform/cardputer_usb_midi_service.h").read_text(encoding="utf-8")
@@ -71,20 +72,43 @@ def main() -> None:
     for forbidden in (sketch, engine, ui_text):
         require("sendTimingClock(" not in forbidden and
                 "sendStart(" not in forbidden and
+                "sendContinue(" not in forbidden and
                 "sendStop(" not in forbidden and
+                "sendSongPositionPointer(" not in forbidden and
                 "writeRealtimePacket(" not in forbidden,
-                "TinyUSB realtime writes must stay out of loop/DSP/UI code")
+                "TinyUSB transport writes must stay out of loop/DSP/UI code")
     require("USBMIDI" not in engine and "TinyUSB" not in engine,
             "DSP must remain independent of USB transport")
 
     require("sendTimingClock()" in transport_api and
             "sendStart()" in transport_api and
-            "sendStop()" in transport_api,
-            "platform-neutral transport API needs only strict realtime methods")
+            "sendContinue()" in transport_api and
+            "sendStop()" in transport_api and
+            "sendSongPositionPointer(uint16_t midiBeats)" in transport_api,
+            "platform-neutral transport API needs optional Continue and SPP surfaces")
+    require("struct MidiTransportCapabilities" in capabilities and
+            "MidiContinueBehavior" in capabilities and
+            "songPositionTx" in capabilities,
+            "optional transport behavior must be capability-gated")
+    require("clampSongPositionPointer" in capabilities and
+            "0x3FFFu" in capabilities and
+            "songPositionPointerLsb" in capabilities and
+            "songPositionPointerMsb" in capabilities,
+            "SPP helpers must preserve the standard 14-bit payload")
+
+    seqtrak_start = capabilities.index(
+        "constexpr MidiTransportCapabilities seqtrakValidatedTransportCapabilities()")
+    seqtrak_end = capabilities.index(
+        "constexpr uint16_t clampSongPositionPointer", seqtrak_start)
+    seqtrak_profile = capabilities[seqtrak_start:seqtrak_end]
+    require("capabilities.continueTx = true" not in seqtrak_profile and
+            "capabilities.songPositionTx = true" not in seqtrak_profile,
+            "SEQTRAK profile must not claim unvalidated Continue/SPP TX")
+
     require("sendTimingClock() override" in transport_h and
             "sendStart() override" in transport_h and
             "sendStop() override" in transport_h,
-            "Cardputer transport must implement the strict realtime surface")
+            "Cardputer transport must retain the accepted realtime surface")
     require("kCinSingleByte = 0x0F" in transport and
             "kStatusTimingClock = 0xF8" in transport and
             "kStatusStart = 0xFA" in transport and
@@ -107,17 +131,14 @@ def main() -> None:
     require("g_transport.sendTimingClock()" in transport and
             "g_transport.sendStart()" in transport and
             "g_transport.sendStop()" in transport,
-            "MidiDispatchTask translation unit must own all realtime USB writes")
+            "MidiDispatchTask translation unit must own all accepted realtime USB writes")
     require("kControlDrainBudget" in transport,
             "live controls must be bounded so they cannot starve Clock deadlines")
 
     combined_transport = "\n".join((event_header, queue, publisher, facade,
-                                     transport_api, transport_h, transport))
-    require("sendContinue" not in combined_transport and
-            "Continue" not in event_header and "Continue" not in publisher,
-            "GP MASTER outbound transport must remain Start/Stop without Continue")
+                                     transport_api, capabilities, transport_h, transport))
     require("Preferences" not in combined_transport and "NVS" not in combined_transport,
-            "transport sync must not depend on PR #11 settings persistence")
+            "transport sync must not depend on settings persistence")
     require("MidiTransport" not in scenes_h and "MidiTransport" not in scenes_cpp and
             "midiTransport" not in scenes_h and "midiTransport" not in scenes_cpp,
             "scene schema must remain unchanged")
