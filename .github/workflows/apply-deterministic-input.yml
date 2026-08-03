@@ -35,7 +35,7 @@ jobs:
           path = Path('tests/test_cardputer_input_edges.cpp')
           text = path.read_text(encoding='utf-8')
           old = "  assert(repeatKeyStillHeld(fnRight, 0x30, UIEvent{0, GROOVEPUTER_NO_SCANCODE, false, false, false, true} ) == false);\n"
-          new = "  UIEvent fnEvent{};\n  fnEvent.meta = true;\n  assert(!repeatKeyStillHeld(fnRight, 0x30, fnEvent));\n"
+          new = "  UIEvent fnEvent{};\n  fnEvent.scancode = GROOVEPUTER_RIGHT;\n  fnEvent.meta = true;\n  assert(!mayRepeat(fnEvent));\n"
           if old not in text:
               raise SystemExit('host fixture anchor missing')
           path.write_text(text.replace(old, new, 1), encoding='utf-8')
