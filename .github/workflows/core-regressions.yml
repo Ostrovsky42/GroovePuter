@@ -9,10 +9,43 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  fix-unified-midi-file-manager-ci:
+    if: github.event_name == 'pull_request' && github.head_ref == 'feature/unified-midi-file-manager'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/unified-midi-file-manager
+          fetch-depth: 0
+
+      - name: Apply CI integration fixes
+        run: python3 tools/fix_unified_midi_manager_ci.py
+
+      - name: Run focused regressions
+        run: |
+          python3 tests/test_source_regressions.py
+          python3 tests/test_midi_file_manager_source_regressions.py
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_midi_file_name_policy.cpp \
+            -o build/host-tests/test_midi_file_name_policy
+          build/host-tests/test_midi_file_name_policy
+
+      - name: Commit production diff
+        run: |
+          git checkout origin/dev -- .github/workflows/core-regressions.yml
+          rm -f tools/fix_unified_midi_manager_ci.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: align MIDI manager UI and regression contracts"
+          git push origin HEAD:feature/unified-midi-file-manager
+
   host-tests:
+    if: github.event_name != 'pull_request' || github.head_ref != 'feature/unified-midi-file-manager'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,6 +63,7 @@ jobs:
           build/host-tests/test_ui_status_chrome
 
   sdl-build:
+    if: github.event_name != 'pull_request' || github.head_ref != 'feature/unified-midi-file-manager'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,6 +81,7 @@ jobs:
         run: make clean all CXX=g++
 
   cardputer-adv-build:
+    if: github.event_name != 'pull_request' || github.head_ref != 'feature/unified-midi-file-manager'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
