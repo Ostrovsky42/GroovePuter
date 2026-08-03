@@ -12,10 +12,12 @@ struct ScheduledSmfMidiEvent {
     uint8_t channel{0};       // zero-based MIDI channel 0..15
     uint8_t note{0};          // MIDI data byte 0..127
     uint8_t velocity{0};      // MIDI data byte 0..127
+    uint8_t trackIndex{0};    // source SMF track 0..63
+    uint8_t reserved{0};
     uint32_t blockSequence{0};
     uint16_t frameOffset{0};
-    // A compact non-zero tag keeps the 128-slot queue at its original size.
-    // Zero denotes ORIGINAL/file-clock playback.
+    // A compact non-zero tag identifies PROJECT transport epochs. Zero denotes
+    // ORIGINAL/file-clock playback.
     uint16_t projectTransportEpoch{0};
     uint32_t generation{0};
     uint32_t publicationSequence{0};
@@ -48,5 +50,5 @@ inline constexpr bool scheduledSmfMidiEventTransportEpochIsCurrent(
                scheduledSmfMidiEventTransportEpochTag(currentTransportEpoch);
 }
 
-static_assert(sizeof(ScheduledSmfMidiEvent) == 20,
-              "SMF event must retain its DRAM-neutral packed layout");
+static_assert(sizeof(ScheduledSmfMidiEvent) == 24,
+              "track-aware SMF event must retain a bounded packed layout");
