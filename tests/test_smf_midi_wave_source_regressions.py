@@ -15,7 +15,7 @@ def main() -> None:
     page = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(encoding="utf-8")
     header = (ROOT / "src/ui/pages/smf_player_page.h").read_text(encoding="utf-8")
 
-    require("kCapacity = 64" in visual and "std::array" in visual,
+    require("kCapacity = 16" in visual and "std::array" in visual,
             "MIDI visual events must use bounded fixed storage")
     require("std::vector" not in visual and "new " not in visual and "malloc(" not in visual,
             "MIDI visual path must remain allocation-free")

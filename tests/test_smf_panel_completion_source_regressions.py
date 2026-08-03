@@ -31,8 +31,9 @@ def main() -> None:
     require("midiFileManager().handleEvent" in page_cpp and
             "midiFileManager().draw" in page_cpp,
             "SMF browser input and rendering must share one manager")
-    require("static_assert(sizeof(MidiFileManager) <= 4096" in manager_h and
-            "std::array<Entry, kMaxEntries> entries_" in manager_h,
+    require("static_assert(sizeof(MidiFileManager) <= 1024" in manager_h and
+            "std::array<Entry, kWindowEntries> entries_" in manager_h and
+            "loadWindow" in manager_h,
             "shared MIDI browser must retain a bounded DRAM contract")
     require("void MidiFileManager::open()" in manager_cpp and
             "bool MidiFileManager::refresh()" in manager_cpp,

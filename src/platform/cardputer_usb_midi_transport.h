@@ -41,6 +41,7 @@ public:
     CardputerUsbMidiTransport() = default;
 
     bool begin() override;
+    bool started() const { return begun_; }
     bool mounted() const override;
     bool suspended() const;
     // Polled from the dispatcher: the Arduino core already owns the TinyUSB

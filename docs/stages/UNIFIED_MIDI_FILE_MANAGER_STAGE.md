@@ -7,7 +7,7 @@ Provide one MIDI library browser for both workflows that read `/midi`:
 - Project → Import MIDI;
 - MIDI Player → Load MIDI.
 
-The manager owns directory scanning, sorting, rename and confirmed delete. MIDI
+The manager owns bounded directory scanning, rename and confirmed delete. MIDI
 parsing, importing and realtime playback remain unchanged.
 
 ## Hardware list
@@ -65,7 +65,8 @@ Directories can be opened, but are not renamed or deleted in this stage.
 ## Expected behavior
 
 - Project Import and MIDI Player show the same path, ordering and file names.
-- Directories are listed before MIDI files; names are sorted case-insensitively.
+- Directories are listed before MIDI files. Within each group, FAT directory
+  order is retained so the complete list can be paged with bounded memory.
 - `.mid` and `.MID` files are visible; hidden and non-MIDI files are ignored.
 - The last folder and selection are shared when moving between Project and Player.
 - Rename rejects empty/invalid names, path separators and existing targets.
@@ -80,15 +81,18 @@ Directories can be opened, but are not renamed or deleted in this stage.
 
 ```text
 Shared manager instances: 1
-Maximum cached entries: 48
-Manager size contract: <= 4096 bytes
+Resident entry window: 8 (screen maximum: 7)
+Reachable entries per directory: all supported names
+Manager size contract: <= 1024 bytes
 Dynamic allocation in audio/playback path: none
 AudioTask work: none
 Per-sample work: none
 ```
 
-SD scans and file mutations occur only from UI actions. No filesystem operation
-is added to the audio callback, MIDI scheduler or frame-independent transport.
+SD scans and file mutations occur only from UI actions. Crossing the resident
+window rescans the current directory; it does not allocate a larger cache. No
+filesystem operation is added to the audio callback, MIDI scheduler or
+frame-independent transport.
 
 ## Troubleshooting
 
@@ -119,7 +123,8 @@ Choose a different filename. Overwrite-on-rename is intentionally forbidden.
 - [ ] Enter opens folders and Backspace returns to `/midi`.
 - [ ] Selection/path carry across Project Import and Player.
 - [ ] `.mid` and `.MID` are listed; other extensions are hidden.
-- [ ] Directories appear before files and names are sorted consistently.
+- [ ] Directories appear before files and all supported entries remain reachable.
+- [ ] A directory with more than eight entries can be traversed to its final file.
 - [ ] `R` opens a filename editor with `.mid` preserved.
 - [ ] Invalid names and existing targets are rejected without changing the file.
 - [ ] Successful rename updates the list and the file remains playable/importable.

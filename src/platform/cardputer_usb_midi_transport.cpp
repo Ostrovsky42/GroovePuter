@@ -1180,6 +1180,8 @@ uint8_t CardputerUsbMidiTransport::clampChannel(uint8_t channel) {
 }
 
 bool CardputerUsbMidiTransport::begin() {
+    if (begun_) return true;
+
     // The USBMIDI member constructor has already registered the MIDI interface.
     diagnostics_ = {};
     mountStateKnown_ = false;
@@ -1413,4 +1415,23 @@ void publishCardputerUsbMidiBlockAnchor(uint32_t blockSequence,
 bool snapshotCardputerUsbMidiBlockAnchor(uint32_t& blockSequence,
                                          uint32_t& playbackStartMicros) {
     return g_anchorClock.snapshot(blockSequence, playbackStartMicros);
+}
+
+CardputerUsbMidiStatusSnapshot snapshotCardputerUsbMidiStatus() {
+    const CardputerUsbMidiTransportDiagnostics usb = g_transport.diagnostics();
+    const UsbEndpointHealthSnapshot endpoint = g_endpointHealth.snapshot(millis());
+    CardputerUsbMidiStatusSnapshot snapshot{};
+    snapshot.registered = g_registered;
+    snapshot.started = g_transport.started();
+#if ARDUINO_USB_CDC_ON_BOOT
+    snapshot.cdcOnBoot = true;
+#endif
+    snapshot.mounted = g_transport.mounted();
+    snapshot.suspended = g_transport.suspended();
+    snapshot.stalled = endpoint.state == UsbEndpointHealthState::Stalled;
+    snapshot.txAccepted = usb.txAccepted;
+    snapshot.txRejected = usb.txRejected;
+    snapshot.queuedSmfEvents = static_cast<uint16_t>(std::min<std::size_t>(
+        g_smfQueue ? g_smfQueue->approximateSize() : 0u, UINT16_MAX));
+    return snapshot;
 }

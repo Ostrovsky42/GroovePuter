@@ -104,6 +104,78 @@ The following were not explicit in the original PR #35 checklist and are now man
 
 ## Completion gates
 
+## 2026-08-03 USB/SD DRAM recovery
+
+### Root cause
+
+The current branch and `origin/main` use the same USB lifecycle and SD startup
+order, but the merged branch added 8056 bytes of global DRAM:
+
+```text
+origin/main MIDI-only globals: 186832 bytes
+failing branch globals:        194888 bytes
+delta:                           8056 bytes
+```
+
+Late `USB.begin()` then lacked enough internal memory to create TinyUSB state.
+Moving USB startup earlier only transferred the failure to the SD browser. The
+failure was therefore a shared DRAM budget regression, not an SD protocol bug,
+SEQTRAK bandwidth problem or misplaced `USB.begin()` call.
+
+### Contracts
+
+- Keep USB initialization at the established main lifecycle point.
+- `MidiDispatchTask` remains the only physical TinyUSB writer.
+- Do not reduce scheduled SMF capacity, stream cache, NoteOff priority or track
+  ownership to buy memory.
+- Project Import and MIDI Player share one filesystem owner.
+- Browser capacity limits resident memory, not reachable files.
+- Filesystem traversal remains outside audio and MIDI realtime tasks.
+- Dirty rendering may reserve only the actual 240x135 Cardputer surface.
+- MIDI visual pulses may be lossy and bounded; musical events may not.
+- MIDI-only global DRAM must remain at or below 191488 bytes (187 KiB).
+
+### Implementation
+
+```text
+MidiFileManager:       3676 -> 804 bytes
+Cardputer display:     1572 -> 748 bytes
+SMF player object:    15648 -> 15264 bytes
+Total globals:       194888 -> 190808 bytes
+Recovered:                       4080 bytes
+```
+
+The browser keeps eight entries resident for a maximum seven-row display. It
+counts the whole directory and reloads a FAT-order window when scrolling. This
+removes the former 48-entry visibility ceiling while keeping directories before
+files. The SMF visual queue changed from 64 to 16 events; it affects only the
+wave animation and retains a dropped-event counter.
+
+`scripts/build_seqtrak_midi_only.sh` runs an ELF section check after compile and
+fails when `.dram0.data + .dram0.bss` exceeds 191488 bytes.
+
+### Automated evidence
+
+```text
+tests/run_host_tests.sh:              PASS
+make -C platform_sdl all CXX=g++:     PASS
+scripts/build.sh --warnings all:      PASS
+normal globals:                       190864 bytes
+MIDI-only globals:                    190808 bytes
+```
+
+Local hardware candidate:
+
+```text
+path:   build/cardputer-adv-seqtrak-midi-only/GroovePuter.ino.bin
+sha256: e6cc36d82f4f48da82155664d33463e4d15924649a84826980c0e5612ce6a3a0
+```
+
+Hardware acceptance remains required. On MIDI Player the first status line must
+show `C0 U1` after boot, files beyond the eighth directory entry must remain
+reachable, and playback must advance `OK` without leaving `Q` permanently
+backlogged.
+
 ### Gate A — Source and host tests
 
 Required:
