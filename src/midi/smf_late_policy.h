@@ -16,7 +16,10 @@ inline constexpr SmfLateDispatchAction smfLateDispatchAction(
         uint32_t latenessMicros,
         uint32_t noteOnLimitMicros) {
     if (latenessMicros == 0) return SmfLateDispatchAction::OnTime;
-    if (type == ScheduledSmfMidiEventType::NoteOff) {
+    if (type == ScheduledSmfMidiEventType::NoteOff ||
+        type == ScheduledSmfMidiEventType::SongPositionPointer) {
+        // NoteOff and transport-position intents are corrective lifecycle data.
+        // They must be delivered late rather than discarded as stale NoteOn.
         return SmfLateDispatchAction::SendLateNoteOff;
     }
     return latenessMicros > noteOnLimitMicros
