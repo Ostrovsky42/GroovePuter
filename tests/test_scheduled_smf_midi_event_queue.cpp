@@ -8,6 +8,30 @@
 int main() {
     GroovePuterMidi::smfTrackMuteState().reset(64);
 
+    // Seek SPP uses a one-slot latest-wins mailbox. It is independent from note
+    // queue capacity but still carries the active generation for invalidation.
+    {
+        ScheduledSmfMidiEventQueue sppQueue;
+        assert(sppQueue.tryPushSongPositionPointer(0x1234, 7, 11));
+        assert(sppQueue.tryPushSongPositionPointer(0x2345, 8, 12));
+        assert(sppQueue.songPositionRequestCount() == 2);
+        ScheduledSmfMidiEvent spp{};
+        assert(sppQueue.tryPop(spp));
+        assert(spp.type == ScheduledSmfMidiEventType::SongPositionPointer);
+        assert(scheduledSmfSongPositionPointerValue(spp) == 0x2345);
+        assert(spp.blockSequence == 8);
+        assert(spp.frameOffset == 12);
+        assert(spp.generation == 0);
+        assert(!sppQueue.tryPop(spp));
+
+        assert(sppQueue.tryPushSongPositionPointer(0x7FFF, 9, 13));
+        assert(sppQueue.invalidateScheduledEvents() == 1);
+        assert(sppQueue.tryPop(spp));
+        assert(scheduledSmfSongPositionPointerValue(spp) == 0x3FFF);
+        assert(!scheduledSmfMidiEventGenerationIsCurrent(
+            spp, sppQueue.generation()));
+    }
+
     ScheduledSmfMidiEventQueue queue;
     assert(queue.generation() == 0);
     assert(queue.approximateSize() == 0);
@@ -159,6 +183,7 @@ int main() {
     assert(queue.transportFailed());
     assert(!queue.tryPushNoteOn(0, 60, 100, 60, 0));
     assert(!queue.tryPushNoteOff(0, 60, 0, 60, 0));
+    assert(!queue.tryPushSongPositionPointer(12, 61, 0));
 
     uint32_t reportedGeneration = 0;
     assert(queue.takePendingTransportFailure(reportedGeneration));
