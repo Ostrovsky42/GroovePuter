@@ -21,10 +21,7 @@ public:
     void drawFooter(IGfx& gfx) override;
 
 private:
-    struct BrowserRow {
-        int logicalIndex{-1};
-        char displayName[40]{};
-    };
+    using BrowserRow = GroovePuterUi::SmfPlayerSessionBrowserRow;
 
     // The old browser diagnostics wrote synchronously to UART during every
     // page entry, refresh, and visible-window refill. UI feedback already uses
@@ -37,7 +34,8 @@ private:
     };
     inline static constexpr BrowserDiagnosticSink Serial{};
 
-    static constexpr int kBrowserVisibleRows = 7;
+    static constexpr int kBrowserVisibleRows =
+        static_cast<int>(GroovePuterUi::kSmfPlayerSessionBrowserRows);
 
     void refreshFiles();
     void fillVisibleEntries();
@@ -68,7 +66,8 @@ private:
     GroovePuterMidi::ISmfPlayerService* player_{nullptr};
     std::string title_{"MIDI PLAYER"};
     std::string currentPath_{"/midi"};
-    std::array<BrowserRow, kBrowserVisibleRows> browserRows_{};
+    std::array<BrowserRow,
+               GroovePuterUi::kSmfPlayerSessionBrowserRows> browserRows_{};
     int directoryCount_{0};
     int fileCount_{0};
     int totalEntries_{0};
@@ -89,6 +88,12 @@ private:
     uint8_t midiWaveEnvelope_{0};
     GroovePuterUi::SmfPlayerSessionBinding sessionBinding_{
         currentPath_,
+        browserRows_,
+        directoryCount_,
+        fileCount_,
+        totalEntries_,
+        visibleWindowStart_,
+        browserStorageReady_,
         selection_,
         scroll_,
         channelInspectorScroll_,
