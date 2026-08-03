@@ -15,6 +15,7 @@ def main() -> None:
     project_cpp = (ROOT / "src/ui/pages/project_page.cpp").read_text(encoding="utf-8")
     player_h = (ROOT / "src/ui/pages/smf_player_page.h").read_text(encoding="utf-8")
     player_cpp = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(encoding="utf-8")
+    sdl_makefile = (ROOT / "platform_sdl/Makefile").read_text(encoding="utf-8")
 
     require("static_assert(sizeof(MidiFileManager) <= 4096" in manager_h,
             "MIDI manager RAM contract is missing")
@@ -26,6 +27,8 @@ def main() -> None:
             "MIDI rename/delete must be owned by the shared manager")
     require("selectedFileIsInUse" in manager_cpp and "smfPlayerService" in manager_cpp,
             "active SMF file mutation guard is missing")
+    require("../src/ui/midi_file_manager.cpp" in sdl_makefile,
+            "desktop build must link the shared MIDI manager")
 
     require("midi_file_manager.h" in project_h,
             "Project import must include the shared MIDI manager")
