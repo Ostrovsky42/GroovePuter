@@ -9,39 +9,10 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  fix-unified-midi-file-manager-regression:
-    if: github.event_name == 'pull_request' && github.head_ref == 'feature/unified-midi-file-manager'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: feature/unified-midi-file-manager
-          fetch-depth: 0
-
-      - name: Update SMF load ownership regression
-        run: python3 tools/fix_unified_midi_manager_performance_regression.py
-
-      - name: Run focused host regressions
-        run: |
-          python3 tests/test_performance_source_regressions.py
-          python3 tests/test_source_regressions.py
-          python3 tests/test_midi_file_manager_source_regressions.py
-
-      - name: Commit production diff
-        run: |
-          git checkout origin/dev -- .github/workflows/core-regressions.yml
-          rm -f tools/fix_unified_midi_manager_performance_regression.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "test: track SMF load through shared MIDI browser"
-          git push origin HEAD:feature/unified-midi-file-manager
-
   host-tests:
-    if: github.event_name != 'pull_request' || github.head_ref != 'feature/unified-midi-file-manager'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -59,7 +30,6 @@ jobs:
           build/host-tests/test_ui_status_chrome
 
   sdl-build:
-    if: github.event_name != 'pull_request' || github.head_ref != 'feature/unified-midi-file-manager'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -77,7 +47,6 @@ jobs:
         run: make clean all CXX=g++
 
   cardputer-adv-build:
-    if: github.event_name != 'pull_request' || github.head_ref != 'feature/unified-midi-file-manager'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -163,6 +163,9 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
     player_page = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(
         encoding="utf-8"
     )
+    midi_manager = (ROOT / "src/ui/midi_file_manager.cpp").read_text(
+        encoding="utf-8"
+    )
     player_service = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(
         encoding="utf-8"
     )
@@ -213,9 +216,14 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
     require('queued ? "MIDI PANIC / PAUSE" : "PANIC QUEUE BUSY"' in player_page,
             "player panic must report command-queue failure")
 
-    require("requestLoad(path.c_str())" in player_page and
-            "requestLoadAndPlay" not in player_page,
-            "Enter must load an SMF without creating hidden playback intent")
+    load_path = player_page[
+        player_page.index("bool SmfPlayerPage::loadMidiPath(const char* path)"):
+        player_page.index("bool SmfPlayerPage::togglePlayerTransport()")]
+    require("player_->requestLoad(path)" in load_path and
+            "requestLoadAndPlay" not in player_page and
+            "EventResult::FileActivated" in player_page and
+            "return loadMidiPath(activatedPath);" in player_page,
+            "Enter must load the selected shared-browser path without hidden playback intent")
     load_case = player_service[player_service.index("case CommandType::Load:"):
                                player_service.index("case CommandType::TogglePlayPause:")]
     require("loadFile(command.path);" in load_case and
@@ -241,10 +249,11 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
             "projectRelaunchAfterExternalStop_" in player_service,
             "project stop must pause GP MASTER but preserve SEQ MASTER arming")
 
-    require('"MIDI LIBRARY  %.24s"' in player_page and
-            "currentPath_.c_str()" in player_page and
-            "requestLoad" in player_page,
-            "MIDI Player page must expose selectable SD playback and its path")
+    require('"MIDI FILES / %s"' in midi_manager and
+            "currentPath_" in midi_manager and
+            "EventResult::FileActivated" in midi_manager and
+            "midiFileManager().draw" in player_page,
+            "MIDI Player page must expose the shared selectable SD library and path")
     require("seekBars(event.shift ? -4 : -1)" in player_page and
             "seekBars(event.shift ? 4 : 1)" in player_page,
             "player seek must preserve +/-1 and Shift +/-4 bar UX")
