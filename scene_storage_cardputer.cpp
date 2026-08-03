@@ -338,7 +338,25 @@ bool SceneStorageCardputer::readSceneAuto(SceneManager& manager) {
     if (ok) return true;
   }
 
-  return readScene(manager);
+  return false;
+}
+
+bool SceneStorageCardputer::hasSceneAuto() const {
+  if (!isInitialized_) return false;
+  const std::string path = currentAutoScenePath();
+  return SD.exists(path.c_str()) ||
+         SD.exists(siblingPath(path, kBackupSuffix).c_str());
+}
+
+bool SceneStorageCardputer::clearSceneAuto() {
+  if (!isInitialized_) return false;
+  const std::string path = currentAutoScenePath();
+  const std::string backup = siblingPath(path, kBackupSuffix);
+  const std::string temp = siblingPath(path, kTempSuffix);
+  if (SD.exists(path.c_str()) && !SD.remove(path.c_str())) return false;
+  if (SD.exists(backup.c_str()) && !SD.remove(backup.c_str())) return false;
+  if (SD.exists(temp.c_str()) && !SD.remove(temp.c_str())) return false;
+  return !SD.exists(path.c_str()) && !SD.exists(backup.c_str());
 }
 
 std::vector<std::string> SceneStorageCardputer::getAvailableSceneNames() const {

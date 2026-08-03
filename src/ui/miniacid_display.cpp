@@ -1,6 +1,7 @@
 #include "miniacid_display.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/state/scene_revision.h"
+#include "src/platform/cardputer_ui_session.h"
 
 #ifndef ARDUINO
 #include "../../platform_sdl/arduino_compat.h"
@@ -65,6 +66,25 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx,
     LOG_INFO_UI("Initializing MiniAcidDisplay...");
     splash_start_ms_ = millis();
     splash_active_ = true;
+
+    ui_session_ = GroovePuterState::defaultUiSessionState();
+    ui_session_loaded_ =
+        GroovePuterPlatform::loadCardputerUiSession(ui_session_);
+    if (!ui_session_loaded_) {
+        ui_session_.masterVolumePermille =
+            GroovePuterState::masterVolumeToPermille(mini_acid_.mainVolume());
+    }
+    GroovePuterState::sanitizeUiSessionState(ui_session_);
+    page_index_ = ui_session_.activePage;
+    previous_page_index_ = page_index_;
+    active_workspace_ = WorkflowPages::workspaceForPage(page_index_);
+    UI::currentStyle = static_cast<VisualStyle>(ui_session_.visualStyle);
+    UI::waveformOverlay.enabled = ui_session_.waveformOverlayEnabled != 0;
+    if (mini_acid_.lastSceneLoadRecoveredAutosave()) {
+        GroovePuterState::markSceneMutated();
+    }
+    observed_scene_revision_ =
+        GroovePuterState::sceneRevisionSnapshot().currentRevision;
 
     LOG_DEBUG_UI("Initializing skin and pages...");
     skin_ = std::make_unique<CassetteSkin>(gfx, CassetteTheme::WarmTape);
@@ -146,6 +166,12 @@ IPage* MiniAcidDisplay::getPage_(int index) {
 
 void MiniAcidDisplay::setAudioGuard(AudioGuard guard) {
     audio_guard_ = guard;
+    const float persistedVolume =
+        GroovePuterState::masterVolumeFromPermille(
+            ui_session_.masterVolumePermille);
+    withAudioGuard([&]() {
+        mini_acid_.setDeviceMasterVolume(persistedVolume);
+    });
 }
 
 void MiniAcidDisplay::setAudioRecorder(IAudioRecorder* recorder) {
@@ -153,6 +179,7 @@ void MiniAcidDisplay::setAudioRecorder(IAudioRecorder* recorder) {
 }
 
 void MiniAcidDisplay::update() {
+    servicePersistence_();
     syncVisualStyle_();
     handlePaging_();
     gfx_.startWrite();
@@ -211,6 +238,69 @@ void MiniAcidDisplay::update() {
     gfx_.endWrite();
 }
 
+void MiniAcidDisplay::captureUiSession_() {
+    GroovePuterState::UiSessionState next = ui_session_;
+    GroovePuterState::rememberWorkflowPage(next, page_index_);
+    next.visualStyle = static_cast<uint8_t>(UI::currentStyle);
+    next.waveformOverlayEnabled = UI::waveformOverlay.enabled ? 1 : 0;
+    next.masterVolumePermille =
+        GroovePuterState::masterVolumeToPermille(mini_acid_.mainVolume());
+    GroovePuterState::sanitizeUiSessionState(next);
+    if (next == ui_session_) return;
+    ui_session_ = next;
+    scheduleUiSessionSave_();
+}
+
+void MiniAcidDisplay::scheduleUiSessionSave_() {
+    ui_session_save_pending_ = true;
+    ui_session_save_due_ms_ = millis() + 1000;
+}
+
+void MiniAcidDisplay::servicePersistence_() {
+    const unsigned long now = millis();
+    const auto due = [now](unsigned long deadline) {
+        return static_cast<int32_t>(now - deadline) >= 0;
+    };
+
+    captureUiSession_();
+    if (ui_session_save_pending_ && !mini_acid_.isPlaying() &&
+        due(ui_session_save_due_ms_)) {
+        if (GroovePuterPlatform::saveCardputerUiSession(ui_session_)) {
+            ui_session_save_pending_ = false;
+        } else {
+            ui_session_save_due_ms_ = now + 5000;
+        }
+    }
+
+    const GroovePuterState::SceneRevisionState revision =
+        GroovePuterState::sceneRevisionSnapshot();
+    if (!revision.dirty()) {
+        observed_scene_revision_ = revision.currentRevision;
+        recovery_save_pending_ = false;
+        return;
+    }
+    if (revision.currentRevision != observed_scene_revision_) {
+        observed_scene_revision_ = revision.currentRevision;
+        recovery_save_pending_ = true;
+        recovery_save_due_ms_ = now + 3000;
+    }
+    if (!recovery_save_pending_ || mini_acid_.isPlaying() ||
+        !due(recovery_save_due_ms_)) {
+        return;
+    }
+
+    bool saved = false;
+    withAudioGuard([&]() { saved = mini_acid_.autoSaveSceneRecovery(); });
+    if (saved) {
+        recovery_save_pending_ = false;
+        Serial.printf("[AUTOSAVE] recovery revision=%u\n",
+                      static_cast<unsigned>(observed_scene_revision_));
+    } else {
+        recovery_save_due_ms_ = now + 5000;
+        Serial.println("[AUTOSAVE] recovery write failed; retry deferred");
+    }
+}
+
 void MiniAcidDisplay::syncVisualStyle_() {
     if (!visual_style_initialized_ || applied_visual_style_ != UI::currentStyle) {
         for (auto& p : pages_) {
@@ -222,21 +312,17 @@ void MiniAcidDisplay::syncVisualStyle_() {
 }
 
 void MiniAcidDisplay::nextPage() {
-    const Workspace nextWorkspace = WorkflowPages::nextWorkspace(active_workspace_, 1);
-    const int next = WorkflowPages::pageForWorkspace(nextWorkspace);
-    LOG_DEBUG_UI("nextWorkspace: %s -> %s",
-                 WorkflowPages::workspaceName(active_workspace_),
-                 WorkflowPages::workspaceName(nextWorkspace));
-    transitionToPage_(next);
+    const bool workflowModifier =
+        WorkflowPages::hardwareWorkflowModifierHeld();
+    transitionToPage_(GroovePuterState::workflowNavigationTarget(
+        ui_session_, page_index_, 1, workflowModifier));
 }
 
 void MiniAcidDisplay::previousPage() {
-    const Workspace previousWorkspace = WorkflowPages::nextWorkspace(active_workspace_, -1);
-    const int previous = WorkflowPages::pageForWorkspace(previousWorkspace);
-    LOG_DEBUG_UI("previousWorkspace: %s -> %s",
-                 WorkflowPages::workspaceName(active_workspace_),
-                 WorkflowPages::workspaceName(previousWorkspace));
-    transitionToPage_(previous);
+    const bool workflowModifier =
+        WorkflowPages::hardwareWorkflowModifierHeld();
+    transitionToPage_(GroovePuterState::workflowNavigationTarget(
+        ui_session_, page_index_, -1, workflowModifier));
 }
 
 void MiniAcidDisplay::goToPage(int index) {
@@ -268,6 +354,8 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
     if (WorkflowPages::isWorkspacePage(index)) {
         active_workspace_ = WorkflowPages::workspaceForPage(index);
     }
+    GroovePuterState::rememberWorkflowPage(ui_session_, index);
+    scheduleUiSessionSave_();
 
     IPage* newPage = getPage_(index);
     if (newPage) {
@@ -315,8 +403,8 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         if (event.meta && (event.key == '\t' || event.scancode == GROOVEPUTER_TAB)) {
             const WorkflowMode current = WorkflowPages::modeForPage(page_index_);
             const int direction = event.shift ? -1 : 1;
-            goToPage(WorkflowPages::pageForMode(
-                WorkflowPages::nextMode(current, direction)));
+            goToPage(GroovePuterState::rememberedWorkflowPage(
+                ui_session_, WorkflowPages::nextMode(current, direction)));
             return true;
         }
 

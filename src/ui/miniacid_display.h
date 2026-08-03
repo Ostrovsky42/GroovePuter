@@ -9,6 +9,7 @@
 #include "workflow_mode.h"
 #include "workspace_launcher_overlay.h"
 #include "src/platform/cardputer_midi_settings_session.h"
+#include "src/state/ui_session_state.h"
 
 class IAudioRecorder;
 class PerformanceKeyboard;
@@ -86,6 +87,9 @@ private:
   void showToast(const char* msg, int durationMs = 1500);
   void updateCyclePulse_();
   void handlePaging_();
+  void captureUiSession_();
+  void scheduleUiSessionSave_();
+  void servicePersistence_();
 
 private:
   char toastMsg_[32] = {0};
@@ -95,4 +99,11 @@ private:
   unsigned long cycle_pulse_until_ms_ = 0;
   VisualStyle applied_visual_style_ = VisualStyle::MINIMAL;
   bool visual_style_initialized_ = false;
+  GroovePuterState::UiSessionState ui_session_{};
+  bool ui_session_loaded_ = false;
+  bool ui_session_save_pending_ = false;
+  unsigned long ui_session_save_due_ms_ = 0;
+  uint32_t observed_scene_revision_ = 0;
+  bool recovery_save_pending_ = false;
+  unsigned long recovery_save_due_ms_ = 0;
 };

@@ -2653,13 +2653,22 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
     return false;
   }
 
-  bool loaded = sceneStorage_->readScene(sceneManager_);
-  Serial.printf("[LoadScene] readScene returned: %s\n", loaded ? "TRUE" : "FALSE");
+  bool recoveredAuto = false;
+  bool loaded = false;
+  if (sceneStorage_->hasSceneAuto()) {
+    recoveredAuto = sceneStorage_->readSceneAuto(sceneManager_);
+    loaded = recoveredAuto;
+  }
+  if (!loaded) loaded = sceneStorage_->readScene(sceneManager_);
+  lastSceneLoadRecoveredAutosave_ = loaded && recoveredAuto;
+  Serial.printf("[LoadScene] loaded=%d recovery=%d\n",
+                loaded ? 1 : 0, recoveredAuto ? 1 : 0);
   // String-based fallback REMOVED - causes OOM on DRAM-only devices
   
   if (!loaded) {
     Serial.printf("[LoadScene] FAILED - reverting to: %s\n", previousName.c_str());
     sceneStorage_->setCurrentSceneName(previousName);
+    lastSceneLoadRecoveredAutosave_ = false;
     return false;
   }
   Serial.println("[LoadScene] Applying scene state...");
@@ -2691,10 +2700,15 @@ bool MiniAcid::createNewSceneWithName(const std::string& name) {
 }
 
 void MiniAcid::loadSceneFromStorage() {
+  lastSceneLoadRecoveredAutosave_ = false;
   if (sceneStorage_) {
+    if (sceneStorage_->hasSceneAuto() &&
+        sceneStorage_->readSceneAuto(sceneManager_)) {
+      lastSceneLoadRecoveredAutosave_ = true;
+      LOG_PRINTLN("  - loadSceneFromStorage: recovered autosave");
+      return;
+    }
     if (sceneStorage_->readScene(sceneManager_)) return;
-    // String-based fallback REMOVED - it causes OOM on DRAM-only devices
-    // If streaming parse fails, load default scene
     LOG_PRINTLN("  - loadSceneFromStorage: Streaming parse failed, loading default scene");
   }
   sceneManager_.loadDefaultScene();
@@ -2703,7 +2717,28 @@ void MiniAcid::loadSceneFromStorage() {
 bool MiniAcid::saveSceneToStorage() {
   if (!sceneStorage_) return false;
   syncSceneStateToManager();
-  return sceneStorage_->writeScene(sceneManager_);
+  if (!sceneStorage_->writeScene(sceneManager_)) return false;
+  if (!sceneStorage_->clearSceneAuto()) {
+    Serial.println("[SceneSave] main saved but recovery cleanup failed");
+    return false;
+  }
+  lastSceneLoadRecoveredAutosave_ = false;
+  return true;
+}
+
+bool MiniAcid::autoSaveSceneRecovery() {
+  if (!sceneStorage_ || playing) return false;
+  syncSceneStateToManager();
+  return sceneStorage_->writeSceneAuto(sceneManager_);
+}
+
+float MiniAcid::mainVolume() const {
+  return params[static_cast<int>(MiniAcidParamId::MainVolume)].value();
+}
+
+void MiniAcid::setDeviceMasterVolume(float value) {
+  params[static_cast<int>(MiniAcidParamId::MainVolume)].setValue(value);
+  deviceMasterVolumeOverride_ = true;
 }
 
 void MiniAcid::applySceneStateFromManager() {
@@ -2718,9 +2753,12 @@ void MiniAcid::applySceneStateFromManager() {
   syncModeToVoices();
   setBpm(sceneManager_.getBpm());
   
-  // Load master volume from scene
-  float sceneVolume = sceneManager_.currentScene().masterVolume;
-  params[static_cast<int>(MiniAcidParamId::MainVolume)].setValue(sceneVolume);
+  // Scene volume remains codec-compatible, but a device-session override
+  // wins after boot so loading another project cannot change speaker level.
+  if (!deviceMasterVolumeOverride_) {
+    const float sceneVolume = sceneManager_.currentScene().masterVolume;
+    params[static_cast<int>(MiniAcidParamId::MainVolume)].setValue(sceneVolume);
+  }
   // Fixed master safety LPF: keep this independent from scene/UI state.
   setMasterOutputHighCutHz(kMasterHighCutHz);
   const std::string& drumEngineName = sceneManager_.getDrumEngineName();
