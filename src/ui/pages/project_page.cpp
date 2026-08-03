@@ -1,6 +1,5 @@
 #include "project_page.h"
 #include "../ui_common.h"
-#include "../../audio/midi_importer.h"
 #include <algorithm>
 #include <vector>
 #ifdef ARDUINO
@@ -161,10 +160,7 @@ ProjectPage::ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     save_dialog_focus_(SaveDialogFocus::Input),
     selection_index_(0),
     scroll_offset_(0),
-    loadError_(false),
-    save_name_(generateMemorableName()) {
-  refreshScenes();
-}
+    loadError_(false) {}
 
 void ProjectPage::refreshScenes() {
   scenes_ = mini_acid_.availableSceneNames();
@@ -235,16 +231,25 @@ void ProjectPage::openMidiAdvanceDialog() {
 
   UI::showToast("Scanning MIDI...");
   MidiImporter importer(mini_acid_);
-  midi_scan_ = importer.scanFile(midi_selected_path_);
-  if (midi_scan_.valid) {
+  MidiImporter::ScanResult& midiScan =
+      GroovePuterUi::midiFileManager().beginImportScan();
+  midiScan = importer.scanFile(midi_selected_path_);
+  if (midiScan.valid) {
     autoRouteMidi();
-    if (midi_scan_.estimatedBars > 0) {
-      midi_import_length_bars_ = midi_scan_.estimatedBars;
+    if (midiScan.estimatedBars > 0) {
+      midi_import_length_bars_ = midiScan.estimatedBars;
     }
   }
 }
 
+void ProjectPage::returnToMidiBrowser() {
+  GroovePuterUi::midiFileManager().open();
+  dialog_type_ = DialogType::ImportMidi;
+}
+
 void ProjectPage::autoRouteMidi() {
+  const MidiImporter::ScanResult& midiScan =
+      GroovePuterUi::midiFileManager().importScanResult();
   midi_mask_a_ = 0;
   midi_mask_b_ = 0;
   midi_mask_d_ = 0;
@@ -252,11 +257,11 @@ void ProjectPage::autoRouteMidi() {
   // Channel 10 is the only unconditional GM drum route. Otherwise
   // require an explicit percussion-like track name; never steal a
   // melodic channel just because it has the most notes.
-  int drumCh = midi_scan_.channels[9].used() ? 10 : -1;
+  int drumCh = midiScan.channels[9].used() ? 10 : -1;
   if (drumCh < 0) {
     for (int i = 0; i < 16; ++i) {
-      if (!midi_scan_.channels[i].used()) continue;
-      std::string name = midi_scan_.channels[i].trackName;
+      if (!midiScan.channels[i].used()) continue;
+      std::string name = midiScan.channels[i].trackName;
       std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) {
         return static_cast<char>(std::tolower(ch));
       });
@@ -275,13 +280,13 @@ void ProjectPage::autoRouteMidi() {
   std::vector<int> candidates;
   for (int i = 0; i < 16; ++i) {
     if (drumCh > 0 && i == drumCh - 1) continue;
-    if (midi_scan_.channels[i].used()) candidates.push_back(i + 1);
+    if (midiScan.channels[i].used()) candidates.push_back(i + 1);
   }
 
   int foundA = -1;
   int foundB = -1;
   for (int chNum : candidates) {
-    std::string name = midi_scan_.channels[chNum - 1].trackName;
+    std::string name = midiScan.channels[chNum - 1].trackName;
     std::transform(name.begin(), name.end(), name.begin(), [](unsigned char ch) {
       return static_cast<char>(std::tolower(ch));
     });
@@ -298,9 +303,9 @@ void ProjectPage::autoRouteMidi() {
     }
   }
 
-  std::sort(candidates.begin(), candidates.end(), [this](int a, int b) {
-    return midi_scan_.channels[a - 1].minNote <
-           midi_scan_.channels[b - 1].minNote;
+  std::sort(candidates.begin(), candidates.end(), [&midiScan](int a, int b) {
+    return midiScan.channels[a - 1].minNote <
+           midiScan.channels[b - 1].minNote;
   });
 
   if (foundA > 0) {
@@ -378,7 +383,6 @@ void ProjectPage::onEnter(int context) {
   dialog_type_ = DialogType::None;
   main_focus_ = MainFocus::Load;
   section_ = ProjectSection::Scenes;
-  if (scenes_.empty()) refreshScenes();
 }
 
 bool ProjectPage::importMidiAtSelection() {
@@ -702,6 +706,8 @@ const char* getGMName(uint8_t program) {
 }
 
 void ProjectPage::drawMidiAdvanceDialog(IGfx& gfx) {
+    const MidiImporter::ScanResult& midiScan =
+        GroovePuterUi::midiFileManager().importScanResult();
     int w = Layout::CONTENT.w - 4;
     int h = Layout::CONTENT.h - 4;
     int x = Layout::CONTENT.x + (Layout::CONTENT.w - w) / 2;
@@ -809,7 +815,7 @@ void ProjectPage::drawMidiAdvanceDialog(IGfx& gfx) {
         int cy = mapY + row * cellH;
         
         bool isCursor = (midi_advance_focus_ == MidiAdvanceFocus::TrackMap && midi_map_cursor_ == i);
-        bool used = midi_scan_.channels[i].used();
+        bool used = midiScan.channels[i].used();
         
         // bg
         if (used) {
@@ -852,7 +858,7 @@ void ProjectPage::drawMidiAdvanceDialog(IGfx& gfx) {
     // Actually user wants info of hovered channel.
     
     if (focusCh >= 0) {
-        auto& ci = midi_scan_.channels[focusCh];
+        const auto& ci = midiScan.channels[focusCh];
         gfx.setTextColor(COLOR_WHITE);
         if (ci.trackName[0]) {
              Widgets::drawClippedText(gfx, detailX, detailY, mapW, ci.trackName);
@@ -964,7 +970,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
 
     if (dialog_type_ == DialogType::MidiAdvance) {
         if (ui_event.scancode == GROOVEPUTER_ESCAPE) {
-            dialog_type_ = DialogType::ImportMidi;
+            returnToMidiBrowser();
             return true;
         }
         int focus = (int)midi_advance_focus_;
@@ -1041,7 +1047,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         char key = ui_event.key;
         if (key == '\r' || key == '\n') {
             if (midi_advance_focus_ == MidiAdvanceFocus::Import) return importMidiAtSelection();
-            if (midi_advance_focus_ == MidiAdvanceFocus::Cancel) { dialog_type_ = DialogType::ImportMidi; return true; }
+            if (midi_advance_focus_ == MidiAdvanceFocus::Cancel) { returnToMidiBrowser(); return true; }
             
             if (midi_advance_focus_ == MidiAdvanceFocus::TrackMap) {
                  // Toggle Routing: . -> A -> B -> D -> .
@@ -1067,7 +1073,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                  return true;
             }
         }
-        if (key == '\b') { dialog_type_ = DialogType::ImportMidi; return true; }
+        if (key == '\b') { returnToMidiBrowser(); return true; }
 
         int delta = 0;
         if (ui_event.scancode == GROOVEPUTER_LEFT) delta = -1;
