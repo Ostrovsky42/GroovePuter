@@ -1,5 +1,6 @@
 #include "cardputer_usb_midi_transport.h"
 #include "cardputer_usb_midi_service.h"
+#include "cardputer_usb_midi_tx_stress.h"
 
 #include <Arduino.h>
 #include <cstddef>
@@ -891,9 +892,10 @@ void midiDispatchTask(void*) {
         }
 
         if (!hasPendingTransport && !hasPendingMusical &&
-            !hasPendingDrumGate && !hasPendingSmf) {
-            drainControlEvents();
-            logDiagnosticsIfDue();
+  !hasPendingDrumGate && !hasPendingSmf) {
+  drainControlEvents();
+  drainCardputerUsbMidiTxStress(g_transport);
+  logDiagnosticsIfDue();
             ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(2));
             continue;
         }
@@ -931,8 +933,9 @@ void midiDispatchTask(void*) {
         }
 
         if (kind == PendingKind::None) {
-            drainControlEvents();
-            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
+  drainControlEvents();
+  drainCardputerUsbMidiTxStress(g_transport);
+  ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
             continue;
         }
 
@@ -1341,6 +1344,11 @@ bool registerCardputerUsbMidiSink(
     g_patternQueue = &patternQueue;
     g_externalTransportQueue = &externalTransportQueue;
     g_patternDrumGates.clear();
+    if (!beginCardputerUsbMidiTxStress(notifyDispatcher)) {
+        g_patternQueue = nullptr;
+        g_externalTransportQueue = nullptr;
+        return false;
+    }
     if (!router.addSink(g_queueSink)) {
         g_patternQueue = nullptr;
         g_externalTransportQueue = nullptr;

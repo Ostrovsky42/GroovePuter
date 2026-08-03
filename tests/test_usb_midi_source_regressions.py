@@ -20,6 +20,10 @@ def main() -> None:
     player_service = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(
         encoding="utf-8")
     service = (ROOT / "src/platform/cardputer_usb_midi_service.h").read_text(encoding="utf-8")
+    tx_stress = (ROOT / "src/platform/cardputer_usb_midi_tx_stress.cpp").read_text(
+        encoding="utf-8")
+    project_page = (ROOT / "src/ui/pages/project_page.cpp").read_text(
+        encoding="utf-8")
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
     build = (ROOT / "scripts/build.sh").read_text(encoding="utf-8")
@@ -51,7 +55,34 @@ def main() -> None:
             "midiDispatchTask" in transport,
             "Cardputer must create one named USB-MIDI owner task")
     require("g_output.handleMusicalEvent" in transport,
-            "the dispatcher must own UsbMidiOutput event delivery")
+  "the dispatcher must own UsbMidiOutput event delivery")
+    require("CardputerUsbMidiTxStressSnapshot" in service and
+  "setCardputerUsbMidiTxStressEnabled" in service and
+  "stepCardputerUsbMidiTxStressRate" in service,
+  "TX density diagnostics must expose a bounded runtime control API")
+    require("kTxStressRates[] = {50, 100, 200, 400, 800}" in tx_stress,
+  "TX stress rates must stay at the agreed diagnostic steps")
+    require("esp_timer_create" in tx_stress and
+  "xQueueSend(g_txStressQueue" in tx_stress and
+  "xQueueReceive(g_txStressQueue" in tx_stress,
+  "the stress producer must enqueue through a bounded timer-fed queue")
+    timer_callback = tx_stress[
+        tx_stress.index("void txStressTimerCallback"):
+        tx_stress.index("bool startTxStressTimer")
+    ]
+    require("sendNoteOn" not in timer_callback and
+  "sendNoteOff" not in timer_callback and
+  "tud_midi_" not in tx_stress,
+  "the stress generator must never write USB outside MidiDispatchTask")
+    require("drainCardputerUsbMidiTxStress(g_transport)" in transport,
+  "the sole dispatcher must drain the diagnostic queue")
+    require("USB TX STRESS" in project_page and
+  "EP=BUSY" in project_page and
+  "STABLE %us" in project_page and
+  "ui_event.ctrl && ui_event.alt" in project_page,
+  "Project diagnostics must expose the hidden TX stress status screen")
+    require("tud_midi_" not in project_page,
+  "UI code must remain independent from TinyUSB")
     require("publishCardputerUsbMidiBlockAnchor" in service and
             "publishCardputerUsbMidiBlockAnchor" in sketch,
             "AudioTask must publish sample-block playback anchors")

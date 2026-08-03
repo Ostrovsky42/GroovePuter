@@ -2,6 +2,17 @@
 
 #include <cstdint>
 
+struct CardputerUsbMidiTxStressSnapshot {
+    bool active{false};
+    uint16_t rateMessagesPerSecond{100};
+    uint32_t accepted{0};
+    uint32_t rejected{0};
+    uint32_t endpointBusy{0};
+    uint32_t stallFreeSeconds{0};
+    uint8_t oneBasedChannel{16};
+    uint8_t note{60};
+};
+
 class MusicalEventRouter;
 class MusicalEventQueue;
 class ScheduledSmfMidiEventQueue;
@@ -28,4 +39,11 @@ void publishCardputerUsbMidiBlockAnchor(uint32_t blockSequence,
 // Safe snapshot used by the SMF producer to schedule events several audio
 // blocks ahead. This is an anchor, not an independent wall-clock scheduler.
 bool snapshotCardputerUsbMidiBlockAnchor(uint32_t& blockSequence,
-                                         uint32_t& playbackStartMicros);
+                               uint32_t& playbackStartMicros);
+
+// Hidden diagnostic producer. It is inactive by default and only feeds the
+// bounded TX-stress queue; MidiDispatchTask remains the sole USB writer.
+bool setCardputerUsbMidiTxStressEnabled(bool enabled);
+bool stepCardputerUsbMidiTxStressRate(int direction);
+bool resetCardputerUsbMidiTxStressCounters();
+CardputerUsbMidiTxStressSnapshot snapshotCardputerUsbMidiTxStress();
