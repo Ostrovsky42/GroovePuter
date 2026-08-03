@@ -1,0 +1,70 @@
+name: Bootstrap USB MIDI TX density stress
+
+on:
+  push:
+    branches:
+      - agent/bootstrap-usb-midi-tx-density
+
+permissions:
+  contents: write
+
+jobs:
+  build-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev
+          fetch-depth: 0
+
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Create clean feature branch
+        run: git switch -C agent/usb-midi-tx-density-stress origin/dev
+
+      - name: Apply TX density stress generator
+        env:
+          PATCH_PAYLOAD: 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
+        run: |
+          python3 - <<'PY'
+          import base64
+          import gzip
+          import os
+          script = gzip.decompress(base64.b64decode(os.environ["PATCH_PAYLOAD"]))
+          exec(compile(script, "<tx-stress-patch>", "exec"))
+          PY
+
+      - name: Validate source and host regressions
+        run: |
+          python3 tests/test_usb_midi_source_regressions.py
+          bash tests/run_host_tests.sh
+          git diff --check
+
+      - name: Install pinned Cardputer dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV
+        run: bash scripts/build.sh --warnings all
+
+      - name: Publish single-purpose commit
+        run: |
+          git config user.name "OpenAI"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/platform/cardputer_usb_midi_service.h \
+            src/platform/cardputer_usb_midi_transport.cpp \
+            src/platform/cardputer_usb_midi_tx_stress.h \
+            src/platform/cardputer_usb_midi_tx_stress.cpp \
+            src/ui/pages/project_page.h \
+            src/ui/pages/project_page.cpp \
+            tests/test_usb_midi_source_regressions.py \
+            docs/tests/USB_MIDI_TX_DENSITY_STRESS.md
+          git commit -m "Add USB MIDI TX density stress diagnostics"
+          git push --force-with-lease origin \
+            HEAD:refs/heads/agent/usb-midi-tx-density-stress
+
+      - name: Remove bootstrap branch
+        if: success()
+        run: git push origin --delete agent/bootstrap-usb-midi-tx-density || true
