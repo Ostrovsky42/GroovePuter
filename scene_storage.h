@@ -24,7 +24,10 @@ public:
   
   // Auto-save variants (saves to *.auto.json)
   virtual bool writeSceneAuto(const SceneManager& manager) = 0;
+  // Reads only the recovery snapshot. The caller owns fallback to the main scene.
   virtual bool readSceneAuto(SceneManager& manager) = 0;
+  virtual bool hasSceneAuto() const = 0;
+  virtual bool clearSceneAuto() = 0;
 
   // return the scenes currently found on the storage
   virtual std::vector<std::string> getAvailableSceneNames() const = 0;
