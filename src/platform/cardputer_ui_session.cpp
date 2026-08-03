@@ -82,8 +82,10 @@ bool saveCardputerUiSession(const GroovePuterState::UiSessionState& state) {
     preferences.end();
     return written == sizeof(record);
 #else
+    // Desktop/WASM currently has no device-session backend. Treat the operation
+    // as a successful no-op so the UI does not retry forever every five seconds.
     (void)state;
-    return false;
+    return true;
 #endif
 }
 
