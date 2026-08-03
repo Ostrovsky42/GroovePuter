@@ -67,12 +67,13 @@ int main() {
     }
     assert(popped == ScheduledSmfMidiEventQueue::kCapacity);
 
-    assert(queue.tryPushNoteOn(8, 64, 127, 42, 511));
+    assert(queue.tryPushNoteOn(8, 64, 127, 42, 511, 0, 37));
     assert(queue.tryPop(event));
     assert(event.type == ScheduledSmfMidiEventType::NoteOn);
     assert(event.channel == 8);
     assert(event.note == 64);
     assert(event.velocity == 127);
+    assert(event.trackIndex == 37);
     assert(event.blockSequence == 42);
     assert(event.frameOffset == 511);
     assert(event.generation == 2);
@@ -85,9 +86,10 @@ int main() {
     assert(queue.takePendingPanic(panicGeneration));
     assert(panicGeneration == 3);
 
-    assert(queue.tryPushNoteOff(3, 72, 12, 50, 10));
+    assert(queue.tryPushNoteOff(3, 72, 12, 50, 10, 0, 99));
     assert(queue.tryPop(event));
     assert(event.type == ScheduledSmfMidiEventType::NoteOff);
+    assert(event.trackIndex == 63);
     assert(event.generation == 3);
     assert(scheduledSmfMidiEventGenerationIsCurrent(event, queue.generation()));
 

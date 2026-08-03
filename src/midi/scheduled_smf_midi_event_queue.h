@@ -22,7 +22,8 @@ public:
                        uint8_t velocity,
                        uint32_t blockSequence,
                        uint16_t frameOffset,
-                       uint32_t projectTransportEpoch = 0) {
+                       uint32_t projectTransportEpoch = 0,
+                       uint8_t trackIndex = 0) {
         if (transportFailed()) return false;
         if (!validData(channel, note, velocity)) {
             invalidEvent_.incrementRelaxed();
@@ -42,7 +43,8 @@ public:
                                  velocity,
                                  blockSequence,
                                  frameOffset,
-                                 projectTransportEpoch));
+                                 projectTransportEpoch,
+                                 trackIndex));
     }
 
     bool tryPushNoteOff(uint8_t channel,
@@ -50,7 +52,8 @@ public:
                         uint8_t velocity,
                         uint32_t blockSequence,
                         uint16_t frameOffset,
-                        uint32_t projectTransportEpoch = 0) {
+                        uint32_t projectTransportEpoch = 0,
+                        uint8_t trackIndex = 0) {
         if (transportFailed()) return false;
         if (!validData(channel, note, velocity)) {
             invalidEvent_.incrementRelaxed();
@@ -63,7 +66,8 @@ public:
                               velocity,
                               blockSequence,
                               frameOffset,
-                              projectTransportEpoch))) {
+                              projectTransportEpoch,
+                              trackIndex))) {
             return true;
         }
 
@@ -171,12 +175,14 @@ private:
                                     uint8_t velocity,
                                     uint32_t blockSequence,
                                     uint16_t frameOffset,
-                                    uint32_t projectTransportEpoch) {
+                                    uint32_t projectTransportEpoch,
+                                    uint8_t trackIndex) {
         ScheduledSmfMidiEvent event{};
         event.type = type;
         event.channel = channel;
         event.note = note;
         event.velocity = velocity;
+        event.trackIndex = trackIndex > 63u ? 63u : trackIndex;
         event.blockSequence = blockSequence;
         event.frameOffset = frameOffset;
         event.generation = generation_.loadAcquire();
