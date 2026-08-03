@@ -29,6 +29,42 @@ jobs:
             -o build/host-tests/test_ui_status_chrome
           build/host-tests/test_ui_status_chrome
 
+      - name: Run synth engine tests
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('.')
+          assert not (root / 'src/dsp/opl2_synth_voice.h').exists()
+          assert not (root / 'src/dsp/opl2_synth_voice.cpp').exists()
+
+          for path in (
+              root / 'src/ui/pages/synth_sequencer_page.cpp',
+              root / 'src/ui/pages/tb303_params_page.cpp',
+          ):
+              text = path.read_text(encoding='utf-8')
+              assert 'removeDisabledSynthEngines' in text
+              assert '{"TB303", "SID", "AY", "OPL2"' not in text
+
+          assert 'opl2_synth_voice' not in (root / 'platform_sdl/Makefile').read_text(encoding='utf-8')
+          assert 'opl2_synth_voice' not in (root / 'src/dsp/swappable_synth_voice.h').read_text(encoding='utf-8')
+          PY
+
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter -I. \
+            tests/test_new_synth_voices.cpp \
+            src/dsp/swappable_synth_voice.cpp \
+            src/dsp/mini_tb303.cpp \
+            src/dsp/filter.cpp \
+            src/dsp/audio_wavetables.cpp \
+            src/dsp/sid_synth_voice.cpp \
+            src/dsp/sid_synth.cpp \
+            src/dsp/ay_synth_voice.cpp \
+            src/dsp/sh101_synth_voice.cpp \
+            src/dsp/sn76489_synth_voice.cpp \
+            -o build/host-tests/test_new_synth_voices
+          build/host-tests/test_new_synth_voices
+
   sdl-build:
     runs-on: ubuntu-latest
     steps:

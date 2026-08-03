@@ -28,10 +28,13 @@ class TB303ParamsPage : public IPage, public IMultiHelpFramesProvider {
       else fn();
       GroovePuterState::markSceneMutated();
   }
+
+  bool isTb303Engine() const;
+  void cycleEngine(int direction);
+  void adjustGenericParameter(int parameterIndex, int direction, bool fine);
   void adjustFocusedElement(int direction, bool fine = false);
   void initComponents();
   void layoutComponents();
-
   void loadModePreset(int index);
 
   IGfx& gfx_;
