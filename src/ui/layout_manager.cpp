@@ -1,9 +1,11 @@
 #include "layout_manager.h"
+#include "pages/smf_player_redraw.h"
 #include "ui_theme.h"
 #include <stdio.h>
 #include <string.h>
 
 void LayoutManager::clearContent(IGfx& gfx) {
+    if (GroovePuterUi::interceptSmfPlayerContentClear(gfx)) return;
     const UI::ThemePalette p = UI::themePalette();
     gfx.fillRect(Layout::CONTENT.x, Layout::CONTENT.y, Layout::CONTENT.w, Layout::CONTENT.h, p.background);
 }
@@ -16,8 +18,7 @@ void LayoutManager::drawHeader(IGfx& gfx,
     const UI::ThemePalette p = UI::themePalette();
     gfx.fillRect(Layout::HEADER.x, Layout::HEADER.y, Layout::HEADER.w, Layout::HEADER.h, p.background);
     gfx.drawLine(Layout::HEADER.x, Layout::HEADER.y + Layout::HEADER.h - 1,
-                 Layout::HEADER.x + Layout::HEADER.w - 1,
-                 Layout::HEADER.y + Layout::HEADER.h - 1, p.dim);
+                 Layout::HEADER.x + Layout::HEADER.w - 1, Layout::HEADER.y + Layout::HEADER.h - 1, p.dim);
 
     // Left: scene. Label is secondary; the actual value gets the warm accent.
     gfx.setTextColor(p.secondary);
