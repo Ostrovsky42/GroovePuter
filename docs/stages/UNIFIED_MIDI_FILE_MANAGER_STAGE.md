@@ -70,7 +70,9 @@ Directories can be opened, but are not renamed or deleted in this stage.
 - The last folder and selection are shared when moving between Project and Player.
 - Rename rejects empty/invalid names, path separators and existing targets.
 - Delete never happens on the first `X` press.
-- Rename/delete are blocked for the MIDI file currently held by the SMF player.
+- Rename/delete are blocked for the exact full path held by the SMF player.
+- The path is protected while SMF metadata is being scanned, not only after load.
+- Equal basenames in different directories do not block one another.
 - Renaming or deleting refreshes both workflows because they use one manager.
 - Import settings and SMF transport behavior are unchanged.
 
@@ -103,8 +105,9 @@ header shows `+` to indicate truncation.
 
 ### Rename or delete says file is in use
 
-The SMF player keeps its source file open for streaming. Load another MIDI file
-or reboot before mutating that exact file. Other files remain manageable.
+The SMF player keeps its exact source path protected while opening, scanning and
+streaming the file. Load another MIDI file or reboot before mutating that exact
+path. A different directory containing the same basename remains manageable.
 
 ### Rename says name already exists
 
@@ -124,7 +127,8 @@ Choose a different filename. Overwrite-on-rename is intentionally forbidden.
 - [ ] Enter on **NO** cancels without deleting.
 - [ ] Right/`Y`, then Enter, deletes the selected file.
 - [ ] Parent entries and directories cannot be deleted.
-- [ ] The active SMF source cannot be renamed or deleted.
+- [ ] The active or scanning SMF source path cannot be renamed or deleted.
+- [ ] Same-named files in other directories remain manageable.
 - [ ] Project MIDI import still reaches the advanced routing screen.
 - [ ] MIDI Player still loads and plays the selected file.
 - [ ] Host regressions pass.
