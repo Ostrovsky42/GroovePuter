@@ -4,12 +4,14 @@ on:
   push:
     branches:
       - feature/workflow-session-persistence
+  pull_request:
 
 permissions:
   contents: write
 
 jobs:
   apply:
+    if: github.event_name == 'push' || github.head_ref == 'feature/workflow-session-persistence'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
