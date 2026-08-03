@@ -177,7 +177,7 @@ float TB303Voice::oscSuperSaw() {
     sum += Wavetable::lookupSaw(superPhasesAcc_[i]);
   }
 
-  constexpr float kGain = 1.0f / (TB303Voice::kSuperSawOscCount - 5);
+  constexpr float kGain = 1.0f / (TB303Voice::kSuperSawOscCount + 1);
   return sum * kGain;
 }
 
