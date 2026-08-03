@@ -14,10 +14,10 @@
 // queued, the producer invalidates the generation and publishes a fixed panic
 // mailbox; the consumer must release all SMF-owned wire notes for that epoch.
 //
-// Immediate track mute and seek SPP are also consumer-owned. tryPop() records
-// only events that can reach the dispatcher, consumes bounded mailboxes, and
-// emits scoped cleanup/system-common events before normal queue traffic.
-// TinyUSB still has one writer and Pattern/PERFORM ownership is untouched.
+// Immediate track mute and seek SPP are also consumer-owned. tryPop() consumes
+// bounded mailboxes and preflights ownership capacity, while recordDispatched()
+// commits ownership only after the physical USB write succeeds. TinyUSB still
+// has one writer and Pattern/PERFORM ownership is untouched.
 class ScheduledSmfMidiEventQueue {
 public:
     static constexpr std::size_t kStorageSize = 128;
@@ -136,7 +136,7 @@ public:
 
             // Stale generations are returned unchanged so the dispatcher keeps
             // its accepted diagnostics and drop policy. They must not mutate
-            // active ownership: an invalidated NoteOff never reached the wire.
+            // active ownership: an invalidated event never reached the wire.
             if (event.generation != generation_.loadAcquire()) return true;
 
             if (event.type == ScheduledSmfMidiEventType::SongPositionPointer) {
@@ -151,22 +151,40 @@ public:
                 continue;
             }
 
-            if (noteOn) {
-                // Refuse a NoteOn that cannot be represented by the bounded
-                // ownership table. Dropping before dispatch is safer than
-                // creating a note that immediate mute cannot release.
-                if (!activeNotes_.acquire(
-                        event.trackIndex, event.channel, event.note)) {
-                    ownershipOverflowDrops_.incrementRelaxed();
-                    continue;
-                }
-            } else {
-                // An unmatched NoteOff is still cleanup-critical and is kept.
-                (void)activeNotes_.release(
-                    event.trackIndex, event.channel, event.note);
+            if (noteOn && !activeNotes_.canAcquire(
+                    event.trackIndex, event.channel, event.note)) {
+                // Capacity is checked before the wire write, but ownership is
+                // committed only by recordDispatched() after that write succeeds.
+                ownershipOverflowDrops_.incrementRelaxed();
+                continue;
             }
             return true;
         }
+    }
+
+    // Called by MidiDispatchTask only after dispatchSmfEvent() succeeds. This
+    // keeps logical track ownership aligned with UsbMidiOutput's physical owner
+    // counts and prevents late/muted/backpressured NoteOn drops from consuming
+    // bounded ownership entries.
+    bool recordDispatched(const ScheduledSmfMidiEvent& event) {
+        switch (event.type) {
+            case ScheduledSmfMidiEventType::NoteOn:
+                if (!activeNotes_.acquire(
+                        event.trackIndex, event.channel, event.note)) {
+                    ownershipCommitFailures_.incrementRelaxed();
+                    return false;
+                }
+                return true;
+            case ScheduledSmfMidiEventType::NoteOff:
+                // Immediate mute already removes its logical owner before
+                // emitting the scoped NoteOff. An unmatched release is valid.
+                (void)activeNotes_.release(
+                    event.trackIndex, event.channel, event.note);
+                return true;
+            case ScheduledSmfMidiEventType::SongPositionPointer:
+                return true;
+        }
+        return false;
     }
 
     uint32_t invalidateAndRequestPanic() {
@@ -255,6 +273,9 @@ public:
     }
     uint32_t ownershipOverflowDropCount() const {
         return ownershipOverflowDrops_.loadRelaxed();
+    }
+    uint32_t ownershipCommitFailureCount() const {
+        return ownershipCommitFailures_.loadRelaxed();
     }
     uint32_t songPositionRequestCount() const {
         return sppRequests_.loadRelaxed();
@@ -360,6 +381,7 @@ private:
     MidiRealtimeWord mutedNoteOnDrops_;
     MidiRealtimeWord immediateTrackReleases_;
     MidiRealtimeWord ownershipOverflowDrops_;
+    MidiRealtimeWord ownershipCommitFailures_;
     MidiRealtimeWord pendingSppValue_;
     MidiRealtimeWord pendingSppBlockSequence_;
     MidiRealtimeWord pendingSppFrameOffset_;
