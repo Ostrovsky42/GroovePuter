@@ -127,7 +127,7 @@ public:
         gfx.fillRect(0, 0, w, headerH, p.panel);
         gfx.drawLine(0, headerH - 1, w - 1, headerH - 1, p.dim);
         gfx.setTextColor(p.accent);
-        gfx.drawText(4, 2, "GROOVEPUTER / NAV");
+        gfx.drawText(4, 2, "GROOVEPUTER / NAV R3");
 
         char themeBuf[20];
         std::snprintf(themeBuf, sizeof(themeBuf), "[%s]", UI::themeName(UI::currentStyle));
@@ -174,6 +174,16 @@ public:
             gfx.drawText(rightX + 5, panelY + 80,
                          count > 1 ? "[ ] PAGE  FN+[ ] FLOW" : "FN+[ ] WORKFLOW");
         }
+
+        char memory[32];
+        std::snprintf(memory, sizeof(memory), "MEM %d %d %d %d %d",
+                      child_by_workflow_[0] + 1,
+                      child_by_workflow_[1] + 1,
+                      child_by_workflow_[2] + 1,
+                      child_by_workflow_[3] + 1,
+                      child_by_workflow_[4] + 1);
+        gfx.setTextColor(p.dim);
+        gfx.drawText(rightX + 5, panelY + 92, memory);
 
         gfx.fillRect(0, h - footerH, w, footerH, p.panel);
         gfx.drawLine(0, h - footerH, w - 1, h - footerH, p.dim);
