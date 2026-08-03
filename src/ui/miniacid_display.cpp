@@ -78,6 +78,14 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx,
     page_index_ = ui_session_.activePage;
     previous_page_index_ = page_index_;
     active_workspace_ = WorkflowPages::workspaceForPage(page_index_);
+    Serial.printf("[SESSION] load=%d active=%d mem=%d,%d,%d,%d,%d\n",
+                  ui_session_loaded_ ? 1 : 0,
+                  page_index_,
+                  static_cast<int>(ui_session_.lastPageByWorkflow[0]),
+                  static_cast<int>(ui_session_.lastPageByWorkflow[1]),
+                  static_cast<int>(ui_session_.lastPageByWorkflow[2]),
+                  static_cast<int>(ui_session_.lastPageByWorkflow[3]),
+                  static_cast<int>(ui_session_.lastPageByWorkflow[4]));
     UI::currentStyle = static_cast<VisualStyle>(ui_session_.visualStyle);
     UI::waveformOverlay.enabled = ui_session_.waveformOverlayEnabled != 0;
     if (mini_acid_.lastSceneLoadRecoveredAutosave()) {
@@ -267,6 +275,13 @@ void MiniAcidDisplay::servicePersistence_() {
         due(ui_session_save_due_ms_)) {
         if (GroovePuterPlatform::saveCardputerUiSession(ui_session_)) {
             ui_session_save_pending_ = false;
+            Serial.printf("[SESSION] saved active=%d mem=%d,%d,%d,%d,%d\n",
+                          static_cast<int>(ui_session_.activePage),
+                          static_cast<int>(ui_session_.lastPageByWorkflow[0]),
+                          static_cast<int>(ui_session_.lastPageByWorkflow[1]),
+                          static_cast<int>(ui_session_.lastPageByWorkflow[2]),
+                          static_cast<int>(ui_session_.lastPageByWorkflow[3]),
+                          static_cast<int>(ui_session_.lastPageByWorkflow[4]));
         } else {
             ui_session_save_due_ms_ = now + 5000;
         }
@@ -314,15 +329,38 @@ void MiniAcidDisplay::syncVisualStyle_() {
 void MiniAcidDisplay::nextPage() {
     const bool workflowModifier =
         WorkflowPages::hardwareWorkflowModifierHeld();
+    if (workflowModifier) {
+        switchWorkflow_(1);
+        return;
+    }
     transitionToPage_(GroovePuterState::workflowNavigationTarget(
-        ui_session_, page_index_, 1, workflowModifier));
+        ui_session_, page_index_, 1, false));
 }
 
 void MiniAcidDisplay::previousPage() {
     const bool workflowModifier =
         WorkflowPages::hardwareWorkflowModifierHeld();
+    if (workflowModifier) {
+        switchWorkflow_(-1);
+        return;
+    }
     transitionToPage_(GroovePuterState::workflowNavigationTarget(
-        ui_session_, page_index_, -1, workflowModifier));
+        ui_session_, page_index_, -1, false));
+}
+
+void MiniAcidDisplay::switchWorkflow_(int direction) {
+    const int target = GroovePuterState::rememberedAdjacentWorkflowPage(
+        ui_session_, page_index_, direction);
+    Serial.printf("[NAV] workflow dir=%d current=%d target=%d mem=%d,%d,%d,%d,%d\n",
+                  direction,
+                  page_index_,
+                  target,
+                  static_cast<int>(ui_session_.lastPageByWorkflow[0]),
+                  static_cast<int>(ui_session_.lastPageByWorkflow[1]),
+                  static_cast<int>(ui_session_.lastPageByWorkflow[2]),
+                  static_cast<int>(ui_session_.lastPageByWorkflow[3]),
+                  static_cast<int>(ui_session_.lastPageByWorkflow[4]));
+    transitionToPage_(target);
 }
 
 void MiniAcidDisplay::goToPage(int index) {
@@ -404,10 +442,19 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
 
         if (event.meta && (event.key == '\t' || event.scancode == GROOVEPUTER_TAB)) {
-            const WorkflowMode current = WorkflowPages::modeForPage(page_index_);
-            const int direction = event.shift ? -1 : 1;
-            goToPage(GroovePuterState::rememberedWorkflowPage(
-                ui_session_, WorkflowPages::nextMode(current, direction)));
+            switchWorkflow_(event.shift ? -1 : 1);
+            return true;
+        }
+
+        // Modified brackets belong to top-level workflow navigation. Handle
+        // them before the current page gets first refusal, otherwise synth and
+        // drum pages can consume Fn+[ / ] as ordinary local bracket input.
+        if (event.meta && (event.key == '[' || event.key == '{')) {
+            switchWorkflow_(-1);
+            return true;
+        }
+        if (event.meta && (event.key == ']' || event.key == '}')) {
+            switchWorkflow_(1);
             return true;
         }
 
