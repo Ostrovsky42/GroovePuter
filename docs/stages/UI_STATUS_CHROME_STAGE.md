@@ -6,7 +6,7 @@ Wave 1 / A1 replaces the competing per-page header text with one compact,
 global context line inside the existing 16-pixel header:
 
 ```text
-GEN PAT PLAY B3/4 INT AUD
+GEN PAT PLAY B3/4 INT BOTH
 PLYR SMF ARM B8/128 EXT MIDI
 ```
 
@@ -17,7 +17,7 @@ The fields are ordered by immediate musical priority:
 3. transport state;
 4. bar position;
 5. clock source;
-6. primary output path.
+6. output route.
 
 This stage does not add dirty tracking or change keyboard routing. Those remain
 separate Wave 1 tasks A2 and B.
@@ -43,6 +43,7 @@ SCL GPIO1
 
 ```bash
 bash tests/run_host_tests.sh
+python3 tests/test_ui_status_chrome_source_regressions.py
 mkdir -p build/host-tests
 g++ -std=c++17 -Wall -Wextra -Werror -I. \
   tests/test_ui_status_chrome.cpp \
@@ -71,9 +72,13 @@ Token meanings:
 | `INT` | GroovePuter internal clock |
 | `EXT` | external SEQTRAK clock |
 | `FILE` | original SMF tempo map |
-| `AUD` | internal audio is the primary sink |
-| `MIDI` | SMF MIDI output is the primary sink |
+| `BOTH` | Pattern/Song events route to internal audio and the USB-MIDI sink |
+| `MIDI` | SMF events route through the MIDI output path |
 | `LM` | LiveMix lock is enabled |
+
+The context token is derived from the active page title passed through
+`drawStandardHeader()`. The engine's pattern-page storage index is deliberately
+not used as a UI page identifier.
 
 Status derivation and string formatting run only when the compact snapshot
 changes. The cached line is painted every UI frame because the existing renderer
@@ -87,6 +92,12 @@ separate rendering project and is not part of A1.
 Confirm `MiniAcidDisplay::update()` still calls
 `UI::drawLiveMixLockBadge(gfx_, mini_acid_)` after the current page is drawn.
 That compatibility hook now delegates to `drawStatusChrome()`.
+
+### Context displays `PAGE`
+
+Confirm the page draws its header through `UI::drawStandardHeader()` and passes
+a stable uppercase title. Unknown titles intentionally fall back to `PAGE`
+rather than guessing from the pattern-page storage index.
 
 ### SMF state is not shown
 
@@ -116,9 +127,11 @@ context overlay or help page.
 - [ ] Pattern and Song bar counters advance on their existing musical boundary.
 - [ ] SMF bar/total values come from `SmfPlayerSnapshot`.
 - [ ] `INT`, `EXT` and `FILE` match the actual clock owner.
+- [ ] Pattern/Song show `BOTH`; active SMF shows `MIDI`.
 - [ ] CARBON, CYBER and AMBER remain readable using existing palette colors.
 - [ ] LiveMix is represented by `LM` without drawing into the content area.
 - [ ] `tests/test_ui_status_chrome.cpp` passes with `-Werror`.
+- [ ] `tests/test_ui_status_chrome_source_regressions.py` passes.
 - [ ] SDL build passes.
 - [ ] Cardputer ADV build passes with `--warnings all`.
 - [ ] Five-minute maximum-density hardware run shows no new underruns.
