@@ -30,6 +30,16 @@ inline std::string upperCopy(std::string s) {
   return s;
 }
 
+inline bool isDisabledSynthEngine(const std::string& value) {
+  const std::string upper = upperCopy(value);
+  return upper == "OPL2" || upper == "YM3812";
+}
+
+inline void removeDisabledSynthEngines(std::vector<std::string>& options) {
+  options.erase(std::remove_if(options.begin(), options.end(), isDisabledSynthEngine),
+                options.end());
+}
+
 inline int findOptionIndex(const std::vector<std::string>& options, const std::string& value) {
   if (options.empty()) return -1;
   const std::string target = upperCopy(value);
@@ -37,6 +47,11 @@ inline int findOptionIndex(const std::vector<std::string>& options, const std::s
     if (upperCopy(options[i]) == target) return i;
   }
   return -1;
+}
+
+inline void appendEngineIfMissing(std::vector<std::string>& options, const char* engine) {
+  if (!engine || findOptionIndex(options, engine) >= 0) return;
+  options.emplace_back(engine);
 }
 
 class GlobalSynthSettingsPage final : public Container {
@@ -47,7 +62,13 @@ class GlobalSynthSettingsPage final : public Container {
         voice_index_(voice_index) {
     engine_control_ = std::make_shared<LabelOptionComponent>("Engine", COLOR_LABEL, COLOR_WHITE);
     synth_engine_options_ = mini_acid_.getAvailableSynthEngines();
-    if (synth_engine_options_.empty()) synth_engine_options_ = {"TB303", "SID", "AY", "OPL2"};
+    removeDisabledSynthEngines(synth_engine_options_);
+    if (synth_engine_options_.empty()) {
+      synth_engine_options_ = {"TB303", "SID", "AY", "SH101", "SN76489"};
+    } else {
+      appendEngineIfMissing(synth_engine_options_, "SH101");
+      appendEngineIfMissing(synth_engine_options_, "SN76489");
+    }
     engine_control_->setOptions(synth_engine_options_);
     addChild(engine_control_);
   }
@@ -90,14 +111,22 @@ class GlobalSynthSettingsPage final : public Container {
     syncEngineSelection();
     clampSelectedRow();
 
-    const int x = bounds.x;
-    const int y = bounds.y;
-    const int w = bounds.w;
+    char status_title[28];
+    std::snprintf(status_title, sizeof(status_title), "SYNTH %c SETTINGS", voice_index_ == 0 ? 'A' : 'B');
+    UI::drawStandardHeader(gfx, mini_acid_, status_title);
+    LayoutManager::clearContent(gfx);
 
-    char header[28];
-    std::snprintf(header, sizeof(header), "SYNTH %c SETTINGS", voice_index_ == 0 ? 'A' : 'B');
+    const auto& content = Layout::CONTENT;
+    const int x = content.x + Layout::CONTENT_PAD_X;
+    const int y = content.y + 2;
+    const int w = content.w - Layout::CONTENT_PAD_X * 2;
+
+    char local_title[32];
+    std::snprintf(local_title, sizeof(local_title), "%c  %s",
+                  voice_index_ == 0 ? 'A' : 'B',
+                  mini_acid_.currentSynthEngineName(voice_index_).c_str());
     gfx.setTextColor(COLOR_LABEL);
-    gfx.drawText(x, y, header);
+    gfx.drawText(x, y, local_title);
 
     int row_y = y + gfx.fontHeight() + 4;
     if (engine_control_) {

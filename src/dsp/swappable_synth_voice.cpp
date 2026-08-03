@@ -10,21 +10,47 @@ inline float clamp01(float v) {
 }
 } // namespace
 
+SynthEngineType SwappableSynthVoice::normalizeEngineType(SynthEngineType type) {
+    switch (type) {
+        case SynthEngineType::TB303:
+        case SynthEngineType::SID:
+        case SynthEngineType::AY:
+        case SynthEngineType::SH101:
+        case SynthEngineType::SN76489:
+            return type;
+        case SynthEngineType::OPL2:
+        default:
+            return SynthEngineType::TB303;
+    }
+}
+
 SynthEngineType SwappableSynthVoice::parseEngineName(const std::string& name) {
   std::string upper = name;
   for (char& c : upper) {
     c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
   }
+  if (upper.find("SH101") != std::string::npos ||
+      upper.find("SH-101") != std::string::npos ||
+      upper.find("MC202") != std::string::npos ||
+      upper.find("MC-202") != std::string::npos) {
+    return SynthEngineType::SH101;
+  }
+  if (upper.find("SN76489") != std::string::npos ||
+      upper.find("SEGA") != std::string::npos) {
+    return SynthEngineType::SN76489;
+  }
   if (upper.find("SID") != std::string::npos) return SynthEngineType::SID;
   if (upper.find("OPL2") != std::string::npos || upper.find("FM") != std::string::npos ||
-      upper.find("YM3812") != std::string::npos) return SynthEngineType::OPL2;
+      upper.find("YM3812") != std::string::npos) return SynthEngineType::TB303;
   if (upper.find("AY") != std::string::npos || upper.find("YM2149") != std::string::npos ||
       upper.find("PSG") != std::string::npos) return SynthEngineType::AY;
   return SynthEngineType::TB303;
 }
 
 SwappableSynthVoice::SwappableSynthVoice(float sampleRate, SynthEngineType initialType)
-    : sampleRate_(sampleRate), type_(initialType), pendingType_(initialType) {
+    : sampleRate_(sampleRate),
+      type_(normalizeEngineType(initialType)),
+      pendingType_(normalizeEngineType(initialType)) {
     if (sampleRate_ <= 0.0f) sampleRate_ = 44100.0f;
     current_ = createVoice(type_, sampleRate_);
     if (current_) {
@@ -34,16 +60,19 @@ SwappableSynthVoice::SwappableSynthVoice(float sampleRate, SynthEngineType initi
 }
 
 std::unique_ptr<IMonoSynthVoice> SwappableSynthVoice::createVoice(SynthEngineType type, float sampleRate) {
-    switch (type) {
-        case SynthEngineType::SID:   return std::make_unique<SidSynthVoice>(sampleRate);
-        case SynthEngineType::AY:    return std::make_unique<AySynthVoice>(sampleRate);
-        case SynthEngineType::OPL2:  return std::make_unique<Opl2SynthVoice>(sampleRate);
+    switch (normalizeEngineType(type)) {
+        case SynthEngineType::SID:     return std::make_unique<SidSynthVoice>(sampleRate);
+        case SynthEngineType::AY:      return std::make_unique<AySynthVoice>(sampleRate);
+        case SynthEngineType::SH101:   return std::make_unique<Sh101SynthVoice>(sampleRate);
+        case SynthEngineType::SN76489: return std::make_unique<Sn76489SynthVoice>(sampleRate);
         case SynthEngineType::TB303:
-        default:                     return std::make_unique<TB303Voice>(sampleRate);
+        case SynthEngineType::OPL2:
+        default:                       return std::make_unique<TB303Voice>(sampleRate);
     }
 }
 
 void SwappableSynthVoice::setEngineType(SynthEngineType type) {
+    type = normalizeEngineType(type);
     if (type == type_ && !switching_) return;
 
     pendingType_ = type;
@@ -85,9 +114,9 @@ void SwappableSynthVoice::setState(const SynthVoiceState& st) {
     switching_ = false;
     xfadeTotal_ = 0;
     xfadePos_ = 0;
-    
-    type_ = st.engineType;
-    pendingType_ = st.engineType;
+
+    type_ = normalizeEngineType(st.engineType);
+    pendingType_ = type_;
     current_ = createVoice(type_, sampleRate_);
     next_.reset();
 

@@ -10,13 +10,18 @@
 #include "mini_tb303.h"
 #include "sid_synth_voice.h"
 #include "ay_synth_voice.h"
-#include "opl2_synth_voice.h"
+#include "sh101_synth_voice.h"
+#include "sn76489_synth_voice.h"
 
 enum class SynthEngineType : uint8_t {
-    TB303 = 0,
-    SID   = 1,
-    AY    = 2,
-    OPL2  = 3
+    TB303   = 0,
+    SID     = 1,
+    AY      = 2,
+    // Numeric slot 3 is retained only so older persisted scenes remain
+    // decodable. Runtime requests for OPL2 are normalized to TB303.
+    OPL2    = 3,
+    SH101   = 4,
+    SN76489 = 5
 };
 
 struct SynthVoiceState {
@@ -61,6 +66,7 @@ public:
 private:
     static std::unique_ptr<IMonoSynthVoice> createVoice(SynthEngineType type, float sampleRate);
     static SynthEngineType parseEngineName(const std::string& name);
+    static SynthEngineType normalizeEngineType(SynthEngineType type);
 
     float sampleRate_{44100.0f};
 
