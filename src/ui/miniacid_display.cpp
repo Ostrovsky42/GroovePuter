@@ -396,7 +396,10 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     if (event.event_type == GROOVEPUTER_KEY_DOWN) {
         if (event.meta && (event.key == 'm' || event.key == 'M')) {
             global_help_overlay_.close();
-            workspace_launcher_.toggle(active_workspace_);
+            workspace_launcher_.toggle(
+                active_workspace_,
+                ui_session_.lastPageByWorkflow,
+                GroovePuterState::kWorkflowSessionCount);
             return true;
         }
 

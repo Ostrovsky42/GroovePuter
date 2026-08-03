@@ -14,6 +14,7 @@ def main() -> None:
     platform = (ROOT / "src/platform/cardputer_ui_session.cpp").read_text(encoding="utf-8")
     display_h = (ROOT / "src/ui/miniacid_display.h").read_text(encoding="utf-8")
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
+    launcher = (ROOT / "src/ui/workspace_launcher_overlay.h").read_text(encoding="utf-8")
     engine_h = (ROOT / "src/dsp/miniacid_engine.h").read_text(encoding="utf-8")
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
     storage = (ROOT / "scene_storage.h").read_text(encoding="utf-8")
@@ -41,6 +42,15 @@ def main() -> None:
     require(display.count("workflowNavigationTarget") >= 2 and
             "rememberedWorkflowPage" in display,
             "workflow navigation must restore remembered pages")
+    require("ui_session_.lastPageByWorkflow" in display and
+            "kWorkflowSessionCount" in display,
+            "Fn+M launcher must receive all persisted workflow pages")
+    require("child_by_workflow_" in launcher and
+            "rememberedChild_(selected_)" in launcher and
+            "loadRememberedPages_" in launcher,
+            "launcher workflow selection must restore remembered child pages")
+    require("child_ = 0;" not in launcher[launcher.index("GROOVEPUTER_UP"):launcher.index("GROOVEPUTER_LEFT")],
+            "vertical launcher navigation must not reset every workflow to page zero")
     require("ui_session_save_due_ms_ = millis() + 1000" in display and
             "!mini_acid_.isPlaying()" in display,
             "NVS writes must be debounced and deferred until transport stops")

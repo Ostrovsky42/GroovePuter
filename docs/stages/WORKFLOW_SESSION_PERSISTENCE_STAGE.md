@@ -31,7 +31,7 @@ Flash with the repository's normal Cardputer ADV procedure.
 ## Expected behavior
 
 - Each of PERFORM, GENERATE, HUB, SONG and SETTINGS remembers its last page.
-- Fn+Tab and Fn+[ / ] return to that page instead of the workflow's first page.
+- Fn+Tab, Fn+[ / ] and the Fn+M launcher return to that page instead of the workflow's first page.
 - Plain [ / ] still moves locally inside the current workflow.
 - Reboot restores the active page, per-workflow pages, CYBER/CARBON/AMBER theme,
   waveform overlay state and master volume.
@@ -72,7 +72,7 @@ recovery cleanup intentionally keeps Save from establishing a clean baseline.
 
 ## Acceptance checklist
 
-- [ ] Leave PERFORM on MIDI Player, switch away and back, and remain on Player.
+- [ ] Leave PERFORM on MIDI Player, switch away and back with Fn+M, and remain on Player.
 - [ ] Leave GENERATE on FEEL/TEXTURE and return to FEEL/TEXTURE.
 - [ ] Leave HUB on Synth B parameters and return to that page.
 - [ ] Leave SETTINGS on Advanced Generator and return to it.
