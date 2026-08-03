@@ -47,6 +47,7 @@ void CardputerDisplay::begin() {
   // Desktop / fallback: nothing to initialize
 #endif
   frame_.assign(w_ * h_, IGfxColor::Black().toCardputerColor());
+  dirty_tiles_.reset(w_, h_);
   flush();
 }
 
@@ -296,6 +297,7 @@ void CardputerDisplay::setRotation(int rot) {
   return;
 #endif
   frame_.assign(w_ * h_, IGfxColor::Black().toCardputerColor());
+  dirty_tiles_.reset(w_, h_);
 }
 
 void CardputerDisplay::setTextColor(IGfxColor color) {
@@ -367,13 +369,47 @@ void CardputerDisplay::endWrite() {
 #endif
 }
 
+void CardputerDisplay::pushRegion_(const DirtyTileRun& region) {
+  if (frame_.empty() || region.w <= 0 || region.h <= 0) return;
+  const uint16_t* first = frame_.data() + region.y * w_ + region.x;
+#if defined(ARDUINO) && __has_include(<M5Cardputer.h>)
+  if (region.x == 0 && region.w == w_) {
+    M5Cardputer.Display.pushImage(region.x, region.y, region.w, region.h, first);
+    return;
+  }
+  for (int row = 0; row < region.h; ++row) {
+    M5Cardputer.Display.pushImage(
+        region.x, region.y + row, region.w, 1, first + row * w_);
+  }
+#elif defined(ARDUINO) && __has_include(<M5Stack.h>) && defined(M5_LCD_AVAILABLE)
+  if (region.x == 0 && region.w == w_) {
+    M5.Lcd.pushImage(region.x, region.y, region.w, region.h, first);
+    return;
+  }
+  for (int row = 0; row < region.h; ++row) {
+    M5.Lcd.pushImage(region.x, region.y + row, region.w, 1, first + row * w_);
+  }
+#else
+  (void)first;
+#endif
+}
+
 void CardputerDisplay::flush() {
   if (frame_.empty()) return;
-#if defined(ARDUINO) && __has_include(<M5Cardputer.h>)
-  M5Cardputer.Display.pushImage(0, 0, w_, h_, frame_.data());
-#elif defined(ARDUINO) && __has_include(<M5Stack.h>) && defined(M5_LCD_AVAILABLE)
-  M5.Lcd.pushImage(0, 0, w_, h_, frame_.data());
-#endif
+  if (!dirty_tiles_.valid()) {
+    dirty_tiles_.reset(w_, h_);
+  }
+  if (!dirty_tiles_.valid()) {
+    pushRegion_(DirtyTileRun{0, 0, w_, h_});
+    return;
+  }
+  dirty_tiles_.scan(frame_.data(), w_, [this](const DirtyTileRun& region) {
+    pushRegion_(region);
+  });
+}
+
+void CardputerDisplay::forceFullRefresh() {
+  dirty_tiles_.forceFullRefresh();
 }
 
 void CardputerDisplay::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, IGfxColor color) {

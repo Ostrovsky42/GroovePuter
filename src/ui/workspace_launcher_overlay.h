@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdio>
+#include <cstdint>
 
 #include "display.h"
 #include "ui_core.h"
@@ -14,11 +15,17 @@ public:
 
     bool isVisible() const { return visible_; }
 
-    void open(Workspace workspace) {
+    void open(Workspace workspace,
+              const int8_t* rememberedPages = nullptr,
+              int rememberedPageCount = 0) {
+        loadRememberedPages_(rememberedPages, rememberedPageCount);
         visible_ = true;
         selected_ = entryForWorkspace(workspace);
-        child_ = WorkflowPages::pageIndexInMode(
-            WorkflowPages::pageForWorkspace(workspace));
+        const int currentPage = WorkflowPages::pageForWorkspace(workspace);
+        child_ = WorkflowPages::pageIndexInMode(currentPage);
+        if (selected_ >= 0 && selected_ < kWorkflowEntryCount) {
+            child_by_workflow_[selected_] = child_;
+        }
         page_request_ = -1;
         help_request_ = false;
     }
@@ -29,9 +36,11 @@ public:
         help_request_ = false;
     }
 
-    void toggle(Workspace workspace) {
+    void toggle(Workspace workspace,
+                const int8_t* rememberedPages = nullptr,
+                int rememberedPageCount = 0) {
         if (visible_) close();
-        else open(workspace);
+        else open(workspace, rememberedPages, rememberedPageCount);
     }
 
     bool takePageRequest(int& page) {
@@ -70,12 +79,12 @@ public:
         const int nav = UIInput::navCode(event);
         if (nav == GROOVEPUTER_UP) {
             selected_ = (selected_ + kEntryCount - 1) % kEntryCount;
-            child_ = 0;
+            child_ = rememberedChild_(selected_);
             return true;
         }
         if (nav == GROOVEPUTER_DOWN) {
             selected_ = (selected_ + 1) % kEntryCount;
-            child_ = 0;
+            child_ = rememberedChild_(selected_);
             return true;
         }
         if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
@@ -84,6 +93,9 @@ public:
                 child_ += (nav == GROOVEPUTER_RIGHT) ? 1 : -1;
                 while (child_ < 0) child_ += count;
                 while (child_ >= count) child_ -= count;
+                if (selected_ < kWorkflowEntryCount) {
+                    child_by_workflow_[selected_] = child_;
+                }
             }
             return true;
         }
@@ -115,7 +127,7 @@ public:
         gfx.fillRect(0, 0, w, headerH, p.panel);
         gfx.drawLine(0, headerH - 1, w - 1, headerH - 1, p.dim);
         gfx.setTextColor(p.accent);
-        gfx.drawText(4, 2, "GROOVEPUTER / NAV");
+        gfx.drawText(4, 2, "GROOVEPUTER / NAV R3");
 
         char themeBuf[20];
         std::snprintf(themeBuf, sizeof(themeBuf), "[%s]", UI::themeName(UI::currentStyle));
@@ -163,6 +175,16 @@ public:
                          count > 1 ? "[ ] PAGE  FN+[ ] FLOW" : "FN+[ ] WORKFLOW");
         }
 
+        char memory[32];
+        std::snprintf(memory, sizeof(memory), "MEM %d %d %d %d %d",
+                      child_by_workflow_[0] + 1,
+                      child_by_workflow_[1] + 1,
+                      child_by_workflow_[2] + 1,
+                      child_by_workflow_[3] + 1,
+                      child_by_workflow_[4] + 1);
+        gfx.setTextColor(p.dim);
+        gfx.drawText(rightX + 5, panelY + 92, memory);
+
         gfx.fillRect(0, h - footerH, w, footerH, p.panel);
         gfx.drawLine(0, h - footerH, w - 1, h - footerH, p.dim);
         gfx.setTextColor(p.secondary);
@@ -175,6 +197,26 @@ public:
 private:
     static constexpr int kWorkflowEntryCount = 5;
     static constexpr int kEntryCount = 6;
+
+    void loadRememberedPages_(const int8_t* pages, int count) {
+        if (!pages || count <= 0) return;
+        const int safeCount = count < kWorkflowEntryCount
+            ? count
+            : kWorkflowEntryCount;
+        for (int entry = 0; entry < safeCount; ++entry) {
+            const int page = static_cast<int>(pages[entry]);
+            if (WorkflowPages::modeForPage(page) != entryMode(entry)) continue;
+            child_by_workflow_[entry] =
+                WorkflowPages::pageIndexInMode(page);
+        }
+    }
+
+    int rememberedChild_(int entry) const {
+        if (entry < 0 || entry >= kWorkflowEntryCount) return 0;
+        const int count = childCount(entry);
+        const int child = child_by_workflow_[entry];
+        return child >= 0 && child < count ? child : 0;
+    }
 
     static int entryForWorkspace(Workspace workspace) {
         switch (WorkflowPages::modeForWorkspace(workspace)) {
@@ -304,6 +346,9 @@ private:
             visible_ = false;
             return;
         }
+        if (selected_ < kWorkflowEntryCount) {
+            child_by_workflow_[selected_] = child_;
+        }
         page_request_ = childPage(selected_, child_);
         visible_ = false;
     }
@@ -311,6 +356,7 @@ private:
     bool visible_ = false;
     int selected_ = 0;
     int child_ = 0;
+    int child_by_workflow_[kWorkflowEntryCount]{0, 0, 0, 0, 0};
     int page_request_ = -1;
     bool help_request_ = false;
 };

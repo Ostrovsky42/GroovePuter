@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "smf_channel_inspector.h"
@@ -118,6 +119,10 @@ public:
     virtual bool cycleVelocityBoost() = 0;
     virtual SmfPlayerSnapshot snapshot() const = 0;
     virtual SmfChannelInspectorSnapshot channelInspector() const = 0;
+    virtual bool currentFilePath(char* output, std::size_t outputSize) const {
+        if (output && outputSize > 0) output[0] = '\0';
+        return false;
+    }
 };
 
 // Tiny service registry keeps UI pages platform-neutral. Cardputer registers

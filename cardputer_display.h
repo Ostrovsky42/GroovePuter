@@ -1,6 +1,7 @@
 #pragma once
 #include "display.h"
 #include "gfx_font.h"
+#include "src/ui/dirty_tile_tracker.h"
 #include <vector>
 
 class CardputerDisplay : public IGfx {
@@ -27,6 +28,7 @@ public:
   void startWrite() override;
   void endWrite() override;
   void flush() override;
+  void forceFullRefresh();
   int textWidth(const char* text) const override;
   int fontHeight() const override;
   int width() const override;
@@ -44,11 +46,13 @@ private:
   IGfxColor text_color_ = IGfxColor::White();
   uint16_t text_color565_ = text_color_.color16();
   std::vector<uint16_t> frame_; // RGB565 back buffer
+  DirtyTileTracker dirty_tiles_;
   GfxFont font_ = GfxFont::kFont5x7;
   const GFXfont* gfx_font_ = nullptr;
   FontMetrics gfx_metrics_;
 
   void drawGlyph5x7(int x, int y, unsigned char glyph_idx);
   void drawGfxGlyph(int x, int y, unsigned char glyph_idx);
+  void pushRegion_(const DirtyTileRun& region);
   FontMetrics computeMetrics(const GFXfont& font) const;
 };

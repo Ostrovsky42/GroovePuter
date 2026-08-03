@@ -8,7 +8,10 @@ CXX="${CXX:-g++}"
 mkdir -p "${BUILD_DIR}"
 
 python3 "${ROOT_DIR}/tests/test_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_cardputer_input_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_scene_revision_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_ui_session_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_midi_file_manager_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_performance_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_wavemorph_performance_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_theme_selection_source_regressions.py"
@@ -406,6 +409,41 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_midi_file_name_policy.cpp" \
+  -o "${BUILD_DIR}/test_midi_file_name_policy"
+
+"${BUILD_DIR}/test_midi_file_name_policy"
+
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_ui_session_state.cpp" \
+  -o "${BUILD_DIR}/test_ui_session_state"
+
+"${BUILD_DIR}/test_ui_session_state"
+
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_cardputer_input_edges.cpp" \
+  -o "${BUILD_DIR}/test_cardputer_input_edges"
+
+"${BUILD_DIR}/test_cardputer_input_edges"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_wave_morph_synth_voice.cpp" \
   "${ROOT_DIR}/src/dsp/wave_morph_synth_voice.cpp" \
   -o "${BUILD_DIR}/test_wave_morph_synth_voice"
@@ -423,3 +461,4 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -o "${BUILD_DIR}/test_performance_patterns"
 
 "${BUILD_DIR}/test_performance_patterns"
+

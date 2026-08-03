@@ -229,6 +229,12 @@ public:
   std::string currentDrumEngineName() const;
   std::string currentSceneName() const;
   std::vector<std::string> availableSceneNames() const;
+  bool autoSaveSceneRecovery();
+  bool lastSceneLoadRecoveredAutosave() const {
+    return lastSceneLoadRecoveredAutosave_;
+  }
+  float mainVolume() const;
+  void setDeviceMasterVolume(float value);
   bool loadSceneByName(const std::string& name);
   bool saveSceneAs(const std::string& name);
   bool createNewSceneWithName(const std::string& name);
@@ -564,6 +570,8 @@ private:
 
   bool testToneEnabled_ = false;
   float testTonePhase_ = 0.0f;
+  bool deviceMasterVolumeOverride_ = false;
+  bool lastSceneLoadRecoveredAutosave_ = false;
 
   static float softLimit(float x) {
       float absX = (x > 0) ? x : -x;
