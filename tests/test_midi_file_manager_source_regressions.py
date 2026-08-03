@@ -17,8 +17,11 @@ def main() -> None:
     player_cpp = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(encoding="utf-8")
     sdl_makefile = (ROOT / "platform_sdl/Makefile").read_text(encoding="utf-8")
 
-    require("static_assert(sizeof(MidiFileManager) <= 4096" in manager_h,
-            "MIDI manager RAM contract is missing")
+    require("kWindowEntries = 8" in manager_h and
+            "static_assert(sizeof(MidiFileManager) <= 1024" in manager_h,
+            "MIDI manager paged RAM contract is missing")
+    require("scanDirectorySummary" in manager_h and "loadWindow" in manager_h,
+            "browser capacity must limit memory, not file reachability")
     require("Mode::ConfirmDelete" in manager_cpp,
             "MIDI delete confirmation mode is missing")
     require("deleteConfirmed_ = false" in manager_cpp,

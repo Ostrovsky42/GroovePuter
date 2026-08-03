@@ -87,12 +87,34 @@ bool MidiFileManager::refresh() {
         previousKind = previous->kind;
     }
 
+    int previousIndex = -1;
+    if (!scanDirectorySummary(previousName, previousKind, &previousIndex)) {
+        selection_ = 0;
+        scroll_ = 0;
+        windowStart_ = 0;
+        windowCount_ = 0;
+        for (Entry& entry : entries_) entry = Entry{};
+        return false;
+    }
+    windowCount_ = 0;
+    if (previousIndex >= 0) selection_ = previousIndex;
+    if (selection_ >= entryCount_) selection_ = entryCount_ > 0 ? entryCount_ - 1 : 0;
+    if (selection_ < 0) selection_ = 0;
+    ensureSelectionVisible();
+    mode_ = Mode::Browse;
+    deleteConfirmed_ = false;
+    return storageReady_;
+}
+
+bool MidiFileManager::scanDirectorySummary(const char* selectedName,
+                                           EntryKind selectedKind,
+                                           int* selectedIndex) {
     entryCount_ = 0;
     directoryCount_ = 0;
     fileCount_ = 0;
     storageReady_ = false;
     truncated_ = false;
-    for (Entry& entry : entries_) entry = Entry{};
+    if (selectedIndex) *selectedIndex = -1;
 
 #ifdef ARDUINO
     bool exists = SD.exists(currentPath_);
@@ -111,17 +133,12 @@ bool MidiFileManager::refresh() {
     File root = SD.open(currentPath_);
     if (!root || !root.isDirectory()) {
         if (root) root.close();
-        selection_ = 0;
-        scroll_ = 0;
         return false;
     }
     storageReady_ = true;
 
-    if (std::strcmp(currentPath_, "/midi") != 0) {
-        Entry& parent = entries_[entryCount_++];
-        parent.kind = EntryKind::Parent;
-        copyText(parent.name, sizeof(parent.name), "..");
-    }
+    const int parentCount = std::strcmp(currentPath_, "/midi") != 0 ? 1 : 0;
+    int selectedFileOffset = -1;
 
     while (true) {
         File file = root.openNextFile();
@@ -135,54 +152,114 @@ bool MidiFileManager::refresh() {
             continue;
         }
 
-        if (directory) ++directoryCount_;
-        else ++fileCount_;
-
-        if (entryCount_ >= kMaxEntries || std::strlen(rawName) >= kNameBytes) {
+        if (std::strlen(rawName) >= kNameBytes) {
             truncated_ = true;
             file.close();
             continue;
         }
-
-        Entry& entry = entries_[entryCount_++];
-        copyText(entry.name, sizeof(entry.name), rawName);
-        entry.kind = directory ? EntryKind::Directory : EntryKind::MidiFile;
-        entry.sizeBytes = directory ? 0u : static_cast<uint32_t>(file.size());
+        if (directory) {
+            if (selectedIndex && selectedKind == EntryKind::Directory &&
+                equalIgnoreCase(rawName, selectedName)) {
+                *selectedIndex = parentCount + directoryCount_;
+            }
+            ++directoryCount_;
+        } else {
+            if (selectedKind == EntryKind::MidiFile &&
+                equalIgnoreCase(rawName, selectedName)) {
+                selectedFileOffset = fileCount_;
+            }
+            ++fileCount_;
+        }
         file.close();
     }
     root.close();
-
-    const int firstSortable =
-        entryCount_ > 0 && entries_[0].kind == EntryKind::Parent ? 1 : 0;
-    std::sort(entries_.begin() + firstSortable,
-              entries_.begin() + entryCount_,
-              [](const Entry& lhs, const Entry& rhs) {
-                  if (lhs.kind != rhs.kind) {
-                      return lhs.kind == EntryKind::Directory;
-                  }
-                  return compareIgnoreCase(lhs.name, rhs.name) < 0;
-              });
+    entryCount_ = parentCount + directoryCount_ + fileCount_;
+    if (selectedIndex && selectedKind == EntryKind::Parent && parentCount > 0 &&
+        equalIgnoreCase(selectedName, "..")) {
+        *selectedIndex = 0;
+    } else if (selectedIndex && selectedFileOffset >= 0) {
+        *selectedIndex = parentCount + directoryCount_ + selectedFileOffset;
+    }
 #else
-    (void)previousKind;
+    (void)selectedName;
+    (void)selectedKind;
 #endif
-
-    if (previousName[0] != '\0') selectEntryByName(previousName, previousKind);
-    if (selection_ >= entryCount_) selection_ = entryCount_ > 0 ? entryCount_ - 1 : 0;
-    if (selection_ < 0) selection_ = 0;
-    ensureSelectionVisible();
-    mode_ = Mode::Browse;
-    deleteConfirmed_ = false;
     return storageReady_;
+}
+
+bool MidiFileManager::loadWindow(int firstIndex) {
+    for (Entry& entry : entries_) entry = Entry{};
+    windowCount_ = 0;
+    if (!storageReady_ || entryCount_ <= 0) {
+        windowStart_ = 0;
+        return storageReady_;
+    }
+    const int maxStart = std::max(0, entryCount_ - kWindowEntries);
+    windowStart_ = std::max(0, std::min(firstIndex, maxStart));
+    windowCount_ = std::min(kWindowEntries, entryCount_ - windowStart_);
+
+#ifdef ARDUINO
+    File root = SD.open(currentPath_);
+    if (!root || !root.isDirectory()) {
+        if (root) root.close();
+        storageReady_ = false;
+        windowCount_ = 0;
+        return false;
+    }
+
+    const int parentCount = std::strcmp(currentPath_, "/midi") != 0 ? 1 : 0;
+    if (parentCount > 0 && windowStart_ == 0) {
+        entries_[0].kind = EntryKind::Parent;
+        copyText(entries_[0].name, sizeof(entries_[0].name), "..");
+    }
+    int directoryIndex = 0;
+    int fileIndex = 0;
+    while (true) {
+        File file = root.openNextFile();
+        if (!file) break;
+        const bool directory = file.isDirectory();
+        const char* rawName = basenameOf(file.name());
+        const bool visible = rawName && rawName[0] != '\0' && rawName[0] != '.';
+        const bool supported = directory || midiFilenameIsVisibleAndSupported(rawName);
+        if (!visible || !supported || std::strlen(rawName) >= kNameBytes) {
+            file.close();
+            continue;
+        }
+
+        const int index = directory
+            ? parentCount + directoryIndex++
+            : parentCount + directoryCount_ + fileIndex++;
+        if (index >= windowStart_ && index < windowStart_ + windowCount_) {
+            Entry& entry = entries_[index - windowStart_];
+            copyText(entry.name, sizeof(entry.name), rawName);
+            entry.kind = directory ? EntryKind::Directory : EntryKind::MidiFile;
+            entry.sizeBytes = directory ? 0u : static_cast<uint32_t>(file.size());
+        }
+        file.close();
+    }
+    root.close();
+#endif
+    return true;
+}
+
+const MidiFileManager::Entry* MidiFileManager::entryAt(int index) const {
+    if (index < windowStart_ || index >= windowStart_ + windowCount_) return nullptr;
+    return &entries_[index - windowStart_];
+}
+
+MidiFileManager::Entry* MidiFileManager::entryAt(int index) {
+    if (index < windowStart_ || index >= windowStart_ + windowCount_) return nullptr;
+    return &entries_[index - windowStart_];
 }
 
 const MidiFileManager::Entry* MidiFileManager::selectedEntry() const {
     if (selection_ < 0 || selection_ >= entryCount_) return nullptr;
-    return &entries_[selection_];
+    return entryAt(selection_);
 }
 
 MidiFileManager::Entry* MidiFileManager::selectedEntry() {
     if (selection_ < 0 || selection_ >= entryCount_) return nullptr;
-    return &entries_[selection_];
+    return entryAt(selection_);
 }
 
 bool MidiFileManager::buildPathForEntry(const Entry& entry,
@@ -250,17 +327,19 @@ void MidiFileManager::ensureSelectionVisible() {
     const int maxScroll = std::max(0, entryCount_ - visibleRows_);
     if (scroll_ > maxScroll) scroll_ = maxScroll;
     if (scroll_ < 0) scroll_ = 0;
+    const int requiredEnd = std::min(entryCount_, scroll_ + visibleRows_);
+    if (scroll_ < windowStart_ || requiredEnd > windowStart_ + windowCount_) {
+        loadWindow(scroll_);
+    }
 }
 
 void MidiFileManager::selectEntryByName(const char* name, EntryKind kind) {
     if (!name || name[0] == '\0') return;
-    for (int index = 0; index < entryCount_; ++index) {
-        if (entries_[index].kind == kind &&
-            equalIgnoreCase(entries_[index].name, name)) {
-            selection_ = index;
-            ensureSelectionVisible();
-            return;
-        }
+    int index = -1;
+    if (scanDirectorySummary(name, kind, &index) && index >= 0) {
+        windowCount_ = 0;
+        selection_ = index;
+        ensureSelectionVisible();
     }
 }
 
@@ -546,7 +625,9 @@ void MidiFileManager::drawRows(IGfx& gfx,
         if (index >= entryCount_) break;
         const int y = listTop + row * rowHeight;
         if (y + rowHeight > listBottom) break;
-        const Entry& entry = entries_[index];
+        const Entry* entryPtr = entryAt(index);
+        if (!entryPtr) break;
+        const Entry& entry = *entryPtr;
         const bool selected = index == selection_;
         if (selected) {
             gfx.fillRect(bounds.x + 2, y, bounds.w - 4, rowHeight,

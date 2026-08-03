@@ -23,6 +23,10 @@ def main() -> None:
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
     build = (ROOT / "scripts/build.sh").read_text(encoding="utf-8")
+    midi_only_build = (ROOT / "scripts/build_seqtrak_midi_only.sh").read_text(
+        encoding="utf-8")
+    dram_check = (ROOT / "scripts/check_cardputer_dram_budget.sh").read_text(
+        encoding="utf-8")
     upload = (ROOT / "scripts/upload.sh").read_text(encoding="utf-8")
     scenes_h = (ROOT / "scenes.h").read_text(encoding="utf-8")
     scenes_cpp = (ROOT / "scenes.cpp").read_text(encoding="utf-8")
@@ -55,6 +59,17 @@ def main() -> None:
     require("publishCardputerUsbMidiBlockAnchor" in service and
             "publishCardputerUsbMidiBlockAnchor" in sketch,
             "AudioTask must publish sample-block playback anchors")
+    require("CardputerUsbMidiStatusSnapshot" in service and
+            "snapshotCardputerUsbMidiStatus" in service,
+            "MIDI-only firmware must expose a read-only endpoint snapshot for UI diagnostics")
+    require("#if defined(ARDUINO)" in service and
+            "inline CardputerUsbMidiStatusSnapshot" in service,
+            "desktop UI must receive a neutral USB snapshot without linking Cardputer TinyUSB")
+    player_page = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(
+        encoding="utf-8")
+    require("snapshotCardputerUsbMidiStatus()" in player_page and
+            "USB %s C%u U%u M%u OK%lu NO%lu Q%u" in player_page,
+            "MIDI Player must show endpoint health without relying on CDC logs")
 
     require("USBMIDI.h" not in sketch and "USB.h" not in sketch,
             "TinyUSB headers must stay isolated from the main UI translation unit")
@@ -89,12 +104,19 @@ def main() -> None:
     require("if (!USB.begin())" in transport_begin and
             "return false;" in transport_begin,
             "MIDI-only TinyUSB startup failure must fail transport registration")
+    require("if (begun_) return true;" in transport_begin,
+            "the dispatcher must not restart an already initialized USB device")
+
 
     tinyusb_options = "USBMode=default,CDCOnBoot=cdc,UploadMode=cdc"
     require(tinyusb_options in build,
             "Cardputer build must select TinyUSB OTG plus CDC upload")
     require(tinyusb_options in upload,
             "Cardputer upload must use the same TinyUSB FQBN")
+    require("check_cardputer_dram_budget.sh" in midi_only_build and
+            "191488" in midi_only_build and
+            ".dram0.data" in dram_check and ".dram0.bss" in dram_check,
+            "SEQTRAK MIDI-only build must enforce the measured global DRAM budget")
     require("#if ARDUINO_USB_MODE" in transport,
             "hardware transport must fail closed outside TinyUSB OTG mode")
     require("tud_midi_mounted()" in transport,

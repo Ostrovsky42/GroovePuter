@@ -29,7 +29,9 @@ public:
         CloseRequested,
     };
 
-    static constexpr int kMaxEntries = 48;
+    // Only the visible directory window stays resident. Moving beyond it
+    // rescans the directory, so capacity never limits file reachability.
+    static constexpr int kWindowEntries = 8;
     static constexpr std::size_t kNameBytes = 64;
     static constexpr std::size_t kPathBytes = 128;
 
@@ -59,8 +61,14 @@ public:
     bool truncated() const { return truncated_; }
 
 private:
+    const Entry* entryAt(int index) const;
+    Entry* entryAt(int index);
     const Entry* selectedEntry() const;
     Entry* selectedEntry();
+    bool scanDirectorySummary(const char* selectedName,
+                              EntryKind selectedKind,
+                              int* selectedIndex);
+    bool loadWindow(int firstIndex);
     bool buildPathForEntry(const Entry& entry,
                            char* output,
                            std::size_t outputSize) const;
@@ -79,10 +87,12 @@ private:
     void drawRenameOverlay(IGfx& gfx, const Rect& bounds);
     void drawDeleteOverlay(IGfx& gfx, const Rect& bounds);
 
-    std::array<Entry, kMaxEntries> entries_{};
+    std::array<Entry, kWindowEntries> entries_{};
     char currentPath_[kPathBytes]{"/midi"};
     char renameBuffer_[kNameBytes]{};
     int entryCount_{0};
+    int windowStart_{0};
+    int windowCount_{0};
     int directoryCount_{0};
     int fileCount_{0};
     int selection_{0};
@@ -96,8 +106,8 @@ private:
 
 static_assert(sizeof(MidiFileManager::Entry) <= 72,
               "MIDI browser entry must stay compact");
-static_assert(sizeof(MidiFileManager) <= 4096,
-              "MIDI file manager must stay below 4 KiB without PSRAM");
+static_assert(sizeof(MidiFileManager) <= 1024,
+              "MIDI file manager must stay below 1 KiB without PSRAM");
 
 MidiFileManager& midiFileManager();
 

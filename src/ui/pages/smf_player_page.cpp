@@ -9,6 +9,7 @@
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/transport_clock_runtime.h"
 #include "src/midi/smf_track_mute.h"
+#include "src/platform/cardputer_usb_midi_service.h"
 
 #ifdef ARDUINO
 #include <SD.h>
@@ -528,11 +529,20 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
     }
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(5), line);
 
-    gfx.setTextColor(COLOR_TEXT);
-    gfx.drawText(Layout::COL_1, LayoutManager::lineY(6),
-                 transportClockRuntime().source() == TransportClockSource::SeqtrakExternal
-                     ? "G FOLLOW   SPACE MIDI   R RESTART"
-                     : "G GROOVE   SPACE MIDI   R RESTART");
+    const CardputerUsbMidiStatusSnapshot usb = snapshotCardputerUsbMidiStatus();
+    const char* usbState = !usb.registered || !usb.mounted
+        ? "WAIT"
+        : (usb.suspended ? "SLEEP" : (usb.stalled ? "BLOCKED" : "READY"));
+    gfx.setTextColor(usb.stalled || !usb.mounted ? COLOR_DANGER : COLOR_TEXT);
+    std::snprintf(line, sizeof(line), "USB %s C%u U%u M%u OK%lu NO%lu Q%u",
+                  usbState,
+                  static_cast<unsigned>(usb.cdcOnBoot),
+                  static_cast<unsigned>(usb.started),
+                  static_cast<unsigned>(usb.mounted),
+                  static_cast<unsigned long>(usb.txAccepted),
+                  static_cast<unsigned long>(usb.txRejected),
+                  static_cast<unsigned>(usb.queuedSmfEvents));
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(6), line);
 
     const bool usbBlocked = std::strncmp(state.message, "USB MIDI BLOCKED", 16) == 0;
     gfx.setTextColor((error || usbBlocked) ? COLOR_DANGER : COLOR_LABEL);
@@ -736,8 +746,7 @@ void SmfPlayerPage::drawFooter(IGfx& gfx) {
     } else {
         UI::drawStandardFooter(gfx,
                                seqMaster ? "Space MIDI G Follow C Master"
-                                         : "Space MIDI C Master R Restart",
+                                         : "Space MIDI C Master R RESTART",
                                "I Channels J/L Track K Mute");
     }
 }
-
