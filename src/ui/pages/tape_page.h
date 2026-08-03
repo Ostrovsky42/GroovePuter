@@ -5,6 +5,7 @@
 #include "../ui_utils.h"
 #include "src/dsp/miniacid_engine.h"
 #include "waveform_page.h"
+#include "src/state/scene_revision.h"
 
 class TapePage : public IPage {
  public:

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include "src/state/scene_revision.h"
 
 namespace UI {
 
@@ -64,6 +65,7 @@ struct UiStatusSnapshot {
     uint16_t bar{1};
     uint16_t totalBars{1};
     bool liveMixLocked{false};
+    bool dirty{GroovePuterState::sceneDirty()};
 };
 
 static_assert(sizeof(UiStatusSnapshot) <= 16,
@@ -78,7 +80,8 @@ inline bool operator==(const UiStatusSnapshot& lhs,
            lhs.output == rhs.output &&
            lhs.bar == rhs.bar &&
            lhs.totalBars == rhs.totalBars &&
-           lhs.liveMixLocked == rhs.liveMixLocked;
+           lhs.liveMixLocked == rhs.liveMixLocked &&
+           lhs.dirty == rhs.dirty;
 }
 
 inline bool operator!=(const UiStatusSnapshot& lhs,
@@ -155,7 +158,7 @@ inline void formatUiStatusLine(const UiStatusSnapshot& status,
     const unsigned total = status.totalBars == 0 ? 1u : status.totalBars;
     std::snprintf(destination,
                   capacity,
-                  "%s %s %s B%u/%u %s %s%s",
+                  "%s %s %s B%u/%u %s %s%s%s",
                   uiStatusContextToken(status.context),
                   uiStatusSourceToken(status.source),
                   uiStatusStateToken(status.state),
@@ -163,7 +166,8 @@ inline void formatUiStatusLine(const UiStatusSnapshot& status,
                   total,
                   uiStatusClockToken(status.clock),
                   uiStatusOutputToken(status.output),
-                  status.liveMixLocked ? " LM" : "");
+                  status.liveMixLocked ? " LM" : "",
+                  status.dirty ? " *" : "");
 }
 
 }  // namespace UI

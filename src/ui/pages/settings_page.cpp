@@ -7,6 +7,7 @@
 #include "../ui_widgets.h"
 #include <cstdio>
 #include <cstring>
+#include "src/state/scene_revision.h"
 #ifdef ARDUINO
 #include <Arduino.h>
 #endif
@@ -292,6 +293,7 @@ void SettingsPage::adjustSetting(int delta, bool shift) {
             break;
         default: break;
     }
+    GroovePuterState::markSceneMutated();
 }
 
 int SettingsPage::settingForRow() const {

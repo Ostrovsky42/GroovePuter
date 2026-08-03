@@ -5,6 +5,7 @@
 #include "../layout_manager.h"
 #include "../ui_widgets.h"
 #include "../components/drum_sequencer_grid.h"
+#include "src/state/scene_revision.h"
 
 #ifndef USE_RETRO_THEME
 #define USE_RETRO_THEME
@@ -83,5 +84,6 @@ private:
     void withAudioGuard(F&& fn) {
         if (audio_guard_) audio_guard_(std::forward<F>(fn));
         else fn();
+        GroovePuterState::markSceneMutated();
     }
 };

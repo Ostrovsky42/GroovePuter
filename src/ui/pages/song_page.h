@@ -6,6 +6,7 @@
 #include "../ui_colors.h"
 #include "../ui_utils.h"
 #include "../../dsp/pattern_generator.h"
+#include "src/state/scene_revision.h"
 
 class SongPage : public IPage, public IMultiHelpFramesProvider {
  public:
@@ -43,6 +44,13 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   void syncSongPositionToCursor();
     template <typename F>
     void withAudioGuard(F&& fn) {
+        if (audio_guard_) audio_guard_(std::forward<F>(fn));
+        else fn();
+        GroovePuterState::markSceneMutated();
+    }
+
+    template <typename F>
+    void withRuntimeAudioGuard(F&& fn) {
         if (audio_guard_) audio_guard_(std::forward<F>(fn));
         else fn();
     }

@@ -19,6 +19,11 @@ int main() {
     formatUiStatusLine(pattern, line, sizeof(line));
     assert(std::strcmp(line, "GEN PAT PLAY B3/4 INT BOTH") == 0);
 
+    pattern.dirty = true;
+    formatUiStatusLine(pattern, line, sizeof(line));
+    assert(std::strcmp(line, "GEN PAT PLAY B3/4 INT BOTH *") == 0);
+    pattern.dirty = false;
+
     UiStatusSnapshot smf{};
     smf.context = UiStatusContext::Player;
     smf.source = UiStatusSource::Smf;

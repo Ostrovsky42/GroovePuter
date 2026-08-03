@@ -5,6 +5,7 @@
 #include "../ui_utils.h"
 #include "help_dialog.h"
 #include "../../audio/midi_importer.h"
+#include "src/state/scene_revision.h"
 
 class ProjectPage : public IPage, public IMultiHelpFramesProvider {
  public:
@@ -69,6 +70,7 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   void withAudioGuard(F&& fn) {
       if (audio_guard_) audio_guard_(std::forward<F>(fn));
       else fn();
+      GroovePuterState::markSceneMutated();
   }
   
   void autoRouteMidi();

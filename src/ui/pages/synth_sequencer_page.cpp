@@ -1,4 +1,5 @@
 #include "synth_sequencer_page.h"
+#include "src/state/scene_revision.h"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -128,6 +129,7 @@ class GlobalSynthSettingsPage final : public Container {
   void withAudioGuard(F&& fn) {
     if (audio_guard_) audio_guard_(std::forward<F>(fn));
     else fn();
+    GroovePuterState::markSceneMutated();
   }
 
   int visibleParamCount() const {
