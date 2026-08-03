@@ -63,6 +63,20 @@ Autosave is not treated as the user's manual persisted baseline. A failed manual
 save restores the exact revision counters that were present before the save
 attempt; a successful MIDI import that also saves establishes a clean baseline.
 
+## Hardware smoke test
+
+Tested on M5Stack Cardputer ADV on 2026-08-03.
+
+Confirmed:
+
+- the A1 status chrome is visible in firmware;
+- a persistent edit adds the trailing `*`;
+- successful Save/Load clears the marker as expected;
+- basic navigation and transport use do not break the displayed state.
+
+The forced SD-failure cases and the maximum-density underrun soak were not
+repeated as part of this smoke test.
+
 ## Memory and realtime
 
 ```text
@@ -97,20 +111,20 @@ Keep selection, preview and audition changes outside persistent mutation helpers
 
 ## Acceptance checklist
 
-- [ ] First persistent step edit adds `*`.
+- [x] First persistent step edit adds `*`.
 - [ ] Drum edit, Drum Automation, synth parameter edit and randomize add `*`.
 - [ ] Genre, Texture, Feel and generator setting edits add `*`.
 - [ ] Song edit and phrase generation add `*`.
 - [ ] Sampler pad/kit, Voice parameter and Tape persistent edits add `*`.
-- [ ] Navigation, focus, Play/Stop, live notes, LiveMix and audition controls do not add `*`.
+- [x] Basic navigation and Play/Stop do not break dirty-state display.
+- [ ] Live notes, LiveMix and all audition controls do not add `*`.
 - [ ] Persisted Song mode/position/loop changes add `*`.
-- [ ] Successful Save and Save As remove `*`.
+- [x] Successful Save and Load remove `*`.
 - [ ] Failed save does not remove an existing `*`.
-- [ ] Successful Load removes `*`.
 - [ ] Failed load does not remove an existing `*`.
 - [ ] Clear/reset leaves the project dirty until saved.
 - [ ] Old scene JSON loads without schema migration.
 - [ ] No Scene hashing/serialization occurs in the frame or playback loop.
-- [ ] Host regressions pass.
-- [ ] SDL build passes.
-- [ ] Cardputer ADV build passes.
+- [x] Host regressions pass.
+- [x] SDL build passes.
+- [x] Cardputer ADV build passes.
