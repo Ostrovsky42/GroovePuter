@@ -5,12 +5,19 @@
 
 #include "midi_realtime_word.h"
 #include "scheduled_smf_midi_event.h"
+#include "smf_track_mute.h"
+#include "smf_track_note_ownership.h"
 
 // Single-producer/single-consumer queue for the SmfPlayerTask ->
 // MidiDispatchTask path. Normal NoteOn traffic is shed before the queue becomes
 // full so NoteOff has reserved capacity. If critical cleanup still cannot be
 // queued, the producer invalidates the generation and publishes a fixed panic
 // mailbox; the consumer must release all SMF-owned wire notes for that epoch.
+//
+// Immediate track mute is also consumer-owned. tryPop() records only events
+// that can reach the dispatcher, consumes the bounded mute mailbox, and emits
+// scoped NoteOff events before returning to normal queue traffic. TinyUSB still
+// has one writer and Pattern/PERFORM ownership is untouched.
 class ScheduledSmfMidiEventQueue {
 public:
     static constexpr std::size_t kStorageSize = 128;
@@ -77,11 +84,65 @@ public:
     }
 
     bool tryPop(ScheduledSmfMidiEvent& event) {
-        const uint32_t tail = tail_.loadRelaxed();
-        if (tail == head_.loadAcquire()) return false;
-        event = events_[tail];
-        tail_.storeRelease((tail + 1u) % kStorageSize);
-        return true;
+        for (;;) {
+            if (releaseTrackActive_) {
+                uint8_t channel = 0;
+                uint8_t note = 0;
+                if (activeNotes_.takeNextForTrack(
+                        releaseTrack_, channel, note)) {
+                    event = makeImmediateTrackRelease(
+                        releaseTrack_, channel, note);
+                    immediateTrackReleases_.incrementRelaxed();
+                    return true;
+                }
+                releaseTrackActive_ = false;
+            }
+
+            uint8_t requestedTrack = 0;
+            if (GroovePuterMidi::smfTrackMuteState()
+                    .takePendingReleaseTrack(requestedTrack)) {
+                releaseTrack_ = requestedTrack;
+                releaseTrackActive_ = true;
+                continue;
+            }
+
+            const uint32_t tail = tail_.loadRelaxed();
+            if (tail == head_.loadAcquire()) return false;
+            event = events_[tail];
+            tail_.storeRelease((tail + 1u) % kStorageSize);
+
+            lastPoppedBlockSequence_ = event.blockSequence;
+            lastPoppedFrameOffset_ = event.frameOffset;
+
+            // Stale generations are returned unchanged so the dispatcher keeps
+            // its accepted diagnostics and drop policy. They must not mutate
+            // active ownership: an invalidated NoteOff never reached the wire.
+            if (event.generation != generation_.loadAcquire()) return true;
+
+            const bool noteOn =
+                event.type == ScheduledSmfMidiEventType::NoteOn;
+            if (!GroovePuterMidi::shouldEmitSmfTrackEvent(
+                    noteOn, event.trackIndex)) {
+                mutedNoteOnDrops_.incrementRelaxed();
+                continue;
+            }
+
+            if (noteOn) {
+                // Refuse a NoteOn that cannot be represented by the bounded
+                // ownership table. Dropping before dispatch is safer than
+                // creating a note that immediate mute cannot release.
+                if (!activeNotes_.acquire(
+                        event.trackIndex, event.channel, event.note)) {
+                    ownershipOverflowDrops_.incrementRelaxed();
+                    continue;
+                }
+            } else {
+                // An unmatched NoteOff is still cleanup-critical and is kept.
+                (void)activeNotes_.release(
+                    event.trackIndex, event.channel, event.note);
+            }
+            return true;
+        }
     }
 
     uint32_t invalidateAndRequestPanic() {
@@ -103,6 +164,11 @@ public:
         if (epoch == consumedPanicEpoch_) return false;
         generation = panicGeneration_.loadRelaxed();
         consumedPanicEpoch_ = epoch;
+        // This method is consumed by MidiDispatchTask. The following global
+        // SMF cleanup owns every remaining wire note, so local per-track
+        // ownership must be forgotten without emitting duplicate releases.
+        activeNotes_.clearWithoutRelease();
+        releaseTrackActive_ = false;
         panicRecovery_.incrementRelaxed();
         return true;
     }
@@ -157,6 +223,15 @@ public:
     uint32_t criticalOverflowCount() const { return criticalOverflow_.loadRelaxed(); }
     uint32_t panicRecoveryCount() const { return panicRecovery_.loadRelaxed(); }
     uint32_t invalidEventCount() const { return invalidEvent_.loadRelaxed(); }
+    uint32_t mutedNoteOnDropCount() const {
+        return mutedNoteOnDrops_.loadRelaxed();
+    }
+    uint32_t immediateTrackReleaseCount() const {
+        return immediateTrackReleases_.loadRelaxed();
+    }
+    uint32_t ownershipOverflowDropCount() const {
+        return ownershipOverflowDrops_.loadRelaxed();
+    }
 
 private:
     static bool validData(uint8_t channel, uint8_t note, uint8_t velocity) {
@@ -192,6 +267,26 @@ private:
         return event;
     }
 
+    ScheduledSmfMidiEvent makeImmediateTrackRelease(uint8_t trackIndex,
+                                                     uint8_t channel,
+                                                     uint8_t note) {
+        ScheduledSmfMidiEvent event{};
+        event.type = ScheduledSmfMidiEventType::NoteOff;
+        event.channel = channel;
+        event.note = note;
+        event.velocity = 0;
+        event.trackIndex = trackIndex;
+        // Reusing the latest consumer deadline deliberately makes the release
+        // immediately due (or slightly late). The existing late policy always
+        // dispatches NoteOff and never turns it into a catch-up NoteOn burst.
+        event.blockSequence = lastPoppedBlockSequence_;
+        event.frameOffset = lastPoppedFrameOffset_;
+        event.generation = generation_.loadAcquire();
+        event.publicationSequence = publicationSequence_.incrementRelaxed();
+        event.projectTransportEpoch = 0;
+        return event;
+    }
+
     bool tryPush(const ScheduledSmfMidiEvent& event) {
         const uint32_t head = head_.loadRelaxed();
         const uint32_t next = (head + 1u) % kStorageSize;
@@ -215,7 +310,15 @@ private:
     MidiRealtimeWord transportFailed_;
     MidiRealtimeWord transportFailureEpoch_;
     MidiRealtimeWord transportRecoveryEpoch_;
+    MidiRealtimeWord mutedNoteOnDrops_;
+    MidiRealtimeWord immediateTrackReleases_;
+    MidiRealtimeWord ownershipOverflowDrops_;
+    GroovePuterMidi::SmfTrackNoteOwnership<> activeNotes_;
     uint32_t consumedPanicEpoch_{0};
     uint32_t consumedTransportFailureEpoch_{0};
     uint32_t consumedTransportRecoveryEpoch_{0};
+    uint32_t lastPoppedBlockSequence_{0};
+    uint16_t lastPoppedFrameOffset_{0};
+    uint8_t releaseTrack_{0};
+    bool releaseTrackActive_{false};
 };
