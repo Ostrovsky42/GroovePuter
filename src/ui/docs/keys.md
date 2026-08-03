@@ -34,7 +34,7 @@ Canonical key map for the currently active firmware version.
 
 ```text
 CONTEXT SOURCE STATE BAR CLOCK OUTPUT [LM]
-GEN PAT PLAY B3/4 INT AUD
+GEN PAT PLAY B3/4 INT BOTH
 PLYR SMF ARM B8/128 EXT MIDI
 ```
 
@@ -45,7 +45,7 @@ PLYR SMF ARM B8/128 EXT MIDI
 | `STATE` | `STOP`, `PLAY`, `PAUS`, `ARM`, `LOAD`, `ERR` |
 | `BAR` | текущий такт и активная длина, например `B3/4` |
 | `CLOCK` | `INT` — внутренний clock, `EXT` — SEQTRAK master, `FILE` — tempo map MIDI-файла |
-| `OUTPUT` | `AUD` — внутренний audio engine, `MIDI` — SMF MIDI output |
+| `OUTPUT` | `BOTH` — Pattern/Song идут во внутренний синтез и USB-MIDI sink; `MIDI` — SMF MIDI output |
 | `LM` | LiveMix lock включён |
 
 Status chrome не меняет обработку клавиш. `DIRTY` и точные состояния
