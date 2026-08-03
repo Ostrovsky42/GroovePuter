@@ -213,6 +213,20 @@ def main() -> None:
         transport.index("bool CardputerUsbMidiTransport::writePacket("):
         transport.index("bool CardputerUsbMidiTransport::writeChannelPacket(")
     ]
+    read_packet = transport[
+        transport.index("bool CardputerUsbMidiTransport::readPacket("):
+        transport.index("void CardputerUsbMidiTransport::observeMountState(")
+    ]
+    fifo_owner_assert = "configASSERT(xTaskGetCurrentTaskHandle() == g_dispatchTaskHandle);"
+    require(fifo_owner_assert in read_packet and fifo_owner_assert in write_packet,
+            "TinyUSB MIDI packet FIFOs must be accessed only by MidiDispatchTask")
+    tinyusb_users = [
+        path.relative_to(ROOT).as_posix()
+        for path in ROOT.glob("src/**/*.cpp")
+        if "tud_midi_" in path.read_text(encoding="utf-8")
+    ]
+    require(tinyusb_users == ["src/platform/cardputer_usb_midi_transport.cpp"],
+            "all TinyUSB MIDI calls must remain in the platform transport")
     require("UsbEndpointHealth" in transport and
             "kUsbEndpointStallThresholdMs = 50" in transport and
             "UsbEndpointHealthState::Stalled" in endpoint_health,

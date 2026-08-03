@@ -1255,6 +1255,8 @@ void CardputerUsbMidiTransport::pollSuspendState() const {
 
 bool CardputerUsbMidiTransport::readPacket(midiEventPacket_t& packet) {
     if (!begun_) return false;
+    // TinyUSB MIDI class FIFOs have one owner: MidiDispatchTask.
+    configASSERT(xTaskGetCurrentTaskHandle() == g_dispatchTaskHandle);
     const bool received = tud_midi_packet_read(
         reinterpret_cast<uint8_t*>(&packet));
     if (received) ++diagnostics_.rxPackets;
@@ -1278,6 +1280,8 @@ void CardputerUsbMidiTransport::observeMountState(bool mounted) const {
 }
 
 bool CardputerUsbMidiTransport::writePacket(midiEventPacket_t& packet) {
+    // Keep physical TinyUSB FIFO access in the dispatcher task.
+    configASSERT(xTaskGetCurrentTaskHandle() == g_dispatchTaskHandle);
     ++diagnostics_.txAttempts;
     if (!mounted()) {
         ++diagnostics_.txNotMounted;
