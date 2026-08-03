@@ -6,6 +6,9 @@
 
 enum class SmfSendFailureAction : uint8_t {
     Retry = 0,
+    // Historical name retained for source compatibility. The action means the
+    // event never reached the wire and owns no cleanup responsibility; this is
+    // valid for a NoteOn and for a Song Position Pointer transport intent.
     DropNoteOn,
     BeginCleanup,
 };
@@ -21,7 +24,7 @@ inline constexpr SmfSendFailureAction smfSendFailureAction(
     if (failedAttempts < kSmfSendRetryLimit) {
         return SmfSendFailureAction::Retry;
     }
-    return event.type == ScheduledSmfMidiEventType::NoteOn
-        ? SmfSendFailureAction::DropNoteOn
-        : SmfSendFailureAction::BeginCleanup;
+    return event.type == ScheduledSmfMidiEventType::NoteOff
+        ? SmfSendFailureAction::BeginCleanup
+        : SmfSendFailureAction::DropNoteOn;
 }
