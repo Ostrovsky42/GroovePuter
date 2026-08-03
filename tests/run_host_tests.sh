@@ -9,6 +9,7 @@ mkdir -p "${BUILD_DIR}"
 
 python3 "${ROOT_DIR}/tests/test_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_scene_revision_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_midi_file_manager_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_performance_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_theme_selection_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_usb_midi_source_regressions.py"
@@ -397,3 +398,15 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -o "${BUILD_DIR}/test_scene_revision"
 
 "${BUILD_DIR}/test_scene_revision"
+
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_midi_file_name_policy.cpp" \
+  -o "${BUILD_DIR}/test_midi_file_name_policy"
+
+"${BUILD_DIR}/test_midi_file_name_policy"

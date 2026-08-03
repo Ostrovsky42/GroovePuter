@@ -57,6 +57,7 @@ SOURCES := \
 	../src/ui/layout_manager.cpp \
 	../src/ui/ui_widgets.cpp \
 	../src/ui/ui_clipboard.cpp \
+	../src/ui/midi_file_manager.cpp \
 	../src/ui/pages/help_page.cpp \
 	../src/ui/pages/help_dialog.cpp \
 	../src/ui/pages/tb303_params_page.cpp \

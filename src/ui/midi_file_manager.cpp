@@ -269,13 +269,13 @@ bool MidiFileManager::selectedFileIsInUse() const {
     if (!entry || entry->kind != EntryKind::MidiFile) return false;
     GroovePuterMidi::ISmfPlayerService* player = GroovePuterMidi::smfPlayerService();
     if (!player) return false;
-    const GroovePuterMidi::SmfPlayerSnapshot snapshot = player->snapshot();
-    if (snapshot.state == GroovePuterMidi::SmfPlayerState::Unloaded ||
-        snapshot.state == GroovePuterMidi::SmfPlayerState::Error ||
-        snapshot.filename[0] == '\0') {
+    char selectedPath[kPathBytes]{};
+    char loadedPath[kPathBytes]{};
+    if (!buildPathForEntry(*entry, selectedPath, sizeof(selectedPath)) ||
+        !player->currentFilePath(loadedPath, sizeof(loadedPath))) {
         return false;
     }
-    return equalIgnoreCase(entry->name, basenameOf(snapshot.filename));
+    return equalIgnoreCase(selectedPath, loadedPath);
 }
 
 void MidiFileManager::beginRename() {
