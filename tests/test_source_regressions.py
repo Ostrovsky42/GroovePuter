@@ -390,6 +390,9 @@ def test_project_midi_import_and_persistence_contracts() -> None:
     project = (ROOT / "src/ui/pages/project_page.cpp").read_text(
         encoding="utf-8"
     )
+    midi_manager = (ROOT / "src/ui/midi_file_manager.cpp").read_text(
+        encoding="utf-8"
+    )
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(
         encoding="utf-8"
     )
@@ -429,9 +432,13 @@ def test_project_midi_import_and_persistence_contracts() -> None:
     require("MIDI imported and saved" in import_block,
             "the UI must distinguish persisted imports from save failures")
 
-    require(project.count("GROOVEPUTER_ESCAPE") >= 2 and
-            "navigateUpMidiDir();" in project,
-            "Escape must go to the parent MIDI directory and back from matrix")
+    require("GROOVEPUTER_ESCAPE" in project and
+            "dialog_type_ = DialogType::ImportMidi;" in project,
+            "Escape from the routing matrix must return to MIDI browsing")
+    require("GROOVEPUTER_ESCAPE" in midi_manager and
+            "navigateUp()" in midi_manager and
+            "EntryKind::Parent" in midi_manager,
+            "the shared MIDI manager must own parent-directory navigation")
     require("midi_import_start_pattern_ >= kMaxPatterns" in project,
             "MIDI target selection must support the complete pattern range")
 

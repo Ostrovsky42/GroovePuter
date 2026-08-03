@@ -54,7 +54,7 @@ VoicePage::VoicePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
     : gfx_(gfx), mini_acid_(mini_acid), audio_guard_(audio_guard) {
   // Set OPTIMAL defaults for intelligibility on first open (Sweet Spot)
   // Slower speed and slightly lower pitch help SAM sound clearer on small speakers.
-  withAudioGuard([&]() {
+  withRuntimeAudioGuard([&]() {
     auto& synth = mini_acid_.vocalSynth();
     // Only set if parameters are at their factory-default high values
     if (synth.pitch() > 140.0f && synth.speed() > 1.1f) { 
@@ -287,39 +287,34 @@ void VoicePage::draw(IGfx& gfx) {
 }
 
 void VoicePage::adjustCurrentValue(int delta) {
-  auto& synth = mini_acid_.vocalSynth();
-  
+  if (focus_ == FocusItem::PhraseType) {
+    useCustomPhrase_ = !useCustomPhrase_;
+    phraseIndex_ = 0;
+    return;
+  }
+  if (focus_ == FocusItem::PhraseIndex) {
+    if (useCustomPhrase_) {
+      phraseIndex_ = (phraseIndex_ + delta + MAX_CUSTOM_PHRASES) % MAX_CUSTOM_PHRASES;
+    } else {
+      phraseIndex_ = (phraseIndex_ + delta + NUM_BUILTIN_PHRASES) % NUM_BUILTIN_PHRASES;
+    }
+    return;
+  }
+
   withAudioGuard([&]() {
     switch (focus_) {
-      case FocusItem::PhraseType:
-        useCustomPhrase_ = !useCustomPhrase_;
-        phraseIndex_ = 0; // Reset to first in new category
-        break;
-        
-      case FocusItem::PhraseIndex:
-        if (useCustomPhrase_) {
-          phraseIndex_ = (phraseIndex_ + delta + MAX_CUSTOM_PHRASES) % MAX_CUSTOM_PHRASES;
-        } else {
-          phraseIndex_ = (phraseIndex_ + delta + NUM_BUILTIN_PHRASES) % NUM_BUILTIN_PHRASES;
-        }
-        break;
-        
       case FocusItem::Pitch:
         mini_acid_.adjustParameter(MiniAcidParamId::VoicePitch, delta);
         break;
-        
       case FocusItem::Speed:
         mini_acid_.adjustParameter(MiniAcidParamId::VoiceSpeed, delta);
         break;
-        
       case FocusItem::Robotness:
         mini_acid_.adjustParameter(MiniAcidParamId::VoiceRobotness, delta);
         break;
-        
       case FocusItem::Volume:
         mini_acid_.adjustParameter(MiniAcidParamId::VoiceVolume, delta);
         break;
-        
       default:
         break;
     }
@@ -375,7 +370,7 @@ std::string VoicePage::phoneticTransform(const std::string& input) {
 }
 
 void VoicePage::triggerPreview() {
-  withAudioGuard([&]() {
+  withRuntimeAudioGuard([&]() {
     if (useCustomPhrase_) {
       const char* customPhrase = mini_acid_.vocalSynth().getCustomPhrase(phraseIndex_);
       if (customPhrase && customPhrase[0] != '\0') {
@@ -516,7 +511,7 @@ bool VoicePage::handleEvent(UIEvent& ui_event) {
   
   // M = toggle mute
   if (lowerKey == 'm') {
-    withAudioGuard([&]() {
+    withRuntimeAudioGuard([&]() {
       mini_acid_.toggleVoiceTrackMute();
     });
     return true;
@@ -524,7 +519,7 @@ bool VoicePage::handleEvent(UIEvent& ui_event) {
   
   // S = stop speaking
   if (lowerKey == 's') {
-    withAudioGuard([&]() {
+    withRuntimeAudioGuard([&]() {
       mini_acid_.stopSpeaking();
     });
     return true;

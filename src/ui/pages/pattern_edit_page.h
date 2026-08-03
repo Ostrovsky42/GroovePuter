@@ -4,6 +4,7 @@
 #include "../pages/help_dialog.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
+#include "src/state/scene_revision.h"
 
 class BankSelectionBarComponent;
 class PatternSelectionBarComponent;
@@ -54,6 +55,7 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   void withAudioGuard(F&& fn) {
       if (audio_guard_) audio_guard_(std::forward<F>(fn));
       else fn();
+      GroovePuterState::markSceneMutated();
   }
 
   IGfx& gfx_;

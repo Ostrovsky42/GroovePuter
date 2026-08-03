@@ -1,11 +1,10 @@
 #pragma once
 
-#include <array>
 #include <string>
 #include <utility>
 
 #include "../ui_common.h"
-#include "smf_player_session_state.h"
+#include "../midi_file_manager.h"
 #include "src/midi/smf_player_service.h"
 
 class SmfPlayerPage final : public IPage {
@@ -14,35 +13,13 @@ public:
 
     const std::string& getTitle() const override { return title_; }
     void onEnter(int context) override;
-    void onExit() override { sessionBinding_.setActive(false); }
     bool handleEvent(UIEvent& event) override;
     void drawHeader(IGfx& gfx) override;
     void drawContent(IGfx& gfx) override;
     void drawFooter(IGfx& gfx) override;
 
 private:
-    using BrowserRow = GroovePuterUi::SmfPlayerSessionBrowserRow;
-
-    // The old browser diagnostics wrote synchronously to UART during every
-    // page entry, refresh, and visible-window refill. UI feedback already uses
-    // toasts and the player snapshot, so suppress only those page-local routine
-    // logs. USB/SMF failure diagnostics in platform tasks remain untouched.
-    struct BrowserDiagnosticSink {
-        template <typename... Args>
-        void printf(const char*, Args&&...) const {}
-        void println(const char*) const {}
-    };
-    inline static constexpr BrowserDiagnosticSink Serial{};
-
-    static constexpr int kBrowserVisibleRows =
-        static_cast<int>(GroovePuterUi::kSmfPlayerSessionBrowserRows);
-
-    void refreshFiles();
-    void fillVisibleEntries();
-    bool resolveEntry(int logicalIndex,
-                      std::string& name,
-                      bool& isDirectory) const;
-    bool playSelected();
+    bool loadMidiPath(const char* path);
     bool togglePlayerTransport();
     void toggleGrooveTransport();
     void drawBrowser(IGfx& gfx);
@@ -53,53 +30,19 @@ private:
                              const GroovePuterMidi::SmfPlayerSnapshot& state,
                              const Rect& region,
                              IGfxColor color);
-    void ensureSelectionVisible(int visibleRows);
-    bool navigateIntoDir(const std::string& dirName);
-    bool navigateUpDir();
-    bool hasParentEntry() const;
-    int entryCount() const;
-    bool isDirEntry(int index) const;
-    const char* displayName(int index) const;
 
     MiniAcid& miniAcid_;
     AudioGuard audioGuard_;
     GroovePuterMidi::ISmfPlayerService* player_{nullptr};
     std::string title_{"MIDI PLAYER"};
-    std::string currentPath_{"/midi"};
-    std::array<BrowserRow,
-               GroovePuterUi::kSmfPlayerSessionBrowserRows> browserRows_{};
-    int directoryCount_{0};
-    int fileCount_{0};
-    int totalEntries_{0};
-    int visibleWindowStart_{-1};
-    int selection_{0};
-    int scroll_{0};
-    bool browserStorageReady_{false};
-    GroovePuterUi::SmfPlayerTrackedFlag browserVisible_{
-        GroovePuterUi::SmfPlayerSessionFlag::BrowserVisible, true};
-    GroovePuterUi::SmfPlayerTrackedFlag performanceVisible_{
-        GroovePuterUi::SmfPlayerSessionFlag::PerformanceVisible, false};
-    GroovePuterUi::SmfPlayerTrackedFlag channelInspectorVisible_{
-        GroovePuterUi::SmfPlayerSessionFlag::InspectorVisible, false};
+    bool browserVisible_{true};
+    bool performanceVisible_{false};
+    bool channelInspectorVisible_{false};
     int channelInspectorScroll_{0};
     uint32_t lastMidiVisualEpoch_{0};
     uint32_t lastMidiVisualPulse_{0};
     uint16_t midiWavePhase_{0};
     uint8_t midiWaveEnvelope_{0};
-    GroovePuterUi::SmfPlayerSessionBinding sessionBinding_{
-        currentPath_,
-        browserRows_,
-        directoryCount_,
-        fileCount_,
-        totalEntries_,
-        visibleWindowStart_,
-        browserStorageReady_,
-        selection_,
-        scroll_,
-        channelInspectorScroll_,
-        browserVisible_,
-        performanceVisible_,
-        channelInspectorVisible_};
 
     template <typename F>
     void withAudioGuard(F&& fn) {

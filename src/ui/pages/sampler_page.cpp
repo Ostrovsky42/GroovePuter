@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <algorithm>
 
+#include "src/state/scene_revision.h"
 namespace {
 inline constexpr IGfxColor kFocusColor = IGfxColor(0xB36A00);
 }
@@ -141,42 +142,59 @@ void SamplerPage::adjustFocusedElement(int direction) {
   auto& p = mini_acid_.samplerTrack->pad(current_pad_);
   const auto& files = mini_acid_.sampleIndex.getFiles();
 
+  const uint32_t beforeId = p.id.value;
+  const float beforeVolume = p.volume;
+  const float beforePitch = p.pitch;
+  const uint32_t beforeStart = p.startFrame;
+  const uint32_t beforeEnd = p.endFrame;
+  const bool beforeLoop = p.loop;
+  const bool beforeReverse = p.reverse;
+  const uint8_t beforeChoke = p.chokeGroup;
+  const bool persistentTarget =
+      file_ctrl_->isFocused() || volume_ctrl_->isFocused() ||
+      pitch_ctrl_->isFocused() || start_ctrl_->isFocused() ||
+      end_ctrl_->isFocused() || loop_ctrl_->isFocused() ||
+      reverse_ctrl_->isFocused() || choke_ctrl_->isFocused();
+
   audio_guard_([&]() {
     if (pad_ctrl_->isFocused()) {
       current_pad_ = (current_pad_ + direction + 16) % 16;
     } else if (file_ctrl_->isFocused()) {
       if (files.empty()) return;
-      // Find current index
       int idx = -1;
       for (size_t i = 0; i < files.size(); ++i) {
-          if (files[i].id.value == p.id.value) { idx = i; break; }
+        if (files[i].id.value == p.id.value) { idx = static_cast<int>(i); break; }
       }
-      idx = (idx + direction + files.size()) % files.size();
-      p.id = files[idx].id;
-      // Auto-preload if on main thread? 
-      // Actually store.preload handles it.
-      // Auto-preload handled by setStore
+      idx = (idx + direction + static_cast<int>(files.size())) % static_cast<int>(files.size());
+      p.id = files[static_cast<size_t>(idx)].id;
       mini_acid_.sampleStore->preload(p.id);
     } else if (kit_ctrl_->isFocused()) {
-        openLoadKitDialog();
+      openLoadKitDialog();
     } else if (volume_ctrl_->isFocused()) {
       p.volume = std::clamp(p.volume + direction * 0.05f, 0.0f, 2.0f);
     } else if (pitch_ctrl_->isFocused()) {
       p.pitch = std::clamp(p.pitch + direction * 0.05f, 0.1f, 4.0f);
     } else if (start_ctrl_->isFocused()) {
-      p.startFrame += direction * 500; // rough adjust
-      if ((int)p.startFrame < 0) p.startFrame = 0;
+      p.startFrame += direction * 500;
+      if (static_cast<int>(p.startFrame) < 0) p.startFrame = 0;
     } else if (end_ctrl_->isFocused()) {
       p.endFrame += direction * 500;
-      if ((int)p.endFrame < 0) p.endFrame = 0;
+      if (static_cast<int>(p.endFrame) < 0) p.endFrame = 0;
     } else if (loop_ctrl_->isFocused()) {
       p.loop = !p.loop;
     } else if (reverse_ctrl_->isFocused()) {
       p.reverse = !p.reverse;
     } else if (choke_ctrl_->isFocused()) {
-      p.chokeGroup = (p.chokeGroup + direction + 16) % 16;
+      p.chokeGroup = static_cast<uint8_t>((p.chokeGroup + direction + 16) % 16);
     }
   });
+
+  const bool changed =
+      p.id.value != beforeId || p.volume != beforeVolume ||
+      p.pitch != beforePitch || p.startFrame != beforeStart ||
+      p.endFrame != beforeEnd || p.loop != beforeLoop ||
+      p.reverse != beforeReverse || p.chokeGroup != beforeChoke;
+  if (persistentTarget && changed) GroovePuterState::markSceneMutated();
 }
 
 void SamplerPage::prelisten() {
@@ -278,6 +296,7 @@ void SamplerPage::loadKit(const std::string& kitName) {
             }
         }
     });
+    GroovePuterState::markSceneMutated();
     
     kit_ctrl_->setValue(kitName);
     closeDialog();

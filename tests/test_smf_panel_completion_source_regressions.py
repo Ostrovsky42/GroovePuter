@@ -18,71 +18,32 @@ def function_block(source: str, start_token: str, end_token: str) -> str:
 def main() -> None:
     page_h = (ROOT / "src/ui/pages/smf_player_page.h").read_text(encoding="utf-8")
     page_cpp = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(encoding="utf-8")
-    session = (ROOT / "src/ui/pages/smf_player_session_state.h").read_text(encoding="utf-8")
-    redraw = (ROOT / "src/ui/pages/smf_player_redraw.h").read_text(encoding="utf-8")
-    layout = (ROOT / "src/ui/layout_manager.cpp").read_text(encoding="utf-8")
+    manager_h = (ROOT / "src/ui/midi_file_manager.h").read_text(encoding="utf-8")
+    manager_cpp = (ROOT / "src/ui/midi_file_manager.cpp").read_text(encoding="utf-8")
     player_service = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(encoding="utf-8")
     dispatcher = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
     smf_queue = (ROOT / "src/midi/scheduled_smf_midi_event_queue.h").read_text(encoding="utf-8")
 
-    require("SmfPlayerSessionBinding sessionBinding_" in page_h,
-            "SMF page must bind bounded state to its object lifetime")
-    require("void onExit() override { sessionBinding_.setActive(false); }" in page_h,
-            "cached previous pages must stop intercepting redraw after exit")
-    require(page_h.count("SmfPlayerTrackedFlag") == 3,
-            "browser, performance and inspector visibility must be session tracked")
-    for token in (
-        "currentPath_",
-        "browserRows_",
-        "directoryCount_",
-        "fileCount_",
-        "totalEntries_",
-        "visibleWindowStart_",
-        "browserStorageReady_",
-        "selection_",
-        "scroll_",
-        "channelInspectorScroll_",
-    ):
-        require(token in page_h, f"session binding must retain {token}")
-
-    require("bool valid{false};" in session and
-            "activationEpoch_" in session and
-            "ignoreNextAssignment_" in session,
-            "session restore must distinguish first entry from a restored page")
-    require("~SmfPlayerSessionBinding()" in session and
-            "publish();" in session and
-            "setActive(false)" in session,
-            "page eviction must publish the final bounded session")
-    require("kSmfPlayerSessionBrowserRows = 7" in session and
-            "SmfPlayerSessionBrowserRow" in session and
-            "sizeof(SmfPlayerSessionSnapshot) <= 512" in session,
-            "browser session cache must remain seven rows and under 512 bytes")
-    require("using BrowserRow = GroovePuterUi::SmfPlayerSessionBrowserRow" in page_h and
-            "GroovePuterUi::kSmfPlayerSessionBrowserRows" in page_h,
-            "page and session must share one bounded browser-row contract")
-    for forbidden in ("std::vector", "std::map", "new ", "malloc("):
-        require(forbidden not in session,
-                f"session state must remain bounded: {forbidden}")
-
-    require("interceptSmfPlayerContentClear" in layout,
-            "LayoutManager must delegate the active SMF page clear policy")
-    require("if (!session.active()) return false;" in redraw,
-            "partial redraw must never affect another active page")
-    require("activationEpoch != activationEpoch_" in redraw,
-            "re-entering the page must force one safe full frame")
-    require("clearLine(gfx, 3);" in redraw,
-            "progress and wave animation must refresh only its bounded row")
-    require("current.currentTick != previous_.currentTick" in redraw and
-            "clearLine(gfx, 4);" in redraw,
-            "progress text must invalidate its own row instead of full content")
-    require("Layout::CONTENT.w" in redraw and
-            "Layout::LINE_HEIGHT + 2" in redraw,
-            "dirty clears must use bounded content-row rectangles")
+    require("midi_file_manager.h" in page_h,
+            "SMF page must use the shared bounded MIDI browser")
+    require("midiFileManager().open()" in page_cpp,
+            "SMF browser must initialize through the shared manager lifecycle")
+    require("midiFileManager().handleEvent" in page_cpp and
+            "midiFileManager().draw" in page_cpp,
+            "SMF browser input and rendering must share one manager")
+    require("static_assert(sizeof(MidiFileManager) <= 4096" in manager_h and
+            "std::array<Entry, kMaxEntries> entries_" in manager_h,
+            "shared MIDI browser must retain a bounded DRAM contract")
+    require("void MidiFileManager::open()" in manager_cpp and
+            "bool MidiFileManager::refresh()" in manager_cpp,
+            "shared MIDI browser must own its refresh lifecycle")
+    require("BrowserRow" not in page_h and "refreshFiles" not in page_h,
+            "SMF page must not retain a second browser cache")
 
     draw_block = function_block(
         page_cpp,
         "void SmfPlayerPage::drawHeader",
-        "void SmfPlayerPage::ensureSelectionVisible",
+        "void SmfPlayerPage::drawBrowser",
     )
     for forbidden in (
         "SD.open",
@@ -94,17 +55,8 @@ def main() -> None:
     ):
         require(forbidden not in draw_block,
                 f"SMF draw path must not traverse storage: {forbidden}")
-    require("browserRows_" in page_h and
-            "kSmfPlayerSessionBrowserRows" in page_h,
-            "browser rendering must use the shared bounded visible-row cache")
-    require(not (ROOT / "src/ui/pages/smf_directory_cache.h").exists(),
-            "completion must not retain an unused second directory-cache architecture")
-
-    require("BrowserDiagnosticSink" in page_h and
-            "inline static constexpr BrowserDiagnosticSink Serial" in page_h,
-            "routine page-local browser UART logging must be suppressed")
     require("::Serial" not in page_cpp,
-            "SMF page must not bypass its page-local diagnostic policy")
+            "SMF page must not write routine browser diagnostics directly")
 
     guard_block = page_h[page_h.index("template <typename F>"):]
     require("gfx" not in guard_block and "draw" not in guard_block,

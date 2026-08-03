@@ -189,6 +189,17 @@ SmfChannelInspectorSnapshot CardputerSmfPlayerService::channelInspector() const 
     return copy;
 }
 
+bool CardputerSmfPlayerService::currentFilePath(
+        char* output,
+        std::size_t outputSize) const {
+    if (!output || outputSize == 0) return false;
+    portENTER_CRITICAL(&snapshotMux_);
+    copyText(output, outputSize, loadedPath_);
+    const bool available = loadedPath_[0] != '\0';
+    portEXIT_CRITICAL(&snapshotMux_);
+    return available;
+}
+
 bool CardputerSmfPlayerService::SdByteSource::open(const char* path) {
     close();
     file_ = SD.open(path, FILE_READ);
@@ -790,17 +801,24 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
     timingDocument_.events.clear();
     portENTER_CRITICAL(&snapshotMux_);
     channelInspector_ = SmfChannelInspectorSnapshot{};
+    loadedPath_[0] = '\0';
     portEXIT_CRITICAL(&snapshotMux_);
 
     if (!source_.open(path)) {
         publishSnapshot(SmfPlayerState::Error, "Cannot open MIDI");
         return false;
     }
+    portENTER_CRITICAL(&snapshotMux_);
+    copyText(loadedPath_, sizeof(loadedPath_), path);
+    portEXIT_CRITICAL(&snapshotMux_);
 
     const SmfIndexResult indexed = SmfFileIndexer::build(source_);
     if (!indexed.ok()) {
         publishSnapshot(SmfPlayerState::Error, SmfParser::errorString(indexed.error));
         source_.close();
+        portENTER_CRITICAL(&snapshotMux_);
+        loadedPath_[0] = '\0';
+        portEXIT_CRITICAL(&snapshotMux_);
         return false;
     }
     fileIndex_ = indexed.index;
@@ -812,6 +830,9 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
     if (!stream_.open(source_, fileIndex_)) {
         publishSnapshot(SmfPlayerState::Error, "Stream init failed");
         source_.close();
+        portENTER_CRITICAL(&snapshotMux_);
+        loadedPath_[0] = '\0';
+        portEXIT_CRITICAL(&snapshotMux_);
         return false;
     }
 
@@ -840,6 +861,9 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
             if (timingDocument_.events.size() >= kMaxTimingEvents) {
                 publishSnapshot(SmfPlayerState::Error, "Too many tempo events");
                 source_.close();
+                portENTER_CRITICAL(&snapshotMux_);
+                loadedPath_[0] = '\0';
+                portEXIT_CRITICAL(&snapshotMux_);
                 return false;
             }
             timingDocument_.events.push_back(event.event);
@@ -851,11 +875,17 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
     if (!foundMusic) {
         publishSnapshot(SmfPlayerState::Error, "MIDI has no notes");
         source_.close();
+        portENTER_CRITICAL(&snapshotMux_);
+        loadedPath_[0] = '\0';
+        portEXIT_CRITICAL(&snapshotMux_);
         return false;
     }
     if (!timing_.build(timingDocument_)) {
         publishSnapshot(SmfPlayerState::Error, "Timing map failed");
         source_.close();
+        portENTER_CRITICAL(&snapshotMux_);
+        loadedPath_[0] = '\0';
+        portEXIT_CRITICAL(&snapshotMux_);
         return false;
     }
 
@@ -877,6 +907,7 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
 
     portENTER_CRITICAL(&snapshotMux_);
     copyText(snapshot_.filename, sizeof(snapshot_.filename), basename(path));
+    copyText(loadedPath_, sizeof(loadedPath_), path);
     snapshot_.endTick = endTick_;
     snapshot_.totalBars = timing_.barBeatForTick(endTick_).bar;
     snapshot_.rawRouting = routingMode_ == SmfRoutingMode::Raw;

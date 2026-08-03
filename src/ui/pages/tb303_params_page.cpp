@@ -1,3 +1,4 @@
+#include "src/state/scene_revision.h"
 #if defined(ARDUINO)
 #include <Arduino.h>
 #else
@@ -69,6 +70,7 @@ class TB303ParamsPage::KnobComponent : public FocusableComponent {
 
   void setValue(int direction) {
     engine_.adjustSynthParameter(voice_index_, knob_index_, direction);
+    GroovePuterState::markSceneMutated();
   }
 
   bool handleEvent(UIEvent& ui_event) override {

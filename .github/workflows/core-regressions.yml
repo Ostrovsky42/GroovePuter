@@ -20,6 +20,23 @@ jobs:
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 
+      - name: Run UI status chrome tests
+        run: |
+          python3 tests/test_ui_status_chrome_source_regressions.py
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_ui_status_chrome.cpp \
+            -o build/host-tests/test_ui_status_chrome
+          build/host-tests/test_ui_status_chrome
+
+      - name: Run dirty-region display tests
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_dirty_tile_tracker.cpp \
+            -o build/host-tests/test_dirty_tile_tracker
+          build/host-tests/test_dirty_tile_tracker
+
   sdl-build:
     runs-on: ubuntu-latest
     steps:
