@@ -53,6 +53,7 @@ private:
   std::unique_ptr<IPage> createPage_(int index);
   IPage* getPage_(int index); // Returns existing or creates on-demand
   void transitionToPage_(int index, int context = 0);
+  void switchWorkflow_(int direction);
 
   // Lightweight on desktop; on Cardputer this restores schema-v1/v2 MIDI
   // transport controls before the first user event.
