@@ -3,7 +3,7 @@ name: Apply SMF immediate release
 on:
   push:
     branches:
-      - feature/midi-lifecycle-panel-performance
+      - feature/midi-lifecycle-panel-performance-completion
     paths:
       - .github/workflows/apply-smf-immediate-release.yml
 
@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: feature/midi-lifecycle-panel-performance
+          ref: feature/midi-lifecycle-panel-performance-completion
           fetch-depth: 0
 
       - name: Configure identity
@@ -122,4 +122,4 @@ jobs:
           git commit -m "chore: remove SMF immediate release workflow"
 
       - name: Push branch
-        run: git push origin HEAD:feature/midi-lifecycle-panel-performance
+        run: git push origin HEAD:feature/midi-lifecycle-panel-performance-completion
