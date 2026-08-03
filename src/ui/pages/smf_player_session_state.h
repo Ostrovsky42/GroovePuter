@@ -112,7 +112,7 @@ inline SmfPlayerSessionState& smfPlayerSessionState() {
 // Bool-compatible page field that mirrors visibility changes into the bounded
 // session snapshot. The restored browser view ignores exactly one assignment:
 // SmfPlayerPage::onEnter() derives a default from player state, but must not
-// overwrite a valid user session after page eviction.
+// overwrite a valid user session after page eviction or a cached-page return.
 class SmfPlayerTrackedFlag {
 public:
     SmfPlayerTrackedFlag(SmfPlayerSessionFlag flag, bool defaultValue)
@@ -135,6 +135,10 @@ public:
     void restore(bool value, bool ignoreNextAssignment = false) {
         value_ = value;
         ignoreNextAssignment_ = ignoreNextAssignment;
+    }
+
+    void ignoreNextAssignment() {
+        ignoreNextAssignment_ = true;
     }
 
     bool value() const { return value_; }
@@ -200,7 +204,13 @@ public:
     }
 
     void setActive(bool active) {
-        if (!active) publish();
+        if (!active) {
+            publish();
+            // onEnter() always writes its default browser mode. Ignore that
+            // first assignment when returning to a cached page so the user's
+            // current browser/player choice survives ordinary navigation too.
+            browserVisible_.ignoreNextAssignment();
+        }
         smfPlayerSessionState().setActive(active);
     }
 
