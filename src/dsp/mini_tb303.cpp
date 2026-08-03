@@ -76,6 +76,7 @@ void TB303Voice::reset() {
   
   phase = 0.0f;
   phaseAcc_ = 0;
+  subPhaseAcc_ = 0;
   for (int i = 0; i < kSuperSawOscCount; ++i) {
     float seed = (static_cast<float>(i) + 1.0f) * 0.137f;
     superPhases[i] = seed - floorf(seed);
@@ -143,18 +144,17 @@ float TB303Voice::oscPulse() {
 }
 
 float TB303Voice::oscSub() {
-  // Saw + Sub octave square
+  // Saw + sub-octave square with per-voice fixed-point phase state.
+  constexpr float kPhaseScale = 4294967296.0f / (float)kSampleRate;
+  uint32_t phaseInc = static_cast<uint32_t>(freq * kPhaseScale);
+  uint32_t subInc = static_cast<uint32_t>((freq * 0.5f) * kPhaseScale);
+
   float saw = Wavetable::lookupSaw(phaseAcc_);
-  
-  static uint32_t subPhase = 0;
-  uint32_t subInc = static_cast<uint32_t>((freq * 0.5f) * (4294967296.0f / (float)kSampleRate));
-  subPhase += subInc;
-  
-  float sub = Wavetable::lookupSquare(subPhase);
-  
-  uint32_t phaseInc = static_cast<uint32_t>(freq * 190359.1689f);
+  float sub = Wavetable::lookupSquare(subPhaseAcc_);
+
   phaseAcc_ += phaseInc;
-  
+  subPhaseAcc_ += subInc;
+
   return saw * 0.7f + sub * 0.3f;
 }
 
