@@ -1,0 +1,272 @@
+name: Amend USB MIDI TX density stress
+
+on:
+  pull_request:
+    branches:
+      - agent/bootstrap-usb-midi-tx-density-amend
+
+permissions:
+  contents: write
+
+jobs:
+  amend-validate-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout amend workflow
+        uses: actions/checkout@v4
+        with:
+          ref: agent/bootstrap-usb-midi-tx-density-amend
+          path: bootstrap
+          fetch-depth: 1
+
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/usb-midi-tx-density-stress
+          path: work
+          fetch-depth: 0
+
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Apply review fixes
+        working-directory: work
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def read(path: str) -> str:
+              return Path(path).read_text(encoding="utf-8").replace("\r\n", "\n")
+
+          def write(path: str, text: str) -> None:
+              Path(path).write_text(text, encoding="utf-8")
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one match, found {count}")
+              return text.replace(old, new, 1)
+
+          stress_path = "src/platform/cardputer_usb_midi_tx_stress.cpp"
+          stress = read(stress_path)
+
+          timer_start = stress.index("void txStressTimerCallback(void*) {")
+          timer_end = stress.index("\nbool startTxStressTimer", timer_start)
+          timer = r'''void txStressTimerCallback(void*) {
+              TxStressPacket packet{};
+              bool enqueue = false;
+
+              portENTER_CRITICAL(&g_txStressMux);
+              if (g_txStress.ready && g_txStress.active) {
+                  packet.generation = g_txStress.generation;
+                  packet.noteOn = g_txStress.nextNoteOn;
+                  enqueue = true;
+              }
+              portEXIT_CRITICAL(&g_txStressMux);
+
+              if (!enqueue || g_txStressQueue == nullptr) return;
+
+              const bool queued =
+                  xQueueSend(g_txStressQueue, &packet, 0) == pdPASS;
+              portENTER_CRITICAL(&g_txStressMux);
+              if (g_txStress.active &&
+                  packet.generation == g_txStress.generation) {
+                  if (queued) {
+                      g_txStress.nextNoteOn = !packet.noteOn;
+                  } else {
+                      ++g_txStress.rejected;
+                  }
+              }
+              portEXIT_CRITICAL(&g_txStressMux);
+
+              if (g_notifyDispatcher != nullptr) {
+                  g_notifyDispatcher();
+              }
+          }
+          '''
+          stress = stress[:timer_start] + timer + stress[timer_end:]
+
+          enabled_start = stress.index("bool setCardputerUsbMidiTxStressEnabled(bool enabled) {")
+          enabled_end = stress.index("\nbool stepCardputerUsbMidiTxStressRate", enabled_start)
+          enabled = r'''bool setCardputerUsbMidiTxStressEnabled(bool enabled) {
+              bool ready = false;
+              bool alreadyInState = false;
+              portENTER_CRITICAL(&g_txStressMux);
+              ready = g_txStress.ready;
+              alreadyInState = g_txStress.active == enabled;
+              portEXIT_CRITICAL(&g_txStressMux);
+              if (!ready) return false;
+              if (alreadyInState) return true;
+
+              stopTxStressTimer();
+              const uint64_t nowUs = txStressNowUs();
+              uint16_t rate = 0;
+              portENTER_CRITICAL(&g_txStressMux);
+              if (enabled) {
+                  markTxStressReconfiguredLocked(true, nowUs);
+              } else {
+                  ++g_txStress.generation;
+                  g_txStress.active = false;
+                  g_txStress.nextNoteOn = true;
+                  g_txStress.cleanupPending = true;
+                  g_txStress.stoppedAtUs = nowUs;
+              }
+              rate = txStressRateLocked();
+              portEXIT_CRITICAL(&g_txStressMux);
+
+              if (enabled && !startTxStressTimer(rate)) {
+                  portENTER_CRITICAL(&g_txStressMux);
+                  g_txStress.active = false;
+                  g_txStress.stoppedAtUs = txStressNowUs();
+                  portEXIT_CRITICAL(&g_txStressMux);
+                  if (g_notifyDispatcher != nullptr) g_notifyDispatcher();
+                  return false;
+              }
+
+              if (g_notifyDispatcher != nullptr) g_notifyDispatcher();
+              return true;
+          }
+          '''
+          stress = stress[:enabled_start] + enabled + stress[enabled_end:]
+          write(stress_path, stress)
+
+          transport_path = "src/platform/cardputer_usb_midi_transport.cpp"
+          transport = read(transport_path)
+          transport = replace_once(
+              transport,
+              """    if (!beginCardputerUsbMidiTxStress(notifyDispatcher)) {
+                  g_patternQueue = nullptr;
+                  g_externalTransportQueue = nullptr;
+                  return false;
+              }
+          """,
+              """    if (!beginCardputerUsbMidiTxStress(notifyDispatcher)) {
+                  Serial.println("[USB-MIDI] TX stress diagnostics unavailable");
+              }
+          """,
+              "optional diagnostic initialization")
+          write(transport_path, transport)
+
+          docs_path = "docs/tests/USB_MIDI_TX_DENSITY_STRESS.md"
+          docs = read(docs_path)
+          docs = replace_once(
+              docs,
+              "`STABLE` continues increasing while no mounted-endpoint rejection has occurred.\nIt freezes at the first `EP=BUSY` event so rates can be compared.\n",
+              "`STABLE` continues increasing while no mounted-endpoint rejection has occurred.\nIt freezes at the first `EP=BUSY` event so rates can be compared. Stopping the\nstream preserves the displayed counters until Reset or a rate change.\n",
+              "document stopped-counter behavior")
+          docs = replace_once(
+              docs,
+              "- [ ] Changing rate resets OK, REJECT, EP=BUSY and STABLE.\n",
+              "- [ ] Changing rate resets OK, REJECT, EP=BUSY and STABLE.\n- [ ] Stopping preserves counters for inspection until Reset or a rate change.\n",
+              "document stopped-counter acceptance")
+          write(docs_path, docs)
+
+          test_path = "tests/test_usb_midi_source_regressions.py"
+          tests = read(test_path)
+          start = tests.index('    require("g_output.handleMusicalEvent" in transport,')
+          end = tests.index('    require("publishCardputerUsbMidiBlockAnchor" in service', start)
+          block = '''    require("g_output.handleMusicalEvent" in transport,
+                  "the dispatcher must own UsbMidiOutput event delivery")
+              require("CardputerUsbMidiTxStressSnapshot" in service and
+                      "setCardputerUsbMidiTxStressEnabled" in service and
+                      "stepCardputerUsbMidiTxStressRate" in service,
+                      "TX density diagnostics must expose a bounded runtime control API")
+              require("kTxStressRates[] = {50, 100, 200, 400, 800}" in tx_stress,
+                      "TX stress rates must stay at the agreed diagnostic steps")
+              require("esp_timer_create" in tx_stress and
+                      "xQueueSend(g_txStressQueue" in tx_stress and
+                      "xQueueReceive(g_txStressQueue" in tx_stress,
+                      "the stress producer must enqueue through a bounded timer-fed queue")
+              timer_callback = tx_stress[
+                  tx_stress.index("void txStressTimerCallback"):
+                  tx_stress.index("bool startTxStressTimer")
+              ]
+              require("sendNoteOn" not in timer_callback and
+                      "sendNoteOff" not in timer_callback and
+                      "tud_midi_" not in tx_stress,
+                      "the stress generator must never write USB outside MidiDispatchTask")
+              require("drainCardputerUsbMidiTxStress(g_transport)" in transport,
+                      "the sole dispatcher must drain the diagnostic queue")
+              require("TX stress diagnostics unavailable" in transport,
+                      "optional diagnostics allocation must not disable the normal MIDI sink")
+              enabled_function = tx_stress[
+                  tx_stress.index("bool setCardputerUsbMidiTxStressEnabled"):
+                  tx_stress.index("bool stepCardputerUsbMidiTxStressRate")
+              ]
+              require("markTxStressReconfiguredLocked(enabled" not in enabled_function and
+                      "g_txStress.stoppedAtUs = nowUs" in enabled_function,
+                      "stopping the stress stream must preserve measurement counters")
+              require("USB TX STRESS" in project_page and
+                      "EP=BUSY" in project_page and
+                      "STABLE %us" in project_page and
+                      "ui_event.ctrl && ui_event.alt" in project_page,
+                      "Project diagnostics must expose the hidden TX stress status screen")
+              require("tud_midi_" not in project_page,
+                      "UI code must remain independent from TinyUSB")
+          '''
+          tests = tests[:start] + block + tests[end:]
+          write(test_path, tests)
+          PY
+
+      - name: Format changed lines
+        working-directory: work
+        run: |
+          if ! command -v clang-format >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y clang-format
+          fi
+          clang-format -i \
+            src/platform/cardputer_usb_midi_service.h \
+            src/platform/cardputer_usb_midi_tx_stress.h \
+            src/platform/cardputer_usb_midi_tx_stress.cpp
+          clang-format -i \
+            -lines=885:950 \
+            -lines=1335:1370 \
+            src/platform/cardputer_usb_midi_transport.cpp
+          clang-format -i \
+            -lines=370:410 \
+            -lines=915:995 \
+            -lines=1465:1560 \
+            src/ui/pages/project_page.cpp
+          clang-format -i -lines=1:115 src/ui/pages/project_page.h
+
+      - name: Validate source and host regressions
+        working-directory: work
+        run: |
+          python3 tests/test_usb_midi_source_regressions.py
+          bash tests/run_host_tests.sh
+          git diff --check
+
+      - name: Install pinned Cardputer dependencies
+        working-directory: work
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV
+        working-directory: work
+        run: bash scripts/build.sh --warnings all
+
+      - name: Amend the single feature commit
+        working-directory: work
+        run: |
+          git config user.name "OpenAI"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            docs/tests/USB_MIDI_TX_DENSITY_STRESS.md \
+            src/platform/cardputer_usb_midi_service.h \
+            src/platform/cardputer_usb_midi_transport.cpp \
+            src/platform/cardputer_usb_midi_tx_stress.cpp \
+            src/platform/cardputer_usb_midi_tx_stress.h \
+            src/ui/pages/project_page.cpp \
+            src/ui/pages/project_page.h \
+            tests/test_usb_midi_source_regressions.py
+          git commit --amend --no-edit
+          git push --force-with-lease origin \
+            HEAD:refs/heads/agent/usb-midi-tx-density-stress
+
+      - name: Remove temporary branches
+        if: success()
+        working-directory: work
+        run: |
+          git push origin --delete agent/bootstrap-usb-midi-tx-density-amend || true
+          git push origin --delete agent/trigger-usb-midi-tx-density-amend || true
