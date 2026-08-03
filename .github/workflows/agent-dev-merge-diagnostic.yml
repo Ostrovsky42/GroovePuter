@@ -1,0 +1,31 @@
+name: Diagnose fix_TB303 dev merge
+
+on:
+  push:
+    branches:
+      - fix_TB303
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Inspect merge conflicts
+        run: |
+          git fetch origin dev
+          git config user.name "merge-diagnostic"
+          git config user.email "merge-diagnostic@users.noreply.github.com"
+          git merge --no-commit --no-ff origin/dev || true
+          echo '=== UNMERGED FILES ==='
+          git diff --name-only --diff-filter=U
+          echo '=== CONFLICT HUNKS ==='
+          for f in $(git diff --name-only --diff-filter=U); do
+            echo "--- $f ---"
+            git checkout --conflict=diff3 -- "$f" || true
+            grep -n -B4 -A8 -E '^(<<<<<<<|\|\|\|\|\|\|\||=======|>>>>>>>)' "$f" || true
+          done
