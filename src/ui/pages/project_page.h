@@ -3,6 +3,7 @@
 #include "../ui_core.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
+#include "../midi_file_manager.h"
 #include "help_dialog.h"
 #include "../../audio/midi_importer.h"
 #include "src/state/scene_revision.h"
@@ -14,7 +15,7 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   void onEnter(int context = 0) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string & getTitle() const override;
-  
+
   std::unique_ptr<MultiPageHelpDialog> getHelpDialog() override;
   int getHelpFrameCount() const override;
   void drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const override;
@@ -26,10 +27,10 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   enum class DialogFocus { List = 0, Cancel };
   enum class SaveDialogFocus { Input = 0, Randomize, Save, Cancel };
   enum class MidiImportProfile { Clean = 0, Loud };
-  enum class MidiAdvanceFocus { 
-      Mode = 0, 
-      StartPattern, AutoFind, 
-      FromBar, LengthBars, 
+  enum class MidiAdvanceFocus {
+      Mode = 0,
+      StartPattern, AutoFind,
+      FromBar, LengthBars,
       TrackMap,
       Import, Cancel,
       Count
@@ -50,12 +51,6 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   void randomizeSaveName();
   bool saveCurrentScene();
   bool createNewScene();
-  void refreshMidiFiles();
-  bool navigateIntoMidiDir(const std::string& dirName);
-  bool navigateUpMidiDir();
-  bool isMidiDirEntry(int index) const;
-  int midiDirCount() const { return (int)midi_dirs_.size(); }
-  const char* midiDisplayName(int index) const;
   void openImportMidiDialog();
   void openMidiAdvanceDialog();
   bool importMidiAtSelection();
@@ -72,7 +67,7 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
       else fn();
       GroovePuterState::markSceneMutated();
   }
-  
+
   void autoRouteMidi();
 
   IGfx& gfx_;
@@ -89,21 +84,19 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   int main_scroll_ = 0;
   bool loadError_;
   std::vector<std::string> scenes_;
-  std::vector<std::string> midi_dirs_;
-  std::vector<std::string> midi_files_;
-  std::string midi_current_path_ = "/midi";
+  std::string midi_selected_path_;
   MidiImporter::ScanResult midi_scan_;
   int midi_import_start_pattern_ = 0;
   int midi_import_from_bar_ = 0;
   int midi_import_length_bars_ = 16;
   MidiImportProfile midi_import_profile_ = MidiImportProfile::Loud;
-  
+
   // Matrix Routing Masks
   uint16_t midi_mask_a_ = 0;
   uint16_t midi_mask_b_ = 0;
   uint16_t midi_mask_d_ = 0;
   int midi_map_cursor_ = 0; // 0-15, for TrackMap navigation
-  
+
   bool midi_import_append_ = false;
   int midi_adv_scroll_ = 0;
   std::string save_name_;
