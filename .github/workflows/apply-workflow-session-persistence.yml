@@ -1,0 +1,42 @@
+name: Apply workflow session persistence
+
+on:
+  push:
+    branches:
+      - feature/workflow-session-persistence
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/workflow-session-persistence
+          fetch-depth: 0
+
+      - name: Apply production patch
+        run: python3 tools/apply_workflow_session_persistence.py
+
+      - name: Run focused regressions
+        run: |
+          python3 tests/test_ui_session_source_regressions.py
+          python3 tests/test_theme_selection_source_regressions.py
+          python3 tests/test_scene_revision_source_regressions.py
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_ui_session_state.cpp \
+            -o build/host-tests/test_ui_session_state
+          build/host-tests/test_ui_session_state
+
+      - name: Commit production diff
+        run: |
+          rm -f tools/apply_workflow_session_persistence.py
+          rm -f .github/workflows/apply-workflow-session-persistence.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: remember workflows and persist device session"
+          git push origin HEAD:feature/workflow-session-persistence
