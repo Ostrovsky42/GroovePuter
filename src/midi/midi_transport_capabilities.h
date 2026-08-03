@@ -2,7 +2,10 @@
 #ifndef GROOVEPUTER_MIDI_TRANSPORT_CAPABILITIES_H
 #define GROOVEPUTER_MIDI_TRANSPORT_CAPABILITIES_H
 
+#include <atomic>
 #include <cstdint>
+
+#include "midi_companion_settings.h"
 
 namespace GroovePuterMidi {
 
@@ -57,8 +60,73 @@ constexpr MidiTransportCapabilities seqtrakValidatedTransportCapabilities() {
     return capabilities;
 }
 
+// CUSTOM does not imply standards compliance. Keep the validated Clock/Start/
+// Stop surface and restart fallback until explicit per-device capabilities are
+// introduced; silently enabling F2/FB here would recreate the false capability
+// claim this stage is intended to avoid.
+constexpr MidiTransportCapabilities conservativeCustomTransportCapabilities() {
+    MidiTransportCapabilities capabilities{};
+    capabilities.clockTx = true;
+    capabilities.startTx = true;
+    capabilities.stopTx = true;
+    capabilities.continueBehavior = MidiContinueBehavior::RestartFromBeginning;
+    return capabilities;
+}
+
+constexpr MidiTransportCapabilities midiTransportCapabilitiesForProfile(
+        MidiDeviceProfile profile) {
+    switch (profile) {
+        case MidiDeviceProfile::SeqtrakNative:
+            return seqtrakValidatedTransportCapabilities();
+        case MidiDeviceProfile::GeneralMidi:
+            return genericClassCompliantTransportCapabilities();
+        case MidiDeviceProfile::Custom:
+            return conservativeCustomTransportCapabilities();
+    }
+    return conservativeCustomTransportCapabilities();
+}
+
+class MidiTransportCapabilityRuntime {
+public:
+    void setDeviceProfile(MidiDeviceProfile profile) {
+        profile_.store(static_cast<uint8_t>(profile),
+                       std::memory_order_release);
+    }
+
+    MidiDeviceProfile deviceProfile() const {
+        const uint8_t raw = profile_.load(std::memory_order_acquire);
+        if (raw > static_cast<uint8_t>(MidiDeviceProfile::Custom)) {
+            return MidiDeviceProfile::SeqtrakNative;
+        }
+        return static_cast<MidiDeviceProfile>(raw);
+    }
+
+    MidiTransportCapabilities capabilities() const {
+        return midiTransportCapabilitiesForProfile(deviceProfile());
+    }
+
+private:
+    std::atomic<uint8_t> profile_{
+        static_cast<uint8_t>(MidiDeviceProfile::SeqtrakNative)};
+};
+
+inline MidiTransportCapabilityRuntime& midiTransportCapabilityRuntime() {
+    static MidiTransportCapabilityRuntime runtime;
+    return runtime;
+}
+
 constexpr uint16_t clampSongPositionPointer(uint32_t midiBeats) {
     return midiBeats > 0x3FFFu ? 0x3FFFu : static_cast<uint16_t>(midiBeats);
+}
+
+constexpr uint16_t songPositionPointerFromPpqnTicks(uint32_t ticks,
+                                                    uint16_t ppqn) {
+    if (ppqn == 0) return 0;
+    // One MIDI Song Position Pointer beat is one sixteenth note, or one quarter
+    // note divided by four. Integer truncation intentionally snaps down to the
+    // last complete sixteenth-note boundary.
+    return clampSongPositionPointer(
+        (static_cast<uint64_t>(ticks) * 4u) / ppqn);
 }
 
 constexpr uint8_t songPositionPointerLsb(uint16_t midiBeats) {
