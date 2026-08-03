@@ -8,55 +8,55 @@ int main() {
     UiSessionState state = defaultUiSessionState();
     sanitizeUiSessionState(state);
 
-    assert(rememberedWorkflowPage(state, WorkflowMode::Perform) ==
-           WorkflowPages::kPerform);
-    assert(rememberedWorkflowPage(state, WorkflowMode::Generate) ==
-           WorkflowPages::kGenre);
-    assert(rememberedWorkflowPage(state, WorkflowMode::Hub) ==
-           WorkflowPages::kPattern);
-    assert(rememberedWorkflowPage(state, WorkflowMode::Song) ==
-           WorkflowPages::kArrange);
-    assert(rememberedWorkflowPage(state, WorkflowMode::Settings) ==
-           WorkflowPages::kProject);
+    assert(rememberedWorkflowPage(state, SessionWorkflow::Perform) ==
+           SessionPages::kPerform);
+    assert(rememberedWorkflowPage(state, SessionWorkflow::Generate) ==
+           SessionPages::kGenre);
+    assert(rememberedWorkflowPage(state, SessionWorkflow::Hub) ==
+           SessionPages::kPattern);
+    assert(rememberedWorkflowPage(state, SessionWorkflow::Song) ==
+           SessionPages::kArrange);
+    assert(rememberedWorkflowPage(state, SessionWorkflow::Settings) ==
+           SessionPages::kProject);
 
-    rememberWorkflowPage(state, WorkflowPages::kPlayer);
-    rememberWorkflowPage(state, WorkflowPages::kFeelTexture);
-    rememberWorkflowPage(state, WorkflowPages::kSynthBParameters);
-    rememberWorkflowPage(state, WorkflowPages::kGenerator);
+    rememberWorkflowPage(state, SessionPages::kPlayer);
+    rememberWorkflowPage(state, SessionPages::kFeelTexture);
+    rememberWorkflowPage(state, SessionPages::kSynthBParameters);
+    rememberWorkflowPage(state, SessionPages::kGenerator);
 
-    assert(rememberedWorkflowPage(state, WorkflowMode::Perform) ==
-           WorkflowPages::kPlayer);
-    assert(rememberedWorkflowPage(state, WorkflowMode::Generate) ==
-           WorkflowPages::kFeelTexture);
-    assert(rememberedWorkflowPage(state, WorkflowMode::Hub) ==
-           WorkflowPages::kSynthBParameters);
-    assert(rememberedWorkflowPage(state, WorkflowMode::Settings) ==
-           WorkflowPages::kGenerator);
+    assert(rememberedWorkflowPage(state, SessionWorkflow::Perform) ==
+           SessionPages::kPlayer);
+    assert(rememberedWorkflowPage(state, SessionWorkflow::Generate) ==
+           SessionPages::kFeelTexture);
+    assert(rememberedWorkflowPage(state, SessionWorkflow::Hub) ==
+           SessionPages::kSynthBParameters);
+    assert(rememberedWorkflowPage(state, SessionWorkflow::Settings) ==
+           SessionPages::kGenerator);
 
     const int fromSettingsToPerform = workflowNavigationTarget(
-        state, WorkflowPages::kGenerator, 1, true);
-    assert(fromSettingsToPerform == WorkflowPages::kPlayer);
+        state, SessionPages::kGenerator, 1, true);
+    assert(fromSettingsToPerform == SessionPages::kPlayer);
 
     const int fromPerformToGenerate = workflowNavigationTarget(
-        state, WorkflowPages::kPlayer, 1, true);
-    assert(fromPerformToGenerate == WorkflowPages::kFeelTexture);
+        state, SessionPages::kPlayer, 1, true);
+    assert(fromPerformToGenerate == SessionPages::kFeelTexture);
 
     const int localPerformWrap = workflowNavigationTarget(
-        state, WorkflowPages::kPlayer, 1, false);
-    assert(localPerformWrap == WorkflowPages::kPerform);
+        state, SessionPages::kPlayer, 1, false);
+    assert(localPerformWrap == SessionPages::kPerform);
 
     state.activePage = 99;
-    state.lastPageByWorkflow[workflowSessionIndex(WorkflowMode::Hub)] =
-        static_cast<int8_t>(WorkflowPages::kPlayer);
-    state.visualStyle = static_cast<uint8_t>(VisualStyle::MINIMAL_DARK);
+    state.lastPageByWorkflow[workflowSessionIndex(SessionWorkflow::Hub)] =
+        static_cast<int8_t>(SessionPages::kPlayer);
+    state.visualStyle = 1;
     state.waveformOverlayEnabled = 7;
     state.masterVolumePermille = 60000;
     sanitizeUiSessionState(state);
 
-    assert(state.activePage == WorkflowPages::kGenre);
-    assert(rememberedWorkflowPage(state, WorkflowMode::Hub) ==
-           WorkflowPages::kPattern);
-    assert(static_cast<VisualStyle>(state.visualStyle) == VisualStyle::MINIMAL);
+    assert(state.activePage == SessionPages::kGenre);
+    assert(rememberedWorkflowPage(state, SessionWorkflow::Hub) ==
+           SessionPages::kPattern);
+    assert(state.visualStyle == 0);
     assert(state.waveformOverlayEnabled == 1);
     assert(state.masterVolumePermille == kMaxMasterVolumePermille);
 
@@ -67,7 +67,7 @@ int main() {
 
     UiSessionState copy = state;
     assert(copy == state);
-    copy.activePage = WorkflowPages::kPerform;
+    copy.activePage = SessionPages::kPerform;
     assert(copy != state);
 
     return 0;

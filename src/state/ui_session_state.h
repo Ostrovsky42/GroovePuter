@@ -3,6 +3,9 @@
 #include <cstddef>
 #include <cstdint>
 
+// Compatibility forward declaration for existing UI call sites.
+enum class WorkflowMode : uint8_t;
+
 namespace GroovePuterState {
 
 // Keep the persisted codec independent from UI headers. Arduino's sketch
@@ -147,6 +150,12 @@ inline int rememberedWorkflowPage(const UiSessionState& state,
     return pageBelongsToWorkflow(page, workflow)
         ? page
         : defaultPageForWorkflow(workflow);
+}
+
+inline int rememberedWorkflowPage(const UiSessionState& state,
+                                  WorkflowMode workflow) {
+    return rememberedWorkflowPage(
+        state, static_cast<SessionWorkflow>(workflow));
 }
 
 inline int pageCountForWorkflow(SessionWorkflow workflow) {
