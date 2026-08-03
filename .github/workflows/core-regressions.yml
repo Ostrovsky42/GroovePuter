@@ -46,8 +46,13 @@ jobs:
               assert 'removeDisabledSynthEngines' in text
               assert '{"TB303", "SID", "AY", "OPL2"' not in text
 
-          assert 'opl2_synth_voice' not in (root / 'platform_sdl/Makefile').read_text(encoding='utf-8')
-          assert 'opl2_synth_voice' not in (root / 'src/dsp/swappable_synth_voice.h').read_text(encoding='utf-8')
+          makefile = (root / 'platform_sdl/Makefile').read_text(encoding='utf-8')
+          assert 'opl2_synth_voice' not in makefile
+          assert 'wave_morph_synth_voice.cpp' in makefile
+
+          header = (root / 'src/dsp/swappable_synth_voice.h').read_text(encoding='utf-8')
+          assert 'opl2_synth_voice' not in header
+          assert 'WAVEMORPH = 6' in header
           PY
 
           mkdir -p build/host-tests
@@ -62,6 +67,7 @@ jobs:
             src/dsp/ay_synth_voice.cpp \
             src/dsp/sh101_synth_voice.cpp \
             src/dsp/sn76489_synth_voice.cpp \
+            src/dsp/wave_morph_synth_voice.cpp \
             -o build/host-tests/test_new_synth_voices
           build/host-tests/test_new_synth_voices
 

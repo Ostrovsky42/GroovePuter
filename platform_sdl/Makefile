@@ -35,6 +35,7 @@ SOURCES := \
 	../src/dsp/ay_synth_voice.cpp \
 	../src/dsp/sh101_synth_voice.cpp \
 	../src/dsp/sn76489_synth_voice.cpp \
+	../src/dsp/wave_morph_synth_voice.cpp \
 	../src/dsp/mode_manager.cpp \
 	../src/dsp/genre_manager.cpp \
 	../src/dsp/audio_wavetables.cpp \
