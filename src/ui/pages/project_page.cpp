@@ -9,6 +9,9 @@
 #if defined(ESP32) || defined(ESP_PLATFORM)
 #include <esp_heap_caps.h>
 #endif
+#if defined(ARDUINO) && (defined(ESP32) || defined(ESP_PLATFORM))
+#include "src/platform/cardputer_usb_midi_service.h"
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -375,12 +378,24 @@ bool ProjectPage::clearProject() {
 }
 
 void ProjectPage::onEnter(int context) {
+  (void)context;
   dialog_type_ = DialogType::None;
   main_focus_ = MainFocus::Load;
   section_ = ProjectSection::Scenes;
-  if (scenes_.empty()) refreshScenes();
+  tx_stress_visible_ = false;
+#if defined(ARDUINO) && (defined(ESP32) || defined(ESP_PLATFORM))
+  (void)setCardputerUsbMidiTxStressEnabled(false);
+#endif
+  if (scenes_.empty())
+    refreshScenes();
 }
 
+void ProjectPage::onExit() {
+#if defined(ARDUINO) && (defined(ESP32) || defined(ESP_PLATFORM))
+  (void)setCardputerUsbMidiTxStressEnabled(false);
+#endif
+  tx_stress_visible_ = false;
+}
 bool ProjectPage::importMidiAtSelection() {
   if (midi_selected_path_.empty()) {
     UI::showToast("Select a MIDI file", 900);
@@ -905,8 +920,56 @@ void ProjectPage::drawMidiAdvanceDialog(IGfx& gfx) {
 }
 
 
+bool ProjectPage::handleTxStressEvent(UIEvent &ui_event) {
+#if defined(ARDUINO) && (defined(ESP32) || defined(ESP_PLATFORM))
+  if (ui_event.ctrl && ui_event.alt &&
+      (ui_event.key == 'u' || ui_event.key == 'U')) {
+    return true;
+  }
+  if (ui_event.scancode == GROOVEPUTER_ESCAPE || ui_event.key == '`' ||
+      ui_event.key == '\b') {
+    (void)setCardputerUsbMidiTxStressEnabled(false);
+    tx_stress_visible_ = false;
+    return true;
+  }
+  if (ui_event.key == ' ' || ui_event.key == '\n' || ui_event.key == '\r') {
+    const CardputerUsbMidiTxStressSnapshot snapshot =
+        snapshotCardputerUsbMidiTxStress();
+    (void)setCardputerUsbMidiTxStressEnabled(!snapshot.active);
+    return true;
+  }
+  if (ui_event.scancode == GROOVEPUTER_LEFT || ui_event.key == '[' ||
+      ui_event.key == '{') {
+    (void)stepCardputerUsbMidiTxStressRate(-1);
+    return true;
+  }
+  if (ui_event.scancode == GROOVEPUTER_RIGHT || ui_event.key == ']' ||
+      ui_event.key == '}') {
+    (void)stepCardputerUsbMidiTxStressRate(1);
+    return true;
+  }
+  if (ui_event.key == 'r' || ui_event.key == 'R') {
+    (void)resetCardputerUsbMidiTxStressCounters();
+    return true;
+  }
+#else
+  (void)ui_event;
+#endif
+  return true;
+}
 bool ProjectPage::handleEvent(UIEvent& ui_event) {
     if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+
+#if defined(ARDUINO) && (defined(ESP32) || defined(ESP_PLATFORM))
+    if (!tx_stress_visible_ && ui_event.ctrl && ui_event.alt &&
+        (ui_event.key == 'u' || ui_event.key == 'U')) {
+        tx_stress_visible_ = true;
+        return true;
+    }
+    if (tx_stress_visible_) {
+        return handleTxStressEvent(ui_event);
+    }
+#endif
 
     if (dialog_type_ == DialogType::ImportMidi) {
         if (ui_event.key == '\t') {
@@ -1407,7 +1470,71 @@ void ProjectPage::drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const {
   }
 }
 
+void ProjectPage::drawTxStressDiagnostics(IGfx &gfx) {
+  UI::drawStandardHeader(gfx, mini_acid_, "USB TX STRESS");
+  LayoutManager::clearContent(gfx);
+
+#if defined(ARDUINO) && (defined(ESP32) || defined(ESP_PLATFORM))
+  const CardputerUsbMidiTxStressSnapshot snapshot =
+      snapshotCardputerUsbMidiTxStress();
+  char value[48];
+  const int left = Layout::CONTENT.x + 6;
+  const int right = Layout::CONTENT.x + Layout::CONTENT.w / 2 + 4;
+  const int y0 = LayoutManager::lineY(0);
+  const int lineH = gfx.fontHeight() + 4;
+
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(left, y0, "RATE");
+  std::snprintf(value, sizeof(value), "%u MSG/S",
+                static_cast<unsigned>(snapshot.rateMessagesPerSecond));
+  gfx.setTextColor(COLOR_ACCENT);
+  gfx.drawText(left + 54, y0, value);
+
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(right, y0, "STATE");
+  gfx.setTextColor(snapshot.active ? COLOR_ACCENT : COLOR_GRAY);
+  gfx.drawText(right + 48, y0, snapshot.active ? "RUN" : "STOP");
+
+  std::snprintf(value, sizeof(value), "OK %u",
+                static_cast<unsigned>(snapshot.accepted));
+  gfx.setTextColor(COLOR_WHITE);
+  gfx.drawText(left, y0 + lineH, value);
+
+  std::snprintf(value, sizeof(value), "REJECT %u",
+                static_cast<unsigned>(snapshot.rejected));
+  gfx.setTextColor(snapshot.rejected ? COLOR_ACCENT : COLOR_WHITE);
+  gfx.drawText(right, y0 + lineH, value);
+
+  std::snprintf(value, sizeof(value), "EP=BUSY %u",
+                static_cast<unsigned>(snapshot.endpointBusy));
+  gfx.setTextColor(snapshot.endpointBusy ? COLOR_ACCENT : COLOR_WHITE);
+  gfx.drawText(left, y0 + 2 * lineH, value);
+
+  std::snprintf(value, sizeof(value), "STABLE %us",
+                static_cast<unsigned>(snapshot.stallFreeSeconds));
+  gfx.setTextColor(COLOR_WHITE);
+  gfx.drawText(right, y0 + 2 * lineH, value);
+
+  std::snprintf(value, sizeof(value), "CH%u NOTE%u",
+                static_cast<unsigned>(snapshot.oneBasedChannel),
+                static_cast<unsigned>(snapshot.note));
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(left, y0 + 3 * lineH, value);
+
+  gfx.setTextColor(COLOR_GRAY);
+  gfx.drawText(left, y0 + 4 * lineH, "SPACE RUN  [ ] RATE  R RESET");
+  gfx.drawText(left, y0 + 5 * lineH, "BACK EXIT");
+#else
+  gfx.setTextColor(COLOR_GRAY);
+  gfx.drawText(Layout::CONTENT.x + 6, LayoutManager::lineY(1),
+               "CARDPUTER ADV ONLY");
+#endif
+}
 void ProjectPage::draw(IGfx& gfx) {
+  if (tx_stress_visible_) {
+    drawTxStressDiagnostics(gfx);
+    return;
+  }
   UI::drawStandardHeader(gfx, mini_acid_, "PROJECT");
   if (dialog_type_ == DialogType::MidiAdvance) {
     drawMidiAdvanceDialog(gfx);

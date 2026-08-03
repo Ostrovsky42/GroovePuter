@@ -13,6 +13,7 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   void onEnter(int context = 0) override;
+  void onExit() override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string & getTitle() const override;
 
@@ -61,6 +62,8 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   bool deleteSelectionInDialog();
   bool handleSaveDialogInput(char key);
   void ensureMainFocusVisible(int visibleRows);
+  bool handleTxStressEvent(UIEvent& ui_event);
+  void drawTxStressDiagnostics(IGfx& gfx);
   template <typename F>
   void withAudioGuard(F&& fn) {
       if (audio_guard_) audio_guard_(std::forward<F>(fn));
@@ -99,5 +102,6 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
 
   bool midi_import_append_ = false;
   int midi_adv_scroll_ = 0;
+  bool tx_stress_visible_ = false;
   std::string save_name_;
 };
