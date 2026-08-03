@@ -2,6 +2,7 @@
 #ifndef GROOVEPUTER_SMF_PLAYER_SESSION_STATE_H
 #define GROOVEPUTER_SMF_PLAYER_SESSION_STATE_H
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
@@ -10,18 +11,36 @@
 
 namespace GroovePuterUi {
 
+inline constexpr std::size_t kSmfPlayerSessionBrowserRows = 7;
+
+struct SmfPlayerSessionBrowserRow {
+    int16_t logicalIndex{-1};
+    char displayName[40]{};
+};
+
 struct SmfPlayerSessionSnapshot {
     static constexpr std::size_t kPathCapacity = 128;
 
     char browserPath[kPathCapacity]{"/midi"};
+    std::array<SmfPlayerSessionBrowserRow,
+               kSmfPlayerSessionBrowserRows> browserRows{};
     int16_t browserSelection{0};
     int16_t browserScroll{0};
     int16_t inspectorScroll{0};
+    int16_t directoryCount{0};
+    int16_t fileCount{0};
+    int16_t totalEntries{0};
+    int16_t visibleWindowStart{-1};
+    bool browserStorageReady{false};
+    bool browserCacheValid{false};
     bool browserVisible{true};
     bool performanceVisible{false};
     bool inspectorVisible{false};
     bool valid{false};
 };
+
+static_assert(sizeof(SmfPlayerSessionSnapshot) <= 512,
+              "SMF page session cache must remain a small bounded snapshot");
 
 enum class SmfPlayerSessionFlag : uint8_t {
     BrowserVisible = 0,
@@ -83,6 +102,10 @@ public:
     }
 
 private:
+    static int16_t clampNonNegative(int16_t value) {
+        return value < 0 ? 0 : value;
+    }
+
     static SmfPlayerSessionSnapshot sanitize(
             const SmfPlayerSessionSnapshot& input) {
         SmfPlayerSessionSnapshot result = input;
@@ -92,9 +115,17 @@ private:
                           SmfPlayerSessionSnapshot::kPathCapacity,
                           "%s", "/midi");
         }
-        if (result.browserSelection < 0) result.browserSelection = 0;
-        if (result.browserScroll < 0) result.browserScroll = 0;
-        if (result.inspectorScroll < 0) result.inspectorScroll = 0;
+        result.browserSelection = clampNonNegative(result.browserSelection);
+        result.browserScroll = clampNonNegative(result.browserScroll);
+        result.inspectorScroll = clampNonNegative(result.inspectorScroll);
+        result.directoryCount = clampNonNegative(result.directoryCount);
+        result.fileCount = clampNonNegative(result.fileCount);
+        result.totalEntries = clampNonNegative(result.totalEntries);
+        if (result.visibleWindowStart < -1) result.visibleWindowStart = -1;
+        for (SmfPlayerSessionBrowserRow& row : result.browserRows) {
+            if (row.logicalIndex < -1) row.logicalIndex = -1;
+            row.displayName[sizeof(row.displayName) - 1u] = '\0';
+        }
         return result;
     }
 
@@ -150,12 +181,21 @@ private:
 };
 
 // RAII binding keeps session persistence out of draw/input code. Page creation
-// restores bounded state; page eviction publishes the final state. onExit()
-// separately marks the page inactive so cached previous pages cannot intercept
-// another page's content clear.
+// restores bounded state; page eviction publishes the final state. Only the
+// current seven-row browser window is cached, avoiding a second full directory
+// model and keeping static RAM below 512 bytes.
 class SmfPlayerSessionBinding {
 public:
+    using BrowserRows = std::array<SmfPlayerSessionBrowserRow,
+                                   kSmfPlayerSessionBrowserRows>;
+
     SmfPlayerSessionBinding(std::string& path,
+                            BrowserRows& browserRows,
+                            int& directoryCount,
+                            int& fileCount,
+                            int& totalEntries,
+                            int& visibleWindowStart,
+                            bool& browserStorageReady,
                             int& selection,
                             int& scroll,
                             int& inspectorScroll,
@@ -163,6 +203,12 @@ public:
                             SmfPlayerTrackedFlag& performanceVisible,
                             SmfPlayerTrackedFlag& inspectorVisible)
         : path_(path),
+          browserRows_(browserRows),
+          directoryCount_(directoryCount),
+          fileCount_(fileCount),
+          totalEntries_(totalEntries),
+          visibleWindowStart_(visibleWindowStart),
+          browserStorageReady_(browserStorageReady),
           selection_(selection),
           scroll_(scroll),
           inspectorScroll_(inspectorScroll),
@@ -179,6 +225,14 @@ public:
             browserVisible_.restore(saved.browserVisible, true);
             performanceVisible_.restore(saved.performanceVisible);
             inspectorVisible_.restore(saved.inspectorVisible);
+            if (saved.browserCacheValid) {
+                browserRows_ = saved.browserRows;
+                directoryCount_ = saved.directoryCount;
+                fileCount_ = saved.fileCount;
+                totalEntries_ = saved.totalEntries;
+                visibleWindowStart_ = saved.visibleWindowStart;
+                browserStorageReady_ = saved.browserStorageReady;
+            }
         }
         smfPlayerSessionState().setActive(true);
     }
@@ -193,6 +247,13 @@ public:
         std::snprintf(next.browserPath,
                       SmfPlayerSessionSnapshot::kPathCapacity,
                       "%s", path_.c_str());
+        next.browserRows = browserRows_;
+        next.directoryCount = clampInt16(directoryCount_);
+        next.fileCount = clampInt16(fileCount_);
+        next.totalEntries = clampInt16(totalEntries_);
+        next.visibleWindowStart = clampWindowStart(visibleWindowStart_);
+        next.browserStorageReady = browserStorageReady_;
+        next.browserCacheValid = browserStorageReady_;
         next.browserSelection = clampInt16(selection_);
         next.browserScroll = clampInt16(scroll_);
         next.inspectorScroll = clampInt16(inspectorScroll_);
@@ -221,7 +282,19 @@ private:
         return static_cast<int16_t>(value);
     }
 
+    static int16_t clampWindowStart(int value) {
+        if (value < -1) return -1;
+        if (value > 32767) return 32767;
+        return static_cast<int16_t>(value);
+    }
+
     std::string& path_;
+    BrowserRows& browserRows_;
+    int& directoryCount_;
+    int& fileCount_;
+    int& totalEntries_;
+    int& visibleWindowStart_;
+    bool& browserStorageReady_;
     int& selection_;
     int& scroll_;
     int& inspectorScroll_;
