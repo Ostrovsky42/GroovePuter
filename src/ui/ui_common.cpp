@@ -1,7 +1,10 @@
 #include "ui_common.h"
 #include "ui_utils.h"
 #include "ui_widgets.h"
+#include "workflow_mode.h"
 #include "src/dsp/miniacid_engine.h"
+#include "src/midi/smf_player_service.h"
+#include "src/midi/transport_clock_runtime.h"
 #include "retro_ui_theme.h"
 #include "amber_ui_theme.h"
 #include <cstdio>
@@ -31,6 +34,123 @@ namespace UI {
 
         char gToastMsg[64] = {0};
         unsigned long gToastEndMs = 0;
+
+        UiStatusSnapshot gStatusSnapshot{};
+        char gStatusLine[48] = {0};
+        bool gStatusInitialized = false;
+
+        UiStatusContext statusContextForPage(int page) {
+            switch (page) {
+                case WorkflowPages::kPerform: return UiStatusContext::Perform;
+                case WorkflowPages::kPlayer: return UiStatusContext::Player;
+                case WorkflowPages::kGenre: return UiStatusContext::Genre;
+                case WorkflowPages::kMode: return UiStatusContext::Mode;
+                case WorkflowPages::kFeelTexture: return UiStatusContext::Feel;
+                case WorkflowPages::kPattern: return UiStatusContext::Overview;
+                case WorkflowPages::kSynthA: return UiStatusContext::SynthA;
+                case WorkflowPages::kSynthB: return UiStatusContext::SynthB;
+                case WorkflowPages::kDrums: return UiStatusContext::Drums;
+                case WorkflowPages::kSynthAParameters: return UiStatusContext::SoundA;
+                case WorkflowPages::kSynthBParameters: return UiStatusContext::SoundB;
+                case WorkflowPages::kArrange: return UiStatusContext::Song;
+                case WorkflowPages::kProject: return UiStatusContext::Project;
+                case WorkflowPages::kGenerator: return UiStatusContext::Generator;
+                default: return UiStatusContext::Unknown;
+            }
+        }
+
+        uint16_t statusCount(uint32_t value) {
+            if (value == 0) return 1;
+            if (value > 65535u) return 65535u;
+            return static_cast<uint16_t>(value);
+        }
+
+        uint16_t statusOneBasedIndex(int value) {
+            if (value < 0) return 1;
+            const uint32_t oneBased = static_cast<uint32_t>(value) + 1u;
+            return statusCount(oneBased);
+        }
+
+        bool smfStateOwnsStatus(GroovePuterMidi::SmfPlayerState state) {
+            using GroovePuterMidi::SmfPlayerState;
+            return state == SmfPlayerState::Loading ||
+                   state == SmfPlayerState::Armed ||
+                   state == SmfPlayerState::Playing ||
+                   state == SmfPlayerState::Paused;
+        }
+
+        UiStatusState uiStateForSmf(GroovePuterMidi::SmfPlayerState state) {
+            using GroovePuterMidi::SmfPlayerState;
+            switch (state) {
+                case SmfPlayerState::Loading: return UiStatusState::Loading;
+                case SmfPlayerState::Armed: return UiStatusState::Armed;
+                case SmfPlayerState::Playing: return UiStatusState::Play;
+                case SmfPlayerState::Paused: return UiStatusState::Pause;
+                case SmfPlayerState::Error: return UiStatusState::Error;
+                case SmfPlayerState::Unloaded:
+                case SmfPlayerState::Stopped:
+                    return UiStatusState::Stop;
+            }
+            return UiStatusState::Stop;
+        }
+
+        UiStatusSnapshot buildUiStatusSnapshot(MiniAcid& miniAcid) {
+            UiStatusSnapshot status{};
+            const int page = miniAcid.currentPageIndex();
+            status.context = statusContextForPage(page);
+            status.liveMixLocked = miniAcid.liveMixModeEnabled();
+
+            const GroovePuterMidi::TransportClockRuntimeSnapshot clock =
+                GroovePuterMidi::transportClockRuntime().snapshot();
+            status.clock =
+                clock.source == GroovePuterMidi::TransportClockSource::SeqtrakExternal
+                    ? UiStatusClock::External
+                    : UiStatusClock::Internal;
+
+            GroovePuterMidi::ISmfPlayerService* player =
+                GroovePuterMidi::smfPlayerService();
+            if (player != nullptr) {
+                const GroovePuterMidi::SmfPlayerSnapshot smf = player->snapshot();
+                const bool playerPageSelected = page == WorkflowPages::kPlayer;
+                const bool loadedPlayerSelected =
+                    playerPageSelected &&
+                    smf.state != GroovePuterMidi::SmfPlayerState::Unloaded;
+                if (smfStateOwnsStatus(smf.state) || loadedPlayerSelected) {
+                    status.source = UiStatusSource::Smf;
+                    status.state = uiStateForSmf(smf.state);
+                    status.bar = statusCount(smf.bar);
+                    status.totalBars = statusCount(smf.totalBars);
+                    status.output = UiStatusOutput::Midi;
+                    if (smf.tempoMode == GroovePuterMidi::SmfTempoMode::Original) {
+                        status.clock = UiStatusClock::File;
+                    }
+                    return status;
+                }
+            }
+
+            status.source = miniAcid.songModeEnabled()
+                ? UiStatusSource::Song
+                : UiStatusSource::Pattern;
+            status.state = miniAcid.isPlaying()
+                ? UiStatusState::Play
+                : UiStatusState::Stop;
+            status.output = UiStatusOutput::InternalAudio;
+
+            if (status.source == UiStatusSource::Song) {
+                status.bar = statusOneBasedIndex(miniAcid.songPlayheadPosition());
+                status.totalBars = statusCount(
+                    static_cast<uint32_t>(miniAcid.songLength() > 0
+                        ? miniAcid.songLength()
+                        : 1));
+            } else {
+                status.bar = statusOneBasedIndex(miniAcid.cycleBarIndex());
+                status.totalBars = statusCount(
+                    static_cast<uint32_t>(miniAcid.cycleBarCount() > 0
+                        ? miniAcid.cycleBarCount()
+                        : 1));
+            }
+            return status;
+        }
     }
 
     void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title) {
@@ -41,36 +161,53 @@ namespace UI {
                                  title, mini_acid.isRecording());
     }
 
-    void drawLiveMixLockBadge(IGfx& gfx, MiniAcid& mini_acid) {
-        if (!mini_acid.liveMixModeEnabled()) return;
-
-        IGfxColor fg = COLOR_WHITE;
-        IGfxColor bg = COLOR_DANGER;
-        if (currentStyle == VisualStyle::RETRO_CLASSIC) {
-            fg = IGfxColor(RetroTheme::BG_DEEP_BLACK);
-            bg = IGfxColor(RetroTheme::NEON_YELLOW);
-        } else if (currentStyle == VisualStyle::AMBER) {
-            fg = IGfxColor(AmberTheme::BG_DEEP_BLACK);
-            bg = IGfxColor(AmberTheme::NEON_ORANGE);
+    void drawStatusChrome(IGfx& gfx, MiniAcid& mini_acid) {
+        const UiStatusSnapshot status = buildUiStatusSnapshot(mini_acid);
+        if (!gStatusInitialized || status != gStatusSnapshot) {
+            gStatusSnapshot = status;
+            formatUiStatusLine(status, gStatusLine, sizeof(gStatusLine));
+            gStatusInitialized = true;
         }
 
-        // Compact lock icon placed below header to avoid text overlap.
-        const int boxW = 10;
-        const int boxH = 10;
-        const int x = gfx.width() - boxW - 2;
-        const int y = 13;
+        IGfxColor background = COLOR_BLACK;
+        IGfxColor foreground = COLOR_WHITE;
+        IGfxColor divider = COLOR_DARKER;
+        if (currentStyle == VisualStyle::RETRO_CLASSIC) {
+            background = IGfxColor(RetroTheme::BG_DEEP_BLACK);
+            foreground = IGfxColor(RetroTheme::NEON_CYAN);
+            divider = IGfxColor(RetroTheme::STATUS_ACCENT);
+        } else if (currentStyle == VisualStyle::AMBER) {
+            background = IGfxColor(AmberTheme::BG_DEEP_BLACK);
+            foreground = IGfxColor(AmberTheme::NEON_ORANGE);
+            divider = IGfxColor(AmberTheme::TEXT_DIM);
+        }
 
-        gfx.fillRect(x, y, boxW, boxH, bg);
-        gfx.drawRect(x, y, boxW, boxH, fg);
+        // The current renderer redraws every page each UI frame. Keep the
+        // expensive status derivation and formatting change-driven, then paint
+        // only the already-reserved 16-pixel header over the page header.
+        gfx.fillRect(Layout::HEADER.x,
+                     Layout::HEADER.y,
+                     Layout::HEADER.w,
+                     Layout::HEADER.h,
+                     background);
+        gfx.drawLine(Layout::HEADER.x,
+                     Layout::HEADER.y + Layout::HEADER.h - 1,
+                     Layout::HEADER.x + Layout::HEADER.w - 1,
+                     Layout::HEADER.y + Layout::HEADER.h - 1,
+                     divider);
+        gfx.setTextColor(foreground);
+        Widgets::drawClippedText(gfx,
+                                 Layout::HEADER.x + 4,
+                                 Layout::HEADER.y + 4,
+                                 Layout::HEADER.w - 8,
+                                 gStatusLine);
+    }
 
-        // Shackle
-        gfx.drawLine(x + 3, y + 3, x + 3, y + 5, fg);
-        gfx.drawLine(x + 6, y + 3, x + 6, y + 5, fg);
-        gfx.drawLine(x + 3, y + 3, x + 6, y + 3, fg);
-        // Body
-        gfx.fillRect(x + 2, y + 5, 6, 4, fg);
-        // Keyhole
-        gfx.drawPixel(x + 4, y + 7, bg);
+    void drawLiveMixLockBadge(IGfx& gfx, MiniAcid& mini_acid) {
+        // Compatibility hook: MiniAcidDisplay already invokes this once after
+        // every page. Keeping the call site avoids touching page bounds or the
+        // global input/transport flow in Wave 1 A1.
+        drawStatusChrome(gfx, mini_acid);
     }
 
     void drawStandardFooter(IGfx& gfx, const char* left, const char* right) {
