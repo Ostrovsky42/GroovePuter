@@ -57,13 +57,33 @@ This table records wiring, not acceptance. A row is accepted only when the gates
 | Area | Current implementation |
 |---|---|
 | Continue / resume SPP | Persisted device profile selects conservative SEQTRAK or class-compliant GM capabilities. GM resume serializes `F2` before `FB`; SEQTRAK suppresses unvalidated `F2/FB` and uses the validated `FA` fallback. |
-| Active seek SPP | A bounded latest-wins SPP mailbox now exists in the established SMF SPSC lane. The final two integration points are the player seek command and dispatcher switch; they are applied and tested as one change. |
+| Active seek SPP | A bounded latest-wins SPP mailbox uses the established SMF SPSC lane. PROJECT seek computes the target from SMF tick/division, schedules it from the current audio block anchor, and `MidiDispatchTask` owns the physical `F2` write. |
 | Immediate mute | Consumer-side bounded ownership emits scoped NoteOff events for only the muted track. Queued NoteOn events from muted tracks are discarded; NoteOff remains cleanup-critical. |
 | Session state | Path, selection, browser scroll, inspector scroll and panel visibility are restored across cached-page navigation and page eviction. |
 | Directory rendering | Drawing uses the existing seven-row `browserRows_` cache. SD traversal is excluded from `drawHeader`, `drawContent`, `drawFooter` and their draw helpers. The unused second cache abstraction was removed. |
 | Partial redraw | The active MIDI Player intercepts content clearing. Re-entry and non-player views receive a safe full frame; now-playing updates erase only changed rows and the animated progress/wave row. |
 | Routine logging | Page-local browser UART output is suppressed without disabling USB/SMF failure diagnostics in platform tasks. |
-| Temporary patch artifacts | One-shot files are not accepted in the final diff and must delete themselves before a head is eligible for validation. |
+| Temporary patch artifacts | The trusted patch job restored the canonical workflow and deleted its one-shot file before creating implementation commit `b89a9280a238c6119950beb30f1f3af6904ea1fc`. |
+
+## Validation checkpoint
+
+Implementation commit:
+
+```text
+b89a9280a238c6119950beb30f1f3af6904ea1fc
+feat(midi): schedule SPP for active PROJECT seek
+```
+
+Repository inspection confirms that this commit contains:
+
+- capability-gated active-seek SPP publication in `CardputerSmfPlayerService`;
+- bounded mailbox scheduling at an audio block anchor;
+- `ScheduledSmfMidiEventType::SongPositionPointer` dispatch through `UsbMidiOutput`;
+- physical output remaining inside `MidiDispatchTask`;
+- restoration of the original `core-regressions.yml`;
+- removal of the temporary active-seek workflow.
+
+GitHub marked the bot-authored commit run as `action_required` and created no jobs. That status is not accepted as test evidence. The next ordinary branch commit must run host, SDL and Cardputer-Adv gates against the complete implementation.
 
 ## Additional invariants recovered from PLAN.md
 
