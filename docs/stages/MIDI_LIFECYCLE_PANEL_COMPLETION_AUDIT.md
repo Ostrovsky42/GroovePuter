@@ -130,6 +130,18 @@ instance. The old `aseqdump` subscription no longer drains it; after every
 physical reconnect, restart `./scripts/midi_sink.sh -q <client:port>` before
 classifying `ok ~= 17` followed by `busy/reject` as firmware behavior.
 
+### SEQTRAK USB profile acceptance
+
+On the same Cardputer hardware and dense SMF tracks, SEQTRAK does not retain
+MIDI IN endpoint draining when the firmware exposes the normal composite
+CDC+MIDI profile under load. The class-compliant MIDI-only profile built by
+`scripts/build_seqtrak_midi_only.sh` removes CDC and plays those same tracks
+without entering `USB WAIT`.
+
+This is a host compatibility distinction, not a regression in MIDI scheduling,
+RX handling, heap recovery, pacing, or TinyUSB ownership. The generic
+host-without-drain contract remains required for every profile.
+
 ## 2026-08-03 USB/SD DRAM recovery
 
 ### Root cause
@@ -270,6 +282,9 @@ Required observations:
 SEQTRAK remains a compatibility host, not the acceptance oracle for this
 transport contract. A SEQTRAK host that mounts but does not drain MIDI IN is
 handled by this gate in the same safe `USB WAIT` state.
+
+For dense SEQTRAK playback, use the accepted MIDI-only firmware profile rather
+than the normal composite CDC+MIDI profile.
 
 ## Ready-for-test rule
 
