@@ -50,6 +50,21 @@ The inherited PR body lists ten remaining tasks but marks none complete. Commit 
 | Logging | routine browser and transition logs remain | normal navigation/rendering contains no synchronous Serial output; failure and opt-in diagnostics remain available |
 | Validation | no complete evidence set | host, SDL and Cardputer-Adv build references plus direct hardware checklist |
 
+## Completion-branch implementation status
+
+This table records wiring, not acceptance. A row is accepted only when the gates below pass on the same final head.
+
+| Area | Current implementation |
+|---|---|
+| Continue / resume SPP | Persisted device profile selects conservative SEQTRAK or class-compliant GM capabilities. GM resume serializes `F2` before `FB`; SEQTRAK suppresses unvalidated `F2/FB` and uses the validated `FA` fallback. |
+| Active seek SPP | A bounded latest-wins SPP mailbox now exists in the established SMF SPSC lane. The final two integration points are the player seek command and dispatcher switch; they are applied and tested as one change. |
+| Immediate mute | Consumer-side bounded ownership emits scoped NoteOff events for only the muted track. Queued NoteOn events from muted tracks are discarded; NoteOff remains cleanup-critical. |
+| Session state | Path, selection, browser scroll, inspector scroll and panel visibility are restored across cached-page navigation and page eviction. |
+| Directory rendering | Drawing uses the existing seven-row `browserRows_` cache. SD traversal is excluded from `drawHeader`, `drawContent`, `drawFooter` and their draw helpers. The unused second cache abstraction was removed. |
+| Partial redraw | The active MIDI Player intercepts content clearing. Re-entry and non-player views receive a safe full frame; now-playing updates erase only changed rows and the animated progress/wave row. |
+| Routine logging | Page-local browser UART output is suppressed without disabling USB/SMF failure diagnostics in platform tasks. |
+| Temporary patch artifacts | One-shot files are not accepted in the final diff and must delete themselves before a head is eligible for validation. |
+
 ## Additional invariants recovered from PLAN.md
 
 The following were not explicit in the original PR #35 checklist and are now mandatory acceptance conditions:
@@ -78,6 +93,7 @@ The host suite must include focused regressions for:
 
 - Start versus Continue lifecycle selection;
 - capability-gated SPP suppression and 14-bit encoding;
+- active-seek SPP latest-wins and generation invalidation;
 - track identity preservation;
 - queued muted NoteOn rejection;
 - immediate release of only the muted track;
