@@ -5,26 +5,43 @@
 [![Build](https://img.shields.io/badge/build-arduino--cli-brightgreen)](#build--flash)
 
 > **Portable real-time groove computer for M5Stack Cardputer.**
-> A **time-feel engine** that separates **what** is generated from **how it feels in time** and **how it sounds right now**.
+> A **time-feel instrument** that separates the musical language, generated material, movement in time, and current sound.
 
-Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtubia/miniacid). This fork focuses on generative patterns, timing FEEL, scene persistence, arrangement, and portable performance.
+Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtubia/miniacid). This fork focuses on generative patterns, timing FEEL, scene persistence, arrangement, portable performance, and bounded MIDI integration.
 
 ## Status
 
 **Beta.** Core groovebox flow is playable on Cardputer-ADV. APIs/UI may change as the instrument evolves.
 
+The canonical product direction and execution order are documented in [`PLAN.md`](PLAN.md). This README describes capabilities available on the current branch; it does not establish a separate roadmap.
+
 ## Product model
 
-GroovePuter remains a self-contained groovebox. The performance keyboard is an additional instrument layer, not a replacement for the existing editors:
+GroovePuter remains a self-contained groovebox. External instruments such as Yamaha SEQTRAK are supported output targets, not required dependencies.
+
+The core product invariant is:
+
+```text
+GENRE != FEEL != GENERATOR != TEXTURE
+```
 
 ```text
 GroovePuter
 ├── generators, patterns, synths and drums
-├── FEEL / TEXTURE performance editing
-├── song arrangement
+├── independent GENRE / FEEL / GENERATOR / TEXTURE decisions
+├── pattern and song arrangement
 ├── live NOTE mode for internal Synth A
-└── future USB-MIDI output for external instruments such as SEQTRAK
+├── sample-timed USB-MIDI output and transport
+└── realtime SMF playback and routing
 ```
+
+The long-term musical hierarchy is:
+
+```text
+step -> bar -> phrase -> section -> song
+```
+
+The active implementation order, acceptance metrics, memory constraints, and deferred ideas live in [`PLAN.md`](PLAN.md).
 
 Atlas remains an optional source of curated factory seed patterns.
 
@@ -46,6 +63,9 @@ Atlas remains an optional source of curated factory seed patterns.
 * **Groove Lab page:** mode/flavor/macros + corridor/budget preview.
 * **Drum Automation page:** four automation lanes + per-pattern groove override.
 * **Scene persistence:** safe load for older scenes.
+* **USB-MIDI output:** sample-timed Pattern and live event dispatch through one TinyUSB owner.
+* **MIDI transport:** Clock, Start, Stop, and lifecycle work on the `dev` line.
+* **Realtime SMF player:** file playback, routing modes, track selection/mute work, and project timing modes.
 
 ## Controls
 
@@ -102,6 +122,8 @@ The firmware starts on the original **Genre** page. All existing pages remain av
 > [!IMPORTANT]
 > Page commands always get first refusal. NOTE mode receives an unmodified key only after the active page declines it. The step editor therefore keeps its own editing controls.
 
+The current firmware may suppress live `NoteOn` while transport owns Synth A. Wave 1 in [`PLAN.md`](PLAN.md) requires the interface to expose the effective key state as `NOTE`, `CMD`, `LOCAL`, or `LOCK` before changing this ownership behavior.
+
 ### Editor conventions
 
 | Key | Common action |
@@ -128,9 +150,24 @@ The canonical page-by-page reference is in [`src/ui/docs/keys.md`](src/ui/docs/k
 
 ## MIDI & Drums
 
+### USB-MIDI output
+
+The `dev` line includes one sample-timed USB-MIDI dispatcher used by accepted live, Pattern, transport, and realtime SMF paths. The dispatcher remains the sole TinyUSB writer; new features must reuse it rather than add a parallel scheduler.
+
+Current accepted direction includes:
+
+```text
+PERFORM Synth A / Synth B / DX / Drums
+Pattern Synth A / Synth B / Drums
+MIDI Clock / Start / Stop
+realtime SMF playback and routing
+```
+
+Exact target routing and lifecycle acceptance are documented under `docs/stages/`. Hardware-dependent capabilities remain beta until their stage acceptance is complete.
+
 ### MIDI file routing
 
-The `MidiAdvance` dialog includes a Track Map for importing MIDI files into internal tracks (`Synth A`, `Synth B`, `Drums`). This is file import, not yet USB-MIDI device output.
+The SMF player routes complete MIDI files through the realtime output path. The `MidiAdvance` dialog also provides Track Map behavior for importing MIDI material into internal tracks (`Synth A`, `Synth B`, `Drums`). Playback/routing and import are separate workflows.
 
 ### Advanced Drum FX
 
@@ -154,7 +191,7 @@ bash scripts/upload.sh /dev/ttyACM0
 arduino-cli monitor -p /dev/ttyACM0 -c baudrate=115200
 ```
 
-No external wiring is required. The firmware uses the built-in keyboard, ES8311 codec, speaker/headphone output, and USB-C for flashing/Serial.
+No external wiring is required. The firmware uses the built-in keyboard, ES8311 codec, speaker/headphone output, and USB-C for flashing, Serial, and supported USB-MIDI operation.
 
 ## Troubleshooting
 
@@ -179,9 +216,11 @@ Reduce Tape/delay intensity and monitor the existing `[PERF]` telemetry. `underr
 
 This is an experimental instrument.
 
+* Read [`PLAN.md`](PLAN.md) before proposing a feature lane.
 * Keep PRs small and testable.
 * Preserve the core rule: **GENRE ≠ FEEL ≠ GENERATOR ≠ TEXTURE**.
 * Keep GroovePuter usable as a standalone groovebox.
+* Do not let an implementation stage silently reorder the canonical plan.
 
 ## Credits
 
