@@ -58,32 +58,35 @@ This table records wiring, not acceptance. A row is accepted only when the gates
 |---|---|
 | Continue / resume SPP | Persisted device profile selects conservative SEQTRAK or class-compliant GM capabilities. GM resume serializes `F2` before `FB`; SEQTRAK suppresses unvalidated `F2/FB` and uses the validated `FA` fallback. |
 | Active seek SPP | A bounded latest-wins SPP mailbox uses the established SMF SPSC lane. PROJECT seek computes the target from SMF tick/division, schedules it from the current audio block anchor, and `MidiDispatchTask` owns the physical `F2` write. |
-| Immediate mute | Consumer-side bounded ownership emits scoped NoteOff events for only the muted track. Queued NoteOn events from muted tracks are discarded; NoteOff remains cleanup-critical. |
+| Immediate mute | Consumer-side bounded ownership emits scoped NoteOff events for only the muted track. `tryPop()` only preflights capacity; ownership is committed by `MidiDispatchTask` after a successful USB write, so late, muted or backpressured NoteOn drops cannot create false owners. |
 | Session state | Path, selection, browser scroll, inspector scroll and panel visibility are restored across cached-page navigation and page eviction. |
 | Directory rendering | Drawing uses the existing seven-row `browserRows_` cache. SD traversal is excluded from `drawHeader`, `drawContent`, `drawFooter` and their draw helpers. The unused second cache abstraction was removed. |
 | Partial redraw | The active MIDI Player intercepts content clearing. Re-entry and non-player views receive a safe full frame; now-playing updates erase only changed rows and the animated progress/wave row. |
 | Routine logging | Page-local browser UART output is suppressed without disabling USB/SMF failure diagnostics in platform tasks. |
-| Temporary patch artifacts | The trusted patch job restored the canonical workflow and deleted its one-shot file before creating implementation commit `b89a9280a238c6119950beb30f1f3af6904ea1fc`. |
+| Temporary patch artifacts | Trusted patch jobs restore the canonical workflow before committing implementation. The final diff must contain no temporary apply job. |
 
-## Validation checkpoint
-
-Implementation commit:
+## Implementation checkpoints
 
 ```text
 b89a9280a238c6119950beb30f1f3af6904ea1fc
 feat(midi): schedule SPP for active PROJECT seek
+
+f5a23653ed157db31edd7541ceebaa987ef46b5b
+fix(midi): commit track ownership after USB success
 ```
 
-Repository inspection confirms that this commit contains:
+Repository inspection confirms:
 
 - capability-gated active-seek SPP publication in `CardputerSmfPlayerService`;
 - bounded mailbox scheduling at an audio block anchor;
 - `ScheduledSmfMidiEventType::SongPositionPointer` dispatch through `UsbMidiOutput`;
 - physical output remaining inside `MidiDispatchTask`;
-- restoration of the original `core-regressions.yml`;
-- removal of the temporary active-seek workflow.
+- bounded track ownership committed only after successful physical dispatch;
+- ownership commit failure falling back to scoped SMF cleanup;
+- restoration of the original `core-regressions.yml` after each patch job;
+- no temporary active-seek or ownership workflow in the resulting head.
 
-GitHub marked the bot-authored commit run as `action_required` and created no jobs. That status is not accepted as test evidence. The next ordinary branch commit must run host, SDL and Cardputer-Adv gates against the complete implementation.
+Bot-authored implementation commits can receive an `action_required` run with no jobs. Such status is not accepted as evidence. This ordinary follow-up commit exists solely to run host, SDL and Cardputer-Adv gates against the complete implementation on one clean head.
 
 ## Additional invariants recovered from PLAN.md
 
@@ -116,6 +119,7 @@ The host suite must include focused regressions for:
 - active-seek SPP latest-wins and generation invalidation;
 - track identity preservation;
 - queued muted NoteOn rejection;
+- ownership commit only after successful dispatch;
 - immediate release of only the muted track;
 - session restore after page recreation;
 - zero SD traversal from draw paths;
