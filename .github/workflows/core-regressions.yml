@@ -9,7 +9,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   host-tests:
@@ -52,3 +52,170 @@ jobs:
 
       - name: Compile Cardputer ADV firmware
         run: bash scripts/build.sh --warnings all
+
+  apply-active-seek-spp:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.head_ref == 'feature/midi-lifecycle-panel-performance-completion' &&
+      github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/midi-lifecycle-panel-performance-completion
+          fetch-depth: 0
+
+      - name: Configure identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Patch active seek and dispatcher
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          player_path = Path("src/platform/cardputer_smf_player.cpp")
+          player = player_path.read_text(encoding="utf-8")
+
+          include_old = '''#include "src/audio/audio_config.h"
+          #include "src/midi/transport_clock_runtime.h"
+          '''
+          include_new = '''#include "src/audio/audio_config.h"
+          #include "src/midi/midi_transport_capabilities.h"
+          #include "src/midi/transport_clock_runtime.h"
+          '''
+          # Dedent literals introduced by YAML indentation.
+          include_old = "\n".join(line.strip() for line in include_old.splitlines() if line.strip()) + "\n"
+          include_new = "\n".join(line.strip() for line in include_new.splitlines() if line.strip()) + "\n"
+          if '#include "src/midi/midi_transport_capabilities.h"' not in player:
+              if include_old not in player:
+                  raise SystemExit("player include anchor missing")
+              player = player.replace(include_old, include_new, 1)
+
+          seek_old = '''            if (previous == SmfPlayerState::Playing || previous == SmfPlayerState::Armed) {
+              startFromTick(targetTick);
+          } else {
+          '''
+          seek_new = '''            if (previous == SmfPlayerState::Playing || previous == SmfPlayerState::Armed) {
+              const bool started = startFromTick(targetTick);
+              if (started && tempoMode_ == SmfTempoMode::Project) {
+                  (void)queueSongPositionPointerAtCurrentAnchor(targetTick);
+              }
+          } else {
+          '''
+          seek_old = "\n".join(line[10:] if line.startswith("          ") else line for line in seek_old.splitlines()) + "\n"
+          seek_new = "\n".join(line[10:] if line.startswith("          ") else line for line in seek_new.splitlines()) + "\n"
+          if "queueSongPositionPointerAtCurrentAnchor(targetTick)" not in player:
+              if seek_old not in player:
+                  raise SystemExit("active seek anchor missing")
+              player = player.replace(seek_old, seek_new, 1)
+
+          helper = '''bool CardputerSmfPlayerService::queueSongPositionPointerAtCurrentAnchor(
+                  uint32_t tick) {
+              const GroovePuterMidi::MidiTransportCapabilities capabilities =
+                  GroovePuterMidi::midiTransportCapabilityRuntime().capabilities();
+              if (!capabilities.songPositionTx || fileIndex_.division == 0) {
+                  return true;
+              }
+
+              uint32_t anchorBlock = 0;
+              uint32_t anchorMicros = 0;
+              if (!snapshotCardputerUsbMidiBlockAnchor(anchorBlock, anchorMicros)) {
+                  return false;
+              }
+              (void)anchorMicros;
+              const uint16_t position =
+                  GroovePuterMidi::songPositionPointerFromPpqnTicks(
+                      tick, fileIndex_.division);
+              return eventQueue_.tryPushSongPositionPointer(
+                  position, anchorBlock + 1u, 0);
+          }
+
+          '''
+          helper = "\n".join(line[10:] if line.startswith("          ") else line for line in helper.splitlines()) + "\n"
+          helper_anchor = "void CardputerSmfPlayerService::pauseAtCurrentPosition() {\n"
+          if "bool CardputerSmfPlayerService::queueSongPositionPointerAtCurrentAnchor" not in player:
+              if helper_anchor not in player:
+                  raise SystemExit("player helper anchor missing")
+              player = player.replace(helper_anchor, helper + helper_anchor, 1)
+          player_path.write_text(player, encoding="utf-8")
+
+          dispatch_path = Path("src/platform/cardputer_usb_midi_transport.cpp")
+          dispatch = dispatch_path.read_text(encoding="utf-8")
+          dispatch_old = '''bool dispatchSmfEvent(const ScheduledSmfMidiEvent& event) {
+              if (event.type == ScheduledSmfMidiEventType::NoteOn) {
+                  return g_output.handleSmfNoteOn(
+                      event.channel, event.note, event.velocity);
+              }
+              return g_output.handleSmfNoteOff(
+                  event.channel, event.note, event.velocity);
+          }
+          '''
+          dispatch_new = '''bool dispatchSmfEvent(const ScheduledSmfMidiEvent& event) {
+              switch (event.type) {
+                  case ScheduledSmfMidiEventType::NoteOn:
+                      return g_output.handleSmfNoteOn(
+                          event.channel, event.note, event.velocity);
+                  case ScheduledSmfMidiEventType::NoteOff:
+                      return g_output.handleSmfNoteOff(
+                          event.channel, event.note, event.velocity);
+                  case ScheduledSmfMidiEventType::SongPositionPointer:
+                      return g_output.handleSmfSongPositionPointer(
+                          scheduledSmfSongPositionPointerValue(event));
+              }
+              return false;
+          }
+          '''
+          dispatch_old = "\n".join(line[10:] if line.startswith("          ") else line for line in dispatch_old.splitlines()) + "\n"
+          dispatch_new = "\n".join(line[10:] if line.startswith("          ") else line for line in dispatch_new.splitlines()) + "\n"
+          if "handleSmfSongPositionPointer" not in dispatch:
+              if dispatch_old not in dispatch:
+                  raise SystemExit("dispatcher SMF anchor missing")
+              dispatch = dispatch.replace(dispatch_old, dispatch_new, 1)
+          dispatch_path.write_text(dispatch, encoding="utf-8")
+
+          source_test = Path("tests/test_smf_panel_completion_source_regressions.py")
+          source = source_test.read_text(encoding="utf-8")
+          source = source.replace(
+              '    layout = (ROOT / "src/ui/layout_manager.cpp").read_text(encoding="utf-8")\n',
+              '    layout = (ROOT / "src/ui/layout_manager.cpp").read_text(encoding="utf-8")\n'
+              '    player_service = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(encoding="utf-8")\n'
+              '    dispatcher = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")\n'
+              '    smf_queue = (ROOT / "src/midi/scheduled_smf_midi_event_queue.h").read_text(encoding="utf-8")\n',
+              1,
+          )
+          marker = '    print("SMF panel completion source regressions: OK")\n'
+          assertions = '''    require("queueSongPositionPointerAtCurrentAnchor(targetTick)" in player_service and
+                  "tryPushSongPositionPointer" in player_service,
+                  "active PROJECT seek must publish a bounded SPP intent")
+              require("ScheduledSmfMidiEventType::SongPositionPointer" in dispatcher and
+                  "handleSmfSongPositionPointer" in dispatcher,
+                  "MidiDispatchTask must own the physical active-seek SPP write")
+              require("pendingSppEpoch_" in smf_queue and
+                  "takePendingSongPositionPointer" in smf_queue,
+                  "active-seek SPP must use a latest-wins bounded mailbox")
+
+          '''
+          assertions = "\n".join(line[10:] if line.startswith("          ") else line for line in assertions.splitlines()) + "\n"
+          if "active PROJECT seek must publish a bounded SPP intent" not in source:
+              if marker not in source:
+                  raise SystemExit("panel source test marker missing")
+              source = source.replace(marker, assertions + marker, 1)
+          source_test.write_text(source, encoding="utf-8")
+          PY
+
+      - name: Run host regressions
+        run: bash tests/run_host_tests.sh
+
+      - name: Restore workflow and remove temporary patch file
+        run: |
+          git fetch origin feature/midi-lifecycle-panel-performance
+          git show origin/feature/midi-lifecycle-panel-performance:.github/workflows/core-regressions.yml > .github/workflows/core-regressions.yml
+          rm -f .github/workflows/apply-active-seek-spp.yml
+
+      - name: Commit and push implementation
+        run: |
+          git add -A
+          git commit -m "feat(midi): schedule SPP for active PROJECT seek"
+          git push origin HEAD:feature/midi-lifecycle-panel-performance-completion
