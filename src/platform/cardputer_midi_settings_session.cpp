@@ -9,6 +9,7 @@
 #include <cstdint>
 
 #include "src/midi/midi_companion_settings_codec.h"
+#include "src/midi/midi_transport_capabilities.h"
 #include "src/midi/transport_clock_runtime.h"
 
 namespace GroovePuterPlatform {
@@ -68,6 +69,9 @@ public:
         const GroovePuterMidi::MidiSettingsLoadStatus status =
             persistence_.load(settings_);
 
+        GroovePuterMidi::midiTransportCapabilityRuntime().setDeviceProfile(
+            settings_.profile);
+
         GroovePuterMidi::TransportClockRuntime& runtime =
             GroovePuterMidi::transportClockRuntime();
         runtime.applyPersistedControl(settings_.transportClockSource,
@@ -76,10 +80,11 @@ public:
         runtime.setControlChangedCallback(&persistControlChange);
 
         Serial.printf(
-            "[MIDI-SETTINGS] load=%u schema=%u source=%s follow=%u\n",
+            "[MIDI-SETTINGS] load=%u schema=%u profile=%s source=%s follow=%u\n",
             static_cast<unsigned>(status),
             static_cast<unsigned>(
                 GroovePuterMidi::MidiSettingsCodec::kSchemaVersion),
+            GroovePuterMidi::midiDeviceProfileName(settings_.profile),
             GroovePuterMidi::transportClockSourceName(
                 settings_.transportClockSource),
             static_cast<unsigned>(settings_.externalFollowEnabled ? 1 : 0));
