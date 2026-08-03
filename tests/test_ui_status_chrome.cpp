@@ -15,9 +15,9 @@ int main() {
     pattern.bar = 3;
     pattern.totalBars = 4;
     pattern.clock = UiStatusClock::Internal;
-    pattern.output = UiStatusOutput::InternalAudio;
+    pattern.output = UiStatusOutput::InternalAndMidi;
     formatUiStatusLine(pattern, line, sizeof(line));
-    assert(std::strcmp(line, "GEN PAT PLAY B3/4 INT AUD") == 0);
+    assert(std::strcmp(line, "GEN PAT PLAY B3/4 INT BOTH") == 0);
 
     UiStatusSnapshot smf{};
     smf.context = UiStatusContext::Player;
