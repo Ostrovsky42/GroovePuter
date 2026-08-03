@@ -21,6 +21,9 @@ def main() -> None:
     session = (ROOT / "src/ui/pages/smf_player_session_state.h").read_text(encoding="utf-8")
     redraw = (ROOT / "src/ui/pages/smf_player_redraw.h").read_text(encoding="utf-8")
     layout = (ROOT / "src/ui/layout_manager.cpp").read_text(encoding="utf-8")
+    player_service = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(encoding="utf-8")
+    dispatcher = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
+    smf_queue = (ROOT / "src/midi/scheduled_smf_midi_event_queue.h").read_text(encoding="utf-8")
 
     require("SmfPlayerSessionBinding sessionBinding_" in page_h,
             "SMF page must bind bounded state to its object lifetime")
@@ -92,6 +95,16 @@ def main() -> None:
     guard_block = page_h[page_h.index("template <typename F>"):]
     require("gfx" not in guard_block and "draw" not in guard_block,
             "AudioGuard helper must not contain UI drawing")
+
+    require("queueSongPositionPointerAtCurrentAnchor(targetTick)" in player_service and
+            "tryPushSongPositionPointer" in player_service,
+            "active PROJECT seek must publish a bounded SPP intent")
+    require("ScheduledSmfMidiEventType::SongPositionPointer" in dispatcher and
+            "handleSmfSongPositionPointer" in dispatcher,
+            "MidiDispatchTask must own the physical active-seek SPP write")
+    require("pendingSppEpoch_" in smf_queue and
+            "takePendingSongPositionPointer" in smf_queue,
+            "active-seek SPP must use a latest-wins bounded mailbox")
 
     print("SMF panel completion source regressions: OK")
 

@@ -9,6 +9,7 @@
 
 #include <esp_heap_caps.h>
 #include "src/audio/audio_config.h"
+#include "src/midi/midi_transport_capabilities.h"
 #include "src/midi/transport_clock_runtime.h"
 #include "src/platform/cardputer_usb_midi_service.h"
 
@@ -624,7 +625,10 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
             projectLaunchPlanned_ = false;
             projectRelaunchAfterExternalStop_ = false;
             if (previous == SmfPlayerState::Playing || previous == SmfPlayerState::Armed) {
-                startFromTick(targetTick);
+                const bool started = startFromTick(targetTick);
+                if (started && tempoMode_ == SmfTempoMode::Project) {
+                    (void)queueSongPositionPointerAtCurrentAnchor(targetTick);
+                }
             } else {
                 pausedTick_ = targetTick;
                 prepareStreamAt(targetTick);
@@ -1101,6 +1105,27 @@ bool CardputerSmfPlayerService::planProjectLaunch(
                                       : "ARMED / NOW")));
     scheduleAhead();
     return true;
+}
+
+bool CardputerSmfPlayerService::queueSongPositionPointerAtCurrentAnchor(
+        uint32_t tick) {
+    const GroovePuterMidi::MidiTransportCapabilities capabilities =
+        GroovePuterMidi::midiTransportCapabilityRuntime().capabilities();
+    if (!capabilities.songPositionTx || fileIndex_.division == 0) {
+        return true;
+    }
+
+    uint32_t anchorBlock = 0;
+    uint32_t anchorMicros = 0;
+    if (!snapshotCardputerUsbMidiBlockAnchor(anchorBlock, anchorMicros)) {
+        return false;
+    }
+    (void)anchorMicros;
+    const uint16_t position =
+        GroovePuterMidi::songPositionPointerFromPpqnTicks(
+            tick, fileIndex_.division);
+    return eventQueue_.tryPushSongPositionPointer(
+        position, anchorBlock + 1u, 0);
 }
 
 void CardputerSmfPlayerService::pauseAtCurrentPosition() {

@@ -568,12 +568,18 @@ bool dispatchTransportEvent(const ScheduledMidiTransportEvent& event) {
 }
 
 bool dispatchSmfEvent(const ScheduledSmfMidiEvent& event) {
-    if (event.type == ScheduledSmfMidiEventType::NoteOn) {
-        return g_output.handleSmfNoteOn(
-            event.channel, event.note, event.velocity);
+    switch (event.type) {
+        case ScheduledSmfMidiEventType::NoteOn:
+            return g_output.handleSmfNoteOn(
+                event.channel, event.note, event.velocity);
+        case ScheduledSmfMidiEventType::NoteOff:
+            return g_output.handleSmfNoteOff(
+                event.channel, event.note, event.velocity);
+        case ScheduledSmfMidiEventType::SongPositionPointer:
+            return g_output.handleSmfSongPositionPointer(
+                scheduledSmfSongPositionPointerValue(event));
     }
-    return g_output.handleSmfNoteOff(
-        event.channel, event.note, event.velocity);
+    return false;
 }
 
 bool projectSmfNoteOnStillCurrent(const ScheduledSmfMidiEvent& event) {
