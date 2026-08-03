@@ -28,6 +28,19 @@ jobs:
       - name: Apply production patch
         run: python3 tools/apply_deterministic_input_patch.py
 
+      - name: Fix generated host fixture
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tests/test_cardputer_input_edges.cpp')
+          text = path.read_text(encoding='utf-8')
+          old = "  assert(repeatKeyStillHeld(fnRight, 0x30, UIEvent{0, GROOVEPUTER_NO_SCANCODE, false, false, false, true} ) == false);\n"
+          new = "  UIEvent fnEvent{};\n  fnEvent.meta = true;\n  assert(!repeatKeyStillHeld(fnRight, 0x30, fnEvent));\n"
+          if old not in text:
+              raise SystemExit('host fixture anchor missing')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
       - name: Run focused host tests
         run: |
           python3 tests/test_cardputer_input_source_regressions.py
