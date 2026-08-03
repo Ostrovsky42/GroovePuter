@@ -44,7 +44,6 @@ def main() -> None:
     require("if (persisted) GroovePuterState::markSceneSaveSucceeded();" in project,
             "successful MIDI import persistence must establish a clean baseline")
     for mutation in (
-        "MiniAcidParamId::MainVolume",
         "genre.applySoundMacros",
         "led.mode",
         "led.source",

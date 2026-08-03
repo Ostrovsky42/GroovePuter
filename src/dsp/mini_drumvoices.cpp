@@ -323,7 +323,8 @@ void TR808DrumSynthVoice::triggerCymbal(bool accent, uint8_t velocity) {
 }
 
 float TR808DrumSynthVoice::frand() {
-  return (float)rand() / (float)RAND_MAX * 2.0f - 1.0f;
+  noiseState = noiseState * 1664525u + 1013904223u;
+  return ((noiseState >> 16) & 0x7FFF) / 16384.0f - 1.0f;
 }
 
 float TR808DrumSynthVoice::applyAccentDistortion(float input, bool accent) {

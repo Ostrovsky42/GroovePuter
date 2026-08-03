@@ -33,7 +33,9 @@ SOURCES := \
 	../src/dsp/sid_synth_voice.cpp \
 	../src/dsp/sid_synth.cpp \
 	../src/dsp/ay_synth_voice.cpp \
-	../src/dsp/opl2_synth_voice.cpp \
+	../src/dsp/sh101_synth_voice.cpp \
+	../src/dsp/sn76489_synth_voice.cpp \
+	../src/dsp/wave_morph_synth_voice.cpp \
 	../src/dsp/mode_manager.cpp \
 	../src/dsp/genre_manager.cpp \
 	../src/dsp/audio_wavetables.cpp \
@@ -58,6 +60,7 @@ SOURCES := \
 	../src/ui/ui_widgets.cpp \
 	../src/ui/ui_clipboard.cpp \
 	../src/ui/midi_file_manager.cpp \
+	../src/platform/cardputer_ui_session.cpp \
 	../src/ui/pages/help_page.cpp \
 	../src/ui/pages/help_dialog.cpp \
 	../src/ui/pages/tb303_params_page.cpp \

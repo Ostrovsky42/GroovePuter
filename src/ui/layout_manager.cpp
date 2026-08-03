@@ -49,9 +49,36 @@ void LayoutManager::drawFooter(IGfx& gfx, const char* left, const char* right) {
     gfx.drawLine(Layout::FOOTER.x, Layout::FOOTER.y,
                  Layout::FOOTER.x + Layout::FOOTER.w - 1, Layout::FOOTER.y, p.dim);
 
-    Widgets::drawKeyHelp(gfx, Layout::CONTENT_PAD_X, Layout::FOOTER.y + 3, 120, left ? left : "");
+    const char* leftText = left ? left : "";
+    const bool hasRight = right && right[0] != '\0';
+    const int innerX = Layout::FOOTER.x + Layout::CONTENT_PAD_X;
+    const int innerW = Layout::FOOTER.w - 2 * Layout::CONTENT_PAD_X;
+    constexpr int kColumnGap = 4;
+    const int leftColumnW = (innerW - kColumnGap) / 2;
+    const int rightColumnW = innerW - leftColumnW - kColumnGap;
 
-    if (right && right[0] != '\0') {
-        Widgets::drawKeyHelp(gfx, Layout::CONTENT_PAD_X + 120, Layout::FOOTER.y + 3, 116, right);
+    // Most pages use short two-column hints. Long help strings, such as the
+    // TB303 parameter-page controls, used to be clipped independently to
+    // roughly half of the 240 px display. Stack only those overflowing hints
+    // into two full-width rows while preserving the same 16 px footer zone.
+    const bool stackRows = hasRight &&
+        (gfx.measureText(leftText) > leftColumnW ||
+         gfx.measureText(right) > rightColumnW);
+
+    if (stackRows) {
+        Widgets::drawKeyHelp(gfx, innerX, Layout::FOOTER.y + 1, innerW, leftText);
+        Widgets::drawKeyHelp(gfx, innerX, Layout::FOOTER.y + 8, innerW, right);
+        return;
+    }
+
+    Widgets::drawKeyHelp(gfx, innerX, Layout::FOOTER.y + 3,
+                         hasRight ? leftColumnW : innerW, leftText);
+
+    if (hasRight) {
+        Widgets::drawKeyHelp(gfx,
+                             innerX + leftColumnW + kColumnGap,
+                             Layout::FOOTER.y + 3,
+                             rightColumnW,
+                             right);
     }
 }

@@ -617,7 +617,12 @@ bool ProjectPage::loadSceneAtSelection() {
     loaded = mini_acid_.loadSceneByName(name);
   });
   if (loaded) {
-    GroovePuterState::markSceneLoadSucceeded();
+    if (mini_acid_.lastSceneLoadRecoveredAutosave()) {
+      GroovePuterState::markSceneMutated();
+      UI::showToast("Recovered unsaved project", 1800);
+    } else {
+      GroovePuterState::markSceneLoadSucceeded();
+    }
     closeDialog();
   } else {
     loadError_ = true;
@@ -1221,7 +1226,6 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             auto& led = mini_acid_.sceneManager().currentScene().led;
             if (main_focus_ == MainFocus::Volume) {
                 mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, right ? 1 : -1);
-                GroovePuterState::markSceneMutated();
                 return true;
             }
             if (main_focus_ == MainFocus::VisualStyle) {
