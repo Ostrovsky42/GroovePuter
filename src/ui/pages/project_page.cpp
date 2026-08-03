@@ -150,11 +150,6 @@ void sectionRange(int section, int& first, int& last) {
   }
 }
 
-constexpr size_t kMaxMidiDirsInUi = 24;
-constexpr size_t kMaxMidiFilesInUi = 48;
-#if defined(ESP32) || defined(ESP_PLATFORM)
-constexpr size_t kMidiListLowMemGuardBytes = 4096;
-#endif
 
 } // namespace
 
@@ -209,135 +204,9 @@ void ProjectPage::openSaveDialog() {
   if (save_name_.empty()) save_name_ = generateMemorableName();
 }
 
-void ProjectPage::refreshMidiFiles() {
-  midi_files_.clear();
-  midi_dirs_.clear();
-  try {
-    midi_files_.reserve(8);
-    midi_dirs_.reserve(8);
-  } catch (const std::bad_alloc&) {
-    Serial.println("MIDI list reserve OOM");
-    return;
-  }
-  if (midi_current_path_.empty()) midi_current_path_ = "/midi";
-  if (!SD.exists(midi_current_path_.c_str())) {
-      SD.mkdir(midi_current_path_.c_str());
-  }
-  File root = SD.open(midi_current_path_.c_str());
-  if (!root) return;
-  bool truncated = false;
-  while (true) {
-#if defined(ESP32) || defined(ESP_PLATFORM)
-    if (heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) < kMidiListLowMemGuardBytes) {
-      Serial.println("MIDI list near OOM, truncating");
-      truncated = true;
-      break;
-    }
-#endif
-    File entry = root.openNextFile();
-    if (!entry) break;
-
-    const bool isDir = entry.isDirectory();
-    if ((isDir && midi_dirs_.size() >= kMaxMidiDirsInUi) ||
-        (!isDir && midi_files_.size() >= kMaxMidiFilesInUi)) {
-      truncated = true;
-      entry.close();
-      continue;
-    }
-
-    try {
-      const char* rawName = entry.name();
-      if (!rawName) {
-        entry.close();
-        continue;
-      }
-      std::string name(rawName);
-
-      // Keep only immediate child name, not full path.
-      size_t lastSlash = name.rfind('/');
-      if (lastSlash != std::string::npos) name.erase(0, lastSlash + 1);
-
-      if (!name.empty() && name[0] == '.') {
-        entry.close();
-        continue;
-      }
-
-      if (isDir) {
-        midi_dirs_.emplace_back(std::move(name));
-      } else if (name.size() > 4 && name.compare(name.size() - 4, 4, ".mid") == 0) {
-        midi_files_.emplace_back(std::move(name));
-      }
-    } catch (const std::bad_alloc&) {
-      Serial.println("MIDI list OOM, truncating");
-      truncated = true;
-      entry.close();
-      break;
-    }
-
-    entry.close();
-  }
-  root.close();
-  std::sort(midi_dirs_.begin(), midi_dirs_.end());
-  std::sort(midi_files_.begin(), midi_files_.end());
-  if (truncated) {
-    Serial.printf("MIDI list truncated: dirs=%d files=%d\n", (int)midi_dirs_.size(), (int)midi_files_.size());
-  }
-}
-
-bool ProjectPage::navigateIntoMidiDir(const std::string& dirName) {
-  std::string newPath = midi_current_path_ + "/" + dirName;
-  if (!SD.exists(newPath.c_str())) return false;
-  midi_current_path_ = newPath;
-  refreshMidiFiles();
-  selection_index_ = 0;
-  scroll_offset_ = 0;
-  return true;
-}
-
-bool ProjectPage::navigateUpMidiDir() {
-  if (midi_current_path_ == "/midi" || midi_current_path_.empty()) return false;
-  size_t lastSlash = midi_current_path_.rfind('/');
-  if (lastSlash == std::string::npos || lastSlash == 0) {
-    midi_current_path_ = "/midi";
-  } else {
-    midi_current_path_ = midi_current_path_.substr(0, lastSlash);
-  }
-  if (midi_current_path_.size() < 5) midi_current_path_ = "/midi"; // safety
-  refreshMidiFiles();
-  selection_index_ = 0;
-  scroll_offset_ = 0;
-  return true;
-}
-
-bool ProjectPage::isMidiDirEntry(int index) const {
-  // The combined list is: [.. (if not root)] + dirs + files
-  bool hasParent = (midi_current_path_ != "/midi");
-  if (hasParent) {
-    if (index == 0) return true; // ".." entry
-    index--;
-  }
-  return index < (int)midi_dirs_.size();
-}
-
-const char* ProjectPage::midiDisplayName(int index) const {
-  bool hasParent = (midi_current_path_ != "/midi");
-  if (hasParent) {
-    if (index == 0) return "..";
-    index--;
-  }
-  if (index < (int)midi_dirs_.size()) {
-    return midi_dirs_[index].c_str();
-  }
-  int fileIdx = index - (int)midi_dirs_.size();
-  if (fileIdx >= 0 && fileIdx < (int)midi_files_.size()) {
-    return midi_files_[fileIdx].c_str();
-  }
-  return "?";
-}
-
 void ProjectPage::openImportMidiDialog() {
-  midi_current_path_ = "/midi";
-  refreshMidiFiles();
+  GroovePuterUi::midiFileManager().open();
+  midi_selected_path_.clear();
   dialog_type_ = DialogType::ImportMidi;
   dialog_focus_ = DialogFocus::List;
   selection_index_ = 0;
@@ -352,32 +221,28 @@ void ProjectPage::openImportMidiDialog() {
 }
 
 void ProjectPage::openMidiAdvanceDialog() {
-  dialog_type_ = DialogType::MidiAdvance;
-  midi_advance_focus_ = MidiAdvanceFocus::Mode; // Start at top of list
-  midi_adv_scroll_ = 0;
-  
-  // Resolve selected file path
-  bool hasParent = (midi_current_path_ != "/midi");
-  int offset = hasParent ? 1 : 0;
-  int fileIdx = selection_index_ - offset - (int)midi_dirs_.size();
-  
-  if (fileIdx >= 0 && fileIdx < (int)midi_files_.size()) {
-      std::string path = midi_current_path_ + "/" + midi_files_[fileIdx];
-      UI::showToast("Scanning MIDI...");
-      MidiImporter importer(mini_acid_);
-      midi_scan_ = importer.scanFile(path);
-      
-      if (midi_scan_.valid) {
-          autoRouteMidi();
-          if (midi_scan_.estimatedBars > 0) {
-              midi_import_length_bars_ = midi_scan_.estimatedBars;
-          }
-      }
-  } else {
-      midi_scan_ = MidiImporter::ScanResult(); // Invalid scan
-  }
+  char selectedPath[GroovePuterUi::MidiFileManager::kPathBytes]{};
+  if (!GroovePuterUi::midiFileManager().selectedFilePath(
+          selectedPath, sizeof(selectedPath))) {
+    UI::showToast("Select a MIDI file", 900);
+    return;
   }
 
+  midi_selected_path_ = selectedPath;
+  dialog_type_ = DialogType::MidiAdvance;
+  midi_advance_focus_ = MidiAdvanceFocus::Mode;
+  midi_adv_scroll_ = 0;
+
+  UI::showToast("Scanning MIDI...");
+  MidiImporter importer(mini_acid_);
+  midi_scan_ = importer.scanFile(midi_selected_path_);
+  if (midi_scan_.valid) {
+    autoRouteMidi();
+    if (midi_scan_.estimatedBars > 0) {
+      midi_import_length_bars_ = midi_scan_.estimatedBars;
+    }
+  }
+}
 
 void ProjectPage::autoRouteMidi() {
   midi_mask_a_ = 0;
@@ -455,7 +320,7 @@ void ProjectPage::autoRouteMidi() {
     }
   }
 
-  std::string path = midi_current_path_;
+  std::string path = midi_selected_path_;
   std::transform(path.begin(), path.end(), path.begin(), [](unsigned char ch) {
     return static_cast<char>(std::tolower(ch));
   });
@@ -517,17 +382,18 @@ void ProjectPage::onEnter(int context) {
 }
 
 bool ProjectPage::importMidiAtSelection() {
-  const bool hasParent = (midi_current_path_ != "/midi");
-  const int offset = hasParent ? 1 : 0;
-  const int fileIdx = selection_index_ - offset - static_cast<int>(midi_dirs_.size());
-  if (fileIdx < 0 || fileIdx >= static_cast<int>(midi_files_.size())) return true;
+  if (midi_selected_path_.empty()) {
+    UI::showToast("Select a MIDI file", 900);
+    dialog_type_ = DialogType::ImportMidi;
+    return true;
+  }
 
   if ((midi_mask_a_ | midi_mask_b_ | midi_mask_d_) == 0) {
     UI::showToast("Select at least one MIDI route");
     return true;
   }
 
-  const std::string path = midi_current_path_ + "/" + midi_files_[fileIdx];
+  const std::string path = midi_selected_path_;
   Serial.printf("[ProjectPage] Import MIDI: %s\n", path.c_str());
 
   MidiImporter::ImportSettings settings;
@@ -660,46 +526,29 @@ bool ProjectPage::importMidiAtSelection() {
 }
 
 bool ProjectPage::deleteSelectionInDialog() {
-  if (dialog_focus_ != DialogFocus::List) return true;
-  if (dialog_type_ == DialogType::Load) {
-    if (scenes_.empty()) return true;
-    if (selection_index_ < 0 || selection_index_ >= (int)scenes_.size()) return true;
-    std::string name = scenes_[selection_index_];
-    std::string path = "/scenes/" + name + ".json";
-    std::string autoPath = "/scenes/" + name + ".auto.json";
-    bool removed = SD.remove(path.c_str());
-    SD.remove(autoPath.c_str());
-    if (removed) {
-      UI::showToast("Scene deleted");
-      refreshScenes();
-      if (selection_index_ >= (int)scenes_.size()) selection_index_ = (int)scenes_.size() - 1;
-      if (selection_index_ < 0) selection_index_ = 0;
-      ensureSelectionVisible(10);
-    } else {
-      UI::showToast("Delete failed");
-    }
+  if (dialog_focus_ != DialogFocus::List || dialog_type_ != DialogType::Load) {
     return true;
   }
-  if (dialog_type_ == DialogType::ImportMidi) {
-    // Only delete actual files, not directories
-    if (isMidiDirEntry(selection_index_)) return true; // can't delete dirs from here
-    bool hasParent = (midi_current_path_ != "/midi");
-    int offset = hasParent ? 1 : 0;
-    int fileIdx = selection_index_ - offset - (int)midi_dirs_.size();
-    if (fileIdx < 0 || fileIdx >= (int)midi_files_.size()) return true;
-    std::string path = midi_current_path_ + "/" + midi_files_[fileIdx];
-    bool removed = SD.remove(path.c_str());
-    if (removed) {
-      UI::showToast("MIDI deleted");
-      refreshMidiFiles();
-      int totalItems = (hasParent ? 1 : 0) + (int)midi_dirs_.size() + (int)midi_files_.size();
-      if (selection_index_ >= totalItems) selection_index_ = totalItems - 1;
-      if (selection_index_ < 0) selection_index_ = 0;
-      ensureSelectionVisible(10);
-    } else {
-      UI::showToast("Delete failed");
-    }
+  if (scenes_.empty()) return true;
+  if (selection_index_ < 0 || selection_index_ >= static_cast<int>(scenes_.size())) {
     return true;
+  }
+
+  const std::string name = scenes_[selection_index_];
+  const std::string path = "/scenes/" + name + ".json";
+  const std::string autoPath = "/scenes/" + name + ".auto.json";
+  const bool removed = SD.remove(path.c_str());
+  SD.remove(autoPath.c_str());
+  if (removed) {
+    UI::showToast("Scene deleted");
+    refreshScenes();
+    if (selection_index_ >= static_cast<int>(scenes_.size())) {
+      selection_index_ = static_cast<int>(scenes_.size()) - 1;
+    }
+    if (selection_index_ < 0) selection_index_ = 0;
+    ensureSelectionVisible(10);
+  } else {
+    UI::showToast("Delete failed");
   }
   return true;
 }
@@ -723,34 +572,20 @@ void ProjectPage::moveSelection(int delta) {
 
 void ProjectPage::ensureSelectionVisible(int visibleRows) {
   if (visibleRows < 1) visibleRows = 1;
-
-  // Compute list size based on dialog type
-  int listCount;
-  if (dialog_type_ == DialogType::ImportMidi) {
-    bool hasParent = (midi_current_path_ != "/midi");
-    listCount = (hasParent ? 1 : 0) + (int)midi_dirs_.size() + (int)midi_files_.size();
-  } else if (dialog_type_ == DialogType::Load) {
-    listCount = (int)scenes_.size();
-  } else {
-    listCount = (int)scenes_.size();
-  }
-
+  const int listCount = static_cast<int>(scenes_.size());
   if (listCount <= 0) {
     scroll_offset_ = 0;
     selection_index_ = 0;
     return;
   }
-  int maxIdx = listCount - 1;
-  if (selection_index_ < 0) selection_index_ = 0;
-  if (selection_index_ > maxIdx) selection_index_ = maxIdx;
-  if (scroll_offset_ < 0) scroll_offset_ = 0;
+  const int maxIdx = listCount - 1;
+  selection_index_ = std::max(0, std::min(selection_index_, maxIdx));
   if (scroll_offset_ > selection_index_) scroll_offset_ = selection_index_;
-  int maxScroll = maxIdx - visibleRows + 1;
-  if (maxScroll < 0) maxScroll = 0;
   if (selection_index_ >= scroll_offset_ + visibleRows) {
     scroll_offset_ = selection_index_ - visibleRows + 1;
   }
-  if (scroll_offset_ > maxScroll) scroll_offset_ = maxScroll;
+  const int maxScroll = std::max(0, maxIdx - visibleRows + 1);
+  scroll_offset_ = std::max(0, std::min(scroll_offset_, maxScroll));
 }
 
 void ProjectPage::ensureMainFocusVisible(int visibleRows) {
@@ -1073,84 +908,58 @@ void ProjectPage::drawMidiAdvanceDialog(IGfx& gfx) {
 bool ProjectPage::handleEvent(UIEvent& ui_event) {
     if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
-    if (dialog_type_ == DialogType::Load || dialog_type_ == DialogType::ImportMidi) {
-        if (ui_event.scancode == GROOVEPUTER_ESCAPE) {
-            if (dialog_type_ == DialogType::ImportMidi && midi_current_path_ != "/midi") {
-                navigateUpMidiDir();
-            } else {
-                closeDialog();
-            }
+    if (dialog_type_ == DialogType::ImportMidi) {
+        if (ui_event.key == '\t') {
+            openMidiAdvanceDialog();
             return true;
         }
-        // For MIDI dialog, combined list size = [..] + dirs + files
-        int listSize;
-        if (dialog_type_ == DialogType::ImportMidi) {
-            bool hasParent = (midi_current_path_ != "/midi");
-            listSize = (hasParent ? 1 : 0) + (int)midi_dirs_.size() + (int)midi_files_.size();
-        } else {
-            listSize = (int)scenes_.size();
+        char activatedPath[GroovePuterUi::MidiFileManager::kPathBytes]{};
+        const auto result = GroovePuterUi::midiFileManager().handleEvent(
+            ui_event, activatedPath, sizeof(activatedPath));
+        if (result == GroovePuterUi::MidiFileManager::EventResult::FileActivated) {
+            midi_selected_path_ = activatedPath;
+            openMidiAdvanceDialog();
+            return true;
         }
-        switch (ui_event.scancode) {
-            case GROOVEPUTER_LEFT:
-                if (dialog_focus_ == DialogFocus::Cancel) { dialog_focus_ = DialogFocus::List; return true; }
-                break;
-            case GROOVEPUTER_RIGHT:
-                if (dialog_focus_ == DialogFocus::List) { dialog_focus_ = DialogFocus::Cancel; return true; }
-                break;
-            case GROOVEPUTER_UP:
-                if (dialog_focus_ == DialogFocus::List) { 
-                    loadError_ = false;
-                    selection_index_--;
-                    if (selection_index_ < 0) selection_index_ = 0;
-                    ensureSelectionVisible(10);
-                    return true; 
-                }
-                break;
-            case GROOVEPUTER_DOWN:
-                if (dialog_focus_ == DialogFocus::List) { 
-                    loadError_ = false;
-                    selection_index_++;
-                    if (selection_index_ >= listSize) selection_index_ = listSize - 1;
-                    if (selection_index_ < 0) selection_index_ = 0;
-                    ensureSelectionVisible(10);
-                    return true; 
-                }
-                break;
-            default: break;
+        if (result == GroovePuterUi::MidiFileManager::EventResult::CloseRequested) {
+            closeDialog();
+            return true;
         }
-        char key = ui_event.key;
-        if (dialog_type_ == DialogType::ImportMidi) {
-            if (key == '\t') { openMidiAdvanceDialog(); return true; }
+        return true;
+    }
+
+    if (dialog_type_ == DialogType::Load) {
+        if (ui_event.scancode == GROOVEPUTER_ESCAPE || ui_event.key == '\b') {
+            closeDialog();
+            return true;
         }
-        if (key == 'x' || key == 'X') {
+        if (ui_event.scancode == GROOVEPUTER_LEFT) {
+            dialog_focus_ = DialogFocus::List;
+            return true;
+        }
+        if (ui_event.scancode == GROOVEPUTER_RIGHT) {
+            dialog_focus_ = DialogFocus::Cancel;
+            return true;
+        }
+        if (ui_event.scancode == GROOVEPUTER_UP && dialog_focus_ == DialogFocus::List) {
+            moveSelection(-1);
+            return true;
+        }
+        if (ui_event.scancode == GROOVEPUTER_DOWN && dialog_focus_ == DialogFocus::List) {
+            moveSelection(1);
+            return true;
+        }
+        if (ui_event.key == 'x' || ui_event.key == 'X') {
             return deleteSelectionInDialog();
         }
-        if (key == '\n' || key == '\r') {
-            if (dialog_focus_ == DialogFocus::Cancel) { closeDialog(); return true; }
-            if (dialog_type_ == DialogType::Load) return loadSceneAtSelection();
-            // MIDI import: folder navigation
-            if (isMidiDirEntry(selection_index_)) {
-                bool hasParent = (midi_current_path_ != "/midi");
-                if (hasParent && selection_index_ == 0) {
-                    navigateUpMidiDir();
-                } else {
-                    int dirIndex = selection_index_ - (hasParent ? 1 : 0);
-                    if (dirIndex >= 0 && dirIndex < (int)midi_dirs_.size()) {
-                        navigateIntoMidiDir(midi_dirs_[dirIndex]);
-                    }
-                }
+        if (ui_event.key == '\n' || ui_event.key == '\r') {
+            if (dialog_focus_ == DialogFocus::Cancel) {
+                closeDialog();
                 return true;
             }
-            openMidiAdvanceDialog(); return true;
+            return loadSceneAtSelection();
         }
-        if (key == '\b') {
-            if (dialog_type_ == DialogType::ImportMidi && midi_current_path_ != "/midi") {
-                navigateUpMidiDir();
-                return true;
-            }
-            closeDialog(); return true;
-        }
-        return false;
+        return true;
     }
 
     if (dialog_type_ == DialogType::MidiAdvance) {
@@ -1623,142 +1432,100 @@ void ProjectPage::draw(IGfx& gfx) {
   sectionRange(sectionIdx, firstFocus, lastFocus);
   auto& led = mini_acid_.sceneManager().currentScene().led;
 
-  if (dialog_type_ != DialogType::None) {
-    // Shared list-based dialog drawing (Load, Import, SaveAs)
-    int w = Layout::CONTENT.w - 2 * Layout::CONTENT_PAD_X;
-    int h = Layout::CONTENT.h - 2 * Layout::CONTENT_PAD_Y;
-    int y_start = Layout::CONTENT.y + Layout::CONTENT_PAD_Y;
-    int dialog_w = w - 16;
-    if (dialog_w < 80) dialog_w = w - 4;
-    int dialog_h = h - 16;
-    if (dialog_h < 70) dialog_h = h - 4;
-    int dialog_x = x + (w - dialog_w) / 2;
-    int dialog_y = y_start + (h - dialog_h) / 2;
+  if (dialog_type_ == DialogType::ImportMidi) {
+    const Rect midiBrowserBounds(Layout::CONTENT.x, Layout::CONTENT.y,
+                                 Layout::CONTENT.w, Layout::CONTENT.h);
+    GroovePuterUi::midiFileManager().draw(gfx, midiBrowserBounds, "IMPORT");
+    return;
+  }
 
-    gfx.fillRect(dialog_x, dialog_y, dialog_w, dialog_h, COLOR_DARKER);
-    gfx.drawRect(dialog_x, dialog_y, dialog_w, dialog_h, COLOR_ACCENT);
+  if (dialog_type_ == DialogType::Load || dialog_type_ == DialogType::SaveAs) {
+    const int w = Layout::CONTENT.w - 2 * Layout::CONTENT_PAD_X;
+    const int h = Layout::CONTENT.h - 2 * Layout::CONTENT_PAD_Y;
+    const int yStart = Layout::CONTENT.y + Layout::CONTENT_PAD_Y;
+    int dialogW = w - 16;
+    if (dialogW < 80) dialogW = w - 4;
+    int dialogH = h - 16;
+    if (dialogH < 70) dialogH = h - 4;
+    const int dialogX = x + (w - dialogW) / 2;
+    const int dialogY = yStart + (h - dialogH) / 2;
 
-    if (dialog_type_ == DialogType::Load || dialog_type_ == DialogType::ImportMidi) {
-        int header_h = line_h + 4;
-        gfx.setTextColor(COLOR_WHITE);
-        if (dialog_type_ == DialogType::Load) {
-            gfx.drawText(dialog_x + 4, dialog_y + 2, "Load Scene");
-        } else {
-            // Breadcrumb for MIDI folder navigation
-            const char* breadcrumb = midi_current_path_.c_str();
-            char breadcrumbBuf[64];
-            int maxChars = dialog_w / 6 - 2;
-            if (maxChars < 4) maxChars = 4;
-            const int pathLen = static_cast<int>(midi_current_path_.size());
-            if (pathLen > maxChars) {
-                const int tailLen = maxChars - 2;
-                const int start = pathLen - tailLen;
-                std::snprintf(breadcrumbBuf, sizeof(breadcrumbBuf), "..%s", breadcrumb + start);
-                breadcrumb = breadcrumbBuf;
-            }
-            gfx.drawText(dialog_x + 4, dialog_y + 2, breadcrumb);
+    gfx.fillRect(dialogX, dialogY, dialogW, dialogH, COLOR_DARKER);
+    gfx.drawRect(dialogX, dialogY, dialogW, dialogH, COLOR_ACCENT);
+
+    if (dialog_type_ == DialogType::Load) {
+      const int headerH = line_h + 4;
+      const int cancelH = line_h + 8;
+      const int listY = dialogY + headerH + 2;
+      const int listH = dialogH - headerH - cancelH - 10;
+      const int rowH = line_h + 3;
+      const int visibleRows = std::max(1, listH / rowH);
+      ensureSelectionVisible(visibleRows);
+      gfx.setTextColor(COLOR_WHITE);
+      gfx.drawText(dialogX + 4, dialogY + 2, "Load Scene");
+
+      if (scenes_.empty()) {
+        gfx.setTextColor(COLOR_LABEL);
+        gfx.drawText(dialogX + 6, listY + 2, "No files");
+      } else {
+        const int rows = std::min(visibleRows,
+                                  static_cast<int>(scenes_.size()) - scroll_offset_);
+        for (int row = 0; row < rows; ++row) {
+          const int index = scroll_offset_ + row;
+          const int rowY = listY + row * rowH;
+          const bool selected = index == selection_index_;
+          if (selected) {
+            gfx.fillRect(dialogX + 2, rowY, dialogW - 4, rowH, COLOR_PANEL);
+            gfx.drawRect(dialogX + 2, rowY, dialogW - 4, rowH, COLOR_ACCENT);
+          }
+          gfx.setTextColor(selected ? COLOR_WHITE : COLOR_LABEL);
+          Widgets::drawClippedText(gfx, dialogX + 6, rowY + 1,
+                                   dialogW - 12, scenes_[index].c_str());
         }
-        
-        int row_h = line_h + 3;
-        int cancel_h = line_h + 8;
-        int footer_h = (dialog_type_ == DialogType::ImportMidi) ? (line_h + 2) : 0;
-        int list_y = dialog_y + header_h + 2;
-        int list_h = dialog_h - header_h - cancel_h - footer_h - 10;
-        int visible_rows = list_h / row_h;
-        if (visible_rows < 1) visible_rows = 1;
-        ensureSelectionVisible(visible_rows);
+      }
 
-        if (dialog_type_ == DialogType::Load) {
-            // Original scene list drawing
-            if (scenes_.empty()) {
-                gfx.setTextColor(COLOR_LABEL);
-                gfx.drawText(dialog_x + 6, list_y + 2, "No files");
-            } else {
-                int rows = std::min(visible_rows, (int)scenes_.size() - scroll_offset_);
-                for (int i = 0; i < rows; ++i) {
-                    int idx = scroll_offset_ + i;
-                    int ry = list_y + i * row_h;
-                    bool sel = (idx == selection_index_);
-                    if (sel) {
-                        gfx.fillRect(dialog_x + 2, ry, dialog_w - 4, row_h, COLOR_PANEL);
-                        gfx.drawRect(dialog_x + 2, ry, dialog_w - 4, row_h, COLOR_ACCENT);
-                    }
-                    Widgets::drawClippedText(gfx, dialog_x + 6, ry + 1, dialog_w - 12, scenes_[idx].c_str());
-                }
-            }
-        } else {
-            // MIDI folder + file list drawing
-            bool hasParent = (midi_current_path_ != "/midi");
-            int totalItems = (hasParent ? 1 : 0) + (int)midi_dirs_.size() + (int)midi_files_.size();
-            if (totalItems == 0) {
-                gfx.setTextColor(COLOR_LABEL);
-                gfx.drawText(dialog_x + 6, list_y + 2, "No files");
-            } else {
-                int rows = std::min(visible_rows, totalItems - scroll_offset_);
-                for (int i = 0; i < rows; ++i) {
-                    int idx = scroll_offset_ + i;
-                    int ry = list_y + i * row_h;
-                    bool sel = (idx == selection_index_);
-                    bool isDir = isMidiDirEntry(idx);
-                    if (sel) {
-                        gfx.fillRect(dialog_x + 2, ry, dialog_w - 4, row_h, COLOR_PANEL);
-                        gfx.drawRect(dialog_x + 2, ry, dialog_w - 4, row_h, COLOR_ACCENT);
-                    }
-                    const char* displayName = midiDisplayName(idx);
-                    if (isDir) {
-                        // Folder marker
-                        char label[80];
-                        std::snprintf(label, sizeof(label), "[DIR] %s", displayName);
-                        if (sel) gfx.setTextColor(COLOR_ACCENT);
-                        else gfx.setTextColor(IGfxColor(0xB4DCFF));
-                        Widgets::drawClippedText(gfx, dialog_x + 6, ry + 1, dialog_w - 12, label);
-                    } else {
-                        gfx.setTextColor(sel ? COLOR_WHITE : COLOR_LABEL);
-                        Widgets::drawClippedText(gfx, dialog_x + 6, ry + 1, dialog_w - 12, displayName);
-                    }
-                }
-            }
-            // File count footer
-            char countBuf[48];
-            std::snprintf(countBuf, sizeof(countBuf), "%d dirs  %d files", (int)midi_dirs_.size(), (int)midi_files_.size());
-            gfx.setTextColor(COLOR_LABEL);
-            gfx.drawText(dialog_x + 6, dialog_y + dialog_h - cancel_h - footer_h - 2, countBuf);
-        }
-        // Cancel button
-        int btnW = 60;
-        int btnX = dialog_x + (dialog_w - btnW) / 2;
-        int btnY = dialog_y + dialog_h - cancel_h - 4;
-        bool focused = (dialog_focus_ == DialogFocus::Cancel);
-        gfx.fillRect(btnX, btnY, btnW, cancel_h, COLOR_PANEL);
-        gfx.drawRect(btnX, btnY, btnW, cancel_h, focused ? COLOR_ACCENT : COLOR_LABEL);
-        gfx.setTextColor(focused ? COLOR_WHITE : COLOR_LABEL);
-        gfx.drawText(btnX + (btnW - textWidth(gfx, "Cancel"))/2, btnY + (cancel_h - line_h)/2, "Cancel");
-        return;
+      const int buttonWidth = 60;
+      const int buttonX = dialogX + (dialogW - buttonWidth) / 2;
+      const int buttonY = dialogY + dialogH - cancelH - 4;
+      const bool focused = dialog_focus_ == DialogFocus::Cancel;
+      gfx.fillRect(buttonX, buttonY, buttonWidth, cancelH, COLOR_PANEL);
+      gfx.drawRect(buttonX, buttonY, buttonWidth, cancelH,
+                   focused ? COLOR_ACCENT : COLOR_LABEL);
+      gfx.setTextColor(focused ? COLOR_WHITE : COLOR_LABEL);
+      gfx.drawText(buttonX + (buttonWidth - textWidth(gfx, "Cancel")) / 2,
+                   buttonY + (cancelH - line_h) / 2, "Cancel");
+      return;
     }
 
-    if (dialog_type_ == DialogType::SaveAs) {
-        gfx.setTextColor(COLOR_WHITE);
-        gfx.drawText(dialog_x + 4, dialog_y + 2, "Save Scene");
-        int input_h = line_h + 8;
-        int input_y = dialog_y + line_h + 6;
-        gfx.fillRect(dialog_x + 4, input_y, dialog_w - 8, input_h, COLOR_PANEL);
-        bool focused = (save_dialog_focus_ == SaveDialogFocus::Input);
-        gfx.drawRect(dialog_x + 4, input_y, dialog_w - 8, input_h, focused ? COLOR_ACCENT : COLOR_LABEL);
-        gfx.drawText(dialog_x + 8, input_y + (input_h - line_h)/2, save_name_.c_str());
+    gfx.setTextColor(COLOR_WHITE);
+    gfx.drawText(dialogX + 4, dialogY + 2, "Save Scene");
+    const int inputH = line_h + 8;
+    const int inputY = dialogY + line_h + 6;
+    gfx.fillRect(dialogX + 4, inputY, dialogW - 8, inputH, COLOR_PANEL);
+    const bool inputFocused = save_dialog_focus_ == SaveDialogFocus::Input;
+    gfx.drawRect(dialogX + 4, inputY, dialogW - 8, inputH,
+                 inputFocused ? COLOR_ACCENT : COLOR_LABEL);
+    gfx.setTextColor(COLOR_WHITE);
+    gfx.drawText(dialogX + 8, inputY + (inputH - line_h) / 2,
+                 save_name_.c_str());
 
-        const char* btns[] = {"RND", "SAVE", "ESC"};
-        SaveDialogFocus focuses[] = {SaveDialogFocus::Randomize, SaveDialogFocus::Save, SaveDialogFocus::Cancel};
-        int bw = (dialog_w - 16) / 3;
-        for (int i=0; i<3; ++i) {
-            int bx = dialog_x + 4 + i * (bw + 4);
-            int by = input_y + input_h + 6;
-            bool f = (save_dialog_focus_ == focuses[i]);
-            gfx.fillRect(bx, by, bw, line_h + 8, COLOR_PANEL);
-            gfx.drawRect(bx, by, bw, line_h + 8, f ? COLOR_ACCENT : COLOR_LABEL);
-            gfx.setTextColor(f ? COLOR_WHITE : COLOR_LABEL);
-            gfx.drawText(bx + (bw - textWidth(gfx, btns[i]))/2, by + 4, btns[i]);
-        }
-        return;
+    const char* buttons[] = {"RND", "SAVE", "ESC"};
+    const SaveDialogFocus focuses[] = {
+        SaveDialogFocus::Randomize,
+        SaveDialogFocus::Save,
+        SaveDialogFocus::Cancel,
+    };
+    const int buttonWidth = (dialogW - 16) / 3;
+    for (int index = 0; index < 3; ++index) {
+      const int buttonX = dialogX + 4 + index * (buttonWidth + 4);
+      const int buttonY = inputY + inputH + 6;
+      const bool focused = save_dialog_focus_ == focuses[index];
+      gfx.fillRect(buttonX, buttonY, buttonWidth, line_h + 8, COLOR_PANEL);
+      gfx.drawRect(buttonX, buttonY, buttonWidth, line_h + 8,
+                   focused ? COLOR_ACCENT : COLOR_LABEL);
+      gfx.setTextColor(focused ? COLOR_WHITE : COLOR_LABEL);
+      gfx.drawText(buttonX + (buttonWidth - textWidth(gfx, buttons[index])) / 2,
+                   buttonY + 4, buttons[index]);
     }
     return;
   }
