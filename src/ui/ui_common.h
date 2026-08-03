@@ -3,6 +3,7 @@
 #include "layout_manager.h"
 #include "ui_widgets.h"
 #include "ui_config.h"
+#include "ui_status_chrome.h"
 
 // Forward declaration if needed, but ui_core/layout_manager should cover it
 #include "src/dsp/miniacid_engine.h"
@@ -92,7 +93,14 @@ namespace UI {
     void drawFeelHeaderHud(IGfx& gfx, MiniAcid& mini_acid, int x, int y);
 
     /**
-     * Draw global LiveMix lock badge in header area (all themes).
+     * Draws the one-line global context/status chrome inside the existing
+     * 16-pixel header. It never changes page bounds or audio state.
+     */
+    void drawStatusChrome(IGfx& gfx, MiniAcid& mini_acid);
+
+    /**
+     * Compatibility hook used by MiniAcidDisplay. The implementation now draws
+     * the full status chrome and preserves LiveMix as the trailing LM token.
      */
     void drawLiveMixLockBadge(IGfx& gfx, MiniAcid& mini_acid);
 
