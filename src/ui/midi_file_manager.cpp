@@ -502,7 +502,7 @@ void MidiFileManager::draw(IGfx& gfx,
                              bounds.w - 4, title);
 
     gfx.setTextColor(COLOR_LABEL);
-    char pathLine[96];
+    char pathLine[kPathBytes + 24]{};
     std::snprintf(pathLine, sizeof(pathLine), "%s  D%d F%d%s",
                   currentPath_, directoryCount_, fileCount_,
                   truncated_ ? " +" : "");

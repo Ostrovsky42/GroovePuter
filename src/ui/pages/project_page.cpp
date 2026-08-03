@@ -1433,7 +1433,9 @@ void ProjectPage::draw(IGfx& gfx) {
   auto& led = mini_acid_.sceneManager().currentScene().led;
 
   if (dialog_type_ == DialogType::ImportMidi) {
-    GroovePuterUi::midiFileManager().draw(gfx, Layout::CONTENT, "IMPORT");
+    const Rect midiBrowserBounds(Layout::CONTENT.x, Layout::CONTENT.y,
+                                 Layout::CONTENT.w, Layout::CONTENT.h);
+    GroovePuterUi::midiFileManager().draw(gfx, midiBrowserBounds, "IMPORT");
     return;
   }
 

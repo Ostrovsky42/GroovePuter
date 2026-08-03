@@ -425,7 +425,9 @@ void SmfPlayerPage::drawContent(IGfx& gfx) {
 }
 
 void SmfPlayerPage::drawBrowser(IGfx& gfx) {
-    GroovePuterUi::midiFileManager().draw(gfx, Layout::CONTENT, "PLAYER");
+    const Rect midiBrowserBounds(Layout::CONTENT.x, Layout::CONTENT.y,
+                                 Layout::CONTENT.w, Layout::CONTENT.h);
+    GroovePuterUi::midiFileManager().draw(gfx, midiBrowserBounds, "PLAYER");
 }
 
 void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
