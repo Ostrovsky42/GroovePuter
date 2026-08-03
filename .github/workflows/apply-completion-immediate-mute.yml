@@ -1,0 +1,190 @@
+name: Apply completion immediate mute
+
+on:
+  push:
+    branches:
+      - feature/midi-lifecycle-panel-performance-completion
+    paths:
+      - .github/workflows/apply-completion-immediate-mute.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/midi-lifecycle-panel-performance-completion
+          fetch-depth: 0
+
+      - name: Configure identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Wire bounded active-note ownership
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("src/platform/cardputer_usb_midi_transport.cpp")
+          text = path.read_text(encoding="utf-8")
+          anchor = '#include "src/midi/smf_track_mute.h"\n'
+          if anchor not in text:
+              raise SystemExit("smf_track_mute include missing")
+          if '#include "src/midi/smf_track_note_ownership.h"' not in text:
+              text = text.replace(anchor, anchor + '#include "src/midi/smf_track_note_ownership.h"\n', 1)
+
+          owner_anchor = "PatternDrumGateScheduler g_patternDrumGates;\n"
+          if "SmfTrackNoteOwnership<> g_smfTrackNotes" not in text:
+              if owner_anchor not in text:
+                  raise SystemExit("pattern drum gate owner anchor missing")
+              text = text.replace(
+                  owner_anchor,
+                  owner_anchor + "GroovePuterMidi::SmfTrackNoteOwnership<> g_smfTrackNotes;\n",
+                  1,
+              )
+
+          dispatch_fn = '''bool dispatchSmfEvent(const ScheduledSmfMidiEvent& event) {
+    if (event.type == ScheduledSmfMidiEventType::NoteOn) {
+        if (!g_output.handleSmfNoteOn(
+                event.channel, event.note, event.velocity)) {
+            return false;
+        }
+        if (!g_smfTrackNotes.acquire(
+                event.trackIndex, event.channel, event.note)) {
+            beginSmfCleanup();
+        }
+        return true;
+    }
+    const bool sent = g_output.handleSmfNoteOff(
+        event.channel, event.note, event.velocity);
+    if (sent) {
+        g_smfTrackNotes.release(
+            event.trackIndex, event.channel, event.note);
+    }
+    return sent;
+}
+'''
+          start = text.index("bool dispatchSmfEvent(const ScheduledSmfMidiEvent& event) {")
+          end = text.index("\nbool projectSmfNoteOnStillCurrent", start)
+          text = text[:start] + dispatch_fn + text[end:]
+
+          helper = '''void dispatchPendingMutedTracks() {
+    uint8_t track = 0;
+    while (GroovePuterMidi::smfTrackMuteState().takePendingReleaseTrack(track)) {
+        g_smfTrackNotes.releaseTrack(
+            track,
+            [](uint8_t channel, uint8_t note) {
+                (void)g_output.handleSmfNoteOff(channel, note, 0);
+            });
+    }
+}
+
+'''
+          helper_anchor = "void dispatchSmfPanic() {\n"
+          if helper not in text:
+              if helper_anchor not in text:
+                  raise SystemExit("SMF panic anchor missing")
+              text = text.replace(helper_anchor, helper + helper_anchor, 1)
+
+          loop_anchor = "        dispatchControlPanics();\n        dispatchSmfPanic();\n"
+          if "        dispatchPendingMutedTracks();\n" not in text:
+              if loop_anchor not in text:
+                  raise SystemExit("dispatcher cleanup anchor missing")
+              text = text.replace(
+                  loop_anchor,
+                  "        dispatchControlPanics();\n        dispatchPendingMutedTracks();\n        dispatchSmfPanic();\n",
+                  1,
+              )
+
+          cleanup_anchor = "        beginSmfCleanup();\n        ++g_diagnostics.smfPanics;\n"
+          if "        g_smfTrackNotes.clearWithoutRelease();\n        beginSmfCleanup();" not in text:
+              if cleanup_anchor not in text:
+                  raise SystemExit("SMF cleanup anchor missing")
+              text = text.replace(
+                  cleanup_anchor,
+                  "        g_smfTrackNotes.clearWithoutRelease();\n        beginSmfCleanup();\n        ++g_diagnostics.smfPanics;\n",
+                  1,
+              )
+
+          required = [
+              "SmfTrackNoteOwnership<> g_smfTrackNotes",
+              "dispatchPendingMutedTracks()",
+              "g_smfTrackNotes.acquire",
+              "g_smfTrackNotes.release(",
+              "takePendingReleaseTrack",
+          ]
+          for token in required:
+              if token not in text:
+                  raise SystemExit(f"immediate mute patch incomplete: {token}")
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Add immediate-mute source regression
+        run: |
+          cat > tests/test_smf_immediate_mute_source_regressions.py <<'PY'
+          #!/usr/bin/env python3
+          from pathlib import Path
+
+          ROOT = Path(__file__).resolve().parents[1]
+
+          def require(condition: bool, message: str) -> None:
+              if not condition:
+                  raise AssertionError(message)
+
+          transport = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
+          mute = (ROOT / "src/midi/smf_track_mute.h").read_text(encoding="utf-8")
+          ownership = (ROOT / "src/midi/smf_track_note_ownership.h").read_text(encoding="utf-8")
+          player = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(encoding="utf-8")
+
+          require("takePendingReleaseTrack" in mute,
+                  "track mute must publish a bounded release mailbox")
+          require("SmfTrackNoteOwnership<> g_smfTrackNotes" in transport,
+                  "dispatcher must own bounded per-track note ownership")
+          require("dispatchPendingMutedTracks()" in transport,
+                  "dispatcher must drain immediate track releases")
+          require("g_smfTrackNotes.acquire" in transport and
+                  "g_smfTrackNotes.release(" in transport,
+                  "SMF NoteOn/NoteOff must maintain track ownership")
+          require("shouldEmitSmfTrackEvent" in transport,
+                  "queued muted-track NoteOn must be checked before USB write")
+          require("event.trackIndex" in player,
+                  "SMF scheduler must publish source track identity")
+          for token in ("std::vector", "std::map", "new ", "malloc("):
+              require(token not in ownership,
+                      f"immediate mute ownership must remain bounded: {token}")
+
+          print("SMF immediate mute source regressions: OK")
+          PY
+          chmod +x tests/test_smf_immediate_mute_source_regressions.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("tests/run_host_tests.sh")
+          text = path.read_text(encoding="utf-8")
+          anchor = "python3 tests/test_midi_transport_source_regressions.py\n"
+          line = "python3 tests/test_smf_immediate_mute_source_regressions.py\n"
+          if line not in text:
+              if anchor not in text:
+                  raise SystemExit("host test runner anchor missing")
+              text = text.replace(anchor, anchor + line, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Run host regressions
+        run: bash tests/run_host_tests.sh
+
+      - name: Commit implementation
+        run: |
+          git add src/platform/cardputer_usb_midi_transport.cpp tests/test_smf_immediate_mute_source_regressions.py tests/run_host_tests.sh
+          git commit -m "feat(midi): complete ownership-safe track mute"
+
+      - name: Remove one-shot workflows
+        run: |
+          git rm -f .github/workflows/apply-smf-immediate-release.yml .github/workflows/apply-completion-immediate-mute.yml
+          git commit -m "chore: remove completion patch workflows"
+
+      - name: Push branch
+        run: git push origin HEAD:feature/midi-lifecycle-panel-performance-completion
