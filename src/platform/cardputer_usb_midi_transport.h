@@ -31,12 +31,14 @@ struct CardputerUsbMidiTransportDiagnostics {
 
 // Native ESP32-S3 TinyUSB MIDI transport for Cardputer-Adv.
 //
-// The platform owns one global instance so USBMIDI can register its descriptor
-// before Arduino's app_main() starts the TinyUSB CDC composite. begin() and
-// router registration are deliberately deferred until setup().
+// The platform owns one global instance so its MIDI descriptor is registered
+// before Arduino's app_main() starts the TinyUSB CDC composite. The stock
+// USBMIDI allocator can cross-pair CDC and MIDI endpoint numbers; this transport
+// reserves one duplex endpoint instead, matching the working MIDI-only profile.
+// begin() and router registration are deliberately deferred until setup().
 class CardputerUsbMidiTransport final : public IUsbMidiTransport {
 public:
-    CardputerUsbMidiTransport() = default;
+    CardputerUsbMidiTransport();
 
     bool begin() override;
     bool started() const { return begun_; }
@@ -81,8 +83,8 @@ private:
                             uint8_t velocity);
     bool writeRealtimePacket(uint8_t status);
 
-    USBMIDI midi_;
     GroovePuterMidi::UsbMidiPacketPacer txPacer_{kPacketSpacingMicros};
+    bool descriptorRegistered_{false};
     bool begun_{false};
     mutable CardputerUsbMidiTransportDiagnostics diagnostics_{};
     mutable bool mountStateKnown_{false};
