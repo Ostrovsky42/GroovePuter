@@ -2,8 +2,10 @@
 
 #include <cstdint>
 
-#include "src/midi/usb_midi_transport.h"
+#include "src/midi/midi_transport_capabilities.h"
+#include "src/midi/smf_player_service.h"
 #include "src/midi/usb_midi_packet_pacer.h"
+#include "src/midi/usb_midi_transport.h"
 
 #if !defined(ARDUINO)
 #error "CardputerUsbMidiTransport is available only in the Arduino firmware build"
@@ -62,29 +64,69 @@ public:
     bool sendStart() override;
     bool sendStop() override;
 
-    // Continue and Song Position Pointer are optional at the platform-neutral
-    // interface, but this concrete TinyUSB backend can encode both safely. The
-    // caller still has to gate them through the selected device capability
-    // profile before they reach the dispatcher.
+    // Called only by MidiDispatchTask. The configured device profile decides
+    // whether a real FB is valid or whether resume must use the validated Start
+    // fallback. For a class-compliant/General-MIDI target, a PROJECT SMF resume
+    // sends F2 immediately before FB using the current player tick and PPQN.
     bool sendContinue() override {
-        midiEventPacket_t packet{
-            0x0F,  // USB-MIDI CIN: single-byte realtime message
-            0xFB,  // MIDI Continue
-            0,
-            0,
-        };
-        return writePacket(packet);
+        const GroovePuterMidi::MidiTransportCapabilities capabilities =
+            GroovePuterMidi::midiTransportCapabilityRuntime().capabilities();
+
+        if (capabilities.songPositionTx) {
+            GroovePuterMidi::ISmfPlayerService* player =
+                GroovePuterMidi::smfPlayerService();
+            if (player != nullptr) {
+                const GroovePuterMidi::SmfPlayerSnapshot state =
+                    player->snapshot();
+                const bool resumableProjectState =
+                    state.tempoMode == GroovePuterMidi::SmfTempoMode::Project &&
+                    state.state != GroovePuterMidi::SmfPlayerState::Unloaded &&
+                    state.state != GroovePuterMidi::SmfPlayerState::Loading &&
+                    state.state != GroovePuterMidi::SmfPlayerState::Stopped &&
+                    state.state != GroovePuterMidi::SmfPlayerState::Error;
+                if (resumableProjectState) {
+                    const GroovePuterMidi::SmfChannelInspectorSnapshot inspector =
+                        player->channelInspector();
+                    if (inspector.division > 0) {
+                        const uint16_t position =
+                            GroovePuterMidi::songPositionPointerFromPpqnTicks(
+                                state.currentTick, inspector.division);
+                        if (!sendSongPositionPointer(position)) return false;
+                    }
+                }
+            }
+        }
+
+        if (capabilities.continueTx) {
+            midiEventPacket_t packet{
+                0x0F,  // USB-MIDI CIN: single-byte realtime message
+                0xFB,  // MIDI Continue
+                0,
+                0,
+            };
+            return writePacket(packet);
+        }
+
+        if (capabilities.continueBehavior ==
+                GroovePuterMidi::MidiContinueBehavior::RestartFromBeginning &&
+            capabilities.startTx) {
+            return writeRealtimePacket(0xFA);  // validated Start fallback
+        }
+        return false;
     }
 
     bool sendSongPositionPointer(uint16_t sixteenthNotes) override {
-        const uint16_t value = sixteenthNotes > 0x3FFFu
-            ? 0x3FFFu
-            : sixteenthNotes;
+        if (!GroovePuterMidi::midiTransportCapabilityRuntime()
+                 .capabilities().songPositionTx) {
+            return false;
+        }
+        const uint16_t value =
+            GroovePuterMidi::clampSongPositionPointer(sixteenthNotes);
         midiEventPacket_t packet{
             0x03,  // USB-MIDI CIN: three-byte system common message
             0xF2,  // Song Position Pointer
-            static_cast<uint8_t>(value & 0x7Fu),
-            static_cast<uint8_t>((value >> 7u) & 0x7Fu),
+            GroovePuterMidi::songPositionPointerLsb(value),
+            GroovePuterMidi::songPositionPointerMsb(value),
         };
         return writePacket(packet);
     }
