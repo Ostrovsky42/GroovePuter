@@ -84,6 +84,7 @@ def test_perform_piano_key_shapes() -> None:
 def test_workflow_local_page_navigation() -> None:
     workflow = (ROOT / "src/ui/workflow_mode.h").read_text(encoding="utf-8")
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
+    display_h = (ROOT / "src/ui/miniacid_display.h").read_text(encoding="utf-8")
     launcher = (ROOT / "src/ui/workspace_launcher_overlay.h").read_text(encoding="utf-8")
     settings = (ROOT / "src/ui/pages/settings_page.cpp").read_text(encoding="utf-8")
 
@@ -111,21 +112,23 @@ def test_workflow_local_page_navigation() -> None:
             "hardware workflow navigation must read the physical Fn state")
     session = (ROOT / "src/state/ui_session_state.h").read_text(encoding="utf-8")
     require("workflowNavigationTarget" in session and
-            "rememberedWorkflowPage" in session,
+            "rememberedAdjacentWorkflowPage" in session,
             "workflow changes must resolve through per-workflow page memory")
-    require("WorkflowPages::hardwareWorkflowModifierHeld()" in display and
-            display.count("workflowNavigationTarget") >= 2,
-            "plain/Fn brackets must use the remembered workflow navigation model")
-    require("rememberedWorkflowPage" in display and
-            "WorkflowPages::nextMode(current, direction)" in display,
-            "Fn+Tab must restore the remembered page of the adjacent workflow")
+    require("void switchWorkflow_(int direction);" in display_h and
+            "rememberedAdjacentWorkflowPage" in display and
+            display.count("switchWorkflow_(") >= 6,
+            "Fn+Tab and Fn brackets must share one remembered-page route")
     require("pageForMode(\n                WorkflowPages::nextMode" not in display,
             "workflow switches must not reset to the first page")
 
     page_dispatch = display.index("currentPage->handleEvent(event)")
+    fn_left = display.index("event.meta && (event.key == '['")
+    fn_right = display.index("event.meta && (event.key == ']'")
     brackets = display.index("if (event.key == ']')", page_dispatch)
+    require(fn_left < page_dispatch and fn_right < page_dispatch,
+            "Fn brackets must bypass page-local first refusal")
     require(page_dispatch < brackets,
-            "pages must keep first refusal so local editors can own their controls")
+            "plain brackets must still give local editors first refusal")
     require("if (e.key == '\\t')" in settings and
             "Group::Timing" in settings and "Group::Notes" in settings and
             "Group::Scale" in settings,
@@ -138,6 +141,9 @@ def test_workflow_local_page_navigation() -> None:
             "launcher must preview pages inside each workflow")
     require("FN+[ ] WORKFLOW" in launcher and "[ ] PAGE" in launcher,
             "launcher must explain the two navigation levels")
+    require("GROOVEPUTER / NAV R3" in launcher and
+            "MEM %d %d %d %d %d" in launcher,
+            "hardware retest must expose build revision and workflow memory")
 
 
 def main() -> None:
