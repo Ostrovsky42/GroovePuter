@@ -22,6 +22,7 @@
 #include "src/midi/scheduled_musical_event_queue.h"
 #include "src/midi/smf_dispatch_policy.h"
 #include "src/midi/smf_late_policy.h"
+#include "src/midi/smf_track_mute.h"
 #include "src/midi/scheduled_smf_midi_event_queue.h"
 #include "src/midi/usb_midi_output.h"
 #include "src/midi/usb_endpoint_health.h"
@@ -1081,6 +1082,11 @@ void midiDispatchTask(void*) {
             if (g_smfQueue == nullptr ||
                 !scheduledSmfMidiEventGenerationIsCurrent(
                     pendingSmf, g_smfQueue->generation())) {
+                ++g_diagnostics.smfStaleGenerationDrops;
+                clearPendingSmf();
+            } else if (pendingSmf.type == ScheduledSmfMidiEventType::NoteOn &&
+                       GroovePuterMidi::smfTrackMuteState().isMuted(
+                           pendingSmf.trackIndex)) {
                 ++g_diagnostics.smfStaleGenerationDrops;
                 clearPendingSmf();
             } else if (pendingSmf.type == ScheduledSmfMidiEventType::NoteOn &&

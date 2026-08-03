@@ -157,6 +157,23 @@ def test_stage_visuals_remain_lightweight_and_state_driven() -> None:
             "music visuals must not introduce timer-driven flicker/animation")
 
 
+def test_smf_track_identity_reaches_dispatch_guard() -> None:
+    event = (ROOT / "src/midi/scheduled_smf_midi_event.h").read_text(encoding="utf-8")
+    queue = (ROOT / "src/midi/scheduled_smf_midi_event_queue.h").read_text(encoding="utf-8")
+    player = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(encoding="utf-8")
+    dispatch = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
+
+    require("uint8_t trackIndex" in event,
+            "scheduled SMF events must retain source track identity")
+    require("event.trackIndex = trackIndex" in queue,
+            "SMF queue must copy bounded source track identity")
+    require(player.count("static_cast<uint8_t>(event.trackIndex)") >= 2,
+            "NoteOn and NoteOff publication must carry source track identity")
+    require("smfTrackMuteState().isMuted" in dispatch and
+            "pendingSmf.trackIndex" in dispatch,
+            "dispatcher must reject queued NoteOn from a newly muted track")
+
+
 def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
     ui_config = (ROOT / "src/ui/ui_config.h").read_text(encoding="utf-8")
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
@@ -370,6 +387,7 @@ def main() -> None:
     test_live_synth_render_is_not_transport_gated()
     test_perform_is_additive_to_legacy_carousel()
     test_stage_visuals_remain_lightweight_and_state_driven()
+    test_smf_track_identity_reaches_dispatch_guard()
     test_smf_player_is_additive_and_keeps_single_usb_owner()
     test_smf_velocity_boost_range_is_session_sticky()
     test_smf_channel_inspector_is_bounded_and_read_only()

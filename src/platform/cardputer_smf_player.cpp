@@ -1275,7 +1275,8 @@ void CardputerSmfPlayerService::scheduleAhead() {
                 position.frameOffset,
                 tempoMode_ == SmfTempoMode::Project
                     ? projectTransport.transportEpoch
-                    : 0u);
+                    : 0u,
+                static_cast<uint8_t>(event.trackIndex));
         } else {
             pushed = eventQueue_.tryPushNoteOff(
                 routed.channel,
@@ -1285,7 +1286,8 @@ void CardputerSmfPlayerService::scheduleAhead() {
                 position.frameOffset,
                 tempoMode_ == SmfTempoMode::Project
                     ? projectTransport.transportEpoch
-                    : 0u);
+                    : 0u,
+                static_cast<uint8_t>(event.trackIndex));
         }
 
         if (!pushed) {
