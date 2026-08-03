@@ -1,39 +1,66 @@
 #pragma once
 
-#include "../ui_core.h"
-#include "../ui_colors.h"
-#include "../ui_utils.h"
-#include "../midi_file_manager.h"
-#include "help_dialog.h"
 #include "../../audio/midi_importer.h"
+#include "../midi_file_manager.h"
+#include "../ui_colors.h"
+#include "../ui_core.h"
+#include "../ui_utils.h"
+#include "help_dialog.h"
 #include "src/state/scene_revision.h"
 
 class ProjectPage : public IPage, public IMultiHelpFramesProvider {
- public:
-  ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
-  void draw(IGfx& gfx) override;
+public:
+  ProjectPage(IGfx &gfx, MiniAcid &mini_acid, AudioGuard audio_guard);
+  void draw(IGfx &gfx) override;
   void onEnter(int context = 0) override;
-  bool handleEvent(UIEvent& ui_event) override;
-  const std::string & getTitle() const override;
+  void onExit() override;
+  bool handleEvent(UIEvent &ui_event) override;
+  const std::string &getTitle() const override;
 
   std::unique_ptr<MultiPageHelpDialog> getHelpDialog() override;
   int getHelpFrameCount() const override;
-  void drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const override;
+  void drawHelpFrame(IGfx &gfx, int frameIndex, Rect bounds) const override;
   enum class ProjectSection { Scenes = 0, Groove, Led };
-  enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, GrooveMode, GrooveFlavor, ApplyMacros, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash };
+  enum class MainFocus {
+    Load = 0,
+    SaveAs,
+    New,
+    ImportMidi,
+    ClearProject,
+    VisualStyle,
+    GrooveMode,
+    GrooveFlavor,
+    ApplyMacros,
+    Volume,
+    LedMode,
+    LedSource,
+    LedColor,
+    LedBri,
+    LedFlash
+  };
 
- private:
-  enum class DialogType { None = 0, Load, SaveAs, ImportMidi, MidiAdvance, ConfirmClear };
+private:
+  enum class DialogType {
+    None = 0,
+    Load,
+    SaveAs,
+    ImportMidi,
+    MidiAdvance,
+    ConfirmClear
+  };
   enum class DialogFocus { List = 0, Cancel };
   enum class SaveDialogFocus { Input = 0, Randomize, Save, Cancel };
   enum class MidiImportProfile { Clean = 0, Loud };
   enum class MidiAdvanceFocus {
-      Mode = 0,
-      StartPattern, AutoFind,
-      FromBar, LengthBars,
-      TrackMap,
-      Import, Cancel,
-      Count
+    Mode = 0,
+    StartPattern,
+    AutoFind,
+    FromBar,
+    LengthBars,
+    TrackMap,
+    Import,
+    Cancel,
+    Count
   };
 
   int firstFocusInSection(int sectionIdx);
@@ -54,24 +81,27 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   void openImportMidiDialog();
   void openMidiAdvanceDialog();
   bool importMidiAtSelection();
-  void drawMidiAdvanceDialog(IGfx& gfx);
+  void drawMidiAdvanceDialog(IGfx &gfx);
   void openConfirmClearDialog();
-  void drawConfirmClearDialog(IGfx& gfx);
+  void drawConfirmClearDialog(IGfx &gfx);
   bool clearProject();
   bool deleteSelectionInDialog();
   bool handleSaveDialogInput(char key);
   void ensureMainFocusVisible(int visibleRows);
-  template <typename F>
-  void withAudioGuard(F&& fn) {
-      if (audio_guard_) audio_guard_(std::forward<F>(fn));
-      else fn();
-      GroovePuterState::markSceneMutated();
+  bool handleTxStressEvent(UIEvent &ui_event);
+  void drawTxStressDiagnostics(IGfx &gfx);
+  template <typename F> void withAudioGuard(F &&fn) {
+    if (audio_guard_)
+      audio_guard_(std::forward<F>(fn));
+    else
+      fn();
+    GroovePuterState::markSceneMutated();
   }
 
   void autoRouteMidi();
 
-  IGfx& gfx_;
-  MiniAcid& mini_acid_;
+  IGfx &gfx_;
+  MiniAcid &mini_acid_;
   AudioGuard audio_guard_;
   MainFocus main_focus_;
   ProjectSection section_ = ProjectSection::Scenes;
@@ -99,5 +129,6 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
 
   bool midi_import_append_ = false;
   int midi_adv_scroll_ = 0;
+  bool tx_stress_visible_ = false;
   std::string save_name_;
 };

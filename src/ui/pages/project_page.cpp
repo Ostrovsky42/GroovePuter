@@ -9,6 +9,9 @@
 #if defined(ESP32) || defined(ESP_PLATFORM)
 #include <esp_heap_caps.h>
 #endif
+#if defined(ARDUINO) && (defined(ESP32) || defined(ESP_PLATFORM))
+#include "src/platform/cardputer_usb_midi_service.h"
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -366,19 +369,30 @@ void ProjectPage::drawConfirmClearDialog(IGfx& gfx) {
 }
 
 bool ProjectPage::clearProject() {
-  withAudioGuard([&]() {
-    mini_acid_.sceneManager().wipeToZero();
-  });
+  withAudioGuard([&]() { mini_acid_.sceneManager().wipeToZero(); });
   UI::showToast("Project cleared to zero");
   closeDialog();
   return true;
 }
 
 void ProjectPage::onEnter(int context) {
+  (void)context;
   dialog_type_ = DialogType::None;
   main_focus_ = MainFocus::Load;
   section_ = ProjectSection::Scenes;
-  if (scenes_.empty()) refreshScenes();
+  tx_stress_visible_ = false;
+#if defined(ARDUINO) && (defined(ESP32) || defined(ESP_PLATFORM))
+  (void)setCardputerUsbMidiTxStressEnabled(false);
+#endif
+  if (scenes_.empty())
+    refreshScenes();
+}
+
+void ProjectPage::onExit() {
+#if defined(ARDUINO) && (defined(ESP32) || defined(ESP_PLATFORM))
+  (void)setCardputerUsbMidiTxStressEnabled(false);
+#endif
+  tx_stress_visible_ = false;
 }
 
 bool ProjectPage::importMidiAtSelection() {
@@ -897,484 +911,657 @@ void ProjectPage::drawMidiAdvanceDialog(IGfx& gfx) {
     if ((int)MidiAdvanceFocus::Count > visibleRows) {
         int sbH = h - 45; 
         int sbY = startY;
-        int knobH = std::max(4, sbH * visibleRows / (int)MidiAdvanceFocus::Count);
-        int knobY = sbY + (sbH - knobH) * midi_adv_scroll_ / ((int)MidiAdvanceFocus::Count - visibleRows);
+        int knobH =
+            std::max(4, sbH * visibleRows / (int)MidiAdvanceFocus::Count);
+        int knobY = sbY + (sbH - knobH) * midi_adv_scroll_ /
+                              ((int)MidiAdvanceFocus::Count - visibleRows);
         gfx.fillRect(mapX - 6, sbY, 2, sbH, COLOR_PANEL);
         gfx.fillRect(mapX - 6, knobY, 2, knobH, COLOR_ACCENT);
     }
 }
 
+bool ProjectPage::handleTxStressEvent(UIEvent &ui_event) {
+#if defined(ARDUINO) && (defined(ESP32) || defined(ESP_PLATFORM))
+  if (ui_event.ctrl && ui_event.alt &&
+      (ui_event.key == 'u' || ui_event.key == 'U')) {
+    return true;
+  }
+  if (ui_event.scancode == GROOVEPUTER_ESCAPE || ui_event.key == '`' ||
+      ui_event.key == '\b') {
+    (void)setCardputerUsbMidiTxStressEnabled(false);
+    tx_stress_visible_ = false;
+    return true;
+  }
+  if (ui_event.key == ' ' || ui_event.key == '\n' || ui_event.key == '\r') {
+    const CardputerUsbMidiTxStressSnapshot snapshot =
+        snapshotCardputerUsbMidiTxStress();
+    (void)setCardputerUsbMidiTxStressEnabled(!snapshot.active);
+    return true;
+  }
+  if (ui_event.scancode == GROOVEPUTER_LEFT || ui_event.key == '[' ||
+      ui_event.key == '{') {
+    (void)stepCardputerUsbMidiTxStressRate(-1);
+    return true;
+  }
+  if (ui_event.scancode == GROOVEPUTER_RIGHT || ui_event.key == ']' ||
+      ui_event.key == '}') {
+    (void)stepCardputerUsbMidiTxStressRate(1);
+    return true;
+  }
+  if (ui_event.key == 'r' || ui_event.key == 'R') {
+    (void)resetCardputerUsbMidiTxStressCounters();
+    return true;
+  }
+#else
+  (void)ui_event;
+#endif
+  return true;
+}
 
-bool ProjectPage::handleEvent(UIEvent& ui_event) {
-    if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+bool ProjectPage::handleEvent(UIEvent &ui_event) {
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN)
+    return false;
 
-    if (dialog_type_ == DialogType::ImportMidi) {
-        if (ui_event.key == '\t') {
-            openMidiAdvanceDialog();
-            return true;
-        }
-        char activatedPath[GroovePuterUi::MidiFileManager::kPathBytes]{};
-        const auto result = GroovePuterUi::midiFileManager().handleEvent(
-            ui_event, activatedPath, sizeof(activatedPath));
-        if (result == GroovePuterUi::MidiFileManager::EventResult::FileActivated) {
-            midi_selected_path_ = activatedPath;
-            openMidiAdvanceDialog();
-            return true;
-        }
-        if (result == GroovePuterUi::MidiFileManager::EventResult::CloseRequested) {
-            closeDialog();
-            return true;
+#if defined(ARDUINO) && (defined(ESP32) || defined(ESP_PLATFORM))
+  if (!tx_stress_visible_ && ui_event.ctrl && ui_event.alt &&
+      (ui_event.key == 'u' || ui_event.key == 'U')) {
+    tx_stress_visible_ = true;
+    return true;
+  }
+  if (tx_stress_visible_) {
+    return handleTxStressEvent(ui_event);
+  }
+#endif
+
+  if (dialog_type_ == DialogType::ImportMidi) {
+    if (ui_event.key == '\t') {
+      openMidiAdvanceDialog();
+      return true;
+    }
+    char activatedPath[GroovePuterUi::MidiFileManager::kPathBytes]{};
+    const auto result = GroovePuterUi::midiFileManager().handleEvent(
+        ui_event, activatedPath, sizeof(activatedPath));
+    if (result == GroovePuterUi::MidiFileManager::EventResult::FileActivated) {
+      midi_selected_path_ = activatedPath;
+      openMidiAdvanceDialog();
+      return true;
+    }
+    if (result == GroovePuterUi::MidiFileManager::EventResult::CloseRequested) {
+      closeDialog();
+      return true;
+    }
+    return true;
+  }
+
+  if (dialog_type_ == DialogType::Load) {
+    if (ui_event.scancode == GROOVEPUTER_ESCAPE || ui_event.key == '\b') {
+      closeDialog();
+      return true;
+    }
+    if (ui_event.scancode == GROOVEPUTER_LEFT) {
+      dialog_focus_ = DialogFocus::List;
+      return true;
+    }
+    if (ui_event.scancode == GROOVEPUTER_RIGHT) {
+      dialog_focus_ = DialogFocus::Cancel;
+      return true;
+    }
+    if (ui_event.scancode == GROOVEPUTER_UP &&
+        dialog_focus_ == DialogFocus::List) {
+      moveSelection(-1);
+      return true;
+    }
+    if (ui_event.scancode == GROOVEPUTER_DOWN &&
+        dialog_focus_ == DialogFocus::List) {
+      moveSelection(1);
+      return true;
+    }
+    if (ui_event.key == 'x' || ui_event.key == 'X') {
+      return deleteSelectionInDialog();
+    }
+    if (ui_event.key == '\n' || ui_event.key == '\r') {
+      if (dialog_focus_ == DialogFocus::Cancel) {
+        closeDialog();
+        return true;
+      }
+      return loadSceneAtSelection();
+    }
+    return true;
+  }
+
+  if (dialog_type_ == DialogType::MidiAdvance) {
+    if (ui_event.scancode == GROOVEPUTER_ESCAPE) {
+      dialog_type_ = DialogType::ImportMidi;
+      return true;
+    }
+    int focus = (int)midi_advance_focus_;
+
+    // UP / DOWN
+    if (ui_event.scancode == GROOVEPUTER_UP) {
+      if (midi_advance_focus_ == MidiAdvanceFocus::TrackMap) {
+        midi_map_cursor_ -= 4;
+        if (midi_map_cursor_ < 0)
+          midi_map_cursor_ += 16;
+        return true;
+      }
+      focus--;
+      if (focus < 0)
+        focus = (int)MidiAdvanceFocus::Count - 1;
+      midi_advance_focus_ = static_cast<MidiAdvanceFocus>(focus);
+
+      if (midi_advance_focus_ == MidiAdvanceFocus::TrackMap) {
+        midi_advance_focus_ = MidiAdvanceFocus::LengthBars;
+      }
+
+      if ((int)midi_advance_focus_ < midi_adv_scroll_) {
+        midi_adv_scroll_ = (int)midi_advance_focus_;
+      }
+      if ((int)midi_advance_focus_ > (int)MidiAdvanceFocus::Count - 5) {
+        midi_adv_scroll_ = (int)MidiAdvanceFocus::Count - 5;
+      }
+      return true;
+    }
+    if (ui_event.scancode == GROOVEPUTER_DOWN) {
+      if (midi_advance_focus_ == MidiAdvanceFocus::TrackMap) {
+        midi_map_cursor_ = (midi_map_cursor_ + 4) % 16;
+        return true;
+      }
+      focus++;
+      if (focus >= (int)MidiAdvanceFocus::Count)
+        focus = 0;
+      midi_advance_focus_ = static_cast<MidiAdvanceFocus>(focus);
+
+      if (midi_advance_focus_ == MidiAdvanceFocus::TrackMap) {
+        midi_advance_focus_ = MidiAdvanceFocus::Import;
+      }
+
+      if ((int)midi_advance_focus_ >= midi_adv_scroll_ + 5) {
+        midi_adv_scroll_ = (int)midi_advance_focus_ - 4;
+      }
+      if (midi_advance_focus_ == MidiAdvanceFocus::Mode) {
+        midi_adv_scroll_ = 0;
+      }
+      return true;
+    }
+
+    // LEFT / RIGHT
+    if (ui_event.scancode == GROOVEPUTER_RIGHT) {
+      if (midi_advance_focus_ == MidiAdvanceFocus::TrackMap) {
+        if ((midi_map_cursor_ % 4) < 3)
+          midi_map_cursor_++;
+        return true;
+      }
+      // Enter map from settings
+      if (midi_advance_focus_ != MidiAdvanceFocus::Import &&
+          midi_advance_focus_ != MidiAdvanceFocus::Cancel) {
+        midi_advance_focus_ = MidiAdvanceFocus::TrackMap;
+        return true;
+      }
+    }
+
+    if (ui_event.scancode == GROOVEPUTER_LEFT) {
+      if (midi_advance_focus_ == MidiAdvanceFocus::TrackMap) {
+        if ((midi_map_cursor_ % 4) == 0) {
+          midi_advance_focus_ = MidiAdvanceFocus::StartPattern;
+        } else {
+          midi_map_cursor_--;
         }
         return true;
-    }
-
-    if (dialog_type_ == DialogType::Load) {
-        if (ui_event.scancode == GROOVEPUTER_ESCAPE || ui_event.key == '\b') {
-            closeDialog();
-            return true;
-        }
-        if (ui_event.scancode == GROOVEPUTER_LEFT) {
-            dialog_focus_ = DialogFocus::List;
-            return true;
-        }
-        if (ui_event.scancode == GROOVEPUTER_RIGHT) {
-            dialog_focus_ = DialogFocus::Cancel;
-            return true;
-        }
-        if (ui_event.scancode == GROOVEPUTER_UP && dialog_focus_ == DialogFocus::List) {
-            moveSelection(-1);
-            return true;
-        }
-        if (ui_event.scancode == GROOVEPUTER_DOWN && dialog_focus_ == DialogFocus::List) {
-            moveSelection(1);
-            return true;
-        }
-        if (ui_event.key == 'x' || ui_event.key == 'X') {
-            return deleteSelectionInDialog();
-        }
-        if (ui_event.key == '\n' || ui_event.key == '\r') {
-            if (dialog_focus_ == DialogFocus::Cancel) {
-                closeDialog();
-                return true;
-            }
-            return loadSceneAtSelection();
-        }
-        return true;
-    }
-
-    if (dialog_type_ == DialogType::MidiAdvance) {
-        if (ui_event.scancode == GROOVEPUTER_ESCAPE) {
-            dialog_type_ = DialogType::ImportMidi;
-            return true;
-        }
-        int focus = (int)midi_advance_focus_;
-
-        // UP / DOWN
-        if (ui_event.scancode == GROOVEPUTER_UP) {
-            if (midi_advance_focus_ == MidiAdvanceFocus::TrackMap) {
-                midi_map_cursor_ -= 4;
-                if (midi_map_cursor_ < 0) midi_map_cursor_ += 16;
-                return true;
-            }
-            focus--;
-            if (focus < 0) focus = (int)MidiAdvanceFocus::Count - 1;
-            midi_advance_focus_ = static_cast<MidiAdvanceFocus>(focus);
-            
-            if (midi_advance_focus_ == MidiAdvanceFocus::TrackMap) {
-                midi_advance_focus_ = MidiAdvanceFocus::LengthBars; 
-            }
-            
-            if ((int)midi_advance_focus_ < midi_adv_scroll_) {
-                midi_adv_scroll_ = (int)midi_advance_focus_;
-            }
-            if ((int)midi_advance_focus_ > (int)MidiAdvanceFocus::Count - 5) {
-                midi_adv_scroll_ = (int)MidiAdvanceFocus::Count - 5;
-            }
-            return true;
-        }
-        if (ui_event.scancode == GROOVEPUTER_DOWN) {
-            if (midi_advance_focus_ == MidiAdvanceFocus::TrackMap) {
-                midi_map_cursor_ = (midi_map_cursor_ + 4) % 16;
-                return true;
-            }
-            focus++;
-            if (focus >= (int)MidiAdvanceFocus::Count) focus = 0;
-            midi_advance_focus_ = static_cast<MidiAdvanceFocus>(focus);
-            
-            if (midi_advance_focus_ == MidiAdvanceFocus::TrackMap) {
-                midi_advance_focus_ = MidiAdvanceFocus::Import;
-            }
-
-            if ((int)midi_advance_focus_ >= midi_adv_scroll_ + 5) {
-                midi_adv_scroll_ = (int)midi_advance_focus_ - 4;
-            }
-            if (midi_advance_focus_ == MidiAdvanceFocus::Mode) {
-                midi_adv_scroll_ = 0;
-            }
-            return true;
-        }
-        
-        // LEFT / RIGHT
-        if (ui_event.scancode == GROOVEPUTER_RIGHT) {
-            if (midi_advance_focus_ == MidiAdvanceFocus::TrackMap) {
-                if ((midi_map_cursor_ % 4) < 3) midi_map_cursor_++;
-                return true;
-            }
-            // Enter map from settings
-            if (midi_advance_focus_ != MidiAdvanceFocus::Import && midi_advance_focus_ != MidiAdvanceFocus::Cancel) {
-                midi_advance_focus_ = MidiAdvanceFocus::TrackMap;
-                return true;
-            }
-        }
-        
-        if (ui_event.scancode == GROOVEPUTER_LEFT) {
-            if (midi_advance_focus_ == MidiAdvanceFocus::TrackMap) {
-                if ((midi_map_cursor_ % 4) == 0) {
-                    midi_advance_focus_ = MidiAdvanceFocus::StartPattern; 
-                } else {
-                    midi_map_cursor_--;
-                }
-                return true;
-            }
-        }
-
-        char key = ui_event.key;
-        if (key == '\r' || key == '\n') {
-            if (midi_advance_focus_ == MidiAdvanceFocus::Import) return importMidiAtSelection();
-            if (midi_advance_focus_ == MidiAdvanceFocus::Cancel) { dialog_type_ = DialogType::ImportMidi; return true; }
-            
-            if (midi_advance_focus_ == MidiAdvanceFocus::TrackMap) {
-                 // Toggle Routing: . -> A -> B -> D -> .
-                 int ch = midi_map_cursor_ + 1; // 1-based
-                 bool isA = (midi_mask_a_ >> (ch-1)) & 1;
-                 bool isB = (midi_mask_b_ >> (ch-1)) & 1;
-                 bool isD = (midi_mask_d_ >> (ch-1)) & 1;
-                 
-                 // Clear all first
-                 midi_mask_a_ &= ~(1 << (ch-1)); 
-                 midi_mask_b_ &= ~(1 << (ch-1)); 
-                 midi_mask_d_ &= ~(1 << (ch-1));
-                 
-                 if (isA) {
-                     midi_mask_b_ |= (1 << (ch-1)); 
-                 } else if (isB) {
-                     midi_mask_d_ |= (1 << (ch-1));
-                 } else if (isD) {
-                     // Nothing (already cleared)
-                 } else {
-                     midi_mask_a_ |= (1 << (ch-1));
-                 }
-                 return true;
-            }
-        }
-        if (key == '\b') { dialog_type_ = DialogType::ImportMidi; return true; }
-
-        int delta = 0;
-        if (ui_event.scancode == GROOVEPUTER_LEFT) delta = -1;
-        if (ui_event.scancode == GROOVEPUTER_RIGHT) delta = 1;
-        if (key == '-' || key == '_') delta = -1;
-        if (key == '=' || key == '+') delta = 1;
-
-        switch (midi_advance_focus_) {
-            case MidiAdvanceFocus::Mode:
-                if (delta != 0) {
-                    midi_import_profile_ = (midi_import_profile_ == MidiImportProfile::Loud) ? MidiImportProfile::Clean : MidiImportProfile::Loud;
-                    return true;
-                }
-                break;
-            case MidiAdvanceFocus::StartPattern:
-                if (delta != 0) {
-                    midi_import_start_pattern_ += delta;
-                    if (midi_import_start_pattern_ < 0) midi_import_start_pattern_ = 0;
-                    if (midi_import_start_pattern_ >= kMaxPatterns) midi_import_start_pattern_ = kMaxPatterns - 1;
-                    return true;
-                }
-                break;
-            case MidiAdvanceFocus::AutoFind:
-                if (delta != 0 || key == ' ') { midi_import_append_ = !midi_import_append_; return true; }
-                break;
-            case MidiAdvanceFocus::FromBar:
-                if (delta != 0) {
-                    midi_import_from_bar_ += delta;
-                    if (midi_import_from_bar_ < 0) midi_import_from_bar_ = 0;
-                    if (midi_import_from_bar_ > 511) midi_import_from_bar_ = 511;
-                    return true;
-                }
-                break;
-            case MidiAdvanceFocus::LengthBars:
-                if (delta != 0) {
-                    midi_import_length_bars_ += delta;
-                    if (midi_import_length_bars_ < 0) midi_import_length_bars_ = 0;
-                    if (midi_import_length_bars_ > 256) midi_import_length_bars_ = 256;
-                    return true;
-                }
-                break;
-            default: break;
-        }
-
-        if (midi_advance_focus_ == MidiAdvanceFocus::AutoFind && (key == 'f' || key == 'F' || (key == '\r' || key == '\n'))) {
-                int patternsNeeded = midi_import_length_bars_;
-                if (patternsNeeded <= 0) patternsNeeded = 16;
-                SongTrack track = SongTrack::SynthA;
-                if (midi_mask_a_ == 0) {
-                    if (midi_mask_b_ != 0) track = SongTrack::SynthB;
-                    else if (midi_mask_d_ != 0) track = SongTrack::Drums;
-                }
-                int freeIdx = mini_acid_.sceneManager().findFirstFreePattern(midi_import_start_pattern_, track, patternsNeeded);
-                if (freeIdx >= 0) {
-                    midi_import_start_pattern_ = freeIdx;
-                    UI::showToast("Found free block");
-                } else {
-                    UI::showToast("No free space");
-                }
-                return true;
-        }
-
-        return true; // Consume all keys in advanced dialog
-    }
-    if (dialog_type_ == DialogType::ConfirmClear) {
-        if (ui_event.scancode == GROOVEPUTER_LEFT) { dialog_focus_ = DialogFocus::List; return true; }
-        if (ui_event.scancode == GROOVEPUTER_RIGHT) { dialog_focus_ = DialogFocus::Cancel; return true; }
-        char key = ui_event.key;
-        if (key == '\r' || key == '\n') {
-            if (dialog_focus_ == DialogFocus::List) return clearProject();
-            else { closeDialog(); return true; }
-        }
-        if (key == '\b') { closeDialog(); return true; }
-        return true;
-    }
-
-    if (dialog_type_ == DialogType::SaveAs) {
-        switch (ui_event.scancode) {
-            case GROOVEPUTER_LEFT:
-                if (save_dialog_focus_ == SaveDialogFocus::Cancel) save_dialog_focus_ = SaveDialogFocus::Save;
-                else if (save_dialog_focus_ == SaveDialogFocus::Save) save_dialog_focus_ = SaveDialogFocus::Randomize;
-                else if (save_dialog_focus_ == SaveDialogFocus::Randomize) save_dialog_focus_ = SaveDialogFocus::Input;
-                return true;
-            case GROOVEPUTER_RIGHT:
-                if (save_dialog_focus_ == SaveDialogFocus::Input) save_dialog_focus_ = SaveDialogFocus::Randomize;
-                else if (save_dialog_focus_ == SaveDialogFocus::Randomize) save_dialog_focus_ = SaveDialogFocus::Save;
-                else if (save_dialog_focus_ == SaveDialogFocus::Save) save_dialog_focus_ = SaveDialogFocus::Cancel;
-                return true;
-            case GROOVEPUTER_UP:
-            case GROOVEPUTER_DOWN:
-                if (save_dialog_focus_ == SaveDialogFocus::Input) save_dialog_focus_ = SaveDialogFocus::Randomize;
-                else save_dialog_focus_ = SaveDialogFocus::Input;
-                return true;
-            default: break;
-        }
-        char key = ui_event.key;
-        if (key == 0) {
-            if (ui_event.scancode >= GROOVEPUTER_F1 && ui_event.scancode <= GROOVEPUTER_F8) {
-                key = static_cast<char>('1' + (ui_event.scancode - GROOVEPUTER_F1));
-            }
-        }
-        if (save_dialog_focus_ == SaveDialogFocus::Input && handleSaveDialogInput(key)) return true;
-        if (key == '\n' || key == '\r') {
-            if (save_dialog_focus_ == SaveDialogFocus::Randomize) { randomizeSaveName(); return true; }
-            if (save_dialog_focus_ == SaveDialogFocus::Save || save_dialog_focus_ == SaveDialogFocus::Input) return saveCurrentScene();
-            if (save_dialog_focus_ == SaveDialogFocus::Cancel) { closeDialog(); return true; }
-        }
-        if (key == '\b') {
-            if (save_dialog_focus_ == SaveDialogFocus::Input) return handleSaveDialogInput(key);
-            closeDialog(); return true;
-        }
-        return false;
+      }
     }
 
     char key = ui_event.key;
-    if (key == '\t') {
-        int sectionIdx = static_cast<int>(section_);
-        sectionIdx = (sectionIdx + 1) % 3;
-        section_ = static_cast<ProjectSection>(sectionIdx);
-        int focusIdx = static_cast<int>(main_focus_);
-        if (!focusInSection(sectionIdx, focusIdx)) {
-            main_focus_ = static_cast<MainFocus>(firstFocusInSection(sectionIdx));
+    if (key == '\r' || key == '\n') {
+      if (midi_advance_focus_ == MidiAdvanceFocus::Import)
+        return importMidiAtSelection();
+      if (midi_advance_focus_ == MidiAdvanceFocus::Cancel) {
+        dialog_type_ = DialogType::ImportMidi;
+        return true;
+      }
+
+      if (midi_advance_focus_ == MidiAdvanceFocus::TrackMap) {
+        // Toggle Routing: . -> A -> B -> D -> .
+        int ch = midi_map_cursor_ + 1; // 1-based
+        bool isA = (midi_mask_a_ >> (ch - 1)) & 1;
+        bool isB = (midi_mask_b_ >> (ch - 1)) & 1;
+        bool isD = (midi_mask_d_ >> (ch - 1)) & 1;
+
+        // Clear all first
+        midi_mask_a_ &= ~(1 << (ch - 1));
+        midi_mask_b_ &= ~(1 << (ch - 1));
+        midi_mask_d_ &= ~(1 << (ch - 1));
+
+        if (isA) {
+          midi_mask_b_ |= (1 << (ch - 1));
+        } else if (isB) {
+          midi_mask_d_ |= (1 << (ch - 1));
+        } else if (isD) {
+          // Nothing (already cleared)
+        } else {
+          midi_mask_a_ |= (1 << (ch - 1));
         }
         return true;
+      }
+    }
+    if (key == '\b') {
+      dialog_type_ = DialogType::ImportMidi;
+      return true;
     }
 
+    int delta = 0;
+    if (ui_event.scancode == GROOVEPUTER_LEFT)
+      delta = -1;
+    if (ui_event.scancode == GROOVEPUTER_RIGHT)
+      delta = 1;
+    if (key == '-' || key == '_')
+      delta = -1;
+    if (key == '=' || key == '+')
+      delta = 1;
+
+    switch (midi_advance_focus_) {
+    case MidiAdvanceFocus::Mode:
+      if (delta != 0) {
+        midi_import_profile_ = (midi_import_profile_ == MidiImportProfile::Loud)
+                                   ? MidiImportProfile::Clean
+                                   : MidiImportProfile::Loud;
+        return true;
+      }
+      break;
+    case MidiAdvanceFocus::StartPattern:
+      if (delta != 0) {
+        midi_import_start_pattern_ += delta;
+        if (midi_import_start_pattern_ < 0)
+          midi_import_start_pattern_ = 0;
+        if (midi_import_start_pattern_ >= kMaxPatterns)
+          midi_import_start_pattern_ = kMaxPatterns - 1;
+        return true;
+      }
+      break;
+    case MidiAdvanceFocus::AutoFind:
+      if (delta != 0 || key == ' ') {
+        midi_import_append_ = !midi_import_append_;
+        return true;
+      }
+      break;
+    case MidiAdvanceFocus::FromBar:
+      if (delta != 0) {
+        midi_import_from_bar_ += delta;
+        if (midi_import_from_bar_ < 0)
+          midi_import_from_bar_ = 0;
+        if (midi_import_from_bar_ > 511)
+          midi_import_from_bar_ = 511;
+        return true;
+      }
+      break;
+    case MidiAdvanceFocus::LengthBars:
+      if (delta != 0) {
+        midi_import_length_bars_ += delta;
+        if (midi_import_length_bars_ < 0)
+          midi_import_length_bars_ = 0;
+        if (midi_import_length_bars_ > 256)
+          midi_import_length_bars_ = 256;
+        return true;
+      }
+      break;
+    default:
+      break;
+    }
+
+    if (midi_advance_focus_ == MidiAdvanceFocus::AutoFind &&
+        (key == 'f' || key == 'F' || (key == '\r' || key == '\n'))) {
+      int patternsNeeded = midi_import_length_bars_;
+      if (patternsNeeded <= 0)
+        patternsNeeded = 16;
+      SongTrack track = SongTrack::SynthA;
+      if (midi_mask_a_ == 0) {
+        if (midi_mask_b_ != 0)
+          track = SongTrack::SynthB;
+        else if (midi_mask_d_ != 0)
+          track = SongTrack::Drums;
+      }
+      int freeIdx = mini_acid_.sceneManager().findFirstFreePattern(
+          midi_import_start_pattern_, track, patternsNeeded);
+      if (freeIdx >= 0) {
+        midi_import_start_pattern_ = freeIdx;
+        UI::showToast("Found free block");
+      } else {
+        UI::showToast("No free space");
+      }
+      return true;
+    }
+
+    return true; // Consume all keys in advanced dialog
+  }
+  if (dialog_type_ == DialogType::ConfirmClear) {
+    if (ui_event.scancode == GROOVEPUTER_LEFT) {
+      dialog_focus_ = DialogFocus::List;
+      return true;
+    }
+    if (ui_event.scancode == GROOVEPUTER_RIGHT) {
+      dialog_focus_ = DialogFocus::Cancel;
+      return true;
+    }
+    char key = ui_event.key;
+    if (key == '\r' || key == '\n') {
+      if (dialog_focus_ == DialogFocus::List)
+        return clearProject();
+      else {
+        closeDialog();
+        return true;
+      }
+    }
+    if (key == '\b') {
+      closeDialog();
+      return true;
+    }
+    return true;
+  }
+
+  if (dialog_type_ == DialogType::SaveAs) {
     switch (ui_event.scancode) {
-        case GROOVEPUTER_UP: {
-            int sectionIdx = static_cast<int>(section_);
-            int idx = sectionNextFocus(sectionIdx, static_cast<int>(main_focus_), -1);
-            main_focus_ = static_cast<MainFocus>(idx);
-            ensureMainFocusVisible(8);
-            return true;
-        }
-        case GROOVEPUTER_DOWN: {
-            int sectionIdx = static_cast<int>(section_);
-            int idx = sectionNextFocus(sectionIdx, static_cast<int>(main_focus_), 1);
-            main_focus_ = static_cast<MainFocus>(idx);
-            ensureMainFocusVisible(8);
-            return true;
-        }
-        case GROOVEPUTER_LEFT:
-        case GROOVEPUTER_RIGHT: {
-            const bool right = (ui_event.scancode == GROOVEPUTER_RIGHT);
-            auto& led = mini_acid_.sceneManager().currentScene().led;
-            if (main_focus_ == MainFocus::Volume) {
-                mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, right ? 1 : -1);
-                GroovePuterState::markSceneMutated();
-                return true;
-            }
-            if (main_focus_ == MainFocus::VisualStyle) {
-                UI::currentStyle = right ? nextStyle(UI::currentStyle) : prevStyle(UI::currentStyle);
-                return true;
-            }
-            if (main_focus_ == MainFocus::GrooveMode) {
-                withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
-                char toast[64];
-                std::snprintf(toast, sizeof(toast), "Groove Mode: %s (override)",
-                              grooveModeName(mini_acid_.grooveboxMode()));
-                UI::showToast(toast);
-                return true;
-            }
-            if (main_focus_ == MainFocus::GrooveFlavor) {
-                withAudioGuard([&]() { mini_acid_.shiftGrooveFlavor(right ? 1 : -1); });
-                return true;
-            }
-            if (main_focus_ == MainFocus::ApplyMacros) {
-                auto& genre = mini_acid_.sceneManager().currentScene().genre;
-                genre.applySoundMacros = !genre.applySoundMacros;
-                GroovePuterState::markSceneMutated();
-                return true;
-            }
-            if (main_focus_ == MainFocus::LedMode) {
-                int m = static_cast<int>(led.mode);
-                m += right ? 1 : -1;
-                if (m < 0) m = 3;
-                if (m > 3) m = 0;
-                led.mode = static_cast<LedMode>(m);
-                GroovePuterState::markSceneMutated();
-                return true;
-            }
-            if (main_focus_ == MainFocus::LedSource) {
-                int s = static_cast<int>(led.source);
-                s += right ? 1 : -1;
-                int max = static_cast<int>(VoiceId::Count) - 1;
-                if (s < 0) s = max;
-                if (s > max) s = 0;
-                led.source = static_cast<LedSource>(s);
-                GroovePuterState::markSceneMutated();
-                return true;
-            }
-            if (main_focus_ == MainFocus::LedColor) {
-                int currentIdx = 0;
-                for (int i = 0; i < 6; ++i) {
-                    if (TAPE_PALETTE[i].rgb.r == led.color.r &&
-                        TAPE_PALETTE[i].rgb.g == led.color.g &&
-                        TAPE_PALETTE[i].rgb.b == led.color.b) {
-                        currentIdx = i;
-                        break;
-                    }
-                }
-                currentIdx += right ? 1 : -1;
-                if (currentIdx < 0) currentIdx = 5;
-                if (currentIdx > 5) currentIdx = 0;
-                led.color = TAPE_PALETTE[currentIdx].rgb;
-                GroovePuterState::markSceneMutated();
-                return true;
-            }
-            if (main_focus_ == MainFocus::LedBri) {
-                int currentIdx = 0;
-                for (int i = 0; i < 5; ++i) {
-                    if (BRI_STEPS[i] == led.brightness) {
-                        currentIdx = i;
-                        break;
-                    }
-                }
-                currentIdx += right ? 1 : -1;
-                if (currentIdx < 0) currentIdx = 4;
-                if (currentIdx > 4) currentIdx = 0;
-                led.brightness = BRI_STEPS[currentIdx];
-                GroovePuterState::markSceneMutated();
-                return true;
-            }
-            if (main_focus_ == MainFocus::LedFlash) {
-                int currentIdx = 0;
-                for (int i = 0; i < 4; ++i) {
-                    if (FLASH_STEPS[i] == led.flashMs) {
-                        currentIdx = i;
-                        break;
-                    }
-                }
-                currentIdx += right ? 1 : -1;
-                if (currentIdx < 0) currentIdx = 3;
-                if (currentIdx > 3) currentIdx = 0;
-                led.flashMs = FLASH_STEPS[currentIdx];
-                GroovePuterState::markSceneMutated();
-                return true;
-            }
-            return false;
-        }
-        default: break;
+    case GROOVEPUTER_LEFT:
+      if (save_dialog_focus_ == SaveDialogFocus::Cancel)
+        save_dialog_focus_ = SaveDialogFocus::Save;
+      else if (save_dialog_focus_ == SaveDialogFocus::Save)
+        save_dialog_focus_ = SaveDialogFocus::Randomize;
+      else if (save_dialog_focus_ == SaveDialogFocus::Randomize)
+        save_dialog_focus_ = SaveDialogFocus::Input;
+      return true;
+    case GROOVEPUTER_RIGHT:
+      if (save_dialog_focus_ == SaveDialogFocus::Input)
+        save_dialog_focus_ = SaveDialogFocus::Randomize;
+      else if (save_dialog_focus_ == SaveDialogFocus::Randomize)
+        save_dialog_focus_ = SaveDialogFocus::Save;
+      else if (save_dialog_focus_ == SaveDialogFocus::Save)
+        save_dialog_focus_ = SaveDialogFocus::Cancel;
+      return true;
+    case GROOVEPUTER_UP:
+    case GROOVEPUTER_DOWN:
+      if (save_dialog_focus_ == SaveDialogFocus::Input)
+        save_dialog_focus_ = SaveDialogFocus::Randomize;
+      else
+        save_dialog_focus_ = SaveDialogFocus::Input;
+      return true;
+    default:
+      break;
     }
-
-    if (key == 'g' || key == 'G') {
-        requestPageTransition(0); // Genre Page
-        return true;
+    char key = ui_event.key;
+    if (key == 0) {
+      if (ui_event.scancode >= GROOVEPUTER_F1 &&
+          ui_event.scancode <= GROOVEPUTER_F8) {
+        key = static_cast<char>('1' + (ui_event.scancode - GROOVEPUTER_F1));
+      }
     }
-
+    if (save_dialog_focus_ == SaveDialogFocus::Input &&
+        handleSaveDialogInput(key))
+      return true;
     if (key == '\n' || key == '\r') {
-        if (main_focus_ == MainFocus::Load) { openLoadDialog(); return true; }
-        if (main_focus_ == MainFocus::SaveAs) { openSaveDialog(); return true; }
-        if (main_focus_ == MainFocus::New) return createNewScene();
-        if (main_focus_ == MainFocus::ImportMidi) { openImportMidiDialog(); return true; }
-        if (main_focus_ == MainFocus::ClearProject) { openConfirmClearDialog(); return true; }
-
-        if (main_focus_ == MainFocus::VisualStyle) { UI::currentStyle = nextStyle(UI::currentStyle); return true; }
-        if (main_focus_ == MainFocus::GrooveMode) {
-            withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
-            char toast[64];
-            std::snprintf(toast, sizeof(toast), "Groove Mode: %s (override)",
-                          grooveModeName(mini_acid_.grooveboxMode()));
-            UI::showToast(toast);
-            return true;
-        }
-        if (main_focus_ == MainFocus::GrooveFlavor) {
-            withAudioGuard([&]() { mini_acid_.shiftGrooveFlavor(1); });
-            return true;
-        }
-        
-        auto& led = mini_acid_.sceneManager().currentScene().led;
-        if (main_focus_ == MainFocus::LedMode) { led.mode = static_cast<LedMode>((static_cast<int>(led.mode) + 1) % 4); GroovePuterState::markSceneMutated(); return true; }
-        if (main_focus_ == MainFocus::LedSource) {
-            led.source = static_cast<LedSource>((static_cast<int>(led.source) + 1) % static_cast<int>(VoiceId::Count));
-            switch (led.source) {
-                case LedSource::SynthA: led.color = TAPE_PALETTE[1].rgb; break;
-                case LedSource::SynthB: led.color = TAPE_PALETTE[2].rgb; break;
-                case LedSource::DrumKick: led.color = TAPE_PALETTE[0].rgb; break;
-                case LedSource::DrumSnare: led.color = TAPE_PALETTE[3].rgb; break;
-                case LedSource::DrumClap: led.color = TAPE_PALETTE[5].rgb; break;
-                default: led.color = TAPE_PALETTE[4].rgb; break;
-            }
-            GroovePuterState::markSceneMutated();
-            return true;
-        }
-        if (main_focus_ == MainFocus::LedColor) {
-            int currentIdx = 0;
-            for (int i=0; i<6; ++i) if (TAPE_PALETTE[i].rgb.r == led.color.r && TAPE_PALETTE[i].rgb.g == led.color.g) currentIdx = i;
-            led.color = TAPE_PALETTE[(currentIdx + 1) % 6].rgb;
-            GroovePuterState::markSceneMutated();
-            return true;
-        }
-        if (main_focus_ == MainFocus::LedBri) {
-            int currentIdx = 0;
-            for (int i=0; i<5; ++i) if (BRI_STEPS[i] == led.brightness) currentIdx = i;
-            led.brightness = BRI_STEPS[(currentIdx + 1) % 5];
-            GroovePuterState::markSceneMutated();
-            return true;
-        }
-        if (main_focus_ == MainFocus::LedFlash) {
-            int currentIdx = 0;
-            for (int i=0; i<4; ++i) if (FLASH_STEPS[i] == led.flashMs) currentIdx = i;
-            led.flashMs = FLASH_STEPS[(currentIdx + 1) % 4];
-            GroovePuterState::markSceneMutated();
-            return true;
-        }
+      if (save_dialog_focus_ == SaveDialogFocus::Randomize) {
+        randomizeSaveName();
+        return true;
+      }
+      if (save_dialog_focus_ == SaveDialogFocus::Save ||
+          save_dialog_focus_ == SaveDialogFocus::Input)
+        return saveCurrentScene();
+      if (save_dialog_focus_ == SaveDialogFocus::Cancel) {
+        closeDialog();
+        return true;
+      }
+    }
+    if (key == '\b') {
+      if (save_dialog_focus_ == SaveDialogFocus::Input)
+        return handleSaveDialogInput(key);
+      closeDialog();
+      return true;
     }
     return false;
+  }
+
+  char key = ui_event.key;
+  if (key == '\t') {
+    int sectionIdx = static_cast<int>(section_);
+    sectionIdx = (sectionIdx + 1) % 3;
+    section_ = static_cast<ProjectSection>(sectionIdx);
+    int focusIdx = static_cast<int>(main_focus_);
+    if (!focusInSection(sectionIdx, focusIdx)) {
+      main_focus_ = static_cast<MainFocus>(firstFocusInSection(sectionIdx));
+    }
+    return true;
+  }
+
+  switch (ui_event.scancode) {
+  case GROOVEPUTER_UP: {
+    int sectionIdx = static_cast<int>(section_);
+    int idx = sectionNextFocus(sectionIdx, static_cast<int>(main_focus_), -1);
+    main_focus_ = static_cast<MainFocus>(idx);
+    ensureMainFocusVisible(8);
+    return true;
+  }
+  case GROOVEPUTER_DOWN: {
+    int sectionIdx = static_cast<int>(section_);
+    int idx = sectionNextFocus(sectionIdx, static_cast<int>(main_focus_), 1);
+    main_focus_ = static_cast<MainFocus>(idx);
+    ensureMainFocusVisible(8);
+    return true;
+  }
+  case GROOVEPUTER_LEFT:
+  case GROOVEPUTER_RIGHT: {
+    const bool right = (ui_event.scancode == GROOVEPUTER_RIGHT);
+    auto &led = mini_acid_.sceneManager().currentScene().led;
+    if (main_focus_ == MainFocus::Volume) {
+      mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, right ? 1 : -1);
+      GroovePuterState::markSceneMutated();
+      return true;
+    }
+    if (main_focus_ == MainFocus::VisualStyle) {
+      UI::currentStyle =
+          right ? nextStyle(UI::currentStyle) : prevStyle(UI::currentStyle);
+      return true;
+    }
+    if (main_focus_ == MainFocus::GrooveMode) {
+      withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
+      char toast[64];
+      std::snprintf(toast, sizeof(toast), "Groove Mode: %s (override)",
+                    grooveModeName(mini_acid_.grooveboxMode()));
+      UI::showToast(toast);
+      return true;
+    }
+    if (main_focus_ == MainFocus::GrooveFlavor) {
+      withAudioGuard([&]() { mini_acid_.shiftGrooveFlavor(right ? 1 : -1); });
+      return true;
+    }
+    if (main_focus_ == MainFocus::ApplyMacros) {
+      auto &genre = mini_acid_.sceneManager().currentScene().genre;
+      genre.applySoundMacros = !genre.applySoundMacros;
+      GroovePuterState::markSceneMutated();
+      return true;
+    }
+    if (main_focus_ == MainFocus::LedMode) {
+      int m = static_cast<int>(led.mode);
+      m += right ? 1 : -1;
+      if (m < 0)
+        m = 3;
+      if (m > 3)
+        m = 0;
+      led.mode = static_cast<LedMode>(m);
+      GroovePuterState::markSceneMutated();
+      return true;
+    }
+    if (main_focus_ == MainFocus::LedSource) {
+      int s = static_cast<int>(led.source);
+      s += right ? 1 : -1;
+      int max = static_cast<int>(VoiceId::Count) - 1;
+      if (s < 0)
+        s = max;
+      if (s > max)
+        s = 0;
+      led.source = static_cast<LedSource>(s);
+      GroovePuterState::markSceneMutated();
+      return true;
+    }
+    if (main_focus_ == MainFocus::LedColor) {
+      int currentIdx = 0;
+      for (int i = 0; i < 6; ++i) {
+        if (TAPE_PALETTE[i].rgb.r == led.color.r &&
+            TAPE_PALETTE[i].rgb.g == led.color.g &&
+            TAPE_PALETTE[i].rgb.b == led.color.b) {
+          currentIdx = i;
+          break;
+        }
+      }
+      currentIdx += right ? 1 : -1;
+      if (currentIdx < 0)
+        currentIdx = 5;
+      if (currentIdx > 5)
+        currentIdx = 0;
+      led.color = TAPE_PALETTE[currentIdx].rgb;
+      GroovePuterState::markSceneMutated();
+      return true;
+    }
+    if (main_focus_ == MainFocus::LedBri) {
+      int currentIdx = 0;
+      for (int i = 0; i < 5; ++i) {
+        if (BRI_STEPS[i] == led.brightness) {
+          currentIdx = i;
+          break;
+        }
+      }
+      currentIdx += right ? 1 : -1;
+      if (currentIdx < 0)
+        currentIdx = 4;
+      if (currentIdx > 4)
+        currentIdx = 0;
+      led.brightness = BRI_STEPS[currentIdx];
+      GroovePuterState::markSceneMutated();
+      return true;
+    }
+    if (main_focus_ == MainFocus::LedFlash) {
+      int currentIdx = 0;
+      for (int i = 0; i < 4; ++i) {
+        if (FLASH_STEPS[i] == led.flashMs) {
+          currentIdx = i;
+          break;
+        }
+      }
+      currentIdx += right ? 1 : -1;
+      if (currentIdx < 0)
+        currentIdx = 3;
+      if (currentIdx > 3)
+        currentIdx = 0;
+      led.flashMs = FLASH_STEPS[currentIdx];
+      GroovePuterState::markSceneMutated();
+      return true;
+    }
+    return false;
+  }
+  default:
+    break;
+  }
+
+  if (key == 'g' || key == 'G') {
+    requestPageTransition(0); // Genre Page
+    return true;
+  }
+
+  if (key == '\n' || key == '\r') {
+    if (main_focus_ == MainFocus::Load) {
+      openLoadDialog();
+      return true;
+    }
+    if (main_focus_ == MainFocus::SaveAs) {
+      openSaveDialog();
+      return true;
+    }
+    if (main_focus_ == MainFocus::New)
+      return createNewScene();
+    if (main_focus_ == MainFocus::ImportMidi) {
+      openImportMidiDialog();
+      return true;
+    }
+    if (main_focus_ == MainFocus::ClearProject) {
+      openConfirmClearDialog();
+      return true;
+    }
+
+    if (main_focus_ == MainFocus::VisualStyle) {
+      UI::currentStyle = nextStyle(UI::currentStyle);
+      return true;
+    }
+    if (main_focus_ == MainFocus::GrooveMode) {
+      withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
+      char toast[64];
+      std::snprintf(toast, sizeof(toast), "Groove Mode: %s (override)",
+                    grooveModeName(mini_acid_.grooveboxMode()));
+      UI::showToast(toast);
+      return true;
+    }
+    if (main_focus_ == MainFocus::GrooveFlavor) {
+      withAudioGuard([&]() { mini_acid_.shiftGrooveFlavor(1); });
+      return true;
+    }
+
+    auto &led = mini_acid_.sceneManager().currentScene().led;
+    if (main_focus_ == MainFocus::LedMode) {
+      led.mode = static_cast<LedMode>((static_cast<int>(led.mode) + 1) % 4);
+      GroovePuterState::markSceneMutated();
+      return true;
+    }
+    if (main_focus_ == MainFocus::LedSource) {
+      led.source = static_cast<LedSource>((static_cast<int>(led.source) + 1) %
+                                          static_cast<int>(VoiceId::Count));
+      switch (led.source) {
+      case LedSource::SynthA:
+        led.color = TAPE_PALETTE[1].rgb;
+        break;
+      case LedSource::SynthB:
+        led.color = TAPE_PALETTE[2].rgb;
+        break;
+      case LedSource::DrumKick:
+        led.color = TAPE_PALETTE[0].rgb;
+        break;
+      case LedSource::DrumSnare:
+        led.color = TAPE_PALETTE[3].rgb;
+        break;
+      case LedSource::DrumClap:
+        led.color = TAPE_PALETTE[5].rgb;
+        break;
+      default:
+        led.color = TAPE_PALETTE[4].rgb;
+        break;
+      }
+      GroovePuterState::markSceneMutated();
+      return true;
+    }
+    if (main_focus_ == MainFocus::LedColor) {
+      int currentIdx = 0;
+      for (int i = 0; i < 6; ++i)
+        if (TAPE_PALETTE[i].rgb.r == led.color.r &&
+            TAPE_PALETTE[i].rgb.g == led.color.g)
+          currentIdx = i;
+      led.color = TAPE_PALETTE[(currentIdx + 1) % 6].rgb;
+      GroovePuterState::markSceneMutated();
+      return true;
+    }
+    if (main_focus_ == MainFocus::LedBri) {
+      int currentIdx = 0;
+      for (int i = 0; i < 5; ++i)
+        if (BRI_STEPS[i] == led.brightness)
+          currentIdx = i;
+      led.brightness = BRI_STEPS[(currentIdx + 1) % 5];
+      GroovePuterState::markSceneMutated();
+      return true;
+    }
+    if (main_focus_ == MainFocus::LedFlash) {
+      int currentIdx = 0;
+      for (int i = 0; i < 4; ++i)
+        if (FLASH_STEPS[i] == led.flashMs)
+          currentIdx = i;
+      led.flashMs = FLASH_STEPS[(currentIdx + 1) % 4];
+      GroovePuterState::markSceneMutated();
+      return true;
+    }
+  }
+  return false;
 }
 
 const std::string & ProjectPage::getTitle() const {
@@ -1404,10 +1591,75 @@ void ProjectPage::drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const {
       break;
     default:
       break;
-  }
+    }
 }
 
-void ProjectPage::draw(IGfx& gfx) {
+void ProjectPage::drawTxStressDiagnostics(IGfx &gfx) {
+  UI::drawStandardHeader(gfx, mini_acid_, "USB TX STRESS");
+  LayoutManager::clearContent(gfx);
+
+#if defined(ARDUINO) && (defined(ESP32) || defined(ESP_PLATFORM))
+  const CardputerUsbMidiTxStressSnapshot snapshot =
+      snapshotCardputerUsbMidiTxStress();
+  char value[48];
+  const int left = Layout::CONTENT.x + 6;
+  const int right = Layout::CONTENT.x + Layout::CONTENT.w / 2 + 4;
+  const int y0 = LayoutManager::lineY(0);
+  const int lineH = gfx.fontHeight() + 4;
+
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(left, y0, "RATE");
+  std::snprintf(value, sizeof(value), "%u MSG/S",
+                static_cast<unsigned>(snapshot.rateMessagesPerSecond));
+  gfx.setTextColor(COLOR_ACCENT);
+  gfx.drawText(left + 54, y0, value);
+
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(right, y0, "STATE");
+  gfx.setTextColor(snapshot.active ? COLOR_ACCENT : COLOR_GRAY);
+  gfx.drawText(right + 48, y0, snapshot.active ? "RUN" : "STOP");
+
+  std::snprintf(value, sizeof(value), "OK %u",
+                static_cast<unsigned>(snapshot.accepted));
+  gfx.setTextColor(COLOR_WHITE);
+  gfx.drawText(left, y0 + lineH, value);
+
+  std::snprintf(value, sizeof(value), "REJECT %u",
+                static_cast<unsigned>(snapshot.rejected));
+  gfx.setTextColor(snapshot.rejected ? COLOR_ACCENT : COLOR_WHITE);
+  gfx.drawText(right, y0 + lineH, value);
+
+  std::snprintf(value, sizeof(value), "EP=BUSY %u",
+                static_cast<unsigned>(snapshot.endpointBusy));
+  gfx.setTextColor(snapshot.endpointBusy ? COLOR_ACCENT : COLOR_WHITE);
+  gfx.drawText(left, y0 + 2 * lineH, value);
+
+  std::snprintf(value, sizeof(value), "STABLE %us",
+                static_cast<unsigned>(snapshot.stallFreeSeconds));
+  gfx.setTextColor(COLOR_WHITE);
+  gfx.drawText(right, y0 + 2 * lineH, value);
+
+  std::snprintf(value, sizeof(value), "CH%u NOTE%u",
+                static_cast<unsigned>(snapshot.oneBasedChannel),
+                static_cast<unsigned>(snapshot.note));
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(left, y0 + 3 * lineH, value);
+
+  gfx.setTextColor(COLOR_GRAY);
+  gfx.drawText(left, y0 + 4 * lineH, "SPACE RUN  [ ] RATE  R RESET");
+  gfx.drawText(left, y0 + 5 * lineH, "BACK EXIT");
+#else
+  gfx.setTextColor(COLOR_GRAY);
+  gfx.drawText(Layout::CONTENT.x + 6, LayoutManager::lineY(1),
+               "CARDPUTER ADV ONLY");
+#endif
+}
+
+void ProjectPage::draw(IGfx &gfx) {
+  if (tx_stress_visible_) {
+    drawTxStressDiagnostics(gfx);
+    return;
+  }
   UI::drawStandardHeader(gfx, mini_acid_, "PROJECT");
   if (dialog_type_ == DialogType::MidiAdvance) {
     drawMidiAdvanceDialog(gfx);
@@ -1614,7 +1866,6 @@ void ProjectPage::draw(IGfx& gfx) {
                 styleShortName(UI::currentStyle), grooveModeName(mini_acid_.grooveboxMode()));
   const char* infoLines[3] = {perf0, perf1, perf2};
   Widgets::drawInfoBox(gfx, infoX, LayoutManager::lineY(2), infoW, infoLines, 3);
-
 }
 
 int ProjectPage::firstFocusInSection(int sectionIdx) {

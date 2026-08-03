@@ -1,5 +1,6 @@
 #include "cardputer_usb_midi_transport.h"
 #include "cardputer_usb_midi_service.h"
+#include "cardputer_usb_midi_tx_stress.h"
 
 #include <Arduino.h>
 #include <cstddef>
@@ -884,79 +885,84 @@ void midiDispatchTask(void*) {
             if (!transport.valid || !transport.playing ||
                 !scheduledSmfMidiEventTransportEpochIsCurrent(
                     pendingSmf, transport.transportEpoch)) {
-                ++g_diagnostics.smfTransportEpochDrops;
-                clearPendingSmf();
-                continue;
+              ++g_diagnostics.smfTransportEpochDrops;
+              clearPendingSmf();
+              continue;
             }
         }
 
-        if (!hasPendingTransport && !hasPendingMusical &&
-            !hasPendingDrumGate && !hasPendingSmf) {
-            drainControlEvents();
-            logDiagnosticsIfDue();
-            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(2));
-            continue;
+        if (!hasPendingTransport && !hasPendingMusical && !hasPendingDrumGate &&
+            !hasPendingSmf) {
+          drainControlEvents();
+          drainCardputerUsbMidiTxStress(g_transport);
+          logDiagnosticsIfDue();
+          ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(2));
+          continue;
         }
 
         PendingKind kind = PendingKind::None;
-        if (hasPendingTransport) kind = PendingKind::Transport;
+        if (hasPendingTransport)
+          kind = PendingKind::Transport;
         if (hasPendingMusical) {
-            if (kind == PendingKind::None ||
-                (kind == PendingKind::Transport &&
-                 !transportBeforeMusical(pendingTransport, pendingMusical))) {
-                kind = PendingKind::Pattern;
-            }
+          if (kind == PendingKind::None ||
+              (kind == PendingKind::Transport &&
+               !transportBeforeMusical(pendingTransport, pendingMusical))) {
+            kind = PendingKind::Pattern;
+          }
         }
         if (hasPendingDrumGate) {
-            bool gateWins = kind == PendingKind::None;
-            if (kind == PendingKind::Transport) {
-                gateWins = !transportBeforeMusical(
-                    pendingTransport, pendingDrumGate);
-            } else if (kind == PendingKind::Pattern) {
-                gateWins = scheduledMusicalEventBefore(
-                    pendingDrumGate, pendingMusical);
-            }
-            if (gateWins) kind = PendingKind::PatternDrumGate;
+          bool gateWins = kind == PendingKind::None;
+          if (kind == PendingKind::Transport) {
+            gateWins =
+                !transportBeforeMusical(pendingTransport, pendingDrumGate);
+          } else if (kind == PendingKind::Pattern) {
+            gateWins =
+                scheduledMusicalEventBefore(pendingDrumGate, pendingMusical);
+          }
+          if (gateWins)
+            kind = PendingKind::PatternDrumGate;
         }
         if (hasPendingSmf && !g_smfCleanupPending) {
-            bool smfWins = kind == PendingKind::None;
-            if (kind == PendingKind::Transport) {
-                smfWins = !transportBeforeSmf(pendingTransport, pendingSmf);
-            } else if (kind == PendingKind::Pattern) {
-                smfWins = !musicalBeforeSmf(pendingMusical, pendingSmf);
-            } else if (kind == PendingKind::PatternDrumGate) {
-                smfWins = !musicalBeforeSmf(pendingDrumGate, pendingSmf);
-            }
-            if (smfWins) kind = PendingKind::Smf;
+          bool smfWins = kind == PendingKind::None;
+          if (kind == PendingKind::Transport) {
+            smfWins = !transportBeforeSmf(pendingTransport, pendingSmf);
+          } else if (kind == PendingKind::Pattern) {
+            smfWins = !musicalBeforeSmf(pendingMusical, pendingSmf);
+          } else if (kind == PendingKind::PatternDrumGate) {
+            smfWins = !musicalBeforeSmf(pendingDrumGate, pendingSmf);
+          }
+          if (smfWins)
+            kind = PendingKind::Smf;
         }
 
         if (kind == PendingKind::None) {
-            drainControlEvents();
-            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
-            continue;
+          drainControlEvents();
+          drainCardputerUsbMidiTxStress(g_transport);
+          ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
+          continue;
         }
 
         uint32_t blockSequence = 0;
         uint16_t frameOffset = 0;
         switch (kind) {
-            case PendingKind::Transport:
-                blockSequence = pendingTransport.blockSequence;
-                frameOffset = pendingTransport.frameOffset;
-                break;
-            case PendingKind::Pattern:
-                blockSequence = pendingMusical.blockSequence;
-                frameOffset = pendingMusical.frameOffset;
-                break;
-            case PendingKind::PatternDrumGate:
-                blockSequence = pendingDrumGate.blockSequence;
-                frameOffset = pendingDrumGate.frameOffset;
-                break;
-            case PendingKind::Smf:
-                blockSequence = pendingSmf.blockSequence;
-                frameOffset = pendingSmf.frameOffset;
-                break;
-            case PendingKind::None:
-                break;
+        case PendingKind::Transport:
+          blockSequence = pendingTransport.blockSequence;
+          frameOffset = pendingTransport.frameOffset;
+          break;
+        case PendingKind::Pattern:
+          blockSequence = pendingMusical.blockSequence;
+          frameOffset = pendingMusical.frameOffset;
+          break;
+        case PendingKind::PatternDrumGate:
+          blockSequence = pendingDrumGate.blockSequence;
+          frameOffset = pendingDrumGate.frameOffset;
+          break;
+        case PendingKind::Smf:
+          blockSequence = pendingSmf.blockSequence;
+          frameOffset = pendingSmf.frameOffset;
+          break;
+        case PendingKind::None:
+          break;
         }
 
         uint32_t deadlineMicros = 0;
@@ -1328,43 +1334,41 @@ bool CardputerUsbMidiTransport::sendStop() {
 }
 
 void CardputerUsbMidiTransport::flush() {
-    // USBMIDI::writePacket() queues a complete four-byte USB-MIDI event packet.
-    // The pinned TinyUSB API exposes no additional flush operation.
+  // USBMIDI::writePacket() queues a complete four-byte USB-MIDI event packet.
+  // The pinned TinyUSB API exposes no additional flush operation.
 }
 
 bool registerCardputerUsbMidiSink(
-    MusicalEventRouter& router,
-    MusicalEventQueue& patternQueue,
-    ExternalMidiTransportEventQueue& externalTransportQueue) {
-    if (g_registered) return true;
-
-    g_patternQueue = &patternQueue;
-    g_externalTransportQueue = &externalTransportQueue;
-    g_patternDrumGates.clear();
-    if (!router.addSink(g_queueSink)) {
-        g_patternQueue = nullptr;
-        g_externalTransportQueue = nullptr;
-        return false;
-    }
-
-    const BaseType_t taskResult = xTaskCreatePinnedToCore(
-        midiDispatchTask,
-        "MidiDispatchTask",
-        4096,
-        nullptr,
-        2,
-        &g_dispatchTaskHandle,
-        0);
-    if (taskResult != pdPASS) {
-        router.removeSink(g_queueSink);
-        g_patternQueue = nullptr;
-        g_externalTransportQueue = nullptr;
-        g_dispatchTaskHandle = nullptr;
-        return false;
-    }
-
-    g_registered = true;
+    MusicalEventRouter &router, MusicalEventQueue &patternQueue,
+    ExternalMidiTransportEventQueue &externalTransportQueue) {
+  if (g_registered)
     return true;
+
+  g_patternQueue = &patternQueue;
+  g_externalTransportQueue = &externalTransportQueue;
+  g_patternDrumGates.clear();
+  if (!beginCardputerUsbMidiTxStress(notifyDispatcher)) {
+    Serial.println("[USB-MIDI] TX stress diagnostics unavailable");
+  }
+  if (!router.addSink(g_queueSink)) {
+    g_patternQueue = nullptr;
+    g_externalTransportQueue = nullptr;
+    return false;
+  }
+
+  const BaseType_t taskResult =
+      xTaskCreatePinnedToCore(midiDispatchTask, "MidiDispatchTask", 4096,
+                              nullptr, 2, &g_dispatchTaskHandle, 0);
+  if (taskResult != pdPASS) {
+    router.removeSink(g_queueSink);
+    g_patternQueue = nullptr;
+    g_externalTransportQueue = nullptr;
+    g_dispatchTaskHandle = nullptr;
+    return false;
+  }
+
+  g_registered = true;
+  return true;
 }
 
 void registerCardputerSmfMidiQueue(ScheduledSmfMidiEventQueue* queue) {
