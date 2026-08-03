@@ -46,6 +46,21 @@ def main() -> None:
             "SMF Player still owns a duplicate MIDI browser model")
     require("SD.remove" not in player_cpp and "SD.rename" not in player_cpp,
             "SMF Player must not perform file mutations directly")
+    for source_path in (
+            ROOT / "src/ui/pages/project_page.cpp",
+            ROOT / "src/ui/pages/smf_player_page.cpp"):
+        data = source_path.read_bytes()
+        require(b"\x00" not in data and b"\x08" not in data,
+                f"{source_path.name} contains a raw control byte")
+        require(b"'\n'" not in data and b"'\r'" not in data,
+                f"{source_path.name} contains a raw line break in a char literal")
+
+    service_cpp = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(
+        encoding="utf-8")
+    require("currentFilePath" in manager_cpp and "loadedPath_" in service_cpp,
+            "exact active SMF path protection is missing")
+    require(service_cpp.count("loadedPath_[0] = '\\0';") >= 2,
+            "failed SMF scans must release the protected path")
 
 
 if __name__ == "__main__":

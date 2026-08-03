@@ -909,7 +909,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
     if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
     if (dialog_type_ == DialogType::ImportMidi) {
-        if (ui_event.key == '	') {
+        if (ui_event.key == '\t') {
             openMidiAdvanceDialog();
             return true;
         }
@@ -929,7 +929,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
     }
 
     if (dialog_type_ == DialogType::Load) {
-        if (ui_event.scancode == GROOVEPUTER_ESCAPE || ui_event.key == '') {
+        if (ui_event.scancode == GROOVEPUTER_ESCAPE || ui_event.key == '\b') {
             closeDialog();
             return true;
         }
@@ -952,8 +952,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         if (ui_event.key == 'x' || ui_event.key == 'X') {
             return deleteSelectionInDialog();
         }
-        if (ui_event.key == '
-' || ui_event.key == '') {
+        if (ui_event.key == '\n' || ui_event.key == '\r') {
             if (dialog_focus_ == DialogFocus::Cancel) {
                 closeDialog();
                 return true;
