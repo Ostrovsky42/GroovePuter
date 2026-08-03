@@ -46,10 +46,13 @@ enum class UiStatusClock : uint8_t {
 };
 
 enum class UiStatusOutput : uint8_t {
-    InternalAudio = 0,
-    Midi,
-    Both,
-    Unknown,
+    InternalAndMidi = 0,
+    // Compatibility aliases for the first A1 implementation. Pattern/Song
+    // events fan out to the internal synth and the registered USB-MIDI sink.
+    InternalAudio = InternalAndMidi,
+    Both = InternalAndMidi,
+    Midi = 1,
+    Unknown = 2,
 };
 
 struct UiStatusSnapshot {
@@ -57,7 +60,7 @@ struct UiStatusSnapshot {
     UiStatusSource source{UiStatusSource::Pattern};
     UiStatusState state{UiStatusState::Stop};
     UiStatusClock clock{UiStatusClock::Internal};
-    UiStatusOutput output{UiStatusOutput::InternalAudio};
+    UiStatusOutput output{UiStatusOutput::InternalAndMidi};
     uint16_t bar{1};
     uint16_t totalBars{1};
     bool liveMixLocked{false};
@@ -136,9 +139,8 @@ inline const char* uiStatusClockToken(UiStatusClock clock) {
 
 inline const char* uiStatusOutputToken(UiStatusOutput output) {
     switch (output) {
-        case UiStatusOutput::InternalAudio: return "AUD";
+        case UiStatusOutput::InternalAndMidi: return "BOTH";
         case UiStatusOutput::Midi: return "MIDI";
-        case UiStatusOutput::Both: return "BOTH";
         case UiStatusOutput::Unknown: return "OUT?";
     }
     return "OUT?";
