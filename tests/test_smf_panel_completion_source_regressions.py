@@ -33,6 +33,12 @@ def main() -> None:
             "browser, performance and inspector visibility must be session tracked")
     for token in (
         "currentPath_",
+        "browserRows_",
+        "directoryCount_",
+        "fileCount_",
+        "totalEntries_",
+        "visibleWindowStart_",
+        "browserStorageReady_",
         "selection_",
         "scroll_",
         "channelInspectorScroll_",
@@ -47,6 +53,13 @@ def main() -> None:
             "publish();" in session and
             "setActive(false)" in session,
             "page eviction must publish the final bounded session")
+    require("kSmfPlayerSessionBrowserRows = 7" in session and
+            "SmfPlayerSessionBrowserRow" in session and
+            "sizeof(SmfPlayerSessionSnapshot) <= 512" in session,
+            "browser session cache must remain seven rows and under 512 bytes")
+    require("using BrowserRow = GroovePuterUi::SmfPlayerSessionBrowserRow" in page_h and
+            "GroovePuterUi::kSmfPlayerSessionBrowserRows" in page_h,
+            "page and session must share one bounded browser-row contract")
     for forbidden in ("std::vector", "std::map", "new ", "malloc("):
         require(forbidden not in session,
                 f"session state must remain bounded: {forbidden}")
@@ -81,8 +94,9 @@ def main() -> None:
     ):
         require(forbidden not in draw_block,
                 f"SMF draw path must not traverse storage: {forbidden}")
-    require("browserRows_" in page_h and "kBrowserVisibleRows = 7" in page_h,
-            "browser rendering must use the existing bounded visible-row cache")
+    require("browserRows_" in page_h and
+            "kSmfPlayerSessionBrowserRows" in page_h,
+            "browser rendering must use the shared bounded visible-row cache")
     require(not (ROOT / "src/ui/pages/smf_directory_cache.h").exists(),
             "completion must not retain an unused second directory-cache architecture")
 
