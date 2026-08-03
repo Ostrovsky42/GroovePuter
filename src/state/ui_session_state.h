@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "src/ui/ui_config.h"
 #include "src/ui/ui_core.h"
 #include "src/ui/workflow_mode.h"
 
@@ -119,7 +120,7 @@ inline int workflowNavigationTarget(const UiSessionState& state,
             state, WorkflowPages::nextMode(mode, direction));
     }
 
-    const int count = WorkflowPages::pageCount(mode);
+    const int count = WorkflowPages::pageCountForMode(mode);
     int index = WorkflowPages::pageIndexInMode(currentPage) + direction;
     while (index < 0) index += count;
     while (index >= count) index -= count;
