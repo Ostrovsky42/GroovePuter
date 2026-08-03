@@ -3,39 +3,69 @@ name: Core regressions
 on:
   push:
     branches:
-      - feature/workflow-session-persistence
+      - main
+      - dev
+      - agent/fix-core-reliability
+  pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-runtime-route-fix:
+  host-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: feature/workflow-session-persistence
-          fetch-depth: 0
 
-      - name: Apply runtime route fix
-        run: python3 tools/fix_workflow_runtime_routes.py
+      - name: Run core host regressions
+        run: bash tests/run_host_tests.sh
 
-      - name: Run focused tests
+      - name: Run UI status chrome tests
         run: |
-          python3 tests/test_ui_session_source_regressions.py
-          python3 tests/test_theme_selection_source_regressions.py
+          python3 tests/test_ui_status_chrome_source_regressions.py
           mkdir -p build/host-tests
           g++ -std=c++17 -Wall -Wextra -Werror -I. \
-            tests/test_ui_session_state.cpp \
-            -o build/host-tests/test_ui_session_state
-          build/host-tests/test_ui_session_state
+            tests/test_ui_status_chrome.cpp \
+            -o build/host-tests/test_ui_status_chrome
+          build/host-tests/test_ui_status_chrome
 
-      - name: Commit production fix
+      - name: Run dirty-region display tests
         run: |
-          git checkout origin/dev -- .github/workflows/core-regressions.yml
-          rm -f tools/fix_workflow_runtime_routes.py
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "fix: unify hardware workflow navigation routes"
-          git push origin HEAD:feature/workflow-session-persistence
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_dirty_tile_tracker.cpp \
+            -o build/host-tests/test_dirty_tile_tracker
+          build/host-tests/test_dirty_tile_tracker
+
+  sdl-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Build desktop target
+        working-directory: platform_sdl
+        run: make clean all CXX=g++
+
+  cardputer-adv-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
