@@ -4,13 +4,20 @@ on:
   push:
     branches:
       - agent/deterministic-cardputer-input
+  pull_request:
+    branches:
+      - dev
 
 permissions:
   contents: write
+  pull-requests: read
 
 jobs:
   apply-production-patch:
-    if: github.actor != 'github-actions[bot]'
+    if: >-
+      github.actor != 'github-actions[bot]' &&
+      (github.event_name == 'push' ||
+       github.event.pull_request.head.ref == 'agent/deterministic-cardputer-input')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +40,7 @@ jobs:
       - name: Commit production files
         run: |
           rm -f tools/apply_deterministic_input_patch.py
+          rm -f tools/.deterministic-input-trigger
           rm -f .github/workflows/apply-deterministic-input.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
