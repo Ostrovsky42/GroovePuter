@@ -49,6 +49,8 @@ def main() -> None:
             "rememberedChild_(selected_)" in launcher and
             "loadRememberedPages_" in launcher,
             "launcher workflow selection must restore remembered child pages")
+    require(launcher.count("child_by_workflow_[selected_] = child_") >= 2,
+            "launcher must retain both the current and explicitly selected child page")
     require("child_ = 0;" not in launcher[launcher.index("GROOVEPUTER_UP"):launcher.index("GROOVEPUTER_LEFT")],
             "vertical launcher navigation must not reset every workflow to page zero")
     require("ui_session_save_due_ms_ = millis() + 1000" in display and
