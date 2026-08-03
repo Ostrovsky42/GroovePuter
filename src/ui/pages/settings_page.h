@@ -2,6 +2,7 @@
 
 #include "../ui_core.h"
 #include "src/dsp/miniacid_engine.h"
+#include "src/state/scene_revision.h"
 
 class SettingsPage : public IPage {
 public:
@@ -31,5 +32,6 @@ private:
     void withAudioGuard(F&& fn) {
         if (audio_guard_) audio_guard_(std::forward<F>(fn));
         else fn();
+        GroovePuterState::markSceneMutated();
     }
 };

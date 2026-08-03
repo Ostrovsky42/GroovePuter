@@ -33,7 +33,7 @@ Canonical key map for the currently active firmware version.
 Верхняя строка всегда использует один порядок приоритетов:
 
 ```text
-CONTEXT SOURCE STATE BAR CLOCK OUTPUT [LM]
+CONTEXT SOURCE STATE BAR CLOCK OUTPUT [LM] [*]
 GEN PAT PLAY B3/4 INT BOTH
 PLYR SMF ARM B8/128 EXT MIDI
 ```
@@ -47,9 +47,10 @@ PLYR SMF ARM B8/128 EXT MIDI
 | `CLOCK` | `INT` — внутренний clock, `EXT` — SEQTRAK master, `FILE` — tempo map MIDI-файла |
 | `OUTPUT` | `BOTH` — Pattern/Song идут во внутренний синтез и USB-MIDI sink; `MIDI` — SMF MIDI output |
 | `LM` | LiveMix lock включён |
+| `*` | persistent state отличается от последнего успешного Save/Load |
 
-Status chrome не меняет обработку клавиш. `DIRTY` и точные состояния
-`NOTE/CMD/LOCAL/LOCK` добавляются отдельными задачами Wave 1 A2 и B.
+Status chrome не меняет обработку клавиш. Dirty marker реализован задачей Wave 1 A2. Точные состояния
+`NOTE/CMD/LOCAL/LOCK` добавляются отдельной задачей B.
 
 ## Priority & Interception Logic
 1. **Global Help Overlay**: intercepts input while visible.

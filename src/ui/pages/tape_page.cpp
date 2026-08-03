@@ -1,6 +1,7 @@
 #include "tape_page.h"
 #include "../../dsp/tape_presets.h"
 #include "../ui_common.h"
+#include "src/state/scene_revision.h"
 #ifdef USE_RETRO_THEME
 #include "../retro_ui_theme.h"
 #include "../retro_widgets.h"
@@ -149,6 +150,7 @@ class TapePage::ModeComponent : public FocusableComponent {
       tape.mode = nextTapeMode(tape.mode);
       synth_.tapeLooper->setMode(tape.mode);
     });
+    GroovePuterState::markSceneMutated();
   }
 
  private:
@@ -198,6 +200,7 @@ class TapePage::PresetComponent : public FocusableComponent {
       }
       synth_.tapeFX->applyMacro(tape.macro);
     });
+    GroovePuterState::markSceneMutated();
   }
 
  private:
@@ -216,6 +219,7 @@ void TapePage::setBoundaries(const Rect& rect) {
 void TapePage::initComponents() {
   // Macro sliders
   auto updateMacro = [this](int idx, int val) {
+    TapeMacro before = mini_acid_.sceneManager().currentScene().tape.macro;
     audio_guard_([this, idx, val](){
       TapeMacro& macro = mini_acid_.sceneManager().currentScene().tape.macro;
       switch(idx) {
@@ -227,6 +231,12 @@ void TapePage::initComponents() {
       }
       mini_acid_.tapeFX->applyMacro(macro);
     });
+    const TapeMacro& after = mini_acid_.sceneManager().currentScene().tape.macro;
+    if (after.wow != before.wow || after.age != before.age ||
+        after.sat != before.sat || after.tone != before.tone ||
+        after.crush != before.crush) {
+      GroovePuterState::markSceneMutated();
+    }
   };
 
   wow_slider_ = std::make_shared<SliderComponent>("WOW", 12, 100, [=](int v){ updateMacro(0, v); });
@@ -235,11 +245,15 @@ void TapePage::initComponents() {
   tone_slider_ = std::make_shared<SliderComponent>("TONE", 60, 100, [=](int v){ updateMacro(3, v); });
   crush_slider_ = std::make_shared<SliderComponent>("CRUSH", 0, 3, [=](int v){ updateMacro(4, v); });
   looper_slider_ = std::make_shared<SliderComponent>("LOOP", 55, 100, [this](int v){
+    const float before = mini_acid_.sceneManager().currentScene().tape.looperVolume;
     audio_guard_([this, v]() {
       TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
       tape.looperVolume = static_cast<float>(v) / 100.0f;
       mini_acid_.tapeLooper->setVolume(tape.looperVolume);
     });
+    if (mini_acid_.sceneManager().currentScene().tape.looperVolume != before) {
+      GroovePuterState::markSceneMutated();
+    }
   });
 
   mode_ctrl_ = std::make_shared<ModeComponent>(mini_acid_, audio_guard_);
@@ -385,12 +399,16 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
   char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)));
 
   auto setTapeMode = [this](TapeMode mode) {
+    const TapeMode before = mini_acid_.sceneManager().currentScene().tape.mode;
     audio_guard_([this, mode]() {
       TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
       tape.mode = mode;
       mini_acid_.tapeLooper->setDubAutoExit(false);
       mini_acid_.tapeLooper->setMode(mode);
     });
+    if (mini_acid_.sceneManager().currentScene().tape.mode != before) {
+      GroovePuterState::markSceneMutated();
+    }
   };
   
   // Q-I Pattern Selection (Standardized)
@@ -399,7 +417,9 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
     const char* found = strchr(patternKeys, lowerKey);
     if (found) {
       int patternIdx = found - patternKeys;
+      const int before = mini_acid_.currentDrumPatternIndex();
       audio_guard_([&]() { mini_acid_.setDrumPatternIndex(patternIdx); });
+      if (mini_acid_.currentDrumPatternIndex() != before) GroovePuterState::markSceneMutated();
       return true;
     }
   }
@@ -427,6 +447,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
       }
       mini_acid_.tapeLooper->setMode(tape.mode);
     });
+    GroovePuterState::markSceneMutated();
     return true;
   }
 
@@ -445,6 +466,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
       tape.fxEnabled = true;
       mini_acid_.tapeLooper->setMode(tape.mode);
     });
+    GroovePuterState::markSceneMutated();
     UI::showToast("CAPTURE: REC", 1000);
     return true;
   }
@@ -456,7 +478,10 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
       mini_acid_.tapeLooper->setDubAutoExit(true);  // one cycle safety
       mini_acid_.tapeLooper->setMode(tape.mode);
     });
-    if (mini_acid_.tapeLooper->hasLoop()) UI::showToast("THICKEN: DUB x1", 900);
+    if (mini_acid_.tapeLooper->hasLoop()) {
+      GroovePuterState::markSceneMutated();
+      UI::showToast("THICKEN: DUB x1", 900);
+    }
     else UI::showToast("THICKEN: NO LOOP", 900);
     return true;
   }
@@ -481,6 +506,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
       }
       mini_acid_.tapeFX->applyMinimalParams(tape.space, tape.movement, tape.groove);
     });
+    GroovePuterState::markSceneMutated();
     UI::showToast(perf_wash_active_ ? "WASH: ON" : "WASH: OFF", 900);
     return true;
   }
@@ -497,6 +523,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
       }
       mini_acid_.tapeLooper->setVolume(tape.looperVolume);
     });
+    GroovePuterState::markSceneMutated();
     UI::showToast(perf_loop_muted_ ? "LOOP: MUTED" : "LOOP: UNMUTED", 900);
     return true;
   }
@@ -516,6 +543,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
         TapeState& tape = mini_acid_.sceneManager().currentScene().tape;
         tape.fxEnabled = !tape.fxEnabled;
       });
+      GroovePuterState::markSceneMutated();
       UI::showToast(mini_acid_.sceneManager().currentScene().tape.fxEnabled ? "FX: ON" : "FX: OFF", 900);
       return true;
     case '1':
@@ -524,6 +552,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
         tape.speed = 0; // 0.5x
         mini_acid_.tapeLooper->setSpeed(tape.speed);
       });
+      GroovePuterState::markSceneMutated();
       return true;
     case '2':
       audio_guard_([this](){
@@ -531,6 +560,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
         tape.speed = 1; // 1.0x
         mini_acid_.tapeLooper->setSpeed(tape.speed);
       });
+      GroovePuterState::markSceneMutated();
       return true;
     case '3':
       audio_guard_([this](){
@@ -538,6 +568,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
         tape.speed = 2; // 2.0x
         mini_acid_.tapeLooper->setSpeed(tape.speed);
       });
+      GroovePuterState::markSceneMutated();
       return true;
     case '\n': // Enter = stutter toggle
       audio_guard_([this](){
@@ -553,6 +584,7 @@ bool TapePage::handleEvent(UIEvent& ui_event) {
         tape.mode = TapeMode::Stop;
         tape.fxEnabled = false;
       });
+      GroovePuterState::markSceneMutated();
       return true;
     case ' ':
       audio_guard_([this](){

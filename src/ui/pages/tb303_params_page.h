@@ -4,6 +4,7 @@
 #include "../pages/help_dialog.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
+#include "src/state/scene_revision.h"
 
 class TB303ParamsPage : public IPage, public IMultiHelpFramesProvider {
  public:
@@ -25,6 +26,7 @@ class TB303ParamsPage : public IPage, public IMultiHelpFramesProvider {
   void withAudioGuard(F&& fn) {
       if (audio_guard_) audio_guard_(std::forward<F>(fn));
       else fn();
+      GroovePuterState::markSceneMutated();
   }
   void adjustFocusedElement(int direction, bool fine = false);
   void initComponents();

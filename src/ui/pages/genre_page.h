@@ -5,6 +5,7 @@
 #include "../layout_manager.h"
 #include "../ui_widgets.h"
 #include <cstddef>
+#include "src/state/scene_revision.h"
 
 class GenrePage : public IPage {
 public:
@@ -61,6 +62,7 @@ private:
     void withAudioGuard(F&& fn) {
         if (audio_guard_) audio_guard_(std::forward<F>(fn));
         else fn();
+        GroovePuterState::markSceneMutated();
     }
     
     void updateFromEngine();

@@ -797,9 +797,11 @@ bool GenrePage::handleEvent(UIEvent& e) {
     auto moveLeft = [&]() -> bool {
         if (focus_ == FocusArea::TEXTURE) {
             auto& gs = mini_acid_.sceneManager().currentScene().genre;
-            int v = (int)gs.textureAmount - 5;
+            const int before = static_cast<int>(gs.textureAmount);
+            int v = before - 5;
             if (v < 0) v = 0;
             gs.textureAmount = static_cast<uint8_t>(v);
+            if (v != before) GroovePuterState::markSceneMutated();
             return true;
         } else if (focus_ == FocusArea::APPLY_MODE) {
             if (e.meta) {
@@ -812,9 +814,11 @@ bool GenrePage::handleEvent(UIEvent& e) {
     auto moveRight = [&]() -> bool {
         if (focus_ == FocusArea::TEXTURE) {
             auto& gs = mini_acid_.sceneManager().currentScene().genre;
-            int v = (int)gs.textureAmount + 5;
+            const int before = static_cast<int>(gs.textureAmount);
+            int v = before + 5;
             if (v > 100) v = 100;
             gs.textureAmount = static_cast<uint8_t>(v);
+            if (v != before) GroovePuterState::markSceneMutated();
             return true;
         } else if (focus_ == FocusArea::APPLY_MODE) {
             if (e.meta) {
@@ -861,6 +865,7 @@ bool GenrePage::handleEvent(UIEvent& e) {
     if (key == ' ' && focus_ == FocusArea::APPLY_MODE) {
         auto& gs = mini_acid_.sceneManager().currentScene().genre;
         cycleApplyMode(gs);
+        GroovePuterState::markSceneMutated();
         UI::showToast(applyModeToast(mini_acid_), 1800);
         return true;
     }
@@ -869,6 +874,7 @@ bool GenrePage::handleEvent(UIEvent& e) {
     if (plainKey && keyM) {
         auto& gs = mini_acid_.sceneManager().currentScene().genre;
         cycleApplyMode(gs);
+        GroovePuterState::markSceneMutated();
         UI::showToast(applyModeToast(mini_acid_), 1800);
         return true;
     }
@@ -994,7 +1000,10 @@ bool GenrePage::isCuratedMode() const {
 }
 
 void GenrePage::setCuratedMode(bool enabled) {
-    mini_acid_.sceneManager().currentScene().genre.curatedMode = enabled;
+    auto& curated = mini_acid_.sceneManager().currentScene().genre.curatedMode;
+    if (curated == enabled) return;
+    curated = enabled;
+    GroovePuterState::markSceneMutated();
 }
 
 int GenrePage::visibleTextureCount() const {

@@ -3,6 +3,7 @@
 #include "../ui_core.h"
 #include "src/dsp/miniacid_engine.h"
 #include "../ui_common.h"
+#include "src/state/scene_revision.h"
 
 #include <string>
 
@@ -73,6 +74,7 @@ private:
     void withAudioGuard(F&& fn) {
         if (audio_guard_) audio_guard_(std::forward<F>(fn));
         else fn();
+        GroovePuterState::markSceneMutated();
     }
 
     int maxRowForFocus(FocusArea focus) const;

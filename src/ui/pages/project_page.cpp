@@ -648,6 +648,7 @@ bool ProjectPage::importMidiAtSelection() {
   Serial.printf("[ProjectPage] MIDI import result=%d saved=%d\n",
                 static_cast<int>(err), persisted ? 1 : 0);
   if (err == MidiImporter::Error::None) {
+    if (persisted) GroovePuterState::markSceneSaveSucceeded();
     UI::showToast(persisted
         ? "MIDI imported and saved"
         : "MIDI imported; save failed");
@@ -777,6 +778,7 @@ bool ProjectPage::loadSceneAtSelection() {
     loaded = mini_acid_.loadSceneByName(name);
   });
   if (loaded) {
+    GroovePuterState::markSceneLoadSucceeded();
     closeDialog();
   } else {
     loadError_ = true;
@@ -792,14 +794,18 @@ bool ProjectPage::saveCurrentScene() {
   if (save_name_.empty()) randomizeSaveName();
   bool saved = false;
   const std::string name = save_name_;
+  const GroovePuterState::SceneRevisionState revisionBefore =
+      GroovePuterState::sceneRevisionSnapshot();
   withAudioGuard([&]() {
     saved = mini_acid_.saveSceneAs(name);
   });
   if (saved) {
+    GroovePuterState::markSceneSaveSucceeded();
     closeDialog();
     refreshScenes();
     UI::showToast("Project and songs saved");
   } else {
+    GroovePuterState::restoreSceneRevision(revisionBefore);
     UI::showToast("Project save failed");
   }
   return true;
@@ -813,6 +819,7 @@ bool ProjectPage::createNewScene() {
     created = mini_acid_.createNewSceneWithName(name);
   });
   if (created) {
+    GroovePuterState::markSceneSaveSucceeded();
     refreshScenes();
     UI::showToast("Blank project created");
   } else {
@@ -1399,6 +1406,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             auto& led = mini_acid_.sceneManager().currentScene().led;
             if (main_focus_ == MainFocus::Volume) {
                 mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, right ? 1 : -1);
+                GroovePuterState::markSceneMutated();
                 return true;
             }
             if (main_focus_ == MainFocus::VisualStyle) {
@@ -1420,6 +1428,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             if (main_focus_ == MainFocus::ApplyMacros) {
                 auto& genre = mini_acid_.sceneManager().currentScene().genre;
                 genre.applySoundMacros = !genre.applySoundMacros;
+                GroovePuterState::markSceneMutated();
                 return true;
             }
             if (main_focus_ == MainFocus::LedMode) {
@@ -1428,6 +1437,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 if (m < 0) m = 3;
                 if (m > 3) m = 0;
                 led.mode = static_cast<LedMode>(m);
+                GroovePuterState::markSceneMutated();
                 return true;
             }
             if (main_focus_ == MainFocus::LedSource) {
@@ -1437,6 +1447,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 if (s < 0) s = max;
                 if (s > max) s = 0;
                 led.source = static_cast<LedSource>(s);
+                GroovePuterState::markSceneMutated();
                 return true;
             }
             if (main_focus_ == MainFocus::LedColor) {
@@ -1453,6 +1464,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 if (currentIdx < 0) currentIdx = 5;
                 if (currentIdx > 5) currentIdx = 0;
                 led.color = TAPE_PALETTE[currentIdx].rgb;
+                GroovePuterState::markSceneMutated();
                 return true;
             }
             if (main_focus_ == MainFocus::LedBri) {
@@ -1467,6 +1479,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 if (currentIdx < 0) currentIdx = 4;
                 if (currentIdx > 4) currentIdx = 0;
                 led.brightness = BRI_STEPS[currentIdx];
+                GroovePuterState::markSceneMutated();
                 return true;
             }
             if (main_focus_ == MainFocus::LedFlash) {
@@ -1481,6 +1494,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 if (currentIdx < 0) currentIdx = 3;
                 if (currentIdx > 3) currentIdx = 0;
                 led.flashMs = FLASH_STEPS[currentIdx];
+                GroovePuterState::markSceneMutated();
                 return true;
             }
             return false;
@@ -1515,7 +1529,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         }
         
         auto& led = mini_acid_.sceneManager().currentScene().led;
-        if (main_focus_ == MainFocus::LedMode) { led.mode = static_cast<LedMode>((static_cast<int>(led.mode) + 1) % 4); return true; }
+        if (main_focus_ == MainFocus::LedMode) { led.mode = static_cast<LedMode>((static_cast<int>(led.mode) + 1) % 4); GroovePuterState::markSceneMutated(); return true; }
         if (main_focus_ == MainFocus::LedSource) {
             led.source = static_cast<LedSource>((static_cast<int>(led.source) + 1) % static_cast<int>(VoiceId::Count));
             switch (led.source) {
@@ -1526,24 +1540,28 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 case LedSource::DrumClap: led.color = TAPE_PALETTE[5].rgb; break;
                 default: led.color = TAPE_PALETTE[4].rgb; break;
             }
+            GroovePuterState::markSceneMutated();
             return true;
         }
         if (main_focus_ == MainFocus::LedColor) {
             int currentIdx = 0;
             for (int i=0; i<6; ++i) if (TAPE_PALETTE[i].rgb.r == led.color.r && TAPE_PALETTE[i].rgb.g == led.color.g) currentIdx = i;
             led.color = TAPE_PALETTE[(currentIdx + 1) % 6].rgb;
+            GroovePuterState::markSceneMutated();
             return true;
         }
         if (main_focus_ == MainFocus::LedBri) {
             int currentIdx = 0;
             for (int i=0; i<5; ++i) if (BRI_STEPS[i] == led.brightness) currentIdx = i;
             led.brightness = BRI_STEPS[(currentIdx + 1) % 5];
+            GroovePuterState::markSceneMutated();
             return true;
         }
         if (main_focus_ == MainFocus::LedFlash) {
             int currentIdx = 0;
             for (int i=0; i<4; ++i) if (FLASH_STEPS[i] == led.flashMs) currentIdx = i;
             led.flashMs = FLASH_STEPS[(currentIdx + 1) % 4];
+            GroovePuterState::markSceneMutated();
             return true;
         }
     }
