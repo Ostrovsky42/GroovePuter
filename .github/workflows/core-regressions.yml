@@ -78,62 +78,61 @@ jobs:
           player_path = Path("src/platform/cardputer_smf_player.cpp")
           player = player_path.read_text(encoding="utf-8")
 
-          include_old = '''#include "src/audio/audio_config.h"
-          #include "src/midi/transport_clock_runtime.h"
-          '''
-          include_new = '''#include "src/audio/audio_config.h"
-          #include "src/midi/midi_transport_capabilities.h"
-          #include "src/midi/transport_clock_runtime.h"
-          '''
-          # Dedent literals introduced by YAML indentation.
-          include_old = "\n".join(line.strip() for line in include_old.splitlines() if line.strip()) + "\n"
-          include_new = "\n".join(line.strip() for line in include_new.splitlines() if line.strip()) + "\n"
+          include_old = (
+              '#include "src/audio/audio_config.h"\n'
+              '#include "src/midi/transport_clock_runtime.h"\n'
+          )
+          include_new = (
+              '#include "src/audio/audio_config.h"\n'
+              '#include "src/midi/midi_transport_capabilities.h"\n'
+              '#include "src/midi/transport_clock_runtime.h"\n'
+          )
           if '#include "src/midi/midi_transport_capabilities.h"' not in player:
               if include_old not in player:
                   raise SystemExit("player include anchor missing")
               player = player.replace(include_old, include_new, 1)
 
-          seek_old = '''            if (previous == SmfPlayerState::Playing || previous == SmfPlayerState::Armed) {
-              startFromTick(targetTick);
-          } else {
-          '''
-          seek_new = '''            if (previous == SmfPlayerState::Playing || previous == SmfPlayerState::Armed) {
-              const bool started = startFromTick(targetTick);
-              if (started && tempoMode_ == SmfTempoMode::Project) {
-                  (void)queueSongPositionPointerAtCurrentAnchor(targetTick);
-              }
-          } else {
-          '''
-          seek_old = "\n".join(line[10:] if line.startswith("          ") else line for line in seek_old.splitlines()) + "\n"
-          seek_new = "\n".join(line[10:] if line.startswith("          ") else line for line in seek_new.splitlines()) + "\n"
+          seek_old = (
+              "            if (previous == SmfPlayerState::Playing || previous == SmfPlayerState::Armed) {\n"
+              "                startFromTick(targetTick);\n"
+              "            } else {\n"
+          )
+          seek_new = (
+              "            if (previous == SmfPlayerState::Playing || previous == SmfPlayerState::Armed) {\n"
+              "                const bool started = startFromTick(targetTick);\n"
+              "                if (started && tempoMode_ == SmfTempoMode::Project) {\n"
+              "                    (void)queueSongPositionPointerAtCurrentAnchor(targetTick);\n"
+              "                }\n"
+              "            } else {\n"
+          )
           if "queueSongPositionPointerAtCurrentAnchor(targetTick)" not in player:
               if seek_old not in player:
                   raise SystemExit("active seek anchor missing")
               player = player.replace(seek_old, seek_new, 1)
 
-          helper = '''bool CardputerSmfPlayerService::queueSongPositionPointerAtCurrentAnchor(
-                  uint32_t tick) {
-              const GroovePuterMidi::MidiTransportCapabilities capabilities =
-                  GroovePuterMidi::midiTransportCapabilityRuntime().capabilities();
-              if (!capabilities.songPositionTx || fileIndex_.division == 0) {
-                  return true;
-              }
-
-              uint32_t anchorBlock = 0;
-              uint32_t anchorMicros = 0;
-              if (!snapshotCardputerUsbMidiBlockAnchor(anchorBlock, anchorMicros)) {
-                  return false;
-              }
-              (void)anchorMicros;
-              const uint16_t position =
-                  GroovePuterMidi::songPositionPointerFromPpqnTicks(
-                      tick, fileIndex_.division);
-              return eventQueue_.tryPushSongPositionPointer(
-                  position, anchorBlock + 1u, 0);
-          }
-
-          '''
-          helper = "\n".join(line[10:] if line.startswith("          ") else line for line in helper.splitlines()) + "\n"
+          helper = (
+              "bool CardputerSmfPlayerService::queueSongPositionPointerAtCurrentAnchor(\n"
+              "        uint32_t tick) {\n"
+              "    const GroovePuterMidi::MidiTransportCapabilities capabilities =\n"
+              "        GroovePuterMidi::midiTransportCapabilityRuntime().capabilities();\n"
+              "    if (!capabilities.songPositionTx || fileIndex_.division == 0) {\n"
+              "        return true;\n"
+              "    }\n"
+              "\n"
+              "    uint32_t anchorBlock = 0;\n"
+              "    uint32_t anchorMicros = 0;\n"
+              "    if (!snapshotCardputerUsbMidiBlockAnchor(anchorBlock, anchorMicros)) {\n"
+              "        return false;\n"
+              "    }\n"
+              "    (void)anchorMicros;\n"
+              "    const uint16_t position =\n"
+              "        GroovePuterMidi::songPositionPointerFromPpqnTicks(\n"
+              "            tick, fileIndex_.division);\n"
+              "    return eventQueue_.tryPushSongPositionPointer(\n"
+              "        position, anchorBlock + 1u, 0);\n"
+              "}\n"
+              "\n"
+          )
           helper_anchor = "void CardputerSmfPlayerService::pauseAtCurrentPosition() {\n"
           if "bool CardputerSmfPlayerService::queueSongPositionPointerAtCurrentAnchor" not in player:
               if helper_anchor not in player:
@@ -143,61 +142,58 @@ jobs:
 
           dispatch_path = Path("src/platform/cardputer_usb_midi_transport.cpp")
           dispatch = dispatch_path.read_text(encoding="utf-8")
-          dispatch_old = '''bool dispatchSmfEvent(const ScheduledSmfMidiEvent& event) {
-              if (event.type == ScheduledSmfMidiEventType::NoteOn) {
-                  return g_output.handleSmfNoteOn(
-                      event.channel, event.note, event.velocity);
-              }
-              return g_output.handleSmfNoteOff(
-                  event.channel, event.note, event.velocity);
-          }
-          '''
-          dispatch_new = '''bool dispatchSmfEvent(const ScheduledSmfMidiEvent& event) {
-              switch (event.type) {
-                  case ScheduledSmfMidiEventType::NoteOn:
-                      return g_output.handleSmfNoteOn(
-                          event.channel, event.note, event.velocity);
-                  case ScheduledSmfMidiEventType::NoteOff:
-                      return g_output.handleSmfNoteOff(
-                          event.channel, event.note, event.velocity);
-                  case ScheduledSmfMidiEventType::SongPositionPointer:
-                      return g_output.handleSmfSongPositionPointer(
-                          scheduledSmfSongPositionPointerValue(event));
-              }
-              return false;
-          }
-          '''
-          dispatch_old = "\n".join(line[10:] if line.startswith("          ") else line for line in dispatch_old.splitlines()) + "\n"
-          dispatch_new = "\n".join(line[10:] if line.startswith("          ") else line for line in dispatch_new.splitlines()) + "\n"
           if "handleSmfSongPositionPointer" not in dispatch:
-              if dispatch_old not in dispatch:
-                  raise SystemExit("dispatcher SMF anchor missing")
-              dispatch = dispatch.replace(dispatch_old, dispatch_new, 1)
+              start = dispatch.index(
+                  "bool dispatchSmfEvent(const ScheduledSmfMidiEvent& event) {")
+              end = dispatch.index("\nbool projectSmfNoteOnStillCurrent", start)
+              replacement = (
+                  "bool dispatchSmfEvent(const ScheduledSmfMidiEvent& event) {\n"
+                  "    switch (event.type) {\n"
+                  "        case ScheduledSmfMidiEventType::NoteOn:\n"
+                  "            return g_output.handleSmfNoteOn(\n"
+                  "                event.channel, event.note, event.velocity);\n"
+                  "        case ScheduledSmfMidiEventType::NoteOff:\n"
+                  "            return g_output.handleSmfNoteOff(\n"
+                  "                event.channel, event.note, event.velocity);\n"
+                  "        case ScheduledSmfMidiEventType::SongPositionPointer:\n"
+                  "            return g_output.handleSmfSongPositionPointer(\n"
+                  "                scheduledSmfSongPositionPointerValue(event));\n"
+                  "    }\n"
+                  "    return false;\n"
+                  "}\n"
+              )
+              dispatch = dispatch[:start] + replacement + dispatch[end:]
           dispatch_path.write_text(dispatch, encoding="utf-8")
 
           source_test = Path("tests/test_smf_panel_completion_source_regressions.py")
           source = source_test.read_text(encoding="utf-8")
-          source = source.replace(
-              '    layout = (ROOT / "src/ui/layout_manager.cpp").read_text(encoding="utf-8")\n',
+          layout_line = (
               '    layout = (ROOT / "src/ui/layout_manager.cpp").read_text(encoding="utf-8")\n'
-              '    player_service = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(encoding="utf-8")\n'
-              '    dispatcher = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")\n'
-              '    smf_queue = (ROOT / "src/midi/scheduled_smf_midi_event_queue.h").read_text(encoding="utf-8")\n',
-              1,
           )
-          marker = '    print("SMF panel completion source regressions: OK")\n'
-          assertions = '''    require("queueSongPositionPointerAtCurrentAnchor(targetTick)" in player_service and
-                  "tryPushSongPositionPointer" in player_service,
-                  "active PROJECT seek must publish a bounded SPP intent")
-              require("ScheduledSmfMidiEventType::SongPositionPointer" in dispatcher and
-                  "handleSmfSongPositionPointer" in dispatcher,
-                  "MidiDispatchTask must own the physical active-seek SPP write")
-              require("pendingSppEpoch_" in smf_queue and
-                  "takePendingSongPositionPointer" in smf_queue,
-                  "active-seek SPP must use a latest-wins bounded mailbox")
+          extra_reads = (
+              layout_line
+              + '    player_service = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(encoding="utf-8")\n'
+              + '    dispatcher = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")\n'
+              + '    smf_queue = (ROOT / "src/midi/scheduled_smf_midi_event_queue.h").read_text(encoding="utf-8")\n'
+          )
+          if "player_service =" not in source:
+              if layout_line not in source:
+                  raise SystemExit("panel source read anchor missing")
+              source = source.replace(layout_line, extra_reads, 1)
 
-          '''
-          assertions = "\n".join(line[10:] if line.startswith("          ") else line for line in assertions.splitlines()) + "\n"
+          marker = '    print("SMF panel completion source regressions: OK")\n'
+          assertions = (
+              '    require("queueSongPositionPointerAtCurrentAnchor(targetTick)" in player_service and\n'
+              '            "tryPushSongPositionPointer" in player_service,\n'
+              '            "active PROJECT seek must publish a bounded SPP intent")\n'
+              '    require("ScheduledSmfMidiEventType::SongPositionPointer" in dispatcher and\n'
+              '            "handleSmfSongPositionPointer" in dispatcher,\n'
+              '            "MidiDispatchTask must own the physical active-seek SPP write")\n'
+              '    require("pendingSppEpoch_" in smf_queue and\n'
+              '            "takePendingSongPositionPointer" in smf_queue,\n'
+              '            "active-seek SPP must use a latest-wins bounded mailbox")\n'
+              '\n'
+          )
           if "active PROJECT seek must publish a bounded SPP intent" not in source:
               if marker not in source:
                   raise SystemExit("panel source test marker missing")
