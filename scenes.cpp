@@ -2858,13 +2858,17 @@ bool SceneManager::loadScene(const std::string& json) {
 // Static buffer to avoid heap fragmentation during loading
 static Scene s_tempLoadScene;
 
+Scene& sceneTransactionScratch() {
+  return s_tempLoadScene;
+}
+
 bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
 #ifdef ARDUINO
   Serial.println("  - loadSceneEventedWithReader: Using static loading buffer...");
 #endif
   
   // Reuse the static buffer
-  Scene* loaded = &s_tempLoadScene;
+  Scene* loaded = &sceneTransactionScratch();
   
   // Clear it before use
   clearSceneData(*loaded);

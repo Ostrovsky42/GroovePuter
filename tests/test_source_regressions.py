@@ -115,6 +115,21 @@ def test_cardputer_sd_has_one_hardware_mount_path() -> None:
             "MIDI dispatcher stack must be reserved before engine heap fragmentation")
 
 
+def test_scene_and_page_validation_share_one_scratch_buffer() -> None:
+    scenes_header = (ROOT / "scenes.h").read_text(encoding="utf-8")
+    scenes = (ROOT / "scenes.cpp").read_text(encoding="utf-8")
+    paging = (ROOT / "src/audio/pattern_paging.cpp").read_text(encoding="utf-8")
+
+    require("Scene& sceneTransactionScratch();" in scenes_header and
+            "Scene& sceneTransactionScratch()" in scenes,
+            "scene parsing and page validation need an explicit shared scratch contract")
+    require("PageStaging" not in paging and "g_stagingPage" not in paging,
+            "pattern paging must not retain a second 22 KiB static staging buffer")
+    require("Scene& staging = sceneTransactionScratch();" in paging and
+            "readAndValidatePage(const std::string& path, Scene& staging)" in paging,
+            "page validation must use the shared scene transaction scratch")
+
+
 def test_genre_regeneration_uses_full_compiled_params() -> None:
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
     start = engine.index("void MiniAcid::regeneratePatternsWithGenre()")
@@ -508,6 +523,7 @@ def main() -> None:
     test_ui_redraw_does_not_hold_audio_pause()
     test_splash_closes_display_transaction()
     test_project_midi_import_and_persistence_contracts()
+    test_scene_and_page_validation_share_one_scratch_buffer()
     print("source regressions: OK")
 
 

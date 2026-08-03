@@ -23,6 +23,13 @@ struct CardputerUsbMidiTransportDiagnostics {
     uint32_t txNotMounted{0};
     uint32_t txPacingWaits{0};
     uint32_t txPacingWaitMicros{0};
+    // Sampled only after TinyUSB rejects a packet. These distinguish an
+    // undrained class FIFO from a lower-level IN endpoint that is stuck busy
+    // or halted.
+    uint32_t txRejectedEndpointBusy{0};
+    uint32_t txRejectedEndpointStalled{0};
+    bool endpointBusyOnLastReject{false};
+    bool endpointStalledOnLastReject{false};
     uint32_t rxPackets{0};
     // A host that suspends the bus stops polling the IN endpoint entirely while
     // TinyUSB still reports the interface mounted. That looks identical to a

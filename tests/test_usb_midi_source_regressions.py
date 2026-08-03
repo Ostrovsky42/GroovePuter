@@ -79,7 +79,7 @@ def main() -> None:
     player_page = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(
         encoding="utf-8")
     require("snapshotCardputerUsbMidiStatus()" in player_page and
-            "USB %s C%u U%u M%u OK%lu NO%lu Q%u" in player_page,
+            "USB %s M%u OK%lu NO%lu B%lu H%lu Q%u" in player_page,
             "MIDI Player must show endpoint health without relying on CDC logs")
 
     require("USBMIDI.h" not in sketch and "USB.h" not in sketch,
@@ -223,6 +223,12 @@ def main() -> None:
             "observeEndpointWrite(true, true)" in write_packet,
             "every physical TX result - not mounted, rejected, accepted - must "
             "feed the shared endpoint health state")
+    require("usbd_edpt_busy(0, g_midiInEndpoint)" in write_packet and
+            "usbd_edpt_stalled(0, g_midiInEndpoint)" in write_packet and
+            "txRejectedEndpointBusy" in transport_header and
+            "txRejectedEndpointStalled" in transport_header,
+            "a rejected packet must retain lower-level IN endpoint busy/stall "
+            "evidence instead of labelling every rejection as host backpressure")
     require("txPacer_.waitMicros" in write_packet and
             write_packet.index("txPacer_.waitMicros") <
             write_packet.index("tud_midi_packet_write") and

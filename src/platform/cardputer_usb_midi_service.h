@@ -19,6 +19,8 @@ struct CardputerUsbMidiStatusSnapshot {
     bool stalled{false};
     uint32_t txAccepted{0};
     uint32_t txRejected{0};
+    uint32_t txRejectedEndpointBusy{0};
+    uint32_t txRejectedEndpointStalled{0};
     uint16_t queuedSmfEvents{0};
 };
 
