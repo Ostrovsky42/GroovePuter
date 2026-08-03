@@ -1,0 +1,94 @@
+name: Build USB MIDI TX density stress
+
+on:
+  pull_request:
+    branches:
+      - agent/bootstrap-usb-midi-tx-density
+
+permissions:
+  contents: write
+
+jobs:
+  build-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout bootstrap payload
+        uses: actions/checkout@v4
+        with:
+          ref: agent/bootstrap-usb-midi-tx-density
+          path: bootstrap
+          fetch-depth: 1
+
+      - name: Checkout clean dev
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          path: work
+          fetch-depth: 0
+
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Create clean feature branch and apply patch
+        working-directory: work
+        run: |
+          git switch -C agent/usb-midi-tx-density-stress origin/dev
+          export PATCH_PAYLOAD="$(python3 - <<'PY'
+          from pathlib import Path
+          for line in Path('../bootstrap/.github/workflows/bootstrap-usb-midi-tx-density.yml').read_text().splitlines():
+              stripped = line.strip()
+              if stripped.startswith('PATCH_PAYLOAD: '):
+                  print(stripped.split(': ', 1)[1])
+                  break
+          else:
+              raise SystemExit('PATCH_PAYLOAD not found')
+          PY
+          )"
+          python3 - <<'PY'
+          import base64
+          import gzip
+          import os
+          script = gzip.decompress(base64.b64decode(os.environ['PATCH_PAYLOAD']))
+          exec(compile(script, '<tx-stress-patch>', 'exec'))
+          PY
+
+      - name: Validate source and host regressions
+        working-directory: work
+        run: |
+          python3 tests/test_usb_midi_source_regressions.py
+          bash tests/run_host_tests.sh
+          git diff --check
+
+      - name: Install pinned Cardputer dependencies
+        working-directory: work
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV
+        working-directory: work
+        run: bash scripts/build.sh --warnings all
+
+      - name: Publish single-purpose commit
+        working-directory: work
+        run: |
+          git config user.name "OpenAI"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/platform/cardputer_usb_midi_service.h \
+            src/platform/cardputer_usb_midi_transport.cpp \
+            src/platform/cardputer_usb_midi_tx_stress.h \
+            src/platform/cardputer_usb_midi_tx_stress.cpp \
+            src/ui/pages/project_page.h \
+            src/ui/pages/project_page.cpp \
+            tests/test_usb_midi_source_regressions.py \
+            docs/tests/USB_MIDI_TX_DENSITY_STRESS.md
+          git commit -m "Add USB MIDI TX density stress diagnostics"
+          git push --force-with-lease origin \
+            HEAD:refs/heads/agent/usb-midi-tx-density-stress
+
+      - name: Remove temporary branches
+        if: success()
+        working-directory: work
+        run: |
+          git push origin --delete agent/bootstrap-usb-midi-tx-density || true
+          git push origin --delete agent/trigger-usb-midi-tx-density || true
