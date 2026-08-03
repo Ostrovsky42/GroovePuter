@@ -23,6 +23,7 @@ jobs:
         run: |
           python3 tools/apply_workflow_session_persistence.py
           python3 tools/fix_ui_session_regression_escape.py
+          python3 tools/fix_scene_revision_device_volume.py
 
       - name: Run focused regressions
         run: |
@@ -39,6 +40,7 @@ jobs:
         run: |
           rm -f tools/apply_workflow_session_persistence.py
           rm -f tools/fix_ui_session_regression_escape.py
+          rm -f tools/fix_scene_revision_device_volume.py
           rm -f .github/workflows/apply-workflow-session-persistence.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
