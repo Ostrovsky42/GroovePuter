@@ -4,8 +4,10 @@
 #include <Arduino.h>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 #include <esp_rom_sys.h>
+#include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -80,6 +82,32 @@ constexpr std::size_t kControlDrainBudget = 8;
 // intact while guaranteeing the CPU0 idle task runs.
 constexpr uint32_t kDispatchFairnessYieldMs = 10;
 constexpr std::size_t kMidiRxDrainBudget = 32;
+constexpr uint32_t kMidiDispatchStackBytes = 4096;
+
+bool g_midiDescriptorLoaded = false;
+
+uint16_t loadCardputerMidiDescriptor(uint8_t* destination,
+                                     uint8_t* interfaceNumber) {
+    if (g_midiDescriptorLoaded) return 0;
+
+    const uint8_t stringIndex =
+        tinyusb_add_string_descriptor("Cardputer MIDI");
+    const uint8_t endpoint = tinyusb_get_free_duplex_endpoint();
+    if (endpoint == 0) return 0;
+
+    const uint8_t descriptor[TUD_MIDI_DESC_LEN] = {
+        TUD_MIDI_DESCRIPTOR(
+            *interfaceNumber,
+            stringIndex,
+            endpoint,
+            static_cast<uint8_t>(0x80u | endpoint),
+            CFG_TUD_ENDOINT_SIZE),
+    };
+    *interfaceNumber += 2;
+    std::memcpy(destination, descriptor, sizeof(descriptor));
+    g_midiDescriptorLoaded = true;
+    return sizeof(descriptor);
+}
 
 class MidiBlockAnchorClock {
 public:
@@ -193,6 +221,8 @@ PatternDrumGateScheduler g_patternDrumGates;
 MidiBlockAnchorClock g_anchorClock;
 MidiDispatchDiagnostics g_diagnostics;
 TaskHandle_t g_dispatchTaskHandle = nullptr;
+StaticTask_t g_dispatchTaskBuffer{};
+alignas(16) StackType_t g_dispatchTaskStack[kMidiDispatchStackBytes]{};
 bool g_registered = false;
 bool g_smfCleanupPending = false;
 // Set once cleanup has exceeded its attempt budget. Playback stays paused and
@@ -1171,6 +1201,13 @@ void midiDispatchTask(void*) {
 
 }  // namespace
 
+CardputerUsbMidiTransport::CardputerUsbMidiTransport() {
+    descriptorRegistered_ = tinyusb_enable_interface(
+        USB_INTERFACE_MIDI,
+        TUD_MIDI_DESC_LEN,
+        loadCardputerMidiDescriptor) == ESP_OK;
+}
+
 uint8_t CardputerUsbMidiTransport::clamp7Bit(uint8_t value) {
     return value > 127 ? 127 : value;
 }
@@ -1181,8 +1218,10 @@ uint8_t CardputerUsbMidiTransport::clampChannel(uint8_t channel) {
 
 bool CardputerUsbMidiTransport::begin() {
     if (begun_) return true;
+    if (!descriptorRegistered_) return false;
 
-    // The USBMIDI member constructor has already registered the MIDI interface.
+    // The global transport constructor has already registered the MIDI
+    // descriptor before Arduino app_main() assembles the composite device.
     diagnostics_ = {};
     mountStateKnown_ = false;
     lastMounted_ = false;
@@ -1192,8 +1231,8 @@ bool CardputerUsbMidiTransport::begin() {
 
     // Arduino app_main() starts TinyUSB only when an on-boot USB interface such
     // as CDC is enabled. The MIDI-only SEQTRAK profile has no such interface,
-    // and USBMIDI::begin() is a no-op in the pinned core, so start the already
-    // registered MIDI descriptor explicitly in that configuration.
+    // so start the already registered MIDI descriptor explicitly in that
+    // configuration.
 #if !ARDUINO_USB_CDC_ON_BOOT
     if (!USB.begin()) {
         begun_ = false;
@@ -1201,7 +1240,6 @@ bool CardputerUsbMidiTransport::begin() {
     }
 #endif
 
-    midi_.begin();
     begun_ = true;
     return true;
 }
@@ -1238,7 +1276,8 @@ void CardputerUsbMidiTransport::pollSuspendState() const {
 
 bool CardputerUsbMidiTransport::readPacket(midiEventPacket_t& packet) {
     if (!begun_) return false;
-    const bool received = midi_.readPacket(&packet);
+    const bool received = tud_midi_packet_read(
+        reinterpret_cast<uint8_t*>(&packet));
     if (received) ++diagnostics_.rxPackets;
     return received;
 }
@@ -1276,7 +1315,7 @@ bool CardputerUsbMidiTransport::writePacket(midiEventPacket_t& packet) {
     }
     txPacer_.recordAttempt(micros());
 
-    if (!midi_.writePacket(&packet)) {
+    if (!tud_midi_packet_write(reinterpret_cast<uint8_t*>(&packet))) {
         ++diagnostics_.txRejected;
         observeEndpointWrite(true, false);
         return false;
@@ -1360,7 +1399,7 @@ bool CardputerUsbMidiTransport::sendStop() {
 }
 
 void CardputerUsbMidiTransport::flush() {
-    // USBMIDI::writePacket() queues a complete four-byte USB-MIDI event packet.
+    // tud_midi_packet_write() queues a complete four-byte USB-MIDI event packet.
     // The pinned TinyUSB API exposes no additional flush operation.
 }
 
@@ -1374,20 +1413,28 @@ bool registerCardputerUsbMidiSink(
     g_externalTransportQueue = &externalTransportQueue;
     g_patternDrumGates.clear();
     if (!router.addSink(g_queueSink)) {
+        Serial.println("[MIDI-INIT] router sink registration failed");
         g_patternQueue = nullptr;
         g_externalTransportQueue = nullptr;
         return false;
     }
 
-    const BaseType_t taskResult = xTaskCreatePinnedToCore(
+    g_dispatchTaskHandle = xTaskCreateStaticPinnedToCore(
         midiDispatchTask,
         "MidiDispatchTask",
-        4096,
+        kMidiDispatchStackBytes,
         nullptr,
         2,
-        &g_dispatchTaskHandle,
+        g_dispatchTaskStack,
+        &g_dispatchTaskBuffer,
         0);
-    if (taskResult != pdPASS) {
+    if (g_dispatchTaskHandle == nullptr) {
+        Serial.printf(
+            "[MIDI-INIT] static task creation failed freeInt=%u largest=%u\n",
+            static_cast<unsigned>(
+                heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+            static_cast<unsigned>(
+                heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
         router.removeSink(g_queueSink);
         g_patternQueue = nullptr;
         g_externalTransportQueue = nullptr;
@@ -1396,6 +1443,11 @@ bool registerCardputerUsbMidiSink(
     }
 
     g_registered = true;
+    Serial.printf(
+        "[MIDI-INIT] task ready freeInt=%u largest=%u\n",
+        static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+        static_cast<unsigned>(
+            heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
     return true;
 }
 

@@ -110,6 +110,10 @@ def test_cardputer_sd_has_one_hardware_mount_path() -> None:
     require(early_sd_pos < smf_runtime_pos < engine_init_pos,
             "SMF task and timing storage must be reserved before DSP/UI fragmentation")
 
+    midi_runtime_pos = sketch.index("registerCardputerUsbMidiSink(")
+    require(smf_runtime_pos < midi_runtime_pos < engine_init_pos,
+            "MIDI dispatcher stack must be reserved before engine heap fragmentation")
+
 
 def test_genre_regeneration_uses_full_compiled_params() -> None:
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")

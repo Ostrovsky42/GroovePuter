@@ -309,7 +309,6 @@ private:
         event.blockSequence = blockSequence;
         event.frameOffset = frameOffset;
         event.generation = generation_.loadAcquire();
-        event.publicationSequence = publicationSequence_.incrementRelaxed();
         event.projectTransportEpoch =
             scheduledSmfMidiEventTransportEpochTag(projectTransportEpoch);
         return event;
@@ -330,7 +329,6 @@ private:
         event.frameOffset = static_cast<uint16_t>(
             pendingSppFrameOffset_.loadRelaxed());
         event.generation = pendingSppGeneration_.loadRelaxed();
-        event.publicationSequence = publicationSequence_.incrementRelaxed();
         event.projectTransportEpoch = 0;
         return true;
     }
@@ -350,7 +348,6 @@ private:
         event.blockSequence = lastPoppedBlockSequence_;
         event.frameOffset = lastPoppedFrameOffset_;
         event.generation = generation_.loadAcquire();
-        event.publicationSequence = publicationSequence_.incrementRelaxed();
         event.projectTransportEpoch = 0;
         return event;
     }
@@ -368,7 +365,6 @@ private:
     MidiRealtimeWord head_;
     MidiRealtimeWord tail_;
     MidiRealtimeWord generation_;
-    MidiRealtimeWord publicationSequence_;
     MidiRealtimeWord droppedNoteOn_;
     MidiRealtimeWord criticalOverflow_;
     MidiRealtimeWord panicRecovery_;

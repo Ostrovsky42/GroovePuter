@@ -5,6 +5,9 @@
 #include "src/midi/scheduled_smf_midi_event_queue.h"
 #include "src/midi/smf_track_mute.h"
 
+static_assert(sizeof(ScheduledSmfMidiEvent) == 16,
+              "unused ordering metadata must not inflate the realtime queue");
+
 int main() {
     GroovePuterMidi::smfTrackMuteState().reset(64);
 

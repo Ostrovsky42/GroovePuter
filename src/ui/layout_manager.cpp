@@ -1,11 +1,9 @@
 #include "layout_manager.h"
-#include "pages/smf_player_redraw.h"
 #include "ui_theme.h"
 #include <stdio.h>
 #include <string.h>
 
 void LayoutManager::clearContent(IGfx& gfx) {
-    if (GroovePuterUi::interceptSmfPlayerContentClear(gfx)) return;
     const UI::ThemePalette p = UI::themePalette();
     gfx.fillRect(Layout::CONTENT.x, Layout::CONTENT.y, Layout::CONTENT.w, Layout::CONTENT.h, p.background);
 }
