@@ -163,6 +163,30 @@ GroovePuter does **not** currently implement the complete SEQTRAK control surfac
 - no public project, pattern-write, scene-load, or step-write MIDI command is assumed;
 - no undocumented SysEx contract is part of the supported profile.
 
+## Hardware-accepted SEQTRAK behavior
+
+The exact accepted release baseline is:
+
+```text
+GroovePuter SHA: b256ff180165e8db37e61be8658b13c0ae2bcd5c
+SEQTRAK OS:      2.00
+Connection:      direct USB-C
+USB roles:       GroovePuter device -> SEQTRAK host
+```
+
+Validated on that SHA:
+
+- Note On / Note Off;
+- native CH1–11 routing;
+- MIDI Clock;
+- Start / Stop;
+- SEQTRAK external-master follow;
+- PROJECT SMF synchronization.
+
+SEQTRAK did not transmit MIDI Continue (`0xFB`) in the tested physical Stop -> Play workflow. The Play action produced Start semantics, so the active PROJECT SMF restarted from MUSIC START. Position-preserving Continue remains available only when a controller actually sends `0xFB`.
+
+Detailed record: `docs/tests/EXTERNAL_MIDI_COMPATIBILITY_ACCEPTANCE.md`.
+
 ## Local mute versus remote mute
 
 Keep these operations distinct:
