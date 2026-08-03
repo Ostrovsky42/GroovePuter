@@ -1,0 +1,194 @@
+name: Minimize USB MIDI TX density diff
+
+on:
+  pull_request:
+    branches:
+      - agent/bootstrap-usb-midi-tx-density-minimize
+
+permissions:
+  contents: write
+
+jobs:
+  restore-validate-amend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout bootstrap workflow
+        uses: actions/checkout@v4
+        with:
+          ref: agent/bootstrap-usb-midi-tx-density-minimize
+          path: bootstrap
+          fetch-depth: 0
+
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/usb-midi-tx-density-stress
+          path: work
+          fetch-depth: 0
+
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Restore original minimal patch
+        working-directory: work
+        run: |
+          git fetch origin ea974ccc07048d0daab7b34e466bfec8de0127f5 --depth=1
+          git checkout ea974ccc07048d0daab7b34e466bfec8de0127f5 -- \
+            docs/tests/USB_MIDI_TX_DENSITY_STRESS.md \
+            src/platform/cardputer_usb_midi_service.h \
+            src/platform/cardputer_usb_midi_transport.cpp \
+            src/platform/cardputer_usb_midi_tx_stress.cpp \
+            src/platform/cardputer_usb_midi_tx_stress.h \
+            src/ui/pages/project_page.cpp \
+            src/ui/pages/project_page.h \
+            tests/test_usb_midi_source_regressions.py
+
+      - name: Reapply reviewed logic fixes
+        run: |
+          cd bootstrap
+          git fetch origin 9e60b1fc7cd9b498eff095bee91c2b88371cc5de --depth=1
+          git show 9e60b1fc7cd9b498eff095bee91c2b88371cc5de:.github/workflows/amend-usb-midi-tx-density.yml > /tmp/tx-review-workflow.yml
+          cd ..
+          python3 - <<'PY'
+          from pathlib import Path
+
+          lines = Path("/tmp/tx-review-workflow.yml").read_text(
+              encoding="utf-8").splitlines()
+          step = next(i for i, line in enumerate(lines)
+                      if line.strip() == "- name: Apply review fixes")
+          run_line = next(i for i in range(step + 1, len(lines))
+                          if lines[i].strip() == "run: |")
+          end = next((i for i in range(run_line + 1, len(lines))
+                      if lines[i].startswith("      - name: ")), len(lines))
+          body = []
+          for line in lines[run_line + 1:end]:
+              body.append(line[10:] if line.startswith("          ") else line)
+          Path("/tmp/apply-tx-review-fixes.sh").write_text(
+              "\n".join(body) + "\n", encoding="utf-8")
+          PY
+          cd work
+          bash /tmp/apply-tx-review-fixes.sh
+
+      - name: Format only newly added code
+        working-directory: work
+        run: |
+          if ! command -v clang-format >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y clang-format
+          fi
+          clang-format -i \
+            src/platform/cardputer_usb_midi_tx_stress.h \
+            src/platform/cardputer_usb_midi_tx_stress.cpp
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+
+          def read(path: str) -> str:
+              return Path(path).read_text(encoding="utf-8").replace("\r\n", "\n")
+
+          def write(path: str, text: str) -> None:
+              Path(path).write_text(text, encoding="utf-8")
+
+          service_path = "src/platform/cardputer_usb_midi_service.h"
+          service = read(service_path)
+          service, count = re.subn(
+              r"(bool snapshotCardputerUsbMidiBlockAnchor\(uint32_t& blockSequence,\n)"
+              r"[ \t]+(uint32_t& playbackStartMicros\);)",
+              r"\1                                         \2", service)
+          if count != 1:
+              raise SystemExit(f"service signature alignment count={count}")
+          write(service_path, service)
+
+          transport_path = "src/platform/cardputer_usb_midi_transport.cpp"
+          transport = read(transport_path)
+          transport, count = re.subn(
+              r"        if \(!hasPendingTransport && !hasPendingMusical &&\n"
+              r"\s*!hasPendingDrumGate && !hasPendingSmf\) \{\n"
+              r"\s*drainControlEvents\(\);\n"
+              r"\s*drainCardputerUsbMidiTxStress\(g_transport\);\n"
+              r"\s*logDiagnosticsIfDue\(\);",
+              "        if (!hasPendingTransport && !hasPendingMusical &&\n"
+              "            !hasPendingDrumGate && !hasPendingSmf) {\n"
+              "            drainControlEvents();\n"
+              "            drainCardputerUsbMidiTxStress(g_transport);\n"
+              "            logDiagnosticsIfDue();", transport)
+          if count != 1:
+              raise SystemExit(f"idle drain formatting count={count}")
+          transport, count = re.subn(
+              r"        if \(kind == PendingKind::None\) \{\n"
+              r"\s*drainControlEvents\(\);\n"
+              r"\s*drainCardputerUsbMidiTxStress\(g_transport\);\n"
+              r"\s*ulTaskNotifyTake\(pdTRUE, pdMS_TO_TICKS\(1\)\);",
+              "        if (kind == PendingKind::None) {\n"
+              "            drainControlEvents();\n"
+              "            drainCardputerUsbMidiTxStress(g_transport);\n"
+              "            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));", transport)
+          if count != 1:
+              raise SystemExit(f"empty dispatch formatting count={count}")
+          write(transport_path, transport)
+
+          project_path = "src/ui/pages/project_page.cpp"
+          project = read(project_path)
+
+          def format_region(text: str, start_marker: str, end_marker: str) -> str:
+              start = text.index(start_marker)
+              end = text.index(end_marker, start)
+              region = text[start:end]
+              formatted = subprocess.run(
+                  ["clang-format"], input=region, text=True,
+                  capture_output=True, check=True).stdout
+              return text[:start] + formatted + text[end:]
+
+          project = format_region(
+              project, "void ProjectPage::onEnter(int context) {",
+              "bool ProjectPage::importMidiAtSelection() {")
+          project = format_region(
+              project, "bool ProjectPage::handleTxStressEvent(UIEvent& ui_event) {",
+              "bool ProjectPage::handleEvent(UIEvent& ui_event) {")
+          project = format_region(
+              project, "void ProjectPage::drawTxStressDiagnostics(IGfx& gfx) {",
+              "void ProjectPage::draw(IGfx& gfx) {")
+          write(project_path, project)
+          PY
+
+      - name: Validate source and host regressions
+        working-directory: work
+        run: |
+          python3 tests/test_usb_midi_source_regressions.py
+          bash tests/run_host_tests.sh
+          git diff --check
+
+      - name: Install pinned Cardputer dependencies
+        working-directory: work
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV
+        working-directory: work
+        run: bash scripts/build.sh --warnings all
+
+      - name: Amend the single feature commit
+        working-directory: work
+        run: |
+          git config user.name "OpenAI"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            docs/tests/USB_MIDI_TX_DENSITY_STRESS.md \
+            src/platform/cardputer_usb_midi_service.h \
+            src/platform/cardputer_usb_midi_transport.cpp \
+            src/platform/cardputer_usb_midi_tx_stress.cpp \
+            src/platform/cardputer_usb_midi_tx_stress.h \
+            src/ui/pages/project_page.cpp \
+            src/ui/pages/project_page.h \
+            tests/test_usb_midi_source_regressions.py
+          git commit --amend --no-edit
+          git push --force-with-lease origin \
+            HEAD:refs/heads/agent/usb-midi-tx-density-stress
+
+      - name: Remove temporary branches
+        if: success()
+        working-directory: work
+        run: |
+          git push origin --delete agent/bootstrap-usb-midi-tx-density-minimize || true
+          git push origin --delete agent/trigger-usb-midi-tx-density-minimize || true
