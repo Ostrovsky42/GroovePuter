@@ -105,6 +105,8 @@ def main() -> None:
     require("pendingSppEpoch_" in smf_queue and
             "takePendingSongPositionPointer" in smf_queue,
             "active-seek SPP must use a latest-wins bounded mailbox")
+    require("g_smfQueue->recordDispatched(pendingSmf)" in dispatcher,
+            "track ownership must commit only after a successful USB write")
 
     print("SMF panel completion source regressions: OK")
 

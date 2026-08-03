@@ -1102,6 +1102,12 @@ void midiDispatchTask(void*) {
                 ++g_diagnostics.smfTransportEpochDrops;
                 clearPendingSmf();
             } else if (dispatchSmfEvent(pendingSmf)) {
+                if (!g_smfQueue->recordDispatched(pendingSmf)) {
+                    // The NoteOn reached the wire but bounded track
+                    // ownership could not be committed. Scoped global
+                    // SMF cleanup is the only safe recovery.
+                    beginSmfCleanup();
+                }
                 ++g_diagnostics.smfSent;
                 recordRecoveredSmfSendBlock();
                 if (pendingSmfLatenessUs > 0) {

@@ -9,7 +9,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   host-tests:
@@ -52,80 +52,3 @@ jobs:
 
       - name: Compile Cardputer ADV firmware
         run: bash scripts/build.sh --warnings all
-
-  apply-dispatched-ownership-commit:
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.head_ref == 'feature/midi-lifecycle-panel-performance-completion' &&
-      github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: feature/midi-lifecycle-panel-performance-completion
-          fetch-depth: 0
-
-      - name: Configure identity
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Commit ownership only after USB success
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path("src/platform/cardputer_usb_midi_transport.cpp")
-          text = path.read_text(encoding="utf-8")
-          old = (
-              "            } else if (dispatchSmfEvent(pendingSmf)) {\n"
-              "                ++g_diagnostics.smfSent;\n"
-          )
-          new = (
-              "            } else if (dispatchSmfEvent(pendingSmf)) {\n"
-              "                if (!g_smfQueue->recordDispatched(pendingSmf)) {\n"
-              "                    // The NoteOn reached the wire but bounded track\n"
-              "                    // ownership could not be committed. Scoped global\n"
-              "                    // SMF cleanup is the only safe recovery.\n"
-              "                    beginSmfCleanup();\n"
-              "                }\n"
-              "                ++g_diagnostics.smfSent;\n"
-          )
-          if "g_smfQueue->recordDispatched(pendingSmf)" not in text:
-              if old not in text:
-                  raise SystemExit("dispatcher success anchor missing")
-              text = text.replace(old, new, 1)
-          path.write_text(text, encoding="utf-8")
-
-          test_path = Path("tests/test_smf_panel_completion_source_regressions.py")
-          source = test_path.read_text(encoding="utf-8")
-          marker = (
-              '    require("pendingSppEpoch_" in smf_queue and\n'
-              '            "takePendingSongPositionPointer" in smf_queue,\n'
-              '            "active-seek SPP must use a latest-wins bounded mailbox")\n'
-          )
-          assertion = (
-              marker
-              + '    require("g_smfQueue->recordDispatched(pendingSmf)" in dispatcher,\n'
-              + '            "track ownership must commit only after a successful USB write")\n'
-          )
-          if "track ownership must commit only after a successful USB write" not in source:
-              if marker not in source:
-                  raise SystemExit("ownership source-test anchor missing")
-              source = source.replace(marker, assertion, 1)
-          test_path.write_text(source, encoding="utf-8")
-          PY
-
-      - name: Run host regressions
-        run: bash tests/run_host_tests.sh
-
-      - name: Restore canonical workflow
-        run: |
-          git fetch origin feature/midi-lifecycle-panel-performance
-          git show origin/feature/midi-lifecycle-panel-performance:.github/workflows/core-regressions.yml > .github/workflows/core-regressions.yml
-
-      - name: Commit and push implementation
-        run: |
-          git add -A
-          git commit -m "fix(midi): commit track ownership after USB success"
-          git push origin HEAD:feature/midi-lifecycle-panel-performance-completion
