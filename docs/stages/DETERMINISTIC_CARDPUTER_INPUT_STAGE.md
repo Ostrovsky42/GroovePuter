@@ -81,6 +81,19 @@ when an edge is emitted.
 Run `scripts/install_arduino_deps.sh`, then rebuild with verbose Arduino output
 and confirm the selected library path.
 
+## Automated validation
+
+The one-shot production patch runner completed the focused checks before
+committing the branch:
+
+```text
+source regression: PASS
+edge/repeat unit test: PASS
+```
+
+The normal PR workflow must still pass host, SDL and Cardputer ADV compilation.
+Hardware behavior remains unverified until the checklist below is completed.
+
 ## Acceptance checklist
 
 ```text
