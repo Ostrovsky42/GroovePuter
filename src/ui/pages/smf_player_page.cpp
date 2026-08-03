@@ -534,13 +534,13 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
         ? "WAIT"
         : (usb.suspended ? "SLEEP" : (usb.stalled ? "BLOCKED" : "READY"));
     gfx.setTextColor(usb.stalled || !usb.mounted ? COLOR_DANGER : COLOR_TEXT);
-    std::snprintf(line, sizeof(line), "USB %s C%u U%u M%u OK%lu NO%lu Q%u",
+    std::snprintf(line, sizeof(line), "USB %s M%u OK%lu NO%lu B%lu H%lu Q%u",
                   usbState,
-                  static_cast<unsigned>(usb.cdcOnBoot),
-                  static_cast<unsigned>(usb.started),
                   static_cast<unsigned>(usb.mounted),
                   static_cast<unsigned long>(usb.txAccepted),
                   static_cast<unsigned long>(usb.txRejected),
+                  static_cast<unsigned long>(usb.txRejectedEndpointBusy),
+                  static_cast<unsigned long>(usb.txRejectedEndpointStalled),
                   static_cast<unsigned>(usb.queuedSmfEvents));
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(6), line);
 

@@ -11,6 +11,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include "device/usbd_pvt.h"
 #include "src/audio/audio_config.h"
 #include "src/input/musical_event_queue.h"
 #include "src/input/musical_event_router.h"
@@ -83,6 +84,7 @@ constexpr std::size_t kMidiRxDrainBudget = 32;
 constexpr uint32_t kMidiDispatchStackBytes = 4096;
 
 bool g_midiDescriptorLoaded = false;
+uint8_t g_midiInEndpoint = 0;
 
 uint16_t loadCardputerMidiDescriptor(uint8_t* destination,
                                      uint8_t* interfaceNumber) {
@@ -103,6 +105,7 @@ uint16_t loadCardputerMidiDescriptor(uint8_t* destination,
     };
     *interfaceNumber += 2;
     std::memcpy(destination, descriptor, sizeof(descriptor));
+    g_midiInEndpoint = static_cast<uint8_t>(0x80u | endpoint);
     g_midiDescriptorLoaded = true;
     return sizeof(descriptor);
 }
@@ -720,7 +723,8 @@ void logDiagnosticsIfDue() {
     const auto endpoint = g_endpointHealth.snapshot(millis());
     Serial.printf(
         "[USB-DIAG] midiMounted=%u edge=up/down=%u/%u "
-        "tx=attempt/ok/reject/noMount=%u/%u/%u/%u pace=%u/%ums rx=%u "
+        "tx=attempt/ok/reject/noMount=%u/%u/%u/%u pace=%u/%ums "
+        "ep=busy/stalled=%u/%u last=%u/%u rx=%u "
         "live=q/dispatched/drop=%u/%u/%u/%u smf=cleanup/stalled=%u/%u "
         "health=%u reject=%u stall=%u/%u block=%ums max=%ums "
         "susp=%u/%u/%u up=%ums\n",
@@ -733,6 +737,10 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(usb.txNotMounted),
         static_cast<unsigned>(usb.txPacingWaits),
         static_cast<unsigned>(usb.txPacingWaitMicros / 1000u),
+        static_cast<unsigned>(usb.txRejectedEndpointBusy),
+        static_cast<unsigned>(usb.txRejectedEndpointStalled),
+        static_cast<unsigned>(usb.endpointBusyOnLastReject ? 1 : 0),
+        static_cast<unsigned>(usb.endpointStalledOnLastReject ? 1 : 0),
         static_cast<unsigned>(usb.rxPackets),
         static_cast<unsigned>(g_controlQueue.approximateSize()),
         static_cast<unsigned>(g_diagnostics.dispatchedControl),
@@ -1288,6 +1296,17 @@ bool CardputerUsbMidiTransport::writePacket(midiEventPacket_t& packet) {
 
     if (!tud_midi_packet_write(reinterpret_cast<uint8_t*>(&packet))) {
         ++diagnostics_.txRejected;
+        const bool endpointKnown = g_midiInEndpoint != 0;
+        diagnostics_.endpointBusyOnLastReject =
+            endpointKnown && usbd_edpt_busy(0, g_midiInEndpoint);
+        diagnostics_.endpointStalledOnLastReject =
+            endpointKnown && usbd_edpt_stalled(0, g_midiInEndpoint);
+        if (diagnostics_.endpointBusyOnLastReject) {
+            ++diagnostics_.txRejectedEndpointBusy;
+        }
+        if (diagnostics_.endpointStalledOnLastReject) {
+            ++diagnostics_.txRejectedEndpointStalled;
+        }
         observeEndpointWrite(true, false);
         return false;
     }
@@ -1453,6 +1472,8 @@ CardputerUsbMidiStatusSnapshot snapshotCardputerUsbMidiStatus() {
     snapshot.stalled = endpoint.state == UsbEndpointHealthState::Stalled;
     snapshot.txAccepted = usb.txAccepted;
     snapshot.txRejected = usb.txRejected;
+    snapshot.txRejectedEndpointBusy = usb.txRejectedEndpointBusy;
+    snapshot.txRejectedEndpointStalled = usb.txRejectedEndpointStalled;
     snapshot.queuedSmfEvents = static_cast<uint16_t>(std::min<std::size_t>(
         g_smfQueue ? g_smfQueue->approximateSize() : 0u, UINT16_MAX));
     return snapshot;

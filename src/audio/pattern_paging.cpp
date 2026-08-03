@@ -31,16 +31,8 @@ struct PageFileHeader {
     uint32_t drumBytes;
 };
 
-struct PageStaging {
-    Bank<SynthPattern> synthA[kBankCount];
-    Bank<SynthPattern> synthB[kBankCount];
-    Bank<DrumPatternSet> drums[kBankCount];
-};
-
-// A single static staging area avoids heap allocation and guarantees that
-// Scene is untouched until the complete file has passed header, size and CRC
-// validation. Paging is serialized by the audio mutation gate.
-PageStaging g_stagingPage{};
+constexpr size_t kSynthBanksSize = sizeof(Bank<SynthPattern>) * kBankCount;
+constexpr size_t kDrumBanksSize = sizeof(Bank<DrumPatternSet>) * kBankCount;
 
 uint32_t crc32Update(uint32_t crc, const uint8_t* data, size_t length) {
     for (size_t i = 0; i < length; ++i) {
@@ -58,9 +50,7 @@ uint32_t finalizeCrc(uint32_t crc) {
 }
 
 uint32_t payloadSize() {
-    return static_cast<uint32_t>(sizeof(g_stagingPage.synthA) +
-                                 sizeof(g_stagingPage.synthB) +
-                                 sizeof(g_stagingPage.drums));
+    return static_cast<uint32_t>(kSynthBanksSize * 2u + kDrumBanksSize);
 }
 
 uint32_t layoutFingerprint() {
@@ -122,9 +112,9 @@ bool headerIsValid(const PageFileHeader& header, size_t fileSize) {
            header.headerSize == sizeof(PageFileHeader) &&
            header.payloadSize == payloadSize() &&
            header.layoutFingerprint == layoutFingerprint() &&
-           header.synthABytes == sizeof(g_stagingPage.synthA) &&
-           header.synthBBytes == sizeof(g_stagingPage.synthB) &&
-           header.drumBytes == sizeof(g_stagingPage.drums) &&
+           header.synthABytes == kSynthBanksSize &&
+           header.synthBBytes == kSynthBanksSize &&
+           header.drumBytes == kDrumBanksSize &&
            fileSize == sizeof(PageFileHeader) + header.payloadSize;
 }
 
@@ -136,7 +126,7 @@ bool readAll(File& file, void* data, size_t length) {
     return file.read(reinterpret_cast<uint8_t*>(data), length) == length;
 }
 
-bool readAndValidatePage(const std::string& path, PageStaging& staging) {
+bool readAndValidatePage(const std::string& path, Scene& staging) {
     File file = SD.open(path.c_str(), FILE_READ);
     if (!file) return false;
 
@@ -147,9 +137,9 @@ bool readAndValidatePage(const std::string& path, PageStaging& staging) {
         return false;
     }
 
-    if (!readAll(file, staging.synthA, sizeof(staging.synthA)) ||
-        !readAll(file, staging.synthB, sizeof(staging.synthB)) ||
-        !readAll(file, staging.drums, sizeof(staging.drums))) {
+    if (!readAll(file, staging.synthABanks, sizeof(staging.synthABanks)) ||
+        !readAll(file, staging.synthBBanks, sizeof(staging.synthBBanks)) ||
+        !readAll(file, staging.drumBanks, sizeof(staging.drumBanks))) {
         file.close();
         return false;
     }
@@ -157,14 +147,14 @@ bool readAndValidatePage(const std::string& path, PageStaging& staging) {
 
     uint32_t crc = kCrcInitial;
     crc = crc32Update(crc,
-        reinterpret_cast<const uint8_t*>(staging.synthA),
-        sizeof(staging.synthA));
+        reinterpret_cast<const uint8_t*>(staging.synthABanks),
+        sizeof(staging.synthABanks));
     crc = crc32Update(crc,
-        reinterpret_cast<const uint8_t*>(staging.synthB),
-        sizeof(staging.synthB));
+        reinterpret_cast<const uint8_t*>(staging.synthBBanks),
+        sizeof(staging.synthBBanks));
     crc = crc32Update(crc,
-        reinterpret_cast<const uint8_t*>(staging.drums),
-        sizeof(staging.drums));
+        reinterpret_cast<const uint8_t*>(staging.drumBanks),
+        sizeof(staging.drumBanks));
     return finalizeCrc(crc) == header.payloadCrc32;
 }
 
@@ -232,7 +222,8 @@ bool PatternPagingService::savePage(int pageIndex, const Scene& scene) {
     file.flush();
     file.close();
 
-    if (!wrote || !readAndValidatePage(temporaryPath, g_stagingPage)) {
+    Scene& staging = sceneTransactionScratch();
+    if (!wrote || !readAndValidatePage(temporaryPath, staging)) {
         SD.remove(temporaryPath.c_str());
         return false;
     }
@@ -246,18 +237,19 @@ bool PatternPagingService::loadPage(int pageIndex, Scene& scene) {
     const std::string mainPath = pagePath(pageIndex);
     const std::string oldBackupPath = backupPath(pageIndex);
 
-    bool loaded = readAndValidatePage(mainPath, g_stagingPage);
+    Scene& staging = sceneTransactionScratch();
+    bool loaded = readAndValidatePage(mainPath, staging);
     if (!loaded) {
-        loaded = readAndValidatePage(oldBackupPath, g_stagingPage);
+        loaded = readAndValidatePage(oldBackupPath, staging);
     }
     if (!loaded) return false;
 
     // This is the only point where active pattern state is modified.
-    std::memcpy(scene.synthABanks, g_stagingPage.synthA,
+    std::memcpy(scene.synthABanks, staging.synthABanks,
                 sizeof(scene.synthABanks));
-    std::memcpy(scene.synthBBanks, g_stagingPage.synthB,
+    std::memcpy(scene.synthBBanks, staging.synthBBanks,
                 sizeof(scene.synthBBanks));
-    std::memcpy(scene.drumBanks, g_stagingPage.drums,
+    std::memcpy(scene.drumBanks, staging.drumBanks,
                 sizeof(scene.drumBanks));
     return true;
 }

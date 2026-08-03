@@ -383,6 +383,11 @@ struct Scene {
   };
 };
 
+// Shared transaction storage for scene parsing and pattern-page validation.
+// Both operations run synchronously through the UI/boot path, and neither may
+// modify the active scene until its input has been fully validated.
+Scene& sceneTransactionScratch();
+
 class SceneJsonObserver : public JsonObserver {
 public:
   explicit SceneJsonObserver(Scene& scene, float defaultBpm = 100.0f);
