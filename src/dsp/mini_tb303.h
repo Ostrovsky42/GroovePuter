@@ -78,6 +78,7 @@ private:
   
   // Wavetable phase accumulators (10.22 fixed-point)
   uint32_t phaseAcc_;
+  uint32_t subPhaseAcc_;
   uint32_t superPhasesAcc_[kSuperSawOscCount];
   
   float freq;       // current frequency (Hz)

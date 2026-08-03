@@ -1,6 +1,11 @@
 #include "performance_keyboard.h"
 
+#include <algorithm>
 #include <cctype>
+
+#if defined(ARDUINO)
+#include <Arduino.h>
+#endif
 
 namespace {
 constexpr uint8_t kChromatic[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
@@ -26,6 +31,14 @@ constexpr ScaleDefinition kScales[] = {
 constexpr char kLowerRow[] = "asdfghjkl";
 constexpr char kUpperRow[] = "qwertyuiop";
 constexpr char kSeqtrakDrumKeys[] = "asdfghj";
+constexpr uint8_t kStrumOptionsMs[] = {0, 8, 16, 24, 36};
+constexpr uint8_t kEuclideanPulseOptions[] = {0, 3, 5, 7, 9, 11, 13, 16};
+
+uint8_t clampMidiNote(int note) {
+    if (note < PerformanceKeyboard::kMinNote) return PerformanceKeyboard::kMinNote;
+    if (note > PerformanceKeyboard::kMaxNote) return PerformanceKeyboard::kMaxNote;
+    return static_cast<uint8_t>(note);
+}
 }  // namespace
 
 char PerformanceKeyboard::normalizeKey(char key) {
@@ -84,6 +97,10 @@ bool PerformanceKeyboard::drumChannelForKey(char physicalKey,
         }
     }
     return false;
+}
+
+bool PerformanceKeyboard::due(uint32_t nowMicros, uint32_t dueMicros) {
+    return static_cast<int32_t>(nowMicros - dueMicros) >= 0;
 }
 
 uint8_t PerformanceKeyboard::intervalForDegree(PerformanceScale scale,
@@ -150,7 +167,359 @@ void PerformanceKeyboard::emitAllNotesOff() {
     });
 }
 
+void PerformanceKeyboard::routeGenerated(MusicalEventType type,
+                                         uint8_t note,
+                                         uint8_t velocity,
+                                         uint8_t channel) {
+    router_.route(MusicalEvent{
+        type,
+        MusicalEventSource::Arpeggiator,
+        target_,
+        channel,
+        note,
+        velocity,
+    });
+}
+
+void PerformanceKeyboard::serviceHardwareClock() {
+#if defined(ARDUINO)
+    service(micros());
+#endif
+}
+
+void PerformanceKeyboard::setTempoBpm(float bpm) {
+    if (bpm < 30.0f) bpm = 30.0f;
+    if (bpm > 300.0f) bpm = 300.0f;
+    tempoBpm_ = bpm;
+}
+
+uint32_t PerformanceKeyboard::stepDurationMicros() const {
+    float microsPerStep = 15000000.0f / tempoBpm_;  // one sixteenth note
+    if (microsPerStep < 30000.0f) microsPerStep = 30000.0f;
+    if (microsPerStep > 500000.0f) microsPerStep = 500000.0f;
+    return static_cast<uint32_t>(microsPerStep + 0.5f);
+}
+
+bool PerformanceKeyboard::scheduleGenerated(MusicalEventType type,
+                                            uint8_t note,
+                                            uint8_t velocity,
+                                            uint32_t dueMicros,
+                                            uint8_t channel) {
+    for (ScheduledEvent& slot : scheduled_) {
+        if (slot.active) continue;
+        slot.active = true;
+        slot.dueMicros = dueMicros;
+        slot.event = MusicalEvent{
+            type,
+            MusicalEventSource::Arpeggiator,
+            target_,
+            channel,
+            note,
+            velocity,
+        };
+        return true;
+    }
+    return false;
+}
+
+void PerformanceKeyboard::rememberGeneratedOn(uint8_t note) {
+    for (std::size_t i = 0; i < generatedNoteCount_; ++i) {
+        if (generatedNotes_[i] == note) return;
+    }
+    if (generatedNoteCount_ < kMaxGeneratedNotes) {
+        generatedNotes_[generatedNoteCount_++] = note;
+    }
+}
+
+void PerformanceKeyboard::forgetGenerated(uint8_t note) {
+    for (std::size_t i = 0; i < generatedNoteCount_; ++i) {
+        if (generatedNotes_[i] != note) continue;
+        for (std::size_t j = i + 1; j < generatedNoteCount_; ++j) {
+            generatedNotes_[j - 1] = generatedNotes_[j];
+        }
+        --generatedNoteCount_;
+        generatedNotes_[generatedNoteCount_] = 0;
+        return;
+    }
+}
+
+void PerformanceKeyboard::processScheduled(uint32_t nowMicros) {
+    for (ScheduledEvent& slot : scheduled_) {
+        if (!slot.active || !due(nowMicros, slot.dueMicros)) continue;
+        const MusicalEvent event = slot.event;
+        slot = ScheduledEvent{};
+        router_.route(event);
+        if (event.type == MusicalEventType::NoteOn) {
+            rememberGeneratedOn(event.note);
+        } else if (event.type == MusicalEventType::NoteOff) {
+            forgetGenerated(event.note);
+        }
+    }
+}
+
+void PerformanceKeyboard::clearScheduled() {
+    for (ScheduledEvent& slot : scheduled_) slot = ScheduledEvent{};
+}
+
+void PerformanceKeyboard::stopGeneratedOutput() {
+    clearScheduled();
+    for (std::size_t i = 0; i < generatedNoteCount_; ++i) {
+        routeGenerated(MusicalEventType::NoteOff, generatedNotes_[i], 0);
+    }
+    generatedNoteCount_ = 0;
+}
+
+bool PerformanceKeyboard::stepEngineEnabled() const {
+    if (target_ == MusicalEventTarget::Drums) return false;
+    return arpeggiatorEnabled_ || ratchetCount_ > 1 || euclideanPulses_ > 0;
+}
+
+bool PerformanceKeyboard::transformedPlaybackEnabled() const {
+    if (target_ == MusicalEventTarget::Drums) return false;
+    return chordMode_ != PerformanceChordMode::Off || strumMs_ > 0 ||
+           stepEngineEnabled();
+}
+
+bool PerformanceKeyboard::euclideanStepActive(uint8_t step) const {
+    if (euclideanPulses_ == 0 || euclideanPulses_ >= kEuclideanSteps) return true;
+    const uint8_t rotated = static_cast<uint8_t>(
+        (step + euclideanRotation_) % kEuclideanSteps);
+    return static_cast<uint8_t>((rotated * euclideanPulses_) % kEuclideanSteps) <
+           euclideanPulses_;
+}
+
+void PerformanceKeyboard::resetStepClock() {
+    stepClockRunning_ = false;
+    nextStepMicros_ = 0;
+    euclideanStep_ = 0;
+    arpIndex_ = 0;
+    arpAscending_ = true;
+}
+
+std::size_t PerformanceKeyboard::buildChord(uint8_t baseNote,
+                                            uint8_t* notes,
+                                            std::size_t capacity) const {
+    if (!notes || capacity == 0) return 0;
+
+    uint8_t intervals[kMaxChordMemoryNotes]{};
+    std::size_t intervalCount = 0;
+    switch (chordMode_) {
+        case PerformanceChordMode::Major:
+            intervals[0] = 0; intervals[1] = 4; intervals[2] = 7;
+            intervalCount = 3;
+            break;
+        case PerformanceChordMode::Minor:
+            intervals[0] = 0; intervals[1] = 3; intervals[2] = 7;
+            intervalCount = 3;
+            break;
+        case PerformanceChordMode::Fifth:
+            intervals[0] = 0; intervals[1] = 7; intervals[2] = 12;
+            intervalCount = 3;
+            break;
+        case PerformanceChordMode::Minor7:
+            intervals[0] = 0; intervals[1] = 3; intervals[2] = 7; intervals[3] = 10;
+            intervalCount = 4;
+            break;
+        case PerformanceChordMode::Memory:
+            intervalCount = chordMemoryCount_;
+            for (std::size_t i = 0; i < intervalCount; ++i) {
+                intervals[i] = chordMemoryIntervals_[i];
+            }
+            if (intervalCount == 0) {
+                intervals[0] = 0;
+                intervalCount = 1;
+            }
+            break;
+        case PerformanceChordMode::Off:
+        case PerformanceChordMode::Count:
+        default:
+            intervals[0] = 0;
+            intervalCount = 1;
+            break;
+    }
+
+    std::size_t count = 0;
+    for (std::size_t i = 0; i < intervalCount && count < capacity; ++i) {
+        const uint8_t note = clampMidiNote(
+            static_cast<int>(baseNote) + intervals[i]);
+        bool duplicate = false;
+        for (std::size_t j = 0; j < count; ++j) {
+            if (notes[j] == note) {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) notes[count++] = note;
+    }
+    return count;
+}
+
+std::size_t PerformanceKeyboard::buildArpPool(uint8_t* notes,
+                                              std::size_t capacity) const {
+    if (!notes || capacity == 0 || heldCount_ == 0) return 0;
+    std::size_t count = 0;
+    for (std::size_t heldIndex = 0; heldIndex < heldCount_; ++heldIndex) {
+        uint8_t chord[kMaxChordMemoryNotes]{};
+        const std::size_t chordCount = buildChord(
+            held_[heldIndex].note, chord, kMaxChordMemoryNotes);
+        for (std::size_t j = 0; j < chordCount && count < capacity; ++j) {
+            bool duplicate = false;
+            for (std::size_t existing = 0; existing < count; ++existing) {
+                if (notes[existing] == chord[j]) {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (!duplicate) notes[count++] = chord[j];
+        }
+    }
+    std::sort(notes, notes + count);
+    return count;
+}
+
+uint8_t PerformanceKeyboard::selectArpNote(const uint8_t* notes,
+                                           std::size_t count) {
+    if (!notes || count == 0) return 0;
+    if (arpIndex_ >= count) arpIndex_ = 0;
+
+    std::size_t index = arpIndex_;
+    switch (arpDirection_) {
+        case PerformanceArpDirection::Down:
+            index = count - 1 - arpIndex_;
+            arpIndex_ = (arpIndex_ + 1) % count;
+            break;
+        case PerformanceArpDirection::UpDown:
+            index = arpIndex_;
+            if (count <= 1) {
+                arpIndex_ = 0;
+            } else if (arpAscending_) {
+                if (arpIndex_ + 1 >= count) {
+                    arpAscending_ = false;
+                    arpIndex_ = count - 2;
+                } else {
+                    ++arpIndex_;
+                }
+            } else if (arpIndex_ == 0) {
+                arpAscending_ = true;
+                arpIndex_ = 1;
+            } else {
+                --arpIndex_;
+            }
+            break;
+        case PerformanceArpDirection::Up:
+        case PerformanceArpDirection::Count:
+        default:
+            arpIndex_ = (arpIndex_ + 1) % count;
+            break;
+    }
+    return notes[index];
+}
+
+void PerformanceKeyboard::emitPerformanceStep(uint32_t stepStartMicros,
+                                              uint32_t stepMicros) {
+    if (heldCount_ == 0 || !euclideanStepActive(euclideanStep_)) return;
+
+    uint8_t notes[kMaxGeneratedNotes]{};
+    std::size_t noteCount = 0;
+    if (arpeggiatorEnabled_) {
+        uint8_t pool[kMaxGeneratedNotes]{};
+        const std::size_t poolCount = buildArpPool(pool, kMaxGeneratedNotes);
+        if (poolCount == 0) return;
+        notes[0] = selectArpNote(pool, poolCount);
+        noteCount = 1;
+    } else {
+        noteCount = buildChord(held_[heldCount_ - 1].note,
+                               notes,
+                               kMaxGeneratedNotes);
+    }
+
+    const uint8_t velocity = held_[heldCount_ - 1].velocity;
+    const uint32_t subStep = stepMicros / ratchetCount_;
+    uint32_t strumMicros = static_cast<uint32_t>(strumMs_) * 1000u;
+    if (noteCount > 1) {
+        const uint32_t usable = subStep > 5000u ? subStep - 5000u : 0u;
+        const uint32_t maximumSpacing =
+            usable / static_cast<uint32_t>(noteCount - 1u);
+        if (strumMicros > maximumSpacing) strumMicros = maximumSpacing;
+    }
+
+    for (uint8_t ratchet = 0; ratchet < ratchetCount_; ++ratchet) {
+        const uint32_t ratchetStart = stepStartMicros + ratchet * subStep;
+        for (std::size_t noteIndex = 0; noteIndex < noteCount; ++noteIndex) {
+            const uint32_t onAt = ratchetStart +
+                static_cast<uint32_t>(noteIndex) * strumMicros;
+            uint32_t gate = (subStep * 3u) / 5u;
+            if (gate < 4000u) gate = 4000u;
+            uint32_t offAt = onAt + gate;
+            const uint32_t hardEnd = ratchetStart + subStep;
+            if (due(offAt, hardEnd)) offAt = hardEnd - 1000u;
+            if (due(onAt, offAt)) offAt = onAt + 1000u;
+            if (!scheduleGenerated(MusicalEventType::NoteOn,
+                                   notes[noteIndex], velocity, onAt)) {
+                stopGeneratedOutput();
+                return;
+            }
+            if (!scheduleGenerated(MusicalEventType::NoteOff,
+                                   notes[noteIndex], 0, offAt)) {
+                stopGeneratedOutput();
+                return;
+            }
+        }
+    }
+}
+
+void PerformanceKeyboard::service(uint32_t nowMicros) {
+    lastServiceMicros_ = nowMicros;
+    processScheduled(nowMicros);
+
+    if (!liveInputAllowed() || heldCount_ == 0 || !stepEngineEnabled()) {
+        if (heldCount_ == 0 || !stepEngineEnabled()) resetStepClock();
+        return;
+    }
+
+    const uint32_t stepMicros = stepDurationMicros();
+    if (!stepClockRunning_) {
+        stepClockRunning_ = true;
+        nextStepMicros_ = nowMicros;
+    }
+
+    uint8_t catchUp = 0;
+    while (due(nowMicros, nextStepMicros_) && catchUp < 4) {
+        emitPerformanceStep(nextStepMicros_, stepMicros);
+        euclideanStep_ = static_cast<uint8_t>((euclideanStep_ + 1) % kEuclideanSteps);
+        nextStepMicros_ += stepMicros;
+        ++catchUp;
+    }
+    if (catchUp == 4 && due(nowMicros, nextStepMicros_)) {
+        nextStepMicros_ = nowMicros + stepMicros;
+    }
+    processScheduled(nowMicros);
+}
+
+void PerformanceKeyboard::triggerDirectTransformed(uint32_t nowMicros) {
+    stopGeneratedOutput();
+    if (heldCount_ == 0) return;
+
+    uint8_t notes[kMaxGeneratedNotes]{};
+    const std::size_t count = buildChord(
+        held_[heldCount_ - 1].note, notes, kMaxGeneratedNotes);
+    const uint8_t velocity = held_[heldCount_ - 1].velocity;
+    const uint32_t strumMicros = static_cast<uint32_t>(strumMs_) * 1000u;
+    for (std::size_t i = 0; i < count; ++i) {
+        const uint32_t onAt = nowMicros + static_cast<uint32_t>(i) * strumMicros;
+        if (onAt == nowMicros) {
+            routeGenerated(MusicalEventType::NoteOn, notes[i], velocity);
+            rememberGeneratedOn(notes[i]);
+        } else if (!scheduleGenerated(MusicalEventType::NoteOn,
+                                      notes[i], velocity, onAt)) {
+            stopGeneratedOutput();
+            return;
+        }
+    }
+}
+
 bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
+    serviceHardwareClock();
     physicalKey = normalizeKey(physicalKey);
     if (!isPerformanceKey(physicalKey)) return false;
     if (!noteModeEnabled_) return false;
@@ -177,11 +546,21 @@ bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
     uint8_t note = 0;
     if (!noteForKey(physicalKey, note)) return true;
     held_[heldCount_++] = HeldNote{physicalKey, note, velocity, 0};
-    emitNoteOn(held_[heldCount_ - 1]);
+
+    if (stepEngineEnabled()) {
+        stopGeneratedOutput();
+        resetStepClock();
+        service(lastServiceMicros_);
+    } else if (transformedPlaybackEnabled()) {
+        triggerDirectTransformed(lastServiceMicros_);
+    } else {
+        emitNoteOn(held_[heldCount_ - 1]);
+    }
     return true;
 }
 
 bool PerformanceKeyboard::keyUp(char physicalKey) {
+    serviceHardwareClock();
     physicalKey = normalizeKey(physicalKey);
     const int found = findHeld(physicalKey);
     if (found < 0) return false;
@@ -197,6 +576,23 @@ bool PerformanceKeyboard::keyUp(char physicalKey) {
         return true;
     }
 
+    if (stepEngineEnabled()) {
+        if (heldCount_ == 0) {
+            stopGeneratedOutput();
+            resetStepClock();
+        } else {
+            arpIndex_ = 0;
+        }
+        return true;
+    }
+
+    if (transformedPlaybackEnabled()) {
+        if (!wasActive) return true;
+        stopGeneratedOutput();
+        if (heldCount_ > 0) triggerDirectTransformed(lastServiceMicros_);
+        return true;
+    }
+
     if (!wasActive) return true;
     if (heldCount_ > 0) emitNoteOn(held_[heldCount_ - 1]);
     else emitNoteOff(released.note);
@@ -205,6 +601,7 @@ bool PerformanceKeyboard::keyUp(char physicalKey) {
 
 void PerformanceKeyboard::releaseMissingKeys(const char* pressedKeys,
                                              std::size_t pressedCount) {
+    serviceHardwareClock();
     if (heldCount_ == 0) return;
 
     if (target_ == MusicalEventTarget::Drums) {
@@ -218,6 +615,34 @@ void PerformanceKeyboard::releaseMissingKeys(const char* pressedKeys,
         }
         for (std::size_t i = write; i < heldCount_; ++i) held_[i] = HeldNote{};
         heldCount_ = write;
+        return;
+    }
+
+    if (transformedPlaybackEnabled()) {
+        bool changed = false;
+        std::size_t write = 0;
+        for (std::size_t read = 0; read < heldCount_; ++read) {
+            if (containsKey(pressedKeys, pressedCount, held_[read].physicalKey)) {
+                held_[write++] = held_[read];
+            } else {
+                changed = true;
+            }
+        }
+        for (std::size_t i = write; i < heldCount_; ++i) held_[i] = HeldNote{};
+        heldCount_ = write;
+        if (!changed) return;
+
+        if (stepEngineEnabled()) {
+            if (heldCount_ == 0) {
+                stopGeneratedOutput();
+                resetStepClock();
+            } else {
+                arpIndex_ = 0;
+            }
+        } else {
+            stopGeneratedOutput();
+            if (heldCount_ > 0) triggerDirectTransformed(lastServiceMicros_);
+        }
         return;
     }
 
@@ -241,18 +666,23 @@ void PerformanceKeyboard::releaseMissingKeys(const char* pressedKeys,
 }
 
 void PerformanceKeyboard::setEnabled(bool enabled) {
+    serviceHardwareClock();
     if (enabled_ == enabled) return;
     if (!enabled) panic();
     enabled_ = enabled;
 }
 
 void PerformanceKeyboard::setNoteModeEnabled(bool enabled) {
+    serviceHardwareClock();
     if (noteModeEnabled_ == enabled) return;
     if (!enabled) panic();
     noteModeEnabled_ = enabled;
 }
 
 void PerformanceKeyboard::setTransportPlaying(bool playing) {
+    // GroovePuter calls this every main-loop iteration, so it doubles as the
+    // low-cost control-rate heartbeat for arp/ratchet/Euclidean scheduling.
+    serviceHardwareClock();
     if (transportPlaying_ == playing) return;
     if (playing) panic();
     transportPlaying_ = playing;
@@ -307,8 +737,11 @@ uint8_t PerformanceKeyboard::targetMidiChannel() const {
 }
 
 void PerformanceKeyboard::panic() {
+    clearScheduled();
+    generatedNoteCount_ = 0;
     for (std::size_t i = 0; i < heldCount_; ++i) held_[i] = HeldNote{};
     heldCount_ = 0;
+    resetStepClock();
     emitAllNotesOff();
 }
 
@@ -340,6 +773,145 @@ bool PerformanceKeyboard::shiftOctave(int direction) {
     panic();
     octaveShift_ = static_cast<int8_t>(next);
     return true;
+}
+
+void PerformanceKeyboard::restartAfterConfigurationChange() {
+    panic();
+}
+
+void PerformanceKeyboard::setChordMode(PerformanceChordMode mode) {
+    if (mode >= PerformanceChordMode::Count || chordMode_ == mode) return;
+    restartAfterConfigurationChange();
+    chordMode_ = mode;
+}
+
+void PerformanceKeyboard::cycleChordMode(int direction) {
+    int next = static_cast<int>(chordMode_) + direction;
+    const int count = static_cast<int>(PerformanceChordMode::Count);
+    while (next < 0) next += count;
+    while (next >= count) next -= count;
+    if (static_cast<PerformanceChordMode>(next) == PerformanceChordMode::Memory &&
+        chordMemoryCount_ == 0) {
+        next += direction >= 0 ? 1 : -1;
+        while (next < 0) next += count;
+        while (next >= count) next -= count;
+    }
+    setChordMode(static_cast<PerformanceChordMode>(next));
+}
+
+const char* PerformanceKeyboard::chordModeName() const {
+    switch (chordMode_) {
+        case PerformanceChordMode::Off: return "OFF";
+        case PerformanceChordMode::Major: return "MAJ";
+        case PerformanceChordMode::Minor: return "MIN";
+        case PerformanceChordMode::Fifth: return "5TH";
+        case PerformanceChordMode::Minor7: return "MIN7";
+        case PerformanceChordMode::Memory: return "MEM";
+        case PerformanceChordMode::Count: break;
+    }
+    return "OFF";
+}
+
+bool PerformanceKeyboard::captureChordMemory() {
+    if (heldCount_ == 0) return false;
+    uint8_t notes[kMaxHeldNotes]{};
+    for (std::size_t i = 0; i < heldCount_; ++i) notes[i] = held_[i].note;
+    std::sort(notes, notes + heldCount_);
+    const uint8_t root = notes[0];
+    chordMemoryCount_ = 0;
+    for (std::size_t i = 0; i < heldCount_ && chordMemoryCount_ < kMaxChordMemoryNotes; ++i) {
+        const uint8_t interval = static_cast<uint8_t>(notes[i] - root);
+        if (chordMemoryCount_ > 0 &&
+            chordMemoryIntervals_[chordMemoryCount_ - 1] == interval) {
+            continue;
+        }
+        chordMemoryIntervals_[chordMemoryCount_++] = interval;
+    }
+    panic();
+    chordMode_ = PerformanceChordMode::Memory;
+    return chordMemoryCount_ > 0;
+}
+
+void PerformanceKeyboard::clearChordMemory() {
+    panic();
+    for (uint8_t& interval : chordMemoryIntervals_) interval = 0;
+    chordMemoryCount_ = 0;
+    if (chordMode_ == PerformanceChordMode::Memory) {
+        chordMode_ = PerformanceChordMode::Off;
+    }
+}
+
+void PerformanceKeyboard::setArpeggiatorEnabled(bool enabled) {
+    if (arpeggiatorEnabled_ == enabled) return;
+    restartAfterConfigurationChange();
+    arpeggiatorEnabled_ = enabled;
+}
+
+void PerformanceKeyboard::cycleArpDirection(int direction) {
+    int next = static_cast<int>(arpDirection_) + direction;
+    const int count = static_cast<int>(PerformanceArpDirection::Count);
+    while (next < 0) next += count;
+    while (next >= count) next -= count;
+    restartAfterConfigurationChange();
+    arpDirection_ = static_cast<PerformanceArpDirection>(next);
+}
+
+const char* PerformanceKeyboard::arpDirectionName() const {
+    switch (arpDirection_) {
+        case PerformanceArpDirection::Up: return "UP";
+        case PerformanceArpDirection::Down: return "DOWN";
+        case PerformanceArpDirection::UpDown: return "UPDN";
+        case PerformanceArpDirection::Count: break;
+    }
+    return "UP";
+}
+
+void PerformanceKeyboard::cycleStrum(int direction) {
+    int current = 0;
+    for (int i = 0; i < static_cast<int>(sizeof(kStrumOptionsMs)); ++i) {
+        if (kStrumOptionsMs[i] == strumMs_) {
+            current = i;
+            break;
+        }
+    }
+    int next = current + direction;
+    const int count = static_cast<int>(sizeof(kStrumOptionsMs));
+    while (next < 0) next += count;
+    while (next >= count) next -= count;
+    restartAfterConfigurationChange();
+    strumMs_ = kStrumOptionsMs[next];
+}
+
+void PerformanceKeyboard::cycleRatchet(int direction) {
+    int next = static_cast<int>(ratchetCount_) + direction;
+    while (next < 1) next += 4;
+    while (next > 4) next -= 4;
+    restartAfterConfigurationChange();
+    ratchetCount_ = static_cast<uint8_t>(next);
+}
+
+void PerformanceKeyboard::cycleEuclideanPulses(int direction) {
+    int current = 0;
+    for (int i = 0; i < static_cast<int>(sizeof(kEuclideanPulseOptions)); ++i) {
+        if (kEuclideanPulseOptions[i] == euclideanPulses_) {
+            current = i;
+            break;
+        }
+    }
+    int next = current + direction;
+    const int count = static_cast<int>(sizeof(kEuclideanPulseOptions));
+    while (next < 0) next += count;
+    while (next >= count) next -= count;
+    restartAfterConfigurationChange();
+    euclideanPulses_ = kEuclideanPulseOptions[next];
+}
+
+void PerformanceKeyboard::rotateEuclidean(int direction) {
+    int next = static_cast<int>(euclideanRotation_) + direction;
+    while (next < 0) next += kEuclideanSteps;
+    while (next >= kEuclideanSteps) next -= kEuclideanSteps;
+    restartAfterConfigurationChange();
+    euclideanRotation_ = static_cast<uint8_t>(next);
 }
 
 int PerformanceKeyboard::activeNote() const {

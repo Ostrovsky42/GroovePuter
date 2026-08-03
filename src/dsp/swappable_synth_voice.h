@@ -1,22 +1,29 @@
 #pragma once
 
-#include <memory>
-#include <cstdint>
-#include <array>
 #include <algorithm>
+#include <array>
+#include <cstdint>
+#include <memory>
 #include <string>
 
-#include "mono_synth_voice.h"
-#include "mini_tb303.h"
-#include "sid_synth_voice.h"
 #include "ay_synth_voice.h"
-#include "opl2_synth_voice.h"
+#include "mini_tb303.h"
+#include "mono_synth_voice.h"
+#include "sh101_synth_voice.h"
+#include "sid_synth_voice.h"
+#include "sn76489_synth_voice.h"
+#include "wave_morph_synth_voice.h"
 
 enum class SynthEngineType : uint8_t {
-    TB303 = 0,
-    SID   = 1,
-    AY    = 2,
-    OPL2  = 3
+    TB303     = 0,
+    SID       = 1,
+    AY        = 2,
+    // Numeric slot 3 is retained only so older persisted scenes remain
+    // decodable. Runtime requests for OPL2 are normalized to TB303.
+    OPL2      = 3,
+    SH101     = 4,
+    SN76489   = 5,
+    WAVEMORPH = 6,
 };
 
 struct SynthVoiceState {
@@ -32,20 +39,22 @@ public:
 
     void setEngineType(SynthEngineType type);
     SynthEngineType engineType() const { return type_; }
-    
-    // Compatibility helpers
+
     void setEngineName(const std::string& name);
     IMonoSynthVoice* activeVoice() { return current_ ? current_.get() : nullptr; }
-    const IMonoSynthVoice* activeVoice() const { return current_ ? current_.get() : nullptr; }
+    const IMonoSynthVoice* activeVoice() const {
+        return current_ ? current_.get() : nullptr;
+    }
 
     SynthVoiceState getState() const;
-    void setState(const SynthVoiceState& st);
+    void setState(const SynthVoiceState& state);
 
-    // IMonoSynthVoice
     void reset() override;
     void setSampleRate(float sampleRate) override;
-
-    void startNote(float freqHz, bool accent, bool slideFlag, uint8_t velocity = 100) override;
+    void startNote(float freqHz,
+                   bool accent,
+                   bool slideFlag,
+                   uint8_t velocity = 100) override;
     void release() override;
     float process() override;
 
@@ -59,30 +68,27 @@ public:
     const char* getEngineName() const override;
 
 private:
-    static std::unique_ptr<IMonoSynthVoice> createVoice(SynthEngineType type, float sampleRate);
+    static std::unique_ptr<IMonoSynthVoice> createVoice(
+        SynthEngineType type, float sampleRate);
     static SynthEngineType parseEngineName(const std::string& name);
+    static SynthEngineType normalizeEngineType(SynthEngineType type);
 
     float sampleRate_{44100.0f};
-
     SynthEngineType type_{SynthEngineType::TB303};
     SynthEngineType pendingType_{SynthEngineType::TB303};
-
     std::unique_ptr<IMonoSynthVoice> current_{};
     std::unique_ptr<IMonoSynthVoice> next_{};
 
-    // click-free switching
     bool switching_{false};
     uint32_t xfadeTotal_{0};
     uint32_t xfadePos_{0};
 
-    // last note context (to keep sound continuous across swap)
     bool noteHeld_{false};
     float lastFreqHz_{0.0f};
     bool lastAccent_{false};
     bool lastSlide_{false};
     uint8_t lastVelocity_{0};
 
-    // forward mode/lofi to engines
     GrooveboxMode mode_{GrooveboxMode::Acid};
     float loFi_{0.0f};
 };

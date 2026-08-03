@@ -1086,23 +1086,39 @@ void MiniAcid::setSynthEngine(int voiceIndex, const std::string& engineName) {
 
   SynthEngineType target = SynthEngineType::TB303;
   const char* targetName = "TB303";
-  if (name.find("SID") != std::string::npos) {
+  if (name.find("WAVEMORPH") != std::string::npos ||
+      name.find("WAVE MORPH") != std::string::npos) {
+    target = SynthEngineType::WAVEMORPH;
+    targetName = "WAVEMORPH";
+  } else if (name.find("SH101") != std::string::npos ||
+             name.find("SH-101") != std::string::npos ||
+             name.find("MC202") != std::string::npos ||
+             name.find("MC-202") != std::string::npos) {
+    target = SynthEngineType::SH101;
+    targetName = "SH101";
+  } else if (name.find("SN76489") != std::string::npos ||
+             name.find("SEGA") != std::string::npos) {
+    target = SynthEngineType::SN76489;
+    targetName = "SN76489";
+  } else if (name.find("SID") != std::string::npos) {
     target = SynthEngineType::SID;
     targetName = "SID";
   } else if (name.find("OPL2") != std::string::npos ||
              name.find("YM3812") != std::string::npos ||
              name.find("FM") != std::string::npos) {
-    target = SynthEngineType::OPL2;
-    targetName = "OPL2";
+    target = SynthEngineType::TB303;
+    targetName = "TB303";
   } else if (name.find("AY") != std::string::npos ||
              name.find("YM2149") != std::string::npos ||
              name.find("PSG") != std::string::npos) {
     target = SynthEngineType::AY;
     targetName = "AY";
-  } else if (name.find("TB303") != std::string::npos || name.find("303") != std::string::npos) {
+  } else if (name.find("TB303") != std::string::npos ||
+             name.find("303") != std::string::npos) {
     target = SynthEngineType::TB303;
     targetName = "TB303";
   }
+
 
   if (synthEngineNames_[idx] == targetName) {
     return;
@@ -1136,7 +1152,7 @@ std::vector<std::string> MiniAcid::getAvailableDrumEngines() const {
 }
 
 std::vector<std::string> MiniAcid::getAvailableSynthEngines() const {
-  return {"TB303", "SID", "AY", "OPL2"};
+  return {"TB303", "SID", "AY", "SH101", "SN76489", "WAVEMORPH"};
 }
 
 std::string MiniAcid::currentSynthEngineName(int voiceIndex) const {
