@@ -40,6 +40,12 @@ test_path = root / "tests/test_ui_session_state.cpp"
 test = test_path.read_text(encoding="utf-8")
 test = test.replace("WorkflowMode::", "SessionWorkflow::")
 test = test.replace("WorkflowPages::", "SessionPages::")
-if "WorkflowMode::" in test or "WorkflowPages::" in test:
+test = test.replace(
+    "static_cast<uint8_t>(VisualStyle::MINIMAL_DARK)", "1")
+test = test.replace(
+    "static_cast<VisualStyle>(state.visualStyle) == VisualStyle::MINIMAL",
+    "state.visualStyle == 0")
+if ("WorkflowMode::" in test or "WorkflowPages::" in test or
+        "VisualStyle" in test):
     raise RuntimeError("legacy UI types remain in pure session test")
 test_path.write_text(test, encoding="utf-8")
