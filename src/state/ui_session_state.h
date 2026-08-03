@@ -3,26 +3,51 @@
 #include <cstddef>
 #include <cstdint>
 
-#include "src/ui/ui_config.h"
-#include "src/ui/ui_core.h"
-#include "src/ui/workflow_mode.h"
-
 namespace GroovePuterState {
 
+// Keep the persisted codec independent from UI headers. Arduino's sketch
+// builder may resolve the same header through both a local and repository path,
+// which defeats pragma-once and causes duplicate declarations.
+enum class SessionWorkflow : uint8_t {
+    Perform = 0,
+    Generate,
+    Hub,
+    Song,
+    Settings,
+};
+
 constexpr int kWorkflowSessionCount = 5;
+constexpr int kUiPageCount = 14;
 constexpr uint16_t kDefaultMasterVolumePermille = 600;
 constexpr uint16_t kMaxMasterVolumePermille = 1800;
 
+namespace SessionPages {
+constexpr int kGenre = 0;
+constexpr int kSynthA = 1;
+constexpr int kSynthB = 2;
+constexpr int kSynthAParameters = 3;
+constexpr int kSynthBParameters = 4;
+constexpr int kDrums = 5;
+constexpr int kArrange = 6;
+constexpr int kPattern = 7;
+constexpr int kFeelTexture = 8;
+constexpr int kGenerator = 9;
+constexpr int kProject = 10;
+constexpr int kMode = 11;
+constexpr int kPerform = 12;
+constexpr int kPlayer = 13;
+}  // namespace SessionPages
+
 struct UiSessionState {
-    int8_t activePage{static_cast<int8_t>(WorkflowPages::kGenre)};
+    int8_t activePage{static_cast<int8_t>(SessionPages::kGenre)};
     int8_t lastPageByWorkflow[kWorkflowSessionCount]{
-        static_cast<int8_t>(WorkflowPages::kPerform),
-        static_cast<int8_t>(WorkflowPages::kGenre),
-        static_cast<int8_t>(WorkflowPages::kPattern),
-        static_cast<int8_t>(WorkflowPages::kArrange),
-        static_cast<int8_t>(WorkflowPages::kProject),
+        static_cast<int8_t>(SessionPages::kPerform),
+        static_cast<int8_t>(SessionPages::kGenre),
+        static_cast<int8_t>(SessionPages::kPattern),
+        static_cast<int8_t>(SessionPages::kArrange),
+        static_cast<int8_t>(SessionPages::kProject),
     };
-    uint8_t visualStyle{static_cast<uint8_t>(VisualStyle::RETRO_CLASSIC)};
+    uint8_t visualStyle{2};  // VisualStyle::RETRO_CLASSIC
     uint8_t waveformOverlayEnabled{1};
     uint16_t masterVolumePermille{kDefaultMasterVolumePermille};
 };
@@ -30,34 +55,52 @@ struct UiSessionState {
 static_assert(sizeof(UiSessionState) <= 12,
               "UI session state must remain a tiny fixed-size payload");
 
-inline int workflowSessionIndex(WorkflowMode mode) {
-    const int value = static_cast<int>(mode);
+inline int workflowSessionIndex(SessionWorkflow workflow) {
+    const int value = static_cast<int>(workflow);
     return value >= 0 && value < kWorkflowSessionCount ? value : 0;
 }
 
-inline int defaultPageForWorkflow(WorkflowMode mode) {
-    return WorkflowPages::pageForMode(mode);
-}
-
 inline bool validUiPage(int page) {
-    return page >= 0 && page < UI::kPageCount;
+    return page >= 0 && page < kUiPageCount;
 }
 
-inline bool pageBelongsToWorkflow(int page, WorkflowMode mode) {
-    return validUiPage(page) && WorkflowPages::modeForPage(page) == mode;
-}
-
-inline VisualStyle sanitizeVisualStyle(uint8_t value) {
-    const auto style = static_cast<VisualStyle>(value);
-    switch (style) {
-        case VisualStyle::MINIMAL:
-        case VisualStyle::RETRO_CLASSIC:
-        case VisualStyle::AMBER:
-            return style;
-        case VisualStyle::MINIMAL_DARK:
-        default:
-            return VisualStyle::MINIMAL;
+inline SessionWorkflow sessionWorkflowForPage(int page) {
+    if (page == SessionPages::kPerform || page == SessionPages::kPlayer) {
+        return SessionWorkflow::Perform;
     }
+    if (page == SessionPages::kGenre || page == SessionPages::kMode ||
+        page == SessionPages::kFeelTexture) {
+        return SessionWorkflow::Generate;
+    }
+    if (page == SessionPages::kPattern || page == SessionPages::kSynthA ||
+        page == SessionPages::kSynthB || page == SessionPages::kDrums ||
+        page == SessionPages::kSynthAParameters ||
+        page == SessionPages::kSynthBParameters) {
+        return SessionWorkflow::Hub;
+    }
+    if (page == SessionPages::kArrange) return SessionWorkflow::Song;
+    return SessionWorkflow::Settings;
+}
+
+inline int defaultPageForWorkflow(SessionWorkflow workflow) {
+    switch (workflow) {
+        case SessionWorkflow::Perform: return SessionPages::kPerform;
+        case SessionWorkflow::Generate: return SessionPages::kGenre;
+        case SessionWorkflow::Hub: return SessionPages::kPattern;
+        case SessionWorkflow::Song: return SessionPages::kArrange;
+        case SessionWorkflow::Settings: return SessionPages::kProject;
+    }
+    return SessionPages::kGenre;
+}
+
+inline bool pageBelongsToWorkflow(int page, SessionWorkflow workflow) {
+    return validUiPage(page) && sessionWorkflowForPage(page) == workflow;
+}
+
+inline uint8_t sanitizeVisualStyle(uint8_t value) {
+    // Public theme cycle is CYBER(0), CARBON(2), AMBER(3). Legacy DARK(1)
+    // safely maps to CYBER rather than becoming an invalid persisted value.
+    return value == 2 || value == 3 ? value : 0;
 }
 
 inline uint16_t clampMasterVolumePermille(uint16_t value) {
@@ -72,23 +115,19 @@ inline UiSessionState defaultUiSessionState() {
 
 inline void sanitizeUiSessionState(UiSessionState& state) {
     for (int i = 0; i < kWorkflowSessionCount; ++i) {
-        const auto mode = static_cast<WorkflowMode>(i);
+        const auto workflow = static_cast<SessionWorkflow>(i);
         const int page = state.lastPageByWorkflow[i];
-        if (!pageBelongsToWorkflow(page, mode)) {
+        if (!pageBelongsToWorkflow(page, workflow)) {
             state.lastPageByWorkflow[i] =
-                static_cast<int8_t>(defaultPageForWorkflow(mode));
+                static_cast<int8_t>(defaultPageForWorkflow(workflow));
         }
     }
 
     if (!validUiPage(state.activePage)) {
-        state.activePage = static_cast<int8_t>(WorkflowPages::kGenre);
-    }
-    const WorkflowMode activeMode = WorkflowPages::modeForPage(state.activePage);
-    if (!pageBelongsToWorkflow(state.activePage, activeMode)) {
-        state.activePage = static_cast<int8_t>(defaultPageForWorkflow(activeMode));
+        state.activePage = static_cast<int8_t>(SessionPages::kGenre);
     }
 
-    state.visualStyle = static_cast<uint8_t>(sanitizeVisualStyle(state.visualStyle));
+    state.visualStyle = sanitizeVisualStyle(state.visualStyle);
     state.waveformOverlayEnabled = state.waveformOverlayEnabled ? 1 : 0;
     state.masterVolumePermille =
         clampMasterVolumePermille(state.masterVolumePermille);
@@ -96,35 +135,94 @@ inline void sanitizeUiSessionState(UiSessionState& state) {
 
 inline void rememberWorkflowPage(UiSessionState& state, int page) {
     if (!validUiPage(page)) return;
-    const WorkflowMode mode = WorkflowPages::modeForPage(page);
-    state.lastPageByWorkflow[workflowSessionIndex(mode)] =
+    const SessionWorkflow workflow = sessionWorkflowForPage(page);
+    state.lastPageByWorkflow[workflowSessionIndex(workflow)] =
         static_cast<int8_t>(page);
     state.activePage = static_cast<int8_t>(page);
 }
 
 inline int rememberedWorkflowPage(const UiSessionState& state,
-                                  WorkflowMode mode) {
-    const int page = state.lastPageByWorkflow[workflowSessionIndex(mode)];
-    return pageBelongsToWorkflow(page, mode)
+                                  SessionWorkflow workflow) {
+    const int page = state.lastPageByWorkflow[workflowSessionIndex(workflow)];
+    return pageBelongsToWorkflow(page, workflow)
         ? page
-        : defaultPageForWorkflow(mode);
+        : defaultPageForWorkflow(workflow);
+}
+
+inline int pageCountForWorkflow(SessionWorkflow workflow) {
+    switch (workflow) {
+        case SessionWorkflow::Perform: return 2;
+        case SessionWorkflow::Generate: return 3;
+        case SessionWorkflow::Hub: return 6;
+        case SessionWorkflow::Song: return 1;
+        case SessionWorkflow::Settings: return 2;
+    }
+    return 1;
+}
+
+inline int pageAt(SessionWorkflow workflow, int index) {
+    static constexpr int kPerformPages[] = {
+        SessionPages::kPerform, SessionPages::kPlayer,
+    };
+    static constexpr int kGeneratePages[] = {
+        SessionPages::kGenre, SessionPages::kMode, SessionPages::kFeelTexture,
+    };
+    static constexpr int kHubPages[] = {
+        SessionPages::kPattern, SessionPages::kSynthA, SessionPages::kSynthB,
+        SessionPages::kDrums, SessionPages::kSynthAParameters,
+        SessionPages::kSynthBParameters,
+    };
+    static constexpr int kSettingsPages[] = {
+        SessionPages::kProject, SessionPages::kGenerator,
+    };
+
+    const int count = pageCountForWorkflow(workflow);
+    while (index < 0) index += count;
+    while (index >= count) index -= count;
+
+    switch (workflow) {
+        case SessionWorkflow::Perform: return kPerformPages[index];
+        case SessionWorkflow::Generate: return kGeneratePages[index];
+        case SessionWorkflow::Hub: return kHubPages[index];
+        case SessionWorkflow::Song: return SessionPages::kArrange;
+        case SessionWorkflow::Settings: return kSettingsPages[index];
+    }
+    return SessionPages::kGenre;
+}
+
+inline int pageIndexInWorkflow(int page) {
+    const SessionWorkflow workflow = sessionWorkflowForPage(page);
+    const int count = pageCountForWorkflow(workflow);
+    for (int index = 0; index < count; ++index) {
+        if (pageAt(workflow, index) == page) return index;
+    }
+    return 0;
+}
+
+inline SessionWorkflow nextWorkflow(SessionWorkflow workflow, int direction) {
+    int value = static_cast<int>(workflow) + direction;
+    while (value < 0) value += kWorkflowSessionCount;
+    while (value >= kWorkflowSessionCount) value -= kWorkflowSessionCount;
+    return static_cast<SessionWorkflow>(value);
 }
 
 inline int workflowNavigationTarget(const UiSessionState& state,
                                     int currentPage,
                                     int direction,
                                     bool workflowModifier) {
-    const WorkflowMode mode = WorkflowPages::modeForPage(currentPage);
+    const SessionWorkflow workflow = sessionWorkflowForPage(currentPage);
     if (workflowModifier) {
         return rememberedWorkflowPage(
-            state, WorkflowPages::nextMode(mode, direction));
+            state, nextWorkflow(workflow, direction));
     }
+    return pageAt(workflow, pageIndexInWorkflow(currentPage) + direction);
+}
 
-    const int count = WorkflowPages::pageCountForMode(mode);
-    int index = WorkflowPages::pageIndexInMode(currentPage) + direction;
-    while (index < 0) index += count;
-    while (index >= count) index -= count;
-    return WorkflowPages::pageAt(mode, index);
+inline int rememberedAdjacentWorkflowPage(const UiSessionState& state,
+                                          int currentPage,
+                                          int direction) {
+    return rememberedWorkflowPage(
+        state, nextWorkflow(sessionWorkflowForPage(currentPage), direction));
 }
 
 inline uint16_t masterVolumeToPermille(float value) {
