@@ -386,17 +386,27 @@ private:
         const uint32_t distance = remainder < step - remainder
             ? remainder
             : step - remainder;
-        if (distance * 12u <= step && layer.gridHits[slot] != 65535u) {
-            ++layer.gridHits[slot];
-        }
+        bool gridHit = distance * 12u <= step;
+        bool swung = false;
+        uint32_t percent = 0u;
 
         const uint32_t nearest = (position + step / 2u) / step;
-        if ((nearest & 1u) == 0u || nearest == 0u) return;
-        const uint32_t pairStart = (nearest - 1u) * step;
-        if (position < pairStart) return;
-        const uint32_t pair = step * 2u;
-        const uint32_t percent = ((position - pairStart) * 100u) / pair;
-        if (percent < 40u || percent > 80u) return;
+        if ((nearest & 1u) != 0u && nearest != 0u) {
+            const uint32_t pairStart = (nearest - 1u) * step;
+            if (position >= pairStart) {
+                const uint32_t pair = step * 2u;
+                percent = ((position - pairStart) * 100u) / pair;
+                if (percent >= 40u && percent <= 80u) {
+                    swung = true;
+                    if (percent >= 55u) gridHit = true;
+                }
+            }
+        }
+
+        if (gridHit && layer.gridHits[slot] != 65535u) {
+            ++layer.gridHits[slot];
+        }
+        if (!swung) return;
 
         uint8_t& count = layer.swingSamples[slot];
         uint8_t& mean = layer.swingMean[slot];
