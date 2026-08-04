@@ -13,14 +13,48 @@ if [[ ! -f "${ELF_PATH}" ]]; then
   exit 2
 fi
 
-TOOL_DIR="$(find "${HOME}/.arduino15/packages/esp32/tools" \
-  -type f -name 'xtensa-esp32s3-elf-size' -printf '%h\n' 2>/dev/null \
-  | sort -V | tail -n 1)"
-SIZE_TOOL="${SIZE_TOOL:-${TOOL_DIR:+${TOOL_DIR}/xtensa-esp32s3-elf-size}}"
-if [[ -z "${SIZE_TOOL}" || ! -x "${SIZE_TOOL}" ]]; then
-  echo "xtensa-esp32s3-elf-size was not found" >&2
-  exit 2
-fi
+discover_arduino_tool() {
+  local tool_name="$1"
+  local override="${2:-}"
+  local path_candidate=""
+  local package_root="${ARDUINO_PACKAGES_ROOT:-${HOME}/.arduino15/packages}"
+  local -a candidates=()
+
+  if [[ -n "${override}" ]]; then
+    if [[ -x "${override}" ]]; then
+      printf '%s\n' "${override}"
+      return 0
+    fi
+    echo "Configured ${tool_name} is not executable: ${override}" >&2
+    return 2
+  fi
+
+  path_candidate="$(command -v "${tool_name}" 2>/dev/null || true)"
+  if [[ -n "${path_candidate}" && -x "${path_candidate}" ]]; then
+    printf '%s\n' "${path_candidate}"
+    return 0
+  fi
+
+  if [[ -d "${package_root}" ]]; then
+    mapfile -t candidates < <(
+      find "${package_root}" -type f -name "${tool_name}" -print 2>/dev/null \
+        | sort -V || true
+    )
+  fi
+  if (( ${#candidates[@]} == 0 )); then
+    echo "${tool_name} was not found in PATH or ${package_root}" >&2
+    return 2
+  fi
+
+  path_candidate="${candidates[$((${#candidates[@]} - 1))]}"
+  if [[ ! -x "${path_candidate}" ]]; then
+    echo "Discovered ${tool_name} is not executable: ${path_candidate}" >&2
+    return 2
+  fi
+  printf '%s\n' "${path_candidate}"
+}
+
+SIZE_TOOL="$(discover_arduino_tool xtensa-esp32s3-elf-size "${SIZE_TOOL:-}")"
 
 read -r DRAM_DATA DRAM_BSS < <(
   "${SIZE_TOOL}" -A "${ELF_PATH}" | awk '
@@ -37,8 +71,7 @@ echo "  .dram0.bss:  ${DRAM_BSS} bytes"
 if (( DRAM_TOTAL > MAX_BYTES )); then
   echo "DRAM budget exceeded by $((DRAM_TOTAL - MAX_BYTES)) bytes" >&2
 
-  NM_TOOL="${NM_TOOL:-${TOOL_DIR:+${TOOL_DIR}/xtensa-esp32s3-elf-nm}}"
-  if [[ -n "${NM_TOOL}" && -x "${NM_TOOL}" ]]; then
+  if NM_TOOL="$(discover_arduino_tool xtensa-esp32s3-elf-nm "${NM_TOOL:-}" 2>/dev/null)"; then
     echo "Largest DRAM/BSS symbols:" >&2
     "${NM_TOOL}" --print-size --size-sort --radix=d "${ELF_PATH}" \
       | awk '$3 ~ /^[BbDd]$/ { printf "  %8s  %s  %s\n", $2, $3, $4 }' \
