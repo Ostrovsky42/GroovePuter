@@ -78,7 +78,7 @@ std::vector<uint8_t> fixture() {
         0x00, 0xFF, 0x2F, 0x00,
     });
     appendTrack(file, {
-        0x00, 0xFF, 0x03, 0x14,
+        0x00, 0xFF, 0x03, 0x15,
         'G','r','a','n','d',' ','P','i','a','n','o',' ','L','o','n','g',' ','N','a','m','e',
         0x83, 0x60, 0x90, 60, 100,
         0x00, 64, 90,
