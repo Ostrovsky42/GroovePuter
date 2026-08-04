@@ -61,7 +61,7 @@ struct SmfTrackInspectorSnapshot {
 static_assert(sizeof(SmfTrackInfoSnapshot) == 20,
               "SMF track rows must remain compact and fixed-size");
 static_assert(sizeof(SmfTrackInspectorSnapshot) <= 1284,
-              "SMF track metadata must remain bounded for Cardputer ADV DRAM");
+              "SMF track snapshots must remain bounded on the UI stack");
 
 class SmfTrackInspectorState {
 public:
@@ -72,9 +72,6 @@ public:
         state_.store(0u, std::memory_order_release);
         for (std::size_t track = 0; track < kSmfTrackInspectorMaxTracks; ++track) {
             AtomicTrack& item = tracks_[track];
-            for (std::size_t word = 0; word < kNameWordCount; ++word) {
-                item.nameWords[word].store(0u, std::memory_order_relaxed);
-            }
             item.channelMask.store(0u, std::memory_order_relaxed);
             item.firstProgram.store(0u, std::memory_order_relaxed);
             item.flags.store(0u, std::memory_order_relaxed);
@@ -91,38 +88,13 @@ public:
     }
 
     void setName(uint16_t trackIndex, const char* name) {
-        const uint16_t state = state_.load(std::memory_order_acquire);
-        if ((state & kFrozenBit) != 0u) return;
-        const uint16_t count = state & kCountMask;
-        if (trackIndex >= count || !name || name[0] == '\0') return;
-
-        char clean[kSmfTrackNameBytes]{};
-        std::size_t length = 0;
-        while (length + 1u < kSmfTrackNameBytes && name[length] != '\0') {
-            const unsigned char value = static_cast<unsigned char>(name[length]);
-            clean[length] = value >= 32u && value <= 126u
-                ? static_cast<char>(value)
-                : ' ';
-            ++length;
-        }
-        while (length > 0u && clean[length - 1u] == ' ') --length;
-        clean[length] = '\0';
-        if (length == 0u) return;
-
-        AtomicTrack& item = tracks_[trackIndex];
-        for (std::size_t word = 0; word < kNameWordCount; ++word) {
-            uint32_t packed = 0u;
-            const std::size_t offset = word * sizeof(uint32_t);
-            for (std::size_t byte = 0; byte < sizeof(uint32_t); ++byte) {
-                const std::size_t index = offset + byte;
-                if (index >= kSmfTrackNameBytes) break;
-                packed |= static_cast<uint32_t>(
-                    static_cast<uint8_t>(clean[index])) << (byte * 8u);
-            }
-            item.nameWords[word].store(packed, std::memory_order_relaxed);
-        }
-        item.flags.fetch_or(SmfTrackInfoSnapshot::kHasName,
-                            std::memory_order_release);
+        // Arbitrary SMF TrackName strings used to reserve 1 KiB of fixed DRAM
+        // for all 64 physical tracks. Stage 1A/1B needs physical identity,
+        // channel and program; the UI derives a bounded GM-family label from
+        // firstProgram instead. Keep this hook so the stream parser stays
+        // unchanged without retaining per-file strings in global storage.
+        (void)trackIndex;
+        (void)name;
     }
 
     void observe(uint16_t trackIndex, const SmfEvent& event) {
@@ -168,20 +140,17 @@ public:
             output.flags = item.flags.load(std::memory_order_acquire);
             output.channelMask = item.channelMask.load(std::memory_order_relaxed);
             output.firstProgram = item.firstProgram.load(std::memory_order_relaxed);
-            if ((output.flags & SmfTrackInfoSnapshot::kHasName) == 0u) continue;
 
-            for (std::size_t word = 0; word < kNameWordCount; ++word) {
-                const uint32_t packed =
-                    item.nameWords[word].load(std::memory_order_relaxed);
-                const std::size_t offset = word * sizeof(uint32_t);
-                for (std::size_t byte = 0; byte < sizeof(uint32_t); ++byte) {
-                    const std::size_t index = offset + byte;
-                    if (index >= kSmfTrackNameBytes) break;
-                    output.name[index] = static_cast<char>(
-                        (packed >> (byte * 8u)) & 0xFFu);
-                }
+            const char* label = nullptr;
+            if (output.likelyDrums()) {
+                label = "Drums";
+            } else if (output.hasProgramChange()) {
+                label = programLabel(output.firstProgram);
             }
-            output.name[kSmfTrackNameBytes - 1u] = '\0';
+            if (label) {
+                copyLabel(output.name, label);
+                output.flags |= SmfTrackInfoSnapshot::kHasName;
+            }
         }
         return result;
     }
@@ -189,19 +158,75 @@ public:
 private:
     static constexpr uint16_t kFrozenBit = uint16_t{1} << 15u;
     static constexpr uint16_t kCountMask = kFrozenBit - 1u;
-    static constexpr std::size_t kNameWordCount =
-        kSmfTrackNameBytes / sizeof(uint32_t);
 
     struct AtomicTrack {
-        std::atomic<uint32_t> nameWords[kNameWordCount]{};
         std::atomic<uint16_t> channelMask{0};
         std::atomic<uint8_t> firstProgram{0};
         std::atomic<uint8_t> flags{0};
     };
 
+    static void copyLabel(char* output, const char* input) {
+        std::size_t index = 0;
+        while (index + 1u < kSmfTrackNameBytes && input[index] != '\0') {
+            output[index] = input[index];
+            ++index;
+        }
+        output[index] = '\0';
+    }
+
+    static const char* programLabel(uint8_t program) {
+        switch (program) {
+            case 0: return "Grand Piano";
+            case 4: return "E.Piano";
+            case 24: return "Nylon Guitar";
+            case 25: return "Steel Guitar";
+            case 32: return "Acoustic Bass";
+            case 33: return "Finger Bass";
+            case 34: return "Pick Bass";
+            case 38: return "Synth Bass";
+            case 40: return "Violin";
+            case 42: return "Cello";
+            case 48: return "Strings";
+            case 52: return "Choir";
+            case 56: return "Trumpet";
+            case 61: return "Brass";
+            case 64: return "Soprano Sax";
+            case 65: return "Alto Sax";
+            case 66: return "Tenor Sax";
+            case 73: return "Flute";
+            case 80: return "Square Lead";
+            case 81: return "Saw Lead";
+            case 87: return "Bass Lead";
+            case 88: return "New Age Pad";
+            case 89: return "Warm Pad";
+            case 90: return "Poly Pad";
+            default: break;
+        }
+
+        if (program < 8u) return "Piano";
+        if (program < 16u) return "Chromatic";
+        if (program < 24u) return "Organ";
+        if (program < 32u) return "Guitar";
+        if (program < 40u) return "Bass";
+        if (program < 48u) return "Strings";
+        if (program < 56u) return "Ensemble";
+        if (program < 64u) return "Brass";
+        if (program < 72u) return "Reed";
+        if (program < 80u) return "Pipe";
+        if (program < 88u) return "Lead";
+        if (program < 96u) return "Pad";
+        if (program < 104u) return "Synth FX";
+        if (program < 112u) return "Ethnic";
+        if (program < 120u) return "Percussive";
+        return "Sound FX";
+    }
+
     std::atomic<uint16_t> state_{0};
     AtomicTrack tracks_[kSmfTrackInspectorMaxTracks]{};
 };
+
+static_assert(sizeof(SmfTrackInspectorState) <= 260,
+              "SMF track metadata must not reserve names in fixed DRAM");
 
 inline SmfTrackInspectorState& smfTrackInspectorState() {
     static SmfTrackInspectorState state;
