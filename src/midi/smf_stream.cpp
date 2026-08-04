@@ -55,8 +55,7 @@ SmfIndexResult SmfFileIndexer::build(ISmfByteSource& source) {
     const uint16_t declaredTracks = be16(header + 10);
     result.index.division = be16(header + 12);
 
-    if (result.index.format > 1 || declaredTracks == 0 ||
-        declaredTracks > kSmfMaxTracks) {
+    if (result.index.format > 1 || declaredTracks == 0) {
         result.error = SmfParseError::UnsupportedFormat;
         return result;
     }
@@ -73,6 +72,7 @@ SmfIndexResult SmfFileIndexer::build(ISmfByteSource& source) {
 
     uint32_t offset = static_cast<uint32_t>(firstChunk);
     uint16_t foundTracks = 0;
+    uint16_t retainedTracks = 0;
     while (foundTracks < declaredTracks) {
         if (offset > source.size() || source.size() - offset < 8) {
             result.error = SmfParseError::InvalidTrack;
@@ -93,15 +93,19 @@ SmfIndexResult SmfFileIndexer::build(ISmfByteSource& source) {
         }
 
         if (isTag(chunkHeader, "MTrk")) {
-            result.index.tracks[foundTracks++] = SmfTrackSpan{
-                static_cast<uint32_t>(dataOffset),
-                chunkLength,
-            };
+            if (retainedTracks < kSmfMaxTracks) {
+                result.index.tracks[retainedTracks++] = SmfTrackSpan{
+                    static_cast<uint32_t>(dataOffset),
+                    chunkLength,
+                };
+            }
+            ++foundTracks;
         }
         offset = static_cast<uint32_t>(chunkEnd);
     }
 
-    result.index.trackCount = foundTracks;
+    result.index.trackCount = retainedTracks;
+    result.index.declaredTrackCount = foundTracks;
     result.error = SmfParseError::None;
     return result;
 }
@@ -360,14 +364,14 @@ bool SmfEventStreamMerger::open(ISmfByteSource& source,
     source_ = &source;
     index_ = index;
     smfTrackMuteState().reset(index.trackCount);
-    smfTrackInspectorState().reset(index.trackCount);
+    smfTrackInspectorState().reset(index.trackCount, index.declaredTrackCount);
     smfStructuralInspectorState().reset(index.division, index.trackCount);
     captureStructuralAnalysis_ = true;
     for (std::size_t i = 0; i < kSmfMaxTracks; ++i) hasNext_[i] = false;
     selectedValid_ = false;
 
-    // Split the shared pool across the tracks this file actually uses, keeping
-    // each slice sector-sized so SD transfers stay aligned.
+    // Split the shared pool across the tracks this file actually uses. Slices
+    // are sector-aligned whenever they are at least one sector wide.
     uint32_t perTrack = static_cast<uint32_t>(
         std::min<std::size_t>(kSmfTrackReadCacheBytes,
                               kSmfStreamCacheBytes / index_.trackCount));
@@ -379,7 +383,7 @@ bool SmfEventStreamMerger::open(ISmfByteSource& source,
     for (std::size_t i = 0; i < index_.trackCount; ++i) {
         if (!streams_[i].open(source, index_.tracks[i], static_cast<uint16_t>(i))) {
             source_ = nullptr;
-            smfTrackInspectorState().reset(0);
+            smfTrackInspectorState().reset(0, 0);
             smfStructuralInspectorState().reset(0, 0);
             captureStructuralAnalysis_ = false;
             return false;
