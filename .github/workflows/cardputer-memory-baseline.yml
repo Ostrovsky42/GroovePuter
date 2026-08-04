@@ -7,6 +7,7 @@ on:
       - ".github/workflows/cardputer-memory-baseline.yml"
       - "docs/stages/CARDPUTER_MEMORY_BASELINE.md"
       - "scripts/build_cardputer_memory_baseline.sh"
+      - "scripts/check_cardputer_dram_budget.sh"
       - "scripts/report_cardputer_memory_baseline.sh"
       - "tests/test_cardputer_memory_baseline_source_regressions.py"
 
@@ -39,13 +40,16 @@ jobs:
         run: bash scripts/install_arduino_deps.sh
 
       - name: Compile and report instrumented profile
+        shell: bash
         run: |
+          set -o pipefail
           mkdir -p build
           bash scripts/build_cardputer_memory_baseline.sh \
             "${{ matrix.profile }}" --warnings all \
-            | tee "build/cardputer-memory-baseline-${{ matrix.profile }}.log"
+            2>&1 | tee "build/cardputer-memory-baseline-${{ matrix.profile }}.log"
 
       - name: Upload baseline build log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cardputer-memory-baseline-${{ matrix.profile }}
