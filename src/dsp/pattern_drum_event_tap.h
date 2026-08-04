@@ -103,6 +103,7 @@ public:
 
     void reset() { if (voice_) voice_->reset(); }
     void setSampleRate(float sampleRate) { if (voice_) voice_->setSampleRate(sampleRate); }
+    void beginSample() { if (voice_) voice_->beginSample(); }
 
     void triggerKick(bool accent = false, uint8_t velocity = 100) {
         if (!voice_) return;

@@ -62,37 +62,83 @@ def test_engine_catalog_and_legacy_slot_are_stable() -> None:
 
 
 def test_performance_tools_use_fixed_control_rate_state() -> None:
-    header = (ROOT / "src/input/performance_keyboard.h").read_text(encoding="utf-8")
-    source = (ROOT / "src/input/performance_keyboard.cpp").read_text(encoding="utf-8")
+    keyboard_header = (ROOT / "src/input/performance_keyboard.h").read_text(encoding="utf-8")
+    keyboard_source = (ROOT / "src/input/performance_keyboard.cpp").read_text(encoding="utf-8")
+    page_header = (ROOT / "src/ui/pages/perform_page.h").read_text(encoding="utf-8")
     page = (ROOT / "src/ui/pages/perform_page.cpp").read_text(encoding="utf-8")
 
-    require("ScheduledEvent scheduled_[kMaxScheduledEvents]" in header and
-            "uint8_t generatedNotes_[kMaxGeneratedNotes]" in header,
+    require("ScheduledEvent scheduled_[kMaxScheduledEvents]" in keyboard_header and
+            "uint8_t generatedNotes_[kMaxGeneratedNotes]" in keyboard_header,
             "performance scheduling must use fixed-size storage")
-    require("std::vector" not in header and "std::vector" not in source,
+    require("std::vector" not in keyboard_header and "std::vector" not in keyboard_source,
             "performance scheduling must not allocate")
-    require("MusicalEventSource::Arpeggiator" in source and
-            "router_.route" in source,
+    require("MusicalEventSource::Arpeggiator" in keyboard_source and
+            "router_.route" in keyboard_source,
             "generated notes must use the existing musical event router")
-    require("serviceHardwareClock();" in source and
-            "setTransportPlaying" in source,
+    require("serviceHardwareClock();" in keyboard_source and
+            "setTransportPlaying" in keyboard_source,
             "the existing main-loop heartbeat must service generated events")
-    require("target_ == MusicalEventTarget::Drums" in source,
+    require("target_ == MusicalEventTarget::Drums" in keyboard_source,
             "native drum routing must remain outside melodic transforms")
 
-    for key in ("case 'a':", "case 'c':", "case 'k':", "case 's':",
-                "case 'r':", "case 'e':", "case 'v':"):
-        require(key in page, f"PERFORM must expose {key} tool control")
-    require("if (event.meta)" in page,
-            "musical tools must use Fn/meta and not steal playable letters")
+    require("bool toolsLayerVisible_{false};" in page_header,
+            "PERFORM must keep tool-layer state local to the page")
+    require("event.key == '\\t' || event.scancode == GROOVEPUTER_TAB" in page,
+            "plain Tab must open the local performance tool layer")
+    tool_block = block(page, "bool PerformPage::handleToolKey", "void PerformPage::drawToolsLayer")
+    for key in ("case '1':", "case '2':", "case '3':", "case '4':",
+                "case '5':", "case '6':", "case '7':", "case '8':"):
+        require(key in tool_block, f"PERFORM tool layer must expose {key}")
+    handle_block = block(page, "bool PerformPage::handleEvent", "void PerformPage::drawHeader")
+    require("event.meta" in handle_block and "return false" in handle_block,
+            "Fn/meta commands must pass through instead of stealing global shortcuts")
+    require("Fn A/C/K/S/R/E/V" not in page and "Tab Tools" in page,
+            "PERFORM hints must describe the local tool layer, not conflicting Fn keys")
     require("keyboard_.setTempoBpm(miniAcid_.bpm());" in page,
             "arp/ratchet timing must follow the current GroovePuter BPM")
-    require("Fn A/C/K/S/R/E/V" in page and "Fn+M" not in page,
-            "PERFORM help must expose tools without colliding with the launcher")
+
+
+def test_knob_keys_use_coarse_and_fine_steps() -> None:
+    page = (ROOT / "src/ui/pages/tb303_params_page.cpp").read_text(encoding="utf-8")
+    require("const int directKnobStep = fine ? kKnobStepFine : kKnobStepCoarse;" in page,
+            "direct knob keys must use the existing coarse/fine step policy")
+    for expression in ("setValue(directKnobStep)", "setValue(-directKnobStep)"):
+        require(page.count(expression) == 4,
+                "all four knob key pairs must use the accelerated step")
+
+
+def test_tr606_shared_clock_is_not_owned_by_kick() -> None:
+    header = (ROOT / "src/dsp/mini_drumvoices.h").read_text(encoding="utf-8")
+    source = (ROOT / "src/dsp/mini_drumvoices.cpp").read_text(encoding="utf-8")
+    engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
+    wrapper = (ROOT / "src/dsp/pattern_drum_event_tap.h").read_text(encoding="utf-8")
+    grid = (ROOT / "src/ui/components/drum_sequencer_grid.cpp").read_text(encoding="utf-8")
+
+    require("virtual void beginSample() {}" in header and
+            "void beginSample() override;" in header,
+            "drum engines must expose a once-per-sample shared-state hook")
+    begin_sample = block(source, "void TR606DrumSynthVoice::beginSample()", "void TR606DrumSynthVoice::triggerKick")
+    kick_process = block(source, "float TR606DrumSynthVoice::processKick()", "float TR606DrumSynthVoice::processSnare()")
+    require("updateMetalBank();" in begin_sample and "accentEnv *= accentDecay;" in begin_sample,
+            "TR-606 metal/accent state must advance in beginSample")
+    require("updateMetalBank" not in kick_process,
+            "TR-606 hats/cymbal must not depend on processKick")
+    require("drums->beginSample();" in engine,
+            "the mixer must advance shared drum state before mute-gated voices")
+    require("void beginSample() { if (voice_) voice_->beginSample(); }" in wrapper,
+            "the pattern-publishing drum decorator must forward shared sample state")
+    require("6200.0f" in source and "0.55f" in source and
+            "fast_tanh(metalSignal * 1.6f)" in source,
+            "TR-606 cymbal must retain the tamed 22.05 kHz profile")
+    require('if (voice == 6) return "CY";' in grid and
+            'if (voice == 7) return "--";' in grid,
+            "the 606 grid must label its actual cymbal and unavailable clap lane")
 
 
 if __name__ == "__main__":
     test_wavemorph_is_bounded_and_sample_loop_is_lightweight()
     test_engine_catalog_and_legacy_slot_are_stable()
     test_performance_tools_use_fixed_control_rate_state()
+    test_knob_keys_use_coarse_and_fine_steps()
+    test_tr606_shared_clock_is_not_owned_by_kick()
     print("wavemorph/performance source regressions: PASS")

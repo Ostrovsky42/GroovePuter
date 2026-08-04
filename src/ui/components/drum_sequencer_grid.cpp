@@ -39,6 +39,17 @@ bool stepHasAccent(const DrumPatternSet& patternSet, int step) {
   }
   return false;
 }
+
+const char* drumVoiceLabel(const MiniAcid& miniAcid, int voice) {
+  static const char* const kDefault[NUM_DRUM_VOICES] =
+      {"BD", "SD", "CH", "OH", "MT", "HT", "RS", "CP"};
+  if (voice < 0 || voice >= NUM_DRUM_VOICES) return "--";
+  if (miniAcid.currentDrumEngineName() == "606") {
+    if (voice == 6) return "CY";
+    if (voice == 7) return "--";
+  }
+  return kDefault[voice];
+}
 }  // namespace
 
 DrumSequencerGridComponent::DrumSequencerGridComponent(MiniAcid& mini_acid, Callbacks callbacks)
@@ -88,14 +99,13 @@ void DrumSequencerGridComponent::draw(IGfx& gfx) {
 }
 
 void DrumSequencerGridComponent::drawMinimalStyle(IGfx& gfx, const GridLayout& layout) {
-  const char* voiceLabels[NUM_DRUM_VOICES] = {"BD", "SD", "CH", "OH", "MT", "HT", "RS", "CP"};
   const DrumPatternSet& patternSet = mini_acid_.sceneManager().getCurrentDrumPattern();
   for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
     int labelStripeH = layout.stripe_h;
     if (labelStripeH < 3) labelStripeH = 3;
     int ly = layout.grid_y + v * labelStripeH + (labelStripeH - gfx.fontHeight()) / 2;
     gfx.setTextColor(COLOR_LABEL);
-    gfx.drawText(layout.bounds_x, ly, voiceLabels[v]);
+    gfx.drawText(layout.bounds_x, ly, drumVoiceLabel(mini_acid_, v));
   }
   gfx.setTextColor(COLOR_WHITE);
 
@@ -155,12 +165,11 @@ void DrumSequencerGridComponent::drawMinimalStyle(IGfx& gfx, const GridLayout& l
 }
 
 void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayout& layout) {
-    const char* voiceLabels[NUM_DRUM_VOICES] = {"BD", "SD", "CH", "OH", "MT", "HT", "RS", "CP"};
-    const DrumPatternSet& patternSet = mini_acid_.sceneManager().getCurrentDrumPattern();
+      const DrumPatternSet& patternSet = mini_acid_.sceneManager().getCurrentDrumPattern();
     for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
         int ly = layout.grid_y + v * layout.stripe_h + (layout.stripe_h - gfx.fontHeight()) / 2;
         gfx.setTextColor(IGfxColor(RetroTheme::TEXT_SECONDARY));
-        gfx.drawText(layout.bounds_x, ly, voiceLabels[v]);
+        gfx.drawText(layout.bounds_x, ly, drumVoiceLabel(mini_acid_, v));
     }
 
     int cursorStep = callbacks_.cursorStep ? callbacks_.cursorStep() : 0;
@@ -211,12 +220,11 @@ void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayo
 }
 
 void DrumSequencerGridComponent::drawAmberStyle(IGfx& gfx, const GridLayout& layout) {
-    const char* voiceLabels[NUM_DRUM_VOICES] = {"BD", "SD", "CH", "OH", "MT", "HT", "RS", "CP"};
-    const DrumPatternSet& patternSet = mini_acid_.sceneManager().getCurrentDrumPattern();
+      const DrumPatternSet& patternSet = mini_acid_.sceneManager().getCurrentDrumPattern();
     for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
         int ly = layout.grid_y + v * layout.stripe_h + (layout.stripe_h - gfx.fontHeight()) / 2;
         gfx.setTextColor(IGfxColor(AmberTheme::TEXT_SECONDARY));
-        gfx.drawText(layout.bounds_x, ly, voiceLabels[v]);
+        gfx.drawText(layout.bounds_x, ly, drumVoiceLabel(mini_acid_, v));
     }
 
     int cursorStep = callbacks_.cursorStep ? callbacks_.cursorStep() : 0;

@@ -593,6 +593,8 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
     }
   }
 
+  const int directKnobStep = fine ? kKnobStepFine : kKnobStepCoarse;
+
   switch (lowerKey) {
     case 't':
       if (isTb303Engine()) {
@@ -623,14 +625,14 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
       }
       return true;
 
-    case 'a': if (cutoff_knob_) cutoff_knob_->setValue(1); return true;
-    case 'z': if (cutoff_knob_) cutoff_knob_->setValue(-1); return true;
-    case 's': if (resonance_knob_) resonance_knob_->setValue(1); return true;
-    case 'x': if (resonance_knob_) resonance_knob_->setValue(-1); return true;
-    case 'd': if (env_amount_knob_) env_amount_knob_->setValue(1); return true;
-    case 'c': if (env_amount_knob_) env_amount_knob_->setValue(-1); return true;
-    case 'f': if (env_decay_knob_) env_decay_knob_->setValue(1); return true;
-    case 'v': if (env_decay_knob_) env_decay_knob_->setValue(-1); return true;
+    case 'a': if (cutoff_knob_) cutoff_knob_->setValue(directKnobStep); return true;
+    case 'z': if (cutoff_knob_) cutoff_knob_->setValue(-directKnobStep); return true;
+    case 's': if (resonance_knob_) resonance_knob_->setValue(directKnobStep); return true;
+    case 'x': if (resonance_knob_) resonance_knob_->setValue(-directKnobStep); return true;
+    case 'd': if (env_amount_knob_) env_amount_knob_->setValue(directKnobStep); return true;
+    case 'c': if (env_amount_knob_) env_amount_knob_->setValue(-directKnobStep); return true;
+    case 'f': if (env_decay_knob_) env_decay_knob_->setValue(directKnobStep); return true;
+    case 'v': if (env_decay_knob_) env_decay_knob_->setValue(-directKnobStep); return true;
 
     case 'n':
       withAudioGuard([&]() { mini_acid_.toggleDistortion303(voice_index_); });
