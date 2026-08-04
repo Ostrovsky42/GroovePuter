@@ -1,0 +1,132 @@
+name: Apply synth MORE arrow mapping fix
+
+on:
+  push:
+    branches:
+      - agent/compact-synth-controls
+    paths:
+      - .github/workflows/zz_apply_synth_more_arrow_fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/compact-synth-controls
+          fetch-depth: 0
+
+      - name: Apply focused source, regression, and documentation changes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source_path = Path("src/ui/pages/tb303_params_page.cpp")
+          source = source_path.read_text(encoding="utf-8")
+
+          old_footer = '''    UI::drawStandardFooter(gfx,
+                           "[TAB]MAIN [L/R]ROW [U/D]CHANGE",
+                           "TYPE OSC FLT DST DLY");
+'''
+          new_footer = '''    UI::drawStandardFooter(gfx,
+                           "[TAB]MAIN [U/D]ROW [L/R]CHANGE",
+                           "TYPE OSC FLT DST DLY");
+'''
+          if source.count(old_footer) != 1:
+              raise SystemExit("MORE footer mapping did not match exactly once")
+          source = source.replace(old_footer, new_footer, 1)
+
+          old_nav = '''  const int nav = UIInput::navCode(ui_event);
+  const bool fine = ui_event.shift || ui_event.ctrl;
+  switch (nav) {
+    case GROOVEPUTER_LEFT: focusPrev(); return true;
+    case GROOVEPUTER_RIGHT: focusNext(); return true;
+    case GROOVEPUTER_UP: adjustFocusedElement(1, fine); return true;
+    case GROOVEPUTER_DOWN: adjustFocusedElement(-1, fine); return true;
+    default: break;
+  }
+'''
+          new_nav = '''  const int nav = UIInput::navCode(ui_event);
+  const bool fine = ui_event.shift || ui_event.ctrl;
+  if (more_tab_) {
+    // MORE is a vertical list: Up/Down selects a row and Left/Right edits it.
+    switch (nav) {
+      case GROOVEPUTER_UP: focusPrev(); return true;
+      case GROOVEPUTER_DOWN: focusNext(); return true;
+      case GROOVEPUTER_LEFT: adjustFocusedElement(-1, fine); return true;
+      case GROOVEPUTER_RIGHT: adjustFocusedElement(1, fine); return true;
+      default: break;
+    }
+  } else {
+    // MAIN is a horizontal row of knobs: Left/Right selects and Up/Down edits.
+    switch (nav) {
+      case GROOVEPUTER_LEFT: focusPrev(); return true;
+      case GROOVEPUTER_RIGHT: focusNext(); return true;
+      case GROOVEPUTER_UP: adjustFocusedElement(1, fine); return true;
+      case GROOVEPUTER_DOWN: adjustFocusedElement(-1, fine); return true;
+      default: break;
+    }
+  }
+'''
+          if source.count(old_nav) != 1:
+              raise SystemExit("navigation block did not match exactly once")
+          source = source.replace(old_nav, new_nav, 1)
+          source_path.write_text(source, encoding="utf-8")
+
+          test_path = Path("tests/test_wavemorph_performance_source_regressions.py")
+          test = test_path.read_text(encoding="utf-8")
+          test_anchor = '''    require("Unavailable is distinct from an available OFF toggle" in page,
+            "the unavailable/OFF visual distinction must remain documented beside the renderer")
+
+'''
+          test_insert = '''    require("Unavailable is distinct from an available OFF toggle" in page,
+            "the unavailable/OFF visual distinction must remain documented beside the renderer")
+
+    navigation = block(page,
+                       "  const int nav = UIInput::navCode(ui_event);",
+                       "  const char key = ui_event.key;")
+    require("if (more_tab_)" in navigation and
+            "case GROOVEPUTER_UP: focusPrev(); return true;" in navigation and
+            "case GROOVEPUTER_DOWN: focusNext(); return true;" in navigation and
+            "case GROOVEPUTER_LEFT: adjustFocusedElement(-1, fine); return true;" in navigation and
+            "case GROOVEPUTER_RIGHT: adjustFocusedElement(1, fine); return true;",
+            "MORE must use Up/Down for rows and Left/Right for values")
+    require('"[TAB]MAIN [U/D]ROW [L/R]CHANGE"' in page,
+            "the MORE footer must advertise the physical arrow mapping")
+
+'''
+          if test.count(test_anchor) != 1:
+              raise SystemExit("test insertion anchor did not match exactly once")
+          test = test.replace(test_anchor, test_insert, 1)
+          test_path.write_text(test, encoding="utf-8")
+
+          doc_path = Path("docs/stages/COMPACT_SYNTH_CONTROLS_STAGE.md")
+          doc = doc_path.read_text(encoding="utf-8")
+          replacements = {
+              "- `Left/Right` changes the focused row; `Up/Down` changes its value.\n":
+                  "- `Up/Down` changes the focused row; `Left/Right` changes its value.\n",
+              "- [ ] `Left/Right` cycles only controls belonging to the visible tab.\n":
+                  "- [ ] On MAIN, `Left/Right` cycles the four knobs and `Up/Down` changes the focused value.\n",
+              "- [ ] `Up/Down` changes the focused MORE row.\n":
+                  "- [ ] On MORE, `Up/Down` cycles rows and `Left/Right` changes the focused value.\n",
+          }
+          for old, new in replacements.items():
+              if doc.count(old) != 1:
+                  raise SystemExit(f"documentation mapping did not match exactly once: {old!r}")
+              doc = doc.replace(old, new, 1)
+          doc_path.write_text(doc, encoding="utf-8")
+          PY
+
+      - name: Commit product change and remove runner
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/zz_apply_synth_more_arrow_fix.yml
+          git add src/ui/pages/tb303_params_page.cpp \
+                  tests/test_wavemorph_performance_source_regressions.py \
+                  docs/stages/COMPACT_SYNTH_CONTROLS_STAGE.md
+          git commit -m "ui: correct arrow mapping on synth MORE"
+          git push origin HEAD:agent/compact-synth-controls
