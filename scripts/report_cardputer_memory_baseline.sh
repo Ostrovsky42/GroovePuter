@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ELF_PATH="${1:?usage: report_cardputer_memory_baseline.sh <firmware.elf>}"
+IMAGE_KIND="${MEMORY_BASELINE_IMAGE_KIND:-unspecified}"
 PROVISIONAL_GATE_BYTES="${PROVISIONAL_GATE_BYTES:-191488}"
 UNSUPPORTED_GATE_BYTES="${UNSUPPORTED_GATE_BYTES:-122880}"
 
@@ -66,6 +67,7 @@ PROVISIONAL_HEADROOM=$((PROVISIONAL_GATE_BYTES - DRAM_TOTAL))
 UNSUPPORTED_HEADROOM=$((UNSUPPORTED_GATE_BYTES - DRAM_TOTAL))
 
 printf '%s\n' "=== Cardputer memory baseline ==="
+printf 'image kind: %s\n' "${IMAGE_KIND}"
 printf 'ELF: %s\n' "${ELF_PATH}"
 printf '.dram0.data: %d bytes\n' "${DRAM_DATA}"
 printf '.dram0.bss:  %d bytes\n' "${DRAM_BSS}"
@@ -122,8 +124,8 @@ tail -n 40 "${NM_OUTPUT}" \
   | awk '{ size = $2 + 0; printf "  %8d  %s  %s\n", size, $3, $4 }'
 
 printf '\nMachine summary:\n'
-printf 'MEMORY_BASELINE fixed=%d data=%d bss=%d provisional_gate=%d provisional_headroom=%+d unsupported_gate=%d unsupported_headroom=%+d\n' \
-  "${DRAM_TOTAL}" "${DRAM_DATA}" "${DRAM_BSS}" \
+printf 'MEMORY_BASELINE kind=%s fixed=%d data=%d bss=%d provisional_gate=%d provisional_headroom=%+d unsupported_gate=%d unsupported_headroom=%+d\n' \
+  "${IMAGE_KIND}" "${DRAM_TOTAL}" "${DRAM_DATA}" "${DRAM_BSS}" \
   "${PROVISIONAL_GATE_BYTES}" "${PROVISIONAL_HEADROOM}" \
   "${UNSUPPORTED_GATE_BYTES}" "${UNSUPPORTED_HEADROOM}"
 
