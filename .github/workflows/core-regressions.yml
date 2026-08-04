@@ -35,6 +35,24 @@ jobs:
           start = workflow.index(marker) + len(marker)
           end = workflow.index("\n          PY\n", start)
           payload = textwrap.dedent(workflow[start:end])
+          duplicate = '''replace_once(
+              "GroovePuter.ino",
+              "fixed internal Cardputer ADV heap.",
+              "DRAM-only Cardputer ADV heap.",
+          )
+          '''
+          if payload.count(duplicate) != 2:
+              raise SystemExit('unexpected duplicate boot-comment repair payload')
+          payload = payload.replace(duplicate, '', 2)
+          payload += '''
+          p = Path("GroovePuter.ino")
+          text = p.read_text(encoding="utf-8")
+          if text.count("fixed internal Cardputer ADV heap.") != 2:
+              raise SystemExit("unexpected Cardputer heap comment count")
+          p.write_text(text.replace("fixed internal Cardputer ADV heap.",
+                                    "DRAM-only Cardputer ADV heap.", 2),
+                       encoding="utf-8")
+          '''
           exec(compile(payload, 'agent-scene-storage-repair', 'exec'))
           PY
 
