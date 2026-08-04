@@ -1,0 +1,62 @@
+name: Capture Cardputer DRAM diagnostics
+
+on:
+  push:
+    branches:
+      - agent/fix-cardputer-dram-scene-storage
+
+permissions:
+  contents: write
+
+jobs:
+  capture:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install pinned Arduino dependencies
+        run: ./scripts/install_arduino_deps.sh
+
+      - name: Build Cardputer ADV firmware
+        run: ./scripts/build.sh --warnings all
+
+      - name: Capture sections and symbols
+        shell: bash
+        run: |
+          set -euo pipefail
+          ELF="build/cardputer-adv-current/GroovePuter.ino.elf"
+          SIZE_TOOL="$(find "$HOME/.arduino15/packages" -type f -name xtensa-esp32s3-elf-size | head -n 1)"
+          NM_TOOL="${SIZE_TOOL%-size}-nm"
+          OBJDUMP_TOOL="${SIZE_TOOL%-size}-objdump"
+          mkdir -p docs/diagnostics
+          {
+            echo "ELF=${ELF}"
+            echo "SIZE_TOOL=${SIZE_TOOL}"
+            echo
+            echo "=== SUMMARY ==="
+            "${SIZE_TOOL}" "${ELF}"
+            echo
+            echo "=== ALL SECTIONS ==="
+            "${SIZE_TOOL}" -A "${ELF}"
+            echo
+            echo "=== SCENE SYMBOLS ==="
+            "${NM_TOOL}" --print-size --size-sort --radix=d "${ELF}" | grep -E 'g_mainScene|s_tempLoadScene' || true
+            echo
+            echo "=== LARGEST SYMBOLS ==="
+            "${NM_TOOL}" --print-size --size-sort --radix=d "${ELF}" | tail -n 180
+            echo
+            echo "=== DRAM/EXT-RAM SECTION HEADERS ==="
+            "${OBJDUMP_TOOL}" -h "${ELF}" | grep -E 'dram|ext_ram|external|bss|data' || true
+          } > docs/diagnostics/cardputer-dram-current.txt
+
+      - name: Commit diagnostics
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/diagnostics/cardputer-dram-current.txt
+          git commit -m "chore: capture Cardputer DRAM diagnostics"
+          git push origin HEAD:agent/fix-cardputer-dram-scene-storage
