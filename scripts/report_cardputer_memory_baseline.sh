@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ELF_PATH="${1:?usage: report_cardputer_memory_baseline.sh <firmware.elf>}"
-CURRENT_GATE_BYTES="${CURRENT_GATE_BYTES:-122880}"
-PREVIOUS_GATE_BYTES="${PREVIOUS_GATE_BYTES:-191488}"
+PROVISIONAL_GATE_BYTES="${PROVISIONAL_GATE_BYTES:-191488}"
+UNSUPPORTED_GATE_BYTES="${UNSUPPORTED_GATE_BYTES:-122880}"
 
 if [[ ! -f "${ELF_PATH}" ]]; then
   echo "Firmware ELF not found: ${ELF_PATH}" >&2
@@ -33,18 +33,18 @@ read -r DRAM_DATA DRAM_BSS < <(
   '
 )
 DRAM_TOTAL=$((DRAM_DATA + DRAM_BSS))
-CURRENT_DELTA=$((CURRENT_GATE_BYTES - DRAM_TOTAL))
-PREVIOUS_DELTA=$((PREVIOUS_GATE_BYTES - DRAM_TOTAL))
+PROVISIONAL_HEADROOM=$((PROVISIONAL_GATE_BYTES - DRAM_TOTAL))
+UNSUPPORTED_HEADROOM=$((UNSUPPORTED_GATE_BYTES - DRAM_TOTAL))
 
 printf '%s\n' "=== Cardputer memory baseline ==="
 printf 'ELF: %s\n' "${ELF_PATH}"
 printf '.dram0.data: %d bytes\n' "${DRAM_DATA}"
 printf '.dram0.bss:  %d bytes\n' "${DRAM_BSS}"
 printf 'fixed DRAM:  %d bytes\n' "${DRAM_TOTAL}"
-printf 'current gate:  %d bytes (delta %+d)\n' \
-  "${CURRENT_GATE_BYTES}" "${CURRENT_DELTA}"
-printf 'previous gate: %d bytes (delta %+d)\n' \
-  "${PREVIOUS_GATE_BYTES}" "${PREVIOUS_DELTA}"
+printf 'provisional gate: %d bytes (headroom %+d)\n' \
+  "${PROVISIONAL_GATE_BYTES}" "${PROVISIONAL_HEADROOM}"
+printf 'unsupported 122880 reference: %d bytes (headroom %+d)\n' \
+  "${UNSUPPORTED_GATE_BYTES}" "${UNSUPPORTED_HEADROOM}"
 
 NM_OUTPUT="$(mktemp)"
 cleanup() {
@@ -91,11 +91,12 @@ tail -n 40 "${NM_OUTPUT}" \
   | awk '{ printf "  %8s  %s  %s\n", $2, $3, $4 }'
 
 printf '\nMachine summary:\n'
-printf 'MEMORY_BASELINE fixed=%d data=%d bss=%d current_gate=%d current_delta=%+d previous_gate=%d previous_delta=%+d\n' \
+printf 'MEMORY_BASELINE fixed=%d data=%d bss=%d provisional_gate=%d provisional_headroom=%+d unsupported_gate=%d unsupported_headroom=%+d\n' \
   "${DRAM_TOTAL}" "${DRAM_DATA}" "${DRAM_BSS}" \
-  "${CURRENT_GATE_BYTES}" "${CURRENT_DELTA}" \
-  "${PREVIOUS_GATE_BYTES}" "${PREVIOUS_DELTA}"
+  "${PROVISIONAL_GATE_BYTES}" "${PROVISIONAL_HEADROOM}" \
+  "${UNSUPPORTED_GATE_BYTES}" "${UNSUPPORTED_HEADROOM}"
 
-# This script is deliberately non-gating. The existing mandatory gate remains
-# responsible for failing the product build until the baseline decision is made.
+# This script is deliberately non-gating. The mandatory gate is restored only
+# to the provisional pre-122880 ceiling until profile-specific runtime evidence
+# supports a replacement policy.
 exit 0
