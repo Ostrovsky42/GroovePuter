@@ -30,9 +30,14 @@ assert 'static_cast<uint64_t>(source.activeTicks)' in structural_h
 assert 'smfTrackInspectorState().freeze();' in structural_h
 assert 'union Storage' not in structural_h
 assert 'std::atomic<uint32_t> publishedWords_' in structural_h
+
 assert 'std::atomic<uint16_t> state_' in track_h
 assert 'kFrozenBit' in track_h
 assert 'if ((state & kFrozenBit) != 0u) return;' in track_h
+assert 'nameWords' not in track_h
+assert 'sizeof(SmfTrackInspectorState) <= 260' in track_h
+assert 'programLabel(output.firstProgram)' in track_h
+assert 'case 33: return "Finger Bass";' in track_h
 
 assert 'class SmfPlayerPageBase' in page_h
 assert 'class SmfPlayerPage final : public SmfPlayerPageBase' in page_h
@@ -43,6 +48,8 @@ assert 'RESEMBLES' in page_wrapper
 assert 'PARTIAL 64' in page_wrapper
 assert 'LOOP --' in page_wrapper
 assert 'K is intentionally not a MIDI mute command' in page_wrapper
+assert '1-9 Hot ENT Sel A AllOn' in page_wrapper
+assert 'ENT/K' not in page_wrapper
 assert 'TinyUSB' not in page_wrapper and 'USBMIDI' not in page_wrapper
 assert 'Enter/K' not in doc
 assert '`K` is not a MIDI mute command' in doc
