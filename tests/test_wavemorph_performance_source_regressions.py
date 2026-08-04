@@ -107,13 +107,21 @@ def test_knob_keys_use_coarse_and_fine_steps() -> None:
                 "all four knob key pairs must use the accelerated step")
 
 
-
 def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
     header = (ROOT / "src/ui/pages/tb303_params_page.h").read_text(encoding="utf-8")
     page = (ROOT / "src/ui/pages/tb303_params_page.cpp").read_text(encoding="utf-8")
 
-    require("kMainKnobRadius = 13" in page and "kRadius = 18" not in page,
-            "the four MAIN synth knobs must retain the compact radius")
+    require("kMainKnobRadius = 18" in page and "kMainKnobRadius = 13" not in page,
+            "MAIN must spend the freed vertical budget on radius-18 performance knobs")
+    require("kSegmentHeight = 14" in page and
+            "knobRowY = content.y + 45" in page and
+            "keyY = content.y + 75" in page and
+            "const int y = content.y + 89" in page,
+            "the documented 103-pixel MAIN vertical budget must remain explicit")
+    for marker in ("tab segment ends at +15", "value text starts at +17",
+                   "R18 circle spans +27..+63", "label starts at +67",
+                   "key hint starts at +75", "summary starts at +89"):
+        require(marker in page, f"MAIN layout budget must document {marker}")
     require('drawSegment(x, "MAIN", !more_tab_)' in page and
             '"MORE", more_tab_' in page and '"TAB >"' in page,
             "MAIN/MORE discoverability must be visible on the parameter page")
@@ -140,6 +148,22 @@ def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
             "setEnabled(filterAvailable)" in page and
             'setValue("--")' in page,
             "unavailable engine parameters must remain visible but disabled")
+
+    disabled_render = block(page,
+                            "    if (!enabled_) {",
+                            "    if (style_ == Style::Stepper)")
+    require('gfx.textWidth("--")' in disabled_render and "return;" in disabled_render and
+            "drawRect" not in disabled_render and "fillCircle" not in disabled_render,
+            "an unavailable row must render only a dim marker, never a switch or arrows")
+    toggle_render = block(page,
+                          "    constexpr int kTrackWidth = 30;",
+                          "\n  }\n\n private:")
+    require("gfx.drawRect(trackX, trackY, kTrackWidth, kTrackHeight, switchColor)" in toggle_render and
+            "trackX + 5" in toggle_render and "gfx.fillCircle" in toggle_render,
+            "an available OFF toggle must retain its outlined track and left thumb")
+    require("Unavailable is distinct from an available OFF toggle" in page,
+            "the unavailable/OFF visual distinction must remain documented beside the renderer")
+
     require("Both effects are per-voice post-engine stages" in page and
             "distortion_control_->setEnabled(true)" in page and
             "delay_control_->setEnabled(true)" in page,
