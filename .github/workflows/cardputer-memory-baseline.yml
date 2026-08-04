@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Guard baseline boundaries
         run: python3 tests/test_cardputer_memory_baseline_source_regressions.py
 
@@ -31,6 +33,8 @@ jobs:
         image-kind: [product, runtime]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Install Arduino CLI
         uses: arduino/setup-arduino-cli@v2
