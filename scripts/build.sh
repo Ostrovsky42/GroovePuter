@@ -5,7 +5,7 @@ set -euo pipefail
 # GroovePuter targets the DRAM-only configuration and huge_app partition.
 # USB-OTG/TinyUSB plus CDC-on-boot keeps Serial/upload available while adding
 # a class-compliant USB-MIDI interface to the native ESP32-S3 USB port.
-FQBN="${FQBN:-m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc}"
+FQBN="${FQBN:-m5stack:esp32:m5stack_cardputer:PSRAM=enabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc}"
 ARDUINO_CLI="${ARDUINO_CLI:-arduino-cli}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"

@@ -8,6 +8,18 @@
 
 #include <memory>
 
+#if defined(ARDUINO)
+#include <esp_attr.h>
+#endif
+
+#if defined(ARDUINO) && defined(BOARD_HAS_PSRAM)
+#define GROOVEPUTER_SCENE_EXT_BSS EXT_RAM_BSS_ATTR
+#elif defined(ARDUINO)
+#error "Cardputer firmware requires PSRAM for Scene storage"
+#else
+#define GROOVEPUTER_SCENE_EXT_BSS
+#endif
+
 namespace {
 int clampIndex(int value, int maxExclusive) {
   if (value < 0) return 0;
@@ -1485,7 +1497,7 @@ const std::string& SceneJsonObserver::synthEngineName(int synthIdx) const {
 GrooveboxMode SceneJsonObserver::mode() const { return target_.mode; }
 
 // Main processing scene (static to avoid heap fragmentation)
-static Scene g_mainScene;
+static GROOVEPUTER_SCENE_EXT_BSS Scene g_mainScene;
 
 SceneManager::SceneManager() : scene_(&g_mainScene) {
   PatternPagingService::ensureDirectory();
@@ -2856,7 +2868,7 @@ bool SceneManager::loadScene(const std::string& json) {
 }
 
 // Static buffer to avoid heap fragmentation during loading
-static Scene s_tempLoadScene;
+static GROOVEPUTER_SCENE_EXT_BSS Scene s_tempLoadScene;
 
 Scene& sceneTransactionScratch() {
   return s_tempLoadScene;

@@ -478,3 +478,4 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${BUILD_DIR}/test_tr606_drum_voice"
 
+python3 tests/test_cardputer_dram_storage_source_regressions.py
