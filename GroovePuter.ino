@@ -706,6 +706,7 @@ void loop() {
     bool dispatched = false;
     bool sawEdge = false;
     bool armedRepeat = false;
+    uint16_t dispatchedDigitMask = 0;
 
     for (auto hid : ks.hid_keys) {
       if (!GroovePuterInput::shouldDispatchHid(
@@ -754,6 +755,7 @@ void loop() {
         shouldSend = true;
       } else if (hid >= 0x1E && hid <= 0x27) {
         evt.key = hid == 0x27 ? '0' : static_cast<char>('1' + (hid - 0x1E));
+        dispatchedDigitMask |= GroovePuterInput::digitDispatchMask(evt.key);
         shouldSend = true;
       } else if (applyCtrlLetter(ks, hid, evt)) {
         mapHidLetterScancode(hid, evt.scancode);
@@ -789,7 +791,10 @@ void loop() {
 
         if (inputChar != 0) {
           const unsigned char u = static_cast<unsigned char>(inputChar);
-          if (u >= '0' && u <= '9') continue;
+          if (GroovePuterInput::wordDigitAlreadyDispatched(
+                  inputChar, dispatchedDigitMask)) {
+            continue;
+          }
           if (u == '\n' || u == '\r' || u == '\b' || u == '\t') continue;
 
           if (ks.ctrl || ks.alt) {
