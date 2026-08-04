@@ -825,7 +825,7 @@ void TB303ParamsPage::draw(IGfx& gfx) {
                            "A/Z S/X D/C F/V [CTRL]FINE");
   } else {
     UI::drawStandardFooter(gfx,
-                           "[TAB]MAIN [L/R]ROW [U/D]CHANGE",
+                           "[TAB]MAIN [U/D]ROW [L/R]CHANGE",
                            "TYPE OSC FLT DST DLY");
   }
 }
@@ -848,12 +848,24 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
 
   const int nav = UIInput::navCode(ui_event);
   const bool fine = ui_event.shift || ui_event.ctrl;
-  switch (nav) {
-    case GROOVEPUTER_LEFT: focusPrev(); return true;
-    case GROOVEPUTER_RIGHT: focusNext(); return true;
-    case GROOVEPUTER_UP: adjustFocusedElement(1, fine); return true;
-    case GROOVEPUTER_DOWN: adjustFocusedElement(-1, fine); return true;
-    default: break;
+  if (more_tab_) {
+    // MORE is a vertical list: Up/Down selects a row and Left/Right edits it.
+    switch (nav) {
+      case GROOVEPUTER_UP: focusPrev(); return true;
+      case GROOVEPUTER_DOWN: focusNext(); return true;
+      case GROOVEPUTER_LEFT: adjustFocusedElement(-1, fine); return true;
+      case GROOVEPUTER_RIGHT: adjustFocusedElement(1, fine); return true;
+      default: break;
+    }
+  } else {
+    // MAIN is a horizontal row of knobs: Left/Right selects and Up/Down edits.
+    switch (nav) {
+      case GROOVEPUTER_LEFT: focusPrev(); return true;
+      case GROOVEPUTER_RIGHT: focusNext(); return true;
+      case GROOVEPUTER_UP: adjustFocusedElement(1, fine); return true;
+      case GROOVEPUTER_DOWN: adjustFocusedElement(-1, fine); return true;
+      default: break;
+    }
   }
 
   const char key = ui_event.key;
