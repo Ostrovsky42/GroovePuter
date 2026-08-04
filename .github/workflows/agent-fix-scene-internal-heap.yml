@@ -1,0 +1,469 @@
+name: Agent repair Scene storage without PSRAM
+
+on:
+  push:
+    branches:
+      - agent/fix-cardputer-dram-scene-storage
+    paths:
+      - .github/workflows/agent-fix-scene-internal-heap.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-cardputer-dram-scene-storage
+          fetch-depth: 0
+
+      - name: Apply bounded internal-heap Scene storage repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, found {count}")
+              p.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+          replace_once(
+              "scripts/build.sh",
+              """# Cardputer and Cardputer-Adv use the M5Stack M5Cardputer board option.
+          # GroovePuter targets Cardputer ADV with PSRAM-backed non-realtime Scene
+          # storage while keeping the fixed internal DRAM gate and huge_app partition.
+          # USB-OTG/TinyUSB plus CDC-on-boot keeps Serial/upload available while adding
+          # a class-compliant USB-MIDI interface to the native ESP32-S3 USB port.
+          FQBN=\"${FQBN:-m5stack:esp32:m5stack_cardputer:PSRAM=enabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc}\"
+          """,
+              """# Cardputer and Cardputer-Adv use the M5Stack M5Cardputer board option.
+          # Cardputer ADV has no external PSRAM. Project Scene state uses an explicitly
+          # bounded internal-heap allocation while the fixed internal DRAM gate remains.
+          # USB-OTG/TinyUSB plus CDC-on-boot keeps Serial/upload available while adding
+          # a class-compliant USB-MIDI interface to the native ESP32-S3 USB port.
+          FQBN=\"${FQBN:-m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc}\"
+          """,
+          )
+
+          replace_once(
+              "scripts/build_seqtrak_midi_only.sh",
+              "PSRAM=enabled,PartitionScheme=huge_app",
+              "PSRAM=disabled,PartitionScheme=huge_app",
+          )
+
+          replace_once(
+              "src/dsp/miniacid_engine.cpp",
+              """void MiniAcid::preallocateConstrainedDelayBuffers() {
+            // Cardputer keeps its established constrained audio buffers in internal RAM.
+            // Reserve both before SD and SMF allocations split the largest free block.
+            delay303.init(0.1f);
+            delay3032.init(0.1f);
+          }
+          
+          
+          void MiniAcid::init() {
+            bool hasPsram = false;
+          #if defined(ESP32) || defined(ESP_PLATFORM)
+            // Keep Cardputer audio behavior unchanged: its PSRAM is enabled only
+            // for explicitly capability-allocated non-realtime storage in this stage.
+            size_t freePsram = ESP.getFreePsram();
+          #if defined(ARDUINO_M5STACK_CARDPUTER)
+            hasPsram = false;
+            LOG_DEBUG(\"  - MiniAcid::init: freePsram=%u, constrained Cardputer audio profile\",
+                      (unsigned)freePsram);
+          #else
+            hasPsram = (freePsram > 512 * 1024);
+            LOG_DEBUG(\"  - MiniAcid::init: freePsram=%u, hasPsram=%d\",
+                      (unsigned)freePsram, hasPsram);
+          #endif
+          #endif
+          """,
+              """void MiniAcid::preallocateConstrainedDelayBuffers() {
+            // Cardputer ADV has no PSRAM. Reserve both equal-sized vectors before SD and
+            // SMF task allocations split the remaining internal heap into small blocks.
+            delay303.init(0.1f);
+            delay3032.init(0.1f);
+          }
+          
+          
+          void MiniAcid::init() {
+            bool hasPsram = false;
+          #if defined(ESP32) || defined(ESP_PLATFORM)
+            // Check for ACTUAL usable PSRAM, not just if it was detected
+            // psramFound() can return true even if init failed
+            size_t freePsram = ESP.getFreePsram();
+            hasPsram = (freePsram > 512 * 1024); // Require at least 512KB usable
+            LOG_DEBUG(\"  - MiniAcid::init: freePsram=%u, hasPsram=%d\", (unsigned)freePsram, hasPsram);
+          #endif
+          """,
+          )
+
+          replace_once(
+              "GroovePuter.ino",
+              """  markBootStage(12, \"before Scene PSRAM allocation\");
+            if (!g_miniAcidInstance.sceneManager().initializeSceneStorage()) {
+              Serial.println(\"[FATAL] Scene PSRAM allocation failed\");
+              markBootStage(912, \"fatal-scene-psram-allocation\");
+              while (true) { delay(1000); }
+            }
+            markBootStage(13, \"after Scene PSRAM allocation\");
+            logHeapCaps(\"after-scene-psram\");
+          """,
+              """  markBootStage(12, \"before Scene internal allocation\");
+            if (!g_miniAcidInstance.sceneManager().initializeSceneStorage()) {
+              Serial.println(\"[FATAL] Scene internal allocation failed\");
+              markBootStage(912, \"fatal-scene-internal-allocation\");
+              auto& display = M5Cardputer.Display;
+              display.fillScreen(TFT_BLACK);
+              display.setTextColor(TFT_RED, TFT_BLACK);
+              display.setTextSize(1);
+              display.setCursor(8, 8);
+              display.println(\"FATAL: SCENE RAM\");
+              display.println(\"BOOT STAGE 912\");
+              while (true) { delay(1000); }
+            }
+            markBootStage(13, \"after Scene internal allocation\");
+            logHeapCaps(\"after-scene-internal\");
+          """,
+          )
+          replace_once(
+              "GroovePuter.ino",
+              "fixed internal Cardputer ADV heap.",
+              "DRAM-only Cardputer ADV heap.",
+          )
+          replace_once(
+              "GroovePuter.ino",
+              "fixed internal Cardputer ADV heap.",
+              "DRAM-only Cardputer ADV heap.",
+          )
+
+          replace_once(
+              "scenes.h",
+              """// Shared transaction storage for scene parsing and pattern-page validation.
+          // Both operations run synchronously through the UI/boot path, and neither may
+          // modify the active scene until its input has been fully validated.
+          Scene& sceneTransactionScratch();
+          """,
+              """// Bounded transaction storage for scene parsing and pattern-page validation.
+          // The scratch Scene exists only for the synchronous transaction and is released
+          // before control returns to the UI/boot path.
+          class SceneScratchLease {
+          public:
+            SceneScratchLease();
+            ~SceneScratchLease();
+            SceneScratchLease(const SceneScratchLease&) = delete;
+            SceneScratchLease& operator=(const SceneScratchLease&) = delete;
+          
+            explicit operator bool() const { return scene_ != nullptr; }
+            Scene* get() const { return scene_; }
+            Scene& operator*() const { return *scene_; }
+            Scene* operator->() const { return scene_; }
+          
+          private:
+            Scene* scene_ = nullptr;
+          };
+          """,
+          )
+
+          replace_once(
+              "scenes.cpp",
+              """namespace {
+          struct SceneStorageBlock {
+            Scene active;
+            Scene transactionScratch;
+          };
+          
+          #if defined(ESP32) || defined(ESP_PLATFORM)
+          SceneStorageBlock* g_sceneStorageBlock = nullptr;
+          
+          bool ensureSceneStorageBlock() {
+            if (g_sceneStorageBlock) return true;
+            void* memory = heap_caps_malloc(
+                sizeof(SceneStorageBlock), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+            if (!memory) return false;
+            g_sceneStorageBlock = new (memory) SceneStorageBlock();
+            return true;
+          }
+          
+          SceneStorageBlock* sceneStorageBlock() {
+            return g_sceneStorageBlock;
+          }
+          #else
+          SceneStorageBlock g_sceneStorageBlock;
+          
+          bool ensureSceneStorageBlock() {
+            return true;
+          }
+          
+          SceneStorageBlock* sceneStorageBlock() {
+            return &g_sceneStorageBlock;
+          }
+          #endif
+          }  // namespace
+          
+          SceneManager::SceneManager() : scene_(nullptr) {
+          #if !defined(ESP32) && !defined(ESP_PLATFORM)
+            initializeSceneStorage();
+          #endif
+            PatternPagingService::ensureDirectory();
+          }
+          
+          bool SceneManager::initializeSceneStorage() {
+            if (!ensureSceneStorageBlock()) return false;
+            scene_ = &sceneStorageBlock()->active;
+            return true;
+          }
+          """,
+              """namespace {
+          #if defined(ESP32) || defined(ESP_PLATFORM)
+          Scene* g_mainScene = nullptr;
+          
+          Scene* allocateInternalScene() {
+            void* memory = heap_caps_malloc(
+                sizeof(Scene), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+            return memory ? new (memory) Scene() : nullptr;
+          }
+          
+          void releaseInternalScene(Scene* scene) {
+            if (!scene) return;
+            scene->~Scene();
+            heap_caps_free(scene);
+          }
+          #else
+          Scene g_mainScene;
+          
+          Scene* allocateInternalScene() {
+            return new (std::nothrow) Scene();
+          }
+          
+          void releaseInternalScene(Scene* scene) {
+            delete scene;
+          }
+          #endif
+          }  // namespace
+          
+          SceneScratchLease::SceneScratchLease() : scene_(allocateInternalScene()) {}
+          
+          SceneScratchLease::~SceneScratchLease() {
+            releaseInternalScene(scene_);
+          }
+          
+          SceneManager::SceneManager()
+          #if defined(ESP32) || defined(ESP_PLATFORM)
+              : scene_(nullptr)
+          #else
+              : scene_(&g_mainScene)
+          #endif
+          {
+            PatternPagingService::ensureDirectory();
+          }
+          
+          bool SceneManager::initializeSceneStorage() {
+          #if defined(ESP32) || defined(ESP_PLATFORM)
+            if (scene_) return true;
+            scene_ = allocateInternalScene();
+            g_mainScene = scene_;
+            return scene_ != nullptr;
+          #else
+            return true;
+          #endif
+          }
+          """,
+          )
+
+          replace_once(
+              "scenes.cpp",
+              """Scene& sceneTransactionScratch() {
+            SceneStorageBlock* storage = sceneStorageBlock();
+            if (!storage) std::abort();
+            return storage->transactionScratch;
+          }
+          
+          bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
+          #ifdef ARDUINO
+            Serial.println(\"  - loadSceneEventedWithReader: Using static loading buffer...\");
+          #endif
+            
+            // Reuse the static buffer
+            Scene* loaded = &sceneTransactionScratch();
+            
+            // Clear it before use
+            clearSceneData(*loaded);
+          """,
+              """bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
+          #ifdef ARDUINO
+            Serial.println(\"  - loadSceneEventedWithReader: Allocating bounded transaction Scene...\");
+          #endif
+          
+            SceneScratchLease scratch;
+            if (!scratch) {
+          #ifdef ARDUINO
+              Serial.println(\"ERROR: Scene transaction allocation failed\");
+          #endif
+              return false;
+            }
+            Scene* loaded = scratch.get();
+            clearSceneData(*loaded);
+          """,
+          )
+
+          replace_once(
+              "src/audio/pattern_paging.cpp",
+              """    Scene& staging = sceneTransactionScratch();
+              if (!wrote || !readAndValidatePage(temporaryPath, staging)) {
+                  SD.remove(temporaryPath.c_str());
+                  return false;
+              }
+          """,
+              """    SceneScratchLease scratch;
+              if (!scratch) {
+                  SD.remove(temporaryPath.c_str());
+                  return false;
+              }
+              Scene& staging = *scratch;
+              if (!wrote || !readAndValidatePage(temporaryPath, staging)) {
+                  SD.remove(temporaryPath.c_str());
+                  return false;
+              }
+          """,
+          )
+          replace_once(
+              "src/audio/pattern_paging.cpp",
+              """    Scene& staging = sceneTransactionScratch();
+              bool loaded = readAndValidatePage(mainPath, staging);
+          """,
+              """    SceneScratchLease scratch;
+              if (!scratch) return false;
+              Scene& staging = *scratch;
+              bool loaded = readAndValidatePage(mainPath, staging);
+          """,
+          )
+
+          Path("tests/test_cardputer_dram_storage_source_regressions.py").write_text(r'''#!/usr/bin/env python3
+          from pathlib import Path
+          
+          ROOT = Path.cwd()
+          
+          
+          def require(condition: bool, message: str) -> None:
+              if not condition:
+                  raise AssertionError(message)
+          
+          
+          def main() -> None:
+              scenes = (ROOT / "scenes.cpp").read_text(encoding="utf-8")
+              header = (ROOT / "scenes.h").read_text(encoding="utf-8")
+              paging = (ROOT / "src/audio/pattern_paging.cpp").read_text(encoding="utf-8")
+              sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
+              build = (ROOT / "scripts/build.sh").read_text(encoding="utf-8")
+              midi_only = (ROOT / "scripts/build_seqtrak_midi_only.sh").read_text(encoding="utf-8")
+              budget = (ROOT / "scripts/check_cardputer_dram_budget.sh").read_text(encoding="utf-8")
+          
+              require("bool initializeSceneStorage();" in header,
+                      "SceneManager must expose explicit post-board storage initialization")
+              require("class SceneScratchLease" in header,
+                      "transaction Scene must have bounded RAII lifetime")
+              require("MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT" in scenes,
+                      "Cardputer Scene storage must use byte-addressable internal heap")
+              require("MALLOC_CAP_SPIRAM" not in scenes,
+                      "Cardputer Scene storage must not require unavailable PSRAM")
+              require("Scene* g_mainScene = nullptr;" in scenes,
+                      "fixed BSS must retain only the active Scene pointer")
+              require("static Scene g_mainScene" not in scenes,
+                      "the active Scene must not return to fixed internal BSS")
+              require("static Scene s_tempLoadScene" not in scenes,
+                      "the transaction Scene must not return to fixed internal BSS")
+              require("SceneScratchLease scratch;" in scenes,
+                      "project loading must release transaction storage on every return")
+              require(paging.count("SceneScratchLease scratch;") == 2,
+                      "pattern-page save and load must use bounded transaction storage")
+              require("initializeSceneStorage()" in sketch,
+                      "Cardputer setup must initialize active Scene storage explicitly")
+              require(sketch.index("initializeSceneStorage()") > sketch.index("M5Cardputer.begin(cfg)"),
+                      "active Scene allocation must happen after board initialization")
+              require(sketch.index("initializeSceneStorage()") < sketch.index("g_audioOut.begin"),
+                      "active Scene allocation must happen before realtime startup")
+              require("fatal-scene-internal-allocation" in sketch and "FATAL: SCENE RAM" in sketch,
+                      "allocation failure must be visible without CDC")
+          
+              for name, text in (("normal", build), ("SEQTRAK MIDI-only", midi_only)):
+                  require("PSRAM=disabled" in text, f"{name} Cardputer profile must disable PSRAM")
+                  require("PSRAM=enabled" not in text, f"{name} Cardputer profile must not claim PSRAM")
+          
+              require('MAX_BYTES="${2:-122880}"' in budget,
+                      "the fixed internal DRAM acceptance limit must remain 122880 bytes")
+              print("Cardputer fixed DRAM Scene storage regressions: OK")
+          
+          
+          if __name__ == "__main__":
+              main()
+          '''.replace("          ", ""), encoding="utf-8")
+
+          Path("docs/stages/CARDPUTER_FIXED_DRAM_SCENE_STORAGE.md").write_text('''# Cardputer fixed DRAM Scene storage
+          
+          ## Purpose
+          
+          Restore the mandatory `122880 B` fixed internal-DRAM gate on the real Cardputer ADV without assuming external PSRAM or hiding the failure by raising the limit.
+          
+          ## Hardware constraint
+          
+          Cardputer ADV has no usable external PSRAM. `PSRAM=disabled` remains the build profile for both the normal CDC+MIDI image and the SEQTRAK MIDI-only image.
+          
+          ## Design
+          
+          - Fixed `.dram0.bss` retains only the active `Scene` pointer.
+          - Setup allocates the active `Scene` once from byte-addressable internal heap immediately after `M5Cardputer.begin()` and before I2S, tasks, SD, SMF, USB MIDI, engine initialization, or UI allocation.
+          - Scene parsing and pattern-page validation use `SceneScratchLease`: one temporary internal-heap `Scene` that is released automatically on success and every error return.
+          - No allocation occurs in the audio callback, MIDI dispatcher, SMF scheduler, or other realtime path.
+          - Failure to allocate the active Scene is fatal and is shown directly on the display, including in the MIDI-only profile where CDC output is absent.
+          - Host and SDL retain deterministic static active Scene storage and bounded transaction allocation.
+          - Scene codec, page format, and commit-after-validation semantics are unchanged.
+          
+          This removes one permanent 25,800-byte transaction Scene from the runtime footprint and both 25,800-byte Scene objects from fixed `.dram0.bss`. Peak memory during an explicit load transaction remains bounded and temporary.
+          
+          ## Validation
+          
+          ```bash
+          ./tests/run_host_tests.sh
+          ./scripts/build.sh --warnings all
+          ./scripts/check_cardputer_dram_budget.sh \
+            build/cardputer-adv-current/GroovePuter.ino.elf
+          ./scripts/build_seqtrak_midi_only.sh --warnings all
+          ./scripts/check_cardputer_dram_budget.sh \
+            build/cardputer-adv-seqtrak-midi-only/GroovePuter.ino.elf
+          ```
+          
+          ## Hardware acceptance
+          
+          - Boot normal Cardputer ADV and confirm the UI appears.
+          - Load, save, and reload a project.
+          - Switch pattern pages and verify save/load rollback.
+          - Exercise playback while changing patterns and song position.
+          - Boot the SEQTRAK MIDI-only profile and repeat project load plus MIDI playback.
+          - Confirm no reset, allocation failure, corrupted scene, audio underrun regression, or stuck MIDI note.
+          '''.replace("          ", ""), encoding="utf-8")
+          PY
+
+          python3 tests/test_cardputer_dram_storage_source_regressions.py
+          git diff --check
+
+      - name: Commit repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/agent-fix-scene-internal-heap.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add GroovePuter.ino scenes.cpp scenes.h scripts/build.sh \
+            scripts/build_seqtrak_midi_only.sh src/audio/pattern_paging.cpp \
+            src/dsp/miniacid_engine.cpp tests/test_cardputer_dram_storage_source_regressions.py \
+            docs/stages/CARDPUTER_FIXED_DRAM_SCENE_STORAGE.md
+          git commit -m "fix: allocate Scene storage without PSRAM"
+          git push origin HEAD:agent/fix-cardputer-dram-scene-storage
