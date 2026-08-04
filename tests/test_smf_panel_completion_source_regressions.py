@@ -23,6 +23,7 @@ def main() -> None:
     player_service = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(encoding="utf-8")
     dispatcher = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
     smf_queue = (ROOT / "src/midi/scheduled_smf_midi_event_queue.h").read_text(encoding="utf-8")
+    mute_state = (ROOT / "src/midi/smf_track_mute.h").read_text(encoding="utf-8")
 
     require("midi_file_manager.h" in page_h,
             "SMF page must use the shared bounded MIDI browser")
@@ -63,6 +64,28 @@ def main() -> None:
     guard_block = page_h[page_h.index("template <typename F>"):]
     require("gfx" not in guard_block and "draw" not in guard_block,
             "AudioGuard helper must not contain UI drawing")
+
+    require("drawMuteMixer" in page_h and
+            "void SmfPlayerPage::drawMuteMixer" in page_cpp and
+            '"MIDI MUTES"' in page_cpp,
+            "SMF player must expose a dedicated track mute table")
+    require("muteMixerVisible_" in page_h and
+            "event.key == 'u'" in page_cpp,
+            "U must open and close the dedicated mute table")
+    require("GROOVEPUTER_UP" in page_cpp and
+            "GROOVEPUTER_DOWN" in page_cpp and
+            "GROOVEPUTER_LEFT" in page_cpp and
+            "GROOVEPUTER_RIGHT" in page_cpp,
+            "mute table must be operable from Cardputer arrow keys")
+    require("event.key == 'a'" in page_cpp and
+            '"ALL MIDI TRACKS ON"' in page_cpp,
+            "A must replace unavailable Shift+K for all-tracks-on")
+    require("Shift+K" not in page_cpp and "J/L Track" not in page_cpp,
+            "mute mixer help must not advertise unavailable Shift or J/L navigation")
+    require("bool selectTrack(uint16_t trackIndex)" in mute_state and
+            "std::atomic<uint32_t> mutedMaskLow_" in mute_state and
+            "std::atomic<uint32_t> mutedMaskHigh_" in mute_state,
+            "mute table must keep bounded physical-track selection and atomic masks")
 
     require("queueSongPositionPointerAtCurrentAnchor(targetTick)" in player_service and
             "tryPushSongPositionPointer" in player_service,
