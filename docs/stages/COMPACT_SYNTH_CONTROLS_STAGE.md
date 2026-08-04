@@ -29,6 +29,7 @@ This UI stage expects the consolidated Cardputer word/HID Tab input fix from PR 
 
 - `MAIN / MORE` is always visible at the top; `MAIN` is selected on the page's first entry.
 - Four radius-18 continuous knobs show parameters 1–4.
+- `Left/Right` changes the focused knob; `Up/Down` changes its value.
 - `A/Z`, `S/X`, `D/C`, and `F/V` remain direct real-time controls only on `MAIN`.
 - A bottom summary shows the current engine and the next two parameter values.
 - `DST` and `DLY` badges show current effect state.
@@ -51,7 +52,7 @@ This leaves the performance controls at their original full size without overlap
 
 - Plain `Tab` switches to `MORE`; another plain `Tab` returns to `MAIN`.
 - `TYPE`, parameter 5, parameter 6, `DST`, and `DLY` use five stable full-width rows.
-- `Left/Right` changes the focused row; `Up/Down` changes its value.
+- `Up/Down` changes the focused row; `Left/Right` changes its value.
 - The focused row uses a filled background, not a thin focus frame.
 - Discrete values use `< value >`; effects use track-and-thumb switches.
 - Missing parameter 5/6 rows remain visible, non-focusable, and show only a dim `--`; they do not draw stepper arrows, a switch track, or a thumb.
@@ -64,6 +65,7 @@ This leaves the performance controls at their original full size without overlap
 
 - Plain `Tab` does nothing on hardware: verify the build includes the word-only/HID Tab input consolidation from PR #63.
 - `Fn+Tab` opens `MORE`: verify the page rejects modified Tab events and top-level workflow navigation receives `event.meta`.
+- On MORE, `Left/Right` moves between rows: verify the page uses the tab-specific navigation branch and the footer shows `[U/D]ROW [L/R]CHANGE`.
 - Focus lands on a disabled row: verify `updateTabFocusability()` runs after the active engine changes.
 - A disabled row still shows arrows or a switch: verify the `!enabled_` renderer returns immediately after drawing `--`.
 - An available `OFF` effect looks unavailable: verify the outlined track and left-side thumb are still drawn.
@@ -79,9 +81,9 @@ This leaves the performance controls at their original full size without overlap
 - [ ] CUTOFF and RESONANCE are visibly larger than the former compact R13 version.
 - [ ] Plain `Tab` switches `MAIN → MORE → MAIN` exactly once per press.
 - [ ] `Fn+Tab` changes workflow and never changes the local synth tab.
-- [ ] `Left/Right` cycles only controls belonging to the visible tab.
+- [ ] On MAIN, `Left/Right` cycles the four knobs and `Up/Down` changes the focused value.
+- [ ] On MORE, `Up/Down` cycles rows and `Left/Right` changes the focused value.
 - [ ] Returning to each tab restores that tab's previous focus.
-- [ ] `Up/Down` changes the focused MORE row.
 - [ ] Focus is shown by a filled row.
 - [ ] Stepper arrows and switch positions match current values.
 - [ ] Missing P5/P6 rows show only a dim `--`, have no arrows/track/thumb, and cannot receive focus.
