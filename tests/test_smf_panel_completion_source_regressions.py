@@ -24,6 +24,8 @@ def main() -> None:
     dispatcher = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
     smf_queue = (ROOT / "src/midi/scheduled_smf_midi_event_queue.h").read_text(encoding="utf-8")
     mute_state = (ROOT / "src/midi/smf_track_mute.h").read_text(encoding="utf-8")
+    track_inspector = (ROOT / "src/midi/smf_track_inspector.h").read_text(encoding="utf-8")
+    stream_cpp = (ROOT / "src/midi/smf_stream.cpp").read_text(encoding="utf-8")
 
     require("midi_file_manager.h" in page_h,
             "SMF page must use the shared bounded MIDI browser")
@@ -86,6 +88,27 @@ def main() -> None:
             "std::atomic<uint32_t> mutedMaskLow_" in mute_state and
             "std::atomic<uint32_t> mutedMaskHigh_" in mute_state,
             "mute table must keep bounded physical-track selection and atomic masks")
+
+    require("kSmfTrackNameBytes = 16" in track_inspector and
+            "std::atomic<uint32_t> nameWords" in track_inspector and
+            "sizeof(SmfTrackInspectorSnapshot) <= 1284" in track_inspector,
+            "track names and metadata must use a bounded atomic DRAM snapshot")
+    require("metaType == 0x03u" in stream_cpp and
+            "smfTrackInspectorState().setName" in stream_cpp and
+            "smfTrackInspectorState().observe" in stream_cpp,
+            "track metadata must be collected during the existing stream scan")
+    require("collectAudibleTracks" in page_cpp and
+            "TEMPO-ONLY TRACKS ARE HIDDEN" in page_cpp and
+            '"MIX"' in page_cpp and '"DRUM"' in page_cpp,
+            "mute table must show named audible physical tracks with route hints")
+    mute_draw_block = function_block(
+        page_cpp,
+        "void SmfPlayerPage::drawMuteMixer",
+        "void SmfPlayerPage::drawMidiWaveOverlay",
+    )
+    for forbidden in ("SD.open", "openNextFile", "requestLoad", "std::vector"):
+        require(forbidden not in mute_draw_block,
+                f"mute table render must remain storage-free and bounded: {forbidden}")
 
     require("queueSongPositionPointerAtCurrentAnchor(targetTick)" in player_service and
             "tryPushSongPositionPointer" in player_service,
