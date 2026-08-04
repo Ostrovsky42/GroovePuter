@@ -4,6 +4,7 @@
 #include <cstring>
 #include <limits>
 
+#include "smf_structural_inspector.h"
 #include "smf_track_inspector.h"
 #include "smf_track_mute.h"
 
@@ -360,6 +361,8 @@ bool SmfEventStreamMerger::open(ISmfByteSource& source,
     index_ = index;
     smfTrackMuteState().reset(index.trackCount);
     smfTrackInspectorState().reset(index.trackCount);
+    smfStructuralInspectorState().reset(index.division, index.trackCount);
+    captureStructuralAnalysis_ = true;
     for (std::size_t i = 0; i < kSmfMaxTracks; ++i) hasNext_[i] = false;
     selectedValid_ = false;
 
@@ -377,6 +380,8 @@ bool SmfEventStreamMerger::open(ISmfByteSource& source,
         if (!streams_[i].open(source, index_.tracks[i], static_cast<uint16_t>(i))) {
             source_ = nullptr;
             smfTrackInspectorState().reset(0);
+            smfStructuralInspectorState().reset(0, 0);
+            captureStructuralAnalysis_ = false;
             return false;
         }
         streams_[i].setCache(cachePool_ + i * perTrack, perTrack);
@@ -429,12 +434,21 @@ int SmfEventStreamMerger::selectedTrack() const {
 bool SmfEventStreamMerger::next(SmfStreamEvent& out) {
     while (true) {
         const int selected = selectedTrack();
-        if (selected < 0) return false;
+        if (selected < 0) {
+            if (captureStructuralAnalysis_) {
+                smfStructuralInspectorState().finalize();
+                captureStructuralAnalysis_ = false;
+            }
+            return false;
+        }
         const std::size_t track = static_cast<std::size_t>(selected);
         out = next_[track];
         prime(track);
 
         smfTrackInspectorState().observe(out.trackIndex, out.event);
+        if (captureStructuralAnalysis_) {
+            smfStructuralInspectorState().observe(out.trackIndex, out.event);
+        }
         const bool noteOn = out.event.kind == SmfEventKind::NoteOn;
         if (shouldEmitSmfTrackEvent(noteOn, out.trackIndex)) return true;
     }
