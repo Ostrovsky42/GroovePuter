@@ -114,4 +114,4 @@ jobs:
         run: bash scripts/build.sh --warnings all
 
       - name: Check fixed DRAM budget
-        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer_adv
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
