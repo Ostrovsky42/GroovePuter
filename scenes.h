@@ -530,6 +530,7 @@ private:
 class SceneManager {
 public:
   SceneManager();
+  bool initializeSceneStorage();
   void loadDefaultScene();
   void wipeToZero();
   

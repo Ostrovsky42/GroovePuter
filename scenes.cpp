@@ -6,18 +6,12 @@
 #include <SD.h>
 #endif
 
+#include <cstdlib>
 #include <memory>
+#include <new>
 
-#if defined(ARDUINO)
-#include <esp_attr.h>
-#endif
-
-#if defined(ARDUINO) && defined(BOARD_HAS_PSRAM)
-#define GROOVEPUTER_SCENE_EXT_BSS EXT_RAM_BSS_ATTR
-#elif defined(ARDUINO)
-#error "Cardputer firmware requires PSRAM for Scene storage"
-#else
-#define GROOVEPUTER_SCENE_EXT_BSS
+#if defined(ESP32) || defined(ESP_PLATFORM)
+#include <esp_heap_caps.h>
 #endif
 
 namespace {
@@ -1496,11 +1490,51 @@ const std::string& SceneJsonObserver::synthEngineName(int synthIdx) const {
 
 GrooveboxMode SceneJsonObserver::mode() const { return target_.mode; }
 
-// Main processing scene (static to avoid heap fragmentation)
-static GROOVEPUTER_SCENE_EXT_BSS Scene g_mainScene;
+namespace {
+struct SceneStorageBlock {
+  Scene active;
+  Scene transactionScratch;
+};
 
-SceneManager::SceneManager() : scene_(&g_mainScene) {
+#if defined(ESP32) || defined(ESP_PLATFORM)
+SceneStorageBlock* g_sceneStorageBlock = nullptr;
+
+bool ensureSceneStorageBlock() {
+  if (g_sceneStorageBlock) return true;
+  void* memory = heap_caps_malloc(
+      sizeof(SceneStorageBlock), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+  if (!memory) return false;
+  g_sceneStorageBlock = new (memory) SceneStorageBlock();
+  return true;
+}
+
+SceneStorageBlock* sceneStorageBlock() {
+  return g_sceneStorageBlock;
+}
+#else
+SceneStorageBlock g_sceneStorageBlock;
+
+bool ensureSceneStorageBlock() {
+  return true;
+}
+
+SceneStorageBlock* sceneStorageBlock() {
+  return &g_sceneStorageBlock;
+}
+#endif
+}  // namespace
+
+SceneManager::SceneManager() : scene_(nullptr) {
+#if !defined(ESP32) && !defined(ESP_PLATFORM)
+  initializeSceneStorage();
+#endif
   PatternPagingService::ensureDirectory();
+}
+
+bool SceneManager::initializeSceneStorage() {
+  if (!ensureSceneStorageBlock()) return false;
+  scene_ = &sceneStorageBlock()->active;
+  return true;
 }
 
 void SceneManager::loadDefaultScene() {
@@ -2867,11 +2901,10 @@ bool SceneManager::loadScene(const std::string& json) {
   return false;
 }
 
-// Static buffer to avoid heap fragmentation during loading
-static GROOVEPUTER_SCENE_EXT_BSS Scene s_tempLoadScene;
-
 Scene& sceneTransactionScratch() {
-  return s_tempLoadScene;
+  SceneStorageBlock* storage = sceneStorageBlock();
+  if (!storage) std::abort();
+  return storage->transactionScratch;
 }
 
 bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
