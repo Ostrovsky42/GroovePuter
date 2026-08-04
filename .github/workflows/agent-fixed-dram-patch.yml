@@ -1,0 +1,92 @@
+name: Apply Cardputer fixed DRAM repair
+
+on:
+  push:
+    branches:
+      - agent/fix-cardputer-dram-scene-storage
+
+permissions:
+  contents: write
+
+jobs:
+  apply-source-patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply deterministic source patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, found {count}")
+              return text.replace(old, new, 1)
+
+          scenes_path = Path("scenes.cpp")
+          scenes = scenes_path.read_text(encoding="utf-8")
+          include_anchor = '#include <memory>\n'
+          storage_policy = '''#include <memory>\n\n#if defined(ARDUINO)\n#include <esp_attr.h>\n#endif\n\n#if defined(ARDUINO) && defined(BOARD_HAS_PSRAM)\n#define GROOVEPUTER_SCENE_EXT_BSS EXT_RAM_BSS_ATTR\n#elif defined(ARDUINO)\n#error "Cardputer firmware requires PSRAM for Scene storage"\n#else\n#define GROOVEPUTER_SCENE_EXT_BSS\n#endif\n'''
+          scenes = replace_once(scenes, include_anchor, storage_policy,
+                                "scene storage policy include")
+          scenes = replace_once(
+              scenes,
+              "static Scene g_mainScene;",
+              "static GROOVEPUTER_SCENE_EXT_BSS Scene g_mainScene;",
+              "main scene storage",
+          )
+          scenes = replace_once(
+              scenes,
+              "static Scene s_tempLoadScene;",
+              "static GROOVEPUTER_SCENE_EXT_BSS Scene s_tempLoadScene;",
+              "transaction scene storage",
+          )
+          scenes_path.write_text(scenes, encoding="utf-8")
+
+          for path_string in ("scripts/build.sh", "scripts/build_seqtrak_midi_only.sh"):
+              path = Path(path_string)
+              text = path.read_text(encoding="utf-8")
+              text = replace_once(
+                  text,
+                  "PSRAM=disabled",
+                  "PSRAM=enabled",
+                  f"{path_string} PSRAM profile",
+              )
+              path.write_text(text, encoding="utf-8")
+
+          test_path = Path("tests/test_cardputer_dram_storage_source_regressions.py")
+          test_path.write_text('''#!/usr/bin/env python3\nfrom pathlib import Path\n\nROOT = Path.cwd()\n\n\ndef require(condition: bool, message: str) -> None:\n    if not condition:\n        raise AssertionError(message)\n\n\ndef main() -> None:\n    scenes = (ROOT / "scenes.cpp").read_text(encoding="utf-8")\n    build = (ROOT / "scripts/build.sh").read_text(encoding="utf-8")\n    midi_only = (ROOT / "scripts/build_seqtrak_midi_only.sh").read_text(encoding="utf-8")\n    budget = (ROOT / "scripts/check_cardputer_dram_budget.sh").read_text(encoding="utf-8")\n\n    require("#include <esp_attr.h>" in scenes,\n            "Cardputer Scene storage must use the ESP external-BSS attribute")\n    require("#error \\\"Cardputer firmware requires PSRAM for Scene storage\\\"" in scenes,\n            "Cardputer builds must fail closed when PSRAM storage is unavailable")\n    require("static GROOVEPUTER_SCENE_EXT_BSS Scene g_mainScene;" in scenes,\n            "the active Scene must not consume fixed internal DRAM")\n    require("static GROOVEPUTER_SCENE_EXT_BSS Scene s_tempLoadScene;" in scenes,\n            "the transaction scratch Scene must not consume fixed internal DRAM")\n    require("heap_caps_malloc" not in scenes and "ps_malloc" not in scenes,\n            "Scene storage must remain static and fragmentation-free")\n\n    for name, text in (("normal", build), ("SEQTRAK MIDI-only", midi_only)):\n        require("PSRAM=enabled" in text, f"{name} Cardputer profile must enable PSRAM")\n        require("PSRAM=disabled" not in text, f"{name} Cardputer profile must not disable PSRAM")\n\n    require('MAX_BYTES="${2:-122880}"' in budget,\n            "the fixed internal DRAM acceptance limit must remain 122880 bytes")\n    print("Cardputer fixed DRAM Scene storage regressions: OK")\n\n\nif __name__ == "__main__":\n    main()\n''', encoding="utf-8")
+          test_path.chmod(0o755)
+
+          runner_path = Path("tests/run_host_tests.sh")
+          runner = runner_path.read_text(encoding="utf-8")
+          command = "python3 tests/test_cardputer_dram_storage_source_regressions.py"
+          if command not in runner:
+              if not runner.endswith("\n"):
+                  runner += "\n"
+              runner += f"{command}\n"
+          runner_path.write_text(runner, encoding="utf-8")
+
+          docs_path = Path("docs/stages/CARDPUTER_FIXED_DRAM_SCENE_STORAGE.md")
+          docs_path.write_text('''# Cardputer fixed DRAM Scene storage\n\n## Purpose\n\nKeep the active project Scene and the shared transaction scratch Scene out of the ESP32-S3 internal fixed DRAM budget without weakening the `122880 B` gate.\n\n## Design\n\n- Both `Scene` objects remain static and deterministic.\n- Cardputer firmware places them in external PSRAM BSS with `EXT_RAM_BSS_ATTR`.\n- Host and SDL builds retain ordinary static storage.\n- Cardputer builds fail at compile time when the PSRAM profile is not enabled.\n- No MIDI, SMF, audio queue, ownership, transport, persistence, or file-format behavior changes.\n- No runtime heap allocation is introduced.\n\nThe two objects are each approximately 25.8 KB, so moving both removes approximately 51.6 KB from `.dram0.bss`.\n\n## Validation\n\n```bash\n./tests/run_host_tests.sh\n./scripts/build.sh --warnings all\n./scripts/check_cardputer_dram_budget.sh \\\n  build/cardputer-adv-current/GroovePuter.ino.elf\n./scripts/build_seqtrak_midi_only.sh --warnings all\n```\n\nExpected fixed internal DRAM remains at or below `122880 B` for both Cardputer profiles.\n\n## Hardware acceptance\n\n- Boot the normal Cardputer ADV profile.\n- Load, save, and reload a project.\n- Switch pattern pages and verify page save/load rollback behavior.\n- Boot the SEQTRAK MIDI-only profile and repeat project load plus MIDI playback.\n- Confirm no reset, allocation failure, corrupted scene, or stuck MIDI note.\n''', encoding="utf-8")
+          PY
+
+      - name: Commit repaired source
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scenes.cpp scripts/build.sh scripts/build_seqtrak_midi_only.sh \
+            tests/run_host_tests.sh tests/test_cardputer_dram_storage_source_regressions.py \
+            docs/stages/CARDPUTER_FIXED_DRAM_SCENE_STORAGE.md
+          git commit -m "fix: place Cardputer scene storage in PSRAM"
+          git push origin HEAD:agent/fix-cardputer-dram-scene-storage
