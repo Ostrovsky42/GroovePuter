@@ -89,6 +89,14 @@ def test_performance_tools_use_fixed_control_rate_state() -> None:
     for key in ("case '1':", "case '2':", "case '3':", "case '4':",
                 "case '5':", "case '6':", "case '7':", "case '8':"):
         require(key in tool_block, f"PERFORM tool layer must expose {key}")
+    require("captureHeldPerformanceKeys(keyboard_)" in tool_block and
+            "restoreHeldPerformanceKeys(keyboard_, heldSnapshot)" in tool_block,
+            "tool changes must rehydrate physically held notes after legacy panic-based setters")
+    require("keyboard.heldCount() != 0" in page and
+            "keyboard.isPhysicalKeyHeld(key)" in page,
+            "revoice must be bounded and avoid duplicate logical key ownership")
+    require("new " not in page and "std::vector" not in page,
+            "held-note revoice must remain fixed-allocation")
     handle_block = block(page, "bool PerformPage::handleEvent", "void PerformPage::drawHeader")
     require("event.meta" in handle_block and "return false" in handle_block,
             "Fn/meta commands must pass through instead of stealing global shortcuts")
