@@ -25,6 +25,10 @@ def main() -> None:
             "repeat must dispatch one stored eligible event")
     require("shouldDispatchHid" in sketch and "shouldDispatchWord" in sketch,
             "HID and word paths need explicit edge filtering")
+    require("wordDigitAlreadyDispatched" in sketch and
+            "digitDispatchMask" in sketch and
+            "if (u >= '0' && u <= '9') continue;" not in sketch,
+            "word-only Cardputer digits must dispatch while HID duplicates stay suppressed")
     require("[KEY] press=%u src=%s" in sketch,
             "runtime diagnostics must expose press ID and source")
     require("event.alt || event.ctrl || event.shift || event.meta" in helper,
