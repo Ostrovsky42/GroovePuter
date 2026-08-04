@@ -7,15 +7,17 @@
 
 namespace GroovePuterMidi {
 
-constexpr std::size_t kSmfMaxTracks = 64;
+// The player validates every declared MTrk chunk but retains the first 32 for
+// streaming. This bounds fixed DRAM while keeping large files diagnosable.
+constexpr std::size_t kSmfMaxTracks = 32;
 // SD cards transfer whole sectors, so a read smaller than this still costs a
 // full sector fetch plus a FAT layer seek. Windows are aligned and sized in
 // sector units whenever the per-track budget allows it.
 constexpr std::size_t kSmfSectorBytes = 512;
-// The merger owns one shared cache pool and hands each track a slice sized by
-// the file's actual track count. A 64-track file still gets the historical
-// 64 bytes per track, while the common 2-16 track file gets 256-2048 bytes and
-// therefore 4-32x fewer SD reads. Total footprint is unchanged.
+// The merger owns one shared cache pool and hands each retained track a slice
+// sized by the file's actual retained track count. A 32-track file gets 128
+// bytes per track; common 2-16 track files get 256-2048 bytes and therefore
+// retain the larger low-seek windows introduced by the streaming fixes.
 constexpr std::size_t kSmfStreamCacheBytes = 4096;
 constexpr std::size_t kSmfTrackReadCacheBytes = 2048;
 
@@ -35,7 +37,10 @@ struct SmfFileIndex {
     uint16_t format{0};
     uint16_t division{0};
     uint16_t trackCount{0};
+    uint16_t declaredTrackCount{0};
     SmfTrackSpan tracks[kSmfMaxTracks]{};
+
+    bool tracksTruncated() const { return declaredTrackCount > trackCount; }
 };
 
 struct SmfIndexResult {
