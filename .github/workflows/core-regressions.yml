@@ -38,7 +38,7 @@ jobs:
           payload = textwrap.dedent(workflow[start:end])
 
           scene_call = re.compile(
-              r'\nreplace_once\(\n    "scenes\\.cpp",\n    """.*?""",\n    """.*?""",\n\)\n',
+              r'\nreplace_once\(\n    "scenes\.cpp",\n    """.*?""",\n    """.*?""",\n\)\n',
               re.DOTALL,
           )
           payload, scene_call_count = scene_call.subn('\n', payload)
