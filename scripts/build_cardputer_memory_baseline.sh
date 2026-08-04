@@ -1,11 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROFILE="${1:-normal}"
+PROFILE="${1:-}"
 case "${PROFILE}" in
-  normal|midi-only) shift || true ;;
+  normal|midi-only) shift ;;
   *)
-    echo "usage: build_cardputer_memory_baseline.sh [normal|midi-only] [arduino-cli compile args...]" >&2
+    echo "usage: build_cardputer_memory_baseline.sh <normal|midi-only> <product|runtime> [arduino-cli compile args...]" >&2
+    exit 2
+    ;;
+esac
+
+IMAGE_KIND="${1:-}"
+case "${IMAGE_KIND}" in
+  product|runtime) shift ;;
+  *)
+    echo "usage: build_cardputer_memory_baseline.sh <normal|midi-only> <product|runtime> [arduino-cli compile args...]" >&2
     exit 2
     ;;
 esac
@@ -13,6 +22,7 @@ esac
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SOURCE_COMMIT="$(git -C "${PROJECT_ROOT}" rev-parse HEAD 2>/dev/null || printf 'unknown')"
+SOURCE_DIRTY="$(git -C "${PROJECT_ROOT}" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
 TEMP_ROOT="$(mktemp -d /tmp/grooveputer-memory-baseline.XXXXXX)"
 SOURCE_ROOT="${TEMP_ROOT}/GroovePuter"
 
@@ -28,9 +38,10 @@ rsync -a --delete \
   --exclude 'platform_sdl/build' \
   "${PROJECT_ROOT}/" "${SOURCE_ROOT}/"
 
-# Instrument only the temporary build copy. The checkout and product firmware
-# source remain untouched.
-python3 - "${SOURCE_ROOT}/GroovePuter.ino" <<'PY'
+if [[ "${IMAGE_KIND}" == "runtime" ]]; then
+  # Instrument only the temporary runtime-measurement copy. The checkout and
+  # the product image source remain untouched.
+  python3 - "${SOURCE_ROOT}/GroovePuter.ino" <<'PY'
 from pathlib import Path
 import sys
 
@@ -42,7 +53,7 @@ state_injection = r'''static uint32_t g_peakUiDrawUs = 0;
 
 // Diagnostic-build-only memory watermarks. This code is injected into the
 // temporary source tree by build_cardputer_memory_baseline.sh and is never part
-// of the ordinary firmware build.
+// of the product image.
 static bool g_memoryBaselineRuntimeStarted = false;
 static uint32_t g_memoryBaselineStartBootFloor = 0;
 static uint32_t g_memoryBaselineRuntimeMinFreeSampled = 0xFFFFFFFFu;
@@ -144,20 +155,22 @@ for anchor, replacement, label in (
 
 path.write_text(text, encoding="utf-8")
 PY
+fi
 
 case "${PROFILE}" in
   normal)
     export FQBN="m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc"
-    export BUILD_PATH="${BUILD_PATH:-${PROJECT_ROOT}/build/cardputer-adv-memory-baseline}"
     ;;
   midi-only)
     export FQBN="m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=default,UploadMode=cdc"
-    export BUILD_PATH="${BUILD_PATH:-${PROJECT_ROOT}/build/cardputer-adv-memory-baseline-midi-only}"
     ;;
 esac
+export BUILD_PATH="${BUILD_PATH:-${PROJECT_ROOT}/build/cardputer-memory-baseline-${PROFILE}-${IMAGE_KIND}}"
 
 printf 'Memory baseline profile: %s\n' "${PROFILE}"
+printf 'Memory baseline image: %s\n' "${IMAGE_KIND}"
 printf 'Source commit: %s\n' "${SOURCE_COMMIT}"
+printf 'Source dirty entries: %s\n' "${SOURCE_DIRTY}"
 printf 'FQBN: %s\n' "${FQBN}"
 printf 'Temporary source: %s\n' "${SOURCE_ROOT}"
 printf 'Build output: %s\n' "${BUILD_PATH}"
@@ -183,13 +196,25 @@ fi
 ELF_SHA256="$(sha256sum "${ELF_PATH}" | awk '{print $1}')"
 printf 'ELF path: %s\n' "${ELF_PATH}"
 printf 'ELF sha256: %s\n' "${ELF_SHA256}"
-bash "${SOURCE_ROOT}/scripts/report_cardputer_memory_baseline.sh" "${ELF_PATH}"
+MEMORY_BASELINE_IMAGE_KIND="${IMAGE_KIND}" \
+  bash "${SOURCE_ROOT}/scripts/report_cardputer_memory_baseline.sh" "${ELF_PATH}"
 
-cat <<EOF
+if [[ "${IMAGE_KIND}" == "runtime" ]]; then
+  cat <<EOF
+
+Flash this runtime-instrumented diagnostic image:
+  BUILD_PATH=${BUILD_PATH} bash scripts/upload.sh /dev/ttyACM0
+EOF
+else
+  cat <<'EOF'
+
+This is an uninstrumented product-source ELF for exact static-section and
+historical comparisons. Use the matching runtime image for hardware watermarks.
+EOF
+fi
+
+cat <<'EOF'
 
 The report above is non-gating. The product gate is provisionally restored to
 191488 bytes while PR #70 derives profile-specific policy from hardware data.
-
-Flash normal diagnostic build:
-  BUILD_PATH=${BUILD_PATH} bash scripts/upload.sh /dev/ttyACM0
 EOF
