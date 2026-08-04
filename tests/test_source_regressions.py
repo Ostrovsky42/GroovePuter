@@ -120,15 +120,19 @@ def test_scene_and_page_validation_share_one_scratch_buffer() -> None:
     scenes = (ROOT / "scenes.cpp").read_text(encoding="utf-8")
     paging = (ROOT / "src/audio/pattern_paging.cpp").read_text(encoding="utf-8")
 
-    require("Scene& sceneTransactionScratch();" in scenes_header and
-            "Scene& sceneTransactionScratch()" in scenes,
-            "scene parsing and page validation need an explicit shared scratch contract")
+    require("class SceneScratchLease" in scenes_header and
+  "SceneScratchLease::SceneScratchLease()" in scenes and
+  "SceneScratchLease::~SceneScratchLease()" in scenes,
+  "scene parsing and page validation need a bounded RAII scratch contract")
+    require("MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT" in scenes and
+  "MALLOC_CAP_SPIRAM" not in scenes,
+  "Cardputer scratch scenes must use internal heap without PSRAM")
     require("PageStaging" not in paging and "g_stagingPage" not in paging,
-            "pattern paging must not retain a second 22 KiB static staging buffer")
-    require("Scene& staging = sceneTransactionScratch();" in paging and
-            "readAndValidatePage(const std::string& path, Scene& staging)" in paging,
-            "page validation must use the shared scene transaction scratch")
-
+  "pattern paging must not retain a second static staging buffer")
+    require(paging.count("SceneScratchLease scratch;") == 2 and
+  "SceneScratchLease scratch;" in scenes and
+  "readAndValidatePage(const std::string& path, Scene& staging)" in paging,
+  "project and page validation must lease and release transaction scenes")
 
 def test_genre_regeneration_uses_full_compiled_params() -> None:
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
