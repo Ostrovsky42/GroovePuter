@@ -54,13 +54,13 @@ jobs:
           if payload.count(duplicate) != 2:
               raise SystemExit('unexpected duplicate boot-comment repair payload')
           payload = payload.replace(duplicate, '', 2)
+          exec(compile(payload, 'agent-scene-storage-repair', 'exec'))
 
-          payload += r'''
-          p = Path("scenes.cpp")
-          text = p.read_text(encoding="utf-8")
-          storage_start = text.index("namespace {\nstruct SceneStorageBlock")
-          storage_end = text.index("\nvoid SceneManager::loadDefaultScene()", storage_start)
-          storage_replacement = r'''namespace {
+          p = Path('scenes.cpp')
+          text = p.read_text(encoding='utf-8')
+          storage_start = text.index('namespace {\nstruct SceneStorageBlock')
+          storage_end = text.index('\nvoid SceneManager::loadDefaultScene()', storage_start)
+          storage_replacement = '''namespace {
           #if defined(ESP32) || defined(ESP_PLATFORM)
           Scene* g_mainScene = nullptr;
 
@@ -114,13 +114,13 @@ jobs:
             return true;
           #endif
           }
-          '''.replace("          ", "")
+          '''.replace('          ', '')
           text = text[:storage_start] + storage_replacement + text[storage_end:]
 
-          load_start = text.index("Scene& sceneTransactionScratch()")
-          load_end_marker = "  clearSceneData(*loaded);\n"
+          load_start = text.index('Scene& sceneTransactionScratch()')
+          load_end_marker = '  clearSceneData(*loaded);\n'
           load_end = text.index(load_end_marker, load_start) + len(load_end_marker)
-          load_replacement = r'''bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
+          load_replacement = '''bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
           #ifdef ARDUINO
             Serial.println("  - loadSceneEventedWithReader: Allocating bounded transaction Scene...");
           #endif
@@ -134,19 +134,17 @@ jobs:
             }
             Scene* loaded = scratch.get();
             clearSceneData(*loaded);
-          '''.replace("          ", "")
+          '''.replace('          ', '')
           text = text[:load_start] + load_replacement + text[load_end:]
-          p.write_text(text, encoding="utf-8")
+          p.write_text(text, encoding='utf-8')
 
-          p = Path("GroovePuter.ino")
-          text = p.read_text(encoding="utf-8")
-          if text.count("fixed internal Cardputer ADV heap.") != 2:
-              raise SystemExit("unexpected Cardputer heap comment count")
-          p.write_text(text.replace("fixed internal Cardputer ADV heap.",
-                                    "DRAM-only Cardputer ADV heap.", 2),
-                       encoding="utf-8")
-          '''
-          exec(compile(payload, 'agent-scene-storage-repair', 'exec'))
+          p = Path('GroovePuter.ino')
+          text = p.read_text(encoding='utf-8')
+          if text.count('fixed internal Cardputer ADV heap.') != 2:
+              raise SystemExit('unexpected Cardputer heap comment count')
+          p.write_text(text.replace('fixed internal Cardputer ADV heap.',
+                                    'DRAM-only Cardputer ADV heap.', 2),
+                       encoding='utf-8')
           PY
 
           python3 tests/test_cardputer_dram_storage_source_regressions.py
