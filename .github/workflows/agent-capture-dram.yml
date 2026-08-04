@@ -1,4 +1,4 @@
-name: Capture Cardputer DRAM diagnostics
+name: Apply runtime Scene PSRAM repair
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  capture:
+  apply:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -17,46 +17,97 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install pinned Arduino dependencies
-        run: ./scripts/install_arduino_deps.sh
-
-      - name: Build Cardputer ADV firmware
-        run: ./scripts/build.sh --warnings all
-
-      - name: Capture sections and symbols
+      - name: Apply deterministic runtime storage patch
         shell: bash
         run: |
-          set -euo pipefail
-          ELF="build/cardputer-adv-current/GroovePuter.ino.elf"
-          SIZE_TOOL="$(find "$HOME/.arduino15/packages" -type f -name xtensa-esp32s3-elf-size | head -n 1)"
-          NM_TOOL="${SIZE_TOOL%-size}-nm"
-          OBJDUMP_TOOL="${SIZE_TOOL%-size}-objdump"
-          mkdir -p docs/diagnostics
-          {
-            echo "ELF=${ELF}"
-            echo "SIZE_TOOL=${SIZE_TOOL}"
-            echo
-            echo "=== SUMMARY ==="
-            "${SIZE_TOOL}" "${ELF}"
-            echo
-            echo "=== ALL SECTIONS ==="
-            "${SIZE_TOOL}" -A "${ELF}"
-            echo
-            echo "=== SCENE SYMBOLS ==="
-            "${NM_TOOL}" --print-size --size-sort --radix=d "${ELF}" | grep -E 'g_mainScene|s_tempLoadScene' || true
-            echo
-            echo "=== LARGEST SYMBOLS ==="
-            "${NM_TOOL}" --print-size --size-sort --radix=d "${ELF}" | tail -n 180
-            echo
-            echo "=== DRAM/EXT-RAM SECTION HEADERS ==="
-            "${OBJDUMP_TOOL}" -h "${ELF}" | grep -E 'dram|ext_ram|external|bss|data' || true
-          } > docs/diagnostics/cardputer-dram-current.txt
+          python3 - <<'PY'
+          from pathlib import Path
 
-      - name: Commit diagnostics
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, found {count}")
+              return text.replace(old, new, 1)
+
+          scenes_path = Path("scenes.cpp")
+          scenes = scenes_path.read_text(encoding="utf-8")
+          scenes = replace_once(
+              scenes,
+              '''#include <memory>\n\n#if defined(ARDUINO)\n#include <esp_attr.h>\n#endif\n\n#if defined(ARDUINO) && defined(BOARD_HAS_PSRAM)\n#define GROOVEPUTER_SCENE_EXT_BSS EXT_RAM_BSS_ATTR\n#elif defined(ARDUINO)\n#error "Cardputer firmware requires PSRAM for Scene storage"\n#else\n#define GROOVEPUTER_SCENE_EXT_BSS\n#endif\n''',
+              '''#include <cstdlib>\n#include <memory>\n#include <new>\n\n#if defined(ESP32) || defined(ESP_PLATFORM)\n#include <esp_heap_caps.h>\n#endif\n''',
+              "Scene allocator includes",
+          )
+          scenes = replace_once(
+              scenes,
+              '''// Main processing scene (static to avoid heap fragmentation)\nstatic GROOVEPUTER_SCENE_EXT_BSS Scene g_mainScene;\n\nSceneManager::SceneManager() : scene_(&g_mainScene) {\n  PatternPagingService::ensureDirectory();\n}\n''',
+              '''namespace {\nstruct SceneStorageBlock {\n  Scene active;\n  Scene transactionScratch;\n};\n\n#if defined(ESP32) || defined(ESP_PLATFORM)\nSceneStorageBlock* g_sceneStorageBlock = nullptr;\n\nbool ensureSceneStorageBlock() {\n  if (g_sceneStorageBlock) return true;\n  void* memory = heap_caps_malloc(\n      sizeof(SceneStorageBlock), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);\n  if (!memory) return false;\n  g_sceneStorageBlock = new (memory) SceneStorageBlock();\n  return true;\n}\n\nSceneStorageBlock* sceneStorageBlock() {\n  return g_sceneStorageBlock;\n}\n#else\nSceneStorageBlock g_sceneStorageBlock;\n\nbool ensureSceneStorageBlock() {\n  return true;\n}\n\nSceneStorageBlock* sceneStorageBlock() {\n  return &g_sceneStorageBlock;\n}\n#endif\n}  // namespace\n\nSceneManager::SceneManager() : scene_(nullptr) {\n#if !defined(ESP32) && !defined(ESP_PLATFORM)\n  initializeSceneStorage();\n#endif\n  PatternPagingService::ensureDirectory();\n}\n\nbool SceneManager::initializeSceneStorage() {\n  if (!ensureSceneStorageBlock()) return false;\n  scene_ = &sceneStorageBlock()->active;\n  return true;\n}\n''',
+              "active Scene storage",
+          )
+          scenes = replace_once(
+              scenes,
+              '''// Static buffer to avoid heap fragmentation during loading\nstatic GROOVEPUTER_SCENE_EXT_BSS Scene s_tempLoadScene;\n\nScene& sceneTransactionScratch() {\n  return s_tempLoadScene;\n}\n''',
+              '''Scene& sceneTransactionScratch() {\n  SceneStorageBlock* storage = sceneStorageBlock();\n  if (!storage) std::abort();\n  return storage->transactionScratch;\n}\n''',
+              "transaction Scene storage",
+          )
+          scenes_path.write_text(scenes, encoding="utf-8")
+
+          header_path = Path("scenes.h")
+          header = header_path.read_text(encoding="utf-8")
+          header = replace_once(
+              header,
+              '''  SceneManager();\n  void loadDefaultScene();\n''',
+              '''  SceneManager();\n  bool initializeSceneStorage();\n  void loadDefaultScene();\n''',
+              "SceneManager storage API",
+          )
+          header_path.write_text(header, encoding="utf-8")
+
+          sketch_path = Path("GroovePuter.ino")
+          sketch = sketch_path.read_text(encoding="utf-8")
+          sketch = replace_once(
+              sketch,
+              '''  M5Cardputer.begin(cfg);\n  markBootStage(11, "after M5Cardputer.begin");\n\n  // Configure ES8311 without creating a temporary M5Unified I2S channel.\n''',
+              '''  M5Cardputer.begin(cfg);\n  markBootStage(11, "after M5Cardputer.begin");\n\n  markBootStage(12, "before Scene PSRAM allocation");\n  if (!g_miniAcidInstance.sceneManager().initializeSceneStorage()) {\n    Serial.println("[FATAL] Scene PSRAM allocation failed");\n    markBootStage(912, "fatal-scene-psram-allocation");\n    while (true) { delay(1000); }\n  }\n  markBootStage(13, "after Scene PSRAM allocation");\n  logHeapCaps("after-scene-psram");\n\n  // Configure ES8311 without creating a temporary M5Unified I2S channel.\n''',
+              "Cardputer Scene allocation",
+          )
+          sketch = sketch.replace(
+              "fragment the DRAM-only Cardputer ADV heap.",
+              "fragment the fixed internal Cardputer ADV heap.",
+          )
+          sketch_path.write_text(sketch, encoding="utf-8")
+
+          engine_path = Path("src/dsp/miniacid_engine.cpp")
+          engine = engine_path.read_text(encoding="utf-8")
+          engine = replace_once(
+              engine,
+              '''  // Check for ACTUAL usable PSRAM, not just if it was detected\n  // psramFound() can return true even if init failed\n  size_t freePsram = ESP.getFreePsram();\n  hasPsram = (freePsram > 512 * 1024); // Require at least 512KB usable\n  LOG_DEBUG("  - MiniAcid::init: freePsram=%u, hasPsram=%d", (unsigned)freePsram, hasPsram);\n''',
+              '''  // Keep Cardputer audio behavior unchanged: its PSRAM is enabled only\n  // for explicitly capability-allocated non-realtime storage in this stage.\n  size_t freePsram = ESP.getFreePsram();\n#if defined(ARDUINO_M5STACK_CARDPUTER)\n  hasPsram = false;\n  LOG_DEBUG("  - MiniAcid::init: freePsram=%u, constrained Cardputer audio profile",\n            (unsigned)freePsram);\n#else\n  hasPsram = (freePsram > 512 * 1024);\n  LOG_DEBUG("  - MiniAcid::init: freePsram=%u, hasPsram=%d",\n            (unsigned)freePsram, hasPsram);\n#endif\n''',
+              "Cardputer constrained audio policy",
+          )
+          engine = replace_once(
+              engine,
+              '''  // Cardputer ADV has no PSRAM. Reserve both equal-sized vectors before SD and\n  // SMF task allocations split the remaining internal heap into small blocks.\n''',
+              '''  // Cardputer keeps its established constrained audio buffers in internal RAM.\n  // Reserve both before SD and SMF allocations split the largest free block.\n''',
+              "delay allocation comment",
+          )
+          engine_path.write_text(engine, encoding="utf-8")
+
+          test_path = Path("tests/test_cardputer_dram_storage_source_regressions.py")
+          test_path.write_text('''#!/usr/bin/env python3\nfrom pathlib import Path\n\nROOT = Path.cwd()\n\n\ndef require(condition: bool, message: str) -> None:\n    if not condition:\n        raise AssertionError(message)\n\n\ndef main() -> None:\n    scenes = (ROOT / "scenes.cpp").read_text(encoding="utf-8")\n    header = (ROOT / "scenes.h").read_text(encoding="utf-8")\n    sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")\n    engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")\n    build = (ROOT / "scripts/build.sh").read_text(encoding="utf-8")\n    midi_only = (ROOT / "scripts/build_seqtrak_midi_only.sh").read_text(encoding="utf-8")\n    budget = (ROOT / "scripts/check_cardputer_dram_budget.sh").read_text(encoding="utf-8")\n\n    require("bool initializeSceneStorage();" in header,\n            "SceneManager must expose explicit post-PSRAM storage initialization")\n    require("heap_caps_malloc(" in scenes,\n            "Cardputer Scene storage must use explicit capability allocation")\n    require("MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT" in scenes,\n            "Scene storage must require external byte-addressable RAM")\n    require("SceneStorageBlock* g_sceneStorageBlock = nullptr;" in scenes,\n            "Cardputer fixed BSS must retain only the Scene storage pointer")\n    require("static Scene g_mainScene" not in scenes,\n            "the active Scene must not return to fixed internal BSS")\n    require("static Scene s_tempLoadScene" not in scenes,\n            "the transaction Scene must not return to fixed internal BSS")\n    require("EXT_RAM_BSS_ATTR" not in scenes,\n            "the M5Stack Arduino profile must not rely on disabled external-BSS linking")\n    require("initializeSceneStorage()" in sketch,\n            "Cardputer setup must initialize Scene storage explicitly")\n    require(sketch.index("initializeSceneStorage()") > sketch.index("M5Cardputer.begin(cfg)"),\n            "Scene PSRAM allocation must happen after board initialization")\n    require(sketch.index("initializeSceneStorage()") < sketch.index("g_audioOut.begin"),\n            "Scene PSRAM allocation must happen before realtime runtime startup")\n    require("fatal-scene-psram-allocation" in sketch,\n            "Cardputer must fail closed when Scene PSRAM is unavailable")\n    require("#if defined(ARDUINO_M5STACK_CARDPUTER)" in engine and\n            "hasPsram = false;" in engine,\n            "enabling Scene PSRAM must not silently change the Cardputer audio profile")\n\n    for name, text in (("normal", build), ("SEQTRAK MIDI-only", midi_only)):\n        require("PSRAM=enabled" in text, f"{name} Cardputer profile must enable PSRAM")\n        require("PSRAM=disabled" not in text, f"{name} Cardputer profile must not disable PSRAM")\n\n    require('MAX_BYTES="${2:-122880}"' in budget,\n            "the fixed internal DRAM acceptance limit must remain 122880 bytes")\n    print("Cardputer fixed DRAM Scene storage regressions: OK")\n\n\nif __name__ == "__main__":\n    main()\n''', encoding="utf-8")
+
+          docs_path = Path("docs/stages/CARDPUTER_FIXED_DRAM_SCENE_STORAGE.md")
+          docs_path.write_text('''# Cardputer fixed DRAM Scene storage\n\n## Purpose\n\nKeep the active project `Scene` and shared transaction scratch `Scene` out of the ESP32-S3 fixed internal DRAM budget without weakening the `122880 B` gate or changing the established Cardputer audio-memory profile.\n\n## Why external BSS was rejected\n\nThe pinned M5Stack Arduino profile accepts `EXT_RAM_BSS_ATTR`, but its linker configuration does not enable external `.bss` placement. ELF diagnostics showed both 25,800-byte `Scene` objects still in `.dram0.bss`. The implementation therefore does not rely on that attribute.\n\n## Design\n\n- Cardputer setup enables PSRAM and allocates one `SceneStorageBlock` with `heap_caps_malloc(..., MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)`.\n- The block owns the active scene and the transaction scratch scene.\n- Allocation occurs once, immediately after `M5Cardputer.begin()`, before I2S, tasks, SD, SMF, USB MIDI, engine initialization, or UI allocation.\n- Failure is fatal and visible through the boot-stage diagnostic; there is no fallback into internal RAM.\n- Host and SDL builds keep deterministic static storage.\n- Cardputer continues to use its constrained looper, delay, and sample-pool profile; PSRAM enablement in this stage is not permission for unrelated implicit large-buffer growth.\n- MIDI, SMF, audio queues, scene codec, paging format, and transaction semantics are unchanged.\n\nThe two scenes occupy approximately 51.6 KB. Replacing them with one fixed pointer in internal BSS should return the real ELF below the existing gate; the measured ELF remains the source of truth.\n\n## Validation\n\n```bash\n./tests/run_host_tests.sh\n./scripts/build.sh --warnings all\n./scripts/check_cardputer_dram_budget.sh \\\n  build/cardputer-adv-current/GroovePuter.ino.elf\n./scripts/build_seqtrak_midi_only.sh --warnings all\n./scripts/check_cardputer_dram_budget.sh \\\n  build/cardputer-adv-seqtrak-midi-only/GroovePuter.ino.elf\n```\n\n## Hardware acceptance\n\n- Boot normal Cardputer ADV and confirm the Scene PSRAM boot stage completes.\n- Load, save, and reload a project.\n- Switch pattern pages and verify save/load rollback.\n- Exercise playback while changing patterns and song position; confirm no audio underrun regression.\n- Boot the SEQTRAK MIDI-only profile and repeat project load plus MIDI playback.\n- Confirm no reset, allocation failure, corrupted scene, or stuck MIDI note.\n''', encoding="utf-8")
+          PY
+
+      - name: Commit runtime storage repair
         shell: bash
         run: |
+          if git diff --quiet; then
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/diagnostics/cardputer-dram-current.txt
-          git commit -m "chore: capture Cardputer DRAM diagnostics"
+          git add GroovePuter.ino scenes.cpp scenes.h src/dsp/miniacid_engine.cpp \
+            tests/test_cardputer_dram_storage_source_regressions.py \
+            docs/stages/CARDPUTER_FIXED_DRAM_SCENE_STORAGE.md
+          git commit -m "fix: allocate Cardputer scenes explicitly in PSRAM"
           git push origin HEAD:agent/fix-cardputer-dram-scene-storage
