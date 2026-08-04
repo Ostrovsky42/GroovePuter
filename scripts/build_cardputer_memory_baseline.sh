@@ -12,6 +12,7 @@ esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+SOURCE_COMMIT="$(git -C "${PROJECT_ROOT}" rev-parse HEAD 2>/dev/null || printf 'unknown')"
 TEMP_ROOT="$(mktemp -d /tmp/grooveputer-memory-baseline.XXXXXX)"
 SOURCE_ROOT="${TEMP_ROOT}/GroovePuter"
 
@@ -27,8 +28,8 @@ rsync -a --delete \
   --exclude 'platform_sdl/build' \
   "${PROJECT_ROOT}/" "${SOURCE_ROOT}/"
 
-# Instrument only the temporary build copy. The checkout, product source, and
-# mandatory fixed-DRAM gate remain unchanged.
+# Instrument only the temporary build copy. The checkout and product firmware
+# source remain untouched.
 python3 - "${SOURCE_ROOT}/GroovePuter.ino" <<'PY'
 from pathlib import Path
 import sys
@@ -156,17 +157,38 @@ case "${PROFILE}" in
 esac
 
 printf 'Memory baseline profile: %s\n' "${PROFILE}"
+printf 'Source commit: %s\n' "${SOURCE_COMMIT}"
+printf 'FQBN: %s\n' "${FQBN}"
 printf 'Temporary source: %s\n' "${SOURCE_ROOT}"
 printf 'Build output: %s\n' "${BUILD_PATH}"
 
 bash "${SOURCE_ROOT}/scripts/build.sh" "$@"
-bash "${SOURCE_ROOT}/scripts/report_cardputer_memory_baseline.sh" \
-  "${BUILD_PATH}/GroovePuter.ino.elf"
+
+EXPECTED_ELF="${BUILD_PATH}/GroovePuter.ino.elf"
+if [[ -f "${EXPECTED_ELF}" ]]; then
+  ELF_PATH="${EXPECTED_ELF}"
+else
+  mapfile -t ELF_CANDIDATES < <(
+    find "${BUILD_PATH}" -maxdepth 2 -type f -name '*.elf' -print | sort
+  )
+  if (( ${#ELF_CANDIDATES[@]} != 1 )); then
+    printf 'Expected one ELF below %s, found %d\n' \
+      "${BUILD_PATH}" "${#ELF_CANDIDATES[@]}" >&2
+    printf '  %s\n' "${ELF_CANDIDATES[@]:-<none>}" >&2
+    exit 2
+  fi
+  ELF_PATH="${ELF_CANDIDATES[0]}"
+fi
+
+ELF_SHA256="$(sha256sum "${ELF_PATH}" | awk '{print $1}')"
+printf 'ELF path: %s\n' "${ELF_PATH}"
+printf 'ELF sha256: %s\n' "${ELF_SHA256}"
+bash "${SOURCE_ROOT}/scripts/report_cardputer_memory_baseline.sh" "${ELF_PATH}"
 
 cat <<EOF
 
-The report above is non-gating. The ordinary product gate remains unchanged and
-is expected to stay red while dev exceeds 122880 bytes.
+The report above is non-gating. The product gate is provisionally restored to
+191488 bytes while PR #70 derives profile-specific policy from hardware data.
 
 Flash normal diagnostic build:
   BUILD_PATH=${BUILD_PATH} bash scripts/upload.sh /dev/ttyACM0
