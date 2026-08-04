@@ -2,7 +2,11 @@
 set -euo pipefail
 
 ELF_PATH="${1:?usage: check_cardputer_dram_budget.sh <firmware.elf> [max-bytes]}"
-MAX_BYTES="${2:-122880}"
+# Provisional rollback to the last repository ceiling that predates the
+# undocumented 122880-byte replacement. This is not a universal hardware
+# safety boundary; PR #70 must derive profile-specific policy from reproducible
+# ELF and runtime measurements before this default is changed again.
+MAX_BYTES="${2:-191488}"
 
 if [[ ! -f "${ELF_PATH}" ]]; then
   echo "Firmware ELF not found: ${ELF_PATH}" >&2
