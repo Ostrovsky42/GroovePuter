@@ -16,9 +16,9 @@
 // block here, and this facade converts the current sequencer phase into the
 // ScheduledMusicalEvent frame offset consumed by MidiDispatchTask.
 //
-// The same render bracket also publishes MIDI Clock/Start/Stop into a separate
-// bounded transport queue. Both queues share blockSequence+frameOffset timing,
-// while TinyUSB ownership remains entirely in MidiDispatchTask.
+// The same render bracket also publishes MIDI Clock/Start/Continue/Stop into a
+// separate bounded transport queue. Both queues share blockSequence+frameOffset
+// timing, while TinyUSB ownership remains entirely in MidiDispatchTask.
 //
 // PROJECT-tempo SMF playback reads the same block anchor through the bounded
 // ProjectTransportTimeline snapshot. No second wall-clock, transport task or
@@ -79,7 +79,8 @@ public:
                 renderStartPhaseSteps_,
                 renderBpm_,
                 renderSampleRate_,
-                transportPlaying);
+                transportPlaying,
+                restartFromBeginning);
         } else {
             transportClockPublisher_.reset();
         }

@@ -17,8 +17,23 @@ def main() -> None:
     player_cpp = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(encoding="utf-8")
     sdl_makefile = (ROOT / "platform_sdl/Makefile").read_text(encoding="utf-8")
 
-    require("static_assert(sizeof(MidiFileManager) <= 4096" in manager_h,
-            "MIDI manager RAM contract is missing")
+    require("kWindowEntries = 8" in manager_h and
+            "static_assert(sizeof(MidiFileManager) <= 1024" in manager_h,
+            "MIDI manager paged RAM contract is missing")
+    require("scanDirectorySummary" in manager_h and "loadWindow" in manager_h,
+            "browser capacity must limit memory, not file reachability")
+    require("opendir" in manager_cpp and "readdir" in manager_cpp and
+            "rewinddir" in manager_cpp and "openNextFile" not in manager_cpp,
+            "browser traversal must avoid one heap-backed File per directory entry")
+    require("secondDirectoryCount != directoryCount_" in manager_cpp and
+            "secondFileCount != fileCount_" in manager_cpp and
+            "read incomplete" in manager_cpp,
+            "partial directory traversal must not masquerade as an empty list")
+    require("union Workspace" in manager_h and
+            "EntryWindow entries" in manager_h and
+            "MidiImporter::ScanResult importScan" in manager_h and
+            "MIDI import scan must fit in the browser workspace" in manager_h,
+            "browser rows and import scan must share one bounded workspace")
     require("Mode::ConfirmDelete" in manager_cpp,
             "MIDI delete confirmation mode is missing")
     require("deleteConfirmed_ = false" in manager_cpp,
@@ -40,6 +55,32 @@ def main() -> None:
             "Project import must adapt the reserved layout bounds explicitly")
     require("refreshMidiFiles" not in project_h and "midi_dirs_" not in project_h,
             "Project still owns a duplicate MIDI browser model")
+    require("midi_scan_" not in project_h and
+            "midiFileManager().beginImportScan()" in project_cpp and
+            "midiFileManager().importScanResult()" in project_cpp,
+            "Project import scan must reuse the shared manager workspace")
+    require("static_assert(sizeof(ProjectPage) <= 256" in project_h,
+            "Project page DRAM budget must protect directory-open headroom")
+
+    constructor = project_cpp[
+        project_cpp.index("ProjectPage::ProjectPage"):
+        project_cpp.index("void ProjectPage::refreshScenes")
+    ]
+    on_enter = project_cpp[
+        project_cpp.index("void ProjectPage::onEnter"):
+        project_cpp.index("bool ProjectPage::importMidiAtSelection")
+    ]
+    require("refreshScenes()" not in constructor and
+            "generateMemorableName()" not in constructor and
+            "refreshScenes()" not in on_enter,
+            "Project page construction must not eagerly allocate scene data")
+    require("returnToMidiBrowser" in project_cpp and
+            "midiFileManager().open()" in project_cpp,
+            "leaving MIDI routing must reconstruct the overlaid browser window")
+    require("MIDI FOLDER OPEN FAILED" in manager_cpp and
+            "MIDI FOLDER READ FAILED" in manager_cpp and
+            "[MIDI-FILES]" in manager_cpp and "open failed" in manager_cpp,
+            "directory allocation failure must not be mislabeled as missing SD")
 
     require("midi_file_manager.h" in player_h,
             "SMF Player must include the shared MIDI manager")

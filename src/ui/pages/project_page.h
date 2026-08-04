@@ -5,7 +5,6 @@
 #include "../ui_utils.h"
 #include "../midi_file_manager.h"
 #include "help_dialog.h"
-#include "../../audio/midi_importer.h"
 #include "src/state/scene_revision.h"
 
 class ProjectPage : public IPage, public IMultiHelpFramesProvider {
@@ -53,6 +52,7 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   bool createNewScene();
   void openImportMidiDialog();
   void openMidiAdvanceDialog();
+  void returnToMidiBrowser();
   bool importMidiAtSelection();
   void drawMidiAdvanceDialog(IGfx& gfx);
   void openConfirmClearDialog();
@@ -85,7 +85,6 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   bool loadError_;
   std::vector<std::string> scenes_;
   std::string midi_selected_path_;
-  MidiImporter::ScanResult midi_scan_;
   int midi_import_start_pattern_ = 0;
   int midi_import_from_bar_ = 0;
   int midi_import_length_bars_ = 16;
@@ -101,3 +100,6 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   int midi_adv_scroll_ = 0;
   std::string save_name_;
 };
+
+static_assert(sizeof(ProjectPage) <= 256,
+              "Project page must leave enough contiguous DRAM for SD browsing");

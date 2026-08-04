@@ -24,11 +24,15 @@ public:
                     float startPhaseSteps,
                     float bpm,
                     float sampleRate,
-                    bool transportPlaying) {
+                    bool transportPlaying,
+                    bool restartFromBeginning = true) {
         if (transportPlaying && !previousTransportPlaying_) {
-            queue.tryPushLifecycle(MidiTransportEventType::Start,
-                                   blockSequence,
-                                   0);
+            queue.tryPushLifecycle(
+                restartFromBeginning
+                    ? MidiTransportEventType::Start
+                    : MidiTransportEventType::Continue,
+                blockSequence,
+                0);
         } else if (!transportPlaying && previousTransportPlaying_) {
             queue.tryPushLifecycle(MidiTransportEventType::Stop,
                                    blockSequence,

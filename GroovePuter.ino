@@ -384,6 +384,22 @@ void setup() {
   }
   markBootStage(85, "after SMF runtime init");
 
+  // Start the dispatcher before engine/UI activity. Its full 4KB stack is
+  // statically reserved, so startup no longer depends on the largest free heap
+  // block left by SD and SMF initialization.
+  g_musicalEventRouter.addSink(g_internalSynthOutput);
+  screenLog("4d. USB MIDI Runtime...");
+  markBootStage(52, "before USB MIDI sink");
+  if (!registerCardputerUsbMidiSink(
+          g_musicalEventRouter,
+          g_patternMusicalEventQueue,
+          g_externalMidiTransportQueue)) {
+    Serial.println("[ERROR] USB MIDI runtime unavailable");
+    markBootStage(952, "USB MIDI runtime unavailable");
+  } else {
+    markBootStage(53, "after USB MIDI sink");
+  }
+
   screenLog("5. Creating Encoder8");
   markBootStage(40, "before Encoder8 alloc");
   g_encoder8 = new (std::nothrow) Encoder8Miniacid(g_miniAcidInstance);
@@ -403,20 +419,8 @@ void setup() {
   g_patternMusicalEventQueue.setPhaseReader(
       readPatternSequencerPhase, g_miniAcid);
   g_miniAcid->setPatternEventQueue(&g_patternMusicalEventQueue);
-  g_musicalEventRouter.addSink(g_internalSynthOutput);
   g_lastLiveInputEpoch = g_miniAcid->liveInputEpoch();
   markBootStage(51, "after MiniAcid::init");
-
-  // The platform transport registers its descriptor before app_main starts
-  // USB. Defer begin() and router mutation until setup, when Arduino and the
-  // shared event router are fully initialized.
-  screenLog("6c. USB MIDI...");
-  markBootStage(52, "before USB MIDI sink");
-  registerCardputerUsbMidiSink(
-      g_musicalEventRouter,
-      g_patternMusicalEventQueue,
-      g_externalMidiTransportQueue);
-  markBootStage(53, "after USB MIDI sink");
 
   // Scan samples from SD card (SD initialized by engine->init->sceneStorage)
   screenLog("6b. Scan /sd/samples...");

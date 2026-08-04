@@ -4,11 +4,14 @@
 #include <Arduino.h>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 #include <esp_rom_sys.h>
+#include <esp_heap_caps.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
+#include "device/usbd_pvt.h"
 #include "src/audio/audio_config.h"
 #include "src/input/musical_event_queue.h"
 #include "src/input/musical_event_router.h"
@@ -22,6 +25,7 @@
 #include "src/midi/scheduled_musical_event_queue.h"
 #include "src/midi/smf_dispatch_policy.h"
 #include "src/midi/smf_late_policy.h"
+#include "src/midi/smf_track_mute.h"
 #include "src/midi/scheduled_smf_midi_event_queue.h"
 #include "src/midi/usb_midi_output.h"
 #include "src/midi/usb_endpoint_health.h"
@@ -42,6 +46,7 @@ constexpr uint8_t kStatusNoteOn = 0x90;
 constexpr uint8_t kStatusControlChange = 0xB0;
 constexpr uint8_t kStatusTimingClock = 0xF8;
 constexpr uint8_t kStatusStart = 0xFA;
+constexpr uint8_t kStatusContinue = 0xFB;
 constexpr uint8_t kStatusStop = 0xFC;
 constexpr uint32_t kBlockDurationUs = static_cast<uint32_t>(
     (1000000ULL * static_cast<uint64_t>(kBlockFrames)) /
@@ -78,6 +83,34 @@ constexpr std::size_t kControlDrainBudget = 8;
 // intact while guaranteeing the CPU0 idle task runs.
 constexpr uint32_t kDispatchFairnessYieldMs = 10;
 constexpr std::size_t kMidiRxDrainBudget = 32;
+constexpr uint32_t kMidiDispatchStackBytes = 4096;
+
+bool g_midiDescriptorLoaded = false;
+uint8_t g_midiInEndpoint = 0;
+
+uint16_t loadCardputerMidiDescriptor(uint8_t* destination,
+                                     uint8_t* interfaceNumber) {
+    if (g_midiDescriptorLoaded) return 0;
+
+    const uint8_t stringIndex =
+        tinyusb_add_string_descriptor("Cardputer MIDI");
+    const uint8_t endpoint = tinyusb_get_free_duplex_endpoint();
+    if (endpoint == 0) return 0;
+
+    const uint8_t descriptor[TUD_MIDI_DESC_LEN] = {
+        TUD_MIDI_DESCRIPTOR(
+            *interfaceNumber,
+            stringIndex,
+            endpoint,
+            static_cast<uint8_t>(0x80u | endpoint),
+            CFG_TUD_ENDOINT_SIZE),
+    };
+    *interfaceNumber += 2;
+    std::memcpy(destination, descriptor, sizeof(descriptor));
+    g_midiInEndpoint = static_cast<uint8_t>(0x80u | endpoint);
+    g_midiDescriptorLoaded = true;
+    return sizeof(descriptor);
+}
 
 class MidiBlockAnchorClock {
 public:
@@ -140,6 +173,7 @@ struct MidiDispatchDiagnostics {
     uint32_t clockDropped{0};
     uint32_t clockStaleGenerationDrops{0};
     uint32_t startSent{0};
+    uint32_t continueSent{0};
     uint32_t stopSent{0};
     uint32_t transportSendFailures{0};
     uint32_t smfSent{0};
@@ -190,6 +224,8 @@ PatternDrumGateScheduler g_patternDrumGates;
 MidiBlockAnchorClock g_anchorClock;
 MidiDispatchDiagnostics g_diagnostics;
 TaskHandle_t g_dispatchTaskHandle = nullptr;
+StaticTask_t g_dispatchTaskBuffer{};
+alignas(16) StackType_t g_dispatchTaskStack[kMidiDispatchStackBytes]{};
 bool g_registered = false;
 bool g_smfCleanupPending = false;
 // Set once cleanup has exceeded its attempt budget. Playback stays paused and
@@ -544,6 +580,14 @@ bool dispatchTransportEvent(const ScheduledMidiTransportEvent& event) {
                 ++g_diagnostics.transportSendFailures;
             }
             break;
+        case MidiTransportEventType::Continue:
+            sent = g_transport.sendContinue();
+            if (sent) {
+                ++g_diagnostics.continueSent;
+            } else {
+                ++g_diagnostics.transportSendFailures;
+            }
+            break;
         case MidiTransportEventType::Stop:
             sent = g_transport.sendStop();
             if (sent) {
@@ -557,12 +601,18 @@ bool dispatchTransportEvent(const ScheduledMidiTransportEvent& event) {
 }
 
 bool dispatchSmfEvent(const ScheduledSmfMidiEvent& event) {
-    if (event.type == ScheduledSmfMidiEventType::NoteOn) {
-        return g_output.handleSmfNoteOn(
-            event.channel, event.note, event.velocity);
+    switch (event.type) {
+        case ScheduledSmfMidiEventType::NoteOn:
+            return g_output.handleSmfNoteOn(
+                event.channel, event.note, event.velocity);
+        case ScheduledSmfMidiEventType::NoteOff:
+            return g_output.handleSmfNoteOff(
+                event.channel, event.note, event.velocity);
+        case ScheduledSmfMidiEventType::SongPositionPointer:
+            return g_output.handleSmfSongPositionPointer(
+                scheduledSmfSongPositionPointerValue(event));
     }
-    return g_output.handleSmfNoteOff(
-        event.channel, event.note, event.velocity);
+    return false;
 }
 
 bool projectSmfNoteOnStillCurrent(const ScheduledSmfMidiEvent& event) {
@@ -612,7 +662,7 @@ void logDiagnosticsIfDue() {
         "smfSent=%u smfStale=%u smfPanic=%u smfRetry=%u smfDrop=%u "
         "smfLateDrop=%u smfLateSent=%u smfMaxLateOnUs=%u smfLateOff=%u "
         "smfEpochDrop=%u smfCleanRetry=%u smfStall=%u/%u smfMaxBlockUs=%u "
-        "clockSent=%u clockLate=%u clockDropped=%u start=%u stop=%u "
+        "clockSent=%u clockLate=%u clockDropped=%u start=%u continue=%u stop=%u "
         "transportFail=%u late=%u maxLateUs=%u stale=%u/%u badFrame=%u "
         "drop=%u/%u transportDrop=%u overflow=%u recovery=%u "
         "liveDrop=%u/%u suppressed=%u panic=%u/%u\n",
@@ -644,6 +694,7 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(g_diagnostics.clockLate),
         static_cast<unsigned>(g_diagnostics.clockDropped),
         static_cast<unsigned>(g_diagnostics.startSent),
+        static_cast<unsigned>(g_diagnostics.continueSent),
         static_cast<unsigned>(g_diagnostics.stopSent),
         static_cast<unsigned>(g_diagnostics.transportSendFailures),
         static_cast<unsigned>(g_diagnostics.lateEvents),
@@ -690,7 +741,8 @@ void logDiagnosticsIfDue() {
     const auto endpoint = g_endpointHealth.snapshot(millis());
     Serial.printf(
         "[USB-DIAG] midiMounted=%u edge=up/down=%u/%u "
-        "tx=attempt/ok/reject/noMount=%u/%u/%u/%u pace=%u/%ums rx=%u "
+        "tx=attempt/ok/reject/noMount=%u/%u/%u/%u pace=%u/%ums "
+        "ep=busy/stalled=%u/%u last=%u/%u rx=%u "
         "live=q/dispatched/drop=%u/%u/%u/%u smf=cleanup/stalled=%u/%u "
         "health=%u reject=%u stall=%u/%u block=%ums max=%ums "
         "susp=%u/%u/%u up=%ums\n",
@@ -703,6 +755,10 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(usb.txNotMounted),
         static_cast<unsigned>(usb.txPacingWaits),
         static_cast<unsigned>(usb.txPacingWaitMicros / 1000u),
+        static_cast<unsigned>(usb.txRejectedEndpointBusy),
+        static_cast<unsigned>(usb.txRejectedEndpointStalled),
+        static_cast<unsigned>(usb.endpointBusyOnLastReject ? 1 : 0),
+        static_cast<unsigned>(usb.endpointStalledOnLastReject ? 1 : 0),
         static_cast<unsigned>(usb.rxPackets),
         static_cast<unsigned>(g_controlQueue.approximateSize()),
         static_cast<unsigned>(g_diagnostics.dispatchedControl),
@@ -1073,12 +1129,23 @@ void midiDispatchTask(void*) {
                 ++g_diagnostics.smfStaleGenerationDrops;
                 clearPendingSmf();
             } else if (pendingSmf.type == ScheduledSmfMidiEventType::NoteOn &&
+                       GroovePuterMidi::smfTrackMuteState().isMuted(
+                           pendingSmf.trackIndex)) {
+                ++g_diagnostics.smfStaleGenerationDrops;
+                clearPendingSmf();
+            } else if (pendingSmf.type == ScheduledSmfMidiEventType::NoteOn &&
                        !projectSmfNoteOnStillCurrent(pendingSmf)) {
                 // Stop/Restart can happen during the final <=1.5 ms busy-wait.
                 // Recheck the live transport immediately before the USB write.
                 ++g_diagnostics.smfTransportEpochDrops;
                 clearPendingSmf();
             } else if (dispatchSmfEvent(pendingSmf)) {
+                if (!g_smfQueue->recordDispatched(pendingSmf)) {
+                    // The NoteOn reached the wire but bounded track
+                    // ownership could not be committed. Scoped global
+                    // SMF cleanup is the only safe recovery.
+                    beginSmfCleanup();
+                }
                 ++g_diagnostics.smfSent;
                 recordRecoveredSmfSendBlock();
                 if (pendingSmfLatenessUs > 0) {
@@ -1142,6 +1209,13 @@ void midiDispatchTask(void*) {
 
 }  // namespace
 
+CardputerUsbMidiTransport::CardputerUsbMidiTransport() {
+    descriptorRegistered_ = tinyusb_enable_interface(
+        USB_INTERFACE_MIDI,
+        TUD_MIDI_DESC_LEN,
+        loadCardputerMidiDescriptor) == ESP_OK;
+}
+
 uint8_t CardputerUsbMidiTransport::clamp7Bit(uint8_t value) {
     return value > 127 ? 127 : value;
 }
@@ -1151,7 +1225,11 @@ uint8_t CardputerUsbMidiTransport::clampChannel(uint8_t channel) {
 }
 
 bool CardputerUsbMidiTransport::begin() {
-    // The USBMIDI member constructor has already registered the MIDI interface.
+    if (begun_) return true;
+    if (!descriptorRegistered_) return false;
+
+    // The global transport constructor has already registered the MIDI
+    // descriptor before Arduino app_main() assembles the composite device.
     diagnostics_ = {};
     mountStateKnown_ = false;
     lastMounted_ = false;
@@ -1161,8 +1239,8 @@ bool CardputerUsbMidiTransport::begin() {
 
     // Arduino app_main() starts TinyUSB only when an on-boot USB interface such
     // as CDC is enabled. The MIDI-only SEQTRAK profile has no such interface,
-    // and USBMIDI::begin() is a no-op in the pinned core, so start the already
-    // registered MIDI descriptor explicitly in that configuration.
+    // so start the already registered MIDI descriptor explicitly in that
+    // configuration.
 #if !ARDUINO_USB_CDC_ON_BOOT
     if (!USB.begin()) {
         begun_ = false;
@@ -1170,7 +1248,6 @@ bool CardputerUsbMidiTransport::begin() {
     }
 #endif
 
-    midi_.begin();
     begun_ = true;
     return true;
 }
@@ -1207,7 +1284,10 @@ void CardputerUsbMidiTransport::pollSuspendState() const {
 
 bool CardputerUsbMidiTransport::readPacket(midiEventPacket_t& packet) {
     if (!begun_) return false;
-    const bool received = midi_.readPacket(&packet);
+    // TinyUSB MIDI class FIFOs have one owner: MidiDispatchTask.
+    configASSERT(xTaskGetCurrentTaskHandle() == g_dispatchTaskHandle);
+    const bool received = tud_midi_packet_read(
+        reinterpret_cast<uint8_t*>(&packet));
     if (received) ++diagnostics_.rxPackets;
     return received;
 }
@@ -1229,6 +1309,8 @@ void CardputerUsbMidiTransport::observeMountState(bool mounted) const {
 }
 
 bool CardputerUsbMidiTransport::writePacket(midiEventPacket_t& packet) {
+    // Keep physical TinyUSB FIFO access in the dispatcher task.
+    configASSERT(xTaskGetCurrentTaskHandle() == g_dispatchTaskHandle);
     ++diagnostics_.txAttempts;
     if (!mounted()) {
         ++diagnostics_.txNotMounted;
@@ -1245,8 +1327,19 @@ bool CardputerUsbMidiTransport::writePacket(midiEventPacket_t& packet) {
     }
     txPacer_.recordAttempt(micros());
 
-    if (!midi_.writePacket(&packet)) {
+    if (!tud_midi_packet_write(reinterpret_cast<uint8_t*>(&packet))) {
         ++diagnostics_.txRejected;
+        const bool endpointKnown = g_midiInEndpoint != 0;
+        diagnostics_.endpointBusyOnLastReject =
+            endpointKnown && usbd_edpt_busy(0, g_midiInEndpoint);
+        diagnostics_.endpointStalledOnLastReject =
+            endpointKnown && usbd_edpt_stalled(0, g_midiInEndpoint);
+        if (diagnostics_.endpointBusyOnLastReject) {
+            ++diagnostics_.txRejectedEndpointBusy;
+        }
+        if (diagnostics_.endpointStalledOnLastReject) {
+            ++diagnostics_.txRejectedEndpointStalled;
+        }
         observeEndpointWrite(true, false);
         return false;
     }
@@ -1272,6 +1365,7 @@ bool CardputerUsbMidiTransport::writeChannelPacket(uint8_t codeIndex,
 bool CardputerUsbMidiTransport::writeRealtimePacket(uint8_t status) {
     if (status != kStatusTimingClock &&
         status != kStatusStart &&
+        status != kStatusContinue &&
         status != kStatusStop) {
         return false;
     }
@@ -1328,7 +1422,7 @@ bool CardputerUsbMidiTransport::sendStop() {
 }
 
 void CardputerUsbMidiTransport::flush() {
-    // USBMIDI::writePacket() queues a complete four-byte USB-MIDI event packet.
+    // tud_midi_packet_write() queues a complete four-byte USB-MIDI event packet.
     // The pinned TinyUSB API exposes no additional flush operation.
 }
 
@@ -1342,20 +1436,28 @@ bool registerCardputerUsbMidiSink(
     g_externalTransportQueue = &externalTransportQueue;
     g_patternDrumGates.clear();
     if (!router.addSink(g_queueSink)) {
+        Serial.println("[MIDI-INIT] router sink registration failed");
         g_patternQueue = nullptr;
         g_externalTransportQueue = nullptr;
         return false;
     }
 
-    const BaseType_t taskResult = xTaskCreatePinnedToCore(
+    g_dispatchTaskHandle = xTaskCreateStaticPinnedToCore(
         midiDispatchTask,
         "MidiDispatchTask",
-        4096,
+        kMidiDispatchStackBytes,
         nullptr,
         2,
-        &g_dispatchTaskHandle,
+        g_dispatchTaskStack,
+        &g_dispatchTaskBuffer,
         0);
-    if (taskResult != pdPASS) {
+    if (g_dispatchTaskHandle == nullptr) {
+        Serial.printf(
+            "[MIDI-INIT] static task creation failed freeInt=%u largest=%u\n",
+            static_cast<unsigned>(
+                heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+            static_cast<unsigned>(
+                heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
         router.removeSink(g_queueSink);
         g_patternQueue = nullptr;
         g_externalTransportQueue = nullptr;
@@ -1364,6 +1466,11 @@ bool registerCardputerUsbMidiSink(
     }
 
     g_registered = true;
+    Serial.printf(
+        "[MIDI-INIT] task ready freeInt=%u largest=%u\n",
+        static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+        static_cast<unsigned>(
+            heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
     return true;
 }
 
@@ -1383,4 +1490,25 @@ void publishCardputerUsbMidiBlockAnchor(uint32_t blockSequence,
 bool snapshotCardputerUsbMidiBlockAnchor(uint32_t& blockSequence,
                                          uint32_t& playbackStartMicros) {
     return g_anchorClock.snapshot(blockSequence, playbackStartMicros);
+}
+
+CardputerUsbMidiStatusSnapshot snapshotCardputerUsbMidiStatus() {
+    const CardputerUsbMidiTransportDiagnostics usb = g_transport.diagnostics();
+    const UsbEndpointHealthSnapshot endpoint = g_endpointHealth.snapshot(millis());
+    CardputerUsbMidiStatusSnapshot snapshot{};
+    snapshot.registered = g_registered;
+    snapshot.started = g_transport.started();
+#if ARDUINO_USB_CDC_ON_BOOT
+    snapshot.cdcOnBoot = true;
+#endif
+    snapshot.mounted = g_transport.mounted();
+    snapshot.suspended = g_transport.suspended();
+    snapshot.stalled = endpoint.state == UsbEndpointHealthState::Stalled;
+    snapshot.txAccepted = usb.txAccepted;
+    snapshot.txRejected = usb.txRejected;
+    snapshot.txRejectedEndpointBusy = usb.txRejectedEndpointBusy;
+    snapshot.txRejectedEndpointStalled = usb.txRejectedEndpointStalled;
+    snapshot.queuedSmfEvents = static_cast<uint16_t>(std::min<std::size_t>(
+        g_smfQueue ? g_smfQueue->approximateSize() : 0u, UINT16_MAX));
+    return snapshot;
 }

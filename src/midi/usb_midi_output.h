@@ -87,6 +87,13 @@ public:
     bool handleSmfNoteOff(uint8_t zeroBasedChannel,
                           uint8_t note,
                           uint8_t velocity = 0);
+    bool handleSmfSongPositionPointer(uint16_t midiBeats) {
+        // This method is reached only from MidiDispatchTask through the
+        // scheduled SMF lane. It owns no note and therefore must not mutate the
+        // shared Pattern/PERFORM/SMF ownership matrices.
+        return enabled_ && begun_ && mounted_ &&
+               transport_.sendSongPositionPointer(midiBeats);
+    }
     bool releaseAllSmfNotes();
     // Preserve channels whose exact NoteOff ownership had to be abandoned
     // after terminal USB backpressure. The next panic/reconnect can then send

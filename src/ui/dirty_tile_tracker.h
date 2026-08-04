@@ -22,8 +22,10 @@ class DirtyTileTracker {
 public:
   static constexpr int kTileWidth = 16;
   static constexpr int kTileHeight = 16;
-  static constexpr int kMaxScreenWidth = 320;
-  static constexpr int kMaxScreenHeight = 240;
+  // Cardputer ADV is rendered at 240x135. Other dimensions safely fall back
+  // to a full display flush instead of reserving unreachable tile storage.
+  static constexpr int kMaxScreenWidth = 240;
+  static constexpr int kMaxScreenHeight = 135;
   static constexpr int kMaxColumns =
       (kMaxScreenWidth + kTileWidth - 1) / kTileWidth;
   static constexpr int kMaxRows =
@@ -168,3 +170,6 @@ private:
   std::array<uint32_t, kMaxTiles> previous_hashes_{};
   std::array<uint8_t, kMaxTiles> dirty_{};
 };
+
+static_assert(sizeof(DirtyTileTracker) <= 704,
+              "Cardputer dirty tracking must stay below 704 bytes");

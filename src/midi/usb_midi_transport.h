@@ -37,7 +37,17 @@ public:
     // preserve non-transport test doubles while hardware transports opt in.
     virtual bool sendTimingClock() { return false; }
     virtual bool sendStart() { return false; }
+    virtual bool sendContinue() { return false; }
     virtual bool sendStop() { return false; }
+
+    // MIDI Song Position Pointer uses sixteenth-note units (MIDI beats) and a
+    // 14-bit payload encoded on the wire as F2 LSB MSB. It is deliberately
+    // optional: device profiles must enable it only when the complete dispatch
+    // path and receiver behavior are known to be safe.
+    virtual bool sendSongPositionPointer(uint16_t midiBeats) {
+        (void)midiBeats;
+        return false;
+    }
 
     virtual void flush() = 0;
 };

@@ -128,6 +128,7 @@ private:
     bool armProjectFromTick(uint32_t tick);
     bool planProjectLaunch(
         const GroovePuterMidi::ProjectTransportBlockSnapshot& transport);
+    bool queueSongPositionPointerAtCurrentAnchor(uint32_t tick);
     void pauseAtCurrentPosition();
     void stopAndCleanup(bool resetToMusicStart);
     void scheduleAhead();

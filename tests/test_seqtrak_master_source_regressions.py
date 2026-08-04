@@ -78,7 +78,7 @@ def main() -> None:
     ).read_text(encoding="utf-8")
     display_h = (ROOT / "src/ui/miniacid_display.h").read_text(encoding="utf-8")
 
-    require("midi_.readPacket(&packet)" in transport,
+    require("tud_midi_packet_read" in transport,
             "the sole platform transport must own TinyUSB RX")
     require("readPacket(midiEventPacket_t& packet)" in transport_h,
             "the Cardputer transport must expose bounded packet polling")
