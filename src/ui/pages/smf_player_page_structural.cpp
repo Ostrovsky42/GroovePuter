@@ -7,6 +7,7 @@
 #include "../components/music_visuals.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/smf_structural_inspector.h"
+#include "src/midi/smf_track_inspector.h"
 #include "src/midi/smf_track_mute.h"
 
 namespace {
@@ -147,6 +148,22 @@ void drawStructuralInspector(IGfx& gfx) {
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), line);
 }
 
+void drawTrackTruncationNotice(IGfx& gfx) {
+    const SmfTrackInspectorSnapshot tracks =
+        smfTrackInspectorState().snapshot();
+    if (!tracks.tracksTruncated()) return;
+
+    const int y = LayoutManager::lineY(7);
+    gfx.fillRect(Layout::COL_1 - 2, y - 1,
+                 Layout::CONTENT.w - 10, 11, COLOR_PANEL);
+    char line[40];
+    std::snprintf(line, sizeof(line), "TRACKS %u / %u PLAYED",
+                  static_cast<unsigned>(tracks.declaredTrackCount),
+                  static_cast<unsigned>(tracks.trackCount));
+    gfx.setTextColor(COLOR_WARN);
+    gfx.drawText(Layout::COL_1, y, line);
+}
+
 }  // namespace
 
 bool SmfPlayerPage::handleEvent(UIEvent& event) {
@@ -212,6 +229,7 @@ void SmfPlayerPage::drawContent(IGfx& gfx) {
         return;
     }
     SmfPlayerPageBase::drawContent(gfx);
+    if (muteMixerVisible_) drawTrackTruncationNotice(gfx);
 }
 
 void SmfPlayerPage::drawFooter(IGfx& gfx) {
