@@ -1,0 +1,36 @@
+name: Apply compact synth controls
+
+on:
+  push:
+    branches:
+      - agent/compact-synth-controls
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    if: ${{ hashFiles('tools/agent_compact_synth_controls.py') != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply compact synth controls
+        run: python3 tools/agent_compact_synth_controls.py
+
+      - name: Run host regressions
+        run: bash tests/run_host_tests.sh
+
+      - name: Publish tested UI patch
+        run: |
+          git config user.name "openai-coding-agent"
+          git config user.email "openai-coding-agent@users.noreply.github.com"
+          git rm .github/workflows/agent-compact-synth-controls.yml
+          git rm tools/agent_compact_synth_controls.py
+          git add src/ui/pages/tb303_params_page.cpp \
+                  tests/test_wavemorph_performance_source_regressions.py \
+                  docs/stages/COMPACT_SYNTH_CONTROLS_STAGE.md
+          git commit -m "ui: compact synth controls into one screen"
+          git push origin HEAD:agent/compact-synth-controls
