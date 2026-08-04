@@ -18,7 +18,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Run core host regressions
-        run: bash tests/run_host_tests.sh
+        run: |
+          bash tests/run_host_tests.sh
+          python3 tests/test_smf_panel_completion_source_regressions.py
 
       - name: Run UI status chrome tests
         run: |

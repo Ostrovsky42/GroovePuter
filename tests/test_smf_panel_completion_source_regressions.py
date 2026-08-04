@@ -23,6 +23,10 @@ def main() -> None:
     player_service = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(encoding="utf-8")
     dispatcher = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
     smf_queue = (ROOT / "src/midi/scheduled_smf_midi_event_queue.h").read_text(encoding="utf-8")
+    mute_state = (ROOT / "src/midi/smf_track_mute.h").read_text(encoding="utf-8")
+    track_inspector = (ROOT / "src/midi/smf_track_inspector.h").read_text(encoding="utf-8")
+    stream_cpp = (ROOT / "src/midi/smf_stream.cpp").read_text(encoding="utf-8")
+    display_cpp = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
 
     require("midi_file_manager.h" in page_h,
             "SMF page must use the shared bounded MIDI browser")
@@ -63,6 +67,64 @@ def main() -> None:
     guard_block = page_h[page_h.index("template <typename F>"):]
     require("gfx" not in guard_block and "draw" not in guard_block,
             "AudioGuard helper must not contain UI drawing")
+
+    require("drawMuteMixer" in page_h and
+            "void SmfPlayerPage::drawMuteMixer" in page_cpp and
+            '"MIDI MUTES"' in page_cpp,
+            "SMF player must expose a dedicated track mute table")
+    require("muteMixerVisible_" in page_h and
+            "event.key == 'u'" in page_cpp,
+            "U must open and close the dedicated mute table")
+    require("GROOVEPUTER_UP" in page_cpp and
+            "GROOVEPUTER_DOWN" in page_cpp and
+            "GROOVEPUTER_LEFT" in page_cpp and
+            "GROOVEPUTER_RIGHT" in page_cpp,
+            "mute table must be operable from Cardputer arrow keys")
+    require("event.key == 'a'" in page_cpp and
+            '"ALL MIDI TRACKS ON"' in page_cpp,
+            "A must replace unavailable Shift+K for all-tracks-on")
+    require("Shift+K" not in page_cpp and "J/L Track" not in page_cpp,
+            "mute mixer help must not advertise unavailable Shift or J/L navigation")
+    require("toggleAudibleTrackHotkey" in page_cpp and
+            "event.key >= '1' && event.key <= '9'" in page_cpp and
+            '"MIDI SLOT %u EMPTY"' in page_cpp,
+            "1-9 must directly mute the first nine audible SMF tracks")
+    require("const char hotkey = visibleIndex < 9" in page_cpp and
+            '"%c%c%02u %-3s %-15.15s %-3s %-4s"' in page_cpp,
+            "mute table must label all nine direct hotkey slots")
+    page_dispatch = display_cpp.index("currentPage->handleEvent(event)")
+    global_numeric_mutes = display_cpp.index(
+        "event.key >= '1' && event.key <= '9'", page_dispatch)
+    require(page_dispatch < global_numeric_mutes and
+            "toggleMute303(0)" in display_cpp and
+            "toggleMute303(1)" in display_cpp and
+            "toggleMuteKick()" in display_cpp,
+            "SMF page must consume 1-9 before unchanged imported-project mutes")
+    require("bool selectTrack(uint16_t trackIndex)" in mute_state and
+            "std::atomic<uint32_t> mutedMaskLow_" in mute_state and
+            "std::atomic<uint32_t> mutedMaskHigh_" in mute_state,
+            "mute table must keep bounded physical-track selection and atomic masks")
+
+    require("kSmfTrackNameBytes = 16" in track_inspector and
+            "std::atomic<uint32_t> nameWords" in track_inspector and
+            "sizeof(SmfTrackInspectorSnapshot) <= 1284" in track_inspector,
+            "track names and metadata must use a bounded atomic DRAM snapshot")
+    require("metaType == 0x03u" in stream_cpp and
+            "smfTrackInspectorState().setName" in stream_cpp and
+            "smfTrackInspectorState().observe" in stream_cpp,
+            "track metadata must be collected during the existing stream scan")
+    require("collectAudibleTracks" in page_cpp and
+            "TEMPO-ONLY TRACKS ARE HIDDEN" in page_cpp and
+            '"MIX"' in page_cpp and '"DRUM"' in page_cpp,
+            "mute table must show named audible physical tracks with route hints")
+    mute_draw_block = function_block(
+        page_cpp,
+        "void SmfPlayerPage::drawMuteMixer",
+        "void SmfPlayerPage::drawMidiWaveOverlay",
+    )
+    for forbidden in ("SD.open", "openNextFile", "requestLoad", "std::vector"):
+        require(forbidden not in mute_draw_block,
+                f"mute table render must remain storage-free and bounded: {forbidden}")
 
     require("queueSongPositionPointerAtCurrentAnchor(targetTick)" in player_service and
             "tryPushSongPositionPointer" in player_service,

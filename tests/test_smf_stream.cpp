@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "src/midi/smf_stream.h"
+#include "src/midi/smf_track_inspector.h"
 #include "src/midi/smf_track_mute.h"
 
 using namespace GroovePuterMidi;
@@ -77,6 +78,8 @@ std::vector<uint8_t> fixture() {
         0x00, 0xFF, 0x2F, 0x00,
     });
     appendTrack(file, {
+        0x00, 0xFF, 0x03, 0x15,
+        'G','r','a','n','d',' ','P','i','a','n','o',' ','L','o','n','g',' ','N','a','m','e',
         0x83, 0x60, 0x90, 60, 100,
         0x00, 64, 90,
         0x81, 0x70, 60, 0,
@@ -131,6 +134,23 @@ int main() {
     assert(events[5].event.data1 == 64);
     assert(events[6].event.kind == SmfEventKind::ProgramChange);
     assert(events[6].event.data1 == 10);
+
+    const SmfTrackInspectorSnapshot tracks = smfTrackInspectorState().snapshot();
+    assert(tracks.trackCount == 2);
+    assert(tracks.audibleTrackCount() == 1);
+    assert(tracks.tracks[0].hasName());
+    assert(std::strcmp(tracks.tracks[0].name, "Conductor") == 0);
+    assert(!tracks.tracks[0].audible());
+    assert(tracks.tracks[1].hasName());
+    assert(std::strcmp(tracks.tracks[1].name, "Grand Piano Lon") == 0);
+    assert(tracks.tracks[1].name[kSmfTrackNameBytes - 1u] == '\0');
+    assert(tracks.tracks[1].audible());
+    assert(tracks.tracks[1].channelMask == 0x0001u);
+    assert(tracks.tracks[1].primaryChannel() == 0);
+    assert(!tracks.tracks[1].usesMultipleChannels());
+    assert(tracks.tracks[1].hasProgramChange());
+    assert(tracks.tracks[1].firstProgram == 10);
+    assert(!tracks.tracks[1].likelyDrums());
 
     uint32_t musicStart = 0;
     bool foundMusic = false;
