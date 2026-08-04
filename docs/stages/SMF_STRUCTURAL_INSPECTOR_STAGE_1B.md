@@ -2,107 +2,121 @@
 
 ## Purpose
 
-Add a bounded, measurement-first structural view to MIDI Player. The inspector explains the first nine audible physical SMF tracks with grid, note density, active density, proven loop periodicity, swing, register, motion, form and register overlap. Genre remains a small `RESEMBLES` hint, never the primary result.
+Add a bounded, measurement-first structural view to MIDI Player. The inspector explains the first nine audible physical SMF tracks with grid, note density, active density, proven loop periodicity, swing, register, motion, form and register overlap. Genre remains a secondary `RESEMBLES` hint.
 
-The analysis is accumulated during the existing full SMF load/index pass. It does not open the file again, add a second SD traversal, alter the scheduler, or change note ownership.
+Analysis is accumulated during the existing full SMF load/index pass. It does not reopen the file, add a second SD traversal, alter the scheduler, or change note ownership.
 
-Physical track identity, channel and first Program Change are retained for all 64 supported SMF tracks. Arbitrary TrackName strings are not kept in fixed internal DRAM; the table derives a compact GM label such as `Grand Piano`, `Finger Bass`, `Lead` or a program-family fallback from the retained program number. A track without Program Change uses the generic physical-track label.
+SMF playback is bounded to the first 32 physical tracks. The indexer still validates and skips through every declared `MTrk` chunk. Files with more than 32 tracks load and play the first 32, while the mute table shows an explicit warning such as `TRACKS 41 / 32 PLAYED`.
 
-## Hardware
+Physical track identity, channel and first Program Change are retained for those 32 tracks. Arbitrary TrackName strings are not kept in fixed internal DRAM; the table derives a compact GM label such as `Grand Piano`, `Finger Bass`, `Lead` or a program-family fallback. A track without Program Change uses its physical track number.
 
-- M5Stack Cardputer-Adv (ESP32-S3).
-- microSD card containing a Standard MIDI File Type 0 or Type 1.
+## Hardware list
+
+- M5Stack Cardputer-Adv, ESP32-S3.
+- microSD card with Standard MIDI Files Type 0 or Type 1.
 - Optional Yamaha SEQTRAK or another USB MIDI target.
-- USB-C data cable when using an external MIDI target.
+- USB-C data cable for external MIDI playback.
 
 ## Wiring
 
-No GPIO wiring is required for this test.
+No GPIO wiring is required.
 
 - Insert the microSD card into Cardputer-Adv.
-- Connect Cardputer-Adv USB-C to the MIDI target/host when external playback is required.
-- The PR does not change PORT.A I2C, audio wiring, or the single TinyUSB writer established by PR #35.
+- Connect Cardputer-Adv USB-C to the MIDI target or host when required.
+- PORT.A I2C, audio wiring and the existing single TinyUSB writer are unchanged.
 
 ## Build / Flash
 
 ```bash
 git fetch origin
 git checkout agent/smf-structural-inspector
-./tests/run_host_tests.sh
-./scripts/build_cardputer_adv.sh
-./scripts/check_cardputer_dram_budget.sh build/cardputer_adv
+bash tests/run_host_tests.sh
+bash scripts/build.sh --warnings all
+bash scripts/check_cardputer_dram_budget.sh \
+  build/cardputer-adv-current/GroovePuter.ino.elf
 ```
 
-Flash the generated Cardputer-Adv firmware using the repository's normal M5Launcher or serial workflow.
+The normal Cardputer-Adv profile is:
+
+```text
+m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc
+```
+
+The normal and SEQTRAK MIDI-only builds both use the same fixed-DRAM ceiling: `122880` bytes for `.dram0.data + .dram0.bss`.
+
+Flash the generated firmware with the repository's normal M5Launcher or serial workflow.
 
 ## Controls
 
 - `1–9`: toggle the first nine audible physical SMF tracks.
-- `U`: open the working mute table; use arrows and `Enter` to toggle the selected track.
-- `S`: open/close the structural inspector.
-- `Up/Down` in the structural inspector: select an analyzed audible track.
+- `U`: open the mute table.
+- Arrows + `Enter`: select and toggle a mute-table row.
+- `A`: restore all loaded SMF tracks.
+- `S`: open or close the structural inspector.
+- `Up/Down` in the inspector: select an analyzed layer.
 - `I`: channel inspector.
 - `D`: performance diagnostics.
 - `B`: return to files/player.
 
-Known hardware limitation: the physical Cardputer `1–9` path is not yet accepted on hardware. The hotkey mapping and event ownership are retained for diagnosis, while `U` + arrows + `Enter` remains the validated mute path. `K` is not a MIDI mute command and is absent from the mute-table footer.
+Known hardware limitation: physical Cardputer `1–9` has not passed hardware acceptance. `U` + arrows + `Enter` remains the validated mute path. `K` is not a MIDI mute command.
 
 ## Metrics
 
-- `GRID`: smallest 1/8, 1/16 or 1/32 grid explaining at least 75% of attacks.
-- `NOTES/B`: Note On attacks per bar in the layer's own first-to-last active bar span.
-- `ACTIVE`: percentage of that same layer span where at least one note is held. This is intentionally separate from note density.
-- `SWING`: delayed offbeat phase measured against the inferred grid; straight material reports 50%.
-- `LOOP`: only a proven 1-, 2- or 4-bar repetition in the first eight layer-relative bar signatures. Unproven periodicity displays `--`.
-- `MOTION`: change in timing/pitch bar signatures. Velocity changes alone do not alter it.
-- `NOTE REGISTER`: MIDI note range only; it is not a frequency/spectral claim about the SEQTRAK patch.
+- `GRID`: smallest 1/8, 1/16 or 1/32 grid explaining at least 75% of attacks. A delayed offbeat in the swing window still counts toward its candidate grid.
+- `SWING`: delayed offbeat phase against the inferred grid. Straight material reports 50%; triplet-like 1/16 swing reports about 66%.
+- `NOTES/B`: Note On attacks per bar in the layer's own first-to-last active span.
+- `ACTIVE`: percentage of that same span where at least one note is held.
+- `LOOP`: only a proven 1-, 2- or 4-bar repetition. Unproven periodicity displays `--`.
+- `MOTION`: change in timing/pitch signatures. Velocity changes alone do not alter it.
+- `NOTE REGISTER`: MIDI note range, not an audio-frequency claim.
 - `FORM`: four 16-bar activity bins covering the first 64 file bars.
-- `OVERLAP`: note-register overlap with the first inferred chords/pad and lead layers.
-- `RESEMBLES`: low-priority interpretation derived from measurable values.
+- `OVERLAP`: note-register overlap with inferred chords/pad and lead layers.
+- `RESEMBLES`: low-priority interpretation derived from measured values.
 
 Only the first 64 bars are analyzed. Longer files show `PARTIAL 64` and continue to play normally.
 
 ## Expected behavior
 
-1. Load an SMF containing conductor/meta tracks and at least seven musical tracks.
-2. Tempo/conductor tracks do not consume hotkey positions.
-3. Open `U`: rows show hotkey position and physical SMF track number separately.
-4. When Program Change exists, the row shows a GM instrument/family label derived without retaining the file TrackName in global DRAM.
-5. Toggle a layer with `Enter`. Playback of other layers continues and the existing ownership-safe cleanup remains in charge of Note Off generation.
-6. Press `S`: the selected layer shows `GRID`, `LOOP`, `SWING`, `MOTION`, `NOTES/B`, `ACTIVE`, `NOTE REGISTER`, `FORM`, `OVERLAP` and `RESEMBLES`.
-7. A sustained pad can show low `NOTES/B` and high `ACTIVE`; this is expected.
-8. A loop without enough repeated evidence shows `LOOP --` rather than an invented length.
-9. Files longer than 64 bars show `PARTIAL 64` without a second load delay.
+1. A normal file with 32 or fewer physical tracks loads without a track-limit notice.
+2. Tempo/conductor tracks do not consume audible hotkey positions.
+3. `U` shows hotkey position and physical SMF track number separately.
+4. Program Change produces a bounded GM instrument/family label.
+5. Muting with `Enter` leaves other tracks playing and uses the existing ownership-safe Note Off cleanup.
+6. `S` shows `GRID`, `LOOP`, `SWING`, `MOTION`, `NOTES/B`, `ACTIVE`, `NOTE REGISTER`, `FORM`, `OVERLAP` and `RESEMBLES`.
+7. Straight 1/16 material reports about `SWING 50%`.
+8. Swinged 1/16 material near 66% remains `GRID 1/16` and reports about `SWING 65–67%`.
+9. A file with 41 physical tracks loads, retains the first 32 and shows `TRACKS 41 / 32 PLAYED` in the `U` table.
+10. A file longer than 64 bars shows `PARTIAL 64` without a second load pass.
 
 ## Troubleshooting
 
-- `NO STRUCTURAL DATA`: wait for load completion; the snapshot is published only after the existing full load/index pass finishes.
-- `MIDI SLOT N EMPTY`: fewer than N audible physical tracks were found; conductor tracks are intentionally excluded.
-- A custom TrackName is not shown: Stage 1B intentionally derives the row label from Program Change to avoid reserving 1 KiB of fixed DRAM for arbitrary names. Physical track number, channel and program remain authoritative.
-- Physical `1–9` does nothing on Cardputer: use `U`, arrows and `Enter`; this remains a documented open hardware-input issue.
-- Wrong role suggestion: role is heuristic. Validate register, polyphony, density and activity rather than treating the label as truth.
-- `ACTIVE` looks approximate: SMF tracks can contain unmatched or unusual Note Off sequences. The value is a bounded note-on/off balance estimate, not audio analysis.
-- External target is silent: confirm USB data cable, target MIDI channels and `RAW`/`SEQTRAK` routing.
+- `NO STRUCTURAL DATA`: wait for the existing load/index pass to finish.
+- `MIDI SLOT N EMPTY`: fewer than N audible loaded tracks were found.
+- `TRACKS N / 32 PLAYED`: the file declared more than 32 physical tracks. The first 32 are loaded; later tracks are validated but intentionally not streamed.
+- A custom TrackName is absent: labels are derived from Program Change to avoid fixed global storage for arbitrary strings.
+- Physical `1–9` does nothing: use `U`, arrows and `Enter` and record the hardware-input result separately.
+- Wrong role suggestion: validate register, polyphony, density and activity; role remains heuristic.
+- External target is silent: verify USB data cable, target channels and `RAW`/`SEQTRAK` routing.
+- DRAM gate says `Firmware ELF not found`: use `build/cardputer-adv-current/GroovePuter.ino.elf`, not the obsolete `build/cardputer_adv` path.
 
 ## Acceptance checklist
 
-- [ ] `./tests/run_host_tests.sh` passes.
-- [ ] Structural analyzer host tests pass with `-Wall -Wextra -Werror`.
+- [ ] `bash tests/run_host_tests.sh` passes.
+- [ ] SDL desktop build passes.
+- [ ] Cardputer-Adv build passes with `bash scripts/build.sh --warnings all`.
+- [ ] CI checks `build/cardputer-adv-current/GroovePuter.ino.elf`.
+- [ ] Normal and MIDI-only profiles share the `122880` fixed-DRAM ceiling.
 - [ ] Straight 1/16 reports `SWING 50%`.
-- [ ] Humanized velocity does not change `LOOP` or `MOTION` when timing and pitch are unchanged.
-- [ ] Late-entering layers use their own span for `NOTES/B` and `ACTIVE`.
+- [ ] Swinged 1/16 at 66% reports `GRID 1/16` and `SWING 65–67%`.
+- [ ] Random free timing remains `GRID FREE`.
+- [ ] Velocity changes do not alter `LOOP` or `MOTION`.
+- [ ] Late-entering layers use their own `NOTES/B` and `ACTIVE` span.
 - [ ] High-PPQN held notes do not overflow `ACTIVE`.
 - [ ] Unproven periodicity displays `LOOP --`.
-- [ ] Source regression proves analysis is observed in `SmfEventStreamMerger` and finalized at the end of the existing first pass.
-- [ ] Track metadata freezes after that pass and is not recomputed during playback.
-- [ ] `SmfTrackInspectorState` remains at or below 260 bytes of fixed storage.
-- [ ] Program 33 renders `Finger Bass` from the retained GM program number.
-- [ ] No second `SmfFileIndexer::build()` or second file open is introduced.
-- [ ] Conductor/meta-only tracks do not become structural layers.
-- [ ] First nine audible layers retain physical `trackIndex` identity.
-- [ ] Long files are capped at 64 bars and marked partial.
-- [ ] `NOTE REGISTER` wording is used; no frequency-band claim is shown.
-- [ ] `RESEMBLES` remains secondary.
-- [ ] `U` + arrows + `Enter` works and ownership-safe cleanup remains unchanged.
-- [ ] Cardputer-Adv ELF passes `check_cardputer_dram_budget.sh` in CI.
-- [ ] No changes to Song, project codecs, Pattern/PERFORM routing ownership, remote CC23/CC24 mute, scheduler or TinyUSB writer.
+- [ ] `SmfTrackInspectorState` remains at or below 136 bytes of fixed storage.
+- [ ] A 41-track host fixture indexes successfully and retains exactly 32 tracks.
+- [ ] A 33+ track hardware file shows `TRACKS N / 32 PLAYED`.
+- [ ] The shared 4096-byte SMF cache pool is unchanged.
+- [ ] No second file open, index pass, scheduler path or TinyUSB writer is introduced.
+- [ ] `U` + arrows + `Enter` works without stuck notes.
+- [ ] Physical `1–9` is reported separately and does not invalidate the `U` path.
