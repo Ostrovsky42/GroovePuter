@@ -10,7 +10,7 @@
 
 namespace GroovePuterMidi {
 
-constexpr std::size_t kSmfTrackInspectorMaxTracks = 64;
+constexpr std::size_t kSmfTrackInspectorMaxTracks = 32;
 constexpr std::size_t kSmfTrackNameBytes = 16;
 
 struct SmfTrackInfoSnapshot {
@@ -44,7 +44,10 @@ struct SmfTrackInfoSnapshot {
 
 struct SmfTrackInspectorSnapshot {
     uint16_t trackCount{0};
+    uint16_t declaredTrackCount{0};
     SmfTrackInfoSnapshot tracks[kSmfTrackInspectorMaxTracks]{};
+
+    bool tracksTruncated() const { return declaredTrackCount > trackCount; }
 
     uint16_t audibleTrackCount() const {
         uint16_t count = 0;
@@ -60,16 +63,19 @@ struct SmfTrackInspectorSnapshot {
 
 static_assert(sizeof(SmfTrackInfoSnapshot) == 20,
               "SMF track rows must remain compact and fixed-size");
-static_assert(sizeof(SmfTrackInspectorSnapshot) <= 1284,
+static_assert(sizeof(SmfTrackInspectorSnapshot) <= 644,
               "SMF track snapshots must remain bounded on the UI stack");
 
 class SmfTrackInspectorState {
 public:
-    void reset(uint16_t trackCount) {
+    void reset(uint16_t trackCount, uint16_t declaredTrackCount = 0) {
         if (trackCount > kSmfTrackInspectorMaxTracks) {
             trackCount = static_cast<uint16_t>(kSmfTrackInspectorMaxTracks);
         }
+        if (declaredTrackCount < trackCount) declaredTrackCount = trackCount;
+
         state_.store(0u, std::memory_order_release);
+        declaredTrackCount_.store(declaredTrackCount, std::memory_order_relaxed);
         for (std::size_t track = 0; track < kSmfTrackInspectorMaxTracks; ++track) {
             AtomicTrack& item = tracks_[track];
             item.channelMask.store(0u, std::memory_order_relaxed);
@@ -88,11 +94,11 @@ public:
     }
 
     void setName(uint16_t trackIndex, const char* name) {
-        // Arbitrary SMF TrackName strings used to reserve 1 KiB of fixed DRAM
-        // for all 64 physical tracks. Stage 1A/1B needs physical identity,
-        // channel and program; the UI derives a bounded GM-family label from
-        // firstProgram instead. Keep this hook so the stream parser stays
-        // unchanged without retaining per-file strings in global storage.
+        // Arbitrary SMF TrackName strings used to reserve fixed DRAM for every
+        // physical track. Stage 1A/1B needs physical identity, channel and
+        // program; the UI derives a bounded GM-family label from firstProgram.
+        // Keep this hook so the stream parser stays unchanged without retaining
+        // per-file strings in global storage.
         (void)trackIndex;
         (void)name;
     }
@@ -132,6 +138,11 @@ public:
         result.trackCount = state_.load(std::memory_order_acquire) & kCountMask;
         if (result.trackCount > kSmfTrackInspectorMaxTracks) {
             result.trackCount = static_cast<uint16_t>(kSmfTrackInspectorMaxTracks);
+        }
+        result.declaredTrackCount =
+            declaredTrackCount_.load(std::memory_order_relaxed);
+        if (result.declaredTrackCount < result.trackCount) {
+            result.declaredTrackCount = result.trackCount;
         }
 
         for (uint16_t track = 0; track < result.trackCount; ++track) {
@@ -222,11 +233,12 @@ private:
     }
 
     std::atomic<uint16_t> state_{0};
+    std::atomic<uint16_t> declaredTrackCount_{0};
     AtomicTrack tracks_[kSmfTrackInspectorMaxTracks]{};
 };
 
-static_assert(sizeof(SmfTrackInspectorState) <= 260,
-              "SMF track metadata must not reserve names in fixed DRAM");
+static_assert(sizeof(SmfTrackInspectorState) <= 136,
+              "SMF track metadata must remain bounded in fixed DRAM");
 
 inline SmfTrackInspectorState& smfTrackInspectorState() {
     static SmfTrackInspectorState state;
