@@ -14,9 +14,9 @@ def main() -> None:
     helper = (ROOT / "src/input/cardputer_input_edges.h").read_text(encoding="utf-8")
     normalize = (ROOT / "src/ui/key_normalize.h").read_text(encoding="utf-8")
     perform = (ROOT / "src/ui/pages/perform_page.cpp").read_text(encoding="utf-8")
-    smf_page = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(
-        encoding="utf-8"
-    )
+    smf_wrapper = (
+        ROOT / "src/ui/pages/smf_player_page_structural.cpp"
+    ).read_text(encoding="utf-8")
 
     require("Keyboard.isChange()" not in sketch,
             "Cardputer input must not depend on key-count-only isChange()")
@@ -60,8 +60,13 @@ def main() -> None:
             "wordDigitAlreadyDispatched" in helper,
             "digit deduplication helpers must remain centralized")
 
-    require("event.key == 'k' || event.key == 'K'" not in smf_page,
-            "MIDI Player mute must use 1-9 or U + Enter, not legacy K")
+    require("K is intentionally not a MIDI mute command" in smf_wrapper,
+            "public MIDI Player wrapper must document the K no-op boundary")
+    require(
+        "if (!browserVisible_ && (event.key == 'k' || event.key == 'K')) return true;"
+        in smf_wrapper,
+        "MIDI Player must consume K before the legacy mute implementation",
+    )
 
     print("deterministic Cardputer input source regressions: OK")
 
