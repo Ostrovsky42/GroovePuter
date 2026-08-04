@@ -284,14 +284,21 @@ void setup() {
   M5Cardputer.begin(cfg);
   markBootStage(11, "after M5Cardputer.begin");
 
-  markBootStage(12, "before Scene PSRAM allocation");
+  markBootStage(12, "before Scene internal allocation");
   if (!g_miniAcidInstance.sceneManager().initializeSceneStorage()) {
-    Serial.println("[FATAL] Scene PSRAM allocation failed");
-    markBootStage(912, "fatal-scene-psram-allocation");
+    Serial.println("[FATAL] Scene internal allocation failed");
+    markBootStage(912, "fatal-scene-internal-allocation");
+    auto& display = M5Cardputer.Display;
+    display.fillScreen(TFT_BLACK);
+    display.setTextColor(TFT_RED, TFT_BLACK);
+    display.setTextSize(1);
+    display.setCursor(8, 8);
+    display.println("FATAL: SCENE RAM");
+    display.println("BOOT STAGE 912");
     while (true) { delay(1000); }
   }
-  markBootStage(13, "after Scene PSRAM allocation");
-  logHeapCaps("after-scene-psram");
+  markBootStage(13, "after Scene internal allocation");
+  logHeapCaps("after-scene-internal");
 
   // Configure ES8311 without creating a temporary M5Unified I2S channel.
   // These values match M5Unified's Cardputer ADV speaker callback.
@@ -369,7 +376,7 @@ void setup() {
   logHeapCaps("after-audio-task");
 
   // Each TempoDelay needs one contiguous 8.6KB block. Reserve both before SD
-  // and SMF runtime fragment the fixed internal Cardputer ADV heap.
+  // and SMF runtime fragment the DRAM-only Cardputer ADV heap.
   screenLog("4a. DSP Buffers...");
   markBootStage(86, "before critical DSP buffers");
   g_miniAcidInstance.preallocateConstrainedDelayBuffers();
@@ -385,7 +392,7 @@ void setup() {
   markBootStage(83, "after early SD init");
 
   // Reserve the SMF task stack and bounded timing buffers before DSP and lazy
-  // UI allocations fragment the fixed internal Cardputer ADV heap.
+  // UI allocations fragment the DRAM-only Cardputer ADV heap.
   screenLog("4c. SMF Runtime...");
   markBootStage(84, "before SMF runtime init");
   if (!beginCardputerSmfPlayerService()) {

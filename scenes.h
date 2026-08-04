@@ -383,10 +383,24 @@ struct Scene {
   };
 };
 
-// Shared transaction storage for scene parsing and pattern-page validation.
-// Both operations run synchronously through the UI/boot path, and neither may
-// modify the active scene until its input has been fully validated.
-Scene& sceneTransactionScratch();
+// Bounded transaction storage for scene parsing and pattern-page validation.
+// The scratch Scene exists only for the synchronous transaction and is released
+// before control returns to the UI/boot path.
+class SceneScratchLease {
+public:
+  SceneScratchLease();
+  ~SceneScratchLease();
+  SceneScratchLease(const SceneScratchLease&) = delete;
+  SceneScratchLease& operator=(const SceneScratchLease&) = delete;
+
+  explicit operator bool() const { return scene_ != nullptr; }
+  Scene* get() const { return scene_; }
+  Scene& operator*() const { return *scene_; }
+  Scene* operator->() const { return scene_; }
+
+private:
+  Scene* scene_ = nullptr;
+};
 
 class SceneJsonObserver : public JsonObserver {
 public:

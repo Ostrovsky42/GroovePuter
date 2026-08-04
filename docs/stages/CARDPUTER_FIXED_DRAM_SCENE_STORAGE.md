@@ -2,41 +2,39 @@
 
 ## Purpose
 
-Keep the active project `Scene` and shared transaction scratch `Scene` out of the ESP32-S3 fixed internal DRAM budget without weakening the `122880 B` gate or changing the established Cardputer audio-memory profile.
+Restore the mandatory `122880 B` fixed internal-DRAM gate on the real Cardputer ADV without assuming external PSRAM or hiding the failure by raising the limit.
 
-## Why external BSS was rejected
+## Hardware constraint
 
-The pinned M5Stack Arduino profile accepts `EXT_RAM_BSS_ATTR`, but its linker configuration does not enable external `.bss` placement. ELF diagnostics showed both 25,800-byte `Scene` objects still in `.dram0.bss`. The implementation therefore does not rely on that attribute.
+Cardputer ADV has no usable external PSRAM. `PSRAM=disabled` remains the build profile for both the normal CDC+MIDI image and the SEQTRAK MIDI-only image.
 
 ## Design
 
-- Cardputer setup enables PSRAM and allocates one `SceneStorageBlock` with `heap_caps_malloc(..., MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)`.
-- The block owns the active scene and the transaction scratch scene.
-- Allocation occurs once, immediately after `M5Cardputer.begin()`, before I2S, tasks, SD, SMF, USB MIDI, engine initialization, or UI allocation.
-- Failure is fatal and visible through the boot-stage diagnostic; there is no fallback into internal RAM.
-- Host and SDL builds keep deterministic static storage.
-- Cardputer continues to use its constrained looper, delay, and sample-pool profile; PSRAM enablement in this stage is not permission for unrelated implicit large-buffer growth.
-- MIDI, SMF, audio queues, scene codec, paging format, and transaction semantics are unchanged.
+- Fixed `.dram0.bss` retains only the active `Scene` pointer.
+- Setup allocates the active `Scene` once from byte-addressable internal heap immediately after `M5Cardputer.begin()` and before I2S, tasks, SD, SMF, USB MIDI, engine initialization, or UI allocation.
+- Scene parsing and pattern-page validation use `SceneScratchLease`: one temporary internal-heap `Scene` that is released automatically on success and every error return.
+- No allocation occurs in the audio callback, MIDI dispatcher, SMF scheduler, or other realtime path.
+- Failure to allocate the active Scene is fatal and is shown directly on the display, including in the MIDI-only profile where CDC output is absent.
+- Host and SDL retain deterministic static active Scene storage and bounded transaction allocation.
+- Scene codec, page format, and commit-after-validation semantics are unchanged.
 
-The two scenes occupy approximately 51.6 KB. Replacing them with one fixed pointer in internal BSS should return the real ELF below the existing gate; the measured ELF remains the source of truth.
+This removes one permanent 25,800-byte transaction Scene from the runtime footprint and both 25,800-byte Scene objects from fixed `.dram0.bss`. Peak memory during an explicit load transaction remains bounded and temporary.
 
 ## Validation
 
 ```bash
 ./tests/run_host_tests.sh
 ./scripts/build.sh --warnings all
-./scripts/check_cardputer_dram_budget.sh \
-  build/cardputer-adv-current/GroovePuter.ino.elf
+./scripts/check_cardputer_dram_budget.sh   build/cardputer-adv-current/GroovePuter.ino.elf
 ./scripts/build_seqtrak_midi_only.sh --warnings all
-./scripts/check_cardputer_dram_budget.sh \
-  build/cardputer-adv-seqtrak-midi-only/GroovePuter.ino.elf
+./scripts/check_cardputer_dram_budget.sh   build/cardputer-adv-seqtrak-midi-only/GroovePuter.ino.elf
 ```
 
 ## Hardware acceptance
 
-- Boot normal Cardputer ADV and confirm the Scene PSRAM boot stage completes.
+- Boot normal Cardputer ADV and confirm the UI appears.
 - Load, save, and reload a project.
 - Switch pattern pages and verify save/load rollback.
-- Exercise playback while changing patterns and song position; confirm no audio underrun regression.
+- Exercise playback while changing patterns and song position.
 - Boot the SEQTRAK MIDI-only profile and repeat project load plus MIDI playback.
-- Confirm no reset, allocation failure, corrupted scene, or stuck MIDI note.
+- Confirm no reset, allocation failure, corrupted scene, audio underrun regression, or stuck MIDI note.

@@ -222,7 +222,12 @@ bool PatternPagingService::savePage(int pageIndex, const Scene& scene) {
     file.flush();
     file.close();
 
-    Scene& staging = sceneTransactionScratch();
+    SceneScratchLease scratch;
+    if (!scratch) {
+        SD.remove(temporaryPath.c_str());
+        return false;
+    }
+    Scene& staging = *scratch;
     if (!wrote || !readAndValidatePage(temporaryPath, staging)) {
         SD.remove(temporaryPath.c_str());
         return false;
@@ -237,7 +242,9 @@ bool PatternPagingService::loadPage(int pageIndex, Scene& scene) {
     const std::string mainPath = pagePath(pageIndex);
     const std::string oldBackupPath = backupPath(pageIndex);
 
-    Scene& staging = sceneTransactionScratch();
+    SceneScratchLease scratch;
+    if (!scratch) return false;
+    Scene& staging = *scratch;
     bool loaded = readAndValidatePage(mainPath, staging);
     if (!loaded) {
         loaded = readAndValidatePage(oldBackupPath, staging);

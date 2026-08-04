@@ -1491,50 +1491,58 @@ const std::string& SceneJsonObserver::synthEngineName(int synthIdx) const {
 GrooveboxMode SceneJsonObserver::mode() const { return target_.mode; }
 
 namespace {
-struct SceneStorageBlock {
-  Scene active;
-  Scene transactionScratch;
-};
-
 #if defined(ESP32) || defined(ESP_PLATFORM)
-SceneStorageBlock* g_sceneStorageBlock = nullptr;
+Scene* g_mainScene = nullptr;
 
-bool ensureSceneStorageBlock() {
-  if (g_sceneStorageBlock) return true;
+Scene* allocateInternalScene() {
   void* memory = heap_caps_malloc(
-      sizeof(SceneStorageBlock), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-  if (!memory) return false;
-  g_sceneStorageBlock = new (memory) SceneStorageBlock();
-  return true;
+      sizeof(Scene), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  return memory ? new (memory) Scene() : nullptr;
 }
 
-SceneStorageBlock* sceneStorageBlock() {
-  return g_sceneStorageBlock;
+void releaseInternalScene(Scene* scene) {
+  if (!scene) return;
+  scene->~Scene();
+  heap_caps_free(scene);
 }
 #else
-SceneStorageBlock g_sceneStorageBlock;
+Scene g_mainScene;
 
-bool ensureSceneStorageBlock() {
-  return true;
+Scene* allocateInternalScene() {
+  return new (std::nothrow) Scene();
 }
 
-SceneStorageBlock* sceneStorageBlock() {
-  return &g_sceneStorageBlock;
+void releaseInternalScene(Scene* scene) {
+  delete scene;
 }
 #endif
 }  // namespace
 
-SceneManager::SceneManager() : scene_(nullptr) {
-#if !defined(ESP32) && !defined(ESP_PLATFORM)
-  initializeSceneStorage();
+SceneScratchLease::SceneScratchLease() : scene_(allocateInternalScene()) {}
+
+SceneScratchLease::~SceneScratchLease() {
+  releaseInternalScene(scene_);
+}
+
+SceneManager::SceneManager()
+#if defined(ESP32) || defined(ESP_PLATFORM)
+    : scene_(nullptr)
+#else
+    : scene_(&g_mainScene)
 #endif
+{
   PatternPagingService::ensureDirectory();
 }
 
 bool SceneManager::initializeSceneStorage() {
-  if (!ensureSceneStorageBlock()) return false;
-  scene_ = &sceneStorageBlock()->active;
+#if defined(ESP32) || defined(ESP_PLATFORM)
+  if (scene_) return true;
+  scene_ = allocateInternalScene();
+  g_mainScene = scene_;
+  return scene_ != nullptr;
+#else
   return true;
+#endif
 }
 
 void SceneManager::loadDefaultScene() {
@@ -2901,21 +2909,19 @@ bool SceneManager::loadScene(const std::string& json) {
   return false;
 }
 
-Scene& sceneTransactionScratch() {
-  SceneStorageBlock* storage = sceneStorageBlock();
-  if (!storage) std::abort();
-  return storage->transactionScratch;
-}
-
 bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
 #ifdef ARDUINO
-  Serial.println("  - loadSceneEventedWithReader: Using static loading buffer...");
+  Serial.println("  - loadSceneEventedWithReader: Allocating bounded transaction Scene...");
 #endif
-  
-  // Reuse the static buffer
-  Scene* loaded = &sceneTransactionScratch();
-  
-  // Clear it before use
+
+  SceneScratchLease scratch;
+  if (!scratch) {
+#ifdef ARDUINO
+    Serial.println("ERROR: Scene transaction allocation failed");
+#endif
+    return false;
+  }
+  Scene* loaded = scratch.get();
   clearSceneData(*loaded);
   
 #ifdef ARDUINO

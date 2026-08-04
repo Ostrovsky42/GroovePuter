@@ -283,8 +283,8 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
 }
 
 void MiniAcid::preallocateConstrainedDelayBuffers() {
-  // Cardputer keeps its established constrained audio buffers in internal RAM.
-  // Reserve both before SD and SMF allocations split the largest free block.
+  // Cardputer ADV has no PSRAM. Reserve both equal-sized vectors before SD and
+  // SMF task allocations split the remaining internal heap into small blocks.
   delay303.init(0.1f);
   delay3032.init(0.1f);
 }
@@ -293,18 +293,11 @@ void MiniAcid::preallocateConstrainedDelayBuffers() {
 void MiniAcid::init() {
   bool hasPsram = false;
 #if defined(ESP32) || defined(ESP_PLATFORM)
-  // Keep Cardputer audio behavior unchanged: its PSRAM is enabled only
-  // for explicitly capability-allocated non-realtime storage in this stage.
+  // Check for ACTUAL usable PSRAM, not just if it was detected
+  // psramFound() can return true even if init failed
   size_t freePsram = ESP.getFreePsram();
-#if defined(ARDUINO_M5STACK_CARDPUTER)
-  hasPsram = false;
-  LOG_DEBUG("  - MiniAcid::init: freePsram=%u, constrained Cardputer audio profile",
-            (unsigned)freePsram);
-#else
-  hasPsram = (freePsram > 512 * 1024);
-  LOG_DEBUG("  - MiniAcid::init: freePsram=%u, hasPsram=%d",
-            (unsigned)freePsram, hasPsram);
-#endif
+  hasPsram = (freePsram > 512 * 1024); // Require at least 512KB usable
+  LOG_DEBUG("  - MiniAcid::init: freePsram=%u, hasPsram=%d", (unsigned)freePsram, hasPsram);
 #endif
 
   if (hasPsram) {
