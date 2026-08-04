@@ -8,6 +8,7 @@ report = (ROOT / "scripts/report_cardputer_memory_baseline.sh").read_text()
 gate = (ROOT / "scripts/check_cardputer_dram_budget.sh").read_text()
 workflow = (ROOT / ".github/workflows/cardputer-memory-baseline.yml").read_text()
 doc = (ROOT / "docs/stages/CARDPUTER_MEMORY_BASELINE.md").read_text()
+doc_lower = doc.lower()
 
 
 def require(condition: bool, message: str) -> None:
@@ -96,9 +97,9 @@ for candidate in (
 
 require("81689b4" in doc and "one-line" in doc,
         "the provenance note must identify the unsupported threshold commit")
-require("Source commit" in doc and "ELF SHA-256" in doc and "full FQBN" in doc,
+require("source commit" in doc_lower and "elf sha-256" in doc_lower and "full fqbn" in doc_lower,
         "the threshold policy must require reproducible build identity")
-require("No new numeric threshold" in doc,
+require("no new numeric threshold" in doc_lower,
         "the baseline stage must prohibit unexplained threshold changes")
 
 print("Cardputer memory baseline source regressions: PASS")
