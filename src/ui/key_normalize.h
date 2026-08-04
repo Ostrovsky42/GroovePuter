@@ -48,6 +48,12 @@ enum KeyScanCode {
   GROOVEPUTER_Z,
 };
 
+// KeysState::word may contain a dedicated Tab without the matching HID 0x2B
+// entry on Cardputer hardware. The raw input loop historically suppresses
+// control characters before normalizeKeyChar(), so the edge helper temporarily
+// substitutes this non-printable sentinel and normalizeKeyChar restores Tab.
+inline constexpr char GROOVEPUTER_WORD_TAB_SENTINEL = '\x1F';
+
 // ============================================================================
 // Key Normalization for UI Input
 // ============================================================================
@@ -72,6 +78,7 @@ static inline char asciiLower(char c) {
  * Normalize key character for UI processing
  *
  * Currently performs:
+ * - Cardputer word-only Tab restoration
  * - Lowercase normalization (A-Z → a-z)
  *
  * Future extensions could include:
@@ -83,6 +90,7 @@ static inline char asciiLower(char c) {
  * @return Normalized character for event dispatch
  */
 static inline char normalizeKeyChar(char c) {
+  if (c == GROOVEPUTER_WORD_TAB_SENTINEL) return '\t';
   return asciiLower(c);
 }
 
