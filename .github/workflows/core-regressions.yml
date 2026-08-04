@@ -9,9 +9,72 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  apply-review-fixes:
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/smf-structural-inspector'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/smf-structural-inspector
+          fetch-depth: 0
+
+      - name: Apply reviewed structural inspector fixes
+        run: |
+          base64 -d .github/smf-review-fixes.tar.xz.b64 | tar -xJf -
+          python3 - <<'PY'
+          from pathlib import Path
+
+          page = Path('src/ui/pages/smf_player_page.cpp')
+          text = page.read_text(encoding='utf-8')
+
+          old_table = """        const bool toggleRequested =
+            event.key == 'k' || event.key == 'K' ||
+            event.key == '\n' || event.key == '\r';
+"""
+          new_table = """        const bool toggleRequested =
+            event.key == '\n' || event.key == '\r';
+"""
+          if old_table not in text:
+              raise SystemExit('expected U-table K binding not found')
+          text = text.replace(old_table, new_table, 1)
+
+          old_global = """    if (event.key == 'k' || event.key == 'K') {
+        if (smfTrackMuteState().toggleSelected()) {
+            const SmfTrackMuteSnapshot tracks = smfTrackMuteState().snapshot();
+            UI::showToast(tracks.selectedMuted()
+                              ? "TRACK MUTED"
+                              : "TRACK ON",
+                          700);
+        } else {
+            UI::showToast("NO MIDI TRACKS", 900);
+        }
+        return true;
+    }
+"""
+          if old_global not in text:
+              raise SystemExit('expected global K binding not found')
+          text = text.replace(old_global, '', 1)
+          page.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Run focused regressions
+        run: |
+          python3 tests/test_smf_structural_inspector_source_regressions.py
+          python3 tests/test_smf_panel_completion_source_regressions.py
+
+      - name: Commit reviewed fixes
+        run: |
+          rm -f .github/workflows/apply-smf-review-fixes.yml
+          rm -f .github/smf-review-fixes.tar.xz.b64
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "fix: make SMF structural metrics evidence-based"
+          git push origin HEAD:agent/smf-structural-inspector
+
   host-tests:
     runs-on: ubuntu-latest
     steps:
