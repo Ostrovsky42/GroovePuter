@@ -20,14 +20,14 @@ int main() {
 
   FakeKeysState empty{};
   FakeKeysState tab{};
-  tab.hid_keys = {0x2B};
-  assert(shouldDispatchHid(tab, empty, true, 0x2B));
-  assert(!shouldDispatchHid(tab, tab, true, 0x2B));
+  tab.hid_keys = {kCardputerTabHid};
+  assert(shouldDispatchHid(tab, empty, true, kCardputerTabHid));
+  assert(!shouldDispatchHid(tab, tab, true, kCardputerTabHid));
 
   FakeKeysState fnTab = tab;
   fnTab.fn = true;
-  assert(shouldDispatchHid(fnTab, tab, true, 0x2B));
-  assert(!shouldDispatchHid(tab, fnTab, true, 0x2B));
+  assert(shouldDispatchHid(fnTab, tab, true, kCardputerTabHid));
+  assert(!shouldDispatchHid(tab, fnTab, true, kCardputerTabHid));
   assert(modifierReleased(tab, fnTab));
 
   FakeKeysState fnRight{};
@@ -38,8 +38,35 @@ int main() {
   FakeKeysState wordA{};
   wordA.hid_keys = {0x04};
   wordA.word = {'a'};
-  assert(shouldDispatchWord(wordA, empty, true, 'a'));
-  assert(!shouldDispatchWord(wordA, wordA, true, 'a'));
+  char wordAValue = wordA.word.front();
+  assert(shouldDispatchWord(wordA, empty, true, wordAValue));
+  assert(wordAValue == 'a');
+  wordAValue = wordA.word.front();
+  assert(!shouldDispatchWord(wordA, wordA, true, wordAValue));
+
+  FakeKeysState wordOnlyTab{};
+  wordOnlyTab.word = {'\t'};
+  char wordOnlyTabValue = wordOnlyTab.word.front();
+  assert(shouldDispatchWord(wordOnlyTab, empty, true, wordOnlyTabValue));
+  assert(wordOnlyTabValue == GROOVEPUTER_WORD_TAB_SENTINEL);
+  assert(normalizeKeyChar(wordOnlyTabValue) == '\t');
+
+  FakeKeysState duplicateTab{};
+  duplicateTab.hid_keys = {kCardputerTabHid};
+  duplicateTab.word = {'\t'};
+  char duplicateTabValue = duplicateTab.word.front();
+  assert(!shouldDispatchWord(duplicateTab, empty, true, duplicateTabValue));
+  assert(duplicateTabValue == '\t');
+
+  char heldWordTabValue = wordOnlyTab.word.front();
+  assert(!shouldDispatchWord(wordOnlyTab, wordOnlyTab, true, heldWordTabValue));
+  assert(heldWordTabValue == '\t');
+
+  const uint16_t digitThreeMask = digitDispatchMask('3');
+  assert(digitThreeMask != 0);
+  assert(wordDigitAlreadyDispatched('3', digitThreeMask));
+  assert(!wordDigitAlreadyDispatched('4', digitThreeMask));
+  assert(digitDispatchMask('x') == 0);
 
   UIEvent arrow{};
   arrow.scancode = GROOVEPUTER_RIGHT;
