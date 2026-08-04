@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/apply-perform-tab-input-fix
+  pull_request:
+    branches:
+      - dev
 
 permissions:
   contents: write
