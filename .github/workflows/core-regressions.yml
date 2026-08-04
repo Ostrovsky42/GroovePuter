@@ -113,5 +113,42 @@ jobs:
       - name: Compile Cardputer ADV firmware
         run: bash scripts/build.sh --warnings all
 
+      - name: Capture Cardputer DRAM diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          ELF="build/cardputer-adv-current/GroovePuter.ino.elf"
+          SIZE_TOOL="$(find "$HOME/.arduino15/packages" -type f -name xtensa-esp32s3-elf-size | head -n 1)"
+          NM_TOOL="${SIZE_TOOL%-size}-nm"
+          OBJDUMP_TOOL="${SIZE_TOOL%-size}-objdump"
+          mkdir -p build/dram-diagnostics
+          {
+            echo "ELF=${ELF}"
+            echo "SIZE_TOOL=${SIZE_TOOL}"
+            echo
+            echo "=== SUMMARY ==="
+            "${SIZE_TOOL}" "${ELF}"
+            echo
+            echo "=== ALL SECTIONS ==="
+            "${SIZE_TOOL}" -A "${ELF}"
+            echo
+            echo "=== SCENE SYMBOLS ==="
+            "${NM_TOOL}" --print-size --size-sort --radix=d "${ELF}" | grep -E 'g_mainScene|s_tempLoadScene' || true
+            echo
+            echo "=== LARGEST SYMBOLS ==="
+            "${NM_TOOL}" --print-size --size-sort --radix=d "${ELF}" | tail -n 180
+            echo
+            echo "=== DRAM/EXT-RAM SECTION HEADERS ==="
+            "${OBJDUMP_TOOL}" -h "${ELF}" | grep -E 'dram|ext_ram|external|bss|data' || true
+          } > build/dram-diagnostics/cardputer-dram-current.txt
+
       - name: Check fixed DRAM budget
         run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+
+      - name: Upload Cardputer DRAM diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cardputer-dram-diagnostics
+          path: build/dram-diagnostics/cardputer-dram-current.txt
+          if-no-files-found: error
