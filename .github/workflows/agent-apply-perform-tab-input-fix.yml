@@ -1,0 +1,40 @@
+name: Apply PERFORM Tab input fix
+
+on:
+  push:
+    branches:
+      - agent/apply-perform-tab-input-fix
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Preserve patch runner
+        run: cp tools/agent_apply_perform_tab_input_fix.py /tmp/apply_perform_tab_fix.py
+
+      - name: Apply fix to feature branch
+        run: |
+          git fetch origin dev fix/perform-tab-input
+          git checkout -B fix/perform-tab-input origin/fix/perform-tab-input
+          python3 /tmp/apply_perform_tab_fix.py
+
+      - name: Run full host regressions
+        run: bash tests/run_host_tests.sh
+
+      - name: Publish tested feature commit
+        run: |
+          git config user.name "openai-coding-agent"
+          git config user.email "openai-coding-agent@users.noreply.github.com"
+          git add \
+            GroovePuter.ino \
+            tests/test_cardputer_input_source_regressions.py \
+            docs/stages/PERFORM_TAB_INPUT_FIX_STAGE.md
+          git commit -m "fix: dispatch Cardputer Tab to PERFORM tools"
+          git push origin HEAD:fix/perform-tab-input
