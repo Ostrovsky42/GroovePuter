@@ -533,7 +533,10 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             return true;
         }
 
-        if ((event.alt || event.meta) && !event.ctrl) {
+        const bool smfPlayerFnNumber =
+            page_index_ == kSmfPlayerPage && event.meta && !event.alt &&
+            !event.ctrl && event.key >= '1' && event.key <= '9';
+        if ((event.alt || event.meta) && !event.ctrl && !smfPlayerFnNumber) {
             int targetPage = -1;
             switch (event.key) {
                 case '1': targetPage = 1; break;

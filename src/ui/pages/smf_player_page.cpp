@@ -286,7 +286,9 @@ void SmfPlayerPage::toggleGrooveTransport() {
 }
 
 bool SmfPlayerPage::handleEvent(UIEvent& event) {
-    if (event.event_type != GROOVEPUTER_KEY_DOWN || event.alt || event.ctrl || event.meta) {
+    const bool numericMuteHotkey = event.key >= '1' && event.key <= '9';
+    if (event.event_type != GROOVEPUTER_KEY_DOWN || event.alt || event.ctrl ||
+        (event.meta && !numericMuteHotkey)) {
         return false;
     }
 

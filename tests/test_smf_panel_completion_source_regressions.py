@@ -94,7 +94,7 @@ def main() -> None:
             "mute table must label all nine direct hotkey slots")
     page_dispatch = display_cpp.index("currentPage->handleEvent(event)")
     global_numeric_mutes = display_cpp.index(
-        "event.key >= '1' && event.key <= '9'")
+        "event.key >= '1' && event.key <= '9'", page_dispatch)
     require(page_dispatch < global_numeric_mutes and
             "toggleMute303(0)" in display_cpp and
             "toggleMute303(1)" in display_cpp and
