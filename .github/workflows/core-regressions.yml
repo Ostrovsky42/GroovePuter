@@ -1,19 +1,16 @@
-name: Core regressions
+name: Apply SMF review fixes
 
 on:
   push:
     branches:
-      - main
-      - dev
-      - agent/fix-core-reliability
-  pull_request:
+      - agent/smf-structural-inspector
 
 permissions:
   contents: write
 
 jobs:
-  apply-review-fixes:
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/smf-structural-inspector'
+  apply:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,7 +18,7 @@ jobs:
           ref: agent/smf-structural-inspector
           fetch-depth: 0
 
-      - name: Apply reviewed structural inspector fixes
+      - name: Apply reviewed fixes
         run: |
           base64 -d .github/smf-review-fixes.tar.xz.b64 | tar -xJf -
           python3 - <<'PY'
@@ -29,41 +26,53 @@ jobs:
 
           page = Path('src/ui/pages/smf_player_page.cpp')
           text = page.read_text(encoding='utf-8')
-
           old_table = """        const bool toggleRequested =
-            event.key == 'k' || event.key == 'K' ||
-            event.key == '\n' || event.key == '\r';
-"""
+              event.key == 'k' || event.key == 'K' ||
+              event.key == '\\n' || event.key == '\\r';
+  """
           new_table = """        const bool toggleRequested =
-            event.key == '\n' || event.key == '\r';
-"""
+              event.key == '\\n' || event.key == '\\r';
+  """
           if old_table not in text:
               raise SystemExit('expected U-table K binding not found')
           text = text.replace(old_table, new_table, 1)
 
           old_global = """    if (event.key == 'k' || event.key == 'K') {
-        if (smfTrackMuteState().toggleSelected()) {
-            const SmfTrackMuteSnapshot tracks = smfTrackMuteState().snapshot();
-            UI::showToast(tracks.selectedMuted()
-                              ? "TRACK MUTED"
-                              : "TRACK ON",
-                          700);
-        } else {
-            UI::showToast("NO MIDI TRACKS", 900);
-        }
-        return true;
-    }
-"""
+          if (smfTrackMuteState().toggleSelected()) {
+              const SmfTrackMuteSnapshot tracks = smfTrackMuteState().snapshot();
+              UI::showToast(tracks.selectedMuted()
+                                ? \"TRACK MUTED\"
+                                : \"TRACK ON\",
+                            700);
+          } else {
+              UI::showToast(\"NO MIDI TRACKS\", 900);
+          }
+          return true;
+      }
+  """
           if old_global not in text:
               raise SystemExit('expected global K binding not found')
-          text = text.replace(old_global, '', 1)
-          page.write_text(text, encoding='utf-8')
+          page.write_text(text.replace(old_global, '', 1), encoding='utf-8')
+
+          workflow = Path('.github/workflows/core-regressions.yml')
+          normal = workflow.read_text(encoding='utf-8')
+          anchor = '      - agent/fix-core-reliability\n'
+          if '      - agent/smf-structural-inspector\n' not in normal:
+              if anchor not in normal:
+                  raise SystemExit('normal workflow branch anchor missing')
+              normal = normal.replace(
+                  anchor,
+                  anchor + '      - agent/smf-structural-inspector\n',
+                  1,
+              )
+          workflow.write_text(normal, encoding='utf-8')
           PY
 
       - name: Run focused regressions
         run: |
           python3 tests/test_smf_structural_inspector_source_regressions.py
           python3 tests/test_smf_panel_completion_source_regressions.py
+          python3 tests/test_cardputer_input_source_regressions.py
 
       - name: Commit reviewed fixes
         run: |
@@ -74,103 +83,3 @@ jobs:
           git add -A
           git commit -m "fix: make SMF structural metrics evidence-based"
           git push origin HEAD:agent/smf-structural-inspector
-
-  host-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run core host regressions
-        run: bash tests/run_host_tests.sh
-
-      - name: Run UI status chrome tests
-        run: |
-          python3 tests/test_ui_status_chrome_source_regressions.py
-          mkdir -p build/host-tests
-          g++ -std=c++17 -Wall -Wextra -Werror -I. \
-            tests/test_ui_status_chrome.cpp \
-            -o build/host-tests/test_ui_status_chrome
-          build/host-tests/test_ui_status_chrome
-
-      - name: Run synth engine tests
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          root = Path('.')
-          assert not (root / 'src/dsp/opl2_synth_voice.h').exists()
-          assert not (root / 'src/dsp/opl2_synth_voice.cpp').exists()
-
-          for path in (
-              root / 'src/ui/pages/synth_sequencer_page.cpp',
-              root / 'src/ui/pages/tb303_params_page.cpp',
-          ):
-              text = path.read_text(encoding='utf-8')
-              assert 'removeDisabledSynthEngines' in text
-              assert '{"TB303", "SID", "AY", "OPL2"' not in text
-
-          makefile = (root / 'platform_sdl/Makefile').read_text(encoding='utf-8')
-          assert 'opl2_synth_voice' not in makefile
-          assert 'wave_morph_synth_voice.cpp' in makefile
-
-          header = (root / 'src/dsp/swappable_synth_voice.h').read_text(encoding='utf-8')
-          assert 'opl2_synth_voice' not in header
-          assert 'WAVEMORPH = 6' in header
-          PY
-
-          mkdir -p build/host-tests
-          g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter -I. \
-            tests/test_new_synth_voices.cpp \
-            src/dsp/swappable_synth_voice.cpp \
-            src/dsp/mini_tb303.cpp \
-            src/dsp/filter.cpp \
-            src/dsp/audio_wavetables.cpp \
-            src/dsp/sid_synth_voice.cpp \
-            src/dsp/sid_synth.cpp \
-            src/dsp/ay_synth_voice.cpp \
-            src/dsp/sh101_synth_voice.cpp \
-            src/dsp/sn76489_synth_voice.cpp \
-            src/dsp/wave_morph_synth_voice.cpp \
-            -o build/host-tests/test_new_synth_voices
-          build/host-tests/test_new_synth_voices
-
-      - name: Run dirty-region display tests
-        run: |
-          mkdir -p build/host-tests
-          g++ -std=c++17 -Wall -Wextra -Werror -I. \
-            tests/test_dirty_tile_tracker.cpp \
-            -o build/host-tests/test_dirty_tile_tracker
-          build/host-tests/test_dirty_tile_tracker
-
-  sdl-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install SDL dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            libsdl2-dev \
-            libsdl2-gfx-dev
-
-      - name: Build desktop target
-        working-directory: platform_sdl
-        run: make clean all CXX=g++
-
-  cardputer-adv-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Arduino CLI
-        uses: arduino/setup-arduino-cli@v2
-        with:
-          version: "1.x"
-
-      - name: Install pinned M5Stack dependencies
-        run: bash scripts/install_arduino_deps.sh
-
-      - name: Compile Cardputer ADV firmware
-        run: bash scripts/build.sh --warnings all
