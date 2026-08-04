@@ -23,6 +23,10 @@ require("PROVISIONAL_GATE_BYTES=\"${PROVISIONAL_GATE_BYTES:-191488}\"" in report
         "the report must retain the provisional 191488-byte reference")
 require("UNSUPPORTED_GATE_BYTES=\"${UNSUPPORTED_GATE_BYTES:-122880}\"" in report,
         "the report must preserve 122880 as an unsupported historical reference")
+require("MEMORY_BASELINE_IMAGE_KIND" in report and "kind=%s" in report,
+        "every section report must identify product or runtime image kind")
+require("10#${size}" in report,
+        "zero-padded decimal nm sizes must not be interpreted as octal")
 require("exit 0" in report and "deliberately non-gating" in report,
         "the baseline report must not replace the product gate")
 
@@ -44,23 +48,33 @@ require("SOURCE_ROOT}/GroovePuter.ino" in build,
         "instrumentation must target only the temporary sketch")
 require("git commit" not in build and "git push" not in build,
         "the diagnostic build must never mutate repository history")
-require("SOURCE_COMMIT" in build and "git -C" in build,
-        "every measurement must identify the immutable source commit")
+require("SOURCE_COMMIT" in build and "SOURCE_DIRTY" in build,
+        "every measurement must identify source commit and clean-tree state")
 require("ELF_SHA256" in build and "sha256sum" in build,
         "every measurement must identify the exact ELF bytes")
+require('IMAGE_KIND="${1:-}"' in build and "product|runtime" in build,
+        "product and runtime images must be explicit build modes")
+require('if [[ "${IMAGE_KIND}" == "runtime" ]]' in build,
+        "only runtime images may receive heap instrumentation")
+require("Memory baseline image" in build,
+        "the build log must label product versus runtime")
 require("heap_caps_get_minimum_free_size" in build,
-        "the diagnostic firmware must report the IDF boot-time heap floor")
+        "the runtime diagnostic firmware must report the IDF boot-time heap floor")
 require("heap_caps_get_largest_free_block" in build,
-        "the diagnostic firmware must sample contiguous internal heap")
+        "the runtime diagnostic firmware must sample contiguous internal heap")
 require("heap_caps_check_integrity_all" in build,
-        "the diagnostic firmware must report heap integrity")
+        "the runtime diagnostic firmware must report heap integrity")
 require("uxTaskGetStackHighWaterMark" in build,
-        "the diagnostic firmware must report loop/audio stack watermarks")
+        "the runtime diagnostic firmware must report loop/audio stack watermarks")
 require("normal|midi-only" in build,
         "normal and MIDI-only profiles must be measurable separately")
 
 require("build_cardputer_memory_baseline.sh" in workflow,
-        "the workflow must compile the instrumented diagnostic profile")
+        "the workflow must compile both baseline image kinds")
+require("profile: [normal, midi-only]" in workflow,
+        "the workflow must build both USB profiles")
+require("image-kind: [product, runtime]" in workflow,
+        "the workflow must separate exact product ELF from runtime instrumentation")
 require("test_cardputer_memory_baseline_source_regressions.py" in workflow,
         "the workflow must run the source-boundary regression")
 require("set -o pipefail" in workflow and "2>&1 | tee" in workflow,
