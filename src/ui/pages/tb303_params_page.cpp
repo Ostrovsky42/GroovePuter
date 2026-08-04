@@ -790,7 +790,8 @@ void TB303ParamsPage::draw(IGfx& gfx) {
   }
 
   const auto& content = Layout::CONTENT;
-  drawTabSwitcher(gfx, content);
+  const Rect contentRect{content.x, content.y, content.w, content.h};
+  drawTabSwitcher(gfx, contentRect);
   gfx.setTextColor(kDimText);
   gfx.drawText(content.x + content.w - gfx.textWidth(modeName) - 4,
                content.y + 3,
@@ -807,7 +808,7 @@ void TB303ParamsPage::draw(IGfx& gfx) {
       const int cx = x0 + spacing * (i + 1);
       gfx.drawText(cx - gfx.textWidth(keyHints[i]) / 2, keyY, keyHints[i]);
     }
-    drawMainSummary(gfx, content);
+    drawMainSummary(gfx, contentRect);
   }
 
   Container::draw(gfx_);

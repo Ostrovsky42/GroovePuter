@@ -117,6 +117,10 @@ def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
     require('drawSegment(x, "MAIN", !more_tab_)' in page and
             '"MORE", more_tab_' in page and '"TAB >"' in page,
             "MAIN/MORE discoverability must be visible on the parameter page")
+    require("const Rect contentRect{content.x, content.y, content.w, content.h}" in page and
+            "drawTabSwitcher(gfx, contentRect)" in page and
+            "drawMainSummary(gfx, contentRect)" in page,
+            "tab helpers must receive explicit Rect geometry on every target")
     require("setActiveTab(!more_tab_)" in page and
             "if (ui_event.ctrl || ui_event.alt || ui_event.meta) return false;" in page,
             "plain Tab must toggle local tabs while Fn/meta Tab stays global")
