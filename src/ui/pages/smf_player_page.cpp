@@ -94,6 +94,34 @@ bool selectAudibleTrackRelative(
     return GroovePuterMidi::smfTrackMuteState().selectTrack(audible[position]);
 }
 
+bool toggleAudibleTrackHotkey(
+        const GroovePuterMidi::SmfTrackInspectorSnapshot& inspector,
+        int hotkeyIndex,
+        uint16_t* toggledTrack,
+        bool* mutedAfterToggle) {
+    uint16_t audible[GroovePuterMidi::kSmfTrackInspectorMaxTracks]{};
+    const int count = collectAudibleTracks(
+        inspector,
+        audible,
+        static_cast<int>(GroovePuterMidi::kSmfTrackInspectorMaxTracks));
+    if (hotkeyIndex < 0 || hotkeyIndex >= count) return false;
+
+    GroovePuterMidi::SmfTrackMuteState& muteState =
+        GroovePuterMidi::smfTrackMuteState();
+    const uint16_t trackIndex = audible[hotkeyIndex];
+    if (!muteState.selectTrack(trackIndex) || !muteState.toggleSelected()) {
+        return false;
+    }
+
+    const GroovePuterMidi::SmfTrackMuteSnapshot snapshot =
+        muteState.snapshot();
+    if (toggledTrack) *toggledTrack = trackIndex;
+    if (mutedAfterToggle) {
+        *mutedAfterToggle = trackMuted(snapshot, trackIndex);
+    }
+    return true;
+}
+
 unsigned mutedAudibleTrackCount(
         const GroovePuterMidi::SmfTrackMuteSnapshot& mute,
         const GroovePuterMidi::SmfTrackInspectorSnapshot& inspector) {
@@ -336,6 +364,33 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
 
     if (!player_) return false;
     const SmfPlayerSnapshot state = player_->snapshot();
+
+    if (event.key >= '1' && event.key <= '9') {
+        const unsigned hotkeySlot =
+            static_cast<unsigned>(event.key - '1');
+        uint16_t trackIndex = 0;
+        bool muted = false;
+        if (toggleAudibleTrackHotkey(
+                smfTrackInspectorState().snapshot(),
+                static_cast<int>(hotkeySlot),
+                &trackIndex,
+                &muted)) {
+            char toast[32];
+            std::snprintf(toast, sizeof(toast),
+                          "MIDI %u TRK %02u %s",
+                          hotkeySlot + 1u,
+                          static_cast<unsigned>(trackIndex + 1u),
+                          muted ? "MUTED" : "ON");
+            UI::showToast(toast, 700);
+        } else {
+            char toast[24];
+            std::snprintf(toast, sizeof(toast),
+                          "MIDI SLOT %u EMPTY",
+                          hotkeySlot + 1u);
+            UI::showToast(toast, 800);
+        }
+        return true;
+    }
 
     if (event.key == 'u' || event.key == 'U') {
         muteMixerVisible_ = !muteMixerVisible_;
@@ -735,6 +790,9 @@ void SmfPlayerPage::drawMuteMixer(IGfx& gfx) {
         const SmfTrackInfoSnapshot& info = inspector.tracks[trackIndex];
         const bool selectedRow = visibleIndex == selectedPosition;
         const bool muted = trackMuted(mute, trackIndex);
+        const char hotkey = visibleIndex < 9
+            ? static_cast<char>('1' + visibleIndex)
+            : ' ';
         const int y = LayoutManager::lineY(row + 1);
 
         if (selectedRow) {
@@ -750,7 +808,8 @@ void SmfPlayerPage::drawMuteMixer(IGfx& gfx) {
         char program[6]{};
         formatTrackChannel(info, channel, sizeof(channel));
         formatTrackProgram(info, program, sizeof(program));
-        std::snprintf(line, sizeof(line), "%c%02u %-3s %-15.15s %-3s %-4s",
+        std::snprintf(line, sizeof(line), "%c%c%02u %-3s %-15.15s %-3s %-4s",
+                      hotkey,
                       selectedRow ? '>' : ' ',
                       static_cast<unsigned>(trackIndex + 1u),
                       muted ? "MUT" : "ON",
@@ -766,7 +825,7 @@ void SmfPlayerPage::drawMuteMixer(IGfx& gfx) {
     }
 
     gfx.setTextColor(COLOR_LABEL);
-    std::snprintf(line, sizeof(line), "ROW %u/%u TRK %02u  A ALL ON",
+    std::snprintf(line, sizeof(line), "HOT 1-9 ROW %u/%u TRK %02u",
                   static_cast<unsigned>(selectedPosition + 1),
                   static_cast<unsigned>(audibleCount),
                   static_cast<unsigned>(audible[selectedPosition] + 1u));
@@ -961,7 +1020,7 @@ void SmfPlayerPage::drawFooter(IGfx& gfx) {
                                          : "F Refresh C Master T Tempo");
     } else if (muteMixerVisible_) {
         UI::drawStandardFooter(gfx, "UP/DN Select L/R Page",
-                               "ENT/K Toggle A AllOn U Back");
+                               "1-9 Hot ENT/K Sel A AllOn");
     } else if (channelInspectorVisible_) {
         UI::drawStandardFooter(gfx, "UP/DN Scroll I Player",
                                "U Mutes D Perf B Files");
@@ -973,6 +1032,6 @@ void SmfPlayerPage::drawFooter(IGfx& gfx) {
         UI::drawStandardFooter(gfx,
                                seqMaster ? "Space MIDI G Follow C Master"
                                          : "Space MIDI C Master R RESTART",
-                               "U Mutes I Channels K Quick");
+                               "1-9 SMF Mute U Table I Info");
     }
 }
