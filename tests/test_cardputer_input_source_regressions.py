@@ -14,6 +14,9 @@ def main() -> None:
     helper = (ROOT / "src/input/cardputer_input_edges.h").read_text(encoding="utf-8")
     normalize = (ROOT / "src/ui/key_normalize.h").read_text(encoding="utf-8")
     perform = (ROOT / "src/ui/pages/perform_page.cpp").read_text(encoding="utf-8")
+    smf_page = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(
+        encoding="utf-8"
+    )
 
     require("Keyboard.isChange()" not in sketch,
             "Cardputer input must not depend on key-count-only isChange()")
@@ -56,6 +59,9 @@ def main() -> None:
     require("digitDispatchMask" in helper and
             "wordDigitAlreadyDispatched" in helper,
             "digit deduplication helpers must remain centralized")
+
+    require("event.key == 'k' || event.key == 'K'" not in smf_page,
+            "MIDI Player mute must use 1-9 or U + Enter, not legacy K")
 
     print("deterministic Cardputer input source regressions: OK")
 
