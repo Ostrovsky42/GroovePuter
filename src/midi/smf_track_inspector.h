@@ -5,7 +5,6 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 
 #include "smf_document.h"
 
@@ -70,45 +69,55 @@ public:
         if (trackCount > kSmfTrackInspectorMaxTracks) {
             trackCount = static_cast<uint16_t>(kSmfTrackInspectorMaxTracks);
         }
-        trackCount_.store(0, std::memory_order_release);
+        state_.store(0u, std::memory_order_release);
         for (std::size_t track = 0; track < kSmfTrackInspectorMaxTracks; ++track) {
             AtomicTrack& item = tracks_[track];
             for (std::size_t word = 0; word < kNameWordCount; ++word) {
-                item.nameWords[word].store(0, std::memory_order_relaxed);
+                item.nameWords[word].store(0u, std::memory_order_relaxed);
             }
-            item.channelMask.store(0, std::memory_order_relaxed);
-            item.firstProgram.store(0, std::memory_order_relaxed);
-            item.flags.store(0, std::memory_order_relaxed);
+            item.channelMask.store(0u, std::memory_order_relaxed);
+            item.firstProgram.store(0u, std::memory_order_relaxed);
+            item.flags.store(0u, std::memory_order_relaxed);
         }
-        trackCount_.store(trackCount, std::memory_order_release);
+        state_.store(trackCount, std::memory_order_release);
+    }
+
+    void freeze() {
+        state_.fetch_or(kFrozenBit, std::memory_order_acq_rel);
+    }
+
+    bool frozen() const {
+        return (state_.load(std::memory_order_acquire) & kFrozenBit) != 0u;
     }
 
     void setName(uint16_t trackIndex, const char* name) {
-        const uint16_t count = trackCount_.load(std::memory_order_acquire);
+        const uint16_t state = state_.load(std::memory_order_acquire);
+        if ((state & kFrozenBit) != 0u) return;
+        const uint16_t count = state & kCountMask;
         if (trackIndex >= count || !name || name[0] == '\0') return;
 
-        char sanitized[kSmfTrackNameBytes]{};
+        char clean[kSmfTrackNameBytes]{};
         std::size_t length = 0;
         while (length + 1u < kSmfTrackNameBytes && name[length] != '\0') {
             const unsigned char value = static_cast<unsigned char>(name[length]);
-            sanitized[length] = value >= 32u && value <= 126u
+            clean[length] = value >= 32u && value <= 126u
                 ? static_cast<char>(value)
                 : ' ';
             ++length;
         }
-        while (length > 0u && sanitized[length - 1u] == ' ') --length;
-        sanitized[length] = '\0';
+        while (length > 0u && clean[length - 1u] == ' ') --length;
+        clean[length] = '\0';
         if (length == 0u) return;
 
         AtomicTrack& item = tracks_[trackIndex];
         for (std::size_t word = 0; word < kNameWordCount; ++word) {
-            uint32_t packed = 0;
+            uint32_t packed = 0u;
             const std::size_t offset = word * sizeof(uint32_t);
             for (std::size_t byte = 0; byte < sizeof(uint32_t); ++byte) {
                 const std::size_t index = offset + byte;
                 if (index >= kSmfTrackNameBytes) break;
                 packed |= static_cast<uint32_t>(
-                    static_cast<uint8_t>(sanitized[index])) << (byte * 8u);
+                    static_cast<uint8_t>(clean[index])) << (byte * 8u);
             }
             item.nameWords[word].store(packed, std::memory_order_relaxed);
         }
@@ -117,7 +126,9 @@ public:
     }
 
     void observe(uint16_t trackIndex, const SmfEvent& event) {
-        const uint16_t count = trackCount_.load(std::memory_order_acquire);
+        const uint16_t state = state_.load(std::memory_order_acquire);
+        if ((state & kFrozenBit) != 0u) return;
+        const uint16_t count = state & kCountMask;
         if (trackIndex >= count || event.channel >= 16u) return;
 
         AtomicTrack& item = tracks_[trackIndex];
@@ -146,7 +157,7 @@ public:
 
     SmfTrackInspectorSnapshot snapshot() const {
         SmfTrackInspectorSnapshot result{};
-        result.trackCount = trackCount_.load(std::memory_order_acquire);
+        result.trackCount = state_.load(std::memory_order_acquire) & kCountMask;
         if (result.trackCount > kSmfTrackInspectorMaxTracks) {
             result.trackCount = static_cast<uint16_t>(kSmfTrackInspectorMaxTracks);
         }
@@ -157,25 +168,27 @@ public:
             output.flags = item.flags.load(std::memory_order_acquire);
             output.channelMask = item.channelMask.load(std::memory_order_relaxed);
             output.firstProgram = item.firstProgram.load(std::memory_order_relaxed);
-            if ((output.flags & SmfTrackInfoSnapshot::kHasName) != 0u) {
-                for (std::size_t word = 0; word < kNameWordCount; ++word) {
-                    const uint32_t packed =
-                        item.nameWords[word].load(std::memory_order_relaxed);
-                    const std::size_t offset = word * sizeof(uint32_t);
-                    for (std::size_t byte = 0; byte < sizeof(uint32_t); ++byte) {
-                        const std::size_t index = offset + byte;
-                        if (index >= kSmfTrackNameBytes) break;
-                        output.name[index] = static_cast<char>(
-                            (packed >> (byte * 8u)) & 0xFFu);
-                    }
+            if ((output.flags & SmfTrackInfoSnapshot::kHasName) == 0u) continue;
+
+            for (std::size_t word = 0; word < kNameWordCount; ++word) {
+                const uint32_t packed =
+                    item.nameWords[word].load(std::memory_order_relaxed);
+                const std::size_t offset = word * sizeof(uint32_t);
+                for (std::size_t byte = 0; byte < sizeof(uint32_t); ++byte) {
+                    const std::size_t index = offset + byte;
+                    if (index >= kSmfTrackNameBytes) break;
+                    output.name[index] = static_cast<char>(
+                        (packed >> (byte * 8u)) & 0xFFu);
                 }
-                output.name[kSmfTrackNameBytes - 1u] = '\0';
             }
+            output.name[kSmfTrackNameBytes - 1u] = '\0';
         }
         return result;
     }
 
 private:
+    static constexpr uint16_t kFrozenBit = uint16_t{1} << 15u;
+    static constexpr uint16_t kCountMask = kFrozenBit - 1u;
     static constexpr std::size_t kNameWordCount =
         kSmfTrackNameBytes / sizeof(uint32_t);
 
@@ -186,7 +199,7 @@ private:
         std::atomic<uint8_t> flags{0};
     };
 
-    std::atomic<uint16_t> trackCount_{0};
+    std::atomic<uint16_t> state_{0};
     AtomicTrack tracks_[kSmfTrackInspectorMaxTracks]{};
 };
 
