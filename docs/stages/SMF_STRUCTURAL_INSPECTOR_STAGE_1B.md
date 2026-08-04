@@ -6,6 +6,8 @@ Add a bounded, measurement-first structural view to MIDI Player. The inspector e
 
 The analysis is accumulated during the existing full SMF load/index pass. It does not open the file again, add a second SD traversal, alter the scheduler, or change note ownership.
 
+Physical track identity, channel and first Program Change are retained for all 64 supported SMF tracks. Arbitrary TrackName strings are not kept in fixed internal DRAM; the table derives a compact GM label such as `Grand Piano`, `Finger Bass`, `Lead` or a program-family fallback from the retained program number. A track without Program Change uses the generic physical-track label.
+
 ## Hardware
 
 - M5Stack Cardputer-Adv (ESP32-S3).
@@ -43,7 +45,7 @@ Flash the generated Cardputer-Adv firmware using the repository's normal M5Launc
 - `D`: performance diagnostics.
 - `B`: return to files/player.
 
-Known hardware limitation: the physical Cardputer `1–9` path is not yet accepted on hardware. The hotkey mapping and event ownership are retained for diagnosis, while `U` + arrows + `Enter` remains the validated mute path. `K` is not a MIDI mute command.
+Known hardware limitation: the physical Cardputer `1–9` path is not yet accepted on hardware. The hotkey mapping and event ownership are retained for diagnosis, while `U` + arrows + `Enter` remains the validated mute path. `K` is not a MIDI mute command and is absent from the mute-table footer.
 
 ## Metrics
 
@@ -65,16 +67,18 @@ Only the first 64 bars are analyzed. Longer files show `PARTIAL 64` and continue
 1. Load an SMF containing conductor/meta tracks and at least seven musical tracks.
 2. Tempo/conductor tracks do not consume hotkey positions.
 3. Open `U`: rows show hotkey position and physical SMF track number separately.
-4. Toggle a layer with `Enter`. Playback of other layers continues and the existing ownership-safe cleanup remains in charge of Note Off generation.
-5. Press `S`: the selected layer shows `GRID`, `LOOP`, `SWING`, `MOTION`, `NOTES/B`, `ACTIVE`, `NOTE REGISTER`, `FORM`, `OVERLAP` and `RESEMBLES`.
-6. A sustained pad can show low `NOTES/B` and high `ACTIVE`; this is expected.
-7. A loop without enough repeated evidence shows `LOOP --` rather than an invented length.
-8. Files longer than 64 bars show `PARTIAL 64` without a second load delay.
+4. When Program Change exists, the row shows a GM instrument/family label derived without retaining the file TrackName in global DRAM.
+5. Toggle a layer with `Enter`. Playback of other layers continues and the existing ownership-safe cleanup remains in charge of Note Off generation.
+6. Press `S`: the selected layer shows `GRID`, `LOOP`, `SWING`, `MOTION`, `NOTES/B`, `ACTIVE`, `NOTE REGISTER`, `FORM`, `OVERLAP` and `RESEMBLES`.
+7. A sustained pad can show low `NOTES/B` and high `ACTIVE`; this is expected.
+8. A loop without enough repeated evidence shows `LOOP --` rather than an invented length.
+9. Files longer than 64 bars show `PARTIAL 64` without a second load delay.
 
 ## Troubleshooting
 
 - `NO STRUCTURAL DATA`: wait for load completion; the snapshot is published only after the existing full load/index pass finishes.
 - `MIDI SLOT N EMPTY`: fewer than N audible physical tracks were found; conductor tracks are intentionally excluded.
+- A custom TrackName is not shown: Stage 1B intentionally derives the row label from Program Change to avoid reserving 1 KiB of fixed DRAM for arbitrary names. Physical track number, channel and program remain authoritative.
 - Physical `1–9` does nothing on Cardputer: use `U`, arrows and `Enter`; this remains a documented open hardware-input issue.
 - Wrong role suggestion: role is heuristic. Validate register, polyphony, density and activity rather than treating the label as truth.
 - `ACTIVE` looks approximate: SMF tracks can contain unmatched or unusual Note Off sequences. The value is a bounded note-on/off balance estimate, not audio analysis.
@@ -91,6 +95,8 @@ Only the first 64 bars are analyzed. Longer files show `PARTIAL 64` and continue
 - [ ] Unproven periodicity displays `LOOP --`.
 - [ ] Source regression proves analysis is observed in `SmfEventStreamMerger` and finalized at the end of the existing first pass.
 - [ ] Track metadata freezes after that pass and is not recomputed during playback.
+- [ ] `SmfTrackInspectorState` remains at or below 260 bytes of fixed storage.
+- [ ] Program 33 renders `Finger Bass` from the retained GM program number.
 - [ ] No second `SmfFileIndexer::build()` or second file open is introduced.
 - [ ] Conductor/meta-only tracks do not become structural layers.
 - [ ] First nine audible layers retain physical `trackIndex` identity.
@@ -99,4 +105,4 @@ Only the first 64 bars are analyzed. Longer files show `PARTIAL 64` and continue
 - [ ] `RESEMBLES` remains secondary.
 - [ ] `U` + arrows + `Enter` works and ownership-safe cleanup remains unchanged.
 - [ ] Cardputer-Adv ELF passes `check_cardputer_dram_budget.sh` in CI.
-- [ ] No changes to Song, project codecs, Pattern/PERFORM ownership, remote CC23/CC24 mute, scheduler or TinyUSB writer.
+- [ ] No changes to Song, project codecs, Pattern/PERFORM routing ownership, remote CC23/CC24 mute, scheduler or TinyUSB writer.
