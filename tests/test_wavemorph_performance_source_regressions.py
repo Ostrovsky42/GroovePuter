@@ -107,6 +107,37 @@ def test_knob_keys_use_coarse_and_fine_steps() -> None:
                 "all four knob key pairs must use the accelerated step")
 
 
+
+def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
+    page = (ROOT / "src/ui/pages/tb303_params_page.cpp").read_text(encoding="utf-8")
+
+    require("kMainKnobRadius = 13" in page and "kRadius = 18" not in page,
+            "the four primary synth knobs must use the compact radius")
+    require("enum class Style : uint8_t" in page and
+            "SelectorKnob" in page and "Toggle" in page,
+            "secondary controls must expose selector and toggle visuals")
+    require(page.count("LabelValueComponent::Style::SelectorKnob") == 3,
+            "TYPE/OSC/FLT must use compact selector knobs")
+    require(page.count("LabelValueComponent::Style::Toggle") == 2,
+            "DST/DLY must use explicit toggle switches")
+    require("setNormalized(oscillator.normalized())" in page and
+            "setNormalized(filter.normalized())" in page,
+            "stepped TB303 selectors must show their current position")
+    require("setToggle(distortionEnabled)" in page and
+            "setToggle(delayEnabled)" in page,
+            "effect switches must reflect their current on/off state")
+    require("kCompactY = content.y + 65" in page and
+            "kCompactHeight = 34" in page and
+            "std::shared_ptr<LabelValueComponent> visible[5]" in page,
+            "all secondary controls must share one bounded lower row")
+    require("const int hintY = content.y + 54;" in page,
+            "direct knob hints must remain visible above the compact row")
+    require("new " not in block(page,
+                                "void TB303ParamsPage::layoutComponents()",
+                                "void TB303ParamsPage::adjustFocusedElement"),
+            "compact layout must not add explicit heap allocation during draw")
+
+
 def test_tr606_shared_clock_is_not_owned_by_kick() -> None:
     header = (ROOT / "src/dsp/mini_drumvoices.h").read_text(encoding="utf-8")
     source = (ROOT / "src/dsp/mini_drumvoices.cpp").read_text(encoding="utf-8")
@@ -140,5 +171,6 @@ if __name__ == "__main__":
     test_engine_catalog_and_legacy_slot_are_stable()
     test_performance_tools_use_fixed_control_rate_state()
     test_knob_keys_use_coarse_and_fine_steps()
+    test_compact_synth_controls_fit_the_cardputer_screen()
     test_tr606_shared_clock_is_not_owned_by_kick()
     print("wavemorph/performance source regressions: PASS")
