@@ -1,5 +1,6 @@
 #include <cassert>
 #include <cstdint>
+#include <cstring>
 
 #include "src/midi/smf_structural_inspector.h"
 
@@ -14,6 +15,15 @@ SmfEvent note(uint32_t tick, SmfEventKind kind, uint8_t channel,
     event.channel = channel;
     event.data1 = pitch;
     event.data2 = velocity;
+    return event;
+}
+
+SmfEvent program(uint32_t tick, uint8_t channel, uint8_t value) {
+    SmfEvent event{};
+    event.tick = tick;
+    event.kind = SmfEventKind::ProgramChange;
+    event.channel = channel;
+    event.data1 = value;
     return event;
 }
 
@@ -45,6 +55,22 @@ void addStraightSixteenths(SmfStructuralInspectorState& state,
 }  // namespace
 
 int main() {
+    {
+        SmfTrackInspectorState state;
+        state.reset(64);
+        state.setName(11, "Custom Bass Name");
+        state.observe(11, program(0, 1, 33));
+        state.observe(11, note(24, SmfEventKind::NoteOn, 1, 40));
+        state.freeze();
+        const auto snapshot = state.snapshot();
+        assert(snapshot.trackCount == 64);
+        assert(snapshot.tracks[11].audible());
+        assert(snapshot.tracks[11].primaryChannel() == 1);
+        assert(snapshot.tracks[11].firstProgram == 33);
+        assert(snapshot.tracks[11].hasName());
+        assert(std::strcmp(snapshot.tracks[11].name, "Finger Bass") == 0);
+    }
+
     {
         SmfStructuralInspectorState state;
         state.reset(96, 4);
@@ -166,6 +192,8 @@ int main() {
         assert(snapshot.analyzedBars == 64);
     }
 
+    static_assert(sizeof(SmfTrackInspectorState) <= 260,
+                  "track metadata must fit the fixed-DRAM budget");
     static_assert(sizeof(SmfStructuralInspectorState) <= 680,
                   "structural state must fit the bounded global budget");
     return 0;
