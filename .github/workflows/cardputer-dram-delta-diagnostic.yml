@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/smf-structural-inspector
+  pull_request:
   workflow_dispatch:
 
 permissions:
