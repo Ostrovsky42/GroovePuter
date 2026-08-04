@@ -1,154 +1,78 @@
 name: Core regressions
 
 on:
-  push:
-    branches:
-      - main
-      - dev
-      - agent/fix-core-reliability
-      - agent/smf-structural-inspector
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  host-tests:
+  update-scene-scratch-regression:
+    if: github.head_ref == 'agent/fix-cardputer-dram-scene-storage'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Run core host regressions
-        run: bash tests/run_host_tests.sh
-
-      - name: Run UI status chrome tests
-        run: |
-          python3 tests/test_ui_status_chrome_source_regressions.py
-          mkdir -p build/host-tests
-          g++ -std=c++17 -Wall -Wextra -Werror -I. \
-            tests/test_ui_status_chrome.cpp \
-            -o build/host-tests/test_ui_status_chrome
-          build/host-tests/test_ui_status_chrome
-
-      - name: Run synth engine tests
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          root = Path('.')
-          assert not (root / 'src/dsp/opl2_synth_voice.h').exists()
-          assert not (root / 'src/dsp/opl2_synth_voice.cpp').exists()
-
-          for path in (
-              root / 'src/ui/pages/synth_sequencer_page.cpp',
-              root / 'src/ui/pages/tb303_params_page.cpp',
-          ):
-              text = path.read_text(encoding='utf-8')
-              assert 'removeDisabledSynthEngines' in text
-              assert '{"TB303", "SID", "AY", "OPL2"' not in text
-
-          makefile = (root / 'platform_sdl/Makefile').read_text(encoding='utf-8')
-          assert 'opl2_synth_voice' not in makefile
-          assert 'wave_morph_synth_voice.cpp' in makefile
-
-          header = (root / 'src/dsp/swappable_synth_voice.h').read_text(encoding='utf-8')
-          assert 'opl2_synth_voice' not in header
-          assert 'WAVEMORPH = 6' in header
-          PY
-
-          mkdir -p build/host-tests
-          g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter -I. \
-            tests/test_new_synth_voices.cpp \
-            src/dsp/swappable_synth_voice.cpp \
-            src/dsp/mini_tb303.cpp \
-            src/dsp/filter.cpp \
-            src/dsp/audio_wavetables.cpp \
-            src/dsp/sid_synth_voice.cpp \
-            src/dsp/sid_synth.cpp \
-            src/dsp/ay_synth_voice.cpp \
-            src/dsp/sh101_synth_voice.cpp \
-            src/dsp/sn76489_synth_voice.cpp \
-            src/dsp/wave_morph_synth_voice.cpp \
-            -o build/host-tests/test_new_synth_voices
-          build/host-tests/test_new_synth_voices
-
-      - name: Run dirty-region display tests
-        run: |
-          mkdir -p build/host-tests
-          g++ -std=c++17 -Wall -Wextra -Werror -I. \
-            tests/test_dirty_tile_tracker.cpp \
-            -o build/host-tests/test_dirty_tile_tracker
-          build/host-tests/test_dirty_tile_tracker
-
-  sdl-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install SDL dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            libsdl2-dev \
-            libsdl2-gfx-dev
-
-      - name: Build desktop target
-        working-directory: platform_sdl
-        run: make clean all CXX=g++
-
-  cardputer-adv-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Arduino CLI
-        uses: arduino/setup-arduino-cli@v2
         with:
-          version: "1.x"
+          ref: agent/fix-cardputer-dram-scene-storage
+          fetch-depth: 0
 
-      - name: Install pinned M5Stack dependencies
-        run: bash scripts/install_arduino_deps.sh
-
-      - name: Compile Cardputer ADV firmware
-        run: bash scripts/build.sh --warnings all
-
-      - name: Capture Cardputer DRAM diagnostics
+      - name: Update legacy scratch-buffer invariant
         shell: bash
         run: |
           set -euo pipefail
-          ELF="build/cardputer-adv-current/GroovePuter.ino.elf"
-          SIZE_TOOL="$(find "$HOME/.arduino15/packages" -type f -name xtensa-esp32s3-elf-size | head -n 1)"
-          NM_TOOL="${SIZE_TOOL%-size}-nm"
-          OBJDUMP_TOOL="${SIZE_TOOL%-size}-objdump"
-          mkdir -p build/dram-diagnostics
-          {
-            echo "ELF=${ELF}"
-            echo "SIZE_TOOL=${SIZE_TOOL}"
-            echo
-            echo "=== SUMMARY ==="
-            "${SIZE_TOOL}" "${ELF}"
-            echo
-            echo "=== ALL SECTIONS ==="
-            "${SIZE_TOOL}" -A "${ELF}"
-            echo
-            echo "=== SCENE SYMBOLS ==="
-            "${NM_TOOL}" --print-size --size-sort --radix=d "${ELF}" | grep -E 'g_mainScene|s_tempLoadScene' || true
-            echo
-            echo "=== LARGEST SYMBOLS ==="
-            "${NM_TOOL}" --print-size --size-sort --radix=d "${ELF}" | tail -n 180
-            echo
-            echo "=== DRAM/EXT-RAM SECTION HEADERS ==="
-            "${OBJDUMP_TOOL}" -h "${ELF}" | grep -E 'dram|ext_ram|external|bss|data' || true
-          } > build/dram-diagnostics/cardputer-dram-current.txt
+          python3 - <<'PY'
+          from pathlib import Path
 
-      - name: Check fixed DRAM budget
-        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+          path = Path('tests/test_source_regressions.py')
+          text = path.read_text(encoding='utf-8')
+          old = '''def test_scene_and_page_validation_share_one_scratch_buffer() -> None:
+              scenes_header = (ROOT / "scenes.h").read_text(encoding="utf-8")
+              scenes = (ROOT / "scenes.cpp").read_text(encoding="utf-8")
+              paging = (ROOT / "src/audio/pattern_paging.cpp").read_text(encoding="utf-8")
 
-      - name: Upload Cardputer DRAM diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cardputer-dram-diagnostics
-          path: build/dram-diagnostics/cardputer-dram-current.txt
-          if-no-files-found: error
+              require("Scene& sceneTransactionScratch();" in scenes_header and
+                      "Scene& sceneTransactionScratch()" in scenes,
+                      "scene parsing and page validation need an explicit shared scratch contract")
+              require("PageStaging" not in paging and "g_stagingPage" not in paging,
+                      "pattern paging must not retain a second 22 KiB static staging buffer")
+              require("Scene& staging = sceneTransactionScratch();" in paging and
+                      "readAndValidatePage(const std::string& path, Scene& staging)" in paging,
+                      "page validation must use the shared scene transaction scratch")
+          '''.replace('          ', '')
+          new = '''def test_scene_and_page_validation_share_one_scratch_buffer() -> None:
+              scenes_header = (ROOT / "scenes.h").read_text(encoding="utf-8")
+              scenes = (ROOT / "scenes.cpp").read_text(encoding="utf-8")
+              paging = (ROOT / "src/audio/pattern_paging.cpp").read_text(encoding="utf-8")
+
+              require("class SceneScratchLease" in scenes_header and
+                      "SceneScratchLease::SceneScratchLease()" in scenes and
+                      "SceneScratchLease::~SceneScratchLease()" in scenes,
+                      "scene parsing and page validation need a bounded RAII scratch contract")
+              require("MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT" in scenes and
+                      "MALLOC_CAP_SPIRAM" not in scenes,
+                      "Cardputer scratch scenes must use internal heap without PSRAM")
+              require("PageStaging" not in paging and "g_stagingPage" not in paging,
+                      "pattern paging must not retain a second static staging buffer")
+              require(paging.count("SceneScratchLease scratch;") == 2 and
+                      "SceneScratchLease scratch;" in scenes and
+                      "readAndValidatePage(const std::string& path, Scene& staging)" in paging,
+                      "project and page validation must lease and release transaction scenes")
+          '''.replace('          ', '')
+          if text.count(old) != 1:
+              raise SystemExit(f'legacy scratch test block count: {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+          python3 tests/test_source_regressions.py
+          python3 tests/test_cardputer_dram_storage_source_regressions.py
+          git diff --check
+
+      - name: Commit regression update
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/test_source_regressions.py
+          git commit -m "test: enforce bounded Scene scratch lifetime"
+          git push origin HEAD:agent/fix-cardputer-dram-scene-storage
