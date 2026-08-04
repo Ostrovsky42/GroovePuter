@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ELF_PATH="${1:?usage: check_cardputer_dram_budget.sh <firmware.elf> [max-bytes]}"
-MAX_BYTES="${2:-191488}"
+MAX_BYTES="${2:-122880}"
 
 if [[ ! -f "${ELF_PATH}" ]]; then
   echo "Firmware ELF not found: ${ELF_PATH}" >&2
