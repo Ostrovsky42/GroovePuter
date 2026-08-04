@@ -44,7 +44,6 @@ bool selectLayerRelative(const SmfStructuralInspectorSnapshot& snapshot,
 }
 
 const char* resembles(const SmfStructuralLayerSnapshot& layer) {
-    // Interpretation remains deliberately secondary to the measured values.
     if (layer.swingPercent >= 56u && layer.notesPerBarX10 < 80u) {
         return "LO-FI / BROKEN";
     }
@@ -93,9 +92,14 @@ void drawStructuralInspector(IGfx& gfx) {
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(0), line);
 
     gfx.setTextColor(COLOR_TEXT);
-    if (layer.gridDenominator == 0u) {
+    if (layer.gridDenominator == 0u && layer.loopBars == 0u) {
+        std::snprintf(line, sizeof(line), "GRID FREE       LOOP --");
+    } else if (layer.gridDenominator == 0u) {
         std::snprintf(line, sizeof(line), "GRID FREE       LOOP %u BAR",
                       static_cast<unsigned>(layer.loopBars));
+    } else if (layer.loopBars == 0u) {
+        std::snprintf(line, sizeof(line), "GRID 1/%u       LOOP --",
+                      static_cast<unsigned>(layer.gridDenominator));
     } else {
         std::snprintf(line, sizeof(line), "GRID 1/%u       LOOP %u BAR",
                       static_cast<unsigned>(layer.gridDenominator),
@@ -152,8 +156,11 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         return SmfPlayerPageBase::handleEvent(event);
     }
 
-    // Keep Stage 1A hotkeys page-first in every MIDI Player subview.
     if (numericMuteHotkey) return SmfPlayerPageBase::handleEvent(event);
+
+    // K is intentionally not a MIDI mute command. Enter remains the only
+    // selected-row toggle inside the U table.
+    if (!browserVisible_ && (event.key == 'k' || event.key == 'K')) return true;
 
     if (!browserVisible_ && (event.key == 's' || event.key == 'S')) {
         structuralInspectorVisible_ = !structuralInspectorVisible_;
@@ -187,7 +194,6 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         return true;
     }
 
-    // Transport, seek, tempo, panic and routing retain their existing behavior.
     return SmfPlayerPageBase::handleEvent(event);
 }
 
