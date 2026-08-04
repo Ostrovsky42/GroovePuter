@@ -90,13 +90,15 @@ print_matches() {
   local pattern
   local found=0
   local total=0
+  local size_dec=0
   printf '\n%s:\n' "${label}"
   for pattern in "$@"; do
     while read -r address size type name; do
       [[ -n "${name:-}" ]] || continue
       if [[ "${name}" == *"${pattern}"* ]]; then
-        printf '  %8d  %s  %s\n' "${size}" "${type}" "${name}"
-        total=$((total + size))
+        size_dec=$((10#${size}))
+        printf '  %8d  %s  %s\n' "${size_dec}" "${type}" "${name}"
+        total=$((total + size_dec))
         found=1
       fi
     done < "${NM_OUTPUT}"
@@ -117,7 +119,7 @@ print_matches "MiniAcid engine" "g_miniAcidInstance"
 
 printf '\nLargest fixed DRAM symbols:\n'
 tail -n 40 "${NM_OUTPUT}" \
-  | awk '{ printf "  %8s  %s  %s\n", $2, $3, $4 }'
+  | awk '{ size = $2 + 0; printf "  %8d  %s  %s\n", size, $3, $4 }'
 
 printf '\nMachine summary:\n'
 printf 'MEMORY_BASELINE fixed=%d data=%d bss=%d provisional_gate=%d provisional_headroom=%+d unsupported_gate=%d unsupported_headroom=%+d\n' \
