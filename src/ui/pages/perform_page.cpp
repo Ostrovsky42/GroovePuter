@@ -141,35 +141,35 @@ bool PerformPage::handleToolKey(const UIEvent& event) {
 void PerformPage::drawToolsLayer(IGfx& gfx) {
     const int leftX = Layout::COL_1;
     const int rightX = Layout::COL_2;
-    char value[40];
+    char value[48];
 
     gfx.setTextColor(COLOR_ACCENT);
     gfx.drawText(leftX, LayoutManager::lineY(2), "PERFORMANCE TOOLS");
 
     gfx.setTextColor(COLOR_WHITE);
-    std::snprintf(value, sizeof(value), "1 ARP  %s",
+    std::snprintf(value, sizeof(value), "1 ARPEGGIATOR %s",
                   keyboard_.arpeggiatorEnabled() ? "ON" : "OFF");
     gfx.drawText(leftX, LayoutManager::lineY(3), value);
-    std::snprintf(value, sizeof(value), "5 STR  %ums",
+    std::snprintf(value, sizeof(value), "5 STRUM %ums",
                   static_cast<unsigned>(keyboard_.strumMs()));
     gfx.drawText(rightX, LayoutManager::lineY(3), value);
 
-    std::snprintf(value, sizeof(value), "2 DIR  %s", keyboard_.arpDirectionName());
+    std::snprintf(value, sizeof(value), "2 DIRECTION %s", keyboard_.arpDirectionName());
     gfx.drawText(leftX, LayoutManager::lineY(4), value);
-    std::snprintf(value, sizeof(value), "6 RAT  x%u",
+    std::snprintf(value, sizeof(value), "6 RATCHET x%u",
                   static_cast<unsigned>(keyboard_.ratchetCount()));
     gfx.drawText(rightX, LayoutManager::lineY(4), value);
 
-    std::snprintf(value, sizeof(value), "3 CHD  %s", keyboard_.chordModeName());
+    std::snprintf(value, sizeof(value), "3 CHORD %s", keyboard_.chordModeName());
     gfx.drawText(leftX, LayoutManager::lineY(5), value);
-    std::snprintf(value, sizeof(value), "7 EUC  %u/16",
+    std::snprintf(value, sizeof(value), "7 EUCLIDEAN %u/16",
                   static_cast<unsigned>(keyboard_.euclideanPulses()));
     gfx.drawText(rightX, LayoutManager::lineY(5), value);
 
-    std::snprintf(value, sizeof(value), "4 MEM  %u",
+    std::snprintf(value, sizeof(value), "4 MEMORY %u",
                   static_cast<unsigned>(keyboard_.chordMemorySize()));
     gfx.drawText(leftX, LayoutManager::lineY(6), value);
-    std::snprintf(value, sizeof(value), "8 ROT  %u",
+    std::snprintf(value, sizeof(value), "8 ROTATE %u",
                   static_cast<unsigned>(keyboard_.euclideanRotation()));
     gfx.drawText(rightX, LayoutManager::lineY(6), value);
 
@@ -366,8 +366,8 @@ void PerformPage::drawContent(IGfx& gfx) {
 void PerformPage::drawFooter(IGfx& gfx) {
     if (toolsLayerVisible_) {
         UI::drawStandardFooter(gfx,
-                               "1 Arp 2 Dir 3 Chord 4 Memory",
-                               "5 Strum 6 Ratchet 7 Euclid 8 Rotate");
+                               "1-4 LEFT COLUMN",
+                               "5-8 RIGHT | SHIFT REVERSE");
         return;
     }
     UI::drawStandardFooter(gfx,

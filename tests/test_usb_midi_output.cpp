@@ -82,6 +82,99 @@ void expectPacket(const Packet& packet,
     assert(packet.velocity == velocity);
 }
 
+void testPerformanceTransformMidiPolyphony() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+
+    assert(output.channelFor(MusicalEventSource::Arpeggiator,
+                             MusicalEventTarget::SynthA) == 7);
+    assert(output.channelFor(MusicalEventSource::Arpeggiator,
+                             MusicalEventTarget::SynthB) == 8);
+    assert(output.channelFor(MusicalEventSource::Arpeggiator,
+                             MusicalEventTarget::Dx) == 9);
+
+    // CHORD/MEMORY/STRUM must remain polyphonic on one external MIDI channel.
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 100,
+                                    MusicalEventSource::Arpeggiator,
+                                    MusicalEventTarget::SynthA));
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 64, 96,
+                                    MusicalEventSource::Arpeggiator,
+                                    MusicalEventTarget::SynthA));
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 67, 92,
+                                    MusicalEventSource::Arpeggiator,
+                                    MusicalEventTarget::SynthA));
+    assert(transport.packets.size() == 3);
+    expectPacket(transport.packets[0], PacketType::NoteOn, 7, 60, 100);
+    expectPacket(transport.packets[1], PacketType::NoteOn, 7, 64, 96);
+    expectPacket(transport.packets[2], PacketType::NoteOn, 7, 67, 92);
+    assert(output.activeGateCount(MusicalEventSource::Arpeggiator,
+                                  MusicalEventTarget::SynthA, 0) == 3);
+
+    output.handleMusicalEvent(event(MusicalEventType::NoteOff, 64, 0,
+                                    MusicalEventSource::Arpeggiator,
+                                    MusicalEventTarget::SynthA));
+    assert(transport.packets.size() == 4);
+    expectPacket(transport.packets.back(), PacketType::NoteOff, 7, 64, 0);
+    assert(output.activeGateCount(MusicalEventSource::Arpeggiator,
+                                  MusicalEventTarget::SynthA, 0) == 2);
+
+    // The established target-scoped performance panic is also the overflow
+    // recovery path. It must clear generated ownership as one logical domain.
+    output.handleMusicalEvent(event(MusicalEventType::AllNotesOff, 0, 0,
+                                    MusicalEventSource::PerformanceKeyboard,
+                                    MusicalEventTarget::SynthA));
+    assert(transport.packets.size() == 6);
+    expectPacket(transport.packets[4], PacketType::NoteOff, 7, 60, 0);
+    expectPacket(transport.packets[5], PacketType::NoteOff, 7, 67, 0);
+    assert(output.activeGateCount(MusicalEventSource::Arpeggiator,
+                                  MusicalEventTarget::SynthA, 0) == 0);
+
+    // Generated and Pattern ownership may share a channel+note. Cleaning one
+    // producer must not silence the other producer's still-owned note.
+    transport.clear();
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 72, 88,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::SynthA));
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 72, 110,
+                                    MusicalEventSource::Arpeggiator,
+                                    MusicalEventTarget::SynthA));
+    assert(transport.packets.size() == 1);
+    expectPacket(transport.packets[0], PacketType::NoteOn, 7, 72, 88);
+    assert(output.wireOwnerCount(7, 72) == 2);
+
+    output.handleMusicalEvent(event(MusicalEventType::AllNotesOff, 0, 0,
+                                    MusicalEventSource::Arpeggiator,
+                                    MusicalEventTarget::SynthA));
+    assert(transport.packets.size() == 1);
+    assert(output.wireOwnerCount(7, 72) == 1);
+    output.handleMusicalEvent(event(MusicalEventType::AllNotesOff, 0, 0,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::SynthA));
+    assert(transport.packets.size() == 2);
+    expectPacket(transport.packets[1], PacketType::NoteOff, 7, 72, 0);
+    assert(output.wireOwnerCount(7, 72) == 0);
+
+    transport.clear();
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 50, 90,
+                                    MusicalEventSource::Arpeggiator,
+                                    MusicalEventTarget::SynthB));
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 52, 91,
+                                    MusicalEventSource::Arpeggiator,
+                                    MusicalEventTarget::Dx));
+    assert(transport.packets.size() == 2);
+    expectPacket(transport.packets[0], PacketType::NoteOn, 8, 50, 90);
+    expectPacket(transport.packets[1], PacketType::NoteOn, 9, 52, 91);
+    output.handleMusicalEvent(event(MusicalEventType::AllNotesOff, 0, 0,
+                                    MusicalEventSource::PerformanceKeyboard,
+                                    MusicalEventTarget::SynthB));
+    output.handleMusicalEvent(event(MusicalEventType::AllNotesOff, 0, 0,
+                                    MusicalEventSource::PerformanceKeyboard,
+                                    MusicalEventTarget::Dx));
+}
+
 void testPatternDrumRoutingAndRetrig() {
     FakeUsbMidiTransport transport;
     transport.mountedState = true;
@@ -304,15 +397,14 @@ int main() {
     assert(output.activeNote(MusicalEventSource::PatternPlayer,
                              MusicalEventTarget::SynthA) == -1);
 
-    // Unsupported producer sources still fail closed. Pattern Drums are now a
-    // first-class scheduled PatternPlayer route and are tested separately.
+    // Raw MidiInput remains fail-closed; generated performance events are
+    // now a first-class bounded USB route tested below.
     transport.clear();
-    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 100,
-                                    MusicalEventSource::Arpeggiator));
     output.handleMusicalEvent(event(MusicalEventType::NoteOn, 61, 100,
                                     MusicalEventSource::MidiInput));
     assert(transport.packets.empty());
 
+    testPerformanceTransformMidiPolyphony();
     testPatternDrumRoutingAndRetrig();
 
     MusicalEventRouter router;
