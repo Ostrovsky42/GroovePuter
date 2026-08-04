@@ -101,5 +101,7 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   std::string save_name_;
 };
 
+#if defined(ARDUINO) || defined(ESP_PLATFORM)
 static_assert(sizeof(ProjectPage) <= 256,
               "Project page must leave enough contiguous DRAM for SD browsing");
+#endif

@@ -6,6 +6,7 @@ on:
       - main
       - dev
       - agent/fix-core-reliability
+      - agent/smf-structural-inspector
   pull_request:
 
 permissions:
@@ -111,3 +112,6 @@ jobs:
 
       - name: Compile Cardputer ADV firmware
         run: bash scripts/build.sh --warnings all
+
+      - name: Check fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf

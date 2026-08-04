@@ -6,6 +6,8 @@
 
 namespace GroovePuterInput {
 
+inline constexpr uint8_t kCardputerTabHid = 0x2B;
+
 template <typename KeysState>
 inline bool sameModifiers(const KeysState& a, const KeysState& b) {
   return a.alt == b.alt &&
@@ -62,9 +64,39 @@ template <typename KeysState, typename WordChar>
 inline bool shouldDispatchWord(const KeysState& current,
                                const KeysState& previous,
                                bool hadPrevious,
-                               WordChar value) {
-  (void)current;
-  return !hadPrevious || !containsWord(previous, value);
+                               WordChar& value) {
+  const WordChar rawValue = value;
+
+  // M5Cardputer library versions differ: dedicated Tab can appear only in
+  // KeysState::word or in both word and HID 0x2B. Preserve a word-only Tab
+  // through the control-character filter and suppress the duplicate word copy
+  // when the canonical HID event is present.
+  if (rawValue == static_cast<WordChar>('\t') &&
+      containsHid(current, kCardputerTabHid)) {
+    return false;
+  }
+
+  const bool dispatch =
+      !hadPrevious || !containsWord(previous, rawValue);
+  if (dispatch && rawValue == static_cast<WordChar>('\t')) {
+    value = static_cast<WordChar>(GROOVEPUTER_WORD_TAB_SENTINEL);
+  }
+  return dispatch;
+}
+
+inline uint16_t digitDispatchMask(char value) {
+  const unsigned char digit = static_cast<unsigned char>(value);
+  if (digit < '0' || digit > '9') return 0;
+  return static_cast<uint16_t>(1u << (digit - '0'));
+}
+
+template <typename WordChar>
+inline bool wordDigitAlreadyDispatched(WordChar value,
+                                       uint16_t dispatchedDigitMask) {
+  const unsigned char digit = static_cast<unsigned char>(value);
+  if (digit < '0' || digit > '9') return false;
+  return (dispatchedDigitMask &
+          static_cast<uint16_t>(1u << (digit - '0'))) != 0;
 }
 
 inline bool mayRepeat(const UIEvent& event) {

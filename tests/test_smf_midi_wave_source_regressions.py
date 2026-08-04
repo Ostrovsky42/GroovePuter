@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import runpy
 from pathlib import Path
 
 ROOT = Path.cwd()
@@ -30,6 +31,14 @@ def main() -> None:
     require("TinyUSB" not in page and "USBMIDI" not in page,
             "MIDI Player UI must not become a USB owner")
     print("SMF MIDI wave source regressions: OK")
+
+    # Stage 1B is chained into an already mandatory host gate so the full
+    # run_host_tests.sh contract validates both source boundaries and the
+    # standalone fixed-allocation analyzer without expanding the build script.
+    runpy.run_path(
+        str(ROOT / "tests/test_smf_structural_inspector_source_regressions.py"),
+        run_name="__main__",
+    )
 
 
 if __name__ == "__main__":

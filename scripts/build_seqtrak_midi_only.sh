@@ -11,4 +11,4 @@ export BUILD_PATH="${BUILD_PATH:-${PROJECT_ROOT}/build/cardputer-adv-seqtrak-mid
 
 "${SCRIPT_DIR}/build.sh" "$@"
 "${SCRIPT_DIR}/check_cardputer_dram_budget.sh" \
-  "${BUILD_PATH}/GroovePuter.ino.elf" 191488
+  "${BUILD_PATH}/GroovePuter.ino.elf"

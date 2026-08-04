@@ -77,6 +77,7 @@ SOURCES := \
 	../src/ui/pages/genre_page.cpp \
 	../src/ui/pages/perform_page.cpp \
 	../src/ui/pages/smf_player_page.cpp \
+	../src/ui/pages/smf_player_page_structural.cpp \
 	../src/ui/pages/feel_texture_page.cpp \
 	../src/ui/pages/sequencer_hub_page.cpp \
 	../src/ui/pages/settings_page.cpp \

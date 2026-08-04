@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "src/midi/smf_stream.h"
+#include "src/midi/smf_track_inspector.h"
 #include "src/midi/smf_track_mute.h"
 
 using namespace GroovePuterMidi;
@@ -87,6 +88,19 @@ std::vector<uint8_t> fixture() {
     return file;
 }
 
+std::vector<uint8_t> manyTrackFixture(uint16_t trackCount) {
+    std::vector<uint8_t> file;
+    tag(file, "MThd");
+    be32(file, 6);
+    be16(file, 1);
+    be16(file, trackCount);
+    be16(file, 480);
+    for (uint16_t track = 0; track < trackCount; ++track) {
+        appendTrack(file, {0x00, 0xFF, 0x2F, 0x00});
+    }
+    return file;
+}
+
 }  // namespace
 
 int main() {
@@ -96,6 +110,8 @@ int main() {
     assert(indexed.index.format == 1);
     assert(indexed.index.division == 480);
     assert(indexed.index.trackCount == 2);
+    assert(indexed.index.declaredTrackCount == 2);
+    assert(!indexed.index.tracksTruncated());
     assert(indexed.index.tracks[0].length > 0);
     assert(indexed.index.tracks[1].length > 0);
 
@@ -176,12 +192,26 @@ int main() {
     assert(events[4].event.kind == SmfEventKind::ProgramChange);
     smfTrackMuteState().clear();
 
-    std::vector<uint8_t> tooMany = fixture();
-    tooMany[10] = 0x00;
-    tooMany[11] = 0x41;
-    MemorySource tooManySource(std::move(tooMany));
-    assert(SmfFileIndexer::build(tooManySource).error ==
-           SmfParseError::UnsupportedFormat);
+    // Large files are validated through their final declared MTrk, while only
+    // the first bounded set is retained for playback and inspection.
+    MemorySource largeSource(manyTrackFixture(41));
+    const SmfIndexResult large = SmfFileIndexer::build(largeSource);
+    assert(large.ok());
+    assert(large.index.declaredTrackCount == 41);
+    assert(large.index.trackCount == kSmfMaxTracks);
+    assert(large.index.trackCount == 32);
+    assert(large.index.tracksTruncated());
+    assert(large.index.tracks[31].length == 4);
+
+    SmfEventStreamMerger largeStream;
+    assert(largeStream.open(largeSource, large.index));
+    const SmfTrackInspectorSnapshot largeInspector =
+        smfTrackInspectorState().snapshot();
+    assert(largeInspector.trackCount == 32);
+    assert(largeInspector.declaredTrackCount == 41);
+    assert(largeInspector.tracksTruncated());
+    assert(!largeStream.next(event));
+    assert(largeStream.ended());
 
     return 0;
 }
