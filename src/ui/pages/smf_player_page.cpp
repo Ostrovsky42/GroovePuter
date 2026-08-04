@@ -8,6 +8,7 @@
 #include "../components/music_visuals.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/transport_clock_runtime.h"
+#include "src/midi/smf_track_inspector.h"
 #include "src/midi/smf_track_mute.h"
 #include "src/platform/cardputer_usb_midi_service.h"
 
@@ -48,13 +49,89 @@ bool trackMuted(const GroovePuterMidi::SmfTrackMuteSnapshot& tracks,
            (tracks.mutedMask & (uint64_t{1} << trackIndex)) != 0;
 }
 
-unsigned mutedTrackCount(const GroovePuterMidi::SmfTrackMuteSnapshot& tracks) {
-    unsigned count = 0;
-    const uint16_t bounded = std::min<uint16_t>(tracks.trackCount, 64u);
-    for (uint16_t track = 0; track < bounded; ++track) {
-        if (trackMuted(tracks, track)) ++count;
+int collectAudibleTracks(
+        const GroovePuterMidi::SmfTrackInspectorSnapshot& inspector,
+        uint16_t* output,
+        int capacity) {
+    if (!output || capacity <= 0) return 0;
+    const uint16_t bounded = std::min<uint16_t>(
+        inspector.trackCount,
+        static_cast<uint16_t>(GroovePuterMidi::kSmfTrackInspectorMaxTracks));
+    int count = 0;
+    for (uint16_t track = 0; track < bounded && count < capacity; ++track) {
+        if (inspector.tracks[track].audible()) output[count++] = track;
     }
     return count;
+}
+
+int audibleTrackPosition(const uint16_t* tracks,
+                         int trackCount,
+                         uint16_t physicalTrack) {
+    for (int index = 0; index < trackCount; ++index) {
+        if (tracks[index] == physicalTrack) return index;
+    }
+    return -1;
+}
+
+bool selectAudibleTrackRelative(
+        const GroovePuterMidi::SmfTrackInspectorSnapshot& inspector,
+        int delta) {
+    uint16_t audible[GroovePuterMidi::kSmfTrackInspectorMaxTracks]{};
+    const int count = collectAudibleTracks(
+        inspector,
+        audible,
+        static_cast<int>(GroovePuterMidi::kSmfTrackInspectorMaxTracks));
+    if (count == 0) return false;
+
+    const GroovePuterMidi::SmfTrackMuteSnapshot mute =
+        GroovePuterMidi::smfTrackMuteState().snapshot();
+    int position = audibleTrackPosition(audible, count, mute.selectedTrack);
+    if (position < 0) position = 0;
+    else if (delta != 0) {
+        position = (position + delta) % count;
+        if (position < 0) position += count;
+    }
+    return GroovePuterMidi::smfTrackMuteState().selectTrack(audible[position]);
+}
+
+unsigned mutedAudibleTrackCount(
+        const GroovePuterMidi::SmfTrackMuteSnapshot& mute,
+        const GroovePuterMidi::SmfTrackInspectorSnapshot& inspector) {
+    unsigned count = 0;
+    const uint16_t bounded = std::min<uint16_t>(
+        inspector.trackCount,
+        static_cast<uint16_t>(GroovePuterMidi::kSmfTrackInspectorMaxTracks));
+    for (uint16_t track = 0; track < bounded; ++track) {
+        if (inspector.tracks[track].audible() && trackMuted(mute, track)) ++count;
+    }
+    return count;
+}
+
+void formatTrackChannel(const GroovePuterMidi::SmfTrackInfoSnapshot& info,
+                        char* output,
+                        std::size_t outputSize) {
+    if (!output || outputSize == 0) return;
+    if (info.usesMultipleChannels()) {
+        std::snprintf(output, outputSize, "MIX");
+        return;
+    }
+    const int channel = info.primaryChannel();
+    if (channel < 0) std::snprintf(output, outputSize, "--");
+    else std::snprintf(output, outputSize, "C%02d", channel + 1);
+}
+
+void formatTrackProgram(const GroovePuterMidi::SmfTrackInfoSnapshot& info,
+                        char* output,
+                        std::size_t outputSize) {
+    if (!output || outputSize == 0) return;
+    if (info.likelyDrums()) {
+        std::snprintf(output, outputSize, "DRUM");
+    } else if (info.hasProgramChange()) {
+        std::snprintf(output, outputSize, "P%03u",
+                      static_cast<unsigned>(info.firstProgram));
+    } else {
+        std::snprintf(output, outputSize, "P---");
+    }
 }
 }  // namespace
 
@@ -265,6 +342,7 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         if (muteMixerVisible_) {
             performanceVisible_ = false;
             channelInspectorVisible_ = false;
+            selectAudibleTrackRelative(smfTrackInspectorState().snapshot(), 0);
         }
         return true;
     }
@@ -294,7 +372,10 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
             else if (event.scancode == GROOVEPUTER_DOWN) delta = 1;
             else if (event.scancode == GROOVEPUTER_LEFT) delta = -6;
             else delta = 6;
-            smfTrackMuteState().selectRelative(delta);
+            if (!selectAudibleTrackRelative(
+                    smfTrackInspectorState().snapshot(), delta)) {
+                UI::showToast("NO AUDIBLE MIDI TRACKS", 800);
+            }
             return true;
         }
         const bool toggleRequested =
@@ -614,33 +695,46 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
 }
 
 void SmfPlayerPage::drawMuteMixer(IGfx& gfx) {
-    const SmfTrackMuteSnapshot tracks = smfTrackMuteState().snapshot();
+    const SmfTrackMuteSnapshot mute = smfTrackMuteState().snapshot();
+    const SmfTrackInspectorSnapshot inspector = smfTrackInspectorState().snapshot();
+    uint16_t audible[kSmfTrackInspectorMaxTracks]{};
+    const int audibleCount = collectAudibleTracks(
+        inspector,
+        audible,
+        static_cast<int>(kSmfTrackInspectorMaxTracks));
     char line[64];
 
     gfx.setTextColor(MusicVisuals::accentForStyle());
     std::snprintf(line, sizeof(line), "MUTED %u / %u",
-                  mutedTrackCount(tracks),
-                  static_cast<unsigned>(tracks.trackCount));
+                  mutedAudibleTrackCount(mute, inspector),
+                  static_cast<unsigned>(audibleCount));
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(0), line);
 
-    if (tracks.trackCount == 0) {
+    if (audibleCount == 0) {
         gfx.setTextColor(COLOR_LABEL);
-        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), "NO MIDI TRACKS");
-        gfx.drawText(Layout::COL_1, LayoutManager::lineY(3), "LOAD A MIDI FILE FIRST");
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), "NO AUDIBLE MIDI TRACKS");
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(3), "TEMPO-ONLY TRACKS ARE HIDDEN");
         return;
     }
 
     constexpr int kVisibleRows = 6;
-    const int count = static_cast<int>(tracks.trackCount);
-    const int selected = static_cast<int>(tracks.selectedTrack);
-    int start = selected - 2;
-    start = std::max(0, std::min(start, std::max(0, count - kVisibleRows)));
+    int selectedPosition = audibleTrackPosition(
+        audible,
+        audibleCount,
+        mute.selectedTrack);
+    if (selectedPosition < 0) selectedPosition = 0;
+    int start = selectedPosition - 2;
+    start = std::max(
+        0,
+        std::min(start, std::max(0, audibleCount - kVisibleRows)));
 
     for (int row = 0; row < kVisibleRows; ++row) {
-        const int index = start + row;
-        if (index >= count) break;
-        const bool selectedRow = index == selected;
-        const bool muted = trackMuted(tracks, static_cast<uint16_t>(index));
+        const int visibleIndex = start + row;
+        if (visibleIndex >= audibleCount) break;
+        const uint16_t trackIndex = audible[visibleIndex];
+        const SmfTrackInfoSnapshot& info = inspector.tracks[trackIndex];
+        const bool selectedRow = visibleIndex == selectedPosition;
+        const bool muted = trackMuted(mute, trackIndex);
         const int y = LayoutManager::lineY(row + 1);
 
         if (selectedRow) {
@@ -648,22 +742,34 @@ void SmfPlayerPage::drawMuteMixer(IGfx& gfx) {
                          Layout::CONTENT.w - 10, 11, COLOR_PANEL);
         }
 
-        std::snprintf(line, sizeof(line), "%c TRACK %02u",
+        char fallback[kSmfTrackNameBytes]{};
+        std::snprintf(fallback, sizeof(fallback), "TRACK %02u",
+                      static_cast<unsigned>(trackIndex + 1u));
+        const char* name = info.hasName() ? info.name : fallback;
+        char channel[5]{};
+        char program[6]{};
+        formatTrackChannel(info, channel, sizeof(channel));
+        formatTrackProgram(info, program, sizeof(program));
+        std::snprintf(line, sizeof(line), "%c%02u %-3s %-15.15s %-3s %-4s",
                       selectedRow ? '>' : ' ',
-                      static_cast<unsigned>(index + 1));
-        gfx.setTextColor(selectedRow
-                             ? MusicVisuals::accentForStyle()
-                             : COLOR_TEXT);
+                      static_cast<unsigned>(trackIndex + 1u),
+                      muted ? "MUT" : "ON",
+                      name,
+                      channel,
+                      program);
+        gfx.setTextColor(muted
+                             ? COLOR_WARN
+                             : (selectedRow
+                                  ? MusicVisuals::accentForStyle()
+                                  : COLOR_TEXT));
         gfx.drawText(Layout::COL_1, y, line);
-
-        gfx.setTextColor(muted ? COLOR_WARN : COLOR_LABEL);
-        gfx.drawText(Layout::COL_1 + 118, y, muted ? "MUTED" : "ON");
     }
 
     gfx.setTextColor(COLOR_LABEL);
-    std::snprintf(line, sizeof(line), "TRACK %u/%u   A ALL ON",
-                  static_cast<unsigned>(tracks.selectedTrack + 1u),
-                  static_cast<unsigned>(tracks.trackCount));
+    std::snprintf(line, sizeof(line), "ROW %u/%u TRK %02u  A ALL ON",
+                  static_cast<unsigned>(selectedPosition + 1),
+                  static_cast<unsigned>(audibleCount),
+                  static_cast<unsigned>(audible[selectedPosition] + 1u));
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), line);
 }
 
