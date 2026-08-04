@@ -38,8 +38,29 @@ int main() {
   FakeKeysState wordA{};
   wordA.hid_keys = {0x04};
   wordA.word = {'a'};
-  assert(shouldDispatchWord(wordA, empty, true, 'a'));
-  assert(!shouldDispatchWord(wordA, wordA, true, 'a'));
+  char wordAValue = wordA.word.front();
+  assert(shouldDispatchWord(wordA, empty, true, wordAValue));
+  assert(wordAValue == 'a');
+  wordAValue = wordA.word.front();
+  assert(!shouldDispatchWord(wordA, wordA, true, wordAValue));
+
+  FakeKeysState wordOnlyTab{};
+  wordOnlyTab.word = {'\t'};
+  char wordOnlyTabValue = wordOnlyTab.word.front();
+  assert(shouldDispatchWord(wordOnlyTab, empty, true, wordOnlyTabValue));
+  assert(wordOnlyTabValue == GROOVEPUTER_WORD_TAB_SENTINEL);
+  assert(normalizeKeyChar(wordOnlyTabValue) == '\t');
+
+  FakeKeysState duplicateTab{};
+  duplicateTab.hid_keys = {kCardputerTabHid};
+  duplicateTab.word = {'\t'};
+  char duplicateTabValue = duplicateTab.word.front();
+  assert(!shouldDispatchWord(duplicateTab, empty, true, duplicateTabValue));
+  assert(duplicateTabValue == '\t');
+
+  char heldWordTabValue = wordOnlyTab.word.front();
+  assert(!shouldDispatchWord(wordOnlyTab, wordOnlyTab, true, heldWordTabValue));
+  assert(heldWordTabValue == '\t');
 
   UIEvent arrow{};
   arrow.scancode = GROOVEPUTER_RIGHT;
