@@ -8,8 +8,6 @@
 #include "src/midi/smf_player_service.h"
 
 namespace {
-constexpr char kPerformancePhysicalKeys[] = "asdfghjklqwertyuiop";
-
 struct HeldPerformanceSnapshot {
     char keys[PerformanceKeyboard::kMaxHeldNotes]{};
     std::size_t count{0};
@@ -26,8 +24,11 @@ HeldPerformanceSnapshot captureHeldPerformanceKeys(
         snapshot.velocity = static_cast<uint8_t>(activeVelocity);
     }
 
-    for (char key : kPerformancePhysicalKeys) {
-        if (key == '\0' || !keyboard.isPhysicalKeyHeld(key)) continue;
+    for (char key = 'a'; key <= 'z'; ++key) {
+        if (!PerformanceKeyboard::isPerformanceKey(key) ||
+            !keyboard.isPhysicalKeyHeld(key)) {
+            continue;
+        }
         if (snapshot.count >= PerformanceKeyboard::kMaxHeldNotes) break;
         snapshot.keys[snapshot.count++] = key;
 
