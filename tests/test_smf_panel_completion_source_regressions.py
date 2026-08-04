@@ -26,6 +26,7 @@ def main() -> None:
     mute_state = (ROOT / "src/midi/smf_track_mute.h").read_text(encoding="utf-8")
     track_inspector = (ROOT / "src/midi/smf_track_inspector.h").read_text(encoding="utf-8")
     stream_cpp = (ROOT / "src/midi/smf_stream.cpp").read_text(encoding="utf-8")
+    display_cpp = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
 
     require("midi_file_manager.h" in page_h,
             "SMF page must use the shared bounded MIDI browser")
@@ -84,6 +85,21 @@ def main() -> None:
             "A must replace unavailable Shift+K for all-tracks-on")
     require("Shift+K" not in page_cpp and "J/L Track" not in page_cpp,
             "mute mixer help must not advertise unavailable Shift or J/L navigation")
+    require("toggleAudibleTrackHotkey" in page_cpp and
+            "event.key >= '1' && event.key <= '9'" in page_cpp and
+            '"MIDI SLOT %u EMPTY"' in page_cpp,
+            "1-9 must directly mute the first nine audible SMF tracks")
+    require("const char hotkey = visibleIndex < 9" in page_cpp and
+            '"%c%c%02u %-3s %-15.15s %-3s %-4s"' in page_cpp,
+            "mute table must label all nine direct hotkey slots")
+    page_dispatch = display_cpp.index("currentPage->handleEvent(event)")
+    global_numeric_mutes = display_cpp.index(
+        "event.key >= '1' && event.key <= '9'")
+    require(page_dispatch < global_numeric_mutes and
+            "toggleMute303(0)" in display_cpp and
+            "toggleMute303(1)" in display_cpp and
+            "toggleMuteKick()" in display_cpp,
+            "SMF page must consume 1-9 before unchanged imported-project mutes")
     require("bool selectTrack(uint16_t trackIndex)" in mute_state and
             "std::atomic<uint32_t> mutedMaskLow_" in mute_state and
             "std::atomic<uint32_t> mutedMaskHigh_" in mute_state,
