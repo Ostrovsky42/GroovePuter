@@ -23,12 +23,12 @@ using namespace RetroTheme;
 using namespace RetroWidgets;
 #endif
 
-class SequencerHubPage : public IPage {
+class SequencerHubPageBase : public IPage {
 public:
     enum class Mode { OVERVIEW, DETAIL };
     enum class FocusLane { GRID, PATTERN, BANK };
 
-    SequencerHubPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
+    SequencerHubPageBase(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
     
     void draw(IGfx& gfx) override;
     bool handleEvent(UIEvent& ui_event) override;
@@ -38,7 +38,7 @@ public:
     void setHubStyle(VisualStyle style) { hub_style_ = style; }
     VisualStyle getHubStyle() const { return hub_style_; }
 
-private:
+protected:
     MiniAcid& mini_acid_;
     AudioGuard audio_guard_;
     std::string title_ = "SEQUENCER HUB";
@@ -87,3 +87,25 @@ private:
         GroovePuterState::markSceneMutated();
     }
 };
+
+class SequencerHubPage final : public SequencerHubPageBase {
+public:
+    using SequencerHubPageBase::SequencerHubPageBase;
+
+    void draw(IGfx& gfx) override;
+    bool handleEvent(UIEvent& event) override;
+
+private:
+    bool midiOverview_{false};
+    uint8_t midiSelected_{0};
+    uint8_t midiScroll_{0};
+
+    void drawMidiOverview(IGfx& gfx);
+    bool handleMidiOverviewEvent(UIEvent& event);
+    bool toggleMidiLayer(uint8_t layerIndex);
+    void syncMidiScroll(uint8_t layerCount);
+};
+
+#if !defined(GROOVEPUTER_SEQUENCER_HUB_WRAPPER_CONSUMER)
+#define SequencerHubPage SequencerHubPageBase
+#endif
