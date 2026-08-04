@@ -1,9 +1,6 @@
-name: Apply PERFORM controls and TR-606 fix
+name: Squash validated PERFORM and TR-606 fix
 
 on:
-  push:
-    branches:
-      - agent/apply-perform-tools-knob-tr606
   pull_request:
     branches:
       - dev
@@ -12,55 +9,25 @@ permissions:
   contents: write
 
 jobs:
-  apply-and-test:
+  squash-validated-branch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Prepare isolated patch runner
-        run: cp tools/agent_apply_perform_tools_knob_tr606.py /tmp/apply_fix.py
-
-      - name: Apply patch to target branch
+      - name: Squash target branch with lease protection
         run: |
+          set -euo pipefail
+          expected_head=71be578bb940cbf244fe50068ac40c6bdf093208
           git fetch origin dev fix/perform-tools-knob-tr606
+          actual_head=$(git rev-parse origin/fix/perform-tools-knob-tr606)
+          test "$actual_head" = "$expected_head"
           git checkout -B fix/perform-tools-knob-tr606 origin/fix/perform-tools-knob-tr606
-          python3 /tmp/apply_fix.py
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('tests/run_host_tests.sh')
-          text = path.read_text(encoding='utf-8')
-          marker = '  "${ROOT_DIR}/tests/test_tr606_drum_voice.cpp" \\\n'
-          pos = text.index(marker)
-          prefix = text[:pos]
-          flag = '  -Werror \\\n'
-          flag_pos = prefix.rfind(flag)
-          if flag_pos < 0:
-              raise RuntimeError('TR-606 focused test -Werror flag not found')
-          insertion = '  -Wno-unused-parameter \\\n  -Wno-misleading-indentation \\\n'
-          text = text[:flag_pos + len(flag)] + insertion + text[flag_pos + len(flag):]
-          path.write_text(text, encoding='utf-8')
-          PY
-
-      - name: Run full host regressions
-        run: bash tests/run_host_tests.sh
-
-      - name: Publish tested feature commit
-        run: |
           git config user.name "openai-coding-agent"
           git config user.email "openai-coding-agent@users.noreply.github.com"
-          git add \
-            src/ui/pages/tb303_params_page.cpp \
-            src/dsp/mini_drumvoices.h \
-            src/dsp/mini_drumvoices.cpp \
-            src/dsp/miniacid_engine.cpp \
-            src/ui/components/drum_sequencer_grid.cpp \
-            src/ui/pages/perform_page.h \
-            src/ui/pages/perform_page.cpp \
-            tests/test_wavemorph_performance_source_regressions.py \
-            tests/test_tr606_drum_voice.cpp \
-            tests/run_host_tests.sh \
-            docs/stages/PERFORM_TOOLS_KNOB_TR606_FIX_STAGE.md
-          git commit -m "fix: improve performance controls and TR-606 behavior"
-          git push origin HEAD:fix/perform-tools-knob-tr606
+          git reset --soft origin/dev
+          git commit -m "fix: improve knob controls and TR-606 behavior"
+          git push \
+            --force-with-lease=refs/heads/fix/perform-tools-knob-tr606:$expected_head \
+            origin HEAD:fix/perform-tools-knob-tr606
