@@ -138,9 +138,10 @@ def main() -> None:
     require(tinyusb_options in upload,
             "Cardputer upload must use the same TinyUSB FQBN")
     require("check_cardputer_dram_budget.sh" in midi_only_build and
-            "191488" in midi_only_build and
+            "191488" not in midi_only_build and
+            "122880" in dram_check and
             ".dram0.data" in dram_check and ".dram0.bss" in dram_check,
-            "SEQTRAK MIDI-only build must enforce the measured global DRAM budget")
+            "all Cardputer profiles must enforce the shared fixed-DRAM budget")
     require("#if ARDUINO_USB_MODE" in transport,
             "hardware transport must fail closed outside TinyUSB OTG mode")
     require("tud_midi_mounted()" in transport,
@@ -175,7 +176,7 @@ def main() -> None:
             "backpressure that recovers must not be escalated to a transport "
             "failure: only cleanup that cannot complete may stop playback")
     drop_note_on = transport[
-        transport.index("if (action == SmfSendFailureAction::DropNoteOn)"):
+        transport.index("if (action == SmfSendFailureAction::DropNoteOn"):
         transport.index("else if (action == SmfSendFailureAction::BeginCleanup")
     ]
     require("beginSmfCleanup" not in drop_note_on and
