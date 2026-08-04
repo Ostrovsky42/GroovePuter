@@ -75,6 +75,8 @@ require("profile: [normal, midi-only]" in workflow,
         "the workflow must build both USB profiles")
 require("image-kind: [product, runtime]" in workflow,
         "the workflow must separate exact product ELF from runtime instrumentation")
+require("github.event.pull_request.head.sha || github.sha" in workflow,
+        "PR measurements must checkout the immutable head instead of a synthetic merge commit")
 require("test_cardputer_memory_baseline_source_regressions.py" in workflow,
         "the workflow must run the source-boundary regression")
 require("set -o pipefail" in workflow and "2>&1 | tee" in workflow,
