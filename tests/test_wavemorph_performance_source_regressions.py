@@ -109,33 +109,44 @@ def test_knob_keys_use_coarse_and_fine_steps() -> None:
 
 
 def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
+    header = (ROOT / "src/ui/pages/tb303_params_page.h").read_text(encoding="utf-8")
     page = (ROOT / "src/ui/pages/tb303_params_page.cpp").read_text(encoding="utf-8")
 
     require("kMainKnobRadius = 13" in page and "kRadius = 18" not in page,
-            "the four primary synth knobs must use the compact radius")
-    require("enum class Style : uint8_t" in page and
-            "SelectorKnob" in page and "Toggle" in page,
-            "secondary controls must expose selector and toggle visuals")
-    require(page.count("LabelValueComponent::Style::SelectorKnob") == 3,
-            "TYPE/OSC/FLT must use compact selector knobs")
+            "the four MAIN synth knobs must retain the compact radius")
+    require('drawSegment(x, "MAIN", !more_tab_)' in page and
+            '"MORE", more_tab_' in page and '"TAB >"' in page,
+            "MAIN/MORE discoverability must be visible on the parameter page")
+    require("setActiveTab(!more_tab_)" in page and
+            "if (ui_event.ctrl || ui_event.alt || ui_event.meta) return false;" in page,
+            "plain Tab must toggle local tabs while Fn/meta Tab stays global")
+    require("main_focus_slot_" in header and "more_focus_slot_" in header and
+            "rememberFocusedSlot" in page and "restoreFocusedSlot" in page,
+            "MAIN and MORE must remember focus independently")
+    require(page.count("LabelValueComponent::Style::Stepper") == 3,
+            "TYPE/OSC/FLT must use full-row steppers")
     require(page.count("LabelValueComponent::Style::Toggle") == 2,
-            "DST/DLY must use explicit toggle switches")
-    require("setNormalized(oscillator.normalized())" in page and
-            "setNormalized(filter.normalized())" in page,
-            "stepped TB303 selectors must show their current position")
-    require("setToggle(distortionEnabled)" in page and
-            "setToggle(delayEnabled)" in page,
-            "effect switches must reflect their current on/off state")
-    require("kCompactY = content.y + 65" in page and
-            "kCompactHeight = 34" in page and
-            "std::shared_ptr<LabelValueComponent> visible[5]" in page,
-            "all secondary controls must share one bounded lower row")
-    require("const int hintY = content.y + 54;" in page,
-            "direct knob hints must remain visible above the compact row")
+            "DST/DLY must use full-row switches")
+    require("if (focused)" in page and
+            "gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, focus_color_)" in page,
+            "the active MORE row must use a filled focus state")
+    require("kMoreRowHeight = 15" in page and "LabelValueComponent* rows[5]" in page,
+            "MORE must use five stable full-width rows")
+    require("setEnabled(oscAvailable)" in page and
+            "setEnabled(filterAvailable)" in page and
+            'setValue("--")' in page,
+            "unavailable engine parameters must remain visible but disabled")
+    require("Both effects are per-voice post-engine stages" in page and
+            "distortion_control_->setEnabled(true)" in page and
+            "delay_control_->setEnabled(true)" in page,
+            "current DST/DLY rows must remain available for every synth engine")
+    require("const char* keyHints[4]" in page and
+            "if (more_tab_ && !ui_event.ctrl" in page,
+            "direct A/Z-S/X-D/C-F/V controls must be advertised and active only on MAIN")
     require("new " not in block(page,
                                 "void TB303ParamsPage::layoutComponents()",
                                 "void TB303ParamsPage::adjustFocusedElement"),
-            "compact layout must not add explicit heap allocation during draw")
+            "tab layout must not add explicit heap allocation during draw")
 
 
 def test_tr606_shared_clock_is_not_owned_by_kick() -> None:

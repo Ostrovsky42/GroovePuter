@@ -231,7 +231,7 @@ class TB303ParamsPage::KnobComponent : public FocusableComponent {
 class TB303ParamsPage::LabelValueComponent : public FocusableComponent {
  public:
   enum class Style : uint8_t {
-    SelectorKnob,
+    Stepper,
     Toggle,
   };
 
@@ -248,72 +248,72 @@ class TB303ParamsPage::LabelValueComponent : public FocusableComponent {
 
   void setLabel(const char* label) { label_ = label ? label : ""; }
   void setValue(const char* value) { value_ = value ? value : ""; }
-  void setNormalized(float normalized) {
-    normalized_ = std::clamp(normalized, 0.0f, 1.0f);
-  }
-  void setToggle(bool enabled) {
-    toggled_ = enabled;
-    normalized_ = enabled ? 1.0f : 0.0f;
-  }
+  void setToggle(bool enabled) { toggled_ = enabled; }
+  void setEnabled(bool enabled) { enabled_ = enabled; }
+  bool enabled() const { return enabled_; }
 
   void draw(IGfx& gfx) override {
     const Rect& bounds = getBoundaries();
     if (bounds.w <= 0 || bounds.h <= 0) return;
 
-    auto drawCentered = [&](int y, const char* text, IGfxColor color) {
-      if (!text) return;
-      gfx.setTextColor(color);
-      gfx.drawText(bounds.x + (bounds.w - gfx.textWidth(text)) / 2, y, text);
-    };
-
-    char compactValue[16]{};
-    std::snprintf(compactValue, sizeof(compactValue), "%s", value_.c_str());
-    std::size_t valueLength = std::strlen(compactValue);
-    while (valueLength > 1 && gfx.textWidth(compactValue) > bounds.w - 2) {
-      compactValue[--valueLength] = '\0';
+    const bool focused = isFocused() && enabled_;
+    if (focused) {
+      gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, focus_color_);
     }
 
-    drawCentered(bounds.y, label_.c_str(), label_color_);
+    const IGfxColor labelColor = !enabled_
+        ? kDimText
+        : (focused ? IGfxColor::Black() : label_color_);
+    const IGfxColor valueColor = !enabled_
+        ? kDimText
+        : (focused ? IGfxColor::Black() : value_color_);
+    const int textY = bounds.y + (bounds.h - gfx.fontHeight()) / 2;
 
-    if (style_ == Style::SelectorKnob) {
-      constexpr int kSelectorRadius = 7;
-      const int radius = std::min(kSelectorRadius,
-                                  std::max(3, std::min(bounds.w, bounds.h) / 4));
-      const int cx = bounds.x + bounds.w / 2;
-      const int cy = bounds.y + bounds.h / 2;
-      gfx.drawKnobFace(cx, cy, radius, focus_color_, COLOR_BLACK);
+    gfx.setTextColor(labelColor);
+    gfx.drawText(bounds.x + 6, textY, label_.c_str());
 
-      constexpr float kDegToRad = 3.14159265f / 180.0f;
-      float degrees = 135.0f + normalized_ * 270.0f;
-      if (degrees >= 360.0f) degrees -= 360.0f;
-      const float angle = degrees * kDegToRad;
-      const int indicatorX = cx + static_cast<int>(
-          roundf(cosf(angle) * std::max(1, radius - 2)));
-      const int indicatorY = cy + static_cast<int>(
-          roundf(sinf(angle) * std::max(1, radius - 2)));
-      drawLineColored(gfx, cx, cy, indicatorX, indicatorY, focus_color_);
+    if (!enabled_) {
+      gfx.setTextColor(kDimText);
+      gfx.drawText(bounds.x + bounds.w - gfx.textWidth("--") - 8, textY, "--");
+      return;
+    }
+
+    if (style_ == Style::Stepper) {
+      char compactValue[24]{};
+      std::snprintf(compactValue, sizeof(compactValue), "%s", value_.c_str());
+      std::size_t valueLength = std::strlen(compactValue);
+      const int maxValueWidth = std::max(18, bounds.w / 2 - 22);
+      while (valueLength > 1 && gfx.textWidth(compactValue) > maxValueWidth) {
+        compactValue[--valueLength] = '\0';
+      }
+
+      const int rightArrowX = bounds.x + bounds.w - gfx.textWidth(">") - 7;
+      const int valueRight = rightArrowX - 7;
+      const int valueX = valueRight - gfx.textWidth(compactValue);
+      const int leftArrowX = valueX - gfx.textWidth("<") - 7;
+
+      gfx.setTextColor(valueColor);
+      gfx.drawText(leftArrowX, textY, "<");
+      gfx.drawText(valueX, textY, compactValue);
+      gfx.drawText(rightArrowX, textY, ">");
+      return;
+    }
+
+    constexpr int kTrackWidth = 30;
+    constexpr int kTrackHeight = 10;
+    const int trackX = bounds.x + bounds.w - kTrackWidth - 7;
+    const int trackY = bounds.y + (bounds.h - kTrackHeight) / 2;
+    const IGfxColor switchColor = focused ? IGfxColor::Black() : focus_color_;
+    const IGfxColor knobColor = focused ? focus_color_ : IGfxColor::Black();
+
+    if (toggled_) {
+      gfx.fillRect(trackX, trackY, kTrackWidth, kTrackHeight, switchColor);
     } else {
-      constexpr int kTrackWidth = 24;
-      constexpr int kTrackHeight = 8;
-      const int trackX = bounds.x + (bounds.w - kTrackWidth) / 2;
-      const int trackY = bounds.y + bounds.h / 2 - kTrackHeight / 2;
-      const IGfxColor trackColor = toggled_ ? focus_color_ : IGfxColor::DarkGray();
-      gfx.fillRect(trackX, trackY, kTrackWidth, kTrackHeight, trackColor);
-      gfx.drawRect(trackX, trackY, kTrackWidth, kTrackHeight, IGfxColor::White());
-      const int knobX = toggled_ ? trackX + kTrackWidth - 4 : trackX + 4;
-      gfx.fillCircle(knobX, trackY + kTrackHeight / 2, 3, IGfxColor::White());
+      gfx.drawRect(trackX, trackY, kTrackWidth, kTrackHeight, switchColor);
     }
-
-    drawCentered(bounds.y + bounds.h - gfx.fontHeight(), compactValue, value_color_);
-
-    if (isFocused()) {
-      constexpr int kFocusPadding = 1;
-      gfx.drawRect(bounds.x - kFocusPadding,
-                   bounds.y - kFocusPadding,
-                   bounds.w + kFocusPadding * 2,
-                   bounds.h + kFocusPadding * 2,
-                   focus_color_);
-    }
+    const int knobX = toggled_ ? trackX + kTrackWidth - 5 : trackX + 5;
+    gfx.fillCircle(knobX, trackY + kTrackHeight / 2, 4,
+                   toggled_ ? knobColor : switchColor);
   }
 
  private:
@@ -323,8 +323,8 @@ class TB303ParamsPage::LabelValueComponent : public FocusableComponent {
   IGfxColor value_color_;
   IGfxColor focus_color_;
   Style style_;
-  float normalized_{0.0f};
   bool toggled_{false};
+  bool enabled_{true};
 };
 
 TB303ParamsPage::TB303ParamsPage(IGfx& gfx,
@@ -351,9 +351,9 @@ void TB303ParamsPage::initComponents() {
   env_amount_knob_ = std::make_shared<KnobComponent>(mini_acid_, voice_index_, 2, COLOR_KNOB_3, COLOR_KNOB_3, focusColor);
   env_decay_knob_ = std::make_shared<KnobComponent>(mini_acid_, voice_index_, 3, COLOR_KNOB_4, COLOR_KNOB_4, focusColor);
 
-  engine_type_control_ = std::make_shared<LabelValueComponent>("TYPE", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::SelectorKnob);
-  osc_control_ = std::make_shared<LabelValueComponent>("OSC", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::SelectorKnob);
-  filter_control_ = std::make_shared<LabelValueComponent>("FLT", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::SelectorKnob);
+  engine_type_control_ = std::make_shared<LabelValueComponent>("TYPE", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
+  osc_control_ = std::make_shared<LabelValueComponent>("OSC", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
+  filter_control_ = std::make_shared<LabelValueComponent>("FLT", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
   distortion_control_ = std::make_shared<LabelValueComponent>("DST", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Toggle);
   delay_control_ = std::make_shared<LabelValueComponent>("DLY", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Toggle);
 
@@ -413,26 +413,15 @@ void TB303ParamsPage::layoutComponents() {
   const int x0 = content.x + Layout::CONTENT_PAD_X;
   const int width = content.w - Layout::CONTENT_PAD_X * 2;
 
-  constexpr int kMainKnobRadius = 13;
-  const int knobRowY = content.y + 29;
-  const int spacing = width / 5;
-
-  cutoff_knob_->setBoundaries(Rect(x0 + spacing * 1 - kMainKnobRadius,
-                                   knobRowY - kMainKnobRadius,
-                                   kMainKnobRadius * 2,
-                                   kMainKnobRadius * 2));
-  resonance_knob_->setBoundaries(Rect(x0 + spacing * 2 - kMainKnobRadius,
-                                      knobRowY - kMainKnobRadius,
-                                      kMainKnobRadius * 2,
-                                      kMainKnobRadius * 2));
-  env_amount_knob_->setBoundaries(Rect(x0 + spacing * 3 - kMainKnobRadius,
-                                       knobRowY - kMainKnobRadius,
-                                       kMainKnobRadius * 2,
-                                       kMainKnobRadius * 2));
-  env_decay_knob_->setBoundaries(Rect(x0 + spacing * 4 - kMainKnobRadius,
-                                      knobRowY - kMainKnobRadius,
-                                      kMainKnobRadius * 2,
-                                      kMainKnobRadius * 2));
+  cutoff_knob_->setBoundaries(Rect{0, 0, 0, 0});
+  resonance_knob_->setBoundaries(Rect{0, 0, 0, 0});
+  env_amount_knob_->setBoundaries(Rect{0, 0, 0, 0});
+  env_decay_knob_->setBoundaries(Rect{0, 0, 0, 0});
+  engine_type_control_->setBoundaries(Rect{0, 0, 0, 0});
+  osc_control_->setBoundaries(Rect{0, 0, 0, 0});
+  filter_control_->setBoundaries(Rect{0, 0, 0, 0});
+  distortion_control_->setBoundaries(Rect{0, 0, 0, 0});
+  delay_control_->setBoundaries(Rect{0, 0, 0, 0});
 
   const std::string engineName = mini_acid_.currentSynthEngineName(voice_index_);
   const bool tb303 = isTb303Engine();
@@ -440,46 +429,45 @@ void TB303ParamsPage::layoutComponents() {
 
   engine_type_control_->setLabel("TYPE");
   engine_type_control_->setValue(engineName.c_str());
-  const std::vector<std::string> engineOptions = availableSynthEngines(mini_acid_);
-  const int engineIndex = findEngineIndex(engineOptions, engineName);
-  engine_type_control_->setNormalized(
-      engineOptions.size() > 1 && engineIndex >= 0
-          ? static_cast<float>(engineIndex) /
-                static_cast<float>(engineOptions.size() - 1)
-          : 0.0f);
+  engine_type_control_->setEnabled(true);
 
-  osc_control_->setBoundaries(Rect{0, 0, 0, 0});
-  filter_control_->setBoundaries(Rect{0, 0, 0, 0});
-
-  char value[24];
+  const bool oscAvailable = tb303 || parameterCount > 4;
+  const bool filterAvailable = tb303 || parameterCount > 5;
+  char value[24]{};
   std::string label;
+
   if (tb303) {
     const Parameter& oscillator = mini_acid_.parameter303(TB303ParamId::Oscillator, voice_index_);
     const Parameter& filter = mini_acid_.parameter303(TB303ParamId::FilterType, voice_index_);
     osc_control_->setLabel("OSC");
     osc_control_->setValue(oscillator.optionLabel());
-    osc_control_->setNormalized(oscillator.normalized());
     filter_control_->setLabel("FLT");
     filter_control_->setValue(filter.optionLabel());
-    filter_control_->setNormalized(filter.normalized());
   } else {
-    if (parameterCount > 4) {
+    if (oscAvailable) {
       const Parameter& parameter = mini_acid_.synthParameter(voice_index_, 4);
       label = parameter.label() ? parameter.label() : "P5";
       formatParameterValue(parameter, value, sizeof(value));
       osc_control_->setLabel(label.c_str());
       osc_control_->setValue(value);
-      osc_control_->setNormalized(parameter.normalized());
+    } else {
+      osc_control_->setLabel("P5");
+      osc_control_->setValue("--");
     }
-    if (parameterCount > 5) {
+
+    if (filterAvailable) {
       const Parameter& parameter = mini_acid_.synthParameter(voice_index_, 5);
       label = parameter.label() ? parameter.label() : "P6";
       formatParameterValue(parameter, value, sizeof(value));
       filter_control_->setLabel(label.c_str());
       filter_control_->setValue(value);
-      filter_control_->setNormalized(parameter.normalized());
+    } else {
+      filter_control_->setLabel("P6");
+      filter_control_->setValue("--");
     }
   }
+  osc_control_->setEnabled(oscAvailable);
+  filter_control_->setEnabled(filterAvailable);
 
   const bool distortionEnabled = mini_acid_.is303DistortionEnabled(voice_index_);
   distortion_control_->setLabel("DST");
@@ -491,27 +479,239 @@ void TB303ParamsPage::layoutComponents() {
   delay_control_->setValue(delayEnabled ? "ON" : "OFF");
   delay_control_->setToggle(delayEnabled);
 
-  std::shared_ptr<LabelValueComponent> visible[5]{};
-  int visibleCount = 0;
-  visible[visibleCount++] = engine_type_control_;
-  if (tb303 || parameterCount > 4) visible[visibleCount++] = osc_control_;
-  if (tb303 || parameterCount > 5) visible[visibleCount++] = filter_control_;
-  visible[visibleCount++] = distortion_control_;
-  visible[visibleCount++] = delay_control_;
+  // Both effects are per-voice post-engine stages in MiniAcid, so they are
+  // available for every currently selectable synth engine.
+  distortion_control_->setEnabled(true);
+  delay_control_->setEnabled(true);
 
-  constexpr int kCompactY = content.y + 65;
-  constexpr int kCompactHeight = 34;
-  constexpr int kCompactGap = 2;
-  const int compactWidth =
-      (width - kCompactGap * (visibleCount - 1)) / visibleCount;
-  int x = x0;
-  for (int i = 0; i < visibleCount; ++i) {
-    const int cellWidth = i + 1 == visibleCount
-        ? x0 + width - x
-        : compactWidth;
-    visible[i]->setBoundaries(Rect{x, kCompactY, cellWidth, kCompactHeight});
-    x += cellWidth + kCompactGap;
+  if (!more_tab_) {
+    constexpr int kMainKnobRadius = 13;
+    const int knobRowY = content.y + 45;
+    const int spacing = width / 5;
+
+    cutoff_knob_->setBoundaries(Rect(x0 + spacing * 1 - kMainKnobRadius,
+                                     knobRowY - kMainKnobRadius,
+                                     kMainKnobRadius * 2,
+                                     kMainKnobRadius * 2));
+    resonance_knob_->setBoundaries(Rect(x0 + spacing * 2 - kMainKnobRadius,
+                                        knobRowY - kMainKnobRadius,
+                                        kMainKnobRadius * 2,
+                                        kMainKnobRadius * 2));
+    env_amount_knob_->setBoundaries(Rect(x0 + spacing * 3 - kMainKnobRadius,
+                                         knobRowY - kMainKnobRadius,
+                                         kMainKnobRadius * 2,
+                                         kMainKnobRadius * 2));
+    env_decay_knob_->setBoundaries(Rect(x0 + spacing * 4 - kMainKnobRadius,
+                                        knobRowY - kMainKnobRadius,
+                                        kMainKnobRadius * 2,
+                                        kMainKnobRadius * 2));
+  } else {
+    constexpr int kMoreRowY = 20;
+    constexpr int kMoreRowHeight = 15;
+    constexpr int kMoreRowGap = 1;
+    LabelValueComponent* rows[5] = {
+        engine_type_control_.get(),
+        osc_control_.get(),
+        filter_control_.get(),
+        distortion_control_.get(),
+        delay_control_.get(),
+    };
+    for (int i = 0; i < 5; ++i) {
+      rows[i]->setBoundaries(Rect{x0 + 4,
+                                  content.y + kMoreRowY + i * (kMoreRowHeight + kMoreRowGap),
+                                  width - 8,
+                                  kMoreRowHeight});
+    }
   }
+
+  updateTabFocusability();
+  if (focusedChild() && !focusedChild()->isFocusable()) {
+    restoreFocusedSlot();
+  }
+}
+
+void TB303ParamsPage::focusComponent(Component* component) {
+  if (!component || !component->isFocusable()) return;
+  const int limit = static_cast<int>(getChildren().size()) + 1;
+  for (int i = 0; i < limit; ++i) {
+    if (focusedChild() == component) return;
+    focusNext();
+  }
+}
+
+void TB303ParamsPage::rememberFocusedSlot() {
+  Component* focused = focusedChild();
+  Component* mainControls[4] = {
+      cutoff_knob_.get(),
+      resonance_knob_.get(),
+      env_amount_knob_.get(),
+      env_decay_knob_.get(),
+  };
+  Component* moreControls[5] = {
+      engine_type_control_.get(),
+      osc_control_.get(),
+      filter_control_.get(),
+      distortion_control_.get(),
+      delay_control_.get(),
+  };
+
+  if (!more_tab_) {
+    for (uint8_t i = 0; i < 4; ++i) {
+      if (focused == mainControls[i]) {
+        main_focus_slot_ = i;
+        return;
+      }
+    }
+    return;
+  }
+
+  for (uint8_t i = 0; i < 5; ++i) {
+    if (focused == moreControls[i]) {
+      more_focus_slot_ = i;
+      return;
+    }
+  }
+}
+
+void TB303ParamsPage::restoreFocusedSlot() {
+  Component* mainControls[4] = {
+      cutoff_knob_.get(),
+      resonance_knob_.get(),
+      env_amount_knob_.get(),
+      env_decay_knob_.get(),
+  };
+  Component* moreControls[5] = {
+      engine_type_control_.get(),
+      osc_control_.get(),
+      filter_control_.get(),
+      distortion_control_.get(),
+      delay_control_.get(),
+  };
+
+  if (!more_tab_) {
+    const uint8_t slot = std::min<uint8_t>(main_focus_slot_, 3);
+    focusComponent(mainControls[slot]);
+    return;
+  }
+
+  const uint8_t slot = std::min<uint8_t>(more_focus_slot_, 4);
+  Component* target = moreControls[slot];
+  if (!target->isFocusable()) {
+    target = nullptr;
+    for (Component* candidate : moreControls) {
+      if (candidate->isFocusable()) {
+        target = candidate;
+        break;
+      }
+    }
+  }
+  focusComponent(target);
+}
+
+void TB303ParamsPage::updateTabFocusability() {
+  const bool main = !more_tab_;
+  cutoff_knob_->setFocusable(main);
+  resonance_knob_->setFocusable(main);
+  env_amount_knob_->setFocusable(main);
+  env_decay_knob_->setFocusable(main);
+
+  engine_type_control_->setFocusable(more_tab_ && engine_type_control_->enabled());
+  osc_control_->setFocusable(more_tab_ && osc_control_->enabled());
+  filter_control_->setFocusable(more_tab_ && filter_control_->enabled());
+  distortion_control_->setFocusable(more_tab_ && distortion_control_->enabled());
+  delay_control_->setFocusable(more_tab_ && delay_control_->enabled());
+}
+
+void TB303ParamsPage::setActiveTab(bool more) {
+  if (more_tab_ == more) return;
+  rememberFocusedSlot();
+  more_tab_ = more;
+  updateTabFocusability();
+  restoreFocusedSlot();
+}
+
+void TB303ParamsPage::drawTabSwitcher(IGfx& gfx, const Rect& content) {
+  constexpr int kSegmentWidth = 38;
+  constexpr int kSegmentHeight = 14;
+  constexpr int kSegmentGap = 2;
+  const int totalWidth = kSegmentWidth * 2 + kSegmentGap;
+  const int x = content.x + (content.w - totalWidth) / 2;
+  const int y = content.y + 1;
+  const IGfxColor accent = voiceColor(voice_index_);
+
+  auto drawSegment = [&](int segmentX, const char* label, bool active) {
+    if (active) {
+      gfx.fillRect(segmentX, y, kSegmentWidth, kSegmentHeight, accent);
+    } else {
+      gfx.drawRect(segmentX, y, kSegmentWidth, kSegmentHeight, accent);
+    }
+    gfx.setTextColor(active ? IGfxColor::Black() : kDimText);
+    gfx.drawText(segmentX + (kSegmentWidth - gfx.textWidth(label)) / 2,
+                 y + (kSegmentHeight - gfx.fontHeight()) / 2,
+                 label);
+  };
+
+  drawSegment(x, "MAIN", !more_tab_);
+  drawSegment(x + kSegmentWidth + kSegmentGap, "MORE", more_tab_);
+}
+
+void TB303ParamsPage::drawMainSummary(IGfx& gfx, const Rect& content) {
+  char first[20] = "--";
+  char second[20] = "--";
+  const bool tb303 = isTb303Engine();
+  const int parameterCount = mini_acid_.synthParameterCount(voice_index_);
+
+  if (tb303) {
+    const char* osc = mini_acid_.parameter303(TB303ParamId::Oscillator, voice_index_).optionLabel();
+    const char* filter = mini_acid_.parameter303(TB303ParamId::FilterType, voice_index_).optionLabel();
+    std::snprintf(first, sizeof(first), "%s", osc ? osc : "--");
+    std::snprintf(second, sizeof(second), "%s", filter ? filter : "--");
+  } else {
+    if (parameterCount > 4) {
+      formatParameterValue(mini_acid_.synthParameter(voice_index_, 4), first, sizeof(first));
+    }
+    if (parameterCount > 5) {
+      formatParameterValue(mini_acid_.synthParameter(voice_index_, 5), second, sizeof(second));
+    }
+  }
+
+  char summary[64]{};
+  const std::string engineName = mini_acid_.currentSynthEngineName(voice_index_);
+  std::snprintf(summary, sizeof(summary), "%s %s %s",
+                engineName.c_str(), first, second);
+
+  const int y = content.y + 89;
+  const int tabHintX = content.x + content.w - gfx.textWidth("TAB >") - 4;
+  constexpr int kBadgeWidth = 29;
+  constexpr int kBadgeHeight = 11;
+  constexpr int kBadgeGap = 3;
+  const int dlyX = tabHintX - kBadgeGap - kBadgeWidth;
+  const int dstX = dlyX - kBadgeGap - kBadgeWidth;
+  const int summaryX = content.x + 4;
+  const int summaryWidth = std::max(1, dstX - summaryX - 4);
+  std::size_t summaryLength = std::strlen(summary);
+  while (summaryLength > 1 && gfx.textWidth(summary) > summaryWidth) {
+    summary[--summaryLength] = '\0';
+  }
+
+  const IGfxColor accent = voiceColor(voice_index_);
+  gfx.setTextColor(accent);
+  gfx.drawText(summaryX, y + 2, summary);
+
+  auto drawBadge = [&](int x, const char* label, bool active) {
+    if (active) {
+      gfx.fillRect(x, y, kBadgeWidth, kBadgeHeight, accent);
+    } else {
+      gfx.drawRect(x, y, kBadgeWidth, kBadgeHeight, accent);
+    }
+    gfx.setTextColor(active ? IGfxColor::Black() : accent);
+    gfx.drawText(x + (kBadgeWidth - gfx.textWidth(label)) / 2, y + 2, label);
+  };
+
+  drawBadge(dstX, "DST", mini_acid_.is303DistortionEnabled(voice_index_));
+  drawBadge(dlyX, "DLY", mini_acid_.is303DelayEnabled(voice_index_));
+  gfx.setTextColor(kDimText);
+  gfx.drawText(tabHintX, y + 2, "TAB >");
 }
 
 void TB303ParamsPage::adjustFocusedElement(int direction, bool fine) {
@@ -590,21 +790,36 @@ void TB303ParamsPage::draw(IGfx& gfx) {
   }
 
   const auto& content = Layout::CONTENT;
+  drawTabSwitcher(gfx, content);
   gfx.setTextColor(kDimText);
-  gfx.drawText(content.x + content.w - 34, content.y + 2, modeName);
-  const int hintY = content.y + 54;
-  gfx.drawText(content.x + 10, hintY, "A/Z  S/X  D/C  F/V");
+  gfx.drawText(content.x + content.w - gfx.textWidth(modeName) - 4,
+               content.y + 3,
+               modeName);
+
+  if (!more_tab_) {
+    const int x0 = content.x + Layout::CONTENT_PAD_X;
+    const int width = content.w - Layout::CONTENT_PAD_X * 2;
+    const int spacing = width / 5;
+    const char* keyHints[4] = {"A/Z", "S/X", "D/C", "F/V"};
+    const int keyY = content.y + 75;
+    gfx.setTextColor(kDimText);
+    for (int i = 0; i < 4; ++i) {
+      const int cx = x0 + spacing * (i + 1);
+      gfx.drawText(cx - gfx.textWidth(keyHints[i]) / 2, keyY, keyHints[i]);
+    }
+    drawMainSummary(gfx, content);
+  }
 
   Container::draw(gfx_);
 
-  if (isTb303Engine()) {
+  if (!more_tab_) {
     UI::drawStandardFooter(gfx,
-                           "[L/R]FOCUS [U/D]VAL [CTRL]FINE",
-                           "[] ENGINE T/G:OSC Y/H:FLT N/M:FX");
+                           "[TAB]MORE [L/R]FOCUS [U/D]VAL",
+                           "A/Z S/X D/C F/V [CTRL]FINE");
   } else {
     UI::drawStandardFooter(gfx,
-                           "[L/R]FOCUS [U/D]VAL [CTRL]FINE",
-                           "[] ENGINE T/G:P5 Y/H:P6 N/M:FX");
+                           "[TAB]MAIN [L/R]ROW [U/D]CHANGE",
+                           "TYPE OSC FLT DST DLY");
   }
 }
 
@@ -618,7 +833,11 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
   }
 
   if (UIInput::isGlobalNav(ui_event)) return false;
-  if (UIInput::isTab(ui_event)) return false;
+  if (UIInput::isTab(ui_event)) {
+    if (ui_event.ctrl || ui_event.alt || ui_event.meta) return false;
+    setActiveTab(!more_tab_);
+    return true;
+  }
 
   const int nav = UIInput::navCode(ui_event);
   const bool fine = ui_event.shift || ui_event.ctrl;
@@ -656,6 +875,14 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
     const int bankIndex = key - '1';
     withAudioGuard([&]() { mini_acid_.set303BankIndex(voice_index_, bankIndex); });
     UI::showToast(bankIndex == 0 ? "Bank: A" : "Bank: B", 800);
+    return true;
+  }
+
+  const bool mainKnobKey = lowerKey == 'a' || lowerKey == 'z' ||
+      lowerKey == 's' || lowerKey == 'x' ||
+      lowerKey == 'd' || lowerKey == 'c' ||
+      lowerKey == 'f' || lowerKey == 'v';
+  if (more_tab_ && !ui_event.ctrl && !ui_event.alt && !ui_event.meta && mainKnobKey) {
     return true;
   }
 
