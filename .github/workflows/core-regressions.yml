@@ -10,9 +10,53 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
+  agent-scene-storage-repair:
+    if: github.event_name == 'pull_request' && github.head_ref == 'agent/fix-cardputer-dram-scene-storage'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-cardputer-dram-scene-storage
+          fetch-depth: 0
+
+      - name: Execute one-shot repair payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/agent-fix-scene-internal-heap.yml').read_text(encoding='utf-8')
+          marker = "          python3 - <<'PY'\n"
+          start = workflow.index(marker) + len(marker)
+          end = workflow.index("\n          PY\n", start)
+          payload = textwrap.dedent(workflow[start:end])
+          exec(compile(payload, 'agent-scene-storage-repair', 'exec'))
+          PY
+
+          python3 tests/test_cardputer_dram_storage_source_regressions.py
+          git diff --check
+
+      - name: Commit repaired source and remove one-shot machinery
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm .github/workflows/agent-fix-scene-internal-heap.yml
+          git checkout HEAD^ -- .github/workflows/core-regressions.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add GroovePuter.ino scenes.cpp scenes.h scripts/build.sh \
+            scripts/build_seqtrak_midi_only.sh src/audio/pattern_paging.cpp \
+            src/dsp/miniacid_engine.cpp tests/test_cardputer_dram_storage_source_regressions.py \
+            docs/stages/CARDPUTER_FIXED_DRAM_SCENE_STORAGE.md \
+            .github/workflows/core-regressions.yml
+          git commit -m "fix: allocate Scene storage without PSRAM"
+          git push origin HEAD:agent/fix-cardputer-dram-scene-storage
+
   host-tests:
     runs-on: ubuntu-latest
     steps:
