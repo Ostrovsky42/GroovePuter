@@ -4,6 +4,7 @@
 #include <cstring>
 #include <limits>
 
+#include "smf_track_inspector.h"
 #include "smf_track_mute.h"
 
 namespace GroovePuterMidi {
@@ -277,6 +278,25 @@ bool SmfTrackStream::next(SmfStreamEvent& out) {
                 ended_ = true;
                 return false;
             }
+            if (metaType == 0x03u) {
+                char name[kSmfTrackNameBytes]{};
+                const uint32_t copyLength = std::min<uint32_t>(
+                    length, static_cast<uint32_t>(kSmfTrackNameBytes - 1u));
+                for (uint32_t i = 0; i < copyLength; ++i) {
+                    uint8_t value = 0;
+                    if (!readByte(value)) {
+                        ended_ = true;
+                        return false;
+                    }
+                    name[i] = static_cast<char>(value);
+                }
+                if (!skip(length - copyLength)) {
+                    ended_ = true;
+                    return false;
+                }
+                smfTrackInspectorState().setName(trackIndex_, name);
+                continue;
+            }
             if (metaType == 0x51u && length == 3) {
                 uint8_t b0 = 0, b1 = 0, b2 = 0;
                 if (!readByte(b0) || !readByte(b1) || !readByte(b2)) {
@@ -339,6 +359,7 @@ bool SmfEventStreamMerger::open(ISmfByteSource& source,
     source_ = &source;
     index_ = index;
     smfTrackMuteState().reset(index.trackCount);
+    smfTrackInspectorState().reset(index.trackCount);
     for (std::size_t i = 0; i < kSmfMaxTracks; ++i) hasNext_[i] = false;
     selectedValid_ = false;
 
@@ -355,6 +376,7 @@ bool SmfEventStreamMerger::open(ISmfByteSource& source,
     for (std::size_t i = 0; i < index_.trackCount; ++i) {
         if (!streams_[i].open(source, index_.tracks[i], static_cast<uint16_t>(i))) {
             source_ = nullptr;
+            smfTrackInspectorState().reset(0);
             return false;
         }
         streams_[i].setCache(cachePool_ + i * perTrack, perTrack);
@@ -412,6 +434,7 @@ bool SmfEventStreamMerger::next(SmfStreamEvent& out) {
         out = next_[track];
         prime(track);
 
+        smfTrackInspectorState().observe(out.trackIndex, out.event);
         const bool noteOn = out.event.kind == SmfEventKind::NoteOn;
         if (shouldEmitSmfTrackEvent(noteOn, out.trackIndex)) return true;
     }
