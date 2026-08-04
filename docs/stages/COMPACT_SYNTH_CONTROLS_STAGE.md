@@ -27,7 +27,7 @@ This UI stage expects the consolidated Cardputer word/HID Tab input fix from PR 
 
 ### MAIN
 
-- `MAIN / MORE` is always visible at the top; `MAIN` is selected initially.
+- `MAIN / MORE` is always visible at the top; `MAIN` is selected on the page's first entry.
 - Four radius-13 continuous knobs show parameters 1–4.
 - `A/Z`, `S/X`, `D/C`, and `F/V` remain direct real-time controls only on `MAIN`.
 - A bottom summary shows the current engine and the next two parameter values.
@@ -44,6 +44,7 @@ This UI stage expects the consolidated Cardputer word/HID Tab input fix from PR 
 - Missing parameter 5/6 rows remain visible as disabled `--` rows, so the list does not jump.
 - Current distortion and delay are post-engine per-voice stages and remain available for all selectable synth engines.
 - MAIN and MORE remember their own last focused control.
+- The selected tab and both focus positions are session-local UI state; they are not written into scenes or project persistence.
 
 ## Troubleshooting
 
@@ -55,7 +56,7 @@ This UI stage expects the consolidated Cardputer word/HID Tab input fix from PR 
 
 ## Acceptance checklist
 
-- [ ] Page initially opens on `MAIN` with `MAIN / MORE` visible.
+- [ ] First page entry opens on `MAIN` with `MAIN / MORE` visible.
 - [ ] Four continuous knobs are radius 13 and do not overlap values, labels, key hints, or summary.
 - [ ] Plain `Tab` switches `MAIN → MORE → MAIN` exactly once per press.
 - [ ] `Fn+Tab` changes workflow and never changes the local synth tab.
