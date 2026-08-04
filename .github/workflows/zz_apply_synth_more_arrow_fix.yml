@@ -130,3 +130,5 @@ jobs:
                   docs/stages/COMPACT_SYNTH_CONTROLS_STAGE.md
           git commit -m "ui: correct arrow mapping on synth MORE"
           git push origin HEAD:agent/compact-synth-controls
+
+# Existing-workflow trigger marker.
