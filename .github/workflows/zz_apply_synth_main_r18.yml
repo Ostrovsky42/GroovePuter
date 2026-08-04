@@ -27,36 +27,40 @@ jobs:
           path = Path("src/ui/pages/tb303_params_page.cpp")
           text = path.read_text(encoding="utf-8")
 
-          old_disabled = '''    if (!enabled_) {
-              gfx.setTextColor(kDimText);
-              gfx.drawText(bounds.x + bounds.w - gfx.textWidth("--") - 8, textY, "--");
-              return;
-            }
-          '''
-          new_disabled = '''    if (!enabled_) {
-              // Unavailable is distinct from an available OFF toggle: no track,
-              // thumb, or stepper arrows are rendered for this row.
-              gfx.setTextColor(kDimText);
-              gfx.drawText(bounds.x + bounds.w - gfx.textWidth("--") - 8, textY, "--");
-              return;
-            }
-          '''
+          old_disabled = (
+              "    if (!enabled_) {\n"
+              "      gfx.setTextColor(kDimText);\n"
+              "      gfx.drawText(bounds.x + bounds.w - gfx.textWidth(\"--\") - 8, textY, \"--\");\n"
+              "      return;\n"
+              "    }\n"
+          )
+          new_disabled = (
+              "    if (!enabled_) {\n"
+              "      // Unavailable is distinct from an available OFF toggle: no track,\n"
+              "      // thumb, or stepper arrows are rendered for this row.\n"
+              "      gfx.setTextColor(kDimText);\n"
+              "      gfx.drawText(bounds.x + bounds.w - gfx.textWidth(\"--\") - 8, textY, \"--\");\n"
+              "      return;\n"
+              "    }\n"
+          )
           if text.count(old_disabled) != 1:
               raise SystemExit("disabled-row render block did not match exactly once")
           text = text.replace(old_disabled, new_disabled, 1)
 
-          old_geometry = '''  if (!more_tab_) {
-              constexpr int kMainKnobRadius = 13;
-              const int knobRowY = content.y + 45;
-          '''
-          new_geometry = '''  if (!more_tab_) {
-              // Vertical budget inside the 103 px content area:
-              // tab segment ends at +15, value text starts at +17,
-              // the R18 circle spans +27..+63, label starts at +67,
-              // key hint starts at +75, and the summary starts at +89.
-              constexpr int kMainKnobRadius = 18;
-              const int knobRowY = content.y + 45;
-          '''
+          old_geometry = (
+              "  if (!more_tab_) {\n"
+              "    constexpr int kMainKnobRadius = 13;\n"
+              "    const int knobRowY = content.y + 45;\n"
+          )
+          new_geometry = (
+              "  if (!more_tab_) {\n"
+              "    // Vertical budget inside the 103 px content area:\n"
+              "    // tab segment ends at +15, value text starts at +17,\n"
+              "    // the R18 circle spans +27..+63, label starts at +67,\n"
+              "    // key hint starts at +75, and the summary starts at +89.\n"
+              "    constexpr int kMainKnobRadius = 18;\n"
+              "    const int knobRowY = content.y + 45;\n"
+          )
           if text.count(old_geometry) != 1:
               raise SystemExit("MAIN knob geometry block did not match exactly once")
           text = text.replace(old_geometry, new_geometry, 1)
