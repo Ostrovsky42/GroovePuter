@@ -60,7 +60,9 @@ def main() -> None:
     require("::Serial" not in page_cpp,
             "SMF page must not write routine browser diagnostics directly")
 
-    guard_block = page_h[page_h.index("template <typename F>"):]
+    guard_start = page_h.index("template <typename F>")
+    guard_end = page_h.index("\n};\n\nclass SmfPlayerPage final", guard_start)
+    guard_block = page_h[guard_start:guard_end]
     require("gfx" not in guard_block and "draw" not in guard_block,
             "AudioGuard helper must not contain UI drawing")
 
