@@ -26,6 +26,16 @@ require("UNSUPPORTED_GATE_BYTES=\"${UNSUPPORTED_GATE_BYTES:-122880}\"" in report
 require("exit 0" in report and "deliberately non-gating" in report,
         "the baseline report must not replace the product gate")
 
+for script_name, script in (("gate", gate), ("report", report)):
+    require("discover_arduino_tool" in script,
+            f"{script_name} must use the shared vendor-neutral discovery pattern")
+    require("ARDUINO_PACKAGES_ROOT" in script and "command -v" in script,
+            f"{script_name} must support PATH and arbitrary Arduino package vendors")
+    require(".arduino15/packages/esp32/tools" not in script,
+            f"{script_name} must not assume the Espressif vendor directory")
+    require("find \"${package_root}\"" in script and "|| true" in script,
+            f"{script_name} tool discovery must fail explicitly, not through set -e")
+
 require("mktemp -d /tmp/grooveputer-memory-baseline" in build,
         "the diagnostic build must use a temporary source tree")
 require("rsync -a --delete" in build,
