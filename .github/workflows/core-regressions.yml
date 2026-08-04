@@ -28,6 +28,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
           import textwrap
 
           workflow = Path('.github/workflows/agent-fix-scene-internal-heap.yml').read_text(encoding='utf-8')
@@ -35,6 +36,15 @@ jobs:
           start = workflow.index(marker) + len(marker)
           end = workflow.index("\n          PY\n", start)
           payload = textwrap.dedent(workflow[start:end])
+
+          scene_call = re.compile(
+              r'\nreplace_once\(\n    "scenes\\.cpp",\n    """.*?""",\n    """.*?""",\n\)\n',
+              re.DOTALL,
+          )
+          payload, scene_call_count = scene_call.subn('\n', payload)
+          if scene_call_count != 2:
+              raise SystemExit(f'unexpected scenes.cpp repair call count: {scene_call_count}')
+
           duplicate = '''replace_once(
               "GroovePuter.ino",
               "fixed internal Cardputer ADV heap.",
@@ -44,7 +54,90 @@ jobs:
           if payload.count(duplicate) != 2:
               raise SystemExit('unexpected duplicate boot-comment repair payload')
           payload = payload.replace(duplicate, '', 2)
-          payload += '''
+
+          payload += r'''
+          p = Path("scenes.cpp")
+          text = p.read_text(encoding="utf-8")
+          storage_start = text.index("namespace {\nstruct SceneStorageBlock")
+          storage_end = text.index("\nvoid SceneManager::loadDefaultScene()", storage_start)
+          storage_replacement = r'''namespace {
+          #if defined(ESP32) || defined(ESP_PLATFORM)
+          Scene* g_mainScene = nullptr;
+
+          Scene* allocateInternalScene() {
+            void* memory = heap_caps_malloc(
+                sizeof(Scene), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+            return memory ? new (memory) Scene() : nullptr;
+          }
+
+          void releaseInternalScene(Scene* scene) {
+            if (!scene) return;
+            scene->~Scene();
+            heap_caps_free(scene);
+          }
+          #else
+          Scene g_mainScene;
+
+          Scene* allocateInternalScene() {
+            return new (std::nothrow) Scene();
+          }
+
+          void releaseInternalScene(Scene* scene) {
+            delete scene;
+          }
+          #endif
+          }  // namespace
+
+          SceneScratchLease::SceneScratchLease() : scene_(allocateInternalScene()) {}
+
+          SceneScratchLease::~SceneScratchLease() {
+            releaseInternalScene(scene_);
+          }
+
+          SceneManager::SceneManager()
+          #if defined(ESP32) || defined(ESP_PLATFORM)
+              : scene_(nullptr)
+          #else
+              : scene_(&g_mainScene)
+          #endif
+          {
+            PatternPagingService::ensureDirectory();
+          }
+
+          bool SceneManager::initializeSceneStorage() {
+          #if defined(ESP32) || defined(ESP_PLATFORM)
+            if (scene_) return true;
+            scene_ = allocateInternalScene();
+            g_mainScene = scene_;
+            return scene_ != nullptr;
+          #else
+            return true;
+          #endif
+          }
+          '''.replace("          ", "")
+          text = text[:storage_start] + storage_replacement + text[storage_end:]
+
+          load_start = text.index("Scene& sceneTransactionScratch()")
+          load_end_marker = "  clearSceneData(*loaded);\n"
+          load_end = text.index(load_end_marker, load_start) + len(load_end_marker)
+          load_replacement = r'''bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
+          #ifdef ARDUINO
+            Serial.println("  - loadSceneEventedWithReader: Allocating bounded transaction Scene...");
+          #endif
+
+            SceneScratchLease scratch;
+            if (!scratch) {
+          #ifdef ARDUINO
+              Serial.println("ERROR: Scene transaction allocation failed");
+          #endif
+              return false;
+            }
+            Scene* loaded = scratch.get();
+            clearSceneData(*loaded);
+          '''.replace("          ", "")
+          text = text[:load_start] + load_replacement + text[load_end:]
+          p.write_text(text, encoding="utf-8")
+
           p = Path("GroovePuter.ino")
           text = p.read_text(encoding="utf-8")
           if text.count("fixed internal Cardputer ADV heap.") != 2:
