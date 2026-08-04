@@ -1,0 +1,53 @@
+name: Cardputer memory baseline
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/cardputer-memory-baseline.yml"
+      - "docs/stages/CARDPUTER_MEMORY_BASELINE.md"
+      - "scripts/build_cardputer_memory_baseline.sh"
+      - "scripts/report_cardputer_memory_baseline.sh"
+      - "tests/test_cardputer_memory_baseline_source_regressions.py"
+
+permissions:
+  contents: read
+
+jobs:
+  source-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard baseline boundaries
+        run: python3 tests/test_cardputer_memory_baseline_source_regressions.py
+
+  instrumented-build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [normal, midi-only]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile and report instrumented profile
+        run: |
+          mkdir -p build
+          bash scripts/build_cardputer_memory_baseline.sh \
+            "${{ matrix.profile }}" --warnings all \
+            | tee "build/cardputer-memory-baseline-${{ matrix.profile }}.log"
+
+      - name: Upload baseline build log
+        uses: actions/upload-artifact@v4
+        with:
+          name: cardputer-memory-baseline-${{ matrix.profile }}
+          path: build/cardputer-memory-baseline-${{ matrix.profile }}.log
+          if-no-files-found: error
