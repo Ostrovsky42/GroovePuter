@@ -52,6 +52,7 @@ This UI stage expects the consolidated Cardputer word/HID Tab input fix from PR 
 - `Fn+Tab` opens `MORE`: verify the page rejects modified Tab events and top-level workflow navigation receives `event.meta`.
 - Focus lands on a disabled row: verify `updateTabFocusability()` runs after the active engine changes.
 - A row label is clipped: record the synth engine and parameter label; the right-side value is intentionally bounded.
+- A build reports a `LayoutRect`/`Rect` mismatch: confirm `draw()` constructs `contentRect` before calling the tab and summary helpers.
 - The old one-screen lower row is still visible: confirm the firmware was built from the latest PR #64 head.
 
 ## Acceptance checklist
