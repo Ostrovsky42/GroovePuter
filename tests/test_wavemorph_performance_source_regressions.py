@@ -164,6 +164,18 @@ def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
     require("Unavailable is distinct from an available OFF toggle" in page,
             "the unavailable/OFF visual distinction must remain documented beside the renderer")
 
+    navigation = block(page,
+                       "  const int nav = UIInput::navCode(ui_event);",
+                       "  const char key = ui_event.key;")
+    require("if (more_tab_)" in navigation and
+            "case GROOVEPUTER_UP: focusPrev(); return true;" in navigation and
+            "case GROOVEPUTER_DOWN: focusNext(); return true;" in navigation and
+            "case GROOVEPUTER_LEFT: adjustFocusedElement(-1, fine); return true;" in navigation and
+            "case GROOVEPUTER_RIGHT: adjustFocusedElement(1, fine); return true;",
+            "MORE must use Up/Down for rows and Left/Right for values")
+    require('"[TAB]MAIN [U/D]ROW [L/R]CHANGE"' in page,
+            "the MORE footer must advertise the physical arrow mapping")
+
     require("Both effects are per-voice post-engine stages" in page and
             "distortion_control_->setEnabled(true)" in page and
             "delay_control_->setEnabled(true)" in page,
