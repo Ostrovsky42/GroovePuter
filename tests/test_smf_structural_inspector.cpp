@@ -52,6 +52,30 @@ void addStraightSixteenths(SmfStructuralInspectorState& state,
         }
     }
 }
+
+void addSwungSixteenths(SmfStructuralInspectorState& state,
+                        uint16_t track,
+                        uint32_t firstBar,
+                        uint32_t bars) {
+    for (uint32_t bar = 0; bar < bars; ++bar) {
+        const uint32_t barStart = (firstBar + bar) * 384u;
+        for (uint32_t pair = 0; pair < 8; ++pair) {
+            const uint32_t pairStart = barStart + pair * 48u;
+            const uint8_t pitch = static_cast<uint8_t>(36u + (pair & 1u));
+            state.observe(track,
+                          note(pairStart, SmfEventKind::NoteOn, 1, pitch));
+            state.observe(track,
+                          note(pairStart + 8u, SmfEventKind::NoteOff,
+                               1, pitch, 0));
+            state.observe(track,
+                          note(pairStart + 32u, SmfEventKind::NoteOn,
+                               1, pitch));
+            state.observe(track,
+                          note(pairStart + 40u, SmfEventKind::NoteOff,
+                               1, pitch, 0));
+        }
+    }
+}
 }  // namespace
 
 int main() {
@@ -89,6 +113,21 @@ int main() {
         assert(snapshot.layers[0].notesPerBarX10 == 160);
         assert(snapshot.layers[0].activePermille >= 499);
         assert(snapshot.layers[0].activePermille <= 501);
+    }
+
+    {
+        SmfStructuralInspectorState state;
+        state.reset(96, 4);
+        addSwungSixteenths(state, 2, 0, 4);
+        state.observe(0, marker(4u * 384u - 1u));
+        state.finalize();
+        const auto snapshot = state.snapshot();
+        assert(snapshot.layerCount == 1);
+        assert(snapshot.layers[0].gridDenominator == 16);
+        assert(snapshot.layers[0].swingPercent >= 65);
+        assert(snapshot.layers[0].swingPercent <= 67);
+        assert(snapshot.layers[0].loopBars == 1);
+        assert(snapshot.layers[0].motion == SmfStructuralMotion::Low);
     }
 
     {
