@@ -1,158 +1,154 @@
 name: Core regressions
 
 on:
+  push:
+    branches:
+      - main
+      - dev
+      - agent/fix-core-reliability
+      - agent/smf-structural-inspector
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  agent-scene-storage-repair:
-    if: github.head_ref == 'agent/fix-cardputer-dram-scene-storage'
+  host-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: agent/fix-cardputer-dram-scene-storage
-          fetch-depth: 0
 
-      - name: Apply no-PSRAM Scene repair
-        shell: bash
+      - name: Run core host regressions
+        run: bash tests/run_host_tests.sh
+
+      - name: Run UI status chrome tests
         run: |
-          set -euo pipefail
+          python3 tests/test_ui_status_chrome_source_regressions.py
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_ui_status_chrome.cpp \
+            -o build/host-tests/test_ui_status_chrome
+          build/host-tests/test_ui_status_chrome
+
+      - name: Run synth engine tests
+        run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
-          import textwrap
 
-          workflow = Path('.github/workflows/agent-fix-scene-internal-heap.yml').read_text(encoding='utf-8')
-          marker = "          python3 - <<'PY'\n"
-          start = workflow.index(marker) + len(marker)
-          end = workflow.index("\n          PY\n", start)
-          payload = textwrap.dedent(workflow[start:end])
+          root = Path('.')
+          assert not (root / 'src/dsp/opl2_synth_voice.h').exists()
+          assert not (root / 'src/dsp/opl2_synth_voice.cpp').exists()
 
-          scene_call = re.compile(
-              r'\nreplace_once\(\n    "scenes\.cpp",\n    """.*?""",\n    """.*?""",\n\)\n',
-              re.DOTALL,
-          )
-          payload, count = scene_call.subn('\n', payload)
-          if count != 2:
-              raise SystemExit(f'unexpected scenes.cpp repair call count: {count}')
+          for path in (
+              root / 'src/ui/pages/synth_sequencer_page.cpp',
+              root / 'src/ui/pages/tb303_params_page.cpp',
+          ):
+              text = path.read_text(encoding='utf-8')
+              assert 'removeDisabledSynthEngines' in text
+              assert '{"TB303", "SID", "AY", "OPL2"' not in text
 
-          duplicate = '''replace_once(
-              "GroovePuter.ino",
-              "fixed internal Cardputer ADV heap.",
-              "DRAM-only Cardputer ADV heap.",
-          )
-          '''
-          if payload.count(duplicate) != 2:
-              raise SystemExit('unexpected duplicate boot-comment repair payload')
-          payload = payload.replace(duplicate, '', 2)
-          exec(compile(payload, 'agent-scene-storage-repair', 'exec'))
+          makefile = (root / 'platform_sdl/Makefile').read_text(encoding='utf-8')
+          assert 'opl2_synth_voice' not in makefile
+          assert 'wave_morph_synth_voice.cpp' in makefile
 
-          p = Path('scenes.cpp')
-          text = p.read_text(encoding='utf-8')
-          storage_start = text.index('namespace {\nstruct SceneStorageBlock')
-          storage_end = text.index('\nvoid SceneManager::loadDefaultScene()', storage_start)
-          storage = '''namespace {
-          #if defined(ESP32) || defined(ESP_PLATFORM)
-          Scene* g_mainScene = nullptr;
-
-          Scene* allocateInternalScene() {
-            void* memory = heap_caps_malloc(
-                sizeof(Scene), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
-            return memory ? new (memory) Scene() : nullptr;
-          }
-
-          void releaseInternalScene(Scene* scene) {
-            if (!scene) return;
-            scene->~Scene();
-            heap_caps_free(scene);
-          }
-          #else
-          Scene g_mainScene;
-
-          Scene* allocateInternalScene() {
-            return new (std::nothrow) Scene();
-          }
-
-          void releaseInternalScene(Scene* scene) {
-            delete scene;
-          }
-          #endif
-          }  // namespace
-
-          SceneScratchLease::SceneScratchLease() : scene_(allocateInternalScene()) {}
-
-          SceneScratchLease::~SceneScratchLease() {
-            releaseInternalScene(scene_);
-          }
-
-          SceneManager::SceneManager()
-          #if defined(ESP32) || defined(ESP_PLATFORM)
-              : scene_(nullptr)
-          #else
-              : scene_(&g_mainScene)
-          #endif
-          {
-            PatternPagingService::ensureDirectory();
-          }
-
-          bool SceneManager::initializeSceneStorage() {
-          #if defined(ESP32) || defined(ESP_PLATFORM)
-            if (scene_) return true;
-            scene_ = allocateInternalScene();
-            g_mainScene = scene_;
-            return scene_ != nullptr;
-          #else
-            return true;
-          #endif
-          }
-          '''.replace('          ', '')
-          text = text[:storage_start] + storage + text[storage_end:]
-
-          load_start = text.index('Scene& sceneTransactionScratch()')
-          marker = '  clearSceneData(*loaded);\n'
-          load_end = text.index(marker, load_start) + len(marker)
-          load = '''bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
-          #ifdef ARDUINO
-            Serial.println("  - loadSceneEventedWithReader: Allocating bounded transaction Scene...");
-          #endif
-
-            SceneScratchLease scratch;
-            if (!scratch) {
-          #ifdef ARDUINO
-              Serial.println("ERROR: Scene transaction allocation failed");
-          #endif
-              return false;
-            }
-            Scene* loaded = scratch.get();
-            clearSceneData(*loaded);
-          '''.replace('          ', '')
-          text = text[:load_start] + load + text[load_end:]
-          p.write_text(text, encoding='utf-8')
-
-          p = Path('GroovePuter.ino')
-          text = p.read_text(encoding='utf-8')
-          if text.count('fixed internal Cardputer ADV heap.') != 2:
-              raise SystemExit('unexpected Cardputer heap comment count')
-          p.write_text(text.replace('fixed internal Cardputer ADV heap.',
-                                    'DRAM-only Cardputer ADV heap.', 2),
-                       encoding='utf-8')
+          header = (root / 'src/dsp/swappable_synth_voice.h').read_text(encoding='utf-8')
+          assert 'opl2_synth_voice' not in header
+          assert 'WAVEMORPH = 6' in header
           PY
 
-          python3 tests/test_cardputer_dram_storage_source_regressions.py
-          git diff --check
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter -I. \
+            tests/test_new_synth_voices.cpp \
+            src/dsp/swappable_synth_voice.cpp \
+            src/dsp/mini_tb303.cpp \
+            src/dsp/filter.cpp \
+            src/dsp/audio_wavetables.cpp \
+            src/dsp/sid_synth_voice.cpp \
+            src/dsp/sid_synth.cpp \
+            src/dsp/ay_synth_voice.cpp \
+            src/dsp/sh101_synth_voice.cpp \
+            src/dsp/sn76489_synth_voice.cpp \
+            src/dsp/wave_morph_synth_voice.cpp \
+            -o build/host-tests/test_new_synth_voices
+          build/host-tests/test_new_synth_voices
 
-      - name: Commit source repair
+      - name: Run dirty-region display tests
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_dirty_tile_tracker.cpp \
+            -o build/host-tests/test_dirty_tile_tracker
+          build/host-tests/test_dirty_tile_tracker
+
+  sdl-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Build desktop target
+        working-directory: platform_sdl
+        run: make clean all CXX=g++
+
+  cardputer-adv-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
+
+      - name: Capture Cardputer DRAM diagnostics
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add GroovePuter.ino scenes.cpp scenes.h scripts/build.sh \
-            scripts/build_seqtrak_midi_only.sh src/audio/pattern_paging.cpp \
-            src/dsp/miniacid_engine.cpp tests/test_cardputer_dram_storage_source_regressions.py \
-            docs/stages/CARDPUTER_FIXED_DRAM_SCENE_STORAGE.md
-          git commit -m "fix: allocate Scene storage without PSRAM"
-          git push origin HEAD:agent/fix-cardputer-dram-scene-storage
+          ELF="build/cardputer-adv-current/GroovePuter.ino.elf"
+          SIZE_TOOL="$(find "$HOME/.arduino15/packages" -type f -name xtensa-esp32s3-elf-size | head -n 1)"
+          NM_TOOL="${SIZE_TOOL%-size}-nm"
+          OBJDUMP_TOOL="${SIZE_TOOL%-size}-objdump"
+          mkdir -p build/dram-diagnostics
+          {
+            echo "ELF=${ELF}"
+            echo "SIZE_TOOL=${SIZE_TOOL}"
+            echo
+            echo "=== SUMMARY ==="
+            "${SIZE_TOOL}" "${ELF}"
+            echo
+            echo "=== ALL SECTIONS ==="
+            "${SIZE_TOOL}" -A "${ELF}"
+            echo
+            echo "=== SCENE SYMBOLS ==="
+            "${NM_TOOL}" --print-size --size-sort --radix=d "${ELF}" | grep -E 'g_mainScene|s_tempLoadScene' || true
+            echo
+            echo "=== LARGEST SYMBOLS ==="
+            "${NM_TOOL}" --print-size --size-sort --radix=d "${ELF}" | tail -n 180
+            echo
+            echo "=== DRAM/EXT-RAM SECTION HEADERS ==="
+            "${OBJDUMP_TOOL}" -h "${ELF}" | grep -E 'dram|ext_ram|external|bss|data' || true
+          } > build/dram-diagnostics/cardputer-dram-current.txt
+
+      - name: Check fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+
+      - name: Upload Cardputer DRAM diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cardputer-dram-diagnostics
+          path: build/dram-diagnostics/cardputer-dram-current.txt
+          if-no-files-found: error
