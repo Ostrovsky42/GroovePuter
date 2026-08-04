@@ -81,13 +81,15 @@ void addSwungSixteenths(SmfStructuralInspectorState& state,
 int main() {
     {
         SmfTrackInspectorState state;
-        state.reset(64);
+        state.reset(32, 64);
         state.setName(11, "Custom Bass Name");
         state.observe(11, program(0, 1, 33));
         state.observe(11, note(24, SmfEventKind::NoteOn, 1, 40));
         state.freeze();
         const auto snapshot = state.snapshot();
-        assert(snapshot.trackCount == 64);
+        assert(snapshot.trackCount == 32);
+        assert(snapshot.declaredTrackCount == 64);
+        assert(snapshot.tracksTruncated());
         assert(snapshot.tracks[11].audible());
         assert(snapshot.tracks[11].primaryChannel() == 1);
         assert(snapshot.tracks[11].firstProgram == 33);
@@ -231,7 +233,7 @@ int main() {
         assert(snapshot.analyzedBars == 64);
     }
 
-    static_assert(sizeof(SmfTrackInspectorState) <= 260,
+    static_assert(sizeof(SmfTrackInspectorState) <= 136,
                   "track metadata must fit the fixed-DRAM budget");
     static_assert(sizeof(SmfStructuralInspectorState) <= 680,
                   "structural state must fit the bounded global budget");
