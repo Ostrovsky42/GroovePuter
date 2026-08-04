@@ -286,14 +286,18 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
             return true;
         }
         if (event.scancode == GROOVEPUTER_UP ||
-            event.scancode == GROOVEPUTER_DOWN) {
-            smfTrackMuteState().selectRelative(
-                event.scancode == GROOVEPUTER_UP ? -1 : 1);
+            event.scancode == GROOVEPUTER_DOWN ||
+            event.scancode == GROOVEPUTER_LEFT ||
+            event.scancode == GROOVEPUTER_RIGHT) {
+            int delta = 0;
+            if (event.scancode == GROOVEPUTER_UP) delta = -1;
+            else if (event.scancode == GROOVEPUTER_DOWN) delta = 1;
+            else if (event.scancode == GROOVEPUTER_LEFT) delta = -6;
+            else delta = 6;
+            smfTrackMuteState().selectRelative(delta);
             return true;
         }
         const bool toggleRequested =
-            event.scancode == GROOVEPUTER_LEFT ||
-            event.scancode == GROOVEPUTER_RIGHT ||
             event.key == 'k' || event.key == 'K' ||
             event.key == '\n' || event.key == '\r';
         if (toggleRequested) {
@@ -850,7 +854,7 @@ void SmfPlayerPage::drawFooter(IGfx& gfx) {
                                seqMaster ? "F Refresh C Master G Follow"
                                          : "F Refresh C Master T Tempo");
     } else if (muteMixerVisible_) {
-        UI::drawStandardFooter(gfx, "UP/DN Select L/R Toggle",
+        UI::drawStandardFooter(gfx, "UP/DN Select L/R Page",
                                "ENT/K Toggle A AllOn U Back");
     } else if (channelInspectorVisible_) {
         UI::drawStandardFooter(gfx, "UP/DN Scroll I Player",
