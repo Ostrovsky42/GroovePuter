@@ -26,10 +26,12 @@ jobs:
 
           page_path = Path('src/ui/pages/smf_player_page.cpp')
           display_path = Path('src/ui/miniacid_display.cpp')
+          test_path = Path('tests/test_smf_panel_completion_source_regressions.py')
           standalone_path = Path('.github/workflows/apply-smf-fn-number-fix.yml')
 
           page = page_path.read_text(encoding='utf-8')
           display = display_path.read_text(encoding='utf-8')
+          test = test_path.read_text(encoding='utf-8')
 
           page_pattern = re.compile(
               r"bool SmfPlayerPage::handleEvent\(UIEvent& event\) \{\n"
@@ -68,8 +70,19 @@ jobs:
               f"{indent}    int targetPage = -1;")
           display = global_pattern.sub(global_replacement, display, count=1)
 
+          old_lookup = '''    global_numeric_mutes = display_cpp.index(
+                  "event.key >= '1' && event.key <= '9'")
+          '''
+          new_lookup = '''    global_numeric_mutes = display_cpp.index(
+                  "event.key >= '1' && event.key <= '9'", page_dispatch)
+          '''
+          if old_lookup not in test:
+              raise SystemExit('global numeric mute test lookup not found')
+          test = test.replace(old_lookup, new_lookup, 1)
+
           page_path.write_text(page, encoding='utf-8')
           display_path.write_text(display, encoding='utf-8')
+          test_path.write_text(test, encoding='utf-8')
           if standalone_path.exists():
               standalone_path.unlink()
           PY
