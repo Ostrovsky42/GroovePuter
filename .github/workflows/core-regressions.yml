@@ -1,96 +1,115 @@
 name: Core regressions
 
 on:
+  push:
+    branches:
+      - main
+      - dev
+      - agent/fix-core-reliability
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-smf-fn-number-fix:
-    if: github.actor != 'github-actions[bot]'
+  host-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: agent/smf-track-mute-mixer
-          fetch-depth: 0
 
-      - name: Patch and push runtime code only
-        shell: bash
+      - name: Run core host regressions
         run: |
-          git pull --ff-only origin agent/smf-track-mute-mixer
+          bash tests/run_host_tests.sh
+          python3 tests/test_smf_panel_completion_source_regressions.py
+
+      - name: Run UI status chrome tests
+        run: |
+          python3 tests/test_ui_status_chrome_source_regressions.py
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_ui_status_chrome.cpp \
+            -o build/host-tests/test_ui_status_chrome
+          build/host-tests/test_ui_status_chrome
+
+      - name: Run synth engine tests
+        run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
-          page_path = Path('src/ui/pages/smf_player_page.cpp')
-          display_path = Path('src/ui/miniacid_display.cpp')
-          test_path = Path('tests/test_smf_panel_completion_source_regressions.py')
+          root = Path('.')
+          assert not (root / 'src/dsp/opl2_synth_voice.h').exists()
+          assert not (root / 'src/dsp/opl2_synth_voice.cpp').exists()
 
-          page = page_path.read_text(encoding='utf-8')
-          display = display_path.read_text(encoding='utf-8')
-          test = test_path.read_text(encoding='utf-8')
+          for path in (
+              root / 'src/ui/pages/synth_sequencer_page.cpp',
+              root / 'src/ui/pages/tb303_params_page.cpp',
+          ):
+              text = path.read_text(encoding='utf-8')
+              assert 'removeDisabledSynthEngines' in text
+              assert '{"TB303", "SID", "AY", "OPL2"' not in text
 
-          page_pattern = re.compile(
-              r"bool SmfPlayerPage::handleEvent\(UIEvent& event\) \{\n"
-              r"(?P<i>[ \t]*)if \(event\.event_type != GROOVEPUTER_KEY_DOWN \|\| "
-              r"event\.alt \|\| event\.ctrl \|\| event\.meta\) \{\n"
-              r"(?P=i)    return false;\n(?P=i)\}")
-          page_match = page_pattern.search(page)
-          if not page_match:
-              raise SystemExit('SmfPlayerPage event guard not found')
-          indent = page_match.group('i')
-          page_replacement = (
-              "bool SmfPlayerPage::handleEvent(UIEvent& event) {\n"
-              f"{indent}const bool numericMuteHotkey = "
-              "event.key >= '1' && event.key <= '9';\n"
-              f"{indent}if (event.event_type != GROOVEPUTER_KEY_DOWN || "
-              "event.alt || event.ctrl ||\n"
-              f"{indent}    (event.meta && !numericMuteHotkey)) {{\n"
-              f"{indent}    return false;\n"
-              f"{indent}}}")
-          page = page_pattern.sub(page_replacement, page, count=1)
+          makefile = (root / 'platform_sdl/Makefile').read_text(encoding='utf-8')
+          assert 'opl2_synth_voice' not in makefile
+          assert 'wave_morph_synth_voice.cpp' in makefile
 
-          global_pattern = re.compile(
-              r"(?m)^(?P<i>[ \t]*)if \(\(event\.alt \|\| event\.meta\) && "
-              r"!event\.ctrl\) \{\n(?P=i)    int targetPage = -1;")
-          global_match = global_pattern.search(display)
-          if not global_match:
-              raise SystemExit('global Fn-number navigation block not found')
-          indent = global_match.group('i')
-          global_replacement = (
-              f"{indent}const bool smfPlayerFnNumber =\n"
-              f"{indent}    page_index_ == kSmfPlayerPage && event.meta && "
-              "!event.alt &&\n"
-              f"{indent}    !event.ctrl && event.key >= '1' && event.key <= '9';\n"
-              f"{indent}if ((event.alt || event.meta) && !event.ctrl && "
-              "!smfPlayerFnNumber) {\n"
-              f"{indent}    int targetPage = -1;")
-          display = global_pattern.sub(global_replacement, display, count=1)
-
-          old_lookup = '''    global_numeric_mutes = display_cpp.index(
-                  "event.key >= '1' && event.key <= '9'")
-          '''
-          new_lookup = '''    global_numeric_mutes = display_cpp.index(
-                  "event.key >= '1' && event.key <= '9'", page_dispatch)
-          '''
-          if old_lookup not in test:
-              raise SystemExit('global numeric mute test lookup not found')
-          test = test.replace(old_lookup, new_lookup, 1)
-
-          page_path.write_text(page, encoding='utf-8')
-          display_path.write_text(display, encoding='utf-8')
-          test_path.write_text(test, encoding='utf-8')
+          header = (root / 'src/dsp/swappable_synth_voice.h').read_text(encoding='utf-8')
+          assert 'opl2_synth_voice' not in header
+          assert 'WAVEMORPH = 6' in header
           PY
 
-          python3 tests/test_smf_panel_completion_source_regressions.py
-          bash tests/run_host_tests.sh
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/ui/pages/smf_player_page.cpp \
-                  src/ui/miniacid_display.cpp \
-                  tests/test_smf_panel_completion_source_regressions.py
-          git commit -m "fix: route Cardputer Fn-number keys to SMF mutes"
-          git pull --rebase origin agent/smf-track-mute-mixer
-          git push origin HEAD:agent/smf-track-mute-mixer
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter -I. \
+            tests/test_new_synth_voices.cpp \
+            src/dsp/swappable_synth_voice.cpp \
+            src/dsp/mini_tb303.cpp \
+            src/dsp/filter.cpp \
+            src/dsp/audio_wavetables.cpp \
+            src/dsp/sid_synth_voice.cpp \
+            src/dsp/sid_synth.cpp \
+            src/dsp/ay_synth_voice.cpp \
+            src/dsp/sh101_synth_voice.cpp \
+            src/dsp/sn76489_synth_voice.cpp \
+            src/dsp/wave_morph_synth_voice.cpp \
+            -o build/host-tests/test_new_synth_voices
+          build/host-tests/test_new_synth_voices
+
+      - name: Run dirty-region display tests
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_dirty_tile_tracker.cpp \
+            -o build/host-tests/test_dirty_tile_tracker
+          build/host-tests/test_dirty_tile_tracker
+
+  sdl-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDL dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
+
+      - name: Build desktop target
+        working-directory: platform_sdl
+        run: make clean all CXX=g++
+
+  cardputer-adv-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
