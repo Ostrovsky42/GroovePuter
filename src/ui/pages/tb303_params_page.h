@@ -35,6 +35,13 @@ class TB303ParamsPage : public IPage, public IMultiHelpFramesProvider {
   void adjustFocusedElement(int direction, bool fine = false);
   void initComponents();
   void layoutComponents();
+  void setActiveTab(bool more);
+  void updateTabFocusability();
+  void rememberFocusedSlot();
+  void restoreFocusedSlot();
+  void focusComponent(Component* component);
+  void drawTabSwitcher(IGfx& gfx, const Rect& content);
+  void drawMainSummary(IGfx& gfx, const Rect& content);
   void loadModePreset(int index);
 
   IGfx& gfx_;
@@ -52,5 +59,8 @@ class TB303ParamsPage : public IPage, public IMultiHelpFramesProvider {
   std::shared_ptr<LabelValueComponent> filter_control_;
   std::shared_ptr<LabelValueComponent> delay_control_;
   std::shared_ptr<LabelValueComponent> distortion_control_;
+  bool more_tab_ = false;
+  uint8_t main_focus_slot_ = 0;
+  uint8_t more_focus_slot_ = 0;
   std::string title_;
 };
