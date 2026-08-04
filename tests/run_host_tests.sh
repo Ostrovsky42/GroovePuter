@@ -462,3 +462,19 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${BUILD_DIR}/test_performance_patterns"
 
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -Wno-unused-parameter \
+  -Wno-misleading-indentation \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_tr606_drum_voice.cpp" \
+  "${ROOT_DIR}/src/dsp/mini_drumvoices.cpp" \
+  "${ROOT_DIR}/src/dsp/audio_wavetables.cpp" \
+  "${ROOT_DIR}/src/dsp/tube_distortion.cpp" \
+  -o "${BUILD_DIR}/test_tr606_drum_voice"
+
+"${BUILD_DIR}/test_tr606_drum_voice"
+

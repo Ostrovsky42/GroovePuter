@@ -2304,6 +2304,8 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     uint32_t tD0 = 0;
     if (detailedProfile) tD0 = micros();
     if (playing) {
+      // Engine-wide drum state must not depend on any individual mute.
+      drums->beginSample();
       if (!muteKick)    drumsMix += drums->processKick() * trackVolumes[(int)VoiceId::DrumKick];
       if (!muteSnare)   drumsMix += drums->processSnare() * trackVolumes[(int)VoiceId::DrumSnare];
       if (!muteHat)     drumsMix += drums->processHat() * trackVolumes[(int)VoiceId::DrumHatC];

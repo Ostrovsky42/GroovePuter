@@ -21,78 +21,131 @@ const char* PerformPage::noteName(int midiNote) {
     return names[midiNote % 12];
 }
 
+bool PerformPage::handleToolKey(const UIEvent& event) {
+    const int direction = event.shift ? -1 : 1;
+    char toast[64];
+
+    switch (event.key) {
+        case '1':
+            keyboard_.toggleArpeggiator();
+            std::snprintf(toast, sizeof(toast), "ARP: %s %s",
+                          keyboard_.arpeggiatorEnabled() ? "ON" : "OFF",
+                          keyboard_.arpDirectionName());
+            break;
+        case '2':
+            keyboard_.cycleArpDirection(direction);
+            std::snprintf(toast, sizeof(toast), "ARP DIR: %s",
+                          keyboard_.arpDirectionName());
+            break;
+        case '3':
+            keyboard_.cycleChordMode(direction);
+            std::snprintf(toast, sizeof(toast), "CHORD: %s",
+                          keyboard_.chordModeName());
+            break;
+        case '4':
+            if (keyboard_.heldCount() >= 2 && keyboard_.captureChordMemory()) {
+                std::snprintf(toast, sizeof(toast), "MEMORY: %u NOTES",
+                              static_cast<unsigned>(keyboard_.chordMemorySize()));
+            } else if (keyboard_.chordMemorySize() > 0) {
+                keyboard_.clearChordMemory();
+                std::snprintf(toast, sizeof(toast), "MEMORY: CLEARED");
+            } else {
+                std::snprintf(toast, sizeof(toast), "MEMORY: HOLD 2+ NOTES");
+            }
+            break;
+        case '5':
+            keyboard_.cycleStrum(direction);
+            std::snprintf(toast, sizeof(toast), "STRUM: %u MS",
+                          static_cast<unsigned>(keyboard_.strumMs()));
+            break;
+        case '6':
+            keyboard_.cycleRatchet(direction);
+            std::snprintf(toast, sizeof(toast), "RATCHET: X%u",
+                          static_cast<unsigned>(keyboard_.ratchetCount()));
+            break;
+        case '7':
+            keyboard_.cycleEuclideanPulses(direction);
+            std::snprintf(toast, sizeof(toast), "EUCLID: %u/16",
+                          static_cast<unsigned>(keyboard_.euclideanPulses()));
+            break;
+        case '8':
+            keyboard_.rotateEuclidean(direction);
+            std::snprintf(toast, sizeof(toast), "EUCLID ROT: %u",
+                          static_cast<unsigned>(keyboard_.euclideanRotation()));
+            break;
+        default:
+            return false;
+    }
+
+    UI::showToast(toast, 900);
+    return true;
+}
+
+void PerformPage::drawToolsLayer(IGfx& gfx) {
+    const int leftX = Layout::COL_1;
+    const int rightX = Layout::COL_2;
+    char value[40];
+
+    gfx.setTextColor(COLOR_ACCENT);
+    gfx.drawText(leftX, LayoutManager::lineY(2), "PERFORMANCE TOOLS");
+
+    gfx.setTextColor(COLOR_WHITE);
+    std::snprintf(value, sizeof(value), "1 ARP  %s",
+                  keyboard_.arpeggiatorEnabled() ? "ON" : "OFF");
+    gfx.drawText(leftX, LayoutManager::lineY(3), value);
+    std::snprintf(value, sizeof(value), "5 STR  %ums",
+                  static_cast<unsigned>(keyboard_.strumMs()));
+    gfx.drawText(rightX, LayoutManager::lineY(3), value);
+
+    std::snprintf(value, sizeof(value), "2 DIR  %s", keyboard_.arpDirectionName());
+    gfx.drawText(leftX, LayoutManager::lineY(4), value);
+    std::snprintf(value, sizeof(value), "6 RAT  x%u",
+                  static_cast<unsigned>(keyboard_.ratchetCount()));
+    gfx.drawText(rightX, LayoutManager::lineY(4), value);
+
+    std::snprintf(value, sizeof(value), "3 CHD  %s", keyboard_.chordModeName());
+    gfx.drawText(leftX, LayoutManager::lineY(5), value);
+    std::snprintf(value, sizeof(value), "7 EUC  %u/16",
+                  static_cast<unsigned>(keyboard_.euclideanPulses()));
+    gfx.drawText(rightX, LayoutManager::lineY(5), value);
+
+    std::snprintf(value, sizeof(value), "4 MEM  %u",
+                  static_cast<unsigned>(keyboard_.chordMemorySize()));
+    gfx.drawText(leftX, LayoutManager::lineY(6), value);
+    std::snprintf(value, sizeof(value), "8 ROT  %u",
+                  static_cast<unsigned>(keyboard_.euclideanRotation()));
+    gfx.drawText(rightX, LayoutManager::lineY(6), value);
+
+    gfx.setTextColor(COLOR_LABEL);
+    gfx.drawText(leftX, LayoutManager::lineY(7),
+                 "SHIFT+NUMBER: BACK | TAB: CLOSE");
+}
+
 bool PerformPage::handleEvent(UIEvent& event) {
-    if (event.event_type != GROOVEPUTER_KEY_DOWN || event.ctrl || event.alt) {
+    if (event.event_type != GROOVEPUTER_KEY_DOWN ||
+        event.ctrl || event.alt || event.meta) {
         return false;
     }
 
-    if (event.meta) {
-        char toast[56];
-        switch (event.key) {
-            case 'a':
-            case 'A':
-                keyboard_.toggleArpeggiator();
-                std::snprintf(toast, sizeof(toast), "ARP: %s %s",
-                              keyboard_.arpeggiatorEnabled() ? "ON" : "OFF",
-                              keyboard_.arpDirectionName());
-                UI::showToast(toast, 900);
-                return true;
-            case 'c':
-            case 'C':
-                keyboard_.cycleChordMode(event.shift ? -1 : 1);
-                std::snprintf(toast, sizeof(toast), "CHORD: %s",
-                              keyboard_.chordModeName());
-                UI::showToast(toast, 900);
-                return true;
-            case 'k':
-            case 'K':
-                if (keyboard_.heldCount() >= 2 && keyboard_.captureChordMemory()) {
-                    std::snprintf(toast, sizeof(toast), "CHORD MEMORY: %u NOTES",
-                                  static_cast<unsigned>(keyboard_.chordMemorySize()));
-                } else {
-                    keyboard_.clearChordMemory();
-                    std::snprintf(toast, sizeof(toast), "CHORD MEMORY: CLEARED");
-                }
-                UI::showToast(toast, 1000);
-                return true;
-            case 's':
-            case 'S':
-                keyboard_.cycleStrum(event.shift ? -1 : 1);
-                std::snprintf(toast, sizeof(toast), "STRUM: %u MS",
-                              static_cast<unsigned>(keyboard_.strumMs()));
-                UI::showToast(toast, 900);
-                return true;
-            case 'r':
-            case 'R':
-                keyboard_.cycleRatchet(event.shift ? -1 : 1);
-                std::snprintf(toast, sizeof(toast), "RATCHET: X%u",
-                              static_cast<unsigned>(keyboard_.ratchetCount()));
-                UI::showToast(toast, 900);
-                return true;
-            case 'e':
-            case 'E':
-                if (event.shift) {
-                    keyboard_.rotateEuclidean(1);
-                    std::snprintf(toast, sizeof(toast), "EUCLID ROT: %u",
-                                  static_cast<unsigned>(keyboard_.euclideanRotation()));
-                } else {
-                    keyboard_.cycleEuclideanPulses(1);
-                    std::snprintf(toast, sizeof(toast), "EUCLID: %u/16",
-                                  static_cast<unsigned>(keyboard_.euclideanPulses()));
-                }
-                UI::showToast(toast, 900);
-                return true;
-            case 'v':
-            case 'V':
-                keyboard_.cycleArpDirection(event.shift ? -1 : 1);
-                std::snprintf(toast, sizeof(toast), "ARP DIR: %s",
-                              keyboard_.arpDirectionName());
-                UI::showToast(toast, 900);
-                return true;
-            default:
-                return false;
-        }
+    const bool tabPressed =
+        event.key == '\t' || event.scancode == GROOVEPUTER_TAB;
+    if (tabPressed) {
+        toolsLayerVisible_ = !toolsLayerVisible_;
+        UI::showToast(toolsLayerVisible_
+                          ? "PERFORMANCE TOOLS: 1-8"
+                          : "PERFORMANCE TOOLS: CLOSED",
+                      700);
+        return true;
     }
+
+    if (toolsLayerVisible_ &&
+        (event.key == 0x1B || event.key == '`' ||
+         event.scancode == GROOVEPUTER_ESCAPE)) {
+        toolsLayerVisible_ = false;
+        return true;
+    }
+
+    if (toolsLayerVisible_ && handleToolKey(event)) return true;
 
     switch (event.key) {
         case 'n':
@@ -194,6 +247,11 @@ void PerformPage::drawContent(IGfx& gfx) {
     }
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(1), line);
 
+    if (toolsLayerVisible_) {
+        drawToolsLayer(gfx);
+        return;
+    }
+
     const int visualY = LayoutManager::lineY(2);
     const int visualH = LayoutManager::lineY(7) - visualY - 2;
     const int visualW = Layout::CONTENT.w - 8;
@@ -240,16 +298,22 @@ void PerformPage::drawContent(IGfx& gfx) {
         std::snprintf(line, sizeof(line), "READY | A/S/D/F/G/H/J | CH1..7");
     } else if (keyboard_.target() == MusicalEventTarget::Dx) {
         gfx.setTextColor(COLOR_LABEL);
-        std::snprintf(line, sizeof(line), "USB ONLY | FN+A/C/K/S/R/E/V TOOLS");
+        std::snprintf(line, sizeof(line), "USB ONLY | TAB PERFORMANCE TOOLS");
     } else {
         gfx.setTextColor(COLOR_LABEL);
-        std::snprintf(line, sizeof(line), "INT+USB | FN+A/C/K/S/R/E/V TOOLS");
+        std::snprintf(line, sizeof(line), "INT+USB | TAB PERFORMANCE TOOLS");
     }
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), line);
 }
 
 void PerformPage::drawFooter(IGfx& gfx) {
+    if (toolsLayerVisible_) {
+        UI::drawStandardFooter(gfx,
+                               "1 Arp 2 Dir 3 Chord 4 Memory",
+                               "5 Strum 6 Ratchet 7 Euclid 8 Rotate");
+        return;
+    }
     UI::drawStandardFooter(gfx,
                            "\\ Target  N Note  ,/. Scale",
-                           "Fn A/C/K/S/R/E/V  X Panic");
+                           "Tab Tools  -/= Oct  X Panic");
 }
