@@ -1,0 +1,149 @@
+name: Apply Cardputer word digit fix
+
+on:
+  push:
+    branches:
+      - agent/smf-track-mute-mixer
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/smf-track-mute-mixer
+          fetch-depth: 0
+
+      - name: Patch physical digit dispatch
+        shell: bash
+        run: |
+          git pull --ff-only origin agent/smf-track-mute-mixer
+          python3 - <<'PY'
+          from pathlib import Path
+
+          sketch_path = Path('GroovePuter.ino')
+          helper_path = Path('src/input/cardputer_input_edges.h')
+          cpp_test_path = Path('tests/test_cardputer_input_edges.cpp')
+          source_test_path = Path('tests/test_cardputer_input_source_regressions.py')
+
+          sketch = sketch_path.read_text(encoding='utf-8')
+          helper = helper_path.read_text(encoding='utf-8')
+          cpp_test = cpp_test_path.read_text(encoding='utf-8')
+          source_test = source_test_path.read_text(encoding='utf-8')
+
+          old_locals = '''    bool dispatched = false;
+              bool sawEdge = false;
+              bool armedRepeat = false;
+          '''
+          new_locals = '''    bool dispatched = false;
+              bool sawEdge = false;
+              bool armedRepeat = false;
+              uint16_t dispatchedDigitMask = 0;
+          '''
+          if old_locals not in sketch:
+              raise SystemExit('processKeyEdges locals anchor missing')
+          sketch = sketch.replace(old_locals, new_locals, 1)
+
+          old_hid_digit = '''      } else if (hid >= 0x1E && hid <= 0x27) {
+                evt.key = hid == 0x27 ? '0' : static_cast<char>('1' + (hid - 0x1E));
+                shouldSend = true;
+          '''
+          new_hid_digit = '''      } else if (hid >= 0x1E && hid <= 0x27) {
+                evt.key = hid == 0x27 ? '0' : static_cast<char>('1' + (hid - 0x1E));
+                dispatchedDigitMask |= GroovePuterInput::digitDispatchMask(evt.key);
+                shouldSend = true;
+          '''
+          if old_hid_digit not in sketch:
+              raise SystemExit('numeric HID anchor missing')
+          sketch = sketch.replace(old_hid_digit, new_hid_digit, 1)
+
+          old_word_digit = "          if (u >= '0' && u <= '9') continue;\n"
+          new_word_digit = '''          if (GroovePuterInput::wordDigitAlreadyDispatched(
+                      inputChar, dispatchedDigitMask)) {
+                    continue;
+                  }
+          '''
+          if old_word_digit not in sketch:
+              raise SystemExit('unconditional word digit suppression missing')
+          sketch = sketch.replace(old_word_digit, new_word_digit, 1)
+
+          helper_anchor = '''inline bool mayRepeat(const UIEvent& event) {
+          '''
+          helper_addition = '''inline uint16_t digitDispatchMask(char value) {
+            const unsigned char digit = static_cast<unsigned char>(value);
+            if (digit < '0' || digit > '9') return 0;
+            return static_cast<uint16_t>(1u << (digit - '0'));
+          }
+
+          template <typename WordChar>
+          inline bool wordDigitAlreadyDispatched(WordChar value,
+                                                 uint16_t dispatchedDigitMask) {
+            const unsigned char digit = static_cast<unsigned char>(value);
+            if (digit < '0' || digit > '9') return false;
+            return (dispatchedDigitMask &
+                    static_cast<uint16_t>(1u << (digit - '0'))) != 0;
+          }
+
+          inline bool mayRepeat(const UIEvent& event) {
+          '''
+          if helper_anchor not in helper:
+              raise SystemExit('input helper insertion anchor missing')
+          helper = helper.replace(helper_anchor, helper_addition, 1)
+
+          cpp_anchor = '''  UIEvent arrow{};
+          '''
+          cpp_addition = '''  assert(digitDispatchMask('0') == 0x0001u);
+            assert(digitDispatchMask('1') == 0x0002u);
+            assert(digitDispatchMask('9') == 0x0200u);
+            assert(digitDispatchMask('x') == 0u);
+            assert(wordDigitAlreadyDispatched('1', digitDispatchMask('1')));
+            assert(!wordDigitAlreadyDispatched('1', 0));
+            assert(!wordDigitAlreadyDispatched('2', digitDispatchMask('1')));
+            assert(!wordDigitAlreadyDispatched('x', 0xFFFFu));
+
+            UIEvent arrow{};
+          '''
+          if cpp_anchor not in cpp_test:
+              raise SystemExit('C++ input test insertion anchor missing')
+          cpp_test = cpp_test.replace(cpp_anchor, cpp_addition, 1)
+
+          source_anchor = '''    require("shouldDispatchHid" in sketch and "shouldDispatchWord" in sketch,
+                    "HID and word paths need explicit edge filtering")
+          '''
+          source_addition = source_anchor + '''    require("wordDigitAlreadyDispatched" in sketch and
+                    "digitDispatchMask" in sketch and
+                    "if (u >= '0' && u <= '9') continue;" not in sketch,
+                    "word-only Cardputer digits must dispatch while HID duplicates stay suppressed")
+          '''
+          if source_anchor not in source_test:
+              raise SystemExit('source test insertion anchor missing')
+          source_test = source_test.replace(source_anchor, source_addition, 1)
+
+          sketch_path.write_text(sketch, encoding='utf-8')
+          helper_path.write_text(helper, encoding='utf-8')
+          cpp_test_path.write_text(cpp_test, encoding='utf-8')
+          source_test_path.write_text(source_test, encoding='utf-8')
+          PY
+
+          python3 tests/test_cardputer_input_source_regressions.py
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_cardputer_input_edges.cpp \
+            -o build/host-tests/test_cardputer_input_edges
+          build/host-tests/test_cardputer_input_edges
+          python3 tests/test_smf_panel_completion_source_regressions.py
+          bash tests/run_host_tests.sh
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add GroovePuter.ino \
+            src/input/cardputer_input_edges.h \
+            tests/test_cardputer_input_edges.cpp \
+            tests/test_cardputer_input_source_regressions.py
+          git commit -m "fix: dispatch Cardputer word-only digit keys"
+          git pull --rebase origin agent/smf-track-mute-mixer
+          git push origin HEAD:agent/smf-track-mute-mixer
