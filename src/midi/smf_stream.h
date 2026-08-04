@@ -113,6 +113,9 @@ private:
     // all tracks three times per event; cache it until the winner is consumed.
     mutable int selected_{-1};
     mutable bool selectedValid_{false};
+    // Enabled only for the first full pass performed by loadFile(). reset()
+    // deliberately leaves it disabled so seek/restart never re-analyzes SD.
+    bool captureStructuralAnalysis_{false};
     uint8_t cachePool_[kSmfStreamCacheBytes]{};
 };
 
