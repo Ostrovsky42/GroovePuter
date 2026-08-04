@@ -22,12 +22,13 @@ jobs:
       - name: Guard baseline boundaries
         run: python3 tests/test_cardputer_memory_baseline_source_regressions.py
 
-  instrumented-build:
+  baseline-build:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         profile: [normal, midi-only]
+        image-kind: [product, runtime]
     steps:
       - uses: actions/checkout@v4
 
@@ -39,19 +40,20 @@ jobs:
       - name: Install pinned M5Stack dependencies
         run: bash scripts/install_arduino_deps.sh
 
-      - name: Compile and report instrumented profile
+      - name: Compile and report ${{ matrix.profile }} ${{ matrix.image-kind }} image
         shell: bash
         run: |
           set -o pipefail
           mkdir -p build
           bash scripts/build_cardputer_memory_baseline.sh \
-            "${{ matrix.profile }}" --warnings all \
-            2>&1 | tee "build/cardputer-memory-baseline-${{ matrix.profile }}.log"
+            "${{ matrix.profile }}" "${{ matrix.image-kind }}" --warnings all \
+            2>&1 | tee \
+              "build/cardputer-memory-baseline-${{ matrix.profile }}-${{ matrix.image-kind }}.log"
 
       - name: Upload baseline build log
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: cardputer-memory-baseline-${{ matrix.profile }}
-          path: build/cardputer-memory-baseline-${{ matrix.profile }}.log
+          name: cardputer-memory-baseline-${{ matrix.profile }}-${{ matrix.image-kind }}
+          path: build/cardputer-memory-baseline-${{ matrix.profile }}-${{ matrix.image-kind }}.log
           if-no-files-found: error
