@@ -45,6 +45,13 @@ public:
         return result;
     }
 
+    bool selectTrack(uint16_t trackIndex) {
+        const uint16_t count = trackCount_.load(std::memory_order_acquire);
+        if (count == 0 || trackIndex >= count) return false;
+        selectedTrack_.store(trackIndex, std::memory_order_release);
+        return true;
+    }
+
     void selectRelative(int delta) {
         const uint16_t count = trackCount_.load(std::memory_order_acquire);
         if (count == 0 || delta == 0) return;
