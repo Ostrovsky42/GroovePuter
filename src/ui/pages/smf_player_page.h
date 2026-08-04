@@ -24,6 +24,7 @@ private:
     void toggleGrooveTransport();
     void drawBrowser(IGfx& gfx);
     void drawNowPlaying(IGfx& gfx);
+    void drawMuteMixer(IGfx& gfx);
     void drawPerformance(IGfx& gfx);
     void drawChannelInspector(IGfx& gfx);
     void drawMidiWaveOverlay(IGfx& gfx,
@@ -38,6 +39,7 @@ private:
     bool browserVisible_{true};
     bool performanceVisible_{false};
     bool channelInspectorVisible_{false};
+    bool muteMixerVisible_{false};
     int channelInspectorScroll_{0};
     uint32_t lastMidiVisualEpoch_{0};
     uint32_t lastMidiVisualPulse_{0};
