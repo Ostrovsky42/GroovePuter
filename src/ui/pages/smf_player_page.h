@@ -7,9 +7,12 @@
 #include "../midi_file_manager.h"
 #include "src/midi/smf_player_service.h"
 
-class SmfPlayerPage final : public IPage {
+// Stage 1A remains the accepted player implementation. Stage 1B derives a
+// thin view wrapper from it so structural inspection cannot change scheduler,
+// transport, mute ownership or the validated U-table behavior.
+class SmfPlayerPageBase : public IPage {
 public:
-    SmfPlayerPage(IGfx& gfx, MiniAcid& miniAcid, AudioGuard audioGuard);
+    SmfPlayerPageBase(IGfx& gfx, MiniAcid& miniAcid, AudioGuard audioGuard);
 
     const std::string& getTitle() const override { return title_; }
     void onEnter(int context) override;
@@ -18,7 +21,7 @@ public:
     void drawContent(IGfx& gfx) override;
     void drawFooter(IGfx& gfx) override;
 
-private:
+protected:
     bool loadMidiPath(const char* path);
     bool togglePlayerTransport();
     void toggleGrooveTransport();
@@ -52,3 +55,24 @@ private:
         else fn();
     }
 };
+
+class SmfPlayerPage final : public SmfPlayerPageBase {
+public:
+    using SmfPlayerPageBase::SmfPlayerPageBase;
+
+    bool handleEvent(UIEvent& event) override;
+    void drawHeader(IGfx& gfx) override;
+    void drawContent(IGfx& gfx) override;
+    void drawFooter(IGfx& gfx) override;
+
+private:
+    bool structuralInspectorVisible_{false};
+};
+
+// The legacy implementation translation unit includes this header first. Its
+// qualified definitions are redirected to SmfPlayerPageBase. Consumers define
+// GROOVEPUTER_SMF_PLAYER_WRAPPER_CONSUMER before including this header and see
+// the public Stage 1B wrapper class instead.
+#if !defined(GROOVEPUTER_SMF_PLAYER_WRAPPER_CONSUMER)
+#define SmfPlayerPage SmfPlayerPageBase
+#endif
