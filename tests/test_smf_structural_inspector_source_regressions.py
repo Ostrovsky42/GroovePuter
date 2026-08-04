@@ -44,7 +44,8 @@ assert 'PARTIAL 64' in page_wrapper
 assert 'LOOP --' in page_wrapper
 assert 'K is intentionally not a MIDI mute command' in page_wrapper
 assert 'TinyUSB' not in page_wrapper and 'USBMIDI' not in page_wrapper
-assert 'Enter/K' not in doc and '`K`' not in doc
+assert 'Enter/K' not in doc
+assert '`K` is not a MIDI mute command' in doc
 assert 'check_cardputer_dram_budget.sh build/cardputer_adv' in workflow
 
 build_dir = ROOT / "build" / "host-tests"
