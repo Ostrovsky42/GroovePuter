@@ -220,5 +220,10 @@ void SmfPlayerPage::drawFooter(IGfx& gfx) {
                                "1-9 Mute U Table I Channels");
         return;
     }
+    if (muteMixerVisible_) {
+        UI::drawStandardFooter(gfx, "UP/DN Select L/R Page",
+                               "1-9 Hot ENT Sel A AllOn");
+        return;
+    }
     SmfPlayerPageBase::drawFooter(gfx);
 }
