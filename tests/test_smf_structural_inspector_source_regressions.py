@@ -31,11 +31,20 @@ assert 'smfTrackInspectorState().freeze();' in structural_h
 assert 'union Storage' not in structural_h
 assert 'std::atomic<uint32_t> publishedWords_' in structural_h
 
+assert 'constexpr std::size_t kSmfMaxTracks = 32;' in stream_h
+assert 'uint16_t declaredTrackCount{0};' in stream_h
+assert 'bool tracksTruncated() const' in stream_h
+assert 'retainedTracks < kSmfMaxTracks' in stream_cpp
+assert 'result.index.declaredTrackCount = foundTracks;' in stream_cpp
+assert 'smfTrackInspectorState().reset(index.trackCount, index.declaredTrackCount);' in stream_cpp
+
+assert 'constexpr std::size_t kSmfTrackInspectorMaxTracks = 32;' in track_h
 assert 'std::atomic<uint16_t> state_' in track_h
+assert 'std::atomic<uint16_t> declaredTrackCount_' in track_h
 assert 'kFrozenBit' in track_h
 assert 'if ((state & kFrozenBit) != 0u) return;' in track_h
 assert 'nameWords' not in track_h
-assert 'sizeof(SmfTrackInspectorState) <= 260' in track_h
+assert 'sizeof(SmfTrackInspectorState) <= 136' in track_h
 assert 'programLabel(output.firstProgram)' in track_h
 assert 'case 33: return "Finger Bass";' in track_h
 
@@ -49,11 +58,13 @@ assert 'PARTIAL 64' in page_wrapper
 assert 'LOOP --' in page_wrapper
 assert 'K is intentionally not a MIDI mute command' in page_wrapper
 assert '1-9 Hot ENT Sel A AllOn' in page_wrapper
+assert 'TRACKS %u / %u PLAYED' in page_wrapper
+assert 'tracks.tracksTruncated()' in page_wrapper
 assert 'ENT/K' not in page_wrapper
 assert 'TinyUSB' not in page_wrapper and 'USBMIDI' not in page_wrapper
 assert 'Enter/K' not in doc
 assert '`K` is not a MIDI mute command' in doc
-assert 'check_cardputer_dram_budget.sh build/cardputer_adv' in workflow
+assert 'check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf' in workflow
 
 build_dir = ROOT / "build" / "host-tests"
 build_dir.mkdir(parents=True, exist_ok=True)
