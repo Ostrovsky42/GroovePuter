@@ -41,6 +41,21 @@ const char* inspectorRouteLabel(bool raw, uint8_t sourceChannel) {
     if (sourceChannel == 9) return "DRM";
     return "OFF";
 }
+
+bool trackMuted(const GroovePuterMidi::SmfTrackMuteSnapshot& tracks,
+                uint16_t trackIndex) {
+    return trackIndex < 64u &&
+           (tracks.mutedMask & (uint64_t{1} << trackIndex)) != 0;
+}
+
+unsigned mutedTrackCount(const GroovePuterMidi::SmfTrackMuteSnapshot& tracks) {
+    unsigned count = 0;
+    const uint16_t bounded = std::min<uint16_t>(tracks.trackCount, 64u);
+    for (uint16_t track = 0; track < bounded; ++track) {
+        if (trackMuted(tracks, track)) ++count;
+    }
+    return count;
+}
 }  // namespace
 
 using namespace GroovePuterMidi;
@@ -80,6 +95,7 @@ bool SmfPlayerPage::loadMidiPath(const char* path) {
         return true;
     }
     browserVisible_ = false;
+    muteMixerVisible_ = false;
     const TransportClockRuntimeSnapshot clock = transportClockRuntime().snapshot();
     const bool followSeqtrak = clock.source == TransportClockSource::SeqtrakExternal;
     UI::showToast(playerState.tempoMode == SmfTempoMode::Project
@@ -244,10 +260,67 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     if (!player_) return false;
     const SmfPlayerSnapshot state = player_->snapshot();
 
+    if (event.key == 'u' || event.key == 'U') {
+        muteMixerVisible_ = !muteMixerVisible_;
+        if (muteMixerVisible_) {
+            performanceVisible_ = false;
+            channelInspectorVisible_ = false;
+        }
+        return true;
+    }
+
+    if (muteMixerVisible_) {
+        if (event.key == 'b' || event.key == 'B' || event.key == '\b') {
+            muteMixerVisible_ = false;
+            return true;
+        }
+        if (event.key == 'i' || event.key == 'I') {
+            muteMixerVisible_ = false;
+            channelInspectorVisible_ = true;
+            channelInspectorScroll_ = 0;
+            return true;
+        }
+        if (event.key == 'd' || event.key == 'D') {
+            muteMixerVisible_ = false;
+            performanceVisible_ = true;
+            return true;
+        }
+        if (event.scancode == GROOVEPUTER_UP ||
+            event.scancode == GROOVEPUTER_DOWN) {
+            smfTrackMuteState().selectRelative(
+                event.scancode == GROOVEPUTER_UP ? -1 : 1);
+            return true;
+        }
+        const bool toggleRequested =
+            event.scancode == GROOVEPUTER_LEFT ||
+            event.scancode == GROOVEPUTER_RIGHT ||
+            event.key == 'k' || event.key == 'K' ||
+            event.key == '\n' || event.key == '\r';
+        if (toggleRequested) {
+            if (smfTrackMuteState().toggleSelected()) {
+                const SmfTrackMuteSnapshot tracks = smfTrackMuteState().snapshot();
+                UI::showToast(tracks.selectedMuted()
+                                  ? "TRACK MUTED"
+                                  : "TRACK ON",
+                              700);
+            } else {
+                UI::showToast("NO MIDI TRACKS", 800);
+            }
+            return true;
+        }
+        if (event.key == 'a' || event.key == 'A') {
+            smfTrackMuteState().clear();
+            UI::showToast("ALL MIDI TRACKS ON", 800);
+            return true;
+        }
+        return true;
+    }
+
     if (event.key == 'i' || event.key == 'I') {
         channelInspectorVisible_ = !channelInspectorVisible_;
         if (channelInspectorVisible_) {
             performanceVisible_ = false;
+            muteMixerVisible_ = false;
             channelInspectorScroll_ = 0;
         }
         return true;
@@ -333,33 +406,13 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         }
         return true;
     }
-    if (event.key == 'j' || event.key == 'J' ||
-        event.key == 'l' || event.key == 'L') {
-        smfTrackMuteState().selectRelative(
-            (event.key == 'j' || event.key == 'J') ? -1 : 1);
-        const SmfTrackMuteSnapshot tracks = smfTrackMuteState().snapshot();
-        char toast[40];
-        if (tracks.trackCount == 0) {
-            std::snprintf(toast, sizeof(toast), "NO MIDI TRACKS");
-        } else {
-            std::snprintf(toast, sizeof(toast), "TRACK %u/%u %s",
-                          static_cast<unsigned>(tracks.selectedTrack + 1u),
-                          static_cast<unsigned>(tracks.trackCount),
-                          tracks.selectedMuted() ? "MUTED" : "ON");
-        }
-        UI::showToast(toast, 800);
-        return true;
-    }
     if (event.key == 'k' || event.key == 'K') {
-        if (event.shift) {
-            smfTrackMuteState().clear();
-            UI::showToast("ALL MIDI TRACKS ON", 900);
-        } else if (smfTrackMuteState().toggleSelected()) {
+        if (smfTrackMuteState().toggleSelected()) {
             const SmfTrackMuteSnapshot tracks = smfTrackMuteState().snapshot();
             UI::showToast(tracks.selectedMuted()
-                              ? "TRACK MUTE: NEXT NOTES"
-                              : "TRACK UNMUTED",
-                          900);
+                              ? "TRACK MUTED"
+                              : "TRACK ON",
+                          700);
         } else {
             UI::showToast("NO MIDI TRACKS", 900);
         }
@@ -385,7 +438,10 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     }
     if (event.key == 'd' || event.key == 'D') {
         performanceVisible_ = !performanceVisible_;
-        if (performanceVisible_) channelInspectorVisible_ = false;
+        if (performanceVisible_) {
+            channelInspectorVisible_ = false;
+            muteMixerVisible_ = false;
+        }
         return true;
     }
     if (event.key == 'x' || event.key == 'X') {
@@ -397,6 +453,7 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         event.key == '\n' || event.key == '\r' || event.key == '\b') {
         browserVisible_ = true;
         channelInspectorVisible_ = false;
+        muteMixerVisible_ = false;
         GroovePuterUi::midiFileManager().open();
         return true;
     }
@@ -412,14 +469,17 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
 }
 
 void SmfPlayerPage::drawHeader(IGfx& gfx) {
-    UI::drawStandardHeader(gfx, miniAcid_, channelInspectorVisible_
-        ? "MIDI CHANNELS"
-        : (performanceVisible_ ? "MIDI PERF" : "MIDI PLAYER"));
+    UI::drawStandardHeader(gfx, miniAcid_, muteMixerVisible_
+        ? "MIDI MUTES"
+        : (channelInspectorVisible_
+            ? "MIDI CHANNELS"
+            : (performanceVisible_ ? "MIDI PERF" : "MIDI PLAYER")));
 }
 
 void SmfPlayerPage::drawContent(IGfx& gfx) {
     LayoutManager::clearContent(gfx);
     if (browserVisible_) drawBrowser(gfx);
+    else if (muteMixerVisible_) drawMuteMixer(gfx);
     else if (channelInspectorVisible_) drawChannelInspector(gfx);
     else if (performanceVisible_) drawPerformance(gfx);
     else drawNowPlaying(gfx);
@@ -549,6 +609,59 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), state.message);
 }
 
+void SmfPlayerPage::drawMuteMixer(IGfx& gfx) {
+    const SmfTrackMuteSnapshot tracks = smfTrackMuteState().snapshot();
+    char line[64];
+
+    gfx.setTextColor(MusicVisuals::accentForStyle());
+    std::snprintf(line, sizeof(line), "MUTED %u / %u",
+                  mutedTrackCount(tracks),
+                  static_cast<unsigned>(tracks.trackCount));
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(0), line);
+
+    if (tracks.trackCount == 0) {
+        gfx.setTextColor(COLOR_LABEL);
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(2), "NO MIDI TRACKS");
+        gfx.drawText(Layout::COL_1, LayoutManager::lineY(3), "LOAD A MIDI FILE FIRST");
+        return;
+    }
+
+    constexpr int kVisibleRows = 6;
+    const int count = static_cast<int>(tracks.trackCount);
+    const int selected = static_cast<int>(tracks.selectedTrack);
+    int start = selected - 2;
+    start = std::max(0, std::min(start, std::max(0, count - kVisibleRows)));
+
+    for (int row = 0; row < kVisibleRows; ++row) {
+        const int index = start + row;
+        if (index >= count) break;
+        const bool selectedRow = index == selected;
+        const bool muted = trackMuted(tracks, static_cast<uint16_t>(index));
+        const int y = LayoutManager::lineY(row + 1);
+
+        if (selectedRow) {
+            gfx.fillRect(Layout::COL_1 - 2, y - 1,
+                         Layout::CONTENT.w - 10, 11, COLOR_PANEL);
+        }
+
+        std::snprintf(line, sizeof(line), "%c TRACK %02u",
+                      selectedRow ? '>' : ' ',
+                      static_cast<unsigned>(index + 1));
+        gfx.setTextColor(selectedRow
+                             ? MusicVisuals::accentForStyle()
+                             : COLOR_TEXT);
+        gfx.drawText(Layout::COL_1, y, line);
+
+        gfx.setTextColor(muted ? COLOR_WARN : COLOR_LABEL);
+        gfx.drawText(Layout::COL_1 + 118, y, muted ? "MUTED" : "ON");
+    }
+
+    gfx.setTextColor(COLOR_LABEL);
+    std::snprintf(line, sizeof(line), "TRACK %u/%u   A ALL ON",
+                  static_cast<unsigned>(tracks.selectedTrack + 1u),
+                  static_cast<unsigned>(tracks.trackCount));
+    gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), line);
+}
 
 void SmfPlayerPage::drawMidiWaveOverlay(
         IGfx& gfx,
@@ -736,17 +849,20 @@ void SmfPlayerPage::drawFooter(IGfx& gfx) {
         UI::drawStandardFooter(gfx, "ENT Open R Name X Delete",
                                seqMaster ? "F Refresh C Master G Follow"
                                          : "F Refresh C Master T Tempo");
+    } else if (muteMixerVisible_) {
+        UI::drawStandardFooter(gfx, "UP/DN Select L/R Toggle",
+                               "ENT/K Toggle A AllOn U Back");
     } else if (channelInspectorVisible_) {
         UI::drawStandardFooter(gfx, "UP/DN Scroll I Player",
-                               "D Perf B Files Space MIDI");
+                               "U Mutes D Perf B Files");
     } else if (performanceVisible_) {
         UI::drawStandardFooter(gfx, "D Player B Files I Channels",
-                               seqMaster ? "C Master G Follow T Tempo"
-                                         : "C Master Space MIDI T Tempo");
+                               seqMaster ? "U Mutes G Follow T Tempo"
+                                         : "U Mutes Space MIDI T Tempo");
     } else {
         UI::drawStandardFooter(gfx,
                                seqMaster ? "Space MIDI G Follow C Master"
                                          : "Space MIDI C Master R RESTART",
-                               "I Channels J/L Track K Mute");
+                               "U Mutes I Channels K Quick");
     }
 }
