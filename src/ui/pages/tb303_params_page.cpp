@@ -273,6 +273,8 @@ class TB303ParamsPage::LabelValueComponent : public FocusableComponent {
     gfx.drawText(bounds.x + 6, textY, label_.c_str());
 
     if (!enabled_) {
+      // Unavailable is distinct from an available OFF toggle: no track,
+      // thumb, or stepper arrows are rendered for this row.
       gfx.setTextColor(kDimText);
       gfx.drawText(bounds.x + bounds.w - gfx.textWidth("--") - 8, textY, "--");
       return;
@@ -485,7 +487,11 @@ void TB303ParamsPage::layoutComponents() {
   delay_control_->setEnabled(true);
 
   if (!more_tab_) {
-    constexpr int kMainKnobRadius = 13;
+    // Vertical budget inside the 103 px content area:
+    // tab segment ends at +15, value text starts at +17,
+    // the R18 circle spans +27..+63, label starts at +67,
+    // key hint starts at +75, and the summary starts at +89.
+    constexpr int kMainKnobRadius = 18;
     const int knobRowY = content.y + 45;
     const int spacing = width / 5;
 
