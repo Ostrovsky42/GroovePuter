@@ -6,6 +6,8 @@
 
 namespace GroovePuterInput {
 
+inline constexpr uint8_t kCardputerTabHid = 0x2B;
+
 template <typename KeysState>
 inline bool sameModifiers(const KeysState& a, const KeysState& b) {
   return a.alt == b.alt &&
@@ -62,9 +64,25 @@ template <typename KeysState, typename WordChar>
 inline bool shouldDispatchWord(const KeysState& current,
                                const KeysState& previous,
                                bool hadPrevious,
-                               WordChar value) {
-  (void)current;
-  return !hadPrevious || !containsWord(previous, value);
+                               WordChar& value) {
+  const WordChar rawValue = value;
+
+  // Some M5Cardputer library versions expose the dedicated Tab only through
+  // KeysState::word, while others expose both word '\t' and HID 0x2B. The raw
+  // input loop intentionally suppresses control characters from the word path,
+  // so preserve a word-only Tab with a temporary sentinel and suppress the word
+  // copy when the same physical press already has a canonical HID event.
+  if (rawValue == static_cast<WordChar>('\t') &&
+      containsHid(current, kCardputerTabHid)) {
+    return false;
+  }
+
+  const bool dispatch =
+      !hadPrevious || !containsWord(previous, rawValue);
+  if (dispatch && rawValue == static_cast<WordChar>('\t')) {
+    value = static_cast<WordChar>(GROOVEPUTER_WORD_TAB_SENTINEL);
+  }
+  return dispatch;
 }
 
 inline bool mayRepeat(const UIEvent& event) {
