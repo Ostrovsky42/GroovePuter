@@ -1,10 +1,63 @@
 #include "perform_page.h"
 
+#include <cstddef>
 #include <cstdio>
 #include <cstring>
 
 #include "../components/music_visuals.h"
 #include "src/midi/smf_player_service.h"
+
+namespace {
+constexpr char kPerformancePhysicalKeys[] = "asdfghjklqwertyuiop";
+
+struct HeldPerformanceSnapshot {
+    char keys[PerformanceKeyboard::kMaxHeldNotes]{};
+    std::size_t count{0};
+    char activeKey{0};
+    uint8_t velocity{100};
+};
+
+HeldPerformanceSnapshot captureHeldPerformanceKeys(
+    const PerformanceKeyboard& keyboard) {
+    HeldPerformanceSnapshot snapshot{};
+    const int activeNote = keyboard.activeNote();
+    const int activeVelocity = keyboard.activeVelocity();
+    if (activeVelocity > 0) {
+        snapshot.velocity = static_cast<uint8_t>(activeVelocity);
+    }
+
+    for (char key : kPerformancePhysicalKeys) {
+        if (key == '\0' || !keyboard.isPhysicalKeyHeld(key)) continue;
+        if (snapshot.count >= PerformanceKeyboard::kMaxHeldNotes) break;
+        snapshot.keys[snapshot.count++] = key;
+
+        uint8_t note = 0;
+        if (activeNote >= 0 && keyboard.noteForKey(key, note) &&
+            note == static_cast<uint8_t>(activeNote)) {
+            snapshot.activeKey = key;
+        }
+    }
+    return snapshot;
+}
+
+void restoreHeldPerformanceKeys(PerformanceKeyboard& keyboard,
+                                const HeldPerformanceSnapshot& snapshot) {
+    // Current tool setters call panic(), which clears the logical held-key
+    // table even though the physical Cardputer keys remain down. Rehydrate the
+    // snapshot once. The heldCount guard makes this safe when the core keyboard
+    // implementation later preserves held keys itself.
+    if (snapshot.count == 0 || keyboard.heldCount() != 0) return;
+
+    for (std::size_t i = 0; i < snapshot.count; ++i) {
+        const char key = snapshot.keys[i];
+        if (key == snapshot.activeKey) continue;
+        keyboard.keyDown(key, snapshot.velocity);
+    }
+    if (snapshot.activeKey != 0) {
+        keyboard.keyDown(snapshot.activeKey, snapshot.velocity);
+    }
+}
+}  // namespace
 
 PerformPage::PerformPage(IGfx& gfx,
                          MiniAcid& miniAcid,
@@ -23,6 +76,8 @@ const char* PerformPage::noteName(int midiNote) {
 
 bool PerformPage::handleToolKey(const UIEvent& event) {
     const int direction = event.shift ? -1 : 1;
+    const HeldPerformanceSnapshot heldSnapshot =
+        captureHeldPerformanceKeys(keyboard_);
     char toast[64];
 
     switch (event.key) {
@@ -77,6 +132,7 @@ bool PerformPage::handleToolKey(const UIEvent& event) {
             return false;
     }
 
+    restoreHeldPerformanceKeys(keyboard_, heldSnapshot);
     UI::showToast(toast, 900);
     return true;
 }
