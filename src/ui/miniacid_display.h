@@ -1,5 +1,11 @@
 #pragma once
 
+// The MIDI Player implementation keeps its accepted Stage 1A source intact
+// and layers Stage 1B through a thin wrapper translation unit. Consumers must
+// see the public method names; only smf_player_page.cpp is redirected to the
+// legacy/base method names by smf_player_page.h.
+#define GROOVEPUTER_SMF_PLAYER_WRAPPER_CONSUMER 1
+
 #include <memory>
 
 #include "ui_core.h"
