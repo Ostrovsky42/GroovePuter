@@ -67,6 +67,21 @@ inline bool shouldDispatchWord(const KeysState& current,
   return !hadPrevious || !containsWord(previous, value);
 }
 
+inline uint16_t digitDispatchMask(char value) {
+  const unsigned char digit = static_cast<unsigned char>(value);
+  if (digit < '0' || digit > '9') return 0;
+  return static_cast<uint16_t>(1u << (digit - '0'));
+}
+
+template <typename WordChar>
+inline bool wordDigitAlreadyDispatched(WordChar value,
+                                       uint16_t dispatchedDigitMask) {
+  const unsigned char digit = static_cast<unsigned char>(value);
+  if (digit < '0' || digit > '9') return false;
+  return (dispatchedDigitMask &
+          static_cast<uint16_t>(1u << (digit - '0'))) != 0;
+}
+
 inline bool mayRepeat(const UIEvent& event) {
   if (event.alt || event.ctrl || event.shift || event.meta) return false;
   return event.scancode == GROOVEPUTER_UP ||

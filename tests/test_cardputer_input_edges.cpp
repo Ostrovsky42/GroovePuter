@@ -41,6 +41,15 @@ int main() {
   assert(shouldDispatchWord(wordA, empty, true, 'a'));
   assert(!shouldDispatchWord(wordA, wordA, true, 'a'));
 
+  assert(digitDispatchMask('0') == 0x0001u);
+  assert(digitDispatchMask('1') == 0x0002u);
+  assert(digitDispatchMask('9') == 0x0200u);
+  assert(digitDispatchMask('x') == 0u);
+  assert(wordDigitAlreadyDispatched('1', digitDispatchMask('1')));
+  assert(!wordDigitAlreadyDispatched('1', 0));
+  assert(!wordDigitAlreadyDispatched('2', digitDispatchMask('1')));
+  assert(!wordDigitAlreadyDispatched('x', 0xFFFFu));
+
   UIEvent arrow{};
   arrow.scancode = GROOVEPUTER_RIGHT;
   assert(mayRepeat(arrow));
