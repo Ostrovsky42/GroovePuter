@@ -16,7 +16,7 @@ jobs:
           ref: agent/smf-track-mute-mixer
           fetch-depth: 0
 
-      - name: Patch real Cardputer number-key path
+      - name: Patch and push runtime code only
         shell: bash
         run: |
           git pull --ff-only origin agent/smf-track-mute-mixer
@@ -27,7 +27,6 @@ jobs:
           page_path = Path('src/ui/pages/smf_player_page.cpp')
           display_path = Path('src/ui/miniacid_display.cpp')
           test_path = Path('tests/test_smf_panel_completion_source_regressions.py')
-          standalone_path = Path('.github/workflows/apply-smf-fn-number-fix.yml')
 
           page = page_path.read_text(encoding='utf-8')
           display = display_path.read_text(encoding='utf-8')
@@ -83,16 +82,15 @@ jobs:
           page_path.write_text(page, encoding='utf-8')
           display_path.write_text(display, encoding='utf-8')
           test_path.write_text(test, encoding='utf-8')
-          if standalone_path.exists():
-              standalone_path.unlink()
           PY
 
-          git show e87075d81996997f9d3cc2a50544437c441e686c:.github/workflows/core-regressions.yml > .github/workflows/core-regressions.yml
           python3 tests/test_smf_panel_completion_source_regressions.py
           bash tests/run_host_tests.sh
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add src/ui/pages/smf_player_page.cpp \
+                  src/ui/miniacid_display.cpp \
+                  tests/test_smf_panel_completion_source_regressions.py
           git commit -m "fix: route Cardputer Fn-number keys to SMF mutes"
           git pull --rebase origin agent/smf-track-mute-mixer
           git push origin HEAD:agent/smf-track-mute-mixer
