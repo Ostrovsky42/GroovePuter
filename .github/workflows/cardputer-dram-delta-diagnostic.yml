@@ -1,0 +1,94 @@
+name: Cardputer DRAM delta diagnostic
+
+on:
+  push:
+    branches:
+      - agent/smf-structural-inspector
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare-fixed-dram:
+    runs-on: ubuntu-latest
+    env:
+      CARDPUTER_FQBN: m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc
+    steps:
+      - name: Checkout diagnostic tools
+        uses: actions/checkout@v4
+        with:
+          path: diagnostic
+
+      - name: Checkout reviewed baseline
+        uses: actions/checkout@v4
+        with:
+          ref: 9d9cdef0980ec063e23c9a2849eae63f5cf6d812
+          path: baseline
+
+      - name: Checkout swing candidate
+        uses: actions/checkout@v4
+        with:
+          ref: 81689b46448363b91db5256575b30cc1e53c2300
+          path: swing-candidate
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash diagnostic/scripts/install_arduino_deps.sh
+
+      - name: Build reviewed baseline
+        working-directory: baseline
+        env:
+          FQBN: ${{ env.CARDPUTER_FQBN }}
+          BUILD_PATH: ${{ github.workspace }}/build/dram-baseline
+        run: bash scripts/build.sh --warnings all
+
+      - name: Build swing candidate
+        working-directory: swing-candidate
+        env:
+          FQBN: ${{ env.CARDPUTER_FQBN }}
+          BUILD_PATH: ${{ github.workspace }}/build/dram-swing-candidate
+        run: bash scripts/build.sh --warnings all
+
+      - name: Compare fixed DRAM sections
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          SIZE_TOOL="$(find "${HOME}/.arduino15/packages/esp32/tools" \
+            -type f -name 'xtensa-esp32s3-elf-size' -printf '%p\n' \
+            | sort -V | tail -n 1)"
+          if [[ -z "${SIZE_TOOL}" || ! -x "${SIZE_TOOL}" ]]; then
+            echo "xtensa-esp32s3-elf-size was not found" >&2
+            exit 2
+          fi
+
+          sections() {
+            "${SIZE_TOOL}" -A "$1" | awk '
+              $1 == ".dram0.data" { data = $2 }
+              $1 == ".dram0.bss" { bss = $2 }
+              END { print data + 0, bss + 0 }
+            '
+          }
+
+          BASELINE_ELF="${GITHUB_WORKSPACE}/build/dram-baseline/GroovePuter.ino.elf"
+          CANDIDATE_ELF="${GITHUB_WORKSPACE}/build/dram-swing-candidate/GroovePuter.ino.elf"
+          read -r BASE_DATA BASE_BSS < <(sections "${BASELINE_ELF}")
+          read -r CANDIDATE_DATA CANDIDATE_BSS < <(sections "${CANDIDATE_ELF}")
+
+          BASE_TOTAL=$((BASE_DATA + BASE_BSS))
+          CANDIDATE_TOTAL=$((CANDIDATE_DATA + CANDIDATE_BSS))
+          DELTA=$((CANDIDATE_TOTAL - BASE_TOTAL))
+
+          echo "baseline 9d9cdef: data=${BASE_DATA} bss=${BASE_BSS} total=${BASE_TOTAL}"
+          echo "candidate 81689b4: data=${CANDIDATE_DATA} bss=${CANDIDATE_BSS} total=${CANDIDATE_TOTAL}"
+          echo "fixed DRAM delta: ${DELTA} bytes"
+
+          if (( DELTA != 0 )); then
+            echo "Swing-only candidate changed fixed DRAM by ${DELTA} bytes" >&2
+            exit 1
+          fi
