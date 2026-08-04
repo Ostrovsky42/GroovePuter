@@ -2,7 +2,8 @@
 set -euo pipefail
 
 # Cardputer and Cardputer-Adv use the M5Stack M5Cardputer board option.
-# GroovePuter targets the DRAM-only configuration and huge_app partition.
+# GroovePuter targets Cardputer ADV with PSRAM-backed non-realtime Scene
+# storage while keeping the fixed internal DRAM gate and huge_app partition.
 # USB-OTG/TinyUSB plus CDC-on-boot keeps Serial/upload available while adding
 # a class-compliant USB-MIDI interface to the native ESP32-S3 USB port.
 FQBN="${FQBN:-m5stack:esp32:m5stack_cardputer:PSRAM=enabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc}"
