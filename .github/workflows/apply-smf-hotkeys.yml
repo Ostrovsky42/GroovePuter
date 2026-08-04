@@ -31,12 +31,13 @@ jobs:
           page = page_path.read_text(encoding='utf-8')
           test = test_path.read_text(encoding='utf-8')
 
-          helper_anchor = '''    return GroovePuterMidi::smfTrackMuteState().selectTrack(audible[position]);
+          if 'bool toggleAudibleTrackHotkey(' not in page:
+              helper_anchor = '''    return GroovePuterMidi::smfTrackMuteState().selectTrack(audible[position]);
           }
 
           unsigned mutedAudibleTrackCount(
           '''
-          helper_replacement = '''    return GroovePuterMidi::smfTrackMuteState().selectTrack(audible[position]);
+              helper_replacement = '''    return GroovePuterMidi::smfTrackMuteState().selectTrack(audible[position]);
           }
 
           bool toggleAudibleTrackHotkey(
@@ -69,19 +70,20 @@ jobs:
 
           unsigned mutedAudibleTrackCount(
           '''
-          if helper_anchor not in page:
-              raise SystemExit('helper insertion anchor not found')
-          page = page.replace(helper_anchor, helper_replacement, 1)
+              if helper_anchor not in page:
+                  raise SystemExit('helper insertion anchor not found')
+              page = page.replace(helper_anchor, helper_replacement, 1)
 
-          event_anchor = '''    if (!player_) return false;
+          if "event.key >= '1' && event.key <= '9'" not in page:
+              event_anchor = '''    if (!player_) return false;
               const SmfPlayerSnapshot state = player_->snapshot();
 
               if (event.key == 'u' || event.key == 'U') {
           '''
-          event_replacement = '''    if (!player_) return false;
+              event_replacement = '''    if (!player_) return false;
               const SmfPlayerSnapshot state = player_->snapshot();
 
-              if (event.key >= '1' && event.key <= '3') {
+              if (event.key >= '1' && event.key <= '9') {
                   const unsigned hotkeySlot =
                       static_cast<unsigned>(event.key - '1');
                   uint16_t trackIndex = 0;
@@ -110,85 +112,95 @@ jobs:
 
               if (event.key == 'u' || event.key == 'U') {
           '''
-          if event_anchor not in page:
-              raise SystemExit('event insertion anchor not found')
-          page = page.replace(event_anchor, event_replacement, 1)
+              if event_anchor not in page:
+                  raise SystemExit('event insertion anchor not found')
+              page = page.replace(event_anchor, event_replacement, 1)
+          page = page.replace("event.key >= '1' && event.key <= '3'",
+                              "event.key >= '1' && event.key <= '9'")
 
-          row_anchor = '''        const bool selectedRow = visibleIndex == selectedPosition;
+          if 'const char hotkey = visibleIndex < 9' not in page:
+              row_anchor = '''        const bool selectedRow = visibleIndex == selectedPosition;
                   const bool muted = trackMuted(mute, trackIndex);
                   const int y = LayoutManager::lineY(row + 1);
           '''
-          row_replacement = '''        const bool selectedRow = visibleIndex == selectedPosition;
+              row_replacement = '''        const bool selectedRow = visibleIndex == selectedPosition;
                   const bool muted = trackMuted(mute, trackIndex);
-                  const char hotkey = visibleIndex < 3
+                  const char hotkey = visibleIndex < 9
                       ? static_cast<char>('1' + visibleIndex)
                       : ' ';
                   const int y = LayoutManager::lineY(row + 1);
           '''
-          if row_anchor not in page:
-              raise SystemExit('row hotkey anchor not found')
-          page = page.replace(row_anchor, row_replacement, 1)
+              if row_anchor in page:
+                  page = page.replace(row_anchor, row_replacement, 1)
+              else:
+                  page = page.replace('const char hotkey = visibleIndex < 3',
+                                      'const char hotkey = visibleIndex < 9')
 
-          format_anchor = '''        std::snprintf(line, sizeof(line), "%c%02u %-3s %-15.15s %-3s %-4s",
+          if '"%c%c%02u %-3s %-15.15s %-3s %-4s"' not in page:
+              format_anchor = '''        std::snprintf(line, sizeof(line), "%c%02u %-3s %-15.15s %-3s %-4s",
                                 selectedRow ? '>' : ' ',
                                 static_cast<unsigned>(trackIndex + 1u),
           '''
-          format_replacement = '''        std::snprintf(line, sizeof(line), "%c%c%02u %-3s %-15.15s %-3s %-4s",
+              format_replacement = '''        std::snprintf(line, sizeof(line), "%c%c%02u %-3s %-15.15s %-3s %-4s",
                                 hotkey,
                                 selectedRow ? '>' : ' ',
                                 static_cast<unsigned>(trackIndex + 1u),
           '''
-          if format_anchor not in page:
-              raise SystemExit('row format anchor not found')
-          page = page.replace(format_anchor, format_replacement, 1)
+              if format_anchor not in page:
+                  raise SystemExit('row format anchor not found')
+              page = page.replace(format_anchor, format_replacement, 1)
 
-          status_anchor = '''    std::snprintf(line, sizeof(line), "ROW %u/%u TRK %02u  A ALL ON",
+          if '"HOT 1-9 ROW %u/%u TRK %02u"' not in page:
+              status_anchor = '''    std::snprintf(line, sizeof(line), "ROW %u/%u TRK %02u  A ALL ON",
                             static_cast<unsigned>(selectedPosition + 1),
                             static_cast<unsigned>(audibleCount),
                             static_cast<unsigned>(audible[selectedPosition] + 1u));
           '''
-          status_replacement = '''    std::snprintf(line, sizeof(line), "HOT 1-3 ROW %u/%u TRK %02u",
+              status_replacement = '''    std::snprintf(line, sizeof(line), "HOT 1-9 ROW %u/%u TRK %02u",
                             static_cast<unsigned>(selectedPosition + 1),
                             static_cast<unsigned>(audibleCount),
                             static_cast<unsigned>(audible[selectedPosition] + 1u));
           '''
-          if status_anchor not in page:
-              raise SystemExit('mixer status anchor not found')
-          page = page.replace(status_anchor, status_replacement, 1)
+              if status_anchor in page:
+                  page = page.replace(status_anchor, status_replacement, 1)
+              else:
+                  page = page.replace('"HOT 1-3 ROW %u/%u TRK %02u"',
+                                      '"HOT 1-9 ROW %u/%u TRK %02u"')
 
-          footer_anchor = '''        UI::drawStandardFooter(gfx, "UP/DN Select L/R Page",
+          page = page.replace('"1-3 Hot ENT/K Sel A AllOn"',
+                              '"1-9 Hot ENT/K Sel A AllOn"')
+          page = page.replace('"1-3 SMF Mute U Table I Info"',
+                              '"1-9 SMF Mute U Table I Info"')
+          if '"1-9 Hot ENT/K Sel A AllOn"' not in page:
+              footer_anchor = '''        UI::drawStandardFooter(gfx, "UP/DN Select L/R Page",
                                          "ENT/K Toggle A AllOn U Back");
           '''
-          footer_replacement = '''        UI::drawStandardFooter(gfx, "UP/DN Select L/R Page",
-                                         "1-3 Hot ENT/K Sel A AllOn");
+              footer_replacement = '''        UI::drawStandardFooter(gfx, "UP/DN Select L/R Page",
+                                         "1-9 Hot ENT/K Sel A AllOn");
           '''
-          if footer_anchor not in page:
-              raise SystemExit('mixer footer anchor not found')
-          page = page.replace(footer_anchor, footer_replacement, 1)
+              if footer_anchor not in page:
+                  raise SystemExit('mixer footer anchor not found')
+              page = page.replace(footer_anchor, footer_replacement, 1)
+          if '"1-9 SMF Mute U Table I Info"' not in page:
+              player_footer_anchor = '''                               "U Mutes I Channels K Quick");
+          '''
+              player_footer_replacement = '''                               "1-9 SMF Mute U Table I Info");
+          '''
+              if player_footer_anchor not in page:
+                  raise SystemExit('player footer anchor not found')
+              page = page.replace(player_footer_anchor, player_footer_replacement, 1)
 
-          player_footer_anchor = '''                               "U Mutes I Channels K Quick");
+          if 'display_cpp = (ROOT / "src/ui/miniacid_display.cpp")' not in test:
+              load_anchor = '''    stream_cpp = (ROOT / "src/midi/smf_stream.cpp").read_text(encoding="utf-8")
           '''
-          player_footer_replacement = '''                               "1-3 SMF Mute U Table I Info");
-          '''
-          if player_footer_anchor not in page:
-              raise SystemExit('player footer anchor not found')
-          page = page.replace(player_footer_anchor, player_footer_replacement, 1)
-
-          load_anchor = '''    stream_cpp = (ROOT / "src/midi/smf_stream.cpp").read_text(encoding="utf-8")
-          '''
-          load_replacement = '''    stream_cpp = (ROOT / "src/midi/smf_stream.cpp").read_text(encoding="utf-8")
+              load_replacement = '''    stream_cpp = (ROOT / "src/midi/smf_stream.cpp").read_text(encoding="utf-8")
               display_cpp = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
           '''
-          if load_anchor not in test:
-              raise SystemExit('test load anchor not found')
-          test = test.replace(load_anchor, load_replacement, 1)
+              if load_anchor not in test:
+                  raise SystemExit('test load anchor not found')
+              test = test.replace(load_anchor, load_replacement, 1)
 
-          test_anchor = '''    require("Shift+K" not in page_cpp and "J/L Track" not in page_cpp,
-                      "mute mixer help must not advertise unavailable Shift or J/L navigation")
-          '''
-          test_replacement = '''    require("Shift+K" not in page_cpp and "J/L Track" not in page_cpp,
-                      "mute mixer help must not advertise unavailable Shift or J/L navigation")
-              require("toggleAudibleTrackHotkey" in page_cpp and
+          old_test_block = '''    require("toggleAudibleTrackHotkey" in page_cpp and
                       "event.key >= '1' && event.key <= '3'" in page_cpp and
                       '"MIDI SLOT %u EMPTY"' in page_cpp and
                       '"HOT 1-3 ROW"' in page_cpp,
@@ -196,18 +208,36 @@ jobs:
               require("const char hotkey = visibleIndex < 3" in page_cpp and
                       '"%c%c%02u %-3s %-15.15s %-3s %-4s"' in page_cpp,
                       "mute table must label the three direct hotkey slots")
-              page_dispatch = display_cpp.index("currentPage->handleEvent(event)")
+          '''
+          new_test_block = '''    require("toggleAudibleTrackHotkey" in page_cpp and
+                      "event.key >= '1' && event.key <= '9'" in page_cpp and
+                      '"MIDI SLOT %u EMPTY"' in page_cpp and
+                      '"HOT 1-9 ROW"' in page_cpp,
+                      "1-9 must directly mute the first nine audible SMF tracks")
+              require("const char hotkey = visibleIndex < 9" in page_cpp and
+                      '"%c%c%02u %-3s %-15.15s %-3s %-4s"' in page_cpp,
+                      "mute table must label all nine direct hotkey slots")
+          '''
+          if old_test_block in test:
+              test = test.replace(old_test_block, new_test_block, 1)
+          elif '"1-9 must directly mute the first nine audible SMF tracks"' not in test:
+              test_anchor = '''    require("Shift+K" not in page_cpp and "J/L Track" not in page_cpp,
+                      "mute mixer help must not advertise unavailable Shift or J/L navigation")
+          '''
+              test_replacement = test_anchor + new_test_block + '''    page_dispatch = display_cpp.index("currentPage->handleEvent(event)")
               global_numeric_mutes = display_cpp.index(
                   "event.key >= '1' && event.key <= '9'")
               require(page_dispatch < global_numeric_mutes and
                       "toggleMute303(0)" in display_cpp and
                       "toggleMute303(1)" in display_cpp and
                       "toggleMuteKick()" in display_cpp,
-                      "SMF page must consume 1/2/3 before unchanged imported-project mutes")
+                      "SMF page must consume 1-9 before unchanged imported-project mutes")
           '''
-          if test_anchor not in test:
-              raise SystemExit('test assertion anchor not found')
-          test = test.replace(test_anchor, test_replacement, 1)
+              if test_anchor not in test:
+                  raise SystemExit('test assertion anchor not found')
+              test = test.replace(test_anchor, test_replacement, 1)
+          test = test.replace('"SMF page must consume 1/2/3 before unchanged imported-project mutes"',
+                              '"SMF page must consume 1-9 before unchanged imported-project mutes"')
 
           page_path.write_text(page, encoding='utf-8')
           test_path.write_text(test, encoding='utf-8')
@@ -224,5 +254,5 @@ jobs:
           git add src/ui/pages/smf_player_page.cpp \
                   tests/test_smf_panel_completion_source_regressions.py \
                   .github/workflows/apply-smf-hotkeys.yml
-          git commit -m "feat: add scoped SMF mute hotkeys"
+          git commit -m "feat: add scoped SMF mute hotkeys 1-9"
           git push origin HEAD:agent/smf-track-mute-mixer
