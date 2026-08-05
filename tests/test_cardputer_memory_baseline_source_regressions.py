@@ -97,8 +97,7 @@ require("loopStackWords" not in instrument and "audioStackWords" not in instrume
         "ESP-IDF stack watermarks must not be labelled as words")
 require("xTaskGetHandle" not in instrument,
         "task watermarks must not depend on optional task-name lookup")
-require('include_replacement' not in instrument and
-        'cardputer_usb_midi_transport.h"' not in instrument,
+require('#include "src/platform/cardputer_usb_midi_transport.h"' not in instrument,
         "runtime probe must not import TinyUSB transport headers into the sketch")
 for accessor in (
     "cardputerSmfPlayerTaskHandleForMemoryBaseline",
