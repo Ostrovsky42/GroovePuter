@@ -1,6 +1,8 @@
 #include <cassert>
 
 #include "src/midi/smf_routing.h"
+#include "src/midi/smf_session_generation.h"
+#include "src/midi/smf_track_output_route.h"
 
 using namespace GroovePuterMidi;
 
@@ -46,10 +48,62 @@ int main() {
     assert(dx.mapped && dx.channel == 9 && dx.note == 64);
 
     // DX is a dedicated CH10 destination, never the fallback bucket. Extra
-    // melodic lanes are filtered before the USB queue until CUSTOM routing
-    // gives them an explicit destination.
+    // melodic lanes remain filtered until a track gets an explicit destination.
     assert(!unmapped.mapped && unmapped.note == 64);
     assert(!extraMelodic.mapped && extraMelodic.note == 67);
+
+    const SmfRoutedNote forcedKick =
+        routeSmfTrackNote(SmfRoutingMode::Seqtrak, 4, 41, 0);
+    const SmfRoutedNote forcedCymbal =
+        routeSmfTrackNote(SmfRoutingMode::Seqtrak, 4, 41, 6);
+    const SmfRoutedNote forcedSynth1 =
+        routeSmfTrackNote(SmfRoutingMode::Seqtrak, 14, 67, 7);
+    const SmfRoutedNote forcedDx =
+        routeSmfTrackNote(SmfRoutingMode::Seqtrak, 14, 67, 9);
+    const SmfRoutedNote invalidDestination =
+        routeSmfTrackNote(SmfRoutingMode::Seqtrak, 0, 64, 10);
+    const SmfRoutedNote rawIgnoresOverride =
+        routeSmfTrackNote(SmfRoutingMode::Raw, 9, 36, 7);
+
+    assert(forcedKick.mapped && forcedKick.channel == 0 && forcedKick.note == 60);
+    assert(forcedCymbal.mapped && forcedCymbal.channel == 6 && forcedCymbal.note == 60);
+    assert(forcedSynth1.mapped && forcedSynth1.channel == 7 && forcedSynth1.note == 67);
+    assert(forcedDx.mapped && forcedDx.channel == 9 && forcedDx.note == 67);
+    assert(!invalidDestination.mapped);
+    assert(rawIgnoresOverride.mapped &&
+           rawIgnoresOverride.channel == 9 &&
+           rawIgnoresOverride.note == 36);
+
+    const uint32_t generation = smfBeginSessionOpen();
+    assert(generation != 0u);
+    assert(smfCompleteSessionOpen(generation));
+
+    SmfTrackOutputRouteState& routes = smfTrackOutputRouteState();
+    SmfTrackOutputRouteSnapshot routeSnapshot = routes.snapshot(4);
+    assert(routeSnapshot.generation == generation);
+    assert(routeSnapshot.trackCount == 4);
+    for (uint16_t track = 0; track < routeSnapshot.trackCount; ++track) {
+        assert(routeSnapshot.destinationFor(track) == kSmfTrackOutputRouteAuto);
+    }
+
+    assert(routes.setDestination(2, 7, generation, 4));
+    assert(routes.destinationFor(2, 4) == 7);
+    assert(!routes.setDestination(4, 7, generation, 4));
+    assert(!routes.setDestination(2, 10, generation, 4));
+
+    routeSnapshot = routes.snapshot(4);
+    assert(routeSnapshot.generation == generation);
+    assert(routeSnapshot.destinationFor(2) == 7);
+    assert(routeSnapshot.overridden(2));
+
+    const uint32_t nextGeneration = smfBeginSessionOpen();
+    assert(nextGeneration != 0u && nextGeneration != generation);
+    assert(smfCompleteSessionOpen(nextGeneration));
+    routeSnapshot = routes.snapshot(2);
+    assert(routeSnapshot.generation == nextGeneration);
+    assert(routeSnapshot.trackCount == 2);
+    assert(routeSnapshot.destinationFor(0) == kSmfTrackOutputRouteAuto);
+    assert(routeSnapshot.destinationFor(1) == kSmfTrackOutputRouteAuto);
 
     return 0;
 }

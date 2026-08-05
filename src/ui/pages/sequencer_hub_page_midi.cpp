@@ -14,6 +14,7 @@
 #include "src/midi/smf_structural_inspector.h"
 #include "src/midi/smf_track_inspector.h"
 #include "src/midi/smf_track_mute.h"
+#include "src/midi/smf_track_output_route.h"
 
 namespace {
 using namespace GroovePuterMidi;
@@ -62,14 +63,16 @@ struct HubMidiProjection {
     SmfStructuralInspectorSnapshot layers{};
     SmfTrackInspectorSnapshot tracks{};
     SmfTrackMuteSnapshot mute{};
+    SmfTrackOutputRouteSnapshot routes{};
     uint32_t generation{0};
 
     bool ready() const {
         return smfSnapshotGenerationsMatch(
-            generation,
-            layers.generation,
-            tracks.generation,
-            mute.generation);
+                   generation,
+                   layers.generation,
+                   tracks.generation,
+                   mute.generation) &&
+               routes.generation == generation;
     }
 };
 
@@ -78,6 +81,8 @@ HubMidiProjection captureHubMidiProjection() {
     projection.layers = smfStructuralInspectorState().snapshot();
     projection.tracks = smfTrackInspectorState().snapshot();
     projection.mute = smfTrackMuteState().snapshot();
+    projection.routes = smfTrackOutputRouteState().snapshot(
+        projection.mute.trackCount);
     projection.generation = smfSessionGeneration();
     return projection;
 }
@@ -96,6 +101,12 @@ bool projectionIsSyncing(const SmfPlayerSnapshot& player,
            (playerExpectsMidiProjection(player.state) && !projection.ready());
 }
 
+bool routeCanBeEdited(const SmfPlayerSnapshot& player) {
+    return !player.rawRouting &&
+           (player.state == SmfPlayerState::Stopped ||
+            player.state == SmfPlayerState::Paused);
+}
+
 bool muted(const SmfTrackMuteSnapshot& state, uint16_t track) {
     return track < 64u &&
            (state.mutedMask & (uint64_t{1} << track)) != 0u;
@@ -110,6 +121,19 @@ const char* roleLabel(SmfStructuralRole role) {
         case SmfStructuralRole::Lead: return "LEAD";
         default: return "MIDI";
     }
+}
+
+const char* seqtrakDestinationName(int8_t destinationChannel) {
+    static constexpr const char* kNames[kSmfSeqtrakOutputChannelCount] = {
+        "KICK", "SNARE", "CLAP", "HAT-C", "HAT-O",
+        "PERC", "CYM", "SYN1", "SYN2", "DX",
+    };
+    if (destinationChannel < 0 ||
+        destinationChannel >=
+            static_cast<int8_t>(kSmfSeqtrakOutputChannelCount)) {
+        return "AUTO";
+    }
+    return kNames[static_cast<uint8_t>(destinationChannel)];
 }
 
 void formatTrackChannel(const SmfTrackInfoSnapshot* info,
@@ -127,6 +151,43 @@ void formatTrackChannel(const SmfTrackInfoSnapshot* info,
     const int channel = info->primaryChannel();
     if (channel < 0) std::snprintf(output, outputSize, "CH--");
     else std::snprintf(output, outputSize, "CH%d", channel + 1);
+}
+
+void formatRouteDestination(int8_t destinationChannel,
+                            bool detailed,
+                            char* output,
+                            std::size_t outputSize) {
+    if (!output || outputSize == 0u) return;
+    if (destinationChannel == kSmfTrackOutputRouteAuto) {
+        std::snprintf(output, outputSize, "AUTO");
+        return;
+    }
+    if (destinationChannel < 0 ||
+        destinationChannel >=
+            static_cast<int8_t>(kSmfSeqtrakOutputChannelCount)) {
+        std::snprintf(output, outputSize, "?");
+        return;
+    }
+    if (detailed) {
+        std::snprintf(output,
+                      outputSize,
+                      "CH%d %s",
+                      static_cast<int>(destinationChannel) + 1,
+                      seqtrakDestinationName(destinationChannel));
+    } else {
+        std::snprintf(output,
+                      outputSize,
+                      "CH%d",
+                      static_cast<int>(destinationChannel) + 1);
+    }
+}
+
+int8_t cycleRouteDestination(int8_t current, int delta) {
+    constexpr int kChoiceCount = kSmfSeqtrakOutputChannelCount + 1;
+    int choice = static_cast<int>(current) + 1;
+    choice = (choice + delta) % kChoiceCount;
+    if (choice < 0) choice += kChoiceCount;
+    return static_cast<int8_t>(choice - 1);
 }
 
 void formatMidiNote(uint8_t note, char* output, std::size_t outputSize) {
@@ -171,16 +232,19 @@ IGfxColor activityColor(uint8_t level, bool isMuted) {
 
 void drawArrangementRow(IGfx& gfx,
                         int screenWidth,
-                        int screenHeight,
+                        int contentTop,
+                        int contentHeight,
                         uint8_t row,
                         uint8_t layerIndex,
                         const SmfStructuralLayerSnapshot& layer,
                         const SmfTrackInfoSnapshot* info,
                         bool isMuted,
                         bool isSelected) {
-    const int y0 = (static_cast<int>(row) * screenHeight) / kVisibleMidiRows;
-    const int y1 = (static_cast<int>(row + 1u) * screenHeight) /
-                   kVisibleMidiRows;
+    const int y0 = contentTop +
+                   (static_cast<int>(row) * contentHeight) / kVisibleMidiRows;
+    const int y1 = contentTop +
+                   (static_cast<int>(row + 1u) * contentHeight) /
+                       kVisibleMidiRows;
     const int rowHeight = std::max(1, y1 - y0);
     const int textY = y0 + std::max(0, (rowHeight - 7) / 2);
     const int gridX = std::min(kLayerLabelWidth, screenWidth);
@@ -232,6 +296,9 @@ void drawOverlayBands(IGfx& gfx,
                       const SmfPlayerSnapshot& player,
                       const SmfStructuralLayerSnapshot& selectedLayer,
                       const SmfTrackInfoSnapshot* selectedInfo,
+                      int8_t destinationChannel,
+                      bool routeEdit,
+                      int8_t routeDraft,
                       bool partial) {
     const int width = gfx.width();
     const int height = gfx.height();
@@ -251,21 +318,47 @@ void drawOverlayBands(IGfx& gfx,
                   static_cast<unsigned long>(std::max<uint32_t>(player.totalBars, 1u)));
     gfx.drawText(std::max(3, width - gfx.textWidth(line) - 3), 2, line);
 
-    char channel[8]{};
-    char range[12]{};
-    formatTrackChannel(selectedInfo, channel, sizeof(channel));
-    formatPitchRange(selectedLayer, range, sizeof(range));
-    std::snprintf(line, sizeof(line), "%s N%u %s",
-                  channel,
-                  static_cast<unsigned>(selectedLayer.noteCount),
-                  range);
+    const char* hints = nullptr;
+    if (routeEdit) {
+        char destination[20]{};
+        formatRouteDestination(routeDraft, true, destination, sizeof(destination));
+        std::snprintf(line, sizeof(line), "ROUTE %s", destination);
+        hints = "<> ENT ESC";
+    } else {
+        char channel[8]{};
+        char destination[8]{};
+        char range[12]{};
+        formatTrackChannel(selectedInfo, channel, sizeof(channel));
+        formatRouteDestination(destinationChannel,
+                               false,
+                               destination,
+                               sizeof(destination));
+        formatPitchRange(selectedLayer, range, sizeof(range));
+        if (player.rawRouting) {
+            std::snprintf(line,
+                          sizeof(line),
+                          "RAW %s N%u %s",
+                          channel,
+                          static_cast<unsigned>(selectedLayer.noteCount),
+                          range);
+        } else {
+            std::snprintf(line,
+                          sizeof(line),
+                          "%s>%s N%u %s",
+                          channel,
+                          destination,
+                          static_cast<unsigned>(selectedLayer.noteCount),
+                          range);
+        }
+        hints = "C RTE H/E";
+    }
+    gfx.setTextColor(kBodyText);
     gfx.drawText(3, bottomY + 2, line);
 
-    constexpr const char* kHints = "H/E 1-9 ENT";
     gfx.setTextColor(kMutedText);
-    gfx.drawText(std::max(3, width - gfx.textWidth(kHints) - 3),
+    gfx.drawText(std::max(3, width - gfx.textWidth(hints) - 3),
                  bottomY + 2,
-                 kHints);
+                 hints);
 }
 
 void drawProjectionMessage(IGfx& gfx,
@@ -298,6 +391,8 @@ bool selectProjectedLayer(const HubMidiProjection& projection,
 }  // namespace
 
 void SequencerHubPage::onEnter(int context) {
+    midiRouteEdit_ = false;
+    midiRouteDraft_ = kSmfTrackOutputRouteAuto;
     if (context == PlayerHubNavigation::kOpenMidiFromPlayerContext) {
         midiOverview_ = true;
         midiReturnToPlayer_ = true;
@@ -323,6 +418,7 @@ bool SequencerHubPage::handleEvent(UIEvent& event) {
         mode_ == Mode::OVERVIEW) {
         midiOverview_ = !midiOverview_;
         midiReturnToPlayer_ = false;
+        midiRouteEdit_ = false;
         if (midiOverview_) {
             midiGeneration_ = 0u;
             syncMidiSessionSelection();
@@ -343,6 +439,8 @@ void SequencerHubPage::syncMidiSessionSelection() {
         midiGeneration_ = projection.generation;
         midiSelected_ = 0u;
         midiScroll_ = 0u;
+        midiRouteEdit_ = false;
+        midiRouteDraft_ = kSmfTrackOutputRouteAuto;
         for (uint8_t index = 0u; index < projection.layers.layerCount; ++index) {
             if (projection.layers.layers[index].trackIndex ==
                 projection.mute.selectedTrack) {
@@ -355,6 +453,7 @@ void SequencerHubPage::syncMidiSessionSelection() {
     if (projection.layers.layerCount == 0u) {
         midiSelected_ = 0u;
         midiScroll_ = 0u;
+        midiRouteEdit_ = false;
         return;
     }
     if (midiSelected_ >= projection.layers.layerCount) {
@@ -364,6 +463,8 @@ void SequencerHubPage::syncMidiSessionSelection() {
 }
 
 void SequencerHubPage::returnFromMidiOverview() {
+    midiRouteEdit_ = false;
+    midiRouteDraft_ = kSmfTrackOutputRouteAuto;
     if (midiReturnToPlayer_) {
         midiOverview_ = false;
         midiReturnToPlayer_ = false;
@@ -403,41 +504,120 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
 
     const bool hubShortcut =
         !event.alt && !event.ctrl && (event.key == 'h' || event.key == 'H');
-    if (hubShortcut || UIInput::isBack(event)) {
+    if (hubShortcut) {
         returnFromMidiOverview();
+        return true;
+    }
+    if (UIInput::isBack(event)) {
+        if (midiRouteEdit_) {
+            midiRouteEdit_ = false;
+            midiRouteDraft_ = kSmfTrackOutputRouteAuto;
+            UI::showToast("ROUTE CANCELLED", 600);
+        } else {
+            returnFromMidiOverview();
+        }
         return true;
     }
 
     if (event.alt || event.ctrl || event.meta) return true;
 
-    // Retain the old aliases without advertising them in the compact Hub UI.
-    if (event.key == 'p' || event.key == 'P') {
-        midiReturnToPlayer_ = true;
-        returnFromMidiOverview();
-        return true;
-    }
-    if (event.key == 'm' || event.key == 'M') {
-        midiOverview_ = false;
-        midiReturnToPlayer_ = false;
-        return true;
-    }
-    if (event.key == ' ') {
-        UI::showToast("MIDI TRANSPORT: PLAYER", 900);
-        return true;
+    if (!midiRouteEdit_) {
+        // Retain the old aliases without advertising them in the compact Hub UI.
+        if (event.key == 'p' || event.key == 'P') {
+            midiReturnToPlayer_ = true;
+            returnFromMidiOverview();
+            return true;
+        }
+        if (event.key == 'm' || event.key == 'M') {
+            midiOverview_ = false;
+            midiReturnToPlayer_ = false;
+            return true;
+        }
+        if (event.key == ' ') {
+            UI::showToast("MIDI TRANSPORT: PLAYER", 900);
+            return true;
+        }
     }
 
     ISmfPlayerService* service = smfPlayerService();
     const SmfPlayerSnapshot player = service ? service->snapshot() : SmfPlayerSnapshot{};
     const HubMidiProjection projection = captureHubMidiProjection();
     if (projectionIsSyncing(player, projection)) {
+        midiRouteEdit_ = false;
         UI::showToast("MIDI LAYERS: SYNCING", 800);
         return true;
     }
     if (!projection.ready()) {
+        midiRouteEdit_ = false;
         UI::showToast("LOAD MIDI IN PLAYER", 800);
         return true;
     }
     if (midiGeneration_ != projection.generation) syncMidiSessionSelection();
+    if (projection.layers.layerCount == 0u) return true;
+
+    const uint8_t selected = std::min<uint8_t>(
+        midiSelected_, projection.layers.layerCount - 1u);
+    const uint16_t selectedTrack =
+        projection.layers.layers[selected].trackIndex;
+
+    if (midiRouteEdit_) {
+        if (!routeCanBeEdited(player)) {
+            midiRouteEdit_ = false;
+            UI::showToast(player.rawRouting
+                              ? "SEQTRAK ROUTING REQUIRED"
+                              : "PAUSE MIDI FIRST",
+                          900);
+            return true;
+        }
+
+        int routeMove = 0;
+        if (event.scancode == GROOVEPUTER_LEFT) routeMove = -1;
+        else if (event.scancode == GROOVEPUTER_RIGHT) routeMove = 1;
+        if (routeMove != 0) {
+            midiRouteDraft_ = cycleRouteDestination(midiRouteDraft_, routeMove);
+            return true;
+        }
+        if (event.key == '\n' || event.key == '\r') {
+            if (smfTrackOutputRouteState().setDestination(
+                    selectedTrack,
+                    midiRouteDraft_,
+                    projection.generation,
+                    projection.mute.trackCount)) {
+                char destination[20]{};
+                char toast[40]{};
+                formatRouteDestination(midiRouteDraft_,
+                                       false,
+                                       destination,
+                                       sizeof(destination));
+                std::snprintf(toast,
+                              sizeof(toast),
+                              "TRK %02u > %s",
+                              static_cast<unsigned>(selectedTrack + 1u),
+                              destination);
+                UI::showToast(toast, 800);
+                midiRouteEdit_ = false;
+            } else {
+                UI::showToast("ROUTE SESSION CHANGED", 900);
+                midiRouteEdit_ = false;
+            }
+            return true;
+        }
+        return true;
+    }
+
+    if (event.key == 'c' || event.key == 'C') {
+        if (player.rawRouting) {
+            UI::showToast("SEQTRAK ROUTING REQUIRED", 900);
+            return true;
+        }
+        if (!routeCanBeEdited(player)) {
+            UI::showToast("PAUSE MIDI FIRST", 900);
+            return true;
+        }
+        midiRouteDraft_ = projection.routes.destinationFor(selectedTrack);
+        midiRouteEdit_ = true;
+        return true;
+    }
 
     if (event.key == 'a' || event.key == 'A') {
         if (smfTrackMuteState().clear(projection.generation)) {
@@ -453,7 +633,6 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
         }
         return true;
     }
-    if (projection.layers.layerCount == 0u) return true;
 
     int move = 0;
     if (UIInput::isUp(event)) move = -1;
@@ -462,9 +641,9 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
     else if (event.scancode == GROOVEPUTER_RIGHT) move = kVisibleMidiRows;
     if (move != 0) {
         const int count = static_cast<int>(projection.layers.layerCount);
-        int selected = (static_cast<int>(midiSelected_) + move) % count;
-        if (selected < 0) selected += count;
-        midiSelected_ = static_cast<uint8_t>(selected);
+        int movedSelection = (static_cast<int>(midiSelected_) + move) % count;
+        if (movedSelection < 0) movedSelection += count;
+        midiSelected_ = static_cast<uint8_t>(movedSelection);
         syncMidiScroll(projection.layers.layerCount);
         if (!selectProjectedLayer(projection, midiSelected_)) {
             UI::showToast("MIDI LAYERS: SYNCING", 800);
@@ -522,15 +701,20 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
         midiSelected_, projection.layers.layerCount - 1u);
     const int screenWidth = gfx.width();
     const int screenHeight = gfx.height();
+    const int rowsTop = std::min(kOverlayBandHeight, screenHeight);
+    const int rowsBottom = std::max(rowsTop, screenHeight - kOverlayBandHeight);
+    const int rowsHeight = std::max(0, rowsBottom - rowsTop);
     gfx.fillRect(0, 0, screenWidth, screenHeight, kScreenBackground);
 
     for (uint8_t row = 0u; row < kVisibleMidiRows; ++row) {
         const uint8_t index = static_cast<uint8_t>(midiScroll_ + row);
         if (index >= projection.layers.layerCount) {
-            const int y0 = (static_cast<int>(row) * screenHeight) /
-                           kVisibleMidiRows;
-            const int y1 = (static_cast<int>(row + 1u) * screenHeight) /
-                           kVisibleMidiRows;
+            const int y0 = rowsTop +
+                           (static_cast<int>(row) * rowsHeight) /
+                               kVisibleMidiRows;
+            const int y1 = rowsTop +
+                           (static_cast<int>(row + 1u) * rowsHeight) /
+                               kVisibleMidiRows;
             gfx.fillRect(0, y0, screenWidth, std::max(1, y1 - y0),
                          kScreenBackground);
             continue;
@@ -543,7 +727,8 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
         drawArrangementRow(
             gfx,
             screenWidth,
-            screenHeight,
+            rowsTop,
+            rowsHeight,
             row,
             index,
             layer,
@@ -555,7 +740,7 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
     const int gridX = std::min(kLayerLabelWidth, screenWidth);
     const int gridWidth = std::max(0, screenWidth - gridX);
     const int playheadX = arrangementPlayheadX(player, gridX, gridWidth);
-    gfx.fillRect(playheadX, 0, 2, screenHeight, kAccent);
+    gfx.fillRect(playheadX, rowsTop, 2, rowsHeight, kAccent);
 
     const auto& selectedLayer = projection.layers.layers[selected];
     const SmfTrackInfoSnapshot* selectedInfo =
@@ -566,5 +751,8 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
                      player,
                      selectedLayer,
                      selectedInfo,
+                     projection.routes.destinationFor(selectedLayer.trackIndex),
+                     midiRouteEdit_,
+                     midiRouteDraft_,
                      projection.layers.partial);
 }

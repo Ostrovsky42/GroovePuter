@@ -13,6 +13,7 @@
 #include "src/midi/smf_scheduler.h"
 #include "src/midi/smf_stream.h"
 #include "src/midi/smf_timing.h"
+#include "src/midi/smf_track_output_route.h"
 
 class CardputerSmfPlayerService final : public GroovePuterMidi::ISmfPlayerService {
 public:
@@ -145,6 +146,20 @@ private:
     double currentProjectSmfTick(
         const GroovePuterMidi::ProjectTransportBlockSnapshot& transport) const;
     bool takeNextNote(GroovePuterMidi::SmfStreamEvent& event);
+    GroovePuterMidi::SmfRoutedNote routeSmfNote(
+            GroovePuterMidi::SmfRoutingMode mode,
+            uint8_t sourceChannel,
+            uint8_t sourceNote) {
+        const int8_t destinationOverride =
+            GroovePuterMidi::smfTrackOutputRouteState().destinationFor(
+                pendingEvent_.trackIndex,
+                fileIndex_.trackCount);
+        return GroovePuterMidi::routeSmfTrackNote(
+            mode,
+            sourceChannel,
+            sourceNote,
+            destinationOverride);
+    }
     void publishSnapshot(GroovePuterMidi::SmfPlayerState state,
                          const char* message = nullptr);
     static void copyText(char* dst, std::size_t size, const char* src);
