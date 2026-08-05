@@ -40,7 +40,7 @@ rsync -a --delete \
 
 if [[ "${IMAGE_KIND}" == "runtime" ]]; then
   python3 "${SOURCE_ROOT}/scripts/instrument_cardputer_memory_runtime.py" \
-    "${SOURCE_ROOT}/GroovePuter.ino"
+    "${SOURCE_ROOT}"
 fi
 
 case "${PROFILE}" in
