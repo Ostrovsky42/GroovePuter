@@ -75,7 +75,7 @@ Flash the generated Cardputer-Adv firmware with the repository's normal M5Launch
 - [ ] `./tests/run_host_tests.sh` passes.
 - [ ] SDL desktop build passes with both Hub translation units linked exactly once.
 - [ ] Cardputer-Adv firmware build passes.
-- [ ] Real ELF fixed-DRAM gate remains at or below `122880 B`.
+- [ ] Real ELF passes the provisional `191488 B` fixed-DRAM gate from #70; this is not yet a safety-derived permanent ceiling.
 - [ ] Load a Type-1 file containing a conductor track and at least seven audible tracks.
 - [ ] `M` switches Internal ↔ MIDI only from Hub overview.
 - [ ] MIDI rows show logical slot and physical SMF track number separately.
