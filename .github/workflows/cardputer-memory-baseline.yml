@@ -6,6 +6,7 @@ on:
     paths:
       - ".github/workflows/cardputer-memory-baseline.yml"
       - "docs/stages/CARDPUTER_MEMORY_BASELINE.md"
+      - "docs/stages/CARDPUTER_MEMORY_RUNTIME_TELEMETRY.md"
       - "scripts/build_cardputer_memory_baseline.sh"
       - "scripts/check_cardputer_dram_budget.sh"
       - "scripts/instrument_cardputer_memory_runtime.py"
