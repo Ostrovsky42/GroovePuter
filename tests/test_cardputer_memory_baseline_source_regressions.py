@@ -20,7 +20,6 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-# Provisional gate policy remains explicit and fail-closed.
 require('MAX_BYTES="${2:-191488}"' in gate,
         "the mandatory gate must use the provisional pre-122880 value")
 require("not a universal hardware" in gate,
@@ -28,7 +27,6 @@ require("not a universal hardware" in gate,
 require("policy: provisional exception" in gate and "items 5-7" in gate,
         "every gate run must expose the incomplete threshold-rule status")
 
-# Static reporting must be exact, section-aware, and non-gating.
 for needle in (
     'PROVISIONAL_GATE_BYTES="${PROVISIONAL_GATE_BYTES:-191488}"',
     'UNSUPPORTED_GATE_BYTES="${UNSUPPORTED_GATE_BYTES:-122880}"',
@@ -56,7 +54,6 @@ for script_name, script in (("gate", gate), ("report", report)):
     require(".arduino15/packages/esp32/tools" not in script,
             f"{script_name} must not assume the Espressif vendor directory")
 
-# Product and runtime images must remain separate and reproducible.
 for needle in (
     "mktemp -d /tmp/grooveputer-memory-baseline",
     "rsync -a --delete",
@@ -76,7 +73,6 @@ for needle in (
 require("git commit" not in build and "git push" not in build,
         "diagnostic builds must never mutate repository history")
 
-# Runtime telemetry: explicit capabilities, byte units, and all relevant tasks.
 for api in (
     "heap_caps_get_minimum_free_size",
     "heap_caps_get_largest_free_block",
@@ -101,6 +97,9 @@ require("loopStackWords" not in instrument and "audioStackWords" not in instrume
         "ESP-IDF stack watermarks must not be labelled as words")
 require("xTaskGetHandle" not in instrument,
         "task watermarks must not depend on optional task-name lookup")
+require('include_replacement' not in instrument and
+        'cardputer_usb_midi_transport.h"' not in instrument,
+        "runtime probe must not import TinyUSB transport headers into the sketch")
 for accessor in (
     "cardputerSmfPlayerTaskHandleForMemoryBaseline",
     "cardputerMidiDispatchTaskHandleForMemoryBaseline",
@@ -118,7 +117,6 @@ for source_path in (
     require(source_path in instrument,
             f"runtime source patch target missing: {source_path}")
 
-# TinyUSB candidates are investigated, not removed in this PR.
 for symbol in ("ncm_epbuf", "_mscd_epbuf", "_dfu_epbuf"):
     require(symbol in tinyusb_report,
             f"TinyUSB provenance report missing {symbol}")
@@ -132,8 +130,18 @@ require("find \"${PACKAGE_ROOT}\" -type f -name '*.a'" not in tinyusb_report,
         "TinyUSB reporting must not scan every archive in the package tree")
 require("report_cardputer_tinyusb_class_buffers.sh" in build,
         "product builds must emit TinyUSB provenance")
+for evidence in (
+    "libarduino_tinyusb.a(msc_device.c.obj)",
+    "libarduino_tinyusb.a(dfu_device.c.obj)",
+    "libarduino_tinyusb.a(ncm_device.c.obj)",
+    "CONFIG_TINYUSB_MSC_ENABLED=y",
+    "CONFIG_TINYUSB_DFU_ENABLED=y",
+    "CONFIG_TINYUSB_NCM_ENABLED=y",
+    "14608 B",
+):
+    require(evidence in runtime_doc,
+            f"TinyUSB artifact evidence missing from documentation: {evidence}")
 
-# Workflow identity and failure propagation.
 for needle in (
     "profile: [normal, midi-only]",
     "image-kind: [product, runtime]",
@@ -149,7 +157,6 @@ for needle in (
 require("bash scripts/check_cardputer_dram_budget.sh" not in workflow,
         "baseline workflow must not duplicate the product gate")
 
-# Documentation and boundary audit.
 for needle in (
     "81689b4",
     "one-line",
