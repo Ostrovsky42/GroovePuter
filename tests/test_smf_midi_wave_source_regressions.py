@@ -32,13 +32,17 @@ def main() -> None:
             "MIDI Player UI must not become a USB owner")
     print("SMF MIDI wave source regressions: OK")
 
-    # Stage 1B and Stage 1C are chained into an already mandatory host gate.
+    # Stages 1B through 1D are chained into an already mandatory host gate.
     runpy.run_path(
         str(ROOT / "tests/test_smf_structural_inspector_source_regressions.py"),
         run_name="__main__",
     )
     runpy.run_path(
         str(ROOT / "tests/test_hub_midi_stage_1c_source_regressions.py"),
+        run_name="__main__",
+    )
+    runpy.run_path(
+        str(ROOT / "tests/test_smf_session_generation.py"),
         run_name="__main__",
     )
 
