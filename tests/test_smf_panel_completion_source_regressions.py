@@ -94,6 +94,18 @@ def main() -> None:
         and "PlayerHubNavigation::kHubPage" in page_wrapper,
         "MIDI Player must enter HUB MIDI through the existing page transition path",
     )
+    hub_shortcut_pos = page_wrapper.index("const bool hubShortcut")
+    modifier_guard_pos = page_wrapper.index(
+        "if (event.event_type != GROOVEPUTER_KEY_DOWN || event.alt || event.ctrl"
+    )
+    require(
+        hub_shortcut_pos < modifier_guard_pos
+        and "!event.alt && !event.ctrl" in page_wrapper[hub_shortcut_pos:modifier_guard_pos]
+        and "hasPlayerSession" in page_wrapper[hub_shortcut_pos:modifier_guard_pos]
+        and "state.state != SmfPlayerState::Unloaded" in page_wrapper[hub_shortcut_pos:modifier_guard_pos]
+        and "state.state != SmfPlayerState::Error" in page_wrapper[hub_shortcut_pos:modifier_guard_pos],
+        "loaded Player H must get first refusal before generic meta filtering and global help",
+    )
     require(
         "void SmfPlayerPage::onExit()" in page_wrapper
         and "void SmfPlayerPage::onEnter(int context)" in page_wrapper
