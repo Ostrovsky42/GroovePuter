@@ -1,0 +1,64 @@
+name: Apply MIDI route persistence
+
+on:
+  push:
+    branches:
+      - agent/midi-hub-route-persistence
+    paths:
+      - scripts/apply_midi_hub_route_persistence.py
+      - .github/workflows/apply-midi-hub-route-persistence.yml
+      - src/midi/smf_track_route_profile.h
+      - src/midi/smf_track_route_profile.cpp
+      - tests/test_smf_track_route_profile.cpp
+      - tests/test_smf_route_persistence_source_regressions.py
+      - docs/stages/MIDI_HUB_ROUTE_PERSISTENCE.md
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/midi-hub-route-persistence
+          fetch-depth: 0
+
+      - name: Apply bounded integration patch
+        run: python3 scripts/apply_midi_hub_route_persistence.py
+
+      - name: Check patch formatting
+        run: git diff --check
+
+      - name: Run focused profile test
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_smf_track_route_profile.cpp \
+            src/midi/smf_track_route_profile.cpp \
+            -o build/host-tests/test_smf_track_route_profile
+          build/host-tests/test_smf_track_route_profile
+
+      - name: Run source boundary regression
+        run: python3 tests/test_smf_route_persistence_source_regressions.py
+
+      - name: Run full host suite
+        run: ./tests/run_host_tests.sh
+
+      - name: Commit validated product integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/midi/smf_track_output_route.h \
+            src/midi/smf_player_service.h \
+            src/platform/cardputer_smf_player.h \
+            src/platform/cardputer_smf_player.cpp \
+            src/ui/pages/sequencer_hub_page_midi.cpp \
+            tests/run_host_tests.sh \
+            tests/test_smf_routing.cpp
+          git diff --cached --quiet && { echo "No integration changes produced"; exit 1; }
+          git commit -m "Implement MIDI Hub route persistence"
+          git push origin HEAD:agent/midi-hub-route-persistence
