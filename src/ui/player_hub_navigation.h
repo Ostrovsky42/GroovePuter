@@ -31,6 +31,9 @@ struct PlayerViewState {
     bool structuralInspectorVisible{false};
 };
 
+static_assert(sizeof(PlayerViewState) <= 16,
+              "Player Hub UI lifetime state must remain fixed and bounded");
+
 inline PlayerViewState& playerViewState() {
     static PlayerViewState state{};
     return state;
