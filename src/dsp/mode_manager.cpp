@@ -363,12 +363,15 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
     const Scale& scale = kScales[behavior.preferredScale % 4];
     int baseRoot;
     int octaveRange;
+    int bassMaxNote = 127;
     
     if (isBass) {
-        // Bass: low register, narrow range
-        baseRoot = 24; // C1
-        if (params.minOctave > 0 && params.minOctave < 36) baseRoot = params.minOctave;
-        octaveRange = 1; // Stay within 1 octave
+        // minOctave/maxOctave are MIDI-note bounds despite their legacy names.
+        // Respect the genre floor instead of forcing every bass line to C1.
+        baseRoot = std::max(0, std::min(params.minOctave, 127));
+        const int requestedMax = std::max(baseRoot, std::min(params.maxOctave, 127));
+        bassMaxNote = std::min(requestedMax, baseRoot + 12);
+        octaveRange = 1; // Bass remains within one octave above its genre floor.
     } else {
         // Lead/Arp: higher register, wider range
         baseRoot = 48; // C3
@@ -399,6 +402,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
             // Bass: less octave jumps
             if (!isBass && behavior.forceOctaveJump && (boundedRandom(rng, 100) < 30)) note += 12;
             if (behavior.allowChromatic && (boundedRandom(rng, 100) < 20)) note += (boundedRandom(rng, 3)) - 1;
+            if (isBass) note = std::max(baseRoot, std::min(note, bassMaxNote));
 
             motif[i] = note;
         }
@@ -480,6 +484,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
             }
         }
 
+        if (isBass) note = std::max(baseRoot, std::min(note, bassMaxNote));
         pattern.steps[step].note = note;
         lastNote = note;
 
