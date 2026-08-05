@@ -9,7 +9,9 @@ report = (ROOT / "scripts/report_cardputer_memory_baseline.sh").read_text()
 tinyusb_report = (ROOT / "scripts/report_cardputer_tinyusb_class_buffers.sh").read_text()
 gate = (ROOT / "scripts/check_cardputer_dram_budget.sh").read_text()
 workflow = (ROOT / ".github/workflows/cardputer-memory-baseline.yml").read_text()
-doc = (ROOT / "docs/stages/CARDPUTER_MEMORY_BASELINE.md").read_text()
+baseline_doc = (ROOT / "docs/stages/CARDPUTER_MEMORY_BASELINE.md").read_text()
+runtime_doc = (ROOT / "docs/stages/CARDPUTER_MEMORY_RUNTIME_TELEMETRY.md").read_text()
+doc = baseline_doc + "\n" + runtime_doc
 doc_lower = doc.lower()
 
 
@@ -135,6 +137,7 @@ require("set -o pipefail" in workflow and "2>&1 | tee" in workflow,
 require("bash scripts/check_cardputer_dram_budget.sh" not in workflow,
         "the baseline workflow must not duplicate the product gate")
 for helper in (
+    "docs/stages/CARDPUTER_MEMORY_RUNTIME_TELEMETRY.md",
     "scripts/instrument_cardputer_memory_runtime.py",
     "scripts/report_cardputer_tinyusb_class_buffers.sh",
 ):
@@ -162,11 +165,16 @@ require("provisional `191488` self-audit" in doc_lower,
         "the provisional value must be audited against its own threshold rule")
 require("passes **4 of 7**" in doc and doc.count("**MISSING**") >= 3,
         "the self-audit must show that runtime, reserves, and derivation are missing")
+require("loopStackWords" in runtime_doc and "supersedes" in runtime_doc,
+        "the telemetry contract must explicitly retire misleading stack field names")
+require("smfStackFreeBytes" in runtime_doc and "dispatchStackFreeBytes" in runtime_doc,
+        "the telemetry contract must cover dense-SMF task stacks")
 require("boundary audit" in doc_lower,
         "the PR boundaries must be reviewed explicitly before merge")
 for path in (
     ".github/workflows/cardputer-memory-baseline.yml",
     "docs/stages/CARDPUTER_MEMORY_BASELINE.md",
+    "docs/stages/CARDPUTER_MEMORY_RUNTIME_TELEMETRY.md",
     "scripts/build_cardputer_memory_baseline.sh",
     "scripts/check_cardputer_dram_budget.sh",
     "scripts/instrument_cardputer_memory_runtime.py",
