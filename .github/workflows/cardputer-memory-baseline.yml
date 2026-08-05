@@ -8,7 +8,9 @@ on:
       - "docs/stages/CARDPUTER_MEMORY_BASELINE.md"
       - "scripts/build_cardputer_memory_baseline.sh"
       - "scripts/check_cardputer_dram_budget.sh"
+      - "scripts/instrument_cardputer_memory_runtime.py"
       - "scripts/report_cardputer_memory_baseline.sh"
+      - "scripts/report_cardputer_tinyusb_class_buffers.sh"
       - "tests/test_cardputer_memory_baseline_source_regressions.py"
 
 permissions:
