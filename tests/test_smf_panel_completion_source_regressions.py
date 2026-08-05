@@ -137,18 +137,34 @@ def main() -> None:
         and "smfTrackMuteState().clear(projection.generation)" in hub_cpp,
         "HUB MIDI mute commands must be generation-aware and use existing ownership",
     )
+
+    hub_return_shortcut = hub_cpp.index("const bool hubShortcut")
+    hub_modifier_guard = hub_cpp.index("if (event.alt || event.ctrl || event.meta)")
     require(
-        "configurePlayerPanel(" in hub_cpp
-        and "PlayerHubNavigation::playerViewState()" in hub_cpp
-        and "event.key == 'u'" in hub_cpp
-        and "event.key == 'i'" in hub_cpp,
-        "HUB MIDI U/I must reuse the existing Player mute and channel panels",
+        hub_return_shortcut < hub_modifier_guard
+        and "UIInput::isBack(event)" in hub_cpp[hub_return_shortcut:hub_modifier_guard]
+        and "returnFromMidiOverview();" in hub_cpp[hub_return_shortcut:hub_modifier_guard],
+        "HUB MIDI H/Escape return must precede the Cardputer meta guard",
+    )
+    require(
+        "drawFormStrip(" in hub_cpp
+        and "layer.form[section]" in hub_cpp
+        and "currentFormSection(player.bar)" in hub_cpp
+        and "H/ESC Player  1-9 Mute" in hub_cpp,
+        "HUB MIDI must render a compact Hub-like layer overview",
+    )
+    require(
+        "event.key == 'u'" not in hub_cpp
+        and "event.key == 'i'" not in hub_cpp
+        and "G%s SW%u" not in hub_cpp
+        and "P Player U Mixer I Chans" not in hub_cpp,
+        "HUB MIDI must not duplicate Player inspectors or expose raw structural metrics",
     )
     require(
         "smfTrackMuteState().selectTrack(" in hub_cpp
         and "formatTrackChannel(" in hub_cpp
-        and "formatDensity(" in hub_cpp,
-        "HUB MIDI selection and compact metadata must remain projected from existing state",
+        and "loopLabel(" in hub_cpp,
+        "HUB MIDI selection and readable summary must remain projected from existing state",
     )
     require(
         "bool midiOverview_{false};" in hub_h
