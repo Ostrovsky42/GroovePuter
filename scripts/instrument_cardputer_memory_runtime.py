@@ -3,10 +3,108 @@ from pathlib import Path
 import sys
 
 if len(sys.argv) != 2:
-    raise SystemExit("usage: instrument_cardputer_memory_runtime.py <GroovePuter.ino>")
+    raise SystemExit("usage: instrument_cardputer_memory_runtime.py <source-root>")
 
-path = Path(sys.argv[1])
-text = path.read_text(encoding="utf-8")
+root = Path(sys.argv[1])
+ino_path = root / "GroovePuter.ino"
+smf_header_path = root / "src/platform/cardputer_smf_player.h"
+registry_header_path = root / "src/platform/cardputer_smf_player_registry.h"
+registry_cpp_path = root / "src/platform/cardputer_smf_player_registry.cpp"
+transport_header_path = root / "src/platform/cardputer_usb_midi_transport.h"
+transport_cpp_path = root / "src/platform/cardputer_usb_midi_transport.cpp"
+
+
+def replace_once(path: Path, anchor: str, replacement: str, label: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    count = text.count(anchor)
+    if count != 1:
+        raise SystemExit(
+            f"memory baseline instrumentation: expected one {label} anchor "
+            f"in {path}, found {count}")
+    path.write_text(text.replace(anchor, replacement, 1), encoding="utf-8")
+
+
+# Runtime-only accessors avoid relying on INCLUDE_xTaskGetHandle or task-name
+# lookup. None of these edits touch the product checkout or product ELF.
+replace_once(
+    smf_header_path,
+    "    bool begin();\n    ScheduledSmfMidiEventQueue& eventQueue() { return eventQueue_; }",
+    "    bool begin();\n"
+    "    ScheduledSmfMidiEventQueue& eventQueue() { return eventQueue_; }\n"
+    "    TaskHandle_t memoryBaselineTaskHandle() const { return taskHandle_; }",
+    "SMF task accessor",
+)
+
+replace_once(
+    registry_header_path,
+    "#pragma once\n",
+    "#pragma once\n\n"
+    "#include <freertos/FreeRTOS.h>\n"
+    "#include <freertos/task.h>\n",
+    "SMF registry FreeRTOS includes",
+)
+replace_once(
+    registry_header_path,
+    "bool beginCardputerSmfPlayerService();",
+    "bool beginCardputerSmfPlayerService();\n"
+    "TaskHandle_t cardputerSmfPlayerTaskHandleForMemoryBaseline();",
+    "SMF registry accessor declaration",
+)
+replace_once(
+    registry_cpp_path,
+    "    bool begin() {\n        return ensureStarted();\n    }",
+    "    bool begin() {\n"
+    "        return ensureStarted();\n"
+    "    }\n\n"
+    "    TaskHandle_t taskHandleForMemoryBaseline() const {\n"
+    "        return player_.memoryBaselineTaskHandle();\n"
+    "    }",
+    "lazy SMF accessor",
+)
+replace_once(
+    registry_cpp_path,
+    "bool beginCardputerSmfPlayerService() {\n    return g_smfPlayer.begin();\n}\n",
+    "bool beginCardputerSmfPlayerService() {\n"
+    "    return g_smfPlayer.begin();\n"
+    "}\n\n"
+    "TaskHandle_t cardputerSmfPlayerTaskHandleForMemoryBaseline() {\n"
+    "    return g_smfPlayer.taskHandleForMemoryBaseline();\n"
+    "}\n",
+    "SMF registry accessor definition",
+)
+
+replace_once(
+    transport_header_path,
+    "#include <cstdint>\n",
+    "#include <cstdint>\n"
+    "#include <freertos/FreeRTOS.h>\n"
+    "#include <freertos/task.h>\n",
+    "dispatcher FreeRTOS includes",
+)
+transport_header_text = transport_header_path.read_text(encoding="utf-8")
+transport_header_path.write_text(
+    transport_header_text
+    + "\nTaskHandle_t cardputerMidiDispatchTaskHandleForMemoryBaseline();\n",
+    encoding="utf-8",
+)
+transport_cpp_text = transport_cpp_path.read_text(encoding="utf-8")
+transport_cpp_path.write_text(
+    transport_cpp_text
+    + "\nTaskHandle_t cardputerMidiDispatchTaskHandleForMemoryBaseline() {\n"
+      "    return g_dispatchTaskHandle;\n"
+      "}\n",
+    encoding="utf-8",
+)
+
+text = ino_path.read_text(encoding="utf-8")
+include_anchor = '#include "src/platform/cardputer_smf_player_registry.h"\n'
+include_replacement = (
+    include_anchor
+    + '#include "src/platform/cardputer_usb_midi_transport.h"\n'
+)
+if text.count(include_anchor) != 1:
+    raise SystemExit("memory baseline instrumentation: SMF registry include anchor mismatch")
+text = text.replace(include_anchor, include_replacement, 1)
 
 state_anchor = "static uint32_t g_peakUiDrawUs = 0;\n"
 state_injection = r'''static uint32_t g_peakUiDrawUs = 0;
@@ -20,15 +118,6 @@ static uint32_t g_memoryBaselineMinFreeInternal8 = 0xFFFFFFFFu;
 static uint32_t g_memoryBaselineMinLargestInternal8 = 0xFFFFFFFFu;
 static uint32_t g_memoryBaselineLastSampleMs = 0;
 static uint32_t g_memoryBaselineLastLogMs = 0;
-
-static TaskHandle_t findMemoryBaselineTask(const char* name) {
-#if defined(INCLUDE_xTaskGetHandle) && INCLUDE_xTaskGetHandle == 1
-  return xTaskGetHandle(name);
-#else
-  (void)name;
-  return nullptr;
-#endif
-}
 
 static void sampleCardputerMemoryBaseline() {
   const uint32_t free8 = heap_caps_get_free_size(MALLOC_CAP_8BIT);
@@ -64,8 +153,10 @@ static void logCardputerMemoryBaseline(const char* phase) {
   const uint32_t minFreeInternal8Boot = heap_caps_get_minimum_free_size(
       MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
 
-  const TaskHandle_t smfTask = findMemoryBaselineTask("SmfPlayerTask");
-  const TaskHandle_t dispatchTask = findMemoryBaselineTask("MidiDispatchTask");
+  const TaskHandle_t smfTask =
+      cardputerSmfPlayerTaskHandleForMemoryBaseline();
+  const TaskHandle_t dispatchTask =
+      cardputerMidiDispatchTaskHandleForMemoryBaseline();
   const UBaseType_t loopStackFreeBytes = uxTaskGetStackHighWaterMark(nullptr);
   const UBaseType_t audioStackFreeBytes = g_audioTaskHandle
       ? uxTaskGetStackHighWaterMark(g_audioTaskHandle)
@@ -158,4 +249,4 @@ for anchor, replacement, label in (
             f"memory baseline instrumentation: expected one {label} anchor, found {count}")
     text = text.replace(anchor, replacement, 1)
 
-path.write_text(text, encoding="utf-8")
+ino_path.write_text(text, encoding="utf-8")
