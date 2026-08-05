@@ -16,6 +16,9 @@ def main() -> None:
     profile_cpp = (ROOT / "src/midi/smf_track_route_profile.cpp").read_text(
         encoding="utf-8"
     )
+    runtime_h = (ROOT / "src/midi/smf_track_route_profile_runtime.h").read_text(
+        encoding="utf-8"
+    )
     routes = (ROOT / "src/midi/smf_track_output_route.h").read_text(
         encoding="utf-8"
     )
@@ -26,6 +29,13 @@ def main() -> None:
     player_cpp = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(
         encoding="utf-8"
     )
+    platform_h = (ROOT / "src/platform/cardputer_smf_route_persistence.h").read_text(
+        encoding="utf-8"
+    )
+    platform_cpp = (ROOT / "src/platform/cardputer_smf_route_persistence.cpp").read_text(
+        encoding="utf-8"
+    )
+    display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
     hub = (ROOT / "src/ui/pages/sequencer_hub_page_midi.cpp").read_text(
         encoding="utf-8"
     )
@@ -72,23 +82,60 @@ def main() -> None:
         "restored routes must be published as one generation-aware bounded mutation",
     )
     require(
+        "std::atomic_flag lock_" in runtime_h
+        and "requestLoad(" in runtime_h
+        and "takeLoadRequest(" in runtime_h
+        and "completeLoad(" in runtime_h
+        and "requestSave(" in runtime_h
+        and "takeSaveRequest(" in runtime_h,
+        "player and persistence service must communicate through one fixed mailbox",
+    )
+    for forbidden in ("std::vector", "new ", "malloc", "free("):
+        require(
+            forbidden not in runtime_h,
+            f"route persistence mailbox must not allocate dynamically: {forbidden}",
+        )
+
+    require(
         "persistTrackOutputRoutes(uint32_t generation)" in service
         and "persistTrackOutputRoutes(uint32_t generation) override" in player_h
-        and "CommandType::PersistTrackRoutes" in player_cpp,
-        "NVS writes must be queued to the player task rather than performed by the UI",
+        and "smfTrackRouteProfileRuntime().requestSave(generation)" in player_cpp,
+        "a Hub save must publish a bounded request without NVS work in SmfPlayerTask",
     )
     require(
         "SmfTrackRouteFingerprint routeFingerprint(" in player_cpp
         and "routeFingerprint.observe(event);" in player_cpp
-        and "SmfTrackRouteProfilePersistence persistence(" in player_cpp
-        and "routeProfileIdentity_ = routeFingerprint.identity();" in player_cpp,
-        "Cardputer load must restore the profile after the existing full parse",
+        and "smfTrackRouteProfileRuntime().requestLoad(" in player_cpp
+        and "smfTrackRouteProfileRuntime().readyFor(routeGeneration)" in player_cpp
+        and "ROUTES SYNCING" in player_cpp,
+        "Cardputer load must publish identity after the existing pass and gate playback until restore",
+    )
+    for forbidden in ("Preferences", "putBytes", "getBytes", "smf_route_"):
+        require(
+            forbidden not in player_cpp,
+            f"SmfPlayerTask must not execute NVS persistence: {forbidden}",
+        )
+    require(
+        "PersistTrackRoutes" not in player_h
+        and "PersistTrackRoutes" not in player_cpp,
+        "route persistence must not be added to the SmfPlayerTask command queue",
+    )
+
+    require(
+        "#ifdef ARDUINO" in platform_h
+        and "serviceCardputerSmfRoutePersistence" in platform_h
+        and "Preferences" in platform_cpp
+        and "kSmfTrackRouteProfileSlotCount" in platform_cpp
+        and "smf_route_%02u" in platform_cpp
+        and "takeLoadRequest" in platform_cpp
+        and "takeSaveRequest" in platform_cpp
+        and "replaceDestinations" in platform_cpp,
+        "the deferred platform persistence service must own the bounded NVS bank",
     )
     require(
-        "Preferences" in player_cpp
-        and "kSmfTrackRouteProfileSlotCount" in player_cpp
-        and "smf_route_" in player_cpp,
-        "Cardputer storage must use a bounded set of NVS records",
+        "cardputer_smf_route_persistence.h" in display
+        and "serviceCardputerSmfRoutePersistence();" in display,
+        "the root UI persistence loop must service route mailboxes outside SmfPlayerTask",
     )
     require(
         "service->persistTrackOutputRoutes(projection.generation)" in hub,
@@ -97,7 +144,7 @@ def main() -> None:
     for forbidden in ("Preferences", "SD.", "putBytes", "getBytes"):
         require(
             forbidden not in hub,
-            f"HUB UI must not own persistence or SD access: {forbidden}",
+            f"HUB page must not own persistence or SD access: {forbidden}",
         )
 
     print("SMF route persistence source regressions: OK")
