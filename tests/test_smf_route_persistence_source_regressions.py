@@ -82,7 +82,9 @@ def main() -> None:
         "restored routes must be published as one generation-aware bounded mutation",
     )
     require(
-        "std::atomic_flag lock_" in runtime_h
+        "portMUX_TYPE lock_" in runtime_h
+        and "portENTER_CRITICAL(&runtime_.lock_)" in runtime_h
+        and "portEXIT_CRITICAL(&runtime_.lock_)" in runtime_h
         and "requestLoad(" in runtime_h
         and "takeLoadRequest(" in runtime_h
         and "completeLoad(" in runtime_h

@@ -2,8 +2,14 @@
 #ifndef GROOVEPUTER_SMF_TRACK_ROUTE_PROFILE_RUNTIME_H
 #define GROOVEPUTER_SMF_TRACK_ROUTE_PROFILE_RUNTIME_H
 
-#include <atomic>
 #include <cstdint>
+
+#if defined(ESP32) || defined(ESP_PLATFORM)
+#include <freertos/FreeRTOS.h>
+#include <freertos/portmacro.h>
+#else
+#include <mutex>
+#endif
 
 #include "smf_track_route_profile.h"
 
@@ -72,9 +78,19 @@ private:
     public:
         explicit Guard(const SmfTrackRouteProfileRuntime& runtime)
             : runtime_(runtime) {
-            while (runtime_.lock_.test_and_set(std::memory_order_acquire)) {}
+#if defined(ESP32) || defined(ESP_PLATFORM)
+            portENTER_CRITICAL(&runtime_.lock_);
+#else
+            runtime_.lock_.lock();
+#endif
         }
-        ~Guard() { runtime_.lock_.clear(std::memory_order_release); }
+        ~Guard() {
+#if defined(ESP32) || defined(ESP_PLATFORM)
+            portEXIT_CRITICAL(&runtime_.lock_);
+#else
+            runtime_.lock_.unlock();
+#endif
+        }
 
         Guard(const Guard&) = delete;
         Guard& operator=(const Guard&) = delete;
@@ -83,7 +99,11 @@ private:
         const SmfTrackRouteProfileRuntime& runtime_;
     };
 
-    mutable std::atomic_flag lock_ = ATOMIC_FLAG_INIT;
+#if defined(ESP32) || defined(ESP_PLATFORM)
+    mutable portMUX_TYPE lock_ = portMUX_INITIALIZER_UNLOCKED;
+#else
+    mutable std::mutex lock_;
+#endif
     SmfTrackRouteProfileIdentity identity_{};
     uint32_t identityGeneration_{0u};
     uint32_t readyGeneration_{0u};
