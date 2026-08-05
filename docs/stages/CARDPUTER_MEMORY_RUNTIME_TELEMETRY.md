@@ -40,8 +40,9 @@ interchangeable pool.
 
 The temporary runtime source injects direct runtime-only accessors for the
 `SmfPlayerTask` and `MidiDispatchTask` handles. It does not rely on optional
-`xTaskGetHandle()` name lookup or alter the product source/ELF. A zero watermark
-is interpreted only together with the corresponding `TaskPresent` field.
+task-name lookup, import the TinyUSB transport header into the main sketch, or
+alter the product source/ELF. A zero watermark is interpreted only together
+with the corresponding `TaskPresent` field.
 
 ## Capability separation
 
@@ -57,29 +58,48 @@ stable 5–10 second idle window from the log as the runtime baseline.
 
 ## TinyUSB class-buffer investigation
 
-The current product inventory contains these candidates outside GroovePuter's
-MIDI product logic:
+The current normal and MIDI-only product linker maps both attribute these
+objects to the pinned prebuilt TinyUSB archive:
 
 ```text
-ncm_epbuf       6416 B
-_mscd_epbuf     4096 B
-_dfu_epbuf      4096 B
+_mscd_epbuf  4096 B  libarduino_tinyusb.a(msc_device.c.obj)
+_dfu_epbuf   4096 B  libarduino_tinyusb.a(dfu_device.c.obj)
+ncm_epbuf    6416 B  libarduino_tinyusb.a(ncm_device.c.obj)
+                         total: 14608 B
 ```
 
-They are not removed in PR #70. Product builds now print linker-map evidence and
-generated/installed configuration evidence for `CFG_TUD_*` and
-`CONFIG_TINYUSB_*` controls. A class can be disabled only after all of the
+The pinned M5Stack ESP32 Arduino libs configuration contains:
+
+```text
+CONFIG_TINYUSB_MSC_ENABLED=y
+CONFIG_TINYUSB_MSC_BUFSIZE=4096
+CONFIG_TINYUSB_DFU_RT_ENABLED=y
+CONFIG_TINYUSB_DFU_ENABLED=y
+CONFIG_TINYUSB_DFU_BUFSIZE=4096
+CONFIG_TINYUSB_NCM_ENABLED=y
+```
+
+Its TinyUSB configuration maps these values to `CFG_TUD_MSC`,
+`CFG_TUD_DFU_RUNTIME`, `CFG_TUD_DFU`, `CFG_TUD_NCM`,
+`CFG_TUD_MSC_BUFSIZE`, and `CFG_TUD_DFU_XFER_BUFSIZE`.
+
+This confirms that the candidate bytes are real and compiled into the prebuilt
+core archive in both product profiles. It also means that removing them is not
+assumed to be a sketch-only or ordinary FQBN toggle: the likely experiment is a
+custom/rebuilt Arduino core or SDK configuration with those classes disabled.
+That conclusion must be verified by an isolated build experiment.
+
+They are not removed in PR #70. A class can be disabled only after all of the
 following are proven:
 
-1. the exact controlling compile-time option is identified for the pinned
-   M5Stack core;
+1. the exact controlling build configuration is changed in a reproducible core;
 2. a product ELF proves the expected bytes disappeared;
 3. normal CDC+MIDI still enumerates and transfers MIDI;
 4. MIDI-only still enumerates and transfers MIDI;
 5. upload/recovery behavior required by Cardputer is unchanged.
 
 This is a lower-risk optimization candidate than moving Scene storage, but it is
-still a separate configuration experiment and not part of the runtime-baseline
+still a separate toolchain/configuration PR and not part of the runtime-baseline
 measurement itself.
 
 ## Current boundary audit
