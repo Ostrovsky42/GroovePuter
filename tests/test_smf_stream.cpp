@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "src/midi/smf_stream.h"
+#include "src/midi/smf_structural_inspector.h"
 #include "src/midi/smf_track_inspector.h"
 #include "src/midi/smf_track_mute.h"
 
@@ -148,6 +149,18 @@ int main() {
     assert(events[6].event.kind == SmfEventKind::ProgramChange);
     assert(events[6].event.data1 == 10);
 
+    const SmfStructuralInspectorSnapshot structure =
+        smfStructuralInspectorState().snapshot();
+    assert(structure.layerCount == 1);
+    assert(structure.layers[0].trackIndex == 1);
+    assert(structure.layers[0].noteCount == 2);
+    assert(structure.layers[0].minNote == 60);
+    assert(structure.layers[0].maxNote == 64);
+    assert(structure.layers[0].form[0] > 0);
+    for (uint8_t segment = 1; segment < kSmfStructuralFormSegments; ++segment) {
+        assert(structure.layers[0].form[segment] == 0);
+    }
+
     uint32_t musicStart = 0;
     bool foundMusic = false;
     for (const SmfStreamEvent& item : events) {
@@ -212,6 +225,34 @@ int main() {
     assert(largeInspector.tracksTruncated());
     assert(!largeStream.next(event));
     assert(largeStream.ended());
+
+    // The arrangement projection is normalized across the actual analyzed
+    // length, so a 200-bar file still addresses all sixteen display segments.
+    SmfStructuralInspectorState arrangement;
+    arrangement.reset(96, 1);
+    const uint16_t bars[] = {0u, 50u, 100u, 150u, 199u};
+    for (uint16_t bar : bars) {
+        SmfEvent note{};
+        note.tick = static_cast<uint32_t>(bar) * 384u;
+        note.kind = SmfEventKind::NoteOn;
+        note.channel = 0u;
+        note.data1 = static_cast<uint8_t>(48u + (bar % 24u));
+        note.data2 = 100u;
+        arrangement.observe(0u, note);
+        note.kind = SmfEventKind::NoteOff;
+        note.tick += 96u;
+        arrangement.observe(0u, note);
+    }
+    arrangement.finalize();
+    const SmfStructuralInspectorSnapshot normalized = arrangement.snapshot();
+    assert(normalized.analyzedBars == 200u);
+    assert(normalized.layerCount == 1u);
+    assert(normalized.layers[0].noteCount == 5u);
+    assert(normalized.layers[0].form[0] > 0u);
+    assert(normalized.layers[0].form[4] > 0u);
+    assert(normalized.layers[0].form[8] > 0u);
+    assert(normalized.layers[0].form[12] > 0u);
+    assert(normalized.layers[0].form[15] > 0u);
 
     return 0;
 }

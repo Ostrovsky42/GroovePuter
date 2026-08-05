@@ -14,7 +14,8 @@
 namespace GroovePuterMidi {
 
 constexpr std::size_t kSmfStructuralMaxLayers = 9;
-constexpr uint16_t kSmfStructuralBarLimit = 64;
+constexpr uint16_t kSmfStructuralBarLimit = 256;
+constexpr uint8_t kSmfStructuralFormSegments = 16;
 
 enum class SmfStructuralRole : uint8_t {
     Other = 0,
@@ -57,6 +58,7 @@ struct SmfStructuralLayerSnapshot {
     uint16_t channelMask{0};
     uint16_t notesPerBarX10{0};
     uint16_t activePermille{0};
+    uint16_t noteCount{0};
     uint8_t gridDenominator{0};
     uint8_t loopBars{0};
     uint8_t swingPercent{50};
@@ -67,9 +69,9 @@ struct SmfStructuralLayerSnapshot {
     uint8_t overlapLeadPercent{0};
     SmfStructuralRole role{SmfStructuralRole::Other};
     SmfStructuralMotion motion{SmfStructuralMotion::Low};
-    uint8_t form[4]{};
+    uint8_t form[kSmfStructuralFormSegments]{};
 
-    bool hasNotes() const { return notesPerBarX10 != 0; }
+    bool hasNotes() const { return noteCount != 0; }
 };
 
 struct SmfStructuralInspectorSnapshot {
@@ -94,7 +96,7 @@ public:
         finalized_ = false;
         for (std::size_t i = 0; i < kSmfStructuralMaxLayers; ++i) {
             accum_[i] = LayerAccumulator{};
-            for (uint8_t word = 0; word < 4u; ++word) {
+            for (uint8_t word = 0; word < kPublishedWordsPerLayer; ++word) {
                 publishedWords_[i][word].store(0u, std::memory_order_relaxed);
             }
         }
@@ -181,6 +183,7 @@ public:
             SmfStructuralLayerSnapshot& out = result.layers[i];
             out.trackIndex = source.trackIndex;
             out.channelMask = source.channelMask;
+            out.noteCount = source.noteCount;
             out.minNote = source.hasNotes() ? source.minNote : 0u;
             out.maxNote = source.hasNotes() ? source.maxNote : 0u;
             out.maxPolyphony = source.maxPolyphony;
@@ -203,18 +206,7 @@ public:
             out.loopBars = inferLoop(source);
             out.swingPercent = inferSwing(source, out.gridDenominator);
             out.motion = inferMotion(source);
-
-            uint8_t formMax = 1u;
-            for (uint8_t bin = 0; bin < 4u; ++bin) {
-                if (source.formNotes[bin] > formMax) {
-                    formMax = source.formNotes[bin];
-                }
-            }
-            for (uint8_t bin = 0; bin < 4u; ++bin) {
-                out.form[bin] = static_cast<uint8_t>(
-                    (static_cast<uint16_t>(source.formNotes[bin]) * 8u) /
-                    formMax);
-            }
+            buildNormalizedForm(source, result.analyzedBars, out.form);
         }
 
         assignRolesAndOverlap(result);
@@ -234,9 +226,9 @@ public:
             const uint32_t meta =
                 publishedMeta_.load(std::memory_order_relaxed);
             out.sourceTrackCount = static_cast<uint16_t>(meta & 0x7Fu);
-            out.analyzedBars = static_cast<uint16_t>((meta >> 7u) & 0x7Fu);
-            out.layerCount = static_cast<uint8_t>((meta >> 14u) & 0x0Fu);
-            out.partial = ((meta >> 18u) & 1u) != 0u;
+            out.analyzedBars = static_cast<uint16_t>((meta >> 7u) & 0x01FFu);
+            out.layerCount = static_cast<uint8_t>((meta >> 16u) & 0x0Fu);
+            out.partial = ((meta >> 20u) & 1u) != 0u;
             if (out.layerCount > kSmfStructuralMaxLayers) {
                 out.layerCount = static_cast<uint8_t>(kSmfStructuralMaxLayers);
             }
@@ -256,6 +248,7 @@ public:
 private:
     static constexpr uint8_t kGridCount = 3u;
     static constexpr uint8_t kHashBars = 8u;
+    static constexpr uint8_t kPublishedWordsPerLayer = 6u;
 
     struct LayerAccumulator {
         uint32_t lastTick{0};
@@ -267,7 +260,9 @@ private:
         uint8_t trackIndex{0};
         uint8_t activeCount{0};
         uint8_t maxPolyphony{0};
-        uint8_t formNotes[4]{};
+        // Two saturating four-bit bar counters per byte keep the normalized
+        // form exact for 256 bars without spending 2.3 KiB on byte counters.
+        uint8_t barActivity[(kSmfStructuralBarLimit + 1u) / 2u]{};
         uint8_t swingMean[kGridCount]{50u, 50u, 50u};
         uint8_t swingSamples[kGridCount]{};
         uint8_t minNote{127};
@@ -358,9 +353,8 @@ private:
         if (event.data1 < layer.minNote) layer.minNote = event.data1;
         if (event.data1 > layer.maxNote) layer.maxNote = event.data1;
 
-        const uint8_t formBin = static_cast<uint8_t>(bar32 / 16u);
-        if (formBin < 4u && layer.formNotes[formBin] != 255u) {
-            ++layer.formNotes[formBin];
+        if (bar32 < kSmfStructuralBarLimit) {
+            incrementBarNote(layer, static_cast<uint16_t>(bar32));
         }
 
         const uint32_t position = event.tick % ticksPerBar_;
@@ -428,6 +422,23 @@ private:
             mean = static_cast<uint8_t>(
                 (static_cast<uint16_t>(mean) * 7u + percent) / 8u);
         }
+    }
+
+    static uint8_t barNoteCount(const LayerAccumulator& layer, uint16_t bar) {
+        const uint8_t packed = layer.barActivity[bar / 2u];
+        return (bar & 1u) == 0u
+            ? static_cast<uint8_t>(packed & 0x0Fu)
+            : static_cast<uint8_t>((packed >> 4u) & 0x0Fu);
+    }
+
+    static void incrementBarNote(LayerAccumulator& layer, uint16_t bar) {
+        uint8_t& packed = layer.barActivity[bar / 2u];
+        const uint8_t shift = (bar & 1u) == 0u ? 0u : 4u;
+        const uint8_t count = static_cast<uint8_t>((packed >> shift) & 0x0Fu);
+        if (count == 0x0Fu) return;
+        packed = static_cast<uint8_t>(
+            (packed & static_cast<uint8_t>(~(0x0Fu << shift))) |
+            static_cast<uint8_t>((count + 1u) << shift));
     }
 
     static uint8_t inferGrid(const LayerAccumulator& layer) {
@@ -501,6 +512,44 @@ private:
         return end > start ? end - start : ticksPerBar_;
     }
 
+    static void buildNormalizedForm(const LayerAccumulator& layer,
+                                    uint16_t analyzedBars,
+                                    uint8_t* output) {
+        uint16_t segmentNotes[kSmfStructuralFormSegments]{};
+        const uint16_t bars = analyzedBars == 0u ? 1u : analyzedBars;
+        const uint16_t boundedBars = bars > kSmfStructuralBarLimit
+            ? kSmfStructuralBarLimit
+            : bars;
+        uint16_t formMax = 0u;
+        for (uint16_t bar = 0u; bar < boundedBars; ++bar) {
+            const uint8_t count = barNoteCount(layer, bar);
+            if (count == 0u) continue;
+            uint8_t segment = static_cast<uint8_t>(
+                (static_cast<uint32_t>(bar) * kSmfStructuralFormSegments) /
+                bars);
+            if (segment >= kSmfStructuralFormSegments) {
+                segment = kSmfStructuralFormSegments - 1u;
+            }
+            const uint32_t combined =
+                static_cast<uint32_t>(segmentNotes[segment]) + count;
+            segmentNotes[segment] = saturatingU16(combined);
+            if (segmentNotes[segment] > formMax) formMax = segmentNotes[segment];
+        }
+
+        for (uint8_t segment = 0u;
+             segment < kSmfStructuralFormSegments;
+             ++segment) {
+            if (segmentNotes[segment] == 0u || formMax == 0u) {
+                output[segment] = 0u;
+                continue;
+            }
+            output[segment] = static_cast<uint8_t>(1u +
+                (static_cast<uint32_t>(segmentNotes[segment]) * 7u) /
+                formMax);
+            if (output[segment] > 8u) output[segment] = 8u;
+        }
+    }
+
     static uint8_t overlapPercent(const SmfStructuralLayerSnapshot& a,
                                   const SmfStructuralLayerSnapshot& b) {
         if (!a.hasNotes() || !b.hasNotes()) return 0u;
@@ -570,9 +619,9 @@ private:
         }
         const uint32_t meta =
             (static_cast<uint32_t>(data.sourceTrackCount & 0x7Fu)) |
-            (static_cast<uint32_t>(data.analyzedBars & 0x7Fu) << 7u) |
-            (static_cast<uint32_t>(data.layerCount & 0x0Fu) << 14u) |
-            (data.partial ? (uint32_t{1} << 18u) : 0u);
+            (static_cast<uint32_t>(data.analyzedBars & 0x01FFu) << 7u) |
+            (static_cast<uint32_t>(data.layerCount & 0x0Fu) << 16u) |
+            (data.partial ? (uint32_t{1} << 20u) : 0u);
         publishedMeta_.store(meta, std::memory_order_relaxed);
         endPublish();
     }
@@ -596,14 +645,21 @@ private:
             (static_cast<uint32_t>(layer.overlapChordsPercent & 0x7Fu) << 22u);
         const uint32_t word3 =
             static_cast<uint32_t>(layer.overlapLeadPercent & 0x7Fu) |
-            (static_cast<uint32_t>(layer.form[0] & 0x0Fu) << 7u) |
-            (static_cast<uint32_t>(layer.form[1] & 0x0Fu) << 11u) |
-            (static_cast<uint32_t>(layer.form[2] & 0x0Fu) << 15u) |
-            (static_cast<uint32_t>(layer.form[3] & 0x0Fu) << 19u);
+            (static_cast<uint32_t>(layer.noteCount) << 7u);
+        uint32_t word4 = 0u;
+        uint32_t word5 = 0u;
+        for (uint8_t segment = 0u; segment < 8u; ++segment) {
+            word4 |= static_cast<uint32_t>(layer.form[segment] & 0x0Fu)
+                     << (segment * 4u);
+            word5 |= static_cast<uint32_t>(layer.form[segment + 8u] & 0x0Fu)
+                     << (segment * 4u);
+        }
         publishedWords_[index][0].store(word0, std::memory_order_relaxed);
         publishedWords_[index][1].store(word1, std::memory_order_relaxed);
         publishedWords_[index][2].store(word2, std::memory_order_relaxed);
         publishedWords_[index][3].store(word3, std::memory_order_relaxed);
+        publishedWords_[index][4].store(word4, std::memory_order_relaxed);
+        publishedWords_[index][5].store(word5, std::memory_order_relaxed);
     }
 
     SmfStructuralLayerSnapshot unpackLayer(uint8_t index) const {
@@ -612,6 +668,8 @@ private:
         const uint32_t word1 = publishedWords_[index][1].load(std::memory_order_relaxed);
         const uint32_t word2 = publishedWords_[index][2].load(std::memory_order_relaxed);
         const uint32_t word3 = publishedWords_[index][3].load(std::memory_order_relaxed);
+        const uint32_t word4 = publishedWords_[index][4].load(std::memory_order_relaxed);
+        const uint32_t word5 = publishedWords_[index][5].load(std::memory_order_relaxed);
         layer.trackIndex = static_cast<uint16_t>(word0 & 0x3Fu);
         layer.channelMask = static_cast<uint16_t>((word0 >> 6u) & 0xFFFFu);
         layer.gridDenominator = decodeGrid(static_cast<uint8_t>((word0 >> 22u) & 3u));
@@ -626,10 +684,13 @@ private:
         layer.maxPolyphony = static_cast<uint8_t>((word2 >> 14u) & 0xFFu);
         layer.overlapChordsPercent = static_cast<uint8_t>((word2 >> 22u) & 0x7Fu);
         layer.overlapLeadPercent = static_cast<uint8_t>(word3 & 0x7Fu);
-        layer.form[0] = static_cast<uint8_t>((word3 >> 7u) & 0x0Fu);
-        layer.form[1] = static_cast<uint8_t>((word3 >> 11u) & 0x0Fu);
-        layer.form[2] = static_cast<uint8_t>((word3 >> 15u) & 0x0Fu);
-        layer.form[3] = static_cast<uint8_t>((word3 >> 19u) & 0x0Fu);
+        layer.noteCount = static_cast<uint16_t>((word3 >> 7u) & 0xFFFFu);
+        for (uint8_t segment = 0u; segment < 8u; ++segment) {
+            layer.form[segment] = static_cast<uint8_t>(
+                (word4 >> (segment * 4u)) & 0x0Fu);
+            layer.form[segment + 8u] = static_cast<uint8_t>(
+                (word5 >> (segment * 4u)) & 0x0Fu);
+        }
         return layer;
     }
 
@@ -643,7 +704,8 @@ private:
     LayerAccumulator accum_[kSmfStructuralMaxLayers]{};
     std::atomic<uint32_t> sequence_{0};
     std::atomic<uint32_t> publishedMeta_{0};
-    std::atomic<uint32_t> publishedWords_[kSmfStructuralMaxLayers][4]{};
+    std::atomic<uint32_t>
+        publishedWords_[kSmfStructuralMaxLayers][kPublishedWordsPerLayer]{};
 };
 
 inline SmfStructuralInspectorState& smfStructuralInspectorState() {
@@ -651,7 +713,7 @@ inline SmfStructuralInspectorState& smfStructuralInspectorState() {
     return state;
 }
 
-static_assert(sizeof(SmfStructuralInspectorState) <= 680,
+static_assert(sizeof(SmfStructuralInspectorState) <= 2048,
               "SMF structural analysis state must remain bounded");
 
 }  // namespace GroovePuterMidi

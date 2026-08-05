@@ -60,6 +60,8 @@ class SmfPlayerPage final : public SmfPlayerPageBase {
 public:
     using SmfPlayerPageBase::SmfPlayerPageBase;
 
+    void onEnter(int context) override;
+    void onExit() override;
     bool handleEvent(UIEvent& event) override;
     void drawHeader(IGfx& gfx) override;
     void drawContent(IGfx& gfx) override;

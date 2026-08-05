@@ -5,7 +5,9 @@
 #include <cstdio>
 
 #include "../components/music_visuals.h"
+#include "../player_hub_navigation.h"
 #include "src/dsp/miniacid_engine.h"
+#include "src/midi/smf_session_generation.h"
 #include "src/midi/smf_structural_inspector.h"
 #include "src/midi/smf_track_inspector.h"
 #include "src/midi/smf_track_mute.h"
@@ -166,8 +168,61 @@ void drawTrackTruncationNotice(IGfx& gfx) {
 
 }  // namespace
 
+void SmfPlayerPage::onExit() {
+    PlayerHubNavigation::PlayerViewState& view =
+        PlayerHubNavigation::playerViewState();
+    view.generation = smfSessionGeneration();
+    view.channelInspectorScroll = channelInspectorScroll_;
+    view.browserVisible = browserVisible_;
+    view.performanceVisible = performanceVisible_;
+    view.channelInspectorVisible = channelInspectorVisible_;
+    view.muteMixerVisible = muteMixerVisible_;
+    view.structuralInspectorVisible = structuralInspectorVisible_;
+    view.valid = view.generation != 0u;
+}
+
+void SmfPlayerPage::onEnter(int context) {
+    SmfPlayerPageBase::onEnter(context);
+
+    PlayerHubNavigation::PlayerViewState& view =
+        PlayerHubNavigation::playerViewState();
+    const uint32_t generation = smfSessionGeneration();
+    if (!view.valid || generation == 0u || view.generation != generation) {
+        view.valid = false;
+        return;
+    }
+
+    browserVisible_ = view.browserVisible;
+    performanceVisible_ = view.performanceVisible;
+    channelInspectorVisible_ = view.channelInspectorVisible;
+    muteMixerVisible_ = view.muteMixerVisible;
+    channelInspectorScroll_ = view.channelInspectorScroll;
+    structuralInspectorVisible_ = view.structuralInspectorVisible;
+}
+
 bool SmfPlayerPage::handleEvent(UIEvent& event) {
     const bool numericMuteHotkey = event.key >= '1' && event.key <= '9';
+    const bool hubShortcut = event.key == 'h' || event.key == 'H';
+
+    // Cardputer can report the physical H key with the hardware/Fn meta bit.
+    // Give the loaded Player -> HUB MIDI shortcut first refusal before the
+    // generic modifier guard; Alt+H and Ctrl+H remain reserved for help.
+    if (event.event_type == GROOVEPUTER_KEY_DOWN && hubShortcut &&
+        !event.alt && !event.ctrl) {
+        player_ = smfPlayerService();
+        const SmfPlayerSnapshot state =
+            player_ ? player_->snapshot() : SmfPlayerSnapshot{};
+        const bool hasPlayerSession =
+            player_ && state.state != SmfPlayerState::Unloaded &&
+            state.state != SmfPlayerState::Error;
+        if (!browserVisible_ || hasPlayerSession) {
+            requestPageTransition(
+                PlayerHubNavigation::kHubPage,
+                PlayerHubNavigation::kOpenMidiFromPlayerContext);
+            return true;
+        }
+    }
+
     if (event.event_type != GROOVEPUTER_KEY_DOWN || event.alt || event.ctrl ||
         (event.meta && !numericMuteHotkey)) {
         return SmfPlayerPageBase::handleEvent(event);
@@ -235,11 +290,11 @@ void SmfPlayerPage::drawContent(IGfx& gfx) {
 void SmfPlayerPage::drawFooter(IGfx& gfx) {
     if (structuralInspectorVisible_) {
         UI::drawStandardFooter(gfx, "UP/DN Layer S/B Player",
-                               "1-9 Mute U Table I Channels");
+                               "H Hub 1-9 Mute U Table");
         return;
     }
     if (muteMixerVisible_) {
-        UI::drawStandardFooter(gfx, "UP/DN Select L/R Page",
+        UI::drawStandardFooter(gfx, "H Hub UP/DN Select",
                                "1-9 Hot ENT Sel A AllOn");
         return;
     }

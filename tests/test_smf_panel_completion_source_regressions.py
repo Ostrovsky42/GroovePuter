@@ -18,6 +18,19 @@ def function_block(source: str, start_token: str, end_token: str) -> str:
 def main() -> None:
     page_h = (ROOT / "src/ui/pages/smf_player_page.h").read_text(encoding="utf-8")
     page_cpp = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(encoding="utf-8")
+    page_wrapper = (ROOT / "src/ui/pages/smf_player_page_structural.cpp").read_text(
+        encoding="utf-8"
+    )
+    hub_h = (ROOT / "src/ui/pages/sequencer_hub_page.h").read_text(encoding="utf-8")
+    hub_cpp = (ROOT / "src/ui/pages/sequencer_hub_page_midi.cpp").read_text(
+        encoding="utf-8"
+    )
+    structural = (ROOT / "src/midi/smf_structural_inspector.h").read_text(
+        encoding="utf-8"
+    )
+    navigation = (ROOT / "src/ui/player_hub_navigation.h").read_text(
+        encoding="utf-8"
+    )
     manager_h = (ROOT / "src/ui/midi_file_manager.h").read_text(encoding="utf-8")
     manager_cpp = (ROOT / "src/ui/midi_file_manager.cpp").read_text(encoding="utf-8")
     player_service = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(encoding="utf-8")
@@ -77,6 +90,123 @@ def main() -> None:
             "active-seek SPP must use a latest-wins bounded mailbox")
     require("g_smfQueue->recordDispatched(pendingSmf)" in dispatcher,
             "track ownership must commit only after a successful USB write")
+
+    require(
+        "PlayerHubNavigation::kOpenMidiFromPlayerContext" in page_wrapper
+        and "requestPageTransition(" in page_wrapper
+        and "PlayerHubNavigation::kHubPage" in page_wrapper,
+        "MIDI Player must enter HUB MIDI through the existing page transition path",
+    )
+    hub_shortcut_pos = page_wrapper.index("const bool hubShortcut")
+    modifier_guard_pos = page_wrapper.index(
+        "if (event.event_type != GROOVEPUTER_KEY_DOWN || event.alt || event.ctrl"
+    )
+    require(
+        hub_shortcut_pos < modifier_guard_pos
+        and "!event.alt && !event.ctrl" in page_wrapper[hub_shortcut_pos:modifier_guard_pos]
+        and "hasPlayerSession" in page_wrapper[hub_shortcut_pos:modifier_guard_pos]
+        and "state.state != SmfPlayerState::Unloaded" in page_wrapper[hub_shortcut_pos:modifier_guard_pos]
+        and "state.state != SmfPlayerState::Error" in page_wrapper[hub_shortcut_pos:modifier_guard_pos],
+        "loaded Player H must get first refusal before generic meta filtering and global help",
+    )
+    require(
+        "void SmfPlayerPage::onExit()" in page_wrapper
+        and "void SmfPlayerPage::onEnter(int context)" in page_wrapper
+        and "PlayerHubNavigation::playerViewState()" in page_wrapper
+        and "view.generation = smfSessionGeneration()" in page_wrapper
+        and "view.generation != generation" in page_wrapper,
+        "Player view lifetime must be bounded and tied to the current SMF session",
+    )
+    require(
+        "struct PlayerViewState" in navigation
+        and "SmfPlayerSnapshot" not in navigation
+        and "SmfStructuralInspectorSnapshot" not in navigation,
+        "navigation lifetime state must not retain runtime MIDI snapshots",
+    )
+    require(
+        "void SequencerHubPage::onEnter(int context)" in hub_cpp
+        and "PlayerHubNavigation::kOpenMidiFromPlayerContext" in hub_cpp
+        and "requestPageTransition(PlayerHubNavigation::kPlayerPage)" in hub_cpp,
+        "HUB MIDI must return to Player without load or transport commands",
+    )
+    require(
+        "smfSnapshotGenerationsMatch(" in hub_cpp
+        and "smfSessionGeneration()" in hub_cpp
+        and "SYNCING" in hub_cpp,
+        "HUB MIDI must show SYNCING until all snapshots match the active session",
+    )
+    require(
+        "state.toggleTrack(track, projection.generation)" in hub_cpp
+        and "smfTrackMuteState().clear(projection.generation)" in hub_cpp,
+        "HUB MIDI mute commands must be generation-aware and use existing ownership",
+    )
+
+    hub_return_shortcut = hub_cpp.index("const bool hubShortcut")
+    hub_modifier_guard = hub_cpp.index("if (event.alt || event.ctrl || event.meta)")
+    require(
+        hub_return_shortcut < hub_modifier_guard
+        and "UIInput::isBack(event)" in hub_cpp[hub_return_shortcut:hub_modifier_guard]
+        and "returnFromMidiOverview();" in hub_cpp[hub_return_shortcut:hub_modifier_guard],
+        "HUB MIDI H/Escape return must precede the Cardputer meta guard",
+    )
+    require(
+        "constexpr uint8_t kVisibleMidiRows = 7u;" in hub_cpp
+        and "kSmfStructuralFormSegments" in hub_cpp
+        and "drawArrangementRow(" in hub_cpp
+        and "layer.form[segment]" in hub_cpp
+        and "arrangementPlayheadX(" in hub_cpp
+        and "drawOverlayBands(" in hub_cpp,
+        "HUB MIDI must render a full-bleed sixteen-segment arrangement overview",
+    )
+    require(
+        "kSmfStructuralFormSegments = 16" in structural
+        and "buildNormalizedForm(" in structural
+        and "barActivity[(kSmfStructuralBarLimit + 1u) / 2u]" in structural
+        and "noteCount" in structural,
+        "structural projection must supply bounded normalized form and footer metadata",
+    )
+    require(
+        "event.key == 'u'" not in hub_cpp
+        and "event.key == 'i'" not in hub_cpp
+        and "G%s SW%u" not in hub_cpp
+        and "P Player U Mixer I Chans" not in hub_cpp,
+        "HUB MIDI visual redesign must not change or duplicate Player inspectors",
+    )
+    require(
+        "smfTrackMuteState().selectTrack(" in hub_cpp
+        and "formatTrackChannel(" in hub_cpp
+        and "formatPitchRange(" in hub_cpp
+        and "%s N%u %s" in hub_cpp,
+        "HUB MIDI selection and readable footer must remain projected from existing state",
+    )
+    require(
+        "isSelected ? '>'" not in hub_cpp
+        and "isMuted ? \"MUTE\" : \"ON\"" not in hub_cpp,
+        "selected and muted layers must be expressed by row color rather than labels",
+    )
+    require(
+        "bool midiOverview_{false};" in hub_h
+        and "uint32_t midiGeneration_{0};" in hub_h,
+        "HUB MIDI navigation state must remain bounded and page-local",
+    )
+
+    for forbidden in (
+        "SD.",
+        "SmfFileIndexer",
+        "SmfScheduler",
+        "requestLoad(",
+        "seekBars(",
+        "restart(",
+        "->pause(",
+        "->stop(",
+        "tud_midi",
+        "TinyUSB",
+        "USBMIDI",
+    ):
+        require(
+            forbidden not in hub_cpp,
+            f"HUB MIDI navigation must not acquire file, transport or USB ownership: {forbidden}",
+        )
 
     print("SMF panel completion source regressions: OK")
 

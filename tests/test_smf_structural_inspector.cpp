@@ -121,6 +121,8 @@ int main() {
         assert(snapshot.layers[0].notesPerBarX10 == 160);
         assert(snapshot.layers[0].activePermille >= 499);
         assert(snapshot.layers[0].activePermille <= 501);
+        assert(snapshot.layers[0].noteCount == 64u);
+        assert(snapshot.layers[0].form[0] > 0u);
     }
 
     {
@@ -232,16 +234,16 @@ int main() {
     {
         SmfStructuralInspectorState state;
         state.reset(96, 1);
-        state.observe(0, note(64u * 384u, SmfEventKind::NoteOn, 0, 60));
+        state.observe(0, note(256u * 384u, SmfEventKind::NoteOn, 0, 60));
         state.finalize();
         const auto snapshot = state.snapshot();
         assert(snapshot.partial);
-        assert(snapshot.analyzedBars == 64);
+        assert(snapshot.analyzedBars == 256u);
     }
 
     static_assert(sizeof(SmfTrackInspectorState) <= 136,
                   "track metadata must fit the fixed-DRAM budget");
-    static_assert(sizeof(SmfStructuralInspectorState) <= 680,
-                  "structural state must fit the bounded global budget");
+    static_assert(sizeof(SmfStructuralInspectorState) <= 2048,
+                  "structural state must fit the bounded arrangement budget");
     return 0;
 }
