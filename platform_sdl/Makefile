@@ -80,6 +80,7 @@ SOURCES := \
 	../src/ui/pages/smf_player_page_structural.cpp \
 	../src/ui/pages/feel_texture_page.cpp \
 	../src/ui/pages/sequencer_hub_page.cpp \
+	../src/ui/pages/sequencer_hub_page_midi.cpp \
 	../src/ui/pages/settings_page.cpp \
 	../src/ui/pages/sampler_page.cpp \
 	../src/ui/pages/tape_page.cpp \

@@ -5,6 +5,7 @@
 // see the public method names; only smf_player_page.cpp is redirected to the
 // legacy/base method names by smf_player_page.h.
 #define GROOVEPUTER_SMF_PLAYER_WRAPPER_CONSUMER 1
+#define GROOVEPUTER_SEQUENCER_HUB_WRAPPER_CONSUMER 1
 
 #include <memory>
 

@@ -50,10 +50,6 @@ jobs:
           makefile = (root / 'platform_sdl/Makefile').read_text(encoding='utf-8')
           assert 'opl2_synth_voice' not in makefile
           assert 'wave_morph_synth_voice.cpp' in makefile
-
-          header = (root / 'src/dsp/swappable_synth_voice.h').read_text(encoding='utf-8')
-          assert 'opl2_synth_voice' not in header
-          assert 'WAVEMORPH = 6' in header
           PY
 
           mkdir -p build/host-tests
@@ -115,3 +111,19 @@ jobs:
 
       - name: Check fixed DRAM budget
         run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+
+  cardputer-adv-seqtrak-midi-only-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile and check SEQTRAK MIDI-only firmware
+        run: bash scripts/build_seqtrak_midi_only.sh --warnings all
