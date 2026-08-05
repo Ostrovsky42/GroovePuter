@@ -75,6 +75,30 @@ def main() -> None:
         "HUB MIDI All On must use the generation-aware existing mute state",
     )
     require(
+        "smfTrackMuteState().selectTrack(" in page
+        and "projection.generation" in page,
+        "HUB MIDI row selection must follow the existing generation-aware physical track",
+    )
+    require(
+        "event.key == 'u'" in page
+        and "event.key == 'i'" in page
+        and "configurePlayerPanel(" in page
+        and "PlayerHubNavigation::kReturnToPlayerContext" in page,
+        "HUB MIDI U/I must open the existing Player detail panels rather than duplicate them",
+    )
+    require(
+        "formatTrackChannel(" in page
+        and "formatDensity(" in page
+        and "P Player U Mixer I Chans" in page,
+        "HUB MIDI rows must expose channel, compact density and discoverable U/I detail links",
+    )
+    require(
+        "GROOVEPUTER_LEFT" in page
+        and "GROOVEPUTER_RIGHT" in page
+        and "kVisibleMidiRows" in page,
+        "HUB MIDI must page through long layer lists without adding retained storage",
+    )
+    require(
         "event.key == ' '" in page
         and "MIDI TRANSPORT: PLAYER" in page,
         "Space must be consumed with an explicit Player-owned transport message",
