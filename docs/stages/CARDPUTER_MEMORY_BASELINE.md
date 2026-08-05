@@ -103,10 +103,10 @@ commit. Workflow-dispatch runs use `github.sha`.
 
 ## Current immutable-head static baseline
 
-The first fully pinned product records were built from:
+The fully pinned product records were built from:
 
 ```text
-head  f90bfc4d2d35b1268887fb2484c270b913e08e5e
+head  e3c34bb8244265db1e936a660ec125449eed0c8d
 base  dev @ b43e23ff12fb0a31bcb77dd5ec57908889760013
 core  m5stack:esp32 3.2.2
 PSRAM disabled
@@ -114,14 +114,14 @@ PSRAM disabled
 
 ```text
 normal CDC+MIDI
-  ELF SHA-256  d960b1d8e74ec9c6875a81aafa5e99ce331b79fd057574beca0b6405de534e3c
+  ELF SHA-256  655d44adef79ed36bb1fc23eff923ae2c376c8fa06d11b55554503a2cec72916
   .dram0.data   22600 B
   .dram0.bss   147392 B
   fixed        169992 B
   comparison to provisional 191488: +21496 B
 
 MIDI-only
-  ELF SHA-256  e2309c6683a8ea9fbc2855af4affc7f96eccbfbc3cc5af70d6d00e5412ae972c
+  ELF SHA-256  a6798c9816e3f9255ad94ea6b85395139a6bb51fd2eacf5f9d719cfe0f2156ef
   .dram0.data   22584 B
   .dram0.bss   147336 B
   fixed        169920 B
@@ -130,7 +130,7 @@ MIDI-only
 profile delta: 72 B
 ```
 
-The runtime probes added `16 B` to the normal fixed total and `32 B` to the
+The runtime probes add `16 B` to the normal fixed total and `32 B` to the
 MIDI-only fixed total. This validates the decision not to use instrumented ELFs
 as exact product baselines.
 
@@ -154,9 +154,9 @@ normal:    147392 - 88240 = 59152 B
 MIDI-only: 147336 - 88240 = 59096 B
 ```
 
-Those bytes are not called unknown, free, or waste. The section reporter now
-uses `objdump -t` and the actual section name instead of treating every `nm`
-`B/b` symbol as `.dram0.bss`. For each ELF it prints:
+Those bytes are not called unknown, free, or waste. The section reporter uses
+`objdump -t` and the actual section name instead of treating every `nm` `B/b`
+symbol as `.dram0.bss`. For each ELF it prints:
 
 - every positive-size symbol located specifically in `.dram0.bss`;
 - exact address, size, and name, sorted by size;
@@ -168,8 +168,57 @@ uses `objdump -t` and the actual section name instead of treating every `nm`
 
 The machine summary includes `bss_symbol_coverage`,
 `bss_section_uncovered`, `bss_alias_overlap`, `candidate_bss`, and
-`candidate_outside`. Static attribution is closed only when the immutable-head
-product logs contain this inventory for both profiles.
+`candidate_outside`.
+
+The immutable-head product run at `e3c34bb8244265db1e936a660ec125449eed0c8d`
+closed this static inventory:
+
+```text
+normal product
+  .dram0.bss                 147392 B
+  shortlist coverage          88240 B
+  outside shortlist           59152 B
+  all symbol interval cover  147238 B
+  section bytes not covered      154 B
+  raw alias overlap              828 B
+  positive-size BSS symbols      436
+
+MIDI-only product
+  .dram0.bss                 147336 B
+  shortlist coverage          88240 B
+  outside shortlist           59096 B
+  all symbol interval cover  147186 B
+  section bytes not covered      150 B
+  raw alias overlap              828 B
+  positive-size BSS symbols      434
+```
+
+The `828 B` raw overlap is explained by two 92-byte newlib mutex objects that
+have multiple alias names: one interval has six names and the other five. The
+union-coverage calculation counts each storage interval once. The remaining
+`154 B` / `150 B` are section bytes outside positive-size named symbol
+intervals, not an unidentified 59 KB allocation.
+
+The largest objects outside the original shortlist are distributed rather than
+forming one hidden `Scene`:
+
+| Symbol | Size |
+|---|---:|
+| `ncm_epbuf` | 6416 B |
+| `g_output` | 4320 B |
+| `_mscd_epbuf` | 4096 B |
+| `_dfu_epbuf` | 4096 B |
+| `g_dispatchTaskStack` | 4096 B |
+| `sp12_clap` | 3000 B |
+| `g_sampleStore` | 2092 B |
+| `g_externalMidiTransportQueue` | 2076 B |
+| `sp12_kick` | 2000 B |
+| `sp12_snare` | 2000 B |
+
+These ten account for `34192 B`; the rest is spread across hundreds of smaller
+framework, UI, audio, USB, RTOS, and project symbols. The full ordered list is
+preserved in both workflow artifacts. Static `.dram0.bss` attribution is now
+closed for this head; runtime safety is not.
 
 No candidate is presumed waste. In particular, moving `s_tempLoadScene` to heap
 can reduce `.bss` while leaving peak physical RAM unchanged and requiring a
@@ -308,9 +357,10 @@ Post-line audit:
   in the diff.
 - **No TinyUSB, scheduler, RX, clock, note ownership, DSP, or UI behavior
   change:** PASS; no product implementation file is in the diff.
-- **Fail closed:** PASS at source level; scripts use `set -euo pipefail`, the
-  workflow uses `pipefail` around `tee`, and missing ELF/binutils/report errors
-  are non-zero. CI must still pass on the final head.
+- **Fail closed:** PASS; scripts use `set -euo pipefail`, the workflow uses
+  `pipefail` around `tee`, missing ELF/binutils/report errors are non-zero, and
+  the final source-contract, four baseline builds, Cardputer build/gate, host
+  tests, and SDL build all passed on `e3c34bb`.
 
 ## Decision after measurement
 
@@ -331,6 +381,6 @@ After exact BSS inventory, historical reconstruction, and the hardware matrix,
 - No TinyUSB, scheduler, RX, clock, note-ownership, DSP, or UI behavior change.
 - A missing ELF, missing binutils, failed report, or failure hidden behind
   `tee` must fail CI.
-- The PR remains draft until both product BSS inventories are captured and the
-  hardware checklist is either completed or explicitly left as a subsequent,
-  separately gated stage.
+- The two product BSS inventories are captured and the static ELF stage is
+  closed. The PR remains draft because the hardware/runtime threshold stage is
+  still open and `191488` remains a 4/7 exception.
