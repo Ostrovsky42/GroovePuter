@@ -46,11 +46,10 @@ contains the probes; the separate product ELF remains uninstrumented. A zero
 watermark is interpreted only together with the corresponding `TaskPresent`
 field.
 
-The completed firmware-bearing CI record at
-`59c4ec36d5a1f6b80a0fd5d387b3fb8557cab98f` built all four combinations and all
-Core regressions successfully. Later documentation/test-only commits do not
-change the injected firmware source, but each head is still rebuilt and must be
-green before it is used as the recorded hardware source SHA.
+The first completed firmware-bearing record with this telemetry is
+`59c4ec36d5a1f6b80a0fd5d387b3fb8557cab98f`: all four product/runtime profile
+builds and all Core regressions passed. Each later PR head is still rebuilt and
+must be green before it is used as the recorded hardware source SHA.
 
 ## Capability separation
 
