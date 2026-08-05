@@ -20,14 +20,31 @@ require('MAX_BYTES="${2:-191488}"' in gate,
         "the mandatory gate must use the provisional pre-122880 ceiling")
 require("not a universal hardware" in gate,
         "the provisional ceiling must not be presented as a hardware limit")
+require("explicit policy exception" in gate and "items 5-7" in gate,
+        "the provisional gate must expose its incomplete threshold-rule status")
+require("policy: provisional exception" in gate,
+        "every gate run must label the provisional exception")
 require("PROVISIONAL_GATE_BYTES=\"${PROVISIONAL_GATE_BYTES:-191488}\"" in report,
         "the report must retain the provisional 191488-byte reference")
 require("UNSUPPORTED_GATE_BYTES=\"${UNSUPPORTED_GATE_BYTES:-122880}\"" in report,
         "the report must preserve 122880 as an unsupported historical reference")
 require("MEMORY_BASELINE_IMAGE_KIND" in report and "kind=%s" in report,
         "every section report must identify product or runtime image kind")
-require("10#${size}" in report,
-        "zero-padded decimal nm sizes must not be interpreted as octal")
+require("OBJDUMP_TOOL" in report and '"${OBJDUMP_TOOL}" -t' in report,
+        "section attribution must use objdump symbol section names")
+require('{".dram0.data", ".dram0.bss"}' in report,
+        "the reporter must restrict attribution to exact fixed DRAM sections")
+require("Full .dram0.bss symbol inventory" in report,
+        "the reporter must print the complete positive-size BSS symbol inventory")
+for field in (
+    "bss_symbol_coverage",
+    "bss_section_uncovered",
+    "bss_alias_overlap",
+    "candidate_bss",
+    "candidate_outside",
+    "provisional_status=exception_unvalidated",
+):
+    require(field in report, f"missing machine-readable report field: {field}")
 require("exit 0" in report and "deliberately non-gating" in report,
         "the baseline report must not replace the product gate")
 
@@ -101,5 +118,22 @@ require("source commit" in doc_lower and "elf sha-256" in doc_lower and "full fq
         "the threshold policy must require reproducible build identity")
 require("no new numeric threshold" in doc_lower,
         "the baseline stage must prohibit unexplained threshold changes")
+require("full `.dram0.bss` attribution" in doc_lower and "59152" in doc and "59096" in doc,
+        "the document must disclose bytes outside the candidate shortlist")
+require("provisional `191488` self-audit" in doc_lower,
+        "the provisional value must be audited against its own threshold rule")
+require("passes **4 of 7**" in doc and doc.count("**MISSING**") >= 3,
+        "the self-audit must show that runtime, reserves, and derivation are missing")
+require("boundary audit" in doc_lower,
+        "the PR boundaries must be reviewed explicitly before merge")
+for path in (
+    ".github/workflows/cardputer-memory-baseline.yml",
+    "docs/stages/CARDPUTER_MEMORY_BASELINE.md",
+    "scripts/build_cardputer_memory_baseline.sh",
+    "scripts/check_cardputer_dram_budget.sh",
+    "scripts/report_cardputer_memory_baseline.sh",
+    "tests/test_cardputer_memory_baseline_source_regressions.py",
+):
+    require(path in doc, f"boundary audit is missing changed path: {path}")
 
 print("Cardputer memory baseline source regressions: PASS")
