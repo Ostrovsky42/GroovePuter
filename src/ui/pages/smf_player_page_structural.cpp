@@ -7,6 +7,7 @@
 #include "../components/music_visuals.h"
 #include "../player_hub_navigation.h"
 #include "src/dsp/miniacid_engine.h"
+#include "src/midi/smf_session_generation.h"
 #include "src/midi/smf_structural_inspector.h"
 #include "src/midi/smf_track_inspector.h"
 #include "src/midi/smf_track_mute.h"
@@ -166,6 +167,38 @@ void drawTrackTruncationNotice(IGfx& gfx) {
 }
 
 }  // namespace
+
+void SmfPlayerPage::onExit() {
+    PlayerHubNavigation::PlayerViewState& view =
+        PlayerHubNavigation::playerViewState();
+    view.generation = smfSessionGeneration();
+    view.channelInspectorScroll = channelInspectorScroll_;
+    view.browserVisible = browserVisible_;
+    view.performanceVisible = performanceVisible_;
+    view.channelInspectorVisible = channelInspectorVisible_;
+    view.muteMixerVisible = muteMixerVisible_;
+    view.structuralInspectorVisible = structuralInspectorVisible_;
+    view.valid = view.generation != 0u;
+}
+
+void SmfPlayerPage::onEnter(int context) {
+    SmfPlayerPageBase::onEnter(context);
+
+    PlayerHubNavigation::PlayerViewState& view =
+        PlayerHubNavigation::playerViewState();
+    const uint32_t generation = smfSessionGeneration();
+    if (!view.valid || generation == 0u || view.generation != generation) {
+        view.valid = false;
+        return;
+    }
+
+    browserVisible_ = view.browserVisible;
+    performanceVisible_ = view.performanceVisible;
+    channelInspectorVisible_ = view.channelInspectorVisible;
+    muteMixerVisible_ = view.muteMixerVisible;
+    channelInspectorScroll_ = view.channelInspectorScroll;
+    structuralInspectorVisible_ = view.structuralInspectorVisible;
+}
 
 bool SmfPlayerPage::handleEvent(UIEvent& event) {
     const bool numericMuteHotkey = event.key >= '1' && event.key <= '9';
