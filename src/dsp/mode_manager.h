@@ -24,6 +24,7 @@ public:
     void setGenerationSeed(uint32_t seed) {
         generationSeed_ = seed == 0 ? kFallbackGenerationSeed : seed;
     }
+    uint32_t generationSeed() const { return ensureGenerationSeed(); }
     void setModeLocal(GrooveboxMode mode) { currentMode_ = mode; }
     void setFlavorLocal(int flavor) {
         if (flavor < 0) flavor = 0;

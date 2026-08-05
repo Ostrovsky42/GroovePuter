@@ -6,6 +6,7 @@
 #include "../ui_colors.h"
 #include "../ui_utils.h"
 #include "../../dsp/pattern_generator.h"
+#include "../../dsp/song_pattern_materializer.h"
 #include "src/state/scene_revision.h"
 
 class SongPage : public IPage, public IMultiHelpFramesProvider {
@@ -103,10 +104,20 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
 
   // Pattern Generator
   SmartPatternGenerator::Mode gen_mode_;
-  SmartPatternGenerator generator_;
   bool show_genre_hint_;
   uint32_t hint_timer_;
   uint32_t last_g_press_ = 0; // For double-tap detection
+  struct PendingCellGeneration {
+    bool valid = false;
+    int row = 0;
+    int page = 0;
+    int songSlot = 0;
+    SongTrack track = SongTrack::SynthA;
+    int oldReference = -1;
+    int generatedReference = -1;
+    int oldSongLength = 1;
+    GroovePuterState::SceneRevisionState revisionBefore{};
+  } pending_cell_generation_;
   uint32_t last_ctrl_r_event_ms_ = 0;
   uint32_t ctrl_r_hold_start_ms_ = 0;
   bool ctrl_r_long_fired_ = false;
@@ -114,8 +125,10 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   bool split_compare_ = true;       // single-pane editor by default
   int row_markers_[4] = {-1, -1, -1, -1};
 
-  bool generateCurrentCellPattern();
-  void generateEntireRow();
+  SongPatternMaterializer::Result materializeSongTracks(int row, uint8_t trackMask);
+  bool generateCurrentCellPattern(bool rememberForDoubleTap = false);
+  bool rollbackPendingCellGeneration(int row);
+  bool generateEntireRow();
   void cycleGeneratorMode();
   void drawGeneratorHint(IGfx& gfx);
 
