@@ -114,6 +114,105 @@ uint8_t UsbMidiOutput::clampDataByte(uint8_t value) {
     return value > 127 ? 127 : value;
 }
 
+int UsbMidiOutput::generatedTargetIndex(MusicalEventTarget target) {
+    switch (target) {
+        case MusicalEventTarget::SynthA: return 0;
+        case MusicalEventTarget::SynthB: return 1;
+        case MusicalEventTarget::Dx: return 2;
+        case MusicalEventTarget::Drums: break;
+    }
+    return -1;
+}
+
+uint8_t UsbMidiOutput::generatedChannel(MusicalEventTarget target) const {
+    switch (target) {
+        case MusicalEventTarget::SynthA:
+            return clampChannel(config_.performanceSynthAChannel);
+        case MusicalEventTarget::SynthB:
+            return clampChannel(config_.performanceSynthBChannel);
+        case MusicalEventTarget::Dx:
+            return clampChannel(config_.performanceDxChannel);
+        case MusicalEventTarget::Drums:
+            break;
+    }
+    return 0;
+}
+
+bool UsbMidiOutput::generatedNoteActive(int targetIndex, uint8_t note) const {
+    if (targetIndex < 0 ||
+        targetIndex >= static_cast<int>(kGeneratedTargetCount)) {
+        return false;
+    }
+    note = clampDataByte(note);
+    const std::size_t byteIndex = static_cast<std::size_t>(note >> 3u);
+    const uint8_t mask = static_cast<uint8_t>(1u << (note & 7u));
+    return (generatedActive_[targetIndex][byteIndex] & mask) != 0u;
+}
+
+bool UsbMidiOutput::generatedNotePendingRelease(int targetIndex,
+                                                uint8_t note) const {
+    if (targetIndex < 0 ||
+        targetIndex >= static_cast<int>(kGeneratedTargetCount)) {
+        return false;
+    }
+    note = clampDataByte(note);
+    const std::size_t byteIndex = static_cast<std::size_t>(note >> 3u);
+    const uint8_t mask = static_cast<uint8_t>(1u << (note & 7u));
+    return (generatedPendingRelease_[targetIndex][byteIndex] & mask) != 0u;
+}
+
+void UsbMidiOutput::setGeneratedNoteActive(int targetIndex,
+                                           uint8_t note,
+                                           bool active) {
+    if (targetIndex < 0 ||
+        targetIndex >= static_cast<int>(kGeneratedTargetCount)) {
+        return;
+    }
+    note = clampDataByte(note);
+    const std::size_t byteIndex = static_cast<std::size_t>(note >> 3u);
+    const uint8_t mask = static_cast<uint8_t>(1u << (note & 7u));
+    if (active) generatedActive_[targetIndex][byteIndex] |= mask;
+    else generatedActive_[targetIndex][byteIndex] &= static_cast<uint8_t>(~mask);
+}
+
+void UsbMidiOutput::setGeneratedNotePendingRelease(int targetIndex,
+                                                   uint8_t note,
+                                                   bool pending) {
+    if (targetIndex < 0 ||
+        targetIndex >= static_cast<int>(kGeneratedTargetCount)) {
+        return;
+    }
+    note = clampDataByte(note);
+    const std::size_t byteIndex = static_cast<std::size_t>(note >> 3u);
+    const uint8_t mask = static_cast<uint8_t>(1u << (note & 7u));
+    if (pending) generatedPendingRelease_[targetIndex][byteIndex] |= mask;
+    else generatedPendingRelease_[targetIndex][byteIndex] &= static_cast<uint8_t>(~mask);
+}
+
+int UsbMidiOutput::generatedActiveNote(MusicalEventTarget target) const {
+    const int targetIndex = generatedTargetIndex(target);
+    if (targetIndex < 0) return -1;
+    for (std::size_t note = 0; note < kMidiNoteCount; ++note) {
+        if (generatedNoteActive(targetIndex, static_cast<uint8_t>(note))) {
+            return static_cast<int>(note);
+        }
+    }
+    return -1;
+}
+
+uint8_t UsbMidiOutput::generatedActiveCount(MusicalEventTarget target) const {
+    const int targetIndex = generatedTargetIndex(target);
+    if (targetIndex < 0) return 0;
+    uint8_t count = 0;
+    for (std::size_t note = 0; note < kMidiNoteCount; ++note) {
+        if (generatedNoteActive(targetIndex, static_cast<uint8_t>(note)) &&
+            count < 255u) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 bool UsbMidiOutput::begin() {
     configureLanes();
     abandonedSmfChannels_ = 0;
@@ -202,6 +301,10 @@ int UsbMidiOutput::activeNote(MusicalEventSource source,
                               MusicalEventTarget target,
                               uint8_t logicalChannel) const {
     if (!begun_) return -1;
+    if (source == MusicalEventSource::Arpeggiator) {
+        if (logicalChannel != 0 || target == MusicalEventTarget::Drums) return -1;
+        return generatedActiveNote(target);
+    }
     const MidiVoiceLane* lane = laneFor(source, target, logicalChannel);
     return lane ? lane->activeNote : -1;
 }
@@ -210,6 +313,8 @@ int UsbMidiOutput::activeNote(MusicalEventTarget target) const {
     if (!begun_) return -1;
     const int live = activeNote(MusicalEventSource::PerformanceKeyboard, target);
     if (live >= 0) return live;
+    const int generated = activeNote(MusicalEventSource::Arpeggiator, target);
+    if (generated >= 0) return generated;
     return activeNote(MusicalEventSource::PatternPlayer, target);
 }
 
@@ -217,6 +322,10 @@ uint8_t UsbMidiOutput::activeGateCount(MusicalEventSource source,
                                        MusicalEventTarget target,
                                        uint8_t logicalChannel) const {
     if (!begun_) return 0;
+    if (source == MusicalEventSource::Arpeggiator) {
+        if (logicalChannel != 0 || target == MusicalEventTarget::Drums) return 0;
+        return generatedActiveCount(target);
+    }
     const MidiVoiceLane* lane = laneFor(source, target, logicalChannel);
     return lane ? lane->activeCount : 0;
 }
@@ -230,6 +339,10 @@ uint8_t UsbMidiOutput::channelFor(MusicalEventSource source,
                                   MusicalEventTarget target,
                                   uint8_t logicalChannel) const {
     if (!begun_) return 0;
+    if (source == MusicalEventSource::Arpeggiator) {
+        if (logicalChannel != 0 || target == MusicalEventTarget::Drums) return 0;
+        return generatedChannel(target);
+    }
     const MidiVoiceLane* lane = laneFor(source, target, logicalChannel);
     return lane ? lane->channel : 0;
 }
@@ -423,8 +536,111 @@ bool UsbMidiOutput::releasePercussiveLane(MidiVoiceLane& lane,
     return true;
 }
 
+bool UsbMidiOutput::retryGeneratedPendingReleases(
+    MusicalEventTarget target) {
+    const int targetIndex = generatedTargetIndex(target);
+    if (targetIndex < 0) return false;
+    bool allReleased = true;
+    for (std::size_t note = 0; note < kMidiNoteCount; ++note) {
+        const uint8_t midiNote = static_cast<uint8_t>(note);
+        if (!generatedNotePendingRelease(targetIndex, midiNote)) continue;
+        if (!releaseGeneratedNote(target, midiNote)) allReleased = false;
+    }
+    return allReleased;
+}
+
+bool UsbMidiOutput::acquireGeneratedNote(MusicalEventTarget target,
+                                         uint8_t note,
+                                         uint8_t velocity) {
+    const int targetIndex = generatedTargetIndex(target);
+    if (!enabled_ || !begun_ || !mounted_ ||
+        !config_.performanceKeyboardEnabled || targetIndex < 0) {
+        return false;
+    }
+
+    note = clampDataByte(note);
+    velocity = clampDataByte(velocity);
+    if (velocity < 1) velocity = 1;
+    const uint8_t channel = generatedChannel(target);
+    uint8_t& owners = wireOwners_[channel][note];
+
+    if (generatedNoteActive(targetIndex, note)) {
+        // A duplicate generated gate is a musical retrigger, not a second
+        // ownership claim. This keeps ratchets audible without requiring an
+        // unbounded per-note counter in the live performance domain.
+        if (!transport_.sendNoteOn(channel, note, velocity)) return false;
+        transport_.flush();
+        setGeneratedNotePendingRelease(targetIndex, note, false);
+        return true;
+    }
+
+    if (owners == 255u) return false;
+    if (owners == 0u) {
+        if (!transport_.sendNoteOn(channel, note, velocity)) return false;
+        transport_.flush();
+    }
+    ++owners;
+    setGeneratedNoteActive(targetIndex, note, true);
+    setGeneratedNotePendingRelease(targetIndex, note, false);
+    return true;
+}
+
+bool UsbMidiOutput::releaseGeneratedNote(MusicalEventTarget target,
+                                         uint8_t note,
+                                         uint8_t velocity) {
+    const int targetIndex = generatedTargetIndex(target);
+    if (targetIndex < 0) return true;
+    note = clampDataByte(note);
+    if (!generatedNoteActive(targetIndex, note)) {
+        setGeneratedNotePendingRelease(targetIndex, note, false);
+        return true;
+    }
+
+    const uint8_t channel = generatedChannel(target);
+    uint8_t& owners = wireOwners_[channel][note];
+    if (owners > 1u) {
+        --owners;
+        setGeneratedNoteActive(targetIndex, note, false);
+        setGeneratedNotePendingRelease(targetIndex, note, false);
+        return true;
+    }
+    if (owners == 0u) {
+        setGeneratedNoteActive(targetIndex, note, false);
+        setGeneratedNotePendingRelease(targetIndex, note, false);
+        return true;
+    }
+
+    velocity = clampDataByte(velocity);
+    if (!mounted_ || !transport_.sendNoteOff(channel, note, velocity)) {
+        setGeneratedNotePendingRelease(targetIndex, note, true);
+        return false;
+    }
+    transport_.flush();
+    owners = 0;
+    setGeneratedNoteActive(targetIndex, note, false);
+    setGeneratedNotePendingRelease(targetIndex, note, false);
+    return true;
+}
+
+bool UsbMidiOutput::releaseGeneratedTarget(MusicalEventTarget target) {
+    const int targetIndex = generatedTargetIndex(target);
+    if (targetIndex < 0) return true;
+    bool allReleased = true;
+    for (std::size_t note = 0; note < kMidiNoteCount; ++note) {
+        const uint8_t midiNote = static_cast<uint8_t>(note);
+        if (!generatedNoteActive(targetIndex, midiNote)) continue;
+        if (!releaseGeneratedNote(target, midiNote)) allReleased = false;
+    }
+    return allReleased;
+}
+
 void UsbMidiOutput::releaseTargetAllNotes(MusicalEventSource source,
                                           MusicalEventTarget target) {
+    if (source == MusicalEventSource::Arpeggiator) {
+        releaseGeneratedTarget(target);
+        return;
+    }
+
     for (std::size_t i = 0; i < kLaneCount; ++i) {
         if (lanes_[i].source != source || lanes_[i].target != target) continue;
         if (target == MusicalEventTarget::Drums) {
@@ -432,6 +648,15 @@ void UsbMidiOutput::releaseTargetAllNotes(MusicalEventSource source,
         } else {
             releaseActiveNote(lanes_[i]);
         }
+    }
+
+    // Arpeggiator/Chord/Strum/Ratchet/Euclidean are one logical domain with
+    // the physical performance keyboard. A target-scoped live panic, including
+    // queue-overflow recovery, must therefore clean both direct and generated
+    // ownership without touching PatternPlayer or SMF notes.
+    if (source == MusicalEventSource::PerformanceKeyboard &&
+        target != MusicalEventTarget::Drums) {
+        releaseGeneratedTarget(target);
     }
 }
 
@@ -444,6 +669,9 @@ void UsbMidiOutput::releaseAllActiveNotes() {
             releaseActiveNote(lanes_[i]);
         }
     }
+    releaseGeneratedTarget(MusicalEventTarget::SynthA);
+    releaseGeneratedTarget(MusicalEventTarget::SynthB);
+    releaseGeneratedTarget(MusicalEventTarget::Dx);
 }
 
 bool UsbMidiOutput::handleSmfNoteOn(uint8_t zeroBasedChannel,
@@ -589,6 +817,12 @@ void UsbMidiOutput::clearActiveState() {
         lanes_[i].activeCount = 0;
         lanes_[i].pendingRelease = false;
     }
+    for (std::size_t target = 0; target < kGeneratedTargetCount; ++target) {
+        for (std::size_t byte = 0; byte < kGeneratedBitsetBytes; ++byte) {
+            generatedActive_[target][byte] = 0;
+            generatedPendingRelease_[target][byte] = 0;
+        }
+    }
     for (std::size_t channel = 0; channel < kMidiChannelCount; ++channel) {
         for (std::size_t note = 0; note < kMidiNoteCount; ++note) {
             wireOwners_[channel][note] = 0;
@@ -603,6 +837,24 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
 
     if (event.type == MusicalEventType::AllNotesOff) {
         releaseTargetAllNotes(event.source, event.target);
+        return;
+    }
+
+    if (event.source == MusicalEventSource::Arpeggiator) {
+        if (event.target == MusicalEventTarget::Drums ||
+            !retryGeneratedPendingReleases(event.target)) {
+            return;
+        }
+        switch (event.type) {
+            case MusicalEventType::NoteOn:
+                acquireGeneratedNote(event.target, event.note, event.velocity);
+                break;
+            case MusicalEventType::NoteOff:
+                releaseGeneratedNote(event.target, event.note, event.velocity);
+                break;
+            case MusicalEventType::AllNotesOff:
+                break;
+        }
         return;
     }
 
