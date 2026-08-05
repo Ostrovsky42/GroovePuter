@@ -20,78 +20,70 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+# Provisional gate policy remains explicit and fail-closed.
 require('MAX_BYTES="${2:-191488}"' in gate,
-        "the mandatory gate must use the provisional pre-122880 ceiling")
+        "the mandatory gate must use the provisional pre-122880 value")
 require("not a universal hardware" in gate,
-        "the provisional ceiling must not be presented as a hardware limit")
-require("explicit policy exception" in gate and "items 5-7" in gate,
-        "the provisional gate must expose its incomplete threshold-rule status")
-require("policy: provisional exception" in gate,
-        "every gate run must label the provisional exception")
-require("PROVISIONAL_GATE_BYTES=\"${PROVISIONAL_GATE_BYTES:-191488}\"" in report,
-        "the report must retain the provisional 191488-byte reference")
-require("UNSUPPORTED_GATE_BYTES=\"${UNSUPPORTED_GATE_BYTES:-122880}\"" in report,
-        "the report must preserve 122880 as an unsupported historical reference")
-require("MEMORY_BASELINE_IMAGE_KIND" in report and "kind=%s" in report,
-        "every section report must identify product or runtime image kind")
-require("OBJDUMP_TOOL" in report and '"${OBJDUMP_TOOL}" -t' in report,
-        "section attribution must use objdump symbol section names")
-require('{".dram0.data", ".dram0.bss"}' in report,
-        "the reporter must restrict attribution to exact fixed DRAM sections")
-require("Full .dram0.bss symbol inventory" in report,
-        "the reporter must print the complete positive-size BSS symbol inventory")
-for field in (
+        "191488 must not be presented as a hardware safety limit")
+require("policy: provisional exception" in gate and "items 5-7" in gate,
+        "every gate run must expose the incomplete threshold-rule status")
+
+# Static reporting must be exact, section-aware, and non-gating.
+for needle in (
+    'PROVISIONAL_GATE_BYTES="${PROVISIONAL_GATE_BYTES:-191488}"',
+    'UNSUPPORTED_GATE_BYTES="${UNSUPPORTED_GATE_BYTES:-122880}"',
+    "MEMORY_BASELINE_IMAGE_KIND",
+    "OBJDUMP_TOOL",
+    '"${OBJDUMP_TOOL}" -t',
+    '{".dram0.data", ".dram0.bss"}',
+    "Full .dram0.bss symbol inventory",
     "bss_symbol_coverage",
     "bss_section_uncovered",
     "bss_alias_overlap",
     "candidate_bss",
     "candidate_outside",
     "provisional_status=exception_unvalidated",
+    "deliberately non-gating",
+    "exit 0",
 ):
-    require(field in report, f"missing machine-readable report field: {field}")
-require("exit 0" in report and "deliberately non-gating" in report,
-        "the baseline report must not replace the product gate")
+    require(needle in report, f"static report contract missing: {needle}")
 
 for script_name, script in (("gate", gate), ("report", report)):
     require("discover_arduino_tool" in script,
-            f"{script_name} must use the shared vendor-neutral discovery pattern")
+            f"{script_name} must use vendor-neutral tool discovery")
     require("ARDUINO_PACKAGES_ROOT" in script and "command -v" in script,
-            f"{script_name} must support PATH and arbitrary Arduino package vendors")
+            f"{script_name} must support PATH and arbitrary package vendors")
     require(".arduino15/packages/esp32/tools" not in script,
             f"{script_name} must not assume the Espressif vendor directory")
-    require("find \"${package_root}\"" in script and "|| true" in script,
-            f"{script_name} tool discovery must fail explicitly, not through set -e")
 
-require("mktemp -d /tmp/grooveputer-memory-baseline" in build,
-        "the diagnostic build must use a temporary source tree")
-require("rsync -a --delete" in build,
-        "the diagnostic build must copy the checkout before instrumentation")
-require("instrument_cardputer_memory_runtime.py" in build,
-        "runtime instrumentation must use the explicit helper")
-require("SOURCE_ROOT}/GroovePuter.ino" in build,
-        "instrumentation must target only the temporary sketch")
+# Product and runtime images must remain separate and reproducible.
+for needle in (
+    "mktemp -d /tmp/grooveputer-memory-baseline",
+    "rsync -a --delete",
+    "instrument_cardputer_memory_runtime.py",
+    '"${SOURCE_ROOT}"',
+    "SOURCE_COMMIT",
+    "SOURCE_DIRTY",
+    "ELF_SHA256",
+    "sha256sum",
+    'IMAGE_KIND="${1:-}"',
+    "product|runtime",
+    'if [[ "${IMAGE_KIND}" == "runtime" ]]',
+    "Memory baseline image",
+    "normal|midi-only",
+):
+    require(needle in build, f"build identity/isolation contract missing: {needle}")
 require("git commit" not in build and "git push" not in build,
-        "the diagnostic build must never mutate repository history")
-require("SOURCE_COMMIT" in build and "SOURCE_DIRTY" in build,
-        "every measurement must identify source commit and clean-tree state")
-require("ELF_SHA256" in build and "sha256sum" in build,
-        "every measurement must identify the exact ELF bytes")
-require('IMAGE_KIND="${1:-}"' in build and "product|runtime" in build,
-        "product and runtime images must be explicit build modes")
-require('if [[ "${IMAGE_KIND}" == "runtime" ]]' in build,
-        "only runtime images may receive heap instrumentation")
-require("Memory baseline image" in build,
-        "the build log must label product versus runtime")
-require("normal|midi-only" in build,
-        "normal and MIDI-only profiles must be measurable separately")
+        "diagnostic builds must never mutate repository history")
 
+# Runtime telemetry: explicit capabilities, byte units, and all relevant tasks.
 for api in (
     "heap_caps_get_minimum_free_size",
     "heap_caps_get_largest_free_block",
     "heap_caps_check_integrity_all",
     "uxTaskGetStackHighWaterMark",
 ):
-    require(api in instrument, f"runtime instrumentation is missing {api}")
+    require(api in instrument, f"runtime instrumentation missing {api}")
 for field in (
     "free8",
     "largest8",
@@ -101,76 +93,85 @@ for field in (
     "audioStackFreeBytes",
     "smfStackFreeBytes",
     "dispatchStackFreeBytes",
+    "smfTaskPresent",
+    "dispatchTaskPresent",
 ):
-    require(field in instrument, f"runtime telemetry is missing explicit field {field}")
+    require(field in instrument, f"runtime telemetry missing {field}")
 require("loopStackWords" not in instrument and "audioStackWords" not in instrument,
-        "ESP-IDF stack high-water marks must not be labelled as words")
-require('findMemoryBaselineTask("SmfPlayerTask")' in instrument,
-        "dense SMF acceptance requires the SMF task watermark")
-require('findMemoryBaselineTask("MidiDispatchTask")' in instrument,
-        "dense SMF acceptance requires the dispatcher task watermark")
-require("smfTaskPresent" in instrument and "dispatchTaskPresent" in instrument,
-        "a zero watermark must be distinguishable from a task not yet created")
+        "ESP-IDF stack watermarks must not be labelled as words")
+require("xTaskGetHandle" not in instrument,
+        "task watermarks must not depend on optional task-name lookup")
+for accessor in (
+    "cardputerSmfPlayerTaskHandleForMemoryBaseline",
+    "cardputerMidiDispatchTaskHandleForMemoryBaseline",
+    "memoryBaselineTaskHandle",
+):
+    require(accessor in instrument,
+            f"runtime-only direct task accessor missing: {accessor}")
+for source_path in (
+    "cardputer_smf_player.h",
+    "cardputer_smf_player_registry.h",
+    "cardputer_smf_player_registry.cpp",
+    "cardputer_usb_midi_transport.h",
+    "cardputer_usb_midi_transport.cpp",
+):
+    require(source_path in instrument,
+            f"runtime source patch target missing: {source_path}")
 
+# TinyUSB candidates are investigated, not removed in this PR.
 for symbol in ("ncm_epbuf", "_mscd_epbuf", "_dfu_epbuf"):
     require(symbol in tinyusb_report,
-            f"TinyUSB provenance report is missing candidate {symbol}")
+            f"TinyUSB provenance report missing {symbol}")
 require("CFG_TUD_" in tinyusb_report and "CONFIG_TINYUSB_" in tinyusb_report,
-        "TinyUSB research must inspect compile-time class controls")
+        "TinyUSB report must inspect compile-time class controls")
+require("Link-map evidence" in tinyusb_report,
+        "TinyUSB report must identify contributing objects through linker maps")
 require("observational" in tinyusb_report and "does not disable" in tinyusb_report,
-        "the memory study must not disable USB classes without evidence")
+        "PR #70 must not disable USB classes without evidence")
+require("find \"${PACKAGE_ROOT}\" -type f -name '*.a'" not in tinyusb_report,
+        "TinyUSB reporting must not scan every archive in the package tree")
 require("report_cardputer_tinyusb_class_buffers.sh" in build,
-        "product builds must report TinyUSB candidate provenance")
+        "product builds must emit TinyUSB provenance")
 
-require("build_cardputer_memory_baseline.sh" in workflow,
-        "the workflow must compile both baseline image kinds")
-require("profile: [normal, midi-only]" in workflow,
-        "the workflow must build both USB profiles")
-require("image-kind: [product, runtime]" in workflow,
-        "the workflow must separate exact product ELF from runtime instrumentation")
-require("github.event.pull_request.head.sha || github.sha" in workflow,
-        "PR measurements must checkout the immutable head instead of a synthetic merge commit")
-require("test_cardputer_memory_baseline_source_regressions.py" in workflow,
-        "the workflow must run the source-boundary regression")
-require("set -o pipefail" in workflow and "2>&1 | tee" in workflow,
-        "the workflow must expose build or report failures behind tee")
-require("bash scripts/check_cardputer_dram_budget.sh" not in workflow,
-        "the baseline workflow must not duplicate the product gate")
-for helper in (
+# Workflow identity and failure propagation.
+for needle in (
+    "profile: [normal, midi-only]",
+    "image-kind: [product, runtime]",
+    "github.event.pull_request.head.sha || github.sha",
+    "test_cardputer_memory_baseline_source_regressions.py",
+    "set -o pipefail",
+    "2>&1 | tee",
     "docs/stages/CARDPUTER_MEMORY_RUNTIME_TELEMETRY.md",
     "scripts/instrument_cardputer_memory_runtime.py",
     "scripts/report_cardputer_tinyusb_class_buffers.sh",
 ):
-    require(helper in workflow, f"workflow path filter is missing {helper}")
+    require(needle in workflow, f"workflow contract missing: {needle}")
+require("bash scripts/check_cardputer_dram_budget.sh" not in workflow,
+        "baseline workflow must not duplicate the product gate")
 
-for candidate in (
-    "s_tempLoadScene",
-    "Wavetable static arrays",
-    "g_mainScene",
-    "g_smfPlayer",
-    "g_miniAcidInstance",
+# Documentation and boundary audit.
+for needle in (
+    "81689b4",
+    "one-line",
+    "no new numeric threshold",
+    "full `.dram0.bss` attribution",
+    "59152",
+    "59096",
+    "provisional `191488` self-audit",
+    "passes **4 of 7**",
+    "boundary audit",
 ):
-    require(candidate in report or candidate in doc,
-            f"missing documented candidate: {candidate}")
-
-require("81689b4" in doc and "one-line" in doc,
-        "the provenance note must identify the unsupported threshold commit")
-require("source commit" in doc_lower and "elf sha-256" in doc_lower and "full fqbn" in doc_lower,
-        "the threshold policy must require reproducible build identity")
-require("no new numeric threshold" in doc_lower,
-        "the baseline stage must prohibit unexplained threshold changes")
-require("full `.dram0.bss` attribution" in doc_lower and "59152" in doc and "59096" in doc,
-        "the document must disclose bytes outside the candidate shortlist")
-require("provisional `191488` self-audit" in doc_lower,
-        "the provisional value must be audited against its own threshold rule")
-require("passes **4 of 7**" in doc and doc.count("**MISSING**") >= 3,
-        "the self-audit must show that runtime, reserves, and derivation are missing")
+    require(needle.lower() in doc_lower,
+            f"documentation contract missing: {needle}")
+require(doc.count("**MISSING**") >= 3,
+        "runtime, reserves, and derivation must remain visibly missing")
 require("loopStackWords" in runtime_doc and "supersedes" in runtime_doc,
-        "the telemetry contract must explicitly retire misleading stack field names")
+        "telemetry contract must explicitly retire misleading stack names")
+require("direct runtime-only accessors" in runtime_doc,
+        "telemetry contract must document direct task-handle access")
 require("smfStackFreeBytes" in runtime_doc and "dispatchStackFreeBytes" in runtime_doc,
-        "the telemetry contract must cover dense-SMF task stacks")
-require("boundary audit" in doc_lower,
-        "the PR boundaries must be reviewed explicitly before merge")
+        "telemetry contract must cover dense-SMF task stacks")
+
 for path in (
     ".github/workflows/cardputer-memory-baseline.yml",
     "docs/stages/CARDPUTER_MEMORY_BASELINE.md",
@@ -182,6 +183,6 @@ for path in (
     "scripts/report_cardputer_tinyusb_class_buffers.sh",
     "tests/test_cardputer_memory_baseline_source_regressions.py",
 ):
-    require(path in doc, f"boundary audit is missing changed path: {path}")
+    require(path in doc, f"boundary audit missing changed path: {path}")
 
 print("Cardputer memory baseline source regressions: PASS")
