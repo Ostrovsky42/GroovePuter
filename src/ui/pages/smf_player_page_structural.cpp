@@ -280,8 +280,8 @@ void SmfPlayerPage::drawFooter(IGfx& gfx) {
         return;
     }
     if (muteMixerVisible_) {
-        UI::drawStandardFooter(gfx, "UP/DN Select L/R Page",
-                               "H Hub 1-9 Hot ENT Sel");
+        UI::drawStandardFooter(gfx, "H Hub UP/DN Select",
+                               "1-9 Hot ENT Sel A AllOn");
         return;
     }
     SmfPlayerPageBase::drawFooter(gfx);
