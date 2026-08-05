@@ -2,6 +2,7 @@
 #include "sequencer_hub_page.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdio>
 
 #include "../components/music_visuals.h"
@@ -70,6 +71,60 @@ const char* shortRole(SmfStructuralRole role) {
         case SmfStructuralRole::Lead: return "LED";
         default: return "OTH";
     }
+}
+
+void formatTrackChannel(const SmfTrackInfoSnapshot* info,
+                        char* output,
+                        std::size_t outputSize) {
+    if (!output || outputSize == 0u) return;
+    if (!info || info->channelMask == 0u) {
+        std::snprintf(output, outputSize, "--");
+        return;
+    }
+    if (info->usesMultipleChannels()) {
+        std::snprintf(output, outputSize, "MIX");
+        return;
+    }
+    const int channel = info->primaryChannel();
+    if (channel < 0) std::snprintf(output, outputSize, "--");
+    else std::snprintf(output, outputSize, "C%02d", channel + 1);
+}
+
+void formatDensity(uint16_t activePermille,
+                   char* output,
+                   std::size_t outputSize) {
+    if (!output || outputSize < 4u) return;
+    const uint16_t bounded = std::min<uint16_t>(activePermille, 1000u);
+    const uint8_t filled = static_cast<uint8_t>((bounded + 332u) / 333u);
+    for (uint8_t index = 0u; index < 3u; ++index) {
+        output[index] = index < filled ? '#' : '.';
+    }
+    output[3] = '\0';
+}
+
+bool selectProjectedLayer(const HubMidiProjection& projection,
+                          uint8_t layerIndex) {
+    if (!projection.ready() || layerIndex >= projection.layers.layerCount) {
+        return false;
+    }
+    return smfTrackMuteState().selectTrack(
+        projection.layers.layers[layerIndex].trackIndex,
+        projection.generation);
+}
+
+void configurePlayerPanel(uint32_t generation,
+                          bool muteMixer,
+                          bool channelInspector) {
+    PlayerHubNavigation::PlayerViewState& view =
+        PlayerHubNavigation::playerViewState();
+    view.generation = generation;
+    view.valid = generation != 0u;
+    view.browserVisible = false;
+    view.performanceVisible = false;
+    view.channelInspectorVisible = channelInspector;
+    view.muteMixerVisible = muteMixer;
+    view.structuralInspectorVisible = false;
+    if (channelInspector) view.channelInspectorScroll = 0;
 }
 }  // namespace
 
@@ -210,6 +265,23 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
     }
     if (midiGeneration_ != projection.generation) syncMidiSessionSelection();
 
+    if (event.key == 'u' || event.key == 'U' ||
+        event.key == 'i' || event.key == 'I') {
+        if (!selectProjectedLayer(projection, midiSelected_)) {
+            UI::showToast("MIDI LAYERS: SYNCING", 800);
+            return true;
+        }
+        const bool openMuteMixer = event.key == 'u' || event.key == 'U';
+        configurePlayerPanel(
+            projection.generation, openMuteMixer, !openMuteMixer);
+        midiOverview_ = false;
+        midiReturnToPlayer_ = false;
+        requestPageTransition(
+            PlayerHubNavigation::kPlayerPage,
+            PlayerHubNavigation::kReturnToPlayerContext);
+        return true;
+    }
+
     if (event.key == 'a' || event.key == 'A') {
         if (smfTrackMuteState().clear(projection.generation)) {
             UI::showToast("ALL MIDI TRACKS ON", 800);
@@ -226,17 +298,20 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
     }
     if (projection.layers.layerCount == 0u) return true;
 
-    if (UIInput::isUp(event)) {
-        midiSelected_ = midiSelected_ == 0u
-            ? static_cast<uint8_t>(projection.layers.layerCount - 1u)
-            : static_cast<uint8_t>(midiSelected_ - 1u);
+    int move = 0;
+    if (UIInput::isUp(event)) move = -1;
+    else if (UIInput::isDown(event)) move = 1;
+    else if (event.scancode == GROOVEPUTER_LEFT) move = -kVisibleMidiRows;
+    else if (event.scancode == GROOVEPUTER_RIGHT) move = kVisibleMidiRows;
+    if (move != 0) {
+        const int count = static_cast<int>(projection.layers.layerCount);
+        int selected = (static_cast<int>(midiSelected_) + move) % count;
+        if (selected < 0) selected += count;
+        midiSelected_ = static_cast<uint8_t>(selected);
         syncMidiScroll(projection.layers.layerCount);
-        return true;
-    }
-    if (UIInput::isDown(event)) {
-        midiSelected_ = static_cast<uint8_t>(
-            (midiSelected_ + 1u) % projection.layers.layerCount);
-        syncMidiScroll(projection.layers.layerCount);
+        if (!selectProjectedLayer(projection, midiSelected_)) {
+            UI::showToast("MIDI LAYERS: SYNCING", 800);
+        }
         return true;
     }
     if (event.key == '\n' || event.key == '\r') {
@@ -327,15 +402,25 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
                 ? &projection.tracks.tracks[layer.trackIndex]
                 : nullptr;
         const char* label = info && info->hasName() ? info->name : "MIDI TRACK";
+        char channel[5]{};
+        char density[4]{};
+        formatTrackChannel(info, channel, sizeof(channel));
+        formatDensity(layer.activePermille, density, sizeof(density));
+        const char hotkey = index < 9u
+            ? static_cast<char>('1' + index)
+            : '-';
 
         gfx.setTextColor(isSelected ? MusicVisuals::accentForStyle()
                                     : (isMuted ? COLOR_WARN : COLOR_TEXT));
-        std::snprintf(line, sizeof(line), "%u%c%02u %-3s %-3s %.15s",
-                      static_cast<unsigned>(index + 1u),
+        std::snprintf(line, sizeof(line), "%c%c%02u %-3s %-3s %s %-3s %.8s",
+                      hotkey,
                       isSelected ? '>' : ' ',
                       static_cast<unsigned>(layer.trackIndex + 1u),
                       isMuted ? "MUT" : "ON ",
-                      shortRole(layer.role), label);
+                      channel,
+                      density,
+                      shortRole(layer.role),
+                      label);
         gfx.drawText(Layout::COL_1, LayoutManager::lineY(row + 1u), line);
     }
 
@@ -361,6 +446,6 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
     }
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), line);
 
-    UI::drawStandardFooter(gfx, "P Player M Internal UP/DN",
+    UI::drawStandardFooter(gfx, "P Player U Mixer I Chans",
                            "1-9 Mute ENT Sel A AllOn");
 }
