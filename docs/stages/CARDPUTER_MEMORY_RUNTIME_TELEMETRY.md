@@ -41,8 +41,10 @@ interchangeable pool.
 The temporary runtime source injects direct runtime-only accessors for the
 `SmfPlayerTask` and `MidiDispatchTask` handles. It does not rely on optional
 task-name lookup, import the TinyUSB transport header into the main sketch, or
-alter the product source/ELF. A zero watermark is interpreted only together
-with the corresponding `TaskPresent` field.
+alter the checked-out product source. The runtime diagnostic ELF necessarily
+contains the probes; the separate product ELF remains uninstrumented. A zero
+watermark is interpreted only together with the corresponding `TaskPresent`
+field.
 
 ## Capability separation
 
