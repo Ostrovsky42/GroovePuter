@@ -177,6 +177,8 @@ require("direct runtime-only accessors" in runtime_doc,
         "telemetry contract must document direct task-handle access")
 require("separate product elf remains uninstrumented" in runtime_doc.lower(),
         "telemetry contract must distinguish product and runtime ELF identity")
+require("corrected runtime telemetry contract" in baseline_doc.lower(),
+        "baseline document must point readers to corrected runtime semantics")
 require("smfStackFreeBytes" in runtime_doc and "dispatchStackFreeBytes" in runtime_doc,
         "telemetry contract must cover dense-SMF task stacks")
 
