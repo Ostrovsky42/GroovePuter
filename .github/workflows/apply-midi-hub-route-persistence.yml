@@ -6,10 +6,15 @@ on:
       - agent/midi-hub-route-persistence
     paths:
       - scripts/apply_midi_hub_route_persistence.py
+      - scripts/correct_midi_hub_route_persistence_boundary.py
       - .github/workflows/apply-midi-hub-route-persistence.yml
       - src/midi/smf_track_route_profile.h
       - src/midi/smf_track_route_profile.cpp
+      - src/midi/smf_track_route_profile_runtime.h
+      - src/platform/cardputer_smf_route_persistence.h
+      - src/platform/cardputer_smf_route_persistence.cpp
       - tests/test_smf_track_route_profile.cpp
+      - tests/test_smf_track_route_profile_runtime.cpp
       - tests/test_smf_route_persistence_source_regressions.py
       - docs/stages/MIDI_HUB_ROUTE_PERSISTENCE.md
   pull_request:
@@ -17,10 +22,15 @@ on:
       - dev
     paths:
       - scripts/apply_midi_hub_route_persistence.py
+      - scripts/correct_midi_hub_route_persistence_boundary.py
       - .github/workflows/apply-midi-hub-route-persistence.yml
       - src/midi/smf_track_route_profile.h
       - src/midi/smf_track_route_profile.cpp
+      - src/midi/smf_track_route_profile_runtime.h
+      - src/platform/cardputer_smf_route_persistence.h
+      - src/platform/cardputer_smf_route_persistence.cpp
       - tests/test_smf_track_route_profile.cpp
+      - tests/test_smf_track_route_profile_runtime.cpp
       - tests/test_smf_route_persistence_source_regressions.py
       - docs/stages/MIDI_HUB_ROUTE_PERSISTENCE.md
 
@@ -38,12 +48,14 @@ jobs:
           fetch-depth: 0
 
       - name: Apply bounded integration patch
-        run: python3 scripts/apply_midi_hub_route_persistence.py
+        run: |
+          python3 scripts/apply_midi_hub_route_persistence.py
+          python3 scripts/correct_midi_hub_route_persistence_boundary.py
 
       - name: Check patch formatting
         run: git diff --check
 
-      - name: Run focused profile test
+      - name: Run focused profile tests
         run: |
           mkdir -p build/host-tests
           g++ -std=c++17 -Wall -Wextra -Werror -I. \
@@ -51,6 +63,10 @@ jobs:
             src/midi/smf_track_route_profile.cpp \
             -o build/host-tests/test_smf_track_route_profile
           build/host-tests/test_smf_track_route_profile
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_smf_track_route_profile_runtime.cpp \
+            -o build/host-tests/test_smf_track_route_profile_runtime
+          build/host-tests/test_smf_track_route_profile_runtime
 
       - name: Run source boundary regression
         run: python3 tests/test_smf_route_persistence_source_regressions.py
@@ -67,6 +83,7 @@ jobs:
             src/midi/smf_player_service.h \
             src/platform/cardputer_smf_player.h \
             src/platform/cardputer_smf_player.cpp \
+            src/ui/miniacid_display.cpp \
             src/ui/pages/sequencer_hub_page_midi.cpp \
             tests/run_host_tests.sh \
             tests/test_smf_routing.cpp
