@@ -4,7 +4,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 build = (ROOT / "scripts/build_cardputer_memory_baseline.sh").read_text()
+instrument = (ROOT / "scripts/instrument_cardputer_memory_runtime.py").read_text()
 report = (ROOT / "scripts/report_cardputer_memory_baseline.sh").read_text()
+tinyusb_report = (ROOT / "scripts/report_cardputer_tinyusb_class_buffers.sh").read_text()
 gate = (ROOT / "scripts/check_cardputer_dram_budget.sh").read_text()
 workflow = (ROOT / ".github/workflows/cardputer-memory-baseline.yml").read_text()
 doc = (ROOT / "docs/stages/CARDPUTER_MEMORY_BASELINE.md").read_text()
@@ -62,6 +64,8 @@ require("mktemp -d /tmp/grooveputer-memory-baseline" in build,
         "the diagnostic build must use a temporary source tree")
 require("rsync -a --delete" in build,
         "the diagnostic build must copy the checkout before instrumentation")
+require("instrument_cardputer_memory_runtime.py" in build,
+        "runtime instrumentation must use the explicit helper")
 require("SOURCE_ROOT}/GroovePuter.ino" in build,
         "instrumentation must target only the temporary sketch")
 require("git commit" not in build and "git push" not in build,
@@ -76,16 +80,45 @@ require('if [[ "${IMAGE_KIND}" == "runtime" ]]' in build,
         "only runtime images may receive heap instrumentation")
 require("Memory baseline image" in build,
         "the build log must label product versus runtime")
-require("heap_caps_get_minimum_free_size" in build,
-        "the runtime diagnostic firmware must report the IDF boot-time heap floor")
-require("heap_caps_get_largest_free_block" in build,
-        "the runtime diagnostic firmware must sample contiguous internal heap")
-require("heap_caps_check_integrity_all" in build,
-        "the runtime diagnostic firmware must report heap integrity")
-require("uxTaskGetStackHighWaterMark" in build,
-        "the runtime diagnostic firmware must report loop/audio stack watermarks")
 require("normal|midi-only" in build,
         "normal and MIDI-only profiles must be measurable separately")
+
+for api in (
+    "heap_caps_get_minimum_free_size",
+    "heap_caps_get_largest_free_block",
+    "heap_caps_check_integrity_all",
+    "uxTaskGetStackHighWaterMark",
+):
+    require(api in instrument, f"runtime instrumentation is missing {api}")
+for field in (
+    "free8",
+    "largest8",
+    "freeInternal8",
+    "largestInternal8",
+    "loopStackFreeBytes",
+    "audioStackFreeBytes",
+    "smfStackFreeBytes",
+    "dispatchStackFreeBytes",
+):
+    require(field in instrument, f"runtime telemetry is missing explicit field {field}")
+require("loopStackWords" not in instrument and "audioStackWords" not in instrument,
+        "ESP-IDF stack high-water marks must not be labelled as words")
+require('findMemoryBaselineTask("SmfPlayerTask")' in instrument,
+        "dense SMF acceptance requires the SMF task watermark")
+require('findMemoryBaselineTask("MidiDispatchTask")' in instrument,
+        "dense SMF acceptance requires the dispatcher task watermark")
+require("smfTaskPresent" in instrument and "dispatchTaskPresent" in instrument,
+        "a zero watermark must be distinguishable from a task not yet created")
+
+for symbol in ("ncm_epbuf", "_mscd_epbuf", "_dfu_epbuf"):
+    require(symbol in tinyusb_report,
+            f"TinyUSB provenance report is missing candidate {symbol}")
+require("CFG_TUD_" in tinyusb_report and "CONFIG_TINYUSB_" in tinyusb_report,
+        "TinyUSB research must inspect compile-time class controls")
+require("observational" in tinyusb_report and "does not disable" in tinyusb_report,
+        "the memory study must not disable USB classes without evidence")
+require("report_cardputer_tinyusb_class_buffers.sh" in build,
+        "product builds must report TinyUSB candidate provenance")
 
 require("build_cardputer_memory_baseline.sh" in workflow,
         "the workflow must compile both baseline image kinds")
@@ -101,6 +134,11 @@ require("set -o pipefail" in workflow and "2>&1 | tee" in workflow,
         "the workflow must expose build or report failures behind tee")
 require("bash scripts/check_cardputer_dram_budget.sh" not in workflow,
         "the baseline workflow must not duplicate the product gate")
+for helper in (
+    "scripts/instrument_cardputer_memory_runtime.py",
+    "scripts/report_cardputer_tinyusb_class_buffers.sh",
+):
+    require(helper in workflow, f"workflow path filter is missing {helper}")
 
 for candidate in (
     "s_tempLoadScene",
@@ -131,7 +169,9 @@ for path in (
     "docs/stages/CARDPUTER_MEMORY_BASELINE.md",
     "scripts/build_cardputer_memory_baseline.sh",
     "scripts/check_cardputer_dram_budget.sh",
+    "scripts/instrument_cardputer_memory_runtime.py",
     "scripts/report_cardputer_memory_baseline.sh",
+    "scripts/report_cardputer_tinyusb_class_buffers.sh",
     "tests/test_cardputer_memory_baseline_source_regressions.py",
 ):
     require(path in doc, f"boundary audit is missing changed path: {path}")
