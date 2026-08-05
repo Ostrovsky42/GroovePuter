@@ -1,127 +1,223 @@
-# GroovePuter Manual (Current)
+# GroovePuter Manual (Current Firmware)
 
-This manual describes user-visible behavior available in the current firmware.
-For the canonical product direction, execution order, acceptance metrics, and deferred scope, read [`PLAN.md`](PLAN.md).
-For exact hotkeys use `docs/keys_sheet.md` and `src/ui/docs/keys.md`.
-For page-deep behavior use focused docs in `docs/`.
+This manual describes user-visible behavior in the current firmware. [`PLAN.md`](PLAN.md) is the roadmap; planned Phrase slots, retrospective capture, patch libraries, and other deferred work are not documented here as available functions.
 
-This manual must follow shipped behavior. It does not establish a second roadmap.
+For the exhaustive key map, use [`src/ui/docs/keys.md`](src/ui/docs/keys.md) and [`docs/keys_sheet.md`](docs/keys_sheet.md).
 
-## Quick Keys (Most Used)
-- `Space`: play/stop
-- `Arrows`: move cursor / navigate lists
-- `Enter`: confirm/apply/toggle focused item
-- `Tab`: switch focus/section on many pages
-- `[` / `]`: previous/next page
-- `Ctrl+[` / `Ctrl+]`: switch editing page context (Song Page)
-- `Q..I`: choose pattern slot `1..8` in Pattern/Drum/Song contexts
-- `B`: quick A/B bank toggle (Pattern/Drum) or bank flip in Song cell/selection
-- `Alt+B`: edit song slot `A/B`
-- `Ctrl+B`: play song slot `A/B`
-- `X`: split compare (Song) or primary action on Tape page
-- `Esc`: back (or clear selection in editors)
+## Quick keys
 
-## 1. Core Concept
+| Key | Action |
+|---|---|
+| `Space` | Play/stop the active transport |
+| `Arrows` | Move cursor, selection, or list focus |
+| `Enter` | Confirm/apply/toggle |
+| `Tab` | Change section; on PERFORM, open PERFORMANCE TOOLS |
+| `Alt/Fn+1..0` | Direct page jump |
+| `Alt+[` / `Alt+]` | Previous/next detailed page |
+| `Fn+Tab` | Next workflow |
+| `Fn+Shift+Tab` | Previous workflow |
+| `Alt+P` | Open MIDI Player |
+| `Alt+W` | Toggle waveform overlay |
+| `Alt+\` | Toggle `CARBON ↔ CYBER` |
+| `Esc` | Back/dismiss |
 
-GroovePuter separates four musical responsibilities:
+Page-local commands have priority over global fallbacks.
 
-- `GENRE`: musical language, constraints, and recommended corridors;
-- `GENERATOR`: how note and drum events are created or changed;
-- `FEEL`: how existing material moves in time;
-- `TEXTURE`: how the current material sounds.
+## 1. Core concept
 
-The invariant is:
+GroovePuter separates four responsibilities:
+
+* `GENRE`: musical language and constraints;
+* `GENERATOR`: creation or mutation of notes and drum hits;
+* `FEEL`: timing of existing material;
+* `TEXTURE`: sound coloration and effects.
 
 ```text
 GENRE != FEEL != GENERATOR != TEXTURE
 ```
 
-Changing one axis should not silently overwrite the others.
+## 2. Sound engines
 
-The intended long-term musical hierarchy is:
+Synth A and Synth B can select:
 
-```text
-step -> bar -> phrase -> section -> song
-```
+* `TB303`
+* `SID`
+* `AY` / YM2149
+* `SH101`
+* `SN76489`
+* `WAVEMORPH`
 
-Current firmware already provides step, pattern, multi-bar generation, Song, FEEL, TEXTURE, and MIDI workflows. The missing Phrase layer and the order in which it will be introduced are defined in `PLAN.md`; this manual does not describe those future controls as shipped.
+OPL2 is not selectable. Its legacy persisted value remains decode-only and is normalized to `TB303` when an older Scene is loaded.
 
-## 2. Main Pages
-- `Genre`: style + apply policy (`SND`, `S+P`, `S+T`)
-- `Pattern Edit (A/B)`: note/accent/slide editing with selection v2
-- `Synth Params (A/B)`: swappable synth voicing (TB-303, OPL2, AY/PSG, SID)
-- `Drum Sequencer`: drum grid editing with selection v2
-- `Song`: arrangement with dual slots `A/B`, split compare, live mix
-- `Sequencer Hub`: compact overview/edit surface
-- `Feel/Texture`: timing, coloration, and Drum FX macros
-- `Generator`: generation parameters
-- `Project`: scenes, groove section, LED section
-- `Mode (GROOVE LAB)`: groove mode/flavor and budget-aware preview
-- `Tape`: looper/FX performance workflow
-- `SMF Player`: realtime MIDI-file playback and routing
+## 3. Main pages
 
-## 3. Playback Basics
-- `Space`: play/stop
-- `[` / `]`: page navigation
-- `Alt+1..0` / `Ctrl+1..0`: direct page jump
-- `1..9,0`: global mute toggles
+* `Genre`: style, texture, preset, and apply policy.
+* `Pattern Edit A/B`: note, accent, slide, probability, and selection editing.
+* `Synth Params A/B`: select and edit the current synth engine.
+* `Drum Sequencer`: drum grid and selection editing.
+* `Song`: two arrangements (`A/B`), split compare, live mix, generation, copy/paste, markers, reverse, and loop.
+* `Sequencer Hub`: compact pattern overview; HUB MIDI appears when entered from a loaded MIDI Player session.
+* `Feel/Texture`: timing and sound macros.
+* `Generator`: generative parameters.
+* `Groove Lab`: mode/flavor and corridor preview.
+* `Project`: Scene storage, MIDI import, and settings.
+* `Tape`: loop/FX performance page.
+* `PERFORM`: live keyboard, targets, and PERFORMANCE TOOLS.
+* `MIDI Player`: realtime SMF playback, inspection, mute, and routing.
 
-The current input system uses page-first-refusal. A page may own alphabetic keys before NOTE mode receives them. When transport owns Synth A, live note keys may be reserved without producing `NoteOn`. Wave 1 in `PLAN.md` adds visible `NOTE / CMD / LOCAL / LOCK` status without changing that behavior in the same PR.
+## 4. Song workflow
 
-## 4. Song Workflow (recommended)
-1. Build core patterns in Pattern/Drum pages
-2. Arrange in Song page (`Q..I` assign, `Bksp/Tab` clear)
-3. Use slots:
-- `Alt+B`: edit slot A/B
-- `Ctrl+B`: play slot A/B
-- `X`: split compare
-- `Alt+X`: live mix on/off
-4. Use selection v2 for block copy/paste
+### Assignment and editing
 
-Detailed Song controls: `docs/SONG_PAGE_QUICKSTART.md`.
+* `Q..I`: assign existing pattern `1..8` in the selected bank. This does not regenerate pattern content.
+* `Ctrl+1..8`: select Song pattern page `1..8`.
+* `B`: flip bank `A/B` for the selected cell or selection.
+* `Alt+B`: edit Song slot A/B.
+* `Ctrl+B`: play Song slot A/B.
+* `X`: split compare.
+* `Alt+X`: LiveMix on/off.
+* `Bksp` or `Tab`: clear selected Song cell/area.
+* `Ctrl+C` / `Ctrl+V`: copy/paste selection.
+* `Ctrl+Z`: undo the last supported Song edit.
 
-## 5. Groove Workflow
-Use `GROOVE LAB` when you want controlled variation:
-- choose `Mode`
-- choose `Flavor`
-- inspect corridor/budget line
-- preview regenerate
+### Song generation
 
-Reference: `docs/GROOVE_LAB.md`.
+`G`
 
-## 6. MIDI Workflow
+Generate a new pattern for the selected Song cell. The generated material is written into a safe free pattern slot and the cell is assigned to that slot only after generation succeeds.
 
-The `dev` line includes sample-timed USB-MIDI output, MIDI Clock/transport paths, Pattern/live dispatch, and realtime SMF playback. All USB writes must continue through the accepted single dispatcher.
+Double-tap `G`
 
-Hardware-dependent routing and lifecycle behavior remains beta until the relevant stage acceptance is complete. Do not infer that the external target recorded data merely because GroovePuter completed local transmission.
+Generate Synth A, Synth B, and Drums for the current Song row. Destination slots are checked and all material is prepared before anything is committed. The row is one logical Scene mutation.
 
-## 7. Tape Workflow
-Tape page is performance-oriented:
-- `X`: smart REC/PLAY/DUB flow
-- `A`: CAPTURE
-- `S`: THICKEN (safe one-cycle dub)
-- `D`: WASH
-- `G`: loop mute
+`Q..I`
 
-Reference: `docs/TAPE_WORKFLOW.md`.
+Assign an already existing pattern without regenerating its content.
 
-## 8. Safety
-- Master high-cut is DSP-hardcoded (`kMasterHighCutHz` in `src/dsp/miniacid_engine.h`).
-- Default is `16000 Hz`.
-- Lowering this value in code gives stronger HF protection on compact speakers.
-- Monitor `[PERF]` telemetry; `underruns` must not continually increase during normal playback and navigation.
+Generation uses copy-on-write. Generating one Song cell does not modify the old pattern or other Song cells that still reference it.
 
-## 9. Docs Index
-- `PLAN.md` — canonical product direction, priority order, metrics, and deferred scope
-- `README.md` — project overview and current branch capabilities
-- `MANUAL.md` — current user-visible behavior
-- `docs/keys_sheet.md` — canonical key map
-- `src/ui/docs/keys.md` — page-by-page key behavior
-- `docs/GROOVE_LAB.md` — mode/flavor/corridors
-- `docs/SONG_PAGE_QUICKSTART.md` — Song operations
-- `docs/MIDI_IMPORT_GUIDE.md` — MIDI routing & smart import
-- `docs/SONG_PAGE_STYLES.md` — Song style behavior
-- `docs/GENRE_PAGE_STYLES.md` — Genre page behavior
-- `docs/TAPE_WORKFLOW.md` — tape performance flow
-- `docs/LONG_SONG_ARCHITECTURE.md` — paging & long song architecture
-- `docs/stages/` — subordinate implementation specifications and acceptance records
+`NO EMPTY PATTERN SLOTS` means generation changed nothing. Free an unused, unreferenced slot or switch to another pattern page/bank, then retry.
+
+`GENERATION FAILED` also leaves the Song row and destination banks unchanged.
+
+Detailed Song navigation is in [`docs/SONG_PAGE_QUICKSTART.md`](docs/SONG_PAGE_QUICKSTART.md).
+
+## 5. PERFORM and PERFORMANCE TOOLS
+
+### Live keyboard
+
+* `N`: NOTE mode on/off.
+* `ASDFGHJKL`: lower scale-aware manual.
+* `QWERTYUIOP`: upper manual, one octave above the matching lower keys.
+* `\`: cycle target.
+* `,` / `.`: previous/next scale.
+* `-` / `=`: octave down/up.
+* `X`: panic the live-owned target.
+
+Targets include Synth A, Synth B, DX, and native drums. Native drums use MIDI `CH1..CH7`; Synth A uses `CH8`, Synth B `CH9`, and DX `CH10` for SEQTRAK performance output.
+
+While Pattern/Song transport owns Synth A, performance note keys remain consumed and do not emit competing notes.
+
+### Tools layer
+
+Press `Tab`, then:
+
+| Key | Tool | Effect |
+|---|---|---|
+| `1` | ARPEGGIATOR | Enable/disable held-note arpeggiation |
+| `2` | DIRECTION | Change arpeggiator direction |
+| `3` | CHORD | Select chord expansion mode |
+| `4` | MEMORY | Capture/clear held chord memory |
+| `5` | STRUM | Change strum delay |
+| `6` | RATCHET | Change repeated-hit count |
+| `7` | EUCLIDEAN | Change pulses in a 16-step mask |
+| `8` | ROTATE | Rotate the Euclidean mask |
+
+Use `Shift+1..8` to cycle adjustable values backward. The generated events use the same event router and MIDI dispatcher as normal performance notes.
+
+## 6. MIDI Player
+
+Open with `Alt+P`, choose a MIDI file, and press `Enter`.
+
+### Playback and routing
+
+* `Space`: MIDI Player play/pause.
+* `G`: GroovePuter Pattern/Song transport.
+* `M`: toggle RAW / SEQTRAK-safe routing.
+* `T`: toggle original-file/project tempo mode.
+* `C`: internal/SEQTRAK clock-source control.
+* `Left/Right`: seek one bar; hold Shift for four bars.
+* `Up/Down`: adjust the active tempo source where permitted.
+
+RAW routing preserves source MIDI channels and ignores HUB MIDI per-track overrides. SEQTRAK-safe routing uses `CH1..CH7` for drums, `CH8` for Synth 1, `CH9` for Synth 2, and `CH10` for DX.
+
+### Player panels
+
+* `U`: physical-track mute mixer.
+  * Arrows select a physical SMF track.
+  * `Enter` or `K` toggles the selected track.
+  * `A` unmutes all tracks.
+* `1..9`: toggle the first nine projected audible physical tracks without opening the mixer.
+* `I`: channel inspector.
+* `S`: structural inspector.
+* `D`: performance/throughput panel.
+* `Alt+W`: waveform overlay.
+
+### Player ↔ HUB MIDI
+
+With a file loaded, press `H` to open HUB MIDI. Press `H` or `Esc` to return. The current loaded-file generation, selected physical track, Player panel, and scroll state are preserved during this navigation.
+
+HUB MIDI displays physical SMF tracks and structural roles. Arrows select a physical track; `Enter` or `1..9` toggles mute; `A` unmutes all.
+
+For a per-track output override:
+
+1. Pause/stop MIDI playback.
+2. Use SEQTRAK-safe routing, not RAW.
+3. Select a physical track.
+4. Press `C`.
+5. Choose `AUTO` or `CH1..CH10` with `Left/Right`.
+6. Press `Enter` to commit, or `Esc` to cancel.
+
+HUB MIDI does not own playback, scheduling, TinyUSB, or note lifecycle. Loading another MIDI file creates a new SMF session generation and resets route overrides to `AUTO`.
+
+## 7. Session persistence and themes
+
+The UI session stores:
+
+* active page;
+* last page in each workflow;
+* master volume;
+* visual style;
+* waveform-overlay state.
+
+The global theme shortcut cycles `CARBON ↔ CYBER`. `AMBER` remains only for legacy compatibility and specialized old page code; it is not part of the normal global theme cycle.
+
+Scene Save/Load is separate from UI session persistence. After successful Save, the status-chrome dirty `*` clears. A successful persistent Scene mutation adds `*`.
+
+## 8. Tape workflow
+
+* `X`: smart REC/PLAY/DUB flow.
+* `A`: capture.
+* `S`: thicken.
+* `D`: wash.
+* `G`: loop mute.
+
+See [`docs/TAPE_WORKFLOW.md`](docs/TAPE_WORKFLOW.md).
+
+## 9. Safety and troubleshooting
+
+* Monitor `[PERF]`; `underruns` must not continuously increase during normal playback and navigation.
+* A Song generation error must not leave partial pattern data, a changed Song reference, or a dirty revision.
+* After Stop, page changes, Song changes, MIDI mutes, or HUB navigation, verify there are no stuck notes.
+* The fixed-DRAM CI gate is a regression budget, not a substitute for hardware runtime acceptance.
+
+## 10. Documentation index
+
+* [`README.md`](README.md): current capabilities and build entry points.
+* [`PLAN.md`](PLAN.md): roadmap and deferred scope.
+* [`src/ui/docs/keys.md`](src/ui/docs/keys.md): page-by-page key map.
+* [`docs/SONG_PAGE_QUICKSTART.md`](docs/SONG_PAGE_QUICKSTART.md): Song operations.
+* [`docs/GROOVE_LAB.md`](docs/GROOVE_LAB.md): mode/flavor/corridors.
+* [`docs/MIDI_IMPORT_GUIDE.md`](docs/MIDI_IMPORT_GUIDE.md): MIDI import.
+* [`docs/TAPE_WORKFLOW.md`](docs/TAPE_WORKFLOW.md): Tape page.
+* [`docs/stages/`](docs/stages/): implementation and acceptance records.

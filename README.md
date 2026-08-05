@@ -4,22 +4,21 @@
 [![Platform](https://img.shields.io/badge/platform-M5Stack%20Cardputer%20ADV-blue)](#requirements)
 [![Build](https://img.shields.io/badge/build-arduino--cli-brightgreen)](#build--flash)
 
-> **Portable real-time groove computer for M5Stack Cardputer.**
-> A **time-feel instrument** that separates the musical language, generated material, movement in time, and current sound.
+> **Portable real-time groove computer for M5Stack Cardputer ADV.**
+> A time-feel instrument that separates musical language, generated material,
+> movement in time, and current sound.
 
 Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtubia/miniacid). This fork focuses on generative patterns, timing FEEL, scene persistence, arrangement, portable performance, and bounded MIDI integration.
 
 ## Status
 
-**Beta.** Core groovebox flow is playable on Cardputer-ADV. APIs/UI may change as the instrument evolves.
+**Beta.** The core groovebox, Song, performance, USB-MIDI, and realtime SMF workflows are usable on Cardputer ADV. APIs and UI may still change.
 
-The canonical product direction and execution order are documented in [`PLAN.md`](PLAN.md). This README describes capabilities available on the current branch; it does not establish a separate roadmap.
+[`PLAN.md`](PLAN.md) is the roadmap. This README describes capabilities present in the current firmware; it does not promote planned work to shipped behavior.
 
 ## Product model
 
-GroovePuter remains a self-contained groovebox. External instruments such as Yamaha SEQTRAK are supported output targets, not required dependencies.
-
-The core product invariant is:
+GroovePuter is a standalone groovebox. Yamaha SEQTRAK and other MIDI devices are optional output targets, not runtime dependencies.
 
 ```text
 GENRE != FEEL != GENERATOR != TEXTURE
@@ -29,117 +28,124 @@ GENRE != FEEL != GENERATOR != TEXTURE
 GroovePuter
 ├── generators, patterns, synths and drums
 ├── independent GENRE / FEEL / GENERATOR / TEXTURE decisions
-├── pattern and song arrangement
-├── live NOTE mode for internal Synth A
+├── pattern and Song arrangement
+├── live performance keyboard and performance tools
 ├── sample-timed USB-MIDI output and transport
-└── realtime SMF playback and routing
+└── realtime SMF playback, inspection and routing
 ```
-
-The long-term musical hierarchy is:
-
-```text
-step -> bar -> phrase -> section -> song
-```
-
-The active implementation order, acceptance metrics, memory constraints, and deferred ideas live in [`PLAN.md`](PLAN.md).
 
 Atlas remains an optional source of curated factory seed patterns.
 
 ## Features
 
-* **Two Swappable Synth Voices:** TB-303, OPL2 (FM), AY/YM2149 (PSG), and SID.
-* **TR-808–inspired drum section.**
-* **Pattern + song arrangement.**
-* **Additive PERFORM page:** scale-aware two-row keyboard, explicit NOTE mode, monophonic last-note priority, and transport-safe Synth A ownership.
-* **PERFORM / PATTERN / ARRANGE shortcuts** over the unchanged detailed page carousel.
-* **Dual song slots (`A/B`)** with split compare and live mix controls.
-* **RETRO split Song view** aligned with cyber theme styling.
-* **FEEL system (live):**
-  * Grid: `1/8 · 1/16 · 1/32`
-  * Timebase: `HALF · NORMAL · DOUBLE`
-  * Length: `1B … 8B`
-* **TEXTURE layer (live):** Lo-Fi / Drive / Drum FX.
-* **Genre-driven generator:** rhythmic masks, motif length, scale preference, and density traits.
-* **Groove Lab page:** mode/flavor/macros + corridor/budget preview.
-* **Drum Automation page:** four automation lanes + per-pattern groove override.
-* **Scene persistence:** safe load for older scenes.
-* **USB-MIDI output:** sample-timed Pattern and live event dispatch through one TinyUSB owner.
-* **MIDI transport:** Clock, Start, Stop, and lifecycle work on the `dev` line.
-* **Realtime SMF player:** file playback, routing modes, track selection/mute work, and project timing modes.
+### Sound and arrangement
+
+* **Two swappable synth voices.** The selectable runtime catalog is:
+  * `TB303`
+  * `SID`
+  * `AY` / YM2149
+  * `SH101`
+  * `SN76489`
+  * `WAVEMORPH`
+* **Legacy OPL2 scene compatibility:** the persisted OPL2 enum/value is decode-only. Loading or requesting it falls back to `TB303`; OPL2 is not a selectable runtime engine.
+* **TR-808-inspired drum section** with per-pattern automation, groove overrides, compression, transient shaping, and reverb.
+* **Pattern and Song arrangement** with two Song slots (`A/B`), split compare, live mix, reverse/loop controls, markers, and block copy/paste.
+* **FEEL:** `1/8`, `1/16`, `1/32`; half/normal/double timebase; `1B` through `8B` lengths.
+* **TEXTURE:** Lo-Fi, Drive, Tape/space coloration, and Drum FX.
+* **Genre-driven generation:** rhythmic masks, scale/range constraints, density traits, mode/flavor corridors, and deterministic generation domains.
+
+### PERFORMANCE TOOLS
+
+Open the PERFORM tools layer with `Tab`. The current firmware provides:
+
+| Key | Tool |
+|---|---|
+| `1` | ARPEGGIATOR |
+| `2` | DIRECTION |
+| `3` | CHORD |
+| `4` | MEMORY |
+| `5` | STRUM |
+| `6` | RATCHET |
+| `7` | EUCLIDEAN |
+| `8` | ROTATE |
+
+`Shift+1..8` cycles adjustable tools backward. Generated performance events use the existing performance event router and MIDI dispatcher; the tools do not create a second MIDI writer or scheduler.
+
+### Song Generate
+
+Song pattern references and pattern content are distinct. The controls deliberately separate assignment from generation:
+
+| Key | Song action |
+|---|---|
+| `Q..I` | Assign an already existing pattern slot `1..8`; do not regenerate its content |
+| `G` | Generate real material into a safe free pattern slot, then assign the selected Song cell to that slot |
+| double-tap `G` | Generate and materialize Synth A, Synth B, and Drums for the current Song row as one logical mutation |
+
+Generation is copy-on-write: it never silently overwrites a pattern referenced by another Song cell. If no safe slot is available, `NO EMPTY PATTERN SLOTS` is shown and Scene data is unchanged.
+
+### MIDI Player and HUB MIDI
+
+The realtime SMF workflow includes:
+
+* physical-track mute mixer (`U`) and direct physical-track mute hotkeys `1..9`;
+* channel inspector (`I`);
+* structural inspector (`S`);
+* performance/throughput panel (`D`);
+* waveform overlay (`Alt+W`);
+* Player → HUB MIDI navigation with `H` after a file is loaded;
+* return from HUB MIDI with `H` or `Esc`, preserving the loaded-file session, Player panel state, scroll, and selection;
+* physical SMF track selection in the mute mixer and HUB MIDI;
+* per-physical-track route override in HUB MIDI: `AUTO` or `CH1..CH10`;
+* route editing with `C`, `Left/Right`, and `Enter` while playback is stopped or paused in SEQTRAK routing mode.
+
+SEQTRAK-safe routing maps drums to `CH1..CH7`, Synth 1 to `CH8`, Synth 2 to `CH9`, and DX to `CH10`. RAW routing passes source MIDI channels through and does not apply SEQTRAK track overrides.
+
+HUB MIDI is an inspection/mute/routing surface. It does not own SMF transport, scheduling, TinyUSB writes, or note lifecycle.
+
+### Persistence and UI
+
+* Scene Save/Load persists patterns, Song references, synth/drum state, and the supported scene codec fields.
+* UI session persistence stores the active page, last page in each workflow, master volume, visual style, and waveform-overlay state.
+* Player ↔ HUB MIDI state is preserved for the current loaded SMF session; loading another file starts a new SMF generation and resets per-track route overrides to `AUTO`.
+* The public global theme cycle is `CARBON ↔ CYBER`. `AMBER` remains a legacy compatibility value for older UI/session data and specialized page code, not a normal selectable theme in the global cycle.
 
 ## Controls
 
-### Groovebox navigation
-
-The firmware starts on the original **Genre** page. All existing pages remain available.
+### Global navigation
 
 | Key | Action |
 |---|---|
-| `[` / `]` | Previous / next page in the complete GroovePuter carousel |
-| `Fn + 1..0` | Direct jump to detailed pages `1..10` |
-| `Fn + Tab` | Cycle the high-level `PERFORM → PATTERN → ARRANGE` shortcuts |
-| `Fn + Shift + Tab` | Cycle those shortcuts backward |
-| `Space` | Transport play / stop |
+| `Fn+Tab` | Cycle workflow forward |
+| `Fn+Shift+Tab` | Cycle workflow backward |
+| `Alt/Fn+1..0` | Direct page jump |
+| `Alt+[` / `Alt+]` | Previous / next detailed page |
+| `Space` | Active transport play / stop |
+| `Alt+P` | Open MIDI Player |
+| `Alt+W` | Toggle waveform overlay |
+| `Alt+\` | Toggle `CARBON ↔ CYBER` |
 | `Esc` | Back or dismiss |
 
-`PERFORM / PATTERN / ARRANGE` does not remove or replace the original pages. It is only a faster way to reach three common working contexts.
+The active page receives keys before global fallbacks. This prevents page-local commands, NOTE mode, Song assignment, and MIDI mute controls from colliding.
 
-### PERFORM — NOTE MODE: ON
+### PERFORM
 
-![GroovePuter PERFORM keymap with NOTE mode enabled](docs/keymaps/cardputer_adv_perform_note_mode_on.svg)
-
-`NOTE MODE: ON` is the default when PERFORM is opened after reboot.
+`NOTE MODE: ON` is the default after reboot.
 
 * `QWERTYUIOP` is the upper scale-aware manual.
-* `ASDFGHJKL` is the lower scale-aware manual.
-* The upper row is exactly one octave above the matching lower-row scale degree.
-* Synth A is monophonic and uses last-note priority.
-* While transport runs, note keys remain **reserved and consumed**, but emit no `NoteOn`.
-* `X` releases only the live-owned Synth A note; it does not stop PatternPlayer or Synth B.
+* `ASDFGHJKL` is the lower manual, one octave below the matching upper keys.
+* `\` cycles the target: internal/USB synth targets, DX, and native seven-lane drums.
+* `,` / `.` select scale; `-` / `=` shift octave; `X` sends panic for the live-owned target.
+* While Pattern/Song transport owns Synth A, live note keys remain consumed and do not emit competing `NoteOn` events.
+* `Tab` opens PERFORMANCE TOOLS.
 
-| Key | PERFORM action |
-|---|---|
-| `N` | NOTE mode ON / OFF |
-| `,` / `.` | Previous / next scale |
-| `-` / `=` | Octave down / up |
-| `X` | Live Synth A panic |
-| `1` / `2` / `3` | PERFORM / PATTERN / ARRANGE |
+With NOTE mode off, the legacy `I`, `O`, `P`, `K`, and `L` pattern/BPM commands are available again.
 
-### PERFORM — NOTE MODE: OFF
-
-![GroovePuter PERFORM keymap with NOTE mode disabled](docs/keymaps/cardputer_adv_perform_note_mode_off.svg)
-
-`NOTE MODE: OFF` returns musical letters to the legacy command layer.
-
-| Key | Legacy action |
-|---|---|
-| `I` | Randomize Synth A pattern |
-| `O` | Randomize Synth B pattern |
-| `P` | Randomize drums |
-| `K` / `L` | BPM down / up |
-| `N` | Return to NOTE mode |
-
-> [!IMPORTANT]
-> Page commands always get first refusal. NOTE mode receives an unmodified key only after the active page declines it. The step editor therefore keeps its own editing controls.
-
-The current firmware may suppress live `NoteOn` while transport owns Synth A. Wave 1 in [`PLAN.md`](PLAN.md) requires the interface to expose the effective key state as `NOTE`, `CMD`, `LOCAL`, or `LOCK` before changing this ownership behavior.
-
-### Editor conventions
-
-| Key | Common action |
-|---|---|
-| `Arrows` | Move cursor or navigate lists |
-| `Enter` | Confirm, apply, or toggle the focused item |
-| `Tab` | Change focus or section on supported pages |
-| `Q..I` | Pattern slots `1..8` in Pattern, Drum, and Song contexts |
-| `1..9`, `0` | Track mutes when the active page does not consume the digit |
-
-The canonical page-by-page reference is in [`src/ui/docs/keys.md`](src/ui/docs/keys.md). The Cardputer-ADV performance acceptance procedure is in [`docs/tests/PERFORMANCE_WORKFLOW_CARDPUTER_ADV.md`](docs/tests/PERFORMANCE_WORKFLOW_CARDPUTER_ADV.md).
+The canonical page-by-page key reference is [`src/ui/docs/keys.md`](src/ui/docs/keys.md).
 
 ## Screenshots
 
 | Page | Preview |
-| :--- | :--- |
+|:---|:---|
 | **Genre** | ![Genre](docs/screenshots/genre.png) |
 | **Sequencer Hub** | ![Sequencer Hub](docs/screenshots/sequencer_hub.png) |
 | **Drum Section** | ![Drum Page](docs/screenshots/drum_page_cyber.png) |
@@ -148,41 +154,24 @@ The canonical page-by-page reference is in [`src/ui/docs/keys.md`](src/ui/docs/k
 | **Song Page** | ![Song Page](docs/screenshots/song_page.png) |
 | **Groove Lab** | ![Groove Lab](docs/screenshots/groove_lab.png) |
 
-## MIDI & Drums
+## MIDI ownership
 
-### USB-MIDI output
-
-The `dev` line includes one sample-timed USB-MIDI dispatcher used by accepted live, Pattern, transport, and realtime SMF paths. The dispatcher remains the sole TinyUSB writer; new features must reuse it rather than add a parallel scheduler.
-
-Current accepted direction includes:
-
-```text
-PERFORM Synth A / Synth B / DX / Drums
-Pattern Synth A / Synth B / Drums
-MIDI Clock / Start / Stop
-realtime SMF playback and routing
-```
-
-Exact target routing and lifecycle acceptance are documented under `docs/stages/`. Hardware-dependent capabilities remain beta until their stage acceptance is complete.
-
-### MIDI file routing
-
-The SMF player routes complete MIDI files through the realtime output path. The `MidiAdvance` dialog also provides Track Map behavior for importing MIDI material into internal tracks (`Synth A`, `Synth B`, `Drums`). Playback/routing and import are separate workflows.
-
-### Advanced Drum FX
-
-* One-knob compressor.
-* Transient shaper.
-* Drum reverb.
+Accepted live, Pattern, Song, transport, and realtime SMF events converge on the existing event router and sample-timed USB-MIDI dispatcher. The dispatcher remains the sole TinyUSB MIDI writer. New pages and performance tools must not add parallel schedulers or direct `tud_midi_*` calls.
 
 ## Requirements
 
-* **Hardware:** M5Stack Cardputer ADV, ESP32-S3FN8, no PSRAM.
-* **Tooling:** `arduino-cli`.
-* **Board package:** pinned by `scripts/install_arduino_deps.sh`.
-* **FQBN:** `m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app`.
+* **Hardware:** M5Stack Cardputer ADV with ESP32-S3FN8.
+* **Memory profile:** PSRAM disabled.
+* **Tooling:** `arduino-cli` and the dependencies pinned by `scripts/install_arduino_deps.sh`.
+* **Normal profile:** USB MIDI plus CDC Serial, built by `scripts/build.sh`.
+* **MIDI-only profile:** class-compliant USB MIDI without CDC, built by `scripts/build_seqtrak_midi_only.sh`.
+* **Partition:** `huge_app` as set by the build scripts.
+
+Fixed-DRAM checks are CI regression gates against the repository budget. They are not presented as proof of a universal runtime safety threshold; hardware acceptance and runtime telemetry remain required.
 
 ## Build & Flash
+
+Normal Cardputer ADV build:
 
 ```bash
 bash scripts/install_arduino_deps.sh
@@ -191,36 +180,38 @@ bash scripts/upload.sh /dev/ttyACM0
 arduino-cli monitor -p /dev/ttyACM0 -c baudrate=115200
 ```
 
-No external wiring is required. The firmware uses the built-in keyboard, ES8311 codec, speaker/headphone output, and USB-C for flashing, Serial, and supported USB-MIDI operation.
+MIDI-only build:
+
+```bash
+bash scripts/build_seqtrak_midi_only.sh --warnings all
+```
+
+No external wiring is required. The firmware uses the built-in screen, keyboard, ES8311 audio codec, speaker/headphone output, and USB-C for flashing, Serial, and USB MIDI.
 
 ## Troubleshooting
 
-### Upload fails / cannot connect
+### Upload fails
 
-* Use a data USB cable.
-* Confirm the port exists:
+Use a data-capable USB cable and confirm the port:
 
-  ```bash
-  arduino-cli board list
-  ```
+```bash
+arduino-cli board list
+```
 
-### NOTE mode shows a MIDI note but produces no audio
+### Song generation shows `NO EMPTY PATTERN SLOTS`
 
-Use a build containing the live-render fix after commit `61478ec4` or later. The synth render path must run while transport is stopped; older PR #5 builds displayed the note but gated voice rendering behind `playing`.
+No pattern or Song reference was changed. Clear an unused pattern slot that is not referenced by Song A or Song B, or switch to another pattern page/bank and retry.
 
-### Audio crackle under heavy load
+### Audio crackle or hangs under load
 
-Reduce Tape/delay intensity and monitor the existing `[PERF]` telemetry. `underruns` must not continually increase during ordinary play.
+Reduce Tape/delay intensity and monitor `[PERF]`. `underruns` must not grow continuously during ordinary playback and navigation.
 
 ## Contributing
 
-This is an experimental instrument.
-
-* Read [`PLAN.md`](PLAN.md) before proposing a feature lane.
-* Keep PRs small and testable.
-* Preserve the core rule: **GENRE ≠ FEEL ≠ GENERATOR ≠ TEXTURE**.
-* Keep GroovePuter usable as a standalone groovebox.
-* Do not let an implementation stage silently reorder the canonical plan.
+* Read [`PLAN.md`](PLAN.md) before proposing a new feature lane.
+* Keep PRs narrow and testable.
+* Preserve **GENRE ≠ FEEL ≠ GENERATOR ≠ TEXTURE**.
+* Preserve standalone groovebox behavior and the existing transport/MIDI owners.
 
 ## Credits
 
