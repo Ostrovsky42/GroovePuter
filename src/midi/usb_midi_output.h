@@ -118,12 +118,32 @@ private:
     static constexpr std::size_t kLaneCount = 20;
     static constexpr std::size_t kMidiChannelCount = 16;
     static constexpr std::size_t kMidiNoteCount = 128;
+    static constexpr std::size_t kGeneratedTargetCount = 3;
+    static constexpr std::size_t kGeneratedBitsetBytes = kMidiNoteCount / 8;
 
     static uint8_t clampChannel(uint8_t channel);
     static uint8_t clampDataByte(uint8_t value);
     static uint8_t patternDrumChannel(uint8_t logicalVoice);
+    static int generatedTargetIndex(MusicalEventTarget target);
 
     void configureLanes();
+    uint8_t generatedChannel(MusicalEventTarget target) const;
+    bool generatedNoteActive(int targetIndex, uint8_t note) const;
+    bool generatedNotePendingRelease(int targetIndex, uint8_t note) const;
+    void setGeneratedNoteActive(int targetIndex, uint8_t note, bool active);
+    void setGeneratedNotePendingRelease(int targetIndex,
+                                        uint8_t note,
+                                        bool pending);
+    int generatedActiveNote(MusicalEventTarget target) const;
+    uint8_t generatedActiveCount(MusicalEventTarget target) const;
+    bool retryGeneratedPendingReleases(MusicalEventTarget target);
+    bool acquireGeneratedNote(MusicalEventTarget target,
+                              uint8_t note,
+                              uint8_t velocity);
+    bool releaseGeneratedNote(MusicalEventTarget target,
+                              uint8_t note,
+                              uint8_t velocity = 0);
+    bool releaseGeneratedTarget(MusicalEventTarget target);
     MidiVoiceLane* laneFor(MusicalEventSource source,
                            MusicalEventTarget target,
                            uint8_t logicalChannel = 0);
@@ -154,6 +174,8 @@ private:
     IUsbMidiTransport& transport_;
     UsbMidiRouteConfig config_;
     MidiVoiceLane lanes_[kLaneCount];
+    uint8_t generatedActive_[kGeneratedTargetCount][kGeneratedBitsetBytes];
+    uint8_t generatedPendingRelease_[kGeneratedTargetCount][kGeneratedBitsetBytes];
     uint8_t wireOwners_[kMidiChannelCount][kMidiNoteCount];
     uint8_t smfOwners_[kMidiChannelCount][kMidiNoteCount];
     uint16_t abandonedSmfChannels_;

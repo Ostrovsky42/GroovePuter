@@ -66,6 +66,9 @@ def test_performance_tools_use_fixed_control_rate_state() -> None:
     keyboard_source = (ROOT / "src/input/performance_keyboard.cpp").read_text(encoding="utf-8")
     page_header = (ROOT / "src/ui/pages/perform_page.h").read_text(encoding="utf-8")
     page = (ROOT / "src/ui/pages/perform_page.cpp").read_text(encoding="utf-8")
+    usb_header = (ROOT / "src/midi/usb_midi_output.h").read_text(encoding="utf-8")
+    usb_source = (ROOT / "src/midi/usb_midi_output.cpp").read_text(encoding="utf-8")
+    usb_test = (ROOT / "tests/test_usb_midi_output.cpp").read_text(encoding="utf-8")
 
     require("ScheduledEvent scheduled_[kMaxScheduledEvents]" in keyboard_header and
             "uint8_t generatedNotes_[kMaxGeneratedNotes]" in keyboard_header,
@@ -104,6 +107,29 @@ def test_performance_tools_use_fixed_control_rate_state() -> None:
             "PERFORM hints must describe the local tool layer, not conflicting Fn keys")
     require("keyboard_.setTempoBpm(miniAcid_.bpm());" in page,
             "arp/ratchet timing must follow the current GroovePuter BPM")
+    for label in ("1 ARPEGGIATOR", "2 DIRECTION", "3 CHORD", "4 MEMORY",
+                  "5 STRUM", "6 RATCHET", "7 EUCLIDEAN", "8 ROTATE"):
+        require(label in page, f"PERFORM tools must show the full label {label}")
+    for abbreviated in ("1 ARP  ", "2 DIR  ", "3 CHD  ", "4 MEM  ",
+                        "5 STR  ", "6 RAT  ", "7 EUC  ", "8 ROT  "):
+        require(abbreviated not in page,
+                f"PERFORM tools must not regress to abbreviated label {abbreviated}")
+
+    require("kGeneratedBitsetBytes" in usb_header and
+            "generatedActive_" in usb_header and
+            "generatedPendingRelease_" in usb_header,
+            "generated performance MIDI must use bounded fixed-size polyphonic state")
+    require("event.source == MusicalEventSource::Arpeggiator" in usb_source and
+            "acquireGeneratedNote" in usb_source and
+            "releaseGeneratedNote" in usb_source and
+            "releaseGeneratedTarget" in usb_source,
+            "Arpeggiator/Chord/Strum/Ratchet/Euclidean events must reach USB MIDI")
+    require("source == MusicalEventSource::PerformanceKeyboard" in usb_source and
+            "releaseGeneratedTarget(target);" in usb_source,
+            "the existing performance panic domain must clean generated MIDI too")
+    require("testPerformanceTransformMidiPolyphony" in usb_test and
+            "MusicalEventSource::MidiInput" in usb_test,
+            "host tests must prove generated polyphony while raw MidiInput stays closed")
 
 
 def test_knob_keys_use_coarse_and_fine_steps() -> None:
