@@ -5,6 +5,7 @@
 #include <cstdio>
 
 #include "../components/music_visuals.h"
+#include "../player_hub_navigation.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/smf_structural_inspector.h"
 #include "src/midi/smf_track_inspector.h"
@@ -175,6 +176,13 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
 
     if (numericMuteHotkey) return SmfPlayerPageBase::handleEvent(event);
 
+    if (!browserVisible_ && (event.key == 'h' || event.key == 'H')) {
+        requestPageTransition(
+            PlayerHubNavigation::kHubPage,
+            PlayerHubNavigation::kOpenMidiFromPlayerContext);
+        return true;
+    }
+
     // K is intentionally not a MIDI mute command. Enter remains the only
     // selected-row toggle inside the U table.
     if (!browserVisible_ && (event.key == 'k' || event.key == 'K')) return true;
@@ -235,12 +243,12 @@ void SmfPlayerPage::drawContent(IGfx& gfx) {
 void SmfPlayerPage::drawFooter(IGfx& gfx) {
     if (structuralInspectorVisible_) {
         UI::drawStandardFooter(gfx, "UP/DN Layer S/B Player",
-                               "1-9 Mute U Table I Channels");
+                               "H Hub 1-9 Mute U Table");
         return;
     }
     if (muteMixerVisible_) {
         UI::drawStandardFooter(gfx, "UP/DN Select L/R Page",
-                               "1-9 Hot ENT Sel A AllOn");
+                               "H Hub 1-9 Hot ENT Sel");
         return;
     }
     SmfPlayerPageBase::drawFooter(gfx);
