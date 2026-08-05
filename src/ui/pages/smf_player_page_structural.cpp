@@ -202,19 +202,33 @@ void SmfPlayerPage::onEnter(int context) {
 
 bool SmfPlayerPage::handleEvent(UIEvent& event) {
     const bool numericMuteHotkey = event.key >= '1' && event.key <= '9';
+    const bool hubShortcut = event.key == 'h' || event.key == 'H';
+
+    // Cardputer can report the physical H key with the hardware/Fn meta bit.
+    // Give the loaded Player -> HUB MIDI shortcut first refusal before the
+    // generic modifier guard; Alt+H and Ctrl+H remain reserved for help.
+    if (event.event_type == GROOVEPUTER_KEY_DOWN && hubShortcut &&
+        !event.alt && !event.ctrl) {
+        player_ = smfPlayerService();
+        const SmfPlayerSnapshot state =
+            player_ ? player_->snapshot() : SmfPlayerSnapshot{};
+        const bool hasPlayerSession =
+            player_ && state.state != SmfPlayerState::Unloaded &&
+            state.state != SmfPlayerState::Error;
+        if (!browserVisible_ || hasPlayerSession) {
+            requestPageTransition(
+                PlayerHubNavigation::kHubPage,
+                PlayerHubNavigation::kOpenMidiFromPlayerContext);
+            return true;
+        }
+    }
+
     if (event.event_type != GROOVEPUTER_KEY_DOWN || event.alt || event.ctrl ||
         (event.meta && !numericMuteHotkey)) {
         return SmfPlayerPageBase::handleEvent(event);
     }
 
     if (numericMuteHotkey) return SmfPlayerPageBase::handleEvent(event);
-
-    if (!browserVisible_ && (event.key == 'h' || event.key == 'H')) {
-        requestPageTransition(
-            PlayerHubNavigation::kHubPage,
-            PlayerHubNavigation::kOpenMidiFromPlayerContext);
-        return true;
-    }
 
     // K is intentionally not a MIDI mute command. Enter remains the only
     // selected-row toggle inside the U table.
