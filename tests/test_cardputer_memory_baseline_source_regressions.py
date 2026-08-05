@@ -180,7 +180,7 @@ require("separate product elf remains uninstrumented" in runtime_doc.lower(),
 require("corrected runtime telemetry contract" in baseline_doc.lower(),
         "baseline document must point readers to corrected runtime semantics")
 require("59c4ec36d5a1f6b80a0fd5d387b3fb8557cab98f" in runtime_doc,
-        "documentation must identify the completed firmware-bearing CI record")
+        "documentation must identify the first completed telemetry build")
 require("smfStackFreeBytes" in runtime_doc and "dispatchStackFreeBytes" in runtime_doc,
         "telemetry contract must cover dense-SMF task stacks")
 
