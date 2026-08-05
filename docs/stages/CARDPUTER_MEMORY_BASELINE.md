@@ -7,12 +7,12 @@ large objects or declaring a new fixed `.dram0.data + .dram0.bss` ceiling.
 
 This stage is intentionally separate from Hub MIDI PR #65. It changes neither
 Hub behavior nor product memory ownership. It restores the last pre-`122880`
-repository ceiling provisionally and collects exact product-ELF and runtime
-heap evidence.
+repository ceiling under an explicit provisional exception and collects exact
+product-ELF and runtime heap evidence.
 
 ## Verified gate history
 
-The repository history now establishes a two-step measurement failure.
+The repository history establishes a two-step measurement failure.
 
 1. At `9d9cdef0980ec063e23c9a2849eae63f5cf6d812`, the PR #63 workflow built to
    `build/cardputer-adv-current` but called the checker with
@@ -56,9 +56,13 @@ This means:
 
 - `191488` is a provisional repository ceiling, not a proven safe maximum;
 - `122880` remains visible only as an unsupported historical reference;
+- headroom to `191488` is comparison arithmetic, not measured safety margin;
 - no Scene, wavetable, SMF, engine, USB, scheduler, DSP, or UI storage moves;
 - #65 remains responsible for its own build, hardware, and functional tests;
 - the final policy may be lower, higher, or profile-specific.
+
+The product gate prints its provisional-exception status on every run. Passing
+it means only that the fixed sections are below the temporary repository value.
 
 ## Product and runtime images
 
@@ -97,29 +101,42 @@ MEMORY_BASELINE kind=... fixed=... data=... bss=...
 The PR workflow checks out `pull_request.head.sha`, not GitHub's synthetic merge
 commit. Workflow-dispatch runs use `github.sha`.
 
-## Current pre-final control
+## Current immutable-head static baseline
 
-A control run before immutable-head checkout was added built GitHub's synthetic
-PR merge commit. It is not the final accepted provenance record, but it proves
-that the reporter and symbol parser now inspect the expected ELF:
+The first fully pinned product records were built from:
 
 ```text
-normal product
+head  f90bfc4d2d35b1268887fb2484c270b913e08e5e
+base  dev @ b43e23ff12fb0a31bcb77dd5ec57908889760013
+core  m5stack:esp32 3.2.2
+PSRAM disabled
+```
+
+```text
+normal CDC+MIDI
+  ELF SHA-256  d960b1d8e74ec9c6875a81aafa5e99ce331b79fd057574beca0b6405de534e3c
   .dram0.data   22600 B
   .dram0.bss   147392 B
   fixed        169992 B
-  headroom to provisional 191488: 21496 B
+  comparison to provisional 191488: +21496 B
 
-MIDI-only product
+MIDI-only
+  ELF SHA-256  e2309c6683a8ea9fbc2855af4affc7f96eccbfbc3cc5af70d6d00e5412ae972c
   .dram0.data   22584 B
   .dram0.bss   147336 B
   fixed        169920 B
-  headroom to provisional 191488: 21568 B
+  comparison to provisional 191488: +21568 B
 
 profile delta: 72 B
 ```
 
-The same report found in both profiles:
+The runtime probes added `16 B` to the normal fixed total and `32 B` to the
+MIDI-only fixed total. This validates the decision not to use instrumented ELFs
+as exact product baselines.
+
+## Full `.dram0.bss` attribution
+
+The five named candidate groups are a shortlist, not a complete `.bss` model:
 
 | Candidate | ELF size |
 |---|---:|
@@ -128,15 +145,50 @@ The same report found in both profiles:
 | Wavetable static arrays ×4 | 16384 B |
 | `g_smfPlayer` | 11392 B |
 | `g_miniAcidInstance` | 8864 B |
+| **Shortlist total** | **88240 B** |
 
-The runtime probes added `16 B` to the normal fixed total and `32 B` to the
-MIDI-only fixed total in that control. This validates the decision not to use
-instrumented ELFs as exact product baselines.
+Therefore the bytes outside that shortlist are:
 
-The current MIDI-only product total does not reproduce the historical `190808`
-figure. That does not disprove an older binary with different source. It means
-that figure cannot justify the current gate until its own source/profile/ELF
-identity is recovered.
+```text
+normal:    147392 - 88240 = 59152 B
+MIDI-only: 147336 - 88240 = 59096 B
+```
+
+Those bytes are not called unknown, free, or waste. The section reporter now
+uses `objdump -t` and the actual section name instead of treating every `nm`
+`B/b` symbol as `.dram0.bss`. For each ELF it prints:
+
+- every positive-size symbol located specifically in `.dram0.bss`;
+- exact address, size, and name, sorted by size;
+- union coverage of all symbol intervals;
+- bytes in the section not covered by named symbol intervals, such as alignment
+  or linker-owned space;
+- raw overlap from aliases that point at the same storage;
+- shortlist coverage and the exact bytes outside the shortlist.
+
+The machine summary includes `bss_symbol_coverage`,
+`bss_section_uncovered`, `bss_alias_overlap`, `candidate_bss`, and
+`candidate_outside`. Static attribution is closed only when the immutable-head
+product logs contain this inventory for both profiles.
+
+No candidate is presumed waste. In particular, moving `s_tempLoadScene` to heap
+can reduce `.bss` while leaving peak physical RAM unchanged and requiring a
+contiguous approximately `25.8 KB` block during save/load.
+
+## Historical `190808` reconstruction
+
+The current MIDI-only product is `169920 B`. The historical figure is
+`190808 B`, a difference of:
+
+```text
+190808 - 169920 = 20888 B
+```
+
+That is too large to treat as rounding or instrumentation noise. Plausible
+sources include a different core/toolchain, FQBN, feature configuration, or
+source revision, but none is accepted without an immutable rebuild record. The
+historical number cannot justify `191488`, and it cannot be compared as
+"then versus now", until its source/profile/ELF identity is recovered.
 
 ## Runtime records
 
@@ -211,22 +263,67 @@ A linker total alone cannot prove runtime safety. A low runtime heap number
 alone cannot identify which static object should move. Both exact product ELF
 identity and runtime behavior are required.
 
+## Provisional `191488` self-audit
+
+The restored value is subjected to the same rule rather than being silently
+grandfathered:
+
+| Rule item | Status for `191488` | Evidence |
+|---|---|---|
+| 1. Immutable source and clean tree | PASS | pinned head and `Source dirty entries: 0` |
+| 2. FQBN and toolchain/core versions | PASS | separate full FQBNs; pinned M5Stack core `3.2.2` and libraries |
+| 3. Product ELF identity and sections | PASS | separate ELF SHA-256 and exact sections |
+| 4. Profile separation | PASS | normal and MIDI-only product/runtime builds |
+| 5. Worst-case hardware minima | **MISSING** | hardware matrix not run |
+| 6. Declared reserves | **MISSING** | no accepted heap/block/stack reserves yet |
+| 7. Deriving calculation and boundary build | **MISSING** | no formula can be completed before items 5-6 |
+
+Result: `191488` currently passes **4 of 7** evidence requirements. It is an
+explicit temporary exception, not a threshold derived by this PR's rule. Its
+`21496 B` and `21568 B` headroom values are arithmetic comparisons only. The
+exception may be removed, replaced with profile-specific limits, or confirmed
+only after hardware evidence and the reserve calculation exist.
+
+## Boundary audit
+
+The PR diff is restricted to these six paths:
+
+```text
+.github/workflows/cardputer-memory-baseline.yml
+docs/stages/CARDPUTER_MEMORY_BASELINE.md
+scripts/build_cardputer_memory_baseline.sh
+scripts/check_cardputer_dram_budget.sh
+scripts/report_cardputer_memory_baseline.sh
+tests/test_cardputer_memory_baseline_source_regressions.py
+```
+
+Post-line audit:
+
+- **No change to #65 or stacked branches:** PASS; PR base remains `dev`, and no
+  Hub MIDI source is changed.
+- **No PSRAM assumption:** PASS; both FQBNs retain `PSRAM=disabled`.
+- **No static-to-heap relocation:** PASS; no product C/C++ storage definition is
+  changed.
+- **No transactional Scene change:** PASS; Scene codec/load/save source is not
+  in the diff.
+- **No TinyUSB, scheduler, RX, clock, note ownership, DSP, or UI behavior
+  change:** PASS; no product implementation file is in the diff.
+- **Fail closed:** PASS at source level; scripts use `set -euo pipefail`, the
+  workflow uses `pipefail` around `tee`, and missing ELF/binutils/report errors
+  are non-zero. CI must still pass on the final head.
+
 ## Decision after measurement
 
-Only after the immutable-head product reports and hardware matrix exist should
-#70 choose among:
+After exact BSS inventory, historical reconstruction, and the hardware matrix,
+#70 may choose among:
 
 - reducing genuinely unnecessary fixed residency;
 - deriving a documented profile-specific gate;
 - combining a small low-risk optimization with a justified gate change.
 
-No candidate is presumed waste. In particular, moving `s_tempLoadScene` to heap
-can reduce `.bss` while leaving peak physical RAM unchanged and requiring a
-contiguous approximately `25.8 KB` block during save/load.
-
 ## Acceptance boundaries
 
-- `191488` remains explicitly provisional.
+- `191488` remains explicitly provisional and marked as a 4/7 exception.
 - Cardputer ADV remains `PSRAM=disabled`.
 - No blind static-to-heap relocation.
 - No removal of transactional scene rollback without an equivalent design.
@@ -234,3 +331,6 @@ contiguous approximately `25.8 KB` block during save/load.
 - No TinyUSB, scheduler, RX, clock, note-ownership, DSP, or UI behavior change.
 - A missing ELF, missing binutils, failed report, or failure hidden behind
   `tee` must fail CI.
+- The PR remains draft until both product BSS inventories are captured and the
+  hardware checklist is either completed or explicitly left as a subsequent,
+  separately gated stage.
