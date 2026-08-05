@@ -6,6 +6,9 @@ This note supersedes the field-name examples in the earlier runtime section of
 `uxTaskGetStackHighWaterMark()` value is already a minimum free-stack value in
 bytes. No multiplication is applied or permitted.
 
+Full `.dram0.bss` attribution remains documented in the baseline report; this
+note defines the separate runtime measurement contract.
+
 ## Runtime fields
 
 The diagnostic image emits two records at the same timestamp.
