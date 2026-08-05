@@ -38,9 +38,10 @@ used bytes. Peak used stack is `configuredBytes - stackFreeBytes`. Safety is
 assessed independently per task; stack reserves are never summed into one
 interchangeable pool.
 
-The runtime-only temporary source resolves `SmfPlayerTask` and
-`MidiDispatchTask` by their registered FreeRTOS task names. A zero watermark is
-interpreted only together with the corresponding `TaskPresent` field.
+The temporary runtime source injects direct runtime-only accessors for the
+`SmfPlayerTask` and `MidiDispatchTask` handles. It does not rely on optional
+`xTaskGetHandle()` name lookup or alter the product source/ELF. A zero watermark
+is interpreted only together with the corresponding `TaskPresent` field.
 
 ## Capability separation
 
@@ -66,8 +67,9 @@ _dfu_epbuf      4096 B
 ```
 
 They are not removed in PR #70. Product builds now print linker-map evidence and
-installed-core configuration evidence for `CFG_TUD_*` and `CONFIG_TINYUSB_*`
-controls. A class can be disabled only after all of the following are proven:
+generated/installed configuration evidence for `CFG_TUD_*` and
+`CONFIG_TINYUSB_*` controls. A class can be disabled only after all of the
+following are proven:
 
 1. the exact controlling compile-time option is identified for the pinned
    M5Stack core;
