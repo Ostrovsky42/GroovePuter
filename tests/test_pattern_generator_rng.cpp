@@ -59,10 +59,9 @@ GrooveboxGlobalRngTrace captureGrooveboxGlobalRngTrace(
         (void)songPageGenerator;
     }
 
-    // PR1 boundary: GrooveboxModeManager still consumes the global libc RNG.
-    // These three blocks model the Generate A -> B -> Drums call order that
-    // PR2 will isolate. This test intentionally compares state continuity,
-    // not platform-specific rand() golden values.
+    // Historical boundary smoke test: constructing Song Page must not reset
+    // libc RNG. GrooveboxModeManager now consumes only one lazy boot seed and
+    // then runs its own deterministic generation domains.
     GrooveboxGlobalRngTrace trace{};
     for (auto& stage : trace) {
         for (int& value : stage) {
@@ -137,7 +136,7 @@ void testOpeningSongPagePreservesGrooveboxBootSequence() {
         captureGrooveboxGlobalRngTrace(kBootSeed, true);
 
     expect(afterOpeningSongPage == withoutSongPage,
-           "opening Song Page reset the boot-seeded global RNG sequence consumed by GrooveboxModeManager");
+           "opening Song Page reset the boot-seeded global RNG sequence");
 }
 
 void testSetSeedDoesNotChangeGlobalRand() {
