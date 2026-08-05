@@ -27,8 +27,10 @@ def main() -> None:
     )
     require(
         "bool midiOverview_{false};" in header
+        and "bool midiReturnToPlayer_{false};" in header
         and "uint8_t midiSelected_{0};" in header
-        and "uint8_t midiScroll_{0};" in header,
+        and "uint8_t midiScroll_{0};" in header
+        and "uint32_t midiGeneration_{0};" in header,
         "HUB MIDI state must remain page-local and bounded",
     )
     for forbidden in ("std::vector", "std::array", "SmfPlayerSnapshot player_", "static Smf"):
@@ -59,17 +61,29 @@ def main() -> None:
         )
 
     require(
-        "state.selectTrack(track)" in page and "state.toggleSelected()" in page,
-        "HUB MIDI mute must use the existing physical-track mute state",
+        "smfSessionGeneration()" in page
+        and "smfSnapshotGenerationsMatch(" in page
+        and "SYNCING" in page,
+        "HUB MIDI must reject stale snapshots and expose an explicit SYNCING state",
     )
     require(
-        "smfTrackMuteState().clear()" in page,
-        "HUB MIDI All On must use the existing mute state",
+        "state.toggleTrack(track, projection.generation)" in page,
+        "HUB MIDI mute must use the generation-aware physical-track mute path",
+    )
+    require(
+        "smfTrackMuteState().clear(projection.generation)" in page,
+        "HUB MIDI All On must use the generation-aware existing mute state",
     )
     require(
         "event.key == ' '" in page
         and "MIDI TRANSPORT: PLAYER" in page,
         "Space must be consumed with an explicit Player-owned transport message",
+    )
+    require(
+        "void SequencerHubPage::onEnter(int context)" in page
+        and "PlayerHubNavigation::kOpenMidiFromPlayerContext" in page
+        and "requestPageTransition(PlayerHubNavigation::kPlayerPage)" in page,
+        "HUB MIDI must support the bounded Player round-trip without owning transport",
     )
 
     for forbidden in (
