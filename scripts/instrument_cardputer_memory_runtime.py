@@ -24,8 +24,8 @@ def replace_once(path: Path, anchor: str, replacement: str, label: str) -> None:
     path.write_text(text.replace(anchor, replacement, 1), encoding="utf-8")
 
 
-# Runtime-only accessors avoid relying on INCLUDE_xTaskGetHandle or task-name
-# lookup. None of these edits touch the product checkout or product ELF.
+# Runtime-only direct accessors avoid optional task-name lookup. None of these
+# edits touch the product checkout or product ELF.
 replace_once(
     smf_header_path,
     "    bool begin();\n    ScheduledSmfMidiEventQueue& eventQueue() { return eventQueue_; }",
