@@ -18,6 +18,16 @@ def function_block(source: str, start_token: str, end_token: str) -> str:
 def main() -> None:
     page_h = (ROOT / "src/ui/pages/smf_player_page.h").read_text(encoding="utf-8")
     page_cpp = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(encoding="utf-8")
+    page_wrapper = (ROOT / "src/ui/pages/smf_player_page_structural.cpp").read_text(
+        encoding="utf-8"
+    )
+    hub_h = (ROOT / "src/ui/pages/sequencer_hub_page.h").read_text(encoding="utf-8")
+    hub_cpp = (ROOT / "src/ui/pages/sequencer_hub_page_midi.cpp").read_text(
+        encoding="utf-8"
+    )
+    navigation = (ROOT / "src/ui/player_hub_navigation.h").read_text(
+        encoding="utf-8"
+    )
     manager_h = (ROOT / "src/ui/midi_file_manager.h").read_text(encoding="utf-8")
     manager_cpp = (ROOT / "src/ui/midi_file_manager.cpp").read_text(encoding="utf-8")
     player_service = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(encoding="utf-8")
@@ -77,6 +87,67 @@ def main() -> None:
             "active-seek SPP must use a latest-wins bounded mailbox")
     require("g_smfQueue->recordDispatched(pendingSmf)" in dispatcher,
             "track ownership must commit only after a successful USB write")
+
+    require(
+        "PlayerHubNavigation::kOpenMidiFromPlayerContext" in page_wrapper
+        and "requestPageTransition(" in page_wrapper
+        and "PlayerHubNavigation::kHubPage" in page_wrapper,
+        "MIDI Player must enter HUB MIDI through the existing page transition path",
+    )
+    require(
+        "void SmfPlayerPage::onExit()" in page_wrapper
+        and "void SmfPlayerPage::onEnter(int context)" in page_wrapper
+        and "PlayerHubNavigation::playerViewState()" in page_wrapper
+        and "view.generation = smfSessionGeneration()" in page_wrapper
+        and "view.generation != generation" in page_wrapper,
+        "Player view lifetime must be bounded and tied to the current SMF session",
+    )
+    require(
+        "struct PlayerViewState" in navigation
+        and "SmfPlayerSnapshot" not in navigation
+        and "SmfStructuralInspectorSnapshot" not in navigation,
+        "navigation lifetime state must not retain runtime MIDI snapshots",
+    )
+    require(
+        "void SequencerHubPage::onEnter(int context)" in hub_cpp
+        and "PlayerHubNavigation::kOpenMidiFromPlayerContext" in hub_cpp
+        and "requestPageTransition(PlayerHubNavigation::kPlayerPage)" in hub_cpp,
+        "HUB MIDI must return to Player without load or transport commands",
+    )
+    require(
+        "smfSnapshotGenerationsMatch(" in hub_cpp
+        and "smfSessionGeneration()" in hub_cpp
+        and "SYNCING" in hub_cpp,
+        "HUB MIDI must show SYNCING until all snapshots match the active session",
+    )
+    require(
+        "state.toggleTrack(track, projection.generation)" in hub_cpp
+        and "smfTrackMuteState().clear(projection.generation)" in hub_cpp,
+        "HUB MIDI mute commands must be generation-aware and use existing ownership",
+    )
+    require(
+        "bool midiOverview_{false};" in hub_h
+        and "uint32_t midiGeneration_{0};" in hub_h,
+        "HUB MIDI navigation state must remain bounded and page-local",
+    )
+
+    for forbidden in (
+        "SD.",
+        "SmfFileIndexer",
+        "SmfScheduler",
+        "requestLoad(",
+        "seekBars(",
+        "restart(",
+        "->pause(",
+        "->stop(",
+        "tud_midi",
+        "TinyUSB",
+        "USBMIDI",
+    ):
+        require(
+            forbidden not in hub_cpp,
+            f"HUB MIDI navigation must not acquire file, transport or USB ownership: {forbidden}",
+        )
 
     print("SMF panel completion source regressions: OK")
 
