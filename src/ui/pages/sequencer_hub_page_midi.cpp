@@ -171,16 +171,19 @@ IGfxColor activityColor(uint8_t level, bool isMuted) {
 
 void drawArrangementRow(IGfx& gfx,
                         int screenWidth,
-                        int screenHeight,
+                        int contentTop,
+                        int contentHeight,
                         uint8_t row,
                         uint8_t layerIndex,
                         const SmfStructuralLayerSnapshot& layer,
                         const SmfTrackInfoSnapshot* info,
                         bool isMuted,
                         bool isSelected) {
-    const int y0 = (static_cast<int>(row) * screenHeight) / kVisibleMidiRows;
-    const int y1 = (static_cast<int>(row + 1u) * screenHeight) /
-                   kVisibleMidiRows;
+    const int y0 = contentTop +
+                   (static_cast<int>(row) * contentHeight) / kVisibleMidiRows;
+    const int y1 = contentTop +
+                   (static_cast<int>(row + 1u) * contentHeight) /
+                       kVisibleMidiRows;
     const int rowHeight = std::max(1, y1 - y0);
     const int textY = y0 + std::max(0, (rowHeight - 7) / 2);
     const int gridX = std::min(kLayerLabelWidth, screenWidth);
@@ -522,15 +525,20 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
         midiSelected_, projection.layers.layerCount - 1u);
     const int screenWidth = gfx.width();
     const int screenHeight = gfx.height();
+    const int rowsTop = std::min(kOverlayBandHeight, screenHeight);
+    const int rowsBottom = std::max(rowsTop, screenHeight - kOverlayBandHeight);
+    const int rowsHeight = std::max(0, rowsBottom - rowsTop);
     gfx.fillRect(0, 0, screenWidth, screenHeight, kScreenBackground);
 
     for (uint8_t row = 0u; row < kVisibleMidiRows; ++row) {
         const uint8_t index = static_cast<uint8_t>(midiScroll_ + row);
         if (index >= projection.layers.layerCount) {
-            const int y0 = (static_cast<int>(row) * screenHeight) /
-                           kVisibleMidiRows;
-            const int y1 = (static_cast<int>(row + 1u) * screenHeight) /
-                           kVisibleMidiRows;
+            const int y0 = rowsTop +
+                           (static_cast<int>(row) * rowsHeight) /
+                               kVisibleMidiRows;
+            const int y1 = rowsTop +
+                           (static_cast<int>(row + 1u) * rowsHeight) /
+                               kVisibleMidiRows;
             gfx.fillRect(0, y0, screenWidth, std::max(1, y1 - y0),
                          kScreenBackground);
             continue;
@@ -543,7 +551,8 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
         drawArrangementRow(
             gfx,
             screenWidth,
-            screenHeight,
+            rowsTop,
+            rowsHeight,
             row,
             index,
             layer,
@@ -555,7 +564,7 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
     const int gridX = std::min(kLayerLabelWidth, screenWidth);
     const int gridWidth = std::max(0, screenWidth - gridX);
     const int playheadX = arrangementPlayheadX(player, gridX, gridWidth);
-    gfx.fillRect(playheadX, 0, 2, screenHeight, kAccent);
+    gfx.fillRect(playheadX, rowsTop, 2, rowsHeight, kAccent);
 
     const auto& selectedLayer = projection.layers.layers[selected];
     const SmfTrackInfoSnapshot* selectedInfo =
