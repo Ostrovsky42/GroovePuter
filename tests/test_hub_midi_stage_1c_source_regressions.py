@@ -116,8 +116,10 @@ def main() -> None:
         "arrangementPlayheadX(" in page
         and "player.currentTick" in page
         and "player.endTick" in page
-        and "gfx.fillRect(playheadX, 0, 2, screenHeight, kAccent);" in page,
-        "all layer rows must share one tick-derived vertical playhead",
+        and "const int rowsTop = std::min(kOverlayBandHeight, screenHeight);" in page
+        and "const int rowsBottom = std::max(rowsTop, screenHeight - kOverlayBandHeight);" in page
+        and "gfx.fillRect(playheadX, rowsTop, 2, rowsHeight, kAccent);" in page,
+        "all rows and the shared playhead must stay between the overlay bands",
     )
     require(
         "drawOverlayBands(" in page
