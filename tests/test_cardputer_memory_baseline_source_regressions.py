@@ -175,6 +175,8 @@ require("loopStackWords" in runtime_doc and "supersedes" in runtime_doc,
         "telemetry contract must explicitly retire misleading stack names")
 require("direct runtime-only accessors" in runtime_doc,
         "telemetry contract must document direct task-handle access")
+require("separate product elf remains uninstrumented" in runtime_doc.lower(),
+        "telemetry contract must distinguish product and runtime ELF identity")
 require("smfStackFreeBytes" in runtime_doc and "dispatchStackFreeBytes" in runtime_doc,
         "telemetry contract must cover dense-SMF task stacks")
 
