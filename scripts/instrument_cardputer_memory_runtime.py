@@ -97,17 +97,13 @@ transport_cpp_path.write_text(
 )
 
 text = ino_path.read_text(encoding="utf-8")
-include_anchor = '#include "src/platform/cardputer_smf_player_registry.h"\n'
-include_replacement = (
-    include_anchor
-    + '#include "src/platform/cardputer_usb_midi_transport.h"\n'
-)
-if text.count(include_anchor) != 1:
-    raise SystemExit("memory baseline instrumentation: SMF registry include anchor mismatch")
-text = text.replace(include_anchor, include_replacement, 1)
 
 state_anchor = "static uint32_t g_peakUiDrawUs = 0;\n"
 state_injection = r'''static uint32_t g_peakUiDrawUs = 0;
+
+// Narrow forward declaration avoids importing the TinyUSB transport header into
+// the main sketch translation unit and changing its include graph.
+TaskHandle_t cardputerMidiDispatchTaskHandleForMemoryBaseline();
 
 // Diagnostic-build-only memory watermarks. This code is injected into the
 // temporary runtime source tree and is never part of the product image.
