@@ -12,6 +12,17 @@ on:
       - tests/test_smf_track_route_profile.cpp
       - tests/test_smf_route_persistence_source_regressions.py
       - docs/stages/MIDI_HUB_ROUTE_PERSISTENCE.md
+  pull_request:
+    branches:
+      - dev
+    paths:
+      - scripts/apply_midi_hub_route_persistence.py
+      - .github/workflows/apply-midi-hub-route-persistence.yml
+      - src/midi/smf_track_route_profile.h
+      - src/midi/smf_track_route_profile.cpp
+      - tests/test_smf_track_route_profile.cpp
+      - tests/test_smf_route_persistence_source_regressions.py
+      - docs/stages/MIDI_HUB_ROUTE_PERSISTENCE.md
 
 permissions:
   contents: write
