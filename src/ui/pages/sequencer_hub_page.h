@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include "../ui_core.h"
 #include "src/dsp/miniacid_engine.h"
 #include "../layout_manager.h"
@@ -92,18 +94,23 @@ class SequencerHubPage final : public SequencerHubPageBase {
 public:
     using SequencerHubPageBase::SequencerHubPageBase;
 
+    void onEnter(int context) override;
     void draw(IGfx& gfx) override;
     bool handleEvent(UIEvent& event) override;
 
 private:
     bool midiOverview_{false};
+    bool midiReturnToPlayer_{false};
     uint8_t midiSelected_{0};
     uint8_t midiScroll_{0};
+    uint32_t midiGeneration_{0};
 
     void drawMidiOverview(IGfx& gfx);
     bool handleMidiOverviewEvent(UIEvent& event);
     bool toggleMidiLayer(uint8_t layerIndex);
     void syncMidiScroll(uint8_t layerCount);
+    void syncMidiSessionSelection();
+    void returnFromMidiOverview();
 };
 
 #if !defined(GROOVEPUTER_SEQUENCER_HUB_WRAPPER_CONSUMER)
