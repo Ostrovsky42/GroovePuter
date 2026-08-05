@@ -1,17 +1,15 @@
-# MIDI Player ↔ HUB · MIDI navigation
+# MIDI Player ↔ HUB MIDI arrangement view
 
 ## Purpose
 
-Provide a lossless MIDI Player → `HUB · MIDI` → MIDI Player round-trip while the existing SMF player service keeps transport, scheduling, file ownership and playback position.
+Provide a lossless MIDI Player → `HUB MIDI` → MIDI Player round-trip and show the loaded SMF as a shared sixteen-segment arrangement map.
 
-`HUB · MIDI` is a compact performance overview, not a second mute table or channel inspector. It shows the audible layers in a Hub-like row layout, lets the user select and mute them, and returns to the unchanged Player with `H` or `Esc`.
-
-The Hub never loads a file, reads SD, seeks, restarts, pauses or stops SMF playback. During a file load or reload it shows `SYNCING` and refuses commands against stale snapshots.
+The Hub is read-only apart from the existing physical-track mute commands. It does not load files, read SD, seek, restart, pause, stop, schedule notes, write USB MIDI or own Note On/Off state.
 
 ## Hardware list
 
-- M5Stack Cardputer-Adv (ESP32-S3).
-- microSD card containing a Type-0 or Type-1 Standard MIDI File.
+- M5Stack Cardputer-Adv (ESP32-S3, 240×135 display).
+- microSD card with a Type-0 or Type-1 Standard MIDI File.
 - USB-C data/power cable.
 - Optional Yamaha SEQTRAK or another class-compliant USB MIDI target.
 
@@ -21,14 +19,16 @@ No GPIO or PORT.A wiring is required.
 
 - Insert the microSD card into Cardputer-Adv.
 - Power Cardputer-Adv through USB-C.
-- For external MIDI, connect Cardputer-Adv USB-C to SEQTRAK or a host with a data-capable cable.
-- This branch does not change PORT.A I2C, I2S audio, TinyUSB descriptors or endpoint wiring.
+- For external MIDI, use a data-capable USB-C connection to the host or SEQTRAK.
+- This change does not touch PORT.A I2C, I2S audio, USB descriptors, RX drain or clock wiring.
 
 ## Build / Flash steps
 
 ```bash
 git fetch origin
-git checkout agent/player-hub-navigation
+git switch agent/player-hub-navigation
+git pull --ff-only origin agent/player-hub-navigation
+
 python3 tests/test_usb_midi_source_regressions.py
 python3 tests/test_smf_panel_completion_source_regressions.py
 python3 tests/test_hub_midi_stage_1c_source_regressions.py
@@ -38,97 +38,94 @@ python3 tests/test_hub_midi_stage_1c_source_regressions.py
   build/cardputer-adv-seqtrak-midi-only/GroovePuter.ino.elf
 ```
 
-Flash the generated Cardputer-Adv firmware using the repository's normal serial or M5Launcher workflow.
+Flash the generated Cardputer-Adv firmware using the repository's normal serial workflow.
 
 ## Controls
 
 1. Open MIDI Player and load a MIDI file.
 2. Start playback with `Space`.
 3. Press `H` from any loaded Player panel.
-4. `HUB · MIDI` opens on the layer corresponding to the Player's selected physical SMF track.
-5. In `HUB · MIDI`:
-   - `H`: return to the previous MIDI Player panel.
-   - `Esc`/Back: return to the previous MIDI Player panel.
-   - `Up/Down`: select the previous or next layer.
-   - `Left/Right`: move by one six-row screen.
-   - `Enter`: toggle the selected layer mute.
-   - `1–9`: toggle analyzed audible layers 1–9 directly.
+4. In `HUB MIDI`:
+   - `H` or `Esc`/Back: return to the originating Player panel.
+   - `Up/Down`: select a layer.
+   - `Left/Right`: move by one seven-row page.
+   - `Enter`: toggle the selected physical SMF track mute.
+   - `1–9`: toggle the corresponding analyzed layer directly.
    - `A`: clear all local SMF mutes.
-   - `Space`: display `MIDI TRANSPORT: PLAYER`; Hub does not control transport.
+   - `Space`: show `MIDI TRANSPORT: PLAYER`; transport remains Player-owned.
 
-`P` and `M` remain unadvertised compatibility aliases for the exploratory branch. They are not part of the intended Player workflow.
+`P` and `M` remain unadvertised compatibility aliases. The existing MIDI Player `U` inspector implementation is not changed by this visual commit.
 
 ## Screen layout
 
-Each row is intentionally performance-oriented:
+- Seven rows expand across the full 135-pixel height.
+- Each row contains its hotkey, a bounded track/program label and sixteen activity cells.
+- All rows share one horizontal time axis.
+- A two-pixel vertical playhead is derived from `currentTick / endTick` and crosses the complete grid beneath the text overlays.
+- The top overlay shows filename and `BAR current/total`.
+- The bottom overlay shows selected channel, bounded note count, MIDI pitch range and key hints.
+- Overlay bands use a solid near-black scrim because `IGfx` has no alpha blending; text is never drawn directly over activity cells.
+- Muted rows use a uniformly dimmed palette. There is no `ON`/`MUTE` text.
+- The selected row uses a subtle background shift and an accent hotkey. The same accent is used only for the playhead.
+
+The sixteen cells are computed once during the existing SMF load scan. Saturating four-bit per-bar Note On counts are collected for a bounded 256-bar analysis window and proportionally mapped across all sixteen cells:
 
 ```text
-1> BASS  FingerBass   [▂][▅][█][▃]  ON
-2  DRUMS StandardKit  [█][█][▇][█]  MUTE
+segment = bar * 16 / analyzedBars
 ```
 
-The actual display uses four compact outlined cells rather than text blocks:
+Therefore a 32-bar file and a 200-bar file both fill the same sixteen-cell width. Files longer than 256 analyzed bars are marked with `*` in the filename overlay; playback remains unchanged, but the arrangement map is intentionally partial rather than allocating unbounded DRAM.
 
-- `1–9`: direct mute hotkey.
-- `>`: selected layer.
-- `BASS`, `DRUMS`, `CHORD`, `PAD`, `LEAD`, `MIDI`: inferred musical role.
-- Bounded track name.
-- Four cells: analyzed activity in bars 1–16, 17–32, 33–48 and 49–64.
-- The top marker over one cell follows the currently playing 16-bar section.
-- `ON` / `MUTE`: current physical-track mute state.
+## Rendering behavior
 
-The four cells come from the existing load-time structural snapshot. They are not a realtime Note On meter and do not add scheduler callbacks, queues or cross-task ownership.
+The page composes into the existing RGB565 back buffer. `CardputerDisplay::flush()` compares dirty tiles and sends only changed tile runs to the LCD. During steady playback this limits physical panel updates to the old/new playhead tiles and any overlay tiles whose bar text changed. Selection redraws two rows; mute redraws one row; page entry or scroll may redraw the complete grid.
 
-The selected-layer summary uses readable labels such as:
-
-```text
-TRACK 03  CH 2  2-BAR LOOP
-```
-
-Raw inspector fields such as `G16`, `SW50`, `N3.2` and `A40%` are intentionally not shown in Hub. Detailed inspection remains in MIDI Player.
+No framebuffer, sprite, scheduler callback, MIDI queue or realtime activity meter is added.
 
 ## Expected behavior
 
-- Player → Hub → Player does not issue load, seek, restart, play, pause, stop or reanchor commands.
-- Repeated physical `H` works in both directions even when Cardputer reports its hardware/Fn `meta` bit.
-- `Esc` returns to the same Player session and panel.
-- The loaded filename, current tick/bar, playback state, mute mask and selected physical track remain in their existing runtime owners.
-- Moving the Hub selection updates the existing generation-aware selected physical track.
-- Player restores its previous subpanel and channel-inspector scroll after the round-trip, even if the lazy page cache evicts the Player object.
-- The saved Player UI view is restored only when its captured SMF generation still matches the active session.
-- Hub reads structural, track and mute snapshots on demand. It does not retain a runtime snapshot cache.
-- During load/reload, Hub displays `SYNCING`, `WAITING FOR CURRENT SMF SESSION` and `PLAYER TRANSPORT KEEPS RUNNING`.
-- Muting uses the existing generation-aware physical-track mute state. Pending owned notes are released through the existing scheduled SMF dispatcher queue, and muted layers do not emit new Note On events.
-- A non-draining USB host may still produce the accepted `USB WAIT` parking behavior. This branch does not alter it.
+- The entry and exit points of drums, bass, pads and leads align vertically and are visible at a glance.
+- The playhead gives every layer one shared position reference.
+- `H` and `Esc` return without file reload, transport reanchor or position reset.
+- `1–7` and `Enter` retain the existing generation-aware mute semantics and owned-note cleanup.
+- During load/reload, Hub displays `SYNCING` and refuses commands against stale snapshots.
+- Player filename, position, mute mask, selected physical track, subpanel and scroll remain owned by their existing runtime state.
 
-## Runtime memory measurement
+## Performance and memory measurement
 
-Use the existing setup log point in both unmodified `dev` and this branch:
+Baseline before this visual commit:
 
 ```text
-[after-critical-dsp-buffers] freeInt=... largInt=... free8=... larg8=...
+commit:        471b99fa
+CI run:        31035929646
+.dram0 total:  120712 bytes
+.dram0.data:    25040 bytes
+.dram0.bss:     95672 bytes
+budget room:    70776 bytes
+observed ui:    27537 us  (user hardware sample; capture matching uiPeak)
 ```
 
-Record `freeInt` and `largInt` from the same boot stage. Report `largInt` as `largest`.
+Use the same seven-track file, playback state and open Hub screen for at least 30 seconds before recording:
 
 ```text
-metric     dev before     branch after     delta
-freeInt    __________     __________       __________
-largest    __________     __________       __________
+metric      before         after          delta
+freeInt     __________     __________     __________
+largInt     __________     __________     __________
+ui          27537 us       __________     __________
+uiPeak      __________     __________     __________
 ```
 
-The branch intentionally does not adjust the provisional fixed-DRAM gate. If the ELF `.dram0` total changes, report the byte delta.
+Use the existing setup log for `freeInt` and `largInt`. Do not adjust the provisional DRAM gate; report the ELF `.dram0` delta.
 
 ## Troubleshooting
 
-- Player `H` opens global Help: verify the flashed head includes the Player first-refusal fix and that an SMF session is loaded.
-- Hub `H` does not return: verify the flashed head includes the Hub first-refusal handler before the generic `meta` guard.
-- Hub shows `SYNCING`: a load/reload is active or one of the projected snapshots does not yet match the current session generation.
-- Hub shows `NO MIDI LAYERS`: the current file has no analyzed audible layer, or no file is loaded. Return with `H` or `Esc` and inspect the Player state.
-- The four cells do not blink on every note: this is expected. They show the analyzed 64-bar arrangement shape, not realtime MIDI activity.
-- Player returns to the default panel instead of its previous subpanel: verify the active session generation did not change during the transition.
-- A muted note remains sounding: verify `takePendingReleaseTrack()` is drained by the existing scheduled SMF queue and that no direct USB writer was introduced.
-- External output parks at `USB WAIT`: verify the host is draining the MIDI endpoint. Parking is intentional.
+- `H` opens Help: verify an SMF session is loaded and the flashed head includes the Player first-refusal handler.
+- Hub shows `SYNCING`: a load/reload is active or projected generations do not match the current session.
+- Grid is empty: verify the file contains Note On events in the analyzed physical tracks.
+- Filename ends in `*`: the file extends beyond the bounded 256-bar arrangement analysis window.
+- Text is hard to read: verify on the physical Cardputer panel; the top and bottom bands must remain solid dark scrims.
+- Playhead causes broad LCD traffic: verify `DirtyTileTracker` remains active and no forced full refresh was added.
+- A muted note remains sounding: verify the existing pending track-release path is still drained by the scheduled SMF queue.
 
 ## Acceptance checklist
 
@@ -136,18 +133,17 @@ The branch intentionally does not adjust the provisional fixed-DRAM gate. If the
 - [ ] `python3 tests/test_smf_panel_completion_source_regressions.py` passes.
 - [ ] `python3 tests/test_hub_midi_stage_1c_source_regressions.py` passes.
 - [ ] `./tests/run_host_tests.sh` passes.
-- [ ] SEQTRAK MIDI-only build passes.
-- [ ] Real ELF passes the unchanged provisional fixed-DRAM gate.
-- [ ] Load a seven-track SMF and start playback.
-- [ ] Press `H`; `HUB · MIDI` opens and global Help does not.
-- [ ] Confirm rows show hotkey, selected marker, role, bounded name, four-cell arrangement shape and `ON`/`MUTE` without clipping.
-- [ ] Confirm the section marker moves when playback crosses bars 16, 32 and 48.
-- [ ] Use `Left/Right` on a file with more than six audible layers.
-- [ ] Toggle layers with `1–7` and `Enter`; muted notes release and no new Note On is emitted for muted layers.
-- [ ] Press `H` again; Player returns with the same file, position, selected track, mute state, subpanel and scroll.
-- [ ] Repeat the test with `Esc` as the return key.
-- [ ] Repeat Player → Hub → Player during playback without reload, stall, reanchor, drift or stuck notes.
-- [ ] Reload/change a file and confirm Hub shows `SYNCING` instead of old layer rows.
-- [ ] Confirm `ep=busy/stalled=0/0` on a normally draining host.
-- [ ] Confirm Hub contains no SD read, file load, SMF transport, scheduler or direct TinyUSB path.
-- [ ] Confirm `logs/`, Song, scene codecs, pattern sources, USB descriptors, RX drain and clock queue are unchanged.
+- [ ] SDL build passes.
+- [ ] Cardputer-Adv normal build passes.
+- [ ] Cardputer-Adv SEQTRAK MIDI-only build passes.
+- [ ] Real ELF passes the unchanged provisional DRAM gate and `.dram0` delta is reported.
+- [ ] Load a seven-track file and open Hub during playback.
+- [ ] Seven rows are readable; no arrow or `ON`/`MUTE` labels are shown.
+- [ ] A 32-bar and a roughly 200-bar file each map across all sixteen segments.
+- [ ] Layer entry/exit points and overlaps are visible at a glance.
+- [ ] Playhead is vertically aligned across all rows at every position.
+- [ ] Top filename/bar and bottom channel/note/range text remain legible over every cell color.
+- [ ] `1–7` and `Enter` mute the expected physical layers and release owned notes.
+- [ ] `H` and `Esc` return with the same file, playback position, selected layer and mute mask.
+- [ ] `freeInt`, `largInt`, `ui` and `uiPeak` are recorded before and after on hardware.
+- [ ] No changes exist in scheduler, lookahead, note ownership, USB transport, descriptors, RX drain, clock queue, Song, scenes or pattern sources.

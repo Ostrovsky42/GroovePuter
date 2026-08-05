@@ -16,7 +16,13 @@ def main() -> None:
     header = (ROOT / "src/ui/pages/sequencer_hub_page.h").read_text(
         encoding="utf-8"
     )
+    structural = (ROOT / "src/midi/smf_structural_inspector.h").read_text(
+        encoding="utf-8"
+    )
     display = (ROOT / "src/ui/miniacid_display.h").read_text(
+        encoding="utf-8"
+    )
+    cardputer_display = (ROOT / "cardputer_display.cpp").read_text(
         encoding="utf-8"
     )
     makefile = (ROOT / "platform_sdl/Makefile").read_text(encoding="utf-8")
@@ -89,13 +95,58 @@ def main() -> None:
         and "returnFromMidiOverview();" in page[shortcut_pos:modifier_pos],
         "H and Escape/Back must return to the origin before Cardputer meta filtering",
     )
+
     require(
-        "drawFormStrip(" in page
-        and "layer.form[section]" in page
-        and "currentFormSection(player.bar)" in page
-        and "H/ESC Player  1-9 Mute" in page,
-        "HUB MIDI must use a Hub-like arrangement strip with a visible play section",
+        "constexpr uint8_t kVisibleMidiRows = 7u;" in page
+        and "constexpr uint8_t kArrangementSegments = kSmfStructuralFormSegments;" in page
+        and "drawArrangementRow(" in page
+        and "layer.form[segment]" in page,
+        "HUB MIDI must render seven full-height rows with sixteen arrangement cells",
     )
+    require(
+        "kSmfStructuralFormSegments = 16" in structural
+        and "kSmfStructuralBarLimit = 256" in structural
+        and "barActivity[(kSmfStructuralBarLimit + 1u) / 2u]" in structural
+        and "buildNormalizedForm(" in structural
+        and "bar) * kSmfStructuralFormSegments" in structural
+        and "layer.noteCount" in structural,
+        "load-time structural analysis must publish a bounded normalized sixteen-segment form",
+    )
+    require(
+        "arrangementPlayheadX(" in page
+        and "player.currentTick" in page
+        and "player.endTick" in page
+        and "gfx.fillRect(playheadX, 0, 2, screenHeight, kAccent);" in page,
+        "all layer rows must share one tick-derived vertical playhead",
+    )
+    require(
+        "drawOverlayBands(" in page
+        and page.count("kOverlayScrim") >= 5
+        and "player.filename" in page
+        and "player.totalBars" in page
+        and "formatPitchRange(" in page
+        and "selectedLayer.noteCount" in page,
+        "filename/bar and selected channel/note/range text must use overlaid dark bands",
+    )
+    require(
+        "rowBackground(isMuted, isSelected)" in page
+        and "isSelected ? kAccent" in page
+        and "isSelected ? '>'" not in page
+        and "isMuted ? \"MUTE\" : \"ON\"" not in page,
+        "selection and mute must be graphical rather than arrow or ON/MUTE labels",
+    )
+    require(
+        "kActivityRamp[8]" in page
+        and "kMutedActivityRamp[8]" in page
+        and page.count("kAccent") == 3,
+        "the grid must use one density hue ramp and reserve the accent for selection/playhead",
+    )
+    require(
+        "dirty_tiles_.scan(frame_.data(), w_" in cardputer_display
+        and "pushRegion_(region)" in cardputer_display,
+        "Cardputer output must continue through the existing dirty-region display foundation",
+    )
+
     require(
         "G%s SW%u" not in page
         and "N%u.%u A%u%%" not in page
@@ -106,9 +157,9 @@ def main() -> None:
     )
     require(
         "formatTrackChannel(" in page
-        and "loopLabel(" in page
-        and "TRACK %02u  %s  %s" in page,
-        "selected-layer summary must use readable channel and loop labels",
+        and "formatPitchRange(" in page
+        and "%s N%u %s" in page,
+        "selected-layer overlay must expose readable channel, note count and pitch range",
     )
     require(
         "GROOVEPUTER_LEFT" in page

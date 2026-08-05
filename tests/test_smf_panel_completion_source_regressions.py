@@ -25,6 +25,9 @@ def main() -> None:
     hub_cpp = (ROOT / "src/ui/pages/sequencer_hub_page_midi.cpp").read_text(
         encoding="utf-8"
     )
+    structural = (ROOT / "src/midi/smf_structural_inspector.h").read_text(
+        encoding="utf-8"
+    )
     navigation = (ROOT / "src/ui/player_hub_navigation.h").read_text(
         encoding="utf-8"
     )
@@ -147,24 +150,39 @@ def main() -> None:
         "HUB MIDI H/Escape return must precede the Cardputer meta guard",
     )
     require(
-        "drawFormStrip(" in hub_cpp
-        and "layer.form[section]" in hub_cpp
-        and "currentFormSection(player.bar)" in hub_cpp
-        and "H/ESC Player  1-9 Mute" in hub_cpp,
-        "HUB MIDI must render a compact Hub-like layer overview",
+        "constexpr uint8_t kVisibleMidiRows = 7u;" in hub_cpp
+        and "kSmfStructuralFormSegments" in hub_cpp
+        and "drawArrangementRow(" in hub_cpp
+        and "layer.form[segment]" in hub_cpp
+        and "arrangementPlayheadX(" in hub_cpp
+        and "drawOverlayBands(" in hub_cpp,
+        "HUB MIDI must render a full-bleed sixteen-segment arrangement overview",
+    )
+    require(
+        "kSmfStructuralFormSegments = 16" in structural
+        and "buildNormalizedForm(" in structural
+        and "barActivity[(kSmfStructuralBarLimit + 1u) / 2u]" in structural
+        and "noteCount" in structural,
+        "structural projection must supply bounded normalized form and footer metadata",
     )
     require(
         "event.key == 'u'" not in hub_cpp
         and "event.key == 'i'" not in hub_cpp
         and "G%s SW%u" not in hub_cpp
         and "P Player U Mixer I Chans" not in hub_cpp,
-        "HUB MIDI must not duplicate Player inspectors or expose raw structural metrics",
+        "HUB MIDI visual redesign must not change or duplicate Player inspectors",
     )
     require(
         "smfTrackMuteState().selectTrack(" in hub_cpp
         and "formatTrackChannel(" in hub_cpp
-        and "loopLabel(" in hub_cpp,
-        "HUB MIDI selection and readable summary must remain projected from existing state",
+        and "formatPitchRange(" in hub_cpp
+        and "%s N%u %s" in hub_cpp,
+        "HUB MIDI selection and readable footer must remain projected from existing state",
+    )
+    require(
+        "isSelected ? '>'" not in hub_cpp
+        and "isMuted ? \"MUTE\" : \"ON\"" not in hub_cpp,
+        "selected and muted layers must be expressed by row color rather than labels",
     )
     require(
         "bool midiOverview_{false};" in hub_h

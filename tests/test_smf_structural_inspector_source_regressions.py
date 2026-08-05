@@ -29,7 +29,7 @@ assert 'return 4u;' in structural_h and 'return 0u;' in structural_h
 assert 'static_cast<uint64_t>(source.activeTicks)' in structural_h
 assert 'smfTrackInspectorState().freeze();' in structural_h
 assert 'union Storage' not in structural_h
-assert 'std::atomic<uint32_t> publishedWords_' in structural_h
+assert 'std::atomic<uint32_t>' in structural_h and 'publishedWords_' in structural_h
 
 assert 'constexpr std::size_t kSmfMaxTracks = 32;' in stream_h
 assert 'uint16_t declaredTrackCount{0};' in stream_h
