@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include "../../scenes.h" // For pattern structs
+#include "src/dsp/deterministic_rng.h"
 #if defined(ARDUINO)
 #include <Arduino.h>
 #else
@@ -31,6 +32,7 @@ public:
     static void generateDrumPattern(DrumPatternSet& patternSet, 
                                     const GenerativeParams& params,
                                     GenerativeMode mode,
+                                    DeterministicRng& rng,
                                     const DrumGenreTemplate* templateOverride = nullptr);
     
 private:

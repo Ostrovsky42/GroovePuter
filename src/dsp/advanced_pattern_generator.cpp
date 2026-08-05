@@ -137,6 +137,10 @@ bool AdvancedPatternGenerator::isDownbeat(int step) { return (step % 4 == 0); }
 
 namespace {
 
+static inline int boundedRandom(DeterministicRng& rng, uint32_t upperExclusive) {
+    return static_cast<int>(rng.bounded(upperExclusive));
+}
+
 static inline bool stepInMask(uint16_t mask, int step) {
     return (mask & (1u << (15 - step))) != 0;
 }
@@ -154,10 +158,10 @@ static inline uint8_t baseToGenreRange(uint8_t base, const GenerativeParams& par
     return static_cast<uint8_t>(minV + ((int)base * span) / 127);
 }
 
-static inline int8_t randomTimingOffset(float microTimingAmount) {
+static inline int8_t randomTimingOffset(float microTimingAmount, DeterministicRng& rng) {
     if (microTimingAmount <= 0.01f) return 0;
     const int range = std::max(1, (int)std::round(microTimingAmount * 7.0f));
-    return static_cast<int8_t>((rand() % (range * 2 + 1)) - range);
+    return static_cast<int8_t>((boundedRandom(rng, range * 2 + 1)) - range);
 }
 
 } // namespace
@@ -165,6 +169,7 @@ static inline int8_t randomTimingOffset(float microTimingAmount) {
 void DrumPatternGenerator::generateDrumPattern(DrumPatternSet& patternSet,
                                                const GenerativeParams& params,
                                                GenerativeMode mode,
+                                               DeterministicRng& rng,
                                                const DrumGenreTemplate* templateOverride) {
     for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
         for (int s = 0; s < DrumPattern::kSteps; ++s) {
@@ -198,7 +203,7 @@ void DrumPatternGenerator::generateDrumPattern(DrumPatternSet& patternSet,
         st.hit = 1;
         st.accent = params.noAccents ? 0 : (accent ? 1 : 0);
         st.velocity = velocity;
-        st.timing = randomTimingOffset(params.microTimingAmount);
+        st.timing = randomTimingOffset(params.microTimingAmount, rng);
         st.probability = probability;
     };
 
@@ -210,7 +215,7 @@ void DrumPatternGenerator::generateDrumPattern(DrumPatternSet& patternSet,
 
     for (int step = 0; step < DrumPattern::kSteps; ++step) {
         if (stepInMask(tmpl.kickMask, step)) {
-            if (!params.sparseKick || (rand() % 100) < 90) {
+            if (!params.sparseKick || (boundedRandom(rng, 100)) < 90) {
                 const bool accent = (step % 4 == 0);
                 const uint8_t vel = clampVelocity((int)kickMainVel + (accent ? 8 : 0));
                 placeHit(0, step, accent, vel, 100);
@@ -221,7 +226,7 @@ void DrumPatternGenerator::generateDrumPattern(DrumPatternSet& patternSet,
         float ghostChance = tmpl.kickGhostProb;
         if (params.drumSyncopation > 0.01f) ghostChance *= (0.6f + params.drumSyncopation);
         if (params.sparseKick) ghostChance *= 0.45f;
-        if ((rand() % 1000) < (int)(ghostChance * 1000.0f)) {
+        if ((boundedRandom(rng, 1000)) < (int)(ghostChance * 1000.0f)) {
             if ((step % 2) == 1 || params.drumPreferOffbeat) {
                 placeHit(0, step, false, clampVelocity((int)kickMainVel - 24), 55);
             }
@@ -233,7 +238,7 @@ void DrumPatternGenerator::generateDrumPattern(DrumPatternSet& patternSet,
             placeHit(mainSnareVoice, step, true, clampVelocity((int)snareMainVel + 6), 100);
             continue;
         }
-        if ((rand() % 1000) < (int)(tmpl.snareGhostProb * 1000.0f)) {
+        if ((boundedRandom(rng, 1000)) < (int)(tmpl.snareGhostProb * 1000.0f)) {
             if ((step % 2) == 1 || params.drumPreferOffbeat) {
                 placeHit(ghostSnareVoice, step, false, clampVelocity((int)snareMainVel - 30), 45);
             }
@@ -244,28 +249,28 @@ void DrumPatternGenerator::generateDrumPattern(DrumPatternSet& patternSet,
         const bool inOpen = stepInMask(tmpl.openHatMask, step);
         const bool inClosed = stepInMask(tmpl.hatMask, step);
         if (inOpen) {
-            if (!params.sparseHats || (rand() % 100) < 80) {
+            if (!params.sparseHats || (boundedRandom(rng, 100)) < 80) {
                 placeHit(3, step, true, clampVelocity((int)hatMainVel + 10), 90);
             }
             continue;
         }
         if (!inClosed) continue;
-        if (params.sparseHats && (rand() % 100) < 40) continue;
+        if (params.sparseHats && (boundedRandom(rng, 100)) < 40) continue;
 
         int vel = hatMainVel;
         if (tmpl.hatVariation > 0.01f) {
             const int spread = (int)std::round(18.0f * tmpl.hatVariation);
-            vel += (rand() % (spread * 2 + 1)) - spread;
+            vel += (boundedRandom(rng, spread * 2 + 1)) - spread;
         }
-        if (params.drumPreferOffbeat && (step % 2) == 0 && (rand() % 100) < 30) continue;
+        if (params.drumPreferOffbeat && (step % 2) == 0 && (boundedRandom(rng, 100)) < 30) continue;
         placeHit(2, step, false, clampVelocity(vel), 100);
     }
 
-    if ((rand() % 1000) < (int)(params.fillProbability * 600.0f)) {
-        const int fillStart = 12 + (rand() % 2);
+    if ((boundedRandom(rng, 1000)) < (int)(params.fillProbability * 600.0f)) {
+        const int fillStart = 12 + (boundedRandom(rng, 2));
         for (int step = fillStart; step < DrumPattern::kSteps; ++step) {
-            if ((rand() % 100) < 55) {
-                int voice = 4 + (rand() % 2); // Mid/high tom.
+            if ((boundedRandom(rng, 100)) < 55) {
+                int voice = 4 + (boundedRandom(rng, 2)); // Mid/high tom.
                 if (!canUseVoice(voice)) voice = resolveVoice(mainSnareVoice, 1, 0);
                 placeHit(voice, step, false, clampVelocity((int)snareMainVel - 8 + (step - fillStart) * 6), 85);
             }

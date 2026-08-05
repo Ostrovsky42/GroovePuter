@@ -3,6 +3,7 @@
 #include "mini_tb303.h"
 #include "mini_drumvoices.h"
 #include "src/dsp/genre_manager.h"
+#include "src/dsp/deterministic_rng.h"
 #include "../../scenes.h"
 #include <stdlib.h>
 
@@ -10,7 +11,7 @@ class MiniAcid;
 
 class GrooveboxModeManager {
 public:
-    GrooveboxModeManager(MiniAcid& engine) : engine_(engine), currentMode_(GrooveboxMode::Minimal), currentFlavor_(0) {}
+    GrooveboxModeManager(MiniAcid& engine) : engine_(engine), currentMode_(GrooveboxMode::Minimal), currentFlavor_(0), generationSeed_(0) {}
     
     GrooveboxMode mode() const { return currentMode_; }
     int flavor() const { return currentFlavor_; }
@@ -20,6 +21,9 @@ public:
     void setFlavor(int flavor);
     void shiftFlavor(int delta);
     int flavorCount() const { return 5; }
+    void setGenerationSeed(uint32_t seed) {
+        generationSeed_ = seed == 0 ? kFallbackGenerationSeed : seed;
+    }
     void setModeLocal(GrooveboxMode mode) { currentMode_ = mode; }
     void setFlavorLocal(int flavor) {
         if (flavor < 0) flavor = 0;
@@ -85,7 +89,20 @@ public:
     void generateDrumVoice(DrumPattern& pattern, int voiceIndex, const GrooveRecipe& recipe, const GenreBehavior& behavior) const;
     
 private:
+    enum class GenerationDomain : uint32_t {
+        SynthA = 0x13579BDFu,
+        SynthB = 0x2468ACE1u,
+        Drums = 0xD12F00D5u,
+        DrumVoiceBase = 0xD0000000u,
+    };
+
+    static constexpr uint32_t kFallbackGenerationSeed = 0x6D2B79F5u;
+    uint32_t ensureGenerationSeed() const;
+    DeterministicRng makeGenerationRng(GenerationDomain domain,
+                                       uint32_t contentHash) const;
+
     MiniAcid& engine_;
     GrooveboxMode currentMode_;
     int currentFlavor_;
+    mutable uint32_t generationSeed_;
 };

@@ -8,6 +8,7 @@ CXX="${CXX:-g++}"
 mkdir -p "${BUILD_DIR}"
 
 python3 "${ROOT_DIR}/tests/test_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_generation_rng_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_cardputer_input_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_scene_revision_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_ui_session_source_regressions.py"
