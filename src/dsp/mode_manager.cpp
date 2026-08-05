@@ -86,7 +86,90 @@ int quantizeToScale(int note, const Scale& scale) {
 }
 
 
+namespace {
+
+uint32_t mixGenerationSeed(uint32_t value) {
+    value ^= value >> 16;
+    value *= 0x7FEB352Du;
+    value ^= value >> 15;
+    value *= 0x846CA68Bu;
+    value ^= value >> 16;
+    return value;
+}
+
+uint32_t hashGenerationByte(uint32_t hash, uint8_t value) {
+    return (hash ^ value) * 16777619u;
+}
+
+uint32_t hashSynthPattern(const SynthPattern& pattern) {
+    uint32_t hash = 2166136261u;
+    for (const SynthStep& step : pattern.steps) {
+        hash = hashGenerationByte(hash, static_cast<uint8_t>(step.note));
+        hash = hashGenerationByte(hash, step.slide ? 1u : 0u);
+        hash = hashGenerationByte(hash, step.accent ? 1u : 0u);
+        hash = hashGenerationByte(hash, step.ghost ? 1u : 0u);
+        hash = hashGenerationByte(hash, step.velocity);
+        hash = hashGenerationByte(hash, static_cast<uint8_t>(step.timing));
+        hash = hashGenerationByte(hash, step.fx);
+        hash = hashGenerationByte(hash, step.fxParam);
+        hash = hashGenerationByte(hash, step.probability);
+    }
+    return hash;
+}
+
+uint32_t hashDrumPattern(const DrumPattern& pattern) {
+    uint32_t hash = 2166136261u;
+    for (const DrumStep& step : pattern.steps) {
+        hash = hashGenerationByte(hash, step.hit ? 1u : 0u);
+        hash = hashGenerationByte(hash, step.accent ? 1u : 0u);
+        hash = hashGenerationByte(hash, step.velocity);
+        hash = hashGenerationByte(hash, static_cast<uint8_t>(step.timing));
+        hash = hashGenerationByte(hash, step.fx);
+        hash = hashGenerationByte(hash, step.fxParam);
+        hash = hashGenerationByte(hash, step.probability);
+    }
+    return hash;
+}
+
+uint32_t hashDrumPatternSet(const DrumPatternSet& patternSet) {
+    uint32_t hash = 2166136261u;
+    for (const DrumPattern& voice : patternSet.voices) {
+        hash ^= mixGenerationSeed(hashDrumPattern(voice));
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
+int boundedRandom(DeterministicRng& rng, uint32_t upperExclusive) {
+    return static_cast<int>(rng.bounded(upperExclusive));
+}
+
+}  // namespace
+
+uint32_t GrooveboxModeManager::ensureGenerationSeed() const {
+    if (generationSeed_ == 0) {
+        // Capture boot-seeded libc entropy once. Pattern generation never
+        // consumes the global stream again after this boundary.
+        uint32_t seed = static_cast<uint32_t>(::rand()) ^ 0xA511E9B3u;
+        generationSeed_ = seed == 0 ? kFallbackGenerationSeed : seed;
+    }
+    return generationSeed_;
+}
+
+DeterministicRng GrooveboxModeManager::makeGenerationRng(
+        GenerationDomain domain, uint32_t contentHash) const {
+    uint32_t seed = ensureGenerationSeed();
+    seed ^= static_cast<uint32_t>(domain);
+    seed ^= mixGenerationSeed(contentHash);
+    seed ^= static_cast<uint32_t>(currentMode_) * 0x9E3779B9u;
+    seed ^= static_cast<uint32_t>(currentFlavor_ + 1) * 0x85EBCA6Bu;
+    return DeterministicRng(mixGenerationSeed(seed));
+}
+
+
 void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm) const {
+    DeterministicRng rng = makeGenerationRng(
+        GenerationDomain::SynthA, hashSynthPattern(pattern));
     const ModeConfig& cfg = config();
     
     // 1. Compute interpolation values (BPM & Flavor)
@@ -138,7 +221,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm) con
     }
 
     // 2. Budgeting (Strict Density)
-    int targetNotes = adaptedMinNotes + (rand() % (adaptedMaxNotes - adaptedMinNotes + 1));
+    int targetNotes = adaptedMinNotes + (boundedRandom(rng, adaptedMaxNotes - adaptedMinNotes + 1));
     if (targetNotes < 1) targetNotes = 1;
     if (targetNotes > 16) targetNotes = 16;
     
@@ -156,14 +239,14 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm) con
 
     // Determine scale and root
     const bool isStrictScale = (currentMode_ == GrooveboxMode::Acid || currentMode_ == GrooveboxMode::Electro);
-    const Scale& scale = isStrictScale ? kScales[0] : kScales[rand() % 4];
+    const Scale& scale = isStrictScale ? kScales[0] : kScales[boundedRandom(rng, 4)];
     int rootNote = isStrictScale ? 36 : 24;
 
     // 4. Placement (Strict Density Shuffle)
     int indices[16];
     for (int i = 0; i < 16; i++) indices[i] = i;
     for (int i = 0; i < 16; i++) {
-        int r = rand() % 16;
+        int r = boundedRandom(rng, 16);
         int tmp = indices[i]; indices[i] = indices[r]; indices[r] = tmp;
     }
 
@@ -173,7 +256,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm) con
     if (currentMode_ == GrooveboxMode::Minimal || currentMode_ == GrooveboxMode::Dub) {
         static const int anchors[] = {0, 8, 4, 12};
         for (int a : anchors) {
-            if (placed < targetNotes && (rand() % 100 < 80)) {
+            if (placed < targetNotes && (boundedRandom(rng, 100) < 80)) {
                 pattern.steps[a].note = rootNote;
                 pattern.steps[a].velocity = 120;
                 pattern.steps[a].accent = true;
@@ -187,24 +270,24 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm) con
         int i = indices[pIdx];
         if (pattern.steps[i].note != -1) continue;
 
-        int scaleIdx = rand() % scale.count;
+        int scaleIdx = boundedRandom(rng, scale.count);
         int note = rootNote + scale.intervals[scaleIdx];
         
         // Melodic refinements
-        if ((rand() % 100) < prob100(adaptedChromaticProb)) note += (rand() % 3) - 1;
-        if (rand() % 100 < 15) note += 12;
+        if ((boundedRandom(rng, 100)) < prob100(adaptedChromaticProb)) note += (boundedRandom(rng, 3)) - 1;
+        if (boundedRandom(rng, 100) < 15) note += 12;
 
         pattern.steps[i].note = note;
-        pattern.steps[i].velocity = staccato ? 95 : 100 + (rand() % 20);
+        pattern.steps[i].velocity = staccato ? 95 : 100 + (boundedRandom(rng, 20));
         
-        if ((rand() % 100) < prob100(flavorAccentProb)) {
+        if ((boundedRandom(rng, 100)) < prob100(flavorAccentProb)) {
             pattern.steps[i].accent = true;
             pattern.steps[i].velocity = 127;
         }
 
-        if (!staccato && (rand() % 100) < prob100(flavorSlideProb)) {
+        if (!staccato && (boundedRandom(rng, 100)) < prob100(flavorSlideProb)) {
             pattern.steps[i].slide = true;
-            if (rand() % 100 < 40) pattern.steps[i].accent = true; // Slide-accents are very Acid
+            if (boundedRandom(rng, 100) < 40) pattern.steps[i].accent = true; // Slide-accents are very Acid
         }
         
         placed++;
@@ -217,7 +300,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm) con
         
         pattern.steps[i].note = rootNote;
         pattern.steps[i].ghost = true;
-        pattern.steps[i].velocity = 40 + (rand() % 20);
+        pattern.steps[i].velocity = 40 + (boundedRandom(rng, 20));
         targetGhosts--;
     }
 
@@ -259,6 +342,10 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
                                            const GenerativeParams& params, 
                                            const GenreBehavior& behavior,
                                            int voiceIndex) const {
+    const GenerationDomain domain = voiceIndex == 0
+        ? GenerationDomain::SynthA
+        : GenerationDomain::SynthB;
+    DeterministicRng rng = makeGenerationRng(domain, hashSynthPattern(pattern));
     // Voice roles: 0 = bass (low, repetitive), 1 = lead/arp (high, melodic)
     const bool isBass = (voiceIndex == 0);
     
@@ -276,12 +363,15 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
     const Scale& scale = kScales[behavior.preferredScale % 4];
     int baseRoot;
     int octaveRange;
+    int bassMaxNote = 127;
     
     if (isBass) {
-        // Bass: low register, narrow range
-        baseRoot = 24; // C1
-        if (params.minOctave > 0 && params.minOctave < 36) baseRoot = params.minOctave;
-        octaveRange = 1; // Stay within 1 octave
+        // minOctave/maxOctave are MIDI-note bounds despite their legacy names.
+        // Respect the genre floor instead of forcing every bass line to C1.
+        baseRoot = std::max(0, std::min(params.minOctave, 127));
+        const int requestedMax = std::max(baseRoot, std::min(params.maxOctave, 127));
+        bassMaxNote = std::min(requestedMax, baseRoot + 12);
+        octaveRange = 1; // Bass remains within one octave above its genre floor.
     } else {
         // Lead/Arp: higher register, wider range
         baseRoot = 48; // C3
@@ -306,12 +396,13 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
 
     if (behavior.useMotif) {
         for (int i = 0; i < motifLen; i++) {
-            int idx = rand() % scale.count;
+            int idx = boundedRandom(rng, scale.count);
             int note = baseRoot + scale.intervals[idx];
 
             // Bass: less octave jumps
-            if (!isBass && behavior.forceOctaveJump && (rand() % 100 < 30)) note += 12;
-            if (behavior.allowChromatic && (rand() % 100 < 20)) note += (rand() % 3) - 1;
+            if (!isBass && behavior.forceOctaveJump && (boundedRandom(rng, 100) < 30)) note += 12;
+            if (behavior.allowChromatic && (boundedRandom(rng, 100) < 20)) note += (boundedRandom(rng, 3)) - 1;
+            if (isBass) note = std::max(baseRoot, std::min(note, bassMaxNote));
 
             motif[i] = note;
         }
@@ -323,7 +414,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
 
     // 4. Determine target note count (VOICE-DEPENDENT)
     int range = params.maxNotes - params.minNotes;
-    int targetNotes = params.minNotes + (range > 0 ? rand() % (range + 1) : 0);
+    int targetNotes = params.minNotes + (range > 0 ? boundedRandom(rng, range + 1) : 0);
     
     if (isBass) {
         // Bass: fewer notes (anchor role)
@@ -366,7 +457,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
 
         // Sparse style: probabilistically skip allowed steps
         bool sparseStyle = (behavior.stepMask == 0x1111) || (behavior.stepMask == 0x0101);
-        if (sparseStyle && (rand() % 100 < 45)) continue;
+        if (sparseStyle && (boundedRandom(rng, 100) < 45)) continue;
 
         // Avoid clusters for minimal/hypnotic
         if (behavior.avoidClusters && (step - lastStep) <= 1) continue;
@@ -375,7 +466,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
         
         if (isBass) {
             // Bass: high root bias, allow repeats
-            if (rand() % 100 < prob100(params.rootNoteBias + 0.2f)) {
+            if (boundedRandom(rng, 100) < prob100(params.rootNoteBias + 0.2f)) {
                 note = baseRoot;
             } else {
                 note = motif[placed % motifLen];
@@ -384,32 +475,33 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
         } else {
             // Lead: use motif, less root bias
             note = motif[placed % motifLen];
-            if (rand() % 100 < prob100(params.rootNoteBias)) {
+            if (boundedRandom(rng, 100) < prob100(params.rootNoteBias)) {
                 note = baseRoot;
             }
             // Octave variation for lead
-            if (rand() % 100 < 25 && octaveRange > 1) {
-                note += (rand() % octaveRange) * 12;
+            if (boundedRandom(rng, 100) < 25 && octaveRange > 1) {
+                note += (boundedRandom(rng, octaveRange)) * 12;
             }
         }
 
+        if (isBass) note = std::max(baseRoot, std::min(note, bassMaxNote));
         pattern.steps[step].note = note;
         lastNote = note;
 
         int velRange = std::max(1, params.velocityMax - params.velocityMin + 1);
-        pattern.steps[step].velocity = params.velocityMin + (rand() % velRange);
+        pattern.steps[step].velocity = params.velocityMin + (boundedRandom(rng, velRange));
 
         // Accents: bass on downbeats, lead more varied
         bool isDownbeat = (step % 4 == 0);
         if (isBass) {
             // Bass: accent downbeats
-            if (isDownbeat && rand() % 100 < prob100(params.accentProbability + 0.2f)) {
+            if (isDownbeat && boundedRandom(rng, 100) < prob100(params.accentProbability + 0.2f)) {
                 pattern.steps[step].accent = true;
                 pattern.steps[step].velocity = 127;
             }
         } else {
             // Lead: accents more distributed
-            if (rand() % 100 < prob100(params.accentProbability)) {
+            if (boundedRandom(rng, 100) < prob100(params.accentProbability)) {
                 pattern.steps[step].accent = true;
                 pattern.steps[step].velocity = 120;
             }
@@ -417,11 +509,11 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
 
         // Slides: bass minimal, lead more
         float slideChance = isBass ? params.slideProbability * 0.3f : params.slideProbability;
-        if (rand() % 100 < prob100(slideChance)) {
+        if (boundedRandom(rng, 100) < prob100(slideChance)) {
             if (lastStep >= 0 && pattern.steps[lastStep].note != -1 && pattern.steps[lastStep].note != note) {
-                if (rand() % 100 < 60) pattern.steps[step].slide = true;
+                if (boundedRandom(rng, 100) < 60) pattern.steps[step].slide = true;
             } else if (!isBass) {
-                if (rand() % 100 < 25) pattern.steps[step].slide = true;
+                if (boundedRandom(rng, 100) < 25) pattern.steps[step].slide = true;
             }
         }
 
@@ -434,10 +526,10 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
         int g = prob100(params.ghostProbability);
         for (int i = 0; i < 16; i++) {
             if (pattern.steps[i].note == -1 && stepAllowed(behavior.stepMask, i)) {
-                if (rand() % 100 < g) {
+                if (boundedRandom(rng, 100) < g) {
                     pattern.steps[i].note = baseRoot;
                     pattern.steps[i].ghost = true;
-                    pattern.steps[i].velocity = 50 + (rand() % 20);
+                    pattern.steps[i].velocity = 50 + (boundedRandom(rng, 20));
                 }
             }
         }
@@ -455,7 +547,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
         int r = (int)(params.microTimingAmount * 6.0f);
         if (r > 0) {
             for (int i = 0; i < 16; i++) {
-                if (pattern.steps[i].note != -1) pattern.steps[i].timing += (rand() % (r * 2 + 1)) - r;
+                if (pattern.steps[i].note != -1) pattern.steps[i].timing += (boundedRandom(rng, r * 2 + 1)) - r;
             }
         }
     }
@@ -478,16 +570,23 @@ void GrooveboxModeManager::generateDrumPattern(DrumPatternSet& patternSet,
     // Structural behavior is currently encoded by selected GenerativeMode via
     // DrumGenreTemplate table; keep the parameter for API compatibility.
     (void)behavior;
+    DeterministicRng rng = makeGenerationRng(
+        GenerationDomain::Drums, hashDrumPatternSet(patternSet));
     DrumPatternGenerator::generateDrumPattern(
         patternSet,
         params,
         engine_.genreManager().generativeMode(),
+        rng,
         engine_.genreManager().drumTemplateOverride());
 }
 
 void GrooveboxModeManager::generateDrumVoice(DrumPattern& pattern, int voiceIndex,
                                               const GenerativeParams& params,
                                               const GenreBehavior& behavior) const {
+    const auto domain = static_cast<GenerationDomain>(
+        static_cast<uint32_t>(GenerationDomain::DrumVoiceBase) +
+        static_cast<uint32_t>(voiceIndex & 0xFF));
+    DeterministicRng rng = makeGenerationRng(domain, hashDrumPattern(pattern));
     // Clear voice
     for (int s = 0; s < 16; ++s) {
         pattern.steps[s].hit = false;
@@ -507,7 +606,7 @@ void GrooveboxModeManager::generateDrumVoice(DrumPattern& pattern, int voiceInde
             if (electro) {
                 int steps[] = {0, 6, 10, 15};
                 for (int i = 0; i < 4; i++) {
-                    if (rand() % 100 < 85) {
+                    if (boundedRandom(rng, 100) < 85) {
                         pattern.steps[steps[i]].hit = true;
                         pattern.steps[steps[i]].velocity = 115;
                     }
@@ -515,7 +614,7 @@ void GrooveboxModeManager::generateDrumVoice(DrumPattern& pattern, int voiceInde
             } else if (hypno || minimal || params.sparseKick) {
                 pattern.steps[0].hit = true;
                 pattern.steps[0].velocity = 110;
-                if (!hypno && rand() % 100 < 35) {
+                if (!hypno && boundedRandom(rng, 100) < 35) {
                     pattern.steps[8].hit = true;
                     pattern.steps[8].velocity = 105;
                 }
@@ -524,7 +623,7 @@ void GrooveboxModeManager::generateDrumVoice(DrumPattern& pattern, int voiceInde
                     pattern.steps[i].hit = true;
                     pattern.steps[i].velocity = rave ? 127 : 112;
                 }
-                if (rave && rand() % 100 < 45) {
+                if (rave && boundedRandom(rng, 100) < 45) {
                     pattern.steps[14].hit = true;
                     pattern.steps[14].velocity = 100;
                 }
@@ -534,8 +633,8 @@ void GrooveboxModeManager::generateDrumVoice(DrumPattern& pattern, int voiceInde
         case 1: // SNARE/CLAP
             if (!hypno) {
                 if (electro) {
-                    int s1 = (rand() % 100 < 30) ? 5 : 4;
-                    int s2 = (rand() % 100 < 30) ? 13 : 12;
+                    int s1 = (boundedRandom(rng, 100) < 30) ? 5 : 4;
+                    int s2 = (boundedRandom(rng, 100) < 30) ? 13 : 12;
                     pattern.steps[s1].hit = true;
                     pattern.steps[s1].velocity = 110;
                     pattern.steps[s2].hit = true;
@@ -552,7 +651,7 @@ void GrooveboxModeManager::generateDrumVoice(DrumPattern& pattern, int voiceInde
         case 2: // CLOSED HAT
             if (hypno || minimal || params.sparseHats) {
                 for (int i = 2; i < 16; i += 4) {
-                    if (rand() % 100 < 70) {
+                    if (boundedRandom(rng, 100) < 70) {
                         pattern.steps[i].hit = true;
                         pattern.steps[i].velocity = 70;
                     }
@@ -560,7 +659,7 @@ void GrooveboxModeManager::generateDrumVoice(DrumPattern& pattern, int voiceInde
             } else {
                 int step = rave ? 1 : 2;
                 for (int i = 0; i < 16; i += step) {
-                    if (rand() % 100 < (rave ? 92 : 80)) {
+                    if (boundedRandom(rng, 100) < (rave ? 92 : 80)) {
                         pattern.steps[i].hit = true;
                         pattern.steps[i].velocity = (i % 4 == 2) ? 95 : 55;
                     }
@@ -570,7 +669,7 @@ void GrooveboxModeManager::generateDrumVoice(DrumPattern& pattern, int voiceInde
 
         case 3: // OPEN HAT
             for (int i = 2; i < 16; i += 4) {
-                if (rand() % 100 < (minimal ? 30 : 60)) {
+                if (boundedRandom(rng, 100) < (minimal ? 30 : 60)) {
                     int pos = i;
                     pattern.steps[pos].hit = true;
                     pattern.steps[pos].velocity = 85;
@@ -579,13 +678,13 @@ void GrooveboxModeManager::generateDrumVoice(DrumPattern& pattern, int voiceInde
             break;
 
         case 4: case 5: case 6: case 7: // PERC/FILLS
-            if ((rand() % 100) < prob100(params.fillProbability)) {
-                int count = 1 + (rand() % 2);
+            if ((boundedRandom(rng, 100)) < prob100(params.fillProbability)) {
+                int count = 1 + (boundedRandom(rng, 2));
                 for (int i = 0; i < count; i++) {
-                    int pos = 12 + (rand() % 4);
+                    int pos = 12 + (boundedRandom(rng, 4));
                     pattern.steps[pos & 15].hit = true;
                     pattern.steps[pos & 15].velocity = 80 + (i * 10);
-                    pattern.steps[pos & 15].accent = (rand() % 100 < 30);
+                    pattern.steps[pos & 15].accent = (boundedRandom(rng, 100) < 30);
                 }
             }
             break;
@@ -603,7 +702,7 @@ void GrooveboxModeManager::generateDrumVoice(DrumPattern& pattern, int voiceInde
             int r = (int)(params.microTimingAmount * 3.0f);
             if (r > 0) {
                 if (pattern.steps[i].hit) {
-                    pattern.steps[i].timing += (rand() % (r * 2 + 1)) - r;
+                    pattern.steps[i].timing += (boundedRandom(rng, r * 2 + 1)) - r;
                 }
             }
         }

@@ -1,5 +1,4 @@
 #include "pattern_generator.h"
-#include <stdlib.h>
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -13,18 +12,10 @@
 #endif
 #endif
 
-// Use standard C rand() for predictable portable behavior if needed, 
-// or Arduino random(). We'll use rand() to match the user's snippet style
-// but assume seed is managed.
-
-SmartPatternGenerator::SmartPatternGenerator() : seed_(0) {
-    // Initial seed
-    srand(12345);
-}
+SmartPatternGenerator::SmartPatternGenerator() : rng_(12345) {}
 
 void SmartPatternGenerator::setSeed(uint32_t seed) {
-    seed_ = seed;
-    srand(seed_);
+    rng_ = DeterministicRng(seed);
 }
 
 uint32_t SmartPatternGenerator::generatePattern(Mode mode, GenerativeMode genre, 
@@ -43,8 +34,9 @@ uint32_t SmartPatternGenerator::generatePattern(Mode mode, GenerativeMode genre,
 }
 
 uint32_t SmartPatternGenerator::generateRandom(uint8_t track_id) {
+    (void)track_id;
     // 8 patterns available (0-7)
-    return rand() % 8;
+    return rng_.bounded(8);
 }
 
 uint32_t SmartPatternGenerator::generateGenreBased(GenerativeMode genre, uint8_t track_id) {
@@ -139,9 +131,9 @@ uint8_t SmartPatternGenerator::getWeightedPatternForGenre(GenerativeMode genre, 
         }
     }
     
-    if (valid_count == 0) return rand() % 8;
+    if (valid_count == 0) return rng_.bounded(8);
     
-    return valid_patterns[rand() % valid_count];
+    return valid_patterns[rng_.bounded(valid_count)];
 }
 
 uint8_t SmartPatternGenerator::mutatePattern(uint8_t pattern_idx) {
@@ -149,20 +141,20 @@ uint8_t SmartPatternGenerator::mutatePattern(uint8_t pattern_idx) {
     // 30% - medium mutation (±2)
     // 10% - random
     
-    int r = rand() % 100;
+    const uint32_t r = rng_.bounded(100);
     
     if (r < 60) {
         // ±1 with 50/50
-        int delta = (rand() % 2 == 0) ? 1 : -1;
+        int delta = (rng_.bounded(2) == 0) ? 1 : -1;
         return (pattern_idx + delta + 8) % 8;
     } 
     else if (r < 90) {
         // ±2
-        int delta = (rand() % 2 == 0) ? 2 : -2;
+        int delta = (rng_.bounded(2) == 0) ? 2 : -2;
         return (pattern_idx + delta + 8) % 8;
     }
     else {
         // Random
-        return rand() % 8;
+        return rng_.bounded(8);
     }
 }
