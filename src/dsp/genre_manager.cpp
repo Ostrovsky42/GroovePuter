@@ -346,15 +346,16 @@ void GenreManager::applyGenreTimbre(MiniAcid& engine) {
             env = clamp01(env);
             decay = clamp01(decay);
 
-            // Force low-ish ranges (Soft Clamps)
-            if (cut < 0.05f) cut = 0.05f;
-            if (cut > 0.45f) cut = 0.45f;
+            // Keep the bass darker than Synth B without erasing the
+            // genre timbre. The previous caps made many profiles nearly mute.
+            if (cut < 0.18f) cut = 0.18f;
+            if (cut > 0.62f) cut = 0.62f;
 
-            if (env < 0.02f) env = 0.02f;
-            if (env > 0.20f) env = 0.20f;
+            if (env < 0.18f) env = 0.18f;
+            if (env > 0.55f) env = 0.55f;
 
-            if (decay < 0.04f) decay = 0.04f;
-            if (decay > 0.25f) decay = 0.25f;
+            if (decay < 0.10f) decay = 0.10f;
+            if (decay > 0.45f) decay = 0.45f;
 
             // Do not force a resonance floor for bass; allow fully clean low-end.
             if (reso < 0.0f) reso = 0.0f;
