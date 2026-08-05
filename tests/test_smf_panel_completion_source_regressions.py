@@ -126,6 +126,19 @@ def main() -> None:
         "HUB MIDI mute commands must be generation-aware and use existing ownership",
     )
     require(
+        "configurePlayerPanel(" in hub_cpp
+        and "PlayerHubNavigation::playerViewState()" in hub_cpp
+        and "event.key == 'u'" in hub_cpp
+        and "event.key == 'i'" in hub_cpp,
+        "HUB MIDI U/I must reuse the existing Player mute and channel panels",
+    )
+    require(
+        "smfTrackMuteState().selectTrack(" in hub_cpp
+        and "formatTrackChannel(" in hub_cpp
+        and "formatDensity(" in hub_cpp,
+        "HUB MIDI selection and compact metadata must remain projected from existing state",
+    )
+    require(
         "bool midiOverview_{false};" in hub_h
         and "uint32_t midiGeneration_{0};" in hub_h,
         "HUB MIDI navigation state must remain bounded and page-local",
