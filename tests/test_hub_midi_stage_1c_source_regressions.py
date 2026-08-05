@@ -79,18 +79,36 @@ def main() -> None:
         and "projection.generation" in page,
         "HUB MIDI row selection must follow the existing generation-aware physical track",
     )
+
+    shortcut_pos = page.index("const bool hubShortcut")
+    modifier_pos = page.index("if (event.alt || event.ctrl || event.meta)")
     require(
-        "event.key == 'u'" in page
-        and "event.key == 'i'" in page
-        and "configurePlayerPanel(" in page
-        and "PlayerHubNavigation::kReturnToPlayerContext" in page,
-        "HUB MIDI U/I must open the existing Player detail panels rather than duplicate them",
+        shortcut_pos < modifier_pos
+        and "event.key == 'h'" in page[shortcut_pos:modifier_pos]
+        and "UIInput::isBack(event)" in page[shortcut_pos:modifier_pos]
+        and "returnFromMidiOverview();" in page[shortcut_pos:modifier_pos],
+        "H and Escape/Back must return to the origin before Cardputer meta filtering",
+    )
+    require(
+        "drawFormStrip(" in page
+        and "layer.form[section]" in page
+        and "currentFormSection(player.bar)" in page
+        and "H/ESC Player  1-9 Mute" in page,
+        "HUB MIDI must use a Hub-like arrangement strip with a visible play section",
+    )
+    require(
+        "G%s SW%u" not in page
+        and "N%u.%u A%u%%" not in page
+        and "P Player U Mixer I Chans" not in page
+        and "event.key == 'u'" not in page
+        and "event.key == 'i'" not in page,
+        "HUB MIDI must not expose raw inspector metrics or duplicate U/I panel navigation",
     )
     require(
         "formatTrackChannel(" in page
-        and "formatDensity(" in page
-        and "P Player U Mixer I Chans" in page,
-        "HUB MIDI rows must expose channel, compact density and discoverable U/I detail links",
+        and "loopLabel(" in page
+        and "TRACK %02u  %s  %s" in page,
+        "selected-layer summary must use readable channel and loop labels",
     )
     require(
         "GROOVEPUTER_LEFT" in page
