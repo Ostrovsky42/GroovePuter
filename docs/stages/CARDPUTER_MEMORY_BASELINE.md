@@ -7,12 +7,12 @@ large objects or declaring a new fixed `.dram0.data + .dram0.bss` ceiling.
 
 This stage is intentionally separate from Hub MIDI PR #65. It changes neither
 Hub behavior nor product memory ownership. It restores the last pre-`122880`
-repository ceiling under an explicit provisional exception and collects exact
-product-ELF and runtime heap evidence.
+repository ceiling provisionally and collects exact product-ELF and runtime
+heap evidence.
 
 ## Verified gate history
 
-The repository history establishes a two-step measurement failure.
+The repository history now establishes a two-step measurement failure.
 
 1. At `9d9cdef0980ec063e23c9a2849eae63f5cf6d812`, the PR #63 workflow built to
    `build/cardputer-adv-current` but called the checker with
@@ -56,13 +56,9 @@ This means:
 
 - `191488` is a provisional repository ceiling, not a proven safe maximum;
 - `122880` remains visible only as an unsupported historical reference;
-- headroom to `191488` is comparison arithmetic, not measured safety margin;
 - no Scene, wavetable, SMF, engine, USB, scheduler, DSP, or UI storage moves;
 - #65 remains responsible for its own build, hardware, and functional tests;
 - the final policy may be lower, higher, or profile-specific.
-
-The product gate prints its provisional-exception status on every run. Passing
-it means only that the fixed sections are below the temporary repository value.
 
 ## Product and runtime images
 
@@ -103,38 +99,23 @@ commit. Workflow-dispatch runs use `github.sha`.
 
 ## Current immutable-head static baseline
 
-The fully pinned product records were built from:
-
-```text
-head  e3c34bb8244265db1e936a660ec125449eed0c8d
-base  dev @ b43e23ff12fb0a31bcb77dd5ec57908889760013
-core  m5stack:esp32 3.2.2
-PSRAM disabled
-```
+The fully pinned product records built from the unchanged product source are:
 
 ```text
 normal CDC+MIDI
-  ELF SHA-256  655d44adef79ed36bb1fc23eff923ae2c376c8fa06d11b55554503a2cec72916
   .dram0.data   22600 B
   .dram0.bss   147392 B
   fixed        169992 B
-  comparison to provisional 191488: +21496 B
+  headroom to provisional 191488: 21496 B
 
 MIDI-only
-  ELF SHA-256  a6798c9816e3f9255ad94ea6b85395139a6bb51fd2eacf5f9d719cfe0f2156ef
   .dram0.data   22584 B
   .dram0.bss   147336 B
   fixed        169920 B
-  comparison to provisional 191488: +21568 B
+  headroom to provisional 191488: 21568 B
 
 profile delta: 72 B
 ```
-
-The runtime probes add `16 B` to the normal fixed total and `32 B` to the
-MIDI-only fixed total. This validates the decision not to use instrumented ELFs
-as exact product baselines.
-
-## Full `.dram0.bss` attribution
 
 The five named candidate groups are a shortlist, not a complete `.bss` model:
 
@@ -156,22 +137,11 @@ MIDI-only: 147336 - 88240 = 59096 B
 
 Those bytes are not called unknown, free, or waste. The section reporter uses
 `objdump -t` and the actual section name instead of treating every `nm` `B/b`
-symbol as `.dram0.bss`. For each ELF it prints:
+symbol as `.dram0.bss`. For each ELF it prints every positive-size symbol,
+interval-union coverage, bytes outside named intervals, alias overlap, shortlist
+coverage, and the exact bytes outside the shortlist.
 
-- every positive-size symbol located specifically in `.dram0.bss`;
-- exact address, size, and name, sorted by size;
-- union coverage of all symbol intervals;
-- bytes in the section not covered by named symbol intervals, such as alignment
-  or linker-owned space;
-- raw overlap from aliases that point at the same storage;
-- shortlist coverage and the exact bytes outside the shortlist.
-
-The machine summary includes `bss_symbol_coverage`,
-`bss_section_uncovered`, `bss_alias_overlap`, `candidate_bss`, and
-`candidate_outside`.
-
-The immutable-head product run at `e3c34bb8244265db1e936a660ec125449eed0c8d`
-closed this static inventory:
+The immutable product run closed this static inventory:
 
 ```text
 normal product
@@ -193,83 +163,26 @@ MIDI-only product
   positive-size BSS symbols      434
 ```
 
-The `828 B` raw overlap is explained by two 92-byte newlib mutex objects that
-have multiple alias names: one interval has six names and the other five. The
-union-coverage calculation counts each storage interval once. The remaining
-`154 B` / `150 B` are section bytes outside positive-size named symbol
-intervals, not an unidentified 59 KB allocation.
-
-The largest objects outside the original shortlist are distributed rather than
-forming one hidden `Scene`:
-
-| Symbol | Size |
-|---|---:|
-| `ncm_epbuf` | 6416 B |
-| `g_output` | 4320 B |
-| `_mscd_epbuf` | 4096 B |
-| `_dfu_epbuf` | 4096 B |
-| `g_dispatchTaskStack` | 4096 B |
-| `sp12_clap` | 3000 B |
-| `g_sampleStore` | 2092 B |
-| `g_externalMidiTransportQueue` | 2076 B |
-| `sp12_kick` | 2000 B |
-| `sp12_snare` | 2000 B |
-
-These ten account for `34192 B`; the rest is spread across hundreds of smaller
-framework, UI, audio, USB, RTOS, and project symbols. The full ordered list is
-preserved in both workflow artifacts. Static `.dram0.bss` attribution is now
-closed for this head; runtime safety is not.
-
-No candidate is presumed waste. In particular, moving `s_tempLoadScene` to heap
-can reduce `.bss` while leaving peak physical RAM unchanged and requiring a
-contiguous approximately `25.8 KB` block during save/load.
-
-## Historical `190808` reconstruction
-
-The current MIDI-only product is `169920 B`. The historical figure is
-`190808 B`, a difference of:
-
-```text
-190808 - 169920 = 20888 B
-```
-
-That is too large to treat as rounding or instrumentation noise. Plausible
-sources include a different core/toolchain, FQBN, feature configuration, or
-source revision, but none is accepted without an immutable rebuild record. The
-historical number cannot justify `191488`, and it cannot be compared as
-"then versus now", until its source/profile/ELF identity is recovered.
+The `828 B` raw overlap is explained by two 92-byte newlib mutex objects with
+multiple aliases. The remaining `154 B` / `150 B` are section bytes outside
+positive-size named symbol intervals, not an unidentified 59 KB allocation.
+Static `.dram0.bss` attribution is closed; runtime safety is not.
 
 ## Runtime records
 
-The runtime image emits:
+The corrected runtime telemetry contract is defined in
+`docs/stages/CARDPUTER_MEMORY_RUNTIME_TELEMETRY.md`. In particular:
 
-```text
-[MEM-BASE] phase=periodic ms=... freeInt=... minFreeBoot=...
-           startBootFloor=... minFreeRuntimeSample=...
-           largest=... minLargestRuntimeSample=...
-           loopStackWords=... audioStackWords=... integrity=1
-```
+- stack high-water marks are named `*StackFreeBytes`, never words;
+- loop, audio, SMF-player, and MIDI-dispatch tasks are measured independently;
+- `MALLOC_CAP_8BIT` and `MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT` are reported
+  separately;
+- the runtime diagnostic uses a temporary source copy and direct runtime-only
+  task-handle accessors;
+- the separate product ELF remains uninstrumented.
 
-Metric meanings:
-
-- `freeInt`: current free internal 8-bit heap;
-- `minFreeBoot`: ESP-IDF minimum free internal heap since boot;
-- `startBootFloor`: boot minimum captured at `setup()` completion;
-- `minFreeRuntimeSample`: lowest 10 ms sampled free heap after setup;
-- `largest`: current largest contiguous internal allocation;
-- `minLargestRuntimeSample`: lowest sampled largest block after setup;
-- `loopStackWords` and `audioStackWords`: FreeRTOS high-water marks in words;
-- `integrity`: `heap_caps_check_integrity_all(false)` result.
-
-`minLargestRuntimeSample` is sampled, not an allocator-maintained historical
-minimum. A short allocation and free inside one blocking call can be missed.
-Any proposed relocation must add before/during/after probes at its actual
-allocation site.
-
-MIDI-only has no CDC output in its production profile. Its runtime evidence
-needs a bounded channel that does not change the USB profile, such as retained
-summary data read by a later diagnostic boot. Enabling CDC would measure a
-different binary.
+The sampled minima begin after setup. They are not automatically accepted as a
+stable baseline: UI, SD, MIDI, audio, and lazy task warm-up must occur first.
 
 ## Hardware matrix
 
@@ -288,7 +201,7 @@ profile:
 9. Stop the host from draining USB MIDI, then restore it and verify recovery.
 10. Run a mixed audio/UI/MIDI soak for at least ten minutes.
 
-Record the minimum free heap, minimum largest block, loop/audio stack
+Record the minimum free heap, minimum largest block, per-task free-stack
 watermarks, reset reason, heap integrity, and whether save/load and dense SMF
 complete.
 
@@ -302,8 +215,7 @@ was obtained. Required evidence:
 3. Product ELF SHA-256 and exact `.dram0.data` / `.dram0.bss` values.
 4. Separate normal and MIDI-only results, or proof that one shared ceiling is
    conservative for both.
-5. Worst-case `minFreeBoot`, `minFreeRuntimeSample`,
-   `minLargestRuntimeSample`, and stack watermarks.
+5. Worst-case free-heap, largest-block, and per-task stack measurements.
 6. Declared required total-heap, contiguous-block, and stack reserves.
 7. A calculation showing how proposed fixed-DRAM growth preserves those
    reserves, followed by a build at or near the proposed boundary.
@@ -314,73 +226,59 @@ identity and runtime behavior are required.
 
 ## Provisional `191488` self-audit
 
-The restored value is subjected to the same rule rather than being silently
-grandfathered:
+| Rule item | Status |
+|---|---|
+| 1. Immutable source and clean tree | PASS |
+| 2. Full FQBN and pinned toolchain/core | PASS |
+| 3. Product ELF identity and exact sections | PASS |
+| 4. Separate normal/MIDI-only records | PASS |
+| 5. Worst-case hardware runtime minima | **MISSING** |
+| 6. Declared total-heap/block/stack reserves | **MISSING** |
+| 7. Deriving calculation and boundary build | **MISSING** |
 
-| Rule item | Status for `191488` | Evidence |
-|---|---|---|
-| 1. Immutable source and clean tree | PASS | pinned head and `Source dirty entries: 0` |
-| 2. FQBN and toolchain/core versions | PASS | separate full FQBNs; pinned M5Stack core `3.2.2` and libraries |
-| 3. Product ELF identity and sections | PASS | separate ELF SHA-256 and exact sections |
-| 4. Profile separation | PASS | normal and MIDI-only product/runtime builds |
-| 5. Worst-case hardware minima | **MISSING** | hardware matrix not run |
-| 6. Declared reserves | **MISSING** | no accepted heap/block/stack reserves yet |
-| 7. Deriving calculation and boundary build | **MISSING** | no formula can be completed before items 5-6 |
-
-Result: `191488` currently passes **4 of 7** evidence requirements. It is an
-explicit temporary exception, not a threshold derived by this PR's rule. Its
-`21496 B` and `21568 B` headroom values are arithmetic comparisons only. The
-exception may be removed, replaced with profile-specific limits, or confirmed
-only after hardware evidence and the reserve calculation exist.
-
-## Boundary audit
-
-The PR diff is restricted to these six paths:
-
-```text
-.github/workflows/cardputer-memory-baseline.yml
-docs/stages/CARDPUTER_MEMORY_BASELINE.md
-scripts/build_cardputer_memory_baseline.sh
-scripts/check_cardputer_dram_budget.sh
-scripts/report_cardputer_memory_baseline.sh
-tests/test_cardputer_memory_baseline_source_regressions.py
-```
-
-Post-line audit:
-
-- **No change to #65 or stacked branches:** PASS; PR base remains `dev`, and no
-  Hub MIDI source is changed.
-- **No PSRAM assumption:** PASS; both FQBNs retain `PSRAM=disabled`.
-- **No static-to-heap relocation:** PASS; no product C/C++ storage definition is
-  changed.
-- **No transactional Scene change:** PASS; Scene codec/load/save source is not
-  in the diff.
-- **No TinyUSB, scheduler, RX, clock, note ownership, DSP, or UI behavior
-  change:** PASS; no product implementation file is in the diff.
-- **Fail closed:** PASS; scripts use `set -euo pipefail`, the workflow uses
-  `pipefail` around `tee`, missing ELF/binutils/report errors are non-zero, and
-  the final source-contract, four baseline builds, Cardputer build/gate, host
-  tests, and SDL build all passed on `e3c34bb`.
+The provisional value passes **4 of 7** requirements. It remains an explicit
+policy exception, not a safety-derived ceiling. Reported headroom is arithmetic
+comparison only.
 
 ## Decision after measurement
 
-After exact BSS inventory, historical reconstruction, and the hardware matrix,
-#70 may choose among:
+Only after hardware records exist should #70 choose among:
 
 - reducing genuinely unnecessary fixed residency;
 - deriving a documented profile-specific gate;
 - combining a small low-risk optimization with a justified gate change.
 
-## Acceptance boundaries
+No candidate is presumed waste. In particular, moving `s_tempLoadScene` to heap
+can reduce `.bss` while leaving peak physical RAM unchanged and requiring a
+large contiguous block during save/load.
 
-- `191488` remains explicitly provisional and marked as a 4/7 exception.
+The TinyUSB NCM/MSC/DFU buffers are now confirmed as a separate prebuilt-core
+configuration candidate. They are not disabled in #70.
+
+## Boundary audit
+
+- `191488` remains explicitly provisional.
 - Cardputer ADV remains `PSRAM=disabled`.
 - No blind static-to-heap relocation.
 - No removal of transactional scene rollback without an equivalent design.
 - No change to #65 or its stacked branches.
-- No TinyUSB, scheduler, RX, clock, note-ownership, DSP, or UI behavior change.
+- No production TinyUSB, scheduler, RX, clock, note-ownership, DSP, or UI
+  behavior change.
 - A missing ELF, missing binutils, failed report, or failure hidden behind
   `tee` must fail CI.
-- The two product BSS inventories are captured and the static ELF stage is
-  closed. The PR remains draft because the hardware/runtime threshold stage is
-  still open and `191488` remains a 4/7 exception.
+
+PR #70 changes only:
+
+```text
+.github/workflows/cardputer-memory-baseline.yml
+docs/stages/CARDPUTER_MEMORY_BASELINE.md
+docs/stages/CARDPUTER_MEMORY_RUNTIME_TELEMETRY.md
+scripts/build_cardputer_memory_baseline.sh
+scripts/check_cardputer_dram_budget.sh
+scripts/instrument_cardputer_memory_runtime.py
+scripts/report_cardputer_memory_baseline.sh
+scripts/report_cardputer_tinyusb_class_buffers.sh
+tests/test_cardputer_memory_baseline_source_regressions.py
+```
+
+No production C/C++ implementation file is changed.
