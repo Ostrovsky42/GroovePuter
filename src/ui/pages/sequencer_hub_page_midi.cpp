@@ -583,6 +583,8 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
                     midiRouteDraft_,
                     projection.generation,
                     projection.mute.trackCount)) {
+                const bool saveQueued = service &&
+                    service->persistTrackOutputRoutes(projection.generation);
                 char destination[20]{};
                 char toast[40]{};
                 formatRouteDestination(midiRouteDraft_,
@@ -591,10 +593,12 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
                                        sizeof(destination));
                 std::snprintf(toast,
                               sizeof(toast),
-                              "TRK %02u > %s",
+                              saveQueued
+                                  ? "TRK %02u > %s"
+                                  : "TRK %02u > %s / SAVE BUSY",
                               static_cast<unsigned>(selectedTrack + 1u),
                               destination);
-                UI::showToast(toast, 800);
+                UI::showToast(toast, saveQueued ? 800 : 1100);
                 midiRouteEdit_ = false;
             } else {
                 UI::showToast("ROUTE SESSION CHANGED", 900);
