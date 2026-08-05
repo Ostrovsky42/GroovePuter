@@ -19,6 +19,13 @@ def main() -> None:
     structural = (ROOT / "src/midi/smf_structural_inspector.h").read_text(
         encoding="utf-8"
     )
+    route_state = (ROOT / "src/midi/smf_track_output_route.h").read_text(
+        encoding="utf-8"
+    )
+    routing = (ROOT / "src/midi/smf_routing.h").read_text(encoding="utf-8")
+    player_header = (ROOT / "src/platform/cardputer_smf_player.h").read_text(
+        encoding="utf-8"
+    )
     display = (ROOT / "src/ui/miniacid_display.h").read_text(
         encoding="utf-8"
     )
@@ -34,6 +41,8 @@ def main() -> None:
     require(
         "bool midiOverview_{false};" in header
         and "bool midiReturnToPlayer_{false};" in header
+        and "bool midiRouteEdit_{false};" in header
+        and "int8_t midiRouteDraft_{-1};" in header
         and "uint8_t midiSelected_{0};" in header
         and "uint8_t midiScroll_{0};" in header
         and "uint32_t midiGeneration_{0};" in header,
@@ -59,6 +68,7 @@ def main() -> None:
         "smfStructuralInspectorState().snapshot()",
         "smfTrackInspectorState().snapshot()",
         "smfTrackMuteState().snapshot()",
+        "smfTrackOutputRouteState().snapshot(",
         "service->snapshot()",
     ):
         require(
@@ -69,6 +79,7 @@ def main() -> None:
     require(
         "smfSessionGeneration()" in page
         and "smfSnapshotGenerationsMatch(" in page
+        and "routes.generation == generation" in page
         and "SYNCING" in page,
         "HUB MIDI must reject stale snapshots and expose an explicit SYNCING state",
     )
@@ -87,13 +98,15 @@ def main() -> None:
     )
 
     shortcut_pos = page.index("const bool hubShortcut")
-    modifier_pos = page.index("if (event.alt || event.ctrl || event.meta)")
+    back_pos = page.index("if (UIInput::isBack(event))", shortcut_pos)
+    modifier_pos = page.index("if (event.alt || event.ctrl || event.meta)", back_pos)
     require(
-        shortcut_pos < modifier_pos
-        and "event.key == 'h'" in page[shortcut_pos:modifier_pos]
-        and "UIInput::isBack(event)" in page[shortcut_pos:modifier_pos]
-        and "returnFromMidiOverview();" in page[shortcut_pos:modifier_pos],
-        "H and Escape/Back must return to the origin before Cardputer meta filtering",
+        shortcut_pos < back_pos < modifier_pos
+        and "event.key == 'h'" in page[shortcut_pos:back_pos]
+        and "returnFromMidiOverview();" in page[shortcut_pos:back_pos]
+        and "midiRouteEdit_" in page[back_pos:modifier_pos]
+        and "ROUTE CANCELLED" in page[back_pos:modifier_pos],
+        "H must exit while Escape cancels an active route edit before exiting Hub",
     )
 
     require(
@@ -116,8 +129,10 @@ def main() -> None:
         "arrangementPlayheadX(" in page
         and "player.currentTick" in page
         and "player.endTick" in page
-        and "gfx.fillRect(playheadX, 0, 2, screenHeight, kAccent);" in page,
-        "all layer rows must share one tick-derived vertical playhead",
+        and "const int rowsTop = std::min(kOverlayBandHeight, screenHeight);" in page
+        and "const int rowsBottom = std::max(rowsTop, screenHeight - kOverlayBandHeight);" in page
+        and "gfx.fillRect(playheadX, rowsTop, 2, rowsHeight, kAccent);" in page,
+        "all rows and the shared playhead must stay between the overlay bands",
     )
     require(
         "drawOverlayBands(" in page
@@ -126,7 +141,7 @@ def main() -> None:
         and "player.totalBars" in page
         and "formatPitchRange(" in page
         and "selectedLayer.noteCount" in page,
-        "filename/bar and selected channel/note/range text must use overlaid dark bands",
+        "filename/bar and selected routing/note/range text must use dark bands",
     )
     require(
         "rowBackground(isMuted, isSelected)" in page
@@ -157,15 +172,69 @@ def main() -> None:
     )
     require(
         "formatTrackChannel(" in page
+        and "formatRouteDestination(" in page
         and "formatPitchRange(" in page
-        and "%s N%u %s" in page,
-        "selected-layer overlay must expose readable channel, note count and pitch range",
+        and "%s>%s N%u %s" in page
+        and "ROUTE %s" in page,
+        "selected-layer footer must expose source, destination and route edit state",
     )
+
+    require(
+        "event.key == 'c' || event.key == 'C'" in page
+        and "cycleRouteDestination(" in page
+        and "GROOVEPUTER_LEFT" in page
+        and "GROOVEPUTER_RIGHT" in page
+        and "smfTrackOutputRouteState().setDestination(" in page
+        and "midiRouteDraft_" in page
+        and "projection.generation" in page
+        and "projection.mute.trackCount" in page,
+        "C/Left/Right/Enter must edit one generation-aware physical-track route",
+    )
+    require(
+        "routeCanBeEdited(" in page
+        and "SmfPlayerState::Stopped" in page
+        and "SmfPlayerState::Paused" in page
+        and "PAUSE MIDI FIRST" in page
+        and "SEQTRAK ROUTING REQUIRED" in page,
+        "route edits must be limited to safe paused/stopped SEQTRAK routing",
+    )
+
+    require(
+        "kSmfTrackOutputRouteCapacity = 32u" in route_state
+        and "kSmfSeqtrakOutputChannelCount = 10u" in route_state
+        and "packedRoutes_[kPackedRouteWords]" in route_state
+        and "std::atomic<uint32_t> boundGeneration_" in route_state
+        and "SmfSessionMutationGuard guard(generation)" in route_state
+        and "kInitializingGeneration" in route_state,
+        "per-track routes must remain bounded, atomic and session-generation aware",
+    )
+    for forbidden in ("std::vector", "new ", "malloc", "free("):
+        require(
+            forbidden not in route_state,
+            f"route state must not allocate dynamically: {forbidden}",
+        )
+
+    require(
+        "routeSmfNoteToSeqtrakDestination(" in routing
+        and "routeSmfTrackNote(" in routing
+        and "channel <= 6u" in routing
+        and "mode == SmfRoutingMode::Seqtrak && destinationOverride >= 0" in routing,
+        "explicit CH1-7 routes must use fixed note 60 while CH8-10 preserve pitch",
+    )
+    require(
+        "SmfRoutedNote routeSmfNote(" in player_header
+        and "pendingEvent_.trackIndex" in player_header
+        and "fileIndex_.trackCount" in player_header
+        and "smfTrackOutputRouteState().destinationFor(" in player_header
+        and "GroovePuterMidi::routeSmfTrackNote(" in player_header,
+        "Cardputer player must apply the selected physical-track route at the existing scheduling boundary",
+    )
+
     require(
         "GROOVEPUTER_LEFT" in page
         and "GROOVEPUTER_RIGHT" in page
         and "kVisibleMidiRows" in page,
-        "HUB MIDI must page through long layer lists without adding retained storage",
+        "HUB MIDI must still page through long layer lists outside route edit mode",
     )
     require(
         "event.key == ' '" in page
