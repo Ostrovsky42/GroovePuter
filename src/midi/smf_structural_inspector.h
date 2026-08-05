@@ -8,6 +8,7 @@
 #include <limits>
 
 #include "smf_document.h"
+#include "smf_session_generation.h"
 #include "smf_track_inspector.h"
 
 namespace GroovePuterMidi {
@@ -72,6 +73,7 @@ struct SmfStructuralLayerSnapshot {
 };
 
 struct SmfStructuralInspectorSnapshot {
+    uint32_t generation{0};
     uint16_t sourceTrackCount{0};
     uint16_t analyzedBars{0};
     uint8_t layerCount{0};
@@ -221,8 +223,11 @@ public:
     }
 
     SmfStructuralInspectorSnapshot snapshot() const {
-        SmfStructuralInspectorSnapshot out{};
         while (true) {
+            const uint32_t generationBefore = smfSessionGeneration();
+            if (generationBefore == 0u) return SmfStructuralInspectorSnapshot{};
+
+            SmfStructuralInspectorSnapshot out{};
             const uint32_t before = sequence_.load(std::memory_order_acquire);
             if ((before & 1u) != 0u) continue;
 
@@ -240,7 +245,11 @@ public:
             }
 
             const uint32_t after = sequence_.load(std::memory_order_acquire);
-            if (before == after) return out;
+            const uint32_t generationAfter = smfSessionGeneration();
+            if (before == after && generationBefore == generationAfter) {
+                out.generation = generationAfter;
+                return out;
+            }
         }
     }
 

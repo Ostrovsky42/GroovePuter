@@ -5,9 +5,12 @@
 #include <atomic>
 #include <cstdint>
 
+#include "smf_session_generation.h"
+
 namespace GroovePuterMidi {
 
 struct SmfTrackMuteSnapshot {
+    uint32_t generation{0};
     uint16_t trackCount{0};
     uint16_t selectedTrack{0};
     uint64_t mutedMask{0};
@@ -31,21 +34,40 @@ public:
     }
 
     SmfTrackMuteSnapshot snapshot() const {
-        SmfTrackMuteSnapshot result{};
-        result.trackCount = trackCount_.load(std::memory_order_acquire);
-        result.selectedTrack = selectedTrack_.load(std::memory_order_acquire);
-        const uint64_t low = mutedMaskLow_.load(std::memory_order_acquire);
-        const uint64_t high = mutedMaskHigh_.load(std::memory_order_acquire);
-        result.mutedMask = low | (high << 32u);
-        if (result.trackCount == 0) {
-            result.selectedTrack = 0;
-        } else if (result.selectedTrack >= result.trackCount) {
-            result.selectedTrack = static_cast<uint16_t>(result.trackCount - 1u);
+        while (true) {
+            const uint32_t before = smfSessionGeneration();
+            if (before == 0u) return SmfTrackMuteSnapshot{};
+
+            SmfTrackMuteSnapshot result{};
+            result.trackCount = trackCount_.load(std::memory_order_acquire);
+            result.selectedTrack = selectedTrack_.load(std::memory_order_acquire);
+            const uint64_t low = mutedMaskLow_.load(std::memory_order_acquire);
+            const uint64_t high = mutedMaskHigh_.load(std::memory_order_acquire);
+            result.mutedMask = low | (high << 32u);
+            if (result.trackCount == 0) {
+                result.selectedTrack = 0;
+            } else if (result.selectedTrack >= result.trackCount) {
+                result.selectedTrack = static_cast<uint16_t>(result.trackCount - 1u);
+            }
+
+            const uint32_t after = smfSessionGeneration();
+            if (before == after) {
+                result.generation = after;
+                return result;
+            }
         }
-        return result;
     }
 
     bool selectTrack(uint16_t trackIndex) {
+        const uint16_t count = trackCount_.load(std::memory_order_acquire);
+        if (count == 0 || trackIndex >= count) return false;
+        selectedTrack_.store(trackIndex, std::memory_order_release);
+        return true;
+    }
+
+    bool selectTrack(uint16_t trackIndex, uint32_t generation) {
+        SmfSessionMutationGuard guard(generation);
+        if (!guard) return false;
         const uint16_t count = trackCount_.load(std::memory_order_acquire);
         if (count == 0 || trackIndex >= count) return false;
         selectedTrack_.store(trackIndex, std::memory_order_release);
@@ -65,15 +87,30 @@ public:
 
     bool toggleSelected() {
         const SmfTrackMuteSnapshot state = snapshot();
-        if (state.trackCount == 0 || state.selectedTrack >= 64u) return false;
+        return toggleTrack(state.selectedTrack, state.generation);
+    }
 
-        const bool wasMuted = state.selectedMuted();
-        if (state.selectedTrack < 32u) {
-            const uint32_t bit = uint32_t{1} << state.selectedTrack;
+    bool toggleSelected(uint32_t generation) {
+        const uint16_t selected =
+            selectedTrack_.load(std::memory_order_acquire);
+        return toggleTrack(selected, generation);
+    }
+
+    bool toggleTrack(uint16_t trackIndex, uint32_t generation) {
+        SmfSessionMutationGuard guard(generation);
+        if (!guard) return false;
+
+        const uint16_t count = trackCount_.load(std::memory_order_acquire);
+        if (count == 0 || trackIndex >= count || trackIndex >= 64u) return false;
+        selectedTrack_.store(trackIndex, std::memory_order_release);
+
+        const bool wasMuted = isMuted(trackIndex);
+        if (trackIndex < 32u) {
+            const uint32_t bit = uint32_t{1} << trackIndex;
             mutedMaskLow_.fetch_xor(bit, std::memory_order_acq_rel);
             if (!wasMuted) pendingReleaseLow_.fetch_or(bit, std::memory_order_acq_rel);
         } else {
-            const uint32_t bit = uint32_t{1} << (state.selectedTrack - 32u);
+            const uint32_t bit = uint32_t{1} << (trackIndex - 32u);
             mutedMaskHigh_.fetch_xor(bit, std::memory_order_acq_rel);
             if (!wasMuted) pendingReleaseHigh_.fetch_or(bit, std::memory_order_acq_rel);
         }
@@ -81,10 +118,18 @@ public:
     }
 
     void clear() {
+        const uint32_t generation = smfSessionGeneration();
+        if (generation != 0u) (void)clear(generation);
+    }
+
+    bool clear(uint32_t generation) {
+        SmfSessionMutationGuard guard(generation);
+        if (!guard) return false;
         mutedMaskLow_.store(0, std::memory_order_release);
         mutedMaskHigh_.store(0, std::memory_order_release);
         pendingReleaseLow_.store(0, std::memory_order_release);
         pendingReleaseHigh_.store(0, std::memory_order_release);
+        return true;
     }
 
     bool isMuted(uint16_t trackIndex) const {

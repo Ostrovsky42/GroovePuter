@@ -7,6 +7,7 @@
 #include <cstdint>
 
 #include "smf_document.h"
+#include "smf_session_generation.h"
 
 namespace GroovePuterMidi {
 
@@ -43,6 +44,7 @@ struct SmfTrackInfoSnapshot {
 };
 
 struct SmfTrackInspectorSnapshot {
+    uint32_t generation{0};
     uint16_t trackCount{0};
     uint16_t declaredTrackCount{0};
     SmfTrackInfoSnapshot tracks[kSmfTrackInspectorMaxTracks]{};
@@ -63,7 +65,7 @@ struct SmfTrackInspectorSnapshot {
 
 static_assert(sizeof(SmfTrackInfoSnapshot) == 20,
               "SMF track rows must remain compact and fixed-size");
-static_assert(sizeof(SmfTrackInspectorSnapshot) <= 644,
+static_assert(sizeof(SmfTrackInspectorSnapshot) <= 648,
               "SMF track snapshots must remain bounded on the UI stack");
 
 class SmfTrackInspectorState {
@@ -134,36 +136,46 @@ public:
     }
 
     SmfTrackInspectorSnapshot snapshot() const {
-        SmfTrackInspectorSnapshot result{};
-        result.trackCount = state_.load(std::memory_order_acquire) & kCountMask;
-        if (result.trackCount > kSmfTrackInspectorMaxTracks) {
-            result.trackCount = static_cast<uint16_t>(kSmfTrackInspectorMaxTracks);
-        }
-        result.declaredTrackCount =
-            declaredTrackCount_.load(std::memory_order_relaxed);
-        if (result.declaredTrackCount < result.trackCount) {
-            result.declaredTrackCount = result.trackCount;
-        }
+        while (true) {
+            const uint32_t before = smfSessionGeneration();
+            if (before == 0u) return SmfTrackInspectorSnapshot{};
 
-        for (uint16_t track = 0; track < result.trackCount; ++track) {
-            const AtomicTrack& item = tracks_[track];
-            SmfTrackInfoSnapshot& output = result.tracks[track];
-            output.flags = item.flags.load(std::memory_order_acquire);
-            output.channelMask = item.channelMask.load(std::memory_order_relaxed);
-            output.firstProgram = item.firstProgram.load(std::memory_order_relaxed);
-
-            const char* label = nullptr;
-            if (output.likelyDrums()) {
-                label = "Drums";
-            } else if (output.hasProgramChange()) {
-                label = programLabel(output.firstProgram);
+            SmfTrackInspectorSnapshot result{};
+            result.trackCount = state_.load(std::memory_order_acquire) & kCountMask;
+            if (result.trackCount > kSmfTrackInspectorMaxTracks) {
+                result.trackCount = static_cast<uint16_t>(kSmfTrackInspectorMaxTracks);
             }
-            if (label) {
-                copyLabel(output.name, label);
-                output.flags |= SmfTrackInfoSnapshot::kHasName;
+            result.declaredTrackCount =
+                declaredTrackCount_.load(std::memory_order_relaxed);
+            if (result.declaredTrackCount < result.trackCount) {
+                result.declaredTrackCount = result.trackCount;
+            }
+
+            for (uint16_t track = 0; track < result.trackCount; ++track) {
+                const AtomicTrack& item = tracks_[track];
+                SmfTrackInfoSnapshot& output = result.tracks[track];
+                output.flags = item.flags.load(std::memory_order_acquire);
+                output.channelMask = item.channelMask.load(std::memory_order_relaxed);
+                output.firstProgram = item.firstProgram.load(std::memory_order_relaxed);
+
+                const char* label = nullptr;
+                if (output.likelyDrums()) {
+                    label = "Drums";
+                } else if (output.hasProgramChange()) {
+                    label = programLabel(output.firstProgram);
+                }
+                if (label) {
+                    copyLabel(output.name, label);
+                    output.flags |= SmfTrackInfoSnapshot::kHasName;
+                }
+            }
+
+            const uint32_t after = smfSessionGeneration();
+            if (before == after) {
+                result.generation = after;
+                return result;
             }
         }
-        return result;
     }
 
 private:

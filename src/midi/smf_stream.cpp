@@ -4,6 +4,7 @@
 #include <cstring>
 #include <limits>
 
+#include "smf_session_generation.h"
 #include "smf_structural_inspector.h"
 #include "smf_track_inspector.h"
 #include "smf_track_mute.h"
@@ -360,15 +361,30 @@ bool SmfTrackStream::next(SmfStreamEvent& out) {
 
 bool SmfEventStreamMerger::open(ISmfByteSource& source,
                                 const SmfFileIndex& index) {
+    const uint32_t generation = smfBeginSessionOpen();
+
+    auto invalidate = [this]() {
+        source_ = nullptr;
+        index_ = SmfFileIndex{};
+        smfTrackMuteState().reset(0);
+        smfTrackInspectorState().reset(0, 0);
+        smfStructuralInspectorState().reset(0, 0);
+        captureStructuralAnalysis_ = false;
+        trackCacheBytes_ = 0u;
+        selected_ = -1;
+        selectedValid_ = false;
+        for (std::size_t i = 0; i < kSmfMaxTracks; ++i) hasNext_[i] = false;
+    };
+
+    invalidate();
     if (index.trackCount == 0 || index.trackCount > kSmfMaxTracks) return false;
+
     source_ = &source;
     index_ = index;
     smfTrackMuteState().reset(index.trackCount);
     smfTrackInspectorState().reset(index.trackCount, index.declaredTrackCount);
     smfStructuralInspectorState().reset(index.division, index.trackCount);
     captureStructuralAnalysis_ = true;
-    for (std::size_t i = 0; i < kSmfMaxTracks; ++i) hasNext_[i] = false;
-    selectedValid_ = false;
 
     // Split the shared pool across the tracks this file actually uses. Slices
     // are sector-aligned whenever they are at least one sector wide.
@@ -382,14 +398,16 @@ bool SmfEventStreamMerger::open(ISmfByteSource& source,
 
     for (std::size_t i = 0; i < index_.trackCount; ++i) {
         if (!streams_[i].open(source, index_.tracks[i], static_cast<uint16_t>(i))) {
-            source_ = nullptr;
-            smfTrackInspectorState().reset(0, 0);
-            smfStructuralInspectorState().reset(0, 0);
-            captureStructuralAnalysis_ = false;
+            invalidate();
             return false;
         }
         streams_[i].setCache(cachePool_ + i * perTrack, perTrack);
         prime(i);
+    }
+
+    if (!smfCompleteSessionOpen(generation)) {
+        invalidate();
+        return false;
     }
     return true;
 }

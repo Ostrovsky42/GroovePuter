@@ -3,12 +3,16 @@
 #include <cstdint>
 
 #include "src/midi/scheduled_smf_midi_event_queue.h"
+#include "src/midi/smf_session_generation.h"
 #include "src/midi/smf_track_mute.h"
 
 static_assert(sizeof(ScheduledSmfMidiEvent) == 16,
               "unused ordering metadata must not inflate the realtime queue");
 
 int main() {
+    const uint32_t smfGeneration = GroovePuterMidi::smfBeginSessionOpen();
+    assert(smfGeneration != 0u);
+    assert(GroovePuterMidi::smfCompleteSessionOpen(smfGeneration));
     GroovePuterMidi::smfTrackMuteState().reset(64);
 
     // Seek SPP uses a one-slot latest-wins mailbox. It is independent from note
@@ -47,21 +51,21 @@ int main() {
 
         GroovePuterMidi::smfTrackMuteState().reset(64);
         GroovePuterMidi::smfTrackMuteState().selectRelative(4);
-        assert(GroovePuterMidi::smfTrackMuteState().toggleSelected());
+        assert(GroovePuterMidi::smfTrackMuteState().toggleSelected(smfGeneration));
         assert(!commitQueue.tryPop(pending));
         assert(commitQueue.immediateTrackReleaseCount() == 0);
-        assert(GroovePuterMidi::smfTrackMuteState().toggleSelected());
+        assert(GroovePuterMidi::smfTrackMuteState().toggleSelected(smfGeneration));
 
         assert(commitQueue.tryPushNoteOn(2, 67, 100, 3, 0, 0, 4));
         assert(commitQueue.tryPop(pending));
         assert(commitQueue.recordDispatched(pending));
-        assert(GroovePuterMidi::smfTrackMuteState().toggleSelected());
+        assert(GroovePuterMidi::smfTrackMuteState().toggleSelected(smfGeneration));
         assert(commitQueue.tryPop(pending));
         assert(pending.type == ScheduledSmfMidiEventType::NoteOff);
         assert(pending.trackIndex == 4);
         assert(commitQueue.recordDispatched(pending));
         assert(commitQueue.immediateTrackReleaseCount() == 1);
-        GroovePuterMidi::smfTrackMuteState().clear();
+        assert(GroovePuterMidi::smfTrackMuteState().clear(smfGeneration));
     }
 
     GroovePuterMidi::smfTrackMuteState().reset(64);
@@ -144,7 +148,7 @@ int main() {
     assert(queue.recordDispatched(event));
 
     GroovePuterMidi::smfTrackMuteState().selectRelative(37);
-    assert(GroovePuterMidi::smfTrackMuteState().toggleSelected());
+    assert(GroovePuterMidi::smfTrackMuteState().toggleSelected(smfGeneration));
     assert(queue.tryPop(event));
     assert(event.type == ScheduledSmfMidiEventType::NoteOff);
     assert(event.trackIndex == 37);
@@ -167,7 +171,7 @@ int main() {
     assert(event.type == ScheduledSmfMidiEventType::NoteOff);
     assert(event.trackIndex == 37);
     assert(queue.recordDispatched(event));
-    assert(GroovePuterMidi::smfTrackMuteState().toggleSelected());
+    assert(GroovePuterMidi::smfTrackMuteState().toggleSelected(smfGeneration));
 
     const uint32_t generation2 = queue.invalidateAndRequestPanic();
     assert(generation2 == 3);
@@ -196,7 +200,7 @@ int main() {
     assert(queue.recordDispatched(event));
 
     GroovePuterMidi::smfTrackMuteState().selectRelative(1);
-    assert(GroovePuterMidi::smfTrackMuteState().toggleSelected());
+    assert(GroovePuterMidi::smfTrackMuteState().toggleSelected(smfGeneration));
     assert(queue.tryPop(event));
     assert(event.type == ScheduledSmfMidiEventType::NoteOff);
     assert(event.trackIndex == 1);
@@ -205,14 +209,14 @@ int main() {
     assert(!queue.tryPop(event));
 
     GroovePuterMidi::smfTrackMuteState().selectRelative(1);
-    assert(GroovePuterMidi::smfTrackMuteState().toggleSelected());
+    assert(GroovePuterMidi::smfTrackMuteState().toggleSelected(smfGeneration));
     assert(queue.tryPop(event));
     assert(event.type == ScheduledSmfMidiEventType::NoteOff);
     assert(event.trackIndex == 2);
     assert(event.channel == 8 && event.note == 60);
     assert(queue.recordDispatched(event));
     assert(queue.immediateTrackReleaseCount() == 3);
-    GroovePuterMidi::smfTrackMuteState().clear();
+    assert(GroovePuterMidi::smfTrackMuteState().clear(smfGeneration));
 
     assert(queue.tryPushNoteOn(7, 60, 100, 70, 20, 9));
     assert(queue.tryPop(event));
