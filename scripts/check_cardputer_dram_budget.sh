@@ -4,8 +4,9 @@ set -euo pipefail
 ELF_PATH="${1:?usage: check_cardputer_dram_budget.sh <firmware.elf> [max-bytes]}"
 # Provisional rollback to the last repository ceiling that predates the
 # undocumented 122880-byte replacement. This is not a universal hardware
-# safety boundary; PR #70 must derive profile-specific policy from reproducible
-# ELF and runtime measurements before this default is changed again.
+# safety boundary. It is an explicit policy exception: current evidence meets
+# threshold-rule identity/static-profile items 1-4, while hardware minima,
+# declared reserves, and the deriving calculation in items 5-7 remain pending.
 MAX_BYTES="${2:-191488}"
 
 if [[ ! -f "${ELF_PATH}" ]]; then
@@ -68,6 +69,7 @@ DRAM_TOTAL=$((DRAM_DATA + DRAM_BSS))
 echo "Cardputer DRAM globals: ${DRAM_TOTAL} bytes (budget ${MAX_BYTES})"
 echo "  .dram0.data: ${DRAM_DATA} bytes"
 echo "  .dram0.bss:  ${DRAM_BSS} bytes"
+echo "  policy: provisional exception; threshold-rule items 5-7 pending"
 if (( DRAM_TOTAL > MAX_BYTES )); then
   echo "DRAM budget exceeded by $((DRAM_TOTAL - MAX_BYTES)) bytes" >&2
 
