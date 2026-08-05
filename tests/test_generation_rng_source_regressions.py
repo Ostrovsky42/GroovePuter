@@ -26,6 +26,12 @@ def main() -> None:
             "mode_manager.cpp still contains an unscoped global rand() call")
     require(manager.count("DeterministicRng rng = makeGenerationRng") == 4,
             "Synth A, Synth B, full drums and drum-voice generation need local RNG boundaries")
+    require("generationRandom" not in manager and
+            "generationRandom" not in advanced_cpp,
+            "migrated generation must not reintroduce masked next() modulo sampling")
+    require("boundedRandom(" in manager and
+            "boundedRandom(" in advanced_cpp,
+            "all migrated variable-range draws must use DeterministicRng::bounded()")
     require("GenerationDomain::SynthA" in manager and
             "GenerationDomain::SynthB" in manager and
             "GenerationDomain::Drums" in manager,
