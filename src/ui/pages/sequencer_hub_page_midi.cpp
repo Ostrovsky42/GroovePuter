@@ -18,6 +18,9 @@
 namespace {
 using namespace GroovePuterMidi;
 constexpr uint8_t kVisibleMidiRows = 6;
+constexpr int kFormBlockWidth = 12;
+constexpr int kFormBlockHeight = 8;
+constexpr int kFormBlockGap = 2;
 
 struct HubMidiProjection {
     SmfStructuralInspectorSnapshot layers{};
@@ -62,14 +65,36 @@ bool muted(const SmfTrackMuteSnapshot& state, uint16_t track) {
            (state.mutedMask & (uint64_t{1} << track)) != 0u;
 }
 
-const char* shortRole(SmfStructuralRole role) {
+const char* roleLabel(SmfStructuralRole role) {
     switch (role) {
-        case SmfStructuralRole::Drums: return "DRM";
-        case SmfStructuralRole::Bass: return "BAS";
-        case SmfStructuralRole::Chords: return "CHD";
+        case SmfStructuralRole::Drums: return "DRUMS";
+        case SmfStructuralRole::Bass: return "BASS";
+        case SmfStructuralRole::Chords: return "CHORD";
         case SmfStructuralRole::Pad: return "PAD";
-        case SmfStructuralRole::Lead: return "LED";
-        default: return "OTH";
+        case SmfStructuralRole::Lead: return "LEAD";
+        default: return "MIDI";
+    }
+}
+
+const char* transportLabel(SmfPlayerState state) {
+    switch (state) {
+        case SmfPlayerState::Loading: return "...";
+        case SmfPlayerState::Armed: return "ARM";
+        case SmfPlayerState::Playing: return ">";
+        case SmfPlayerState::Paused: return "||";
+        case SmfPlayerState::Stopped: return "[]";
+        case SmfPlayerState::Error: return "!";
+        case SmfPlayerState::Unloaded:
+        default: return "--";
+    }
+}
+
+const char* loopLabel(uint8_t bars) {
+    switch (bars) {
+        case 1u: return "1-BAR LOOP";
+        case 2u: return "2-BAR LOOP";
+        case 4u: return "4-BAR LOOP";
+        default: return "FREE FORM";
     }
 }
 
@@ -78,28 +103,57 @@ void formatTrackChannel(const SmfTrackInfoSnapshot* info,
                         std::size_t outputSize) {
     if (!output || outputSize == 0u) return;
     if (!info || info->channelMask == 0u) {
-        std::snprintf(output, outputSize, "--");
+        std::snprintf(output, outputSize, "CH --");
         return;
     }
     if (info->usesMultipleChannels()) {
-        std::snprintf(output, outputSize, "MIX");
+        std::snprintf(output, outputSize, "MULTI");
         return;
     }
     const int channel = info->primaryChannel();
-    if (channel < 0) std::snprintf(output, outputSize, "--");
-    else std::snprintf(output, outputSize, "C%02d", channel + 1);
+    if (channel < 0) std::snprintf(output, outputSize, "CH --");
+    else std::snprintf(output, outputSize, "CH %d", channel + 1);
 }
 
-void formatDensity(uint16_t activePermille,
-                   char* output,
-                   std::size_t outputSize) {
-    if (!output || outputSize < 4u) return;
-    const uint16_t bounded = std::min<uint16_t>(activePermille, 1000u);
-    const uint8_t filled = static_cast<uint8_t>((bounded + 332u) / 333u);
-    for (uint8_t index = 0u; index < 3u; ++index) {
-        output[index] = index < filled ? '#' : '.';
+uint8_t currentFormSection(uint32_t bar) {
+    const uint32_t zeroBasedBar = bar == 0u ? 0u : bar - 1u;
+    return static_cast<uint8_t>(std::min<uint32_t>(zeroBasedBar / 16u, 3u));
+}
+
+void drawFormStrip(IGfx& gfx,
+                   int x,
+                   int y,
+                   const SmfStructuralLayerSnapshot& layer,
+                   uint8_t currentSection,
+                   bool isMuted,
+                   bool isSelected) {
+    const IGfxColor accent = MusicVisuals::accentForStyle();
+    const IGfxColor border = isSelected ? accent : COLOR_LABEL;
+    const IGfxColor fill = isMuted ? COLOR_WARN
+                                   : (isSelected ? accent : COLOR_TEXT);
+
+    for (uint8_t section = 0u; section < 4u; ++section) {
+        const int blockX = x + section * (kFormBlockWidth + kFormBlockGap);
+        gfx.drawRect(blockX, y, kFormBlockWidth, kFormBlockHeight, border);
+
+        const uint8_t level = std::min<uint8_t>(layer.form[section], 8u);
+        const int fillHeight = (static_cast<int>(level) *
+                                (kFormBlockHeight - 3) + 7) / 8;
+        if (fillHeight > 0) {
+            gfx.fillRect(blockX + 2,
+                         y + kFormBlockHeight - 1 - fillHeight,
+                         kFormBlockWidth - 4,
+                         fillHeight,
+                         fill);
+        }
+        if (section == currentSection) {
+            gfx.drawLine(blockX,
+                         y - 2,
+                         blockX + kFormBlockWidth - 1,
+                         y - 2,
+                         accent);
+        }
     }
-    output[3] = '\0';
 }
 
 bool selectProjectedLayer(const HubMidiProjection& projection,
@@ -110,21 +164,6 @@ bool selectProjectedLayer(const HubMidiProjection& projection,
     return smfTrackMuteState().selectTrack(
         projection.layers.layers[layerIndex].trackIndex,
         projection.generation);
-}
-
-void configurePlayerPanel(uint32_t generation,
-                          bool muteMixer,
-                          bool channelInspector) {
-    PlayerHubNavigation::PlayerViewState& view =
-        PlayerHubNavigation::playerViewState();
-    view.generation = generation;
-    view.valid = generation != 0u;
-    view.browserVisible = false;
-    view.performanceVisible = false;
-    view.channelInspectorVisible = channelInspector;
-    view.muteMixerVisible = muteMixer;
-    view.structuralInspectorVisible = false;
-    if (channelInspector) view.channelInspectorScroll = 0;
 }
 }  // namespace
 
@@ -231,20 +270,25 @@ bool SequencerHubPage::toggleMidiLayer(uint8_t layerIndex) {
 
 bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
     if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
-    if (event.alt || event.ctrl || event.meta) return true;
 
-    if (event.key == 'm' || event.key == 'M') {
-        midiOverview_ = false;
-        midiReturnToPlayer_ = false;
+    const bool hubShortcut =
+        !event.alt && !event.ctrl && (event.key == 'h' || event.key == 'H');
+    if (hubShortcut || UIInput::isBack(event)) {
+        returnFromMidiOverview();
         return true;
     }
+
+    if (event.alt || event.ctrl || event.meta) return true;
+
+    // Retain the old aliases without advertising them in the compact Hub UI.
     if (event.key == 'p' || event.key == 'P') {
         midiReturnToPlayer_ = true;
         returnFromMidiOverview();
         return true;
     }
-    if (event.key == 'b' || event.key == 'B' || UIInput::isBack(event)) {
-        returnFromMidiOverview();
+    if (event.key == 'm' || event.key == 'M') {
+        midiOverview_ = false;
+        midiReturnToPlayer_ = false;
         return true;
     }
     if (event.key == ' ') {
@@ -264,23 +308,6 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
         return true;
     }
     if (midiGeneration_ != projection.generation) syncMidiSessionSelection();
-
-    if (event.key == 'u' || event.key == 'U' ||
-        event.key == 'i' || event.key == 'I') {
-        if (!selectProjectedLayer(projection, midiSelected_)) {
-            UI::showToast("MIDI LAYERS: SYNCING", 800);
-            return true;
-        }
-        const bool openMuteMixer = event.key == 'u' || event.key == 'U';
-        configurePlayerPanel(
-            projection.generation, openMuteMixer, !openMuteMixer);
-        midiOverview_ = false;
-        midiReturnToPlayer_ = false;
-        requestPageTransition(
-            PlayerHubNavigation::kPlayerPage,
-            PlayerHubNavigation::kReturnToPlayerContext);
-        return true;
-    }
 
     if (event.key == 'a' || event.key == 'A') {
         if (smfTrackMuteState().clear(projection.generation)) {
@@ -347,10 +374,18 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
 
     char line[64];
     gfx.setTextColor(MusicVisuals::accentForStyle());
-    std::snprintf(line, sizeof(line), "%s  BAR %lu  %.20s",
-                  smfPlayerStateName(player.state),
-                  static_cast<unsigned long>(player.bar),
-                  player.filename[0] ? player.filename : "NO FILE");
+    if (projection.ready() && projection.layers.analyzedBars != 0u) {
+        std::snprintf(line, sizeof(line), "%s BAR %lu/%u  %.18s",
+                      transportLabel(player.state),
+                      static_cast<unsigned long>(player.bar),
+                      static_cast<unsigned>(projection.layers.analyzedBars),
+                      player.filename[0] ? player.filename : "NO FILE");
+    } else {
+        std::snprintf(line, sizeof(line), "%s BAR %lu  %.22s",
+                      transportLabel(player.state),
+                      static_cast<unsigned long>(player.bar),
+                      player.filename[0] ? player.filename : "NO FILE");
+    }
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(0), line);
 
     if (projectionIsSyncing(player, projection)) {
@@ -361,7 +396,7 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
                      "WAITING FOR CURRENT SMF SESSION");
         gfx.drawText(Layout::COL_1, LayoutManager::lineY(4),
                      "PLAYER TRANSPORT KEEPS RUNNING");
-        UI::drawStandardFooter(gfx, "P Player M Internal",
+        UI::drawStandardFooter(gfx, "H/ESC Player",
                                "No stale layers / no reload");
         return;
     }
@@ -374,7 +409,7 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
                      player.state == SmfPlayerState::Error
                          ? "MIDI LOAD ERROR · RETURN PLAYER"
                          : "NO MIDI LAYERS · LOAD IN PLAYER");
-        UI::drawStandardFooter(gfx, "P Player M Internal",
+        UI::drawStandardFooter(gfx, "H/ESC Player",
                                "Player owns load/transport");
         return;
     }
@@ -384,13 +419,14 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
         gfx.setTextColor(COLOR_LABEL);
         gfx.drawText(Layout::COL_1, LayoutManager::lineY(3),
                      "NO AUDIBLE MIDI LAYERS");
-        UI::drawStandardFooter(gfx, "P Player M Internal",
+        UI::drawStandardFooter(gfx, "H/ESC Player",
                                "Player owns load/transport");
         return;
     }
 
     const uint8_t selected = std::min<uint8_t>(
         midiSelected_, projection.layers.layerCount - 1u);
+    const uint8_t formSection = currentFormSection(player.bar);
     for (uint8_t row = 0u; row < kVisibleMidiRows; ++row) {
         const uint8_t index = static_cast<uint8_t>(midiScroll_ + row);
         if (index >= projection.layers.layerCount) break;
@@ -402,50 +438,47 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
                 ? &projection.tracks.tracks[layer.trackIndex]
                 : nullptr;
         const char* label = info && info->hasName() ? info->name : "MIDI TRACK";
-        char channel[5]{};
-        char density[4]{};
-        formatTrackChannel(info, channel, sizeof(channel));
-        formatDensity(layer.activePermille, density, sizeof(density));
         const char hotkey = index < 9u
             ? static_cast<char>('1' + index)
             : '-';
+        const int rowY = LayoutManager::lineY(row + 1u);
 
         gfx.setTextColor(isSelected ? MusicVisuals::accentForStyle()
                                     : (isMuted ? COLOR_WARN : COLOR_TEXT));
-        std::snprintf(line, sizeof(line), "%c%c%02u %-3s %-3s %s %-3s %.8s",
+        std::snprintf(line, sizeof(line), "%c%c %-5s %.10s",
                       hotkey,
                       isSelected ? '>' : ' ',
-                      static_cast<unsigned>(layer.trackIndex + 1u),
-                      isMuted ? "MUT" : "ON ",
-                      channel,
-                      density,
-                      shortRole(layer.role),
+                      roleLabel(layer.role),
                       label);
-        gfx.drawText(Layout::COL_1, LayoutManager::lineY(row + 1u), line);
+        gfx.drawText(Layout::COL_1, rowY, line);
+
+        drawFormStrip(gfx,
+                      Layout::COL_1 + 126,
+                      rowY,
+                      layer,
+                      formSection,
+                      isMuted,
+                      isSelected);
+
+        gfx.setTextColor(isMuted ? COLOR_WARN : COLOR_LABEL);
+        gfx.drawText(Layout::COL_1 + 184, rowY,
+                     isMuted ? "MUTE" : "ON");
     }
 
     const auto& selectedLayer = projection.layers.layers[selected];
+    const SmfTrackInfoSnapshot* selectedInfo =
+        selectedLayer.trackIndex < projection.tracks.trackCount
+            ? &projection.tracks.tracks[selectedLayer.trackIndex]
+            : nullptr;
+    char channel[8]{};
+    formatTrackChannel(selectedInfo, channel, sizeof(channel));
     gfx.setTextColor(COLOR_LABEL);
-    if (selectedLayer.loopBars == 0u) {
-        std::snprintf(line, sizeof(line), "G%s SW%u LOOP-- N%u.%u A%u%%",
-                      selectedLayer.gridDenominator == 0u ? "FREE" :
-                          (selectedLayer.gridDenominator == 8u ? "8" :
-                           (selectedLayer.gridDenominator == 16u ? "16" : "32")),
-                      static_cast<unsigned>(selectedLayer.swingPercent),
-                      static_cast<unsigned>(selectedLayer.notesPerBarX10 / 10u),
-                      static_cast<unsigned>(selectedLayer.notesPerBarX10 % 10u),
-                      static_cast<unsigned>(selectedLayer.activePermille / 10u));
-    } else {
-        std::snprintf(line, sizeof(line), "G%u SW%u L%u N%u.%u A%u%%",
-                      static_cast<unsigned>(selectedLayer.gridDenominator),
-                      static_cast<unsigned>(selectedLayer.swingPercent),
-                      static_cast<unsigned>(selectedLayer.loopBars),
-                      static_cast<unsigned>(selectedLayer.notesPerBarX10 / 10u),
-                      static_cast<unsigned>(selectedLayer.notesPerBarX10 % 10u),
-                      static_cast<unsigned>(selectedLayer.activePermille / 10u));
-    }
+    std::snprintf(line, sizeof(line), "TRACK %02u  %s  %s",
+                  static_cast<unsigned>(selectedLayer.trackIndex + 1u),
+                  channel,
+                  loopLabel(selectedLayer.loopBars));
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), line);
 
-    UI::drawStandardFooter(gfx, "P Player U Mixer I Chans",
-                           "1-9 Mute ENT Sel A AllOn");
+    UI::drawStandardFooter(gfx, "H/ESC Player  1-9 Mute",
+                           "UP/DN Select ENT Toggle A AllOn");
 }
