@@ -79,6 +79,10 @@ void addSwungSixteenths(SmfStructuralInspectorState& state,
 }  // namespace
 
 int main() {
+    const uint32_t generation = smfBeginSessionOpen();
+    assert(generation != 0u);
+    assert(smfCompleteSessionOpen(generation));
+
     {
         SmfTrackInspectorState state;
         state.reset(32, 64);
@@ -87,6 +91,7 @@ int main() {
         state.observe(11, note(24, SmfEventKind::NoteOn, 1, 40));
         state.freeze();
         const auto snapshot = state.snapshot();
+        assert(snapshot.generation == generation);
         assert(snapshot.trackCount == 32);
         assert(snapshot.declaredTrackCount == 64);
         assert(snapshot.tracksTruncated());
@@ -105,6 +110,7 @@ int main() {
         state.observe(0, marker(4u * 384u - 1u));
         state.finalize();
         const auto snapshot = state.snapshot();
+        assert(snapshot.generation == generation);
         assert(snapshot.layerCount == 1);
         assert(snapshot.layers[0].trackIndex == 2);
         assert(snapshot.layers[0].gridDenominator == 16);
