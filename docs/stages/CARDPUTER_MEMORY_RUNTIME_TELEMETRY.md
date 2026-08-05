@@ -46,6 +46,12 @@ contains the probes; the separate product ELF remains uninstrumented. A zero
 watermark is interpreted only together with the corresponding `TaskPresent`
 field.
 
+The completed firmware-bearing CI record at
+`59c4ec36d5a1f6b80a0fd5d387b3fb8557cab98f` built all four combinations and all
+Core regressions successfully. Later documentation/test-only commits do not
+change the injected firmware source, but each head is still rebuilt and must be
+green before it is used as the recorded hardware source SHA.
+
 ## Capability separation
 
 `MALLOC_CAP_8BIT` and `MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT` are recorded
