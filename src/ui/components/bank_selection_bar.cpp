@@ -5,12 +5,17 @@
 #include "../ui_colors.h"
 #include "../ui_utils.h"
 #include "../ui_themes.h"
+#include "pattern_address_context.h"
 
 BankSelectionBarComponent::BankSelectionBarComponent(std::string label, std::string letters)
     : label_(std::move(label)), letters_(std::move(letters)) {}
 
 void BankSelectionBarComponent::setState(const State& state) {
   state_ = state;
+  const int displayedBank = state_.selected_index >= 0
+      ? state_.selected_index
+      : state_.cursor_index;
+  PatternAddressUiContext::setBankIndex(displayedBank);
 }
 
 void BankSelectionBarComponent::setCallbacks(Callbacks callbacks) {
@@ -117,7 +122,6 @@ void BankSelectionBarComponent::draw(IGfx& gfx) {
     int tw = textWidth(gfx, label);
     int tx = cell_x + (layout.box_size - tw) / 2;
     int ty = layout.bank_y + layout.box_size / 2 - gfx.fontHeight() / 2;
-    // Invert text color if selected
     bool isSelected = (state_.selected_index == i);
     gfx.setTextColor(isSelected ? palette.bg : palette.ink);
     gfx.drawText(tx, ty, label);
