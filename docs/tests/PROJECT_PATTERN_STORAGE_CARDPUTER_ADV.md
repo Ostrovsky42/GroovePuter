@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Verify that pattern pages belong to one project, that **New** and **Clear Project** remove only the selected project's page files, and that pattern selectors show one readable `page + bank + slot` address such as `2B7`.
+Verify that pattern pages belong to one project, that **New** and **Clear Project** remove only the selected project's page files, and that Synth A, Synth B and Drums show one readable `page + bank + slot` address such as `2B7`.
 
 ## Hardware
 
@@ -30,12 +30,13 @@ Change `/dev/ttyACM0` if the Cardputer ADV appears under another device path.
 
 ## Expected behavior
 
-1. Create project `alpha`, edit a pattern on page 2, bank B, slot 7. The selector heading reads `PATTERNS 2B7` or `PATTERN 2B7`.
-2. Create a new project. Page 2 is empty; project `alpha` remains unchanged.
-3. Return to `alpha`. Page 2, bank B, slot 7 contains the original pattern.
-4. Run **Save As**. The new project initially contains the same pattern pages.
-5. Run **Clear Project** in the copied project. All its pages become empty and remain empty after reboot; `alpha` still contains its original data.
-6. On the SD card, page files are grouped by project:
+1. Create project `alpha`, edit a Synth A pattern on page 2, bank B, slot 7. The global status line contains `S-A 2B7`.
+2. Open Synth B and Drums. Their status lines use `S-B <address>` and `DRM <address>` and update after page, bank or slot changes in all three visual styles.
+3. Create a new project. Page 2 is empty; project `alpha` remains unchanged.
+4. Return to `alpha`. Page 2, bank B, slot 7 contains the original pattern.
+5. Run **Save As**. The new project initially contains the same pattern pages.
+6. Run **Clear Project** in the copied project. All its pages become empty and remain empty after reboot; `alpha` still contains its original data.
+7. On the SD card, page files are grouped by project:
 
 ```text
 /patterns/alpha/page_01.gpp
@@ -50,13 +51,14 @@ Spaces and underscores in project names are encoded in folder names. For example
 - `Pattern cleanup failed`: creation succeeded in RAM, but project page files could not be removed.
 - Old global files under `/patterns/page_XX.gpp` are migrated once into the active project. Do not remove power during the first boot after updating.
 - A corrupt main page may load its `.bak` sibling. Both copies are removed by **Clear Project**.
-- If the address briefly shows the previous bank immediately after opening a workflow, report the exact page and theme. Continuous redraw should correct it on the next frame.
+- If the status line says `PAT` instead of an address on Synth A, Synth B or Drums, record the exact page, theme and navigation sequence; the address source failed validation.
 
 ## Acceptance checklist
 
-- [ ] Synth A selector shows the full address, for example `PATTERNS 1A1`.
-- [ ] Synth B selector shows its selected bank and slot.
-- [ ] Drum selector shows the full address.
+- [ ] Synth A status shows a full address, for example `S-A 1A1`.
+- [ ] Synth B status shows its selected page, bank and slot.
+- [ ] Drum status shows its selected page, bank and slot.
+- [ ] The address is visible in Minimal, Retro Classic and Amber.
 - [ ] `[` and `]` change the page portion of the address.
 - [ ] Bank A/B changes the letter portion of the address.
 - [ ] Pattern 1–8 changes the final digit.
