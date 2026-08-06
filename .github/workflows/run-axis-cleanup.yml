@@ -1,0 +1,40 @@
+name: Run axis ownership cleanup
+
+on:
+  push:
+    branches:
+      - agent/genre-feel-generation-texture-analysis
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Execute staged cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          source = Path('.github/workflows/apply-axis-ownership-cleanup.yml').read_text(encoding='utf-8')
+          marker = '        run: |\n'
+          if marker not in source:
+              raise SystemExit('staged cleanup run block not found')
+          script = textwrap.dedent(source.split(marker, 1)[1])
+          script = script.replace(
+              'git rm .github/workflows/apply-axis-ownership-cleanup.yml',
+              'git rm .github/workflows/apply-axis-ownership-cleanup.yml .github/workflows/run-axis-cleanup.yml',
+              1,
+          )
+          Path('/tmp/apply-axis-cleanup.sh').write_text(script, encoding='utf-8')
+          PY
+          bash /tmp/apply-axis-cleanup.sh
