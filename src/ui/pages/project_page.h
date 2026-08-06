@@ -5,6 +5,7 @@
 #include "../ui_utils.h"
 #include "../midi_file_manager.h"
 #include "help_dialog.h"
+#include "src/audio/pattern_paging.h"
 #include "src/state/scene_revision.h"
 
 class ProjectPage : public IPage, public IMultiHelpFramesProvider {
@@ -63,9 +64,25 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   void ensureMainFocusVisible(int visibleRows);
   template <typename F>
   void withAudioGuard(F&& fn) {
+      const bool clearCurrentProject =
+          main_focus_ == MainFocus::ClearProject &&
+          dialog_type_ == DialogType::ConfirmClear;
+      const bool creatingNewProject = main_focus_ == MainFocus::New;
+      const std::string sceneNameBefore = creatingNewProject
+          ? mini_acid_.currentSceneName()
+          : std::string();
+
       if (audio_guard_) audio_guard_(std::forward<F>(fn));
       else fn();
       GroovePuterState::markSceneMutated();
+
+      const bool createdDifferentProject =
+          creatingNewProject &&
+          mini_acid_.currentSceneName() != sceneNameBefore;
+      if ((clearCurrentProject || createdDifferentProject) &&
+          !PatternPagingService::clearProjectPages()) {
+        UI::showToast("Pattern cleanup failed", 1200);
+      }
   }
 
   void autoRouteMidi();
