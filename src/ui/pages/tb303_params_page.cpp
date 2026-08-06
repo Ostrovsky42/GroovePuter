@@ -495,22 +495,22 @@ void TB303ParamsPage::layoutComponents() {
     const int knobRowY = content.y + 45;
     const int spacing = width / 5;
 
-    cutoff_knob_->setBoundaries(Rect(x0 + spacing * 1 - kMainKnobRadius,
+    cutoff_knob_->setBoundaries(Rect{x0 + spacing * 1 - kMainKnobRadius,
                                      knobRowY - kMainKnobRadius,
                                      kMainKnobRadius * 2,
-                                     kMainKnobRadius * 2));
-    resonance_knob_->setBoundaries(Rect(x0 + spacing * 2 - kMainKnobRadius,
+                                     kMainKnobRadius * 2});
+    resonance_knob_->setBoundaries(Rect{x0 + spacing * 2 - kMainKnobRadius,
                                         knobRowY - kMainKnobRadius,
                                         kMainKnobRadius * 2,
-                                        kMainKnobRadius * 2));
-    env_amount_knob_->setBoundaries(Rect(x0 + spacing * 3 - kMainKnobRadius,
+                                        kMainKnobRadius * 2});
+    env_amount_knob_->setBoundaries(Rect{x0 + spacing * 3 - kMainKnobRadius,
                                          knobRowY - kMainKnobRadius,
                                          kMainKnobRadius * 2,
-                                         kMainKnobRadius * 2));
-    env_decay_knob_->setBoundaries(Rect(x0 + spacing * 4 - kMainKnobRadius,
+                                         kMainKnobRadius * 2});
+    env_decay_knob_->setBoundaries(Rect{x0 + spacing * 4 - kMainKnobRadius,
                                         knobRowY - kMainKnobRadius,
                                         kMainKnobRadius * 2,
-                                        kMainKnobRadius * 2));
+                                        kMainKnobRadius * 2});
   } else {
     constexpr int kMoreRowY = 20;
     constexpr int kMoreRowHeight = 15;
@@ -822,7 +822,7 @@ void TB303ParamsPage::draw(IGfx& gfx) {
   if (!more_tab_) {
     UI::drawStandardFooter(gfx,
                            "[TAB]MORE [L/R]FOCUS [U/D]VAL",
-                           "A/Z S/X D/C F/V [CTRL]FINE");
+                           "HOLD:ACCEL [CTRL]FINE");
   } else {
     UI::drawStandardFooter(gfx,
                            "[TAB]MAIN [U/D]ROW [L/R]CHANGE",
@@ -839,9 +839,12 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
     return Container::handleEvent(ui_event);
   }
 
+  static UIInput::HoldAccelerator knobAccelerator;
+
   if (UIInput::isGlobalNav(ui_event)) return false;
   if (UIInput::isTab(ui_event)) {
     if (ui_event.ctrl || ui_event.alt || ui_event.meta) return false;
+    knobAccelerator.reset();
     setActiveTab(!more_tab_);
     return true;
   }
@@ -851,25 +854,36 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
   if (more_tab_) {
     // MORE is a vertical list: Up/Down selects a row and Left/Right edits it.
     switch (nav) {
-      case GROOVEPUTER_UP: focusPrev(); return true;
-      case GROOVEPUTER_DOWN: focusNext(); return true;
-      case GROOVEPUTER_LEFT: adjustFocusedElement(-1, fine); return true;
-      case GROOVEPUTER_RIGHT: adjustFocusedElement(1, fine); return true;
+      case GROOVEPUTER_UP: knobAccelerator.reset(); focusPrev(); return true;
+      case GROOVEPUTER_DOWN: knobAccelerator.reset(); focusNext(); return true;
+      case GROOVEPUTER_LEFT: knobAccelerator.reset(); adjustFocusedElement(-1, fine); return true;
+      case GROOVEPUTER_RIGHT: knobAccelerator.reset(); adjustFocusedElement(1, fine); return true;
       default: break;
     }
   } else {
     // MAIN is a horizontal row of knobs: Left/Right selects and Up/Down edits.
     switch (nav) {
-      case GROOVEPUTER_LEFT: focusPrev(); return true;
-      case GROOVEPUTER_RIGHT: focusNext(); return true;
-      case GROOVEPUTER_UP: adjustFocusedElement(1, fine); return true;
-      case GROOVEPUTER_DOWN: adjustFocusedElement(-1, fine); return true;
+      case GROOVEPUTER_LEFT: knobAccelerator.reset(); focusPrev(); return true;
+      case GROOVEPUTER_RIGHT: knobAccelerator.reset(); focusNext(); return true;
+      case GROOVEPUTER_UP: {
+        const int multiplier = fine ? 1 : knobAccelerator.multiplier(1);
+        if (fine) knobAccelerator.reset();
+        adjustFocusedElement(multiplier, fine);
+        return true;
+      }
+      case GROOVEPUTER_DOWN: {
+        const int multiplier = fine ? 1 : knobAccelerator.multiplier(-1);
+        if (fine) knobAccelerator.reset();
+        adjustFocusedElement(-multiplier, fine);
+        return true;
+      }
       default: break;
     }
   }
 
   const char key = ui_event.key;
   if (!key) return Container::handleEvent(ui_event);
+  knobAccelerator.reset();
   const char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
 
   if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
