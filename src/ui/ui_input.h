@@ -38,23 +38,39 @@ static inline bool isTab(const UIEvent& e) {
   return e.key == '\t' || e.scancode == GROOVEPUTER_TAB;
 }
 
+// Converts the existing 80 ms Cardputer arrow repeat stream into a bounded
+// value-step multiplier. A tap remains exact; a continuous hold ramps through
+// x1 -> x2 -> x4 -> x5. Direction changes and gaps between events reset it.
+// Pages opt in only for continuous numeric ranges so menu/list navigation does
+// not accelerate accidentally.
 class HoldAccelerator {
  public:
-  int multiplier(int direction, bool forcedFast = false) {
-    const uint32_t now = millis();
+  int multiplier(int direction, int maxMultiplier = 5) {
+    return multiplierAt(direction, millis(), maxMultiplier);
+  }
+
+  int multiplierAt(int direction, uint32_t nowMs, int maxMultiplier = 5) {
+    if (direction == 0) {
+      reset();
+      return 1;
+    }
+
     if (direction == last_direction_ &&
-        static_cast<uint32_t>(now - last_event_ms_) <= 160u) {
+        static_cast<uint32_t>(nowMs - last_event_ms_) <= 160u) {
       if (streak_ < 32) ++streak_;
     } else {
       streak_ = 0;
     }
     last_direction_ = direction;
-    last_event_ms_ = now;
+    last_event_ms_ = nowMs;
 
-    if (forcedFast) return 5;
-    if (streak_ >= 10) return 5;
-    if (streak_ >= 4) return 3;
-    return 1;
+    int value = 1;
+    if (streak_ >= 14) value = 5;
+    else if (streak_ >= 8) value = 4;
+    else if (streak_ >= 3) value = 2;
+
+    if (maxMultiplier < 1) maxMultiplier = 1;
+    return value > maxMultiplier ? maxMultiplier : value;
   }
 
   void reset() {
