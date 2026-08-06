@@ -12,6 +12,9 @@ smf = (ROOT / "src/ui/pages/smf_player_page_structural.cpp").read_text()
 drum = (ROOT / "src/ui/pages/drum_sequencer_page.cpp").read_text()
 readme = (ROOT / "README.md").read_text()
 keys = (ROOT / "src/ui/docs/keys.md").read_text()
+integration = (
+    ROOT / "docs/stages/INTEGRATED_GENERATE_PHRASE_ACCEPTANCE.md"
+).read_text()
 
 assert '"Alt+H       Toggle this help"' in help_content
 assert "Ctrl+H" not in help_content
@@ -48,18 +51,41 @@ for expected in (
     "| `Alt+X` | Toggle LiveMix |",
     "| `Alt+M` | Toggle Song mode |",
     "same primary controls shown by `Alt+H`",
+    "GENRE -> FEEL -> GENERATION -> TEXTURE",
+    "SONG:     SONG -> PHRASE CORE",
     "**OVERVIEW / SEQUENCER HUB**",
     "**SYNTH A PATTERN**",
-    "**MODE / FLAVOR**",
     "route profiles restore `AUTO` / `CH1..CH10` assignments across reloads and reboots",
+    "REFERENCE VIEW / REF MUTABLE",
 ):
     assert expected in readme
+
+assert "GENRE != FEEL != GENERATION != TEXTURE" in readme
+assert "GENRE != FEEL != GENERATOR != TEXTURE" not in readme
+assert "**MODE / FLAVOR**" not in readme
 
 assert "`Alt+H` is the on-device" in keys
 assert "`Ctrl+H`" not in keys
 assert "Generate material into a free slot" in keys
 assert "Digits remain available to the global mute fallback" in keys
-assert "persisted per file and restored across reloads and reboots" in keys
+assert "## PHRASE CORE" in keys
+assert "GENRE -> FEEL -> GENERATION -> TEXTURE" in keys
+assert "## FEEL / TEXTURE" not in keys
+assert "## MODE / FLAVOR" not in keys
+assert "## ADV GENERATOR" not in keys
+
+for expected in (
+    "## Purpose",
+    "## Hardware list",
+    "## Wiring",
+    "## Build and flash",
+    "## Expected behavior",
+    "## Troubleshooting",
+    "## Acceptance checklist",
+    "REF MUTABLE refresh",
+    "Alt+W",
+):
+    assert expected in integration
 
 screenshots = (
     "genre.png",
@@ -68,7 +94,6 @@ screenshots = (
     "synth_params.png",
     "pattern_edit.png",
     "song_page.png",
-    "groove_lab.png",
 )
 for name in screenshots:
     path = ROOT / "docs/screenshots" / name
@@ -77,5 +102,7 @@ for name in screenshots:
     width, height = struct.unpack(">II", data[16:24])
     assert (width, height) == (488, 275), (name, width, height)
     assert f"docs/screenshots/{name}" in readme
+
+assert "docs/screenshots/groove_lab.png" not in readme
 
 print("global help source regressions passed")
