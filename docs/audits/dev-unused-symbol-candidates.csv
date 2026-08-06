@@ -1,0 +1,14 @@
+Symbol,Classification,Confidence,Recommendation
+MiniAcidDisplay::initMuteButtons,Confirmed no-op,High,Delete after reference/build check
+MiniAcidDisplay::initPageHint,Confirmed no-op,High,Delete after reference/build check
+MiniAcidDisplay::drawMutesSection,Confirmed no-op,High,Delete after reference/build check
+MiniAcidDisplay::drawPageTitle,Returns 0,High,Delete after reference/build check
+MiniAcidDisplay::translateToApplicationEvent,Always false,High,Delete if no platform override
+MiniAcidDisplay::buildHeaderState/buildFooterState,Return empty state,High,Delete or implement; currently misleading
+GenrePage::drawRecipeOverlay,Explicit no-op retained for source regression,High,Replace source-text test then delete
+GenrePage::linkStateShort,Compatibility/source-regression helper,Medium,Check rendering/reference then delete
+TapePage,UI-unreachable from 15-page factory,High reachability / Medium linker,"Restore, build-gate, or remove page only"
+SamplerPage,UI-unreachable from 15-page factory,High reachability / Medium linker,"Restore, build-gate, or remove page only"
+SongPage::cursorOnPlayheadLabel,Always false,High,Remove dead branch or implement focus
+Song merge/alternate handlers,Commented-out code,High,Delete comments or restore under tested feature
+Song Voice lane UI,"Disabled by constexpr, data still live",High,Do not remove without migration decision
