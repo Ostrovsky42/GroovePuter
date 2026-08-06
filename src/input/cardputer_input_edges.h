@@ -120,3 +120,11 @@ inline bool repeatKeyStillHeld(const KeysState& state,
 }
 
 }  // namespace GroovePuterInput
+
+// This header is included by GroovePuter.ino after miniacid_display.h. The
+// sketch has exactly two display-event dispatch calls; the source regression
+// guards that boundary. On Cardputer only, route those calls through the
+// page-aware adapter so Phrase Alt+W reaches its destructive write command.
+#if defined(ARDUINO_M5STACK_CARDPUTER)
+#define handleEvent(...) handleCardputerEvent(__VA_ARGS__)
+#endif
