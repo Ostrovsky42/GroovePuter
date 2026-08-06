@@ -66,7 +66,7 @@ public:
     void setTransportPlaying(bool playing);
     bool transportPlaying() const { return transportPlaying_; }
     bool liveInputAllowed() const {
-        return enabled_ && noteModeEnabled_ && !transportPlaying_;
+        return enabled_ && noteModeEnabled_;
     }
 
     void setTarget(MusicalEventTarget target);
@@ -183,6 +183,7 @@ private:
 
     bool stepEngineEnabled() const;
     uint32_t stepDurationMicros() const;
+    bool serviceTransportStepClock(uint32_t nowMicros);
     bool euclideanStepActive(uint8_t step) const;
     void resetStepClock();
     void emitPerformanceStep(uint32_t stepStartMicros, uint32_t stepMicros);
@@ -227,4 +228,8 @@ private:
     uint8_t euclideanStep_{0};
     std::size_t arpIndex_{0};
     bool arpAscending_{true};
+
+    bool transportStepClockRunning_{false};
+    uint32_t transportStepEpoch_{0};
+    uint64_t transportStepOrdinal_{0};
 };
