@@ -1,0 +1,45 @@
+name: Run pattern input lock
+
+on:
+  pull_request:
+    branches:
+      - dev
+    types:
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.ref == 'agent/project-pattern-storage-address'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/project-pattern-storage-address
+          fetch-depth: 0
+
+      - name: Apply prepared patch
+        run: |
+          ruby <<'RUBY'
+          require 'yaml'
+          workflow = YAML.load_file('.github/workflows/apply-pattern-input-lock.yml')
+          step = workflow.fetch('jobs').fetch('patch').fetch('steps').find do |item|
+            item['name'] == 'Lock pattern-editor input ownership'
+          end
+          abort('prepared patch step not found') unless step
+          command = step.fetch('run')
+          success = system('bash', '-lc', command)
+          abort('prepared patch failed') unless success
+          RUBY
+
+      - name: Commit final sources
+        run: |
+          rm -f .github/workflows/run-pattern-input-lock.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix: lock pattern editor arrows to step grids"
+          git push origin HEAD:agent/project-pattern-storage-address
