@@ -45,11 +45,11 @@ static inline bool isTab(const UIEvent& e) {
 // not accelerate accidentally.
 class HoldAccelerator {
  public:
-  int multiplier(int direction, int maxMultiplier = 5) {
-    return multiplierAt(direction, millis(), maxMultiplier);
+  int multiplier(int direction, bool forcedFast = false) {
+    return multiplierAt(direction, millis(), forcedFast);
   }
 
-  int multiplierAt(int direction, uint32_t nowMs, int maxMultiplier = 5) {
+  int multiplierAt(int direction, uint32_t nowMs, bool forcedFast = false) {
     if (direction == 0) {
       reset();
       return 1;
@@ -64,13 +64,11 @@ class HoldAccelerator {
     last_direction_ = direction;
     last_event_ms_ = nowMs;
 
-    int value = 1;
-    if (streak_ >= 14) value = 5;
-    else if (streak_ >= 8) value = 4;
-    else if (streak_ >= 3) value = 2;
-
-    if (maxMultiplier < 1) maxMultiplier = 1;
-    return value > maxMultiplier ? maxMultiplier : value;
+    if (forcedFast) return 5;
+    if (streak_ >= 14) return 5;
+    if (streak_ >= 8) return 4;
+    if (streak_ >= 3) return 2;
+    return 1;
   }
 
   void reset() {
