@@ -38,6 +38,11 @@ void SettingsPage::moveFocus(int delta) {
 }
 
 void SettingsPage::adjustFocused(int delta, bool fast) {
+  if (focus_ == FocusRow::Preset) {
+    preset_index_ = wrapIndex(preset_index_ + delta, 3);
+    return;
+  }
+
   Scene& scene = mini_acid_.sceneManager().currentScene();
   const int scalar = fast ? 5 : 1;
 
@@ -64,7 +69,6 @@ void SettingsPage::adjustFocused(int delta, bool fast) {
         break;
       }
       case FocusRow::Preset:
-        preset_index_ = wrapIndex(preset_index_ + delta, 3);
         break;
     }
   });
