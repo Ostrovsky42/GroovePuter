@@ -65,12 +65,12 @@ jobs:
           build/host-tests/test_phrase_workspace
 
   apply-ui:
-    if: (github.ref == 'refs/heads/agent/phrase-core-ui' || github.head_ref == 'agent/phrase-core-ui') && github.actor != 'github-actions[bot]'
+    if: (github.ref == 'refs/heads/agent/phrase-core-foundation' || github.head_ref == 'agent/phrase-core-foundation') && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/phrase-core-ui
+          ref: agent/phrase-core-foundation
           fetch-depth: 0
       - name: Scope session Song lookup patch
         run: |
@@ -109,7 +109,7 @@ jobs:
           rm tools/apply_phrase_ui_registration.py
           rm .github/workflows/apply-phrase-ui-registration.yml
           rm .github/phrase-ui-trigger
-          git checkout origin/agent/phrase-core-foundation -- .github/workflows/phrase-core.yml
+          git checkout 30c64ad54f6bd9b30f9c5a882af9f8de94511370 -- .github/workflows/phrase-core.yml
       - name: Commit registered Phrase UI
         run: |
           git config user.name 'github-actions[bot]'
@@ -122,4 +122,4 @@ jobs:
             .github/workflows/apply-phrase-ui-registration.yml \
             .github/phrase-ui-trigger .github/workflows/phrase-core.yml
           git commit -m 'ui: register Phrase Core workflow page'
-          git push origin HEAD:agent/phrase-core-ui
+          git push origin HEAD:agent/phrase-core-foundation
