@@ -117,7 +117,7 @@ jobs:
             -o build/host-tests/four-axis/texture_page.o
 
           git checkout -- .github/workflows/four-axis-ui.yml
-          git rm scripts/apply_axis_hardware_feedback_fixes.py \
+          git rm -f scripts/apply_axis_hardware_feedback_fixes.py \
             scripts/prepare_axis_hardware_feedback_helper.py
           git add -A
           git config user.name 'github-actions[bot]'
