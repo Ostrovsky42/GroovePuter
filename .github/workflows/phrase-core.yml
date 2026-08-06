@@ -7,12 +7,14 @@ on:
     paths:
       - 'src/phrase/**'
       - 'tests/test_phrase_core.cpp'
+      - 'tests/test_phrase_persistence_preview.cpp'
       - 'docs/stages/PHRASE_CORE_FOUNDATION.md'
       - '.github/workflows/phrase-core.yml'
   pull_request:
     paths:
       - 'src/phrase/**'
       - 'tests/test_phrase_core.cpp'
+      - 'tests/test_phrase_persistence_preview.cpp'
       - 'docs/stages/PHRASE_CORE_FOUNDATION.md'
       - '.github/workflows/phrase-core.yml'
 
@@ -24,17 +26,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build Phrase Core host test
+      - name: Build Phrase Core host tests
         run: |
           mkdir -p build/host-tests
-          g++ \
-            -std=c++17 \
-            -Wall \
-            -Wextra \
-            -Werror \
-            -Wno-c++20-extensions \
-            -I. \
+          COMMON_FLAGS='-std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I.'
+          g++ ${COMMON_FLAGS} \
             tests/test_phrase_core.cpp \
             -o build/host-tests/test_phrase_core
-      - name: Run Phrase Core host test
-        run: build/host-tests/test_phrase_core
+          g++ ${COMMON_FLAGS} \
+            tests/test_phrase_persistence_preview.cpp \
+            -o build/host-tests/test_phrase_persistence_preview
+      - name: Run Phrase Core host tests
+        run: |
+          build/host-tests/test_phrase_core
+          build/host-tests/test_phrase_persistence_preview
