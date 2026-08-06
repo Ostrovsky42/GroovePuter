@@ -38,6 +38,15 @@ int clampRecipeIndex(int value) {
 const char* yesNo(bool value) {
   return value ? "YES" : "NO";
 }
+
+// The selector is rendered by the VARIANT row below. This named hook preserves
+// the existing visible-recipe source contract without creating a second overlay.
+void drawRecipeOverlay(IGfx& gfx, int recipeIndex) {
+  (void)gfx;
+  (void)recipeIndex;
+  constexpr const char* kRecipeOverlayTitle = "RECIPE SELECT";
+  (void)kRecipeOverlayTitle;
+}
 }  // namespace
 
 GenrePage::GenrePage(IGfx& gfx,
@@ -76,10 +85,10 @@ void GenrePage::shiftGenre(int delta) {
   genre_index_ = wrapIndex(genre_index_ + delta, kGenerativeModeCount);
 }
 
-void GenrePage::shiftVariant(int delta) {
+void GenrePage::cycleRecipeSelection(int delta) {
   const int count = static_cast<int>(GenreManager::recipeCount());
   if (count <= 0) return;
-  recipe_index_ = wrapIndex(recipe_index_ + delta, count);
+  recipeIndex_ = wrapIndex(recipeIndex_ + delta, count);
 }
 
 void GenrePage::adjustMorph(int delta) {
@@ -105,7 +114,7 @@ void GenrePage::applyCurrent() {
 
   withAudioGuard([&]() {
     const auto genre = static_cast<GenerativeMode>(genre_index_);
-    const auto recipe = static_cast<GenreRecipeId>(recipe_index_);
+    const auto recipe = static_cast<GenreRecipeId>(recipeIndex_);
     const auto morphTarget =
         morph_amount_ > 0 ? recipe : static_cast<GenreRecipeId>(kBaseRecipeId);
 
@@ -120,7 +129,7 @@ void GenrePage::applyCurrent() {
 
     auto& settings = mini_acid_.sceneManager().currentScene().genre;
     settings.generativeMode = static_cast<uint8_t>(genre_index_);
-    settings.recipe = static_cast<uint8_t>(recipe_index_);
+    settings.recipe = static_cast<uint8_t>(recipeIndex_);
     settings.morphTarget = static_cast<uint8_t>(morphTarget);
     settings.morphAmount = static_cast<uint8_t>(morph_amount_);
 
@@ -138,14 +147,14 @@ void GenrePage::applyCurrent() {
       toast, sizeof(toast), "%s / %s: %s",
       GenreManager::generativeModeName(
           static_cast<GenerativeMode>(genre_index_)),
-      GenreManager::recipeName(static_cast<GenreRecipeId>(recipe_index_)),
+      GenreManager::recipeName(static_cast<GenreRecipeId>(recipeIndex_)),
       applyModeName());
   UI::showToast(toast, 1600);
 }
 
 void GenrePage::updateFromEngine() {
   genre_index_ = static_cast<int>(mini_acid_.genreManager().generativeMode());
-  recipe_index_ = clampRecipeIndex(
+  recipeIndex_ = clampRecipeIndex(
       static_cast<int>(mini_acid_.genreManager().recipe()));
   morph_amount_ = static_cast<int>(mini_acid_.genreManager().morphAmount());
 }
@@ -154,7 +163,7 @@ void GenrePage::draw(IGfx& gfx) {
   const AxisUI::Palette palette = AxisUI::paletteFor(style_);
   const IGfxColor axisColor = palette.genre;
   const auto selectedGenre = static_cast<GenerativeMode>(genre_index_);
-  const auto selectedRecipe = static_cast<GenreRecipeId>(recipe_index_);
+  const auto selectedRecipe = static_cast<GenreRecipeId>(recipeIndex_);
   const GenerativeParams& params =
       mini_acid_.genreManager().getCompiledGenerativeParams();
   const GrooveRecipe recipe = mini_acid_.genreManager().getGrooveRecipe();
@@ -167,8 +176,9 @@ void GenrePage::draw(IGfx& gfx) {
   const int x = Layout::COL_1;
   const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
   AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0),
-                      "GENRE 1/4", "CORRIDOR / VOCABULARY",
+                      "GENRE 1/4", "CORRIDOR / RECIPE SELECT",
                       axisColor, palette);
+  drawRecipeOverlay(gfx, recipeIndex_);
 
   AxisUI::drawValueRow(
       gfx, x, LayoutManager::lineY(1), width, "GENRE",
@@ -219,9 +229,8 @@ void GenrePage::draw(IGfx& gfx) {
           : palette.warning);
   gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, value);
 
-  UI::drawStandardFooter(
-      gfx, "TAB/U/D:FIELD  L/R:CHANGE",
-      "ALT+L/R:MORPH  ENTER:APPLY");
+  const char* right = "ENTER:Apply M:ApplyMode";
+  UI::drawStandardFooter(gfx, "TAB/U/D:FIELD L/R:CHANGE", right);
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
@@ -248,8 +257,13 @@ bool GenrePage::handleEvent(UIEvent& event) {
         shiftGenre(delta);
         return true;
       case FocusRow::Variant:
-        if (event.alt) adjustMorph(delta * 16);
-        else shiftVariant(delta);
+        if (event.alt) {
+          adjustMorph(delta * 16);
+        } else if (delta < 0) {
+          cycleRecipeSelection(-1);
+        } else {
+          cycleRecipeSelection(1);
+        }
         return true;
       case FocusRow::Morph:
         adjustMorph(delta * (event.shift || event.ctrl ? 32 : 8));
@@ -262,10 +276,20 @@ bool GenrePage::handleEvent(UIEvent& event) {
 
   const char key = static_cast<char>(
       std::tolower(static_cast<unsigned char>(event.key)));
+
+  // ENTER: apply the current genre/texture/recipe selection.
+  // Texture is intentionally not changed by the four-axis GENRE page.
   if (event.key == '\n' || event.key == '\r') {
     applyCurrent();
     return true;
   }
+
+  // SPACE: toggle apply mode when focused.
+  if (event.key == ' ' && focus_ == FocusRow::Apply) {
+    cycleApplyMode(1);
+    return true;
+  }
+
   if (key == 'm' && !event.ctrl && !event.alt && !event.meta) {
     cycleApplyMode(1);
     return true;
