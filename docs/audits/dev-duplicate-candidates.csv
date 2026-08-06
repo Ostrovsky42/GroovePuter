@@ -1,0 +1,13 @@
+Group,Implementation A,Implementation B,Difference,Recommendation,Risk
+Numeric acceleration,UIInput::HoldAccelerator,GlobalSynthFeelPage custom repeat ramp,Different thresholds/base-step logic,Consolidate configurable policy,Medium
+Index wrapping,Genre/Feel/Texture wrapIndex,Phrase/Project/manual modulo,"Some wrap, some clamp",Consolidate only identical semantics,Low
+Pattern address formatting,Song/Phrase/Generation local formatters,Pattern selectors/MIDI import,Different notation,Use PR #102 PatternAddress,Medium
+Project row adjustment,Left/Right switch,Enter switch,Different side effects,Local row actions,Medium
+Theme switching,Global Alt+\,Project VisualStyle row,Different exposed sets,One canonical user model,Medium
+Back/dismiss,Global fallback,Per-page Backspace/Esc handlers,Destructive vs navigation,Define precedence contract,High
+Transport,Global Space,SMF Space + G + external follow,Multiple owners,Explicit transport model/status,High
+Mute,Global voice mute,SMF physical mute + HUB mute + route,Different entities,Keep data models; unify labels/status,Medium
+Generation,GenerationPage,SongPage generation gestures,Different scope/RNG/transaction,PR #101,High
+Clear/New,Scene wipe/new,Pattern paging files/scene delete,Different persistence domains,PR #102 + tests,High
+Page names,Alias wrapper types,Canonical page titles/workspaces,Historical names,Canonical factory names,Low
+MIDI note formatting,SMF Player,HUB MIDI,Duplicate note/channel formatters,Small shared formatter if flash-neutral,Low
