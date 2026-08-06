@@ -3,174 +3,127 @@ name: Core regressions
 on:
   push:
     branches:
-      - agent/phrase-core-foundation
+      - main
+      - dev
+      - agent/fix-core-reliability
+      - agent/smf-structural-inspector
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  finalize-phrase-ui:
-    if: (github.ref == 'refs/heads/agent/phrase-core-foundation' || github.head_ref == 'agent/phrase-core-foundation') && github.actor != 'github-actions[bot]'
+  host-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: agent/phrase-core-foundation
-          fetch-depth: 0
 
-      - name: Apply remaining Phrase UI registration
+      - name: Run core host regressions
+        run: bash tests/run_host_tests.sh
+
+      - name: Run UI status chrome tests
+        run: |
+          python3 tests/test_ui_status_chrome_source_regressions.py
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_ui_status_chrome.cpp \
+            -o build/host-tests/test_ui_status_chrome
+          build/host-tests/test_ui_status_chrome
+
+      - name: Run synth engine tests
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          def replace_once(text, old, new, label):
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{label}: expected one anchor, found {count}')
-              return text.replace(old, new, 1)
+          root = Path('.')
+          assert not (root / 'src/dsp/opl2_synth_voice.h').exists()
+          assert not (root / 'src/dsp/opl2_synth_voice.cpp').exists()
 
-          path = Path('src/ui/miniacid_display.cpp')
-          text = path.read_text()
-          if '#include "pages/phrase_page.h"' not in text:
-              text = replace_once(
-                  text,
-                  '#include "pages/song_page.h"\n#include "pages/help_dialog.h"',
-                  '#include "pages/song_page.h"\n#include "pages/phrase_page.h"\n#include "pages/help_dialog.h"',
-                  'Phrase include')
-          if 'std::make_unique<PhrasePage>' not in text:
-              text = replace_once(
-                  text,
-                  '        case 12: page = std::make_unique<PerformPage>(gfx_, mini_acid_, performance_keyboard_); break;\n        case kSmfPlayerPage:',
-                  '        case 12: page = std::make_unique<PerformPage>(gfx_, mini_acid_, performance_keyboard_); break;\n        case WorkflowPages::kPhrase:\n            page = std::make_unique<PhrasePage>(gfx_, mini_acid_, audio_guard_);\n            break;\n        case kSmfPlayerPage:',
-                  'Phrase factory')
-          path.write_text(text)
+          for path in (
+              root / 'src/ui/pages/synth_sequencer_page.cpp',
+              root / 'src/ui/pages/tb303_params_page.cpp',
+          ):
+              text = path.read_text(encoding='utf-8')
+              assert 'removeDisabledSynthEngines' in text
+              assert '{"TB303", "SID", "AY", "OPL2"' not in text
 
-          path = Path('tests/test_performance_source_regressions.py')
-          text = path.read_text()
-          if 'require("kPageCount = 14" in ui_config,' in text:
-              text = text.replace(
-                  'require("kPageCount = 14" in ui_config,',
-                  'require("kPageCount = 15" in ui_config,',
-                  1)
-          path.write_text(text)
-
-          path = Path('tests/test_theme_selection_source_regressions.py')
-          text = path.read_text()
-          old = '''    require("case WorkflowMode::Song: return kArrange;" in workflow,
-            "SONG workflow must resolve to the song editor")'''
-          new = '''    require("kArrange, kPhrase" in workflow and
-            "case WorkflowMode::Song: return kSongPages[index];" in workflow,
-            "SONG workflow must expose Arrange then Phrase Core")'''
-          if old in text:
-              text = text.replace(old, new, 1)
-          path.write_text(text)
+          makefile = (root / 'platform_sdl/Makefile').read_text(encoding='utf-8')
+          assert 'opl2_synth_voice' not in makefile
+          assert 'wave_morph_synth_voice.cpp' in makefile
           PY
 
-      - name: Restore clean global help source gate
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter -I. \
+            tests/test_new_synth_voices.cpp \
+            src/dsp/swappable_synth_voice.cpp \
+            src/dsp/mini_tb303.cpp \
+            src/dsp/filter.cpp \
+            src/dsp/audio_wavetables.cpp \
+            src/dsp/sid_synth_voice.cpp \
+            src/dsp/sid_synth.cpp \
+            src/dsp/ay_synth_voice.cpp \
+            src/dsp/sh101_synth_voice.cpp \
+            src/dsp/sn76489_synth_voice.cpp \
+            src/dsp/wave_morph_synth_voice.cpp \
+            -o build/host-tests/test_new_synth_voices
+          build/host-tests/test_new_synth_voices
+
+      - name: Run dirty-region display tests
         run: |
-          cat > tests/test_global_help_source_regressions.py <<'PYFILE'
-          #!/usr/bin/env python3
-          from pathlib import Path
-          import re
-          import struct
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_dirty_tile_tracker.cpp \
+            -o build/host-tests/test_dirty_tile_tracker
+          build/host-tests/test_dirty_tile_tracker
 
-          ROOT = Path(__file__).resolve().parents[1]
+  sdl-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-          help_content = (ROOT / "src/ui/global_help_content.h").read_text()
-          overlay = (ROOT / "src/ui/global_help_overlay.h").read_text()
-          display = (ROOT / "src/ui/miniacid_display.cpp").read_text()
-          smf = (ROOT / "src/ui/pages/smf_player_page_structural.cpp").read_text()
-          drum = (ROOT / "src/ui/pages/drum_sequencer_page.cpp").read_text()
-          readme = (ROOT / "README.md").read_text()
-          keys = (ROOT / "src/ui/docs/keys.md").read_text()
-
-          assert '"Alt+H       Toggle this help"' in help_content
-          assert "Ctrl+H" not in help_content
-          assert '"HELP: %s  ESC/ALT+H"' in overlay
-          assert "event.alt && (event.key == 'h' || event.key == 'H')" in overlay
-          assert "event.ctrl || event.alt" not in overlay
-
-          alt_h_handler = re.search(
-              r"if \(event\.alt && \(event\.key == 'h'.*?return true;\n\s*}",
-              display,
-              re.S,
-          )
-          assert alt_h_handler, "Alt+H global handler missing"
-          assert "setPageContext(page_index_)" in alt_h_handler.group(0)
-
-          for page_constant in (
-              "kGenre", "kSynthA", "kSynthB", "kSynthAParameters",
-              "kSynthBParameters", "kDrums", "kArrange", "kPhrase", "kPattern",
-              "kFeelTexture", "kGenerator", "kProject", "kMode",
-              "kPerform", "kPlayer",
-          ):
-              assert f"WorkflowPages::{page_constant}" in help_content
-
-          assert "Alt+H remains reserved for page-aware help" in smf
-          assert "Ctrl+H" not in smf
-          assert '"G:GEN Alt+G:ALL 1..8:Edit B:Bank"' in drum
-          assert '"C           Edit saved per-file route"' in help_content
-          assert '"f:GEN Alt+G:ALL 1..8:Edit B:Bank"' not in drum
-          assert '"1..4        Select Phrase A/B/C/D"' in help_content
-          assert '"Enter       Capture current Song row"' in help_content
-          assert '"REF         Mutable pattern references"' in help_content
-
-          for expected in (
-              "| `Alt+H` | Open page-aware help",
-              "| `Fn+M` | Open the workspace launcher |",
-              "| `Alt+X` | Toggle LiveMix |",
-              "| `Alt+M` | Toggle Song mode |",
-              "same primary controls shown by `Alt+H`",
-              "**OVERVIEW / SEQUENCER HUB**",
-              "**SYNTH A PATTERN**",
-              "**MODE / FLAVOR**",
-              "route profiles restore `AUTO` / `CH1..CH10` assignments across reloads and reboots",
-          ):
-              assert expected in readme
-
-          assert "`Alt+H` is the on-device" in keys
-          assert "`Ctrl+H`" not in keys
-          assert "Generate material into a free slot" in keys
-          assert "Digits remain available to the global mute fallback" in keys
-          assert "persisted per file and restored across reloads and reboots" in keys
-
-          screenshots = (
-              "genre.png",
-              "sequencer_hub.png",
-              "drum_page_cyber.png",
-              "synth_params.png",
-              "pattern_edit.png",
-              "song_page.png",
-              "groove_lab.png",
-          )
-          for name in screenshots:
-              path = ROOT / "docs/screenshots" / name
-              data = path.read_bytes()
-              assert data[:8] == b"\x89PNG\r\n\x1a\n"
-              width, height = struct.unpack(">II", data[16:24])
-              assert (width, height) == (488, 275), (name, width, height)
-              assert f"docs/screenshots/{name}" in readme
-
-          print("global help source regressions passed")
-          PYFILE
-
-      - name: Remove ordinary temporary construction files
+      - name: Install SDL dependencies
         run: |
-          rm -f tools/apply_phrase_ui_registration.py
-          rm -f tools/apply_phrase_ui_regression_updates.py
-          rm -f .github/phrase-ui-trigger
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            libsdl2-dev \
+            libsdl2-gfx-dev
 
-      - name: Commit clean source changes
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/ui/miniacid_display.cpp \
-            tests/test_performance_source_regressions.py \
-            tests/test_theme_selection_source_regressions.py \
-            tests/test_global_help_source_regressions.py \
-            tools/apply_phrase_ui_registration.py \
-            tools/apply_phrase_ui_regression_updates.py \
-            .github/phrase-ui-trigger
-          git commit -m 'ui: finalize Phrase Core workflow integration'
-          git push origin HEAD:agent/phrase-core-foundation
+      - name: Build desktop target
+        working-directory: platform_sdl
+        run: make clean all CXX=g++
+
+  cardputer-adv-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV firmware
+        run: bash scripts/build.sh --warnings all
+
+      - name: Check fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
+
+  cardputer-adv-seqtrak-midi-only-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile and check SEQTRAK MIDI-only firmware
+        run: bash scripts/build_seqtrak_midi_only.sh --warnings all
