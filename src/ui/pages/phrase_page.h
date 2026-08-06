@@ -44,5 +44,6 @@ class PhrasePage : public IPage {
   bool preview_valid_ = false;
   int preview_page_ = -1;
   uint16_t preview_phrase_id_ = PhraseCore::kNoPhraseId;
+  uint32_t preview_revision_ = 0;
   std::string title_ = "PHRASE";
 };
