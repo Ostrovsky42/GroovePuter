@@ -1,0 +1,63 @@
+name: Apply slider acceleration coverage
+
+on:
+  push:
+    branches:
+      - agent/accelerated-slider-repeat
+    paths:
+      - 'scripts/apply_slider_acceleration_coverage.py'
+      - '.github/workflows/apply-slider-acceleration-coverage.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/accelerated-slider-repeat
+          fetch-depth: 0
+
+      - name: Apply exact source patch
+        run: python3 scripts/apply_slider_acceleration_coverage.py
+
+      - name: Run focused source regressions
+        run: |
+          python3 tests/test_axis_hardware_feedback_source_regressions.py
+          python3 tests/test_cardputer_input_source_regressions.py
+
+      - name: Build status chrome test
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_ui_status_chrome.cpp \
+            -o build/host-tests/test_ui_status_chrome
+          build/host-tests/test_ui_status_chrome
+
+      - name: Compile changed UI pages
+        run: |
+          mkdir -p build/host-tests/slider-coverage
+          COMMON_FLAGS='-std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. -Iplatform_sdl -include platform_sdl/arduino_compat.h'
+          g++ ${COMMON_FLAGS} -c src/ui/pages/tape_page.cpp \
+            -o build/host-tests/slider-coverage/tape_page.o
+          g++ ${COMMON_FLAGS} -c src/ui/pages/drum_sequencer_page.cpp \
+            -o build/host-tests/slider-coverage/drum_sequencer_page.o
+          g++ ${COMMON_FLAGS} -c src/ui/pages/project_page.cpp \
+            -o build/host-tests/slider-coverage/project_page.o
+          g++ ${COMMON_FLAGS} -c src/ui/pages/sampler_page.cpp \
+            -o build/host-tests/slider-coverage/sampler_page.o
+
+      - name: Commit applied changes
+        run: |
+          git rm scripts/apply_slider_acceleration_coverage.py
+          git add src/ui/pages/tape_page.cpp \
+                  src/ui/pages/drum_sequencer_page.cpp \
+                  src/ui/pages/project_page.cpp \
+                  src/ui/pages/sampler_page.cpp
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'ui: accelerate remaining continuous value controls'
+          git push origin HEAD:agent/accelerated-slider-repeat
