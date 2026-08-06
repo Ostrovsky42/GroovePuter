@@ -312,6 +312,18 @@ void PhrasePage::cycleParent(int delta) {
   } while (parent_slot_ == selected_slot_);
 }
 
+void PhrasePage::moveArrangementCursor(int delta) {
+  const Scene& scene = mini_acid_.sceneManager().currentScene();
+  const uint8_t length = scene.phraseBank.arrangement.length;
+  const int maximum = length < PhraseCore::kArrangementCapacity
+                          ? length
+                          : PhraseCore::kArrangementCapacity - 1;
+  int value = static_cast<int>(arrangement_cursor_) + delta;
+  if (value < 0) value = 0;
+  if (value > maximum) value = maximum;
+  arrangement_cursor_ = static_cast<uint8_t>(value);
+}
+
 void PhrasePage::invalidatePreview() {
   preview_valid_ = false;
   preview_page_ = -1;
@@ -380,6 +392,29 @@ void PhrasePage::showResult(const char* action,
   UI::showToast(message, result ? 1100 : 1500);
 }
 
+void PhrasePage::showArrangementResult(
+    const char* action,
+    const PhraseCore::ArrangementResult& result,
+    PhraseCore::SlotId slot,
+    bool includeSlot) {
+  char message[64];
+  if (!result) {
+    std::snprintf(message, sizeof(message), "%s: %s",
+                  action, PhraseWorkspace::errorName(result.error));
+  } else if (includeSlot) {
+    std::snprintf(message, sizeof(message), "%s %02u %s",
+                  action,
+                  static_cast<unsigned>(result.position + 1),
+                  PhraseCore::slotName(slot));
+  } else if (result.totalBars > 0) {
+    std::snprintf(message, sizeof(message), "%s %uB",
+                  action, static_cast<unsigned>(result.totalBars));
+  } else {
+    std::snprintf(message, sizeof(message), "%s", action);
+  }
+  UI::showToast(message, result ? 1100 : 1500);
+}
+
 bool PhrasePage::captureCurrentRegion() {
   Scene& scene = mini_acid_.sceneManager().currentScene();
   PhraseWorkspace::CaptureRequest request{};
@@ -396,11 +431,8 @@ bool PhrasePage::captureCurrentRegion() {
 
   const PhraseCore::Result result = PhraseWorkspace::capture(
       scene, request, [&](auto&& operation) {
-        if (audio_guard_) {
-          audio_guard_(std::forward<decltype(operation)>(operation));
-        } else {
-          operation();
-        }
+        if (audio_guard_) audio_guard_(std::forward<decltype(operation)>(operation));
+        else operation();
       });
   if (result) {
     preview_bar_ = 0;
@@ -418,11 +450,8 @@ bool PhrasePage::deriveFromParent() {
   request.role = capture_role_;
   const PhraseCore::Result result = PhraseWorkspace::derive(
       scene, request, [&](auto&& operation) {
-        if (audio_guard_) {
-          audio_guard_(std::forward<decltype(operation)>(operation));
-        } else {
-          operation();
-        }
+        if (audio_guard_) audio_guard_(std::forward<decltype(operation)>(operation));
+        else operation();
       });
   if (result) {
     preview_bar_ = 0;
@@ -445,11 +474,8 @@ bool PhrasePage::writeToCurrentRow(bool overwrite) {
 
   const PhraseCore::Result result = PhraseWorkspace::writeToSong(
       scene, request, [&](auto&& operation) {
-        if (audio_guard_) {
-          audio_guard_(std::forward<decltype(operation)>(operation));
-        } else {
-          operation();
-        }
+        if (audio_guard_) audio_guard_(std::forward<decltype(operation)>(operation));
+        else operation();
       });
   if (result) invalidatePreview();
   showResult(overwrite ? "WRITE!" : "WRITE", result);
@@ -460,21 +486,84 @@ bool PhrasePage::clearCurrentSlot() {
   Scene& scene = mini_acid_.sceneManager().currentScene();
   const PhraseCore::Result result = PhraseWorkspace::clear(
       scene, selected_slot_, [&](auto&& operation) {
-        if (audio_guard_) {
-          audio_guard_(std::forward<decltype(operation)>(operation));
-        } else {
-          operation();
-        }
+        if (audio_guard_) audio_guard_(std::forward<decltype(operation)>(operation));
+        else operation();
       });
   if (result) {
     preview_bar_ = 0;
     invalidatePreview();
+    const uint8_t length = scene.phraseBank.arrangement.length;
+    if (length == 0) arrangement_cursor_ = 0;
+    else if (arrangement_cursor_ >= length) arrangement_cursor_ = length - 1;
   }
   showResult("CLEAR", result);
   return true;
 }
 
-void PhrasePage::draw(IGfx& gfx) {
+bool PhrasePage::assignArrangementSlot(PhraseCore::SlotId slot) {
+  Scene& scene = mini_acid_.sceneManager().currentScene();
+  const PhraseCore::ArrangementResult result =
+      PhraseWorkspace::assignArrangement(
+          scene, arrangement_cursor_, slot, [&](auto&& operation) {
+            if (audio_guard_) audio_guard_(std::forward<decltype(operation)>(operation));
+            else operation();
+          });
+  showArrangementResult("ARR SET", result, slot, true);
+  if (result && arrangement_cursor_ + 1 < PhraseCore::kArrangementCapacity &&
+      arrangement_cursor_ + 1 <= result.length) {
+    ++arrangement_cursor_;
+  }
+  return true;
+}
+
+bool PhrasePage::removeArrangementSlot() {
+  Scene& scene = mini_acid_.sceneManager().currentScene();
+  const PhraseCore::ArrangementResult result =
+      PhraseWorkspace::removeArrangement(
+          scene, arrangement_cursor_, [&](auto&& operation) {
+            if (audio_guard_) audio_guard_(std::forward<decltype(operation)>(operation));
+            else operation();
+          });
+  showArrangementResult("ARR REMOVE", result);
+  if (result) {
+    if (result.length == 0) arrangement_cursor_ = 0;
+    else if (arrangement_cursor_ >= result.length) arrangement_cursor_ = result.length - 1;
+  }
+  return true;
+}
+
+bool PhrasePage::clearArrangementChain() {
+  Scene& scene = mini_acid_.sceneManager().currentScene();
+  const PhraseCore::ArrangementResult result =
+      PhraseWorkspace::clearArrangement(scene, [&](auto&& operation) {
+        if (audio_guard_) audio_guard_(std::forward<decltype(operation)>(operation));
+        else operation();
+      });
+  arrangement_cursor_ = 0;
+  showArrangementResult("ARR CLEAR", result);
+  return true;
+}
+
+bool PhrasePage::writeArrangementToCurrentRow(bool overwrite) {
+  Scene& scene = mini_acid_.sceneManager().currentScene();
+  PhraseWorkspace::ArrangementWriteRequest request{};
+  request.destinationSongSlot =
+      static_cast<uint8_t>(std::clamp(scene.activeSongSlot, 0, 1));
+  request.startRow = static_cast<uint8_t>(
+      std::clamp(mini_acid_.currentSongPosition(), 0,
+                 Song::kMaxPositions - 1));
+  request.overwrite = overwrite;
+  const PhraseCore::ArrangementResult result =
+      PhraseWorkspace::writeArrangementToSong(
+          scene, request, [&](auto&& operation) {
+            if (audio_guard_) audio_guard_(std::forward<decltype(operation)>(operation));
+            else operation();
+          });
+  showArrangementResult(overwrite ? "ARR WRITE!" : "ARR WRITE", result);
+  return true;
+}
+
+void PhrasePage::drawCore(IGfx& gfx) {
   const Scene& scene = mini_acid_.sceneManager().currentScene();
   const PhraseCore::SlotSummary current =
       PhraseWorkspace::summary(scene, selected_slot_);
@@ -482,11 +571,6 @@ void PhrasePage::draw(IGfx& gfx) {
 
   const PhrasePalette palette = paletteForStyle(UI::currentStyle);
   const IGfxColor activeColor = slotColor(selected_slot_, palette);
-
-  UI::drawStandardHeader(gfx, mini_acid_, "PHRASE CORE");
-
-  // MiniAcidDisplay paints the skin before each page draw. Do not perform a
-  // second full-content clear here; render the eight compact content bands once.
   const int x = Layout::COL_1;
   const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
   const int slotY = LayoutManager::lineY(0);
@@ -538,9 +622,11 @@ void PhrasePage::draw(IGfx& gfx) {
   if (current.valid) {
     char tracks[20];
     formatTrackMask(current.trackMask, tracks, sizeof(tracks));
-    std::snprintf(line, sizeof(line), "ID:%u  P:%u  TRACKS:%s",
+    std::snprintf(line, sizeof(line), "ID:%u P:%u SRC:%c%02u %s",
                   static_cast<unsigned>(current.phraseId),
                   static_cast<unsigned>(current.parentId),
+                  static_cast<char>('A' + current.sourceSongSlot),
+                  static_cast<unsigned>(current.sourceStartRow + 1),
                   tracks);
   } else {
     const int songSlot = std::clamp(scene.activeSongSlot, 0, 1);
@@ -570,30 +656,29 @@ void PhrasePage::draw(IGfx& gfx) {
     std::snprintf(refD, sizeof(refD), "---");
   }
 
-  drawTrackRow(
-      gfx, x, LayoutManager::lineY(4), "SA",
-      preview_valid_ ? preview_.synthAMask : 0,
-      preview_valid_ &&
-          (preview_.resolvedMask & PhraseCore::kTrackSynthA) != 0,
-      refA, palette.synthA, palette);
-  drawTrackRow(
-      gfx, x, LayoutManager::lineY(5), "SB",
-      preview_valid_ ? preview_.synthBMask : 0,
-      preview_valid_ &&
-          (preview_.resolvedMask & PhraseCore::kTrackSynthB) != 0,
-      refB, palette.synthB, palette);
-  drawTrackRow(
-      gfx, x, LayoutManager::lineY(6), "DR",
-      preview_valid_ ? preview_.drumMask : 0,
-      preview_valid_ &&
-          (preview_.resolvedMask & PhraseCore::kTrackDrums) != 0,
-      refD, palette.drums, palette);
+  drawTrackRow(gfx, x, LayoutManager::lineY(4), "SA",
+               preview_valid_ ? preview_.synthAMask : 0,
+               preview_valid_ &&
+                   (preview_.resolvedMask & PhraseCore::kTrackSynthA) != 0,
+               refA, palette.synthA, palette);
+  drawTrackRow(gfx, x, LayoutManager::lineY(5), "SB",
+               preview_valid_ ? preview_.synthBMask : 0,
+               preview_valid_ &&
+                   (preview_.resolvedMask & PhraseCore::kTrackSynthB) != 0,
+               refB, palette.synthB, palette);
+  drawTrackRow(gfx, x, LayoutManager::lineY(6), "DR",
+               preview_valid_ ? preview_.drumMask : 0,
+               preview_valid_ &&
+                   (preview_.resolvedMask & PhraseCore::kTrackDrums) != 0,
+               refD, palette.drums, palette);
 
   const int actionY = LayoutManager::lineY(7);
-  std::snprintf(line, sizeof(line), "NEXT %uB %s  P:%s",
+  const int songSlot = std::clamp(scene.activeSongSlot, 0, 1);
+  std::snprintf(line, sizeof(line), "D:%c%02d N:%uB %s",
+                static_cast<char>('A' + songSlot),
+                mini_acid_.currentSongPosition() + 1,
                 static_cast<unsigned>(capture_length_),
-                roleShort(capture_role_),
-                PhraseCore::slotName(parent_slot_));
+                roleShort(capture_role_));
   gfx.setTextColor(palette.dim);
   gfx.drawText(x, actionY, line);
 
@@ -604,14 +689,148 @@ void PhrasePage::draw(IGfx& gfx) {
   gfx.drawText(x + width - gfx.textWidth(ownership), actionY, ownership);
 
   UI::drawStandardFooter(gfx,
-                         "1-4:SLOT  L/R:BAR  U/D:LEN",
-                         "ENT:CAP R:ROLE P:PARENT D/W/DEL");
+                         "TAB:ARR 1-4:SLOT L/R:BAR U/D:LEN",
+                         "ENT:CAP D:DERIVE W:WRITE SH+W:OVER");
+}
+
+void PhrasePage::drawArrangement(IGfx& gfx) {
+  const Scene& scene = mini_acid_.sceneManager().currentScene();
+  const PhraseCore::PhraseArrangement& arrangement =
+      scene.phraseBank.arrangement;
+  const PhrasePalette palette = paletteForStyle(UI::currentStyle);
+  const int x = Layout::COL_1;
+  const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
+  constexpr int kColumns = 8;
+  constexpr int kGap = 2;
+  const int cellWidth = (width - (kColumns - 1) * kGap) / kColumns;
+  constexpr int kCellHeight = 18;
+
+  char line[96];
+  std::snprintf(line, sizeof(line), "CHAIN %u/%u  TOTAL %uB  REF LINKED",
+                static_cast<unsigned>(arrangement.length),
+                static_cast<unsigned>(PhraseCore::kArrangementCapacity),
+                static_cast<unsigned>(PhraseWorkspace::arrangementTotalBars(scene)));
+  gfx.setTextColor(palette.accent);
+  gfx.drawText(x, LayoutManager::lineY(0), line);
+
+  for (int position = 0; position < PhraseCore::kArrangementCapacity; ++position) {
+    const int row = position / kColumns;
+    const int column = position % kColumns;
+    const int cellX = x + column * (cellWidth + kGap);
+    const int cellY = LayoutManager::lineY(row == 0 ? 1 : 3);
+    const bool selected = position == arrangement_cursor_;
+    const bool assigned = position < arrangement.length &&
+                          arrangement.slots[position] < PhraseCore::kSlotCount;
+    const PhraseCore::SlotId slot = assigned
+        ? static_cast<PhraseCore::SlotId>(arrangement.slots[position])
+        : PhraseCore::SlotId::A;
+    const IGfxColor color = assigned ? slotColor(slot, palette) : palette.dim;
+
+    gfx.fillRect(cellX, cellY, cellWidth, kCellHeight,
+                 selected ? palette.panelSelected : palette.panel);
+    gfx.drawRect(cellX, cellY, cellWidth, kCellHeight,
+                 selected ? (assigned ? color : palette.accent) : palette.border);
+
+    char indexText[4];
+    std::snprintf(indexText, sizeof(indexText), "%02d", position + 1);
+    gfx.setTextColor(selected ? palette.text : palette.dim);
+    gfx.drawText(cellX + 2, cellY + 1, indexText);
+
+    const char* value = assigned ? PhraseCore::slotName(slot)
+                                 : (selected && position == arrangement.length ? "+" : ".");
+    gfx.setTextColor(assigned ? color : palette.dim);
+    gfx.drawText(cellX + cellWidth - 8, cellY + 9, value);
+  }
+
+  const int detailY = LayoutManager::lineY(5);
+  if (arrangement_cursor_ < arrangement.length &&
+      arrangement.slots[arrangement_cursor_] < PhraseCore::kSlotCount) {
+    const PhraseCore::SlotId slot = static_cast<PhraseCore::SlotId>(
+        arrangement.slots[arrangement_cursor_]);
+    const PhraseCore::SlotSummary summary = PhraseWorkspace::summary(scene, slot);
+    if (summary.valid) {
+      std::snprintf(line, sizeof(line), "POS %02u: %s %s %uB ID:%u",
+                    static_cast<unsigned>(arrangement_cursor_ + 1),
+                    PhraseCore::slotName(slot), roleShort(summary.role),
+                    static_cast<unsigned>(summary.lengthBars),
+                    static_cast<unsigned>(summary.phraseId));
+    } else {
+      std::snprintf(line, sizeof(line), "POS %02u: INVALID",
+                    static_cast<unsigned>(arrangement_cursor_ + 1));
+    }
+  } else {
+    std::snprintf(line, sizeof(line), "POS %02u: APPEND WITH 1/2/3/4",
+                  static_cast<unsigned>(arrangement_cursor_ + 1));
+  }
+  gfx.setTextColor(palette.text);
+  gfx.drawText(x, detailY, line);
+
+  const int songSlot = std::clamp(scene.activeSongSlot, 0, 1);
+  std::snprintf(line, sizeof(line), "DEST SONG %c ROW %d  SAFE WRITE",
+                static_cast<char>('A' + songSlot),
+                mini_acid_.currentSongPosition() + 1);
+  gfx.setTextColor(palette.dim);
+  gfx.drawText(x, LayoutManager::lineY(6), line);
+
+  gfx.setTextColor(palette.accent);
+  gfx.drawText(x, LayoutManager::lineY(7),
+               "A/B/C/D EXPAND BY SAVED 1/2/4/8B LENGTH");
+
+  UI::drawStandardFooter(gfx,
+                         "TAB:CORE L/R:POS U/D:+8 1-4:SET",
+                         "W:WRITE SH+W:OVER DEL:RM SH+DEL:CLEAR");
+}
+
+void PhrasePage::draw(IGfx& gfx) {
+  UI::drawStandardHeader(gfx, mini_acid_,
+                         view_ == View::Core ? "PHRASE CORE"
+                                             : "PHRASE ARRANGE");
+  if (view_ == View::Core) drawCore(gfx);
+  else drawArrangement(gfx);
 }
 
 bool PhrasePage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
+  char key = ui_event.key;
+  if (key == '\t') {
+    view_ = view_ == View::Core ? View::Arrange : View::Core;
+    return true;
+  }
+
   const int nav = UIInput::navCode(ui_event);
+  if (view_ == View::Arrange) {
+    if (nav == GROOVEPUTER_LEFT) {
+      moveArrangementCursor(-1);
+      return true;
+    }
+    if (nav == GROOVEPUTER_RIGHT) {
+      moveArrangementCursor(1);
+      return true;
+    }
+    if (nav == GROOVEPUTER_UP) {
+      moveArrangementCursor(-8);
+      return true;
+    }
+    if (nav == GROOVEPUTER_DOWN) {
+      moveArrangementCursor(8);
+      return true;
+    }
+    if (!key) return false;
+    if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta &&
+        key >= '1' && key <= '4') {
+      return assignArrangementSlot(slotFromIndex(key - '1'));
+    }
+    if (key == '\b' || key == 0x7F) {
+      return ui_event.shift ? clearArrangementChain()
+                            : removeArrangementSlot();
+    }
+    const char lower = static_cast<char>(
+        std::tolower(static_cast<unsigned char>(key)));
+    if (lower == 'w') return writeArrangementToCurrentRow(ui_event.shift);
+    return false;
+  }
+
   if (nav == GROOVEPUTER_UP) {
     cycleLength(1);
     return true;
@@ -629,7 +848,6 @@ bool PhrasePage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  char key = ui_event.key;
   if (!key) return false;
   const char lower = static_cast<char>(
       std::tolower(static_cast<unsigned char>(key)));
@@ -645,7 +863,7 @@ bool PhrasePage::handleEvent(UIEvent& ui_event) {
     case 'r': cycleRole(ui_event.shift ? -1 : 1); return true;
     case 'p': cycleParent(ui_event.shift ? -1 : 1); return true;
     case 'd': return deriveFromParent();
-    case 'w': return writeToCurrentRow(ui_event.alt);
+    case 'w': return writeToCurrentRow(ui_event.shift);
     default: break;
   }
   return false;
