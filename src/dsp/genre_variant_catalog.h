@@ -42,7 +42,7 @@ struct VariantList {
   uint8_t count = 0;
 };
 
-template <size_t N>
+template <std::size_t N>
 constexpr VariantList listOf(const GenreRecipeId (&ids)[N]) {
   return {ids, static_cast<uint8_t>(N)};
 }
