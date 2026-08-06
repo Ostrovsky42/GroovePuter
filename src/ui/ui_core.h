@@ -14,6 +14,7 @@
 class MiniAcid;
 #include "display.h"
 #include "key_normalize.h"
+#include "ui_active_page_title.h"
 
 enum EventType {
   GROOVEPUTER_NO_TYPE = 0,
@@ -315,6 +316,11 @@ class IPage : public Container {
   virtual std::unique_ptr<MultiPageHelpDialog> getHelpDialog();
 
   virtual ~IPage() = default;
+
+  void setBoundaries(const Rect& rect) override {
+      Frame::setBoundaries(rect);
+      UI::publishActivePageTitle(getTitle().c_str());
+  }
 
   // EventHandler methods
   virtual bool handleEvent(UIEvent& ui_event) = 0;
