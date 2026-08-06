@@ -40,14 +40,21 @@ inline float foldSnToneFrequencyUp(float requestedHz) {
   return foldedHz;
 }
 
-inline float quantizeSnToneFrequency(float requestedHz) {
-  const float foldedHz = foldSnToneFrequencyUp(requestedHz);
-  if (foldedHz <= 0.0f) return 0.0f;
+// Quantize a frequency that is already inside the playable register. This is
+// kept separate from octave folding so a low root can be folded once before
+// chord/stack intervals are applied.
+inline float quantizeSnRepresentableToneFrequency(float requestedHz) {
+  if (requestedHz <= 0.0f) return 0.0f;
 
-  int divider = roundPositiveToInt(kSnClockHz / (32.0f * foldedHz));
+  int divider = roundPositiveToInt(kSnClockHz / (32.0f * requestedHz));
   if (divider < 1) divider = 1;
   if (divider > kSnMaxToneDivider) divider = kSnMaxToneDivider;
   return kSnClockHz / (32.0f * static_cast<float>(divider));
+}
+
+inline float quantizeSnToneFrequency(float requestedHz) {
+  return quantizeSnRepresentableToneFrequency(
+      foldSnToneFrequencyUp(requestedHz));
 }
 
 inline void snStackRatios(int stackIndex, float ratios[3]) {
@@ -70,6 +77,23 @@ inline void snStackRatios(int stackIndex, float ratios[3]) {
       break;
     default:  // Uni: slight chip-style detune.
       break;
+  }
+}
+
+// Fold and quantize the root once, then build every stack voice from that
+// playable root. Folding each ratio independently would collapse low Oct+
+// stacks to the same pitch.
+inline void snStackFrequencies(float requestedRootHz,
+                               int stackIndex,
+                               float frequencies[3]) {
+  float ratios[3];
+  snStackRatios(stackIndex, ratios);
+
+  const float playableRootHz = quantizeSnToneFrequency(requestedRootHz);
+  frequencies[0] = playableRootHz;
+  for (int voice = 1; voice < 3; ++voice) {
+    frequencies[voice] = quantizeSnRepresentableToneFrequency(
+        playableRootHz * ratios[voice]);
   }
 }
 
