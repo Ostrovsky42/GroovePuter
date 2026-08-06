@@ -41,6 +41,22 @@ public:
   void togglePreviousPage();
   void dismissSplash();
   bool handleEvent(UIEvent event);
+
+  // Cardputer's sketch dispatches through this narrow adapter. Phrase Core and
+  // Phrase Arranger own Alt+W as their explicit destructive write command, but
+  // the accepted global dispatcher currently sees Alt+W before page handlers.
+  // Translate only that page/key combination to the existing page-local
+  // destructive flag; all other Alt+W events retain Wave Overlay behavior.
+  bool handleCardputerEvent(UIEvent event) {
+      if (page_index_ == WorkflowPages::kPhrase &&
+          event.event_type == GROOVEPUTER_KEY_DOWN && event.alt &&
+          (event.key == 'w' || event.key == 'W')) {
+          event.alt = false;
+          event.shift = true;
+      }
+      return handleEvent(event);
+  }
+
   int currentPageIndex() const { return page_index_; }
 
 private:
