@@ -85,8 +85,8 @@ text = replace_once(text,
     "    static constexpr int kSongPages[] = {\n        SessionPages::kArrange, SessionPages::kPhrase,\n    };\n    static constexpr int kSettingsPages[] = {\n        SessionPages::kProject, SessionPages::kGenerator,\n    };",
     "session Song pages")
 text = replace_once(text,
-    "        case SessionWorkflow::Song: return SessionPages::kArrange;",
-    "        case SessionWorkflow::Song: return kSongPages[index];",
+    "        case SessionWorkflow::Song: return SessionPages::kArrange;\n        case SessionWorkflow::Settings: return kSettingsPages[index];",
+    "        case SessionWorkflow::Song: return kSongPages[index];\n        case SessionWorkflow::Settings: return kSettingsPages[index];",
     "session Song lookup")
 path.write_text(text)
 
@@ -166,6 +166,15 @@ text = replace_once(text,
     "    assert(sectionContains(WorkflowPages::kArrange, \"Generate current row\"));",
     "    assert(sectionContains(WorkflowPages::kArrange, \"Generate current row\"));\n    assert(sectionContains(WorkflowPages::kPhrase, \"Select Phrase A/B/C/D\"));\n    assert(sectionContains(WorkflowPages::kPhrase, \"Capture current Song row\"));\n    assert(sectionContains(WorkflowPages::kPhrase, \"Mutable pattern references\"));",
     "Phrase help assertions")
+path.write_text(text)
+
+# Existing performance source gate must track the real lazy-loaded page count.
+path = root / "tests/test_performance_source_regressions.py"
+text = path.read_text()
+text = replace_once(text,
+    'require("kPageCount = 14" in ui_config,',
+    'require("kPageCount = 15" in ui_config,',
+    "performance lazy-page count")
 path.write_text(text)
 
 print("Phrase UI registration applied")
