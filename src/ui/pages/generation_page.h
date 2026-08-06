@@ -4,6 +4,7 @@
 #include <string>
 
 #include "../ui_core.h"
+#include "../ui_input.h"
 #include "src/dsp/miniacid_engine.h"
 
 class GenerationPage : public IPage {
@@ -14,15 +15,20 @@ class GenerationPage : public IPage {
   bool handleEvent(UIEvent& ui_event) override;
   const std::string& getTitle() const override { return title_; }
   void setVisualStyle(VisualStyle style) override { style_ = style; }
+  void onEnter(int context) override;
 
  private:
   static constexpr uint8_t kMaterializeBars = 1;
 
+  void syncTargetFromSong();
+  void moveTargetRow(int delta, bool fast);
   void materializeCurrentBar();
 
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
   VisualStyle style_ = VisualStyle::MINIMAL;
+  UIInput::HoldAccelerator hold_accel_;
+  int target_row_ = 0;
   bool last_attempted_ = false;
   bool last_success_ = false;
   int last_row_ = -1;
