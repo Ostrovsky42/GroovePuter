@@ -66,7 +66,7 @@ public:
     void setTransportPlaying(bool playing);
     bool transportPlaying() const { return transportPlaying_; }
     bool liveInputAllowed() const {
-        return enabled_ && noteModeEnabled_ && !transportPlaying_;
+        return enabled_ && noteModeEnabled_;
     }
 
     void setTarget(MusicalEventTarget target);
@@ -137,7 +137,10 @@ public:
 
 private:
     static constexpr std::size_t kMaxGeneratedNotes = 16;
-    static constexpr std::size_t kMaxScheduledEvents = 64;
+    // One maximum-density step can contain 8 chord notes * 4 ratchets *
+    // NoteOn/NoteOff = 64 events. Keep headroom for the second half of the
+    // current step while the following transport step is prepared.
+    static constexpr std::size_t kMaxScheduledEvents = 112;
     static constexpr std::size_t kMaxChordMemoryNotes = 8;
 
     struct HeldNote {
@@ -183,6 +186,7 @@ private:
 
     bool stepEngineEnabled() const;
     uint32_t stepDurationMicros() const;
+    bool serviceTransportStepClock(uint32_t nowMicros);
     bool euclideanStepActive(uint8_t step) const;
     void resetStepClock();
     void emitPerformanceStep(uint32_t stepStartMicros, uint32_t stepMicros);
@@ -227,4 +231,12 @@ private:
     uint8_t euclideanStep_{0};
     std::size_t arpIndex_{0};
     bool arpAscending_{true};
+
+    bool transportStepClockRunning_{false};
+    uint32_t transportStepEpoch_{0};
+    uint64_t transportStepOrdinal_{0};
+    bool transportStepScheduled_{false};
+    bool transportBlockAnchorValid_{false};
+    uint32_t transportAnchorBlockSequence_{0};
+    uint32_t transportAnchorMicros_{0};
 };
