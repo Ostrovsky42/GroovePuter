@@ -82,15 +82,17 @@ struct UiStatusSnapshot {
     UiStatusState state{UiStatusState::Stop};
     UiStatusClock clock{UiStatusClock::Internal};
     UiStatusOutput output{UiStatusOutput::InternalAndMidi};
+    bool liveMixLocked{false};
+    bool dirty{GroovePuterState::sceneDirty()};
+    uint8_t patternPage{0xFF};
+    uint8_t patternBank{0xFF};
+    uint8_t patternSlot{0xFF};
     uint16_t bpm{uiStatusBpm()};
     uint16_t bar{1};
     uint16_t totalBars{1};
-    bool liveMixLocked{false};
-    bool dirty{GroovePuterState::sceneDirty()};
-    int16_t patternGlobalIndex{-1};
 
     bool hasPatternAddress() const {
-        return patternAddressFromGlobal(patternGlobalIndex).valid();
+        return patternAddressFromParts(patternPage, patternBank, patternSlot).valid();
     }
 };
 
@@ -104,12 +106,14 @@ inline bool operator==(const UiStatusSnapshot& lhs,
            lhs.state == rhs.state &&
            lhs.clock == rhs.clock &&
            lhs.output == rhs.output &&
-           lhs.bpm == rhs.bpm &&
-           lhs.bar == rhs.bar &&
-           lhs.totalBars == rhs.totalBars &&
            lhs.liveMixLocked == rhs.liveMixLocked &&
            lhs.dirty == rhs.dirty &&
-           lhs.patternGlobalIndex == rhs.patternGlobalIndex;
+           lhs.patternPage == rhs.patternPage &&
+           lhs.patternBank == rhs.patternBank &&
+           lhs.patternSlot == rhs.patternSlot &&
+           lhs.bpm == rhs.bpm &&
+           lhs.bar == rhs.bar &&
+           lhs.totalBars == rhs.totalBars;
 }
 
 inline bool operator!=(const UiStatusSnapshot& lhs,
@@ -187,8 +191,10 @@ inline void formatUiStatusLine(const UiStatusSnapshot& status,
     const unsigned total = status.totalBars == 0 ? 1u : status.totalBars;
     char sourceOrAddress[12];
     if (status.source == UiStatusSource::Pattern && status.hasPatternAddress()) {
-        formatGlobalPatternAddress(sourceOrAddress, sizeof(sourceOrAddress),
-                                   status.patternGlobalIndex);
+        formatPatternAddressParts(sourceOrAddress, sizeof(sourceOrAddress),
+                                  status.patternPage,
+                                  status.patternBank,
+                                  status.patternSlot);
     } else {
         std::snprintf(sourceOrAddress, sizeof(sourceOrAddress), "%s",
                       uiStatusSourceToken(status.source));
