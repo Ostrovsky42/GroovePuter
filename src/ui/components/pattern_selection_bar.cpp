@@ -3,9 +3,12 @@
 #include <cstdio>
 #include <utility>
 
+#include "../../audio/pattern_paging.h"
+#include "../../pattern/pattern_address.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
 #include "../ui_themes.h"
+#include "pattern_address_context.h"
 
 PatternSelectionBarComponent::PatternSelectionBarComponent(std::string label)
     : label_(std::move(label)) {}
@@ -90,15 +93,25 @@ void PatternSelectionBarComponent::draw(IGfx& gfx) {
 
   const auto& palette = getPalette(g_currentTheme);
 
-  gfx.setTextColor(palette.muted);
-  gfx.drawText(layout.bounds_x, layout.label_y, label_.c_str());
-  gfx.setTextColor(palette.ink);
-
-  bool songMode = state_.song_mode;
   int count = state_.pattern_count;
   if (count < 0) count = 0;
   int cursor = state_.cursor_index;
   int selected = state_.selected_index;
+  const int addressSlot = selected >= 0 ? selected : cursor;
+  char address[12];
+  formatPatternAddressParts(address, sizeof(address),
+                            PatternPagingService::activePageIndex(),
+                            PatternAddressUiContext::bankIndex(),
+                            addressSlot);
+  char heading[48];
+  std::snprintf(heading, sizeof(heading), "%s %s",
+                label_.c_str(), address);
+
+  gfx.setTextColor(palette.muted);
+  gfx.drawText(layout.bounds_x, layout.label_y, heading);
+  gfx.setTextColor(palette.ink);
+
+  bool songMode = state_.song_mode;
   bool showCursor = state_.show_cursor;
 
   for (int i = 0; i < count; ++i) {
@@ -116,18 +129,17 @@ void PatternSelectionBarComponent::draw(IGfx& gfx) {
       gfx.drawRect(cell_x - 1, cell_y - 1, layout.pattern_size + 2, layout.pattern_height + 2, border);
     }
     gfx.drawRect(cell_x, cell_y, layout.pattern_size, layout.pattern_height,
-                 songMode ? palette.ink : palette.ink);
+                 palette.ink);
     if (isCursor) {
       gfx.drawRect(cell_x - 2, cell_y - 2, layout.pattern_size + 4, layout.pattern_height + 4,
                    palette.led);
     }
     char label[12];
-    snprintf(label, sizeof(label), "%d", i + 1);
+    std::snprintf(label, sizeof(label), "%d", i + 1);
     int tw = textWidth(gfx, label);
     int tx = cell_x + (layout.pattern_size - tw) / 2;
     int ty = cell_y + layout.pattern_height / 2 - gfx.fontHeight() / 2;
-    gfx.setTextColor(songMode ? palette.ink : palette.ink); // Keep contrast
-    if (selected == i) gfx.setTextColor(palette.bg); // Invert text on selection
+    gfx.setTextColor(selected == i ? palette.bg : palette.ink);
     gfx.drawText(tx, ty, label);
     gfx.setTextColor(palette.ink);
   }
