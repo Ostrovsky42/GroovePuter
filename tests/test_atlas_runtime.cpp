@@ -1,4 +1,6 @@
 #include "../src/dsp/atlas_runtime.h"
+#include "../src/dsp/genre_sparse_repair.h"
+#include "../src/dsp/genre_variant_catalog.h"
 #include "../src/dsp/phrase_generator.h"
 
 #include <cassert>
@@ -12,6 +14,20 @@ int countSynthNotes(const SynthPattern& pattern) {
     if (pattern.steps[step].note >= 0) ++count;
   }
   return count;
+}
+
+bool synthPatternsEqual(const SynthPattern& lhs, const SynthPattern& rhs) {
+  for (int step = 0; step < SynthPattern::kSteps; ++step) {
+    const SynthStep& a = lhs.steps[step];
+    const SynthStep& b = rhs.steps[step];
+    if (a.note != b.note || a.slide != b.slide || a.accent != b.accent ||
+        a.ghost != b.ghost || a.velocity != b.velocity ||
+        a.timing != b.timing || a.fx != b.fx ||
+        a.fxParam != b.fxParam || a.probability != b.probability) {
+      return false;
+    }
+  }
+  return true;
 }
 
 int countDrumHits(const DrumPatternSet& pattern, int startStep = 0) {
@@ -81,6 +97,94 @@ void generateTestBase(PhraseGenerator::PhraseBar& bar) {
   for (int step = 0; step < DrumPattern::kSteps; step += 2) {
     bar.drums.voices[2].steps[step].hit = 1;
   }
+}
+
+void testGenreScopedVariants() {
+  assert(GenreVariantCatalog::variantCount(GenerativeMode::Acid) == 3);
+  assert(GenreVariantCatalog::recipeAt(GenerativeMode::Acid, 0) == 0);
+  assert(GenreVariantCatalog::recipeAt(GenerativeMode::Acid, 1) == 6);
+  assert(GenreVariantCatalog::recipeAt(GenerativeMode::Acid, 2) == 7);
+  assert(!GenreVariantCatalog::isAllowed(GenerativeMode::Acid, 8));
+
+  assert(GenreVariantCatalog::variantCount(GenerativeMode::Outrun) == 1);
+  assert(std::strcmp(
+      GenreVariantCatalog::genreDisplayName(GenerativeMode::Outrun),
+      "Synthwave") == 0);
+  assert(GenreVariantCatalog::isAllowed(GenerativeMode::Rave, 4));
+  assert(GenreVariantCatalog::isAllowed(GenerativeMode::Reggae, 5));
+  assert(GenreVariantCatalog::isAllowed(GenerativeMode::Reggae, 10));
+  assert(GenreVariantCatalog::isAllowed(GenerativeMode::Reggae, 11));
+  assert(GenreVariantCatalog::isAllowed(GenerativeMode::Broken, 8));
+  assert(GenreVariantCatalog::isAllowed(GenerativeMode::Broken, 9));
+  assert(std::strcmp(GenreVariantCatalog::recipeDisplayName(10),
+                     "Deep Stab") == 0);
+}
+
+void testAtlasMetadataAndPhrasePlans() {
+  AtlasRuntimeMetadata metadata{};
+  assert(AtlasRuntime::describeVariation(10, 0, metadata));
+  assert(std::strcmp(metadata.displayName, "Deep Stab") == 0);
+  assert(std::strcmp(metadata.slotId, "P1") == 0);
+  assert(std::strcmp(metadata.slotFunction, "BASE") == 0);
+  assert(metadata.bpm == 120);
+  assert(metadata.swingPercent == 54);
+  assert(!AtlasRuntime::describeVariation(10, 3, metadata));
+
+  assert(GenreVariantCatalog::variationForPhraseBar(1, 0) == 0);
+  assert(GenreVariantCatalog::variationForPhraseBar(2, 0) == 0);
+  assert(GenreVariantCatalog::variationForPhraseBar(2, 1) == 2);
+  const uint8_t fourBar[4] = {0, 0, 1, 2};
+  for (int bar = 0; bar < 4; ++bar) {
+    assert(GenreVariantCatalog::variationForPhraseBar(4, bar) ==
+           fourBar[bar]);
+  }
+  const uint8_t eightBar[8] = {0, 0, 1, 0, 1, 0, 1, 2};
+  for (int bar = 0; bar < 8; ++bar) {
+    assert(GenreVariantCatalog::variationForPhraseBar(8, bar) ==
+           eightBar[bar]);
+  }
+}
+
+void testSparseLeadRepair() {
+  SynthPattern tripHop{};
+  for (int step = 0; step < 8; ++step) {
+    tripHop.steps[step].note = static_cast<int8_t>(48 + step);
+    tripHop.steps[step].velocity = static_cast<uint8_t>(70 + step * 4);
+    tripHop.steps[step].probability = 100;
+  }
+  tripHop.steps[0].accent = true;
+  GenreSparseRepair::applySparseLeadContract(
+      GenerativeMode::TripHop, 0, 0, tripHop);
+  assert(countSynthNotes(tripHop) == 3);
+  const SynthPattern repaired = tripHop;
+  GenreSparseRepair::applySparseLeadContract(
+      GenerativeMode::TripHop, 0, 0, tripHop);
+  assert(synthPatternsEqual(repaired, tripHop));
+
+  SynthPattern acid = repaired;
+  acid.steps[3].note = 60;
+  const SynthPattern acidBefore = acid;
+  GenreSparseRepair::applySparseLeadContract(
+      GenerativeMode::Acid, 0, 0, acid);
+  assert(synthPatternsEqual(acidBefore, acid));
+
+  SynthPattern synthA{};
+  SynthPattern synthB{};
+  DrumPatternSet drums{};
+  assert(AtlasRuntime::applyRecipe(11, 2, synthA, synthB, drums, nullptr));
+  GenreSparseRepair::applySparseLeadContract(
+      GenerativeMode::Reggae, 11, 2, synthB);
+  assert(countSynthNotes(synthB) == 0);
+
+  assert(AtlasRuntime::applyRecipe(10, 0, synthA, synthB, drums, nullptr));
+  GenreSparseRepair::applySparseLeadContract(
+      GenerativeMode::Reggae, 10, 0, synthB);
+  assert(countSynthNotes(synthB) <= 3);
+
+  assert(AtlasRuntime::applyRecipe(10, 2, synthA, synthB, drums, nullptr));
+  GenreSparseRepair::applySparseLeadContract(
+      GenerativeMode::Reggae, 10, 2, synthB);
+  assert(countSynthNotes(synthB) <= 1);
 }
 
 void testPhrasePlanningAndCommit() {
@@ -232,6 +336,9 @@ int main() {
       250, 0, sentinelA, sentinelB, sentinelDrums, nullptr));
   assert(sentinelA.steps[0].note == 55);
 
+  testGenreScopedVariants();
+  testAtlasMetadataAndPhrasePlans();
+  testSparseLeadRepair();
   testPhrasePlanningAndCommit();
   testPhrasePreflightAndRollback();
   testPhraseAllocatorProtectsNonDefaultSteps();
