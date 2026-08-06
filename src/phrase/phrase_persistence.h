@@ -16,8 +16,40 @@ constexpr int kPersistLegacyValueCount =
 constexpr int kPersistArrangementHeaderValues = 1;
 constexpr int kPersistArrangementValues =
     kPersistArrangementHeaderValues + kArrangementCapacity;
-constexpr int kPersistValueCount =
+constexpr int kPersistCurrentValueCount =
     kPersistLegacyValueCount + kPersistArrangementValues;
+
+// Behaves as the current encoded size in loops, array bounds and range checks,
+// while exact payload validation accepts the pre-arranger Phrase Core layout.
+// This keeps existing recovery/project JSON loadable: omitted arrangement
+// values remain the empty state established by beginPersistentDecode().
+struct PersistValueCount {
+  int current;
+  int legacy;
+
+  constexpr operator int() const { return current; }
+};
+
+constexpr PersistValueCount kPersistValueCount{
+    kPersistCurrentValueCount,
+    kPersistLegacyValueCount,
+};
+
+constexpr bool operator==(int actual, PersistValueCount expected) {
+  return actual == expected.current || actual == expected.legacy;
+}
+
+constexpr bool operator!=(int actual, PersistValueCount expected) {
+  return !(actual == expected);
+}
+
+constexpr bool operator==(PersistValueCount expected, int actual) {
+  return actual == expected;
+}
+
+constexpr bool operator!=(PersistValueCount expected, int actual) {
+  return !(expected == actual);
+}
 
 inline int32_t persistentValueAt(const PhraseBank& bank, int flatIndex) {
   if (flatIndex == 0) return bank.version;
