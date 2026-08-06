@@ -1,0 +1,39 @@
+name: Phrase Core
+
+on:
+  push:
+    branches:
+      - agent/phrase-core-foundation
+    paths:
+      - 'src/phrase/**'
+      - 'tests/test_phrase_core.cpp'
+      - 'docs/stages/PHRASE_CORE_FOUNDATION.md'
+      - '.github/workflows/phrase-core.yml'
+  pull_request:
+    paths:
+      - 'src/phrase/**'
+      - 'tests/test_phrase_core.cpp'
+      - 'docs/stages/PHRASE_CORE_FOUNDATION.md'
+      - '.github/workflows/phrase-core.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  host-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Phrase Core host test
+        run: |
+          mkdir -p build/host-tests
+          g++ \
+            -std=c++17 \
+            -Wall \
+            -Wextra \
+            -Werror \
+            -I. \
+            tests/test_phrase_core.cpp \
+            -o build/host-tests/test_phrase_core
+      - name: Run Phrase Core host test
+        run: build/host-tests/test_phrase_core
