@@ -72,6 +72,7 @@ SOURCES := \
 	../src/ui/pages/drum_sequencer_page.cpp \
 	../src/ui/pages/drum_automation_page.cpp \
 	../src/ui/pages/song_page.cpp \
+	../src/ui/pages/phrase_page.cpp \
 	../src/ui/pages/project_page.cpp \
 	../src/ui/pages/mode_page.cpp \
 	../src/ui/pages/genre_page.cpp \

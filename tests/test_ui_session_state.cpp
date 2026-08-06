@@ -23,6 +23,7 @@ int main() {
     rememberWorkflowPage(state, SessionPages::kFeelTexture);
     rememberWorkflowPage(state, SessionPages::kSynthBParameters);
     rememberWorkflowPage(state, SessionPages::kGenerator);
+    rememberWorkflowPage(state, SessionPages::kPhrase);
 
     assert(rememberedWorkflowPage(state, SessionWorkflow::Perform) ==
            SessionPages::kPlayer);
@@ -32,6 +33,12 @@ int main() {
            SessionPages::kSynthBParameters);
     assert(rememberedWorkflowPage(state, SessionWorkflow::Settings) ==
            SessionPages::kGenerator);
+    assert(rememberedWorkflowPage(state, SessionWorkflow::Song) ==
+           SessionPages::kPhrase);
+
+    const int localSongWrap = workflowNavigationTarget(
+        state, SessionPages::kPhrase, 1, false);
+    assert(localSongWrap == SessionPages::kArrange);
 
     const int fromSettingsToPerform = workflowNavigationTarget(
         state, SessionPages::kGenerator, 1, true);

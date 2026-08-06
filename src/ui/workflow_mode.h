@@ -37,6 +37,7 @@ enum class Workspace : uint8_t {
 
     // SONG
     Arrange,
+    Phrase,
 
     // SETTINGS
     Project,
@@ -58,6 +59,7 @@ constexpr int kProject = 10;
 constexpr int kMode = 11;
 constexpr int kPerform = 12;
 constexpr int kPlayer = 13;
+constexpr int kPhrase = 14;
 
 inline bool isPerformWorkflowPage(int page) {
     return page == kPerform || page == kPlayer;
@@ -96,6 +98,7 @@ inline bool isWorkspacePage(int page) {
            isGenerateWorkflowPage(page) ||
            isHubWorkflowPage(page) ||
            page == kArrange ||
+           page == kPhrase ||
            isSettingsWorkflowPage(page);
 }
 
@@ -113,6 +116,7 @@ inline Workspace workspaceForPage(int page) {
         case kSynthAParameters: return Workspace::SynthAParameters;
         case kSynthBParameters: return Workspace::SynthBParameters;
         case kArrange: return Workspace::Arrange;
+        case kPhrase: return Workspace::Phrase;
         case kProject: return Workspace::Project;
         case kGenerator: return Workspace::Generator;
         default: return Workspace::Groove;
@@ -133,6 +137,7 @@ inline int pageForWorkspace(Workspace workspace) {
         case Workspace::SynthAParameters: return kSynthAParameters;
         case Workspace::SynthBParameters: return kSynthBParameters;
         case Workspace::Arrange: return kArrange;
+        case Workspace::Phrase: return kPhrase;
         case Workspace::Project: return kProject;
         case Workspace::Generator: return kGenerator;
     }
@@ -143,7 +148,7 @@ inline WorkflowMode modeForPage(int page) {
     if (isPerformWorkflowPage(page)) return WorkflowMode::Perform;
     if (isGenerateWorkflowPage(page)) return WorkflowMode::Generate;
     if (isHubWorkflowPage(page)) return WorkflowMode::Hub;
-    if (page == kArrange) return WorkflowMode::Song;
+    if (page == kArrange || page == kPhrase) return WorkflowMode::Song;
     return WorkflowMode::Settings;
 }
 
@@ -180,6 +185,7 @@ inline const char* pageName(int page) {
         case kSynthAParameters: return "SYNTH A SOUND";
         case kSynthBParameters: return "SYNTH B SOUND";
         case kArrange: return "SONG";
+        case kPhrase: return "PHRASE CORE";
         case kProject: return "PROJECT / SETUP";
         case kGenerator: return "ADV GENERATOR";
         default: return "PAGE";
@@ -191,7 +197,7 @@ inline int pageCountForMode(WorkflowMode mode) {
         case WorkflowMode::Perform: return 2;
         case WorkflowMode::Generate: return 3;
         case WorkflowMode::Hub: return 6;
-        case WorkflowMode::Song: return 1;
+        case WorkflowMode::Song: return 2;
         case WorkflowMode::Settings: return 2;
     }
     return 1;
@@ -208,6 +214,9 @@ inline int pageAt(WorkflowMode mode, int index) {
         kPattern, kSynthA, kSynthB, kDrums,
         kSynthAParameters, kSynthBParameters,
     };
+    static constexpr int kSongPages[] = {
+        kArrange, kPhrase,
+    };
     static constexpr int kSettingsPages[] = {
         kProject, kGenerator,
     };
@@ -220,7 +229,7 @@ inline int pageAt(WorkflowMode mode, int index) {
         case WorkflowMode::Perform: return kPerformPages[index];
         case WorkflowMode::Generate: return kGeneratePages[index];
         case WorkflowMode::Hub: return kHubPages[index];
-        case WorkflowMode::Song: return kArrange;
+        case WorkflowMode::Song: return kSongPages[index];
         case WorkflowMode::Settings: return kSettingsPages[index];
     }
     return kGenre;

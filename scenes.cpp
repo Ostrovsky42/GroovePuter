@@ -2,6 +2,7 @@
 #include "scenes.h"
 #include "src/debug_log.h"
 #include "src/audio/pattern_paging.h"
+#include "src/phrase/phrase_core.h"
 #ifdef ARDUINO
 #include <SD.h>
 #endif
@@ -99,6 +100,7 @@ void clearSceneData(Scene& scene) {
     clearSong(scene.songs[i]);
   }
   clearCustomPhrases(scene);
+  PhraseCore::reset(scene.phraseBank);
   for (auto& pad : scene.samplerPads) pad = SamplerPadState();
   for (float& volume : scene.trackVolumes) volume = 1.0f;
   scene.masterVolume = 0.6f;
@@ -747,6 +749,10 @@ void SceneJsonObserver::onArrayStart() {
         else if (lastKey_ == "synthBBanks") path = Path::SynthBBanks;
         else if (lastKey_ == "songs") path = Path::Songs;
         else if (lastKey_ == "samplerPads") path = Path::SamplerPads;
+        else if (lastKey_ == "phraseCore") {
+          path = Path::PhraseCore;
+          PhraseCore::beginPersistentDecode(target_.phraseBank);
+        }
         else if (lastKey_ == "customPhrases") path = Path::CustomPhrases;
         else if (lastKey_ == "synthPatternIndex") path = Path::SynthPatternIndex;
         else if (lastKey_ == "synthBankIndex") path = Path::SynthBankIndex;
@@ -798,6 +804,9 @@ void SceneJsonObserver::onArrayStart() {
 
 void SceneJsonObserver::onArrayEnd() {
   if (error_) return;
+  if (stackSize_ > 0 && stack_[stackSize_ - 1].path == Path::PhraseCore) {
+    PhraseCore::sanitize(target_.phraseBank);
+  }
   popContext();
 }
 
@@ -805,6 +814,14 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
   (void)isInteger;
   if (error_ || stackSize_ == 0) return;
   Path path = stack_[stackSize_ - 1].path;
+  if (path == Path::PhraseCore) {
+    const int index = stack_[stackSize_ - 1].index;
+    if (!PhraseCore::applyPersistentValue(
+            target_.phraseBank, index, static_cast<int32_t>(value))) {
+      error_ = true;
+    }
+    return;
+  }
   if (path == Path::Song) {
     if (lastKey_ == "length") {
       // Determine which song slot we are in
@@ -1520,6 +1537,7 @@ void SceneManager::loadDefaultScene() {
   currentPageIndex_ = 0;
   scene_->grooveFlavor = 0;
   scene_->activeSongSlot = 0;
+  PhraseCore::reset(scene_->phraseBank);
   for (int i = 0; i < 2; ++i) {
       clearSongData(scene_->songs[i]);
       scene_->songs[i].length = 1;
@@ -1729,6 +1747,7 @@ void SceneManager::wipeToZero() {
   currentPageIndex_ = 0;
   scene_->grooveFlavor = 0;
   scene_->activeSongSlot = 0;
+  PhraseCore::reset(scene_->phraseBank);
   for (int i = 0; i < 2; ++i) {
       clearSongData(scene_->songs[i]);
       scene_->songs[i].length = 1;
@@ -2291,6 +2310,11 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
       }
   }
   
+  ArduinoJson::JsonArray phraseCore = root["phraseCore"].to<ArduinoJson::JsonArray>();
+  for (int i = 0; i < PhraseCore::kPersistValueCount; ++i) {
+    phraseCore.add(PhraseCore::persistentValueAt(scene_->phraseBank, i));
+  }
+
   ArduinoJson::JsonArray customPhrases = root["customPhrases"].to<ArduinoJson::JsonArray>();
   for (int i = 0; i < Scene::kMaxCustomPhrases; ++i) {
     customPhrases.add(std::string(scene_->customPhrases[i]));
@@ -2421,6 +2445,26 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
 
   auto loaded = std::make_unique<Scene>();
   clearSceneData(*loaded);
+
+  ArduinoJson::JsonArrayConst phraseCoreValues =
+      obj["phraseCore"].as<ArduinoJson::JsonArrayConst>();
+  if (!phraseCoreValues.isNull()) {
+    if (static_cast<int>(phraseCoreValues.size()) !=
+        PhraseCore::kPersistValueCount) {
+      return false;
+    }
+    PhraseCore::beginPersistentDecode(loaded->phraseBank);
+    int phraseIndex = 0;
+    for (ArduinoJson::JsonVariantConst item : phraseCoreValues) {
+      if (!item.is<int>() ||
+          !PhraseCore::applyPersistentValue(
+              loaded->phraseBank, phraseIndex, item.as<int>())) {
+        return false;
+      }
+      ++phraseIndex;
+    }
+    PhraseCore::sanitize(loaded->phraseBank);
+  }
 
   if (!deserializeDrumBanks(drumBanksVal, loaded->drumBanks)) return false;
   if (!deserializeSynthBanks(synthABanksVal, loaded->synthABanks)) return false;

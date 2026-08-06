@@ -28,7 +28,7 @@ bool globalContains(const char* needle) {
 
 int main() {
     constexpr int kFirstPage = WorkflowPages::kGenre;
-    constexpr int kLastPage = WorkflowPages::kPlayer;
+    constexpr int kLastPage = WorkflowPages::kPhrase;
 
     for (int page = kFirstPage; page <= kLastPage; ++page) {
         const int pageLineCount = HelpContent::getPageLineCount(page);
@@ -59,6 +59,9 @@ int main() {
     assert(sectionContains(WorkflowPages::kArrange, "Assign existing pattern"));
     assert(sectionContains(WorkflowPages::kArrange, "Generate/materialize cell"));
     assert(sectionContains(WorkflowPages::kArrange, "Generate current row"));
+    assert(sectionContains(WorkflowPages::kPhrase, "Select Phrase A/B/C/D"));
+    assert(sectionContains(WorkflowPages::kPhrase, "Capture current Song row"));
+    assert(sectionContains(WorkflowPages::kPhrase, "Mutable pattern references"));
     assert(sectionContains(WorkflowPages::kPerform, "PERFORMANCE TOOLS"));
     assert(sectionContains(WorkflowPages::kPlayer, "Physical track mute"));
     assert(sectionContains(WorkflowPages::kPattern, "SEQUENCER HUB"));
