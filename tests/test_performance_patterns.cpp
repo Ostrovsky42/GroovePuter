@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "src/input/performance_keyboard.h"
@@ -143,25 +144,56 @@ int main() {
         f.keyboard.service(4000000u);
         assert(count(f.sink.events, MusicalEventType::NoteOn) == 0);
 
-        // The held note enters on the next project sixteenth, not immediately
-        // from an unrelated micros() phase.
-        timeline.publishBlock(11u, 512u, 4.01f, 120.0f, 22050.0f, true);
-        f.keyboard.service(4023000u);
+        // 3.25 -> 4.0 is 0.75 of a 125 ms sixteenth. The event is prepared
+        // ahead of the boundary and remains silent until that deadline.
+        f.keyboard.service(4093000u);
+        assert(count(f.sink.events, MusicalEventType::NoteOn) == 0);
+        f.keyboard.service(4093750u);
         assert(count(f.sink.events, MusicalEventType::NoteOn) == 1);
 
-        timeline.publishBlock(12u, 512u, 4.75f, 120.0f, 22050.0f, true);
-        f.keyboard.service(4060000u);
+        // A coherent later block at phase 4.55 prepares step 5 after half of
+        // step 4 has drained. Delaying service past the 12 ms NoteOn window
+        // drops the stale hit instead of producing a catch-up burst.
+        timeline.publishBlock(17u, 512u, 4.55f, 120.0f, 22050.0f, true);
+        f.keyboard.service(4162533u);
+        f.keyboard.service(4235000u);
         assert(count(f.sink.events, MusicalEventType::NoteOn) == 1);
-
-        // A delayed service call advances directly to the current project step.
-        // It must emit one live note rather than replaying steps 5, 6, 7 and 8.
-        timeline.publishBlock(13u, 512u, 8.01f, 120.0f, 22050.0f, true);
-        f.keyboard.service(4150000u);
-        assert(count(f.sink.events, MusicalEventType::NoteOn) == 2);
+        assert(count(f.sink.events, MusicalEventType::NoteOff) >= 1);
 
         assert(f.keyboard.keyUp('a'));
         f.keyboard.setTransportPlaying(false);
-        timeline.publishBlock(14u, 512u, 8.25f, 120.0f, 22050.0f, false);
+        timeline.publishBlock(18u, 512u, 4.75f, 120.0f, 22050.0f, false);
+    }
+
+    {
+        // Maximum-density chord memory previously required all 64 available
+        // scheduler slots for one x4-ratchet step. Any overlap then triggered
+        // stopGeneratedOutput(). The expanded bounded queue must start all
+        // eight notes at the predicted boundary without a panic/silence gap.
+        Fixture f;
+        f.keyboard.setScale(PerformanceScale::Chromatic);
+        for (char key : std::string("asdfghjk")) {
+            assert(f.keyboard.keyDown(key, 100));
+        }
+        assert(f.keyboard.captureChordMemory());
+        assert(f.keyboard.chordMemorySize() == 8);
+        f.keyboard.cycleRatchet(1);
+        f.keyboard.cycleRatchet(1);
+        f.keyboard.cycleRatchet(1);
+        assert(f.keyboard.ratchetCount() == 4);
+
+        auto& timeline = GroovePuterMidi::projectTransportTimeline();
+        timeline.resetPublisher();
+        timeline.publishBlock(30u, 512u, 3.25f, 120.0f, 22050.0f, true);
+        f.keyboard.setTransportPlaying(true);
+        f.sink.clear();
+        f.keyboard.service(5000000u);
+        assert(f.keyboard.keyDown('a', 100));
+        f.keyboard.service(5000000u);
+        assert(count(f.sink.events, MusicalEventType::NoteOn) == 0);
+        f.keyboard.service(5093750u);
+        assert(count(f.sink.events, MusicalEventType::NoteOn) == 8);
+        assert(count(f.sink.events, MusicalEventType::AllNotesOff) == 0);
     }
 
     return 0;
