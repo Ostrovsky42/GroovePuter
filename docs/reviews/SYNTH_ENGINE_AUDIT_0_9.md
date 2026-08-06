@@ -1,706 +1,597 @@
-# GroovePuter 0.9 — аудит синтезаторных движков
+# GroovePuter 0.9 — аудит синтезаторных движков, ревизия 2
 
-**Ветка аудита:** `audit/synth-engines-pre-0.9`  
-**База:** `dev`  
-**Статус:** ревью исходного кода завершено; измерения звука и аппаратная приёмка ещё не выполнены  
-**Целевая платформа:** M5Stack Cardputer ADV, mono, 22 050 Hz, block 512 samples
+**Ветка:** `audit/synth-engines-pre-0.9` (PR #106) · **база:** `dev` · **коммит-основа:** `9231226`
+**Платформа:** M5Stack Cardputer ADV, mono, `kSampleRate = 22050`, block 512, Nyquist 11 025 Hz
+**Диапазон нот движка:** `kMin303Note = 24 (C1)` … `kMax303Note = 71 (B4)`
+**Статус:** повторная сверка с исходниками выполнена. Измерения на железе — нет.
 
-## 1. Назначение документа
+Эта ревизия **не заменяет** v1, а исправляет её. Ниже помечено, что подтвердилось, что сформулировано неверно и что было пропущено. Всё, что заявлено как факт, проверено по коду ветки; всё, что требует уха или FFT, помечено как гипотеза.
 
-Документ фиксирует фактическое состояние всех синтезаторных движков GroovePuter перед релизом 0.9:
+---
 
-- как формируется звук;
-- какие параметры доступны пользователю;
-- что параметр реально меняет в DSP;
-- как обрабатываются velocity, accent, slide и release;
-- что сохраняется в Scene и восстанавливается после перезагрузки;
-- где возможны неверный строй, щелчки, шипение, почти полная тишина или неработающие органы управления;
-- что должен отдельно оценить музыкант-разработчик на слух.
+## 0. Что изменилось относительно v1
 
-Это **code audit**, а не акустическое заключение. Указанные звуковые риски должны быть подтверждены записанным выходом Cardputer ADV и анализом WAV/FFT перед закрытием релизных блокеров.
+### Подтверждено без изменений
 
-## 2. Актуальный список движков
+| v1 | Статус |
+|---|---|
+| P0-A — param 5 не сохраняется (SH101/SN/WM Decay) | Подтверждено. `applySceneStateFromManager` пишет ровно 5 слотов. |
+| P0-B — Scene load перезаписывает TB303 через `applyGenreTimbre()` | Подтверждено. |
+| P0-C — live NoteOff не снимает ноту вне C1..B4 | Подтверждено. `liveNoteOn` пишет clamped, `liveNoteOff` сравнивает raw. |
+| TB303 dead `Volume` | Подтверждено. `TB303ParamId::MainVolume` не читается нигде. |
+| TB303 double sub | Подтверждено (и хуже, чем описано — см. §4.1). |
+| TB303 heap alloc в audio path | Подтверждено. `updateFilterModel()` вызывается из `svfProcess()`. |
+| TB303 `kSampleRate` вместо instance rate | Подтверждено (латентно: сейчас значения совпадают). |
+| Genre `set303ParameterNormalized(Oscillator=4)` не работает | Подтверждено. |
+| SID: accent/slide игнорируются, нет release, Reso/BP misleading | Подтверждено. |
+| AY: неверный строй | Подтверждено, но цифры в v1 занижают масштаб — см. §4.3. |
+| SH101 — самая завершённая реализация | Подтверждено. |
+| WAVEMORPH: нет band-limiting, raw square sub, Digital→Sine wrap | Подтверждено. |
+| OPL2 → TB303 fallback | Подтверждено. |
 
-Пользовательский список содержит шесть движков:
+### Исправлено (v1 неточна или ошибочна)
 
-1. `TB303`
-2. `SID`
-3. `AY`
-4. `SH101`
-5. `SN76489`
-6. `WAVEMORPH`
+| # | v1 утверждает | Фактически |
+|---|---|---|
+| C-1 | AY: «выше ~1378 Hz ноты схлопываются» | 1378 Hz — это **потолок выхода**, а не порог. Схлопывание начинается на входе **918.75 Hz**, а внутри C1..B4 соседние полутона совпадают уже с **G#2**. От D#4 до G4 — **пять полутонов подряд дают одну и ту же частоту** 344.53 Hz. |
+| C-2 | SN76489: «верхние ноты могут схлопываться около Nyquist» | Неверное направление. Верхний зажим `increment ≤ 0.49` **недостижим** в C1..B4 (максимум ~0.034). Реальная проблема — **нижний**: divider зажат до 1023, минимальная частота чипа **109.35 Hz**, поэтому **весь диапазон C1..G#2 (21 нота из 48) звучит одной нотой**. |
+| C-3 | P0-D: «texture path устанавливает drive 0.1 и DST его не восстанавливает» | В `applyTextureFromScene_()` фикс **уже есть** (`perVoiceFallbackDrive = 8.0f`). Дефект остался в другом месте: `toggleDistortion303()` и `set303DistortionEnabled()` дёргают только `setEnabled()` и **не пересчитывают drive**. Симптом тот же, точка исправления другая. |
+| C-4 | TB303 P2: «комментарий обещает pulse ~30%, а используется square wavetable» | Неверно. `Wavetable::init()` строит `squareTable_` **именно с duty 30%**. Label и DSP согласованы. Настоящая проблема этой таблицы другая — постоянный DC −0.4 (см. §4.1, N-3). |
+| C-5 | §12: «SwappableSynthVoice делает ~10 ms crossfade при смене TYPE» | Только при `playing == true`. При остановленном транспорте `MiniAcid::setSynthEngine` идёт через `setState()` — **мгновенная подмена голоса без кроссфейда**. Смена TYPE в стопе — отдельный источник щелчка. |
 
-`OPL2/YM3812/FM` оставлен только как legacy-идентификатор и фактически заменяется на `TB303`. Он не является отдельным рабочим движком 0.9.
+### Новое (в v1 отсутствует)
 
-Основные файлы:
+| # | Находка | Приоритет |
+|---|---|---|
+| N-1 | У TB303 **вообще нет амплитудной огибающей**. `amp` константа; голос обрывается скачком, когда filter env падает ниже 1e-4. | **P0** |
+| N-2 | `applyGenreTimbre()` для recipe 6–11 **переписывает сам выбор движка**, а не только параметры. Выбор TYPE не переживает загрузку проекта. | **P0** |
+| N-3 | TB303 `Oscillator = pulse` даёт постоянный **DC −0.4**, проходящий через LP-фильтр и bass boost (×1.25) в per-voice DST и delay. У TB303 нет DC blocker. | **P1** |
+| N-4 | Дефолтный `SynthParameters{800, 0.6, 400, 420, 0}` для не-TB303 движка интерпретируется как normalized → clamp01 → `{1.0, 0.6, 1.0, 1.0, 0.0}`. Для AY/SH101/SN это **Noise = MAX**. Прямой источник «шипения». | **P1** |
+| N-5 | Страница `TB303 PARAMS` использует фиксированный шаг `kKnobStepCoarse = 5` без масштабирования по диапазону. Для SID Cutoff (0..12000, step 1) это **2400 нажатий** на полный ход. Именно это ощущается как «неработающий ползунок». | **P1** |
+| N-6 | SID `P-Width` на краях даёт duty 0.02 / 0.98 → **DC ±0.96** при отсутствии DC blocker в SID. Края слайдера = тишина + удар. | **P1** |
+| N-7 | Chamberlin SVF в TB303 работает далеко за пределами области устойчивости (`fc/fs` до ~0.22 при практическом пределе ~1/6). Кандидат в источники «свиста». | **P1**, требует FFT |
+| N-8 | TB303 velocity делится на **100**, все остальные движки — на **127**. Кросс-движковая нестыковка отклика. | **P2** |
+| N-9 | AY `Chorus = 0` **не убирает** третий канал (суб-октава, gain 0.45). Ручка не делает того, что обещает label. | **P2** |
+| N-10 | SN76489 `Stack = Oct` (дефолт) корректен только выше A4: ch2 (f/2) ломается ниже A3, ch3 (f/4) — ниже A4. | **P1** |
 
-- `src/dsp/swappable_synth_voice.{h,cpp}`
-- `src/dsp/mini_tb303.{h,cpp}`
-- `src/dsp/sid_synth_voice.{h,cpp}`
-- `src/dsp/sid_synth.{h,cpp}`
-- `src/dsp/ay_synth_voice.{h,cpp}`
-- `src/dsp/sh101_synth_voice.{h,cpp}`
-- `src/dsp/sn76489_synth_voice.{h,cpp}`
-- `src/dsp/wave_morph_synth_voice.{h,cpp}`
-- `src/ui/pages/tb303_params_page.cpp`
-- `src/dsp/miniacid_engine.cpp`
-- `scenes.{h,cpp}`
+---
 
-## 3. Шкала критичности
+## 1. Общий аудиотракт
 
-- **P0 — release blocker:** неверные ноты, потеря пользовательских параметров, зависшие ноты, почти полная тишина или опасная мутация сохранённого патча.
-- **P1 — исправить до 0.9 RC:** слышимый щелчок, сильная разница громкости, misleading control, aliasing/шипение на штатном диапазоне, операция в real-time потоке с риском dropout.
-- **P2 — допустимо только при явной документации:** ограничение модели, неоднозначное название, фиксированный внутренний параметр или упрощённая эмуляция.
-
-## 4. Общий аудиотракт
-
-### 4.1. Контракт платформы
-
-Cardputer ADV работает с:
-
-```text
-sample rate: 22 050 Hz
-block size:  512 samples
-Nyquist:     11 025 Hz
 ```
-
-Каждый синтезатор рендерится даже при остановленном transport, чтобы live keyboard и release-tail продолжали звучать.
-
-### 4.2. Путь сигнала одного синтезатора
-
-```text
 engine.process()
   × 0.5
-  → per-voice TubeDistortion
+  → per-voice TubeDistortion      ← DST
   → track volume
-  → per-voice TempoDelay
-  → sum Synth A + Synth B
-  → общий mix с drums/sampler/voice
-  × 0.65
-  → master LPF
-  → master DC blocker
-  → soft limiter
-  → master volume 0..1.8
-  → final soft limiter
-  → TPDF dither
-  → int16 mono
+  → per-voice TempoDelay          ← DLY
+  → Synth A + Synth B
+  → + drums / sampler / voice
+  × 0.65 → master LPF → master DC blocker → soft limiter
+  → master volume (0..1.8) → soft limiter → TPDF dither → int16
 ```
 
-Следствия:
+Ключевое следствие: **между движком и мастером нет нормализации громкости**. Внутренний потолок каждого движка попадает в микс как есть.
 
-- движки не имеют единого loudness contract до общего множителя `0.5`;
-- внутренний gain каждого движка напрямую определяет, будет ли он значительно тише или громче соседей;
-- даже при цифровой тишине в финальный сигнал добавляется примерно однобитный TPDF dither; нулевой WAV не ожидается, но шум не должен быть слышим на штатной громкости;
-- delay-tail продолжает звучать после mute, потому что в delay отправляется ноль, но его буфер продолжает обрабатываться;
-- release-tail продолжает звучать после Stop — это текущая ожидаемая семантика.
+### 1.1. Измеренные потолки (аналитически, до `×0.5`)
 
-### 4.3. Общие release blockers
+| Движок | Внутренний множитель | Пик после `×0.5` | Отн. SH101 |
+|---|---:|---:|---:|
+| SID | `0.25` | ~0.125 | −12 dB |
+| AY | `0.30` | ~0.150 | −10.5 dB |
+| TB303 | `amp = 0.3 × vel/100`, + makeup/bass boost | ~0.15 | −10.5 dB |
+| SN76489 | `0.48` | ~0.240 | −6.4 dB |
+| SH101 | `1.15`, затем clamp ±1 | ~0.500 | 0 dB |
+| WAVEMORPH | `1.20`, затем clamp ±1 | ~0.500 | 0 dB |
 
-#### P0-A. Шестой параметр не сохраняется
+Разброс около **12 dB**. Переключение TYPE при одинаковой velocity и track volume ощущается как скачок громкости. Цель 0.9 (из v1) — ±3 dB integrated RMS на нейтральном патче — остаётся правильной; сейчас она не выполняется примерно вчетверо.
 
-Scene codec сохраняет только пять generic-значений:
+### 1.2. DC blocker
 
-```text
-param 0 → cutoff
-param 1 → resonance
-param 2 → envAmount
-param 3 → envDecay
-param 4 → oscType (0..100)
+| Движок | Per-voice DC blocker | Источники DC |
+|---|---|---|
+| TB303 | **нет** | pulse-таблица (−0.4), lo-fi offset (+0.005·amt), noise offset (+0.01·amt) |
+| SID | **нет** | duty ≠ 0.5, на краях P-Width до ±0.96 |
+| AY | нет | нет систематического (симметричные square) |
+| SH101 | есть | — |
+| SN76489 | есть | — |
+| WAVEMORPH | есть | 25%-duty таблица `Pulse` |
+
+Мастер-DC-blocker стоит **после** per-voice DST и DLY. Поэтому DC у TB303/SID успевает: перекосить сатурацию дисторшна (асимметричный клип), съесть headroom и размазаться по delay-хвосту.
+
+---
+
+## 2. Persistence — полная картина
+
+### 2.1. Что реально сохраняется
+
+`Scene` хранит на голос: имя движка (`synthEngines[]`) и пять полей `SynthParameters{cutoff, resonance, envAmount, envDecay, oscType}`.
+
+**Для TB303** пишутся сырые значения (Hz, ms, индекс осциллятора).
+**Для остальных движков** те же поля используются как нормализованные `0..1` (`oscType = round(norm4 × 100)`).
+
+Round-trip параметров 0..4 работает симметрично. **Параметр 5 не сохраняется** — это и есть P0-A. Потери: SH101 Decay, SN76489 Decay, WAVEMORPH Decay.
+
+Также **не сохраняются** TB303 `FilterType` и `MainVolume`: `TB303Voice::parameterCount()` возвращает 4, а generic-запись обрабатывает только индексы 0..3.
+
+### 2.2. Скрытая мина: дефолты как normalized (N-4)
+
+Дефолт `SynthParameters` — `{800.0, 0.6, 400.0, 420.0, 0}`. Если движок не TB303, эти числа уходят в `clamp01()`:
+
+```
+param0 = clamp01(800)   = 1.00
+param1 = clamp01(0.6)   = 0.60
+param2 = clamp01(400)   = 1.00
+param3 = clamp01(420)   = 1.00
+param4 = 0/100          = 0.00
 ```
 
-`param 5` не записывается и не восстанавливается. В трёх движках это `Decay`:
+Что это означает по движкам:
 
-- SH101 — Decay;
-- SN76489 — Decay;
-- WAVEMORPH — Decay.
+| Движок | param0 | param2 | param3 | Слышимый результат |
+|---|---|---|---|---|
+| AY | Noise = **1.00** | Chorus = 1.00 | Env = **Hold** | Непрерывный шум, огибающая не спадает |
+| SH101 | Wave = Mix | Noise = **1.00** | Cutoff = 6500 | Шум на полной громкости через открытый фильтр |
+| SN76489 | Stack = Chord | Tone3 = 1.00 | Noise = **1.00** | Полный шум |
+| WAVEMORPH | Wave = Digital | Sub = 1.00 | Cutoff = 7000 | Максимально яркий алиасящий тембр |
+| SID | Cutoff = 12000 | P-Width = **4095** | F-Mode = LP | Duty 0.98 → тонкий сигнал + DC ≈ +0.24 |
 
-После save/reload пользователь может увидеть или услышать возврат Decay к дефолту.
+Срабатывает это в любом сценарии, где имя движка не TB303, а `synthParams` остались дефолтными или отсутствуют: сцена без блока `synthParams`, пресет/рецепт, ручная правка JSON, миграция со старого формата. Диагностика простая — **если при выборе AY/SH101/SN сразу слышен ровный шум, это N-4, а не дефект движка**.
 
-**Необходимое исправление:** versioned full generic state с `engineType + paramCount + normalized params[]`, миграция legacy `SynthParameters`, round-trip тест каждого движка.
+### 2.3. Выбор движка не переживает загрузку (N-2)
 
-#### P0-B. Загрузка Scene перезаписывает ручной TB303 patch
+`applySceneStateFromManager()` восстанавливает движки (~стр. 2790), затем вызывает `genreManager_.applyGenreTimbre()`. Первым делом эта функция делает:
 
-`MiniAcid::applySceneStateFromManager()` сначала восстанавливает сохранённые параметры, затем безусловно вызывает `GenreManager::applyGenreTimbre()`. Для каждого активного TB303 жанровый timbre заново записывает oscillator/cutoff/resonance/env/decay.
-
-Результат: сохранённый ручной TB303 patch может открыться с другим звуком. Остальные движки пропускаются, поэтому persistence ведёт себя по-разному в зависимости от TYPE.
-
-**Необходимое решение:** жанровый timbre применять только при явном Apply/Generate или хранить отдельный флаг владения параметрами. Load должен быть идемпотентным.
-
-#### P0-C. Live NoteOff может не снять зажатую ноту
-
-Live NoteOn ограничивает MIDI note диапазоном C1..B4 и запоминает ограниченное значение. Live NoteOff сравнивает его с исходным неограниченным MIDI note.
-
-Пример:
-
-```text
-NoteOn 84 → внутри звучит 71
-NoteOff 84 → 84 != 71 → release не вызывается
+```cpp
+if (atlasAcidRecipe)        { setSynthEngine(0,"TB303"); setSynthEngine(1,"TB303"); }
+else if (atlasHybridRecipe) { setSynthEngine(0,"TB303"); setSynthEngine(1,"OPL2");  }
 ```
 
-**Необходимое исправление:** одинаковая нормализация note identity в NoteOn и NoteOff либо хранение исходного MIDI note отдельно от частоты DSP.
+`recipe 6..7` и `recipe 8..11` — то есть при активном Atlas-рецепте **сохранённый выбор TYPE молча заменяется на TB303** для обоих голосов (`OPL2` дополнительно нормализуется в TB303). Пользователь сохранил Synth B = SH101, после перезагрузки получил TB303.
 
-#### P0-D. DST может сделать голос почти неслышным
+Для не-TB303 движков параметры при этом не портятся: `applyGenreTimbre` корректно делает `continue`, если имя движка не `"TB303"`. Проблема именно в подмене самого движка.
 
-Когда FEEL Drive выключен и per-voice DST выключен, `applyTextureFromScene_()` может установить drive процессора в `0.1`. Последующее нажатие `DST` только включает процессор и не восстанавливает рабочее значение drive.
+### 2.4. TB303-патч мутирует при загрузке (P0-B)
 
-При `mix=1` вход сначала умножается на `0.1`, поэтому вместо перегруза получается приблизительно десятикратное ослабление.
+Порядок в `applySceneStateFromManager`: восстановить параметры → `applyGenreTimbre()` → снова записать `Oscillator/Cutoff/Reso/Env/Decay` из жанрового профиля. Для TB303 ручной патч после reboot звучит иначе. Для остальных движков перезапись пропускается — persistence ведёт себя по-разному в зависимости от TYPE, что само по себе непредсказуемо для пользователя.
 
-**Необходимое исправление:** единая функция `setVoiceDistortionEnabled()` должна атомарно устанавливать enable, drive и mix. Нужен тест bypass/on loudness.
+---
 
-#### P0-E. AY имеет неверный строй на штатной частоте дискретизации
+## 3. Live keyboard и жизненный цикл ноты
 
-AY-код вычисляет chip period через `sampleRate / (16 × frequency)`. Sample rate ошибочно используется как master clock PSG.
+```cpp
+liveNoteOn(idx, midiNote, vel):
+    if (playing) return;                       // live-клавиатура молчит на воспроизведении
+    note = clamp303Note(midiNote);             // 24..71
+    startNote(noteToFreq(note), false, false, vel);
+    liveNotes_[idx] = note;                    // сохранён CLAMPED
 
-На Cardputer ADV 22 050 Hz:
-
-```text
-запрошено 110 Hz → примерно 106.01 Hz  (-64 cents)
-запрошено 220 Hz → примерно 229.69 Hz  (+75 cents)
-запрошено 440 Hz → примерно 459.38 Hz  (+75 cents)
-запрошено 880 Hz → примерно 689.06 Hz  (-423 cents)
-выше ~1378 Hz   → все ноты схлопываются в одну частоту
+liveNoteOff(idx, midiNote):
+    if (liveNotes_[idx] != midiNote) return;   // сравнение с RAW
+    release();
 ```
 
-Это прямой release blocker «кривые ноты».
+`NoteOn 84 → звучит 71 → NoteOff 84 → 84 ≠ 71 → release не вызывается.`
 
-**Необходимое исправление:** использовать отдельный AY/YM chip clock и корректный period, затем переводить chip output в host sample rate; либо отказаться от chip-period квантования и честно назвать движок AY-inspired.
+Последствия зависят от движка:
 
-## 5. UI и параметры
+- **SH101** — держит sustain 0.62 бесконечно;
+- **WAVEMORPH** — держит sustain 0.60 бесконечно;
+- **TB303** — держит константный `amp` бесконечно (см. N-1);
+- **SID** — держит бесконечно;
+- **AY** в режиме `Hold` — держит бесконечно; в остальных режимах затухает;
+- **SN76489** — затухает по своему one-shot decay.
 
-Страница `SYNTH A/B PARAMS` имеет две вкладки.
+То есть на четырёх движках из шести это буквально зависшая нота до перезапуска или `allLiveNotesOff()`.
 
-### MAIN
+Дополнительно: `liveNoteOn` игнорирует accent и slide (передаёт `false, false`) — live-клавиатура принципиально не может сыграть акцент.
 
-Четыре ручки всегда соответствуют generic параметрам `0..3`. Подписи и значения берутся из текущего движка, поэтому одинаковое физическое место имеет разный смысл.
+---
 
-### MORE
+## 4. Движки
 
-- `TYPE` — выбор движка;
-- для TB303: отдельные `OSC` и `FLT`;
-- для остальных: generic параметры `4` и `5`, если они существуют;
-- `DST` и `DLY` — общие post-engine эффекты для всех движков.
+### 4.1. TB303
 
-### Найденная несостыковка TB303 normalized API
+**Звукоизвлечение.** Wavetable-осциллятор (1024 точки, 10.22 fixed-point фаза) → опциональный sub-слой → выбираемый профиль фильтра поверх одного из трёх ядер (Chamberlin SVF / Diode / Ladder) → pre-saturation или квантование по профилю → makeup + soft-limit → per-profile post-LPF → lo-fi → noise → bass boost (+2 dB low shelf, всегда включён) → `× amp`.
 
-`MiniAcid::set303ParameterNormalized()` передаёт `TB303ParamId` через generic интерфейс. Generic TB303 реализует только индексы 0..3. Поэтому normalized запись `Oscillator` с ID 4 и `FilterType` с ID 5 не выполняется.
+**Параметры.**
 
-Практический эффект: ручное переключение OSC/FLT через специальный TB303 API работает, но жанровый вызов `set303ParameterNormalized(Oscillator, ...)` выглядит рабочим только в исходнике и не меняет осциллятор.
+| # | Параметр | Диапазон | Default | Что делает | Сохраняется |
+|---:|---|---|---:|---|---|
+| 0 | Cutoff | 60..2500 Hz | 800 | база фильтра | да |
+| 1 | Reso | 0..0.85 | 0 | feedback ядра | да |
+| 2 | Env | 0..2000 Hz | 400 | глубина filter env | да |
+| 3 | Decay | 20..2200 ms | 420 | спад filter env **и фактическая длина ноты** | да |
+| — | Oscillator | saw/sqr/super/pulse/sub | saw | форма | да (через `oscType`) |
+| — | Filter | lp1/acid/moog/warm/soft/retro/drive | lp1 | ядро + окраска | **нет** |
+| — | Volume | 0..1 | 0.8 | **ничего** | нет |
 
-## 6. TB303
+`parameterCount() == 4`. Generic-интерфейс физически не может достать Filter и Volume.
 
-### 6.1. Архитектура звука
+**Артикуляция.** velocity → `amp = 0.3 × vel/100` (N-8: делитель 100, не 127; vel > 100 разгоняет amp выше номинала). accent → `env = 2.0` вместо 1.0, то есть влияет **только на фильтр**, не на громкость. slide → `freq += (target − freq) × 0.001` на сэмпл (зависит от sample rate). release → закрывает gate.
 
-- wavetable oscillator;
-- selectable oscillator mode;
-- optional mode-controlled sub oscillator;
-- selectable filter profile поверх Chamberlin/Diode/Ladder core;
-- filter envelope;
-- optional lo-fi quantization/noise/DC coloration;
-- bass boost;
-- per-voice distortion и tempo delay после движка.
+**Дефекты.**
 
-### 6.2. Параметры
+**N-1 (P0) — нет VCA.** `amp` устанавливается в `startNote` и больше не меняется. Выход — `bassBoost(fastSaturate(filtered × makeup)) × amp`. Огибающая `env` модулирует **только cutoff**. Голос замолкает по условию:
 
-| Параметр | Диапазон | Default | Реальное действие |
-|---|---:|---:|---|
-| Cutoff | 60..2500 Hz | 800 | базовая частота фильтра |
-| Reso | 0..0.85 | 0 | resonance/feedback фильтра |
-| Env | 0..2000 Hz | 400 | глубина filter envelope |
-| Decay | 20..2200 ms | 420 | спад filter envelope |
-| Oscillator | saw/sqr/super/pulse/sub | saw | форма/слой oscillator |
-| Filter | lp1/acid/moog/warm/soft/retro/drive | lp1 | core и coloration profile |
-| Volume | 0..1 | 0.8 | **не используется в `process()`** |
-
-### 6.3. Articulation
-
-- velocity влияет на amp;
-- accent повышает amp и filter envelope;
-- slide сохраняет фазу и плавно меняет частоту;
-- release закрывает gate, но хвост определяется filter envelope.
-
-### 6.4. Риски
-
-#### P0/P1. Dead Volume
-
-`MainVolume` создаётся как Parameter, но не входит в generic `parameterCount`, не показан в UI и не участвует в выходном gain.
-
-Решение: удалить параметр как ложный контракт либо реально подключить и сохранить.
-
-#### P1. Sub подмешивается дважды
-
-При `subEnabled_` sub добавляется в `oscillatorSample()`, а затем второй раз в `process()`. Один `subPhase_` продвигается в двух местах. Возможны неожиданный уровень баса, изменение строя фазы и щелчок при переключении режима.
-
-#### P1. Phase increment привязан к глобальному `kSampleRate`
-
-Несколько oscillator-функций используют `kSampleRate`, а не фактический `sampleRate` голоса. На текущем Cardputer они совпадают, но любое изменение sample rate или desktop-конфигурации меняет высоту тона.
-
-#### P1. Heap allocation в audio path
-
-Смена filter type вызывает создание нового filter object через `std::make_unique`; проверка выполняется из per-sample filter path. Первый sample после изменения типа может выполнить allocation в real-time потоке и вызвать dropout.
-
-#### P1. Genre oscillator write не работает
-
-Genre timbre пытается записать Oscillator через normalized generic index 4, который TB303 игнорирует.
-
-#### P2. Pulse label/реализация
-
-Комментарий заявляет pulse около 30%, но используется square wavetable. Требуется проверить фактическую duty table и либо исправить DSP, либо название.
-
-### 6.5. Музыкальная проверка
-
-- C1/C2/C3/B4 на всех oscillator modes;
-- slide C2→G2→C3 без повторного attack;
-- accent на одинаковой velocity;
-- sub OFF/ON с анализом RMS и основной частоты;
-- каждый filter profile при resonance 0/50/100%;
-- переключение filter во время удерживаемой ноты — отсутствие dropout;
-- saved patch до/после reboot должен быть идентичен.
-
-## 7. SID
-
-### 7.1. Архитектура звука
-
-Текущая реализация — упрощённый pulse oscillator с one-pole filter. Исходник прямо фиксирует, что это не полноценная SID-модель.
-
-### 7.2. Параметры
-
-| Параметр | Диапазон | Default | Реальное действие |
-|---|---:|---:|---|
-| Cutoff | 0..12000 Hz | 4000 | cutoff one-pole filter |
-| Reso | 0..255 | 0 | меняет alpha, но не создаёт настоящий resonance peak |
-| P-Width | 0..4095 | 2048 | pulse duty; DSP зажимает минимум до 64 |
-| F-Mode | LP/BP/HP/OFF | LP | упрощённый выбор output |
-
-### 7.3. Articulation
-
-- частота обратно округляется до ближайшего MIDI note;
-- accent игнорируется;
-- slide игнорируется;
-- NoteOn сбрасывает phase в 0;
-- NoteOff немедленно выключает voice без release envelope.
-
-### 7.4. Риски
-
-#### P1. Щелчки
-
-Жёсткий phase reset при NoteOn и моментальный zero при NoteOff могут давать discontinuity.
-
-#### P1. Misleading Reso/BP
-
-`Reso` не является резонансом в обычном музыкальном смысле. BP вычисляется как приближённая смесь, а не настоящий band-pass.
-
-#### P1. Разница громкости
-
-SID core дополнительно умножает output на `0.25`, после чего общий mixer ещё на `0.5`. Он может быть заметно тише SH101/WAVEMORPH.
-
-#### P1. Верхняя часть Cutoff недоступна физически
-
-При 22 050 Hz Nyquist равен 11 025 Hz, а slider идёт до 12 000 Hz. DSP зажимает значение, поэтому верхняя часть движения не меняет cutoff.
-
-#### P2. Mode и LoFi no-op
-
-`setMode()` и `setLoFiAmount()` ничего не делают. Это допустимо только при явной документации.
-
-#### P2. Velocity 0 всё равно звучит
-
-Минимальный amp зажат до 0.05.
-
-### 7.5. Решение по позиционированию
-
-До 0.9 выбрать одно:
-
-1. назвать движок `SID-LITE`/`SID PULSE`, честно описать ограничения;
-2. либо реализовать envelope, корректные filter modes, accent и slide.
-
-## 8. AY
-
-### 8.1. Архитектура звука
-
-- три square tone channels;
-- ratios: root, detuned voice и sub-like voice;
-- 17-bit LFSR noise;
-- 4-bit amplitude quantization;
-- anti-click amplitude slew;
-- четыре envelope modes.
-
-### 8.2. Параметры
-
-| Параметр | Диапазон | Default | Реальное действие |
-|---|---:|---:|---|
-| Noise | 0..1 | 0.10 | одновременно noise mix и noise clock rate |
-| Decay | 20..1500 ms | 220 | envelope decay |
-| Chorus | 0..1 | 0.20 | detune tone B/C |
-| Env | Hold/Decay/Pluck/Gate | Decay | форма envelope |
-
-### 8.3. Articulation
-
-- accent игнорируется;
-- slide не выполняет portamento, а только не сбрасывает `ampSlew`;
-- velocity влияет на gain;
-- release закрывает gate и даёт decay-tail.
-
-### 8.4. Риски
-
-#### P0. Неверный строй
-
-См. общий blocker P0-E.
-
-#### P1. Сильный aliasing
-
-Все tone channels — raw square без PolyBLEP или band-limited tables. На B4 и при chorus возможен отчётливый цифровой свист/шипение.
-
-#### P1. Noise управляет двумя независимыми величинами
-
-Один slider одновременно увеличивает mix и поднимает noise clock. Музыкант не может отдельно выбрать тембр и количество шума.
-
-#### P2. Gate не является sustain
-
-В режиме `Gate` envelope во время удержания медленно затухает примерно с четырёхсекундным коэффициентом. Название может вводить в заблуждение.
-
-## 9. SH101
-
-### 9.1. Архитектура звука
-
-- PolyBLEP saw/pulse;
-- selectable Saw/Pulse/Mix;
-- sub oscillator;
-- noise;
-- attack/decay/sustain/release amp envelope;
-- filter envelope;
-- two-stage resonant low-pass approximation;
-- saturation и DC blocker.
-
-### 9.2. Параметры
-
-| Параметр | Диапазон | Default | Реальное действие |
-|---|---:|---:|---|
-| Wave | Saw/Pulse/Mix | Mix | основная форма |
-| Sub | 0..1 | 0.35 | sub mix |
-| Noise | 0..1 | 0 | noise mix |
-| Cutoff | 80..6500 Hz | 1800 | base filter cutoff |
-| Reso | 0..0.92 | 0.30 | filter feedback |
-| Decay | 30..2400 ms | 420 | одновременно amp и filter decay |
-
-### 9.3. Articulation
-
-- accent повышает gain и filter envelope;
-- slide — реальный legato portamento;
-- первый note со slide всё равно запускает envelope;
-- release около 70 ms фиксирован;
-- sustain фиксирован около 0.62.
-
-### 9.4. Оценка
-
-Это наиболее завершённый subtractive engine текущей группы.
-
-### 9.5. Риски
-
-- **P0 persistence:** параметр 5 Decay теряется после reload;
-- **P1:** slide coefficient задан per-sample и меняет фактическое время glide при другом sample rate;
-- **P2:** Decay управляет сразу двумя envelopes, что не видно из label;
-- **P2:** pulse width, attack, release и filter-env amount фиксированы.
-
-## 10. SN76489
-
-### 10.1. Архитектура звука
-
-- три PolyBLEP square channels;
-- частоты квантованы через clock 3 579 545 Hz и 10-bit divider;
-- selectable stack ratios;
-- white/periodic LFSR noise;
-- 4-bit envelope amplitude;
-- anti-click slew и DC blocker.
-
-### 10.2. Параметры
-
-| Параметр | Диапазон | Default | Реальное действие |
-|---|---:|---:|---|
-| Stack | Uni/Oct/Fifth/Chord | Oct | ratios трёх tone channels |
-| Tone2 | 0..1 | 0.65 | level channel 2 |
-| Tone3 | 0..1 | 0.45 | level channel 3 |
-| Noise | 0..1 | 0 | noise mix |
-| NMode | W/P × Hi/Mid/Low/T3 | W-Mid | тип и clock noise |
-| Decay | 20..2000 ms | 260 | one-shot envelope |
-
-### 10.3. Articulation
-
-- accent повышает gain;
-- slide плавно двигает target, hardware-divider retune выполняется раз в 16 samples;
-- envelope затухает даже при удерживаемом gate;
-- release использует фиксированный быстрый coefficient.
-
-### 10.4. Риски
-
-- **P0 persistence:** параметр 5 Decay теряется после reload;
-- **P1:** если квантованная tone frequency превышает безопасный диапазон, phase increment зажимается до 0.49. Верхние ноты могут схлопываться/перестраиваться около Nyquist;
-- **P1:** slide time sample-rate dependent;
-- **P2:** `Uni` фактически использует небольшой detune 1.003/0.997;
-- **P2:** `Oct` означает root + octave down + two octaves down, а не octave up;
-- **P2:** one-shot envelope должен быть явно указан в UI/manual.
-
-## 11. WAVEMORPH
-
-### 11.1. Архитектура звука
-
-- восемь таблиц по 128 samples;
-- линейная интерполяция внутри таблицы;
-- morph между выбранной таблицей и следующей;
-- raw square sub oscillator;
-- two-stage low-pass с feedback;
-- ADSR-like amp behavior с фиксированным attack/sustain/release;
-- DC blocker.
-
-### 11.2. Параметры
-
-| Параметр | Диапазон | Default | Реальное действие |
-|---|---:|---:|---|
-| Wave | Sine/Tri/Saw/Pulse/Organ/Vowel/Metal/Digital | Saw | начальная wavetable |
-| Morph | 0..1 | 0.15 | crossfade в следующую таблицу |
-| Sub | 0..1 | 0.20 | raw square sub mix |
-| Cutoff | 80..7000 Hz | 2400 | static filter cutoff |
-| Reso | 0..0.90 | 0.18 | feedback |
-| Decay | 30..2400 ms | 520 | amp decay к sustain |
-
-`Digital + Morph` циклически переходит обратно к `Sine`; это должно быть описано пользователю.
-
-### 11.3. Риски
-
-- **P0 persistence:** параметр 5 Decay теряется после reload;
-- **P1:** таблицы не имеют mip levels/band-limited variants. Saw/Pulse/Metal/Digital дают aliasing на верхних нотах;
-- **P1:** raw square sub тоже не band-limited;
-- **P1:** slide time sample-rate dependent;
-- **P2:** filter envelope отсутствует; Cutoff статический;
-- **P2:** attack, sustain и release не настраиваются.
-
-## 12. Смена движка
-
-`SwappableSynthVoice` выполняет примерно 10 ms equal-power crossfade и повторно запускает текущую ноту на новом движке.
-
-Положительное:
-
-- уменьшает щелчок при смене TYPE;
-- сохраняет звучание удерживаемой ноты во время перехода.
-
-Риски:
-
-- параметры между разными движками семантически не преобразуются — новый движок стартует с defaults;
-- generic invalid index возвращает param 0 у большинства движков, что может скрыть UI bug;
-- OPL2 silently превращается в TB303;
-- Atlas hybrid recipes по-прежнему просят `OPL2`, поэтому фактический Synth B становится TB303, а комментарии/ожидания говорят о chord-root FM voice.
-
-## 13. Громкость и headroom
-
-До общего mixer gain движки имеют разные внутренние ceilings:
-
-- SID дополнительно ×0.25;
-- AY target amp около ×0.30;
-- SN76489 target amp около ×0.48;
-- SH101 имеет выходной коэффициент ×1.15;
-- WAVEMORPH ×1.20;
-- TB303 использует собственный amp/filter/makeup path.
-
-После этого все получают одинаковый ×0.5. Поэтому одинаковая velocity и track volume не гарантируют близкую perceived loudness.
-
-**Цель 0.9:** при neutral patch, A3, velocity 100, FX OFF разница integrated RMS между движками не более ±3 dB; peak не выше -3 dBFS до master limiter.
-
-## 14. Обязательные автоматические тесты
-
-Существующий `tests/test_new_synth_voices.cpp` покрывает только SH101 и SN76489 и проверяет в основном finite output, peak и release-tail. Не покрыты TB303, SID, AY и WAVEMORPH.
-
-Нужно добавить:
-
-1. **Pitch test** для каждого движка:
-   - A2/A3/A4;
-   - оценка fundamental frequency;
-   - допуск ±5 cents для tonal modes;
-   - отдельный ожидаемый hardware-divider допуск для PSG.
-2. **Silence/release test:**
-   - FX OFF;
-   - после release RMS ниже -70 dBFS за установленное время;
-   - отсутствие NaN/Inf.
-3. **Click test:**
-   - максимальный sample delta на NoteOn/NoteOff;
-   - отдельный threshold для chip engines.
-4. **Parameter activity test:**
-   - изменение каждого slider должно статистически менять output;
-   - option endpoints должны давать различимые состояния;
-   - TB303 Volume либо участвует, либо удалён.
-5. **Persistence matrix:**
-   - уникальные значения всех параметров каждого движка;
-   - dump/load;
-   - engine + param count + все normalized values идентичны.
-6. **Scene-load idempotence:**
-   - load → dump → load не меняет TB303 patch;
-   - жанр не перезаписывает ручные параметры без явной команды.
-7. **Live note identity:**
-   - NoteOn/Off ниже C1, внутри диапазона и выше B4;
-   - после NoteOff active voice обязан завершиться.
-8. **Distortion bypass/on:**
-   - DST OFF ≈ unity;
-   - DST ON не должен давать падение RMS более 3 dB при neutral drive;
-   - finite output на drive max.
-9. **Engine switch:**
-   - no allocation failure;
-   - bounded sample discontinuity;
-   - корректный engine name после legacy OPL2 fallback.
-10. **Aliasing metric:**
-   - верхняя штатная нота B4;
-   - энергия вне ожидаемых harmonic bins;
-   - отдельные baseline для chip и wavetable engines.
-
-## 15. Аппаратный протокол для музыканта
-
-### 15.1. Подготовка
-
-- Cardputer ADV;
-- наушники и линейная запись выхода;
-- FX: DST OFF, DLY OFF, Tape OFF, LoFi OFF;
-- master volume фиксирован;
-- track volume Synth A/B = 100%;
-- один и тот же mono MIDI source;
-- тестировать Synth A и Synth B отдельно.
-
-### 15.2. Набор нот
-
-Для каждого движка записать:
-
-```text
-C1  32.70 Hz
-A1  55.00 Hz
-A2 110.00 Hz
-A3 220.00 Hz
-A4 440.00 Hz
-B4 493.88 Hz
+```cpp
+if (!gate && env < 0.0001f) return 0.0f;
 ```
 
-Каждая нота:
+То есть после NoteOff звук идёт на **полной громкости** ещё `~2 × Decay` (env падает от 1.0 до 0.01 за `decaySamples`, до 1e-4 — вдвое дольше), а затем обрывается **мгновенным скачком в ноль**. При Decay = 420 ms обрыв наступает примерно через 840 ms после старта ноты, независимо от того, когда отпущена клавиша. Если env уже упал ниже порога, NoteOff даёт разрыв немедленно.
 
-- velocity 64 и 100;
-- 2 seconds hold;
-- 2 seconds release/silence;
-- отдельно accent и slide.
+Это, вероятно, главный источник щелчков во всём проекте и одновременно объяснение, почему `Decay` на TB303 ведёт себя «не как decay»: он задаёт длину ноты.
 
-### 15.3. Что оценивать
+**N-3 (P1) — DC на pulse.** `oscPulse()` читает `squareTable_`, построенную с duty 30%. Среднее значение таблицы = `0.3 − 0.7 = −0.4`. Chamberlin SVF возвращает `_lp` и пропускает DC с единичным усилением; bass boost умножает низ на 1.25. На выходе движка получается стабильное смещение ≈ `−0.5 × amp`, которое уходит в DST и DLY до мастер-DC-blocker'а. `oscSub()` даёт то же в меньшем масштабе (−0.12 до amp).
 
-По шкале 0..5:
+**Double sub (P1, уточнение v1).** При `subEnabled_` суб подмешивается дважды, но важнее другое: `subPhase_` **инкрементируется дважды за сэмпл** — один раз в `oscillatorSample()`, второй в `process()`. Итоговая частота суб-осциллятора — `freq × 0.5 × 2 = freq`, то есть **суб играет в унисон, а не октавой ниже**. Исключение — `Oscillator = sub` (индекс 4), где ветка в `oscillatorSample()` пропускается по условию `oscIdx != 4` и суб играет корректно.
 
-- точность высоты;
-- стабильность высоты;
-- щелчок NoteOn;
-- щелчок NoteOff;
-- шум/свист на sustain;
-- aliasing на A4/B4;
-- музыкальность low register;
-- response каждого параметра;
-- равномерность slider;
-- громкость относительно остальных движков;
-- пригодность для bass/lead/arp/chord-like роли.
+**N-7 (P1, требует проверки) — Chamberlin вне области устойчивости.** `f = 2·sin(π·fc/fs)`. Практический предел топологии — `fc < fs/6 ≈ 3675 Hz` при 22050. Реально достижимый `cutoffHz` = `2500 + 2000 = 4500`, ×1.08 для профиля `acid` → ~4860 Hz → `f ≈ 1.28`. Фильтр в этой зоне расстроен вверх и склонен к звону; спасают только `fastSaturate(_bp × 1.3)` и жёсткий clamp состояний ±50, но это нелинейный визг, а не фильтрация. Комментарий в коде обещает потолок 8000 Hz «для защиты от fold-back» — для этой топологии он завышен более чем вдвое.
 
-### 15.4. Проверка каждого slider
+**Heap в audio path (P1).** `svfProcess()` → `updateFilterModel()` → при смене типа `std::make_unique<...>` прямо в реальном времени. Вызовы из UI обёрнуты в `withAudioGuard`, но сама аллокация происходит на первом сэмпле после изменения.
 
-Для каждого параметра записать три состояния:
+**Прочее.** `oscSaw/oscPulse/oscSub/oscSuperSaw` считают инкремент от глобальной `kSampleRate`, а не от `sampleRate` экземпляра — сейчас совпадают, при смене SR или на desktop-сборке даст сдвиг строя. `slide` не проверяет, звучит ли голос, поэтому первая нота фразы со slide глиссандирует от предыдущей/дефолтной частоты.
 
-```text
-MIN → CENTER → MAX
+---
+
+### 4.2. SID
+
+**Звукоизвлечение.** Один pulse-осциллятор с переменным duty → однополюсный LP → выбор одного из четырёх выходов. В исходнике явно написано, что это заглушка, а не модель SID.
+
+**Параметры.**
+
+| # | Параметр | Диапазон | Default | Что делает |
+|---:|---|---|---:|---|
+| 0 | Cutoff | 0..12000 Hz | 4000 | `alpha` однополюсного LP |
+| 1 | Reso | 0..255 | 0 | **понижает** alpha; резонансного пика нет |
+| 2 | P-Width | 0..4095 | 2048 | duty, зажат в 0.02..0.98 |
+| 3 | F-Mode | LP / BP / HP / OFF | LP | выбор выхода |
+
+`alpha = cutoffNorm × (0.20 + (1 − resNorm) × 0.80)`. То есть `Reso` — это второй, инвертированный регулятор частоты среза. Label врёт.
+`BP = (osc + hp) × 0.5 = osc − 0.5·lp` — это не полосовой фильтр, а высокочастотная полка.
+`OFF` отдаёт сырой ±1 square без какого-либо анти-алиасинга.
+
+**Артикуляция.** Частота округляется до ближайшего целого MIDI-номера — строй ровный, но микроинтервалы и slide невозможны в принципе. `accent` и `slideFlag` в сигнатуре есть и **нигде не используются**. `startNote` сбрасывает `phase_ = 0` и мгновенно выставляет `amp_`. `stopNote` ставит `active_ = false`, после чего `process()` сразу возвращает 0 — **release отсутствует полностью**.
+
+**Дефекты.**
+
+- **P1 — щелчки на обоих концах ноты.** Жёсткий reset фазы на входе, мгновенный обрыв на выходе. Пункт протокола «2 секунды release» на SID даст ровно ноль.
+- **N-6 (P1) — DC на краях P-Width.** duty 0.98 → среднее +0.96; duty 0.02 → −0.96. DC blocker'а в SID нет. Края слайдера ощущаются как «звук пропал» плюс удар в момент переключения ноты. При этом полезный сигнал там действительно почти исчезает — узкий импульс на 22 kHz это несколько сэмплов.
+- **P1 — верхняя треть Cutoff мертва.** Слайдер до 12000 Hz, DSP зажимает в `nyquist × 0.99 = 10 914 Hz`. Примерно 9% хода ничего не меняет.
+- **N-5 (P1) — регулятор практически неподвижен на knob-странице.** См. §5.
+- **P1 — самый тихий движок.** `× 0.25` внутри, ещё `× 0.5` в микшере.
+- **P2** — `setMode()` и `setLoFiAmount()` пустые. Поля `volume_` (всегда 1.0) и `peak_` (пишется, не читается) мёртвые.
+- **P2** — velocity 0 всё равно звучит: `amp_` зажат снизу в 0.05.
+
+**Решение до 0.9 (без изменений с v1).** Либо переименовать в `SID-LITE`/`SID PULSE` и честно описать, либо дать envelope, честные фильтры, accent и slide.
+
+---
+
+### 4.3. AY
+
+**Звукоизвлечение.** Три raw square канала (root, детюн, суб-октава) + 17-битный LFSR-шум → микс → 4-битное квантование амплитуды → сглаживание ~1 ms.
+
+**Параметры.**
+
+| # | Параметр | Диапазон | Default | Что делает |
+|---:|---|---|---:|---|
+| 0 | Noise | 0..1 | 0.10 | **одновременно** noise mix и noise clock (350..4850 Hz) |
+| 1 | Decay | 20..1500 ms | 220 | спад огибающей |
+| 2 | Chorus | 0..1 | 0.20 | детюн каналов B и C |
+| 3 | Env | Hold / Decay / Pluck / Gate | Decay | форма огибающей |
+
+**Артикуляция.** `accent` не используется. `slideFlag` только не сбрасывает `ampSlew_` — portamento нет. Частота фиксируется в `startNote` и внутри ноты не меняется.
+
+**P0 — строй.** Период считается как `sampleRate / (16 × freq)` с округлением, то есть **частота дискретизации хоста используется как тактовая частота PSG**.
+
+Полная картина внутри собственного диапазона движка (22 050 Hz):
+
+```
+нота   цель      выход     ошибка
+C1     32.70     32.81     +5.8 cents
+A1     55.00     55.12     +3.9
+A2    110.00    106.01     −64.0
+C3    130.81    125.28     −74.8
+F#3   185.00    196.88    +107.7
+A3    220.00    229.69     +74.6
+C4    261.63    275.62     +90.2
+D#4   311.13    344.53    +176.6
+F#4   369.99    344.53    −123.4
+A4    440.00    459.38     +74.6
+B4    493.88    459.38    −125.4
 ```
 
-Критерии:
+**47 нот из 48 в диапазоне C1..B4 отклоняются больше чем на 5 центов.** Хуже того, соседние полутона сливаются задолго до 1378 Hz из v1:
 
-- изменение слышно;
-- направление изменения соответствует label;
-- нет участка, где 20% и более хода ничего не меняет;
-- нет внезапной тишины, runaway feedback или постоянного DC;
-- option labels соответствуют слышимому результату.
+- `D#4 · E4 · F4 · F#4 · G4` → все дают **344.53 Hz** (пять полутонов подряд);
+- `G#4 · A4 · A#4 · B4` → все дают **459.38 Hz**;
+- первое слипание — уже на `G#2 · A2`.
 
-### 15.5. Save/reload
+Верхняя треть клавиатуры на AY фактически не хроматична. Порог схлопывания на входе — **918.75 Hz** (`period` округляется до 1), потолок выхода — 1378.125 Hz. Формулировка v1 «выше ~1378 Hz» описывает потолок, а не порог, и сильно занижает проблему.
 
-Для каждого движка:
+**Другие дефекты.**
 
-1. установить легко узнаваемые значения всех параметров;
-2. сохранить проект;
-3. перезагрузить устройство;
-4. открыть тот же проект;
-5. записать тот же A3;
-6. сравнить UI values и WAV до/после.
+- **P1 — алиасинг.** Все три канала — raw square без PolyBLEP. На A4/B4 плюс детюн — характерный цифровой свист. Требует FFT-подтверждения.
+- **N-9 (P2) — `Chorus` не отключает третий канал.** `cHz = freq × (0.5 − detune × 0.25)`. При `Chorus = 0` канал C всё равно звучит на точной суб-октаве с gain 0.45. Ручка не убирает голос, а только уводит его вниз от октавы, создавая биения с гармониками рута. Label обещает не то.
+- **P1 — `Noise` управляет двумя величинами сразу** (микс и clock). Музыкант не может отдельно выбрать тембр шума и его количество.
+- **P2 — квантование громкости линейное.** Настоящий AY имеет логарифмическую 16-ступенчатую шкалу (~−3 dB/шаг). Здесь `floor(env × 15 + 0.5)/15`. Это влияет на характер затухания.
+- **P2 — `Gate` не является sustain**: при удержании огибающая всё равно ползёт вниз с коэффициентом ~4 с.
 
-Критерий: значения идентичны, а WAV не имеет неожиданного изменения тембра/decay.
+---
 
-## 16. Рекомендуемый порядок исправлений
+### 4.4. SH101
 
-### PR 1 — Pitch and note lifecycle
+**Звукоизвлечение.** PolyBLEP saw + PolyBLEP pulse (duty 0.48) → PolyBLEP суб-октава → xorshift-шум → двухполюсный резонансный LP с `fastSaturate` в петле → DC blocker → clamp ±1. Самая аккуратная реализация в проекте.
 
-- исправить AY clock/period;
-- унифицировать live NoteOn/Off identity;
-- добавить fundamental-frequency tests;
-- добавить stuck-note tests.
+**Параметры.**
 
-### PR 2 — Versioned synth persistence
+| # | Параметр | Диапазон | Default | Что делает | Сохраняется |
+|---:|---|---|---:|---|---|
+| 0 | Wave | Saw / Pulse / Mix | Mix | форма | да |
+| 1 | Sub | 0..1 | 0.35 | микс суб-октавы | да |
+| 2 | Noise | 0..1 | 0 | микс шума | да |
+| 3 | Cutoff | 80..6500 Hz | 1800 | база фильтра | да |
+| 4 | Reso | 0..0.92 | 0.30 | feedback ×3.35 | да |
+| 5 | Decay | 30..2400 ms | 420 | **amp и filter env одновременно** | **нет (P0-A)** |
 
-- сохранять все generic params;
-- мигрировать legacy TB303 fields;
-- прекратить genre overwrite при load;
-- round-trip matrix всех шести движков.
+**Артикуляция.** Единственный движок с полноценной моделью: attack ~1.43 ms (не зависит от SR), decay к sustain 0.62, release 70 ms фиксированный. `accent` поднимает gain ×1.15 и открывает фильтр (`filterEnv_ = 1.15`). `slide` — настоящий legato-портаменто с проверкой `voiceAlreadyActive`.
 
-### PR 3 — TB303 correctness
+**Дефекты.**
 
-- убрать двойной sub;
-- исправить normalized extended params;
-- решить dead Volume;
-- убрать allocation из process path;
-- сделать phase increment зависимым от instance sample rate.
+- **P0 — Decay не переживает reload.**
+- **P1 — время glide зависит от sample rate.** `currentFreqHz_ += (target − current) × 0.0018` на сэмпл: ~25 ms при 22050 Hz и ~12.6 ms при 44100 Hz.
+- **P2 — `Decay` тянет две огибающие сразу**, из label это не следует.
+- **P2 — фиксированы** pulse width (0.48), attack, release, глубина filter env, sustain.
+- **P2** — `dcInput_/dcOutput_` не сбрасываются при уходе голоса в тишину; на следующей ноте возможен микро-транзиент.
 
-### PR 4 — FX silence and gain staging
+**Вывод.** Кандидат на референс: имеет смысл привести остальные движки к его модели артикуляции и к его уровню (или наоборот — его к общему, см. §1.1).
 
-- атомарный DST enable/drive/mix;
-- loudness normalization по движкам;
-- проверить constrained delay timing;
-- mixer peak/RMS tests.
+---
 
-### PR 5 — SID articulation and truthful UI
+### 4.5. SN76489
 
-- attack/release smoothing;
-- определить судьбу accent/slide;
-- переименовать misleading Reso/BP либо реализовать корректнее;
-- решить название `SID` против `SID-LITE`.
+**Звукоизвлечение.** Три PolyBLEP square канала с честным чиповым тактом 3 579 545 Hz и 10-битным делителем + LFSR-шум (white/periodic, 4 режима такта) → 4-битная огибающая → сглаживание → DC blocker.
 
-### PR 6 — Aliasing pass
+**Параметры.**
 
-- WAVEMORPH band-limited/mip strategy либо ограничение harmonic content;
-- AY anti-alias strategy;
-- SN upper-note policy;
-- аппаратные FFT baselines.
+| # | Параметр | Диапазон | Default | Что делает | Сохраняется |
+|---:|---|---|---:|---|---|
+| 0 | Stack | Uni / Oct / Fifth / Chord | **Oct** | соотношения трёх каналов | да |
+| 1 | Tone2 | 0..1 | 0.65 | уровень канала 2 | да |
+| 2 | Tone3 | 0..1 | 0.45 | уровень канала 3 | да |
+| 3 | Noise | 0..1 | 0 | микс шума | да |
+| 4 | NMode | W/P × Hi/Mid/Low/T3 | W-Mid | тип и такт шума | да |
+| 5 | Decay | 20..2000 ms | 260 | one-shot огибающая | **нет (P0-A)** |
 
-## 17. Release gate GroovePuter 0.9
+**C-2 / P0 — сломан нижний регистр, а не верхний.** `divider = clamp(round(clock / (32 × f)), 1, 1023)` → минимальная воспроизводимая частота **109.35 Hz**.
 
-0.9 не должен называться готовым, пока не выполнено всё ниже:
+```
+C1  (32.70)  → 109.35 Hz   +2090 cents
+A1  (55.00)  → 109.35 Hz   +1190 cents
+C2  (65.41)  → 109.35 Hz    +890 cents
+F#2 (92.50)  → 109.35 Hz    +290 cents
+A2 (110.00)  → 109.99 Hz      −0.1 cents   ← первая корректная нота
+A3 (220.00)  → 220.20 Hz      +1.6 cents
+B4 (493.88)  → 494.96 Hz      +3.8 cents
+```
 
-- [ ] AY проходит pitch test;
-- [ ] ни один live NoteOff не оставляет зависшую ноту;
-- [ ] все параметры каждого движка проходят save/reload;
-- [ ] TB303 patch не меняется сам при загрузке проекта;
-- [ ] DST не вызывает почти полную тишину;
-- [ ] ни один видимый slider не является dead control;
-- [ ] engine loudness нормализован или явно компенсирован;
-- [ ] SID NoteOn/Off не даёт неприемлемых щелчков;
-- [ ] WAVEMORPH/AY/SN upper register принят музыкантом;
-- [ ] Cardputer ADV build и fixed-DRAM gate зелёные;
-- [ ] полный hardware listening matrix приложен к release notes.
+**21 нота из 48 (C1..G#2) выдаёт одну и ту же частоту 109.35 Hz.** Выше A2 строй практически идеален (в пределах ±4 центов). Верхний зажим `increment ≤ 0.49` в этом диапазоне недостижим: максимум при `Fifth` на B4 — около 0.034.
 
-## 18. Вопросы музыканту-разработчику
+Это поведение соответствует реальному чипу, поэтому вопрос музыканту — не «баг ли это», а «оставляем ли мы честный чип с мёртвыми двумя октавами или добавляем октавный сдвиг/предупреждение в UI».
 
-1. SID должен быть эмуляцией или характерным «SID-inspired» voice?
-2. Нужны ли SID accent и slide, или UI должен показывать их как unavailable?
-3. AY должен соблюдать реальный chip clock/period или быть более ровно темперированным AY-inspired синтом?
-4. Для SN76489 желательна hardware-accurate квантованная высота или musical pitch с chip coloration?
-5. WAVEMORPH Digital→Sine wrap при Morph является желательным циклом?
-6. Должен ли `Decay` SH101 одновременно управлять amp и filter envelope?
-7. Нужны ли общие target loudness и headroom одинаковые для всех движков?
-8. Должен ли per-voice mute сохранять delay-tail или давать немедленную тишину?
-9. Допустим ли audible one-LSB dither на встроенном усилителе?
-10. Какие aliasing/lo-fi артефакты считаются характером, а какие дефектом релиза?
+**N-10 (P1) — дефолтный `Stack = Oct` ломается почти везде.** `Oct` задаёт `ratios = {1, 0.5, 0.25}`, и каналы 2 и 3 проходят через тот же зажим:
 
-## 19. Краткий итог
+- канал 2 (`f/2`) корректен только при `f ≥ 218.7 Hz` (A3);
+- канал 3 (`f/4`) корректен только при `f ≥ 437.4 Hz` (A4).
 
-Сильнейшая текущая база — SH101; SN76489 также структурно завершён, но требует проверки верхнего диапазона и persistence. WAVEMORPH музыкально перспективен, но нуждается в anti-aliasing и сохранении шестого параметра. TB303 функционально богат, однако имеет несколько несогласованных API и lifecycle-проблем. SID пока является прототипом с misleading labels и жёсткими границами нот. AY в текущем виде не проходит базовый критерий точности нот.
+Ниже A3 обе «октавы вниз» превращаются в фиксированный дрон 109.35 Hz под нотой. Полностью корректен дефолтный стек только на A4..B4 — две ноты из сорока восьми. На басовой партии это не октавный стек, а расстроенный унисон с дроном.
 
-До исправления P0 пунктов документ следует считать **release-blocking audit**, а не описанием готовых инструментов.
+**Прочее.**
+
+- **P1 — время slide зависит от sample rate**; ретюн делителей раз в 16 сэмплов даёт ступенчатый глиссандо (может быть характером — на слух музыканта).
+- **P2 — `Uni` на самом деле детюн** 1.003 / 0.997, а не унисон.
+- **P2 — `Oct` — это root + октава вниз + две октавы вниз**, не вверх. Label неоднозначен.
+- **P2 — огибающая one-shot**: затухает даже при удерживаемом gate. Пункт «2 секунды sustain» в протоколе для этого движка бессмыслен и должен быть заменён на «2 секунды удержания с фиксацией времени фактического затухания».
+
+---
+
+### 4.6. WAVEMORPH
+
+**Звукоизвлечение.** 8 таблиц по 128 точек с линейной интерполяцией → морфинг в следующую таблицу → raw square суб-октава → двухполюсный LP с feedback → DC blocker → clamp.
+
+**Параметры.**
+
+| # | Параметр | Диапазон | Default | Что делает | Сохраняется |
+|---:|---|---|---:|---|---|
+| 0 | Wave | Sine/Tri/Saw/Pulse/Organ/Vowel/Metal/Digital | Saw | базовая таблица | да |
+| 1 | Morph | 0..1 | 0.15 | кроссфейд в следующую таблицу | да |
+| 2 | Sub | 0..1 | 0.20 | микс raw square суб | да |
+| 3 | Cutoff | 80..7000 Hz | 2400 | **статический** срез | да |
+| 4 | Reso | 0..0.90 | 0.18 | feedback ×3.2 | да |
+| 5 | Decay | 30..2400 ms | 520 | спад amp к sustain 0.60 | **нет (P0-A)** |
+
+**Артикуляция.** attack ~1.33 ms, sustain 0.60, release 70 ms — всё фиксировано. `accent` только ×1.15 к gain. `slide` — портаменто с тем же SR-зависимым коэффициентом 0.0018.
+
+**Дефекты.**
+
+- **P0 — Decay не переживает reload.**
+- **P1 — алиасинг.** Таблицы не имеют band-limited вариантов. `Saw` (полный скачок на стыке), `Pulse` (duty 25%), `Metal`, `Digital` содержат энергию вплоть до 64-й гармоники. На A4 (440 Hz) при Nyquist 11 025 гармоники выше 25-й заворачиваются внутрь; на B4 — выше 22-й. Это математически гарантированный алиасинг, вопрос только в том, считаем ли мы его характером.
+- **P1 — суб-осциллятор — сырой ±1 square**, без PolyBLEP, в отличие от SH101.
+- **P1 — время slide зависит от sample rate.**
+- **P2 — фильтровой огибающей нет вообще.** Cutoff статичен, accent фильтр не открывает. Это главное отличие от SH101 на слух — движок звучит «плоско» при любом Decay.
+- **P2 — `Digital + Morph` заворачивается обратно в `Sine`.** Нужно описать пользователю как задуманный цикл.
+- **P2 — `advancePhase` делает одно вычитание** `phase -= 1.0f` вместо `floor`. Сейчас безопасно (инкремент ≤ 0.45), но хрупко при изменении зажимов.
+
+---
+
+## 5. UI: разрешение регуляторов (N-5)
+
+Две страницы редактируют одни и те же параметры разными способами.
+
+**`synth_sequencer_page`** — масштабирует шаг по диапазону:
+
+```
+steps_across = (max − min) / step
+≥8000 → ×32   ≥4000 → ×24   ≥2000 → ×16   ≥1000 → ×12
+≥400  → ×8    ≥150  → ×4    ≥60   → ×2    иначе ×1
+```
+плюс разгон при удержании до ×8. Работает корректно.
+
+**`tb303_params_page`** — фиксированный `kKnobStepCoarse = 5`, без учёта диапазона.
+
+| Параметр | `steps_across` | Нажатий на полный ход (knob-страница) |
+|---|---:|---:|
+| SID Cutoff | 12000 | **2400** |
+| SID P-Width | 4095 | **819** |
+| SID Reso | 255 | 51 |
+| WAVEMORPH Cutoff | 346 | 70 |
+| SH101 Cutoff | 321 | 65 |
+| TB303 Cutoff | 128 | 26 |
+| AY Noise | 64 | 13 |
+
+SID на knob-странице субъективно неотличим от мёртвого регулятора. Это чисто UI-дефект, DSP тут ни при чём — важно не искать его в движке.
+
+Отдельно: `MiniAcid::synthParameterCount()` для TB303 возвращает 4, для остальных 4–6, при `kMaxParamRows = 6`. Физическое расположение ручки означает разный параметр в зависимости от TYPE — это заявлено как дизайн, но стоит подтвердить у музыканта.
+
+---
+
+## 6. Смена движка
+
+```cpp
+// MiniAcid::setSynthEngine
+if (!playing) { SynthVoiceState blank{target, {}, 0}; voice->setState(blank); }
+else          { voice->setEngineType(target); }
+```
+
+- При **воспроизведении** — equal-power кроссфейд ~10 ms, удерживаемая нота перезапускается на новом движке. Математика кроссфейда корректна (`cos(x·π/2)` и `cos((1−x)·π/2) = sin(x·π/2)`).
+- При **остановленном транспорте** — `setState()`, то есть немедленная подмена голоса **без кроссфейда** (C-5). Это отдельная точка щелчка, которую нужно проверить на слух.
+
+Прочее:
+
+- Параметры между движками не конвертируются — новый движок стартует с собственных дефолтов. Это разумно, но означает, что «покрутил → переключил → вернулся» теряет патч.
+- `setEngineType` во время идущего кроссфейда с тем же типом создаёт третий голос и теряет промежуточные параметры (краевой случай при быстром листании TYPE).
+- `getParameter()` на неверном индексе возвращает `params_[0]` у большинства движков — это маскирует потенциальные UI-баги, вместо того чтобы их показывать.
+- `OPL2` молча превращается в TB303; при этом Atlas hybrid recipes **специально запрашивают** `OPL2` для Synth B, то есть комментарии в `genre_manager` описывают FM-голос, которого нет.
+
+---
+
+## 7. Аппаратный протокол (обновлён)
+
+### 7.1. Подготовка
+
+Cardputer ADV · линейная запись выхода · DST OFF, DLY OFF, Tape OFF, LoFi OFF · master volume зафиксирован · track volume Synth A/B = 100% · Synth A и Synth B проверяются отдельно.
+
+### 7.2. Набор нот
+
+```
+C1  32.70    A1  55.00    A2 110.00
+A3 220.00    A4 440.00    B4 493.88
+```
+
+**Добавлено к v1** — обязательный хроматический прогон для AY и SN76489:
+
+- **AY:** `D#4 → E4 → F4 → F#4 → G4` подряд. Ожидание при текущем коде: пять одинаковых нот. Это самый быстрый способ подтвердить P0-E на слух за пять секунд.
+- **SN76489:** `C1 → A1 → C2 → F#2 → A2`. Ожидание: первые четыре ноты одинаковые, пятая — первая правильная.
+- **SN76489, `Stack = Oct`:** одна и та же нота на `A2`, `A3`, `A4`. Ожидание: стек «собирается» только на A4.
+
+### 7.3. По каждой ноте
+
+velocity 64 и 100 · 2 с удержания · 2 с после отпускания · отдельно accent и slide.
+
+Уточнения:
+
+- на **SID** пункт «2 с после отпускания» даст ровно ноль — это ожидаемо, фиксируем щелчок в момент обрыва;
+- на **SN76489** и **AY (Decay/Pluck)** «2 с удержания» не даёт sustain — фиксируем фактическое время затухания;
+- на **TB303** нужно отдельно засечь, **через сколько после NoteOff звук обрывается** и обрывается ли скачком (N-1). Это ключевой тест ревизии 2.
+
+### 7.4. Оценка 0..5
+
+Точность высоты · стабильность высоты · щелчок NoteOn · щелчок NoteOff · шум/свист на удержании · алиасинг на A4/B4 · музыкальность нижнего регистра · отклик каждого параметра · равномерность хода · громкость относительно соседних движков · пригодность для bass / lead / arp.
+
+### 7.5. Каждый регулятор
+
+`MIN → CENTER → MAX`, критерии: изменение слышно; направление соответствует label; нет участка ≥20% хода без эффекта; нет внезапной тишины, runaway feedback или постоянного DC; option labels совпадают со слышимым.
+
+**Добавлено:** проверять каждый регулятор **на обеих страницах** — knob-странице и списковой. Если на knob-странице «не двигается», а на списковой двигается — это N-5, а не дефект движка.
+
+### 7.6. Save / reload
+
+Уникальные значения всех параметров → сохранить → перезагрузка → открыть → тот же A3 → сравнить UI и WAV.
+**Добавлено:** отдельно зафиксировать, **сохранился ли выбор TYPE** (N-2), и не появился ли шум сразу после смены движка на чистой сцене (N-4).
+
+---
+
+## 8. Порядок исправлений
+
+Порядок из v1 сохранён, состав уточнён.
+
+**PR 1 — Pitch and note lifecycle (P0)**
+AY: отдельный chip clock вместо `sampleRate`, ресемплинг в host rate · SN76489: решение по нижнему регистру (см. вопрос 4) · единая нормализация note identity в `liveNoteOn/Off` · тесты fundamental frequency и stuck-note.
+
+**PR 2 — Versioned synth persistence (P0)**
+Versioned state `engineType + paramCount + normalized[]` · миграция legacy `SynthParameters` · **защита от интерпретации TB303-дефолтов как normalized (N-4)** · прекратить перезапись параметров и **выбора движка** через `applyGenreTimbre` при загрузке (P0-B + N-2) · round-trip матрица всех шести движков.
+
+**PR 3 — TB303 correctness (P0/P1)**
+**Добавить VCA envelope (N-1)** · убрать двойной инкремент `subPhase_` · подключить или удалить `Volume` · вынести `updateFilterModel()` из audio path · привязать инкремент фазы к instance sample rate · снять DC с pulse-таблицы или добавить DC blocker (N-3) · пересмотреть потолок cutoff под топологию Chamberlin (N-7) · выровнять velocity на /127 (N-8).
+
+**PR 4 — FX silence and gain staging (P0/P1)**
+Атомарный `setVoiceDistortionEnabled(enable, drive, mix)`, вызываемый в том числе из `toggleDistortion303` / `set303DistortionEnabled` (C-3) · нормализация громкости движков к ±3 dB · тесты bypass/on loudness и mixer peak/RMS.
+
+**PR 5 — SID articulation and truthful UI (P1)**
+attack/release smoothing · судьба accent/slide · переименовать или починить `Reso`/`BP` · зажать верх Cutoff до реального Nyquist · DC blocker или сузить диапазон P-Width (N-6) · решение по названию `SID` vs `SID-LITE`.
+
+**PR 6 — Aliasing and UI resolution (P1)**
+Band-limited/mip стратегия для WAVEMORPH · PolyBLEP или oversampling для AY · **range-aware шаг на knob-странице (N-5)** · аппаратные FFT-базлайны.
+
+---
+
+## 9. Release gate 0.9
+
+- [ ] AY проходит pitch test (±5 центов или явно принятый чиповый допуск)
+- [ ] SN76489: принято решение по нижнему регистру и оно отражено в UI
+- [ ] ни один live NoteOff не оставляет зависшую ноту
+- [ ] все параметры каждого движка переживают save/reload
+- [ ] **выбор TYPE переживает save/reload при любом рецепте**
+- [ ] TB303-патч не меняется сам при загрузке
+- [ ] **TB303 NoteOff не даёт скачкового обрыва**
+- [ ] DST не вызывает падения RMS более 3 dB
+- [ ] ни один видимый регулятор не является мёртвым **ни на одной из двух страниц**
+- [ ] разброс громкости движков ≤ ±3 dB на нейтральном патче
+- [ ] SID NoteOn/Off без неприемлемых щелчков; на краях P-Width нет DC
+- [ ] **на чистой сцене смена движка не даёт мгновенного шума (N-4)**
+- [ ] WAVEMORPH/AY верхний регистр принят музыкантом
+- [ ] Cardputer ADV build и fixed-DRAM gate зелёные
+- [ ] полный hardware listening matrix приложен к release notes
+
+---
+
+## 10. Вопросы музыканту-разработчику
+
+Приоритетные — 1, 4, 5.
+
+1. **TB303 без VCA (N-1).** Сейчас Decay задаёт длину ноты, а обрыв скачковый. Добавляем полноценную amp-огибающую (меняет характер всех существующих паттернов) или оставляем модель и просто сглаживаем обрыв?
+2. **SID** — эмуляция или характерный «SID-inspired» голос? От этого зависит, чинить ли Reso/BP или переименовать.
+3. **SID accent/slide** — реализовать или показать в UI как недоступные?
+4. **SN76489 нижний регистр.** Честный чип (C1..G#2 мертвы) или автоматический октавный сдвиг вниз? Третий вариант — оставить честно, но запретить движку ноты ниже A2 в UI.
+5. **AY.** Реальный chip clock (тогда нужен ресемплер) или отказ от чипового квантования и честное название «AY-inspired» с ровным строем?
+6. **AY `Chorus` (N-9)** — должен ли он уметь полностью убирать третий канал?
+7. **WAVEMORPH `Digital → Sine` wrap** — желаемый цикл?
+8. **SH101 `Decay`** — оставляем один регулятор на две огибающие?
+9. **Единый target loudness** для всех движков — да или сознательно разный характер?
+10. **Алиасинг WAVEMORPH и AY** — что считаем характером, что дефектом?
+11. **Per-voice mute** — сохранять delay-tail или давать немедленную тишину?
+12. **Смена TYPE в стопе (C-5)** — нужен ли кроссфейд и там?
+
+---
+
+## 11. Итог
+
+Порядок готовности движков (без изменений с v1, но с уточнёнными основаниями):
+
+1. **SH101** — эталон. Единственный блокер — потеря Decay при reload.
+2. **SN76489** — структурно самый честный чип-движок и точный строй выше A2. Блокеры: мёртвые две нижние октавы и дефолтный `Stack = Oct`, который в этих октавах не работает.
+3. **WAVEMORPH** — музыкально перспективен. Нужны anti-aliasing, сохранение Decay и решение по отсутствующей filter env.
+4. **TB303** — функционально самый богатый и одновременно самый проблемный: отсутствие VCA, двойной суб в унисон, DC на pulse, аллокация в аудиотракте, мёртвый Volume, мутация патча при загрузке.
+5. **SID** — прототип. Без release и с двумя врущими label'ами не может выходить под именем `SID`.
+6. **AY** — не проходит базовый критерий точности нот. Верхняя треть клавиатуры не хроматична.
+
+Инфраструктурно самое опасное — не отдельные движки, а **persistence**: параметр 5 теряется, TB303-патч мутирует, выбор TYPE не переживает Atlas-рецепты, а дефолтные значения при не-TB303 движке превращаются в максимум шума.
