@@ -32,10 +32,11 @@ public:
     static bool removePage(int pageIndex);
 
     // Project lifecycle helpers. Copy is used by Save As. New/Clear remove
-    // every page plus transactional .tmp/.bak siblings in the selected project.
+    // every page plus transactional .tmp/.bak siblings in one project only.
     static bool copyProjectPages(const std::string& sourceProject,
                                  const std::string& targetProject);
     static bool clearProjectPages();
+    static bool clearProjectPages(const std::string& projectName);
 
     // Compatibility entry point for the existing SceneManager constructor.
     // It will be removed when early SD access is migrated out of static init.
