@@ -16,6 +16,7 @@ on:
       - 'platform_sdl/Makefile'
       - 'tests/test_phrase_*.cpp'
       - 'tests/test_phrase_*_regressions.py'
+      - 'tests/test_scene_roundtrip.cpp'
       - 'tests/test_global_help_content.cpp'
       - 'tests/test_ui_session_state.cpp'
       - 'docs/stages/PHRASE_CORE_*.md'
@@ -33,6 +34,7 @@ on:
       - 'platform_sdl/Makefile'
       - 'tests/test_phrase_*.cpp'
       - 'tests/test_phrase_*_regressions.py'
+      - 'tests/test_scene_roundtrip.cpp'
       - 'tests/test_global_help_content.cpp'
       - 'tests/test_ui_session_state.cpp'
       - 'docs/stages/PHRASE_CORE_*.md'
@@ -76,6 +78,15 @@ jobs:
             -include platform_sdl/arduino_compat.h \
             -c src/ui/pages/phrase_page.cpp \
             -o build/host-tests/phrase_page.o
+          g++ ${COMMON_FLAGS} \
+            -Iplatform_sdl \
+            -include platform_sdl/arduino_compat.h \
+            tests/test_scene_roundtrip.cpp \
+            scenes.cpp \
+            json_evented.cpp \
+            src/audio/pattern_paging.cpp \
+            src/dsp/genre_manager.cpp \
+            -o build/host-tests/test_scene_roundtrip
 
       - name: Run Phrase Core and UI host tests
         run: |
@@ -84,3 +95,4 @@ jobs:
           build/host-tests/test_phrase_workspace
           build/host-tests/test_global_help_content
           build/host-tests/test_ui_session_state
+          build/host-tests/test_scene_roundtrip
