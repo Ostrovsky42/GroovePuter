@@ -101,8 +101,9 @@ def test_workflow_local_page_navigation() -> None:
     require("kPattern, kSynthA, kSynthB, kDrums" in workflow and
             "kSynthAParameters, kSynthBParameters" in workflow,
             "HUB workflow must expose overview, instruments and synth controls")
-    require("case WorkflowMode::Song: return kArrange;" in workflow,
-            "SONG workflow must resolve to the song editor")
+    require("kArrange, kPhrase" in workflow and
+            "case WorkflowMode::Song: return kSongPages[index];" in workflow,
+            "SONG workflow must expose Arrange then Phrase Core")
     require("kProject, kGenerator" in workflow and
             "case WorkflowMode::Settings: return kSettingsPages[index];" in workflow,
             "SETTINGS must expose project/setup and advanced generator pages")
@@ -123,7 +124,7 @@ def test_workflow_local_page_navigation() -> None:
 
     page_dispatch = display.index("currentPage->handleEvent(event)")
     fn_left = display.index("event.meta && (event.key == '['")
-    fn_right = display.index("event.meta && (event.key == ']'")
+    fn_right = display.index("event.meta && (event.key == ']' ") if "event.meta && (event.key == ']' " in display else display.index("event.meta && (event.key == ']'")
     brackets = display.index("if (event.key == ']')", page_dispatch)
     require(fn_left < page_dispatch and fn_right < page_dispatch,
             "Fn brackets must bypass page-local first refusal")
