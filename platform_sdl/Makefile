@@ -21,7 +21,7 @@ ifeq ($(strip $(SDL_GFX_CFLAGS)),)
   SDL_GFX_LIBS := -L/opt/homebrew/lib -lSDL2_gfx
 endif
 
-TARGET := miniacid
+TARGET := grooveputer
 SOURCES := \
 	../src/dsp/filter.cpp \
 	../src/dsp/mini_tb303.cpp \
@@ -110,7 +110,7 @@ DOCKER ?= docker
 EMCC_IMAGE ?= emscripten/emsdk
 WASM_FLAGS := -I.. -std=c++17 -sUSE_SDL=2 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=262144 -sASSERTIONS=1 -sUSE_SDL_GFX=2 -sEXPORTED_RUNTIME_METHODS='[UTF8ToString,stringToUTF8,lengthBytesUTF8,HEAPU8]'
 
-APP_BUNDLE := miniacid.app
+APP_BUNDLE := grooveputer.app
 SDL2_DYLIB := /opt/homebrew/opt/sdl2/lib/libSDL2-2.0.0.dylib
 SDL2_GFX_DYLIB := /opt/homebrew/opt/sdl2_gfx/lib/libSDL2_gfx-1.0.0.dylib
 
@@ -121,7 +121,7 @@ $(TARGET): $(SOURCES)
 
 wasm: $(SOURCES)
 	mkdir -p $(ROOT)/web
-	$(DOCKER) run --rm -v $(ROOT):/src -w /src/platform_sdl $(EMCC_IMAGE) emcc $(SOURCES) $(WASM_FLAGS) -o /src/web/miniacid.html
+	$(DOCKER) run --rm -v $(ROOT):/src -w /src/platform_sdl $(EMCC_IMAGE) emcc $(SOURCES) $(WASM_FLAGS) -o /src/web/grooveputer.html
 
 bundle: $(TARGET)
 	@echo "Creating app bundle..."
@@ -143,8 +143,8 @@ bundle: $(TARGET)
 	@echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> $(APP_BUNDLE)/Contents/Info.plist
 	@echo '<plist version="1.0"><dict>' >> $(APP_BUNDLE)/Contents/Info.plist
 	@echo '<key>CFBundleExecutable</key><string>$(TARGET)</string>' >> $(APP_BUNDLE)/Contents/Info.plist
-	@echo '<key>CFBundleIdentifier</key><string>com.miniacid.app</string>' >> $(APP_BUNDLE)/Contents/Info.plist
-	@echo '<key>CFBundleName</key><string>MiniAcid</string>' >> $(APP_BUNDLE)/Contents/Info.plist
+	@echo '<key>CFBundleIdentifier</key><string>com.grooveputer.app</string>' >> $(APP_BUNDLE)/Contents/Info.plist
+	@echo '<key>CFBundleName</key><string>GroovePuter</string>' >> $(APP_BUNDLE)/Contents/Info.plist
 	@echo '<key>CFBundleVersion</key><string>1.0</string>' >> $(APP_BUNDLE)/Contents/Info.plist
 	@echo '<key>CFBundlePackageType</key><string>APPL</string>' >> $(APP_BUNDLE)/Contents/Info.plist
 	@echo '</dict></plist>' >> $(APP_BUNDLE)/Contents/Info.plist
