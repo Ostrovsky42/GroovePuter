@@ -106,11 +106,16 @@ jobs:
           )
           script = script.replace(
               'git rm .github/workflows/apply-axis-ownership-cleanup.yml',
-              'python3 scripts/finalize_axis_cleanup.py\n'
-              'git rm .github/workflows/apply-axis-ownership-cleanup.yml '
-              '.github/workflows/run-axis-cleanup.yml '
-              'scripts/finalize_axis_cleanup.py '
+              'git checkout -- .github/workflows/four-axis-ui.yml '
+              '.github/workflows/apply-axis-ownership-cleanup.yml '
+              '.github/workflows/run-axis-cleanup.yml\n'
+              'git rm scripts/finalize_axis_cleanup.py '
               'scripts/fix_axis_test_indent.py',
+              1,
+          )
+          script = script.replace(
+              'git push origin HEAD:${GITHUB_REF_NAME}',
+              'git push origin HEAD:agent/genre-feel-generation-texture-analysis',
               1,
           )
           Path('/tmp/apply-axis-cleanup.sh').write_text(script, encoding='utf-8')
