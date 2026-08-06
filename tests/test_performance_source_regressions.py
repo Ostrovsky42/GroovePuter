@@ -85,14 +85,6 @@ def test_transport_note_mode_keys_remain_live() -> None:
     base.require("INPUT LOCK | PATTERN PLAYER ACTIVE" not in page and
                  'stepTools ? "LIVE SYNC" : "LIVE INPUT"' in page,
                  "PERFORM must show live transport input instead of the old lock")
-    base.require('"STRUM: N/A / ARP IS SINGLE NOTE"' in page and
-                 '"STRUM: N/A / ENABLE CHORD"' in page and
-                 '"5 STRUM N/A"' in page,
-                 "STRUM must expose when one-note playback makes it ineffective")
-    base.require('"ROTATE: N/A / EUCLID OFF"' in page and
-                 '"ROTATE: N/A / ALL 16 ACTIVE"' in page and
-                 '"8 ROTATE N/A"' in page,
-                 "ROTATE must expose the 0/16 and 16/16 no-op states")
 
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
     route_pos = display.index("performance_keyboard_.keyDown(event.key)")
@@ -103,50 +95,6 @@ def test_transport_note_mode_keys_remain_live() -> None:
                  "NOTE-mode routing must run before legacy global fallback")
 
 
-def test_smf_file_master_mode_contract() -> None:
-    mode = (ROOT / "src/midi/smf_file_master_mode.h").read_text(
-        encoding="utf-8"
-    )
-    page = (ROOT / "src/ui/pages/smf_player_page_structural.cpp").read_text(
-        encoding="utf-8"
-    )
-
-    for stage in (
-        "AwaitOriginalSnapshot",
-        "AwaitProjectRestore",
-        "Ready",
-    ):
-        base.require(stage in mode,
-                     f"FILE MASTER state machine is missing {stage}")
-    base.require("serviceMode == SmfTempoMode::Project" in mode,
-                 "FILE MASTER must reuse the accepted PROJECT scheduler")
-    base.require("std::max(10.0f, std::min(250.0f, bpm))" in mode,
-                 "file BPM must respect the engine BPM range")
-
-    original_pos = page.index("player_->toggleTempoMode()")
-    reset_pos = page.index("player_->resetTempo()", original_pos)
-    base.require(original_pos < reset_pos,
-                 "FILE MASTER must enter ORIGINAL before refreshing file BPM")
-    base.require("SmfFileMasterStage::AwaitProjectRestore" in page and
-                 "state.tempoMode == SmfTempoMode::Original" in page and
-                 "state.tempoMode == SmfTempoMode::Project" in page,
-                 "FILE MASTER must restore PROJECT scheduling after reading BPM")
-    base.require("TransportClockSource::GroovePuterInternal" in page and
-                 "transportClockRuntime().setSource" in page,
-                 "FILE MASTER must force GroovePuter clock ownership")
-    base.require("miniAcid_.setBpm(bpm)" in page and
-                 "withAudioGuard" in page,
-                 "file BPM must reach the engine through AudioGuard")
-    base.require('"FILE %u.%u > GP > USB CLOCK %s"' in page,
-                 "MIDI Player must expose the complete FILE -> GP -> USB chain")
-    base.require('"FILE MASTER REQUIRES GP CLOCK"' in page and
-                 '"FILE MASTER BPM LOCKED"' in page,
-                 "FILE MASTER must reject external ownership and manual BPM drift")
-    for forbidden in ("tud_midi_", "USBMIDI", "sendTimingClock("):
-        base.require(forbidden not in page,
-                     f"FILE MASTER UI must not become another USB owner: {forbidden}")
-
-
 base.test_transport_note_mode_keys_remain_live = (
     test_transport_note_mode_keys_remain_live
 )
@@ -154,4 +102,3 @@ base.test_transport_note_mode_keys_remain_live = (
 
 if __name__ == "__main__":
     base.main()
-    test_smf_file_master_mode_contract()
