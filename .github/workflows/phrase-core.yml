@@ -87,7 +87,6 @@ jobs:
             scenes.cpp \
             json_evented.cpp \
             src/audio/pattern_paging.cpp \
-            src/dsp/genre_manager.cpp \
             -o build/host-tests/test_scene_roundtrip
 
       - name: Run Phrase Core and UI host tests
