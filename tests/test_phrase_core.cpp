@@ -138,6 +138,32 @@ void testInvalidCaptureIsAtomic() {
   assert(badRange.error == PhraseCore::Error::RegionOutOfRange);
   assert(std::memcmp(&bank, &before, sizeof(bank)) == 0);
 
+  const PhraseCore::Result badSource = PhraseCore::captureSongRegion(
+      bank,
+      PhraseCore::SlotId::A,
+      song,
+      0,
+      0,
+      1,
+      PhraseCore::Role::Main,
+      PhraseCore::Source::SmfRegion);
+  assert(!badSource);
+  assert(badSource.error == PhraseCore::Error::InvalidSource);
+  assert(std::memcmp(&bank, &before, sizeof(bank)) == 0);
+
+  const PhraseCore::Result badRole = PhraseCore::captureSongRegion(
+      bank,
+      PhraseCore::SlotId::A,
+      song,
+      0,
+      0,
+      1,
+      static_cast<PhraseCore::Role>(99),
+      PhraseCore::Source::Generated);
+  assert(!badRole);
+  assert(badRole.error == PhraseCore::Error::InvalidRole);
+  assert(std::memcmp(&bank, &before, sizeof(bank)) == 0);
+
   Song empty = makeSong(1);
   for (int track = 0; track < SongPosition::kTrackCount; ++track) {
     empty.positions[0].patterns[track] = -1;
@@ -231,7 +257,7 @@ void testWriteToSongIsPrevalidated() {
 
 void testSanitizePersistenceBoundary() {
   PhraseCore::PhraseBank legacy{};
-  assert(legacy.version == 0);
+  legacy.version = 0;
   assert(PhraseCore::sanitize(legacy));
   assert(legacy.version == PhraseCore::kPersistenceVersion);
   assert(legacy.nextPhraseId == 1);
