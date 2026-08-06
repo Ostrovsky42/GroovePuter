@@ -1,0 +1,654 @@
+diff --git a/src/midi/smf_player_service.h b/src/midi/smf_player_service.h
+index f1251548..00000000 100644
+--- a/src/midi/smf_player_service.h
++++ b/src/midi/smf_player_service.h
+@@ -23,8 +23,25 @@ enum class SmfPlayerRestartOrigin : uint8_t {
+ enum class SmfTempoMode : uint8_t {
+     Original = 0,
+     Project,
++    FileMaster,
+ };
+ 
++inline bool smfTempoModeUsesProjectTransport(SmfTempoMode mode) {
++    return mode == SmfTempoMode::Project ||
++           mode == SmfTempoMode::FileMaster;
++}
++
++inline SmfTempoMode nextSmfTempoMode(SmfTempoMode mode) {
++    switch (mode) {
++        case SmfTempoMode::Original: return SmfTempoMode::Project;
++        case SmfTempoMode::Project: return SmfTempoMode::FileMaster;
++        case SmfTempoMode::FileMaster: return SmfTempoMode::Original;
++    }
++    return SmfTempoMode::Original;
++}
++
+ enum class SmfLaunchMode : uint8_t {
+     Immediate = 0,
+     NextBar,
+@@ -157,6 +174,7 @@ inline const char* smfTempoModeName(SmfTempoMode mode) {
+     switch (mode) {
+         case SmfTempoMode::Original: return "ORIGINAL";
+         case SmfTempoMode::Project: return "GP MASTER";
++        case SmfTempoMode::FileMaster: return "FILE MASTER";
+     }
+     return "?";
+ }
+diff --git a/src/platform/cardputer_smf_player.cpp b/src/platform/cardputer_smf_player.cpp
+index f38ffc00..00000000 100644
+--- a/src/platform/cardputer_smf_player.cpp
++++ b/src/platform/cardputer_smf_player.cpp
+@@ -322,7 +322,21 @@ void CardputerSmfPlayerService::handleTransportFailure() {
+ }
+ 
+ void CardputerSmfPlayerService::handleProjectTransport() {
+-    if (!loaded_ || tempoMode_ != SmfTempoMode::Project) return;
++    if (!loaded_ || !smfTempoModeUsesProjectTransport(tempoMode_)) return;
++
++    if (tempoMode_ == SmfTempoMode::FileMaster && followsSeqtrakClock()) {
++        const SmfPlayerState state = snapshot().state;
++        if (state == SmfPlayerState::Playing ||
++            state == SmfPlayerState::Armed) {
++            pausedTick_ = snapshot().currentTick;
++            eventQueue_.invalidateAndRequestPanic();
++            projectLaunchPlanned_ = false;
++            projectRelaunchAfterExternalStop_ = false;
++            prepareStreamAt(pausedTick_);
++            publishSnapshot(SmfPlayerState::Paused,
++                            "FILE MASTER NEEDS GP CLOCK");
++        }
++        return;
++    }
+ 
+     ProjectTransportBlockSnapshot transport{};
+     const ProjectTransportReadResult readResult = readProjectTransport(transport);
+@@ -646,7 +660,7 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
+             projectRelaunchAfterExternalStop_ = false;
+             if (previous == SmfPlayerState::Playing || previous == SmfPlayerState::Armed) {
+                 const bool started = startFromTick(targetTick);
+-                if (started && tempoMode_ == SmfTempoMode::Project) {
++                if (started && smfTempoModeUsesProjectTransport(tempoMode_)) {
+                     (void)queueSongPositionPointerAtCurrentAnchor(targetTick);
+                 }
+             } else {
+@@ -696,10 +710,9 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
+                 pausedTick_ = resumeTick;
+                 prepareStreamAt(resumeTick);
+             }
+-            tempoMode_ = tempoMode_ == SmfTempoMode::Original
+-                ? SmfTempoMode::Project
+-                : SmfTempoMode::Original;
+-            if (tempoMode_ == SmfTempoMode::Project) {
++            tempoMode_ = nextSmfTempoMode(tempoMode_);
++            const bool usesProjectTransport =
++                smfTempoModeUsesProjectTransport(tempoMode_);
++            if (usesProjectTransport) {
+                 applyTempoScale(kSmfOriginalTempoScalePermille);
+             }
+             portENTER_CRITICAL(&snapshotMux_);
+@@ -710,30 +723,39 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
+             const ProjectTransportBlockSnapshot projectTransport =
+                 projectTransportTimeline().snapshot();
+             if (loaded_ && wasActive &&
+-                (tempoMode_ != SmfTempoMode::Project ||
++                (!usesProjectTransport ||
+                  (projectTransport.valid && projectTransport.playing))) {
+                 // Switching the clock source is one player command. Keeping
+                 // resume here avoids a second UI command racing or being lost
+                 // when the bounded command queue is busy.
+                 startFromTick(resumeTick);
+             } else if (loaded_) {
++                const char* modeMessage = tempoMode_ == SmfTempoMode::FileMaster
++                    ? "FILE BPM -> GP CLOCK"
++                    : (tempoMode_ == SmfTempoMode::Project
++                           ? (followsSeqtrakClock()
++                                  ? "SPACE ARM / SEQ PLAY"
++                                  : "G START / SPACE MIDI")
++                           : "TEMPO ORIGINAL");
+                 publishSnapshot(
+-                    tempoMode_ == SmfTempoMode::Project && wasActive
++                    usesProjectTransport && wasActive
+                         ? SmfPlayerState::Paused
+                         : previous,
+-                    tempoMode_ == SmfTempoMode::Project
+-                        ? (followsSeqtrakClock()
+-                               ? "SPACE ARM / SEQ PLAY"
+-                               : "G START / SPACE MIDI")
+-                        : "TEMPO ORIGINAL");
++                    modeMessage);
+                 updatePlaybackSnapshot();
+             } else {
+-                publishSnapshot(previous,
+-                    tempoMode_ == SmfTempoMode::Project
+-                        ? (followsSeqtrakClock()
+-                               ? "SEQ MASTER TEMPO"
+-                               : "GP MASTER TEMPO")
+-                        : "ORIGINAL TEMPO");
++                const char* modeMessage = tempoMode_ == SmfTempoMode::FileMaster
++                    ? "FILE MASTER TEMPO"
++                    : (tempoMode_ == SmfTempoMode::Project
++                           ? (followsSeqtrakClock()
++                                  ? "SEQ MASTER TEMPO"
++                                  : "GP MASTER TEMPO")
++                           : "ORIGINAL TEMPO");
++                publishSnapshot(previous, modeMessage);
+             }
+             break;
+         }
+         case CommandType::AdjustTempoBpm: {
+             if (!loaded_ || !timing_.valid()) break;
+-            if (tempoMode_ == SmfTempoMode::Project) {
++            if (smfTempoModeUsesProjectTransport(tempoMode_)) {
+                 publishSnapshot(snapshot().state,
+-                                followsSeqtrakClock()
+-                                    ? "SEQ MASTER BPM"
+-                                    : "GP MASTER BPM");
++                                tempoMode_ == SmfTempoMode::FileMaster
++                                    ? "FILE MASTER BPM LOCKED"
++                                    : (followsSeqtrakClock()
++                                           ? "SEQ MASTER BPM"
++                                           : "GP MASTER BPM"));
+                 updatePlaybackSnapshot();
+                 break;
+             }
+@@ -761,10 +783,12 @@ void CardputerSmfPlayerService::handleCommand(const Command& command) {
+         }
+         case CommandType::ResetTempo: {
+             if (!loaded_ || !timing_.valid()) break;
+-            if (tempoMode_ == SmfTempoMode::Project) {
++            if (smfTempoModeUsesProjectTransport(tempoMode_)) {
+                 publishSnapshot(snapshot().state,
+-                                followsSeqtrakClock()
+-                                    ? "SEQ MASTER BPM"
+-                                    : "GP MASTER BPM");
++                                tempoMode_ == SmfTempoMode::FileMaster
++                                    ? "FILE MASTER BPM LOCKED"
++                                    : (followsSeqtrakClock()
++                                           ? "SEQ MASTER BPM"
++                                           : "GP MASTER BPM"));
+                 updatePlaybackSnapshot();
+                 break;
+             }
+@@ -899,6 +923,7 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
+     projectLaunchPlanned_ = false;
+     projectRelaunchAfterExternalStop_ = false;
+ 
++    const uint16_t loadedFileBpmX10 = originalBpmX10At(musicStartTick_);
+     portENTER_CRITICAL(&snapshotMux_);
+     copyText(snapshot_.filename, sizeof(snapshot_.filename), basename(path));
+     copyText(loadedPath_, sizeof(loadedPath_), path);
+@@ -908,12 +933,20 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
+     snapshot_.velocityBoost = velocityBoost_;
+     snapshot_.tempoMode = tempoMode_;
+     snapshot_.launchMode = launchMode_;
++    snapshot_.originalBpmX10 = loadedFileBpmX10;
++    if (tempoMode_ == SmfTempoMode::Original ||
++        tempoMode_ == SmfTempoMode::FileMaster) {
++        snapshot_.bpmX10 = loadedFileBpmX10;
++    }
+     portEXIT_CRITICAL(&snapshotMux_);
+ 
+     publishSnapshot(SmfPlayerState::Stopped,
+-        tempoMode_ == SmfTempoMode::Project
+-            ? (followsSeqtrakClock()
+-                   ? "LOADED / SPACE ARM / SEQ PLAY"
+-                   : "LOADED / G THEN SPACE")
++        smfTempoModeUsesProjectTransport(tempoMode_)
++            ? (tempoMode_ == SmfTempoMode::FileMaster
++                   ? "LOADED / FILE BPM / G THEN SPACE"
++                   : (followsSeqtrakClock()
++                          ? "LOADED / SPACE ARM / SEQ PLAY"
++                          : "LOADED / G THEN SPACE"))
+             : (routingMode_ == SmfRoutingMode::Raw
+                 ? "LOADED / RAW"
+                 : "LOADED / SEQTRAK"));
+@@ -982,7 +1015,13 @@ bool CardputerSmfPlayerService::startFromTick(uint32_t tick) {
+                         "USB MIDI BLOCKED - KEYS WAIT");
+         return false;
+     }
+-    return tempoMode_ == SmfTempoMode::Project
++    if (tempoMode_ == SmfTempoMode::FileMaster && followsSeqtrakClock()) {
++        publishSnapshot(SmfPlayerState::Paused,
++                        "FILE MASTER NEEDS GP CLOCK");
++        return false;
++    }
++    return smfTempoModeUsesProjectTransport(tempoMode_)
+         ? armProjectFromTick(tick)
+         : startOriginalFromTick(tick);
+ }
+@@ -1154,7 +1193,9 @@ void CardputerSmfPlayerService::pauseAtCurrentPosition() {
+     projectRelaunchAfterExternalStop_ = false;
+     prepareStreamAt(pausedTick_);
+     publishSnapshot(SmfPlayerState::Paused,
+-        tempoMode_ == SmfTempoMode::Project
++        tempoMode_ == SmfTempoMode::FileMaster
++            ? "FILE MASTER / PAUSED"
++            : tempoMode_ == SmfTempoMode::Project
+             ? (followsSeqtrakClock()
+                    ? "SEQ MASTER / PAUSED"
+                    : "GP MASTER / PAUSED")
+@@ -1173,7 +1214,9 @@ void CardputerSmfPlayerService::stopAndCleanup(bool resetToMusicStart) {
+     if (loaded_) {
+         prepareStreamAt(pausedTick_);
+         publishSnapshot(SmfPlayerState::Stopped,
+-            tempoMode_ == SmfTempoMode::Project
++            tempoMode_ == SmfTempoMode::FileMaster
++                ? "FILE MASTER / STOPPED"
++                : tempoMode_ == SmfTempoMode::Project
+                 ? (followsSeqtrakClock()
+                        ? "SEQ MASTER / STOPPED"
+                        : "GP MASTER / STOPPED")
+@@ -1211,10 +1254,11 @@ void CardputerSmfPlayerService::scheduleAhead() {
+         eventQueue_.transportFailed()) {
+         return;
+     }
+-    if (tempoMode_ == SmfTempoMode::Project && !projectLaunchPlanned_) return;
++    const bool usesProjectTransport =
++        smfTempoModeUsesProjectTransport(tempoMode_);
++    if (usesProjectTransport && !projectLaunchPlanned_) return;
+ 
+     ProjectTransportBlockSnapshot projectTransport{};
+-    if (tempoMode_ == SmfTempoMode::Project) {
++    if (usesProjectTransport) {
+         const ProjectTransportReadResult readResult =
+             readProjectTransport(projectTransport);
+         if (readResult == ProjectTransportReadResult::Unavailable) return;
+@@ -1232,7 +1276,7 @@ void CardputerSmfPlayerService::scheduleAhead() {
+     ++perfScheduleCalls_;
+     const uint32_t entryDepth = static_cast<uint32_t>(eventQueue_.approximateSize());
+     if (entryDepth < perfMinQueueDepth_) perfMinQueueDepth_ = entryDepth;
+-    const uint32_t lookaheadBlocks = tempoMode_ == SmfTempoMode::Project
++    const uint32_t lookaheadBlocks = usesProjectTransport
+         ? kProjectScheduleLookaheadBlocks
+         : kScheduleLookaheadBlocks;
+ 
+@@ -1249,7 +1293,7 @@ void CardputerSmfPlayerService::scheduleAhead() {
+ 
+         SmfScheduledPosition position{};
+         bool scheduled = false;
+-        if (tempoMode_ == SmfTempoMode::Project) {
++        if (usesProjectTransport) {
+             ProjectScheduledPosition projectPosition{};
+             const ProjectSmfScheduleResult result = scheduleProjectSmfTick(
+                 projectTransport,
+@@ -1302,7 +1346,7 @@ void CardputerSmfPlayerService::scheduleAhead() {
+                 visualVelocity,
+                 position.blockSequence,
+                 position.frameOffset,
+-                tempoMode_ == SmfTempoMode::Project
++                usesProjectTransport
+                     ? projectTransport.transportEpoch
+                     : 0u,
+                 static_cast<uint8_t>(event.trackIndex));
+@@ -1313,7 +1357,7 @@ void CardputerSmfPlayerService::scheduleAhead() {
+                 event.event.data2,
+                 position.blockSequence,
+                 position.frameOffset,
+-                tempoMode_ == SmfTempoMode::Project
++                usesProjectTransport
+                     ? projectTransport.transportEpoch
+                     : 0u,
+                 static_cast<uint8_t>(event.trackIndex));
+@@ -1392,7 +1436,7 @@ void CardputerSmfPlayerService::logPerformance() {
+     performance.minQueueDepth = perfMinQueueDepth_ == kPerfUnsetDepth
+         ? -1
+         : static_cast<int16_t>(std::min<uint32_t>(
+               perfMinQueueDepth_, std::numeric_limits<int16_t>::max()));
+     performance.queueFillLimit = static_cast<uint16_t>(kQueueFillLimit);
+-    const uint32_t lookaheadBlocks = tempoMode_ == SmfTempoMode::Project
++    const uint32_t lookaheadBlocks = smfTempoModeUsesProjectTransport(tempoMode_)
+         ? kProjectScheduleLookaheadBlocks
+         : kScheduleLookaheadBlocks;
+@@ -1469,7 +1513,7 @@ uint32_t CardputerSmfPlayerService::currentProjectTick(
+ 
+ uint32_t CardputerSmfPlayerService::currentTickFromAudioClock() {
+     if (!loaded_ || !timing_.valid()) return 0;
+-    if (tempoMode_ == SmfTempoMode::Project) {
++    if (smfTempoModeUsesProjectTransport(tempoMode_)) {
+         ProjectTransportBlockSnapshot transport{};
+         if (!projectTransportTimeline().trySnapshot(transport) ||
+             !transport.valid || !transport.playing) {
+@@ -1505,7 +1549,7 @@ uint16_t CardputerSmfPlayerService::originalBpmX10At(uint32_t tick) const {
+ }
+ 
+ uint16_t CardputerSmfPlayerService::effectiveBpmX10At(uint32_t tick) const {
+-    if (tempoMode_ == SmfTempoMode::Project) {
++    if (smfTempoModeUsesProjectTransport(tempoMode_)) {
+         const ProjectTransportBlockSnapshot transport = projectTransportTimeline().snapshot();
+         if (transport.valid && transport.bpmX10 > 0) return transport.bpmX10;
+         return projectBpmX10_;
+diff --git a/src/ui/pages/smf_player_page.h b/src/ui/pages/smf_player_page.h
+index c8126449..00000000 100644
+--- a/src/ui/pages/smf_player_page.h
++++ b/src/ui/pages/smf_player_page.h
+@@ -23,6 +23,9 @@ protected:
+     bool loadMidiPath(const char* path);
+     bool togglePlayerTransport();
+     void toggleGrooveTransport();
++    bool cycleTempoMode(
++        const GroovePuterMidi::SmfPlayerSnapshot& state);
++    void applyFileTempoToGp(const GroovePuterMidi::SmfPlayerSnapshot& state);
+     void drawBrowser(IGfx& gfx);
+     void drawNowPlaying(IGfx& gfx);
+     void drawMuteMixer(IGfx& gfx);
+diff --git a/src/ui/pages/smf_player_page.cpp b/src/ui/pages/smf_player_page.cpp
+index 39a2f223..00000000 100644
+--- a/src/ui/pages/smf_player_page.cpp
++++ b/src/ui/pages/smf_player_page.cpp
+@@ -22,6 +22,13 @@ bool smfStateIsActive(GroovePuterMidi::SmfPlayerState state) {
+            state == GroovePuterMidi::SmfPlayerState::Armed;
+ }
+ 
++float fileMasterBpm(const GroovePuterMidi::SmfPlayerSnapshot& state) {
++    const float bpm = static_cast<float>(state.originalBpmX10) / 10.0f;
++    return std::max(10.0f, std::min(250.0f, bpm));
++}
++
+ void formatMidiNote(uint8_t note, char* dst, std::size_t size) {
+     static constexpr const char* kNames[] = {
+         "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+@@ -181,6 +188,49 @@ void SmfPlayerPage::onEnter(int context) {
+     if (browserVisible_) GroovePuterUi::midiFileManager().open();
+ }
+ 
++void SmfPlayerPage::applyFileTempoToGp(const SmfPlayerSnapshot& state) {
++    transportClockRuntime().setSource(TransportClockSource::GroovePuterInternal);
++    const float bpm = fileMasterBpm(state);
++    withAudioGuard([this, bpm]() { miniAcid_.setBpm(bpm); });
++}
++
++bool SmfPlayerPage::cycleTempoMode(const SmfPlayerSnapshot& state) {
++    if (!player_) return true;
++    const SmfTempoMode next = nextSmfTempoMode(state.tempoMode);
++    if (!player_->toggleTempoMode()) {
++        UI::showToast("MIDI PLAYER BUSY", 900);
++        return true;
++    }
++
++    if (next == SmfTempoMode::FileMaster) {
++        applyFileTempoToGp(state);
++        char toast[48];
++        std::snprintf(toast, sizeof(toast),
++                      "FILE MASTER %u.%u > GP > USB",
++                      static_cast<unsigned>(state.originalBpmX10 / 10),
++                      static_cast<unsigned>(state.originalBpmX10 % 10));
++        UI::showToast(toast, 1100);
++    } else if (next == SmfTempoMode::Project) {
++        const bool followSeqtrak = transportClockRuntime().source() ==
++            TransportClockSource::SeqtrakExternal;
++        UI::showToast(followSeqtrak
++                          ? "TEMPO: SEQ MASTER"
++                          : "TEMPO: GP MASTER > USB",
++                      1000);
++    } else {
++        UI::showToast("TEMPO: FILE ORIGINAL", 900);
++    }
++    return true;
++}
++
+ bool SmfPlayerPage::loadMidiPath(const char* path) {
+@@ -206,7 +256,9 @@ bool SmfPlayerPage::loadMidiPath(const char* path) {
+     const TransportClockRuntimeSnapshot clock = transportClockRuntime().snapshot();
+     const bool followSeqtrak = clock.source == TransportClockSource::SeqtrakExternal;
+-    UI::showToast(playerState.tempoMode == SmfTempoMode::Project
++    UI::showToast(playerState.tempoMode == SmfTempoMode::FileMaster
++                      ? "LOADING / FILE > GP / G THEN SPACE"
++                      : playerState.tempoMode == SmfTempoMode::Project
+                       ? (followSeqtrak
+                              ? (clock.externalFollowEnabled
+                                     ? "LOADING / SPACE ARM / SEQ PLAY"
+@@ -229,8 +281,11 @@ bool SmfPlayerPage::togglePlayerTransport() {
+     }
+ 
+     const bool wasActive = smfStateIsActive(state.state);
++    if (state.tempoMode == SmfTempoMode::FileMaster) {
++        applyFileTempoToGp(state);
++    }
+     const TransportClockRuntimeSnapshot clock = transportClockRuntime().snapshot();
+-    if (!wasActive && state.tempoMode == SmfTempoMode::Project &&
++    if (!wasActive && smfTempoModeUsesProjectTransport(state.tempoMode) &&
+         !miniAcid_.isPlaying() &&
+         clock.source == TransportClockSource::GroovePuterInternal) {
+-        UI::showToast("G START FIRST / THEN SPACE", 1100);
++        UI::showToast(state.tempoMode == SmfTempoMode::FileMaster
++                          ? "FILE MASTER: G START FIRST"
++                          : "G START FIRST / THEN SPACE",
++                      1100);
+         return true;
+     }
+@@ -240,7 +295,10 @@ bool SmfPlayerPage::togglePlayerTransport() {
+         UI::showToast("MIDI: PAUSE", 700);
+-    } else if (state.tempoMode == SmfTempoMode::Project) {
++    } else if (state.tempoMode == SmfTempoMode::FileMaster) {
++        UI::showToast("MIDI: ARM FILE CLOCK", 900);
++    } else if (state.tempoMode == SmfTempoMode::Project) {
+         UI::showToast(clock.source == TransportClockSource::SeqtrakExternal
+@@ -257,6 +315,11 @@ void SmfPlayerPage::toggleGrooveTransport() {
+     TransportClockRuntime& clockRuntime = transportClockRuntime();
++    player_ = smfPlayerService();
++    const SmfPlayerSnapshot state = player_ ? player_->snapshot() : SmfPlayerSnapshot{};
++    if (state.tempoMode == SmfTempoMode::FileMaster) {
++        applyFileTempoToGp(state);
++    }
+     if (clockRuntime.source() == TransportClockSource::SeqtrakExternal) {
+@@ -268,12 +331,11 @@ void SmfPlayerPage::toggleGrooveTransport() {
+         return;
+     }
+-    player_ = smfPlayerService();
+     if (miniAcid_.isPlaying()) {
+         bool playerPauseQueued = true;
+         if (player_) {
+-            const SmfPlayerSnapshot state = player_->snapshot();
+-            if (state.tempoMode == SmfTempoMode::Project &&
++            if (smfTempoModeUsesProjectTransport(state.tempoMode) &&
+                 smfStateIsActive(state.state)) {
+                 playerPauseQueued = player_->pause();
+@@ -288,7 +350,10 @@ void SmfPlayerPage::toggleGrooveTransport() {
+     } else {
+         withAudioGuard([this]() { miniAcid_.start(); });
+-        UI::showToast("GROOVE PLAY / SPACE MIDI", 900);
++        UI::showToast(state.tempoMode == SmfTempoMode::FileMaster
++                          ? "FILE BPM CLOCK / SPACE MIDI"
++                          : "GROOVE PLAY / SPACE MIDI",
++                      900);
+     }
+ }
+@@ -304,6 +369,13 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
+ 
+     if (event.key == 'c' || event.key == 'C') {
++        if (player_ &&
++            player_->snapshot().tempoMode == SmfTempoMode::FileMaster) {
++            transportClockRuntime().setSource(
++                TransportClockSource::GroovePuterInternal);
++            UI::showToast("FILE MASTER REQUIRES GP CLOCK", 1000);
++            return true;
++        }
+         const TransportClockSource source = transportClockRuntime().toggleSource();
+@@ -355,22 +427,7 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
+         }
+         if (event.key == 't' || event.key == 'T') {
+             if (player_) {
+-                const SmfPlayerSnapshot state = player_->snapshot();
+-                const bool toProject = state.tempoMode == SmfTempoMode::Original;
+-                const bool queued = player_->toggleTempoMode();
+-                const bool followSeqtrak = transportClockRuntime().source() ==
+-                    TransportClockSource::SeqtrakExternal;
+-                UI::showToast(queued
+-                                  ? (toProject
+-                                         ? (followSeqtrak
+-                                                ? "TEMPO: SEQ MASTER"
+-                                                : "TEMPO: GP MASTER > USB")
+-                                         : "TEMPO: FILE ORIGINAL")
+-                                  : "MIDI PLAYER BUSY",
+-                              900);
++                return cycleTempoMode(player_->snapshot());
+             }
+             return true;
+@@ -495,7 +552,13 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
+         event.scancode == GROOVEPUTER_DOWN) {
+         const int deltaBpm = event.scancode == GROOVEPUTER_UP ? 1 : -1;
+-        if (state.tempoMode == SmfTempoMode::Project) {
++        if (state.tempoMode == SmfTempoMode::FileMaster) {
++            applyFileTempoToGp(state);
++            UI::showToast("FILE MASTER BPM LOCKED", 800);
++        } else if (state.tempoMode == SmfTempoMode::Project) {
+             if (transportClockRuntime().source() == TransportClockSource::SeqtrakExternal) {
+@@ -519,7 +582,11 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
+         return true;
+     }
+     if (event.key == 'o' || event.key == 'O') {
+-        if (state.tempoMode == SmfTempoMode::Project) {
++        if (state.tempoMode == SmfTempoMode::FileMaster) {
++            applyFileTempoToGp(state);
++            UI::showToast("FILE BPM REAPPLIED TO GP", 900);
++        } else if (state.tempoMode == SmfTempoMode::Project) {
+             UI::showToast(transportClockRuntime().source() == TransportClockSource::SeqtrakExternal
+@@ -535,27 +602,7 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
+         return true;
+     }
+     if (event.key == 't' || event.key == 'T') {
+-        const bool toProject = state.tempoMode == SmfTempoMode::Original;
+-
+-        const bool modeQueued = player_->toggleTempoMode();
+-        if (!modeQueued) {
+-            UI::showToast("MIDI PLAYER BUSY", 900);
+-        } else if (toProject) {
+-            if (transportClockRuntime().source() == TransportClockSource::SeqtrakExternal) {
+-                UI::showToast("SEQ MASTER: SPACE ARM / SEQ PLAY", 1000);
+-            } else {
+-                UI::showToast(miniAcid_.isPlaying()
+-                                  ? "GP MASTER: ARM NEXT BAR"
+-                                  : "GP MASTER: G START FIRST",
+-                              1000);
+-            }
+-        } else {
+-            UI::showToast("FILE TEMPO / ORIGINAL", 1000);
+-        }
+-        return true;
++        return cycleTempoMode(state);
+     }
+@@ -580,7 +627,7 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
+         const bool followSeqtrak = transportClockRuntime().source() == TransportClockSource::SeqtrakExternal;
+         UI::showToast(queued
+-                          ? (state.tempoMode == SmfTempoMode::Project && !miniAcid_.isPlaying()
++                          ? (smfTempoModeUsesProjectTransport(state.tempoMode) && !miniAcid_.isPlaying()
+                                  ? (followSeqtrak
+@@ -648,7 +695,7 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
+     x += MusicVisuals::drawChip(gfx, x, chipY,
+                                 smfTempoModeName(state.tempoMode), true,
+-                                state.tempoMode == SmfTempoMode::Project
++                                smfTempoModeUsesProjectTransport(state.tempoMode)
+                                     ? MusicVisuals::accentForStyle()
+                                     : MusicVisuals::secondaryForStyle()) + 3;
+@@ -700,7 +747,13 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
+     }
+     gfx.drawText(Layout::COL_1, LayoutManager::lineY(4), line);
+ 
+-    if (state.tempoMode == SmfTempoMode::Project) {
++    if (state.tempoMode == SmfTempoMode::FileMaster) {
++        std::snprintf(line, sizeof(line), "FILE %u.%u > GP > USB CLOCK %s",
++                      static_cast<unsigned>(state.originalBpmX10 / 10),
++                      static_cast<unsigned>(state.originalBpmX10 % 10),
++                      miniAcid_.isPlaying() ? "RUN" : "STOP");
++    } else if (state.tempoMode == SmfTempoMode::Project) {
+         const TransportClockRuntimeSnapshot clock = transportClockRuntime().snapshot();
+diff --git a/tests/test_performance_source_regressions.py b/tests/test_performance_source_regressions.py
+index 36b0ecce..00000000 100755
+--- a/tests/test_performance_source_regressions.py
++++ b/tests/test_performance_source_regressions.py
+@@ -91,6 +91,42 @@ def test_transport_note_mode_keys_remain_live() -> None:
+                  "NOTE-mode routing must run before legacy global fallback")
+ 
+ 
++def test_smf_file_master_mode_contract() -> None:
++    service = (ROOT / "src/midi/smf_player_service.h").read_text(encoding="utf-8")
++    player = (ROOT / "src/platform/cardputer_smf_player.cpp").read_text(
++        encoding="utf-8"
++    )
++    page = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(
++        encoding="utf-8"
++    )
++
++    base.require("FileMaster" in service and 'return "FILE MASTER"' in service,
++                 "SMF tempo mode must expose FILE MASTER")
++    base.require("nextSmfTempoMode" in service and
++                 "SmfTempoMode::Project: return SmfTempoMode::FileMaster" in service,
++                 "T must cycle ORIGINAL -> GP MASTER -> FILE MASTER")
++    base.require("smfTempoModeUsesProjectTransport" in service,
++                 "FILE MASTER must share the accepted project scheduler")
++    for anchor in (
++            "handleProjectTransport()",
++            "startFromTick(uint32_t tick)",
++            "void CardputerSmfPlayerService::scheduleAhead()",
++            "currentTickFromAudioClock()"):
++        start = player.index(anchor)
++        block = player[start:start + 5000]
++        base.require("smfTempoModeUsesProjectTransport" in block,
++                     f"{anchor} must treat FILE MASTER as project-timed")
++    base.require("FILE MASTER NEEDS GP CLOCK" in player,
++                 "FILE MASTER must reject SEQ external ownership")
++    base.require("transportClockRuntime().setSource" in page and
++                 "TransportClockSource::GroovePuterInternal" in page and
++                 "miniAcid_.setBpm(bpm)" in page,
++                 "UI must apply file BPM to GP and select GP clock")
++    base.require("FILE %u.%u > GP > USB CLOCK %s" in page,
++                 "MIDI Player must expose the complete FILE MASTER chain")
++
++
+ base.test_transport_note_mode_keys_remain_live = (
+     test_transport_note_mode_keys_remain_live
+ )
+@@ -99,4 +135,5 @@ base.test_transport_note_mode_keys_remain_live = (
+ 
+ if __name__ == "__main__":
+     base.main()
++    test_smf_file_master_mode_contract()
+diff --git a/tests/test_smf_file_master.cpp b/tests/test_smf_file_master.cpp
+new file mode 100644
+index 00000000..00000000
+--- /dev/null
++++ b/tests/test_smf_file_master.cpp
+@@ -0,0 +1,23 @@
++#include <cassert>
++#include <cstring>
++
++#include "src/midi/smf_player_service.h"
++
++int main() {
++    using namespace GroovePuterMidi;
++
++    assert(nextSmfTempoMode(SmfTempoMode::Original) ==
++           SmfTempoMode::Project);
++    assert(nextSmfTempoMode(SmfTempoMode::Project) ==
++           SmfTempoMode::FileMaster);
++    assert(nextSmfTempoMode(SmfTempoMode::FileMaster) ==
++           SmfTempoMode::Original);
++    assert(!smfTempoModeUsesProjectTransport(SmfTempoMode::Original));
++    assert(smfTempoModeUsesProjectTransport(SmfTempoMode::Project));
++    assert(smfTempoModeUsesProjectTransport(SmfTempoMode::FileMaster));
++    assert(std::strcmp(smfTempoModeName(SmfTempoMode::FileMaster),
++                       "FILE MASTER") == 0);
++    return 0;
++}
+diff --git a/tests/run_host_tests.sh b/tests/run_host_tests.sh
+index 5d4aed6b..00000000 100755
+--- a/tests/run_host_tests.sh
++++ b/tests/run_host_tests.sh
+@@ -92,6 +92,18 @@ ${CXX} \
+ 
+ "${BUILD_DIR}/test_performance_midi_targets"
+ 
++"${CXX}" \
++  -std=c++17 \
++  -Wall \
++  -Wextra \
++  -Werror \
++  -I"${ROOT_DIR}" \
++  "${ROOT_DIR}/tests/test_smf_file_master.cpp" \
++  -o "${BUILD_DIR}/test_smf_file_master"
++
++"${BUILD_DIR}/test_smf_file_master"
++
+ "${CXX}" \
+   -std=c++17 \
+   -Wall \
