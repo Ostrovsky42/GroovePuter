@@ -20,6 +20,18 @@ jobs:
         with:
           ref: agent/phrase-core-foundation
           fetch-depth: 0
+      - name: Scope evented numeric handler patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tools/apply_phrase_scene_integration.py')
+          text = path.read_text()
+          old = """cpp = replace_once(\n    cpp,\n    '''  Path path = stack_[stackSize_ - 1].path;\n  if (path == Path::Song) {'''"""
+          new = """cpp = replace_first(\n    cpp,\n    '''  Path path = stack_[stackSize_ - 1].path;\n  if (path == Path::Song) {'''"""
+          if text.count(old) != 1:
+              raise SystemExit(f'numeric handler patch anchor count={text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
       - name: Apply exact integration patch
         run: python3 tools/apply_phrase_scene_integration.py
       - name: Build focused Phrase tests
