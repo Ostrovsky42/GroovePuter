@@ -79,6 +79,8 @@ jobs:
             -c src/ui/pages/phrase_page.cpp \
             -o build/host-tests/phrase_page.o
           g++ ${COMMON_FLAGS} \
+            -Wno-unused-variable \
+            -Wno-unused-but-set-variable \
             -Iplatform_sdl \
             -include platform_sdl/arduino_compat.h \
             tests/test_scene_roundtrip.cpp \
