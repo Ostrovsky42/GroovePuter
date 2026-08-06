@@ -9,6 +9,13 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
+def replace_first(text: str, old: str, new: str, label: str) -> str:
+    count = text.count(old)
+    if count < 1:
+        raise RuntimeError(f"{label}: anchor not found")
+    return text.replace(old, new, 1)
+
+
 def replace_count(text: str, old: str, new: str, expected: int, label: str) -> str:
     count = text.count(old)
     if count != expected:
@@ -131,11 +138,17 @@ cpp = replace_once(
     "document Phrase codec read",
 )
 
-cpp = replace_once(
+cpp = replace_first(
     cpp,
-    '        else if (lastKey_ == "customPhrases") path = Path::CustomPhrases;',
-    '        else if (lastKey_ == "phraseCore") {\n          path = Path::PhraseCore;\n          PhraseCore::beginPersistentDecode(target_.phraseBank);\n        }\n        else if (lastKey_ == "customPhrases") path = Path::CustomPhrases;',
-    "evented Phrase array start",
+    '''        else if (lastKey_ == "samplerPads") path = Path::SamplerPads;
+        else if (lastKey_ == "customPhrases") path = Path::CustomPhrases;''',
+    '''        else if (lastKey_ == "samplerPads") path = Path::SamplerPads;
+        else if (lastKey_ == "phraseCore") {
+          path = Path::PhraseCore;
+          PhraseCore::beginPersistentDecode(target_.phraseBank);
+        }
+        else if (lastKey_ == "customPhrases") path = Path::CustomPhrases;''',
+    "evented Phrase root array start",
 )
 
 cpp = replace_once(
