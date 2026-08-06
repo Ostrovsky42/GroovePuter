@@ -33,12 +33,15 @@ constexpr const char* kGenreLines[] = {
     "=== GENRE 1/4 ===",
     "Genre = corridor/vocabulary",
     "Tab/Up/Dn   Select field",
-    "Left/Right  Genre/variant/apply",
-    "Alt+L/R     Morph selected variant",
+    "Left/Right  Genre/variant/role/apply",
+    "Variant     Scoped to selected genre",
+    "Role        P1/P2/P3 for Atlas",
+    "BASE        Procedural generator",
+    "Alt+L/R     Morph procedural variant",
     "Enter       Apply profile/materialize",
     "M           Cycle apply mode",
     "PROFILE     Keep existing patterns",
-    "MATERIALIZE Regenerate patterns",
+    "MATERIALIZE Current pattern set",
     "No texture or feel changes",
 };
 
