@@ -88,13 +88,16 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import textwrap
 
           source = Path('.github/workflows/apply-axis-ownership-cleanup.yml').read_text(encoding='utf-8')
           marker = '        run: |\n'
           if marker not in source:
               raise SystemExit('staged cleanup run block not found')
-          script = textwrap.dedent(source.split(marker, 1)[1])
+          payload = source.split(marker, 1)[1]
+          script = ''.join(
+              line[10:] if line.startswith('          ') else line
+              for line in payload.splitlines(keepends=True)
+          )
           script = script.replace(
               'git rm .github/workflows/apply-axis-ownership-cleanup.yml',
               'python3 scripts/finalize_axis_cleanup.py\n'
