@@ -39,7 +39,12 @@ inline bool smfFileMasterUsesProjectScheduler(
     return state.enabled && serviceMode == SmfTempoMode::Project;
 }
 
+inline bool smfFileMasterBpmAvailable(uint16_t originalBpmX10) {
+    return originalBpmX10 != 0u;
+}
+
 inline float smfFileMasterBpm(uint16_t originalBpmX10) {
+    if (!smfFileMasterBpmAvailable(originalBpmX10)) return 120.0f;
     const float bpm = static_cast<float>(originalBpmX10) / 10.0f;
     return std::max(10.0f, std::min(250.0f, bpm));
 }
