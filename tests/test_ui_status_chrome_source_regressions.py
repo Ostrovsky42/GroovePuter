@@ -15,8 +15,11 @@ def main() -> None:
             "status chrome must derive context from the active UI page title")
     require("gStatusContext = statusContextForTitle(title);" in SOURCE,
             "drawStandardHeader must publish the active UI context")
-    require("miniAcid.currentPageIndex()" not in SOURCE,
-            "pattern-page storage index must never be used as the UI page context")
+    require("status.context = statusContextForTitle" not in SOURCE,
+            "pattern-page storage index must never replace the UI page context")
+    require("patternAddressFromParts(" in SOURCE and
+            "miniAcid.currentPageIndex(), bank, slot" in SOURCE,
+            "currentPageIndex is allowed only as the page part of a pattern address")
     require("status.context == UiStatusContext::Player" in SOURCE,
             "stopped SMF visibility must depend on the real MIDI Player context")
     require("drawStatusChrome(gfx, mini_acid);" in SOURCE,
