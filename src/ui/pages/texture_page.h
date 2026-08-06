@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "../ui_core.h"
+#include "../ui_input.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/state/scene_revision.h"
 
@@ -17,6 +18,10 @@ class TexturePage : public IPage {
   bool handleEvent(UIEvent& ui_event) override;
   const std::string& getTitle() const override { return title_; }
   void setVisualStyle(VisualStyle style) override { style_ = style; }
+  void onEnter(int context) override {
+    (void)context;
+    syncFromEngine();
+  }
 
  private:
   enum class FocusRow : uint8_t {
@@ -31,7 +36,7 @@ class TexturePage : public IPage {
   void shiftTexture(int delta);
   void adjustAmount(int delta, bool fast);
   void toggleFlavorLink();
-  void applyTexture();
+  void applyTexture(bool announce);
   std::array<uint8_t, 7> macroView() const;
 
   template <typename F>
@@ -47,5 +52,6 @@ class TexturePage : public IPage {
   FocusRow focus_ = FocusRow::Mode;
   int texture_index_ = 0;
   int texture_amount_ = 70;
+  UIInput::HoldAccelerator hold_accel_;
   std::string title_ = "TEXTURE";
 };

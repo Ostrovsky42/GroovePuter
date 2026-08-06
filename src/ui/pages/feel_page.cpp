@@ -6,7 +6,6 @@
 #include "../axis_page_palette.h"
 #include "../layout_manager.h"
 #include "../ui_common.h"
-#include "../ui_input.h"
 
 namespace {
 constexpr const char* kPresetNames[3] = {"TIGHT", "HUMAN", "LOOSE"};
@@ -24,8 +23,8 @@ int percent(float value) {
 }  // namespace
 
 FeelPage::FeelPage(IGfx& gfx,
-                           MiniAcid& mini_acid,
-                           AudioGuard& audio_guard)
+                   MiniAcid& mini_acid,
+                   AudioGuard& audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
   (void)gfx;
   style_ = UI::currentStyle;
@@ -35,34 +34,38 @@ void FeelPage::moveFocus(int delta) {
   int value = static_cast<int>(focus_) + delta;
   value = wrapIndex(value, 4);
   focus_ = static_cast<FocusRow>(value);
+  hold_accel_.reset();
 }
 
 void FeelPage::adjustFocused(int delta, bool fast) {
   if (focus_ == FocusRow::Preset) {
     preset_index_ = wrapIndex(preset_index_ + delta, 3);
+    hold_accel_.reset();
     return;
   }
 
   Scene& scene = mini_acid_.sceneManager().currentScene();
-  const int scalar = fast ? 5 : 1;
+  const int multiplier = hold_accel_.multiplier(delta, fast);
 
   withAudioGuard([&]() {
     switch (focus_) {
       case FocusRow::Swing: {
-        int value = static_cast<int>(scene.feel.swingPct) + delta * scalar;
-        scene.feel.swingPct = static_cast<uint8_t>(std::clamp(value, 50, 75));
+        const int value = static_cast<int>(scene.feel.swingPct) +
+                          delta * multiplier;
+        scene.feel.swingPct = static_cast<uint8_t>(
+            std::clamp(value, 50, 75));
         mini_acid_.applyFeelTimingFromScene_();
         break;
       }
       case FocusRow::TimingHumanize: {
-        const float step = fast ? 0.05f : 0.01f;
+        const float step = 0.01f * static_cast<float>(multiplier);
         scene.generatorParams.microTimingAmount = std::clamp(
             scene.generatorParams.microTimingAmount + delta * step,
             0.0f, 1.0f);
         break;
       }
       case FocusRow::VelocityHumanize: {
-        const float step = fast ? 0.05f : 0.01f;
+        const float step = 0.01f * static_cast<float>(multiplier);
         scene.generatorParams.velocityRange = std::clamp(
             scene.generatorParams.velocityRange + delta * step,
             0.0f, 1.0f);
@@ -100,13 +103,13 @@ void FeelPage::applyPreset(int index) {
     mini_acid_.applyFeelTimingFromScene_();
   });
 
-  char toast[64];
-  std::snprintf(toast, sizeof(toast), "FEEL %s: SW %u MT %d VL %d",
+  char toast[72];
+  std::snprintf(toast, sizeof(toast), "FEEL %s SW %u TIME %d VEL %d",
                 kPresetNames[index],
                 static_cast<unsigned>(scene.feel.swingPct),
                 percent(scene.generatorParams.microTimingAmount),
                 percent(scene.generatorParams.velocityRange));
-  UI::showToast(toast, 1500);
+  UI::showToast(toast, 1600);
 }
 
 void FeelPage::draw(IGfx& gfx) {
@@ -129,7 +132,8 @@ void FeelPage::draw(IGfx& gfx) {
   std::snprintf(value, sizeof(value), "%u%%",
                 static_cast<unsigned>(scene.feel.swingPct));
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(1), width,
-                       "SWING", value, focus_ == FocusRow::Swing,
+                       "SWING OFFBEAT", value,
+                       focus_ == FocusRow::Swing,
                        axisColor, palette);
   AxisUI::drawMeter(gfx, x + 142, LayoutManager::lineY(1) + 2,
                     84, static_cast<int>(scene.feel.swingPct) - 50,
@@ -138,7 +142,7 @@ void FeelPage::draw(IGfx& gfx) {
   std::snprintf(value, sizeof(value), "%d%%",
                 percent(params.microTimingAmount));
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(2), width,
-                       "TIME HUMAN", value,
+                       "TIMING DRIFT", value,
                        focus_ == FocusRow::TimingHumanize,
                        axisColor, palette);
   AxisUI::drawMeter(gfx, x + 142, LayoutManager::lineY(2) + 2,
@@ -148,7 +152,7 @@ void FeelPage::draw(IGfx& gfx) {
   std::snprintf(value, sizeof(value), "%d%%",
                 percent(params.velocityRange));
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(3), width,
-                       "VEL HUMAN", value,
+                       "VELOCITY VAR", value,
                        focus_ == FocusRow::VelocityHumanize,
                        axisColor, palette);
   AxisUI::drawMeter(gfx, x + 142, LayoutManager::lineY(3) + 2,
@@ -166,16 +170,30 @@ void FeelPage::draw(IGfx& gfx) {
   gfx.setTextColor(palette.muted);
   gfx.drawText(x + 2, LayoutManager::lineY(5) + 1, value);
 
+  const char* explanation = "LIVE: offbeat playback delay";
+  switch (focus_) {
+    case FocusRow::Swing:
+      explanation = "LIVE: offbeat playback delay";
+      break;
+    case FocusRow::TimingHumanize:
+      explanation = "NEXT GEN: note timing spread";
+      break;
+    case FocusRow::VelocityHumanize:
+      explanation = "NEXT GEN: note velocity spread";
+      break;
+    case FocusRow::Preset:
+      explanation = "ENTER: load all FEEL values";
+      break;
+  }
   gfx.setTextColor(palette.text);
-  gfx.drawText(x + 2, LayoutManager::lineY(6) + 1,
-               "Moves timing/velocity only");
+  gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, explanation);
   gfx.setTextColor(palette.muted);
   gfx.drawText(x + 2, LayoutManager::lineY(7) + 1,
-               "No notes, roles or sound changes");
+               "No note, pitch or texture changes");
 
   UI::drawStandardFooter(gfx,
                          "TAB/U/D:FIELD  L/R:CHANGE",
-                         "FAST:SHIFT/CTRL  ENTER:PRESET");
+                         "HOLD L/R:ACCEL  ENTER:PRESET");
 }
 
 bool FeelPage::handleEvent(UIEvent& event) {

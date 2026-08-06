@@ -18,6 +18,7 @@ def main() -> None:
     feel_header = (ROOT / "src/ui/pages/feel_page.h").read_text(encoding="utf-8")
     feel_source = (ROOT / "src/ui/pages/feel_page.cpp").read_text(encoding="utf-8")
     generation_header = (ROOT / "src/ui/pages/generation_page.h").read_text(encoding="utf-8")
+    generation_source = (ROOT / "src/ui/pages/generation_page.cpp").read_text(encoding="utf-8")
     texture_header = (ROOT / "src/ui/pages/texture_page.h").read_text(encoding="utf-8")
     texture_source = (ROOT / "src/ui/pages/texture_page.cpp").read_text(encoding="utf-8")
     song_header = (ROOT / "src/ui/pages/song_page.h").read_text(encoding="utf-8")
@@ -62,8 +63,10 @@ def main() -> None:
             "step editor mutations must reach the tracker")
     require("markSceneMutated();" in feel_header,
             "FEEL timing/velocity mutations must reach the tracker")
-    require("markSceneMutated();" in generation_header,
-            "GENERATION materialization must reach the tracker")
+    generation_success = generation_source.index("if (result) {")
+    generation_failure = generation_source.index("} else {", generation_success)
+    require("markSceneMutated();" in generation_source[generation_success:generation_failure],
+            "successful GENERATION materialization must reach the tracker")
     require("markSceneMutated();" in texture_header,
             "TEXTURE mutations must reach the tracker")
 

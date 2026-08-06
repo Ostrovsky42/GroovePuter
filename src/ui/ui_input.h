@@ -38,6 +38,37 @@ static inline bool isTab(const UIEvent& e) {
   return e.key == '\t' || e.scancode == GROOVEPUTER_TAB;
 }
 
+class HoldAccelerator {
+ public:
+  int multiplier(int direction, bool forcedFast = false) {
+    const uint32_t now = millis();
+    if (direction == last_direction_ &&
+        static_cast<uint32_t>(now - last_event_ms_) <= 160u) {
+      if (streak_ < 32) ++streak_;
+    } else {
+      streak_ = 0;
+    }
+    last_direction_ = direction;
+    last_event_ms_ = now;
+
+    if (forcedFast) return 5;
+    if (streak_ >= 10) return 5;
+    if (streak_ >= 4) return 3;
+    return 1;
+  }
+
+  void reset() {
+    last_direction_ = 0;
+    last_event_ms_ = 0;
+    streak_ = 0;
+  }
+
+ private:
+  int last_direction_ = 0;
+  uint32_t last_event_ms_ = 0;
+  uint8_t streak_ = 0;
+};
+
 // Global navigation keys are reserved at the app level.
 // IMPORTANT: To avoid breaking in-page editing (303/drums), global page jumps require CTRL.
 // Bracket paging remains global without modifiers.

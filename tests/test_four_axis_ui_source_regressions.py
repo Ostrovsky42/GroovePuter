@@ -106,7 +106,7 @@ forbid(
 # GENERATION: phrase form/materialization only.
 for needle in (
     '"GEN 3/4"',
-    '"FORM / DEVELOPMENT"',
+    '"WRITE ONE SONG BAR"',
     "PhraseGenerator::PhraseRequest",
     "PhraseGenerator::generateBarsToSong",
     "PhraseGenerator::generateToSong",
@@ -132,8 +132,8 @@ forbid(
 
 require(GENERATION, "request.bars = kMaterializeBars;",
         "GENERATION request must use the fixed single-bar scope")
-require(GENERATION, "Phrase length owned by PHRASE CORE",
-        "GENERATION must disclose the cross-workflow length owner")
+require(GENERATION, "ROW OCCUPIED:BLOCK  LEN:PHRASE",
+        "GENERATION must disclose row and phrase ownership")
 forbid(
     GENERATION,
     (
@@ -163,11 +163,11 @@ if unexpected_length_owners:
 # TEXTURE: sound surface and seven read-only macro projection only.
 for needle in (
     '"TEXTURE 4/4"',
-    '"SOUND SURFACE"',
+    '"LIVE SOUND SURFACE"',
     "setTextureMode",
     "applyTexture(mini_acid_)",
     "std::array<uint8_t, 7>",
-    '"MACRO VIEW 0..127 (READ ONLY)"',
+    '"AUDIBLE TAPE %s  DELAY %s"',
     '"FLAVOR LINK"',
 ):
     require(TEXTURE, needle, f"TEXTURE contract missing: {needle}")

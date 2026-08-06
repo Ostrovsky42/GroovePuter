@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "../ui_core.h"
+#include "../ui_input.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/state/scene_revision.h"
 
@@ -41,5 +42,6 @@ class FeelPage : public IPage {
   VisualStyle style_ = VisualStyle::MINIMAL;
   FocusRow focus_ = FocusRow::Swing;
   int preset_index_ = 1;
+  UIInput::HoldAccelerator hold_accel_;
   std::string title_ = "FEEL";
 };

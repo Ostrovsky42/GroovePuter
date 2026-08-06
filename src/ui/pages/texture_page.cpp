@@ -6,7 +6,6 @@
 #include "../axis_page_palette.h"
 #include "../layout_manager.h"
 #include "../ui_common.h"
-#include "../ui_input.h"
 
 namespace {
 int wrapIndex(int value, int count) {
@@ -48,8 +47,8 @@ void drawMacroStrip(IGfx& gfx,
 }  // namespace
 
 TexturePage::TexturePage(IGfx& gfx,
-                                 MiniAcid& mini_acid,
-                                 AudioGuard audio_guard)
+                         MiniAcid& mini_acid,
+                         AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
   (void)gfx;
   style_ = UI::currentStyle;
@@ -66,15 +65,19 @@ void TexturePage::moveFocus(int delta) {
   int value = static_cast<int>(focus_) + delta;
   value = wrapIndex(value, 4);
   focus_ = static_cast<FocusRow>(value);
+  hold_accel_.reset();
 }
 
 void TexturePage::shiftTexture(int delta) {
   texture_index_ = wrapIndex(texture_index_ + delta, kTextureModeCount);
+  applyTexture(false);
 }
 
 void TexturePage::adjustAmount(int delta, bool fast) {
+  const int multiplier = hold_accel_.multiplier(delta, fast);
   texture_amount_ = std::clamp(
-      texture_amount_ + delta * (fast ? 10 : 2), 0, 100);
+      texture_amount_ + delta * 2 * multiplier, 0, 100);
+  applyTexture(false);
 }
 
 void TexturePage::toggleFlavorLink() {
@@ -82,11 +85,12 @@ void TexturePage::toggleFlavorLink() {
       mini_acid_.sceneManager().currentScene().genre.applySoundMacros;
   enabled = !enabled;
   GroovePuterState::markSceneMutated();
-  UI::showToast(enabled ? "Flavor -> Sound: ON" : "Flavor -> Sound: OFF",
-                1100);
+  UI::showToast(enabled ? "Flavor -> Texture: LINKED"
+                        : "Flavor -> Texture: INDEPENDENT",
+                1300);
 }
 
-void TexturePage::applyTexture() {
+void TexturePage::applyTexture(bool announce) {
   withAudioGuard([&]() {
     auto& manager = mini_acid_.genreManager();
     manager.setTextureMode(static_cast<TextureMode>(texture_index_));
@@ -98,12 +102,20 @@ void TexturePage::applyTexture() {
     manager.applyTexture(mini_acid_);
   });
 
-  char toast[72];
-  std::snprintf(toast, sizeof(toast), "TEXTURE %s %d%%",
+  if (!announce) return;
+
+  const TextureParams& params =
+      kTexturePresets[wrapIndex(texture_index_, kTextureModeCount)];
+  const bool tapeOn = texture_index_ != static_cast<int>(TextureMode::Clean) &&
+                      texture_amount_ > 0;
+  const bool delayOn = params.delayEnabled && texture_amount_ > 0;
+  char toast[96];
+  std::snprintf(toast, sizeof(toast), "TEXTURE %s %d%% TAPE:%s DLY:%s",
                 GenreManager::textureModeName(
                     static_cast<TextureMode>(texture_index_)),
-                texture_amount_);
-  UI::showToast(toast, 1400);
+                texture_amount_, tapeOn ? "ON" : "OFF",
+                delayOn ? "ON" : "OFF");
+  UI::showToast(toast, 1700);
 }
 
 std::array<uint8_t, 7> TexturePage::macroView() const {
@@ -147,8 +159,13 @@ void TexturePage::draw(IGfx& gfx) {
   const IGfxColor axisColor = palette.texture;
   const auto selected = static_cast<TextureMode>(texture_index_);
   const auto active = mini_acid_.genreManager().textureMode();
-  const bool link =
-      mini_acid_.sceneManager().currentScene().genre.applySoundMacros;
+  const Scene& scene = mini_acid_.sceneManager().currentScene();
+  const bool link = scene.genre.applySoundMacros;
+  const TextureParams& params =
+      kTexturePresets[wrapIndex(texture_index_, kTextureModeCount)];
+  const bool tapeOn = texture_index_ != static_cast<int>(TextureMode::Clean) &&
+                      texture_amount_ > 0;
+  const bool delayOn = params.delayEnabled && texture_amount_ > 0;
 
   UI::drawStandardHeader(gfx, mini_acid_, "TEXTURE");
   LayoutManager::clearContent(gfx);
@@ -156,7 +173,7 @@ void TexturePage::draw(IGfx& gfx) {
   const int x = Layout::COL_1;
   const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
   AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0),
-                      "TEXTURE 4/4", "SOUND SURFACE",
+                      "TEXTURE 4/4", "LIVE SOUND SURFACE",
                       axisColor, palette);
 
   AxisUI::drawValueRow(
@@ -164,7 +181,7 @@ void TexturePage::draw(IGfx& gfx) {
       GenreManager::textureModeName(selected),
       focus_ == FocusRow::Mode, axisColor, palette);
 
-  char value[64];
+  char value[80];
   std::snprintf(value, sizeof(value), "%d%%", texture_amount_);
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(2), width,
                        "AMOUNT", value,
@@ -174,30 +191,33 @@ void TexturePage::draw(IGfx& gfx) {
                     84, texture_amount_, 100, axisColor, palette);
 
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(3), width,
-                       "FLAVOR LINK", link ? "ON (CROSS-AXIS)" : "OFF",
+                       "FLAVOR LINK", link ? "LINKED" : "INDEPENDENT",
                        focus_ == FocusRow::FlavorLink,
                        axisColor, palette);
 
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width,
-                       "APPLY", "ENTER / SPACE",
+                       "APPLY", "LIVE / ENTER REAPPLY",
                        focus_ == FocusRow::Apply,
                        axisColor, palette);
 
+  std::snprintf(value, sizeof(value), "AUDIBLE TAPE %s  DELAY %s",
+                tapeOn ? "ON" : "OFF", delayOn ? "ON" : "OFF");
+  gfx.setTextColor(palette.text);
+  gfx.drawText(x + 2, LayoutManager::lineY(5), value);
+
   const std::array<uint8_t, 7> macros = macroView();
-  gfx.setTextColor(palette.muted);
-  gfx.drawText(x + 2, LayoutManager::lineY(5),
-               "MACRO VIEW 0..127 (READ ONLY)");
   drawMacroStrip(gfx, x + 2, LayoutManager::lineY(6),
                  macros, axisColor, palette);
 
-  std::snprintf(value, sizeof(value), "ACTIVE %s",
-                GenreManager::textureModeName(active));
+  std::snprintf(value, sizeof(value), "ACTIVE %s %u%%",
+                GenreManager::textureModeName(active),
+                static_cast<unsigned>(scene.genre.textureAmount));
   gfx.setTextColor(active == selected ? axisColor : palette.warning);
   gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, value);
 
   UI::drawStandardFooter(gfx,
-                         "TAB/U/D:FIELD  L/R:CHANGE",
-                         "ENTER/SPACE:APPLY TEXTURE");
+                         "TAB/U/D:FIELD  L/R:LIVE",
+                         "HOLD L/R:ACCEL  ENTER:REAPPLY");
 }
 
 bool TexturePage::handleEvent(UIEvent& event) {
@@ -230,15 +250,15 @@ bool TexturePage::handleEvent(UIEvent& event) {
         toggleFlavorLink();
         break;
       case FocusRow::Apply:
+        applyTexture(true);
         break;
     }
     return true;
   }
 
   if (event.key == '\n' || event.key == '\r' || event.key == ' ') {
-    if (focus_ == FocusRow::Mode) shiftTexture(1);
-    else if (focus_ == FocusRow::FlavorLink) toggleFlavorLink();
-    else if (focus_ == FocusRow::Apply) applyTexture();
+    if (focus_ == FocusRow::FlavorLink) toggleFlavorLink();
+    else applyTexture(true);
     return true;
   }
 

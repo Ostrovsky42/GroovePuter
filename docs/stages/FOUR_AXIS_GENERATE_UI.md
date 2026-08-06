@@ -218,3 +218,19 @@ Record theme, page, selected value and a full 240×135 screenshot. Do not use di
 - [ ] Last GENERATE page restores in-session and after reboot.
 - [ ] Host tests and Cardputer ADV build pass.
 - [ ] Serial output has no new Scene/session persistence errors.
+
+## Hardware feedback pass: Song / FEEL / GENERATION / TEXTURE
+
+- Song `G` uses the active GENRE and VARIANT directly. Atlas-backed variants are materialized without visiting GENRE first; the toast names the active genre/variant.
+- FEEL `SWING OFFBEAT` changes playback immediately. `TIMING DRIFT` and `VELOCITY VAR` affect the next generated material. Hold Left/Right to accelerate.
+- GENERATION writes one bar only to the current empty Song row. A persistent `LAST` line shows success or the blocking reason.
+- TEXTURE applies MODE and AMOUNT live. Non-CLEAN textures enable the tape FX path; the screen shows whether TAPE and DELAY are audible. Hold Left/Right to accelerate.
+
+Acceptance:
+
+- [ ] Song-generated A/B/DR material changes when GENRE/VARIANT changes.
+- [ ] FEEL screen distinguishes LIVE from NEXT GEN controls.
+- [ ] Held Left/Right accelerates FEEL and TEXTURE values.
+- [ ] GENERATION shows `LAST OK` or a persistent blocked reason.
+- [ ] DUB/LOFI/INDUSTRIAL/PSYCHEDELIC produce an audible change and show TAPE/DELAY state.
+

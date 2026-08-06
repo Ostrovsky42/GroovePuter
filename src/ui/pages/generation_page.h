@@ -2,11 +2,9 @@
 
 #include <cstdint>
 #include <string>
-#include <utility>
 
 #include "../ui_core.h"
 #include "src/dsp/miniacid_engine.h"
-#include "src/state/scene_revision.h"
 
 class GenerationPage : public IPage {
  public:
@@ -22,15 +20,13 @@ class GenerationPage : public IPage {
 
   void materializeCurrentBar();
 
-  template <typename F>
-  void withAudioGuard(F&& fn) {
-    if (audio_guard_) audio_guard_(std::forward<F>(fn));
-    else fn();
-    GroovePuterState::markSceneMutated();
-  }
-
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
   VisualStyle style_ = VisualStyle::MINIMAL;
+  bool last_attempted_ = false;
+  bool last_success_ = false;
+  int last_row_ = -1;
+  int last_pattern_ = -1;
+  std::string last_status_ = "READY";
   std::string title_ = "GENERATION";
 };
