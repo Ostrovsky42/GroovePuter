@@ -14,9 +14,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Apply accepted review fixes
-        run: python3 scripts/apply_phrase_arranger_review_fixes.py
-
       - name: Run Phrase and input source gates
         run: |
           python3 tests/test_phrase_scene_source_regressions.py
@@ -30,6 +27,7 @@ jobs:
           COMMON_FLAGS='-std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I.'
           g++ ${COMMON_FLAGS} tests/test_phrase_core.cpp -o build/host-tests/test_phrase_core
           g++ ${COMMON_FLAGS} tests/test_phrase_arranger.cpp -o build/host-tests/test_phrase_arranger
+          g++ ${COMMON_FLAGS} tests/test_phrase_arranger_capacity.cpp -o build/host-tests/test_phrase_arranger_capacity
           g++ ${COMMON_FLAGS} tests/test_phrase_persistence_preview.cpp -o build/host-tests/test_phrase_persistence_preview
           g++ ${COMMON_FLAGS} tests/test_phrase_workspace.cpp -o build/host-tests/test_phrase_workspace
           g++ ${COMMON_FLAGS} tests/test_global_help_content.cpp -o build/host-tests/test_global_help_content
@@ -53,6 +51,7 @@ jobs:
         run: |
           build/host-tests/test_phrase_core
           build/host-tests/test_phrase_arranger
+          build/host-tests/test_phrase_arranger_capacity
           build/host-tests/test_phrase_persistence_preview
           build/host-tests/test_phrase_workspace
           build/host-tests/test_global_help_content
@@ -61,29 +60,10 @@ jobs:
       - name: Run complete host regression suite
         run: bash tests/run_host_tests.sh
 
-      - name: Upload exact reviewed candidate files
-        uses: actions/upload-artifact@v4
-        with:
-          name: phrase-arranger-reviewed-source
-          path: |
-            src/ui/pages/phrase_page.cpp
-            src/ui/global_help_content.h
-            tests/test_phrase_ui_source_regressions.py
-            tests/test_global_help_content.cpp
-            tests/test_global_help_source_regressions.py
-            tests/test_phrase_arranger.cpp
-            docs/stages/PHRASE_ARRANGER_STAGE_2_DESIGN.md
-            docs/stages/PHRASE_ARRANGER_STAGE_2_ACCEPTANCE.md
-            docs/stages/PHRASE_ARRANGER_STAGE_2_TEST_SEQUENCE.md
-            docs/stages/PHRASE_ARRANGER_STAGE_2_HARDWARE_TEST.md
-
   sdl-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Apply accepted review fixes
-        run: python3 scripts/apply_phrase_arranger_review_fixes.py
 
       - name: Install SDL dependencies
         run: |
@@ -101,9 +81,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Apply accepted review fixes
-        run: python3 scripts/apply_phrase_arranger_review_fixes.py
 
       - name: Install Arduino CLI
         uses: arduino/setup-arduino-cli@v2
