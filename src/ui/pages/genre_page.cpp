@@ -8,6 +8,9 @@
 #include "../layout_manager.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "src/dsp/atlas_runtime.h"
+#include "src/dsp/genre_materializer.h"
+#include "src/dsp/genre_variant_catalog.h"
 
 namespace {
 constexpr uint8_t kGenreBpm[kGenerativeModeCount] = {
@@ -30,15 +33,6 @@ const char* linkStateShort(MiniAcid& mini_acid) {
   return mapped == mini_acid.grooveboxMode() ? "GENRE" : "OVERRIDE";
 }
 
-int clampRecipeIndex(int value) {
-  const int count = static_cast<int>(GenreManager::recipeCount());
-  return count > 0 ? wrapIndex(value, count) : 0;
-}
-
-const char* yesNo(bool value) {
-  return value ? "YES" : "NO";
-}
-
 // The selector is rendered by the VARIANT row below. This named hook preserves
 // the existing visible-recipe source contract without creating a second overlay.
 void drawRecipeOverlay(IGfx& gfx, int recipeIndex) {
@@ -58,6 +52,15 @@ GenrePage::GenrePage(IGfx& gfx,
   updateFromEngine();
 }
 
+GenerativeMode GenrePage::selectedGenre() const {
+  const int index = std::clamp(genre_index_, 0, kGenerativeModeCount - 1);
+  return static_cast<GenerativeMode>(index);
+}
+
+GenreRecipeId GenrePage::selectedRecipe() const {
+  return GenreVariantCatalog::recipeAt(selectedGenre(), recipeIndex_);
+}
+
 GenrePage::ApplyMode GenrePage::currentApplyMode() const {
   const auto& settings = mini_acid_.sceneManager().currentScene().genre;
   if (!settings.regenerateOnApply) return ApplyMode::ProfileOnly;
@@ -75,7 +78,7 @@ const char* GenrePage::applyModeName() const {
 }
 
 void GenrePage::moveFocus(int delta) {
-  constexpr int kCount = 4;
+  constexpr int kCount = 5;
   int value = static_cast<int>(focus_) + delta;
   value = wrapIndex(value, kCount);
   focus_ = static_cast<FocusRow>(value);
@@ -83,15 +86,35 @@ void GenrePage::moveFocus(int delta) {
 
 void GenrePage::shiftGenre(int delta) {
   genre_index_ = wrapIndex(genre_index_ + delta, kGenerativeModeCount);
+  recipeIndex_ = 0;
+  roleIndex_ = 0;
+  morph_amount_ = 0;
 }
 
 void GenrePage::cycleRecipeSelection(int delta) {
-  const int count = static_cast<int>(GenreManager::recipeCount());
+  const int count = static_cast<int>(
+      GenreVariantCatalog::variantCount(selectedGenre()));
   if (count <= 0) return;
   recipeIndex_ = wrapIndex(recipeIndex_ + delta, count);
+  roleIndex_ = 0;
+  if (AtlasRuntime::hasRecipe(selectedRecipe())) morph_amount_ = 0;
+}
+
+void GenrePage::cycleRole(int delta) {
+  const int count = static_cast<int>(
+      AtlasRuntime::variationCount(selectedRecipe()));
+  if (count <= 0) {
+    roleIndex_ = 0;
+    return;
+  }
+  roleIndex_ = wrapIndex(roleIndex_ + delta, count);
 }
 
 void GenrePage::adjustMorph(int delta) {
+  if (AtlasRuntime::hasRecipe(selectedRecipe())) {
+    morph_amount_ = 0;
+    return;
+  }
   morph_amount_ = std::clamp(morph_amount_ + delta, 0, 255);
 }
 
@@ -112,63 +135,100 @@ void GenrePage::applyCurrent() {
   const bool wasPlaying = mini_acid_.isPlaying();
   if (wasPlaying && doRegenerate) mini_acid_.stop();
 
-  withAudioGuard([&]() {
-    const auto genre = static_cast<GenerativeMode>(genre_index_);
-    const auto recipe = static_cast<GenreRecipeId>(recipeIndex_);
-    const auto morphTarget =
-        morph_amount_ > 0 ? recipe : static_cast<GenreRecipeId>(kBaseRecipeId);
+  const GenerativeMode genre = selectedGenre();
+  const GenreRecipeId recipe = selectedRecipe();
+  const bool atlasRecipe = AtlasRuntime::hasRecipe(recipe);
+  const uint8_t effectiveMorph = atlasRecipe
+      ? 0
+      : static_cast<uint8_t>(morph_amount_);
+  const GenreRecipeId morphTarget = effectiveMorph > 0
+      ? recipe
+      : static_cast<GenreRecipeId>(kBaseRecipeId);
+  bool materialized = true;
 
+  withAudioGuard([&]() {
     auto& manager = mini_acid_.genreManager();
     manager.setGenerativeMode(genre);
     manager.setRecipe(recipe);
     manager.setMorphTarget(morphTarget);
-    manager.setMorphAmount(static_cast<uint8_t>(morph_amount_));
+    manager.setMorphAmount(effectiveMorph);
 
     mini_acid_.setGrooveboxMode(
         GenreManager::grooveboxModeForRecipe(recipe, genre));
 
     auto& settings = mini_acid_.sceneManager().currentScene().genre;
-    settings.generativeMode = static_cast<uint8_t>(genre_index_);
-    settings.recipe = static_cast<uint8_t>(recipeIndex_);
-    settings.morphTarget = static_cast<uint8_t>(morphTarget);
-    settings.morphAmount = static_cast<uint8_t>(morph_amount_);
+    settings.generativeMode = static_cast<uint8_t>(genre);
+    settings.recipe = recipe;
+    settings.morphTarget = morphTarget;
+    settings.morphAmount = effectiveMorph;
 
-    if (doApplyTempo) {
-      const int index = std::clamp(genre_index_, 0, kGenerativeModeCount - 1);
-      mini_acid_.setBpm(static_cast<float>(kGenreBpm[index]));
+    if (doRegenerate) {
+      const int profileIndex = static_cast<int>(genre);
+      const auto result = GenreMaterializer::materializeCurrent(
+          mini_acid_, genre, recipe, static_cast<uint8_t>(roleIndex_),
+          doApplyTempo, kGenreBpm[profileIndex]);
+      materialized = static_cast<bool>(result);
     }
-    if (doRegenerate) mini_acid_.regeneratePatternsWithGenre();
   });
 
   if (wasPlaying && doRegenerate) mini_acid_.start();
 
-  char toast[96];
-  std::snprintf(
-      toast, sizeof(toast), "%s / %s: %s",
-      GenreManager::generativeModeName(
-          static_cast<GenerativeMode>(genre_index_)),
-      GenreManager::recipeName(static_cast<GenreRecipeId>(recipeIndex_)),
-      applyModeName());
+  if (!materialized) {
+    UI::showToast("GENRE MATERIALIZE FAILED", 1800);
+    return;
+  }
+
+  AtlasRuntimeMetadata metadata{};
+  const bool hasRole = AtlasRuntime::describeVariation(
+      recipe, static_cast<uint8_t>(roleIndex_), metadata);
+
+  char toast[112];
+  if (hasRole) {
+    std::snprintf(
+        toast, sizeof(toast), "%s / %s / %s: %s",
+        GenreVariantCatalog::genreDisplayName(genre),
+        GenreVariantCatalog::recipeDisplayName(recipe),
+        metadata.slotId ? metadata.slotId : "P1",
+        applyModeName());
+  } else {
+    std::snprintf(
+        toast, sizeof(toast), "%s / %s: %s",
+        GenreVariantCatalog::genreDisplayName(genre),
+        GenreVariantCatalog::recipeDisplayName(recipe),
+        applyModeName());
+  }
   UI::showToast(toast, 1600);
 }
 
 void GenrePage::updateFromEngine() {
-  genre_index_ = static_cast<int>(mini_acid_.genreManager().generativeMode());
-  recipeIndex_ = clampRecipeIndex(
-      static_cast<int>(mini_acid_.genreManager().recipe()));
-  morph_amount_ = static_cast<int>(mini_acid_.genreManager().morphAmount());
+  genre_index_ = std::clamp(
+      static_cast<int>(mini_acid_.genreManager().generativeMode()),
+      0, kGenerativeModeCount - 1);
+  const GenerativeMode genre = selectedGenre();
+  const GenreRecipeId activeRecipe = mini_acid_.genreManager().recipe();
+  const int compatibleIndex =
+      GenreVariantCatalog::indexOf(genre, activeRecipe);
+  recipeIndex_ = compatibleIndex >= 0 ? compatibleIndex : 0;
+  roleIndex_ = 0;
+  morph_amount_ = AtlasRuntime::hasRecipe(selectedRecipe())
+      ? 0
+      : static_cast<int>(mini_acid_.genreManager().morphAmount());
 }
 
 void GenrePage::draw(IGfx& gfx) {
   const AxisUI::Palette palette = AxisUI::paletteFor(style_);
   const IGfxColor axisColor = palette.genre;
-  const int profileIndex =
-      std::clamp(genre_index_, 0, kGenerativeModeCount - 1);
-  const auto selectedGenre = static_cast<GenerativeMode>(profileIndex);
-  const auto selectedRecipe = static_cast<GenreRecipeId>(recipeIndex_);
+  const GenerativeMode selectedGenreValue = selectedGenre();
+  const GenreRecipeId selectedRecipeValue = selectedRecipe();
+  const int profileIndex = static_cast<int>(selectedGenreValue);
   const GenerativeParams& params = kGenerativePresets[profileIndex];
   const auto activeGenre = mini_acid_.genreManager().generativeMode();
   const auto activeRecipe = mini_acid_.genreManager().recipe();
+
+  AtlasRuntimeMetadata selectedMetadata{};
+  const bool hasAtlasRole = AtlasRuntime::describeVariation(
+      selectedRecipeValue, static_cast<uint8_t>(roleIndex_),
+      selectedMetadata);
 
   UI::drawStandardHeader(gfx, mini_acid_, "GENRE");
   LayoutManager::clearContent(gfx);
@@ -182,48 +242,66 @@ void GenrePage::draw(IGfx& gfx) {
 
   AxisUI::drawValueRow(
       gfx, x, LayoutManager::lineY(1), width, "GENRE",
-      GenreManager::generativeModeName(selectedGenre),
+      GenreVariantCatalog::genreDisplayName(selectedGenreValue),
       focus_ == FocusRow::Genre, axisColor, palette);
 
-  char value[80];
-  std::snprintf(value, sizeof(value), "%s",
-                GenreManager::recipeName(selectedRecipe));
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(2), width, "VARIANT",
-                       value, focus_ == FocusRow::Variant,
+  AxisUI::drawValueRow(
+      gfx, x, LayoutManager::lineY(2), width, "VARIANT",
+      GenreVariantCatalog::recipeDisplayName(selectedRecipeValue),
+      focus_ == FocusRow::Variant, axisColor, palette);
+
+  char value[96];
+  if (hasAtlasRole) {
+    std::snprintf(value, sizeof(value), "%s  %s",
+                  selectedMetadata.slotId ? selectedMetadata.slotId : "P1",
+                  selectedMetadata.slotFunction
+                      ? selectedMetadata.slotFunction
+                      : "BASE");
+  } else {
+    std::snprintf(value, sizeof(value), "PROCEDURAL");
+  }
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(3), width, "ROLE",
+                       value, focus_ == FocusRow::Role,
                        axisColor, palette);
 
-  std::snprintf(value, sizeof(value), "%d%%",
-                (morph_amount_ * 100) / 255);
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(3), width, "MORPH",
+  if (AtlasRuntime::hasRecipe(selectedRecipeValue)) {
+    std::snprintf(value, sizeof(value), "N/A (TABLE)");
+  } else {
+    std::snprintf(value, sizeof(value), "%d%%",
+                  (morph_amount_ * 100) / 255);
+  }
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width, "MORPH",
                        value, focus_ == FocusRow::Morph,
                        axisColor, palette);
 
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width, "APPLY",
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "APPLY",
                        applyModeName(), focus_ == FocusRow::Apply,
                        axisColor, palette);
 
-  std::snprintf(value, sizeof(value),
-                "BPM %u  N %d..%d  V %d..%d",
-                static_cast<unsigned>(kGenreBpm[profileIndex]),
-                params.minNotes, params.maxNotes,
-                params.velocityMin, params.velocityMax);
-  gfx.setTextColor(palette.muted);
-  gfx.drawText(x + 2, LayoutManager::lineY(5) + 1, value);
-
-  std::snprintf(value, sizeof(value),
-                "DOWNBEAT %s  KICK %s  HATS %s",
-                yesNo(params.preferDownbeats),
-                params.sparseKick ? "SPARSE" : "OPEN",
-                params.sparseHats ? "SPARSE" : "OPEN");
+  if (hasAtlasRole) {
+    std::snprintf(value, sizeof(value),
+                  "BPM %u  SW %u  %s",
+                  static_cast<unsigned>(selectedMetadata.bpm),
+                  static_cast<unsigned>(selectedMetadata.swingPercent),
+                  selectedMetadata.slotFunction
+                      ? selectedMetadata.slotFunction
+                      : "BASE");
+  } else {
+    std::snprintf(value, sizeof(value),
+                  "BPM %u  N %d..%d  V %d..%d",
+                  static_cast<unsigned>(kGenreBpm[profileIndex]),
+                  params.minNotes, params.maxNotes,
+                  params.velocityMin, params.velocityMax);
+  }
   gfx.setTextColor(palette.muted);
   gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
 
   std::snprintf(value, sizeof(value), "ACTIVE %s/%s MAP:%s",
-                GenreManager::generativeModeName(activeGenre),
-                GenreManager::recipeName(activeRecipe),
+                GenreVariantCatalog::genreDisplayName(activeGenre),
+                GenreVariantCatalog::recipeDisplayName(activeRecipe),
                 linkStateShort(mini_acid_));
   gfx.setTextColor(
-      activeGenre == selectedGenre && activeRecipe == selectedRecipe
+      activeGenre == selectedGenreValue && activeRecipe == selectedRecipeValue
           ? axisColor
           : palette.warning);
   gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, value);
@@ -265,13 +343,14 @@ bool GenrePage::handleEvent(UIEvent& event) {
         if (event.alt) {
           morphAccelerator.reset();
           adjustMorph(delta * 16);
-        } else if (delta < 0) {
-          morphAccelerator.reset();
-          cycleRecipeSelection(-1);
         } else {
           morphAccelerator.reset();
-          cycleRecipeSelection(1);
+          cycleRecipeSelection(delta);
         }
+        return true;
+      case FocusRow::Role:
+        morphAccelerator.reset();
+        cycleRole(delta);
         return true;
       case FocusRow::Morph: {
         const bool modified = event.shift || event.ctrl || event.alt || event.meta;
@@ -290,7 +369,7 @@ bool GenrePage::handleEvent(UIEvent& event) {
   const char key = static_cast<char>(
       std::tolower(static_cast<unsigned char>(event.key)));
 
-  // ENTER: apply the current genre/texture/recipe selection.
+  // ENTER: apply the current genre/variant/role selection.
   // Texture is intentionally not changed by the four-axis GENRE page.
   if (event.key == '\n' || event.key == '\r') {
     morphAccelerator.reset();
