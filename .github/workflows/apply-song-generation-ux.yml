@@ -1,0 +1,59 @@
+name: Apply Song generation UX
+
+on:
+  push:
+    branches:
+      - agent/song-generation-ux
+    paths:
+      - 'scripts/apply_song_generation_ux.py'
+      - '.github/workflows/apply-song-generation-ux.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/song-generation-ux
+          fetch-depth: 0
+
+      - name: Apply ownership and Song UX changes
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_song_generation_ux.py
+
+      - name: Validate source contracts
+        run: |
+          set -euo pipefail
+          python3 tests/test_four_axis_ui_source_regressions.py
+          python3 tests/test_axis_hardware_feedback_source_regressions.py
+          python3 tests/test_song_generation_source_regressions.py
+          python3 tests/test_scene_revision_source_regressions.py
+
+      - name: Build changed pages and navigation tests
+        run: |
+          set -euo pipefail
+          mkdir -p build/host-tests/generate-song
+          COMMON_FLAGS='-std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. -Iplatform_sdl -include platform_sdl/arduino_compat.h'
+          g++ ${COMMON_FLAGS} -c src/ui/pages/genre_page.cpp -o build/host-tests/generate-song/genre_page.o
+          g++ ${COMMON_FLAGS} -c src/ui/pages/feel_page.cpp -o build/host-tests/generate-song/feel_page.o
+          g++ ${COMMON_FLAGS} -c src/ui/pages/texture_page.cpp -o build/host-tests/generate-song/texture_page.o
+          g++ ${COMMON_FLAGS} -c src/ui/pages/song_page.cpp -o build/host-tests/generate-song/song_page.o
+          g++ -std=c++17 -Wall -Wextra -Werror -I. tests/test_global_help_content.cpp -o build/host-tests/generate-song/test_global_help_content
+          g++ -std=c++17 -Wall -Wextra -Werror -I. tests/test_ui_session_state.cpp -o build/host-tests/generate-song/test_ui_session_state
+          build/host-tests/generate-song/test_global_help_content
+          build/host-tests/generate-song/test_ui_session_state
+
+      - name: Commit applied changes
+        run: |
+          set -euo pipefail
+          git rm -f scripts/apply_song_generation_ux.py .github/workflows/apply-song-generation-ux.yml
+          git add -A
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'refactor(ui): move generation ownership into Song'
+          git push origin HEAD:agent/song-generation-ux
