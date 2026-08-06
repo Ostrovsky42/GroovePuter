@@ -1,5 +1,6 @@
 name: Apply Phrase UI registration
 
+# Temporary self-removing workflow used to apply exact multi-file registration.
 on:
   push:
     branches:
