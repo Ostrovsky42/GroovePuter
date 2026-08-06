@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Source-level gates for the Phrase Core UI follow-up.
+"""Source-level gates for Phrase Core and experimental Arranger UI.
 
-These checks intentionally cover UI ownership only. Phrase domain, Scene
-persistence and revision behavior remain covered by the foundation tests.
+These checks cover UI ownership only. Phrase domain, Scene persistence and
+revision behavior remain covered by the focused backend tests.
 """
 
 from pathlib import Path
@@ -17,15 +17,19 @@ def require(text: str, needle: str, message: str) -> None:
         raise AssertionError(message)
 
 
-# Fixed-capacity preview cache: no vector/heap or raw event ownership in UI.
+# Fixed-capacity preview and arranger state: no vector/heap or event ownership.
 require(HEADER, "std::array<PhraseCore::BarPreview, PhraseCore::kMaxBars>",
         "Phrase page must cache the bounded bar previews in fixed storage")
 require(HEADER, "std::array<bool, PhraseCore::kMaxBars>",
         "Phrase page must track fixed-capacity preview validity")
+require(HEADER, "enum class View : uint8_t",
+        "Phrase page must expose bounded Core/Arrange views")
+require(HEADER, "uint8_t arrangement_cursor_ = 0;",
+        "Phrase arranger cursor must stay fixed-size")
 if "std::vector" in HEADER or "new " in CPP or "malloc(" in CPP:
-    raise AssertionError("Phrase UI must not allocate preview/event storage")
+    raise AssertionError("Phrase UI must not allocate preview/arrangement storage")
 
-# The page renders the complete Phrase shape and a selected per-bar preview.
+# The Core view renders the complete Phrase shape and selected-bar preview.
 require(CPP, "drawPhraseShape", "Phrase UI must render energy-by-bar")
 require(CPP, "PhraseCore::kMaxBars", "Phrase shape must remain bounded to 8 bars")
 require(CPP, "bar_preview_valid_[preview_bar_]",
@@ -40,7 +44,20 @@ require(CPP, '"REF LINKED"', "Linked reference warning is missing")
 require(CPP, '"NEXT %uB %s  P:%s"',
         "Next capture settings must be visibly separate from saved metadata")
 if any(term in CPP for term in ('"COPIED"', '"RECORDED"', '"EXTRACTED"')):
-    raise AssertionError("Foundation UI must not claim independent event ownership")
+    raise AssertionError("Phrase UI must not claim independent event ownership")
+
+# Stage 2 remains a bounded view over the persisted fixed arrangement.
+for needle in (
+    "void PhrasePage::drawArrangement",
+    '"PHRASE ARRANGE"',
+    '"CHAIN %u/%u  TOTAL %uB"',
+    "PhraseCore::kArrangementCapacity",
+    "PhraseWorkspace::assignArrangementStep",
+    "PhraseWorkspace::removeArrangementStep",
+    "PhraseWorkspace::clearArrangement",
+    "PhraseWorkspace::writeArrangementToSong",
+):
+    require(CPP, needle, f"Phrase Arranger UI regression: {needle}")
 
 # Theme-aware rendering for all selectable visual styles.
 require(CPP, "paletteForStyle", "Phrase UI must use a semantic palette")
@@ -53,14 +70,17 @@ require(CPP, "VisualStyle::MINIMAL", "CARBON palette is missing")
 if "LayoutManager::clearContent" in CPP:
     raise AssertionError("Phrase page must not clear the full content twice")
 
-# Existing command contract remains present.
+# Core and arranger commands/legends must match the actual Stage 2 page.
 for needle in (
     "PhraseWorkspace::capture",
     "PhraseWorkspace::derive",
     "PhraseWorkspace::writeToSong",
     "PhraseWorkspace::clear",
-    '"1-4:SLOT  L/R:BAR  U/D:LEN"',
-    '"ENT:CAP R:ROLE P:PARENT D/W/DEL"',
+    '"TAB:ARR 1-4:SLOT L/R:BAR U/D:LEN"',
+    '"ENT:CAP D:DERIVE W:WRITE SH+W:OVER"',
+    '"TAB:CORE L/R:POS U/D:+8 1-4:SET"',
+    '"W:WRITE SH+W:OVER DEL:RM SH+DEL:CLEAR"',
+    "if (key == '\\t' || ui_event.scancode == GROOVEPUTER_TAB)",
 ):
     require(CPP, needle, f"Phrase UI command/legend regression: {needle}")
 
