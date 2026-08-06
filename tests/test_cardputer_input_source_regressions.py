@@ -75,8 +75,10 @@ def main() -> None:
             "Phrase Alt+W must bypass the global overlay and request overwrite")
     require("bool isArrangeView() const" in phrase_header,
             "Phrase page must expose its Core/Arrange view to the input adapter")
-    require("dynamic_cast<PhrasePage*>" in display_header,
-            "Backspace routing must inspect the actual Phrase view")
+    require("static_cast<PhrasePage*>" in display_header,
+            "Backspace routing must use the page-index-guaranteed concrete type")
+    require("dynamic_cast<PhrasePage*>" not in display_header,
+            "Cardputer routing must not require RTTI")
     require("if (!event.ctrl) return true;" in display_header,
             "plain Backspace must be non-destructive in Phrase Arrange")
     require("event.ctrl = false;" in display_header,
