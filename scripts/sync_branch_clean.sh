@@ -13,7 +13,7 @@ Examples:
 
 Options:
   --discard  Discard tracked local changes before switching.
-             Untracked user files are never deleted.
+             Other untracked files are not removed.
   -h, --help Show this help.
 
 Repository lookup order:
@@ -142,20 +142,31 @@ for path in "${artifact_files[@]}"; do
   fi
 done
 
-# Remove ignored compiler outputs outside the standard build directories.
-# Tracked files and non-ignored user files are never removed.
-while IFS= read -r -d '' path; do
-  relative="${path#./}"
-  if git check-ignore -q -- "$relative"; then
-    rm -f -- "$relative"
-    printf '  removed  : %s\n' "$relative"
-  fi
-done < <(
-  find . -path './.git' -prune -o -type f \
-    \( -name '*.o' -o -name '*.a' -o -name '*.d' -o \
-       -name '*.elf' -o -name '*.bin' -o -name '*.map' \) \
-    -print0
-)
+remove_ignored_compiler_outputs() {
+  local search_root="$1"
+  local max_depth="$2"
+  local path relative
+
+  [[ -d "$search_root" ]] || return 0
+
+  while IFS= read -r -d '' path; do
+    relative="${path#./}"
+    if git check-ignore -q -- "$relative"; then
+      rm -f -- "$relative"
+      printf '  removed  : %s\n' "$relative"
+    fi
+  done < <(
+    find "$search_root" -maxdepth "$max_depth" -type f \
+      \( -name '*.o' -o -name '*.a' -o -name '*.d' -o \
+         -name '*.elf' -o -name '*.bin' -o -name '*.map' \) \
+      -print0
+  )
+}
+
+# Only scan locations where this repository emits standalone compiler outputs.
+# Nested project data and arbitrary untracked files are left untouched.
+remove_ignored_compiler_outputs . 1
+remove_ignored_compiler_outputs platform_sdl 2
 
 if [[ -s .gitmodules ]]; then
   printf 'Submodules : sync and update\n'
