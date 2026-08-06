@@ -64,9 +64,19 @@ void GenerationPage::syncTargetFromSong() {
 
 void GenerationPage::moveTargetRow(int delta, bool fast) {
   if (delta == 0) return;
+
+  const int previousRow = target_row_;
   const int multiplier = hold_accel_.multiplier(delta, fast);
   target_row_ = clampSongRow(target_row_ + delta * multiplier);
   last_attempted_ = false;
+
+  if (target_row_ == previousRow) return;
+
+  Serial.printf("[GENERATION] target %d -> %d delta=%d mult=%d\n",
+                previousRow + 1, target_row_ + 1, delta, multiplier);
+  char toast[48];
+  std::snprintf(toast, sizeof(toast), "GEN TARGET ROW %d", target_row_ + 1);
+  UI::showToast(toast, 650);
 }
 
 void GenerationPage::materializeCurrentBar() {
@@ -75,6 +85,7 @@ void GenerationPage::materializeCurrentBar() {
 
   PhraseGenerator::PhraseResult result{};
   const int targetRow = clampSongRow(target_row_);
+  Serial.printf("[GENERATION] write request row=%d\n", targetRow + 1);
   const auto generate = [&]() {
     PhraseGenerator::PhraseRequest request{};
     request.bars = kMaterializeBars;
@@ -153,12 +164,16 @@ void GenerationPage::materializeCurrentBar() {
                       mini_acid_.genreManager().recipe()),
                   result.songStart + 1, patternLabel);
     UI::showToast(toast, 2000);
+    Serial.printf("[GENERATION] write ok row=%d pattern=%d\n",
+                  result.songStart + 1, result.firstGlobalPattern);
   } else {
     last_status_ = PhraseGenerator::errorText(result.error);
     char toast[96];
     std::snprintf(toast, sizeof(toast), "GEN BLOCKED ROW %d: %s",
                   targetRow + 1, last_status_.c_str());
     UI::showToast(toast, 2200);
+    Serial.printf("[GENERATION] write blocked row=%d error=%s\n",
+                  targetRow + 1, last_status_.c_str());
   }
 
   if (wasPlaying) mini_acid_.start();
@@ -222,20 +237,38 @@ void GenerationPage::draw(IGfx& gfx) {
   gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, value);
 
   UI::drawStandardFooter(gfx,
-                         "ARROWS:TARGET  ENTER/G:WRITE",
-                         "HOLD:ACCEL  LEN:PHRASE CORE");
+                         "L/R:+-1  U/D:+-8",
+                         "HOLD L/R:ACCEL  ENTER/G:WRITE");
 }
 
 bool GenerationPage::handleEvent(UIEvent& event) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
   const int nav = UIInput::navCode(event);
-  if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_UP) {
+  if (nav == GROOVEPUTER_LEFT) {
     moveTargetRow(-1, event.shift || event.ctrl || event.alt);
     return true;
   }
-  if (nav == GROOVEPUTER_RIGHT || nav == GROOVEPUTER_DOWN) {
+  if (nav == GROOVEPUTER_RIGHT) {
     moveTargetRow(1, event.shift || event.ctrl || event.alt);
+    return true;
+  }
+  if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
+    hold_accel_.reset();
+    const int previousRow = target_row_;
+    target_row_ = clampSongRow(
+        target_row_ + (nav == GROOVEPUTER_DOWN ? 8 : -8));
+    last_attempted_ = false;
+
+    if (target_row_ != previousRow) {
+      Serial.printf("[GENERATION] target %d -> %d jump=%d\n",
+                    previousRow + 1, target_row_ + 1,
+                    nav == GROOVEPUTER_DOWN ? 8 : -8);
+      char toast[48];
+      std::snprintf(toast, sizeof(toast),
+                    "GEN TARGET ROW %d", target_row_ + 1);
+      UI::showToast(toast, 650);
+    }
     return true;
   }
 
