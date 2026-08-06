@@ -76,6 +76,9 @@ jobs:
             tests/test_phrase_arranger.cpp \
             -o build/host-tests/test_phrase_arranger
           g++ ${COMMON_FLAGS} \
+            tests/test_phrase_arranger_capacity.cpp \
+            -o build/host-tests/test_phrase_arranger_capacity
+          g++ ${COMMON_FLAGS} \
             tests/test_phrase_persistence_preview.cpp \
             -o build/host-tests/test_phrase_persistence_preview
           g++ ${COMMON_FLAGS} \
@@ -107,6 +110,7 @@ jobs:
         run: |
           build/host-tests/test_phrase_core
           build/host-tests/test_phrase_arranger
+          build/host-tests/test_phrase_arranger_capacity
           build/host-tests/test_phrase_persistence_preview
           build/host-tests/test_phrase_workspace
           build/host-tests/test_global_help_content
