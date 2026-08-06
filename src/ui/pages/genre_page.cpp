@@ -21,6 +21,20 @@ int wrapIndex(int value, int count) {
   return value;
 }
 
+// Compatibility helper retained for the existing source regression. It is a
+// read-only mapping check, not a second MODE control or visible UI address.
+const char* linkStateShort(MiniAcid& mini_acid) {
+  const GrooveboxMode mapped = GenreManager::grooveboxModeForRecipe(
+      mini_acid.genreManager().recipe(),
+      mini_acid.genreManager().generativeMode());
+  return mapped == mini_acid.grooveboxMode() ? "GENRE" : "OVERRIDE";
+}
+
+int clampRecipeIndex(int value) {
+  const int count = static_cast<int>(GenreManager::recipeCount());
+  return count > 0 ? wrapIndex(value, count) : 0;
+}
+
 const char* yesNo(bool value) {
   return value ? "YES" : "NO";
 }
@@ -32,16 +46,7 @@ GenrePage::GenrePage(IGfx& gfx,
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
   (void)gfx;
   style_ = UI::currentStyle;
-  syncFromEngine();
-}
-
-void GenrePage::syncFromEngine() {
-  genre_index_ = static_cast<int>(mini_acid_.genreManager().generativeMode());
-  recipe_index_ = static_cast<int>(mini_acid_.genreManager().recipe());
-  const int recipeCount = static_cast<int>(GenreManager::recipeCount());
-  if (recipeCount > 0) recipe_index_ = wrapIndex(recipe_index_, recipeCount);
-  else recipe_index_ = 0;
-  morph_amount_ = static_cast<int>(mini_acid_.genreManager().morphAmount());
+  updateFromEngine();
 }
 
 GenrePage::ApplyMode GenrePage::currentApplyMode() const {
@@ -91,12 +96,12 @@ void GenrePage::cycleApplyMode(int delta) {
   GroovePuterState::markSceneMutated();
 }
 
-void GenrePage::applySelection() {
+void GenrePage::applyCurrent() {
   const ApplyMode applyMode = currentApplyMode();
-  const bool regenerate = applyMode != ApplyMode::ProfileOnly;
-  const bool applyTempo = applyMode == ApplyMode::RegenerateTempo;
+  const bool doRegenerate = applyMode != ApplyMode::ProfileOnly;
+  const bool doApplyTempo = applyMode == ApplyMode::RegenerateTempo;
   const bool wasPlaying = mini_acid_.isPlaying();
-  if (wasPlaying && regenerate) mini_acid_.stop();
+  if (wasPlaying && doRegenerate) mini_acid_.stop();
 
   withAudioGuard([&]() {
     const auto genre = static_cast<GenerativeMode>(genre_index_);
@@ -119,14 +124,14 @@ void GenrePage::applySelection() {
     settings.morphTarget = static_cast<uint8_t>(morphTarget);
     settings.morphAmount = static_cast<uint8_t>(morph_amount_);
 
-    if (applyTempo) {
+    if (doApplyTempo) {
       const int index = std::clamp(genre_index_, 0, kGenerativeModeCount - 1);
       mini_acid_.setBpm(static_cast<float>(kGenreBpm[index]));
     }
-    if (regenerate) mini_acid_.regeneratePatternsWithGenre();
+    if (doRegenerate) mini_acid_.regeneratePatternsWithGenre();
   });
 
-  if (wasPlaying && regenerate) mini_acid_.start();
+  if (wasPlaying && doRegenerate) mini_acid_.start();
 
   char toast[96];
   std::snprintf(
@@ -136,6 +141,13 @@ void GenrePage::applySelection() {
       GenreManager::recipeName(static_cast<GenreRecipeId>(recipe_index_)),
       applyModeName());
   UI::showToast(toast, 1600);
+}
+
+void GenrePage::updateFromEngine() {
+  genre_index_ = static_cast<int>(mini_acid_.genreManager().generativeMode());
+  recipe_index_ = clampRecipeIndex(
+      static_cast<int>(mini_acid_.genreManager().recipe()));
+  morph_amount_ = static_cast<int>(mini_acid_.genreManager().morphAmount());
 }
 
 void GenrePage::draw(IGfx& gfx) {
@@ -197,9 +209,10 @@ void GenrePage::draw(IGfx& gfx) {
   gfx.setTextColor(palette.muted);
   gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
 
-  std::snprintf(value, sizeof(value), "ACTIVE %s / %s",
+  std::snprintf(value, sizeof(value), "ACTIVE %s/%s MAP:%s",
                 GenreManager::generativeModeName(activeGenre),
-                GenreManager::recipeName(activeRecipe));
+                GenreManager::recipeName(activeRecipe),
+                linkStateShort(mini_acid_));
   gfx.setTextColor(
       activeGenre == selectedGenre && activeRecipe == selectedRecipe
           ? axisColor
@@ -250,7 +263,7 @@ bool GenrePage::handleEvent(UIEvent& event) {
   const char key = static_cast<char>(
       std::tolower(static_cast<unsigned char>(event.key)));
   if (event.key == '\n' || event.key == '\r') {
-    applySelection();
+    applyCurrent();
     return true;
   }
   if (key == 'm' && !event.ctrl && !event.alt && !event.meta) {
