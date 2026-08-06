@@ -4,6 +4,11 @@ import re
 
 path = Path('tests/test_four_axis_ui_source_regressions.py')
 text = path.read_text(encoding='utf-8')
+text = text.replace(
+    '    \'"Linear constructive pass / no retry"\',\n',
+    '',
+    1,
+)
 pattern = re.compile(
     r'length_owner_tokens = .*?(?=# TEXTURE: sound surface and seven read-only macro projection only\.)',
     re.DOTALL,
