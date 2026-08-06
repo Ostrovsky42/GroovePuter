@@ -31,13 +31,13 @@ class GenrePage : public IPage {
     RegenerateTempo,
   };
 
-  void syncFromEngine();
+  void updateFromEngine();
   void moveFocus(int delta);
   void shiftGenre(int delta);
   void shiftVariant(int delta);
   void adjustMorph(int delta);
   void cycleApplyMode(int delta);
-  void applySelection();
+  void applyCurrent();
 
   ApplyMode currentApplyMode() const;
   const char* applyModeName() const;
