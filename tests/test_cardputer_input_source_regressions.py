@@ -12,6 +12,7 @@ def require(condition: bool, message: str) -> None:
 def main() -> None:
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
     helper = (ROOT / "src/input/cardputer_input_edges.h").read_text(encoding="utf-8")
+    display_header = (ROOT / "src/ui/miniacid_display.h").read_text(encoding="utf-8")
     normalize = (ROOT / "src/ui/key_normalize.h").read_text(encoding="utf-8")
     perform = (ROOT / "src/ui/pages/perform_page.cpp").read_text(encoding="utf-8")
     smf_wrapper = (
@@ -59,6 +60,18 @@ def main() -> None:
     require("digitDispatchMask" in helper and
             "wordDigitAlreadyDispatched" in helper,
             "digit deduplication helpers must remain centralized")
+
+    require("handleEvent(...) handleCardputerEvent(__VA_ARGS__)" in helper,
+            "Cardputer sketch must use the page-aware display adapter")
+    require("bool handleCardputerEvent(UIEvent event)" in display_header,
+            "MiniAcidDisplay must expose the Cardputer-only routing adapter")
+    require("page_index_ == WorkflowPages::kPhrase" in display_header,
+            "Alt+W routing must be limited to the Phrase page")
+    require("event.alt = false;" in display_header and
+            "event.shift = true;" in display_header,
+            "Phrase Alt+W must bypass the global overlay and request overwrite")
+    require("return handleEvent(event);" in display_header,
+            "all routed events must return to the accepted global dispatcher")
 
     require("K is intentionally not a MIDI mute command" in smf_wrapper,
             "public MIDI Player wrapper must document the K no-op boundary")
