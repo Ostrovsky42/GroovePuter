@@ -176,7 +176,7 @@ void GenrePage::draw(IGfx& gfx) {
   const int x = Layout::COL_1;
   const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
   AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0),
-                      "GENRE 1/4", "CORRIDOR / RECIPE SELECT",
+                      "GENRE 1/4", "CORRIDOR / VOCABULARY",
                       axisColor, palette);
   drawRecipeOverlay(gfx, recipeIndex_);
 
