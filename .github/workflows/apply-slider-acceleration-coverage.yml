@@ -62,3 +62,5 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'ui: accelerate remaining continuous value controls'
           git push origin HEAD:agent/accelerated-slider-repeat
+
+# Merge-trigger marker: 1
