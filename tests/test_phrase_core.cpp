@@ -26,10 +26,11 @@ Song makeSong(int length) {
 void testMemoryContract() {
   static_assert(sizeof(PhraseCore::PhraseMetadata) <= 16,
                 "metadata budget regression");
-  static_assert(sizeof(PhraseCore::PhraseBank) == 244,
+  static_assert(sizeof(PhraseCore::PhraseBank) == 262,
                 "Phrase bank budget regression");
   assert(PhraseCore::kSlotCount == 4);
   assert(PhraseCore::kMaxBars == 8);
+  assert(PhraseCore::kArrangementCapacity == 16);
 }
 
 void testResetAndSummaries() {
@@ -37,6 +38,10 @@ void testResetAndSummaries() {
   PhraseCore::reset(bank);
   assert(bank.nextPhraseId == 1);
   assert(bank.version == PhraseCore::kPersistenceVersion);
+  assert(bank.arrangement.length == 0);
+  for (uint8_t slot : bank.arrangement.slots) {
+    assert(slot == PhraseCore::kNoSlot);
+  }
   for (int slot = 0; slot < PhraseCore::kSlotCount; ++slot) {
     const auto id = static_cast<PhraseCore::SlotId>(slot);
     const PhraseCore::SlotSummary summary = PhraseCore::summarize(bank, id);
