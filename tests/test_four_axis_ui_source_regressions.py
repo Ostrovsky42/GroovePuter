@@ -56,7 +56,9 @@ for needle in (
     '"CORRIDOR / VOCABULARY"',
     "setGenerativeMode",
     "setRecipe",
-    "regeneratePatternsWithGenre",
+    "GenreMaterializer::materializeCurrent",
+    "GenreVariantCatalog::recipeAt",
+    '"ROLE"',
     '"PROFILE ONLY"',
     '"MATERIALIZE"',
 ):
@@ -64,6 +66,7 @@ for needle in (
 forbid(
     GENRE,
     (
+        "GenreManager::recipeCount()",
         "setTextureMode",
         "applyTexture(",
         "applyGenreTimbre",
