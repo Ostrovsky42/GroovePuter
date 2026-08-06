@@ -13,6 +13,7 @@ def main() -> None:
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
     helper = (ROOT / "src/input/cardputer_input_edges.h").read_text(encoding="utf-8")
     display_header = (ROOT / "src/ui/miniacid_display.h").read_text(encoding="utf-8")
+    phrase_header = (ROOT / "src/ui/pages/phrase_page.h").read_text(encoding="utf-8")
     normalize = (ROOT / "src/ui/key_normalize.h").read_text(encoding="utf-8")
     perform = (ROOT / "src/ui/pages/perform_page.cpp").read_text(encoding="utf-8")
     smf_wrapper = (
@@ -68,10 +69,20 @@ def main() -> None:
     require("bool handleCardputerEvent(UIEvent event)" in display_header,
             "MiniAcidDisplay must expose the Cardputer-only routing adapter")
     require("page_index_ == WorkflowPages::kPhrase" in display_header,
-            "Alt+W routing must be limited to the Phrase page")
+            "Phrase-only routing must remain limited to the Phrase page")
     require("event.alt = false;" in display_header and
             "event.shift = true;" in display_header,
             "Phrase Alt+W must bypass the global overlay and request overwrite")
+    require("bool isArrangeView() const" in phrase_header,
+            "Phrase page must expose its Core/Arrange view to the input adapter")
+    require("dynamic_cast<PhrasePage*>" in display_header,
+            "Backspace routing must inspect the actual Phrase view")
+    require("if (!event.ctrl) return true;" in display_header,
+            "plain Backspace must be non-destructive in Phrase Arrange")
+    require("event.ctrl = false;" in display_header,
+            "Ctrl+Backspace must be translated to the existing Arrange command")
+    require("else if (event.ctrl)" in display_header,
+            "Ctrl-modified Backspace must be consumed in Phrase Core")
     require("return handleEvent(event);" in display_header,
             "all routed events must return to the accepted global dispatcher")
 
