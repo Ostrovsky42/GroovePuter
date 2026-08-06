@@ -1,9 +1,9 @@
 name: Apply Phrase Scene integration
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/phrase-core-foundation
+      - dev
     paths:
       - 'tools/apply_phrase_scene_integration.py'
       - '.github/workflows/apply-phrase-scene-integration.yml'
@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.actor != 'github-actions[bot]'
+    if: github.head_ref == 'agent/phrase-core-foundation' && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
