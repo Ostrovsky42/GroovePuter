@@ -56,12 +56,32 @@ enum class UiStatusOutput : uint8_t {
     Unknown = 2,
 };
 
+inline uint16_t normalizeUiStatusBpm(int bpm) {
+    if (bpm < 1) return 1;
+    if (bpm > 999) return 999;
+    return static_cast<uint16_t>(bpm);
+}
+
+inline uint16_t& uiStatusBpmStorage() {
+    static uint16_t bpm = 120;
+    return bpm;
+}
+
+inline void setUiStatusBpm(int bpm) {
+    uiStatusBpmStorage() = normalizeUiStatusBpm(bpm);
+}
+
+inline uint16_t uiStatusBpm() {
+    return uiStatusBpmStorage();
+}
+
 struct UiStatusSnapshot {
     UiStatusContext context{UiStatusContext::Unknown};
     UiStatusSource source{UiStatusSource::Pattern};
     UiStatusState state{UiStatusState::Stop};
     UiStatusClock clock{UiStatusClock::Internal};
     UiStatusOutput output{UiStatusOutput::InternalAndMidi};
+    uint16_t bpm{uiStatusBpm()};
     uint16_t bar{1};
     uint16_t totalBars{1};
     bool liveMixLocked{false};
@@ -78,6 +98,7 @@ inline bool operator==(const UiStatusSnapshot& lhs,
            lhs.state == rhs.state &&
            lhs.clock == rhs.clock &&
            lhs.output == rhs.output &&
+           lhs.bpm == rhs.bpm &&
            lhs.bar == rhs.bar &&
            lhs.totalBars == rhs.totalBars &&
            lhs.liveMixLocked == rhs.liveMixLocked &&
@@ -154,14 +175,16 @@ inline void formatUiStatusLine(const UiStatusSnapshot& status,
                                std::size_t capacity) {
     if (destination == nullptr || capacity == 0) return;
 
+    const unsigned bpm = status.bpm == 0 ? 1u : status.bpm;
     const unsigned bar = status.bar == 0 ? 1u : status.bar;
     const unsigned total = status.totalBars == 0 ? 1u : status.totalBars;
     std::snprintf(destination,
                   capacity,
-                  "%s %s %s B%u/%u %s %s%s%s",
+                  "%s %s %s %u BPM B%u/%u %s %s%s%s",
                   uiStatusContextToken(status.context),
                   uiStatusSourceToken(status.source),
                   uiStatusStateToken(status.state),
+                  bpm,
                   bar,
                   total,
                   uiStatusClockToken(status.clock),
