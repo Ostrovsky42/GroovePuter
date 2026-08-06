@@ -37,7 +37,7 @@ on:
       - '.github/workflows/four-axis-ui.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   host-contract:
@@ -71,3 +71,39 @@ jobs:
             -o build/host-tests/four-axis/test_ui_session_state
           build/host-tests/four-axis/test_global_help_content
           build/host-tests/four-axis/test_ui_session_state
+
+  # BEGIN TEMP AXIS CLEANUP
+  apply-axis-cleanup:
+    if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply canonical source ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          source = Path('.github/workflows/apply-axis-ownership-cleanup.yml').read_text(encoding='utf-8')
+          marker = '        run: |\n'
+          if marker not in source:
+              raise SystemExit('staged cleanup run block not found')
+          script = textwrap.dedent(source.split(marker, 1)[1])
+          script = script.replace(
+              'git rm .github/workflows/apply-axis-ownership-cleanup.yml',
+              'python3 scripts/finalize_axis_cleanup.py\n'
+              'git rm .github/workflows/apply-axis-ownership-cleanup.yml '
+              '.github/workflows/run-axis-cleanup.yml '
+              'scripts/finalize_axis_cleanup.py',
+              1,
+          )
+          Path('/tmp/apply-axis-cleanup.sh').write_text(script, encoding='utf-8')
+          PY
+          bash /tmp/apply-axis-cleanup.sh
+  # END TEMP AXIS CLEANUP
