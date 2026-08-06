@@ -20,7 +20,7 @@ enum class SessionWorkflow : uint8_t {
 };
 
 constexpr int kWorkflowSessionCount = 5;
-constexpr int kUiPageCount = 14;
+constexpr int kUiPageCount = 15;
 constexpr uint16_t kDefaultMasterVolumePermille = 600;
 constexpr uint16_t kMaxMasterVolumePermille = 1800;
 
@@ -39,6 +39,7 @@ constexpr int kProject = 10;
 constexpr int kMode = 11;
 constexpr int kPerform = 12;
 constexpr int kPlayer = 13;
+constexpr int kPhrase = 14;
 }  // namespace SessionPages
 
 struct UiSessionState {
@@ -81,7 +82,8 @@ inline SessionWorkflow sessionWorkflowForPage(int page) {
         page == SessionPages::kSynthBParameters) {
         return SessionWorkflow::Hub;
     }
-    if (page == SessionPages::kArrange) return SessionWorkflow::Song;
+    if (page == SessionPages::kArrange ||
+        page == SessionPages::kPhrase) return SessionWorkflow::Song;
     return SessionWorkflow::Settings;
 }
 
@@ -163,7 +165,7 @@ inline int pageCountForWorkflow(SessionWorkflow workflow) {
         case SessionWorkflow::Perform: return 2;
         case SessionWorkflow::Generate: return 3;
         case SessionWorkflow::Hub: return 6;
-        case SessionWorkflow::Song: return 1;
+        case SessionWorkflow::Song: return 2;
         case SessionWorkflow::Settings: return 2;
     }
     return 1;
@@ -181,6 +183,9 @@ inline int pageAt(SessionWorkflow workflow, int index) {
         SessionPages::kDrums, SessionPages::kSynthAParameters,
         SessionPages::kSynthBParameters,
     };
+    static constexpr int kSongPages[] = {
+        SessionPages::kArrange, SessionPages::kPhrase,
+    };
     static constexpr int kSettingsPages[] = {
         SessionPages::kProject, SessionPages::kGenerator,
     };
@@ -193,7 +198,7 @@ inline int pageAt(SessionWorkflow workflow, int index) {
         case SessionWorkflow::Perform: return kPerformPages[index];
         case SessionWorkflow::Generate: return kGeneratePages[index];
         case SessionWorkflow::Hub: return kHubPages[index];
-        case SessionWorkflow::Song: return SessionPages::kArrange;
+        case SessionWorkflow::Song: return kSongPages[index];
         case SessionWorkflow::Settings: return kSettingsPages[index];
     }
     return SessionPages::kGenre;
