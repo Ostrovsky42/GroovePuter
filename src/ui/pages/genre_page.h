@@ -21,6 +21,7 @@ class GenrePage : public IPage {
   enum class FocusRow : uint8_t {
     Genre = 0,
     Variant,
+    Role,
     Morph,
     Apply,
   };
@@ -35,10 +36,13 @@ class GenrePage : public IPage {
   void moveFocus(int delta);
   void shiftGenre(int delta);
   void cycleRecipeSelection(int delta);
+  void cycleRole(int delta);
   void adjustMorph(int delta);
   void cycleApplyMode(int delta);
   void applyCurrent();
 
+  GenerativeMode selectedGenre() const;
+  GenreRecipeId selectedRecipe() const;
   ApplyMode currentApplyMode() const;
   const char* applyModeName() const;
 
@@ -55,6 +59,7 @@ class GenrePage : public IPage {
   FocusRow focus_ = FocusRow::Genre;
   int genre_index_ = 0;
   int recipeIndex_ = 0;
+  int roleIndex_ = 0;
   int morph_amount_ = 0;
   std::string title_ = "GENRE";
 };
