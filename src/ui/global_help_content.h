@@ -188,7 +188,7 @@ constexpr const char* kFeelLines[] = {
     "Enter/Space Apply texture",
     "FLAVOR LINK Explicit cross-axis link",
     "DI AG SP WD  Dirt/Age/Space/Width",
-    "IN AT DK     Instability/Attack/Dark",
+    "IN GR DK     Instab/Aggression/Dark",
     "Macro strip is read-only",
     "No note or rhythm changes",
 };
