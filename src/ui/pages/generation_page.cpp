@@ -8,6 +8,8 @@
 #include "../layout_manager.h"
 #include "../ui_common.h"
 #include "../../dsp/atlas_runtime.h"
+#include "../../dsp/genre_sparse_repair.h"
+#include "../../dsp/genre_variant_catalog.h"
 #include "../../dsp/phrase_generator.h"
 #include "src/state/scene_revision.h"
 
@@ -107,9 +109,15 @@ void GenerationPage::materializeCurrentBar() {
               PhraseGenerator::PhraseBarRole role,
               int barIndex) {
             (void)barIndex;
-            return AtlasRuntime::applyRecipe(
-                recipe, atlasVariationForRole(role),
+            const uint8_t variation = atlasVariationForRole(role);
+            const bool applied = AtlasRuntime::applyRecipe(
+                recipe, variation,
                 bar.synthA, bar.synthB, bar.drums, nullptr);
+            if (applied) {
+              GenreSparseRepair::applySparseLeadContract(
+                  activeGenre, recipe, variation, bar.synthB);
+            }
+            return applied;
           });
     } else {
       result = PhraseGenerator::generateToSong(
@@ -126,6 +134,8 @@ void GenerationPage::materializeCurrentBar() {
                 base.synthA, mini_acid_.bpm(), params, behavior, 0);
             generator.generatePattern(
                 base.synthB, mini_acid_.bpm(), params, behavior, 1);
+            GenreSparseRepair::applySparseLeadContract(
+                activeGenre, recipe, 0, base.synthB);
             generator.generateDrumPattern(base.drums, params, behavior);
           });
     }
@@ -158,9 +168,9 @@ void GenerationPage::materializeCurrentBar() {
 
     char toast[112];
     std::snprintf(toast, sizeof(toast), "GEN OK %s/%s ROW %d -> %s",
-                  GenreManager::generativeModeName(
+                  GenreVariantCatalog::genreDisplayName(
                       mini_acid_.genreManager().generativeMode()),
-                  GenreManager::recipeName(
+                  GenreVariantCatalog::recipeDisplayName(
                       mini_acid_.genreManager().recipe()),
                   result.songStart + 1, patternLabel);
     UI::showToast(toast, 2000);
@@ -197,9 +207,10 @@ void GenerationPage::draw(IGfx& gfx) {
 
   char value[112];
   std::snprintf(value, sizeof(value), "%s / %s",
-                GenreManager::generativeModeName(
+                GenreVariantCatalog::genreDisplayName(
                     mini_acid_.genreManager().generativeMode()),
-                GenreManager::recipeName(mini_acid_.genreManager().recipe()));
+                GenreVariantCatalog::recipeDisplayName(
+                    mini_acid_.genreManager().recipe()));
   gfx.setTextColor(palette.muted);
   gfx.drawText(x + 2, LayoutManager::lineY(1) + 1, value);
 
