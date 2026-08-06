@@ -61,6 +61,7 @@ enum class Error : uint8_t {
   InvalidTrackMask,
   InvalidSongSlot,
   InvalidSource,
+  InvalidRole,
   RegionOutOfRange,
   EmptyRegion,
   InvalidParent,
@@ -140,6 +141,11 @@ inline bool isValidSource(Source source) {
   const uint8_t value = static_cast<uint8_t>(source);
   return value >= static_cast<uint8_t>(Source::InternalPattern) &&
          value <= static_cast<uint8_t>(Source::LiveCapture);
+}
+
+inline bool isSongReferenceSource(Source source) {
+  return source == Source::InternalPattern || source == Source::Generated ||
+         source == Source::Derived;
 }
 
 inline bool isValidStorage(StorageMode storage) {
@@ -259,7 +265,8 @@ inline uint16_t incrementPhraseId(uint16_t phraseId) {
   return phraseId == kNoPhraseId ? 1 : phraseId;
 }
 
-inline int16_t patternAt(const PhraseSlot& phrase, uint8_t bar, SongTrack track) {
+inline int16_t patternAt(const PhraseSlot& phrase, uint8_t bar,
+                         SongTrack track) {
   const int index = trackIndex(track);
   if (!isValid(phrase) || bar >= phrase.metadata.lengthBars || index < 0) {
     return -1;
@@ -326,8 +333,12 @@ inline Result captureSongRegion(PhraseBank& bank,
     result.error = Error::InvalidSongSlot;
     return result;
   }
-  if (!isValidSource(source)) {
+  if (!isSongReferenceSource(source)) {
     result.error = Error::InvalidSource;
+    return result;
+  }
+  if (!isValidRole(role)) {
+    result.error = Error::InvalidRole;
     return result;
   }
   if (startRow >= Song::kMaxPositions ||
@@ -339,8 +350,7 @@ inline Result captureSongRegion(PhraseBank& bank,
 
   uint16_t parentId = kNoPhraseId;
   if (parentSlot != kNoSlot) {
-    if (parentSlot >= kSlotCount ||
-        !isValid(bank.slots[parentSlot])) {
+    if (parentSlot >= kSlotCount || !isValid(bank.slots[parentSlot])) {
       result.error = Error::InvalidParent;
       return result;
     }
@@ -401,6 +411,10 @@ inline Result deriveReferenceView(PhraseBank& bank,
   }
   if (!parent || !isValid(*parent)) {
     result.error = Error::InvalidParent;
+    return result;
+  }
+  if (!isValidRole(role)) {
+    result.error = Error::InvalidRole;
     return result;
   }
 
