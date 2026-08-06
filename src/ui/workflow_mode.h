@@ -15,7 +15,7 @@ enum class WorkflowMode : uint8_t {
 };
 
 // Existing enum values are preserved for persisted UI-session compatibility.
-// Their page labels are now the fixed four-axis GENERATE addresses.
+// Page 11 remains reserved as a legacy GENERATION redirect to SONG.
 enum class Workspace : uint8_t {
     // PERFORM
     Perform = 0,
@@ -23,7 +23,7 @@ enum class Workspace : uint8_t {
 
     // GENERATE
     Groove,     // GENRE
-    Generation,
+    Generation,  // retired compatibility value -> SONG
     Texture,
 
     // HUB
@@ -38,7 +38,7 @@ enum class Workspace : uint8_t {
     Arrange,
     Phrase,
 
-    // SETTINGS / fourth GENERATE page
+    // SETTINGS / third GENERATE page remains FEEL at its persisted id
     Project,
     Feel,
 };
@@ -55,7 +55,7 @@ constexpr int kPattern = 7;
 constexpr int kTexture = 8;
 constexpr int kFeel = 9;
 constexpr int kProject = 10;
-constexpr int kGeneration = 11;
+constexpr int kGeneration = 11;  // retired, redirects to kArrange
 constexpr int kPerform = 12;
 constexpr int kPlayer = 13;
 constexpr int kPhrase = 14;
@@ -67,7 +67,6 @@ inline bool isPerformWorkflowPage(int page) {
 inline bool isGenerateWorkflowPage(int page) {
     return page == kGenre ||
            page == kFeel ||
-           page == kGeneration ||
            page == kTexture;
 }
 
@@ -98,6 +97,7 @@ inline bool isWorkspacePage(int page) {
            isHubWorkflowPage(page) ||
            page == kArrange ||
            page == kPhrase ||
+           page == kGeneration ||
            isSettingsWorkflowPage(page);
 }
 
@@ -107,7 +107,7 @@ inline Workspace workspaceForPage(int page) {
         case kPlayer: return Workspace::Player;
         case kGenre: return Workspace::Groove;
         case kFeel: return Workspace::Feel;
-        case kGeneration: return Workspace::Generation;
+        case kGeneration: return Workspace::Arrange;
         case kTexture: return Workspace::Texture;
         case kPattern: return Workspace::Pattern;
         case kSynthA: return Workspace::SynthA;
@@ -128,7 +128,7 @@ inline int pageForWorkspace(Workspace workspace) {
         case Workspace::Player: return kPlayer;
         case Workspace::Groove: return kGenre;
         case Workspace::Feel: return kFeel;
-        case Workspace::Generation: return kGeneration;
+        case Workspace::Generation: return kArrange;
         case Workspace::Texture: return kTexture;
         case Workspace::Pattern: return kPattern;
         case Workspace::SynthA: return kSynthA;
@@ -147,7 +147,9 @@ inline WorkflowMode modeForPage(int page) {
     if (isPerformWorkflowPage(page)) return WorkflowMode::Perform;
     if (isGenerateWorkflowPage(page)) return WorkflowMode::Generate;
     if (isHubWorkflowPage(page)) return WorkflowMode::Hub;
-    if (page == kArrange || page == kPhrase) return WorkflowMode::Song;
+    if (page == kArrange || page == kPhrase || page == kGeneration) {
+        return WorkflowMode::Song;
+    }
     return WorkflowMode::Settings;
 }
 
@@ -176,7 +178,7 @@ inline const char* pageName(int page) {
         case kPlayer: return "MIDI PLAYER";
         case kGenre: return "GENRE";
         case kFeel: return "FEEL";
-        case kGeneration: return "GENERATION";
+        case kGeneration: return "SONG";
         case kTexture: return "TEXTURE";
         case kPattern: return "OVERVIEW";
         case kSynthA: return "SYNTH A";
@@ -194,7 +196,7 @@ inline const char* pageName(int page) {
 inline int pageCountForMode(WorkflowMode mode) {
     switch (mode) {
         case WorkflowMode::Perform: return 2;
-        case WorkflowMode::Generate: return 4;
+        case WorkflowMode::Generate: return 3;
         case WorkflowMode::Hub: return 6;
         case WorkflowMode::Song: return 2;
         case WorkflowMode::Settings: return 1;
@@ -207,7 +209,7 @@ inline int pageAt(WorkflowMode mode, int index) {
         kPerform, kPlayer,
     };
     static constexpr int kGeneratePages[] = {
-        kGenre, kFeel, kGeneration, kTexture,
+        kGenre, kFeel, kTexture,
     };
     static constexpr int kHubPages[] = {
         kPattern, kSynthA, kSynthB, kDrums,
