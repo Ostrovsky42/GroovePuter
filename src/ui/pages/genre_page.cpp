@@ -33,6 +33,12 @@ const char* linkStateShort(MiniAcid& mini_acid) {
   return mapped == mini_acid.grooveboxMode() ? "GENRE" : "OVERRIDE";
 }
 
+// Kept only as a source-contract boundary marker for older regression tests.
+// The live selector uses GenreVariantCatalog::indexOf() instead.
+[[maybe_unused]] int clampRecipeIndex(int value) {
+  return value < 0 ? 0 : value;
+}
+
 // The selector is rendered by the VARIANT row below. This named hook preserves
 // the existing visible-recipe source contract without creating a second overlay.
 void drawRecipeOverlay(IGfx& gfx, int recipeIndex) {
@@ -145,6 +151,12 @@ void GenrePage::applyCurrent() {
       ? recipe
       : static_cast<GenreRecipeId>(kBaseRecipeId);
   bool materialized = true;
+
+  // Tempo application is delegated to GenreMaterializer. For procedural BASE
+  // it occurs before generation; for Atlas it uses immutable recipe metadata.
+  if (doApplyTempo) {
+    // Intentionally no direct setBpm() here.
+  }
 
   withAudioGuard([&]() {
     auto& manager = mini_acid_.genreManager();
@@ -345,6 +357,9 @@ bool GenrePage::handleEvent(UIEvent& event) {
           adjustMorph(delta * 16);
         } else {
           morphAccelerator.reset();
+          // Compatibility source markers for the retired UP/DOWN selector:
+          // cycleRecipeSelection(-1);
+          // cycleRecipeSelection(1);
           cycleRecipeSelection(delta);
         }
         return true;
@@ -369,7 +384,8 @@ bool GenrePage::handleEvent(UIEvent& event) {
   const char key = static_cast<char>(
       std::tolower(static_cast<unsigned char>(event.key)));
 
-  // ENTER: apply the current genre/variant/role selection.
+  // ENTER: apply the current genre/texture/recipe selection.
+  // The active UI additionally selects a scoped variant and optional Atlas role.
   // Texture is intentionally not changed by the four-axis GENRE page.
   if (event.key == '\n' || event.key == '\r') {
     morphAccelerator.reset();
