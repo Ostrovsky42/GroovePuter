@@ -14,6 +14,7 @@
 #include "../../scene_storage.h"
 #include "../../scenes.h"
 #include "mono_synth_voice.h"
+#include "clamped_live_note_identity.h"
 #include "mini_tb303.h"
 #include "swappable_synth_voice.h"
 #include "mini_drumvoices.h"
@@ -433,7 +434,7 @@ private:
 
   long gateCountdownA_ = 0;
   long gateCountdownB_ = 0;
-  int16_t liveNotes_[NUM_303_VOICES] = {-1, -1};
+  ClampedLiveNoteIdentity liveNotes_[NUM_303_VOICES] = {-1, -1};
   PatternEventQueueHandle patternEventQueue_;
   int16_t patternMidiNotes_[NUM_303_VOICES] = {-1, -1};
   uint32_t liveInputEpoch_ = 0;
