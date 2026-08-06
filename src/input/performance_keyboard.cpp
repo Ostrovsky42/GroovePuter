@@ -37,7 +37,9 @@ constexpr char kSeqtrakDrumKeys[] = "asdfghj";
 constexpr uint8_t kStrumOptionsMs[] = {0, 8, 16, 24, 36};
 constexpr uint8_t kEuclideanPulseOptions[] = {0, 3, 5, 7, 9, 11, 13, 16};
 constexpr double kTransportStepEpsilon = 1.0e-4;
-constexpr double kTransportBoundaryWindowSteps = 0.02;
+constexpr double kTransportScheduleLeadSteps = 0.5;
+constexpr uint32_t kGeneratedNoteOnStaleMicros = 12000u;
+constexpr uint32_t kMinimumTransportLeadMicros = 1000u;
 
 uint8_t clampMidiNote(int note) {
     if (note < PerformanceKeyboard::kMinNote) return PerformanceKeyboard::kMinNote;
@@ -258,7 +260,16 @@ void PerformanceKeyboard::processScheduled(uint32_t nowMicros) {
     for (ScheduledEvent& slot : scheduled_) {
         if (!slot.active || !due(nowMicros, slot.dueMicros)) continue;
         const MusicalEvent event = slot.event;
+        const uint32_t lateness = nowMicros - slot.dueMicros;
         slot = ScheduledEvent{};
+
+        // A delayed UI/storage iteration must not dump obsolete NoteOn events
+        // into the bounded live queue. NoteOff remains cleanup-critical.
+        if (event.type == MusicalEventType::NoteOn &&
+            lateness > kGeneratedNoteOnStaleMicros) {
+            continue;
+        }
+
         router_.route(event);
         if (event.type == MusicalEventType::NoteOn) {
             rememberGeneratedOn(event.note);
@@ -305,6 +316,10 @@ void PerformanceKeyboard::resetStepClock() {
     transportStepClockRunning_ = false;
     transportStepEpoch_ = 0;
     transportStepOrdinal_ = 0;
+    transportStepScheduled_ = false;
+    transportBlockAnchorValid_ = false;
+    transportAnchorBlockSequence_ = 0;
+    transportAnchorMicros_ = 0;
     euclideanStep_ = 0;
     arpIndex_ = 0;
     arpAscending_ = true;
@@ -485,47 +500,92 @@ void PerformanceKeyboard::emitPerformanceStep(uint32_t stepStartMicros,
 bool PerformanceKeyboard::serviceTransportStepClock(uint32_t nowMicros) {
     GroovePuterMidi::ProjectTransportBlockSnapshot snapshot{};
     if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(snapshot) ||
-        !snapshot.valid || !snapshot.playing || snapshot.bpmQ16 == 0) {
+        !snapshot.valid || !snapshot.playing || snapshot.bpmQ16 == 0 ||
+        snapshot.blockFrames == 0 || snapshot.sampleRate == 0) {
         transportStepClockRunning_ = false;
+        transportBlockAnchorValid_ = false;
         return false;
     }
 
     const double absoluteSteps = snapshot.absoluteSteps();
     if (!std::isfinite(absoluteSteps) || absoluteSteps < 0.0) {
         transportStepClockRunning_ = false;
+        transportBlockAnchorValid_ = false;
         return false;
     }
 
-    const uint64_t stepOrdinal = static_cast<uint64_t>(
-        std::floor(absoluteSteps + kTransportStepEpsilon));
     const uint32_t stepMicros = stepDurationMicrosForBpm(snapshot.bpm());
+    const uint32_t blockMicros = static_cast<uint32_t>(
+        (1000000ULL * static_cast<uint64_t>(snapshot.blockFrames)) /
+        static_cast<uint64_t>(snapshot.sampleRate));
+    if (blockMicros == 0) return false;
 
     if (!transportStepClockRunning_ ||
         transportStepEpoch_ != snapshot.transportEpoch) {
         transportStepClockRunning_ = true;
         transportStepEpoch_ = snapshot.transportEpoch;
-        transportStepOrdinal_ = stepOrdinal;
-        euclideanStep_ = static_cast<uint8_t>(
-            stepOrdinal % static_cast<uint64_t>(kEuclideanSteps));
+        transportStepOrdinal_ = 0;
+        transportStepScheduled_ = false;
+        transportBlockAnchorValid_ = false;
         arpIndex_ = 0;
         arpAscending_ = true;
-
-        const double nearestBoundary = std::round(absoluteSteps);
-        if (std::fabs(absoluteSteps - nearestBoundary) <=
-            kTransportBoundaryWindowSteps) {
-            emitPerformanceStep(nowMicros, stepMicros);
-        }
-        return true;
     }
 
-    if (stepOrdinal == transportStepOrdinal_) return true;
+    if (!transportBlockAnchorValid_) {
+        transportBlockAnchorValid_ = true;
+        transportAnchorBlockSequence_ = snapshot.blockSequence;
+        transportAnchorMicros_ = nowMicros;
+    } else if (transportAnchorBlockSequence_ != snapshot.blockSequence) {
+        const int32_t blockDelta = static_cast<int32_t>(
+            snapshot.blockSequence - transportAnchorBlockSequence_);
+        if (blockDelta <= 0) {
+            transportAnchorMicros_ = nowMicros;
+        } else {
+            const uint32_t predicted = transportAnchorMicros_ +
+                static_cast<uint32_t>(blockDelta) * blockMicros;
+            const int32_t error = static_cast<int32_t>(nowMicros - predicted);
+            const int32_t maximumError = static_cast<int32_t>(blockMicros * 2u);
+            transportAnchorMicros_ =
+                error < -static_cast<int32_t>(blockMicros) ||
+                error > maximumError
+                    ? nowMicros
+                    : predicted;
+        }
+        transportAnchorBlockSequence_ = snapshot.blockSequence;
+    }
 
-    // Do not replay every missed boundary after a slow UI/storage iteration.
-    // Advance directly to the current project sixteenth and emit one live step.
-    transportStepOrdinal_ = stepOrdinal;
+    const uint64_t currentOrdinal = static_cast<uint64_t>(
+        std::floor(absoluteSteps + kTransportStepEpsilon));
+    const double phaseIntoStep = absoluteSteps -
+        static_cast<double>(currentOrdinal);
+
+    if (transportStepScheduled_) {
+        if (transportStepOrdinal_ > currentOrdinal) {
+            return true;
+        }
+        // Prepare the following step only after at least half of the current
+        // step has drained. This bounds dense overlap without risking a late
+        // next-step publication during normal 5 ms loop cadence.
+        if (transportStepOrdinal_ == currentOrdinal &&
+            phaseIntoStep < kTransportScheduleLeadSteps) {
+            return true;
+        }
+    }
+
+    const uint64_t nextOrdinal = currentOrdinal + 1u;
+    const double stepsUntilBoundary =
+        static_cast<double>(nextOrdinal) - absoluteSteps;
+    uint32_t dueMicros = transportAnchorMicros_ +
+        static_cast<uint32_t>(std::llround(
+            stepsUntilBoundary * static_cast<double>(stepMicros)));
+    const uint32_t minimumDue = nowMicros + kMinimumTransportLeadMicros;
+    if (due(minimumDue, dueMicros)) dueMicros = minimumDue;
+
     euclideanStep_ = static_cast<uint8_t>(
-        stepOrdinal % static_cast<uint64_t>(kEuclideanSteps));
-    emitPerformanceStep(nowMicros, stepMicros);
+        nextOrdinal % static_cast<uint64_t>(kEuclideanSteps));
+    emitPerformanceStep(dueMicros, stepMicros);
+    transportStepOrdinal_ = nextOrdinal;
+    transportStepScheduled_ = true;
     return true;
 }
 
@@ -539,15 +599,17 @@ void PerformanceKeyboard::service(uint32_t nowMicros) {
     }
 
     if (transportPlaying_) {
-        // A running transport must never fall back to an independent micros()
-        // clock. If the audio timeline is momentarily unavailable, hold the
-        // step engine until the next coherent snapshot instead of drifting.
+        // The next transport sixteenth is prepared ahead of its boundary from
+        // the audio timeline. If the timeline is unavailable, freeze instead
+        // of falling back to an independent free-running clock.
         (void)serviceTransportStepClock(nowMicros);
         processScheduled(nowMicros);
         return;
     }
 
     transportStepClockRunning_ = false;
+    transportBlockAnchorValid_ = false;
+    transportStepScheduled_ = false;
     const uint32_t stepMicros = stepDurationMicros();
     if (!stepClockRunning_) {
         stepClockRunning_ = true;
