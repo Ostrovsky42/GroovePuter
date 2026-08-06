@@ -14,7 +14,15 @@ start = helper.find(start_marker)
 end = helper.find(end_marker, start + 1)
 if start < 0 or end < 0:
     raise SystemExit('single-cell Song toast helper operation not found')
-helper_path.write_text(helper[:start] + helper[end + 1:], encoding='utf-8')
+helper = helper[:start] + helper[end + 1:]
+
+# Keep the stable row-toast prefix while appending genre/variant context.
+old_row_format = '"ROW %d %s/%s"'
+new_row_format = '"GENERATED ROW %d %s/%s"'
+if old_row_format not in helper:
+    raise SystemExit('row Song toast helper format not found')
+helper_path.write_text(
+    helper.replace(old_row_format, new_row_format, 1), encoding='utf-8')
 
 song_path = Path('src/ui/pages/song_page.cpp')
 song = song_path.read_text(encoding='utf-8')
@@ -32,12 +40,11 @@ replacement = '''    char patternLabel[12];
         : track == SongTrack::SynthB ? "B" : "DR";
     char message[96];
     std::snprintf(
-        message, sizeof(message), "GEN %s %s/%s -> %s",
-        trackLabel,
+        message, sizeof(message), "GEN %s -> %s %s/%s",
+        trackLabel, patternLabel,
         GenreManager::generativeModeName(
             mini_acid_.genreManager().generativeMode()),
-        GenreManager::recipeName(mini_acid_.genreManager().recipe()),
-        patternLabel);
+        GenreManager::recipeName(mini_acid_.genreManager().recipe()));
     showToast(message, 1400);'''
 song, count = pattern.subn(replacement, song, count=1)
 if count != 1:
