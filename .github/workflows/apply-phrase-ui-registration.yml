@@ -1,6 +1,12 @@
 name: Apply Phrase UI registration
 
 on:
+  push:
+    branches:
+      - agent/phrase-core-ui
+    paths:
+      - 'tools/apply_phrase_ui_registration.py'
+      - '.github/workflows/apply-phrase-ui-registration.yml'
   pull_request:
     branches:
       - agent/phrase-core-foundation
@@ -13,7 +19,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.head_ref == 'agent/phrase-core-ui' && github.actor != 'github-actions[bot]'
+    if: (github.ref == 'refs/heads/agent/phrase-core-ui' || github.head_ref == 'agent/phrase-core-ui') && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
