@@ -118,7 +118,7 @@ class GlobalSynthSettingsPage final : public Container {
 
     const auto& content = Layout::CONTENT;
     const int x = content.x + Layout::CONTENT_PAD_X;
-    const int y = content.y + 2;
+    const int y = content.y + 7;
     const int w = content.w - Layout::CONTENT_PAD_X * 2;
 
     char local_title[32];

@@ -14,6 +14,7 @@
 namespace {
 constexpr int kHubTrackCount = 10;    // 303A, 303B, D1..D8
 constexpr int kHubVisibleTracks = 6;  // 303A, 303B, D1..D4 on one screen
+constexpr int kHubOverviewTopInset = 4;
 
 const char* kDrumLaneShort[8] = {"BD", "SD", "CH", "OH", "MT", "HT", "RM", "CP"};
 
@@ -179,8 +180,8 @@ void SequencerHubPage::drawTEGridStyle(IGfx& gfx) {
     gfx.drawText(x + w - statusW - 2, y + 2, statusBuf);
 
     // === MAIN CONTENT ===
-    int content_y = y + header_h + 1;
-    int content_h = h - header_h - 12; // Reserve footer
+    int content_y = y + header_h + 1 + kHubOverviewTopInset;
+    int content_h = h - header_h - 12 - kHubOverviewTopInset; // Reserve footer
 
     if (mode_ == Mode::OVERVIEW) {
         syncOverviewScroll();
@@ -386,8 +387,8 @@ void SequencerHubPage::drawRetroClassicStyle(IGfx& gfx) {
     drawHeaderBar(gfx, x, y, w, 14, "SEQ HUB", subTitle, isPlaying, bpm, playingStep);
 
     // 2. Content Area
-    int contentY = y + 15;
-    int contentH = h - 15 - 12;
+    int contentY = y + 15 + kHubOverviewTopInset;
+    int contentH = h - 15 - 12 - kHubOverviewTopInset;
     gfx.fillRect(x, contentY, w, contentH, IGfxColor(BG_DEEP_BLACK));
 
     if (mode_ == Mode::OVERVIEW) {
@@ -590,8 +591,8 @@ void SequencerHubPage::drawAmberStyle(IGfx& gfx) {
     
     AmberWidgets::drawHeaderBar(gfx, x, y, w, 14, "SEQ HUB", subTitle, isPlaying, bpm, playingStep);
 
-    int contentY = y + 15;
-    int contentH = h - 15 - 12;
+    int contentY = y + 15 + kHubOverviewTopInset;
+    int contentH = h - 15 - 12 - kHubOverviewTopInset;
     gfx.fillRect(x, contentY, w, contentH, IGfxColor(AmberTheme::BG_DEEP_BLACK));
 
     if (mode_ == Mode::OVERVIEW) {
@@ -772,7 +773,7 @@ void SequencerHubPage::drawOverview(IGfx& gfx) {
     UI::drawFeelHeaderHud(gfx, mini_acid_, 166, 9);
     LayoutManager::clearContent(gfx);
 
-    const int startY = LayoutManager::lineY(0);
+    const int startY = LayoutManager::lineY(0) + kHubOverviewTopInset;
     const int rowH = 13;
     syncOverviewScroll();
 

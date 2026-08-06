@@ -1024,7 +1024,7 @@ void GlobalDrumSettingsPage::draw(IGfx& gfx) {
   if (bounds.w <= 0 || bounds.h <= 0) return;
   syncDrumEngineSelection();
   int x = bounds.x;
-  int y = bounds.y;
+  int y = bounds.y + 5;
   int w = bounds.w;
 
   gfx.setTextColor(COLOR_LABEL);
