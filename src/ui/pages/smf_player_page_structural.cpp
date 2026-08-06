@@ -3,18 +3,51 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 
 #include "../components/music_visuals.h"
 #include "../player_hub_navigation.h"
 #include "src/dsp/miniacid_engine.h"
+#include "src/midi/smf_file_master_mode.h"
 #include "src/midi/smf_session_generation.h"
 #include "src/midi/smf_structural_inspector.h"
 #include "src/midi/smf_track_inspector.h"
 #include "src/midi/smf_track_mute.h"
+#include "src/midi/transport_clock_runtime.h"
 
 namespace {
 
 using namespace GroovePuterMidi;
+
+SmfFileMasterModeState& fileMasterModeState() {
+    static SmfFileMasterModeState state;
+    return state;
+}
+
+bool hasLoadedFile(const SmfPlayerSnapshot& state) {
+    return state.filename[0] != '\0' &&
+           state.state != SmfPlayerState::Unloaded &&
+           state.state != SmfPlayerState::Loading &&
+           state.state != SmfPlayerState::Error;
+}
+
+bool fileIdentityChanged(const SmfFileMasterModeState& mode,
+                         const SmfPlayerSnapshot& state) {
+    if (!hasLoadedFile(state)) return false;
+    return mode.loadedEndTick != state.endTick ||
+           std::strncmp(mode.loadedFilename,
+                        state.filename,
+                        sizeof(mode.loadedFilename)) != 0;
+}
+
+void rememberFileIdentity(SmfFileMasterModeState& mode,
+                          const SmfPlayerSnapshot& state) {
+    mode.loadedEndTick = state.endTick;
+    std::snprintf(mode.loadedFilename,
+                  sizeof(mode.loadedFilename),
+                  "%s",
+                  state.filename);
+}
 
 void formatMidiNote(uint8_t note, char* dst, std::size_t size) {
     static constexpr const char* kNames[] = {
@@ -230,6 +263,91 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
 
     if (numericMuteHotkey) return SmfPlayerPageBase::handleEvent(event);
 
+    player_ = smfPlayerService();
+    SmfFileMasterModeState& fileMaster = fileMasterModeState();
+    const SmfPlayerSnapshot state =
+        player_ ? player_->snapshot() : SmfPlayerSnapshot{};
+
+    if (event.key == 't' || event.key == 'T') {
+        if (!player_) return true;
+
+        if (fileMaster.enabled) {
+            fileMaster.disable();
+            const bool queued = state.tempoMode == SmfTempoMode::Project
+                ? player_->toggleTempoMode()
+                : true;
+            UI::showToast(queued
+                              ? "TEMPO: FILE ORIGINAL"
+                              : "MIDI PLAYER BUSY",
+                          900);
+            return true;
+        }
+
+        if (state.tempoMode == SmfTempoMode::Original) {
+            return SmfPlayerPageBase::handleEvent(event);
+        }
+
+        transportClockRuntime().setSource(
+            TransportClockSource::GroovePuterInternal);
+        fileMaster.begin();
+        const bool toOriginalQueued = player_->toggleTempoMode();
+        const bool resetQueued = toOriginalQueued && player_->resetTempo();
+        if (!resetQueued) {
+            fileMaster.disable();
+            UI::showToast("MIDI PLAYER BUSY", 900);
+        } else {
+            UI::showToast("FILE MASTER: READ FILE BPM", 1000);
+        }
+        return true;
+    }
+
+    if (fileMaster.enabled && (event.key == 'c' || event.key == 'C')) {
+        transportClockRuntime().setSource(
+            TransportClockSource::GroovePuterInternal);
+        UI::showToast("FILE MASTER REQUIRES GP CLOCK", 1000);
+        return true;
+    }
+
+    const bool fileMasterTransportKey =
+        event.key == ' ' || event.key == 'g' || event.key == 'G' ||
+        event.key == 'r' || event.key == 'R';
+    if (fileMaster.enabled && fileMasterTransportKey) {
+        if (!smfFileMasterUsesProjectScheduler(fileMaster, state.tempoMode) ||
+            fileMaster.stage != SmfFileMasterStage::Ready) {
+            UI::showToast("FILE MASTER: BPM SYNCING", 900);
+            return true;
+        }
+        transportClockRuntime().setSource(
+            TransportClockSource::GroovePuterInternal);
+        const float bpm = smfFileMasterBpm(state.originalBpmX10);
+        withAudioGuard([this, bpm]() { miniAcid_.setBpm(bpm); });
+        return SmfPlayerPageBase::handleEvent(event);
+    }
+
+    if (fileMaster.enabled &&
+        (event.scancode == GROOVEPUTER_UP ||
+         event.scancode == GROOVEPUTER_DOWN)) {
+        if (fileMaster.stage == SmfFileMasterStage::Ready) {
+            const float bpm = smfFileMasterBpm(state.originalBpmX10);
+            withAudioGuard([this, bpm]() { miniAcid_.setBpm(bpm); });
+        }
+        UI::showToast("FILE MASTER BPM LOCKED", 800);
+        return true;
+    }
+
+    if (fileMaster.enabled && (event.key == 'o' || event.key == 'O')) {
+        if (fileMaster.stage == SmfFileMasterStage::Ready) {
+            transportClockRuntime().setSource(
+                TransportClockSource::GroovePuterInternal);
+            const float bpm = smfFileMasterBpm(state.originalBpmX10);
+            withAudioGuard([this, bpm]() { miniAcid_.setBpm(bpm); });
+            UI::showToast("FILE BPM REAPPLIED TO GP", 900);
+        } else {
+            UI::showToast("FILE MASTER: BPM SYNCING", 900);
+        }
+        return true;
+    }
+
     // K is intentionally not a MIDI mute command. Enter remains the only
     // selected-row toggle inside the U table.
     if (!browserVisible_ && (event.key == 'k' || event.key == 'K')) return true;
@@ -283,8 +401,93 @@ void SmfPlayerPage::drawContent(IGfx& gfx) {
         drawStructuralInspector(gfx);
         return;
     }
+
+    player_ = smfPlayerService();
+    SmfFileMasterModeState& fileMaster = fileMasterModeState();
+    SmfPlayerSnapshot state =
+        player_ ? player_->snapshot() : SmfPlayerSnapshot{};
+
+    if (fileMaster.enabled && player_) {
+        if (fileMaster.stage == SmfFileMasterStage::AwaitOriginalSnapshot &&
+            state.tempoMode == SmfTempoMode::Original) {
+            if (player_->toggleTempoMode()) {
+                fileMaster.stage = SmfFileMasterStage::AwaitProjectRestore;
+            }
+        } else if (fileMaster.stage == SmfFileMasterStage::AwaitProjectRestore &&
+                   state.tempoMode == SmfTempoMode::Project) {
+            transportClockRuntime().setSource(
+                TransportClockSource::GroovePuterInternal);
+            const float bpm = smfFileMasterBpm(state.originalBpmX10);
+            withAudioGuard([this, bpm]() { miniAcid_.setBpm(bpm); });
+            fileMaster.stage = SmfFileMasterStage::Ready;
+            rememberFileIdentity(fileMaster, state);
+        } else if (fileMaster.stage == SmfFileMasterStage::Ready &&
+                   fileIdentityChanged(fileMaster, state)) {
+            fileMaster.stage = SmfFileMasterStage::AwaitOriginalSnapshot;
+            if (!player_->toggleTempoMode() || !player_->resetTempo()) {
+                fileMaster.stage = SmfFileMasterStage::Ready;
+            }
+        }
+
+        if (fileMaster.stage == SmfFileMasterStage::Ready &&
+            transportClockRuntime().source() !=
+                TransportClockSource::GroovePuterInternal) {
+            transportClockRuntime().setSource(
+                TransportClockSource::GroovePuterInternal);
+        }
+        state = player_->snapshot();
+    }
+
     SmfPlayerPageBase::drawContent(gfx);
     if (muteMixerVisible_) drawTrackTruncationNotice(gfx);
+
+    const bool normalPlayerView = !browserVisible_ && !muteMixerVisible_ &&
+                                  !channelInspectorVisible_ &&
+                                  !performanceVisible_;
+    if (!fileMaster.enabled || !normalPlayerView) return;
+
+    const bool playing = state.state == SmfPlayerState::Playing;
+    const bool armed = state.state == SmfPlayerState::Armed;
+    const bool error = state.state == SmfPlayerState::Error;
+    const IGfxColor stateColor = error ? COLOR_DANGER
+                                      : ((playing || armed)
+                                          ? MusicVisuals::accentForStyle()
+                                          : COLOR_WARN);
+
+    const int chipY = LayoutManager::lineY(0);
+    gfx.fillRect(Layout::CONTENT.x, chipY - 1,
+                 Layout::CONTENT.w, 12, COLOR_BG);
+    int x = Layout::COL_1;
+    x += MusicVisuals::drawChip(
+             gfx, x, chipY, smfPlayerStateName(state.state), true, stateColor) + 3;
+    x += MusicVisuals::drawChip(
+             gfx, x, chipY, state.rawRouting ? "RAW" : "SEQTRAK", true,
+             MusicVisuals::secondaryForStyle()) + 3;
+    x += MusicVisuals::drawChip(
+             gfx, x, chipY, "FILE MASTER", true,
+             MusicVisuals::accentForStyle()) + 3;
+    char velocity[16];
+    std::snprintf(velocity, sizeof(velocity), "+%uV",
+                  static_cast<unsigned>(state.velocityBoost));
+    MusicVisuals::drawChip(gfx, x, chipY, velocity, state.velocityBoost > 0);
+
+    const int statusY = LayoutManager::lineY(5);
+    gfx.fillRect(Layout::CONTENT.x, statusY - 1,
+                 Layout::CONTENT.w, 11, COLOR_BG);
+    char line[64];
+    if (fileMaster.stage == SmfFileMasterStage::Ready) {
+        std::snprintf(line, sizeof(line),
+                      "FILE %u.%u > GP > USB CLOCK %s",
+                      static_cast<unsigned>(state.originalBpmX10 / 10u),
+                      static_cast<unsigned>(state.originalBpmX10 % 10u),
+                      miniAcid_.isPlaying() ? "RUN" : "STOP");
+        gfx.setTextColor(MusicVisuals::accentForStyle());
+    } else {
+        std::snprintf(line, sizeof(line), "FILE MASTER: %s",
+                      smfFileMasterStageName(fileMaster.stage));
+        gfx.setTextColor(COLOR_WARN);
+    }
+    gfx.drawText(Layout::COL_1, statusY, line);
 }
 
 void SmfPlayerPage::drawFooter(IGfx& gfx) {
@@ -296,6 +499,12 @@ void SmfPlayerPage::drawFooter(IGfx& gfx) {
     if (muteMixerVisible_) {
         UI::drawStandardFooter(gfx, "H Hub UP/DN Select",
                                "1-9 Hot ENT Sel A AllOn");
+        return;
+    }
+    if (fileMasterModeState().enabled && !browserVisible_ &&
+        !channelInspectorVisible_ && !performanceVisible_) {
+        UI::drawStandardFooter(gfx, "G GP Clock  Space MIDI",
+                               "T Exit  C Locked  O Reapply");
         return;
     }
     SmfPlayerPageBase::drawFooter(gfx);
