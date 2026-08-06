@@ -99,11 +99,18 @@ jobs:
               for line in payload.splitlines(keepends=True)
           )
           script = script.replace(
+              'python3 tests/test_four_axis_ui_source_regressions.py',
+              'python3 scripts/fix_axis_test_indent.py\n'
+              'python3 tests/test_four_axis_ui_source_regressions.py',
+              1,
+          )
+          script = script.replace(
               'git rm .github/workflows/apply-axis-ownership-cleanup.yml',
               'python3 scripts/finalize_axis_cleanup.py\n'
               'git rm .github/workflows/apply-axis-ownership-cleanup.yml '
               '.github/workflows/run-axis-cleanup.yml '
-              'scripts/finalize_axis_cleanup.py',
+              'scripts/finalize_axis_cleanup.py '
+              'scripts/fix_axis_test_indent.py',
               1,
           )
           Path('/tmp/apply-axis-cleanup.sh').write_text(script, encoding='utf-8')
