@@ -21,6 +21,24 @@ jobs:
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 
+      - name: Export materialized Phrase UI sources
+        uses: actions/upload-artifact@v4
+        with:
+          name: phrase-ui-materialized
+          if-no-files-found: error
+          retention-days: 1
+          path: |
+            src/ui/ui_config.h
+            src/ui/workflow_mode.h
+            src/state/ui_session_state.h
+            src/ui/miniacid_display.cpp
+            src/ui/global_help_content.h
+            platform_sdl/Makefile
+            tests/test_ui_session_state.cpp
+            tests/test_global_help_content.cpp
+            tests/test_performance_source_regressions.py
+            tests/test_theme_selection_source_regressions.py
+
       - name: Run UI status chrome tests
         run: |
           python3 tests/test_ui_status_chrome_source_regressions.py
