@@ -24,6 +24,23 @@ int main() {
     assert(std::strcmp(line, "GEN PAT PLAY B3/4 INT BOTH *") == 0);
     pattern.dirty = false;
 
+    UiStatusSnapshot synth{};
+    synth.context = UiStatusContext::SynthB;
+    synth.source = UiStatusSource::Pattern;
+    synth.state = UiStatusState::Stop;
+    synth.patternPage = 1;
+    synth.patternBank = 1;
+    synth.patternSlot = 6;
+    formatUiStatusLine(synth, line, sizeof(line));
+    assert(std::strcmp(line, "S-B 2B7 STOP B1/1 INT BOTH") == 0);
+    assert(synth.hasPatternAddress());
+
+    UiStatusSnapshot invalidAddress = synth;
+    invalidAddress.patternBank = 0xFF;
+    formatUiStatusLine(invalidAddress, line, sizeof(line));
+    assert(std::strcmp(line, "S-B PAT STOP B1/1 INT BOTH") == 0);
+    assert(!invalidAddress.hasPatternAddress());
+
     UiStatusSnapshot smf{};
     smf.context = UiStatusContext::Player;
     smf.source = UiStatusSource::Smf;
@@ -47,6 +64,10 @@ int main() {
     assert(changed == pattern);
     changed.bar = 4;
     assert(changed != pattern);
+    changed = synth;
+    assert(changed == synth);
+    changed.patternSlot = 7;
+    assert(changed != synth);
 
     char tiny[8]{};
     formatUiStatusLine(smf, tiny, sizeof(tiny));
