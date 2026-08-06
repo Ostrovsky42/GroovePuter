@@ -1,37 +1,45 @@
 #pragma once
 
+#include <cstdint>
+#include <string>
+#include <utility>
+
 #include "../ui_core.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/state/scene_revision.h"
 
 class SettingsPage : public IPage {
-public:
-    SettingsPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard);
-    void draw(IGfx& gfx) override;
-    bool handleEvent(UIEvent& ui_event) override;
-    const std::string& getTitle() const override;
+ public:
+  SettingsPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard);
 
-private:
-    MiniAcid& mini_acid_;
-    AudioGuard& audio_guard_;
+  void draw(IGfx& gfx) override;
+  bool handleEvent(UIEvent& ui_event) override;
+  const std::string& getTitle() const override { return title_; }
+  void setVisualStyle(VisualStyle style) override { style_ = style; }
 
-    enum class Group { Timing, Notes, Scale };
-    Group group_ = Group::Timing;
-    int row_ = 0;
-    int preset_index_ = 0;
+ private:
+  enum class FocusRow : uint8_t {
+    Swing = 0,
+    TimingHumanize,
+    VelocityHumanize,
+    Preset,
+  };
 
-    void formatSetting(char* buf, size_t bufSize, int id, const GeneratorParams& params) const;
-    int settingForRow() const;
-    const char* hintText() const;
-    const char* const* commentLines(int& count, const GeneratorParams& params) const;
-    void adjustSetting(int delta, bool shift);
-    void applyPreset(int index);
-    void measureSDPerformance();
-    
-    template <typename F>
-    void withAudioGuard(F&& fn) {
-        if (audio_guard_) audio_guard_(std::forward<F>(fn));
-        else fn();
-        GroovePuterState::markSceneMutated();
-    }
+  void moveFocus(int delta);
+  void adjustFocused(int delta, bool fast);
+  void applyPreset(int index);
+
+  template <typename F>
+  void withAudioGuard(F&& fn) {
+    if (audio_guard_) audio_guard_(std::forward<F>(fn));
+    else fn();
+    GroovePuterState::markSceneMutated();
+  }
+
+  MiniAcid& mini_acid_;
+  AudioGuard& audio_guard_;
+  VisualStyle style_ = VisualStyle::MINIMAL;
+  FocusRow focus_ = FocusRow::Swing;
+  int preset_index_ = 1;
+  std::string title_ = "FEEL";
 };
