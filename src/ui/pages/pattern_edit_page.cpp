@@ -25,6 +25,14 @@ using namespace RetroWidgets;
 #endif
 
 namespace {
+constexpr int kPatternStepColumns = 8;
+constexpr int kPatternStepRows =
+    (SEQ_STEPS + kPatternStepColumns - 1) / kPatternStepColumns;
+static_assert(SEQ_STEPS > 0 && SEQ_STEPS <= 32,
+              "Pattern editor supports up to 32 visible steps");
+static_assert((SEQ_STEPS % kPatternStepColumns) == 0,
+              "Pattern step count must fill complete eight-step rows");
+
 inline IGfxColor voiceColor(int voiceIndex) {
   return (voiceIndex == 0) ? IGfxColor(0x33C8FF) : IGfxColor(0xFF4FCB);
 }
@@ -170,9 +178,9 @@ void PatternEditPage::focusPatternRow() {
 }
 
 void PatternEditPage::focusPatternSteps() {
-  int row = pattern_edit_cursor_ / 8;
-  if (row < 0 || row > 1) row = 0;
-  pattern_edit_cursor_ = row * 8 + activePatternCursor();
+  int row = pattern_edit_cursor_ / kPatternStepColumns;
+  if (row < 0 || row >= kPatternStepRows) row = 0;
+  pattern_edit_cursor_ = row * kPatternStepColumns + activePatternCursor();
   focus_ = Focus::Steps;
 }
 
@@ -200,11 +208,11 @@ void PatternEditPage::movePatternCursor(int delta) {
     return;
   }
   int idx = activePatternStep();
-  int row = idx / 8;
-  int col = idx % 8;
-  col = (col + delta) % 8;
-  if (col < 0) col += 8;
-  pattern_edit_cursor_ = row * 8 + col;
+  int row = idx / kPatternStepColumns;
+  int col = idx % kPatternStepColumns;
+  col = (col + delta) % kPatternStepColumns;
+  if (col < 0) col += kPatternStepColumns;
+  pattern_edit_cursor_ = row * kPatternStepColumns + col;
 }
 
 void PatternEditPage::movePatternCursorVertical(int delta) {
@@ -225,14 +233,14 @@ void PatternEditPage::movePatternCursorVertical(int delta) {
       return;
     }
     int col = activePatternCursor();
-    int targetRow = delta > 0 ? 0 : 1;
-    pattern_edit_cursor_ = targetRow * 8 + col;
+    int targetRow = delta > 0 ? 0 : (kPatternStepRows - 1);
+    pattern_edit_cursor_ = targetRow * kPatternStepColumns + col;
     focus_ = Focus::Steps;
     return;
   }
   int idx = activePatternStep();
-  int row = idx / 8;
-  int col = idx % 8;
+  int row = idx / kPatternStepColumns;
+  int col = idx % kPatternStepColumns;
   int newRow = row + delta;
   if (newRow < 0) {
     if (mini_acid_.songModeEnabled()) newRow = 0;
@@ -242,15 +250,15 @@ void PatternEditPage::movePatternCursorVertical(int delta) {
       return;
     }
   }
-  if (newRow > 1) {
-    if (mini_acid_.songModeEnabled()) newRow = 1;
+  if (newRow >= kPatternStepRows) {
+    if (mini_acid_.songModeEnabled()) newRow = kPatternStepRows - 1;
     else {
       focus_ = Focus::PatternRow;
       setPatternCursor(col);
       return;
     }
   }
-  pattern_edit_cursor_ = newRow * 8 + col;
+  pattern_edit_cursor_ = newRow * kPatternStepColumns + col;
 }
 
 void PatternEditPage::startSelection() {
@@ -279,8 +287,8 @@ void PatternEditPage::getSelectionBounds(int& min_row, int& max_row, int& min_co
   int b = pattern_edit_cursor_;
   if (b < 0) b = 0;
   if (b >= SEQ_STEPS) b = SEQ_STEPS - 1;
-  int ar = a / 8, ac = a % 8;
-  int br = b / 8, bc = b % 8;
+  int ar = a / kPatternStepColumns, ac = a % kPatternStepColumns;
+  int br = b / kPatternStepColumns, bc = b % kPatternStepColumns;
   min_row = std::min(ar, br);
   max_row = std::max(ar, br);
   min_col = std::min(ac, bc);
@@ -289,8 +297,8 @@ void PatternEditPage::getSelectionBounds(int& min_row, int& max_row, int& min_co
 
 bool PatternEditPage::isStepSelected(int stepIndex) const {
   if (!has_selection_) return false;
-  int row = stepIndex / 8;
-  int col = stepIndex % 8;
+  int row = stepIndex / kPatternStepColumns;
+  int col = stepIndex % kPatternStepColumns;
   int min_row, max_row, min_col, max_col;
   getSelectionBounds(min_row, max_row, min_col, max_col);
   return row >= min_row && row <= max_row && col >= min_col && col <= max_col;
@@ -304,9 +312,10 @@ bool PatternEditPage::moveSelectionFrameBy(int deltaRow, int deltaCol) {
   int dst_max_row = max_row + deltaRow;
   int dst_min_col = min_col + deltaCol;
   int dst_max_col = max_col + deltaCol;
-  if (dst_min_row < 0 || dst_max_row > 1 || dst_min_col < 0 || dst_max_col > 7) return false;
-  selection_start_step_ += deltaRow * 8 + deltaCol;
-  pattern_edit_cursor_ += deltaRow * 8 + deltaCol;
+  if (dst_min_row < 0 || dst_max_row >= kPatternStepRows ||
+      dst_min_col < 0 || dst_max_col >= kPatternStepColumns) return false;
+  selection_start_step_ += deltaRow * kPatternStepColumns + deltaCol;
+  pattern_edit_cursor_ += deltaRow * kPatternStepColumns + deltaCol;
   return true;
 }
 
@@ -358,10 +367,10 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
             int row = min_row;
             g_pattern_step_clipboard.full_row = true;
             g_pattern_step_clipboard.rows = 1;
-            g_pattern_step_clipboard.cols = 8;
-            g_pattern_step_clipboard.steps.reserve(8);
-            for (int c = 0; c < 8; ++c) {
-              int step = row * 8 + c;
+            g_pattern_step_clipboard.cols = kPatternStepColumns;
+            g_pattern_step_clipboard.steps.reserve(kPatternStepColumns);
+            for (int c = 0; c < kPatternStepColumns; ++c) {
+              int step = row * kPatternStepColumns + c;
               g_pattern_step_clipboard.steps.push_back(source.steps[step]);
             }
           } else {
@@ -371,7 +380,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
             g_pattern_step_clipboard.steps.reserve(g_pattern_step_clipboard.rows * g_pattern_step_clipboard.cols);
             for (int r = min_row; r <= max_row; ++r) {
               for (int c = min_col; c <= max_col; ++c) {
-                int step = r * 8 + c;
+                int step = r * kPatternStepColumns + c;
                 g_pattern_step_clipboard.steps.push_back(source.steps[step]);
               }
             }
@@ -379,8 +388,8 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
         } else {
           // No selection: keep legacy full-pattern copy.
           g_pattern_step_clipboard.full_row = false;
-          g_pattern_step_clipboard.rows = 2;
-          g_pattern_step_clipboard.cols = 8;
+          g_pattern_step_clipboard.rows = kPatternStepRows;
+          g_pattern_step_clipboard.cols = kPatternStepColumns;
           g_pattern_step_clipboard.steps.reserve(SEQ_STEPS);
           for (int i = 0; i < SEQ_STEPS; ++i) {
             g_pattern_step_clipboard.steps.push_back(source.steps[i]);
@@ -402,8 +411,8 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
           int vIdx = (voice_index_ < 0) ? 0 : (voice_index_ >= 2 ? 1 : voice_index_);
           SynthPattern& dst = mini_acid_.sceneManager().editCurrentSynthPattern(vIdx);
           if (g_pattern_step_clipboard.has_data) {
-            int start_row = activePatternStep() / 8;
-            int start_col = activePatternStep() % 8;
+            int start_row = activePatternStep() / kPatternStepColumns;
+            int start_col = activePatternStep() % kPatternStepColumns;
             if (has_selection_) {
               int min_row, max_row, min_col, max_col;
               getSelectionBounds(min_row, max_row, min_col, max_col);
@@ -417,11 +426,12 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
                 if (idx >= static_cast<int>(g_pattern_step_clipboard.steps.size())) break;
                 int tr = start_row + r;
                 int tc = start_col + c;
-                if (tr < 0 || tr > 1 || tc < 0 || tc > 7) {
+                if (tr < 0 || tr >= kPatternStepRows ||
+                    tc < 0 || tc >= kPatternStepColumns) {
                   ++idx;
                   continue;
                 }
-                int step = tr * 8 + tc;
+                int step = tr * kPatternStepColumns + tc;
                 dst.steps[step] = g_pattern_step_clipboard.steps[idx++];
               }
             }
@@ -484,7 +494,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
         withAudioGuard([&]() {
           for (int r = min_row; r <= max_row; ++r) {
             for (int c = min_col; c <= max_col; ++c) {
-              fn(r * 8 + c);
+              fn(r * kPatternStepColumns + c);
             }
           }
         });
@@ -989,23 +999,31 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
   gfx.setTextColor(COLOR_WHITE);
   gfx.drawText(x + w - textWidth(gfx, pageBuf) - 2, y + 2, pageBuf);
 
-  int spacing = 4;
-  int grid_top = body_y + pattern_bar_h + 6;
-  int cell_size = (w - spacing * 7 - 2) / 8;
-  if (cell_size < 12) cell_size = 12;
-  int indicator_h = 5;
-  int indicator_gap = 1;
-  int row_height = indicator_h + indicator_gap + cell_size + 4;
+  const int column_spacing = 4;
+  const int row_spacing = 2;
+  const int grid_top = body_y + pattern_bar_h + 6;
+  int cell_w = (w - column_spacing * (kPatternStepColumns - 1) - 2) /
+               kPatternStepColumns;
+  if (cell_w < 12) cell_w = 12;
+  const int grid_bottom = y + h - 2;
+  int row_height =
+      (grid_bottom - grid_top - row_spacing * (kPatternStepRows - 1)) /
+      kPatternStepRows;
+  if (row_height < 12) row_height = 12;
+  const int indicator_h = kPatternStepRows > 2 ? 2 : 5;
+  const int indicator_gap = 1;
+  int note_box_h = row_height - indicator_h - indicator_gap;
+  if (note_box_h < 8) note_box_h = 8;
 
   for (int i = 0; i < SEQ_STEPS; ++i) {
-    int row = i / 8;
-    int col = i % 8;
-    int cell_x = x + col * (cell_size + spacing);
-    int cell_y = grid_top + row * row_height;
+    int row = i / kPatternStepColumns;
+    int col = i % kPatternStepColumns;
+    int cell_x = x + col * (cell_w + column_spacing);
+    int cell_y = grid_top + row * (row_height + row_spacing);
 
-    int indicator_w = (cell_size - 2) / 2;
+    int indicator_w = (cell_w - 2) / 2;
     if (indicator_w < 4) indicator_w = 4;
-    int slide_x = cell_x + cell_size - indicator_w;
+    int slide_x = cell_x + cell_w - indicator_w;
     int indicator_y = cell_y;
 
     gfx.fillRect(cell_x, indicator_y, indicator_w, indicator_h, slide[i] ? COLOR_SLIDE : COLOR_GRAY_DARKER);
@@ -1016,28 +1034,28 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
     int note_box_y = indicator_y + indicator_h + indicator_gap;
     IGfxColor noteColor = voiceColor(voice_index_);
     IGfxColor fill = notes[i] >= 0 ? noteColor : COLOR_GRAY;
-    gfx.fillRect(cell_x, note_box_y, cell_size, cell_size, fill);
-    gfx.drawRect(cell_x, note_box_y, cell_size, cell_size, COLOR_WHITE);
+    gfx.fillRect(cell_x, note_box_y, cell_w, note_box_h, fill);
+    gfx.drawRect(cell_x, note_box_y, cell_w, note_box_h, COLOR_WHITE);
 
     if (playing == i) {
-      gfx.drawRect(cell_x - 1, note_box_y - 1, cell_size + 2, cell_size + 2, COLOR_STEP_HILIGHT);
+      gfx.drawRect(cell_x - 1, note_box_y - 1, cell_w + 2, note_box_h + 2, COLOR_STEP_HILIGHT);
       // Scanning line for smooth sub-step progress
       float prog = mini_acid_.getStepProgress();
-      int scanX = cell_x + (int)(prog * (float)(cell_size - 1));
-      gfx.drawLine(scanX, note_box_y, scanX, note_box_y + cell_size - 1, COLOR_WHITE);
+      int scanX = cell_x + (int)(prog * (float)(cell_w - 1));
+      gfx.drawLine(scanX, note_box_y, scanX, note_box_y + note_box_h - 1, COLOR_WHITE);
     }
     if (stepFocus && stepCursor == i) {
-      gfx.drawRect(cell_x - 2, note_box_y - 2, cell_size + 4, cell_size + 4, COLOR_STEP_SELECTED);
+      gfx.drawRect(cell_x - 2, note_box_y - 2, cell_w + 4, note_box_h + 4, COLOR_STEP_SELECTED);
     }
     if (stepFocus && isStepSelected(i)) {
-      gfx.drawRect(cell_x - 3, note_box_y - 3, cell_size + 6, cell_size + 6, COLOR_ACCENT);
+      gfx.drawRect(cell_x - 3, note_box_y - 3, cell_w + 6, note_box_h + 6, COLOR_ACCENT);
     }
 
     char note_label[8];
     formatNoteName(notes[i], note_label, sizeof(note_label));
     int tw = textWidth(gfx, note_label);
-    int tx = cell_x + (cell_size - tw) / 2;
-    int ty = note_box_y + cell_size / 2 - gfx.fontHeight() / 2;
+    int tx = cell_x + (cell_w - tw) / 2;
+    int ty = note_box_y + note_box_h / 2 - gfx.fontHeight() / 2;
     gfx.setTextColor(notes[i] >= 0 ? COLOR_BLACK : COLOR_WHITE);
     gfx.drawText(tx, ty, note_label);
   }
@@ -1136,9 +1154,12 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
 
   // 4. Step Grid (Direct Scene Access - No Cache Lag)
   int gridY = contentY + 16;
-  int spacing = 2;
-  int cellW = (w - 10 - spacing * 7) / 8;
-  int cellH = (contentH - 20 - spacing) / 2;
+  const int spacing = 2;
+  int cellW = (w - 10 - spacing * (kPatternStepColumns - 1)) /
+              kPatternStepColumns;
+  int cellH = (contentH - 20 - spacing * (kPatternStepRows - 1)) /
+              kPatternStepRows;
+  if (cellH < 12) cellH = 12;
 
   // READ DIRECTLY from source of truth
   int patIdx = activePatternCursor();
@@ -1153,8 +1174,8 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
   }
 
   for (int i = 0; i < SEQ_STEPS; ++i) {
-    int row = i / 8;
-    int col = i % 8;
+    int row = i / kPatternStepColumns;
+    int col = i % kPatternStepColumns;
     int cellX = x + 5 + col * (cellW + spacing);
     int cellRowY = gridY + row * (cellH + spacing);
 
@@ -1346,9 +1367,12 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
   }
 
   int gridY = contentY + 16;
-  int spacing = 2;
-  int cellW = (w - 10 - spacing * 7) / 8;
-  int cellH = (contentH - 20 - spacing) / 2;
+  const int spacing = 2;
+  int cellW = (w - 10 - spacing * (kPatternStepColumns - 1)) /
+              kPatternStepColumns;
+  int cellH = (contentH - 20 - spacing * (kPatternStepRows - 1)) /
+              kPatternStepRows;
+  if (cellH < 12) cellH = 12;
 
   int patIdx = activePatternCursor();
   const SynthPattern& pattern = mini_acid_.sceneManager().getSynthPattern(voice_index_, patIdx);
@@ -1360,8 +1384,8 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
   }
 
   for (int i = 0; i < SEQ_STEPS; ++i) {
-    int row = i / 8;
-    int col = i % 8;
+    int row = i / kPatternStepColumns;
+    int col = i % kPatternStepColumns;
     int cellX = x + 5 + col * (cellW + spacing);
     int cellRowY = gridY + row * (cellH + spacing);
 
