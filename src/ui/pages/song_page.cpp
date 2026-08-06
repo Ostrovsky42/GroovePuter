@@ -5,6 +5,7 @@
 #include "../ui_input.h"
 #include "../ui_common.h"
 #include "../ui_theme.h"
+#include "../../dsp/atlas_runtime.h"
 #include "../retro_widgets.h"
 #include "../amber_widgets.h"
 #include "../retro_ui_theme.h"
@@ -2801,24 +2802,64 @@ SongPatternMaterializer::Result SongPage::materializeSongTracks(
     request.row = row;
     request.pageIndex = mini_acid_.currentPageIndex();
     request.seed = mini_acid_.modeManager().generationSeed();
-    request.modeTag = static_cast<uint8_t>(gen_mode_);
+    const uint8_t genreTag = static_cast<uint8_t>(
+        mini_acid_.genreManager().generativeMode());
+    const uint8_t recipeTag = static_cast<uint8_t>(
+        mini_acid_.genreManager().recipe());
+    request.modeTag = static_cast<uint8_t>(
+        genreTag * 17u + recipeTag * 5u +
+        static_cast<uint8_t>(gen_mode_));
     request.trackMask = trackMask;
     request.preferredLocalSlot[0] = mini_acid_.current303BankIndex(0) * 8;
     request.preferredLocalSlot[1] = mini_acid_.current303BankIndex(1) * 8;
     request.preferredLocalSlot[2] = mini_acid_.currentDrumBankIndex() * 8;
 
     Scene& scene = mini_acid_.sceneManager().currentScene();
+    auto& genreManager = mini_acid_.genreManager();
+    const GenerativeMode activeGenre = genreManager.generativeMode();
+    const GenreRecipeId activeRecipe = genreManager.recipe();
     const GenerativeParams& params =
-        mini_acid_.genreManager().getCompiledGenerativeParams();
-    const GenreBehavior behavior = mini_acid_.genreManager().getBehavior();
+        genreManager.getCompiledGenerativeParams();
+    const GenreBehavior behavior = genreManager.getBehavior();
+    const GrooveboxMode mappedMode = GenreManager::grooveboxModeForRecipe(
+        activeRecipe, activeGenre);
+
+    SynthPattern atlasA{};
+    SynthPattern atlasB{};
+    DrumPatternSet atlasDrums{};
+    const uint8_t variationCount = AtlasRuntime::variationCount(activeRecipe);
+    const uint8_t variation = variationCount == 0
+        ? 0
+        : static_cast<uint8_t>(std::min(
+              static_cast<int>(variationCount) - 1,
+              static_cast<int>(gen_mode_)));
+    const bool atlasReady = AtlasRuntime::hasRecipe(activeRecipe) &&
+        AtlasRuntime::applyRecipe(activeRecipe, variation,
+                                  atlasA, atlasB, atlasDrums, nullptr);
 
     auto generateTrack = [&](SongTrack track,
                              uint32_t seed,
                              SynthPattern& synth,
                              DrumPatternSet& drums) {
+        if (atlasReady) {
+            switch (track) {
+                case SongTrack::SynthA:
+                    synth = atlasA;
+                    return !SongPatternMaterializer::synthPatternIsStrictlyEmpty(synth);
+                case SongTrack::SynthB:
+                    synth = atlasB;
+                    return !SongPatternMaterializer::synthPatternIsStrictlyEmpty(synth);
+                case SongTrack::Drums:
+                    drums = atlasDrums;
+                    return !SongPatternMaterializer::drumPatternSetIsStrictlyEmpty(drums);
+                case SongTrack::Voice:
+                    return false;
+            }
+        }
+
         GrooveboxModeManager generator(mini_acid_);
-        generator.setModeLocal(mini_acid_.modeManager().mode());
-        generator.setFlavorLocal(mini_acid_.modeManager().flavor());
+        generator.setModeLocal(mappedMode);
+        generator.setFlavorLocal(0);
         generator.setGenerationSeed(seed);
 
         switch (track) {
@@ -2904,13 +2945,17 @@ bool SongPage::generateCurrentCellPattern(bool rememberForDoubleTap) {
     char patternLabel[12];
     formatSongPatternLabel(
         result.globalPattern[trackIndex], patternLabel, sizeof(patternLabel));
-    char message[32];
     const char* trackLabel = track == SongTrack::SynthA
         ? "A"
         : track == SongTrack::SynthB ? "B" : "DR";
+    char message[96];
     std::snprintf(
-        message, sizeof(message), "GEN %s -> %s", trackLabel, patternLabel);
-    showToast(message, 1100);
+        message, sizeof(message), "GEN %s -> %s %s/%s",
+        trackLabel, patternLabel,
+        GenreManager::generativeModeName(
+            mini_acid_.genreManager().generativeMode()),
+        GenreManager::recipeName(mini_acid_.genreManager().recipe()));
+    showToast(message, 1400);
     return true;
 }
 
@@ -3004,8 +3049,13 @@ bool SongPage::generateEntireRow() {
         return false;
     }
 
-    char message[32];
-    std::snprintf(message, sizeof(message), "GENERATED ROW %d", row + 1);
+    char message[96];
+    std::snprintf(message, sizeof(message), "GENERATED ROW %d %s/%s",
+                  row + 1,
+                  GenreManager::generativeModeName(
+                      mini_acid_.genreManager().generativeMode()),
+                  GenreManager::recipeName(
+                      mini_acid_.genreManager().recipe()));
     showToast(message, 1100);
     return true;
 }

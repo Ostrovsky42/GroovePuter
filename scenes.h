@@ -11,6 +11,8 @@
 #include "ArduinoJson-v7.4.2.h"
 #include "src/dsp/mini_dsp_params.h"
 #include "src/dsp/genre_manager.h"
+#include "src/phrase/phrase_types.h"
+#include "src/phrase/phrase_persistence.h"
 #include "json_evented.h"
 
 namespace scene_json_detail {
@@ -364,6 +366,7 @@ struct Scene {
   GenreSettings genre;
   DrumFX drumFX;
   Song songs[2];
+  PhraseCore::PhraseBank phraseBank;
   int activeSongSlot = 0;
   GrooveboxMode mode = GrooveboxMode::Minimal;
   uint8_t grooveFlavor = 0;
@@ -474,6 +477,7 @@ private:
     Song,
     SongPositions,
     SongPosition,
+    PhraseCore,
     CustomPhrases,
     CustomPhrase,
     Vocal,
@@ -1192,6 +1196,13 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeLiteral(",\"rDec\":")) return false;
   if (!writeFloat(scene_->drumFX.reverbDecay)) return false;
   if (!writeChar('}')) return false;
+
+  if (!writeLiteral(",\"phraseCore\":[")) return false;
+  for (int i = 0; i < PhraseCore::kPersistValueCount; ++i) {
+    if (i > 0 && !writeChar(',')) return false;
+    if (!writeInt(PhraseCore::persistentValueAt(scene_->phraseBank, i))) return false;
+  }
+  if (!writeChar(']')) return false;
 
   if (!writeLiteral(",\"customPhrases\":[")) return false;
   for (int i = 0; i < Scene::kMaxCustomPhrases; ++i) {

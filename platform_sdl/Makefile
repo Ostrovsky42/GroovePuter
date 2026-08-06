@@ -8,7 +8,6 @@ SDL_CFLAGS := $(shell sdl2-config --cflags 2>/dev/null)
 SDL_LIBS := $(shell sdl2-config --libs 2>/dev/null)
 
 ifeq ($(strip $(SDL_CFLAGS)),)
-  # Standard Linux paths
   SDL_CFLAGS := -I/usr/include/SDL2 -D_THREAD_SAFE
   SDL_LIBS := -lSDL2
 endif
@@ -72,16 +71,17 @@ SOURCES := \
 	../src/ui/pages/drum_sequencer_page.cpp \
 	../src/ui/pages/drum_automation_page.cpp \
 	../src/ui/pages/song_page.cpp \
+	../src/ui/pages/phrase_page.cpp \
 	../src/ui/pages/project_page.cpp \
-	../src/ui/pages/mode_page.cpp \
+	../src/ui/pages/generation_page.cpp \
 	../src/ui/pages/genre_page.cpp \
 	../src/ui/pages/perform_page.cpp \
 	../src/ui/pages/smf_player_page.cpp \
 	../src/ui/pages/smf_player_page_structural.cpp \
-	../src/ui/pages/feel_texture_page.cpp \
+	../src/ui/pages/texture_page.cpp \
 	../src/ui/pages/sequencer_hub_page.cpp \
 	../src/ui/pages/sequencer_hub_page_midi.cpp \
-	../src/ui/pages/settings_page.cpp \
+	../src/ui/pages/feel_page.cpp \
 	../src/ui/pages/sampler_page.cpp \
 	../src/ui/pages/tape_page.cpp \
 	../src/ui/components/pattern_selection_bar.cpp \

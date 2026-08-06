@@ -25,6 +25,6 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   int voice_index_ = 0;
   uint32_t last_tab_switch_ms_ = 0;
   std::shared_ptr<PatternEditPage> pattern_page_;
-  std::shared_ptr<Container> settings_page_;
+  std::shared_ptr<Container> feel_page_;
   std::string fallback_title_;
 };

@@ -15,9 +15,12 @@ def main() -> None:
     project = (ROOT / "src/ui/pages/project_page.cpp").read_text(encoding="utf-8")
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
     pattern = (ROOT / "src/ui/pages/pattern_edit_page.h").read_text(encoding="utf-8")
-    feel = (ROOT / "src/ui/pages/feel_texture_page.h").read_text(encoding="utf-8")
-    mode = (ROOT / "src/ui/pages/mode_page.h").read_text(encoding="utf-8")
-    settings = (ROOT / "src/ui/pages/settings_page.cpp").read_text(encoding="utf-8")
+    feel_header = (ROOT / "src/ui/pages/feel_page.h").read_text(encoding="utf-8")
+    feel_source = (ROOT / "src/ui/pages/feel_page.cpp").read_text(encoding="utf-8")
+    generation_header = (ROOT / "src/ui/pages/generation_page.h").read_text(encoding="utf-8")
+    generation_source = (ROOT / "src/ui/pages/generation_page.cpp").read_text(encoding="utf-8")
+    texture_header = (ROOT / "src/ui/pages/texture_page.h").read_text(encoding="utf-8")
+    texture_source = (ROOT / "src/ui/pages/texture_page.cpp").read_text(encoding="utf-8")
     song_header = (ROOT / "src/ui/pages/song_page.h").read_text(encoding="utf-8")
     song_source = (ROOT / "src/ui/pages/song_page.cpp").read_text(encoding="utf-8")
     genre_source = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
@@ -55,14 +58,23 @@ def main() -> None:
         window = project[position:position + 700]
         require("markSceneMutated" in window,
                 f"Project persistent setting bypasses revision tracker: {mutation}")
+
     require("markSceneMutated();" in pattern,
             "step editor mutations must reach the tracker")
-    require("markSceneMutated();" in feel,
-            "Feel mutations must reach the tracker")
-    require("markSceneMutated();" in mode,
-            "phrase generation/randomize must reach the tracker")
-    require("markSceneMutated();" in settings,
-            "generator parameter edits must reach the tracker")
+    require("markSceneMutated();" in feel_header,
+            "FEEL timing/velocity mutations must reach the tracker")
+    generation_success = generation_source.index("if (result) {")
+    generation_failure = generation_source.index("} else {", generation_success)
+    require("markSceneMutated();" in generation_source[generation_success:generation_failure],
+            "successful GENERATION materialization must reach the tracker")
+    require("markSceneMutated();" in texture_header,
+            "TEXTURE mutations must reach the tracker")
+
+    preset_guard = feel_source.index("if (focus_ == FocusRow::Preset)")
+    feel_guard_end = feel_source.index("Scene& scene", preset_guard)
+    require("withAudioGuard" not in feel_source[preset_guard:feel_guard_end],
+            "browsing a FEEL preset must remain UI-only until apply")
+
     require("void withRuntimeAudioGuard" in song_header,
             "Song runtime controls need a non-persistent audio guard")
     require("withRuntimeAudioGuard([&]() { mini_acid_.setLiveMixMode" in song_source,
@@ -73,14 +85,17 @@ def main() -> None:
             "persisted Song mode must remain a tracked mutation")
     require("withAudioGuard([&]() { mini_acid_.setSongPosition(next);" in song_source,
             "persisted Song position must remain a tracked mutation")
-    require(genre_source.count("cycleApplyMode(gs);\n        GroovePuterState::markSceneMutated();") == 2,
-            "both Genre apply-mode controls must mark persistent changes")
-    require("if (v != before) GroovePuterState::markSceneMutated();" in genre_source,
-            "Genre texture amount must mark only real value changes")
-    curated_start = genre_source.index("void GenrePage::setCuratedMode")
-    curated_end = genre_source.index("int GenrePage::visibleTextureCount", curated_start)
-    require("markSceneMutated" in genre_source[curated_start:curated_end],
-            "Genre curated mode must reach the revision tracker")
+
+    apply_mode_start = genre_source.index("void GenrePage::cycleApplyMode")
+    apply_mode_end = genre_source.index("void GenrePage::applyCurrent", apply_mode_start)
+    require("markSceneMutated" in genre_source[apply_mode_start:apply_mode_end],
+            "GENRE apply policy must reach the revision tracker")
+
+    flavor_link_start = texture_source.index("void TexturePage::toggleFlavorLink")
+    flavor_link_end = texture_source.index("void TexturePage::applyTexture", flavor_link_start)
+    require("markSceneMutated" in texture_source[flavor_link_start:flavor_link_end],
+            "TEXTURE cross-axis link must reach the revision tracker")
+
     require("withRuntimeAudioGuard([&]()" in voice_source,
             "Voice preview and runtime controls need a non-persistent guard")
     require("if (persistentTarget && changed) GroovePuterState::markSceneMutated();" in sampler_source,

@@ -54,9 +54,9 @@ inline void appendEngineIfMissing(std::vector<std::string>& options, const char*
   options.emplace_back(engine);
 }
 
-class GlobalSynthSettingsPage final : public Container {
+class GlobalSynthFeelPage final : public Container {
  public:
-  GlobalSynthSettingsPage(MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index)
+  GlobalSynthFeelPage(MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index)
       : mini_acid_(mini_acid),
         audio_guard_(std::move(audio_guard)),
         voice_index_(voice_index) {
@@ -310,9 +310,9 @@ SynthSequencerPage::SynthSequencerPage(IGfx& gfx,
   fallback_title_ = (voice_index_ == 0) ? "SYNTH A SETTINGS" : "SYNTH B SETTINGS";
 
   pattern_page_ = std::make_shared<PatternEditPage>(gfx, mini_acid, audio_guard, voice_index_);
-  settings_page_ = std::make_shared<GlobalSynthSettingsPage>(mini_acid, audio_guard, voice_index_);
+  feel_page_ = std::make_shared<GlobalSynthFeelPage>(mini_acid, audio_guard, voice_index_);
   addPage(pattern_page_);
-  addPage(settings_page_);
+  addPage(feel_page_);
 }
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {

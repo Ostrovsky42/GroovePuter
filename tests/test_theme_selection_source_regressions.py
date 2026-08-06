@@ -86,7 +86,7 @@ def test_workflow_local_page_navigation() -> None:
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
     display_h = (ROOT / "src/ui/miniacid_display.h").read_text(encoding="utf-8")
     launcher = (ROOT / "src/ui/workspace_launcher_overlay.h").read_text(encoding="utf-8")
-    settings = (ROOT / "src/ui/pages/settings_page.cpp").read_text(encoding="utf-8")
+    feel = (ROOT / "src/ui/pages/feel_page.cpp").read_text(encoding="utf-8")
 
     for mode in ("Perform", "Generate", "Hub", "Song", "Settings"):
         require(f"WorkflowMode::{mode}" in workflow,
@@ -96,16 +96,18 @@ def test_workflow_local_page_navigation() -> None:
 
     require("kPerform, kPlayer" in workflow,
             "PERFORM workflow must contain keyboard then MIDI Player")
-    require("kGenre, kMode, kFeelTexture" in workflow,
-            "GENERATE workflow must expose genre, mode and feel")
+    require("kGenre, kFeel, kGeneration, kTexture" in workflow,
+            "GENERATE must expose GENRE, FEEL, GENERATION and TEXTURE")
+    require("case WorkflowMode::Generate: return 4;" in workflow,
+            "GENERATE workflow must have four fixed page addresses")
     require("kPattern, kSynthA, kSynthB, kDrums" in workflow and
             "kSynthAParameters, kSynthBParameters" in workflow,
             "HUB workflow must expose overview, instruments and synth controls")
     require("case WorkflowMode::Song: return kArrange;" in workflow,
             "SONG workflow must resolve to the song editor")
-    require("kProject, kGenerator" in workflow and
-            "case WorkflowMode::Settings: return kSettingsPages[index];" in workflow,
-            "SETTINGS must expose project/setup and advanced generator pages")
+    require("static constexpr int kFeelPages[] = {\n        kProject," in workflow and
+            "case WorkflowMode::Settings: return 1;" in workflow,
+            "SETTINGS must contain only project/setup after FEEL moved to GENERATE")
 
     require("#include <M5Cardputer.h>" in workflow and
             "M5Cardputer.Keyboard.keysState().fn" in workflow,
@@ -129,10 +131,10 @@ def test_workflow_local_page_navigation() -> None:
             "Fn brackets must bypass page-local first refusal")
     require(page_dispatch < brackets,
             "plain brackets must still give local editors first refusal")
-    require("if (e.key == '\\t')" in settings and
-            "Group::Timing" in settings and "Group::Notes" in settings and
-            "Group::Scale" in settings,
-            "plain Tab must retain local Generator subpage navigation")
+    require("UIInput::isTab(event)" in feel and
+            "FocusRow::Swing" in feel and "FocusRow::TimingHumanize" in feel and
+            "FocusRow::VelocityHumanize" in feel,
+            "plain Tab must navigate the FEEL timing/velocity rows")
 
     for label in ("PERFORM", "GENERATE", "HUB", "SONG", "SETTINGS", "HELP"):
         require(f'return "{label}";' in launcher,

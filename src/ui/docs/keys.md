@@ -1,15 +1,15 @@
 # GroovePuter Key Map — Cardputer ADV
 
 This document mirrors the current runtime key routing. `Alt+H` is the on-device,
-page-aware reference; `README.md` screenshots show the same primary footer hints.
+page-aware reference; README screenshots show the same primary footer hints.
 
 ## Input priority
 
 1. An open help or workspace overlay owns input.
 2. Hard-global shortcuts are handled before the page: `Fn+M`, workflow navigation,
-   `Alt+H`, `Alt+P`, `Alt+W`, `Alt+X`, `Alt+M`, theme switching and direct page jumps.
-3. The active page gets first refusal, including `Space`, NOTE mode, Song commands and
-   MIDI Player controls.
+   `Alt+H`, `Alt+P`, `Alt+W`, `Alt+X`, `Alt+M`, theme switching, and direct page jumps.
+3. The active page gets first refusal, including `Space`, NOTE mode, Song, Phrase,
+   and MIDI Player commands.
 4. Supported pages may route unmodified note keys to `PerformanceKeyboard`.
 5. Remaining keys fall through to page navigation and global track mutes.
 
@@ -26,13 +26,13 @@ page-aware reference; `README.md` screenshots show the same primary footer hints
 | `Fn+[` / `Fn+]` | Previous / next workflow |
 | `Alt+[` / `Alt+]` | Previous / next detailed page |
 | `Alt/Fn+1..0` | Direct page jump |
-| `Space` | Active transport, unless the page consumes it |
+| `Space` | Active transport unless the page consumes it |
 | `Alt+P` | MIDI Player |
-| `Alt+V` | MODE / FLAVOR (Groove Lab) |
-| `Alt+W` | Waveform overlay |
+| `Alt+V` | First GENERATE page |
+| `Alt+W` | Waveform overlay, except Phrase explicit overwrite |
 | `Alt+X` | LiveMix ON/OFF |
 | `Alt+M` | Song mode ON/OFF |
-| `Alt+\` | Toggle `CARBON ↔ CYBER` |
+| `Alt+\` | Toggle `CARBON <-> CYBER` |
 | `1..9`, `0` | Track-mute fallback if the page does not consume the digit |
 | `Esc`, `Backspace`, `` ` `` | Back, dismiss, or previous page |
 | `Ctrl+Alt+Backspace` | Panic active notes and reset the project |
@@ -40,7 +40,17 @@ page-aware reference; `README.md` screenshots show the same primary footer hints
 Workflows cycle in this order:
 
 ```text
-PERFORM → GENERATE → HUB → SONG → SETTINGS
+PERFORM -> GENERATE -> HUB -> SONG -> SETTINGS
+```
+
+Pages inside each workflow:
+
+```text
+PERFORM:  MIDI KEYBOARD -> MIDI PLAYER
+GENERATE: GENRE -> FEEL -> GENERATION -> TEXTURE
+HUB:      OVERVIEW -> SYNTH A -> SYNTH B -> DRUMS -> SYNTH A SOUND -> SYNTH B SOUND
+SONG:     SONG -> PHRASE CORE
+SETTINGS: PROJECT / SETUP
 ```
 
 ## MIDI KEYBOARD / PERFORM
@@ -59,22 +69,54 @@ PERFORM → GENERATE → HUB → SONG → SETTINGS
 | `Shift+1..8` | Cycle the adjustable tool backward |
 | `Esc` / `` ` `` | Close the tools layer |
 
-When Pattern/Song transport owns Synth A, note keys remain consumed and do not emit
-competing `NoteOn` events.
+Direct note input remains active while transport runs. Step-based tools follow the
+project transport timeline and use the existing event router and MIDI dispatcher.
 
-## GENRE
+## GENRE 1/4
 
 | Key | Action |
 |---|---|
-| `Tab` | Cycle Genre / Texture / Recipe lane |
-| `Arrows` | Move or adjust the active lane |
-| `Enter` | Apply the selected recipe |
-| `Space` / `M` | Cycle apply mode |
-| `Fn+Up/Down` | Morph recipe |
-| `C` | Curated / Advanced catalog |
-| `G` | Acid / Minimal groove mode |
-| `Ctrl+1..2` | Synth A bank A/B |
-| `Q..I` | Synth A pattern 1..8 |
+| `Tab` / `Up/Down` | Select genre, variant, morph, or apply-policy field |
+| `Left/Right` | Adjust the selected field |
+| `Alt+Left/Right` | Morph the selected variant |
+| `Enter` | Apply profile or materialize according to the selected policy |
+| `M` | Cycle `PROFILE ONLY`, `MATERIALIZE`, `MATERIALIZE+BPM` |
+
+GENRE owns musical corridor and vocabulary. It does not own FEEL or TEXTURE.
+
+## FEEL 2/4
+
+| Key | Action |
+|---|---|
+| `Tab` / `Up/Down` | Select FEEL field |
+| `Left/Right` | Adjust swing, timing humanize, velocity humanize, or preset |
+| `Shift` / `Ctrl` | Accelerated adjustment |
+| `Enter` / `Space` | Apply the selected FEEL preset |
+
+FEEL changes timing and velocity only. Browsing a preset does not mutate Scene until
+apply. Digits remain available to the global mute fallback; they are not FEEL hotkeys.
+
+## GENERATION 3/4
+
+| Key | Action |
+|---|---|
+| `Left/Right` | Move target Song row by one |
+| `Up/Down` | Move target Song row by eight |
+| hold `Arrows` | Accelerate target browsing |
+| `Enter` / `G` | Generate material into a free slot and materialize the selected row |
+
+Target browsing is UI-only. Song position changes only when materialization succeeds.
+Phrase length is owned by Phrase Core, not by this page.
+
+## TEXTURE 4/4
+
+| Key | Action |
+|---|---|
+| `Tab` / `Up/Down` | Select texture field |
+| `Left/Right` | Adjust texture mode, amount, or explicit flavor link |
+| `Enter` / `Space` | Apply texture |
+
+TEXTURE changes sound surface only. It does not own note, rhythm, FEEL, or phrase form.
 
 ## SYNTH A / SYNTH B PATTERN
 
@@ -138,7 +180,7 @@ competing `NoteOn` events.
 | `Arrows` | Move cursor |
 | `Shift/Ctrl+Arrows` | Extend selection |
 | `Enter` | Jump to the referenced pattern editor |
-| `Q..I` | Assign an existing pattern without regenerating it |
+| `Q..I` | Assign an existing pattern without regeneration |
 | `G` | Generate material into a free slot and assign the selected cell |
 | double `G` | Generate and materialize the current row atomically |
 | `Alt+G` | Generate the selected area |
@@ -167,6 +209,25 @@ competing `NoteOn` events.
 `NO EMPTY PATTERN SLOTS` means generation changed neither Song references nor pattern
 content.
 
+## PHRASE CORE
+
+| Key | Action |
+|---|---|
+| `1..4` | Select Phrase A/B/C/D |
+| `Up/Down` | Capture length `1/2/4/8` bars |
+| `Left/Right` | Preview saved Phrase bar |
+| `R` | Cycle capture role |
+| `Shift+R` | Previous role |
+| `P` | Cycle derive parent |
+| `Enter` | Capture current Song region |
+| `D` | Derive parent into selected slot |
+| `W` | Write to an empty Song destination |
+| `Alt+W` | Explicit destructive overwrite |
+| `Backspace` / `Delete` | Clear selected Phrase |
+
+Phrase storage is `REFERENCE VIEW / REF MUTABLE`. Editing a referenced pattern changes
+the Phrase material; save/load preserves valid slots and cleared slots.
+
 ## OVERVIEW / SEQUENCER HUB
 
 | Key | Action |
@@ -183,47 +244,9 @@ content.
 | `B` | Toggle pattern bank |
 | `Ctrl+C/V` | Copy / Paste |
 
-In HUB MIDI mode, `H` returns to Player, `1..9` mutes physical SMF tracks and `C`
-edits the selected track route override (`AUTO`, `CH1..CH10`). Confirmed routes are
-persisted per file and restored across reloads and reboots when the file identity still
-matches; changed, stale, corrupt, or unknown files start at `AUTO`.
-
-## FEEL / TEXTURE
-
-| Key | Action |
-|---|---|
-| `Tab` | Feel / Presets focus |
-| `Up/Down` | Select row |
-| `Left/Right` | Change value |
-| `Enter` / `Space` | Apply or cycle the selected value |
-| `Ctrl+1..2` | Synth A bank A/B |
-| `Q..I` | Synth A pattern 1..8 |
-
-Digits remain available to the global mute fallback; they are not Feel preset hotkeys.
-
-## MODE / FLAVOR
-
-| Key | Action |
-|---|---|
-| `Tab` / `Up/Down` | Focus row |
-| `Left/Right` | Change value |
-| `Enter` | Run selected action |
-| `Space` | Preview / regenerate |
-| `A/B` | Apply to Synth A/B |
-| `D` | Apply to Drums |
-| `G` | Generate phrase |
-| `M` | Toggle macros |
-
-## ADV GENERATOR
-
-| Key | Action |
-|---|---|
-| `Tab` | Next parameter group |
-| `Up/Down` | Select row |
-| `Left/Right` | Adjust value |
-| `Shift/Ctrl/Alt` | Fast adjustment |
-| `Enter` / `Space` | Apply selected preset |
-| `T` | SD benchmark |
+In HUB MIDI mode, `H` returns to Player, `1..9` mutes physical SMF tracks, and `C`
+edits the selected route override (`AUTO`, `CH1..CH10`). Confirmed routes are persisted
+per file and restored when the file identity still matches.
 
 ## PROJECT / SETUP
 
@@ -259,4 +282,4 @@ Digits remain available to the global mute fallback; they are not Feel preset ho
 | `V` | Velocity boost |
 | `X` | Panic SMF-owned notes |
 
-`Alt+H` always opens help; unmodified `H` remains the Player ↔ HUB MIDI shortcut.
+`Alt+H` always opens help; unmodified `H` remains the Player <-> HUB MIDI shortcut.
