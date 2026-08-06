@@ -1,4 +1,4 @@
-#include "settings_page.h"
+#include "feel_page.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -23,7 +23,7 @@ int percent(float value) {
 }
 }  // namespace
 
-SettingsPage::SettingsPage(IGfx& gfx,
+FeelPage::FeelPage(IGfx& gfx,
                            MiniAcid& mini_acid,
                            AudioGuard& audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
@@ -31,13 +31,13 @@ SettingsPage::SettingsPage(IGfx& gfx,
   style_ = UI::currentStyle;
 }
 
-void SettingsPage::moveFocus(int delta) {
+void FeelPage::moveFocus(int delta) {
   int value = static_cast<int>(focus_) + delta;
   value = wrapIndex(value, 4);
   focus_ = static_cast<FocusRow>(value);
 }
 
-void SettingsPage::adjustFocused(int delta, bool fast) {
+void FeelPage::adjustFocused(int delta, bool fast) {
   if (focus_ == FocusRow::Preset) {
     preset_index_ = wrapIndex(preset_index_ + delta, 3);
     return;
@@ -74,7 +74,7 @@ void SettingsPage::adjustFocused(int delta, bool fast) {
   });
 }
 
-void SettingsPage::applyPreset(int index) {
+void FeelPage::applyPreset(int index) {
   index = wrapIndex(index, 3);
   preset_index_ = index;
   Scene& scene = mini_acid_.sceneManager().currentScene();
@@ -109,7 +109,7 @@ void SettingsPage::applyPreset(int index) {
   UI::showToast(toast, 1500);
 }
 
-void SettingsPage::draw(IGfx& gfx) {
+void FeelPage::draw(IGfx& gfx) {
   const AxisUI::Palette palette = AxisUI::paletteFor(style_);
   const IGfxColor axisColor = palette.feel;
   const Scene& scene = mini_acid_.sceneManager().currentScene();
@@ -178,7 +178,7 @@ void SettingsPage::draw(IGfx& gfx) {
                          "FAST:SHIFT/CTRL  ENTER:PRESET");
 }
 
-bool SettingsPage::handleEvent(UIEvent& event) {
+bool FeelPage::handleEvent(UIEvent& event) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
   if (UIInput::isTab(event)) {

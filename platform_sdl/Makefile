@@ -73,15 +73,15 @@ SOURCES := \
 	../src/ui/pages/drum_automation_page.cpp \
 	../src/ui/pages/song_page.cpp \
 	../src/ui/pages/project_page.cpp \
-	../src/ui/pages/mode_page.cpp \
+	../src/ui/pages/generation_page.cpp \
 	../src/ui/pages/genre_page.cpp \
 	../src/ui/pages/perform_page.cpp \
 	../src/ui/pages/smf_player_page.cpp \
 	../src/ui/pages/smf_player_page_structural.cpp \
-	../src/ui/pages/feel_texture_page.cpp \
+	../src/ui/pages/texture_page.cpp \
 	../src/ui/pages/sequencer_hub_page.cpp \
 	../src/ui/pages/sequencer_hub_page_midi.cpp \
-	../src/ui/pages/settings_page.cpp \
+	../src/ui/pages/feel_page.cpp \
 	../src/ui/pages/sampler_page.cpp \
 	../src/ui/pages/tape_page.cpp \
 	../src/ui/components/pattern_selection_bar.cpp \

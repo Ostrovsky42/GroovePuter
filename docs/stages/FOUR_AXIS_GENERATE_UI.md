@@ -12,10 +12,12 @@ Each page has one musical responsibility and one visible address:
 
 - **GENRE** — corridor and vocabulary;
 - **FEEL** — event timing and velocity relative to the grid;
-- **GENERATION** — phrase form and materialization into Song;
+- **GENERATION** — generative operators and single-bar materialization into Song;
 - **TEXTURE** — sound surface only.
 
 The test verifies layout and causal isolation. This stage adds no generator architecture, Scene field, persistence codec or DSP parameter structure.
+
+`PHRASE CORE` is the sole UI owner of the selected `1/2/4/8`-bar working length. `GENERATION` does not expose a second phrase-length selector.
 
 ## Hardware list
 
@@ -95,18 +97,20 @@ Expected:
 - no `GRID/TB/LEN` control is presented as FEEL;
 - footer shows `ENTER:PRESET`.
 
-### 4. GENERATION owns form
+### 4. GENERATION owns materialization operators
 
 On `GENERATION 3/4`:
 
-1. Cycle `LENGTH` through `1/2/4/8 BARS`.
-2. Observe the read-only `PLAN`.
-3. Move to `MATERIALIZE` and press `Enter`, or press `G`.
+1. Confirm `SCOPE` is `CURRENT SONG ROW`.
+2. Confirm no editable `LENGTH` row is present.
+3. Press `Enter`, or press `G`.
 
 Expected:
 
-- one constructive pass writes the requested bars to the shown Song target;
-- the toast identifies the Song range;
+- one constructive pass writes exactly one bar to the shown Song target;
+- the toast identifies the written Song row;
+- the page states `Phrase length owned by PHRASE CORE`;
+- only PHRASE CORE exposes the selected `1/2/4/8`-bar working length;
 - no flavor, texture, swing or humanize control appears;
 - no candidate scoring, retry animation or indefinite generation occurs;
 - previous transport state is restored.
@@ -142,7 +146,7 @@ Each section states what the page does not change.
 
 ### 7. Themes
 
-Use the public theme shortcut to test CARBON and CYBER. If an existing saved session loads AMBER, verify compatibility there as well; AMBER is not part of the public shortcut cycle.
+Use the public theme shortcut to test CARBON and CYBER. User-facing change: AMBER is no longer in the public shortcut cycle. If an existing saved session loads AMBER, verify compatibility there as well.
 
 Expected:
 
@@ -202,7 +206,8 @@ Record theme, page, selected value and a full 240×135 screenshot. Do not use di
 - [ ] PROFILE ONLY keeps existing pattern material.
 - [ ] FEEL edits only swing/timing/velocity humanize.
 - [ ] FEEL preset browsing is non-mutating until apply.
-- [ ] GENERATION materializes 1/2/4/8 bars to the shown Song target.
+- [ ] GENERATION materializes exactly one bar and exposes no phrase-length selector.
+- [ ] PHRASE CORE is the sole UI owner of the selected 1/2/4/8-bar length.
 - [ ] GENERATION exposes no flavor, texture or humanize controls.
 - [ ] TEXTURE changes sound without note/rhythm/form changes.
 - [ ] Seven texture macro indicators are readable and non-editable.

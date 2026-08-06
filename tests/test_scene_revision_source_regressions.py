@@ -15,11 +15,11 @@ def main() -> None:
     project = (ROOT / "src/ui/pages/project_page.cpp").read_text(encoding="utf-8")
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
     pattern = (ROOT / "src/ui/pages/pattern_edit_page.h").read_text(encoding="utf-8")
-    feel_header = (ROOT / "src/ui/pages/settings_page.h").read_text(encoding="utf-8")
-    feel_source = (ROOT / "src/ui/pages/settings_page.cpp").read_text(encoding="utf-8")
-    generation_header = (ROOT / "src/ui/pages/mode_page.h").read_text(encoding="utf-8")
-    texture_header = (ROOT / "src/ui/pages/feel_texture_page.h").read_text(encoding="utf-8")
-    texture_source = (ROOT / "src/ui/pages/feel_texture_page.cpp").read_text(encoding="utf-8")
+    feel_header = (ROOT / "src/ui/pages/feel_page.h").read_text(encoding="utf-8")
+    feel_source = (ROOT / "src/ui/pages/feel_page.cpp").read_text(encoding="utf-8")
+    generation_header = (ROOT / "src/ui/pages/generation_page.h").read_text(encoding="utf-8")
+    texture_header = (ROOT / "src/ui/pages/texture_page.h").read_text(encoding="utf-8")
+    texture_source = (ROOT / "src/ui/pages/texture_page.cpp").read_text(encoding="utf-8")
     song_header = (ROOT / "src/ui/pages/song_page.h").read_text(encoding="utf-8")
     song_source = (ROOT / "src/ui/pages/song_page.cpp").read_text(encoding="utf-8")
     genre_source = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
@@ -88,8 +88,8 @@ def main() -> None:
     require("markSceneMutated" in genre_source[apply_mode_start:apply_mode_end],
             "GENRE apply policy must reach the revision tracker")
 
-    flavor_link_start = texture_source.index("void FeelTexturePage::toggleFlavorLink")
-    flavor_link_end = texture_source.index("void FeelTexturePage::applyTexture", flavor_link_start)
+    flavor_link_start = texture_source.index("void TexturePage::toggleFlavorLink")
+    flavor_link_end = texture_source.index("void TexturePage::applyTexture", flavor_link_start)
     require("markSceneMutated" in texture_source[flavor_link_start:flavor_link_end],
             "TEXTURE cross-axis link must reach the revision tracker")
 

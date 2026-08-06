@@ -283,15 +283,15 @@ private:
                 line1 = "genre / texture / recipe";
                 line2 = "musical direction";
                 return;
-            case WorkflowPages::kMode:
+            case WorkflowPages::kGeneration:
                 line1 = "groove family / flavor";
                 line2 = "macro generation style";
                 return;
-            case WorkflowPages::kFeelTexture:
+            case WorkflowPages::kTexture:
                 line1 = "grid / timebase / length";
                 line2 = "timing character";
                 return;
-            case WorkflowPages::kGenerator:
+            case WorkflowPages::kFeel:
                 line1 = "swing / notes / scale";
                 line2 = "TAB local groups";
                 return;

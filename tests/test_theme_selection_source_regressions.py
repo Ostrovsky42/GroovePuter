@@ -86,7 +86,7 @@ def test_workflow_local_page_navigation() -> None:
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
     display_h = (ROOT / "src/ui/miniacid_display.h").read_text(encoding="utf-8")
     launcher = (ROOT / "src/ui/workspace_launcher_overlay.h").read_text(encoding="utf-8")
-    feel = (ROOT / "src/ui/pages/settings_page.cpp").read_text(encoding="utf-8")
+    feel = (ROOT / "src/ui/pages/feel_page.cpp").read_text(encoding="utf-8")
 
     for mode in ("Perform", "Generate", "Hub", "Song", "Settings"):
         require(f"WorkflowMode::{mode}" in workflow,
@@ -96,7 +96,7 @@ def test_workflow_local_page_navigation() -> None:
 
     require("kPerform, kPlayer" in workflow,
             "PERFORM workflow must contain keyboard then MIDI Player")
-    require("kGenre, kGenerator, kMode, kFeelTexture" in workflow,
+    require("kGenre, kFeel, kGeneration, kTexture" in workflow,
             "GENERATE must expose GENRE, FEEL, GENERATION and TEXTURE")
     require("case WorkflowMode::Generate: return 4;" in workflow,
             "GENERATE workflow must have four fixed page addresses")
@@ -105,7 +105,7 @@ def test_workflow_local_page_navigation() -> None:
             "HUB workflow must expose overview, instruments and synth controls")
     require("case WorkflowMode::Song: return kArrange;" in workflow,
             "SONG workflow must resolve to the song editor")
-    require("static constexpr int kSettingsPages[] = {\n        kProject," in workflow and
+    require("static constexpr int kFeelPages[] = {\n        kProject," in workflow and
             "case WorkflowMode::Settings: return 1;" in workflow,
             "SETTINGS must contain only project/setup after FEEL moved to GENERATE")
 

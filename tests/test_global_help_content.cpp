@@ -66,12 +66,12 @@ int main() {
 
     assert(sectionContains(WorkflowPages::kGenre, "GENRE 1/4"));
     assert(sectionContains(WorkflowPages::kGenre, "No texture or feel changes"));
-    assert(sectionContains(WorkflowPages::kGenerator, "FEEL 2/4"));
-    assert(sectionContains(WorkflowPages::kGenerator, "No notes, roles or sound changes"));
-    assert(sectionContains(WorkflowPages::kMode, "GENERATION 3/4"));
-    assert(sectionContains(WorkflowPages::kMode, "No scoring or retry loop"));
-    assert(sectionContains(WorkflowPages::kFeelTexture, "TEXTURE 4/4"));
-    assert(sectionContains(WorkflowPages::kFeelTexture, "No note or rhythm changes"));
+    assert(sectionContains(WorkflowPages::kFeel, "FEEL 2/4"));
+    assert(sectionContains(WorkflowPages::kFeel, "No notes, roles or sound changes"));
+    assert(sectionContains(WorkflowPages::kGeneration, "GENERATION 3/4"));
+    assert(sectionContains(WorkflowPages::kGeneration, "No scoring or retry loop"));
+    assert(sectionContains(WorkflowPages::kTexture, "TEXTURE 4/4"));
+    assert(sectionContains(WorkflowPages::kTexture, "No note or rhythm changes"));
 
     std::cout << "global help content tests passed\n";
     return 0;

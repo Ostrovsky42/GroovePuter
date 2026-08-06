@@ -1,4 +1,4 @@
-#include "feel_texture_page.h"
+#include "texture_page.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -47,7 +47,7 @@ void drawMacroStrip(IGfx& gfx,
 }
 }  // namespace
 
-FeelTexturePage::FeelTexturePage(IGfx& gfx,
+TexturePage::TexturePage(IGfx& gfx,
                                  MiniAcid& mini_acid,
                                  AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
@@ -56,28 +56,28 @@ FeelTexturePage::FeelTexturePage(IGfx& gfx,
   syncFromEngine();
 }
 
-void FeelTexturePage::syncFromEngine() {
+void TexturePage::syncFromEngine() {
   texture_index_ = static_cast<int>(mini_acid_.genreManager().textureMode());
   texture_amount_ = static_cast<int>(
       mini_acid_.sceneManager().currentScene().genre.textureAmount);
 }
 
-void FeelTexturePage::moveFocus(int delta) {
+void TexturePage::moveFocus(int delta) {
   int value = static_cast<int>(focus_) + delta;
   value = wrapIndex(value, 4);
   focus_ = static_cast<FocusRow>(value);
 }
 
-void FeelTexturePage::shiftTexture(int delta) {
+void TexturePage::shiftTexture(int delta) {
   texture_index_ = wrapIndex(texture_index_ + delta, kTextureModeCount);
 }
 
-void FeelTexturePage::adjustAmount(int delta, bool fast) {
+void TexturePage::adjustAmount(int delta, bool fast) {
   texture_amount_ = std::clamp(
       texture_amount_ + delta * (fast ? 10 : 2), 0, 100);
 }
 
-void FeelTexturePage::toggleFlavorLink() {
+void TexturePage::toggleFlavorLink() {
   auto& enabled =
       mini_acid_.sceneManager().currentScene().genre.applySoundMacros;
   enabled = !enabled;
@@ -86,7 +86,7 @@ void FeelTexturePage::toggleFlavorLink() {
                 1100);
 }
 
-void FeelTexturePage::applyTexture() {
+void TexturePage::applyTexture() {
   withAudioGuard([&]() {
     auto& manager = mini_acid_.genreManager();
     manager.setTextureMode(static_cast<TextureMode>(texture_index_));
@@ -106,7 +106,7 @@ void FeelTexturePage::applyTexture() {
   UI::showToast(toast, 1400);
 }
 
-std::array<uint8_t, 7> FeelTexturePage::macroView() const {
+std::array<uint8_t, 7> TexturePage::macroView() const {
   const TextureParams& params =
       kTexturePresets[wrapIndex(texture_index_, kTextureModeCount)];
   const TapeMacro& tape = params.tapeMacro;
@@ -142,7 +142,7 @@ std::array<uint8_t, 7> FeelTexturePage::macroView() const {
   };
 }
 
-void FeelTexturePage::draw(IGfx& gfx) {
+void TexturePage::draw(IGfx& gfx) {
   const AxisUI::Palette palette = AxisUI::paletteFor(style_);
   const IGfxColor axisColor = palette.texture;
   const auto selected = static_cast<TextureMode>(texture_index_);
@@ -200,7 +200,7 @@ void FeelTexturePage::draw(IGfx& gfx) {
                          "ENTER/SPACE:APPLY TEXTURE");
 }
 
-bool FeelTexturePage::handleEvent(UIEvent& event) {
+bool TexturePage::handleEvent(UIEvent& event) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
   if (UIInput::isTab(event)) {

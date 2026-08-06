@@ -8,9 +8,9 @@
 #include "src/dsp/miniacid_engine.h"
 #include "src/state/scene_revision.h"
 
-class ModePage : public IPage {
+class FeelPage : public IPage {
  public:
-  ModePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
+  FeelPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard& audio_guard);
 
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
@@ -19,15 +19,15 @@ class ModePage : public IPage {
 
  private:
   enum class FocusRow : uint8_t {
-    Length = 0,
-    Target,
-    Materialize,
+    Swing = 0,
+    TimingHumanize,
+    VelocityHumanize,
+    Preset,
   };
 
   void moveFocus(int delta);
-  void shiftPhraseLength(int delta);
-  void generatePhrase();
-  const char* planName() const;
+  void adjustFocused(int delta, bool fast);
+  void applyPreset(int index);
 
   template <typename F>
   void withAudioGuard(F&& fn) {
@@ -37,9 +37,9 @@ class ModePage : public IPage {
   }
 
   MiniAcid& mini_acid_;
-  AudioGuard audio_guard_;
+  AudioGuard& audio_guard_;
   VisualStyle style_ = VisualStyle::MINIMAL;
-  FocusRow focus_ = FocusRow::Length;
-  uint8_t phrase_bars_ = 4;
-  std::string title_ = "GENERATION";
+  FocusRow focus_ = FocusRow::Swing;
+  int preset_index_ = 1;
+  std::string title_ = "FEEL";
 };

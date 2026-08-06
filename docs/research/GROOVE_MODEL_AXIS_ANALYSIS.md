@@ -13,6 +13,8 @@
 3. **GENERATION** — построение и развитие материала: функции тактов, операторы вариаций, связь bass/kick, inter-bar distance.
 4. **TEXTURE** — только семь макропараметров поверхности: dirt, age, space, width, instability, aggression, darkness.
 
+`PHRASE CORE` владеет единственным пользовательским адресом выбранной рабочей длины `1/2/4/8` тактов. GENRE задаёт допустимый коридор длин, а GENERATION назначает функции тактов внутри уже предоставленной длины и не дублирует её селектор.
+
 ### Неподвижные ограничения этого исследования
 
 - Конструктивный линейный генератор и deterministic repair сохраняются.
@@ -316,7 +318,7 @@ C1 содержит `6` recipes, `18` pattern slots и `535` runtime events. `[�
 | `P SPACE/NORM/WIDE/GRIT` | composite feel/drum-FX presets | mixed/legacy | alias, не independent state | не создавать второй texture address; либо alias операции, либо удалить из основной модели |
 | `GRID` | `FeelSettings.gridSteps` | FEEL только как reference resolution | L2 | почти константа; не основной discriminator |
 | `TB HALF/NORM/DBL` | временное масштабирование/метрическая интерпретация | не FEEL в строгом контракте | unresolved | семантически реклассифицировать до реализации; скрыть из main axis model |
-| `LEN` | `FeelSettings.patternBars` сейчас | выбранная длина — GENERATION; allowed lengths — GENRE | L1/L2 | текущая принадлежность FEEL нарушает контракт; один основной адрес у phrase generation |
+| `LEN` | `FeelSettings.patternBars` сейчас | выбранная рабочая длина — PHRASE CORE; allowed lengths — GENRE; GENERATION назначает функции тактов внутри предоставленной длины | L1/L2 | текущая принадлежность FEEL нарушает контракт; единственный UI-адрес длины находится в PHRASE CORE |
 | `GROOVE:ACD` | legacy `GrooveboxMode` readout | GENERATION/legacy | status | не ещё один genre selector |
 | `LINK:GEN` | соответствие genre recipe и groove mode | межосевой status | status | только readout, не музыкальная ось |
 | `M:%` | recipe morph amount | GENERATION | L1 | может быть variation/development macro при сохранении operator bounds |
@@ -389,8 +391,8 @@ N notesMin..notesMax  A accentProbability  S slideProbability  SW swingAmount
 ## Текущее состояние репозитория
 
 - **R1.** `src/dsp/genre_manager.h` — текущие GenerativeMode, TextureMode, GenerativeParams, GrooveRecipe и GenreBehavior.
-- **R2.** `src/ui/pages/genre_page.cpp` и `src/ui/pages/feel_texture_page.cpp` — текущие addresses genre/texture/grid/timebase/length/presets.
-- **R3.** `src/ui/pages/mode_page.cpp` — фактический формат `N/A/S/SW`, GrooveboxMode/Flavor/Phrase/Macros/Budget.
+- **R2.** `src/ui/pages/genre_page.cpp` и `src/ui/pages/texture_page.cpp` — текущие addresses genre/texture/grid/timebase/length/presets.
+- **R3.** `src/ui/pages/generation_page.cpp` — фактический формат `N/A/S/SW`, GrooveboxMode/Flavor/Phrase/Macros/Budget.
 
 ---
 

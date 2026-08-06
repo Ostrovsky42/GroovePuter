@@ -9,9 +9,9 @@
 #include "src/dsp/miniacid_engine.h"
 #include "src/state/scene_revision.h"
 
-class FeelTexturePage : public IPage {
+class TexturePage : public IPage {
  public:
-  FeelTexturePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
+  TexturePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
 
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;

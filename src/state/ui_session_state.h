@@ -30,10 +30,10 @@ constexpr int kSynthBParameters = 4;
 constexpr int kDrums = 5;
 constexpr int kArrange = 6;
 constexpr int kPattern = 7;
-constexpr int kFeelTexture = 8;  // TEXTURE
-constexpr int kGenerator = 9;    // FEEL
+constexpr int kTexture = 8;  // TEXTURE
+constexpr int kFeel = 9;    // FEEL
 constexpr int kProject = 10;
-constexpr int kMode = 11;        // GENERATION
+constexpr int kGeneration = 11;        // GENERATION
 constexpr int kPerform = 12;
 constexpr int kPlayer = 13;
 }  // namespace SessionPages
@@ -69,9 +69,9 @@ inline SessionWorkflow sessionWorkflowForPage(int page) {
         return SessionWorkflow::Perform;
     }
     if (page == SessionPages::kGenre ||
-        page == SessionPages::kGenerator ||
-        page == SessionPages::kMode ||
-        page == SessionPages::kFeelTexture) {
+        page == SessionPages::kFeel ||
+        page == SessionPages::kGeneration ||
+        page == SessionPages::kTexture) {
         return SessionWorkflow::Generate;
     }
     if (page == SessionPages::kPattern || page == SessionPages::kSynthA ||
@@ -172,16 +172,16 @@ inline int pageAt(SessionWorkflow workflow, int index) {
     };
     static constexpr int kGeneratePages[] = {
         SessionPages::kGenre,
-        SessionPages::kGenerator,
-        SessionPages::kMode,
-        SessionPages::kFeelTexture,
+        SessionPages::kFeel,
+        SessionPages::kGeneration,
+        SessionPages::kTexture,
     };
     static constexpr int kHubPages[] = {
         SessionPages::kPattern, SessionPages::kSynthA, SessionPages::kSynthB,
         SessionPages::kDrums, SessionPages::kSynthAParameters,
         SessionPages::kSynthBParameters,
     };
-    static constexpr int kSettingsPages[] = {
+    static constexpr int kFeelPages[] = {
         SessionPages::kProject,
     };
 
@@ -194,7 +194,7 @@ inline int pageAt(SessionWorkflow workflow, int index) {
         case SessionWorkflow::Generate: return kGeneratePages[index];
         case SessionWorkflow::Hub: return kHubPages[index];
         case SessionWorkflow::Song: return SessionPages::kArrange;
-        case SessionWorkflow::Settings: return kSettingsPages[index];
+        case SessionWorkflow::Settings: return kFeelPages[index];
     }
     return SessionPages::kGenre;
 }

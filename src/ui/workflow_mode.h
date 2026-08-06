@@ -23,8 +23,8 @@ enum class Workspace : uint8_t {
 
     // GENERATE
     Groove,       // GENRE
-    Mode,         // GENERATION
-    FeelTexture,  // TEXTURE
+    Generation,         // GENERATION
+    Texture,  // TEXTURE
 
     // HUB
     Pattern,
@@ -39,7 +39,7 @@ enum class Workspace : uint8_t {
 
     // SETTINGS / fourth GENERATE page
     Project,
-    Generator,    // FEEL
+    Feel,    // FEEL
 };
 
 namespace WorkflowPages {
@@ -51,10 +51,10 @@ constexpr int kSynthBParameters = 4;
 constexpr int kDrums = 5;
 constexpr int kArrange = 6;
 constexpr int kPattern = 7;
-constexpr int kFeelTexture = 8;  // TEXTURE
-constexpr int kGenerator = 9;    // FEEL
+constexpr int kTexture = 8;  // TEXTURE
+constexpr int kFeel = 9;    // FEEL
 constexpr int kProject = 10;
-constexpr int kMode = 11;        // GENERATION
+constexpr int kGeneration = 11;        // GENERATION
 constexpr int kPerform = 12;
 constexpr int kPlayer = 13;
 
@@ -64,9 +64,9 @@ inline bool isPerformWorkflowPage(int page) {
 
 inline bool isGenerateWorkflowPage(int page) {
     return page == kGenre ||
-           page == kGenerator ||
-           page == kMode ||
-           page == kFeelTexture;
+           page == kFeel ||
+           page == kGeneration ||
+           page == kTexture;
 }
 
 inline bool isHubWorkflowPage(int page) {
@@ -103,9 +103,9 @@ inline Workspace workspaceForPage(int page) {
         case kPerform: return Workspace::Perform;
         case kPlayer: return Workspace::Player;
         case kGenre: return Workspace::Groove;
-        case kGenerator: return Workspace::Generator;
-        case kMode: return Workspace::Mode;
-        case kFeelTexture: return Workspace::FeelTexture;
+        case kFeel: return Workspace::Feel;
+        case kGeneration: return Workspace::Generation;
+        case kTexture: return Workspace::Texture;
         case kPattern: return Workspace::Pattern;
         case kSynthA: return Workspace::SynthA;
         case kSynthB: return Workspace::SynthB;
@@ -123,9 +123,9 @@ inline int pageForWorkspace(Workspace workspace) {
         case Workspace::Perform: return kPerform;
         case Workspace::Player: return kPlayer;
         case Workspace::Groove: return kGenre;
-        case Workspace::Generator: return kGenerator;
-        case Workspace::Mode: return kMode;
-        case Workspace::FeelTexture: return kFeelTexture;
+        case Workspace::Feel: return kFeel;
+        case Workspace::Generation: return kGeneration;
+        case Workspace::Texture: return kTexture;
         case Workspace::Pattern: return kPattern;
         case Workspace::SynthA: return kSynthA;
         case Workspace::SynthB: return kSynthB;
@@ -170,9 +170,9 @@ inline const char* pageName(int page) {
         case kPerform: return "MIDI KEYBOARD";
         case kPlayer: return "MIDI PLAYER";
         case kGenre: return "GENRE";
-        case kGenerator: return "FEEL";
-        case kMode: return "GENERATION";
-        case kFeelTexture: return "TEXTURE";
+        case kFeel: return "FEEL";
+        case kGeneration: return "GENERATION";
+        case kTexture: return "TEXTURE";
         case kPattern: return "OVERVIEW";
         case kSynthA: return "SYNTH A";
         case kSynthB: return "SYNTH B";
@@ -201,13 +201,13 @@ inline int pageAt(WorkflowMode mode, int index) {
         kPerform, kPlayer,
     };
     static constexpr int kGeneratePages[] = {
-        kGenre, kGenerator, kMode, kFeelTexture,
+        kGenre, kFeel, kGeneration, kTexture,
     };
     static constexpr int kHubPages[] = {
         kPattern, kSynthA, kSynthB, kDrums,
         kSynthAParameters, kSynthBParameters,
     };
-    static constexpr int kSettingsPages[] = {
+    static constexpr int kFeelPages[] = {
         kProject,
     };
 
@@ -220,7 +220,7 @@ inline int pageAt(WorkflowMode mode, int index) {
         case WorkflowMode::Generate: return kGeneratePages[index];
         case WorkflowMode::Hub: return kHubPages[index];
         case WorkflowMode::Song: return kArrange;
-        case WorkflowMode::Settings: return kSettingsPages[index];
+        case WorkflowMode::Settings: return kFeelPages[index];
     }
     return kGenre;
 }
@@ -275,6 +275,6 @@ inline Workspace nextWorkspace(Workspace workspace, int direction) {
 inline bool allowsPerformanceKeyboard(int page) {
     return page == kPerform ||
            page == kSynthAParameters ||
-           page == kFeelTexture;
+           page == kTexture;
 }
 }  // namespace WorkflowPages

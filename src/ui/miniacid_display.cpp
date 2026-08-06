@@ -13,10 +13,10 @@
 #include "pages/drum_sequencer_page.h"
 #include "pages/synth_sequencer_page.h"
 #include "pages/tape_page.h"
-#include "pages/feel_texture_page.h"
-#include "pages/settings_page.h"
+#include "pages/texture_page.h"
+#include "pages/feel_page.h"
 #include "pages/project_page.h"
-#include "pages/mode_page.h"
+#include "pages/generation_page.h"
 #include "pages/tb303_params_page.h"
 #include "pages/song_page.h"
 #include "pages/help_dialog.h"
@@ -126,10 +126,10 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case 5:  page = std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_); break;
         case 6:  page = std::make_unique<SongPage>(gfx_, mini_acid_, audio_guard_); break;
         case 7:  page = std::make_unique<SequencerHubPage>(gfx_, mini_acid_, audio_guard_); break;
-        case 8:  page = std::make_unique<FeelTexturePage>(gfx_, mini_acid_, audio_guard_); break;
-        case 9:  page = std::make_unique<SettingsPage>(gfx_, mini_acid_, audio_guard_); break;
+        case 8:  page = std::make_unique<TexturePage>(gfx_, mini_acid_, audio_guard_); break;
+        case 9:  page = std::make_unique<FeelPage>(gfx_, mini_acid_, audio_guard_); break;
         case 10: page = std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_); break;
-        case 11: page = std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_); break;
+        case 11: page = std::make_unique<GenerationPage>(gfx_, mini_acid_, audio_guard_); break;
         case 12: page = std::make_unique<PerformPage>(gfx_, mini_acid_, performance_keyboard_); break;
         case kSmfPlayerPage:
             page = std::make_unique<SmfPlayerPage>(gfx_, mini_acid_, audio_guard_);

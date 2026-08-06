@@ -10,13 +10,33 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 GENRE = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
-FEEL = (ROOT / "src/ui/pages/settings_page.cpp").read_text(encoding="utf-8")
-GENERATION = (ROOT / "src/ui/pages/mode_page.cpp").read_text(encoding="utf-8")
-TEXTURE = (ROOT / "src/ui/pages/feel_texture_page.cpp").read_text(encoding="utf-8")
+FEEL = (ROOT / "src/ui/pages/feel_page.cpp").read_text(encoding="utf-8")
+GENERATION = (ROOT / "src/ui/pages/generation_page.cpp").read_text(encoding="utf-8")
+TEXTURE = (ROOT / "src/ui/pages/texture_page.cpp").read_text(encoding="utf-8")
 WORKFLOW = (ROOT / "src/ui/workflow_mode.h").read_text(encoding="utf-8")
 SESSION = (ROOT / "src/state/ui_session_state.h").read_text(encoding="utf-8")
 HELP = (ROOT / "src/ui/global_help_content.h").read_text(encoding="utf-8")
 PALETTE = (ROOT / "src/ui/axis_page_palette.h").read_text(encoding="utf-8")
+
+
+PAGE_DIR = ROOT / "src/ui/pages"
+CANONICAL_AXIS_FILES = (
+    "genre_page.h", "genre_page.cpp",
+    "feel_page.h", "feel_page.cpp",
+    "generation_page.h", "generation_page.cpp",
+    "texture_page.h", "texture_page.cpp",
+)
+LEGACY_AXIS_FILES = (
+    "settings_page.h", "settings_page.cpp",
+    "mode_page.h", "mode_page.cpp",
+    "feel_texture_page.h", "feel_texture_page.cpp",
+)
+for filename in CANONICAL_AXIS_FILES:
+    if not (PAGE_DIR / filename).is_file():
+        raise AssertionError(f"canonical axis source missing: {filename}")
+for filename in LEGACY_AXIS_FILES:
+    if (PAGE_DIR / filename).exists():
+        raise AssertionError(f"legacy axis source must not exist: {filename}")
 
 
 def require(text: str, needle: str, message: str) -> None:
@@ -90,7 +110,6 @@ for needle in (
     "PhraseGenerator::PhraseRequest",
     "PhraseGenerator::generateBarsToSong",
     "PhraseGenerator::generateToSong",
-    '"Linear constructive pass / no retry"',
 ):
     require(GENERATION, needle, f"GENERATION contract missing: {needle}")
 forbid(
@@ -109,6 +128,37 @@ forbid(
     ),
     "GENERATION",
 )
+
+
+require(GENERATION, "request.bars = kMaterializeBars;",
+        "GENERATION request must use the fixed single-bar scope")
+require(GENERATION, "Phrase length owned by PHRASE CORE",
+        "GENERATION must disclose the cross-workflow length owner")
+forbid(
+    GENERATION,
+    (
+        "phrase_bars_",
+        "shiftPhraseLength",
+        "kLengths[4]",
+        '"LENGTH"',
+        "L/R:LENGTH",
+        "1, 2, 4, 8",
+    ),
+    "GENERATION phrase-length ownership",
+)
+
+length_owner_tokens = ("capture_length_", "cycleLength(")
+unexpected_length_owners = []
+for candidate in PAGE_DIR.glob("*_page.*"):
+    page_source = candidate.read_text(encoding="utf-8")
+    if any(token in page_source for token in length_owner_tokens):
+        if candidate.name not in {"phrase_page.h", "phrase_page.cpp"}:
+            unexpected_length_owners.append(candidate.name)
+if unexpected_length_owners:
+    raise AssertionError(
+        "selected phrase length has duplicate UI owners: "
+        + ", ".join(sorted(unexpected_length_owners))
+    )
 
 # TEXTURE: sound surface and seven read-only macro projection only.
 for needle in (
@@ -143,7 +193,7 @@ require(WORKFLOW, "case WorkflowMode::Generate: return 4;",
         "GENERATE must expose four pages")
 require(
     WORKFLOW,
-    "kGenre, kGenerator, kMode, kFeelTexture",
+    "kGenre, kFeel, kGeneration, kTexture",
     "GENERATE order must be GENRE -> FEEL -> GENERATION -> TEXTURE",
 )
 for title in ('return "GENRE";', 'return "FEEL";', 'return "GENERATION";', 'return "TEXTURE";'):
@@ -151,10 +201,15 @@ for title in ('return "GENRE";', 'return "FEEL";', 'return "GENERATION";', 'retu
 require(WORKFLOW, "case WorkflowMode::Settings: return 1;",
         "FEEL must no longer live in SETTINGS")
 
+
+for legacy in ("kGenerator", "kMode", "kFeelTexture"):
+    if legacy in WORKFLOW or legacy in SESSION:
+        raise AssertionError(f"legacy page address remains in source: {legacy}")
+
 # Persisted workflow mapping must mirror runtime navigation.
 require(
     SESSION,
-    "page == SessionPages::kGenerator",
+    "page == SessionPages::kFeel",
     "persisted FEEL page must belong to GENERATE",
 )
 require(SESSION, "case SessionWorkflow::Generate: return 4;",

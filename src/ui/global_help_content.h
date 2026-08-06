@@ -180,7 +180,7 @@ constexpr const char* kHubLines[] = {
     "C           Edit saved per-file route",
 };
 
-constexpr const char* kFeelLines[] = {
+constexpr const char* kTextureLines[] = {
     "=== TEXTURE 4/4 ===",
     "Texture = sound surface only",
     "Tab/Up/Dn   Select field",
@@ -193,7 +193,7 @@ constexpr const char* kFeelLines[] = {
     "No note or rhythm changes",
 };
 
-constexpr const char* kGeneratorLines[] = {
+constexpr const char* kFeelLines[] = {
     "=== FEEL 2/4 ===",
     "Feel = timing/velocity only",
     "Tab/Up/Dn   Select field",
@@ -218,14 +218,14 @@ constexpr const char* kProjectLines[] = {
     "Import: Tab Open MIDI matrix",
 };
 
-constexpr const char* kModeLines[] = {
+constexpr const char* kGenerationLines[] = {
     "=== GENERATION 3/4 ===",
-    "Generation = form/development",
-    "Tab/Up/Dn   Select field",
-    "Left/Right  Phrase length",
-    "Enter/G     Materialize to Song",
-    "PLAN        Derived from 1/2/4/8B",
+    "Generation = material/development",
+    "Enter/G     Materialize current bar",
+    "SCOPE       Current Song row",
+    "PLAN        Single bar / base",
     "A/S/FILL    Generation probabilities",
+    "Phrase len  Owned by PHRASE CORE",
     "Linear constructive pass",
     "No scoring or retry loop",
     "No texture or microtiming changes",
@@ -285,14 +285,14 @@ inline const char* const* pageLines(int pageIndex, int& count) {
             count = sizeof(kSongLines) / sizeof(kSongLines[0]); return kSongLines;
         case WorkflowPages::kPattern:
             count = sizeof(kHubLines) / sizeof(kHubLines[0]); return kHubLines;
-        case WorkflowPages::kFeelTexture:
+        case WorkflowPages::kTexture:
+            count = sizeof(kTextureLines) / sizeof(kTextureLines[0]); return kTextureLines;
+        case WorkflowPages::kFeel:
             count = sizeof(kFeelLines) / sizeof(kFeelLines[0]); return kFeelLines;
-        case WorkflowPages::kGenerator:
-            count = sizeof(kGeneratorLines) / sizeof(kGeneratorLines[0]); return kGeneratorLines;
         case WorkflowPages::kProject:
             count = sizeof(kProjectLines) / sizeof(kProjectLines[0]); return kProjectLines;
-        case WorkflowPages::kMode:
-            count = sizeof(kModeLines) / sizeof(kModeLines[0]); return kModeLines;
+        case WorkflowPages::kGeneration:
+            count = sizeof(kGenerationLines) / sizeof(kGenerationLines[0]); return kGenerationLines;
         case WorkflowPages::kPerform:
             count = sizeof(kPerformLines) / sizeof(kPerformLines[0]); return kPerformLines;
         case WorkflowPages::kPlayer:

@@ -110,9 +110,9 @@ class DrumSequencerMainPage : public Container {
   bool selection_locked_ = false;
 };
 
-class GlobalDrumSettingsPage : public Container {
+class GlobalDrumFeelPage : public Container {
  public:
-  explicit GlobalDrumSettingsPage(MiniAcid& mini_acid);
+  explicit GlobalDrumFeelPage(MiniAcid& mini_acid);
   bool handleEvent(UIEvent& ui_event) override;
  void draw(IGfx& gfx) override;
 
@@ -980,7 +980,7 @@ void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
 
 
 
-GlobalDrumSettingsPage::GlobalDrumSettingsPage(MiniAcid& mini_acid)
+GlobalDrumFeelPage::GlobalDrumFeelPage(MiniAcid& mini_acid)
   : mini_acid_(mini_acid) {
   character_control_ = std::make_shared<LabelOptionComponent>(
       "Character", COLOR_LABEL, COLOR_WHITE);
@@ -992,7 +992,7 @@ GlobalDrumSettingsPage::GlobalDrumSettingsPage(MiniAcid& mini_acid)
   addChild(character_control_);
 }
 
-bool GlobalDrumSettingsPage::handleEvent(UIEvent& ui_event) {
+bool GlobalDrumFeelPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type == GROOVEPUTER_KEY_DOWN) {
     const int nav = UIInput::navCode(ui_event);
     if (nav == GROOVEPUTER_UP) {
@@ -1019,7 +1019,7 @@ bool GlobalDrumSettingsPage::handleEvent(UIEvent& ui_event) {
   return handled;
 }
 
-void GlobalDrumSettingsPage::draw(IGfx& gfx) {
+void GlobalDrumFeelPage::draw(IGfx& gfx) {
   const Rect& bounds = getBoundaries();
   if (bounds.w <= 0 || bounds.h <= 0) return;
   syncDrumEngineSelection();
@@ -1066,7 +1066,7 @@ void GlobalDrumSettingsPage::draw(IGfx& gfx) {
   Widgets::drawListRow(gfx, x, y_cursor, w, buf, selected_row_ == 5);
 }
 
-void GlobalDrumSettingsPage::adjustDrumFx(int row, float delta) {
+void GlobalDrumFeelPage::adjustDrumFx(int row, float delta) {
   auto& dfx = mini_acid_.sceneManager().currentScene().drumFX;
   bool changed = false;
   if (row == 0) {
@@ -1098,7 +1098,7 @@ void GlobalDrumSettingsPage::adjustDrumFx(int row, float delta) {
   if (changed) GroovePuterState::markSceneMutated();
 }
 
-void GlobalDrumSettingsPage::applyDrumEngineSelection() {
+void GlobalDrumFeelPage::applyDrumEngineSelection() {
   if (!character_control_) return;
   int index = character_control_->optionIndex();
   if (index < 0 || index >= static_cast<int>(drum_engine_options_.size())) return;
@@ -1109,7 +1109,7 @@ void GlobalDrumSettingsPage::applyDrumEngineSelection() {
   }
 }
 
-void GlobalDrumSettingsPage::syncDrumEngineSelection() {
+void GlobalDrumFeelPage::syncDrumEngineSelection() {
   if (!character_control_) return;
   std::string current = mini_acid_.currentDrumEngineName();
   if (current.empty()) return;
@@ -1130,7 +1130,7 @@ void GlobalDrumSettingsPage::syncDrumEngineSelection() {
 DrumSequencerPage::DrumSequencerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard) {
   (void)gfx;
   addPage(std::make_shared<DrumSequencerMainPage>(mini_acid, audio_guard));
-  addPage(std::make_shared<GlobalDrumSettingsPage>(mini_acid));
+  addPage(std::make_shared<GlobalDrumFeelPage>(mini_acid));
   addPage(std::make_shared<DrumAutomationPage>(mini_acid));
 }
 

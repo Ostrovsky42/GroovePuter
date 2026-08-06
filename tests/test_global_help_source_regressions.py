@@ -30,7 +30,7 @@ assert "setPageContext(page_index_)" in alt_h_handler.group(0)
 for page_constant in (
     "kGenre", "kSynthA", "kSynthB", "kSynthAParameters",
     "kSynthBParameters", "kDrums", "kArrange", "kPattern",
-    "kFeelTexture", "kGenerator", "kProject", "kMode",
+    "kTexture", "kFeel", "kProject", "kGeneration",
     "kPerform", "kPlayer",
 ):
     assert f"WorkflowPages::{page_constant}" in help_content
