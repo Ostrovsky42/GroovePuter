@@ -6,15 +6,23 @@ on:
       - agent/phrase-core-foundation
     paths:
       - 'src/phrase/**'
+      - 'scenes.h'
+      - 'scenes.cpp'
       - 'tests/test_phrase_core.cpp'
       - 'tests/test_phrase_persistence_preview.cpp'
+      - 'tests/test_phrase_workspace.cpp'
+      - 'tests/test_phrase_scene_source_regressions.py'
       - 'docs/stages/PHRASE_CORE_FOUNDATION.md'
       - '.github/workflows/phrase-core.yml'
   pull_request:
     paths:
       - 'src/phrase/**'
+      - 'scenes.h'
+      - 'scenes.cpp'
       - 'tests/test_phrase_core.cpp'
       - 'tests/test_phrase_persistence_preview.cpp'
+      - 'tests/test_phrase_workspace.cpp'
+      - 'tests/test_phrase_scene_source_regressions.py'
       - 'docs/stages/PHRASE_CORE_FOUNDATION.md'
       - '.github/workflows/phrase-core.yml'
 
@@ -26,6 +34,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Check Scene codec integration
+        run: python3 tests/test_phrase_scene_source_regressions.py
       - name: Build Phrase Core host tests
         run: |
           mkdir -p build/host-tests
@@ -36,7 +46,11 @@ jobs:
           g++ ${COMMON_FLAGS} \
             tests/test_phrase_persistence_preview.cpp \
             -o build/host-tests/test_phrase_persistence_preview
+          g++ ${COMMON_FLAGS} \
+            tests/test_phrase_workspace.cpp \
+            -o build/host-tests/test_phrase_workspace
       - name: Run Phrase Core host tests
         run: |
           build/host-tests/test_phrase_core
           build/host-tests/test_phrase_persistence_preview
+          build/host-tests/test_phrase_workspace
