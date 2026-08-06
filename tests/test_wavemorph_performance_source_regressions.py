@@ -201,11 +201,17 @@ def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
     navigation = block(page,
                        "  const int nav = UIInput::navCode(ui_event);",
                        "  const char key = ui_event.key;")
-    require("if (more_tab_)" in navigation and
-            "case GROOVEPUTER_UP: focusPrev(); return true;" in navigation and
-            "case GROOVEPUTER_DOWN: focusNext(); return true;" in navigation and
-            "case GROOVEPUTER_LEFT: adjustFocusedElement(-1, fine); return true;" in navigation and
-            "case GROOVEPUTER_RIGHT: adjustFocusedElement(1, fine); return true;",
+    more_navigation = block(navigation,
+                            "  if (more_tab_) {",
+                            "  } else {")
+    require("case GROOVEPUTER_UP:" in more_navigation and
+            "focusPrev();" in more_navigation and
+            "case GROOVEPUTER_DOWN:" in more_navigation and
+            "focusNext();" in more_navigation and
+            "case GROOVEPUTER_LEFT:" in more_navigation and
+            "adjustFocusedElement(-1, fine);" in more_navigation and
+            "case GROOVEPUTER_RIGHT:" in more_navigation and
+            "adjustFocusedElement(1, fine);" in more_navigation,
             "MORE must use Up/Down for rows and Left/Right for values")
     require('"[TAB]MAIN [U/D]ROW [L/R]CHANGE"' in page,
             "the MORE footer must advertise the physical arrow mapping")
