@@ -30,16 +30,16 @@ constexpr const char* kGlobalLines[] = {
 };
 
 constexpr const char* kGenreLines[] = {
-    "=== GENRE ===",
-    "Tab         Genre/Texture/Recipe",
-    "Arrows      Move/adjust active lane",
-    "Enter       Apply selected recipe",
-    "Space/M     Cycle apply mode",
-    "Fn+Up/Down  Morph recipe",
-    "C           Curated/Advanced",
-    "G           Acid/Minimal groove",
-    "Ctrl+1/2    Synth A bank",
-    "Q..I        Synth A pattern 1..8",
+    "=== GENRE 1/4 ===",
+    "Genre = corridor/vocabulary",
+    "Tab/Up/Dn   Select field",
+    "Left/Right  Genre/variant/apply",
+    "Alt+L/R     Morph selected variant",
+    "Enter       Apply profile/materialize",
+    "M           Cycle apply mode",
+    "PROFILE     Keep existing patterns",
+    "MATERIALIZE Regenerate patterns",
+    "No texture or feel changes",
 };
 
 constexpr const char* kSynthALines[] = {
@@ -181,23 +181,29 @@ constexpr const char* kHubLines[] = {
 };
 
 constexpr const char* kFeelLines[] = {
-    "=== FEEL / TEXTURE ===",
-    "Tab         Feel/Presets focus",
-    "Up/Down     Select row",
-    "Left/Right  Change value",
-    "Enter/Space Apply or cycle",
-    "Ctrl+1/2    Synth A pattern bank",
-    "Q..I        Synth A pattern 1..8",
+    "=== TEXTURE 4/4 ===",
+    "Texture = sound surface only",
+    "Tab/Up/Dn   Select field",
+    "Left/Right  Mode/amount/link",
+    "Enter/Space Apply texture",
+    "FLAVOR LINK Explicit cross-axis link",
+    "DI AG SP WD  Dirt/Age/Space/Width",
+    "IN AT DK     Instability/Attack/Dark",
+    "Macro strip is read-only",
+    "No note or rhythm changes",
 };
 
 constexpr const char* kGeneratorLines[] = {
-    "=== ADV GENERATOR ===",
-    "Tab         Next parameter group",
-    "Up/Down     Select row",
-    "Left/Right  Adjust value",
-    "Shift/Ctrl/Alt Fast adjustment",
-    "Enter/Space Apply selected preset",
-    "T           SD benchmark",
+    "=== FEEL 2/4 ===",
+    "Feel = timing/velocity only",
+    "Tab/Up/Dn   Select field",
+    "Left/Right  Adjust value/preset",
+    "Shift/Ctrl  Fast adjustment",
+    "Enter/Space Apply FEEL preset",
+    "Swing       Runtime offbeat timing",
+    "Time Human  Timing deviation",
+    "Vel Human   Velocity deviation",
+    "No notes, roles or sound changes",
 };
 
 constexpr const char* kProjectLines[] = {
@@ -213,15 +219,16 @@ constexpr const char* kProjectLines[] = {
 };
 
 constexpr const char* kModeLines[] = {
-    "=== MODE / FLAVOR ===",
-    "Tab/Up/Dn   Focus row",
-    "Left/Right  Change value",
-    "Enter       Run selected action",
-    "Space       Preview/regenerate",
-    "A/B         Apply to Synth A/B",
-    "D           Apply to Drums",
-    "G           Generate phrase",
-    "M           Toggle macros",
+    "=== GENERATION 3/4 ===",
+    "Generation = form/development",
+    "Tab/Up/Dn   Select field",
+    "Left/Right  Phrase length",
+    "Enter/G     Materialize to Song",
+    "PLAN        Derived from 1/2/4/8B",
+    "A/S/FILL    Generation probabilities",
+    "Linear constructive pass",
+    "No scoring or retry loop",
+    "No texture or microtiming changes",
 };
 
 constexpr const char* kPerformLines[] = {
