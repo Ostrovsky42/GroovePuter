@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCENES_H = (ROOT / "scenes.h").read_text()
 SCENES_CPP = (ROOT / "scenes.cpp").read_text()
+PERSISTENCE = (ROOT / "src/phrase/phrase_persistence.h").read_text()
 ROUND_TRIP = (ROOT / "tests/test_scene_roundtrip.cpp").read_text()
 WORKFLOW = (ROOT / ".github/workflows/phrase-core.yml").read_text()
 
@@ -69,7 +70,27 @@ require(
 require(
     SCENES_CPP,
     "PhraseCore::kPersistValueCount",
-    "exact flat codec size",
+    "flat codec size contract",
+)
+require(
+    PERSISTENCE,
+    "kPersistLegacyValueCount",
+    "legacy Phrase payload size",
+)
+require(
+    PERSISTENCE,
+    "struct PersistValueCount",
+    "compatible current/legacy payload count",
+)
+require(
+    PERSISTENCE,
+    "actual == expected.current || actual == expected.legacy",
+    "legacy payload acceptance comparison",
+)
+require(
+    PERSISTENCE,
+    "omitted arrangement",
+    "legacy migration behavior documentation",
 )
 require(
     SCENES_CPP,
