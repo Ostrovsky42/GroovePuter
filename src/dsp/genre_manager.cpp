@@ -394,7 +394,9 @@ void GenreManager::applyTexture(MiniAcid& engine) {
     const int neutralTone = 85;
     macro.tone = static_cast<uint8_t>(neutralTone + static_cast<int>((static_cast<int>(params.tapeMacro.tone) - neutralTone) * amount));
     tape.macro = macro;
-    // FEEL page owns Tape ON/OFF. Genre texture adjusts macro only.
+    const bool tapeOn = textureMode() != TextureMode::Clean && amount > 0.01f;
+    tape.fxEnabled = tapeOn;
+    engine.sceneManager().currentScene().feel.tapeEnabled = tapeOn;
     
     // Apply delay settings (using TempoDelay)
     // Apply delay settings (using TempoDelay) to both voices

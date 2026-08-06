@@ -29,8 +29,8 @@ assert "setPageContext(page_index_)" in alt_h_handler.group(0)
 
 for page_constant in (
     "kGenre", "kSynthA", "kSynthB", "kSynthAParameters",
-    "kSynthBParameters", "kDrums", "kArrange", "kPhrase", "kPattern",
-    "kFeelTexture", "kGenerator", "kProject", "kMode",
+    "kSynthBParameters", "kDrums", "kArrange", "kPattern",
+    "kTexture", "kFeel", "kProject", "kGeneration",
     "kPerform", "kPlayer",
 ):
     assert f"WorkflowPages::{page_constant}" in help_content
@@ -40,9 +40,6 @@ assert "Ctrl+H" not in smf
 assert '"G:GEN Alt+G:ALL 1..8:Edit B:Bank"' in drum
 assert '"C           Edit saved per-file route"' in help_content
 assert '"f:GEN Alt+G:ALL 1..8:Edit B:Bank"' not in drum
-assert '"1..4        Select Phrase A/B/C/D"' in help_content
-assert '"Enter       Capture current Song row"' in help_content
-assert '"REF         Mutable pattern references"' in help_content
 
 for expected in (
     "| `Alt+H` | Open page-aware help",

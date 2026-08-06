@@ -8,9 +8,6 @@ enum class WorkflowMode : uint8_t;
 
 namespace GroovePuterState {
 
-// Keep the persisted codec independent from UI headers. Arduino's sketch
-// builder may resolve the same header through both a local and repository path,
-// which defeats pragma-once and causes duplicate declarations.
 enum class SessionWorkflow : uint8_t {
     Perform = 0,
     Generate,
@@ -33,10 +30,10 @@ constexpr int kSynthBParameters = 4;
 constexpr int kDrums = 5;
 constexpr int kArrange = 6;
 constexpr int kPattern = 7;
-constexpr int kFeelTexture = 8;
-constexpr int kGenerator = 9;
+constexpr int kTexture = 8;
+constexpr int kFeel = 9;
 constexpr int kProject = 10;
-constexpr int kMode = 11;
+constexpr int kGeneration = 11;
 constexpr int kPerform = 12;
 constexpr int kPlayer = 13;
 constexpr int kPhrase = 14;
@@ -51,7 +48,7 @@ struct UiSessionState {
         static_cast<int8_t>(SessionPages::kArrange),
         static_cast<int8_t>(SessionPages::kProject),
     };
-    uint8_t visualStyle{2};  // VisualStyle::RETRO_CLASSIC
+    uint8_t visualStyle{2};
     uint8_t waveformOverlayEnabled{1};
     uint16_t masterVolumePermille{kDefaultMasterVolumePermille};
 };
@@ -72,8 +69,10 @@ inline SessionWorkflow sessionWorkflowForPage(int page) {
     if (page == SessionPages::kPerform || page == SessionPages::kPlayer) {
         return SessionWorkflow::Perform;
     }
-    if (page == SessionPages::kGenre || page == SessionPages::kMode ||
-        page == SessionPages::kFeelTexture) {
+    if (page == SessionPages::kGenre ||
+        page == SessionPages::kFeel ||
+        page == SessionPages::kGeneration ||
+        page == SessionPages::kTexture) {
         return SessionWorkflow::Generate;
     }
     if (page == SessionPages::kPattern || page == SessionPages::kSynthA ||
@@ -83,7 +82,9 @@ inline SessionWorkflow sessionWorkflowForPage(int page) {
         return SessionWorkflow::Hub;
     }
     if (page == SessionPages::kArrange ||
-        page == SessionPages::kPhrase) return SessionWorkflow::Song;
+        page == SessionPages::kPhrase) {
+        return SessionWorkflow::Song;
+    }
     return SessionWorkflow::Settings;
 }
 
@@ -103,8 +104,6 @@ inline bool pageBelongsToWorkflow(int page, SessionWorkflow workflow) {
 }
 
 inline uint8_t sanitizeVisualStyle(uint8_t value) {
-    // Public theme cycle is CYBER(0), CARBON(2), AMBER(3). Legacy DARK(1)
-    // safely maps to CYBER rather than becoming an invalid persisted value.
     return value == 2 || value == 3 ? value : 0;
 }
 
@@ -163,10 +162,10 @@ inline int rememberedWorkflowPage(const UiSessionState& state,
 inline int pageCountForWorkflow(SessionWorkflow workflow) {
     switch (workflow) {
         case SessionWorkflow::Perform: return 2;
-        case SessionWorkflow::Generate: return 3;
+        case SessionWorkflow::Generate: return 4;
         case SessionWorkflow::Hub: return 6;
         case SessionWorkflow::Song: return 2;
-        case SessionWorkflow::Settings: return 2;
+        case SessionWorkflow::Settings: return 1;
     }
     return 1;
 }
@@ -176,7 +175,10 @@ inline int pageAt(SessionWorkflow workflow, int index) {
         SessionPages::kPerform, SessionPages::kPlayer,
     };
     static constexpr int kGeneratePages[] = {
-        SessionPages::kGenre, SessionPages::kMode, SessionPages::kFeelTexture,
+        SessionPages::kGenre,
+        SessionPages::kFeel,
+        SessionPages::kGeneration,
+        SessionPages::kTexture,
     };
     static constexpr int kHubPages[] = {
         SessionPages::kPattern, SessionPages::kSynthA, SessionPages::kSynthB,
@@ -187,7 +189,7 @@ inline int pageAt(SessionWorkflow workflow, int index) {
         SessionPages::kArrange, SessionPages::kPhrase,
     };
     static constexpr int kSettingsPages[] = {
-        SessionPages::kProject, SessionPages::kGenerator,
+        SessionPages::kProject,
     };
 
     const int count = pageCountForWorkflow(workflow);

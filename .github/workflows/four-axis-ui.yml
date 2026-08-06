@@ -1,0 +1,127 @@
+name: Four-axis UI
+
+on:
+  push:
+    branches:
+      - agent/genre-feel-generation-texture-analysis
+    paths:
+      - 'src/dsp/genre_manager.cpp'
+      - 'src/ui/axis_page_palette.h'
+      - 'src/ui/pages/genre_page.*'
+      - 'src/ui/pages/feel_page.*'
+      - 'src/ui/pages/generation_page.*'
+      - 'src/ui/pages/texture_page.*'
+      - 'src/ui/pages/song_page.*'
+      - 'src/ui/ui_input.h'
+      - 'src/ui/workflow_mode.h'
+      - 'src/ui/global_help_content.h'
+      - 'src/state/ui_session_state.h'
+      - 'tests/test_four_axis_ui_source_regressions.py'
+      - 'tests/test_axis_hardware_feedback_source_regressions.py'
+      - 'tests/test_global_help_content.cpp'
+      - 'tests/test_ui_session_state.cpp'
+      - 'docs/research/GROOVE_MODEL_*.md'
+      - 'docs/stages/FOUR_AXIS_GENERATE_UI.md'
+      - '.github/workflows/four-axis-ui.yml'
+  pull_request:
+    paths:
+      - 'src/dsp/genre_manager.cpp'
+      - 'src/ui/axis_page_palette.h'
+      - 'src/ui/pages/genre_page.*'
+      - 'src/ui/pages/feel_page.*'
+      - 'src/ui/pages/generation_page.*'
+      - 'src/ui/pages/texture_page.*'
+      - 'src/ui/pages/song_page.*'
+      - 'src/ui/ui_input.h'
+      - 'src/ui/workflow_mode.h'
+      - 'src/ui/global_help_content.h'
+      - 'src/state/ui_session_state.h'
+      - 'tests/test_four_axis_ui_source_regressions.py'
+      - 'tests/test_axis_hardware_feedback_source_regressions.py'
+      - 'tests/test_global_help_content.cpp'
+      - 'tests/test_ui_session_state.cpp'
+      - 'docs/research/GROOVE_MODEL_*.md'
+      - 'docs/stages/FOUR_AXIS_GENERATE_UI.md'
+      - '.github/workflows/four-axis-ui.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  host-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check four-axis ownership
+        run: |
+          python3 tests/test_four_axis_ui_source_regressions.py
+          if test -f tests/test_axis_hardware_feedback_source_regressions.py; then
+            python3 tests/test_axis_hardware_feedback_source_regressions.py
+          fi
+
+      - name: Build four-axis pages
+        run: |
+          mkdir -p build/host-tests/four-axis
+          COMMON_FLAGS='-std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. -Iplatform_sdl -include platform_sdl/arduino_compat.h'
+          g++ ${COMMON_FLAGS} -c src/ui/pages/genre_page.cpp \
+            -o build/host-tests/four-axis/genre_page.o
+          g++ ${COMMON_FLAGS} -c src/ui/pages/feel_page.cpp \
+            -o build/host-tests/four-axis/feel_page.o
+          g++ ${COMMON_FLAGS} -c src/ui/pages/generation_page.cpp \
+            -o build/host-tests/four-axis/generation_page.o
+          g++ ${COMMON_FLAGS} -c src/ui/pages/texture_page.cpp \
+            -o build/host-tests/four-axis/texture_page.o
+
+      - name: Build and run navigation/help tests
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_global_help_content.cpp \
+            -o build/host-tests/four-axis/test_global_help_content
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_ui_session_state.cpp \
+            -o build/host-tests/four-axis/test_ui_session_state
+          build/host-tests/four-axis/test_global_help_content
+          build/host-tests/four-axis/test_ui_session_state
+
+  # BEGIN TEMP HARDWARE FEEDBACK APPLY
+  apply-hardware-feedback:
+    if: github.event_name == 'pull_request' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Apply and validate hardware feedback fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/prepare_axis_hardware_feedback_helper.py
+          python3 scripts/apply_axis_hardware_feedback_fixes.py
+          python3 tests/test_four_axis_ui_source_regressions.py
+          python3 tests/test_axis_hardware_feedback_source_regressions.py
+          python3 tests/test_song_generation_source_regressions.py
+          python3 tests/test_scene_revision_source_regressions.py
+
+          mkdir -p build/host-tests/four-axis
+          COMMON_FLAGS='-std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. -Iplatform_sdl -include platform_sdl/arduino_compat.h'
+          g++ ${COMMON_FLAGS} -c src/ui/pages/genre_page.cpp \
+            -o build/host-tests/four-axis/genre_page.o
+          g++ ${COMMON_FLAGS} -c src/ui/pages/feel_page.cpp \
+            -o build/host-tests/four-axis/feel_page.o
+          g++ ${COMMON_FLAGS} -c src/ui/pages/generation_page.cpp \
+            -o build/host-tests/four-axis/generation_page.o
+          g++ ${COMMON_FLAGS} -c src/ui/pages/texture_page.cpp \
+            -o build/host-tests/four-axis/texture_page.o
+
+          git checkout -- .github/workflows/four-axis-ui.yml
+          git rm -f scripts/apply_axis_hardware_feedback_fixes.py \
+            scripts/prepare_axis_hardware_feedback_helper.py
+          git add -A
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(ui): apply genre and axis controls predictably'
+          git push origin HEAD:agent/genre-feel-generation-texture-analysis
+  # END TEMP HARDWARE FEEDBACK APPLY

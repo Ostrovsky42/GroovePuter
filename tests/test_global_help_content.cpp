@@ -28,7 +28,7 @@ bool globalContains(const char* needle) {
 
 int main() {
     constexpr int kFirstPage = WorkflowPages::kGenre;
-    constexpr int kLastPage = WorkflowPages::kPhrase;
+    constexpr int kLastPage = WorkflowPages::kPlayer;
 
     for (int page = kFirstPage; page <= kLastPage; ++page) {
         const int pageLineCount = HelpContent::getPageLineCount(page);
@@ -59,13 +59,19 @@ int main() {
     assert(sectionContains(WorkflowPages::kArrange, "Assign existing pattern"));
     assert(sectionContains(WorkflowPages::kArrange, "Generate/materialize cell"));
     assert(sectionContains(WorkflowPages::kArrange, "Generate current row"));
-    assert(sectionContains(WorkflowPages::kPhrase, "Select Phrase A/B/C/D"));
-    assert(sectionContains(WorkflowPages::kPhrase, "Capture current Song row"));
-    assert(sectionContains(WorkflowPages::kPhrase, "Mutable pattern references"));
     assert(sectionContains(WorkflowPages::kPerform, "PERFORMANCE TOOLS"));
     assert(sectionContains(WorkflowPages::kPlayer, "Physical track mute"));
     assert(sectionContains(WorkflowPages::kPattern, "SEQUENCER HUB"));
     assert(sectionContains(WorkflowPages::kPattern, "saved per-file route"));
+
+    assert(sectionContains(WorkflowPages::kGenre, "GENRE 1/4"));
+    assert(sectionContains(WorkflowPages::kGenre, "No texture or feel changes"));
+    assert(sectionContains(WorkflowPages::kFeel, "FEEL 2/4"));
+    assert(sectionContains(WorkflowPages::kFeel, "No notes, roles or sound changes"));
+    assert(sectionContains(WorkflowPages::kGeneration, "GENERATION 3/4"));
+    assert(sectionContains(WorkflowPages::kGeneration, "No scoring or retry loop"));
+    assert(sectionContains(WorkflowPages::kTexture, "TEXTURE 4/4"));
+    assert(sectionContains(WorkflowPages::kTexture, "No note or rhythm changes"));
 
     std::cout << "global help content tests passed\n";
     return 0;

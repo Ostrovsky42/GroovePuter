@@ -19,42 +19,54 @@ int main() {
     assert(rememberedWorkflowPage(state, SessionWorkflow::Settings) ==
            SessionPages::kProject);
 
+    assert(pageCountForWorkflow(SessionWorkflow::Generate) == 4);
+    assert(pageAt(SessionWorkflow::Generate, 0) == SessionPages::kGenre);
+    assert(pageAt(SessionWorkflow::Generate, 1) == SessionPages::kFeel);
+    assert(pageAt(SessionWorkflow::Generate, 2) == SessionPages::kGeneration);
+    assert(pageAt(SessionWorkflow::Generate, 3) == SessionPages::kTexture);
+    assert(pageCountForWorkflow(SessionWorkflow::Settings) == 1);
+    assert(pageAt(SessionWorkflow::Settings, 0) == SessionPages::kProject);
+
     rememberWorkflowPage(state, SessionPages::kPlayer);
-    rememberWorkflowPage(state, SessionPages::kFeelTexture);
+    rememberWorkflowPage(state, SessionPages::kFeel);
     rememberWorkflowPage(state, SessionPages::kSynthBParameters);
-    rememberWorkflowPage(state, SessionPages::kGenerator);
-    rememberWorkflowPage(state, SessionPages::kPhrase);
+    rememberWorkflowPage(state, SessionPages::kProject);
 
     assert(rememberedWorkflowPage(state, SessionWorkflow::Perform) ==
            SessionPages::kPlayer);
     assert(rememberedWorkflowPage(state, SessionWorkflow::Generate) ==
-           SessionPages::kFeelTexture);
+           SessionPages::kFeel);
     assert(rememberedWorkflowPage(state, SessionWorkflow::Hub) ==
            SessionPages::kSynthBParameters);
     assert(rememberedWorkflowPage(state, SessionWorkflow::Settings) ==
-           SessionPages::kGenerator);
-    assert(rememberedWorkflowPage(state, SessionWorkflow::Song) ==
-           SessionPages::kPhrase);
-
-    const int localSongWrap = workflowNavigationTarget(
-        state, SessionPages::kPhrase, 1, false);
-    assert(localSongWrap == SessionPages::kArrange);
+           SessionPages::kProject);
 
     const int fromSettingsToPerform = workflowNavigationTarget(
-        state, SessionPages::kGenerator, 1, true);
+        state, SessionPages::kProject, 1, true);
     assert(fromSettingsToPerform == SessionPages::kPlayer);
 
     const int fromPerformToGenerate = workflowNavigationTarget(
         state, SessionPages::kPlayer, 1, true);
-    assert(fromPerformToGenerate == SessionPages::kFeelTexture);
+    assert(fromPerformToGenerate == SessionPages::kFeel);
 
-    const int localPerformWrap = workflowNavigationTarget(
-        state, SessionPages::kPlayer, 1, false);
-    assert(localPerformWrap == SessionPages::kPerform);
+    const int genreToFeel = workflowNavigationTarget(
+        state, SessionPages::kGenre, 1, false);
+    assert(genreToFeel == SessionPages::kFeel);
+    const int feelToGeneration = workflowNavigationTarget(
+        state, SessionPages::kFeel, 1, false);
+    assert(feelToGeneration == SessionPages::kGeneration);
+    const int generationToTexture = workflowNavigationTarget(
+        state, SessionPages::kGeneration, 1, false);
+    assert(generationToTexture == SessionPages::kTexture);
+    const int textureToGenre = workflowNavigationTarget(
+        state, SessionPages::kTexture, 1, false);
+    assert(textureToGenre == SessionPages::kGenre);
 
     state.activePage = 99;
     state.lastPageByWorkflow[workflowSessionIndex(SessionWorkflow::Hub)] =
         static_cast<int8_t>(SessionPages::kPlayer);
+    state.lastPageByWorkflow[workflowSessionIndex(SessionWorkflow::Settings)] =
+        static_cast<int8_t>(SessionPages::kFeel);
     state.visualStyle = 1;
     state.waveformOverlayEnabled = 7;
     state.masterVolumePermille = 60000;
@@ -63,6 +75,8 @@ int main() {
     assert(state.activePage == SessionPages::kGenre);
     assert(rememberedWorkflowPage(state, SessionWorkflow::Hub) ==
            SessionPages::kPattern);
+    assert(rememberedWorkflowPage(state, SessionWorkflow::Settings) ==
+           SessionPages::kProject);
     assert(state.visualStyle == 0);
     assert(state.waveformOverlayEnabled == 1);
     assert(state.masterVolumePermille == kMaxMasterVolumePermille);

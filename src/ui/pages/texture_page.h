@@ -1,46 +1,43 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <utility>
 
 #include "../ui_core.h"
+#include "../ui_input.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/state/scene_revision.h"
 
-class GenrePage : public IPage {
+class TexturePage : public IPage {
  public:
-  GenrePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
+  TexturePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
 
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
   const std::string& getTitle() const override { return title_; }
   void setVisualStyle(VisualStyle style) override { style_ = style; }
+  void onEnter(int context) override {
+    (void)context;
+    syncFromEngine();
+  }
 
  private:
   enum class FocusRow : uint8_t {
-    Genre = 0,
-    Variant,
-    Morph,
+    Mode = 0,
+    Amount,
+    FlavorLink,
     Apply,
   };
 
-  enum class ApplyMode : uint8_t {
-    ProfileOnly = 0,
-    Regenerate,
-    RegenerateTempo,
-  };
-
-  void updateFromEngine();
+  void syncFromEngine();
   void moveFocus(int delta);
-  void shiftGenre(int delta);
-  void cycleRecipeSelection(int delta);
-  void adjustMorph(int delta);
-  void cycleApplyMode(int delta);
-  void applyCurrent();
-
-  ApplyMode currentApplyMode() const;
-  const char* applyModeName() const;
+  void shiftTexture(int delta);
+  void adjustAmount(int delta, bool fast);
+  void toggleFlavorLink();
+  void applyTexture(bool announce);
+  std::array<uint8_t, 7> macroView() const;
 
   template <typename F>
   void withAudioGuard(F&& fn) {
@@ -52,9 +49,9 @@ class GenrePage : public IPage {
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
   VisualStyle style_ = VisualStyle::MINIMAL;
-  FocusRow focus_ = FocusRow::Genre;
-  int genre_index_ = 0;
-  int recipeIndex_ = 0;
-  int morph_amount_ = 0;
-  std::string title_ = "GENRE";
+  FocusRow focus_ = FocusRow::Mode;
+  int texture_index_ = 0;
+  int texture_amount_ = 70;
+  UIInput::HoldAccelerator hold_accel_;
+  std::string title_ = "TEXTURE";
 };

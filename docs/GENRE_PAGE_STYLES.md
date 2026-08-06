@@ -29,4 +29,4 @@ No page-specific compile flag is required for normal use.
 - `S+T`: apply sound, regenerate patterns, and apply target tempo
 
 ## Practical Note
-Genre page is for musical selection + apply policy. Deep mode/flavor corridor inspection and macro routing now lives on `ModePage` (`GROOVE LAB`).
+Genre page is for musical selection + apply policy. Deep mode/flavor corridor inspection and macro routing now lives on `GenerationPage` (`GROOVE LAB`).

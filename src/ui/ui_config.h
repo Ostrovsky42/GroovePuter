@@ -1,6 +1,7 @@
 #pragma once
 
 namespace UI {
-    // Total number of UI pages. Page 13 is the realtime MIDI Player; page 14 is Phrase Core.
-    static constexpr int kPageCount = 15;
+    // Fourteen established pages plus Phrase Core at page 14.
+    // Keeping the expression explicit documents the additive integration.
+    static constexpr int kPageCount = 14 + 1;
 }

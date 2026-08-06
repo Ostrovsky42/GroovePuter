@@ -14,18 +14,17 @@ enum class WorkflowMode : uint8_t {
     Settings,
 };
 
-// Workspace stores the active page inside a workflow. Keeping this state
-// page-aware lets the existing MiniAcidDisplay nextPage()/previousPage()
-// methods restore [ / ] navigation without adding another navigation owner.
+// Existing enum values are preserved for persisted UI-session compatibility.
+// Their page labels are now the fixed four-axis GENERATE addresses.
 enum class Workspace : uint8_t {
     // PERFORM
     Perform = 0,
     Player,
 
     // GENERATE
-    Groove,
-    Mode,
-    FeelTexture,
+    Groove,     // GENRE
+    Generation,
+    Texture,
 
     // HUB
     Pattern,
@@ -39,9 +38,9 @@ enum class Workspace : uint8_t {
     Arrange,
     Phrase,
 
-    // SETTINGS
+    // SETTINGS / fourth GENERATE page
     Project,
-    Generator,
+    Feel,
 };
 
 namespace WorkflowPages {
@@ -53,10 +52,10 @@ constexpr int kSynthBParameters = 4;
 constexpr int kDrums = 5;
 constexpr int kArrange = 6;
 constexpr int kPattern = 7;
-constexpr int kFeelTexture = 8;
-constexpr int kGenerator = 9;
+constexpr int kTexture = 8;
+constexpr int kFeel = 9;
 constexpr int kProject = 10;
-constexpr int kMode = 11;
+constexpr int kGeneration = 11;
 constexpr int kPerform = 12;
 constexpr int kPlayer = 13;
 constexpr int kPhrase = 14;
@@ -67,8 +66,9 @@ inline bool isPerformWorkflowPage(int page) {
 
 inline bool isGenerateWorkflowPage(int page) {
     return page == kGenre ||
-           page == kMode ||
-           page == kFeelTexture;
+           page == kFeel ||
+           page == kGeneration ||
+           page == kTexture;
 }
 
 inline bool isHubWorkflowPage(int page) {
@@ -81,10 +81,9 @@ inline bool isHubWorkflowPage(int page) {
 }
 
 inline bool isSettingsWorkflowPage(int page) {
-    return page == kProject || page == kGenerator;
+    return page == kProject;
 }
 
-// Compatibility names used by older source-level checks and call sites.
 inline bool isPatternWorkspacePage(int page) {
     return isHubWorkflowPage(page);
 }
@@ -107,8 +106,9 @@ inline Workspace workspaceForPage(int page) {
         case kPerform: return Workspace::Perform;
         case kPlayer: return Workspace::Player;
         case kGenre: return Workspace::Groove;
-        case kMode: return Workspace::Mode;
-        case kFeelTexture: return Workspace::FeelTexture;
+        case kFeel: return Workspace::Feel;
+        case kGeneration: return Workspace::Generation;
+        case kTexture: return Workspace::Texture;
         case kPattern: return Workspace::Pattern;
         case kSynthA: return Workspace::SynthA;
         case kSynthB: return Workspace::SynthB;
@@ -118,7 +118,6 @@ inline Workspace workspaceForPage(int page) {
         case kArrange: return Workspace::Arrange;
         case kPhrase: return Workspace::Phrase;
         case kProject: return Workspace::Project;
-        case kGenerator: return Workspace::Generator;
         default: return Workspace::Groove;
     }
 }
@@ -128,8 +127,9 @@ inline int pageForWorkspace(Workspace workspace) {
         case Workspace::Perform: return kPerform;
         case Workspace::Player: return kPlayer;
         case Workspace::Groove: return kGenre;
-        case Workspace::Mode: return kMode;
-        case Workspace::FeelTexture: return kFeelTexture;
+        case Workspace::Feel: return kFeel;
+        case Workspace::Generation: return kGeneration;
+        case Workspace::Texture: return kTexture;
         case Workspace::Pattern: return kPattern;
         case Workspace::SynthA: return kSynthA;
         case Workspace::SynthB: return kSynthB;
@@ -139,7 +139,6 @@ inline int pageForWorkspace(Workspace workspace) {
         case Workspace::Arrange: return kArrange;
         case Workspace::Phrase: return kPhrase;
         case Workspace::Project: return kProject;
-        case Workspace::Generator: return kGenerator;
     }
     return kGenre;
 }
@@ -176,8 +175,9 @@ inline const char* pageName(int page) {
         case kPerform: return "MIDI KEYBOARD";
         case kPlayer: return "MIDI PLAYER";
         case kGenre: return "GENRE";
-        case kMode: return "MODE / FLAVOR";
-        case kFeelTexture: return "FEEL / TEXTURE";
+        case kFeel: return "FEEL";
+        case kGeneration: return "GENERATION";
+        case kTexture: return "TEXTURE";
         case kPattern: return "OVERVIEW";
         case kSynthA: return "SYNTH A";
         case kSynthB: return "SYNTH B";
@@ -187,7 +187,6 @@ inline const char* pageName(int page) {
         case kArrange: return "SONG";
         case kPhrase: return "PHRASE CORE";
         case kProject: return "PROJECT / SETUP";
-        case kGenerator: return "ADV GENERATOR";
         default: return "PAGE";
     }
 }
@@ -195,10 +194,10 @@ inline const char* pageName(int page) {
 inline int pageCountForMode(WorkflowMode mode) {
     switch (mode) {
         case WorkflowMode::Perform: return 2;
-        case WorkflowMode::Generate: return 3;
+        case WorkflowMode::Generate: return 4;
         case WorkflowMode::Hub: return 6;
         case WorkflowMode::Song: return 2;
-        case WorkflowMode::Settings: return 2;
+        case WorkflowMode::Settings: return 1;
     }
     return 1;
 }
@@ -208,7 +207,7 @@ inline int pageAt(WorkflowMode mode, int index) {
         kPerform, kPlayer,
     };
     static constexpr int kGeneratePages[] = {
-        kGenre, kMode, kFeelTexture,
+        kGenre, kFeel, kGeneration, kTexture,
     };
     static constexpr int kHubPages[] = {
         kPattern, kSynthA, kSynthB, kDrums,
@@ -218,7 +217,7 @@ inline int pageAt(WorkflowMode mode, int index) {
         kArrange, kPhrase,
     };
     static constexpr int kSettingsPages[] = {
-        kProject, kGenerator,
+        kProject,
     };
 
     const int count = pageCountForMode(mode);
@@ -264,9 +263,6 @@ inline bool hardwareWorkflowModifierHeld() {
 #endif
 }
 
-// Explicit overload keeps the behavior deterministic and host-testable:
-//   modifier=false -> move/wrap inside the current workflow
-//   modifier=true  -> move to the first page of the adjacent workflow
 inline Workspace nextWorkspace(Workspace workspace,
                                int direction,
                                bool workflowModifier) {
@@ -288,6 +284,6 @@ inline Workspace nextWorkspace(Workspace workspace, int direction) {
 inline bool allowsPerformanceKeyboard(int page) {
     return page == kPerform ||
            page == kSynthAParameters ||
-           page == kFeelTexture;
+           page == kTexture;
 }
 }  // namespace WorkflowPages

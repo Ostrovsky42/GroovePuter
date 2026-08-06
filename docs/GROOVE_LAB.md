@@ -1,6 +1,6 @@
 # Groove Lab (Mode Page)
 
-Source: `src/ui/pages/mode_page.cpp`.
+Source: `src/ui/pages/generation_page.cpp`.
 
 ## Purpose
 `GROOVE LAB` is the control surface for:
