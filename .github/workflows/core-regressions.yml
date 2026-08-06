@@ -7,43 +7,12 @@ on:
       - dev
       - agent/fix-core-reliability
       - agent/smf-structural-inspector
-      - feature/transport-synced-performance-tools
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-file-master:
-    if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'feature/transport-synced-performance-tools'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: feature/transport-synced-performance-tools
-          fetch-depth: 0
-
-      - name: Apply FILE MASTER implementation
-        run: |
-          test -f .agent/file-master.patch
-          git apply --check .agent/file-master.patch
-          git apply .agent/file-master.patch
-
-      - name: Run host regressions on patched tree
-        run: bash tests/run_host_tests.sh
-
-      - name: Commit clean implementation tree
-        run: |
-          rm -f .agent/file-master.patch
-          rm -f .github/workflows/apply-file-master.yml
-          git fetch origin dev
-          git checkout origin/dev -- .github/workflows/core-regressions.yml
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
-          git commit -m "Add SMF FILE MASTER clock mode"
-          git push origin HEAD:feature/transport-synced-performance-tools
-
   host-tests:
     runs-on: ubuntu-latest
     steps:
