@@ -34,7 +34,7 @@ class GenrePage : public IPage {
   void updateFromEngine();
   void moveFocus(int delta);
   void shiftGenre(int delta);
-  void shiftVariant(int delta);
+  void cycleRecipeSelection(int delta);
   void adjustMorph(int delta);
   void cycleApplyMode(int delta);
   void applyCurrent();
@@ -54,7 +54,7 @@ class GenrePage : public IPage {
   VisualStyle style_ = VisualStyle::MINIMAL;
   FocusRow focus_ = FocusRow::Genre;
   int genre_index_ = 0;
-  int recipe_index_ = 0;
+  int recipeIndex_ = 0;
   int morph_amount_ = 0;
   std::string title_ = "GENRE";
 };
