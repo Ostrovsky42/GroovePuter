@@ -1,0 +1,73 @@
+name: Four-axis UI
+
+on:
+  push:
+    branches:
+      - agent/genre-feel-generation-texture-analysis
+    paths:
+      - 'src/ui/axis_page_palette.h'
+      - 'src/ui/pages/genre_page.*'
+      - 'src/ui/pages/settings_page.*'
+      - 'src/ui/pages/mode_page.*'
+      - 'src/ui/pages/feel_texture_page.*'
+      - 'src/ui/workflow_mode.h'
+      - 'src/ui/global_help_content.h'
+      - 'src/state/ui_session_state.h'
+      - 'tests/test_four_axis_ui_source_regressions.py'
+      - 'tests/test_global_help_content.cpp'
+      - 'tests/test_ui_session_state.cpp'
+      - 'docs/research/GROOVE_MODEL_*.md'
+      - 'docs/stages/FOUR_AXIS_GENERATE_UI.md'
+      - '.github/workflows/four-axis-ui.yml'
+  pull_request:
+    paths:
+      - 'src/ui/axis_page_palette.h'
+      - 'src/ui/pages/genre_page.*'
+      - 'src/ui/pages/settings_page.*'
+      - 'src/ui/pages/mode_page.*'
+      - 'src/ui/pages/feel_texture_page.*'
+      - 'src/ui/workflow_mode.h'
+      - 'src/ui/global_help_content.h'
+      - 'src/state/ui_session_state.h'
+      - 'tests/test_four_axis_ui_source_regressions.py'
+      - 'tests/test_global_help_content.cpp'
+      - 'tests/test_ui_session_state.cpp'
+      - 'docs/research/GROOVE_MODEL_*.md'
+      - 'docs/stages/FOUR_AXIS_GENERATE_UI.md'
+      - '.github/workflows/four-axis-ui.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  host-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check four-axis ownership
+        run: python3 tests/test_four_axis_ui_source_regressions.py
+
+      - name: Build four-axis pages
+        run: |
+          mkdir -p build/host-tests/four-axis
+          COMMON_FLAGS='-std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. -Iplatform_sdl -include platform_sdl/arduino_compat.h'
+          g++ ${COMMON_FLAGS} -c src/ui/pages/genre_page.cpp \
+            -o build/host-tests/four-axis/genre_page.o
+          g++ ${COMMON_FLAGS} -c src/ui/pages/settings_page.cpp \
+            -o build/host-tests/four-axis/feel_page.o
+          g++ ${COMMON_FLAGS} -c src/ui/pages/mode_page.cpp \
+            -o build/host-tests/four-axis/generation_page.o
+          g++ ${COMMON_FLAGS} -c src/ui/pages/feel_texture_page.cpp \
+            -o build/host-tests/four-axis/texture_page.o
+
+      - name: Build and run navigation/help tests
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_global_help_content.cpp \
+            -o build/host-tests/four-axis/test_global_help_content
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_ui_session_state.cpp \
+            -o build/host-tests/four-axis/test_ui_session_state
+          build/host-tests/four-axis/test_global_help_content
+          build/host-tests/four-axis/test_ui_session_state
