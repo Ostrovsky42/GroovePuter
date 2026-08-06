@@ -1,0 +1,326 @@
+name: Finalize Carbon Song layout
+
+on:
+  pull_request:
+    branches:
+      - dev
+    types:
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/ui-32step-song-spacing-polish
+          fetch-depth: 0
+
+      - name: Replace Carbon Song renderer
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('src/ui/pages/song_page.cpp')
+          text = path.read_text(encoding='utf-8')
+          include_anchor = '#include "../ui_common.h"\n'
+          include_line = '#include "../ui_theme.h"\n'
+          if include_line not in text:
+              if include_anchor not in text:
+                  raise RuntimeError('ui_common include anchor not found')
+              text = text.replace(include_anchor, include_anchor + include_line, 1)
+
+          function = r'''void SongPage::drawMinimalStyle(IGfx &gfx) {
+  const Rect &bounds = getBoundaries();
+  const int x = bounds.x;
+  const int y = bounds.y;
+  const int w = bounds.w;
+  const int h = bounds.h;
+  if (w <= 0 || h <= 0)
+    return;
+
+  const UI::ThemePalette palette =
+      UI::themePalette(::VisualStyle::MINIMAL);
+  const int activeSlot = mini_acid_.activeSongSlot();
+  const int playSlot = mini_acid_.songPlaybackSlot();
+  const bool liveMix = mini_acid_.liveMixModeEnabled();
+  const bool songMode = mini_acid_.songModeEnabled();
+  const bool playing = mini_acid_.isPlaying();
+  const int playhead = mini_acid_.songPlayheadPosition();
+  const int songLength = mini_acid_.songLength();
+
+  const int statusH = 12;
+  const int footerH = 11;
+  const int footerY = y + h - footerH;
+  gfx.fillRect(x, y, w, statusH, palette.panel);
+  gfx.drawLine(x, y + statusH - 1, x + w - 1, y + statusH - 1,
+               palette.dim);
+
+  char stateBuf[32];
+  std::snprintf(stateBuf, sizeof(stateBuf), "E:%c P:%c%s %s",
+                'A' + activeSlot, 'A' + playSlot, liveMix ? " LM" : "",
+                laneShortLabel());
+  gfx.setTextColor(palette.secondary);
+  gfx.drawText(x + 2, y + 2, stateBuf);
+
+  char barBuf[20];
+  std::snprintf(barBuf, sizeof(barBuf), "B%02d/%02d", playhead + 1,
+                songLength);
+  const int barX = x + 92;
+  gfx.setTextColor(playing && songMode ? palette.active : palette.dim);
+  gfx.drawText(barX, y + 2, barBuf);
+
+  const char *modeText = songMode ? "PLAY" : "EDIT";
+  const int modeW = textWidth(gfx, modeText) + 8;
+  const int modeX = x + w - modeW - 2;
+  gfx.fillRect(modeX, y + 1, modeW, statusH - 3, palette.inset);
+  gfx.drawRect(modeX, y + 1, modeW, statusH - 3,
+               cursorOnModeButton() ? palette.focus : palette.dim);
+  gfx.setTextColor(cursorOnModeButton() ? palette.focus : palette.text);
+  gfx.drawText(modeX + 4, y + 2, modeText);
+
+  if (liveMix) {
+    drawLockIcon(gfx, modeX - 8, y + 3, palette.warning);
+  }
+
+  const int gridTop = y + statusH + 1;
+  const int paneHeaderH = 10;
+  const int rowH = 10;
+  const int trackCount = visibleTrackCount();
+  const int cellsTop = gridTop + paneHeaderH;
+  int visibleRows = (footerY - cellsTop) / rowH;
+  if (visibleRows < 1)
+    visibleRows = 1;
+
+  const int cursorRowValue = cursorRow();
+  if (playing && songMode) {
+    const int minTarget = std::min(cursorRowValue, playhead);
+    const int maxTarget = std::max(cursorRowValue, playhead);
+    if (minTarget < scroll_row_)
+      scroll_row_ = minTarget;
+    if (maxTarget >= scroll_row_ + visibleRows)
+      scroll_row_ = maxTarget - visibleRows + 1;
+  } else {
+    if (cursorRowValue < scroll_row_)
+      scroll_row_ = cursorRowValue;
+    if (cursorRowValue >= scroll_row_ + visibleRows)
+      scroll_row_ = cursorRowValue - visibleRows + 1;
+  }
+  if (scroll_row_ < 0)
+    scroll_row_ = 0;
+  const int maxStart = std::max(0, Song::kMaxPositions - visibleRows);
+  if (scroll_row_ > maxStart)
+    scroll_row_ = maxStart;
+
+  int minSelRow = 0;
+  int maxSelRow = -1;
+  int minSelTrack = 0;
+  int maxSelTrack = -1;
+  if (has_selection_) {
+    getSelectionBounds(minSelRow, maxSelRow, minSelTrack, maxSelTrack);
+  }
+
+  auto trackColor = [&](SongTrack track) -> IGfxColor {
+    switch (track) {
+      case SongTrack::SynthA:
+        return palette.accent;
+      case SongTrack::SynthB:
+        return palette.accent2;
+      case SongTrack::Drums:
+        return palette.warning;
+      case SongTrack::Voice:
+        return palette.active;
+      default:
+        return palette.text;
+    }
+  };
+
+  auto drawPane = [&](int paneX, int paneW, int paneSlot, bool editable) {
+    const int rightInset = 4;
+    const int barW = split_compare_ ? 17 : 22;
+    const int usableW = paneW - rightInset;
+    int cellW = (usableW - barW) / trackCount;
+    if (cellW < 12)
+      cellW = 12;
+
+    const IGfxColor frame = editable ? palette.focus : palette.dim;
+    gfx.fillRect(paneX, gridTop, usableW, paneHeaderH, palette.inset);
+    gfx.drawRect(paneX, gridTop, usableW, footerY - gridTop, frame);
+
+    char paneLabel[8];
+    if (split_compare_)
+      std::snprintf(paneLabel, sizeof(paneLabel), "%c", 'A' + paneSlot);
+    else
+      std::snprintf(paneLabel, sizeof(paneLabel), "BAR");
+    gfx.setTextColor(editable ? palette.text : palette.dim);
+    gfx.drawText(paneX + 2, gridTop + 1, paneLabel);
+
+    for (int t = 0; t < trackCount; ++t) {
+      bool valid = false;
+      const SongTrack track = trackForColumn(t, valid);
+      if (!valid)
+        continue;
+      const int tx = paneX + barW + t * cellW;
+      const IGfxColor color = editable ? trackColor(track) : palette.dim;
+      gfx.fillRect(tx, gridTop, cellW - 1, 1, color);
+      gfx.setTextColor(color);
+      gfx.drawText(tx + 2, gridTop + 1, trackHeaderLabel(t));
+    }
+
+    if (mini_acid_.isWaitingForRehearsal()) {
+      gfx.setTextColor(palette.warning);
+      gfx.drawText(paneX + usableW - 36, gridTop + 1, "PAUSE");
+    }
+
+    for (int i = 0; i < visibleRows; ++i) {
+      const int row = scroll_row_ + i;
+      if (row >= Song::kMaxPositions)
+        break;
+      const int rowY = cellsTop + i * rowH;
+      gfx.fillRect(paneX + 1, rowY, usableW - 2, rowH,
+                   (i & 1) ? palette.panel : palette.background);
+
+      char rowBuf[8];
+      std::snprintf(rowBuf, sizeof(rowBuf), "%d", row + 1);
+      gfx.setTextColor(((row + 1) % 8) == 0 ? palette.warning
+                                            : palette.dim);
+      gfx.drawText(paneX + 2, rowY + 1, rowBuf);
+
+      if (row == playhead) {
+        const bool activePlay = playing && songMode && paneSlot == playSlot;
+        gfx.fillRect(paneX + barW, rowY, usableW - barW - 1, rowH,
+                     activePlay ? palette.inset : palette.panel);
+        gfx.fillRect(paneX + 1, rowY, 2, rowH,
+                     activePlay ? palette.active : palette.secondary);
+      }
+
+      if (mini_acid_.loopModeEnabled() &&
+          (row == mini_acid_.loopStartRow() ||
+           row == mini_acid_.loopEndRow())) {
+        gfx.fillRect(paneX + 1, rowY, 2, rowH, palette.warning);
+      }
+
+      for (int t = 0; t < trackCount; ++t) {
+        bool valid = false;
+        const SongTrack track = trackForColumn(t, valid);
+        const int pattern =
+            valid ? mini_acid_.songPatternAtSlot(paneSlot, row, track) : -1;
+        const int tx = paneX + barW + t * cellW;
+        const bool selected =
+            editable &&
+            (has_selection_ ? (row >= minSelRow && row <= maxSelRow &&
+                               t >= minSelTrack && t <= maxSelTrack)
+                            : (row == cursorRowValue && t == cursor_track_));
+
+        if (selected && has_selection_) {
+          gfx.fillRect(tx, rowY, cellW - 1, rowH, palette.focus);
+        } else if (pattern >= 0 || pattern == -2) {
+          gfx.fillRect(tx, rowY, cellW - 1, rowH, palette.inset);
+        }
+
+        if (pattern == -2) {
+          gfx.setTextColor(palette.warning);
+          gfx.drawText(tx + 2, rowY + 1, "WAIT");
+        } else if (pattern >= 0) {
+          char patternBuf[10];
+          formatSongPatternLabel(pattern, patternBuf, sizeof(patternBuf));
+          gfx.setTextColor(selected && has_selection_
+                               ? palette.invert
+                               : (editable ? trackColor(track) : palette.dim));
+          gfx.drawText(tx + 2, rowY + 1, patternBuf);
+        } else if (!selected) {
+          gfx.setTextColor(palette.dim);
+          gfx.drawText(tx + 2, rowY + 1, "--");
+        }
+
+        if (selected && !has_selection_) {
+          gfx.drawRect(tx, rowY, cellW - 1, rowH, palette.focus);
+        }
+      }
+    }
+
+    drawQuarterStrip(gfx, paneX + paneW - 3, cellsTop,
+                     visibleRows * rowH, songQuarterFromRow(cursorRowValue),
+                     editable ? palette.focus : palette.dim, palette.dim);
+  };
+
+  if (split_compare_) {
+    const int gap = 4;
+    const int leftW = (w - gap) / 2;
+    drawPane(x, leftW, 0, activeSlot == 0);
+    drawPane(x + leftW + gap, w - leftW - gap, 1, activeSlot == 1);
+  } else {
+    drawPane(x, w, activeSlot, true);
+  }
+
+  gfx.fillRect(x, footerY, w, footerH, palette.panel);
+  gfx.drawLine(x, footerY, x + w - 1, footerY, palette.dim);
+  gfx.setTextColor(palette.secondary);
+  gfx.drawText(x + 2, footerY + 2,
+               "Q-I:P G:GEN B:BNK V:LANE X:SPLIT");
+
+  if (mini_acid_.isPageLoading()) {
+    char loadBuf[32];
+    std::snprintf(loadBuf, sizeof(loadBuf), "LOADING PAGE %d...",
+                  mini_acid_.targetPageIndex() + 1);
+    const int textW = textWidth(gfx, loadBuf);
+    const int boxX = x + (w - textW) / 2 - 6;
+    const int boxY = y + (h - 18) / 2;
+    gfx.fillRect(boxX, boxY, textW + 12, 16, palette.background);
+    gfx.drawRect(boxX, boxY, textW + 12, 16, palette.focus);
+    gfx.setTextColor(palette.focus);
+    gfx.drawText(boxX + 6, boxY + 3, loadBuf);
+  }
+
+  drawGeneratorHint(gfx);
+}'''
+
+          pattern = re.compile(
+              r'void SongPage::drawMinimalStyle\(IGfx& gfx\) \{.*?\n\}\n\nvoid SongPage::drawTEGridStyle',
+              re.S,
+          )
+          match = pattern.search(text)
+          if not match:
+              raise RuntimeError('drawMinimalStyle block not found')
+          text = text[:match.start()] + function + '\n\nvoid SongPage::drawTEGridStyle' + text[match.end():]
+          path.write_text(text, encoding='utf-8')
+
+          test_path = Path('tests/test_ui_layout_source_regressions.py')
+          test = test_path.read_text(encoding='utf-8')
+          anchor = '        self.assertGreaterEqual(source.count("const int gap = 4;"), 2)\n'
+          addition = (
+              anchor
+              + '        self.assertIn("UI::themePalette(::VisualStyle::MINIMAL)", source)\n'
+              + '        self.assertGreaterEqual(source.count("const int gap = 4;"), 3)\n'
+          )
+          if anchor not in test:
+              raise RuntimeError('Song regression anchor not found')
+          test = test.replace(anchor, addition, 1)
+          test_path.write_text(test, encoding='utf-8')
+          PY
+
+          start_line=$(grep -n '^void SongPage::drawMinimalStyle' src/ui/pages/song_page.cpp | cut -d: -f1)
+          end_line=$(grep -n '^void SongPage::drawTEGridStyle' src/ui/pages/song_page.cpp | cut -d: -f1)
+          clang-format -i --lines="${start_line}:$((end_line - 1))" src/ui/pages/song_page.cpp
+
+      - name: Run regressions and builds
+        run: |
+          python3 tests/test_ui_layout_source_regressions.py
+          ./tests/run_host_tests.sh
+          make -C platform_sdl -j2
+
+      - name: Commit Carbon Song renderer
+        shell: bash
+        run: |
+          rm .github/workflows/agent-ui-carbon-song.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "ui: add native Carbon Song split layout"
+          git push origin HEAD:agent/ui-32step-song-spacing-polish
