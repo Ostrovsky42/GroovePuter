@@ -80,7 +80,7 @@ for needle in (
     '"ENT:CAP D:DERIVE W:WRITE SH+W:OVER"',
     '"TAB:CORE L/R:POS U/D:+8 1-4:SET"',
     '"W:WRITE SH+W:OVER DEL:RM SH+DEL:CLEAR"',
-    "if (key == '\\t' || ui_event.scancode == GROOVEPUTER_TAB)",
+    "if (key == '\\t')",
 ):
     require(CPP, needle, f"Phrase UI command/legend regression: {needle}")
 
