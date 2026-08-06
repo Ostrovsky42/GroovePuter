@@ -5,7 +5,7 @@ on:
     branches:
       - agent/accelerated-slider-repeat
     paths:
-      - 'scripts/apply_slider_acceleration_coverage.py'
+      - 'scripts/apply_slider_acceleration_coverage_v2.py'
       - '.github/workflows/apply-slider-acceleration-coverage.yml'
 
 permissions:
@@ -22,7 +22,7 @@ jobs:
           fetch-depth: 0
 
       - name: Apply exact source patch
-        run: python3 scripts/apply_slider_acceleration_coverage.py
+        run: python3 scripts/apply_slider_acceleration_coverage_v2.py
 
       - name: Run focused source regressions
         run: |
@@ -52,7 +52,8 @@ jobs:
 
       - name: Commit applied changes
         run: |
-          git rm scripts/apply_slider_acceleration_coverage.py
+          git rm scripts/apply_slider_acceleration_coverage.py \
+                 scripts/apply_slider_acceleration_coverage_v2.py
           git add src/ui/pages/tape_page.cpp \
                   src/ui/pages/drum_sequencer_page.cpp \
                   src/ui/pages/project_page.cpp \
