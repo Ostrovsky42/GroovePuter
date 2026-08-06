@@ -5,6 +5,8 @@
 #include "ui_core.h"
 #include "global_help_content.h"
 
+#include <cstdio>
+
 class GlobalHelpOverlay {
 public:
     GlobalHelpOverlay() = default;
@@ -32,8 +34,11 @@ public:
         int title_h = 14;
         gfx.fillRect(0, 0, w, title_h, COLOR_DARKER);
         gfx.setTextColor(COLOR_ACCENT);
-        const char* title = "HELP (ESC or Ctrl+H)";
+        char title[48];
+        std::snprintf(title, sizeof(title), "HELP: %s  ESC/ALT+H",
+                      HelpContent::pageTitle(page_index_));
         int title_x = (w - gfx.textWidth(title)) / 2;
+        if (title_x < 2) title_x = 2;
         gfx.drawText(title_x, 2, title);
         
         // Content area
@@ -88,13 +93,13 @@ public:
         
         if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
         
-        // Close on Escape or Ctrl+H
+        // Close on Escape or the same Alt+H shortcut used to open help
         if (event.scancode == GROOVEPUTER_ESCAPE) {
             close();
             return true;
         }
         
-        if ((event.ctrl || event.alt) && (event.key == 'h' || event.key == 'H')) {
+        if (event.alt && (event.key == 'h' || event.key == 'H')) {
             close();
             return true;
         }

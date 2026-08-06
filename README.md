@@ -96,7 +96,8 @@ The realtime SMF workflow includes:
 * return from HUB MIDI with `H` or `Esc`, preserving the loaded-file session, Player panel state, scroll, and selection;
 * physical SMF track selection in the mute mixer and HUB MIDI;
 * per-physical-track route override in HUB MIDI: `AUTO` or `CH1..CH10`;
-* route editing with `C`, `Left/Right`, and `Enter` while playback is stopped or paused in SEQTRAK routing mode.
+* route editing with `C`, `Left/Right`, and `Enter` while playback is stopped or paused in SEQTRAK routing mode;
+* bounded per-file route profiles restore `AUTO` / `CH1..CH10` assignments across reloads and reboots when the normalized path, size, physical-track count, and semantic fingerprint still match. A changed, corrupt, or unknown file starts at `AUTO`.
 
 SEQTRAK-safe routing maps drums to `CH1..CH7`, Synth 1 to `CH8`, Synth 2 to `CH9`, and DX to `CH10`. RAW routing passes source MIDI channels through and does not apply SEQTRAK track overrides.
 
@@ -106,7 +107,7 @@ HUB MIDI is an inspection/mute/routing surface. It does not own SMF transport, s
 
 * Scene Save/Load persists patterns, Song references, synth/drum state, and the supported scene codec fields.
 * UI session persistence stores the active page, last page in each workflow, master volume, visual style, and waveform-overlay state.
-* Player ↔ HUB MIDI state is preserved for the current loaded SMF session; loading another file starts a new SMF generation and resets per-track route overrides to `AUTO`.
+* Player ↔ HUB MIDI panel, scroll, and selection state is preserved during the current loaded session. Per-file route overrides are stored separately in bounded CRC-protected profiles and can be restored after reopening the same unchanged file or rebooting; a different or changed file starts at `AUTO`.
 * The public global theme cycle is `CARBON ↔ CYBER`. `AMBER` remains a legacy compatibility value for older UI/session data and specialized page code, not a normal selectable theme in the global cycle.
 
 ## Controls
@@ -115,15 +116,23 @@ HUB MIDI is an inspection/mute/routing surface. It does not own SMF transport, s
 
 | Key | Action |
 |---|---|
-| `Fn+Tab` | Cycle workflow forward |
-| `Fn+Shift+Tab` | Cycle workflow backward |
-| `Alt/Fn+1..0` | Direct page jump |
+| `Alt+H` | Open page-aware help for the active screen; `Up/Down` scrolls and `Left/Right` jumps to the top/end |
+| `Fn+M` | Open the workspace launcher |
+| `Fn+Tab` / `Fn+Shift+Tab` | Cycle workflow forward / backward |
+| `[` / `]` | Previous / next page inside the current workflow |
+| `Fn+[` / `Fn+]` | Previous / next workflow |
 | `Alt+[` / `Alt+]` | Previous / next detailed page |
-| `Space` | Active transport play / stop |
+| `Alt/Fn+1..0` | Direct page jump |
+| `Space` | Active transport play / stop; the active page gets first refusal |
 | `Alt+P` | Open MIDI Player |
+| `Alt+V` | Open MODE / FLAVOR (Groove Lab) |
 | `Alt+W` | Toggle waveform overlay |
+| `Alt+X` | Toggle LiveMix |
+| `Alt+M` | Toggle Song mode |
 | `Alt+\` | Toggle `CARBON ↔ CYBER` |
-| `Esc` | Back or dismiss |
+| `1..0` | Track-mute fallback when the active page does not consume the digit |
+| `Esc` / `Backspace` / `` ` `` | Back, dismiss, or return to the previous page |
+| `Ctrl+Alt+Backspace` | Reset the current project after releasing active notes |
 
 The active page receives keys before global fallbacks. This prevents page-local commands, NOTE mode, Song assignment, and MIDI mute controls from colliding.
 
@@ -144,15 +153,17 @@ The canonical page-by-page key reference is [`src/ui/docs/keys.md`](src/ui/docs/
 
 ## Screenshots
 
-| Page | Preview |
+The previews below use the current `CYBER` UI. Their footer hints are the same primary controls shown by `Alt+H`; the overlay also lists secondary commands that do not fit in the 240×135 footer.
+
+| Firmware screen | Preview |
 |:---|:---|
-| **Genre** | ![Genre](docs/screenshots/genre.png) |
-| **Sequencer Hub** | ![Sequencer Hub](docs/screenshots/sequencer_hub.png) |
-| **Drum Section** | ![Drum Page](docs/screenshots/drum_page_cyber.png) |
-| **Synth Params** | ![Synth Params](docs/screenshots/synth_params.png) |
-| **Pattern Edit** | ![Pattern Edit](docs/screenshots/pattern_edit.png) |
-| **Song Page** | ![Song Page](docs/screenshots/song_page.png) |
-| **Groove Lab** | ![Groove Lab](docs/screenshots/groove_lab.png) |
+| **GENRE** | ![GENRE screen](docs/screenshots/genre.png) |
+| **OVERVIEW / SEQUENCER HUB** | ![OVERVIEW screen](docs/screenshots/sequencer_hub.png) |
+| **DRUMS** | ![DRUMS screen](docs/screenshots/drum_page_cyber.png) |
+| **SYNTH A SOUND** | ![SYNTH A SOUND screen](docs/screenshots/synth_params.png) |
+| **SYNTH A PATTERN** | ![SYNTH A PATTERN screen](docs/screenshots/pattern_edit.png) |
+| **SONG** | ![SONG screen](docs/screenshots/song_page.png) |
+| **MODE / FLAVOR** | ![MODE / FLAVOR screen](docs/screenshots/groove_lab.png) |
 
 ## MIDI ownership
 

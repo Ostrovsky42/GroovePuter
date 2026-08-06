@@ -10,6 +10,7 @@ mkdir -p "${BUILD_DIR}"
 python3 "${ROOT_DIR}/tests/test_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_generation_rng_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_song_generation_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_global_help_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_synth_a_bass_profile_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_cardputer_input_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_scene_revision_source_regressions.py"
@@ -39,6 +40,18 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -o "${BUILD_DIR}/test_genre_defaults"
 
 "${BUILD_DIR}/test_genre_defaults"
+
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_global_help_content.cpp" \
+  -o "${BUILD_DIR}/test_global_help_content"
+
+"${BUILD_DIR}/test_global_help_content"
 
 "${CXX}" \
   -std=c++17 \

@@ -2521,7 +2521,7 @@ void SongPage::drawRetroClassicStyle(IGfx& gfx) {
         gfx.drawText(lx, ly, loadBuf);
     }
 
-    retro::drawFooterBar(gfx, x, y + h - 12, w, 12, "Q-I:Pat G:Gen B:Bank N:ins M:del X:split", "SONG");
+    retro::drawFooterBar(gfx, x, y + h - 12, w, 12, "Q-I:Pat G:Gen B:Bank C+N/M:Row X:Split", "SONG");
 }
 
 void SongPage::drawAmberStyle(IGfx& gfx) {
@@ -2618,7 +2618,7 @@ void SongPage::drawAmberStyle(IGfx& gfx) {
                      songQuarterFromRow(cursor_row), IGfxColor(AmberTheme::SELECT_BRIGHT),
                      IGfxColor(AmberTheme::GRID_DIM));
 
-    amber::drawFooterBar(gfx, x, y + h - 12, w, 12, "Q-I:Pat G:Gen B:Bank N:ins M:del X:split", "SONG");
+    amber::drawFooterBar(gfx, x, y + h - 12, w, 12, "Q-I:Pat G:Gen B:Bank C+N/M:Row X:Split", "SONG");
 }
 
 std::unique_ptr<MultiPageHelpDialog> SongPage::getHelpDialog() {

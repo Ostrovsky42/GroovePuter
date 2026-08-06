@@ -178,7 +178,7 @@ For a per-track output override:
 5. Choose `AUTO` or `CH1..CH10` with `Left/Right`.
 6. Press `Enter` to commit, or `Esc` to cancel.
 
-HUB MIDI does not own playback, scheduling, TinyUSB, or note lifecycle. Loading another MIDI file creates a new SMF session generation and resets route overrides to `AUTO`.
+HUB MIDI does not own playback, scheduling, TinyUSB, or note lifecycle. Confirmed route overrides are stored in bounded CRC-protected per-file profiles. Reopening the same unchanged file, including after reboot, restores its `AUTO` / `CH1..CH10` assignments. A different, modified, stale, or corrupt file profile starts at `AUTO`.
 
 ## 7. Session persistence and themes
 
@@ -189,6 +189,8 @@ The UI session stores:
 * master volume;
 * visual style;
 * waveform-overlay state.
+
+MIDI track-route profiles are persistent but separate from UI session state and Scene Save/Load. They are matched by normalized path, file size, physical-track count, and route-relevant semantic fingerprint.
 
 The global theme shortcut cycles `CARBON ↔ CYBER`. `AMBER` remains only for legacy compatibility and specialized old page code; it is not part of the normal global theme cycle.
 
