@@ -63,6 +63,8 @@ def main() -> None:
 
     require("handleEvent(...) handleCardputerEvent(__VA_ARGS__)" in helper,
             "Cardputer sketch must use the page-aware display adapter")
+    require(sketch.count("g_miniDisplay->handleEvent(") == 2,
+            "the Cardputer adapter macro must remain bounded to two sketch dispatches")
     require("bool handleCardputerEvent(UIEvent event)" in display_header,
             "MiniAcidDisplay must expose the Cardputer-only routing adapter")
     require("page_index_ == WorkflowPages::kPhrase" in display_header,
