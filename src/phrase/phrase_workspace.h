@@ -60,7 +60,16 @@ inline const char* errorName(PhraseCore::Error error) {
 
 inline PhraseCore::SlotSummary summary(const Scene& scene,
                                        PhraseCore::SlotId slot) {
-  return PhraseCore::summarize(scene.phraseBank, slot);
+  PhraseCore::SlotSummary result =
+      PhraseCore::summarize(scene.phraseBank, slot);
+  if (!result.valid) return result;
+
+  const PhraseCore::PhraseSlot* phrase =
+      PhraseCore::slotAt(scene.phraseBank, slot);
+  if (!phrase) return result;
+  result.sourceSongSlot = phrase->metadata.sourceSongSlot;
+  result.sourceStartRow = phrase->metadata.sourceStartRow;
+  return result;
 }
 
 inline uint8_t arrangementTotalBars(const Scene& scene) {
