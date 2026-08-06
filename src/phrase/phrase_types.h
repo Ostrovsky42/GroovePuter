@@ -8,6 +8,7 @@ namespace PhraseCore {
 constexpr uint8_t kSlotCount = 4;
 constexpr uint8_t kMaxBars = 8;
 constexpr uint8_t kTrackCount = 3;
+constexpr uint8_t kArrangementCapacity = 16;
 constexpr uint8_t kNoSlot = 0xFFu;
 constexpr uint16_t kNoPhraseId = 0u;
 constexpr uint8_t kPersistenceVersion = 1u;
@@ -63,6 +64,9 @@ enum class Error : uint8_t {
   InvalidParent,
   DestinationOccupied,
   InvalidPhrase,
+  InvalidArrangementPosition,
+  ArrangementFull,
+  ArrangementEmpty,
 };
 
 struct PhraseMetadata {
@@ -83,8 +87,15 @@ struct PhraseSlot {
   int16_t patternRefs[kMaxBars][kTrackCount]{};
 };
 
+struct PhraseArrangement {
+  uint8_t slots[kArrangementCapacity]{};
+  uint8_t length = 0;
+  uint8_t reserved = 0;
+};
+
 struct PhraseBank {
   PhraseSlot slots[kSlotCount]{};
+  PhraseArrangement arrangement{};
   uint16_t nextPhraseId = 1;
   uint8_t version = kPersistenceVersion;
   uint8_t reserved = 0;
@@ -94,6 +105,16 @@ struct Result {
   Error error = Error::None;
   SlotId slot = SlotId::A;
   uint16_t phraseId = kNoPhraseId;
+
+  explicit operator bool() const { return error == Error::None; }
+};
+
+struct ArrangementResult {
+  Error error = Error::None;
+  uint8_t position = 0;
+  uint8_t length = 0;
+  uint8_t totalBars = 0;
+  bool changed = false;
 
   explicit operator bool() const { return error == Error::None; }
 };
@@ -124,8 +145,10 @@ static_assert(sizeof(PhraseMetadata) == 12,
               "Phrase metadata must remain within the 16-byte slot budget");
 static_assert(sizeof(PhraseSlot) == 60,
               "Phrase reference slot RAM budget changed");
-static_assert(sizeof(PhraseBank) == 244,
-              "Four-slot Phrase bank RAM budget changed");
+static_assert(sizeof(PhraseArrangement) == 18,
+              "Phrase arrangement RAM budget changed");
+static_assert(sizeof(PhraseBank) == 262,
+              "Phrase bank RAM budget changed");
 static_assert(std::is_trivially_copyable<PhraseBank>::value,
               "PhraseBank must stay a fixed-capacity persistence value");
 
@@ -218,10 +241,19 @@ inline void clearSlotValue(PhraseSlot& slot) {
   }
 }
 
+inline void clearArrangementValue(PhraseArrangement& arrangement) {
+  for (int position = 0; position < kArrangementCapacity; ++position) {
+    arrangement.slots[position] = kNoSlot;
+  }
+  arrangement.length = 0;
+  arrangement.reserved = 0;
+}
+
 inline void reset(PhraseBank& bank) {
   for (int slot = 0; slot < kSlotCount; ++slot) {
     clearSlotValue(bank.slots[slot]);
   }
+  clearArrangementValue(bank.arrangement);
   bank.nextPhraseId = 1;
   bank.version = kPersistenceVersion;
   bank.reserved = 0;
