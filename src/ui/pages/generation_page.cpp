@@ -36,6 +36,10 @@ void formatPatternLabel(int globalPattern, char* out, int outSize) {
                 static_cast<char>('A' + songPatternBank(globalPattern)),
                 songPatternIndexInBank(globalPattern) + 1);
 }
+
+int clampSongRow(int row) {
+  return std::clamp(row, 0, Song::kMaxPositions - 1);
+}
 }  // namespace
 
 GenerationPage::GenerationPage(IGfx& gfx,
@@ -44,6 +48,25 @@ GenerationPage::GenerationPage(IGfx& gfx,
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
   (void)gfx;
   style_ = UI::currentStyle;
+  syncTargetFromSong();
+}
+
+void GenerationPage::onEnter(int context) {
+  (void)context;
+  syncTargetFromSong();
+}
+
+void GenerationPage::syncTargetFromSong() {
+  target_row_ = clampSongRow(mini_acid_.currentSongPosition());
+  hold_accel_.reset();
+  last_attempted_ = false;
+}
+
+void GenerationPage::moveTargetRow(int delta, bool fast) {
+  if (delta == 0) return;
+  const int multiplier = hold_accel_.multiplier(delta, fast);
+  target_row_ = clampSongRow(target_row_ + delta * multiplier);
+  last_attempted_ = false;
 }
 
 void GenerationPage::materializeCurrentBar() {
@@ -51,7 +74,7 @@ void GenerationPage::materializeCurrentBar() {
   if (wasPlaying) mini_acid_.stop();
 
   PhraseGenerator::PhraseResult result{};
-  const int targetRow = std::max(0, mini_acid_.currentSongPosition());
+  const int targetRow = clampSongRow(target_row_);
   const auto generate = [&]() {
     PhraseGenerator::PhraseRequest request{};
     request.bars = kMaterializeBars;
@@ -113,6 +136,7 @@ void GenerationPage::materializeCurrentBar() {
 
   if (result) {
     GroovePuterState::markSceneMutated();
+    target_row_ = clampSongRow(result.songStart);
     char patternLabel[16] = "---";
     formatPatternLabel(result.firstGlobalPattern,
                        patternLabel, sizeof(patternLabel));
@@ -173,13 +197,13 @@ void GenerationPage::draw(IGfx& gfx) {
 
   std::snprintf(value, sizeof(value), "SONG %c ROW %d",
                 static_cast<char>('A' + std::clamp(scene.activeSongSlot, 0, 1)),
-                std::max(0, mini_acid_.currentSongPosition()) + 1);
+                target_row_ + 1);
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width,
-                       "TARGET", value, false,
+                       "TARGET", value, true,
                        axisColor, palette);
 
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width,
-                       "WRITE", "ENTER / G", true,
+                       "WRITE", "ENTER / G", false,
                        axisColor, palette);
 
   std::snprintf(value, sizeof(value),
@@ -198,12 +222,22 @@ void GenerationPage::draw(IGfx& gfx) {
   gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, value);
 
   UI::drawStandardFooter(gfx,
-                         "ENTER/G:WRITE 1 BAR",
-                         "ROW OCCUPIED:BLOCK  LEN:PHRASE");
+                         "ARROWS:TARGET  ENTER/G:WRITE",
+                         "HOLD:ACCEL  LEN:PHRASE CORE");
 }
 
 bool GenerationPage::handleEvent(UIEvent& event) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+
+  const int nav = UIInput::navCode(event);
+  if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_UP) {
+    moveTargetRow(-1, event.shift || event.ctrl || event.alt);
+    return true;
+  }
+  if (nav == GROOVEPUTER_RIGHT || nav == GROOVEPUTER_DOWN) {
+    moveTargetRow(1, event.shift || event.ctrl || event.alt);
+    return true;
+  }
 
   if (event.key == '\n' || event.key == '\r') {
     materializeCurrentBar();
