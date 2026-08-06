@@ -11,6 +11,7 @@
 #include "src/midi/smf_structural_inspector.h"
 #include "src/midi/smf_track_inspector.h"
 #include "src/midi/smf_track_mute.h"
+#include "src/midi/transport_clock_runtime.h"
 
 namespace {
 
@@ -223,6 +224,49 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         }
     }
 
+    const bool fileBpmShortcut =
+        event.event_type == GROOVEPUTER_KEY_DOWN &&
+        event.alt && !event.ctrl &&
+        (event.key == 'o' || event.key == 'O');
+    if (fileBpmShortcut) {
+        player_ = smfPlayerService();
+        const SmfPlayerSnapshot state =
+            player_ ? player_->snapshot() : SmfPlayerSnapshot{};
+        const bool loaded =
+            player_ && state.state != SmfPlayerState::Unloaded &&
+            state.state != SmfPlayerState::Loading &&
+            state.state != SmfPlayerState::Error;
+        if (!loaded) {
+            UI::showToast("LOAD MIDI FIRST", 900);
+            return true;
+        }
+        const bool midiActive =
+            state.state == SmfPlayerState::Playing ||
+            state.state == SmfPlayerState::Armed;
+        if (midiActive || miniAcid_.isPlaying()) {
+            UI::showToast("STOP GP + MIDI FIRST", 1100);
+            return true;
+        }
+
+        const float fileBpm = std::max(
+            10.0f,
+            std::min(250.0f,
+                     static_cast<float>(state.originalBpmX10) / 10.0f));
+        transportClockRuntime().setSource(
+            TransportClockSource::GroovePuterInternal);
+        withAudioGuard([this, fileBpm]() { miniAcid_.setBpm(fileBpm); });
+
+        char toast[40];
+        std::snprintf(toast, sizeof(toast),
+                      "FILE %u.%u -> GP %u.%u",
+                      static_cast<unsigned>(state.originalBpmX10 / 10u),
+                      static_cast<unsigned>(state.originalBpmX10 % 10u),
+                      static_cast<unsigned>(state.originalBpmX10 / 10u),
+                      static_cast<unsigned>(state.originalBpmX10 % 10u));
+        UI::showToast(toast, 1200);
+        return true;
+    }
+
     if (event.event_type != GROOVEPUTER_KEY_DOWN || event.alt || event.ctrl ||
         (event.meta && !numericMuteHotkey)) {
         return SmfPlayerPageBase::handleEvent(event);
@@ -296,6 +340,12 @@ void SmfPlayerPage::drawFooter(IGfx& gfx) {
     if (muteMixerVisible_) {
         UI::drawStandardFooter(gfx, "H Hub UP/DN Select",
                                "1-9 Hot ENT Sel A AllOn");
+        return;
+    }
+    if (!browserVisible_ && !channelInspectorVisible_ &&
+        !performanceVisible_) {
+        UI::drawStandardFooter(gfx, "Space MIDI G Groove C Master",
+                               "ALT+O FileBPM U Mutes I Info");
         return;
     }
     SmfPlayerPageBase::drawFooter(gfx);
