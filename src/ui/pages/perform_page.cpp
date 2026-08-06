@@ -58,6 +58,16 @@ void restoreHeldPerformanceKeys(PerformanceKeyboard& keyboard,
         keyboard.keyDown(snapshot.activeKey, snapshot.velocity);
     }
 }
+
+bool strumIsAudible(const PerformanceKeyboard& keyboard) {
+    return !keyboard.arpeggiatorEnabled() &&
+           keyboard.chordMode() != PerformanceChordMode::Off;
+}
+
+bool rotationIsAudible(const PerformanceKeyboard& keyboard) {
+    const uint8_t pulses = keyboard.euclideanPulses();
+    return pulses > 0 && pulses < PerformanceKeyboard::kEuclideanSteps;
+}
 }  // namespace
 
 PerformPage::PerformPage(IGfx& gfx,
@@ -111,8 +121,16 @@ bool PerformPage::handleToolKey(const UIEvent& event) {
             break;
         case '5':
             keyboard_.cycleStrum(direction);
-            std::snprintf(toast, sizeof(toast), "STRUM: %u MS",
-                          static_cast<unsigned>(keyboard_.strumMs()));
+            if (keyboard_.arpeggiatorEnabled()) {
+                std::snprintf(toast, sizeof(toast),
+                              "STRUM: N/A / ARP IS SINGLE NOTE");
+            } else if (keyboard_.chordMode() == PerformanceChordMode::Off) {
+                std::snprintf(toast, sizeof(toast),
+                              "STRUM: N/A / ENABLE CHORD");
+            } else {
+                std::snprintf(toast, sizeof(toast), "STRUM: %u MS",
+                              static_cast<unsigned>(keyboard_.strumMs()));
+            }
             break;
         case '6':
             keyboard_.cycleRatchet(direction);
@@ -126,8 +144,17 @@ bool PerformPage::handleToolKey(const UIEvent& event) {
             break;
         case '8':
             keyboard_.rotateEuclidean(direction);
-            std::snprintf(toast, sizeof(toast), "EUCLID ROT: %u",
-                          static_cast<unsigned>(keyboard_.euclideanRotation()));
+            if (keyboard_.euclideanPulses() == 0) {
+                std::snprintf(toast, sizeof(toast),
+                              "ROTATE: N/A / EUCLID OFF");
+            } else if (keyboard_.euclideanPulses() >=
+                       PerformanceKeyboard::kEuclideanSteps) {
+                std::snprintf(toast, sizeof(toast),
+                              "ROTATE: N/A / ALL 16 ACTIVE");
+            } else {
+                std::snprintf(toast, sizeof(toast), "EUCLID ROT: %u",
+                              static_cast<unsigned>(keyboard_.euclideanRotation()));
+            }
             break;
         default:
             return false;
@@ -150,8 +177,12 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
     std::snprintf(value, sizeof(value), "1 ARPEGGIATOR %s",
                   keyboard_.arpeggiatorEnabled() ? "ON" : "OFF");
     gfx.drawText(leftX, LayoutManager::lineY(3), value);
-    std::snprintf(value, sizeof(value), "5 STRUM %ums",
-                  static_cast<unsigned>(keyboard_.strumMs()));
+    if (strumIsAudible(keyboard_)) {
+        std::snprintf(value, sizeof(value), "5 STRUM %ums",
+                      static_cast<unsigned>(keyboard_.strumMs()));
+    } else {
+        std::snprintf(value, sizeof(value), "5 STRUM N/A");
+    }
     gfx.drawText(rightX, LayoutManager::lineY(3), value);
 
     std::snprintf(value, sizeof(value), "2 DIRECTION %s", keyboard_.arpDirectionName());
@@ -169,8 +200,12 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
     std::snprintf(value, sizeof(value), "4 MEMORY %u",
                   static_cast<unsigned>(keyboard_.chordMemorySize()));
     gfx.drawText(leftX, LayoutManager::lineY(6), value);
-    std::snprintf(value, sizeof(value), "8 ROTATE %u",
-                  static_cast<unsigned>(keyboard_.euclideanRotation()));
+    if (rotationIsAudible(keyboard_)) {
+        std::snprintf(value, sizeof(value), "8 ROTATE %u",
+                      static_cast<unsigned>(keyboard_.euclideanRotation()));
+    } else {
+        std::snprintf(value, sizeof(value), "8 ROTATE N/A");
+    }
     gfx.drawText(rightX, LayoutManager::lineY(6), value);
 
     gfx.setTextColor(COLOR_LABEL);
