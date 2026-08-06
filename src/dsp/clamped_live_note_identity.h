@@ -18,13 +18,13 @@ public:
     return *this;
   }
 
-  constexpr operator int16_t() const { return value_; }
+  constexpr operator int() const { return value_; }
 
-  constexpr bool operator!=(int16_t incomingNote) const {
+  constexpr bool operator!=(int incomingNote) const {
     return value_ != normalize(incomingNote);
   }
 
-  constexpr bool operator==(int16_t incomingNote) const {
+  constexpr bool operator==(int incomingNote) const {
     return value_ == normalize(incomingNote);
   }
 
