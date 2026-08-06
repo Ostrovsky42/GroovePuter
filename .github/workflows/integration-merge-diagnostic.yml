@@ -1,0 +1,55 @@
+name: Integration merge diagnostic
+
+on:
+  push:
+    branches:
+      - integration/genre-song-ui
+    paths:
+      - .github/workflows/integration-merge-diagnostic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: integration/genre-song-ui
+          fetch-depth: 0
+
+      - name: Attempt merge without committing
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "integration-diagnostic"
+          git config user.email "integration-diagnostic@users.noreply.github.com"
+          git fetch origin agent/genre-feel-generation-texture-analysis
+          set +e
+          git merge --no-commit --no-ff origin/agent/genre-feel-generation-texture-analysis
+          status=$?
+          set -e
+          echo "merge_status=$status"
+          echo "conflicted files:"
+          git diff --name-only --diff-filter=U
+          mkdir -p /tmp/merge-diagnostic
+          git diff --name-only --diff-filter=U > /tmp/merge-diagnostic/conflicts.txt
+          while IFS= read -r path; do
+            [ -n "$path" ] || continue
+            mkdir -p "/tmp/merge-diagnostic/$(dirname "$path")"
+            cp "$path" "/tmp/merge-diagnostic/$path"
+            git show ":1:$path" > "/tmp/merge-diagnostic/$path.base" 2>/dev/null || true
+            git show ":2:$path" > "/tmp/merge-diagnostic/$path.integration" 2>/dev/null || true
+            git show ":3:$path" > "/tmp/merge-diagnostic/$path.axis" 2>/dev/null || true
+          done < /tmp/merge-diagnostic/conflicts.txt
+          exit "$status"
+
+      - name: Upload merge diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-merge-diagnostic
+          path: /tmp/merge-diagnostic
+          if-no-files-found: warn
