@@ -71,17 +71,34 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
       const std::string sceneNameBefore = creatingNewProject
           ? mini_acid_.currentSceneName()
           : std::string();
+      const std::string requestedNewProject = creatingNewProject
+          ? save_name_
+          : std::string();
 
       if (audio_guard_) audio_guard_(std::forward<F>(fn));
       else fn();
       GroovePuterState::markSceneMutated();
 
+      const std::string sceneNameAfter = creatingNewProject
+          ? mini_acid_.currentSceneName()
+          : std::string();
       const bool createdDifferentProject =
+          creatingNewProject && sceneNameAfter != sceneNameBefore;
+      const bool newProjectRolledBack =
           creatingNewProject &&
-          mini_acid_.currentSceneName() != sceneNameBefore;
+          sceneNameAfter == sceneNameBefore &&
+          !requestedNewProject.empty() &&
+          requestedNewProject != sceneNameBefore;
+
       bool lifecycleOk = true;
       if (clearCurrentProject || createdDifferentProject) {
         lifecycleOk = PatternPagingService::clearProjectPages();
+      } else if (newProjectRolledBack) {
+        // setCurrentSceneName() copies pages before the scene JSON is written.
+        // A failed write returns to the original project; remove only the
+        // abandoned target namespace without switching active project state.
+        lifecycleOk = PatternPagingService::clearProjectPages(
+            requestedNewProject);
       }
 
       // Clear must be durable immediately: rewrite the zeroed scene JSON and
