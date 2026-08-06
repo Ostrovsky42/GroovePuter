@@ -56,7 +56,9 @@ std::string encodeProjectName(const std::string& projectName) {
     encoded.reserve(normalized.size());
     static constexpr char kHex[] = "0123456789ABCDEF";
     for (unsigned char ch : normalized) {
-        if (std::isalnum(ch) || ch == '-' || ch == '_') {
+        // '_' is the escape prefix and must itself be encoded. This keeps
+        // "a b" (_20) distinct from a literal "a_20b" project name.
+        if (std::isalnum(ch) || ch == '-') {
             encoded.push_back(static_cast<char>(ch));
         } else {
             encoded.push_back('_');
@@ -103,7 +105,10 @@ bool copyFile(const std::string& sourcePath, const std::string& targetPath) {
     File source = SD.open(sourcePath.c_str(), FILE_READ);
     if (!source) return false;
 
-    removeIfExists(targetPath);
+    if (!removeIfExists(targetPath)) {
+        source.close();
+        return false;
+    }
     File target = SD.open(targetPath.c_str(), FILE_WRITE);
     if (!target) {
         source.close();
@@ -350,7 +355,6 @@ bool PatternPagingService::setProjectName(const std::string& projectName) {
         ensureDirectory();
         return false;
     }
-    if (active != previous) activePageIndexStorage() = 0;
     return true;
 }
 
