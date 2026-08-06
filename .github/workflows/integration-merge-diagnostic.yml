@@ -41,3 +41,5 @@ jobs:
           git add .integration-merge-conflicts.txt
           git commit -m "chore: record integration merge conflicts" || exit 0
           git push origin HEAD:integration/genre-song-ui
+
+# Triggered through a service PR so GitHub emits a normal push event.
