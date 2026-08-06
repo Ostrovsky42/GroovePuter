@@ -1,0 +1,485 @@
+name: Apply pattern input lock
+
+on:
+  push:
+    branches:
+      - agent/project-pattern-storage-address
+    paths:
+      - .github/workflows/apply-pattern-input-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/project-pattern-storage-address
+          fetch-depth: 0
+
+      - name: Lock pattern-editor input ownership
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_exact(text: str, old: str, new: str, expected: int = 1) -> str:
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f"replacement count {count}, expected {expected}: {old[:80]!r}")
+              return text.replace(old, new)
+
+          synth_path = Path("src/ui/pages/pattern_edit_page.cpp")
+          synth = synth_path.read_text(encoding="utf-8")
+          synth = replace_exact(
+              synth,
+              '#include "pattern_edit_page.h"\n\n#include <cctype>',
+              '#include "pattern_edit_page.h"\n\n#include <algorithm>\n#include <cctype>',
+          )
+          synth = replace_exact(
+              synth,
+              '''  pattern_callbacks.onSelect = [this](int index) {
+    if (mini_acid_.songModeEnabled()) return;
+    focusPatternRow();
+    setPatternCursor(index);
+    withAudioGuard([&]() { mini_acid_.set303PatternIndex(voice_index_, index); });
+  };''',
+              '''  pattern_callbacks.onSelect = [this](int index) {
+    if (mini_acid_.songModeEnabled()) return;
+    setPatternCursor(index);
+    withAudioGuard([&]() { mini_acid_.set303PatternIndex(voice_index_, index); });
+    focus_ = Focus::Steps;
+  };''',
+          )
+          synth = replace_exact(
+              synth,
+              '''  bank_callbacks.onSelect = [this](int index) {
+    if (mini_acid_.songModeEnabled()) return;
+    focus_ = Focus::BankRow;
+    bank_cursor_ = index;
+    setBankIndex(index);
+  };''',
+              '''  bank_callbacks.onSelect = [this](int index) {
+    if (mini_acid_.songModeEnabled()) return;
+    bank_cursor_ = index;
+    setBankIndex(index);
+    focus_ = Focus::Steps;
+  };''',
+          )
+          synth = replace_exact(
+              synth,
+              '''void PatternEditPage::movePatternCursor(int delta) {
+  if (mini_acid_.songModeEnabled() && focus_ == Focus::PatternRow) {
+    focus_ = Focus::Steps;
+  }
+  if (focus_ == Focus::BankRow) {
+    int cursor = activeBankCursor();
+    cursor = (cursor + delta) % kBankCount;
+    if (cursor < 0) cursor += kBankCount;
+    bank_cursor_ = cursor;
+    return;
+  }
+  if (focus_ == Focus::PatternRow) {
+    int cursor = activePatternCursor();
+    cursor = (cursor + delta) % Bank<SynthPattern>::kPatterns;
+    if (cursor < 0) cursor += Bank<SynthPattern>::kPatterns;
+    pattern_row_cursor_ = cursor;
+    return;
+  }
+  int idx = activePatternStep();
+  int row = idx / kPatternStepColumns;
+  int col = idx % kPatternStepColumns;
+  col = (col + delta) % kPatternStepColumns;
+  if (col < 0) col += kPatternStepColumns;
+  pattern_edit_cursor_ = row * kPatternStepColumns + col;
+}''',
+              '''void PatternEditPage::movePatternCursor(int delta) {
+  // Arrow ownership is fixed: horizontal navigation always belongs to the
+  // step grid. Pattern and bank selection use Q-I and Ctrl+1/2 only.
+  focus_ = Focus::Steps;
+  int idx = activePatternStep();
+  int row = idx / kPatternStepColumns;
+  int col = idx % kPatternStepColumns;
+  col = (col + delta) % kPatternStepColumns;
+  if (col < 0) col += kPatternStepColumns;
+  pattern_edit_cursor_ = row * kPatternStepColumns + col;
+}''',
+          )
+          synth = replace_exact(
+              synth,
+              '''void PatternEditPage::movePatternCursorVertical(int delta) {
+  if (delta == 0) return;
+  if (mini_acid_.songModeEnabled() && focus_ == Focus::PatternRow) {
+    focus_ = Focus::Steps;
+  }
+  if (focus_ == Focus::BankRow) {
+    if (delta > 0) {
+      focus_ = mini_acid_.songModeEnabled() ? Focus::Steps : Focus::PatternRow;
+    }
+    return;
+  }
+  if (focus_ == Focus::PatternRow) {
+    if (delta < 0 && !mini_acid_.songModeEnabled()) {
+      bank_cursor_ = bank_index_;
+      focus_ = Focus::BankRow;
+      return;
+    }
+    int col = activePatternCursor();
+    int targetRow = delta > 0 ? 0 : (kPatternStepRows - 1);
+    pattern_edit_cursor_ = targetRow * kPatternStepColumns + col;
+    focus_ = Focus::Steps;
+    return;
+  }
+  int idx = activePatternStep();
+  int row = idx / kPatternStepColumns;
+  int col = idx % kPatternStepColumns;
+  int newRow = row + delta;
+  if (newRow < 0) {
+    if (mini_acid_.songModeEnabled()) newRow = 0;
+    else {
+      focus_ = Focus::PatternRow;
+      setPatternCursor(col);
+      return;
+    }
+  }
+  if (newRow >= kPatternStepRows) {
+    if (mini_acid_.songModeEnabled()) newRow = kPatternStepRows - 1;
+    else {
+      focus_ = Focus::PatternRow;
+      setPatternCursor(col);
+      return;
+    }
+  }
+  pattern_edit_cursor_ = newRow * kPatternStepColumns + col;
+}''',
+              '''void PatternEditPage::movePatternCursorVertical(int delta) {
+  if (delta == 0) return;
+  // Clamp at the first/last note row. Up/Down must never transfer focus to
+  // BANK or PATTERN selectors or silently change their cursors.
+  focus_ = Focus::Steps;
+  int idx = activePatternStep();
+  int row = idx / kPatternStepColumns;
+  int col = idx % kPatternStepColumns;
+  const int newRow = std::clamp(row + delta, 0, kPatternStepRows - 1);
+  pattern_edit_cursor_ = newRow * kPatternStepColumns + col;
+}''',
+          )
+          synth = replace_exact(
+              synth,
+              '''      focusPatternRow();
+      setPatternCursor(patternIdx);''',
+              '''      setPatternCursor(patternIdx);
+      focus_ = Focus::Steps;''',
+              expected=2,
+          )
+          synth = replace_exact(
+              synth,
+              '''      if (!mini_acid_.songModeEnabled()) {
+        focus_ = Focus::BankRow;
+      }
+      UI::showToast(bankIdx == 0 ? "Bank: A" : "Bank: B", 800);''',
+              '''      focus_ = Focus::Steps;
+      UI::showToast(bankIdx == 0 ? "Bank: A" : "Bank: B", 800);''',
+          )
+          synth = replace_exact(
+              synth,
+              '''  bool key_b = (lowerKey == 'b') || (ui_event.scancode == GROOVEPUTER_B);
+''',
+              '',
+          )
+          synth = replace_exact(
+              synth,
+              '''  if (key_b && !ui_event.alt && !ui_event.ctrl) {
+    if (mini_acid_.songModeEnabled()) return true;
+    int nextBank = (activeBankCursor() + 1) % kBankCount;
+    bank_cursor_ = nextBank;
+    setBankIndex(nextBank);
+    return true;
+  }
+''',
+              '',
+          )
+          synth = synth.replace('"q..i:Ptrn B:Bank TAB:Sub"', '"Q-I:Ptrn C1/2:Bank TAB:Sub"')
+          synth = synth.replace('"q..i:Ptrn  B:Bank  TAB:SubPg"', '"Q-I:Ptrn  C1/2:Bank  TAB:Sub"')
+          synth_path.write_text(synth, encoding="utf-8")
+
+          drum_path = Path("src/ui/pages/drum_sequencer_page.cpp")
+          drum = drum_path.read_text(encoding="utf-8")
+          drum = replace_exact(drum, '    drum_pattern_focus_(true) {', '    drum_pattern_focus_(false) {')
+          drum = replace_exact(
+              drum,
+              '''  pattern_callbacks.onSelect = [this](int index) {
+    if (mini_acid_.songModeEnabled()) return;
+    drum_pattern_focus_ = true;
+    bank_focus_ = false;
+    setDrumPatternCursor(index);
+    withAudioGuard([&]() { mini_acid_.setDrumPatternIndex(index); });
+  };''',
+              '''  pattern_callbacks.onSelect = [this](int index) {
+    if (mini_acid_.songModeEnabled()) return;
+    setDrumPatternCursor(index);
+    withAudioGuard([&]() { mini_acid_.setDrumPatternIndex(index); });
+    focusGrid();
+  };''',
+          )
+          drum = replace_exact(
+              drum,
+              '''  bank_callbacks.onSelect = [this](int index) {
+    if (mini_acid_.songModeEnabled()) return;
+    bank_focus_ = true;
+    drum_pattern_focus_ = false;
+    bank_cursor_ = index;
+    setBankIndex(index);
+  };''',
+              '''  bank_callbacks.onSelect = [this](int index) {
+    if (mini_acid_.songModeEnabled()) return;
+    bank_cursor_ = index;
+    setBankIndex(index);
+    focusGrid();
+  };''',
+          )
+          drum = replace_exact(
+              drum,
+              '''void DrumSequencerMainPage::moveDrumCursor(int delta) {
+  if (mini_acid_.songModeEnabled()) {
+    drum_pattern_focus_ = false;
+    bank_focus_ = false;
+  }
+  if (bank_focus_) {
+    int cursor = activeBankCursor();
+    cursor = (cursor + delta) % kBankCount;
+    if (cursor < 0) cursor += kBankCount;
+    bank_cursor_ = cursor;
+    return;
+  }
+  if (drum_pattern_focus_) {
+    int cursor = activeDrumPatternCursor();
+    cursor = (cursor + delta) % Bank<DrumPatternSet>::kPatterns;
+    if (cursor < 0) cursor += Bank<DrumPatternSet>::kPatterns;
+    drum_pattern_cursor_ = cursor;
+    return;
+  }
+  int step = activeDrumStep();
+  step = (step + delta) % SEQ_STEPS;
+  if (step < 0) step += SEQ_STEPS;
+  drum_step_cursor_ = step;
+}''',
+              '''void DrumSequencerMainPage::moveDrumCursor(int delta) {
+  // Left/Right always owns the drum step grid. Pattern and bank selectors
+  // are changed only through Q-I and Ctrl+1/2.
+  focusGrid();
+  int step = activeDrumStep();
+  step = (step + delta) % SEQ_STEPS;
+  if (step < 0) step += SEQ_STEPS;
+  drum_step_cursor_ = step;
+}''',
+          )
+          drum = replace_exact(
+              drum,
+              '''void DrumSequencerMainPage::moveDrumCursorVertical(int delta) {
+  if (delta == 0) return;
+  if (mini_acid_.songModeEnabled()) {
+    drum_pattern_focus_ = false;
+    bank_focus_ = false;
+  }
+  if (bank_focus_) {
+    if (delta > 0) {
+      drum_pattern_focus_ = true;
+      bank_focus_ = false;
+    }
+    return;
+  }
+  if (drum_pattern_focus_) {
+    if (delta > 0) {
+      drum_pattern_focus_ = false;
+    }
+    if (delta < 0 && !mini_acid_.songModeEnabled()) {
+      bank_cursor_ = bank_index_;
+      bank_focus_ = true;
+      drum_pattern_focus_ = false;
+    }
+    return;
+  }
+
+  int voice = activeDrumVoice();
+  int newVoice = voice + delta;
+  if (newVoice < 0 || newVoice >= NUM_DRUM_VOICES) {
+    drum_pattern_focus_ = true;
+    drum_pattern_cursor_ = activeDrumStep() % Bank<DrumPatternSet>::kPatterns;
+    return;
+  }
+  drum_voice_cursor_ = newVoice;
+}''',
+              '''void DrumSequencerMainPage::moveDrumCursorVertical(int delta) {
+  if (delta == 0) return;
+  // Clamp at the first/last drum voice. Up/Down must never enter PATTERN or
+  // BANK selector rows or change their cursors.
+  focusGrid();
+  drum_voice_cursor_ = std::clamp(
+      activeDrumVoice() + delta, 0, NUM_DRUM_VOICES - 1);
+}''',
+          )
+          drum = replace_exact(
+              drum,
+              '''void DrumSequencerMainPage::focusPatternRow() {
+  setDrumPatternCursor(drum_pattern_cursor_);
+  drum_pattern_focus_ = true;
+  bank_focus_ = false;
+}''',
+              '''void DrumSequencerMainPage::focusPatternRow() {
+  // Kept for compatibility with existing call sites; keyboard focus remains
+  // owned by the grid after a direct pattern selection.
+  setDrumPatternCursor(drum_pattern_cursor_);
+  focusGrid();
+}''',
+          )
+          drum = replace_exact(
+              drum,
+              '''    case '1': return 0;
+    case '2': return 1;
+    case '3': return 2;
+    case '4': return 3;
+''',
+              '''    case '1': return 0;
+    case '2': return 1;
+''',
+          )
+          drum = replace_exact(
+              drum,
+              '''      if (!mini_acid_.songModeEnabled()) {
+        bank_focus_ = true;
+        drum_pattern_focus_ = false;
+      }
+      UI::showToast(bankIdx == 0 ? "Bank: A" : "Bank: B", 800);''',
+              '''      focusGrid();
+      UI::showToast(bankIdx == 0 ? "Bank: A" : "Bank: B", 800);''',
+          )
+          drum = replace_exact(
+              drum,
+              '''    focusPatternRow();
+    setDrumPatternCursor(patternIdx);''',
+              '''    setDrumPatternCursor(patternIdx);
+    focusGrid();''',
+          )
+          drum = replace_exact(
+              drum,
+              '''  bool key_b = (lowerKey == 'b') || (ui_event.scancode == GROOVEPUTER_B);
+''',
+              '',
+          )
+          drum = replace_exact(
+              drum,
+              '''  if (key_b && !ui_event.alt && !ui_event.ctrl) {
+    if (mini_acid_.songModeEnabled()) return true;
+    int nextBank = (activeBankCursor() + 1) % kBankCount;
+    bank_cursor_ = nextBank;
+    setBankIndex(nextBank);
+    return true;
+  }
+''',
+              '',
+          )
+          drum = drum.replace('"G:GEN Alt+G:ALL 1..8:Edit B:Bank"', '"G:GEN Q-I:PAT C1/2:BANK"')
+          drum_path.write_text(drum, encoding="utf-8")
+
+          test_path = Path("tests/test_pattern_editor_input_ownership.py")
+          test_path.write_text('''#!/usr/bin/env python3
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SYNTH = (ROOT / "src/ui/pages/pattern_edit_page.cpp").read_text(encoding="utf-8")
+DRUM = (ROOT / "src/ui/pages/drum_sequencer_page.cpp").read_text(encoding="utf-8")
+
+
+def block(text: str, start: str, end: str) -> str:
+    return text.split(start, 1)[1].split(end, 1)[0]
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise AssertionError(message)
+
+
+synth_vertical = block(
+    SYNTH,
+    "void PatternEditPage::movePatternCursorVertical(int delta) {",
+    "void PatternEditPage::startSelection()",
+)
+require("std::clamp" in synth_vertical, "synth vertical cursor must clamp to note rows")
+require("Focus::PatternRow" not in synth_vertical, "synth arrows must not enter pattern selector")
+require("Focus::BankRow" not in synth_vertical, "synth arrows must not enter bank selector")
+require("setPatternCursor" not in synth_vertical, "boundary arrows must not alter pattern slot")
+
+synth_horizontal = block(
+    SYNTH,
+    "void PatternEditPage::movePatternCursor(int delta) {",
+    "void PatternEditPage::movePatternCursorVertical(int delta)",
+)
+require("focus_ = Focus::Steps" in synth_horizontal, "synth horizontal arrows must restore step focus")
+require("activeBankCursor" not in synth_horizontal, "synth arrows must not move bank cursor")
+require("activePatternCursor" not in synth_horizontal, "synth arrows must not move pattern cursor")
+require("key_b &&" not in SYNTH, "plain B must not duplicate bank selection on synth pages")
+require("Ctrl + 1..2" in SYNTH, "synth bank selection must remain explicit")
+require("Q-I Pattern Selection" in SYNTH, "synth pattern quick-select must remain explicit")
+
+
+drum_vertical = block(
+    DRUM,
+    "void DrumSequencerMainPage::moveDrumCursorVertical(int delta) {",
+    "void DrumSequencerMainPage::startSelection()",
+)
+require("std::clamp" in drum_vertical, "drum vertical cursor must clamp to voice rows")
+require("drum_pattern_focus_ = true" not in drum_vertical, "drum arrows must not enter pattern selector")
+require("bank_focus_ = true" not in drum_vertical, "drum arrows must not enter bank selector")
+require("setDrumPatternCursor" not in drum_vertical, "drum boundary arrows must not alter pattern slot")
+
+require("drum_pattern_focus_(false)" in DRUM, "drum editor must open with grid focus")
+require("key_b &&" not in DRUM, "plain B must not duplicate bank selection on drum pages")
+require("Bank Selection (Ctrl + 1..2)" in DRUM, "drum bank selection must remain explicit")
+require("Pattern quick select (Q-I)" in DRUM, "drum pattern quick-select must remain explicit")
+''', encoding="utf-8")
+
+          workflow = Path(".github/workflows/core-regressions.yml")
+          workflow_text = workflow.read_text(encoding="utf-8")
+          needle = "          python3 tests/test_ui_status_chrome_source_regressions.py\n"
+          insertion = needle + "          python3 tests/test_pattern_editor_input_ownership.py\n"
+          if insertion not in workflow_text:
+              workflow_text = replace_exact(workflow_text, needle, insertion)
+              workflow.write_text(workflow_text, encoding="utf-8")
+
+          docs = Path("docs/tests/PROJECT_PATTERN_STORAGE_CARDPUTER_ADV.md")
+          docs_text = docs.read_text(encoding="utf-8")
+          appendix = '''
+
+## Pattern editor input ownership
+
+- Arrow keys move only inside the Synth note grid or Drum step/voice grid.
+- At the first or last row, Up/Down stays on that row.
+- `Q`–`I` selects pattern slots 1–8 without moving keyboard focus out of the grid.
+- `Ctrl+1` selects bank A and `Ctrl+2` selects bank B.
+- Plain `B` no longer changes banks.
+
+Additional acceptance:
+
+- [ ] Repeated Up on the first Synth note row never highlights BANK or PATTERN.
+- [ ] Repeated Down on the last Synth note row stays in the grid.
+- [ ] Repeated Up/Down at the Drum voice boundaries stays in the grid.
+- [ ] After `Q`–`I`, the next arrow moves a grid cursor, not a pattern number.
+- [ ] After `Ctrl+1/2`, the next arrow moves a grid cursor, not A/B.
+- [ ] Plain `B` leaves the selected bank unchanged.
+'''
+          if "## Pattern editor input ownership" not in docs_text:
+              docs.write_text(docs_text.rstrip() + appendix + "\n", encoding="utf-8")
+
+          Path(".github/workflows/apply-pattern-input-lock.yml").unlink()
+          PY
+
+      - name: Commit patched sources
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "fix: lock pattern editor arrows to step grids"
+          git push origin HEAD:agent/project-pattern-storage-address
