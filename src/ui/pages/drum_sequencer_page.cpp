@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <cstring>
 #include <utility>
 #include <vector>
 
@@ -24,6 +25,25 @@
 #include "../../debug_log.h"
 #include "../key_normalize.h"
 
+namespace UI {
+inline void drawDrumInputLockedFooter(IGfx& gfx,
+                                      const char* left,
+                                      const char* right) {
+  const char* fixed = "Q-I:PAT C1/2:BANK";
+  const char* safeLeft = left;
+  const char* safeRight = right;
+  if (left && (std::strstr(left, "B:Bank") ||
+               std::strstr(left, "1..8:Edit"))) {
+    safeLeft = fixed;
+  }
+  if (right && (std::strstr(right, "B:Bank") ||
+                std::strstr(right, "1..8:Edit"))) {
+    safeRight = fixed;
+  }
+  drawStandardFooter(gfx, safeLeft, safeRight);
+}
+}  // namespace UI
+
 class DrumSequencerMainPage;
 
 class PatternLockedDrumContainer : public Container {
@@ -38,6 +58,7 @@ class PatternLockedDrumContainer : public Container {
 // Rename only the implementations in the retained source. Local drum pages
 // inherit the routing container; the public DrumSequencerPage gets a small
 // forwarding wrapper below.
+#define drawStandardFooter drawDrumInputLockedFooter
 #define Container PatternLockedDrumContainer
 #define MultiPage DrumSequencerLegacyMultiPage
 #define handleEvent handleEventLegacy
@@ -47,6 +68,7 @@ class PatternLockedDrumContainer : public Container {
 #undef handleEvent
 #undef MultiPage
 #undef Container
+#undef drawStandardFooter
 
 bool PatternLockedDrumContainer::handleEvent(UIEvent& ui_event) {
   auto* page = dynamic_cast<DrumSequencerMainPage*>(this);

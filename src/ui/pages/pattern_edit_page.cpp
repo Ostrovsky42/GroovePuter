@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <string>
 #include <utility>
 #include <vector>
@@ -20,11 +21,28 @@
 #include "../../debug_log.h"
 #include "../key_normalize.h"
 
+namespace UI {
+inline void drawPatternInputLockedFooter(IGfx& gfx,
+                                         const char* left,
+                                         const char* right) {
+  const bool staleBinding =
+      (left && std::strstr(left, "B:Bank")) ||
+      (right && std::strstr(right, "B:Bank"));
+  if (staleBinding) {
+    drawStandardFooter(gfx, "ARROWS:GRID Q-I:PAT", "C1/2:BANK TAB:SUB");
+    return;
+  }
+  drawStandardFooter(gfx, left, right);
+}
+}  // namespace UI
+
 // Keep the established editor behavior intact under a private legacy entry
 // point. The public handler below owns only navigation and explicit selectors.
+#define drawStandardFooter drawPatternInputLockedFooter
 #define handleEvent handleEventLegacy
 #include "pattern_edit_page_legacy.inc"
 #undef handleEvent
+#undef drawStandardFooter
 
 bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) {
