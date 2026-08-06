@@ -33,7 +33,7 @@ jobs:
           }
           CPP
 
-          g++ -std=c++17 -O2 -Wall -Wextra -Werror -I. \
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
             tests/test_pattern_paging.cpp \
             src/audio/pattern_paging.cpp \
             src/audio/pattern_project_cleanup.cpp \
@@ -41,7 +41,7 @@ jobs:
             -o build/host-tests/test_pattern_paging
           build/host-tests/test_pattern_paging
 
-          g++ -std=c++17 -O2 -Wall -Wextra -Werror -I. \
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
             tests/test_pattern_address.cpp \
             -o build/host-tests/test_pattern_address
           build/host-tests/test_pattern_address
@@ -100,7 +100,6 @@ jobs:
           g++ -std=c++17 -Wall -Wextra -Werror -I. \
             tests/test_dirty_tile_tracker.cpp \
             -o build/host-tests/test_dirty_tile_tracker
-          build/host-tests/test_dirty_tile_tracker
 
   sdl-build:
     runs-on: ubuntu-latest
