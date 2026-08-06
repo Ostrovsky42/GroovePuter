@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "src/input/performance_keyboard.h"
+#include "src/midi/project_transport_timeline.h"
 
 namespace {
 class RecordingSink final : public IMusicalEventSink {
@@ -126,6 +127,41 @@ int main() {
         assert(f.sink.events[0].target == MusicalEventTarget::Drums);
         assert(f.sink.events[0].channel == 0);
         assert(f.sink.events[0].note == PerformanceKeyboard::kSeqtrakDrumNote);
+    }
+
+    {
+        Fixture f;
+        auto& timeline = GroovePuterMidi::projectTransportTimeline();
+        timeline.resetPublisher();
+        timeline.publishBlock(10u, 512u, 3.25f, 120.0f, 22050.0f, true);
+
+        f.keyboard.setArpeggiatorEnabled(true);
+        f.keyboard.setTransportPlaying(true);
+        f.sink.clear();
+        f.keyboard.service(4000000u);
+        assert(f.keyboard.keyDown('a', 100));
+        f.keyboard.service(4000000u);
+        assert(count(f.sink.events, MusicalEventType::NoteOn) == 0);
+
+        // The held note enters on the next project sixteenth, not immediately
+        // from an unrelated micros() phase.
+        timeline.publishBlock(11u, 512u, 4.01f, 120.0f, 22050.0f, true);
+        f.keyboard.service(4023000u);
+        assert(count(f.sink.events, MusicalEventType::NoteOn) == 1);
+
+        timeline.publishBlock(12u, 512u, 4.75f, 120.0f, 22050.0f, true);
+        f.keyboard.service(4060000u);
+        assert(count(f.sink.events, MusicalEventType::NoteOn) == 1);
+
+        // A delayed service call advances directly to the current project step.
+        // It must emit one live note rather than replaying steps 5, 6, 7 and 8.
+        timeline.publishBlock(13u, 512u, 8.01f, 120.0f, 22050.0f, true);
+        f.keyboard.service(4150000u);
+        assert(count(f.sink.events, MusicalEventType::NoteOn) == 2);
+
+        assert(f.keyboard.keyUp('a'));
+        f.keyboard.setTransportPlaying(false);
+        timeline.publishBlock(14u, 512u, 8.25f, 120.0f, 22050.0f, false);
     }
 
     return 0;
