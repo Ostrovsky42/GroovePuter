@@ -100,5 +100,39 @@ base.test_transport_note_mode_keys_remain_live = (
 )
 
 
+def test_smf_file_bpm_copy_is_bounded() -> None:
+    page = (
+        ROOT / "src/ui/pages/smf_player_page_structural.cpp"
+    ).read_text(encoding="utf-8")
+
+    start = page.index("const bool fileBpmShortcut")
+    end = page.index("if (event.event_type != GROOVEPUTER_KEY_DOWN", start)
+    block = page[start:end]
+
+    base.require("event.alt && !event.ctrl" in block and
+                 "(event.key == 'o' || event.key == 'O')" in block,
+                 "FILE BPM copy must have an explicit non-conflicting shortcut")
+    base.require("SmfPlayerState::Playing" in block and
+                 "SmfPlayerState::Armed" in block and
+                 "miniAcid_.isPlaying()" in block,
+                 "FILE BPM copy must reject active MIDI and GP transports")
+    base.require("state.originalBpmX10" in block and
+                 "miniAcid_.setBpm(fileBpm)" in block,
+                 "FILE BPM copy must read metadata directly and update GP BPM")
+    base.require("TransportClockSource::GroovePuterInternal" in block,
+                 "FILE BPM copy must select GP as outbound Clock owner")
+    base.require("withAudioGuard" in block,
+                 "GP BPM mutation must use the existing audio guard")
+    base.require("toggleTempoMode" not in block and
+                 "resetTempo" not in block and
+                 "togglePlayPause" not in block,
+                 "FILE BPM copy must not drive the asynchronous SMF command queue")
+    base.require("ALT+O FileBPM" in page,
+                 "MIDI Player footer must expose the FILE BPM shortcut")
+
+
+base.test_smf_file_bpm_copy_is_bounded = test_smf_file_bpm_copy_is_bounded
+
+
 if __name__ == "__main__":
     base.main()
