@@ -26,6 +26,18 @@ bool validatePattern(const AtlasGenerated::Pattern& pattern) {
   return true;
 }
 
+void fillMetadata(const AtlasGenerated::Recipe& recipe,
+                  const AtlasGenerated::Pattern& pattern,
+                  AtlasRuntimeMetadata& metadata) {
+  metadata.atlasRecipeId = recipe.atlasRecipeId;
+  metadata.displayName = recipe.displayName;
+  metadata.atlasPatternId = pattern.atlasPatternId;
+  metadata.slotId = pattern.slotId;
+  metadata.slotFunction = pattern.slotFunction;
+  metadata.bpm = recipe.bpm;
+  metadata.swingPercent = recipe.swingPercent;
+}
+
 void clearSynth(SynthPattern& pattern) {
   for (int step = 0; step < SynthPattern::kSteps; ++step) {
     pattern.steps[step] = SynthStep{};
@@ -60,6 +72,17 @@ bool hasRecipe(uint8_t runtimeRecipeId) {
 uint8_t variationCount(uint8_t runtimeRecipeId) {
   const AtlasGenerated::Recipe* recipe = findRecipe(runtimeRecipeId);
   return recipe ? recipe->patternCount : 0;
+}
+
+bool describeVariation(uint8_t runtimeRecipeId,
+                       uint8_t variationIndex,
+                       AtlasRuntimeMetadata& metadata) {
+  const AtlasGenerated::Recipe* recipe = findRecipe(runtimeRecipeId);
+  if (!recipe || variationIndex >= recipe->patternCount) return false;
+  const AtlasGenerated::Pattern& pattern = recipe->patterns[variationIndex];
+  if (!validatePattern(pattern)) return false;
+  fillMetadata(*recipe, pattern, metadata);
+  return true;
 }
 
 bool applyRecipe(uint8_t runtimeRecipeId,
@@ -103,15 +126,7 @@ bool applyRecipe(uint8_t runtimeRecipeId,
     step.probability = event.probability;
   }
 
-  if (metadata) {
-    metadata->atlasRecipeId = recipe->atlasRecipeId;
-    metadata->displayName = recipe->displayName;
-    metadata->atlasPatternId = pattern.atlasPatternId;
-    metadata->slotId = pattern.slotId;
-    metadata->slotFunction = pattern.slotFunction;
-    metadata->bpm = recipe->bpm;
-    metadata->swingPercent = recipe->swingPercent;
-  }
+  if (metadata) fillMetadata(*recipe, pattern, *metadata);
   return true;
 }
 
