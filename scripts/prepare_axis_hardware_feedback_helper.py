@@ -69,3 +69,26 @@ for old, new in replacements:
         raise SystemExit(f'axis gate anchor missing: {old}')
     test = test.replace(old, new, 1)
 test_path.write_text(test, encoding='utf-8')
+
+# A failed occupied-row attempt must not dirty Scene. The revision gate now
+# checks the success path in the implementation instead of requiring an
+# unconditional helper in the header.
+revision_path = Path('tests/test_scene_revision_source_regressions.py')
+revision = revision_path.read_text(encoding='utf-8')
+old_read = ('    generation_header = (ROOT / "src/ui/pages/generation_page.h")'
+            '.read_text(encoding="utf-8")\n')
+new_read = old_read + ('    generation_source = (ROOT / "src/ui/pages/generation_page.cpp")'
+                       '.read_text(encoding="utf-8")\n')
+if old_read not in revision:
+    raise SystemExit('generation revision source read anchor missing')
+revision = revision.replace(old_read, new_read, 1)
+old_gate = ('    require("markSceneMutated();" in generation_header,\n'
+            '            "GENERATION materialization must reach the tracker")\n')
+new_gate = ('    generation_success = generation_source.index("if (result) {")\n'
+            '    generation_failure = generation_source.index("} else {", generation_success)\n'
+            '    require("markSceneMutated();" in '
+            'generation_source[generation_success:generation_failure],\n'
+            '            "successful GENERATION materialization must reach the tracker")\n')
+if old_gate not in revision:
+    raise SystemExit('generation revision gate anchor missing')
+revision_path.write_text(revision.replace(old_gate, new_gate, 1), encoding='utf-8')
