@@ -2,9 +2,13 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+
+#include "src/midi/project_transport_timeline.h"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
+#include "src/platform/cardputer_usb_midi_service.h"
 #endif
 
 namespace {
@@ -33,11 +37,24 @@ constexpr char kUpperRow[] = "qwertyuiop";
 constexpr char kSeqtrakDrumKeys[] = "asdfghj";
 constexpr uint8_t kStrumOptionsMs[] = {0, 8, 16, 24, 36};
 constexpr uint8_t kEuclideanPulseOptions[] = {0, 3, 5, 7, 9, 11, 13, 16};
+constexpr double kTransportStepEpsilon = 1.0e-4;
+constexpr double kTransportScheduleLeadSteps = 0.5;
+constexpr uint32_t kGeneratedNoteOnStaleMicros = 12000u;
+constexpr uint32_t kMinimumTransportLeadMicros = 1000u;
 
 uint8_t clampMidiNote(int note) {
     if (note < PerformanceKeyboard::kMinNote) return PerformanceKeyboard::kMinNote;
     if (note > PerformanceKeyboard::kMaxNote) return PerformanceKeyboard::kMaxNote;
     return static_cast<uint8_t>(note);
+}
+
+uint32_t stepDurationMicrosForBpm(double bpm) {
+    if (!std::isfinite(bpm) || bpm < 30.0) bpm = 30.0;
+    if (bpm > 300.0) bpm = 300.0;
+    double microsPerStep = 15000000.0 / bpm;  // one sixteenth note
+    if (microsPerStep < 30000.0) microsPerStep = 30000.0;
+    if (microsPerStep > 500000.0) microsPerStep = 500000.0;
+    return static_cast<uint32_t>(microsPerStep + 0.5);
 }
 }  // namespace
 
@@ -194,10 +211,7 @@ void PerformanceKeyboard::setTempoBpm(float bpm) {
 }
 
 uint32_t PerformanceKeyboard::stepDurationMicros() const {
-    float microsPerStep = 15000000.0f / tempoBpm_;  // one sixteenth note
-    if (microsPerStep < 30000.0f) microsPerStep = 30000.0f;
-    if (microsPerStep > 500000.0f) microsPerStep = 500000.0f;
-    return static_cast<uint32_t>(microsPerStep + 0.5f);
+    return stepDurationMicrosForBpm(tempoBpm_);
 }
 
 bool PerformanceKeyboard::scheduleGenerated(MusicalEventType type,
@@ -247,7 +261,16 @@ void PerformanceKeyboard::processScheduled(uint32_t nowMicros) {
     for (ScheduledEvent& slot : scheduled_) {
         if (!slot.active || !due(nowMicros, slot.dueMicros)) continue;
         const MusicalEvent event = slot.event;
+        const uint32_t lateness = nowMicros - slot.dueMicros;
         slot = ScheduledEvent{};
+
+        // A delayed UI/storage iteration must not dump obsolete NoteOn events
+        // into the bounded live queue. NoteOff remains cleanup-critical.
+        if (event.type == MusicalEventType::NoteOn &&
+            lateness > kGeneratedNoteOnStaleMicros) {
+            continue;
+        }
+
         router_.route(event);
         if (event.type == MusicalEventType::NoteOn) {
             rememberGeneratedOn(event.note);
@@ -291,6 +314,13 @@ bool PerformanceKeyboard::euclideanStepActive(uint8_t step) const {
 void PerformanceKeyboard::resetStepClock() {
     stepClockRunning_ = false;
     nextStepMicros_ = 0;
+    transportStepClockRunning_ = false;
+    transportStepEpoch_ = 0;
+    transportStepOrdinal_ = 0;
+    transportStepScheduled_ = false;
+    transportBlockAnchorValid_ = false;
+    transportAnchorBlockSequence_ = 0;
+    transportAnchorMicros_ = 0;
     euclideanStep_ = 0;
     arpIndex_ = 0;
     arpAscending_ = true;
@@ -468,6 +498,131 @@ void PerformanceKeyboard::emitPerformanceStep(uint32_t stepStartMicros,
     }
 }
 
+bool PerformanceKeyboard::serviceTransportStepClock(uint32_t nowMicros) {
+    GroovePuterMidi::ProjectTransportBlockSnapshot snapshot{};
+    if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(snapshot) ||
+        !snapshot.valid || !snapshot.playing || snapshot.bpmQ16 == 0 ||
+        snapshot.blockFrames == 0 || snapshot.sampleRate == 0) {
+        transportStepClockRunning_ = false;
+        transportBlockAnchorValid_ = false;
+        return false;
+    }
+
+    const double absoluteSteps = snapshot.absoluteSteps();
+    if (!std::isfinite(absoluteSteps) || absoluteSteps < 0.0) {
+        transportStepClockRunning_ = false;
+        transportBlockAnchorValid_ = false;
+        return false;
+    }
+
+    const uint32_t stepMicros = stepDurationMicrosForBpm(snapshot.bpm());
+    const uint32_t blockMicros = static_cast<uint32_t>(
+        (1000000ULL * static_cast<uint64_t>(snapshot.blockFrames)) /
+        static_cast<uint64_t>(snapshot.sampleRate));
+    if (blockMicros == 0) return false;
+
+    if (!transportStepClockRunning_ ||
+        transportStepEpoch_ != snapshot.transportEpoch) {
+        transportStepClockRunning_ = true;
+        transportStepEpoch_ = snapshot.transportEpoch;
+        transportStepOrdinal_ = 0;
+        transportStepScheduled_ = false;
+        transportBlockAnchorValid_ = false;
+        arpIndex_ = 0;
+        arpAscending_ = true;
+    }
+
+#if defined(ARDUINO)
+    // Use the exact playback anchor published to MidiDispatchTask. This puts
+    // generated NoteOn/NoteOff deadlines in the same wall-clock domain as
+    // outbound MIDI Clock, Pattern and SMF events instead of estimating the
+    // block start from the time the UI loop happened to observe the snapshot.
+    uint32_t anchorBlockSequence = 0;
+    uint32_t anchorPlaybackMicros = 0;
+    if (snapshotCardputerUsbMidiBlockAnchor(anchorBlockSequence,
+                                             anchorPlaybackMicros)) {
+        const int32_t blockDelta = static_cast<int32_t>(
+            snapshot.blockSequence - anchorBlockSequence);
+        transportAnchorMicros_ = static_cast<uint32_t>(
+            static_cast<int64_t>(anchorPlaybackMicros) +
+            static_cast<int64_t>(blockDelta) *
+                static_cast<int64_t>(blockMicros));
+        transportAnchorBlockSequence_ = snapshot.blockSequence;
+        transportBlockAnchorValid_ = true;
+    }
+#endif
+
+    // Deterministic host fallback and hardware startup fallback before the
+    // first dispatcher anchor is published.
+    if (!transportBlockAnchorValid_) {
+        transportBlockAnchorValid_ = true;
+        transportAnchorBlockSequence_ = snapshot.blockSequence;
+        transportAnchorMicros_ = nowMicros;
+    } else if (transportAnchorBlockSequence_ != snapshot.blockSequence) {
+        const int32_t blockDelta = static_cast<int32_t>(
+            snapshot.blockSequence - transportAnchorBlockSequence_);
+        if (blockDelta <= 0) {
+            transportAnchorMicros_ = nowMicros;
+        } else {
+            const uint32_t predicted = transportAnchorMicros_ +
+                static_cast<uint32_t>(blockDelta) * blockMicros;
+            const int32_t error = static_cast<int32_t>(nowMicros - predicted);
+            const int32_t maximumError = static_cast<int32_t>(blockMicros * 2u);
+            transportAnchorMicros_ =
+                error < -static_cast<int32_t>(blockMicros) ||
+                error > maximumError
+                    ? nowMicros
+                    : predicted;
+        }
+        transportAnchorBlockSequence_ = snapshot.blockSequence;
+    }
+
+    const uint64_t currentOrdinal = static_cast<uint64_t>(
+        std::floor(absoluteSteps + kTransportStepEpsilon));
+    const double phaseIntoStep = absoluteSteps -
+        static_cast<double>(currentOrdinal);
+
+    if (transportStepScheduled_) {
+        if (transportStepOrdinal_ > currentOrdinal) {
+            return true;
+        }
+        // Prepare the following step only after at least half of the current
+        // step has drained. This bounds dense overlap without risking a late
+        // next-step publication during normal 5 ms loop cadence.
+        if (transportStepOrdinal_ == currentOrdinal &&
+            phaseIntoStep < kTransportScheduleLeadSteps) {
+            return true;
+        }
+    }
+
+    const uint64_t nextOrdinal = currentOrdinal + 1u;
+    const double stepsUntilBoundary =
+        static_cast<double>(nextOrdinal) - absoluteSteps;
+    uint32_t dueMicros = transportAnchorMicros_ +
+        static_cast<uint32_t>(std::llround(
+            stepsUntilBoundary * static_cast<double>(stepMicros)));
+    const int32_t leadMicros = static_cast<int32_t>(dueMicros - nowMicros);
+    if (leadMicros < -static_cast<int32_t>(kGeneratedNoteOnStaleMicros)) {
+        // The boundary is already musically obsolete. Advance ownership without
+        // publishing a delayed hit; the next coherent half-step service will
+        // prepare the following sixteenth.
+        transportStepOrdinal_ = nextOrdinal;
+        transportStepScheduled_ = true;
+        return true;
+    }
+    const uint32_t minimumDue = nowMicros + kMinimumTransportLeadMicros;
+    if (leadMicros < static_cast<int32_t>(kMinimumTransportLeadMicros)) {
+        dueMicros = minimumDue;
+    }
+
+    euclideanStep_ = static_cast<uint8_t>(
+        nextOrdinal % static_cast<uint64_t>(kEuclideanSteps));
+    emitPerformanceStep(dueMicros, stepMicros);
+    transportStepOrdinal_ = nextOrdinal;
+    transportStepScheduled_ = true;
+    return true;
+}
+
 void PerformanceKeyboard::service(uint32_t nowMicros) {
     lastServiceMicros_ = nowMicros;
     processScheduled(nowMicros);
@@ -477,6 +632,18 @@ void PerformanceKeyboard::service(uint32_t nowMicros) {
         return;
     }
 
+    if (transportPlaying_) {
+        // The next transport sixteenth is prepared ahead of its boundary from
+        // the audio timeline. If the timeline is unavailable, freeze instead
+        // of falling back to an independent free-running clock.
+        (void)serviceTransportStepClock(nowMicros);
+        processScheduled(nowMicros);
+        return;
+    }
+
+    transportStepClockRunning_ = false;
+    transportBlockAnchorValid_ = false;
+    transportStepScheduled_ = false;
     const uint32_t stepMicros = stepDurationMicros();
     if (!stepClockRunning_) {
         stepClockRunning_ = true;
@@ -523,7 +690,7 @@ bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
     physicalKey = normalizeKey(physicalKey);
     if (!isPerformanceKey(physicalKey)) return false;
     if (!noteModeEnabled_) return false;
-    if (!enabled_ || transportPlaying_) return true;
+    if (!enabled_) return true;
     if (findHeld(physicalKey) >= 0) return true;
     if (heldCount_ >= kMaxHeldNotes) {
         panic();
@@ -684,8 +851,14 @@ void PerformanceKeyboard::setTransportPlaying(bool playing) {
     // low-cost control-rate heartbeat for arp/ratchet/Euclidean scheduling.
     serviceHardwareClock();
     if (transportPlaying_ == playing) return;
-    if (playing) panic();
     transportPlaying_ = playing;
+
+    // Preserve held physical keys and direct live notes. Only step-generated
+    // output changes clock domains and must be cleaned up before re-anchoring.
+    if (stepEngineEnabled()) {
+        stopGeneratedOutput();
+        resetStepClock();
+    }
 }
 
 void PerformanceKeyboard::setTarget(MusicalEventTarget target) {
