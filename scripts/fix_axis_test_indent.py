@@ -9,6 +9,12 @@ text = text.replace(
     '',
     1,
 )
+text = text.replace(
+    'require(GENERATION, "static constexpr uint8_t kMaterializeBars = 1;",\n'
+    '        "GENERATION must materialize one bar without owning phrase length")\n',
+    '',
+    1,
+)
 pattern = re.compile(
     r'length_owner_tokens = .*?(?=# TEXTURE: sound surface and seven read-only macro projection only\.)',
     re.DOTALL,
