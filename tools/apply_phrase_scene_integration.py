@@ -9,6 +9,13 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
+def replace_count(text: str, old: str, new: str, expected: int, label: str) -> str:
+    count = text.count(old)
+    if count != expected:
+        raise RuntimeError(f"{label}: expected {expected} anchors, found {count}")
+    return text.replace(old, new)
+
+
 root = Path(__file__).resolve().parents[1]
 h_path = root / "scenes.h"
 cpp_path = root / "scenes.cpp"
@@ -64,7 +71,7 @@ cpp = replace_once(
     "clear Scene PhraseBank",
 )
 
-cpp = replace_once(
+cpp = replace_count(
     cpp,
     '''  currentPageIndex_ = 0;
   scene_->grooveFlavor = 0;
@@ -75,7 +82,8 @@ cpp = replace_once(
   scene_->activeSongSlot = 0;
   PhraseCore::reset(scene_->phraseBank);
   for (int i = 0; i < 2; ++i) {''',
-    "default Scene PhraseBank",
+    2,
+    "Scene reset PhraseBank",
 )
 
 cpp = replace_once(
