@@ -13,8 +13,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # registration inside the existing trusted host-test workflow. The resulting
 # files are archived in the log so they can be committed through Git Data API.
 registration = ROOT / "tools/apply_phrase_ui_registration.py"
+regression_updates = ROOT / "tools/apply_phrase_ui_regression_updates.py"
 if registration.exists():
     subprocess.run(["python3", str(registration)], cwd=ROOT, check=True)
+if regression_updates.exists():
+    subprocess.run(["python3", str(regression_updates)], cwd=ROOT, check=True)
 
 help_content = (ROOT / "src/ui/global_help_content.h").read_text()
 overlay = (ROOT / "src/ui/global_help_overlay.h").read_text()
@@ -124,6 +127,7 @@ if registration.exists():
         "tests/test_ui_session_state.cpp",
         "tests/test_global_help_content.cpp",
         "tests/test_performance_source_regressions.py",
+        "tests/test_theme_selection_source_regressions.py",
     )
     payload = io.BytesIO()
     with tarfile.open(fileobj=payload, mode="w:gz") as archive:
