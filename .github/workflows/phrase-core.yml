@@ -32,6 +32,7 @@ jobs:
             -Wall \
             -Wextra \
             -Werror \
+            -Wno-c++20-extensions \
             -I. \
             tests/test_phrase_core.cpp \
             -o build/host-tests/test_phrase_core
