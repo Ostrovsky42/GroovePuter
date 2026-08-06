@@ -4,6 +4,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCENES_H = (ROOT / "scenes.h").read_text()
 SCENES_CPP = (ROOT / "scenes.cpp").read_text()
+ROUND_TRIP = (ROOT / "tests/test_scene_roundtrip.cpp").read_text()
+WORKFLOW = (ROOT / ".github/workflows/phrase-core.yml").read_text()
 
 
 def require(text: str, needle: str, label: str) -> None:
@@ -88,6 +90,47 @@ require(
     SCENES_CPP,
     "PhraseCore::sanitize(target_.phraseBank);",
     "evented decode sanitize",
+)
+
+require(
+    ROUND_TRIP,
+    '#include "../src/phrase/phrase_core.h"',
+    "Scene round-trip Phrase API include",
+)
+require(
+    ROUND_TRIP,
+    "PhraseCore::captureSongRegion(",
+    "Scene round-trip Phrase capture",
+)
+require(
+    ROUND_TRIP,
+    "PhraseCore::deriveReferenceView(",
+    "Scene round-trip Phrase derivation",
+)
+require(
+    ROUND_TRIP,
+    'json.find("\\\"phraseCore\\\":[")',
+    "serialized Phrase field assertion",
+)
+require(
+    ROUND_TRIP,
+    "PhraseCore::summarize(scene.phraseBank, PhraseCore::SlotId::A)",
+    "loaded Phrase A verification",
+)
+require(
+    ROUND_TRIP,
+    "scene.phraseBank.nextPhraseId == 3",
+    "loaded Phrase ID allocator verification",
+)
+require(
+    WORKFLOW,
+    "tests/test_scene_roundtrip.cpp",
+    "focused workflow Scene round-trip build",
+)
+require(
+    WORKFLOW,
+    "build/host-tests/test_scene_roundtrip",
+    "focused workflow Scene round-trip execution",
 )
 
 if "phraseCore" in SCENES_CPP and "std::vector" in SCENES_CPP:
