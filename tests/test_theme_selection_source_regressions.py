@@ -103,10 +103,16 @@ def test_workflow_local_page_navigation() -> None:
     require("kPattern, kSynthA, kSynthB, kDrums" in workflow and
             "kSynthAParameters, kSynthBParameters" in workflow,
             "HUB workflow must expose overview, instruments and synth controls")
-    require("case WorkflowMode::Song: return kArrange;" in workflow,
-            "SONG workflow must resolve to the song editor")
-    require("static constexpr int kFeelPages[] = {\n        kProject," in workflow and
-            "case WorkflowMode::Settings: return 1;" in workflow,
+    require("static constexpr int kSongPages[]" in workflow and
+            "kArrange, kPhrase" in workflow and
+            "case WorkflowMode::Song: return 2;" in workflow and
+            "case WorkflowMode::Song: return kSongPages[index];" in workflow and
+            "return pageAt(mode, 0);" in workflow,
+            "SONG must open the arranger and retain Phrase as its second page")
+    require("static constexpr int kSettingsPages[]" in workflow and
+            "kProject" in workflow and
+            "case WorkflowMode::Settings: return 1;" in workflow and
+            "case WorkflowMode::Settings: return kSettingsPages[index];" in workflow,
             "SETTINGS must contain only project/setup after FEEL moved to GENERATE")
 
     require("#include <M5Cardputer.h>" in workflow and
