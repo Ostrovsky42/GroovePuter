@@ -8,6 +8,13 @@
 #include "src/audio/pattern_paging.h"
 #include "src/state/scene_revision.h"
 
+// withAudioGuard() is a header-defined template, so the toast declaration
+// must be visible before the template is parsed without pulling ui_common.h
+// and its complete rendering dependency graph into every ProjectPage user.
+namespace UI {
+void showToast(const char* msg, int durationMs);
+}
+
 class ProjectPage : public IPage, public IMultiHelpFramesProvider {
  public:
   ProjectPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
