@@ -241,27 +241,40 @@ bool DrumAutomationPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
   if (UIInput::isTab(ui_event)) return false;
 
+  static UIInput::HoldAccelerator holdAccelerator;
+  const auto isContinuousRow = [&]() {
+    return row_ == Row::NodeValue ||
+           row_ == Row::GrooveSwing ||
+           row_ == Row::GrooveHumanize;
+  };
+
   int nav = UIInput::navCode(ui_event);
   if (nav == GROOVEPUTER_UP) {
+    holdAccelerator.reset();
     moveRow(-1);
     return true;
   }
   if (nav == GROOVEPUTER_DOWN) {
+    holdAccelerator.reset();
     moveRow(1);
     return true;
   }
-  if (nav == GROOVEPUTER_LEFT) {
-    adjustRowValue(-1);
-    return true;
-  }
-  if (nav == GROOVEPUTER_RIGHT) {
-    adjustRowValue(1);
+  if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
+    const int direction = nav == GROOVEPUTER_RIGHT ? 1 : -1;
+    int delta = direction;
+    if (isContinuousRow()) {
+      delta *= holdAccelerator.multiplier(direction);
+    } else {
+      holdAccelerator.reset();
+    }
+    adjustRowValue(delta);
     return true;
   }
 
   char key = ui_event.key;
   if (!key) return false;
 
+  holdAccelerator.reset();
   if (key == '\n' || key == '\r') {
     if (row_ == Row::NodeIndex) {
       addNode();

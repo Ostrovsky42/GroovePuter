@@ -235,17 +235,22 @@ void GenrePage::draw(IGfx& gfx) {
 bool GenrePage::handleEvent(UIEvent& event) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
+  static UIInput::HoldAccelerator morphAccelerator;
+
   if (UIInput::isTab(event)) {
+    morphAccelerator.reset();
     moveFocus(1);
     return true;
   }
 
   const int nav = UIInput::navCode(event);
   if (nav == GROOVEPUTER_UP) {
+    morphAccelerator.reset();
     moveFocus(-1);
     return true;
   }
   if (nav == GROOVEPUTER_DOWN) {
+    morphAccelerator.reset();
     moveFocus(1);
     return true;
   }
@@ -253,21 +258,30 @@ bool GenrePage::handleEvent(UIEvent& event) {
     const int delta = nav == GROOVEPUTER_RIGHT ? 1 : -1;
     switch (focus_) {
       case FocusRow::Genre:
+        morphAccelerator.reset();
         shiftGenre(delta);
         return true;
       case FocusRow::Variant:
         if (event.alt) {
+          morphAccelerator.reset();
           adjustMorph(delta * 16);
         } else if (delta < 0) {
+          morphAccelerator.reset();
           cycleRecipeSelection(-1);
         } else {
+          morphAccelerator.reset();
           cycleRecipeSelection(1);
         }
         return true;
-      case FocusRow::Morph:
-        adjustMorph(delta * (event.shift || event.ctrl ? 32 : 8));
+      case FocusRow::Morph: {
+        const bool modified = event.shift || event.ctrl || event.alt || event.meta;
+        const int multiplier = modified ? 1 : morphAccelerator.multiplier(delta);
+        if (modified) morphAccelerator.reset();
+        adjustMorph(delta * (event.shift || event.ctrl ? 32 : 8) * multiplier);
         return true;
+      }
       case FocusRow::Apply:
+        morphAccelerator.reset();
         cycleApplyMode(delta);
         return true;
     }
@@ -279,17 +293,20 @@ bool GenrePage::handleEvent(UIEvent& event) {
   // ENTER: apply the current genre/texture/recipe selection.
   // Texture is intentionally not changed by the four-axis GENRE page.
   if (event.key == '\n' || event.key == '\r') {
+    morphAccelerator.reset();
     applyCurrent();
     return true;
   }
 
   // SPACE: toggle apply mode when focused.
   if (event.key == ' ' && focus_ == FocusRow::Apply) {
+    morphAccelerator.reset();
     cycleApplyMode(1);
     return true;
   }
 
   if (key == 'm' && !event.ctrl && !event.alt && !event.meta) {
+    morphAccelerator.reset();
     cycleApplyMode(1);
     return true;
   }
