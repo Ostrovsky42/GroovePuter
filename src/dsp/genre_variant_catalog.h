@@ -88,16 +88,35 @@ inline bool isAllowed(GenerativeMode genre, GenreRecipeId recipe) {
 
 inline const char* genreDisplayName(GenerativeMode genre) {
   switch (genre) {
+    case GenerativeMode::Acid: return "Acid";
     case GenerativeMode::Outrun: return "Synthwave";
+    case GenerativeMode::Darksynth: return "Techno";
+    case GenerativeMode::Electro: return "Electro";
+    case GenerativeMode::Rave: return "Rave";
     case GenerativeMode::Reggae: return "Dub / Reggae";
+    case GenerativeMode::TripHop: return "TripHop";
     case GenerativeMode::Broken: return "Breaks";
-    default: return GenreManager::generativeModeName(genre);
+    case GenerativeMode::Chip: return "Chip";
   }
+  return "Synthwave";
 }
 
 inline const char* recipeDisplayName(GenreRecipeId recipe) {
-  if (recipe == 10) return "Deep Stab";
-  return GenreManager::recipeName(recipe);
+  switch (recipe) {
+    case 0: return "BASE";
+    case 1: return "UK Garage";
+    case 2: return "Drum&Bass";
+    case 3: return "Footwork";
+    case 4: return "Psytrance";
+    case 5: return "Dub Techno";
+    case 6: return "Chicago Jack";
+    case 7: return "Rolling Acid";
+    case 8: return "Classic 2-Step";
+    case 9: return "Dark Skippy";
+    case 10: return "Deep Stab";
+    case 11: return "Minimal Space";
+    default: return "BASE";
+  }
 }
 
 inline bool sparseLeadProfile(GenerativeMode genre, GenreRecipeId recipe) {
