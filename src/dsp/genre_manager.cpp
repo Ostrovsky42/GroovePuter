@@ -394,7 +394,7 @@ void GenreManager::applyTexture(MiniAcid& engine) {
     const int neutralTone = 85;
     macro.tone = static_cast<uint8_t>(neutralTone + static_cast<int>((static_cast<int>(params.tapeMacro.tone) - neutralTone) * amount));
     tape.macro = macro;
-    const bool tapeOn = textureMode_ != TextureMode::Clean && amount > 0.01f;
+    const bool tapeOn = textureMode() != TextureMode::Clean && amount > 0.01f;
     tape.fxEnabled = tapeOn;
     engine.sceneManager().currentScene().feel.tapeEnabled = tapeOn;
     
