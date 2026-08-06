@@ -1,203 +1,262 @@
-# MiniAcid Key Map (Cardputer)
+# GroovePuter Key Map — Cardputer ADV
 
-Canonical key map for the currently active firmware version.
+This document mirrors the current runtime key routing. `Alt+H` is the on-device,
+page-aware reference; `README.md` screenshots show the same primary footer hints.
 
-## Стандартизация (Base Rules)
-| Класс клавиш | Сочетание | Описание | Приоритет |
-| --- | --- | --- | --- |
-| **Performance notes** | `QWERTYUIOP` + `ASDFGHJKL` | Scale-aware Synth A keyboard while NOTE mode is ON | После локальной команды страницы, до legacy fallback |
-| **Паттерны** | `Q..I` | Выбор паттерна 1..8 вне активного performance-note context | Локальный |
-| **Банки** | `Ctrl + 1..2` | Переключение банков A/B (для тек. трека/страницы) | Локальный |
-| **Страницы** | `Alt / Fn + 0..9` | Переключение страниц (Song, Pattern, Drum и др.) | **Глобальный** |
-| **Мьюты** | `1..9`, `0` | Звук дорожек 1..9 (Rim), 0 (Clap). Игнорируют CapsLock. | **Глобальный fallback** |
+## Input priority
 
-## Global Shortcuts
+1. An open help or workspace overlay owns input.
+2. Hard-global shortcuts are handled before the page: `Fn+M`, workflow navigation,
+   `Alt+H`, `Alt+P`, `Alt+W`, `Alt+X`, `Alt+M`, theme switching and direct page jumps.
+3. The active page gets first refusal, including `Space`, NOTE mode, Song commands and
+   MIDI Player controls.
+4. Supported pages may route unmodified note keys to `PerformanceKeyboard`.
+5. Remaining keys fall through to page navigation and global track mutes.
+
+## Global shortcuts
+
 | Key | Action |
-| --- | --- |
-| `Fn+Tab` | Cycle `PERFORM → PATTERN → ARRANGE` |
-| `Fn+Shift+Tab` | Cycle workflow backward |
-| `Space` | Transport Play / Stop |
-| `Alt/Fn + 1..0` | Direct page jump (Global) |
-| `[` / `]` | Previous / Next page outside PERFORM; scale select on PERFORM |
-| `Alt+M` | Toggle Song mode |
+|---|---|
+| `Alt+H` | Toggle page-aware help |
+| `Up/Down` in help | Scroll one line |
+| `Left/Right` in help | Jump to top/end |
+| `Fn+M` | Workspace launcher |
+| `Fn+Tab` / `Fn+Shift+Tab` | Next / previous workflow |
+| `[` / `]` | Previous / next page inside the workflow |
+| `Fn+[` / `Fn+]` | Previous / next workflow |
+| `Alt+[` / `Alt+]` | Previous / next detailed page |
+| `Alt/Fn+1..0` | Direct page jump |
+| `Space` | Active transport, unless the page consumes it |
+| `Alt+P` | MIDI Player |
+| `Alt+V` | MODE / FLAVOR (Groove Lab) |
 | `Alt+W` | Waveform overlay |
-| `Alt+V` | Jump to Groove Lab |
-| `Alt+\` | Cycle visual style (`CARBON`/`CYBER`/`AMBER`) |
-| `Ctrl+H` | Global help overlay (Highest Priority) |
-| `1..9`, `0` | Track mutes when the active page does not consume the digit |
-| `Esc` | Back / Dismiss |
-| `Ctrl+Alt+Bksp` | Project reset (wipe) |
+| `Alt+X` | LiveMix ON/OFF |
+| `Alt+M` | Song mode ON/OFF |
+| `Alt+\` | Toggle `CARBON ↔ CYBER` |
+| `1..9`, `0` | Track-mute fallback if the page does not consume the digit |
+| `Esc`, `Backspace`, `` ` `` | Back, dismiss, or previous page |
+| `Ctrl+Alt+Backspace` | Panic active notes and reset the project |
 
-## Постоянный status chrome
-
-Верхняя строка всегда использует один порядок приоритетов:
+Workflows cycle in this order:
 
 ```text
-CONTEXT SOURCE STATE BAR CLOCK OUTPUT [LM] [*]
-GEN PAT PLAY B3/4 INT BOTH
-PLYR SMF ARM B8/128 EXT MIDI
+PERFORM → GENERATE → HUB → SONG → SETTINGS
 ```
 
-| Поле | Значения |
-| --- | --- |
-| `CONTEXT` | краткое имя текущей страницы: `KEY`, `GEN`, `S-A`, `SONG`, `PROJ` и т. п. |
-| `SOURCE` | `PAT`, `SONG`, `SMF` |
-| `STATE` | `STOP`, `PLAY`, `PAUS`, `ARM`, `LOAD`, `ERR` |
-| `BAR` | текущий такт и активная длина, например `B3/4` |
-| `CLOCK` | `INT` — внутренний clock, `EXT` — SEQTRAK master, `FILE` — tempo map MIDI-файла |
-| `OUTPUT` | `BOTH` — Pattern/Song идут во внутренний синтез и USB-MIDI sink; `MIDI` — SMF MIDI output |
-| `LM` | LiveMix lock включён |
-| `*` | persistent state отличается от последнего успешного Save/Load |
+## MIDI KEYBOARD / PERFORM
 
-Status chrome не меняет обработку клавиш. Dirty marker реализован задачей Wave 1 A2. Точные состояния
-`NOTE/CMD/LOCAL/LOCK` добавляются отдельной задачей B.
-
-## Priority & Interception Logic
-1. **Global Help Overlay**: intercepts input while visible.
-2. **Hard-Global Shortcuts**: `Fn+Tab`, transport, `Alt/Fn + 0..9`, `Ctrl+H`, `Alt+W`.
-3. **Local Page Handler**: the active page gets first refusal.
-4. **Performance NOTE Layer**: on supported pages, an unmodified performance key is routed to `PerformanceKeyboard`.
-   - NOTE mode ON + transport stopped: emit live note events.
-   - NOTE mode ON + transport running: consume the key without emitting `NoteOn`.
-   - NOTE mode OFF: return the key to legacy fallback commands.
-5. **Legacy Global Fallback**: page navigation, help, track mutes, randomize/BPM shortcuts.
-
-This order prevents `I/O/P/K/L` from reaching randomize/BPM commands while NOTE mode is active, even when transport temporarily owns Synth A.
-
----
-
-## PERFORM Page
-
-### Workflow and performance controls
 | Key | Action |
-| --- | --- |
-| `1` | Open PERFORM |
-| `2` | Open PATTERN |
-| `3` | Open ARRANGE |
-| `N` | Toggle NOTE mode ON/OFF |
-| `[` / `]` | Previous / next scale |
+|---|---|
+| `QWERTYUIOP` | Upper scale-aware manual |
+| `ASDFGHJKL` | Lower manual, one octave below |
+| `N` | NOTE mode ON/OFF |
+| `\` | Cycle internal/USB/DX/drum target |
+| `,` / `.` | Previous / next scale |
 | `-` / `=` | Octave down / up |
-| `X` | Release the live-owned Synth A note |
-| `Space` | Transport Play / Stop |
+| `X` | Panic the live-owned target |
+| `Tab` | Open PERFORMANCE TOOLS |
+| `1..8` in tools | ARPEGGIATOR, DIRECTION, CHORD, MEMORY, STRUM, RATCHET, EUCLIDEAN, ROTATE |
+| `Shift+1..8` | Cycle the adjustable tool backward |
+| `Esc` / `` ` `` | Close the tools layer |
 
-### NOTE MODE: ON
-| Keys | Action |
-| --- | --- |
-| `ASDFGHJKL` | Lower scale-aware manual, starting at C2 by default |
-| `QWERTYUIOP` | Upper manual, exactly one octave above the lower row |
+When Pattern/Song transport owns Synth A, note keys remain consumed and do not emit
+competing `NoteOn` events.
 
-Synth A is monophonic and uses last-note priority. Starting transport clears held performance notes and gives PatternPlayer exclusive ownership. Performance keys remain consumed while transport runs, so legacy pattern/BPM commands cannot fire accidentally.
+## GENRE
 
-### NOTE MODE: OFF
-| Key | Legacy action |
-| --- | --- |
-| `I` | Randomize Synth A pattern |
-| `O` | Randomize Synth B pattern |
-| `P` | Randomize drums |
-| `K` / `L` | BPM down / up |
-| `N` | Return to NOTE mode |
-
-NOTE mode, scale, root, and octave are runtime-only in this stage and are not written to scene JSON.
-
-## Song Page
 | Key | Action |
-| --- | --- |
-| `Arrows` | Navigate grid |
+|---|---|
+| `Tab` | Cycle Genre / Texture / Recipe lane |
+| `Arrows` | Move or adjust the active lane |
+| `Enter` | Apply the selected recipe |
+| `Space` / `M` | Cycle apply mode |
+| `Fn+Up/Down` | Morph recipe |
+| `C` | Curated / Advanced catalog |
+| `G` | Acid / Minimal groove mode |
+| `Ctrl+1..2` | Synth A bank A/B |
+| `Q..I` | Synth A pattern 1..8 |
+
+## SYNTH A / SYNTH B PATTERN
+
+| Key | Action |
+|---|---|
+| `Tab` | Pattern / automation subpage |
+| `Q..I` | Select pattern 1..8 |
+| `B` | Toggle bank A/B |
+| `Arrows` | Move cursor |
 | `Shift/Ctrl+Arrows` | Extend selection |
-| `Q..I` | Assign pattern `1..8` (to cell or selection) |
-| **`Ctrl+1..8`** | **Switch edit page `1..8`** |
-| `B` | Flip bank `A/B` in cursor/selection |
-| `Alt+B` | Toggle edit slot `A/B` |
-| `Ctrl+B` | Toggle play slot `A/B` |
-| `Alt+X` | LiveMix ON/OFF |
-| `X` | Toggle split compare |
-| `V` | Lane focus cycle `ALL -> AB -> DR+VO` |
-| `Ctrl+W/S` | Jump by `8` rows |
-| `Ctrl+Alt+W/S` | Jump by `32` rows |
-| `Alt+Q/E/R/T` | Save row marker 1..4 |
-| `Ctrl+Alt+Q/E/R/T` | Jump to marker 1..4 |
-| `Ctrl+R` | Reverse song direction |
-| `Ctrl+M` | Merge slots |
-| `Ctrl+N` | Alternate slots |
-| `Ctrl+L` | Loop mode |
-| `Bksp` | Clear cell / selected area |
-| `G` | Generate cell |
-| `G` double-tap | Generate row |
-| `Alt+G` | Generate selected area |
-| `Alt+Bksp` | Clear full arrangement |
-
-## Project Page & MIDI Import
-| Key | Action |
-| --- | --- |
-| `Arrows` | Navigate list / Adjust params |
-| `Enter` | **Open folder** / Select scene or file |
-| `Backspace` | **Go up one level** (in MIDI folders) / Close dialog |
-| `Tab` | Open Advanced Import Settings (in MIDI dialog) |
-| `X` | Delete selected scene or MIDI file |
-| `G` | Randomize scene name (in Save dialog) |
-
-## Pattern Edit (303)
-| Key | Action |
-| --- | --- |
-| `Arrows` | Navigate steps |
-| `Shift/Ctrl+Arrows` | Extend selection |
-| `Q..I` | **Select pattern 1..8** |
-| **`Ctrl+1..2`** | **Switch bank A/B** |
-| `Bksp` / `Del` | **REST (Clear step)** / Clear selection |
 | `A/Z` | Note +/- |
 | `S/X` | Octave +/- |
 | `Alt+Left/Right` | Rotate pattern |
-| `Alt/Ctrl+A` | Accent toggle |
-| `Alt/Ctrl+S` | Slide toggle |
-| `Ctrl+C / Ctrl+V` | Copy / Paste |
-| `Alt+Bksp` | Clear whole pattern |
+| `Alt/Ctrl+A` | Accent |
+| `Alt/Ctrl+S` | Slide |
+| `F` | Cycle step FX |
+| `R`, `Backspace`, `Delete` | Clear step / selection |
+| `Alt+Backspace` | Clear whole pattern |
 | `G` | Randomize pattern |
-| `Tab` | Toggle `303A/303B` |
+| `Ctrl+C/V` | Copy / Paste |
+| `Esc` / `` ` `` | Clear selection |
 
-## Drum Sequencer
+## SYNTH A / SYNTH B SOUND
+
 | Key | Action |
-| --- | --- |
-| `Arrows` | Navigate grid |
+|---|---|
+| `Tab` | Main / More parameters |
+| `Left/Right` | Focus control or change value |
+| `Up/Down` | Adjust value or select row |
+| `Shift` / `Ctrl` | Fine adjustment |
+| `Ctrl+1..2` | Pattern bank A/B |
+| `Q..I` | Pattern selection when NOTE mode is off |
+| `A/Z S/X D/C F/V` | Quick parameter controls |
+| `T/G` | Oscillator +/- |
+| `Y/H` | Filter type +/- |
+| `N/M` | Distortion / Delay |
+| `Ctrl+Z/X/C/V` | Reset quick parameter |
+
+## DRUMS
+
+| Key | Action |
+|---|---|
+| `Tab` | Sequencer / automation subpage |
+| `Q..I` | Select pattern 1..8 |
+| `B` | Toggle bank A/B |
+| `Arrows` | Move cursor |
 | `Shift/Ctrl+Arrows` | Extend selection |
-| `Q..I` | **Select pattern 1..8** |
-| **`Ctrl+1..2`** | **Switch bank A/B** |
 | `Enter` | Toggle hit |
 | `A` | Toggle accent |
-| `Bksp` / `Del` | **Clear hit** / Clear selection |
 | `G` | Randomize pattern |
 | `Ctrl+G` | Randomize focused voice |
-| `Alt+Bksp` | Clear whole pattern |
+| `Alt+G` | Chaos-randomize the full drum pattern |
+| `Backspace` / `Delete` | Clear hit / selection |
+| `Alt+Backspace` | Clear whole pattern |
+| `Ctrl+C/V` | Copy / Paste |
 
-## TB303 Params
+## SONG
+
 | Key | Action |
-| --- | --- |
-| `Q..I` | Quick pattern select `1..8` when NOTE mode is OFF; live notes when NOTE mode is ON |
-| **`Ctrl+1..2`** | **Switch bank A/B** |
-| `Left/Right` | Focus control |
-| `Up/Down` | Adjust value |
-| `A/Z` | Cutoff +/- when consumed by the page |
-| `S/X` | Resonance +/- when consumed by the page |
-| `N` / `M` | Distortion / Delay toggle when consumed by the page |
+|---|---|
+| `Arrows` | Move cursor |
+| `Shift/Ctrl+Arrows` | Extend selection |
+| `Enter` | Jump to the referenced pattern editor |
+| `Q..I` | Assign an existing pattern without regenerating it |
+| `G` | Generate material into a free slot and assign the selected cell |
+| double `G` | Generate and materialize the current row atomically |
+| `Alt+G` | Generate the selected area |
+| `Ctrl+G` | Cycle Song generator mode |
+| `B` | Flip referenced pattern bank |
+| `Ctrl+N` / `Ctrl+M` | Insert / delete row |
+| `Alt+B` | Edit Song slot A/B |
+| `Ctrl+B` | Play Song slot A/B |
+| `V` | Toggle DR/VO lane |
+| `X` | Split compare |
+| `L` | Loop-lock around the playhead |
+| `Ctrl+L` | Toggle loop mode |
+| `Ctrl+R` | Reverse playback |
+| `Alt+X` | LiveMix ON/OFF |
+| `Ctrl+C/V` | Copy / Paste |
+| `Ctrl+1..8` | Jump to edit page 1..8 |
+| `P` | Move cursor to playhead |
+| `Ctrl+W/S` | Jump 8 rows |
+| `Ctrl+Alt+W/S` | Jump 32 rows |
+| `Alt+Q/E/R/T` | Save markers 1..4 |
+| `Ctrl+Alt+Q/E/R/T` | Jump to markers 1..4 |
+| `Alt+,/.` | Jump to Song top/end |
+| `Backspace` / `Tab` | Clear cell / selection |
+| `Alt+Backspace` | Clear full Song |
 
-## Feel & Texture
+`NO EMPTY PATTERN SLOTS` means generation changed neither Song references nor pattern
+content.
+
+## OVERVIEW / SEQUENCER HUB
+
 | Key | Action |
-| --- | --- |
-| `Q..I` | Select Pattern 1..8 when consumed by the page; otherwise live notes in NOTE mode |
-| `Ctrl+1..2` | Switch Bank A/B |
-| `Arrows` | Select parameter / Adjust value |
-| `Tab` | Cycle focus (Feel / Drum FX / Presets) |
-| `1..4` | Apply feel preset (when Presets focused) |
+|---|---|
+| `Up/Down` | Select track |
+| `Left/Right` | Select step |
+| `-` / `=` | Track volume |
+| `X` | Toggle hit/note |
+| `A` | Toggle accent |
+| `Enter` | Open track detail |
+| `Esc` / `Backspace` | Return to overview |
+| `Space` | Transport |
+| `Q..I` | Select local pattern |
+| `B` | Toggle pattern bank |
+| `Ctrl+C/V` | Copy / Paste |
 
-## Genre Page
+In HUB MIDI mode, `H` returns to Player, `1..9` mutes physical SMF tracks and `C`
+edits the selected track route override (`AUTO`, `CH1..CH10`). Confirmed routes are
+persisted per file and restored across reloads and reboots when the file identity still
+matches; changed, stale, corrupt, or unknown files start at `AUTO`.
+
+## FEEL / TEXTURE
+
 | Key | Action |
-| --- | --- |
-| `Q..I` | Select Pattern 1..8 (Synth A) |
-| `Ctrl+1..2` | Switch Bank A/B |
-| `Arrows` | Select Genre / Texture / Preset / Pattern |
-| `Enter` | Apply Genre + Texture |
-| `M` | Cycle Apply mode (Snd / Pat / BPM) |
-| `G` | Toggle Groovebox mode (Acid / Minimal) |
-| `C` | Toggle Curated mode (Recommendations) |
+|---|---|
+| `Tab` | Feel / Presets focus |
+| `Up/Down` | Select row |
+| `Left/Right` | Change value |
+| `Enter` / `Space` | Apply or cycle the selected value |
+| `Ctrl+1..2` | Synth A bank A/B |
+| `Q..I` | Synth A pattern 1..8 |
 
-> [!TIP]
-> **CapsLock Safety**: QWERTY pattern selection (`Q..I`) and Track Mutes (`1..0`) work even if CapsLock is ON (Shift is ignored for these keys).
+Digits remain available to the global mute fallback; they are not Feel preset hotkeys.
+
+## MODE / FLAVOR
+
+| Key | Action |
+|---|---|
+| `Tab` / `Up/Down` | Focus row |
+| `Left/Right` | Change value |
+| `Enter` | Run selected action |
+| `Space` | Preview / regenerate |
+| `A/B` | Apply to Synth A/B |
+| `D` | Apply to Drums |
+| `G` | Generate phrase |
+| `M` | Toggle macros |
+
+## ADV GENERATOR
+
+| Key | Action |
+|---|---|
+| `Tab` | Next parameter group |
+| `Up/Down` | Select row |
+| `Left/Right` | Adjust value |
+| `Shift/Ctrl/Alt` | Fast adjustment |
+| `Enter` / `Space` | Apply selected preset |
+| `T` | SD benchmark |
+
+## PROJECT / SETUP
+
+| Key | Action |
+|---|---|
+| `Tab` | Next section; MIDI browser opens the import matrix |
+| `Up/Down` | Select row/file |
+| `Left/Right` | Adjust value or dialog focus |
+| `Enter` | Open or activate |
+| `G` | Jump to GENRE |
+| `Esc` / `Backspace` | Close dialog or go up a MIDI directory |
+| `X` | Delete selected scene/file in supported dialogs |
+
+## MIDI PLAYER
+
+| Key | Action |
+|---|---|
+| `Enter` | Open selected MIDI file |
+| `Space` | MIDI transport |
+| `H` | Open HUB MIDI / return to Player |
+| `1..9` | Physical SMF track mute |
+| `U` | Physical-track mute mixer |
+| `I` | Channel inspector |
+| `S` | Structural inspector |
+| `D` | Performance/throughput panel |
+| `B` / `Backspace` | Files or previous panel |
+| `Arrows` | Select, seek, scroll, or adjust BPM according to the active panel |
+| `C` | Clock source |
+| `T` | Tempo mode |
+| `M` | RAW / SEQTRAK routing |
+| `G` | Groove transport/follow |
+| `R` | Restart file |
+| `V` | Velocity boost |
+| `X` | Panic SMF-owned notes |
+
+`Alt+H` always opens help; unmodified `H` remains the Player ↔ HUB MIDI shortcut.

@@ -462,6 +462,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 
         if (event.alt && (event.key == 'h' || event.key == 'H')) {
             workspace_launcher_.close();
+            global_help_overlay_.setPageContext(page_index_);
             global_help_overlay_.toggle();
             return true;
         }

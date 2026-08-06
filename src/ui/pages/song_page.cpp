@@ -1656,36 +1656,42 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
         getSelectionBounds(min_row, max_row, min_track, max_track);
         int maxCol = maxEditableTrackColumn();
         if (max_track > maxCol) max_track = maxCol;
-        withAudioGuard([&]() {
-            for (int r = min_row; r <= max_row; ++r) {
-                for (int t = min_track; t <= max_track; ++t) {
-                    bool valid = false;
-                    SongTrack track = trackForColumn(t, valid);
-                    if (!valid) continue;
-                    // Temporarily set cursor for context-aware generation
-                    int savedRow = cursor_row_;
-                    int savedTrack = cursor_track_;
-                    cursor_row_ = r;
-                    cursor_track_ = t;
-                    generateCurrentCellPattern();
-                    cursor_row_ = savedRow;
-                    cursor_track_ = savedTrack;
-                }
+        for (int r = min_row; r <= max_row; ++r) {
+            for (int t = min_track; t <= max_track; ++t) {
+                bool valid = false;
+                SongTrack track = trackForColumn(t, valid);
+                if (!valid) continue;
+                // Each cell remains an independent copy-on-write mutation.
+                int savedRow = cursor_row_;
+                int savedTrack = cursor_track_;
+                cursor_row_ = r;
+                cursor_track_ = t;
+                generateCurrentCellPattern();
+                cursor_row_ = savedRow;
+                cursor_track_ = savedTrack;
             }
-        });
+        }
         return true;
     } else {
         // G - Generate
         // Check for double tap
         uint32_t now = millis();
-        if (now - last_g_press_ < 300) {
-            // Double tap: Generate entire row
-            generateEntireRow();
-            last_g_press_ = 0; // Reset
+        if (last_g_press_ != 0 && now - last_g_press_ < 300) {
+            // Double tap is one logical row mutation. Undo the provisional
+            // single-cell result before preparing the row transaction.
+            if (rollbackPendingCellGeneration(cursorRow())) {
+                generateEntireRow();
+            } else {
+                showToast("GENERATION FAILED", 1200);
+            }
+            last_g_press_ = 0;
         } else {
-            // Single tap (so far): Generate current cell
-            generateCurrentCellPattern();
-            last_g_press_ = now;
+            // The first tap is committed immediately for responsive hardware
+            // feedback, but its receipt allows an exact revision/data rollback
+            // if a second tap turns the gesture into row generation.
+            if (generateCurrentCellPattern(true)) {
+                last_g_press_ = now;
+            }
         }
         return true;
     }
@@ -2515,7 +2521,7 @@ void SongPage::drawRetroClassicStyle(IGfx& gfx) {
         gfx.drawText(lx, ly, loadBuf);
     }
 
-    retro::drawFooterBar(gfx, x, y + h - 12, w, 12, "Q-I:Pat G:Gen B:Bank N:ins M:del X:split", "SONG");
+    retro::drawFooterBar(gfx, x, y + h - 12, w, 12, "Q-I:Pat G:Gen B:Bank C+N/M:Row X:Split", "SONG");
 }
 
 void SongPage::drawAmberStyle(IGfx& gfx) {
@@ -2612,7 +2618,7 @@ void SongPage::drawAmberStyle(IGfx& gfx) {
                      songQuarterFromRow(cursor_row), IGfxColor(AmberTheme::SELECT_BRIGHT),
                      IGfxColor(AmberTheme::GRID_DIM));
 
-    amber::drawFooterBar(gfx, x, y + h - 12, w, 12, "Q-I:Pat G:Gen B:Bank N:ins M:del X:split", "SONG");
+    amber::drawFooterBar(gfx, x, y + h - 12, w, 12, "Q-I:Pat G:Gen B:Bank C+N/M:Row X:Split", "SONG");
 }
 
 std::unique_ptr<MultiPageHelpDialog> SongPage::getHelpDialog() {
@@ -2671,141 +2677,217 @@ void SongPage::drawGeneratorHint(IGfx& gfx) {
     gfx.drawText(hintX + 4, hintY + 2, buf);
 }
 
-bool SongPage::generateCurrentCellPattern() {
-    int row = cursorRow();
-    int col = cursorTrack();
-    
-    bool valid = false;
-    SongTrack track = trackForColumn(col, valid);
-    if (!valid) return false;
-    
-    int current_bank = bankIndexForTrack(track);
-    int patternIdx = -1;
-    
-    // Get current pattern info
-    int current = mini_acid_.songPatternAt(row, track);
-    int current_idx = (current < 0) ? -1 : (current % 8);
-    
-    // FillAuto mode: interpolate between neighbors
-    if (gen_mode_ == SmartPatternGenerator::PG_FILL) {
-        int prevPattern = (row > 0) ? mini_acid_.songPatternAt(row - 1, track) : -1;
-        int nextPattern = (row < Song::kMaxPositions - 1) ? mini_acid_.songPatternAt(row + 1, track) : -1;
-        
-        if (prevPattern >= 0 && nextPattern >= 0) {
-            // Both exist: average
-            int prevIdx = prevPattern % 8;
-            int nextIdx = nextPattern % 8;
-            patternIdx = (prevIdx + nextIdx) / 2;
-        } else if (prevPattern >= 0) {
-            // Only prev: slight evolution
-            int prevIdx = prevPattern % 8;
-            patternIdx = prevIdx + ((rand() % 3) - 1);  // -1, 0, +1
-            if (patternIdx < 0) patternIdx = 0;
-            if (patternIdx > 7) patternIdx = 7;
-        } else if (nextPattern >= 0) {
-            // Only next: lead-in
-            int nextIdx = nextPattern % 8;
-            patternIdx = (nextIdx > 0) ? nextIdx - 1 : 0;
-        } else {
-            // No context: fall back to genre-smart
-            gen_mode_ = SmartPatternGenerator::PG_GENRE;
+SongPatternMaterializer::Result SongPage::materializeSongTracks(
+        int row, uint8_t trackMask) {
+    SongPatternMaterializer::Request request{};
+    request.row = row;
+    request.pageIndex = mini_acid_.currentPageIndex();
+    request.seed = mini_acid_.modeManager().generationSeed();
+    request.modeTag = static_cast<uint8_t>(gen_mode_);
+    request.trackMask = trackMask;
+    request.preferredLocalSlot[0] = mini_acid_.current303BankIndex(0) * 8;
+    request.preferredLocalSlot[1] = mini_acid_.current303BankIndex(1) * 8;
+    request.preferredLocalSlot[2] = mini_acid_.currentDrumBankIndex() * 8;
+
+    Scene& scene = mini_acid_.sceneManager().currentScene();
+    const GenerativeParams& params =
+        mini_acid_.genreManager().getCompiledGenerativeParams();
+    const GenreBehavior behavior = mini_acid_.genreManager().getBehavior();
+
+    auto generateTrack = [&](SongTrack track,
+                             uint32_t seed,
+                             SynthPattern& synth,
+                             DrumPatternSet& drums) {
+        GrooveboxModeManager generator(mini_acid_);
+        generator.setModeLocal(mini_acid_.modeManager().mode());
+        generator.setFlavorLocal(mini_acid_.modeManager().flavor());
+        generator.setGenerationSeed(seed);
+
+        switch (track) {
+            case SongTrack::SynthA:
+                generator.generatePattern(
+                    synth, mini_acid_.bpm(), params, behavior, 0);
+                return !SongPatternMaterializer::synthPatternIsStrictlyEmpty(
+                    synth);
+            case SongTrack::SynthB:
+                generator.generatePattern(
+                    synth, mini_acid_.bpm(), params, behavior, 1);
+                return !SongPatternMaterializer::synthPatternIsStrictlyEmpty(
+                    synth);
+            case SongTrack::Drums:
+                generator.generateDrumPattern(drums, params, behavior);
+                return !SongPatternMaterializer::drumPatternSetIsStrictlyEmpty(
+                    drums);
+            case SongTrack::Voice:
+                return false;
         }
-    }
-    
-    // GenreSmart mode: use GenerativeParams
-    if (gen_mode_ == SmartPatternGenerator::PG_GENRE && patternIdx < 0) {
-        const auto& genParams = mini_acid_.genreManager().getGenerativeParams();
-        
-        if (track == SongTrack::Drums) {
-            // Drums: sparse = simple, dense = complex
-            if (genParams.sparseKick && genParams.sparseHats) {
-                patternIdx = rand() % 3;  // 0-2: simple
-            } else if (!genParams.sparseKick && !genParams.sparseHats) {
-                patternIdx = 4 + (rand() % 3);  // 4-6: complex
-            } else {
-                patternIdx = 2 + (rand() % 3);  // 2-4: medium
+        return false;
+    };
+
+    auto commit = [&](auto&& applyPrepared) {
+        withRuntimeAudioGuard([&]() {
+            applyPrepared();
+            if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
+                mini_acid_.setSongPosition(row);
             }
-        } else if (track == SongTrack::SynthA || track == SongTrack::SynthB) {
-            // Synths: complexity from note count + slides
-            float avgNotes = (genParams.minNotes + genParams.maxNotes) / 2.0f;
-            float complexity = avgNotes / 16.0f;  // Normalize 0-1
-            complexity += genParams.slideProbability * 0.3f;
-            if (complexity > 1.0f) complexity = 1.0f;
-            
-            patternIdx = (int)(complexity * 6.0f);  // Map to 0-6
-            patternIdx += (rand() % 3) - 1;  // Add variance
-            if (patternIdx < 0) patternIdx = 0;
-            if (patternIdx > 6) patternIdx = 6;
-        } else {
-            // Voice: random phrase
-            patternIdx = rand() % 8;
-        }
+        });
+    };
+
+    return SongPatternMaterializer::generate(
+        scene, request, generateTrack, commit);
+}
+
+bool SongPage::generateCurrentCellPattern(bool rememberForDoubleTap) {
+    const int row = cursorRow();
+    bool valid = false;
+    const SongTrack track = trackForColumn(cursorTrack(), valid);
+    const uint8_t trackMask = valid
+        ? SongPatternMaterializer::maskForTrack(track)
+        : 0;
+    if (trackMask == 0) {
+        showToast("GENERATION FAILED", 1000);
+        return false;
     }
-    
-    // Fallback to other modes via SmartPatternGenerator
-    if (patternIdx < 0) {
-        uint8_t track_id = 0;
-        if (track == SongTrack::SynthB) track_id = 1;
-        else if (track == SongTrack::Drums) track_id = 2;
-        else if (track == SongTrack::Voice) track_id = 3;
-        
-        uint32_t new_pattern = generator_.generatePattern(
-            gen_mode_,
-            mini_acid_.genreManager().generativeMode(),
-            track_id,
-            (current_idx >= 0) ? current_idx : 99
-        );
-        patternIdx = new_pattern % 8;
+
+    Scene& scene = mini_acid_.sceneManager().currentScene();
+    const int songSlot = std::clamp(scene.activeSongSlot, 0, 1);
+    const int trackIndex =
+        SongPatternMaterializer::editableTrackIndex(track);
+    const int oldReference =
+        scene.songs[songSlot].positions[row].patterns[trackIndex];
+    const int oldSongLength = scene.songs[songSlot].length;
+    const GroovePuterState::SceneRevisionState revisionBefore =
+        GroovePuterState::sceneRevisionSnapshot();
+
+    const SongPatternMaterializer::Result result =
+        materializeSongTracks(row, trackMask);
+    if (!result) {
+        showToast(
+            result.error == SongPatternMaterializer::Error::NoEmptyPatternSlots
+                ? "NO EMPTY PATTERN SLOTS"
+                : "GENERATION FAILED",
+            1200);
+        return false;
     }
-    
-    int final_pattern = current_bank * 8 + patternIdx;
-    
-    withAudioGuard([&]() {
-        mini_acid_.setSongPattern(row, track, final_pattern);
-        if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
-            mini_acid_.setSongPosition(row);
-        }
-    });
-    
+
+    if (rememberForDoubleTap) {
+        pending_cell_generation_.valid = true;
+        pending_cell_generation_.row = row;
+        pending_cell_generation_.page = mini_acid_.currentPageIndex();
+        pending_cell_generation_.songSlot = songSlot;
+        pending_cell_generation_.track = track;
+        pending_cell_generation_.oldReference = oldReference;
+        pending_cell_generation_.generatedReference =
+            result.globalPattern[trackIndex];
+        pending_cell_generation_.oldSongLength = oldSongLength;
+        pending_cell_generation_.revisionBefore = revisionBefore;
+    }
+
+    char patternLabel[12];
+    formatSongPatternLabel(
+        result.globalPattern[trackIndex], patternLabel, sizeof(patternLabel));
+    char message[32];
+    const char* trackLabel = track == SongTrack::SynthA
+        ? "A"
+        : track == SongTrack::SynthB ? "B" : "DR";
+    std::snprintf(
+        message, sizeof(message), "GEN %s -> %s", trackLabel, patternLabel);
+    showToast(message, 1100);
     return true;
 }
 
-void SongPage::generateEntireRow() {
-    int row = cursorRow();
-    int current_bank_A = mini_acid_.current303BankIndex(0);
-    int current_bank_B = mini_acid_.current303BankIndex(1);
-    int current_bank_Drums = mini_acid_.currentDrumBankIndex();
-    
-    withAudioGuard([&]() {
-        for (int col = 0; col < visibleTrackCount(); col++) {
-            bool valid = false;
-            SongTrack track = trackForColumn(col, valid);
-            if (!valid) continue;
-            
-            uint32_t current = mini_acid_.songPatternAt(row, track);
-            uint32_t current_idx = (current < 0) ? 99 : (uint32_t)current;
-            
-            uint8_t track_id = 0;
-            int bank = 0;
-            
-            if (track == SongTrack::SynthA) { track_id = 0; bank = current_bank_A; }
-            else if (track == SongTrack::SynthB) { track_id = 1; bank = current_bank_B; }
-            else if (track == SongTrack::Drums) { track_id = 2; bank = current_bank_Drums; }
-            else if (track == SongTrack::Voice) { track_id = 3; bank = 0; }
-            
-             uint32_t new_pattern = generator_.generatePattern(
-                gen_mode_,
-                mini_acid_.genreManager().generativeMode(),
-                track_id,
-                current_idx
-            );
-            
-            int final_pattern = bank * 8 + (new_pattern % 8);
-            mini_acid_.setSongPattern(row, track, final_pattern);
+
+bool SongPage::rollbackPendingCellGeneration(int row) {
+    if (!pending_cell_generation_.valid ||
+        pending_cell_generation_.row != row ||
+        pending_cell_generation_.page != mini_acid_.currentPageIndex()) {
+        pending_cell_generation_.valid = false;
+        return false;
+    }
+
+    Scene& scene = mini_acid_.sceneManager().currentScene();
+    const int songSlot = std::clamp(scene.activeSongSlot, 0, 1);
+    if (songSlot != pending_cell_generation_.songSlot) {
+        pending_cell_generation_.valid = false;
+        return false;
+    }
+
+    const SongTrack track = pending_cell_generation_.track;
+    const int trackIndex =
+        SongPatternMaterializer::editableTrackIndex(track);
+    Song& song = scene.songs[songSlot];
+    if (trackIndex < 0 ||
+        song.positions[row].patterns[trackIndex] !=
+            pending_cell_generation_.generatedReference) {
+        pending_cell_generation_.valid = false;
+        return false;
+    }
+
+    int referenceCount = 0;
+    for (int slot = 0; slot < 2; ++slot) {
+        for (int songRow = 0; songRow < Song::kMaxPositions; ++songRow) {
+            if (scene.songs[slot].positions[songRow].patterns[trackIndex] ==
+                pending_cell_generation_.generatedReference) {
+                ++referenceCount;
+            }
         }
-        
-        if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
-            mini_acid_.setSongPosition(row);
+    }
+    if (referenceCount != 1) {
+        pending_cell_generation_.valid = false;
+        return false;
+    }
+
+    const int localSlot =
+        (songPatternBank(pending_cell_generation_.generatedReference) *
+             Bank<SynthPattern>::kPatterns) +
+        songPatternIndexInBank(
+            pending_cell_generation_.generatedReference);
+    if (localSlot < 0 || localSlot >= kPatternsPerPage) {
+        pending_cell_generation_.valid = false;
+        return false;
+    }
+    const int bank = localSlot / Bank<SynthPattern>::kPatterns;
+    const int index = localSlot % Bank<SynthPattern>::kPatterns;
+
+    withRuntimeAudioGuard([&]() {
+        switch (track) {
+            case SongTrack::SynthA:
+                scene.synthABanks[bank].patterns[index] = SynthPattern{};
+                break;
+            case SongTrack::SynthB:
+                scene.synthBBanks[bank].patterns[index] = SynthPattern{};
+                break;
+            case SongTrack::Drums:
+                scene.drumBanks[bank].patterns[index] = DrumPatternSet{};
+                break;
+            case SongTrack::Voice:
+                break;
         }
+        song.positions[row].patterns[trackIndex] =
+            static_cast<int16_t>(pending_cell_generation_.oldReference);
+        song.length = pending_cell_generation_.oldSongLength;
     });
+    GroovePuterState::restoreSceneRevision(
+        pending_cell_generation_.revisionBefore);
+    pending_cell_generation_.valid = false;
+    return true;
+}
+
+bool SongPage::generateEntireRow() {
+    const int row = cursorRow();
+    const SongPatternMaterializer::Result result = materializeSongTracks(
+        row, SongPatternMaterializer::kEditableTrackMask);
+    if (!result) {
+        showToast(
+            result.error == SongPatternMaterializer::Error::NoEmptyPatternSlots
+                ? "NO EMPTY PATTERN SLOTS"
+                : "GENERATION FAILED",
+            1200);
+        return false;
+    }
+
+    char message[32];
+    std::snprintf(message, sizeof(message), "GENERATED ROW %d", row + 1);
+    showToast(message, 1100);
+    return true;
 }

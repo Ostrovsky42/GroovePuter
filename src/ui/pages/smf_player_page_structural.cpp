@@ -206,7 +206,7 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
 
     // Cardputer can report the physical H key with the hardware/Fn meta bit.
     // Give the loaded Player -> HUB MIDI shortcut first refusal before the
-    // generic modifier guard; Alt+H and Ctrl+H remain reserved for help.
+    // generic modifier guard; Alt+H remains reserved for page-aware help.
     if (event.event_type == GROOVEPUTER_KEY_DOWN && hubShortcut &&
         !event.alt && !event.ctrl) {
         player_ = smfPlayerService();
