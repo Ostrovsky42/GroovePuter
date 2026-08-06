@@ -81,6 +81,7 @@ void GenerationPage::moveTargetRow(int delta, bool fast) {
   UI::showToast(toast, 650);
 }
 
+// Ownership contract: ROW OCCUPIED:BLOCK  LEN:PHRASE
 void GenerationPage::materializeCurrentBar() {
   const bool wasPlaying = mini_acid_.isPlaying();
   if (wasPlaying) mini_acid_.stop();
