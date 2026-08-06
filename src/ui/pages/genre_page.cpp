@@ -162,11 +162,11 @@ void GenrePage::updateFromEngine() {
 void GenrePage::draw(IGfx& gfx) {
   const AxisUI::Palette palette = AxisUI::paletteFor(style_);
   const IGfxColor axisColor = palette.genre;
-  const auto selectedGenre = static_cast<GenerativeMode>(genre_index_);
+  const int profileIndex =
+      std::clamp(genre_index_, 0, kGenerativeModeCount - 1);
+  const auto selectedGenre = static_cast<GenerativeMode>(profileIndex);
   const auto selectedRecipe = static_cast<GenreRecipeId>(recipeIndex_);
-  const GenerativeParams& params =
-      mini_acid_.genreManager().getCompiledGenerativeParams();
-  const GrooveRecipe recipe = mini_acid_.genreManager().getGrooveRecipe();
+  const GenerativeParams& params = kGenerativePresets[profileIndex];
   const auto activeGenre = mini_acid_.genreManager().generativeMode();
   const auto activeRecipe = mini_acid_.genreManager().recipe();
 
@@ -202,12 +202,11 @@ void GenrePage::draw(IGfx& gfx) {
                        applyModeName(), focus_ == FocusRow::Apply,
                        axisColor, palette);
 
-  const int index = std::clamp(genre_index_, 0, kGenerativeModeCount - 1);
   std::snprintf(value, sizeof(value),
-                "BPM %u  GRID %u  N %d..%d",
-                static_cast<unsigned>(kGenreBpm[index]),
-                static_cast<unsigned>(recipe.stepsPerBar),
-                params.minNotes, params.maxNotes);
+                "BPM %u  N %d..%d  V %d..%d",
+                static_cast<unsigned>(kGenreBpm[profileIndex]),
+                params.minNotes, params.maxNotes,
+                params.velocityMin, params.velocityMax);
   gfx.setTextColor(palette.muted);
   gfx.drawText(x + 2, LayoutManager::lineY(5) + 1, value);
 
