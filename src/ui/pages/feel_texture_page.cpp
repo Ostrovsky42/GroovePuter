@@ -33,7 +33,7 @@ void drawMacroStrip(IGfx& gfx,
                     IGfxColor color,
                     const AxisUI::Palette& palette) {
   static constexpr const char* kLabels[7] = {
-      "DI", "AG", "SP", "WD", "IN", "AT", "DK",
+      "DI", "AG", "SP", "WD", "IN", "GR", "DK",
   };
   constexpr int kCellW = 31;
   for (int i = 0; i < 7; ++i) {
