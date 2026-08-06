@@ -1,5 +1,6 @@
 #include "layout_manager.h"
 #include "ui_theme.h"
+#include "ui_status_chrome.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -13,6 +14,8 @@ void LayoutManager::drawHeader(IGfx& gfx,
                                int bpm,
                                const char* status,
                                bool recording) {
+    UI::setUiStatusBpm(bpm);
+
     const UI::ThemePalette p = UI::themePalette();
     gfx.fillRect(Layout::HEADER.x, Layout::HEADER.y, Layout::HEADER.w, Layout::HEADER.h, p.background);
     gfx.drawLine(Layout::HEADER.x, Layout::HEADER.y + Layout::HEADER.h - 1,
