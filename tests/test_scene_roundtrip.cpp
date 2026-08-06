@@ -101,6 +101,13 @@ void populateNonDefaultScene(SceneManager& manager) {
       PhraseCore::Role::Variation);
   assert(derived);
   assert(derived.phraseId == 2);
+
+  assert(PhraseCore::assignArrangementStep(
+      scene.phraseBank, 0, PhraseCore::SlotId::A));
+  assert(PhraseCore::assignArrangementStep(
+      scene.phraseBank, 1, PhraseCore::SlotId::B));
+  assert(PhraseCore::assignArrangementStep(
+      scene.phraseBank, 2, PhraseCore::SlotId::A));
 }
 
 void destroyRoundTripFields(SceneManager& manager) {
@@ -202,6 +209,15 @@ void verifyRoundTrip(const SceneManager& manager) {
              scene.phraseBank.slots[1], 2, SongTrack::Drums) == 32);
   assert(scene.phraseBank.nextPhraseId == 3);
   assert(scene.phraseBank.version == PhraseCore::kPersistenceVersion);
+
+  assert(scene.phraseBank.arrangement.length == 3);
+  assert(scene.phraseBank.arrangement.slots[0] ==
+         static_cast<uint8_t>(PhraseCore::SlotId::A));
+  assert(scene.phraseBank.arrangement.slots[1] ==
+         static_cast<uint8_t>(PhraseCore::SlotId::B));
+  assert(scene.phraseBank.arrangement.slots[2] ==
+         static_cast<uint8_t>(PhraseCore::SlotId::A));
+  assert(PhraseCore::arrangementTotalBars(scene.phraseBank) == 12);
 }
 
 }  // namespace
