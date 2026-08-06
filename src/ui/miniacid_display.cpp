@@ -2,6 +2,7 @@
 #include "src/dsp/miniacid_engine.h"
 #include "src/state/scene_revision.h"
 #include "src/platform/cardputer_ui_session.h"
+#include "src/platform/cardputer_smf_route_persistence.h"
 
 #ifndef ARDUINO
 #include "../../platform_sdl/arduino_compat.h"
@@ -265,6 +266,7 @@ void MiniAcidDisplay::scheduleUiSessionSave_() {
 }
 
 void MiniAcidDisplay::servicePersistence_() {
+    GroovePuterPlatform::serviceCardputerSmfRoutePersistence();
     const unsigned long now = millis();
     const auto due = [now](unsigned long deadline) {
         return static_cast<int32_t>(now - deadline) >= 0;

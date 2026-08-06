@@ -117,6 +117,42 @@ public:
         }
     }
 
+    bool replaceDestinations(const int8_t* destinations,
+                             uint16_t trackCount,
+                             uint32_t generation) {
+        if (!destinations || trackCount == 0u ||
+            trackCount > kSmfTrackOutputRouteCapacity ||
+            generation == 0u || smfSessionGeneration() != generation ||
+            !ensureSession(generation, trackCount)) {
+            return false;
+        }
+
+        uint32_t packed[kPackedRouteWords]{};
+        for (uint16_t track = 0u; track < trackCount; ++track) {
+            const int8_t destination = destinations[track];
+            if (destination < kSmfTrackOutputRouteAuto ||
+                destination >=
+                    static_cast<int8_t>(kSmfSeqtrakOutputChannelCount)) {
+                return false;
+            }
+            const std::size_t word = track / 4u;
+            const uint32_t shift = static_cast<uint32_t>(track % 4u) * 8u;
+            packed[word] |= static_cast<uint32_t>(encode(destination)) << shift;
+        }
+
+        SmfSessionMutationGuard guard(generation);
+        if (!guard ||
+            boundGeneration_.load(std::memory_order_acquire) != generation) {
+            return false;
+        }
+        for (std::size_t word = 0u; word < kPackedRouteWords; ++word) {
+            packedRoutes_[word].store(packed[word], std::memory_order_release);
+        }
+        trackCount_.store(trackCount, std::memory_order_release);
+        revision_.fetch_add(1u, std::memory_order_acq_rel);
+        return true;
+    }
+
     int8_t destinationFor(uint16_t trackIndex, uint16_t trackCountHint) {
         const uint32_t generation = smfSessionGeneration();
         if (generation == 0u ||

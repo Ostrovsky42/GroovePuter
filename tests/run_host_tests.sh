@@ -25,6 +25,7 @@ python3 "${ROOT_DIR}/tests/test_song_playhead_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_midi_companion_foundation_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_seqtrak_master_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_smf_midi_wave_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_smf_route_persistence_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
 python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
@@ -256,6 +257,14 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -o "${BUILD_DIR}/test_smf_routing"
 
 "${BUILD_DIR}/test_smf_routing"
+
+"${CXX}"   -std=c++17   -Wall   -Wextra   -Werror   -I"${ROOT_DIR}"   "${ROOT_DIR}/tests/test_smf_track_route_profile.cpp"   "${ROOT_DIR}/src/midi/smf_track_route_profile.cpp"   -o "${BUILD_DIR}/test_smf_track_route_profile"
+
+"${BUILD_DIR}/test_smf_track_route_profile"
+
+"${CXX}"   -std=c++17   -Wall   -Wextra   -Werror   -I"${ROOT_DIR}"   "${ROOT_DIR}/tests/test_smf_track_route_profile_runtime.cpp"   -o "${BUILD_DIR}/test_smf_track_route_profile_runtime"
+
+"${BUILD_DIR}/test_smf_track_route_profile_runtime"
 
 "${CXX}" \
   -std=c++17 \

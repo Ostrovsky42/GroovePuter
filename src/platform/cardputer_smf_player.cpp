@@ -27,6 +27,7 @@ bool followsSeqtrakClock() {
     return transportClockRuntime().source() ==
         TransportClockSource::SeqtrakExternal;
 }
+
 }
 
 CardputerSmfPlayerService::CardputerSmfPlayerService() {
@@ -173,6 +174,10 @@ bool CardputerSmfPlayerService::cycleVelocityBoost() {
     Command command{};
     command.type = CommandType::CycleVelocityBoost;
     return enqueue(command);
+}
+
+bool CardputerSmfPlayerService::persistTrackOutputRoutes(uint32_t generation) {
+    return smfTrackRouteProfileRuntime().requestSave(generation);
 }
 
 SmfPlayerSnapshot CardputerSmfPlayerService::snapshot() const {
@@ -822,6 +827,8 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
         return false;
     }
     fileIndex_ = indexed.index;
+    SmfTrackRouteFingerprint routeFingerprint(
+        path, source_.size(), fileIndex_);
     SmfChannelInspectorBuilder inspectorBuilder;
     inspectorBuilder.reset(fileIndex_.format,
                            fileIndex_.division,
@@ -850,6 +857,7 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
 
     SmfStreamEvent event{};
     while (stream_.next(event)) {
+        routeFingerprint.observe(event);
         inspectorBuilder.observe(event.event);
         endTick_ = std::max(endTick_, event.event.tick);
         if (!foundMusic && event.event.kind == SmfEventKind::NoteOn) {
@@ -892,6 +900,19 @@ bool CardputerSmfPlayerService::loadFile(const char* path) {
     portENTER_CRITICAL(&snapshotMux_);
     channelInspector_ = inspectorBuilder.snapshot();
     portEXIT_CRITICAL(&snapshotMux_);
+
+    const SmfTrackRouteProfileIdentity routeIdentity =
+        routeFingerprint.identity();
+    const uint32_t routeGeneration = smfSessionGeneration();
+    if (!smfTrackRouteProfileRuntime().requestLoad(
+            routeIdentity, routeGeneration)) {
+        publishSnapshot(SmfPlayerState::Error, "Route profile failed");
+        source_.close();
+        portENTER_CRITICAL(&snapshotMux_);
+        loadedPath_[0] = ' ';
+        portEXIT_CRITICAL(&snapshotMux_);
+        return false;
+    }
 
     stream_.reset();
     loaded_ = true;
@@ -973,6 +994,12 @@ bool CardputerSmfPlayerService::prepareStreamAt(uint32_t tick) {
 }
 
 bool CardputerSmfPlayerService::startFromTick(uint32_t tick) {
+    const uint32_t routeGeneration = smfSessionGeneration();
+    if (!smfTrackRouteProfileRuntime().readyFor(routeGeneration)) {
+        publishSnapshot(snapshot().state, "ROUTES SYNCING");
+        return false;
+    }
+
     // Only a successful mounted USB write may clear endpoint backpressure.
     // User commands can cancel automatic resume, but must not schedule events
     // against an endpoint that is still stalled: those deadlines would all be

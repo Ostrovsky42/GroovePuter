@@ -14,6 +14,8 @@
 #include "src/midi/smf_stream.h"
 #include "src/midi/smf_timing.h"
 #include "src/midi/smf_track_output_route.h"
+#include "src/midi/smf_track_route_profile.h"
+#include "src/midi/smf_track_route_profile_runtime.h"
 
 class CardputerSmfPlayerService final : public GroovePuterMidi::ISmfPlayerService {
 public:
@@ -34,6 +36,7 @@ public:
     bool adjustTempoBpm(int deltaBpm) override;
     bool resetTempo() override;
     bool cycleVelocityBoost() override;
+    bool persistTrackOutputRoutes(uint32_t generation) override;
     GroovePuterMidi::SmfPlayerSnapshot snapshot() const override;
     GroovePuterMidi::SmfChannelInspectorSnapshot channelInspector() const override;
     bool currentFilePath(char* output, std::size_t outputSize) const override;

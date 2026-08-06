@@ -117,6 +117,10 @@ public:
     virtual bool adjustTempoBpm(int deltaBpm) = 0;
     virtual bool resetTempo() = 0;
     virtual bool cycleVelocityBoost() = 0;
+    virtual bool persistTrackOutputRoutes(uint32_t generation) {
+        (void)generation;
+        return false;
+    }
     virtual SmfPlayerSnapshot snapshot() const = 0;
     virtual SmfChannelInspectorSnapshot channelInspector() const = 0;
     virtual bool currentFilePath(char* output, std::size_t outputSize) const {

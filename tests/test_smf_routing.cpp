@@ -96,6 +96,19 @@ int main() {
     assert(routeSnapshot.destinationFor(2) == 7);
     assert(routeSnapshot.overridden(2));
 
+    int8_t restored[4] = {
+        kSmfTrackOutputRouteAuto, 8, 9, kSmfTrackOutputRouteAuto};
+    assert(routes.replaceDestinations(restored, 4, generation));
+    routeSnapshot = routes.snapshot(4);
+    assert(routeSnapshot.destinationFor(0) == kSmfTrackOutputRouteAuto);
+    assert(routeSnapshot.destinationFor(1) == 8);
+    assert(routeSnapshot.destinationFor(2) == 9);
+    assert(routeSnapshot.destinationFor(3) == kSmfTrackOutputRouteAuto);
+
+    restored[2] = 10;
+    assert(!routes.replaceDestinations(restored, 4, generation));
+    assert(routes.snapshot(4).destinationFor(2) == 9);
+
     const uint32_t nextGeneration = smfBeginSessionOpen();
     assert(nextGeneration != 0u && nextGeneration != generation);
     assert(smfCompleteSessionOpen(nextGeneration));
