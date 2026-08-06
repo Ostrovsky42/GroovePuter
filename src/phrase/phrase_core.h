@@ -59,6 +59,44 @@ inline SlotSummary summarize(const PhraseBank& bank, SlotId slotId) {
   return summary;
 }
 
+inline uint8_t arrangementTotalBars(const PhraseBank& bank) {
+  uint16_t total = 0;
+  const int length = bank.arrangement.length > kArrangementCapacity
+                         ? kArrangementCapacity
+                         : bank.arrangement.length;
+  for (int position = 0; position < length; ++position) {
+    const uint8_t slotValue = bank.arrangement.slots[position];
+    if (slotValue >= kSlotCount || !isValid(bank.slots[slotValue])) continue;
+    total += bank.slots[slotValue].metadata.lengthBars;
+  }
+  return static_cast<uint8_t>(total > 255u ? 255u : total);
+}
+
+inline bool removeArrangementSlotReferences(PhraseBank& bank,
+                                            SlotId slotId) {
+  const int target = slotIndex(slotId);
+  if (target < 0) return false;
+  uint8_t output = 0;
+  bool changed = false;
+  const int length = bank.arrangement.length > kArrangementCapacity
+                         ? kArrangementCapacity
+                         : bank.arrangement.length;
+  for (int position = 0; position < length; ++position) {
+    const uint8_t value = bank.arrangement.slots[position];
+    if (value == static_cast<uint8_t>(target)) {
+      changed = true;
+      continue;
+    }
+    bank.arrangement.slots[output++] = value;
+  }
+  if (bank.arrangement.length != output) changed = true;
+  bank.arrangement.length = output;
+  for (int position = output; position < kArrangementCapacity; ++position) {
+    bank.arrangement.slots[position] = kNoSlot;
+  }
+  return changed;
+}
+
 inline Result clear(PhraseBank& bank, SlotId slotId) {
   Result result{};
   result.slot = slotId;
@@ -68,6 +106,7 @@ inline Result clear(PhraseBank& bank, SlotId slotId) {
     return result;
   }
   clearSlotValue(*phrase);
+  removeArrangementSlotReferences(bank, slotId);
   return result;
 }
 
@@ -250,6 +289,146 @@ inline Result writeToSong(const PhraseBank& bank,
   return result;
 }
 
+inline ArrangementResult assignArrangementStep(PhraseBank& bank,
+                                                uint8_t position,
+                                                SlotId slotId) {
+  ArrangementResult result{};
+  result.position = position;
+  const int slot = slotIndex(slotId);
+  if (slot < 0) {
+    result.error = Error::InvalidSlot;
+    return result;
+  }
+  if (!isValid(bank.slots[slot])) {
+    result.error = Error::InvalidPhrase;
+    return result;
+  }
+  if (position > bank.arrangement.length || position >= kArrangementCapacity) {
+    result.error = position >= kArrangementCapacity
+                       ? Error::ArrangementFull
+                       : Error::InvalidArrangementPosition;
+    return result;
+  }
+
+  if (position == bank.arrangement.length) {
+    if (bank.arrangement.length >= kArrangementCapacity) {
+      result.error = Error::ArrangementFull;
+      return result;
+    }
+    bank.arrangement.slots[position] = static_cast<uint8_t>(slot);
+    ++bank.arrangement.length;
+    result.changed = true;
+  } else if (bank.arrangement.slots[position] != static_cast<uint8_t>(slot)) {
+    bank.arrangement.slots[position] = static_cast<uint8_t>(slot);
+    result.changed = true;
+  }
+
+  result.length = bank.arrangement.length;
+  result.totalBars = arrangementTotalBars(bank);
+  return result;
+}
+
+inline ArrangementResult removeArrangementStep(PhraseBank& bank,
+                                                uint8_t position) {
+  ArrangementResult result{};
+  result.position = position;
+  if (bank.arrangement.length == 0) {
+    result.error = Error::ArrangementEmpty;
+    return result;
+  }
+  if (position >= bank.arrangement.length) {
+    result.error = Error::InvalidArrangementPosition;
+    return result;
+  }
+
+  for (int index = position; index + 1 < bank.arrangement.length; ++index) {
+    bank.arrangement.slots[index] = bank.arrangement.slots[index + 1];
+  }
+  --bank.arrangement.length;
+  bank.arrangement.slots[bank.arrangement.length] = kNoSlot;
+  result.changed = true;
+  result.length = bank.arrangement.length;
+  result.totalBars = arrangementTotalBars(bank);
+  return result;
+}
+
+inline ArrangementResult clearArrangement(PhraseBank& bank) {
+  ArrangementResult result{};
+  result.changed = bank.arrangement.length != 0;
+  clearArrangementValue(bank.arrangement);
+  return result;
+}
+
+inline ArrangementResult writeArrangementToSong(const PhraseBank& bank,
+                                                 Song& destination,
+                                                 uint8_t startRow,
+                                                 bool overwrite) {
+  ArrangementResult result{};
+  result.position = startRow;
+  result.length = bank.arrangement.length;
+  if (bank.arrangement.length == 0) {
+    result.error = Error::ArrangementEmpty;
+    return result;
+  }
+  if (bank.arrangement.length > kArrangementCapacity) {
+    result.error = Error::InvalidArrangementPosition;
+    return result;
+  }
+
+  uint16_t totalBars = 0;
+  for (int position = 0; position < bank.arrangement.length; ++position) {
+    const uint8_t slotValue = bank.arrangement.slots[position];
+    if (slotValue >= kSlotCount || !isValid(bank.slots[slotValue])) {
+      result.error = Error::InvalidPhrase;
+      return result;
+    }
+    totalBars += bank.slots[slotValue].metadata.lengthBars;
+  }
+  if (startRow >= Song::kMaxPositions ||
+      static_cast<int>(startRow) + totalBars > Song::kMaxPositions) {
+    result.error = Error::RegionOutOfRange;
+    return result;
+  }
+
+  if (!overwrite) {
+    int destinationRow = startRow;
+    for (int position = 0; position < bank.arrangement.length; ++position) {
+      const PhraseSlot& phrase = bank.slots[bank.arrangement.slots[position]];
+      for (int bar = 0; bar < phrase.metadata.lengthBars; ++bar) {
+        for (int track = 0; track < kTrackCount; ++track) {
+          if ((phrase.metadata.trackMask & maskForTrackIndex(track)) == 0) {
+            continue;
+          }
+          if (destination.positions[destinationRow + bar].patterns[track] >= 0) {
+            result.error = Error::DestinationOccupied;
+            return result;
+          }
+        }
+      }
+      destinationRow += phrase.metadata.lengthBars;
+    }
+  }
+
+  int destinationRow = startRow;
+  for (int position = 0; position < bank.arrangement.length; ++position) {
+    const PhraseSlot& phrase = bank.slots[bank.arrangement.slots[position]];
+    for (int bar = 0; bar < phrase.metadata.lengthBars; ++bar) {
+      for (int track = 0; track < kTrackCount; ++track) {
+        if ((phrase.metadata.trackMask & maskForTrackIndex(track)) == 0) {
+          continue;
+        }
+        destination.positions[destinationRow + bar].patterns[track] =
+            phrase.patternRefs[bar][track];
+      }
+    }
+    destinationRow += phrase.metadata.lengthBars;
+  }
+  if (destination.length < destinationRow) destination.length = destinationRow;
+  result.totalBars = static_cast<uint8_t>(totalBars);
+  result.changed = true;
+  return result;
+}
+
 inline uint16_t synthOccupancyMask(const SynthPattern& pattern,
                                    uint16_t& eventCount) {
   uint16_t mask = 0;
@@ -374,6 +553,28 @@ inline bool sanitize(PhraseBank& bank) {
       }
     }
   }
+
+  uint8_t output = 0;
+  const int arrangementLength = bank.arrangement.length > kArrangementCapacity
+                                    ? kArrangementCapacity
+                                    : bank.arrangement.length;
+  if (bank.arrangement.length > kArrangementCapacity) changed = true;
+  for (int position = 0; position < arrangementLength; ++position) {
+    const uint8_t slotValue = bank.arrangement.slots[position];
+    if (slotValue >= kSlotCount || !isValid(bank.slots[slotValue])) {
+      changed = true;
+      continue;
+    }
+    if (output != position) changed = true;
+    bank.arrangement.slots[output++] = slotValue;
+  }
+  if (bank.arrangement.length != output) changed = true;
+  bank.arrangement.length = output;
+  for (int position = output; position < kArrangementCapacity; ++position) {
+    if (bank.arrangement.slots[position] != kNoSlot) changed = true;
+    bank.arrangement.slots[position] = kNoSlot;
+  }
+  bank.arrangement.reserved = 0;
   return changed;
 }
 
