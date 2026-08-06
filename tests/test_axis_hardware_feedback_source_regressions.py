@@ -10,6 +10,7 @@ song = read("src/ui/pages/song_page.cpp")
 feel = read("src/ui/pages/feel_page.cpp")
 texture = read("src/ui/pages/texture_page.cpp")
 generation = read("src/ui/pages/generation_page.cpp")
+generation_header = read("src/ui/pages/generation_page.h")
 genre_manager = read("src/dsp/genre_manager.cpp")
 ui_input = read("src/ui/ui_input.h")
 
@@ -56,7 +57,23 @@ for token in (
     "LAST %s",
     "CURRENT EMPTY SONG ROW",
     "generator.setFlavorLocal(0)",
+    "UIInput::navCode(event)",
+    "moveTargetRow(-1",
+    "moveTargetRow(1",
+    "hold_accel_.multiplier",
+    "ARROWS:TARGET",
 ):
-    assert token in generation, f"Generation feedback contract missing: {token}"
+    assert token in generation, f"Generation feedback/navigation contract missing: {token}"
+
+for token in (
+    "UIInput::HoldAccelerator hold_accel_",
+    "int target_row_ = 0",
+    "void onEnter(int context) override",
+):
+    assert token in generation_header, f"Generation target state missing: {token}"
+
+assert "setSongPosition" not in generation.split("void GenerationPage::moveTargetRow", 1)[1].split("void GenerationPage::materializeCurrentBar", 1)[0], (
+    "Browsing Generation targets must remain UI-only until materialization"
+)
 
 print("Axis hardware feedback source regressions: PASS")
