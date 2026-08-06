@@ -66,6 +66,21 @@ void testSnLowRegisterPolicy() {
   assert(ratios[2] == 2.0f);
 }
 
+void testSnStackFoldsRootOnce() {
+  float frequencies[3]{};
+  const float requestedRoot = midiToHz(24);
+  const float playableRoot =
+      ChipTuning::quantizeSnToneFrequency(requestedRoot);
+
+  ChipTuning::snStackFrequencies(requestedRoot, 1, frequencies);
+
+  assert(frequencies[0] < frequencies[1]);
+  assert(frequencies[1] < frequencies[2]);
+  assert(std::fabs(centsBetween(frequencies[0], playableRoot)) <= 0.01f);
+  assert(std::fabs(centsBetween(frequencies[1], playableRoot * 2.0f)) <= 5.0f);
+  assert(std::fabs(centsBetween(frequencies[2], playableRoot * 4.0f)) <= 5.0f);
+}
+
 void testClampedLiveNoteIdentity() {
   ClampedLiveNoteIdentity note;
 
@@ -88,6 +103,7 @@ void testClampedLiveNoteIdentity() {
 int main() {
   testAyChromaticRange();
   testSnLowRegisterPolicy();
+  testSnStackFoldsRootOnce();
   testClampedLiveNoteIdentity();
   std::puts("chip tuning and live-note identity: OK");
   return 0;
