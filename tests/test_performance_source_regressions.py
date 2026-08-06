@@ -85,6 +85,14 @@ def test_transport_note_mode_keys_remain_live() -> None:
     base.require("INPUT LOCK | PATTERN PLAYER ACTIVE" not in page and
                  'stepTools ? "LIVE SYNC" : "LIVE INPUT"' in page,
                  "PERFORM must show live transport input instead of the old lock")
+    base.require('"STRUM: N/A / ARP IS SINGLE NOTE"' in page and
+                 '"STRUM: N/A / ENABLE CHORD"' in page and
+                 '"5 STRUM N/A"' in page,
+                 "STRUM must expose when one-note playback makes it ineffective")
+    base.require('"ROTATE: N/A / EUCLID OFF"' in page and
+                 '"ROTATE: N/A / ALL 16 ACTIVE"' in page and
+                 '"8 ROTATE N/A"' in page,
+                 "ROTATE must expose the 0/16 and 16/16 no-op states")
 
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
     route_pos = display.index("performance_keyboard_.keyDown(event.key)")
