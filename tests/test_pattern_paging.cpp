@@ -145,6 +145,37 @@ void testProjectIsolation() {
   verifyMarker(loadedB, 73, 99, 11);
 }
 
+void testProjectNameEncodingDoesNotCollide(const std::filesystem::path& root) {
+  selectEmptyProject("space name");
+  Scene spaced{};
+  setMarker(spaced, 58, 78, 3);
+  assert(PatternPagingService::savePage(kPage, spaced));
+
+  selectEmptyProject("space_20name");
+  assert(!PatternPagingService::pageExists(kPage));
+  Scene escapedLiteral{};
+  setMarker(escapedLiteral, 69, 90, 13);
+  assert(PatternPagingService::savePage(kPage, escapedLiteral));
+
+  const std::filesystem::path spacedPath =
+      pageFile(root, "space_20name");
+  const std::filesystem::path literalPath =
+      pageFile(root, "space_5F20name");
+  assert(spacedPath != literalPath);
+  assert(std::filesystem::exists(spacedPath));
+  assert(std::filesystem::exists(literalPath));
+
+  assert(PatternPagingService::setProjectName("space name"));
+  Scene loadedSpaced{};
+  assert(PatternPagingService::loadPage(kPage, loadedSpaced));
+  verifyMarker(loadedSpaced, 58, 78, 3);
+
+  assert(PatternPagingService::setProjectName("space_20name"));
+  Scene loadedLiteral{};
+  assert(PatternPagingService::loadPage(kPage, loadedLiteral));
+  verifyMarker(loadedLiteral, 69, 90, 13);
+}
+
 void testProjectCopy() {
   selectEmptyProject("copy-source");
   Scene source{};
@@ -223,6 +254,7 @@ int main() {
   testCorruptOnlyCopyLeavesSceneUntouched(root);
   testBackupRecovery(root);
   testProjectIsolation();
+  testProjectNameEncodingDoesNotCollide(root);
   testProjectCopy();
   testProjectClear(root);
   testLegacyMigration(root);
