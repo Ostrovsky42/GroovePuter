@@ -39,7 +39,7 @@ class UiLayoutSourceRegressions(unittest.TestCase):
         hub = self.read("src/ui/pages/sequencer_hub_page.cpp")
         self.assertIn("const int y = content.y + 7;", synth)
         self.assertIn("int y = bounds.y + 5;", drums)
-        self.assertIn("constexpr int kHubOverviewTopInset = 4;", hub)
+        self.assertIn("constexpr int kHubOverviewTopInset = 8;", hub)
         self.assertGreaterEqual(hub.count("kHubOverviewTopInset"), 5)
 
 

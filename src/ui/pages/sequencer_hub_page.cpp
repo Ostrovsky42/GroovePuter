@@ -14,7 +14,7 @@
 namespace {
 constexpr int kHubTrackCount = 10;    // 303A, 303B, D1..D8
 constexpr int kHubVisibleTracks = 6;  // 303A, 303B, D1..D4 on one screen
-constexpr int kHubOverviewTopInset = 4;
+constexpr int kHubOverviewTopInset = 8;
 
 const char* kDrumLaneShort[8] = {"BD", "SD", "CH", "OH", "MT", "HT", "RM", "CP"};
 
