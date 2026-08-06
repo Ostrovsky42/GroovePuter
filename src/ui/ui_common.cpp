@@ -4,6 +4,7 @@
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/smf_player_service.h"
 #include "src/midi/transport_clock_runtime.h"
+#include "src/pattern/pattern_address.h"
 #include "retro_ui_theme.h"
 #include "amber_ui_theme.h"
 #include <cstdio>
@@ -141,6 +142,37 @@ namespace UI {
             return UiStatusState::Stop;
         }
 
+        void populatePatternAddress(UiStatusSnapshot& status,
+                                    MiniAcid& miniAcid) {
+            if (status.source != UiStatusSource::Pattern) return;
+
+            int bank = -1;
+            int slot = -1;
+            switch (status.context) {
+                case UiStatusContext::SynthA:
+                    bank = miniAcid.current303BankIndex(0);
+                    slot = miniAcid.display303LocalPatternIndex(0);
+                    break;
+                case UiStatusContext::SynthB:
+                    bank = miniAcid.current303BankIndex(1);
+                    slot = miniAcid.display303LocalPatternIndex(1);
+                    break;
+                case UiStatusContext::Drums:
+                    bank = miniAcid.currentDrumBankIndex();
+                    slot = miniAcid.displayDrumPatternIndex();
+                    break;
+                default:
+                    return;
+            }
+
+            const PatternAddress address = patternAddressFromParts(
+                miniAcid.currentPageIndex(), bank, slot);
+            if (!address.valid()) return;
+            status.patternPage = static_cast<uint8_t>(address.page);
+            status.patternBank = static_cast<uint8_t>(address.bank);
+            status.patternSlot = static_cast<uint8_t>(address.slot);
+        }
+
         UiStatusSnapshot buildUiStatusSnapshot(MiniAcid& miniAcid) {
             UiStatusSnapshot status{};
             status.context = gStatusContext;
@@ -182,6 +214,7 @@ namespace UI {
                 ? UiStatusState::Play
                 : UiStatusState::Stop;
             status.output = UiStatusOutput::InternalAudio;
+            populatePatternAddress(status, miniAcid);
 
             if (status.source == UiStatusSource::Song) {
                 status.bar = statusOneBasedIndex(miniAcid.songPlayheadPosition());
