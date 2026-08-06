@@ -120,11 +120,3 @@ inline bool repeatKeyStillHeld(const KeysState& state,
 }
 
 }  // namespace GroovePuterInput
-
-// GroovePuter.ino includes this header after miniacid_display.h and is the only
-// production translation unit that includes it. Route sketch-level display
-// calls through the Cardputer adapter without changing MiniAcidDisplay's
-// accepted cross-platform dispatcher or any page implementation.
-#if defined(ARDUINO_M5STACK_CARDPUTER)
-#define handleEvent(...) handleCardputerEvent(__VA_ARGS__)
-#endif
