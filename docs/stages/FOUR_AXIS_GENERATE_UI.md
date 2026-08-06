@@ -8,21 +8,21 @@ Validate the fixed four-axis GENERATE workflow on M5Stack Cardputer ADV:
 GENRE -> FEEL -> GENERATION -> TEXTURE
 ```
 
-Each page must have one musical responsibility and one visible address:
+Each page has one musical responsibility and one visible address:
 
 - **GENRE** — corridor and vocabulary;
 - **FEEL** — event timing and velocity relative to the grid;
 - **GENERATION** — phrase form and materialization into Song;
 - **TEXTURE** — sound surface only.
 
-The test verifies both layout and causal isolation. No generator architecture, Scene field, persistence codec or DSP parameter structure is added by this stage.
+The test verifies layout and causal isolation. This stage adds no generator architecture, Scene field, persistence codec or DSP parameter structure.
 
 ## Hardware list
 
 - M5Stack Cardputer ADV;
 - USB-C data cable;
-- computer with the existing GroovePuter Cardputer ADV build toolchain;
-- headphones or powered speaker for hearing FEEL/TEXTURE differences.
+- computer with the existing GroovePuter Cardputer ADV toolchain;
+- headphones or powered speaker for FEEL/TEXTURE listening checks.
 
 ## Wiring
 
@@ -30,7 +30,7 @@ The test verifies both layout and causal isolation. No generator architecture, S
 2. Connect headphones or a powered speaker to the normal audio output.
 3. Leave PORT.A disconnected. This test does not use I2C or external encoders.
 
-Cardputer ADV internal voltage and pin configuration are unchanged from `dev`.
+Cardputer ADV voltage and pin configuration are unchanged from `dev`.
 
 ## Build / flash
 
@@ -44,16 +44,13 @@ python3 tests/test_four_axis_ui_source_regressions.py
 ./scripts/build_cardputer_adv.sh
 ```
 
-Flash the produced normal Cardputer ADV firmware using the same command/tool used for current `dev` hardware tests.
+Flash the normal Cardputer ADV firmware using the same tool used for current `dev` hardware tests.
 
 ## Expected behavior
 
 ### 1. Fixed page order
 
-1. Open the GENERATE workflow.
-2. Press `[` / `]` repeatedly.
-
-Expected order:
+Open GENERATE and press `[` / `]` repeatedly.
 
 ```text
 GENRE 1/4
@@ -63,80 +60,74 @@ TEXTURE 4/4
 GENRE 1/4
 ```
 
-`Fn+[ / ]` must still change workflow rather than axis page.
+`Fn+[ / ]` still changes workflow rather than axis page.
 
 ### 2. GENRE owns the corridor
 
 On `GENRE 1/4`:
 
-1. Change `GENRE` and `VARIANT` with arrows.
-2. Change `MORPH`.
-3. Cycle `APPLY` between `PROFILE ONLY`, `MATERIALIZE` and `MATERIALIZE+BPM`.
-4. Press `Enter`.
+1. Change `GENRE`, `VARIANT` and `MORPH`.
+2. Cycle `APPLY`: `PROFILE ONLY`, `MATERIALIZE`, `MATERIALIZE+BPM`.
+3. Press `Enter`.
 
 Expected:
 
-- `PROFILE ONLY` changes the active genre/recipe contract without replacing current pattern material;
-- `MATERIALIZE` regenerates pattern material once;
+- `PROFILE ONLY` changes the active genre/recipe without replacing patterns;
+- `MATERIALIZE` regenerates once;
 - `MATERIALIZE+BPM` also applies the genre BPM hint;
-- no texture selection appears on this page;
-- FEEL values do not change when applying GENRE;
-- the active genre/variant readout clearly differs from an un-applied selection.
+- no texture or FEEL control appears;
+- FEEL values remain unchanged;
+- selected and active genre/variant states are distinguishable.
 
 ### 3. FEEL owns timing and velocity
 
 On `FEEL 2/4`:
 
-1. Adjust `SWING`.
-2. Adjust `TIME HUMAN`.
-3. Adjust `VEL HUMAN`.
-4. Browse `TIGHT/HUMAN/LOOSE` with `Left/Right` without applying.
-5. Press `Enter` on a preset.
+1. Adjust `SWING`, `TIME HUMAN` and `VEL HUMAN`.
+2. Browse `TIGHT/HUMAN/LOOSE` with `Left/Right`.
+3. Press `Enter` on a preset.
 
 Expected:
 
-- browsing a preset does not mark the Scene dirty;
-- applying a preset changes only swing, timing humanize and velocity humanize;
-- note count, scale, ghost generation probability, phrase role and sound surface remain unchanged;
-- the page contains no `GRID/TB/LEN` controls presented as FEEL;
-- the footer states `ENTER:PRESET`.
+- browsing a preset does not mark Scene dirty;
+- applying changes only swing, timing humanize and velocity humanize;
+- note count, scale, ghost generation, phrase role and sound remain unchanged;
+- no `GRID/TB/LEN` control is presented as FEEL;
+- footer shows `ENTER:PRESET`.
 
-### 4. GENERATION owns form and materialization
+### 4. GENERATION owns form
 
 On `GENERATION 3/4`:
 
-1. Select `LENGTH` and cycle `1/2/4/8 BARS`.
-2. Observe the read-only `PLAN` row.
+1. Cycle `LENGTH` through `1/2/4/8 BARS`.
+2. Observe the read-only `PLAN`.
 3. Move to `MATERIALIZE` and press `Enter`, or press `G`.
 
 Expected:
 
-- one constructive generation pass writes the requested bars into the displayed Song target;
-- the result toast identifies the materialized Song range;
-- the page exposes no flavor, sound macro, swing or humanize controls;
+- one constructive pass writes the requested bars to the shown Song target;
+- the toast identifies the Song range;
+- no flavor, texture, swing or humanize control appears;
 - no candidate scoring, retry animation or indefinite generation occurs;
-- previous transport state is restored after generation.
+- previous transport state is restored.
 
 ### 5. TEXTURE owns sound surface
 
 On `TEXTURE 4/4`:
 
-1. Select a texture mode.
-2. Adjust `AMOUNT`.
-3. Press `Enter` on `APPLY`.
-4. Toggle `FLAVOR LINK` separately.
+1. Select texture mode and `AMOUNT`.
+2. Press `Enter` on `APPLY`.
+3. Toggle `FLAVOR LINK` separately.
 
 Expected:
 
-- applying texture changes sound processing only;
-- notes, pattern occupancy, phrase length and Song structure remain unchanged;
-- `FLAVOR LINK` is explicitly labelled as a cross-axis link and defaults to the persisted Scene value;
-- the seven compact bars `DI AG SP WD IN AT DK` are read-only 0–127 projections;
-- changing a texture mode updates the macro projection before apply, while `ACTIVE` identifies the currently applied mode.
+- sound processing changes without note/rhythm/form changes;
+- `FLAVOR LINK` is explicitly marked cross-axis;
+- `DI AG SP WD IN GR DK` are read-only 0–127 projections for dirt, age, space, width, instability, aggression and darkness;
+- selection updates the projection before apply;
+- `ACTIVE` identifies the applied texture.
 
 ### 6. Page-aware Alt+H
-
-Press `Alt+H` on each page.
 
 Expected headings:
 
@@ -147,92 +138,78 @@ Expected headings:
 === TEXTURE 4/4 ===
 ```
 
-Each help section must state what the page does **not** change.
+Each section states what the page does not change.
 
 ### 7. Themes
 
-Cycle CARBON, CYBER and AMBER with the existing global theme shortcut.
+Use the public theme shortcut to test CARBON and CYBER. If an existing saved session loads AMBER, verify compatibility there as well; AMBER is not part of the public shortcut cycle.
 
 Expected:
 
-- the four axis colors remain distinguishable;
-- focused rows remain readable;
-- meters and macro strips stay inside 240x135 bounds;
-- no text overlaps the footer or right edge;
-- all three themes preserve the same labels and controls.
+- axis colors and focus remain readable;
+- meters and macro strips remain inside 240×135;
+- text does not overlap footer or right edge;
+- labels and controls remain identical across themes.
 
 ### 8. Session restore
 
 1. Leave GENERATE on FEEL, GENERATION or TEXTURE.
-2. Change to another workflow and return.
-3. Reboot after Scene/UI session persistence has completed.
+2. Change workflow and return.
+3. Reboot after UI-session persistence completes.
 
 Expected:
 
-- the last used GENERATE page is restored;
-- FEEL is no longer restored as a SETTINGS page;
-- SETTINGS contains only `PROJECT / SETUP` in this stage.
+- the last GENERATE page is restored;
+- FEEL is not restored as SETTINGS;
+- SETTINGS contains only `PROJECT / SETUP`.
 
 ## Troubleshooting
 
 ### GENERATE still has three pages
 
-Confirm the branch and head:
-
 ```bash
 git branch --show-current
 git rev-parse HEAD
-```
-
-Then run:
-
-```bash
 python3 tests/test_four_axis_ui_source_regressions.py
 ```
 
 The source gate must report `PASS`.
 
-### FEEL preset browsing creates a dirty marker
+### FEEL preset browsing creates dirty state
 
-Only pressing `Enter`/`Space` on the selected preset may mutate the Scene. Plain `Left/Right` on the PRESET row must change only the UI cursor.
+Only `Enter`/`Space` on the selected preset may mutate Scene. `Left/Right` on PRESET changes only the UI selection.
 
-### GENRE changes the sound unexpectedly
+### GENRE changes sound unexpectedly
 
-GENRE no longer invokes texture or genre-timbre application. Verify `APPLY` mode and confirm no separate TEXTURE apply was performed. Report the selected genre, active genre and the exact synth engine.
+GENRE does not invoke texture or genre-timbre application. Verify `APPLY` mode and confirm no separate TEXTURE apply occurred.
 
 ### TEXTURE changes pattern events
 
-This is a failure. Capture before/after 16-step masks and report the selected texture and amount. TEXTURE must call only the existing texture application path.
+This is a failure. Record before/after 16-step masks, texture mode and amount. TEXTURE must use only the existing texture path.
 
-### GENERATION appears random after identical actions
+### GENERATION differs after apparently identical actions
 
-This stage preserves the existing generation seed behavior; it does not add retry or scoring. Record the exact sequence of actions and whether another generator operation advanced RNG state beforehand.
+This stage preserves existing RNG behavior and adds no retry/scoring. Record the complete action sequence and whether another generator operation advanced RNG state first.
 
-### Page text clips in one theme
+### Text clips
 
-Record:
-
-- theme;
-- page;
-- selected value;
-- screenshot of the full 240x135 display.
-
-Do not solve clipping by shortening domain names differently per theme.
+Record theme, page, selected value and a full 240×135 screenshot. Do not use different domain labels per theme as a workaround.
 
 ## Acceptance checklist
 
-- [ ] GENERATE cycles through GENRE -> FEEL -> GENERATION -> TEXTURE.
-- [ ] GENRE has no texture or FEEL controls.
+- [ ] GENERATE cycles GENRE -> FEEL -> GENERATION -> TEXTURE.
+- [ ] GENRE has no TEXTURE or FEEL controls.
 - [ ] PROFILE ONLY keeps existing pattern material.
 - [ ] FEEL edits only swing/timing/velocity humanize.
 - [ ] FEEL preset browsing is non-mutating until apply.
-- [ ] GENERATION materializes 1/2/4/8 bars into the shown Song target.
+- [ ] GENERATION materializes 1/2/4/8 bars to the shown Song target.
 - [ ] GENERATION exposes no flavor, texture or humanize controls.
-- [ ] TEXTURE changes sound without changing note/rhythm/form data.
+- [ ] TEXTURE changes sound without note/rhythm/form changes.
 - [ ] Seven texture macro indicators are readable and non-editable.
 - [ ] `FLAVOR LINK` is visibly marked cross-axis.
 - [ ] `Alt+H` matches each active page.
-- [ ] CARBON, CYBER and AMBER remain readable at 240x135.
-- [ ] Last GENERATE page restores within the session and after reboot.
+- [ ] CARBON and CYBER are readable at 240×135.
+- [ ] Existing AMBER sessions remain readable if loaded.
+- [ ] Last GENERATE page restores in-session and after reboot.
 - [ ] Host tests and Cardputer ADV build pass.
-- [ ] Serial output contains no new Scene/session persistence errors.
+- [ ] Serial output has no new Scene/session persistence errors.
