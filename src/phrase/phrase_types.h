@@ -129,6 +129,8 @@ struct SlotSummary {
   Source source = Source::None;
   StorageMode storage = StorageMode::Empty;
   uint8_t trackMask = 0;
+  uint8_t sourceSongSlot = 0;
+  uint8_t sourceStartRow = 0;
   bool mutableBacking = false;
 };
 
