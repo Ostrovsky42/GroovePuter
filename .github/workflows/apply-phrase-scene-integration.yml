@@ -1,0 +1,46 @@
+name: Apply Phrase Scene integration
+
+on:
+  push:
+    branches:
+      - agent/phrase-core-foundation
+    paths:
+      - 'tools/apply_phrase_scene_integration.py'
+      - '.github/workflows/apply-phrase-scene-integration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/phrase-core-foundation
+          fetch-depth: 0
+      - name: Apply exact integration patch
+        run: python3 tools/apply_phrase_scene_integration.py
+      - name: Build focused Phrase tests
+        run: |
+          mkdir -p build/host-tests
+          COMMON_FLAGS='-std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I.'
+          g++ ${COMMON_FLAGS} tests/test_phrase_core.cpp \
+            -o build/host-tests/test_phrase_core
+          g++ ${COMMON_FLAGS} tests/test_phrase_persistence_preview.cpp \
+            -o build/host-tests/test_phrase_persistence_preview
+          build/host-tests/test_phrase_core
+          build/host-tests/test_phrase_persistence_preview
+      - name: Remove staging files
+        run: |
+          rm tools/apply_phrase_scene_integration.py
+          rm .github/workflows/apply-phrase-scene-integration.yml
+      - name: Commit integrated Scene codec
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scenes.h scenes.cpp tools/apply_phrase_scene_integration.py \
+            .github/workflows/apply-phrase-scene-integration.yml
+          git commit -m 'feat: persist Phrase Core in Scene codec'
+          git push origin HEAD:agent/phrase-core-foundation
