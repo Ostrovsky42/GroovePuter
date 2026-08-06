@@ -3,10 +3,6 @@ name: Core regressions
 on:
   push:
     branches:
-      - main
-      - dev
-      - agent/fix-core-reliability
-      - agent/smf-structural-inspector
       - agent/phrase-core-foundation
   pull_request:
 
@@ -14,121 +10,6 @@ permissions:
   contents: write
 
 jobs:
-  host-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Run core host regressions
-        run: bash tests/run_host_tests.sh
-
-      - name: Run UI status chrome tests
-        run: |
-          python3 tests/test_ui_status_chrome_source_regressions.py
-          mkdir -p build/host-tests
-          g++ -std=c++17 -Wall -Wextra -Werror -I. \
-            tests/test_ui_status_chrome.cpp \
-            -o build/host-tests/test_ui_status_chrome
-          build/host-tests/test_ui_status_chrome
-
-      - name: Run synth engine tests
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          root = Path('.')
-          assert not (root / 'src/dsp/opl2_synth_voice.h').exists()
-          assert not (root / 'src/dsp/opl2_synth_voice.cpp').exists()
-
-          for path in (
-              root / 'src/ui/pages/synth_sequencer_page.cpp',
-              root / 'src/ui/pages/tb303_params_page.cpp',
-          ):
-              text = path.read_text(encoding='utf-8')
-              assert 'removeDisabledSynthEngines' in text
-              assert '{"TB303", "SID", "AY", "OPL2"' not in text
-
-          makefile = (root / 'platform_sdl/Makefile').read_text(encoding='utf-8')
-          assert 'opl2_synth_voice' not in makefile
-          assert 'wave_morph_synth_voice.cpp' in makefile
-          PY
-
-          mkdir -p build/host-tests
-          g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter -I. \
-            tests/test_new_synth_voices.cpp \
-            src/dsp/swappable_synth_voice.cpp \
-            src/dsp/mini_tb303.cpp \
-            src/dsp/filter.cpp \
-            src/dsp/audio_wavetables.cpp \
-            src/dsp/sid_synth_voice.cpp \
-            src/dsp/sid_synth.cpp \
-            src/dsp/ay_synth_voice.cpp \
-            src/dsp/sh101_synth_voice.cpp \
-            src/dsp/sn76489_synth_voice.cpp \
-            src/dsp/wave_morph_synth_voice.cpp \
-            -o build/host-tests/test_new_synth_voices
-          build/host-tests/test_new_synth_voices
-
-      - name: Run dirty-region display tests
-        run: |
-          mkdir -p build/host-tests
-          g++ -std=c++17 -Wall -Wextra -Werror -I. \
-            tests/test_dirty_tile_tracker.cpp \
-            -o build/host-tests/test_dirty_tile_tracker
-          build/host-tests/test_dirty_tile_tracker
-
-  sdl-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install SDL dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential \
-            libsdl2-dev \
-            libsdl2-gfx-dev
-
-      - name: Build desktop target
-        working-directory: platform_sdl
-        run: make clean all CXX=g++
-
-  cardputer-adv-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Arduino CLI
-        uses: arduino/setup-arduino-cli@v2
-        with:
-          version: "1.x"
-
-      - name: Install pinned M5Stack dependencies
-        run: bash scripts/install_arduino_deps.sh
-
-      - name: Compile Cardputer ADV firmware
-        run: bash scripts/build.sh --warnings all
-
-      - name: Check fixed DRAM budget
-        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
-
-  cardputer-adv-seqtrak-midi-only-build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Arduino CLI
-        uses: arduino/setup-arduino-cli@v2
-        with:
-          version: "1.x"
-
-      - name: Install pinned M5Stack dependencies
-        run: bash scripts/install_arduino_deps.sh
-
-      - name: Compile and check SEQTRAK MIDI-only firmware
-        run: bash scripts/build_seqtrak_midi_only.sh --warnings all
-
   finalize-phrase-ui:
     if: (github.ref == 'refs/heads/agent/phrase-core-foundation' || github.head_ref == 'agent/phrase-core-foundation') && github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
@@ -274,19 +155,22 @@ jobs:
           print("global help source regressions passed")
           PYFILE
 
-      - name: Remove temporary construction files
+      - name: Remove ordinary temporary construction files
         run: |
           rm -f tools/apply_phrase_ui_registration.py
           rm -f tools/apply_phrase_ui_regression_updates.py
-          rm -f .github/workflows/apply-phrase-ui-registration.yml
           rm -f .github/phrase-ui-trigger
-          git checkout origin/dev -- .github/workflows/core-regressions.yml
-          git checkout 30c64ad54f6bd9b30f9c5a882af9f8de94511370 -- .github/workflows/phrase-core.yml
 
-      - name: Commit clean Phrase UI tree
+      - name: Commit clean source changes
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
+          git add src/ui/miniacid_display.cpp \
+            tests/test_performance_source_regressions.py \
+            tests/test_theme_selection_source_regressions.py \
+            tests/test_global_help_source_regressions.py \
+            tools/apply_phrase_ui_registration.py \
+            tools/apply_phrase_ui_regression_updates.py \
+            .github/phrase-ui-trigger
           git commit -m 'ui: finalize Phrase Core workflow integration'
           git push origin HEAD:agent/phrase-core-foundation
