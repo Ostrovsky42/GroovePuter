@@ -31,6 +31,12 @@ struct WriteRequest {
   bool overwrite = false;
 };
 
+struct ArrangementWriteRequest {
+  uint8_t destinationSongSlot = 0;
+  uint8_t startRow = 0;
+  bool overwrite = false;
+};
+
 inline const char* errorName(PhraseCore::Error error) {
   switch (error) {
     case PhraseCore::Error::None: return "OK";
@@ -45,6 +51,9 @@ inline const char* errorName(PhraseCore::Error error) {
     case PhraseCore::Error::InvalidParent: return "PARENT";
     case PhraseCore::Error::DestinationOccupied: return "OCCUPIED";
     case PhraseCore::Error::InvalidPhrase: return "EMPTY";
+    case PhraseCore::Error::InvalidArrangementPosition: return "POSITION";
+    case PhraseCore::Error::ArrangementFull: return "FULL";
+    case PhraseCore::Error::ArrangementEmpty: return "EMPTY";
   }
   return "ERROR";
 }
@@ -52,6 +61,10 @@ inline const char* errorName(PhraseCore::Error error) {
 inline PhraseCore::SlotSummary summary(const Scene& scene,
                                        PhraseCore::SlotId slot) {
   return PhraseCore::summarize(scene.phraseBank, slot);
+}
+
+inline uint8_t arrangementTotalBars(const Scene& scene) {
+  return PhraseCore::arrangementTotalBars(scene.phraseBank);
 }
 
 inline bool barPreview(const Scene& scene,
@@ -66,8 +79,8 @@ inline bool barPreview(const Scene& scene,
 }
 
 // Commit must execute its callable synchronously under the repository's
-// established AudioGuard. The command owns validation and advances Scene
-// revision exactly once after a successful mutation.
+// established AudioGuard. Commands own validation and advance Scene revision
+// exactly once after a successful mutation.
 template <typename Commit>
 PhraseCore::Result capture(Scene& scene,
                            const CaptureRequest& request,
@@ -152,6 +165,72 @@ PhraseCore::Result writeToSong(Scene& scene,
         request.overwrite);
   });
   if (result) GroovePuterState::markSceneMutated();
+  return result;
+}
+
+template <typename Commit>
+PhraseCore::ArrangementResult assignArrangement(
+    Scene& scene,
+    uint8_t position,
+    PhraseCore::SlotId slot,
+    Commit&& commit) {
+  PhraseCore::ArrangementResult result{};
+  auto&& guardedCommit = commit;
+  guardedCommit([&]() {
+    result = PhraseCore::assignArrangementStep(
+        scene.phraseBank, position, slot);
+  });
+  if (result && result.changed) GroovePuterState::markSceneMutated();
+  return result;
+}
+
+template <typename Commit>
+PhraseCore::ArrangementResult removeArrangement(
+    Scene& scene,
+    uint8_t position,
+    Commit&& commit) {
+  PhraseCore::ArrangementResult result{};
+  auto&& guardedCommit = commit;
+  guardedCommit([&]() {
+    result = PhraseCore::removeArrangementStep(scene.phraseBank, position);
+  });
+  if (result && result.changed) GroovePuterState::markSceneMutated();
+  return result;
+}
+
+template <typename Commit>
+PhraseCore::ArrangementResult clearArrangement(
+    Scene& scene,
+    Commit&& commit) {
+  PhraseCore::ArrangementResult result{};
+  auto&& guardedCommit = commit;
+  guardedCommit([&]() {
+    result = PhraseCore::clearArrangement(scene.phraseBank);
+  });
+  if (result && result.changed) GroovePuterState::markSceneMutated();
+  return result;
+}
+
+template <typename Commit>
+PhraseCore::ArrangementResult writeArrangementToSong(
+    Scene& scene,
+    const ArrangementWriteRequest& request,
+    Commit&& commit) {
+  PhraseCore::ArrangementResult result{};
+  if (request.destinationSongSlot > 1) {
+    result.error = PhraseCore::Error::InvalidSongSlot;
+    return result;
+  }
+
+  auto&& guardedCommit = commit;
+  guardedCommit([&]() {
+    result = PhraseCore::writeArrangementToSong(
+        scene.phraseBank,
+        scene.songs[request.destinationSongSlot],
+        request.startRow,
+        request.overwrite);
+  });
+  if (result && result.changed) GroovePuterState::markSceneMutated();
   return result;
 }
 
