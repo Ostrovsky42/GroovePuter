@@ -1,12 +1,16 @@
 #include <cassert>
 #include <cstring>
 
+#include "src/ui/ui_active_page_title.h"
 #include "src/ui/ui_status_chrome.h"
 
 using namespace UI;
 
 int main() {
     char line[48]{};
+
+    publishActivePageTitle("SYNTH A TB303 P2");
+    assert(std::strcmp(activePageTitle(), "SYNTH A TB303 P2") == 0);
 
     UiStatusSnapshot pattern{};
     pattern.context = UiStatusContext::Genre;
