@@ -50,6 +50,7 @@ jobs:
       - name: Check Phrase source and Scene codec integration
         run: |
           python3 tests/test_phrase_scene_source_regressions.py
+          python3 tests/test_phrase_ui_source_regressions.py
           python3 tests/test_global_help_source_regressions.py
 
       - name: Build Phrase Core and UI host tests
