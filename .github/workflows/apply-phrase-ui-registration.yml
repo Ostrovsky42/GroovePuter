@@ -20,6 +20,24 @@ jobs:
         with:
           ref: agent/phrase-core-ui
           fetch-depth: 0
+      - name: Scope session Song lookup patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tools/apply_phrase_ui_registration.py')
+          text = path.read_text()
+          old = '''text = replace_once(text,
+    "        case SessionWorkflow::Song: return SessionPages::kArrange;",
+    "        case SessionWorkflow::Song: return kSongPages[index];",
+    "session Song lookup")'''
+          new = '''text = replace_once(text,
+    "        case SessionWorkflow::Song: return SessionPages::kArrange;\\n        case SessionWorkflow::Settings: return kSettingsPages[index];",
+    "        case SessionWorkflow::Song: return kSongPages[index];\\n        case SessionWorkflow::Settings: return kSettingsPages[index];",
+    "session Song lookup")'''
+          if text.count(old) != 1:
+              raise SystemExit(f'script lookup anchor count={text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
       - name: Apply exact registration patch
         run: python3 tools/apply_phrase_ui_registration.py
       - name: Compile focused UI contracts
