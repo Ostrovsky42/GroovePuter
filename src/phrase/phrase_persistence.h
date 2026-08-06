@@ -11,14 +11,25 @@ constexpr int kPersistMetadataValues = 10;
 constexpr int kPersistReferenceValues = kMaxBars * kTrackCount;
 constexpr int kPersistValuesPerSlot =
     kPersistMetadataValues + kPersistReferenceValues;
-constexpr int kPersistValueCount =
+constexpr int kPersistLegacyValueCount =
     kPersistHeaderValues + kSlotCount * kPersistValuesPerSlot;
+constexpr int kPersistArrangementHeaderValues = 1;
+constexpr int kPersistArrangementValues =
+    kPersistArrangementHeaderValues + kArrangementCapacity;
+constexpr int kPersistValueCount =
+    kPersistLegacyValueCount + kPersistArrangementValues;
 
 inline int32_t persistentValueAt(const PhraseBank& bank, int flatIndex) {
   if (flatIndex == 0) return bank.version;
   if (flatIndex == 1) return bank.nextPhraseId;
   if (flatIndex < kPersistHeaderValues || flatIndex >= kPersistValueCount) {
     return 0;
+  }
+
+  if (flatIndex >= kPersistLegacyValueCount) {
+    const int arrangementOffset = flatIndex - kPersistLegacyValueCount;
+    if (arrangementOffset == 0) return bank.arrangement.length;
+    return bank.arrangement.slots[arrangementOffset - 1];
   }
 
   const int relative = flatIndex - kPersistHeaderValues;
@@ -64,6 +75,12 @@ inline int16_t persistentReference(int32_t value) {
   return static_cast<int16_t>(value);
 }
 
+inline uint8_t persistentArrangementSlot(int32_t value) {
+  return value >= 0 && value < kSlotCount
+             ? static_cast<uint8_t>(value)
+             : kNoSlot;
+}
+
 inline bool applyPersistentValue(PhraseBank& bank,
                                  int flatIndex,
                                  int32_t value) {
@@ -74,6 +91,17 @@ inline bool applyPersistentValue(PhraseBank& bank,
   }
   if (flatIndex == 1) {
     bank.nextPhraseId = persistentWord(value);
+    return true;
+  }
+
+  if (flatIndex >= kPersistLegacyValueCount) {
+    const int arrangementOffset = flatIndex - kPersistLegacyValueCount;
+    if (arrangementOffset == 0) {
+      bank.arrangement.length = persistentByte(value);
+    } else {
+      bank.arrangement.slots[arrangementOffset - 1] =
+          persistentArrangementSlot(value);
+    }
     return true;
   }
 
