@@ -52,10 +52,10 @@ for needle in (
     '"PHRASE ARRANGE"',
     '"CHAIN %u/%u  TOTAL %uB"',
     "PhraseCore::kArrangementCapacity",
-    "PhraseWorkspace::assignArrangementStep",
-    "PhraseWorkspace::removeArrangementStep",
-    "PhraseWorkspace::clearArrangement",
-    "PhraseWorkspace::writeArrangementToSong",
+    "PhraseWorkspace::assignArrangement(",
+    "PhraseWorkspace::removeArrangement(",
+    "PhraseWorkspace::clearArrangement(",
+    "PhraseWorkspace::writeArrangementToSong(",
 ):
     require(CPP, needle, f"Phrase Arranger UI regression: {needle}")
 
