@@ -1,0 +1,65 @@
+name: Apply Carbon Song patch
+
+on:
+  pull_request:
+    branches:
+      - dev
+    types:
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/ui-32step-song-spacing-polish
+          fetch-depth: 0
+
+      - name: Run staged Carbon patch
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/agent-ui-carbon-song.yml').read_text(encoding='utf-8')
+          start_marker = (
+              '      - name: Replace Carbon Song renderer\n'
+              '        shell: bash\n'
+              '        run: |\n'
+          )
+          end_marker = '\n      - name: Run regressions and builds'
+          start = workflow.index(start_marker) + len(start_marker)
+          end = workflow.index(end_marker, start)
+          lines = workflow[start:end].splitlines()
+          script = '\n'.join(
+              line[10:] if line.startswith('          ') else line
+              for line in lines
+          )
+          Path('/tmp/apply-carbon-song.sh').write_text(
+              'set -euo pipefail\n' + script + '\n',
+              encoding='utf-8',
+          )
+          PY
+          bash /tmp/apply-carbon-song.sh
+
+      - name: Run regressions and SDL build
+        run: |
+          python3 tests/test_ui_layout_source_regressions.py
+          ./tests/run_host_tests.sh
+          make -C platform_sdl -j2
+
+      - name: Commit Carbon Song renderer
+        shell: bash
+        run: |
+          rm .github/workflows/agent-ui-carbon-song.yml
+          rm .github/workflows/agent-ui-carbon-wrapper.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "ui: add native Carbon Song split layout"
+          git push origin HEAD:agent/ui-32step-song-spacing-polish
