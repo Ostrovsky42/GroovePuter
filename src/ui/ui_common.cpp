@@ -1,6 +1,7 @@
 #include "ui_common.h"
 #include "ui_utils.h"
 #include "ui_widgets.h"
+#include "ui_active_page_title.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/smf_player_service.h"
 #include "src/midi/transport_clock_runtime.h"
@@ -159,7 +160,7 @@ namespace UI {
                     break;
                 case UiStatusContext::Drums:
                     bank = miniAcid.currentDrumBankIndex();
-                    slot = miniAcid.displayDrumPatternIndex();
+                    slot = miniAcid.displayDrumLocalPatternIndex();
                     break;
                 default:
                     return;
@@ -244,6 +245,7 @@ namespace UI {
     }
 
     void drawStatusChrome(IGfx& gfx, MiniAcid& mini_acid) {
+        gStatusContext = statusContextForTitle(UI::activePageTitle());
         const UiStatusSnapshot status = buildUiStatusSnapshot(mini_acid);
         if (!gStatusInitialized || status != gStatusSnapshot) {
             gStatusSnapshot = status;
