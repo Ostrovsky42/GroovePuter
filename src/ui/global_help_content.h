@@ -162,6 +162,22 @@ constexpr const char* kSongLines[] = {
     "Alt+Bksp    Clear full Song",
 };
 
+constexpr const char* kPhraseLines[] = {
+    "=== PHRASE CORE ===",
+    "1..4        Select Phrase A/B/C/D",
+    "Up/Down     Capture length 1/2/4/8",
+    "Left/Right  Preview Phrase bar",
+    "R           Cycle capture role",
+    "Shift+R     Previous role",
+    "P           Cycle derive parent",
+    "Enter       Capture current Song row",
+    "D           Derive parent into slot",
+    "W           Write to empty Song row",
+    "Alt+W       Overwrite Song row",
+    "Bksp/Del    Clear selected Phrase",
+    "REF         Mutable pattern references",
+};
+
 constexpr const char* kHubLines[] = {
     "=== OVERVIEW / SEQUENCER HUB ===",
     "Up/Down     Select track",
@@ -276,6 +292,8 @@ inline const char* const* pageLines(int pageIndex, int& count) {
             count = sizeof(kDrumLines) / sizeof(kDrumLines[0]); return kDrumLines;
         case WorkflowPages::kArrange:
             count = sizeof(kSongLines) / sizeof(kSongLines[0]); return kSongLines;
+        case WorkflowPages::kPhrase:
+            count = sizeof(kPhraseLines) / sizeof(kPhraseLines[0]); return kPhraseLines;
         case WorkflowPages::kPattern:
             count = sizeof(kHubLines) / sizeof(kHubLines[0]); return kHubLines;
         case WorkflowPages::kFeelTexture:
