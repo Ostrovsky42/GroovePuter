@@ -26,6 +26,10 @@ inline Result materializeCurrent(MiniAcid& engine,
   Result result{};
   result.variation = variation;
 
+  SceneManager& scenes = engine.sceneManager();
+  SynthPattern& synthA = scenes.editCurrentSynthPattern(0);
+  SynthPattern& synthB = scenes.editCurrentSynthPattern(1);
+
   if (AtlasRuntime::hasRecipe(recipe)) {
     const uint8_t count = AtlasRuntime::variationCount(recipe);
     if (count == 0) return result;
@@ -33,17 +37,14 @@ inline Result materializeCurrent(MiniAcid& engine,
     result.variation = variation;
 
     if (!AtlasRuntime::applyRecipe(
-            recipe, variation,
-            engine.editSynthPattern(0), engine.editSynthPattern(1),
-            engine.sceneManager().editCurrentDrumPattern(),
-            &result.metadata)) {
+            recipe, variation, synthA, synthB,
+            scenes.editCurrentDrumPattern(), &result.metadata)) {
       return result;
     }
 
     GenreSparseRepair::applySparseLeadContract(
-        genre, recipe, variation, engine.editSynthPattern(1));
-    engine.sceneManager().currentScene().feel.swingPct =
-        result.metadata.swingPercent;
+        genre, recipe, variation, synthB);
+    scenes.currentScene().feel.swingPct = result.metadata.swingPercent;
     if (applyTempo) {
       engine.setBpm(static_cast<float>(result.metadata.bpm));
     }
@@ -54,8 +55,7 @@ inline Result materializeCurrent(MiniAcid& engine,
 
   if (applyTempo) engine.setBpm(static_cast<float>(fallbackBpm));
   engine.regeneratePatternsWithGenre();
-  GenreSparseRepair::applySparseLeadContract(
-      genre, recipe, 0, engine.editSynthPattern(1));
+  GenreSparseRepair::applySparseLeadContract(genre, recipe, 0, synthB);
   result.ok = true;
   return result;
 }
