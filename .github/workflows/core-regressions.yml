@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   apply-file-master:
-    if: github.ref_name == 'feature/transport-synced-performance-tools' || github.event.pull_request.head.ref == 'feature/transport-synced-performance-tools'
+    if: github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'feature/transport-synced-performance-tools'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
