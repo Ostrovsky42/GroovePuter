@@ -15,6 +15,7 @@
 #include "global_help_overlay.h"
 #include "workflow_mode.h"
 #include "workspace_launcher_overlay.h"
+#include "pages/phrase_page.h"
 #include "src/platform/cardputer_midi_settings_session.h"
 #include "src/state/ui_session_state.h"
 
@@ -42,17 +43,33 @@ public:
   void dismissSplash();
   bool handleEvent(UIEvent event);
 
-  // Cardputer's sketch dispatches through this narrow adapter. Phrase Core and
-  // Phrase Arranger own Alt+W as their explicit destructive write command, but
-  // the accepted global dispatcher currently sees Alt+W before page handlers.
-  // Translate only that page/key combination to the existing page-local
-  // destructive flag; all other Alt+W events retain Wave Overlay behavior.
+  // Cardputer's sketch dispatches through this narrow adapter. It resolves two
+  // physical-key collisions before the global dispatcher sees the event:
+  //
+  // 1. Phrase Alt+W becomes the existing page-local overwrite flag while every
+  //    non-Phrase Alt+W retains the accepted Wave Overlay behavior.
+  // 2. Backspace is destructive in Phrase Core but deliberately non-destructive
+  //    in Phrase Arrange unless Ctrl is held. Ctrl-modified Backspace is also
+  //    consumed in Core so a missed Tab cannot clear the selected Phrase slot.
   bool handleCardputerEvent(UIEvent event) {
       if (page_index_ == WorkflowPages::kPhrase &&
-          event.event_type == GROOVEPUTER_KEY_DOWN && event.alt &&
-          (event.key == 'w' || event.key == 'W')) {
-          event.alt = false;
-          event.shift = true;
+          event.event_type == GROOVEPUTER_KEY_DOWN) {
+          if (event.alt && (event.key == 'w' || event.key == 'W')) {
+              event.alt = false;
+              event.shift = true;
+          }
+
+          if (event.key == '\b' || event.key == 0x7F) {
+              PhrasePage* phrasePage =
+                  dynamic_cast<PhrasePage*>(getPage_(WorkflowPages::kPhrase));
+              const bool arrange = phrasePage && phrasePage->isArrangeView();
+              if (arrange) {
+                  if (!event.ctrl) return true;
+                  event.ctrl = false;
+              } else if (event.ctrl) {
+                  return true;
+              }
+          }
       }
       return handleEvent(event);
   }
