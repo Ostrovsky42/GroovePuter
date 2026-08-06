@@ -1,0 +1,514 @@
+name: Apply axis ownership cleanup
+
+on:
+  push:
+    branches:
+      - agent/genre-feel-generation-texture-analysis
+
+permissions:
+  contents: write
+
+jobs:
+  refactor:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+
+      - name: Rename axis sources and remove duplicate phrase length
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git mv src/ui/pages/settings_page.h src/ui/pages/feel_page.h
+          git mv src/ui/pages/settings_page.cpp src/ui/pages/feel_page.cpp
+          git mv src/ui/pages/mode_page.h src/ui/pages/generation_page.h
+          git mv src/ui/pages/mode_page.cpp src/ui/pages/generation_page.cpp
+          git mv src/ui/pages/feel_texture_page.h src/ui/pages/texture_page.h
+          git mv src/ui/pages/feel_texture_page.cpp src/ui/pages/texture_page.cpp
+
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+
+          root = Path.cwd()
+          workflow_path = Path('.github/workflows/apply-axis-ownership-cleanup.yml')
+
+          text_replacements = (
+              ('feel_texture_page', 'texture_page'),
+              ('FeelTexturePage', 'TexturePage'),
+              ('settings_page', 'feel_page'),
+              ('SettingsPage', 'FeelPage'),
+              ('mode_page', 'generation_page'),
+              ('ModePage', 'GenerationPage'),
+          )
+
+          tracked = subprocess.check_output(['git', 'ls-files', '-z']).split(b'\0')
+          for raw in tracked:
+              if not raw:
+                  continue
+              path = Path(raw.decode('utf-8'))
+              if path == workflow_path or not path.is_file():
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except UnicodeDecodeError:
+                  continue
+              original = text
+              for old, new in text_replacements:
+                  text = text.replace(old, new)
+
+              # Canonical source-level page addresses. Numeric page values stay unchanged.
+              text = re.sub(r'\bkFeelTexture\b', 'kTexture', text)
+              text = re.sub(r'\bkGenerator\b', 'kFeel', text)
+              text = re.sub(r'\bkMode\b', 'kGeneration', text)
+              text = text.replace('Workspace::FeelTexture', 'Workspace::Texture')
+              text = text.replace('Workspace::Generator', 'Workspace::Feel')
+              text = text.replace('Workspace::Mode', 'Workspace::Generation')
+              text = re.sub(r'^(\s*)FeelTexture,(\s*// TEXTURE)', r'\1Texture,\2', text,
+                            flags=re.MULTILINE)
+              text = re.sub(r'^(\s*)Generator,(\s*// FEEL)', r'\1Feel,\2', text,
+                            flags=re.MULTILINE)
+              text = re.sub(r'^(\s*)Mode,(\s*// GENERATION)', r'\1Generation,\2', text,
+                            flags=re.MULTILINE)
+
+              # Help-array names follow the musical axes rather than historical page names.
+              text = text.replace('kFeelLines', 'kTextureLines')
+              text = text.replace('kGeneratorLines', 'kFeelLines')
+              text = text.replace('kModeLines', 'kGenerationLines')
+
+              if text != original:
+                  path.write_text(text, encoding='utf-8')
+
+          generation_h = r'''#pragma once
+
+#include <cstdint>
+#include <string>
+#include <utility>
+
+#include "../ui_core.h"
+#include "src/dsp/miniacid_engine.h"
+#include "src/state/scene_revision.h"
+
+class GenerationPage : public IPage {
+ public:
+  GenerationPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
+
+  void draw(IGfx& gfx) override;
+  bool handleEvent(UIEvent& ui_event) override;
+  const std::string& getTitle() const override { return title_; }
+  void setVisualStyle(VisualStyle style) override { style_ = style; }
+
+ private:
+  static constexpr uint8_t kMaterializeBars = 1;
+
+  void materializeCurrentBar();
+
+  template <typename F>
+  void withAudioGuard(F&& fn) {
+    if (audio_guard_) audio_guard_(std::forward<F>(fn));
+    else fn();
+    GroovePuterState::markSceneMutated();
+  }
+
+  MiniAcid& mini_acid_;
+  AudioGuard audio_guard_;
+  VisualStyle style_ = VisualStyle::MINIMAL;
+  std::string title_ = "GENERATION";
+};
+'''
+
+          generation_cpp = r'''#include "generation_page.h"
+
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+
+#include "../axis_page_palette.h"
+#include "../layout_manager.h"
+#include "../ui_common.h"
+#include "../../dsp/atlas_runtime.h"
+#include "../../dsp/phrase_generator.h"
+
+namespace {
+uint8_t atlasVariationForRole(PhraseGenerator::PhraseBarRole role) {
+  switch (role) {
+    case PhraseGenerator::PhraseBarRole::Base:
+    case PhraseGenerator::PhraseBarRole::Return:
+      return 0;
+    case PhraseGenerator::PhraseBarRole::MicroVariation:
+    case PhraseGenerator::PhraseBarRole::Development:
+    case PhraseGenerator::PhraseBarRole::Build:
+      return 1;
+    case PhraseGenerator::PhraseBarRole::Breakdown:
+    case PhraseGenerator::PhraseBarRole::Fill:
+    case PhraseGenerator::PhraseBarRole::EndingFill:
+      return 2;
+  }
+  return 0;
+}
+}  // namespace
+
+GenerationPage::GenerationPage(IGfx& gfx,
+                               MiniAcid& mini_acid,
+                               AudioGuard audio_guard)
+    : mini_acid_(mini_acid), audio_guard_(audio_guard) {
+  (void)gfx;
+  style_ = UI::currentStyle;
+}
+
+void GenerationPage::materializeCurrentBar() {
+  const bool wasPlaying = mini_acid_.isPlaying();
+  if (wasPlaying) mini_acid_.stop();
+
+  PhraseGenerator::PhraseResult result{};
+  withAudioGuard([&]() {
+    PhraseGenerator::PhraseRequest request{};
+    request.bars = kMaterializeBars;
+    request.songStart = std::max(0, mini_acid_.currentSongPosition());
+    request.pageIndex = mini_acid_.currentPageIndex();
+    request.seed = static_cast<uint32_t>(rand());
+
+    Scene& scene = mini_acid_.sceneManager().currentScene();
+    const GenreRecipeId recipe = mini_acid_.genreManager().recipe();
+    const bool atlasPhrase = AtlasRuntime::hasRecipe(recipe) &&
+                             AtlasRuntime::variationCount(recipe) >= 3;
+
+    if (atlasPhrase) {
+      result = PhraseGenerator::generateBarsToSong(
+          scene, request,
+          [&](PhraseGenerator::PhraseBar& bar,
+              PhraseGenerator::PhraseBarRole role,
+              int barIndex) {
+            (void)barIndex;
+            return AtlasRuntime::applyRecipe(
+                recipe, atlasVariationForRole(role),
+                bar.synthA, bar.synthB, bar.drums, nullptr);
+          });
+    } else {
+      result = PhraseGenerator::generateToSong(
+          scene, request, [&](PhraseGenerator::PhraseBar& base) {
+            const GenerativeParams& params =
+                mini_acid_.genreManager().getCompiledGenerativeParams();
+            const GenreBehavior behavior = mini_acid_.genreManager().getBehavior();
+            mini_acid_.modeManager().generatePattern(
+                base.synthA, mini_acid_.bpm(), params, behavior, 0);
+            mini_acid_.modeManager().generatePattern(
+                base.synthB, mini_acid_.bpm(), params, behavior, 1);
+            mini_acid_.modeManager().generateDrumPattern(
+                base.drums, params, behavior);
+          });
+    }
+
+    if (result) {
+      mini_acid_.setSongMode(true);
+      mini_acid_.setSongPlaybackSlot(scene.activeSongSlot);
+      mini_acid_.setSongPosition(result.songStart);
+    }
+  });
+
+  if (result) {
+    char toast[64];
+    std::snprintf(toast, sizeof(toast),
+                  "BAR materialized -> Song %d",
+                  result.songStart + 1);
+    UI::showToast(toast, 1800);
+  } else {
+    UI::showToast(PhraseGenerator::errorText(result.error), 1600);
+  }
+
+  if (wasPlaying) mini_acid_.start();
+}
+
+void GenerationPage::draw(IGfx& gfx) {
+  const AxisUI::Palette palette = AxisUI::paletteFor(style_);
+  const IGfxColor axisColor = palette.generation;
+  const Scene& scene = mini_acid_.sceneManager().currentScene();
+  const GenerativeParams& params =
+      mini_acid_.genreManager().getCompiledGenerativeParams();
+
+  UI::drawStandardHeader(gfx, mini_acid_, "GENERATION");
+  LayoutManager::clearContent(gfx);
+
+  const int x = Layout::COL_1;
+  const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
+  AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0),
+                      "GEN 3/4", "FORM / DEVELOPMENT",
+                      axisColor, palette);
+
+  char value[96];
+  std::snprintf(value, sizeof(value), "%s / %s",
+                GenreManager::generativeModeName(
+                    mini_acid_.genreManager().generativeMode()),
+                GenreManager::recipeName(mini_acid_.genreManager().recipe()));
+  gfx.setTextColor(palette.muted);
+  gfx.drawText(x + 2, LayoutManager::lineY(1) + 1, value);
+
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(2), width,
+                       "SCOPE", "CURRENT SONG ROW", false,
+                       axisColor, palette);
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(3), width,
+                       "PLAN", "SINGLE BAR / BASE", false,
+                       axisColor, palette);
+
+  std::snprintf(value, sizeof(value), "SONG %c ROW %d",
+                static_cast<char>('A' + std::clamp(scene.activeSongSlot, 0, 1)),
+                std::max(0, mini_acid_.currentSongPosition()) + 1);
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width,
+                       "TARGET", value, false,
+                       axisColor, palette);
+
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width,
+                       "MATERIALIZE", "ENTER / G", true,
+                       axisColor, palette);
+
+  std::snprintf(value, sizeof(value),
+                "A %.0f%%  S %.0f%%  FILL %.0f%%",
+                params.accentProbability * 100.0f,
+                params.slideProbability * 100.0f,
+                params.fillProbability * 100.0f);
+  gfx.setTextColor(palette.muted);
+  gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
+
+  gfx.setTextColor(palette.text);
+  gfx.drawText(x + 2, LayoutManager::lineY(7) + 1,
+               "Phrase length owned by PHRASE CORE");
+
+  UI::drawStandardFooter(gfx,
+                         "ENTER/G:MATERIALIZE 1 BAR",
+                         "PHRASE LEN:PHRASE CORE");
+}
+
+bool GenerationPage::handleEvent(UIEvent& event) {
+  if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+
+  if (event.key == '\n' || event.key == '\r') {
+    materializeCurrentBar();
+    return true;
+  }
+
+  if ((event.key == 'g' || event.key == 'G') &&
+      !event.ctrl && !event.alt && !event.meta) {
+    materializeCurrentBar();
+    return true;
+  }
+
+  return false;
+}
+'''
+
+          Path('src/ui/pages/generation_page.h').write_text(generation_h, encoding='utf-8')
+          Path('src/ui/pages/generation_page.cpp').write_text(generation_cpp, encoding='utf-8')
+
+          def replace_required(path_text: str, old: str, new: str) -> None:
+              path = Path(path_text)
+              text = path.read_text(encoding='utf-8')
+              if old not in text:
+                  raise RuntimeError(f'missing expected text in {path}: {old[:80]}')
+              path.write_text(text.replace(old, new), encoding='utf-8')
+
+          help_path = Path('src/ui/global_help_content.h')
+          help_text = help_path.read_text(encoding='utf-8')
+          generation_help = re.compile(
+              r'constexpr const char\* kGenerationLines\[\] = \{.*?\n\};',
+              re.DOTALL,
+          )
+          replacement_help = '''constexpr const char* kGenerationLines[] = {
+    "=== GENERATION 3/4 ===",
+    "Generation = material/development",
+    "Enter/G     Materialize current bar",
+    "SCOPE       Current Song row",
+    "PLAN        Single bar / base",
+    "A/S/FILL    Generation probabilities",
+    "Phrase len  Owned by PHRASE CORE",
+    "Linear constructive pass",
+    "No scoring or retry loop",
+    "No texture or microtiming changes",
+};'''
+          help_text, count = generation_help.subn(replacement_help, help_text, count=1)
+          if count != 1:
+              raise RuntimeError('generation Alt+H block not found')
+          help_path.write_text(help_text, encoding='utf-8')
+
+          runbook = Path('docs/stages/FOUR_AXIS_GENERATE_UI.md')
+          runbook_text = runbook.read_text(encoding='utf-8')
+          runbook_text = runbook_text.replace(
+              '- **GENERATION** — phrase form and materialization into Song;',
+              '- **GENERATION** — generative operators and single-bar materialization into Song;',
+          )
+          purpose_anchor = (
+              'The test verifies layout and causal isolation. This stage adds no generator '
+              'architecture, Scene field, persistence codec or DSP parameter structure.\n'
+          )
+          purpose_note = purpose_anchor + (
+              '\n`PHRASE CORE` is the sole UI owner of the selected `1/2/4/8`-bar '
+              'working length. `GENERATION` does not expose a second phrase-length selector.\n'
+          )
+          if purpose_anchor not in runbook_text:
+              raise RuntimeError('runbook purpose anchor missing')
+          runbook_text = runbook_text.replace(purpose_anchor, purpose_note, 1)
+          generation_section = re.compile(
+              r'### 4\. GENERATION owns form\n.*?\n### 5\. TEXTURE owns sound surface',
+              re.DOTALL,
+          )
+          generation_section_text = '''### 4. GENERATION owns materialization operators
+
+On `GENERATION 3/4`:
+
+1. Confirm `SCOPE` is `CURRENT SONG ROW`.
+2. Confirm no editable `LENGTH` row is present.
+3. Press `Enter`, or press `G`.
+
+Expected:
+
+- one constructive pass writes exactly one bar to the shown Song target;
+- the toast identifies the written Song row;
+- the page states `Phrase length owned by PHRASE CORE`;
+- only PHRASE CORE exposes the selected `1/2/4/8`-bar working length;
+- no flavor, texture, swing or humanize control appears;
+- no candidate scoring, retry animation or indefinite generation occurs;
+- previous transport state is restored.
+
+### 5. TEXTURE owns sound surface'''
+          runbook_text, count = generation_section.subn(
+              generation_section_text, runbook_text, count=1)
+          if count != 1:
+              raise RuntimeError('runbook generation section missing')
+          runbook_text = runbook_text.replace(
+              '- [ ] GENERATION materializes 1/2/4/8 bars to the shown Song target.',
+              '- [ ] GENERATION materializes exactly one bar and exposes no phrase-length selector.\n'
+              '- [ ] PHRASE CORE is the sole UI owner of the selected 1/2/4/8-bar length.',
+          )
+          runbook_text = runbook_text.replace(
+              'Use the public theme shortcut to test CARBON and CYBER. If an existing saved '
+              'session loads AMBER, verify compatibility there as well; AMBER is not part of '
+              'the public shortcut cycle.',
+              'Use the public theme shortcut to test CARBON and CYBER. User-facing change: '
+              'AMBER is no longer in the public shortcut cycle. If an existing saved session '
+              'loads AMBER, verify compatibility there as well.',
+          )
+          runbook.write_text(runbook_text, encoding='utf-8')
+
+          analysis_doc = Path('docs/research/GROOVE_MODEL_AXIS_ANALYSIS.md')
+          analysis_text = analysis_doc.read_text(encoding='utf-8')
+          old_len_row = (
+              '| `LEN` | `FeelSettings.patternBars` сейчас | выбранная длина — GENERATION; '
+              'allowed lengths — GENRE | L1/L2 | текущая принадлежность FEEL нарушает '
+              'контракт; один основной адрес у phrase generation |'
+          )
+          new_len_row = (
+              '| `LEN` | `FeelSettings.patternBars` сейчас | выбранная рабочая длина — '
+              'PHRASE CORE; allowed lengths — GENRE; GENERATION назначает функции тактов '
+              'внутри предоставленной длины | L1/L2 | текущая принадлежность FEEL нарушает '
+              'контракт; единственный UI-адрес длины находится в PHRASE CORE |'
+          )
+          if old_len_row not in analysis_text:
+              raise RuntimeError('research LEN ownership row missing')
+          analysis_text = analysis_text.replace(old_len_row, new_len_row, 1)
+          contract_anchor = (
+              '4. **TEXTURE** — только семь макропараметров поверхности: dirt, age, space, '
+              'width, instability, aggression, darkness.\n'
+          )
+          contract_note = contract_anchor + (
+              '\n`PHRASE CORE` владеет единственным пользовательским адресом выбранной '
+              'рабочей длины `1/2/4/8` тактов. GENRE задаёт допустимый коридор длин, а '
+              'GENERATION назначает функции тактов внутри уже предоставленной длины и не '
+              'дублирует её селектор.\n'
+          )
+          if contract_anchor not in analysis_text:
+              raise RuntimeError('research contract anchor missing')
+          analysis_text = analysis_text.replace(contract_anchor, contract_note, 1)
+          analysis_doc.write_text(analysis_text, encoding='utf-8')
+
+          test_path = Path('tests/test_four_axis_ui_source_regressions.py')
+          test_text = test_path.read_text(encoding='utf-8')
+          path_gate = '''
+PAGE_DIR = ROOT / "src/ui/pages"
+CANONICAL_AXIS_FILES = (
+    "genre_page.h", "genre_page.cpp",
+    "feel_page.h", "feel_page.cpp",
+    "generation_page.h", "generation_page.cpp",
+    "texture_page.h", "texture_page.cpp",
+)
+LEGACY_AXIS_FILES = (
+    "settings_page.h", "settings_page.cpp",
+    "mode_page.h", "mode_page.cpp",
+    "feel_texture_page.h", "feel_texture_page.cpp",
+)
+for filename in CANONICAL_AXIS_FILES:
+    if not (PAGE_DIR / filename).is_file():
+        raise AssertionError(f"canonical axis source missing: {filename}")
+for filename in LEGACY_AXIS_FILES:
+    if (PAGE_DIR / filename).exists():
+        raise AssertionError(f"legacy axis source must not exist: {filename}")
+
+'''
+          marker = 'PALETTE = (ROOT / "src/ui/axis_page_palette.h").read_text(encoding="utf-8")\n\n'
+          if marker not in test_text:
+              raise RuntimeError('source test insertion marker missing')
+          test_text = test_text.replace(marker, marker + path_gate, 1)
+
+          generation_gate = '''
+require(GENERATION, "static constexpr uint8_t kMaterializeBars = 1;",
+        "GENERATION must materialize one bar without owning phrase length")
+require(GENERATION, "request.bars = kMaterializeBars;",
+        "GENERATION request must use the fixed single-bar scope")
+require(GENERATION, "Phrase length owned by PHRASE CORE",
+        "GENERATION must disclose the cross-workflow length owner")
+forbid(
+    GENERATION,
+    (
+        "phrase_bars_",
+        "shiftPhraseLength",
+        "kLengths[4]",
+        '"LENGTH"',
+        "L/R:LENGTH",
+        "1, 2, 4, 8",
+    ),
+    "GENERATION phrase-length ownership",
+)
+
+length_owner_tokens = ("capture_length_", "cycleLength(")
+unexpected_length_owners = []
+for path in PAGE_DIR.glob("*_page.*"):
+    page_source = path.read_text(encoding="utf-8")
+    if any(token in page_source for token in length_owner_tokens):
+        if path.name not in {"phrase_page.h", "phrase_page.cpp"}:
+            unexpected_length_owners.append(path.name)
+if unexpected_length_owners:
+    raise AssertionError(
+        "selected phrase length has duplicate UI owners: "
+        + ", ".join(sorted(unexpected_length_owners))
+    )
+
+'''
+          marker = '# TEXTURE: sound surface and seven read-only macro projection only.\n'
+          if marker not in test_text:
+              raise RuntimeError('generation ownership marker missing')
+          test_text = test_text.replace(marker, generation_gate + marker, 1)
+
+          workflow_gate = '''
+for legacy in ("kGenerator", "kMode", "kFeelTexture"):
+    if legacy in WORKFLOW or legacy in SESSION:
+        raise AssertionError(f"legacy page address remains in source: {legacy}")
+'''
+          marker = '# Persisted workflow mapping must mirror runtime navigation.\n'
+          if marker not in test_text:
+              raise RuntimeError('workflow ownership marker missing')
+          test_text = test_text.replace(marker, workflow_gate + '\n' + marker, 1)
+          test_path.write_text(test_text, encoding='utf-8')
+          PY
+
+          python3 tests/test_four_axis_ui_source_regressions.py
+          python3 tests/test_scene_revision_source_regressions.py
+
+          git rm .github/workflows/apply-axis-ownership-cleanup.yml
+          git add -A
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "refactor(ui): align axis source ownership"
+          git push origin HEAD:${GITHUB_REF_NAME}
