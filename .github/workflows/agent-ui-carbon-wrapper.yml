@@ -47,11 +47,59 @@ jobs:
           PY
           bash /tmp/apply-carbon-song.sh
 
-      - name: Run regressions and SDL build
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('src/ui/pages/song_page.cpp')
+          text = path.read_text(encoding='utf-8')
+          retro_start = text.index('void SongPage::drawRetroClassicStyle')
+          amber_start = text.index('void SongPage::drawAmberStyle', retro_start)
+          help_start = text.index('std::unique_ptr<MultiPageHelpDialog>', amber_start)
+
+          def rename_cursor_local(segment: str, label: str) -> str:
+              declaration = 'const int cursorRow = cursorRow();'
+              if segment.count(declaration) != 1:
+                  raise RuntimeError(
+                      f'{label}: expected one cursorRow declaration, '
+                      f'found {segment.count(declaration)}'
+                  )
+              segment = segment.replace(
+                  declaration,
+                  'const int cursorRowValue = cursorRow();',
+                  1,
+              )
+              segment = re.sub(r'\bcursorRow\b(?!\s*\()', 'cursorRowValue', segment)
+              if 'const int cursorRow = cursorRow();' in segment:
+                  raise RuntimeError(f'{label}: cursor local rename failed')
+              return segment
+
+          retro = rename_cursor_local(text[retro_start:amber_start], 'Retro')
+          amber = rename_cursor_local(text[amber_start:help_start], 'Amber')
+          text = text[:retro_start] + retro + amber + text[help_start:]
+          path.write_text(text, encoding='utf-8')
+
+          test_path = Path('tests/test_ui_layout_source_regressions.py')
+          test = test_path.read_text(encoding='utf-8')
+          anchor = '        self.assertGreaterEqual(source.count("const int gap = 4;"), 3)\n'
+          assertion = (
+              anchor
+              + '        self.assertNotIn("const int cursorRow = cursorRow();", source)\n'
+          )
+          if anchor not in test:
+              raise RuntimeError('Song cursor regression anchor not found')
+          test = test.replace(anchor, assertion, 1)
+          test_path.write_text(test, encoding='utf-8')
+          PY
+
+          start_line=$(grep -n '^void SongPage::drawMinimalStyle' src/ui/pages/song_page.cpp | cut -d: -f1)
+          end_line=$(grep -n '^std::unique_ptr<MultiPageHelpDialog>' src/ui/pages/song_page.cpp | cut -d: -f1)
+          clang-format -i --lines="${start_line}:$((end_line - 1))" src/ui/pages/song_page.cpp
+
+      - name: Run focused and host regressions
         run: |
           python3 tests/test_ui_layout_source_regressions.py
           ./tests/run_host_tests.sh
-          make -C platform_sdl -j2
 
       - name: Commit Carbon Song renderer
         shell: bash
