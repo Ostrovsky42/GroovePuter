@@ -1,19 +1,22 @@
 name: Integration merge diagnostic
 
 on:
-  push:
+  pull_request_target:
     branches:
       - integration/genre-song-ui
-    paths:
-      - .github/workflows/integration-merge-diagnostic.yml
+    types:
+      - opened
+      - reopened
+      - synchronize
   workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: read
 
 jobs:
   diagnose:
-    if: github.actor != 'github-actions[bot]'
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.ref == 'agent/genre-feel-generation-texture-analysis'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -41,5 +44,3 @@ jobs:
           git add .integration-merge-conflicts.txt
           git commit -m "chore: record integration merge conflicts" || exit 0
           git push origin HEAD:integration/genre-song-ui
-
-# Triggered through a service PR so GitHub emits a normal push event.
