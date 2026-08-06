@@ -8,12 +8,14 @@ on:
     paths:
       - 'tools/apply_phrase_ui_registration.py'
       - '.github/workflows/apply-phrase-ui-registration.yml'
+      - '.github/phrase-ui-trigger'
   pull_request:
     branches:
       - agent/phrase-core-foundation
     paths:
       - 'tools/apply_phrase_ui_registration.py'
       - '.github/workflows/apply-phrase-ui-registration.yml'
+      - '.github/phrase-ui-trigger'
 
 permissions:
   contents: write
@@ -63,6 +65,7 @@ jobs:
         run: |
           rm tools/apply_phrase_ui_registration.py
           rm .github/workflows/apply-phrase-ui-registration.yml
+          rm .github/phrase-ui-trigger
       - name: Commit registered Phrase UI
         run: |
           git config user.name 'github-actions[bot]'
@@ -72,6 +75,7 @@ jobs:
             src/ui/global_help_content.h platform_sdl/Makefile \
             tests/test_ui_session_state.cpp tests/test_global_help_content.cpp \
             tools/apply_phrase_ui_registration.py \
-            .github/workflows/apply-phrase-ui-registration.yml
+            .github/workflows/apply-phrase-ui-registration.yml \
+            .github/phrase-ui-trigger
           git commit -m 'ui: register Phrase Core workflow page'
           git push origin HEAD:agent/phrase-core-ui
