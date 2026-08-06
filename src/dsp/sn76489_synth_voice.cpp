@@ -77,11 +77,11 @@ float Sn76489SynthVoice::quantizeToneFrequency(float hz) const {
 }
 
 void Sn76489SynthVoice::updateToneFrequencies() {
-  float ratios[3];
-  ChipTuning::snStackRatios(params_[0].optionIndex(), ratios);
-  for (int i = 0; i < 3; ++i) {
-    toneFreq_[i] = quantizeToneFrequency(currentFreqHz_ * ratios[i]);
-  }
+  // Fold the requested root once, then preserve the selected stack intervals.
+  // Folding each voice independently would collapse low Oct+ stacks to one
+  // playable pitch.
+  ChipTuning::snStackFrequencies(
+      currentFreqHz_, params_[0].optionIndex(), toneFreq_);
 }
 
 void Sn76489SynthVoice::startNote(float freqHz, bool accent, bool slideFlag, uint8_t velocity) {
