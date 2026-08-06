@@ -29,6 +29,9 @@ class UiLayoutSourceRegressions(unittest.TestCase):
         self.assertIn("void SongPage::drawAmberStyle", source)
         self.assertGreaterEqual(source.count("EDIT:%c  PLAY:%c"), 2)
         self.assertGreaterEqual(source.count("const int gap = 4;"), 2)
+        self.assertIn("UI::themePalette(::VisualStyle::MINIMAL)", source)
+        self.assertGreaterEqual(source.count("const int gap = 4;"), 3)
+        self.assertNotIn("const int cursorRow = cursorRow();", source)
 
     def test_settings_and_hub_use_explicit_top_insets(self):
         synth = self.read("src/ui/pages/synth_sequencer_page.cpp")
