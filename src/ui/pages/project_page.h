@@ -79,9 +79,23 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
       const bool createdDifferentProject =
           creatingNewProject &&
           mini_acid_.currentSceneName() != sceneNameBefore;
-      if ((clearCurrentProject || createdDifferentProject) &&
-          !PatternPagingService::clearProjectPages()) {
-        UI::showToast("Pattern cleanup failed", 1200);
+      bool lifecycleOk = true;
+      if (clearCurrentProject || createdDifferentProject) {
+        lifecycleOk = PatternPagingService::clearProjectPages();
+      }
+
+      // Clear must be durable immediately: rewrite the zeroed scene JSON and
+      // remove its autosave recovery before the confirmation dialog closes.
+      // Otherwise a reboot before the next autosave can restore page 1.
+      if (clearCurrentProject && lifecycleOk) {
+        lifecycleOk = mini_acid_.saveSceneAs(mini_acid_.currentSceneName());
+      }
+
+      if (!lifecycleOk) {
+        UI::showToast(clearCurrentProject
+                          ? "Project clear not saved"
+                          : "Pattern cleanup failed",
+                      1400);
       }
   }
 
