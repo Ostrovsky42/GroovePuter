@@ -1,1107 +1,262 @@
 #include "genre_page.h"
-#include "../ui_common.h"
-#include "../ui_input.h"
-#include "../key_normalize.h"
+
+#include <algorithm>
 #include <cctype>
 #include <cstdio>
-#include <cstdlib>
-#include "../../debug_log.h"
 
-// Optional: Include retro theme for RETRO_CLASSIC style
-#ifdef USE_RETRO_THEME
-#include "../retro_ui_theme.h"
-#include "../retro_widgets.h"
-using namespace RetroTheme;
-using namespace RetroWidgets;
-#endif
-#ifdef USE_AMBER_THEME
-#include "../amber_ui_theme.h"
-#include "../amber_widgets.h"
-#endif
+#include "../axis_page_palette.h"
+#include "../layout_manager.h"
+#include "../ui_common.h"
+#include "../ui_input.h"
 
 namespace {
-constexpr int kGenreVisibleRows = 4;
-constexpr int kTextureVisibleRows = 4;
-constexpr int kRecipeVisibleRows = 5;
-
-enum class ApplyMode : uint8_t {
-    SoundOnly = 0,
-    SoundPattern = 1,
-    SoundPatternTempo = 2
+constexpr uint8_t kGenreBpm[kGenerativeModeCount] = {
+    128, 112, 136, 122, 138, 92, 88, 118, 140,
 };
 
-ApplyMode currentApplyMode(const MiniAcid& mini) {
-    const auto& gs = mini.sceneManager().currentScene().genre;
-    if (!gs.regenerateOnApply) return ApplyMode::SoundOnly;
-    if (gs.applyTempoOnApply) return ApplyMode::SoundPatternTempo;
-    return ApplyMode::SoundPattern;
+int wrapIndex(int value, int count) {
+  if (count <= 0) return 0;
+  while (value < 0) value += count;
+  while (value >= count) value -= count;
+  return value;
 }
 
-void setApplyMode(GenreSettings& gs, ApplyMode mode) {
-    switch (mode) {
-        case ApplyMode::SoundOnly:
-            gs.regenerateOnApply = false;
-            gs.applyTempoOnApply = false;
-            break;
-        case ApplyMode::SoundPattern:
-            gs.regenerateOnApply = true;
-            gs.applyTempoOnApply = false;
-            break;
-        case ApplyMode::SoundPatternTempo:
-            gs.regenerateOnApply = true;
-            gs.applyTempoOnApply = true;
-            break;
-    }
+const char* yesNo(bool value) {
+  return value ? "YES" : "NO";
 }
+}  // namespace
 
-void cycleApplyMode(GenreSettings& gs) {
-    ApplyMode mode = ApplyMode::SoundOnly;
-    if (gs.regenerateOnApply) {
-        mode = gs.applyTempoOnApply ? ApplyMode::SoundPatternTempo : ApplyMode::SoundPattern;
-    }
-    switch (mode) {
-        case ApplyMode::SoundOnly: setApplyMode(gs, ApplyMode::SoundPattern); break;
-        case ApplyMode::SoundPattern: setApplyMode(gs, ApplyMode::SoundPatternTempo); break;
-        case ApplyMode::SoundPatternTempo: setApplyMode(gs, ApplyMode::SoundOnly); break;
-    }
-}
-
-const char* applyModeToast(const MiniAcid& mini) {
-    switch (currentApplyMode(mini)) {
-        case ApplyMode::SoundOnly: return "Apply Mode: SOUND ONLY (Keeps patterns)";
-        case ApplyMode::SoundPattern: return "Apply Mode: SOUND+PATTERN (Regenerates)";
-        case ApplyMode::SoundPatternTempo: return "Apply Mode: SOUND+PATTERN+TEMPO";
-    }
-    return "Apply Mode";
-}
-
-const char* applyModeShort(const MiniAcid& mini) {
-    switch (currentApplyMode(mini)) {
-        case ApplyMode::SoundOnly: return "SND";
-        case ApplyMode::SoundPattern: return "S+P";
-        case ApplyMode::SoundPatternTempo: return "S+T";
-    }
-    return "SND";
-}
-
-const char* applyModeLong(const MiniAcid& mini) {
-    switch (currentApplyMode(mini)) {
-        case ApplyMode::SoundOnly: return "[ ] SOUND ONLY";
-        case ApplyMode::SoundPattern: return "[X] SOUND+PATTERN";
-        case ApplyMode::SoundPatternTempo: return "[X] SOUND+PATTERN+TEMPO";
-    }
-    return "[ ] SOUND ONLY";
-}
-
-const char* curatedModeShort(const MiniAcid& mini) {
-    return mini.sceneManager().currentScene().genre.curatedMode ? "CUR" : "ADV";
-}
-
-const char* grooveModeShort(const MiniAcid& mini) {
-    switch (mini.grooveboxMode()) {
-        case GrooveboxMode::Acid: return "ACD";
-        case GrooveboxMode::Minimal: return "MIN";
-        case GrooveboxMode::Breaks: return "BRK";
-        case GrooveboxMode::Dub: return "DUB";
-        case GrooveboxMode::Electro: return "ELC";
-        default: return "MIN";
-    }
-}
-
-bool regenOnApply(const MiniAcid& mini) {
-    return currentApplyMode(mini) != ApplyMode::SoundOnly;
-}
-
-bool tempoOnApply(const MiniAcid& mini) {
-    return currentApplyMode(mini) == ApplyMode::SoundPatternTempo;
-}
-
-const char* onOff(bool v) {
-    return v ? "ON" : "OFF";
-}
-
-const char* linkStateShort(const MiniAcid& mini) {
-    const GrooveboxMode expected =
-        GenreManager::grooveboxModeForRecipe(
-            mini.genreManager().recipe(), mini.genreManager().generativeMode());
-    return (mini.grooveboxMode() == expected) ? "GEN" : "OVR";
-}
-
-int clampRecipeIndex(int recipe) {
-    const int maxId = static_cast<int>(GenreManager::recipeCount()) - 1;
-    if (recipe < 0) return 0;
-    if (recipe > maxId) return maxId;
-    return recipe;
-}
-
-int computeScrollTop(int itemCount, int visibleRows, int selectedIndex, int currentTop) {
-    if (itemCount <= visibleRows) return 0;
-    int top = currentTop;
-    if (selectedIndex < top) top = selectedIndex;
-    if (selectedIndex >= top + visibleRows) top = selectedIndex - visibleRows + 1;
-    int maxTop = itemCount - visibleRows;
-    if (top > maxTop) top = maxTop;
-    if (top < 0) top = 0;
-    return top;
-}
-
-void drawScrollBar(IGfx& gfx, int x, int y, int h,
-                   int itemCount, int visibleRows, int topIndex,
-                   IGfxColor track, IGfxColor thumb) {
-    if (itemCount <= visibleRows) return;
-    gfx.drawRect(x, y, 3, h, track);
-    int trackH = h - 2;
-    int thumbH = (trackH * visibleRows) / itemCount;
-    if (thumbH < 6) thumbH = 6;
-    int maxTop = itemCount - visibleRows;
-    int thumbY = y + 1;
-    if (maxTop > 0) {
-        thumbY = y + 1 + (trackH - thumbH) * topIndex / maxTop;
-    }
-    gfx.fillRect(x + 1, thumbY, 1, thumbH, thumb);
-}
-
-void drawRecipeOverlay(IGfx& gfx, int selectedIndex) {
-    const int count = static_cast<int>(GenreManager::recipeCount());
-    const int top = computeScrollTop(count, kRecipeVisibleRows, selectedIndex, 0);
-    constexpr int x = 4;
-    constexpr int y = 18;
-    constexpr int w = 232;
-    constexpr int h = 96;
-    constexpr int rowH = 14;
-
-    gfx.fillRect(x, y, w, h, IGfxColor(0x101010));
-    gfx.drawRect(x, y, w, h, COLOR_ACCENT);
-    gfx.setTextColor(COLOR_ACCENT);
-    gfx.drawText(x + 6, y + 4, "RECIPE SELECT");
-
-    for (int row = 0; row < kRecipeVisibleRows; ++row) {
-        const int recipe = top + row;
-        if (recipe >= count) break;
-        const int rowY = y + 19 + row * rowH;
-        const bool selected = recipe == selectedIndex;
-        if (selected) {
-            gfx.fillRect(x + 5, rowY - 1, w - 10, rowH - 1, IGfxColor(0x303030));
-            gfx.drawRect(x + 5, rowY - 1, w - 10, rowH - 1, COLOR_ACCENT);
-        }
-        char label[36];
-        std::snprintf(label, sizeof(label), "%02d %s", recipe,
-                      GenreManager::recipeName(static_cast<GenreRecipeId>(recipe)));
-        gfx.setTextColor(selected ? COLOR_WHITE : COLOR_LABEL);
-        gfx.drawText(x + 10, rowY, label);
-    }
-}
-} // namespace
-
-const char* GenrePage::genreNames[kGenerativeModeCount] = {
-    "ACID", "MINIMAL", "TECHNO", "ELECTRO", "RAVE", "REGGAE", "TRIPHOP", "BROKEN", "CHIP"
-};
-
-const char* GenrePage::textureNames[kTextureModeCount] = {
-    "CLEAN", "DUB", "LOFI", "INDUS", "PSY"
-};
-// Manual genre/texture apply BPM hint by generative mode.
-static const uint8_t kGenreBpm[kGenerativeModeCount] = {128, 112, 136, 122, 138, 92, 88, 118, 140};
-
-GenrePage::GenrePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
+GenrePage::GenrePage(IGfx& gfx,
+                     MiniAcid& mini_acid,
+                     AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
-    (void)gfx;
-    visualStyle_ = UI::currentStyle;
-    updateFromEngine();
+  (void)gfx;
+  style_ = UI::currentStyle;
+  syncFromEngine();
 }
 
-// =================================================================
-// MAIN DRAW: STYLE DISPATCHER
-// =================================================================
-
-void GenrePage::drawHeader(IGfx& gfx) {
-    char titleStr[32];
-    std::snprintf(titleStr, sizeof(titleStr), "%s/%s",
-                  genreNames[genreIndex_], textureNames[textureIndex_]);
-
-    switch (visualStyle_) {
-        case VisualStyle::RETRO_CLASSIC: {
-#ifdef USE_RETRO_THEME
-            char subTitle[16];
-            std::snprintf(subTitle, sizeof(subTitle), "GENRE P%d", mini_acid_.currentPageIndex() + 1);
-            RetroWidgets::drawHeaderBar(gfx, 0, 0, 240, 14,
-                          subTitle, titleStr,
-                          mini_acid_.isPlaying(),
-                          (int)(mini_acid_.bpm() + 0.5f),
-                          mini_acid_.currentStep());
-#else
-            UI::drawStandardHeader(gfx, mini_acid_, titleStr);
-#endif
-            break;
-        }
-        case VisualStyle::AMBER: {
-#ifdef USE_AMBER_THEME
-            char subTitle[16];
-            std::snprintf(subTitle, sizeof(subTitle), "GENRE P%d", mini_acid_.currentPageIndex() + 1);
-            AmberWidgets::drawHeaderBar(gfx, 0, 0, 240, 14,
-                          subTitle, titleStr,
-                          mini_acid_.isPlaying(),
-                          (int)(mini_acid_.bpm() + 0.5f),
-                          mini_acid_.currentStep());
-#else
-            UI::drawStandardHeader(gfx, mini_acid_, titleStr);
-#endif
-            break;
-        }
-        case VisualStyle::MINIMAL:
-        default:
-            UI::drawStandardHeader(gfx, mini_acid_, titleStr);
-            LayoutManager::clearContent(gfx);
-            break;
-    }
+void GenrePage::syncFromEngine() {
+  genre_index_ = static_cast<int>(mini_acid_.genreManager().generativeMode());
+  recipe_index_ = static_cast<int>(mini_acid_.genreManager().recipe());
+  const int recipeCount = static_cast<int>(GenreManager::recipeCount());
+  if (recipeCount > 0) recipe_index_ = wrapIndex(recipe_index_, recipeCount);
+  else recipe_index_ = 0;
+  morph_amount_ = static_cast<int>(mini_acid_.genreManager().morphAmount());
 }
 
-void GenrePage::drawContent(IGfx& gfx) {
-    switch (visualStyle_) {
-        case VisualStyle::RETRO_CLASSIC:
-            drawRetroClassicStyle(gfx);
-            break;
-        case VisualStyle::AMBER:
-            drawAmberStyle(gfx);
-            break;
-        case VisualStyle::MINIMAL:
-        default:
-            drawMinimalStyle(gfx);
-            break;
-    }
-    if (focus_ == FocusArea::APPLY_MODE) {
-        drawRecipeOverlay(gfx, recipeIndex_);
-    }
+GenrePage::ApplyMode GenrePage::currentApplyMode() const {
+  const auto& settings = mini_acid_.sceneManager().currentScene().genre;
+  if (!settings.regenerateOnApply) return ApplyMode::ProfileOnly;
+  if (settings.applyTempoOnApply) return ApplyMode::RegenerateTempo;
+  return ApplyMode::Regenerate;
 }
 
-void GenrePage::drawFooter(IGfx& gfx) {
-    const char* left = nullptr;
-    const char* right = nullptr;
-    const char* focusMode = nullptr;
+const char* GenrePage::applyModeName() const {
+  switch (currentApplyMode()) {
+    case ApplyMode::ProfileOnly: return "PROFILE ONLY";
+    case ApplyMode::Regenerate: return "MATERIALIZE";
+    case ApplyMode::RegenerateTempo: return "MATERIALIZE+BPM";
+  }
+  return "PROFILE ONLY";
+}
 
+void GenrePage::moveFocus(int delta) {
+  constexpr int kCount = 4;
+  int value = static_cast<int>(focus_) + delta;
+  value = wrapIndex(value, kCount);
+  focus_ = static_cast<FocusRow>(value);
+}
+
+void GenrePage::shiftGenre(int delta) {
+  genre_index_ = wrapIndex(genre_index_ + delta, kGenerativeModeCount);
+}
+
+void GenrePage::shiftVariant(int delta) {
+  const int count = static_cast<int>(GenreManager::recipeCount());
+  if (count <= 0) return;
+  recipe_index_ = wrapIndex(recipe_index_ + delta, count);
+}
+
+void GenrePage::adjustMorph(int delta) {
+  morph_amount_ = std::clamp(morph_amount_ + delta, 0, 255);
+}
+
+void GenrePage::cycleApplyMode(int delta) {
+  int value = static_cast<int>(currentApplyMode()) + delta;
+  value = wrapIndex(value, 3);
+  const ApplyMode next = static_cast<ApplyMode>(value);
+  auto& settings = mini_acid_.sceneManager().currentScene().genre;
+  settings.regenerateOnApply = next != ApplyMode::ProfileOnly;
+  settings.applyTempoOnApply = next == ApplyMode::RegenerateTempo;
+  GroovePuterState::markSceneMutated();
+}
+
+void GenrePage::applySelection() {
+  const ApplyMode applyMode = currentApplyMode();
+  const bool regenerate = applyMode != ApplyMode::ProfileOnly;
+  const bool applyTempo = applyMode == ApplyMode::RegenerateTempo;
+  const bool wasPlaying = mini_acid_.isPlaying();
+  if (wasPlaying && regenerate) mini_acid_.stop();
+
+  withAudioGuard([&]() {
+    const auto genre = static_cast<GenerativeMode>(genre_index_);
+    const auto recipe = static_cast<GenreRecipeId>(recipe_index_);
+    const auto morphTarget =
+        morph_amount_ > 0 ? recipe : static_cast<GenreRecipeId>(kBaseRecipeId);
+
+    auto& manager = mini_acid_.genreManager();
+    manager.setGenerativeMode(genre);
+    manager.setRecipe(recipe);
+    manager.setMorphTarget(morphTarget);
+    manager.setMorphAmount(static_cast<uint8_t>(morph_amount_));
+
+    mini_acid_.setGrooveboxMode(
+        GenreManager::grooveboxModeForRecipe(recipe, genre));
+
+    auto& settings = mini_acid_.sceneManager().currentScene().genre;
+    settings.generativeMode = static_cast<uint8_t>(genre_index_);
+    settings.recipe = static_cast<uint8_t>(recipe_index_);
+    settings.morphTarget = static_cast<uint8_t>(morphTarget);
+    settings.morphAmount = static_cast<uint8_t>(morph_amount_);
+
+    if (applyTempo) {
+      const int index = std::clamp(genre_index_, 0, kGenerativeModeCount - 1);
+      mini_acid_.setBpm(static_cast<float>(kGenreBpm[index]));
+    }
+    if (regenerate) mini_acid_.regeneratePatternsWithGenre();
+  });
+
+  if (wasPlaying && regenerate) mini_acid_.start();
+
+  char toast[96];
+  std::snprintf(
+      toast, sizeof(toast), "%s / %s: %s",
+      GenreManager::generativeModeName(
+          static_cast<GenerativeMode>(genre_index_)),
+      GenreManager::recipeName(static_cast<GenreRecipeId>(recipe_index_)),
+      applyModeName());
+  UI::showToast(toast, 1600);
+}
+
+void GenrePage::draw(IGfx& gfx) {
+  const AxisUI::Palette palette = AxisUI::paletteFor(style_);
+  const IGfxColor axisColor = palette.genre;
+  const auto selectedGenre = static_cast<GenerativeMode>(genre_index_);
+  const auto selectedRecipe = static_cast<GenreRecipeId>(recipe_index_);
+  const GenerativeParams& params =
+      mini_acid_.genreManager().getCompiledGenerativeParams();
+  const GrooveRecipe recipe = mini_acid_.genreManager().getGrooveRecipe();
+  const auto activeGenre = mini_acid_.genreManager().generativeMode();
+  const auto activeRecipe = mini_acid_.genreManager().recipe();
+
+  UI::drawStandardHeader(gfx, mini_acid_, "GENRE");
+  LayoutManager::clearContent(gfx);
+
+  const int x = Layout::COL_1;
+  const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
+  AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0),
+                      "GENRE 1/4", "CORRIDOR / VOCABULARY",
+                      axisColor, palette);
+
+  AxisUI::drawValueRow(
+      gfx, x, LayoutManager::lineY(1), width, "GENRE",
+      GenreManager::generativeModeName(selectedGenre),
+      focus_ == FocusRow::Genre, axisColor, palette);
+
+  char value[80];
+  std::snprintf(value, sizeof(value), "%s",
+                GenreManager::recipeName(selectedRecipe));
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(2), width, "VARIANT",
+                       value, focus_ == FocusRow::Variant,
+                       axisColor, palette);
+
+  std::snprintf(value, sizeof(value), "%d%%",
+                (morph_amount_ * 100) / 255);
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(3), width, "MORPH",
+                       value, focus_ == FocusRow::Morph,
+                       axisColor, palette);
+
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width, "APPLY",
+                       applyModeName(), focus_ == FocusRow::Apply,
+                       axisColor, palette);
+
+  const int index = std::clamp(genre_index_, 0, kGenerativeModeCount - 1);
+  std::snprintf(value, sizeof(value),
+                "BPM %u  GRID %u  N %d..%d",
+                static_cast<unsigned>(kGenreBpm[index]),
+                static_cast<unsigned>(recipe.stepsPerBar),
+                params.minNotes, params.maxNotes);
+  gfx.setTextColor(palette.muted);
+  gfx.drawText(x + 2, LayoutManager::lineY(5) + 1, value);
+
+  std::snprintf(value, sizeof(value),
+                "DOWNBEAT %s  KICK %s  HATS %s",
+                yesNo(params.preferDownbeats),
+                params.sparseKick ? "SPARSE" : "OPEN",
+                params.sparseHats ? "SPARSE" : "OPEN");
+  gfx.setTextColor(palette.muted);
+  gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
+
+  std::snprintf(value, sizeof(value), "ACTIVE %s / %s",
+                GenreManager::generativeModeName(activeGenre),
+                GenreManager::recipeName(activeRecipe));
+  gfx.setTextColor(
+      activeGenre == selectedGenre && activeRecipe == selectedRecipe
+          ? axisColor
+          : palette.warning);
+  gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, value);
+
+  UI::drawStandardFooter(
+      gfx, "TAB/U/D:FIELD  L/R:CHANGE",
+      "ALT+L/R:MORPH  ENTER:APPLY");
+}
+
+bool GenrePage::handleEvent(UIEvent& event) {
+  if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+
+  if (UIInput::isTab(event)) {
+    moveFocus(1);
+    return true;
+  }
+
+  const int nav = UIInput::navCode(event);
+  if (nav == GROOVEPUTER_UP) {
+    moveFocus(-1);
+    return true;
+  }
+  if (nav == GROOVEPUTER_DOWN) {
+    moveFocus(1);
+    return true;
+  }
+  if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
+    const int delta = nav == GROOVEPUTER_RIGHT ? 1 : -1;
     switch (focus_) {
-        case FocusArea::GENRE:
-            left = "UP/DN:Genre  ENT:Apply";
-            right = "TAB:Texture";
-            focusMode = nullptr;
-            break;
-        case FocusArea::TEXTURE:
-            left = "UP/DN:Texture  L/R:TX%";
-            right = "TAB:Apply";
-            focusMode = nullptr;
-            break;
-        case FocusArea::APPLY_MODE:
-            left = "UP/DN:Recipe FN+U/D:Morph";
-            right = "ENTER:Apply M:ApplyMode";
-            focusMode = nullptr;
-            break;
-    }
-
-    switch (visualStyle_) {
-        case VisualStyle::RETRO_CLASSIC:
-#ifdef USE_RETRO_THEME
-            RetroWidgets::drawFooterBar(gfx, 0, 135 - 12, 240, 12, left, right, focusMode);
-#else
-            UI::drawStandardFooter(gfx, left, right);
-#endif
-            break;
-        case VisualStyle::AMBER:
-#ifdef USE_AMBER_THEME
-            AmberWidgets::drawFooterBar(gfx, 0, 135 - 12, 240, 12, left, right, focusMode);
-#else
-            UI::drawStandardFooter(gfx, left, right);
-#endif
-            break;
-        default:
-            UI::drawStandardFooter(gfx, left, right);
-            break;
-    }
-}
-
-// =================================================================
-// MINIMAL STYLE (Original clean 'pro 80-x' aesthetic)
-// =================================================================
-
-void GenrePage::drawMinimalStyle(IGfx& gfx) {
-    // Content
-    LayoutManager::clearContent(gfx);
-
-    // Minimal focus markers instead of big labels
-    const int y0 = LayoutManager::lineY(0);
-    gfx.setTextColor(IGfxColor(0x808080)); // dim
-    gfx.drawText(Layout::COL_1, y0, (focus_ == FocusArea::GENRE) ? "G>" : "G ");
-    gfx.drawText(Layout::COL_2, y0, (focus_ == FocusArea::TEXTURE) ? "T>" : "T ");
-    char modeBuf[30];
-    std::snprintf(modeBuf, sizeof(modeBuf), "A:%s C:%s", applyModeShort(mini_acid_), curatedModeShort(mini_acid_));
-    gfx.drawText(168, y0, modeBuf);
-    if (focus_ == FocusArea::APPLY_MODE) {
-        gfx.drawRect(164, y0 - 1, 74, 10, COLOR_ACCENT);
-    }
-
-    // Two columns: Genre / Texture
-    const int listY = LayoutManager::lineY(1);
-    genreScroll_ = computeScrollTop(kGenerativeModeCount, kGenreVisibleRows, genreIndex_, genreScroll_);
-
-    // Genre list (windowed)
-    for (int i = 0; i < kGenreVisibleRows; i++) {
-        int idx = genreScroll_ + i;
-        if (idx >= kGenerativeModeCount) break;
-        int rowY = listY + i * Layout::LINE_HEIGHT;
-        bool selected = (idx == genreIndex_) && (focus_ == FocusArea::GENRE);
-        bool hasIcon = (idx == prevGenreIndex_);
-        Widgets::drawListRow(gfx, Layout::COL_1, rowY, Layout::COL_WIDTH, genreNames[idx], selected, hasIcon);
-    }
-    drawScrollBar(gfx, Layout::COL_1 + Layout::COL_WIDTH - 3, listY,
-                  kGenreVisibleRows * Layout::LINE_HEIGHT,
-                  kGenerativeModeCount, kGenreVisibleRows, genreScroll_,
-                  COLOR_LABEL, COLOR_KNOB_2);
-
-    const int texCount = visibleTextureCount();
-    const int selectedVisible = textureToVisibleIndex(textureIndex_);
-    textureScroll_ = computeScrollTop(texCount, kTextureVisibleRows, selectedVisible, textureScroll_);
-    for (int i = 0; i < kTextureVisibleRows; i++) {
-        int vIdx = textureScroll_ + i;
-        if (vIdx >= texCount) break;
-        int idx = visibleTextureAt(vIdx);
-        int rowY = listY + i * Layout::LINE_HEIGHT;
-        bool selected = (idx == textureIndex_) && (focus_ == FocusArea::TEXTURE);
-        bool hasIcon = (idx == prevTextureIndex_);
-        
-        bool recommended = GenreManager::isTextureAllowed(
-            static_cast<GenerativeMode>(genreIndex_),
-            static_cast<TextureMode>(idx));
-        bool showRecommendation = isCuratedMode() && recommended;
-
-        char label[20];
-        buildTextureLabel(idx, label, sizeof(label));
-
-        IGfxColor textColor = selected ? COLOR_WHITE : (showRecommendation ? COLOR_ACCENT : COLOR_LABEL);
-        if (selected) {
-             Widgets::drawListRow(gfx, Layout::COL_2, rowY, Layout::COL_WIDTH, label, selected, hasIcon);
-        } else {
-             gfx.setTextColor(textColor);
-             gfx.drawText(Layout::COL_2 + 10, rowY, label);
-             if (hasIcon) gfx.drawText(Layout::COL_2 + 2, rowY, ">>");
-        }
-    }
-    drawScrollBar(gfx, Layout::COL_2 + Layout::COL_WIDTH - 3, listY,
-                  kTextureVisibleRows * Layout::LINE_HEIGHT,
-                  texCount, kTextureVisibleRows, textureScroll_,
-                  COLOR_LABEL, COLOR_KNOB_2);
-
-    Widgets::drawBarRow(
-        gfx,
-        Layout::COL_2,
-        LayoutManager::lineY(5),
-        Layout::COL_WIDTH,
-        "TX",
-        mini_acid_.sceneManager().currentScene().genre.textureAmount / 100.0f,
-        true
-    );
-
-    // Status rows (replaces preset grid)
-    const int statusY = LayoutManager::lineY(6);
-    const auto& gs = mini_acid_.sceneManager().currentScene().genre;
-
-    char status1[48];
-    std::snprintf(status1, sizeof(status1), "Apply:%s Cur:%s R:%s",
-                  applyModeShort(mini_acid_), onOff(gs.curatedMode),
-                  GenreManager::recipeName(static_cast<GenreRecipeId>(recipeIndex_)));
-    gfx.setTextColor((focus_ == FocusArea::APPLY_MODE) ? COLOR_ACCENT : COLOR_LABEL);
-    gfx.drawText(Layout::COL_1, statusY, status1);
-
-    char status2[56];
-    std::snprintf(status2, sizeof(status2), "Groove:%s Link:%s Morph:%d%%",
-                  grooveModeShort(mini_acid_), linkStateShort(mini_acid_),
-                  (morphAmount_ * 100) / 255);
-    gfx.setTextColor(COLOR_LABEL);
-    gfx.drawText(Layout::COL_1, statusY + Layout::LINE_HEIGHT, status2);
-}
-
-// =================================================================
-// RETRO CLASSIC STYLE (80s Neon Cyberpunk)
-// =================================================================
-
-void GenrePage::drawRetroClassicStyle(IGfx& gfx) {
-#ifdef USE_RETRO_THEME
-    // Content area setup
-    const int CONTENT_Y = 16;
-    const int CONTENT_H = 135 - 16 - 12;
-    gfx.fillRect(0, CONTENT_Y, 240, CONTENT_H, BG_DEEP_BLACK);
-    
-    // Focus indicators
-    const int INDICATOR_Y = CONTENT_Y + 2;
-    bool genreFocus = (focus_ == FocusArea::GENRE);
-    bool textureFocus = (focus_ == FocusArea::TEXTURE);
-    
-    if (genreFocus) {
-        drawGlowText(gfx, 4, INDICATOR_Y, "G>", FOCUS_GLOW, NEON_CYAN);
-    } else {
-        gfx.setTextColor(GRID_DIM);
-        gfx.drawText(4, INDICATOR_Y, "G ");
-    }
-    
-    if (textureFocus) {
-        drawGlowText(gfx, 124, INDICATOR_Y, "T>", FOCUS_GLOW, NEON_MAGENTA);
-    } else {
-        gfx.setTextColor(GRID_DIM);
-        gfx.drawText(124, INDICATOR_Y, "T ");
-    }
-    char amtBuf[16];
-    std::snprintf(amtBuf, sizeof(amtBuf), "TX %d%%", (int)mini_acid_.sceneManager().currentScene().genre.textureAmount);
-    gfx.setTextColor(TEXT_DIM);
-    gfx.drawText(196, INDICATOR_Y, amtBuf);
-    
-    // Genre column (left)
-    const int LIST_Y = CONTENT_Y + 14;
-    const int LIST_W = 110;
-    const int ROW_H = 12;
-
-    static const uint32_t genreColors[] = {
-        NEON_CYAN, NEON_PURPLE, NEON_MAGENTA, NEON_YELLOW,
-        NEON_ORANGE, NEON_GREEN, NEON_CYAN, NEON_PURPLE
-    };
-
-    genreScroll_ = computeScrollTop(kGenerativeModeCount, kGenreVisibleRows, genreIndex_, genreScroll_);
-    for (int i = 0; i < kGenreVisibleRows; i++) {
-        int idx = genreScroll_ + i;
-        if (idx >= kGenerativeModeCount) break;
-        int rowY = LIST_Y + i * ROW_H;
-        bool isCursor = (idx == genreIndex_);
-        bool isActive = (idx == prevGenreIndex_);
-        bool focused = genreFocus && isCursor;
-        uint32_t color = genreColors[idx % (int)(sizeof(genreColors)/sizeof(genreColors[0]))];
-        
-        if (isCursor) {
-            gfx.fillRect(4, rowY - 1, LIST_W - 4, ROW_H - 1, BG_INSET);
-            if (focused) {
-                drawGlowBorder(gfx, 4, rowY - 1, LIST_W - 4, ROW_H - 1, color, 1);
-            } else {
-                gfx.drawRect(4, rowY - 1, LIST_W - 4, ROW_H - 1, GRID_MEDIUM);
-            }
-        }
-        
-        int ledX = 8;
-        int ledY = rowY + ROW_H / 2;
-        // LED reflects ACTIVE state (what is playing)
-        drawLED(gfx, ledX, ledY, 2, isActive, color);
-        
-        if (focused) {
-            drawGlowText(gfx, 16, rowY, genreNames[idx], color, TEXT_PRIMARY);
-        } else {
-            // Text is colored if active OR cursor
-            IGfxColor textColor = (isActive || isCursor) ? IGfxColor(color) : IGfxColor(TEXT_SECONDARY);
-            if (isActive && !isCursor) textColor = IGfxColor(TEXT_DIM); // Dim if active but not selected? Or just keep colored.
-            // Let's keep it simple: Color if Active or Cursor.
-            gfx.setTextColor(textColor);
-            gfx.drawText(16, rowY, genreNames[idx]);
-        }
-    }
-
-    drawScrollBar(gfx, 4 + LIST_W - 3, LIST_Y, kGenreVisibleRows * ROW_H,
-                  kGenerativeModeCount, kGenreVisibleRows, genreScroll_,
-                  GRID_MEDIUM, FOCUS_GLOW);
-    
-    // Texture column (right)
-    const int TEX_X = 124;
-    const int TEX_W = 112;
-    
-    static const uint32_t textureColors[] = {
-        0x9CA3AF, 0x38BDF8, 0xF59E0B, 0xEF4444, 0xA78BFA  // CLEAN, DUB, LOFI, HARD, PSY
-    };
-
-    {
-        const int texCount = visibleTextureCount();
-        const int selectedVisible = textureToVisibleIndex(textureIndex_);
-        textureScroll_ = computeScrollTop(texCount, kTextureVisibleRows, selectedVisible, textureScroll_);
-    }
-    for (int i = 0; i < kTextureVisibleRows; i++) {
-        int vIdx = textureScroll_ + i;
-        if (vIdx >= visibleTextureCount()) break;
-        int idx = visibleTextureAt(vIdx);
-        int rowY = LIST_Y + i * ROW_H;
-        bool isCursor = (idx == textureIndex_);
-        bool isActive = (idx == prevTextureIndex_);
-        bool focused = textureFocus && isCursor;
-        uint32_t color = textureColors[idx % (int)(sizeof(textureColors)/sizeof(textureColors[0]))];
-        
-        if (isCursor) {
-            gfx.fillRect(TEX_X, rowY - 1, TEX_W - 4, ROW_H - 1, BG_INSET);
-            if (focused) {
-                drawGlowBorder(gfx, TEX_X, rowY - 1, TEX_W - 4, ROW_H - 1, color, 1);
-            } else {
-                gfx.drawRect(TEX_X, rowY - 1, TEX_W - 4, ROW_H - 1, GRID_MEDIUM);
-            }
-        }
-        
-        int ledX = TEX_X + 4;
-        int ledY = rowY + ROW_H / 2;
-        drawLED(gfx, ledX, ledY, 2, isActive, color);
-        
-        bool recommended = GenreManager::isTextureAllowed(
-            static_cast<GenerativeMode>(genreIndex_),
-            static_cast<TextureMode>(idx));
-        bool showRecommendation = isCuratedMode() && recommended;
-
-        if (focused) {
-            char label[20];
-            buildTextureLabel(idx, label, sizeof(label));
-            drawGlowText(gfx, TEX_X + 12, rowY, label, color, TEXT_PRIMARY);
-        } else {
-            IGfxColor textColor = (isActive || isCursor) ? IGfxColor(color) : 
-                                   (showRecommendation ? IGfxColor(color) : IGfxColor(TEXT_SECONDARY));
-            gfx.setTextColor(textColor);
-            char label[20];
-            buildTextureLabel(idx, label, sizeof(label));
-            gfx.drawText(TEX_X + 12, rowY, label);
-        }
-    }
-    drawScrollBar(gfx, TEX_X + TEX_W - 3, LIST_Y, kTextureVisibleRows * ROW_H,
-                  visibleTextureCount(), kTextureVisibleRows, textureScroll_,
-                  GRID_MEDIUM, FOCUS_GLOW);
-    
-    // Status block (bottom)
-    const int GRID_Y = LIST_Y + kGenreVisibleRows * ROW_H + 4;
-    const auto& gs = mini_acid_.sceneManager().currentScene().genre;
-    gfx.fillRect(4, GRID_Y, 232, 22, BG_DARK_GRAY);
-    gfx.drawRect(4, GRID_Y, 232, 22, (focus_ == FocusArea::APPLY_MODE) ? FOCUS_GLOW : GRID_MEDIUM);
-
-    char s1[64];
-    std::snprintf(s1, sizeof(s1), "APPLY:%s CUR:%s R:%s",
-                  applyModeShort(mini_acid_), onOff(gs.curatedMode),
-                  GenreManager::recipeName(static_cast<GenreRecipeId>(recipeIndex_)));
-    gfx.setTextColor(TEXT_PRIMARY);
-    gfx.drawText(8, GRID_Y + 3, s1);
-
-    char s2[64];
-    std::snprintf(s2, sizeof(s2), "GROOVE:%s LINK:%s M:%d%%",
-                  grooveModeShort(mini_acid_), linkStateShort(mini_acid_),
-                  (morphAmount_ * 100) / 255);
-    gfx.setTextColor(TEXT_SECONDARY);
-    gfx.drawText(8, GRID_Y + 12, s2);
-#else
-    // Fallback to minimal if retro theme not included
-    drawMinimalStyle(gfx);
-#endif
-}
-
-// =================================================================
-// AMBER STYLE (Terminal)
-// =================================================================
-
-void GenrePage::drawAmberStyle(IGfx& gfx) {
-#ifdef USE_AMBER_THEME
-    const int CONTENT_Y = 16;
-    const int CONTENT_H = 135 - 16 - 12;
-    gfx.fillRect(0, CONTENT_Y, 240, CONTENT_H, AmberTheme::BG_DEEP_BLACK);
-    
-    const int INDICATOR_Y = CONTENT_Y + 2;
-    bool genreFocus = (focus_ == FocusArea::GENRE);
-    bool textureFocus = (focus_ == FocusArea::TEXTURE);
-    
-    if (genreFocus) {
-        AmberWidgets::drawGlowText(gfx, 4, INDICATOR_Y, "G>", AmberTheme::FOCUS_GLOW, AmberTheme::NEON_CYAN);
-    } else {
-        gfx.setTextColor(AmberTheme::GRID_DIM);
-        gfx.drawText(4, INDICATOR_Y, "G ");
-    }
-    
-    if (textureFocus) {
-        AmberWidgets::drawGlowText(gfx, 124, INDICATOR_Y, "T>", AmberTheme::FOCUS_GLOW, AmberTheme::NEON_MAGENTA);
-    } else {
-        gfx.setTextColor(AmberTheme::GRID_DIM);
-        gfx.drawText(124, INDICATOR_Y, "T ");
-    }
-    char amtBuf[16];
-    std::snprintf(amtBuf, sizeof(amtBuf), "TX %d%%", (int)mini_acid_.sceneManager().currentScene().genre.textureAmount);
-    gfx.setTextColor(AmberTheme::TEXT_DIM);
-    gfx.drawText(196, INDICATOR_Y, amtBuf);
-    
-    const int LIST_Y = CONTENT_Y + 14;
-    const int LIST_W = 110;
-    const int ROW_H = 12;
-    
-    static const uint32_t genreColors[] = {
-        AmberTheme::NEON_CYAN, AmberTheme::NEON_PURPLE, AmberTheme::NEON_MAGENTA,
-        AmberTheme::NEON_YELLOW, AmberTheme::NEON_ORANGE,
-        AmberTheme::NEON_GREEN, AmberTheme::NEON_CYAN, AmberTheme::NEON_PURPLE
-    };
-    
-    genreScroll_ = computeScrollTop(kGenerativeModeCount, kGenreVisibleRows, genreIndex_, genreScroll_);
-    for (int i = 0; i < kGenreVisibleRows; i++) {
-        int idx = genreScroll_ + i;
-        if (idx >= kGenerativeModeCount) break;
-        int rowY = LIST_Y + i * ROW_H;
-        bool isCursor = (idx == genreIndex_);
-        bool isActive = (idx == prevGenreIndex_);
-        bool focused = genreFocus && isCursor;
-        uint32_t color = genreColors[idx % (int)(sizeof(genreColors)/sizeof(genreColors[0]))];
-        
-        if (isCursor) {
-            gfx.fillRect(4, rowY - 1, LIST_W - 4, ROW_H - 1, AmberTheme::BG_INSET);
-            if (focused) {
-                AmberWidgets::drawGlowBorder(gfx, 4, rowY - 1, LIST_W - 4, ROW_H - 1, color, 1);
-            } else {
-                gfx.drawRect(4, rowY - 1, LIST_W - 4, ROW_H - 1, AmberTheme::GRID_MEDIUM);
-            }
-        }
-        
-        int ledX = 8;
-        int ledY = rowY + ROW_H / 2;
-        AmberWidgets::drawLED(gfx, ledX, ledY, 2, isActive, color);
-        
-        if (focused) {
-            AmberWidgets::drawGlowText(gfx, 16, rowY, genreNames[idx], color, AmberTheme::TEXT_PRIMARY);
-        } else {
-            IGfxColor textColor = (isActive || isCursor) ? IGfxColor(color) : IGfxColor(AmberTheme::TEXT_SECONDARY);
-            if (isActive && !isCursor) textColor = IGfxColor(AmberTheme::TEXT_DIM);
-            gfx.setTextColor(textColor);
-            gfx.drawText(16, rowY, genreNames[idx]);
-        }
-    }
-
-    drawScrollBar(gfx, 4 + LIST_W - 3, LIST_Y, kGenreVisibleRows * ROW_H,
-                  kGenerativeModeCount, kGenreVisibleRows, genreScroll_,
-                  AmberTheme::GRID_MEDIUM, AmberTheme::NEON_ORANGE);
-    
-    const int TEX_X = 124;
-    const int TEX_W = 112;
-    
-    static const uint32_t textureColors[] = {
-        AmberTheme::TEXT_SECONDARY, AmberTheme::NEON_CYAN, AmberTheme::NEON_ORANGE, AmberTheme::NEON_MAGENTA, AmberTheme::NEON_YELLOW
-    };
-
-    {
-        const int texCount = visibleTextureCount();
-        const int selectedVisible = textureToVisibleIndex(textureIndex_);
-        textureScroll_ = computeScrollTop(texCount, kTextureVisibleRows, selectedVisible, textureScroll_);
-    }
-    for (int i = 0; i < kTextureVisibleRows; i++) {
-        int vIdx = textureScroll_ + i;
-        if (vIdx >= visibleTextureCount()) break;
-        int idx = visibleTextureAt(vIdx);
-        int rowY = LIST_Y + i * ROW_H;
-        bool isCursor = (idx == textureIndex_);
-        bool isActive = (idx == prevTextureIndex_);
-        bool focused = textureFocus && isCursor;
-        uint32_t color = textureColors[idx % (int)(sizeof(textureColors)/sizeof(textureColors[0]))];
-        
-        if (isCursor) {
-            gfx.fillRect(TEX_X, rowY - 1, TEX_W - 4, ROW_H - 1, AmberTheme::BG_INSET);
-            if (focused) {
-                AmberWidgets::drawGlowBorder(gfx, TEX_X, rowY - 1, TEX_W - 4, ROW_H - 1, color, 1);
-            } else {
-                gfx.drawRect(TEX_X, rowY - 1, TEX_W - 4, ROW_H - 1, AmberTheme::GRID_MEDIUM);
-            }
-        }
-        
-        int ledX = TEX_X + 4;
-        int ledY = rowY + ROW_H / 2;
-        AmberWidgets::drawLED(gfx, ledX, ledY, 2, isActive, color);
-        
-        bool recommended = GenreManager::isTextureAllowed(
-            static_cast<GenerativeMode>(genreIndex_),
-            static_cast<TextureMode>(idx));
-        bool showRecommendation = isCuratedMode() && recommended;
-
-        if (focused) {
-            char label[20];
-            buildTextureLabel(idx, label, sizeof(label));
-            AmberWidgets::drawGlowText(gfx, TEX_X + 12, rowY, label, color, AmberTheme::TEXT_PRIMARY);
-        } else {
-            IGfxColor textColor = (isActive || isCursor) ? IGfxColor(color) : 
-                                   (showRecommendation ? IGfxColor(color) : IGfxColor(AmberTheme::TEXT_SECONDARY));
-            gfx.setTextColor(textColor);
-            char label[20];
-            buildTextureLabel(idx, label, sizeof(label));
-            gfx.drawText(TEX_X + 12, rowY, label);
-        }
-    }
-    drawScrollBar(gfx, TEX_X + TEX_W - 3, LIST_Y, kTextureVisibleRows * ROW_H,
-                  visibleTextureCount(), kTextureVisibleRows, textureScroll_,
-                  AmberTheme::GRID_MEDIUM, AmberTheme::NEON_ORANGE);
-    
-    const int GRID_Y = LIST_Y + kGenreVisibleRows * ROW_H + 4;
-    const auto& gs = mini_acid_.sceneManager().currentScene().genre;
-    gfx.fillRect(4, GRID_Y, 232, 22, AmberTheme::BG_PANEL);
-    gfx.drawRect(4, GRID_Y, 232, 22,
-                 (focus_ == FocusArea::APPLY_MODE) ? AmberTheme::NEON_ORANGE : AmberTheme::GRID_MEDIUM);
-
-    char s1[64];
-    std::snprintf(s1, sizeof(s1), "APPLY:%s CUR:%s R:%s",
-                  applyModeShort(mini_acid_), onOff(gs.curatedMode),
-                  GenreManager::recipeName(static_cast<GenreRecipeId>(recipeIndex_)));
-    gfx.setTextColor(AmberTheme::TEXT_PRIMARY);
-    gfx.drawText(8, GRID_Y + 3, s1);
-
-    char s2[64];
-    std::snprintf(s2, sizeof(s2), "GROOVE:%s LINK:%s M:%d%%",
-                  grooveModeShort(mini_acid_), linkStateShort(mini_acid_),
-                  (morphAmount_ * 100) / 255);
-    gfx.setTextColor(AmberTheme::TEXT_SECONDARY);
-    gfx.drawText(8, GRID_Y + 12, s2);
-    
-#else
-    drawMinimalStyle(gfx);
-#endif
-}
-
-// =================================================================
-// INPUT HANDLING (unchanged)
-// =================================================================
-
-bool GenrePage::handleEvent(UIEvent& e) {
-    if (e.event_type != GROOVEPUTER_KEY_DOWN) return false;
-    
-    // Helper lambdas for navigation
-    auto moveUp = [&]() -> bool {
-        if (focus_ == FocusArea::GENRE) {
-            genreIndex_ = (genreIndex_ - 1 + kGenerativeModeCount) % kGenerativeModeCount;
-            ensureTextureAllowedForCurrentGenre();
-            return true;
-        } else if (focus_ == FocusArea::TEXTURE) {
-            int vis = textureToVisibleIndex(textureIndex_);
-            int cnt = visibleTextureCount();
-            if (cnt > 0) {
-                vis = (vis - 1 + cnt) % cnt;
-                textureIndex_ = visibleTextureAt(vis);
-                return true;
-            }
-        } else if (focus_ == FocusArea::APPLY_MODE) {
-            if (e.meta) adjustMorphAmount(16);
-            else cycleRecipeSelection(-1);
-            return true;
-        }
-        return false;
-    };
-    auto moveDown = [&]() -> bool {
-        if (focus_ == FocusArea::GENRE) {
-            genreIndex_ = (genreIndex_ + 1) % kGenerativeModeCount;
-            ensureTextureAllowedForCurrentGenre();
-            return true;
-        } else if (focus_ == FocusArea::TEXTURE) {
-            int vis = textureToVisibleIndex(textureIndex_);
-            int cnt = visibleTextureCount();
-            if (cnt > 0) {
-                vis = (vis + 1) % cnt;
-                textureIndex_ = visibleTextureAt(vis);
-                return true;
-            }
-        } else if (focus_ == FocusArea::APPLY_MODE) {
-            if (e.meta) adjustMorphAmount(-16);
-            else cycleRecipeSelection(1);
-            return true;
-        }
-        return false;
-    };
-    auto moveLeft = [&]() -> bool {
-        if (focus_ == FocusArea::TEXTURE) {
-            auto& gs = mini_acid_.sceneManager().currentScene().genre;
-            const int before = static_cast<int>(gs.textureAmount);
-            int v = before - 5;
-            if (v < 0) v = 0;
-            gs.textureAmount = static_cast<uint8_t>(v);
-            if (v != before) GroovePuterState::markSceneMutated();
-            return true;
-        } else if (focus_ == FocusArea::APPLY_MODE) {
-            if (e.meta) {
-                cycleRecipeSelection(-1);
-                return true;
-            }
-        }
-        return false;
-    };
-    auto moveRight = [&]() -> bool {
-        if (focus_ == FocusArea::TEXTURE) {
-            auto& gs = mini_acid_.sceneManager().currentScene().genre;
-            const int before = static_cast<int>(gs.textureAmount);
-            int v = before + 5;
-            if (v > 100) v = 100;
-            gs.textureAmount = static_cast<uint8_t>(v);
-            if (v != before) GroovePuterState::markSceneMutated();
-            return true;
-        } else if (focus_ == FocusArea::APPLY_MODE) {
-            if (e.meta) {
-                cycleRecipeSelection(1);
-                return true;
-            }
-        }
-        return false;
-    };
-
-    int nav = UIInput::navCode(e);
-    switch (nav) {
-        case GROOVEPUTER_UP:    if (moveUp()) return true; break;
-        case GROOVEPUTER_DOWN:  if (moveDown()) return true; break;
-        case GROOVEPUTER_LEFT:  if (moveLeft()) return true; break;
-        case GROOVEPUTER_RIGHT: if (moveRight()) return true; break;
-        default: break;
-    }
-
-    char key = e.key;
-    if (!key) return false;
-    const char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
-    const bool plainKey = !e.ctrl && !e.alt && !e.meta;
-    const bool keyM = (lowerKey == 'm') || (e.scancode == GROOVEPUTER_M);
-    const bool keyG = (lowerKey == 'g') || (e.scancode == GROOVEPUTER_G);
-    const bool keyC = (lowerKey == 'c') || (e.scancode == GROOVEPUTER_C);
-
-    // TAB: cycle focus
-    if (key == '\t') {
-        if (focus_ == FocusArea::GENRE)   focus_ = FocusArea::TEXTURE;
-        else if (focus_ == FocusArea::TEXTURE) focus_ = FocusArea::APPLY_MODE;
-        else focus_ = FocusArea::GENRE;
+      case FocusRow::Genre:
+        shiftGenre(delta);
+        return true;
+      case FocusRow::Variant:
+        if (event.alt) adjustMorph(delta * 16);
+        else shiftVariant(delta);
+        return true;
+      case FocusRow::Morph:
+        adjustMorph(delta * (event.shift || event.ctrl ? 32 : 8));
+        return true;
+      case FocusRow::Apply:
+        cycleApplyMode(delta);
         return true;
     }
+  }
 
-    // ENTER: apply the current genre/texture/recipe selection.
-    // Apply mode is changed explicitly with M or Space.
-    if (key == '\n' || key == '\r') {
-        applyCurrent();
-        return true;
-    }
+  const char key = static_cast<char>(
+      std::tolower(static_cast<unsigned char>(event.key)));
+  if (event.key == '\n' || event.key == '\r') {
+    applySelection();
+    return true;
+  }
+  if (key == 'm' && !event.ctrl && !event.alt && !event.meta) {
+    cycleApplyMode(1);
+    return true;
+  }
 
-    // SPACE: toggle apply mode when focused
-    if (key == ' ' && focus_ == FocusArea::APPLY_MODE) {
-        auto& gs = mini_acid_.sceneManager().currentScene().genre;
-        cycleApplyMode(gs);
-        GroovePuterState::markSceneMutated();
-        UI::showToast(applyModeToast(mini_acid_), 1800);
-        return true;
-    }
-
-    // M: toggle apply mode (SOUND / SOUND+PATTERN / SOUND+PATTERN+TEMPO)
-    if (plainKey && keyM) {
-        auto& gs = mini_acid_.sceneManager().currentScene().genre;
-        cycleApplyMode(gs);
-        GroovePuterState::markSceneMutated();
-        UI::showToast(applyModeToast(mini_acid_), 1800);
-        return true;
-    }
-
-    // G: toggle groovebox mode (ACID/MINIMAL) in genre context.
-    if (plainKey && keyG) {
-        withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
-        char toast[64];
-        const char* shortName = grooveModeShort(mini_acid_);
-        std::snprintf(toast, sizeof(toast), "Groove Mode: %s (override)", shortName);
-        UI::showToast(toast);
-        return true;
-    }
-
-    // C: toggle curated compatibility mode
-    if (plainKey && keyC) {
-        bool next = !isCuratedMode();
-        setCuratedMode(next);
-        UI::showToast(next ? "Texture Mode: CURATED (recommended first)"
-                           : "Texture Mode: ADVANCED (all combos)", 1800);
-        return true;
-    }
-
-
-    // Bank Selection (Ctrl + 1..2)
-    if (e.ctrl && !e.alt && e.key >= '1' && e.key <= '2') {
-        int bankIdx = e.key - '1';
-        withAudioGuard([&]() {
-            mini_acid_.set303BankIndex(0, bankIdx);
-        });
-        UI::showToast(bankIdx == 0 ? "Bank: A" : "Bank: B", 800);
-        return true;
-    }
-
-    // Pattern quick select (Q-I) - Standardized Everywhere (ignore shift for CapsLock safety)
-    if (!e.ctrl && !e.alt && !e.meta) {
-        int patIdx = qwertyToPatternIndex(lowerKey);
-        if (patIdx >= 0) {
-            withAudioGuard([&]() {
-                // Default to Synth A on this global page
-                mini_acid_.set303PatternIndex(0, patIdx);
-            });
-            char buf[32];
-            std::snprintf(buf, sizeof(buf), "Synth A -> Pat %d", patIdx + 1);
-            UI::showToast(buf, 800);
-            return true;
-        }
-    }
-
-    return false;
-}
-
-// =================================================================
-// INTERNAL METHODS (unchanged)
-// =================================================================
-
-void GenrePage::cycleRecipeSelection(int direction) {
-    const int count = static_cast<int>(GenreManager::recipeCount());
-    if (count <= 0) return;
-    int next = recipeIndex_ + direction;
-    while (next < 0) next += count;
-    while (next >= count) next -= count;
-    recipeIndex_ = next;
-
-    auto& gs = mini_acid_.sceneManager().currentScene().genre;
-    gs.recipe = static_cast<uint8_t>(recipeIndex_);
-    if (morphAmount_ > 0) gs.morphTarget = static_cast<uint8_t>(recipeIndex_);
-    gs.morphAmount = static_cast<uint8_t>(morphAmount_);
-
-    withAudioGuard([&]() {
-        if (mini_acid_.isPlaying()) {
-            mini_acid_.genreManager().queueRecipe(static_cast<GenreRecipeId>(recipeIndex_));
-            mini_acid_.genreManager().queueMorphTarget(
-                morphAmount_ > 0 ? static_cast<GenreRecipeId>(recipeIndex_) : kBaseRecipeId);
-            mini_acid_.genreManager().queueMorphAmount(static_cast<uint8_t>(morphAmount_));
-        } else {
-            mini_acid_.genreManager().setRecipe(static_cast<GenreRecipeId>(recipeIndex_));
-            mini_acid_.genreManager().setMorphTarget(
-                morphAmount_ > 0 ? static_cast<GenreRecipeId>(recipeIndex_) : kBaseRecipeId);
-            mini_acid_.genreManager().setMorphAmount(static_cast<uint8_t>(morphAmount_));
-        }
-    });
-
-    char toast[72];
-    std::snprintf(toast, sizeof(toast), "Recipe: %s%s",
-                  GenreManager::recipeName(static_cast<GenreRecipeId>(recipeIndex_)),
-                  mini_acid_.isPlaying() ? " (queued)" : "");
-    UI::showToast(toast, 900);
-}
-
-void GenrePage::adjustMorphAmount(int delta) {
-    int next = morphAmount_ + delta;
-    if (next < 0) next = 0;
-    if (next > 255) next = 255;
-    morphAmount_ = next;
-
-    auto& gs = mini_acid_.sceneManager().currentScene().genre;
-    gs.morphAmount = static_cast<uint8_t>(morphAmount_);
-    const GenreRecipeId nextTarget =
-        morphAmount_ > 0 ? static_cast<GenreRecipeId>(recipeIndex_) : kBaseRecipeId;
-    gs.morphTarget = static_cast<uint8_t>(nextTarget);
-
-    const uint8_t nextAmount = static_cast<uint8_t>(morphAmount_);
-    withAudioGuard([&]() {
-        if (mini_acid_.isPlaying()) {
-            mini_acid_.genreManager().queueMorphTarget(nextTarget);
-            mini_acid_.genreManager().queueMorphAmount(nextAmount);
-        } else {
-            mini_acid_.genreManager().setMorphTarget(nextTarget);
-            mini_acid_.genreManager().setMorphAmount(nextAmount);
-        }
-    });
-
-    char toast[64];
-    std::snprintf(toast, sizeof(toast), "Morph: %d%%%s",
-                  (morphAmount_ * 100) / 255,
-                  mini_acid_.isPlaying() ? " (queued)" : "");
-    UI::showToast(toast, 700);
-}
-
-bool GenrePage::isCuratedMode() const {
-    return mini_acid_.sceneManager().currentScene().genre.curatedMode;
-}
-
-void GenrePage::setCuratedMode(bool enabled) {
-    auto& curated = mini_acid_.sceneManager().currentScene().genre.curatedMode;
-    if (curated == enabled) return;
-    curated = enabled;
-    GroovePuterState::markSceneMutated();
-}
-
-int GenrePage::visibleTextureCount() const {
-    return kTextureModeCount;
-}
-
-int GenrePage::visibleTextureAt(int visibleIndex) const {
-    if (visibleIndex < 0) return 0;
-    if (visibleIndex >= kTextureModeCount) return kTextureModeCount - 1;
-    return visibleIndex;
-}
-
-int GenrePage::textureToVisibleIndex(int textureIndex) const {
-    if (textureIndex < 0) return 0;
-    if (textureIndex >= kTextureModeCount) return kTextureModeCount - 1;
-    return textureIndex;
-}
-
-void GenrePage::ensureTextureAllowedForCurrentGenre() {
-    // Curated mode is recommendation-first only, not a hard limiter.
-}
-
-void GenrePage::buildTextureLabel(int textureIndex, char* out, size_t outSize) const {
-    if (!out || outSize == 0) return;
-    if (textureIndex < 0 || textureIndex >= kTextureModeCount) {
-        std::snprintf(out, outSize, "?");
-        return;
-    }
-    std::snprintf(out, outSize, "%s", textureNames[textureIndex]);
-}
-
-void GenrePage::applyCurrent() {
-    const bool doRegenerate = regenOnApply(mini_acid_);
-    const bool doApplyTempo = tempoOnApply(mini_acid_);
-    int targetBpm = kGenreBpm[genreIndex_ < 0 ? 0 : (genreIndex_ >= kGenerativeModeCount ? (kGenerativeModeCount - 1) : genreIndex_)];
-    
-    // ------------------------------------------------------------------
-    // HACK/FIX: Regenerating structural patterns and rebuilding FX graphs 
-    // takes too long and starves the I2S audio callback, causing stutters.
-    // Pause playback before grasping the audio guard, then restart after.
-    // ------------------------------------------------------------------
-    bool wasPlaying = mini_acid_.isPlaying();
-    if (wasPlaying && doRegenerate) {
-        mini_acid_.stop();
-    }
-
-    withAudioGuard([&]() {
-        mini_acid_.genreManager().setGenerativeMode(static_cast<GenerativeMode>(genreIndex_));
-        mini_acid_.genreManager().setTextureMode(static_cast<TextureMode>(textureIndex_));
-        mini_acid_.genreManager().setRecipe(static_cast<GenreRecipeId>(recipeIndex_));
-        mini_acid_.genreManager().setMorphTarget(
-            morphAmount_ > 0 ? static_cast<GenreRecipeId>(recipeIndex_) : kBaseRecipeId);
-        mini_acid_.genreManager().setMorphAmount(static_cast<uint8_t>(morphAmount_));
-        mini_acid_.setGrooveboxMode(
-            GenreManager::grooveboxModeForRecipe(
-                static_cast<GenreRecipeId>(recipeIndex_),
-                static_cast<GenerativeMode>(genreIndex_)));
-
-        // Set the requested tempo before generation so BPM-dependent density
-        // and articulation use the final corridor. Atlas recipes may refine the
-        // generic genre hint to their own reviewed BPM during regeneration.
-        if (doApplyTempo) mini_acid_.setBpm(static_cast<float>(targetBpm));
-
-        // Apply base timbre, reset bias tracking, then apply texture as delta from 0
-        mini_acid_.genreManager().applyGenreTimbre(mini_acid_);
-        mini_acid_.genreManager().resetTextureBiasTracking();
-        mini_acid_.genreManager().applyTexture(mini_acid_);
-        auto& gs = mini_acid_.sceneManager().currentScene().genre;
-        gs.generativeMode = static_cast<uint8_t>(genreIndex_);
-        gs.textureMode = static_cast<uint8_t>(textureIndex_);
-        gs.recipe = static_cast<uint8_t>(recipeIndex_);
-        gs.morphTarget = static_cast<uint8_t>(morphAmount_ > 0 ? recipeIndex_ : 0);
-        gs.morphAmount = static_cast<uint8_t>(morphAmount_);
-        if (doRegenerate) mini_acid_.regeneratePatternsWithGenre();
-    });
-
-    if (wasPlaying && doRegenerate) {
-        mini_acid_.start(); // Resume audio
-    }
-    prevGenreIndex_ = genreIndex_;
-    prevTextureIndex_ = textureIndex_;
-
-    char toast[80];
-    const int g = genreIndex_;
-    const int t = textureIndex_;
-    std::snprintf(toast, sizeof(toast), "%s/%s %s (%s%s)",
-                  genreNames[g], textureNames[t],
-                  GenreManager::recipeName(static_cast<GenreRecipeId>(recipeIndex_)),
-                  doRegenerate ? "Regenerated" : "Patterns kept",
-                  doApplyTempo ? ", BPM set" : "");
-    UI::showToast(toast, 1800);
-}
-
-void GenrePage::updateFromEngine() {
-    genreIndex_ = static_cast<int>(mini_acid_.genreManager().generativeMode());
-    textureIndex_ = static_cast<int>(mini_acid_.genreManager().textureMode());
-    recipeIndex_ = clampRecipeIndex(static_cast<int>(mini_acid_.genreManager().recipe()));
-    morphAmount_ = static_cast<int>(mini_acid_.genreManager().morphAmount());
-    prevGenreIndex_ = genreIndex_;
-    prevTextureIndex_ = textureIndex_;
+  return false;
 }
