@@ -17,6 +17,11 @@ class PhrasePage : public IPage {
   const std::string& getTitle() const override;
 
  private:
+  enum class View : uint8_t {
+    Core = 0,
+    Arrange,
+  };
+
   static PhraseCore::Role defaultRoleForSlot(PhraseCore::SlotId slot);
   static PhraseCore::SlotId slotFromIndex(int index);
   static int indexFromSlot(PhraseCore::SlotId slot);
@@ -26,21 +31,34 @@ class PhrasePage : public IPage {
   void cycleRole(int delta);
   void cyclePreviewBar(int delta);
   void cycleParent(int delta);
+  void moveArrangementCursor(int delta);
   bool captureCurrentRegion();
   bool deriveFromParent();
   bool writeToCurrentRow(bool overwrite);
   bool clearCurrentSlot();
+  bool assignArrangementSlot(PhraseCore::SlotId slot);
+  bool removeArrangementSlot();
+  bool clearArrangementChain();
+  bool writeArrangementToCurrentRow(bool overwrite);
+  void drawCore(IGfx& gfx);
+  void drawArrangement(IGfx& gfx);
   void invalidatePreview();
   void refreshPreview();
   void showResult(const char* action, const PhraseCore::Result& result);
+  void showArrangementResult(const char* action,
+                             const PhraseCore::ArrangementResult& result,
+                             PhraseCore::SlotId slot = PhraseCore::SlotId::A,
+                             bool includeSlot = false);
 
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
+  View view_ = View::Core;
   PhraseCore::SlotId selected_slot_ = PhraseCore::SlotId::A;
   PhraseCore::SlotId parent_slot_ = PhraseCore::SlotId::B;
   PhraseCore::Role capture_role_ = PhraseCore::Role::Main;
   uint8_t capture_length_ = 4;
   uint8_t preview_bar_ = 0;
+  uint8_t arrangement_cursor_ = 0;
 
   // Fixed-size/allocation-free cache for the complete bounded Phrase shape.
   // It is refreshed only when the Phrase identity, Scene revision or source
