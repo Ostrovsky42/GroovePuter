@@ -13,6 +13,7 @@ generation = read("src/ui/pages/generation_page.cpp")
 generation_header = read("src/ui/pages/generation_page.h")
 genre_manager = read("src/dsp/genre_manager.cpp")
 ui_input = read("src/ui/ui_input.h")
+cardputer_main = read("GroovePuter.ino")
 
 for token in (
     "AtlasRuntime::hasRecipe(activeRecipe)",
@@ -62,6 +63,9 @@ for token in (
     "moveTargetRow(1",
     "hold_accel_.multiplier",
     "ARROWS:TARGET",
+    "[GENERATION] target %d -> %d",
+    "GEN TARGET ROW %d",
+    "[GENERATION] write request row=%d",
 ):
     assert token in generation, f"Generation feedback/navigation contract missing: {token}"
 
@@ -71,6 +75,16 @@ for token in (
     "void onEnter(int context) override",
 ):
     assert token in generation_header, f"Generation target state missing: {token}"
+
+for token in (
+    "const bool navigationRepeat =",
+    "evt.scancode == GROOVEPUTER_UP",
+    "evt.scancode == GROOVEPUTER_DOWN",
+    "evt.scancode == GROOVEPUTER_LEFT",
+    "evt.scancode == GROOVEPUTER_RIGHT",
+    "(ks.word.empty() || navigationRepeat)",
+):
+    assert token in cardputer_main, f"Cardputer arrow repeat contract missing: {token}"
 
 assert "setSongPosition" not in generation.split("void GenerationPage::moveTargetRow", 1)[1].split("void GenerationPage::materializeCurrentBar", 1)[0], (
     "Browsing Generation targets must remain UI-only until materialization"
