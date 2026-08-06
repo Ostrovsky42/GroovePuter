@@ -8,6 +8,7 @@
 
 #if defined(ARDUINO)
 #include <Arduino.h>
+#include "src/platform/cardputer_usb_midi_service.h"
 #endif
 
 namespace {
@@ -531,6 +532,28 @@ bool PerformanceKeyboard::serviceTransportStepClock(uint32_t nowMicros) {
         arpAscending_ = true;
     }
 
+#if defined(ARDUINO)
+    // Use the exact playback anchor published to MidiDispatchTask. This puts
+    // generated NoteOn/NoteOff deadlines in the same wall-clock domain as
+    // outbound MIDI Clock, Pattern and SMF events instead of estimating the
+    // block start from the time the UI loop happened to observe the snapshot.
+    uint32_t anchorBlockSequence = 0;
+    uint32_t anchorPlaybackMicros = 0;
+    if (snapshotCardputerUsbMidiBlockAnchor(anchorBlockSequence,
+                                             anchorPlaybackMicros)) {
+        const int32_t blockDelta = static_cast<int32_t>(
+            snapshot.blockSequence - anchorBlockSequence);
+        transportAnchorMicros_ = static_cast<uint32_t>(
+            static_cast<int64_t>(anchorPlaybackMicros) +
+            static_cast<int64_t>(blockDelta) *
+                static_cast<int64_t>(blockMicros));
+        transportAnchorBlockSequence_ = snapshot.blockSequence;
+        transportBlockAnchorValid_ = true;
+    }
+#endif
+
+    // Deterministic host fallback and hardware startup fallback before the
+    // first dispatcher anchor is published.
     if (!transportBlockAnchorValid_) {
         transportBlockAnchorValid_ = true;
         transportAnchorBlockSequence_ = snapshot.blockSequence;
@@ -578,8 +601,19 @@ bool PerformanceKeyboard::serviceTransportStepClock(uint32_t nowMicros) {
     uint32_t dueMicros = transportAnchorMicros_ +
         static_cast<uint32_t>(std::llround(
             stepsUntilBoundary * static_cast<double>(stepMicros)));
+    const int32_t leadMicros = static_cast<int32_t>(dueMicros - nowMicros);
+    if (leadMicros < -static_cast<int32_t>(kGeneratedNoteOnStaleMicros)) {
+        // The boundary is already musically obsolete. Advance ownership without
+        // publishing a delayed hit; the next coherent half-step service will
+        // prepare the following sixteenth.
+        transportStepOrdinal_ = nextOrdinal;
+        transportStepScheduled_ = true;
+        return true;
+    }
     const uint32_t minimumDue = nowMicros + kMinimumTransportLeadMicros;
-    if (due(minimumDue, dueMicros)) dueMicros = minimumDue;
+    if (leadMicros < static_cast<int32_t>(kMinimumTransportLeadMicros)) {
+        dueMicros = minimumDue;
+    }
 
     euclideanStep_ = static_cast<uint8_t>(
         nextOrdinal % static_cast<uint64_t>(kEuclideanSteps));
