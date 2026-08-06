@@ -21,6 +21,7 @@ TARGETS={'KICK':0,'SNARE':1,'HAT1':2,'HAT2':3,'PERC1':4,'PERC2':5,'RIM':6,'CLAP'
 PRIORITY={'SYNTH2':20,'DX':10}
 ROOTS={'C':0,'C#':1,'DB':1,'D':2,'D#':3,'EB':3,'E':4,'F':5,'F#':6,'GB':6,'G':7,'G#':8,'AB':8,'A':9,'A#':10,'BB':10,'B':11}
 ACTIVE,ACCENT,SLIDE,SUSTAIN=1,2,4,8
+DISPLAY_NAME_OVERRIDES={'REC_DUB_DEEP_CHORD':'Deep Stab'}
 
 def rows(z,root,rel):return list(csv.DictReader(io.StringIO(z.read(root+rel).decode('utf-8-sig'))))
 def integer(v,default=0):
@@ -29,6 +30,8 @@ def boolean(v):return (v or '').strip().lower()=='true'
 def clamp(v,l,h):return max(l,min(h,v))
 def identifier(v):return re.sub(r'[^A-Za-z0-9]+','_',v).strip('_')
 def quoted(v):return json.dumps(v,ensure_ascii=True)
+def runtime_display_name(spec,recipe):
+ return DISPLAY_NAME_OVERRIDES.get(spec.atlas_id,recipe['display_name'].replace(' SEQTRAK recipe',''))
 def chord_note(e):
  root=(e.get('chord_root') or '').strip()
  if not root:
@@ -110,7 +113,7 @@ def render_recipe(spec,recipe,links,data):
  pname='kPatterns_'+identifier(spec.atlas_id);lines.append(f'inline constexpr Pattern {pname}[] = {{')
  for link,name in arr:
   lines.append(f'  {{{quoted(link["pattern_id"])}, {quoted(link["slot_id"])}, {quoted(link["slot_function"])}, {name}, static_cast<uint16_t>(sizeof({name}) / sizeof({name}[0]))}},')
- display=recipe['display_name'].replace(' SEQTRAK recipe','')
+ display=runtime_display_name(spec,recipe)
  lines+=['};','',f'inline constexpr Recipe kRecipe_{identifier(spec.atlas_id)} = {{{spec.runtime_id}, {quoted(spec.atlas_id)}, {quoted(display)}, {integer(recipe["default_bpm"])}, {integer(recipe["swing_percent"])}, {pname}, static_cast<uint8_t>(sizeof({pname}) / sizeof({pname}[0]))}};','', '}  // namespace AtlasGenerated','']
  return '\n'.join(lines)
 
@@ -176,7 +179,7 @@ def compile_all(zip_path,out):
    compiled[pid]=sorted(merged.values(),key=lambda e:(e[0],e[1]));runtime_count+=len(compiled[pid])
   (out/spec.filename).write_text(render_recipe(spec,recipe,rlinks,compiled),encoding='utf-8')
   stats['ignored_sampler_events']+=sampler_count;stats['ignored_unsupported_tracks']+=unsupported;stats['ignored_unrepresentable_pitch_events']+=unrepr
-  stats['recipes'].append({'atlas_recipe_id':spec.atlas_id,'runtime_recipe_id':spec.runtime_id,'display_name':recipe['display_name'].replace(' SEQTRAK recipe',''),'bpm':integer(recipe['default_bpm']),'swing_percent':integer(recipe['swing_percent']),'source_event_count':src_count,'runtime_event_count':runtime_count,'ignored_sampler_event_count':sampler_count,'ignored_unsupported_track_events':unsupported,'ignored_unrepresentable_pitch_events':unrepr,'slots':[{'slot_id':l['slot_id'],'slot_function':l['slot_function'],'pattern_id':l['pattern_id']} for l in rlinks]})
+  stats['recipes'].append({'atlas_recipe_id':spec.atlas_id,'runtime_recipe_id':spec.runtime_id,'display_name':runtime_display_name(spec,recipe),'bpm':integer(recipe['default_bpm']),'swing_percent':integer(recipe['swing_percent']),'source_event_count':src_count,'runtime_event_count':runtime_count,'ignored_sampler_event_count':sampler_count,'ignored_unsupported_track_events':unsupported,'ignored_unrepresentable_pitch_events':unrepr,'slots':[{'slot_id':l['slot_id'],'slot_function':l['slot_function'],'pattern_id':l['pattern_id']} for l in rlinks]})
  (out/'atlas_runtime.generated.h').write_text(render_index(stats),encoding='utf-8')
  return stats
 
