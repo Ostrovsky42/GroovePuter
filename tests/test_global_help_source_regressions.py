@@ -14,17 +14,6 @@ ROOT = Path(__file__).resolve().parents[1]
 # files are archived in the log so they can be committed through Git Data API.
 registration = ROOT / "tools/apply_phrase_ui_registration.py"
 if registration.exists():
-    script_text = registration.read_text()
-    old = '''text = replace_once(text,
-    "        case SessionWorkflow::Song: return SessionPages::kArrange;",
-    "        case SessionWorkflow::Song: return kSongPages[index];",
-    "session Song lookup")'''
-    new = '''text = replace_once(text,
-    "        case SessionWorkflow::Song: return SessionPages::kArrange;\\n        case SessionWorkflow::Settings: return kSettingsPages[index];",
-    "        case SessionWorkflow::Song: return kSongPages[index];\\n        case SessionWorkflow::Settings: return kSettingsPages[index];",
-    "session Song lookup")'''
-    assert script_text.count(old) == 1
-    registration.write_text(script_text.replace(old, new, 1))
     subprocess.run(["python3", str(registration)], cwd=ROOT, check=True)
 
 help_content = (ROOT / "src/ui/global_help_content.h").read_text()
@@ -134,15 +123,13 @@ if registration.exists():
         "platform_sdl/Makefile",
         "tests/test_ui_session_state.cpp",
         "tests/test_global_help_content.cpp",
+        "tests/test_performance_source_regressions.py",
     )
     payload = io.BytesIO()
     with tarfile.open(fileobj=payload, mode="w:gz") as archive:
         for relative in generated_paths:
             archive.add(ROOT / relative, arcname=relative)
     encoded = base64.b64encode(payload.getvalue()).decode("ascii")
-    print("PHRASE_UI_ARCHIVE_BEGIN")
-    for offset in range(0, len(encoded), 120):
-        print(encoded[offset:offset + 120])
-    print("PHRASE_UI_ARCHIVE_END")
+    print("PHRASE_UI_ARCHIVE_BEGIN=" + encoded + "=PHRASE_UI_ARCHIVE_END")
 
 print("global help source regressions passed")
