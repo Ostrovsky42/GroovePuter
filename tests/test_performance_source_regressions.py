@@ -29,27 +29,65 @@ def test_default_runtime_logging_budget() -> None:
             "silent production preset must remain available")
 
 
-def test_blocked_note_mode_keys_are_consumed() -> None:
+def test_transport_note_mode_keys_remain_live() -> None:
     keyboard = (ROOT / "src/input/performance_keyboard.cpp").read_text(
         encoding="utf-8"
     )
+    header = (ROOT / "src/input/performance_keyboard.h").read_text(
+        encoding="utf-8"
+    )
+    page = (ROOT / "src/ui/pages/perform_page.cpp").read_text(
+        encoding="utf-8"
+    )
+
     start = keyboard.index("bool PerformanceKeyboard::keyDown")
     end = keyboard.index("bool PerformanceKeyboard::keyUp", start)
     block = keyboard[start:end]
 
     layout_pos = block.index("if (!isPerformanceKey(physicalKey)) return false;")
     note_mode_pos = block.index("if (!noteModeEnabled_) return false;")
-    blocked_pos = block.index("if (!enabled_ || transportPlaying_) return true;")
-    note_pos = block.index("noteForKey", blocked_pos)
+    enabled_pos = block.index("if (!enabled_) return true;")
+    note_pos = block.index("noteForKey", enabled_pos)
 
-    require(layout_pos < note_mode_pos < blocked_pos < note_pos,
-            "layout membership must be decided before transport blocks NoteOn")
-    require("return true;" in block[blocked_pos:note_pos],
-            "transport-blocked performance keys must remain consumed")
+    require(layout_pos < note_mode_pos < enabled_pos < note_pos,
+            "layout and NOTE mode must be resolved before live NoteOn")
+    require("transportPlaying_" not in block[note_mode_pos:note_pos],
+            "transport playback must not block Cardputer keyboard NoteOn")
+    require("return enabled_ && noteModeEnabled_;" in header,
+            "live input ownership must no longer depend on transport state")
     require('constexpr char kLowerRow[] = "asdfghjkl";' in keyboard,
             "lower performance row must retain K/L collision keys")
     require('constexpr char kUpperRow[] = "qwertyuiop";' in keyboard,
             "upper performance row must retain I/O/P collision keys")
+
+    transport_start = keyboard.index(
+        "void PerformanceKeyboard::setTransportPlaying")
+    transport_end = keyboard.index(
+        "void PerformanceKeyboard::setTarget", transport_start)
+    transport_block = keyboard[transport_start:transport_end]
+    require("if (playing) panic();" not in transport_block,
+            "transport start must not panic held performance keys")
+    require("stopGeneratedOutput();" in transport_block and
+            "resetStepClock();" in transport_block,
+            "clock-domain changes must clean generated notes before re-anchoring")
+
+    service_start = keyboard.index("void PerformanceKeyboard::service(uint32_t")
+    service_end = keyboard.index(
+        "void PerformanceKeyboard::triggerDirectTransformed", service_start)
+    service_block = keyboard[service_start:service_end]
+    require("if (transportPlaying_)" in service_block and
+            "serviceTransportStepClock(nowMicros)" in service_block,
+            "running transport must select the project-timeline step clock")
+    require("projectTransportTimeline().trySnapshot(snapshot)" in keyboard and
+            "snapshot.absoluteSteps()" in keyboard,
+            "step generation must read the coherent project transport phase")
+    require("stepOrdinal % static_cast<uint64_t>(kEuclideanSteps)" in keyboard,
+            "Euclidean phase must derive from absolute transport sixteenths")
+    require("Do not replay every missed boundary" in keyboard,
+            "transport service must document and retain no-catch-up behavior")
+    require("INPUT LOCK | PATTERN PLAYER ACTIVE" not in page and
+            'stepTools ? "LIVE SYNC" : "LIVE INPUT"' in page,
+            "PERFORM must show live transport input instead of the old lock")
 
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
     route_pos = display.index("performance_keyboard_.keyDown(event.key)")
@@ -390,7 +428,7 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
 
 def main() -> None:
     test_default_runtime_logging_budget()
-    test_blocked_note_mode_keys_are_consumed()
+    test_transport_note_mode_keys_remain_live()
     test_performance_all_notes_off_is_target_scoped()
     test_note_mode_is_explicit_and_runtime_only()
     test_live_synth_render_is_not_transport_gated()
