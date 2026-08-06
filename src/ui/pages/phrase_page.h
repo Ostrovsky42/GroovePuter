@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <string>
 
@@ -36,10 +37,18 @@ class PhrasePage : public IPage {
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
   PhraseCore::SlotId selected_slot_ = PhraseCore::SlotId::A;
-  PhraseCore::SlotId parent_slot_ = PhraseCore::SlotId::A;
+  PhraseCore::SlotId parent_slot_ = PhraseCore::SlotId::B;
   PhraseCore::Role capture_role_ = PhraseCore::Role::Main;
   uint8_t capture_length_ = 4;
   uint8_t preview_bar_ = 0;
+
+  // Fixed-size/allocation-free cache for the complete bounded Phrase shape.
+  // It is refreshed only when the Phrase identity, Scene revision or source
+  // pattern page changes; moving the preview cursor does not rescan all bars.
+  std::array<PhraseCore::BarPreview, PhraseCore::kMaxBars> bar_previews_{};
+  std::array<bool, PhraseCore::kMaxBars> bar_preview_valid_{};
+  uint8_t cached_preview_bars_ = 0;
+
   PhraseCore::BarPreview preview_{};
   bool preview_valid_ = false;
   int preview_page_ = -1;

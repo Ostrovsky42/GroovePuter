@@ -13,22 +13,108 @@
 
 namespace {
 
-constexpr IGfxColor kPhraseAColor(0x00D7FF);
-constexpr IGfxColor kPhraseBColor(0xFF4FD8);
-constexpr IGfxColor kPhraseCColor(0xFFD166);
-constexpr IGfxColor kPhraseDColor(0x73E2A7);
-constexpr IGfxColor kDimColor(0x526474);
-constexpr IGfxColor kPanelColor(0x121922);
-constexpr IGfxColor kGridOffColor(0x25303A);
+struct PhrasePalette {
+  IGfxColor background;
+  IGfxColor panel;
+  IGfxColor panelSelected;
+  IGfxColor border;
+  IGfxColor dim;
+  IGfxColor text;
+  IGfxColor gridOff;
+  IGfxColor beatOff;
+  IGfxColor synthA;
+  IGfxColor synthB;
+  IGfxColor drums;
+  IGfxColor accent;
+};
 
-IGfxColor slotColor(PhraseCore::SlotId slot) {
-  switch (slot) {
-    case PhraseCore::SlotId::A: return kPhraseAColor;
-    case PhraseCore::SlotId::B: return kPhraseBColor;
-    case PhraseCore::SlotId::C: return kPhraseCColor;
-    case PhraseCore::SlotId::D: return kPhraseDColor;
+PhrasePalette paletteForStyle(VisualStyle style) {
+  switch (style) {
+    case VisualStyle::RETRO_CLASSIC:
+      return {
+          IGfxColor(0x02040A), IGfxColor(0x0A1020), IGfxColor(0x12233A),
+          IGfxColor(0x35506C), IGfxColor(0x61798E), IGfxColor(0xE7F6FF),
+          IGfxColor(0x172331), IGfxColor(0x294258), IGfxColor(0x00E5FF),
+          IGfxColor(0xFF4FD8), IGfxColor(0xFFD166), IGfxColor(0x73E2A7)};
+    case VisualStyle::AMBER:
+      return {
+          IGfxColor(0x090603), IGfxColor(0x171006), IGfxColor(0x2A1B08),
+          IGfxColor(0x6E4A18), IGfxColor(0x9E7136), IGfxColor(0xFFE7B0),
+          IGfxColor(0x2C1E0C), IGfxColor(0x493114), IGfxColor(0xFFCA58),
+          IGfxColor(0xE6A93E), IGfxColor(0xFF8A3D), IGfxColor(0xFFD166)};
+    case VisualStyle::MINIMAL_DARK:
+    case VisualStyle::MINIMAL:
+    default:
+      return {
+          COLOR_BG, COLOR_PANEL, IGfxColor(0x101A23), COLOR_LIGHT_GRAY,
+          COLOR_MUTED, COLOR_TEXT, IGfxColor(0x18222B), IGfxColor(0x2B3945),
+          COLOR_SYNTH_A, COLOR_SYNTH_B, COLOR_WARN, COLOR_ACCENT};
   }
-  return COLOR_WHITE;
+}
+
+IGfxColor slotColor(PhraseCore::SlotId slot, const PhrasePalette& palette) {
+  switch (slot) {
+    case PhraseCore::SlotId::A: return palette.synthA;
+    case PhraseCore::SlotId::B: return palette.synthB;
+    case PhraseCore::SlotId::C: return palette.drums;
+    case PhraseCore::SlotId::D: return palette.accent;
+  }
+  return palette.text;
+}
+
+const char* roleShort(PhraseCore::Role role) {
+  switch (role) {
+    case PhraseCore::Role::Main: return "MAIN";
+    case PhraseCore::Role::Variation: return "VAR";
+    case PhraseCore::Role::Break: return "BREAK";
+    case PhraseCore::Role::Ending: return "END";
+  }
+  return "?";
+}
+
+const char* sourceShort(PhraseCore::Source source) {
+  switch (source) {
+    case PhraseCore::Source::None: return "NONE";
+    case PhraseCore::Source::InternalPattern: return "PATTERN";
+    case PhraseCore::Source::Generated: return "GENERATED";
+    case PhraseCore::Source::Derived: return "DERIVED";
+    case PhraseCore::Source::SmfRegion: return "SMF";
+    case PhraseCore::Source::LiveCapture: return "LIVE";
+  }
+  return "?";
+}
+
+const char* storageBadge(const PhraseCore::SlotSummary& summary) {
+  if (!summary.valid) return "EMPTY";
+  switch (summary.storage) {
+    case PhraseCore::StorageMode::ReferenceView:
+      return summary.mutableBacking ? "REF MUT" : "REF";
+    case PhraseCore::StorageMode::OwnedEvents:
+      return "OWNED";
+    case PhraseCore::StorageMode::Empty:
+      return "EMPTY";
+  }
+  return "?";
+}
+
+void formatTrackMask(uint8_t mask, char* output, size_t outputSize) {
+  if (!output || outputSize == 0) return;
+  output[0] = '\0';
+  const char* separator = "";
+  if ((mask & PhraseCore::kTrackSynthA) != 0) {
+    std::snprintf(output, outputSize, "SA");
+    separator = "+";
+  }
+  if ((mask & PhraseCore::kTrackSynthB) != 0) {
+    const size_t used = std::char_traits<char>::length(output);
+    std::snprintf(output + used, outputSize - used, "%sSB", separator);
+    separator = "+";
+  }
+  if ((mask & PhraseCore::kTrackDrums) != 0) {
+    const size_t used = std::char_traits<char>::length(output);
+    std::snprintf(output + used, outputSize - used, "%sDR", separator);
+  }
+  if (output[0] == '\0') std::snprintf(output, outputSize, "---");
 }
 
 void formatPatternRef(int16_t reference, char* output, size_t outputSize) {
@@ -53,21 +139,88 @@ void drawMask(IGfx& gfx,
               int y,
               uint16_t mask,
               bool resolved,
-              IGfxColor color) {
-  constexpr int kCellW = 6;
-  constexpr int kCellH = 5;
+              IGfxColor color,
+              const PhrasePalette& palette) {
+  constexpr int kCellW = 5;
+  constexpr int kCellH = 6;
+  constexpr int kGap = 1;
   for (int step = 0; step < 16; ++step) {
-    const int cellX = x + step * (kCellW + 1);
+    const int cellX = x + step * (kCellW + kGap);
     const bool active = (mask & static_cast<uint16_t>(1u << step)) != 0;
-    const IGfxColor off = (step % 4 == 0) ? IGfxColor(0x36434F) : kGridOffColor;
-    if (!resolved) {
-      gfx.drawRect(cellX, y, kCellW, kCellH, off);
-    } else if (active) {
+    const IGfxColor off = (step % 4 == 0) ? palette.beatOff : palette.gridOff;
+    if (resolved && active) {
       gfx.fillRect(cellX, y, kCellW, kCellH, color);
     } else {
       gfx.drawRect(cellX, y, kCellW, kCellH, off);
     }
   }
+}
+
+void drawTrackRow(IGfx& gfx,
+                  int x,
+                  int y,
+                  const char* label,
+                  uint16_t mask,
+                  bool resolved,
+                  const char* reference,
+                  IGfxColor color,
+                  const PhrasePalette& palette) {
+  gfx.setTextColor(color);
+  gfx.drawText(x, y, label);
+  drawMask(gfx, x + 22, y + 1, mask, resolved, color, palette);
+  gfx.setTextColor(resolved ? palette.text : palette.dim);
+  gfx.drawText(x + 124, y, reference);
+}
+
+void drawPhraseShape(
+    IGfx& gfx,
+    int x,
+    int y,
+    int width,
+    const PhraseCore::SlotSummary& current,
+    uint8_t captureLength,
+    uint8_t previewBar,
+    const std::array<PhraseCore::BarPreview, PhraseCore::kMaxBars>& previews,
+    const std::array<bool, PhraseCore::kMaxBars>& previewValid,
+    IGfxColor activeColor,
+    const PhrasePalette& palette) {
+  constexpr int kBarW = 18;
+  constexpr int kBarH = 9;
+  constexpr int kGap = 3;
+  constexpr int kBarsX = 33;
+
+  const int bars = current.valid ? current.lengthBars : captureLength;
+  gfx.setTextColor(palette.dim);
+  gfx.drawText(x, y, "BARS");
+
+  for (int bar = 0; bar < PhraseCore::kMaxBars; ++bar) {
+    const int barX = x + kBarsX + bar * (kBarW + kGap);
+    const bool inRange = bar < bars;
+    const IGfxColor border = inRange ? palette.border : palette.gridOff;
+    gfx.drawRect(barX, y, kBarW, kBarH, border);
+
+    if (current.valid && inRange && previewValid[bar]) {
+      int fillHeight =
+          (static_cast<int>(previews[bar].energy) * (kBarH - 2)) / 255;
+      if (previews[bar].energy > 0 && fillHeight == 0) fillHeight = 1;
+      if (fillHeight > 0) {
+        gfx.fillRect(barX + 1, y + kBarH - 1 - fillHeight,
+                     kBarW - 2, fillHeight, activeColor);
+      }
+    }
+
+    if (inRange && bar == previewBar) {
+      gfx.drawRect(barX - 1, y - 1, kBarW + 2, kBarH + 2, activeColor);
+    }
+  }
+
+  char counter[12];
+  std::snprintf(counter, sizeof(counter), "%u/%u",
+                static_cast<unsigned>(previewBar + 1),
+                static_cast<unsigned>(bars));
+  gfx.setTextColor(activeColor);
+  const int counterX = x + width - gfx.textWidth(counter);
+  gfx.drawText(counterX, y, counter);
 }
 
 }  // namespace
@@ -120,6 +273,11 @@ void PhrasePage::cycleLength(int delta) {
   }
   index = (index + delta + 4) % 4;
   capture_length_ = kLengths[index];
+
+  const Scene& scene = mini_acid_.sceneManager().currentScene();
+  const PhraseCore::SlotSummary current =
+      PhraseWorkspace::summary(scene, selected_slot_);
+  if (!current.valid && preview_bar_ >= capture_length_) preview_bar_ = 0;
 }
 
 void PhrasePage::cycleRole(int delta) {
@@ -133,12 +291,17 @@ void PhrasePage::cyclePreviewBar(int delta) {
   const Scene& scene = mini_acid_.sceneManager().currentScene();
   const PhraseCore::SlotSummary current =
       PhraseWorkspace::summary(scene, selected_slot_);
-  const int bars = current.valid ? current.lengthBars : capture_length_;
+  const int bars = std::max(
+      1, static_cast<int>(current.valid ? current.lengthBars : capture_length_));
   int value = static_cast<int>(preview_bar_) + delta;
   while (value < 0) value += bars;
   while (value >= bars) value -= bars;
   preview_bar_ = static_cast<uint8_t>(value);
-  invalidatePreview();
+
+  if (current.valid && preview_bar_ < cached_preview_bars_) {
+    preview_valid_ = bar_preview_valid_[preview_bar_];
+    preview_ = bar_previews_[preview_bar_];
+  }
 }
 
 void PhrasePage::cycleParent(int delta) {
@@ -153,6 +316,8 @@ void PhrasePage::invalidatePreview() {
   preview_valid_ = false;
   preview_page_ = -1;
   preview_phrase_id_ = PhraseCore::kNoPhraseId;
+  cached_preview_bars_ = 0;
+  bar_preview_valid_.fill(false);
 }
 
 void PhrasePage::refreshPreview() {
@@ -168,19 +333,36 @@ void PhrasePage::refreshPreview() {
     preview_phrase_id_ = PhraseCore::kNoPhraseId;
     preview_revision_ = revision;
     preview_page_ = page;
-    return;
-  }
-  if (preview_bar_ >= current.lengthBars) preview_bar_ = 0;
-  if (preview_valid_ && preview_phrase_id_ == current.phraseId &&
-      preview_revision_ == revision && preview_page_ == page) {
+    cached_preview_bars_ = 0;
+    bar_preview_valid_.fill(false);
     return;
   }
 
-  preview_valid_ = PhraseWorkspace::barPreview(
-      scene, page, selected_slot_, preview_bar_, preview_);
-  preview_phrase_id_ = current.phraseId;
-  preview_revision_ = revision;
-  preview_page_ = page;
+  if (preview_bar_ >= current.lengthBars) preview_bar_ = 0;
+  const bool cacheMatches =
+      preview_phrase_id_ == current.phraseId &&
+      preview_revision_ == revision &&
+      preview_page_ == page &&
+      cached_preview_bars_ == current.lengthBars;
+
+  if (!cacheMatches) {
+    bar_preview_valid_.fill(false);
+    cached_preview_bars_ =
+        std::min<uint8_t>(current.lengthBars, PhraseCore::kMaxBars);
+    for (uint8_t bar = 0; bar < cached_preview_bars_; ++bar) {
+      bar_preview_valid_[bar] = PhraseWorkspace::barPreview(
+          scene, page, selected_slot_, bar, bar_previews_[bar]);
+    }
+    preview_phrase_id_ = current.phraseId;
+    preview_revision_ = revision;
+    preview_page_ = page;
+  }
+
+  preview_valid_ =
+      preview_bar_ < cached_preview_bars_ &&
+      bar_preview_valid_[preview_bar_];
+  preview_ = preview_valid_ ? bar_previews_[preview_bar_]
+                            : PhraseCore::BarPreview{};
 }
 
 void PhrasePage::showResult(const char* action,
@@ -214,8 +396,11 @@ bool PhrasePage::captureCurrentRegion() {
 
   const PhraseCore::Result result = PhraseWorkspace::capture(
       scene, request, [&](auto&& operation) {
-        if (audio_guard_) audio_guard_(std::forward<decltype(operation)>(operation));
-        else operation();
+        if (audio_guard_) {
+          audio_guard_(std::forward<decltype(operation)>(operation));
+        } else {
+          operation();
+        }
       });
   if (result) {
     preview_bar_ = 0;
@@ -233,8 +418,11 @@ bool PhrasePage::deriveFromParent() {
   request.role = capture_role_;
   const PhraseCore::Result result = PhraseWorkspace::derive(
       scene, request, [&](auto&& operation) {
-        if (audio_guard_) audio_guard_(std::forward<decltype(operation)>(operation));
-        else operation();
+        if (audio_guard_) {
+          audio_guard_(std::forward<decltype(operation)>(operation));
+        } else {
+          operation();
+        }
       });
   if (result) {
     preview_bar_ = 0;
@@ -257,8 +445,11 @@ bool PhrasePage::writeToCurrentRow(bool overwrite) {
 
   const PhraseCore::Result result = PhraseWorkspace::writeToSong(
       scene, request, [&](auto&& operation) {
-        if (audio_guard_) audio_guard_(std::forward<decltype(operation)>(operation));
-        else operation();
+        if (audio_guard_) {
+          audio_guard_(std::forward<decltype(operation)>(operation));
+        } else {
+          operation();
+        }
       });
   if (result) invalidatePreview();
   showResult(overwrite ? "WRITE!" : "WRITE", result);
@@ -269,8 +460,11 @@ bool PhrasePage::clearCurrentSlot() {
   Scene& scene = mini_acid_.sceneManager().currentScene();
   const PhraseCore::Result result = PhraseWorkspace::clear(
       scene, selected_slot_, [&](auto&& operation) {
-        if (audio_guard_) audio_guard_(std::forward<decltype(operation)>(operation));
-        else operation();
+        if (audio_guard_) {
+          audio_guard_(std::forward<decltype(operation)>(operation));
+        } else {
+          operation();
+        }
       });
   if (result) {
     preview_bar_ = 0;
@@ -286,57 +480,82 @@ void PhrasePage::draw(IGfx& gfx) {
       PhraseWorkspace::summary(scene, selected_slot_);
   refreshPreview();
 
-  UI::drawStandardHeader(gfx, mini_acid_, "PHRASE CORE");
-  LayoutManager::clearContent(gfx);
+  const PhrasePalette palette = paletteForStyle(UI::currentStyle);
+  const IGfxColor activeColor = slotColor(selected_slot_, palette);
 
-  const int x = Layout::CONTENT.x;
-  const int y = LayoutManager::lineY(0);
-  const int width = Layout::CONTENT.w;
-  const int gap = 3;
-  const int slotWidth = (width - gap * 3) / 4;
+  UI::drawStandardHeader(gfx, mini_acid_, "PHRASE CORE");
+
+  // MiniAcidDisplay paints the skin before each page draw. Do not perform a
+  // second full-content clear here; render the eight compact content bands once.
+  const int x = Layout::COL_1;
+  const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
+  const int slotY = LayoutManager::lineY(0);
+  constexpr int kGap = 3;
+  const int slotWidth = (width - kGap * 3) / 4;
 
   for (int i = 0; i < PhraseCore::kSlotCount; ++i) {
     const PhraseCore::SlotId slot = slotFromIndex(i);
     const PhraseCore::SlotSummary summary =
         PhraseWorkspace::summary(scene, slot);
-    const int slotX = x + i * (slotWidth + gap);
+    const int slotX = x + i * (slotWidth + kGap);
     const bool selected = slot == selected_slot_;
-    const IGfxColor color = slotColor(slot);
-    gfx.fillRect(slotX, y, slotWidth, 11, selected ? kPanelColor : IGfxColor(0x0E1319));
-    gfx.drawRect(slotX, y, slotWidth, 11, selected ? color : kDimColor);
+    const IGfxColor color = slotColor(slot, palette);
+
+    gfx.fillRect(slotX, slotY, slotWidth, 11,
+                 selected ? palette.panelSelected : palette.panel);
+    gfx.drawRect(slotX, slotY, slotWidth, 11,
+                 selected ? color : palette.border);
+
     char label[16];
     std::snprintf(label, sizeof(label), "%s %s",
-                  PhraseCore::slotName(slot), summary.valid ? "REF" : "---");
-    gfx.setTextColor(selected ? color : (summary.valid ? COLOR_WHITE : kDimColor));
-    gfx.drawText(slotX + 3, y + 2, label);
+                  PhraseCore::slotName(slot),
+                  summary.valid ? roleShort(summary.role) : "---");
+    gfx.setTextColor(selected ? color :
+                     (summary.valid ? palette.text : palette.dim));
+    gfx.drawText(slotX + 3, slotY + 2, label);
+    if (summary.valid) {
+      gfx.fillRect(slotX + slotWidth - 5, slotY + 4, 2, 2, color);
+    }
   }
 
   char line[96];
+  const int summaryY = LayoutManager::lineY(1);
   if (current.valid) {
-    std::snprintf(line, sizeof(line), "%s  %uB  %s  ID:%u P:%u",
-                  PhraseCore::roleName(current.role),
+    std::snprintf(line, sizeof(line), "%s  %uB  %s  %s",
+                  roleShort(current.role),
                   static_cast<unsigned>(current.lengthBars),
-                  PhraseCore::sourceName(current.source),
-                  static_cast<unsigned>(current.phraseId),
-                  static_cast<unsigned>(current.parentId));
+                  sourceShort(current.source),
+                  storageBadge(current));
   } else {
-    std::snprintf(line, sizeof(line), "NEW %s  %uB  FROM SONG ROW %d",
-                  PhraseCore::roleName(capture_role_),
-                  static_cast<unsigned>(capture_length_),
-                  mini_acid_.currentSongPosition() + 1);
+    std::snprintf(line, sizeof(line), "EMPTY SLOT  NEXT CAP %s %uB",
+                  roleShort(capture_role_),
+                  static_cast<unsigned>(capture_length_));
   }
-  gfx.setTextColor(slotColor(selected_slot_));
-  gfx.drawText(x, y + 14, line);
+  gfx.setTextColor(activeColor);
+  gfx.drawText(x, summaryY, line);
 
-  std::snprintf(line, sizeof(line), "CAP %uB %s  DERIVE:%s  BAR:%u/%u",
-                static_cast<unsigned>(capture_length_),
-                PhraseCore::roleName(capture_role_),
-                PhraseCore::slotName(parent_slot_),
-                static_cast<unsigned>(preview_bar_ + 1),
-                static_cast<unsigned>(current.valid ? current.lengthBars
-                                                    : capture_length_));
-  gfx.setTextColor(IGfxColor(0x8AA4BA));
-  gfx.drawText(x, y + 25, line);
+  const int contextY = LayoutManager::lineY(2);
+  if (current.valid) {
+    char tracks[20];
+    formatTrackMask(current.trackMask, tracks, sizeof(tracks));
+    std::snprintf(line, sizeof(line), "ID:%u  P:%u  TRACKS:%s",
+                  static_cast<unsigned>(current.phraseId),
+                  static_cast<unsigned>(current.parentId),
+                  tracks);
+  } else {
+    const int songSlot = std::clamp(scene.activeSongSlot, 0, 1);
+    std::snprintf(line, sizeof(line), "FROM SONG %c ROW %d  DERIVE:%s",
+                  static_cast<char>('A' + songSlot),
+                  mini_acid_.currentSongPosition() + 1,
+                  PhraseCore::slotName(parent_slot_));
+  }
+  gfx.setTextColor(palette.dim);
+  gfx.drawText(x, contextY, line);
+
+  const int shapeY = LayoutManager::lineY(3) + 1;
+  drawPhraseShape(gfx, x, shapeY, width, current, capture_length_,
+                  preview_bar_, bar_previews_, bar_preview_valid_,
+                  activeColor, palette);
 
   char refA[12];
   char refB[12];
@@ -351,52 +570,42 @@ void PhrasePage::draw(IGfx& gfx) {
     std::snprintf(refD, sizeof(refD), "---");
   }
 
-  const int gridX = x + 25;
-  const int gridY = y + 38;
-  gfx.setTextColor(kPhraseAColor);
-  gfx.drawText(x, gridY - 1, "A");
-  drawMask(gfx, gridX, gridY,
-           preview_valid_ ? preview_.synthAMask : 0,
-           preview_valid_ && (preview_.resolvedMask & PhraseCore::kTrackSynthA),
-           kPhraseAColor);
-  gfx.setTextColor(kDimColor);
-  gfx.drawText(gridX + 116, gridY - 1, refA);
+  drawTrackRow(
+      gfx, x, LayoutManager::lineY(4), "SA",
+      preview_valid_ ? preview_.synthAMask : 0,
+      preview_valid_ &&
+          (preview_.resolvedMask & PhraseCore::kTrackSynthA) != 0,
+      refA, palette.synthA, palette);
+  drawTrackRow(
+      gfx, x, LayoutManager::lineY(5), "SB",
+      preview_valid_ ? preview_.synthBMask : 0,
+      preview_valid_ &&
+          (preview_.resolvedMask & PhraseCore::kTrackSynthB) != 0,
+      refB, palette.synthB, palette);
+  drawTrackRow(
+      gfx, x, LayoutManager::lineY(6), "DR",
+      preview_valid_ ? preview_.drumMask : 0,
+      preview_valid_ &&
+          (preview_.resolvedMask & PhraseCore::kTrackDrums) != 0,
+      refD, palette.drums, palette);
 
-  gfx.setTextColor(kPhraseBColor);
-  gfx.drawText(x, gridY + 9, "B");
-  drawMask(gfx, gridX, gridY + 10,
-           preview_valid_ ? preview_.synthBMask : 0,
-           preview_valid_ && (preview_.resolvedMask & PhraseCore::kTrackSynthB),
-           kPhraseBColor);
-  gfx.setTextColor(kDimColor);
-  gfx.drawText(gridX + 116, gridY + 9, refB);
+  const int actionY = LayoutManager::lineY(7);
+  std::snprintf(line, sizeof(line), "NEXT %uB %s  P:%s",
+                static_cast<unsigned>(capture_length_),
+                roleShort(capture_role_),
+                PhraseCore::slotName(parent_slot_));
+  gfx.setTextColor(palette.dim);
+  gfx.drawText(x, actionY, line);
 
-  gfx.setTextColor(kPhraseCColor);
-  gfx.drawText(x, gridY + 19, "D");
-  drawMask(gfx, gridX, gridY + 20,
-           preview_valid_ ? preview_.drumMask : 0,
-           preview_valid_ && (preview_.resolvedMask & PhraseCore::kTrackDrums),
-           kPhraseCColor);
-  gfx.setTextColor(kDimColor);
-  gfx.drawText(gridX + 116, gridY + 19, refD);
-
-  const int energyY = gridY + 31;
-  gfx.setTextColor(IGfxColor(0x8AA4BA));
-  gfx.drawText(x, energyY, "ENERGY");
-  gfx.drawRect(x + 43, energyY, 82, 6, kGridOffColor);
-  const int energyWidth = preview_valid_ ?
-      (static_cast<int>(preview_.energy) * 80) / 255 : 0;
-  if (energyWidth > 0) {
-    gfx.fillRect(x + 44, energyY + 1, energyWidth, 4,
-                 slotColor(selected_slot_));
-  }
-  gfx.setTextColor(current.valid ? COLOR_WHITE : kDimColor);
-  gfx.drawText(x + 133, energyY,
-               current.valid ? "REF MUTABLE" : "EMPTY SLOT");
+  const char* ownership =
+      current.valid ? (current.mutableBacking ? "REF LINKED" : "REF")
+                    : "ENTER CAP";
+  gfx.setTextColor(current.valid ? activeColor : palette.text);
+  gfx.drawText(x + width - gfx.textWidth(ownership), actionY, ownership);
 
   UI::drawStandardFooter(gfx,
-                         "1-4 SLOT  UP/DN LEN  L/R BAR",
-                         "ENT CAP  R ROLE  P PARENT  D/W/DEL");
+                         "1-4:SLOT  L/R:BAR  U/D:LEN",
+                         "ENT:CAP R:ROLE P:PARENT D/W/DEL");
 }
 
 bool PhrasePage::handleEvent(UIEvent& ui_event) {
