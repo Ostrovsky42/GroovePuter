@@ -51,8 +51,8 @@ void testCaptureMarksOnce() {
   PhraseWorkspace::CaptureRequest request{};
   request.targetSlot = PhraseCore::SlotId::A;
   request.sourceSongSlot = 0;
-  request.startRow = 0;
-  request.lengthBars = 4;
+  request.startRow = 1;
+  request.lengthBars = 2;
   request.role = PhraseCore::Role::Main;
   request.source = PhraseCore::Source::Generated;
 
@@ -61,7 +61,11 @@ void testCaptureMarksOnce() {
   assert(result);
   assert(guard.calls == 1);
   assert(GroovePuterState::sceneRevisionSnapshot().currentRevision == 1);
-  assert(PhraseWorkspace::summary(scene, PhraseCore::SlotId::A).valid);
+  const PhraseCore::SlotSummary summary =
+      PhraseWorkspace::summary(scene, PhraseCore::SlotId::A);
+  assert(summary.valid);
+  assert(summary.sourceSongSlot == 0);
+  assert(summary.sourceStartRow == 1);
 }
 
 void testFailedCaptureDoesNotDirty() {
