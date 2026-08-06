@@ -29,7 +29,7 @@ assert "setPageContext(page_index_)" in alt_h_handler.group(0)
 
 for page_constant in (
     "kGenre", "kSynthA", "kSynthB", "kSynthAParameters",
-    "kSynthBParameters", "kDrums", "kArrange", "kPattern",
+    "kSynthBParameters", "kDrums", "kArrange", "kPhrase", "kPattern",
     "kTexture", "kFeel", "kProject", "kGeneration",
     "kPerform", "kPlayer",
 ):
@@ -40,6 +40,7 @@ assert "Ctrl+H" not in smf
 assert '"G:GEN Alt+G:ALL 1..8:Edit B:Bank"' in drum
 assert '"C           Edit saved per-file route"' in help_content
 assert '"f:GEN Alt+G:ALL 1..8:Edit B:Bank"' not in drum
+assert '"REF         Mutable pattern references"' in help_content
 
 for expected in (
     "| `Alt+H` | Open page-aware help",
