@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include "src/pattern/pattern_address.h"
 #include "src/state/scene_revision.h"
 
 namespace UI {
@@ -66,6 +67,13 @@ struct UiStatusSnapshot {
     uint16_t totalBars{1};
     bool liveMixLocked{false};
     bool dirty{GroovePuterState::sceneDirty()};
+    uint8_t patternPage{0xFF};
+    uint8_t patternBank{0xFF};
+    uint8_t patternSlot{0xFF};
+
+    bool hasPatternAddress() const {
+        return patternAddressFromParts(patternPage, patternBank, patternSlot).valid();
+    }
 };
 
 static_assert(sizeof(UiStatusSnapshot) <= 16,
@@ -81,7 +89,10 @@ inline bool operator==(const UiStatusSnapshot& lhs,
            lhs.bar == rhs.bar &&
            lhs.totalBars == rhs.totalBars &&
            lhs.liveMixLocked == rhs.liveMixLocked &&
-           lhs.dirty == rhs.dirty;
+           lhs.dirty == rhs.dirty &&
+           lhs.patternPage == rhs.patternPage &&
+           lhs.patternBank == rhs.patternBank &&
+           lhs.patternSlot == rhs.patternSlot;
 }
 
 inline bool operator!=(const UiStatusSnapshot& lhs,
@@ -156,11 +167,22 @@ inline void formatUiStatusLine(const UiStatusSnapshot& status,
 
     const unsigned bar = status.bar == 0 ? 1u : status.bar;
     const unsigned total = status.totalBars == 0 ? 1u : status.totalBars;
+    char sourceOrAddress[12];
+    if (status.source == UiStatusSource::Pattern && status.hasPatternAddress()) {
+        formatPatternAddressParts(sourceOrAddress, sizeof(sourceOrAddress),
+                                  status.patternPage,
+                                  status.patternBank,
+                                  status.patternSlot);
+    } else {
+        std::snprintf(sourceOrAddress, sizeof(sourceOrAddress), "%s",
+                      uiStatusSourceToken(status.source));
+    }
+
     std::snprintf(destination,
                   capacity,
                   "%s %s %s B%u/%u %s %s%s%s",
                   uiStatusContextToken(status.context),
-                  uiStatusSourceToken(status.source),
+                  sourceOrAddress,
                   uiStatusStateToken(status.state),
                   bar,
                   total,
