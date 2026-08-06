@@ -10,18 +10,19 @@
 
 class PhrasePage : public IPage {
  public:
-  PhrasePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
-
-  void draw(IGfx& gfx) override;
-  bool handleEvent(UIEvent& ui_event) override;
-  const std::string& getTitle() const override;
-
- private:
   enum class View : uint8_t {
     Core = 0,
     Arrange,
   };
 
+  PhrasePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
+
+  void draw(IGfx& gfx) override;
+  bool handleEvent(UIEvent& ui_event) override;
+  const std::string& getTitle() const override;
+  bool isArrangeView() const { return view_ == View::Arrange; }
+
+ private:
   static PhraseCore::Role defaultRoleForSlot(PhraseCore::SlotId slot);
   static PhraseCore::SlotId slotFromIndex(int index);
   static int indexFromSlot(PhraseCore::SlotId slot);
