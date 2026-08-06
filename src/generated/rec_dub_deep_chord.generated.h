@@ -92,6 +92,6 @@ inline constexpr Pattern kPatterns_REC_DUB_DEEP_CHORD[] = {
   {"PAT_ED_DUB_DEEP_CHORD_P3", "P3", "SPACE_BREAK", kEvents_PAT_ED_DUB_DEEP_CHORD_P3, static_cast<uint16_t>(sizeof(kEvents_PAT_ED_DUB_DEEP_CHORD_P3) / sizeof(kEvents_PAT_ED_DUB_DEEP_CHORD_P3[0]))},
 };
 
-inline constexpr Recipe kRecipe_REC_DUB_DEEP_CHORD = {10, "REC_DUB_DEEP_CHORD", "Deep Chord", 120, 54, kPatterns_REC_DUB_DEEP_CHORD, static_cast<uint8_t>(sizeof(kPatterns_REC_DUB_DEEP_CHORD) / sizeof(kPatterns_REC_DUB_DEEP_CHORD[0]))};
+inline constexpr Recipe kRecipe_REC_DUB_DEEP_CHORD = {10, "REC_DUB_DEEP_CHORD", "Deep Stab", 120, 54, kPatterns_REC_DUB_DEEP_CHORD, static_cast<uint8_t>(sizeof(kPatterns_REC_DUB_DEEP_CHORD) / sizeof(kPatterns_REC_DUB_DEEP_CHORD[0]))};
 
 }  // namespace AtlasGenerated
