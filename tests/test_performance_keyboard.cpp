@@ -104,21 +104,24 @@ int main() {
     assert(keyboard.activeNote() == 36);
     expectEvent(sink.events.back(), MusicalEventType::NoteOn, 36);
 
-    // Starting transport returns Synth A to PatternPlayer. NOTE-mode keys are
-    // still consumed, but no NoteOn is emitted and legacy fallbacks cannot run.
+    // Transport playback no longer revokes live keyboard ownership. Direct
+    // notes remain immediate and the transition itself must not emit panic.
+    keyboard.panic();
     sink.clear();
     keyboard.setTransportPlaying(true);
     assert(keyboard.transportPlaying());
-    assert(!keyboard.liveInputAllowed());
+    assert(keyboard.liveInputAllowed());
     assert(keyboard.heldCount() == 0);
-    assert(sink.events.size() == 1);
-    expectEvent(sink.events[0], MusicalEventType::AllNotesOff, 0);
+    assert(sink.events.empty());
 
-    const std::size_t blockedEventCount = sink.events.size();
-    for (char key : std::string("aiopkl")) {
-        assert(keyboard.keyDown(key));
-        assert(sink.events.size() == blockedEventCount);
-    }
+    assert(keyboard.keyDown('a', 96));
+    assert(keyboard.heldCount() == 1);
+    assert(sink.events.size() == 1);
+    expectEvent(sink.events[0], MusicalEventType::NoteOn, 36);
+    assert(sink.events[0].velocity == 96);
+    assert(keyboard.keyUp('a'));
+    assert(sink.events.size() == 2);
+    expectEvent(sink.events[1], MusicalEventType::NoteOff, 36);
     assert(!keyboard.keyDown('z'));
 
     keyboard.setTransportPlaying(false);
