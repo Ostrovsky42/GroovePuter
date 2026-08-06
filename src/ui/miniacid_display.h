@@ -60,8 +60,10 @@ public:
           }
 
           if (event.key == '\b' || event.key == 0x7F) {
-              PhrasePage* phrasePage =
-                  dynamic_cast<PhrasePage*>(getPage_(WorkflowPages::kPhrase));
+              // The page index fixes the concrete type; avoid RTTI/dynamic_cast
+              // because the Cardputer firmware toolchain may compile without it.
+              PhrasePage* phrasePage = static_cast<PhrasePage*>(
+                  getPage_(WorkflowPages::kPhrase));
               const bool arrange = phrasePage && phrasePage->isArrangeView();
               if (arrange) {
                   if (!event.ctrl) return true;
