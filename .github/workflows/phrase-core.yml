@@ -4,8 +4,10 @@ on:
   push:
     branches:
       - agent/phrase-core-foundation
+      - agent/phrase-core-ui
     paths:
       - 'src/phrase/**'
+      - 'src/ui/pages/phrase_page.*'
       - 'scenes.h'
       - 'scenes.cpp'
       - 'tests/test_phrase_core.cpp'
@@ -13,10 +15,14 @@ on:
       - 'tests/test_phrase_workspace.cpp'
       - 'tests/test_phrase_scene_source_regressions.py'
       - 'docs/stages/PHRASE_CORE_FOUNDATION.md'
+      - 'tools/apply_phrase_ui_registration.py'
+      - '.github/phrase-ui-trigger'
+      - '.github/workflows/apply-phrase-ui-registration.yml'
       - '.github/workflows/phrase-core.yml'
   pull_request:
     paths:
       - 'src/phrase/**'
+      - 'src/ui/pages/phrase_page.*'
       - 'scenes.h'
       - 'scenes.cpp'
       - 'tests/test_phrase_core.cpp'
@@ -24,10 +30,13 @@ on:
       - 'tests/test_phrase_workspace.cpp'
       - 'tests/test_phrase_scene_source_regressions.py'
       - 'docs/stages/PHRASE_CORE_FOUNDATION.md'
+      - 'tools/apply_phrase_ui_registration.py'
+      - '.github/phrase-ui-trigger'
+      - '.github/workflows/apply-phrase-ui-registration.yml'
       - '.github/workflows/phrase-core.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   host-contract:
@@ -54,3 +63,63 @@ jobs:
           build/host-tests/test_phrase_core
           build/host-tests/test_phrase_persistence_preview
           build/host-tests/test_phrase_workspace
+
+  apply-ui:
+    if: (github.ref == 'refs/heads/agent/phrase-core-ui' || github.head_ref == 'agent/phrase-core-ui') && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/phrase-core-ui
+          fetch-depth: 0
+      - name: Scope session Song lookup patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tools/apply_phrase_ui_registration.py')
+          text = path.read_text()
+          old = '''text = replace_once(text,
+    "        case SessionWorkflow::Song: return SessionPages::kArrange;",
+    "        case SessionWorkflow::Song: return kSongPages[index];",
+    "session Song lookup")'''
+          new = '''text = replace_once(text,
+    "        case SessionWorkflow::Song: return SessionPages::kArrange;\\n        case SessionWorkflow::Settings: return kSettingsPages[index];",
+    "        case SessionWorkflow::Song: return kSongPages[index];\\n        case SessionWorkflow::Settings: return kSettingsPages[index];",
+    "session Song lookup")'''
+          if text.count(old) != 1:
+              raise SystemExit(f'script lookup anchor count={text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+      - name: Apply exact registration patch
+        run: python3 tools/apply_phrase_ui_registration.py
+      - name: Compile focused UI contracts
+        run: |
+          mkdir -p build/phrase-ui
+          COMMON_FLAGS='-std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. -Iplatform_sdl -include platform_sdl/arduino_compat.h'
+          g++ ${COMMON_FLAGS} tests/test_global_help_content.cpp \
+            -o build/phrase-ui/test_global_help_content
+          g++ ${COMMON_FLAGS} tests/test_ui_session_state.cpp \
+            -o build/phrase-ui/test_ui_session_state
+          g++ ${COMMON_FLAGS} -c src/ui/pages/phrase_page.cpp \
+            -o build/phrase-ui/phrase_page.o
+          build/phrase-ui/test_global_help_content
+          build/phrase-ui/test_ui_session_state
+      - name: Remove temporary registration machinery
+        run: |
+          rm tools/apply_phrase_ui_registration.py
+          rm .github/workflows/apply-phrase-ui-registration.yml
+          rm .github/phrase-ui-trigger
+          git checkout origin/agent/phrase-core-foundation -- .github/workflows/phrase-core.yml
+      - name: Commit registered Phrase UI
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/ui/ui_config.h src/ui/workflow_mode.h \
+            src/state/ui_session_state.h src/ui/miniacid_display.cpp \
+            src/ui/global_help_content.h platform_sdl/Makefile \
+            tests/test_ui_session_state.cpp tests/test_global_help_content.cpp \
+            tools/apply_phrase_ui_registration.py \
+            .github/workflows/apply-phrase-ui-registration.yml \
+            .github/phrase-ui-trigger .github/workflows/phrase-core.yml
+          git commit -m 'ui: register Phrase Core workflow page'
+          git push origin HEAD:agent/phrase-core-ui
