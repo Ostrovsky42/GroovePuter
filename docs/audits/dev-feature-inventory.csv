@@ -1,0 +1,20 @@
+Feature,Purpose,Entry,State,Documentation,Recommendation
+Genre,Musical corridor/profile,Genre page,Persistent Scene + generator state,Partially documented,Keep; fix revision boundary
+Feel,Timing/velocity humanize,Feel page,Scene.feel,Documented,Keep; fix dirty/autosave
+Texture,DSP coloration,Texture page,Scene/Genre/Tape/FX state,Documented,Keep; fix revision boundary
+Generation,Song-row materialization,Standalone page 11,Song + patterns,Documented,Consolidate into Song via PR #101
+Song,Arrangement + generation,Song page,Song slots + pattern refs,Documented,Keep; simplify gesture/help
+Phrase Core,Capture/derive/write,Phrase page,Phrase slots + Song refs,Documented,Keep; clarify ownership
+Synth A/B Pattern,Step editing,Synth wrapper subpage 0,Pattern banks/pages,Documented,Keep
+Synth A/B Settings,Engine parameters,Synth wrapper subpage 1,Scene synth params,Docs stale,Keep; unify acceleration
+Drums,Grid + randomization,Drum wrapper,Drum patterns + engine,Documented,Keep
+Sequencer Hub,Compact internal overview,Hub page,Patterns/volumes,Documented,Keep
+HUB MIDI,SMF structural/mute/route,Hub alternate mode,SMF session services,Documented,Keep
+MIDI Player,SMF transport/inspect/mute,Player page,SMF session/runtime,Documented,Keep
+Perform,Live keyboard/tools,Perform page,Runtime performance state,Documented,Keep; make digit layer explicit
+Project storage,Load/Save/New/Clear,Project page,Scene JSON/autosave,Documented,Fix via PR #102
+MIDI import,Scan/route/materialize,Project dialogs,Patterns/Song/Scene,Documented partly,Extract; remove filename rules
+Themes,Visual style,Global + Project,UI session,Conflicting docs,Choose canonical set
+Tape UI,Looper/FX page,TapePage class,Scene Tape/DSP,Documented but unreachable,Restore or deprecate explicitly
+Sampler UI,Pad/kit editor,SamplerPage class,Sampler state,Not in main docs,Experimental/unreachable decision
+Voice Song lane,Hidden arrangement lane,Song data model,Persisted Song Voice refs,Not exposed,Compatibility decision; do not delete blindly
