@@ -66,8 +66,15 @@ cpp = replace_once(
 
 cpp = replace_once(
     cpp,
-    '  scene_->activeSongSlot = 0;\n  for (int i = 0; i < 2; ++i) {',
-    '  scene_->activeSongSlot = 0;\n  PhraseCore::reset(scene_->phraseBank);\n  for (int i = 0; i < 2; ++i) {',
+    '''  currentPageIndex_ = 0;
+  scene_->grooveFlavor = 0;
+  scene_->activeSongSlot = 0;
+  for (int i = 0; i < 2; ++i) {''',
+    '''  currentPageIndex_ = 0;
+  scene_->grooveFlavor = 0;
+  scene_->activeSongSlot = 0;
+  PhraseCore::reset(scene_->phraseBank);
+  for (int i = 0; i < 2; ++i) {''',
     "default Scene PhraseBank",
 )
 
