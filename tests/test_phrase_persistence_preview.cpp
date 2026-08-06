@@ -40,6 +40,10 @@ void testFlatPersistenceRoundTrip() {
       PhraseCore::SlotId::B,
       PhraseCore::SlotId::A,
       PhraseCore::Role::Variation));
+  assert(PhraseCore::assignArrangementStep(
+      source, 0, PhraseCore::SlotId::A));
+  assert(PhraseCore::assignArrangementStep(
+      source, 1, PhraseCore::SlotId::B));
 
   int32_t values[PhraseCore::kPersistValueCount]{};
   for (int i = 0; i < PhraseCore::kPersistValueCount; ++i) {
@@ -53,6 +57,52 @@ void testFlatPersistenceRoundTrip() {
   }
   assert(!PhraseCore::sanitize(decoded));
   assert(std::memcmp(&source, &decoded, sizeof(source)) == 0);
+}
+
+void testLegacyPayloadLoadsWithEmptyArrangement() {
+  static_assert(PhraseCore::kPersistCurrentValueCount >
+                PhraseCore::kPersistLegacyValueCount,
+                "Stage 2 persistence must extend the legacy payload");
+  assert(!(PhraseCore::kPersistLegacyValueCount !=
+           PhraseCore::kPersistValueCount));
+  assert(!(PhraseCore::kPersistCurrentValueCount !=
+           PhraseCore::kPersistValueCount));
+  assert((PhraseCore::kPersistLegacyValueCount + 1) !=
+         PhraseCore::kPersistValueCount);
+
+  PhraseCore::PhraseBank legacySource{};
+  PhraseCore::reset(legacySource);
+  Song song = makeOneBarSong(7, 8, 9);
+  assert(PhraseCore::captureSongRegion(
+      legacySource,
+      PhraseCore::SlotId::D,
+      song,
+      1,
+      0,
+      1,
+      PhraseCore::Role::Ending,
+      PhraseCore::Source::InternalPattern));
+
+  int32_t legacyValues[PhraseCore::kPersistLegacyValueCount]{};
+  for (int i = 0; i < PhraseCore::kPersistLegacyValueCount; ++i) {
+    legacyValues[i] = PhraseCore::persistentValueAt(legacySource, i);
+  }
+
+  PhraseCore::PhraseBank decoded{};
+  PhraseCore::beginPersistentDecode(decoded);
+  for (int i = 0; i < PhraseCore::kPersistLegacyValueCount; ++i) {
+    assert(PhraseCore::applyPersistentValue(decoded, i, legacyValues[i]));
+  }
+  assert(!PhraseCore::sanitize(decoded));
+  assert(PhraseCore::summarize(decoded, PhraseCore::SlotId::D).valid);
+  assert(decoded.slots[3].metadata.phraseId ==
+         legacySource.slots[3].metadata.phraseId);
+  assert(decoded.arrangement.length == 0);
+  for (int position = 0;
+       position < PhraseCore::kArrangementCapacity;
+       ++position) {
+    assert(decoded.arrangement.slots[position] == PhraseCore::kNoSlot);
+  }
 }
 
 void testUnknownVersionResets() {
@@ -149,6 +199,7 @@ void testPreviewKeepsUnresolvedReference() {
 
 int main() {
   testFlatPersistenceRoundTrip();
+  testLegacyPayloadLoadsWithEmptyArrangement();
   testUnknownVersionResets();
   testPreviewMasksAndEnergy();
   testPreviewKeepsUnresolvedReference();
