@@ -267,6 +267,9 @@ void PerformPage::drawContent(IGfx& gfx) {
     const int velocity = keyboard_.activeVelocity();
     const bool drums = keyboard_.target() == MusicalEventTarget::Drums;
     const bool noteMode = keyboard_.noteModeEnabled();
+    const bool stepTools = keyboard_.arpeggiatorEnabled() ||
+                           keyboard_.ratchetCount() > 1 ||
+                           keyboard_.euclideanPulses() > 0;
     char line[72];
 
     int x = Layout::COL_1;
@@ -338,9 +341,20 @@ void PerformPage::drawContent(IGfx& gfx) {
     } else if (!noteMode) {
         gfx.setTextColor(COLOR_LABEL);
         std::snprintf(line, sizeof(line), "NOTE MODE OFF | N ENABLE");
+    } else if (miniAcid_.isPlaying() && !drums && active >= 0) {
+        const int octave = active / 12 - 1;
+        gfx.setTextColor(MusicVisuals::accentForStyle());
+        std::snprintf(line, sizeof(line), "PLAYING | NOTE %s%d | MIDI:%d | VEL:%d",
+                      noteName(active), octave, active, velocity);
+    } else if (miniAcid_.isPlaying() && drums && keyboard_.heldCount() > 0) {
+        gfx.setTextColor(MusicVisuals::accentForStyle());
+        std::snprintf(line, sizeof(line), "PLAYING | PAD ACTIVE | N60 | VEL:%d",
+                      velocity);
     } else if (miniAcid_.isPlaying()) {
         gfx.setTextColor(COLOR_LABEL);
-        std::snprintf(line, sizeof(line), "INPUT LOCK | PATTERN PLAYER ACTIVE");
+        std::snprintf(line, sizeof(line), "PLAYING | %s | %s",
+                      keyboard_.targetName(),
+                      stepTools ? "LIVE SYNC" : "LIVE INPUT");
     } else if (!drums && active >= 0) {
         const int octave = active / 12 - 1;
         gfx.setTextColor(MusicVisuals::accentForStyle());
