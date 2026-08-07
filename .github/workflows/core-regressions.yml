@@ -53,7 +53,7 @@ jobs:
         run: |
           python3 tests/test_ui_status_chrome_source_regressions.py
           mkdir -p build/host-tests
-          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
             tests/test_ui_status_chrome.cpp \
             -o build/host-tests/test_ui_status_chrome
           build/host-tests/test_ui_status_chrome
@@ -81,7 +81,7 @@ jobs:
           PY
 
           mkdir -p build/host-tests
-          g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter -I. \
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -Wno-unused-parameter -I. \
             tests/test_new_synth_voices.cpp \
             src/dsp/swappable_synth_voice.cpp \
             src/dsp/mini_tb303.cpp \
