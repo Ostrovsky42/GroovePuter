@@ -17,7 +17,7 @@ def require(condition: bool, message: str) -> None:
 
 require('#include "pattern_edit_page_legacy.h"' in SYNTH,
         "synth wrapper must retain the established editor implementation")
-require("bool PatternEditPage::handleEventLegacy" in SYNTH_HEADER,
+require("bool handleEventLegacy(UIEvent& ui_event);" in SYNTH_HEADER,
         "synth legacy handler must be declared explicitly")
 require("gridArrow && !ui_event.alt && !ui_event.meta" in SYNTH,
         "plain and selection arrows must be owned by the synth grid")
@@ -35,7 +35,7 @@ require("ARROWS:GRID Q-I:PAT" in SYNTH and "C1/2:BANK TAB:SUB" in SYNTH,
 
 require('#include "drum_sequencer_page_legacy.h"' in DRUM,
         "drum wrapper must retain the established sequencer implementation")
-require("bool DrumSequencerPage::handleEventLegacy" in DRUM_HEADER,
+require("bool handleEventLegacy(UIEvent& ui_event);" in DRUM_HEADER,
         "outer drum legacy handler must be declared explicitly")
 require("activePageIndex() != 0" in DRUM,
         "drum input lock must apply only to the main grid tab")
