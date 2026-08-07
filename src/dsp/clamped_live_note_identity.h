@@ -18,17 +18,20 @@ public:
     return *this;
   }
 
-  constexpr operator int() const { return value_; }
+  operator int() const { return value_; }
 
-  constexpr bool operator!=(int incomingNote) const {
+  bool operator!=(int incomingNote) const {
     return value_ != normalize(incomingNote);
   }
 
-  constexpr bool operator==(int incomingNote) const {
+  bool operator==(int incomingNote) const {
     return value_ == normalize(incomingNote);
   }
 
-  static constexpr int16_t normalize(int note) {
+  // Keep this runtime-only: C++11 constexpr functions may contain only one
+  // return statement, while the pinned Arduino toolchain still applies those
+  // rules to this firmware profile.
+  static int16_t normalize(int note) {
     if (note < kMinNote) return kMinNote;
     if (note > kMaxNote) return kMaxNote;
     return static_cast<int16_t>(note);
@@ -37,3 +40,6 @@ public:
 private:
   int16_t value_;
 };
+
+static_assert(sizeof(ClampedLiveNoteIdentity) == sizeof(int16_t),
+              "live-note identity must preserve int16_t storage");
