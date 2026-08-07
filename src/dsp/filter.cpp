@@ -3,9 +3,26 @@
 #include <math.h>
 
 namespace {
+constexpr float kPi = 3.14159265358979323846f;
+constexpr float kHalfPi = 1.57079632679489661923f;
+
 // Fast soft saturation to avoid expensive tanhf() in hot DSP paths.
 inline float fastSaturate(float x) {
   return x / (1.0f + fabsf(x));
+}
+
+// 7th-order sine approximation for the Chamberlin coefficient hot path.
+// cutoff/sampleRate maps to [0, pi/2] for the useful low-pass range. The
+// approximation stays within about 0.001% of sinf() at the TB303 8 kHz cap
+// while avoiding a libm transcendental call for every rendered sample.
+inline float fastSinForChamberlin(float x) {
+  if (x < 0.0f) x = 0.0f;
+  if (x > kHalfPi) x = kHalfPi;
+  const float x2 = x * x;
+  return x *
+         (1.0f + x2 *
+                     (-1.0f / 6.0f +
+                      x2 * (1.0f / 120.0f + x2 * (-1.0f / 5040.0f))));
 }
 }  // namespace
 
@@ -24,7 +41,8 @@ void ChamberlinFilter::setSampleRate(float sr) {
 }
 
 float ChamberlinFilter::process(float input, float cutoffHz, float resonance) {
-  float f = 2.0f * sinf(3.14159265f * cutoffHz / _sampleRate);
+  const float phase = kPi * cutoffHz / _sampleRate;
+  float f = 2.0f * fastSinForChamberlin(phase);
   if (!isfinite(f))
     f = 0.0f;
   float q = 1.0f / (1.0f + resonance * 4.0f);
