@@ -1,5 +1,8 @@
 #pragma once
 
+#ifndef GROOVEPUTER_PATTERN_PATTERN_ADDRESS_H_
+#define GROOVEPUTER_PATTERN_PATTERN_ADDRESS_H_
+
 #include "../../scenes.h"
 
 #include <cstddef>
@@ -62,3 +65,5 @@ inline void formatGlobalPatternAddress(char* out, std::size_t outSize,
   formatPatternAddress(out, outSize,
                        patternAddressFromGlobal(globalIndex));
 }
+
+#endif  // GROOVEPUTER_PATTERN_PATTERN_ADDRESS_H_
