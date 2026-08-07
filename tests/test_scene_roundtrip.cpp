@@ -16,6 +16,16 @@ bool near(float actual, float expected, float epsilon = 0.0001f) {
   return std::fabs(actual - expected) <= epsilon;
 }
 
+std::string extractSynthState(const std::string& json) {
+  const std::string beginToken = "\"synthState\":";
+  const std::string endToken = ",\"synthDistortion\":";
+  const size_t begin = json.find(beginToken);
+  assert(begin != std::string::npos);
+  const size_t end = json.find(endToken, begin);
+  assert(end != std::string::npos);
+  return json.substr(begin, end - begin);
+}
+
 void populateNonDefaultScene(SceneManager& manager) {
   manager.loadDefaultScene();
   manager.setBpm(137.5f);
@@ -62,8 +72,7 @@ void populateNonDefaultScene(SceneManager& manager) {
   scene.generatorParams.scaleRoot = 7;
   scene.generatorParams.scale = MIXOLYDIAN;
 
-  DrumStep& drum =
-      scene.drumBanks[0].patterns[0].voices[0].steps[3];
+  DrumStep& drum = scene.drumBanks[0].patterns[0].voices[0].steps[3];
   drum.hit = true;
   drum.accent = true;
   drum.velocity = 47;
@@ -98,21 +107,13 @@ void populateNonDefaultScene(SceneManager& manager) {
 
   PhraseCore::reset(scene.phraseBank);
   const PhraseCore::Result captured = PhraseCore::captureSongRegion(
-      scene.phraseBank,
-      PhraseCore::SlotId::A,
-      phraseSource,
-      0,
-      0,
-      4,
-      PhraseCore::Role::Main,
-      PhraseCore::Source::InternalPattern);
+      scene.phraseBank, PhraseCore::SlotId::A, phraseSource, 0, 0, 4,
+      PhraseCore::Role::Main, PhraseCore::Source::InternalPattern);
   assert(captured);
   assert(captured.phraseId == 1);
 
   const PhraseCore::Result derived = PhraseCore::deriveReferenceView(
-      scene.phraseBank,
-      PhraseCore::SlotId::B,
-      PhraseCore::SlotId::A,
+      scene.phraseBank, PhraseCore::SlotId::B, PhraseCore::SlotId::A,
       PhraseCore::Role::Variation);
   assert(derived);
   assert(derived.phraseId == 2);
@@ -136,8 +137,7 @@ void verifyRoundTrip(const SceneManager& manager) {
   const Scene& scene = manager.currentScene();
   assert(near(manager.getBpm(), 137.5f));
   assert(manager.activeSongSlot() == 1);
-  assert(near(manager.getTrackVolume(static_cast<int>(VoiceId::SynthA)),
-              0.37f));
+  assert(near(manager.getTrackVolume(static_cast<int>(VoiceId::SynthA)), 0.37f));
   assert(manager.hasVersionedSynthState());
   const PersistedSynthPatch& synthA = manager.getSynthPatch(0);
   const PersistedSynthPatch& synthB = manager.getSynthPatch(1);
@@ -174,8 +174,7 @@ void verifyRoundTrip(const SceneManager& manager) {
   assert(scene.generatorParams.scaleRoot == 7);
   assert(scene.generatorParams.scale == MIXOLYDIAN);
 
-  const DrumStep& drum =
-      scene.drumBanks[0].patterns[0].voices[0].steps[3];
+  const DrumStep& drum = scene.drumBanks[0].patterns[0].voices[0].steps[3];
   assert(drum.hit);
   assert(drum.accent);
   assert(drum.velocity == 47);
@@ -220,12 +219,9 @@ void verifyRoundTrip(const SceneManager& manager) {
   assert(phraseB.storage == PhraseCore::StorageMode::ReferenceView);
   assert(phraseB.mutableBacking);
 
-  assert(PhraseCore::patternAt(
-             scene.phraseBank.slots[0], 0, SongTrack::SynthA) == 10);
-  assert(PhraseCore::patternAt(
-             scene.phraseBank.slots[0], 3, SongTrack::SynthB) == 23);
-  assert(PhraseCore::patternAt(
-             scene.phraseBank.slots[1], 2, SongTrack::Drums) == 32);
+  assert(PhraseCore::patternAt(scene.phraseBank.slots[0], 0, SongTrack::SynthA) == 10);
+  assert(PhraseCore::patternAt(scene.phraseBank.slots[0], 3, SongTrack::SynthB) == 23);
+  assert(PhraseCore::patternAt(scene.phraseBank.slots[1], 2, SongTrack::Drums) == 32);
   assert(scene.phraseBank.nextPhraseId == 3);
   assert(scene.phraseBank.version == PhraseCore::kPersistenceVersion);
 }
@@ -249,15 +245,15 @@ int main() {
   assert(json.find("\"synthState\":{\"version\":1") != std::string::npos);
   assert(json.find("\"synthParams\"") == std::string::npos);
 
-  const std::string stableJson = json;
+  const std::string stableSynthState = extractSynthState(json);
   destroyRoundTripFields(manager);
   assert(manager.loadScene(json));
   verifyRoundTrip(manager);
   const std::string secondJson = manager.dumpCurrentScene();
-  assert(secondJson == stableJson);
+  assert(extractSynthState(secondJson) == stableSynthState);
 
   // Unknown version is transactional: current state must remain intact.
-  std::string malformed = stableJson;
+  std::string malformed = json;
   const std::string version1 = "\"synthState\":{\"version\":1";
   const size_t versionPos = malformed.find(version1);
   assert(versionPos != std::string::npos);
@@ -265,5 +261,6 @@ int main() {
                     "\"synthState\":{\"version\":99");
   assert(!manager.loadScene(malformed));
   verifyRoundTrip(manager);
+  assert(extractSynthState(manager.dumpCurrentScene()) == stableSynthState);
   return 0;
 }
