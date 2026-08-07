@@ -37,8 +37,14 @@ require('#include "drum_sequencer_page_legacy.h"' in DRUM,
         "drum wrapper must retain the established sequencer implementation")
 require("bool DrumSequencerPage::handleEventLegacy" in DRUM_HEADER,
         "outer drum legacy handler must be declared explicitly")
-require("dynamic_cast<DrumSequencerMainPage*>" in DRUM,
-        "only the main drum grid may receive the input lock")
+require("activePageIndex() != 0" in DRUM,
+        "drum input lock must apply only to the main grid tab")
+require("static_cast<DrumSequencerMainPage*>" in DRUM,
+        "known main-tab type must use a no-RTTI cast")
+require("dynamic_cast" not in DRUM,
+        "Cardputer builds disable RTTI; drum routing must not use dynamic_cast")
+require("friend class DrumSequencerPage" in DRUM,
+        "outer drum page must have explicit access to the retained main grid")
 require("page->focusGrid()" in DRUM,
         "drum pattern and bank shortcuts must restore grid focus")
 require("std::clamp(" in DRUM and "NUM_DRUM_VOICES - 1" in DRUM,

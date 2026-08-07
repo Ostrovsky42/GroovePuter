@@ -48,7 +48,9 @@ class DrumSequencerMainPage;
 
 class PatternLockedDrumContainer : public Container {
  public:
-  bool handleEvent(UIEvent& ui_event) override;
+  bool handleEvent(UIEvent& ui_event) override {
+    return handleEventLegacy(ui_event);
+  }
 
   virtual bool handleEventLegacy(UIEvent& ui_event) {
     return Container::handleEvent(ui_event);
@@ -56,13 +58,13 @@ class PatternLockedDrumContainer : public Container {
 };
 
 // Rename only the implementations in the retained source. Local drum pages
-// inherit the routing container; the public DrumSequencerPage gets a small
-// forwarding wrapper below.
+// keep their established handlers; the public DrumSequencerPage owns the
+// main-grid input lock because it already knows which tab is active.
 #define drawStandardFooter drawDrumInputLockedFooter
 #define Container PatternLockedDrumContainer
 #define MultiPage DrumSequencerLegacyMultiPage
 #define handleEvent handleEventLegacy
-#define private private: friend class PatternLockedDrumContainer; private
+#define private private: friend class DrumSequencerPage; private
 #include "drum_sequencer_page_legacy.h"
 #undef private
 #undef handleEvent
@@ -70,16 +72,18 @@ class PatternLockedDrumContainer : public Container {
 #undef Container
 #undef drawStandardFooter
 
-bool PatternLockedDrumContainer::handleEvent(UIEvent& ui_event) {
-  auto* page = dynamic_cast<DrumSequencerMainPage*>(this);
-  if (!page) {
+bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
+  // Only the first tab is the DrumSequencerMainPage. All other drum tabs keep
+  // their previous handlers and must not inherit the pattern-grid bindings.
+  if (activePageIndex() != 0 ||
+      ui_event.event_type != GROOVEPUTER_KEY_DOWN ||
+      UIInput::isGlobalNav(ui_event)) {
     return handleEventLegacy(ui_event);
   }
 
-  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN ||
-      UIInput::isGlobalNav(ui_event)) {
-    return page->handleEventLegacy(ui_event);
-  }
+  std::shared_ptr<Container> active = getPagePtr(0);
+  if (!active) return handleEventLegacy(ui_event);
+  auto* page = static_cast<DrumSequencerMainPage*>(active.get());
 
   const int nav = UIInput::navCode(ui_event);
   const bool gridArrow =
@@ -170,8 +174,4 @@ bool PatternLockedDrumContainer::handleEvent(UIEvent& ui_event) {
   }
 
   return page->handleEventLegacy(ui_event);
-}
-
-bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
-  return handleEventLegacy(ui_event);
 }
