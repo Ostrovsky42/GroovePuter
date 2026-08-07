@@ -15,6 +15,7 @@
 #include "src/midi/smf_track_inspector.h"
 #include "src/midi/smf_track_mute.h"
 #include "src/midi/smf_track_output_route.h"
+#include "src/midi/transport_clock_runtime.h"
 
 namespace {
 using namespace GroovePuterMidi;
@@ -105,6 +106,52 @@ bool routeCanBeEdited(const SmfPlayerSnapshot& player) {
     return !player.rawRouting &&
            (player.state == SmfPlayerState::Stopped ||
             player.state == SmfPlayerState::Paused);
+}
+
+bool smfStateIsActive(SmfPlayerState state) {
+    return state == SmfPlayerState::Playing ||
+           state == SmfPlayerState::Armed;
+}
+
+bool toggleHubMidiTransport(MiniAcid& miniAcid) {
+    ISmfPlayerService* service = smfPlayerService();
+    if (!service) {
+        UI::showToast("SMF player unavailable", 1200);
+        return true;
+    }
+
+    const SmfPlayerSnapshot state = service->snapshot();
+    if (state.state == SmfPlayerState::Unloaded ||
+        state.state == SmfPlayerState::Error) {
+        UI::showToast("LOAD MIDI IN PLAYER", 900);
+        return true;
+    }
+
+    const bool wasActive = smfStateIsActive(state.state);
+    const TransportClockRuntimeSnapshot clock = transportClockRuntime().snapshot();
+    if (!wasActive && state.tempoMode == SmfTempoMode::Project &&
+        !miniAcid.isPlaying() &&
+        clock.source == TransportClockSource::GroovePuterInternal) {
+        UI::showToast("G START FIRST / THEN SPACE", 1100);
+        return true;
+    }
+
+    const bool queued = service->togglePlayPause();
+    if (!queued) {
+        UI::showToast("MIDI PLAYER BUSY", 800);
+    } else if (wasActive) {
+        UI::showToast("MIDI: PAUSE", 700);
+    } else if (state.tempoMode == SmfTempoMode::Project) {
+        UI::showToast(clock.source == TransportClockSource::SeqtrakExternal
+                          ? (clock.externalFollowEnabled
+                                 ? "MIDI ARMED / PLAY SEQTRAK"
+                                 : "MIDI ARMED / FOLLOW OFF")
+                          : "MIDI: ARM NEXT BAR",
+                      900);
+    } else {
+        UI::showToast("MIDI: PLAY", 700);
+    }
+    return true;
 }
 
 bool muted(const SmfTrackMuteSnapshot& state, uint16_t track) {
@@ -350,7 +397,7 @@ void drawOverlayBands(IGfx& gfx,
                           static_cast<unsigned>(selectedLayer.noteCount),
                           range);
         }
-        hints = "C RTE H/E";
+        hints = "<> RTE H/ESC";
     }
     gfx.setTextColor(kBodyText);
     gfx.drawText(3, bottomY + 2, line);
@@ -508,7 +555,7 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
         returnFromMidiOverview();
         return true;
     }
-    if (UIInput::isBack(event)) {
+    if (event.scancode == GROOVEPUTER_ESCAPE || UIInput::isBack(event)) {
         if (midiRouteEdit_) {
             midiRouteEdit_ = false;
             midiRouteDraft_ = kSmfTrackOutputRouteAuto;
@@ -534,8 +581,7 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
             return true;
         }
         if (event.key == ' ') {
-            UI::showToast("MIDI TRANSPORT: PLAYER", 900);
-            return true;
+            return toggleHubMidiTransport(mini_acid_);
         }
     }
 
@@ -609,6 +655,26 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
         return true;
     }
 
+    int routeMove = 0;
+    if (event.scancode == GROOVEPUTER_LEFT) routeMove = -1;
+    else if (event.scancode == GROOVEPUTER_RIGHT) routeMove = 1;
+    if (routeMove != 0) {
+        if (player.rawRouting) {
+            UI::showToast("SEQTRAK ROUTING REQUIRED", 900);
+            return true;
+        }
+        if (!routeCanBeEdited(player)) {
+            UI::showToast("PAUSE MIDI FIRST", 900);
+            return true;
+        }
+        midiRouteDraft_ = cycleRouteDestination(
+            projection.routes.destinationFor(selectedTrack), routeMove);
+        midiRouteEdit_ = true;
+        return true;
+    }
+
+    // Keep C as a compatibility alias, but Left/Right is now the primary route
+    // edit entry and Enter remains the only confirmation action.
     if (event.key == 'c' || event.key == 'C') {
         if (player.rawRouting) {
             UI::showToast("SEQTRAK ROUTING REQUIRED", 900);
@@ -641,8 +707,6 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
     int move = 0;
     if (UIInput::isUp(event)) move = -1;
     else if (UIInput::isDown(event)) move = 1;
-    else if (event.scancode == GROOVEPUTER_LEFT) move = -kVisibleMidiRows;
-    else if (event.scancode == GROOVEPUTER_RIGHT) move = kVisibleMidiRows;
     if (move != 0) {
         const int count = static_cast<int>(projection.layers.layerCount);
         int movedSelection = (static_cast<int>(midiSelected_) + move) % count;
