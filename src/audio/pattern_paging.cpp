@@ -115,25 +115,32 @@ bool copyFile(const std::string& sourcePath, const std::string& targetPath) {
         return false;
     }
 
+    const size_t sourceSize = source.size();
+    size_t copied = 0;
     uint8_t buffer[512];
     bool ok = true;
-    while (source.available()) {
-        const size_t readCount = source.read(buffer, sizeof(buffer));
-        if (readCount == 0) {
+    while (copied < sourceSize) {
+        const size_t remaining = sourceSize - copied;
+        const size_t chunkSize = remaining < sizeof(buffer)
+            ? remaining
+            : sizeof(buffer);
+        const size_t readCount = source.read(buffer, chunkSize);
+        if (readCount != chunkSize ||
+            target.write(buffer, readCount) != readCount) {
             ok = false;
             break;
         }
-        if (target.write(buffer, readCount) != readCount) {
-            ok = false;
-            break;
-        }
+        copied += readCount;
     }
     target.flush();
     source.close();
     target.close();
 
-    if (!ok) removeIfExists(targetPath);
-    return ok;
+    if (!ok || copied != sourceSize) {
+        removeIfExists(targetPath);
+        return false;
+    }
+    return true;
 }
 
 bool clearProjectPagesFor(const std::string& projectName) {
