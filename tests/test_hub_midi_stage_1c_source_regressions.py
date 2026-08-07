@@ -98,15 +98,19 @@ def main() -> None:
     )
 
     shortcut_pos = page.index("const bool hubShortcut")
-    back_pos = page.index("if (UIInput::isBack(event))", shortcut_pos)
+    back_pos = page.index(
+        "if (event.scancode == GROOVEPUTER_ESCAPE || UIInput::isBack(event))",
+        shortcut_pos,
+    )
     modifier_pos = page.index("if (event.alt || event.ctrl || event.meta)", back_pos)
     require(
         shortcut_pos < back_pos < modifier_pos
         and "event.key == 'h'" in page[shortcut_pos:back_pos]
         and "returnFromMidiOverview();" in page[shortcut_pos:back_pos]
         and "midiRouteEdit_" in page[back_pos:modifier_pos]
-        and "ROUTE CANCELLED" in page[back_pos:modifier_pos],
-        "H must exit while Escape cancels an active route edit before exiting Hub",
+        and "ROUTE CANCELLED" in page[back_pos:modifier_pos]
+        and "GROOVEPUTER_ESCAPE" in page[back_pos:modifier_pos],
+        "H and physical Escape must exit while Escape first cancels an active route edit",
     )
 
     require(
@@ -175,20 +179,26 @@ def main() -> None:
         and "formatRouteDestination(" in page
         and "formatPitchRange(" in page
         and "%s>%s N%u %s" in page
-        and "ROUTE %s" in page,
-        "selected-layer footer must expose source, destination and route edit state",
+        and "ROUTE %s" in page
+        and 'hints = "<> RTE H/ESC"' in page,
+        "selected-layer footer must expose direct route arrows and Hub exit",
     )
 
     require(
-        "event.key == 'c' || event.key == 'C'" in page
-        and "cycleRouteDestination(" in page
+        "cycleRouteDestination(" in page
         and "GROOVEPUTER_LEFT" in page
         and "GROOVEPUTER_RIGHT" in page
+        and "projection.routes.destinationFor(selectedTrack), routeMove" in page
+        and "midiRouteEdit_ = true;" in page
         and "smfTrackOutputRouteState().setDestination(" in page
-        and "midiRouteDraft_" in page
         and "projection.generation" in page
         and "projection.mute.trackCount" in page,
-        "C/Left/Right/Enter must edit one generation-aware physical-track route",
+        "Left/Right must enter route editing directly and Enter must apply one generation-aware physical-track route",
+    )
+    require(
+        "event.key == 'c' || event.key == 'C'" in page
+        and "compatibility alias" in page,
+        "legacy C route entry may remain only as a compatibility alias",
     )
     require(
         "routeCanBeEdited(" in page
@@ -231,21 +241,26 @@ def main() -> None:
     )
 
     require(
-        "GROOVEPUTER_LEFT" in page
-        and "GROOVEPUTER_RIGHT" in page
-        and "kVisibleMidiRows" in page,
-        "HUB MIDI must still page through long layer lists outside route edit mode",
+        "if (UIInput::isUp(event)) move = -1;" in page
+        and "else if (UIInput::isDown(event)) move = 1;" in page
+        and "move = -kVisibleMidiRows" not in page
+        and "move = kVisibleMidiRows" not in page,
+        "Up/Down must own layer selection after Left/Right is reassigned to routing",
     )
     require(
-        "event.key == ' '" in page
-        and "MIDI TRANSPORT: PLAYER" in page,
-        "Space must be consumed with an explicit Player-owned transport message",
+        "bool toggleHubMidiTransport(MiniAcid& miniAcid)" in page
+        and "service->togglePlayPause()" in page
+        and "transportClockRuntime().snapshot()" in page
+        and "G START FIRST / THEN SPACE" in page
+        and "return toggleHubMidiTransport(mini_acid_);" in page
+        and "MIDI TRANSPORT: PLAYER" not in page,
+        "Space in HUB MIDI must use the existing player service transport contract",
     )
     require(
         "void SequencerHubPage::onEnter(int context)" in page
         and "PlayerHubNavigation::kOpenMidiFromPlayerContext" in page
         and "requestPageTransition(PlayerHubNavigation::kPlayerPage)" in page,
-        "HUB MIDI must support the bounded Player round-trip without owning transport",
+        "HUB MIDI must support the bounded Player round-trip without taking scheduler ownership",
     )
 
     for forbidden in (
@@ -265,7 +280,7 @@ def main() -> None:
     ):
         require(
             forbidden not in page,
-            f"HUB MIDI must not acquire file, transport, scheduler or USB ownership: {forbidden}",
+            f"HUB MIDI must not acquire file, scheduler or USB ownership: {forbidden}",
         )
 
     require(
@@ -278,7 +293,7 @@ def main() -> None:
         "Internal Hub behavior must remain delegated to the existing implementation",
     )
 
-    print("HUB MIDI Stage 1C source regressions: OK")
+    print("HUB MIDI navigation source regressions: OK")
 
 
 if __name__ == "__main__":
