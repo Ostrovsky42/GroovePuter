@@ -93,7 +93,7 @@ void TapeFX::updateInternalParams() {
         switch(m.crush) {
             case 1: crushBits_ = 12; crushDownsample_ = 1; break; 
             case 2: crushBits_ = 10; crushDownsample_ = 2; break; 
-            case 3: crushBits_ = 8;  crushDownsample_ = 3; break; 
+            case 3: crushBits_ = 8;  crushDownsample_ = 3; break;
             default: crushBits_ = 16; crushDownsample_ = 1; break;
         }
     }
@@ -167,9 +167,13 @@ float TapeFX::process(float input) {
     // 2. WARMTH (Pink Noise + LPF)
     // AGE noise is signal-coupled: it colours audible material and tails, but
     // does not create a permanent noise bed when the digital input is idle.
+    // Keep the LPF running on zero so its state decays instead of freezing and
+    // reappearing as a transient when signal returns.
     constexpr float kHalfPcmLsb = 0.5f / 32767.0f;
-    if (ageAmount_ > 0 && fabsf(output) >= kHalfPcmLsb) {
-        output += generatePinkNoise() * noiseAmount_;
+    if (ageAmount_ > 0) {
+        if (fabsf(output) >= kHalfPcmLsb) {
+            output += generatePinkNoise() * noiseAmount_;
+        }
         output = warmthLPF_.process(output, warmthCutoffNorm_, 0.1f);
     }
 
