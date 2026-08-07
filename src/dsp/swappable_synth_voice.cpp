@@ -120,13 +120,15 @@ void SwappableSynthVoice::setEngineName(const std::string& name) {
 
 SynthVoiceState SwappableSynthVoice::getState() const {
     SynthVoiceState state;
-    state.engineType = type_;
-    if (!current_) return state;
+    const IMonoSynthVoice* voice = switching_ && next_
+        ? next_.get() : current_.get();
+    state.engineType = switching_ && next_ ? pendingType_ : type_;
+    if (!voice) return state;
     const uint8_t count = std::min<uint8_t>(
-        current_->parameterCount(), static_cast<uint8_t>(state.params.size()));
+        voice->parameterCount(), static_cast<uint8_t>(state.params.size()));
     state.paramCount = count;
     for (uint8_t i = 0; i < count; ++i) {
-        state.params[i] = current_->getParameterNormalized(i);
+        state.params[i] = voice->getParameterNormalized(i);
     }
     return state;
 }
@@ -181,7 +183,7 @@ void SwappableSynthVoice::startNote(float freqHz,
     lastVelocity_ = velocity;
     if (current_) current_->startNote(freqHz, accent, slideFlag, velocity);
     if (switching_ && next_) {
-        next_->startNote(freqHz, accent, slideFlag, velocity);
+        next_->startNote(freqHz, accent, slideFlag, lastVelocity_);
     }
 }
 
