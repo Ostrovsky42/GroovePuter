@@ -541,7 +541,7 @@ public:
 
 private:
   GrooveboxModeManager modeManager_{*this};
-  GenreManager genreManager_;
+  GenreManager genreManager_{sceneManager_};
 
   uint32_t ditherState_ = 12345;
   bool tapeControlCached_ = false;
