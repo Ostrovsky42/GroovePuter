@@ -29,7 +29,7 @@ if '"synthState"' not in scenes_cpp:
 apply_start = engine.index("void MiniAcid::applySceneStateFromManager()")
 apply_end = engine.index("void MiniAcid::applyTextureFromScene_()", apply_start)
 apply = engine[apply_start:apply_end]
-for forbidden in ("genreManager_.applyGenreTimbre(*this)", "genreManager_.applyTexture(*this)"):
+for forbidden in ("genreView_.applyGenreTimbre(*this)", "genreView_.applyTexture(*this)"):
     if forbidden in apply:
         raise AssertionError(f"normal Scene Load still rewrites patch: {forbidden}")
 if "syncTextureBiasBaselineFromCurrentState" not in apply:

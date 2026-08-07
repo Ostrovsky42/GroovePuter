@@ -152,7 +152,7 @@ def test_recipe_selects_the_matching_groovebox_mode() -> None:
 
     require("grooveboxModeForRecipe" in block,
             "active recipes must select their Breaks/Acid/Dub groovebox mode")
-    require("genreManager_.recipe()" in block,
+    require("genreView_.recipe()" in block,
             "groovebox mode selection must include the active recipe id")
 
 
@@ -162,7 +162,7 @@ def test_legacy_recipe_adapters_start_from_compiled_params() -> None:
     adapters = manager[manager.index(marker):]
 
     require(adapters.count(
-        "GenerativeParams params = engine_.genreManager().getCompiledGenerativeParams();"
+        "GenerativeParams params = engine_.genreView().getCompiledGenerativeParams();"
     ) == 3,
             "all legacy GrooveRecipe adapters must preserve omitted genre fields")
     require("GenerativeParams params;" not in adapters,
@@ -170,7 +170,7 @@ def test_legacy_recipe_adapters_start_from_compiled_params() -> None:
 
 
 def test_generative_params_have_safe_defaults() -> None:
-    header = (ROOT / "src/dsp/genre_manager.h").read_text(encoding="utf-8")
+    header = (ROOT / "src/dsp/genre_catalog.h").read_text(encoding="utf-8")
     start = header.index("struct GenerativeParams")
     end = header.index("// === GROOVE RECIPE", start)
     block = header[start:end]
@@ -206,7 +206,7 @@ def test_atlas_recipe_catalog_and_legacy_fallbacks() -> None:
     index = (ROOT / "src/generated/atlas_runtime.generated.h").read_text(
         encoding="utf-8"
     )
-    manager = (ROOT / "src/dsp/genre_manager.cpp").read_text(encoding="utf-8")
+    manager = (ROOT / "src/dsp/genre_catalog.cpp").read_text(encoding="utf-8")
 
     atlas_recipes = (
         (6, "Chicago Jack", "REC_ACID_CHICAGO_JACK", "rec_acid_chicago_jack.generated.h", "Acid"),
@@ -224,7 +224,7 @@ def test_atlas_recipe_catalog_and_legacy_fallbacks() -> None:
         require('"P2", "DEVELOPMENT"' in data, f"{name} must include P2")
         require('"P3",' in data, f"{name} must include P3")
         require(f'{{{runtime_id}, "{name}"' in manager,
-                f"GenreManager must expose {name} as recipe id {runtime_id}")
+                f"GenreSceneView must expose {name} as recipe id {runtime_id}")
         require(f"case {runtime_id}: return GrooveboxMode::{groove}" in manager,
                 f"{name} must select {groove} macro mode")
 

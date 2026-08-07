@@ -1,7 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include "src/dsp/deterministic_rng.h"
-#include "src/dsp/genre_manager.h"
+#include "src/dsp/genre_catalog.h"
 
 class SmartPatternGenerator {
 public:

@@ -3,7 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 mode_source = (ROOT / "src/dsp/mode_manager.cpp").read_text(encoding="utf-8")
-genre_source = (ROOT / "src/dsp/genre_manager.cpp").read_text(encoding="utf-8")
+genre_source = (ROOT / "src/dsp/genre_catalog.cpp").read_text(encoding="utf-8")
 
 
 def require(source: str, needle: str, message: str) -> None:

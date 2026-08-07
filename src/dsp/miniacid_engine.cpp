@@ -463,9 +463,9 @@ void MiniAcid::reset() {
   patternModeSynthPatternIndex_[0] = 0;
   patternModeSynthPatternIndex_[1] = 0;
   // NOW reset bias tracking (after all base params are set)
-  genreManager_.resetTextureBiasTracking();
+  genreView_.resetTextureBiasTracking();
   // Apply texture to bring engine into consistent state with current genre
-  genreManager_.applyTexture(*this);
+  genreView_.applyTexture(*this);
   
   // Reset Retrig States
   retrigA_ = {};
@@ -2010,7 +2010,7 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
   if (barTick == 0) {
     advanceSongBar_();
     // Also regenerate if needed at bar start
-    if (genreManager_.commitPendingRecipe()) {
+    if (genreView_.commitPendingRecipe()) {
       regeneratePatternsWithGenre();
     }
     LedManager::instance().onBeat(currentStepIndex, sceneManager_.currentScene().led);
@@ -2421,9 +2421,9 @@ void MiniAcid::randomize303Pattern(int voiceIndex) {
   // Use the complete compiled genre profile. GrooveRecipe is a compact legacy
   // view and cannot represent pitch, articulation or microtiming parameters.
   const GenerativeParams& genreParams =
-      genreManager_.getCompiledGenerativeParams();
-  auto behavior = genreManager_.getBehavior();
-  if (genreManager_.generativeMode() == GenerativeMode::Reggae) {
+      genreView_.getCompiledGenerativeParams();
+  auto behavior = genreView_.getBehavior();
+  if (genreView_.generativeMode() == GenerativeMode::Reggae) {
     // Reggae split: bass anchors downbeats, lead handles offbeat movement.
     if (idx == 0) {
       behavior.stepMask = 0x1111;
@@ -2457,8 +2457,8 @@ void MiniAcid::adjustParameter(MiniAcidParamId id, int steps) {
 
 void MiniAcid::randomizeDrumPattern() {
   const GenerativeParams& genreParams =
-      genreManager_.getCompiledGenerativeParams();
-  const auto behavior = genreManager_.getBehavior();
+      genreView_.getCompiledGenerativeParams();
+  const auto behavior = genreView_.getBehavior();
   modeManager_.generateDrumPattern(
       sceneManager_.editCurrentDrumPattern(), genreParams, behavior);
 }
@@ -2466,8 +2466,8 @@ void MiniAcid::randomizeDrumPattern() {
 void MiniAcid::randomizeDrumVoice(int voiceIndex) {
   int idx = clampDrumVoice(voiceIndex);
   const GenerativeParams& genreParams =
-      genreManager_.getCompiledGenerativeParams();
-  const auto behavior = genreManager_.getBehavior();
+      genreView_.getCompiledGenerativeParams();
+  const auto behavior = genreView_.getBehavior();
   modeManager_.generateDrumVoice(
       sceneManager_.editCurrentDrumPattern().voices[idx], idx,
       genreParams, behavior);
@@ -2490,7 +2490,7 @@ void MiniAcid::clear303Step(int stepIndex, int synthIndex) {
 
 void MiniAcid::randomizeDrumPatternChaos() {
   const GenerativeParams& genreParams =
-      genreManager_.getCompiledGenerativeParams();
+      genreView_.getCompiledGenerativeParams();
 
   // Scramble structural placement while retaining bounded genre parameters.
   DrumPatternSet& patternSet = sceneManager_.editCurrentDrumPattern();
@@ -2515,7 +2515,7 @@ void MiniAcid::regeneratePatternsWithGenre() {
 
   AtlasRuntimeMetadata atlasMetadata{};
   if (AtlasRuntime::applyRecipe(
-          genreManager_.recipe(), 0,
+          genreView_.recipe(), 0,
           editSynthPattern(0), editSynthPattern(1),
           sceneManager_.editCurrentDrumPattern(), &atlasMetadata)) {
     Scene& scene = sceneManager_.currentScene();
@@ -2531,14 +2531,14 @@ void MiniAcid::regeneratePatternsWithGenre() {
   }
 
   const GenerativeParams& genreParams =
-      genreManager_.getCompiledGenerativeParams();
-  const auto behavior = genreManager_.getBehavior();
+      genreView_.getCompiledGenerativeParams();
+  const auto behavior = genreView_.getBehavior();
 
   // Regenerate synth patterns using the complete compiled genre profile.
   // Voice 0 = bass (low, repetitive), Voice 1 = lead/arp (high, melodic)
   auto bassBehavior = behavior;
   auto leadBehavior = behavior;
-  if (genreManager_.generativeMode() == GenerativeMode::Reggae) {
+  if (genreView_.generativeMode() == GenerativeMode::Reggae) {
     // Bass breathes on downbeats, skank/lead stays offbeat.
     bassBehavior.stepMask = 0x1111;
     bassBehavior.motifLength = 2;
@@ -2562,8 +2562,8 @@ void MiniAcid::regeneratePatternsWithGenre() {
 
 void MiniAcid::syncGrooveModeToGenre() {
   const GrooveboxMode linkedMode =
-      GenreManager::grooveboxModeForRecipe(
-          genreManager_.recipe(), genreManager_.generativeMode());
+      GenreSceneView::grooveboxModeForRecipe(
+          genreView_.recipe(), genreView_.generativeMode());
   if (sceneManager_.getMode() != linkedMode) {
     LOG_DEBUG("  - MiniAcid::syncGrooveModeToGenre: mode realigned to genre (%d)\n",
               static_cast<int>(linkedMode));
@@ -2764,7 +2764,7 @@ void MiniAcid::applySceneStateFromManager() {
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: Start");
   
   // Reset bias tracking since scene overwrites all params
-  genreManager_.resetTextureBiasTracking();
+  genreView_.resetTextureBiasTracking();
   
   modeManager_.setModeLocal(sceneManager_.getMode());
   modeManager_.setFlavorLocal(sceneManager_.getGrooveFlavor());
@@ -2932,16 +2932,16 @@ void MiniAcid::applySceneStateFromManager() {
   // Restore genre metadata. Normal Scene Load must not project genre sound over
   // the explicitly restored synth patch.
   const auto& gs = sceneManager_.currentScene().genre;
-  genreManager_.setGenerativeMode(static_cast<GenerativeMode>(gs.generativeMode));
-  genreManager_.setTextureMode(static_cast<TextureMode>(gs.textureMode));
-  genreManager_.setRecipe(gs.recipe);
-  genreManager_.setMorphTarget(gs.morphTarget);
-  genreManager_.setMorphAmount(gs.morphAmount);
+  genreView_.setGenerativeMode(static_cast<GenerativeMode>(gs.generativeMode));
+  genreView_.setTextureMode(static_cast<TextureMode>(gs.textureMode));
+  genreView_.setRecipe(gs.recipe);
+  genreView_.setMorphTarget(gs.morphTarget);
+  genreView_.setMorphAmount(gs.morphAmount);
   syncGrooveModeToGenre();
 
   // Mark the decoded texture bias as already represented. Texture/Genre sound
   // projection remains available only through explicit user APPLY/MATERIALIZE.
-  genreManager_.syncTextureBiasBaselineFromCurrentState();
+  genreView_.syncTextureBiasBaselineFromCurrentState();
 
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: applyFeelTiming...");
   applyFeelTimingFromScene_();
@@ -3009,11 +3009,11 @@ void MiniAcid::syncSceneStateToManager() {
   
   // Save master volume to scene
   sceneManager_.currentScene().masterVolume = params[static_cast<int>(MiniAcidParamId::MainVolume)].value();
-  sceneManager_.currentScene().genre.generativeMode = static_cast<uint8_t>(genreManager_.generativeMode());
-  sceneManager_.currentScene().genre.textureMode = static_cast<uint8_t>(genreManager_.textureMode());
-  sceneManager_.currentScene().genre.recipe = static_cast<uint8_t>(genreManager_.recipe());
-  sceneManager_.currentScene().genre.morphTarget = static_cast<uint8_t>(genreManager_.morphTarget());
-  sceneManager_.currentScene().genre.morphAmount = genreManager_.morphAmount();
+  sceneManager_.currentScene().genre.generativeMode = static_cast<uint8_t>(genreView_.generativeMode());
+  sceneManager_.currentScene().genre.textureMode = static_cast<uint8_t>(genreView_.textureMode());
+  sceneManager_.currentScene().genre.recipe = static_cast<uint8_t>(genreView_.recipe());
+  sceneManager_.currentScene().genre.morphTarget = static_cast<uint8_t>(genreView_.morphTarget());
+  sceneManager_.currentScene().genre.morphAmount = genreView_.morphAmount();
   
   sceneManager_.setSynthMute(0, mute303);
   sceneManager_.setSynthMute(1, mute303_2);
@@ -3431,7 +3431,7 @@ void MiniAcid::triggerSynthStep_(int synthIdx, int stepIdx) {
   const SynthPattern& pattern = activeSynthPattern(synthIdx);
   const SynthStep& step = pattern.steps[stepIdx];
 
-  const auto recipe = genreManager_.getGrooveRecipe();
+  const auto recipe = genreView_.getGrooveRecipe();
   float gateMult = recipe.gateLengthRatio;
   if (gateMult < 0.1f) gateMult = 0.5f;
   float vMult = (synthIdx == 0) ? 0.85f : 1.05f;

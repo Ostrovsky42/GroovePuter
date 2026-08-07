@@ -2,7 +2,7 @@
 #include "mode_config.h"
 #include "mini_tb303.h"
 #include "mini_drumvoices.h"
-#include "src/dsp/genre_manager.h"
+#include "src/dsp/genre_catalog.h"
 #include "src/dsp/deterministic_rng.h"
 #include "../../scenes.h"
 #include <stdlib.h>

@@ -575,9 +575,9 @@ void GrooveboxModeManager::generateDrumPattern(DrumPatternSet& patternSet,
     DrumPatternGenerator::generateDrumPattern(
         patternSet,
         params,
-        engine_.genreManager().generativeMode(),
+        engine_.genreView().generativeMode(),
         rng,
-        engine_.genreManager().drumTemplateOverride());
+        engine_.genreView().drumTemplateOverride());
 }
 
 void GrooveboxModeManager::generateDrumVoice(DrumPattern& pattern, int voiceIndex,
@@ -717,7 +717,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
                                            const GrooveRecipe& recipe, 
                                            const GenreBehavior& behavior, 
                                            int voiceIndex) const {
-    GenerativeParams params = engine_.genreManager().getCompiledGenerativeParams();
+    GenerativeParams params = engine_.genreView().getCompiledGenerativeParams();
     params.minNotes = (int)std::round(recipe.densityMin * 16.0f);
     params.maxNotes = (int)std::round(recipe.densityMax * 16.0f);
     params.swingAmount = (recipe.swingPercent - 50.0f) / 100.0f;
@@ -734,7 +734,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
 void GrooveboxModeManager::generateDrumPattern(DrumPatternSet& patternSet, 
                                                const GrooveRecipe& recipe, 
                                                const GenreBehavior& behavior) const {
-    GenerativeParams params = engine_.genreManager().getCompiledGenerativeParams();
+    GenerativeParams params = engine_.genreView().getCompiledGenerativeParams();
     params.minNotes = (int)std::round(recipe.densityMin * 16.0f);
     params.maxNotes = (int)std::round(recipe.densityMax * 16.0f);
     params.swingAmount = (recipe.swingPercent - 50.0f) / 100.0f;
@@ -751,7 +751,7 @@ void GrooveboxModeManager::generateDrumPattern(DrumPatternSet& patternSet,
 void GrooveboxModeManager::generateDrumVoice(DrumPattern& pattern, int voiceIndex, 
                                               const GrooveRecipe& recipe, 
                                               const GenreBehavior& behavior) const {
-    GenerativeParams params = engine_.genreManager().getCompiledGenerativeParams();
+    GenerativeParams params = engine_.genreView().getCompiledGenerativeParams();
     params.minNotes = (int)std::round(recipe.densityMin * 16.0f);
     params.maxNotes = (int)std::round(recipe.densityMax * 16.0f);
     params.swingAmount = (recipe.swingPercent - 50.0f) / 100.0f;

@@ -30,17 +30,20 @@ constexpr int kSynthBParameters = 4;
 constexpr int kDrums = 5;
 constexpr int kArrange = 6;
 constexpr int kPattern = 7;
-constexpr int kTexture = 8;  // legacy persisted page id; resolves to FEEL
+constexpr int kTexture = 8;     // legacy persisted page id -> FEEL
 constexpr int kFeel = 9;
 constexpr int kProject = 10;
-constexpr int kGeneration = 11;
+constexpr int kGeneration = 11; // legacy persisted page id -> FEEL
 constexpr int kPerform = 12;
 constexpr int kPlayer = 13;
 constexpr int kPhrase = 14;
 }  // namespace SessionPages
 
 inline int normalizeLegacyUiPage(int page) {
-    return page == SessionPages::kTexture ? SessionPages::kFeel : page;
+    return (page == SessionPages::kTexture ||
+            page == SessionPages::kGeneration)
+        ? SessionPages::kFeel
+        : page;
 }
 
 struct UiSessionState {
@@ -74,9 +77,7 @@ inline SessionWorkflow sessionWorkflowForPage(int page) {
     if (page == SessionPages::kPerform || page == SessionPages::kPlayer) {
         return SessionWorkflow::Perform;
     }
-    if (page == SessionPages::kGenre ||
-        page == SessionPages::kFeel ||
-        page == SessionPages::kGeneration) {
+    if (page == SessionPages::kGenre || page == SessionPages::kFeel) {
         return SessionWorkflow::Generate;
     }
     if (page == SessionPages::kPattern || page == SessionPages::kSynthA ||
@@ -85,8 +86,7 @@ inline SessionWorkflow sessionWorkflowForPage(int page) {
         page == SessionPages::kSynthBParameters) {
         return SessionWorkflow::Hub;
     }
-    if (page == SessionPages::kArrange ||
-        page == SessionPages::kPhrase) {
+    if (page == SessionPages::kArrange || page == SessionPages::kPhrase) {
         return SessionWorkflow::Song;
     }
     return SessionWorkflow::Settings;
@@ -171,7 +171,7 @@ inline int rememberedWorkflowPage(const UiSessionState& state,
 inline int pageCountForWorkflow(SessionWorkflow workflow) {
     switch (workflow) {
         case SessionWorkflow::Perform: return 2;
-        case SessionWorkflow::Generate: return 3;
+        case SessionWorkflow::Generate: return 2;
         case SessionWorkflow::Hub: return 6;
         case SessionWorkflow::Song: return 2;
         case SessionWorkflow::Settings: return 1;
@@ -186,7 +186,6 @@ inline int pageAt(SessionWorkflow workflow, int index) {
     static constexpr int kGeneratePages[] = {
         SessionPages::kGenre,
         SessionPages::kFeel,
-        SessionPages::kGeneration,
     };
     static constexpr int kHubPages[] = {
         SessionPages::kPattern, SessionPages::kSynthA, SessionPages::kSynthB,

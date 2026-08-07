@@ -10,7 +10,7 @@
 #include <functional>
 
 #include "mode_manager.h"
-#include "src/dsp/genre_manager.h"
+#include "src/dsp/genre_catalog.h"
 #include "../../scene_storage.h"
 #include "../../scenes.h"
 #include "mono_synth_voice.h"
@@ -307,13 +307,13 @@ public:
 
   int currentScene() const { return current303BankIndex(0); }
   bool isRecording() const { return sceneManager().currentScene().tape.mode == TapeMode::Rec; }
-  float swing() const { return genreManager().getGenerativeParams().swingAmount; }
+  float swing() const { return genreView().getGenerativeParams().swingAmount; }
 
   GrooveboxModeManager& modeManager() { return modeManager_; }
   const GrooveboxModeManager& modeManager() const { return modeManager_; }
 
-  GenreManager& genreManager() { return genreManager_; }
-  const GenreManager& genreManager() const { return genreManager_; }
+  GenreSceneView& genreView() { return genreView_; }
+  const GenreSceneView& genreView() const { return genreView_; }
 
   TempoDelay& tempoDelay() { return delay303; }
   const TempoDelay& tempoDelay() const { return delay303; }
@@ -541,7 +541,7 @@ public:
 
 private:
   GrooveboxModeManager modeManager_{*this};
-  GenreManager genreManager_;
+  GenreSceneView genreView_;
 
   uint32_t ditherState_ = 12345;
   bool tapeControlCached_ = false;

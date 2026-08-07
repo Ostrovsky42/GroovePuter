@@ -15,7 +15,7 @@ generation_header = read("src/ui/pages/generation_page.h")
 genre = read("src/ui/pages/genre_page.cpp")
 tb303 = read("src/ui/pages/tb303_params_page.cpp")
 drum_automation = read("src/ui/pages/drum_automation_page.cpp")
-genre_manager = read("src/dsp/genre_manager.cpp")
+genre_manager = read("src/dsp/genre_catalog.cpp")
 ui_input = read("src/ui/ui_input.h")
 status_chrome = read("src/ui/ui_status_chrome.h")
 layout_manager = read("src/ui/layout_manager.cpp")
@@ -30,7 +30,7 @@ assert not (ROOT / "src/ui/pages/texture_page.h").exists(), (
 for token in (
     "AtlasRuntime::hasRecipe(activeRecipe)",
     "AtlasRuntime::applyRecipe(activeRecipe",
-    "GenreManager::grooveboxModeForRecipe",
+    "GenreSceneView::grooveboxModeForRecipe",
     "generator.setFlavorLocal(0)",
     "genreTag * 17u + recipeTag * 5u",
 ):

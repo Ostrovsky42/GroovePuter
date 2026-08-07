@@ -1,7 +1,7 @@
 #pragma once
 
 #include <stdint.h>
-#include "genre_manager.h"
+#include "genre_catalog.h"
 
 // Bitmasks use step 0 -> bit 15, step 15 -> bit 0.
 struct DrumGenreTemplate {

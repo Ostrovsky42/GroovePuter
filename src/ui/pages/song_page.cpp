@@ -2803,9 +2803,9 @@ SongPatternMaterializer::Result SongPage::materializeSongTracks(
     request.pageIndex = mini_acid_.currentPageIndex();
     request.seed = mini_acid_.modeManager().generationSeed();
     const uint8_t genreTag = static_cast<uint8_t>(
-        mini_acid_.genreManager().generativeMode());
+        mini_acid_.genreView().generativeMode());
     const uint8_t recipeTag = static_cast<uint8_t>(
-        mini_acid_.genreManager().recipe());
+        mini_acid_.genreView().recipe());
     request.modeTag = static_cast<uint8_t>(
         genreTag * 17u + recipeTag * 5u +
         static_cast<uint8_t>(gen_mode_));
@@ -2815,13 +2815,13 @@ SongPatternMaterializer::Result SongPage::materializeSongTracks(
     request.preferredLocalSlot[2] = mini_acid_.currentDrumBankIndex() * 8;
 
     Scene& scene = mini_acid_.sceneManager().currentScene();
-    auto& genreManager = mini_acid_.genreManager();
+    auto& genreManager = mini_acid_.genreView();
     const GenerativeMode activeGenre = genreManager.generativeMode();
     const GenreRecipeId activeRecipe = genreManager.recipe();
     const GenerativeParams& params =
         genreManager.getCompiledGenerativeParams();
     const GenreBehavior behavior = genreManager.getBehavior();
-    const GrooveboxMode mappedMode = GenreManager::grooveboxModeForRecipe(
+    const GrooveboxMode mappedMode = GenreSceneView::grooveboxModeForRecipe(
         activeRecipe, activeGenre);
 
     SynthPattern atlasA{};
@@ -2952,9 +2952,9 @@ bool SongPage::generateCurrentCellPattern(bool rememberForDoubleTap) {
     std::snprintf(
         message, sizeof(message), "GEN %s -> %s %s/%s",
         trackLabel, patternLabel,
-        GenreManager::generativeModeName(
-            mini_acid_.genreManager().generativeMode()),
-        GenreManager::recipeName(mini_acid_.genreManager().recipe()));
+        GenreSceneView::generativeModeName(
+            mini_acid_.genreView().generativeMode()),
+        GenreSceneView::recipeName(mini_acid_.genreView().recipe()));
     showToast(message, 1400);
     return true;
 }
@@ -3052,10 +3052,10 @@ bool SongPage::generateEntireRow() {
     char message[96];
     std::snprintf(message, sizeof(message), "GENERATED ROW %d %s/%s",
                   row + 1,
-                  GenreManager::generativeModeName(
-                      mini_acid_.genreManager().generativeMode()),
-                  GenreManager::recipeName(
-                      mini_acid_.genreManager().recipe()));
+                  GenreSceneView::generativeModeName(
+                      mini_acid_.genreView().generativeMode()),
+                  GenreSceneView::recipeName(
+                      mini_acid_.genreView().recipe()));
     showToast(message, 1100);
     return true;
 }

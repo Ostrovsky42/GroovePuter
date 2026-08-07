@@ -858,7 +858,7 @@ void DrumSequencerMainPage::drawMinimalStyle(IGfx& gfx) {
   snprintf(pageBuf, sizeof(pageBuf), "P%d", mini_acid_.currentPageIndex() + 1);
   char genreBuf[20];
   std::snprintf(genreBuf, sizeof(genreBuf), "[%s]",
-                drumGenreTag(mini_acid_.genreManager().generativeMode()));
+                drumGenreTag(mini_acid_.genreView().generativeMode()));
   gfx.setTextColor(COLOR_WHITE);
   int genreX = x + w - 28 - gfx.textWidth(genreBuf);
   if (genreX < x + 2) genreX = x + 2;
@@ -892,7 +892,7 @@ void DrumSequencerMainPage::drawRetroClassicStyle(IGfx& gfx) {
     char modeBuf[32];
     std::snprintf(modeBuf, sizeof(modeBuf), "%s [%s]",
                   mini_acid_.currentDrumEngineName().c_str(),
-                  drumGenreTag(mini_acid_.genreManager().generativeMode()));
+                  drumGenreTag(mini_acid_.genreView().generativeMode()));
     char titleBuf[16];
     std::snprintf(titleBuf, sizeof(titleBuf), "DRUMS P%d", mini_acid_.currentPageIndex() + 1);
     retro::drawHeaderBar(gfx, x, y, w, 12, titleBuf, modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());
@@ -939,7 +939,7 @@ void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
     char modeBuf[32];
     std::snprintf(modeBuf, sizeof(modeBuf), "%s [%s]",
                   mini_acid_.currentDrumEngineName().c_str(),
-                  drumGenreTag(mini_acid_.genreManager().generativeMode()));
+                  drumGenreTag(mini_acid_.genreView().generativeMode()));
     char titleBuf[16];
     std::snprintf(titleBuf, sizeof(titleBuf), "DRUMS P%d", mini_acid_.currentPageIndex() + 1);
     amber::drawHeaderBar(gfx, x, y, w, 12, titleBuf, modeBuf, mini_acid_.isPlaying(), (int)mini_acid_.bpm(), mini_acid_.currentSongPosition());

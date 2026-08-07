@@ -19,11 +19,10 @@ int main() {
     assert(rememberedWorkflowPage(state, SessionWorkflow::Settings) ==
            SessionPages::kProject);
 
-    assert(pageCountForWorkflow(SessionWorkflow::Generate) == 3);
+    assert(pageCountForWorkflow(SessionWorkflow::Generate) == 2);
     assert(pageAt(SessionWorkflow::Generate, 0) == SessionPages::kGenre);
     assert(pageAt(SessionWorkflow::Generate, 1) == SessionPages::kFeel);
-    assert(pageAt(SessionWorkflow::Generate, 2) == SessionPages::kGeneration);
-    assert(pageAt(SessionWorkflow::Generate, 3) == SessionPages::kGenre);
+    assert(pageAt(SessionWorkflow::Generate, 2) == SessionPages::kGenre);
     assert(pageCountForWorkflow(SessionWorkflow::Song) == 2);
     assert(pageAt(SessionWorkflow::Song, 0) == SessionPages::kArrange);
     assert(pageAt(SessionWorkflow::Song, 1) == SessionPages::kPhrase);
@@ -58,23 +57,30 @@ int main() {
     const int genreToFeel = workflowNavigationTarget(
         state, SessionPages::kGenre, 1, false);
     assert(genreToFeel == SessionPages::kFeel);
-    const int feelToGeneration = workflowNavigationTarget(
+    const int feelToGenre = workflowNavigationTarget(
         state, SessionPages::kFeel, 1, false);
-    assert(feelToGeneration == SessionPages::kGeneration);
-    const int generationToGenre = workflowNavigationTarget(
-        state, SessionPages::kGeneration, 1, false);
-    assert(generationToGenre == SessionPages::kGenre);
+    assert(feelToGenre == SessionPages::kGenre);
 
-    // Historical page id 8 is accepted only as a compatibility alias. It
-    // resolves to FEEL before remembering, restoring or navigating.
+    // Historical page ids 8 (TEXTURE) and 11 (GENERATION) are compatibility
+    // aliases only. Both resolve to FEEL before remember/restore/navigation.
     assert(normalizeLegacyUiPage(SessionPages::kTexture) == SessionPages::kFeel);
+    assert(normalizeLegacyUiPage(SessionPages::kGeneration) == SessionPages::kFeel);
+
     rememberWorkflowPage(state, SessionPages::kTexture);
     assert(state.activePage == SessionPages::kFeel);
     assert(rememberedWorkflowPage(state, SessionWorkflow::Generate) ==
            SessionPages::kFeel);
-    const int textureToGeneration = workflowNavigationTarget(
+    const int textureToGenre = workflowNavigationTarget(
         state, SessionPages::kTexture, 1, false);
-    assert(textureToGeneration == SessionPages::kGeneration);
+    assert(textureToGenre == SessionPages::kGenre);
+
+    rememberWorkflowPage(state, SessionPages::kGeneration);
+    assert(state.activePage == SessionPages::kFeel);
+    assert(rememberedWorkflowPage(state, SessionWorkflow::Generate) ==
+           SessionPages::kFeel);
+    const int generationToGenre = workflowNavigationTarget(
+        state, SessionPages::kGeneration, 1, false);
+    assert(generationToGenre == SessionPages::kGenre);
 
     const int phraseToSong = workflowNavigationTarget(
         state, SessionPages::kPhrase, 1, false);
@@ -83,9 +89,9 @@ int main() {
         state, SessionPages::kArrange, 1, false);
     assert(songToPhrase == SessionPages::kPhrase);
 
-    state.activePage = SessionPages::kTexture;
+    state.activePage = SessionPages::kGeneration;
     state.lastPageByWorkflow[workflowSessionIndex(SessionWorkflow::Generate)] =
-        static_cast<int8_t>(SessionPages::kTexture);
+        static_cast<int8_t>(SessionPages::kGeneration);
     sanitizeUiSessionState(state);
     assert(state.activePage == SessionPages::kFeel);
     assert(rememberedWorkflowPage(state, SessionWorkflow::Generate) ==
