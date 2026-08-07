@@ -1,4 +1,8 @@
 #pragma once
+
+#ifndef GROOVEPUTER_SRC_UI_UI_CORE_H_
+#define GROOVEPUTER_SRC_UI_UI_CORE_H_
+
 #ifndef USE_RETRO_THEME
 #define USE_RETRO_THEME
 #endif
@@ -165,7 +169,6 @@ class Container : public EventHandler, public Frame {
     return children_[focus_index_].get();
   }
 
-  // EventHandler methods
   bool handleEvent(UIEvent& ui_event) override {
     if (isMouseEvent(ui_event.event_type)) {
       return handleMouseEvent(ui_event);
@@ -188,7 +191,6 @@ class Container : public EventHandler, public Frame {
     return false;
   }
 
-  // Frame methods
   void draw(IGfx& gfx) override {
     for (auto& child : children_) {
       child->draw(gfx);
@@ -312,7 +314,6 @@ class IPage : public Container {
  public:
   virtual const std::string& getTitle() const = 0;
   virtual void setVisualStyle(VisualStyle style) { (void)style; }
-  // Help dialog factory, return nullptr when the page does not provide help.
   virtual std::unique_ptr<MultiPageHelpDialog> getHelpDialog();
 
   virtual ~IPage() = default;
@@ -322,9 +323,7 @@ class IPage : public Container {
       UI::publishActivePageTitle(getTitle().c_str());
   }
 
-  // EventHandler methods
   virtual bool handleEvent(UIEvent& ui_event) = 0;
-  // Frame methods (standard contract)
   void draw(IGfx& gfx) override {
       drawHeader(gfx);
       drawContent(gfx);
@@ -335,18 +334,14 @@ class IPage : public Container {
   virtual void drawContent(IGfx& gfx) { (void)gfx; }
   virtual void drawFooter(IGfx& gfx) { (void)gfx; }
 
-  // Request transition to another page
   bool hasPageRequest() const { return requestedPage_ >= 0; }
   int getRequestedPage() const { return requestedPage_; }
   int getRequestedContext() const { return requestedContext_; }
   void clearPageRequest() { requestedPage_ = -1; requestedContext_ = -1; }
 
-  // lifecycle hooks
   virtual void onEnter(int context) { (void)context; }
   virtual void onExit() {}
   virtual void tick() {}
-
-  // Receive context when being navigated TO
   virtual void setContext(int context) { onEnter(context); }
 
  protected:
@@ -451,6 +446,7 @@ struct AudioGuard {
     if (unlock) unlock(context);
   }
 
-  // Only consider valid if BOTH lock and unlock are present (prevents deadlock)
   explicit operator bool() const { return lock != nullptr && unlock != nullptr; }
 };
+
+#endif  // GROOVEPUTER_SRC_UI_UI_CORE_H_
