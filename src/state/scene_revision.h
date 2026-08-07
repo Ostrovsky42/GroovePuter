@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_SRC_STATE_SCENE_REVISION_H_
+#define GROOVEPUTER_SRC_STATE_SCENE_REVISION_H_
 
 #include <cstdint>
 
@@ -62,3 +63,5 @@ inline bool sceneDirty() {
 }
 
 }  // namespace GroovePuterState
+
+#endif  // GROOVEPUTER_SRC_STATE_SCENE_REVISION_H_
