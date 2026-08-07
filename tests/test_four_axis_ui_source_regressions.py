@@ -51,8 +51,9 @@ for filename in (
 for needle in (
     '"GENRE 1/3"',
     '"CORRIDOR / VOCABULARY"',
-    "setGenerativeMode",
-    "setRecipe",
+    "settings.generativeMode =",
+    "settings.recipe =",
+    "GenreCatalog::grooveboxModeForRecipe",
     "regeneratePatternsWithGenre",
     '"PROFILE ONLY"',
     '"MATERIALIZE"',
@@ -61,9 +62,9 @@ for needle in (
 forbid(
     GENRE,
     (
-        "setTextureMode", "applyTexture(", "applyGenreTimbre",
-        "toggleGrooveboxMode", "swingPct", "microTimingAmount",
-        "velocityRange", "PhraseGenerator::",
+        ".genreManager()", "setTextureMode", "applyTexture(",
+        "applyGenreTimbre", "toggleGrooveboxMode", "swingPct",
+        "microTimingAmount", "velocityRange", "PhraseGenerator::",
     ),
     "GENRE",
 )
