@@ -19,6 +19,9 @@ def main() -> None:
     structural = (ROOT / "src/midi/smf_structural_inspector.h").read_text(
         encoding="utf-8"
     )
+    mute_state = (ROOT / "src/midi/smf_track_mute.h").read_text(
+        encoding="utf-8"
+    )
     route_state = (ROOT / "src/midi/smf_track_output_route.h").read_text(
         encoding="utf-8"
     )
@@ -117,8 +120,11 @@ def main() -> None:
         "constexpr uint8_t kVisibleMidiRows = 7u;" in page
         and "constexpr uint8_t kArrangementSegments = kSmfStructuralFormSegments;" in page
         and "drawArrangementRow(" in page
-        and "layer.form[segment]" in page,
-        "HUB MIDI must render seven full-height rows with sixteen arrangement cells",
+        and "layer.form[segment]" in page
+        and "const int cellSize = std::min(maxCellWidth, maxCellHeight);" in page
+        and "gfx.fillRect(cellX," in page
+        and "cellSize,\n                     cellSize," in page,
+        "HUB MIDI must render seven rows with sixteen compact square arrangement cells",
     )
     require(
         "kSmfStructuralFormSegments = 16" in structural
@@ -180,8 +186,39 @@ def main() -> None:
         and "formatPitchRange(" in page
         and "%s>%s N%u %s" in page
         and "ROUTE %s" in page
-        and 'hints = "<> RTE H/ESC"' in page,
-        "selected-layer footer must expose direct route arrows and Hub exit",
+        and 'hints = soloActive ? "S UNSOLO <>RTE" : "S SOLO <>RTE";' in page,
+        "selected-layer footer must expose live Solo and direct route arrows",
+    )
+
+    solo_start = page.index("if (event.key == 's' || event.key == 'S')")
+    solo_end = page.index("int routeMove = 0;", solo_start)
+    solo_block = page[solo_start:solo_end]
+    require(
+        "replaceMutedMask(" in solo_block
+        and "allSmfTracksMask(" in solo_block
+        and "MIDI SOLO TRK %02u" in solo_block
+        and "MIDI SOLO OFF" in solo_block,
+        "S must solo the selected physical track and restore the previous mute mask",
+    )
+    require(
+        "togglePlayPause" not in solo_block
+        and "toggleHubMidiTransport" not in solo_block
+        and "->pause(" not in solo_block
+        and "->stop(" not in solo_block,
+        "Solo must never stop, pause, or otherwise own the MIDI transport",
+    )
+    require(
+        "bool replaceMutedMask(uint64_t desiredMask, uint32_t generation)" in mute_state
+        and "SmfSessionMutationGuard guard(generation)" in mute_state
+        and "const uint64_t newlyMuted = desiredMask & ~previousMask;" in mute_state
+        and "pendingReleaseLow_.fetch_and(desiredLow" in mute_state
+        and "pendingReleaseLow_.fetch_or(newlyMutedLow" in mute_state,
+        "Solo mask replacement must stay generation-safe and preserve NoteOff cleanup",
+    )
+    require(
+        "restoreHubMidiSoloBeforeManualMute(projection.generation)" in page
+        and "clearHubMidiSoloTracking();" in page,
+        "legacy mute/All On actions must leave Solo state deterministically",
     )
 
     require(
@@ -293,7 +330,7 @@ def main() -> None:
         "Internal Hub behavior must remain delegated to the existing implementation",
     )
 
-    print("HUB MIDI navigation source regressions: OK")
+    print("HUB MIDI navigation/solo source regressions: OK")
 
 
 if __name__ == "__main__":

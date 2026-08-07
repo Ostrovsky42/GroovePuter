@@ -124,10 +124,36 @@ int main() {
 
     // A mute command formed from A cannot mutate the physical tracks of B.
     assert(!smfTrackMuteState().toggleTrack(0u, muteA.generation));
+    assert(!smfTrackMuteState().replaceMutedMask(~uint64_t{0}, muteA.generation));
     const SmfTrackMuteSnapshot afterStaleMute =
         smfTrackMuteState().snapshot();
     assert(afterStaleMute.generation == generationB);
     assert(afterStaleMute.mutedMask == 0u);
+
+    // Mask replacement is the live-Solo primitive: it must replace exactly,
+    // release tracks that become muted, and cancel stale release requests for
+    // tracks that become audible again.
+    uint8_t releasedTrack = 0xFFu;
+    const uint64_t preSoloMask = uint64_t{1} << 1u;
+    assert(smfTrackMuteState().replaceMutedMask(preSoloMask, generationB));
+    assert(smfTrackMuteState().snapshot().mutedMask == preSoloMask);
+    assert(smfTrackMuteState().takePendingReleaseTrack(releasedTrack));
+    assert(releasedTrack == 1u);
+    assert(!smfTrackMuteState().takePendingReleaseTrack(releasedTrack));
+
+    const uint64_t soloTrackOneMask = uint64_t{1} << 0u;
+    assert(smfTrackMuteState().replaceMutedMask(soloTrackOneMask, generationB));
+    assert(smfTrackMuteState().snapshot().mutedMask == soloTrackOneMask);
+    assert(smfTrackMuteState().takePendingReleaseTrack(releasedTrack));
+    assert(releasedTrack == 0u);
+    assert(!smfTrackMuteState().takePendingReleaseTrack(releasedTrack));
+
+    assert(smfTrackMuteState().replaceMutedMask(preSoloMask, generationB));
+    assert(smfTrackMuteState().snapshot().mutedMask == preSoloMask);
+    assert(smfTrackMuteState().takePendingReleaseTrack(releasedTrack));
+    assert(releasedTrack == 1u);
+    assert(!smfTrackMuteState().takePendingReleaseTrack(releasedTrack));
+    assert(smfTrackMuteState().clear(generationB));
 
     assert(smfTrackMuteState().toggleTrack(1u, generationB));
     assert((smfTrackMuteState().snapshot().mutedMask & (uint64_t{1} << 1u)) != 0u);
