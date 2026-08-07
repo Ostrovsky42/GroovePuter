@@ -109,6 +109,23 @@ Target browsing is UI-only. Song position changes only when materialization succ
 Phrase length is owned by Phrase Core, not by this page. Sound design remains owned by
 the synth, Tape, delay, distortion, and related FX controls.
 
+## PATTERN MATRIX
+
+Pattern addresses use `PAGE + BANK + SLOT`: `1A1` through `16B8`. PAGE, BANK,
+and SLOT are independent coordinates. Changing page preserves bank and slot;
+changing bank preserves page and slot; changing slot preserves page and bank.
+
+```text
+1A1 --page 2--> 2A1
+2A1 --slot 2--> 2A2
+2A2 --bank B--> 2B2
+2B2 --page 3--> 3B2
+```
+
+On Synth A/B note-editor screens, the note/pattern header prints the composite address
+directly (for example `2A2 TB303`), and the global status chrome must show the same
+page/bank/slot identity.
+
 ## SYNTH A / SYNTH B PATTERN
 
 | Key | Action |
@@ -187,7 +204,8 @@ the synth, Tape, delay, distortion, and related FX controls.
 | `Ctrl+R` | Reverse playback |
 | `Alt+X` | LiveMix ON/OFF |
 | `Ctrl+C/V` | Copy / Paste |
-| `Ctrl+1..8` | Jump to edit page 1..8 |
+| `Ctrl+1..8` | Select pattern page 1..8 |
+| `Ctrl+Fn+1..8` | Select pattern page 9..16 |
 | `P` | Move cursor to playhead |
 | `Ctrl+W/S` | Jump 8 rows |
 | `Ctrl+Alt+W/S` | Jump 32 rows |
@@ -197,8 +215,9 @@ the synth, Tape, delay, distortion, and related FX controls.
 | `Backspace` / `Tab` | Clear cell / selection |
 | `Alt+Backspace` | Clear full Song |
 
-`NO EMPTY PATTERN SLOTS` means generation changed neither Song references nor pattern
-content.
+`Q..I` changes only SLOT; PAGE and the target-track BANK remain unchanged.
+`Alt+[` / `Alt+]` moves one pattern page at a time. `NO EMPTY PATTERN SLOTS`
+means generation changed neither Song references nor pattern content.
 
 ## PHRASE CORE
 

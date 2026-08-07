@@ -18,6 +18,7 @@
 #include "../components/pattern_selection_bar.h"
 #include "../../debug_log.h"
 #include "../key_normalize.h"
+#include "../../pattern/pattern_address.h"
 
 #ifdef USE_RETRO_THEME
 using namespace RetroTheme;
@@ -71,13 +72,14 @@ inline std::string makePatternPageTitle(MiniAcid& mini_acid, int voiceIndex, int
   return std::string(buf);
 }
 
-inline void formatPatternMode(char* dst, size_t dstSize, int patternIndex, const std::string& engine) {
+inline void formatPatternMode(char* dst, size_t dstSize,
+                              int pageIndex, int bankIndex, int patternIndex,
+                              const std::string& engine) {
   if (!dst || dstSize == 0) return;
-  if (patternIndex >= 0) {
-    std::snprintf(dst, dstSize, "P%d %s", patternIndex + 1, engine.c_str());
-  } else {
-    std::snprintf(dst, dstSize, "P- %s", engine.c_str());
-  }
+  char address[8];
+  formatPatternAddressParts(address, sizeof(address),
+                            pageIndex, bankIndex, patternIndex);
+  std::snprintf(dst, dstSize, "%s %s", address, engine.c_str());
 }
 } // namespace
 
@@ -994,8 +996,10 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
 
   // Page Indicator
   const std::string engineName = currentEngineName(mini_acid_, voice_index_);
-  char pageBuf[20];
-  snprintf(pageBuf, sizeof(pageBuf), "P%d %s", mini_acid_.currentPageIndex() + 1, engineName.c_str());
+  char pageBuf[24];
+  formatPatternMode(pageBuf, sizeof(pageBuf),
+                    mini_acid_.currentPageIndex(), bank_index_, selectedPattern,
+                    engineName);
   gfx.setTextColor(COLOR_WHITE);
   gfx.drawText(x + w - textWidth(gfx, pageBuf) - 2, y + 2, pageBuf);
 
@@ -1086,7 +1090,9 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
   // 1. Header (from RetroWidgets, like GenrePage)
   char modeBuf[16];
   const std::string engineName = currentEngineName(mini_acid_, voice_index_);
-  formatPatternMode(modeBuf, sizeof(modeBuf), selectedPattern, engineName);
+  formatPatternMode(modeBuf, sizeof(modeBuf),
+                    mini_acid_.currentPageIndex(), bank_index_, selectedPattern,
+                    engineName);
   char titleBuf[32];
   snprintf(titleBuf, sizeof(titleBuf), "%s%s", 
            voice_index_ == 0 ? "303 A" : "303 B",
@@ -1302,7 +1308,9 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
 
   char modeBuf[16];
   const std::string engineName = currentEngineName(mini_acid_, voice_index_);
-  formatPatternMode(modeBuf, sizeof(modeBuf), selectedPattern, engineName);
+  formatPatternMode(modeBuf, sizeof(modeBuf),
+                    mini_acid_.currentPageIndex(), bank_index_, selectedPattern,
+                    engineName);
   char titleBuf[32];
   snprintf(titleBuf, sizeof(titleBuf), "%s%s", 
            voice_index_ == 0 ? "303 A" : "303 B",

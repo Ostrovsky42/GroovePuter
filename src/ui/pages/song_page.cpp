@@ -5,6 +5,7 @@
 #include "../ui_input.h"
 #include "../ui_common.h"
 #include "../ui_theme.h"
+#include "../pattern_matrix_navigation.h"
 #include "../../dsp/atlas_runtime.h"
 #include "../retro_widgets.h"
 #include "../amber_widgets.h"
@@ -1381,8 +1382,9 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     }
   }
 
-  if (ui_event.ctrl && !ui_event.alt && key >= '1' && key <= '8') {
-    int targetPage = key - '1';
+  const int targetPage = UI::songPatternPageShortcut(
+      key, ui_event.ctrl, ui_event.meta, ui_event.alt);
+  if (targetPage >= 0) {
     mini_acid_.requestPageSwitch(targetPage);
     char buf[20];
     std::snprintf(buf, sizeof(buf), "Page: %d", targetPage + 1);

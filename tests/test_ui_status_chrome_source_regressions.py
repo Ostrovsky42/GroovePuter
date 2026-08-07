@@ -4,6 +4,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "src/ui/ui_common.cpp").read_text(encoding="utf-8")
 CORE = (ROOT / "src/ui/ui_core.h").read_text(encoding="utf-8")
+SONG = (ROOT / "src/ui/pages/song_page.cpp").read_text(encoding="utf-8")
+PATTERN_EDITOR = (ROOT / "src/ui/pages/pattern_edit_page_legacy.h").read_text(encoding="utf-8")
 
 
 def require(condition: bool, message: str) -> None:
@@ -31,6 +33,14 @@ def main() -> None:
             "stopped SMF visibility must depend on the real MIDI Player context")
     require("drawStatusChrome(gfx, mini_acid);" in SOURCE,
             "the existing global overlay hook must render the status chrome")
+    require("UI::songPatternPageShortcut(" in SONG,
+            "Song must use the canonical 16-page shortcut mapper")
+    require("songPatternFromPageBankIndex(mini_acid_.currentPageIndex(), bankIndex, patternIdx)" in SONG,
+            "Song slot assignment must preserve the current PAGE and target-track BANK")
+    require("formatPatternAddressParts(address, sizeof(address)," in PATTERN_EDITOR,
+            "note editor must format the canonical composite pattern address")
+    require("mini_acid_.currentPageIndex(), bank_index_, selectedPattern" in PATTERN_EDITOR,
+            "note editor composite ID must use current PAGE, BANK, and SLOT")
 
 
 if __name__ == "__main__":

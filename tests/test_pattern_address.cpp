@@ -1,4 +1,5 @@
 #include "../src/pattern/pattern_address.h"
+#include "../src/ui/pattern_matrix_navigation.h"
 
 #include <cassert>
 #include <cstring>
@@ -28,6 +29,14 @@ int main() {
   assert(std::strcmp(label, "---") == 0);
   formatPatternAddressParts(label, sizeof(label), kMaxPages, 0, 0);
   assert(std::strcmp(label, "---") == 0);
+
+  assert(UI::songPatternPageShortcut('1', true, false, false) == 0);
+  assert(UI::songPatternPageShortcut('8', true, false, false) == 7);
+  assert(UI::songPatternPageShortcut('1', true, true, false) == 8);
+  assert(UI::songPatternPageShortcut('8', true, true, false) == 15);
+  assert(UI::songPatternPageShortcut('1', false, true, false) == -1);
+  assert(UI::songPatternPageShortcut('1', true, true, true) == -1);
+  assert(UI::songPatternPageShortcut('9', true, false, false) == -1);
 
   return 0;
 }
