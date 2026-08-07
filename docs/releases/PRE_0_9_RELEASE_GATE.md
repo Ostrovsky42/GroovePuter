@@ -2,256 +2,194 @@
 
 ## Purpose
 
-Define one reproducible path from the current `dev` branch to a release candidate. This document separates release blockers, hardware-only acceptance, and work deliberately deferred beyond 0.9.
+Define the reproducible release path for `dev_0.9`, separate code completion from automated verification and keep Cardputer ADV acceptance explicit.
 
-A change is not considered release-ready merely because its PR is mergeable or contains source tests. The relevant host/build jobs and Cardputer ADV acceptance must be completed against the exact candidate commit.
+A mergeable PR or a source-only regression is not release evidence. Every automated result must belong to the exact final PR head, and every hardware checkbox remains unchecked until the owner records the result.
 
-## Current baseline
-
-Baseline when this gate was created:
+## Release baseline
 
 ```text
-dev: dd63e73fec46f043b09be93a6612cd93fddc399e
+release branch: dev_0.9
+base SHA: b28c63801660c9d024e4aad57716d534744fa324
+stabilization PR: #131
+stabilization branch: release/0.9-final-stabilization
 ```
 
-The source-regression assertion broken by the held-control acceleration change was repaired in PR #111. The repair was test-only. GitHub Actions did not run for the connector-authored commit, so the complete current `dev` gate still needs a fresh run.
+The final candidate SHA is not frozen while PR #131 is draft. Record the exact final PR head in `docs/releases/0_9_FINAL_ACCEPTANCE.md` and the PR body immediately before hardware testing.
 
-## Hardware list
+## Integrated release inputs
+
+### PR #102 — project-scoped pattern storage
+
+Merged into `dev_0.9`. Preserve:
+
+- project-owned pattern-page namespaces;
+- Save As page copying;
+- New and Clear isolation;
+- legacy root-page migration;
+- CRC, `.tmp` and `.bak` recovery;
+- canonical `page + bank + slot` identity;
+- `.gpp` format version 3.
+
+Only the post-merge Cardputer ADV smoke and final evidence record remain.
+
+### PR #125 — synth pitch and note lifecycle
+
+Merged into `dev_0.9`. Automated source/host coverage exists for:
+
+- AY PSG clock and chromatic range;
+- SN76489 playable-register octave folding;
+- SN `Oct+` behavior;
+- original-note NoteOff matching after NoteOn clamp;
+- aliased Arduino include guards used by the affected path.
+
+Cardputer ADV listening remains pending.
+
+### PR #110 — rejected experiment
+
+Closed and not a release input. Do not port genre-owned variant lists, forced Atlas P1/P2/P3 materialization, sparse Dub/Trip-Hop repair, Synthwave/Deep Stab renaming, or any other behavior from #110.
+
+Acid, Rave, Techno and the current Minimal behavior in `dev_0.9` are the release reference.
+
+## PR #131 status
+
+### Code complete in the current draft
+
+- TB303 has a separate attack/decay/sustain/release amplitude lifecycle.
+- NoteOff starts a bounded release and reaches silence.
+- legato slide does not fully retrigger the amplitude envelope.
+- TB303 `Volume` controls output once.
+- the optional TB303 sub layer is mixed once.
+- distortion enable restores an audible drive only when the stored drive is below the working threshold.
+- project-page copy uses a bounded file-size loop instead of an ambiguous EOF/`available()` loop.
+- `PatternPagingService` has an explicit include guard for Arduino aliased paths.
+
+### Automated verified
+
+The focused PR workflow has passed on successive exact heads. It compiles the real TB303 and distortion sources with `-Wall -Wextra -Werror`, runs the numeric lifecycle contract, and runs `tests/run_host_tests.sh`.
+
+The full Core workflow must be green again on the final documentation head before hardware testing. Earlier failures exposed and led to the pattern-page copy and include-guard fixes; no assertion was removed.
+
+### Release blockers still open
+
+- **P0-1 — versioned synth persistence:** TYPE plus normalized parameters `0..5`, legacy decode, engine-specific param-5 defaults and malformed-version transaction safety are not proven.
+- **P0-2 — Scene load ownership:** normal load must guarantee that stored TYPE and stored parameters win over genre timbre application.
+- **P1-1 — engine-aware neutral legacy defaults:** must be implemented with the versioned decode so saved user patches are not overwritten.
+- **P1-3 — mutation revision evidence:** FEEL/TEXTURE/GENRE commit, preview, failed-transaction, Save and recovery behavior still need one focused evidence matrix.
+
+PR #131 must remain draft while these blockers are open.
+
+## Hardware
 
 - M5Stack Cardputer ADV.
-- USB-C data cable with data support.
-- Headphones; built-in speaker may be used for basic checks.
-- microSD card containing known-good scene, pattern-page, and MIDI fixtures.
-- Optional Yamaha SEQTRAK for USB-MIDI, clock, transport, and recording acceptance.
+- USB-C data cable.
+- FAT32 microSD with known-good Scene, pattern and MIDI fixtures.
+- Headphones for clicks, release tails, noise and level comparisons.
+- Optional Yamaha SEQTRAK for clock, transport and MIDI recording smoke.
 
 ## Wiring
 
-No GPIO wiring is required.
+No GPIO wiring is required for the release gate. Use the built-in display, keyboard, speaker/headphone output and microSD slot.
 
-For MIDI acceptance, use the same powered USB-host/data connection already validated for Cardputer ADV to SEQTRAK. Do not change MIDI topology during a comparison run.
+For SEQTRAK, use the already validated powered USB data topology and do not change topology during a comparison run.
 
 ## Build and flash
 
 ```bash
 git fetch origin
-git switch dev
-git reset --hard origin/dev
+git switch release/0.9-final-stabilization
+git reset --hard origin/release/0.9-final-stabilization
+
 rm -rf build .pio .pioenvs .piolibdeps
+
 bash tests/run_host_tests.sh
+bash scripts/install_arduino_deps.sh
 bash scripts/build.sh --warnings all
+bash scripts/build_seqtrak_midi_only.sh --warnings all
 ```
 
-Required automated jobs for the exact release-candidate SHA:
+Required GitHub Actions for the exact final head:
 
 - Core host regressions;
 - SDL build;
 - Cardputer ADV build;
-- fixed-DRAM budget check;
-- Cardputer ADV SEQTRAK MIDI-only build;
-- Phrase Core regressions where enabled.
+- normal fixed-DRAM gate;
+- Cardputer ADV SEQTRAK MIDI-only build and its DRAM check;
+- Four-axis UI;
+- Phrase Core where available;
+- Release 0.9 stabilization focused contracts.
 
-Flash using the repository's normal Cardputer ADV upload command and monitor serial at `115200` baud.
-
-## Release blockers
-
-### P0-A — synth correctness and persistence
-
-The detailed evidence is in:
-
-- `docs/reviews/SYNTH_ENGINE_AUDIT_0_9.md`;
-- `docs/reviews/SYNTH_ENGINE_AUDIT_0_9_CURRENT_STATUS.md`.
-
-Before release, fix or remove from the selectable surface:
-
-- TB303 note lifecycle and missing amplitude-envelope behavior;
-- live-note clamp versus NoteOff mismatch;
-- scene/load logic that can replace the selected synth TYPE;
-- persistence loss for the sixth generic synth parameter.
-
-The following P1 items also require focused tests and listening acceptance before calling the synth surface stable:
-
-- AY and SN76489 pitch collapse;
-- non-TB303 defaults that can start with maximum noise;
-- TB303/SID DC before per-voice effects;
-- realtime allocation and filter-stability risks;
-- cross-engine loudness mismatch;
-- distortion enable/drive restoration;
-- truthful, usable parameter ranges.
-
-Held-arrow acceleration from PR #107 only partially mitigates range-insensitive knob stepping; it does not close the range-design issue.
-
-### P0-B — project-scoped pattern storage
-
-PR #102 is the implementation path.
-
-Do not merge until all of these are verified on its current head:
-
-- host and build jobs pass;
-- project A and project B keep independent page files;
-- Save As copies page files into the new namespace;
-- New starts blank without damaging the previous project;
-- Clear removes `.gpp`, `.tmp`, and `.bak` files only for the selected project;
-- legacy root-level pages migrate once and remain readable;
-- corrupt pages and backup recovery remain isolated;
-- the status chrome shows the real page/bank/slot address;
-- reboot and autosave recovery do not restore cleared material.
-
-Use `docs/tests/PROJECT_PATTERN_STORAGE_CARDPUTER_ADV.md` for the hardware sequence.
-
-### P0-C — genre/variant truthfulness
-
-PR #110 is the implementation path.
-
-Do not merge until all of these are verified on its current head:
-
-- a genre exposes only its compatible variants;
-- BASE remains procedural and does not silently select Atlas material;
-- Atlas P1/P2/P3 roles can be selected and materialized explicitly;
-- PROFILE ONLY preserves pattern contents;
-- MATERIALIZE changes only the current pattern set;
-- MATERIALIZE+BPM applies the displayed tempo;
-- Acid, Rave, Techno, and Synthwave BASE remain behaviorally unchanged for the same seed;
-- sparse Dub/Trip-Hop output is intentional, bounded, and not treated as a failed generation;
-- direct Song-cell generation retains its documented atomic non-empty rule;
-- no allocation failure or retry loop appears on serial.
-
-Use `docs/stages/GENRE_VARIANT_CORRECTNESS.md` for the hardware sequence.
-
-## Merged changes still awaiting hardware acceptance
-
-### Held-value acceleration and BPM chrome — PR #107
-
-Validate:
-
-- tap changes one normal step;
-- hold ramps `x1 -> x2 -> x4 -> x5`;
-- release and direction reversal reset the ramp;
-- discrete selectors do not accelerate;
-- BPM updates while transport state is otherwise unchanged;
-- the status line does not clip in both themes.
-
-### MIDI/SMF lifecycle
-
-Run the final candidate through:
-
-- GP MASTER and FILE/PROJECT tempo modes;
-- Start, Stop, Continue, and position changes;
-- live keyboard, arpeggiator, chord, strum, ratchet, Euclidean, and imported SMF notes;
-- mutes during playback;
-- page switching under dense MIDI;
-- all-notes-off cleanup after stop, route change, mute, and target change;
-- 32-bar SEQTRAK recording with no end-of-bar stall or growing drift.
-
-Known limitation to confirm explicitly: direct MIDI Player mute hotkeys `1–9` were previously reported as not working reliably without opening the mute page.
-
-### Memory and runtime stability
-
-The fixed-DRAM threshold is not a substitute for runtime telemetry. Record for both normal and SEQTRAK MIDI-only profiles:
-
-- free heap at boot;
-- minimum free heap during the run;
-- largest free block;
-- PSRAM allocation failures;
-- loop/audio task stack high-water marks;
-- watchdogs, audio underruns, queue overflows, and dense-MIDI crashes.
-
-Required soak:
-
-1. load and save projects repeatedly;
-2. switch pages and themes during playback;
-3. generate and materialize multiple genres;
-4. play dense SMF while sending MIDI to SEQTRAK;
-5. run for at least 30 minutes without a monotonic memory loss or crash.
-
-## Deferred beyond 0.9
-
-These directions are intentionally excluded from the release candidate:
-
-- PR #101 Song-generation UX prototype — closed; rebuild cleanly without temporary apply scripts after the release blockers;
-- PR #90 Phrase Arranger Stage 2 — closed; rebuild only the unique arranger layer on fresh `dev` after 0.9;
-- new genre families such as true Minimal Techno, Boom Bap, and Lo-Fi;
-- new Atlas corpus material;
-- framework-level navigation or architecture rewrites;
-- broad deletion of audit candidates without focused reachability and persistence proof.
-
-Branches may remain for forensic reference, but closed experimental PRs are not release inputs.
+Flash with the repository upload command and monitor serial at `115200` baud.
 
 ## Expected behavior
 
-A valid release candidate must:
+A release candidate must:
 
-- boot to a usable page without a black screen or recovery loop;
-- show the current BPM and an accurate pattern address where applicable;
-- preserve project, scene, pattern, synth TYPE, and parameter state across reboot;
-- generate musically appropriate sparse and dense material without silence being confused with failure;
-- play every advertised synth without stuck notes, gross pitch collapse, unintended maximum noise, or destructive level jumps;
-- maintain stable audio while navigating, generating, saving, and sending dense MIDI;
-- stop cleanly with no hanging internal or external notes.
+- boot without a black screen or recovery loop;
+- preserve project boundaries and the full pattern address;
+- preserve Synth A/B TYPE and every visible parameter after Save, reboot and Load;
+- load a Scene without hidden genre replacement of its patch;
+- play every advertised synth without stuck notes, gross pitch collapse or unintended maximum noise;
+- give TB303 a click-safe onset and bounded release;
+- enable DST without a near-silent level collapse;
+- keep accepted Acid, Rave, Techno and current Minimal output unchanged;
+- stop internal and external notes cleanly;
+- survive the documented 30-minute soak without monotonic memory loss.
 
 ## Troubleshooting
 
-### Core regressions fail on synth MORE navigation
+### Project pages copy but Save As reports failure
 
-Confirm the branch includes PR #111. The regression must inspect the `more_tab_` branch semantically and must not require a complete switch case to remain on one source line.
+Confirm the candidate includes the bounded file-size copy loop in `src/audio/pattern_paging.cpp`. Capture source/target project names, SD paths and serial output.
 
-### A PR is mergeable but has no Actions runs
+### Cardputer build reports `PatternPagingService` redefinition
 
-Treat it as unverified. Connector-authored commits may not start workflows. Run the documented commands locally or trigger a repository workflow against the exact head before hardware acceptance.
+Confirm `src/audio/pattern_paging.h` uses the explicit `GROOVEPUTER_SRC_AUDIO_PATTERN_PAGING_H_` include guard. Do not solve this by removing required includes.
 
-### A project appears to share pages with another project
+### A synth TYPE or sixth parameter changes after Load
 
-Stop testing other features. Capture both project names, encoded folder names, the current address, the filesystem listing, and the reboot result. This is a release-blocking storage failure.
+Stop release acceptance. Record engine, voice A/B, all parameter values, Scene name, exact SHA and serial log. This is P0-1/P0-2, not a listening preference.
 
-### A sparse genre produces silence
+### A genre changes after browsing without Apply
 
-Identify the selected genre, variant, role, destination path, seed, and track. `Minimal Space P3` may intentionally leave Synth B empty on explicit materialization paths; direct Song-cell generation has a different non-empty atomic contract.
+Capture selected genre/variant, Apply mode, dirty revision before/after and pattern hashes. Browse/preview must not commit Scene state.
 
-### A synth hisses, sticks, or changes TYPE after reload
+## Deferred beyond 0.9
 
-Capture engine, note, parameter values, scene name, save/reload steps, and serial output. Do not accept the candidate until the relevant synth-audit blocker is resolved.
+- Song/Generation redesign and PR #101;
+- Phrase Arranger Stage 2 and PR #90;
+- TEXTURE/GENERATION page removal or navigation rewrite;
+- Tape/Sampler UI restoration;
+- new genres or Atlas material;
+- realtime filter-allocation redesign unless separately proven low-risk;
+- per-voice DC blockers without DRAM and listening evidence;
+- broad dead-code deletion without linker/reachability proof;
+- broad loudness, aliasing or oversampling work.
 
-## Final acceptance checklist
+## Final checklist
 
-### Automated
+### Code and automated
 
-- [ ] Exact release-candidate SHA is recorded.
+- [ ] Exact final PR head is recorded.
+- [ ] P0-1 versioned synth persistence is complete and backward-compatible.
+- [ ] P0-2 stored patch ownership is complete.
+- [ ] P1-1 neutral engine defaults are covered.
+- [ ] P1-3 mutation/recovery matrix passes.
 - [ ] Core host regressions pass.
 - [ ] SDL build passes.
-- [ ] Cardputer ADV build passes without new warnings.
-- [ ] fixed-DRAM gate passes for normal firmware.
-- [ ] SEQTRAK MIDI-only build and fixed-DRAM gate pass.
-- [ ] Phrase Core regressions pass.
+- [ ] Cardputer ADV build and normal DRAM gate pass.
+- [ ] SEQTRAK MIDI-only build and DRAM gate pass.
+- [ ] Four-axis UI and Phrase Core pass.
 
-### Storage and persistence
+### Hardware
 
-- [ ] #102 acceptance is complete on hardware.
-- [ ] Save, Save As, New, Clear, reboot, and recovery are correct.
-- [ ] Projects do not share pattern pages.
-- [ ] Pattern address is correct on Synth A, Synth B, and Drums.
-- [ ] Synth TYPE and every advertised parameter survive reload.
+- [ ] #102 storage smoke passes.
+- [ ] all six synth engines preserve TYPE and parameters `0..5` on A and B.
+- [ ] TB303 trigger/accent/slide/NoteOff/release/Volume/sub/Panic pass.
+- [ ] #125 AY/SN pitch and NoteOff checklist passes.
+- [ ] neutral defaults and DST listening pass.
+- [ ] accepted genre behavior is unchanged.
+- [ ] MIDI/SEQTRAK lifecycle smoke passes.
+- [ ] 30-minute soak and telemetry record pass.
 
-### Audio and generation
-
-- [ ] All synth P0 blockers are fixed or the affected engine/control is removed from the release surface.
-- [ ] AY and SN76489 pitch checks pass.
-- [ ] No engine starts with unintended maximum noise.
-- [ ] No stuck notes, destructive clicks, silence regressions, or gross loudness jumps occur.
-- [ ] #110 genre/variant acceptance is complete.
-- [ ] Acid, Rave, Techno, and Synthwave accepted behavior is unchanged.
-
-### UI
-
-- [ ] #107 tap/hold/reset behavior is accepted.
-- [ ] BPM and pattern address remain visible and unclipped.
-- [ ] Every visible page has a reliable exit path.
-- [ ] Global and local key bindings do not collide.
-
-### MIDI and stability
-
-- [ ] Start/Stop/Continue and tempo-source switching are accepted.
-- [ ] Dense SMF playback does not stall at bar boundaries.
-- [ ] Internal and external NoteOff cleanup is complete.
-- [ ] MIDI Player mute behavior is either fixed and accepted or explicitly removed from release documentation.
-- [ ] 30-minute runtime soak passes without crash, watchdog, allocation failure, or monotonic memory loss.
-
-Only after every applicable item is checked should `dev` be tagged as the 0.9 release candidate.
+Do not merge PR #131 or tag 0.9 until every applicable code, automated and hardware item is complete.
