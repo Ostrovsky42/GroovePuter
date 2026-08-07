@@ -60,9 +60,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check four-axis ownership
+      - name: Check four-axis and revision ownership
         run: |
           python3 tests/test_four_axis_ui_source_regressions.py
+          python3 tests/test_axis_scene_revision_source_regressions.py
           if test -f tests/test_axis_hardware_feedback_source_regressions.py; then
             python3 tests/test_axis_hardware_feedback_source_regressions.py
           fi
@@ -85,8 +86,12 @@ jobs:
           g++ -std=c++17 -Wall -Wextra -Werror -I. \
             tests/test_ui_session_state.cpp \
             -o build/release-0.9/four-axis/test_ui_session_state
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_scene_revision_contract.cpp \
+            -o build/release-0.9/four-axis/test_scene_revision_contract
           build/release-0.9/four-axis/test_global_help_content
           build/release-0.9/four-axis/test_ui_session_state
+          build/release-0.9/four-axis/test_scene_revision_contract
 
   phrase-core-contract:
     runs-on: ubuntu-latest
