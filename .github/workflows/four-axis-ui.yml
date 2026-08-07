@@ -76,7 +76,7 @@ jobs:
             python3 tests/test_axis_hardware_feedback_source_regressions.py
           fi
 
-      - name: Build four-axis pages
+      - name: Build GENERATE pages
         run: |
           mkdir -p build/host-tests/four-axis
           COMMON_FLAGS='-std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. -Iplatform_sdl -include platform_sdl/arduino_compat.h'
@@ -86,8 +86,6 @@ jobs:
             -o build/host-tests/four-axis/feel_page.o
           g++ ${COMMON_FLAGS} -c src/ui/pages/generation_page.cpp \
             -o build/host-tests/four-axis/generation_page.o
-          g++ ${COMMON_FLAGS} -c src/ui/pages/texture_page.cpp \
-            -o build/host-tests/four-axis/texture_page.o
 
       - name: Build and run navigation/help tests
         run: |
