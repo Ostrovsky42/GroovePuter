@@ -40,7 +40,7 @@ inline void drawPatternInputLockedFooter(IGfx& gfx,
 // point. The public handler below owns only navigation and explicit selectors.
 #define drawStandardFooter drawPatternInputLockedFooter
 #define handleEvent handleEventLegacy
-#include "pattern_edit_page_legacy.inc"
+#include "pattern_edit_page_legacy.h"
 #undef handleEvent
 #undef drawStandardFooter
 

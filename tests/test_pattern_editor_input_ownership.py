@@ -15,7 +15,7 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-require('#include "pattern_edit_page_legacy.inc"' in SYNTH,
+require('#include "pattern_edit_page_legacy.h"' in SYNTH,
         "synth wrapper must retain the established editor implementation")
 require("bool PatternEditPage::handleEventLegacy" in SYNTH_HEADER,
         "synth legacy handler must be declared explicitly")
@@ -30,8 +30,10 @@ require("Bank: Ctrl+1 / Ctrl+2" in SYNTH,
         "plain B must no longer cycle synth banks")
 require("patternIndexFromKey" in SYNTH and "scancodeToPatternIndex" in SYNTH,
         "Q-I pattern selection must remain available")
+require("ARROWS:GRID Q-I:PAT" in SYNTH and "C1/2:BANK TAB:SUB" in SYNTH,
+        "synth footer must describe the locked bindings")
 
-require('#include "drum_sequencer_page_legacy.inc"' in DRUM,
+require('#include "drum_sequencer_page_legacy.h"' in DRUM,
         "drum wrapper must retain the established sequencer implementation")
 require("bool DrumSequencerPage::handleEventLegacy" in DRUM_HEADER,
         "outer drum legacy handler must be declared explicitly")
@@ -43,13 +45,19 @@ require("std::clamp(" in DRUM and "NUM_DRUM_VOICES - 1" in DRUM,
         "drum vertical arrows must clamp at voice boundaries")
 require("Bank: Ctrl+1 / Ctrl+2" in DRUM,
         "plain B must no longer cycle drum banks")
+require("Q-I:PAT C1/2:BANK" in DRUM,
+        "drum footer must describe the locked bindings")
 
 require("handleEventLegacy" in PATTERN_BAR and "handleEventLegacy" in BANK_BAR,
         "selector mouse handlers must remain callable from retained sources")
-require((ROOT / "src/ui/pages/pattern_edit_page_legacy.inc").exists(),
+require((ROOT / "src/ui/pages/pattern_edit_page_legacy.h").exists(),
         "synth retained source is missing")
-require((ROOT / "src/ui/pages/drum_sequencer_page_legacy.inc").exists(),
+require((ROOT / "src/ui/pages/drum_sequencer_page_legacy.h").exists(),
         "drum retained source is missing")
+require(not (ROOT / "src/ui/pages/pattern_edit_page_legacy.inc").exists(),
+        "Arduino-incompatible synth .inc must not ship")
+require(not (ROOT / "src/ui/pages/drum_sequencer_page_legacy.inc").exists(),
+        "Arduino-incompatible drum .inc must not ship")
 require(not (ROOT / ".github/workflows/apply-pattern-input-lock.yml").exists(),
         "temporary self-modifying workflow must not ship")
 require(not (ROOT / ".github/workflows/run-pattern-input-lock.yml").exists(),

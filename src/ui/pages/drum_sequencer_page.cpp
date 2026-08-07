@@ -63,7 +63,7 @@ class PatternLockedDrumContainer : public Container {
 #define MultiPage DrumSequencerLegacyMultiPage
 #define handleEvent handleEventLegacy
 #define private private: friend class PatternLockedDrumContainer; private
-#include "drum_sequencer_page_legacy.inc"
+#include "drum_sequencer_page_legacy.h"
 #undef private
 #undef handleEvent
 #undef MultiPage
