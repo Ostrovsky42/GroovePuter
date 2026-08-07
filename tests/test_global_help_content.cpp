@@ -70,13 +70,16 @@ int main() {
     assert(sectionContains(WorkflowPages::kGenre, "No texture or feel changes"));
     assert(sectionContains(WorkflowPages::kFeel, "FEEL 2/2"));
     assert(sectionContains(WorkflowPages::kFeel, "No notes, roles or sound changes"));
-    assert(sectionContains(WorkflowPages::kGeneration, "GENERATION 3/3"));
-    assert(sectionContains(WorkflowPages::kGeneration, "No scoring or retry loop"));
 
-    // Persisted page id 8 remains readable but resolves to FEEL content.
+    // Persisted page ids remain readable but both retired pages resolve to FEEL.
     assert(std::strcmp(WorkflowPages::pageName(WorkflowPages::kTexture), "FEEL") == 0);
     assert(sectionContains(WorkflowPages::kTexture, "FEEL 2/2"));
     assert(!sectionContains(WorkflowPages::kTexture, "TEXTURE"));
+
+    assert(std::strcmp(WorkflowPages::pageName(WorkflowPages::kGeneration), "FEEL") == 0);
+    assert(sectionContains(WorkflowPages::kGeneration, "FEEL 2/2"));
+    assert(!sectionContains(WorkflowPages::kGeneration, "GENERATION 3/3"));
+    assert(!sectionContains(WorkflowPages::kGeneration, "No scoring or retry loop"));
 
     std::cout << "global help content tests passed\n";
     return 0;
