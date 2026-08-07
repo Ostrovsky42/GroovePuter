@@ -1,0 +1,30 @@
+name: One-shot restore scenes header
+
+on:
+  push:
+    branches:
+      - agent/remove-genre-manager
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    if: ${{ !contains(github.event.head_commit.message, '[restore-scenes-done]') }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/remove-genre-manager
+          fetch-depth: 0
+      - name: Restore current release Scene header and migrate include
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git fetch origin dev_0.9
+          git show origin/dev_0.9:scenes.h > scenes.h
+          sed -i 's#src/dsp/genre_manager.h#src/dsp/genre_catalog.h#g' scenes.h
+          rm -f .github/workflows/tmp-restore-scenes-h.yml
+          git add -A
+          git commit -m 'fix: restore complete Scene header after genre include rename [restore-scenes-done]'
+          git push origin HEAD:agent/remove-genre-manager
