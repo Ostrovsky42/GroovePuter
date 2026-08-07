@@ -36,6 +36,11 @@ float valueToFloat(ArduinoJson::JsonVariantConst value, float defaultValue) {
   return defaultValue;
 }
 
+bool isStableSynthEngineName(const std::string& name) {
+  return name == "TB303" || name == "SID" || name == "AY" ||
+         name == "SH101" || name == "SN76489" || name == "WAVEMORPH";
+}
+
 void clearDrumPattern(DrumPattern& pattern) {
   for (int i = 0; i < DrumPattern::kSteps; ++i) {
     pattern.steps[i].hit = false;
@@ -709,6 +714,7 @@ void SceneJsonObserver::onObjectStart() {
       else if (lastKey_ == "tape") path = Path::Tape;
       else if (lastKey_ == "feel") path = Path::Feel;
       else if (lastKey_ == "genre") path = Path::Genre;
+      else if (lastKey_ == "synthState") path = Path::SynthState;
       else if (lastKey_ == "led") path = Path::Led;
       else if (lastKey_ == "generatorParams") path = Path::GeneratorParams;
       else if (lastKey_ == "vocal") path = Path::Vocal;
@@ -725,6 +731,14 @@ void SceneJsonObserver::onObjectStart() {
     }
   }
   pushContext(Context::Type::Object, path);
+  if (path == Path::SynthState) {
+    synthStatePresent_ = true;
+    synthStateVersion_ = 0;
+    synthPatch_[0] = PersistedSynthPatch();
+    synthPatch_[1] = PersistedSynthPatch();
+    synthPatchValueCount_[0] = 0;
+    synthPatchValueCount_[1] = 0;
+  }
   if (path == Path::Unknown) {
     Serial.printf("[Parser] WARNING: Unknown object path, lastKey='%s', parent_path=%d, stackSize=%d (skipping)\n", 
                   lastKey_.c_str(), stackSize_ > 1 ? static_cast<int>(stack_[stackSize_-2].path) : -1, stackSize_);
@@ -734,6 +748,20 @@ void SceneJsonObserver::onObjectStart() {
 
 void SceneJsonObserver::onObjectEnd() {
   if (error_) return;
+  if (stackSize_ > 0 && stack_[stackSize_ - 1].path == Path::SynthState) {
+    const bool valid =
+        synthStateVersion_ == kSynthStateSchemaVersion &&
+        isStableSynthEngineName(synthPatch_[0].engineName) &&
+        isStableSynthEngineName(synthPatch_[1].engineName) &&
+        synthPatch_[0].paramCount <= PersistedSynthPatch::kMaxParams &&
+        synthPatch_[1].paramCount <= PersistedSynthPatch::kMaxParams &&
+        synthPatchValueCount_[0] == PersistedSynthPatch::kMaxParams &&
+        synthPatchValueCount_[1] == PersistedSynthPatch::kMaxParams;
+    if (!valid) {
+      error_ = true;
+      return;
+    }
+  }
   popContext();
 }
 
@@ -788,6 +816,9 @@ void SceneJsonObserver::onArrayStart() {
       } else if (parent.path == Path::Mute) {
         if (lastKey_ == "drums") path = Path::MuteDrums;
         else if (lastKey_ == "synth") path = Path::MuteSynth;
+      } else if (parent.path == Path::SynthState) {
+        if (lastKey_ == "a") path = Path::SynthStateAParams;
+        else if (lastKey_ == "b") path = Path::SynthStateBParams;
       }
     } else if (parent.type == Context::Type::Array) {
       path = deduceArrayPath(parent);
@@ -814,6 +845,29 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
   (void)isInteger;
   if (error_ || stackSize_ == 0) return;
   Path path = stack_[stackSize_ - 1].path;
+  if (path == Path::SynthState) {
+    const int ivalue = static_cast<int>(value);
+    if (lastKey_ == "version") synthStateVersion_ = ivalue;
+    else if (lastKey_ == "aCount") {
+      if (ivalue < 0 || ivalue > PersistedSynthPatch::kMaxParams) { error_ = true; return; }
+      synthPatch_[0].paramCount = static_cast<uint8_t>(ivalue);
+    } else if (lastKey_ == "bCount") {
+      if (ivalue < 0 || ivalue > PersistedSynthPatch::kMaxParams) { error_ = true; return; }
+      synthPatch_[1].paramCount = static_cast<uint8_t>(ivalue);
+    }
+    return;
+  }
+  if (path == Path::SynthStateAParams || path == Path::SynthStateBParams) {
+    const int voice = path == Path::SynthStateAParams ? 0 : 1;
+    const int index = stack_[stackSize_ - 1].index;
+    if (index < 0 || index >= PersistedSynthPatch::kMaxParams || value < 0.0 || value > 1.0) {
+      error_ = true;
+      return;
+    }
+    synthPatch_[voice].params[index] = static_cast<float>(value);
+    synthPatchValueCount_[voice] = static_cast<uint8_t>(index + 1);
+    return;
+  }
   if (path == Path::PhraseCore) {
     const int index = stack_[stackSize_ - 1].index;
     if (!PhraseCore::applyPersistentValue(
@@ -1105,6 +1159,7 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
   if (path == Path::SynthParam) {
     int synthIdx = currentIndexFor(Path::SynthParams);
     if (synthIdx < 0 || synthIdx >= 2) return;
+    legacySynthParametersPresent_[synthIdx] = true;
     float fval = static_cast<float>(value);
     if (lastKey_ == "cutoff") {
       synthParameters_[synthIdx].cutoff = fval;
@@ -1397,7 +1452,11 @@ void SceneJsonObserver::onString(const std::string& value) {
     // Handle object keys that expect string values
     if (context.path == Path::State && lastKey_ == "drumEngine") {
       drumEngineName_ = value;
-    } else if (context.path == Path::CustomPhrase) { // This path is for individual custom phrases, not an array
+    } else if (context.path == Path::SynthState && lastKey_ == "aType") {
+      synthPatch_[0].engineName = value;
+    } else if (context.path == Path::SynthState && lastKey_ == "bType") {
+      synthPatch_[1].engineName = value;
+    } else if (context.path == Path::CustomPhrase) {
       int idx = context.index; // This index would be from a parent array, if CustomPhrase was an array of objects
       if (idx >= 0 && idx < Scene::kMaxCustomPhrases) {
         std::strncpy(target_.customPhrases[idx], value.c_str(), Scene::kMaxPhraseLength - 1);
@@ -1474,6 +1533,20 @@ const SynthParameters& SceneJsonObserver::synthParameters(int synthIdx) const {
   return synthParameters_[clamped];
 }
 
+bool SceneJsonObserver::legacySynthParametersPresent(int synthIdx) const {
+  int clamped = synthIdx < 0 ? 0 : synthIdx > 1 ? 1 : synthIdx;
+  return legacySynthParametersPresent_[clamped];
+}
+
+bool SceneJsonObserver::hasVersionedSynthState() const {
+  return synthStatePresent_ && !error_;
+}
+
+const PersistedSynthPatch& SceneJsonObserver::synthPatch(int synthIdx) const {
+  int clamped = synthIdx < 0 ? 0 : synthIdx > 1 ? 1 : synthIdx;
+  return synthPatch_[clamped];
+}
+
 float SceneJsonObserver::bpm() const { return bpm_; }
 
 const Song& SceneJsonObserver::song() const { return song_; }
@@ -1521,6 +1594,9 @@ void SceneManager::loadDefaultScene() {
   synthDelay_[1] = false;
   synthParameters_[0] = SynthParameters();
   synthParameters_[1] = SynthParameters();
+  legacySynthParametersPresent_[0] = false;
+  legacySynthParametersPresent_[1] = false;
+  clearVersionedSynthState();
   drumEngineName_ = "808";
   synthEngineNames_[0] = "TB303";
   synthEngineNames_[1] = "TB303";
@@ -1731,6 +1807,9 @@ void SceneManager::wipeToZero() {
   synthDelay_[1] = false;
   synthParameters_[0] = SynthParameters();
   synthParameters_[1] = SynthParameters();
+  legacySynthParametersPresent_[0] = false;
+  legacySynthParametersPresent_[1] = false;
+  clearVersionedSynthState();
   drumEngineName_ = "808";
   synthEngineNames_[0] = "TB303";
   synthEngineNames_[1] = "TB303";
@@ -1945,6 +2024,33 @@ void SceneManager::setSynthParameters(int synthIdx, const SynthParameters& param
 const SynthParameters& SceneManager::getSynthParameters(int synthIdx) const {
   int clampedSynth = clampSynthIndex(synthIdx);
   return synthParameters_[clampedSynth];
+}
+
+void SceneManager::setLegacySynthParametersPresent(int synthIdx, bool present) {
+  legacySynthParametersPresent_[clampSynthIndex(synthIdx)] = present;
+}
+
+bool SceneManager::legacySynthParametersPresent(int synthIdx) const {
+  return legacySynthParametersPresent_[clampSynthIndex(synthIdx)];
+}
+
+void SceneManager::setSynthPatch(int synthIdx, const PersistedSynthPatch& patch) {
+  const int idx = clampSynthIndex(synthIdx);
+  synthPatch_[idx] = patch;
+  if (synthPatch_[idx].paramCount > PersistedSynthPatch::kMaxParams) {
+    synthPatch_[idx].paramCount = PersistedSynthPatch::kMaxParams;
+  }
+  hasVersionedSynthState_ = true;
+}
+
+const PersistedSynthPatch& SceneManager::getSynthPatch(int synthIdx) const {
+  return synthPatch_[clampSynthIndex(synthIdx)];
+}
+
+void SceneManager::clearVersionedSynthState() {
+  hasVersionedSynthState_ = false;
+  synthPatch_[0] = PersistedSynthPatch();
+  synthPatch_[1] = PersistedSynthPatch();
 }
 
 void SceneManager::setDrumEngineName(const std::string& name) { drumEngineName_ = name; }
@@ -2346,14 +2452,17 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   synthMutes.add(synthMute_[0]);
   synthMutes.add(synthMute_[1]);
 
-  ArduinoJson::JsonArray synthParams = state["synthParams"].to<ArduinoJson::JsonArray>();
-  for (int i = 0; i < 2; ++i) {
-    ArduinoJson::JsonObject param = synthParams.add<ArduinoJson::JsonObject>();
-    param["cutoff"] = synthParameters_[i].cutoff;
-    param["resonance"] = synthParameters_[i].resonance;
-    param["envAmount"] = synthParameters_[i].envAmount;
-    param["envDecay"] = synthParameters_[i].envDecay;
-    param["oscType"] = synthParameters_[i].oscType;
+  ArduinoJson::JsonObject synthState = state["synthState"].to<ArduinoJson::JsonObject>();
+  synthState["version"] = kSynthStateSchemaVersion;
+  synthState["aType"] = synthPatch_[0].engineName;
+  synthState["aCount"] = synthPatch_[0].paramCount;
+  ArduinoJson::JsonArray synthAParams = synthState["a"].to<ArduinoJson::JsonArray>();
+  synthState["bType"] = synthPatch_[1].engineName;
+  synthState["bCount"] = synthPatch_[1].paramCount;
+  ArduinoJson::JsonArray synthBParams = synthState["b"].to<ArduinoJson::JsonArray>();
+  for (int i = 0; i < PersistedSynthPatch::kMaxParams; ++i) {
+    synthAParams.add(synthPatch_[0].params[i]);
+    synthBParams.add(synthPatch_[1].params[i]);
   }
   ArduinoJson::JsonArray synthDistortion = state["synthDistortion"].to<ArduinoJson::JsonArray>();
   synthDistortion.add(synthDistortion_[0]);
@@ -2966,6 +3075,17 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
   synthDelay_[1] = observer.synthDelayEnabled(1);
   synthParameters_[0] = observer.synthParameters(0);
   synthParameters_[1] = observer.synthParameters(1);
+  legacySynthParametersPresent_[0] = observer.legacySynthParametersPresent(0);
+  legacySynthParametersPresent_[1] = observer.legacySynthParametersPresent(1);
+  synthEngineNames_[0] = observer.synthEngineName(0);
+  synthEngineNames_[1] = observer.synthEngineName(1);
+  clearVersionedSynthState();
+  if (observer.hasVersionedSynthState()) {
+    setSynthPatch(0, observer.synthPatch(0));
+    setSynthPatch(1, observer.synthPatch(1));
+    synthEngineNames_[0] = synthPatch_[0].engineName;
+    synthEngineNames_[1] = synthPatch_[1].engineName;
+  }
   drumEngineName_ = observer.drumEngineName();
   setSongLength(scene_->songs[scene_->activeSongSlot].length);
   songPosition_ = clampSongPosition(observer.songPosition());

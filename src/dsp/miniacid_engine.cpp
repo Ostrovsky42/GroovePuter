@@ -2505,6 +2505,8 @@ void MiniAcid::randomizeDrumPatternChaos() {
 }
 
 void MiniAcid::regeneratePatternsWithGenre() {
+  // NOTE: applyTexture is NOT called here - it's applied separately by UI on texture change
+  // This prevents double-application which would cause delta-bias drift
   syncGrooveModeToGenre();
 
   AtlasRuntimeMetadata atlasMetadata{};
@@ -2616,12 +2618,8 @@ void MiniAcid::setGrooveFlavor(int flavor) {
   const int flv = sceneManager_.getGrooveFlavor();
   modeManager_.setFlavorLocal(flv);
 
-  // ONLY apply sound macros if explicitly enabled
-  if (sceneManager_.currentScene().genre.applySoundMacros) {
-    modeManager_.apply303Preset(0, flv);
-    modeManager_.apply303Preset(1, flv);
-    // Note: Tape macros disabled per latest design
-  }
+  // Flavor selection is metadata-only. Sound mutation belongs to explicit
+  // Genre MATERIALIZE/APPLY and must not be hidden behind Project settings.
 }
 
 int MiniAcid::grooveFlavor() const {
@@ -2800,36 +2798,56 @@ void MiniAcid::applySceneStateFromManager() {
   delay3032Enabled = sceneManager_.getSynthDelayEnabled(1);
 
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: setting voice params...");
-  const SynthParameters& paramsA = sceneManager_.getSynthParameters(0);
-  const SynthParameters& paramsB = sceneManager_.getSynthParameters(1);
-
   auto clamp01 = [](float v) -> float {
     if (v < 0.0f) return 0.0f;
     if (v > 1.0f) return 1.0f;
     return v;
   };
 
-  auto applySynthParams = [&](int idx, const SynthParameters& sp) {
-    if (!synthVoices_[idx]) return;
-    if (TB303Voice* v303 = tb303Voice(idx)) {
-      v303->setParameter(TB303ParamId::Cutoff, sp.cutoff);
-      v303->setParameter(TB303ParamId::Resonance, sp.resonance);
-      v303->setParameter(TB303ParamId::EnvAmount, sp.envAmount);
-      v303->setParameter(TB303ParamId::EnvDecay, sp.envDecay);
-      v303->setParameter(TB303ParamId::Oscillator, static_cast<float>(sp.oscType));
-      return;
+  if (sceneManager_.hasVersionedSynthState()) {
+    for (int idx = 0; idx < 2; ++idx) {
+      const PersistedSynthPatch& patch = sceneManager_.getSynthPatch(idx);
+      setSynthEngine(idx, patch.engineName);
+      if (!synthVoices_[idx]) continue;
+      SynthVoiceState runtimeState = synthVoices_[idx]->getState();
+      runtimeState.paramCount = std::min<uint8_t>(
+          patch.paramCount, PersistedSynthPatch::kMaxParams);
+      for (uint8_t p = 0; p < runtimeState.paramCount; ++p) {
+        runtimeState.params[p] = clamp01(patch.params[p]);
+      }
+      synthVoices_[idx]->setState(runtimeState);
+      synthEngineNames_[idx] = synthVoices_[idx]->getEngineName();
+      sceneManager_.setSynthEngineName(idx, synthEngineNames_[idx]);
     }
-
-    const uint8_t count = synthVoices_[idx]->parameterCount();
-    if (count > 0) synthVoices_[idx]->setParameterNormalized(0, clamp01(sp.cutoff));
-    if (count > 1) synthVoices_[idx]->setParameterNormalized(1, clamp01(sp.resonance));
-    if (count > 2) synthVoices_[idx]->setParameterNormalized(2, clamp01(sp.envAmount));
-    if (count > 3) synthVoices_[idx]->setParameterNormalized(3, clamp01(sp.envDecay));
-    if (count > 4) synthVoices_[idx]->setParameterNormalized(4, clamp01(static_cast<float>(sp.oscType) / 100.0f));
-  };
-
-  applySynthParams(0, paramsA);
-  applySynthParams(1, paramsB);
+  } else {
+    // Legacy compatibility. TB303 raw values keep their historical units.
+    // Non-TB engines with no legacy synthParams stay at engine-native defaults.
+    for (int idx = 0; idx < 2; ++idx) {
+      const SynthParameters& sp = sceneManager_.getSynthParameters(idx);
+      if (TB303Voice* v303 = tb303Voice(idx)) {
+        if (sceneManager_.legacySynthParametersPresent(idx)) {
+          v303->setParameter(TB303ParamId::Cutoff, sp.cutoff);
+          v303->setParameter(TB303ParamId::Resonance, sp.resonance);
+          v303->setParameter(TB303ParamId::EnvAmount, sp.envAmount);
+          v303->setParameter(TB303ParamId::EnvDecay, sp.envDecay);
+          v303->setParameter(TB303ParamId::Oscillator, static_cast<float>(sp.oscType));
+        }
+        continue;
+      }
+      if (!sceneManager_.legacySynthParametersPresent(idx) || !synthVoices_[idx]) {
+        continue;
+      }
+      // Historical non-TB scenes used these legacy field names as normalized
+      // slots 0..3 and oscType/100 as slot 4. Preserve that decode-only path.
+      const uint8_t count = synthVoices_[idx]->parameterCount();
+      if (count > 0) synthVoices_[idx]->setParameterNormalized(0, clamp01(sp.cutoff));
+      if (count > 1) synthVoices_[idx]->setParameterNormalized(1, clamp01(sp.resonance));
+      if (count > 2) synthVoices_[idx]->setParameterNormalized(2, clamp01(sp.envAmount));
+      if (count > 3) synthVoices_[idx]->setParameterNormalized(3, clamp01(sp.envDecay));
+      if (count > 4) synthVoices_[idx]->setParameterNormalized(
+          4, clamp01(static_cast<float>(sp.oscType) / 100.0f));
+    }
+  }
   
   
   distortion303.setEnabled(distortion303Enabled);
@@ -2899,20 +2917,15 @@ void MiniAcid::applySceneStateFromManager() {
     vocalSynth_.setCustomPhrase(i, sceneManager_.currentScene().customPhrases[i]);
   }
   
-  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: applyGenreTimbre...");
-  // Restore genre state before applying the existing genre timbre behavior.
+  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: restore genre metadata...");
+  // Restore genre metadata. Normal Scene Load must not project genre sound over
+  // the explicitly restored synth patch.
   const auto& gs = sceneManager_.currentScene().genre;
   genreManager_.setGenerativeMode(static_cast<GenerativeMode>(gs.generativeMode));
   genreManager_.setRecipe(gs.recipe);
   genreManager_.setMorphTarget(gs.morphTarget);
   genreManager_.setMorphAmount(gs.morphAmount);
   syncGrooveModeToGenre();
-
-  // 1. Enforce Genre Timbre BASE (overwrites scene params to ensure genre identity)
-  genreManager_.applyGenreTimbre(*this);
-  
-  // Legacy TEXTURE metadata is intentionally not reapplied. Persisted synth,
-  // Tape, delay and distortion state remains authoritative during scene load.
 
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: applyFeelTiming...");
   applyFeelTimingFromScene_();
@@ -3004,39 +3017,23 @@ void MiniAcid::syncSceneStateToManager() {
   int songPosToStore = songMode_ ? songPlayheadPosition_ : sceneManager_.getSongPosition();
   sceneManager_.setSongPosition(clampSongPosition(songPosToStore));
 
-  auto clamp01 = [](float v) -> float {
-    if (v < 0.0f) return 0.0f;
-    if (v > 1.0f) return 1.0f;
-    return v;
-  };
-
-  auto buildSynthParams = [&](int idx) -> SynthParameters {
-    SynthParameters out;
-    if (TB303Voice* v303 = tb303Voice(idx)) {
-      out.cutoff = v303->parameterValue(TB303ParamId::Cutoff);
-      out.resonance = v303->parameterValue(TB303ParamId::Resonance);
-      out.envAmount = v303->parameterValue(TB303ParamId::EnvAmount);
-      out.envDecay = v303->parameterValue(TB303ParamId::EnvDecay);
-      out.oscType = v303->oscillatorIndex();
-      return out;
-    }
-
+  for (int idx = 0; idx < 2; ++idx) {
+    PersistedSynthPatch patch;
+    patch.engineName = currentSynthEngineName(idx);
     if (synthVoices_[idx]) {
-      const uint8_t count = synthVoices_[idx]->parameterCount();
-      if (count > 0) out.cutoff = clamp01(synthVoices_[idx]->getParameterNormalized(0));
-      if (count > 1) out.resonance = clamp01(synthVoices_[idx]->getParameterNormalized(1));
-      if (count > 2) out.envAmount = clamp01(synthVoices_[idx]->getParameterNormalized(2));
-      if (count > 3) out.envDecay = clamp01(synthVoices_[idx]->getParameterNormalized(3));
-      if (count > 4) out.oscType = static_cast<int>(clamp01(synthVoices_[idx]->getParameterNormalized(4)) * 100.0f + 0.5f);
+      const SynthVoiceState runtimeState = synthVoices_[idx]->getState();
+      patch.paramCount = std::min<uint8_t>(
+          runtimeState.paramCount, PersistedSynthPatch::kMaxParams);
+      for (uint8_t p = 0; p < patch.paramCount; ++p) {
+        float value = runtimeState.params[p];
+        if (value < 0.0f) value = 0.0f;
+        if (value > 1.0f) value = 1.0f;
+        patch.params[p] = value;
+      }
     }
-    return out;
-  };
-
-  SynthParameters paramsA = buildSynthParams(0);
-  sceneManager_.setSynthParameters(0, paramsA);
-
-  SynthParameters paramsB = buildSynthParams(1);
-  sceneManager_.setSynthParameters(1, paramsB);
+    sceneManager_.setSynthPatch(idx, patch);
+    sceneManager_.setLegacySynthParametersPresent(idx, false);
+  }
 
   // Save voice parameters to scene
   auto& v = sceneManager_.currentScene().vocal;
