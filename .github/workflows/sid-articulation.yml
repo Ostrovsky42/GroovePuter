@@ -1,0 +1,23 @@
+name: SID articulation
+
+on:
+  pull_request:
+    branches: [dev_0.9]
+  workflow_dispatch:
+
+jobs:
+  host-sid:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build focused SID regression
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror \
+            -I. \
+            tests/test_sid_articulation.cpp \
+            src/dsp/sid_synth.cpp \
+            src/dsp/sid_synth_voice.cpp \
+            -o build/host-tests/test_sid_articulation
+      - name: Run focused SID regression
+        run: build/host-tests/test_sid_articulation
