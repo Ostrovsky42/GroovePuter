@@ -1,17 +1,15 @@
 #include "sid_synth_voice.h"
 
-#include <cmath>
-
 SidSynthVoice::SidSynthVoice(float sampleRate)
     : sid_(std::make_unique<SidSynth>()), sampleRate_(sampleRate) {
     sampleBuffer_.resize(1, 0.0f);
 
     params_[0] = Parameter("Cutoff", "Hz", 0.0f, 12000.0f, 4000.0f, 1.0f);
-    params_[1] = Parameter("Reso",   "",   0.0f,   255.0f,   0.0f, 1.0f);
+    params_[1] = Parameter("Damp",   "",   0.0f,   255.0f,   0.0f, 1.0f);
     params_[2] = Parameter("P-Width","",   0.0f,  4095.0f,2048.0f, 1.0f);
 
-    static const char* const kFilterTypes[] = {"LP", "BP", "HP", "OFF"};
-    // ИНДЕКСЫ 0..3: 0=LP,1=BP,2=HP,3=OFF
+    static const char* const kFilterTypes[] = {"LP", "EDGE", "HP", "RAW"};
+    // Persisted option indices remain 0..3.
     params_[3] = Parameter("F-Mode", "", kFilterTypes, 4, 0);
 
     setSampleRate(sampleRate_);
@@ -33,14 +31,12 @@ void SidSynthVoice::setSampleRate(float sampleRate) {
     if (sid_) sid_->init(sampleRate_);
 }
 
-void SidSynthVoice::startNote(float freqHz, bool accent, bool slideFlag, uint8_t velocity) {
-    if (!sid_) return;
-    if (freqHz <= 0.0f) return;
-
-    const float midiNoteF = 69.0f + 12.0f * std::log2(freqHz / 440.0f);
-    const uint8_t note = static_cast<uint8_t>(std::lround(midiNoteF));
-
-    sid_->startNote(note, velocity);
+void SidSynthVoice::startNote(float freqHz,
+                              bool accent,
+                              bool slideFlag,
+                              uint8_t velocity) {
+    if (!sid_ || freqHz <= 0.0f) return;
+    sid_->startNoteFrequency(freqHz, velocity, accent, slideFlag);
 }
 
 void SidSynthVoice::release() {
@@ -86,9 +82,9 @@ const Parameter& SidSynthVoice::getParameter(uint8_t index) const {
 }
 
 void SidSynthVoice::setMode(GrooveboxMode mode) {
-    // not implemented
+    (void)mode;
 }
 
 void SidSynthVoice::setLoFiAmount(float amount) {
-    // SID is inherently lofi
+    (void)amount;
 }
