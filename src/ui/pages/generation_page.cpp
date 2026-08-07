@@ -192,7 +192,7 @@ void GenerationPage::draw(IGfx& gfx) {
   const int x = Layout::COL_1;
   const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
   AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0),
-                      "GEN 3/4", "WRITE ONE SONG BAR",
+                      "GEN 3/3", "WRITE ONE SONG BAR",
                       axisColor, palette);
 
   char value[112];
