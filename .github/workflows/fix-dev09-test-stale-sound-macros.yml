@@ -1,0 +1,74 @@
+name: Fix stale sound macro integration
+
+on:
+  pull_request:
+    branches: [dev_0.9_test]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.head_ref == 'integration/dev09-into-dev09-test-post143'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: integration/dev09-into-dev09-test-post143
+          fetch-depth: 0
+      - name: Remove stale applySoundMacros paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/dsp/miniacid_engine.cpp')
+          s = p.read_text()
+          old = '''  // ONLY apply sound macros if explicitly enabled\n  if (sceneManager_.currentScene().genre.applySoundMacros) {\n    modeManager_.apply303Preset(0, flv);\n    modeManager_.apply303Preset(1, flv);\n    // Note: Tape macros disabled per latest design\n  }\n'''
+          if old not in s:
+              raise SystemExit('MiniAcid stale applySoundMacros block not found')
+          s = s.replace(old, '''  // Flavor selection is metadata-only. Sound mutation belongs to explicit\n  // Genre MATERIALIZE/APPLY and must not be hidden behind Project settings.\n''')
+          p.write_text(s)
+
+          p = Path('src/ui/pages/project_page.h')
+          s = p.read_text()
+          old = '  enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, GrooveMode, GrooveFlavor, ApplyMacros, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash };'
+          new = '  enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, GrooveMode, GrooveFlavor, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash };'
+          if old not in s:
+              raise SystemExit('ProjectPage MainFocus ApplyMacros enum not found')
+          p.write_text(s.replace(old, new))
+
+          p = Path('src/ui/pages/project_page.cpp')
+          s = p.read_text()
+          old = '''            if (main_focus_ == MainFocus::ApplyMacros) {\n                auto& genre = mini_acid_.sceneManager().currentScene().genre;\n                genre.applySoundMacros = !genre.applySoundMacros;\n                GroovePuterState::markSceneMutated();\n                return true;\n            }\n'''
+          if old not in s:
+              raise SystemExit('ProjectPage ApplyMacros input block not found')
+          s = s.replace(old, '')
+          old = '''      case MainFocus::ApplyMacros: {\n        bool on = mini_acid_.sceneManager().currentScene().genre.applySoundMacros;\n        std::snprintf(line, sizeof(line), "Apply Sound [%s]", on ? "ON" : "OFF");\n        break;\n      }\n'''
+          if old not in s:
+              raise SystemExit('ProjectPage ApplyMacros draw block not found')
+          s = s.replace(old, '')
+          p.write_text(s)
+
+          # Strengthen the removal contract so stale policy cannot return.
+          p = Path('tests/test_remove_texture_mode_runtime.py')
+          s = p.read_text()
+          marker = 'forbidden_symbols = ['
+          if marker in s and 'applySoundMacros' not in s:
+              s = s.replace(marker, marker + '\n    "applySoundMacros",')
+          p.write_text(s)
+          PY
+
+          if grep -R --line-number --include='*.cpp' --include='*.h' 'applySoundMacros' src scenes.h scenes.cpp; then
+            echo 'stale applySoundMacros runtime reference remains' >&2
+            exit 1
+          fi
+          python3 tests/test_remove_texture_mode_runtime.py
+          python3 tests/test_synth_persistence_source_regressions.py
+          rm -f .github/workflows/fix-dev09-test-stale-sound-macros.yml
+          git add -A
+          git commit -m "fix: remove stale Project sound macro policy"
+          git push origin HEAD:integration/dev09-into-dev09-test-post143
