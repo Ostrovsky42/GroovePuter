@@ -48,7 +48,6 @@ for filename in (
     if (PAGE_DIR / filename).exists():
         raise AssertionError(f"removed or legacy axis source must not exist: {filename}")
 
-# GENRE owns vocabulary and explicit materialization policy only.
 for needle in (
     '"GENRE 1/3"',
     '"CORRIDOR / VOCABULARY"',
@@ -62,19 +61,13 @@ for needle in (
 forbid(
     GENRE,
     (
-        "setTextureMode",
-        "applyTexture(",
-        "applyGenreTimbre",
-        "toggleGrooveboxMode",
-        "swingPct",
-        "microTimingAmount",
-        "velocityRange",
-        "PhraseGenerator::",
+        "setTextureMode", "applyTexture(", "applyGenreTimbre",
+        "toggleGrooveboxMode", "swingPct", "microTimingAmount",
+        "velocityRange", "PhraseGenerator::",
     ),
     "GENRE",
 )
 
-# FEEL owns live timing and velocity only.
 for needle in (
     '"FEEL 2/3"',
     '"TIMING / VELOCITY"',
@@ -88,20 +81,13 @@ for needle in (
 forbid(
     FEEL,
     (
-        "ghostNoteProbability",
-        "minNotes",
-        "maxNotes",
-        "scaleRoot",
-        "scaleQuantize",
-        "measureSDPerformance",
-        "setTextureMode",
-        "applyTexture(",
-        "PhraseGenerator::",
+        "ghostNoteProbability", "minNotes", "maxNotes", "scaleRoot",
+        "scaleQuantize", "measureSDPerformance", "setTextureMode",
+        "applyTexture(", "PhraseGenerator::",
     ),
     "FEEL",
 )
 
-# GENERATION owns phrase form and writes one song bar.
 for needle in (
     '"GEN 3/3"',
     '"WRITE ONE SONG BAR"',
@@ -109,28 +95,17 @@ for needle in (
     "PhraseGenerator::generateBarsToSong",
     "PhraseGenerator::generateToSong",
     "request.bars = kMaterializeBars;",
-    "ROW OCCUPIED:BLOCK  LEN:PHRASE",
+    '"CURRENT EMPTY SONG ROW"',
 ):
     require(GENERATION, needle, f"GENERATION contract missing: {needle}")
 forbid(
     GENERATION,
     (
-        "setTextureMode",
-        "applyTexture(",
-        "applySoundMacros",
-        "toggleMacros",
-        "grooveFlavor",
-        "shiftFlavor",
-        "microTimingAmount",
-        "velocityRange",
-        "swingPct",
-        "randomize303Pattern",
-        "phrase_bars_",
-        "shiftPhraseLength",
-        "kLengths[4]",
-        '"LENGTH"',
-        "L/R:LENGTH",
-        "1, 2, 4, 8",
+        "setTextureMode", "applyTexture(", "applySoundMacros",
+        "toggleMacros", "grooveFlavor", "shiftFlavor",
+        "microTimingAmount", "velocityRange", "swingPct",
+        "randomize303Pattern", "phrase_bars_", "shiftPhraseLength",
+        "kLengths[4]", '"LENGTH"', "L/R:LENGTH", "1, 2, 4, 8",
     ),
     "GENERATION",
 )
@@ -148,8 +123,6 @@ if unexpected_length_owners:
         + ", ".join(sorted(unexpected_length_owners))
     )
 
-# Runtime navigation exposes exactly three pages. Page id 8 remains a legacy
-# redirect to FEEL and is not reused or emitted by pageAt().
 require(WORKFLOW, "case WorkflowMode::Generate: return 3;",
         "GENERATE must expose three pages")
 require(WORKFLOW, "kGenre, kFeel, kGeneration,",
@@ -171,8 +144,6 @@ forbid(
     "normal GENERATE navigation",
 )
 
-# Persisted navigation mirrors the runtime three-page list and normalizes old
-# page id 8 before it can be remembered or restored.
 require(SESSION, "case SessionWorkflow::Generate: return 3;",
         "persisted GENERATE count must be three")
 require(SESSION, "SessionPages::kGenre,",
@@ -191,7 +162,6 @@ session_generate_list = SESSION.split(
 forbid(session_generate_list, ("SessionPages::kTexture",),
        "persisted normal GENERATE navigation")
 
-# Help and visual styling describe only the surviving pages.
 for title in ("GENRE 1/3", "FEEL 2/3", "GENERATION 3/3"):
     require(HELP, title, f"Alt+H section missing: {title}")
 forbid(HELP, ("TEXTURE 4/4", "LIVE SOUND SURFACE"), "Alt+H")
