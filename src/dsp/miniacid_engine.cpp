@@ -2618,12 +2618,8 @@ void MiniAcid::setGrooveFlavor(int flavor) {
   const int flv = sceneManager_.getGrooveFlavor();
   modeManager_.setFlavorLocal(flv);
 
-  // ONLY apply sound macros if explicitly enabled
-  if (sceneManager_.currentScene().genre.applySoundMacros) {
-    modeManager_.apply303Preset(0, flv);
-    modeManager_.apply303Preset(1, flv);
-    // Note: Tape macros disabled per latest design
-  }
+  // Flavor selection is metadata-only. Sound mutation belongs to explicit
+  // Genre MATERIALIZE/APPLY and must not be hidden behind Project settings.
 }
 
 int MiniAcid::grooveFlavor() const {
