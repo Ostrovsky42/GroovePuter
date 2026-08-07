@@ -42,8 +42,9 @@ static inline bool isTab(const UIEvent& e) {
 }
 
 // Converts the existing 80 ms Cardputer arrow repeat stream into a bounded
-// value-step multiplier. A tap remains exact; a continuous hold ramps through
-// x1 -> x2 -> x4 -> x5. Direction changes and gaps between events reset it.
+// value-step multiplier. A tap remains exact; a continuous hold ramps gently
+// through x1 -> x2 -> x3 -> x4. Direction changes and gaps between repeat
+// events reset it. Explicit forced-fast callers retain the historical x5 step.
 // Pages opt in only for continuous numeric ranges so menu/list navigation does
 // not accelerate accidentally.
 class HoldAccelerator {
@@ -68,9 +69,9 @@ class HoldAccelerator {
     last_event_ms_ = nowMs;
 
     if (forcedFast) return 5;
-    if (streak_ >= 14) return 5;
-    if (streak_ >= 8) return 4;
-    if (streak_ >= 3) return 2;
+    if (streak_ >= 24) return 4;
+    if (streak_ >= 14) return 3;
+    if (streak_ >= 6) return 2;
     return 1;
   }
 
