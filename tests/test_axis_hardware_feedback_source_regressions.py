@@ -3,12 +3,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+
 def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
+
 song = read("src/ui/pages/song_page.cpp")
 feel = read("src/ui/pages/feel_page.cpp")
-texture = read("src/ui/pages/texture_page.cpp")
 generation = read("src/ui/pages/generation_page.cpp")
 generation_header = read("src/ui/pages/generation_page.h")
 genre = read("src/ui/pages/genre_page.cpp")
@@ -19,6 +20,13 @@ ui_input = read("src/ui/ui_input.h")
 status_chrome = read("src/ui/ui_status_chrome.h")
 layout_manager = read("src/ui/layout_manager.cpp")
 
+assert not (ROOT / "src/ui/pages/texture_page.cpp").exists(), (
+    "Removed TEXTURE implementation must not return"
+)
+assert not (ROOT / "src/ui/pages/texture_page.h").exists(), (
+    "Removed TEXTURE interface must not return"
+)
+
 for token in (
     "AtlasRuntime::hasRecipe(activeRecipe)",
     "AtlasRuntime::applyRecipe(activeRecipe",
@@ -28,19 +36,13 @@ for token in (
 ):
     assert token in song, f"Song genre materialization contract missing: {token}"
 
+# Removing the page must not remove the audible compatibility path used by
+# persisted scenes and genre materialization.
 for token in (
     "tape.fxEnabled = tapeOn;",
     "currentScene().feel.tapeEnabled = tapeOn;",
 ):
-    assert token in genre_manager, f"Texture audible path missing: {token}"
-
-for token in (
-    "applyTexture(false);",
-    "LIVE / ENTER REAPPLY",
-    "AUDIBLE TAPE",
-    "HOLD L/R:ACCEL",
-):
-    assert token in texture, f"Texture feedback contract missing: {token}"
+    assert token in genre_manager, f"Persisted texture audible path missing: {token}"
 
 for token in (
     "LIVE: offbeat playback delay",
@@ -120,7 +122,10 @@ assert "UI::setUiStatusBpm(bpm);" in layout_manager, (
     "Standard header must feed the current BPM into status chrome"
 )
 
-assert "setSongPosition" not in generation.split("void GenerationPage::moveTargetRow", 1)[1].split("void GenerationPage::materializeCurrentBar", 1)[0], (
+move_target_body = generation.split(
+    "void GenerationPage::moveTargetRow", 1
+)[1].split("void GenerationPage::materializeCurrentBar", 1)[0]
+assert "setSongPosition" not in move_target_body, (
     "Browsing Generation targets must remain UI-only until materialization"
 )
 

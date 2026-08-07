@@ -30,7 +30,7 @@ constexpr const char* kGlobalLines[] = {
 };
 
 constexpr const char* kGenreLines[] = {
-    "=== GENRE 1/4 ===",
+    "=== GENRE 1/3 ===",
     "Genre = corridor/vocabulary",
     "Tab/Up/Dn   Select field",
     "Left/Right  Genre/variant/apply",
@@ -202,21 +202,8 @@ constexpr const char* kHubLines[] = {
     "C           Edit saved per-file route",
 };
 
-constexpr const char* kTextureLines[] = {
-    "=== TEXTURE 4/4 ===",
-    "Texture = sound surface only",
-    "Tab/Up/Dn   Select field",
-    "Left/Right  Mode/amount/link",
-    "Enter/Space Apply texture",
-    "FLAVOR LINK Explicit cross-axis link",
-    "DI AG SP WD  Dirt/Age/Space/Width",
-    "IN GR DK     Instab/Aggression/Dark",
-    "Macro strip is read-only",
-    "No note or rhythm changes",
-};
-
 constexpr const char* kFeelLines[] = {
-    "=== FEEL 2/4 ===",
+    "=== FEEL 2/3 ===",
     "Feel = timing/velocity only",
     "Tab/Up/Dn   Select field",
     "Left/Right  Adjust value/preset",
@@ -241,7 +228,7 @@ constexpr const char* kProjectLines[] = {
 };
 
 constexpr const char* kGenerationLines[] = {
-    "=== GENERATION 3/4 ===",
+    "=== GENERATION 3/3 ===",
     "Generation = material/development",
     "Enter/G     Materialize current bar",
     "SCOPE       Current Song row",
@@ -310,7 +297,6 @@ inline const char* const* pageLines(int pageIndex, int& count) {
         case WorkflowPages::kPattern:
             count = sizeof(kHubLines) / sizeof(kHubLines[0]); return kHubLines;
         case WorkflowPages::kTexture:
-            count = sizeof(kTextureLines) / sizeof(kTextureLines[0]); return kTextureLines;
         case WorkflowPages::kFeel:
             count = sizeof(kFeelLines) / sizeof(kFeelLines[0]); return kFeelLines;
         case WorkflowPages::kProject:

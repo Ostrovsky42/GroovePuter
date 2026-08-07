@@ -125,6 +125,7 @@ public:
 
     size_t position() {
         if (!state_ || state_->directory || !state_->stream.is_open()) return 0;
+        if (state_->stream.eof()) return size();
         const std::streampos readPos = state_->stream.tellg();
         if (readPos != std::streampos(-1)) {
             return static_cast<size_t>(readPos);
