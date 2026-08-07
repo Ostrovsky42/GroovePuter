@@ -2,17 +2,38 @@
 
 ## Purpose
 
-Record automated and owner-run Cardputer ADV evidence for draft PR #131 before merge or tag.
+Record automated and owner-run Cardputer ADV evidence for PR #131, the final 0.9 release candidate after merged synth persistence/load ownership (#143).
 
 ## Exact SHA
 
 ```text
-release base: dev_0.9 @ 538ae24a1c88253eb0cfc1a9a671e16091e449bf
+release base: dev_0.9 @ 0afd24fe5f4b0b2d549214abe2ed1a7eb7f3448c
 candidate branch: release/0.9-final-stabilization
-candidate head: copy from PR #131 after the final commit
+candidate head: record from PR #131 after the final release-scope commit
 ```
 
-All results must belong to the same final head.
+All final results must belong to the same final head.
+
+## Included correctness work
+
+The candidate contains the release baseline plus:
+
+- versioned Synth A/B TYPE + normalized `params[0..5]` persistence from #143;
+- transactional malformed-version handling and legacy TB303 raw decode;
+- engine-native defaults for legacy non-TB scenes missing patch data;
+- normal Scene Load ownership: saved patch wins over Genre;
+- explicit Save/Load/recovery revision-result semantics;
+- TB303 amplitude lifecycle and bounded release;
+- TB303 Volume/sub output ownership;
+- distortion drive restoration;
+- FEEL/Genre mutation revision boundaries.
+
+## Critical-path policy
+
+- #132 is post-0.9.
+- #142 is post-0.9.
+- #139 is optional only after a clean Cardputer ADV SID listening smoke.
+- #134 may enter before RC only if integration onto the #143 Scene baseline is low-risk and combined legacy Scene regression is green; otherwise it is post-0.9.
 
 ## Hardware
 
@@ -48,14 +69,17 @@ Flash with the repository upload command and monitor serial at `115200` baud.
 
 | Gate | Result | Evidence |
 |---|---|---|
-| TB303/DST focused contracts | PENDING FINAL HEAD | Release workflow |
-| FEEL/Genre revision ownership | PENDING FINAL HEAD | Release workflow |
-| Core host regressions | PENDING FINAL HEAD | Core workflow |
-| SDL build | PENDING FINAL HEAD | Core workflow |
-| Cardputer ADV build + DRAM | PENDING FINAL HEAD | Core workflow |
-| SEQTRAK MIDI-only build + DRAM | PENDING FINAL HEAD | Core workflow |
-| three-page Generate contract | PENDING FINAL HEAD | Release workflow |
-| Phrase Core | PENDING FINAL HEAD | Release workflow |
+| synth persistence/load ownership | PENDING FINAL #131 HEAD | Synth persistence workflow |
+| TB303/DST focused contracts | PENDING FINAL #131 HEAD | Release workflow |
+| FEEL/Genre revision ownership | PENDING FINAL #131 HEAD | Release workflow |
+| Core host regressions | PENDING FINAL #131 HEAD | Core workflow |
+| SDL build | PENDING FINAL #131 HEAD | Core workflow |
+| Cardputer ADV build + DRAM | PENDING FINAL #131 HEAD | Core workflow |
+| SEQTRAK MIDI-only build + DRAM | PENDING FINAL #131 HEAD | Core workflow |
+| three-page Generate contract | PENDING FINAL #131 HEAD | Release workflow |
+| Phrase Core | PENDING FINAL #131 HEAD | Release/Phrase workflow |
+
+The #143 prerequisite was merged only after its exact head passed focused persistence, host, Phrase Core, SDL, Cardputer ADV + fixed DRAM and SEQTRAK MIDI-only gates.
 
 ## Storage smoke
 
@@ -72,14 +96,21 @@ Flash with the repository upload command and monitor serial at `115200` baud.
 For Synth A and Synth B, repeat for `TB303`, `SID`, `AY`, `SH101`, `SN76489`, `WAVEMORPH`:
 
 1. select TYPE;
-2. change every visible parameter, including parameter 5;
-3. Save;
-4. reboot;
-5. Load;
+2. change every visible parameter, including parameter 5 when exposed;
+3. Save explicitly;
+4. change TYPE and values to obviously different settings;
+5. Load the saved Scene;
 6. compare TYPE and values;
-7. confirm Genre did not replace the patch.
+7. confirm Genre did not replace the patch before an explicit Apply/Materialize action.
 
-This section is blocked until versioned synth persistence and normal-load ownership are implemented and host-tested.
+Also verify:
+
+- a legacy TB303 Scene preserves raw TB303 parameter meaning;
+- a legacy AY/SH101/SN76489/WAVEMORPH Scene without synth parameters starts from sane engine-native defaults;
+- a quick Save immediately after TYPE switch preserves the pending TYPE and its parameters consistently;
+- failed Save remains dirty;
+- failed Load leaves current Scene intact;
+- recovered autosave does not falsely mark an explicit clean Save baseline.
 
 ## TB303 envelope
 
@@ -145,7 +176,7 @@ monotonic memory loss:
 
 ## Troubleshooting
 
-### TYPE or parameter 5 changes after reboot
+### TYPE or parameter changes after Load
 
 Stop acceptance. Record engine, voice, values before/after, Scene name, exact SHA and serial log.
 
@@ -169,7 +200,8 @@ Record source, logical note, physical/clamped note, route, target and cleanup ac
 
 ### Automated
 
-- [ ] exact final head recorded;
+- [ ] exact final #131 head recorded;
+- [ ] synth persistence/load ownership focused contract passes;
 - [ ] focused TB303/DST and revision contracts pass;
 - [ ] all host/source regressions pass;
 - [ ] SDL builds;
@@ -181,6 +213,8 @@ Record source, logical note, physical/clamped note, route, target and cleanup ac
 - [ ] storage smoke passes;
 - [ ] all engines preserve TYPE and parameters on A/B;
 - [ ] normal Load does not apply genre timbre over the patch;
+- [ ] legacy missing-patch defaults are sane;
+- [ ] failed Save/Load and recovery revision behavior passes;
 - [ ] TB303 envelope/Volume/sub/Panic pass;
 - [ ] AY/SN pitch and NoteOff pass;
 - [ ] neutral defaults and DST pass;
@@ -191,13 +225,17 @@ Record source, logical note, physical/clamped note, route, target and cleanup ac
 
 ## Known deferred items
 
+- #132 GenreManager ownership refactor;
+- #142 AY articulation follow-up;
+- #139 SID articulation unless hardware smoke explicitly promotes it;
+- #134 TextureMode runtime removal if Scene migration integration is not demonstrably low-risk;
 - Song/Generation UX redesign;
 - Tape/Sampler UI;
 - Phrase Arranger Stage 2;
 - new genres or Atlas material;
 - broad dead-code cleanup;
 - realtime filter allocation redesign;
-- DC blocker, loudness, aliasing, mipmap and oversampling work;
+- DC blocker, broad loudness, aliasing, mipmap and oversampling work;
 - direct numeric MIDI mute shortcuts.
 
-Do not merge PR #131 or tag 0.9 while code blockers or hardware acceptance remain.
+Do not merge PR #131 or tag 0.9 until the exact final head passes the automated gate and required Cardputer ADV acceptance is recorded.
