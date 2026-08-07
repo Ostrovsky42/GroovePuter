@@ -13,6 +13,7 @@
 #endif
 
 #include "scenes.h"
+#include "src/audio/pattern_paging.h"
 #include "src/platform/cardputer_sd.h"
 
 namespace {
@@ -199,6 +200,10 @@ void SceneStorageCardputer::initializeStorage() {
   }
 
   loadStoredSceneName();
+  if (!PatternPagingService::setProjectName(currentSceneName_)) {
+    Serial.printf("Failed to select pattern namespace: %s\n",
+                  currentSceneName_.c_str());
+  }
 }
 
 bool SceneStorageCardputer::readScene(std::string& out) {
@@ -410,16 +415,31 @@ bool SceneStorageCardputer::setCurrentSceneName(const std::string& name) {
   const std::string normalized = normalizeSceneName(name);
   if (!isInitialized_) {
     currentSceneName_ = normalized;
+    PatternPagingService::setProjectName(currentSceneName_);
     return false;
   }
 
   const std::string previous = currentSceneName_;
-  currentSceneName_ = normalized;
+  if (normalized == previous) {
+    return PatternPagingService::setProjectName(previous);
+  }
 
-  const std::string path = currentScenePath();
-  const std::string backupPath = siblingPath(path, kBackupSuffix);
+  const std::string targetPath = scenePathFor(normalized);
+  const std::string targetBackup = siblingPath(targetPath, kBackupSuffix);
   const bool sceneAlreadyExists =
-      SD.exists(path.c_str()) || SD.exists(backupPath.c_str());
+      SD.exists(targetPath.c_str()) || SD.exists(targetBackup.c_str());
+
+  if (!sceneAlreadyExists &&
+      !PatternPagingService::copyProjectPages(previous, normalized)) {
+    return false;
+  }
+
+  currentSceneName_ = normalized;
+  if (!PatternPagingService::setProjectName(currentSceneName_)) {
+    currentSceneName_ = previous;
+    PatternPagingService::setProjectName(previous);
+    return false;
+  }
 
   // Existing scenes are selections and should become the next boot target now.
   // New scene names are only committed after the scene data itself is written.
@@ -427,5 +447,6 @@ bool SceneStorageCardputer::setCurrentSceneName(const std::string& name) {
   if (persistCurrentSceneName()) return true;
 
   currentSceneName_ = previous;
+  PatternPagingService::setProjectName(previous);
   return false;
 }

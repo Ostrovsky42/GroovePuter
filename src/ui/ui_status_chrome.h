@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include "src/pattern/pattern_address.h"
 #include "src/state/scene_revision.h"
 
 namespace UI {
@@ -48,8 +49,6 @@ enum class UiStatusClock : uint8_t {
 
 enum class UiStatusOutput : uint8_t {
     InternalAndMidi = 0,
-    // Compatibility aliases for the first A1 implementation. Pattern/Song
-    // events fan out to the internal synth and the registered USB-MIDI sink.
     InternalAudio = InternalAndMidi,
     Both = InternalAndMidi,
     Midi = 1,
@@ -81,11 +80,18 @@ struct UiStatusSnapshot {
     UiStatusState state{UiStatusState::Stop};
     UiStatusClock clock{UiStatusClock::Internal};
     UiStatusOutput output{UiStatusOutput::InternalAndMidi};
+    bool liveMixLocked{false};
+    bool dirty{GroovePuterState::sceneDirty()};
+    uint8_t patternPage{0xFF};
+    uint8_t patternBank{0xFF};
+    uint8_t patternSlot{0xFF};
     uint16_t bpm{uiStatusBpm()};
     uint16_t bar{1};
     uint16_t totalBars{1};
-    bool liveMixLocked{false};
-    bool dirty{GroovePuterState::sceneDirty()};
+
+    bool hasPatternAddress() const {
+        return patternAddressFromParts(patternPage, patternBank, patternSlot).valid();
+    }
 };
 
 static_assert(sizeof(UiStatusSnapshot) <= 16,
@@ -98,11 +104,14 @@ inline bool operator==(const UiStatusSnapshot& lhs,
            lhs.state == rhs.state &&
            lhs.clock == rhs.clock &&
            lhs.output == rhs.output &&
+           lhs.liveMixLocked == rhs.liveMixLocked &&
+           lhs.dirty == rhs.dirty &&
+           lhs.patternPage == rhs.patternPage &&
+           lhs.patternBank == rhs.patternBank &&
+           lhs.patternSlot == rhs.patternSlot &&
            lhs.bpm == rhs.bpm &&
            lhs.bar == rhs.bar &&
-           lhs.totalBars == rhs.totalBars &&
-           lhs.liveMixLocked == rhs.liveMixLocked &&
-           lhs.dirty == rhs.dirty;
+           lhs.totalBars == rhs.totalBars;
 }
 
 inline bool operator!=(const UiStatusSnapshot& lhs,
@@ -178,11 +187,22 @@ inline void formatUiStatusLine(const UiStatusSnapshot& status,
     const unsigned bpm = status.bpm == 0 ? 1u : status.bpm;
     const unsigned bar = status.bar == 0 ? 1u : status.bar;
     const unsigned total = status.totalBars == 0 ? 1u : status.totalBars;
+    char sourceOrAddress[12];
+    if (status.source == UiStatusSource::Pattern && status.hasPatternAddress()) {
+        formatPatternAddressParts(sourceOrAddress, sizeof(sourceOrAddress),
+                                  status.patternPage,
+                                  status.patternBank,
+                                  status.patternSlot);
+    } else {
+        std::snprintf(sourceOrAddress, sizeof(sourceOrAddress), "%s",
+                      uiStatusSourceToken(status.source));
+    }
+
     std::snprintf(destination,
                   capacity,
                   "%s %s %s %u BPM B%u/%u %s %s%s%s",
                   uiStatusContextToken(status.context),
-                  uiStatusSourceToken(status.source),
+                  sourceOrAddress,
                   uiStatusStateToken(status.state),
                   bpm,
                   bar,

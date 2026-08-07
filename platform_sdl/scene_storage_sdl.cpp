@@ -9,6 +9,7 @@
 #endif
 
 #include "scenes.h"
+#include "../src/audio/pattern_paging.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
@@ -102,6 +103,7 @@ SceneStorageSdl::SceneStorageSdl() : currentSceneName_(kDefaultSceneName) {}
 
 void SceneStorageSdl::initializeStorage() {
   loadStoredSceneName();
+  PatternPagingService::setProjectName(currentSceneName_);
 }
 
 std::string SceneStorageSdl::normalizeSceneName(const std::string& name) const {
@@ -278,8 +280,35 @@ std::string SceneStorageSdl::getCurrentSceneName() const {
 }
 
 bool SceneStorageSdl::setCurrentSceneName(const std::string& name) {
-  currentSceneName_ = normalizeSceneName(name);
-  return persistCurrentSceneName();
+  const std::string normalized = normalizeSceneName(name);
+  const std::string previous = currentSceneName_;
+  if (normalized == previous) {
+    return PatternPagingService::setProjectName(previous) &&
+           persistCurrentSceneName();
+  }
+
+  bool sceneAlreadyExists = false;
+#ifdef __EMSCRIPTEN__
+  const std::string targetKey = sceneKeyForStorage(normalized);
+  sceneAlreadyExists = wasm_read_scene(targetKey.c_str(), nullptr, 0) > 0;
+#else
+  sceneAlreadyExists = std::filesystem::exists(normalized + kSceneExtension);
+#endif
+
+  if (!sceneAlreadyExists &&
+      !PatternPagingService::copyProjectPages(previous, normalized)) {
+    return false;
+  }
+
+  currentSceneName_ = normalized;
+  if (!PatternPagingService::setProjectName(currentSceneName_) ||
+      !persistCurrentSceneName()) {
+    currentSceneName_ = previous;
+    PatternPagingService::setProjectName(previous);
+    persistCurrentSceneName();
+    return false;
+  }
+  return true;
 }
 
 bool SceneStorageSdl::writeSceneAuto(const SceneManager& manager) {

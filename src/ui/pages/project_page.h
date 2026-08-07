@@ -5,7 +5,15 @@
 #include "../ui_utils.h"
 #include "../midi_file_manager.h"
 #include "help_dialog.h"
+#include "src/audio/pattern_paging.h"
 #include "src/state/scene_revision.h"
+
+// withAudioGuard() is a header-defined template, so the toast declaration
+// must be visible before the template is parsed without pulling ui_common.h
+// and its complete rendering dependency graph into every ProjectPage user.
+namespace UI {
+void showToast(const char* msg, int durationMs);
+}
 
 class ProjectPage : public IPage, public IMultiHelpFramesProvider {
  public:
@@ -63,9 +71,56 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   void ensureMainFocusVisible(int visibleRows);
   template <typename F>
   void withAudioGuard(F&& fn) {
+      const bool clearCurrentProject =
+          main_focus_ == MainFocus::ClearProject &&
+          dialog_type_ == DialogType::ConfirmClear;
+      const bool creatingNewProject = main_focus_ == MainFocus::New;
+      const std::string sceneNameBefore = creatingNewProject
+          ? mini_acid_.currentSceneName()
+          : std::string();
+      const std::string requestedNewProject = creatingNewProject
+          ? save_name_
+          : std::string();
+
       if (audio_guard_) audio_guard_(std::forward<F>(fn));
       else fn();
       GroovePuterState::markSceneMutated();
+
+      const std::string sceneNameAfter = creatingNewProject
+          ? mini_acid_.currentSceneName()
+          : std::string();
+      const bool createdDifferentProject =
+          creatingNewProject && sceneNameAfter != sceneNameBefore;
+      const bool newProjectRolledBack =
+          creatingNewProject &&
+          sceneNameAfter == sceneNameBefore &&
+          !requestedNewProject.empty() &&
+          requestedNewProject != sceneNameBefore;
+
+      bool lifecycleOk = true;
+      if (clearCurrentProject || createdDifferentProject) {
+        lifecycleOk = PatternPagingService::clearProjectPages();
+      } else if (newProjectRolledBack) {
+        // setCurrentSceneName() copies pages before the scene JSON is written.
+        // A failed write returns to the original project; remove only the
+        // abandoned target namespace without switching active project state.
+        lifecycleOk = PatternPagingService::clearProjectPages(
+            requestedNewProject);
+      }
+
+      // Clear must be durable immediately: rewrite the zeroed scene JSON and
+      // remove its autosave recovery before the confirmation dialog closes.
+      // Otherwise a reboot before the next autosave can restore page 1.
+      if (clearCurrentProject && lifecycleOk) {
+        lifecycleOk = mini_acid_.saveSceneAs(mini_acid_.currentSceneName());
+      }
+
+      if (!lifecycleOk) {
+        UI::showToast(clearCurrentProject
+                          ? "Project clear not saved"
+                          : "Pattern cleanup failed",
+                      1400);
+      }
   }
 
   void autoRouteMidi();

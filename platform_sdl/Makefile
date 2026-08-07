@@ -91,6 +91,7 @@ SOURCES := \
 	../src/audio/desktop_audio_recorder.cpp \
 	../src/audio/wasm_audio_recorder.cpp \
 	../src/audio/pattern_paging.cpp \
+	../src/audio/pattern_project_cleanup.cpp \
 	../src/audio/midi_importer.cpp \
 	../src/sampler/sample_loader.cpp \
 	../src/sampler/ram_sample_store.cpp \

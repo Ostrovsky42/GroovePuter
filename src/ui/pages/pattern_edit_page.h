@@ -41,6 +41,11 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
  private:
   enum class Focus { Steps = 0, PatternRow, BankRow };
 
+  // The original page handler remains intact behind a strict input router.
+  // This keeps all non-navigation behavior unchanged and makes the ownership
+  // of arrows/pattern/bank shortcuts explicit.
+  bool handleEventLegacy(UIEvent& ui_event);
+
   void drawMinimalStyle(IGfx& gfx);
   void drawRetroClassicStyle(IGfx& gfx);
   void drawAmberStyle(IGfx& gfx);

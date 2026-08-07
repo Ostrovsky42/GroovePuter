@@ -26,7 +26,7 @@ def main() -> None:
     genre_source = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
     voice_source = (ROOT / "src/ui/pages/voice_page.cpp").read_text(encoding="utf-8")
     sampler_source = (ROOT / "src/ui/pages/sampler_page.cpp").read_text(encoding="utf-8")
-    drum_source = (ROOT / "src/ui/pages/drum_sequencer_page.cpp").read_text(encoding="utf-8")
+    drum_source = (ROOT / "src/ui/pages/drum_sequencer_page_legacy.h").read_text(encoding="utf-8")
     automation_source = (ROOT / "src/ui/pages/drum_automation_page.cpp").read_text(encoding="utf-8")
     tape_source = (ROOT / "src/ui/pages/tape_page.cpp").read_text(encoding="utf-8")
 
