@@ -129,11 +129,18 @@ forbid(
     "GENERATION",
 )
 
-
 require(GENERATION, "request.bars = kMaterializeBars;",
         "GENERATION request must use the fixed single-bar scope")
-require(GENERATION, "ROW OCCUPIED:BLOCK  LEN:PHRASE",
-        "GENERATION must disclose row and phrase ownership")
+for ownership_token in (
+    '"WRITE ONE SONG BAR"',
+    '"CURRENT EMPTY SONG ROW"',
+    '"SINGLE BAR / BASE"',
+):
+    require(
+        GENERATION,
+        ownership_token,
+        f"GENERATION must disclose row and phrase ownership: {ownership_token}",
+    )
 forbid(
     GENERATION,
     (
@@ -200,7 +207,6 @@ for title in ('return "GENRE";', 'return "FEEL";', 'return "GENERATION";', 'retu
     require(WORKFLOW, title, f"Workflow page title missing: {title}")
 require(WORKFLOW, "case WorkflowMode::Settings: return 1;",
         "FEEL must no longer live in SETTINGS")
-
 
 for legacy in ("kGenerator", "kMode", "kFeelTexture"):
     if legacy in WORKFLOW or legacy in SESSION:
