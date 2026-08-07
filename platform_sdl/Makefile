@@ -73,7 +73,6 @@ SOURCES := \
 	../src/ui/pages/song_page.cpp \
 	../src/ui/pages/phrase_page.cpp \
 	../src/ui/pages/project_page.cpp \
-	../src/ui/pages/generation_page.cpp \
 	../src/ui/pages/genre_page.cpp \
 	../src/ui/pages/perform_page.cpp \
 	../src/ui/pages/smf_player_page.cpp \
