@@ -15,27 +15,27 @@ def main() -> None:
     )
 
     require(
-        'constexpr int kLaneLabelWidth = 34;' in grid
+        'constexpr int kLaneLabelWidth = 20;' in grid
         and 'constexpr int kStepHeaderHeight = 8;' in grid
         and 'layout.grid_x = bounds.x + labelWidth;' in grid
         and 'layout.accent_y = bounds.y + kStepHeaderHeight;' in grid,
         "drum grid must reserve independent left-label and top-step-number areas",
     )
     require(
-        '{"KICK", "SNARE", "HAT1", "HAT2", "PERC1", "PERC2", "RIM", "CLAP"}' in grid,
+        '{"KIK", "SNR", "HH1", "HH2", "PR1", "PR2", "RIM", "CLP"}' in grid,
         "the established eight drum voices must have semantic lane labels",
     )
     require(
         'if (miniAcid.currentDrumEngineName() == "606")' in grid
         and 'if (voice == 6) return "CYM";' in grid
-        and 'if (voice == 7) return "--";' in grid,
+        and 'if (voice == 7) return "---";' in grid,
         "TR-606-specific lane meaning must remain explicit",
     )
     require(
         'void drawStepNumbers(' in grid
-        and 'std::snprintf(label, sizeof(label), "%d", step + 1);' in grid
+        and "label[0] = static_cast<char>('0' + ((step + 1) % 10));" in grid
         and grid.count('drawStepNumbers(gfx') == 3,
-        "all visual styles must show step numbers 1 through 16",
+        "all visual styles must use compact one-glyph step headers 1..9,0..6",
     )
     require(
         'drawAccentLabel(gfx' in grid

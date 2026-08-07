@@ -5,6 +5,7 @@
 
 #include "midi_realtime_word.h"
 #include "scheduled_smf_midi_event.h"
+#include "smf_track_level.h"
 #include "smf_track_mute.h"
 #include "smf_track_note_ownership.h"
 
@@ -149,6 +150,13 @@ public:
                     noteOn, event.trackIndex)) {
                 mutedNoteOnDrops_.incrementRelaxed();
                 continue;
+            }
+
+            if (noteOn) {
+                event.velocity = GroovePuterMidi::applySmfTrackLevelVelocity(
+                    event.velocity,
+                    GroovePuterMidi::smfTrackLevelState().levelFor(event.trackIndex));
+                if (event.velocity == 0u) continue;
             }
 
             if (noteOn && !activeNotes_.canAcquire(

@@ -103,6 +103,17 @@ inline bool wordDigitAlreadyDispatched(WordChar value,
           static_cast<uint16_t>(1u << (digit - '0'))) != 0;
 }
 
+inline uint32_t letterDispatchMask(char value) {
+  if (value >= 'A' && value <= 'Z') value = static_cast<char>(value + ('a' - 'A'));
+  if (value < 'a' || value > 'z') return 0u;
+  return uint32_t{1} << static_cast<uint32_t>(value - 'a');
+}
+
+template <typename WordChar>
+inline bool wordLetterAlreadyDispatched(WordChar value, uint32_t mask) {
+  return (mask & letterDispatchMask(static_cast<char>(value))) != 0u;
+}
+
 inline bool mayRepeat(const UIEvent& event) {
   if (event.alt || event.ctrl || event.shift || event.meta) return false;
   return event.scancode == GROOVEPUTER_UP ||

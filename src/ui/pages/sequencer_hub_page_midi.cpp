@@ -13,6 +13,7 @@
 #include "src/midi/smf_session_generation.h"
 #include "src/midi/smf_structural_inspector.h"
 #include "src/midi/smf_track_inspector.h"
+#include "src/midi/smf_track_level.h"
 #include "src/midi/smf_track_mute.h"
 #include "src/midi/smf_track_output_route.h"
 #include "src/midi/transport_clock_runtime.h"
@@ -401,6 +402,7 @@ void drawOverlayBands(IGfx& gfx,
                       const SmfStructuralLayerSnapshot& selectedLayer,
                       const SmfTrackInfoSnapshot* selectedInfo,
                       int8_t destinationChannel,
+                      uint8_t trackLevel,
                       bool routeEdit,
                       int8_t routeDraft,
                       bool soloActive,
@@ -442,20 +444,22 @@ void drawOverlayBands(IGfx& gfx,
         if (player.rawRouting) {
             std::snprintf(line,
                           sizeof(line),
-                          "RAW %s N%u %s",
+                          "RAW %s V%u N%u %s",
                           channel,
+                          static_cast<unsigned>(trackLevel),
                           static_cast<unsigned>(selectedLayer.noteCount),
                           range);
         } else {
             std::snprintf(line,
                           sizeof(line),
-                          "%s>%s N%u %s",
+                          "%s>%s V%u N%u %s",
                           channel,
                           destination,
+                          static_cast<unsigned>(trackLevel),
                           static_cast<unsigned>(selectedLayer.noteCount),
                           range);
         }
-        hints = soloActive ? "S UNSOLO <>RTE" : "S SOLO <>RTE";
+        hints = soloActive ? "FN<>VOL S:OFF" : "FN<>VOL S:SOLO";
     }
     gfx.setTextColor(kBodyText);
     gfx.drawText(3, bottomY + 2, line);
@@ -625,6 +629,37 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
         } else {
             returnFromMidiOverview();
         }
+        return true;
+    }
+
+    if (!midiRouteEdit_ && event.meta && !event.alt && !event.ctrl &&
+        (UIInput::isLeft(event) || UIInput::isRight(event))) {
+        ISmfPlayerService* levelService = smfPlayerService();
+        const SmfPlayerSnapshot levelPlayer =
+            levelService ? levelService->snapshot() : SmfPlayerSnapshot{};
+        const HubMidiProjection levelProjection = captureHubMidiProjection();
+        if (projectionIsSyncing(levelPlayer, levelProjection) ||
+            !levelProjection.ready() || levelProjection.layers.layerCount == 0u) {
+            UI::showToast("MIDI LAYERS: SYNCING", 800);
+            return true;
+        }
+        if (midiGeneration_ != levelProjection.generation) syncMidiSessionSelection();
+        const uint8_t levelSelected = std::min<uint8_t>(
+            midiSelected_, levelProjection.layers.layerCount - 1u);
+        const uint16_t levelTrack =
+            levelProjection.layers.layers[levelSelected].trackIndex;
+        uint8_t levelPercent = smfTrackLevelState().levelFor(levelTrack);
+        const int delta = UIInput::isRight(event) ? 5 : -5;
+        if (!smfTrackLevelState().adjustLevel(
+                levelTrack, delta, levelProjection.generation, levelPercent)) {
+            UI::showToast("MIDI LAYERS: SYNCING", 800);
+            return true;
+        }
+        char toast[40]{};
+        std::snprintf(toast, sizeof(toast), "MIDI TRK %02u VOL %u%%",
+                      static_cast<unsigned>(levelTrack + 1u),
+                      static_cast<unsigned>(levelPercent));
+        UI::showToast(toast, 700);
         return true;
     }
 
@@ -931,6 +966,7 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
                      selectedLayer,
                      selectedInfo,
                      projection.routes.destinationFor(selectedLayer.trackIndex),
+                     smfTrackLevelState().levelFor(selectedLayer.trackIndex),
                      midiRouteEdit_,
                      midiRouteDraft_,
                      selectedTrackIsSolo(projection.generation,
