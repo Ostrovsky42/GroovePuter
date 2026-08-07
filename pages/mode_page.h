@@ -1,3 +1,3 @@
 #pragma once
-#include "../src/ui/pages/generation_page.h"
-using ModePage = GenerationPage;
+#include "../src/ui/pages/feel_page.h"
+using ModePage = FeelPage;
