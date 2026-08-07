@@ -4,6 +4,8 @@
 
 Verify that persisted genre settings are owned only by `Scene`, that the old `GenreManager` API is gone, and that the GENERATE workflow exposes only `GENRE` and `FEEL`. Genre catalog data, recipes, deterministic generation and existing musical behavior must remain unchanged.
 
+All automated and hardware acceptance results must refer to the exact PR head being tested.
+
 ## Hardware
 
 - M5Stack Cardputer ADV
