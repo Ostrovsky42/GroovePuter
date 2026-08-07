@@ -238,8 +238,8 @@ void GenrePage::draw(IGfx& gfx) {
           : palette.warning);
   gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, value);
 
-  UI::drawStandardFooter(gfx, "TAB/U/D:FIELD L/R:CHANGE",
-                         "ENTER:Apply M:ApplyMode");
+  const char* right = "ENTER:Apply M:ApplyMode";
+  UI::drawStandardFooter(gfx, "TAB/U/D:FIELD L/R:CHANGE", right);
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
@@ -300,12 +300,14 @@ bool GenrePage::handleEvent(UIEvent& event) {
   const char key = static_cast<char>(
       std::tolower(static_cast<unsigned char>(event.key)));
 
+  // ENTER: apply the current genre/texture/recipe selection.
   if (event.key == '\n' || event.key == '\r') {
     morphAccelerator.reset();
     applyCurrent();
     return true;
   }
 
+  // SPACE: toggle apply mode when focused.
   if (event.key == ' ' && focus_ == FocusRow::Apply) {
     morphAccelerator.reset();
     cycleApplyMode(1);
