@@ -96,18 +96,19 @@ def test_workflow_local_page_navigation() -> None:
 
     require("kPerform, kPlayer" in workflow,
             "PERFORM workflow must contain keyboard then MIDI Player")
-    require("kGenre, kFeel, kGeneration," in workflow,
-            "GENERATE must expose GENRE, FEEL and GENERATION")
-    require("case WorkflowMode::Generate: return 3;" in workflow,
-            "GENERATE workflow must have three fixed page addresses")
+    require("kGenre, kFeel," in workflow,
+            "GENERATE must expose exactly GENRE and FEEL")
+    require("case WorkflowMode::Generate: return 2;" in workflow,
+            "GENERATE workflow must have two fixed page addresses")
     generate_pages = workflow.split(
         "static constexpr int kGeneratePages[]", 1
     )[1].split("};", 1)[0]
-    require("kTexture" not in generate_pages,
-            "legacy TEXTURE id must not return to normal GENERATE navigation")
+    require("kTexture" not in generate_pages and "kGeneration" not in generate_pages,
+            "legacy TEXTURE/GENERATION ids must not return to normal GENERATE navigation")
     require("case Workspace::Texture:" in workflow and
-            "case kTexture:" in workflow,
-            "legacy TEXTURE addresses must still redirect for compatibility")
+            "case kTexture:" in workflow and
+            "case kGeneration:" in workflow,
+            "legacy TEXTURE and GENERATION addresses must still redirect for compatibility")
     require("kPattern, kSynthA, kSynthB, kDrums" in workflow and
             "kSynthAParameters, kSynthBParameters" in workflow,
             "HUB workflow must expose overview, instruments and synth controls")
