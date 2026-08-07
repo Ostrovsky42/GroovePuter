@@ -244,7 +244,8 @@ the Phrase material; save/load preserves valid slots and cleared slots.
 |---|---|
 | `Up/Down` | Select track |
 | `Left/Right` | Select step |
-| `-` / `=` | Track volume |
+| `Fn+Left/Right` | Selected-track volume -/+ |
+| `-` / `=` | Track volume compatibility alias |
 | `X` | Toggle hit/note |
 | `A` | Toggle accent |
 | `Enter` | Open track detail |
@@ -254,9 +255,12 @@ the Phrase material; save/load preserves valid slots and cleared slots.
 | `B` | Toggle pattern bank |
 | `Ctrl+C/V` | Copy / Paste |
 
-In HUB MIDI mode, `H` returns to Player, `1..9` mutes physical SMF tracks, and `C`
-edits the selected route override (`AUTO`, `CH1..CH10`). Confirmed routes are persisted
-per file and restored when the file identity still matches.
+Internal HUB track volumes are scene/project state: saving a project at `0%` keeps that
+synth or drum lane at `0%` after reboot/load. In HUB MIDI mode, `H` returns to Player,
+`1..9` mutes physical SMF tracks, plain `Left/Right` edits the selected route override
+(`AUTO`, `CH1..CH10`), and `Fn+Left/Right` changes the selected physical-track level in
+5% steps. MIDI levels are session-only and reset to `100%` for a newly loaded SMF.
+Confirmed routes remain persisted per file when the file identity still matches.
 
 ## PROJECT / SETUP
 

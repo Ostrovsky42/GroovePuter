@@ -230,6 +230,11 @@ int SongPage::maxEditableTrackColumn() const {
   return visibleTrackCount(); // Grid + Mode Button
 }
 
+int SongPage::maxPatternTrackColumn() const {
+  const int count = visibleTrackCount();
+  return count > 0 ? count - 1 : 0;
+}
+
 SongTrack SongPage::thirdLaneTrack() const {
   if (lane_focus_mode_ == LaneFocusMode::RhythmPair && kVoiceLaneInSongEditor) {
     return SongTrack::Voice;
@@ -653,7 +658,7 @@ bool SongPage::flipSongPatternBankAtCursorOrSelection() {
     int min_row, max_row, min_track, max_track;
     getSelectionBounds(min_row, max_row, min_track, max_track);
     if (min_track < 0) min_track = 0;
-    int maxCol = maxEditableTrackColumn();
+    int maxCol = maxPatternTrackColumn();
     if (max_track > maxCol) max_track = maxCol;
     if (min_track > max_track) return false;
 
@@ -728,7 +733,7 @@ bool SongPage::assignPattern(int patternIdx) {
     getSelectionBounds(min_row, max_row, min_track, max_track);
     // Selection can include non-track columns (playhead/mode). Clamp to real track cells.
     if (min_track < 0) min_track = 0;
-    int maxCol = maxEditableTrackColumn();
+    int maxCol = maxPatternTrackColumn();
     if (max_track > maxCol) max_track = maxCol;
     if (min_track > max_track) {
       LOG_WARN_UI("Selection does not include track columns: [%d..%d]", min_track, max_track);
@@ -786,7 +791,7 @@ bool SongPage::clearPattern() {
     int min_row, max_row, min_track, max_track;
     getSelectionBounds(min_row, max_row, min_track, max_track);
     if (min_track < 0) min_track = 0;
-    int maxCol = maxEditableTrackColumn();
+    int maxCol = maxPatternTrackColumn();
     if (max_track > maxCol) max_track = maxCol;
     if (min_track > max_track) return false;
 
@@ -953,7 +958,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
           int min_row, max_row, min_track, max_track;
           getSelectionBounds(min_row, max_row, min_track, max_track);
           
-          int maxCol = maxEditableTrackColumn();
+          int maxCol = maxPatternTrackColumn();
           if (max_track > maxCol) max_track = maxCol;
           if (min_track > maxCol) return false;
           
@@ -1011,7 +1016,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
           int min_row, max_row, min_track, max_track;
           getSelectionBounds(min_row, max_row, min_track, max_track);
           
-          int maxCol = maxEditableTrackColumn();
+          int maxCol = maxPatternTrackColumn();
           if (max_track > maxCol) max_track = maxCol;
           if (min_track > maxCol) return false;
           
@@ -1107,7 +1112,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
             start_track = min_col;
             useSelectionAnchor = true;
           }
-          int maxCol = maxEditableTrackColumn();
+          int maxCol = maxPatternTrackColumn();
           if (start_track > maxCol) return false;
           int source_tracks = g_song_area_clipboard.tracks;
           int source_rows = g_song_area_clipboard.rows;
@@ -1658,7 +1663,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
         // Alt+G with selection - Batch generate
         int min_row, max_row, min_track, max_track;
         getSelectionBounds(min_row, max_row, min_track, max_track);
-        int maxCol = maxEditableTrackColumn();
+        int maxCol = maxPatternTrackColumn();
         if (max_track > maxCol) max_track = maxCol;
         for (int r = min_row; r <= max_row; ++r) {
             for (int t = min_track; t <= max_track; ++t) {

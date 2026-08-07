@@ -11,7 +11,7 @@ namespace retro = RetroWidgets;
 namespace amber = AmberWidgets;
 
 namespace {
-constexpr int kLaneLabelWidth = 34;
+constexpr int kLaneLabelWidth = 20;
 constexpr int kStepHeaderHeight = 8;
 
 uint8_t effectiveVelocity(const DrumStep& step) {
@@ -49,11 +49,11 @@ const char* drumVoiceLabel(const MiniAcid& miniAcid, int voice) {
   // Keep the established eight-voice data order. These are semantic display
   // names only; no drum routing, pattern storage, or keyboard mapping changes.
   static const char* const kDefault[NUM_DRUM_VOICES] =
-      {"KICK", "SNARE", "HAT1", "HAT2", "PERC1", "PERC2", "RIM", "CLAP"};
-  if (voice < 0 || voice >= NUM_DRUM_VOICES) return "--";
+      {"KIK", "SNR", "HH1", "HH2", "PR1", "PR2", "RIM", "CLP"};
+  if (voice < 0 || voice >= NUM_DRUM_VOICES) return "---";
   if (miniAcid.currentDrumEngineName() == "606") {
     if (voice == 6) return "CYM";
-    if (voice == 7) return "--";
+    if (voice == 7) return "---";
   }
   return kDefault[voice];
 }
@@ -65,8 +65,8 @@ void drawStepNumbers(IGfx& gfx,
                      IGfxColor color) {
   gfx.setTextColor(color);
   for (int step = 0; step < SEQ_STEPS; ++step) {
-    char label[4]{};
-    std::snprintf(label, sizeof(label), "%d", step + 1);
+    char label[2]{};
+    label[0] = static_cast<char>('0' + ((step + 1) % 10));
     const int textW = gfx.textWidth(label);
     const int x = gridX + step * cellWidth + std::max(0, (cellWidth - textW) / 2);
     gfx.drawText(x, y, label);
