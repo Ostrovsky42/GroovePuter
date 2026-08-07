@@ -30,7 +30,7 @@ constexpr const char* kGlobalLines[] = {
 };
 
 constexpr const char* kGenreLines[] = {
-    "=== GENRE 1/3 ===",
+    "=== GENRE 1/2 ===",
     "Genre = corridor/vocabulary",
     "Tab/Up/Dn   Select field",
     "Left/Right  Genre/variant/apply",
@@ -203,7 +203,7 @@ constexpr const char* kHubLines[] = {
 };
 
 constexpr const char* kFeelLines[] = {
-    "=== FEEL 2/3 ===",
+    "=== FEEL 2/2 ===",
     "Feel = timing/velocity only",
     "Tab/Up/Dn   Select field",
     "Left/Right  Adjust value/preset",
