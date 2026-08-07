@@ -107,7 +107,6 @@ private:
     bool navigateUp();
     void moveSelection(int delta);
     void ensureSelectionVisible();
-    void serviceHeldNavigation();
     void selectEntryByName(const char* name, EntryKind kind);
     void beginRename();
     void commitRename();
@@ -130,8 +129,6 @@ private:
     int selection_{0};
     int scroll_{0};
     int visibleRows_{6};
-    uint32_t heldNavigationNextAtMs_{0};
-    int8_t heldNavigationDirection_{0};
     Mode mode_{Mode::Browse};
     bool storageReady_{false};
     bool truncated_{false};

@@ -769,8 +769,8 @@ void loop() {
       handleWithFallback(evt, "HID", pressId, false);
       dispatched = true;
 
-      if (GroovePuterInput::mayRepeat(evt) &&
-          ks.hid_keys.size() == 1 && ks.word.empty()) {
+      if (GroovePuterInput::mayArmRepeatForPhysicalKey(
+              ks, static_cast<uint8_t>(hid), evt)) {
         repeatEvent = evt;
         repeatHid = static_cast<uint8_t>(hid);
         repeatPressId = pressId;
