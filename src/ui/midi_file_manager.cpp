@@ -16,6 +16,7 @@
 
 #ifdef ARDUINO
 #include <Arduino.h>
+#include <M5Cardputer.h>
 #include <SD.h>
 #include <cerrno>
 #include <dirent.h>
@@ -60,6 +61,29 @@ const char* kindPrefix(MidiFileManager::EntryKind kind) {
 }
 
 #ifdef ARDUINO
+constexpr uint32_t kHeldNavigationDelayMs = 350u;
+constexpr uint32_t kHeldNavigationIntervalMs = 80u;
+
+int heldNavigationDirectionFromCardputer() {
+    const auto keys = M5Cardputer.Keyboard.keysState();
+    if (keys.alt || keys.ctrl || keys.shift || keys.fn ||
+        keys.hid_keys.size() != 1 || keys.word.empty()) {
+        return 0;
+    }
+
+    uint8_t hid = 0;
+    for (const auto value : keys.hid_keys) {
+        hid = static_cast<uint8_t>(value);
+        break;
+    }
+    // Cardputer arrow legends are punctuation HID positions. The global input
+    // repeat intentionally requires word.empty(), so only compensate when the
+    // M5Cardputer library reports the same held key through both HID and word.
+    if (hid == 0x33) return -1;  // Up / ';'
+    if (hid == 0x37) return 1;   // Down / '.'
+    return 0;
+}
+
 struct DirectoryEntryInfo {
     const char* name{nullptr};
     bool directory{false};
@@ -190,6 +214,8 @@ void MidiFileManager::open() {
     }
     mode_ = Mode::Browse;
     deleteConfirmed_ = false;
+    heldNavigationDirection_ = 0;
+    heldNavigationNextAtMs_ = 0;
     refresh();
 }
 
@@ -331,6 +357,11 @@ bool MidiFileManager::scanDirectorySummary(const char* selectedName,
     windowStart_ = std::max(0, std::min(scroll_, maxWindowStart));
     windowCount_ = std::min(kWindowEntries, entryCount_ - windowStart_);
     for (Entry& entry : workspace_.entries) entry = Entry{};
+    if (parentCount > 0 && windowStart_ == 0 && windowCount_ > 0) {
+        workspace_.entries[0].kind = EntryKind::Parent;
+        copyText(workspace_.entries[0].name,
+                 sizeof(workspace_.entries[0].name), "..");
+    }
 
     rewinddir(root);
     int secondDirectoryCount = 0;
@@ -545,6 +576,36 @@ void MidiFileManager::ensureSelectionVisible() {
     if (scroll_ < windowStart_ || requiredEnd > windowStart_ + windowCount_) {
         loadWindow(scroll_);
     }
+}
+
+void MidiFileManager::serviceHeldNavigation() {
+#ifdef ARDUINO
+    if (mode_ != Mode::Browse) {
+        heldNavigationDirection_ = 0;
+        heldNavigationNextAtMs_ = 0;
+        return;
+    }
+
+    const int direction = heldNavigationDirectionFromCardputer();
+    const uint32_t now = millis();
+    if (direction == 0) {
+        heldNavigationDirection_ = 0;
+        heldNavigationNextAtMs_ = 0;
+        return;
+    }
+    if (direction != heldNavigationDirection_) {
+        heldNavigationDirection_ = static_cast<int8_t>(direction);
+        heldNavigationNextAtMs_ = now + kHeldNavigationDelayMs;
+        return;
+    }
+    if (static_cast<int32_t>(now - heldNavigationNextAtMs_) >= 0) {
+        moveSelection(direction);
+        heldNavigationNextAtMs_ = now + kHeldNavigationIntervalMs;
+    }
+#else
+    heldNavigationDirection_ = 0;
+    heldNavigationNextAtMs_ = 0;
+#endif
 }
 
 void MidiFileManager::selectEntryByName(const char* name, EntryKind kind) {
@@ -786,6 +847,7 @@ void MidiFileManager::draw(IGfx& gfx,
     const int listBottom = bounds.y + bounds.h - footerHeight - 2;
     visibleRows_ = std::max(1, (listBottom - listTop) / (lineHeight + 2));
     if (visibleRows_ > 7) visibleRows_ = 7;
+    serviceHeldNavigation();
     ensureSelectionVisible();
 
     gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, COLOR_BG);
