@@ -30,7 +30,7 @@ constexpr const char* kGlobalLines[] = {
 };
 
 constexpr const char* kGenreLines[] = {
-    "=== GENRE 1/3 ===",
+    "=== GENRE 1/2 ===",
     "Genre = corridor/vocabulary",
     "Tab/Up/Dn   Select field",
     "Left/Right  Genre/variant/apply",
@@ -203,7 +203,7 @@ constexpr const char* kHubLines[] = {
 };
 
 constexpr const char* kFeelLines[] = {
-    "=== FEEL 2/3 ===",
+    "=== FEEL 2/2 ===",
     "Feel = timing/velocity only",
     "Tab/Up/Dn   Select field",
     "Left/Right  Adjust value/preset",
@@ -225,19 +225,6 @@ constexpr const char* kProjectLines[] = {
     "Esc/Bksp    Close dialog/go up",
     "X           Delete selected scene",
     "Import: Tab Open MIDI matrix",
-};
-
-constexpr const char* kGenerationLines[] = {
-    "=== GENERATION 3/3 ===",
-    "Generation = material/development",
-    "Enter/G     Materialize current bar",
-    "SCOPE       Current Song row",
-    "PLAN        Single bar / base",
-    "A/S/FILL    Generation probabilities",
-    "Phrase len  Owned by PHRASE CORE",
-    "Linear constructive pass",
-    "No scoring or retry loop",
-    "No texture or microtiming changes",
 };
 
 constexpr const char* kPerformLines[] = {
@@ -297,12 +284,11 @@ inline const char* const* pageLines(int pageIndex, int& count) {
         case WorkflowPages::kPattern:
             count = sizeof(kHubLines) / sizeof(kHubLines[0]); return kHubLines;
         case WorkflowPages::kTexture:
+        case WorkflowPages::kGeneration:
         case WorkflowPages::kFeel:
             count = sizeof(kFeelLines) / sizeof(kFeelLines[0]); return kFeelLines;
         case WorkflowPages::kProject:
             count = sizeof(kProjectLines) / sizeof(kProjectLines[0]); return kProjectLines;
-        case WorkflowPages::kGeneration:
-            count = sizeof(kGenerationLines) / sizeof(kGenerationLines[0]); return kGenerationLines;
         case WorkflowPages::kPerform:
             count = sizeof(kPerformLines) / sizeof(kPerformLines[0]); return kPerformLines;
         case WorkflowPages::kPlayer:
