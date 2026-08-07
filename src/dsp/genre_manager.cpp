@@ -35,23 +35,16 @@ const GenerativeParams kGenerativePresets[kGenerativeModeCount] = {
      0.02f, false, 4},
 };
 
-const TextureParams kTexturePresets[kTextureModeCount] = {
-    {{3, 5, 8, 85, 0}, 0, 0, false, 0, 0, 0, 0, 0},
-    {{10, 15, 10, 68, 0}, -100, 0, true, 0.75f, 0.5f, 0.50f, 2, -2},
-    {{15, 20, 12, 60, 0}, -150, -0.1f, true, 0.5f, 0.3f, 0.15f, 3, -4},
-    {{5, 30, 20, 75, 0}, 100, 0.15f, true, 0.25f, 0.2f, 0.1f, 1, 3},
-    {{18, 35, 22, 78, 1}, 120, 0.10f, true, 0.75f, 0.62f, 0.42f, 2, 4},
-};
 
 const GenrePreset kGenrePresets[8] = {
-    {GenerativeMode::Acid, TextureMode::Clean, "Classic Acid"},
-    {GenerativeMode::Outrun, TextureMode::Clean, "Outrun Lead"},
-    {GenerativeMode::Darksynth, TextureMode::Clean, "Darksynth Bass"},
-    {GenerativeMode::Outrun, TextureMode::Dub, "Synthwave"},
-    {GenerativeMode::Electro, TextureMode::Industrial, "EBM"},
-    {GenerativeMode::Rave, TextureMode::Clean, "Rave Acid"},
-    {GenerativeMode::Darksynth, TextureMode::Industrial, "Hotline"},
-    {GenerativeMode::Electro, TextureMode::Clean, "Detroit"},
+    {GenerativeMode::Acid, "Classic Acid"},
+    {GenerativeMode::Outrun, "Outrun Lead"},
+    {GenerativeMode::Darksynth, "Darksynth Bass"},
+    {GenerativeMode::Outrun, "Synthwave"},
+    {GenerativeMode::Electro, "EBM"},
+    {GenerativeMode::Rave, "Rave Acid"},
+    {GenerativeMode::Darksynth, "Hotline"},
+    {GenerativeMode::Electro, "Detroit"},
 };
 
 namespace {
@@ -74,11 +67,6 @@ int generativeIndex(GenerativeMode mode) {
     return value >= 0 && value < kGenerativeModeCount ? value : 0;
 }
 
-int textureIndex(TextureMode mode) {
-    const int value = static_cast<int>(mode);
-    return value >= 0 && value < kTextureModeCount ? value : 0;
-}
-
 GenerativeMode sceneGenerativeMode(const GenreSettings& settings) {
     return static_cast<GenerativeMode>(
         settings.generativeMode < kGenerativeModeCount
@@ -86,22 +74,6 @@ GenerativeMode sceneGenerativeMode(const GenreSettings& settings) {
             : 0);
 }
 
-TextureMode sceneTextureMode(const GenreSettings& settings) {
-    return static_cast<TextureMode>(
-        settings.textureMode < kTextureModeCount ? settings.textureMode : 0);
-}
-
-constexpr uint8_t kAllowedTextureMask[kGenerativeModeCount] = {
-    0b11111,
-    0b00111,
-    0b11111,
-    0b11011,
-    0b11001,
-    0b00111,
-    0b00111,
-    0b11111,
-    0b10101,
-};
 
 struct RecipeOverride {
     int minNotes = -1;
@@ -308,42 +280,6 @@ const char* generativeModeName(GenerativeMode mode) {
     return names[generativeIndex(mode)];
 }
 
-const char* textureModeName(TextureMode mode) {
-    static const char* const names[kTextureModeCount] = {
-        "Clean", "Dub", "LoFi", "Industrial", "Psychedelic",
-    };
-    return names[textureIndex(mode)];
-}
-
-bool isTextureAllowed(GenerativeMode genre, TextureMode texture) {
-    const int genreValue = static_cast<int>(genre);
-    const int textureValue = static_cast<int>(texture);
-    if (genreValue < 0 || genreValue >= kGenerativeModeCount) return false;
-    if (textureValue < 0 || textureValue >= kTextureModeCount) return false;
-    return (kAllowedTextureMask[genreValue] & (1u << textureValue)) != 0;
-}
-
-TextureMode firstAllowedTexture(GenerativeMode genre) {
-    for (int index = 0; index < kTextureModeCount; ++index) {
-        const TextureMode mode = static_cast<TextureMode>(index);
-        if (isTextureAllowed(genre, mode)) return mode;
-    }
-    return TextureMode::Clean;
-}
-
-TextureMode nextAllowedTexture(GenerativeMode genre,
-                               TextureMode current,
-                               int direction) {
-    if (direction == 0) return current;
-    int index = textureIndex(current);
-    for (int count = 0; count < kTextureModeCount; ++count) {
-        index = (index + direction + kTextureModeCount) % kTextureModeCount;
-        const TextureMode mode = static_cast<TextureMode>(index);
-        if (isTextureAllowed(genre, mode)) return mode;
-    }
-    return firstAllowedTexture(genre);
-}
-
 GrooveboxMode grooveboxModeForGenerative(GenerativeMode mode) {
     switch (mode) {
         case GenerativeMode::Acid: return GrooveboxMode::Acid;
@@ -544,10 +480,6 @@ void GenreSceneView::setGenerativeMode(GenerativeMode mode) {
         static_cast<uint8_t>(generativeIndex(mode));
 }
 
-void GenreSceneView::setTextureMode(TextureMode mode) {
-    settings().textureMode = static_cast<uint8_t>(textureIndex(mode));
-}
-
 void GenreSceneView::setRecipe(GenreRecipeId value) {
     settings().recipe =
         value < GenreCatalog::recipeCount() ? value : kBaseRecipeId;
@@ -569,13 +501,6 @@ void GenreSceneView::cycleGenerative(int direction) {
     settings().generativeMode = static_cast<uint8_t>(next);
 }
 
-void GenreSceneView::cycleTexture(int direction) {
-    int next = textureIndex(textureMode()) + direction;
-    while (next < 0) next += kTextureModeCount;
-    while (next >= kTextureModeCount) next -= kTextureModeCount;
-    settings().textureMode = static_cast<uint8_t>(next);
-}
-
 void GenreSceneView::cycleRecipe(int direction) {
     const int count = static_cast<int>(GenreCatalog::recipeCount());
     if (count <= 0) return;
@@ -587,10 +512,6 @@ void GenreSceneView::cycleRecipe(int direction) {
 
 GenerativeMode GenreSceneView::generativeMode() const {
     return sceneGenerativeMode(settings());
-}
-
-TextureMode GenreSceneView::textureMode() const {
-    return sceneTextureMode(settings());
 }
 
 GenreRecipeId GenreSceneView::recipe() const {
@@ -621,20 +542,8 @@ const DrumGenreTemplate* GenreSceneView::drumTemplateOverride() const {
     return GenreCatalog::drumTemplateOverride(settings());
 }
 
-const TextureParams& GenreSceneView::getTextureParams() const {
-    return kTexturePresets[textureIndex(textureMode())];
-}
-
 GenreBehavior GenreSceneView::getBehavior() const {
     return GenreCatalog::behavior(settings());
-}
-
-void GenreSceneView::syncTextureBiasBaselineFromCurrentState() {
-    const TextureParams& params = getTextureParams();
-    lastAppliedCutoffBias_ =
-        static_cast<int>(params.filterCutoffBias / 5.0f);
-    lastAppliedResBias_ =
-        static_cast<int>(params.filterResonanceBias * 40.0f);
 }
 
 void GenreSceneView::applyGenreTimbre(MiniAcid& engine) {
@@ -694,68 +603,3 @@ void GenreSceneView::applyGenreTimbre(MiniAcid& engine) {
     }
 }
 
-void GenreSceneView::applyTexture(MiniAcid& engine) {
-    const TextureParams& params = getTextureParams();
-    const float amount =
-        clamp01(settings().textureAmount / 100.0f);
-
-    TapeState& tape = engine.sceneManager().currentScene().tape;
-    TapeMacro macro = params.tapeMacro;
-    macro.wow = static_cast<uint8_t>(macro.wow * amount);
-    macro.age = static_cast<uint8_t>(macro.age * amount);
-    macro.sat = static_cast<uint8_t>(macro.sat * amount);
-    macro.crush = static_cast<uint8_t>(macro.crush * amount);
-    constexpr int neutralTone = 85;
-    macro.tone = static_cast<uint8_t>(
-        neutralTone +
-        static_cast<int>(
-            (static_cast<int>(params.tapeMacro.tone) - neutralTone) *
-            amount));
-    tape.macro = macro;
-
-    const bool tapeOn =
-        textureMode() != TextureMode::Clean && amount > 0.01f;
-    tape.fxEnabled = tapeOn;
-    engine.sceneManager().currentScene().feel.tapeEnabled = tapeOn;
-
-    for (int voice = 0; voice < 2; ++voice) {
-        TempoDelay& delay = engine.tempoDelay(voice);
-        const bool delayOn =
-            params.delayEnabled && amount > 0.01f;
-        delay.setEnabled(delayOn);
-        if (delayOn) {
-            delay.setBeats(params.delayBeats);
-            delay.setFeedback(params.delayFeedback * amount);
-            delay.setMix(params.delayMix * amount);
-        }
-    }
-
-    const int newCutoffBias =
-        static_cast<int>((params.filterCutoffBias * amount) / 5.0f);
-    const int newResBias =
-        static_cast<int>((params.filterResonanceBias * amount) * 40.0f);
-    const int cutoffDelta =
-        newCutoffBias - lastAppliedCutoffBias_;
-    const int resDelta =
-        newResBias - lastAppliedResBias_;
-
-    if (cutoffDelta != 0) {
-        for (int voice = 0; voice < 2; ++voice) {
-            if (engine.currentSynthEngineName(voice) == "TB303") {
-                engine.adjust303Parameter(
-                    TB303ParamId::Cutoff, cutoffDelta, voice);
-            }
-        }
-        lastAppliedCutoffBias_ = newCutoffBias;
-    }
-
-    if (resDelta != 0) {
-        for (int voice = 0; voice < 2; ++voice) {
-            if (engine.currentSynthEngineName(voice) == "TB303") {
-                engine.adjust303Parameter(
-                    TB303ParamId::Resonance, resDelta, voice);
-            }
-        }
-        lastAppliedResBias_ = newResBias;
-    }
-}

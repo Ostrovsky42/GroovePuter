@@ -6,11 +6,13 @@ Remove `TextureMode` as a runtime genre axis after the user-facing TEXTURE page 
 
 ## Compatibility contract
 
-Older scene JSON may still contain the historical genre fields `tex`, `amt`, `curated`, and `snd`. The loader must accept those keys without failing, but they are decode-only compatibility input and must not recreate editable runtime texture state.
+Older scene JSON may still contain the historical genre fields `tex`, `amt`, `curated`, and `snd` (plus long-form aliases). The loader accepts those keys without failing, but they are decode-only compatibility input and do not recreate editable runtime texture state. Unknown historical texture values are ignored.
 
-Previously materialized sound must remain owned by the parameters that are already persisted independently in the scene: synth parameters, delay state, Tape/FEEL state, distortion, and related engine settings. Loading an old scene must not re-apply a historical texture preset on top of those saved values.
+The migration removes the historical texture projection from reset and scene-load paths. In particular, old texture metadata no longer rewrites Tape, delay, FEEL tape enablement, or TB303 cutoff/resonance bias after the concrete scene state has been decoded.
 
-New scene serialization must omit the historical texture fields.
+This PR does not redefine the separate pre-existing GENRE timbre/load ownership contract. Genre note/drum generation, recipe selection, and `applyGenreTimbre()` behavior are intentionally unchanged. The hardware A/B check therefore remains required before merge to prove that removal of the texture projection does not materially change old-project sound.
+
+New scene serialization omits the historical texture fields.
 
 ## In scope
 
@@ -24,14 +26,14 @@ New scene serialization must omit the historical texture fields.
 
 ## Out of scope
 
-Do not change genre note/drum generation, existing genre or recipe choices, `GrooveboxModeManager`, Song materialization, Phrase Core, MIDI, transport, or pattern paging.
+Do not change genre note/drum generation, existing genre or recipe choices, `applyGenreTimbre()`, `GrooveboxModeManager`, Song materialization, Phrase Core, MIDI, transport, pattern paging, synth TYPE ownership, or public synth parameter ranges.
 
 ## Acceptance checklist
 
-- [ ] `TextureMode`, `TextureParams`, `kTexturePresets`, `setTextureMode`, `textureMode`, and `applyTexture` have no runtime definitions or call sites.
-- [ ] A legacy scene containing historical texture keys still loads successfully.
-- [ ] Synth/tape/delay/distortion values already stored in that legacy scene are not overwritten by a texture preset during load.
-- [ ] Re-saving that scene does not emit `tex`, `amt`, `curated`, or `snd` in the genre object.
-- [ ] GENRE -> FEEL -> GENERATION navigation remains unchanged from PR #130.
-- [ ] Host regressions, Four-axis UI, Phrase Core, SDL, Cardputer ADV, fixed DRAM, and SEQTRAK MIDI-only builds are green.
+- [x] `TextureMode`, `TextureParams`, `kTexturePresets`, `setTextureMode`, `textureMode`, and `applyTexture` have no runtime definitions or call sites.
+- [x] Legacy compact and long-form texture keys are accepted as decode-only input; the source regression covers this contract.
+- [x] Scene load no longer runs a texture projection over decoded synth/Tape/delay/distortion state.
+- [x] New serialization omits historical texture fields (`tex`, `amt`, `cur`/`curated`, `sound`/`snd`).
+- [x] GENRE -> FEEL -> GENERATION navigation remains unchanged from PR #130.
+- [ ] Host regressions, Four-axis UI, Phrase Core, SDL, Cardputer ADV, fixed DRAM, and SEQTRAK MIDI-only builds are green on the exact final head.
 - [ ] Physical smoke test confirms an old project sounds materially the same before and after migration.

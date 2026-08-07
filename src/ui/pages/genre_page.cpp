@@ -310,7 +310,7 @@ bool GenrePage::handleEvent(UIEvent& event) {
   const char key = static_cast<char>(
       std::tolower(static_cast<unsigned char>(event.key)));
 
-  // ENTER: apply the current genre/texture/recipe selection.
+  // ENTER: apply the current genre/recipe selection.
   // Texture compatibility remains persisted but is not changed by this page.
   if (event.key == '\n' || event.key == '\r') {
     morphAccelerator.reset();

@@ -6,13 +6,13 @@
 
 > **Portable real-time groove computer for M5Stack Cardputer ADV.**
 > A standalone groovebox that separates musical language, time feel,
-> generated form, sound texture, arrangement, performance, and MIDI routing.
+> generated form, sound design, arrangement, performance, and MIDI routing.
 
 Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtubia/miniacid). This fork focuses on generative patterns, timing FEEL, scene persistence, Song and Phrase arrangement, portable performance, and bounded MIDI integration.
 
 ## Status
 
-**Beta.** The core groovebox, four-axis GENERATE workflow, Song, Phrase Core, performance tools, USB-MIDI, and realtime SMF workflows are available on Cardputer ADV. APIs and UI may still change.
+**Beta.** The core groovebox, three-page GENERATE workflow, Song, Phrase Core, performance tools, USB-MIDI, and realtime SMF workflows are available on Cardputer ADV. APIs and UI may still change.
 
 [`PLAN.md`](PLAN.md) remains the roadmap. This README describes behavior present in the current firmware and does not promote planned work to shipped behavior.
 
@@ -21,14 +21,14 @@ Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtu
 GroovePuter is a standalone groovebox. Yamaha SEQTRAK and other MIDI devices are optional output targets, not runtime dependencies.
 
 ```text
-GENRE != FEEL != GENERATION != TEXTURE
+GENRE != FEEL != GENERATION
 ```
 
 The workflow map is:
 
 ```text
 PERFORM:  MIDI KEYBOARD -> MIDI PLAYER
-GENERATE: GENRE -> FEEL -> GENERATION -> TEXTURE
+GENERATE: GENRE -> FEEL -> GENERATION
 HUB:      OVERVIEW -> SYNTH A -> SYNTH B -> DRUMS -> SYNTH A SOUND -> SYNTH B SOUND
 SONG:     SONG -> PHRASE CORE
 SETTINGS: PROJECT / SETUP
@@ -37,7 +37,7 @@ SETTINGS: PROJECT / SETUP
 ```text
 GroovePuter
 ├── two synth voices and a drum engine
-├── independent GENRE / FEEL / GENERATION / TEXTURE decisions
+├── independent GENRE / FEEL / GENERATION decisions
 ├── pattern, Song, and reference-backed Phrase arrangement
 ├── live performance keyboard and transport-synchronised performance tools
 ├── sample-timed USB-MIDI output and transport
@@ -57,22 +57,23 @@ Atlas remains an optional source of curated factory seed patterns.
 * **Phrase Core** with four fixed slots `A/B/C/D`, lengths `1/2/4/8` bars, roles, derivation, Scene persistence, and atomic write-to-Song commands.
 * **Honest Phrase storage:** `REFERENCE VIEW / REF MUTABLE`. Phrase slots store bounded references to existing patterns; they do not own copied note events.
 
-### Four-axis GENERATE workflow
+### Three-page GENERATE workflow
 
-The four pages have separate ownership:
+The pages have separate ownership:
 
 1. **GENRE** — musical corridor, vocabulary, recipe, and explicit materialization policy.
 2. **FEEL** — swing, timing humanization, and velocity humanization only.
 3. **GENERATION** — bounded form/materialization into the selected Song row.
-4. **TEXTURE** — sound surface and texture projection only.
+
+Sound design is edited through the synth, Tape and FX controls that own the persisted DSP parameters. There is no separate runtime TEXTURE axis.
 
 The causal order is fixed:
 
 ```text
-GENRE -> FEEL -> GENERATION -> TEXTURE
+GENRE -> FEEL -> GENERATION
 ```
 
-Changing one axis must not silently mutate another axis. Page-aware `Alt+H` states the ownership and non-scope of each page.
+Changing one page must not silently mutate another page. Page-aware `Alt+H` states the ownership and non-scope of each page.
 
 ### Phrase Core
 
@@ -140,7 +141,7 @@ SEQTRAK-safe routing maps drums to `CH1..CH7`, Synth 1 to `CH8`, Synth 2 to `CH9
 
 * Scene Save/Load persists supported patterns, Song references, Phrase Core state, synth/drum state, and scene codec fields.
 * UI session persistence stores the active page, last page in each workflow, master volume, visual style, and waveform-overlay state.
-* The current page map has **15 pages**: four GENERATE pages, two SONG pages, and one SETTINGS page.
+* The current page map has **14 pages**: three GENERATE pages, two SONG pages, and one SETTINGS page.
 * The public theme cycle is `CARBON <-> CYBER`. `AMBER` remains a persisted compatibility style.
 
 ## Controls
@@ -257,7 +258,7 @@ Reduce Tape/delay intensity and monitor `[PERF]`. `underruns` must not grow cont
 
 * Read [`PLAN.md`](PLAN.md) before proposing a feature lane.
 * Keep PRs narrow and testable.
-* Preserve **GENRE != FEEL != GENERATION != TEXTURE**.
+* Preserve **GENRE != FEEL != GENERATION**.
 * Preserve `REFERENCE VIEW / REF MUTABLE` until an explicit owned-event design is accepted.
 * Preserve standalone groovebox behavior and the existing transport/MIDI owners.
 

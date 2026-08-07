@@ -23,17 +23,9 @@ static_assert(static_cast<uint8_t>(GenerativeMode::TripHop) == 6);
 static_assert(static_cast<uint8_t>(GenerativeMode::Broken) == 7);
 static_assert(static_cast<uint8_t>(GenerativeMode::Chip) == 8);
 
-static_assert(std::is_same_v<std::underlying_type_t<TextureMode>, uint8_t>);
-static_assert(static_cast<uint8_t>(TextureMode::Clean) == 0);
-static_assert(static_cast<uint8_t>(TextureMode::Dub) == 1);
-static_assert(static_cast<uint8_t>(TextureMode::LoFi) == 2);
-static_assert(static_cast<uint8_t>(TextureMode::Industrial) == 3);
-static_assert(static_cast<uint8_t>(TextureMode::Psychedelic) == 4);
-
 static_assert(std::is_same_v<GenreRecipeId, uint8_t>);
 static_assert(kBaseRecipeId == 0);
 static_assert(kGenerativeModeCount == 9);
-static_assert(kTextureModeCount == 5);
 
 int main() {
   const GenerativeParams params{};

@@ -879,14 +879,9 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
       if (v < 0) v = 0;
       if (v >= kGenerativeModeCount) v = 0;
       target_.genre.generativeMode = static_cast<uint8_t>(v);
-    } else if (lastKey_ == "tex") {
-      if (v < 0) v = 0;
-      if (v >= kTextureModeCount) v = 0;
-      target_.genre.textureMode = static_cast<uint8_t>(v);
-    } else if (lastKey_ == "amt") {
-      if (v < 0) v = 0;
-      if (v > 100) v = 100;
-      target_.genre.textureAmount = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "tex" || lastKey_ == "textureMode" ||
+               lastKey_ == "amt" || lastKey_ == "textureAmount") {
+      // Legacy TEXTURE values are accepted but intentionally ignored.
     } else if (lastKey_ == "rcp") {
       if (v < 0) v = 0;
       if (v > 255) v = 255;
@@ -1295,8 +1290,10 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
   if (path == Path::Genre) {
     if (lastKey_ == "regen") target_.genre.regenerateOnApply = value;
     else if (lastKey_ == "tempo") target_.genre.applyTempoOnApply = value;
-    else if (lastKey_ == "cur") target_.genre.curatedMode = value;
-    else if (lastKey_ == "sound") target_.genre.applySoundMacros = value;
+    else if (lastKey_ == "cur" || lastKey_ == "curated" ||
+             lastKey_ == "sound" || lastKey_ == "snd") {
+      // Legacy TEXTURE policy values are decode-only.
+    }
     return;
   }
   if (path == Path::GeneratorParams) {
@@ -2383,15 +2380,11 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
 
   ArduinoJson::JsonObject genreObj = state["genre"].to<ArduinoJson::JsonObject>();
   genreObj["gen"] = scene_->genre.generativeMode;
-  genreObj["tex"] = scene_->genre.textureMode;
-  genreObj["amt"] = scene_->genre.textureAmount;
   genreObj["rcp"] = scene_->genre.recipe;
   genreObj["mto"] = scene_->genre.morphTarget;
   genreObj["mam"] = scene_->genre.morphAmount;
   genreObj["regen"] = scene_->genre.regenerateOnApply;
   genreObj["tempo"] = scene_->genre.applyTempoOnApply;
-  genreObj["cur"] = scene_->genre.curatedMode;
-  genreObj["sound"] = scene_->genre.applySoundMacros;
 
   ArduinoJson::JsonObject genParams = root["generatorParams"].to<ArduinoJson::JsonObject>();
   serializeGeneratorParams(scene_->generatorParams, genParams);
@@ -2681,15 +2674,8 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     if (gen >= kGenerativeModeCount) gen = 0;
     loaded->genre.generativeMode = static_cast<uint8_t>(gen);
 
-    int tex = valueToInt(genreObj["tex"], loaded->genre.textureMode);
-    if (tex < 0) tex = 0;
-    if (tex >= kTextureModeCount) tex = 0;
-    loaded->genre.textureMode = static_cast<uint8_t>(tex);
-
-    int amt = valueToInt(genreObj["amt"], loaded->genre.textureAmount);
-    if (amt < 0) amt = 0;
-    if (amt > 100) amt = 100;
-    loaded->genre.textureAmount = static_cast<uint8_t>(amt);
+    // Historical tex/amt (and long-form aliases) are ignored. Concrete
+    // synth/FX state already persisted in the Scene remains authoritative.
 
     int recipe = valueToInt(genreObj["rcp"], loaded->genre.recipe);
     if (recipe < 0) recipe = 0;
@@ -2708,8 +2694,6 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
 
     loaded->genre.regenerateOnApply = genreObj["regen"].is<bool>() ? genreObj["regen"].as<bool>() : loaded->genre.regenerateOnApply;
     loaded->genre.applyTempoOnApply = genreObj["tempo"].is<bool>() ? genreObj["tempo"].as<bool>() : loaded->genre.applyTempoOnApply;
-    loaded->genre.curatedMode = genreObj["cur"].is<bool>() ? genreObj["cur"].as<bool>() : loaded->genre.curatedMode;
-    loaded->genre.applySoundMacros = genreObj["sound"].is<bool>() ? genreObj["sound"].as<bool>() : loaded->genre.applySoundMacros;
   }
 
   ArduinoJson::JsonObjectConst drumFXObj = obj["drumFX"].as<ArduinoJson::JsonObjectConst>();
