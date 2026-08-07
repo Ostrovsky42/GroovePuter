@@ -49,7 +49,6 @@ def main() -> None:
     require("if (persisted) GroovePuterState::markSceneSaveSucceeded();" in project,
             "successful MIDI import persistence must establish a clean baseline")
     for mutation in (
-        "genre.applySoundMacros",
         "led.mode",
         "led.source",
         "led.color",
@@ -60,6 +59,9 @@ def main() -> None:
         window = project[position:position + 700]
         require("markSceneMutated" in window,
                 f"Project persistent setting bypasses revision tracker: {mutation}")
+
+    require("applySoundMacros" not in project,
+            "removed Project sound-macro policy must not return")
 
     require("markSceneMutated();" in pattern,
             "step editor mutations must reach the tracker")
