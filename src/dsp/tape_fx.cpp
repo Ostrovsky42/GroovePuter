@@ -165,7 +165,10 @@ float TapeFX::process(float input) {
     writePos_ = (writePos_ + 1) & kDelayMask;
 
     // 2. WARMTH (Pink Noise + LPF)
-    if (ageAmount_ > 0) {
+    // AGE noise is signal-coupled: it colours audible material and tails, but
+    // does not create a permanent noise bed when the digital input is idle.
+    constexpr float kHalfPcmLsb = 0.5f / 32767.0f;
+    if (ageAmount_ > 0 && fabsf(output) >= kHalfPcmLsb) {
         output += generatePinkNoise() * noiseAmount_;
         output = warmthLPF_.process(output, warmthCutoffNorm_, 0.1f);
     }
