@@ -4,13 +4,15 @@ namespace ChipTuning {
 
 // Common AY-3-8910/YM2149 clock used by 1.7734 MHz systems. The host sample
 // rate is only the renderer rate; it must never be reused as the PSG clock.
-inline constexpr float kAyClockHz = 1773400.0f;
-inline constexpr int kAyMaxTonePeriod = 4095;
+// Namespace-scope constexpr values have internal linkage in C++11, so no
+// C++17 inline-variable syntax is required here.
+constexpr float kAyClockHz = 1773400.0f;
+constexpr int kAyMaxTonePeriod = 4095;
 
 // NTSC SN76489 clock used by the existing engine.
-inline constexpr float kSnClockHz = 3579545.0f;
-inline constexpr int kSnMaxToneDivider = 1023;
-inline constexpr float kSnMinimumToneHz =
+constexpr float kSnClockHz = 3579545.0f;
+constexpr int kSnMaxToneDivider = 1023;
+constexpr float kSnMinimumToneHz =
     kSnClockHz / (32.0f * static_cast<float>(kSnMaxToneDivider));
 
 inline int roundPositiveToInt(float value) {
