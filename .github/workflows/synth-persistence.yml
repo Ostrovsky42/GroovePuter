@@ -1,0 +1,53 @@
+name: Synth persistence
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  host-contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check source ownership contracts
+        run: python3 tests/test_synth_persistence_source_regressions.py
+
+      - name: Build focused Scene codec test
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-variable \
+            -Wno-unused-but-set-variable -Wno-c++20-extensions \
+            -I. -Iplatform_sdl -include platform_sdl/arduino_compat.h \
+            tests/test_scene_roundtrip.cpp \
+            scenes.cpp json_evented.cpp src/audio/pattern_paging.cpp \
+            -o build/host-tests/test_scene_roundtrip
+
+      - name: Run focused Scene codec test
+        run: build/host-tests/test_scene_roundtrip
+
+      - name: Build real swappable synth state test
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter \
+            -Wno-c++20-extensions -I. \
+            tests/test_new_synth_voices.cpp \
+            src/dsp/swappable_synth_voice.cpp \
+            src/dsp/mini_tb303.cpp src/dsp/filter.cpp src/dsp/audio_wavetables.cpp \
+            src/dsp/sid_synth_voice.cpp src/dsp/sid_synth.cpp \
+            src/dsp/ay_synth_voice.cpp src/dsp/sh101_synth_voice.cpp \
+            src/dsp/sn76489_synth_voice.cpp src/dsp/wave_morph_synth_voice.cpp \
+            -o build/host-tests/test_synth_persistence_voices
+
+      - name: Run real swappable synth state test
+        run: build/host-tests/test_synth_persistence_voices
+
+      - name: Build revision result contract
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_scene_revision_persistence_contract.cpp \
+            -o build/host-tests/test_scene_revision_persistence_contract
+
+      - name: Run revision result contract
+        run: build/host-tests/test_scene_revision_persistence_contract
