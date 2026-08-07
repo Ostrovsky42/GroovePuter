@@ -1,4 +1,8 @@
 #pragma once
+
+#ifndef GROOVEPUTER_SRC_UI_UI_CORE_H_
+#define GROOVEPUTER_SRC_UI_UI_CORE_H_
+
 #ifndef USE_RETRO_THEME
 #define USE_RETRO_THEME
 #endif
@@ -448,3 +452,5 @@ struct AudioGuard {
   // Only consider valid if BOTH lock and unlock are present (prevents deadlock)
   explicit operator bool() const { return lock != nullptr && unlock != nullptr; }
 };
+
+#endif  // GROOVEPUTER_SRC_UI_UI_CORE_H_

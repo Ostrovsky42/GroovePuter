@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import json
+import os
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -226,7 +228,6 @@ def test_atlas_recipe_catalog_and_legacy_fallbacks() -> None:
         require(f"case {runtime_id}: return GrooveboxMode::{groove}" in manager,
                 f"{name} must select {groove} macro mode")
 
-    # The original probabilistic generators remain independent fallbacks.
     legacy_recipes = (
         (1, "UK Garage"),
         (2, "Drum&Bass"),
@@ -335,7 +336,6 @@ def test_enter_applies_selected_recipe() -> None:
             "Apply footer must document Enter and M controls")
 
 
-
 def test_performance_workflow_boundaries() -> None:
     keyboard = (ROOT / "src/input/performance_keyboard.cpp").read_text(encoding="utf-8")
     header = (ROOT / "src/input/musical_event.h").read_text(encoding="utf-8")
@@ -380,6 +380,7 @@ def test_performance_settings_are_runtime_only() -> None:
             "performance scale/octave must not expand scene schema in this PR")
     require("PerformanceScale" not in storage and "octaveShift" not in storage,
             "performance settings must reset to runtime defaults after reboot")
+
 
 def test_ui_redraw_does_not_hold_audio_pause() -> None:
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
@@ -504,6 +505,49 @@ def test_project_midi_import_and_persistence_contracts() -> None:
     require("persistCurrentSceneName()" in storage,
             "existing scene selection must remain persistent")
 
+
+def test_synth_pitch_and_live_note_contracts() -> None:
+    ay = (ROOT / "src/dsp/ay_synth_voice.cpp").read_text(encoding="utf-8")
+    sn = (ROOT / "src/dsp/sn76489_synth_voice.cpp").read_text(encoding="utf-8")
+    engine_header = (ROOT / "src/dsp/miniacid_engine.h").read_text(
+        encoding="utf-8"
+    )
+
+    require('include "chip_tuning.h"' in ay and
+            "ChipTuning::quantizeAyToneFrequency(freqHz)" in ay,
+            "AY must quantize from the PSG clock helper")
+    require("sampleRate_ / (16.0f * freqHz)" not in ay,
+            "AY must not reuse host sample rate as its chip clock")
+
+    require('include "chip_tuning.h"' in sn and
+            "ChipTuning::quantizeSnToneFrequency" in sn and
+            "ChipTuning::snStackRatios" in sn,
+            "SN76489 must use the explicit low-register and stack policy")
+    require('"Oct+"' in sn,
+            "the upward octave stack must be named explicitly")
+
+    require('include "clamped_live_note_identity.h"' in engine_header and
+            "ClampedLiveNoteIdentity liveNotes_" in engine_header,
+            "live NoteOff must compare against the same clamp used by NoteOn")
+
+    build_dir = ROOT / "build" / "host-tests"
+    build_dir.mkdir(parents=True, exist_ok=True)
+    binary = build_dir / "test_chip_tuning"
+    cxx = os.environ.get("CXX", "g++")
+    subprocess.run([
+        cxx,
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        f"-I{ROOT}",
+        str(ROOT / "tests/test_chip_tuning.cpp"),
+        "-o",
+        str(binary),
+    ], check=True)
+    subprocess.run([str(binary)], check=True)
+
+
 def main() -> None:
     test_ppqn_dispatch_is_not_step_gated()
     test_all_substep_offsets_are_reachable()
@@ -524,6 +568,7 @@ def main() -> None:
     test_splash_closes_display_transaction()
     test_project_midi_import_and_persistence_contracts()
     test_scene_and_page_validation_share_one_scratch_buffer()
+    test_synth_pitch_and_live_note_contracts()
     print("source regressions: OK")
 
 

@@ -1,5 +1,8 @@
 #pragma once
 
+#ifndef GROOVEPUTER_SRC_UI_UI_INPUT_H_
+#define GROOVEPUTER_SRC_UI_UI_INPUT_H_
+
 #include "ui_core.h"
 
 // Unified input helpers for arrow-first navigation.
@@ -110,3 +113,5 @@ static inline bool isGlobalNav(const UIEvent& e) {
 }
 
 } // namespace UIInput
+
+#endif  // GROOVEPUTER_SRC_UI_UI_INPUT_H_
