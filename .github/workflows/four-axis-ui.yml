@@ -6,7 +6,7 @@ on:
       - dev
     paths:
       - 'src/dsp/atlas_runtime.*'
-      - 'src/dsp/genre_manager.cpp'
+      - 'src/dsp/genre_catalog.*'
       - 'src/dsp/genre_materializer.h'
       - 'src/dsp/genre_sparse_repair.h'
       - 'src/dsp/genre_variant_catalog.h'
@@ -14,8 +14,6 @@ on:
       - 'src/ui/axis_page_palette.h'
       - 'src/ui/pages/genre_page.*'
       - 'src/ui/pages/feel_page.*'
-      - 'src/ui/pages/generation_page.*'
-      - 'src/ui/pages/texture_page.*'
       - 'src/ui/pages/song_page.*'
       - 'src/ui/ui_input.h'
       - 'src/ui/workflow_mode.h'
@@ -34,7 +32,7 @@ on:
   pull_request:
     paths:
       - 'src/dsp/atlas_runtime.*'
-      - 'src/dsp/genre_manager.cpp'
+      - 'src/dsp/genre_catalog.*'
       - 'src/dsp/genre_materializer.h'
       - 'src/dsp/genre_sparse_repair.h'
       - 'src/dsp/genre_variant_catalog.h'
@@ -42,8 +40,6 @@ on:
       - 'src/ui/axis_page_palette.h'
       - 'src/ui/pages/genre_page.*'
       - 'src/ui/pages/feel_page.*'
-      - 'src/ui/pages/generation_page.*'
-      - 'src/ui/pages/texture_page.*'
       - 'src/ui/pages/song_page.*'
       - 'src/ui/ui_input.h'
       - 'src/ui/workflow_mode.h'
@@ -69,7 +65,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check four-axis ownership
+      - name: Check Generate ownership
         run: |
           python3 tests/test_four_axis_ui_source_regressions.py
           if test -f tests/test_axis_hardware_feedback_source_regressions.py; then
@@ -84,8 +80,6 @@ jobs:
             -o build/host-tests/four-axis/genre_page.o
           g++ ${COMMON_FLAGS} -c src/ui/pages/feel_page.cpp \
             -o build/host-tests/four-axis/feel_page.o
-          g++ ${COMMON_FLAGS} -c src/ui/pages/generation_page.cpp \
-            -o build/host-tests/four-axis/generation_page.o
 
       - name: Build and run navigation/help tests
         run: |
