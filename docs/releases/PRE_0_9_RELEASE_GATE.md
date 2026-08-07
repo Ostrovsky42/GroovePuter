@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Track the exact `dev_0.9` release candidate, distinguish code completion from automated and Cardputer ADV evidence, and prevent rejected experiments from entering 0.9.
+Track the exact 0.9 release candidate after the final correctness fixes, distinguish code completion from hardware evidence, and keep non-critical synth/refactor work out of the RC path.
 
 ## Current baseline
 
 ```text
 release branch: dev_0.9
-base SHA: 538ae24a1c88253eb0cfc1a9a671e16091e449bf
+base SHA: 0afd24fe5f4b0b2d549214abe2ed1a7eb7f3448c
 stabilization PR: #131
 stabilization branch: release/0.9-final-stabilization
 ```
@@ -17,47 +17,50 @@ The base includes:
 
 - #102 project-scoped pattern storage;
 - #125 AY/SN pitch and logical NoteOff lifecycle;
-- #130 removal of the user-facing TEXTURE page while preserving legacy Scene compatibility and redirecting persisted page ID 8 to FEEL.
+- #130 removal of the user-facing TEXTURE page and legacy page-id redirect;
+- #143 versioned synth persistence, normal Scene Load ownership, engine-native missing-patch defaults and Save/Load revision result semantics.
 
-PR #110 is a rejected experiment and is not a release input. PRs #101 and #90 remain deferred.
+PR #110 is a rejected experiment and is not a release input.
 
-## Code complete in PR #131
+## Code complete for the RC
+
+### Persistence and Scene ownership — merged in #143
+
+- Scene `synthState` schema is versioned.
+- Synth A/B persist independent stable TYPE plus normalized parameter slots `0..5`.
+- legacy TB303-shaped `synthParams` remain decode-only input and are not reserialized.
+- malformed/unknown versioned synth state fails transactionally; the current Scene is not half-loaded.
+- normal Load restores stored TYPE/patch and does not call Genre timbre/texture projection over it.
+- AY/SH101/SN76489/WAVEMORPH missing legacy patch data uses each engine's own runtime defaults.
+- Save snapshot follows the pending swappable voice during the engine crossfade, so a quick Save cannot combine the new TYPE with the old engine's parameters.
+- successful explicit Save/Load establishes the correct revision baseline; failed operations preserve dirty/current state; recovery autosave does not impersonate explicit Save.
+
+### Final stabilization — PR #131
 
 - TB303 has a separate amplitude ADSR-style lifecycle from its filter envelope.
 - NoteOff starts a bounded release and reaches silence.
 - active legato slide does not fully retrigger the amplitude envelope.
 - TB303 `Volume` controls output exactly once.
 - the optional TB303 sub component is mixed exactly once.
-- distortion enable restores a safe audible drive only when the stored drive is below the working threshold.
+- distortion enable restores a safe audible drive only when stored drive is below the working threshold.
 - FEEL persistent changes mark Scene dirty once; preset browsing remains preview-only.
 - Genre browsing remains preview-only; Apply/materialization marks one logical Scene mutation.
 - the three-page Generate workflow remains `GENRE 1/3 → FEEL 2/3 → GENERATION 3/3`.
 
-## Release blockers still open
+There are no remaining known P0/P1 code blockers owned by #131.
 
-### P0-1 — versioned synth persistence
+## Critical-path exclusions
 
-Scene persistence still stores only five generic synth fields. The release needs a backward-compatible engine-aware payload containing independent Synth A/B TYPE and normalized parameters `0..5`, plus deterministic legacy defaults and malformed-version rollback.
+- #132 GenreManager ownership refactor is post-0.9 work.
+- #142 AY articulation work is not required for the 0.9 RC.
+- #139 SID articulation is optional and may enter the RC only after a clean Cardputer ADV SID listening smoke; otherwise it remains post-0.9.
+- #134 TextureMode runtime removal is accepted before RC only if rebasing/integrating it onto the #143 persistence baseline is conflict-light and the combined legacy Scene regression stays green. Any ambiguous Scene migration or load-ownership interaction defers #134 until after 0.9.
 
-### P0-2 — loaded patch ownership
+## Persistence formats
 
-Normal Scene Load must guarantee:
-
-```text
-stored TYPE + stored parameters win
-```
-
-Genre timbre must not overwrite a restored patch as hidden post-load work.
-
-### P1-1 — neutral engine defaults
-
-AY, SH101, SN76489 and WAVEMORPH must not inherit TB303 raw defaults such as maximum normalized noise. This must be implemented together with versioned legacy decode so existing user patches are not overwritten.
-
-### P1-3 — Save/Load revision wiring
-
-FEEL and Genre mutation boundaries are covered in PR #131. The engine still must call revision success hooks only after successful explicit Save and successful Load; failed operations and recovery autosave must not clear dirty state incorrectly.
-
-PR #131 remains draft while these blockers are open.
+- pattern `.gpp` remains version 3;
+- project-scoped namespaces from #102 remain unchanged;
+- Scene synth state is version 1 and normalized; legacy synth fields are decode-only compatibility input.
 
 ## Automated gate
 
@@ -77,6 +80,7 @@ bash scripts/build_seqtrak_midi_only.sh --warnings all
 Required jobs:
 
 - Release 0.9 focused TB303/DST contracts;
+- synth persistence/load ownership focused contracts;
 - FEEL/Genre revision ownership;
 - Core host regressions;
 - SDL build;
@@ -91,6 +95,7 @@ No assertion may be deleted or weakened merely to obtain a green result.
 
 - #102 project namespace/Save As/Clear/reboot smoke;
 - all six synth engines on Synth A and B: TYPE plus every visible parameter after Save/reboot/Load;
+- normal Load preserves the saved synth patch before any explicit Genre Apply;
 - TB303 trigger, accent, slide, sustain, NoteOff, release, Volume, sub and Panic;
 - #125 AY/SN pitch and logical NoteOff checklist;
 - neutral defaults and DST listening;
@@ -98,13 +103,16 @@ No assertion may be deleted or weakened merely to obtain a green result.
 - MIDI/SEQTRAK Start/Stop/Continue/live/SMF/mute/route/Panic smoke;
 - 30-minute runtime and memory soak.
 
-Hardware checkboxes must remain unchecked until the owner records the exact flashed SHA and result.
+Hardware checkboxes remain unchecked until the exact flashed SHA and result are recorded.
 
 ## Explicit boundary
 
-Do not add or restore in this PR:
+Do not add to PR #131:
 
-- TEXTURE, Tape or Sampler UI;
+- GenreManager ownership rewrite;
+- AY articulation redesign;
+- unvalidated SID articulation;
+- risky TextureMode/Scene migration;
 - Song/Generation redesign;
 - Phrase Arranger Stage 2;
 - new genres or Atlas material;
@@ -112,18 +120,19 @@ Do not add or restore in this PR:
 - navigation framework rewrites;
 - BLE MIDI, oversampling, wavetable mipmaps or broad loudness work;
 - pattern `.gpp` format changes;
-- broad dead-code cleanup without linker/reachability proof.
+- broad dead-code cleanup.
 
 ## Acceptance checklist
 
 ### Code and automated
 
-- [ ] exact final PR head recorded;
-- [ ] P0-1 versioned synth persistence complete and backward-compatible;
-- [ ] P0-2 loaded patch ownership complete;
-- [ ] P1-1 engine-aware neutral defaults complete;
-- [ ] explicit Save/Load revision wiring complete;
-- [ ] all required host, SDL, Cardputer, DRAM, Generate and Phrase jobs pass.
+- [x] P0-1 versioned synth persistence implemented and merged via #143;
+- [x] P0-2 loaded patch ownership implemented and merged via #143;
+- [x] P1-1 engine-aware neutral defaults implemented and merged via #143;
+- [x] explicit Save/Load revision result semantics implemented and merged via #143;
+- [x] TB303 lifecycle/output and DST changes implemented in #131;
+- [ ] exact final #131 head recorded after release-scope decision;
+- [ ] all required host, SDL, Cardputer, DRAM, Generate, persistence and Phrase jobs pass on that final head.
 
 ### Hardware
 
@@ -135,4 +144,4 @@ Do not add or restore in this PR:
 - [ ] MIDI/SEQTRAK smoke passes;
 - [ ] 30-minute soak passes.
 
-Do not merge PR #131 or tag 0.9 while any release blocker remains.
+Do not merge PR #131 or tag 0.9 until the final exact-head automated gate and required hardware acceptance are recorded.
