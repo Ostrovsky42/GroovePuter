@@ -4,23 +4,34 @@
 
 ```text
 release branch: dev_0.9
-base SHA: 538ae24a1c88253eb0cfc1a9a671e16091e449bf
+base SHA: 0afd24fe5f4b0b2d549214abe2ed1a7eb7f3448c
 stabilization PR: #131
 hardware listening: PENDING
 ```
 
 The original audit remains the evidence source. This file records disposition only.
 
-## Fixed before PR #131
+## Fixed before/folded into the final stabilization baseline
 
-PR #125 is merged into `dev_0.9` and fixes:
+### PR #125 — AY/SN pitch and note lifecycle
 
 - AY PSG clock and chromatic mapping;
 - SN76489 playable-register octave folding and `Oct+`;
 - matching the original logical NoteOff after NoteOn clamp;
 - path-stable include guards required by the affected Arduino build.
 
-Hardware listening remains pending.
+### PR #143 — synth persistence and Scene Load ownership
+
+- independent Synth A/B stable TYPE plus normalized parameters `0..5` are persisted in versioned `synthState` schema v1;
+- legacy TB303-shaped `synthParams` remain decode-only input and are not emitted by new saves;
+- malformed or unknown versioned synth state rejects the Scene transaction without half-loading one voice;
+- legacy TB303 raw units keep their historical meaning;
+- legacy non-TB scenes without patch data keep engine-native runtime defaults rather than inheriting TB303 raw defaults;
+- normal Scene Load restores the saved patch and does not apply Genre timbre/texture projection over it;
+- quick Save during a synth engine crossfade snapshots the pending public voice consistently;
+- explicit Save/Load/recovery revision state follows operation success rather than function entry.
+
+The exact #143 head passed focused persistence tests, host regressions, Phrase Core, SDL, Cardputer ADV + fixed DRAM and SEQTRAK MIDI-only before merge.
 
 ## Fixed in PR #131
 
@@ -46,41 +57,26 @@ Hardware listening remains pending.
 - disabling does not alter drive;
 - Synth A and B retain independent instances.
 
-Focused coverage:
+### FEEL/Genre revision ownership
 
-```bash
-g++ -std=c++17 -Wall -Wextra -Werror -I. \
-  tests/test_tb303_release_contract.cpp \
-  src/dsp/mini_tb303.cpp src/dsp/filter.cpp \
-  src/dsp/audio_wavetables.cpp src/dsp/tube_distortion.cpp \
-  -o build/test_tb303_release_contract
-./build/test_tb303_release_contract
-```
+- browsing remains preview-only;
+- committed FEEL/Genre actions produce one logical Scene mutation;
+- explicit Save/Load success semantics are supplied by the #143 baseline.
 
-## P0 still open
+Focused coverage includes the TB303/DST release contracts, scene revision contracts, Scene codec round-trip, real swappable synth persistence and source ownership checks.
 
-### Versioned synth persistence
+## Release disposition
 
-The Scene codec still needs independent Synth A/B TYPE plus normalized parameters `0..5`, explicit version dispatch, deterministic engine-specific legacy defaults and failed-decode rollback.
+There are no remaining P0/P1 synth-persistence blockers owned by #131.
 
-Legacy TB303 raw values must not become normalized values for another engine. Legacy OPL2 remains decode-only and maps to TB303.
+Critical-path policy:
 
-### Loaded patch ownership
+- #132 GenreManager ownership refactor is deferred until after 0.9;
+- #142 AY articulation follow-up is deferred until after 0.9;
+- #139 SID articulation is optional only if a Cardputer ADV listening smoke passes cleanly;
+- #134 TextureMode runtime removal is allowed before RC only if integration with the #143 Scene migration/load contract is demonstrably low-risk; otherwise it is deferred.
 
-Normal Scene Load must guarantee:
-
-```text
-stored TYPE + stored parameters win
-```
-
-Genre timbre must not run as hidden post-load replacement. It remains valid only for explicit sound-changing actions.
-
-## Remaining P1
-
-- engine-aware neutral defaults for AY/SH101/SN/WAVEMORPH;
-- explicit Save/Load revision success wiring;
-- TB303/SID DC protection, realtime filter allocation, broad loudness and aliasing work remain deferred unless separately proven low-risk;
-- parameter-range design remains only partially mitigated by held acceleration.
+Realtime filter allocation, additional per-voice DC protection, broad loudness and aliasing work remain deferred unless a focused release blocker is demonstrated.
 
 ## Hardware checklist
 
@@ -88,8 +84,9 @@ Genre timbre must not run as hidden post-load replacement. It remains valid only
 - [ ] AY/SN pitch and logical NoteOff accepted on Cardputer ADV;
 - [ ] TYPE and parameters `0..5` survive Save/reboot/Load for every engine on A and B;
 - [ ] normal Load does not apply genre timbre over the stored patch;
+- [ ] legacy non-TB missing-patch defaults are sane;
+- [ ] failed Save/Load and recovery revision behavior is correct;
 - [ ] TB303 trigger/accent/slide/release/Volume/sub/Panic accepted;
-- [ ] neutral patches do not start with unintended maximum noise;
 - [ ] no allocation failure, watchdog reset or growing underrun count.
 
-PR #131 remains draft until the open P0 items are implemented and hardware acceptance is recorded.
+PR #131 remains the final release-candidate PR until exact-head automated gates and required hardware acceptance are recorded.
