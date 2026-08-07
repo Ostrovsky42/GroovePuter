@@ -8,8 +8,7 @@ engine = (ROOT / "src/dsp/miniacid_engine.h").read_text(encoding="utf-8")
 page = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
 
 start = source.index("void GenreSceneView::applyGenreTimbre")
-end = source.index("void GenreSceneView::applyTexture", start)
-block = source[start:end]
+block = source[start:]
 
 required = (
     "recipe() == 6 || recipe() == 7",
@@ -28,10 +27,18 @@ parameter_write = block.index("engine.set303ParameterNormalized")
 if engine_switch >= parameter_write:
     raise AssertionError("preview engines must be selected before parameter writes")
 
-texture_start = source.index("void GenreSceneView::applyTexture")
-texture = source[texture_start:]
-if texture.count('currentSynthEngineName(voice) == "TB303"') < 2:
-    raise AssertionError("texture biases must not write TB303 parameters into OPL2/SID/AY")
+for removed_texture_symbol in (
+    "TextureMode",
+    "TextureParams",
+    "kTexturePresets",
+    "applyTexture(",
+    "setTextureMode(",
+    "textureMode()",
+):
+    if removed_texture_symbol in header or removed_texture_symbol in source:
+        raise AssertionError(
+            f"removed TextureMode runtime symbol returned: {removed_texture_symbol}"
+        )
 
 for forbidden in (
     "class GenreManager",
