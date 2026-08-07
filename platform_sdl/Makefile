@@ -36,7 +36,7 @@ SOURCES := \
 	../src/dsp/sn76489_synth_voice.cpp \
 	../src/dsp/wave_morph_synth_voice.cpp \
 	../src/dsp/mode_manager.cpp \
-	../src/dsp/genre_manager.cpp \
+	../src/dsp/genre_catalog.cpp \
 	../src/dsp/audio_wavetables.cpp \
 	../src/dsp/formant_synth.cpp \
 	../src/dsp/pattern_generator.cpp \
@@ -73,7 +73,6 @@ SOURCES := \
 	../src/ui/pages/song_page.cpp \
 	../src/ui/pages/phrase_page.cpp \
 	../src/ui/pages/project_page.cpp \
-	../src/ui/pages/generation_page.cpp \
 	../src/ui/pages/genre_page.cpp \
 	../src/ui/pages/perform_page.cpp \
 	../src/ui/pages/smf_player_page.cpp \
