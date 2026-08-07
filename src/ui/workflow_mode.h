@@ -15,7 +15,7 @@ enum class WorkflowMode : uint8_t {
 };
 
 // Existing enum values are preserved for persisted UI-session compatibility.
-// Their page labels are now the fixed four-axis GENERATE addresses.
+// Texture is a legacy value and now resolves to FEEL.
 enum class Workspace : uint8_t {
     // PERFORM
     Perform = 0,
@@ -24,7 +24,7 @@ enum class Workspace : uint8_t {
     // GENERATE
     Groove,     // GENRE
     Generation,
-    Texture,
+    Texture,    // legacy persisted value -> FEEL
 
     // HUB
     Pattern,
@@ -38,7 +38,7 @@ enum class Workspace : uint8_t {
     Arrange,
     Phrase,
 
-    // SETTINGS / fourth GENERATE page
+    // SETTINGS / GENERATE
     Project,
     Feel,
 };
@@ -52,7 +52,7 @@ constexpr int kSynthBParameters = 4;
 constexpr int kDrums = 5;
 constexpr int kArrange = 6;
 constexpr int kPattern = 7;
-constexpr int kTexture = 8;
+constexpr int kTexture = 8;  // legacy persisted page id; resolves to FEEL
 constexpr int kFeel = 9;
 constexpr int kProject = 10;
 constexpr int kGeneration = 11;
@@ -106,9 +106,10 @@ inline Workspace workspaceForPage(int page) {
         case kPerform: return Workspace::Perform;
         case kPlayer: return Workspace::Player;
         case kGenre: return Workspace::Groove;
-        case kFeel: return Workspace::Feel;
+        case kFeel:
+        case kTexture:
+            return Workspace::Feel;
         case kGeneration: return Workspace::Generation;
-        case kTexture: return Workspace::Texture;
         case kPattern: return Workspace::Pattern;
         case kSynthA: return Workspace::SynthA;
         case kSynthB: return Workspace::SynthB;
@@ -127,9 +128,10 @@ inline int pageForWorkspace(Workspace workspace) {
         case Workspace::Perform: return kPerform;
         case Workspace::Player: return kPlayer;
         case Workspace::Groove: return kGenre;
-        case Workspace::Feel: return kFeel;
+        case Workspace::Feel:
+        case Workspace::Texture:
+            return kFeel;
         case Workspace::Generation: return kGeneration;
-        case Workspace::Texture: return kTexture;
         case Workspace::Pattern: return kPattern;
         case Workspace::SynthA: return kSynthA;
         case Workspace::SynthB: return kSynthB;
@@ -175,9 +177,10 @@ inline const char* pageName(int page) {
         case kPerform: return "MIDI KEYBOARD";
         case kPlayer: return "MIDI PLAYER";
         case kGenre: return "GENRE";
-        case kFeel: return "FEEL";
+        case kFeel:
+        case kTexture:
+            return "FEEL";
         case kGeneration: return "GENERATION";
-        case kTexture: return "TEXTURE";
         case kPattern: return "OVERVIEW";
         case kSynthA: return "SYNTH A";
         case kSynthB: return "SYNTH B";
@@ -194,7 +197,7 @@ inline const char* pageName(int page) {
 inline int pageCountForMode(WorkflowMode mode) {
     switch (mode) {
         case WorkflowMode::Perform: return 2;
-        case WorkflowMode::Generate: return 4;
+        case WorkflowMode::Generate: return 3;
         case WorkflowMode::Hub: return 6;
         case WorkflowMode::Song: return 2;
         case WorkflowMode::Settings: return 1;
@@ -207,7 +210,7 @@ inline int pageAt(WorkflowMode mode, int index) {
         kPerform, kPlayer,
     };
     static constexpr int kGeneratePages[] = {
-        kGenre, kFeel, kGeneration, kTexture,
+        kGenre, kFeel, kGeneration,
     };
     static constexpr int kHubPages[] = {
         kPattern, kSynthA, kSynthB, kDrums,
@@ -235,6 +238,7 @@ inline int pageAt(WorkflowMode mode, int index) {
 }
 
 inline int pageIndexInMode(int page) {
+    if (page == kTexture) page = kFeel;
     const WorkflowMode mode = modeForPage(page);
     const int count = pageCountForMode(mode);
     for (int index = 0; index < count; ++index) {
@@ -283,7 +287,6 @@ inline Workspace nextWorkspace(Workspace workspace, int direction) {
 
 inline bool allowsPerformanceKeyboard(int page) {
     return page == kPerform ||
-           page == kSynthAParameters ||
-           page == kTexture;
+           page == kSynthAParameters;
 }
 }  // namespace WorkflowPages

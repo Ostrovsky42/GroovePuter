@@ -66,14 +66,17 @@ int main() {
     assert(sectionContains(WorkflowPages::kPattern, "SEQUENCER HUB"));
     assert(sectionContains(WorkflowPages::kPattern, "saved per-file route"));
 
-    assert(sectionContains(WorkflowPages::kGenre, "GENRE 1/4"));
+    assert(sectionContains(WorkflowPages::kGenre, "GENRE 1/3"));
     assert(sectionContains(WorkflowPages::kGenre, "No texture or feel changes"));
-    assert(sectionContains(WorkflowPages::kFeel, "FEEL 2/4"));
+    assert(sectionContains(WorkflowPages::kFeel, "FEEL 2/3"));
     assert(sectionContains(WorkflowPages::kFeel, "No notes, roles or sound changes"));
-    assert(sectionContains(WorkflowPages::kGeneration, "GENERATION 3/4"));
+    assert(sectionContains(WorkflowPages::kGeneration, "GENERATION 3/3"));
     assert(sectionContains(WorkflowPages::kGeneration, "No scoring or retry loop"));
-    assert(sectionContains(WorkflowPages::kTexture, "TEXTURE 4/4"));
-    assert(sectionContains(WorkflowPages::kTexture, "No note or rhythm changes"));
+
+    // Persisted page id 8 remains readable but resolves to FEEL content.
+    assert(std::strcmp(WorkflowPages::pageName(WorkflowPages::kTexture), "FEEL") == 0);
+    assert(sectionContains(WorkflowPages::kTexture, "FEEL 2/3"));
+    assert(!sectionContains(WorkflowPages::kTexture, "TEXTURE"));
 
     std::cout << "global help content tests passed\n";
     return 0;

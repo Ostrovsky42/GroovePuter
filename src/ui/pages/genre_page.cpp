@@ -176,7 +176,7 @@ void GenrePage::draw(IGfx& gfx) {
   const int x = Layout::COL_1;
   const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
   AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0),
-                      "GENRE 1/4", "CORRIDOR / VOCABULARY",
+                      "GENRE 1/3", "CORRIDOR / VOCABULARY",
                       axisColor, palette);
   drawRecipeOverlay(gfx, recipeIndex_);
 
@@ -291,7 +291,7 @@ bool GenrePage::handleEvent(UIEvent& event) {
       std::tolower(static_cast<unsigned char>(event.key)));
 
   // ENTER: apply the current genre/texture/recipe selection.
-  // Texture is intentionally not changed by the four-axis GENRE page.
+  // Texture is intentionally not changed by the GENRE page.
   if (event.key == '\n' || event.key == '\r') {
     morphAccelerator.reset();
     applyCurrent();

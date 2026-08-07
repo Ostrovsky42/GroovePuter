@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_SRC_AUDIO_PATTERN_PAGING_H
+#define GROOVEPUTER_SRC_AUDIO_PATTERN_PAGING_H
 
 #include "../../scenes.h"
 #include <cstdint>
@@ -51,3 +52,5 @@ private:
     static std::string tempPath(int pageIndex);
     static std::string backupPath(int pageIndex);
 };
+
+#endif  // GROOVEPUTER_SRC_AUDIO_PATTERN_PAGING_H
