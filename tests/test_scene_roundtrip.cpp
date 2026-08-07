@@ -22,6 +22,21 @@ void populateNonDefaultScene(SceneManager& manager) {
   manager.setActiveSongSlot(1);
   manager.setTrackVolume(static_cast<int>(VoiceId::SynthA), 0.37f);
 
+  PersistedSynthPatch synthA;
+  synthA.engineName = "SH101";
+  synthA.paramCount = 6;
+  PersistedSynthPatch synthB;
+  synthB.engineName = "WAVEMORPH";
+  synthB.paramCount = 6;
+  for (int i = 0; i < PersistedSynthPatch::kMaxParams; ++i) {
+    synthA.params[i] = 0.10f + static_cast<float>(i) * 0.11f;
+    synthB.params[i] = 0.85f - static_cast<float>(i) * 0.09f;
+  }
+  manager.setSynthPatch(0, synthA);
+  manager.setSynthPatch(1, synthB);
+  manager.setSynthEngineName(0, synthA.engineName);
+  manager.setSynthEngineName(1, synthB.engineName);
+
   Scene& scene = manager.currentScene();
   scene.feel.gridSteps = 32;
   scene.feel.timebase = 2;
@@ -123,6 +138,17 @@ void verifyRoundTrip(const SceneManager& manager) {
   assert(manager.activeSongSlot() == 1);
   assert(near(manager.getTrackVolume(static_cast<int>(VoiceId::SynthA)),
               0.37f));
+  assert(manager.hasVersionedSynthState());
+  const PersistedSynthPatch& synthA = manager.getSynthPatch(0);
+  const PersistedSynthPatch& synthB = manager.getSynthPatch(1);
+  assert(synthA.engineName == "SH101");
+  assert(synthB.engineName == "WAVEMORPH");
+  assert(synthA.paramCount == 6);
+  assert(synthB.paramCount == 6);
+  for (int i = 0; i < PersistedSynthPatch::kMaxParams; ++i) {
+    assert(near(synthA.params[i], 0.10f + static_cast<float>(i) * 0.11f));
+    assert(near(synthB.params[i], 0.85f - static_cast<float>(i) * 0.09f));
+  }
 
   assert(scene.feel.gridSteps == 32);
   assert(scene.feel.timebase == 2);
@@ -220,9 +246,24 @@ int main() {
   assert(json.find("\"swing\":63") != std::string::npos);
   assert(json.find("\"mask\":853") != std::string::npos);
   assert(json.find("\"phraseCore\":[") != std::string::npos);
+  assert(json.find("\"synthState\":{\"version\":1") != std::string::npos);
+  assert(json.find("\"synthParams\"") == std::string::npos);
 
+  const std::string stableJson = json;
   destroyRoundTripFields(manager);
   assert(manager.loadScene(json));
+  verifyRoundTrip(manager);
+  const std::string secondJson = manager.dumpCurrentScene();
+  assert(secondJson == stableJson);
+
+  // Unknown version is transactional: current state must remain intact.
+  std::string malformed = stableJson;
+  const std::string version1 = "\"synthState\":{\"version\":1";
+  const size_t versionPos = malformed.find(version1);
+  assert(versionPos != std::string::npos);
+  malformed.replace(versionPos, version1.size(),
+                    "\"synthState\":{\"version\":99");
+  assert(!manager.loadScene(malformed));
   verifyRoundTrip(manager);
   return 0;
 }

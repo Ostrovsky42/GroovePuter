@@ -31,7 +31,7 @@ Legacy `synthEngines` and legacy TB303-shaped `synthParams` remain decode-only c
 
 When a legacy Scene does not contain parameters for the selected engine, initialize that engine from its own runtime `Parameter` defaults. Do not reinterpret TB303 raw values as normalized values for another engine.
 
-Malformed versioned synth state must fail the Scene transaction instead of partially applying TYPE or parameters.
+Malformed or unknown versioned synth state must never partially apply TYPE or parameters. The complete versioned block is accepted atomically; when it is present but invalid this implementation fails the Scene transaction, leaving the current Scene/runtime untouched. Legacy/default fallback applies only when the versioned block is absent.
 
 ## P0 — Scene Load ownership
 
@@ -104,7 +104,10 @@ Tests must prove with real Scene codec and real swappable synth voices:
 11. failed Save preserves dirty state;
 12. successful Load establishes a clean baseline;
 13. failed Load preserves current state and dirty baseline;
-14. recovery/autosave leaves user dirty state unchanged.
+14. recovery/autosave leaves user dirty state unchanged;
+15. Save -> Load -> Save is representation-stable for the versioned synth block.
+
+#134 boundary: this PR does not delete `TextureMode` or rewrite legacy `tex/amt`; #134 must not introduce synth persistence. After both land, run a combined legacy Scene regression before RC.
 
 ## Required validation
 
