@@ -22,6 +22,7 @@ jobs:
       - name: Apply deterministic migration
         run: |
           sed -i 's/)ndoc =/)\nndoc =/' tools/apply_synth_persistence_143.py
+          sed -i 's/if count != 1:/if count < 1:/' tools/apply_synth_persistence_143.py
           python3 tools/apply_synth_persistence_143.py
           python3 tests/test_synth_persistence_source_regressions.py
       - name: Commit implementation
