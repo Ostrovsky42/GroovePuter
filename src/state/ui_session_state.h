@@ -30,7 +30,7 @@ constexpr int kSynthBParameters = 4;
 constexpr int kDrums = 5;
 constexpr int kArrange = 6;
 constexpr int kPattern = 7;
-constexpr int kTexture = 8;
+constexpr int kTexture = 8;  // legacy persisted page id; resolves to FEEL
 constexpr int kFeel = 9;
 constexpr int kProject = 10;
 constexpr int kGeneration = 11;
@@ -38,6 +38,10 @@ constexpr int kPerform = 12;
 constexpr int kPlayer = 13;
 constexpr int kPhrase = 14;
 }  // namespace SessionPages
+
+inline int normalizeLegacyUiPage(int page) {
+    return page == SessionPages::kTexture ? SessionPages::kFeel : page;
+}
 
 struct UiSessionState {
     int8_t activePage{static_cast<int8_t>(SessionPages::kGenre)};
@@ -66,13 +70,13 @@ inline bool validUiPage(int page) {
 }
 
 inline SessionWorkflow sessionWorkflowForPage(int page) {
+    page = normalizeLegacyUiPage(page);
     if (page == SessionPages::kPerform || page == SessionPages::kPlayer) {
         return SessionWorkflow::Perform;
     }
     if (page == SessionPages::kGenre ||
         page == SessionPages::kFeel ||
-        page == SessionPages::kGeneration ||
-        page == SessionPages::kTexture) {
+        page == SessionPages::kGeneration) {
         return SessionWorkflow::Generate;
     }
     if (page == SessionPages::kPattern || page == SessionPages::kSynthA ||
@@ -100,6 +104,7 @@ inline int defaultPageForWorkflow(SessionWorkflow workflow) {
 }
 
 inline bool pageBelongsToWorkflow(int page, SessionWorkflow workflow) {
+    page = normalizeLegacyUiPage(page);
     return validUiPage(page) && sessionWorkflowForPage(page) == workflow;
 }
 
@@ -120,16 +125,18 @@ inline UiSessionState defaultUiSessionState() {
 inline void sanitizeUiSessionState(UiSessionState& state) {
     for (int i = 0; i < kWorkflowSessionCount; ++i) {
         const auto workflow = static_cast<SessionWorkflow>(i);
-        const int page = state.lastPageByWorkflow[i];
+        int page = normalizeLegacyUiPage(state.lastPageByWorkflow[i]);
         if (!pageBelongsToWorkflow(page, workflow)) {
-            state.lastPageByWorkflow[i] =
-                static_cast<int8_t>(defaultPageForWorkflow(workflow));
+            page = defaultPageForWorkflow(workflow);
         }
+        state.lastPageByWorkflow[i] = static_cast<int8_t>(page);
     }
 
-    if (!validUiPage(state.activePage)) {
-        state.activePage = static_cast<int8_t>(SessionPages::kGenre);
+    int activePage = normalizeLegacyUiPage(state.activePage);
+    if (!validUiPage(activePage)) {
+        activePage = SessionPages::kGenre;
     }
+    state.activePage = static_cast<int8_t>(activePage);
 
     state.visualStyle = sanitizeVisualStyle(state.visualStyle);
     state.waveformOverlayEnabled = state.waveformOverlayEnabled ? 1 : 0;
@@ -138,6 +145,7 @@ inline void sanitizeUiSessionState(UiSessionState& state) {
 }
 
 inline void rememberWorkflowPage(UiSessionState& state, int page) {
+    page = normalizeLegacyUiPage(page);
     if (!validUiPage(page)) return;
     const SessionWorkflow workflow = sessionWorkflowForPage(page);
     state.lastPageByWorkflow[workflowSessionIndex(workflow)] =
@@ -147,7 +155,8 @@ inline void rememberWorkflowPage(UiSessionState& state, int page) {
 
 inline int rememberedWorkflowPage(const UiSessionState& state,
                                   SessionWorkflow workflow) {
-    const int page = state.lastPageByWorkflow[workflowSessionIndex(workflow)];
+    const int page = normalizeLegacyUiPage(
+        state.lastPageByWorkflow[workflowSessionIndex(workflow)]);
     return pageBelongsToWorkflow(page, workflow)
         ? page
         : defaultPageForWorkflow(workflow);
@@ -162,7 +171,7 @@ inline int rememberedWorkflowPage(const UiSessionState& state,
 inline int pageCountForWorkflow(SessionWorkflow workflow) {
     switch (workflow) {
         case SessionWorkflow::Perform: return 2;
-        case SessionWorkflow::Generate: return 4;
+        case SessionWorkflow::Generate: return 3;
         case SessionWorkflow::Hub: return 6;
         case SessionWorkflow::Song: return 2;
         case SessionWorkflow::Settings: return 1;
@@ -178,7 +187,6 @@ inline int pageAt(SessionWorkflow workflow, int index) {
         SessionPages::kGenre,
         SessionPages::kFeel,
         SessionPages::kGeneration,
-        SessionPages::kTexture,
     };
     static constexpr int kHubPages[] = {
         SessionPages::kPattern, SessionPages::kSynthA, SessionPages::kSynthB,
@@ -207,6 +215,7 @@ inline int pageAt(SessionWorkflow workflow, int index) {
 }
 
 inline int pageIndexInWorkflow(int page) {
+    page = normalizeLegacyUiPage(page);
     const SessionWorkflow workflow = sessionWorkflowForPage(page);
     const int count = pageCountForWorkflow(workflow);
     for (int index = 0; index < count; ++index) {
@@ -226,6 +235,7 @@ inline int workflowNavigationTarget(const UiSessionState& state,
                                     int currentPage,
                                     int direction,
                                     bool workflowModifier) {
+    currentPage = normalizeLegacyUiPage(currentPage);
     const SessionWorkflow workflow = sessionWorkflowForPage(currentPage);
     if (workflowModifier) {
         return rememberedWorkflowPage(
@@ -237,6 +247,7 @@ inline int workflowNavigationTarget(const UiSessionState& state,
 inline int rememberedAdjacentWorkflowPage(const UiSessionState& state,
                                           int currentPage,
                                           int direction) {
+    currentPage = normalizeLegacyUiPage(currentPage);
     return rememberedWorkflowPage(
         state, nextWorkflow(sessionWorkflowForPage(currentPage), direction));
 }
