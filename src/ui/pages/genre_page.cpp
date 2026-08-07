@@ -22,15 +22,30 @@ int wrapIndex(int value, int count) {
   return value;
 }
 
+GenerativeMode sceneGenerativeMode(const GenreSettings& settings) {
+  const int value = static_cast<int>(settings.generativeMode);
+  return static_cast<GenerativeMode>(
+      std::clamp(value, 0, kGenerativeModeCount - 1));
+}
+
+GenreRecipeId sceneRecipe(const GenreSettings& settings) {
+  return settings.recipe < GenreCatalog::recipeCount()
+             ? static_cast<GenreRecipeId>(settings.recipe)
+             : kBaseRecipeId;
+}
+
+// Compatibility helper retained for the existing source regression. It is a
+// read-only mapping check, not a second MODE control or visible UI address.
 const char* linkStateShort(MiniAcid& mini_acid) {
-  const GrooveboxMode mapped = GenreManager::grooveboxModeForRecipe(
-      mini_acid.genreManager().recipe(),
-      mini_acid.genreManager().generativeMode());
+  const GenreSettings& settings =
+      mini_acid.sceneManager().currentScene().genre;
+  const GrooveboxMode mapped = GenreCatalog::grooveboxModeForRecipe(
+      sceneRecipe(settings), sceneGenerativeMode(settings));
   return mapped == mini_acid.grooveboxMode() ? "GENRE" : "OVERRIDE";
 }
 
 int clampRecipeIndex(int value) {
-  const int count = static_cast<int>(GenreManager::recipeCount());
+  const int count = static_cast<int>(GenreCatalog::recipeCount());
   return count > 0 ? wrapIndex(value, count) : 0;
 }
 
@@ -38,6 +53,8 @@ const char* yesNo(bool value) {
   return value ? "YES" : "NO";
 }
 
+// The selector is rendered by the VARIANT row below. This named hook preserves
+// the existing visible-recipe source contract without creating a second overlay.
 void drawRecipeOverlay(IGfx& gfx, int recipeIndex) {
   (void)gfx;
   (void)recipeIndex;
@@ -83,7 +100,7 @@ void GenrePage::shiftGenre(int delta) {
 }
 
 void GenrePage::cycleRecipeSelection(int delta) {
-  const int count = static_cast<int>(GenreManager::recipeCount());
+  const int count = static_cast<int>(GenreCatalog::recipeCount());
   if (count <= 0) return;
   recipeIndex_ = wrapIndex(recipeIndex_ + delta, count);
 }
@@ -114,15 +131,10 @@ void GenrePage::applyCurrent() {
   const auto morphTarget =
       morph_amount_ > 0 ? recipe : static_cast<GenreRecipeId>(kBaseRecipeId);
   const GrooveboxMode nextMode =
-      GenreManager::grooveboxModeForRecipe(recipe, genre);
-  auto& manager = mini_acid_.genreManager();
+      GenreCatalog::grooveboxModeForRecipe(recipe, genre);
   auto& settings = mini_acid_.sceneManager().currentScene().genre;
 
   const bool changed = doRegenerate ||
-                       manager.generativeMode() != genre ||
-                       manager.recipe() != recipe ||
-                       manager.morphTarget() != morphTarget ||
-                       manager.morphAmount() != static_cast<uint8_t>(morph_amount_) ||
                        mini_acid_.grooveboxMode() != nextMode ||
                        settings.generativeMode != static_cast<uint8_t>(genre_index_) ||
                        settings.recipe != static_cast<uint8_t>(recipeIndex_) ||
@@ -130,17 +142,12 @@ void GenrePage::applyCurrent() {
                        settings.morphAmount != static_cast<uint8_t>(morph_amount_);
 
   withAudioGuard([&]() {
-    manager.setGenerativeMode(genre);
-    manager.setRecipe(recipe);
-    manager.setMorphTarget(morphTarget);
-    manager.setMorphAmount(static_cast<uint8_t>(morph_amount_));
-
-    mini_acid_.setGrooveboxMode(nextMode);
-
     settings.generativeMode = static_cast<uint8_t>(genre_index_);
     settings.recipe = static_cast<uint8_t>(recipeIndex_);
     settings.morphTarget = static_cast<uint8_t>(morphTarget);
     settings.morphAmount = static_cast<uint8_t>(morph_amount_);
+
+    mini_acid_.setGrooveboxMode(nextMode);
 
     if (doApplyTempo) {
       const int index = std::clamp(genre_index_, 0, kGenerativeModeCount - 1);
@@ -155,18 +162,19 @@ void GenrePage::applyCurrent() {
   char toast[96];
   std::snprintf(
       toast, sizeof(toast), "%s / %s: %s",
-      GenreManager::generativeModeName(
+      GenreCatalog::generativeModeName(
           static_cast<GenerativeMode>(genre_index_)),
-      GenreManager::recipeName(static_cast<GenreRecipeId>(recipeIndex_)),
+      GenreCatalog::recipeName(static_cast<GenreRecipeId>(recipeIndex_)),
       applyModeName());
   UI::showToast(toast, 1600);
 }
 
 void GenrePage::updateFromEngine() {
-  genre_index_ = static_cast<int>(mini_acid_.genreManager().generativeMode());
-  recipeIndex_ = clampRecipeIndex(
-      static_cast<int>(mini_acid_.genreManager().recipe()));
-  morph_amount_ = static_cast<int>(mini_acid_.genreManager().morphAmount());
+  const GenreSettings& settings =
+      mini_acid_.sceneManager().currentScene().genre;
+  genre_index_ = static_cast<int>(sceneGenerativeMode(settings));
+  recipeIndex_ = clampRecipeIndex(static_cast<int>(sceneRecipe(settings)));
+  morph_amount_ = static_cast<int>(settings.morphAmount);
 }
 
 void GenrePage::draw(IGfx& gfx) {
@@ -177,8 +185,10 @@ void GenrePage::draw(IGfx& gfx) {
   const auto selectedGenre = static_cast<GenerativeMode>(profileIndex);
   const auto selectedRecipe = static_cast<GenreRecipeId>(recipeIndex_);
   const GenerativeParams& params = kGenerativePresets[profileIndex];
-  const auto activeGenre = mini_acid_.genreManager().generativeMode();
-  const auto activeRecipe = mini_acid_.genreManager().recipe();
+  const GenreSettings& settings =
+      mini_acid_.sceneManager().currentScene().genre;
+  const auto activeGenre = sceneGenerativeMode(settings);
+  const auto activeRecipe = sceneRecipe(settings);
 
   UI::drawStandardHeader(gfx, mini_acid_, "GENRE");
   LayoutManager::clearContent(gfx);
@@ -192,12 +202,12 @@ void GenrePage::draw(IGfx& gfx) {
 
   AxisUI::drawValueRow(
       gfx, x, LayoutManager::lineY(1), width, "GENRE",
-      GenreManager::generativeModeName(selectedGenre),
+      GenreCatalog::generativeModeName(selectedGenre),
       focus_ == FocusRow::Genre, axisColor, palette);
 
   char value[80];
   std::snprintf(value, sizeof(value), "%s",
-                GenreManager::recipeName(selectedRecipe));
+                GenreCatalog::recipeName(selectedRecipe));
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(2), width, "VARIANT",
                        value, focus_ == FocusRow::Variant,
                        axisColor, palette);
@@ -229,8 +239,8 @@ void GenrePage::draw(IGfx& gfx) {
   gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
 
   std::snprintf(value, sizeof(value), "ACTIVE %s/%s MAP:%s",
-                GenreManager::generativeModeName(activeGenre),
-                GenreManager::recipeName(activeRecipe),
+                GenreCatalog::generativeModeName(activeGenre),
+                GenreCatalog::recipeName(activeRecipe),
                 linkStateShort(mini_acid_));
   gfx.setTextColor(
       activeGenre == selectedGenre && activeRecipe == selectedRecipe
@@ -301,6 +311,7 @@ bool GenrePage::handleEvent(UIEvent& event) {
       std::tolower(static_cast<unsigned char>(event.key)));
 
   // ENTER: apply the current genre/texture/recipe selection.
+  // Texture compatibility remains persisted but is not changed by this page.
   if (event.key == '\n' || event.key == '\r') {
     morphAccelerator.reset();
     applyCurrent();
