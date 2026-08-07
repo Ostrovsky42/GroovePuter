@@ -77,6 +77,55 @@ struct HubMidiProjection {
     }
 };
 
+struct HubMidiSoloState {
+    uint32_t generation{0};
+    uint16_t track{0};
+    uint64_t restoreMask{0};
+    bool active{false};
+};
+
+HubMidiSoloState& hubMidiSoloState() {
+    static HubMidiSoloState state{};
+    return state;
+}
+
+void syncHubMidiSoloGeneration(uint32_t generation) {
+    HubMidiSoloState& solo = hubMidiSoloState();
+    if (solo.active && solo.generation != generation) {
+        solo = HubMidiSoloState{};
+    }
+}
+
+void clearHubMidiSoloTracking() {
+    hubMidiSoloState() = HubMidiSoloState{};
+}
+
+bool restoreHubMidiSoloBeforeManualMute(uint32_t generation) {
+    HubMidiSoloState& solo = hubMidiSoloState();
+    if (!solo.active) return true;
+    if (solo.generation != generation) {
+        solo = HubMidiSoloState{};
+        return true;
+    }
+    const uint64_t restoreMask = solo.restoreMask;
+    if (!smfTrackMuteState().replaceMutedMask(restoreMask, generation)) {
+        return false;
+    }
+    solo = HubMidiSoloState{};
+    return true;
+}
+
+bool selectedTrackIsSolo(uint32_t generation, uint16_t track) {
+    const HubMidiSoloState& solo = hubMidiSoloState();
+    return solo.active && solo.generation == generation && solo.track == track;
+}
+
+uint64_t allSmfTracksMask(uint16_t trackCount) {
+    if (trackCount == 0u) return 0u;
+    if (trackCount >= 64u) return ~uint64_t{0};
+    return (uint64_t{1} << trackCount) - 1u;
+}
+
 HubMidiProjection captureHubMidiProjection() {
     HubMidiProjection projection{};
     projection.layers = smfStructuralInspectorState().snapshot();
@@ -318,8 +367,16 @@ void drawArrangementRow(IGfx& gfx,
             (static_cast<int>(segment) * gridWidth) / kArrangementSegments;
         const int x1 = gridX +
             (static_cast<int>(segment + 1u) * gridWidth) / kArrangementSegments;
-        const int cellWidth = std::max(1, x1 - x0 - kCellGap);
-        gfx.fillRect(x0, y0, cellWidth, rowHeight,
+        const int columnWidth = std::max(1, x1 - x0);
+        const int maxCellWidth = std::max(1, columnWidth - kCellGap);
+        const int maxCellHeight = std::max(1, rowHeight - 4);
+        const int cellSize = std::min(maxCellWidth, maxCellHeight);
+        const int cellX = x0 + std::max(0, (columnWidth - cellSize) / 2);
+        const int cellY = y0 + std::max(0, (rowHeight - cellSize) / 2);
+        gfx.fillRect(cellX,
+                     cellY,
+                     cellSize,
+                     cellSize,
                      activityColor(layer.form[segment], isMuted));
     }
 }
@@ -346,6 +403,7 @@ void drawOverlayBands(IGfx& gfx,
                       int8_t destinationChannel,
                       bool routeEdit,
                       int8_t routeDraft,
+                      bool soloActive,
                       bool partial) {
     const int width = gfx.width();
     const int height = gfx.height();
@@ -397,7 +455,7 @@ void drawOverlayBands(IGfx& gfx,
                           static_cast<unsigned>(selectedLayer.noteCount),
                           range);
         }
-        hints = "<> RTE H/ESC";
+        hints = soloActive ? "S UNSOLO <>RTE" : "S SOLO <>RTE";
     }
     gfx.setTextColor(kBodyText);
     gfx.drawText(3, bottomY + 2, line);
@@ -481,6 +539,7 @@ bool SequencerHubPage::handleEvent(UIEvent& event) {
 void SequencerHubPage::syncMidiSessionSelection() {
     const HubMidiProjection projection = captureHubMidiProjection();
     if (!projection.ready()) return;
+    syncHubMidiSoloGeneration(projection.generation);
 
     if (midiGeneration_ != projection.generation) {
         midiGeneration_ = projection.generation;
@@ -529,6 +588,9 @@ bool SequencerHubPage::toggleMidiLayer(uint8_t layerIndex) {
         layerIndex >= projection.layers.layerCount) {
         return false;
     }
+
+    syncHubMidiSoloGeneration(projection.generation);
+    if (!restoreHubMidiSoloBeforeManualMute(projection.generation)) return false;
 
     SmfTrackMuteState& state = smfTrackMuteState();
     const uint16_t track = projection.layers.layers[layerIndex].trackIndex;
@@ -598,6 +660,7 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
         UI::showToast("LOAD MIDI IN PLAYER", 800);
         return true;
     }
+    syncHubMidiSoloGeneration(projection.generation);
     if (midiGeneration_ != projection.generation) syncMidiSessionSelection();
     if (projection.layers.layerCount == 0u) return true;
 
@@ -655,6 +718,52 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
         return true;
     }
 
+    if (event.key == 's' || event.key == 'S') {
+        if (selectedTrack >= projection.mute.trackCount || selectedTrack >= 64u) {
+            UI::showToast("MIDI SOLO UNAVAILABLE", 800);
+            return true;
+        }
+
+        SmfTrackMuteState& muteState = smfTrackMuteState();
+        HubMidiSoloState& solo = hubMidiSoloState();
+        if (solo.active && solo.generation == projection.generation &&
+            solo.track == selectedTrack) {
+            const uint64_t restoreMask = solo.restoreMask;
+            if (muteState.replaceMutedMask(restoreMask, projection.generation)) {
+                clearHubMidiSoloTracking();
+                UI::showToast("MIDI SOLO OFF", 700);
+            } else {
+                clearHubMidiSoloTracking();
+                UI::showToast("MIDI LAYERS: SYNCING", 800);
+            }
+            return true;
+        }
+
+        const uint64_t restoreMask =
+            solo.active && solo.generation == projection.generation
+                ? solo.restoreMask
+                : projection.mute.mutedMask;
+        uint64_t soloMask = allSmfTracksMask(projection.mute.trackCount);
+        soloMask &= ~(uint64_t{1} << selectedTrack);
+        if (!muteState.replaceMutedMask(soloMask, projection.generation)) {
+            clearHubMidiSoloTracking();
+            UI::showToast("MIDI LAYERS: SYNCING", 800);
+            return true;
+        }
+
+        solo.generation = projection.generation;
+        solo.track = selectedTrack;
+        solo.restoreMask = restoreMask;
+        solo.active = true;
+        char toast[32]{};
+        std::snprintf(toast,
+                      sizeof(toast),
+                      "MIDI SOLO TRK %02u",
+                      static_cast<unsigned>(selectedTrack + 1u));
+        UI::showToast(toast, 700);
+        return true;
+    }
+
     int routeMove = 0;
     if (event.scancode == GROOVEPUTER_LEFT) routeMove = -1;
     else if (event.scancode == GROOVEPUTER_RIGHT) routeMove = 1;
@@ -690,6 +799,7 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
     }
 
     if (event.key == 'a' || event.key == 'A') {
+        clearHubMidiSoloTracking();
         if (smfTrackMuteState().clear(projection.generation)) {
             UI::showToast("ALL MIDI TRACKS ON", 800);
         } else {
@@ -759,6 +869,7 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
         return;
     }
 
+    syncHubMidiSoloGeneration(projection.generation);
     if (midiGeneration_ != projection.generation) syncMidiSessionSelection();
     if (projection.layers.layerCount == 0u) {
         drawProjectionMessage(gfx, "NO AUDIBLE LAYERS", "H/ESC RETURN");
@@ -822,5 +933,7 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
                      projection.routes.destinationFor(selectedLayer.trackIndex),
                      midiRouteEdit_,
                      midiRouteDraft_,
+                     selectedTrackIsSolo(projection.generation,
+                                         selectedLayer.trackIndex),
                      projection.layers.partial);
 }

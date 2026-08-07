@@ -3,12 +3,17 @@
 #include "../amber_widgets.h"
 #include "../retro_ui_theme.h"
 #include "../amber_ui_theme.h"
+#include <algorithm>
 #include <cstdint>
+#include <cstdio>
 
 namespace retro = RetroWidgets;
 namespace amber = AmberWidgets;
 
 namespace {
+constexpr int kLaneLabelWidth = 34;
+constexpr int kStepHeaderHeight = 8;
+
 uint8_t effectiveVelocity(const DrumStep& step) {
   if (!step.hit) return 0;
   if (step.velocity > 0) return step.velocity;
@@ -41,14 +46,41 @@ bool stepHasAccent(const DrumPatternSet& patternSet, int step) {
 }
 
 const char* drumVoiceLabel(const MiniAcid& miniAcid, int voice) {
+  // Keep the established eight-voice data order. These are semantic display
+  // names only; no drum routing, pattern storage, or keyboard mapping changes.
   static const char* const kDefault[NUM_DRUM_VOICES] =
-      {"BD", "SD", "CH", "OH", "MT", "HT", "RS", "CP"};
+      {"KICK", "SNARE", "HAT1", "HAT2", "PERC1", "PERC2", "RIM", "CLAP"};
   if (voice < 0 || voice >= NUM_DRUM_VOICES) return "--";
   if (miniAcid.currentDrumEngineName() == "606") {
-    if (voice == 6) return "CY";
+    if (voice == 6) return "CYM";
     if (voice == 7) return "--";
   }
   return kDefault[voice];
+}
+
+void drawStepNumbers(IGfx& gfx,
+                     int gridX,
+                     int cellWidth,
+                     int y,
+                     IGfxColor color) {
+  gfx.setTextColor(color);
+  for (int step = 0; step < SEQ_STEPS; ++step) {
+    char label[4]{};
+    std::snprintf(label, sizeof(label), "%d", step + 1);
+    const int textW = gfx.textWidth(label);
+    const int x = gridX + step * cellWidth + std::max(0, (cellWidth - textW) / 2);
+    gfx.drawText(x, y, label);
+  }
+}
+
+void drawAccentLabel(IGfx& gfx,
+                     int x,
+                     int accentY,
+                     int accentHeight,
+                     IGfxColor color) {
+  gfx.setTextColor(color);
+  const int y = accentY + std::max(0, (accentHeight - gfx.fontHeight()) / 2);
+  gfx.drawText(x, y, "ACC");
 }
 }  // namespace
 
@@ -62,6 +94,7 @@ bool DrumSequencerGridComponent::handleEvent(UIEvent& ui_event) {
 
   GridLayout layout{};
   if (!computeLayout(layout)) return false;
+  if (ui_event.x < layout.grid_x || ui_event.x >= layout.grid_right) return false;
   int step = (ui_event.x - layout.grid_x) / layout.cell_w;
   if (step < 0 || step >= SEQ_STEPS) {
     return false;
@@ -100,6 +133,8 @@ void DrumSequencerGridComponent::draw(IGfx& gfx) {
 
 void DrumSequencerGridComponent::drawMinimalStyle(IGfx& gfx, const GridLayout& layout) {
   const DrumPatternSet& patternSet = mini_acid_.sceneManager().getCurrentDrumPattern();
+  drawStepNumbers(gfx, layout.grid_x, layout.cell_w, layout.bounds_y, COLOR_LABEL);
+  drawAccentLabel(gfx, layout.bounds_x, layout.accent_y, layout.accent_h, COLOR_LABEL);
   for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
     int labelStripeH = layout.stripe_h;
     if (labelStripeH < 3) labelStripeH = 3;
@@ -166,6 +201,16 @@ void DrumSequencerGridComponent::drawMinimalStyle(IGfx& gfx, const GridLayout& l
 
 void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayout& layout) {
       const DrumPatternSet& patternSet = mini_acid_.sceneManager().getCurrentDrumPattern();
+    drawStepNumbers(gfx,
+                    layout.grid_x,
+                    layout.cell_w,
+                    layout.bounds_y,
+                    IGfxColor(RetroTheme::TEXT_SECONDARY));
+    drawAccentLabel(gfx,
+                    layout.bounds_x,
+                    layout.accent_y,
+                    layout.accent_h,
+                    IGfxColor(RetroTheme::TEXT_SECONDARY));
     for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
         int ly = layout.grid_y + v * layout.stripe_h + (layout.stripe_h - gfx.fontHeight()) / 2;
         gfx.setTextColor(IGfxColor(RetroTheme::TEXT_SECONDARY));
@@ -221,6 +266,16 @@ void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayo
 
 void DrumSequencerGridComponent::drawAmberStyle(IGfx& gfx, const GridLayout& layout) {
       const DrumPatternSet& patternSet = mini_acid_.sceneManager().getCurrentDrumPattern();
+    drawStepNumbers(gfx,
+                    layout.grid_x,
+                    layout.cell_w,
+                    layout.bounds_y,
+                    IGfxColor(AmberTheme::TEXT_SECONDARY));
+    drawAccentLabel(gfx,
+                    layout.bounds_x,
+                    layout.accent_y,
+                    layout.accent_h,
+                    IGfxColor(AmberTheme::TEXT_SECONDARY));
     for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
         int ly = layout.grid_y + v * layout.stripe_h + (layout.stripe_h - gfx.fontHeight()) / 2;
         gfx.setTextColor(IGfxColor(AmberTheme::TEXT_SECONDARY));
@@ -283,26 +338,31 @@ bool DrumSequencerGridComponent::computeLayout(GridLayout& layout) const {
   layout.bounds_w = bounds.w;
   layout.bounds_h = bounds.h;
 
-  layout.cell_w = bounds.w / SEQ_STEPS;
+  const int labelWidth = std::min(kLaneLabelWidth,
+                                  std::max(0, bounds.w - SEQ_STEPS));
+  const int availableW = std::max(1, bounds.w - labelWidth);
+  layout.cell_w = availableW / SEQ_STEPS;
   if (layout.cell_w < 1) layout.cell_w = 1;
 
-  layout.accent_h = 6; 
+  layout.accent_h = 6;
   layout.accent_gap = 2;
-  
-  layout.grid_x = bounds.x;
-  int available_h = bounds.h - (layout.accent_h + layout.accent_gap);
+
+  layout.grid_x = bounds.x + labelWidth;
+  const int available_h = std::max(
+      1,
+      bounds.h - kStepHeaderHeight - (layout.accent_h + layout.accent_gap));
   layout.stripe_h = available_h / NUM_DRUM_VOICES;
   if (layout.stripe_h < 1) layout.stripe_h = 1;
 
-  layout.accent_y = bounds.y;
-  layout.grid_y = bounds.y + layout.accent_h + layout.accent_gap;
-  
+  layout.accent_y = bounds.y + kStepHeaderHeight;
+  layout.grid_y = layout.accent_y + layout.accent_h + layout.accent_gap;
+
   layout.grid_w = layout.cell_w * SEQ_STEPS;
   layout.grid_h = layout.stripe_h * NUM_DRUM_VOICES;
-  
+
   layout.grid_right = layout.grid_x + layout.grid_w;
   layout.grid_bottom = layout.grid_y + layout.grid_h;
-  
+
   layout.accent_bottom = layout.accent_y + layout.accent_h;
 
   return true;
