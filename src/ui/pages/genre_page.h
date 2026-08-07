@@ -46,7 +46,6 @@ class GenrePage : public IPage {
   void withAudioGuard(F&& fn) {
     if (audio_guard_) audio_guard_(std::forward<F>(fn));
     else fn();
-    GroovePuterState::markSceneMutated();
   }
 
   MiniAcid& mini_acid_;
