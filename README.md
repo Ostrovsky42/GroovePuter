@@ -258,7 +258,7 @@ Reduce Tape/delay intensity and monitor `[PERF]`. `underruns` must not grow cont
 
 * Read [`PLAN.md`](PLAN.md) before proposing a feature lane.
 * Keep PRs narrow and testable.
-* Preserve **GENRE != FEEL != GENERATION != TEXTURE**.
+* Preserve **GENRE != FEEL != GENERATION**.
 * Preserve `REFERENCE VIEW / REF MUTABLE` until an explicit owned-event design is accepted.
 * Preserve standalone groovebox behavior and the existing transport/MIDI owners.
 
