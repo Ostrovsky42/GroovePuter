@@ -124,6 +124,27 @@ Song pattern references and pattern content are distinct.
 
 Generation is copy-on-write. It never silently overwrites a pattern referenced by another Song cell. If no safe slot is available, `NO EMPTY PATTERN SLOTS` is shown and Scene data is unchanged.
 
+### Pattern matrix navigation
+
+Pattern identity is one stable three-dimensional address:
+
+```text
+PAGE 1..16 x BANK A/B x SLOT 1..8 = 256 pattern addresses
+```
+
+The address is written as `page + bank + slot`, for example `1A1`, `2A2`, or `16B8`. PAGE, BANK, and SLOT are independent coordinates:
+
+```text
+1A1 --page 2--> 2A1
+2A1 --slot 2--> 2A2
+2A2 --bank B--> 2B2
+2B2 --page 3--> 3B2
+```
+
+In Song, `Ctrl+1..8` selects pattern pages 1..8 and `Ctrl+Fn+1..8` selects pattern pages 9..16. `Alt+[` / `Alt+]` remains the sequential previous/next pattern-page path. `Q..I` changes only SLOT and uses the current PAGE plus the current bank of the target track, so selecting slot 2 while editing page 2 produces `2A2`, never `1A2`.
+
+Synth A/B note-editor screens print the same composite identity directly in the note/pattern header, for example `2A2 TB303` or `16B8 SID`; the global status chrome must agree (`S-A 2A2`, `S-B 16B8`). Both displays derive the address from the current pattern page, current bank, and local slot rather than a flattened global pattern number.
+
 ### MIDI Player and HUB MIDI
 
 The realtime SMF workflow includes:
