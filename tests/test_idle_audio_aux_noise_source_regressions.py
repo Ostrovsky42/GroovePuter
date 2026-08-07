@@ -23,9 +23,14 @@ assert "GPIO21" in hardware
 assert "kPowerAmplifierEnablePin" in sketch
 
 # Tape AGE should colour existing material/tails, not generate a permanent
-# standalone noise bed when its input has reached digital silence.
+# standalone noise bed when its input has reached digital silence. The warmth
+# filter itself must still process zero so old state decays rather than freezes.
 assert "AGE noise is signal-coupled" in tape
-assert "ageAmount_ > 0 && fabsf(output) >= kHalfPcmLsb" in tape
+assert "if (ageAmount_ > 0)" in tape
+assert "if (fabsf(output) >= kHalfPcmLsb)" in tape
+assert "output += generatePinkNoise() * noiseAmount_;" in tape
+assert "output = warmthLPF_.process(output, warmthCutoffNorm_, 0.1f);" in tape
+assert "Keep the LPF running on zero" in tape
 assert "does not create a permanent noise bed" in tape
 
 # The very last Cardputer output stage may collapse only +/-1 LSB to zero.
