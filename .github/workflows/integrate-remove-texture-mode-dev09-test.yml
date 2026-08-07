@@ -1,0 +1,37 @@
+name: Integrate TextureMode removal into dev_0.9_test
+
+on:
+  push:
+    branches:
+      - integration/remove-texture-mode-dev09-test
+    paths:
+      - 'scripts/integrate_remove_texture_mode_dev09_test.py'
+      - '.github/workflows/integrate-remove-texture-mode-dev09-test.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: integration/remove-texture-mode-dev09-test
+          fetch-depth: 0
+      - name: Apply integration
+        run: python3 scripts/integrate_remove_texture_mode_dev09_test.py
+      - name: Run focused source gate
+        run: python3 tests/test_remove_texture_mode_runtime.py
+      - name: Remove one-shot integration helpers
+        run: |
+          rm scripts/integrate_remove_texture_mode_dev09_test.py
+          rm .github/workflows/integrate-remove-texture-mode-dev09-test.yml
+      - name: Commit integration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'test integration: remove TextureMode runtime model'
+          git push origin HEAD:integration/remove-texture-mode-dev09-test
