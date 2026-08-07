@@ -516,3 +516,5 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -o "${BUILD_DIR}/test_song_pattern_materializer"
 
 "${BUILD_DIR}/test_song_pattern_materializer"
+
+python3 tests/test_remove_texture_mode_runtime.py

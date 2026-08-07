@@ -25,15 +25,14 @@ Page-local commands have priority over global fallbacks.
 
 ## 1. Core concept
 
-GroovePuter separates four responsibilities:
+GroovePuter separates three GENERATE responsibilities:
 
 * `GENRE`: musical language and constraints;
 * `GENERATOR`: creation or mutation of notes and drum hits;
 * `FEEL`: timing of existing material;
-* `TEXTURE`: sound coloration and effects.
 
 ```text
-GENRE != FEEL != GENERATOR != TEXTURE
+GENRE != FEEL != GENERATOR
 ```
 
 ## 2. Sound engines
@@ -51,14 +50,14 @@ OPL2 is not selectable. Its legacy persisted value remains decode-only and is no
 
 ## 3. Main pages
 
-* `Genre`: style, texture, preset, and apply policy.
+* `Genre`: style, variant, morph, and apply policy.
 * `Pattern Edit A/B`: note, accent, slide, probability, and selection editing.
 * `Synth Params A/B`: select and edit the current synth engine.
 * `Drum Sequencer`: drum grid and selection editing.
 * `Song`: two arrangements (`A/B`), split compare, live mix, generation, copy/paste, markers, reverse, and loop.
 * `Sequencer Hub`: compact pattern overview; HUB MIDI appears when entered from a loaded MIDI Player session.
-* `Feel/Texture`: timing and sound macros.
-* `Generator`: generative parameters.
+* `Feel`: timing and velocity feel.
+* `Generation`: bounded materialization into Song.
 * `Groove Lab`: mode/flavor and corridor preview.
 * `Project`: Scene storage, MIDI import, and settings.
 * `Tape`: loop/FX performance page.
@@ -193,6 +192,8 @@ The UI session stores:
 MIDI track-route profiles are persistent but separate from UI session state and Scene Save/Load. They are matched by normalized path, file size, physical-track count, and route-relevant semantic fingerprint.
 
 The global theme shortcut cycles `CARBON ↔ CYBER`. `AMBER` remains only for legacy compatibility and specialized old page code; it is not part of the normal global theme cycle.
+
+Sound coloration is not a separate persisted axis. Synth, Tape, delay, distortion and other FX parameters are saved by their owning controls. Historical TEXTURE fields are accepted on load but ignored and are not written again.
 
 Scene Save/Load is separate from UI session persistence. After successful Save, the status-chrome dirty `*` clears. A successful persistent Scene mutation adds `*`.
 

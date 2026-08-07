@@ -47,7 +47,7 @@ Pages inside each workflow:
 
 ```text
 PERFORM:  MIDI KEYBOARD -> MIDI PLAYER
-GENERATE: GENRE -> FEEL -> GENERATION -> TEXTURE
+GENERATE: GENRE -> FEEL -> GENERATION
 HUB:      OVERVIEW -> SYNTH A -> SYNTH B -> DRUMS -> SYNTH A SOUND -> SYNTH B SOUND
 SONG:     SONG -> PHRASE CORE
 SETTINGS: PROJECT / SETUP
@@ -82,7 +82,6 @@ project transport timeline and use the existing event router and MIDI dispatcher
 | `Enter` | Apply profile or materialize according to the selected policy |
 | `M` | Cycle `PROFILE ONLY`, `MATERIALIZE`, `MATERIALIZE+BPM` |
 
-GENRE owns musical corridor and vocabulary. It does not own FEEL or TEXTURE.
 
 ## FEEL 2/4
 
@@ -108,7 +107,6 @@ apply. Digits remain available to the global mute fallback; they are not FEEL ho
 Target browsing is UI-only. Song position changes only when materialization succeeds.
 Phrase length is owned by Phrase Core, not by this page.
 
-## TEXTURE 4/4
 
 | Key | Action |
 |---|---|
@@ -116,7 +114,6 @@ Phrase length is owned by Phrase Core, not by this page.
 | `Left/Right` | Adjust texture mode, amount, or explicit flavor link |
 | `Enter` / `Space` | Apply texture |
 
-TEXTURE changes sound surface only. It does not own note, rhythm, FEEL, or phrase form.
 
 ## SYNTH A / SYNTH B PATTERN
 

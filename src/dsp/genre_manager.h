@@ -3,11 +3,10 @@
 #include <stdint.h>
 #include <cstdio>
 #include "src/dsp/mini_dsp_params.h"
-#include "src/dsp/tape_defs.h"
 
 // ============================================================================
-// TWO-AXIS GENRE SYSTEM
-// Generative Mode × Texture Mode = 20 genre combinations
+// GENRE GENERATION SYSTEM
+// Musical generation/profile selection only. Sound FX live in their own state.
 // ============================================================================
 
 // === AXIS 1: GENERATIVE MODE (how patterns are created) ===
@@ -23,17 +22,7 @@ enum class GenerativeMode : uint8_t {
     Chip = 8        // Retro console style, quantized and tight
 };
 
-// === AXIS 2: TEXTURE MODE (how sound is processed) ===
-enum class TextureMode : uint8_t {
-    Clean = 0,     // Transparent, bright
-    Dub = 1,       // Space, delay, warmth
-    LoFi = 2,      // Vintage, soft, dark
-    Industrial = 3, // Harsh, bright, mechanical
-    Psychedelic = 4 // Wide, animated, bright
-};
-
 static constexpr int kGenerativeModeCount = 9;
-static constexpr int kTextureModeCount = 5;
 using GenreRecipeId = uint8_t;
 static constexpr GenreRecipeId kBaseRecipeId = 0;
 
@@ -97,26 +86,6 @@ struct GrooveRecipe {
     bool         preferDownbeats = true;
 };
 
-// === TEXTURE PARAMETERS ===
-struct TextureParams {
-    // Tape FX
-    TapeMacro tapeMacro;
-    
-    // Filter bias (added to current cutoff/res)
-    float filterCutoffBias;   // -200 to +200 Hz
-    float filterResonanceBias; // -0.2 to +0.2
-    
-    // Delay
-    bool delayEnabled;
-    float delayBeats;         // delay time in beats (BPM-synced)
-    float delayFeedback;      // 0-1
-    float delayMix;           // 0-1
-    
-    // Master EQ
-    float bassBoostDB;        // -6 to +6
-    float trebleBoostDB;      // -6 to +6
-};
-
 // === GENRE TIMBRE (base synthesis parameters, no FX) ===
 struct GenreTimbre {
     float osc;        // 0..1 (0.0=Saw, 1.0=Square)
@@ -140,12 +109,10 @@ struct GenreBehavior {
 
 // === PRESET TABLES (defined in genre_manager.cpp) ===
 extern const GenerativeParams kGenerativePresets[kGenerativeModeCount];
-extern const TextureParams kTexturePresets[kTextureModeCount];
 
 // === GENRE STATE ===
 struct GenreState {
     GenerativeMode generative = GenerativeMode::Acid;
-    TextureMode texture = TextureMode::Clean;
     GenreRecipeId recipe = 0;      // 0 = base, no subgenre recipe override
     GenreRecipeId morphTarget = 0; // 0 = none
     uint8_t morphAmount = 0;       // 0..255
@@ -157,9 +124,7 @@ struct GenreState {
             "Acid", "Minimal", "Techno", "Electro", "Rave",
             "Reggae", "TripHop", "Broken", "Chip"
         };
-        static const char* const texNames[] = {"", "Dub ", "LoFi ", "Industrial ", "Psy "};
-        snprintf(cachedName_, sizeof(cachedName_), "%s%s", 
-                 texNames[static_cast<int>(texture)],
+        snprintf(cachedName_, sizeof(cachedName_), "%s",
                  genNames[static_cast<int>(generative)]);
     }
     
@@ -184,11 +149,6 @@ public:
         state_.updateCachedName();
         cachedDirty_ = true;
     }
-    void setTextureMode(TextureMode mode) { 
-        state_.texture = mode; 
-        state_.updateCachedName();
-        cachedDirty_ = true;
-    }
     void setRecipe(GenreRecipeId recipe) {
         state_.recipe = recipe;
         cachedDirty_ = true;
@@ -210,12 +170,6 @@ public:
         cachedDirty_ = true;
     }
     
-    void cycleTexture(int direction = 1) {
-        int next = (static_cast<int>(state_.texture) + direction + kTextureModeCount) % kTextureModeCount;
-        state_.texture = static_cast<TextureMode>(next);
-        state_.updateCachedName();
-        cachedDirty_ = true;
-    }
     void queueRecipe(GenreRecipeId recipe) {
         pendingRecipe_ = recipe;
         pendingRecipeDirty_ = true;
@@ -247,7 +201,6 @@ public:
     
     // Getters
     GenerativeMode generativeMode() const { return state_.generative; }
-    TextureMode textureMode() const { return state_.texture; }
     GenreRecipeId recipe() const { return state_.recipe; }
     GenreRecipeId morphTarget() const { return state_.morphTarget; }
     uint8_t morphAmount() const { return state_.morphAmount; }
@@ -268,9 +221,6 @@ public:
     // Optional drum override from recipe (nullptr => fallback to kDrumTemplates)
     const DrumGenreTemplate* drumTemplateOverride() const;
     
-    const TextureParams& getTextureParams() const {
-        return kTexturePresets[static_cast<int>(state_.texture)];
-    }
     
     // Get structural behavior (stepMask, motif, scale)
     GenreBehavior getBehavior() const;
@@ -284,10 +234,6 @@ public:
         return names[static_cast<int>(mode)];
     }
     
-    static const char* textureModeName(TextureMode mode) {
-        static const char* const names[] = {"Clean", "Dub", "LoFi", "Industrial", "Psychedelic"};
-        return names[static_cast<int>(mode)];
-    }
     static const char* recipeName(GenreRecipeId id);
     static uint8_t recipeCount();
     static GrooveboxMode grooveboxModeForRecipe(GenreRecipeId id, GenerativeMode fallbackMode);
@@ -295,30 +241,12 @@ public:
     // Canonical bridge between 9 genres and 5 groovebox macro modes.
     static GrooveboxMode grooveboxModeForGenerative(GenerativeMode mode);
 
-    // Curated compatibility helpers
-    static bool isTextureAllowed(GenerativeMode genre, TextureMode texture);
-    static TextureMode firstAllowedTexture(GenerativeMode genre);
-    static TextureMode nextAllowedTexture(GenerativeMode genre, TextureMode current, int direction = 1);
 
     
-    // Apply texture to engine (implemented in cpp)
-    void applyTexture(MiniAcid& engine);
     
     // Apply genre timbre (base synthesis params) to engine
     void applyGenreTimbre(MiniAcid& engine);
     
-    // Reset bias tracking (call on engine reset or scene load)
-    void resetTextureBiasTracking() {
-        lastAppliedCutoffBias_ = 0;
-        lastAppliedResBias_ = 0;
-    }
-    
-    // Sync baseline to current texture WITHOUT applying delta
-    // Use after loading scene params to mark current texture as "already applied"
-    void syncTextureBiasBaselineFromCurrentState() {
-        lastAppliedCutoffBias_ = computeCutoffBiasSteps();
-        lastAppliedResBias_ = computeResBiasSteps();
-    }
     
 private:
     GenreState state_;
@@ -331,20 +259,6 @@ private:
     mutable GenerativeParams cachedGenerativeParams_{};
     mutable const DrumGenreTemplate* cachedDrumOverride_ = nullptr;
     
-    // Track last applied filter bias for delta calculation (idempotent)
-    int lastAppliedCutoffBias_ = 0;
-    int lastAppliedResBias_ = 0;
-    
-    // Compute bias steps from current texture params
-    int computeCutoffBiasSteps() const {
-        const TextureParams& p = getTextureParams();
-        return (int)(p.filterCutoffBias / 5.0f);
-    }
-    
-    int computeResBiasSteps() const {
-        const TextureParams& p = getTextureParams();
-        return (int)(p.filterResonanceBias * 40.0f);
-    }
 
     void ensureCompiled_() const;
 };
@@ -352,7 +266,6 @@ private:
 // === F-KEY PRESET COMBINATIONS ===
 struct GenrePreset {
     GenerativeMode generative;
-    TextureMode texture;
     const char* name;
 };
 

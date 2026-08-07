@@ -462,10 +462,6 @@ void MiniAcid::reset() {
   patternModeDrumPatternIndex_ = 0;
   patternModeSynthPatternIndex_[0] = 0;
   patternModeSynthPatternIndex_[1] = 0;
-  // NOW reset bias tracking (after all base params are set)
-  genreManager_.resetTextureBiasTracking();
-  // Apply texture to bring engine into consistent state with current genre
-  genreManager_.applyTexture(*this);
   
   // Reset Retrig States
   retrigA_ = {};
@@ -2509,8 +2505,6 @@ void MiniAcid::randomizeDrumPatternChaos() {
 }
 
 void MiniAcid::regeneratePatternsWithGenre() {
-  // NOTE: applyTexture is NOT called here - it's applied separately by UI on texture change
-  // This prevents double-application which would cause delta-bias drift
   syncGrooveModeToGenre();
 
   AtlasRuntimeMetadata atlasMetadata{};
@@ -2763,9 +2757,6 @@ void MiniAcid::applySceneStateFromManager() {
   if (playing) publishPatternAllNotesOff_();
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: Start");
   
-  // Reset bias tracking since scene overwrites all params
-  genreManager_.resetTextureBiasTracking();
-  
   modeManager_.setModeLocal(sceneManager_.getMode());
   modeManager_.setFlavorLocal(sceneManager_.getGrooveFlavor());
   syncModeToVoices();
@@ -2909,10 +2900,9 @@ void MiniAcid::applySceneStateFromManager() {
   }
   
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: applyGenreTimbre...");
-  // Restore genre state from scene before applying timbre/texture
+  // Restore genre state before applying the existing genre timbre behavior.
   const auto& gs = sceneManager_.currentScene().genre;
   genreManager_.setGenerativeMode(static_cast<GenerativeMode>(gs.generativeMode));
-  genreManager_.setTextureMode(static_cast<TextureMode>(gs.textureMode));
   genreManager_.setRecipe(gs.recipe);
   genreManager_.setMorphTarget(gs.morphTarget);
   genreManager_.setMorphAmount(gs.morphAmount);
@@ -2921,13 +2911,8 @@ void MiniAcid::applySceneStateFromManager() {
   // 1. Enforce Genre Timbre BASE (overwrites scene params to ensure genre identity)
   genreManager_.applyGenreTimbre(*this);
   
-  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: resetTextureBiasTracking...");
-  // 2. Reset bias tracking so subsequent texture application is fresh delta from new base
-  genreManager_.resetTextureBiasTracking();
-  
-  LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: applyTexture...");
-  // 3. Apply texture (delta bias + FX)
-  genreManager_.applyTexture(*this);
+  // Legacy TEXTURE metadata is intentionally not reapplied. Persisted synth,
+  // Tape, delay and distortion state remains authoritative during scene load.
 
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: applyFeelTiming...");
   applyFeelTimingFromScene_();
@@ -2996,7 +2981,6 @@ void MiniAcid::syncSceneStateToManager() {
   // Save master volume to scene
   sceneManager_.currentScene().masterVolume = params[static_cast<int>(MiniAcidParamId::MainVolume)].value();
   sceneManager_.currentScene().genre.generativeMode = static_cast<uint8_t>(genreManager_.generativeMode());
-  sceneManager_.currentScene().genre.textureMode = static_cast<uint8_t>(genreManager_.textureMode());
   sceneManager_.currentScene().genre.recipe = static_cast<uint8_t>(genreManager_.recipe());
   sceneManager_.currentScene().genre.morphTarget = static_cast<uint8_t>(genreManager_.morphTarget());
   sceneManager_.currentScene().genre.morphAmount = genreManager_.morphAmount();

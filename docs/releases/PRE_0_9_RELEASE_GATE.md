@@ -255,3 +255,21 @@ Capture engine, note, parameter values, scene name, save/reload steps, and seria
 - [ ] 30-minute runtime soak passes without crash, watchdog, allocation failure, or monotonic memory loss.
 
 Only after every applicable item is checked should `dev` be tagged as the 0.9 release candidate.
+
+
+## TextureMode runtime migration
+
+Automated gate:
+
+- `TextureMode`, texture presets and runtime projection APIs are absent;
+- legacy texture metadata is decode-only and never re-serialized;
+- Scene load does not re-apply a texture preset over persisted synth/Tape/delay/distortion state;
+- GENERATE remains `GENRE -> FEEL -> GENERATION`;
+- host, SDL, Cardputer ADV, fixed-DRAM and SEQTRAK MIDI-only checks must be green on the exact PR head.
+
+Hardware gate before merge/release:
+
+- [ ] load a pre-migration Scene containing historical TEXTURE metadata;
+- [ ] confirm concrete synth/Tape/delay/distortion settings are preserved after load/save;
+- [ ] compare the old project before/after and confirm no material sound regression;
+- [ ] confirm page id 8 redirects to FEEL and normal navigation exposes only three GENERATE pages.

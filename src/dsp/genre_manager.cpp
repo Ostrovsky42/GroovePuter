@@ -38,38 +38,21 @@ const GenerativeParams kGenerativePresets[kGenerativeModeCount] = {
     { 8, 12, 48, 72,  0.02f, 0.15f, 0.38f,  0.0f, 0.0f,  96, 122,  true, true, 0.40f, 0.02f, 0.06f,  false, true, true, 0.12f,  0.02f, false, 4 }
 };
 
-// TextureParams fields in order:
-// tapeMacro (TapeMacro), filterCutoffBias, filterResonanceBias,
-// delayEnabled, delayBeats, delayFeedback, delayMix,
-// bassBoostDB, trebleBoostDB
-
-const TextureParams kTexturePresets[kTextureModeCount] = {
-    // CLEAN - Transparent, bright
-    { {3, 5, 8, 85, 0},  0, 0,  false, 0, 0, 0,  0, 0 },
-    // DUB - Space, delay, warmth
-    { {10, 15, 10, 68, 0},  -100, 0,  true, 0.75f, 0.5f, 0.50f,  2, -2 },
-    // LOFI - Vintage, soft, dark
-    { {15, 20, 12, 60, 0},  -150, -0.1f,  true, 0.5f, 0.3f, 0.15f,  3, -4 },
-    // INDUSTRIAL - Harsh, bright, mechanical
-    { {5, 30, 20, 75, 0},  100, 0.15f,  true, 0.25f, 0.2f, 0.1f,  1, 3 },
-    // PSYCHEDELIC - Wider movement, brighter top, long tails
-    { {18, 35, 22, 78, 1},  120, 0.10f,  true, 0.75f, 0.62f, 0.42f,  2, 4 }
-};
 
 // F-key preset combinations
 const GenrePreset kGenrePresets[8] = {
-    { GenerativeMode::Acid, TextureMode::Clean, "Classic Acid" },       // F1
-    { GenerativeMode::Outrun, TextureMode::Clean, "Outrun Lead" },      // F2
-    { GenerativeMode::Darksynth, TextureMode::Clean, "Darksynth Bass" },// F3
-    { GenerativeMode::Outrun, TextureMode::Dub, "Synthwave" },          // F4
-    { GenerativeMode::Electro, TextureMode::Industrial, "EBM" },        // F5
-    { GenerativeMode::Rave, TextureMode::Clean, "Rave Acid" },          // F6
-    { GenerativeMode::Darksynth, TextureMode::Industrial, "Hotline" },  // F7
-    { GenerativeMode::Electro, TextureMode::Clean, "Detroit" }          // F8
+    { GenerativeMode::Acid, "Classic Acid" },       // F1
+    { GenerativeMode::Outrun, "Outrun Lead" },      // F2
+    { GenerativeMode::Darksynth, "Darksynth Bass" },// F3
+    { GenerativeMode::Outrun, "Synthwave" },          // F4
+    { GenerativeMode::Electro, "EBM" },        // F5
+    { GenerativeMode::Rave, "Rave Acid" },          // F6
+    { GenerativeMode::Darksynth, "Hotline" },  // F7
+    { GenerativeMode::Electro, "Detroit" }          // F8
 };
 
 // ============================================================================
-// TEXTURE APPLICATION
+// GENRE COMPILATION / TIMBRE
 // ============================================================================
 
 static float clamp01(float x) { return x < 0.0f ? 0.0f : (x > 1.0f ? 1.0f : x); }
@@ -79,19 +62,6 @@ static int lerpi(int a, int b, float t) {
 }
 
 namespace {
-// Bitmask per GenerativeMode: bit N means TextureMode N is allowed.
-// 0=Clean 1=Dub 2=LoFi 3=Industrial 4=Psychedelic
-constexpr uint8_t kAllowedTextureMask[kGenerativeModeCount] = {
-    0b11111, // Acid: Clean, Dub, LoFi, Industrial, Psy
-    0b00111, // Outrun/Minimal: Clean, Dub, LoFi
-    0b11111, // Darksynth/Techno: Clean, Dub, LoFi, Industrial, Psy
-    0b11011, // Electro: Clean, Dub, Industrial, Psy
-    0b11001, // Rave: Clean, Industrial, Psy
-    0b00111, // Reggae: Clean, Dub, LoFi
-    0b00111, // TripHop: Clean, Dub, LoFi
-    0b11111, // Broken: Clean, Dub, LoFi, Industrial, Psy
-    0b10101  // Chip: Clean, LoFi, Psy
-};
 
 struct RecipeOverride {
     int minNotes = -1;
@@ -247,13 +217,7 @@ void GenreManager::cycleRecipe(int direction) {
     cachedDirty_ = true;
 }
 
-bool GenreManager::isTextureAllowed(GenerativeMode genre, TextureMode texture) {
-    const int g = static_cast<int>(genre);
-    const int t = static_cast<int>(texture);
-    if (g < 0 || g >= kGenerativeModeCount) return false;
-    if (t < 0 || t >= kTextureModeCount) return false;
-    return (kAllowedTextureMask[g] & (1u << t)) != 0;
-}
+
 
 GrooveboxMode GenreManager::grooveboxModeForGenerative(GenerativeMode mode) {
     switch (mode) {
@@ -289,24 +253,9 @@ GrooveboxMode GenreManager::grooveboxModeForRecipe(GenreRecipeId id, GenerativeM
     return grooveboxModeForGenerative(fallbackMode);
 }
 
-TextureMode GenreManager::firstAllowedTexture(GenerativeMode genre) {
-    for (int t = 0; t < kTextureModeCount; ++t) {
-        TextureMode mode = static_cast<TextureMode>(t);
-        if (isTextureAllowed(genre, mode)) return mode;
-    }
-    return TextureMode::Clean;
-}
 
-TextureMode GenreManager::nextAllowedTexture(GenerativeMode genre, TextureMode current, int direction) {
-    if (direction == 0) return current;
-    int start = static_cast<int>(current);
-    for (int i = 0; i < kTextureModeCount; ++i) {
-        start = (start + direction + kTextureModeCount) % kTextureModeCount;
-        TextureMode mode = static_cast<TextureMode>(start);
-        if (isTextureAllowed(genre, mode)) return mode;
-    }
-    return firstAllowedTexture(genre);
-}
+
+
 
 void GenreManager::applyGenreTimbre(MiniAcid& engine) {
     // Atlas recipes carry musical events, not verified device preset IDs.
@@ -330,7 +279,7 @@ void GenreManager::applyGenreTimbre(MiniAcid& engine) {
         // preview voices retain their own engine defaults.
         if (engine.currentSynthEngineName(v) != "TB303") continue;
 
-        // Apply base synthesis parameters (BEFORE texture bias)
+        // Apply base synthesis parameters.
         // Oscillator uses normalized index mapping
         engine.set303ParameterNormalized(TB303ParamId::Oscillator, t.osc, v);
         
@@ -379,64 +328,6 @@ void GenreManager::applyGenreTimbre(MiniAcid& engine) {
     }
 }
 
-
-void GenreManager::applyTexture(MiniAcid& engine) {
-    const TextureParams& params = getTextureParams();
-    const float amount = clamp01(engine.sceneManager().currentScene().genre.textureAmount / 100.0f);
-    
-    // Apply Tape FX macro
-    TapeState& tape = engine.sceneManager().currentScene().tape;
-    TapeMacro macro = params.tapeMacro;
-    macro.wow = static_cast<uint8_t>(macro.wow * amount);
-    macro.age = static_cast<uint8_t>(macro.age * amount);
-    macro.sat = static_cast<uint8_t>(macro.sat * amount);
-    macro.crush = static_cast<uint8_t>(macro.crush * amount);
-    const int neutralTone = 85;
-    macro.tone = static_cast<uint8_t>(neutralTone + static_cast<int>((static_cast<int>(params.tapeMacro.tone) - neutralTone) * amount));
-    tape.macro = macro;
-    const bool tapeOn = textureMode() != TextureMode::Clean && amount > 0.01f;
-    tape.fxEnabled = tapeOn;
-    engine.sceneManager().currentScene().feel.tapeEnabled = tapeOn;
-    
-    // Apply delay settings (using TempoDelay)
-    // Apply delay settings (using TempoDelay) to both voices
-    for (int i = 0; i < 2; i++) {
-        auto& d = engine.tempoDelay(i);
-        const bool delayOn = params.delayEnabled && amount > 0.01f;
-        d.setEnabled(delayOn);
-        if (delayOn) {
-            d.setBeats(params.delayBeats);
-            d.setFeedback(params.delayFeedback * amount);
-            d.setMix(params.delayMix * amount);
-        }
-    }
-    
-    // Apply filter bias using DELTA to prevent drift on repeated calls
-    // We store last applied bias and only apply the difference
-    int newCutoffBias = static_cast<int>((params.filterCutoffBias * amount) / 5.0f);
-    int newResBias = static_cast<int>((params.filterResonanceBias * amount) * 40.0f);
-    
-    int cutoffDelta = newCutoffBias - lastAppliedCutoffBias_;
-    int resDelta = newResBias - lastAppliedResBias_;
-    
-    if (cutoffDelta != 0) {
-        for (int voice = 0; voice < 2; ++voice) {
-            if (engine.currentSynthEngineName(voice) == "TB303") {
-                engine.adjust303Parameter(TB303ParamId::Cutoff, cutoffDelta, voice);
-            }
-        }
-        lastAppliedCutoffBias_ = newCutoffBias;
-    }
-    
-    if (resDelta != 0) {
-        for (int voice = 0; voice < 2; ++voice) {
-            if (engine.currentSynthEngineName(voice) == "TB303") {
-                engine.adjust303Parameter(TB303ParamId::Resonance, resDelta, voice);
-            }
-        }
-        lastAppliedResBias_ = newResBias;
-    }
-}
 
 // ============================================================================
 // STRUCTURAL BEHAVIOR (stepMask + motif + scale)
@@ -529,7 +420,7 @@ GenreBehavior GenreManager::getBehavior() const {
         b.timbre = {0.2f, 0.46f, 0.24f, 0.58f, 0.22f};
     } else if (state_.recipe == 10 || state_.recipe == 11) {
         // Dub Techno preview: sparse warm bass plus a restrained OPL2 root
-        // voice; delay/space remain controlled by the selected texture layer.
+        // voice; delay/space remain controlled by persisted FX state.
         b.stepMask = 0x8888;
         b.motifLength = 4;
         b.preferredScale = 3;

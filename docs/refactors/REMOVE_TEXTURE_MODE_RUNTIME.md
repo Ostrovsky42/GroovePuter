@@ -28,10 +28,10 @@ Do not change genre note/drum generation, existing genre or recipe choices, `Gro
 
 ## Acceptance checklist
 
-- [ ] `TextureMode`, `TextureParams`, `kTexturePresets`, `setTextureMode`, `textureMode`, and `applyTexture` have no runtime definitions or call sites.
-- [ ] A legacy scene containing historical texture keys still loads successfully.
-- [ ] Synth/tape/delay/distortion values already stored in that legacy scene are not overwritten by a texture preset during load.
-- [ ] Re-saving that scene does not emit `tex`, `amt`, `curated`, or `snd` in the genre object.
-- [ ] GENRE -> FEEL -> GENERATION navigation remains unchanged from PR #130.
+- [x] `TextureMode`, `TextureParams`, `kTexturePresets`, `setTextureMode`, `textureMode`, and `applyTexture` have no runtime definitions or call sites.
+- [x] Legacy compact and long-form texture keys are accepted as decode-only input; CI covers the source contract.
+- [x] Scene load no longer runs a texture projection over persisted synth/Tape/delay/distortion state.
+- [x] New serialization omits historical texture fields (`tex`, `amt`, `cur`/`curated`, `sound`/`snd`).
+- [x] GENRE -> FEEL -> GENERATION navigation remains unchanged from PR #130.
 - [ ] Host regressions, Four-axis UI, Phrase Core, SDL, Cardputer ADV, fixed DRAM, and SEQTRAK MIDI-only builds are green.
 - [ ] Physical smoke test confirms an old project sounds materially the same before and after migration.
