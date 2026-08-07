@@ -15,16 +15,16 @@ enum class WorkflowMode : uint8_t {
 };
 
 // Existing enum values are preserved for persisted UI-session compatibility.
-// Texture is a legacy value and now resolves to FEEL.
+// Generation and Texture are legacy values and now resolve to FEEL.
 enum class Workspace : uint8_t {
     // PERFORM
     Perform = 0,
     Player,
 
     // GENERATE
-    Groove,     // GENRE
-    Generation,
-    Texture,    // legacy persisted value -> FEEL
+    Groove,      // GENRE
+    Generation,  // legacy persisted value -> FEEL
+    Texture,     // legacy persisted value -> FEEL
 
     // HUB
     Pattern,
@@ -52,26 +52,30 @@ constexpr int kSynthBParameters = 4;
 constexpr int kDrums = 5;
 constexpr int kArrange = 6;
 constexpr int kPattern = 7;
-constexpr int kTexture = 8;  // legacy persisted page id; resolves to FEEL
+constexpr int kTexture = 8;     // legacy persisted page id -> FEEL
 constexpr int kFeel = 9;
 constexpr int kProject = 10;
-constexpr int kGeneration = 11;
+constexpr int kGeneration = 11; // legacy persisted page id -> FEEL
 constexpr int kPerform = 12;
 constexpr int kPlayer = 13;
 constexpr int kPhrase = 14;
 
+inline int normalizeLegacyPage(int page) {
+    return (page == kTexture || page == kGeneration) ? kFeel : page;
+}
+
 inline bool isPerformWorkflowPage(int page) {
+    page = normalizeLegacyPage(page);
     return page == kPerform || page == kPlayer;
 }
 
 inline bool isGenerateWorkflowPage(int page) {
-    return page == kGenre ||
-           page == kFeel ||
-           page == kGeneration ||
-           page == kTexture;
+    page = normalizeLegacyPage(page);
+    return page == kGenre || page == kFeel;
 }
 
 inline bool isHubWorkflowPage(int page) {
+    page = normalizeLegacyPage(page);
     return page == kPattern ||
            page == kSynthA ||
            page == kSynthB ||
@@ -81,7 +85,7 @@ inline bool isHubWorkflowPage(int page) {
 }
 
 inline bool isSettingsWorkflowPage(int page) {
-    return page == kProject;
+    return normalizeLegacyPage(page) == kProject;
 }
 
 inline bool isPatternWorkspacePage(int page) {
@@ -93,6 +97,7 @@ inline bool isGrooveWorkspacePage(int page) {
 }
 
 inline bool isWorkspacePage(int page) {
+    page = normalizeLegacyPage(page);
     return isPerformWorkflowPage(page) ||
            isGenerateWorkflowPage(page) ||
            isHubWorkflowPage(page) ||
@@ -102,14 +107,12 @@ inline bool isWorkspacePage(int page) {
 }
 
 inline Workspace workspaceForPage(int page) {
+    page = normalizeLegacyPage(page);
     switch (page) {
         case kPerform: return Workspace::Perform;
         case kPlayer: return Workspace::Player;
         case kGenre: return Workspace::Groove;
-        case kFeel:
-        case kTexture:
-            return Workspace::Feel;
-        case kGeneration: return Workspace::Generation;
+        case kFeel: return Workspace::Feel;
         case kPattern: return Workspace::Pattern;
         case kSynthA: return Workspace::SynthA;
         case kSynthB: return Workspace::SynthB;
@@ -130,8 +133,8 @@ inline int pageForWorkspace(Workspace workspace) {
         case Workspace::Groove: return kGenre;
         case Workspace::Feel:
         case Workspace::Texture:
+        case Workspace::Generation:
             return kFeel;
-        case Workspace::Generation: return kGeneration;
         case Workspace::Pattern: return kPattern;
         case Workspace::SynthA: return kSynthA;
         case Workspace::SynthB: return kSynthB;
@@ -146,6 +149,7 @@ inline int pageForWorkspace(Workspace workspace) {
 }
 
 inline WorkflowMode modeForPage(int page) {
+    page = normalizeLegacyPage(page);
     if (isPerformWorkflowPage(page)) return WorkflowMode::Perform;
     if (isGenerateWorkflowPage(page)) return WorkflowMode::Generate;
     if (isHubWorkflowPage(page)) return WorkflowMode::Hub;
@@ -173,14 +177,12 @@ inline const char* workspaceName(Workspace workspace) {
 }
 
 inline const char* pageName(int page) {
+    page = normalizeLegacyPage(page);
     switch (page) {
         case kPerform: return "MIDI KEYBOARD";
         case kPlayer: return "MIDI PLAYER";
         case kGenre: return "GENRE";
-        case kFeel:
-        case kTexture:
-            return "FEEL";
-        case kGeneration: return "GENERATION";
+        case kFeel: return "FEEL";
         case kPattern: return "OVERVIEW";
         case kSynthA: return "SYNTH A";
         case kSynthB: return "SYNTH B";
@@ -197,7 +199,7 @@ inline const char* pageName(int page) {
 inline int pageCountForMode(WorkflowMode mode) {
     switch (mode) {
         case WorkflowMode::Perform: return 2;
-        case WorkflowMode::Generate: return 3;
+        case WorkflowMode::Generate: return 2;
         case WorkflowMode::Hub: return 6;
         case WorkflowMode::Song: return 2;
         case WorkflowMode::Settings: return 1;
@@ -210,7 +212,7 @@ inline int pageAt(WorkflowMode mode, int index) {
         kPerform, kPlayer,
     };
     static constexpr int kGeneratePages[] = {
-        kGenre, kFeel, kGeneration,
+        kGenre, kFeel,
     };
     static constexpr int kHubPages[] = {
         kPattern, kSynthA, kSynthB, kDrums,
@@ -238,7 +240,7 @@ inline int pageAt(WorkflowMode mode, int index) {
 }
 
 inline int pageIndexInMode(int page) {
-    if (page == kTexture) page = kFeel;
+    page = normalizeLegacyPage(page);
     const WorkflowMode mode = modeForPage(page);
     const int count = pageCountForMode(mode);
     for (int index = 0; index < count; ++index) {
@@ -286,7 +288,7 @@ inline Workspace nextWorkspace(Workspace workspace, int direction) {
 }
 
 inline bool allowsPerformanceKeyboard(int page) {
-    return page == kPerform ||
-           page == kSynthAParameters;
+    page = normalizeLegacyPage(page);
+    return page == kPerform || page == kSynthAParameters;
 }
 }  // namespace WorkflowPages
