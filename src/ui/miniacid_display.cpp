@@ -35,8 +35,8 @@
 #include <esp_partition.h>
 #endif
 #include "esp_heap_caps.h"
-#include "../audio/pattern_paging.h"
 #endif
+#include "../audio/pattern_paging.h"
 #include <cstdio>
 #include "../debug_log.h"
 
@@ -473,12 +473,12 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 
         if (event.alt && (event.key == '[' || event.key == '{')) {
             int prev = mini_acid_.currentPageIndex() - 1;
-            if (prev < 0) prev = kPageCount - 1;
+            if (prev < 0) prev = kMaxPages - 1;
             mini_acid_.requestPageSwitch(prev);
             return true;
         }
         if (event.alt && (event.key == ']' || event.key == '}')) {
-            int next = (mini_acid_.currentPageIndex() + 1) % kPageCount;
+            int next = (mini_acid_.currentPageIndex() + 1) % kMaxPages;
             mini_acid_.requestPageSwitch(next);
             return true;
         }
@@ -840,7 +840,6 @@ void MiniAcidDisplay::handlePaging_() {
     const int current = mini_acid_.currentPageIndex();
 
     withAudioGuard([&]() {
-#if defined(ESP32) || defined(ESP_PLATFORM)
         Scene& scene = mini_acid_.sceneManager().currentScene();
         if (!PatternPagingService::savePage(current, scene)) {
             result = PageSwitchResult::SaveCurrentFailed;
@@ -862,10 +861,6 @@ void MiniAcidDisplay::handlePaging_() {
                 result = PageSwitchResult::RollbackFailed;
             }
         }
-#else
-        mini_acid_.setCurrentPage(target);
-        result = PageSwitchResult::Switched;
-#endif
         mini_acid_.setTargetPage(-1);
         mini_acid_.setPageLoading(false);
     });

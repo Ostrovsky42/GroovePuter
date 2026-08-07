@@ -29,16 +29,17 @@ namespace UI {
 inline void drawDrumInputLockedFooter(IGfx& gfx,
                                       const char* left,
                                       const char* right) {
-  const char* fixed = "Q-I:PAT C1/2:BANK";
+  const char* fixedLeft = "ARROWS:GRID Q-I:PAT";
+  const char* fixedRight = "C1/2:BANK Alt[]:PAGE";
   const char* safeLeft = left;
   const char* safeRight = right;
   if (left && (std::strstr(left, "B:Bank") ||
                std::strstr(left, "1..8:Edit"))) {
-    safeLeft = fixed;
+    safeLeft = fixedLeft;
   }
   if (right && (std::strstr(right, "B:Bank") ||
                 std::strstr(right, "1..8:Edit"))) {
-    safeRight = fixed;
+    safeRight = fixedRight;
   }
   drawStandardFooter(gfx, safeLeft, safeRight);
 }
@@ -164,12 +165,6 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
     page->setBankIndex(bankIdx);
     page->focusGrid();
     UI::showToast(bankIdx == 0 ? "Bank A (Ctrl+1)" : "Bank B (Ctrl+2)", 800);
-    return true;
-  }
-
-  if (!ui_event.shift && !ui_event.ctrl && !ui_event.alt && !ui_event.meta &&
-      (lowerKey == 'b' || ui_event.scancode == GROOVEPUTER_B)) {
-    UI::showToast("Bank: Ctrl+1 / Ctrl+2", 800);
     return true;
   }
 

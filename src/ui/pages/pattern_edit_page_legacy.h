@@ -1267,9 +1267,9 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
 
   // 5. Footer (consistent with header)
   const char* focusLabel = stepFocus ? "STEPS" : (bankFocus ? "BANK" : "PTRN");
-  drawFooterBar(gfx, x, y + h - 12, w, 12, 
-                "A/Z:Nt F:FX Alt+Arw:Prm", 
-                "q..i:Ptrn B:Bank TAB:Sub", 
+  drawFooterBar(gfx, x, y + h - 12, w, 12,
+                "A/Z:Nt F:FX Alt+Arw:Prm",
+                "Q-I:PAT B:Bank Alt[]:PG",
                 focusLabel);
 
   // NO scanlines - clean and readable
@@ -1451,7 +1451,7 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
   AmberWidgets::drawFooterBar(
       gfx, x, y + h - 12, w, 12,
       "A/Z:Note  Alt+S/A:Slide/Acc  G:Rand",
-      "q..i:Ptrn  B:Bank  TAB:SubPg",
+      "Q-I:PAT  B:Bank  Alt[]:PG",
       focusLabel);
 #else
   drawMinimalStyle(gfx);

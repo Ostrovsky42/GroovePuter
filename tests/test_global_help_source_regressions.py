@@ -42,10 +42,11 @@ for page_constant in (
 assert "Alt+H remains reserved for page-aware help" in smf
 assert "Ctrl+H" not in smf
 assert "drawDrumInputLockedFooter" in drum
-assert '"Q-I:PAT C1/2:BANK"' in drum
-assert '"G:GEN Alt+G:ALL 1..8:Edit B:Bank"' in drum_legacy
+assert '"ARROWS:GRID Q-I:PAT"' in drum and '"C1/2:BANK Alt[]:PAGE"' in drum
+assert '"G:GEN Alt+G:ALL Q-I:PAT B:Bank"' in drum_legacy and '"DRUM Alt[]:PG"' in drum_legacy
 assert '"C           Edit saved per-file route"' in help_content
-assert '"f:GEN Alt+G:ALL 1..8:Edit B:Bank"' not in drum_legacy
+assert '"f:GEN Alt+G:ALL Q-I:PAT B:Bank"' not in drum_legacy
+assert '"G:GEN Alt+G:ALL 1..8:Edit B:Bank"' not in drum_legacy
 assert '"REF         Mutable pattern references"' in help_content
 
 for expected in (

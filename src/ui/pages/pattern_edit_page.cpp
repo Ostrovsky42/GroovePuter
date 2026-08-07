@@ -29,7 +29,7 @@ inline void drawPatternInputLockedFooter(IGfx& gfx,
       (left && std::strstr(left, "B:Bank")) ||
       (right && std::strstr(right, "B:Bank"));
   if (staleBinding) {
-    drawStandardFooter(gfx, "ARROWS:GRID Q-I:PAT", "C1/2:BANK TAB:SUB");
+    drawStandardFooter(gfx, "ARROWS:GRID Q-I:PAT", "C1/2:BANK Alt[]:PAGE");
     return;
   }
   drawStandardFooter(gfx, left, right);
@@ -139,7 +139,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   }
 
   // Bank selection has one unambiguous binding. Plain numbers remain global
-  // track mutes; plain B no longer silently changes the current bank.
+  // track mutes; plain B falls through to the legacy handler which toggles banks.
   if (ui_event.ctrl && !ui_event.alt && !ui_event.meta &&
       (key == '1' || key == '2')) {
     const int bankIdx = bankIndexFromKey(key);
@@ -147,12 +147,6 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     setBankIndex(bankIdx);
     focus_ = Focus::Steps;
     UI::showToast(bankIdx == 0 ? "Bank A (Ctrl+1)" : "Bank B (Ctrl+2)", 800);
-    return true;
-  }
-
-  if (!ui_event.shift && !ui_event.ctrl && !ui_event.alt && !ui_event.meta &&
-      (lowerKey == 'b' || ui_event.scancode == GROOVEPUTER_B)) {
-    UI::showToast("Bank: Ctrl+1 / Ctrl+2", 800);
     return true;
   }
 
