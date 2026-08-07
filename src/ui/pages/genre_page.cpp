@@ -8,6 +8,7 @@
 #include "../layout_manager.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "../../state/scene_revision.h"
 
 namespace {
 constexpr uint8_t kGenreBpm[kGenerativeModeCount] = {
@@ -21,8 +22,6 @@ int wrapIndex(int value, int count) {
   return value;
 }
 
-// Compatibility helper retained for the existing source regression. It is a
-// read-only mapping check, not a second MODE control or visible UI address.
 const char* linkStateShort(MiniAcid& mini_acid) {
   const GrooveboxMode mapped = GenreManager::grooveboxModeForRecipe(
       mini_acid.genreManager().recipe(),
@@ -39,8 +38,6 @@ const char* yesNo(bool value) {
   return value ? "YES" : "NO";
 }
 
-// The selector is rendered by the VARIANT row below. This named hook preserves
-// the existing visible-recipe source contract without creating a second overlay.
 void drawRecipeOverlay(IGfx& gfx, int recipeIndex) {
   (void)gfx;
   (void)recipeIndex;
@@ -112,22 +109,34 @@ void GenrePage::applyCurrent() {
   const bool wasPlaying = mini_acid_.isPlaying();
   if (wasPlaying && doRegenerate) mini_acid_.stop();
 
-  withAudioGuard([&]() {
-    const auto genre = static_cast<GenerativeMode>(genre_index_);
-    const auto recipe = static_cast<GenreRecipeId>(recipeIndex_);
-    const auto morphTarget =
-        morph_amount_ > 0 ? recipe : static_cast<GenreRecipeId>(kBaseRecipeId);
+  const auto genre = static_cast<GenerativeMode>(genre_index_);
+  const auto recipe = static_cast<GenreRecipeId>(recipeIndex_);
+  const auto morphTarget =
+      morph_amount_ > 0 ? recipe : static_cast<GenreRecipeId>(kBaseRecipeId);
+  const GrooveboxMode nextMode =
+      GenreManager::grooveboxModeForRecipe(recipe, genre);
+  auto& manager = mini_acid_.genreManager();
+  auto& settings = mini_acid_.sceneManager().currentScene().genre;
 
-    auto& manager = mini_acid_.genreManager();
+  const bool changed = doRegenerate ||
+                       manager.generativeMode() != genre ||
+                       manager.recipe() != recipe ||
+                       manager.morphTarget() != morphTarget ||
+                       manager.morphAmount() != static_cast<uint8_t>(morph_amount_) ||
+                       mini_acid_.grooveboxMode() != nextMode ||
+                       settings.generativeMode != static_cast<uint8_t>(genre_index_) ||
+                       settings.recipe != static_cast<uint8_t>(recipeIndex_) ||
+                       settings.morphTarget != static_cast<uint8_t>(morphTarget) ||
+                       settings.morphAmount != static_cast<uint8_t>(morph_amount_);
+
+  withAudioGuard([&]() {
     manager.setGenerativeMode(genre);
     manager.setRecipe(recipe);
     manager.setMorphTarget(morphTarget);
     manager.setMorphAmount(static_cast<uint8_t>(morph_amount_));
 
-    mini_acid_.setGrooveboxMode(
-        GenreManager::grooveboxModeForRecipe(recipe, genre));
+    mini_acid_.setGrooveboxMode(nextMode);
 
-    auto& settings = mini_acid_.sceneManager().currentScene().genre;
     settings.generativeMode = static_cast<uint8_t>(genre_index_);
     settings.recipe = static_cast<uint8_t>(recipeIndex_);
     settings.morphTarget = static_cast<uint8_t>(morphTarget);
@@ -140,6 +149,7 @@ void GenrePage::applyCurrent() {
     if (doRegenerate) mini_acid_.regeneratePatternsWithGenre();
   });
 
+  if (changed) GroovePuterState::markSceneMutated();
   if (wasPlaying && doRegenerate) mini_acid_.start();
 
   char toast[96];
@@ -291,7 +301,6 @@ bool GenrePage::handleEvent(UIEvent& event) {
       std::tolower(static_cast<unsigned char>(event.key)));
 
   // ENTER: apply the current genre/texture/recipe selection.
-  // Texture is intentionally not changed by the GENRE page.
   if (event.key == '\n' || event.key == '\r') {
     morphAccelerator.reset();
     applyCurrent();

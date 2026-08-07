@@ -2,15 +2,13 @@
 
 ## Purpose
 
-Verify that pattern pages belong to one project, that **New** and **Clear Project** remove only the selected project's page files, and that Synth A, Synth B and Drums show one readable `page + bank + slot` address such as `2B7`.
+Run a short post-merge smoke for #102 on the 0.9 candidate: project pages remain isolated, Save As copies pages, Clear removes only the target namespace, and Synth A/B/Drums show canonical `page + bank + slot` addresses.
 
 ## Hardware
 
-- M5Stack Cardputer ADV
-- microSD card formatted as FAT32
-- USB-C cable
-
-No external modules are required.
+- M5Stack Cardputer ADV;
+- FAT32 microSD;
+- USB-C data cable.
 
 ## Wiring
 
@@ -19,72 +17,81 @@ None. Use the built-in display, keyboard and microSD slot.
 ## Build and flash
 
 ```bash
-git switch agent/project-pattern-storage-address
+git fetch origin
+git switch release/0.9-final-stabilization
+git reset --hard origin/release/0.9-final-stabilization
 bash scripts/install_arduino_deps.sh
 bash scripts/build.sh --warnings all
 bash scripts/upload.sh /dev/ttyACM0
 arduino-cli monitor -p /dev/ttyACM0 -c baudrate=115200
 ```
 
-Change `/dev/ttyACM0` if the Cardputer ADV appears under another device path.
+Record `git rev-parse HEAD`. Change the serial path only if the device enumerates elsewhere.
 
-## Expected behavior
+## Storage smoke
 
-1. Create project `alpha`, edit a Synth A pattern on page 2, bank B, slot 7. The global status line contains `S-A 2B7`.
-2. Open Synth B and Drums. Their status lines use `S-B <address>` and `DRM <address>` and update after page, bank or slot changes in all three visual styles.
-3. Create a new project. Page 2 is empty; project `alpha` remains unchanged.
-4. Return to `alpha`. Page 2, bank B, slot 7 contains the original pattern.
-5. Run **Save As**. The new project initially contains the same pattern pages.
-6. Run **Clear Project** in the copied project. All its pages become empty and remain empty after reboot; `alpha` still contains its original data.
-7. On the SD card, page files are grouped by project:
+1. Open project `alpha`.
+2. Edit Synth A at page 2, bank B, slot 7 and Save.
+3. Open project `beta`; confirm `2B7` is empty.
+4. Return to `alpha`; confirm the pattern remains.
+5. Save As to `alpha-copy`; confirm all pages were copied.
+6. Clear `alpha-copy`; confirm it is empty.
+7. Reboot immediately; confirm it stays empty.
+8. Return to `alpha`; confirm its original page remains.
+9. Verify Synth A, Synth B and Drums update page, bank and slot in the status address.
+
+Expected layout:
 
 ```text
 /patterns/alpha/page_01.gpp
-/patterns/<copied-project>/page_01.gpp
+/patterns/alpha-copy/page_01.gpp
 ```
 
-Spaces and underscores in project names are encoded in folder names. For example, a space becomes `_20` and a literal underscore becomes `_5F`.
+Spaces become `_20`; literal underscores become `_5F`. Pattern `.gpp` format remains version 3.
 
-## Pattern editor input ownership
+## Expected behavior
 
-The Synth A, Synth B and Drum editors use one fixed keyboard model:
+- projects never see one another's pages;
+- Save As copies valid main and backup pages;
+- Clear removes `.gpp`, `.tmp` and `.bak` only for the active project;
+- reboot does not resurrect cleared pages;
+- corrupt primary may recover only from a valid backup in the same project;
+- status shows `S-A`, `S-B` or `DRM` plus the real address.
 
-- Arrow keys move only inside the visible step/note grid.
-- Up/Down stop at the first and last row; they never enter the `BANK` or `PATTERNS` selectors.
-- `Q`–`I` selects pattern slots 1–8 and leaves keyboard focus in the grid.
-- `Ctrl+1` selects bank A; `Ctrl+2` selects bank B.
-- Plain `1`–`0` remain global track mutes.
-- Plain `B` does not change banks and shows the explicit bank shortcut.
-- Alt/Meta arrow operations and Shift/Ctrl selection extension keep their existing behavior.
+## Input ownership
+
+- arrows stay inside the editor grid;
+- Up/Down stop at the first/last row;
+- `Q`–`I` selects slots 1–8;
+- `Ctrl+1` selects bank A and `Ctrl+2` bank B;
+- plain `1`–`0` remain global mutes;
+- plain `B` does not change bank.
 
 ## Troubleshooting
 
-- `Project clear not saved`: check that the SD card is writable and not full. Do not trust the clear operation until it succeeds.
-- `Pattern cleanup failed`: creation succeeded in RAM, but project page files could not be removed.
-- Old global files under `/patterns/page_XX.gpp` are migrated once into the active project. Do not remove power during the first boot after updating.
-- A corrupt main page may load its `.bak` sibling. Both copies are removed by **Clear Project**.
-- If the status line says `PAT` instead of an address on Synth A, Synth B or Drums, record the exact page, theme and navigation sequence; the address source failed validation.
-- If an arrow highlights A/B or a pattern number, record the editor, active theme and previous key; the input ownership gate failed.
+### Save As fails
+
+Capture source/target project names, SD paths and serial output. The current `dev_0.9` base includes deterministic host file-copy behavior; do not weaken the storage tests.
+
+### Clear pages return after reboot
+
+Stop release acceptance. Capture the active project, encoded folder, directory listing before/after Clear and boot recovery log.
+
+### Address is wrong
+
+Record track, page, bank, slot, theme and navigation sequence.
 
 ## Acceptance checklist
 
-- [ ] Synth A status shows a full address, for example `S-A 1A1`.
-- [ ] Synth B status shows its selected page, bank and slot.
-- [ ] Drum status shows its selected page, bank and slot.
-- [ ] The address is visible in Minimal, Retro Classic and Amber.
-- [ ] `[` and `]` change the page portion of the address.
-- [ ] Bank A/B changes the letter portion of the address.
-- [ ] Pattern 1–8 changes the final digit.
-- [ ] Repeated Up on the first Synth row stays on that row.
-- [ ] Repeated Down on the last Synth row stays on that row.
-- [ ] Drum Up/Down stays between the first and last voice.
-- [ ] After `Q`–`I`, the next arrow moves a grid cursor rather than a pattern number.
-- [ ] After `Ctrl+1/2`, the next arrow moves a grid cursor rather than A/B.
-- [ ] Plain `B` leaves the current bank unchanged.
-- [ ] Plain number keys still toggle global mutes.
-- [ ] New project cannot see pages from the previous project.
-- [ ] Save As copies all page files.
-- [ ] Clear removes `.gpp`, `.tmp` and `.bak` only for the current project.
-- [ ] Clear remains effective after immediate reboot.
-- [ ] Returning to another project restores its pages.
-- [ ] Serial log contains no SD write or pattern cleanup errors.
+- [ ] exact flashed head recorded;
+- [ ] `alpha` and `beta` do not share `2B7`;
+- [ ] Save As copies the edited page;
+- [ ] Clear affects only `alpha-copy`;
+- [ ] cleared pages stay cleared after reboot;
+- [ ] `alpha` remains intact;
+- [ ] Synth A address is correct;
+- [ ] Synth B address is correct;
+- [ ] Drums address is correct;
+- [ ] arrows remain inside the grid;
+- [ ] `Q`–`I`, `Ctrl+1/2`, `B` and global number keys retain their contracts;
+- [ ] serial shows no SD, namespace, migration or recovery error.
