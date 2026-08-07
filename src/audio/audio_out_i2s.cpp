@@ -9,6 +9,10 @@
 namespace {
 constexpr TickType_t kWriteTimeout = pdMS_TO_TICKS(30);
 constexpr bool kEnableHardwareMclk = false;
+// A +/-1 LSB sample is below the useful 16-bit output floor and is a common
+// result of dither/filter residue around true silence. Collapse only that tiny
+// floor to exact zero before DMA; musical samples >= 2 LSB are untouched.
+constexpr int16_t kIdlePcmFloorLsb = 1;
 }  // namespace
 
 AudioOutI2S::AudioOutI2S()
@@ -142,7 +146,11 @@ bool AudioOutI2S::writeMono16(const int16_t* monoBuffer, size_t frames) {
   if (frames > bufferFrames_) frames = bufferFrames_;
 
   for (size_t i = 0; i < frames; ++i) {
-    const int16_t sample = monoBuffer[i];
+    const int16_t rawSample = monoBuffer[i];
+    const int16_t sample =
+        (rawSample >= -kIdlePcmFloorLsb && rawSample <= kIdlePcmFloorLsb)
+            ? 0
+            : rawSample;
     stereoBuffer_[i * 2] = sample;
     stereoBuffer_[i * 2 + 1] = sample;
   }
@@ -151,6 +159,18 @@ bool AudioOutI2S::writeMono16(const int16_t* monoBuffer, size_t frames) {
   const size_t expectedBytes = frames * 2 * sizeof(int16_t);
   const esp_err_t error = i2s_channel_write(
       tx_handle_, stereoBuffer_, expectedBytes, &bytesWritten, kWriteTimeout);
+
+  if (error != ESP_OK || bytesWritten != expectedBytes) {
+    static uint32_t lastDetailedErrorMs = 0;
+    const uint32_t nowMs = millis();
+    if (nowMs - lastDetailedErrorMs > 1000) {
+      Serial.printf("[AudioOutI2S] write err=%d bytes=%u/%u\n",
+                    static_cast<int>(error),
+                    static_cast<unsigned>(bytesWritten),
+                    static_cast<unsigned>(expectedBytes));
+      lastDetailedErrorMs = nowMs;
+    }
+  }
 
   return error == ESP_OK && bytesWritten == expectedBytes;
 }

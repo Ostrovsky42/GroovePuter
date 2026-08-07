@@ -4,16 +4,25 @@
 
 // Canonical hardware profile for M5Stack Cardputer ADV.
 //
-// GPIO21 is the power-amplifier enable line on the ADV audio path. It must
-// never be driven with WS2812 timing. The RGB data pin remains disabled until
-// it is verified against the actual Cardputer ADV schematic and hardware.
+// Cardputer ADV audio is configured through the ES8311 codec path. M5Unified's
+// Cardputer ADV speaker callback does not use GPIO21 as a one-wire amplifier
+// enable (that GPIO21 behavior belongs to a different M5 device). Keep the
+// legacy setup call source-compatible, but make it a typed no-op so GroovePuter
+// never claims or drives GPIO21 on Cardputer ADV.
+// RGB data remains disabled until a verified Cardputer ADV pin is available.
 
-#define GROOVEPUTER_CARDPUTER_ADV_PA_EN_PIN 21
 #define GROOVEPUTER_CARDPUTER_ADV_RGB_LED_PIN (-1)
 
 namespace GroovePuterHardware {
-inline constexpr int kPowerAmplifierEnablePin =
-    GROOVEPUTER_CARDPUTER_ADV_PA_EN_PIN;
+struct UnusedPowerAmplifierEnablePin {};
+inline constexpr UnusedPowerAmplifierEnablePin kPowerAmplifierEnablePin{};
+
+// GroovePuter.ino historically calls pinMode()/digitalWrite() for a PA pin.
+// Argument-dependent lookup resolves these overloads for the typed unused pin,
+// preserving the caller while producing no GPIO side effect.
+inline void pinMode(UnusedPowerAmplifierEnablePin, uint8_t) {}
+inline void digitalWrite(UnusedPowerAmplifierEnablePin, uint8_t) {}
+
 inline constexpr int kRgbLedDataPin =
     GROOVEPUTER_CARDPUTER_ADV_RGB_LED_PIN;
 inline constexpr bool kRgbLedEnabled = kRgbLedDataPin >= 0;
