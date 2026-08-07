@@ -35,6 +35,10 @@ def main() -> None:
             "Cardputer UI session must use a bounded NVS namespace")
     require("checksumRecord" in platform and "sanitizeUiSessionState" in platform,
             "NVS session record needs integrity and range validation")
+    require("state.activePage == GroovePuterState::SessionPages::kPlayer" in platform and
+            "GroovePuterState::rememberWorkflowPage(" in platform and
+            "GroovePuterState::SessionPages::kPerform" in platform,
+            "cold boot from persisted MIDI Player must start the PERFORM workflow on MIDI keyboard")
 
     require("UiSessionState ui_session_" in display_h and
             "rememberWorkflowPage(ui_session_, index)" in display,

@@ -45,6 +45,18 @@ def main() -> None:
     require("../src/ui/midi_file_manager.cpp" in sdl_makefile,
             "desktop build must link the shared MIDI manager")
 
+    require("parentCount > 0 && windowStart_ == 0 && windowCount_ > 0" in manager_cpp and
+            "workspace_.entries[0].kind = EntryKind::Parent" in manager_cpp and
+            'sizeof(workspace_.entries[0].name), ".."' in manager_cpp,
+            "initial nested-folder window must materialize the synthetic parent row")
+    require("serviceHeldNavigation" in manager_h and
+            "heldNavigationDirectionFromCardputer" in manager_cpp and
+            "keys.word.empty()" in manager_cpp and
+            "kHeldNavigationDelayMs = 350u" in manager_cpp and
+            "kHeldNavigationIntervalMs = 80u" in manager_cpp and
+            "serviceHeldNavigation();" in manager_cpp,
+            "Cardputer HID+word arrows must keep scrolling the MIDI browser while held")
+
     require("midi_file_manager.h" in project_h,
             "Project import must include the shared MIDI manager")
     require("midiFileManager().handleEvent" in project_cpp,
