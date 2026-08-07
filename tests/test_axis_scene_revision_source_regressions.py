@@ -63,6 +63,16 @@ require(
 )
 require_marks(genre_apply, 1, "Genre Apply")
 
+require(
+    REVISION,
+    "#ifndef GROOVEPUTER_SRC_STATE_SCENE_REVISION_H_",
+    "Scene revision header needs an explicit Arduino alias-path include guard",
+)
+require(
+    REVISION,
+    "#define GROOVEPUTER_SRC_STATE_SCENE_REVISION_H_",
+    "Scene revision include guard must be defined",
+)
 require(REVISION, "void markSaveSucceeded()", "revision service must expose Save success")
 require(REVISION, "void markLoadSucceeded()", "revision service must expose Load success")
 require(REVISION, "restoreSceneRevision", "revision service must support rollback")
