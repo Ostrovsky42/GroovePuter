@@ -325,7 +325,7 @@ def test_recipe_selector_is_visible_and_navigable() -> None:
 
 def test_enter_applies_selected_recipe() -> None:
     page = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
-    start = page.index("// ENTER: apply the current genre/texture/recipe selection.")
+    start = page.index("// ENTER: apply the current genre/recipe selection.")
     end = page.index("// SPACE: toggle apply mode", start)
     enter_block = page[start:end]
     require("applyCurrent();" in enter_block,

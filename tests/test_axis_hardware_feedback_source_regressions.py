@@ -36,13 +36,16 @@ for token in (
 ):
     assert token in song, f"Song genre materialization contract missing: {token}"
 
-# Removing the page must not remove the audible compatibility path used by
-# persisted scenes and genre materialization.
+# Sound coloration is now owned by persisted synth/Tape/delay/distortion state.
+# GenreManager must not recreate the removed TEXTURE projection path.
 for token in (
+    "TextureParams",
+    "kTexturePresets",
+    "applyTexture(",
     "tape.fxEnabled = tapeOn;",
     "currentScene().feel.tapeEnabled = tapeOn;",
 ):
-    assert token in genre_manager, f"Persisted texture audible path missing: {token}"
+    assert token not in genre_manager, f"Removed TextureMode path returned: {token}"
 
 for token in (
     "LIVE: offbeat playback delay",

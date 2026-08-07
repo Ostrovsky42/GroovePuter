@@ -55,7 +55,7 @@ for expected in (
     "| `Alt+X` | Toggle LiveMix |",
     "| `Alt+M` | Toggle Song mode |",
     "same primary controls shown by `Alt+H`",
-    "GENRE -> FEEL -> GENERATION -> TEXTURE",
+    "GENRE -> FEEL -> GENERATION",
     "SONG:     SONG -> PHRASE CORE",
     "**OVERVIEW / SEQUENCER HUB**",
     "**SYNTH A PATTERN**",
@@ -64,8 +64,9 @@ for expected in (
 ):
     assert expected in readme
 
-assert "GENRE != FEEL != GENERATION != TEXTURE" in readme
-assert "GENRE != FEEL != GENERATOR != TEXTURE" not in readme
+assert "GENRE != FEEL != GENERATION" in readme
+assert "GENRE != FEEL != GENERATION != TEXTURE" not in readme
+assert "GENRE -> FEEL -> GENERATION -> TEXTURE" not in readme
 assert "**MODE / FLAVOR**" not in readme
 
 assert "`Alt+H` is the on-device" in keys
@@ -73,7 +74,13 @@ assert "`Ctrl+H`" not in keys
 assert "Generate material into a free slot" in keys
 assert "Digits remain available to the global mute fallback" in keys
 assert "## PHRASE CORE" in keys
-assert "GENRE -> FEEL -> GENERATION -> TEXTURE" in keys
+assert "GENRE -> FEEL -> GENERATION" in keys
+assert "GENRE -> FEEL -> GENERATION -> TEXTURE" not in keys
+assert "## GENRE 1/3" in keys
+assert "## FEEL 2/3" in keys
+assert "## GENERATION 3/3" in keys
+assert "Select texture field" not in keys
+assert "Apply texture" not in keys
 assert "## FEEL / TEXTURE" not in keys
 assert "## MODE / FLAVOR" not in keys
 assert "## ADV GENERATOR" not in keys
