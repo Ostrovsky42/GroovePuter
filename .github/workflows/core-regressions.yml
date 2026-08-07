@@ -107,7 +107,19 @@ jobs:
         run: bash scripts/install_arduino_deps.sh
 
       - name: Compile Cardputer ADV firmware
-        run: bash scripts/build.sh --warnings all
+        run: |
+          mkdir -p build
+          set -o pipefail
+          bash scripts/build.sh --warnings all 2>&1 | tee build/cardputer-adv-build.log
+
+      - name: Upload Cardputer build failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cardputer-adv-build-log
+          path: build/cardputer-adv-build.log
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Check fixed DRAM budget
         run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-current/GroovePuter.ino.elf
@@ -126,4 +138,16 @@ jobs:
         run: bash scripts/install_arduino_deps.sh
 
       - name: Compile and check SEQTRAK MIDI-only firmware
-        run: bash scripts/build_seqtrak_midi_only.sh --warnings all
+        run: |
+          mkdir -p build
+          set -o pipefail
+          bash scripts/build_seqtrak_midi_only.sh --warnings all 2>&1 | tee build/cardputer-adv-seqtrak-midi-only.log
+
+      - name: Upload MIDI-only build failure log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cardputer-adv-seqtrak-midi-only-build-log
+          path: build/cardputer-adv-seqtrak-midi-only.log
+          if-no-files-found: error
+          retention-days: 1
