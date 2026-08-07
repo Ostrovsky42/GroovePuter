@@ -68,10 +68,12 @@ def main() -> None:
     require("markSceneMutated();" in feel_header,
             "FEEL timing/velocity mutations must reach the tracker")
 
-    # Standalone GENERATION was retired. Song and GENRE explicit materialization
-    # remain the persistent generation surfaces and must retain tracked writes.
-    require("markSceneMutated" in song_source,
-            "Song generation/materialization mutations must reach the tracker")
+    # Standalone GENERATION was retired. Song materialization is wrapped by the
+    # tracked Song audio guard; GENRE explicit apply marks its own revision.
+    require("GroovePuterState::markSceneMutated();" in song_header,
+            "Song persistent audio guard must reach the revision tracker")
+    require("withAudioGuard" in song_source and "materializeSongTracks" in song_source,
+            "Song generation/materialization must remain on the tracked Song surface")
     require("markSceneMutated" in genre_source,
             "GENRE explicit apply/materialization must reach the tracker")
 
