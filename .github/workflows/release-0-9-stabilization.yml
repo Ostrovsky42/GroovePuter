@@ -1,0 +1,50 @@
+name: Release 0.9 stabilization
+
+on:
+  pull_request:
+    branches:
+      - dev_0.9
+    paths:
+      - 'src/dsp/**'
+      - 'src/ui/**'
+      - 'scenes.h'
+      - 'scenes.cpp'
+      - 'tests/**'
+      - 'scripts/**'
+      - '.github/workflows/release-0-9-stabilization.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-synth-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build TB303 and distortion contract test
+        run: |
+          mkdir -p build/release-0.9
+          g++ \
+            -std=c++17 \
+            -Wall \
+            -Wextra \
+            -Werror \
+            -I. \
+            tests/test_tb303_release_contract.cpp \
+            src/dsp/mini_tb303.cpp \
+            src/dsp/filter.cpp \
+            src/dsp/audio_wavetables.cpp \
+            src/dsp/tube_distortion.cpp \
+            -o build/release-0.9/test_tb303_release_contract
+
+      - name: Run TB303 and distortion contract test
+        run: build/release-0.9/test_tb303_release_contract
+
+  existing-host-regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run host regression suite
+        run: bash tests/run_host_tests.sh
