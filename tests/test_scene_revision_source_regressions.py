@@ -17,7 +17,6 @@ def main() -> None:
     pattern = (ROOT / "src/ui/pages/pattern_edit_page.h").read_text(encoding="utf-8")
     feel_header = (ROOT / "src/ui/pages/feel_page.h").read_text(encoding="utf-8")
     feel_source = (ROOT / "src/ui/pages/feel_page.cpp").read_text(encoding="utf-8")
-    generation_source = (ROOT / "src/ui/pages/generation_page.cpp").read_text(encoding="utf-8")
     song_header = (ROOT / "src/ui/pages/song_page.h").read_text(encoding="utf-8")
     song_source = (ROOT / "src/ui/pages/song_page.cpp").read_text(encoding="utf-8")
     genre_source = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
@@ -27,10 +26,13 @@ def main() -> None:
     automation_source = (ROOT / "src/ui/pages/drum_automation_page.cpp").read_text(encoding="utf-8")
     tape_source = (ROOT / "src/ui/pages/tape_page.cpp").read_text(encoding="utf-8")
 
-    require(not (ROOT / "src/ui/pages/texture_page.h").exists(),
-            "removed TEXTURE page header must not return")
-    require(not (ROOT / "src/ui/pages/texture_page.cpp").exists(),
-            "removed TEXTURE page source must not return")
+    for retired in (
+        "src/ui/pages/texture_page.h",
+        "src/ui/pages/texture_page.cpp",
+        "src/ui/pages/generation_page.h",
+        "src/ui/pages/generation_page.cpp",
+    ):
+        require(not (ROOT / retired).exists(), f"retired page must not return: {retired}")
 
     require("uint32_t currentRevision" in tracker and
             "uint32_t persistedRevision" in tracker,
@@ -65,10 +67,13 @@ def main() -> None:
             "step editor mutations must reach the tracker")
     require("markSceneMutated();" in feel_header,
             "FEEL timing/velocity mutations must reach the tracker")
-    generation_success = generation_source.index("if (result) {")
-    generation_failure = generation_source.index("} else {", generation_success)
-    require("markSceneMutated();" in generation_source[generation_success:generation_failure],
-            "successful GENERATION materialization must reach the tracker")
+
+    # Standalone GENERATION was retired. Song and GENRE explicit materialization
+    # remain the persistent generation surfaces and must retain tracked writes.
+    require("markSceneMutated" in song_source,
+            "Song generation/materialization mutations must reach the tracker")
+    require("markSceneMutated" in genre_source,
+            "GENRE explicit apply/materialization must reach the tracker")
 
     preset_guard = feel_source.index("if (focus_ == FocusRow::Preset)")
     feel_guard_end = feel_source.index("Scene& scene", preset_guard)
