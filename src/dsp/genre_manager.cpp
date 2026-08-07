@@ -648,48 +648,49 @@ void GenreSceneView::applyGenreTimbre(MiniAcid& engine) {
         engine.setSynthEngine(1, "OPL2");
     }
 
-    const GenreTimbre timbre = getBehavior().timbre;
-    for (int voice = 0; voice < 2; ++voice) {
-        if (engine.currentSynthEngineName(voice) != "TB303") continue;
+    const GenreBehavior b = getBehavior();
+    const GenreTimbre& t = b.timbre;
+    for (int v = 0; v < 2; ++v) {
+        if (engine.currentSynthEngineName(v) != "TB303") continue;
 
         engine.set303ParameterNormalized(
-            TB303ParamId::Oscillator, timbre.osc, voice);
+            TB303ParamId::Oscillator, t.osc, v);
 
-        float cutoff = timbre.cutoff;
-        float resonance = timbre.resonance;
-        float envAmount = timbre.envAmount;
-        float envDecay = timbre.envDecay;
+        float cut = t.cutoff;
+        float reso = t.resonance;
+        float env = t.envAmount;
+        float decay = t.envDecay;
 
-        if (voice == 0) {
-            cutoff = clamp01(cutoff);
-            resonance = clamp01(resonance);
-            envAmount = clamp01(envAmount);
-            envDecay = clamp01(envDecay);
+        if (v == 0) {
+            cut = clamp01(cut);
+            reso = clamp01(reso);
+            env = clamp01(env);
+            decay = clamp01(decay);
 
-            if (cutoff < 0.18f) cutoff = 0.18f;
-            if (cutoff > 0.62f) cutoff = 0.62f;
-            if (envAmount < 0.18f) envAmount = 0.18f;
-            if (envAmount > 0.55f) envAmount = 0.55f;
-            if (envDecay < 0.10f) envDecay = 0.10f;
-            if (envDecay > 0.45f) envDecay = 0.45f;
-            if (resonance < 0.0f) resonance = 0.0f;
-            if (resonance > 0.85f) resonance = 0.85f;
+            if (cut < 0.18f) cut = 0.18f;
+            if (cut > 0.62f) cut = 0.62f;
+            if (env < 0.18f) env = 0.18f;
+            if (env > 0.55f) env = 0.55f;
+            if (decay < 0.10f) decay = 0.10f;
+            if (decay > 0.45f) decay = 0.45f;
+            if (reso < 0.0f) reso = 0.0f;
+            if (reso > 0.85f) reso = 0.85f;
         } else {
-            if (cutoff < 0.40f) cutoff = 0.40f;
-            if (envAmount < 0.20f) envAmount = 0.20f;
-            if (envDecay < 0.08f) envDecay = 0.08f;
-            if (cutoff > 0.95f) cutoff = 0.95f;
-            if (resonance > 0.95f) resonance = 0.95f;
+            if (cut < 0.40f) cut = 0.40f;
+            if (env < 0.20f) env = 0.20f;
+            if (decay < 0.08f) decay = 0.08f;
+            if (cut > 0.95f) cut = 0.95f;
+            if (reso > 0.95f) reso = 0.95f;
         }
 
         engine.set303ParameterNormalized(
-            TB303ParamId::Cutoff, clamp01(cutoff), voice);
+            TB303ParamId::Cutoff, clamp01(cut), v);
         engine.set303ParameterNormalized(
-            TB303ParamId::Resonance, clamp01(resonance), voice);
+            TB303ParamId::Resonance, clamp01(reso), v);
         engine.set303ParameterNormalized(
-            TB303ParamId::EnvAmount, clamp01(envAmount), voice);
+            TB303ParamId::EnvAmount, clamp01(env), v);
         engine.set303ParameterNormalized(
-            TB303ParamId::EnvDecay, clamp01(envDecay), voice);
+            TB303ParamId::EnvDecay, clamp01(decay), v);
     }
 }
 
