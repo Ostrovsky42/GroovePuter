@@ -2,76 +2,140 @@
 
 ## Purpose
 
-Record changes made after `SYNTH_ENGINE_AUDIT_0_9.md` was written, without rewriting its code-level evidence or pretending that hardware acceptance has occurred.
+Record the disposition of findings after PR #125 and during draft stabilization PR #131 without rewriting the original source audit or claiming Cardputer ADV acceptance.
 
 ## Baselines
 
-- Original audit evidence: the commit recorded in `SYNTH_ENGINE_AUDIT_0_9.md`.
-- Branch synchronized with pre-release `dev`: `0514cf417b67457526e06b51e580eac19348fdac`.
-- Hardware listening and FFT acceptance: **not completed**.
+```text
+release branch: dev_0.9
+release base SHA: b28c63801660c9d024e4aad57716d534744fa324
+stabilization PR: #131
+hardware listening: PENDING
+```
 
-## Changed since the audit
+The exact candidate SHA is the final frozen head of PR #131 and must be copied into `docs/releases/0_9_FINAL_ACCEPTANCE.md` before flashing.
 
-PR #107 added bounded held-arrow acceleration (`x1 -> x2 -> x4 -> x5`) to active continuous synth controls and restored BPM in the global status chrome.
+## Fixed before this PR
 
-This changes the disposition of finding N-5:
+PR #125 is merged into `dev_0.9` and closes the code paths for:
 
-- the fixed per-event step remains range-insensitive;
-- a held key now reduces the worst interaction cost;
-- the control is still not range-aware, so this is a **partial mitigation**, not closure;
-- discrete TYPE/OSC/FLT selectors intentionally remain one item per event.
+- AY PSG clock and chromatic C1–B4 mapping;
+- SN76489 playable-register octave folding while preserving pitch class;
+- SN `Oct+` behavior;
+- matching the original logical NoteOff after NoteOn clamp;
+- include guards required by the affected aliased Arduino paths.
 
-No other P0 or P1 synth-audit finding is considered resolved by the synchronization.
+These items retain hardware-listening status `PENDING`.
 
-## Release disposition
+## Fixed in draft PR #131
 
-### P0 — must be fixed or explicitly removed from the 0.9 selectable surface
+### TB303 amplitude lifecycle
 
-- TB303 note lifecycle and missing amplitude-envelope behavior;
-- scene/load ownership that can overwrite the selected synth engine;
-- live-note clamp/NoteOff mismatch;
-- persistence loss for the sixth generic synth parameter.
+- amplitude attack/decay/sustain/release is separate from the filter envelope;
+- ordinary NoteOn retriggers the amplitude envelope;
+- active legato slide does not perform a full retrigger;
+- NoteOff starts a bounded release and reaches silence;
+- reset/Panic clears the active voice;
+- the sample-processing path adds no new allocation.
 
-### P1 — must receive focused host coverage and Cardputer ADV listening acceptance
+### TB303 output ownership
 
-- AY and SN76489 pitch collapse;
-- non-TB303 defaults that can produce maximum noise;
-- TB303/SID DC behavior before per-voice effects;
-- realtime allocation/filter stability concerns;
-- cross-engine loudness mismatch;
-- distortion enable/drive restoration;
-- truthful parameter ranges and responsiveness.
+- visible `Volume` is applied once;
+- optional sub is mixed once;
+- numeric tests cover finite output, monotonic Volume RMS and a bounded sub-level difference.
+
+### Distortion enable policy
+
+- enabling with drive below the working threshold restores one safe default;
+- a valid user drive is preserved;
+- disabling does not change drive;
+- Synth A and Synth B retain independent instances.
+
+Focused host coverage is in `tests/test_tb303_release_contract.cpp` and the `Release 0.9 stabilization` workflow.
+
+## P0 still open
+
+### Versioned synth persistence
+
+The Scene JSON contract still needs a versioned engine-aware payload that stores, independently for Synth A and B:
+
+- TYPE;
+- normalized parameters `0..5`;
+- explicit parameter count/version;
+- deterministic engine-specific defaults for fields absent from legacy Scenes.
+
+Legacy TB303 raw fields must not be reinterpreted as normalized values for another engine. Legacy OPL2 remains decode-only and maps to TB303.
+
+### Loaded patch ownership
+
+Normal Scene Load must guarantee:
+
+```text
+stored TYPE + stored parameters win
+```
+
+Genre timbre application must not run as hidden post-load replacement. It remains valid only for explicit Apply/new-default/regeneration operations whose UI contract promises a sound change.
+
+Until both P0 items have round-trip, legacy and failed-load tests, PR #131 remains draft.
+
+## P1 status
+
+- non-TB engine-aware neutral defaults: open; must be completed with legacy version dispatch;
+- TB303/SID DC before per-voice effects: deferred unless separately proven low-risk;
+- realtime filter allocation: deferred under the release stop condition;
+- cross-engine loudness and aliasing: hardware-led deferred work;
+- parameter range design: held acceleration is only a partial mitigation;
+- FEEL/TEXTURE/GENRE revision evidence: open in the final mutation matrix.
 
 ## Hardware assumptions
 
-- M5Stack Cardputer ADV.
-- Built-in mono audio path at the repository sample rate.
-- Headphones recommended for noise, DC-click, release-tail, and loudness comparisons.
-- No external wiring is required.
+- M5Stack Cardputer ADV;
+- built-in mono audio path at the repository sample rate;
+- headphones recommended;
+- no external GPIO wiring required.
 
 ## Build and flash
 
 ```bash
 git fetch origin
-git switch dev
-git reset --hard origin/dev
+git switch release/0.9-final-stabilization
+git reset --hard origin/release/0.9-final-stabilization
 rm -rf build .pio .pioenvs .piolibdeps
 bash tests/run_host_tests.sh
+bash scripts/install_arduino_deps.sh
 bash scripts/build.sh --warnings all
 ```
 
 Flash using the normal Cardputer ADV upload command and monitor serial at `115200` baud.
 
+## Exact verification commands
+
+```bash
+# Focused TB303/DST contract
+g++ -std=c++17 -Wall -Wextra -Werror -I. \
+  tests/test_tb303_release_contract.cpp \
+  src/dsp/mini_tb303.cpp \
+  src/dsp/filter.cpp \
+  src/dsp/audio_wavetables.cpp \
+  src/dsp/tube_distortion.cpp \
+  -o build/test_tb303_release_contract
+./build/test_tb303_release_contract
+
+# Existing suite
+bash tests/run_host_tests.sh
+```
+
 ## Acceptance checklist
 
-- [ ] Every selectable synth produces a stable chromatic response over its advertised range.
-- [ ] NoteOff releases every live note without a stuck tone or discontinuous full-level cut.
-- [ ] TYPE and all six generic parameters survive save/reload.
-- [ ] Loading a scene does not replace the selected TYPE unexpectedly.
-- [ ] AY and SN76489 pass the short pitch runs documented in the main audit.
-- [ ] Neutral patches do not start with maximum noise.
-- [ ] Switching TYPE does not produce a destructive click while stopped or playing.
-- [ ] Track loudness is acceptably matched and does not collapse into silence or clipping.
-- [ ] Serial shows no allocation failure, watchdog reset, or audio underrun.
+- [x] AY/SN and logical NoteOff code fixes are present from #125.
+- [x] TB303 numeric lifecycle/DST contract passes in host CI.
+- [ ] Cardputer ADV confirms AY/SN pitch and NoteOff cleanup.
+- [ ] TYPE and parameters `0..5` survive Save, reboot and Load for all engines on A and B.
+- [ ] normal Load does not apply genre timbre over the stored patch.
+- [ ] legacy Scenes receive correct engine-specific param-5 defaults.
+- [ ] malformed or unknown persistence versions leave the active Scene unchanged.
+- [ ] TB303 trigger, accent, slide, sustain, release, Volume, sub and Panic pass listening acceptance.
+- [ ] no engine starts with unintended maximum noise.
+- [ ] serial shows no allocation failure, watchdog reset or growing underrun count.
 
-Until these boxes are completed, the synth audit remains a release gate rather than a completed acceptance report.
+The original audit remains the evidence source; this addendum is the current disposition record.
