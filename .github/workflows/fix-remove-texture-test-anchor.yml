@@ -1,0 +1,42 @@
+name: Fix TextureMode regression anchor
+
+on:
+  pull_request:
+    branches:
+      - dev_0.9
+    paths:
+      - '.github/workflows/fix-remove-texture-test-anchor.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/remove-texture-mode
+          fetch-depth: 0
+      - name: Update stale source-test anchor
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('tests/test_source_regressions.py')
+          s = p.read_text(encoding='utf-8')
+          old = '// ENTER: apply the current genre/texture/recipe selection.'
+          new = '// ENTER: apply the current genre/recipe selection.'
+          if old not in s:
+              raise SystemExit('stale anchor not found')
+          p.write_text(s.replace(old, new), encoding='utf-8')
+          PY
+          rm .github/workflows/fix-remove-texture-test-anchor.yml
+      - name: Commit
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'test: update Genre apply anchor after TextureMode removal'
+          git pull --rebase origin agent/remove-texture-mode
+          git push origin HEAD:agent/remove-texture-mode
