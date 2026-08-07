@@ -8,7 +8,6 @@
 #include "../layout_manager.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
-#include "../../state/scene_revision.h"
 
 namespace {
 constexpr uint8_t kGenreBpm[kGenerativeModeCount] = {
@@ -126,28 +125,20 @@ void GenrePage::applyCurrent() {
   const bool wasPlaying = mini_acid_.isPlaying();
   if (wasPlaying && doRegenerate) mini_acid_.stop();
 
-  const auto genre = static_cast<GenerativeMode>(genre_index_);
-  const auto recipe = static_cast<GenreRecipeId>(recipeIndex_);
-  const auto morphTarget =
-      morph_amount_ > 0 ? recipe : static_cast<GenreRecipeId>(kBaseRecipeId);
-  const GrooveboxMode nextMode =
-      GenreCatalog::grooveboxModeForRecipe(recipe, genre);
-  auto& settings = mini_acid_.sceneManager().currentScene().genre;
-
-  const bool changed = doRegenerate ||
-                       mini_acid_.grooveboxMode() != nextMode ||
-                       settings.generativeMode != static_cast<uint8_t>(genre_index_) ||
-                       settings.recipe != static_cast<uint8_t>(recipeIndex_) ||
-                       settings.morphTarget != static_cast<uint8_t>(morphTarget) ||
-                       settings.morphAmount != static_cast<uint8_t>(morph_amount_);
-
   withAudioGuard([&]() {
+    const auto genre = static_cast<GenerativeMode>(genre_index_);
+    const auto recipe = static_cast<GenreRecipeId>(recipeIndex_);
+    const auto morphTarget =
+        morph_amount_ > 0 ? recipe : static_cast<GenreRecipeId>(kBaseRecipeId);
+
+    auto& settings = mini_acid_.sceneManager().currentScene().genre;
     settings.generativeMode = static_cast<uint8_t>(genre_index_);
     settings.recipe = static_cast<uint8_t>(recipeIndex_);
     settings.morphTarget = static_cast<uint8_t>(morphTarget);
     settings.morphAmount = static_cast<uint8_t>(morph_amount_);
 
-    mini_acid_.setGrooveboxMode(nextMode);
+    mini_acid_.setGrooveboxMode(
+        GenreCatalog::grooveboxModeForRecipe(recipe, genre));
 
     if (doApplyTempo) {
       const int index = std::clamp(genre_index_, 0, kGenerativeModeCount - 1);
@@ -156,8 +147,9 @@ void GenrePage::applyCurrent() {
     if (doRegenerate) mini_acid_.regeneratePatternsWithGenre();
   });
 
-  if (changed) GroovePuterState::markSceneMutated();
   if (wasPlaying && doRegenerate) mini_acid_.start();
+
+  GroovePuterState::markSceneMutated();
 
   char toast[96];
   std::snprintf(
