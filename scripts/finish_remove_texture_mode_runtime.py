@@ -28,6 +28,20 @@ for fragment in (
     sh = sh.replace(fragment, '')
 write("scenes.h", sh)
 
+# Remove any remaining lifecycle calls independent of surrounding comments.
+# There are multiple historical reset/apply sites in applySceneStateFromManager().
+eng = read("src/dsp/miniacid_engine.cpp")
+eng = re.sub(r'^\s*genreManager_\.resetTextureBiasTracking\(\);\s*\n', '', eng, flags=re.M)
+eng = re.sub(r'^\s*genreManager_\.syncTextureBiasBaselineFromCurrentState\(\);\s*\n', '', eng, flags=re.M)
+eng = re.sub(r'^\s*genreManager_\.applyTexture\(\*this\);\s*\n', '', eng, flags=re.M)
+eng = re.sub(r'^\s*genreManager_\.setTextureMode\([^\n]*\);\s*\n', '', eng, flags=re.M)
+eng = re.sub(r'^\s*sceneManager_\.currentScene\(\)\.genre\.textureMode\s*=.*?;\s*\n', '', eng, flags=re.M)
+eng = re.sub(r'^\s*LOG_PRINTLN\("[^"\n]*(?:resetTextureBiasTracking|applyTexture)[^"\n]*"\);\s*\n', '', eng, flags=re.M)
+eng = eng.replace('  // Reset bias tracking since scene overwrites all params\n', '')
+eng = eng.replace('  // 2. Reset bias tracking so subsequent texture application is fresh delta from new base\n', '')
+eng = eng.replace('  // 3. Apply texture (delta bias + FX)\n', '')
+write("src/dsp/miniacid_engine.cpp", eng)
+
 # Replace the generated source gate with a field/call-site aware contract.
 # Legacy JSON spellings are allowed only in scenes.cpp as explicit ignored
 # decoder input; they must not appear as Scene fields, serializers or runtime API.
@@ -141,5 +155,13 @@ for token in (
 ):
     if token in scene_h:
         raise RuntimeError(f"scenes.h: persisted residue {token}")
+
+engine = read("src/dsp/miniacid_engine.cpp")
+for token in (
+    "resetTextureBiasTracking(", "syncTextureBiasBaselineFromCurrentState(",
+    "applyTexture(*this)", "setTextureMode(",
+):
+    if token in engine:
+        raise RuntimeError(f"miniacid_engine.cpp: lifecycle residue {token}")
 
 print("TextureMode runtime migration completion: PASS")
