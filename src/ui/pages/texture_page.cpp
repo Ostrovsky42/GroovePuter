@@ -6,6 +6,7 @@
 #include "../axis_page_palette.h"
 #include "../layout_manager.h"
 #include "../ui_common.h"
+#include "../../state/scene_revision.h"
 
 namespace {
 int wrapIndex(int value, int count) {
@@ -91,17 +92,22 @@ void TexturePage::toggleFlavorLink() {
 }
 
 void TexturePage::applyTexture(bool announce) {
+  bool changed = false;
   withAudioGuard([&]() {
     auto& manager = mini_acid_.genreManager();
-    manager.setTextureMode(static_cast<TextureMode>(texture_index_));
-
     auto& settings = mini_acid_.sceneManager().currentScene().genre;
-    settings.textureMode = static_cast<uint8_t>(texture_index_);
-    settings.textureAmount = static_cast<uint8_t>(texture_amount_);
+    const uint8_t nextMode = static_cast<uint8_t>(texture_index_);
+    const uint8_t nextAmount = static_cast<uint8_t>(texture_amount_);
+    changed = settings.textureMode != nextMode ||
+              settings.textureAmount != nextAmount;
 
+    manager.setTextureMode(static_cast<TextureMode>(texture_index_));
+    settings.textureMode = nextMode;
+    settings.textureAmount = nextAmount;
     manager.applyTexture(mini_acid_);
   });
 
+  if (changed) GroovePuterState::markSceneMutated();
   if (!announce) return;
 
   const TextureParams& params =
