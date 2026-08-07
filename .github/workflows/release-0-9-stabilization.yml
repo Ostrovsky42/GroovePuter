@@ -7,10 +7,16 @@ on:
     paths:
       - 'src/dsp/**'
       - 'src/ui/**'
+      - 'src/phrase/**'
+      - 'src/state/**'
       - 'scenes.h'
       - 'scenes.cpp'
       - 'tests/**'
       - 'scripts/**'
+      - 'docs/releases/**'
+      - 'docs/reviews/**'
+      - 'docs/audits/**'
+      - 'MANUAL.md'
       - '.github/workflows/release-0-9-stabilization.yml'
   workflow_dispatch:
 
@@ -48,3 +54,83 @@ jobs:
       - uses: actions/checkout@v4
       - name: Run host regression suite
         run: bash tests/run_host_tests.sh
+
+  four-axis-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check four-axis ownership
+        run: |
+          python3 tests/test_four_axis_ui_source_regressions.py
+          if test -f tests/test_axis_hardware_feedback_source_regressions.py; then
+            python3 tests/test_axis_hardware_feedback_source_regressions.py
+          fi
+
+      - name: Build four-axis pages and navigation tests
+        run: |
+          mkdir -p build/release-0.9/four-axis
+          COMMON_FLAGS='-std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. -Iplatform_sdl -include platform_sdl/arduino_compat.h'
+          g++ ${COMMON_FLAGS} -c src/ui/pages/genre_page.cpp \
+            -o build/release-0.9/four-axis/genre_page.o
+          g++ ${COMMON_FLAGS} -c src/ui/pages/feel_page.cpp \
+            -o build/release-0.9/four-axis/feel_page.o
+          g++ ${COMMON_FLAGS} -c src/ui/pages/generation_page.cpp \
+            -o build/release-0.9/four-axis/generation_page.o
+          g++ ${COMMON_FLAGS} -c src/ui/pages/texture_page.cpp \
+            -o build/release-0.9/four-axis/texture_page.o
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_global_help_content.cpp \
+            -o build/release-0.9/four-axis/test_global_help_content
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_ui_session_state.cpp \
+            -o build/release-0.9/four-axis/test_ui_session_state
+          build/release-0.9/four-axis/test_global_help_content
+          build/release-0.9/four-axis/test_ui_session_state
+
+  phrase-core-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Phrase source and Scene codec integration
+        run: |
+          python3 tests/test_phrase_scene_source_regressions.py
+          python3 tests/test_phrase_ui_source_regressions.py
+          python3 tests/test_global_help_source_regressions.py
+
+      - name: Build and run Phrase Core contracts
+        run: |
+          mkdir -p build/release-0.9/phrase
+          COMMON_FLAGS='-std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I.'
+          g++ ${COMMON_FLAGS} tests/test_phrase_core.cpp \
+            -o build/release-0.9/phrase/test_phrase_core
+          g++ ${COMMON_FLAGS} tests/test_phrase_persistence_preview.cpp \
+            -o build/release-0.9/phrase/test_phrase_persistence_preview
+          g++ ${COMMON_FLAGS} tests/test_phrase_workspace.cpp \
+            -o build/release-0.9/phrase/test_phrase_workspace
+          g++ ${COMMON_FLAGS} tests/test_global_help_content.cpp \
+            -o build/release-0.9/phrase/test_global_help_content
+          g++ ${COMMON_FLAGS} tests/test_ui_session_state.cpp \
+            -o build/release-0.9/phrase/test_ui_session_state
+          g++ ${COMMON_FLAGS} \
+            -Iplatform_sdl \
+            -include platform_sdl/arduino_compat.h \
+            -c src/ui/pages/phrase_page.cpp \
+            -o build/release-0.9/phrase/phrase_page.o
+          g++ ${COMMON_FLAGS} \
+            -Wno-unused-variable \
+            -Wno-unused-but-set-variable \
+            -Iplatform_sdl \
+            -include platform_sdl/arduino_compat.h \
+            tests/test_scene_roundtrip.cpp \
+            scenes.cpp \
+            json_evented.cpp \
+            src/audio/pattern_paging.cpp \
+            -o build/release-0.9/phrase/test_scene_roundtrip
+          build/release-0.9/phrase/test_phrase_core
+          build/release-0.9/phrase/test_phrase_persistence_preview
+          build/release-0.9/phrase/test_phrase_workspace
+          build/release-0.9/phrase/test_global_help_content
+          build/release-0.9/phrase/test_ui_session_state
+          build/release-0.9/phrase/test_scene_roundtrip
