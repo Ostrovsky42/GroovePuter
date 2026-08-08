@@ -34,6 +34,9 @@ run_suite() {
   build_and_run "${compiler}" \
     "${ROOT_DIR}/tests/test_rhythm_stage2_adversarial.cpp" \
     "${BUILD_DIR}/test_rhythm_stage2_adversarial_${suffix}" "$@"
+  build_and_run "${compiler}" \
+    "${ROOT_DIR}/tests/test_rhythm_stage2_adversarial_relationships.cpp" \
+    "${BUILD_DIR}/test_rhythm_stage2_adversarial_relationships_${suffix}" "$@"
 }
 
 run_suite gcc "${CXX:-g++}"
