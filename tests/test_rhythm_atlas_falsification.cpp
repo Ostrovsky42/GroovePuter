@@ -310,7 +310,7 @@ void testRollingAcidP1FitsGeneralizedGrammar() {
   addLane(fixture, RhythmRole::ClosedHat, 0x2020, 0x0202, 0, 2, 4);
   addLane(fixture, RhythmRole::OpenHat, 0, 0x0202, 0x0101, 0, 2);
   addLane(fixture, RhythmRole::Percussion, 0, 0x1111, 0x4444, 1, 4);
-  addLane(fixture, RhythmRole::BassRhythm, 0x8080, 0x7777, 0x0404, 4, 14);
+  addLane(fixture, RhythmRole::BassRhythm, 0x8080, 0x7777, 0x0808, 4, 14);
   addLane(fixture, RhythmRole::MelodicRhythm, 0x2020, 0x0303, 0x0808, 2, 6);
 
   LaneRelationship relation{};
