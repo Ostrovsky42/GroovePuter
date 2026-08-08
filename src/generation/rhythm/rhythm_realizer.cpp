@@ -1039,6 +1039,14 @@ bool addPlanSecondary(const RhythmArchetype& archetype,
   return true;
 }
 
+uint16_t totalOrnaments(const RhythmPhrasePlan& plan, uint8_t bar) {
+  uint16_t total = 0;
+  for (uint8_t role = 0; role < kRhythmRoleCount; ++role) {
+    total += bitCount16(plan.bars[bar].roles[role].ghosts);
+  }
+  return total;
+}
+
 bool addPlanGhost(const RhythmArchetype& archetype,
                   RhythmPhrasePlan& plan,
                   uint8_t bar,
@@ -1049,7 +1057,8 @@ bool addPlanGhost(const RhythmArchetype& archetype,
   const StepMask bit = stepBit(step);
   if ((rolePlan.structural | rolePlan.secondary | rolePlan.ghosts) & bit ||
       !isOnsetLegal(archetype, lane, step) ||
-      bitCount16(rolePlan.ghosts) >= lane.ornamentMax) {
+      bitCount16(rolePlan.ghosts) >= lane.ornamentMax ||
+      totalOrnaments(plan, bar) >= archetype.density.ornamentMax) {
     return false;
   }
   rolePlan.ghosts = static_cast<StepMask>(rolePlan.ghosts | bit);
