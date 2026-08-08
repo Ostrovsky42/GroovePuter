@@ -287,7 +287,10 @@ inline Workspace nextWorkspace(Workspace workspace, int direction) {
 }
 
 inline bool allowsPerformanceKeyboard(int page) {
-    page = normalizeLegacyPage(page);
-    return page == kPerform || page == kSynthA || page == kSynthB;
+    // Preserve pre-refactor input ownership: only PERFORM and the legacy
+    // standalone Synth A sound page routed the live performance keyboard.
+    // The new SYNTH A/B track pages must leave their letter keys to the editor.
+    if (page == kSynthAParameters) return true;
+    return normalizeLegacyPage(page) == kPerform;
 }
 }  // namespace WorkflowPages
