@@ -58,11 +58,11 @@ for needle in (
     '"MATERIALIZE"',
 ):
     require(GENRE, needle, f"GENRE contract missing: {needle}")
-require(
+if not (
     "regeneratePatternsWithGenre" in GENRE or
-    "regenerateWithStrongRhythmMigration" in GENRE,
-    "GENRE MATERIALIZE has no generation boundary",
-)
+    "regenerateWithStrongRhythmMigration" in GENRE
+):
+    raise AssertionError("GENRE MATERIALIZE has no generation boundary")
 forbid(
     GENRE,
     (
