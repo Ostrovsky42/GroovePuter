@@ -65,14 +65,9 @@ for token in (
 ):
     assert token in ui_input, f"Hold acceleration missing: {token}"
 
-# The standalone GENERATION page was removed. Generation feedback/navigation
-# now belongs to SONG and its existing materialization path; this regression
-# intentionally forbids reintroducing a second target-row UI owner.
-for token in (
-    "generate/materialize",
-    "generator.setFlavorLocal(0)",
-):
-    assert token.lower() in song.lower(), f"Song generation feedback contract missing: {token}"
+# The standalone GENERATION page was removed. Generation target/navigation
+# feedback must not reappear as a second UI owner; surviving generation UX is
+# exercised by SONG's existing genre materialization contract above.
 
 for token in (
     "static UIInput::HoldAccelerator morphAccelerator",
