@@ -23,8 +23,10 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
     // audio task. Its router fan-out is for additive outputs; taking the control
     // mutation gate here would deadlock the audio producer and double-trigger.
     // DX and Drums are external USB-MIDI targets and must never alias to the
-    // internal Synth A voice.
+    // internal Synth A voice. Manual POLY mode is also external-only: the
+    // internal Synth A/B live path deliberately remains one voice per synth.
     if (event.source == MusicalEventSource::PatternPlayer ||
+        event.source == MusicalEventSource::PerformanceKeyboardPoly ||
         event.target == MusicalEventTarget::Drums ||
         event.target == MusicalEventTarget::Dx) {
         return;
