@@ -1028,6 +1028,7 @@ bool addPlanSecondary(const RhythmArchetype& archetype,
   }
   if (!isOnsetLegal(archetype, lane, step) ||
       structuralCount(occupancy, bar, lane.role) >= lane.structuralMax ||
+      totalStructural(occupancy, bar) >= archetype.density.structuralMax ||
       !hardCandidateAdditionAllowed(archetype, occupancy, bar, lane.role, step)) {
     return false;
   }
