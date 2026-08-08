@@ -58,6 +58,15 @@ def test_hub_hides_legacy_sound_pages_but_keeps_ids_compatible() -> None:
             'return "SYNTH B SOUND"' not in workflow,
             "standalone SOUND labels must not remain in top-level navigation")
 
+    ownership_start = workflow.index("inline bool allowsPerformanceKeyboard")
+    ownership = workflow[ownership_start:]
+    require("if (page == kSynthAParameters) return true;" in ownership,
+            "legacy Synth A SOUND input ownership must remain compatible")
+    require("return normalizeLegacyPage(page) == kPerform;" in ownership,
+            "normal SYNTH A/B editor pages must not acquire performance-keyboard ownership")
+    require("page == kSynthA || page == kSynthB" not in ownership,
+            "track collapse must not steal letter keys from the note editor")
+
 
 if __name__ == "__main__":
     test_synth_track_owns_notes_knobs_more_cycle()
