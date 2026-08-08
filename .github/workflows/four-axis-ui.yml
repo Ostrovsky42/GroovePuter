@@ -84,8 +84,6 @@ jobs:
             -o build/host-tests/four-axis/genre_page.o
           g++ ${COMMON_FLAGS} -c src/ui/pages/feel_page.cpp \
             -o build/host-tests/four-axis/feel_page.o
-          g++ ${COMMON_FLAGS} -c src/ui/pages/generation_page.cpp \
-            -o build/host-tests/four-axis/generation_page.o
 
       - name: Build and run navigation/help tests
         run: |
