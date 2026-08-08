@@ -7,6 +7,7 @@ on:
       - dev
       - agent/fix-core-reliability
       - agent/smf-structural-inspector
+      - agent/20260808-04-groove-vocabulary-stage2
   pull_request:
 
 permissions:
@@ -20,6 +21,9 @@ jobs:
 
       - name: Run Groove Vocabulary Stage 1 tests
         run: bash tests/run_rhythm_stage1_tests.sh
+
+      - name: Run Groove Vocabulary Stage 2 tests
+        run: bash tests/run_rhythm_stage2_tests.sh
 
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
