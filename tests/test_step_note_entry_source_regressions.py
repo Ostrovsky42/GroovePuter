@@ -53,7 +53,17 @@ require("struct SynthStep" in SCENE and "uint8_t slide : 1" in SCENE,
         "source contract assumes persisted SynthStep note+slide semantics")
 require("if (!note_entry_mode_" in CPP and "patternIndexFromKey(lowerKey)" in CPP,
         "Q-I pattern selection must remain available when NOTE ENTRY is disabled")
-require("case GROOVEPUTER_UP" in CPP and "case GROOVEPUTER_DOWN" in CPP,
-        "arrow navigation must remain available for moving across grid rows")
+
+arrow_owner = "if (note_entry_mode_ && gridArrow && !ui_event.alt && !ui_event.ctrl)"
+require(arrow_owner in CPP,
+        "NOTE ENTRY must own Cardputer arrow scancodes even when Fn/meta is held")
+arrow_pos = CPP.index(arrow_owner)
+legacy_note_pos = CPP.index(
+    "if (note_entry_mode_ && !ui_event.ctrl && !ui_event.meta && !ui_event.alt)")
+require(arrow_pos < legacy_note_pos,
+        "Fn arrow routing must run before the legacy meta-gated note-entry path")
+require("case GROOVEPUTER_LEFT" in CPP and "case GROOVEPUTER_RIGHT" in CPP and
+        "case GROOVEPUTER_UP" in CPP and "case GROOVEPUTER_DOWN" in CPP,
+        "NOTE ENTRY must support all four grid-arrow directions")
 
 print("step note entry source regressions passed")
