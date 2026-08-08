@@ -12,6 +12,7 @@ COMMON_SOURCES=(
   "${ROOT_DIR}/src/generation/rhythm/rhythm_realizer.cpp"
   "${ROOT_DIR}/src/generation/audition/rhythm_audition_catalog.cpp"
   "${ROOT_DIR}/src/generation/audition/rhythm_audition_materializer.cpp"
+  "${ROOT_DIR}/src/generation/audition/rhythm_audition_controller.cpp"
 )
 
 build_source_and_run() {
@@ -34,7 +35,8 @@ build_source_and_run "${CXX:-g++}" \
 
 for test_source in \
   "${ROOT_DIR}/tests/test_rhythm_stage3a_audition_catalog.cpp" \
-  "${ROOT_DIR}/tests/test_rhythm_stage3a_materializer.cpp"
+  "${ROOT_DIR}/tests/test_rhythm_stage3a_materializer.cpp" \
+  "${ROOT_DIR}/tests/test_rhythm_stage3a_controller.cpp"
 do
   test_name="$(basename "${test_source}" .cpp)"
   build_source_and_run "${CXX:-g++}" \
