@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Source-level ownership gates for the GENERATE workflow.
+"""Source-level ownership gates for the current GENERATE workflow.
 
-The historical four-axis layout is now intentionally three user-facing pages:
-GENRE, FEEL and GENERATION. Persisted TEXTURE addresses remain compatibility
-aliases only and must never return to normal navigation.
+The historical GENRE/FEEL/GENERATION/TEXTURE model is now two user-facing
+pages: GENRE and FEEL. Persisted GENERATION/TEXTURE page ids remain decode-only
+compatibility aliases and must resolve to FEEL instead of reviving old pages.
 """
 
 from pathlib import Path
@@ -13,7 +13,6 @@ PAGE_DIR = ROOT / "src/ui/pages"
 
 GENRE = (PAGE_DIR / "genre_page.cpp").read_text(encoding="utf-8")
 FEEL = (PAGE_DIR / "feel_page.cpp").read_text(encoding="utf-8")
-GENERATION = (PAGE_DIR / "generation_page.cpp").read_text(encoding="utf-8")
 WORKFLOW = (ROOT / "src/ui/workflow_mode.h").read_text(encoding="utf-8")
 SESSION = (ROOT / "src/state/ui_session_state.h").read_text(encoding="utf-8")
 HELP = (ROOT / "src/ui/global_help_content.h").read_text(encoding="utf-8")
@@ -34,22 +33,18 @@ def forbid(text: str, needles: tuple[str, ...], owner: str) -> None:
 for filename in (
     "genre_page.h", "genre_page.cpp",
     "feel_page.h", "feel_page.cpp",
-    "generation_page.h", "generation_page.cpp",
 ):
     if not (PAGE_DIR / filename).is_file():
         raise AssertionError(f"canonical GENERATE source missing: {filename}")
 
 for filename in (
+    "generation_page.h", "generation_page.cpp",
     "texture_page.h", "texture_page.cpp",
-    "settings_page.h", "settings_page.cpp",
-    "mode_page.h", "mode_page.cpp",
-    "feel_texture_page.h", "feel_texture_page.cpp",
 ):
     if (PAGE_DIR / filename).exists():
-        raise AssertionError(f"removed or legacy axis source must not exist: {filename}")
+        raise AssertionError(f"retired GENERATE source must not exist: {filename}")
 
 for needle in (
-    '"GENRE 1/3"',
     '"CORRIDOR / VOCABULARY"',
     "settings.generativeMode =",
     "settings.recipe =",
@@ -62,15 +57,13 @@ for needle in (
 forbid(
     GENRE,
     (
-        ".genreManager()", "setTextureMode", "applyTexture(",
-        "applyGenreTimbre", "toggleGrooveboxMode", "swingPct",
+        "setTextureMode", "applyTexture(", "applyGenreTimbre",
         "microTimingAmount", "velocityRange", "PhraseGenerator::",
     ),
     "GENRE",
 )
 
 for needle in (
-    '"FEEL 2/3"',
     '"TIMING / VELOCITY"',
     "scene.feel.swingPct",
     "microTimingAmount",
@@ -83,32 +76,10 @@ forbid(
     FEEL,
     (
         "ghostNoteProbability", "minNotes", "maxNotes", "scaleRoot",
-        "scaleQuantize", "measureSDPerformance", "setTextureMode",
-        "applyTexture(", "PhraseGenerator::",
+        "scaleQuantize", "setTextureMode", "applyTexture(",
+        "PhraseGenerator::",
     ),
     "FEEL",
-)
-
-for needle in (
-    '"GEN 3/3"',
-    '"WRITE ONE SONG BAR"',
-    "PhraseGenerator::PhraseRequest",
-    "PhraseGenerator::generateBarsToSong",
-    "PhraseGenerator::generateToSong",
-    "request.bars = kMaterializeBars;",
-    '"CURRENT EMPTY SONG ROW"',
-):
-    require(GENERATION, needle, f"GENERATION contract missing: {needle}")
-forbid(
-    GENERATION,
-    (
-        "setTextureMode", "applyTexture(", "applySoundMacros",
-        "toggleMacros", "grooveFlavor", "shiftFlavor",
-        "microTimingAmount", "velocityRange", "swingPct",
-        "randomize303Pattern", "phrase_bars_", "shiftPhraseLength",
-        "kLengths[4]", '"LENGTH"', "L/R:LENGTH", "1, 2, 4, 8",
-    ),
-    "GENERATION",
 )
 
 length_owner_tokens = ("capture_length_", "cycleLength(")
@@ -124,55 +95,80 @@ if unexpected_length_owners:
         + ", ".join(sorted(unexpected_length_owners))
     )
 
-require(WORKFLOW, "case WorkflowMode::Generate: return 3;",
-        "GENERATE must expose three pages")
-require(WORKFLOW, "kGenre, kFeel, kGeneration,",
-        "GENERATE order must be GENRE -> FEEL -> GENERATION")
+require(WORKFLOW, "case WorkflowMode::Generate: return 2;",
+        "GENERATE must expose exactly GENRE and FEEL")
+require(WORKFLOW, "case WorkflowMode::Hub: return 4;",
+        "HUB must expose OVERVIEW, SYNTH A, SYNTH B and DRUMS")
+require(WORKFLOW, "kGenre, kFeel,",
+        "GENERATE order must be GENRE -> FEEL")
+require(WORKFLOW, "kPattern, kSynthA, kSynthB, kDrums,",
+        "HUB order must exclude standalone synth SOUND pages")
 require(WORKFLOW, "constexpr int kTexture = 8;",
-        "historical page id 8 must remain reserved")
-require(WORKFLOW, "case kTexture:",
-        "historical page id 8 must be handled")
-require(WORKFLOW, "case Workspace::Texture:",
-        "historical workspace value must be handled")
-require(WORKFLOW, "if (page == kTexture) page = kFeel;",
-        "legacy page index must normalize to FEEL")
-for title in ('return "GENRE";', 'return "FEEL";', 'return "GENERATION";'):
+        "historical TEXTURE page id 8 must remain reserved")
+require(WORKFLOW, "constexpr int kGeneration = 11;",
+        "historical GENERATION page id 11 must remain reserved")
+require(WORKFLOW, "if (page == kTexture || page == kGeneration) return kFeel;",
+        "legacy GENERATION/TEXTURE page ids must normalize to FEEL")
+require(WORKFLOW, "if (page == kSynthAParameters) return kSynthA;",
+        "legacy Synth A SOUND id must normalize to SYNTH A")
+require(WORKFLOW, "if (page == kSynthBParameters) return kSynthB;",
+        "legacy Synth B SOUND id must normalize to SYNTH B")
+for title in ('return "GENRE";', 'return "FEEL";'):
     require(WORKFLOW, title, f"Workflow page title missing: {title}")
-forbid(
-    WORKFLOW.split("static constexpr int kGeneratePages[]", 1)[1]
-            .split("};", 1)[0],
-    ("kTexture",),
-    "normal GENERATE navigation",
-)
+generate_list = WORKFLOW.split(
+    "static constexpr int kGeneratePages[]", 1
+)[1].split("};", 1)[0]
+forbid(generate_list, ("kTexture", "kGeneration"),
+       "normal GENERATE navigation")
+hub_list = WORKFLOW.split(
+    "static constexpr int kHubPages[]", 1
+)[1].split("};", 1)[0]
+forbid(hub_list, ("kSynthAParameters", "kSynthBParameters"),
+       "normal HUB navigation")
 
-require(SESSION, "case SessionWorkflow::Generate: return 3;",
-        "persisted GENERATE count must be three")
-require(SESSION, "SessionPages::kGenre,",
-        "persisted GENERATE list must contain GENRE")
-require(SESSION, "SessionPages::kFeel,",
-        "persisted GENERATE list must contain FEEL")
-require(SESSION, "SessionPages::kGeneration,",
-        "persisted GENERATE list must contain GENERATION")
-require(SESSION, "normalizeLegacyUiPage",
-        "persisted page id 8 must have an explicit normalizer")
-require(SESSION, "SessionPages::kTexture ? SessionPages::kFeel",
-        "persisted page id 8 must resolve to FEEL")
+require(SESSION, "case SessionWorkflow::Generate: return 2;",
+        "persisted GENERATE topology must match the two-page UI")
+require(SESSION, "case SessionWorkflow::Hub: return 4;",
+        "persisted HUB topology must match the four-page UI")
+require(SESSION,
+        "page == SessionPages::kTexture ||\n        page == SessionPages::kGeneration",
+        "persisted GENERATION/TEXTURE ids must canonicalize to FEEL")
+require(SESSION,
+        "if (page == SessionPages::kSynthAParameters) return SessionPages::kSynthA;",
+        "persisted Synth A SOUND id must canonicalize to SYNTH A")
+require(SESSION,
+        "if (page == SessionPages::kSynthBParameters) return SessionPages::kSynthB;",
+        "persisted Synth B SOUND id must canonicalize to SYNTH B")
 session_generate_list = SESSION.split(
     "static constexpr int kGeneratePages[]", 1
 )[1].split("};", 1)[0]
-forbid(session_generate_list, ("SessionPages::kTexture",),
+forbid(session_generate_list,
+       ("SessionPages::kTexture", "SessionPages::kGeneration"),
        "persisted normal GENERATE navigation")
+session_hub_list = SESSION.split(
+    "static constexpr int kHubPages[]", 1
+)[1].split("};", 1)[0]
+forbid(session_hub_list,
+       ("SessionPages::kSynthAParameters", "SessionPages::kSynthBParameters"),
+       "persisted normal HUB navigation")
 
-for title in ("GENRE 1/3", "FEEL 2/3", "GENERATION 3/3"):
+for title in ("GENRE 1/2", "FEEL 2/2"):
     require(HELP, title, f"Alt+H section missing: {title}")
-forbid(HELP, ("TEXTURE 4/4", "LIVE SOUND SURFACE"), "Alt+H")
+forbid(
+    HELP,
+    ("GENERATION 3/3", "GEN 3/3", "TEXTURE 4/4", "LIVE SOUND SURFACE"),
+    "Alt+H",
+)
 for semantic_guard in (
     "No texture or feel changes",
     "No notes, roles or sound changes",
-    "No texture or microtiming changes",
 ):
     require(HELP, semantic_guard, f"Alt+H semantic guard missing: {semantic_guard}")
-for style in ("VisualStyle::MINIMAL", "VisualStyle::RETRO_CLASSIC", "VisualStyle::AMBER"):
+for style in (
+    "VisualStyle::MINIMAL",
+    "VisualStyle::RETRO_CLASSIC",
+    "VisualStyle::AMBER",
+):
     require(PALETTE, style, f"GENERATE palette missing style: {style}")
 
-print("Three-page GENERATE UI source regressions: PASS")
+print("Two-page GENERATE UI source regressions: PASS")
