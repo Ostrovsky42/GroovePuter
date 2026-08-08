@@ -113,6 +113,17 @@ uint32_t projectSeedFor(const GenreSettings& settings,
   return hash;
 }
 
+uint32_t archetypeCoordinateValue(uint32_t projectSeed,
+                                  int16_t patternAddress,
+                                  StrongRhythmRoute route) {
+  uint32_t hash = projectSeed;
+  const uint16_t address = static_cast<uint16_t>(patternAddress);
+  hash = mixByte(hash, static_cast<uint8_t>(address & 0xFFu));
+  hash = mixByte(hash, static_cast<uint8_t>((address >> 8u) & 0xFFu));
+  hash = mixByte(hash, static_cast<uint8_t>(route));
+  return hash;
+}
+
 bool validLevel(RealizationLevel level) {
   return static_cast<uint8_t>(level) <
          static_cast<uint8_t>(RealizationLevel::Count);
@@ -193,11 +204,10 @@ StrongRhythmMigrationResult migrateStrongRhythmDrums(
   }
 
   const uint32_t projectSeed = projectSeedFor(settings, result.route);
-  const uint32_t selectionCoordinate =
-      (static_cast<uint32_t>(static_cast<uint16_t>(context.patternAddress)) << 8u) |
-      static_cast<uint32_t>(static_cast<uint8_t>(result.route));
+  const uint32_t selectionValue = archetypeCoordinateValue(
+      projectSeed, context.patternAddress, result.route);
   const uint8_t choiceIndex = static_cast<uint8_t>(
-      deterministicValue(projectSeed, selectionCoordinate) % choices.count);
+      selectionValue % choices.count);
   result.archetype = choices.values[choiceIndex];
 
   const ReferenceVocabulary::Definition* definition =
