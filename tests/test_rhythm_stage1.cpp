@@ -192,6 +192,28 @@ void testPhraseCoordinateCoincideCardinality() {
   expectError(f.catalog, CatalogValidationError::ImpossibleHardRelationship);
 }
 
+void testCoincideCannotExceedRemainingLaneCapacity() {
+  Fixture f;
+  f.lanes[0].canonicalAnchors = stepBit(0);
+  f.lanes[0].preferred = stepBit(4);
+  f.lanes[0].optional = 0;
+  f.lanes[0].structuralMin = 1;
+  f.lanes[0].structuralMax = 1;
+  f.lanes[1].canonicalAnchors = stepBit(1);
+  f.lanes[1].preferred = stepBit(4);
+  f.lanes[1].optional = 0;
+  f.lanes[1].structuralMin = 1;
+  f.lanes[1].structuralMax = 1;
+  f.relationship.op = RelationshipOp::Coincide;
+  f.relationship.scope = RelationshipScope::BarLocal;
+  f.relationship.minOffset = 0;
+  f.relationship.maxOffset = 0;
+  f.relationship.minMatches = 1;
+  f.relationship.maxMatches = 0;
+  f.archetype.density = DensityContract{2, 2, 2, 0};
+  expectError(f.catalog, CatalogValidationError::ImpossibleHardRelationship);
+}
+
 void testStage1SemanticTypesRemainDistinct() {
   static_assert(static_cast<uint8_t>(RealizationStatus::ValidButSparse) !=
                     static_cast<uint8_t>(RealizationStatus::InvalidConstraintSet),
@@ -213,6 +235,7 @@ int main() {
   testRespondRequiresDistinctOwnedTargets();
   testPLevelTrajectoryPolicyComposition();
   testPhraseCoordinateCoincideCardinality();
+  testCoincideCannotExceedRemainingLaneCapacity();
   testStage1SemanticTypesRemainDistinct();
   return 0;
 }
