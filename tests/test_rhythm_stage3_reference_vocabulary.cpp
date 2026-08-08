@@ -113,6 +113,7 @@ int main() {
   uint8_t familyPresence[static_cast<uint8_t>(RhythmFamily::Count)]{};
   uint16_t totalRelationships = 0;
   uint8_t durationAwareArchetypes = 0;
+  uint8_t collapsedArchetypes = 0;
 
   for (uint8_t index = 0; index < definitionCount(); ++index) {
     const Definition& def = definition(index);
@@ -185,16 +186,14 @@ int main() {
     const uint8_t distinct = distinctCount(identities);
     std::fprintf(stderr, "stage3 %-20s valid=64 distinct=%u\n",
                  def.name, static_cast<unsigned>(distinct));
-
-    // Stage 3 prefers controlled variation over novelty, but no reference
-    // archetype may collapse to a single P1 identity across the seed corpus.
-    assert(distinct >= 2);
+    if (distinct < 2) ++collapsedArchetypes;
   }
 
   uint8_t familiesUsed = 0;
   for (uint8_t count : familyPresence) {
     if (count != 0) ++familiesUsed;
   }
+  assert(collapsedArchetypes == 0);
   assert(familiesUsed >= 6);
   assert(totalRelationships >= 30);
   assert(durationAwareArchetypes >= 12);
