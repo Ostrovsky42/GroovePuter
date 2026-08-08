@@ -31,15 +31,19 @@ enum class UsbMidiStatus : uint8_t {
 };
 
 // Translates normalized GroovePuter events into fixed logical lanes.
-// Synth/DX lanes are monophonic. Live Drums owns seven independent native
-// SEQTRAK lanes (logical 0..6 -> MIDI CH1..7). Pattern Drums retains all eight
-// internal drum voices and maps them onto the seven native SEQTRAK drum tracks;
-// Mid Tom and Rim intentionally share PERC1 / CH6. Repeated Pattern drum
-// NoteOns remain repeated on the wire while activeCount/reference ownership is
-// unwound by the final retrigger-aware gate deadline in MidiDispatchTask.
-// Wire-level channel+note ownership remains reference counted. The SMF player
-// adds a separate polyphonic ownership matrix but shares the same final wire
-// owner counts so player cleanup cannot silence PERFORM or Pattern ownership.
+// Direct MONO Synth/DX lanes retain one-note replacement ownership. Generated
+// performance tools and direct manual POLY mode share the bounded per-target
+// note bitsets below, allowing independent external NoteOn/NoteOff ownership
+// without allocating additional live lanes. Live Drums owns seven independent
+// native SEQTRAK lanes (logical 0..6 -> MIDI CH1..7). Pattern Drums retains all
+// eight internal drum voices and maps them onto the seven native SEQTRAK drum
+// tracks; Mid Tom and Rim intentionally share PERC1 / CH6. Repeated Pattern
+// drum NoteOns remain repeated on the wire while activeCount/reference
+// ownership is unwound by the final retrigger-aware gate deadline in
+// MidiDispatchTask. Wire-level channel+note ownership remains reference
+// counted. The SMF player adds a separate polyphonic ownership matrix but
+// shares the same final wire owner counts so player cleanup cannot silence
+// PERFORM or Pattern ownership.
 class UsbMidiOutput final : public IMusicalEventSink {
 public:
     static constexpr uint8_t kSeqtrakDrumLaneCount = 7;
