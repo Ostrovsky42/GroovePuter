@@ -47,6 +47,14 @@ SOURCES := \
 	../src/dsp/transient_shaper.cpp \
 	../src/dsp/groove_profile.cpp \
 	../src/dsp/advanced_pattern_generator.cpp \
+	../src/generation/generation_context.cpp \
+	../src/generation/rhythm/rhythm_catalog.cpp \
+	../src/generation/rhythm/relationship_resolver.cpp \
+	../src/generation/rhythm/rhythm_realizer.cpp \
+	../src/generation/rhythm/reference_vocabulary.cpp \
+	../src/generation/materialization/pattern_materializer.cpp \
+	../src/generation/migration/strong_rhythm_migration.cpp \
+	../src/generation/migration/strong_rhythm_live_bridge.cpp \
 	../src/input/performance_keyboard.cpp \
 	../src/input/internal_synth_output.cpp \
 	../src/ui/miniacid_display.cpp \
