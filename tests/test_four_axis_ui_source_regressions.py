@@ -14,6 +14,7 @@ PAGE_DIR = ROOT / "src/ui/pages"
 GENRE = (PAGE_DIR / "genre_page.cpp").read_text(encoding="utf-8")
 FEEL = (PAGE_DIR / "feel_page.cpp").read_text(encoding="utf-8")
 WORKFLOW = (ROOT / "src/ui/workflow_mode.h").read_text(encoding="utf-8")
+SESSION = (ROOT / "src/state/ui_session_state.h").read_text(encoding="utf-8")
 HELP = (ROOT / "src/ui/global_help_content.h").read_text(encoding="utf-8")
 PALETTE = (ROOT / "src/ui/axis_page_palette.h").read_text(encoding="utf-8")
 
@@ -96,14 +97,22 @@ if unexpected_length_owners:
 
 require(WORKFLOW, "case WorkflowMode::Generate: return 2;",
         "GENERATE must expose exactly GENRE and FEEL")
+require(WORKFLOW, "case WorkflowMode::Hub: return 4;",
+        "HUB must expose OVERVIEW, SYNTH A, SYNTH B and DRUMS")
 require(WORKFLOW, "kGenre, kFeel,",
         "GENERATE order must be GENRE -> FEEL")
+require(WORKFLOW, "kPattern, kSynthA, kSynthB, kDrums,",
+        "HUB order must exclude standalone synth SOUND pages")
 require(WORKFLOW, "constexpr int kTexture = 8;",
         "historical TEXTURE page id 8 must remain reserved")
 require(WORKFLOW, "constexpr int kGeneration = 11;",
         "historical GENERATION page id 11 must remain reserved")
 require(WORKFLOW, "if (page == kTexture || page == kGeneration) return kFeel;",
         "legacy GENERATION/TEXTURE page ids must normalize to FEEL")
+require(WORKFLOW, "if (page == kSynthAParameters) return kSynthA;",
+        "legacy Synth A SOUND id must normalize to SYNTH A")
+require(WORKFLOW, "if (page == kSynthBParameters) return kSynthB;",
+        "legacy Synth B SOUND id must normalize to SYNTH B")
 for title in ('return "GENRE";', 'return "FEEL";'):
     require(WORKFLOW, title, f"Workflow page title missing: {title}")
 generate_list = WORKFLOW.split(
@@ -111,6 +120,37 @@ generate_list = WORKFLOW.split(
 )[1].split("};", 1)[0]
 forbid(generate_list, ("kTexture", "kGeneration"),
        "normal GENERATE navigation")
+hub_list = WORKFLOW.split(
+    "static constexpr int kHubPages[]", 1
+)[1].split("};", 1)[0]
+forbid(hub_list, ("kSynthAParameters", "kSynthBParameters"),
+       "normal HUB navigation")
+
+require(SESSION, "case SessionWorkflow::Generate: return 2;",
+        "persisted GENERATE topology must match the two-page UI")
+require(SESSION, "case SessionWorkflow::Hub: return 4;",
+        "persisted HUB topology must match the four-page UI")
+require(SESSION,
+        "page == SessionPages::kTexture ||\n        page == SessionPages::kGeneration",
+        "persisted GENERATION/TEXTURE ids must canonicalize to FEEL")
+require(SESSION,
+        "if (page == SessionPages::kSynthAParameters) return SessionPages::kSynthA;",
+        "persisted Synth A SOUND id must canonicalize to SYNTH A")
+require(SESSION,
+        "if (page == SessionPages::kSynthBParameters) return SessionPages::kSynthB;",
+        "persisted Synth B SOUND id must canonicalize to SYNTH B")
+session_generate_list = SESSION.split(
+    "static constexpr int kGeneratePages[]", 1
+)[1].split("};", 1)[0]
+forbid(session_generate_list,
+       ("SessionPages::kTexture", "SessionPages::kGeneration"),
+       "persisted normal GENERATE navigation")
+session_hub_list = SESSION.split(
+    "static constexpr int kHubPages[]", 1
+)[1].split("};", 1)[0]
+forbid(session_hub_list,
+       ("SessionPages::kSynthAParameters", "SessionPages::kSynthBParameters"),
+       "persisted normal HUB navigation")
 
 for title in ("GENRE 1/2", "FEEL 2/2"):
     require(HELP, title, f"Alt+H section missing: {title}")
