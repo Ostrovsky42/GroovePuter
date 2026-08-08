@@ -83,8 +83,8 @@ def test_transport_note_mode_keys_remain_live() -> None:
     base.require("kMaxScheduledEvents = 112" in header,
                  "dense 8-note x4 ratchet scheduling needs overlap headroom")
     base.require("INPUT LOCK | PATTERN PLAYER ACTIVE" not in page and
-                 'stepTools ? "LIVE SYNC" : (directPoly ? "POLY EXT" : "LIVE INPUT")' in page,
-                 "PERFORM must show live transport input instead of the old lock")
+                 'stepTools ? "LIVE SYNC" : (directPoly ? "POLY EXT" : "MONO EXT")' in page,
+                 "PERFORM must show live external input instead of the old lock")
 
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
     route_pos = display.index("performance_keyboard_.keyDown(event.key)")
@@ -148,8 +148,10 @@ def test_manual_polyphony_is_external_and_bounded() -> None:
                  "emitPolyNoteOff(held_[read].note);" in reconcile,
                  "matrix reconciliation must independently clean missing POLY notes")
 
-    base.require("event.source == MusicalEventSource::PerformanceKeyboardPoly" in internal,
-                 "internal Synth A/B must ignore external manual POLY events")
+    base.require("event.source == MusicalEventSource::PerformanceKeyboard" in internal and
+                 "event.source == MusicalEventSource::PerformanceKeyboardPoly" in internal and
+                 "event.source == MusicalEventSource::Arpeggiator" in internal,
+                 "all PERFORM keyboard paths must be external-MIDI-only")
     base.require("isGeneratedPerformanceSource" in usb and
                  "source == MusicalEventSource::PerformanceKeyboardPoly" in usb and
                  "acquireGeneratedNote(event.target, event.note, event.velocity)" in usb and
@@ -161,9 +163,11 @@ def test_manual_polyphony_is_external_and_bounded() -> None:
     base.require("case '9':" in page and
                  "keyboard_.toggleVoiceMode();" in page and
                  "VOICE: POLY / EXT MIDI" in page and
+                 "VOICE: MONO / EXT MIDI" in page and
                  "PERFORMANCE TOOLS: 1-9" in page and
-                 "EXT MIDI ONLY" in page,
-                 "PERFORM UI must expose and explain MONO/POLY mode")
+                 "EXT MIDI ONLY" in page and
+                 "INT+USB" not in page,
+                 "PERFORM UI must expose MONO/POLY as external MIDI modes only")
 
 
 base.test_manual_polyphony_is_external_and_bounded = (
