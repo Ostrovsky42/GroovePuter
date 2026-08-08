@@ -90,9 +90,12 @@ inline bool scheduledSmfMidiEventRouteRevisionIsCurrent(
     }
     const uint8_t eventRevision =
         scheduledSmfMidiEventRouteRevisionTag(event);
+    // Consumer-generated scoped cleanup has already removed the logical owner
+    // from the bounded track table. It must survive another immediate reroute;
+    // otherwise the second change could suppress the only physical NoteOff.
     if (eventRevision ==
-        GroovePuterMidi::kSmfTrackOutputRouteRevisionBarrier) {
-        return false;
+        GroovePuterMidi::kSmfTrackOutputRouteRevisionCleanup) {
+        return true;
     }
     return eventRevision ==
            GroovePuterMidi::smfTrackOutputRouteState()
