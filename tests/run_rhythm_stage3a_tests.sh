@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build/host-tests"
 mkdir -p "${BUILD_DIR}"
 
+python3 "${ROOT_DIR}/tests/test_rhythm_stage3a_source_regressions.py"
+
 COMMON_SOURCES=(
   "${ROOT_DIR}/src/generation/generation_context.cpp"
   "${ROOT_DIR}/src/generation/rhythm/rhythm_catalog.cpp"
