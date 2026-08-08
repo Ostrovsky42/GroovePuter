@@ -26,6 +26,7 @@ struct SynthRoleProjection {
 
 struct ExtractedAtlasRhythm {
   StepMask masks[kRhythmRoleCount]{};
+  StepMask heldMasks[kRhythmRoleCount]{};
   uint8_t heldIntentCount = 0;
 };
 
@@ -90,6 +91,8 @@ ExtractedAtlasRhythm extractRoleMasks(
       intent.gate = GateClass::Held;
       intent.importance = EventImportance::Structural;
       assert(intent.gate == GateClass::Held);
+      out.heldMasks[roleIndex] = static_cast<StepMask>(
+          out.heldMasks[roleIndex] | stepBit(event.step));
       ++out.heldIntentCount;
     }
   }
@@ -128,7 +131,8 @@ void addLane(GrammarFixture& fixture,
              StepMask preferred,
              StepMask optional,
              uint8_t structuralMin,
-             uint8_t structuralMax) {
+             uint8_t structuralMax,
+             StepMask heldGate = 0) {
   assert(fixture.laneCount < kRhythmRoleCount);
   LaneGrammar& lane = fixture.lanes[fixture.laneCount++];
   lane.role = role;
@@ -137,6 +141,7 @@ void addLane(GrammarFixture& fixture,
   lane.optional = optional;
   lane.structuralMin = structuralMin;
   lane.structuralMax = structuralMax;
+  lane.heldGate = heldGate;
 
   fixture.archetype.activeRoles = static_cast<RhythmRoleMask>(
       fixture.archetype.activeRoles | rhythmRoleBit(role));
@@ -279,6 +284,7 @@ void assertObservedIsLegalMember(const GrammarFixture& fixture,
     const RhythmRole role = static_cast<RhythmRole>(roleIndex);
     if (!(fixture.archetype.activeRoles & rhythmRoleBit(role))) {
       assert(extracted.masks[roleIndex] == 0);
+      assert(extracted.heldMasks[roleIndex] == 0);
     }
   }
 
@@ -289,6 +295,12 @@ void assertObservedIsLegalMember(const GrammarFixture& fixture,
     const StepMask observed =
         extracted.masks[static_cast<uint8_t>(lane.role)];
     assertObservedFitsLane(fixture, lane.role, observed);
+    const StepMask observedHeld =
+        extracted.heldMasks[static_cast<uint8_t>(lane.role)];
+    assert(observedHeld == static_cast<StepMask>(
+        observed & lane.heldGate));
+    assert((observed & lane.shortGate) == 0);
+    assert((observed & lane.tieGate) == 0);
 
     if (lane.preferred || lane.optional ||
         lane.structuralMin != lane.structuralMax) {
@@ -356,7 +368,8 @@ void testClassicTwoStepP1FitsGeneralizedGrammar() {
   addLane(fixture, RhythmRole::ClosedHat, 0x2020, 0x0505, 0x0202, 2, 6);
   addLane(fixture, RhythmRole::OpenHat, 0, 0x0101, 0x0202, 0, 2);
   addLane(fixture, RhythmRole::Percussion, 0x1000, 0x0456, 0x2020, 2, 6);
-  addLane(fixture, RhythmRole::BassRhythm, 0x8000, 0x0442, 0x2020, 2, 5);
+  addLane(fixture, RhythmRole::BassRhythm, 0x8000, 0x0442, 0x2020,
+          2, 5, 0x8440);
   addLane(fixture, RhythmRole::MelodicRhythm, 0x2020, 0x1212, 0x0404, 2, 6);
 
   addProtectedSpace(
@@ -392,7 +405,8 @@ void testDeepChordP1FitsGeneralizedGrammar() {
   addLane(fixture, RhythmRole::ClosedHat, 0x2020, 0x0202, 0x0101, 2, 5);
   addLane(fixture, RhythmRole::OpenHat, 0, 0x0202, 0x0101, 0, 2);
   addLane(fixture, RhythmRole::Percussion, 0, 0x1111, 0x2222, 1, 5);
-  addLane(fixture, RhythmRole::BassRhythm, 0x8080, 0x1010, 0x0202, 2, 4);
+  addLane(fixture, RhythmRole::BassRhythm, 0x8080, 0x1010, 0x0202,
+          2, 4, 0x9090);
   addLane(fixture, RhythmRole::ChordRhythm, 0x2020, 0x0303, 0x0808, 2, 6);
 
   addProtectedSpace(

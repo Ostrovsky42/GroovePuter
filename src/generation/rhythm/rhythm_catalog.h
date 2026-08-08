@@ -29,6 +29,7 @@ enum class CatalogValidationError : uint8_t {
   LaneRoleNotActive,
   ActiveRoleMissingLane,
   OverlappingLaneZones,
+  InvalidLaneGateMasks,
   InvalidLaneDensity,
   TooManyStructuralAnchors,
   MissingProtectedSpaceArray,
