@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "smf_track_output_route.h"
+
 enum class ScheduledSmfMidiEventType : uint8_t {
     NoteOn = 0,
     NoteOff,
@@ -22,11 +24,18 @@ struct ScheduledSmfMidiEvent {
     // A compact non-zero tag identifies PROJECT transport epochs. Zero denotes
     // ORIGINAL/file-clock playback and system-common transport intents.
     uint16_t projectTransportEpoch{0};
+    // Low 28 bits are the scheduler queue generation. The high nibble carries
+    // the per-track output-route revision captured at scheduling time. This
+    // keeps live rerouting DRAM-neutral: the 128-slot realtime queue stays at
+    // exactly 16 bytes per event.
     uint32_t generation{0};
 
     constexpr ScheduledSmfMidiEvent()
         : type(ScheduledSmfMidiEventType::NoteOn), trackIndex(0) {}
 };
+
+constexpr uint32_t kScheduledSmfQueueGenerationMask = 0x0FFFFFFFu;
+constexpr uint8_t kScheduledSmfRouteRevisionShift = 28u;
 
 inline constexpr uint16_t scheduledSmfSongPositionPointerValue(
         const ScheduledSmfMidiEvent& event) {
@@ -48,10 +57,54 @@ inline constexpr bool scheduledSmfMidiEventFrameIsValid(
     return blockFrames > 0 && event.frameOffset < blockFrames;
 }
 
-inline constexpr bool scheduledSmfMidiEventGenerationIsCurrent(
+inline constexpr uint32_t scheduledSmfMidiEventPackGeneration(
+        uint32_t queueGeneration,
+        uint8_t routeRevisionTag) {
+    return (queueGeneration & kScheduledSmfQueueGenerationMask) |
+           (static_cast<uint32_t>(routeRevisionTag & 0x0Fu)
+            << kScheduledSmfRouteRevisionShift);
+}
+
+inline constexpr uint32_t scheduledSmfMidiEventQueueGeneration(
+        const ScheduledSmfMidiEvent& event) {
+    return event.generation & kScheduledSmfQueueGenerationMask;
+}
+
+inline constexpr uint8_t scheduledSmfMidiEventRouteRevisionTag(
+        const ScheduledSmfMidiEvent& event) {
+    return static_cast<uint8_t>(
+        (event.generation >> kScheduledSmfRouteRevisionShift) & 0x0Fu);
+}
+
+inline constexpr bool scheduledSmfMidiEventQueueGenerationIsCurrent(
         const ScheduledSmfMidiEvent& event,
         uint32_t currentGeneration) {
-    return event.generation == currentGeneration;
+    return scheduledSmfMidiEventQueueGeneration(event) ==
+           (currentGeneration & kScheduledSmfQueueGenerationMask);
+}
+
+inline bool scheduledSmfMidiEventRouteRevisionIsCurrent(
+        const ScheduledSmfMidiEvent& event) {
+    if (event.type == ScheduledSmfMidiEventType::SongPositionPointer) {
+        return true;
+    }
+    const uint8_t eventRevision =
+        scheduledSmfMidiEventRouteRevisionTag(event);
+    if (eventRevision ==
+        GroovePuterMidi::kSmfTrackOutputRouteRevisionBarrier) {
+        return false;
+    }
+    return eventRevision ==
+           GroovePuterMidi::smfTrackOutputRouteState()
+               .revisionTagForRealtime(event.trackIndex);
+}
+
+inline bool scheduledSmfMidiEventGenerationIsCurrent(
+        const ScheduledSmfMidiEvent& event,
+        uint32_t currentGeneration) {
+    return scheduledSmfMidiEventQueueGenerationIsCurrent(
+               event, currentGeneration) &&
+           scheduledSmfMidiEventRouteRevisionIsCurrent(event);
 }
 
 inline constexpr bool scheduledSmfMidiEventTransportEpochIsCurrent(
