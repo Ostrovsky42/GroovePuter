@@ -11,8 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Install Arduino CLI
         uses: arduino/setup-arduino-cli@v2
@@ -22,13 +20,12 @@ jobs:
       - name: Install pinned M5Stack dependencies
         run: bash scripts/install_arduino_deps.sh
 
-      - name: Build base and head profiles and collect metrics
+      - name: Build head profiles and collect metrics
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          REPORT="$RUNNER_TEMP/groove-vocabulary-size.tsv"
+          REPORT="$GITHUB_WORKSPACE/groove-vocabulary-size.tsv"
           printf 'revision\tprofile\tsha\ttext\tdata\tbss\tdram_data\tdram_bss\tdram_total\tbin_bytes\n' > "$REPORT"
 
           find_size_tool() {
@@ -37,10 +34,8 @@ jobs:
           }
 
           collect() {
-            local revision="$1"
-            local profile="$2"
-            local sha="$3"
-            local build_dir="$4"
+            local profile="$1"
+            local build_dir="$2"
             local elf="$build_dir/GroovePuter.ino.elf"
             local bin="$build_dir/GroovePuter.ino.bin"
             local size_tool
@@ -60,31 +55,20 @@ jobs:
             local dram_total=$((dram_data + dram_bss))
             local bin_bytes
             bin_bytes="$(stat -c %s "$bin")"
-            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-              "$revision" "$profile" "$sha" "$text" "$data" "$bss" \
+            printf 'head\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "$profile" "$HEAD_SHA" "$text" "$data" "$bss" \
               "$dram_data" "$dram_bss" "$dram_total" "$bin_bytes" >> "$REPORT"
           }
 
-          build_revision() {
-            local revision="$1"
-            local sha="$2"
-            git checkout --force "$sha"
-            git clean -fdx -e build || true
+          normal="$RUNNER_TEMP/head-normal"
+          midi="$RUNNER_TEMP/head-midi-only"
+          BUILD_PATH="$normal" bash scripts/build.sh --warnings all
+          bash scripts/check_cardputer_dram_budget.sh "$normal/GroovePuter.ino.elf"
+          collect normal "$normal"
 
-            local normal="$RUNNER_TEMP/${revision}-normal"
-            local midi="$RUNNER_TEMP/${revision}-midi-only"
-            BUILD_PATH="$normal" bash scripts/build.sh --warnings all
-            bash scripts/check_cardputer_dram_budget.sh "$normal/GroovePuter.ino.elf"
-            collect "$revision" normal "$sha" "$normal"
-
-            BUILD_PATH="$midi" bash scripts/build_seqtrak_midi_only.sh --warnings all
-            collect "$revision" midi-only "$sha" "$midi"
-          }
-
-          build_revision base "$BASE_SHA"
-          build_revision head "$HEAD_SHA"
+          BUILD_PATH="$midi" bash scripts/build_seqtrak_midi_only.sh --warnings all
+          collect midi-only "$midi"
           cat "$REPORT"
-          cp "$REPORT" "$GITHUB_WORKSPACE/groove-vocabulary-size.tsv"
 
       - name: Upload size report
         uses: actions/upload-artifact@v4
