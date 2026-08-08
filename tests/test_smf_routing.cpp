@@ -84,10 +84,29 @@ int main() {
     assert(routeSnapshot.trackCount == 4);
     for (uint16_t track = 0; track < routeSnapshot.trackCount; ++track) {
         assert(routeSnapshot.destinationFor(track) == kSmfTrackOutputRouteAuto);
+        assert(routes.revisionTagForRealtime(track) == 0u);
     }
 
     assert(routes.setDestination(2, 7, generation, 4));
     assert(routes.destinationFor(2, 4) == 7);
+    assert(routes.revisionTagForRealtime(2) == 1u);
+
+    uint8_t releaseTrack = 0xFFu;
+    assert(routes.takePendingReleaseTrack(releaseTrack));
+    assert(releaseTrack == 2u);
+    assert(!routes.takePendingReleaseTrack(releaseTrack));
+
+    // Re-applying the same route is a no-op: it must not cut a sounding note,
+    // advance the per-track revision, or publish another cleanup request.
+    assert(routes.setDestination(2, 7, generation, 4));
+    assert(routes.revisionTagForRealtime(2) == 1u);
+    assert(!routes.takePendingReleaseTrack(releaseTrack));
+
+    // The scheduler-side lookup captures destination and revision atomically;
+    // the next queue publication consumes exactly that one-event stamp.
+    assert(routes.destinationForProducer(2, 4) == 7);
+    assert(routes.consumeProducerRevisionTag(2) == 1u);
+
     assert(!routes.setDestination(4, 7, generation, 4));
     assert(!routes.setDestination(2, 10, generation, 4));
 
@@ -104,6 +123,9 @@ int main() {
     assert(routeSnapshot.destinationFor(1) == 8);
     assert(routeSnapshot.destinationFor(2) == 9);
     assert(routeSnapshot.destinationFor(3) == kSmfTrackOutputRouteAuto);
+    assert(routes.revisionTagForRealtime(1) == 0u);
+    assert(routes.revisionTagForRealtime(2) == 0u);
+    assert(!routes.takePendingReleaseTrack(releaseTrack));
 
     restored[2] = 10;
     assert(!routes.replaceDestinations(restored, 4, generation));
@@ -117,6 +139,8 @@ int main() {
     assert(routeSnapshot.trackCount == 2);
     assert(routeSnapshot.destinationFor(0) == kSmfTrackOutputRouteAuto);
     assert(routeSnapshot.destinationFor(1) == kSmfTrackOutputRouteAuto);
+    assert(routes.revisionTagForRealtime(0) == 0u);
+    assert(routes.revisionTagForRealtime(1) == 0u);
 
     return 0;
 }
