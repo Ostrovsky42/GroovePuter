@@ -1,0 +1,84 @@
+name: Groove Vocabulary Stage 3A temporary section audit
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  section-delta:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Stage 3A
+        uses: actions/checkout@v4
+        with:
+          path: stage3a
+
+      - name: Checkout Stage 2 baseline
+        uses: actions/checkout@v4
+        with:
+          ref: a7e62afd5dda8c5c07ca34b0c1346ec27c5b5bf3
+          path: stage2
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash stage3a/scripts/install_arduino_deps.sh
+
+      - name: Build normal profiles and diff ELF sections
+        run: |
+          set -euo pipefail
+          BASE="$RUNNER_TEMP/stage2-normal"
+          HEAD="$RUNNER_TEMP/stage3a-normal"
+          (cd stage2 && BUILD_PATH="$BASE" bash scripts/build.sh --warnings all)
+          (cd stage3a && BUILD_PATH="$HEAD" bash scripts/build.sh --warnings all)
+
+          SIZE_TOOL="$(find "$HOME/.arduino15/packages" -type f -name xtensa-esp32s3-elf-size -perm -111 -print | sort -V | tail -n 1)"
+          test -x "$SIZE_TOOL"
+
+          REPORT="$GITHUB_WORKSPACE/stage3a-section-audit.txt"
+          {
+            echo '=== STAGE2 SIZE -A ==='
+            "$SIZE_TOOL" -A "$BASE/GroovePuter.ino.elf"
+            echo
+            echo '=== STAGE3A SIZE -A ==='
+            "$SIZE_TOOL" -A "$HEAD/GroovePuter.ino.elf"
+            echo
+            echo '=== SECTION DELTA ==='
+            python3 - "$SIZE_TOOL" "$BASE/GroovePuter.ino.elf" "$HEAD/GroovePuter.ino.elf" <<'PY'
+          import subprocess, sys
+          size_tool, base_elf, head_elf = sys.argv[1:]
+
+          def sections(path):
+              out = subprocess.check_output([size_tool, '-A', path], text=True)
+              result = {}
+              for line in out.splitlines():
+                  fields = line.split()
+                  if len(fields) >= 3 and fields[0].startswith('.'):
+                      try:
+                          result[fields[0]] = int(fields[1])
+                      except ValueError:
+                          pass
+              return result
+
+          base = sections(base_elf)
+          head = sections(head_elf)
+          for name in sorted(set(base) | set(head)):
+              before = base.get(name, 0)
+              after = head.get(name, 0)
+              delta = after - before
+              if delta:
+                  print(f'{name}\t{before}\t{after}\t{delta:+d}')
+          PY
+          } | tee "$REPORT"
+
+      - name: Upload section report
+        uses: actions/upload-artifact@v4
+        with:
+          name: groove-vocabulary-stage3a-section-audit
+          path: stage3a-section-audit.txt
+          if-no-files-found: error
