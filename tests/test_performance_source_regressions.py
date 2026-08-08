@@ -83,7 +83,7 @@ def test_transport_note_mode_keys_remain_live() -> None:
     base.require("kMaxScheduledEvents = 112" in header,
                  "dense 8-note x4 ratchet scheduling needs overlap headroom")
     base.require("INPUT LOCK | PATTERN PLAYER ACTIVE" not in page and
-                 'stepTools ? "LIVE SYNC" : "LIVE INPUT"' in page,
+                 'stepTools ? "LIVE SYNC" : (directPoly ? "POLY EXT" : "LIVE INPUT")' in page,
                  "PERFORM must show live transport input instead of the old lock")
 
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
@@ -97,6 +97,77 @@ def test_transport_note_mode_keys_remain_live() -> None:
 
 base.test_transport_note_mode_keys_remain_live = (
     test_transport_note_mode_keys_remain_live
+)
+
+
+def test_manual_polyphony_is_external_and_bounded() -> None:
+    event_header = (ROOT / "src/input/musical_event.h").read_text(
+        encoding="utf-8"
+    )
+    keyboard_h = (ROOT / "src/input/performance_keyboard.h").read_text(
+        encoding="utf-8"
+    )
+    keyboard_cpp = (ROOT / "src/input/performance_keyboard.cpp").read_text(
+        encoding="utf-8"
+    )
+    internal = (ROOT / "src/input/internal_synth_output.cpp").read_text(
+        encoding="utf-8"
+    )
+    usb = (ROOT / "src/midi/usb_midi_output.cpp").read_text(
+        encoding="utf-8"
+    )
+    page = (ROOT / "src/ui/pages/perform_page.cpp").read_text(
+        encoding="utf-8"
+    )
+
+    base.require("PerformanceKeyboardPoly" in event_header,
+                 "manual POLY must have a distinct event source")
+    base.require("enum class PerformanceVoiceMode" in keyboard_h and
+                 "PerformanceVoiceMode::Mono" in keyboard_h,
+                 "MONO must remain the default runtime voice mode")
+    base.require("bool PerformanceKeyboard::directPolyphonyEnabled() const" in keyboard_cpp and
+                 "!transformedPlaybackEnabled()" in keyboard_cpp,
+                 "manual POLY must not replace ARP/Chord generated ownership")
+    base.require("MusicalEventSource::PerformanceKeyboardPoly" in keyboard_cpp and
+                 "emitPolyNoteOn" in keyboard_cpp and
+                 "emitPolyNoteOff" in keyboard_cpp,
+                 "direct POLY keys need exact per-note NoteOn/NoteOff events")
+
+    key_up = keyboard_cpp[
+        keyboard_cpp.index("bool PerformanceKeyboard::keyUp"):
+        keyboard_cpp.index("void PerformanceKeyboard::releaseMissingKeys")
+    ]
+    base.require("if (directPolyphonyEnabled())" in key_up and
+                 "emitPolyNoteOff(released.note);" in key_up,
+                 "POLY key-up must release the exact physical note")
+    reconcile = keyboard_cpp[
+        keyboard_cpp.index("void PerformanceKeyboard::releaseMissingKeys"):
+        keyboard_cpp.index("void PerformanceKeyboard::setEnabled")
+    ]
+    base.require("if (directPolyphonyEnabled())" in reconcile and
+                 "emitPolyNoteOff(held_[read].note);" in reconcile,
+                 "matrix reconciliation must independently clean missing POLY notes")
+
+    base.require("event.source == MusicalEventSource::PerformanceKeyboardPoly" in internal,
+                 "internal Synth A/B must ignore external manual POLY events")
+    base.require("isGeneratedPerformanceSource" in usb and
+                 "source == MusicalEventSource::PerformanceKeyboardPoly" in usb and
+                 "acquireGeneratedNote(event.target, event.note, event.velocity)" in usb and
+                 "releaseGeneratedNote(event.target, event.note, event.velocity)" in usb,
+                 "USB POLY must reuse the bounded per-note ownership path")
+    base.require("wireOwners_" in usb and "generatedActive_" in usb,
+                 "manual POLY must remain inside existing bounded ownership storage")
+
+    base.require("case '9':" in page and
+                 "keyboard_.toggleVoiceMode();" in page and
+                 "VOICE: POLY / EXT MIDI" in page and
+                 "PERFORMANCE TOOLS: 1-9" in page and
+                 "EXT MIDI ONLY" in page,
+                 "PERFORM UI must expose and explain MONO/POLY mode")
+
+
+base.test_manual_polyphony_is_external_and_bounded = (
+    test_manual_polyphony_is_external_and_bounded
 )
 
 
