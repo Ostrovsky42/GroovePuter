@@ -31,6 +31,12 @@ enum class PerformanceArpDirection : uint8_t {
     Count,
 };
 
+enum class PerformanceVoiceMode : uint8_t {
+    Mono = 0,
+    Poly,
+    Count,
+};
+
 class PerformanceKeyboard {
 public:
     static constexpr std::size_t kMaxHeldNotes = 19;
@@ -74,6 +80,15 @@ public:
     void cycleTarget(int direction);
     const char* targetName() const;
     uint8_t targetMidiChannel() const;
+
+    void setVoiceMode(PerformanceVoiceMode mode);
+    void toggleVoiceMode();
+    PerformanceVoiceMode voiceMode() const { return voiceMode_; }
+    const char* voiceModeName() const;
+    // Direct POLY mode is manual external MIDI polyphony. Drums already own
+    // independent lanes, while ARP/Chord/Strum/Ratchet/Euclidean keep their
+    // existing generated-note ownership model.
+    bool directPolyphonyEnabled() const;
 
     void panic();
 
@@ -166,6 +181,8 @@ private:
     int findHeld(char physicalKey) const;
     void emitNoteOn(const HeldNote& held);
     void emitNoteOff(uint8_t note, uint8_t channel = 0);
+    void emitPolyNoteOn(const HeldNote& held);
+    void emitPolyNoteOff(uint8_t note);
     void emitAllNotesOff();
     void routeGenerated(MusicalEventType type,
                         uint8_t note,
@@ -205,6 +222,7 @@ private:
     PerformanceScale scale_{PerformanceScale::NaturalMinor};
     PerformanceChordMode chordMode_{PerformanceChordMode::Off};
     PerformanceArpDirection arpDirection_{PerformanceArpDirection::Up};
+    PerformanceVoiceMode voiceMode_{PerformanceVoiceMode::Mono};
     MusicalEventTarget target_{MusicalEventTarget::SynthA};
     int8_t octaveShift_{0};
     bool enabled_{true};
