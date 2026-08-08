@@ -154,7 +154,7 @@ void FeelPage::draw(IGfx& gfx) {
   const int x = Layout::COL_1;
   const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
   AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0),
-                      "FEEL 2/3", "TIMING / VELOCITY",
+                      "FEEL 2/2", "TIMING / VELOCITY",
                       axisColor, palette);
 
   char value[48];
