@@ -44,8 +44,13 @@ int main() {
     assert(keyboard.voiceMode() == PerformanceVoiceMode::Mono);
     assert(std::strcmp(keyboard.voiceModeName(), "MONO") == 0);
     assert(!keyboard.directPolyphonyEnabled());
+    assert(keyboard.velocity() == PerformanceKeyboard::kDefaultVelocity);
     static_assert(PerformanceKeyboard::kMaxHeldNotes == 19);
     static_assert(PerformanceKeyboard::kMaxPolyChordNotes == 16);
+    static_assert(PerformanceKeyboard::kMinVelocity == 10);
+    static_assert(PerformanceKeyboard::kMaxVelocity == 120);
+    static_assert(PerformanceKeyboard::kVelocityStep == 10);
+    static_assert(PerformanceKeyboard::kDefaultVelocity == 100);
 
     for (char key : std::string("iopkl")) {
         assert(PerformanceKeyboard::isPerformanceKey(key));
@@ -61,7 +66,9 @@ int main() {
     assert(keyboard.noteForKey('w', note) && note == 50);
     assert(!keyboard.noteForKey('z', note));
 
-    // MONO remains last-note priority: C2, then D2, then release inactive C2.
+    // MONO sends the same physical key lifecycle as a normal MIDI keyboard.
+    // The receiver owns one-voice priority/legato; GroovePuter never suppresses
+    // an inactive-key release or synthesizes a new NoteOn for a still-held key.
     assert(keyboard.keyDown('a', 90));
     assert(keyboard.keyDown('s', 110));
     assert(keyboard.heldCount() == 2);
@@ -74,21 +81,22 @@ int main() {
     assert(keyboard.keyUp('a'));
     assert(keyboard.heldCount() == 1);
     assert(keyboard.activeNote() == 38);
-    assert(sink.events.size() == 2);  // inactive release does not touch voice
+    assert(sink.events.size() == 3);
+    expectEvent(sink.events.back(), MusicalEventType::NoteOff, 36);
 
     assert(keyboard.keyUp('s'));
     assert(keyboard.heldCount() == 0);
-    assert(sink.events.size() == 3);
+    assert(sink.events.size() == 4);
     expectEvent(sink.events.back(), MusicalEventType::NoteOff, 38);
 
-    // POLY is direct external-MIDI ownership: every physical key owns its own
-    // NoteOn/NoteOff, while the internal synth can ignore this dedicated source.
+    // POLY keeps the same exact per-key lifecycle but uses its dedicated source
+    // so UsbMidiOutput can request POLY receiver mode on the external target.
     sink.clear();
     keyboard.setVoiceMode(PerformanceVoiceMode::Poly);
     assert(keyboard.voiceMode() == PerformanceVoiceMode::Poly);
     assert(std::strcmp(keyboard.voiceModeName(), "POLY") == 0);
     assert(keyboard.directPolyphonyEnabled());
-    assert(sink.events.size() == 1);  // mode transition panic
+    assert(sink.events.size() == 1);
     expectEvent(sink.events[0], MusicalEventType::AllNotesOff, 0);
 
     sink.clear();
@@ -104,7 +112,6 @@ int main() {
     expectEvent(sink.events[2], MusicalEventType::NoteOn, 39,
                 MusicalEventSource::PerformanceKeyboardPoly);
 
-    // Releasing the middle note must release only that exact note.
     assert(keyboard.keyUp('s'));
     assert(keyboard.heldCount() == 2);
     assert(keyboard.activeNote() == 39);
@@ -120,8 +127,6 @@ int main() {
     expectEvent(sink.events.back(), MusicalEventType::NoteOff, 39,
                 MusicalEventSource::PerformanceKeyboardPoly);
 
-    // Matrix reconciliation in POLY releases each missing key independently and
-    // must not retrigger the remaining held note.
     sink.clear();
     assert(keyboard.keyDown('a'));
     assert(keyboard.keyDown('s'));
@@ -136,13 +141,10 @@ int main() {
     expectEvent(sink.events.back(), MusicalEventType::NoteOff, 36,
                 MusicalEventSource::PerformanceKeyboardPoly);
 
-    // POLY+CHORD is a sustained union, not last-root replacement. C5th owns
-    // C/G/C and the upper C5th shares MIDI 48. Adding the second root must emit
-    // only the two new notes; releasing either root must not retrigger or cut
-    // the shared note while the other root still owns it.
+    // POLY+CHORD is a sustained union, not last-root replacement.
     sink.clear();
     keyboard.setChordMode(PerformanceChordMode::Fifth);
-    assert(sink.events.size() == 1);  // configuration panic
+    assert(sink.events.size() == 1);
     expectEvent(sink.events[0], MusicalEventType::AllNotesOff, 0);
     sink.clear();
 
@@ -155,7 +157,7 @@ int main() {
     expectEvent(sink.events[2], MusicalEventType::NoteOn, 48,
                 MusicalEventSource::Arpeggiator);
 
-    assert(keyboard.keyDown('q', 104));  // 48,55,60; 48 is already sounding
+    assert(keyboard.keyDown('q', 104));  // 48,55,60; 48 already sounds
     assert(sink.events.size() == 5);
     expectEvent(sink.events[3], MusicalEventType::NoteOn, 55,
                 MusicalEventSource::Arpeggiator);
@@ -169,7 +171,6 @@ int main() {
                 MusicalEventSource::Arpeggiator);
     expectEvent(sink.events[6], MusicalEventType::NoteOff, 43,
                 MusicalEventSource::Arpeggiator);
-    // No NoteOn 48 is emitted here: the upper root already owns/sustains it.
 
     assert(keyboard.keyUp('q'));
     assert(keyboard.heldCount() == 0);
@@ -181,9 +182,7 @@ int main() {
     expectEvent(sink.events[9], MusicalEventType::NoteOff, 60,
                 MusicalEventSource::Arpeggiator);
 
-    // Direct POLY+CHORD has an explicit 16-unique-note ceiling. Six NAT MINOR
-    // roots in MIN7 fill it; a seventh held root may be tracked physically but
-    // cannot add a seventeenth simultaneous generated MIDI note.
+    // Direct POLY+CHORD has an explicit 16-unique-note ceiling.
     sink.clear();
     keyboard.setChordMode(PerformanceChordMode::Minor7);
     assert(sink.events.size() == 1);
@@ -210,26 +209,27 @@ int main() {
     assert(sink.events.size() == 1);
     expectEvent(sink.events[0], MusicalEventType::AllNotesOff, 0);
 
-    // Releasing the active key restores the previous held note in MONO.
+    // Releasing the newer key in MONO emits only its NoteOff. The older held
+    // key stays logically down at the receiver and must not receive a new attack.
     sink.clear();
     assert(keyboard.keyDown('a'));
     assert(keyboard.keyDown('d'));
     assert(keyboard.keyUp('d'));
     assert(sink.events.size() == 3);
-    expectEvent(sink.events[2], MusicalEventType::NoteOn, 36);
+    expectEvent(sink.events[2], MusicalEventType::NoteOff, 39);
     assert(keyboard.activeNote() == 36);
 
-    // Matrix repeats do not duplicate held state or retrigger.
     const std::size_t beforeRepeat = sink.events.size();
     assert(keyboard.keyDown('a'));
     assert(keyboard.heldCount() == 1);
     assert(sink.events.size() == beforeRepeat);
 
-    // Matrix reconciliation recovers a missing key-up.
     keyboard.releaseMissingKeys(nullptr, 0);
     assert(keyboard.heldCount() == 0);
     expectEvent(sink.events.back(), MusicalEventType::NoteOff, 36);
 
+    // Matrix reconciliation removes only missing MONO keys and never reattacks
+    // an older key that is still physically down.
     sink.clear();
     assert(keyboard.keyDown('a'));
     assert(keyboard.keyDown('s'));
@@ -237,10 +237,34 @@ int main() {
     keyboard.releaseMissingKeys(onlyA, 1);
     assert(keyboard.heldCount() == 1);
     assert(keyboard.activeNote() == 36);
-    expectEvent(sink.events.back(), MusicalEventType::NoteOn, 36);
+    assert(sink.events.size() == 3);
+    expectEvent(sink.events.back(), MusicalEventType::NoteOff, 38);
+    assert(keyboard.keyUp('a'));
 
-    // Transport playback no longer revokes live keyboard ownership. Direct
-    // notes remain immediate and the transition itself must not emit panic.
+    // Cardputer velocity is a fixed runtime control: 10..120, step 10, default
+    // 100. Changing it affects future keyDown events only and never panics held
+    // notes or rewrites their already-sent velocity.
+    sink.clear();
+    assert(keyboard.velocity() == 100);
+    assert(keyboard.adjustVelocity(-1));
+    assert(keyboard.velocity() == 90);
+    assert(keyboard.keyDown('a'));
+    assert(sink.events.size() == 1);
+    assert(sink.events[0].velocity == 90);
+    assert(keyboard.adjustVelocity(1));
+    assert(keyboard.velocity() == 100);
+    assert(sink.events.size() == 1);
+    assert(keyboard.keyUp('a'));
+
+    keyboard.setVelocity(1);
+    assert(keyboard.velocity() == 10);
+    assert(!keyboard.adjustVelocity(-1));
+    for (int i = 0; i < 20; ++i) keyboard.adjustVelocity(1);
+    assert(keyboard.velocity() == 120);
+    assert(!keyboard.adjustVelocity(1));
+    keyboard.setVelocity(95);
+    assert(keyboard.velocity() == 100);
+
     keyboard.panic();
     sink.clear();
     keyboard.setTransportPlaying(true);
@@ -262,8 +286,6 @@ int main() {
     keyboard.setTransportPlaying(false);
     assert(keyboard.liveInputAllowed());
 
-    // NOTE mode is explicit. Turning it off releases live ownership and allows
-    // the same letters to reach legacy commands; turning it on reserves them.
     sink.clear();
     keyboard.setNoteModeEnabled(false);
     assert(!keyboard.noteModeEnabled());
@@ -280,7 +302,6 @@ int main() {
     assert(keyboard.keyDown('q'));
     assert(keyboard.activeNote() == 48);
 
-    // Panic is deterministic even if the source has already lost key-up state.
     sink.clear();
     keyboard.panic();
     assert(keyboard.heldCount() == 0);
@@ -288,7 +309,6 @@ int main() {
     assert(sink.events.size() == 1);
     expectEvent(sink.events[0], MusicalEventType::AllNotesOff, 0);
 
-    // Runtime-only scale/octave state always remains inside the synth range.
     const char playableKeys[] = "asdfghjklqwertyuiop";
     const char lowerManual[] = "asdfghjkl";
     const char upperManual[] = "qwertyuio";
