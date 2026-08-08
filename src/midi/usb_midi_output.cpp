@@ -1,12 +1,5 @@
 #include "usb_midi_output.h"
 
-namespace {
-bool isGeneratedPerformanceSource(MusicalEventSource source) {
-    return source == MusicalEventSource::Arpeggiator ||
-           source == MusicalEventSource::PerformanceKeyboardPoly;
-}
-}  // namespace
-
 UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
                              UsbMidiRouteConfig config)
     : transport_(transport),
@@ -17,14 +10,21 @@ UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
       mounted_(false) {
     // Keep the global constructor deliberately trivial. On Cardputer-Adv the
     // USB MIDI service is a static object, and Launcher hands control to the app
-    // before Arduino setup(). Expanded DX/drum lane construction belongs in
-    // begin(), which runs inside MidiDispatchTask after setup has started.
+    // before Arduino setup(). Expanded state is initialized in begin().
+}
+
+bool UsbMidiOutput::isSynthPerformanceSource(MusicalEventSource source) {
+    return source == MusicalEventSource::PerformanceKeyboard ||
+           source == MusicalEventSource::PerformanceKeyboardPoly ||
+           source == MusicalEventSource::Arpeggiator;
+}
+
+bool UsbMidiOutput::sourceRequestsPolyReceiver(MusicalEventSource source) {
+    return source == MusicalEventSource::PerformanceKeyboardPoly ||
+           source == MusicalEventSource::Arpeggiator;
 }
 
 uint8_t UsbMidiOutput::patternDrumChannel(uint8_t logicalVoice) {
-    // Internal GroovePuter drum voices -> native SEQTRAK tracks.
-    // KICK, SNARE, CLOSED HAT, OPEN HAT, MID TOM, HIGH TOM, RIM, CLAP
-    // map to CH1, CH2, CH4, CH5, CH6, CH7, CH6, CH3 respectively.
     static constexpr uint8_t kChannels[kPatternDrumVoiceCount] = {
         0, 1, 3, 4, 5, 6, 5, 2,
     };
@@ -145,6 +145,36 @@ uint8_t UsbMidiOutput::generatedChannel(MusicalEventTarget target) const {
     return 0;
 }
 
+void UsbMidiOutput::ensurePerformanceReceiverMode(
+    MusicalEventTarget target,
+    bool polyphonic) {
+    const int targetIndex = generatedTargetIndex(target);
+    if (targetIndex < 0 || !enabled_ || !begun_ || !mounted_ ||
+        !config_.performanceKeyboardEnabled) {
+        return;
+    }
+
+    const PerformanceReceiverMode desired = polyphonic
+        ? PerformanceReceiverMode::Poly
+        : PerformanceReceiverMode::Mono;
+    if (performanceReceiverMode_[targetIndex] == desired) return;
+
+    // Yamaha SEQTRAK exposes its CH8..10 MONO/POLY/CHORD voice mode on CC26.
+    // Prefer this device parameter over MIDI CC126/127: standard channel-mode
+    // messages imply All Notes Off and could cut Pattern/SMF owners sharing the
+    // same physical channel. CC26 changes the SEQTRAK voice mode without moving
+    // note ownership into the controller. Generic transports may return false;
+    // note delivery remains fail-open and the external synth can be configured
+    // manually in that case.
+    if (transport_.sendControlChange(
+            generatedChannel(target),
+            kSeqtrakMonoPolyController,
+            polyphonic ? kSeqtrakPolyValue : kSeqtrakMonoValue)) {
+        transport_.flush();
+    }
+    performanceReceiverMode_[targetIndex] = desired;
+}
+
 bool UsbMidiOutput::generatedNoteActive(int targetIndex, uint8_t note) const {
     if (targetIndex < 0 ||
         targetIndex >= static_cast<int>(kGeneratedTargetCount)) {
@@ -234,8 +264,6 @@ void UsbMidiOutput::pollConnection() {
     if (nextMounted == mounted_) return;
 
     if (mounted_ && !nextMounted) {
-        // The remote device may retain sounding notes across a transient USB
-        // disconnect. Preserve only channels that have no non-SMF owner.
         abandonAllSmfNotes();
     }
     clearActiveState();
@@ -308,8 +336,9 @@ int UsbMidiOutput::activeNote(MusicalEventSource source,
                               MusicalEventTarget target,
                               uint8_t logicalChannel) const {
     if (!begun_) return -1;
-    if (isGeneratedPerformanceSource(source)) {
-        if (logicalChannel != 0 || target == MusicalEventTarget::Drums) return -1;
+    if (target != MusicalEventTarget::Drums &&
+        isSynthPerformanceSource(source)) {
+        if (logicalChannel != 0) return -1;
         return generatedActiveNote(target);
     }
     const MidiVoiceLane* lane = laneFor(source, target, logicalChannel);
@@ -329,8 +358,9 @@ uint8_t UsbMidiOutput::activeGateCount(MusicalEventSource source,
                                        MusicalEventTarget target,
                                        uint8_t logicalChannel) const {
     if (!begun_) return 0;
-    if (isGeneratedPerformanceSource(source)) {
-        if (logicalChannel != 0 || target == MusicalEventTarget::Drums) return 0;
+    if (target != MusicalEventTarget::Drums &&
+        isSynthPerformanceSource(source)) {
+        if (logicalChannel != 0) return 0;
         return generatedActiveCount(target);
     }
     const MidiVoiceLane* lane = laneFor(source, target, logicalChannel);
@@ -346,8 +376,9 @@ uint8_t UsbMidiOutput::channelFor(MusicalEventSource source,
                                   MusicalEventTarget target,
                                   uint8_t logicalChannel) const {
     if (!begun_) return 0;
-    if (isGeneratedPerformanceSource(source)) {
-        if (logicalChannel != 0 || target == MusicalEventTarget::Drums) return 0;
+    if (target != MusicalEventTarget::Drums &&
+        isSynthPerformanceSource(source)) {
+        if (logicalChannel != 0) return 0;
         return generatedChannel(target);
     }
     const MidiVoiceLane* lane = laneFor(source, target, logicalChannel);
@@ -450,10 +481,6 @@ bool UsbMidiOutput::acquirePercussiveNote(MidiVoiceLane& lane,
 
     uint8_t& owners = wireOwners_[lane.channel][note];
     if (lane.activeCount == 255 || owners == 255) return false;
-
-    // Percussive retriggers must remain audible even when an older gate for the
-    // same channel+note is still open. Ownership counting only controls when a
-    // physical NoteOff is finally safe to emit.
     if (!transport_.sendNoteOn(lane.channel, note, velocity)) return false;
     transport_.flush();
 
@@ -572,9 +599,9 @@ bool UsbMidiOutput::acquireGeneratedNote(MusicalEventTarget target,
     uint8_t& owners = wireOwners_[channel][note];
 
     if (generatedNoteActive(targetIndex, note)) {
-        // A duplicate generated gate is a musical retrigger, not a second
-        // ownership claim. This keeps ratchets audible without requiring an
-        // unbounded per-note counter in the live performance domain.
+        // Generated tools may intentionally retrigger the same tone (ratchet).
+        // Direct physical keys normally have unique pitches; the shared bounded
+        // domain preserves existing no-allocation ownership behavior.
         if (!transport_.sendNoteOn(channel, note, velocity)) return false;
         transport_.flush();
         setGeneratedNotePendingRelease(targetIndex, note, false);
@@ -643,7 +670,8 @@ bool UsbMidiOutput::releaseGeneratedTarget(MusicalEventTarget target) {
 
 void UsbMidiOutput::releaseTargetAllNotes(MusicalEventSource source,
                                           MusicalEventTarget target) {
-    if (isGeneratedPerformanceSource(source)) {
+    if (target != MusicalEventTarget::Drums &&
+        isSynthPerformanceSource(source)) {
         releaseGeneratedTarget(target);
         return;
     }
@@ -655,14 +683,6 @@ void UsbMidiOutput::releaseTargetAllNotes(MusicalEventSource source,
         } else {
             releaseActiveNote(lanes_[i]);
         }
-    }
-
-    // Arpeggiator/Chord/Strum/Ratchet/Euclidean and manual POLY notes share
-    // one bounded polyphonic ownership domain with the physical keyboard. A
-    // target-scoped live panic must clean both without touching Pattern/SMF.
-    if (source == MusicalEventSource::PerformanceKeyboard &&
-        target != MusicalEventTarget::Drums) {
-        releaseGeneratedTarget(target);
     }
 }
 
@@ -824,6 +844,7 @@ void UsbMidiOutput::clearActiveState() {
         lanes_[i].pendingRelease = false;
     }
     for (std::size_t target = 0; target < kGeneratedTargetCount; ++target) {
+        performanceReceiverMode_[target] = PerformanceReceiverMode::Unknown;
         for (std::size_t byte = 0; byte < kGeneratedBitsetBytes; ++byte) {
             generatedActive_[target][byte] = 0;
             generatedPendingRelease_[target][byte] = 0;
@@ -846,13 +867,13 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
         return;
     }
 
-    if (isGeneratedPerformanceSource(event.source)) {
-        if (event.target == MusicalEventTarget::Drums ||
-            !retryGeneratedPendingReleases(event.target)) {
-            return;
-        }
+    if (event.target != MusicalEventTarget::Drums &&
+        isSynthPerformanceSource(event.source)) {
+        if (!retryGeneratedPendingReleases(event.target)) return;
         switch (event.type) {
             case MusicalEventType::NoteOn:
+                ensurePerformanceReceiverMode(
+                    event.target, sourceRequestsPolyReceiver(event.source));
                 acquireGeneratedNote(event.target, event.note, event.velocity);
                 break;
             case MusicalEventType::NoteOff:
