@@ -91,6 +91,10 @@ def test_atlas_falsification_uses_hash_gated_v26_inputs() -> None:
         "PAT_ED_DUB_DEEP_CHORD_P1",
         "PhraseRhythmIdentity",
         "LaneRelationship",
+        "struct SynthRoleProjection",
+        "RhythmRole::MelodicRhythm",
+        "RhythmRole::ChordRhythm",
+        "AtlasGenerated::kSustain",
     ):
         require(test, token)
 
