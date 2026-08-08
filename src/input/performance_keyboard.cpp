@@ -331,6 +331,13 @@ bool PerformanceKeyboard::directPolyphonyEnabled() const {
            !transformedPlaybackEnabled();
 }
 
+bool PerformanceKeyboard::polyChordSustainEnabled() const {
+    return voiceMode_ == PerformanceVoiceMode::Poly &&
+           target_ != MusicalEventTarget::Drums &&
+           chordMode_ != PerformanceChordMode::Off &&
+           !stepEngineEnabled();
+}
+
 bool PerformanceKeyboard::euclideanStepActive(uint8_t step) const {
     if (euclideanPulses_ == 0 || euclideanPulses_ >= kEuclideanSteps) return true;
     const uint8_t rotated = static_cast<uint8_t>(
@@ -433,6 +440,63 @@ std::size_t PerformanceKeyboard::buildArpPool(uint8_t* notes,
     }
     std::sort(notes, notes + count);
     return count;
+}
+
+void PerformanceKeyboard::reconcileDirectPolyChord(uint32_t nowMicros) {
+    // Pending strum NoteOns can be rebuilt from the current held-key snapshot.
+    // Already sounding notes remain in generatedNotes_ and are diffed below, so
+    // pressing/releasing another root never retriggers an unchanged held tone.
+    clearScheduled();
+
+    uint8_t desired[kMaxPolyChordNotes]{};
+    const std::size_t desiredCount = buildArpPool(
+        desired, kMaxPolyChordNotes);
+
+    auto desiredContains = [&](uint8_t note) {
+        for (std::size_t i = 0; i < desiredCount; ++i) {
+            if (desired[i] == note) return true;
+        }
+        return false;
+    };
+
+    std::size_t activeIndex = 0;
+    while (activeIndex < generatedNoteCount_) {
+        const uint8_t note = generatedNotes_[activeIndex];
+        if (desiredContains(note)) {
+            ++activeIndex;
+            continue;
+        }
+        routeGenerated(MusicalEventType::NoteOff, note, 0);
+        forgetGenerated(note);
+    }
+
+    if (desiredCount == 0 || heldCount_ == 0) return;
+
+    const uint8_t velocity = held_[heldCount_ - 1].velocity;
+    const uint32_t strumMicros = static_cast<uint32_t>(strumMs_) * 1000u;
+    std::size_t newNoteIndex = 0;
+    for (std::size_t i = 0; i < desiredCount; ++i) {
+        bool alreadyActive = false;
+        for (std::size_t j = 0; j < generatedNoteCount_; ++j) {
+            if (generatedNotes_[j] == desired[i]) {
+                alreadyActive = true;
+                break;
+            }
+        }
+        if (alreadyActive) continue;
+
+        const uint32_t onAt = nowMicros +
+            static_cast<uint32_t>(newNoteIndex) * strumMicros;
+        ++newNoteIndex;
+        if (onAt == nowMicros) {
+            routeGenerated(MusicalEventType::NoteOn, desired[i], velocity);
+            rememberGeneratedOn(desired[i]);
+        } else if (!scheduleGenerated(MusicalEventType::NoteOn,
+                                      desired[i], velocity, onAt)) {
+            stopGeneratedOutput();
+            return;
+        }
+    }
 }
 
 uint8_t PerformanceKeyboard::selectArpNote(const uint8_t* notes,
@@ -692,6 +756,11 @@ void PerformanceKeyboard::service(uint32_t nowMicros) {
 }
 
 void PerformanceKeyboard::triggerDirectTransformed(uint32_t nowMicros) {
+    if (polyChordSustainEnabled()) {
+        reconcileDirectPolyChord(nowMicros);
+        return;
+    }
+
     stopGeneratedOutput();
     if (heldCount_ == 0) return;
 
@@ -784,6 +853,10 @@ bool PerformanceKeyboard::keyUp(char physicalKey) {
     }
 
     if (transformedPlaybackEnabled()) {
+        if (polyChordSustainEnabled()) {
+            reconcileDirectPolyChord(lastServiceMicros_);
+            return true;
+        }
         if (!wasActive) return true;
         stopGeneratedOutput();
         if (heldCount_ > 0) triggerDirectTransformed(lastServiceMicros_);
@@ -841,6 +914,8 @@ void PerformanceKeyboard::releaseMissingKeys(const char* pressedKeys,
             } else {
                 arpIndex_ = 0;
             }
+        } else if (polyChordSustainEnabled()) {
+            reconcileDirectPolyChord(lastServiceMicros_);
         } else {
             stopGeneratedOutput();
             if (heldCount_ > 0) triggerDirectTransformed(lastServiceMicros_);
