@@ -24,6 +24,9 @@ jobs:
       - name: Run pattern editor input ownership tests
         run: python3 tests/test_pattern_editor_input_ownership.py
 
+      - name: Run step note entry source regressions
+        run: python3 tests/test_step_note_entry_source_regressions.py
+
       - name: Run project pattern storage tests
         run: |
           mkdir -p build/host-tests
