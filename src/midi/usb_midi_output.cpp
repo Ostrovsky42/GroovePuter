@@ -1,5 +1,12 @@
 #include "usb_midi_output.h"
 
+namespace {
+bool isGeneratedPerformanceSource(MusicalEventSource source) {
+    return source == MusicalEventSource::Arpeggiator ||
+           source == MusicalEventSource::PerformanceKeyboardPoly;
+}
+}  // namespace
+
 UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
                              UsbMidiRouteConfig config)
     : transport_(transport),
@@ -301,7 +308,7 @@ int UsbMidiOutput::activeNote(MusicalEventSource source,
                               MusicalEventTarget target,
                               uint8_t logicalChannel) const {
     if (!begun_) return -1;
-    if (source == MusicalEventSource::Arpeggiator) {
+    if (isGeneratedPerformanceSource(source)) {
         if (logicalChannel != 0 || target == MusicalEventTarget::Drums) return -1;
         return generatedActiveNote(target);
     }
@@ -322,7 +329,7 @@ uint8_t UsbMidiOutput::activeGateCount(MusicalEventSource source,
                                        MusicalEventTarget target,
                                        uint8_t logicalChannel) const {
     if (!begun_) return 0;
-    if (source == MusicalEventSource::Arpeggiator) {
+    if (isGeneratedPerformanceSource(source)) {
         if (logicalChannel != 0 || target == MusicalEventTarget::Drums) return 0;
         return generatedActiveCount(target);
     }
@@ -339,7 +346,7 @@ uint8_t UsbMidiOutput::channelFor(MusicalEventSource source,
                                   MusicalEventTarget target,
                                   uint8_t logicalChannel) const {
     if (!begun_) return 0;
-    if (source == MusicalEventSource::Arpeggiator) {
+    if (isGeneratedPerformanceSource(source)) {
         if (logicalChannel != 0 || target == MusicalEventTarget::Drums) return 0;
         return generatedChannel(target);
     }
@@ -636,7 +643,7 @@ bool UsbMidiOutput::releaseGeneratedTarget(MusicalEventTarget target) {
 
 void UsbMidiOutput::releaseTargetAllNotes(MusicalEventSource source,
                                           MusicalEventTarget target) {
-    if (source == MusicalEventSource::Arpeggiator) {
+    if (isGeneratedPerformanceSource(source)) {
         releaseGeneratedTarget(target);
         return;
     }
@@ -650,10 +657,9 @@ void UsbMidiOutput::releaseTargetAllNotes(MusicalEventSource source,
         }
     }
 
-    // Arpeggiator/Chord/Strum/Ratchet/Euclidean are one logical domain with
-    // the physical performance keyboard. A target-scoped live panic, including
-    // queue-overflow recovery, must therefore clean both direct and generated
-    // ownership without touching PatternPlayer or SMF notes.
+    // Arpeggiator/Chord/Strum/Ratchet/Euclidean and manual POLY notes share
+    // one bounded polyphonic ownership domain with the physical keyboard. A
+    // target-scoped live panic must clean both without touching Pattern/SMF.
     if (source == MusicalEventSource::PerformanceKeyboard &&
         target != MusicalEventTarget::Drums) {
         releaseGeneratedTarget(target);
@@ -840,7 +846,7 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
         return;
     }
 
-    if (event.source == MusicalEventSource::Arpeggiator) {
+    if (isGeneratedPerformanceSource(event.source)) {
         if (event.target == MusicalEventTarget::Drums ||
             !retryGeneratedPendingReleases(event.target)) {
             return;
