@@ -2,9 +2,11 @@
 
 ## Purpose
 
-Validate the deterministic `RelationshipResolver` + `RhythmPhraseRealizer` implementation before it is connected to production Generate. Stage 2 produces only bounded role-level `RhythmPhrasePlan` data and does not materialize patterns, change Scene state, select Genre mappings, choose Synth engines, or generate pitch.
+Validate the deterministic `RelationshipResolver` + `RhythmPhraseRealizer` implementation before it is connected to production Generate. Stage 2 produces only bounded role-level `RhythmPhrasePlan` data and does not materialize patterns, change Scene state, select Genre mappings, choose Synth engines, generate pitch, or own BarEvolution.
 
-The Stage 2 branch is based on the final reviewed Stage 1 head. Until Stage 1 is merged into `dev_0.9_test`, Stage 2 remains a branch artifact and must not become another stacked merge PR.
+Stage 6 remains the owner of 2–4 bar trajectory selection and `BarFunction` evolution. Stage 2 may realize 1–4 caller-sized bars, but every bar is a plain `Statement`; `trajectoryId` remains `kNoTrajectoryId` and `TransformationIntent` remains `Auto`.
+
+Until Stage 1 is merged into `dev_0.9_test`, Stage 2 remains a direct draft PR to `dev_0.9_test`; it must not be merged before its Stage 1 dependency is present in the base.
 
 ## Hardware list
 
@@ -57,16 +59,16 @@ Host tests must prove:
 - `RelationshipScope::BarLocal` never wraps across a bar;
 - `RelationshipScope::Phrase` may cross a bar boundary but never wraps the phrase end to its start;
 - one hard `Respond` target satisfies at most one source window with deterministic nearest-source ownership;
+- feasible hard-relationship repair is transactional, so a failed candidate cannot poison another legal candidate;
 - P1/P2/P3 reuse one deterministic `PhraseRhythmIdentity` when the caller requests VARIATE semantics;
-- unpinned BarEvolution trajectory may differ by P-level without rerolling structural identity;
-- an explicit `TransformationIntent` constrains trajectory selection to a compatible BarFunction rather than merely being copied into plan metadata;
-- `Repeat` has zero structural drift;
-- `Return` restores the Statement structural core;
-- immutable anchors are never removed;
-- canonical anchors are suspended only by matching `BarFunction + TransformationIntent + AnchorTransformRule` permission;
+- P-level changes use isolated deterministic variation domains and do not reroll structural identity;
+- Stage 2 never selects or pins a BarEvolution trajectory;
+- Stage 2 never applies `Repeat`, `Return`, `Reduction`, `Break`, `Build`, `Turnaround`, or `Response` BarFunction semantics;
+- every Stage 2 output bar remains `Statement`, with `trajectoryId == kNoTrajectoryId` and `intent == Auto`;
+- immutable and canonical anchors are never removed in Stage 2;
 - role-scoped protected space is never filled;
 - hard relationship violations never escape as a valid plan;
-- runtime impossible composition returns `InvalidConstraintSet`;
+- invalid reused identity returns `InvalidConstraintSet` instead of partially mutating caller data;
 - a legal variation never becomes invalid merely because an optional structural/ghost addition would exceed the global structural or ornament budget; that candidate is skipped instead;
 - `ValidButSparse` remains distinct from invalid musical minima;
 - gate/importance authority remains inside the rhythm plan: `Normal` is implicit, explicit `Short/Held/Tie` lane overlays survive realization, and unclassified ghost events use `Short`;
@@ -75,6 +77,21 @@ Host tests must prove:
 - production `ModeManager` / `MiniAcid` generation remains unwired from Stage 2.
 
 Firmware behavior must remain unchanged because no production caller invokes `realizeRhythmPhrase()`.
+
+## Explicitly deferred to Stage 6
+
+The following are intentionally **not** Stage 2 acceptance items:
+
+```text
+trajectory selection
+BarEvolution RNG domain consumption
+Repeat / Return semantics
+Break / Reduction / Build / Turnaround / Response BarFunctions
+canonical-anchor suspension by AnchorTransformRule
+explicit TransformationIntent routing
+```
+
+Those contracts stay represented in the Stage 1 data model, but Stage 2 must not execute them.
 
 ## Troubleshooting
 
@@ -92,7 +109,7 @@ Treat it as a release-blocking embedded compatibility defect. The Stage 2 `.cpp`
 
 ### Fixed DRAM / firmware size increases
 
-Record exact before/after values for normal and MIDI-only profiles. A code-size increase is expected once the realizer is linked by runtime callers in later stages, but Stage 2 is currently dead/unwired code and should normally be linker-eliminated. Any unexpected fixed-DRAM increase must be explained before acceptance.
+Record exact before/after values for normal and MIDI-only profiles. Stage 2 is currently dead/unwired code and should normally be linker-eliminated. Any unexpected fixed-DRAM or firmware increase must be explained before acceptance.
 
 ### Existing core host regression is red
 
@@ -101,21 +118,22 @@ The current Stage 1 base contains a known unrelated source-regression drift arou
 ## Acceptance checklist
 
 - [ ] `bash tests/run_rhythm_stage1_tests.sh` passes;
-- [ ] Stage 2 source ownership regression passes;
+- [ ] Stage 2 source ownership/scope regression passes;
 - [ ] GCC Stage 2 property + adversarial tests pass;
 - [ ] Clang Stage 2 property + adversarial tests pass;
 - [ ] ASan + UBSan Stage 2 property + adversarial tests pass;
 - [ ] 512-seed P1/P2/P3 corpus has zero identity-continuity violations;
-- [ ] explicit Break/Turnaround intent selects only compatible trajectories;
-- [ ] repeat structural drift violations = 0;
+- [ ] Stage 2 BarEvolution/trajectory-selection violations = 0;
+- [ ] non-Statement Stage 2 bars = 0;
 - [ ] immutable anchor violations = 0;
-- [ ] illegal canonical suspension violations = 0;
+- [ ] canonical anchor violations = 0;
 - [ ] protected-space violations = 0;
 - [ ] hard relationship violations = 0;
+- [ ] transactional relationship false-negative fixture passes across its seed corpus;
 - [ ] explicit `Short/Held/Tie` gate-policy violations = 0;
 - [ ] optional structural additions never exceed global structural max;
 - [ ] ghost additions never exceed global ornament max;
-- [ ] runtime impossible compositions return `InvalidConstraintSet`;
+- [ ] invalid reused identity returns `InvalidConstraintSet`;
 - [ ] reference binding onset-invention violations = 0;
 - [ ] reference binding structural-drop violations = 0;
 - [ ] SDL build passes;
