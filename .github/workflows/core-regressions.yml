@@ -18,11 +18,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run core host regressions
-        run: bash tests/run_host_tests.sh
-
       - name: Run Groove Vocabulary Stage 1 tests
         run: bash tests/run_rhythm_stage1_tests.sh
+
+      - name: Run core host regressions
+        run: bash tests/run_host_tests.sh
 
       - name: Run pattern editor input ownership tests
         run: python3 tests/test_pattern_editor_input_ownership.py
