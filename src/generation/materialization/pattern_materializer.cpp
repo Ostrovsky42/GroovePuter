@@ -91,7 +91,7 @@ PatternMaterializeStatus validateBinding(
         static_cast<uint8_t>(SynthPatternTarget::Count)) {
       return PatternMaterializeStatus::InvalidBinding;
     }
-    if (synthBound && (synth.note < 0 || synth.note > 127)) {
+    if (synthBound && synth.note < 0) {
       return PatternMaterializeStatus::InvalidBinding;
     }
     if (!synthBound && synth.note != -1) {
