@@ -96,21 +96,34 @@ def test_workflow_local_page_navigation() -> None:
 
     require("kPerform, kPlayer" in workflow,
             "PERFORM workflow must contain keyboard then MIDI Player")
-    require("kGenre, kFeel, kGeneration," in workflow,
-            "GENERATE must expose GENRE, FEEL and GENERATION")
-    require("case WorkflowMode::Generate: return 3;" in workflow,
-            "GENERATE workflow must have three fixed page addresses")
+    require("kGenre, kFeel," in workflow,
+            "GENERATE must expose GENRE then FEEL")
+    require("case WorkflowMode::Generate: return 2;" in workflow,
+            "GENERATE workflow must have two fixed page addresses")
     generate_pages = workflow.split(
         "static constexpr int kGeneratePages[]", 1
     )[1].split("};", 1)[0]
-    require("kTexture" not in generate_pages,
-            "legacy TEXTURE id must not return to normal GENERATE navigation")
-    require("case Workspace::Texture:" in workflow and
-            "case kTexture:" in workflow,
-            "legacy TEXTURE addresses must still redirect for compatibility")
-    require("kPattern, kSynthA, kSynthB, kDrums" in workflow and
-            "kSynthAParameters, kSynthBParameters" in workflow,
-            "HUB workflow must expose overview, instruments and synth controls")
+    require("kTexture" not in generate_pages and "kGeneration" not in generate_pages,
+            "retired GENERATION/TEXTURE ids must not return to normal navigation")
+    require("if (page == kTexture || page == kGeneration) return kFeel;" in workflow and
+            "case Workspace::Texture:" in workflow and
+            "case Workspace::Generation:" in workflow,
+            "legacy GENERATION/TEXTURE addresses must redirect to FEEL")
+
+    require("kPattern, kSynthA, kSynthB, kDrums" in workflow,
+            "HUB workflow must expose overview, synth A/B and drums")
+    require("case WorkflowMode::Hub: return 4;" in workflow,
+            "HUB workflow must have four fixed page addresses")
+    hub_pages = workflow.split(
+        "static constexpr int kHubPages[]", 1
+    )[1].split("};", 1)[0]
+    require("kSynthAParameters" not in hub_pages and
+            "kSynthBParameters" not in hub_pages,
+            "retired standalone synth SOUND ids must not return to HUB navigation")
+    require("if (page == kSynthAParameters) return kSynthA;" in workflow and
+            "if (page == kSynthBParameters) return kSynthB;" in workflow,
+            "legacy synth SOUND addresses must redirect to their owning synth pages")
+
     require("static constexpr int kSongPages[]" in workflow and
             "kArrange, kPhrase" in workflow and
             "case WorkflowMode::Song: return 2;" in workflow and
@@ -130,6 +143,9 @@ def test_workflow_local_page_navigation() -> None:
     require("workflowNavigationTarget" in session and
             "rememberedAdjacentWorkflowPage" in session,
             "workflow changes must resolve through per-workflow page memory")
+    require("case SessionWorkflow::Generate: return 2;" in session and
+            "case SessionWorkflow::Hub: return 4;" in session,
+            "persisted workflow navigation must match the visible page rings")
     require("void switchWorkflow_(int direction);" in display_h and
             "rememberedAdjacentWorkflowPage" in display and
             display.count("switchWorkflow_(") >= 6,
