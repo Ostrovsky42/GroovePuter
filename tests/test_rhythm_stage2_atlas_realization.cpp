@@ -99,8 +99,7 @@ void finishGrammar(AtlasGrammarFixture& fixture) {
   assert(validateRhythmCatalog(fixture.catalog));
 }
 
-AtlasGrammarFixture rollingAcidGrammar() {
-  AtlasGrammarFixture fixture{};
+void configureRollingAcidGrammar(AtlasGrammarFixture& fixture) {
   beginGrammar(fixture, 101, RhythmFamily::FourFloor);
   addLane(fixture, RhythmRole::Kick, 0x8888, 0, 0, 4, 4);
   addLane(fixture, RhythmRole::Backbeat, 0x0808, 0, 0, 2, 2);
@@ -121,11 +120,9 @@ AtlasGrammarFixture rollingAcidGrammar() {
   relation.maxOffset = 2;
   addRelationship(fixture, relation);
   finishGrammar(fixture);
-  return fixture;
 }
 
-AtlasGrammarFixture classicTwoStepGrammar() {
-  AtlasGrammarFixture fixture{};
+void configureClassicTwoStepGrammar(AtlasGrammarFixture& fixture) {
   beginGrammar(fixture, 102, RhythmFamily::UkTwoStep);
   addLane(fixture, RhythmRole::Kick, 0x8000, 0x0220, 0x0040, 2, 4);
   addLane(fixture, RhythmRole::Backbeat, 0x0808, 0, 0, 2, 2);
@@ -152,11 +149,9 @@ AtlasGrammarFixture classicTwoStepGrammar() {
   relation.zoneMask = kAllSteps;
   addRelationship(fixture, relation);
   finishGrammar(fixture);
-  return fixture;
 }
 
-AtlasGrammarFixture deepChordGrammar() {
-  AtlasGrammarFixture fixture{};
+void configureDeepChordGrammar(AtlasGrammarFixture& fixture) {
   beginGrammar(fixture, 103, RhythmFamily::DubPulse);
   addLane(fixture, RhythmRole::Kick, 0x8888, 0, 0, 4, 4);
   addLane(fixture, RhythmRole::Backbeat, 0x0808, 0, 0, 2, 2);
@@ -188,7 +183,6 @@ AtlasGrammarFixture deepChordGrammar() {
   relation.maxResponsesPerWindow = 2;
   addRelationship(fixture, relation);
   finishGrammar(fixture);
-  return fixture;
 }
 
 uint64_t structuralSignature(const RhythmPhrasePlan& plan) {
@@ -272,9 +266,12 @@ void assertRealizerAcceptsGrammar(const AtlasGrammarFixture& fixture,
 }  // namespace
 
 int main() {
-  const AtlasGrammarFixture acid = rollingAcidGrammar();
-  const AtlasGrammarFixture ukg = classicTwoStepGrammar();
-  const AtlasGrammarFixture dub = deepChordGrammar();
+  AtlasGrammarFixture acid{};
+  AtlasGrammarFixture ukg{};
+  AtlasGrammarFixture dub{};
+  configureRollingAcidGrammar(acid);
+  configureClassicTwoStepGrammar(ukg);
+  configureDeepChordGrammar(dub);
 
   assertRealizerAcceptsGrammar(acid, false);
   assertRealizerAcceptsGrammar(ukg, true);
