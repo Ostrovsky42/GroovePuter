@@ -25,22 +25,32 @@ namespace SessionPages {
 constexpr int kGenre = 0;
 constexpr int kSynthA = 1;
 constexpr int kSynthB = 2;
-constexpr int kSynthAParameters = 3;
-constexpr int kSynthBParameters = 4;
+constexpr int kSynthAParameters = 3; // legacy persisted id -> SYNTH A
+constexpr int kSynthBParameters = 4; // legacy persisted id -> SYNTH B
 constexpr int kDrums = 5;
 constexpr int kArrange = 6;
 constexpr int kPattern = 7;
-constexpr int kTexture = 8;  // legacy persisted page id; resolves to FEEL
+constexpr int kTexture = 8;    // legacy persisted id -> FEEL
 constexpr int kFeel = 9;
 constexpr int kProject = 10;
-constexpr int kGeneration = 11;
+constexpr int kGeneration = 11; // legacy persisted id -> FEEL
 constexpr int kPerform = 12;
 constexpr int kPlayer = 13;
 constexpr int kPhrase = 14;
 }  // namespace SessionPages
 
 inline int normalizeLegacyUiPage(int page) {
-    return page == SessionPages::kTexture ? SessionPages::kFeel : page;
+    if (page == SessionPages::kTexture ||
+        page == SessionPages::kGeneration) {
+        return SessionPages::kFeel;
+    }
+    if (page == SessionPages::kSynthAParameters) {
+        return SessionPages::kSynthA;
+    }
+    if (page == SessionPages::kSynthBParameters) {
+        return SessionPages::kSynthB;
+    }
+    return page;
 }
 
 struct UiSessionState {
@@ -74,19 +84,14 @@ inline SessionWorkflow sessionWorkflowForPage(int page) {
     if (page == SessionPages::kPerform || page == SessionPages::kPlayer) {
         return SessionWorkflow::Perform;
     }
-    if (page == SessionPages::kGenre ||
-        page == SessionPages::kFeel ||
-        page == SessionPages::kGeneration) {
+    if (page == SessionPages::kGenre || page == SessionPages::kFeel) {
         return SessionWorkflow::Generate;
     }
     if (page == SessionPages::kPattern || page == SessionPages::kSynthA ||
-        page == SessionPages::kSynthB || page == SessionPages::kDrums ||
-        page == SessionPages::kSynthAParameters ||
-        page == SessionPages::kSynthBParameters) {
+        page == SessionPages::kSynthB || page == SessionPages::kDrums) {
         return SessionWorkflow::Hub;
     }
-    if (page == SessionPages::kArrange ||
-        page == SessionPages::kPhrase) {
+    if (page == SessionPages::kArrange || page == SessionPages::kPhrase) {
         return SessionWorkflow::Song;
     }
     return SessionWorkflow::Settings;
@@ -171,8 +176,8 @@ inline int rememberedWorkflowPage(const UiSessionState& state,
 inline int pageCountForWorkflow(SessionWorkflow workflow) {
     switch (workflow) {
         case SessionWorkflow::Perform: return 2;
-        case SessionWorkflow::Generate: return 3;
-        case SessionWorkflow::Hub: return 6;
+        case SessionWorkflow::Generate: return 2;
+        case SessionWorkflow::Hub: return 4;
         case SessionWorkflow::Song: return 2;
         case SessionWorkflow::Settings: return 1;
     }
@@ -186,12 +191,10 @@ inline int pageAt(SessionWorkflow workflow, int index) {
     static constexpr int kGeneratePages[] = {
         SessionPages::kGenre,
         SessionPages::kFeel,
-        SessionPages::kGeneration,
     };
     static constexpr int kHubPages[] = {
-        SessionPages::kPattern, SessionPages::kSynthA, SessionPages::kSynthB,
-        SessionPages::kDrums, SessionPages::kSynthAParameters,
-        SessionPages::kSynthBParameters,
+        SessionPages::kPattern, SessionPages::kSynthA,
+        SessionPages::kSynthB, SessionPages::kDrums,
     };
     static constexpr int kSongPages[] = {
         SessionPages::kArrange, SessionPages::kPhrase,
