@@ -26,9 +26,14 @@ hook_window = ino[max(0, ino.index(hook) - 300): ino.index(hook) + 300]
 assert "AudioMutationScope mutationScope(g_audioMutationGate);" in hook_window
 
 # Existing Alt+A accent must remain untouched until the explicit test mode is
-# armed with Ctrl+Alt+A.
-assert "const bool toggleChord = evt.ctrl && (key == 'a' || key == 'A');" in cardputer
+# armed with Ctrl+Alt+A. Once active, audition is modal so navigation/save keys
+# cannot persist the temporary patterns accidentally; Space and panic escape.
+assert "evt.alt && evt.ctrl && (key == 'a' || key == 'A')" in cardputer
 assert "if (!session.active() && !toggleChord) return false;" in cardputer
+assert "if (session.active() && !evt.alt)" in cardputer
+assert "return key != ' ';" in cardputer
+assert "if (session.active() && panicChord) return false;" in cardputer
+assert "if (!handled) return true;" in cardputer
 
 for forbidden in (
     "saveScene",
