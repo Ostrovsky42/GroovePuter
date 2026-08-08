@@ -1,0 +1,94 @@
+name: Groove Vocabulary temporary size audit
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  firmware-size-delta:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Build base and head profiles and collect metrics
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          REPORT="$RUNNER_TEMP/groove-vocabulary-size.tsv"
+          printf 'revision\tprofile\tsha\ttext\tdata\tbss\tdram_data\tdram_bss\tdram_total\tbin_bytes\n' > "$REPORT"
+
+          find_size_tool() {
+            find "$HOME/.arduino15/packages" -type f -name xtensa-esp32s3-elf-size -perm -111 -print \
+              | sort -V | tail -n 1
+          }
+
+          collect() {
+            local revision="$1"
+            local profile="$2"
+            local sha="$3"
+            local build_dir="$4"
+            local elf="$build_dir/GroovePuter.ino.elf"
+            local bin="$build_dir/GroovePuter.ino.bin"
+            local size_tool
+            size_tool="$(find_size_tool)"
+            test -x "$size_tool"
+            test -f "$elf"
+            test -f "$bin"
+
+            read -r text data bss _ < <("$size_tool" "$elf" | awk 'NR==2 {print $1, $2, $3, $4}')
+            read -r dram_data dram_bss < <(
+              "$size_tool" -A "$elf" | awk '
+                $1 == ".dram0.data" { data = $2 }
+                $1 == ".dram0.bss" { bss = $2 }
+                END { print data + 0, bss + 0 }
+              '
+            )
+            local dram_total=$((dram_data + dram_bss))
+            local bin_bytes
+            bin_bytes="$(stat -c %s "$bin")"
+            printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+              "$revision" "$profile" "$sha" "$text" "$data" "$bss" \
+              "$dram_data" "$dram_bss" "$dram_total" "$bin_bytes" >> "$REPORT"
+          }
+
+          build_revision() {
+            local revision="$1"
+            local sha="$2"
+            git checkout --force "$sha"
+            git clean -fdx -e build || true
+
+            local normal="$RUNNER_TEMP/${revision}-normal"
+            local midi="$RUNNER_TEMP/${revision}-midi-only"
+            BUILD_PATH="$normal" bash scripts/build.sh --warnings all
+            bash scripts/check_cardputer_dram_budget.sh "$normal/GroovePuter.ino.elf"
+            collect "$revision" normal "$sha" "$normal"
+
+            BUILD_PATH="$midi" bash scripts/build_seqtrak_midi_only.sh --warnings all
+            collect "$revision" midi-only "$sha" "$midi"
+          }
+
+          build_revision base "$BASE_SHA"
+          build_revision head "$HEAD_SHA"
+          cat "$REPORT"
+          cp "$REPORT" "$GITHUB_WORKSPACE/groove-vocabulary-size.tsv"
+
+      - name: Upload size report
+        uses: actions/upload-artifact@v4
+        with:
+          name: groove-vocabulary-size-audit
+          path: groove-vocabulary-size.tsv
+          if-no-files-found: error
