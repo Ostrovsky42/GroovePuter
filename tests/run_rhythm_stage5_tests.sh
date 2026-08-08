@@ -19,28 +19,42 @@ SOURCES=(
 
 build_and_run() {
   local compiler="$1"
-  local output="$2"
-  shift 2
+  local test_source="$2"
+  local output="$3"
+  shift 3
   "${compiler}" -std=c++17 -Wall -Wextra -Werror \
     -Wno-c++20-extensions -Wno-unused-but-set-variable \
     -I"${ROOT_DIR}" \
     "$@" \
     "${SOURCES[@]}" \
-    "${ROOT_DIR}/tests/test_rhythm_stage5_strong_migration.cpp" \
+    "${test_source}" \
     -o "${output}"
   "${output}"
 }
 
-build_and_run "${CXX:-g++}" \
-  "${BUILD_DIR}/test_rhythm_stage5_gcc"
+run_suite() {
+  local suffix="$1"
+  local compiler="$2"
+  shift 2
+
+  build_and_run "${compiler}" \
+    "${ROOT_DIR}/tests/test_rhythm_stage5_strong_migration.cpp" \
+    "${BUILD_DIR}/test_rhythm_stage5_${suffix}" \
+    "$@"
+
+  build_and_run "${compiler}" \
+    "${ROOT_DIR}/tests/test_rhythm_stage5_invalid_context.cpp" \
+    "${BUILD_DIR}/test_rhythm_stage5_invalid_${suffix}" \
+    "$@"
+}
+
+run_suite gcc "${CXX:-g++}"
 
 if command -v clang++ >/dev/null 2>&1; then
-  build_and_run clang++ \
-    "${BUILD_DIR}/test_rhythm_stage5_clang"
+  run_suite clang clang++
 fi
 
-build_and_run "${CXX:-g++}" \
-  "${BUILD_DIR}/test_rhythm_stage5_sanitize" \
+run_suite sanitize "${CXX:-g++}" \
   -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined
 
 printf 'Groove Vocabulary Stage 5 strong migration host matrix: OK\n'
