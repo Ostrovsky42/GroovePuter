@@ -70,6 +70,8 @@ Host tests must prove:
 - hard relationship violations never escape as a valid plan;
 - invalid reused identity returns `InvalidConstraintSet` instead of partially mutating caller data;
 - a legal variation never becomes invalid merely because an optional structural/ghost addition would exceed the global structural or ornament budget; that candidate is skipped instead;
+- optional P2/P3 additions are transactional and cannot turn an already valid shared identity into a hard-relationship failure;
+- hard `Respond` repair spends capacity only on candidates that reduce the deterministic response deficit;
 - `ValidButSparse` remains distinct from invalid musical minima;
 - gate/importance authority remains inside the rhythm plan: `Normal` is implicit, explicit `Short/Held/Tie` lane overlays survive realization, and unclassified ghost events use `Short`;
 - the realization path uses no heap allocation or dynamic standard containers;
@@ -80,7 +82,7 @@ Firmware behavior must remain unchanged because no production caller invokes `re
 
 ## Explicitly deferred to Stage 6
 
-The following are intentionally **not** Stage 2 acceptance items:
+The following are intentionally **not** Stage 2 implementation acceptance items:
 
 ```text
 trajectory selection
@@ -92,6 +94,26 @@ explicit TransformationIntent routing
 ```
 
 Those contracts stay represented in the Stage 1 data model, but Stage 2 must not execute them.
+
+## Normative stage-ownership clarification
+
+`GROOVE_VOCABULARY_MUSICAL_CONTRACTS.md` defines cumulative Groove Vocabulary Core v1 invariants. Its Stage 2 gate language about Repeat stability, legal canonical-anchor suspension, and physical-binding preservation must **not** be read as transferring ownership of those mechanisms into this implementation stage.
+
+The stage-specific ownership from `GROOVE_VOCABULARY_ARCHITECTURE_BRIEF.md` remains authoritative:
+
+```text
+Stage 2 -> relationship resolution + deterministic Statement realization
+Stage 4 -> materialization / physical-binding boundary checks
+Stage 6 -> BarEvolution, Repeat/Return and transformable canonical-anchor behavior
+```
+
+Therefore:
+
+- G-22 `Repeat stability` remains normative Core v1 behavior and becomes executable acceptance when Stage 6 owns `Repeat`;
+- G-23 `Transformable anchors` remains normative, while Stage 2 proves the stricter pre-BarEvolution rule that immutable **and canonical** anchors are never suspended;
+- G-25 `Binding preservation` remains normative for the later binder/materializer. Stage 2 may use a reference/mock binding preservation test as an interface proof, but it must not implement or own the production physical binder.
+
+This clarification narrows only **when** each cumulative invariant becomes executable; it does not weaken or remove G-22, G-23, or G-25.
 
 ## Troubleshooting
 
@@ -122,6 +144,7 @@ The current Stage 1 base contains a known unrelated source-regression drift arou
 - [ ] GCC Stage 2 property + adversarial tests pass;
 - [ ] Clang Stage 2 property + adversarial tests pass;
 - [ ] ASan + UBSan Stage 2 property + adversarial tests pass;
+- [ ] the complete runner includes base, relationship, Respond and Atlas-realization falsification suites;
 - [ ] 512-seed P1/P2/P3 corpus has zero identity-continuity violations;
 - [ ] Stage 2 BarEvolution/trajectory-selection violations = 0;
 - [ ] non-Statement Stage 2 bars = 0;
@@ -130,6 +153,7 @@ The current Stage 1 base contains a known unrelated source-regression drift arou
 - [ ] protected-space violations = 0;
 - [ ] hard relationship violations = 0;
 - [ ] transactional relationship false-negative fixture passes across its seed corpus;
+- [ ] optional Respond-source variation cannot invalidate an otherwise legal shared identity;
 - [ ] explicit `Short/Held/Tie` gate-policy violations = 0;
 - [ ] optional structural additions never exceed global structural max;
 - [ ] ghost additions never exceed global ornament max;
