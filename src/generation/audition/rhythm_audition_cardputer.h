@@ -28,12 +28,19 @@ inline bool handleCardputerAuditionEvent(const UIEvent& evt,
 
   Session& session = cardputerSession();
   const char key = evt.key;
+
+  // Existing pages already use Alt+A for accent. Audition therefore arms only
+  // on the otherwise-unused Ctrl+Alt+A chord. While inactive, every ordinary
+  // Alt shortcut falls through untouched to the existing UI routing.
+  const bool toggleChord = evt.ctrl && (key == 'a' || key == 'A');
+  if (!session.active() && !toggleChord) return false;
+
   SceneManager& scenes = engine.sceneManager();
   DrumPatternSet& drums = scenes.editCurrentDrumPattern();
   SynthPattern& synthA = scenes.editCurrentSynthPattern(0);
   SynthPattern& synthB = scenes.editCurrentSynthPattern(1);
 
-  if (key == 'a' || key == 'A') {
+  if (toggleChord) {
     if (session.active()) {
       session.deactivate(drums, synthA, synthB);
       Serial.println("[RHYTHM-AUDITION] OFF restored original current patterns");
@@ -54,8 +61,9 @@ inline bool handleCardputerAuditionEvent(const UIEvent& evt,
     return true;
   }
 
-  if (!session.active()) return false;
-
+  // Once explicitly armed, audition owns this small Alt command set until the
+  // user exits with Ctrl+Alt+A. This makes the test deterministic without
+  // permanently changing the normal global key map.
   bool handled = false;
   bool ok = false;
   if (key >= '1' && key <= '5') {
