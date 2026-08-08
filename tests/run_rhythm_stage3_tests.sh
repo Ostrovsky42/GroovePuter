@@ -40,6 +40,10 @@ run_suite() {
   build_and_run "${compiler}" \
     "${ROOT_DIR}/tests/test_rhythm_stage3_musical_invariants.cpp" \
     "${BUILD_DIR}/test_rhythm_stage3_musical_${suffix}" "$@"
+
+  build_and_run "${compiler}" \
+    "${ROOT_DIR}/tests/test_rhythm_stage3_level_semantics.cpp" \
+    "${BUILD_DIR}/test_rhythm_stage3_levels_${suffix}" "$@"
 }
 
 run_suite gcc "${CXX:-g++}"
