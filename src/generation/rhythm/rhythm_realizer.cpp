@@ -243,6 +243,89 @@ uint8_t coincidenceCount(const LaneRelationship& relation,
   return count;
 }
 
+struct RespondCoordinate {
+  uint8_t bar = 0;
+  uint8_t step = 0;
+  uint8_t absolute = 0;
+};
+
+uint8_t collectRespondCoordinates(const PhraseOccupancy& occupancy,
+                                  RhythmRole role,
+                                  const LaneRelationship& relation,
+                                  RespondCoordinate* out,
+                                  uint8_t capacity) {
+  uint8_t count = 0;
+  for (uint8_t bar = 0; bar < occupancy.barCount; ++bar) {
+    const StepMask mask =
+        occupancy.roleMasks[bar][static_cast<uint8_t>(role)];
+    for (uint8_t step = 0; step < kStepsPerBar; ++step) {
+      if (!(mask & stepBit(step)) ||
+          !(relation.zoneMask & stepBit(step))) {
+        continue;
+      }
+      if (count >= capacity) return count;
+      out[count].bar = bar;
+      out[count].step = step;
+      out[count].absolute = static_cast<uint8_t>(bar * kStepsPerBar + step);
+      ++count;
+    }
+  }
+  return count;
+}
+
+uint16_t respondDeficit(const LaneRelationship& relation,
+                        const PhraseOccupancy& occupancy) {
+  RespondCoordinate sources[kMaxPhraseBars * kStepsPerBar]{};
+  RespondCoordinate targets[kMaxPhraseBars * kStepsPerBar]{};
+  uint8_t responseCount[kMaxPhraseBars * kStepsPerBar]{};
+  const uint8_t capacity =
+      static_cast<uint8_t>(kMaxPhraseBars * kStepsPerBar);
+  const uint8_t sourceCount = collectRespondCoordinates(
+      occupancy, relation.source, relation, sources, capacity);
+  const uint8_t targetCount = collectRespondCoordinates(
+      occupancy, relation.target, relation, targets, capacity);
+
+  for (uint8_t targetIndex = 0; targetIndex < targetCount; ++targetIndex) {
+    int bestSource = -1;
+    int bestDistance = 0x7FFF;
+    for (uint8_t sourceIndex = 0; sourceIndex < sourceCount; ++sourceIndex) {
+      if (!relationCoordinateAllowed(
+              relation,
+              sources[sourceIndex].bar,
+              sources[sourceIndex].step,
+              targets[targetIndex].bar,
+              targets[targetIndex].step)) {
+        continue;
+      }
+      const int distance =
+          static_cast<int>(targets[targetIndex].absolute) -
+          static_cast<int>(sources[sourceIndex].absolute);
+      const int absoluteDistance = distance < 0 ? -distance : distance;
+      if (absoluteDistance < bestDistance) {
+        bestDistance = absoluteDistance;
+        bestSource = sourceIndex;
+      }
+    }
+    if (bestSource >= 0) ++responseCount[bestSource];
+  }
+
+  uint16_t deficit = 0;
+  for (uint8_t sourceIndex = 0; sourceIndex < sourceCount; ++sourceIndex) {
+    if (responseCount[sourceIndex] < relation.minResponsesPerWindow) {
+      deficit = static_cast<uint16_t>(
+          deficit + relation.minResponsesPerWindow -
+          responseCount[sourceIndex]);
+    }
+    if (relation.maxResponsesPerWindow &&
+        responseCount[sourceIndex] > relation.maxResponsesPerWindow) {
+      deficit = static_cast<uint16_t>(
+          deficit + responseCount[sourceIndex] -
+          relation.maxResponsesPerWindow);
+    }
+  }
+  return deficit;
+}
+
 bool repairExclude(const RhythmArchetype& archetype,
                    const LaneRelationship& relation,
                    PhraseOccupancy& occupancy,
@@ -478,9 +561,12 @@ bool repairRespond(const RhythmArchetype& archetype,
   uint8_t guard = 0;
   while (!relationshipSatisfied(relation, occupancy) &&
          guard++ < kMaxPhraseBars * kStepsPerBar) {
+    const uint16_t currentDeficit = respondDeficit(relation, occupancy);
     int bestBar = -1;
     int bestStep = -1;
+    uint16_t bestDeficit = currentDeficit;
     uint32_t bestRank = 0;
+    PhraseOccupancy bestOccupancy{};
 
     for (uint8_t sourceBar = 0;
          sourceBar < occupancy.barCount;
@@ -515,31 +601,32 @@ bool repairRespond(const RhythmArchetype& archetype,
               stepBit(targetStep)) {
             continue;
           }
-          if (!hardCandidateAdditionAllowed(archetype, occupancy,
-                                            targetBar,
-                                            relation.target,
-                                            targetStep)) {
+
+          PhraseOccupancy trial = occupancy;
+          if (!addStructuralCandidate(archetype, *targetLane,
+                                      trial, targetBar, targetStep)) {
             continue;
           }
+          const uint16_t deficit = respondDeficit(relation, trial);
+          if (deficit >= currentDeficit) continue;
+
           const uint32_t rank = deterministicValue(
               seed, candidateCoordinate(targetBar,
                                         relation.target, targetStep));
-          if (bestBar < 0 || rank > bestRank) {
+          if (bestBar < 0 || deficit < bestDeficit ||
+              (deficit == bestDeficit && rank > bestRank)) {
             bestBar = targetBar;
             bestStep = targetStep;
+            bestDeficit = deficit;
             bestRank = rank;
+            bestOccupancy = trial;
           }
         }
       }
     }
 
-    if (bestBar < 0 ||
-        !addStructuralCandidate(archetype, *targetLane,
-                                occupancy,
-                                static_cast<uint8_t>(bestBar),
-                                static_cast<uint8_t>(bestStep))) {
-      return false;
-    }
+    if (bestBar < 0 || bestStep < 0) return false;
+    occupancy = bestOccupancy;
   }
   return relationshipSatisfied(relation, occupancy);
 }
@@ -868,12 +955,16 @@ bool addPlanSecondary(const RhythmArchetype& archetype,
                                     bar, lane.role, step)) {
     return false;
   }
+
+  PhraseOccupancy candidate = occupancy;
+  candidate.roleMasks[bar][static_cast<uint8_t>(lane.role)] =
+      static_cast<StepMask>(
+          candidate.roleMasks[bar][static_cast<uint8_t>(lane.role)] | bit);
+  if (!hardRelationshipsSatisfied(archetype, candidate)) return false;
+
   rolePlan.secondary = static_cast<StepMask>(
       rolePlan.secondary | bit);
-  occupancy.roleMasks[bar][static_cast<uint8_t>(lane.role)] =
-      static_cast<StepMask>(
-          occupancy.roleMasks[bar][static_cast<uint8_t>(lane.role)] |
-          bit);
+  occupancy = candidate;
   return true;
 }
 
