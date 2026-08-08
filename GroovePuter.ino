@@ -24,6 +24,7 @@
 #include "src/platform/cardputer_wdt_diagnostics.h"
 #include "src/ui/key_normalize.h"
 #include "src/ui/ui_common.h"
+#include "src/generation/audition/rhythm_audition_cardputer.h"
 #include "src/input/performance_keyboard.h"
 #include "src/input/cardputer_input_edges.h"
 #include "src/input/internal_synth_output.h"
@@ -546,7 +547,9 @@ void loop() {
     bool handled = false;
     {
       AudioMutationScope mutationScope(g_audioMutationGate);
-      handled = g_miniDisplay ? g_miniDisplay->handleEvent(evt) : false;
+      handled = GroovePuterRhythm::Audition::handleCardputerAuditionEvent(
+                    evt, *g_miniAcid) ||
+                (g_miniDisplay ? g_miniDisplay->handleEvent(evt) : false);
     }
     g_performanceKeyboard.setTransportPlaying(g_miniAcid->isPlaying());
     if (handled) {
