@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -6,6 +7,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
+
+
+def without_comments(source: str) -> str:
+    source = re.sub(r"/\*.*?\*/", "", source, flags=re.S)
+    return re.sub(r"//.*?$", "", source, flags=re.M)
 
 
 realizer_h = read("src/generation/rhythm/rhythm_realizer.h")
@@ -25,13 +31,16 @@ for production in (mode_manager, miniacid):
     assert "RelationshipResolver" not in production
 
 # No heap-owning or unbounded standard containers in the embedded realization
-# path. The data model is fixed-capacity and mask based.
+# path. Strip comments before checking the C++ new-expression so prose such as
+# "new shared coordinate" cannot create a false positive.
 for source in (realizer_h, realizer_cpp, resolver_h, resolver_cpp, context_h, context_cpp):
-    assert "std::vector" not in source
-    assert "std::string" not in source
-    assert "new " not in source
-    assert "malloc(" not in source
-    assert "realloc(" not in source
+    code = without_comments(source)
+    assert "std::vector" not in code
+    assert "std::string" not in code
+    assert re.search(r"\bnew\s+(?:\(|\[|[A-Za-z_:])", code) is None
+    assert "malloc(" not in code
+    assert "calloc(" not in code
+    assert "realloc(" not in code
 
 assert "sizeof(RhythmPhrasePlan) <= 640" in realizer_h
 assert "kMaxPhraseBars" in realizer_cpp
