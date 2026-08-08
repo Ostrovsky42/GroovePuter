@@ -125,9 +125,16 @@ def test_manual_polyphony_is_external_and_bounded() -> None:
     base.require("enum class PerformanceVoiceMode" in keyboard_h and
                  "PerformanceVoiceMode::Mono" in keyboard_h,
                  "MONO must remain the default runtime voice mode")
+    base.require("kMaxHeldNotes = 19" in keyboard_h and
+                 "kMaxPolyChordNotes = 16" in keyboard_h,
+                 "manual POLY and POLY+CHORD limits must be explicit contracts")
     base.require("bool PerformanceKeyboard::directPolyphonyEnabled() const" in keyboard_cpp and
                  "!transformedPlaybackEnabled()" in keyboard_cpp,
-                 "manual POLY must not replace ARP/Chord generated ownership")
+                 "plain manual POLY must remain separate from transformed playback")
+    base.require("bool PerformanceKeyboard::polyChordSustainEnabled() const" in keyboard_cpp and
+                 "chordMode_ != PerformanceChordMode::Off" in keyboard_cpp and
+                 "!stepEngineEnabled()" in keyboard_cpp,
+                 "direct POLY+CHORD sustain must not replace step-generated ownership")
     base.require("MusicalEventSource::PerformanceKeyboardPoly" in keyboard_cpp and
                  "emitPolyNoteOn" in keyboard_cpp and
                  "emitPolyNoteOff" in keyboard_cpp,
@@ -140,6 +147,22 @@ def test_manual_polyphony_is_external_and_bounded() -> None:
     base.require("if (directPolyphonyEnabled())" in key_up and
                  "emitPolyNoteOff(released.note);" in key_up,
                  "POLY key-up must release the exact physical note")
+    base.require("if (polyChordSustainEnabled())" in key_up and
+                 "reconcileDirectPolyChord(lastServiceMicros_);" in key_up,
+                 "POLY+CHORD key-up must diff ownership instead of restoring/retriggering a root")
+
+    poly_chord = keyboard_cpp[
+        keyboard_cpp.index("void PerformanceKeyboard::reconcileDirectPolyChord"):
+        keyboard_cpp.index("uint8_t PerformanceKeyboard::selectArpNote")
+    ]
+    base.require("buildArpPool(desired, kMaxPolyChordNotes)" in poly_chord and
+                 "routeGenerated(MusicalEventType::NoteOff, note, 0);" in poly_chord and
+                 "if (alreadyActive) continue;" in poly_chord and
+                 "routeGenerated(MusicalEventType::NoteOn, desired[i], velocity);" in poly_chord,
+                 "POLY+CHORD must keep unchanged notes sounding and change only the set difference")
+    base.require("stopGeneratedOutput();\n    if (heldCount_ > 0) triggerDirectTransformed" in key_up,
+                 "MONO transformed last-root restoration must remain available separately")
+
     reconcile = keyboard_cpp[
         keyboard_cpp.index("void PerformanceKeyboard::releaseMissingKeys"):
         keyboard_cpp.index("void PerformanceKeyboard::setEnabled")
@@ -147,6 +170,9 @@ def test_manual_polyphony_is_external_and_bounded() -> None:
     base.require("if (directPolyphonyEnabled())" in reconcile and
                  "emitPolyNoteOff(held_[read].note);" in reconcile,
                  "matrix reconciliation must independently clean missing POLY notes")
+    base.require("polyChordSustainEnabled()" in reconcile and
+                 "reconcileDirectPolyChord(lastServiceMicros_);" in reconcile,
+                 "matrix reconciliation must preserve POLY+CHORD sustained set ownership")
 
     base.require("event.source == MusicalEventSource::PerformanceKeyboard" in internal and
                  "event.source == MusicalEventSource::PerformanceKeyboardPoly" in internal and
