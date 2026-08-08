@@ -156,6 +156,13 @@ bool PerformPage::handleToolKey(const UIEvent& event) {
                               static_cast<unsigned>(keyboard_.euclideanRotation()));
             }
             break;
+        case '9':
+            keyboard_.toggleVoiceMode();
+            std::snprintf(toast, sizeof(toast),
+                          keyboard_.voiceMode() == PerformanceVoiceMode::Poly
+                              ? "VOICE: POLY / EXT MIDI"
+                              : "VOICE: MONO / INT+USB");
+            break;
         default:
             return false;
     }
@@ -209,8 +216,12 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
     gfx.drawText(rightX, LayoutManager::lineY(6), value);
 
     gfx.setTextColor(COLOR_LABEL);
-    gfx.drawText(leftX, LayoutManager::lineY(7),
-                 "SHIFT+NUMBER: BACK | TAB: CLOSE");
+    std::snprintf(value, sizeof(value), "9 VOICE %s", keyboard_.voiceModeName());
+    gfx.drawText(leftX, LayoutManager::lineY(7), value);
+    gfx.drawText(rightX, LayoutManager::lineY(7),
+                 keyboard_.voiceMode() == PerformanceVoiceMode::Poly
+                     ? "EXT MIDI ONLY"
+                     : "INT+USB");
 }
 
 bool PerformPage::handleEvent(UIEvent& event) {
@@ -224,7 +235,7 @@ bool PerformPage::handleEvent(UIEvent& event) {
     if (tabPressed) {
         toolsLayerVisible_ = !toolsLayerVisible_;
         UI::showToast(toolsLayerVisible_
-                          ? "PERFORMANCE TOOLS: 1-8"
+                          ? "PERFORMANCE TOOLS: 1-9"
                           : "PERFORMANCE TOOLS: CLOSED",
                       700);
         return true;
@@ -302,6 +313,7 @@ void PerformPage::drawContent(IGfx& gfx) {
     const int velocity = keyboard_.activeVelocity();
     const bool drums = keyboard_.target() == MusicalEventTarget::Drums;
     const bool noteMode = keyboard_.noteModeEnabled();
+    const bool directPoly = keyboard_.directPolyphonyEnabled();
     const bool stepTools = keyboard_.arpeggiatorEnabled() ||
                            keyboard_.ratchetCount() > 1 ||
                            keyboard_.euclideanPulses() > 0;
@@ -315,6 +327,11 @@ void PerformPage::drawContent(IGfx& gfx) {
                                 noteMode ? MusicVisuals::accentForStyle()
                                          : COLOR_DANGER) + 3;
     x += MusicVisuals::drawChip(gfx, x, chipY, keyboard_.targetName(), true) + 3;
+    if (!drums) {
+        x += MusicVisuals::drawChip(gfx, x, chipY,
+                                    keyboard_.voiceModeName(),
+                                    directPoly) + 3;
+    }
 
     char channel[12];
     if (drums) {
@@ -379,8 +396,10 @@ void PerformPage::drawContent(IGfx& gfx) {
     } else if (miniAcid_.isPlaying() && !drums && active >= 0) {
         const int octave = active / 12 - 1;
         gfx.setTextColor(MusicVisuals::accentForStyle());
-        std::snprintf(line, sizeof(line), "PLAYING | NOTE %s%d | MIDI:%d | VEL:%d",
-                      noteName(active), octave, active, velocity);
+        std::snprintf(line, sizeof(line), "%s | NOTE %s%d | MIDI:%d | H:%u",
+                      directPoly ? "POLY EXT" : "PLAYING",
+                      noteName(active), octave, active,
+                      static_cast<unsigned>(keyboard_.heldCount()));
     } else if (miniAcid_.isPlaying() && drums && keyboard_.heldCount() > 0) {
         gfx.setTextColor(MusicVisuals::accentForStyle());
         std::snprintf(line, sizeof(line), "PLAYING | PAD ACTIVE | N60 | VEL:%d",
@@ -389,12 +408,13 @@ void PerformPage::drawContent(IGfx& gfx) {
         gfx.setTextColor(COLOR_LABEL);
         std::snprintf(line, sizeof(line), "PLAYING | %s | %s",
                       keyboard_.targetName(),
-                      stepTools ? "LIVE SYNC" : "LIVE INPUT");
+                      stepTools ? "LIVE SYNC" : (directPoly ? "POLY EXT" : "LIVE INPUT"));
     } else if (!drums && active >= 0) {
         const int octave = active / 12 - 1;
         gfx.setTextColor(MusicVisuals::accentForStyle());
-        std::snprintf(line, sizeof(line), "NOTE %s%d | MIDI:%d | VEL:%d | H:%u",
-                      noteName(active), octave, active, velocity,
+        std::snprintf(line, sizeof(line), "%s NOTE %s%d | MIDI:%d | H:%u",
+                      directPoly ? "POLY" : "MONO",
+                      noteName(active), octave, active,
                       static_cast<unsigned>(keyboard_.heldCount()));
     } else if (drums && keyboard_.heldCount() > 0) {
         gfx.setTextColor(MusicVisuals::accentForStyle());
@@ -404,10 +424,14 @@ void PerformPage::drawContent(IGfx& gfx) {
         std::snprintf(line, sizeof(line), "READY | A/S/D/F/G/H/J | CH1..7");
     } else if (keyboard_.target() == MusicalEventTarget::Dx) {
         gfx.setTextColor(COLOR_LABEL);
-        std::snprintf(line, sizeof(line), "USB ONLY | TAB PERFORMANCE TOOLS");
+        std::snprintf(line, sizeof(line), "%s | TAB PERFORMANCE TOOLS",
+                      directPoly ? "USB POLY" : "USB MONO");
+    } else if (directPoly) {
+        gfx.setTextColor(COLOR_LABEL);
+        std::snprintf(line, sizeof(line), "EXT POLY | TAB PERFORMANCE TOOLS");
     } else {
         gfx.setTextColor(COLOR_LABEL);
-        std::snprintf(line, sizeof(line), "INT+USB | TAB PERFORMANCE TOOLS");
+        std::snprintf(line, sizeof(line), "INT+USB MONO | TAB PERFORMANCE TOOLS");
     }
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), line);
 }
@@ -415,8 +439,8 @@ void PerformPage::drawContent(IGfx& gfx) {
 void PerformPage::drawFooter(IGfx& gfx) {
     if (toolsLayerVisible_) {
         UI::drawStandardFooter(gfx,
-                               "1-4 LEFT COLUMN",
-                               "5-8 RIGHT | SHIFT REVERSE");
+                               "1-4 LEFT  5-8 RIGHT",
+                               "9 VOICE | SHIFT REVERSE");
         return;
     }
     UI::drawStandardFooter(gfx,
