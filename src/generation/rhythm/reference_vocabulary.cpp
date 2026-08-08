@@ -311,7 +311,7 @@ constexpr LaneGrammar kStraightAcidLanes[] = {
     lane(RhythmRole::BassRhythm, 0,
          stepBit(0) | stepBit(4) | stepBit(8) | stepBit(12),
          stepBit(3) | stepBit(11), stepBit(7) | stepBit(15),
-         4, 8, 2, stepBit(3) | stepBit(11),
+         5, 8, 2, stepBit(3) | stepBit(11),
          stepBit(0) | stepBit(8)),
 };
 constexpr LaneRelationship kStraightAcidRelationships[] = {
@@ -385,7 +385,7 @@ constexpr LaneGrammar kSparseAcidLanes[] = {
          stepBit(3) | stepBit(11), 0, 1),
     lane(RhythmRole::BassRhythm, 0, stepBit(0),
          stepBit(6) | stepBit(14), stepBit(3) | stepBit(11),
-         1, 4, 1, stepBit(6), stepBit(0) | stepBit(14)),
+         2, 4, 1, stepBit(6), stepBit(0) | stepBit(14)),
 };
 constexpr LaneRelationship kSparseAcidRelationships[] = {
     softRespond(RhythmRole::Kick, RhythmRole::BassRhythm, 1, 3, 75),
@@ -599,7 +599,7 @@ constexpr LaneGrammar kHalftimeSwitchLanes[] = {
          0, stepBit(3) | stepBit(11), 2, 4),
     lane(RhythmRole::BassRhythm, 0, stepBit(0) | stepBit(8),
          stepBit(10) | stepBit(14), 0,
-         2, 4, 1, 0, stepBit(0) | stepBit(8)),
+         3, 4, 1, 0, stepBit(0) | stepBit(8)),
 };
 constexpr ProtectedSpace kHalftimeSwitchSpaces[] = {
     protectedSpace(stepBit(8), rhythmRoleBit(RhythmRole::Kick)),
