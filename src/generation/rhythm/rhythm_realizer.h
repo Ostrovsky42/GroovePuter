@@ -31,6 +31,7 @@ struct RhythmBarPlan {
 struct RhythmPhrasePlan {
   uint8_t barCount = 0;
   TrajectoryId trajectoryId = kNoTrajectoryId;
+  RealizationLevel level = RealizationLevel::P1Canonical;
   TransformationIntent intent = TransformationIntent::Auto;
   RhythmBarPlan bars[kMaxPhraseBars]{};
 };
