@@ -59,6 +59,7 @@ Host tests must prove:
 - one hard `Respond` target satisfies at most one source window with deterministic nearest-source ownership;
 - P1/P2/P3 reuse one deterministic `PhraseRhythmIdentity` when the caller requests VARIATE semantics;
 - unpinned BarEvolution trajectory may differ by P-level without rerolling structural identity;
+- an explicit `TransformationIntent` constrains trajectory selection to a compatible BarFunction rather than merely being copied into plan metadata;
 - `Repeat` has zero structural drift;
 - `Return` restores the Statement structural core;
 - immutable anchors are never removed;
@@ -66,8 +67,9 @@ Host tests must prove:
 - role-scoped protected space is never filled;
 - hard relationship violations never escape as a valid plan;
 - runtime impossible composition returns `InvalidConstraintSet`;
+- a legal variation never becomes invalid merely because an optional structural/ghost addition would exceed the global structural or ornament budget; that candidate is skipped instead;
 - `ValidButSparse` remains distinct from invalid musical minima;
-- gate/importance authority remains inside the rhythm plan (`Normal` implicit, ghost events use `Short` in the current Stage 2 implementation);
+- gate/importance authority remains inside the rhythm plan: `Normal` is implicit, explicit `Short/Held/Tie` lane overlays survive realization, and unclassified ghost events use `Short`;
 - the realization path uses no heap allocation or dynamic standard containers;
 - same relevant inputs produce byte-equivalent semantic plan fields across repeated runs;
 - production `ModeManager` / `MiniAcid` generation remains unwired from Stage 2.
@@ -100,15 +102,19 @@ The current Stage 1 base contains a known unrelated source-regression drift arou
 
 - [ ] `bash tests/run_rhythm_stage1_tests.sh` passes;
 - [ ] Stage 2 source ownership regression passes;
-- [ ] GCC Stage 2 property test passes;
-- [ ] Clang Stage 2 property test passes;
-- [ ] ASan + UBSan Stage 2 property test passes;
+- [ ] GCC Stage 2 property + adversarial tests pass;
+- [ ] Clang Stage 2 property + adversarial tests pass;
+- [ ] ASan + UBSan Stage 2 property + adversarial tests pass;
 - [ ] 512-seed P1/P2/P3 corpus has zero identity-continuity violations;
+- [ ] explicit Break/Turnaround intent selects only compatible trajectories;
 - [ ] repeat structural drift violations = 0;
 - [ ] immutable anchor violations = 0;
 - [ ] illegal canonical suspension violations = 0;
 - [ ] protected-space violations = 0;
 - [ ] hard relationship violations = 0;
+- [ ] explicit `Short/Held/Tie` gate-policy violations = 0;
+- [ ] optional structural additions never exceed global structural max;
+- [ ] ghost additions never exceed global ornament max;
 - [ ] runtime impossible compositions return `InvalidConstraintSet`;
 - [ ] reference binding onset-invention violations = 0;
 - [ ] reference binding structural-drop violations = 0;
@@ -116,7 +122,7 @@ The current Stage 1 base contains a known unrelated source-regression drift arou
 - [ ] Cardputer ADV normal build passes;
 - [ ] fixed DRAM gate passes;
 - [ ] SEQTRAK MIDI-only build passes;
-- [ ] normal and MIDI-only flash/fixed-DRAM deltas are measured against the Stage 1 base;
+- [ ] normal and MIDI-only flash/fixed-DRAM deltas are measured against the final Stage 1 base;
 - [ ] production Generate behavior is unchanged / Stage 2 remains unwired;
-- [ ] temporary Stage 2 branch-only CI trigger is removed from the final diff;
+- [ ] all temporary self-patch / measurement workflows are absent from the final diff;
 - [ ] three consecutive control reviews pass on one unchanged final source SHA; any finding resets the counter to `0/3`.
