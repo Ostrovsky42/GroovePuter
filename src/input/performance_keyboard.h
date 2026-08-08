@@ -49,11 +49,17 @@ public:
     static constexpr uint8_t kSeqtrakDrumNote = 60;
     static constexpr uint8_t kSeqtrakDrumChannelCount = 7;
     static constexpr uint8_t kEuclideanSteps = 16;
+    static constexpr uint8_t kMinVelocity = 10;
+    static constexpr uint8_t kMaxVelocity = 120;
+    static constexpr uint8_t kVelocityStep = 10;
+    static constexpr uint8_t kDefaultVelocity = 100;
 
     explicit PerformanceKeyboard(MusicalEventRouter& router)
         : router_(router) {}
 
-    bool keyDown(char physicalKey, uint8_t velocity = 100);
+    // velocity == 0 means use the current fixed Cardputer key velocity. Real
+    // external velocity values may still be supplied explicitly by tests/callers.
+    bool keyDown(char physicalKey, uint8_t velocity = 0);
     bool keyUp(char physicalKey);
     void releaseMissingKeys(const char* pressedKeys, std::size_t pressedCount);
 
@@ -86,12 +92,16 @@ public:
     void toggleVoiceMode();
     PerformanceVoiceMode voiceMode() const { return voiceMode_; }
     const char* voiceModeName() const;
-    // Direct POLY mode is manual external MIDI polyphony. Plain notes own one
-    // gate per physical key. Direct POLY+CHORD owns the union of all held-root
-    // chord notes without retriggering unchanged notes, bounded to
-    // kMaxPolyChordNotes unique simultaneous MIDI notes. ARP/Ratchet/Euclidean
-    // retain the existing step-generated ownership model.
+    // MONO/POLY selects the receiving external synth mode. Plain Cardputer key
+    // events themselves retain exact physical NoteOn/NoteOff ownership in both
+    // modes; the receiver decides one-voice priority/legato versus polyphony.
+    // Direct POLY+CHORD additionally owns the union of all held-root chord notes
+    // without retriggering unchanged tones, bounded to kMaxPolyChordNotes.
     bool directPolyphonyEnabled() const;
+
+    void setVelocity(uint8_t velocity);
+    bool adjustVelocity(int direction);
+    uint8_t velocity() const { return keyVelocity_; }
 
     void panic();
 
@@ -230,6 +240,7 @@ private:
     PerformanceVoiceMode voiceMode_{PerformanceVoiceMode::Mono};
     MusicalEventTarget target_{MusicalEventTarget::SynthA};
     int8_t octaveShift_{0};
+    uint8_t keyVelocity_{kDefaultVelocity};
     bool enabled_{true};
     bool noteModeEnabled_{true};
     bool transportPlaying_{false};
