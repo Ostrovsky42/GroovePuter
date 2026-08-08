@@ -749,17 +749,55 @@ const TrajectoryRef* trajectoryRefFor(const RhythmArchetype& archetype,
   return nullptr;
 }
 
+bool trajectorySupportsIntent(const BarTrajectory& trajectory,
+                              TransformationIntent intent) {
+  if (intent == TransformationIntent::Auto ||
+      intent == TransformationIntent::Fill) {
+    return true;
+  }
+
+  BarFunction required = BarFunction::Statement;
+  switch (intent) {
+    case TransformationIntent::Reduce:
+      required = BarFunction::Reduction;
+      break;
+    case TransformationIntent::Break:
+      required = BarFunction::Break;
+      break;
+    case TransformationIntent::Build:
+      required = BarFunction::Build;
+      break;
+    case TransformationIntent::Turnaround:
+      required = BarFunction::Turnaround;
+      break;
+    case TransformationIntent::Response:
+      required = BarFunction::Response;
+      break;
+    case TransformationIntent::Auto:
+    case TransformationIntent::Fill:
+    case TransformationIntent::Count:
+      return true;
+  }
+
+  for (uint8_t bar = 0; bar < trajectory.barCount; ++bar) {
+    if (trajectory.bars[bar] == required) return true;
+  }
+  return false;
+}
+
 const BarTrajectory* chooseTrajectory(const RhythmCatalogView& catalog,
                                       const RhythmArchetype& archetype,
                                       uint8_t phraseBars,
                                       RealizationLevel level,
+                                      TransformationIntent requestedIntent,
                                       TrajectoryId pinned,
                                       const GenerationContext& context) {
   if (pinned != kNoTrajectoryId) {
     const TrajectoryRef* ref = trajectoryRefFor(archetype, pinned);
     const BarTrajectory* trajectory = trajectoryFor(catalog, pinned);
     if (!ref || !trajectory || trajectory->barCount != phraseBars ||
-        !(ref->allowedLevels & realizationLevelBit(level))) {
+        !(ref->allowedLevels & realizationLevelBit(level)) ||
+        !trajectorySupportsIntent(*trajectory, requestedIntent)) {
       return nullptr;
     }
     return trajectory;
@@ -770,7 +808,8 @@ const BarTrajectory* chooseTrajectory(const RhythmCatalogView& catalog,
     const TrajectoryRef& ref = archetype.trajectories[i];
     const BarTrajectory* trajectory = trajectoryFor(catalog, ref.id);
     if (!trajectory || trajectory->barCount != phraseBars ||
-        !(ref.allowedLevels & realizationLevelBit(level))) {
+        !(ref.allowedLevels & realizationLevelBit(level)) ||
+        !trajectorySupportsIntent(*trajectory, requestedIntent)) {
       continue;
     }
     totalWeight = static_cast<uint16_t>(totalWeight + ref.weight);
@@ -786,7 +825,8 @@ const BarTrajectory* chooseTrajectory(const RhythmCatalogView& catalog,
     const TrajectoryRef& ref = archetype.trajectories[i];
     const BarTrajectory* trajectory = trajectoryFor(catalog, ref.id);
     if (!trajectory || trajectory->barCount != phraseBars ||
-        !(ref.allowedLevels & realizationLevelBit(level))) {
+        !(ref.allowedLevels & realizationLevelBit(level)) ||
+        !trajectorySupportsIntent(*trajectory, requestedIntent)) {
       continue;
     }
     if (pick < ref.weight) return trajectory;
@@ -1253,7 +1293,7 @@ RhythmRealizationResult realizeRhythmPhrase(
   }
   const BarTrajectory* trajectory = chooseTrajectory(
       *request.catalog, *archetype, request.phraseBars, request.level,
-      pinned, request.generation);
+      request.intent, pinned, request.generation);
   if (!trajectory) return result;
 
   const uint32_t identitySeed = deriveGenerationSeed(
