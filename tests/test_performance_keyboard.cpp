@@ -19,9 +19,10 @@ public:
 
 void expectEvent(const MusicalEvent& event,
                  MusicalEventType type,
-                 uint8_t note) {
+                 uint8_t note,
+                 MusicalEventSource source = MusicalEventSource::PerformanceKeyboard) {
     assert(event.type == type);
-    assert(event.source == MusicalEventSource::PerformanceKeyboard);
+    assert(event.source == source);
     assert(event.target == MusicalEventTarget::SynthA);
     assert(event.channel == 0);
     assert(event.note == note);
@@ -40,6 +41,9 @@ int main() {
     assert(keyboard.octaveShift() == 0);
     assert(keyboard.noteModeEnabled());
     assert(keyboard.liveInputAllowed());
+    assert(keyboard.voiceMode() == PerformanceVoiceMode::Mono);
+    assert(std::strcmp(keyboard.voiceModeName(), "MONO") == 0);
+    assert(!keyboard.directPolyphonyEnabled());
 
     for (char key : std::string("iopkl")) {
         assert(PerformanceKeyboard::isPerformanceKey(key));
@@ -55,7 +59,7 @@ int main() {
     assert(keyboard.noteForKey('w', note) && note == 50);
     assert(!keyboard.noteForKey('z', note));
 
-    // Last-note priority: C2, then D2, then release inactive C2.
+    // MONO remains last-note priority: C2, then D2, then release inactive C2.
     assert(keyboard.keyDown('a', 90));
     assert(keyboard.keyDown('s', 110));
     assert(keyboard.heldCount() == 2);
@@ -75,7 +79,69 @@ int main() {
     assert(sink.events.size() == 3);
     expectEvent(sink.events.back(), MusicalEventType::NoteOff, 38);
 
-    // Releasing the active key restores the previous held note.
+    // POLY is direct external-MIDI ownership: every physical key owns its own
+    // NoteOn/NoteOff, while the internal synth can ignore this dedicated source.
+    sink.clear();
+    keyboard.setVoiceMode(PerformanceVoiceMode::Poly);
+    assert(keyboard.voiceMode() == PerformanceVoiceMode::Poly);
+    assert(std::strcmp(keyboard.voiceModeName(), "POLY") == 0);
+    assert(keyboard.directPolyphonyEnabled());
+    assert(sink.events.size() == 1);  // mode transition panic
+    expectEvent(sink.events[0], MusicalEventType::AllNotesOff, 0);
+
+    sink.clear();
+    assert(keyboard.keyDown('a', 90));
+    assert(keyboard.keyDown('s', 110));
+    assert(keyboard.keyDown('d', 100));
+    assert(keyboard.heldCount() == 3);
+    assert(sink.events.size() == 3);
+    expectEvent(sink.events[0], MusicalEventType::NoteOn, 36,
+                MusicalEventSource::PerformanceKeyboardPoly);
+    expectEvent(sink.events[1], MusicalEventType::NoteOn, 38,
+                MusicalEventSource::PerformanceKeyboardPoly);
+    expectEvent(sink.events[2], MusicalEventType::NoteOn, 39,
+                MusicalEventSource::PerformanceKeyboardPoly);
+
+    // Releasing the middle note must release only that exact note.
+    assert(keyboard.keyUp('s'));
+    assert(keyboard.heldCount() == 2);
+    assert(keyboard.activeNote() == 39);
+    assert(sink.events.size() == 4);
+    expectEvent(sink.events.back(), MusicalEventType::NoteOff, 38,
+                MusicalEventSource::PerformanceKeyboardPoly);
+    assert(keyboard.keyUp('a'));
+    assert(keyboard.heldCount() == 1);
+    expectEvent(sink.events.back(), MusicalEventType::NoteOff, 36,
+                MusicalEventSource::PerformanceKeyboardPoly);
+    assert(keyboard.keyUp('d'));
+    assert(keyboard.heldCount() == 0);
+    expectEvent(sink.events.back(), MusicalEventType::NoteOff, 39,
+                MusicalEventSource::PerformanceKeyboardPoly);
+
+    // Matrix reconciliation in POLY releases each missing key independently and
+    // must not retrigger the remaining held note.
+    sink.clear();
+    assert(keyboard.keyDown('a'));
+    assert(keyboard.keyDown('s'));
+    const char polyOnlyA[] = {'a'};
+    keyboard.releaseMissingKeys(polyOnlyA, 1);
+    assert(keyboard.heldCount() == 1);
+    assert(keyboard.activeNote() == 36);
+    assert(sink.events.size() == 3);
+    expectEvent(sink.events.back(), MusicalEventType::NoteOff, 38,
+                MusicalEventSource::PerformanceKeyboardPoly);
+    assert(keyboard.keyUp('a'));
+    expectEvent(sink.events.back(), MusicalEventType::NoteOff, 36,
+                MusicalEventSource::PerformanceKeyboardPoly);
+
+    sink.clear();
+    keyboard.setVoiceMode(PerformanceVoiceMode::Mono);
+    assert(keyboard.voiceMode() == PerformanceVoiceMode::Mono);
+    assert(!keyboard.directPolyphonyEnabled());
+    assert(sink.events.size() == 1);
+    expectEvent(sink.events[0], MusicalEventType::AllNotesOff, 0);
+
+    // Releasing the active key restores the previous held note in MONO.
     sink.clear();
     assert(keyboard.keyDown('a'));
     assert(keyboard.keyDown('d'));
