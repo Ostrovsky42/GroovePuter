@@ -36,6 +36,20 @@ inline void drawPatternInputLockedFooter(IGfx& gfx,
 }
 }  // namespace UI
 
+namespace {
+constexpr unsigned long kFirstHoldRepeatMinMs = 250;
+constexpr unsigned long kFirstHoldRepeatMaxMs = 500;
+constexpr unsigned long kHoldRepeatMaxGapMs = 180;
+constexpr int kEntryLowerBaseNote = 48;  // C3
+constexpr int kEntryUpperBaseNote = 60;  // C4
+
+int indexInKeyRow(char key, const char* row) {
+  if (!row) return -1;
+  const char* found = std::strchr(row, key);
+  return found ? static_cast<int>(found - row) : -1;
+}
+}  // namespace
+
 // Keep the established editor behavior intact under a private legacy entry
 // point. The public handler below owns only navigation and explicit selectors.
 #define drawStandardFooter drawPatternInputLockedFooter
@@ -44,9 +58,135 @@ inline void drawPatternInputLockedFooter(IGfx& gfx,
 #undef handleEvent
 #undef drawStandardFooter
 
+int PatternEditPage::noteForEntryKey(char key) const {
+  const char lower = static_cast<char>(
+      std::tolower(static_cast<unsigned char>(key)));
+  const int lowerIndex = indexInKeyRow(lower, "asdfghjkl");
+  if (lowerIndex >= 0) return kEntryLowerBaseNote + lowerIndex;
+  const int upperIndex = indexInKeyRow(lower, "qwertyuiop");
+  if (upperIndex >= 0) return kEntryUpperBaseNote + upperIndex;
+  return -1;
+}
+
+void PatternEditPage::resetNoteHoldTracking() {
+  last_note_key_ = 0;
+  last_entered_step_ = -1;
+  last_note_key_ms_ = 0;
+  note_hold_active_ = false;
+}
+
+void PatternEditPage::advanceNoteEntryCursor() {
+  focus_ = Focus::Steps;
+  pattern_edit_cursor_ = (activePatternStep() + 1) % SEQ_STEPS;
+}
+
+void PatternEditPage::writeNoteEntryStep(int step, int note, bool continuation) {
+  if (step < 0 || step >= SEQ_STEPS || note < 0 || note > 127) return;
+  withAudioGuard([&]() {
+    const int vIdx = voice_index_ < 0 ? 0 : (voice_index_ >= 2 ? 1 : voice_index_);
+    SynthPattern& pattern = mini_acid_.sceneManager().editCurrentSynthPattern(vIdx);
+    if (continuation && last_entered_step_ >= 0 &&
+        last_entered_step_ < SEQ_STEPS && last_entered_step_ != step) {
+      pattern.steps[last_entered_step_].slide = true;
+    }
+    pattern.steps[step].note = static_cast<int8_t>(note);
+    if (continuation) pattern.steps[step].slide = false;
+  });
+}
+
+bool PatternEditPage::handleNoteEntryKey(char key) {
+  const int note = noteForEntryKey(key);
+  if (note < 0) return false;
+
+  focus_ = Focus::Steps;
+  if (has_selection_) clearSelection();
+
+  const unsigned long now = millis();
+  const char lower = static_cast<char>(
+      std::tolower(static_cast<unsigned char>(key)));
+  const unsigned long gap =
+      last_note_key_ms_ == 0 ? 0 : now - last_note_key_ms_;
+
+  bool continuation = false;
+  if (lower == last_note_key_ && last_entered_note_ == note) {
+    if (note_hold_active_ && gap <= kHoldRepeatMaxGapMs) {
+      continuation = true;
+    } else if (!note_hold_active_ &&
+               gap >= kFirstHoldRepeatMinMs &&
+               gap <= kFirstHoldRepeatMaxMs) {
+      note_hold_active_ = true;
+      continuation = true;
+    }
+  }
+
+  if (!continuation) {
+    note_hold_active_ = false;
+  }
+
+  const int step = activePatternStep();
+  writeNoteEntryStep(step, note, continuation);
+  last_note_key_ = lower;
+  last_entered_note_ = note;
+  last_entered_step_ = step;
+  last_note_key_ms_ = now;
+  advanceNoteEntryCursor();
+  return true;
+}
+
 bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) {
     return handleEventLegacy(ui_event);
+  }
+
+  char key = ui_event.key;
+  if (key == 0 && ui_event.scancode >= GROOVEPUTER_F1 &&
+      ui_event.scancode <= GROOVEPUTER_F8) {
+    key = static_cast<char>('1' + (ui_event.scancode - GROOVEPUTER_F1));
+  }
+  const char lowerKey = key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(key)))
+      : 0;
+
+  // N toggles an optional direct-note layer. Disabled means the complete legacy
+  // key map remains unchanged.
+  if (!ui_event.ctrl && !ui_event.meta && !ui_event.alt && lowerKey == 'n') {
+    note_entry_mode_ = !note_entry_mode_;
+    focus_ = Focus::Steps;
+    if (has_selection_) clearSelection();
+    resetNoteHoldTracking();
+    UI::showToast(note_entry_mode_ ? "NOTE ENTRY: ON" : "NOTE ENTRY: OFF", 900);
+    return true;
+  }
+
+  if (note_entry_mode_ && !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
+    const bool isBackspace = key == '\b' || key == 0x7F;
+    if (isBackspace) {
+      const int step = activePatternStep();
+      withAudioGuard([&]() { mini_acid_.clear303Step(step, voice_index_); });
+      resetNoteHoldTracking();
+      return true;
+    }
+
+    if (key == ';' || key == ':') {
+      if (last_entered_note_ >= 0) {
+        const int step = activePatternStep();
+        writeNoteEntryStep(step, last_entered_note_, false);
+        last_entered_step_ = step;
+        last_note_key_ = 0;
+        last_note_key_ms_ = millis();
+        note_hold_active_ = false;
+        advanceNoteEntryCursor();
+        return true;
+      }
+      UI::showToast("NO LAST NOTE", 700);
+      return true;
+    }
+
+    if (handleNoteEntryKey(key)) return true;
+
+    // Any other local command ends hold inference so a later press cannot be
+    // mistaken for a held-key repeat.
+    resetNoteHoldTracking();
   }
 
   // Global navigation, pattern rotation/FX editing and meta note editing keep
@@ -100,18 +240,9 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  char key = ui_event.key;
-  if (key == 0 && ui_event.scancode >= GROOVEPUTER_F1 &&
-      ui_event.scancode <= GROOVEPUTER_F8) {
-    key = static_cast<char>('1' + (ui_event.scancode - GROOVEPUTER_F1));
-  }
-  const char lowerKey = key
-      ? static_cast<char>(std::tolower(static_cast<unsigned char>(key)))
-      : 0;
-
-  // Q-I is the only keyboard path for slots 1-8. Selection is immediate and
-  // the next arrow continues moving inside the note grid.
-  if (!ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
+  // Q-I is the only keyboard path for slots 1-8 outside NOTE ENTRY. Selection
+  // is immediate and the next arrow continues moving inside the note grid.
+  if (!note_entry_mode_ && !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
     int patternIdx = patternIndexFromKey(lowerKey);
     if (patternIdx < 0) {
       patternIdx = scancodeToPatternIndex(ui_event.scancode);
