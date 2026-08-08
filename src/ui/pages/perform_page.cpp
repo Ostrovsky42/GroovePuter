@@ -161,7 +161,7 @@ bool PerformPage::handleToolKey(const UIEvent& event) {
             std::snprintf(toast, sizeof(toast),
                           keyboard_.voiceMode() == PerformanceVoiceMode::Poly
                               ? "VOICE: POLY / EXT MIDI"
-                              : "VOICE: MONO / INT+USB");
+                              : "VOICE: MONO / EXT MIDI");
             break;
         default:
             return false;
@@ -218,10 +218,7 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
     gfx.setTextColor(COLOR_LABEL);
     std::snprintf(value, sizeof(value), "9 VOICE %s", keyboard_.voiceModeName());
     gfx.drawText(leftX, LayoutManager::lineY(7), value);
-    gfx.drawText(rightX, LayoutManager::lineY(7),
-                 keyboard_.voiceMode() == PerformanceVoiceMode::Poly
-                     ? "EXT MIDI ONLY"
-                     : "INT+USB");
+    gfx.drawText(rightX, LayoutManager::lineY(7), "EXT MIDI ONLY");
 }
 
 bool PerformPage::handleEvent(UIEvent& event) {
@@ -397,7 +394,7 @@ void PerformPage::drawContent(IGfx& gfx) {
         const int octave = active / 12 - 1;
         gfx.setTextColor(MusicVisuals::accentForStyle());
         std::snprintf(line, sizeof(line), "%s | NOTE %s%d | MIDI:%d | H:%u",
-                      directPoly ? "POLY EXT" : "PLAYING",
+                      directPoly ? "POLY EXT" : "MONO EXT",
                       noteName(active), octave, active,
                       static_cast<unsigned>(keyboard_.heldCount()));
     } else if (miniAcid_.isPlaying() && drums && keyboard_.heldCount() > 0) {
@@ -408,7 +405,7 @@ void PerformPage::drawContent(IGfx& gfx) {
         gfx.setTextColor(COLOR_LABEL);
         std::snprintf(line, sizeof(line), "PLAYING | %s | %s",
                       keyboard_.targetName(),
-                      stepTools ? "LIVE SYNC" : (directPoly ? "POLY EXT" : "LIVE INPUT"));
+                      stepTools ? "LIVE SYNC" : (directPoly ? "POLY EXT" : "MONO EXT"));
     } else if (!drums && active >= 0) {
         const int octave = active / 12 - 1;
         gfx.setTextColor(MusicVisuals::accentForStyle());
@@ -431,7 +428,7 @@ void PerformPage::drawContent(IGfx& gfx) {
         std::snprintf(line, sizeof(line), "EXT POLY | TAB PERFORMANCE TOOLS");
     } else {
         gfx.setTextColor(COLOR_LABEL);
-        std::snprintf(line, sizeof(line), "INT+USB MONO | TAB PERFORMANCE TOOLS");
+        std::snprintf(line, sizeof(line), "EXT MONO | TAB PERFORMANCE TOOLS");
     }
     gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), line);
 }
