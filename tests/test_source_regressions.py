@@ -226,10 +226,10 @@ def test_atlas_recipe_catalog_and_legacy_fallbacks() -> None:
         data = (ROOT / "src/generated" / filename).read_text(encoding="utf-8")
         require(f"kRecipe_{atlas_id}" in index,
                 f"generated Atlas index must publish {name}")
-        require('\"P1\", \"BASE\"' in data, f"{name} must include P1")
-        require('\"P2\", \"DEVELOPMENT\"' in data, f"{name} must include P2")
-        require('\"P3\",' in data, f"{name} must include P3")
-        require(f'{{{runtime_id}, \"{name}\"' in manager,
+        require('"P1", "BASE"' in data, f"{name} must include P1")
+        require('"P2", "DEVELOPMENT"' in data, f"{name} must include P2")
+        require('"P3",' in data, f"{name} must include P3")
+        require(f'{{{runtime_id}, "{name}"' in manager,
                 f"GenreManager must expose {name} as recipe id {runtime_id}")
         require(f"case {runtime_id}: return GrooveboxMode::{groove}" in manager,
                 f"{name} must select {groove} macro mode")
@@ -242,7 +242,7 @@ def test_atlas_recipe_catalog_and_legacy_fallbacks() -> None:
         (5, "Dub Techno"),
     )
     for runtime_id, name in legacy_recipes:
-        require(f'{{{runtime_id}, \"{name}\"' in manager,
+        require(f'{{{runtime_id}, "{name}"' in manager,
                 f"legacy recipe generator was removed: {name}")
 
 
@@ -348,15 +348,28 @@ def test_performance_workflow_boundaries() -> None:
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
+    pattern_page = (ROOT / "src/ui/pages/pattern_edit_page.cpp").read_text(
+        encoding="utf-8"
+    )
+    pattern_header = (ROOT / "src/ui/pages/pattern_edit_page.h").read_text(
+        encoding="utf-8"
+    )
 
     require('constexpr char kLowerRow[] = "asdfghjkl";' in keyboard,
             "performance key mapping must stay centralized")
     require('constexpr char kUpperRow[] = "qwertyuiop";' in keyboard,
             "performance key mapping must stay centralized")
     for path in (ROOT / "src/ui/pages").glob("*.cpp"):
+        if path.name == "pattern_edit_page.cpp":
+            continue
         page = path.read_text(encoding="utf-8")
         require("asdfghjkl" not in page and "qwertyuiop" not in page,
-                f"keyboard mapping duplicated in {path.name}")
+                f"performance keyboard mapping duplicated in {path.name}")
+    require("bool note_entry_mode_ = false;" in pattern_header and
+            '"asdfghjkl"' in pattern_page and '"qwertyuiop"' in pattern_page,
+            "PatternEditPage may own the chromatic rows only behind opt-in NOTE ENTRY")
+    require("if (note_entry_mode_" in pattern_page,
+            "pattern note-row routing must stay gated by NOTE ENTRY")
 
     require("MidiOutput" not in header,
             "MusicalEventTarget must describe logical voices, not output sinks")
@@ -529,7 +542,7 @@ def test_synth_pitch_and_live_note_contracts() -> None:
             "ChipTuning::quantizeSnToneFrequency" in sn and
             "ChipTuning::snStackRatios" in sn,
             "SN76489 must use the explicit low-register and stack policy")
-    require('\"Oct+\"' in sn,
+    require('"Oct+"' in sn,
             "the upward octave stack must be named explicitly")
 
     require('include "clamped_live_note_identity.h"' in engine_header and
