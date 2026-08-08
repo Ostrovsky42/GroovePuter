@@ -152,10 +152,11 @@ StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings) {
       return StrongRhythmRoute::Legacy;
   }
 
+  if (settings.generativeMode >= kGenerativeModeCount) {
+    return StrongRhythmRoute::Legacy;
+  }
   const GenerativeMode mode =
-      settings.generativeMode < kGenerativeModeCount
-          ? static_cast<GenerativeMode>(settings.generativeMode)
-          : GenerativeMode::Acid;
+      static_cast<GenerativeMode>(settings.generativeMode);
   switch (mode) {
     case GenerativeMode::Acid:
       return StrongRhythmRoute::AcidBase;
@@ -178,7 +179,9 @@ StrongRhythmMigrationResult migrateStrongRhythmDrums(
     result.status = StrongRhythmMigrationStatus::Legacy;
     return result;
   }
-  if (context.patternAddress < 0 || !validLevel(context.level)) {
+  if (context.patternAddress < 0 ||
+      context.patternAddress >= kMaxGlobalPatterns ||
+      !validLevel(context.level)) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
