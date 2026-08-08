@@ -44,6 +44,8 @@ int main() {
     assert(keyboard.voiceMode() == PerformanceVoiceMode::Mono);
     assert(std::strcmp(keyboard.voiceModeName(), "MONO") == 0);
     assert(!keyboard.directPolyphonyEnabled());
+    static_assert(PerformanceKeyboard::kMaxHeldNotes == 19);
+    static_assert(PerformanceKeyboard::kMaxPolyChordNotes == 16);
 
     for (char key : std::string("iopkl")) {
         assert(PerformanceKeyboard::isPerformanceKey(key));
@@ -134,6 +136,73 @@ int main() {
     expectEvent(sink.events.back(), MusicalEventType::NoteOff, 36,
                 MusicalEventSource::PerformanceKeyboardPoly);
 
+    // POLY+CHORD is a sustained union, not last-root replacement. C5th owns
+    // C/G/C and the upper C5th shares MIDI 48. Adding the second root must emit
+    // only the two new notes; releasing either root must not retrigger or cut
+    // the shared note while the other root still owns it.
+    sink.clear();
+    keyboard.setChordMode(PerformanceChordMode::Fifth);
+    assert(sink.events.size() == 1);  // configuration panic
+    expectEvent(sink.events[0], MusicalEventType::AllNotesOff, 0);
+    sink.clear();
+
+    assert(keyboard.keyDown('a', 96));  // 36,43,48
+    assert(sink.events.size() == 3);
+    expectEvent(sink.events[0], MusicalEventType::NoteOn, 36,
+                MusicalEventSource::Arpeggiator);
+    expectEvent(sink.events[1], MusicalEventType::NoteOn, 43,
+                MusicalEventSource::Arpeggiator);
+    expectEvent(sink.events[2], MusicalEventType::NoteOn, 48,
+                MusicalEventSource::Arpeggiator);
+
+    assert(keyboard.keyDown('q', 104));  // 48,55,60; 48 is already sounding
+    assert(sink.events.size() == 5);
+    expectEvent(sink.events[3], MusicalEventType::NoteOn, 55,
+                MusicalEventSource::Arpeggiator);
+    expectEvent(sink.events[4], MusicalEventType::NoteOn, 60,
+                MusicalEventSource::Arpeggiator);
+
+    assert(keyboard.keyUp('a'));
+    assert(keyboard.heldCount() == 1);
+    assert(sink.events.size() == 7);
+    expectEvent(sink.events[5], MusicalEventType::NoteOff, 36,
+                MusicalEventSource::Arpeggiator);
+    expectEvent(sink.events[6], MusicalEventType::NoteOff, 43,
+                MusicalEventSource::Arpeggiator);
+    // No NoteOn 48 is emitted here: the upper root already owns/sustains it.
+
+    assert(keyboard.keyUp('q'));
+    assert(keyboard.heldCount() == 0);
+    assert(sink.events.size() == 10);
+    expectEvent(sink.events[7], MusicalEventType::NoteOff, 48,
+                MusicalEventSource::Arpeggiator);
+    expectEvent(sink.events[8], MusicalEventType::NoteOff, 55,
+                MusicalEventSource::Arpeggiator);
+    expectEvent(sink.events[9], MusicalEventType::NoteOff, 60,
+                MusicalEventSource::Arpeggiator);
+
+    // Direct POLY+CHORD has an explicit 16-unique-note ceiling. Six NAT MINOR
+    // roots in MIN7 fill it; a seventh held root may be tracked physically but
+    // cannot add a seventeenth simultaneous generated MIDI note.
+    sink.clear();
+    keyboard.setChordMode(PerformanceChordMode::Minor7);
+    assert(sink.events.size() == 1);
+    sink.clear();
+    for (char key : std::string("asdfgh")) assert(keyboard.keyDown(key));
+    assert(keyboard.heldCount() == 6);
+    assert(sink.events.size() == PerformanceKeyboard::kMaxPolyChordNotes);
+    for (const MusicalEvent& event : sink.events) {
+        assert(event.type == MusicalEventType::NoteOn);
+        assert(event.source == MusicalEventSource::Arpeggiator);
+    }
+    assert(keyboard.keyDown('j'));
+    assert(keyboard.heldCount() == 7);
+    assert(sink.events.size() == PerformanceKeyboard::kMaxPolyChordNotes);
+    keyboard.panic();
+
+    sink.clear();
+    keyboard.setChordMode(PerformanceChordMode::Off);
+    assert(sink.events.size() == 1);
     sink.clear();
     keyboard.setVoiceMode(PerformanceVoiceMode::Mono);
     assert(keyboard.voiceMode() == PerformanceVoiceMode::Mono);
