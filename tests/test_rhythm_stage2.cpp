@@ -8,6 +8,15 @@ using namespace GroovePuterRhythm;
 
 namespace {
 
+uint8_t bitCount16(StepMask value) {
+  uint8_t count = 0;
+  while (value) {
+    value = static_cast<StepMask>(value & (value - 1u));
+    ++count;
+  }
+  return count;
+}
+
 struct Stage2Fixture {
   BarTrajectory trajectory{};
   LaneGrammar lanes[3]{};
