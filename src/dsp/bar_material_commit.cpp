@@ -123,6 +123,36 @@ bool compatiblePending(MiniAcid& engine,
          g_pending.recipe == recipe;
 }
 
+uint8_t atlasVariationForLane(MiniAcid& engine,
+                              uint8_t recipe,
+                              uint8_t requestedMask) {
+  const int page = engine.currentPageIndex();
+  if (compatiblePending(
+          engine, MaterialAction::Generation, page, recipe) &&
+      g_pending.atlasBacked &&
+      (g_pending.mask & requestedMask) == 0) {
+    // Adding another lane to an Atlas-backed pending transaction must use the
+    // same P-variation. Otherwise an atomic swap could still be musically
+    // incoherent across A/B/Drums.
+    return g_pending.atlasVariation;
+  }
+  return nextAtlasVariation(engine, recipe);
+}
+
+bool preserveCompatibleAtlasTransaction(MiniAcid& engine,
+                                        MaterialAction action,
+                                        int page,
+                                        uint8_t recipe,
+                                        bool atlasBacked,
+                                        uint8_t variation) {
+  if (!compatiblePending(engine, action, page, recipe)) return true;
+  if (!atlasBacked || !g_pending.atlasBacked) return true;
+  // A repeated request for an already-pending Atlas lane deliberately selects
+  // a new variation. Do not keep other lanes from the previous variation in
+  // that transaction; clearing them is safer than committing a mixed Atlas.
+  return g_pending.atlasVariation == variation;
+}
+
 void beginStage(MiniAcid& engine,
                 MaterialAction action,
                 int page,
@@ -211,7 +241,10 @@ MaterialQueueResult stageSynth(MiniAcid& engine,
 
   const int page = engine.currentPageIndex();
   const uint8_t recipe = engine.genreManager().recipe();
-  beginStage(engine, MaterialAction::Generation, page, recipe, true);
+  const bool preserve = preserveCompatibleAtlasTransaction(
+      engine, MaterialAction::Generation, page, recipe,
+      atlasBacked, variation);
+  beginStage(engine, MaterialAction::Generation, page, recipe, preserve);
   const uint8_t bit = synthMask(voiceIndex);
   g_pending.synthTarget[voiceIndex] = target;
   g_pending.synth[voiceIndex] = material;
@@ -234,7 +267,12 @@ MaterialQueueResult stageDrums(MiniAcid& engine,
 
   const int page = engine.currentPageIndex();
   const uint8_t recipe = engine.genreManager().recipe();
-  beginStage(engine, action, page, recipe, action == MaterialAction::Generation);
+  bool preserve = action == MaterialAction::Generation;
+  if (preserve) {
+    preserve = preserveCompatibleAtlasTransaction(
+        engine, action, page, recipe, atlasBacked, variation);
+  }
+  beginStage(engine, action, page, recipe, preserve);
   g_pending.drumTarget = target;
   g_pending.drums = material;
   g_pending.mask = static_cast<uint8_t>(g_pending.mask | kDrumsMask);
@@ -308,7 +346,8 @@ MaterialQueueResult queueSynthGenerationForBar(MiniAcid& engine,
   SynthPattern atlasB{};
   DrumPatternSet atlasDrums{};
   const uint8_t recipe = engine.genreManager().recipe();
-  const uint8_t variation = nextAtlasVariation(engine, recipe);
+  const uint8_t variation = atlasVariationForLane(
+      engine, recipe, synthMask(voiceIndex));
   const bool atlasBacked = realizeAtlas(
       engine, variation, atlasA, atlasB, atlasDrums);
 
@@ -335,7 +374,8 @@ MaterialQueueResult queueDrumGenerationForBar(MiniAcid& engine) {
   SynthPattern atlasB{};
   DrumPatternSet atlasDrums{};
   const uint8_t recipe = engine.genreManager().recipe();
-  const uint8_t variation = nextAtlasVariation(engine, recipe);
+  const uint8_t variation = atlasVariationForLane(
+      engine, recipe, kDrumsMask);
   const bool atlasBacked = realizeAtlas(
       engine, variation, atlasA, atlasB, atlasDrums);
 
@@ -366,7 +406,8 @@ MaterialQueueResult queueDrumVoiceGenerationForBar(MiniAcid& engine,
   SynthPattern atlasB{};
   DrumPatternSet atlasDrums{};
   const uint8_t recipe = engine.genreManager().recipe();
-  const uint8_t variation = nextAtlasVariation(engine, recipe);
+  const uint8_t variation = atlasVariationForLane(
+      engine, recipe, kDrumsMask);
   const bool atlasBacked = realizeAtlas(
       engine, variation, atlasA, atlasB, atlasDrums);
 
