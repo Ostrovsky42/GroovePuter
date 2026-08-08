@@ -219,7 +219,7 @@ struct OrnamentBudgetFixture {
         realizationLevelBit(RealizationLevel::P2Variation)};
 
     archetype.id = 203;
-    archetype.family = RhythmFamily::BrokenBeat;
+    archetype.family = RhythmFamily::Breakbeat;
     archetype.allowedPhraseBars = phraseBarsBit(1);
     archetype.activeRoles = static_cast<RhythmRoleMask>(
         rhythmRoleBit(RhythmRole::Kick) |
