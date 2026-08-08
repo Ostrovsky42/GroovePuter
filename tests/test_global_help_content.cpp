@@ -66,16 +66,18 @@ int main() {
     assert(sectionContains(WorkflowPages::kPattern, "SEQUENCER HUB"));
     assert(sectionContains(WorkflowPages::kPattern, "saved per-file route"));
 
-    assert(sectionContains(WorkflowPages::kGenre, "GENRE 1/3"));
+    assert(sectionContains(WorkflowPages::kGenre, "GENRE 1/2"));
     assert(sectionContains(WorkflowPages::kGenre, "No texture or feel changes"));
-    assert(sectionContains(WorkflowPages::kFeel, "FEEL 2/3"));
+    assert(sectionContains(WorkflowPages::kFeel, "FEEL 2/2"));
     assert(sectionContains(WorkflowPages::kFeel, "No notes, roles or sound changes"));
-    assert(sectionContains(WorkflowPages::kGeneration, "GENERATION 3/3"));
-    assert(sectionContains(WorkflowPages::kGeneration, "No scoring or retry loop"));
 
-    // Persisted page id 8 remains readable but resolves to FEEL content.
+    // Historical GENERATION/TEXTURE page ids remain readable but both resolve
+    // to FEEL content; neither is a normal navigation destination anymore.
+    assert(std::strcmp(WorkflowPages::pageName(WorkflowPages::kGeneration), "FEEL") == 0);
+    assert(sectionContains(WorkflowPages::kGeneration, "FEEL 2/2"));
+    assert(!sectionContains(WorkflowPages::kGeneration, "GENERATION"));
     assert(std::strcmp(WorkflowPages::pageName(WorkflowPages::kTexture), "FEEL") == 0);
-    assert(sectionContains(WorkflowPages::kTexture, "FEEL 2/3"));
+    assert(sectionContains(WorkflowPages::kTexture, "FEEL 2/2"));
     assert(!sectionContains(WorkflowPages::kTexture, "TEXTURE"));
 
     std::cout << "global help content tests passed\n";
