@@ -81,9 +81,12 @@ def main() -> None:
             "MaterialAction::SongMaterialization" in bar_header and
             "MaterialAction::RhythmArchetype" in bar_header,
             "pending transaction vocabulary must cover future material operations")
-    require("std::vector" not in bar_commit and
-            "new " not in bar_commit and
-            "malloc(" not in bar_commit,
+    bar_code = "\n".join(
+        line.split("//", 1)[0] for line in bar_commit.splitlines()
+    )
+    require("std::vector" not in bar_code and
+            re.search(r"\bnew\s+[A-Za-z_:]", bar_code) is None and
+            "malloc(" not in bar_code,
             "BAR_START pending state must remain fixed-size and allocation-free")
     require("AtlasRuntime::applyRecipe" in bar_commit and
             "getCompiledGenerativeParams" in bar_commit,
@@ -97,6 +100,9 @@ def main() -> None:
     require("currentPageIndex() != g_pending.page" in bar_commit and
             "CancelledPageMismatch" in bar_commit,
             "pending material must not spill into another pattern page")
+    require("atlasVariationForLane" in bar_commit and
+            "return g_pending.atlasVariation" in bar_commit,
+            "compatible Atlas lanes must share one pending variation identity")
 
     bar_block_start = engine.index("if (barTick == 0)")
     bar_block_end = engine.index("} else if (barTick % 24 == 0)", bar_block_start)
