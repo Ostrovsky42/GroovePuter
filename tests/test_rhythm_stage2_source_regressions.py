@@ -55,10 +55,14 @@ assert "lane.heldGate" in realizer_cpp
 assert "lane.tieGate" in realizer_cpp
 
 # Stage 6 owns BarEvolution. Stage 2 may carry forward-compatible output fields
-# but must never select/apply a trajectory, BarFunction transformation, or
-# explicit TransformationIntent.
-assert "pinnedTrajectoryId" not in realizer_h
-assert "TransformationIntent intent" not in realizer_h
+# but its request API must never acquire trajectory/intent ownership and the
+# implementation must never select/apply BarEvolution behavior.
+request_struct = realizer_h.split("struct RhythmRealizationRequest", 1)[1].split(
+    "struct RhythmRealizationResult", 1
+)[0]
+assert "pinnedTrajectoryId" not in request_struct
+assert "TransformationIntent" not in request_struct
+assert "TrajectoryId" not in request_struct
 assert "GenerationDomain::BarEvolution" not in realizer_cpp
 assert "chooseTrajectory" not in realizer_cpp
 assert "trajectorySupportsIntent" not in realizer_cpp
