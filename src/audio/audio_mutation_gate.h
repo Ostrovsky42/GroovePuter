@@ -5,6 +5,8 @@
 #include <atomic>
 #include <cstdint>
 
+#include "audio_control_snapshot.h"
+
 #if defined(ARDUINO)
 #include <Arduino.h>
 #else
@@ -15,9 +17,15 @@
 // holding a mutex while a DSP block is being generated. The control thread
 // requests a pause, and the audio thread acknowledges it only at a block
 // boundary. Existing UI mutation lambdas can then run without racing DSP.
+//
+// Routine scalar controls use AudioControlSnapshotBuffer instead: the UI
+// publishes a complete immutable control snapshot and the audio task applies
+// it once at the next block boundary without pausing the renderer.
 class AudioMutationGate {
 public:
   void setAudioTaskActive(bool active) {
+    GroovePuterAudio::AudioControlBoundaryRegistry::instance()
+        .setAudioTaskActive(active);
     audioTaskActive_.store(active, std::memory_order_release);
     if (!active) {
       pauseRequested_.store(false, std::memory_order_release);
@@ -29,6 +37,12 @@ public:
     // The UI may enter a top-level guarded event and then call an existing
     // withAudioGuard() lambda. Only the outermost level owns the pause.
     if (controlDepth_++ > 0) return;
+
+    // From this point until the outer scope unlocks, direct DSP setters are
+    // structural mutations rather than routine snapshot publications.
+    GroovePuterAudio::AudioControlBoundaryRegistry::instance()
+        .setStructuralMutationActive(true);
+
     if (!audioTaskActive_.load(std::memory_order_acquire)) return;
 
     pauseRequested_.store(true, std::memory_order_release);
@@ -42,10 +56,24 @@ public:
     --controlDepth_;
     if (controlDepth_ != 0) return;
 
+    // Direct setters inside the guarded mutation are now authoritative. While
+    // the audio task is still parked, mirror their final state into the
+    // snapshot clients so no older queued value can overwrite them later.
+    GroovePuterAudio::AudioControlBoundaryRegistry::instance()
+        .captureAllAfterStructuralMutation();
+
     pauseRequested_.store(false, std::memory_order_release);
+    GroovePuterAudio::AudioControlBoundaryRegistry::instance()
+        .setStructuralMutationActive(false);
   }
 
   void waitAtAudioBoundary() {
+    // Flush routine parameter snapshots before honoring a structural pause.
+    // This guarantees that an immediate Save after a knob move observes the
+    // latest control value once lockControl() receives its boundary ack.
+    GroovePuterAudio::AudioControlBoundaryRegistry::instance()
+        .applyPendingAtAudioBoundary();
+
     if (!pauseRequested_.load(std::memory_order_acquire)) return;
 
     audioPaused_.store(true, std::memory_order_release);
