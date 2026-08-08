@@ -11,19 +11,20 @@ using namespace GroovePuterRhythm;
 
 namespace {
 
-// These fixtures are not hand-authored pattern presets. They are generated
-// runtime outputs from the hash-gated SEQTRAK Pattern Atlas v2.6 compiler.
-// tools/atlas/compile_atlas_runtime.py accepts only schema 2.6.0 with zero
-// validation failures and source archive SHA-256
-// 5b155937b8d05f0f0f9f1a02f10d9afe76a917d6035897695cce739eb8d6b1fd.
-//
-// This test deliberately checks only semantics actually present in those
-// generated Atlas events: role-level onset topology. GateClass support remains
-// a Stage 1 type contract, but is not inferred from Atlas events unless the
-// source data explicitly carries kSustain. Likewise accent/slide stay outside
-// Rhythm Vocabulary topology ownership.
+// These fixtures are generated runtime outputs from the hash-gated SEQTRAK
+// Pattern Atlas v2.6 compiler. The test deliberately does NOT promote Atlas
+// physical synth targets 8/9 into a global VoiceRole rule: Synth A/B != role.
+// A small per-recipe projection represents the manual-curation boundary that
+// the architecture requires between Atlas extraction and runtime vocabulary.
 
-bool rhythmRoleForAtlasTarget(uint8_t target, RhythmRole& role) {
+struct SynthRoleProjection {
+  RhythmRole synthA;
+  RhythmRole synthB;
+};
+
+bool rhythmRoleForAtlasTarget(uint8_t target,
+                              const SynthRoleProjection& projection,
+                              RhythmRole& role) {
   switch (target) {
     case 0: role = RhythmRole::Kick; return true;
     case 1:
@@ -33,8 +34,8 @@ bool rhythmRoleForAtlasTarget(uint8_t target, RhythmRole& role) {
     case 4:
     case 5:
     case 6: role = RhythmRole::Percussion; return true;
-    case 8: role = RhythmRole::BassRhythm; return true;
-    case 9: role = RhythmRole::ChordRhythm; return true;
+    case 8: role = projection.synthA; return true;
+    case 9: role = projection.synthB; return true;
     default: return false;
   }
 }
@@ -48,17 +49,35 @@ uint8_t popcount16(StepMask value) {
   return count;
 }
 
+struct ExtractedAtlasRhythm {
+  StepMask masks[kRhythmRoleCount]{};
+  uint8_t heldIntentCount = 0;
+};
+
 template <std::size_t N>
-void extractRoleMasks(const AtlasGenerated::Event (&events)[N],
-                      StepMask (&masks)[kRhythmRoleCount]) {
-  for (uint8_t i = 0; i < kRhythmRoleCount; ++i) masks[i] = 0;
+ExtractedAtlasRhythm extractRoleMasks(
+    const AtlasGenerated::Event (&events)[N],
+    const SynthRoleProjection& projection) {
+  ExtractedAtlasRhythm out{};
   for (const AtlasGenerated::Event& event : events) {
     assert(event.step < kStepsPerBar);
     RhythmRole role{};
-    assert(rhythmRoleForAtlasTarget(event.target, role));
+    assert(rhythmRoleForAtlasTarget(event.target, projection, role));
+    assert(static_cast<uint8_t>(role) < kRhythmRoleCount);
     const uint8_t index = static_cast<uint8_t>(role);
-    masks[index] = static_cast<StepMask>(masks[index] | stepBit(event.step));
+    out.masks[index] = static_cast<StepMask>(
+        out.masks[index] | stepBit(event.step));
+
+    if ((event.flags & AtlasGenerated::kSustain) != 0) {
+      RhythmEventIntent intent{};
+      intent.step = event.step;
+      intent.gate = GateClass::Held;
+      intent.importance = EventImportance::Structural;
+      assert(intent.gate == GateClass::Held);
+      ++out.heldIntentCount;
+    }
   }
+  return out;
 }
 
 struct EncodedAtlasPattern {
@@ -138,7 +157,8 @@ void assertMasks(const StepMask (&actual)[kRhythmRoleCount],
                  StepMask openHat,
                  StepMask percussion,
                  StepMask bass,
-                 StepMask chord) {
+                 StepMask chord,
+                 StepMask melodic) {
   assert(actual[static_cast<uint8_t>(RhythmRole::Kick)] == kick);
   assert(actual[static_cast<uint8_t>(RhythmRole::Backbeat)] == backbeat);
   assert(actual[static_cast<uint8_t>(RhythmRole::ClosedHat)] == closedHat);
@@ -146,14 +166,20 @@ void assertMasks(const StepMask (&actual)[kRhythmRoleCount],
   assert(actual[static_cast<uint8_t>(RhythmRole::Percussion)] == percussion);
   assert(actual[static_cast<uint8_t>(RhythmRole::BassRhythm)] == bass);
   assert(actual[static_cast<uint8_t>(RhythmRole::ChordRhythm)] == chord);
-  assert(actual[static_cast<uint8_t>(RhythmRole::MelodicRhythm)] == 0);
+  assert(actual[static_cast<uint8_t>(RhythmRole::MelodicRhythm)] == melodic);
 }
 
 void testRollingAcidP1IsRepresentable() {
-  StepMask observed[kRhythmRoleCount]{};
-  extractRoleMasks(AtlasGenerated::kEvents_PAT_ED_ACID_ROLLING_P1, observed);
-  assertMasks(observed, 0x8888, 0x0808, 0x2222, 0x0202,
-              0x1111, 0xF7F7, 0x2323);
+  // Manual curation: current Synth A material is the acid/bass line; Synth B
+  // is treated as melodic support here. This is fixture knowledge, not a
+  // global mapping from physical track to role.
+  const SynthRoleProjection projection{
+      RhythmRole::BassRhythm, RhythmRole::MelodicRhythm};
+  const ExtractedAtlasRhythm extracted = extractRoleMasks(
+      AtlasGenerated::kEvents_PAT_ED_ACID_ROLLING_P1, projection);
+  assert(extracted.heldIntentCount == 0);
+  assertMasks(extracted.masks, 0x8888, 0x0808, 0x2222, 0x0202,
+              0x1111, 0xF7F7, 0x0000, 0x2323);
 
   LaneRelationship relation{};
   relation.source = RhythmRole::Kick;
@@ -167,16 +193,18 @@ void testRollingAcidP1IsRepresentable() {
 
   EncodedAtlasPattern encoded{};
   encodeObservedMasks(encoded, 101, RhythmFamily::FourFloor,
-                      observed, relation);
+                      extracted.masks, relation);
   assert(validateRhythmCatalog(encoded.catalog));
 }
 
 void testClassicTwoStepP1IsRepresentable() {
-  StepMask observed[kRhythmRoleCount]{};
-  extractRoleMasks(AtlasGenerated::kEvents_PAT_ED_UKG_CLASSIC_2STEP_P1,
-                   observed);
-  assertMasks(observed, 0x8220, 0x0808, 0x2525, 0x0101,
-              0x1456, 0x8442, 0x3232);
+  const SynthRoleProjection projection{
+      RhythmRole::BassRhythm, RhythmRole::MelodicRhythm};
+  const ExtractedAtlasRhythm extracted = extractRoleMasks(
+      AtlasGenerated::kEvents_PAT_ED_UKG_CLASSIC_2STEP_P1, projection);
+  assert(extracted.heldIntentCount == 3);
+  assertMasks(extracted.masks, 0x8220, 0x0808, 0x2525, 0x0101,
+              0x1456, 0x8442, 0x0000, 0x3232);
 
   LaneRelationship relation{};
   relation.source = RhythmRole::Backbeat;
@@ -188,15 +216,21 @@ void testClassicTwoStepP1IsRepresentable() {
 
   EncodedAtlasPattern encoded{};
   encodeObservedMasks(encoded, 102, RhythmFamily::UkTwoStep,
-                      observed, relation);
+                      extracted.masks, relation);
   assert(validateRhythmCatalog(encoded.catalog));
 }
 
 void testDeepChordP1IsRepresentable() {
-  StepMask observed[kRhythmRoleCount]{};
-  extractRoleMasks(AtlasGenerated::kEvents_PAT_ED_DUB_DEEP_CHORD_P1, observed);
-  assertMasks(observed, 0x8888, 0x0808, 0x2222, 0x0202,
-              0x1111, 0x9090, 0x2323);
+  // The same physical Synth B target is curated differently here because the
+  // recipe's musical function is chordal. This is exactly the separation the
+  // Stage 1 contract must preserve.
+  const SynthRoleProjection projection{
+      RhythmRole::BassRhythm, RhythmRole::ChordRhythm};
+  const ExtractedAtlasRhythm extracted = extractRoleMasks(
+      AtlasGenerated::kEvents_PAT_ED_DUB_DEEP_CHORD_P1, projection);
+  assert(extracted.heldIntentCount == 4);
+  assertMasks(extracted.masks, 0x8888, 0x0808, 0x2222, 0x0202,
+              0x1111, 0x9090, 0x2323, 0x0000);
 
   LaneRelationship relation{};
   relation.source = RhythmRole::Kick;
@@ -211,7 +245,7 @@ void testDeepChordP1IsRepresentable() {
 
   EncodedAtlasPattern encoded{};
   encodeObservedMasks(encoded, 103, RhythmFamily::DubPulse,
-                      observed, relation);
+                      extracted.masks, relation);
   assert(validateRhythmCatalog(encoded.catalog));
 }
 
