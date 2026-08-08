@@ -1,0 +1,15 @@
+name: Groove Vocabulary Stage 3A audition
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  audition-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Stage 3A audition catalog matrix
+        run: bash tests/run_rhythm_stage3a_tests.sh
