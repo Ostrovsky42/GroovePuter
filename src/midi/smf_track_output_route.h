@@ -13,11 +13,11 @@ namespace GroovePuterMidi {
 constexpr std::size_t kSmfTrackOutputRouteCapacity = 32u;
 constexpr uint8_t kSmfSeqtrakOutputChannelCount = 10u;
 constexpr int8_t kSmfTrackOutputRouteAuto = -1;
-// Four bits travel with each scheduled SMF event. 0..14 are usable route
-// revisions; 15 is a short-lived mutation barrier and is never a valid event
-// revision. With the current <=740 ms lookahead this gives enough distinct
-// revisions for held-arrow route changes without inflating the realtime queue.
-constexpr uint8_t kSmfTrackOutputRouteRevisionBarrier = 0x0Fu;
+// Four bits travel with each scheduled SMF event. 0..14 are normal per-track
+// route revisions; 15 is reserved for consumer-generated cleanup NoteOffs so a
+// second fast route change cannot invalidate cleanup already removed from the
+// logical ownership table.
+constexpr uint8_t kSmfTrackOutputRouteRevisionCleanup = 0x0Fu;
 constexpr uint8_t kSmfTrackOutputRouteRevisionCount = 15u;
 
 struct SmfTrackOutputRouteSnapshot {
@@ -109,58 +109,27 @@ public:
         while (true) {
             const uint8_t previous = static_cast<uint8_t>(
                 (current >> shift) & 0xFFu);
-            const uint8_t previousRevision = revisionTag(previous);
-            if (previousRevision == kSmfTrackOutputRouteRevisionBarrier) {
-                current = packedRoutes_[wordIndex].load(std::memory_order_acquire);
-                continue;
-            }
             if (decode(previous) == destinationChannel) return true;
 
-            // Publish a barrier before the route changes. A producer that read
-            // the old route keeps the old revision in its one-event stamp; a
-            // producer that lands inside this tiny window gets revision 15 and
-            // the dispatcher rejects that event. No old physical destination
-            // can therefore be mislabeled as the new route.
-            const uint8_t barrierEncoded = encodeWithRevision(
-                decode(previous), kSmfTrackOutputRouteRevisionBarrier);
-            const uint32_t barrierWord =
+            const uint8_t nextEncoded = encodeWithRevision(
+                destinationChannel,
+                nextRevisionTag(revisionTag(previous)));
+            const uint32_t next =
                 (current & ~mask) |
-                (static_cast<uint32_t>(barrierEncoded) << shift);
-            if (!packedRoutes_[wordIndex].compare_exchange_weak(
+                (static_cast<uint32_t>(nextEncoded) << shift);
+            if (packedRoutes_[wordIndex].compare_exchange_weak(
                     current,
-                    barrierWord,
+                    next,
                     std::memory_order_acq_rel,
                     std::memory_order_acquire)) {
-                continue;
+                // Existing queued notes retain the old revision and become
+                // stale at dispatch. Active physical notes are released by the
+                // queue's existing bounded per-track ownership path.
+                pendingReleaseMask_.fetch_or(
+                    releaseBit, std::memory_order_acq_rel);
+                revision_.fetch_add(1u, std::memory_order_acq_rel);
+                return true;
             }
-
-            // Request scoped cleanup on both sides of the final publication.
-            // The duplicate bit is intentional: if the dispatcher consumes the
-            // first request while the barrier is visible, the post-publication
-            // request guarantees one final release pass for the selected track.
-            pendingReleaseMask_.fetch_or(releaseBit, std::memory_order_acq_rel);
-
-            const uint8_t nextRevision = nextRevisionTag(previousRevision);
-            const uint8_t finalEncoded =
-                encodeWithRevision(destinationChannel, nextRevision);
-            uint32_t finalCurrent =
-                packedRoutes_[wordIndex].load(std::memory_order_acquire);
-            while (true) {
-                const uint32_t finalWord =
-                    (finalCurrent & ~mask) |
-                    (static_cast<uint32_t>(finalEncoded) << shift);
-                if (packedRoutes_[wordIndex].compare_exchange_weak(
-                        finalCurrent,
-                        finalWord,
-                        std::memory_order_acq_rel,
-                        std::memory_order_acquire)) {
-                    break;
-                }
-            }
-
-            pendingReleaseMask_.fetch_or(releaseBit, std::memory_order_acq_rel);
-            revision_.fetch_add(1u, std::memory_order_acq_rel);
-            return true;
         }
     }
 
@@ -213,9 +182,9 @@ public:
     }
 
     // SmfPlayerTask is the only producer of scheduled SMF notes. Capture the
-    // route revision in the same atomic byte as the destination and remember it
-    // for exactly the next queued note event. This closes the cross-core race
-    // where the UI could change a route between destination lookup and enqueue.
+    // destination and its revision from the same atomic byte, then remember the
+    // revision for exactly the next queue publication. This closes the cross-
+    // core race where the UI changes a route between lookup and enqueue.
     int8_t destinationForProducer(uint16_t trackIndex,
                                   uint16_t trackCountHint) {
         uint8_t encoded = 0u;
