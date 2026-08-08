@@ -102,6 +102,17 @@ void testLaneAndProtectedSpaceContradictions() {
   protectedAnchor.archetype.protectedSpaceCount = 1;
   expectError(protectedAnchor.catalog,
               CatalogValidationError::ProtectedSpaceAnchorConflict);
+
+  Fixture overlappingGate;
+  overlappingGate.lanes[0].shortGate = stepBit(0);
+  overlappingGate.lanes[0].heldGate = stepBit(0);
+  expectError(overlappingGate.catalog,
+              CatalogValidationError::InvalidLaneGateMasks);
+
+  Fixture gateOutsideOnsetSpace;
+  gateOutsideOnsetSpace.lanes[0].heldGate = stepBit(15);
+  expectError(gateOutsideOnsetSpace.catalog,
+              CatalogValidationError::InvalidLaneGateMasks);
 }
 
 void testHardRelationshipFeasibilityAndNoWrap() {

@@ -1016,6 +1016,26 @@ bool addPlanGhost(const RhythmArchetype& archetype,
   return true;
 }
 
+void applyGatePolicies(const RhythmArchetype& archetype,
+                       RhythmPhrasePlan& plan) {
+  for (uint8_t bar = 0; bar < plan.barCount; ++bar) {
+    for (uint8_t laneIndex = 0; laneIndex < archetype.laneCount; ++laneIndex) {
+      const LaneGrammar& lane = archetype.lanes[laneIndex];
+      RoleRhythmPlan& rolePlan =
+          plan.bars[bar].roles[static_cast<uint8_t>(lane.role)];
+      const StepMask onsets = static_cast<StepMask>(
+          rolePlan.structural | rolePlan.secondary | rolePlan.ghosts);
+      rolePlan.heldGate = static_cast<StepMask>(onsets & lane.heldGate);
+      rolePlan.tieGate = static_cast<StepMask>(onsets & lane.tieGate);
+      const StepMask explicitGateSites = static_cast<StepMask>(
+          lane.shortGate | lane.heldGate | lane.tieGate);
+      rolePlan.shortGate = static_cast<StepMask>(
+          (onsets & lane.shortGate) |
+          (rolePlan.ghosts & ~explicitGateSites));
+    }
+  }
+}
+
 void addVariation(const RhythmArchetype& archetype,
                   uint32_t seed,
                   RhythmPhrasePlan& plan) {
@@ -1172,6 +1192,25 @@ bool planRespectsLaneBounds(const RhythmArchetype& archetype,
           bitCount16(rolePlan.ghosts) > lane.ornamentMax) {
         return false;
       }
+      const StepMask allOnsets = static_cast<StepMask>(
+          structural | rolePlan.ghosts);
+      const StepMask explicitGateSites = static_cast<StepMask>(
+          lane.shortGate | lane.heldGate | lane.tieGate);
+      const StepMask expectedShort = static_cast<StepMask>(
+          (allOnsets & lane.shortGate) |
+          (rolePlan.ghosts & ~explicitGateSites));
+      const StepMask expectedHeld = static_cast<StepMask>(
+          allOnsets & lane.heldGate);
+      const StepMask expectedTie = static_cast<StepMask>(
+          allOnsets & lane.tieGate);
+      if (rolePlan.shortGate != expectedShort ||
+          rolePlan.heldGate != expectedHeld ||
+          rolePlan.tieGate != expectedTie ||
+          (rolePlan.shortGate & rolePlan.heldGate) ||
+          (rolePlan.shortGate & rolePlan.tieGate) ||
+          (rolePlan.heldGate & rolePlan.tieGate)) {
+        return false;
+      }
       total += count;
       ornaments += bitCount16(rolePlan.ghosts);
     }
@@ -1238,6 +1277,7 @@ RhythmRealizationResult realizeRhythmPhrase(
                            variationSeed ^ 0x54524E31u,
                            result.plan);
   addVariation(*archetype, variationSeed ^ 0x56415232u, result.plan);
+  applyGatePolicies(*archetype, result.plan);
 
   if (!planRespectsProtectedSpace(*archetype, result.plan) ||
       !planRespectsLaneBounds(*archetype, result.plan)) {

@@ -220,6 +220,13 @@ struct LaneGrammar {
   StepMask optional = 0;
   StepMask forbidden = 0;
 
+  // Gate overlays are coordinate policies over declared legal onset
+  // space. Normal is implicit when an onset is not present in any
+  // explicit gate mask. The three masks must be mutually exclusive.
+  StepMask shortGate = 0;
+  StepMask heldGate = 0;
+  StepMask tieGate = 0;
+
   uint8_t structuralMin = 0;
   uint8_t structuralMax = 0;
   uint8_t ornamentMax = 0;

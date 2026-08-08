@@ -61,6 +61,8 @@ struct Stage2Fixture {
     lanes[1].structuralMin = 2;
     lanes[1].structuralMax = 4;
     lanes[1].ornamentMax = 1;
+    lanes[1].heldGate = stepBit(1);
+    lanes[1].tieGate = stepBit(9);
 
     lanes[2].role = RhythmRole::Backbeat;
     lanes[2].immutableAnchors =
@@ -358,6 +360,23 @@ void testIdentityContinuityAndTrajectorySeparation() {
   assertRepeatStable(p3.plan);
 }
 
+void testGateIntentSurvivesRealizationAndVariation() {
+  Stage2Fixture fixture;
+  const RhythmRealizationResult p1 = realize(
+      fixture, 0xA55Au, RealizationLevel::P1Canonical);
+  assertValidPlan(fixture, p1);
+  const uint8_t bass = static_cast<uint8_t>(RhythmRole::BassRhythm);
+  for (uint8_t bar = 0; bar < p1.plan.barCount; ++bar) {
+    const RoleRhythmPlan& role = p1.plan.bars[bar].roles[bass];
+    assert((role.heldGate & stepBit(1)) != 0);
+    assert((role.tieGate & stepBit(9)) != 0);
+    assert((role.heldGate & role.tieGate) == 0);
+  }
+  const RhythmRealizationResult p2 = realize(
+      fixture, 0xA55Au, RealizationLevel::P2Variation, &p1.identity);
+  assertValidPlan(fixture, p2);
+}
+
 void testBreakCanSuspendOnlyExplicitCanonicalSubset() {
   Stage2Fixture fixture;
   const RhythmRealizationResult p1 = realize(
@@ -491,6 +510,7 @@ void testReferenceBindingContractHasZeroTopologyViolations() {
 int main() {
   testRelationshipTruthTablesAndBoundaryPolicy();
   testIdentityContinuityAndTrajectorySeparation();
+  testGateIntentSurvivesRealizationAndVariation();
   testBreakCanSuspendOnlyExplicitCanonicalSubset();
   testRuntimeConstraintFailureIsTransactionalStatus();
   testDeterminismAndPropertyCorpus();

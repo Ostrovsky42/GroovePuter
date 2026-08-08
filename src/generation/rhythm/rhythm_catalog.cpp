@@ -503,6 +503,29 @@ CatalogValidationResult validateLanes(const RhythmArchetype& archetype,
       }
     }
 
+    const StepMask gateMasks[] = {
+        lane.shortGate, lane.heldGate, lane.tieGate};
+    for (size_t first = 0; first < 3; ++first) {
+      for (size_t second = first + 1; second < 3; ++second) {
+        if (gateMasks[first] & gateMasks[second]) {
+          return fail(CatalogValidationError::InvalidLaneGateMasks,
+                      archetypeIndex,
+                      i);
+        }
+      }
+    }
+    const StepMask declaredOnsets = static_cast<StepMask>(
+        lane.immutableAnchors | lane.canonicalAnchors |
+        lane.preferred | lane.optional);
+    const StepMask explicitGates = static_cast<StepMask>(
+        lane.shortGate | lane.heldGate | lane.tieGate);
+    if ((explicitGates & ~declaredOnsets) ||
+        (explicitGates & lane.forbidden)) {
+      return fail(CatalogValidationError::InvalidLaneGateMasks,
+                  archetypeIndex,
+                  i);
+    }
+
     if (lane.structuralMin > lane.structuralMax ||
         lane.structuralMax > kStepsPerBar ||
         lane.ornamentMax > kStepsPerBar) {

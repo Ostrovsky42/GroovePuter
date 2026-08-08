@@ -51,6 +51,9 @@ assert "deriveVariationSeed" in realizer_cpp
 assert "hardRelationshipsSatisfied" in realizer_cpp
 assert "planRespectsProtectedSpace" in realizer_cpp
 assert "planRespectsLaneBounds" in realizer_cpp
+assert "applyGatePolicies" in realizer_cpp
+assert "lane.heldGate" in realizer_cpp
+assert "lane.tieGate" in realizer_cpp
 
 # Identity derivation must not include RealizationLevel before the separate
 # variation-domain derivation.
