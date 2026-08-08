@@ -173,6 +173,28 @@ void PerformanceKeyboard::emitNoteOff(uint8_t note, uint8_t channel) {
     });
 }
 
+void PerformanceKeyboard::emitPolyNoteOn(const HeldNote& held) {
+    router_.route(MusicalEvent{
+        MusicalEventType::NoteOn,
+        MusicalEventSource::PerformanceKeyboardPoly,
+        target_,
+        held.channel,
+        held.note,
+        held.velocity,
+    });
+}
+
+void PerformanceKeyboard::emitPolyNoteOff(uint8_t note) {
+    router_.route(MusicalEvent{
+        MusicalEventType::NoteOff,
+        MusicalEventSource::PerformanceKeyboardPoly,
+        target_,
+        0,
+        note,
+        0,
+    });
+}
+
 void PerformanceKeyboard::emitAllNotesOff() {
     router_.route(MusicalEvent{
         MusicalEventType::AllNotesOff,
@@ -301,6 +323,12 @@ bool PerformanceKeyboard::transformedPlaybackEnabled() const {
     if (target_ == MusicalEventTarget::Drums) return false;
     return chordMode_ != PerformanceChordMode::Off || strumMs_ > 0 ||
            stepEngineEnabled();
+}
+
+bool PerformanceKeyboard::directPolyphonyEnabled() const {
+    return voiceMode_ == PerformanceVoiceMode::Poly &&
+           target_ != MusicalEventTarget::Drums &&
+           !transformedPlaybackEnabled();
 }
 
 bool PerformanceKeyboard::euclideanStepActive(uint8_t step) const {
@@ -720,6 +748,8 @@ bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
         service(lastServiceMicros_);
     } else if (transformedPlaybackEnabled()) {
         triggerDirectTransformed(lastServiceMicros_);
+    } else if (directPolyphonyEnabled()) {
+        emitPolyNoteOn(held_[heldCount_ - 1]);
     } else {
         emitNoteOn(held_[heldCount_ - 1]);
     }
@@ -757,6 +787,11 @@ bool PerformanceKeyboard::keyUp(char physicalKey) {
         if (!wasActive) return true;
         stopGeneratedOutput();
         if (heldCount_ > 0) triggerDirectTransformed(lastServiceMicros_);
+        return true;
+    }
+
+    if (directPolyphonyEnabled()) {
+        emitPolyNoteOff(released.note);
         return true;
     }
 
@@ -810,6 +845,20 @@ void PerformanceKeyboard::releaseMissingKeys(const char* pressedKeys,
             stopGeneratedOutput();
             if (heldCount_ > 0) triggerDirectTransformed(lastServiceMicros_);
         }
+        return;
+    }
+
+    if (directPolyphonyEnabled()) {
+        std::size_t write = 0;
+        for (std::size_t read = 0; read < heldCount_; ++read) {
+            if (containsKey(pressedKeys, pressedCount, held_[read].physicalKey)) {
+                held_[write++] = held_[read];
+            } else {
+                emitPolyNoteOff(held_[read].note);
+            }
+        }
+        for (std::size_t i = write; i < heldCount_; ++i) held_[i] = HeldNote{};
+        heldCount_ = write;
         return;
     }
 
@@ -907,6 +956,27 @@ uint8_t PerformanceKeyboard::targetMidiChannel() const {
         case MusicalEventTarget::Drums: return 1;
     }
     return 8;
+}
+
+void PerformanceKeyboard::setVoiceMode(PerformanceVoiceMode mode) {
+    if (mode >= PerformanceVoiceMode::Count || voiceMode_ == mode) return;
+    panic();
+    voiceMode_ = mode;
+}
+
+void PerformanceKeyboard::toggleVoiceMode() {
+    setVoiceMode(voiceMode_ == PerformanceVoiceMode::Mono
+                     ? PerformanceVoiceMode::Poly
+                     : PerformanceVoiceMode::Mono);
+}
+
+const char* PerformanceKeyboard::voiceModeName() const {
+    switch (voiceMode_) {
+        case PerformanceVoiceMode::Mono: return "MONO";
+        case PerformanceVoiceMode::Poly: return "POLY";
+        case PerformanceVoiceMode::Count: break;
+    }
+    return "MONO";
 }
 
 void PerformanceKeyboard::panic() {
