@@ -40,6 +40,7 @@ enum class PerformanceVoiceMode : uint8_t {
 class PerformanceKeyboard {
 public:
     static constexpr std::size_t kMaxHeldNotes = 19;
+    static constexpr std::size_t kMaxPolyChordNotes = 16;
     static constexpr uint8_t kMinNote = 12;
     static constexpr uint8_t kMaxNote = 95;
     static constexpr uint8_t kRootC2 = 36;
@@ -85,9 +86,11 @@ public:
     void toggleVoiceMode();
     PerformanceVoiceMode voiceMode() const { return voiceMode_; }
     const char* voiceModeName() const;
-    // Direct POLY mode is manual external MIDI polyphony. Drums already own
-    // independent lanes, while ARP/Chord/Strum/Ratchet/Euclidean keep their
-    // existing generated-note ownership model.
+    // Direct POLY mode is manual external MIDI polyphony. Plain notes own one
+    // gate per physical key. Direct POLY+CHORD owns the union of all held-root
+    // chord notes without retriggering unchanged notes, bounded to
+    // kMaxPolyChordNotes unique simultaneous MIDI notes. ARP/Ratchet/Euclidean
+    // retain the existing step-generated ownership model.
     bool directPolyphonyEnabled() const;
 
     void panic();
@@ -151,7 +154,7 @@ public:
     static bool scaleDegreeForKey(char physicalKey, uint8_t& degree);
 
 private:
-    static constexpr std::size_t kMaxGeneratedNotes = 16;
+    static constexpr std::size_t kMaxGeneratedNotes = kMaxPolyChordNotes;
     // One maximum-density step can contain 8 chord notes * 4 ratchets *
     // NoteOn/NoteOff = 64 events. Keep headroom for the second half of the
     // current step while the following transport step is prepared.
@@ -202,6 +205,7 @@ private:
     void forgetGenerated(uint8_t note);
 
     bool stepEngineEnabled() const;
+    bool polyChordSustainEnabled() const;
     uint32_t stepDurationMicros() const;
     bool serviceTransportStepClock(uint32_t nowMicros);
     bool euclideanStepActive(uint8_t step) const;
@@ -213,6 +217,7 @@ private:
                            std::size_t capacity) const;
     std::size_t buildArpPool(uint8_t* notes, std::size_t capacity) const;
     uint8_t selectArpNote(const uint8_t* notes, std::size_t count);
+    void reconcileDirectPolyChord(uint32_t nowMicros);
     void triggerDirectTransformed(uint32_t nowMicros);
     void restartAfterConfigurationChange();
 
