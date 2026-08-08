@@ -28,6 +28,7 @@ SOURCES := \
 	../src/dsp/tube_distortion.cpp \
 	../src/dsp/miniacid_engine.cpp \
 	../src/dsp/atlas_runtime.cpp \
+	../src/dsp/bar_material_commit.cpp \
 	../src/dsp/swappable_synth_voice.cpp \
 	../src/dsp/sid_synth_voice.cpp \
 	../src/dsp/sid_synth.cpp \
