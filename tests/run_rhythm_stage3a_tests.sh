@@ -19,7 +19,8 @@ build_source_and_run() {
   local test_source="$2"
   local output="$3"
   shift 3
-  "${compiler}" -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+  "${compiler}" -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions \
+    -I"${ROOT_DIR}" \
     "$@" \
     "${test_source}" \
     "${COMMON_SOURCES[@]}" \
