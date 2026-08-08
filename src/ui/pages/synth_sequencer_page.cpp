@@ -1,5 +1,4 @@
 #include "synth_sequencer_page.h"
-#include "src/state/scene_revision.h"
 
 #if defined(ARDUINO)
 #include <Arduino.h>
@@ -7,355 +6,128 @@
 #include "../../../platform_sdl/arduino_compat.h"
 #endif
 
-#include <algorithm>
-#include <cmath>
 #include <cstdio>
-#include <cctype>
-#include <string>
-#include <utility>
-#include <vector>
 
 #include "pattern_edit_page.h"
-#include "../components/label_option.h"
+#include "tb303_params_page.h"
 #include "../help_dialog_frames.h"
+#include "../screen_geometry.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
-#include "../ui_widgets.h"
 
 namespace {
-inline std::string upperCopy(std::string s) {
-  for (char& c : s) {
-    c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-  }
-  return s;
+constexpr int kTabStripX = 4;
+constexpr int kTabStripY = Layout::CONTENT.y + 1;
+constexpr int kTabStripH = 11;
+
+inline IGfxColor synthTabColor(int voiceIndex) {
+  return voiceIndex == 0 ? IGfxColor(0x33C8FF) : IGfxColor(0xFF4FCB);
 }
-
-inline bool isDisabledSynthEngine(const std::string& value) {
-  const std::string upper = upperCopy(value);
-  return upper == "OPL2" || upper == "YM3812";
-}
-
-inline void removeDisabledSynthEngines(std::vector<std::string>& options) {
-  options.erase(std::remove_if(options.begin(), options.end(), isDisabledSynthEngine),
-                options.end());
-}
-
-inline int findOptionIndex(const std::vector<std::string>& options, const std::string& value) {
-  if (options.empty()) return -1;
-  const std::string target = upperCopy(value);
-  for (int i = 0; i < static_cast<int>(options.size()); ++i) {
-    if (upperCopy(options[i]) == target) return i;
-  }
-  return -1;
-}
-
-inline void appendEngineIfMissing(std::vector<std::string>& options, const char* engine) {
-  if (!engine || findOptionIndex(options, engine) >= 0) return;
-  options.emplace_back(engine);
-}
-
-class GlobalSynthFeelPage final : public Container {
- public:
-  GlobalSynthFeelPage(MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index)
-      : mini_acid_(mini_acid),
-        audio_guard_(std::move(audio_guard)),
-        voice_index_(voice_index) {
-    engine_control_ = std::make_shared<LabelOptionComponent>("Engine", COLOR_LABEL, COLOR_WHITE);
-    synth_engine_options_ = mini_acid_.getAvailableSynthEngines();
-    removeDisabledSynthEngines(synth_engine_options_);
-    if (synth_engine_options_.empty()) {
-      synth_engine_options_ = {"TB303", "SID", "AY", "SH101", "SN76489"};
-    } else {
-      appendEngineIfMissing(synth_engine_options_, "SH101");
-      appendEngineIfMissing(synth_engine_options_, "SN76489");
-    }
-    engine_control_->setOptions(synth_engine_options_);
-    addChild(engine_control_);
-  }
-
-  bool handleEvent(UIEvent& ui_event) override {
-    if (ui_event.event_type == GROOVEPUTER_KEY_DOWN) {
-      const int nav = UIInput::navCode(ui_event);
-      const int max_row = visibleParamCount();
-      if (nav == GROOVEPUTER_UP) {
-        if (selected_row_ > 0) --selected_row_;
-        resetAdjustRamp();
-        return true;
-      }
-      if (nav == GROOVEPUTER_DOWN) {
-        if (selected_row_ < max_row) ++selected_row_;
-        resetAdjustRamp();
-        return true;
-      }
-      if (selected_row_ > 0 && (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT)) {
-        const int direction = (nav == GROOVEPUTER_LEFT) ? -1 : 1;
-        const int param_index = selected_row_ - 1;
-        const int delta = computeAdjustDelta(param_index, direction, ui_event);
-        adjustParam(param_index, delta);
-        return true;
-      }
-    }
-
-    if (selected_row_ != 0) return false;
-    int before = engine_control_ ? engine_control_->optionIndex() : -1;
-    bool handled = Container::handleEvent(ui_event);
-    int after = engine_control_ ? engine_control_->optionIndex() : -1;
-    if (before != after) applyEngineSelection();
-    return handled;
-  }
-
-  void draw(IGfx& gfx) override {
-    const Rect& bounds = getBoundaries();
-    if (bounds.w <= 0 || bounds.h <= 0) return;
-
-    syncEngineSelection();
-    clampSelectedRow();
-
-    char status_title[28];
-    std::snprintf(status_title, sizeof(status_title), "SYNTH %c SETTINGS", voice_index_ == 0 ? 'A' : 'B');
-    UI::drawStandardHeader(gfx, mini_acid_, status_title);
-    LayoutManager::clearContent(gfx);
-
-    const auto& content = Layout::CONTENT;
-    const int x = content.x + Layout::CONTENT_PAD_X;
-    const int y = content.y + 7;
-    const int w = content.w - Layout::CONTENT_PAD_X * 2;
-
-    char local_title[32];
-    std::snprintf(local_title, sizeof(local_title), "%c  %s",
-                  voice_index_ == 0 ? 'A' : 'B',
-                  mini_acid_.currentSynthEngineName(voice_index_).c_str());
-    gfx.setTextColor(COLOR_LABEL);
-    gfx.drawText(x, y, local_title);
-
-    int row_y = y + gfx.fontHeight() + 4;
-    if (engine_control_) {
-      engine_control_->setBoundaries(Rect{x, row_y, w, gfx.fontHeight()});
-    }
-    Container::draw(gfx);
-
-    int y_cursor = row_y + gfx.fontHeight() + 4;
-    int param_count = visibleParamCount();
-    if (param_count <= 0) {
-      Widgets::drawListRow(gfx, x, y_cursor, w, "No engine parameters", selected_row_ == 1);
-      return;
-    }
-
-    for (int i = 0; i < param_count; ++i) {
-      const Parameter& p = mini_acid_.synthParameter(voice_index_, i);
-      char line[56];
-      formatParameterLine(p, line, sizeof(line));
-      Widgets::drawListRow(gfx, x, y_cursor, w, line, selected_row_ == (i + 1));
-      y_cursor += gfx.fontHeight() + 2;
-    }
-  }
-
- private:
-  static constexpr int kMaxParamRows = 6;
-  static constexpr uint32_t kRepeatWindowMs = 140;
-
-  template <typename F>
-  void withAudioGuard(F&& fn) {
-    if (audio_guard_) audio_guard_(std::forward<F>(fn));
-    else fn();
-    GroovePuterState::markSceneMutated();
-  }
-
-  int visibleParamCount() const {
-    int count = static_cast<int>(mini_acid_.synthParameterCount(voice_index_));
-    if (count < 0) count = 0;
-    if (count > kMaxParamRows) count = kMaxParamRows;
-    return count;
-  }
-
-  void clampSelectedRow() {
-    int max_row = visibleParamCount();
-    if (selected_row_ < 0) selected_row_ = 0;
-    if (selected_row_ > max_row) selected_row_ = max_row;
-  }
-
-  void adjustParam(int param_index, int steps) {
-    if (param_index < 0 || param_index >= visibleParamCount()) return;
-    withAudioGuard([&]() { mini_acid_.adjustSynthParameter(voice_index_, param_index, steps); });
-  }
-
-  void resetAdjustRamp() {
-    last_adjust_ms_ = 0;
-    last_adjust_row_ = -1;
-    last_adjust_dir_ = 0;
-    adjust_repeat_count_ = 0;
-  }
-
-  int baseStepFromParameter(const Parameter& p) const {
-    if (p.hasOptions()) return 1;
-
-    const float range = p.max() - p.min();
-    const float step = std::fabs(p.step());
-    if (range <= 0.0001f || step <= 0.000001f) return 1;
-
-    const float steps_across = range / step;
-    if (steps_across >= 8000.0f) return 32;
-    if (steps_across >= 4000.0f) return 24;
-    if (steps_across >= 2000.0f) return 16;
-    if (steps_across >= 1000.0f) return 12;
-    if (steps_across >= 400.0f) return 8;
-    if (steps_across >= 150.0f) return 4;
-    if (steps_across >= 60.0f) return 2;
-    return 1;
-  }
-
-  int repeatMultiplier(int row, int direction) {
-    const uint32_t now = millis();
-    const bool same_adjust =
-        (row == last_adjust_row_) &&
-        (direction == last_adjust_dir_) &&
-        (last_adjust_ms_ != 0) &&
-        ((now - last_adjust_ms_) <= kRepeatWindowMs);
-
-    if (same_adjust) {
-      if (adjust_repeat_count_ < 255) ++adjust_repeat_count_;
-    } else {
-      adjust_repeat_count_ = 0;
-    }
-
-    last_adjust_ms_ = now;
-    last_adjust_row_ = row;
-    last_adjust_dir_ = direction;
-
-    if (adjust_repeat_count_ >= 12) return 8;
-    if (adjust_repeat_count_ >= 7) return 4;
-    if (adjust_repeat_count_ >= 3) return 2;
-    return 1;
-  }
-
-  int computeAdjustDelta(int param_index, int direction, const UIEvent& ui_event) {
-    if (param_index < 0 || param_index >= visibleParamCount()) return 0;
-    const Parameter& p = mini_acid_.synthParameter(voice_index_, param_index);
-
-    const bool fine = ui_event.shift || ui_event.ctrl;
-    if (fine || p.hasOptions()) {
-      resetAdjustRamp();
-      return direction;
-    }
-
-    const int base = baseStepFromParameter(p);
-    const int mul = repeatMultiplier(param_index, direction);
-    return direction * base * mul;
-  }
-
-  void applyEngineSelection() {
-    if (!engine_control_) return;
-    int index = engine_control_->optionIndex();
-    if (index < 0 || index >= static_cast<int>(synth_engine_options_.size())) return;
-
-    withAudioGuard([&]() { mini_acid_.setSynthEngine(voice_index_, synth_engine_options_[index]); });
-    char toast[30];
-    std::snprintf(toast, sizeof(toast), "SYNTH %c: %s",
-                  voice_index_ == 0 ? 'A' : 'B',
-                  synth_engine_options_[index].c_str());
-    UI::showToast(toast, 800);
-    clampSelectedRow();
-  }
-
-  void syncEngineSelection() {
-    if (!engine_control_) return;
-    std::string current = mini_acid_.currentSynthEngineName(voice_index_);
-    if (current.empty()) return;
-    int target = findOptionIndex(synth_engine_options_, current);
-    if (target < 0) return;
-    if (engine_control_->optionIndex() == target) return;
-    engine_control_->setOptionIndex(target);
-  }
-
-  static void formatParameterLine(const Parameter& p, char* out, size_t out_size) {
-    if (!out || out_size == 0) return;
-    const char* label = p.label() ? p.label() : "Param";
-
-    if (p.hasOptions()) {
-      const char* opt = p.optionLabel();
-      std::snprintf(out, out_size, "%s %s", label, opt ? opt : "-");
-      return;
-    }
-
-    const char* unit = p.unit();
-    const float v = p.value();
-    if (unit && unit[0]) {
-      if (std::fabs(p.step()) >= 1.0f) std::snprintf(out, out_size, "%s %.0f%s", label, v, unit);
-      else std::snprintf(out, out_size, "%s %.2f%s", label, v, unit);
-      return;
-    }
-
-    if (std::fabs(p.step()) >= 1.0f) std::snprintf(out, out_size, "%s %.0f", label, v);
-    else std::snprintf(out, out_size, "%s %.2f", label, v);
-  }
-
-  MiniAcid& mini_acid_;
-  AudioGuard audio_guard_;
-  int voice_index_ = 0;
-  std::vector<std::string> synth_engine_options_;
-  std::shared_ptr<LabelOptionComponent> engine_control_;
-  int selected_row_ = 0;
-  uint32_t last_adjust_ms_ = 0;
-  int last_adjust_row_ = -1;
-  int last_adjust_dir_ = 0;
-  uint8_t adjust_repeat_count_ = 0;
-};
-} // namespace
+}  // namespace
 
 SynthSequencerPage::SynthSequencerPage(IGfx& gfx,
                                        MiniAcid& mini_acid,
                                        AudioGuard audio_guard,
                                        int voice_index)
     : voice_index_(voice_index) {
-  fallback_title_ = (voice_index_ == 0) ? "SYNTH A SETTINGS" : "SYNTH B SETTINGS";
+  fallback_title_ = (voice_index_ == 0) ? "SYNTH A" : "SYNTH B";
 
   pattern_page_ = std::make_shared<PatternEditPage>(gfx, mini_acid, audio_guard, voice_index_);
-  feel_page_ = std::make_shared<GlobalSynthFeelPage>(mini_acid, audio_guard, voice_index_);
+  params_page_ = std::make_shared<TB303ParamsPage>(gfx, mini_acid, audio_guard, voice_index_);
   addPage(pattern_page_);
-  addPage(feel_page_);
+  addPage(params_page_);
+  setSynthTab(SynthTab::Notes);
+}
+
+void SynthSequencerPage::setSynthTab(SynthTab tab) {
+  synth_tab_ = tab;
+  switch (synth_tab_) {
+    case SynthTab::Notes:
+      setActivePageIndex(0);
+      if (params_page_) params_page_->showMoreTab(false);
+      break;
+    case SynthTab::Knobs:
+      setActivePageIndex(1);
+      if (params_page_) params_page_->showMoreTab(false);
+      break;
+    case SynthTab::More:
+      setActivePageIndex(1);
+      if (params_page_) params_page_->showMoreTab(true);
+      break;
+  }
+}
+
+const char* SynthSequencerPage::activeTabName() const {
+  switch (synth_tab_) {
+    case SynthTab::Notes: return "NOTES";
+    case SynthTab::Knobs: return "KNOBS";
+    case SynthTab::More: return "MORE";
+  }
+  return "NOTES";
+}
+
+void SynthSequencerPage::drawTabIndicator(IGfx& gfx) const {
+  const char* label = "[NOTES] KNOBS MORE";
+  switch (synth_tab_) {
+    case SynthTab::Notes: label = "[NOTES] KNOBS MORE"; break;
+    case SynthTab::Knobs: label = "NOTES [KNOBS] MORE"; break;
+    case SynthTab::More: label = "NOTES KNOBS [MORE]"; break;
+  }
+
+  const int w = gfx.textWidth(label) + 6;
+  gfx.fillRect(kTabStripX, kTabStripY, w, kTabStripH, IGfxColor::Black());
+  gfx.setTextColor(synthTabColor(voice_index_));
+  gfx.drawText(kTabStripX + 3, kTabStripY + 1, label);
+}
+
+void SynthSequencerPage::draw(IGfx& gfx) {
+  MultiPage::draw(gfx);
+  drawTabIndicator(gfx);
 }
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type == GROOVEPUTER_KEY_DOWN && UIInput::isTab(ui_event)) {
-    Serial.println("[UI] SynthSequencerPage captured TAB event!");
+    if (ui_event.ctrl || ui_event.alt || ui_event.meta) return false;
+
     const uint32_t now = millis();
-    // Ignore key-repeat bounce for TAB so one physical press == one section step.
     if (last_tab_switch_ms_ != 0 && (now - last_tab_switch_ms_) < 250u) {
-       Serial.printf("[UI] TAB ignored by 250ms debounce (delta=%u ms)\n", now - last_tab_switch_ms_);
-       return true;
+      return true;
     }
     last_tab_switch_ms_ = now;
 
-    bool stepped = stepActivePage(1);
-    Serial.printf("[UI] stepActivePage(1) returned %d, new active_index_=%d\n", stepped, activePageIndex());
-    if (!stepped) return false;
-    const bool patternActive = (activePageIndex() == 0);
+    const int next = (static_cast<int>(synth_tab_) + 1) % 3;
+    setSynthTab(static_cast<SynthTab>(next));
+
     char toast[40];
     std::snprintf(toast, sizeof(toast), "SYNTH %c: %s",
-                  (voice_index_ == 0 ? 'A' : 'B'),
-                  patternActive ? "PATTERN" : "SETTINGS");
-    UI::showToast(toast, 900);
+                  voice_index_ == 0 ? 'A' : 'B', activeTabName());
+    UI::showToast(toast, 700);
     return true;
   }
+
   return MultiPage::handleEvent(ui_event);
 }
 
 const std::string& SynthSequencerPage::getTitle() const {
-  if (activePageIndex() == 0 && pattern_page_) return pattern_page_->getTitle();
+  if (synth_tab_ == SynthTab::Notes && pattern_page_) {
+    return pattern_page_->getTitle();
+  }
+  if (params_page_) return params_page_->getTitle();
   return fallback_title_;
 }
 
 void SynthSequencerPage::setContext(int context) {
-  setActivePageIndex(0);
+  setSynthTab(SynthTab::Notes);
   if (pattern_page_) pattern_page_->setContext(context);
 }
 
 void SynthSequencerPage::setVisualStyle(VisualStyle style) {
   if (pattern_page_) pattern_page_->setVisualStyle(style);
+  if (params_page_) params_page_->setVisualStyle(style);
 }
 
 void SynthSequencerPage::tick() {
-  if (activePageIndex() == 0 && pattern_page_) {
+  if (synth_tab_ == SynthTab::Notes && pattern_page_) {
     pattern_page_->tick();
   }
 }
