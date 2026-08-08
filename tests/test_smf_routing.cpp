@@ -114,8 +114,8 @@ int main() {
 
     // A live route change releases only the selected track's active physical
     // note. An old lookahead NoteOn is still popped for the dispatcher's normal
-    // stale diagnostics, but its route revision prevents any USB write. A new
-    // event scheduled after the change carries the new revision and is current.
+    // stale diagnostics, but its route revision prevents any USB write. Two
+    // route changes before cleanup must not invalidate the scoped NoteOff.
     {
         ScheduledSmfMidiEventQueue routeQueue;
         ScheduledSmfMidiEvent event{};
@@ -129,16 +129,23 @@ int main() {
             event, routeQueue.generation()));
         assert(routeQueue.recordDispatched(event));
 
+        // This event sits in the producer lookahead with the old AUTO revision.
         assert(routes.destinationForProducer(3, 4) == kSmfTrackOutputRouteAuto);
         assert(routeQueue.tryPushNoteOn(7, 65, 100, 21, 0, 0, 3));
 
+        // Simulate two fast Right presses before MidiDispatchTask consumes the
+        // first route-release mailbox. The cleanup bit coalesces, but the single
+        // physical active owner still has to receive exactly one NoteOff.
         assert(routes.setDestination(3, 8, generation, 4));
-        assert(routes.revisionTagForRealtime(3) == 1u);
+        assert(routes.setDestination(3, 9, generation, 4));
+        assert(routes.revisionTagForRealtime(3) == 2u);
 
         assert(routeQueue.tryPop(event));
         assert(event.type == ScheduledSmfMidiEventType::NoteOff);
         assert(event.trackIndex == 3);
         assert(event.channel == 7 && event.note == 64);
+        assert(scheduledSmfMidiEventRouteRevisionTag(event) ==
+               kSmfTrackOutputRouteRevisionCleanup);
         assert(scheduledSmfMidiEventGenerationIsCurrent(
             event, routeQueue.generation()));
         assert(routeQueue.recordDispatched(event));
@@ -152,12 +159,12 @@ int main() {
         assert(!scheduledSmfMidiEventGenerationIsCurrent(
             event, routeQueue.generation()));
 
-        assert(routes.destinationForProducer(3, 4) == 8);
-        assert(routeQueue.tryPushNoteOn(8, 66, 100, 22, 0, 0, 3));
+        assert(routes.destinationForProducer(3, 4) == 9);
+        assert(routeQueue.tryPushNoteOn(9, 66, 100, 22, 0, 0, 3));
         assert(routeQueue.tryPop(event));
         assert(event.type == ScheduledSmfMidiEventType::NoteOn);
-        assert(event.channel == 8 && event.note == 66);
-        assert(scheduledSmfMidiEventRouteRevisionTag(event) == 1u);
+        assert(event.channel == 9 && event.note == 66);
+        assert(scheduledSmfMidiEventRouteRevisionTag(event) == 2u);
         assert(scheduledSmfMidiEventGenerationIsCurrent(
             event, routeQueue.generation()));
         assert(routeQueue.recordDispatched(event));
@@ -166,7 +173,7 @@ int main() {
     routeSnapshot = routes.snapshot(4);
     assert(routeSnapshot.generation == generation);
     assert(routeSnapshot.destinationFor(2) == 7);
-    assert(routeSnapshot.destinationFor(3) == 8);
+    assert(routeSnapshot.destinationFor(3) == 9);
     assert(routeSnapshot.overridden(2));
     assert(routeSnapshot.overridden(3));
 
