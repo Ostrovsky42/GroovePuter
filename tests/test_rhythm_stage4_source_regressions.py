@@ -18,13 +18,17 @@ def main() -> None:
     materializer_h = read("src/generation/materialization/pattern_materializer.h")
     materializer_cpp = read("src/generation/materialization/pattern_materializer.cpp")
     shadow_cpp = read("src/generation/shadow/pattern_shadow_metrics.cpp")
+    shadow_backend_h = read("src/generation/shadow/vocabulary_shadow_backend.h")
+    shadow_backend_cpp = read("src/generation/shadow/vocabulary_shadow_backend.cpp")
 
     require("LegacyAtlas" in backend, "Stage 4 must expose LegacyAtlas backend")
     require("LegacyProcedural" in backend,
             "Stage 4 must expose LegacyProcedural backend")
     require("Vocabulary" in backend, "Stage 4 must expose Vocabulary backend")
-    require("scenes.h" not in backend and "Scene" not in backend,
-            "generation backend route must not become persisted Scene state")
+    require("scenes.h" not in backend and
+            "SceneManager" not in backend and
+            "currentScene" not in backend,
+            "generation backend route must not depend on persisted Scene state")
 
     require("UnboundRole" in materializer_h,
             "materializer must reject silently dropped realized roles")
@@ -46,6 +50,16 @@ def main() -> None:
             "shadow comparator must observe legacy patterns by const reference")
     require("const MaterializedPatterns& vocabulary" in shadow_cpp,
             "shadow comparator must observe vocabulary output by const reference")
+    require("const DrumPatternSet& legacyDrums" in shadow_backend_h and
+            "const SynthPattern& legacySynthA" in shadow_backend_h and
+            "const SynthPattern& legacySynthB" in shadow_backend_h,
+            "Vocabulary shadow backend must accept legacy state as const input")
+    require("editCurrent" not in shadow_backend_cpp and
+            "sceneManager" not in shadow_backend_cpp and
+            "currentScene" not in shadow_backend_cpp,
+            "Vocabulary shadow backend must not mutate runtime/Scene patterns")
+    require("MaterializedPatterns candidate{};" in shadow_backend_cpp,
+            "Vocabulary shadow output must remain scratch-local")
 
     print("Groove Vocabulary Stage 4 source ownership regressions: OK")
 
