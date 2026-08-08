@@ -1,0 +1,57 @@
+name: Stage 3 grammar patch
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.ref == 'agent/20260808-06-groove-vocabulary-stage3-reference-catalog'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Apply exact diversity corrections
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/generation/rhythm/reference_vocabulary.cpp')
+          text = p.read_text()
+          replacements = [
+              (
+                  'stepBit(7) | stepBit(15),\n         4, 8, 2, stepBit(3) | stepBit(11),\n         stepBit(0) | stepBit(8)),',
+                  'stepBit(7) | stepBit(15),\n         5, 8, 2, stepBit(3) | stepBit(11),\n         stepBit(0) | stepBit(8)),'
+              ),
+              (
+                  'stepBit(6) | stepBit(14), stepBit(3) | stepBit(11),\n         1, 4, 1, stepBit(6), stepBit(0) | stepBit(14)),',
+                  'stepBit(6) | stepBit(14), stepBit(3) | stepBit(11),\n         2, 4, 1, stepBit(6), stepBit(0) | stepBit(14)),'
+              ),
+              (
+                  'stepBit(10) | stepBit(14), 0,\n         2, 4, 1, 0, stepBit(0) | stepBit(8)),',
+                  'stepBit(10) | stepBit(14), 0,\n         3, 4, 1, 0, stepBit(0) | stepBit(8)),'
+              ),
+          ]
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected one exact match, got {count}: {old!r}')
+              text = text.replace(old, new)
+          p.write_text(text)
+          PY
+          git diff --check
+          git diff -- src/generation/rhythm/reference_vocabulary.cpp
+      - name: Commit bounded fix
+        run: |
+          if git diff --quiet; then
+            echo 'No patch needed'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/generation/rhythm/reference_vocabulary.cpp
+          git commit -m 'fix: preserve Stage 3 identity diversity'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
