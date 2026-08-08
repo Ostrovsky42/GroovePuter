@@ -445,8 +445,12 @@ void testDeterminismAndPropertyCorpus() {
 
 void testValidButSparseIsNotInvalid() {
   Stage2Fixture fixture;
-  fixture.archetype.density.structuralPreferred = 11;
-  fixture.archetype.density.structuralMax = 12;
+  // Make preferred density valid in the declared budgets but impossible
+  // in actual legal candidate space: Backbeat declares max 6 while its
+  // anchors/optional mask expose only four distinct structural steps.
+  fixture.lanes[2].structuralMax = 6;
+  fixture.archetype.density.structuralPreferred = 13;
+  fixture.archetype.density.structuralMax = 14;
   assert(validateRhythmCatalog(fixture.catalog));
 
   const RhythmRealizationResult result = realize(

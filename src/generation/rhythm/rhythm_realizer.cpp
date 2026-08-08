@@ -1027,7 +1027,10 @@ void addVariation(const RhythmArchetype& archetype,
 
   for (uint8_t bar = 0; bar < plan.barCount && additions < budget.maxAdds; ++bar) {
     const BarFunction function = plan.bars[bar].function;
-    if (function == BarFunction::Repeat) continue;
+    if (function == BarFunction::Repeat ||
+        function == BarFunction::Return) {
+      continue;
+    }
 
     for (uint8_t laneIndex = 0;
          laneIndex < archetype.laneCount && additions < budget.maxAdds;
