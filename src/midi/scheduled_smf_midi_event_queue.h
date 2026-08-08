@@ -368,14 +368,14 @@ private:
         event.velocity = 0;
         event.trackIndex = trackIndex;
         // Reusing the latest consumer deadline deliberately makes the release
-        // immediately due (or slightly late). The existing late policy always
-        // dispatches NoteOff and never turns it into a catch-up NoteOn burst.
+        // immediately due (or slightly late). The cleanup revision is reserved
+        // so another route change cannot invalidate this NoteOff after ownership
+        // was already removed from the bounded per-track table.
         event.blockSequence = lastPoppedBlockSequence_;
         event.frameOffset = lastPoppedFrameOffset_;
         event.generation = scheduledSmfMidiEventPackGeneration(
             generation_.loadAcquire(),
-            GroovePuterMidi::smfTrackOutputRouteState()
-                .revisionTagForRealtime(trackIndex));
+            GroovePuterMidi::kSmfTrackOutputRouteRevisionCleanup);
         event.projectTransportEpoch = 0;
         return event;
     }
