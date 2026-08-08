@@ -19,7 +19,6 @@ namespace {
 // Physical Atlas targets 8/9 are never promoted into a global VoiceRole rule.
 // The per-recipe projection below is the explicit manual-curation boundary:
 // Synth A/B != musical role.
-
 struct SynthRoleProjection {
   RhythmRole synthA;
   RhythmRole synthB;
@@ -275,20 +274,36 @@ void assertObservedSatisfiesRelationship(
 void assertObservedIsLegalMember(const GrammarFixture& fixture,
                                  const ExtractedAtlasRhythm& extracted) {
   assert(validateRhythmCatalog(fixture.catalog));
-  uint8_t generalizedLanes = 0;
+
+  for (uint8_t roleIndex = 0; roleIndex < kRhythmRoleCount; ++roleIndex) {
+    const RhythmRole role = static_cast<RhythmRole>(roleIndex);
+    if (!(fixture.archetype.activeRoles & rhythmRoleBit(role))) {
+      assert(extracted.masks[roleIndex] == 0);
+    }
+  }
+
+  uint8_t variantCapableLanes = 0;
+  uint8_t observedNonCanonicalLanes = 0;
   for (uint8_t i = 0; i < fixture.laneCount; ++i) {
     const LaneGrammar& lane = fixture.lanes[i];
     const StepMask observed =
         extracted.masks[static_cast<uint8_t>(lane.role)];
     assertObservedFitsLane(fixture, lane.role, observed);
+
     if (lane.preferred || lane.optional ||
         lane.structuralMin != lane.structuralMax) {
-      ++generalizedLanes;
+      ++variantCapableLanes;
+    }
+    if (observed & static_cast<StepMask>(lane.preferred | lane.optional)) {
+      ++observedNonCanonicalLanes;
     }
   }
-  // Prevent the falsification test from degenerating back into one exact
-  // bitmap copied wholesale into canonicalAnchors.
-  assert(generalizedLanes >= 3);
+
+  // Two separate anti-cheat checks: the grammar must contain actual variation
+  // space, and the observed Atlas member must genuinely exercise non-canonical
+  // decisions rather than being copied wholesale into canonicalAnchors.
+  assert(variantCapableLanes >= 3);
+  assert(observedNonCanonicalLanes >= 3);
 
   for (uint8_t i = 0; i < fixture.archetype.relationshipCount; ++i) {
     assertObservedSatisfiesRelationship(extracted,
@@ -324,7 +339,6 @@ void testRollingAcidP1FitsGeneralizedGrammar() {
   relation.maxOffset = 2;
   addRelationship(fixture, relation);
   finishGrammar(fixture);
-
   assertObservedIsLegalMember(fixture, extracted);
 }
 
@@ -361,7 +375,6 @@ void testClassicTwoStepP1FitsGeneralizedGrammar() {
   relation.zoneMask = kAllSteps;
   addRelationship(fixture, relation);
   finishGrammar(fixture);
-
   assertObservedIsLegalMember(fixture, extracted);
 }
 
@@ -403,7 +416,6 @@ void testDeepChordP1FitsGeneralizedGrammar() {
   relation.maxResponsesPerWindow = 2;
   addRelationship(fixture, relation);
   finishGrammar(fixture);
-
   assertObservedIsLegalMember(fixture, extracted);
 }
 
