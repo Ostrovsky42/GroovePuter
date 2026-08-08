@@ -27,10 +27,10 @@ for mode in (
 require("GrooveboxMode" not in MIGRATION,
         "Stage 5 selector must not route broad GrooveboxMode families")
 
-# Runtime bridge must preserve the rollback ordering: complete legacy output is
-# materialized first, then the transactional drum migration is attempted.
+# Runtime bridge must preserve rollback ordering: complete legacy output is
+# materialized first, then the transactional Vocabulary material migration.
 legacy_call = BRIDGE.find("engine.regeneratePatternsWithGenre();")
-migration_call = BRIDGE.find("migrateStrongRhythmDrums(")
+migration_call = BRIDGE.find("migrateStrongRhythmMaterial(")
 require(legacy_call >= 0, "Stage 5 bridge no longer calls legacy generator")
 require(migration_call > legacy_call,
         "Stage 5 migration must run after legacy rollback snapshot exists")
@@ -55,8 +55,9 @@ for forbidden in (
     require(forbidden not in SCENES_H,
             f"Stage 5 must not persist migration state: {forbidden}")
 
-# Stage 5 is drum-only at this boundary. VoiceRole/Bass/Phrase ownership belongs
-# to later stages, so migration must explicitly defer all synth rhythm roles.
+# Bass and melodic semantics remain deferred. ChordRhythm is also ignored by
+# the generic PatternMaterializer; the only synth compatibility path is legacy
+# Synth B event relocation for Dub Techno / Deep Chord.
 for role in (
     "RhythmRole::BassRhythm",
     "RhythmRole::ChordRhythm",
@@ -64,6 +65,18 @@ for role in (
 ):
     require(role in MIGRATION, f"Stage 5 does not explicitly defer {role}")
 require("candidate.synthA" not in MIGRATION and "candidate.synthB" not in MIGRATION,
-        "Stage 5 unexpectedly started physical synth-role migration")
+        "Stage 5 unexpectedly used fixed-note PatternMaterializer synth binding")
+require("route == StrongRhythmRoute::DubTechno" in MIGRATION,
+        "Dub Techno stab compatibility route is not explicit")
+require("route == StrongRhythmRoute::DeepChord" in MIGRATION,
+        "Deep Chord stab compatibility route is not explicit")
+require("remapLegacyStab" in MIGRATION,
+        "Stage 5 lacks the legacy-pitch stab compatibility adapter")
+require("sourceEvents[sourceCount++] = legacy.steps[step]" in MIGRATION,
+        "Dub adapter no longer sources complete legacy Synth B events")
+require("editCurrentSynthPattern(1)" in BRIDGE,
+        "Stage 5 live bridge no longer binds the established Synth B stab slot")
+require("editCurrentSynthPattern(0)" not in BRIDGE,
+        "Stage 5 must not bind Synth A/bass pitch before Bass Generator v2")
 
 print("Groove Vocabulary Stage 5 source ownership: OK")
