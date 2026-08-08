@@ -170,7 +170,7 @@ void beginStage(MiniAcid& engine,
   }
 }
 
-MaterialQueueResult finishStage(MiniAcid& engine) {
+MaterialQueueResult finishStage() {
   if (g_pending.mask == 0) {
     g_status.store(
         static_cast<uint8_t>(MaterialCommitStatus::CancelledInvalidTarget),
@@ -181,7 +181,8 @@ MaterialQueueResult finishStage(MiniAcid& engine) {
   g_status.store(
       static_cast<uint8_t>(MaterialCommitStatus::PendingNextBar),
       std::memory_order_release);
-  LOG_DEBUG("[MaterialCommit] staged action=%s page=%d mask=0x%02x -> NEXT_BAR\n",
+  LOG_DEBUG("MaterialCommit",
+            "staged action=%s page=%d mask=0x%02x -> NEXT_BAR\n",
             materialActionLabel(g_pending.action),
             g_pending.page,
             static_cast<unsigned>(g_pending.mask));
@@ -251,7 +252,7 @@ MaterialQueueResult stageSynth(MiniAcid& engine,
   g_pending.mask = static_cast<uint8_t>(g_pending.mask | bit);
   g_pending.atlasBacked = atlasBacked;
   g_pending.atlasVariation = variation;
-  return finishStage(engine);
+  return finishStage();
 }
 
 MaterialQueueResult stageDrums(MiniAcid& engine,
@@ -278,7 +279,7 @@ MaterialQueueResult stageDrums(MiniAcid& engine,
   g_pending.mask = static_cast<uint8_t>(g_pending.mask | kDrumsMask);
   g_pending.atlasBacked = atlasBacked;
   g_pending.atlasVariation = variation;
-  return finishStage(engine);
+  return finishStage();
 }
 
 DrumPatternSet pendingOrCurrentDrums(MiniAcid& engine,
@@ -472,7 +473,8 @@ bool commitPendingMaterialAtBarStart(SceneManager& scenes) {
     g_status.store(
         static_cast<uint8_t>(MaterialCommitStatus::CancelledPageMismatch),
         std::memory_order_release);
-    LOG_DEBUG("[MaterialCommit] cancelled: page changed before BAR_START\n");
+    LOG_DEBUG("MaterialCommit", "%s\n",
+              "cancelled: page changed before BAR_START");
     return false;
   }
 
@@ -509,16 +511,15 @@ bool commitPendingMaterialAtBarStart(SceneManager& scenes) {
     scene.drumBanks[target.bank].patterns[target.slot] = g_pending.drums;
   }
 
-  const MaterialAction committedAction = g_pending.action;
-  const uint8_t committedMask = g_pending.mask;
+  LOG_DEBUG("MaterialCommit",
+            "committed action=%s mask=0x%02x at BAR_START\n",
+            materialActionLabel(g_pending.action),
+            static_cast<unsigned>(g_pending.mask));
   g_pending = PendingMaterial{};
   GroovePuterState::markSceneMutated();
   g_commitSerial.fetch_add(1, std::memory_order_release);
   g_status.store(
       static_cast<uint8_t>(MaterialCommitStatus::Committed),
       std::memory_order_release);
-  LOG_DEBUG("[MaterialCommit] committed action=%s mask=0x%02x at BAR_START\n",
-            materialActionLabel(committedAction),
-            static_cast<unsigned>(committedMask));
   return true;
 }
