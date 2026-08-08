@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #include "src/dsp/mini_dsp_params.h"
+#include "src/dsp/bar_material_commit.h"
 
 // Persisted values remain byte-compatible with existing Scene documents.
 enum class GenerativeMode : uint8_t {
@@ -141,9 +142,14 @@ public:
     const DrumGenreTemplate* drumTemplateOverride() const;
     GenreBehavior getBehavior() const;
 
-    // Pending manager-owned state was removed. Current callers retain this
-    // no-op boundary until their bar callback is simplified separately.
-    bool commitPendingRecipe() { return false; }
+    // The engine already calls this adapter at its real audio BAR_START.
+    // Pending genre ownership was removed earlier; reuse the established
+    // boundary hook for bounded musical-material activation. Return false so
+    // the legacy caller does not trigger regeneratePatternsWithGenre() here.
+    bool commitPendingRecipe() {
+        commitPendingMaterialAtBarStart(scenes_);
+        return false;
+    }
 
     void applyGenreTimbre(MiniAcid& engine);
 
