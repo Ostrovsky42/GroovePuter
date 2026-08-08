@@ -24,12 +24,16 @@ struct RoleRhythmPlan {
 };
 
 struct RhythmBarPlan {
+  // Stage 2 does not own BarEvolution. Every realized bar remains a Statement;
+  // Stage 6 may later apply a caller-selected trajectory transactionally.
   BarFunction function = BarFunction::Statement;
   RoleRhythmPlan roles[kRhythmRoleCount]{};
 };
 
 struct RhythmPhrasePlan {
   uint8_t barCount = 0;
+  // Stage 2 never selects/pins trajectories or TransformationIntent. Keep the
+  // fields explicit so the later Stage 6 extension has a stable plan surface.
   TrajectoryId trajectoryId = kNoTrajectoryId;
   RealizationLevel level = RealizationLevel::P1Canonical;
   TransformationIntent intent = TransformationIntent::Auto;
@@ -41,17 +45,11 @@ struct RhythmRealizationRequest {
   RhythmArchetypeId archetypeId = kNoArchetypeId;
   uint8_t phraseBars = 0;
   RealizationLevel level = RealizationLevel::P1Canonical;
-  TransformationIntent intent = TransformationIntent::Auto;
   GenerationContext generation{};
 
   // Reuse this identity for VARIATE semantics. nullptr establishes a new
   // deterministic identity. The realizer never mutates the supplied identity.
   const PhraseRhythmIdentity* reuseIdentity = nullptr;
-
-  // Optional caller-owned BarEvolution pin. Zero means select a trajectory
-  // deterministically for this realization level. A non-zero pin becomes part
-  // of the returned PhraseRhythmIdentity and must be legal at every reuse.
-  TrajectoryId pinnedTrajectoryId = kNoTrajectoryId;
 };
 
 struct RhythmRealizationResult {
