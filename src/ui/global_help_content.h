@@ -30,7 +30,7 @@ constexpr const char* kGlobalLines[] = {
 };
 
 constexpr const char* kGenreLines[] = {
-    "=== GENRE 1/2 ===",
+    "=== GENRE 1/3 ===",
     "Genre = corridor/vocabulary",
     "Tab/Up/Dn   Select field",
     "Left/Right  Genre/variant/apply",
@@ -59,7 +59,7 @@ constexpr const char* kSynthALines[] = {
     "F           Cycle step FX",
     "R/Bksp/Del  Clear step (REST)",
     "Alt+Bksp    Clear whole pattern",
-    "G           Randomize pattern",
+    "G           Generate -> next bar",
     "Ctrl+C/V    Copy/Paste",
     "Esc/`       Clear selection",
 };
@@ -81,7 +81,7 @@ constexpr const char* kSynthBLines[] = {
     "F           Cycle step FX",
     "R/Bksp/Del  Clear step (REST)",
     "Alt+Bksp    Clear whole pattern",
-    "G           Randomize pattern",
+    "G           Generate -> next bar",
     "Ctrl+C/V    Copy/Paste",
     "Esc/`       Clear selection",
 };
@@ -127,9 +127,9 @@ constexpr const char* kDrumLines[] = {
     "Shift/Ctrl+Arrows Select area",
     "Enter       Toggle hit",
     "A           Toggle accent",
-    "G           Randomize pattern",
-    "Ctrl+G      Randomize voice",
-    "Alt+G       Chaos randomize all",
+    "G           Generate -> next bar",
+    "Ctrl+G      Voice gen -> next bar",
+    "Alt+G       CHAOS -> next bar",
     "Bksp/Del    Clear hit/selection",
     "Alt+Bksp    Clear whole pattern",
     "Ctrl+C/V    Copy/Paste",
@@ -203,7 +203,7 @@ constexpr const char* kHubLines[] = {
 };
 
 constexpr const char* kFeelLines[] = {
-    "=== FEEL 2/2 ===",
+    "=== FEEL 2/3 ===",
     "Feel = timing/velocity only",
     "Tab/Up/Dn   Select field",
     "Left/Right  Adjust value/preset",
@@ -213,6 +213,18 @@ constexpr const char* kFeelLines[] = {
     "Time Human  Timing deviation",
     "Vel Human   Velocity deviation",
     "No notes, roles or sound changes",
+};
+
+constexpr const char* kGenerationLines[] = {
+    "=== GENERATION 3/3 ===",
+    "Target = Song row materialization",
+    "Left/Right  Target row +/-1",
+    "Up/Down     Target row +/-8",
+    "Hold arrows Accelerate browsing",
+    "Enter/G     Materialize target row",
+    "Free slot   Copy-on-write material",
+    "Genre/Recipe Select realization",
+    "No scoring or retry loop",
 };
 
 constexpr const char* kProjectLines[] = {
@@ -284,9 +296,10 @@ inline const char* const* pageLines(int pageIndex, int& count) {
         case WorkflowPages::kPattern:
             count = sizeof(kHubLines) / sizeof(kHubLines[0]); return kHubLines;
         case WorkflowPages::kTexture:
-        case WorkflowPages::kGeneration:
         case WorkflowPages::kFeel:
             count = sizeof(kFeelLines) / sizeof(kFeelLines[0]); return kFeelLines;
+        case WorkflowPages::kGeneration:
+            count = sizeof(kGenerationLines) / sizeof(kGenerationLines[0]); return kGenerationLines;
         case WorkflowPages::kProject:
             count = sizeof(kProjectLines) / sizeof(kProjectLines[0]); return kProjectLines;
         case WorkflowPages::kPerform:
