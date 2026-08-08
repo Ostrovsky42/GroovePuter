@@ -8,6 +8,7 @@
 #include "../layout_manager.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "../../generation/migration/strong_rhythm_live_bridge.h"
 #include "../../state/scene_revision.h"
 
 namespace {
@@ -153,7 +154,9 @@ void GenrePage::applyCurrent() {
       const int index = std::clamp(genre_index_, 0, kGenerativeModeCount - 1);
       mini_acid_.setBpm(static_cast<float>(kGenreBpm[index]));
     }
-    if (doRegenerate) mini_acid_.regeneratePatternsWithGenre();
+    if (doRegenerate) {
+      GroovePuterRhythm::regenerateWithStrongRhythmMigration(mini_acid_);
+    }
   });
 
   if (changed) GroovePuterState::markSceneMutated();
