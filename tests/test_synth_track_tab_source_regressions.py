@@ -39,8 +39,9 @@ def test_synth_track_owns_notes_knobs_more_cycle() -> None:
             "MORE footer must describe the new return-to-NOTES behavior")
 
 
-def test_hub_hides_legacy_sound_pages_but_keeps_ids_compatible() -> None:
+def test_standalone_sound_pages_are_unreachable_but_ids_stay_compatible() -> None:
     workflow = (ROOT / "src/ui/workflow_mode.h").read_text(encoding="utf-8")
+    display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
 
     require("constexpr int kSynthAParameters = 3" in workflow,
             "legacy Synth A sound page id must remain defined")
@@ -51,24 +52,34 @@ def test_hub_hides_legacy_sound_pages_but_keeps_ids_compatible() -> None:
     require("if (page == kSynthBParameters) return kSynthB;" in workflow,
             "legacy Synth B sound sessions must normalize to SYNTH B")
     require("case WorkflowMode::Hub: return 4;" in workflow,
-            "HUB must expose four top-level pages after sound-page collapse")
+            "HUB must expose four top-level pages")
     require("kPattern, kSynthA, kSynthB, kDrums" in workflow,
             "HUB page ring must be OVERVIEW, SYNTH A, SYNTH B, DRUMS")
-    require('return "SYNTH A SOUND"' not in workflow and
-            'return "SYNTH B SOUND"' not in workflow,
-            "standalone SOUND labels must not remain in top-level navigation")
+
+    require('pages/tb303_params_page.h' not in display,
+            "MiniAcidDisplay must not instantiate a standalone synth params page")
+    require("case 3:  page = std::make_unique<TB303ParamsPage>" not in display,
+            "legacy page 3 must not have a standalone page factory")
+    require("case 4:  page = std::make_unique<TB303ParamsPage>" not in display,
+            "legacy page 4 must not have a standalone page factory")
+    require("page_index_ = WorkflowPages::normalizeLegacyPage(ui_session_.activePage);" in display,
+            "persisted legacy sound page ids must normalize before first draw")
+    require("index = WorkflowPages::normalizeLegacyPage(index);" in display,
+            "every runtime transition must normalize legacy sound page ids")
+    require("case '3': targetPage = WorkflowPages::kSynthA;" in display,
+            "legacy direct shortcut 3 must land on SYNTH A")
+    require("case '4': targetPage = WorkflowPages::kSynthB;" in display,
+            "legacy direct shortcut 4 must land on SYNTH B")
 
     ownership_start = workflow.index("inline bool allowsPerformanceKeyboard")
     ownership = workflow[ownership_start:]
-    require("if (page == kSynthAParameters) return true;" in ownership,
-            "legacy Synth A SOUND input ownership must remain compatible")
+    require("kSynthAParameters) return true" not in ownership,
+            "retired standalone SOUND page must not retain input ownership")
     require("return normalizeLegacyPage(page) == kPerform;" in ownership,
-            "normal SYNTH A/B editor pages must not acquire performance-keyboard ownership")
-    require("page == kSynthA || page == kSynthB" not in ownership,
-            "track collapse must not steal letter keys from the note editor")
+            "only PERFORM may own the global performance keyboard route")
 
 
 if __name__ == "__main__":
     test_synth_track_owns_notes_knobs_more_cycle()
-    test_hub_hides_legacy_sound_pages_but_keeps_ids_compatible()
+    test_standalone_sound_pages_are_unreachable_but_ids_stay_compatible()
     print("synth track tab source regressions: PASS")
