@@ -46,6 +46,11 @@ run_suite() {
     "${ROOT_DIR}/tests/test_rhythm_stage5_invalid_context.cpp" \
     "${BUILD_DIR}/test_rhythm_stage5_invalid_${suffix}" \
     "$@"
+
+  build_and_run "${compiler}" \
+    "${ROOT_DIR}/tests/test_rhythm_stage5_dub_stab.cpp" \
+    "${BUILD_DIR}/test_rhythm_stage5_dub_stab_${suffix}" \
+    "$@"
 }
 
 run_suite gcc "${CXX:-g++}"
