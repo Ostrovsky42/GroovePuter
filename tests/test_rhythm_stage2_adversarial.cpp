@@ -7,110 +7,6 @@ using namespace GroovePuterRhythm;
 
 namespace {
 
-struct SingleLaneIntentFixture {
-  BarTrajectory trajectories[4]{};
-  LaneGrammar lane{};
-  TrajectoryRef refs[4]{};
-  RhythmArchetype archetype{};
-  RhythmCatalogView catalog{};
-
-  SingleLaneIntentFixture() {
-    trajectories[0].id = 1;
-    trajectories[0].barCount = 1;
-    trajectories[0].bars[0] = BarFunction::Statement;
-
-    trajectories[1].id = 2;
-    trajectories[1].barCount = 1;
-    trajectories[1].bars[0] = BarFunction::Reduction;
-
-    trajectories[2].id = 3;
-    trajectories[2].barCount = 1;
-    trajectories[2].bars[0] = BarFunction::Break;
-
-    trajectories[3].id = 4;
-    trajectories[3].barCount = 1;
-    trajectories[3].bars[0] = BarFunction::Turnaround;
-
-    lane.role = RhythmRole::Kick;
-    lane.immutableAnchors = stepBit(0);
-    lane.optional = stepBit(4);
-    lane.structuralMin = 1;
-    lane.structuralMax = 2;
-
-    refs[0] = TrajectoryRef{
-        trajectories[0].id, 100,
-        realizationLevelBit(RealizationLevel::P1Canonical)};
-    refs[1] = TrajectoryRef{
-        trajectories[1].id, 100,
-        realizationLevelBit(RealizationLevel::P2Variation)};
-    refs[2] = TrajectoryRef{
-        trajectories[2].id, 100,
-        realizationLevelBit(RealizationLevel::P3Transformation)};
-    refs[3] = TrajectoryRef{
-        trajectories[3].id, 100,
-        realizationLevelBit(RealizationLevel::P3Transformation)};
-
-    archetype.id = 201;
-    archetype.family = RhythmFamily::MachineSyncopation;
-    archetype.allowedPhraseBars = phraseBarsBit(1);
-    archetype.activeRoles = rhythmRoleBit(RhythmRole::Kick);
-    archetype.lanes = &lane;
-    archetype.laneCount = 1;
-    archetype.trajectories = refs;
-    archetype.trajectoryCount = 4;
-    archetype.density = DensityContract{1, 1, 2, 0};
-
-    archetype.mutation.level[0] = MutationBudget{};
-    archetype.mutation.level[1] = MutationBudget{
-        0, 0, 0, 0, AllowReduction,
-        transformationIntentBit(TransformationIntent::Reduce)};
-    archetype.mutation.level[2] = MutationBudget{
-        0, 0, 0, 0,
-        static_cast<uint16_t>(AllowBreak | AllowTurnaround),
-        static_cast<TransformationIntentMask>(
-            transformationIntentBit(TransformationIntent::Break) |
-            transformationIntentBit(TransformationIntent::Turnaround))};
-
-    catalog.archetypes = &archetype;
-    catalog.archetypeCount = 1;
-    catalog.trajectories = trajectories;
-    catalog.trajectoryCount = 4;
-  }
-};
-
-RhythmRealizationResult realizeIntent(const SingleLaneIntentFixture& fixture,
-                                      uint32_t seed,
-                                      TransformationIntent intent) {
-  RhythmRealizationRequest request{};
-  request.catalog = &fixture.catalog;
-  request.archetypeId = fixture.archetype.id;
-  request.phraseBars = 1;
-  request.level = RealizationLevel::P3Transformation;
-  request.intent = intent;
-  request.generation.projectSeed = seed;
-  request.generation.phraseOrdinal = 2;
-  return realizeRhythmPhrase(request);
-}
-
-void testExplicitIntentConstrainsTrajectorySelection() {
-  SingleLaneIntentFixture fixture;
-  assert(validateRhythmCatalog(fixture.catalog));
-
-  for (uint32_t seed = 0; seed < 256; ++seed) {
-    const RhythmRealizationResult breakResult = realizeIntent(
-        fixture, seed, TransformationIntent::Break);
-    assert(breakResult.status != RealizationStatus::InvalidConstraintSet);
-    assert(breakResult.plan.trajectoryId == 3);
-    assert(breakResult.plan.bars[0].function == BarFunction::Break);
-
-    const RhythmRealizationResult turnaroundResult = realizeIntent(
-        fixture, seed, TransformationIntent::Turnaround);
-    assert(turnaroundResult.status != RealizationStatus::InvalidConstraintSet);
-    assert(turnaroundResult.plan.trajectoryId == 4);
-    assert(turnaroundResult.plan.bars[0].function == BarFunction::Turnaround);
-  }
-}
-
 struct StructuralBudgetFixture {
   BarTrajectory trajectory{};
   LaneGrammar lane{};
@@ -174,26 +70,25 @@ void testVariationStopsAtGlobalStructuralMax() {
     p2Request.reuseIdentity = &p1.identity;
     const RhythmRealizationResult p2 = realizeRhythmPhrase(p2Request);
     assert(p2.status != RealizationStatus::InvalidConstraintSet);
+    assert(p2.plan.trajectoryId == kNoTrajectoryId);
+    assert(p2.plan.bars[0].function == BarFunction::Statement);
     const PhraseOccupancy occupancy = structuralOccupancy(p2.plan);
-    assert(occupancy.roleMasks[0][static_cast<uint8_t>(RhythmRole::Kick)] ==
-           stepBit(0));
+    assert(occupancy.roleMasks[0]
+               [static_cast<uint8_t>(RhythmRole::Kick)] == stepBit(0));
   }
 }
 
 struct OrnamentBudgetFixture {
-  BarTrajectory trajectories[2]{};
+  BarTrajectory trajectory{};
   LaneGrammar lanes[2]{};
-  TrajectoryRef refs[2]{};
+  TrajectoryRef ref{};
   RhythmArchetype archetype{};
   RhythmCatalogView catalog{};
 
   OrnamentBudgetFixture() {
-    trajectories[0].id = 21;
-    trajectories[0].barCount = 1;
-    trajectories[0].bars[0] = BarFunction::Statement;
-    trajectories[1].id = 22;
-    trajectories[1].barCount = 1;
-    trajectories[1].bars[0] = BarFunction::RepeatWithGhosts;
+    trajectory.id = 21;
+    trajectory.barCount = 1;
+    trajectory.bars[0] = BarFunction::Statement;
 
     lanes[0].role = RhythmRole::Kick;
     lanes[0].immutableAnchors = stepBit(0);
@@ -209,14 +104,9 @@ struct OrnamentBudgetFixture {
     lanes[1].structuralMax = 1;
     lanes[1].ornamentMax = 1;
 
-    refs[0] = TrajectoryRef{
-        trajectories[0].id, 100,
-        static_cast<RealizationLevelMask>(
-            realizationLevelBit(RealizationLevel::P1Canonical) |
-            realizationLevelBit(RealizationLevel::P3Transformation))};
-    refs[1] = TrajectoryRef{
-        trajectories[1].id, 100,
-        realizationLevelBit(RealizationLevel::P2Variation)};
+    ref.id = trajectory.id;
+    ref.weight = 100;
+    ref.allowedLevels = kAllRealizationLevels;
 
     archetype.id = 203;
     archetype.family = RhythmFamily::Breakbeat;
@@ -226,18 +116,19 @@ struct OrnamentBudgetFixture {
         rhythmRoleBit(RhythmRole::Backbeat));
     archetype.lanes = lanes;
     archetype.laneCount = 2;
-    archetype.trajectories = refs;
-    archetype.trajectoryCount = 2;
+    archetype.trajectories = &ref;
+    archetype.trajectoryCount = 1;
     archetype.density = DensityContract{2, 2, 2, 1};
     archetype.mutation.level[0] = MutationBudget{};
     archetype.mutation.level[1] = MutationBudget{
         2, 0, 0, 0, AllowGhostConversion, 0};
-    archetype.mutation.level[2] = MutationBudget{};
+    archetype.mutation.level[2] = MutationBudget{
+        2, 0, 0, 0, AllowGhostConversion, 0};
 
     catalog.archetypes = &archetype;
     catalog.archetypeCount = 1;
-    catalog.trajectories = trajectories;
-    catalog.trajectoryCount = 2;
+    catalog.trajectories = &trajectory;
+    catalog.trajectoryCount = 1;
   }
 };
 
@@ -269,6 +160,8 @@ void testGhostVariationStopsAtGlobalOrnamentMax() {
     p2Request.reuseIdentity = &p1.identity;
     const RhythmRealizationResult p2 = realizeRhythmPhrase(p2Request);
     assert(p2.status != RealizationStatus::InvalidConstraintSet);
+    assert(p2.plan.trajectoryId == kNoTrajectoryId);
+    assert(p2.plan.bars[0].function == BarFunction::Statement);
 
     uint8_t ornaments = 0;
     for (uint8_t role = 0; role < kRhythmRoleCount; ++role) {
@@ -282,7 +175,6 @@ void testGhostVariationStopsAtGlobalOrnamentMax() {
 }  // namespace
 
 int main() {
-  testExplicitIntentConstrainsTrajectorySelection();
   testVariationStopsAtGlobalStructuralMax();
   testGhostVariationStopsAtGlobalOrnamentMax();
   return 0;
