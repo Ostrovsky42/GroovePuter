@@ -174,13 +174,12 @@ void configureDeepChordGrammar(AtlasGrammarFixture& fixture) {
   relation.source = RhythmRole::Kick;
   relation.target = RhythmRole::ChordRhythm;
   relation.op = RelationshipOp::Respond;
-  relation.strength = ConstraintStrength::Hard;
+  relation.strength = ConstraintStrength::Soft;
   relation.scope = RelationshipScope::BarLocal;
   relation.zoneMask = kAllSteps;
   relation.minOffset = 2;
   relation.maxOffset = 3;
-  relation.minResponsesPerWindow = 1;
-  relation.maxResponsesPerWindow = 2;
+  relation.weight = 60;
   addRelationship(fixture, relation);
   finishGrammar(fixture);
 }
