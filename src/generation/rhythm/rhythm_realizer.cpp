@@ -19,23 +19,10 @@ bool validLevel(RealizationLevel level) {
          static_cast<uint8_t>(RealizationLevel::Count);
 }
 
-bool validIntent(TransformationIntent intent) {
-  return static_cast<uint8_t>(intent) <
-         static_cast<uint8_t>(TransformationIntent::Count);
-}
-
 const RhythmArchetype* archetypeFor(const RhythmCatalogView& catalog,
                                     RhythmArchetypeId id) {
   for (uint16_t i = 0; i < catalog.archetypeCount; ++i) {
     if (catalog.archetypes[i].id == id) return &catalog.archetypes[i];
-  }
-  return nullptr;
-}
-
-const BarTrajectory* trajectoryFor(const RhythmCatalogView& catalog,
-                                   TrajectoryId id) {
-  for (uint8_t i = 0; i < catalog.trajectoryCount; ++i) {
-    if (catalog.trajectories[i].id == id) return &catalog.trajectories[i];
   }
   return nullptr;
 }
@@ -49,7 +36,8 @@ const LaneGrammar* laneFor(const RhythmArchetype& archetype,
 }
 
 StepMask anchorMask(const LaneGrammar& lane) {
-  return static_cast<StepMask>(lane.immutableAnchors | lane.canonicalAnchors);
+  return static_cast<StepMask>(lane.immutableAnchors |
+                               lane.canonicalAnchors);
 }
 
 StepMask protectedMask(const RhythmArchetype& archetype, RhythmRole role) {
@@ -57,7 +45,8 @@ StepMask protectedMask(const RhythmArchetype& archetype, RhythmRole role) {
   const RhythmRoleMask roleMask = rhythmRoleBit(role);
   for (uint8_t i = 0; i < archetype.protectedSpaceCount; ++i) {
     if (archetype.protectedSpaces[i].affectedRoles & roleMask) {
-      mask = static_cast<StepMask>(mask | archetype.protectedSpaces[i].steps);
+      mask = static_cast<StepMask>(mask |
+                                   archetype.protectedSpaces[i].steps);
     }
   }
   return mask;
@@ -82,13 +71,22 @@ bool isOnsetLegal(const RhythmArchetype& archetype,
 uint8_t structuralCount(const PhraseOccupancy& occupancy,
                         uint8_t bar,
                         RhythmRole role) {
-  return bitCount16(occupancy.roleMasks[bar][static_cast<uint8_t>(role)]);
+  return bitCount16(
+      occupancy.roleMasks[bar][static_cast<uint8_t>(role)]);
 }
 
 uint16_t totalStructural(const PhraseOccupancy& occupancy, uint8_t bar) {
   uint16_t total = 0;
   for (uint8_t role = 0; role < kRhythmRoleCount; ++role) {
     total += bitCount16(occupancy.roleMasks[bar][role]);
+  }
+  return total;
+}
+
+uint16_t totalOrnaments(const RhythmPhrasePlan& plan, uint8_t bar) {
+  uint16_t total = 0;
+  for (uint8_t role = 0; role < kRhythmRoleCount; ++role) {
+    total += bitCount16(plan.bars[bar].roles[role].ghosts);
   }
   return total;
 }
@@ -112,8 +110,8 @@ int32_t candidateScore(const RhythmArchetype& archetype,
   score += static_cast<int32_t>(softRelationshipCandidateScore(
       archetype, occupancy, bar, lane.role, step)) * 8;
   score += static_cast<int32_t>(
-      deterministicValue(seed, candidateCoordinate(bar, lane.role, step)) &
-      0xFFu);
+      deterministicValue(seed,
+                         candidateCoordinate(bar, lane.role, step)) & 0xFFu);
   return score;
 }
 
@@ -123,11 +121,14 @@ bool addStructuralCandidate(const RhythmArchetype& archetype,
                             uint8_t bar,
                             uint8_t step) {
   if (!isOnsetLegal(archetype, lane, step)) return false;
+  StepMask& mask =
+      occupancy.roleMasks[bar][static_cast<uint8_t>(lane.role)];
   const StepMask bit = stepBit(step);
-  StepMask& mask = occupancy.roleMasks[bar][static_cast<uint8_t>(lane.role)];
   if (mask & bit) return true;
-  if (bitCount16(mask) >= lane.structuralMax) return false;
-  if (!hardCandidateAdditionAllowed(archetype, occupancy, bar, lane.role, step)) {
+  if (bitCount16(mask) >= lane.structuralMax ||
+      totalStructural(occupancy, bar) >= archetype.density.structuralMax ||
+      !hardCandidateAdditionAllowed(archetype, occupancy, bar,
+                                    lane.role, step)) {
     return false;
   }
   mask = static_cast<StepMask>(mask | bit);
@@ -174,7 +175,8 @@ bool dropIdentityEvent(const RhythmArchetype& archetype,
                        uint8_t step) {
   const LaneGrammar* lane = laneFor(archetype, role);
   if (!lane || !canDropIdentityEvent(*lane, step)) return false;
-  StepMask& mask = occupancy.roleMasks[bar][static_cast<uint8_t>(role)];
+  StepMask& mask =
+      occupancy.roleMasks[bar][static_cast<uint8_t>(role)];
   const StepMask bit = stepBit(step);
   if (!(mask & bit)) return true;
   if (bitCount16(mask) <= lane->structuralMin) return false;
@@ -183,7 +185,8 @@ bool dropIdentityEvent(const RhythmArchetype& archetype,
 }
 
 bool coordinateInPhrase(uint8_t barCount, int absolute) {
-  return absolute >= 0 && absolute < static_cast<int>(barCount * kStepsPerBar);
+  return absolute >= 0 &&
+         absolute < static_cast<int>(barCount * kStepsPerBar);
 }
 
 bool relationCoordinateAllowed(const LaneRelationship& relation,
@@ -252,20 +255,24 @@ bool repairExclude(const RhythmArchetype& archetype,
     for (uint8_t step = 0; step < kStepsPerBar; ++step) {
       if (!(conflicts & stepBit(step))) continue;
       const bool targetFirst =
-          (deterministicValue(seed, candidateCoordinate(
-               bar, relation.target, step)) & 1u) != 0;
+          (deterministicValue(
+               seed, candidateCoordinate(bar, relation.target, step)) & 1u) != 0;
       if (targetFirst) {
-        if (dropIdentityEvent(archetype, relation.target, occupancy, bar, step)) {
+        if (dropIdentityEvent(archetype, relation.target,
+                              occupancy, bar, step)) {
           continue;
         }
-        if (dropIdentityEvent(archetype, relation.source, occupancy, bar, step)) {
+        if (dropIdentityEvent(archetype, relation.source,
+                              occupancy, bar, step)) {
           continue;
         }
       } else {
-        if (dropIdentityEvent(archetype, relation.source, occupancy, bar, step)) {
+        if (dropIdentityEvent(archetype, relation.source,
+                              occupancy, bar, step)) {
           continue;
         }
-        if (dropIdentityEvent(archetype, relation.target, occupancy, bar, step)) {
+        if (dropIdentityEvent(archetype, relation.target,
+                              occupancy, bar, step)) {
           continue;
         }
       }
@@ -293,8 +300,10 @@ bool repairCoincide(const RhythmArchetype& archetype,
           relation.zoneMask);
       for (uint8_t step = 0; step < kStepsPerBar; ++step) {
         if (!(overlap & stepBit(step))) continue;
-        if (dropIdentityEvent(archetype, relation.target, occupancy, bar, step) ||
-            dropIdentityEvent(archetype, relation.source, occupancy, bar, step)) {
+        if (dropIdentityEvent(archetype, relation.target,
+                              occupancy, bar, step) ||
+            dropIdentityEvent(archetype, relation.source,
+                              occupancy, bar, step)) {
           removed = true;
           break;
         }
@@ -305,45 +314,49 @@ bool repairCoincide(const RhythmArchetype& archetype,
   }
 
   uint8_t guard = 0;
-  while (matches < relation.minMatches && guard++ < kMaxPhraseBars * kStepsPerBar) {
+  while (matches < relation.minMatches &&
+         guard++ < kMaxPhraseBars * kStepsPerBar) {
     bool added = false;
+
     for (uint8_t bar = 0; bar < occupancy.barCount && !added; ++bar) {
       const StepMask sourceMask = occupancy.roleMasks[
           bar][static_cast<uint8_t>(relation.source)];
       for (uint8_t step = 0; step < kStepsPerBar; ++step) {
         const StepMask bit = stepBit(step);
-        if (!(relation.zoneMask & bit) || !(sourceMask & bit)) continue;
-        if (occupancy.roleMasks[bar][static_cast<uint8_t>(relation.target)] & bit) {
+        if (!(relation.zoneMask & bit) || !(sourceMask & bit) ||
+            (occupancy.roleMasks[bar][static_cast<uint8_t>(relation.target)] &
+             bit)) {
           continue;
         }
-        if (addStructuralCandidate(archetype, *targetLane, occupancy, bar, step)) {
+        if (addStructuralCandidate(archetype, *targetLane,
+                                   occupancy, bar, step)) {
           added = true;
           break;
         }
       }
     }
+
     if (!added) {
       for (uint8_t bar = 0; bar < occupancy.barCount && !added; ++bar) {
         const StepMask targetMask = occupancy.roleMasks[
             bar][static_cast<uint8_t>(relation.target)];
         for (uint8_t step = 0; step < kStepsPerBar; ++step) {
           const StepMask bit = stepBit(step);
-          if (!(relation.zoneMask & bit) || !(targetMask & bit)) continue;
-          if (occupancy.roleMasks[bar][static_cast<uint8_t>(relation.source)] & bit) {
+          if (!(relation.zoneMask & bit) || !(targetMask & bit) ||
+              (occupancy.roleMasks[bar][static_cast<uint8_t>(relation.source)] &
+               bit)) {
             continue;
           }
-          if (addStructuralCandidate(archetype, *sourceLane, occupancy, bar, step)) {
+          if (addStructuralCandidate(archetype, *sourceLane,
+                                     occupancy, bar, step)) {
             added = true;
             break;
           }
         }
       }
     }
+
     if (!added) {
-      // Last bounded option: create a new shared coordinate in legal space.
-      // Probe each pair transactionally so a source addition whose matching
-      // target conflicts with another hard relationship cannot poison the
-      // search or hide a different feasible Coincide coordinate.
       bool foundPair = false;
       uint32_t bestRank = 0;
       PhraseOccupancy bestOccupancy{};
@@ -355,15 +368,13 @@ bool repairCoincide(const RhythmArchetype& archetype,
               !isOnsetLegal(archetype, *targetLane, step)) {
             continue;
           }
-
           PhraseOccupancy trial = occupancy;
-          if (!addStructuralCandidate(archetype, *sourceLane, trial,
-                                      bar, step) ||
-              !addStructuralCandidate(archetype, *targetLane, trial,
-                                      bar, step)) {
+          if (!addStructuralCandidate(archetype, *sourceLane,
+                                      trial, bar, step) ||
+              !addStructuralCandidate(archetype, *targetLane,
+                                      trial, bar, step)) {
             continue;
           }
-
           const uint32_t rank = deterministicValue(
               seed, candidateCoordinate(bar, relation.target, step));
           if (!foundPair || rank > bestRank) {
@@ -378,10 +389,12 @@ bool repairCoincide(const RhythmArchetype& archetype,
         added = true;
       }
     }
+
     if (!added) return false;
     matches = coincidenceCount(relation, occupancy);
   }
-  return matches >= relation.minMatches;
+  return matches >= relation.minMatches &&
+         (!relation.maxMatches || matches <= relation.maxMatches);
 }
 
 bool repairOffset(const RhythmArchetype& archetype,
@@ -389,8 +402,7 @@ bool repairOffset(const RhythmArchetype& archetype,
                   PhraseOccupancy& occupancy,
                   uint32_t seed) {
   const LaneGrammar* sourceLane = laneFor(archetype, relation.source);
-  const LaneGrammar* targetLane = laneFor(archetype, relation.target);
-  if (!sourceLane || !targetLane) return false;
+  if (!sourceLane) return false;
 
   for (uint8_t targetBar = 0; targetBar < occupancy.barCount; ++targetBar) {
     StepMask targetMask = occupancy.roleMasks[
@@ -398,25 +410,32 @@ bool repairOffset(const RhythmArchetype& archetype,
     for (uint8_t targetStep = 0; targetStep < kStepsPerBar; ++targetStep) {
       const StepMask bit = stepBit(targetStep);
       if (!(targetMask & bit) || !(relation.zoneMask & bit) ||
-          offsetTargetSupported(relation, occupancy, targetBar, targetStep)) {
+          offsetTargetSupported(relation, occupancy,
+                                targetBar, targetStep)) {
         continue;
       }
 
       int bestAbsolute = -1;
       uint32_t bestRank = 0;
-      const int targetAbsolute = targetBar * kStepsPerBar + targetStep;
-      for (int offset = relation.minOffset; offset <= relation.maxOffset; ++offset) {
+      const int targetAbsolute =
+          targetBar * kStepsPerBar + targetStep;
+      for (int offset = relation.minOffset;
+           offset <= relation.maxOffset;
+           ++offset) {
         const int sourceAbsolute = targetAbsolute - offset;
         if (!coordinateInPhrase(occupancy.barCount, sourceAbsolute)) continue;
-        const uint8_t sourceBar = static_cast<uint8_t>(sourceAbsolute / kStepsPerBar);
-        const uint8_t sourceStep = static_cast<uint8_t>(sourceAbsolute % kStepsPerBar);
+        const uint8_t sourceBar = static_cast<uint8_t>(
+            sourceAbsolute / kStepsPerBar);
+        const uint8_t sourceStep = static_cast<uint8_t>(
+            sourceAbsolute % kStepsPerBar);
         if (!relationCoordinateAllowed(relation, sourceBar, sourceStep,
                                        targetBar, targetStep) ||
             !isOnsetLegal(archetype, *sourceLane, sourceStep)) {
           continue;
         }
         const uint32_t rank = deterministicValue(
-            seed, candidateCoordinate(sourceBar, relation.source, sourceStep));
+            seed, candidateCoordinate(sourceBar,
+                                      relation.source, sourceStep));
         if (bestAbsolute < 0 || rank > bestRank) {
           bestAbsolute = sourceAbsolute;
           bestRank = rank;
@@ -431,8 +450,8 @@ bool repairOffset(const RhythmArchetype& archetype,
             static_cast<uint8_t>(bestAbsolute % kStepsPerBar));
       }
       if (!repaired) {
-        repaired = dropIdentityEvent(archetype, relation.target, occupancy,
-                                     targetBar, targetStep);
+        repaired = dropIdentityEvent(archetype, relation.target,
+                                     occupancy, targetBar, targetStep);
       }
       if (!repaired) return false;
       targetMask = occupancy.roleMasks[
@@ -457,35 +476,48 @@ bool repairRespond(const RhythmArchetype& archetype,
     int bestStep = -1;
     uint32_t bestRank = 0;
 
-    for (uint8_t sourceBar = 0; sourceBar < occupancy.barCount; ++sourceBar) {
+    for (uint8_t sourceBar = 0;
+         sourceBar < occupancy.barCount;
+         ++sourceBar) {
       const StepMask sourceMask = occupancy.roleMasks[
           sourceBar][static_cast<uint8_t>(relation.source)];
-      for (uint8_t sourceStep = 0; sourceStep < kStepsPerBar; ++sourceStep) {
+      for (uint8_t sourceStep = 0;
+           sourceStep < kStepsPerBar;
+           ++sourceStep) {
         if (!(sourceMask & stepBit(sourceStep)) ||
             !(relation.zoneMask & stepBit(sourceStep))) {
           continue;
         }
-        const int sourceAbsolute = sourceBar * kStepsPerBar + sourceStep;
-        for (int offset = relation.minOffset; offset <= relation.maxOffset; ++offset) {
+        const int sourceAbsolute =
+            sourceBar * kStepsPerBar + sourceStep;
+        for (int offset = relation.minOffset;
+             offset <= relation.maxOffset;
+             ++offset) {
           const int targetAbsolute = sourceAbsolute + offset;
           if (!coordinateInPhrase(occupancy.barCount, targetAbsolute)) continue;
-          const uint8_t targetBar = static_cast<uint8_t>(targetAbsolute / kStepsPerBar);
-          const uint8_t targetStep = static_cast<uint8_t>(targetAbsolute % kStepsPerBar);
+          const uint8_t targetBar = static_cast<uint8_t>(
+              targetAbsolute / kStepsPerBar);
+          const uint8_t targetStep = static_cast<uint8_t>(
+              targetAbsolute % kStepsPerBar);
           if (!relationCoordinateAllowed(relation, sourceBar, sourceStep,
                                          targetBar, targetStep) ||
               !isOnsetLegal(archetype, *targetLane, targetStep)) {
             continue;
           }
-          if (occupancy.roleMasks[targetBar][static_cast<uint8_t>(relation.target)] &
+          if (occupancy.roleMasks[targetBar]
+                  [static_cast<uint8_t>(relation.target)] &
               stepBit(targetStep)) {
             continue;
           }
-          if (!hardCandidateAdditionAllowed(archetype, occupancy, targetBar,
-                                            relation.target, targetStep)) {
+          if (!hardCandidateAdditionAllowed(archetype, occupancy,
+                                            targetBar,
+                                            relation.target,
+                                            targetStep)) {
             continue;
           }
           const uint32_t rank = deterministicValue(
-              seed, candidateCoordinate(targetBar, relation.target, targetStep));
+              seed, candidateCoordinate(targetBar,
+                                        relation.target, targetStep));
           if (bestBar < 0 || rank > bestRank) {
             bestBar = targetBar;
             bestStep = targetStep;
@@ -496,7 +528,8 @@ bool repairRespond(const RhythmArchetype& archetype,
     }
 
     if (bestBar < 0 ||
-        !addStructuralCandidate(archetype, *targetLane, occupancy,
+        !addStructuralCandidate(archetype, *targetLane,
+                                occupancy,
                                 static_cast<uint8_t>(bestBar),
                                 static_cast<uint8_t>(bestStep))) {
       return false;
@@ -555,9 +588,12 @@ bool fillLaneMinimums(const RhythmArchetype& archetype,
     bool progress = false;
     bool complete = true;
     for (uint8_t bar = 0; bar < occupancy.barCount; ++bar) {
-      for (uint8_t laneIndex = 0; laneIndex < archetype.laneCount; ++laneIndex) {
+      for (uint8_t laneIndex = 0;
+           laneIndex < archetype.laneCount;
+           ++laneIndex) {
         const LaneGrammar& lane = archetype.lanes[laneIndex];
-        if (structuralCount(occupancy, bar, lane.role) >= lane.structuralMin) {
+        if (structuralCount(occupancy, bar, lane.role) >=
+            lane.structuralMin) {
           continue;
         }
         complete = false;
@@ -573,9 +609,12 @@ bool fillLaneMinimums(const RhythmArchetype& archetype,
   }
 
   for (uint8_t bar = 0; bar < occupancy.barCount; ++bar) {
-    for (uint8_t laneIndex = 0; laneIndex < archetype.laneCount; ++laneIndex) {
+    for (uint8_t laneIndex = 0;
+         laneIndex < archetype.laneCount;
+         ++laneIndex) {
       const LaneGrammar& lane = archetype.lanes[laneIndex];
-      if (structuralCount(occupancy, bar, lane.role) < lane.structuralMin) {
+      if (structuralCount(occupancy, bar, lane.role) <
+          lane.structuralMin) {
         return false;
       }
     }
@@ -594,19 +633,22 @@ void fillPreferredDensity(const RhythmArchetype& archetype,
       int bestLane = -1;
       int bestStep = -1;
       int32_t bestScore = -0x7FFFFFFF;
-      for (uint8_t laneIndex = 0; laneIndex < archetype.laneCount; ++laneIndex) {
+      for (uint8_t laneIndex = 0;
+           laneIndex < archetype.laneCount;
+           ++laneIndex) {
         const LaneGrammar& lane = archetype.lanes[laneIndex];
-        if (structuralCount(occupancy, bar, lane.role) >= lane.structuralMax) {
+        if (structuralCount(occupancy, bar, lane.role) >=
+            lane.structuralMax) {
           continue;
         }
-        const StepMask current =
-            occupancy.roleMasks[bar][static_cast<uint8_t>(lane.role)];
+        const StepMask current = occupancy.roleMasks[
+            bar][static_cast<uint8_t>(lane.role)];
         const StepMask candidates = static_cast<StepMask>(
             structuralLegalMask(archetype, lane) & ~current);
         for (uint8_t step = 0; step < kStepsPerBar; ++step) {
           if (!(candidates & stepBit(step)) ||
-              !hardCandidateAdditionAllowed(archetype, occupancy, bar,
-                                            lane.role, step)) {
+              !hardCandidateAdditionAllowed(archetype, occupancy,
+                                            bar, lane.role, step)) {
             continue;
           }
           const int32_t score = candidateScore(
@@ -620,7 +662,8 @@ void fillPreferredDensity(const RhythmArchetype& archetype,
         }
       }
       if (bestLane < 0) break;
-      if (!addStructuralCandidate(archetype, archetype.lanes[bestLane],
+      if (!addStructuralCandidate(archetype,
+                                  archetype.lanes[bestLane],
                                   occupancy, bar,
                                   static_cast<uint8_t>(bestStep))) {
         break;
@@ -633,7 +676,9 @@ bool occupancyRespectsBaseBounds(const RhythmArchetype& archetype,
                                  const PhraseOccupancy& occupancy) {
   for (uint8_t bar = 0; bar < occupancy.barCount; ++bar) {
     uint16_t total = 0;
-    for (uint8_t laneIndex = 0; laneIndex < archetype.laneCount; ++laneIndex) {
+    for (uint8_t laneIndex = 0;
+         laneIndex < archetype.laneCount;
+         ++laneIndex) {
       const LaneGrammar& lane = archetype.lanes[laneIndex];
       const StepMask mask = occupancy.roleMasks[
           bar][static_cast<uint8_t>(lane.role)];
@@ -641,7 +686,8 @@ bool occupancyRespectsBaseBounds(const RhythmArchetype& archetype,
       if ((lane.immutableAnchors & ~mask) ||
           (lane.canonicalAnchors & ~mask) ||
           (mask & ~structuralLegalMask(archetype, lane)) ||
-          count < lane.structuralMin || count > lane.structuralMax) {
+          count < lane.structuralMin ||
+          count > lane.structuralMax) {
         return false;
       }
       total += count;
@@ -657,12 +703,11 @@ bool occupancyRespectsBaseBounds(const RhythmArchetype& archetype,
 bool establishIdentity(const RhythmArchetype& archetype,
                        const GenerationContext& context,
                        uint8_t phraseBars,
-                       TrajectoryId pinnedTrajectoryId,
                        PhraseRhythmIdentity& identity) {
   identity = {};
   identity.archetypeId = archetype.id;
   identity.phraseBars = phraseBars;
-  identity.trajectoryId = pinnedTrajectoryId;
+  identity.trajectoryId = kNoTrajectoryId;
   identity.protectedSpaceCount = archetype.protectedSpaceCount;
   for (uint8_t i = 0; i < archetype.protectedSpaceCount; ++i) {
     identity.protectedSpaces[i] = archetype.protectedSpaces[i];
@@ -671,7 +716,9 @@ bool establishIdentity(const RhythmArchetype& archetype,
   PhraseOccupancy occupancy{};
   occupancy.barCount = phraseBars;
   for (uint8_t bar = 0; bar < phraseBars; ++bar) {
-    for (uint8_t laneIndex = 0; laneIndex < archetype.laneCount; ++laneIndex) {
+    for (uint8_t laneIndex = 0;
+         laneIndex < archetype.laneCount;
+         ++laneIndex) {
       const LaneGrammar& lane = archetype.lanes[laneIndex];
       occupancy.roleMasks[bar][static_cast<uint8_t>(lane.role)] =
           anchorMask(lane);
@@ -687,7 +734,8 @@ bool establishIdentity(const RhythmArchetype& archetype,
                                identitySeed ^ 0x52454C31u)) {
     return false;
   }
-  fillPreferredDensity(archetype, occupancy, identitySeed ^ 0x44454E31u);
+  fillPreferredDensity(archetype, occupancy,
+                       identitySeed ^ 0x44454E31u);
   if (!repairHardRelationships(archetype, occupancy,
                                identitySeed ^ 0x52454C32u)) {
     return false;
@@ -696,7 +744,8 @@ bool establishIdentity(const RhythmArchetype& archetype,
 
   for (uint8_t bar = 0; bar < phraseBars; ++bar) {
     for (uint8_t role = 0; role < kRhythmRoleCount; ++role) {
-      identity.structuralCore[bar][role] = occupancy.roleMasks[bar][role];
+      identity.structuralCore[bar][role] =
+          occupancy.roleMasks[bar][role];
     }
   }
   return true;
@@ -704,9 +753,13 @@ bool establishIdentity(const RhythmArchetype& archetype,
 
 bool identityMatchesProtectedSpace(const RhythmArchetype& archetype,
                                    const PhraseRhythmIdentity& identity) {
-  if (identity.protectedSpaceCount != archetype.protectedSpaceCount) return false;
+  if (identity.protectedSpaceCount !=
+      archetype.protectedSpaceCount) {
+    return false;
+  }
   for (uint8_t i = 0; i < archetype.protectedSpaceCount; ++i) {
-    if (identity.protectedSpaces[i].steps != archetype.protectedSpaces[i].steps ||
+    if (identity.protectedSpaces[i].steps !=
+            archetype.protectedSpaces[i].steps ||
         identity.protectedSpaces[i].affectedRoles !=
             archetype.protectedSpaces[i].affectedRoles) {
       return false;
@@ -718,8 +771,11 @@ bool identityMatchesProtectedSpace(const RhythmArchetype& archetype,
 bool identityValidForArchetype(const RhythmArchetype& archetype,
                                const PhraseRhythmIdentity& identity) {
   if (identity.archetypeId != archetype.id ||
-      identity.phraseBars == 0 || identity.phraseBars > kMaxPhraseBars ||
-      !(archetype.allowedPhraseBars & phraseBarsBit(identity.phraseBars)) ||
+      identity.phraseBars == 0 ||
+      identity.phraseBars > kMaxPhraseBars ||
+      identity.trajectoryId != kNoTrajectoryId ||
+      !(archetype.allowedPhraseBars &
+        phraseBarsBit(identity.phraseBars)) ||
       !identityMatchesProtectedSpace(archetype, identity)) {
     return false;
   }
@@ -727,11 +783,15 @@ bool identityValidForArchetype(const RhythmArchetype& archetype,
   PhraseOccupancy occupancy{};
   occupancy.barCount = identity.phraseBars;
   for (uint8_t bar = 0; bar < identity.phraseBars; ++bar) {
-    for (uint8_t roleIndex = 0; roleIndex < kRhythmRoleCount; ++roleIndex) {
+    for (uint8_t roleIndex = 0;
+         roleIndex < kRhythmRoleCount;
+         ++roleIndex) {
       const RhythmRole role = static_cast<RhythmRole>(roleIndex);
       const LaneGrammar* lane = laneFor(archetype, role);
-      const StepMask structural = identity.structuralCore[bar][roleIndex];
-      const StepMask canonical = identity.canonicalCore[bar][roleIndex];
+      const StepMask structural =
+          identity.structuralCore[bar][roleIndex];
+      const StepMask canonical =
+          identity.canonicalCore[bar][roleIndex];
       if (!lane) {
         if (structural || canonical) return false;
         continue;
@@ -748,335 +808,22 @@ bool identityValidForArchetype(const RhythmArchetype& archetype,
   return occupancyRespectsBaseBounds(archetype, occupancy);
 }
 
-const TrajectoryRef* trajectoryRefFor(const RhythmArchetype& archetype,
-                                      TrajectoryId id) {
-  for (uint8_t i = 0; i < archetype.trajectoryCount; ++i) {
-    if (archetype.trajectories[i].id == id) return &archetype.trajectories[i];
-  }
-  return nullptr;
-}
-
-bool trajectorySupportsIntent(const BarTrajectory& trajectory,
-                              TransformationIntent intent) {
-  if (intent == TransformationIntent::Auto ||
-      intent == TransformationIntent::Fill) {
-    return true;
-  }
-
-  BarFunction required = BarFunction::Statement;
-  switch (intent) {
-    case TransformationIntent::Reduce:
-      required = BarFunction::Reduction;
-      break;
-    case TransformationIntent::Break:
-      required = BarFunction::Break;
-      break;
-    case TransformationIntent::Build:
-      required = BarFunction::Build;
-      break;
-    case TransformationIntent::Turnaround:
-      required = BarFunction::Turnaround;
-      break;
-    case TransformationIntent::Response:
-      required = BarFunction::Response;
-      break;
-    case TransformationIntent::Auto:
-    case TransformationIntent::Fill:
-    case TransformationIntent::Count:
-      return true;
-  }
-
-  for (uint8_t bar = 0; bar < trajectory.barCount; ++bar) {
-    if (trajectory.bars[bar] == required) return true;
-  }
-  return false;
-}
-
-const BarTrajectory* chooseTrajectory(const RhythmCatalogView& catalog,
-                                      const RhythmArchetype& archetype,
-                                      uint8_t phraseBars,
-                                      RealizationLevel level,
-                                      TransformationIntent requestedIntent,
-                                      TrajectoryId pinned,
-                                      const GenerationContext& context) {
-  if (pinned != kNoTrajectoryId) {
-    const TrajectoryRef* ref = trajectoryRefFor(archetype, pinned);
-    const BarTrajectory* trajectory = trajectoryFor(catalog, pinned);
-    if (!ref || !trajectory || trajectory->barCount != phraseBars ||
-        !(ref->allowedLevels & realizationLevelBit(level)) ||
-        !trajectorySupportsIntent(*trajectory, requestedIntent)) {
-      return nullptr;
-    }
-    return trajectory;
-  }
-
-  uint16_t totalWeight = 0;
-  for (uint8_t i = 0; i < archetype.trajectoryCount; ++i) {
-    const TrajectoryRef& ref = archetype.trajectories[i];
-    const BarTrajectory* trajectory = trajectoryFor(catalog, ref.id);
-    if (!trajectory || trajectory->barCount != phraseBars ||
-        !(ref.allowedLevels & realizationLevelBit(level)) ||
-        !trajectorySupportsIntent(*trajectory, requestedIntent)) {
-      continue;
-    }
-    totalWeight = static_cast<uint16_t>(totalWeight + ref.weight);
-  }
-  if (!totalWeight) return nullptr;
-
-  const uint32_t evolutionSeed = deriveGenerationSeed(
-      context, archetype.id, GenerationDomain::BarEvolution,
-      static_cast<uint32_t>(level));
-  uint16_t pick = static_cast<uint16_t>(
-      deterministicValue(evolutionSeed, phraseBars) % totalWeight);
-  for (uint8_t i = 0; i < archetype.trajectoryCount; ++i) {
-    const TrajectoryRef& ref = archetype.trajectories[i];
-    const BarTrajectory* trajectory = trajectoryFor(catalog, ref.id);
-    if (!trajectory || trajectory->barCount != phraseBars ||
-        !(ref.allowedLevels & realizationLevelBit(level)) ||
-        !trajectorySupportsIntent(*trajectory, requestedIntent)) {
-      continue;
-    }
-    if (pick < ref.weight) return trajectory;
-    pick = static_cast<uint16_t>(pick - ref.weight);
-  }
-  return nullptr;
-}
-
-TransformationIntent impliedIntent(BarFunction function) {
-  switch (function) {
-    case BarFunction::Response:
-      return TransformationIntent::Response;
-    case BarFunction::Reduction:
-      return TransformationIntent::Reduce;
-    case BarFunction::Build:
-      return TransformationIntent::Build;
-    case BarFunction::Turnaround:
-      return TransformationIntent::Turnaround;
-    case BarFunction::Break:
-      return TransformationIntent::Break;
-    default:
-      return TransformationIntent::Auto;
-  }
-}
-
-TransformationIntent effectiveIntent(const RhythmPhrasePlan& plan,
-                                     uint8_t bar) {
-  if (plan.intent != TransformationIntent::Auto) return plan.intent;
-  return impliedIntent(plan.bars[bar].function);
-}
-
-bool intentAllowed(const RhythmArchetype& archetype,
-                   RealizationLevel level,
-                   TransformationIntent intent) {
-  if (intent == TransformationIntent::Auto) return true;
-  const MutationBudget& budget =
-      archetype.mutation.level[static_cast<uint8_t>(level)];
-  return (budget.allowedIntents & transformationIntentBit(intent)) != 0;
-}
-
-TransformationIntent chooseAutoIntent(const RhythmArchetype& archetype,
-                                      RealizationLevel level,
-                                      const BarTrajectory& trajectory,
-                                      uint32_t seed) {
-  if (level == RealizationLevel::P1Canonical) {
-    return TransformationIntent::Auto;
-  }
-  TransformationIntentMask candidates = 0;
-  for (uint8_t bar = 0; bar < trajectory.barCount; ++bar) {
-    const TransformationIntent intent = impliedIntent(trajectory.bars[bar]);
-    if (intent != TransformationIntent::Auto) {
-      candidates = static_cast<TransformationIntentMask>(
-          candidates | transformationIntentBit(intent));
-    }
-  }
-  candidates = static_cast<TransformationIntentMask>(
-      candidates & archetype.mutation.level[static_cast<uint8_t>(level)].allowedIntents);
-  if (!candidates) return TransformationIntent::Auto;
-
-  uint8_t options[static_cast<uint8_t>(TransformationIntent::Count)]{};
-  uint8_t count = 0;
-  for (uint8_t value = 1;
-       value < static_cast<uint8_t>(TransformationIntent::Count);
-       ++value) {
-    const TransformationIntent intent = static_cast<TransformationIntent>(value);
-    if (candidates & transformationIntentBit(intent)) options[count++] = value;
-  }
-  if (!count) return TransformationIntent::Auto;
-  return static_cast<TransformationIntent>(
-      options[deterministicValue(seed, trajectory.id) % count]);
-}
-
 void copyStructuralFromIdentity(const PhraseRhythmIdentity& identity,
                                 RhythmPhrasePlan& plan) {
   for (uint8_t bar = 0; bar < plan.barCount; ++bar) {
     for (uint8_t role = 0; role < kRhythmRoleCount; ++role) {
-      plan.bars[bar].roles[role].structural = identity.structuralCore[bar][role];
+      plan.bars[bar].roles[role].structural =
+          identity.structuralCore[bar][role];
     }
   }
-}
-
-void applyRepeatSemantics(const PhraseRhythmIdentity& identity,
-                          RhythmPhrasePlan& plan) {
-  uint8_t statementBar = 0;
-  for (uint8_t bar = 0; bar < plan.barCount; ++bar) {
-    const BarFunction function = plan.bars[bar].function;
-    if (function == BarFunction::Statement) {
-      statementBar = bar;
-      continue;
-    }
-    if (function == BarFunction::Repeat ||
-        function == BarFunction::RepeatWithGhosts ||
-        function == BarFunction::Return) {
-      for (uint8_t role = 0; role < kRhythmRoleCount; ++role) {
-        plan.bars[bar].roles[role].structural =
-            identity.structuralCore[statementBar][role];
-      }
-    }
-  }
-}
-
-bool transformRuleActive(const RhythmArchetype& archetype,
-                         const RhythmPhrasePlan& plan,
-                         uint8_t bar,
-                         const AnchorTransformRule& rule) {
-  if (plan.level == RealizationLevel::P1Canonical ||
-      rule.barFunction != plan.bars[bar].function ||
-      rule.intent != effectiveIntent(plan, bar) ||
-      !intentAllowed(archetype, plan.level, rule.intent)) {
-    return false;
-  }
-  return true;
-}
-
-bool canonicalMissingAllowed(const RhythmArchetype& archetype,
-                             const RhythmPhrasePlan& plan,
-                             uint8_t bar,
-                             RhythmRole role,
-                             StepMask missing) {
-  if (!missing) return true;
-  StepMask allowed = 0;
-  for (uint8_t i = 0; i < archetype.anchorTransformRuleCount; ++i) {
-    const AnchorTransformRule& rule = archetype.anchorTransformRules[i];
-    if (rule.role != role || !transformRuleActive(archetype, plan, bar, rule)) {
-      continue;
-    }
-    allowed = static_cast<StepMask>(
-        allowed | rule.suppressibleCanonical | rule.displaceableCanonical);
-  }
-  return (missing & ~allowed) == 0;
-}
-
-uint8_t legallyMissingCanonicalCount(const RhythmArchetype& archetype,
-                                     const RhythmPhrasePlan& plan,
-                                     uint8_t bar) {
-  uint8_t count = 0;
-  for (uint8_t laneIndex = 0; laneIndex < archetype.laneCount; ++laneIndex) {
-    const LaneGrammar& lane = archetype.lanes[laneIndex];
-    const StepMask onset = static_cast<StepMask>(
-        plan.bars[bar].roles[static_cast<uint8_t>(lane.role)].structural |
-        plan.bars[bar].roles[static_cast<uint8_t>(lane.role)].secondary);
-    const StepMask missing = static_cast<StepMask>(lane.canonicalAnchors & ~onset);
-    if (canonicalMissingAllowed(archetype, plan, bar, lane.role, missing)) {
-      count = static_cast<uint8_t>(count + bitCount16(missing));
-    }
-  }
-  return count;
-}
-
-void applyCanonicalTransforms(const RhythmArchetype& archetype,
-                              uint32_t seed,
-                              RhythmPhrasePlan& plan) {
-  MutationBudget budget =
-      archetype.mutation.level[static_cast<uint8_t>(plan.level)];
-  uint8_t drops = 0;
-  for (uint8_t bar = 0; bar < plan.barCount && drops < budget.maxDrops; ++bar) {
-    for (uint8_t ruleIndex = 0;
-         ruleIndex < archetype.anchorTransformRuleCount && drops < budget.maxDrops;
-         ++ruleIndex) {
-      const AnchorTransformRule& rule = archetype.anchorTransformRules[ruleIndex];
-      if (!transformRuleActive(archetype, plan, bar, rule)) continue;
-      RoleRhythmPlan& rolePlan =
-          plan.bars[bar].roles[static_cast<uint8_t>(rule.role)];
-      StepMask candidates = static_cast<StepMask>(
-          rolePlan.structural & rule.suppressibleCanonical);
-      while (candidates && drops < budget.maxDrops) {
-        int bestStep = -1;
-        uint32_t bestRank = 0;
-        for (uint8_t step = 0; step < kStepsPerBar; ++step) {
-          if (!(candidates & stepBit(step))) continue;
-          const uint32_t rank = deterministicValue(
-              seed, candidateCoordinate(bar, rule.role, step) ^ ruleIndex);
-          if (bestStep < 0 || rank > bestRank) {
-            bestStep = step;
-            bestRank = rank;
-          }
-        }
-        if (bestStep < 0) break;
-        const StepMask bit = stepBit(static_cast<uint8_t>(bestStep));
-        rolePlan.structural = static_cast<StepMask>(rolePlan.structural & ~bit);
-        candidates = static_cast<StepMask>(candidates & ~bit);
-        ++drops;
-      }
-    }
-  }
-}
-
-bool addPlanSecondary(const RhythmArchetype& archetype,
-                      RhythmPhrasePlan& plan,
-                      PhraseOccupancy& occupancy,
-                      uint8_t bar,
-                      const LaneGrammar& lane,
-                      uint8_t step) {
-  const StepMask bit = stepBit(step);
-  RoleRhythmPlan& rolePlan =
-      plan.bars[bar].roles[static_cast<uint8_t>(lane.role)];
-  if ((rolePlan.structural | rolePlan.secondary | rolePlan.ghosts) & bit) {
-    return false;
-  }
-  if (!isOnsetLegal(archetype, lane, step) ||
-      structuralCount(occupancy, bar, lane.role) >= lane.structuralMax ||
-      totalStructural(occupancy, bar) >= archetype.density.structuralMax ||
-      !hardCandidateAdditionAllowed(archetype, occupancy, bar, lane.role, step)) {
-    return false;
-  }
-  rolePlan.secondary = static_cast<StepMask>(rolePlan.secondary | bit);
-  occupancy.roleMasks[bar][static_cast<uint8_t>(lane.role)] =
-      static_cast<StepMask>(occupancy.roleMasks[bar][static_cast<uint8_t>(lane.role)] |
-                            bit);
-  return true;
-}
-
-uint16_t totalOrnaments(const RhythmPhrasePlan& plan, uint8_t bar) {
-  uint16_t total = 0;
-  for (uint8_t role = 0; role < kRhythmRoleCount; ++role) {
-    total += bitCount16(plan.bars[bar].roles[role].ghosts);
-  }
-  return total;
-}
-
-bool addPlanGhost(const RhythmArchetype& archetype,
-                  RhythmPhrasePlan& plan,
-                  uint8_t bar,
-                  const LaneGrammar& lane,
-                  uint8_t step) {
-  RoleRhythmPlan& rolePlan =
-      plan.bars[bar].roles[static_cast<uint8_t>(lane.role)];
-  const StepMask bit = stepBit(step);
-  if ((rolePlan.structural | rolePlan.secondary | rolePlan.ghosts) & bit ||
-      !isOnsetLegal(archetype, lane, step) ||
-      bitCount16(rolePlan.ghosts) >= lane.ornamentMax ||
-      totalOrnaments(plan, bar) >= archetype.density.ornamentMax) {
-    return false;
-  }
-  rolePlan.ghosts = static_cast<StepMask>(rolePlan.ghosts | bit);
-  rolePlan.shortGate = static_cast<StepMask>(rolePlan.shortGate | bit);
-  return true;
 }
 
 void applyGatePolicies(const RhythmArchetype& archetype,
                        RhythmPhrasePlan& plan) {
   for (uint8_t bar = 0; bar < plan.barCount; ++bar) {
-    for (uint8_t laneIndex = 0; laneIndex < archetype.laneCount; ++laneIndex) {
+    for (uint8_t laneIndex = 0;
+         laneIndex < archetype.laneCount;
+         ++laneIndex) {
       const LaneGrammar& lane = archetype.lanes[laneIndex];
       RoleRhythmPlan& rolePlan =
           plan.bars[bar].roles[static_cast<uint8_t>(lane.role)];
@@ -1093,6 +840,58 @@ void applyGatePolicies(const RhythmArchetype& archetype,
   }
 }
 
+bool addPlanSecondary(const RhythmArchetype& archetype,
+                      RhythmPhrasePlan& plan,
+                      PhraseOccupancy& occupancy,
+                      uint8_t bar,
+                      const LaneGrammar& lane,
+                      uint8_t step) {
+  RoleRhythmPlan& rolePlan =
+      plan.bars[bar].roles[static_cast<uint8_t>(lane.role)];
+  const StepMask bit = stepBit(step);
+  if ((rolePlan.structural | rolePlan.secondary |
+       rolePlan.ghosts) & bit) {
+    return false;
+  }
+  if (!isOnsetLegal(archetype, lane, step) ||
+      structuralCount(occupancy, bar, lane.role) >=
+          lane.structuralMax ||
+      totalStructural(occupancy, bar) >=
+          archetype.density.structuralMax ||
+      !hardCandidateAdditionAllowed(archetype, occupancy,
+                                    bar, lane.role, step)) {
+    return false;
+  }
+  rolePlan.secondary = static_cast<StepMask>(
+      rolePlan.secondary | bit);
+  occupancy.roleMasks[bar][static_cast<uint8_t>(lane.role)] =
+      static_cast<StepMask>(
+          occupancy.roleMasks[bar][static_cast<uint8_t>(lane.role)] |
+          bit);
+  return true;
+}
+
+bool addPlanGhost(const RhythmArchetype& archetype,
+                  RhythmPhrasePlan& plan,
+                  uint8_t bar,
+                  const LaneGrammar& lane,
+                  uint8_t step) {
+  RoleRhythmPlan& rolePlan =
+      plan.bars[bar].roles[static_cast<uint8_t>(lane.role)];
+  const StepMask bit = stepBit(step);
+  if ((rolePlan.structural | rolePlan.secondary |
+       rolePlan.ghosts) & bit) {
+    return false;
+  }
+  if (!isOnsetLegal(archetype, lane, step) ||
+      bitCount16(rolePlan.ghosts) >= lane.ornamentMax ||
+      totalOrnaments(plan, bar) >= archetype.density.ornamentMax) {
+    return false;
+  }
+  rolePlan.ghosts = static_cast<StepMask>(rolePlan.ghosts | bit);
+  return true;
+}
+
 void addVariation(const RhythmArchetype& archetype,
                   uint32_t seed,
                   RhythmPhrasePlan& plan) {
@@ -1102,22 +901,20 @@ void addVariation(const RhythmArchetype& archetype,
   PhraseOccupancy occupancy = structuralOccupancy(plan);
   uint8_t additions = 0;
 
-  for (uint8_t bar = 0; bar < plan.barCount && additions < budget.maxAdds; ++bar) {
-    const BarFunction function = plan.bars[bar].function;
-    if (function == BarFunction::Repeat ||
-        function == BarFunction::Return) {
-      continue;
-    }
-
+  for (uint8_t bar = 0;
+       bar < plan.barCount && additions < budget.maxAdds;
+       ++bar) {
     for (uint8_t laneIndex = 0;
-         laneIndex < archetype.laneCount && additions < budget.maxAdds;
+         laneIndex < archetype.laneCount &&
+         additions < budget.maxAdds;
          ++laneIndex) {
       const LaneGrammar& lane = archetype.lanes[laneIndex];
       const RoleRhythmPlan& rolePlan =
           plan.bars[bar].roles[static_cast<uint8_t>(lane.role)];
       const StepMask available = static_cast<StepMask>(
           (lane.preferred | lane.optional) &
-          ~(rolePlan.structural | rolePlan.secondary | rolePlan.ghosts) &
+          ~(rolePlan.structural | rolePlan.secondary |
+            rolePlan.ghosts) &
           ~lane.forbidden & ~protectedMask(archetype, lane.role));
 
       int bestStep = -1;
@@ -1134,20 +931,15 @@ void addVariation(const RhythmArchetype& archetype,
       }
       if (bestStep < 0) continue;
 
-      const bool ghostOnly =
-          function == BarFunction::RepeatWithGhosts ||
-          ((budget.flags & AllowGhostConversion) &&
-           !(budget.flags & AllowOptionalAdds));
       bool added = false;
-      if (ghostOnly) {
-        added = addPlanGhost(archetype, plan, bar, lane,
-                             static_cast<uint8_t>(bestStep));
-      } else if (budget.flags & AllowOptionalAdds) {
-        added = addPlanSecondary(archetype, plan, occupancy, bar, lane,
-                                 static_cast<uint8_t>(bestStep));
+      if (budget.flags & AllowOptionalAdds) {
+        added = addPlanSecondary(
+            archetype, plan, occupancy, bar, lane,
+            static_cast<uint8_t>(bestStep));
       } else if (budget.flags & AllowGhostConversion) {
-        added = addPlanGhost(archetype, plan, bar, lane,
-                             static_cast<uint8_t>(bestStep));
+        added = addPlanGhost(
+            archetype, plan, bar, lane,
+            static_cast<uint8_t>(bestStep));
       }
       if (added) ++additions;
     }
@@ -1156,33 +948,36 @@ void addVariation(const RhythmArchetype& archetype,
 
 bool requestValid(const RhythmRealizationRequest& request,
                   const RhythmArchetype*& archetype) {
-  if (!request.catalog || !validateRhythmCatalog(*request.catalog) ||
+  if (!request.catalog ||
+      !validateRhythmCatalog(*request.catalog) ||
       request.archetypeId == kNoArchetypeId ||
-      request.phraseBars == 0 || request.phraseBars > kMaxPhraseBars ||
-      !validLevel(request.level) || !validIntent(request.intent)) {
+      request.phraseBars == 0 ||
+      request.phraseBars > kMaxPhraseBars ||
+      !validLevel(request.level)) {
     return false;
   }
   archetype = archetypeFor(*request.catalog, request.archetypeId);
   if (!archetype ||
-      !(archetype->allowedPhraseBars & phraseBarsBit(request.phraseBars))) {
-    return false;
-  }
-  if (request.level == RealizationLevel::P1Canonical &&
-      request.intent != TransformationIntent::Auto) {
-    return false;
-  }
-  if (request.intent != TransformationIntent::Auto &&
-      !intentAllowed(*archetype, request.level, request.intent)) {
+      !(archetype->allowedPhraseBars &
+        phraseBarsBit(request.phraseBars))) {
     return false;
   }
   if (request.reuseIdentity &&
       (request.reuseIdentity->phraseBars != request.phraseBars ||
-       request.reuseIdentity->archetypeId != request.archetypeId ||
-       (request.pinnedTrajectoryId != kNoTrajectoryId &&
-        request.reuseIdentity->trajectoryId != request.pinnedTrajectoryId))) {
+       request.reuseIdentity->archetypeId != request.archetypeId)) {
     return false;
   }
   return true;
+}
+
+bool rolePlanIsEmpty(const RoleRhythmPlan& plan) {
+  return plan.structural == 0 &&
+         plan.secondary == 0 &&
+         plan.ghosts == 0 &&
+         plan.shortGate == 0 &&
+         plan.heldGate == 0 &&
+         plan.tieGate == 0 &&
+         plan.accents == 0;
 }
 
 }  // namespace
@@ -1190,7 +985,9 @@ bool requestValid(const RhythmRealizationRequest& request,
 PhraseOccupancy structuralOccupancy(const RhythmPhrasePlan& plan) {
   PhraseOccupancy occupancy{};
   occupancy.barCount = plan.barCount;
-  for (uint8_t bar = 0; bar < plan.barCount && bar < kMaxPhraseBars; ++bar) {
+  for (uint8_t bar = 0;
+       bar < plan.barCount && bar < kMaxPhraseBars;
+       ++bar) {
     for (uint8_t role = 0; role < kRhythmRoleCount; ++role) {
       occupancy.roleMasks[bar][role] = static_cast<StepMask>(
           plan.bars[bar].roles[role].structural |
@@ -1204,11 +1001,15 @@ bool planRespectsProtectedSpace(const RhythmArchetype& archetype,
                                 const RhythmPhrasePlan& plan) {
   if (plan.barCount == 0 || plan.barCount > kMaxPhraseBars) return false;
   for (uint8_t bar = 0; bar < plan.barCount; ++bar) {
-    for (uint8_t roleIndex = 0; roleIndex < kRhythmRoleCount; ++roleIndex) {
+    for (uint8_t roleIndex = 0;
+         roleIndex < kRhythmRoleCount;
+         ++roleIndex) {
       const RhythmRole role = static_cast<RhythmRole>(roleIndex);
-      const RoleRhythmPlan& rolePlan = plan.bars[bar].roles[roleIndex];
+      const RoleRhythmPlan& rolePlan =
+          plan.bars[bar].roles[roleIndex];
       const StepMask allOnsets = static_cast<StepMask>(
-          rolePlan.structural | rolePlan.secondary | rolePlan.ghosts);
+          rolePlan.structural | rolePlan.secondary |
+          rolePlan.ghosts);
       if (allOnsets & protectedMask(archetype, role)) return false;
     }
   }
@@ -1217,38 +1018,50 @@ bool planRespectsProtectedSpace(const RhythmArchetype& archetype,
 
 bool planRespectsLaneBounds(const RhythmArchetype& archetype,
                             const RhythmPhrasePlan& plan) {
-  if (plan.barCount == 0 || plan.barCount > kMaxPhraseBars ||
-      !validLevel(plan.level)) {
+  if (plan.barCount == 0 ||
+      plan.barCount > kMaxPhraseBars ||
+      !validLevel(plan.level) ||
+      plan.trajectoryId != kNoTrajectoryId ||
+      plan.intent != TransformationIntent::Auto) {
     return false;
   }
+
   for (uint8_t bar = 0; bar < plan.barCount; ++bar) {
+    if (plan.bars[bar].function != BarFunction::Statement) return false;
+
+    for (uint8_t roleIndex = 0;
+         roleIndex < kRhythmRoleCount;
+         ++roleIndex) {
+      const RhythmRole role = static_cast<RhythmRole>(roleIndex);
+      if (!laneFor(archetype, role) &&
+          !rolePlanIsEmpty(plan.bars[bar].roles[roleIndex])) {
+        return false;
+      }
+    }
+
     uint16_t total = 0;
     uint16_t ornaments = 0;
-    for (uint8_t laneIndex = 0; laneIndex < archetype.laneCount; ++laneIndex) {
+    for (uint8_t laneIndex = 0;
+         laneIndex < archetype.laneCount;
+         ++laneIndex) {
       const LaneGrammar& lane = archetype.lanes[laneIndex];
       const RoleRhythmPlan& rolePlan =
           plan.bars[bar].roles[static_cast<uint8_t>(lane.role)];
       const StepMask structural = static_cast<StepMask>(
           rolePlan.structural | rolePlan.secondary);
-      if (lane.immutableAnchors & ~structural) return false;
-      const StepMask missingCanonical = static_cast<StepMask>(
-          lane.canonicalAnchors & ~structural);
-      if (!canonicalMissingAllowed(archetype, plan, bar, lane.role,
-                                   missingCanonical)) {
+      if ((lane.immutableAnchors & ~structural) ||
+          (lane.canonicalAnchors & ~structural) ||
+          (structural & ~structuralLegalMask(archetype, lane))) {
         return false;
       }
-      if (structural & ~structuralLegalMask(archetype, lane)) return false;
 
-      const uint8_t missingCount = bitCount16(missingCanonical);
-      const uint8_t effectiveMin =
-          lane.structuralMin > missingCount
-              ? static_cast<uint8_t>(lane.structuralMin - missingCount)
-              : 0;
       const uint8_t count = bitCount16(structural);
-      if (count < effectiveMin || count > lane.structuralMax ||
+      if (count < lane.structuralMin ||
+          count > lane.structuralMax ||
           bitCount16(rolePlan.ghosts) > lane.ornamentMax) {
         return false;
       }
+
       const StepMask allOnsets = static_cast<StepMask>(
           structural | rolePlan.ghosts);
       const StepMask explicitGateSites = static_cast<StepMask>(
@@ -1268,16 +1081,13 @@ bool planRespectsLaneBounds(const RhythmArchetype& archetype,
           (rolePlan.heldGate & rolePlan.tieGate)) {
         return false;
       }
+
       total += count;
       ornaments += bitCount16(rolePlan.ghosts);
     }
 
-    const uint8_t missing = legallyMissingCanonicalCount(archetype, plan, bar);
-    const uint8_t effectiveGlobalMin =
-        archetype.density.structuralMin > missing
-            ? static_cast<uint8_t>(archetype.density.structuralMin - missing)
-            : 0;
-    if (total < effectiveGlobalMin || total > archetype.density.structuralMax ||
+    if (total < archetype.density.structuralMin ||
+        total > archetype.density.structuralMax ||
         ornaments > archetype.density.ornamentMax) {
       return false;
     }
@@ -1292,72 +1102,62 @@ RhythmRealizationResult realizeRhythmPhrase(
   if (!requestValid(request, archetype)) return result;
 
   if (request.reuseIdentity) {
-    if (!identityValidForArchetype(*archetype, *request.reuseIdentity)) {
+    if (!identityValidForArchetype(*archetype,
+                                   *request.reuseIdentity)) {
       return result;
     }
     result.identity = *request.reuseIdentity;
   } else {
-    if (!establishIdentity(*archetype, request.generation,
-                           request.phraseBars, request.pinnedTrajectoryId,
+    if (!establishIdentity(*archetype,
+                           request.generation,
+                           request.phraseBars,
                            result.identity)) {
       return result;
     }
   }
 
-  TrajectoryId pinned = result.identity.trajectoryId;
-  if (!request.reuseIdentity && request.pinnedTrajectoryId != kNoTrajectoryId) {
-    pinned = request.pinnedTrajectoryId;
-  }
-  const BarTrajectory* trajectory = chooseTrajectory(
-      *request.catalog, *archetype, request.phraseBars, request.level,
-      request.intent, pinned, request.generation);
-  if (!trajectory) return result;
-
   const uint32_t identitySeed = deriveGenerationSeed(
-      request.generation, archetype->id, GenerationDomain::RhythmIdentity);
+      request.generation, archetype->id,
+      GenerationDomain::RhythmIdentity);
   const uint32_t variationSeed = deriveVariationSeed(
       identitySeed, request.level, request.phraseBars);
 
   result.plan.barCount = request.phraseBars;
-  result.plan.trajectoryId = trajectory->id;
+  result.plan.trajectoryId = kNoTrajectoryId;
   result.plan.level = request.level;
-  result.plan.intent = request.intent == TransformationIntent::Auto
-                           ? chooseAutoIntent(*archetype, request.level,
-                                              *trajectory, variationSeed)
-                           : request.intent;
-  for (uint8_t bar = 0; bar < request.phraseBars; ++bar) {
-    result.plan.bars[bar].function = trajectory->bars[bar];
+  result.plan.intent = TransformationIntent::Auto;
+  for (uint8_t bar = 0; bar < result.plan.barCount; ++bar) {
+    result.plan.bars[bar].function = BarFunction::Statement;
   }
+
   copyStructuralFromIdentity(result.identity, result.plan);
-  applyRepeatSemantics(result.identity, result.plan);
-  applyCanonicalTransforms(*archetype,
-                           variationSeed ^ 0x54524E31u,
-                           result.plan);
-  addVariation(*archetype, variationSeed ^ 0x56415232u, result.plan);
+  addVariation(*archetype,
+               variationSeed ^ 0x56415232u,
+               result.plan);
   applyGatePolicies(*archetype, result.plan);
 
   if (!planRespectsProtectedSpace(*archetype, result.plan) ||
       !planRespectsLaneBounds(*archetype, result.plan)) {
     return result;
   }
-  const PhraseOccupancy occupancy = structuralOccupancy(result.plan);
-  if (!hardRelationshipsSatisfied(*archetype, occupancy)) return result;
+  const PhraseOccupancy occupancy =
+      structuralOccupancy(result.plan);
+  if (!hardRelationshipsSatisfied(*archetype, occupancy)) {
+    return result;
+  }
 
   bool sparse = false;
   for (uint8_t bar = 0; bar < result.plan.barCount; ++bar) {
-    uint16_t total = totalStructural(occupancy, bar);
-    const uint8_t missing = legallyMissingCanonicalCount(
-        *archetype, result.plan, bar);
-    const uint8_t effectivePreferred =
-        archetype->density.structuralPreferred > missing
-            ? static_cast<uint8_t>(
-                  archetype->density.structuralPreferred - missing)
-            : 0;
-    if (total < effectivePreferred) sparse = true;
+    if (totalStructural(occupancy, bar) <
+        archetype->density.structuralPreferred) {
+      sparse = true;
+      break;
+    }
   }
 
-  result.status = sparse ? RealizationStatus::ValidButSparse
-                         : RealizationStatus::Ok;
+  result.status = sparse
+                      ? RealizationStatus::ValidButSparse
+                      : RealizationStatus::Ok;
   return result;
 }
 
