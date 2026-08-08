@@ -23,7 +23,8 @@ build_source_and_run() {
   local test_source="$2"
   local output="$3"
   shift 3
-  "${compiler}" -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions \
+  "${compiler}" -std=c++17 -Wall -Wextra -Werror \
+    -Wno-c++20-extensions -Wno-unused-but-set-variable \
     -I"${ROOT_DIR}" \
     "$@" \
     "${test_source}" \
