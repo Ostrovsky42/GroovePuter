@@ -16,9 +16,9 @@
 #include "../ui_input.h"
 
 namespace {
-constexpr int kTabStripX = 4;
 constexpr int kTabStripY = Layout::CONTENT.y + 1;
-constexpr int kTabStripH = 11;
+constexpr int kTabStripH = 14;
+constexpr int kTabStripW = 126;
 
 inline IGfxColor synthTabColor(int voiceIndex) {
   return voiceIndex == 0 ? IGfxColor(0x33C8FF) : IGfxColor(0xFF4FCB);
@@ -74,15 +74,27 @@ void SynthSequencerPage::drawTabIndicator(IGfx& gfx) const {
     case SynthTab::More: label = "NOTES KNOBS [MORE]"; break;
   }
 
-  const int w = gfx.textWidth(label) + 6;
-  gfx.fillRect(kTabStripX, kTabStripY, w, kTabStripH, IGfxColor::Black());
+  const int x = (Layout::SCREEN_W - kTabStripW) / 2;
+  gfx.fillRect(x, kTabStripY, kTabStripW, kTabStripH, IGfxColor::Black());
   gfx.setTextColor(synthTabColor(voice_index_));
-  gfx.drawText(kTabStripX + 3, kTabStripY + 1, label);
+  gfx.drawText(x + (kTabStripW - gfx.textWidth(label)) / 2,
+               kTabStripY + 2,
+               label);
 }
 
 void SynthSequencerPage::draw(IGfx& gfx) {
   MultiPage::draw(gfx);
   drawTabIndicator(gfx);
+
+  if (synth_tab_ == SynthTab::Knobs) {
+    UI::drawStandardFooter(gfx,
+                           "[TAB]MORE [L/R]FOCUS [U/D]VAL",
+                           "HOLD:ACCEL [CTRL]FINE");
+  } else if (synth_tab_ == SynthTab::More) {
+    UI::drawStandardFooter(gfx,
+                           "[TAB]NOTES [U/D]ROW [L/R]CHANGE",
+                           "TYPE OSC FLT DST DLY");
+  }
 }
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
