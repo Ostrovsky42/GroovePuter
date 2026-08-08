@@ -42,8 +42,14 @@ def test_adv_amp_pin_is_not_used_as_rgb_data() -> None:
     )
     led = (ROOT / "src/ui/led_manager.cpp").read_text(encoding="utf-8")
 
-    require("GROOVEPUTER_CARDPUTER_ADV_PA_EN_PIN 21" in profile,
-            "Cardputer ADV PA_EN pin must remain explicit")
+    require("GROOVEPUTER_CARDPUTER_ADV_PA_EN_PIN" not in profile,
+            "Cardputer ADV must not claim a GPIO PA_EN pin")
+    require("struct UnusedPowerAmplifierEnablePin" in profile and
+            "kPowerAmplifierEnablePin{}" in profile,
+            "legacy PA setup call sites must resolve through the typed unused-pin no-op")
+    require("pinMode(UnusedPowerAmplifierEnablePin" in profile and
+            "digitalWrite(UnusedPowerAmplifierEnablePin" in profile,
+            "Cardputer ADV PA compatibility overloads must have no GPIO side effect")
     require("GROOVEPUTER_CARDPUTER_ADV_RGB_LED_PIN (-1)" in profile,
             "RGB output must remain disabled until a distinct ADV pin is verified")
     require("neopixelWrite(21" not in led,
@@ -220,10 +226,10 @@ def test_atlas_recipe_catalog_and_legacy_fallbacks() -> None:
         data = (ROOT / "src/generated" / filename).read_text(encoding="utf-8")
         require(f"kRecipe_{atlas_id}" in index,
                 f"generated Atlas index must publish {name}")
-        require('"P1", "BASE"' in data, f"{name} must include P1")
-        require('"P2", "DEVELOPMENT"' in data, f"{name} must include P2")
-        require('"P3",' in data, f"{name} must include P3")
-        require(f'{{{runtime_id}, "{name}"' in manager,
+        require('\"P1\", \"BASE\"' in data, f"{name} must include P1")
+        require('\"P2\", \"DEVELOPMENT\"' in data, f"{name} must include P2")
+        require('\"P3\",' in data, f"{name} must include P3")
+        require(f'{{{runtime_id}, \"{name}\"' in manager,
                 f"GenreManager must expose {name} as recipe id {runtime_id}")
         require(f"case {runtime_id}: return GrooveboxMode::{groove}" in manager,
                 f"{name} must select {groove} macro mode")
@@ -236,7 +242,7 @@ def test_atlas_recipe_catalog_and_legacy_fallbacks() -> None:
         (5, "Dub Techno"),
     )
     for runtime_id, name in legacy_recipes:
-        require(f'{{{runtime_id}, "{name}"' in manager,
+        require(f'{{{runtime_id}, \"{name}\"' in manager,
                 f"legacy recipe generator was removed: {name}")
 
 
@@ -523,7 +529,7 @@ def test_synth_pitch_and_live_note_contracts() -> None:
             "ChipTuning::quantizeSnToneFrequency" in sn and
             "ChipTuning::snStackRatios" in sn,
             "SN76489 must use the explicit low-register and stack policy")
-    require('"Oct+"' in sn,
+    require('\"Oct+\"' in sn,
             "the upward octave stack must be named explicitly")
 
     require('include "clamped_live_note_identity.h"' in engine_header and
