@@ -675,7 +675,7 @@ void MiniAcidDisplay::drawSplashScreen() {
 
   auto centerText = [&](int y, const char* text, IGfxColor color) {
     if (!text) return;
-    int x = (gfx_.width() - textWidth(gfx, text)) / 2;
+    int x = (gfx_.width() - textWidth(gfx_, text)) / 2;
     if (x < 0) x = 0;
     gfx_.setTextColor(color);
     gfx_.drawText(x, y, text);
