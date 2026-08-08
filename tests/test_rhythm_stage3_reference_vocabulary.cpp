@@ -2,7 +2,6 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdio>
-#include <cstring>
 
 #include "src/generation/rhythm/reference_vocabulary.h"
 #include "src/generation/rhythm/relationship_resolver.h"
@@ -68,7 +67,59 @@ uint64_t grammarFingerprint(const RhythmArchetype& archetype) {
 
 bool identityEqual(const PhraseRhythmIdentity& lhs,
                    const PhraseRhythmIdentity& rhs) {
-  return std::memcmp(&lhs, &rhs, sizeof(PhraseRhythmIdentity)) == 0;
+  if (lhs.archetypeId != rhs.archetypeId ||
+      lhs.phraseBars != rhs.phraseBars ||
+      lhs.trajectoryId != rhs.trajectoryId ||
+      lhs.protectedSpaceCount != rhs.protectedSpaceCount) {
+    return false;
+  }
+  for (uint8_t i = 0; i < lhs.protectedSpaceCount; ++i) {
+    if (lhs.protectedSpaces[i].steps != rhs.protectedSpaces[i].steps ||
+        lhs.protectedSpaces[i].affectedRoles !=
+            rhs.protectedSpaces[i].affectedRoles) {
+      return false;
+    }
+  }
+  for (uint8_t bar = 0; bar < kMaxPhraseBars; ++bar) {
+    for (uint8_t role = 0; role < kRhythmRoleCount; ++role) {
+      if (lhs.structuralCore[bar][role] != rhs.structuralCore[bar][role] ||
+          lhs.canonicalCore[bar][role] != rhs.canonicalCore[bar][role]) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool rolePlanEqual(const RoleRhythmPlan& lhs,
+                   const RoleRhythmPlan& rhs) {
+  return lhs.structural == rhs.structural &&
+         lhs.secondary == rhs.secondary &&
+         lhs.ghosts == rhs.ghosts &&
+         lhs.shortGate == rhs.shortGate &&
+         lhs.heldGate == rhs.heldGate &&
+         lhs.tieGate == rhs.tieGate &&
+         lhs.accents == rhs.accents;
+}
+
+bool planEqual(const RhythmPhrasePlan& lhs,
+               const RhythmPhrasePlan& rhs) {
+  if (lhs.barCount != rhs.barCount ||
+      lhs.trajectoryId != rhs.trajectoryId ||
+      lhs.level != rhs.level ||
+      lhs.intent != rhs.intent) {
+    return false;
+  }
+  for (uint8_t bar = 0; bar < kMaxPhraseBars; ++bar) {
+    if (lhs.bars[bar].function != rhs.bars[bar].function) return false;
+    for (uint8_t role = 0; role < kRhythmRoleCount; ++role) {
+      if (!rolePlanEqual(lhs.bars[bar].roles[role],
+                         rhs.bars[bar].roles[role])) {
+        return false;
+      }
+    }
+  }
+  return true;
 }
 
 uint8_t distinctCount(const std::array<uint64_t, 64>& values) {
@@ -178,8 +229,7 @@ int main() {
 
       const RhythmRealizationResult p3Repeat = realizeRhythmPhrase(request);
       assert(p3Repeat.status == p3.status);
-      assert(std::memcmp(&p3Repeat.plan, &p3.plan,
-                         sizeof(RhythmPhrasePlan)) == 0);
+      assert(planEqual(p3Repeat.plan, p3.plan));
       assert(identityEqual(p3Repeat.identity, p3.identity));
     }
 
