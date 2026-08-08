@@ -31,24 +31,27 @@ enum class UsbMidiStatus : uint8_t {
 };
 
 // Translates normalized GroovePuter events into fixed logical lanes.
-// Direct MONO Synth/DX lanes retain one-note replacement ownership. Generated
-// performance tools and direct manual POLY mode share the bounded per-target
-// note bitsets below, allowing independent external NoteOn/NoteOff ownership
-// without allocating additional live lanes. Live Drums owns seven independent
-// native SEQTRAK lanes (logical 0..6 -> MIDI CH1..7). Pattern Drums retains all
-// eight internal drum voices and maps them onto the seven native SEQTRAK drum
-// tracks; Mid Tom and Rim intentionally share PERC1 / CH6. Repeated Pattern
-// drum NoteOns remain repeated on the wire while activeCount/reference
-// ownership is unwound by the final retrigger-aware gate deadline in
-// MidiDispatchTask. Wire-level channel+note ownership remains reference
-// counted. The SMF player adds a separate polyphonic ownership matrix but
-// shares the same final wire owner counts so player cleanup cannot silence
-// PERFORM or Pattern ownership.
+// Cardputer Synth A/B/DX key events keep exact per-note ownership regardless of
+// MONO/POLY. The external receiver owns voice allocation. For the established
+// SEQTRAK CH8..10 profile, CC26 is sent once when the requested receiver mode
+// changes: 0=MONO, 1=POLY. Generated performance tools request POLY so CHORD
+// output is never collapsed by a receiver left in mono mode. Unsupported CC26
+// is fail-open: notes still play, while generic receivers may require their
+// own mono/poly setting.
+//
+// Live Drums owns seven independent native SEQTRAK lanes (logical 0..6 -> MIDI
+// CH1..7). Pattern Drums retains all eight internal drum voices and maps them
+// onto the seven native SEQTRAK drum tracks. Wire-level channel+note ownership
+// remains reference counted so Pattern/SMF/PERFORM cleanup cannot silence a
+// still-owned shared note.
 class UsbMidiOutput final : public IMusicalEventSink {
 public:
     static constexpr uint8_t kSeqtrakDrumLaneCount = 7;
     static constexpr uint8_t kPatternDrumVoiceCount = 8;
     static constexpr uint8_t kSeqtrakDrumNote = 60;
+    static constexpr uint8_t kSeqtrakMonoPolyController = 26;
+    static constexpr uint8_t kSeqtrakMonoValue = 0;
+    static constexpr uint8_t kSeqtrakPolyValue = 1;
 
     explicit UsbMidiOutput(IUsbMidiTransport& transport,
                            UsbMidiRouteConfig config = {});
@@ -82,9 +85,6 @@ public:
 
     void handleMusicalEvent(const MusicalEvent& event) override;
 
-    // Polyphonic RAW MIDI path used only by MidiDispatchTask. Repeated SMF
-    // NoteOn messages are emitted to preserve retriggers; NoteOff is held until
-    // the final logical owner of that channel+note is gone.
     bool handleSmfNoteOn(uint8_t zeroBasedChannel,
                          uint8_t note,
                          uint8_t velocity);
@@ -92,22 +92,13 @@ public:
                           uint8_t note,
                           uint8_t velocity = 0);
     bool handleSmfSongPositionPointer(uint16_t midiBeats) {
-        // This method is reached only from MidiDispatchTask through the
-        // scheduled SMF lane. It owns no note and therefore must not mutate the
-        // shared Pattern/PERFORM/SMF ownership matrices.
         return enabled_ && begun_ && mounted_ &&
                transport_.sendSongPositionPointer(midiBeats);
     }
     bool releaseAllSmfNotes();
-    // Preserve channels whose exact NoteOff ownership had to be abandoned
-    // after terminal USB backpressure. The next panic/reconnect can then send
-    // CC123 without affecting channels that still have known shared owners.
     void abandonAllSmfNotes();
 
 private:
-    // Intentionally POD with no default member initializers. The global
-    // UsbMidiOutput exists before Arduino setup(), so expanded routing must not
-    // execute a large per-lane constructor during static initialization.
     struct MidiVoiceLane {
         MusicalEventSource source;
         MusicalEventTarget target;
@@ -117,6 +108,12 @@ private:
         uint8_t activeCount;
         bool enabled;
         bool pendingRelease;
+    };
+
+    enum class PerformanceReceiverMode : uint8_t {
+        Unknown = 0,
+        Mono,
+        Poly,
     };
 
     static constexpr std::size_t kLaneCount = 20;
@@ -129,9 +126,13 @@ private:
     static uint8_t clampDataByte(uint8_t value);
     static uint8_t patternDrumChannel(uint8_t logicalVoice);
     static int generatedTargetIndex(MusicalEventTarget target);
+    static bool isSynthPerformanceSource(MusicalEventSource source);
+    static bool sourceRequestsPolyReceiver(MusicalEventSource source);
 
     void configureLanes();
     uint8_t generatedChannel(MusicalEventTarget target) const;
+    void ensurePerformanceReceiverMode(MusicalEventTarget target,
+                                       bool polyphonic);
     bool generatedNoteActive(int targetIndex, uint8_t note) const;
     bool generatedNotePendingRelease(int targetIndex, uint8_t note) const;
     void setGeneratedNoteActive(int targetIndex, uint8_t note, bool active);
@@ -180,6 +181,7 @@ private:
     MidiVoiceLane lanes_[kLaneCount];
     uint8_t generatedActive_[kGeneratedTargetCount][kGeneratedBitsetBytes];
     uint8_t generatedPendingRelease_[kGeneratedTargetCount][kGeneratedBitsetBytes];
+    PerformanceReceiverMode performanceReceiverMode_[kGeneratedTargetCount];
     uint8_t wireOwners_[kMidiChannelCount][kMidiNoteCount];
     uint8_t smfOwners_[kMidiChannelCount][kMidiNoteCount];
     uint16_t abandonedSmfChannels_;
