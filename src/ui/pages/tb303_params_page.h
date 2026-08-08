@@ -14,6 +14,9 @@ class TB303ParamsPage : public IPage, public IMultiHelpFramesProvider {
   const std::string& getTitle() const override;
   void setBoundaries(const Rect& rect) override;
 
+  void showMoreTab(bool more) { setActiveTab(more); }
+  bool showingMoreTab() const { return more_tab_; }
+
   std::unique_ptr<MultiPageHelpDialog> getHelpDialog() override;
   int getHelpFrameCount() const override;
   void drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const override;

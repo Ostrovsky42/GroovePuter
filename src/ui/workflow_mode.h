@@ -15,7 +15,8 @@ enum class WorkflowMode : uint8_t {
 };
 
 // Existing enum values are preserved for persisted UI-session compatibility.
-// Generation and Texture are legacy values and now resolve to FEEL.
+// Generation/Texture resolve to FEEL. Legacy standalone synth SOUND pages now
+// resolve to their owning synth track; sound editing is a local Tab hierarchy.
 enum class Workspace : uint8_t {
     // PERFORM
     Perform = 0,
@@ -31,8 +32,8 @@ enum class Workspace : uint8_t {
     SynthA,
     SynthB,
     Drums,
-    SynthAParameters,
-    SynthBParameters,
+    SynthAParameters, // legacy persisted value -> SYNTH A
+    SynthBParameters, // legacy persisted value -> SYNTH B
 
     // SONG
     Arrange,
@@ -47,8 +48,8 @@ namespace WorkflowPages {
 constexpr int kGenre = 0;
 constexpr int kSynthA = 1;
 constexpr int kSynthB = 2;
-constexpr int kSynthAParameters = 3;
-constexpr int kSynthBParameters = 4;
+constexpr int kSynthAParameters = 3; // legacy persisted page id -> SYNTH A
+constexpr int kSynthBParameters = 4; // legacy persisted page id -> SYNTH B
 constexpr int kDrums = 5;
 constexpr int kArrange = 6;
 constexpr int kPattern = 7;
@@ -61,7 +62,10 @@ constexpr int kPlayer = 13;
 constexpr int kPhrase = 14;
 
 inline int normalizeLegacyPage(int page) {
-    return (page == kTexture || page == kGeneration) ? kFeel : page;
+    if (page == kTexture || page == kGeneration) return kFeel;
+    if (page == kSynthAParameters) return kSynthA;
+    if (page == kSynthBParameters) return kSynthB;
+    return page;
 }
 
 inline bool isPerformWorkflowPage(int page) {
@@ -79,9 +83,7 @@ inline bool isHubWorkflowPage(int page) {
     return page == kPattern ||
            page == kSynthA ||
            page == kSynthB ||
-           page == kDrums ||
-           page == kSynthAParameters ||
-           page == kSynthBParameters;
+           page == kDrums;
 }
 
 inline bool isSettingsWorkflowPage(int page) {
@@ -117,8 +119,6 @@ inline Workspace workspaceForPage(int page) {
         case kSynthA: return Workspace::SynthA;
         case kSynthB: return Workspace::SynthB;
         case kDrums: return Workspace::Drums;
-        case kSynthAParameters: return Workspace::SynthAParameters;
-        case kSynthBParameters: return Workspace::SynthBParameters;
         case kArrange: return Workspace::Arrange;
         case kPhrase: return Workspace::Phrase;
         case kProject: return Workspace::Project;
@@ -136,11 +136,13 @@ inline int pageForWorkspace(Workspace workspace) {
         case Workspace::Generation:
             return kFeel;
         case Workspace::Pattern: return kPattern;
-        case Workspace::SynthA: return kSynthA;
-        case Workspace::SynthB: return kSynthB;
+        case Workspace::SynthA:
+        case Workspace::SynthAParameters:
+            return kSynthA;
+        case Workspace::SynthB:
+        case Workspace::SynthBParameters:
+            return kSynthB;
         case Workspace::Drums: return kDrums;
-        case Workspace::SynthAParameters: return kSynthAParameters;
-        case Workspace::SynthBParameters: return kSynthBParameters;
         case Workspace::Arrange: return kArrange;
         case Workspace::Phrase: return kPhrase;
         case Workspace::Project: return kProject;
@@ -187,8 +189,6 @@ inline const char* pageName(int page) {
         case kSynthA: return "SYNTH A";
         case kSynthB: return "SYNTH B";
         case kDrums: return "DRUMS";
-        case kSynthAParameters: return "SYNTH A SOUND";
-        case kSynthBParameters: return "SYNTH B SOUND";
         case kArrange: return "SONG";
         case kPhrase: return "PHRASE CORE";
         case kProject: return "PROJECT / SETUP";
@@ -200,7 +200,7 @@ inline int pageCountForMode(WorkflowMode mode) {
     switch (mode) {
         case WorkflowMode::Perform: return 2;
         case WorkflowMode::Generate: return 2;
-        case WorkflowMode::Hub: return 6;
+        case WorkflowMode::Hub: return 4;
         case WorkflowMode::Song: return 2;
         case WorkflowMode::Settings: return 1;
     }
@@ -216,7 +216,6 @@ inline int pageAt(WorkflowMode mode, int index) {
     };
     static constexpr int kHubPages[] = {
         kPattern, kSynthA, kSynthB, kDrums,
-        kSynthAParameters, kSynthBParameters,
     };
     static constexpr int kSongPages[] = {
         kArrange, kPhrase,
@@ -288,7 +287,10 @@ inline Workspace nextWorkspace(Workspace workspace, int direction) {
 }
 
 inline bool allowsPerformanceKeyboard(int page) {
-    page = normalizeLegacyPage(page);
-    return page == kPerform || page == kSynthAParameters;
+    // Preserve pre-refactor input ownership: only PERFORM and the legacy
+    // standalone Synth A sound page routed the live performance keyboard.
+    // The new SYNTH A/B track pages must leave their letter keys to the editor.
+    if (page == kSynthAParameters) return true;
+    return normalizeLegacyPage(page) == kPerform;
 }
 }  // namespace WorkflowPages
