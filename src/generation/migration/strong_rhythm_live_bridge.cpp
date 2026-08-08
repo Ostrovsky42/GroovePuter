@@ -14,10 +14,11 @@ StrongRhythmMigrationResult regenerateWithStrongRhythmMigration(
   context.patternAddress = engine.currentDrumPatternIndex();
   context.level = RealizationLevel::P2Variation;
 
-  return migrateStrongRhythmDrums(
+  return migrateStrongRhythmMaterial(
       engine.sceneManager().currentScene().genre,
       context,
-      engine.sceneManager().editCurrentDrumPattern());
+      engine.sceneManager().editCurrentDrumPattern(),
+      engine.sceneManager().editCurrentSynthPattern(1));
 }
 
 }  // namespace GroovePuterRhythm
