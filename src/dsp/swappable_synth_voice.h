@@ -107,7 +107,7 @@ private:
     SynthParameterControlSnapshot controlShadow_{};
     GroovePuterAudio::AudioControlSnapshotBuffer<SynthParameterControlSnapshot>
         controlSnapshots_{};
-    uint32_t appliedControlRevision_{0};
+    std::atomic<uint32_t> appliedControlRevision_{0};
     bool audioBoundaryRegistered_{false};
 
     // forward mode/lofi to engines
