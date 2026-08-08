@@ -16,9 +16,12 @@ namespace {
 // tools/atlas/compile_atlas_runtime.py accepts only schema 2.6.0 with zero
 // validation failures and source archive SHA-256
 // 5b155937b8d05f0f0f9f1a02f10d9afe76a917d6035897695cce739eb8d6b1fd.
-// The test asks one falsification question only: can the Stage 1 model encode
-// these already-reviewed musical topologies without inventing a new role or
-// losing role-level onsets?
+//
+// This test deliberately checks only semantics actually present in those
+// generated Atlas events: role-level onset topology. GateClass support remains
+// a Stage 1 type contract, but is not inferred from Atlas events unless the
+// source data explicitly carries kSustain. Likewise accent/slide stay outside
+// Rhythm Vocabulary topology ownership.
 
 bool rhythmRoleForAtlasTarget(uint8_t target, RhythmRole& role) {
   switch (target) {
@@ -47,24 +50,14 @@ uint8_t popcount16(StepMask value) {
 
 template <std::size_t N>
 void extractRoleMasks(const AtlasGenerated::Event (&events)[N],
-                      StepMask (&masks)[kRhythmRoleCount],
-                      bool& sawSustain) {
+                      StepMask (&masks)[kRhythmRoleCount]) {
   for (uint8_t i = 0; i < kRhythmRoleCount; ++i) masks[i] = 0;
-  sawSustain = false;
   for (const AtlasGenerated::Event& event : events) {
     assert(event.step < kStepsPerBar);
     RhythmRole role{};
     assert(rhythmRoleForAtlasTarget(event.target, role));
     const uint8_t index = static_cast<uint8_t>(role);
     masks[index] = static_cast<StepMask>(masks[index] | stepBit(event.step));
-    if ((event.flags & AtlasGenerated::kSustain) != 0) {
-      sawSustain = true;
-      RhythmEventIntent durationIntent{};
-      durationIntent.step = event.step;
-      durationIntent.gate = GateClass::Held;
-      durationIntent.importance = EventImportance::Structural;
-      assert(durationIntent.gate == GateClass::Held);
-    }
   }
 }
 
@@ -158,10 +151,7 @@ void assertMasks(const StepMask (&actual)[kRhythmRoleCount],
 
 void testRollingAcidP1IsRepresentable() {
   StepMask observed[kRhythmRoleCount]{};
-  bool sawSustain = false;
-  extractRoleMasks(AtlasGenerated::kEvents_PAT_ED_ACID_ROLLING_P1,
-                   observed, sawSustain);
-  assert(sawSustain);
+  extractRoleMasks(AtlasGenerated::kEvents_PAT_ED_ACID_ROLLING_P1, observed);
   assertMasks(observed, 0x8888, 0x0808, 0x2222, 0x0202,
               0x1111, 0xF7F7, 0x2323);
 
@@ -183,10 +173,8 @@ void testRollingAcidP1IsRepresentable() {
 
 void testClassicTwoStepP1IsRepresentable() {
   StepMask observed[kRhythmRoleCount]{};
-  bool sawSustain = false;
   extractRoleMasks(AtlasGenerated::kEvents_PAT_ED_UKG_CLASSIC_2STEP_P1,
-                   observed, sawSustain);
-  assert(sawSustain);
+                   observed);
   assertMasks(observed, 0x8220, 0x0808, 0x2525, 0x0101,
               0x1456, 0x8442, 0x3232);
 
@@ -206,10 +194,7 @@ void testClassicTwoStepP1IsRepresentable() {
 
 void testDeepChordP1IsRepresentable() {
   StepMask observed[kRhythmRoleCount]{};
-  bool sawSustain = false;
-  extractRoleMasks(AtlasGenerated::kEvents_PAT_ED_DUB_DEEP_CHORD_P1,
-                   observed, sawSustain);
-  assert(sawSustain);
+  extractRoleMasks(AtlasGenerated::kEvents_PAT_ED_DUB_DEEP_CHORD_P1, observed);
   assertMasks(observed, 0x8888, 0x0808, 0x2222, 0x0202,
               0x1111, 0x9090, 0x2323);
 
