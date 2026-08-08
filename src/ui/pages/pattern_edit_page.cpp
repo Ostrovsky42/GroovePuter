@@ -119,17 +119,24 @@ bool PatternEditPage::handleNoteEntryKey(char key) {
     }
   }
 
-  if (!continuation) {
+  const int cursorStep = activePatternStep();
+  int writeStep = cursorStep;
+
+  if (continuation) {
+    if (last_entered_step_ < 0 || last_entered_step_ >= SEQ_STEPS - 1) {
+      last_note_key_ms_ = now;
+      return true;
+    }
+    writeStep = last_entered_step_ + 1;
+  } else {
     note_hold_active_ = false;
   }
 
-  const int step = activePatternStep();
-  writeNoteEntryStep(step, note, continuation);
+  writeNoteEntryStep(writeStep, note, continuation);
   last_note_key_ = lower;
   last_entered_note_ = note;
-  last_entered_step_ = step;
+  last_entered_step_ = writeStep;
   last_note_key_ms_ = now;
-  advanceNoteEntryCursor();
   return true;
 }
 
@@ -167,6 +174,12 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       return true;
     }
 
+    if (key == '\n' || key == '\r') {
+      advanceNoteEntryCursor();
+      resetNoteHoldTracking();
+      return true;
+    }
+
     if (key == ';' || key == ':') {
       if (last_entered_note_ >= 0) {
         const int step = activePatternStep();
@@ -175,7 +188,6 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
         last_note_key_ = 0;
         last_note_key_ms_ = millis();
         note_hold_active_ = false;
-        advanceNoteEntryCursor();
         return true;
       }
       UI::showToast("NO LAST NOTE", 700);
@@ -185,7 +197,8 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     if (handleNoteEntryKey(key)) return true;
 
     // Any other local command ends hold inference so a later press cannot be
-    // mistaken for a held-key repeat.
+    // mistaken for a held-key repeat. The last entered pitch is intentionally
+    // retained so ';' can still recall it after navigation.
     resetNoteHoldTracking();
   }
 
