@@ -243,84 +243,74 @@ uint8_t coincidenceCount(const LaneRelationship& relation,
   return count;
 }
 
-struct RespondCoordinate {
-  uint8_t bar = 0;
-  uint8_t step = 0;
-  uint8_t absolute = 0;
-};
-
-uint8_t collectRespondCoordinates(const PhraseOccupancy& occupancy,
-                                  RhythmRole role,
-                                  const LaneRelationship& relation,
-                                  RespondCoordinate* out,
-                                  uint8_t capacity) {
-  uint8_t count = 0;
-  for (uint8_t bar = 0; bar < occupancy.barCount; ++bar) {
-    const StepMask mask =
-        occupancy.roleMasks[bar][static_cast<uint8_t>(role)];
-    for (uint8_t step = 0; step < kStepsPerBar; ++step) {
-      if (!(mask & stepBit(step)) ||
-          !(relation.zoneMask & stepBit(step))) {
-        continue;
-      }
-      if (count >= capacity) return count;
-      out[count].bar = bar;
-      out[count].step = step;
-      out[count].absolute = static_cast<uint8_t>(bar * kStepsPerBar + step);
-      ++count;
-    }
-  }
-  return count;
-}
-
 uint16_t respondDeficit(const LaneRelationship& relation,
                         const PhraseOccupancy& occupancy) {
-  RespondCoordinate sources[kMaxPhraseBars * kStepsPerBar]{};
-  RespondCoordinate targets[kMaxPhraseBars * kStepsPerBar]{};
-  uint8_t responseCount[kMaxPhraseBars * kStepsPerBar]{};
-  const uint8_t capacity =
-      static_cast<uint8_t>(kMaxPhraseBars * kStepsPerBar);
-  const uint8_t sourceCount = collectRespondCoordinates(
-      occupancy, relation.source, relation, sources, capacity);
-  const uint8_t targetCount = collectRespondCoordinates(
-      occupancy, relation.target, relation, targets, capacity);
+  constexpr uint8_t kCoordinateCount = kMaxPhraseBars * kStepsPerBar;
+  uint8_t responseCount[kCoordinateCount]{};
 
-  for (uint8_t targetIndex = 0; targetIndex < targetCount; ++targetIndex) {
-    int bestSource = -1;
-    int bestDistance = 0x7FFF;
-    for (uint8_t sourceIndex = 0; sourceIndex < sourceCount; ++sourceIndex) {
-      if (!relationCoordinateAllowed(
-              relation,
-              sources[sourceIndex].bar,
-              sources[sourceIndex].step,
-              targets[targetIndex].bar,
-              targets[targetIndex].step)) {
+  // Assign every target to exactly one source using the same deterministic
+  // nearest-source / earlier-coordinate tie break as RelationshipResolver,
+  // but index by absolute phrase coordinate instead of storing coordinate
+  // tables on the stack.
+  for (uint8_t targetBar = 0; targetBar < occupancy.barCount; ++targetBar) {
+    const StepMask targetMask = occupancy.roleMasks[
+        targetBar][static_cast<uint8_t>(relation.target)];
+    for (uint8_t targetStep = 0; targetStep < kStepsPerBar; ++targetStep) {
+      if (!(targetMask & stepBit(targetStep)) ||
+          !(relation.zoneMask & stepBit(targetStep))) {
         continue;
       }
-      const int distance =
-          static_cast<int>(targets[targetIndex].absolute) -
-          static_cast<int>(sources[sourceIndex].absolute);
-      const int absoluteDistance = distance < 0 ? -distance : distance;
-      if (absoluteDistance < bestDistance) {
-        bestDistance = absoluteDistance;
-        bestSource = sourceIndex;
+
+      int bestSourceAbsolute = -1;
+      int bestDistance = 0x7FFF;
+      const int targetAbsolute = targetBar * kStepsPerBar + targetStep;
+      for (uint8_t sourceBar = 0; sourceBar < occupancy.barCount; ++sourceBar) {
+        const StepMask sourceMask = occupancy.roleMasks[
+            sourceBar][static_cast<uint8_t>(relation.source)];
+        for (uint8_t sourceStep = 0; sourceStep < kStepsPerBar; ++sourceStep) {
+          if (!(sourceMask & stepBit(sourceStep)) ||
+              !relationCoordinateAllowed(relation, sourceBar, sourceStep,
+                                         targetBar, targetStep)) {
+            continue;
+          }
+          const int sourceAbsolute = sourceBar * kStepsPerBar + sourceStep;
+          const int delta = targetAbsolute - sourceAbsolute;
+          const int distance = delta < 0 ? -delta : delta;
+          // Scanning bar/step in ascending order preserves the normative
+          // earlier-coordinate winner when distances tie.
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            bestSourceAbsolute = sourceAbsolute;
+          }
+        }
+      }
+      if (bestSourceAbsolute >= 0) {
+        ++responseCount[static_cast<uint8_t>(bestSourceAbsolute)];
       }
     }
-    if (bestSource >= 0) ++responseCount[bestSource];
   }
 
   uint16_t deficit = 0;
-  for (uint8_t sourceIndex = 0; sourceIndex < sourceCount; ++sourceIndex) {
-    if (responseCount[sourceIndex] < relation.minResponsesPerWindow) {
-      deficit = static_cast<uint16_t>(
-          deficit + relation.minResponsesPerWindow -
-          responseCount[sourceIndex]);
-    }
-    if (relation.maxResponsesPerWindow &&
-        responseCount[sourceIndex] > relation.maxResponsesPerWindow) {
-      deficit = static_cast<uint16_t>(
-          deficit + responseCount[sourceIndex] -
-          relation.maxResponsesPerWindow);
+  for (uint8_t sourceBar = 0; sourceBar < occupancy.barCount; ++sourceBar) {
+    const StepMask sourceMask = occupancy.roleMasks[
+        sourceBar][static_cast<uint8_t>(relation.source)];
+    for (uint8_t sourceStep = 0; sourceStep < kStepsPerBar; ++sourceStep) {
+      if (!(sourceMask & stepBit(sourceStep)) ||
+          !(relation.zoneMask & stepBit(sourceStep))) {
+        continue;
+      }
+      const uint8_t absolute = static_cast<uint8_t>(
+          sourceBar * kStepsPerBar + sourceStep);
+      const uint8_t responses = responseCount[absolute];
+      if (responses < relation.minResponsesPerWindow) {
+        deficit = static_cast<uint16_t>(
+            deficit + relation.minResponsesPerWindow - responses);
+      }
+      if (relation.maxResponsesPerWindow &&
+          responses > relation.maxResponsesPerWindow) {
+        deficit = static_cast<uint16_t>(
+            deficit + responses - relation.maxResponsesPerWindow);
+      }
     }
   }
   return deficit;
