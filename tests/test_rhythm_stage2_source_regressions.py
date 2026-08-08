@@ -31,8 +31,8 @@ for production in (mode_manager, miniacid):
     assert "RelationshipResolver" not in production
 
 # No heap-owning or unbounded standard containers in the embedded realization
-# path. Strip comments before checking the C++ new-expression so prose such as
-# "new shared coordinate" cannot create a false positive.
+# path. Strip comments before checking the C++ new-expression so prose cannot
+# create a false positive.
 for source in (realizer_h, realizer_cpp, resolver_h, resolver_cpp, context_h, context_cpp):
     code = without_comments(source)
     assert "std::vector" not in code
@@ -46,7 +46,6 @@ assert "sizeof(RhythmPhrasePlan) <= 640" in realizer_h
 assert "kMaxPhraseBars" in realizer_cpp
 assert "kStepsPerBar" in realizer_cpp
 assert "GenerationDomain::RhythmIdentity" in realizer_cpp
-assert "GenerationDomain::BarEvolution" in realizer_cpp
 assert "deriveVariationSeed" in realizer_cpp
 assert "hardRelationshipsSatisfied" in realizer_cpp
 assert "planRespectsProtectedSpace" in realizer_cpp
@@ -55,8 +54,25 @@ assert "applyGatePolicies" in realizer_cpp
 assert "lane.heldGate" in realizer_cpp
 assert "lane.tieGate" in realizer_cpp
 
+# Stage 6 owns BarEvolution. Stage 2 may carry forward-compatible output fields
+# but must never select/apply a trajectory, BarFunction transformation, or
+# explicit TransformationIntent.
+assert "pinnedTrajectoryId" not in realizer_h
+assert "TransformationIntent intent" not in realizer_h
+assert "GenerationDomain::BarEvolution" not in realizer_cpp
+assert "chooseTrajectory" not in realizer_cpp
+assert "trajectorySupportsIntent" not in realizer_cpp
+assert "applyRepeatSemantics" not in realizer_cpp
+assert "applyCanonicalTransforms" not in realizer_cpp
+assert "BarFunction::Repeat" not in realizer_cpp
+assert "BarFunction::Break" not in realizer_cpp
+assert "BarFunction::Turnaround" not in realizer_cpp
+assert "result.plan.trajectoryId = kNoTrajectoryId" in realizer_cpp
+assert "result.plan.intent = TransformationIntent::Auto" in realizer_cpp
+assert "result.plan.bars[bar].function = BarFunction::Statement" in realizer_cpp
+
 # Identity derivation must not include RealizationLevel before the separate
-# variation-domain derivation.
+# P1/P2/P3 variation-domain derivation.
 identity_function = context_cpp.split("uint32_t deriveGenerationSeed", 1)[1].split(
     "uint32_t deriveVariationSeed", 1
 )[0]
