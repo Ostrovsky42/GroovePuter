@@ -13,6 +13,12 @@ namespace GroovePuterMidi {
 constexpr std::size_t kSmfTrackOutputRouteCapacity = 32u;
 constexpr uint8_t kSmfSeqtrakOutputChannelCount = 10u;
 constexpr int8_t kSmfTrackOutputRouteAuto = -1;
+// Four bits travel with each scheduled SMF event. 0..14 are usable route
+// revisions; 15 is a short-lived mutation barrier and is never a valid event
+// revision. With the current <=740 ms lookahead this gives enough distinct
+// revisions for held-arrow route changes without inflating the realtime queue.
+constexpr uint8_t kSmfTrackOutputRouteRevisionBarrier = 0x0Fu;
+constexpr uint8_t kSmfTrackOutputRouteRevisionCount = 15u;
 
 struct SmfTrackOutputRouteSnapshot {
     uint32_t generation{0};
@@ -92,28 +98,69 @@ public:
             return false;
         }
 
-        const uint8_t encoded = encode(destinationChannel);
         const std::size_t wordIndex = trackIndex / 4u;
         const uint8_t byteIndex = static_cast<uint8_t>(trackIndex % 4u);
         const uint32_t shift = static_cast<uint32_t>(byteIndex) * 8u;
         const uint32_t mask = uint32_t{0xFFu} << shift;
+        const uint32_t releaseBit = uint32_t{1} << trackIndex;
 
         uint32_t current =
             packedRoutes_[wordIndex].load(std::memory_order_acquire);
         while (true) {
             const uint8_t previous = static_cast<uint8_t>(
                 (current >> shift) & 0xFFu);
-            if (previous == encoded) return true;
-            const uint32_t next =
-                (current & ~mask) | (static_cast<uint32_t>(encoded) << shift);
-            if (packedRoutes_[wordIndex].compare_exchange_weak(
+            const uint8_t previousRevision = revisionTag(previous);
+            if (previousRevision == kSmfTrackOutputRouteRevisionBarrier) {
+                current = packedRoutes_[wordIndex].load(std::memory_order_acquire);
+                continue;
+            }
+            if (decode(previous) == destinationChannel) return true;
+
+            // Publish a barrier before the route changes. A producer that read
+            // the old route keeps the old revision in its one-event stamp; a
+            // producer that lands inside this tiny window gets revision 15 and
+            // the dispatcher rejects that event. No old physical destination
+            // can therefore be mislabeled as the new route.
+            const uint8_t barrierEncoded = encodeWithRevision(
+                decode(previous), kSmfTrackOutputRouteRevisionBarrier);
+            const uint32_t barrierWord =
+                (current & ~mask) |
+                (static_cast<uint32_t>(barrierEncoded) << shift);
+            if (!packedRoutes_[wordIndex].compare_exchange_weak(
                     current,
-                    next,
+                    barrierWord,
                     std::memory_order_acq_rel,
                     std::memory_order_acquire)) {
-                revision_.fetch_add(1u, std::memory_order_acq_rel);
-                return true;
+                continue;
             }
+
+            // Request scoped cleanup on both sides of the final publication.
+            // The duplicate bit is intentional: if the dispatcher consumes the
+            // first request while the barrier is visible, the post-publication
+            // request guarantees one final release pass for the selected track.
+            pendingReleaseMask_.fetch_or(releaseBit, std::memory_order_acq_rel);
+
+            const uint8_t nextRevision = nextRevisionTag(previousRevision);
+            const uint8_t finalEncoded =
+                encodeWithRevision(destinationChannel, nextRevision);
+            uint32_t finalCurrent =
+                packedRoutes_[wordIndex].load(std::memory_order_acquire);
+            while (true) {
+                const uint32_t finalWord =
+                    (finalCurrent & ~mask) |
+                    (static_cast<uint32_t>(finalEncoded) << shift);
+                if (packedRoutes_[wordIndex].compare_exchange_weak(
+                        finalCurrent,
+                        finalWord,
+                        std::memory_order_acq_rel,
+                        std::memory_order_acquire)) {
+                    break;
+                }
+            }
+
+            pendingReleaseMask_.fetch_or(releaseBit, std::memory_order_acq_rel);
+            revision_.fetch_add(1u, std::memory_order_acq_rel);
+            return true;
         }
     }
 
@@ -137,7 +184,8 @@ public:
             }
             const std::size_t word = track / 4u;
             const uint32_t shift = static_cast<uint32_t>(track % 4u) * 8u;
-            packed[word] |= static_cast<uint32_t>(encode(destination)) << shift;
+            packed[word] |= static_cast<uint32_t>(
+                encodeWithRevision(destination, 0u)) << shift;
         }
 
         SmfSessionMutationGuard guard(generation);
@@ -149,20 +197,60 @@ public:
             packedRoutes_[word].store(packed[word], std::memory_order_release);
         }
         trackCount_.store(trackCount, std::memory_order_release);
+        pendingReleaseMask_.store(0u, std::memory_order_release);
+        producerRouteStamp_.store(kInvalidProducerRouteStamp,
+                                  std::memory_order_release);
         revision_.fetch_add(1u, std::memory_order_acq_rel);
         return true;
     }
 
     int8_t destinationFor(uint16_t trackIndex, uint16_t trackCountHint) {
+        uint8_t encoded = 0u;
+        if (!readEncodedRoute(trackIndex, trackCountHint, encoded)) {
+            return kSmfTrackOutputRouteAuto;
+        }
+        return decode(encoded);
+    }
+
+    // SmfPlayerTask is the only producer of scheduled SMF notes. Capture the
+    // route revision in the same atomic byte as the destination and remember it
+    // for exactly the next queued note event. This closes the cross-core race
+    // where the UI could change a route between destination lookup and enqueue.
+    int8_t destinationForProducer(uint16_t trackIndex,
+                                  uint16_t trackCountHint) {
+        uint8_t encoded = 0u;
+        const bool available = readEncodedRoute(
+            trackIndex, trackCountHint, encoded);
+        const uint8_t tag = available ? revisionTag(encoded) : 0u;
+        producerRouteStamp_.store(
+            makeProducerRouteStamp(trackIndex, tag),
+            std::memory_order_release);
+        return available ? decode(encoded) : kSmfTrackOutputRouteAuto;
+    }
+
+    uint8_t consumeProducerRevisionTag(uint8_t trackIndex) {
+        const uint32_t stamp = producerRouteStamp_.exchange(
+            kInvalidProducerRouteStamp, std::memory_order_acq_rel);
+        if (stamp != kInvalidProducerRouteStamp &&
+            producerRouteStampTrack(stamp) == trackIndex) {
+            return producerRouteStampRevision(stamp);
+        }
+        return revisionTagForRealtime(trackIndex);
+    }
+
+    // Dispatcher-side read: bounded, allocation-free and non-mutating. Missing
+    // routes (including physical SMF tracks beyond the 32 override slots) use
+    // the default revision zero and AUTO routing.
+    uint8_t revisionTagForRealtime(uint16_t trackIndex) const {
         const uint32_t generation = smfSessionGeneration();
         if (generation == 0u ||
-            !ensureSession(generation, trackCountHint)) {
-            return kSmfTrackOutputRouteAuto;
+            boundGeneration_.load(std::memory_order_acquire) != generation) {
+            return 0u;
         }
         const uint16_t count = trackCount_.load(std::memory_order_acquire);
         if (trackIndex >= count ||
             trackIndex >= kSmfTrackOutputRouteCapacity) {
-            return kSmfTrackOutputRouteAuto;
+            return 0u;
         }
         const std::size_t wordIndex = trackIndex / 4u;
         const uint8_t byteIndex = static_cast<uint8_t>(trackIndex % 4u);
@@ -170,13 +258,33 @@ public:
             packedRoutes_[wordIndex].load(std::memory_order_acquire);
         const uint8_t encoded = static_cast<uint8_t>(
             (word >> (static_cast<uint32_t>(byteIndex) * 8u)) & 0xFFu);
-        return decode(encoded);
+        return revisionTag(encoded);
+    }
+
+    bool takePendingReleaseTrack(uint8_t& trackIndex) {
+        uint32_t pending = pendingReleaseMask_.load(std::memory_order_acquire);
+        while (pending != 0u) {
+            const uint32_t bit = pending & (~pending + 1u);
+            const uint32_t next = pending & ~bit;
+            if (pendingReleaseMask_.compare_exchange_weak(
+                    pending,
+                    next,
+                    std::memory_order_acq_rel,
+                    std::memory_order_acquire)) {
+                trackIndex = trailingZeroes(bit);
+                return true;
+            }
+        }
+        return false;
     }
 
 private:
     static constexpr std::size_t kPackedRouteWords =
         kSmfTrackOutputRouteCapacity / 4u;
     static constexpr uint32_t kInitializingGeneration = 0xFFFFFFFFu;
+    static constexpr uint32_t kInvalidProducerRouteStamp = 0xFFFFFFFFu;
+    static constexpr uint8_t kDestinationMask = 0x0Fu;
+    static constexpr uint8_t kRevisionShift = 4u;
 
     static SmfTrackOutputRouteSnapshot emptySnapshot() {
         SmfTrackOutputRouteSnapshot result{};
@@ -213,6 +321,9 @@ private:
                 word.store(0u, std::memory_order_relaxed);
             }
             trackCount_.store(boundedHint, std::memory_order_relaxed);
+            pendingReleaseMask_.store(0u, std::memory_order_relaxed);
+            producerRouteStamp_.store(kInvalidProducerRouteStamp,
+                                      std::memory_order_relaxed);
             revision_.fetch_add(1u, std::memory_order_relaxed);
             boundGeneration_.store(generation, std::memory_order_release);
             return true;
@@ -230,6 +341,30 @@ private:
         }
     }
 
+    bool readEncodedRoute(uint16_t trackIndex,
+                          uint16_t trackCountHint,
+                          uint8_t& encoded) {
+        const uint32_t generation = smfSessionGeneration();
+        if (generation == 0u ||
+            !ensureSession(generation, trackCountHint)) {
+            encoded = 0u;
+            return false;
+        }
+        const uint16_t count = trackCount_.load(std::memory_order_acquire);
+        if (trackIndex >= count ||
+            trackIndex >= kSmfTrackOutputRouteCapacity) {
+            encoded = 0u;
+            return false;
+        }
+        const std::size_t wordIndex = trackIndex / 4u;
+        const uint8_t byteIndex = static_cast<uint8_t>(trackIndex % 4u);
+        const uint32_t word =
+            packedRoutes_[wordIndex].load(std::memory_order_acquire);
+        encoded = static_cast<uint8_t>(
+            (word >> (static_cast<uint32_t>(byteIndex) * 8u)) & 0xFFu);
+        return true;
+    }
+
     static constexpr uint8_t encode(int8_t destinationChannel) {
         return destinationChannel == kSmfTrackOutputRouteAuto
             ? 0u
@@ -237,15 +372,58 @@ private:
     }
 
     static constexpr int8_t decode(uint8_t encoded) {
-        return encoded == 0u
+        const uint8_t destination = encoded & kDestinationMask;
+        return destination == 0u
             ? kSmfTrackOutputRouteAuto
-            : static_cast<int8_t>(encoded - 1u);
+            : static_cast<int8_t>(destination - 1u);
+    }
+
+    static constexpr uint8_t revisionTag(uint8_t encoded) {
+        return static_cast<uint8_t>(encoded >> kRevisionShift);
+    }
+
+    static constexpr uint8_t encodeWithRevision(int8_t destinationChannel,
+                                                uint8_t revision) {
+        return static_cast<uint8_t>(
+            ((revision & 0x0Fu) << kRevisionShift) |
+            (encode(destinationChannel) & kDestinationMask));
+    }
+
+    static constexpr uint8_t nextRevisionTag(uint8_t current) {
+        return current + 1u >= kSmfTrackOutputRouteRevisionCount
+            ? 0u
+            : static_cast<uint8_t>(current + 1u);
+    }
+
+    static constexpr uint32_t makeProducerRouteStamp(uint16_t trackIndex,
+                                                     uint8_t revision) {
+        return (static_cast<uint32_t>(trackIndex & 0xFFu) << 8u) |
+               static_cast<uint32_t>(revision & 0x0Fu);
+    }
+
+    static constexpr uint8_t producerRouteStampTrack(uint32_t stamp) {
+        return static_cast<uint8_t>((stamp >> 8u) & 0xFFu);
+    }
+
+    static constexpr uint8_t producerRouteStampRevision(uint32_t stamp) {
+        return static_cast<uint8_t>(stamp & 0x0Fu);
+    }
+
+    static uint8_t trailingZeroes(uint32_t value) {
+        uint8_t count = 0u;
+        while ((value & 1u) == 0u) {
+            value >>= 1u;
+            ++count;
+        }
+        return count;
     }
 
     std::atomic<uint32_t> packedRoutes_[kPackedRouteWords]{};
     std::atomic<uint32_t> revision_{0u};
     std::atomic<uint32_t> boundGeneration_{0u};
     std::atomic<uint16_t> trackCount_{0u};
+    std::atomic<uint32_t> pendingReleaseMask_{0u};
+    std::atomic<uint32_t> producerRouteStamp_{kInvalidProducerRouteStamp};
 };
 
 static_assert(kSmfTrackOutputRouteCapacity % 4u == 0u,
