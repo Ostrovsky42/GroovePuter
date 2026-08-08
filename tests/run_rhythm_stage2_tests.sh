@@ -28,15 +28,26 @@ run_suite() {
   local suffix="$1"
   local compiler="$2"
   shift 2
+
   build_and_run "${compiler}" \
     "${ROOT_DIR}/tests/test_rhythm_stage2.cpp" \
     "${BUILD_DIR}/test_rhythm_stage2_${suffix}" "$@"
+
   build_and_run "${compiler}" \
     "${ROOT_DIR}/tests/test_rhythm_stage2_adversarial.cpp" \
     "${BUILD_DIR}/test_rhythm_stage2_adversarial_${suffix}" "$@"
+
   build_and_run "${compiler}" \
     "${ROOT_DIR}/tests/test_rhythm_stage2_adversarial_relationships.cpp" \
     "${BUILD_DIR}/test_rhythm_stage2_adversarial_relationships_${suffix}" "$@"
+
+  build_and_run "${compiler}" \
+    "${ROOT_DIR}/tests/test_rhythm_stage2_adversarial_respond.cpp" \
+    "${BUILD_DIR}/test_rhythm_stage2_adversarial_respond_${suffix}" "$@"
+
+  build_and_run "${compiler}" \
+    "${ROOT_DIR}/tests/test_rhythm_stage2_atlas_realization.cpp" \
+    "${BUILD_DIR}/test_rhythm_stage2_atlas_realization_${suffix}" "$@"
 }
 
 run_suite gcc "${CXX:-g++}"
@@ -48,4 +59,4 @@ fi
 run_suite sanitize "${CXX:-g++}" \
   -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined
 
-printf 'Groove Vocabulary Stage 2 host matrix: OK\n'
+printf 'Groove Vocabulary Stage 2 full host matrix: OK\n'
