@@ -415,8 +415,9 @@ bool repairOffset(const RhythmArchetype& archetype,
         continue;
       }
 
-      int bestAbsolute = -1;
+      bool foundSource = false;
       uint32_t bestRank = 0;
+      PhraseOccupancy bestOccupancy{};
       const int targetAbsolute =
           targetBar * kStepsPerBar + targetStep;
       for (int offset = relation.minOffset;
@@ -433,21 +434,26 @@ bool repairOffset(const RhythmArchetype& archetype,
             !isOnsetLegal(archetype, *sourceLane, sourceStep)) {
           continue;
         }
+
+        PhraseOccupancy trial = occupancy;
+        if (!addStructuralCandidate(archetype, *sourceLane, trial,
+                                    sourceBar, sourceStep)) {
+          continue;
+        }
         const uint32_t rank = deterministicValue(
             seed, candidateCoordinate(sourceBar,
                                       relation.source, sourceStep));
-        if (bestAbsolute < 0 || rank > bestRank) {
-          bestAbsolute = sourceAbsolute;
+        if (!foundSource || rank > bestRank) {
+          foundSource = true;
           bestRank = rank;
+          bestOccupancy = trial;
         }
       }
 
       bool repaired = false;
-      if (bestAbsolute >= 0) {
-        repaired = addStructuralCandidate(
-            archetype, *sourceLane, occupancy,
-            static_cast<uint8_t>(bestAbsolute / kStepsPerBar),
-            static_cast<uint8_t>(bestAbsolute % kStepsPerBar));
+      if (foundSource) {
+        occupancy = bestOccupancy;
+        repaired = true;
       }
       if (!repaired) {
         repaired = dropIdentityEvent(archetype, relation.target,
