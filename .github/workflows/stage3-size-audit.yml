@@ -1,0 +1,47 @@
+name: Stage 3 size audit
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  size-audit:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [normal, midi-only]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Build profile
+        run: |
+          if [[ "${{ matrix.profile }}" == "normal" ]]; then
+            bash scripts/build.sh --warnings all
+          else
+            bash scripts/build_seqtrak_midi_only.sh --warnings all
+          fi
+
+      - name: Report exact size
+        run: |
+          if [[ "${{ matrix.profile }}" == "normal" ]]; then
+            BUILD_PATH="build/cardputer-adv-current"
+          else
+            BUILD_PATH="build/cardputer-adv-seqtrak-midi-only"
+          fi
+          ELF="${BUILD_PATH}/GroovePuter.ino.elf"
+          BIN="${BUILD_PATH}/GroovePuter.ino.bin"
+          echo "PROFILE=${{ matrix.profile }}"
+          size "${ELF}"
+          bash scripts/check_cardputer_dram_budget.sh "${ELF}"
+          stat -c 'BIN_BYTES=%s' "${BIN}"
