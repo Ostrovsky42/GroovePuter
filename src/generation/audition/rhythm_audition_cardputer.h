@@ -24,16 +24,27 @@ inline void showCardputerStatus(const Session& session) {
 
 inline bool handleCardputerAuditionEvent(const UIEvent& evt,
                                          MiniAcid& engine) {
-  if (!evt.alt) return false;
-
   Session& session = cardputerSession();
   const char key = evt.key;
 
   // Existing pages already use Alt+A for accent. Audition therefore arms only
   // on the otherwise-unused Ctrl+Alt+A chord. While inactive, every ordinary
-  // Alt shortcut falls through untouched to the existing UI routing.
-  const bool toggleChord = evt.ctrl && (key == 'a' || key == 'A');
+  // shortcut falls through untouched to the existing UI routing.
+  const bool toggleChord =
+      evt.alt && evt.ctrl && (key == 'a' || key == 'A');
   if (!session.active() && !toggleChord) return false;
+
+  // Keep the emergency project panic reachable while the modal audition is
+  // active. Space also falls through so the existing transport owner remains
+  // authoritative. Every other normal command is consumed by audition mode,
+  // preventing navigation to Save/project mutation while temporary patterns
+  // are installed.
+  const bool panicChord =
+      evt.alt && evt.ctrl && (key == '\b' || key == static_cast<char>(127));
+  if (session.active() && panicChord) return false;
+  if (session.active() && !evt.alt) {
+    return key != ' ';
+  }
 
   SceneManager& scenes = engine.sceneManager();
   DrumPatternSet& drums = scenes.editCurrentDrumPattern();
@@ -61,9 +72,8 @@ inline bool handleCardputerAuditionEvent(const UIEvent& evt,
     return true;
   }
 
-  // Once explicitly armed, audition owns this small Alt command set until the
-  // user exits with Ctrl+Alt+A. This makes the test deterministic without
-  // permanently changing the normal global key map.
+  // Once explicitly armed, audition owns this Alt command set until the user
+  // exits with Ctrl+Alt+A.
   bool handled = false;
   bool ok = false;
   if (key >= '1' && key <= '5') {
@@ -87,7 +97,9 @@ inline bool handleCardputerAuditionEvent(const UIEvent& evt,
     ok = session.rerender(drums, synthA, synthB);
   }
 
-  if (!handled) return false;
+  // Unknown Alt shortcuts are swallowed only while the user explicitly armed
+  // this modal test mode. They return to normal immediately after restore.
+  if (!handled) return true;
   if (!ok) {
     Serial.println("[RHYTHM-AUDITION] command rejected; previous audition pattern preserved");
     UI::showToast("AUDITION INVALID", 900);
