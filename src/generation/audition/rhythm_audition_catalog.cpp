@@ -245,7 +245,7 @@ constexpr LaneGrammar kRollingAcidLanes[] = {
          stepBit(3) | stepBit(5) | stepBit(7) |
              stepBit(11) | stepBit(13) | stepBit(15),
          stepBit(1) | stepBit(9),
-         4,
+         2,
          10,
          2,
          stepBit(3) | stepBit(11),
@@ -507,7 +507,7 @@ constexpr RhythmArchetype kArchetypes[] = {
               0,
               kRollingAcidRelationships,
               2,
-              DensityContract{14, 16, 24, 6},
+              DensityContract{10, 14, 24, 6},
               timing(TimingCompatibility::SwingCompatible,
                      stepBit(3) | stepBit(7) | stepBit(11) | stepBit(15),
                      rhythmRoleBit(RhythmRole::BassRhythm) |
