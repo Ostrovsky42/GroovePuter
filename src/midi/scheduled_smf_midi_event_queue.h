@@ -15,10 +15,11 @@
 // queued, the producer invalidates the generation and publishes a fixed panic
 // mailbox; the consumer must release all SMF-owned wire notes for that epoch.
 //
-// Immediate track mute and seek SPP are also consumer-owned. tryPop() consumes
-// bounded mailboxes and preflights ownership capacity, while recordDispatched()
-// commits ownership only after the physical USB write succeeds. TinyUSB still
-// has one writer and Pattern/PERFORM ownership is untouched.
+// Immediate track mute, live route changes and seek SPP are consumer-owned.
+// tryPop() consumes bounded mailboxes and preflights ownership capacity, while
+// recordDispatched() commits ownership only after the physical USB write
+// succeeds. TinyUSB still has one writer and Pattern/PERFORM ownership is
+// untouched.
 class ScheduledSmfMidiEventQueue {
 public:
     static constexpr std::size_t kStorageSize = 128;
@@ -118,7 +119,12 @@ public:
             }
 
             uint8_t requestedTrack = 0;
-            if (GroovePuterMidi::smfTrackMuteState()
+            // A route change owns the same scoped physical NoteOff primitive as
+            // mute, but it never changes the mute mask or stops the transport.
+            // Route cleanup wins when both mailboxes target the same iteration.
+            if (GroovePuterMidi::smfTrackOutputRouteState()
+                    .takePendingReleaseTrack(requestedTrack) ||
+                GroovePuterMidi::smfTrackMuteState()
                     .takePendingReleaseTrack(requestedTrack)) {
                 releaseTrack_ = requestedTrack;
                 releaseTrackActive_ = true;
@@ -135,10 +141,15 @@ public:
             lastPoppedBlockSequence_ = event.blockSequence;
             lastPoppedFrameOffset_ = event.frameOffset;
 
-            // Stale generations are returned unchanged so the dispatcher keeps
-            // its accepted diagnostics and drop policy. They must not mutate
-            // active ownership: an invalidated event never reached the wire.
-            if (event.generation != generation_.loadAcquire()) return true;
+            // Stale queue generations or route revisions are returned unchanged
+            // so MidiDispatchTask keeps the existing accepted diagnostics/drop
+            // path. They must never mutate active ownership because they did not
+            // reach the wire.
+            if (!scheduledSmfMidiEventQueueGenerationIsCurrent(
+                    event, generation_.loadAcquire()) ||
+                !scheduledSmfMidiEventRouteRevisionIsCurrent(event)) {
+                return true;
+            }
 
             if (event.type == ScheduledSmfMidiEventType::SongPositionPointer) {
                 return true;
@@ -184,8 +195,9 @@ public:
                 }
                 return true;
             case ScheduledSmfMidiEventType::NoteOff:
-                // Immediate mute already removes its logical owner before
-                // emitting the scoped NoteOff. An unmatched release is valid.
+                // Immediate mute/route cleanup already removes its logical
+                // owner before emitting the scoped NoteOff. An unmatched
+                // release is therefore valid.
                 (void)activeNotes_.release(
                     event.trackIndex, event.channel, event.note);
                 return true;
@@ -316,7 +328,11 @@ private:
         event.trackIndex = trackIndex > 63u ? 63u : trackIndex;
         event.blockSequence = blockSequence;
         event.frameOffset = frameOffset;
-        event.generation = generation_.loadAcquire();
+        const uint8_t routeRevision =
+            GroovePuterMidi::smfTrackOutputRouteState()
+                .consumeProducerRevisionTag(event.trackIndex);
+        event.generation = scheduledSmfMidiEventPackGeneration(
+            generation_.loadAcquire(), routeRevision);
         event.projectTransportEpoch =
             scheduledSmfMidiEventTransportEpochTag(projectTransportEpoch);
         return event;
@@ -336,7 +352,8 @@ private:
         event.blockSequence = pendingSppBlockSequence_.loadRelaxed();
         event.frameOffset = static_cast<uint16_t>(
             pendingSppFrameOffset_.loadRelaxed());
-        event.generation = pendingSppGeneration_.loadRelaxed();
+        event.generation = scheduledSmfMidiEventPackGeneration(
+            pendingSppGeneration_.loadRelaxed(), 0u);
         event.projectTransportEpoch = 0;
         return true;
     }
@@ -351,11 +368,14 @@ private:
         event.velocity = 0;
         event.trackIndex = trackIndex;
         // Reusing the latest consumer deadline deliberately makes the release
-        // immediately due (or slightly late). The existing late policy always
-        // dispatches NoteOff and never turns it into a catch-up NoteOn burst.
+        // immediately due (or slightly late). The cleanup revision is reserved
+        // so another route change cannot invalidate this NoteOff after ownership
+        // was already removed from the bounded per-track table.
         event.blockSequence = lastPoppedBlockSequence_;
         event.frameOffset = lastPoppedFrameOffset_;
-        event.generation = generation_.loadAcquire();
+        event.generation = scheduledSmfMidiEventPackGeneration(
+            generation_.loadAcquire(),
+            GroovePuterMidi::kSmfTrackOutputRouteRevisionCleanup);
         event.projectTransportEpoch = 0;
         return event;
     }

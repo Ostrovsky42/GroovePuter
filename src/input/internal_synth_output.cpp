@@ -22,17 +22,23 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
     // PatternPlayer already owns and renders the internal voices inside the
     // audio task. Its router fan-out is for additive outputs; taking the control
     // mutation gate here would deadlock the audio producer and double-trigger.
-    // DX and Drums are external USB-MIDI targets and must never alias to the
-    // internal Synth A voice.
+    //
+    // PERFORM keyboard ownership is external-MIDI-only for Synth A/B/DX.
+    // Direct MONO, direct POLY and generated performance tools must never play
+    // the internal Synth A/B voices. Those voices remain sequencer/pattern
+    // instruments instead of doubling every Cardputer keyboard press locally.
     if (event.source == MusicalEventSource::PatternPlayer ||
+        event.source == MusicalEventSource::PerformanceKeyboard ||
+        event.source == MusicalEventSource::PerformanceKeyboardPoly ||
+        event.source == MusicalEventSource::Arpeggiator ||
         event.target == MusicalEventTarget::Drums ||
         event.target == MusicalEventTarget::Dx) {
         return;
     }
 
-    // USB MIDI may use the wider performance-keyboard range. The current
-    // internal synth engines retain their established 24..71 safety range, so
-    // clamp NoteOn and NoteOff identically to avoid mismatched/stuck ownership.
+    // Keep the existing internal live-input path for any non-PERFORM source
+    // that explicitly targets Synth A/B (for example future/local MIDI input).
+    // Clamp NoteOn and NoteOff identically to avoid mismatched ownership.
     AudioMutationScope mutationScope(mutationGate_);
     const int voice = synthIndex(event.target);
     const uint8_t internalNote = clampInternalLiveNote(event.note);
@@ -44,9 +50,6 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
             engine_.liveNoteOff(voice, internalNote);
             break;
         case MusicalEventType::AllNotesOff: {
-            // This event belongs to one logical target. Release only a note
-            // currently owned by live-style input on that voice; never interrupt
-            // a PatternPlayer-owned Synth A/B voice while transport is running.
             const int liveNote = engine_.liveNote(voice);
             if (liveNote >= 0) {
                 engine_.liveNoteOff(voice, static_cast<uint8_t>(liveNote));

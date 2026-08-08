@@ -143,9 +143,14 @@ page/bank/slot identity.
 | `F` | Cycle step FX |
 | `R`, `Backspace`, `Delete` | Clear step / selection |
 | `Alt+Backspace` | Clear whole pattern |
-| `G` | Randomize pattern |
+| `G` | Generate active pattern; while playing stage for the next bar, while stopped commit immediately |
 | `Ctrl+C/V` | Copy / Paste |
 | `Esc` / `` ` `` | Clear selection |
+
+While transport is running, Synth `G` never rewrites the sounding pattern in the
+middle of a bar. The footer shows `GEN -> NEXT BAR` while a prepared candidate is
+pending. Reviewed Atlas recipes use Atlas material first; other recipes use the
+existing compiled Genre/Recipe procedural generator.
 
 ## SYNTH A / SYNTH B SOUND
 
@@ -174,12 +179,16 @@ page/bank/slot identity.
 | `Shift/Ctrl+Arrows` | Extend selection |
 | `Enter` | Toggle hit |
 | `A` | Toggle accent |
-| `G` | Randomize pattern |
-| `Ctrl+G` | Randomize focused voice |
-| `Alt+G` | Chaos-randomize the full drum pattern |
+| `G` | Generate full pattern; while playing commit at the next bar |
+| `Ctrl+G` | Generate focused voice; while playing commit at the next bar |
+| `Alt+G` | CHAOS-generate the full drum pattern; while playing commit at the next bar |
 | `Backspace` / `Delete` | Clear hit / selection |
 | `Alt+Backspace` | Clear whole pattern |
 | `Ctrl+C/V` | Copy / Paste |
+
+Drum generation uses the same bar-bound material transaction as Synth generation.
+`GEN -> NEXT BAR` or `CHAOS -> NEXT BAR` means the current bar is still playing the
+old material. Focused-voice generation keeps every other drum voice unchanged.
 
 ## SONG
 
@@ -218,6 +227,11 @@ page/bank/slot identity.
 `Q..I` changes only SLOT; PAGE and the target-track BANK remain unchanged.
 `Alt+[` / `Alt+]` moves one pattern page at a time. `NO EMPTY PATTERN SLOTS`
 means generation changed neither Song references nor pattern content.
+
+SONG still uses its existing transactional copy-on-write materializer in the first
+bar-bound implementation slice. Moving SONG generation onto `NEXT BAR` requires
+reservation and commit-time revalidation of free destination slots and is tracked as
+the second slice; this first slice does not weaken current SONG safety.
 
 ## PHRASE CORE
 

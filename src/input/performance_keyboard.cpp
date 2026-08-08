@@ -173,6 +173,28 @@ void PerformanceKeyboard::emitNoteOff(uint8_t note, uint8_t channel) {
     });
 }
 
+void PerformanceKeyboard::emitPolyNoteOn(const HeldNote& held) {
+    router_.route(MusicalEvent{
+        MusicalEventType::NoteOn,
+        MusicalEventSource::PerformanceKeyboardPoly,
+        target_,
+        held.channel,
+        held.note,
+        held.velocity,
+    });
+}
+
+void PerformanceKeyboard::emitPolyNoteOff(uint8_t note) {
+    router_.route(MusicalEvent{
+        MusicalEventType::NoteOff,
+        MusicalEventSource::PerformanceKeyboardPoly,
+        target_,
+        0,
+        note,
+        0,
+    });
+}
+
 void PerformanceKeyboard::emitAllNotesOff() {
     router_.route(MusicalEvent{
         MusicalEventType::AllNotesOff,
@@ -264,8 +286,6 @@ void PerformanceKeyboard::processScheduled(uint32_t nowMicros) {
         const uint32_t lateness = nowMicros - slot.dueMicros;
         slot = ScheduledEvent{};
 
-        // A delayed UI/storage iteration must not dump obsolete NoteOn events
-        // into the bounded live queue. NoteOff remains cleanup-critical.
         if (event.type == MusicalEventType::NoteOn &&
             lateness > kGeneratedNoteOnStaleMicros) {
             continue;
@@ -301,6 +321,19 @@ bool PerformanceKeyboard::transformedPlaybackEnabled() const {
     if (target_ == MusicalEventTarget::Drums) return false;
     return chordMode_ != PerformanceChordMode::Off || strumMs_ > 0 ||
            stepEngineEnabled();
+}
+
+bool PerformanceKeyboard::directPolyphonyEnabled() const {
+    return voiceMode_ == PerformanceVoiceMode::Poly &&
+           target_ != MusicalEventTarget::Drums &&
+           !transformedPlaybackEnabled();
+}
+
+bool PerformanceKeyboard::polyChordSustainEnabled() const {
+    return voiceMode_ == PerformanceVoiceMode::Poly &&
+           target_ != MusicalEventTarget::Drums &&
+           chordMode_ != PerformanceChordMode::Off &&
+           !stepEngineEnabled();
 }
 
 bool PerformanceKeyboard::euclideanStepActive(uint8_t step) const {
@@ -405,6 +438,60 @@ std::size_t PerformanceKeyboard::buildArpPool(uint8_t* notes,
     }
     std::sort(notes, notes + count);
     return count;
+}
+
+void PerformanceKeyboard::reconcileDirectPolyChord(uint32_t nowMicros) {
+    clearScheduled();
+
+    uint8_t desired[kMaxPolyChordNotes]{};
+    const std::size_t desiredCount = buildArpPool(
+        desired, kMaxPolyChordNotes);
+
+    auto desiredContains = [&](uint8_t note) {
+        for (std::size_t i = 0; i < desiredCount; ++i) {
+            if (desired[i] == note) return true;
+        }
+        return false;
+    };
+
+    std::size_t activeIndex = 0;
+    while (activeIndex < generatedNoteCount_) {
+        const uint8_t note = generatedNotes_[activeIndex];
+        if (desiredContains(note)) {
+            ++activeIndex;
+            continue;
+        }
+        routeGenerated(MusicalEventType::NoteOff, note, 0);
+        forgetGenerated(note);
+    }
+
+    if (desiredCount == 0 || heldCount_ == 0) return;
+
+    const uint8_t velocity = held_[heldCount_ - 1].velocity;
+    const uint32_t strumMicros = static_cast<uint32_t>(strumMs_) * 1000u;
+    std::size_t newNoteIndex = 0;
+    for (std::size_t i = 0; i < desiredCount; ++i) {
+        bool alreadyActive = false;
+        for (std::size_t j = 0; j < generatedNoteCount_; ++j) {
+            if (generatedNotes_[j] == desired[i]) {
+                alreadyActive = true;
+                break;
+            }
+        }
+        if (alreadyActive) continue;
+
+        const uint32_t onAt = nowMicros +
+            static_cast<uint32_t>(newNoteIndex) * strumMicros;
+        ++newNoteIndex;
+        if (onAt == nowMicros) {
+            routeGenerated(MusicalEventType::NoteOn, desired[i], velocity);
+            rememberGeneratedOn(desired[i]);
+        } else if (!scheduleGenerated(MusicalEventType::NoteOn,
+                                      desired[i], velocity, onAt)) {
+            stopGeneratedOutput();
+            return;
+        }
+    }
 }
 
 uint8_t PerformanceKeyboard::selectArpNote(const uint8_t* notes,
@@ -533,10 +620,6 @@ bool PerformanceKeyboard::serviceTransportStepClock(uint32_t nowMicros) {
     }
 
 #if defined(ARDUINO)
-    // Use the exact playback anchor published to MidiDispatchTask. This puts
-    // generated NoteOn/NoteOff deadlines in the same wall-clock domain as
-    // outbound MIDI Clock, Pattern and SMF events instead of estimating the
-    // block start from the time the UI loop happened to observe the snapshot.
     uint32_t anchorBlockSequence = 0;
     uint32_t anchorPlaybackMicros = 0;
     if (snapshotCardputerUsbMidiBlockAnchor(anchorBlockSequence,
@@ -552,8 +635,6 @@ bool PerformanceKeyboard::serviceTransportStepClock(uint32_t nowMicros) {
     }
 #endif
 
-    // Deterministic host fallback and hardware startup fallback before the
-    // first dispatcher anchor is published.
     if (!transportBlockAnchorValid_) {
         transportBlockAnchorValid_ = true;
         transportAnchorBlockSequence_ = snapshot.blockSequence;
@@ -586,9 +667,6 @@ bool PerformanceKeyboard::serviceTransportStepClock(uint32_t nowMicros) {
         if (transportStepOrdinal_ > currentOrdinal) {
             return true;
         }
-        // Prepare the following step only after at least half of the current
-        // step has drained. This bounds dense overlap without risking a late
-        // next-step publication during normal 5 ms loop cadence.
         if (transportStepOrdinal_ == currentOrdinal &&
             phaseIntoStep < kTransportScheduleLeadSteps) {
             return true;
@@ -603,9 +681,6 @@ bool PerformanceKeyboard::serviceTransportStepClock(uint32_t nowMicros) {
             stepsUntilBoundary * static_cast<double>(stepMicros)));
     const int32_t leadMicros = static_cast<int32_t>(dueMicros - nowMicros);
     if (leadMicros < -static_cast<int32_t>(kGeneratedNoteOnStaleMicros)) {
-        // The boundary is already musically obsolete. Advance ownership without
-        // publishing a delayed hit; the next coherent half-step service will
-        // prepare the following sixteenth.
         transportStepOrdinal_ = nextOrdinal;
         transportStepScheduled_ = true;
         return true;
@@ -633,9 +708,6 @@ void PerformanceKeyboard::service(uint32_t nowMicros) {
     }
 
     if (transportPlaying_) {
-        // The next transport sixteenth is prepared ahead of its boundary from
-        // the audio timeline. If the timeline is unavailable, freeze instead
-        // of falling back to an independent free-running clock.
         (void)serviceTransportStepClock(nowMicros);
         processScheduled(nowMicros);
         return;
@@ -664,6 +736,11 @@ void PerformanceKeyboard::service(uint32_t nowMicros) {
 }
 
 void PerformanceKeyboard::triggerDirectTransformed(uint32_t nowMicros) {
+    if (polyChordSustainEnabled()) {
+        reconcileDirectPolyChord(nowMicros);
+        return;
+    }
+
     stopGeneratedOutput();
     if (heldCount_ == 0) return;
 
@@ -697,6 +774,12 @@ bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
         return true;
     }
 
+    // Cardputer keys do not report pressure. A zero argument means use the
+    // current fixed performance velocity. Explicit non-zero MIDI velocities
+    // remain available to external/test callers and are clamped to MIDI data.
+    if (velocity == 0) velocity = keyVelocity_;
+    if (velocity > 127) velocity = 127;
+
     if (target_ == MusicalEventTarget::Drums) {
         uint8_t drumChannel = 0;
         if (!drumChannelForKey(physicalKey, drumChannel)) return true;
@@ -720,6 +803,8 @@ bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
         service(lastServiceMicros_);
     } else if (transformedPlaybackEnabled()) {
         triggerDirectTransformed(lastServiceMicros_);
+    } else if (directPolyphonyEnabled()) {
+        emitPolyNoteOn(held_[heldCount_ - 1]);
     } else {
         emitNoteOn(held_[heldCount_ - 1]);
     }
@@ -754,15 +839,26 @@ bool PerformanceKeyboard::keyUp(char physicalKey) {
     }
 
     if (transformedPlaybackEnabled()) {
+        if (polyChordSustainEnabled()) {
+            reconcileDirectPolyChord(lastServiceMicros_);
+            return true;
+        }
         if (!wasActive) return true;
         stopGeneratedOutput();
         if (heldCount_ > 0) triggerDirectTransformed(lastServiceMicros_);
         return true;
     }
 
-    if (!wasActive) return true;
-    if (heldCount_ > 0) emitNoteOn(held_[heldCount_ - 1]);
-    else emitNoteOff(released.note);
+    if (directPolyphonyEnabled()) {
+        emitPolyNoteOff(released.note);
+        return true;
+    }
+
+    // Plain MONO preserves the same physical key lifecycle as a normal MIDI
+    // controller. The receiving synth already knows which other NoteOns are
+    // still held and owns note priority/legato. Never synthesize a second
+    // NoteOn for the previously held key here.
+    emitNoteOff(released.note);
     return true;
 }
 
@@ -806,6 +902,8 @@ void PerformanceKeyboard::releaseMissingKeys(const char* pressedKeys,
             } else {
                 arpIndex_ = 0;
             }
+        } else if (polyChordSustainEnabled()) {
+            reconcileDirectPolyChord(lastServiceMicros_);
         } else {
             stopGeneratedOutput();
             if (heldCount_ > 0) triggerDirectTransformed(lastServiceMicros_);
@@ -813,23 +911,32 @@ void PerformanceKeyboard::releaseMissingKeys(const char* pressedKeys,
         return;
     }
 
-    const char oldActiveKey = held_[heldCount_ - 1].physicalKey;
-    const uint8_t oldActiveNote = held_[heldCount_ - 1].note;
-    bool changed = false;
+    if (directPolyphonyEnabled()) {
+        std::size_t write = 0;
+        for (std::size_t read = 0; read < heldCount_; ++read) {
+            if (containsKey(pressedKeys, pressedCount, held_[read].physicalKey)) {
+                held_[write++] = held_[read];
+            } else {
+                emitPolyNoteOff(held_[read].note);
+            }
+        }
+        for (std::size_t i = write; i < heldCount_; ++i) held_[i] = HeldNote{};
+        heldCount_ = write;
+        return;
+    }
+
+    // MONO recovery also preserves physical key ownership: every missing key
+    // gets exactly one NoteOff, while keys that remain held are untouched.
     std::size_t write = 0;
     for (std::size_t read = 0; read < heldCount_; ++read) {
         if (containsKey(pressedKeys, pressedCount, held_[read].physicalKey)) {
             held_[write++] = held_[read];
         } else {
-            changed = true;
+            emitNoteOff(held_[read].note);
         }
     }
     for (std::size_t i = write; i < heldCount_; ++i) held_[i] = HeldNote{};
     heldCount_ = write;
-
-    if (!changed || containsKey(pressedKeys, pressedCount, oldActiveKey)) return;
-    if (heldCount_ > 0) emitNoteOn(held_[heldCount_ - 1]);
-    else emitNoteOff(oldActiveNote);
 }
 
 void PerformanceKeyboard::setEnabled(bool enabled) {
@@ -847,14 +954,10 @@ void PerformanceKeyboard::setNoteModeEnabled(bool enabled) {
 }
 
 void PerformanceKeyboard::setTransportPlaying(bool playing) {
-    // GroovePuter calls this every main-loop iteration, so it doubles as the
-    // low-cost control-rate heartbeat for arp/ratchet/Euclidean scheduling.
     serviceHardwareClock();
     if (transportPlaying_ == playing) return;
     transportPlaying_ = playing;
 
-    // Preserve held physical keys and direct live notes. Only step-generated
-    // output changes clock domains and must be cleaned up before re-anchoring.
     if (stepEngineEnabled()) {
         stopGeneratedOutput();
         resetStepClock();
@@ -907,6 +1010,48 @@ uint8_t PerformanceKeyboard::targetMidiChannel() const {
         case MusicalEventTarget::Drums: return 1;
     }
     return 8;
+}
+
+void PerformanceKeyboard::setVoiceMode(PerformanceVoiceMode mode) {
+    if (mode >= PerformanceVoiceMode::Count || voiceMode_ == mode) return;
+    panic();
+    voiceMode_ = mode;
+}
+
+void PerformanceKeyboard::toggleVoiceMode() {
+    setVoiceMode(voiceMode_ == PerformanceVoiceMode::Mono
+                     ? PerformanceVoiceMode::Poly
+                     : PerformanceVoiceMode::Mono);
+}
+
+const char* PerformanceKeyboard::voiceModeName() const {
+    switch (voiceMode_) {
+        case PerformanceVoiceMode::Mono: return "MONO";
+        case PerformanceVoiceMode::Poly: return "POLY";
+        case PerformanceVoiceMode::Count: break;
+    }
+    return "MONO";
+}
+
+void PerformanceKeyboard::setVelocity(uint8_t velocity) {
+    int value = static_cast<int>(velocity);
+    if (value < kMinVelocity) value = kMinVelocity;
+    if (value > kMaxVelocity) value = kMaxVelocity;
+    value = ((value + (kVelocityStep / 2)) / kVelocityStep) * kVelocityStep;
+    if (value < kMinVelocity) value = kMinVelocity;
+    if (value > kMaxVelocity) value = kMaxVelocity;
+    keyVelocity_ = static_cast<uint8_t>(value);
+}
+
+bool PerformanceKeyboard::adjustVelocity(int direction) {
+    if (direction == 0) return false;
+    int next = static_cast<int>(keyVelocity_) +
+               (direction > 0 ? kVelocityStep : -kVelocityStep);
+    if (next < kMinVelocity) next = kMinVelocity;
+    if (next > kMaxVelocity) next = kMaxVelocity;
+    if (next == keyVelocity_) return false;
+    keyVelocity_ = static_cast<uint8_t>(next);
+    return true;
 }
 
 void PerformanceKeyboard::panic() {

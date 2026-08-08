@@ -23,12 +23,21 @@
 #include "../ui_widgets.h"
 #include "../ui_clipboard.h"
 #include "../../debug_log.h"
+#include "../../dsp/bar_material_commit.h"
 #include "../key_normalize.h"
 
 namespace UI {
 inline void drawDrumInputLockedFooter(IGfx& gfx,
                                       const char* left,
                                       const char* right) {
+  if (hasPendingMaterialCommit()) {
+    char pending[32];
+    std::snprintf(pending, sizeof(pending), "%s -> NEXT BAR",
+                  materialActionLabel(pendingMaterialAction()));
+    drawStandardFooter(gfx, pending, "CURRENT KEEPS PLAYING");
+    return;
+  }
+
   const char* fixedLeft = "ARROWS:GRID Q-I:PAT";
   const char* fixedRight = "C1/2:BANK Alt[]:PAGE";
   const char* safeLeft = left;
@@ -132,6 +141,42 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
   const char lowerKey = key
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(key)))
       : 0;
+
+  // Drum generation follows the same material transaction contract as synth
+  // generation. The control side builds a complete candidate; the sounding
+  // pattern remains untouched until the real audio BAR_START.
+  const bool keyG = lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G;
+  if (keyG && !ui_event.meta && !(ui_event.ctrl && ui_event.alt)) {
+    MaterialQueueResult result = MaterialQueueResult::Failed;
+    auto queue = [&]() {
+      if (ui_event.alt) {
+        result = queueDrumChaosForBar(page->mini_acid_);
+      } else if (ui_event.ctrl) {
+        result = queueDrumVoiceGenerationForBar(
+            page->mini_acid_, page->activeDrumVoice());
+      } else {
+        result = queueDrumGenerationForBar(page->mini_acid_);
+      }
+    };
+    if (page->audio_guard_) page->audio_guard_(queue);
+    else queue();
+
+    const char* action = ui_event.alt ? "CHAOS" : "GEN";
+    if (result == MaterialQueueResult::PendingNextBar) {
+      char toast[32];
+      std::snprintf(toast, sizeof(toast), "%s -> NEXT BAR", action);
+      UI::showToast(toast, 900);
+    } else if (result == MaterialQueueResult::CommittedNow) {
+      char toast[32];
+      std::snprintf(toast, sizeof(toast), "%s COMMITTED", action);
+      UI::showToast(toast, 650);
+    } else {
+      char toast[32];
+      std::snprintf(toast, sizeof(toast), "%s FAILED", action);
+      UI::showToast(toast, 900);
+    }
+    return true;
+  }
 
   // Q-I changes the active slot but never hands keyboard focus to the selector.
   if (!ui_event.ctrl && !ui_event.meta && !ui_event.alt) {

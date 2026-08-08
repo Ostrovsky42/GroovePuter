@@ -15,6 +15,9 @@ enum class MusicalEventSource : uint8_t {
     PatternPlayer,
     Arpeggiator,
     MidiInput,
+    // Direct manual POLY mode. This source is external-MIDI-only: the
+    // internal Synth A/B engines remain intentionally monophonic.
+    PerformanceKeyboardPoly,
 };
 
 enum class MusicalEventTarget : uint8_t {

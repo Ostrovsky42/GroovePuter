@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <utility>
@@ -19,12 +20,21 @@
 #include "../components/bank_selection_bar.h"
 #include "../components/pattern_selection_bar.h"
 #include "../../debug_log.h"
+#include "../../dsp/bar_material_commit.h"
 #include "../key_normalize.h"
 
 namespace UI {
 inline void drawPatternInputLockedFooter(IGfx& gfx,
                                          const char* left,
                                          const char* right) {
+  if (hasPendingMaterialCommit()) {
+    char pending[32];
+    std::snprintf(pending, sizeof(pending), "%s -> NEXT BAR",
+                  materialActionLabel(pendingMaterialAction()));
+    drawStandardFooter(gfx, pending, "CURRENT KEEPS PLAYING");
+    return;
+  }
+
   const bool staleBinding =
       (left && std::strstr(left, "B:Bank")) ||
       (right && std::strstr(right, "B:Bank"));
@@ -108,6 +118,27 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   const char lowerKey = key
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(key)))
       : 0;
+
+  // G prepares new material without touching the sounding pattern. While the
+  // transport is running, the fixed-size candidate becomes active only at the
+  // engine's real BAR_START. Stopped transport commits immediately.
+  if (!ui_event.ctrl && !ui_event.meta && !ui_event.alt && lowerKey == 'g') {
+    MaterialQueueResult result = MaterialQueueResult::Failed;
+    auto queue = [&]() {
+      result = queueSynthGenerationForBar(mini_acid_, voice_index_);
+    };
+    if (audio_guard_) audio_guard_(queue);
+    else queue();
+
+    if (result == MaterialQueueResult::PendingNextBar) {
+      UI::showToast("GEN -> NEXT BAR", 900);
+    } else if (result == MaterialQueueResult::CommittedNow) {
+      UI::showToast("GEN COMMITTED", 650);
+    } else {
+      UI::showToast("GEN FAILED", 900);
+    }
+    return true;
+  }
 
   // Q-I is the only keyboard path for slots 1-8. Selection is immediate and
   // the next arrow continues moving inside the note grid.
