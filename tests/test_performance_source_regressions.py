@@ -113,6 +113,9 @@ def test_manual_polyphony_is_external_and_bounded() -> None:
     internal = (ROOT / "src/input/internal_synth_output.cpp").read_text(
         encoding="utf-8"
     )
+    usb_h = (ROOT / "src/midi/usb_midi_output.h").read_text(
+        encoding="utf-8"
+    )
     usb = (ROOT / "src/midi/usb_midi_output.cpp").read_text(
         encoding="utf-8"
     )
@@ -135,10 +138,6 @@ def test_manual_polyphony_is_external_and_bounded() -> None:
                  "chordMode_ != PerformanceChordMode::Off" in keyboard_cpp and
                  "!stepEngineEnabled()" in keyboard_cpp,
                  "direct POLY+CHORD sustain must not replace step-generated ownership")
-    base.require("MusicalEventSource::PerformanceKeyboardPoly" in keyboard_cpp and
-                 "emitPolyNoteOn" in keyboard_cpp and
-                 "emitPolyNoteOff" in keyboard_cpp,
-                 "direct POLY keys need exact per-note NoteOn/NoteOff events")
 
     key_up = keyboard_cpp[
         keyboard_cpp.index("bool PerformanceKeyboard::keyUp"):
@@ -147,6 +146,9 @@ def test_manual_polyphony_is_external_and_bounded() -> None:
     base.require("if (directPolyphonyEnabled())" in key_up and
                  "emitPolyNoteOff(released.note);" in key_up,
                  "POLY key-up must release the exact physical note")
+    base.require("emitNoteOff(released.note);" in key_up and
+                 "emitNoteOn(held_[heldCount_ - 1])" not in key_up,
+                 "plain MONO must emit the released physical NoteOff and never synthesize restoration NoteOn")
     base.require("if (polyChordSustainEnabled())" in key_up and
                  "reconcileDirectPolyChord(lastServiceMicros_);" in key_up,
                  "POLY+CHORD key-up must diff ownership instead of restoring/retriggering a root")
@@ -155,12 +157,12 @@ def test_manual_polyphony_is_external_and_bounded() -> None:
         keyboard_cpp.index("void PerformanceKeyboard::reconcileDirectPolyChord"):
         keyboard_cpp.index("uint8_t PerformanceKeyboard::selectArpNote")
     ]
-    base.require("buildArpPool(desired, kMaxPolyChordNotes)" in poly_chord and
+    base.require("buildArpPool(\n        desired, kMaxPolyChordNotes)" in poly_chord and
                  "routeGenerated(MusicalEventType::NoteOff, note, 0);" in poly_chord and
                  "if (alreadyActive) continue;" in poly_chord and
                  "routeGenerated(MusicalEventType::NoteOn, desired[i], velocity);" in poly_chord,
                  "POLY+CHORD must keep unchanged notes sounding and change only the set difference")
-    base.require("stopGeneratedOutput();\n    if (heldCount_ > 0) triggerDirectTransformed" in key_up,
+    base.require("stopGeneratedOutput();\n        if (heldCount_ > 0) triggerDirectTransformed" in key_up,
                  "MONO transformed last-root restoration must remain available separately")
 
     reconcile = keyboard_cpp[
@@ -173,27 +175,60 @@ def test_manual_polyphony_is_external_and_bounded() -> None:
     base.require("polyChordSustainEnabled()" in reconcile and
                  "reconcileDirectPolyChord(lastServiceMicros_);" in reconcile,
                  "matrix reconciliation must preserve POLY+CHORD sustained set ownership")
+    base.require("emitNoteOff(held_[read].note);" in reconcile and
+                 "oldActiveKey" not in reconcile and
+                 "oldActiveNote" not in reconcile,
+                 "MONO matrix reconciliation must emit exact missing-key NoteOffs without restoration")
 
     base.require("event.source == MusicalEventSource::PerformanceKeyboard" in internal and
                  "event.source == MusicalEventSource::PerformanceKeyboardPoly" in internal and
                  "event.source == MusicalEventSource::Arpeggiator" in internal,
                  "all PERFORM keyboard paths must be external-MIDI-only")
-    base.require("isGeneratedPerformanceSource" in usb and
+
+    base.require("kSeqtrakMonoPolyController = 26" in usb_h and
+                 "kSeqtrakMonoValue = 0" in usb_h and
+                 "kSeqtrakPolyValue = 1" in usb_h,
+                 "SEQTRAK receiver mode must use the documented CH8..10 CC26 values")
+    base.require("isSynthPerformanceSource" in usb and
+                 "source == MusicalEventSource::PerformanceKeyboard" in usb and
                  "source == MusicalEventSource::PerformanceKeyboardPoly" in usb and
-                 "acquireGeneratedNote(event.target, event.note, event.velocity)" in usb and
+                 "source == MusicalEventSource::Arpeggiator" in usb,
+                 "all synth PERFORM note sources must share exact per-note wire ownership")
+    base.require("sourceRequestsPolyReceiver" in usb and
+                 "ensurePerformanceReceiverMode" in usb and
+                 "sendControlChange" in usb and
+                 "kSeqtrakMonoPolyController" in usb,
+                 "MONO/POLY must be selected at the receiver rather than by replacing controller notes")
+    base.require("CC126/127" in usb and
+                 "All Notes Off" in usb,
+                 "the implementation must document why standard channel-mode switching is unsafe on shared Pattern/SMF channels")
+    base.require("acquireGeneratedNote(event.target, event.note, event.velocity)" in usb and
                  "releaseGeneratedNote(event.target, event.note, event.velocity)" in usb,
-                 "USB POLY must reuse the bounded per-note ownership path")
-    base.require("wireOwners_" in usb and "generatedActive_" in usb,
-                 "manual POLY must remain inside existing bounded ownership storage")
+                 "MONO and POLY direct notes must use the bounded exact-note ownership path")
+    base.require("wireOwners_" in usb_h and "generatedActive_" in usb_h,
+                 "manual performance notes must remain inside bounded ownership storage")
+
+    base.require("kMinVelocity = 10" in keyboard_h and
+                 "kMaxVelocity = 120" in keyboard_h and
+                 "kVelocityStep = 10" in keyboard_h and
+                 "kDefaultVelocity = 100" in keyboard_h,
+                 "fixed Cardputer velocity must have explicit 10-step bounds and default")
+    base.require("bool PerformanceKeyboard::adjustVelocity" in keyboard_cpp and
+                 "if (velocity == 0) velocity = keyVelocity_;" in keyboard_cpp,
+                 "future Cardputer keyDown events must use the configurable fixed velocity")
+    base.require("case '-':" in page and
+                 "keyboard_.adjustVelocity(-1);" in page and
+                 "keyboard_.adjustVelocity(1);" in page and
+                 '"VEL %u  -/+"' in page and
+                 '"9 VOICE | -/+ VELOCITY"' in page,
+                 "PERFORMANCE TOOLS must expose velocity in 10-point steps without Shift")
 
     base.require("case '9':" in page and
                  "keyboard_.toggleVoiceMode();" in page and
-                 "VOICE: POLY / EXT MIDI" in page and
-                 "VOICE: MONO / EXT MIDI" in page and
-                 "PERFORMANCE TOOLS: 1-9" in page and
-                 "EXT MIDI ONLY" in page and
+                 "VOICE: POLY / RECEIVER" in page and
+                 "VOICE: MONO / RECEIVER" in page and
                  "INT+USB" not in page,
-                 "PERFORM UI must expose MONO/POLY as external MIDI modes only")
+                 "PERFORM UI must describe MONO/POLY as receiver voice modes")
 
 
 base.test_manual_polyphony_is_external_and_bounded = (
