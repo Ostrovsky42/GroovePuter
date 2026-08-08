@@ -1,6 +1,7 @@
 #include <array>
 #include <cassert>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 
 #include "src/generation/rhythm/reference_vocabulary.h"
@@ -181,9 +182,13 @@ int main() {
       assert(identityEqual(p3Repeat.identity, p3.identity));
     }
 
+    const uint8_t distinct = distinctCount(identities);
+    std::fprintf(stderr, "stage3 %-20s valid=64 distinct=%u\n",
+                 def.name, static_cast<unsigned>(distinct));
+
     // Stage 3 prefers controlled variation over novelty, but no reference
     // archetype may collapse to a single P1 identity across the seed corpus.
-    assert(distinctCount(identities) >= 2);
+    assert(distinct >= 2);
   }
 
   uint8_t familiesUsed = 0;
