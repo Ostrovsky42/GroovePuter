@@ -21,6 +21,7 @@ python3 "${ROOT_DIR}/tests/test_seqtrak_master_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_smf_midi_wave_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
 python3 "${ROOT_DIR}/tests/test_midi_probe.py"
+python3 "${ROOT_DIR}/tests/test_audio_control_snapshot_source_regressions.py"
 
 "${CXX}" \
   -std=c++17 \
@@ -32,6 +33,18 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -o "${BUILD_DIR}/test_genre_defaults"
 
 "${BUILD_DIR}/test_genre_defaults"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -pthread \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_audio_control_snapshot.cpp" \
+  -o "${BUILD_DIR}/test_audio_control_snapshot"
+
+"${BUILD_DIR}/test_audio_control_snapshot"
 
 "${CXX}" \
   -std=c++17 \
