@@ -1906,6 +1906,7 @@ Every archetype must satisfy:
 ```text
 valid masks
 required/forbidden/protected-silence consistency
+gate-mask disjointness and declared-onset containment
 valid density ranges
 valid relationship role references
 no obviously impossible hard constraints
@@ -1943,6 +1944,7 @@ required anchors present
 protected silence untouched
 hard relationships satisfied
 forbidden zones empty
+explicit Short/Held/Tie gate overlays preserved; Normal remains implicit
 density legal or explicitly ValidButSparse
 same input -> same output
 ```

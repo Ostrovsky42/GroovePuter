@@ -272,6 +272,13 @@ struct LaneGrammar {
     StepMask preferred;
     StepMask optional;
     StepMask forbidden;
+
+    // Coordinate-level rhythmic duration policy over declared onset space.
+    // Normal is implicit when a realized onset is in none of these masks.
+    StepMask shortGate;
+    StepMask heldGate;
+    StepMask tieGate;
+
     StepMask protectedSilence;
 
     uint8_t structuralMin;
@@ -295,6 +302,14 @@ CanonicalAnchor
 
 OptionalEvent
     MAY be selected according to realization budget.
+
+Gate overlays
+    shortGate / heldGate / tieGate classify legal onset coordinates.
+    MUST be mutually exclusive.
+    MUST be subsets of declared legal onset space.
+    MUST NOT overlap forbidden/protected silence.
+    GateClass::Normal is implicit for every realized onset not covered by an
+    explicit gate overlay.
 ```
 
 An archetype MAY define zero immutable anchors.
@@ -309,6 +324,11 @@ immutableAnchors & forbidden == 0
 canonicalAnchors & forbidden == 0
 immutableAnchors & protectedSilence == 0
 canonicalAnchors & protectedSilence == 0
+shortGate & heldGate == 0
+shortGate & tieGate == 0
+heldGate & tieGate == 0
+(shortGate | heldGate | tieGate) & ~declaredOnsetSpace == 0
+(shortGate | heldGate | tieGate) & (forbidden | protectedSilence) == 0
 structuralMin <= structuralMax
 popcount(immutableAnchors) <= structuralMax
 ```
@@ -346,6 +366,10 @@ struct RhythmEventIntent {
 ```
 
 This is architectural pseudocode. The implementation may encode these fields more compactly.
+
+`GateClass::Normal` is the default/implicit class. A lane grammar therefore does
+not need a `normalGate` mask; explicit Short/Held/Tie overlays are sufficient and
+avoid duplicating the realized onset mask.
 
 Normative authority:
 
