@@ -63,9 +63,9 @@ for token in (
     "class HoldAccelerator",
     "bool forcedFast = false",
     "if (forcedFast) return 5;",
+    "streak_ >= 24",
     "streak_ >= 14",
-    "streak_ >= 8",
-    "streak_ >= 3",
+    "streak_ >= 6",
     "multiplierAt",
 ):
     assert token in ui_input, f"Hold acceleration missing: {token}"
