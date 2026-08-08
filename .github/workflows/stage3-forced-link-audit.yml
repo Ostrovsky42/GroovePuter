@@ -1,0 +1,84 @@
+name: Stage 3 forced-link audit
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  forced-link-audit:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [normal, midi-only]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Build baseline
+        run: |
+          if [[ "${{ matrix.profile }}" == "normal" ]]; then
+            bash scripts/build.sh --warnings all
+            cp build/cardputer-adv-current/GroovePuter.ino.elf /tmp/baseline.elf
+            cp build/cardputer-adv-current/GroovePuter.ino.bin /tmp/baseline.bin
+          else
+            bash scripts/build_seqtrak_midi_only.sh --warnings all
+            cp build/cardputer-adv-seqtrak-midi-only/GroovePuter.ino.elf /tmp/baseline.elf
+            cp build/cardputer-adv-seqtrak-midi-only/GroovePuter.ino.bin /tmp/baseline.bin
+          fi
+
+      - name: Force reference vocabulary into final link
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('GroovePuter.ino')
+          text = p.read_text()
+          include_anchor = '#include "src/dsp/miniacid_engine.h"\n'
+          probe_anchor = 'static uint32_t g_peakUiDrawUs = 0;\n'
+          assert text.count(include_anchor) == 1
+          assert text.count(probe_anchor) == 1
+          text = text.replace(
+              include_anchor,
+              include_anchor + '#include "src/generation/rhythm/reference_vocabulary.h"\n',
+          )
+          text = text.replace(
+              probe_anchor,
+              probe_anchor +
+              'static volatile uint16_t g_stage3VocabularyProbeCount =\n'
+              '    GroovePuterRhythm::ReferenceVocabulary::catalog().archetypeCount;\n',
+          )
+          p.write_text(text)
+          PY
+
+      - name: Build forced-link probe
+        run: |
+          if [[ "${{ matrix.profile }}" == "normal" ]]; then
+            bash scripts/build.sh --warnings all
+            cp build/cardputer-adv-current/GroovePuter.ino.elf /tmp/probe.elf
+            cp build/cardputer-adv-current/GroovePuter.ino.bin /tmp/probe.bin
+          else
+            bash scripts/build_seqtrak_midi_only.sh --warnings all
+            cp build/cardputer-adv-seqtrak-midi-only/GroovePuter.ino.elf /tmp/probe.elf
+            cp build/cardputer-adv-seqtrak-midi-only/GroovePuter.ino.bin /tmp/probe.bin
+          fi
+
+      - name: Report baseline and forced-link delta
+        run: |
+          echo "PROFILE=${{ matrix.profile }}"
+          echo '--- BASELINE ---'
+          size /tmp/baseline.elf
+          bash scripts/check_cardputer_dram_budget.sh /tmp/baseline.elf
+          stat -c 'BIN_BYTES=%s' /tmp/baseline.bin
+          echo '--- FORCED_LINK ---'
+          size /tmp/probe.elf
+          bash scripts/check_cardputer_dram_budget.sh /tmp/probe.elf
+          stat -c 'BIN_BYTES=%s' /tmp/probe.bin
