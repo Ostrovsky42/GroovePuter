@@ -54,13 +54,16 @@ for token in (
 ):
     assert token in feel, f"FEEL causality contract missing: {token}"
 
+# Hold acceleration was intentionally softened: x2 after 6 repeat events,
+# x3 after 14, x4 after 24. Keep the regression aligned with that bounded ramp
+# instead of the older 3/8/14 thresholds.
 for token in (
     "class HoldAccelerator",
     "bool forcedFast = false",
     "if (forcedFast) return 5;",
+    "streak_ >= 24",
     "streak_ >= 14",
-    "streak_ >= 8",
-    "streak_ >= 3",
+    "streak_ >= 6",
     "multiplierAt",
 ):
     assert token in ui_input, f"Hold acceleration missing: {token}"
