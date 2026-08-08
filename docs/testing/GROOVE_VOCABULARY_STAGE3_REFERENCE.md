@@ -2,9 +2,23 @@
 
 ## Purpose
 
-Validate the first production-candidate Rhythm Vocabulary package against the Stage 1 contracts and Stage 2 realizer before any Genre, Scene, Song, UI, or production Generate migration.
+Validate the first production-candidate Rhythm Vocabulary package against the Stage 1 contracts and Stage 2 realizer before any materializer, shadow backend, Genre, Scene, Song, UI, or production Generate migration.
 
-Stage 3 contains exactly 20 curated one-bar rhythm archetypes. Passing this document means the package is technically coherent and ready to be exposed through the separate Stage 3A audition harness. It does **not** mean every new archetype is musically accepted by hardware listening.
+Stage 3 contains exactly 20 curated one-bar rhythm archetypes. Stage 3 is the catalog-contract stage: passing it means the vocabulary package is technically coherent and ready for Stage 4 materialization/shadow integration.
+
+Stage 3A was a temporary listening gate inserted between Stage 2 and Stage 3. Its purpose was to falsify the architecture on real Cardputer hardware before investing in the full reference catalog. It is not a downstream sub-stage of Stage 3 and must not become a second production vocabulary owner.
+
+## Stage ordering
+
+The relevant sequence is:
+
+1. Stage 1 — data model + catalog validation.
+2. Stage 2 — RelationshipResolver + RhythmPhraseRealizer.
+3. Stage 3A — temporary hardware listening gate; already used to validate that the grammar approach produces musically useful results.
+4. Stage 3 — curated reference vocabulary.
+5. Stage 4 — materializer + shadow backend.
+
+The Stage 3A branch remains audition-only historical test infrastructure and is not merged into the production chain.
 
 ## Hardware list
 
@@ -20,7 +34,7 @@ Embedded compatibility gates use:
 
 None. Stage 3 is not wired into production Generate or playback.
 
-The separate `agent/20260808-05-groove-vocabulary-stage3a-audition` branch remains the listening harness for Cardputer audio tests.
+Stage 4 owns the first production-candidate materialization and shadow-backend integration. Stage 3 must not grow runtime bindings merely to make individual archetypes audible.
 
 ## Reference package
 
@@ -100,6 +114,10 @@ If Arduino fails while host tests pass, treat that as a release blocker: files u
 - [ ] SDL build passes.
 - [ ] Exact Stage 2 -> Stage 3 firmware/DRAM delta is recorded.
 - [ ] Temporary measurement workflows are absent from final diff.
-- [ ] Stage 3A audition harness remains separate and usable for listening.
-- [ ] New archetypes selected for production acceptance receive hardware listening before Stage 3 is declared musically accepted.
+- [ ] Stage 3A remains outside the production merge chain and is not expanded into a duplicate vocabulary catalog.
+- [ ] Stage 3 exposes no materializer, shadow backend, Genre mapping, Scene/Song ownership, UI wiring, or production Generate path.
 - [ ] Three consecutive control reviews pass on one unchanged final SHA; any finding resets the counter to 0/3.
+
+## Exit contract
+
+When this checklist is satisfied, Stage 3 is complete. The next branch must be Stage 4 and may consume `ReferenceVocabulary` through a materializer/shadow backend, but it must not move Genre/Song/Scene ownership yet. Strong rhythmic production-path migration belongs to Stage 5.
