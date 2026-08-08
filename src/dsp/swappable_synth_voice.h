@@ -11,6 +11,7 @@
 #include "sid_synth_voice.h"
 #include "ay_synth_voice.h"
 #include "opl2_synth_voice.h"
+#include "../audio/audio_control_snapshot.h"
 
 enum class SynthEngineType : uint8_t {
     TB303 = 0,
@@ -28,7 +29,7 @@ struct SynthVoiceState {
 class SwappableSynthVoice final : public IMonoSynthVoice {
 public:
     SwappableSynthVoice(float sampleRate, SynthEngineType initialType);
-    ~SwappableSynthVoice() override = default;
+    ~SwappableSynthVoice() override;
 
     void setEngineType(SynthEngineType type);
     SynthEngineType engineType() const { return type_; }
@@ -62,6 +63,24 @@ private:
     static std::unique_ptr<IMonoSynthVoice> createVoice(SynthEngineType type, float sampleRate);
     static SynthEngineType parseEngineName(const std::string& name);
 
+    static constexpr uint8_t kMaxControlParams = 16;
+
+    struct SynthParameterControlSnapshot {
+        uint32_t revision{0};
+        uint8_t paramCount{0};
+        uint8_t reserved[3]{0, 0, 0};
+        std::array<float, kMaxControlParams> normalized{};
+    };
+
+    IMonoSynthVoice* controlTargetVoice_();
+    const IMonoSynthVoice* controlTargetVoice_() const;
+    void initializeControlStateFromVoice_();
+    void captureControlStateAfterStructuralMutation_();
+    void applyPendingControlSnapshotAtAudioBoundary_();
+    void publishControlShadow_();
+    static void applyPendingControlCallback_(void* context);
+    static void captureStructuralControlCallback_(void* context);
+
     float sampleRate_{44100.0f};
 
     SynthEngineType type_{SynthEngineType::TB303};
@@ -81,6 +100,15 @@ private:
     bool lastAccent_{false};
     bool lastSlide_{false};
     uint8_t lastVelocity_{0};
+
+    // Routine UI parameters are owned by the control thread here. The audio
+    // thread receives complete immutable snapshots only at block boundaries.
+    std::array<Parameter, kMaxControlParams> controlParameters_{};
+    SynthParameterControlSnapshot controlShadow_{};
+    GroovePuterAudio::AudioControlSnapshotBuffer<SynthParameterControlSnapshot>
+        controlSnapshots_{};
+    uint32_t appliedControlRevision_{0};
+    bool audioBoundaryRegistered_{false};
 
     // forward mode/lofi to engines
     GrooveboxMode mode_{GrooveboxMode::Acid};
