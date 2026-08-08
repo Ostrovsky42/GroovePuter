@@ -13,25 +13,36 @@ COMMON_SOURCES=(
   "${ROOT_DIR}/src/generation/audition/rhythm_audition_catalog.cpp"
 )
 
-build_and_run() {
+build_source_and_run() {
   local compiler="$1"
-  local output="$2"
-  shift 2
+  local test_source="$2"
+  local output="$3"
+  shift 3
   "${compiler}" -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
     "$@" \
-    "${ROOT_DIR}/tests/test_rhythm_stage3a_audition_catalog.cpp" \
+    "${test_source}" \
     "${COMMON_SOURCES[@]}" \
     -o "${output}"
   "${output}"
 }
 
-build_and_run "${CXX:-g++}" "${BUILD_DIR}/test_rhythm_stage3a_gcc"
+build_source_and_run "${CXX:-g++}" \
+  "${ROOT_DIR}/tests/test_rhythm_stage3a_audition_diagnostics.cpp" \
+  "${BUILD_DIR}/test_rhythm_stage3a_diagnostics"
+
+build_source_and_run "${CXX:-g++}" \
+  "${ROOT_DIR}/tests/test_rhythm_stage3a_audition_catalog.cpp" \
+  "${BUILD_DIR}/test_rhythm_stage3a_gcc"
 
 if command -v clang++ >/dev/null 2>&1; then
-  build_and_run clang++ "${BUILD_DIR}/test_rhythm_stage3a_clang"
+  build_source_and_run clang++ \
+    "${ROOT_DIR}/tests/test_rhythm_stage3a_audition_catalog.cpp" \
+    "${BUILD_DIR}/test_rhythm_stage3a_clang"
 fi
 
-build_and_run "${CXX:-g++}" "${BUILD_DIR}/test_rhythm_stage3a_sanitize" \
+build_source_and_run "${CXX:-g++}" \
+  "${ROOT_DIR}/tests/test_rhythm_stage3a_audition_catalog.cpp" \
+  "${BUILD_DIR}/test_rhythm_stage3a_sanitize" \
   -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined
 
 printf 'Groove Vocabulary Stage 3A audition host matrix: OK\n'
