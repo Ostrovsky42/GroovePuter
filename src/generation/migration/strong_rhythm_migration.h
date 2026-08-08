@@ -27,6 +27,7 @@ enum class StrongRhythmMigrationStatus : uint8_t {
   InvalidContext,
   RealizationFailed,
   MaterializationFailed,
+  CompatibilityBindingFailed,
   Count,
 };
 
@@ -45,6 +46,11 @@ struct StrongRhythmMigrationResult {
   RealizationStatus realizationStatus = RealizationStatus::InvalidConstraintSet;
   PatternMaterializeStatus materializationStatus =
       PatternMaterializeStatus::InvalidPlan;
+
+  // Ephemeral compatibility output from the already-realized plan. It is never
+  // persisted and carries no pitch/VoiceRole ownership.
+  StepMask chordOnsets = 0;
+  bool chordRhythmApplied = false;
 };
 
 // Explicit Stage 5 allow-list. A non-zero recipe is authoritative: unsupported
@@ -53,12 +59,24 @@ struct StrongRhythmMigrationResult {
 // weighted vocabulary selection.
 StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings);
 
-// Transactional migration over an already-produced legacy drum pattern. The
-// destination is untouched for Legacy/failure. On success only drum voices are
-// replaced; legacy automation lanes and PatternGroove remain authoritative.
+// Transactional drum-only primitive. The destination is untouched for
+// Legacy/failure. On success only drum voices are replaced; legacy automation
+// lanes and PatternGroove remain authoritative. chordOnsets exposes only the
+// already-realized ChordRhythm topology for the compatibility adapter below.
 StrongRhythmMigrationResult migrateStrongRhythmDrums(
     const GenreSettings& settings,
     const StrongRhythmMigrationContext& context,
     DrumPatternSet& destination);
+
+// Stage 5 compatibility adapter for the two strong Dub routes. Synth B is the
+// established legacy lead/stab physical slot (and Atlas Deep Chord target 9).
+// Vocabulary owns only ChordRhythm onset placement; pitches, velocity, timing,
+// accent, slide and timbre remain sourced from the just-generated legacy Synth B.
+// Commit of drums + Synth B is atomic. No semantic VoiceRole is introduced.
+StrongRhythmMigrationResult migrateStrongRhythmMaterial(
+    const GenreSettings& settings,
+    const StrongRhythmMigrationContext& context,
+    DrumPatternSet& drums,
+    SynthPattern& synthB);
 
 }  // namespace GroovePuterRhythm
