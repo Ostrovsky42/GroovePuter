@@ -18,7 +18,7 @@ Session& auditionSession() {
 void showCardputerStatus(const Session& session) {
   char status[96]{};
   session.formatStatus(status, sizeof(status));
-  Serial.printf("[STAGE7A-AUDITION] %s bpm~%u atlas=%s\n",
+  Serial.printf("[STAGE7B-AUDITION] %s bpm~%u atlas=%s\n",
                 status,
                 static_cast<unsigned>(session.currentDefinition().suggestedBpm),
                 session.currentDefinition().atlasCandidate);
@@ -51,40 +51,35 @@ bool handleCardputerEvent(const UIEvent& event, MiniAcid& engine) {
   SynthPattern& synthA = scenes.editCurrentSynthPattern(0);
   SynthPattern& synthB = scenes.editCurrentSynthPattern(1);
 
-  // Project reset remains owned by MiniAcidDisplay. Restore and close the
-  // temporary session before yielding to that global owner, otherwise a later
-  // audition exit could restore a stale pre-reset Scene backup.
   const bool panicChord =
       event.alt && event.ctrl && (key == '\b' || key == static_cast<char>(127));
   if (session.active() && panicChord) {
     session.deactivate(drums, synthA, synthB);
-    Serial.println("[STAGE7A-AUDITION] OFF before project reset");
+    Serial.println("[STAGE7B-AUDITION] OFF before project reset");
     return false;
   }
 
   if (toggleChord) {
     if (session.active()) {
       session.deactivate(drums, synthA, synthB);
-      Serial.println("[STAGE7A-AUDITION] OFF / original patterns restored");
-      UI::showToast("S7A OFF / RESTORED", 1200);
+      Serial.println("[STAGE7B-AUDITION] OFF / original patterns restored");
+      UI::showToast("S7B OFF / RESTORED", 1200);
       return true;
     }
     if (engine.songModeEnabled()) {
-      Serial.println("[STAGE7A-AUDITION] refused: Song mode active");
-      UI::showToast("S7A: EXIT SONG MODE", 1200);
+      Serial.println("[STAGE7B-AUDITION] refused: Song mode active");
+      UI::showToast("S7B: EXIT SONG MODE", 1200);
       return true;
     }
     if (!session.activate(drums, synthA, synthB)) {
-      Serial.println("[STAGE7A-AUDITION] activation failed");
-      UI::showToast("S7A INVALID", 1000);
+      Serial.println("[STAGE7B-AUDITION] activation failed");
+      UI::showToast("S7B INVALID", 1000);
       return true;
     }
     showCardputerStatus(session);
     return true;
   }
 
-  // GenrePage owns Space on APPLY, so the audition must preserve the existing
-  // transport contract directly while modal, including SEQTRAK-master refusal.
   if (key == ' ') {
     if (GroovePuterMidi::transportClockRuntime().source() ==
         GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
@@ -97,14 +92,12 @@ bool handleCardputerEvent(const UIEvent& event, MiniAcid& engine) {
     return true;
   }
 
-  // Temporary material is modal. Unknown commands are consumed so global
-  // navigation/save/paging paths cannot observe or persist the audition Scene.
   if (!event.ctrl || event.alt || event.meta) return true;
 
   const int nav = UIInput::navCode(event);
   bool handled = true;
   bool ok = false;
-  if (key >= '1' && key <= '5') {
+  if (key >= '1' && key <= '4') {
     ok = session.selectCandidate(
         static_cast<uint8_t>(key - '1'), drums, synthA, synthB);
   } else if (key == 'p' || key == 'P') {
@@ -121,8 +114,8 @@ bool handleCardputerEvent(const UIEvent& event, MiniAcid& engine) {
 
   if (!handled) return true;
   if (!ok) {
-    Serial.println("[STAGE7A-AUDITION] command rejected / previous pattern preserved");
-    UI::showToast("S7A INVALID", 900);
+    Serial.println("[STAGE7B-AUDITION] command rejected / previous pattern preserved");
+    UI::showToast("S7B INVALID", 900);
   } else {
     showCardputerStatus(session);
   }
