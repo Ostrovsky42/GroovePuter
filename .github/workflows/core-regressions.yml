@@ -39,6 +39,9 @@ jobs:
       - name: Run Groove Vocabulary Stage 6.1 hardening tests
         run: bash tests/run_rhythm_stage6_1_tests.sh
 
+      - name: Validate Atlas Pass 1 schema
+        run: python3 tests/test_atlas_pass1_schema.py
+
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 
