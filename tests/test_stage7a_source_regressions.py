@@ -26,7 +26,7 @@ for candidate in ("HARD_02", "HARD_03", "HARD_04", "HARD_05", "HARD_09"):
 require("StackedQuarters" in CATALOG_H and "ElectroBackskip" in CATALOG_H and
         "FunkHouseBridge" in CATALOG_H and "ElectroGapPush" in CATALOG_H,
         "Stage 7B must expose exactly the remaining four candidate keys")
-require(CATALOG.count("EvidenceClass::SingleRootChallenger") == 4,
+require(CATALOG.count("EvidenceClass::SingleRootChallenger,") == 4,
         "all Stage 7B definitions must remain single-root challengers")
 require("kFunkHouseBridgeRelationships" not in CATALOG,
         "HARD_07 must not freeze contradictory Kick/Backbeat relation")
