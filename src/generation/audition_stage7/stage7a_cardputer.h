@@ -37,15 +37,22 @@ inline bool handleCardputerEvent(const UIEvent& event, MiniAcid& engine) {
 
   if (!session.active() && !toggleChord) return false;
 
-  // Global panic remains a top-level owner and is allowed to escape this page.
-  const bool panicChord =
-      event.alt && event.ctrl && (key == '\b' || key == static_cast<char>(127));
-  if (session.active() && panicChord) return false;
-
   SceneManager& scenes = engine.sceneManager();
   DrumPatternSet& drums = scenes.editCurrentDrumPattern();
   SynthPattern& synthA = scenes.editCurrentSynthPattern(0);
   SynthPattern& synthB = scenes.editCurrentSynthPattern(1);
+
+  // Project reset remains owned by MiniAcidDisplay. If it is requested during
+  // an audition, restore and close the temporary session first, then return
+  // false so the existing global panic/reset path executes normally. This
+  // prevents a later S7A exit from restoring a stale pre-reset Scene backup.
+  const bool panicChord =
+      event.alt && event.ctrl && (key == '\b' || key == static_cast<char>(127));
+  if (session.active() && panicChord) {
+    session.deactivate(drums, synthA, synthB);
+    Serial.println("[STAGE7A-AUDITION] OFF before project reset");
+    return false;
+  }
 
   if (toggleChord) {
     if (session.active()) {
