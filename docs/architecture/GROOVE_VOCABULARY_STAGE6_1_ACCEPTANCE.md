@@ -91,11 +91,13 @@ candidate upper bound <= 256
 and GCC `-fstack-usage` ceilings:
 
 ```text
-evolveRhythmPhrase      <= 4096 B host static frame
-dropOneStructuralEvent  <= 2048 B host static frame
+evolveRhythmPhrase      <= 4096 B compiler-bounded host frame
+dropOneStructuralEvent  <= 2048 B compiler-bounded host frame
 ```
 
-These are **regression ceilings, not ESP32-S3 measurements**.
+The runner also compiles with `-Wvla -Werror`. GCC may classify a frame as `static` or `dynamic,bounded`; unbounded `dynamic` is rejected. The numeric ceiling remains mandatory in either accepted classification.
+
+These are **host regression ceilings, not ESP32-S3 measurements**.
 
 ## ESP32-S3 stack high-water gate
 
@@ -162,7 +164,7 @@ Host output must include:
 ```text
 Groove Vocabulary Stage 6.1 source regressions: OK
 Groove Vocabulary Stage 6.1 hardening: OK
-Groove Vocabulary Stage 6.1 stack usage: evolve=...B drop=...B
+Groove Vocabulary Stage 6.1 stack usage: evolve=...B(...) drop=...B(...)
 Groove Vocabulary Stage 6.1 hardening host matrix: OK
 ```
 
@@ -170,7 +172,7 @@ Groove Vocabulary Stage 6.1 hardening host matrix: OK
 
 If Reduction/Break hardening fails because the fixture contains no secondary event, do not weaken the assertion back to `<=`. Fix the fixture or realizer contract so the test demonstrates one real bounded drop.
 
-If stack-usage output becomes `dynamic` or exceeds the ceiling, inspect new local arrays/value copies before raising the limit.
+If stack-usage output becomes unbounded `dynamic`, a VLA is reported by `-Wvla`, or the numeric ceiling is exceeded, inspect new local arrays/value copies before changing the gate.
 
 If aggregate Core regressions fail only on the inherited Cardputer ADV `PA_EN` source assertion after Stage 1–6.1 pass, treat it separately from Stage 6.1.
 
@@ -190,7 +192,7 @@ If aggregate Core regressions fail only on the inherited Cardputer ADV `PA_EN` s
 [ ] Response is documented as metadata-only v1.
 [ ] RNG salt-space invariant is documented.
 [ ] Fixed-capacity footprint guards pass.
-[ ] Host GCC static stack-usage ceilings pass.
+[ ] `-Wvla -Werror` passes and host stack usage remains compiler-bounded and below ceilings.
 [ ] SDL build passes.
 [ ] Cardputer-Adv compile + fixed DRAM gate pass.
 [ ] SEQTRAK MIDI-only compile/check passes.
