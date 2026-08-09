@@ -1,6 +1,7 @@
 #include "genre_manager.h"
 
 #include "drum_genre_templates.h"
+#include "scenes.h"
 
 #include <cmath>
 
