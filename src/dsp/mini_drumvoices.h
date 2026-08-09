@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_DSP_MINI_DRUMVOICES_H
+#define GROOVEPUTER_DSP_MINI_DRUMVOICES_H
 
 #include <stdint.h>
 
@@ -719,3 +721,5 @@ private:
 
   Parameter params[static_cast<int>(DrumParamId::Count)];
 };
+
+#endif  // GROOVEPUTER_DSP_MINI_DRUMVOICES_H

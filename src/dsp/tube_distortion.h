@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_DSP_TUBE_DISTORTION_H
+#define GROOVEPUTER_DSP_TUBE_DISTORTION_H
 
 class TubeDistortion {
 public:
@@ -22,3 +24,5 @@ private:
   float cachedComp_;
   bool enabled_;
 };
+
+#endif  // GROOVEPUTER_DSP_TUBE_DISTORTION_H
