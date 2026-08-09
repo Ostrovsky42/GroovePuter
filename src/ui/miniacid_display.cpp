@@ -678,7 +678,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 }
 
 void MiniAcidDisplay::initMuteButtons(int x, int y, int w, int h) {}
-void MiniAcidDisplay::initPageHint(int x, int y, int w, int h) {}
+void MiniAcidDisplay::initPageHint(int x, int y, int w) {}
 void MiniAcidDisplay::drawMutesSection(int x, int y, int w, int h) {}
 int MiniAcidDisplay::drawPageTitle(int x, int y, int w, const char* text) { return 0; }
 
