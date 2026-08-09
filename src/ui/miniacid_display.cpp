@@ -1,5 +1,6 @@
 #include "miniacid_display.h"
 #include "src/dsp/miniacid_engine.h"
+#include "src/generation/audition_stage7/stage7a_cardputer.h"
 #include "src/state/scene_revision.h"
 #include "src/platform/cardputer_ui_session.h"
 #include "src/platform/cardputer_smf_route_persistence.h"
@@ -414,6 +415,17 @@ void MiniAcidDisplay::dismissSplash() {
 }
 
 bool MiniAcidDisplay::handleEvent(UIEvent event) {
+    // Once the temporary Stage 7 audition is active, it gets first refusal
+    // before workspace/page/Alt shortcuts. This keeps temporary Scene material
+    // inside the audition owner and prevents navigation/paging/save paths from
+    // observing it. Activation itself still belongs to GENERATE -> GENRE.
+    if (GroovePuterRhythm::Stage7AAudition::cardputerSession().active()) {
+        if (GroovePuterRhythm::Stage7AAudition::handleCardputerEvent(
+                event, mini_acid_)) {
+            return true;
+        }
+    }
+
     if (global_help_overlay_.isVisible()) {
         if (global_help_overlay_.handleEvent(event)) return true;
     }
@@ -666,7 +678,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 }
 
 void MiniAcidDisplay::initMuteButtons(int x, int y, int w, int h) {}
-void MiniAcidDisplay::initPageHint(int x, int y, int w) {}
+void MiniAcidDisplay::initPageHint(int x, int y, int w, int h) {}
 void MiniAcidDisplay::drawMutesSection(int x, int y, int w, int h) {}
 int MiniAcidDisplay::drawPageTitle(int x, int y, int w, const char* text) { return 0; }
 
