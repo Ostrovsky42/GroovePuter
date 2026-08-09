@@ -1,6 +1,6 @@
 # Atlas Pass 2 Hardening Review Gate
 
-The hardening candidate is frozen while CI and three consecutive reviews run. The exact final SHA is recorded in PR #192 metadata after the last content commit. Any code, data, test or documentation finding/change resets the counter to `0/3`.
+The hardening candidate is frozen while CI and three consecutive reviews run. The exact final SHA and live review counter belong in PR #192 metadata, not in this content file. Any code, data, test or documentation finding/change resets the counter to `0/3`.
 
 ## External audit findings addressed
 
@@ -25,7 +25,3 @@ After this gate reaches 3/3 CLEAN, a separate temporary listening PR may expose 
 3. one single-root control/outlier.
 
 This is a falsification harness only. It does not change production `ReferenceVocabulary` or imply five accepted archetypes.
-
-## Review counter
-
-`0/3` pending CI on the frozen candidate.
