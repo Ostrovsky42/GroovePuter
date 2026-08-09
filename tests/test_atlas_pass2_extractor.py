@@ -17,6 +17,7 @@ assert spec.loader is not None
 spec.loader.exec_module(module)
 
 import extract_atlas_pass2_negative_space as negative
+import run_atlas_pass2 as runner
 
 assert module.EXPECTED_ATLAS_SHA256 == "5b155937b8d05f0f0f9f1a02f10d9afe76a917d6035897695cce739eb8d6b1fd"
 assert module.EXPECTED_SCHEMA_VERSION == "2.6.0"
@@ -108,5 +109,16 @@ assert step_one[0]["absence_fraction"] == 1.0
 active[0][0].add(1)
 negative_rows = negative.compute_negative_space_rows({"test": active})
 assert not any(row["role"] == "Kick" and row["step"] == 1 for row in negative_rows)
+
+# The single Pass 2 runner must hash every generated aggregate output and may
+# not silently omit a file from the reproducibility manifest.
+with tempfile.TemporaryDirectory() as tmp:
+    out = Path(tmp)
+    for index, filename in enumerate(runner.GENERATED_OUTPUTS):
+        (out / filename).write_text(f"fixture-{index}\n", encoding="utf-8")
+    manifest = runner.write_hash_manifest(out)
+    lines = manifest.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == len(runner.GENERATED_OUTPUTS) == 9
+    assert all(filename in lines[index] for index, filename in enumerate(runner.GENERATED_OUTPUTS))
 
 print("Atlas Pass 2 extractor unit contracts: OK")
