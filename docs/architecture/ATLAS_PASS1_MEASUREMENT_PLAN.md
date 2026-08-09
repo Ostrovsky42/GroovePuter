@@ -205,10 +205,10 @@ Normalized distance to the current 20 is not yet measured.
 Published Jungle slices are break-dense and sampler-heavy. The assessment reports 53 of 253 Jungle recipe events on sampler track.
 
 ```text
-Jungle sampler-independent topology HOLD/REVIEW
+Jungle sampler-independent topology HOLD
 ```
 
-A sampler-normalization policy is required before admission.
+Reconsider it only after a sampler-normalization policy and normalized topology measurement exist.
 
 ### Rhythm gap
 
@@ -275,7 +275,7 @@ The 92 composite sequences are derived arrangements and are not independent obse
 | Break/Ending remove+cue | MEASURED | 12 published recipe transitions | `BarEvolution` | ACCEPT_TRANSFORM |
 | BASE BASE DEVELOPMENT ENDING | EDITORIAL_CURATED | measured component transforms | `BarTrajectory` | REVIEW |
 | Statement -> Response topology transform | INSUFFICIENT | none | `BarEvolution` | HOLD |
-| Return after development/break | INSUFFICIENT | none | `BarEvolution` | HOLD/REVIEW |
+| Return after development/break | INSUFFICIENT | none | `BarEvolution` | HOLD |
 
 Next calculation: classify actual 2/4-bar normalized bar-to-bar deltas against Stage 6 BarFunctions.
 
@@ -488,6 +488,7 @@ Only after that report exists should Stage 7 select its first approximately 10â€
 [x] No production code added.
 [x] Six extraction domains remain independent.
 [x] Each machine candidate has exactly one primary evidence class.
+[x] Each machine candidate has one decision from ACCEPT_BASELINE / ACCEPT_TRANSFORM / REVIEW / HOLD.
 [x] Each candidate has one runtime owner; Rhythm/Bass/Pitch candidates are not fused.
 [x] Full corpus measurements and exact published slices are distinguished.
 [x] Current 20 runtime archetypes are the novelty baseline.
