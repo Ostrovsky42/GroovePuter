@@ -53,6 +53,11 @@ require("drums = backupDrums_" in SESSION and
 require("synthA = SynthPattern{}" in SESSION and
         "synthB = SynthPattern{}" in SESSION,
         "Stage 7A listening must isolate drums by clearing temporary synth patterns")
+require("candidateIndex_ = oldIndex" in SESSION and
+        "seed_ = oldSeed" in SESSION and
+        "level_ = oldLevel" in SESSION and
+        "identity_ = oldIdentity" in SESSION,
+        "failed Stage 7A commands must roll back control and identity state")
 
 require("event.alt && event.ctrl" in CARDPUTER and "key == 'a'" in CARDPUTER,
         "Stage 7A activation must require Ctrl+Alt+A")
