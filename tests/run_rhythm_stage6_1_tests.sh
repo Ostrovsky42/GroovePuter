@@ -19,7 +19,7 @@ build_and_run() {
   local compiler="$1"
   local suffix="$2"
   shift 2
-  "${compiler}" -std=c++17 -Wall -Wextra -Werror \
+  "${compiler}" -std=c++17 -Wall -Wextra -Werror -Wvla \
     -Wno-c++20-extensions -Wno-unused-but-set-variable \
     -I"${ROOT_DIR}" \
     "$@" \
@@ -38,10 +38,10 @@ fi
 build_and_run "${CXX:-g++}" sanitize \
   -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined
 
-# GCC static stack-usage output is a regression guard only. The actual
-# ESP32-S3 task high-water mark remains a hardware gate before production
-# BarEvolution wiring.
-"${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror \
+# GCC stack-usage output is a bounded host regression guard only. -Wvla
+# separately rejects C/C++ variable-length arrays. The actual ESP32-S3 task
+# high-water mark remains a hardware gate before production BarEvolution wiring.
+"${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror -Wvla \
   -Wno-c++20-extensions -Wno-unused-but-set-variable \
   -I"${ROOT_DIR}" -fstack-usage -c \
   "${ROOT_DIR}/src/generation/rhythm/bar_evolution.cpp" \
