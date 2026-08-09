@@ -42,6 +42,11 @@ jobs:
       - name: Validate Atlas Pass 1 schema
         run: python3 tests/test_atlas_pass1_schema.py
 
+      - name: Validate Atlas Pass 2 runtime baseline
+        env:
+          ATLAS_PASS2_PRINT_RUNTIME_DUMP: "1"
+        run: bash tests/run_atlas_pass2_runtime_dump.sh
+
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 
