@@ -1,7 +1,7 @@
 #include "genre_manager.h"
 
 #include "drum_genre_templates.h"
-#include "miniacid_engine.h"
+#include "scenes.h"
 
 #include <cmath>
 
@@ -545,61 +545,3 @@ const DrumGenreTemplate* GenreSceneView::drumTemplateOverride() const {
 GenreBehavior GenreSceneView::getBehavior() const {
     return GenreCatalog::behavior(settings());
 }
-
-void GenreSceneView::applyGenreTimbre(MiniAcid& engine) {
-    const bool atlasAcidRecipe = recipe() == 6 || recipe() == 7;
-    const bool atlasHybridRecipe = recipe() >= 8 && recipe() <= 11;
-    if (atlasAcidRecipe) {
-        engine.setSynthEngine(0, "TB303");
-        engine.setSynthEngine(1, "TB303");
-    } else if (atlasHybridRecipe) {
-        engine.setSynthEngine(0, "TB303");
-        engine.setSynthEngine(1, "OPL2");
-    }
-
-    const GenreBehavior b = getBehavior();
-    const GenreTimbre& t = b.timbre;
-    for (int v = 0; v < 2; ++v) {
-        if (engine.currentSynthEngineName(v) != "TB303") continue;
-
-        engine.set303ParameterNormalized(
-            TB303ParamId::Oscillator, t.osc, v);
-
-        float cut = t.cutoff;
-        float reso = t.resonance;
-        float env = t.envAmount;
-        float decay = t.envDecay;
-
-        if (v == 0) {
-            cut = clamp01(cut);
-            reso = clamp01(reso);
-            env = clamp01(env);
-            decay = clamp01(decay);
-
-            if (cut < 0.18f) cut = 0.18f;
-            if (cut > 0.62f) cut = 0.62f;
-            if (env < 0.18f) env = 0.18f;
-            if (env > 0.55f) env = 0.55f;
-            if (decay < 0.10f) decay = 0.10f;
-            if (decay > 0.45f) decay = 0.45f;
-            if (reso < 0.0f) reso = 0.0f;
-            if (reso > 0.85f) reso = 0.85f;
-        } else {
-            if (cut < 0.40f) cut = 0.40f;
-            if (env < 0.20f) env = 0.20f;
-            if (decay < 0.08f) decay = 0.08f;
-            if (cut > 0.95f) cut = 0.95f;
-            if (reso > 0.95f) reso = 0.95f;
-        }
-
-        engine.set303ParameterNormalized(
-            TB303ParamId::Cutoff, clamp01(cut), v);
-        engine.set303ParameterNormalized(
-            TB303ParamId::Resonance, clamp01(reso), v);
-        engine.set303ParameterNormalized(
-            TB303ParamId::EnvAmount, clamp01(env), v);
-        engine.set303ParameterNormalized(
-            TB303ParamId::EnvDecay, clamp01(decay), v);
-    }
-}
-
