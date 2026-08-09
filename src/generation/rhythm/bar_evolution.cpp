@@ -118,6 +118,9 @@ const BarTrajectory* selectTrajectory(const BarEvolutionRequest& request,
   }
   if (!totalWeight) return nullptr;
 
+  // Selection salts are >= 0x100 because phraseBars >= 1. Evolution salts
+  // below use uint8_t TrajectoryId values (<= 0xFF). Keeping those two salt
+  // spaces disjoint is part of the deterministic domain contract.
   const uint32_t salt =
       (static_cast<uint32_t>(request.phraseBars) << 8u) |
       static_cast<uint8_t>(request.level);
@@ -208,6 +211,45 @@ bool addGhostCue(const RhythmArchetype& archetype,
   return true;
 }
 
+struct DropCandidate {
+  int lane = -1;
+  int step = -1;
+  uint32_t rank = 0;
+};
+
+DropCandidate bestDropCandidate(const RhythmArchetype& archetype,
+                                const RhythmPhrasePlan& plan,
+                                uint8_t bar,
+                                uint32_t seed,
+                                uint8_t pass,
+                                const StepMask* attempted,
+                                bool secondary) {
+  DropCandidate best{};
+  for (uint8_t laneIndex = 0;
+       laneIndex < archetype.laneCount;
+       ++laneIndex) {
+    const LaneGrammar& lane = archetype.lanes[laneIndex];
+    const uint8_t roleIndex = static_cast<uint8_t>(lane.role);
+    const RoleRhythmPlan& role = plan.bars[bar].roles[roleIndex];
+    const StepMask candidates = secondary
+        ? static_cast<StepMask>(role.secondary & ~attempted[roleIndex])
+        : static_cast<StepMask>(role.structural & ~anchorMask(lane) &
+                                ~attempted[roleIndex]);
+
+    for (uint8_t step = 0; step < kStepsPerBar; ++step) {
+      if (!(candidates & stepBit(step))) continue;
+      const uint32_t rank = deterministicValue(
+          seed, evolutionCoordinate(bar, lane.role, step, pass));
+      if (best.lane < 0 || rank > best.rank) {
+        best.lane = laneIndex;
+        best.step = step;
+        best.rank = rank;
+      }
+    }
+  }
+  return best;
+}
+
 bool dropOneStructuralEvent(const RhythmArchetype& archetype,
                             RhythmPhrasePlan& plan,
                             uint8_t bar,
@@ -217,56 +259,28 @@ bool dropOneStructuralEvent(const RhythmArchetype& archetype,
 
   StepMask attemptedSecondary[kRhythmRoleCount]{};
   StepMask attemptedStructural[kRhythmRoleCount]{};
-  constexpr uint16_t kMaxCandidates = kRhythmRoleCount * kStepsPerBar * 2u;
+  const uint16_t maxCandidates = static_cast<uint16_t>(
+      archetype.laneCount * kStepsPerBar * 2u);
 
-  for (uint16_t attempt = 0; attempt < kMaxCandidates; ++attempt) {
-    int bestLane = -1;
-    int bestStep = -1;
-    bool bestSecondary = false;
-    uint32_t bestRank = 0;
-
-    for (uint8_t laneIndex = 0;
-         laneIndex < archetype.laneCount;
-         ++laneIndex) {
-      const LaneGrammar& lane = archetype.lanes[laneIndex];
-      const uint8_t roleIndex = static_cast<uint8_t>(lane.role);
-      const RoleRhythmPlan& role = plan.bars[bar].roles[roleIndex];
-
-      StepMask secondary = static_cast<StepMask>(
-          role.secondary & ~attemptedSecondary[roleIndex]);
-      StepMask structural = static_cast<StepMask>(
-          role.structural & ~anchorMask(lane) &
-          ~attemptedStructural[roleIndex]);
-
-      for (uint8_t step = 0; step < kStepsPerBar; ++step) {
-        const StepMask bit = stepBit(step);
-        bool candidate = false;
-        bool secondaryCandidate = false;
-        if (secondary & bit) {
-          candidate = true;
-          secondaryCandidate = true;
-        } else if (structural & bit) {
-          candidate = true;
-        }
-        if (!candidate) continue;
-
-        uint32_t rank = deterministicValue(
-            seed, evolutionCoordinate(bar, lane.role, step, pass));
-        if (secondaryCandidate) rank |= 0x80000000u;
-        if (bestLane < 0 || rank > bestRank) {
-          bestLane = laneIndex;
-          bestStep = step;
-          bestSecondary = secondaryCandidate;
-          bestRank = rank;
-        }
-      }
+  for (uint16_t attempt = 0; attempt < maxCandidates; ++attempt) {
+    // Secondary events are a strict lower-authority removal class. Exhaust
+    // every legal secondary candidate before considering structural events;
+    // deterministic rank only orders candidates inside the same class.
+    DropCandidate candidate = bestDropCandidate(
+        archetype, plan, bar, seed, pass,
+        attemptedSecondary, true);
+    bool secondary = candidate.lane >= 0;
+    if (!secondary) {
+      candidate = bestDropCandidate(
+          archetype, plan, bar, seed, pass,
+          attemptedStructural, false);
     }
 
-    if (bestLane < 0 || bestStep < 0) return false;
-    const LaneGrammar& lane = archetype.lanes[bestLane];
+    if (candidate.lane < 0 || candidate.step < 0) return false;
+    const LaneGrammar& lane = archetype.lanes[candidate.lane];
     const uint8_t roleIndex = static_cast<uint8_t>(lane.role);
-    const StepMask bit = stepBit(static_cast<uint8_t>(bestStep));
-    if (bestSecondary) {
+    const StepMask bit = stepBit(static_cast<uint8_t>(candidate.step));
+    if (secondary) {
       attemptedSecondary[roleIndex] = static_cast<StepMask>(
           attemptedSecondary[roleIndex] | bit);
     } else {
@@ -276,7 +290,7 @@ bool dropOneStructuralEvent(const RhythmArchetype& archetype,
 
     RhythmPhrasePlan trial = plan;
     RoleRhythmPlan& role = trial.bars[bar].roles[roleIndex];
-    if (bestSecondary) {
+    if (secondary) {
       role.secondary = static_cast<StepMask>(role.secondary & ~bit);
     } else {
       role.structural = static_cast<StepMask>(role.structural & ~bit);
@@ -319,7 +333,12 @@ bool applyBarFunction(const RhythmArchetype& archetype,
 
   switch (function) {
     case BarFunction::Statement:
+      break;
+
     case BarFunction::Response:
+      // Stage 6/6.1 v1: Response is metadata-only. The underlying bar is the
+      // independently realized base bar. A future response topology transform
+      // requires its own evidence, budget and acceptance contract.
       break;
 
     case BarFunction::Repeat:
@@ -413,7 +432,6 @@ bool evolvedPlanValid(const RhythmArchetype& archetype,
 BarEvolutionResult evolveRhythmPhrase(const BarEvolutionRequest& request) {
   BarEvolutionResult result{};
   if (!request.catalog ||
-      !validateRhythmCatalog(*request.catalog) ||
       request.archetypeId == kNoArchetypeId ||
       request.phraseBars == 0 ||
       request.phraseBars > kMaxPhraseBars ||
@@ -422,17 +440,14 @@ BarEvolutionResult evolveRhythmPhrase(const BarEvolutionRequest& request) {
     return result;
   }
 
+  // Cheap request/archetype checks happen before realization. Full catalog
+  // validation is intentionally delegated to realizeRhythmPhrase(), so the
+  // Stage 6 wrapper does not scan the entire catalog twice per request.
   const RhythmArchetype* archetype =
       archetypeFor(*request.catalog, request.archetypeId);
   if (!archetype ||
       !(archetype->allowedPhraseBars & phraseBarsBit(request.phraseBars))) {
     result.status = BarEvolutionStatus::InvalidRequest;
-    return result;
-  }
-
-  const BarTrajectory* trajectory = selectTrajectory(request, *archetype);
-  if (!trajectory) {
-    result.status = BarEvolutionStatus::NoEligibleTrajectory;
     return result;
   }
 
@@ -452,9 +467,18 @@ BarEvolutionResult evolveRhythmPhrase(const BarEvolutionRequest& request) {
     return result;
   }
 
+  // At this point the base realizer has validated the supplied catalog.
+  const BarTrajectory* trajectory = selectTrajectory(request, *archetype);
+  if (!trajectory) {
+    result.status = BarEvolutionStatus::NoEligibleTrajectory;
+    return result;
+  }
+
   RhythmPhrasePlan evolvedPlan = base.plan;
   evolvedPlan.trajectoryId = trajectory->id;
 
+  // TrajectoryId is uint8_t today, so this salt remains disjoint from the
+  // >=0x100 selection salt above.
   const uint32_t evolutionSeed = deriveGenerationSeed(
       request.generation, archetype->id,
       GenerationDomain::BarEvolution, trajectory->id);
