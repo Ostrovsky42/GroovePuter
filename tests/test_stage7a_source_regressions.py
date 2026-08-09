@@ -67,10 +67,11 @@ require("key == 'p'" in CARDPUTER and "key == '['" in CARDPUTER and
         "Stage 7A seed/P-level/rerender controls must remain available")
 require("key == 'b'" not in CARDPUTER and "key == 'B'" not in CARDPUTER,
         "Stage 7A must not revive the Stage 3A fixed-root Bass toggle")
-require("(panicChord || key == ' ')" in CARDPUTER,
-        "Stage 7A must release Space and panic to existing global owners")
-require("engine.start()" not in CARDPUTER and "engine.stop()" not in CARDPUTER,
-        "Stage 7A must not own transport start/stop directly")
+require("TransportClockSource::SeqtrakExternal" in CARDPUTER and
+        'UI::showToast("SEQ MASTER: USE SEQTRAK"' in CARDPUTER,
+        "Stage 7A Space must preserve the SEQTRAK-master refusal")
+require("engine.isPlaying()" in CARDPUTER and "engine.stop()" in CARDPUTER and "engine.start()" in CARDPUTER,
+        "Stage 7A Space must preserve internal transport toggle semantics")
 
 require('#include "../../generation/audition_stage7/stage7a_cardputer.h"' in GENRE_PAGE,
         "GenrePage must include the temporary Stage 7A handler")
