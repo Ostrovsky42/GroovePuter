@@ -6,6 +6,8 @@ scenes_h = (ROOT / "scenes.h").read_text(encoding="utf-8")
 scenes_cpp = (ROOT / "scenes.cpp").read_text(encoding="utf-8")
 engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
 project = (ROOT / "src/ui/pages/project_page.cpp").read_text(encoding="utf-8")
+genre_h = (ROOT / "src/dsp/genre_manager.h").read_text(encoding="utf-8")
+genre_cpp = (ROOT / "src/dsp/genre_manager.cpp").read_text(encoding="utf-8")
 
 required = [
     "kSynthStateSchemaVersion = 1",
@@ -44,6 +46,17 @@ params_pos = apply.index("synthVoices_[idx]->setState(runtimeState)")
 fx_pos = apply.index("distortion303.setEnabled")
 if not (select_pos < params_pos < fx_pos):
     raise AssertionError("load order must be TYPE -> normalized params -> DST/DLY")
+
+# Genre metadata must never regain ownership of physical synth TYPE/patch state.
+# The old applyGenreTimbre API had zero callers but still encoded forced
+# TB303/OPL2 projection, so its declaration/definition is forbidden entirely.
+for path, text in (("genre_manager.h", genre_h), ("genre_manager.cpp", genre_cpp)):
+    if "applyGenreTimbre" in text:
+        raise AssertionError(f"dead genre timbre projection API returned in {path}")
+if "setSynthEngine(" in genre_cpp:
+    raise AssertionError("GenreSceneView must not project physical synth TYPE")
+if '"miniacid_engine.h"' in genre_cpp:
+    raise AssertionError("genre catalog/view must not depend on synth engine runtime")
 
 sync_start = engine.index("void MiniAcid::syncSceneStateToManager()")
 sync = engine[sync_start:]
