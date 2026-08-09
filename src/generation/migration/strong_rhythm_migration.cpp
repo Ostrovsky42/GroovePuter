@@ -50,9 +50,12 @@ constexpr Archetype kDub[] = {
     Archetype::ChordResponse,
 };
 
+// Hardware acceptance found Chicago Jack and Rolling Acid too similar. Keep
+// their Stage 5 rhythm identities disjoint without changing the frozen Stage 3
+// vocabulary or the legacy synth-pitch path.
 constexpr Archetype kChicagoJack[] = {
     Archetype::StraightAcid,
-    Archetype::RollingAcid,
+    Archetype::SparseAcid,
 };
 
 constexpr Archetype kRollingAcid[] = {
@@ -60,11 +63,12 @@ constexpr Archetype kRollingAcid[] = {
     Archetype::SyncopatedAcid,
 };
 
+// Deep Chord must stay chord-centric. The broader Dub pool can legitimately
+// select one-drop/steppers grammars, but those made Deep Chord sound like a
+// second Dub Techno route on hardware. Variation still comes from the Stage 2
+// realizer and the deterministic pattern-address context.
 constexpr Archetype kDeepChord[] = {
     Archetype::ChordResponse,
-    Archetype::SparseSkank,
-    Archetype::OneDropSpace,
-    Archetype::Steppers,
 };
 
 template <size_t N>
