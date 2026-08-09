@@ -20,6 +20,10 @@ grep -qx $'COUNT\t20' "$DUMP"
 [[ "$(grep -c $'^A\t' "$DUMP")" -eq 20 ]]
 [[ "$(grep -c $'^L\t' "$DUMP")" -gt 0 ]]
 
+FILTERED="$BUILD_DIR/runtime_rhythm_baseline.tsv"
+grep -E $'^(FORMAT|A|L|COUNT)\t' "$DUMP" > "$FILTERED"
+diff -u "$ROOT/docs/architecture/atlas_pass2/RUNTIME_RHYTHM_BASELINE.tsv" "$FILTERED"
+
 echo "Atlas Pass 2 runtime catalog dump: OK"
 if [[ "${ATLAS_PASS2_PRINT_RUNTIME_DUMP:-0}" == "1" ]]; then
   cat "$DUMP"
