@@ -3,62 +3,74 @@
 **Status:** measured offline audit; no production code  
 **Base:** Stage 6A/6B docs candidate `0e81f6a03604609f37cdcc460ed5913f22483046`  
 **Atlas evidence snapshot:** schema 2.6.0, pinned SHA-256 `5b155937b8d05f0f0f9f1a02f10d9afe76a917d6035897695cce739eb8d6b1fd`  
-**Purpose:** produce the first evidence-backed candidate/gap map for post-Stage-6 vocabulary work without adding runtime archetypes, enums, generated headers or Scene fields.
+**Purpose:** identify evidence-backed candidates and gaps before Stage 7 without inventing runtime vocabulary from genre labels.
 
-This pass deliberately answers:
+Paired files:
 
 ```text
-What does Atlas support strongly?
-What is already represented by the current 20-archetype runtime vocabulary?
-What appears structurally novel but still needs quantitative extraction?
-What is too weak/editorial to admit yet?
+docs/architecture/ATLAS_PASS1_CANDIDATES.csv
+docs/architecture/ATLAS_PASS1_EVIDENCE_BASIS.md
 ```
-
-It does **not** answer by inventing 20 new archetype names.
 
 ---
 
-# 1. Evidence classes and decision vocabulary
+## 1. Pass boundary
 
-Evidence classes follow `ATLAS_VOCABULARY_EXTRACTION.md`:
+Pass #1 is an evidence audit over:
+
+```text
+1. the validated v2.6 assessment for the pinned archive;
+2. project-owned published P1/P2/P3 vertical slices;
+3. the current 20-archetype Stage 3 ReferenceVocabulary as novelty baseline.
+```
+
+The raw pinned ZIP is not stored in the GroovePuter repository and was not available in the current file set. Therefore Pass #1 does **not** claim to recompute all 413 patterns from source CSVs.
+
+That full normalized calculation is the next computational extraction gate.
+
+No runtime archetype, enum, generated header, Scene field or generator routing is added here.
+
+---
+
+## 2. Evidence and decisions
+
+Every machine-readable candidate has exactly one `primary_evidence_class`:
 
 ```text
 MEASURED
-PROJECT_OWNED_EXACT
 EDITORIAL_CURATED
+PROJECT_OWNED_EXACT
 RESEARCH_AGGREGATE
 INSUFFICIENT
 ```
 
-Candidate decisions used in this pass:
+Additional context belongs in `supporting_evidence`, not in a compound evidence class.
+
+Decisions:
 
 ```text
 ACCEPT_BASELINE
-    evidence strongly validates a grammar already represented in runtime;
-    it is not a new Stage 7 item.
+    validates knowledge already represented in runtime;
+    not a new Stage 7 item.
 
 ACCEPT_TRANSFORM
-    evidence is strong enough to freeze a phrase/development transform
-    candidate for later curated runtime data.
+    evidence is strong enough to freeze a transform candidate;
+    still not permission to wire production behavior.
 
 REVIEW
-    candidate is plausible and useful, but support/distinctness still needs
-    a quantitative extraction or comparison before runtime admission.
+    plausible and useful, but quantitative support/distinctness is incomplete.
 
 HOLD
-    evidence is currently too sparse/editorial/recoverability-sensitive for
-    runtime admission.
+    evidence is too weak, editorial or dependency-sensitive for admission.
 ```
-
-`ACCEPT_*` in this audit is **not permission to write production code**. Stage 7 still has its own admission gate.
 
 ---
 
-# 2. Corpus baseline
+## 3. Corpus baseline
 
-The v2.6 assessment reports:
+The pinned v2.6 assessment reports:
 
-| Corpus item | Count |
+| Item | Count |
 |---|---:|
 | Patterns | 413 |
 | Pattern events | 9,377 |
@@ -71,56 +83,64 @@ The v2.6 assessment reports:
 | Published baseline recipes | 12 |
 | Rights-blocked research patterns | 362 |
 
-Raw pattern count is not a vocabulary metric: duplicate/near-duplicate normalization remains mandatory.
-
-Published P-level distinctness is already asymmetric:
+Duplicate structure is already material:
 
 ```text
+27 duplicate grid groups cover 59 patterns
 P2: 12 published patterns / 10 structural grids
 P3: 12 published patterns / 7 structural grids
 ```
 
-This is an important first warning for Stage 7 metrics: P3 labels overstate structural variety more than P2 labels do.
+Therefore raw pattern, seed or slot count is not a vocabulary metric.
 
-The 27 exact duplicate-grid groups cover 59 patterns. Expression differences remain separate evidence and must not create new rhythm archetypes.
+Expression-only differences never create a new RhythmArchetype.
 
 ---
 
-# 3. Strong measured phrase signal
+## 4. Strongest measured signal — phrase function
 
-Across the 12 published recipes, the existing v2.6 assessment measured:
+Across 12 published recipes:
 
-| Transition | Mean added events | Mean removed events | Mean net |
+| Transition | Mean added | Mean removed | Mean net |
 |---|---:|---:|---:|
 | P1 -> P2 / Development | 9.33 | 0.58 | +8.75 |
 | P1 -> P3 / Break/fill/ending | 2.92 | 11.17 | -8.25 |
 
-Pass #1 therefore accepts two independent transform classes as evidence-backed:
+Pass #1 therefore accepts these transform candidates:
 
 ```text
-Development:
-    preserve phrase identity
+Development
+    preserve identity
     mostly add activity
 
-Break / Ending:
+Break / Ending
     preserve critical identity
     remove substantial activity
-    optionally add a small ending gesture
+    optionally add a small ending cue
 ```
 
-The useful sequence:
+Decision:
+
+```text
+Development preserve+add        ACCEPT_TRANSFORM
+Break/Ending remove+small cue   ACCEPT_TRANSFORM
+```
+
+The often useful sequence:
 
 ```text
 BASE -> BASE -> DEVELOPMENT -> ENDING
 ```
 
-remains a **REVIEW trajectory template**, not a measured universal law. The aggregate transition data supports the functions, while exact four-bar ordering still needs trajectory extraction from the 2/4-bar evidence and composite-sequence policy.
+remains `REVIEW`: it is a recommendation derived from strong transform evidence, not yet a universal four-bar law measured against the 17 independent four-bar patterns.
+
+`Statement -> Response` topology change remains `HOLD` until a real bar-to-bar response transform is extracted. This matches Stage 6.1 keeping Response metadata-only.
 
 ---
 
-# 4. Current runtime baseline that Stage 7 must not duplicate
+## 5. Novelty baseline — current runtime vocabulary
 
-The Stage 3 reference vocabulary already contains 20 curated one-bar grammars:
+Stage 7 must compare candidates against these existing Stage 3 archetypes:
 
 ```text
 straight_drive
@@ -145,300 +165,342 @@ shuffled_4x4
 machine_syncopation
 ```
 
-The current catalog already represents relationship/protected-space ideas such as Coincide, Exclude, Respond, FillGaps, backbeat protected space and shuffle-sensitive role eligibility.
+Current grammar already expresses core operators including:
 
-Therefore Stage 7 admission compares Atlas candidates to these grammars, not to the old procedural generator.
+```text
+Coincide
+Exclude
+Respond
+FillGaps
+protected backbeat space
+shuffle-sensitive timing eligibility
+```
+
+A candidate is new only if its normalized musical structure is not already covered by this set.
 
 ---
 
-# 5. Pass A — Rhythm topology
+# Pass A — Rhythm topology
 
-## Published vertical-slice observations
+## Acid
 
-### Acid
-
-Project-owned Chicago Jack P1 uses:
+Published Chicago Jack P1 exposes a four-floor frame:
 
 ```text
-Kick:       1 5 9 13
-Backbeat:   5 13
-ClosedHat:  3 7 11 15
-OpenHat:    7 15
+Kick       1 5 9 13
+Backbeat   5 13
+ClosedHat  3 7 11 15
+OpenHat    7 15
 ```
 
-Rolling Acid keeps the same four-floor drum frame while materially increasing bass-event density.
+Rolling Acid keeps the same broad drum frame while increasing Bass onset density.
 
-This validates that Acid identity is not another `RhythmFamily`; the shared rhythmic frame composes with a distinct bass role/contour.
-
-Current Stage 3 already contains `straight_acid`, `rolling_acid`, `syncopated_acid`, `sparse_acid`, so these exact recipes are baseline/calibration evidence, not automatic Stage 7 additions.
-
-### UK Garage
-
-Classic 2-Step P1 uses a broken kick and clear backbeat:
+Orthogonal decision:
 
 ```text
-Kick:       1 7 11
-Backbeat:   5 13
-ClosedHat:  3 6 8 11 14 16
-Bass:       1 6 10 15
+Chicago/Rolling drum topology
+    -> Rhythm baseline only
+    -> ACCEPT_BASELINE
+
+Rolling denser Bass onset behavior
+    -> Bass rhythm candidate
+    -> REVIEW separately
+
+Rolling pitch motion
+    -> Bass pitch candidates AcidContour/OctaveMotion
+    -> REVIEW separately
 ```
 
-Dark Skippy P1 is sparser in the kick:
+There is deliberately no combined `Rhythm+Bass` candidate.
+
+## UK Garage
+
+Classic 2-Step P1:
 
 ```text
-Kick:       1 7
-Backbeat:   main anchors remain 5/13 with a ghost at 12
-ClosedHat:  3 6 8 11 14 16
-Bass:       1 6 10 15
-```
-
-Current Stage 3 already contains `classic_2step` and `skippy_2step` with backbeat exclusion/protected space and bass gap-filling tendencies. These Atlas slices therefore validate existing topology coverage; they do not justify duplicate runtime archetypes under recipe labels.
-
-### Jungle
-
-Classic Amen P1 contains a dense break-oriented drum surface and an eight-event sampler break layer. The v2.6 assessment separately notes that Jungle exact recipes are sampler-dependent enough that exact runtime expansion should wait for a sampler strategy.
-
-Current Stage 3 already has four breakbeat grammars, but the Atlas observation may still contain structural novelty after sampler-independent normalization. That comparison has not yet been measured in Pass #1.
-
-### Lo-Fi and Boom-Bap
-
-The published vertical slices show stable backbeat identity with softer/syncopated kick and expression differences. However only two editorial/project-owned variants per family are available in this vertical slice set, and expression is an important part of their audible distinction.
-
-These are candidates for topology extraction, not yet accepted archetypes.
-
-## Rhythm candidate decisions
-
-| Candidate | Domain | Evidence | Distinctness vs current 20 | Confidence | Runtime owner | Decision |
-|---|---|---|---|---|---|---|
-| `classic_2step` evidence slice | Rhythm | PROJECT_OWNED_EXACT | already represented by 417 | high | `RhythmArchetype` | ACCEPT_BASELINE |
-| `dark_skippy` evidence slice | Rhythm | PROJECT_OWNED_EXACT | overlaps 418; exact distance not measured | high evidence / medium novelty | `RhythmArchetype` | ACCEPT_BASELINE + REVIEW distance |
-| Chicago four-floor acid frame | Rhythm | PROJECT_OWNED_EXACT | already covered by Acid/FourFloor grammars | high | `RhythmArchetype` | ACCEPT_BASELINE |
-| Rolling Acid drum frame | Rhythm | PROJECT_OWNED_EXACT | drum topology largely same family; novelty lives strongly in bass density/contour | high | `RhythmArchetype` | ACCEPT_BASELINE |
-| Lo-Fi stable-backbeat sparse-kick family | Rhythm | PROJECT_OWNED_EXACT + EDITORIAL_CURATED | comparison to current 20 not measured | medium | `RhythmArchetype` | REVIEW |
-| Boom-Bap syncopated-kick strong-backbeat family | Rhythm | PROJECT_OWNED_EXACT + EDITORIAL_CURATED | comparison to current 20 not measured | medium-high | `RhythmArchetype` | REVIEW |
-| Jungle break/sampler topology | Rhythm | PROJECT_OWNED_EXACT | likely distinct, but sampler normalization unresolved | medium | `RhythmArchetype` + external sampler policy | HOLD/REVIEW |
-
-### Pass-A gap
-
-We still need a machine calculation of normalized role-topology distance between every candidate structural group and each of the current 20 runtime archetypes. Without that, adding any new Stage 7 archetype would be premature.
-
----
-
-# 6. Pass B — Lane relationships and protected space
-
-UKG vertical slices repeatedly preserve the main backbeat while kick remains broken. Current runtime already expresses this as hard Backbeat/Kick exclusion plus protected backbeat space for Kick/Bass.
-
-Classic 2-Step exact P1 places Bass on `1,6,10,15` against Kick `1,7,11`. This supports a mixed relationship rather than a simple `Bass == Kick` rule: one onset coincides while several are adjacent/answering/gap-filling.
-
-Acid exact slices combine a stable four-floor kick with denser bass onsets, supporting Coincide anchors plus independent legal Offset/extra movement rather than full lockstep.
-
-| Candidate | Domain | Evidence | Distinctness | Confidence | Runtime owner | Decision |
-|---|---|---|---|---|---|---|
-| Backbeat excludes UKG kick | Relationship | PROJECT_OWNED_EXACT | already represented | high | `LaneRelationship` | ACCEPT_BASELINE |
-| UKG backbeat protected space | Protected space | PROJECT_OWNED_EXACT | already represented | high | `ProtectedSpace` | ACCEPT_BASELINE |
-| UKG Bass `Respond/FillGaps` | Bass rhythm relation | PROJECT_OWNED_EXACT + EDITORIAL_CURATED | existing runtime has `FillGaps`, exact relation mix not quantified | medium-high | future Bass relationship plan | REVIEW |
-| Acid Kick/Bass Coincide + Offset | Bass rhythm relation | PROJECT_OWNED_EXACT | concept already represented in Acid grammars | high | relationship plan | ACCEPT_BASELINE |
-| Boom-Bap kick leaves vocal/sample space | Protected space | EDITORIAL_CURATED + exact slices | masks/corridor not aggregated | medium | `ProtectedSpace` | REVIEW |
-| Jungle bass leaves break transients clear | Protected space / relationship | EDITORIAL_CURATED | exact quantitative window not extracted | low-medium | future Bass relationship plan | HOLD |
-
-### Pass-B gap
-
-The next raw-table extraction must report per-family support for Coincide, Offset windows, Respond windows, Exclude and FillGaps by **distinct structural group**, not raw pattern rows.
-
----
-
-# 7. Pass C — 2–4 bar development
-
-Evidence strength differs sharply by length:
-
-```text
-1-bar patterns: 302
-2-bar patterns:  93
-4-bar patterns:  17
-```
-
-There are also 92 composite sequences, but derived/composite sequences must not be counted as independent single-pattern observations.
-
-The P1/P2/P3 transition aggregate is currently stronger evidence than any one named four-bar trajectory.
-
-| Candidate | Domain | Evidence | Distinctness | Confidence | Runtime owner | Decision |
-|---|---|---|---|---|---|---|
-| `Development = preserve + add` | Phrase transform | MEASURED across 12 published recipes | high functional distinction | high | `BarEvolution` / phrase development | ACCEPT_TRANSFORM |
-| `Break/Ending = remove + small ending cue` | Phrase transform | MEASURED across 12 published recipes | high functional distinction | high | `BarEvolution` / phrase development | ACCEPT_TRANSFORM |
-| `BASE BASE DEVELOPMENT ENDING` | 4-bar trajectory | derived recommendation from measured transforms | not measured against 17 four-bar patterns | medium | `BarTrajectory` | REVIEW |
-| `Statement -> Response` topology transform | Phrase trajectory | no quantitative transform evidence yet | unknown | low | `BarEvolution` | HOLD |
-| `Return` after break/development | Phrase trajectory | plausible; not yet quantified in corpus pass | unknown | low-medium | `BarEvolution` | REVIEW/HOLD |
-
-### Pass-C gap
-
-Atlas Pass #1 does **not** justify making every Stage 6 BarFunction production-reachable. The next extraction must classify the 93 two-bar and 17 four-bar patterns by normalized bar-to-bar topology delta and compare them with the BarFunction vocabulary.
-
----
-
-# 8. Pass D — Bass rhythm
-
-Bass rhythm is evaluated independently of pitch.
-
-UKG Classic P1:
-
-```text
-Kick: 1 7 11
-Bass: 1 6 10 15
+Kick       1 7 11
+Backbeat   5 13
+ClosedHat  3 6 8 11 14 16
+Bass       1 6 10 15
 ```
 
 Dark Skippy P1:
 
 ```text
-Kick: 1 7
-Bass: 1 6 10 15
+Kick       1 7
+Backbeat   main anchors 5/13, ghost near 12
+ClosedHat  3 6 8 11 14 16
+Bass       1 6 10 15
 ```
 
-The repeated Bass topology across two different kick densities is evidence that the bass line is not simply regenerated from kick coincidence. The editorial invariant also describes the sub as answering drums / not masking kick.
+Current runtime already has `classic_2step` and `skippy_2step`. These exact slices validate existing coverage instead of creating recipe-named duplicates.
 
-Acid slices show four-floor kick plus dense independent bass-onset activity; this supports a mixed Coincide+Offset relation rather than FollowKick.
+## Lo-Fi / Boom-Bap
 
-Jungle exact slices use sparse longer bass notes while sampler/drum surface remains dense, but sampler dependency prevents a confident generalized relationship from this pass alone.
-
-| Candidate | Evidence | Distinctness | Confidence | Future owner | Decision |
-|---|---|---|---|---|---|
-| `RespondKick` for UKG | PROJECT_OWNED_EXACT + EDITORIAL_CURATED | plausible distinct from FollowKick | medium-high | Bass relationship strategy | REVIEW |
-| `FillKickGaps` for UKG | PROJECT_OWNED_EXACT + existing Stage3 relation | already partly represented | high baseline | Bass relationship strategy | ACCEPT_BASELINE |
-| Acid Coincide+Offset | PROJECT_OWNED_EXACT | distinct from pure follow | high | Bass relationship strategy | ACCEPT_BASELINE |
-| Sparse long-note break bass | PROJECT_OWNED_EXACT + EDITORIAL_CURATED | likely distinct | medium-low | Bass relationship strategy | HOLD |
-| `AnticipateKick` | no measured aggregate in current pass | unknown | low | Bass relationship strategy | HOLD |
-| `SparseIndependent` | concept visible in sparse styles, not quantified | unknown | low-medium | Bass relationship strategy | HOLD |
-
-### Pass-D gap
-
-Before Stage 8, compute relation histograms using transposition-independent bass onset masks and kick/backbeat masks, deduplicated by structural group.
-
----
-
-# 9. Pass E — Bass pitch / contour
-
-The Atlas assessment explicitly warns that tonal/melodic guidance is partly editorial and transposable. Pitch candidates therefore receive stricter decisions than rhythm topology.
-
-Project-owned exact slices nevertheless demonstrate useful candidate behavior:
+Published slices show stable backbeat identity with sparse/syncopated kick behavior. They are promising topology candidates but normalized distance versus the current 20 is not yet measured.
 
 ```text
-Acid Chicago / Rolling:
-    monophonic repeated-note + interval movement
-    Rolling has markedly higher note density
-    accent/slide semantics exist
-
-UKG:
-    short low-register line over four bass onsets
-
-Lo-Fi / Boom-Bap / Dub:
-    sparse low-register chord-tone/root-oriented lines in published slices
-
-Jungle:
-    long sparse sub notes in the exact vertical slices
+Lo-Fi sparse/stable-backbeat topology       REVIEW
+Boom-Bap syncopated-kick/backbeat topology REVIEW
 ```
 
-| Candidate | Evidence | Distinctness | Confidence | Future owner | Decision |
-|---|---|---|---|---|---|
-| `AcidContour` | PROJECT_OWNED_EXACT + editorial invariant | likely distinct | medium-high | `BassPitchStrategy` | REVIEW |
-| `OctaveMotion` | PROJECT_OWNED_EXACT/EDITORIAL_CURATED in Rolling Acid | likely useful | medium | `BassPitchStrategy` | REVIEW |
-| `Pedal` / repeated-note gravity | PROJECT_OWNED_EXACT across multiple slices, not aggregated | unknown support count | medium | `BassPitchStrategy` | REVIEW |
-| `ChordTone` gravity | PROJECT_OWNED_EXACT + editorial harmony guidance | not quantitatively extracted | medium | `BassPitchStrategy` | REVIEW |
-| `StepwiseMotion` | insufficient measured evidence in current pass | unknown | low | `BassPitchStrategy` | HOLD |
+## Jungle
 
-No Bass pitch candidate is admitted to runtime by Pass #1. The required next measurement is transposition-normalized contour/interval fingerprinting over every eligible bass line.
+Published Jungle slices expose dense break topology, but sampler events carry substantial identity. Atlas assessment reports 53 of 253 Jungle recipe events on sampler track.
 
----
+```text
+Jungle sampler-independent rhythm topology HOLD/REVIEW
+```
 
-# 10. Pass F — Motif / melodic development
+It needs an explicit sampler-normalization policy before admission.
 
-This is the weakest evidence domain in the current pass.
+### Rhythm gap
 
-The v2.6 assessment states that tonal/melodic guidance is editorial and transposable and should not be treated as evidence for literal genre melodies. Published DX/melody lines are often sparse one-bar examples.
+Pass #2 must compute:
 
-| Candidate | Evidence | Distinctness | Confidence | Future owner | Decision |
-|---|---|---|---|---|---|
-| short motif reuse | PROJECT_OWNED_EXACT + EDITORIAL_CURATED | not normalized | medium | future `MotifVocabulary` | REVIEW |
-| `ExactRepeat` | plausible, no corpus-level normalized count yet | unknown | low-medium | future `MotifVocabulary` | HOLD |
-| `RepeatWithEnding` | phrase evidence supports endings generally, not melodic motif operation specifically | unknown | low | future `MotifVocabulary` | HOLD |
-| `Arch` / `Rise` / `Fall` | sparse/editorial melodic evidence | unknown | low | future `MotifVocabulary` | HOLD |
-| sequence/compress/expand | not measured in Pass #1 | unknown | low | future `MotifVocabulary` | HOLD |
+```text
+Atlas structural group
+        ↓
+normalize to semantic role topology
+        ↓
+nearest of current 20 archetypes
+        ↓
+normalized distance
+        ↓
+new cluster or already covered?
+```
 
-### Pass-F gap
-
-Stage 9 cannot be designed from this evidence alone. It needs transposition-normalized motif segmentation and bar-to-bar motif identity analysis. This is a genuine evidence gap, not something to hide with more random notes.
+No Stage 7 archetype should be added before this calculation.
 
 ---
 
-# 11. Gap map
+# Pass B — Lane relationships / protected space
 
-| Domain | Current evidence | Runtime readiness | Main gap |
+Strong baseline observations:
+
+```text
+UKG backbeat remains stable while Kick is broken
+    -> Backbeat/Kick exclusion
+    -> protected backbeat space
+
+UKG Bass 1,6,10,15 against changing Kick density
+    -> not simple FollowKick
+    -> Respond/FillGaps hypothesis
+
+Acid four-floor Kick + denser Bass motion
+    -> Coincide anchors + independent Offset movement
+```
+
+Decisions:
+
+| Candidate | Primary evidence | Owner | Decision |
 |---|---|---|---|
-| Rhythm topology | strong structural corpus + published slices | existing 20 are a good baseline | quantitative distance of new groups to current 20 |
-| Relationships | strong enough for core operators | baseline operators already exist | per-family support frequencies by structural group |
-| Protected space | clear in UKG and curated invariants | partial baseline support | derive masks/corridors beyond hand-curated examples |
-| Phrase transforms | **strongest new signal** | Development/Break semantics evidence-backed | map real 2/4-bar deltas to function vocabulary |
-| Four-bar trajectories | only 17 four-bar patterns + derived composites | not ready for broad catalog | scarce independent evidence |
-| Bass rhythm | promising UKG/Acid evidence | not a dedicated runtime vocabulary yet | full relation histogram |
-| Bass pitch | useful exact slices but mixed editorial status | not ready | normalized contour/interval support + dedupe |
-| Motif | sparse/editorial one-bar material | not ready | motif segmentation, normalized identity, multi-bar development |
-| Feel/expression | only 47 expressive + 3 partial patterns in v2.6 assessment | existing FEEL should stay separate | measured vs editorial coverage is sparse |
-| Jungle exact identity | strong musical identity but sampler-heavy | not ready for exact expansion | sampler strategy + sampler-independent topology normalization |
+| UKG Backbeat/Kick exclusion | PROJECT_OWNED_EXACT | `LaneRelationship` | ACCEPT_BASELINE |
+| UKG protected backbeat space | PROJECT_OWNED_EXACT | `ProtectedSpace` | ACCEPT_BASELINE |
+| UKG `FillKickGaps` | PROJECT_OWNED_EXACT | future Bass relationship strategy | ACCEPT_BASELINE |
+| UKG `RespondKick` | PROJECT_OWNED_EXACT | future Bass relationship strategy | REVIEW |
+| Acid Coincide+Offset | PROJECT_OWNED_EXACT | future Bass relationship strategy | ACCEPT_BASELINE |
+| Boom-Bap protected vocal/sample space | EDITORIAL_CURATED | `ProtectedSpace` | REVIEW |
+| Jungle bass/transient protected space | EDITORIAL_CURATED | future Bass relationship strategy | HOLD |
 
-The first pass therefore says:
+Pass #2 must report relation support by **distinct structural group**, not raw rows.
+
+---
+
+# Pass C — 2–4 bar development
+
+Evidence volume:
 
 ```text
-Strong now:
-    structural rhythm
-    relationship vocabulary foundation
-    P1/P2/P3 phrase-function delta
+1 bar  302
+2 bar   93
+4 bar   17
+```
 
-Promising but needs extraction:
-    new Lo-Fi/Boom-Bap rhythm candidates
-    UKG/Acid bass relationship profiles
-    bass contour strategies
+The 92 composite sequences are derived arrangements and must not be counted as new independent observations.
 
-Weak / must not be invented yet:
-    broad motif grammar
+Decisions:
+
+| Candidate | Primary evidence | Owner | Decision |
+|---|---|---|---|
+| Development preserve+add | MEASURED | `BarEvolution` / phrase development | ACCEPT_TRANSFORM |
+| Break/Ending remove+cue | MEASURED | `BarEvolution` / phrase development | ACCEPT_TRANSFORM |
+| BASE BASE DEVELOPMENT ENDING | MEASURED transform basis; derived ordering | `BarTrajectory` | REVIEW |
+| Statement -> Response topology transform | INSUFFICIENT | `BarEvolution` | HOLD |
+| Return after development/break | INSUFFICIENT | `BarEvolution` | HOLD/REVIEW |
+
+Next calculation: classify actual 2/4-bar normalized bar-to-bar deltas against Stage 6 BarFunctions.
+
+---
+
+# Pass D — Bass rhythm
+
+Bass rhythm is independent from Bass pitch.
+
+Published evidence:
+
+```text
+UKG Classic:
+    Kick 1 7 11
+    Bass 1 6 10 15
+
+UKG Dark Skippy:
+    Kick 1 7
+    Bass 1 6 10 15
+```
+
+The Bass topology survives a meaningful Kick-density change, which argues against a simple `Bass = Kick copy` model.
+
+Acid likewise combines four-floor Kick anchors with denser independent Bass onset activity.
+
+Decisions:
+
+```text
+UKG FillKickGaps                 ACCEPT_BASELINE
+Acid Coincide+Offset            ACCEPT_BASELINE
+UKG RespondKick                 REVIEW
+Rolling denser Bass onset plan  REVIEW
+Sparse long-note break Bass     HOLD
+AnticipateKick                  HOLD
+SparseIndependent               HOLD
+```
+
+Before Stage 8, compute Bass/Kick/Backbeat relation histograms deduplicated by structural group.
+
+---
+
+# Pass E — Bass pitch / contour
+
+Pitch evidence is weaker than onset topology because Atlas tonal/melodic guidance is partly editorial and transposable.
+
+Published exact slices still support hypotheses for:
+
+```text
+Acid repeated-note / interval movement
+Rolling Acid octave movement
+UKG low-register short phrase
+Lo-Fi / Boom-Bap / Dub root/chord-tone gravity
+Jungle sparse long sub notes
+```
+
+Decisions:
+
+| Candidate | Primary evidence | Owner | Decision |
+|---|---|---|---|
+| AcidContour | PROJECT_OWNED_EXACT | `BassPitchStrategy` | REVIEW |
+| OctaveMotion | PROJECT_OWNED_EXACT | `BassPitchStrategy` | REVIEW |
+| Pedal/root gravity | PROJECT_OWNED_EXACT | `BassPitchStrategy` | REVIEW |
+| ChordTone gravity | PROJECT_OWNED_EXACT | `BassPitchStrategy` | REVIEW |
+| StepwiseMotion | INSUFFICIENT | `BassPitchStrategy` | HOLD |
+
+No BassPitchStrategy is admitted by Pass #1. Pass #2 must normalize transposition and count contour/interval support.
+
+---
+
+# Pass F — Motif / melodic development
+
+This is the weakest Pass #1 domain.
+
+The v2.6 assessment explicitly treats tonal/melodic guidance as editorial/transposable rather than evidence for literal genre melodies.
+
+Decisions:
+
+```text
+short motif reuse       REVIEW
+ExactRepeat             HOLD
+RepeatWithEnding        HOLD
+Arch / Rise / Fall      HOLD
+SequenceUp/Down         HOLD
+Compress / Expand       HOLD
+```
+
+Stage 9 therefore still needs:
+
+```text
+motif segmentation
+transposition-normalized interval fingerprints
+contour fingerprints
+bar-to-bar motif identity
+multi-bar development evidence
+```
+
+The correct response to this gap is more evidence/curation, not more random-note entropy.
+
+---
+
+# 6. Gap map
+
+| Domain | Evidence strength now | Main missing measurement |
+|---|---|---|
+| Rhythm topology | strong | distance of Atlas groups to current 20 |
+| Relationships | medium-high | per-family support by structural group |
+| Protected space | medium | aggregate masks/corridors beyond hand-curated cases |
+| Phrase transform function | **high** | map real 2/4-bar deltas to functions |
+| Four-bar trajectory catalog | low-medium | only 17 independent four-bar patterns |
+| Bass rhythm | medium-high | complete relation histogram |
+| Bass pitch | medium | transposition-normalized contour support |
+| Motif | low | segmentation + identity/development extraction |
+| Feel/expression | low-medium | measured coverage is sparse; much guidance editorial |
+| Jungle exact identity | medium | sampler-independent normalization strategy |
+
+Summary:
+
+```text
+Strong enough now:
+    rhythm structural baseline
+    relationship operator foundation
+    Development / Break phrase-function evidence
+
+Promising but not admitted:
+    Lo-Fi / Boom-Bap topology
+    UKG RespondKick
+    Rolling Bass-rhythm density behavior
+    Acid bass contour
+
+Weak / HOLD:
+    broad Motif grammar
     universal 4-bar trajectory catalog
     detailed measured Feel priors
 ```
 
 ---
 
-# 12. Stage 7 admission rule
+# 7. Stage 7 admission rule
 
-A proposed Stage 7 `RhythmArchetype` is admitted only if all are true:
+A new `RhythmArchetype` is eligible only if:
 
 ```text
-1. evidence_class is explicit;
-2. rights-safe generalized representation is possible;
-3. normalized role-topology fingerprint is not already covered by current 20;
-4. nearest-current-archetype distance exceeds the evidence-derived novelty floor;
-5. difference is structural, not only velocity/timing/kit/pitch/timbre;
-6. protected space / relationships that create the identity are explicit;
-7. density corridor is backed by distinct structural groups;
+1. one primary evidence class is explicit;
+2. generalized output is rights-safe;
+3. semantic role-topology fingerprint is not already covered by current 20;
+4. nearest-current distance exceeds an evidence-derived novelty floor;
+5. difference is structural, not velocity/timing/kit/pitch/timbre only;
+6. identity-defining relationships/protected spaces are explicit;
+7. density corridor is supported by distinct structural groups;
 8. candidate survives duplicate/near-duplicate clustering;
-9. candidate has one clear runtime owner;
-10. listening acceptance is scheduled once production-reachable.
+9. candidate has one runtime owner;
+10. listening acceptance is required once production-reachable.
 ```
 
-Do not set the numerical novelty threshold by intuition. Pass #2 must first compute the distance distribution among known accepted archetypes and Atlas structural groups.
+Do not choose the novelty threshold manually. Derive it from the distance distribution among accepted current archetypes and Atlas structural groups.
 
-Consequences:
+Examples:
 
 ```text
-"Detroit four-floor #3" differing only in velocity/kit
+Detroit four-floor #3
+only different velocity/kit
     -> REJECT
 
-new broken kick/backbeat/protected-space relationship
-with repeated structural support
-    -> eligible for REVIEW/ACCEPT
+repeated broken-kick/backbeat/protected-space cluster
+meaningfully distant from current 20
+    -> REVIEW / possible ACCEPT
 ```
 
 ---
 
-# 13. `effective_variation_count` — central Stage 7 metric
+# 8. `effective_variation_count` — central Stage 7 metric
 
-Stage 7 must stop reporting raw seed count as musical variability.
+Raw seed count is not musical diversity.
 
 For each archetype and P-level:
 
@@ -467,89 +529,71 @@ identity_distance_P1_P2
 identity_distance_P1_P3
 ```
 
-## Rhythm structural fingerprint
-
-At minimum normalize to semantic roles and record per bar:
+### Rhythm fingerprint excludes
 
 ```text
-structural + secondary onset mask by role
-protected-space violations = impossible by acceptance
-bar function / phrase coordinate when phrase metric is requested
+velocity
+timing jitter
+kit / synth TYPE
+absolute pitch
+FX
 ```
 
-Do not include velocity, timing jitter, kit/synth TYPE, absolute pitch or FX in a rhythm-topology fingerprint.
+and contains semantic role structural+secondary onset topology.
 
-## Phrase fingerprint
-
-Phrase comparison adds ordered per-bar structural fingerprints, bar-function/development relation and normalized delta from phrase identity.
-
-## Motif fingerprint later
-
-Motif distinctness must normalize transposition and compare interval/contour/development identity rather than absolute MIDI notes.
-
-## Failure signatures
+### Phrase fingerprint additionally contains
 
 ```text
-100 seeds -> 4 structural fingerprints
+ordered bar fingerprints
+bar-function/development relation
+normalized delta from phrase identity
+```
+
+### Future Motif fingerprint
+
+Normalize transposition and compare interval/contour/development identity rather than absolute MIDI notes.
+
+Failure signatures:
+
+```text
+100 seeds -> 4 fingerprints
     = fake variability
 
-20 archetypes -> same/near-same normalized fingerprints
+20 archetypes -> near-identical fingerprints
     = fake vocabulary
 
-P1/P2/P3 distances exceed identity corridor
+P1/P2/P3 too far apart
     = phrase identity loss
 
-P1/P2/P3 collapse to same fingerprint too often
+P1/P2/P3 too often identical
     = fake P-level variation
 ```
 
-Pass #1 defines the metric dimensions. Numerical acceptance thresholds belong to the first measured generator baseline, not this document.
+Pass #1 freezes the dimensions, not arbitrary numeric thresholds.
 
 ---
 
-# 14. Candidate table — first-pass summary
+# 9. Input contract for the computational extraction
 
-| Candidate | Domain | Evidence | Distinctness | Confidence | Runtime owner | Decision |
-|---|---|---|---|---|---|---|
-| Classic 2-Step structural grammar | Rhythm | PROJECT_OWNED_EXACT | already current 417 | high | `RhythmArchetype` | ACCEPT_BASELINE |
-| Dark Skippy structural slice | Rhythm | PROJECT_OWNED_EXACT | overlaps current 418; distance pending | medium | `RhythmArchetype` | ACCEPT_BASELINE / REVIEW distance |
-| Chicago four-floor Acid frame | Rhythm | PROJECT_OWNED_EXACT | already Acid/FourFloor coverage | high | `RhythmArchetype` | ACCEPT_BASELINE |
-| Rolling Acid denser bass identity | Rhythm + Bass | PROJECT_OWNED_EXACT | rhythm baseline; bass behavior distinct | high evidence | split owners | REVIEW Bass only |
-| Lo-Fi sparse/stable-backbeat topology | Rhythm | PROJECT_OWNED_EXACT + EDITORIAL_CURATED | not measured vs current 20 | medium | `RhythmArchetype` | REVIEW |
-| Boom-Bap syncopated-kick/backbeat topology | Rhythm | PROJECT_OWNED_EXACT + EDITORIAL_CURATED | not measured vs current 20 | medium-high | `RhythmArchetype` | REVIEW |
-| Jungle sampler-led break topology | Rhythm | PROJECT_OWNED_EXACT | potentially high but sampler-dependent | medium | `RhythmArchetype` | HOLD/REVIEW |
-| Development preserve+add | Phrase | MEASURED | functionally distinct | high | `BarEvolution` | ACCEPT_TRANSFORM |
-| Break/Ending remove+cue | Phrase | MEASURED | functionally distinct | high | `BarEvolution` | ACCEPT_TRANSFORM |
-| BASE BASE DEVELOPMENT ENDING | Phrase trajectory | derived recommendation | 4-bar comparison pending | medium | `BarTrajectory` | REVIEW |
-| UKG RespondKick | Bass rhythm | PROJECT_OWNED_EXACT + EDITORIAL_CURATED | plausible | medium-high | Bass relationship strategy | REVIEW |
-| Acid Coincide+Offset | Bass rhythm | PROJECT_OWNED_EXACT | already conceptually covered | high | Bass relationship strategy | ACCEPT_BASELINE |
-| AcidContour | Bass pitch | PROJECT_OWNED_EXACT + EDITORIAL_CURATED | normalized dedupe pending | medium-high | `BassPitchStrategy` | REVIEW |
-| OctaveMotion | Bass pitch | PROJECT_OWNED_EXACT + EDITORIAL_CURATED | normalized dedupe pending | medium | `BassPitchStrategy` | REVIEW |
-| Arch / Rise / Fall contours | Motif | mostly editorial/sparse | unknown | low | future `MotifVocabulary` | HOLD |
-| RepeatWithEnding melodic operation | Motif | indirect phrase evidence only | unknown | low | future `MotifVocabulary` | HOLD |
-
----
-
-# 15. Input contract for Atlas Pass #2 / Stage 7 candidate selection
-
-The next extraction job should be computational rather than editorial and produce:
+The next measured pass should mount and verify the pinned Atlas archive and produce:
 
 ```text
-A. every rights-safe/generalizable structural group -> nearest current archetype
-B. role-mask distance and relationship signature
-C. candidate clusters not covered by the current 20
+A. every eligible structural group -> nearest current archetype
+B. role-topology distance + relationship signature
+C. uncovered candidate clusters
 D. per-family relationship support frequencies
-E. 2/4-bar normalized delta classes
+E. normalized 2/4-bar delta classes
 F. transposition-normalized Bass onset + contour fingerprints
 G. transposition-normalized Motif fingerprints where evidence is sufficient
 ```
 
-Output fields:
+Machine fields:
 
 ```text
 candidate_id
 domain
-evidence_class
+primary_evidence_class
+supporting_evidence
 observation_count
 distinct_structural_groups
 covered_families_or_variants
@@ -561,24 +605,25 @@ decision
 reason
 ```
 
-Only after that report exists should Stage 7 choose its first approximately 10–20 additions.
+Only after that report exists should Stage 7 select its first approximately 10–20 additions.
 
 ---
 
-# 16. Acceptance checklist
+# 10. Acceptance checklist
 
 ```text
 [x] No production code added.
-[x] Six extraction passes remain independent.
-[x] Full corpus and 12 published vertical slices are not conflated.
+[x] Six extraction domains remain independent.
+[x] Each machine candidate has exactly one primary evidence class.
+[x] Each candidate has one runtime owner; Rhythm/Bass/Pitch candidates are not fused.
+[x] Full corpus measurements and exact published slices are distinguished.
 [x] Current 20 runtime archetypes are the novelty baseline.
 [x] Existing UKG/Acid coverage is not duplicated under recipe labels.
-[x] P1->P2 and P1->P3 aggregate signal is separate from 4-bar trajectory hypotheses.
-[x] Bass rhythm and Bass pitch remain separate domains.
-[x] Motif candidates are held when evidence is sparse/editorial.
-[x] Rights-blocked data is limited to non-reversible aggregate evidence.
-[x] Duplicate/expression-only differences cannot inflate rhythm vocabulary.
+[x] Phrase-function measurements are separated from four-bar ordering hypotheses.
+[x] Bass rhythm and Bass pitch remain separate.
+[x] Motif candidates remain HOLD/REVIEW when evidence is sparse/editorial.
+[x] Rights-blocked data remains aggregate-only.
+[x] Duplicate/expression-only differences cannot inflate Rhythm vocabulary.
 [x] `effective_variation_count` is central to Stage 7 acceptance.
-[x] Gap map states where Atlas is strong and where new evidence/design is required.
-[x] Stage 7 remains blocked pending quantitative novelty/distance extraction and Stage 6.1 convergence.
+[x] Stage 7 remains blocked pending normalized novelty/distance extraction and Stage 6.1 convergence.
 ```
