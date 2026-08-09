@@ -1,0 +1,33 @@
+FORMAT	GROOVEPUTER_RUNTIME_RHYTHM_CALIBRATION_V1
+SELF	straight_drive	64	4	64	0.039474	0.078947	0.078947
+SELF	offbeat_open_hat	64	4	64	0.039474	0.078947	0.078947
+SELF	hypnotic_sparse	64	3	64	0.078947	0.197368	0.197368
+SELF	broken_techno	64	25	64	0.184211	0.302632	0.342105
+SELF	straight_acid	64	1	64	0.000000	0.000000	0.000000
+SELF	rolling_acid	64	1	64	0.000000	0.000000	0.000000
+SELF	syncopated_acid	64	1	64	0.000000	0.000000	0.000000
+SELF	sparse_acid	64	1	64	0.000000	0.000000	0.000000
+SELF	one_drop_space	64	4	64	0.105263	0.105263	0.105263
+SELF	steppers	64	3	64	0.105263	0.105263	0.105263
+SELF	sparse_skank	64	18	64	0.157895	0.315789	0.368421
+SELF	chord_response	64	22	64	0.184211	0.315789	0.342105
+SELF	two_step_roll	64	6	64	0.114035	0.210526	0.210526
+SELF	ghosted_roll	64	5	64	0.052632	0.105263	0.157895
+SELF	sparse_fast_break	64	8	64	0.078947	0.250000	0.289474
+SELF	halftime_switch	64	1	64	0.000000	0.000000	0.000000
+SELF	classic_2step	64	39	64	0.219298	0.333333	0.429825
+SELF	skippy_2step	64	6	64	0.087719	0.157895	0.210526
+SELF	shuffled_4x4	64	3	64	0.052632	0.105263	0.105263
+SELF	machine_syncopation	64	10	64	0.131579	0.219298	0.219298
+CONF	straight_drive	hypnotic_sparse	12	64
+CONF	straight_drive	rolling_acid	12	64
+CONF	hypnotic_sparse	straight_drive	40	64
+CONF	hypnotic_sparse	rolling_acid	40	64
+CONF	sparse_skank	chord_response	64	64
+CONF	chord_response	sparse_skank	38	64
+CONF	two_step_roll	ghosted_roll	64	64
+CONF	ghosted_roll	two_step_roll	64	64
+CONF	sparse_fast_break	skippy_2step	1	64
+AGG_SELF	40320	0.052632	0.219298	0.289474	0.429825
+AGG_CONF	335	24320	0.013775
+COUNT	20
