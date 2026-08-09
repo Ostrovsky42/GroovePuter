@@ -4,7 +4,7 @@
 **Atlas input:** schema 2.6.0, SHA-256 `5b155937b8d05f0f0f9f1a02f10d9afe76a917d6035897695cce739eb8d6b1fd`  
 **Production impact:** none. Pass 2 remains offline/audit-only.
 
-The original Pass 2 candidate `4d41980b...` passed its first internal review, but an independent adversarial methodology audit found additional requirements. That finding invalidated the previous `3/3` certification and reset the review counter. The hardened pass below is the new normative basis.
+The original Pass 2 candidate `4d41980b...` passed its first internal review, but an independent adversarial methodology audit found additional requirements. That finding invalidated the previous `3/3` certification. The hardened pass below is the new normative basis.
 
 ## 1. Input and corpus reconciliation
 
@@ -38,11 +38,7 @@ The raw archive and private per-pattern detail are not committed.
 
 ## 2. Versioned semantic role normalization
 
-Normative mapping schema:
-
-```text
-ATLAS_ROLE_MAPPING_V2
-```
+Normative mapping schema: `ATLAS_ROLE_MAPPING_V2`.
 
 `track_role` is not accepted as the sole source of drum semantics. Exact track identity takes precedence:
 
@@ -60,12 +56,10 @@ On the hardened one-bar research corpus this leaves 664 event occurrences ambigu
 
 ## 3. Source topology vs normalized musical topology
 
-Atlas `structural_group_id` remains a source-lineage/deduplication key. It is **not** treated as the Stage 7 musical identity.
-
-Hardened one-bar research scope:
+Atlas `structural_group_id` remains a source-lineage/deduplication key. It is not treated as the Stage 7 musical identity.
 
 ```text
-263 SOURCE_OBSERVATION patterns
+263 SOURCE_OBSERVATION one-bar patterns
 239 source structural groups
 ```
 
@@ -73,11 +67,7 @@ After source deduplication, observations are re-normalized through the semantic 
 
 ## 4. Observation -> runtime grammar semantics
 
-Runtime topology schema:
-
-```text
-GROOVEPUTER_RUNTIME_RHYTHM_TOPOLOGY_V2
-```
+Runtime topology schema: `GROOVEPUTER_RUNTIME_RHYTHM_TOPOLOGY_V2`.
 
 The V2 runtime dump is generated directly from the current 20 `ReferenceVocabulary` archetypes and includes lane anchors/support, forbidden space, lane density bounds, protected spaces and relationships.
 
@@ -89,11 +79,7 @@ Only after feasibility, support Jaccard is reported as a separate typicality dia
 
 ## 5. Independent evidence support
 
-Support schema:
-
-```text
-ATLAS_PASS2_SUPPORT_V2
-```
+Support schema: `ATLAS_PASS2_SUPPORT_V2`.
 
 Candidate support is not reduced to one `N`. Each recurring cluster reports structural-group count, independent provenance roots, content-hash-deduped artifacts, direction count, hard-covered/uncovered members, cluster dispersion and ambiguous/unmapped event count.
 
@@ -124,11 +110,7 @@ HARD_05  4 groups / 2 provenance roots / 2 content-distinct artifacts
 
 ## 7. Calibration and null corridors
 
-Distance schema:
-
-```text
-ATLAS_PASS2_DISTANCE_V2
-```
+Distance schema: `ATLAS_PASS2_DISTANCE_V2`.
 
 Committed Atlas calibration:
 
@@ -150,9 +132,7 @@ recurring-candidate internal:
   max = 0.368421
 ```
 
-A separate host calibration uses the actual `RhythmPhraseRealizer` over all 20 current grammars and 64 deterministic P1 seeds each. The generated calibration is compared against committed `RUNTIME_RHYTHM_CALIBRATION_V1.tsv` in CI.
-
-Aggregate current-realizer calibration:
+A separate host calibration uses the actual `RhythmPhraseRealizer` over all 20 current grammars and 64 deterministic P1 seeds each. The generated compact calibration is compared against committed `RUNTIME_RHYTHM_CALIBRATION_V1.tsv` in CI.
 
 ```text
 within-own-archetype pairs: 40320
@@ -165,15 +145,11 @@ non-own grammar coverage:
 335 / 24320 = 0.013775
 ```
 
-All 20 current grammars cover 64/64 of their own generated P1 samples. Non-own overlap is sparse rather than zero; the committed compact baseline records the nine non-zero directed confusion edges. This replaces an arbitrary novelty threshold with an empirical self/confusion corridor.
-
-No single weighted novelty score is used.
+All 20 current grammars cover 64/64 of their own generated P1 samples. Non-own overlap is sparse rather than zero; the compact baseline records the nine non-zero directed confusion edges. No single weighted novelty score is used.
 
 ## 8. Negative / protected-space evidence
 
 Negative-space evidence remains a separate pass. Its denominator includes only source structural groups in which the role is active somewhere, so a completely absent role cannot manufacture protected-space evidence.
-
-Current research gate:
 
 ```text
 active structural groups >= 5
@@ -215,7 +191,7 @@ Detailed per-pattern/per-source calculations are local/private only. Repo-safe o
 
 ## 12. Stage 7 boundary
 
-Production Stage 7 admission remains **CLOSED** at Pass 2:
+Production Stage 7 admission remains CLOSED at Pass 2:
 
 ```text
 AUDITION_REVIEW != NOVEL_CANDIDATE
@@ -236,4 +212,4 @@ The purpose is falsification by metrics and listening, not to guarantee five add
 
 ## 13. Review rule
 
-The independent adversarial findings invalidated the original Pass 2 review sequence. The counter remains `0/3` until the hardened implementation, committed outputs, runtime calibration and full CI stabilize on one unchanged SHA. Any new finding resets it again.
+The independent adversarial findings invalidated the original Pass 2 review sequence. Review counter is `0/3` until the hardened final candidate passes full CI and three consecutive clean reviews on one unchanged SHA. Any new finding resets it again.
