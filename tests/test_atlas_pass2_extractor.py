@@ -110,12 +110,18 @@ active[0][0].add(1)
 negative_rows = negative.compute_negative_space_rows({"test": active})
 assert not any(row["role"] == "Kick" and row["step"] == 1 for row in negative_rows)
 
-# The single Pass 2 runner must hash every generated aggregate output and may
-# not silently omit a file from the reproducibility manifest.
+# The single Pass 2 runner canonicalizes all generated text to LF before
+# hashing. This prevents platform/API newline differences from changing the
+# reproducibility manifest.
 with tempfile.TemporaryDirectory() as tmp:
     out = Path(tmp)
     for index, filename in enumerate(runner.GENERATED_OUTPUTS):
-        (out / filename).write_text(f"fixture-{index}\n", encoding="utf-8")
+        (out / filename).write_bytes(f"fixture-{index}\r\nnext\r\n".encode("utf-8"))
+    runner.normalize_generated_text(out)
+    for filename in runner.GENERATED_OUTPUTS:
+        data = (out / filename).read_bytes()
+        assert b"\r" not in data
+        assert data.endswith(b"next\n")
     manifest = runner.write_hash_manifest(out)
     lines = manifest.read_text(encoding="utf-8").splitlines()
     assert len(lines) == len(runner.GENERATED_OUTPUTS) == 9
