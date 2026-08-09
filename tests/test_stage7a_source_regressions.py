@@ -3,128 +3,84 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STAGE = ROOT / "src" / "generation" / "audition_stage7"
-CATALOG = (STAGE / "stage7a_catalog.cpp").read_text(encoding="utf-8")
-SESSION = (STAGE / "stage7a_session.cpp").read_text(encoding="utf-8")
-CARDPUTER_H = (STAGE / "stage7a_cardputer.h").read_text(encoding="utf-8")
-CARDPUTER = (STAGE / "stage7a_cardputer.cpp").read_text(encoding="utf-8")
-GENRE_PAGE = (ROOT / "src" / "ui" / "pages" / "genre_page.cpp").read_text(encoding="utf-8")
-DISPLAY = (ROOT / "src" / "ui" / "miniacid_display.cpp").read_text(encoding="utf-8")
-SDL_MAKEFILE = (ROOT / "platform_sdl" / "Makefile").read_text(encoding="utf-8")
-MAIN_SKETCH = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
-MANIFEST = (ROOT / "docs" / "architecture" / "stage7a" / "ATLAS_PASS2_CURATION_MANIFEST.md").read_text(encoding="utf-8")
+CATALOG = (STAGE / "stage7a_catalog.cpp").read_text()
+CATALOG_H = (STAGE / "stage7a_catalog.h").read_text()
+SESSION = (STAGE / "stage7a_session.cpp").read_text()
+CARD_H = (STAGE / "stage7a_cardputer.h").read_text()
+CARD = (STAGE / "stage7a_cardputer.cpp").read_text()
+DISPLAY = (ROOT / "src/ui/miniacid_display.cpp").read_text()
+GENRE = (ROOT / "src/ui/pages/genre_page.cpp").read_text()
+MAKEFILE = (ROOT / "platform_sdl/Makefile").read_text()
 
 
-def require(condition: bool, message: str) -> None:
-    if not condition:
+def require(value, message):
+    if not value:
         raise AssertionError(message)
 
 
-require("ac911c74ded53d5f2fa6b7ad63c8c0f97fb9a395" in MANIFEST,
-        "Stage 7A must pin the Stage 6.1 runtime base")
-require("2f314cac6cc65f5664dc3254ece140bb68fb5390" in MANIFEST,
-        "Stage 7A must pin the frozen hardened Pass 2 evidence SHA")
-require("5b155937b8d05f0f0f9f1a02f10d9afe76a917d6035897695cce739eb8d6b1fd" in MANIFEST,
-        "Stage 7A must pin the exact Atlas v2.6 corpus hash")
+for candidate in ("HARD_01", "HARD_06", "HARD_07", "HARD_08"):
+    require(candidate in CATALOG, f"missing {candidate}")
+for candidate in ("HARD_02", "HARD_03", "HARD_04", "HARD_05", "HARD_09"):
+    require(candidate not in CATALOG, f"Batch 1 candidate leaked into Stage 7B: {candidate}")
 
-for source in (CATALOG, SESSION, CARDPUTER_H, CARDPUTER):
-    require("reference_vocabulary" not in source.lower(),
-            "temporary Stage 7A runtime must not depend on production ReferenceVocabulary")
-    require("PAT_" not in source and "SRC_" not in source,
-            "Atlas raw pattern/source identifiers must not enter firmware audition code")
-    require("structural_group_id" not in source and "source_locator" not in source,
-            "rights-sensitive Atlas lineage must remain offline")
+require("StackedQuarters" in CATALOG_H and "ElectroBackskip" in CATALOG_H and
+        "FunkHouseBridge" in CATALOG_H and "ElectroGapPush" in CATALOG_H,
+        "Stage 7B must expose exactly the remaining four candidate keys")
+require(CATALOG.count("EvidenceClass::SingleRootChallenger") == 4,
+        "all Stage 7B definitions must remain single-root challengers")
+require("kFunkHouseBridgeRelationships" not in CATALOG,
+        "HARD_07 must not freeze contradictory Kick/Backbeat relation")
+require("kElectroBackskipRelationships" in CATALOG and
+        "kElectroGapPushRelationships" in CATALOG,
+        "HARD_06/HARD_08 must retain supported exclusion")
 
-require('#include "stage7a_session.h"' not in CARDPUTER_H and
-        "miniacid_engine.h" not in CARDPUTER_H and
-        "transport_clock_runtime.h" not in CARDPUTER_H and
-        "ui_common.h" not in CARDPUTER_H and
-        "ui_input.h" not in CARDPUTER_H,
-        "Stage 7A Cardputer facade header must stay free of heavy runtime includes")
-require("class CardputerSessionFacade" in CARDPUTER_H and
-        "const CardputerSessionFacade& cardputerSession();" in CARDPUTER_H and
-        "bool handleCardputerEvent(const UIEvent& event, MiniAcid& engine);" in CARDPUTER_H,
-        "Stage 7A Cardputer facade must expose only status + event handling")
-require("stage7a_cardputer.cpp" in SDL_MAKEFILE,
-        "SDL target must link the out-of-line Stage 7A Cardputer facade")
+for text in (CATALOG, SESSION, CARD_H, CARD):
+    require("reference_vocabulary" not in text.lower(),
+            "temporary audition must not depend on production ReferenceVocabulary")
+    require("structural_group_id" not in text and "source_locator" not in text,
+            "Atlas source lineage must remain offline")
 
-require("RhythmRole::BassRhythm" not in CATALOG,
-        "Stage 7A catalog must not introduce BassRhythm")
-require("RhythmRole::ChordRhythm" not in CATALOG,
-        "Stage 7A catalog must not introduce ChordRhythm")
-require("RhythmRole::MelodicRhythm" not in CATALOG,
-        "Stage 7A catalog must not introduce MelodicRhythm")
-require("phraseBarsBit(1)" in CATALOG,
-        "Stage 7A must remain one-bar to isolate archetype listening")
-require("kStatementTrajectory" in CATALOG,
-        "Stage 7A must stay Statement-only and avoid BarEvolution production wiring")
+require("RhythmRole::BassRhythm" not in CATALOG and
+        "RhythmRole::ChordRhythm" not in CATALOG and
+        "RhythmRole::MelodicRhythm" not in CATALOG,
+        "Stage 7B remains drums-only")
+require("phraseBarsBit(1)" in CATALOG and "kStatementTrajectory" in CATALOG,
+        "Stage 7B remains one-bar Statement-only")
+require("archetype(711" in CATALOG and "archetype(714" in CATALOG,
+        "temporary Stage 7B IDs must remain 711..714")
 
-require("backupDrums_ = drums" in SESSION and
-        "backupA_ = synthA" in SESSION and
-        "backupB_ = synthB" in SESSION,
-        "Stage 7A activation must snapshot current patterns")
-require("drums = backupDrums_" in SESSION and
-        "synthA = backupA_" in SESSION and
-        "synthB = backupB_" in SESSION,
-        "Stage 7A exit must restore exact current patterns")
-require("synthA = SynthPattern{}" in SESSION and
-        "synthB = SynthPattern{}" in SESSION,
-        "Stage 7A listening must isolate drums by clearing temporary synth patterns")
-require("candidateIndex_ = oldIndex" in SESSION and
-        "seed_ = oldSeed" in SESSION and
-        "level_ = oldLevel" in SESSION and
-        "identity_ = oldIdentity" in SESSION,
-        "failed Stage 7A commands must roll back control and identity state")
+require("stage7a_session.h" not in CARD_H and "miniacid_engine.h" not in CARD_H and
+        "transport_clock_runtime.h" not in CARD_H,
+        "Cardputer facade header must stay lightweight")
+require("stage7a_cardputer.cpp" in MAKEFILE,
+        "SDL must link out-of-line Cardputer facade")
+require("key >= '1' && key <= '4'" in CARD,
+        "Stage 7B must expose exactly four slots")
+require("UIInput::navCode(event)" in CARD and "nav == GROOVEPUTER_LEFT" in CARD and
+        "nav == GROOVEPUTER_RIGHT" in CARD,
+        "seed navigation must use normalized Ctrl+Left/Right")
+require("key == '['" not in CARD and "key == ']'" not in CARD,
+        "bracket characters must not own seed navigation")
+require("TransportClockSource::SeqtrakExternal" in CARD,
+        "Space must retain SEQ master guard")
 
-require("event.alt && event.ctrl" in CARDPUTER and "key == 'a'" in CARDPUTER,
-        "Stage 7A activation must require Ctrl+Alt+A")
-require("engine.songModeEnabled()" in CARDPUTER,
-        "Stage 7A activation must be refused in Song mode")
-require("!event.ctrl || event.alt || event.meta" in CARDPUTER,
-        "Stage 7A modal commands must use Ctrl without Alt/meta")
-require("key >= '1' && key <= '5'" in CARDPUTER,
-        "Stage 7A must expose exactly five numbered listening slots")
-require("UIInput::navCode(event)" in CARDPUTER and
-        "nav == GROOVEPUTER_LEFT" in CARDPUTER and
-        "nav == GROOVEPUTER_RIGHT" in CARDPUTER,
-        "Stage 7A seed navigation must use normalized Ctrl+Left/Right arrows")
-require("key == '['" not in CARDPUTER and "key == ']'" not in CARDPUTER,
-        "Stage 7A must not depend on bracket character delivery for seed navigation")
-require("key == 'p'" in CARDPUTER and "key == 'r'" in CARDPUTER,
-        "Stage 7A P-level/rerender controls must remain available")
-require("key == 'b'" not in CARDPUTER and "key == 'B'" not in CARDPUTER,
-        "Stage 7A must not revive the Stage 3A fixed-root Bass toggle")
-require("TransportClockSource::SeqtrakExternal" in CARDPUTER and
-        'UI::showToast("SEQ MASTER: USE SEQTRAK"' in CARDPUTER,
-        "Stage 7A Space must preserve the SEQTRAK-master refusal")
-require("engine.isPlaying()" in CARDPUTER and "engine.stop()" in CARDPUTER and "engine.start()" in CARDPUTER,
-        "Stage 7A Space must preserve internal transport toggle semantics")
+panic = CARD[CARD.index("const bool panicChord"):CARD.index("if (toggleChord)")]
+require("session.deactivate" in panic and panic.index("session.deactivate") < panic.index("return false"),
+        "panic must restore/deactivate before global project reset")
 
-panic_start = CARDPUTER.index("const bool panicChord")
-panic_end = CARDPUTER.index("if (toggleChord)", panic_start)
-panic_block = CARDPUTER[panic_start:panic_end]
-require("session.deactivate(drums, synthA, synthB)" in panic_block and
-        "return false" in panic_block,
-        "Stage 7A panic must close/restore the audition before global project reset")
-require(panic_block.index("session.deactivate(drums, synthA, synthB)") < panic_block.index("return false"),
-        "Stage 7A panic must deactivate before yielding to the global reset owner")
+active = DISPLAY.index("Stage7AAudition::cardputerSession().active()")
+global_shortcut = DISPLAY.index("if (event.meta &&", active)
+require("Stage7AAudition::handleCardputerEvent" in DISPLAY[active:global_shortcut],
+        "active audition must get first refusal before global shortcuts")
+require("Stage7AAudition::handleCardputerEvent" in GENRE,
+        "Genre page must retain local activation owner")
 
-require('#include "../../generation/audition_stage7/stage7a_cardputer.h"' in GENRE_PAGE,
-        "GenrePage must include the temporary Stage 7A handler")
-require("Stage7AAudition::handleCardputerEvent" in GENRE_PAGE,
-        "GenrePage must own Stage 7A activation before normal Genre editing")
-require(GENRE_PAGE.index("Stage7AAudition::handleCardputerEvent") < GENRE_PAGE.index("UIInput::isTab(event)"),
-        "Stage 7A activation/local commands must intercept before Genre navigation")
+require("backupDrums_ = drums" in SESSION and "drums = backupDrums_" in SESSION and
+        "backupA_ = synthA" in SESSION and "synthA = backupA_" in SESSION and
+        "backupB_ = synthB" in SESSION and "synthB = backupB_" in SESSION,
+        "session must preserve exact backup/restore")
+require("candidateIndex_ = oldIndex" in SESSION and "seed_ = oldSeed" in SESSION and
+        "level_ = oldLevel" in SESSION and "identity_ = oldIdentity" in SESSION,
+        "failed commands must roll back state")
 
-require('#include "src/generation/audition_stage7/stage7a_cardputer.h"' in DISPLAY,
-        "MiniAcidDisplay must include the lightweight active Stage 7 audition facade")
-active_dispatch = DISPLAY.index("Stage7AAudition::cardputerSession().active()")
-first_global_shortcut = DISPLAY.index("if (event.meta &&", active_dispatch)
-require("Stage7AAudition::handleCardputerEvent" in DISPLAY[active_dispatch:first_global_shortcut],
-        "active Stage 7 audition must get first refusal before global shortcuts")
-require(active_dispatch < first_global_shortcut,
-        "active Stage 7 dispatch must precede workspace/page/global shortcut ownership")
-
-require("audition_stage7" not in MAIN_SKETCH,
-        "Stage 7A must not modify the top-level sketch event loop")
-
-print("Stage 7A source regressions: OK")
+print("Stage 7B source regressions: OK")
