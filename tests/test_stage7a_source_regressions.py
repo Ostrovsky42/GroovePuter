@@ -67,9 +67,14 @@ require("!event.ctrl || event.alt || event.meta" in CARDPUTER,
         "Stage 7A modal commands must use Ctrl without Alt/meta")
 require("key >= '1' && key <= '5'" in CARDPUTER,
         "Stage 7A must expose exactly five numbered listening slots")
-require("key == 'p'" in CARDPUTER and "key == '['" in CARDPUTER and
-        "key == ']'" in CARDPUTER and "key == 'r'" in CARDPUTER,
-        "Stage 7A seed/P-level/rerender controls must remain available")
+require("UIInput::navCode(event)" in CARDPUTER and
+        "nav == GROOVEPUTER_LEFT" in CARDPUTER and
+        "nav == GROOVEPUTER_RIGHT" in CARDPUTER,
+        "Stage 7A seed navigation must use normalized Ctrl+Left/Right arrows")
+require("key == '['" not in CARDPUTER and "key == ']'" not in CARDPUTER,
+        "Stage 7A must not depend on bracket character delivery for seed navigation")
+require("key == 'p'" in CARDPUTER and "key == 'r'" in CARDPUTER,
+        "Stage 7A P-level/rerender controls must remain available")
 require("key == 'b'" not in CARDPUTER and "key == 'B'" not in CARDPUTER,
         "Stage 7A must not revive the Stage 3A fixed-root Bass toggle")
 require("TransportClockSource::SeqtrakExternal" in CARDPUTER and
