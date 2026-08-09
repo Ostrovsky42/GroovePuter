@@ -186,9 +186,9 @@ constexpr LaneRelationship kTransactionRelationships[] = {
      kAllSteps,
      0,
      0,
+     1,
+     1,
      0,
-     1,
-     1,
      0,
      0},
 };
@@ -228,7 +228,15 @@ void testEvolutionFailureIsTransactional() {
       1,
       kRuntimeInvalidTrajectories,
       1};
-  require(static_cast<bool>(validateRhythmCatalog(catalog)),
+  const CatalogValidationResult validation = validateRhythmCatalog(catalog);
+  if (!validation) {
+    std::fprintf(stderr,
+                 "transaction fixture validation error=%u archetype=%u item=%u\n",
+                 static_cast<unsigned>(validation.error),
+                 static_cast<unsigned>(validation.archetypeIndex),
+                 static_cast<unsigned>(validation.itemIndex));
+  }
+  require(static_cast<bool>(validation),
           "runtime-only EvolutionInvalid fixture catalog must validate");
 
   const BarEvolutionResult result = evolveRhythmPhrase(
