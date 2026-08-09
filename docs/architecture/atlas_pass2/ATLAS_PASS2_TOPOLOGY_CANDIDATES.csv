@@ -1,0 +1,9 @@
+candidate_id,structural_group_count,source_count,direction_count,directions,evidence_mix,research_observation_count,project_editorial_count,runtime_compatible_archetype_count,runtime_compatible_archetypes,ornament_distance_median,ornament_distance_max,decision
+SKEL_01,13,2,4,acid_house|dub_techno|funk_soul|house,RESEARCH+PROJECT,7,6,7,hypnotic_sparse|offbeat_open_hat|rolling_acid|shuffled_4x4|steppers|straight_acid|straight_drive,0.844156,1.0,NEAR_EXISTING
+SKEL_02,7,1,4,breaks|drum_and_bass|edm|funk_soul,RESEARCH_ONLY,7,0,6,broken_techno|classic_2step|ghosted_roll|skippy_2step|sparse_fast_break|two_step_roll,0.558442,1.0,NEAR_EXISTING
+SKEL_03,6,2,5,basic_patterns|breaks|dub_techno|edm|pop,RESEARCH+PROJECT,5,1,2,sparse_acid|syncopated_acid,0.714286,1.0,NEAR_EXISTING
+SKEL_04,4,2,2,afro_cuban|bossa_nova,RESEARCH_ONLY,4,0,0,,0.455357,0.910714,REVIEW
+SKEL_05,4,2,4,electro|go_go|hip_hop|miami_bass,RESEARCH_ONLY,4,0,0,,0.710623,1.0,REVIEW
+SKEL_06,3,1,3,electro|hip_hop|miami_bass,RESEARCH_ONLY,3,0,3,classic_2step|skippy_2step|sparse_fast_break,0.428571,0.714286,NEAR_EXISTING
+SKEL_07,3,1,3,electro|hip_hop|miami_bass,RESEARCH_ONLY,3,0,5,broken_techno|classic_2step|ghosted_roll|skippy_2step|two_step_roll,0.571429,0.714286,NEAR_EXISTING
+SKEL_08,3,1,1,rock,RESEARCH_ONLY,3,0,0,,0.285714,0.571429,HOLD
