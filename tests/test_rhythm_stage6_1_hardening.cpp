@@ -229,6 +229,23 @@ void testBreakActuallyDropsWithinBudget() {
       "Break did not perform its bounded drop");
 }
 
+void testMalformedCatalogFailsBeforeLookup() {
+  RhythmCatalogView malformed{};
+  malformed.archetypeCount = 1;
+  malformed.trajectoryCount = 1;
+
+  BarEvolutionRequest evolution = request(1);
+  evolution.catalog = &malformed;
+  const BarEvolutionResult result = evolveRhythmPhrase(evolution);
+
+  require(result.status == BarEvolutionStatus::BaseRealizationFailed,
+          "malformed catalog must fail through Stage 2 validation");
+  require(result.trajectoryId == kNoTrajectoryId,
+          "malformed catalog exposed trajectory state");
+  require(result.plan.barCount == 0,
+          "malformed catalog exposed a partial plan");
+}
+
 void testFixedCapacityFootprintGuard() {
   constexpr uint16_t kDropCandidateUpperBound =
       kRhythmRoleCount * kStepsPerBar * 2u;
@@ -248,6 +265,7 @@ int main() {
   testStatementAndResponseAreBaseTopology();
   testReductionActuallyDropsWithinBudget();
   testBreakActuallyDropsWithinBudget();
+  testMalformedCatalogFailsBeforeLookup();
   testFixedCapacityFootprintGuard();
   std::puts("Groove Vocabulary Stage 6.1 hardening: OK");
   return 0;
