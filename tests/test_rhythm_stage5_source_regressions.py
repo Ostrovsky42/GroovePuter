@@ -27,6 +27,37 @@ for mode in (
 require("GrooveboxMode" not in MIGRATION,
         "Stage 5 selector must not route broad GrooveboxMode families")
 
+# Hardware correction: the GENRE row must constrain which VARIANT recipes are
+# selectable. A global recipe list allowed e.g. Techno + Chicago Jack, where the
+# recipe route completely masked the selected base genre.
+for token in (
+    "kAcidRecipes",
+    "kRaveRecipes",
+    "kDubRecipes",
+    "kBreakRecipes",
+    "recipeChoicesForGenre",
+    "normalizeRecipeForGenre",
+):
+    require(token in GENRE_PAGE,
+            f"genre-scoped VARIANT contract missing: {token}")
+require("GenreCatalog::recipeCount()" not in GENRE_PAGE.split(
+            "void GenrePage::cycleRecipeSelection", 1)[1].split(
+            "void GenrePage::adjustMorph", 1)[0],
+        "VARIANT selector regressed to the global recipe catalog")
+require("recipeIndex_ = static_cast<int>(normalizeRecipeForGenre(" in GENRE_PAGE,
+        "changing GENRE must normalize an incompatible VARIANT")
+
+# Hardware correction: Chicago Jack and Rolling Acid were audibly too similar.
+# Keep their curated Stage 5 archetype pools disjoint. Deep Chord must use the
+# chord-response grammar instead of behaving like another generic Dub route.
+for token in (
+    "Archetype::StraightAcid,\n    Archetype::SparseAcid",
+    "Archetype::RollingAcid,\n    Archetype::SyncopatedAcid",
+    "constexpr Archetype kDeepChord[] = {\n    Archetype::ChordResponse",
+):
+    require(token in MIGRATION,
+            f"hardware identity correction missing: {token}")
+
 # Runtime bridge must preserve rollback ordering: complete legacy output is
 # materialized first, then the transactional Vocabulary material migration.
 legacy_call = BRIDGE.find("engine.regeneratePatternsWithGenre();")
