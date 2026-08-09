@@ -52,6 +52,8 @@ SOURCES := \
 	../src/generation/rhythm/relationship_resolver.cpp \
 	../src/generation/rhythm/rhythm_realizer.cpp \
 	../src/generation/rhythm/reference_vocabulary.cpp \
+	../src/generation/audition_stage7/stage7a_catalog.cpp \
+	../src/generation/audition_stage7/stage7a_session.cpp \
 	../src/generation/materialization/pattern_materializer.cpp \
 	../src/generation/migration/strong_rhythm_migration.cpp \
 	../src/generation/migration/strong_rhythm_live_bridge.cpp \
@@ -139,7 +141,7 @@ bundle: $(TARGET)
 	cp $(SDL2_DYLIB) $(APP_BUNDLE)/Contents/Frameworks/
 	cp $(SDL2_GFX_DYLIB) $(APP_BUNDLE)/Contents/Frameworks/
 	install_name_tool -change $(SDL2_DYLIB) @executable_path/../Frameworks/libSDL2-2.0.0.dylib $(APP_BUNDLE)/Contents/MacOS/$(TARGET)
-	install_name_tool -change $(SDL2_GFX_DYLIB) @executable_path/../Frameworks/libSDL2_gfx-1.0.0.dylib $(APP_BUNDLE)/Contents/MacOS/$(TARGET)
+	install_name_tool -change $(SDL2_GFX_DYLIB) @executable_path/../Frameworks/libSDL2-2.0.0.dylib $(APP_BUNDLE)/Contents/Frameworks/libSDL2_gfx-1.0.0.dylib
 	install_name_tool -change $(SDL2_DYLIB) @executable_path/../Frameworks/libSDL2-2.0.0.dylib $(APP_BUNDLE)/Contents/Frameworks/libSDL2_gfx-1.0.0.dylib
 	@echo "Code signing libraries and executable..."
 	codesign --force --deep --sign - $(APP_BUNDLE)/Contents/Frameworks/libSDL2-2.0.0.dylib
