@@ -2,7 +2,7 @@
 
 **Status:** technical hardening gate before Stage 7 vocabulary expansion  
 **Base:** Stage 6 corrected candidate `ee99c5cda41a8e55ea6eba7a1105249fffe0621b`  
-**Scope:** remove known technical ambiguities/cost regressions from the transient BarEvolution core without making it production-reachable.
+**Scope:** remove known technical ambiguities/cost regressions from the transient BarEvolution core and its catalog contracts without making it production-reachable.
 
 ## Purpose
 
@@ -17,7 +17,10 @@ The specific review findings closed here are:
 5. missing byte/event equality checks for Statement/Response versus base realization;
 6. ambiguous Response semantics;
 7. missing explicit stack/candidate-cost guards;
-8. undocumented RNG salt-space invariant.
+8. undocumented RNG salt-space invariant;
+9. transform flags/intents could validate with a zero execution budget;
+10. statically impossible copy functions could validate in phrase bar 0;
+11. the Stage 6 transaction regression used that statically invalid bar-0 fixture instead of a runtime-only evolution failure.
 
 ## Changes
 
@@ -28,6 +31,34 @@ The specific review findings closed here are:
 `realizeRhythmPhrase()` remains the single owner of full `validateRhythmCatalog()` scanning and archetype/phrase-length request validation. Only after the base realization succeeds does the Stage 6.1 wrapper look up the already-validated archetype and trajectory.
 
 A malformed-catalog regression supplies non-zero counts with null backing arrays and requires `BaseRealizationFailed` with no partial plan/trajectory. This guards against reintroducing a pre-validation lookup while still avoiding a duplicate full-catalog scan.
+
+### Mutation budget executability
+
+Catalog validation now rejects transform authorization that cannot execute its named operation:
+
+```text
+AllowReduction  => maxDrops > 0
+AllowBreak      => maxDrops > 0
+AllowTurnaround => maxAdds  > 0
+```
+
+A mismatch returns `CatalogValidationError::InvalidMutationPolicy` before trajectory-reference validation. This prevents a future vocabulary entry from advertising Reduce/Break/Turnaround while silently producing a no-op solely because its execution budget is zero.
+
+This rule is intentionally narrow. `AllowOptionalAdds` or `AllowGhostConversion` may still coexist with `maxAdds == 0`; that is a legal zero-add budget and remains useful for proving that `RepeatWithGhosts` obeys the budget instead of inventing an implicit fallback add.
+
+### First-bar trajectory semantics
+
+The following functions require an already materialized earlier bar and are therefore statically invalid at phrase bar 0:
+
+```text
+Repeat
+RepeatWithGhosts
+Return
+```
+
+`validateTrajectories()` rejects them with `InvalidTrajectoryBarFunction` instead of allowing an inevitably failing runtime trajectory.
+
+The transaction regression no longer relies on bar-0 `Repeat`. It uses a valid two-bar catalog with a hard phrase-scope `Coincide` cardinality of exactly one match and a `Statement -> Repeat` trajectory. Base realization can satisfy the catalog; copying bar 0 into bar 1 necessarily changes the phrase-wide match count to zero or two, so evolution fails only after the valid base realization. The result must remain transactional: no selected trajectory, plan or identity may leak.
 
 ### Strict drop precedence
 
@@ -175,6 +206,12 @@ Groove Vocabulary Stage 6.1 hardening host matrix: OK
 
 If Reduction/Break hardening fails because the fixture contains no secondary event, do not weaken the assertion back to `<=`. Fix the fixture or realizer contract so the test demonstrates one real bounded drop.
 
+If a transform-budget regression returns `TrajectoryLevelConflict` instead of `InvalidMutationPolicy`, the mutation policy is still being accepted too early; validate transform executability before trajectory refs.
+
+If a bar-0 copy-function fixture reaches BarEvolution runtime, `validateTrajectories()` has regressed; `Repeat`, `RepeatWithGhosts` and `Return` must be rejected before realization.
+
+If the runtime-only transaction fixture starts failing catalog validation, do not return to a statically invalid bar-0 fixture. Preserve a catalog-valid case whose failure is created only by applying the selected multi-bar function.
+
 If the malformed-catalog regression crashes, inspect for any `archetypeFor()` / trajectory / lane access performed before successful `realizeRhythmPhrase()` validation.
 
 If stack-usage output becomes unbounded `dynamic`, a VLA is reported by `-Wvla`, or the numeric ceiling is exceeded, inspect new local arrays/value copies before changing the gate.
@@ -191,6 +228,14 @@ If aggregate Core regressions fail only on the inherited Cardputer ADV `PA_EN` s
 [ ] Full catalog validation is not duplicated in BarEvolution wrapper.
 [ ] Catalog arrays are not dereferenced before Stage 2 validation.
 [ ] Malformed non-zero-count/null-array catalog fails without crash or partial result.
+[ ] AllowReduction with maxDrops == 0 is InvalidMutationPolicy.
+[ ] AllowBreak with maxDrops == 0 is InvalidMutationPolicy.
+[ ] AllowTurnaround with maxAdds == 0 is InvalidMutationPolicy.
+[ ] Repeat in bar 0 is InvalidTrajectoryBarFunction.
+[ ] RepeatWithGhosts in bar 0 is InvalidTrajectoryBarFunction.
+[ ] Return in bar 0 is InvalidTrajectoryBarFunction.
+[ ] Transaction regression uses a catalog-valid runtime-only failure.
+[ ] Failed evolution exposes no partial trajectory/plan/identity.
 [ ] Secondary candidates are strictly exhausted before structural drops.
 [ ] Reduction test performs at least one actual drop and stays within maxDrops.
 [ ] Break test performs at least one actual drop and stays within maxDrops.
