@@ -1,8 +1,6 @@
 # Atlas Pass 2 Hardening Review Gate
 
-Final hardening candidate: `d1c0d15490da96ddb5e5b3bbbf2b9921ecafd7c5`.
-
-The candidate is frozen while CI and three consecutive reviews run. Any code, data, test or documentation finding/change invalidates this SHA and resets the counter to `0/3`.
+The hardening candidate is frozen while CI and three consecutive reviews run. The exact final SHA is recorded in PR #192 metadata after the last content commit. Any code, data, test or documentation finding/change resets the counter to `0/3`.
 
 ## External audit findings addressed
 
