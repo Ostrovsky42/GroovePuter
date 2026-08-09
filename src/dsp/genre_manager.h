@@ -92,7 +92,6 @@ struct GenreBehavior {
 
 extern const GenerativeParams kGenerativePresets[kGenerativeModeCount];
 
-class MiniAcid;
 class SceneManager;
 struct GenreSettings;
 struct DrumGenreTemplate;
@@ -144,8 +143,6 @@ public:
     // Pending manager-owned state was removed. Current callers retain this
     // no-op boundary until their bar callback is simplified separately.
     bool commitPendingRecipe() { return false; }
-
-    void applyGenreTimbre(MiniAcid& engine);
 
 
     static const char* generativeModeName(GenerativeMode mode) {
