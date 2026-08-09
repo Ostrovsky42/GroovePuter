@@ -1,272 +1,310 @@
 # Atlas Pass 2 Computational Extraction Report
 
-**Status:** computational evidence gate before Stage 7  
+**Status:** adversarially hardened computational evidence gate before Stage 7  
 **Atlas input:** schema 2.6.0, SHA-256 `5b155937b8d05f0f0f9f1a02f10d9afe76a917d6035897695cce739eb8d6b1fd`  
-**Runtime comparison base:** actual 20-archetype `ReferenceVocabulary` dumped from code on PR #192  
-**Production impact:** none. This pass emits offline aggregate evidence only.
+**Production impact:** none. Pass 2 remains offline/audit-only.
 
-## 1. Input gates
+The original Pass 2 candidate `4d41980b...` passed its first internal review, but an independent adversarial methodology audit found additional requirements. That finding invalidated the previous `3/3` certification and reset the review counter. The hardened pass below is the new normative basis.
 
-The supplied Atlas archive is the exact pinned v2.6 corpus:
+## 1. Input and corpus reconciliation
+
+The supplied archive is the exact pinned Atlas v2.6 corpus:
 
 ```text
-patterns                 413
-events                  9377
-validation failures        0
-one-bar eligible          300
-one-bar structural groups 269
+patterns                  413
+events                   9377
+validation failures         0
+
+302 x 1-bar
+ 93 x 2-bar
+ 17 x 4-bar
+  1 x 5-bar derived composite
+------------------------------
+413 patterns
 ```
 
-The one-bar topology set excludes composite sequences, internal prototypes and superseded material. It contains 263 source observations and 37 project/editorial recipe patterns.
+The 5-bar outlier remains in corpus accounting and is excluded from Core-v1 1-4-bar phrase admission. It is never silently truncated.
 
-The complete reproducible extraction command is:
+Canonical hardened extraction command:
 
 ```bash
-python3 tools/atlas/run_atlas_pass2.py \
+python3 tools/atlas/run_atlas_pass2_hardened.py \
   seqtrak_pattern_atlas_csv_v2_6.zip \
   docs/architecture/atlas_pass2/RUNTIME_RHYTHM_BASELINE.tsv \
   <output-directory>
 ```
 
-The archive itself is not committed.
+The raw archive and private per-pattern detail are not committed.
 
-## 2. Topology extraction result
+## 2. Versioned semantic role normalization
 
-Pass 2 groups one-bar observations first by exact **Kick + Backbeat skeleton**. This is deliberately narrower than a runtime archetype: hats, percussion, BassRhythm, protected space, relationships and Feel remain separate evidence dimensions.
-
-Only skeletons recurring in at least three distinct structural groups are surfaced. The full corpus yields:
+Normative mapping schema:
 
 ```text
-recurring skeleton candidates  8
-NEAR_EXISTING                  5
-REVIEW                         2
-HOLD                           1
-ACCEPT                         0
+ATLAS_ROLE_MAPPING_V2
 ```
 
-The two REVIEW candidates are:
-
-| Candidate | Structural groups | Distinct source IDs | Directions | Runtime-compatible Kick/Backbeat grammar | Ornament median distance |
-|---|---:|---:|---|---:|---:|
-| `SKEL_04` | 4 | 2 | Afro-Cuban, Bossa Nova | 0 | 0.455357 |
-| `SKEL_05` | 4 | 2 | Electro, Go-Go, Hip-Hop, Miami Bass | 0 | 0.710623 |
-
-`source_count` means distinct Atlas `source_id` values only; it is not treated as proof of fully independent provenance.
-
-`SKEL_08` also has no current compatible Kick/Backbeat grammar, but all three supporting groups come from one source ID and therefore remains HOLD.
-
-No Pass 2 skeleton is admitted directly to Stage 7.
-
-## 3. Distance distributions
-
-Three object types are kept distinct.
-
-### Atlas observation ↔ Atlas observation
-
-Weighted role-wise Jaccard over normalized drum roles:
+`track_role` is not accepted as the sole source of drum semantics. Exact track identity takes precedence:
 
 ```text
-all structural groups:
-p50 0.644380
-p75 0.776316
-p95 0.902146
-
-research structural groups:
-p50 0.629825
-p75 0.745614
-p95 0.894737
+KICK                         -> Kick
+SNARE                        -> Backbeat
+CLOSED_HAT / HAT1            -> ClosedHat
+OPEN_HAT / HAT2              -> OpenHat
+PERC1/PERC2/RIM/TOM/COWBELL… -> Percussion
 ```
 
-Known `VARIATION_OF` edges are much closer:
+For research observations, `CLAP/HAND_CLAP` is conservatively kept as Percussion unless source metadata explicitly establishes backbeat ownership. Ambiguous `CYMBAL`, `RIDE`, `MID_HAT`, `HAT_FOOT` and unknown drum-like tracks remain `UNMAPPED`; they are not guessed into a lane.
+
+On the hardened one-bar research corpus this leaves 664 event occurrences ambiguous/unmapped. Candidate rows publish that uncertainty instead of hiding it.
+
+## 3. Source topology vs normalized musical topology
+
+Atlas `structural_group_id` remains a source-lineage/deduplication key. It is **not** treated as the Stage 7 musical identity.
+
+Hardened one-bar research scope:
 
 ```text
-count 24
-p50 0.297807
-p75 0.361090
-p95 0.528994
+263 SOURCE_OBSERVATION patterns
+239 source structural groups
 ```
 
-These values are empirical calibration data, not automatic Stage 7 thresholds.
+After source deduplication, observations are re-normalized through the semantic role mapping before musical clustering.
 
-### Runtime grammar ↔ runtime grammar
+## 4. Observation -> runtime grammar semantics
 
-The runtime comparison is a **grammar-envelope diagnostic**, not an observation distance:
+Runtime topology schema:
 
 ```text
-20 current archetypes / 190 pairs
-support-envelope Jaccard:
-p50 0.471053
-p75 0.623277
-p95 0.842105
+GROOVEPUTER_RUNTIME_RHYTHM_TOPOLOGY_V2
 ```
 
-### Atlas observation → nearest runtime grammar
+The V2 runtime dump is generated directly from the current 20 `ReferenceVocabulary` archetypes and includes:
 
-No weighted scalar score is used for admission. Nearest runtime is selected lexicographically by:
+```text
+lane required anchors
+preferred/optional legal support
+forbidden coordinates
+lane density bounds
+protected spaces
+hard/soft relationships
+```
+
+Observation-to-grammar comparison is asymmetric. A concrete Atlas observation is never compared to `canonical|preferred|optional` as though that union were one concrete rhythm.
+
+### Hard feasibility
+
+For the drum domain an observation is `hard_covered` only when all of these are zero:
 
 ```text
 required-anchor misses
-    ↓
-outside-support hits
-    ↓
-density deviation
-    ↓
-soft support Jaccard
+outside-legal hits
+protected-space hits
+lane-density deviation
+hard-relationship violations
 ```
 
-The resulting metrics are stored separately and explicitly marked `diagnostic`.
+Hard `Exclude`, `Coincide`, `Offset` and `Respond` semantics follow the runtime resolver. Cross-domain Bass/Chord/Melodic relationships are not used to reject a drum-only evidence observation.
 
-Observation-to-grammar comparison cannot prove full archetype equivalence because a concrete observation and a runtime grammar are different abstraction levels. Relationships and protected space therefore remain separate evidence passes.
+### Typicality
 
-## 4. Negative / protected-space evidence
+Only after feasibility, support Jaccard is reported as a separate typicality diagnostic. Typicality cannot compensate for an illegal observation.
 
-Pass 2 extracts negative-space observations separately from topology.
+The reported minimum lane edit value is explicitly a **lower bound**: repairing a hard relationship can require additional edits.
 
-For each research direction and drum role it first deduplicates by structural group, then considers **only groups where that role is active somewhere**. An absent role is therefore not counted as evidence that every step is protected.
+## 5. Independent evidence support
 
-A row is emitted only when:
+Support schema:
+
+```text
+ATLAS_PASS2_SUPPORT_V2
+```
+
+Candidate support is not reduced to one `N`. Each recurring cluster reports separately:
+
+```text
+structural_group_count
+independent_provenance_root_count
+content_deduped_artifact_count
+direction_count
+hard-covered / hard-uncovered members
+cluster dispersion
+ambiguous/unmapped event count
+```
+
+Derived composites add zero independent provenance confirmations. Artifact support is deduplicated by content hash, so duplicate artifact IDs cannot inflate support.
+
+A single provenance root can never become `AUDITION_REVIEW` merely by producing many rows.
+
+## 6. Hardened topology result
+
+After source-aware normalization, the research corpus contains nine recurring Kick/Backbeat clusters with at least three source structural groups:
+
+```text
+AUDITION_REVIEW   2
+HOLD_SINGLE_ROOT  7
+NOVEL_CANDIDATE   0
+ACCEPT            0
+```
+
+The two multi-provenance audition candidates are:
+
+```text
+HARD_02  5 groups / 2 provenance roots / 2 content-distinct artifacts
+         directions: Electro / Go-Go / Hip-Hop / Miami Bass
+
+HARD_05  4 groups / 2 provenance roots / 2 content-distinct artifacts
+         directions: Afro-Cuban / Bossa Nova
+```
+
+`HARD_05` carries substantial ambiguous/unmapped percussion/cymbal evidence and is therefore intentionally a **mapping-sensitive listening candidate**, not a production admission.
+
+The remaining seven recurring clusters are single-root evidence and remain HOLD even where their internal topology is compact.
+
+No Pass 2 output is a runtime archetype.
+
+## 7. Calibration and null corridors
+
+Distance schema:
+
+```text
+ATLAS_PASS2_DISTANCE_V2
+```
+
+Committed Atlas calibration includes:
+
+```text
+same-source-structural-group null:
+  29 comparable pairs
+  normalized drum distance max = 0.0
+
+within-direction research:
+  5645 pairs
+  p50 = 0.494737
+  p90 = 0.715789
+  p95 = 0.789474
+
+recurring-candidate internal:
+  66 pairs
+  p50 = 0.225877
+  p90 = 0.325110
+  max = 0.368421
+```
+
+The zero null corridor confirms that expression/metadata-only variants do not manufacture rhythm novelty under the hardened normalization.
+
+A separate host calibration uses the actual `RhythmPhraseRealizer` over all 20 current grammars, 64 deterministic P1 seeds each:
+
+```text
+current-realizer -> own grammar coverage: 20 x 64 / 64
+within-archetype P1 drum-distance distributions
+current-realizer -> non-own grammar confusion
+```
+
+Aggregate current-realizer calibration on the first hardened run:
+
+```text
+within-own-archetype pairs: 40320
+p50  0.052632
+p90  0.219298
+p95  0.289474
+max  0.429825
+
+non-own grammar coverage:
+335 / 24320 = 0.013775
+```
+
+The overlap is sparse rather than zero. Examples include `two_step_roll <-> ghosted_roll` and `sparse_skank <-> chord_response`, plus a smaller straight/hypnotic/rolling corridor. This is useful empirical calibration for Stage 7 and replaces an arbitrary novelty threshold.
+
+No single weighted novelty score is used.
+
+## 8. Negative / protected-space evidence
+
+Negative-space evidence remains a separate pass. The denominator includes only source structural groups in which the role is active somewhere, so a completely absent role cannot manufacture protected-space evidence.
+
+Current research gate:
 
 ```text
 active structural groups >= 5
 step absence fraction    >= 0.90
 ```
 
-The full research corpus produces:
+The Pass 2 aggregate contains 176 direction×role×step negative-space observations and zero promoted BassRhythm research rows.
+
+Repeated absence is evidence for curation, not an automatic runtime `ProtectedSpace` contract.
+
+## 9. Phrase development
+
+Measured source observations remain separate from derived/editorial sequences.
+
+Measured adjacent-bar source transitions:
 
 ```text
-negative-space aggregate rows  176
-BassRhythm rows                  0
-```
-
-These are `RESEARCH_AGGREGATE` step-occupancy observations and are stored in `ATLAS_PASS2_NEGATIVE_SPACE.csv`.
-
-They are **not** automatically converted to runtime `ProtectedSpace`. Stage 7 curation must still decide whether repeated absence is a musical constraint, a consequence of another relationship, or merely low density.
-
-## 5. Phrase development
-
-Measured multi-bar evidence is kept separate from derived composites.
-
-### Measured source observations
-
-There are 19 two-bar source observations. Eleven use an 8-step source grid; they are normalized to the runtime 16-step coordinate system by mapping source step `n` to runtime step `2n`.
-
-The phrase pass accepts both the normal drum role labels and the Atlas literal `PERCUSSION` used by `PERC1/PERC2` on several measured source patterns. Those events materially affect the transition counts and are covered by a regression.
-
-Measured adjacent-bar deltas:
-
-```text
+19 two-bar SOURCE_OBSERVATION patterns
 EXACT_REPEAT   4
 ADD_ONLY       3
 DROP_ONLY      2
 MIXED         10
 ```
 
-This proves the presence of repeat/add/drop/mixed transition primitives. It does **not** by itself prove one universal named four-bar trajectory.
+The measured pass explicitly handles the Atlas `PERCUSSION` role used by PERC1/PERC2.
 
-### Derived four-bar composites
+Derived four-bar composites remain `EDITORIAL_CURATED`; the common derived sequence `EXACT_REPEAT > ADD_ONLY > MIXED` does not become proof of a universal `A A A' B` trajectory.
 
-There are 17 derived four-bar composites. Their transition-class sequences are reported as `EDITORIAL_CURATED`, not `MEASURED`.
+The single 5-bar derived composite is retained for corpus accounting only and is outside Core-v1 phrase admission.
 
-The most common derived sequence is:
+## 10. Bass, pitch, motif and Feel evidence boundary
+
+The hardened pass preserves provenance instead of escalating it because arithmetic was performed.
 
 ```text
-EXACT_REPEAT > ADD_ONLY > MIXED    7/17
+BassRhythm one-bar evidence  -> PROJECT_OWNED_EXACT
+Bass pitch contours           -> PROJECT_OWNED_EXACT / HOLD
+Motif contours                -> PROJECT_OWNED_EXACT / HOLD
+editorial microtiming         -> not MEASURED Feel law
 ```
 
-The report therefore supports BarEvolution transformation vocabulary, but does not promote a derived `A A A' B` ordering into measured fact.
+Pass 2 does not claim independent corpus support for Stage 8 BassPitchStrategy, Stage 9 MotifVocabulary or a generalized Feel law.
 
-## 6. Bass evidence
+## 11. Rights / reversibility boundary
 
-One-bar BassRhythm evidence is not research-measured in this corpus.
+Detailed per-pattern/per-source calculations are local/private only.
 
-```text
-BassRhythm one-bar patterns  35
-origin                        project/editorial recipe patterns
-evidence class                PROJECT_OWNED_EXACT
-```
-
-Kick→BassRhythm relationship statistics are therefore emitted only as project-owned exact evidence.
-
-No Bass v2 runtime strategy is admitted by Pass 2.
-
-## 7. Bass pitch and motif evidence
-
-Pitched one-bar material is likewise project/editorial rather than research-measured.
+Repo-safe Pass 2 hardening outputs contain aggregate/synthetic candidate IDs, counts and distributions. They reject sensitive field names and do not publish:
 
 ```text
-Bass pitch contour eligible patterns   35
-MelodicRhythm one-bar patterns          35
-Motif contour eligible patterns         23
-```
-
-Contour and interval aggregates are emitted for hypothesis generation, but every row remains `HOLD`.
-
-`pattern_count` in this table is descriptive coverage only. It is not an independent-support score and cannot be used for runtime admission; several rows come from related P1/P2/P3 project material.
-
-Pass 2 must not claim that Atlas v2.6 independently proves a BassPitchStrategy or MotifVocabulary.
-
-## 8. Effective variation baseline
-
-Across the 12 published baseline recipes:
-
-| Slot | Realizations | Distinct structural groups | Effective variation ratio |
-|---|---:|---:|---:|
-| P1 | 12 | 12 | 1.000000 |
-| P2 | 12 | 10 | 0.833333 |
-| P3 | 12 | 7 | 0.583333 |
-
-This becomes the first source-corpus baseline for the future Stage 7 `effective_variation_count` gate.
-
-It is not yet the generated-runtime metric. Stage 7 must measure generated P1/P2/P3 variants separately after normalization.
-
-## 9. Rights / reversibility guard
-
-Committed Pass 2 outputs contain only aggregate statistics.
-
-They intentionally omit:
-
-```text
-pattern IDs
-structural group IDs
-structural/expressive hashes
+restricted pattern IDs
+source structural-group IDs
 source locators
-literal event lists
-literal Kick/Backbeat masks
+artifact IDs or content hashes
+literal masks/event lists
 per-pattern normalized fingerprints
+per-pattern distance vectors
 ```
 
-The two REVIEW skeleton candidates are represented only by opaque candidate IDs and aggregate support/compatibility statistics.
+Committed aggregate outputs are pinned by SHA-256 manifests.
 
-Direction×role×step occupancy frequencies are allowed aggregate evidence under the Stage 6B rights contract; no per-pattern topology is published.
+## 12. Stage 7 boundary
 
-CI checks both output values and output field names for restricted identifier/hash/mask tokens. The canonical runner normalizes generated text to UTF-8/LF before producing a SHA-256 manifest so reproducibility is independent of CSV platform line endings.
-
-## 10. Stage 7 gate
-
-Stage 7 remains **CLOSED** after Pass 2.
-
-A recurring skeleton is only a candidate observation cluster. Before it becomes a `RhythmArchetype`, curation must still establish:
+Production Stage 7 admission remains **CLOSED** at Pass 2.
 
 ```text
-full multi-lane grammar
-anchors / optional space
-protected space
-relationships
-density corridor
-compatibility
-effective generated variation
-between-archetype distance
-listening acceptance
-embedded cost
+AUDITION_REVIEW != NOVEL_CANDIDATE
+NOVEL_CANDIDATE != ACCEPT
 ```
 
-Current computational result:
+`ACCEPT` belongs to Stage 7 curation, generated-runtime effective-variation testing and listening.
+
+A temporary Stage 7A listening harness may contain up to five generalized candidate grammars without changing production `ReferenceVocabulary`:
 
 ```text
-0 ACCEPT
-2 REVIEW
-1 HOLD novel skeleton
-5 NEAR_EXISTING recurring skeletons
+2 x multi-provenance AUDITION_REVIEW
+2 x single-root boundary challengers
+1 x single-root control/outlier
 ```
 
-This is a successful Pass 2 result: it reduces the space for Stage 7 instead of manufacturing vocabulary.
+The purpose is falsification by metrics and listening, not to guarantee five additions.
+
+## 13. Review rule
+
+The independent adversarial findings invalidated the original Pass 2 review sequence. The review counter is reset and must reach three consecutive clean reviews on one unchanged hardened SHA before this evidence gate is frozen.
