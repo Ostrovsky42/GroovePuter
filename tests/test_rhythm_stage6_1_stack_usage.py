@@ -37,6 +37,16 @@ def find(entries: dict[str, tuple[int, str]], needle: str) -> tuple[str, int, st
     return max(matches, key=lambda item: item[1])
 
 
+def require_bounded(symbol: str, size: int, kind: str, ceiling: int) -> None:
+    # GCC may report `dynamic,bounded` even when there is no C/C++ VLA. The
+    # runner separately compiles with -Wvla -Werror. Here we require a numeric
+    # compiler bound and reject unbounded `dynamic` classifications.
+    if kind not in {"static", "dynamic,bounded"}:
+        fail(f"stack usage is not compiler-bounded: {symbol} {kind}")
+    if size > ceiling:
+        fail(f"host stack frame too large: {symbol} {size} bytes > {ceiling}")
+
+
 def main() -> None:
     if len(sys.argv) != 2:
         raise SystemExit("usage: test_rhythm_stage6_1_stack_usage.py <bar_evolution.su>")
@@ -52,18 +62,13 @@ def main() -> None:
     # Host GCC is not the ESP32-S3 ABI, so these are regression ceilings rather
     # than hardware high-water measurements. They catch accidental frame growth
     # before the mandatory Cardputer probe at first production wiring.
-    if evolve_kind != "static":
-        fail(f"evolveRhythmPhrase stack usage is not static: {evolve_symbol} {evolve_kind}")
-    if drop_kind != "static":
-        fail(f"dropOneStructuralEvent stack usage is not static: {drop_symbol} {drop_kind}")
-    if evolve_bytes > 4096:
-        fail(f"evolveRhythmPhrase host stack frame too large: {evolve_bytes} bytes")
-    if drop_bytes > 2048:
-        fail(f"dropOneStructuralEvent host stack frame too large: {drop_bytes} bytes")
+    require_bounded(evolve_symbol, evolve_bytes, evolve_kind, 4096)
+    require_bounded(drop_symbol, drop_bytes, drop_kind, 2048)
 
     print(
         "Groove Vocabulary Stage 6.1 stack usage: "
-        f"evolve={evolve_bytes}B drop={drop_bytes}B"
+        f"evolve={evolve_bytes}B({evolve_kind}) "
+        f"drop={drop_bytes}B({drop_kind})"
     )
 
 
