@@ -18,27 +18,39 @@ SOURCES=(
 build_and_run() {
   local compiler="$1"
   local output="$2"
-  shift 2
+  local test_source="$3"
+  shift 3
   "${compiler}" -std=c++17 -Wall -Wextra -Werror \
     -Wno-c++20-extensions -Wno-unused-but-set-variable \
     -I"${ROOT_DIR}" \
     "$@" \
     "${SOURCES[@]}" \
-    "${ROOT_DIR}/tests/test_rhythm_stage6_bar_evolution.cpp" \
+    "${ROOT_DIR}/${test_source}" \
     -o "${output}"
   "${output}"
 }
 
-build_and_run "${CXX:-g++}" \
-  "${BUILD_DIR}/test_rhythm_stage6_gcc"
+run_suite() {
+  local compiler="$1"
+  local suffix="$2"
+  shift 2
+  build_and_run "${compiler}" \
+    "${BUILD_DIR}/test_rhythm_stage6_${suffix}" \
+    "tests/test_rhythm_stage6_bar_evolution.cpp" \
+    "$@"
+  build_and_run "${compiler}" \
+    "${BUILD_DIR}/test_rhythm_stage6_contract_${suffix}" \
+    "tests/test_rhythm_stage6_contract_regressions.cpp" \
+    "$@"
+}
+
+run_suite "${CXX:-g++}" gcc
 
 if command -v clang++ >/dev/null 2>&1; then
-  build_and_run clang++ \
-    "${BUILD_DIR}/test_rhythm_stage6_clang"
+  run_suite clang++ clang
 fi
 
-build_and_run "${CXX:-g++}" \
-  "${BUILD_DIR}/test_rhythm_stage6_sanitize" \
+run_suite "${CXX:-g++}" sanitize \
   -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined
 
 printf 'Groove Vocabulary Stage 6 BarEvolution host matrix: OK\n'
