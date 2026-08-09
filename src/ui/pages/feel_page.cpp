@@ -10,6 +10,7 @@
 
 namespace {
 constexpr const char* kPresetNames[3] = {"TIGHT", "HUMAN", "LOOSE"};
+constexpr uint8_t kPatternBars[4] = {1, 2, 4, 8};
 
 int wrapIndex(int value, int count) {
   if (count <= 0) return 0;
@@ -20,6 +21,24 @@ int wrapIndex(int value, int count) {
 
 int percent(float value) {
   return static_cast<int>(value * 100.0f + 0.5f);
+}
+
+int patternBarsIndex(uint8_t bars) {
+  for (int i = 0; i < 4; ++i) {
+    if (kPatternBars[i] == bars) return i;
+  }
+  return 0;
+}
+
+uint8_t normalizedPatternBars(uint8_t bars) {
+  return kPatternBars[patternBarsIndex(bars)];
+}
+
+uint8_t shiftedPatternBars(uint8_t bars, int delta) {
+  if (delta == 0) return normalizedPatternBars(bars);
+  const int direction = delta > 0 ? 1 : -1;
+  const int next = wrapIndex(patternBarsIndex(bars) + direction, 4);
+  return kPatternBars[next];
 }
 }  // namespace
 
@@ -33,7 +52,7 @@ FeelPage::FeelPage(IGfx& gfx,
 
 void FeelPage::moveFocus(int delta) {
   int value = static_cast<int>(focus_) + delta;
-  value = wrapIndex(value, 4);
+  value = wrapIndex(value, 5);
   focus_ = static_cast<FocusRow>(value);
   hold_accel_.reset();
 }
@@ -46,6 +65,18 @@ void FeelPage::adjustFocused(int delta, bool fast) {
   }
 
   Scene& scene = mini_acid_.sceneManager().currentScene();
+
+  if (focus_ == FocusRow::PatternLength) {
+    const uint8_t next = shiftedPatternBars(scene.feel.patternBars, delta);
+    if (next != scene.feel.patternBars) {
+      withAudioGuard([&]() {
+        scene.feel.patternBars = next;
+      });
+    }
+    hold_accel_.reset();
+    return;
+  }
+
   const int multiplier = hold_accel_.multiplier(delta, fast);
   bool changed = false;
 
@@ -85,6 +116,7 @@ void FeelPage::adjustFocused(int delta, bool fast) {
         }
         break;
       }
+      case FocusRow::PatternLength:
       case FocusRow::Preset:
         break;
     }
@@ -146,7 +178,6 @@ void FeelPage::draw(IGfx& gfx) {
   const IGfxColor axisColor = palette.feel;
   const Scene& scene = mini_acid_.sceneManager().currentScene();
   const GeneratorParams& params = scene.generatorParams;
-  const GrooveRecipe recipe = mini_acid_.genreManager().getGrooveRecipe();
 
   UI::drawStandardHeader(gfx, mini_acid_, "FEEL");
   LayoutManager::clearContent(gfx);
@@ -154,7 +185,7 @@ void FeelPage::draw(IGfx& gfx) {
   const int x = Layout::COL_1;
   const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
   AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0),
-                      "FEEL 2/3", "TIMING / VELOCITY",
+                      "FEEL 2/2", "TIMING / VELOCITY",
                       axisColor, palette);
 
   char value[48];
@@ -188,16 +219,17 @@ void FeelPage::draw(IGfx& gfx) {
                     84, percent(params.velocityRange),
                     100, axisColor, palette);
 
+  std::snprintf(value, sizeof(value), "%uB",
+                static_cast<unsigned>(normalizedPatternBars(scene.feel.patternBars)));
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width,
+                       "PATTERN LENGTH", value,
+                       focus_ == FocusRow::PatternLength,
+                       axisColor, palette);
+
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width,
                        "PRESET", kPresetNames[preset_index_],
                        focus_ == FocusRow::Preset,
                        axisColor, palette);
-
-  std::snprintf(value, sizeof(value), "GRID %u/BAR  MASK %04X",
-                static_cast<unsigned>(recipe.stepsPerBar),
-                static_cast<unsigned>(scene.feel.swingMask));
-  gfx.setTextColor(palette.muted);
-  gfx.drawText(x + 2, LayoutManager::lineY(5) + 1, value);
 
   const char* explanation = "LIVE: offbeat playback delay";
   switch (focus_) {
@@ -209,6 +241,9 @@ void FeelPage::draw(IGfx& gfx) {
       break;
     case FocusRow::VelocityHumanize:
       explanation = "NEXT GEN: note velocity spread";
+      break;
+    case FocusRow::PatternLength:
+      explanation = "SONG: bars before next row";
       break;
     case FocusRow::Preset:
       explanation = "ENTER: load all FEEL values";
@@ -222,7 +257,7 @@ void FeelPage::draw(IGfx& gfx) {
 
   UI::drawStandardFooter(gfx,
                          "TAB/U/D:FIELD  L/R:CHANGE",
-                         "HOLD L/R:ACCEL  ENTER:PRESET");
+                         "LENGTH 1/2/4/8B  ENTER:PRESET");
 }
 
 bool FeelPage::handleEvent(UIEvent& event) {
