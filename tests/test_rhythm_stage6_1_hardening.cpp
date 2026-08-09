@@ -67,7 +67,7 @@ constexpr RhythmArchetype makeArchetype() {
   archetype.laneCount = 1;
   archetype.trajectories = kTrajectoryRefs;
   archetype.trajectoryCount = 3;
-  archetype.density = DensityContract{2, 3, 2, 0};
+  archetype.density = DensityContract{2, 2, 3, 0};
 
   MutationBudget p3{};
   p3.maxAdds = 2;
