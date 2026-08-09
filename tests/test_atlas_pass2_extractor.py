@@ -17,6 +17,7 @@ assert spec.loader is not None
 spec.loader.exec_module(module)
 
 import extract_atlas_pass2_negative_space as negative
+import extract_atlas_pass2_phrase as phrase
 import run_atlas_pass2 as runner
 
 assert module.EXPECTED_ATLAS_SHA256 == "5b155937b8d05f0f0f9f1a02f10d9afe76a917d6035897695cce739eb8d6b1fd"
@@ -31,6 +32,11 @@ assert module.map_track({"track_id": "SYNTH1", "track_role": "bass"}) == 5
 assert module.map_track({"track_id": "SYNTH2", "track_role": "harmony"}) == 6
 assert module.map_track({"track_id": "DX", "track_role": "melody"}) == 7
 assert module.map_track({"track_id": "SAMPLER", "track_role": "sample"}) is None
+
+# Atlas uses a literal PERCUSSION role on several measured two-bar PERC1/PERC2
+# tracks. The phrase pass must not drop those events.
+assert phrase.phrase_track_role({"track_id": "PERC1", "track_role": "PERCUSSION"}) == 4
+assert phrase.phrase_track_role({"track_id": "PERC2", "track_role": "PERCUSSION"}) == 4
 
 tracks = defaultdict(list)
 tracks["P"].append({"track_id": "KICK", "track_role": "DRUM_OR_PERCUSSION"})
