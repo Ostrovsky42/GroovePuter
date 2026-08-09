@@ -22,6 +22,16 @@ GENERATED_OUTPUTS = (
 )
 
 
+def normalize_generated_text(output_dir: Path) -> None:
+    """Canonicalize generated text artifacts to UTF-8 + LF before hashing."""
+    for filename in GENERATED_OUTPUTS:
+        path = output_dir / filename
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        text = path.read_text(encoding="utf-8")
+        path.write_text(text.replace("\r\n", "\n").replace("\r", "\n"), encoding="utf-8", newline="\n")
+
+
 def write_hash_manifest(output_dir: Path) -> Path:
     manifest = output_dir / "ATLAS_PASS2_OUTPUT_HASHES.sha256"
     lines = []
@@ -31,7 +41,7 @@ def write_hash_manifest(output_dir: Path) -> Path:
             raise FileNotFoundError(path)
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         lines.append(f"{digest}  {filename}")
-    manifest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    manifest.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
     return manifest
 
 
@@ -49,6 +59,7 @@ def main() -> None:
         args.atlas_zip,
         args.output_dir / "ATLAS_PASS2_NEGATIVE_SPACE.csv",
     )
+    normalize_generated_text(args.output_dir)
     manifest = write_hash_manifest(args.output_dir)
     print(json.dumps({
         "summary": summary,
