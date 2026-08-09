@@ -61,6 +61,13 @@ grep -q $'^AGG_CONF\t' "$CALIBRATION"
 # Every archetype must cover all 64 of its own generated P1 samples.
 awk -F '\t' '$1 == "SELF" && $5 != 64 { bad = 1 } END { exit bad }' "$CALIBRATION"
 
+CALIBRATION_BASELINE="$BUILD_DIR/runtime_rhythm_calibration_baseline.tsv"
+awk -F '\t' '
+  $1 == "FORMAT" || $1 == "SELF" || $1 == "AGG_SELF" || $1 == "AGG_CONF" || $1 == "COUNT" { print; next }
+  $1 == "CONF" && $4 != 0 { print }
+' "$CALIBRATION" > "$CALIBRATION_BASELINE"
+diff -u "$ROOT/docs/architecture/atlas_pass2/RUNTIME_RHYTHM_CALIBRATION_V1.tsv" "$CALIBRATION_BASELINE"
+
 python3 "$ROOT/tests/test_atlas_pass2_hardening.py"
 
 echo "Atlas Pass 2 runtime catalog/topology/calibration/hardening gates: OK"
