@@ -6,9 +6,15 @@ struct UIEvent;
 namespace GroovePuterRhythm {
 namespace Stage7AAudition {
 
-// Lightweight UI facade. Keep the temporary audition implementation and its
-// Session/MIDI/Scene dependencies out of MiniAcidDisplay and GenrePage TUs.
-bool cardputerSessionActive();
+// Lightweight status facade used by MiniAcidDisplay to give an already-active
+// audition first refusal before global shortcuts. The actual Session remains
+// private to stage7a_cardputer.cpp.
+class CardputerSessionFacade {
+ public:
+  bool active() const;
+};
+
+const CardputerSessionFacade& cardputerSession();
 bool handleCardputerEvent(const UIEvent& event, MiniAcid& engine);
 
 }  // namespace Stage7AAudition
