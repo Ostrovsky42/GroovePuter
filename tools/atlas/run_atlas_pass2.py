@@ -8,6 +8,7 @@ from pathlib import Path
 
 from extract_atlas_pass2 import extract
 from extract_atlas_pass2_negative_space import extract_negative_space
+from extract_atlas_pass2_phrase import extract_phrase
 
 GENERATED_OUTPUTS = (
     "ATLAS_PASS2_DISTANCE_DISTRIBUTIONS.csv",
@@ -29,7 +30,11 @@ def normalize_generated_text(output_dir: Path) -> None:
         if not path.is_file():
             raise FileNotFoundError(path)
         text = path.read_text(encoding="utf-8")
-        path.write_text(text.replace("\r\n", "\n").replace("\r", "\n"), encoding="utf-8", newline="\n")
+        path.write_text(
+            text.replace("\r\n", "\n").replace("\r", "\n"),
+            encoding="utf-8",
+            newline="\n",
+        )
 
 
 def write_hash_manifest(output_dir: Path) -> Path:
@@ -55,6 +60,11 @@ def main() -> None:
     args = parser.parse_args()
 
     summary = extract(args.atlas_zip, args.runtime_tsv, args.output_dir)
+    phrase_counts = extract_phrase(
+        args.atlas_zip,
+        args.output_dir / "ATLAS_PASS2_PHRASE_TRANSITIONS.csv",
+        args.output_dir / "ATLAS_PASS2_SUMMARY.json",
+    )
     negative_space = extract_negative_space(
         args.atlas_zip,
         args.output_dir / "ATLAS_PASS2_NEGATIVE_SPACE.csv",
@@ -63,6 +73,7 @@ def main() -> None:
     manifest = write_hash_manifest(args.output_dir)
     print(json.dumps({
         "summary": summary,
+        "phrase_transition_counts": phrase_counts,
         "negative_space_rows": len(negative_space),
         "hash_manifest": str(manifest),
     }, indent=2, sort_keys=True))
