@@ -54,6 +54,7 @@ SOURCES := \
 	../src/generation/rhythm/reference_vocabulary.cpp \
 	../src/generation/audition_stage7/stage7a_catalog.cpp \
 	../src/generation/audition_stage7/stage7a_session.cpp \
+	../src/generation/audition_stage7/stage7a_cardputer.cpp \
 	../src/generation/materialization/pattern_materializer.cpp \
 	../src/generation/migration/strong_rhythm_migration.cpp \
 	../src/generation/migration/strong_rhythm_live_bridge.cpp \
