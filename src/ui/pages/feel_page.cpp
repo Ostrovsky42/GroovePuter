@@ -178,6 +178,7 @@ void FeelPage::draw(IGfx& gfx) {
   const IGfxColor axisColor = palette.feel;
   const Scene& scene = mini_acid_.sceneManager().currentScene();
   const GeneratorParams& params = scene.generatorParams;
+  const GrooveRecipe recipe = mini_acid_.genreManager().getGrooveRecipe();
 
   UI::drawStandardHeader(gfx, mini_acid_, "FEEL");
   LayoutManager::clearContent(gfx);
@@ -219,8 +220,10 @@ void FeelPage::draw(IGfx& gfx) {
                     84, percent(params.velocityRange),
                     100, axisColor, palette);
 
-  std::snprintf(value, sizeof(value), "%uB",
-                static_cast<unsigned>(normalizedPatternBars(scene.feel.patternBars)));
+  std::snprintf(value, sizeof(value), "%uB G%u M%04X",
+                static_cast<unsigned>(normalizedPatternBars(scene.feel.patternBars)),
+                static_cast<unsigned>(recipe.stepsPerBar),
+                static_cast<unsigned>(scene.feel.swingMask));
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width,
                        "PATTERN LENGTH", value,
                        focus_ == FocusRow::PatternLength,
