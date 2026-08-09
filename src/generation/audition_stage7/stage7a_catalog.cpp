@@ -188,7 +188,9 @@ constexpr LaneRelationship kCrossCycleRelationships[] = {
 };
 
 // HARD_04: single-root breaks/DnB/funk challenger. Kick/backbeat carry the
-// identity while hats remain a broad but bounded secondary mesh.
+// identity while hats remain a broad but bounded secondary mesh. Preferred
+// density intentionally stops one event short of exhausting all preferred
+// coordinates so deterministic seed ranking creates a real identity choice.
 constexpr LaneGrammar kBreakHalfstepLanes[] = {
     lane(RhythmRole::Kick,
          stepBit(0),
@@ -292,7 +294,7 @@ constexpr RhythmArchetype kArchetypes[] = {
               kKickBackbeatHats,
               kBreakHalfstepLanes, 4,
               kBreakHalfstepRelationships, 1,
-              DensityContract{5, 8, 11, 3},
+              DensityContract{5, 7, 11, 3},
               straightTiming()),
     archetype(704,
               RhythmFamily::HipHopBackbeat,
