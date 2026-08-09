@@ -6,6 +6,8 @@ STAGE = ROOT / "src" / "generation" / "audition_stage7"
 CATALOG = (STAGE / "stage7a_catalog.cpp").read_text(encoding="utf-8")
 SESSION = (STAGE / "stage7a_session.cpp").read_text(encoding="utf-8")
 CARDPUTER = (STAGE / "stage7a_cardputer.h").read_text(encoding="utf-8")
+GENRE_PAGE = (ROOT / "src" / "ui" / "pages" / "genre_page.cpp").read_text(encoding="utf-8")
+MAIN_SKETCH = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
 MANIFEST = (ROOT / "docs" / "architecture" / "stage7a" / "ATLAS_PASS2_CURATION_MANIFEST.md").read_text(encoding="utf-8")
 
 
@@ -56,6 +58,8 @@ require("event.alt && event.ctrl" in CARDPUTER and "key == 'a'" in CARDPUTER,
         "Stage 7A activation must require Ctrl+Alt+A")
 require("engine.songModeEnabled()" in CARDPUTER,
         "Stage 7A activation must be refused in Song mode")
+require("!event.ctrl || event.alt || event.meta" in CARDPUTER,
+        "Stage 7A modal commands must use Ctrl without Alt/meta")
 require("key >= '1' && key <= '5'" in CARDPUTER,
         "Stage 7A must expose exactly five numbered listening slots")
 require("key == 'p'" in CARDPUTER and "key == '['" in CARDPUTER and
@@ -63,5 +67,17 @@ require("key == 'p'" in CARDPUTER and "key == '['" in CARDPUTER and
         "Stage 7A seed/P-level/rerender controls must remain available")
 require("key == 'b'" not in CARDPUTER and "key == 'B'" not in CARDPUTER,
         "Stage 7A must not revive the Stage 3A fixed-root Bass toggle")
+require("engine.isPlaying()" in CARDPUTER and "engine.stop()" in CARDPUTER and "engine.start()" in CARDPUTER,
+        "Stage 7A modal Space must preserve transport semantics")
+
+require('#include "../../generation/audition_stage7/stage7a_cardputer.h"' in GENRE_PAGE,
+        "GenrePage must include the temporary Stage 7A handler")
+require("Stage7AAudition::handleCardputerEvent" in GENRE_PAGE,
+        "GenrePage must give Stage 7A first refusal before normal Genre editing")
+require(GENRE_PAGE.index("Stage7AAudition::handleCardputerEvent") < GENRE_PAGE.index("UIInput::isTab(event)"),
+        "Stage 7A must intercept its modal commands before Genre navigation")
+
+require("audition_stage7" not in MAIN_SKETCH,
+        "Stage 7A must not modify the top-level sketch event loop")
 
 print("Stage 7A source regressions: OK")
