@@ -1,0 +1,9 @@
+metric,count,min,p05,p25,p50,p75,p90,p95,max
+atlas_all_structural_group_pair_drum_jaccard,36046,0.0,0.330827,0.526316,0.64438,0.776316,0.862782,0.902146,1.0
+atlas_research_structural_group_pair_drum_jaccard,28441,0.0,0.315789,0.506266,0.629825,0.745614,0.842105,0.894737,1.0
+atlas_variation_of_drum_jaccard,24,0.052632,0.073684,0.165758,0.297807,0.36109,0.457989,0.528994,0.651316
+runtime_grammar_envelope_pair_jaccard_diagnostic,190,0.0,0.121053,0.289474,0.471053,0.623277,0.756842,0.842105,0.947368
+atlas_to_nearest_runtime_required_miss_rate_diagnostic,269,0.0,0.0,0.0,0.333333,0.5,0.6,0.666667,1.0
+atlas_to_nearest_runtime_outside_support_rate_diagnostic,269,0.0,0.166667,0.4,0.529412,0.692308,0.8,0.82013,1.0
+atlas_to_nearest_runtime_density_deviation_steps_diagnostic,269,0.0,1.0,4.0,6.0,10.0,17.0,18.0,25.0
+atlas_to_nearest_runtime_support_jaccard_diagnostic,269,0.105263,0.289474,0.501504,0.621241,0.789474,0.857895,0.87802,1.0
