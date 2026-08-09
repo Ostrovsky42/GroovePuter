@@ -40,7 +40,9 @@ grep -qx $'COUNT\t20' "$TOPOLOGY"
 [[ "$(grep -c $'^S\t' "$TOPOLOGY")" -gt 0 ]]
 diff -u "$ROOT/docs/architecture/atlas_pass2/RUNTIME_RHYTHM_TOPOLOGY_V2.tsv" "$TOPOLOGY"
 
-echo "Atlas Pass 2 runtime catalog/topology dumps: OK"
+python3 "$ROOT/tests/test_atlas_pass2_hardening.py"
+
+echo "Atlas Pass 2 runtime catalog/topology/hardening gates: OK"
 if [[ "${ATLAS_PASS2_PRINT_RUNTIME_DUMP:-0}" == "1" ]]; then
   cat "$DUMP"
   cat "$TOPOLOGY"
