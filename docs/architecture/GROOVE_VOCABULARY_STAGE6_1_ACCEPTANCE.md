@@ -11,20 +11,23 @@ Stage 6.1 does not add musical content. It hardens the existing Stage 6 API so l
 The specific review findings closed here are:
 
 1. duplicate whole-catalog validation;
-2. probabilistic rather than strict secondary-before-structural drop priority;
-3. Reduction/Break tests that allowed zero actual drops;
-4. missing byte/event equality checks for Statement/Response versus base realization;
-5. ambiguous Response semantics;
-6. missing explicit stack/candidate-cost guards;
-7. undocumented RNG salt-space invariant.
+2. unsafe archetype lookup before Stage 2 catalog validation;
+3. probabilistic rather than strict secondary-before-structural drop priority;
+4. Reduction/Break tests that allowed zero actual drops;
+5. missing byte/event equality checks for Statement/Response versus base realization;
+6. ambiguous Response semantics;
+7. missing explicit stack/candidate-cost guards;
+8. undocumented RNG salt-space invariant.
 
 ## Changes
 
-### Catalog validation ownership
+### Catalog validation ownership and safety
 
-`evolveRhythmPhrase()` performs only cheap request/archetype checks before calling the Stage 2 realizer. `realizeRhythmPhrase()` remains the single owner of full `validateRhythmCatalog()` scanning for the request.
+`evolveRhythmPhrase()` performs only primitive request checks before calling the Stage 2 realizer. It does **not** dereference `catalog.archetypes`, `catalog.trajectories`, lane arrays or relationship arrays first.
 
-Trajectory selection happens only after the base realizer succeeds, so it reads a catalog that has already passed full validation.
+`realizeRhythmPhrase()` remains the single owner of full `validateRhythmCatalog()` scanning and archetype/phrase-length request validation. Only after the base realization succeeds does the Stage 6.1 wrapper look up the already-validated archetype and trajectory.
+
+A malformed-catalog regression supplies non-zero counts with null backing arrays and requires `BaseRealizationFailed` with no partial plan/trajectory. This guards against reintroducing a pre-validation lookup while still avoiding a duplicate full-catalog scan.
 
 ### Strict drop precedence
 
@@ -172,6 +175,8 @@ Groove Vocabulary Stage 6.1 hardening host matrix: OK
 
 If Reduction/Break hardening fails because the fixture contains no secondary event, do not weaken the assertion back to `<=`. Fix the fixture or realizer contract so the test demonstrates one real bounded drop.
 
+If the malformed-catalog regression crashes, inspect for any `archetypeFor()` / trajectory / lane access performed before successful `realizeRhythmPhrase()` validation.
+
 If stack-usage output becomes unbounded `dynamic`, a VLA is reported by `-Wvla`, or the numeric ceiling is exceeded, inspect new local arrays/value copies before changing the gate.
 
 If aggregate Core regressions fail only on the inherited Cardputer ADV `PA_EN` source assertion after Stage 1–6.1 pass, treat it separately from Stage 6.1.
@@ -184,6 +189,8 @@ If aggregate Core regressions fail only on the inherited Cardputer ADV `PA_EN` s
 [ ] Stage 6.1 Clang passes.
 [ ] Stage 6.1 ASan+UBSan passes.
 [ ] Full catalog validation is not duplicated in BarEvolution wrapper.
+[ ] Catalog arrays are not dereferenced before Stage 2 validation.
+[ ] Malformed non-zero-count/null-array catalog fails without crash or partial result.
 [ ] Secondary candidates are strictly exhausted before structural drops.
 [ ] Reduction test performs at least one actual drop and stays within maxDrops.
 [ ] Break test performs at least one actual drop and stays within maxDrops.
