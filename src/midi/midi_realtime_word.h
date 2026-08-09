@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_MIDI_REALTIME_WORD_H
+#define GROOVEPUTER_MIDI_REALTIME_WORD_H
 
 #include <cstdint>
 
@@ -63,3 +65,5 @@ private:
     std::atomic<uint32_t> value_{0};
 #endif
 };
+
+#endif  // GROOVEPUTER_MIDI_REALTIME_WORD_H
