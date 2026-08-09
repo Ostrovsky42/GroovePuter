@@ -234,6 +234,54 @@ void testAppliedRoutesAndCompatibilityState() {
   }
 }
 
+void testHardwareIdentityCorrections() {
+  using Archetype = ReferenceVocabulary::Archetype;
+  int structurallyDifferentAcidVariants = 0;
+
+  for (int address = 0; address < 16; ++address) {
+    StrongRhythmMigrationContext context{};
+    context.patternAddress = static_cast<int16_t>(address);
+    context.level = RealizationLevel::P2Variation;
+
+    DrumPatternSet chicago = sentinelPattern();
+    const StrongRhythmMigrationResult chicagoResult = migrateStrongRhythmDrums(
+        recipeSettings(6), context, chicago);
+    require(chicagoResult.status == StrongRhythmMigrationStatus::Applied,
+            "Chicago Jack correction failed migration");
+    require(chicagoResult.archetype == Archetype::StraightAcid ||
+                chicagoResult.archetype == Archetype::SparseAcid,
+            "Chicago Jack escaped its jack/sparse identity pool");
+
+    DrumPatternSet rolling = sentinelPattern();
+    const StrongRhythmMigrationResult rollingResult = migrateStrongRhythmDrums(
+        recipeSettings(7), context, rolling);
+    require(rollingResult.status == StrongRhythmMigrationStatus::Applied,
+            "Rolling Acid correction failed migration");
+    require(rollingResult.archetype == Archetype::RollingAcid ||
+                rollingResult.archetype == Archetype::SyncopatedAcid,
+            "Rolling Acid escaped its rolling/syncopated identity pool");
+    require(chicagoResult.archetype != rollingResult.archetype,
+            "Chicago Jack and Rolling Acid archetype pools overlapped");
+
+    if (voiceFingerprint(chicago) != voiceFingerprint(rolling)) {
+      ++structurallyDifferentAcidVariants;
+    }
+
+    DrumPatternSet deepChord = sentinelPattern();
+    const StrongRhythmMigrationResult deepChordResult = migrateStrongRhythmDrums(
+        recipeSettings(10), context, deepChord);
+    require(deepChordResult.status == StrongRhythmMigrationStatus::Applied,
+            "Deep Chord correction failed migration");
+    require(deepChordResult.archetype == Archetype::ChordResponse,
+            "Deep Chord must stay on chord-response grammar");
+    require(deepChordResult.chordOnsets != 0,
+            "Deep Chord chord-response grammar produced no stab onsets");
+  }
+
+  require(structurallyDifferentAcidVariants >= 12,
+          "Chicago Jack and Rolling Acid remain structurally too similar");
+}
+
 void testAllPLevelsRemainLegal() {
   GenreSettings settings = recipeSettings(2);
   for (uint8_t level = 0;
@@ -256,6 +304,7 @@ int main() {
   testAllowList();
   testLegacyAndFailureAreTransactional();
   testAppliedRoutesAndCompatibilityState();
+  testHardwareIdentityCorrections();
   testAllPLevelsRemainLegal();
   std::puts("Groove Vocabulary Stage 5 strong migration: OK");
   return 0;
