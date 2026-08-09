@@ -153,6 +153,10 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   const char lowerKey = key
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(key)))
       : 0;
+  const int nav = UIInput::navCode(ui_event);
+  const bool gridArrow =
+      nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT ||
+      nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN;
 
   // N toggles an optional direct-note layer. Disabled means the complete legacy
   // key map remains unchanged.
@@ -162,6 +166,37 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     if (has_selection_) clearSelection();
     resetNoteHoldTracking();
     UI::showToast(note_entry_mode_ ? "NOTE ENTRY: ON" : "NOTE ENTRY: OFF", 900);
+    return true;
+  }
+
+  // Cardputer ADV emits the physical arrow legends through Fn-modified
+  // punctuation HID codes, so those events carry meta=true. NOTE ENTRY owns
+  // arrow scancodes explicitly before the legacy/meta router can reject them.
+  if (note_entry_mode_ && gridArrow && !ui_event.alt && !ui_event.ctrl) {
+    focus_ = Focus::Steps;
+    if (has_selection_) clearSelection();
+    resetNoteHoldTracking();
+
+    const int step = activePatternStep();
+    int row = step / kPatternStepColumns;
+    int col = step % kPatternStepColumns;
+    switch (nav) {
+      case GROOVEPUTER_LEFT:
+        col = (col + kPatternStepColumns - 1) % kPatternStepColumns;
+        break;
+      case GROOVEPUTER_RIGHT:
+        col = (col + 1) % kPatternStepColumns;
+        break;
+      case GROOVEPUTER_UP:
+        row = std::max(0, row - 1);
+        break;
+      case GROOVEPUTER_DOWN:
+        row = std::min(kPatternStepRows - 1, row + 1);
+        break;
+      default:
+        break;
+    }
+    pattern_edit_cursor_ = row * kPatternStepColumns + col;
     return true;
   }
 
@@ -208,10 +243,6 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     return handleEventLegacy(ui_event);
   }
 
-  const int nav = UIInput::navCode(ui_event);
-  const bool gridArrow =
-      nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT ||
-      nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN;
   if (gridArrow && !ui_event.alt && !ui_event.meta) {
     const bool extendSelection = ui_event.shift || ui_event.ctrl;
     if (extendSelection && selection_locked_) selection_locked_ = false;
