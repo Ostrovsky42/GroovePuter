@@ -7,9 +7,9 @@
   "measured_phrase_patterns": 19,
   "measured_phrase_transition_counts": {
     "ADD_ONLY": 3,
-    "DROP_ONLY": 3,
+    "DROP_ONLY": 2,
     "EXACT_REPEAT": 4,
-    "MIXED": 9
+    "MIXED": 10
   },
   "melodic_rhythm_one_bar_patterns": 35,
   "motif_contour_eligible_patterns": 23,
