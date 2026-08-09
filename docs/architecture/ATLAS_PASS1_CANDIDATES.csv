@@ -1,0 +1,23 @@
+candidate_id,domain,evidence_class,distinctness,confidence,runtime_owner,decision,reason
+classic_2step_baseline,Rhythm,PROJECT_OWNED_EXACT,already_current_417,high,RhythmArchetype,ACCEPT_BASELINE,Exact UKG slice validates current classic_2step grammar and must not create a duplicate archetype
+dark_skippy_baseline,Rhythm,PROJECT_OWNED_EXACT,overlaps_current_418_distance_pending,medium,RhythmArchetype,ACCEPT_BASELINE_REVIEW_DISTANCE,Exact slice validates skippy family but normalized distance still needs computation
+chicago_acid_frame,Rhythm,PROJECT_OWNED_EXACT,already_acid_fourfloor_coverage,high,RhythmArchetype,ACCEPT_BASELINE,Four-floor Acid frame is already represented and novelty belongs more strongly to bass behavior
+rolling_acid_bass_identity,BassRhythmPitch,PROJECT_OWNED_EXACT,rhythm_baseline_bass_behavior_distinct,high,SplitBassOwners,REVIEW_BASS_ONLY,Do not duplicate the rhythm archetype; extract denser bass onset and contour behavior separately
+lofi_sparse_stable_backbeat,Rhythm,PROJECT_OWNED_EXACT_PLUS_EDITORIAL_CURATED,distance_to_current20_unknown,medium,RhythmArchetype,REVIEW,Published slices suggest a coherent family but structural novelty has not been measured
+boombap_syncopated_kick_backbeat,Rhythm,PROJECT_OWNED_EXACT_PLUS_EDITORIAL_CURATED,distance_to_current20_unknown,medium_high,RhythmArchetype,REVIEW,Strong-backbeat and syncopated-kick evidence is promising but requires normalized comparison
+jungle_sampler_break_topology,Rhythm,PROJECT_OWNED_EXACT,potentially_distinct_sampler_dependent,medium,RhythmArchetype,HOLD_REVIEW,Sampler layer carries substantial break identity and must be normalized before admission
+development_preserve_add,PhraseTransform,MEASURED,functionally_distinct,high,BarEvolution,ACCEPT_TRANSFORM,P1 to P2 across 12 published recipes mostly preserves and adds activity
+break_ending_remove_cue,PhraseTransform,MEASURED,functionally_distinct,high,BarEvolution,ACCEPT_TRANSFORM,P1 to P3 across 12 published recipes mostly removes activity with small ending additions
+base_base_development_ending,PhraseTrajectory,MEASURED_DERIVED_RECOMMENDATION,fourbar_distance_pending,medium,BarTrajectory,REVIEW,Transform evidence is strong but universal four-bar ordering is not yet measured against the 17 four-bar patterns
+ukg_respond_kick,BassRhythm,PROJECT_OWNED_EXACT_PLUS_EDITORIAL_CURATED,plausibly_distinct_from_follow,medium_high,BassRelationshipStrategy,REVIEW,Repeated UKG bass topology answers different kick densities but full relation histogram is missing
+ukg_fill_kick_gaps,BassRhythm,PROJECT_OWNED_EXACT_PLUS_RUNTIME_BASELINE,already_partly_represented,high,BassRelationshipStrategy,ACCEPT_BASELINE,Current Stage3 already carries FillGaps behavior and exact slices support it
+acid_coincide_offset,BassRhythm,PROJECT_OWNED_EXACT,distinct_from_pure_follow,high,BassRelationshipStrategy,ACCEPT_BASELINE,Stable kick anchors coexist with denser independent bass movement
+acid_contour,BassPitch,PROJECT_OWNED_EXACT_PLUS_EDITORIAL_CURATED,normalized_dedupe_pending,medium_high,BassPitchStrategy,REVIEW,Exact monophonic lines and slide/accent behavior support the candidate but contour support must be normalized
+acid_octave_motion,BassPitch,PROJECT_OWNED_EXACT_PLUS_EDITORIAL_CURATED,normalized_dedupe_pending,medium,BassPitchStrategy,REVIEW,Rolling Acid explicitly emphasizes octave movement but corpus-wide support is not measured
+pedal_gravity,BassPitch,PROJECT_OWNED_EXACT,support_count_not_aggregated,medium,BassPitchStrategy,REVIEW,Repeated-note/root gravity appears in multiple vertical slices but needs transposition-normalized counting
+chord_tone_gravity,BassPitch,PROJECT_OWNED_EXACT_PLUS_EDITORIAL_CURATED,support_count_not_aggregated,medium,BassPitchStrategy,REVIEW,Useful hypothesis supported by exact/harmonic slices but not yet quantitatively extracted
+stepwise_motion,BassPitch,INSUFFICIENT,unknown,low,BassPitchStrategy,HOLD,Pass1 lacks sufficient measured contour evidence
+short_motif_reuse,Motif,PROJECT_OWNED_EXACT_PLUS_EDITORIAL_CURATED,not_normalized,medium,MotifVocabulary,REVIEW,Sparse published melody rows suggest reuse but motif identity has not been normalized
+exact_repeat_motif,Motif,INSUFFICIENT,unknown,low_medium,MotifVocabulary,HOLD,No corpus-level normalized occurrence count yet
+repeat_with_ending_motif,Motif,INSUFFICIENT,unknown,low,MotifVocabulary,HOLD,Phrase ending evidence does not prove a melodic RepeatWithEnding operation
+arch_rise_fall_contours,Motif,EDITORIAL_CURATED,unknown,low,MotifVocabulary,HOLD,Melodic evidence is sparse/editorial and must not be promoted to runtime grammar yet
