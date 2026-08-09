@@ -20,6 +20,29 @@ def rows(zf: zipfile.ZipFile, root: str, rel: str) -> list[dict[str, str]]:
     return list(csv.DictReader(io.StringIO(zf.read(root + rel).decode("utf-8-sig"))))
 
 
+def compute_negative_space_rows(grouped) -> list[dict[str, object]]:
+    out = []
+    for direction, observations in sorted(grouped.items()):
+        for role in ROLES:
+            # The denominator includes only structural groups where the role is
+            # active somewhere. A missing role is not evidence of protected space.
+            active = [obs[role] for obs in observations if obs[role]]
+            if len(active) < MIN_ACTIVE_STRUCTURAL_GROUPS:
+                continue
+            for step in range(16):
+                absence = sum(step not in onset_set for onset_set in active) / len(active)
+                if absence >= MIN_ABSENCE_FRACTION:
+                    out.append({
+                        "direction": direction,
+                        "role": core.ROLE_NAMES[role],
+                        "step": step,
+                        "active_structural_group_count": len(active),
+                        "absence_fraction": round(absence, 6),
+                        "evidence_class": "RESEARCH_AGGREGATE",
+                    })
+    return out
+
+
 def extract_negative_space(atlas_zip: Path, output_csv: Path) -> list[dict[str, object]]:
     digest = hashlib.sha256(atlas_zip.read_bytes()).hexdigest()
     if digest != core.EXPECTED_ATLAS_SHA256:
@@ -73,25 +96,7 @@ def extract_negative_space(atlas_zip: Path, output_csv: Path) -> list[dict[str, 
     for (direction, _group_id), pid in by_direction_group.items():
         grouped[direction].append(masks[pid])
 
-    out = []
-    for direction, observations in sorted(grouped.items()):
-        for role in ROLES:
-            # The denominator includes only structural groups where the role is
-            # active somewhere. A missing role is not evidence of protected space.
-            active = [obs[role] for obs in observations if obs[role]]
-            if len(active) < MIN_ACTIVE_STRUCTURAL_GROUPS:
-                continue
-            for step in range(16):
-                absence = sum(step not in onset_set for onset_set in active) / len(active)
-                if absence >= MIN_ABSENCE_FRACTION:
-                    out.append({
-                        "direction": direction,
-                        "role": core.ROLE_NAMES[role],
-                        "step": step,
-                        "active_structural_group_count": len(active),
-                        "absence_fraction": round(absence, 6),
-                        "evidence_class": "RESEARCH_AGGREGATE",
-                    })
+    out = compute_negative_space_rows(grouped)
 
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     core.write_csv(
