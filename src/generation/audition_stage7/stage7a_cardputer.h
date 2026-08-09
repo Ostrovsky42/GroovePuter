@@ -35,11 +35,12 @@ inline bool handleCardputerEvent(const UIEvent& event, MiniAcid& engine) {
 
   if (!session.active() && !toggleChord) return false;
 
-  // The global panic owner runs before GenrePage. If an equivalent event does
-  // reach this handler, let the existing owner keep it.
+  // Global panic and transport remain top-level MiniAcidDisplay owners. In
+  // particular Space must retain SEQTRAK-master handling instead of directly
+  // starting/stopping the internal engine from this temporary page owner.
   const bool panicChord =
       event.alt && event.ctrl && (key == '\b' || key == static_cast<char>(127));
-  if (session.active() && panicChord) return false;
+  if (session.active() && (panicChord || key == ' ')) return false;
 
   SceneManager& scenes = engine.sceneManager();
   DrumPatternSet& drums = scenes.editCurrentDrumPattern();
@@ -64,18 +65,6 @@ inline bool handleCardputerEvent(const UIEvent& event, MiniAcid& engine) {
       return true;
     }
     showCardputerStatus(session);
-    return true;
-  }
-
-  // GENRE normally uses Space on one focus row, so while the audition is
-  // modal we preserve transport semantics directly instead of leaking Space
-  // back into the page editor.
-  if (key == ' ') {
-    if (engine.isPlaying()) {
-      engine.stop();
-    } else {
-      engine.start();
-    }
     return true;
   }
 
