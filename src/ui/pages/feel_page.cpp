@@ -257,7 +257,7 @@ void FeelPage::draw(IGfx& gfx) {
 
   UI::drawStandardFooter(gfx,
                          "TAB/U/D:FIELD  L/R:CHANGE",
-                         "LENGTH 1/2/4/8B  ENTER:PRESET");
+                         "HOLD L/R:ACCEL  LEN:1/2/4/8B");
 }
 
 bool FeelPage::handleEvent(UIEvent& event) {
