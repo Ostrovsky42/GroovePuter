@@ -19,6 +19,17 @@ one-bar structural groups 269
 
 The one-bar topology set excludes composite sequences, internal prototypes and superseded material. It contains 263 source observations and 37 project/editorial recipe patterns.
 
+The complete reproducible extraction command is:
+
+```bash
+python3 tools/atlas/run_atlas_pass2.py \
+  seqtrak_pattern_atlas_csv_v2_6.zip \
+  docs/architecture/atlas_pass2/RUNTIME_RHYTHM_BASELINE.tsv \
+  <output-directory>
+```
+
+The archive itself is not committed.
+
 ## 2. Topology extraction result
 
 Pass 2 groups one-bar observations first by exact **Kick + Backbeat skeleton**. This is deliberately narrower than a runtime archetype: hats, percussion, BassRhythm, protected space, relationships and Feel remain separate evidence dimensions.
@@ -35,12 +46,14 @@ ACCEPT                         0
 
 The two REVIEW candidates are:
 
-| Candidate | Structural groups | Independent source IDs | Directions | Runtime-compatible Kick/Backbeat grammar | Ornament median distance |
+| Candidate | Structural groups | Distinct source IDs | Directions | Runtime-compatible Kick/Backbeat grammar | Ornament median distance |
 |---|---:|---:|---|---:|---:|
 | `SKEL_04` | 4 | 2 | Afro-Cuban, Bossa Nova | 0 | 0.455357 |
 | `SKEL_05` | 4 | 2 | Electro, Go-Go, Hip-Hop, Miami Bass | 0 | 0.710623 |
 
-`SKEL_08` also has no current compatible Kick/Backbeat grammar, but all three supporting groups come from one source and therefore remains HOLD.
+`source_count` means distinct Atlas `source_id` values only; it is not treated as proof of fully independent provenance.
+
+`SKEL_08` also has no current compatible Kick/Backbeat grammar, but all three supporting groups come from one source ID and therefore remains HOLD.
 
 No Pass 2 skeleton is admitted directly to Stage 7.
 
@@ -103,7 +116,33 @@ soft support Jaccard
 
 The resulting metrics are stored separately and explicitly marked `diagnostic`.
 
-## 4. Phrase development
+Observation-to-grammar comparison cannot prove full archetype equivalence because a concrete observation and a runtime grammar are different abstraction levels. Relationships and protected space therefore remain separate evidence passes.
+
+## 4. Negative / protected-space evidence
+
+Pass 2 extracts negative-space observations separately from topology.
+
+For each research direction and drum role it first deduplicates by structural group, then considers **only groups where that role is active somewhere**. An absent role is therefore not counted as evidence that every step is protected.
+
+A row is emitted only when:
+
+```text
+active structural groups >= 5
+step absence fraction    >= 0.90
+```
+
+The full research corpus produces:
+
+```text
+negative-space aggregate rows  176
+BassRhythm rows                  0
+```
+
+These are `RESEARCH_AGGREGATE` step-occupancy observations and are stored in `ATLAS_PASS2_NEGATIVE_SPACE.csv`.
+
+They are **not** automatically converted to runtime `ProtectedSpace`. Stage 7 curation must still decide whether repeated absence is a musical constraint, a consequence of another relationship, or merely low density.
+
+## 5. Phrase development
 
 Measured multi-bar evidence is kept separate from derived composites.
 
@@ -134,7 +173,7 @@ EXACT_REPEAT > ADD_ONLY > MIXED    7/17
 
 The report therefore supports BarEvolution transformation vocabulary, but does not promote a derived `A A A' B` ordering into measured fact.
 
-## 5. Bass evidence
+## 6. Bass evidence
 
 One-bar BassRhythm evidence is not research-measured in this corpus.
 
@@ -148,7 +187,7 @@ Kick→BassRhythm relationship statistics are therefore emitted only as project-
 
 No Bass v2 runtime strategy is admitted by Pass 2.
 
-## 6. Bass pitch and motif evidence
+## 7. Bass pitch and motif evidence
 
 Pitched one-bar material is likewise project/editorial rather than research-measured.
 
@@ -160,9 +199,11 @@ Motif contour eligible patterns         23
 
 Contour and interval aggregates are emitted for hypothesis generation, but every row remains `HOLD`.
 
+`pattern_count` in this table is descriptive coverage only. It is not an independent-support score and cannot be used for runtime admission; several rows come from related P1/P2/P3 project material.
+
 Pass 2 must not claim that Atlas v2.6 independently proves a BassPitchStrategy or MotifVocabulary.
 
-## 7. Effective variation baseline
+## 8. Effective variation baseline
 
 Across the 12 published baseline recipes:
 
@@ -176,7 +217,7 @@ This becomes the first source-corpus baseline for the future Stage 7 `effective_
 
 It is not yet the generated-runtime metric. Stage 7 must measure generated P1/P2/P3 variants separately after normalization.
 
-## 8. Rights / reversibility guard
+## 9. Rights / reversibility guard
 
 Committed Pass 2 outputs contain only aggregate statistics.
 
@@ -194,7 +235,11 @@ per-pattern normalized fingerprints
 
 The two REVIEW skeleton candidates are represented only by opaque candidate IDs and aggregate support/compatibility statistics.
 
-## 9. Stage 7 gate
+Direction×role×step occupancy frequencies are allowed aggregate evidence under the Stage 6B rights contract; no per-pattern topology is published.
+
+CI checks both output values and output field names for restricted identifier/hash/mask tokens.
+
+## 10. Stage 7 gate
 
 Stage 7 remains **CLOSED** after Pass 2.
 
