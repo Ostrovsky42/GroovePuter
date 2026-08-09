@@ -50,6 +50,12 @@ assert summary["recurring_skeleton_candidates"] == 8
 assert summary["topology_decisions"] == {"HOLD": 1, "NEAR_EXISTING": 5, "REVIEW": 2}
 assert summary["stage7_admission"] == "CLOSED"
 assert summary["measured_phrase_patterns"] == 19
+assert summary["measured_phrase_transition_counts"] == {
+    "EXACT_REPEAT": 4,
+    "ADD_ONLY": 3,
+    "DROP_ONLY": 2,
+    "MIXED": 10,
+}
 assert summary["derived_four_bar_patterns"] == 17
 assert summary["bass_rhythm_one_bar_patterns"] == 35
 assert summary["bass_pitch_contour_eligible_patterns"] == 35
@@ -93,8 +99,11 @@ measured = [row for row in phrases if row["evidence_class"] == "MEASURED"]
 derived = [row for row in phrases if row["evidence_class"] == "EDITORIAL_CURATED"]
 assert sum(int(row["count"]) for row in measured) == 19
 assert sum(int(row["count"]) for row in derived) == 17
-assert {row["transition_signature"] for row in measured} == {
-    "EXACT_REPEAT", "ADD_ONLY", "DROP_ONLY", "MIXED"
+assert {row["transition_signature"]: int(row["count"]) for row in measured} == {
+    "EXACT_REPEAT": 4,
+    "ADD_ONLY": 3,
+    "DROP_ONLY": 2,
+    "MIXED": 10,
 }
 
 pitch = read("ATLAS_PASS2_PITCH_CONTOURS.csv")
