@@ -35,12 +35,9 @@ def test_role_mapping() -> None:
     assert hardening.semantic_role(track("CLOSED_HAT"), source)[0] == 2
     assert hardening.semantic_role(track("OPEN_HAT"), source)[0] == 3
     assert hardening.semantic_role(track("RIMSHOT"), source)[0] == 4
-    # Generic source roles must not collapse exact semantic drum IDs.
     assert hardening.semantic_role(track("KICK", "DRUM_OR_PERCUSSION"), source)[0] == 0
     assert hardening.semantic_role(track("SNARE", "DRUM_OR_PERCUSSION"), source)[0] == 1
-    # Research clap is not silently promoted to Backbeat.
     assert hardening.semantic_role(track("CLAP"), source)[0] == 4
-    # Ambiguous/unknown source tracks remain explicit UNMAPPED.
     assert hardening.semantic_role(track("CYMBAL"), source)[0] is None
     assert hardening.semantic_role(track("RIDE"), source)[0] is None
     assert hardening.semantic_role(track("LASER"), source)[0] is None
@@ -59,7 +56,7 @@ def test_grammar_coverage() -> None:
         "relationships": [{
             "source": 0,
             "target": 4,
-            "op": 0,  # Exclude
+            "op": 0,
             "strength": 1,
             "scope": 0,
             "zone": set(range(16)),
@@ -125,6 +122,18 @@ def test_committed_outputs() -> None:
     assert "\nR\t" in topology_text
     assert "\nS\t" in topology_text
     assert topology_text.endswith("COUNT\t20\n")
+
+    runtime_calibration = (DATA / "RUNTIME_RHYTHM_CALIBRATION_V1.tsv").read_text(encoding="utf-8").splitlines()
+    assert runtime_calibration[0] == "FORMAT\tGROOVEPUTER_RUNTIME_RHYTHM_CALIBRATION_V1"
+    self_rows = [line.split("\t") for line in runtime_calibration if line.startswith("SELF\t")]
+    confusion_rows = [line.split("\t") for line in runtime_calibration if line.startswith("CONF\t")]
+    assert len(self_rows) == 20
+    assert all(row[4] == "64" for row in self_rows)
+    assert len(confusion_rows) == 9
+    assert sum(int(row[3]) for row in confusion_rows) == 335
+    assert "AGG_SELF\t40320\t0.052632\t0.219298\t0.289474\t0.429825" in runtime_calibration
+    assert "AGG_CONF\t335\t24320\t0.013775" in runtime_calibration
+    assert runtime_calibration[-1] == "COUNT\t20"
 
 
 def test_rights_and_hash_manifest() -> None:
