@@ -5,7 +5,7 @@
 
 ## Normative evidence class
 
-`ATLAS_PASS1_CANDIDATES.csv` has exactly one normative field:
+`ATLAS_PASS1_CANDIDATES.csv` has exactly one normative evidence field:
 
 ```text
 primary_evidence_class
@@ -22,6 +22,35 @@ INSUFFICIENT
 ```
 
 `supporting_evidence` is descriptive provenance/context and is **not** a second evidence class. It may refer to an editorial guideline, current Stage 3 runtime baseline, sampler dependency, or the fact that a recommendation is derived rather than directly measured.
+
+The machine-readable `decision` field is also bounded to one value from:
+
+```text
+ACCEPT_BASELINE
+ACCEPT_TRANSFORM
+REVIEW
+HOLD
+```
+
+No compound decision value is allowed.
+
+## Non-normative review confidence
+
+`confidence` is a **human review annotation only**. It is not an admission score, evidence weight, distance threshold, probability, or sortable quality metric.
+
+Current labels are deliberately bounded for readability:
+
+```text
+high
+medium_high
+medium
+low_medium
+low
+```
+
+They have no numerical mapping. Automated Stage 7 admission MUST ignore `confidence` and use measured fields from the computational pass instead: observation counts, distinct structural groups, normalized distances, relationship support, rights status, determinism/cost gates and the final explicit `decision`.
+
+Pass #2 may replace this editorial label with measured confidence/coverage statistics, but must not silently reinterpret the Pass #1 labels as numeric data.
 
 ## Carried-forward measured corpus facts
 
@@ -78,6 +107,16 @@ CURRENT_STAGE3_BASELINE
 
 is not Atlas evidence. It only records that an Atlas observation is already represented by current runtime grammar and therefore must not be counted as a new Stage 7 candidate.
 
+The 20 current archetypes are a **calibration baseline, not an objective ground-truth distribution**. Pass #2 must therefore publish separate distance distributions for:
+
+```text
+current-runtime <-> current-runtime
+Atlas-group <-> Atlas-group
+Atlas-group -> nearest current runtime archetype
+```
+
+and declare the threshold-combination rule before candidate admission decisions are produced. A novelty floor derived only from pairwise distances among the hand-curated current 20 is not sufficient.
+
 ## Hypotheses held for Pass #2
 
 The following remain non-admitted until a computational extraction is run on normalized data:
@@ -93,4 +132,4 @@ Motif contour/development support
 numerical novelty threshold for Stage 7
 ```
 
-Pass #2 should mount/verify the pinned archive, reproduce the corpus measurements, compute normalized fingerprints/distances, and emit a machine-readable report rather than relying on human confidence labels alone.
+Pass #2 should mount/verify the pinned archive, reproduce the corpus measurements, compute normalized fingerprints/distances, publish the three distance distributions and the predeclared threshold-combination rule, and emit a machine-readable report rather than relying on human confidence labels alone.
