@@ -17,6 +17,7 @@ expected_files = {
     "ATLAS_PASS2_PITCH_CONTOURS.csv",
     "ATLAS_PASS2_EVIDENCE_COVERAGE.csv",
     "ATLAS_PASS2_EFFECTIVE_VARIATION_BASELINE.csv",
+    "ATLAS_PASS2_NEGATIVE_SPACE.csv",
 }
 assert expected_files.issubset({path.name for path in OUT.iterdir() if path.is_file()})
 
@@ -82,16 +83,28 @@ assert pitch
 assert all(row["evidence_class"] == "PROJECT_OWNED_EXACT" for row in pitch)
 assert all(row["decision"] == "HOLD" for row in pitch)
 
+negative_space = read("ATLAS_PASS2_NEGATIVE_SPACE.csv")
+assert len(negative_space) == 176
+assert all(int(row["active_structural_group_count"]) >= 5 for row in negative_space)
+assert all(float(row["absence_fraction"]) >= 0.90 for row in negative_space)
+assert all(row["evidence_class"] == "RESEARCH_AGGREGATE" for row in negative_space)
+assert all(row["role"] != "BassRhythm" for row in negative_space)
+
 variation = read("ATLAS_PASS2_EFFECTIVE_VARIATION_BASELINE.csv")
 by_slot = {row["slot"]: row for row in variation}
 assert int(by_slot["P1"]["effective_variation_count"]) == 12
 assert int(by_slot["P2"]["effective_variation_count"]) == 10
 assert int(by_slot["P3"]["effective_variation_count"]) == 7
 
+# Aggregate outputs must not leak raw/reversible identifiers.
 for path in OUT.iterdir():
     if not path.is_file():
         continue
     text = path.read_text(encoding="utf-8")
+    if path.suffix == ".csv":
+        header = text.splitlines()[0].lower().split(",")
+        for token in ("pattern_id", "structural_group_id", "structural_hash", "expressive_hash", "source_locator", "exact_mask"):
+            assert not any(token in field for field in header), f"restricted field leaked in {path.name}: {token}"
     assert "PAT_" not in text, f"raw pattern id leaked in {path.name}"
     assert "SG_" not in text, f"structural group id leaked in {path.name}"
     assert "source_locator" not in text
