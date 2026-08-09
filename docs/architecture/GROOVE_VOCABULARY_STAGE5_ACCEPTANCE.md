@@ -1,6 +1,6 @@
 # Groove Vocabulary — Stage 5 Acceptance
 
-Status: implementation candidate / not complete until CI + three clean reviews.
+Status: implementation candidate / hardware correction iteration / not complete until CI + three clean reviews.
 
 Stage 5 migrates only the already-strong rhythmic paths from legacy rhythmic placement to the Stage 1–4 Groove Vocabulary stack. It does not attempt to rehabilitate weak genres and does not introduce later-stage semantic voice ownership.
 
@@ -25,6 +25,20 @@ Execution order is intentionally conservative:
 7. commit the migrated material only if every required step succeeds.
 
 There is no user-facing backend switch.
+
+## GENRE / VARIANT selection contract
+
+`GENRE` and `VARIANT` are not independent generators. A recipe is a curated variant of one visible genre family; selecting an incompatible genre must normalize the variant back to `BASE` rather than allowing the recipe to silently mask the selected genre.
+
+Current visible grouping:
+
+- Acid: `BASE`, `Chicago Jack`, `Rolling Acid`;
+- Rave: `BASE`, `Psytrance`;
+- Reggae / Dub family: `BASE`, `Dub Techno`, `Deep Chord`, `Minimal Space`;
+- Broken / Breaks family: `BASE`, `UK Garage`, `Drum&Bass`, `Footwork`, `Classic 2-Step`, `Dark Skippy`;
+- Outrun, Techno, Electro, TripHop and Chip: `BASE` only in the current UI.
+
+This grouping is a UI-selection contract only. It does not migrate weak recipes into Stage 5; unsupported recipes still take the exact legacy generation path.
 
 ## Explicit allow-list
 
@@ -83,19 +97,20 @@ Routing by broad `GrooveboxMode` is forbidden because it would accidentally abso
 ### Chicago Jack
 
 - `straight_acid`
-- `rolling_acid`
+- `sparse_acid`
 
 ### Rolling Acid
 
 - `rolling_acid`
 - `syncopated_acid`
 
+Chicago Jack and Rolling Acid deliberately use disjoint Stage 5 archetype pools after hardware listening found the previous overlap audibly too similar.
+
 ### Deep Chord
 
 - `chord_response`
-- `sparse_skank`
-- `one_drop_space`
-- `steppers`
+
+Deep Chord is deliberately chord-centric in the correction iteration. Broader Dub grammars such as `one_drop_space` and `steppers` remain available to Dub Techno but no longer define Deep Chord.
 
 ## Determinism
 
@@ -166,6 +181,9 @@ The Stage 5 host matrix must pass under GCC, Clang and ASan+UBSan and must verif
 - deterministic variation across pattern addresses;
 - legal P1/P2/P3 realization;
 - preserved PatternGroove and automation;
+- GENRE-scoped VARIANT selection and incompatible-variant normalization;
+- disjoint Chicago Jack / Rolling Acid archetype pools plus structural divergence across the listening-address sample;
+- Deep Chord remains on `chord_response` and produces non-empty chord onsets;
 - Dub Techno and Deep Chord Synth B onset masks exactly equal realized `ChordRhythm` masks;
 - legacy Synth B pitch/performance event sequence survives relocation;
 - empty Dub/Deep Chord pitch source rolls back both drums and Synth B;
@@ -191,20 +209,31 @@ Any red introduced before the known inherited post-suite core-regression asserti
 
 ## Hardware listening gate
 
-After automated acceptance, hardware listening should use normal GENRE MATERIALIZE, not Stage 3A audition mode.
+Hardware listening uses normal GENRE `MATERIALIZE`, not Stage 3A audition mode.
 
-Minimum matrix:
+First hardware pass on the pre-correction Stage 5 head:
 
-1. Acid base — several pattern addresses;
-2. Techno base — several pattern addresses;
-3. Rave base — several pattern addresses;
-4. Drum&Bass recipe;
-5. Dub Techno recipe — confirm drum/stab response relationship and preserved pitch character;
-6. Deep Chord recipe — confirm Synth B chord/stab rhythm follows the new Dub grammar while Synth A low line remains legacy;
-7. Chicago Jack;
-8. Rolling Acid.
+- Acid base — PASS;
+- Techno base — PASS;
+- Rave base — PASS;
+- Drum&Bass — PASS;
+- Dub Techno — PASS;
+- Deep Chord — FAIL, insufficient chord-specific identity;
+- Chicago Jack / Rolling Acid — FAIL, insufficient audible separation;
+- Chip — weak legacy path, not a Stage 5 regression;
+- Classic 2-Step / Dark Skippy — weak and too similar legacy material, reserved for later weak-genre rehabilitation.
 
-For each route compare at least several loops and verify that unsupported genres still sound exactly like the legacy path. Stage 5 is not accepted if the new strong routes are technically valid but audibly lose their established identity.
+The first hardware pass also exposed the independent `GENRE`/global-`VARIANT` selector bug: a strong recipe could mask the selected genre. The correction iteration scopes variants to genre families and resets incompatible selections to `BASE`.
+
+Correction retest is intentionally narrow:
+
+1. Deep Chord — several pattern addresses, confirm a clearly chord/stab-centric topology and preserved usable Synth B pitch character;
+2. Chicago Jack — several pattern addresses;
+3. Rolling Acid — the same addresses, confirm audible distinction from Chicago Jack;
+4. GENRE/VARIANT UI — verify incompatible recipes cannot be carried across genre changes;
+5. one short regression smoke each for Acid base, Techno base, Rave base, Drum&Bass and Dub Techno.
+
+Stage 5 is not accepted if the corrected strong routes are technically valid but still audibly collapse onto the same musical identity.
 
 ## Explicit non-goals
 
