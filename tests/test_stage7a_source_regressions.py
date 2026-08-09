@@ -7,6 +7,7 @@ CATALOG = (STAGE / "stage7a_catalog.cpp").read_text(encoding="utf-8")
 SESSION = (STAGE / "stage7a_session.cpp").read_text(encoding="utf-8")
 CARDPUTER = (STAGE / "stage7a_cardputer.h").read_text(encoding="utf-8")
 GENRE_PAGE = (ROOT / "src" / "ui" / "pages" / "genre_page.cpp").read_text(encoding="utf-8")
+DISPLAY = (ROOT / "src" / "ui" / "miniacid_display.cpp").read_text(encoding="utf-8")
 MAIN_SKETCH = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
 MANIFEST = (ROOT / "docs" / "architecture" / "stage7a" / "ATLAS_PASS2_CURATION_MANIFEST.md").read_text(encoding="utf-8")
 
@@ -83,12 +84,30 @@ require("TransportClockSource::SeqtrakExternal" in CARDPUTER and
 require("engine.isPlaying()" in CARDPUTER and "engine.stop()" in CARDPUTER and "engine.start()" in CARDPUTER,
         "Stage 7A Space must preserve internal transport toggle semantics")
 
+panic_start = CARDPUTER.index("const bool panicChord")
+panic_end = CARDPUTER.index("if (toggleChord)", panic_start)
+panic_block = CARDPUTER[panic_start:panic_end]
+require("session.deactivate(drums, synthA, synthB)" in panic_block and
+        "return false" in panic_block,
+        "Stage 7A panic must close/restore the audition before global project reset")
+require(panic_block.index("session.deactivate(drums, synthA, synthB)") < panic_block.index("return false"),
+        "Stage 7A panic must deactivate before yielding to the global reset owner")
+
 require('#include "../../generation/audition_stage7/stage7a_cardputer.h"' in GENRE_PAGE,
         "GenrePage must include the temporary Stage 7A handler")
 require("Stage7AAudition::handleCardputerEvent" in GENRE_PAGE,
-        "GenrePage must give Stage 7A first refusal before normal Genre editing")
+        "GenrePage must own Stage 7A activation before normal Genre editing")
 require(GENRE_PAGE.index("Stage7AAudition::handleCardputerEvent") < GENRE_PAGE.index("UIInput::isTab(event)"),
-        "Stage 7A must intercept its modal commands before Genre navigation")
+        "Stage 7A activation/local commands must intercept before Genre navigation")
+
+require('#include "src/generation/audition_stage7/stage7a_cardputer.h"' in DISPLAY,
+        "MiniAcidDisplay must include the active Stage 7 audition owner")
+active_dispatch = DISPLAY.index("Stage7AAudition::cardputerSession().active()")
+first_global_shortcut = DISPLAY.index("if (event.meta &&", active_dispatch)
+require("Stage7AAudition::handleCardputerEvent" in DISPLAY[active_dispatch:first_global_shortcut],
+        "active Stage 7 audition must get first refusal before global shortcuts")
+require(active_dispatch < first_global_shortcut,
+        "active Stage 7 dispatch must precede workspace/page/global shortcut ownership")
 
 require("audition_stage7" not in MAIN_SKETCH,
         "Stage 7A must not modify the top-level sketch event loop")
