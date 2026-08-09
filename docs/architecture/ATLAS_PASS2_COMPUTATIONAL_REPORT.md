@@ -150,13 +150,15 @@ Measured multi-bar evidence is kept separate from derived composites.
 
 There are 19 two-bar source observations. Eleven use an 8-step source grid; they are normalized to the runtime 16-step coordinate system by mapping source step `n` to runtime step `2n`.
 
+The phrase pass accepts both the normal drum role labels and the Atlas literal `PERCUSSION` used by `PERC1/PERC2` on several measured source patterns. Those events materially affect the transition counts and are covered by a regression.
+
 Measured adjacent-bar deltas:
 
 ```text
-EXACT_REPEAT  4
-ADD_ONLY      3
-DROP_ONLY     3
-MIXED         9
+EXACT_REPEAT   4
+ADD_ONLY       3
+DROP_ONLY      2
+MIXED         10
 ```
 
 This proves the presence of repeat/add/drop/mixed transition primitives. It does **not** by itself prove one universal named four-bar trajectory.
@@ -237,7 +239,7 @@ The two REVIEW skeleton candidates are represented only by opaque candidate IDs 
 
 Direction×role×step occupancy frequencies are allowed aggregate evidence under the Stage 6B rights contract; no per-pattern topology is published.
 
-CI checks both output values and output field names for restricted identifier/hash/mask tokens.
+CI checks both output values and output field names for restricted identifier/hash/mask tokens. The canonical runner normalizes generated text to UTF-8/LF before producing a SHA-256 manifest so reproducibility is independent of CSV platform line endings.
 
 ## 10. Stage 7 gate
 
