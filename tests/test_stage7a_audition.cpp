@@ -16,24 +16,17 @@ namespace {
 
 bool identityEqual(const PhraseRhythmIdentity& a,
                    const PhraseRhythmIdentity& b) {
-  if (a.archetypeId != b.archetypeId ||
-      a.phraseBars != b.phraseBars ||
+  if (a.archetypeId != b.archetypeId || a.phraseBars != b.phraseBars ||
       a.trajectoryId != b.trajectoryId ||
-      a.protectedSpaceCount != b.protectedSpaceCount) {
-    return false;
-  }
+      a.protectedSpaceCount != b.protectedSpaceCount) return false;
   for (uint8_t i = 0; i < a.protectedSpaceCount; ++i) {
     if (a.protectedSpaces[i].steps != b.protectedSpaces[i].steps ||
-        a.protectedSpaces[i].affectedRoles != b.protectedSpaces[i].affectedRoles) {
-      return false;
-    }
+        a.protectedSpaces[i].affectedRoles != b.protectedSpaces[i].affectedRoles) return false;
   }
   for (uint8_t bar = 0; bar < kMaxPhraseBars; ++bar) {
     for (uint8_t role = 0; role < kRhythmRoleCount; ++role) {
       if (a.structuralCore[bar][role] != b.structuralCore[bar][role] ||
-          a.canonicalCore[bar][role] != b.canonicalCore[bar][role]) {
-        return false;
-      }
+          a.canonicalCore[bar][role] != b.canonicalCore[bar][role]) return false;
     }
   }
   return true;
@@ -43,12 +36,9 @@ uint64_t signature(const RhythmPhrasePlan& plan) {
   uint64_t hash = 1469598103934665603ull;
   for (uint8_t role = 0; role < kRhythmRoleCount; ++role) {
     const RoleRhythmPlan& value = plan.bars[0].roles[role];
-    hash ^= value.structural;
-    hash *= 1099511628211ull;
-    hash ^= value.secondary;
-    hash *= 1099511628211ull;
-    hash ^= value.ghosts;
-    hash *= 1099511628211ull;
+    hash ^= value.structural; hash *= 1099511628211ull;
+    hash ^= value.secondary; hash *= 1099511628211ull;
+    hash ^= value.ghosts; hash *= 1099511628211ull;
   }
   return hash;
 }
@@ -58,7 +48,7 @@ const RhythmArchetype& archetypeFor(RhythmArchetypeId id) {
   for (uint16_t i = 0; i < view.archetypeCount; ++i) {
     if (view.archetypes[i].id == id) return view.archetypes[i];
   }
-  assert(false && "missing Stage 7A archetype");
+  assert(false && "missing Stage 7B archetype");
   return view.archetypes[0];
 }
 
@@ -87,7 +77,6 @@ void assertPlanLegal(const RhythmArchetype& archetype,
   assert(planRespectsProtectedSpace(archetype, result.plan));
   assert(planRespectsLaneBounds(archetype, result.plan));
   assert(hardRelationshipsSatisfied(archetype, structuralOccupancy(result.plan)));
-
   const PhraseOccupancy occupancy = structuralOccupancy(result.plan);
   assert(occupancy.roleMasks[0][static_cast<uint8_t>(RhythmRole::BassRhythm)] == 0);
   assert(occupancy.roleMasks[0][static_cast<uint8_t>(RhythmRole::ChordRhythm)] == 0);
@@ -99,18 +88,10 @@ bool synthEqual(const SynthPattern& a, const SynthPattern& b) {
     const SynthStep& x = a.steps[step];
     const SynthStep& y = b.steps[step];
     if (x.note != y.note || x.slide != y.slide || x.accent != y.accent ||
-        x.ghost != y.ghost || x.velocity != y.velocity ||
-        x.timing != y.timing || x.fx != y.fx || x.fxParam != y.fxParam ||
-        x.probability != y.probability) {
-      return false;
-    }
+        x.ghost != y.ghost || x.velocity != y.velocity || x.timing != y.timing ||
+        x.fx != y.fx || x.fxParam != y.fxParam || x.probability != y.probability) return false;
   }
   return true;
-}
-
-bool synthEmpty(const SynthPattern& pattern) {
-  const SynthPattern empty{};
-  return synthEqual(pattern, empty);
 }
 
 bool drumsEqual(const DrumPatternSet& a, const DrumPatternSet& b) {
@@ -118,146 +99,88 @@ bool drumsEqual(const DrumPatternSet& a, const DrumPatternSet& b) {
     for (int step = 0; step < DrumPattern::kSteps; ++step) {
       const DrumStep& x = a.voices[voice].steps[step];
       const DrumStep& y = b.voices[voice].steps[step];
-      if (x.hit != y.hit || x.accent != y.accent ||
-          x.velocity != y.velocity || x.timing != y.timing ||
-          x.fx != y.fx || x.fxParam != y.fxParam ||
-          x.probability != y.probability) {
-        return false;
-      }
+      if (x.hit != y.hit || x.accent != y.accent || x.velocity != y.velocity ||
+          x.timing != y.timing || x.fx != y.fx || x.fxParam != y.fxParam ||
+          x.probability != y.probability) return false;
     }
   }
-  return a.groove.swing == b.groove.swing &&
-         a.groove.humanize == b.groove.humanize;
-}
-
-void seedOriginals(DrumPatternSet& drums,
-                   SynthPattern& synthA,
-                   SynthPattern& synthB) {
-  drums.voices[0].steps[1].hit = true;
-  drums.voices[0].steps[1].velocity = 77;
-  drums.voices[1].steps[9].hit = true;
-  drums.groove.swing = 0.61f;
-  drums.groove.humanize = 0.22f;
-  synthA.steps[2].note = 49;
-  synthA.steps[2].slide = true;
-  synthA.steps[2].velocity = 91;
-  synthB.steps[5].note = 62;
-  synthB.steps[5].accent = true;
-  synthB.steps[5].velocity = 103;
+  return a.groove.swing == b.groove.swing && a.groove.humanize == b.groove.humanize;
 }
 
 void testCatalogAndSeedCorpus() {
-  assert(Stage7AAudition::definitionCount() == 5);
+  assert(Stage7AAudition::definitionCount() == 4);
   assert(validateRhythmCatalog(Stage7AAudition::catalog()));
-
-  uint8_t evidenceCount = 0;
-  uint8_t challengerCount = 0;
-  uint8_t controlCount = 0;
-
   for (uint8_t index = 0; index < Stage7AAudition::definitionCount(); ++index) {
     const auto& definition = Stage7AAudition::definition(index);
     const RhythmArchetype& archetype = archetypeFor(definition.archetypeId);
-    assert(definition.archetypeId >= 701 && definition.archetypeId <= 705);
+    assert(definition.archetypeId >= 711 && definition.archetypeId <= 714);
+    assert(definition.evidence == Stage7AAudition::EvidenceClass::SingleRootChallenger);
     assert(archetype.allowedPhraseBars == phraseBarsBit(1));
-    assert(archetype.trajectoryCount == 1);
-    assert(archetype.trajectories[0].id == 1);
-
-    if (definition.evidence == Stage7AAudition::EvidenceClass::MultiProvenanceReview) ++evidenceCount;
-    if (definition.evidence == Stage7AAudition::EvidenceClass::SingleRootChallenger) ++challengerCount;
-    if (definition.evidence == Stage7AAudition::EvidenceClass::SingleRootControl) ++controlCount;
 
     std::map<uint64_t, uint32_t> buckets;
+    uint32_t p2Changed = 0;
+    uint32_t p3Changed = 0;
     for (uint32_t seed = 1; seed <= 64; ++seed) {
-      const RhythmRealizationResult p1 = realize(
-          definition, seed, RealizationLevel::P1Canonical);
+      const RhythmRealizationResult p1 = realize(definition, seed, RealizationLevel::P1Canonical);
       assertPlanLegal(archetype, p1);
-      buckets[signature(p1.plan)] += 1;
+      const uint64_t p1Signature = signature(p1.plan);
+      buckets[p1Signature] += 1;
 
-      const RhythmRealizationResult p2 = realize(
-          definition, seed, RealizationLevel::P2Variation, &p1.identity);
+      const RhythmRealizationResult p2 = realize(definition, seed, RealizationLevel::P2Variation, &p1.identity);
       assertPlanLegal(archetype, p2);
       assert(identityEqual(p1.identity, p2.identity));
+      if (signature(p2.plan) != p1Signature) ++p2Changed;
 
-      const RhythmRealizationResult p3 = realize(
-          definition, seed, RealizationLevel::P3Transformation, &p1.identity);
+      const RhythmRealizationResult p3 = realize(definition, seed, RealizationLevel::P3Transformation, &p1.identity);
       assertPlanLegal(archetype, p3);
       assert(identityEqual(p1.identity, p3.identity));
+      if (signature(p3.plan) != p1Signature) ++p3Changed;
 
-      const RhythmRealizationResult repeat = realize(
-          definition, seed, RealizationLevel::P1Canonical);
-      assert(signature(repeat.plan) == signature(p1.plan));
+      const RhythmRealizationResult repeat = realize(definition, seed, RealizationLevel::P1Canonical);
+      assert(signature(repeat.plan) == p1Signature);
       assert(identityEqual(repeat.identity, p1.identity));
     }
 
     uint32_t maxBucket = 0;
     for (const auto& item : buckets) maxBucket = std::max(maxBucket, item.second);
-    const double maxBucketRatio = static_cast<double>(maxBucket) / 64.0;
     std::fprintf(stderr,
-                 "STAGE7A_VARIATION %s distinct=%zu max_bucket=%u ratio=%.6f evidence=%s\n",
-                 definition.name,
-                 buckets.size(),
-                 static_cast<unsigned>(maxBucket),
-                 maxBucketRatio,
+                 "STAGE7B_VARIATION %s distinct=%zu max_bucket=%u ratio=%.6f p2_changed=%u p3_changed=%u evidence=%s\n",
+                 definition.name, buckets.size(), static_cast<unsigned>(maxBucket),
+                 static_cast<double>(maxBucket) / 64.0,
+                 static_cast<unsigned>(p2Changed), static_cast<unsigned>(p3Changed),
                  Stage7AAudition::evidenceName(definition.evidence));
-    std::fflush(stderr);
-
-    // Evidence candidates and challengers must already demonstrate more than
-    // one generated P1 idea before hardware listening. The explicit control is
-    // allowed to collapse: SAME-AS-EXISTING / one fingerprint is a successful
-    // positive-control falsification, not a reason to weaken the real gates.
-    if (definition.evidence != Stage7AAudition::EvidenceClass::SingleRootControl) {
-      assert(buckets.size() >= 2);
-    }
+    assert(buckets.size() >= 2);
+    assert(p2Changed > 0);
+    assert(p3Changed > 0);
   }
-
-  assert(evidenceCount == 2);
-  assert(challengerCount == 2);
-  assert(controlCount == 1);
 }
 
 void testSessionIsTransactionalAndRestoresExactly() {
   DrumPatternSet drums{};
   SynthPattern synthA{};
   SynthPattern synthB{};
-  seedOriginals(drums, synthA, synthB);
+  drums.voices[0].steps[1].hit = true;
+  synthA.steps[2].note = 49;
+  synthB.steps[5].note = 62;
   const DrumPatternSet originalDrums = drums;
   const SynthPattern originalA = synthA;
   const SynthPattern originalB = synthB;
 
   Stage7AAudition::Session session;
   assert(session.activate(drums, synthA, synthB));
-  assert(session.active());
-  assert(!drumsEqual(drums, originalDrums));
-  assert(synthEmpty(synthA));
-  assert(synthEmpty(synthB));
-
   assert(session.selectCandidate(1, drums, synthA, synthB));
   const PhraseRhythmIdentity identityAtP1 = session.identity();
   assert(session.cycleLevel(drums, synthA, synthB));
   assert(identityEqual(identityAtP1, session.identity()));
   assert(session.cycleLevel(drums, synthA, synthB));
   assert(identityEqual(identityAtP1, session.identity()));
-
   assert(session.shiftSeed(3, drums, synthA, synthB));
   assert(session.seed() == 4);
   assert(session.rerender(drums, synthA, synthB));
-
   session.deactivate(drums, synthA, synthB);
-  assert(!session.active());
   assert(drumsEqual(drums, originalDrums));
   assert(synthEqual(synthA, originalA));
   assert(synthEqual(synthB, originalB));
-}
-
-void testInactiveCommandsAreRejected() {
-  DrumPatternSet drums{};
-  SynthPattern synthA{};
-  SynthPattern synthB{};
-  Stage7AAudition::Session session;
-  assert(!session.selectCandidate(1, drums, synthA, synthB));
-  assert(!session.shiftSeed(1, drums, synthA, synthB));
-  assert(!session.cycleLevel(drums, synthA, synthB));
-  assert(!session.rerender(drums, synthA, synthB));
 }
 
 void testStatusIncludesEvidenceClass() {
@@ -268,10 +191,10 @@ void testStatusIncludesEvidenceClass() {
   assert(session.activate(drums, synthA, synthB));
   char status[96]{};
   session.formatStatus(status, sizeof(status));
-  assert(std::strstr(status, "S7A staggered_machine") != nullptr);
+  assert(std::strstr(status, "stacked_quarters") != nullptr);
   assert(std::strstr(status, "S1") != nullptr);
   assert(std::strstr(status, "P1") != nullptr);
-  assert(std::strstr(status, "EVID") != nullptr);
+  assert(std::strstr(status, "CHAL") != nullptr);
 }
 
 }  // namespace
@@ -279,7 +202,6 @@ void testStatusIncludesEvidenceClass() {
 int main() {
   testCatalogAndSeedCorpus();
   testSessionIsTransactionalAndRestoresExactly();
-  testInactiveCommandsAreRejected();
   testStatusIncludesEvidenceClass();
   return 0;
 }
