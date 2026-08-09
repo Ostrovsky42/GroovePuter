@@ -21,7 +21,10 @@ COMMON=(
 "$BUILD/stage7a-gcc"
 
 if command -v clang++ >/dev/null 2>&1; then
+  # scenes.h carries a pre-existing host-only diagnostic on its static
+  # bytesRead helper. Keep all other warnings as errors for Stage 7A code.
   clang++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions \
+    -Wno-unused-but-set-variable \
     -I"$ROOT" "${COMMON[@]}" -o "$BUILD/stage7a-clang"
   "$BUILD/stage7a-clang"
 fi
