@@ -1,6 +1,6 @@
 # Atlas Pass 2 Hardening Review Gate
 
-The hardening candidate is frozen while CI and three consecutive reviews run. The exact final SHA and live review counter belong in PR #192 metadata, not in this content file. Any code, data, test or documentation finding/change resets the counter to `0/3`.
+The hardening candidate is frozen while CI and three consecutive reviews run. The exact final SHA and live review counter belong in PR #192 metadata. Any code, data, test or documentation finding/change resets the counter to `0/3`.
 
 ## External audit findings addressed
 
