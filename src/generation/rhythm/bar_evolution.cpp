@@ -440,17 +440,9 @@ BarEvolutionResult evolveRhythmPhrase(const BarEvolutionRequest& request) {
     return result;
   }
 
-  // Cheap request/archetype checks happen before realization. Full catalog
-  // validation is intentionally delegated to realizeRhythmPhrase(), so the
-  // Stage 6 wrapper does not scan the entire catalog twice per request.
-  const RhythmArchetype* archetype =
-      archetypeFor(*request.catalog, request.archetypeId);
-  if (!archetype ||
-      !(archetype->allowedPhraseBars & phraseBarsBit(request.phraseBars))) {
-    result.status = BarEvolutionStatus::InvalidRequest;
-    return result;
-  }
-
+  // Stage 2 owns full catalog/archetype/phrase-length validation. Do not
+  // dereference catalog arrays in this wrapper before realizeRhythmPhrase()
+  // has accepted the request.
   RhythmRealizationRequest baseRequest{};
   baseRequest.catalog = request.catalog;
   baseRequest.archetypeId = request.archetypeId;
@@ -467,7 +459,15 @@ BarEvolutionResult evolveRhythmPhrase(const BarEvolutionRequest& request) {
     return result;
   }
 
-  // At this point the base realizer has validated the supplied catalog.
+  // A successful base realization proves the catalog, archetype id and
+  // phrase-bars contract were validated by Stage 2. The lookup is safe now.
+  const RhythmArchetype* archetype =
+      archetypeFor(*request.catalog, request.archetypeId);
+  if (!archetype) {
+    result.status = BarEvolutionStatus::BaseRealizationFailed;
+    return result;
+  }
+
   const BarTrajectory* trajectory = selectTrajectory(request, *archetype);
   if (!trajectory) {
     result.status = BarEvolutionStatus::NoEligibleTrajectory;
