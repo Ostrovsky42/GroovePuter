@@ -8,6 +8,7 @@
 #include "../layout_manager.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "../../generation/audition_stage7/stage7a_cardputer.h"
 #include "../../generation/migration/strong_rhythm_live_bridge.h"
 #include "../../state/scene_revision.h"
 
@@ -340,6 +341,11 @@ void GenrePage::draw(IGfx& gfx) {
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
+  if (GroovePuterRhythm::Stage7AAudition::handleCardputerEvent(
+          event, mini_acid_)) {
+    return true;
+  }
+
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
   static UIInput::HoldAccelerator morphAccelerator;
