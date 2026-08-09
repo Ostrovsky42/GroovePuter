@@ -10,7 +10,7 @@ namespace GroovePuterRhythm {
 namespace Stage7AAudition {
 namespace {
 
-Session& cardputerSession() {
+Session& auditionSession() {
   static Session session;
   return session;
 }
@@ -27,14 +27,19 @@ void showCardputerStatus(const Session& session) {
 
 }  // namespace
 
-bool cardputerSessionActive() {
-  return cardputerSession().active();
+bool CardputerSessionFacade::active() const {
+  return auditionSession().active();
+}
+
+const CardputerSessionFacade& cardputerSession() {
+  static const CardputerSessionFacade facade{};
+  return facade;
 }
 
 bool handleCardputerEvent(const UIEvent& event, MiniAcid& engine) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
-  Session& session = cardputerSession();
+  Session& session = auditionSession();
   const char key = event.key;
   const bool toggleChord =
       event.alt && event.ctrl && (key == 'a' || key == 'A');
