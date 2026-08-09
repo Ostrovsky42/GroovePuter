@@ -13,10 +13,13 @@ PAGE_DIR = ROOT / "src/ui/pages"
 
 GENRE = (PAGE_DIR / "genre_page.cpp").read_text(encoding="utf-8")
 FEEL = (PAGE_DIR / "feel_page.cpp").read_text(encoding="utf-8")
+FEEL_HEADER = (PAGE_DIR / "feel_page.h").read_text(encoding="utf-8")
 WORKFLOW = (ROOT / "src/ui/workflow_mode.h").read_text(encoding="utf-8")
 SESSION = (ROOT / "src/state/ui_session_state.h").read_text(encoding="utf-8")
 HELP = (ROOT / "src/ui/global_help_content.h").read_text(encoding="utf-8")
 PALETTE = (ROOT / "src/ui/axis_page_palette.h").read_text(encoding="utf-8")
+ENGINE = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
+BOUNDARY = (ROOT / "src/dsp/song_cycle_boundary.h").read_text(encoding="utf-8")
 
 
 def require(text: str, needle: str, message: str) -> None:
@@ -64,14 +67,28 @@ forbid(
 )
 
 for needle in (
+    '"FEEL 2/2"',
     '"TIMING / VELOCITY"',
     "scene.feel.swingPct",
     "microTimingAmount",
     "velocityRange",
+    "FocusRow::PatternLength",
+    "scene.feel.patternBars",
+    "kPatternBars[4] = {1, 2, 4, 8}",
+    '"PATTERN LENGTH"',
+    '"SONG: bars before next row"',
     "if (focus_ == FocusRow::Preset)",
     "preset_index_ = wrapIndex",
 ):
     require(FEEL, needle, f"FEEL contract missing: {needle}")
+require(FEEL_HEADER, "PatternLength,",
+        "FEEL focus model must expose Pattern Length")
+require(ENGINE, "sceneManager_.currentScene().feel.patternBars",
+        "Song playback must consume the same FEEL patternBars value")
+for token in ("patternBars == 1", "patternBars == 2",
+              "patternBars == 4", "patternBars == 8"):
+    require(BOUNDARY, token,
+            f"Song cycle boundary lost supported FEEL length: {token}")
 forbid(
     FEEL,
     (
