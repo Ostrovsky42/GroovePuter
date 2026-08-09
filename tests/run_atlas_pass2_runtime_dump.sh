@@ -24,7 +24,24 @@ FILTERED="$BUILD_DIR/runtime_rhythm_baseline.tsv"
 grep -E $'^(FORMAT|A|L|COUNT)\t' "$DUMP" > "$FILTERED"
 diff -u "$ROOT/docs/architecture/atlas_pass2/RUNTIME_RHYTHM_BASELINE.tsv" "$FILTERED"
 
-echo "Atlas Pass 2 runtime catalog dump: OK"
+"$CXX_BIN" -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions \
+  -I"$ROOT" \
+  "$ROOT/tools/atlas/dump_runtime_rhythm_topology_v2.cpp" \
+  "$ROOT/src/generation/rhythm/reference_vocabulary.cpp" \
+  -o "$BUILD_DIR/dump_runtime_rhythm_topology_v2"
+
+TOPOLOGY="$BUILD_DIR/runtime_rhythm_topology_v2.tsv"
+"$BUILD_DIR/dump_runtime_rhythm_topology_v2" > "$TOPOLOGY"
+grep -qx $'FORMAT\tGROOVEPUTER_RUNTIME_RHYTHM_TOPOLOGY_V2' "$TOPOLOGY"
+grep -qx $'COUNT\t20' "$TOPOLOGY"
+[[ "$(grep -c $'^A\t' "$TOPOLOGY")" -eq 20 ]]
+[[ "$(grep -c $'^L\t' "$TOPOLOGY")" -gt 0 ]]
+[[ "$(grep -c $'^R\t' "$TOPOLOGY")" -gt 0 ]]
+[[ "$(grep -c $'^S\t' "$TOPOLOGY")" -gt 0 ]]
+diff -u "$ROOT/docs/architecture/atlas_pass2/RUNTIME_RHYTHM_TOPOLOGY_V2.tsv" "$TOPOLOGY"
+
+echo "Atlas Pass 2 runtime catalog/topology dumps: OK"
 if [[ "${ATLAS_PASS2_PRINT_RUNTIME_DUMP:-0}" == "1" ]]; then
   cat "$DUMP"
+  cat "$TOPOLOGY"
 fi
