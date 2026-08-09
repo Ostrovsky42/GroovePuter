@@ -448,7 +448,12 @@ CatalogValidationResult validateTrajectories(const RhythmCatalogView& catalog) {
                   i);
     }
     for (uint8_t bar = 0; bar < trajectory.barCount; ++bar) {
-      if (!validEnum(trajectory.bars[bar], BarFunction::Count)) {
+      const BarFunction function = trajectory.bars[bar];
+      if (!validEnum(function, BarFunction::Count) ||
+          (bar == 0 &&
+           (function == BarFunction::Repeat ||
+            function == BarFunction::RepeatWithGhosts ||
+            function == BarFunction::Return))) {
         return fail(CatalogValidationError::InvalidTrajectoryBarFunction,
                     kNoArchetypeIndex,
                     i);
@@ -928,6 +933,16 @@ CatalogValidationResult validateTimingDensityAndMutation(
     if (reduceIntent != static_cast<bool>(budget.flags & AllowReduction) ||
         turnaroundIntent != static_cast<bool>(budget.flags & AllowTurnaround) ||
         breakIntent != static_cast<bool>(budget.flags & AllowBreak)) {
+      return fail(CatalogValidationError::InvalidMutationPolicy,
+                  archetypeIndex,
+                  level);
+    }
+
+    const bool reductionEnabled = budget.flags & AllowReduction;
+    const bool turnaroundEnabled = budget.flags & AllowTurnaround;
+    const bool breakEnabled = budget.flags & AllowBreak;
+    if (((reductionEnabled || breakEnabled) && !budget.maxDrops) ||
+        (turnaroundEnabled && !budget.maxAdds)) {
       return fail(CatalogValidationError::InvalidMutationPolicy,
                   archetypeIndex,
                   level);
