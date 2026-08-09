@@ -33,6 +33,9 @@ jobs:
       - name: Run Groove Vocabulary Stage 5 tests
         run: bash tests/run_rhythm_stage5_tests.sh
 
+      - name: Run Groove Vocabulary Stage 6 tests
+        run: bash tests/run_rhythm_stage6_tests.sh
+
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 
