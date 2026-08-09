@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 from pathlib import Path
 
@@ -18,8 +19,18 @@ expected_files = {
     "ATLAS_PASS2_EVIDENCE_COVERAGE.csv",
     "ATLAS_PASS2_EFFECTIVE_VARIATION_BASELINE.csv",
     "ATLAS_PASS2_NEGATIVE_SPACE.csv",
+    "ATLAS_PASS2_OUTPUT_HASHES.sha256",
 }
 assert expected_files.issubset({path.name for path in OUT.iterdir() if path.is_file()})
+
+manifest = {}
+for line in (OUT / "ATLAS_PASS2_OUTPUT_HASHES.sha256").read_text(encoding="utf-8").splitlines():
+    digest, filename = line.split(None, 1)
+    manifest[filename.strip()] = digest
+assert len(manifest) == 9
+for filename, expected_digest in manifest.items():
+    actual_digest = hashlib.sha256((OUT / filename).read_bytes()).hexdigest()
+    assert actual_digest == expected_digest, f"aggregate hash mismatch: {filename}"
 
 summary = json.loads((OUT / "ATLAS_PASS2_SUMMARY.json").read_text(encoding="utf-8"))
 assert summary["atlas_sha256"] == "5b155937b8d05f0f0f9f1a02f10d9afe76a917d6035897695cce739eb8d6b1fd"
