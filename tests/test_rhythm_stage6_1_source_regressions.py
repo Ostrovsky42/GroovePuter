@@ -16,9 +16,21 @@ def main() -> None:
         "BarEvolution must not perform a duplicate full catalog scan",
     )
     require(
-        "Full catalog\n  // validation is intentionally delegated to realizeRhythmPhrase()" in SOURCE,
-        "Stage 6.1 must document single-owner catalog validation",
+        "Stage 2 owns full catalog/archetype/phrase-length validation" in SOURCE,
+        "Stage 6.1 must document Stage 2 catalog-validation ownership",
     )
+
+    realization_index = SOURCE.find(
+        "const RhythmRealizationResult base = realizeRhythmPhrase(baseRequest);"
+    )
+    lookup_index = SOURCE.find(
+        "const RhythmArchetype* archetype =\n      archetypeFor(*request.catalog, request.archetypeId);"
+    )
+    require(realization_index >= 0 and lookup_index >= 0,
+            "Stage 6.1 validation/lookup markers are missing")
+    require(realization_index < lookup_index,
+            "BarEvolution must not dereference catalog arrays before Stage 2 validation")
+
     require(
         "Secondary events are a strict lower-authority removal class" in SOURCE,
         "secondary-before-structural drop precedence is not documented",
