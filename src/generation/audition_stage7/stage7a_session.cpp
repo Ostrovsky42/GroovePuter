@@ -169,12 +169,23 @@ bool Session::selectCandidate(uint8_t index,
                               SynthPattern& synthA,
                               SynthPattern& synthB) {
   if (!active_ || index >= definitionCount()) return false;
-  if (candidateIndex_ != index) {
-    candidateIndex_ = index;
-    identityValid_ = false;
-    lastStatus_ = RealizationStatus::InvalidConstraintSet;
-  }
-  return commitCurrent(drums, synthA, synthB);
+  if (candidateIndex_ == index) return commitCurrent(drums, synthA, synthB);
+
+  const uint8_t oldIndex = candidateIndex_;
+  const bool oldIdentityValid = identityValid_;
+  const PhraseRhythmIdentity oldIdentity = identity_;
+  const RealizationStatus oldStatus = lastStatus_;
+
+  candidateIndex_ = index;
+  identityValid_ = false;
+  lastStatus_ = RealizationStatus::InvalidConstraintSet;
+  if (commitCurrent(drums, synthA, synthB)) return true;
+
+  candidateIndex_ = oldIndex;
+  identityValid_ = oldIdentityValid;
+  identity_ = oldIdentity;
+  lastStatus_ = oldStatus;
+  return false;
 }
 
 bool Session::shiftSeed(int delta,
@@ -190,22 +201,40 @@ bool Session::shiftSeed(int delta,
     const uint32_t amount = static_cast<uint32_t>(delta);
     next = UINT32_MAX - seed_ < amount ? UINT32_MAX : seed_ + amount;
   }
-  if (next != seed_) {
-    seed_ = next;
-    identityValid_ = false;
-    lastStatus_ = RealizationStatus::InvalidConstraintSet;
-  }
-  return commitCurrent(drums, synthA, synthB);
+  if (next == seed_) return commitCurrent(drums, synthA, synthB);
+
+  const uint32_t oldSeed = seed_;
+  const bool oldIdentityValid = identityValid_;
+  const PhraseRhythmIdentity oldIdentity = identity_;
+  const RealizationStatus oldStatus = lastStatus_;
+
+  seed_ = next;
+  identityValid_ = false;
+  lastStatus_ = RealizationStatus::InvalidConstraintSet;
+  if (commitCurrent(drums, synthA, synthB)) return true;
+
+  seed_ = oldSeed;
+  identityValid_ = oldIdentityValid;
+  identity_ = oldIdentity;
+  lastStatus_ = oldStatus;
+  return false;
 }
 
 bool Session::cycleLevel(DrumPatternSet& drums,
                          SynthPattern& synthA,
                          SynthPattern& synthB) {
   if (!active_) return false;
+  const RealizationLevel oldLevel = level_;
+  const RealizationStatus oldStatus = lastStatus_;
+
   uint8_t next = static_cast<uint8_t>(level_) + 1u;
   if (next >= static_cast<uint8_t>(RealizationLevel::Count)) next = 0;
   level_ = static_cast<RealizationLevel>(next);
-  return commitCurrent(drums, synthA, synthB);
+  if (commitCurrent(drums, synthA, synthB)) return true;
+
+  level_ = oldLevel;
+  lastStatus_ = oldStatus;
+  return false;
 }
 
 bool Session::rerender(DrumPatternSet& drums,
