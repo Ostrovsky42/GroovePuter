@@ -28,9 +28,15 @@ for line in (OUT / "ATLAS_PASS2_OUTPUT_HASHES.sha256").read_text(encoding="utf-8
     digest, filename = line.split(None, 1)
     manifest[filename.strip()] = digest
 assert len(manifest) == 9
+mismatches = []
 for filename, expected_digest in manifest.items():
     actual_digest = hashlib.sha256((OUT / filename).read_bytes()).hexdigest()
-    assert actual_digest == expected_digest, f"aggregate hash mismatch: {filename}"
+    if actual_digest != expected_digest:
+        mismatches.append((filename, expected_digest, actual_digest))
+if mismatches:
+    for filename, expected_digest, actual_digest in mismatches:
+        print(f"HASH_MISMATCH {filename} expected={expected_digest} actual={actual_digest}")
+    raise AssertionError(f"{len(mismatches)} aggregate output hash mismatch(es)")
 
 summary = json.loads((OUT / "ATLAS_PASS2_SUMMARY.json").read_text(encoding="utf-8"))
 assert summary["atlas_sha256"] == "5b155937b8d05f0f0f9f1a02f10d9afe76a917d6035897695cce739eb8d6b1fd"
@@ -49,9 +55,11 @@ assert summary["bass_rhythm_one_bar_patterns"] == 35
 assert summary["bass_pitch_contour_eligible_patterns"] == 35
 assert summary["motif_contour_eligible_patterns"] == 23
 
+
 def read(name):
     with (OUT / name).open(encoding="utf-8", newline="") as handle:
         return list(csv.DictReader(handle))
+
 
 topology = read("ATLAS_PASS2_TOPOLOGY_CANDIDATES.csv")
 assert [row["candidate_id"] for row in topology] == [f"SKEL_{i:02d}" for i in range(1, 9)]
