@@ -303,6 +303,11 @@ void clearGhosts(const RhythmArchetype& archetype,
   }
 }
 
+bool ghostAddsAllowed(const MutationBudget& budget) {
+  return budget.maxAdds != 0 &&
+         (budget.flags & (AllowOptionalAdds | AllowGhostConversion));
+}
+
 bool applyBarFunction(const RhythmArchetype& archetype,
                       RhythmPhrasePlan& plan,
                       uint8_t bar,
@@ -325,7 +330,9 @@ bool applyBarFunction(const RhythmArchetype& archetype,
     case BarFunction::RepeatWithGhosts:
       if (bar == 0) return false;
       plan.bars[bar] = plan.bars[bar - 1];
-      addGhostCue(archetype, plan, bar, seed, 0, false);
+      if (ghostAddsAllowed(budget)) {
+        addGhostCue(archetype, plan, bar, seed, 0, false);
+      }
       break;
 
     case BarFunction::Reduction:
@@ -336,18 +343,20 @@ bool applyBarFunction(const RhythmArchetype& archetype,
       break;
 
     case BarFunction::Build:
-      for (uint8_t add = 0; add < budget.maxAdds; ++add) {
-        if (!addGhostCue(archetype, plan, bar, seed, add, false)) break;
+      if (ghostAddsAllowed(budget)) {
+        for (uint8_t add = 0; add < budget.maxAdds; ++add) {
+          if (!addGhostCue(archetype, plan, bar, seed, add, false)) break;
+        }
       }
       break;
 
-    case BarFunction::Turnaround: {
-      const uint8_t adds = budget.maxAdds ? budget.maxAdds : 1;
-      for (uint8_t add = 0; add < adds; ++add) {
-        if (!addGhostCue(archetype, plan, bar, seed, add, true)) break;
+    case BarFunction::Turnaround:
+      if (ghostAddsAllowed(budget)) {
+        for (uint8_t add = 0; add < budget.maxAdds; ++add) {
+          if (!addGhostCue(archetype, plan, bar, seed, add, true)) break;
+        }
       }
       break;
-    }
 
     case BarFunction::Break:
       clearGhosts(archetype, plan, bar);
@@ -443,28 +452,29 @@ BarEvolutionResult evolveRhythmPhrase(const BarEvolutionRequest& request) {
     return result;
   }
 
-  result.identity = base.identity;
-  result.plan = base.plan;
-  result.plan.trajectoryId = trajectory->id;
-  result.trajectoryId = trajectory->id;
+  RhythmPhrasePlan evolvedPlan = base.plan;
+  evolvedPlan.trajectoryId = trajectory->id;
 
   const uint32_t evolutionSeed = deriveGenerationSeed(
       request.generation, archetype->id,
       GenerationDomain::BarEvolution, trajectory->id);
   for (uint8_t bar = 0; bar < trajectory->barCount; ++bar) {
     const uint32_t barSeed = deterministicValue(evolutionSeed, bar);
-    if (!applyBarFunction(*archetype, result.plan, bar,
+    if (!applyBarFunction(*archetype, evolvedPlan, bar,
                           trajectory->bars[bar], barSeed)) {
       result.status = BarEvolutionStatus::EvolutionInvalid;
       return result;
     }
   }
 
-  if (!evolvedPlanValid(*archetype, result.plan)) {
+  if (!evolvedPlanValid(*archetype, evolvedPlan)) {
     result.status = BarEvolutionStatus::EvolutionInvalid;
     return result;
   }
 
+  result.identity = base.identity;
+  result.plan = evolvedPlan;
+  result.trajectoryId = trajectory->id;
   result.status = BarEvolutionStatus::Ok;
   return result;
 }
