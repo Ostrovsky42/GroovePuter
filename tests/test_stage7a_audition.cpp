@@ -192,16 +192,22 @@ void testCatalogAndSeedCorpus() {
     uint32_t maxBucket = 0;
     for (const auto& item : buckets) maxBucket = std::max(maxBucket, item.second);
     const double maxBucketRatio = static_cast<double>(maxBucket) / 64.0;
-    std::printf("STAGE7A_VARIATION %s distinct=%zu max_bucket=%u ratio=%.6f\n",
-                definition.name,
-                buckets.size(),
-                static_cast<unsigned>(maxBucket),
-                maxBucketRatio);
+    std::fprintf(stderr,
+                 "STAGE7A_VARIATION %s distinct=%zu max_bucket=%u ratio=%.6f evidence=%s\n",
+                 definition.name,
+                 buckets.size(),
+                 static_cast<unsigned>(maxBucket),
+                 maxBucketRatio,
+                 Stage7AAudition::evidenceName(definition.evidence));
+    std::fflush(stderr);
 
-    // Audition grammars must not collapse to a single preset. We keep this
-    // deliberately weak before listening; Stage 7 production admission will
-    // set stronger effective-variation/entropy gates after hearing the batch.
-    assert(buckets.size() >= 2);
+    // Evidence candidates and challengers must already demonstrate more than
+    // one generated P1 idea before hardware listening. The explicit control is
+    // allowed to collapse: SAME-AS-EXISTING / one fingerprint is a successful
+    // positive-control falsification, not a reason to weaken the real gates.
+    if (definition.evidence != Stage7AAudition::EvidenceClass::SingleRootControl) {
+      assert(buckets.size() >= 2);
+    }
   }
 
   assert(evidenceCount == 2);
