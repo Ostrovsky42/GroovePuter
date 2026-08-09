@@ -61,10 +61,12 @@ While audition is active it is modal on the GENRE page. Current drum and Synth A
 | `Ctrl+4` | `rock_push` — HARD_09 — single-root rock challenger |
 | `Ctrl+5` | `halfback_control` — HARD_03 — control candidate |
 | `Ctrl+P` | P1 -> P2 -> P3 -> P1, reusing the same P1 phrase identity |
-| `Ctrl+[` | previous seed |
-| `Ctrl+]` | next seed |
+| `Ctrl+Left` | previous seed |
+| `Ctrl+Right` | next seed |
 | `Ctrl+R` | rerender the exact same candidate/seed/P-level |
 | `Space` | normal transport play/stop while audition is active |
+
+`Ctrl+Left/Right` uses the project's normalized arrow path (`UIInput::navCode`) so Cardputer HID/scancode and WORD paths behave the same. Bracket characters are not used for seed navigation.
 
 Global panic/emergency handling remains outside the audition owner.
 
@@ -75,7 +77,7 @@ For each of the five slots:
 1. Start at seed 1 and P1.
 2. Listen for at least four loops.
 3. Cycle P1/P2/P3 with `Ctrl+P`; listen for at least four loops at each level.
-4. Test seeds 1 through 8 with `Ctrl+[ / ]`.
+4. Test seeds 1 through 8 with `Ctrl+Left/Right`.
 5. On at least two seeds press `Ctrl+R` and confirm the rhythm is identical.
 6. Move away from a seed and back to it; confirm deterministic return.
 7. Record one rating per candidate:
@@ -154,6 +156,10 @@ Exiting with `Ctrl+Alt+A` must restore the exact drum, Synth A and Synth B patte
 
 Confirm you are on `GENERATE -> GENRE`, not FEEL or another workspace. Confirm Song mode is OFF.
 
+### `Ctrl+Left/Right` does nothing
+
+Confirm audition is active and the key event includes Ctrl. The handler reads normalized arrow scancode/key input rather than `[`/`]` characters. Record the `[KEY]` Serial line if it still fails.
+
 ### `S7A INVALID`
 
 Record the candidate, seed and P-level from Serial. Do not continue rating that seed as musical evidence.
@@ -177,6 +183,7 @@ Record Serial output and the candidate/seed/P-level that triggered it. Treat thi
 - [ ] Song mode OFF
 - [ ] `Ctrl+Alt+A` enters only on GENRE page
 - [ ] five Ctrl-number slots select five different candidates
+- [ ] `Ctrl+Left/Right` changes seed and can return to the previous seed
 - [ ] seeds 1..8 tested for each slot
 - [ ] P1/P2/P3 tested for each slot
 - [ ] `Ctrl+R` deterministic on sampled seeds
