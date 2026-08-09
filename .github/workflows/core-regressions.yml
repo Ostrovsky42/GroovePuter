@@ -47,6 +47,11 @@ jobs:
           ATLAS_PASS2_PRINT_RUNTIME_DUMP: "1"
         run: bash tests/run_atlas_pass2_runtime_dump.sh
 
+      - name: Validate Atlas Pass 2 extraction contracts
+        run: |
+          python3 tests/test_atlas_pass2_extractor.py
+          python3 tests/test_atlas_pass2_outputs.py
+
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 
