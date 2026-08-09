@@ -2,17 +2,21 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 import tempfile
 from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "tools/atlas/extract_atlas_pass2.py"
+sys.path.insert(0, str(ROOT / "tools/atlas"))
 
 spec = importlib.util.spec_from_file_location("extract_atlas_pass2", MODULE_PATH)
 module = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
 spec.loader.exec_module(module)
+
+import extract_atlas_pass2_negative_space as negative
 
 assert module.EXPECTED_ATLAS_SHA256 == "5b155937b8d05f0f0f9f1a02f10d9afe76a917d6035897695cce739eb8d6b1fd"
 assert module.EXPECTED_SCHEMA_VERSION == "2.6.0"
@@ -81,5 +85,28 @@ with tempfile.TemporaryDirectory() as tmp:
         pass
     else:
         raise AssertionError("pattern_id output column must be rejected")
+
+# Missing roles are not negative-space evidence. Only observations where a
+# role is active somewhere are allowed into that role's denominator.
+assert negative.MIN_ACTIVE_STRUCTURAL_GROUPS == 5
+assert negative.MIN_ABSENCE_FRACTION == 0.90
+empty = {role: set() for role in range(8)}
+assert negative.compute_negative_space_rows({"test": [empty.copy() for _ in range(10)]}) == []
+
+active = []
+for _ in range(5):
+    observation = {role: set() for role in range(8)}
+    observation[0] = {0, 4}
+    active.append(observation)
+missing_role = [{role: set() for role in range(8)} for _ in range(5)]
+negative_rows = negative.compute_negative_space_rows({"test": active + missing_role})
+step_one = [row for row in negative_rows if row["role"] == "Kick" and row["step"] == 1]
+assert len(step_one) == 1
+assert step_one[0]["active_structural_group_count"] == 5
+assert step_one[0]["absence_fraction"] == 1.0
+
+active[0][0].add(1)
+negative_rows = negative.compute_negative_space_rows({"test": active})
+assert not any(row["role"] == "Kick" and row["step"] == 1 for row in negative_rows)
 
 print("Atlas Pass 2 extractor unit contracts: OK")
