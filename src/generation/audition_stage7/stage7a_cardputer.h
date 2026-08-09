@@ -2,6 +2,7 @@
 
 #include "stage7a_session.h"
 #include "../../dsp/miniacid_engine.h"
+#include "../../midi/transport_clock_runtime.h"
 #include "../../ui/ui_common.h"
 
 namespace GroovePuterRhythm {
@@ -35,12 +36,10 @@ inline bool handleCardputerEvent(const UIEvent& event, MiniAcid& engine) {
 
   if (!session.active() && !toggleChord) return false;
 
-  // Global panic and transport remain top-level MiniAcidDisplay owners. In
-  // particular Space must retain SEQTRAK-master handling instead of directly
-  // starting/stopping the internal engine from this temporary page owner.
+  // Global panic remains a top-level owner and is allowed to escape this page.
   const bool panicChord =
       event.alt && event.ctrl && (key == '\b' || key == static_cast<char>(127));
-  if (session.active() && (panicChord || key == ' ')) return false;
+  if (session.active() && panicChord) return false;
 
   SceneManager& scenes = engine.sceneManager();
   DrumPatternSet& drums = scenes.editCurrentDrumPattern();
@@ -65,6 +64,22 @@ inline bool handleCardputerEvent(const UIEvent& event, MiniAcid& engine) {
       return true;
     }
     showCardputerStatus(session);
+    return true;
+  }
+
+  // GenrePage itself owns Space on APPLY, so simply returning false here would
+  // not reliably reach the top-level transport fallback. Reproduce the exact
+  // existing transport contract inside the temporary modal owner, including
+  // SEQTRAK-master refusal.
+  if (key == ' ') {
+    if (GroovePuterMidi::transportClockRuntime().source() ==
+        GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
+      UI::showToast("SEQ MASTER: USE SEQTRAK", 900);
+    } else if (engine.isPlaying()) {
+      engine.stop();
+    } else {
+      engine.start();
+    }
     return true;
   }
 
