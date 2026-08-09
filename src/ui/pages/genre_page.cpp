@@ -16,6 +16,63 @@ constexpr uint8_t kGenreBpm[kGenerativeModeCount] = {
     128, 112, 136, 122, 138, 92, 88, 118, 140,
 };
 
+struct RecipeChoices {
+  const GenreRecipeId* values = nullptr;
+  uint8_t count = 0;
+};
+
+constexpr GenreRecipeId kBaseOnlyRecipes[] = {
+    kBaseRecipeId,
+};
+constexpr GenreRecipeId kAcidRecipes[] = {
+    kBaseRecipeId,
+    6,  // Chicago Jack
+    7,  // Rolling Acid
+};
+constexpr GenreRecipeId kRaveRecipes[] = {
+    kBaseRecipeId,
+    4,  // Psytrance
+};
+constexpr GenreRecipeId kDubRecipes[] = {
+    kBaseRecipeId,
+    5,   // Dub Techno
+    10,  // Deep Chord
+    11,  // Minimal Space
+};
+constexpr GenreRecipeId kBreakRecipes[] = {
+    kBaseRecipeId,
+    1,  // UK Garage
+    2,  // Drum&Bass
+    3,  // Footwork
+    8,  // Classic 2-Step
+    9,  // Dark Skippy
+};
+
+template <size_t N>
+constexpr RecipeChoices recipeChoices(const GenreRecipeId (&values)[N]) {
+  return RecipeChoices{values, static_cast<uint8_t>(N)};
+}
+
+RecipeChoices recipeChoicesForGenre(GenerativeMode genre) {
+  switch (genre) {
+    case GenerativeMode::Acid:
+      return recipeChoices(kAcidRecipes);
+    case GenerativeMode::Rave:
+      return recipeChoices(kRaveRecipes);
+    case GenerativeMode::Reggae:
+      return recipeChoices(kDubRecipes);
+    case GenerativeMode::Broken:
+      return recipeChoices(kBreakRecipes);
+    case GenerativeMode::Outrun:
+    case GenerativeMode::Darksynth:
+    case GenerativeMode::Electro:
+    case GenerativeMode::TripHop:
+    case GenerativeMode::Chip:
+    default:
+      return recipeChoices(kBaseOnlyRecipes);
+  }
+}
+
 int wrapIndex(int value, int count) {
   if (count <= 0) return 0;
   while (value < 0) value += count;
@@ -35,6 +92,22 @@ GenreRecipeId sceneRecipe(const GenreSettings& settings) {
              : kBaseRecipeId;
 }
 
+GenreRecipeId normalizeRecipeForGenre(GenerativeMode genre,
+                                      GenreRecipeId recipe) {
+  const RecipeChoices choices = recipeChoicesForGenre(genre);
+  for (uint8_t index = 0; index < choices.count; ++index) {
+    if (choices.values[index] == recipe) return recipe;
+  }
+  return kBaseRecipeId;
+}
+
+int recipeChoiceIndex(RecipeChoices choices, GenreRecipeId recipe) {
+  for (uint8_t index = 0; index < choices.count; ++index) {
+    if (choices.values[index] == recipe) return static_cast<int>(index);
+  }
+  return 0;
+}
+
 // Compatibility helper retained for the existing source regression. It is a
 // read-only mapping check, not a second MODE control or visible UI address.
 const char* linkStateShort(MiniAcid& mini_acid) {
@@ -43,11 +116,6 @@ const char* linkStateShort(MiniAcid& mini_acid) {
   const GrooveboxMode mapped = GenreCatalog::grooveboxModeForRecipe(
       sceneRecipe(settings), sceneGenerativeMode(settings));
   return mapped == mini_acid.grooveboxMode() ? "GENRE" : "OVERRIDE";
-}
-
-int clampRecipeIndex(int value) {
-  const int count = static_cast<int>(GenreCatalog::recipeCount());
-  return count > 0 ? wrapIndex(value, count) : 0;
 }
 
 const char* yesNo(bool value) {
@@ -98,12 +166,24 @@ void GenrePage::moveFocus(int delta) {
 
 void GenrePage::shiftGenre(int delta) {
   genre_index_ = wrapIndex(genre_index_ + delta, kGenerativeModeCount);
+  recipeIndex_ = static_cast<int>(normalizeRecipeForGenre(
+      static_cast<GenerativeMode>(genre_index_),
+      static_cast<GenreRecipeId>(recipeIndex_)));
 }
 
 void GenrePage::cycleRecipeSelection(int delta) {
-  const int count = static_cast<int>(GenreCatalog::recipeCount());
-  if (count <= 0) return;
-  recipeIndex_ = wrapIndex(recipeIndex_ + delta, count);
+  const auto genre = static_cast<GenerativeMode>(
+      std::clamp(genre_index_, 0, kGenerativeModeCount - 1));
+  const RecipeChoices choices = recipeChoicesForGenre(genre);
+  if (choices.count == 0) {
+    recipeIndex_ = kBaseRecipeId;
+    return;
+  }
+  const GenreRecipeId current = normalizeRecipeForGenre(
+      genre, static_cast<GenreRecipeId>(recipeIndex_));
+  const int currentIndex = recipeChoiceIndex(choices, current);
+  const int nextIndex = wrapIndex(currentIndex + delta, choices.count);
+  recipeIndex_ = static_cast<int>(choices.values[nextIndex]);
 }
 
 void GenrePage::adjustMorph(int delta) {
@@ -128,7 +208,9 @@ void GenrePage::applyCurrent() {
   if (wasPlaying && doRegenerate) mini_acid_.stop();
 
   const auto genre = static_cast<GenerativeMode>(genre_index_);
-  const auto recipe = static_cast<GenreRecipeId>(recipeIndex_);
+  const auto recipe = normalizeRecipeForGenre(
+      genre, static_cast<GenreRecipeId>(recipeIndex_));
+  recipeIndex_ = static_cast<int>(recipe);
   const auto morphTarget =
       morph_amount_ > 0 ? recipe : static_cast<GenreRecipeId>(kBaseRecipeId);
   const GrooveboxMode nextMode =
@@ -138,13 +220,13 @@ void GenrePage::applyCurrent() {
   const bool changed = doRegenerate ||
                        mini_acid_.grooveboxMode() != nextMode ||
                        settings.generativeMode != static_cast<uint8_t>(genre_index_) ||
-                       settings.recipe != static_cast<uint8_t>(recipeIndex_) ||
+                       settings.recipe != static_cast<uint8_t>(recipe) ||
                        settings.morphTarget != static_cast<uint8_t>(morphTarget) ||
                        settings.morphAmount != static_cast<uint8_t>(morph_amount_);
 
   withAudioGuard([&]() {
     settings.generativeMode = static_cast<uint8_t>(genre_index_);
-    settings.recipe = static_cast<uint8_t>(recipeIndex_);
+    settings.recipe = static_cast<uint8_t>(recipe);
     settings.morphTarget = static_cast<uint8_t>(morphTarget);
     settings.morphAmount = static_cast<uint8_t>(morph_amount_);
 
@@ -167,7 +249,7 @@ void GenrePage::applyCurrent() {
       toast, sizeof(toast), "%s / %s: %s",
       GenreCatalog::generativeModeName(
           static_cast<GenerativeMode>(genre_index_)),
-      GenreCatalog::recipeName(static_cast<GenreRecipeId>(recipeIndex_)),
+      GenreCatalog::recipeName(recipe),
       applyModeName());
   UI::showToast(toast, 1600);
 }
@@ -175,8 +257,10 @@ void GenrePage::applyCurrent() {
 void GenrePage::updateFromEngine() {
   const GenreSettings& settings =
       mini_acid_.sceneManager().currentScene().genre;
-  genre_index_ = static_cast<int>(sceneGenerativeMode(settings));
-  recipeIndex_ = clampRecipeIndex(static_cast<int>(sceneRecipe(settings)));
+  const GenerativeMode genre = sceneGenerativeMode(settings);
+  genre_index_ = static_cast<int>(genre);
+  recipeIndex_ = static_cast<int>(normalizeRecipeForGenre(
+      genre, sceneRecipe(settings)));
   morph_amount_ = static_cast<int>(settings.morphAmount);
 }
 
