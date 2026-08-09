@@ -11,8 +11,9 @@ The hardening candidate is frozen while CI and three consecutive reviews run. Th
 - independent provenance-root and content-hash-deduped artifact support;
 - complete 413-pattern bar accounting including the one 5-bar derived composite;
 - aggregate-only rights-safe committed outputs;
-- duplicate/null and candidate dispersion calibration;
-- current realizer self-coverage and non-own grammar confusion calibration;
+- duplicate/null and candidate-dispersion calibration;
+- current realizer self-coverage, within-archetype variation and non-own grammar confusion calibration;
+- runtime calibration is pinned as a generated compact baseline, not only printed in CI;
 - Stage 7 production admission remains closed; Pass 2 emits no ACCEPT.
 
 ## Stage 7A exception
