@@ -418,7 +418,7 @@ docs/architecture/ATLAS_VOCABULARY_EXTRACTION.md
 
 # 13. Stage boundary and revised roadmap
 
-This architecture gate changes the post-Stage-6 order.
+This architecture gate changes the post-Stage-6 order and separates technical readiness from musical admission evidence.
 
 ```text
 Stage 6 core
@@ -428,15 +428,26 @@ Stage 6A
     Generation Composition Model
     authority / decision order / precedence / compatibility / RNG / leakage tests
 
-Stage 6B
-    Atlas Orthogonal Extraction Model + coverage audit
+Stage 6B / Atlas Pass #1
+    Atlas Orthogonal Extraction Model + coverage/candidate audit
+    evidence map only; no new runtime archetype admission
 
 Stage 6.1
-    harden BarEvolution review findings before any production multi-bar caller
+    BarEvolution technical hardening in the separate Stage 6.1 PR (#185)
+    must converge before any production multi-bar caller or Stage 7 expansion
+
+Atlas Pass #2
+    mount/verify the pinned corpus
+    compute normalized topology distance, relationship support,
+    real 2/4-bar deltas and Bass/Motif fingerprints
+    publish novelty distributions + threshold-combination rule
 
 Stage 7
-    Groove Vocabulary expansion from curated Atlas-derived generalized grammars
-    target: approximately 30–40 first, then evidence-gated growth toward 50–70
+    Groove Vocabulary expansion only from Pass #2-admitted generalized grammars
+    first evidence-gated batch: approximately 10–20 additions
+    listening + effective-variation metrics before further growth
+    only then expand toward approximately 30–40
+    later evidence-gated coverage may grow toward 50–70
 
 Stage 8
     VoiceRole runtime + Bass Generator v2
@@ -453,7 +464,7 @@ Stage 11
     weak-genre rehabilitation + new/hybrid genres primarily through data/compatibility
 ```
 
-Stage numbering after 6 is now governed by this document rather than the older provisional roadmap.
+`50–70` is a long-range coverage ceiling, not a quota. Effective musical distinctness is the acceptance metric. A Stage 7 batch that adds labels without increasing normalized structural/phrase diversity fails the gate even if the nominal archetype count grows.
 
 ---
 
