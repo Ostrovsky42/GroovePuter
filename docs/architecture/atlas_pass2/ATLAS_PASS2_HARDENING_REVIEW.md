@@ -1,0 +1,30 @@
+# Atlas Pass 2 Hardening Review Gate
+
+Candidate head is not frozen until CI and three consecutive reviews pass on one unchanged SHA.
+
+## External audit findings addressed
+
+- source-aware/versioned drum role mapping;
+- observation-to-grammar hard feasibility before typicality;
+- protected-space and hard relationship checks in grammar coverage;
+- evidence provenance is not escalated by aggregation;
+- independent provenance-root and content-hash-deduped artifact support;
+- complete 413-pattern bar accounting including the one 5-bar derived composite;
+- aggregate-only rights-safe committed outputs;
+- duplicate/null and candidate dispersion calibration;
+- current realizer self-coverage and non-own grammar confusion calibration;
+- Stage 7 production admission remains closed; Pass 2 emits no ACCEPT.
+
+## Stage 7A exception
+
+After this gate reaches 3/3 CLEAN, a separate temporary listening PR may expose five generalized audition candidates:
+
+1. two `AUDITION_REVIEW` clusters with multi-provenance/content-distinct support;
+2. two single-root boundary challengers;
+3. one single-root control/outlier.
+
+This is a falsification harness only. It does not change production `ReferenceVocabulary` or imply five accepted archetypes.
+
+## Review counter
+
+`0/3` until final CI stabilizes.
