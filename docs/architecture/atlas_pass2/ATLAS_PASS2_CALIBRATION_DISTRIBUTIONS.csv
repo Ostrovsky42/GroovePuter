@@ -1,0 +1,4 @@
+metric,count,min,p05,p25,p50,p75,p90,p95,max
+atlas_duplicate_null_same_source_structural_group,29,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+atlas_within_direction_research_drum_jaccard,5645,0.0,0.231754,0.410526,0.494737,0.586466,0.715789,0.789474,1.0
+atlas_recurring_candidate_internal_drum_jaccard,66,0.0,0.035088,0.133388,0.225877,0.273026,0.32511,0.368421,0.368421
