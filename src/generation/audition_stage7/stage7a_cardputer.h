@@ -22,8 +22,9 @@ inline void showCardputerStatus(const Session& session) {
   UI::showToast(status, 1200);
 }
 
-// Returns true when Stage 7A owns the event. The caller already holds the
-// normal control-plane audio mutation guard used by MiniAcidDisplay events.
+// Hidden audition owner for GENERATE -> GENRE. Activation is Ctrl+Alt+A.
+// While active, Ctrl+1..5/P/[ ]/R are deliberately used instead of Alt
+// commands because Alt+number belongs to global page navigation.
 inline bool handleCardputerEvent(const UIEvent& event, MiniAcid& engine) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
@@ -34,10 +35,11 @@ inline bool handleCardputerEvent(const UIEvent& event, MiniAcid& engine) {
 
   if (!session.active() && !toggleChord) return false;
 
-  // Preserve the existing global transport and emergency project reset owners.
+  // The global panic owner runs before GenrePage. If an equivalent event does
+  // reach this handler, let the existing owner keep it.
   const bool panicChord =
       event.alt && event.ctrl && (key == '\b' || key == static_cast<char>(127));
-  if (session.active() && (panicChord || key == ' ')) return false;
+  if (session.active() && panicChord) return false;
 
   SceneManager& scenes = engine.sceneManager();
   DrumPatternSet& drums = scenes.editCurrentDrumPattern();
@@ -65,9 +67,21 @@ inline bool handleCardputerEvent(const UIEvent& event, MiniAcid& engine) {
     return true;
   }
 
+  // GENRE normally uses Space on one focus row, so while the audition is
+  // modal we preserve transport semantics directly instead of leaking Space
+  // back into the page editor.
+  if (key == ' ') {
+    if (engine.isPlaying()) {
+      engine.stop();
+    } else {
+      engine.start();
+    }
+    return true;
+  }
+
   // Audition is intentionally modal: temporary patterns cannot be navigated
-  // into a Save/project workflow. Only the explicit command set below is live.
-  if (!event.alt || event.ctrl || event.meta) return true;
+  // into a Save/project workflow. Only the explicit Ctrl command set is live.
+  if (!event.ctrl || event.alt || event.meta) return true;
 
   bool handled = true;
   bool ok = false;
