@@ -40,14 +40,6 @@ const BarTrajectory* trajectoryFor(const RhythmCatalogView& catalog,
   return nullptr;
 }
 
-const LaneGrammar* laneFor(const RhythmArchetype& archetype,
-                           RhythmRole role) {
-  for (uint8_t i = 0; i < archetype.laneCount; ++i) {
-    if (archetype.lanes[i].role == role) return &archetype.lanes[i];
-  }
-  return nullptr;
-}
-
 StepMask anchorMask(const LaneGrammar& lane) {
   return static_cast<StepMask>(lane.immutableAnchors |
                                lane.canonicalAnchors);
