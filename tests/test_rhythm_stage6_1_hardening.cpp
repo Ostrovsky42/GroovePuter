@@ -229,6 +229,78 @@ void testBreakActuallyDropsWithinBudget() {
       "Break did not perform its bounded drop");
 }
 
+void requireInvalidMutationPolicy(const MutationBudget& p3,
+                                  const char* message) {
+  RhythmArchetype archetype = kArchetypes[0];
+  archetype.mutation.level[
+      static_cast<uint8_t>(RealizationLevel::P3Transformation)] = p3;
+  const RhythmCatalogView catalog{
+      &archetype,
+      1,
+      kTrajectories,
+      static_cast<uint8_t>(sizeof(kTrajectories) / sizeof(kTrajectories[0]))};
+  const CatalogValidationResult validation = validateRhythmCatalog(catalog);
+  require(validation.error == CatalogValidationError::InvalidMutationPolicy,
+          message);
+}
+
+void testTransformFlagsRequireNonZeroBudget() {
+  MutationBudget reduction{};
+  reduction.flags = AllowReduction;
+  reduction.allowedIntents =
+      transformationIntentBit(TransformationIntent::Reduce);
+  requireInvalidMutationPolicy(
+      reduction,
+      "AllowReduction with maxDrops == 0 must be InvalidMutationPolicy");
+
+  MutationBudget breakBudget{};
+  breakBudget.flags = AllowBreak;
+  breakBudget.allowedIntents =
+      transformationIntentBit(TransformationIntent::Break);
+  requireInvalidMutationPolicy(
+      breakBudget,
+      "AllowBreak with maxDrops == 0 must be InvalidMutationPolicy");
+
+  MutationBudget turnaround{};
+  turnaround.flags = AllowTurnaround;
+  turnaround.allowedIntents =
+      transformationIntentBit(TransformationIntent::Turnaround);
+  requireInvalidMutationPolicy(
+      turnaround,
+      "AllowTurnaround with maxAdds == 0 must be InvalidMutationPolicy");
+}
+
+void requireInvalidFirstBarFunction(BarFunction function,
+                                    const char* message) {
+  BarTrajectory trajectories[] = {
+      kTrajectories[0],
+      kTrajectories[1],
+      kTrajectories[2],
+  };
+  trajectories[0].bars[0] = function;
+  const RhythmCatalogView catalog{
+      kArchetypes,
+      1,
+      trajectories,
+      static_cast<uint8_t>(sizeof(trajectories) / sizeof(trajectories[0]))};
+  const CatalogValidationResult validation = validateRhythmCatalog(catalog);
+  require(validation.error ==
+              CatalogValidationError::InvalidTrajectoryBarFunction,
+          message);
+}
+
+void testFirstBarCopyFunctionsRejectedStatically() {
+  requireInvalidFirstBarFunction(
+      BarFunction::Repeat,
+      "Repeat in bar 0 must fail catalog validation");
+  requireInvalidFirstBarFunction(
+      BarFunction::RepeatWithGhosts,
+      "RepeatWithGhosts in bar 0 must fail catalog validation");
+  requireInvalidFirstBarFunction(
+      BarFunction::Return,
+      "Return in bar 0 must fail catalog validation");
+}
+
 void testMalformedCatalogFailsBeforeLookup() {
   RhythmCatalogView malformed{};
   malformed.archetypeCount = 1;
@@ -265,6 +337,8 @@ int main() {
   testStatementAndResponseAreBaseTopology();
   testReductionActuallyDropsWithinBudget();
   testBreakActuallyDropsWithinBudget();
+  testTransformFlagsRequireNonZeroBudget();
+  testFirstBarCopyFunctionsRejectedStatically();
   testMalformedCatalogFailsBeforeLookup();
   testFixedCapacityFootprintGuard();
   std::puts("Groove Vocabulary Stage 6.1 hardening: OK");
