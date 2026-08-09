@@ -4,6 +4,7 @@
 #include "../../dsp/miniacid_engine.h"
 #include "../../midi/transport_clock_runtime.h"
 #include "../../ui/ui_common.h"
+#include "../../ui/ui_input.h"
 
 namespace GroovePuterRhythm {
 namespace Stage7AAudition {
@@ -24,7 +25,7 @@ inline void showCardputerStatus(const Session& session) {
 }
 
 // Hidden audition owner for GENERATE -> GENRE. Activation is Ctrl+Alt+A.
-// While active, Ctrl+1..5/P/[ ]/R are deliberately used instead of Alt
+// While active, Ctrl+1..5/P/Left/Right/R are deliberately used instead of Alt
 // commands because Alt+number belongs to global page navigation.
 inline bool handleCardputerEvent(const UIEvent& event, MiniAcid& engine) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
@@ -87,6 +88,7 @@ inline bool handleCardputerEvent(const UIEvent& event, MiniAcid& engine) {
   // into a Save/project workflow. Only the explicit Ctrl command set is live.
   if (!event.ctrl || event.alt || event.meta) return true;
 
+  const int nav = UIInput::navCode(event);
   bool handled = true;
   bool ok = false;
   if (key >= '1' && key <= '5') {
@@ -94,9 +96,9 @@ inline bool handleCardputerEvent(const UIEvent& event, MiniAcid& engine) {
         static_cast<uint8_t>(key - '1'), drums, synthA, synthB);
   } else if (key == 'p' || key == 'P') {
     ok = session.cycleLevel(drums, synthA, synthB);
-  } else if (key == '[') {
+  } else if (nav == GROOVEPUTER_LEFT) {
     ok = session.shiftSeed(-1, drums, synthA, synthB);
-  } else if (key == ']') {
+  } else if (nav == GROOVEPUTER_RIGHT) {
     ok = session.shiftSeed(1, drums, synthA, synthB);
   } else if (key == 'r' || key == 'R') {
     ok = session.rerender(drums, synthA, synthB);
