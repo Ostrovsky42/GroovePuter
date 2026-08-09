@@ -23,6 +23,7 @@ class FeelPage : public IPage {
     Swing = 0,
     TimingHumanize,
     VelocityHumanize,
+    PatternLength,
     Preset,
   };
 
