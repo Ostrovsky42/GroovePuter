@@ -5,9 +5,11 @@ ROOT = Path(__file__).resolve().parents[1]
 STAGE = ROOT / "src" / "generation" / "audition_stage7"
 CATALOG = (STAGE / "stage7a_catalog.cpp").read_text(encoding="utf-8")
 SESSION = (STAGE / "stage7a_session.cpp").read_text(encoding="utf-8")
-CARDPUTER = (STAGE / "stage7a_cardputer.h").read_text(encoding="utf-8")
+CARDPUTER_H = (STAGE / "stage7a_cardputer.h").read_text(encoding="utf-8")
+CARDPUTER = (STAGE / "stage7a_cardputer.cpp").read_text(encoding="utf-8")
 GENRE_PAGE = (ROOT / "src" / "ui" / "pages" / "genre_page.cpp").read_text(encoding="utf-8")
 DISPLAY = (ROOT / "src" / "ui" / "miniacid_display.cpp").read_text(encoding="utf-8")
+SDL_MAKEFILE = (ROOT / "platform_sdl" / "Makefile").read_text(encoding="utf-8")
 MAIN_SKETCH = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
 MANIFEST = (ROOT / "docs" / "architecture" / "stage7a" / "ATLAS_PASS2_CURATION_MANIFEST.md").read_text(encoding="utf-8")
 
@@ -24,13 +26,26 @@ require("2f314cac6cc65f5664dc3254ece140bb68fb5390" in MANIFEST,
 require("5b155937b8d05f0f0f9f1a02f10d9afe76a917d6035897695cce739eb8d6b1fd" in MANIFEST,
         "Stage 7A must pin the exact Atlas v2.6 corpus hash")
 
-for source in (CATALOG, SESSION, CARDPUTER):
+for source in (CATALOG, SESSION, CARDPUTER_H, CARDPUTER):
     require("reference_vocabulary" not in source.lower(),
             "temporary Stage 7A runtime must not depend on production ReferenceVocabulary")
     require("PAT_" not in source and "SRC_" not in source,
             "Atlas raw pattern/source identifiers must not enter firmware audition code")
     require("structural_group_id" not in source and "source_locator" not in source,
             "rights-sensitive Atlas lineage must remain offline")
+
+require('#include "stage7a_session.h"' not in CARDPUTER_H and
+        "miniacid_engine.h" not in CARDPUTER_H and
+        "transport_clock_runtime.h" not in CARDPUTER_H and
+        "ui_common.h" not in CARDPUTER_H and
+        "ui_input.h" not in CARDPUTER_H,
+        "Stage 7A Cardputer facade header must stay free of heavy runtime includes")
+require("class CardputerSessionFacade" in CARDPUTER_H and
+        "const CardputerSessionFacade& cardputerSession();" in CARDPUTER_H and
+        "bool handleCardputerEvent(const UIEvent& event, MiniAcid& engine);" in CARDPUTER_H,
+        "Stage 7A Cardputer facade must expose only status + event handling")
+require("stage7a_cardputer.cpp" in SDL_MAKEFILE,
+        "SDL target must link the out-of-line Stage 7A Cardputer facade")
 
 require("RhythmRole::BassRhythm" not in CATALOG,
         "Stage 7A catalog must not introduce BassRhythm")
@@ -101,7 +116,7 @@ require(GENRE_PAGE.index("Stage7AAudition::handleCardputerEvent") < GENRE_PAGE.i
         "Stage 7A activation/local commands must intercept before Genre navigation")
 
 require('#include "src/generation/audition_stage7/stage7a_cardputer.h"' in DISPLAY,
-        "MiniAcidDisplay must include the active Stage 7 audition owner")
+        "MiniAcidDisplay must include the lightweight active Stage 7 audition facade")
 active_dispatch = DISPLAY.index("Stage7AAudition::cardputerSession().active()")
 first_global_shortcut = DISPLAY.index("if (event.meta &&", active_dispatch)
 require("Stage7AAudition::handleCardputerEvent" in DISPLAY[active_dispatch:first_global_shortcut],
