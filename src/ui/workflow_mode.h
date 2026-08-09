@@ -15,8 +15,8 @@ enum class WorkflowMode : uint8_t {
 };
 
 // Existing enum values are preserved for persisted UI-session compatibility.
-// Generation/Texture resolve to FEEL. Legacy standalone synth SOUND pages now
-// resolve to their owning synth track; sound editing is a local Tab hierarchy.
+// Generation/Texture resolve to FEEL. Legacy standalone synth SOUND page ids
+// resolve to their owning synth track; sound editing lives only in local tabs.
 enum class Workspace : uint8_t {
     // PERFORM
     Perform = 0,
@@ -287,10 +287,8 @@ inline Workspace nextWorkspace(Workspace workspace, int direction) {
 }
 
 inline bool allowsPerformanceKeyboard(int page) {
-    // Preserve pre-refactor input ownership: only PERFORM and the legacy
-    // standalone Synth A sound page routed the live performance keyboard.
-    // The new SYNTH A/B track pages must leave their letter keys to the editor.
-    if (page == kSynthAParameters) return true;
+    // Standalone synth SOUND pages are retired; only PERFORM owns the global
+    // performance-keyboard route. Synth letter keys belong to the NOTES editor.
     return normalizeLegacyPage(page) == kPerform;
 }
 }  // namespace WorkflowPages
