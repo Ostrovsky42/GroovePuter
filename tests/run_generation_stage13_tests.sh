@@ -67,6 +67,9 @@ run_suite() {
   build_and_run "${compiler}" \
     "${ROOT_DIR}/tests/test_generation_stage14_hybrid_materialization.cpp" \
     "${BUILD_DIR}/test_generation_stage14_hybrid_${suffix}" migration "$@"
+  build_and_run "${compiler}" \
+    "${ROOT_DIR}/tests/test_generation_stage14_p_level_semantics.cpp" \
+    "${BUILD_DIR}/test_generation_stage14_p_levels_${suffix}" migration "$@"
 }
 
 run_suite gcc "${CXX:-g++}"
