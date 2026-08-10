@@ -20,6 +20,57 @@ StrongRhythmMigrationResult regenerateWithStrongRhythmMigration(
 StrongRhythmMigrationResult regenerateDrumsWithStrongRhythmMigration(
     MiniAcid& engine);
 
+enum class PhraseAuditionStatus : uint8_t {
+  AppliedEvolved = 0,
+  AppliedVariationFallback,
+  SelectionFailed,
+  MaterializationFailed,
+  Count,
+};
+
+struct PhraseAuditionProbe {
+  bool available = false;
+  uint32_t commandDurationUs = 0;
+  uint32_t maxReductionDurationUs = 0;
+  uint32_t maxBreakDurationUs = 0;
+  RhythmArchetypeId maxReductionArchetypeId = kNoArchetypeId;
+  RhythmArchetypeId maxBreakArchetypeId = kNoArchetypeId;
+  uint32_t stackBeforeWords = 0;
+  uint32_t stackAfterWords = 0;
+  uint32_t stackAfterBytes = 0;
+  uint32_t freeInternalBefore = 0;
+  uint32_t freeInternalAfter = 0;
+  uint32_t largestInternalBefore = 0;
+  uint32_t largestInternalAfter = 0;
+};
+
+struct PhraseAuditionResult {
+  PhraseAuditionStatus status = PhraseAuditionStatus::SelectionFailed;
+  StrongRhythmMigrationStatus selectionStatus =
+      StrongRhythmMigrationStatus::Legacy;
+  RhythmArchetypeId archetypeId = kNoArchetypeId;
+  uint8_t requestedBars = 1;
+  uint8_t profileBars = 1;
+  TrajectoryId firstTrajectoryId = kNoTrajectoryId;
+  TrajectoryId secondTrajectoryId = kNoTrajectoryId;
+  PhraseAuditionProbe probe{};
+};
+
+// Explicit Stage 12 audition/probe command. It never replaces normal G.
+//
+// Contract:
+// - reserves Bank B (current page) patterns 1..8 and Song B for audition;
+// - locks one selected rhythm identity across the generated phrase;
+// - uses BarEvolution when that identity is admitted by phraseEvolutionCatalog;
+// - otherwise writes deterministic one-bar strong variations for the requested
+//   1/2/4/8-bar length, so every supported genre remains listenable;
+// - keeps the existing MiniAcid song transport as the only playback owner;
+// - on Cardputer ADV, records stack/internal-heap timing metrics and benchmarks
+//   Reduction/Break across every subtractive Stage 12 identity.
+PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine);
+
+const char* phraseAuditionStatusName(PhraseAuditionStatus status);
+
 }  // namespace GroovePuterRhythm
 
 #endif  // GROOVEPUTER_GENERATION_MIGRATION_STRONG_RHYTHM_LIVE_BRIDGE_H
