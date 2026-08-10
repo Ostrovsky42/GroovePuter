@@ -149,7 +149,7 @@ int main() {
   }
 
   // Root anchor is the feasible selected root pitch-class occurrence nearest
-  // register center; ties resolve downward because the scan is ascending.
+  // register center.
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 1;
@@ -164,6 +164,20 @@ int main() {
     assert(result.status == TonalProjectionStatus::Ok);
     assert(result.rootAnchorMidi == 62);
     assert(result.midiNotes[0] == 62);
+  }
+
+  // Equidistant feasible roots resolve downward deterministically. C48 and C60
+  // are equally distant from midpoint 54 in the inclusive 48..60 corridor.
+  {
+    TonalProjectionRequest request = baseRequest();
+    request.onsetCount = 1;
+    request.minMidi = 48;
+    request.maxMidi = 60;
+    request.tonalOffsets[0] = 0;
+    const auto result = projectTonalIntent(request);
+    assert(result.status == TonalProjectionStatus::Ok);
+    assert(result.rootAnchorMidi == 48);
+    assert(result.midiNotes[0] == 48);
   }
 
   // If the center-nearest root cannot fit the complete intent, choose the
