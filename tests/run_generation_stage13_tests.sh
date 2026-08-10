@@ -20,6 +20,7 @@ COMPOSITION_SOURCES=(
   "${ROOT_DIR}/src/generation/rhythm/reference_vocabulary.cpp"
   "${ROOT_DIR}/src/generation/roles/bass_rhythm.cpp"
   "${ROOT_DIR}/src/generation/roles/chord_rhythm.cpp"
+  "${ROOT_DIR}/src/generation/roles/chord_progression.cpp"
   "${ROOT_DIR}/src/generation/roles/melodic_motif.cpp"
 )
 
