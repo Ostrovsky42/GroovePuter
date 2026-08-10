@@ -1,0 +1,42 @@
+#!/usr/bin/env python3
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+TYPES = (ROOT / "src/generation/rhythm/rhythm_types.h").read_text(encoding="utf-8")
+REALIZER = (ROOT / "src/generation/rhythm/rhythm_realizer.cpp").read_text(encoding="utf-8")
+LIVE_BRIDGE = (ROOT / "src/generation/migration/strong_rhythm_live_bridge.cpp").read_text(encoding="utf-8")
+
+
+def require(text: str, needle: str, message: str) -> None:
+    if needle not in text:
+        raise AssertionError(message)
+
+
+# Stage 14.1 extends the mutation ABI without shifting the legacy aggregate
+# fields. The new budgets must remain appended after allowedIntents.
+legacy_tail = """uint16_t flags = 0;\n  TransformationIntentMask allowedIntents = 0;\n\n  // Independent realization budgets."""
+require(TYPES, legacy_tail, "MutationBudget legacy field order changed")
+require(TYPES, "uint8_t maxSecondaryAdds = 0;", "secondary budget missing")
+require(TYPES, "uint8_t maxGhostAdds = 0;", "ghost budget missing")
+
+# P3 is cumulative over P2 ornaments and both variation classes use independent
+# deterministic salt domains.
+for needle in (
+    "uint8_t secondaryBudgetFor(const MutationBudget& budget)",
+    "uint8_t ghostBudgetFor(const RhythmArchetype& archetype,",
+    "level != RealizationLevel::P3Transformation",
+    "RealizationLevel::P2Variation",
+    "seed ^ 0x53454331u",
+    "seed ^ 0x47484F31u",
+):
+    require(REALIZER, needle, f"Stage 14.1 realizer contract missing: {needle}")
+
+# Stage 14.1 deliberately does not change the production sound path. P-level UI
+# reachability/persistence belongs to Stage 14.2.
+require(
+    LIVE_BRIDGE,
+    "context.level = RealizationLevel::P2Variation;",
+    "Stage 14.1 unexpectedly changed the production P-level baseline",
+)
+
+print("Stage 14.1 P-level source regressions: OK")
