@@ -13,6 +13,23 @@ Production additions:
 
 The production rhythm vocabulary remains **24 identities**. Stage 14 does not promote pending Stage 7A candidates merely to fill a new Genre pool.
 
+### Hardware finding incorporated after `ec22b46`
+
+The first Cardputer ADV audition rejected the previous automated candidate for three concrete reasons:
+
+1. plain `DRUMS -> G` still called the legacy whole-drum randomizer directly, bypassing selected `RHYTHM AUTO/MANUAL` and semantic FEEL materialization;
+2. `FeelSettings::patternBars` was already persisted and consumed as a `1/2/4/8` transport-cycle value, but the FEEL page no longer exposed a control for it;
+3. `Funk/Soul` used the sparse/hybrid semantic palette and deterministic bar coordinate while its empty-bar policy did not admit the same sparse semantic result, allowing a full materialization transaction to fail for some generated combinations.
+
+The corrected contract is:
+
+- plain `DRUMS -> G` performs legacy drum generation as a rollback source, then applies `migrateStrongRhythmDrums()` with the active Genre/Rhythm/FEEL context;
+- `Ctrl+G` remains voice-local legacy randomization and `Alt+G` remains explicit chaos randomization;
+- DRUMS-page generation never regenerates Synth A/B;
+- FEEL exposes `REPEATS = 1/2/4/8 BARS`, backed by the existing `scene.feel.patternBars` field;
+- `REPEATS` is a transport-cycle setting and is **not** Stage 12 phrase evolution;
+- Funk/Soul admits the same bounded sparse semantic-bar policy required by its Stage 14 hybrid profile.
+
 ### Evidence boundary
 
 The following remain `HARDWARE_PENDING` until a repository hardware verdict exists:
@@ -46,13 +63,15 @@ This is not a third synth voice and not simultaneous chord/melody timbre ownersh
 
 `phraseLaw` / `phraseBars` remain transient planning metadata. Stage 14 does **not** claim production 2/4/8-bar BarEvolution execution.
 
-The production bridge deliberately keeps:
+The production rhythm-realization bridge deliberately keeps:
 
 ```cpp
 request.phraseBars = 1;
 ```
 
 until the normative Stage 6.1 physical hardware gate authorizes a production multi-bar caller. A displayed or logged `phraseBars=4/8` is therefore planning information, not proof that four/eight bars were materialized by Stage 12.
+
+The FEEL `REPEATS 1/2/4/8` control is separate: it edits the already-existing transport-cycle value `scene.feel.patternBars` and does not widen Stage 12 ownership.
 
 ### Stage 9 boundary
 
@@ -97,6 +116,20 @@ bash scripts/build_seqtrak_midi_only.sh --warnings all
 ## Hardware audition
 
 Open `GENERATE -> GENRE`.
+
+### Hardware-regression retest: DRUMS G + FEEL
+
+Before the longer musical matrix, verify the exact defects found on the first Cardputer pass:
+
+1. Select a Stage 14 Genre and keep `RHYTHM = AUTO`.
+2. Open `GENERATE -> FEEL` and confirm that `PROFILE` changes among the named timing profiles.
+3. Confirm that the new `REPEATS` row cycles exactly `1 BAR -> 2 BARS -> 4 BARS -> 8 BARS` with Left/Right.
+4. Set `PROFILE = STRAIGHT`, open DRUMS and press plain `G` several times.
+5. Return to FEEL, select a visibly different timing profile such as `LAID BACK` or `PUSH/PULL`, then use plain DRUMS `G` again. The new drum material must use the selected FEEL profile rather than the old legacy-only randomizer path.
+6. Set a named MANUAL RHYTHM and press plain DRUMS `G` across several pattern addresses. The selected rhythm identity must stay fixed while its deterministic realization may vary.
+7. Confirm that plain DRUMS `G` does not change Synth A or Synth B patterns.
+8. Quick-check `Ctrl+G` still randomizes only the selected drum voice and `Alt+G` still performs explicit chaos randomization.
+9. Quick-check `Funk/Soul` with plain `G` over several pattern addresses; generation must never silently fail or produce an all-empty drum pattern.
 
 ### Lo-Fi matrix
 
@@ -144,12 +177,16 @@ Screen:
 - Hip-Hop exposes exactly `BASE`, `Golden Era`, `Dusty Jazz`;
 - RHYTHM AUTO/MANUAL lists only identities already present in the 24-entry production vocabulary;
 - incompatible manual rhythm selection resets to AUTO;
-- the corridor line shows the selected Variant BPM range, not one fixed top-level Lo-Fi BPM.
+- the corridor line shows the selected Variant BPM range, not one fixed top-level Lo-Fi BPM;
+- FEEL exposes an editable `PROFILE` and an editable `REPEATS` row with only `1/2/4/8 BARS`.
 
 Generation:
 
 - HARD_02/HARD_04/HARD_05 do not resolve through `ReferenceVocabulary` or Genre compatibility pools;
 - Lo-Fi AUTO reaches several already-approved production identities across a pattern-address sweep;
+- plain DRUMS `G` uses the active Genre/Rhythm/FEEL context but changes drums only;
+- a failed or unsupported strong drum route retains freshly generated legacy drums instead of clearing the pattern;
+- host coverage sweeps all Stage 14 base directions and Lo-Fi/Hip-Hop variants across 64 pattern addresses and requires `Applied` plus at least one drum hit;
 - Lo-Fi Synth B materializes chord topology first and adds only sparse melodic cells that do not collide with chord onsets/holds;
 - Lo-Fi melodic fill never exceeds three onsets per bar before additional chord blocking;
 - `Minimal Sleep` suggested BPM is 54 and corridor is 42–66;
@@ -160,9 +197,21 @@ Serial:
 
 - no assertion/reset/watchdog loop during generation;
 - no continuously growing audio underrun count during normal audition;
-- Save/reboot/Load retains Genre/Variant and existing RHYTHM AUTO/MANUAL intent.
+- Save/reboot/Load retains Genre/Variant, RHYTHM AUTO/MANUAL intent, FEEL profile and FEEL repeat count.
 
 ## Troubleshooting
+
+### DRUMS G sounds unrelated to selected Genre/Rhythm
+
+Fail the test for plain `G`. Plain `G` is now the whole-pattern generation command and must pass through the strong drum bridge after legacy fallback generation. `Ctrl+G` and `Alt+G` intentionally remain local/chaos editor tools and are not expected to preserve the full relational topology.
+
+### FEEL PROFILE changes on screen but sounds unchanged
+
+PROFILE owns bounded semantic timing for newly materialized material; it does not rewrite note topology in-place. Compare newly generated material with plain DRUMS `G` or GENRE `MATERIALIZE` after changing PROFILE. Swing remains the separate runtime offbeat timing control.
+
+### FEEL REPEATS shows 1/2/4/8 but Stage 12 still materializes one bar
+
+Expected. `REPEATS` is the existing transport-cycle control (`scene.feel.patternBars`). It must not be interpreted as Stage 12 multi-bar phrase generation.
 
 ### Lo-Fi repeats one complete beat
 
@@ -194,6 +243,11 @@ Expected before the Stage 6.1 hardware gate. `phraseBars` is planning metadata; 
 - [ ] Production `ReferenceVocabulary` remains 24 identities.
 - [ ] IDs 701/702/703 are absent from production vocabulary and compatibility routing.
 - [ ] House, Techno, Hip-Hop, Funk/Soul, UK Garage, Drum&Bass, Lo-Fi materialize without legacy fallback.
+- [ ] Stage 14 host sweep materializes every new base/variant profile across 64 addresses without an empty drum result.
+- [ ] Plain DRUMS `G` follows selected Genre/Rhythm/FEEL and leaves Synth A/B untouched.
+- [ ] `Ctrl+G` remains selected-voice randomize; `Alt+G` remains chaos randomize.
+- [ ] FEEL PROFILE affects newly materialized semantic timing.
+- [ ] FEEL REPEATS cycles exactly 1/2/4/8 and persists through Save/reboot/Load.
 - [ ] Latin is not exposed while HARD_05 lacks repository hardware evidence.
 - [ ] Lo-Fi BASE/Classic Chill/Drunken Groove/Lo-Fi House/Minimal Sleep are audibly distinguishable.
 - [ ] Minimal Sleep remains useful below 60 BPM.
