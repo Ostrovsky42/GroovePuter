@@ -215,6 +215,20 @@ void enforceBounds(const BassPitchBehaviorRequest& request,
   }
 }
 
+bool isLegatoConnected(const BassPitchBehaviorPlan& pitchPlan,
+                       uint8_t ordinal) {
+  if (ordinal == 0 || ordinal >= pitchPlan.onsetCount) return false;
+  const uint8_t previous = pitchPlan.onsetSteps[ordinal - 1u];
+  const uint8_t destination = pitchPlan.onsetSteps[ordinal];
+  if (destination <= previous) return false;
+  if (destination == static_cast<uint8_t>(previous + 1u)) return true;
+  for (uint8_t step = static_cast<uint8_t>(previous + 1u);
+       step < destination; ++step) {
+    if ((pitchPlan.continuations & stepBit(step)) == 0) return false;
+  }
+  return true;
+}
+
 void applyArticulation(BassArticulationStyleId articulation,
                        const BassPitchBehaviorPlan& pitchPlan,
                        StepMask& accentOnsets,
@@ -244,13 +258,13 @@ void applyArticulation(BassArticulationStyleId articulation,
     case BassArticulationStyleId::LegatoApproach:
       markAccent(0);
       for (uint8_t ordinal = 1; ordinal < pitchPlan.onsetCount; ++ordinal) {
-        const uint8_t stepGap = static_cast<uint8_t>(
-            pitchPlan.onsetSteps[ordinal] - pitchPlan.onsetSteps[ordinal - 1u]);
         const uint8_t pitchGap = absoluteDifference(
             pitchPlan.degreeOffsets[ordinal],
             pitchPlan.degreeOffsets[ordinal - 1u]);
-        if (stepGap <= 4u && pitchGap > 0u && pitchGap <= 2u)
+        if (isLegatoConnected(pitchPlan, ordinal) &&
+            pitchGap > 0u && pitchGap <= 2u) {
           markSlide(ordinal);
+        }
       }
       break;
     case BassArticulationStyleId::Dynamic:
@@ -261,12 +275,11 @@ void applyArticulation(BassArticulationStyleId articulation,
           markAccent(ordinal);
         }
         if (ordinal == 0) continue;
-        const uint8_t stepGap = static_cast<uint8_t>(
-            step - pitchPlan.onsetSteps[ordinal - 1u]);
         const uint8_t pitchGap = absoluteDifference(
             pitchPlan.degreeOffsets[ordinal],
             pitchPlan.degreeOffsets[ordinal - 1u]);
-        if (stepGap <= 4u && pitchGap == 1u) markSlide(ordinal);
+        if (isLegatoConnected(pitchPlan, ordinal) && pitchGap == 1u)
+          markSlide(ordinal);
       }
       break;
     case BassArticulationStyleId::Auto:
