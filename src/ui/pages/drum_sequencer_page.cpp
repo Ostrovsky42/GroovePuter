@@ -133,11 +133,15 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
   const char lowerKey = key
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(key)))
       : 0;
+  const bool keyG =
+      lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G;
 
   // Whole-pattern G is a generation command, not a local edit. Preserve the
   // legacy pattern as fallback, then apply selected Stage7/14 RHYTHM + FEEL to
-  // drums only. Ctrl+G (one voice) and Alt+G (chaos) stay intentionally legacy.
-  if (lowerKey == 'g' && !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
+  // drums only. Cardputer may report G by scancode with key == 0, so this must
+  // recognize both input representations. Ctrl+G (one voice) and Alt+G (chaos)
+  // stay intentionally legacy.
+  if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
     page->withAudioGuard([&]() {
       GroovePuterRhythm::regenerateDrumsWithStrongRhythmMigration(
           page->mini_acid_);
