@@ -80,6 +80,10 @@ int main() {
     assertExactPitchClassMap(PENTATONIC_MN, kMinorPentatonicMap);
     assertExactPitchClassMap(CHROMATIC, kChromaticMap);
 
+    // Invalid persisted/cast values use the explicit fail-safe rather than
+    // indexing an unrelated scale by arithmetic.
+    assertExactPitchClassMap(static_cast<ScaleType>(255), kMinorMap);
+
     // These three probes specifically fail with the inherited `scale % 7`
     // aliasing: major pentatonic->minor, minor pentatonic->major,
     // chromatic->dorian.
