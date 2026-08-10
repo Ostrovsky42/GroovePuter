@@ -388,12 +388,19 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
         page, kPhraseAuditionBank, bar);
     StrongRhythmMigrationContext context = baseContext;
     context.patternAddress = patternAddress;
+
+    // Bind audition output explicitly to the reserved local slot. This keeps
+    // Stage 5's live current-pattern binding unique to normal production and
+    // makes the destructive Bank B scope auditable in source.
+    DrumPatternSet& auditionDrums = manager.editDrumPatternSet(bar);
+    SynthPattern& auditionSynthA = manager.editSynthPattern(0, bar);
+    SynthPattern& auditionSynthB = manager.editSynthPattern(1, bar);
     const StrongRhythmMigrationResult barResult = migrateStrongRhythmMaterial(
         lockedSettings,
         context,
-        manager.editCurrentDrumPattern(),
-        manager.editCurrentSynthPattern(0),
-        manager.editCurrentSynthPattern(1));
+        auditionDrums,
+        auditionSynthA,
+        auditionSynthB);
     if (barResult.status != StrongRhythmMigrationStatus::Applied) {
       materialized = false;
       break;
@@ -416,7 +423,7 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
         materialized = false;
         break;
       }
-      manager.editCurrentDrumPattern() = evolvedDrums;
+      auditionDrums = evolvedDrums;
     }
   }
 
