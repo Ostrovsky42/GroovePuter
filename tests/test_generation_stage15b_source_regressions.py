@@ -14,6 +14,15 @@ def strip_comments(text: str) -> str:
 
 CODE = strip_comments(TEXT)
 
+# Stage 15B owns semantic scale-degree intent only. A tonal include would make
+# this role layer depend on the downstream absolute-pitch materializer even if
+# none of today's projector type/function names appeared in the source.
+assert re.search(
+    r'^\s*#\s*include\s*[<"][^">]*tonal/',
+    TEXT,
+    flags=re.MULTILINE | re.IGNORECASE,
+) is None, "tonal include ownership leak"
+
 for forbidden in (
     "Scene",
     "PhraseCore",
@@ -42,6 +51,12 @@ for forbidden in (
     "random_device",
 ):
     assert forbidden not in CODE, forbidden
+
+# Keep the ownership rule broader than the current Tonal Projector API names:
+# executable Stage 15B code must not introduce any MIDI-named absolute-pitch
+# field/type/helper. Comments may document the downstream boundary and are
+# intentionally stripped before this check.
+assert re.search(r"\b(?:MIDI|Midi)\w*\b", CODE) is None, "absolute MIDI ownership leak"
 
 assert re.search(r"\bnew\s+[A-Za-z_:]", CODE) is None, "heap new"
 assert re.search(r"\bdelete\s+[A-Za-z_]", CODE) is None, "heap delete"
