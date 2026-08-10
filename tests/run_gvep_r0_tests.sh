@@ -25,6 +25,18 @@ mkdir -p "${BUILD_DIR}"
   -Werror \
   -DGROOVEPUTER_GVEP_R0=1 \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_gvep_r0_bus.cpp" \
+  -o "${BUILD_DIR}/test_gvep_r0_bus"
+
+"${BUILD_DIR}/test_gvep_r0_bus"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -DGROOVEPUTER_GVEP_R0=1 \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_gvep_r0_event_tap.cpp" \
   -o "${BUILD_DIR}/test_gvep_r0_event_tap"
 
