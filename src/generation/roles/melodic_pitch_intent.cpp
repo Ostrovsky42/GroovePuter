@@ -3,6 +3,7 @@
 namespace GroovePuterRhythm {
 namespace {
 
+constexpr uint32_t kRhythmSalt = 0x15B00001u;
 constexpr uint32_t kContourSalt = 0x15B10001u;
 constexpr uint32_t kOperationSalt = 0x15B20002u;
 
@@ -42,6 +43,210 @@ uint8_t collectOnsetSteps(StepMask onsets, uint8_t* destination) {
     destination[count++] = step;
   }
   return count;
+}
+
+uint8_t noteEndStep(uint8_t onsetStep, StepMask continuations) {
+  uint8_t end = onsetStep;
+  for (uint8_t step = static_cast<uint8_t>(onsetStep + 1u);
+       step < kStepsPerBar; ++step) {
+    if ((continuations & stepBit(step)) == 0) break;
+    end = step;
+  }
+  return end;
+}
+
+StepMask spanMask(uint8_t first, uint8_t last) {
+  StepMask mask = 0;
+  for (uint8_t step = first; step <= last && step < kStepsPerBar; ++step)
+    mask = static_cast<StepMask>(mask | stepBit(step));
+  return mask;
+}
+
+void removeNote(uint8_t onsetStep, StepMask& onsets, StepMask& continuations) {
+  const uint8_t end = noteEndStep(onsetStep, continuations);
+  onsets = static_cast<StepMask>(onsets & ~stepBit(onsetStep));
+  for (uint8_t step = static_cast<uint8_t>(onsetStep + 1u);
+       step <= end && step < kStepsPerBar; ++step) {
+    continuations = static_cast<StepMask>(continuations & ~stepBit(step));
+  }
+}
+
+bool moveNote(uint8_t onsetStep, int8_t delta, StepMask allowedSteps,
+              StepMask& onsets, StepMask& continuations) {
+  const uint8_t end = noteEndStep(onsetStep, continuations);
+  const int targetStart = static_cast<int>(onsetStep) + delta;
+  const int targetEnd = static_cast<int>(end) + delta;
+  if (targetStart < 0 || targetEnd >= kStepsPerBar) return false;
+
+  const StepMask oldSpan = spanMask(onsetStep, end);
+  const StepMask newSpan = spanMask(static_cast<uint8_t>(targetStart),
+                                    static_cast<uint8_t>(targetEnd));
+  const StepMask occupied = static_cast<StepMask>(onsets | continuations);
+  const StepMask otherOccupied = static_cast<StepMask>(occupied & ~oldSpan);
+  if ((newSpan & static_cast<StepMask>(~allowedSteps)) != 0) return false;
+  if ((newSpan & otherOccupied) != 0) return false;
+
+  removeNote(onsetStep, onsets, continuations);
+  onsets = static_cast<StepMask>(onsets | stepBit(static_cast<uint8_t>(targetStart)));
+  for (int step = targetStart + 1; step <= targetEnd; ++step) {
+    continuations = static_cast<StepMask>(
+        continuations | stepBit(static_cast<uint8_t>(step)));
+  }
+  return true;
+}
+
+MelodicRhythmOperationId selectRhythmOperation(
+    const MelodicPitchIntentRequest& request, uint8_t onsetCount) {
+  if (request.requestedRhythmOperation != MelodicRhythmOperationId::Auto)
+    return request.requestedRhythmOperation;
+  if (onsetCount == 0) return MelodicRhythmOperationId::Preserve;
+
+  MelodicRhythmOperationId candidates[5]{};
+  uint8_t count = 0;
+  switch (request.family) {
+    case RhythmFamily::DubPulse:
+    case RhythmFamily::SparsePulse:
+      candidates[count++] = MelodicRhythmOperationId::Preserve;
+      candidates[count++] = MelodicRhythmOperationId::ControlledRest;
+      candidates[count++] = MelodicRhythmOperationId::ShiftInteriorLater;
+      break;
+    case RhythmFamily::HipHopBackbeat:
+      candidates[count++] = MelodicRhythmOperationId::Preserve;
+      candidates[count++] = MelodicRhythmOperationId::ControlledRest;
+      candidates[count++] = MelodicRhythmOperationId::ShiftInteriorEarlier;
+      candidates[count++] = MelodicRhythmOperationId::ShiftInteriorLater;
+      candidates[count++] = MelodicRhythmOperationId::TerminalEcho;
+      break;
+    case RhythmFamily::Breakbeat:
+    case RhythmFamily::UkTwoStep:
+    case RhythmFamily::Funk16:
+    case RhythmFamily::MachineSyncopation:
+      candidates[count++] = MelodicRhythmOperationId::Preserve;
+      candidates[count++] = MelodicRhythmOperationId::ShiftInteriorEarlier;
+      candidates[count++] = MelodicRhythmOperationId::ShiftInteriorLater;
+      candidates[count++] = MelodicRhythmOperationId::TerminalEcho;
+      break;
+    case RhythmFamily::FourFloor:
+      candidates[count++] = MelodicRhythmOperationId::Preserve;
+      candidates[count++] = MelodicRhythmOperationId::ControlledRest;
+      candidates[count++] = MelodicRhythmOperationId::ShiftInteriorLater;
+      candidates[count++] = MelodicRhythmOperationId::TerminalEcho;
+      break;
+    case RhythmFamily::Count:
+      return MelodicRhythmOperationId::Preserve;
+  }
+
+  const uint32_t seed = deriveGenerationSeed(
+      request.generation, request.archetypeId,
+      GenerationDomain::MelodicRhythmSelection,
+      kRhythmSalt ^ static_cast<uint32_t>(request.family));
+  return candidates[deterministicValue(seed, request.barOrdinal) % count];
+}
+
+bool applyControlledRest(const MelodicPitchIntentRequest& request,
+                         StepMask& onsets, StepMask& continuations) {
+  uint8_t onsetSteps[kStepsPerBar]{};
+  const uint8_t count = collectOnsetSteps(onsets, onsetSteps);
+  if (count == 0) return false;
+  if (count == 1 && !request.allowEmptyBar) return false;
+
+  const uint32_t seed = deriveGenerationSeed(
+      request.generation, request.archetypeId,
+      GenerationDomain::MelodicRhythmSelection, kRhythmSalt ^ 0x31u);
+  const uint8_t firstCandidate = count > 1 ? 1u : 0u;
+  const uint8_t candidateCount = static_cast<uint8_t>(count - firstCandidate);
+  const uint8_t ordinal = static_cast<uint8_t>(
+      firstCandidate +
+      deterministicValue(seed, request.barOrdinal) % candidateCount);
+  removeNote(onsetSteps[ordinal], onsets, continuations);
+  return true;
+}
+
+bool applyInteriorShift(const MelodicPitchIntentRequest& request,
+                        int8_t delta,
+                        StepMask& onsets, StepMask& continuations) {
+  uint8_t onsetSteps[kStepsPerBar]{};
+  const uint8_t count = collectOnsetSteps(onsets, onsetSteps);
+  if (count <= 1) return false;
+
+  const uint32_t seed = deriveGenerationSeed(
+      request.generation, request.archetypeId,
+      GenerationDomain::MelodicRhythmSelection,
+      kRhythmSalt ^ (delta < 0 ? 0x41u : 0x42u));
+  const uint8_t mutableCount = static_cast<uint8_t>(count - 1u);
+  const uint8_t start = static_cast<uint8_t>(
+      deterministicValue(seed, request.barOrdinal) % mutableCount);
+  for (uint8_t attempt = 0; attempt < mutableCount; ++attempt) {
+    const uint8_t ordinal = static_cast<uint8_t>(
+        1u + ((start + attempt) % mutableCount));
+    StepMask candidateOnsets = onsets;
+    StepMask candidateContinuations = continuations;
+    if (!moveNote(onsetSteps[ordinal], delta, request.allowedSteps,
+                  candidateOnsets, candidateContinuations)) {
+      continue;
+    }
+    onsets = candidateOnsets;
+    continuations = candidateContinuations;
+    return true;
+  }
+  return false;
+}
+
+bool applyTerminalEcho(const MelodicPitchIntentRequest& request,
+                       StepMask& onsets) {
+  uint8_t onsetSteps[kStepsPerBar]{};
+  const uint8_t count = collectOnsetSteps(onsets, onsetSteps);
+  if (count == 0 || count >= request.maxOnsets) return false;
+
+  constexpr int8_t offsets[] = {2, -2, 3, -3, 1, -1};
+  const uint32_t seed = deriveGenerationSeed(
+      request.generation, request.archetypeId,
+      GenerationDomain::MelodicRhythmSelection, kRhythmSalt ^ 0x51u);
+  const uint8_t rotation = static_cast<uint8_t>(
+      deterministicValue(seed, request.barOrdinal) %
+      (sizeof(offsets) / sizeof(offsets[0])));
+  const uint8_t terminal = onsetSteps[count - 1u];
+  for (uint8_t attempt = 0;
+       attempt < static_cast<uint8_t>(sizeof(offsets) / sizeof(offsets[0]));
+       ++attempt) {
+    const int8_t offset = offsets[(rotation + attempt) %
+                                  (sizeof(offsets) / sizeof(offsets[0]))];
+    const int target = static_cast<int>(terminal) + offset;
+    if (target < 0 || target >= kStepsPerBar) continue;
+    const StepMask bit = stepBit(static_cast<uint8_t>(target));
+    if ((request.allowedSteps & bit) == 0 || (onsets & bit) != 0) continue;
+    onsets = static_cast<StepMask>(onsets | bit);
+    return true;
+  }
+  return false;
+}
+
+MelodicRhythmOperationId applyRhythmOperation(
+    const MelodicPitchIntentRequest& request,
+    MelodicRhythmOperationId requested,
+    StepMask& onsets,
+    StepMask& continuations) {
+  bool applied = false;
+  switch (requested) {
+    case MelodicRhythmOperationId::Preserve:
+      return MelodicRhythmOperationId::Preserve;
+    case MelodicRhythmOperationId::ControlledRest:
+      applied = applyControlledRest(request, onsets, continuations);
+      break;
+    case MelodicRhythmOperationId::ShiftInteriorEarlier:
+      applied = applyInteriorShift(request, -1, onsets, continuations);
+      break;
+    case MelodicRhythmOperationId::ShiftInteriorLater:
+      applied = applyInteriorShift(request, 1, onsets, continuations);
+      break;
+    case MelodicRhythmOperationId::TerminalEcho:
+      applied = applyTerminalEcho(request, onsets);
+      break;
+    case MelodicRhythmOperationId::Auto:
+    case MelodicRhythmOperationId::Count:
+      break;
+  }
+  return applied ? requested : MelodicRhythmOperationId::Preserve;
 }
 
 MelodicContourId selectContour(const MelodicPitchIntentRequest& request,
@@ -210,7 +415,8 @@ void applyOperation(const MelodicPitchIntentRequest& request,
       const uint32_t seed = deriveGenerationSeed(
           request.generation, request.archetypeId,
           GenerationDomain::MotifSelection, kOperationSalt ^ 0xA5u);
-      const int8_t delta = (deterministicValue(seed, request.barOrdinal) & 1u) != 0u ? 1 : -1;
+      const int8_t delta =
+          (deterministicValue(seed, request.barOrdinal) & 1u) != 0u ? 1 : -1;
       values[count - 1u] = static_cast<int8_t>(values[count - 1u] + delta);
       break;
     }
@@ -251,22 +457,36 @@ void enforceBounds(const MelodicPitchIntentRequest& request,
 }
 
 bool validRequest(const MelodicPitchIntentRequest& request) {
+  const StepMask inputOccupied = static_cast<StepMask>(
+      request.rhythmPlan.onsets | request.rhythmPlan.continuations);
   if (request.archetypeId == kNoArchetypeId ||
       static_cast<uint8_t>(request.family) >=
           static_cast<uint8_t>(RhythmFamily::Count) ||
+      !isValidMelodicRhythmOperationId(request.requestedRhythmOperation) ||
       !isValidMelodicContourId(request.requestedContour) ||
       !isValidMelodicMotifOperationId(request.requestedOperation) ||
       request.minDegreeOffset > 0 || request.maxDegreeOffset < 0 ||
       request.minDegreeOffset > request.maxDegreeOffset ||
       request.maxOnsets > kStepsPerBar ||
+      (inputOccupied & static_cast<StepMask>(~request.allowedSteps)) != 0 ||
       !validContinuationTopology(request.rhythmPlan.onsets,
                                  request.rhythmPlan.continuations)) {
     return false;
   }
-  return true;
+  uint8_t onsetSteps[kStepsPerBar]{};
+  return collectOnsetSteps(request.rhythmPlan.onsets, onsetSteps) <=
+         request.maxOnsets;
 }
 
 }  // namespace
+
+bool isValidMelodicRhythmOperationId(MelodicRhythmOperationId id,
+                                     bool allowAuto) {
+  const uint8_t value = static_cast<uint8_t>(id);
+  if (value >= static_cast<uint8_t>(MelodicRhythmOperationId::Count))
+    return false;
+  return allowAuto || id != MelodicRhythmOperationId::Auto;
+}
 
 bool isValidMelodicContourId(MelodicContourId id, bool allowAuto) {
   const uint8_t value = static_cast<uint8_t>(id);
@@ -287,12 +507,28 @@ MelodicPitchIntentResult realizeMelodicPitchIntent(
   MelodicPitchIntentResult result{};
   if (!validRequest(request)) return result;
 
-  result.plan.onsets = request.rhythmPlan.onsets;
-  result.plan.continuations = request.rhythmPlan.continuations;
-  result.plan.onsetCount = collectOnsetSteps(
-      request.rhythmPlan.onsets, result.plan.onsetSteps);
+  StepMask onsets = request.rhythmPlan.onsets;
+  StepMask continuations = request.rhythmPlan.continuations;
+  uint8_t onsetSteps[kStepsPerBar]{};
+  const uint8_t inputOnsetCount = collectOnsetSteps(onsets, onsetSteps);
+  const MelodicRhythmOperationId requestedRhythmOperation =
+      selectRhythmOperation(request, inputOnsetCount);
+  if (!isValidMelodicRhythmOperationId(requestedRhythmOperation, false))
+    return result;
+
+  result.plan.rhythmOperation = applyRhythmOperation(
+      request, requestedRhythmOperation, onsets, continuations);
+  if (!validContinuationTopology(onsets, continuations)) return result;
+  const StepMask outputOccupied = static_cast<StepMask>(onsets | continuations);
+  if ((outputOccupied & static_cast<StepMask>(~request.allowedSteps)) != 0)
+    return result;
+
+  result.plan.onsets = onsets;
+  result.plan.continuations = continuations;
+  result.plan.onsetCount = collectOnsetSteps(onsets, result.plan.onsetSteps);
   if (result.plan.onsetCount > request.maxOnsets) return result;
   if (result.plan.onsetCount == 0) {
+    if (!request.allowEmptyBar && inputOnsetCount != 0) return result;
     result.plan.contour = MelodicContourId::Static;
     result.plan.operation = MelodicMotifOperationId::None;
     result.status = MelodicPitchIntentStatus::ValidButEmpty;
@@ -317,6 +553,19 @@ MelodicPitchIntentResult realizeMelodicPitchIntent(
   enforceBounds(request, result.plan.onsetCount, result.plan.degreeOffsets);
   result.status = MelodicPitchIntentStatus::Ok;
   return result;
+}
+
+const char* melodicRhythmOperationName(MelodicRhythmOperationId id) {
+  switch (id) {
+    case MelodicRhythmOperationId::Auto: return "AUTO";
+    case MelodicRhythmOperationId::Preserve: return "PRESERVE";
+    case MelodicRhythmOperationId::ControlledRest: return "CONTROLLED REST";
+    case MelodicRhythmOperationId::ShiftInteriorEarlier: return "SHIFT EARLIER";
+    case MelodicRhythmOperationId::ShiftInteriorLater: return "SHIFT LATER";
+    case MelodicRhythmOperationId::TerminalEcho: return "TERMINAL ECHO";
+    case MelodicRhythmOperationId::Count: break;
+  }
+  return "INVALID";
 }
 
 const char* melodicContourName(MelodicContourId id) {
