@@ -12,10 +12,13 @@ namespace {
 constexpr RhythmArchetypeId kStage12Ids[] = {
     404, 413, 414, 415, 416, 417, 418, 420, 712, 714,
 };
+constexpr RhythmArchetypeId kSubtractiveStage12Ids[] = {
+    404, 413, 414, 415, 417, 418, 420, 712, 714,
+};
 constexpr RhythmArchetypeId kProtectedOneBarIds[] = {
     401, 402, 403, 405, 406, 711,
 };
-constexpr RhythmArchetypeId kSubtractiveProbeIds[] = {413, 417};
+constexpr RhythmArchetypeId kHalftimeSwitchId = 416;
 
 bool contains(const RhythmArchetypeId* ids,
               uint8_t count,
@@ -30,6 +33,13 @@ bool isStage12Id(RhythmArchetypeId id) {
   return contains(kStage12Ids,
                   static_cast<uint8_t>(sizeof(kStage12Ids) /
                                        sizeof(kStage12Ids[0])),
+                  id);
+}
+
+bool isSubtractiveStage12Id(RhythmArchetypeId id) {
+  return contains(kSubtractiveStage12Ids,
+                  static_cast<uint8_t>(sizeof(kSubtractiveStage12Ids) /
+                                       sizeof(kSubtractiveStage12Ids[0])),
                   id);
 }
 
@@ -59,6 +69,28 @@ uint16_t onsetCount(const RhythmBarPlan& bar) {
         bar.roles[role].ghosts));
   }
   return count;
+}
+
+bool barTopologyDiffers(const RhythmBarPlan& left,
+                        const RhythmBarPlan& right) {
+  for (uint8_t role = 0; role < kRhythmRoleCount; ++role) {
+    if (left.roles[role].structural != right.roles[role].structural ||
+        left.roles[role].secondary != right.roles[role].secondary ||
+        left.roles[role].ghosts != right.roles[role].ghosts) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool segmentTopologyDiffers(const PhraseEvolutionResult& phrase) {
+  assert(phrase.barCount == 8);
+  for (uint8_t bar = 0; bar < 4; ++bar) {
+    if (barTopologyDiffers(phrase.bars[bar], phrase.bars[bar + 4])) {
+      return true;
+    }
+  }
+  return false;
 }
 
 GenerationContext generationFor(RhythmArchetypeId id) {
@@ -104,7 +136,8 @@ void testProductionCatalogUntouched() {
 }
 
 void testCandidateCatalogContracts() {
-  const RhythmCatalogView& catalog = ReferenceVocabulary::phraseEvolutionCatalog();
+  const RhythmCatalogView& catalog =
+      ReferenceVocabulary::phraseEvolutionCatalog();
   assert(validateRhythmCatalog(catalog));
   assert(catalog.archetypeCount == ReferenceVocabulary::definitionCount());
   assert(catalog.trajectoryCount == 7);
@@ -120,20 +153,37 @@ void testCandidateCatalogContracts() {
     const RhythmArchetype& archetype = catalog.archetypes[index];
     if (isStage12Id(archetype.id)) {
       assert(archetype.allowedPhraseBars == multiBarMask);
-      assert(archetype.trajectoryCount == 7);
+
       const MutationBudget& p2 = archetype.mutation.level[
           static_cast<uint8_t>(RealizationLevel::P2Variation)];
-      assert(p2.maxDrops == 1);
-      assert((p2.flags & AllowReduction) != 0);
-      assert((p2.flags & AllowBreak) == 0);
-      assert(p2.allowedIntents ==
-             transformationIntentBit(TransformationIntent::Reduce));
       const MutationBudget& p3 = archetype.mutation.level[
           static_cast<uint8_t>(RealizationLevel::P3Transformation)];
-      assert(p3.maxDrops == 3);
-      assert((p3.flags & AllowReduction) != 0);
-      assert((p3.flags & AllowTurnaround) != 0);
-      assert((p3.flags & AllowBreak) != 0);
+
+      if (isSubtractiveStage12Id(archetype.id)) {
+        assert(archetype.trajectoryCount == 7);
+        assert(p2.maxDrops == 1);
+        assert((p2.flags & AllowReduction) != 0);
+        assert((p2.flags & AllowBreak) == 0);
+        assert(p2.allowedIntents ==
+               transformationIntentBit(TransformationIntent::Reduce));
+        assert(p3.maxDrops == 3);
+        assert((p3.flags & AllowReduction) != 0);
+        assert((p3.flags & AllowTurnaround) != 0);
+        assert((p3.flags & AllowBreak) != 0);
+      } else {
+        assert(archetype.id == kHalftimeSwitchId);
+        assert(archetype.trajectoryCount == 5);
+        assert(p2.maxDrops == 0);
+        assert((p2.flags & AllowReduction) == 0);
+        assert((p2.flags & AllowBreak) == 0);
+        assert(p2.allowedIntents == 0);
+        assert(p3.maxDrops == 0);
+        assert((p3.flags & AllowReduction) == 0);
+        assert((p3.flags & AllowBreak) == 0);
+        assert((p3.flags & AllowTurnaround) != 0);
+        assert(p3.allowedIntents ==
+               transformationIntentBit(TransformationIntent::Turnaround));
+      }
     } else {
       assert(archetype.allowedPhraseBars == phraseBarsBit(1));
       assert(archetype.trajectoryCount == 1);
@@ -151,13 +201,16 @@ void testCandidateCatalogContracts() {
     assert(archetype != nullptr);
     assert(archetype->allowedPhraseBars == phraseBarsBit(1));
   }
+
   const RhythmArchetype* shuffled = archetypeForId(catalog, 419);
   assert(shuffled != nullptr);
   assert(shuffled->allowedPhraseBars == phraseBarsBit(1));
 }
 
 void testTwoFourEightBarReachability() {
-  const RhythmCatalogView& catalog = ReferenceVocabulary::phraseEvolutionCatalog();
+  const RhythmCatalogView& catalog =
+      ReferenceVocabulary::phraseEvolutionCatalog();
+
   for (RhythmArchetypeId id : kStage12Ids) {
     const PhraseEvolutionResult two = evolveMultiBarPhrase(phraseRequest(
         catalog, id, 2, RealizationLevel::P1Canonical, 2));
@@ -165,31 +218,53 @@ void testTwoFourEightBarReachability() {
     assert(two.barCount == 2 && two.segmentCount == 1);
     assert(two.bars[1].function == BarFunction::Repeat);
 
+    const TrajectoryId fourTrajectory =
+        isSubtractiveStage12Id(id) ? 6 : 5;
+    const RealizationLevel fourLevel =
+        isSubtractiveStage12Id(id)
+            ? RealizationLevel::P2Variation
+            : RealizationLevel::P1Canonical;
     const PhraseEvolutionResult four = evolveMultiBarPhrase(phraseRequest(
-        catalog, id, 4, RealizationLevel::P2Variation, 6));
+        catalog, id, 4, fourLevel, fourTrajectory));
     assert(four.status == PhraseEvolutionStatus::Ok);
     assert(four.barCount == 4 && four.segmentCount == 1);
-    assert(four.bars[2].function == BarFunction::Reduction);
+    assert(four.bars[2].function ==
+           (isSubtractiveStage12Id(id)
+                ? BarFunction::Reduction
+                : BarFunction::Repeat));
 
+    const TrajectoryId eightTrajectory =
+        isSubtractiveStage12Id(id) ? 8 : 7;
     const PhraseEvolutionResult eight = evolveMultiBarPhrase(phraseRequest(
-        catalog, id, 8, RealizationLevel::P3Transformation, 8));
+        catalog,
+        id,
+        8,
+        RealizationLevel::P3Transformation,
+        eightTrajectory));
     assert(eight.status == PhraseEvolutionStatus::Ok);
     assert(eight.barCount == 8 && eight.segmentCount == 2);
-    assert(eight.segmentTrajectories[0] == 8);
-    assert(eight.segmentTrajectories[1] == 8);
-    assert(eight.bars[2].function == BarFunction::Break);
-    assert(eight.bars[6].function == BarFunction::Break);
+    assert(eight.segmentTrajectories[0] == eightTrajectory);
+    assert(eight.segmentTrajectories[1] == eightTrajectory);
+    assert(eight.bars[2].function ==
+           (isSubtractiveStage12Id(id)
+                ? BarFunction::Break
+                : BarFunction::RepeatWithGhosts));
+    assert(eight.bars[6].function == eight.bars[2].function);
     assert(eight.variationHistoryMask != 0);
+    assert(segmentTopologyDiffers(eight));
   }
 }
 
-void testSubtractiveTransformsRemoveMaterial() {
-  const RhythmCatalogView& catalog = ReferenceVocabulary::phraseEvolutionCatalog();
-  for (RhythmArchetypeId id : kSubtractiveProbeIds) {
+void testEveryAdvertisedSubtractiveTransformRemovesMaterial() {
+  const RhythmCatalogView& catalog =
+      ReferenceVocabulary::phraseEvolutionCatalog();
+
+  for (RhythmArchetypeId id : kSubtractiveStage12Ids) {
     const RhythmRealizationResult p2Base = baseRealization(
         catalog, id, RealizationLevel::P2Variation);
     assert(p2Base.status == RealizationStatus::Ok ||
            p2Base.status == RealizationStatus::ValidButSparse);
+
     const PhraseEvolutionResult reduction = evolveMultiBarPhrase(phraseRequest(
         catalog, id, 4, RealizationLevel::P2Variation, 6));
     assert(reduction.status == PhraseEvolutionStatus::Ok);
@@ -199,6 +274,7 @@ void testSubtractiveTransformsRemoveMaterial() {
         catalog, id, RealizationLevel::P3Transformation);
     assert(p3Base.status == RealizationStatus::Ok ||
            p3Base.status == RealizationStatus::ValidButSparse);
+
     const PhraseEvolutionResult broken = evolveMultiBarPhrase(phraseRequest(
         catalog, id, 4, RealizationLevel::P3Transformation, 8));
     assert(broken.status == PhraseEvolutionStatus::Ok);
@@ -206,8 +282,49 @@ void testSubtractiveTransformsRemoveMaterial() {
   }
 }
 
+void testHalftimeSwitchRejectsInertSubtractiveTrajectories() {
+  const RhythmCatalogView& catalog =
+      ReferenceVocabulary::phraseEvolutionCatalog();
+
+  const PhraseEvolutionResult reduction = evolveMultiBarPhrase(phraseRequest(
+      catalog,
+      kHalftimeSwitchId,
+      4,
+      RealizationLevel::P2Variation,
+      6));
+  assert(reduction.status == PhraseEvolutionStatus::CoreEvolutionFailed);
+  assert(reduction.coreStatus == BarEvolutionStatus::NoEligibleTrajectory);
+
+  const PhraseEvolutionResult broken = evolveMultiBarPhrase(phraseRequest(
+      catalog,
+      kHalftimeSwitchId,
+      4,
+      RealizationLevel::P3Transformation,
+      8));
+  assert(broken.status == PhraseEvolutionStatus::CoreEvolutionFailed);
+  assert(broken.coreStatus == BarEvolutionStatus::NoEligibleTrajectory);
+
+  const PhraseEvolutionResult response = evolveMultiBarPhrase(phraseRequest(
+      catalog,
+      kHalftimeSwitchId,
+      4,
+      RealizationLevel::P1Canonical,
+      5));
+  assert(response.status == PhraseEvolutionStatus::Ok);
+
+  const PhraseEvolutionResult build = evolveMultiBarPhrase(phraseRequest(
+      catalog,
+      kHalftimeSwitchId,
+      4,
+      RealizationLevel::P3Transformation,
+      7));
+  assert(build.status == PhraseEvolutionStatus::Ok);
+}
+
 void testCapabilityApi() {
-  for (uint8_t index = 0; index < ReferenceVocabulary::definitionCount(); ++index) {
+  for (uint8_t index = 0;
+       index < ReferenceVocabulary::definitionCount();
+       ++index) {
     const ReferenceVocabulary::Definition& definition =
         ReferenceVocabulary::definition(index);
     assert(ReferenceVocabulary::phraseEvolutionEnabled(definition.key) ==
@@ -221,7 +338,8 @@ int main() {
   testProductionCatalogUntouched();
   testCandidateCatalogContracts();
   testTwoFourEightBarReachability();
-  testSubtractiveTransformsRemoveMaterial();
+  testEveryAdvertisedSubtractiveTransformRemovesMaterial();
+  testHalftimeSwitchRejectsInertSubtractiveTrajectories();
   testCapabilityApi();
   return 0;
 }
