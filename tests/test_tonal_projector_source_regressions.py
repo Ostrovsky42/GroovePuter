@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 HEADER = (ROOT / "src/generation/tonal/tonal_projector.h").read_text()
 SOURCE = (ROOT / "src/generation/tonal/tonal_projector.cpp").read_text()
+SCENES = (ROOT / "scenes.h").read_text()
 TEXT = HEADER + "\n" + SOURCE
 
 
@@ -13,9 +14,55 @@ def strip_comments(text: str) -> str:
 
 
 CODE = strip_comments(TEXT)
+SCENES_CODE = strip_comments(SCENES)
 
-# Shared transient materialization adapter only. It may consume ScaleType but
-# must not become a Genre/policy/rhythm/voice/persistence owner.
+# Pin the exact existing global ScaleType ABI without importing the heavyweight
+# Scene header into the projector C++ API and without defining a second enum.
+match = re.search(r"enum\s+ScaleType\s*\{([^}]*)\};", SCENES_CODE, re.DOTALL)
+assert match is not None, "ScaleType enum must remain discoverable"
+entries = []
+for raw_entry in match.group(1).split(","):
+    entry = raw_entry.strip()
+    if not entry:
+        continue
+    entries.append(entry.split("=", 1)[0].strip())
+assert entries == [
+    "MINOR",
+    "MAJOR",
+    "DORIAN",
+    "PHRYGIAN",
+    "LYDIAN",
+    "MIXOLYDIAN",
+    "LOCRIAN",
+    "PENTATONIC_MJ",
+    "PENTATONIC_MN",
+    "CHROMATIC",
+], entries
+
+assert '#include "scenes.h"' not in HEADER
+assert "enum ScaleType" not in HEADER
+assert "enum class ScaleType" not in HEADER
+assert "using ScaleTypeValue = uint8_t" in HEADER
+assert "kDefaultScaleTypeValue = 2u" in HEADER
+assert "ScaleTypeValue scaleTypeValue = kDefaultScaleTypeValue" in HEADER
+
+for expected in (
+    "constexpr ScaleTypeValue kScaleMinor = 0;",
+    "constexpr ScaleTypeValue kScaleMajor = 1;",
+    "constexpr ScaleTypeValue kScaleDorian = 2;",
+    "constexpr ScaleTypeValue kScalePhrygian = 3;",
+    "constexpr ScaleTypeValue kScaleLydian = 4;",
+    "constexpr ScaleTypeValue kScaleMixolydian = 5;",
+    "constexpr ScaleTypeValue kScaleLocrian = 6;",
+    "constexpr ScaleTypeValue kScalePentatonicMajor = 7;",
+    "constexpr ScaleTypeValue kScalePentatonicMinor = 8;",
+    "constexpr ScaleTypeValue kScaleChromatic = 9;",
+):
+    assert expected in SOURCE, expected
+
+# Shared transient materialization adapter only. It consumes the compact
+# ScaleType ABI value but must not become a Genre/policy/rhythm/voice/persistence
+# owner.
 for forbidden in (
     "GenreSettings",
     "GenreManager",
@@ -36,7 +83,6 @@ for forbidden in (
 ):
     assert forbidden not in CODE, forbidden
 
-assert "ScaleType scale = DORIAN" in HEADER
 assert "int8_t tonalOffsets[kStepsPerBar]" in HEADER
 assert "uint16_t semitoneOffsetOrdinals = 0" in HEADER
 assert "uint8_t rootPitchClass = 0" in HEADER
@@ -49,9 +95,9 @@ assert "TonalProjectionStatus::LeapExceeded" in SOURCE
 
 # Real scale cardinality must remain 5 / 7 / 12; do not reintroduce modulo-7
 # handling for pentatonic/chromatic modes.
-assert "case PENTATONIC_MJ: return {kMajorPentatonic, 5};" in SOURCE
-assert "case PENTATONIC_MN: return {kMinorPentatonic, 5};" in SOURCE
-assert "case CHROMATIC: return {kChromatic, 12};" in SOURCE
+assert "case kScalePentatonicMajor: return {kMajorPentatonic, 5};" in SOURCE
+assert "case kScalePentatonicMinor: return {kMinorPentatonic, 5};" in SOURCE
+assert "case kScaleChromatic: return {kChromatic, 12};" in SOURCE
 assert "scale % 7" not in CODE
 assert "% 7" not in CODE
 assert "AdvancedPatternGenerator" not in CODE
