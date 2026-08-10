@@ -107,8 +107,10 @@ require("return StrongRhythmRoute::DubTechno" in MIGRATION,
         "Dub Techno stab compatibility route is not explicit")
 require("return StrongRhythmRoute::DeepChord" in MIGRATION,
         "Deep Chord stab compatibility route is not explicit")
-require(MIGRATION.count("projectLegacyPitchPattern(") == 2,
-        "Stage 9/10 must project both legacy semantic pitch roles")
+require("result.bassProjectionStatus = projectLegacyPitchPattern(" in MIGRATION,
+        "Stage 9 BassRhythm legacy pitch projection is missing")
+require("result.chordProjectionStatus = projectLegacyPitchPattern(" in MIGRATION,
+        "Stage 10 ChordRhythm legacy pitch projection is missing")
 require("realizeChordRhythm" in MIGRATION,
         "Stage 10 ChordRhythm is absent from the shared transaction")
 require("realizeMelodicMotif" in MIGRATION and
