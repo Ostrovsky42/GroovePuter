@@ -56,6 +56,12 @@ There is no projector-specific firmware flash acceptance yet because this branch
 has no production caller. Repository Cardputer/SDL builds are compile guards
 only until a later integration PR wires the adapter.
 
+If this API-only branch is nevertheless flashed for a repository smoke test,
+there is intentionally **no new projector UI or Serial output** to look for:
+existing screen behavior and existing Serial behavior must remain unchanged.
+Any new projector-specific screen label, toast, log line, MIDI note, or audible
+change would mean this checkpoint has crossed its stated production boundary.
+
 ## Expected behavior
 
 The input is fixed-capacity and tagged by **onset ordinal**:
@@ -156,9 +162,11 @@ If the isolated host gate fails:
    projection.
 9. Confirm failure statuses do not publish a root anchor, note count, or partial
    MIDI-note array.
-10. Do not add Genre, policy selection, rhythm, Synth A/B routing, Scene, Phrase,
+10. If a smoke flash changes the screen, Serial output, MIDI output, or audible
+    behavior, remove that production wiring from this API-only checkpoint.
+11. Do not add Genre, policy selection, rhythm, Synth A/B routing, Scene, Phrase,
     persistence, or synth-engine ownership to solve integration failures.
-11. Do not wire 15B/15C production callers in this checkpoint PR.
+12. Do not wire 15B/15C production callers in this checkpoint PR.
 
 ## Acceptance checklist
 
@@ -180,6 +188,7 @@ If the isolated host gate fails:
 - [ ] A tagged fifth remains exactly +7 semitones even in Locrian.
 - [ ] Mixed tagged/untagged intent projects unambiguously.
 - [ ] Root selection chooses the nearest **feasible** pitch-class occurrence.
+- [ ] Equal-distance feasible roots resolve to the lower MIDI root.
 - [ ] An infeasible center-nearest root falls back to a farther feasible root.
 - [ ] Common adjacent-leap validation happens after MIDI projection.
 - [ ] Root pitch class absent from the register returns `RootOutOfRegister`.
@@ -191,4 +200,6 @@ If the isolated host gate fails:
 - [ ] No Genre, policy, rhythm, voice, Scene, Phrase, persistence, or timbre
       ownership appears.
 - [ ] No production 15B/15C wiring appears in this PR.
+- [ ] Screen and Serial behavior remain unchanged; there is no projector-specific
+      UI/log/MIDI/audio behavior in this API-only checkpoint.
 - [ ] Hardware musical verdict remains **PENDING**.
