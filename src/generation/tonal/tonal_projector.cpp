@@ -88,26 +88,56 @@ bool isSemitoneOrdinal(const TonalProjectionRequest& request,
           static_cast<uint16_t>(1u << ordinal)) != 0;
 }
 
-bool findRootAnchor(const TonalProjectionRequest& request,
-                    uint8_t& rootAnchor) {
+void resolveDisplacements(const TonalProjectionRequest& request,
+                          const ScaleDefinition& scale,
+                          int16_t* displacements) {
+  for (uint8_t ordinal = 0; ordinal < request.onsetCount; ++ordinal) {
+    const int displacement = isSemitoneOrdinal(request, ordinal)
+        ? static_cast<int>(request.tonalOffsets[ordinal])
+        : degreeToSemitone(request.tonalOffsets[ordinal], scale);
+    displacements[ordinal] = static_cast<int16_t>(displacement);
+  }
+}
+
+bool anchorFitsAllNotes(const TonalProjectionRequest& request,
+                        int rootAnchor,
+                        const int16_t* displacements) {
+  for (uint8_t ordinal = 0; ordinal < request.onsetCount; ++ordinal) {
+    const int candidate = rootAnchor + displacements[ordinal];
+    if (candidate < request.minMidi || candidate > request.maxMidi ||
+        candidate < 0 || candidate > 127) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool findFeasibleRootAnchor(const TonalProjectionRequest& request,
+                            const int16_t* displacements,
+                            bool& rootPitchClassPresent,
+                            uint8_t& rootAnchor) {
   const int midpoint2 = static_cast<int>(request.minMidi) +
                         static_cast<int>(request.maxMidi);
-  bool found = false;
+  rootPitchClassPresent = false;
+  bool foundFeasible = false;
   int bestDistance2 = 1000;
   uint8_t best = 0;
 
   for (int midi = request.minMidi; midi <= request.maxMidi; ++midi) {
     if ((midi % 12) != request.rootPitchClass) continue;
+    rootPitchClassPresent = true;
+    if (!anchorFitsAllNotes(request, midi, displacements)) continue;
+
     int distance2 = midi * 2 - midpoint2;
     if (distance2 < 0) distance2 = -distance2;
-    if (!found || distance2 < bestDistance2) {
-      found = true;
+    if (!foundFeasible || distance2 < bestDistance2) {
+      foundFeasible = true;
       bestDistance2 = distance2;
       best = static_cast<uint8_t>(midi);
     }
   }
 
-  if (!found) return false;
+  if (!foundFeasible) return false;
   rootAnchor = best;
   return true;
 }
@@ -136,33 +166,35 @@ TonalProjectionResult projectTonalIntent(const TonalProjectionRequest& request) 
   }
 
   const ScaleDefinition scale = scaleDefinition(request.scaleTypeValue);
-  if (!findRootAnchor(request, result.rootAnchorMidi)) {
-    result.status = TonalProjectionStatus::RootOutOfRegister;
+  int16_t displacements[kStepsPerBar]{};
+  resolveDisplacements(request, scale, displacements);
+
+  bool rootPitchClassPresent = false;
+  uint8_t rootAnchor = 0;
+  if (!findFeasibleRootAnchor(request, displacements,
+                              rootPitchClassPresent, rootAnchor)) {
+    result.status = rootPitchClassPresent
+        ? TonalProjectionStatus::NoteOutOfRegister
+        : TonalProjectionStatus::RootOutOfRegister;
     return result;
   }
 
+  uint8_t midiNotes[kStepsPerBar]{};
   for (uint8_t ordinal = 0; ordinal < request.onsetCount; ++ordinal) {
-    const int displacement = isSemitoneOrdinal(request, ordinal)
-        ? static_cast<int>(request.tonalOffsets[ordinal])
-        : degreeToSemitone(request.tonalOffsets[ordinal], scale);
-    const int candidate = static_cast<int>(result.rootAnchorMidi) + displacement;
-    if (candidate < request.minMidi || candidate > request.maxMidi ||
-        candidate < 0 || candidate > 127) {
-      result.status = TonalProjectionStatus::NoteOutOfRegister;
-      return result;
-    }
-
-    result.midiNotes[ordinal] = static_cast<uint8_t>(candidate);
+    const int candidate = static_cast<int>(rootAnchor) + displacements[ordinal];
+    midiNotes[ordinal] = static_cast<uint8_t>(candidate);
     if (ordinal > 0 &&
-        absoluteDifference(result.midiNotes[ordinal],
-                           result.midiNotes[ordinal - 1u]) >
+        absoluteDifference(midiNotes[ordinal], midiNotes[ordinal - 1u]) >
             request.maxAdjacentLeapSemitones) {
       result.status = TonalProjectionStatus::LeapExceeded;
       return result;
     }
   }
 
+  result.rootAnchorMidi = rootAnchor;
   result.noteCount = request.onsetCount;
+  for (uint8_t ordinal = 0; ordinal < request.onsetCount; ++ordinal)
+    result.midiNotes[ordinal] = midiNotes[ordinal];
   result.status = TonalProjectionStatus::Ok;
   return result;
 }
