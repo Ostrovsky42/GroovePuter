@@ -49,12 +49,70 @@ enum class MelodicPitchIntentStatus : uint8_t {
   Count,
 };
 
+constexpr uint16_t melodicRhythmOperationBit(MelodicRhythmOperationId id) {
+  const uint8_t value = static_cast<uint8_t>(id);
+  return value == 0 || value >= static_cast<uint8_t>(MelodicRhythmOperationId::Count)
+      ? 0u
+      : static_cast<uint16_t>(1u << value);
+}
+
+constexpr uint16_t melodicContourBit(MelodicContourId id) {
+  const uint8_t value = static_cast<uint8_t>(id);
+  return value == 0 || value >= static_cast<uint8_t>(MelodicContourId::Count)
+      ? 0u
+      : static_cast<uint16_t>(1u << value);
+}
+
+constexpr uint16_t melodicMotifOperationBit(MelodicMotifOperationId id) {
+  const uint8_t value = static_cast<uint8_t>(id);
+  return value == 0 || value >= static_cast<uint8_t>(MelodicMotifOperationId::Count)
+      ? 0u
+      : static_cast<uint16_t>(1u << value);
+}
+
+constexpr uint16_t kAllMelodicRhythmOperations =
+    melodicRhythmOperationBit(MelodicRhythmOperationId::Preserve) |
+    melodicRhythmOperationBit(MelodicRhythmOperationId::ControlledRest) |
+    melodicRhythmOperationBit(MelodicRhythmOperationId::ShiftInteriorEarlier) |
+    melodicRhythmOperationBit(MelodicRhythmOperationId::ShiftInteriorLater) |
+    melodicRhythmOperationBit(MelodicRhythmOperationId::TerminalEcho);
+
+constexpr uint16_t kAllMelodicContours =
+    melodicContourBit(MelodicContourId::Static) |
+    melodicContourBit(MelodicContourId::StepUp) |
+    melodicContourBit(MelodicContourId::StepDown) |
+    melodicContourBit(MelodicContourId::Arch) |
+    melodicContourBit(MelodicContourId::InvertedArch) |
+    melodicContourBit(MelodicContourId::LeapReturn) |
+    melodicContourBit(MelodicContourId::Neighbor) |
+    melodicContourBit(MelodicContourId::RepeatThenUp) |
+    melodicContourBit(MelodicContourId::RepeatThenDown);
+
+constexpr uint16_t kAllMelodicMotifOperations =
+    melodicMotifOperationBit(MelodicMotifOperationId::None) |
+    melodicMotifOperationBit(MelodicMotifOperationId::ChangeTerminal) |
+    melodicMotifOperationBit(MelodicMotifOperationId::InvertLocal) |
+    melodicMotifOperationBit(MelodicMotifOperationId::PivotRepeat) |
+    melodicMotifOperationBit(MelodicMotifOperationId::TerminalReturn);
+
+struct MelodicIntentPolicy {
+  // The composition/Genre layer resolves these masks. Preferred masks are
+  // optional subsets; if empty after intersection, AUTO selects from allowed.
+  // Preserve/Static/None must stay allowed as bounded compatibility fallbacks.
+  uint16_t allowedRhythmOperations = kAllMelodicRhythmOperations;
+  uint16_t preferredRhythmOperations = 0;
+  uint16_t allowedContours = kAllMelodicContours;
+  uint16_t preferredContours = 0;
+  uint16_t allowedMotifOperations = kAllMelodicMotifOperations;
+  uint16_t preferredMotifOperations = 0;
+};
+
 struct MelodicPitchIntentRequest {
   MelodicMotifPlan rhythmPlan{};
-  RhythmFamily family = RhythmFamily::FourFloor;
   RhythmArchetypeId archetypeId = kNoArchetypeId;
   GenerationContext generation{};
   uint8_t barOrdinal = 0;
+  MelodicIntentPolicy policy{};
   MelodicRhythmOperationId requestedRhythmOperation =
       MelodicRhythmOperationId::Auto;
   MelodicContourId requestedContour = MelodicContourId::Auto;
@@ -106,6 +164,14 @@ const char* melodicRhythmOperationName(MelodicRhythmOperationId id);
 const char* melodicContourName(MelodicContourId id);
 const char* melodicMotifOperationName(MelodicMotifOperationId id);
 
+static_assert(static_cast<uint8_t>(MelodicRhythmOperationId::Count) <= 16,
+              "Melodic rhythm operation mask exceeded uint16_t");
+static_assert(static_cast<uint8_t>(MelodicContourId::Count) <= 16,
+              "Melodic contour mask exceeded uint16_t");
+static_assert(static_cast<uint8_t>(MelodicMotifOperationId::Count) <= 16,
+              "Melodic motif operation mask exceeded uint16_t");
+static_assert(std::is_trivially_copyable<MelodicIntentPolicy>::value,
+              "MelodicIntentPolicy must remain fixed-capacity");
 static_assert(std::is_trivially_copyable<MelodicPitchIntentPlan>::value,
               "MelodicPitchIntentPlan must remain fixed-capacity");
 static_assert(sizeof(MelodicPitchIntentPlan) <= 48,
