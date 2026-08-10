@@ -8,6 +8,16 @@
 
 namespace GroovePuterRhythm {
 
+enum class MelodicRhythmOperationId : uint8_t {
+  Auto = 0,
+  Preserve,
+  ControlledRest,
+  ShiftInteriorEarlier,
+  ShiftInteriorLater,
+  TerminalEcho,
+  Count,
+};
+
 enum class MelodicContourId : uint8_t {
   Auto = 0,
   Static,
@@ -45,8 +55,16 @@ struct MelodicPitchIntentRequest {
   RhythmArchetypeId archetypeId = kNoArchetypeId;
   GenerationContext generation{};
   uint8_t barOrdinal = 0;
+  MelodicRhythmOperationId requestedRhythmOperation =
+      MelodicRhythmOperationId::Auto;
   MelodicContourId requestedContour = MelodicContourId::Auto;
   MelodicMotifOperationId requestedOperation = MelodicMotifOperationId::Auto;
+
+  // Transient semantic space in which 15B may place melodic intent. This is
+  // not physical Synth B availability: Stage 14 still owns chord-first
+  // blocking and physical voice arbitration after this layer.
+  StepMask allowedSteps = kAllSteps;
+  bool allowEmptyBar = false;
 
   // Scale-degree offsets relative to the current-bar harmonic anchor.
   // Absolute MIDI realization belongs to the downstream tonal materializer.
@@ -57,6 +75,8 @@ struct MelodicPitchIntentRequest {
 };
 
 struct MelodicPitchIntentPlan {
+  MelodicRhythmOperationId rhythmOperation =
+      MelodicRhythmOperationId::Preserve;
   MelodicContourId contour = MelodicContourId::Static;
   MelodicMotifOperationId operation = MelodicMotifOperationId::None;
   StepMask onsets = 0;
@@ -74,9 +94,12 @@ struct MelodicPitchIntentResult {
 MelodicPitchIntentResult realizeMelodicPitchIntent(
     const MelodicPitchIntentRequest& request);
 
+bool isValidMelodicRhythmOperationId(
+    MelodicRhythmOperationId id, bool allowAuto = true);
 bool isValidMelodicContourId(MelodicContourId id, bool allowAuto = true);
 bool isValidMelodicMotifOperationId(
     MelodicMotifOperationId id, bool allowAuto = true);
+const char* melodicRhythmOperationName(MelodicRhythmOperationId id);
 const char* melodicContourName(MelodicContourId id);
 const char* melodicMotifOperationName(MelodicMotifOperationId id);
 
