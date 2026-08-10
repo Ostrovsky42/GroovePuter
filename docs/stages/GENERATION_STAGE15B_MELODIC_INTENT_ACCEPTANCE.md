@@ -70,6 +70,8 @@ Generation Stage 15B host matrix: OK
 
 The API must:
 
+- default to the conservative vocabulary `Preserve / Static / None` for every
+  seed until the composition layer explicitly enables wider vocabulary;
 - accept fixed-capacity allowed/preferred masks for rhythmic operations,
   contours, and motif operations;
 - require `Preserve`, `Static`, and `None` as deterministic compatibility
@@ -90,6 +92,9 @@ The API must:
 - permit an intentionally empty melodic bar only when `allowEmptyBar` is true;
 - degrade an impossible rhythm operation to `Preserve` instead of violating
   legality or density budgets;
+- implement `TerminalEcho` strictly to the right of the current terminal onset;
+  step 15, or a blocked right side, must fall back to `Preserve` even when a
+  legal empty slot exists on the left;
 - support Static, StepUp, StepDown, Arch, InvertedArch, LeapReturn, Neighbor,
   RepeatThenUp, and RepeatThenDown scale-degree contours;
 - apply only one-bar pitch-domain motif operations;
@@ -121,7 +126,7 @@ If compilation fails in the Stage 15B test:
 
 If a requested shift cannot fit its onset and continuation legality masks,
 `Preserve` is the expected fallback. If `TerminalEcho` cannot add a legal onset
-below `maxOnsets`, `Preserve` is also expected.
+strictly after the terminal onset below `maxOnsets`, `Preserve` is also expected.
 
 If the source regression reports `Scene`, `PhraseCore`, full-groove history,
 physical `SynthPattern`, hidden `RhythmFamily` routing, heap containers, or
@@ -132,6 +137,7 @@ physical `SynthPattern`, hidden `RhythmFamily` routing, heap containers, or
 - [ ] `bash tests/run_generation_stage15b_tests.sh` passes with GCC.
 - [ ] Clang run passes when Clang is installed.
 - [ ] ASan/UBSan run passes.
+- [ ] Default AUTO stays `Preserve / Static / None` across the seed sweep.
 - [ ] `MelodicIntentPolicy` is fixed-capacity and transient.
 - [ ] AUTO honors preferred/allowed vocabulary from the resolved policy.
 - [ ] Forbidden explicit vocabulary is rejected.
@@ -142,11 +148,13 @@ physical `SynthPattern`, hidden `RhythmFamily` routing, heap containers, or
 - [ ] Controlled rests remove whole note chains with no orphan continuation.
 - [ ] Shifts preserve note count and continuation-chain validity.
 - [ ] Terminal echo never exceeds `maxOnsets`, collides with an occupied cell,
-      or leaves `allowedOnsetSteps`.
+      leaves `allowedOnsetSteps`, or places the new onset left of terminal.
+- [ ] Terminal at step 15 falls back to `Preserve`.
+- [ ] Left-only legal space does not satisfy `TerminalEcho`.
 - [ ] Impossible rhythm operations deterministically fall back to `Preserve`.
 - [ ] Empty melodic intent is produced only when the caller allows it.
 - [ ] Identical initial state produces identical rhythm/contour/motif intent.
-- [ ] AUTO reaches more than one legal result when policy permits diversity.
+- [ ] AUTO reaches more than one legal result only when policy explicitly permits diversity.
 - [ ] Degree and maximum-leap bounds are never violated.
 - [ ] No heap allocation, global RNG, or unbounded retry is introduced.
 - [ ] No Scene, Phrase, 15A-history, bass, or physical voice-allocation ownership
