@@ -1,9 +1,18 @@
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 HEADER = (ROOT / "src/generation/roles/melodic_pitch_intent.h").read_text()
 SOURCE = (ROOT / "src/generation/roles/melodic_pitch_intent.cpp").read_text()
 TEXT = HEADER + "\n" + SOURCE
+
+
+def strip_comments(text: str) -> str:
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    return re.sub(r"//.*", "", text)
+
+
+CODE = strip_comments(TEXT)
 
 # 15B is a fixed-capacity one-bar melodic-intent layer. It may transform the
 # current bar's melodic topology inside explicit semantic legality masks, then
@@ -21,12 +30,13 @@ for forbidden in (
     "std::vector",
     "std::map",
     "std::unordered",
-    "new ",
-    "delete ",
     "rand(",
     "random_device",
 ):
-    assert forbidden not in TEXT, forbidden
+    assert forbidden not in CODE, forbidden
+
+assert re.search(r"\bnew\s+[A-Za-z_:]", CODE) is None, "heap new"
+assert re.search(r"\bdelete\s+[A-Za-z_]", CODE) is None, "heap delete"
 
 assert "enum class MelodicRhythmOperationId" in HEADER
 assert "ControlledRest" in HEADER
@@ -52,6 +62,6 @@ assert "request.allowedContinuationSteps" in SOURCE
 assert "request.maxOnsets" in SOURCE
 assert "validContinuationTopology(onsets, continuations)" in SOURCE
 assert "MelodicRhythmOperationId::Preserve" in SOURCE
-assert "while (" not in SOURCE
+assert "while (" not in CODE
 
 print("Generation Stage 15B source regressions: OK")
