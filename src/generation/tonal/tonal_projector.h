@@ -39,11 +39,12 @@ struct TonalProjectionRequest {
   uint8_t rootPitchClass = 0;  // 0=C ... 11=B
   ScaleTypeValue scaleTypeValue = kDefaultScaleTypeValue;
 
-  // Inclusive absolute-MIDI register corridor. The projector chooses the root
-  // pitch-class occurrence nearest the corridor midpoint as its deterministic
-  // harmonic anchor, then applies every tonal offset exactly. It never silently
-  // octave-folds an out-of-register result because that could destroy a tagged
-  // fifth/octave relation.
+  // Inclusive absolute-MIDI register corridor. The projector evaluates every
+  // occurrence of the selected root pitch class in this corridor, keeps only
+  // anchors for which the complete projected phrase also stays in the corridor,
+  // then deterministically chooses the feasible anchor nearest the midpoint
+  // (ties resolve downward). It never silently octave-folds an out-of-register
+  // relation because that could destroy an exact tagged fifth/octave intent.
   uint8_t minMidi = 36;
   uint8_t maxMidi = 84;
 
