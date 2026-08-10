@@ -16,13 +16,6 @@ StepMask mask(std::initializer_list<uint8_t> steps) {
   return result;
 }
 
-uint8_t onsetCount(StepMask onsets) {
-  uint8_t count = 0;
-  for (uint8_t step = 0; step < kStepsPerBar; ++step)
-    if ((onsets & stepBit(step)) != 0) ++count;
-  return count;
-}
-
 bool validTopology(StepMask onsets, StepMask continuations) {
   if ((onsets & continuations) != 0) return false;
   bool active = false;
