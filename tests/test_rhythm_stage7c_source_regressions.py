@@ -29,14 +29,21 @@ for token in (
 
 for token in (
     "kAcidBase",
-    "kMinimalBase",
-    "kTechnoBase",
+    "kSynthwaveBase",
+    "kDarksynthBase",
     "kElectroBase",
     "kRaveBase",
     "kReggaeBase",
     "kTripHopBase",
     "kBrokenBase",
     "kChipBase",
+    "kHouseBase",
+    "kTechnoBase",
+    "kHipHopBase",
+    "kFunkSoulBase",
+    "kUkGarageBase",
+    "kDrumAndBassBase",
+    "kLoFiBase",
     "kUkGarage",
     "kDrumAndBass",
     "kFootwork",
@@ -54,6 +61,14 @@ for token in (
     "Archetype::ElectroGapPush",
 ):
     require(token in SELECTION_CPP, f"missing production compatibility data: {token}")
+
+# Stage 14 renamed the old source-local pools so the new top-level Techno name
+# could be unambiguous. The persisted pre-Stage14 modes must still resolve to
+# the same musical compatibility pools after that rename.
+require("case GenerativeMode::Outrun: return view(kSynthwaveBase);" in SELECTION_CPP,
+        "persisted Outrun must keep its pre-Stage14 compatibility pool")
+require("case GenerativeMode::Darksynth: return view(kDarksynthBase);" in SELECTION_CPP,
+        "persisted Darksynth must keep its pre-Stage14 compatibility pool")
 
 require("canonicalize(" in SELECTION_CPP,
         "AUTO selection lacks canonical candidate ordering")
