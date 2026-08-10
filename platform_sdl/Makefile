@@ -61,6 +61,7 @@ SOURCES := \
 	../src/generation/roles/semantic_pattern_projector.cpp \
 	../src/generation/roles/bass_rhythm.cpp \
 	../src/generation/roles/chord_rhythm.cpp \
+	../src/generation/roles/chord_progression.cpp \
 	../src/generation/roles/melodic_motif.cpp \
 	../src/generation/phrase/phrase_evolution.cpp \
 	../src/generation/migration/strong_rhythm_migration.cpp \
@@ -149,7 +150,6 @@ bundle: $(TARGET)
 	cp $(SDL2_DYLIB) $(APP_BUNDLE)/Contents/Frameworks/
 	cp $(SDL2_GFX_DYLIB) $(APP_BUNDLE)/Contents/Frameworks/
 	install_name_tool -change $(SDL2_DYLIB) @executable_path/../Frameworks/libSDL2-2.0.0.dylib $(APP_BUNDLE)/Contents/MacOS/$(TARGET)
-	install_name_tool -change $(SDL2_GFX_DYLIB) @executable_path/../Frameworks/libSDL2_gfx-1.0.0.dylib $(APP_BUNDLE)/Contents/MacOS/$(TARGET)
 	install_name_tool -change $(SDL2_DYLIB) @executable_path/../Frameworks/libSDL2-2.0.0.dylib $(APP_BUNDLE)/Contents/Frameworks/libSDL2_gfx-1.0.0.dylib
 	@echo "Code signing libraries and executable..."
 	codesign --force --deep --sign - $(APP_BUNDLE)/Contents/Frameworks/libSDL2-2.0.0.dylib
