@@ -96,14 +96,15 @@ constexpr uint16_t kAllMelodicMotifOperations =
     melodicMotifOperationBit(MelodicMotifOperationId::TerminalReturn);
 
 struct MelodicIntentPolicy {
-  // The composition/Genre layer resolves these masks. Preferred masks are
-  // optional subsets; if empty after intersection, AUTO selects from allowed.
-  // Preserve/Static/None must stay allowed as bounded compatibility fallbacks.
-  uint16_t allowedRhythmOperations = kAllMelodicRhythmOperations;
+  // Fail-safe defaults preserve Stage 14 behavior. Wider vocabulary must be
+  // explicitly enabled by the composition/Genre integration layer.
+  uint16_t allowedRhythmOperations =
+      melodicRhythmOperationBit(MelodicRhythmOperationId::Preserve);
   uint16_t preferredRhythmOperations = 0;
-  uint16_t allowedContours = kAllMelodicContours;
+  uint16_t allowedContours = melodicContourBit(MelodicContourId::Static);
   uint16_t preferredContours = 0;
-  uint16_t allowedMotifOperations = kAllMelodicMotifOperations;
+  uint16_t allowedMotifOperations =
+      melodicMotifOperationBit(MelodicMotifOperationId::None);
   uint16_t preferredMotifOperations = 0;
 };
 
