@@ -63,6 +63,10 @@ void enableAllPolicy(MelodicPitchIntentRequest& request) {
   request.policy.preferredMotifOperations = 0;
 }
 
+void isolatePitch(MelodicPitchIntentRequest& request) {
+  request.requestedRhythmOperation = MelodicRhythmOperationId::Preserve;
+}
+
 void assertSame(const MelodicPitchIntentResult& a,
                 const MelodicPitchIntentResult& b) {
   assert(a.status == b.status);
@@ -298,10 +302,12 @@ int main() {
   {
     MelodicPitchIntentRequest request = requestFor(mask({0, 4, 8, 12}));
     enableAllPolicy(request);
+    isolatePitch(request);
     request.requestedContour = MelodicContourId::StepUp;
     request.requestedOperation = MelodicMotifOperationId::None;
     const auto result = realizeMelodicPitchIntent(request);
     assert(result.status == MelodicPitchIntentStatus::Ok);
+    assert(result.plan.onsetCount == 4);
     assert(result.plan.degreeOffsets[0] == 0);
     assert(result.plan.degreeOffsets[1] == 1);
     assert(result.plan.degreeOffsets[2] == 2);
@@ -311,6 +317,7 @@ int main() {
   {
     MelodicPitchIntentRequest request = requestFor(mask({0, 4, 8, 12}));
     enableAllPolicy(request);
+    isolatePitch(request);
     request.minDegreeOffset = -2;
     request.maxDegreeOffset = 2;
     request.maxLeapDegrees = 1;
