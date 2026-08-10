@@ -105,22 +105,73 @@ void AdvancedPatternGenerator::applySwing(SynthPattern& pattern, float amount) {
 }
 
 int AdvancedPatternGenerator::quantizeToScale(int note, int root, ScaleType scale) {
-    static const int intervals[][7] = {
-        {0, 2, 3, 5, 7, 8, 10}, // MINOR
-        {0, 2, 4, 5, 7, 9, 11}, // MAJOR
-        {0, 2, 3, 5, 7, 9, 10}, // DORIAN
-        {0, 1, 3, 5, 7, 8, 10}, // PHRYGIAN
-        {0, 2, 4, 6, 7, 9, 11}, // LYDIAN
-        {0, 2, 4, 5, 7, 9, 10}, // MIXOLYDIAN
-        {0, 1, 3, 5, 6, 8, 10}  // LOCRIAN
-    };
-    
-    const int* pIntervals = intervals[static_cast<int>(scale % 7)];
+    // Legacy quantizer only. Tonal Projector owns the future shared absolute-pitch
+    // path; keep this table local until that production migration removes it.
+    static constexpr int kMinor[] = {0, 2, 3, 5, 7, 8, 10};
+    static constexpr int kMajor[] = {0, 2, 4, 5, 7, 9, 11};
+    static constexpr int kDorian[] = {0, 2, 3, 5, 7, 9, 10};
+    static constexpr int kPhrygian[] = {0, 1, 3, 5, 7, 8, 10};
+    static constexpr int kLydian[] = {0, 2, 4, 6, 7, 9, 11};
+    static constexpr int kMixolydian[] = {0, 2, 4, 5, 7, 9, 10};
+    static constexpr int kLocrian[] = {0, 1, 3, 5, 6, 8, 10};
+    static constexpr int kMajorPentatonic[] = {0, 2, 4, 7, 9};
+    static constexpr int kMinorPentatonic[] = {0, 3, 5, 7, 10};
+    static constexpr int kChromatic[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+
+    const int* pIntervals = kMinor;
+    int intervalCount = 7;
+    switch (scale) {
+        case MINOR:
+            pIntervals = kMinor;
+            intervalCount = 7;
+            break;
+        case MAJOR:
+            pIntervals = kMajor;
+            intervalCount = 7;
+            break;
+        case DORIAN:
+            pIntervals = kDorian;
+            intervalCount = 7;
+            break;
+        case PHRYGIAN:
+            pIntervals = kPhrygian;
+            intervalCount = 7;
+            break;
+        case LYDIAN:
+            pIntervals = kLydian;
+            intervalCount = 7;
+            break;
+        case MIXOLYDIAN:
+            pIntervals = kMixolydian;
+            intervalCount = 7;
+            break;
+        case LOCRIAN:
+            pIntervals = kLocrian;
+            intervalCount = 7;
+            break;
+        case PENTATONIC_MJ:
+            pIntervals = kMajorPentatonic;
+            intervalCount = 5;
+            break;
+        case PENTATONIC_MN:
+            pIntervals = kMinorPentatonic;
+            intervalCount = 5;
+            break;
+        case CHROMATIC:
+            pIntervals = kChromatic;
+            intervalCount = 12;
+            break;
+        default:
+            pIntervals = kMinor;
+            intervalCount = 7;
+            break;
+    }
+
     int octave = note / 12;
     int semitone = note % 12;
     int closest = 0;
     int minDist = 12;
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < intervalCount; i++) {
         int scaleTone = (root + pIntervals[i]) % 12;
         int dist = std::abs(semitone - scaleTone);
         if (dist < minDist) { minDist = dist; closest = scaleTone; }
