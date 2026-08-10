@@ -58,10 +58,17 @@ struct BassPitchBehaviorRequest {
 struct BassPitchBehaviorPlan {
   BassPitchContourId contour = BassPitchContourId::RootAnchor;
   BassArticulationStyleId articulation = BassArticulationStyleId::Plain;
+
+  // Timing topology is copied from BassRhythmPlan and is immutable in 15C.
   StepMask onsets = 0;
   StepMask continuations = 0;
+
+  // Engine-neutral articulation intent only. A downstream engine adapter may
+  // drop an unsupported accent/slide, but must never add/move an onset or
+  // extend/create a continuation to force the articulation to happen.
   StepMask accentOnsets = 0;
   StepMask slideIntoOnsets = 0;
+
   uint8_t onsetCount = 0;
   uint8_t onsetSteps[kStepsPerBar]{};
   int8_t degreeOffsets[kStepsPerBar]{};
