@@ -44,56 +44,70 @@ uint8_t collectOnsetSteps(StepMask onsets, uint8_t* destination) {
   return count;
 }
 
+uint16_t preferredOrAllowed(uint16_t allowed, uint16_t preferred) {
+  const uint16_t preferredAllowed = static_cast<uint16_t>(allowed & preferred);
+  return preferredAllowed != 0 ? preferredAllowed : allowed;
+}
+
+uint8_t chooseSetBit(uint16_t mask, uint8_t limit, uint32_t choice) {
+  uint8_t count = 0;
+  for (uint8_t value = 1; value < limit; ++value) {
+    if ((mask & static_cast<uint16_t>(1u << value)) != 0) ++count;
+  }
+  if (count == 0) return 0;
+
+  uint8_t target = static_cast<uint8_t>(choice % count);
+  for (uint8_t value = 1; value < limit; ++value) {
+    if ((mask & static_cast<uint16_t>(1u << value)) == 0) continue;
+    if (target == 0) return value;
+    --target;
+  }
+  return 0;
+}
+
+bool validPolicy(const BassBehaviorPolicy& policy) {
+  if ((policy.allowedContours & ~kAllBassPitchContours) != 0 ||
+      (policy.preferredContours & ~kAllBassPitchContours) != 0 ||
+      (policy.allowedArticulations & ~kAllBassArticulationStyles) != 0 ||
+      (policy.preferredArticulations & ~kAllBassArticulationStyles) != 0) {
+    return false;
+  }
+  if ((policy.preferredContours & ~policy.allowedContours) != 0 ||
+      (policy.preferredArticulations & ~policy.allowedArticulations) != 0) {
+    return false;
+  }
+  if ((policy.allowedContours &
+       bassPitchContourBit(BassPitchContourId::RootAnchor)) == 0 ||
+      (policy.allowedArticulations &
+       bassArticulationStyleBit(BassArticulationStyleId::Plain)) == 0) {
+    return false;
+  }
+  return true;
+}
+
+bool contourAllowed(const BassBehaviorPolicy& policy, BassPitchContourId id) {
+  return (policy.allowedContours & bassPitchContourBit(id)) != 0;
+}
+
+bool articulationAllowed(const BassBehaviorPolicy& policy,
+                         BassArticulationStyleId id) {
+  return (policy.allowedArticulations & bassArticulationStyleBit(id)) != 0;
+}
+
 BassPitchContourId selectContour(const BassPitchBehaviorRequest& request,
                                  uint8_t onsetCount) {
   if (request.requestedContour != BassPitchContourId::Auto)
     return request.requestedContour;
   if (onsetCount <= 1) return BassPitchContourId::RootAnchor;
 
-  BassPitchContourId candidates[6]{};
-  uint8_t count = 0;
-  switch (request.family) {
-    case RhythmFamily::FourFloor:
-      candidates[count++] = BassPitchContourId::RootAnchor;
-      candidates[count++] = BassPitchContourId::RootFifth;
-      candidates[count++] = BassPitchContourId::RootOctave;
-      candidates[count++] = BassPitchContourId::PedalTurn;
-      break;
-    case RhythmFamily::MachineSyncopation:
-    case RhythmFamily::Funk16:
-      candidates[count++] = BassPitchContourId::RootFifth;
-      candidates[count++] = BassPitchContourId::NeighborReturn;
-      candidates[count++] = BassPitchContourId::StepApproach;
-      candidates[count++] = BassPitchContourId::LeapReturn;
-      candidates[count++] = BassPitchContourId::RootFifthNeighbor;
-      break;
-    case RhythmFamily::Breakbeat:
-    case RhythmFamily::UkTwoStep:
-      candidates[count++] = BassPitchContourId::RootFifth;
-      candidates[count++] = BassPitchContourId::LeapReturn;
-      candidates[count++] = BassPitchContourId::NeighborReturn;
-      candidates[count++] = BassPitchContourId::PedalTurn;
-      break;
-    case RhythmFamily::HipHopBackbeat:
-      candidates[count++] = BassPitchContourId::RootAnchor;
-      candidates[count++] = BassPitchContourId::NeighborReturn;
-      candidates[count++] = BassPitchContourId::StepApproach;
-      candidates[count++] = BassPitchContourId::RootFifth;
-      break;
-    case RhythmFamily::DubPulse:
-    case RhythmFamily::SparsePulse:
-      candidates[count++] = BassPitchContourId::RootAnchor;
-      candidates[count++] = BassPitchContourId::NeighborReturn;
-      candidates[count++] = BassPitchContourId::PedalTurn;
-      break;
-    case RhythmFamily::Count:
-      return BassPitchContourId::RootAnchor;
-  }
-
+  const uint16_t vocabulary = preferredOrAllowed(
+      request.policy.allowedContours, request.policy.preferredContours);
   const uint32_t seed = deriveGenerationSeed(
       request.generation, request.archetypeId, GenerationDomain::BassPitch,
-      kBassContourSalt ^ static_cast<uint32_t>(request.family));
-  return candidates[deterministicValue(seed, request.barOrdinal) % count];
+      kBassContourSalt);
+  return static_cast<BassPitchContourId>(chooseSetBit(
+      vocabulary, static_cast<uint8_t>(BassPitchContourId::Count),
+      deterministicValue(seed, request.barOrdinal)));
 }
 
 BassArticulationStyleId selectArticulation(
@@ -102,44 +116,28 @@ BassArticulationStyleId selectArticulation(
     return request.requestedArticulation;
   if (onsetCount <= 1) return BassArticulationStyleId::Plain;
 
-  BassArticulationStyleId candidates[4]{};
-  uint8_t count = 0;
-  switch (request.family) {
-    case RhythmFamily::DubPulse:
-    case RhythmFamily::SparsePulse:
-      candidates[count++] = BassArticulationStyleId::Plain;
-      candidates[count++] = BassArticulationStyleId::AccentPulse;
-      break;
-    case RhythmFamily::HipHopBackbeat:
-      candidates[count++] = BassArticulationStyleId::Plain;
-      candidates[count++] = BassArticulationStyleId::AccentPulse;
-      candidates[count++] = BassArticulationStyleId::Dynamic;
-      break;
-    case RhythmFamily::FourFloor:
-      candidates[count++] = BassArticulationStyleId::AccentPulse;
-      candidates[count++] = BassArticulationStyleId::Dynamic;
-      candidates[count++] = BassArticulationStyleId::LegatoApproach;
-      break;
-    case RhythmFamily::MachineSyncopation:
-    case RhythmFamily::Breakbeat:
-    case RhythmFamily::UkTwoStep:
-    case RhythmFamily::Funk16:
-      candidates[count++] = BassArticulationStyleId::AccentPulse;
-      candidates[count++] = BassArticulationStyleId::LegatoApproach;
-      candidates[count++] = BassArticulationStyleId::Dynamic;
-      break;
-    case RhythmFamily::Count:
-      return BassArticulationStyleId::Plain;
-  }
-
+  const uint16_t vocabulary = preferredOrAllowed(
+      request.policy.allowedArticulations,
+      request.policy.preferredArticulations);
   const uint32_t seed = deriveGenerationSeed(
       request.generation, request.archetypeId, GenerationDomain::BassPitch,
-      kBassArticulationSalt ^ static_cast<uint32_t>(request.family));
-  return candidates[deterministicValue(seed, request.barOrdinal) % count];
+      kBassArticulationSalt);
+  return static_cast<BassArticulationStyleId>(chooseSetBit(
+      vocabulary, static_cast<uint8_t>(BassArticulationStyleId::Count),
+      deterministicValue(seed, request.barOrdinal)));
+}
+
+void markSemitoneOrdinal(uint16_t& mask, uint8_t ordinal) {
+  mask = static_cast<uint16_t>(mask | static_cast<uint16_t>(1u << ordinal));
+}
+
+bool isSemitoneOrdinal(uint16_t mask, uint8_t ordinal) {
+  return (mask & static_cast<uint16_t>(1u << ordinal)) != 0;
 }
 
 void buildContour(BassPitchContourId contour, uint8_t count,
-                  int8_t* values) {
+                  int8_t* values, uint16_t& semitoneOrdinals) {
+  semitoneOrdinals = 0;
   for (uint8_t index = 0; index < count; ++index) values[index] = 0;
   if (count <= 1) return;
 
@@ -147,12 +145,18 @@ void buildContour(BassPitchContourId contour, uint8_t count,
     case BassPitchContourId::RootAnchor:
       break;
     case BassPitchContourId::RootFifth:
-      for (uint8_t index = 1; index < count; ++index)
-        values[index] = (index & 1u) != 0u ? 4 : 0;
+      for (uint8_t index = 1; index < count; ++index) {
+        if ((index & 1u) == 0u) continue;
+        values[index] = 7;
+        markSemitoneOrdinal(semitoneOrdinals, index);
+      }
       break;
     case BassPitchContourId::RootOctave:
-      for (uint8_t index = 1; index < count; ++index)
-        values[index] = (index & 1u) != 0u ? 7 : 0;
+      for (uint8_t index = 1; index < count; ++index) {
+        if ((index & 1u) == 0u) continue;
+        values[index] = 12;
+        markSemitoneOrdinal(semitoneOrdinals, index);
+      }
       break;
     case BassPitchContourId::NeighborReturn:
       for (uint8_t index = 1; index < count; ++index) {
@@ -177,34 +181,39 @@ void buildContour(BassPitchContourId contour, uint8_t count,
       for (uint8_t index = 3; index < count; ++index)
         values[index] = (index & 1u) != 0u ? 1 : 0;
       break;
-    case BassPitchContourId::RootFifthNeighbor: {
-      constexpr int8_t pattern[] = {0, 4, 1, 0};
-      for (uint8_t index = 0; index < count; ++index)
-        values[index] = pattern[index % 4u];
+    case BassPitchContourId::RootFifthNeighbor:
+      for (uint8_t index = 0; index < count; ++index) {
+        const uint8_t phase = static_cast<uint8_t>(index % 4u);
+        if (phase == 1u) {
+          values[index] = 7;
+          markSemitoneOrdinal(semitoneOrdinals, index);
+        } else if (phase == 2u) {
+          values[index] = 1;
+        }
+      }
       break;
-    }
-    case BassPitchContourId::PedalTurn: {
-      constexpr int8_t pattern[] = {0, 0, 1, 0};
+    case BassPitchContourId::PedalTurn:
       for (uint8_t index = 0; index < count; ++index)
-        values[index] = pattern[index % 4u];
+        values[index] = (index % 4u) == 2u ? 1 : 0;
       break;
-    }
     case BassPitchContourId::Auto:
     case BassPitchContourId::Count:
       break;
   }
 }
 
-void enforceBounds(const BassPitchBehaviorRequest& request,
-                   uint8_t count,
-                   int8_t* values) {
-  if (count == 0) return;
-  values[0] = clampDegree(values[0], request.minDegreeOffset,
-                          request.maxDegreeOffset);
-  for (uint8_t index = 1; index < count; ++index) {
+void enforceDegreeBounds(const BassPitchBehaviorRequest& request,
+                         uint8_t count,
+                         uint16_t semitoneOrdinals,
+                         int8_t* values) {
+  for (uint8_t index = 0; index < count; ++index) {
+    if (isSemitoneOrdinal(semitoneOrdinals, index)) continue;
+
     int8_t value = clampDegree(values[index], request.minDegreeOffset,
                                request.maxDegreeOffset);
-    if (absoluteDifference(value, values[index - 1u]) > request.maxLeapDegrees) {
+    if (index > 0 && !isSemitoneOrdinal(semitoneOrdinals, index - 1u) &&
+        absoluteDifference(value, values[index - 1u]) >
+            request.maxLeapDegrees) {
       const int direction = value >= values[index - 1u] ? 1 : -1;
       value = static_cast<int8_t>(
           values[index - 1u] + direction * request.maxLeapDegrees);
@@ -213,6 +222,12 @@ void enforceBounds(const BassPitchBehaviorRequest& request,
     }
     values[index] = value;
   }
+}
+
+bool sameTonalUnit(const BassPitchBehaviorPlan& plan,
+                   uint8_t a, uint8_t b) {
+  return isSemitoneOrdinal(plan.semitoneOffsetOrdinals, a) ==
+         isSemitoneOrdinal(plan.semitoneOffsetOrdinals, b);
 }
 
 bool isLegatoConnected(const BassPitchBehaviorPlan& pitchPlan,
@@ -258,9 +273,10 @@ void applyArticulation(BassArticulationStyleId articulation,
     case BassArticulationStyleId::LegatoApproach:
       markAccent(0);
       for (uint8_t ordinal = 1; ordinal < pitchPlan.onsetCount; ++ordinal) {
+        if (!sameTonalUnit(pitchPlan, ordinal - 1u, ordinal)) continue;
         const uint8_t pitchGap = absoluteDifference(
-            pitchPlan.degreeOffsets[ordinal],
-            pitchPlan.degreeOffsets[ordinal - 1u]);
+            pitchPlan.tonalOffsets[ordinal],
+            pitchPlan.tonalOffsets[ordinal - 1u]);
         if (isLegatoConnected(pitchPlan, ordinal) &&
             pitchGap > 0u && pitchGap <= 2u) {
           markSlide(ordinal);
@@ -270,16 +286,21 @@ void applyArticulation(BassArticulationStyleId articulation,
     case BassArticulationStyleId::Dynamic:
       for (uint8_t ordinal = 0; ordinal < pitchPlan.onsetCount; ++ordinal) {
         const uint8_t step = pitchPlan.onsetSteps[ordinal];
-        if (pitchPlan.degreeOffsets[ordinal] == 0 &&
+        if (pitchPlan.tonalOffsets[ordinal] == 0 &&
             (ordinal == 0 || (step % 4u) == 0u)) {
           markAccent(ordinal);
         }
-        if (ordinal == 0) continue;
+        if (ordinal == 0 ||
+            !sameTonalUnit(pitchPlan, ordinal - 1u, ordinal)) {
+          continue;
+        }
         const uint8_t pitchGap = absoluteDifference(
-            pitchPlan.degreeOffsets[ordinal],
-            pitchPlan.degreeOffsets[ordinal - 1u]);
-        if (isLegatoConnected(pitchPlan, ordinal) && pitchGap == 1u)
+            pitchPlan.tonalOffsets[ordinal],
+            pitchPlan.tonalOffsets[ordinal - 1u]);
+        if (isLegatoConnected(pitchPlan, ordinal) &&
+            pitchGap > 0u && pitchGap <= 2u) {
           markSlide(ordinal);
+        }
       }
       break;
     case BassArticulationStyleId::Auto:
@@ -288,12 +309,23 @@ void applyArticulation(BassArticulationStyleId articulation,
   }
 }
 
+bool explicitSelectionsAllowed(const BassPitchBehaviorRequest& request) {
+  if (request.requestedContour != BassPitchContourId::Auto &&
+      !contourAllowed(request.policy, request.requestedContour)) {
+    return false;
+  }
+  if (request.requestedArticulation != BassArticulationStyleId::Auto &&
+      !articulationAllowed(request.policy, request.requestedArticulation)) {
+    return false;
+  }
+  return true;
+}
+
 bool validRequest(const BassPitchBehaviorRequest& request) {
   return request.archetypeId != kNoArchetypeId &&
-         static_cast<uint8_t>(request.family) <
-             static_cast<uint8_t>(RhythmFamily::Count) &&
          isValidBassPitchContourId(request.requestedContour) &&
          isValidBassArticulationStyleId(request.requestedArticulation) &&
+         validPolicy(request.policy) && explicitSelectionsAllowed(request) &&
          request.minDegreeOffset <= 0 && request.maxDegreeOffset >= 0 &&
          request.minDegreeOffset <= request.maxDegreeOffset &&
          validContinuationTopology(request.rhythmPlan.onsets,
@@ -337,14 +369,19 @@ BassPitchBehaviorResult realizeBassPitchBehavior(
   const BassArticulationStyleId articulation =
       selectArticulation(request, result.plan.onsetCount);
   if (!isValidBassPitchContourId(contour, false) ||
-      !isValidBassArticulationStyleId(articulation, false)) {
+      !isValidBassArticulationStyleId(articulation, false) ||
+      !contourAllowed(request.policy, contour) ||
+      !articulationAllowed(request.policy, articulation)) {
     return result;
   }
 
   result.plan.contour = contour;
   result.plan.articulation = articulation;
-  buildContour(contour, result.plan.onsetCount, result.plan.degreeOffsets);
-  enforceBounds(request, result.plan.onsetCount, result.plan.degreeOffsets);
+  buildContour(contour, result.plan.onsetCount, result.plan.tonalOffsets,
+               result.plan.semitoneOffsetOrdinals);
+  enforceDegreeBounds(request, result.plan.onsetCount,
+                      result.plan.semitoneOffsetOrdinals,
+                      result.plan.tonalOffsets);
   applyArticulation(articulation, result.plan,
                     result.plan.accentOnsets, result.plan.slideIntoOnsets);
   result.plan.accentOnsets = static_cast<StepMask>(
