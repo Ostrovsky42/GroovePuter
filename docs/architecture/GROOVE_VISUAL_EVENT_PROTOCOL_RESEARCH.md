@@ -186,7 +186,6 @@ The event model must contain only data that is already known at the musical trig
 ```text
 VisualEvent
   type
-  source
   value
   flags
   sequence
@@ -220,28 +219,44 @@ This is a hard invariant.
 
 The protocol should start small. A large vocabulary before hardware testing creates false API stability.
 
-## Required R0 events
+## Numeric allocation
 
-| Event | Meaning | Typical receiver use |
-|---|---|---|
-| `KICK` | kick drum actually triggered | pulse, squash, flash |
-| `PLAY` | transport entered playing state | wake / active animation |
-| `STOP` | transport stopped | idle animation |
+`0x00` is invalid/reserved and must never be emitted.
 
-## Candidate R1 events
+R0 freezes only the three IDs required for the hardware spike:
 
-| Event | Meaning |
-|---|---|
-| `SNARE` | snare trigger |
-| `CLAP` | clap trigger |
-| `HAT` | open/closed hat trigger represented through source/flags |
-| `PERC` | other percussion trigger |
-| `BAR` | bar boundary |
-| `FILL` | fill section/phrase entered |
-| `BREAK` | break/empty section entered |
-| `ACCENT` | explicit accent semantic event where it already exists |
+| ID | Event | Meaning | `value` |
+|---:|---|---|---|
+| `0x01` | `KICK` | kick drum actually triggered | MIDI-style trigger velocity `0..127` |
+| `0x20` | `PLAY` | transport entered playing state | `0` |
+| `0x21` | `STOP` | transport stopped | `0` |
 
-Events must describe musical semantics, not display instructions.
+Candidate R1 allocations are intentionally documented but remain provisional until R1 begins:
+
+| ID | Event | Meaning | `value` |
+|---:|---|---|---|
+| `0x02` | `SNARE` | snare actually triggered | velocity `0..127` |
+| `0x03` | `CLAP` | clap actually triggered | velocity `0..127` |
+| `0x04` | `HAT_CLOSED` | closed-hat trigger | velocity `0..127` |
+| `0x05` | `HAT_OPEN` | open-hat trigger | velocity `0..127` |
+| `0x06` | `PERC` | generic percussion trigger | velocity `0..127` |
+| `0x10` | `BAR` | accepted bar boundary | `0` |
+| `0x11` | `FILL` | fill section/phrase entered | `0` |
+| `0x12` | `BREAK` | break/empty section entered | `0` |
+| `0x30` | `ACCENT` | explicit accent semantic event where already available | `0..127` intensity |
+
+Allocation policy:
+
+- `0x01..0x0F`: trigger/percussion events;
+- `0x10..0x1F`: structural/phrase events;
+- `0x20..0x2F`: transport events;
+- `0x30..0x3F`: expressive semantic events;
+- `0x40..0x7F`: reserved for future core protocol allocation;
+- `0x80..0xFF`: experimental/private receiver ecosystem use; never emitted by production GroovePuter unless later standardized.
+
+Unknown event IDs must be ignored safely by receivers.
+
+Events describe musical semantics, not display instructions.
 
 Do not add names such as `BLINK`, `PUPIL_PULSE`, `EYE_SHAKE`, `LED_RED`, or `FIRE_ANIMATION` to the GroovePuter protocol.
 
@@ -251,21 +266,30 @@ Do not add names such as `BLINK`, `PUPIL_PULSE`, `EYE_SHAKE`, `LED_RED`, or `FIR
 
 The hardware spike should use a **small fixed binary packet**. JSON is explicitly out of scope for the real-time event path.
 
-The candidate R0 event frame is 24 bytes:
+The candidate R0 event frame is exactly 24 bytes:
 
 | Byte(s) | Field | Encoding |
 |---:|---|---|
 | `0..3` | magic | ASCII `GVE1` |
 | `4` | protocol version | `uint8`, initially `1` |
 | `5` | message type | `uint8`, `1 = EVENT` |
-| `6` | event type | `uint8` |
-| `7` | source | `uint8` |
+| `6` | event type | `uint8`, numeric registry above |
+| `7` | flags | `uint8`; all bits `0` in R0 |
 | `8..11` | sequence | little-endian `uint32` |
 | `12..15` | musical tick | little-endian `uint32`, GroovePuter 96 PPQN domain |
 | `16..19` | monotonic timestamp low 32 bits | little-endian `uint32`, microseconds |
 | `20..21` | bar index | little-endian `uint16` |
 | `22` | step | `0..15`, or `255` when not applicable |
-| `23` | value | `0..127` velocity where applicable; event-defined otherwise |
+| `23` | value | event-defined by the numeric registry; R0 trigger velocity is `0..127` |
+
+R0 flag rule:
+
+```text
+sender:   flags = 0
+receiver: ignore unknown flag bits
+```
+
+No semantic meaning is allocated to flag bits until a later protocol revision documents it.
 
 Important ABI rule:
 
@@ -281,15 +305,19 @@ This prevents padding, alignment, and compiler differences from becoming part of
 - ignore duplicates;
 - measure loss rate without acknowledgements.
 
-Sequence wrap is legal.
+Sequence wrap is legal and receivers must compare it modulo `uint32` rather than treating wrap as a reset/error.
 
-## musical tick
+## Musical tick
 
-The existing GroovePuter timing domain is 96 PPQN. The receiver may use the tick for visual phase or diagnostics, but it must not assume that every tick is transmitted.
+The current GroovePuter timing domain is 96 PPQN. The receiver may use the tick for visual phase or diagnostics, but it must not assume that every tick is transmitted.
 
-## monotonic timestamp
+## Monotonic timestamp
 
-The timestamp exists for latency measurement and optional receiver-side scheduling experiments. R0 receivers may ignore it.
+The timestamp exists for latency measurement and optional receiver-side scheduling experiments. It wraps naturally as a 32-bit microsecond counter; receivers that compare timestamps must do wrap-safe unsigned arithmetic. R0 receivers may ignore it.
+
+## Bar and step
+
+`bar` and `step` are descriptive coordinates captured at the event source. They are not commands to move the GroovePuter sequencer. `step = 255` means that a 16-step position is not applicable to that event.
 
 ---
 
@@ -499,12 +527,14 @@ Minimal receiver behavior:
 
 ```text
 receive bytes
-  -> validate magic
-  -> validate supported protocol version
-  -> validate packet length
-  -> decode EVENT
+  -> require exactly 24 bytes for EVENT v1
+  -> validate magic == GVE1
+  -> validate protocolVersion == 1
+  -> validate messageType == 1
+  -> decode little-endian fields explicitly
+  -> ignore unknown event IDs
   -> reject duplicate/stale sequence if desired
-  -> map event to local visual behavior
+  -> map known event to local visual behavior
 ```
 
 The receiver must not need:
@@ -528,13 +558,13 @@ That is the portability criterion for the protocol.
 Possible local mapping:
 
 ```text
-KICK  -> pupil/eye squash impulse
-SNARE -> short lateral twitch
-HAT   -> small highlight pulse
-BAR   -> blink or gaze reset
-PLAY  -> wake/active expression
-STOP  -> idle expression
-FILL  -> temporary animation intensity increase
+KICK       -> pupil/eye squash impulse
+SNARE      -> short lateral twitch
+HAT_CLOSED -> small highlight pulse
+BAR        -> blink or gaze reset
+PLAY       -> wake/active expression
+STOP       -> idle expression
+FILL       -> temporary animation intensity increase
 ```
 
 This mapping belongs entirely to MCP eye's.
@@ -542,10 +572,10 @@ This mapping belongs entirely to MCP eye's.
 ## LED matrix
 
 ```text
-KICK  -> center flash
-SNARE -> horizontal burst
-HAT   -> edge sparkle
-BAR   -> palette phase change
+KICK       -> center flash
+SNARE      -> horizontal burst
+HAT_CLOSED -> edge sparkle
+BAR        -> palette phase change
 ```
 
 ## Addressable LEDs
@@ -577,10 +607,11 @@ Rules:
 
 1. Receivers must validate packet length and version before decoding.
 2. Unknown event IDs must be ignored, not treated as fatal.
-3. Existing event IDs never change meaning within a major protocol version.
-4. New event IDs may be added compatibly.
-5. A breaking wire-layout change requires a new major magic/version.
-6. Receiver-specific extensions must not consume core event IDs without a documented allocation rule.
+3. Unknown flag bits must be ignored unless a later revision explicitly declares them mandatory.
+4. Existing event IDs never change meaning within a major protocol version.
+5. New event IDs may be added compatibly.
+6. A breaking wire-layout change requires a new major magic/version.
+7. Receiver-specific extensions use only the documented experimental/private range until standardized.
 
 A later public protocol document should include a machine-readable event registry if the vocabulary grows materially.
 
@@ -651,7 +682,7 @@ Only after R0 passes:
 
 - implement explicit serializer/decoder;
 - validate sequence/loss behavior;
-- add `SNARE`, `CLAP`, `HAT`, `BAR`;
+- add `SNARE`, `CLAP`, `HAT_CLOSED`, `HAT_OPEN`, `BAR`;
 - test at least two receiver implementations/mappings;
 - test broadcast vs unicast policy;
 - define settings UX.
@@ -755,6 +786,8 @@ Inspect sequence gaps, queue high-water mark, drop counters, and send results. O
 - [x] TX-only/non-blocking ownership is explicit;
 - [x] packet-loss behavior is explicitly subordinate to audio correctness;
 - [x] public wire-format candidate is versioned and fixed-size;
+- [x] R0 numeric event IDs and value semantics are explicit;
+- [x] byte order, timestamp wrap, unknown IDs, and flags behavior are explicit;
 - [x] third-party receiver requirements are documented;
 - [x] R0 memory/jitter measurements are defined;
 - [x] existing release/DRAM gates may not be weakened.
