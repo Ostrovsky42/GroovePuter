@@ -36,6 +36,15 @@ StepMask roleOnsets(const RoleRhythmPlan& role) {
   return static_cast<StepMask>(role.structural | role.secondary | role.ghosts);
 }
 
+uint8_t onsetCount(StepMask mask) {
+  uint8_t result = 0;
+  while (mask != 0) {
+    result = static_cast<uint8_t>(result + (mask & 1u));
+    mask = static_cast<StepMask>(mask >> 1u);
+  }
+  return result;
+}
+
 StepMask protectedSpaceFor(const RhythmArchetype& archetype, RhythmRole role) {
   StepMask result = 0;
   const RhythmRoleMask roleBit = rhythmRoleBit(role);
@@ -205,6 +214,7 @@ StrongRhythmMigrationResult migrateStrongRhythmDrums(
   result.suggestedFeel = composition.suggestedFeel;
   result.bassRhythmId = composition.bassRhythm;
   result.chordRhythmId = composition.chordRhythm;
+  result.progressionId = composition.progression;
   result.melodicRhythmId = composition.melodicRhythm;
   result.motifShapeId = composition.motifShape;
   result.phraseLaw = composition.phraseLaw;
@@ -337,6 +347,24 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   result.chordRhythmId = chord.plan.id;
   result.chordOnsets = chord.plan.onsets;
   if (chord.status != ChordRhythmStatus::Ok && chord.status != ChordRhythmStatus::ValidButEmpty) {
+    result.status = StrongRhythmMigrationStatus::InvalidContext;
+    return result;
+  }
+
+  ChordProgressionRequest progressionRequest{};
+  progressionRequest.requestedId = result.progressionId;
+  progressionRequest.family = definition->family;
+  progressionRequest.generation = chordRequest.generation;
+  progressionRequest.harmonicEventCount = onsetCount(chord.plan.onsets);
+  // The production bridge is still intentionally one-bar. ChordRhythm owns
+  // event timing; Stage 15 fills only the harmonic content of those events.
+  progressionRequest.phraseBars = 1;
+  const ChordProgressionResult progression =
+      realizeChordProgression(progressionRequest);
+  result.chordProgressionStatus = progression.status;
+  result.progressionId = progression.plan.id;
+  if (progression.status != ChordProgressionStatus::Ok &&
+      progression.status != ChordProgressionStatus::ValidButStatic) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
