@@ -12,9 +12,13 @@ Genre or `RhythmFamily` routing. It does not claim Stage 9 rhythm ownership,
 physical synth-engine ownership, Phrase state, Scene state, persistence, or
 multi-bar bass evolution.
 
-Current reachability: **API-ONLY / host-testable**. Production migration wiring is
-intentionally deferred until Stage 14 is stable and the shared transient Tonal
-Projector exists. Hardware musical acceptance is not claimed here.
+Current reachability: **API-ONLY / host-testable**. This current-base rebuild sits
+on the verified Tonal Projector checkpoint `f170584a`. The shared projector is
+therefore available to the later Stage 15 integration layer, but this role engine
+does not call it directly. Production wiring is intentionally deferred to the
+single Stage 15 integration path, which will provide harmonic root / `ScaleType`
+/ register context and project the role's tagged tonal intent through the shared
+Tonal Projector. Hardware musical acceptance is not claimed here.
 
 ## Hardware list
 
@@ -47,6 +51,10 @@ There is no Stage 15C-specific firmware flash acceptance yet because this branch
 has no production caller wiring. Repository-wide Cardputer-Adv, fixed-DRAM,
 SEQTRAK MIDI-only, and SDL jobs are compile/regression guards only; they do not
 make this API-only feature hardware-reachable.
+
+The later Stage 15 integration branch must pass the normal host, Tonal Projector,
+SDL, Cardputer-Adv fixed-DRAM, and SEQTRAK MIDI-only gates before hardware
+audition.
 
 ## Expected behavior
 
@@ -82,41 +90,52 @@ uint16_t semitoneOffsetOrdinals = 0;
 - apply `minDegreeOffset`, `maxDegreeOffset`, and `maxLeapDegrees` only to
   untagged scale-degree entries;
 - never compare a scale-degree entry directly with a semitone-tagged entry for
-  `maxLeapDegrees`; the common musical leap is checked only after Tonal Projector
-  resolves both to absolute MIDI notes;
+  `maxLeapDegrees`; the common musical leap is checked only after the shared
+  Tonal Projector resolves both to absolute MIDI notes in the integration layer;
 - emit accent and slide masks as strict subsets of real bass onsets;
 - emit slide intent only when existing timing already connects the previous
   onset to the destination directly or through uninterrupted continuations;
 - never create or extend a continuation merely to realize a slide;
+- emit semantic tagged tonal intent only; it must not choose `ScaleType`, a MIDI
+  register, an absolute MIDI note, or a physical synth;
 - use fixed-capacity storage with no heap allocation, global RNG, or unbounded
   retry loop.
 
-`tonalOffsets` are not final MIDI notes. The future Tonal Projector reads the
-current transient root, `ScaleType`, register bounds, values, and unit tags and
-returns absolute MIDI notes with an explicit status. The projector must use the
-real scale cardinality (5, 7, or 12), not the existing seven-mode modulo shortcut.
+`tonalOffsets` are not final MIDI notes. The later Stage 15 integration adapter
+reads the current transient root, `ScaleType`, register bounds, values, and unit
+tags, constructs `TonalProjectionRequest`, and asks the already-existing shared
+Tonal Projector for absolute MIDI notes with an explicit status. The projector
+uses the real scale cardinality (5, 7, or 12).
 
 Stage 15C does not own that projector and does not gain Genre, rhythm, voice,
-Scene, Phrase, or persistence ownership through it.
+Scene, Phrase, persistence, scale mapping, register, or synth ownership through
+it.
 
 ## Troubleshooting
 
 If compilation fails in the Stage 15C test:
 
-1. Confirm `request.family` is absent from `bass_pitch_behavior.*` and tests.
-2. Confirm `selectContour()` and `selectArticulation()` use policy masks only.
-3. Confirm the default policy allows only `RootAnchor` and `Plain`.
-4. Confirm `RootFifth` is tagged `+7` semitones and `RootOctave` is tagged `+12`.
-5. Confirm neighbor/approach values remain scale-degree intent with their tag
+1. Confirm the branch is based on the current Tonal Projector checkpoint
+   `f170584a` (or its reviewed descendant), not the old `c8cd061` Stage 14 line.
+2. Confirm `request.family` is absent from `bass_pitch_behavior.*` and tests.
+3. Confirm `selectContour()` and `selectArticulation()` use policy masks only.
+4. Confirm the default policy allows only `RootAnchor` and `Plain`.
+5. Confirm `RootFifth` is tagged `+7` semitones and `RootOctave` is tagged `+12`.
+6. Confirm neighbor/approach values remain scale-degree intent with their tag
    bits clear.
-6. Do not apply `maxLeapDegrees` across mixed-unit adjacent entries.
-7. Do not move bass onset generation from `bass_rhythm.*` into Stage 15C.
-8. Do not map semantic articulation directly to TB303/SID/AY internals here.
-9. Do not create/extend ties or gates to make a requested slide possible.
+7. Do not apply `maxLeapDegrees` across mixed-unit adjacent entries.
+8. Do not move bass onset generation from `bass_rhythm.*` into Stage 15C.
+9. Do not map semantic articulation directly to TB303/SID/AY internals here.
+10. Do not create/extend ties or gates to make a requested slide possible.
+11. Do not choose `ScaleType`, register bounds, absolute MIDI notes, projector
+    calls, or physical synth types inside the Bass role. Those belong to the
+    Stage 15 integration adapter and downstream allocation/materialization.
 
 If the source regression reports `Scene`, `PhraseCore`, `StrongRhythmMigration`,
-`SynthPattern`, melodic ownership, `request.family`, heap containers, or global
-randomness, the implementation has crossed the Stage 15C boundary.
+`SynthPattern`, melodic ownership, `request.family`, `ScaleType`, Tonal Projector
+request/result calls, MIDI register/note fields, physical synth types, heap
+containers, or global randomness, the implementation has crossed the Stage 15C
+boundary.
 
 ## Acceptance checklist
 
@@ -137,7 +156,10 @@ randomness, the implementation has crossed the Stage 15C boundary.
 - [ ] Slide intent is absent across an existing empty timing gap.
 - [ ] No onset/continuation is created or moved by Stage 15C.
 - [ ] No heap allocation, global RNG, or unbounded retry is introduced.
-- [ ] Production tonal projection remains outside Stage 15C.
-- [ ] Production reachability remains explicitly unclaimed until integration is
-      separately reviewed.
+- [ ] No `ScaleType` mapping, register selection, absolute MIDI projection,
+      projector call, or physical synth selection appears in the role engine.
+- [ ] Shared Tonal Projector remains outside the Bass role and is consumed only
+      by the later Stage 15 integration adapter.
+- [ ] Production reachability remains explicitly unclaimed until Stage 15
+      integration is separately reviewed.
 - [ ] Hardware bass musical verdict remains **PENDING**.
