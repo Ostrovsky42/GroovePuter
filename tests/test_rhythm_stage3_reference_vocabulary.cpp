@@ -12,6 +12,8 @@ using namespace GroovePuterRhythm;
 
 namespace {
 
+constexpr uint8_t kStage3BaselineCount = 20;
+
 uint64_t mix(uint64_t hash, uint64_t value) {
   hash ^= value;
   hash *= 1099511628211ull;
@@ -492,6 +494,9 @@ int main() {
     assert(archetype->id == def.archetypeId);
     assert(archetype->family == def.family);
     assert(archetype->allowedPhraseBars == phraseBarsBit(1));
+    if (index < kStage3BaselineCount) {
+      assert(archetype->relationshipCount >= 1);
+    }
     totalRelationships += archetype->relationshipCount;
     ++familyPresence[static_cast<uint8_t>(archetype->family)];
 
