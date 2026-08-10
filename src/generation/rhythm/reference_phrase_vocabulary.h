@@ -8,8 +8,10 @@ namespace ReferenceVocabulary {
 
 // Stage 12 candidate catalog. It preserves the production one-bar catalog and
 // overlays bounded 2/4-bar trajectories only on archetypes whose current
-// relationship contracts admit phrase evolution. Production generation must
-// keep using catalog() until the ESP32-S3 Stage 6.1 stack/heap/runtime gate is
+// relationship contracts admit phrase evolution. Individual archetypes may
+// expose narrower trajectory/mutation capabilities when their lane minima do
+// not provide legal headroom for a transform. Production generation must keep
+// using catalog() until the ESP32-S3 Stage 6.1 stack/heap/runtime gate is
 // recorded and accepted.
 const RhythmCatalogView& phraseEvolutionCatalog();
 
