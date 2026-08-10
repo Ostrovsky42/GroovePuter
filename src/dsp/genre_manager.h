@@ -72,6 +72,7 @@ struct GenerativeParams {
     int drumVoiceCount = 8;
 };
 
+// === GROOVE RECIPE (legacy compact adapter; full generation uses GenerativeParams)
 struct GrooveRecipe {
     uint8_t stepsPerBar = 16;
     uint8_t swingPercent = 50;
