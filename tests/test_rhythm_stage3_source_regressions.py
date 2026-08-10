@@ -22,10 +22,10 @@ required = [
     '"electro_backskip"',
     '"funk_house_bridge"',
     '"electro_gap_push"',
-    "archetype(421",
-    "archetype(422",
-    "archetype(423",
-    "archetype(424",
+    "archetype(711",
+    "archetype(712",
+    "archetype(713",
+    "archetype(714",
     "RhythmFamily::FourFloor",
     "RhythmFamily::MachineSyncopation",
     "RhythmFamily::Breakbeat",
@@ -40,6 +40,10 @@ for token in required:
     assert token in combined, f"missing reference vocabulary contract token: {token}"
 
 for forbidden in [
+    "archetype(421",
+    "archetype(422",
+    "archetype(423",
+    "archetype(424",
     "GenreManager",
     "GenreSettings",
     "SceneManager",
@@ -64,11 +68,13 @@ for forbidden in [
 assert "RhythmFamily::Acid" not in combined
 
 # Stage 7 Batch 2 promotes only the four already-auditioned one-bar structural
-# grammars. Bar evolution and any temporary audition routing stay outside the
-# production ReferenceVocabulary package.
+# grammars. The audition IDs are intentionally retained because archetype.id is
+# part of the deterministic RhythmIdentity seed domain. Bar evolution and any
+# temporary audition routing stay outside the production ReferenceVocabulary.
 assert "phraseBarsBit(1)" in source
 assert "BarFunction::Repeat" not in source
 assert "BarFunction::Break" not in source
 assert "BarFunction::Turnaround" not in source
+assert "IDs 711..714 are retained" in source
 
 print("Groove Vocabulary reference vocabulary source regressions: OK")
