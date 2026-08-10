@@ -14,10 +14,10 @@ def strip_comments(text: str) -> str:
 
 CODE = strip_comments(TEXT)
 
-# 15B is a fixed-capacity one-bar melodic-intent layer. It may transform the
-# current bar's melodic topology inside explicit semantic legality masks, then
-# assign contour and a local motif operation. It must not become a persistence,
-# Phrase, full-groove diversity, physical voice-allocation, or heap owner.
+# 15B is a fixed-capacity one-bar melodic-intent executor. Genre/Variant owns
+# policy resolution; 15B receives allowed/preferred masks and never performs
+# hidden genre/family lookup. It must not become persistence, Phrase,
+# full-groove diversity, physical voice-allocation, or heap owner.
 for forbidden in (
     "Scene",
     "PhraseCore",
@@ -27,6 +27,8 @@ for forbidden in (
     "previousBar",
     "nextBar",
     "SynthPattern",
+    "RhythmFamily family",
+    "switch (request.family)",
     "std::vector",
     "std::map",
     "std::unordered",
@@ -38,6 +40,14 @@ for forbidden in (
 assert re.search(r"\bnew\s+[A-Za-z_:]", CODE) is None, "heap new"
 assert re.search(r"\bdelete\s+[A-Za-z_]", CODE) is None, "heap delete"
 
+assert "struct MelodicIntentPolicy" in HEADER
+assert "allowedRhythmOperations" in HEADER
+assert "preferredRhythmOperations" in HEADER
+assert "allowedContours" in HEADER
+assert "preferredContours" in HEADER
+assert "allowedMotifOperations" in HEADER
+assert "preferredMotifOperations" in HEADER
+assert "MelodicIntentPolicy policy{}" in HEADER
 assert "enum class MelodicRhythmOperationId" in HEADER
 assert "ControlledRest" in HEADER
 assert "ShiftInteriorEarlier" in HEADER
@@ -56,6 +66,9 @@ assert "GenerationDomain::MotifSelection" in SOURCE
 assert "kRhythmSalt" in SOURCE
 assert "kContourSalt" in SOURCE
 assert "kOperationSalt" in SOURCE
+assert "preferredOrAllowed(" in SOURCE
+assert "validPolicy(" in SOURCE
+assert "explicitSelectionsAllowed(" in SOURCE
 assert "applyRhythmOperation(" in SOURCE
 assert "request.allowedOnsetSteps" in SOURCE
 assert "request.allowedContinuationSteps" in SOURCE
