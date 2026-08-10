@@ -9,6 +9,10 @@
 #define GROOVEPUTER_GVEP_R0 0
 #endif
 
+#if GROOVEPUTER_GVEP_R0
+#include <atomic>
+#endif
+
 namespace GroovePuterVisual {
 
 constexpr std::size_t kGvepV1PacketSize = 24;
@@ -64,8 +68,6 @@ inline void serializeGvepV1Event(const GvepEvent& event,
 }
 
 #if GROOVEPUTER_GVEP_R0
-
-#include <atomic>
 
 class GvepR0EventBus {
 public:
