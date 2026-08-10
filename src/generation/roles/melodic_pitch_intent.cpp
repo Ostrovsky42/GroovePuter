@@ -101,52 +101,80 @@ bool moveNote(uint8_t onsetStep, int8_t delta,
   return true;
 }
 
+uint16_t preferredOrAllowed(uint16_t allowed, uint16_t preferred) {
+  const uint16_t preferredAllowed = static_cast<uint16_t>(allowed & preferred);
+  return preferredAllowed != 0 ? preferredAllowed : allowed;
+}
+
+uint8_t chooseSetBit(uint16_t mask, uint8_t limit, uint32_t choice) {
+  uint8_t count = 0;
+  for (uint8_t value = 1; value < limit; ++value) {
+    if ((mask & static_cast<uint16_t>(1u << value)) != 0) ++count;
+  }
+  if (count == 0) return 0;
+
+  uint8_t target = static_cast<uint8_t>(choice % count);
+  for (uint8_t value = 1; value < limit; ++value) {
+    if ((mask & static_cast<uint16_t>(1u << value)) == 0) continue;
+    if (target == 0) return value;
+    --target;
+  }
+  return 0;
+}
+
+bool validPolicy(const MelodicIntentPolicy& policy) {
+  if ((policy.allowedRhythmOperations & ~kAllMelodicRhythmOperations) != 0 ||
+      (policy.preferredRhythmOperations & ~kAllMelodicRhythmOperations) != 0 ||
+      (policy.allowedContours & ~kAllMelodicContours) != 0 ||
+      (policy.preferredContours & ~kAllMelodicContours) != 0 ||
+      (policy.allowedMotifOperations & ~kAllMelodicMotifOperations) != 0 ||
+      (policy.preferredMotifOperations & ~kAllMelodicMotifOperations) != 0) {
+    return false;
+  }
+  if ((policy.preferredRhythmOperations & ~policy.allowedRhythmOperations) != 0 ||
+      (policy.preferredContours & ~policy.allowedContours) != 0 ||
+      (policy.preferredMotifOperations & ~policy.allowedMotifOperations) != 0) {
+    return false;
+  }
+  if ((policy.allowedRhythmOperations &
+       melodicRhythmOperationBit(MelodicRhythmOperationId::Preserve)) == 0 ||
+      (policy.allowedContours & melodicContourBit(MelodicContourId::Static)) == 0 ||
+      (policy.allowedMotifOperations &
+       melodicMotifOperationBit(MelodicMotifOperationId::None)) == 0) {
+    return false;
+  }
+  return true;
+}
+
+bool rhythmOperationAllowed(const MelodicIntentPolicy& policy,
+                            MelodicRhythmOperationId id) {
+  return (policy.allowedRhythmOperations & melodicRhythmOperationBit(id)) != 0;
+}
+
+bool contourAllowed(const MelodicIntentPolicy& policy, MelodicContourId id) {
+  return (policy.allowedContours & melodicContourBit(id)) != 0;
+}
+
+bool motifOperationAllowed(const MelodicIntentPolicy& policy,
+                           MelodicMotifOperationId id) {
+  return (policy.allowedMotifOperations & melodicMotifOperationBit(id)) != 0;
+}
+
 MelodicRhythmOperationId selectRhythmOperation(
     const MelodicPitchIntentRequest& request, uint8_t onsetCount) {
   if (request.requestedRhythmOperation != MelodicRhythmOperationId::Auto)
     return request.requestedRhythmOperation;
   if (onsetCount == 0) return MelodicRhythmOperationId::Preserve;
 
-  MelodicRhythmOperationId candidates[5]{};
-  uint8_t count = 0;
-  switch (request.family) {
-    case RhythmFamily::DubPulse:
-    case RhythmFamily::SparsePulse:
-      candidates[count++] = MelodicRhythmOperationId::Preserve;
-      candidates[count++] = MelodicRhythmOperationId::ControlledRest;
-      candidates[count++] = MelodicRhythmOperationId::ShiftInteriorLater;
-      break;
-    case RhythmFamily::HipHopBackbeat:
-      candidates[count++] = MelodicRhythmOperationId::Preserve;
-      candidates[count++] = MelodicRhythmOperationId::ControlledRest;
-      candidates[count++] = MelodicRhythmOperationId::ShiftInteriorEarlier;
-      candidates[count++] = MelodicRhythmOperationId::ShiftInteriorLater;
-      candidates[count++] = MelodicRhythmOperationId::TerminalEcho;
-      break;
-    case RhythmFamily::Breakbeat:
-    case RhythmFamily::UkTwoStep:
-    case RhythmFamily::Funk16:
-    case RhythmFamily::MachineSyncopation:
-      candidates[count++] = MelodicRhythmOperationId::Preserve;
-      candidates[count++] = MelodicRhythmOperationId::ShiftInteriorEarlier;
-      candidates[count++] = MelodicRhythmOperationId::ShiftInteriorLater;
-      candidates[count++] = MelodicRhythmOperationId::TerminalEcho;
-      break;
-    case RhythmFamily::FourFloor:
-      candidates[count++] = MelodicRhythmOperationId::Preserve;
-      candidates[count++] = MelodicRhythmOperationId::ControlledRest;
-      candidates[count++] = MelodicRhythmOperationId::ShiftInteriorLater;
-      candidates[count++] = MelodicRhythmOperationId::TerminalEcho;
-      break;
-    case RhythmFamily::Count:
-      return MelodicRhythmOperationId::Preserve;
-  }
-
+  const uint16_t mask = preferredOrAllowed(
+      request.policy.allowedRhythmOperations,
+      request.policy.preferredRhythmOperations);
   const uint32_t seed = deriveGenerationSeed(
       request.generation, request.archetypeId,
-      GenerationDomain::MelodicRhythmSelection,
-      kRhythmSalt ^ static_cast<uint32_t>(request.family));
-  return candidates[deterministicValue(seed, request.barOrdinal) % count];
+      GenerationDomain::MelodicRhythmSelection, kRhythmSalt);
+  return static_cast<MelodicRhythmOperationId>(chooseSetBit(
+      mask, static_cast<uint8_t>(MelodicRhythmOperationId::Count),
+      deterministicValue(seed, request.barOrdinal)));
 }
 
 bool applyControlledRest(const MelodicPitchIntentRequest& request,
@@ -264,50 +292,14 @@ MelodicContourId selectContour(const MelodicPitchIntentRequest& request,
     return request.requestedContour;
   if (onsetCount <= 1) return MelodicContourId::Static;
 
-  MelodicContourId candidates[8]{};
-  uint8_t count = 0;
-  switch (request.family) {
-    case RhythmFamily::FourFloor:
-      candidates[count++] = MelodicContourId::RepeatThenUp;
-      candidates[count++] = MelodicContourId::RepeatThenDown;
-      candidates[count++] = MelodicContourId::Arch;
-      candidates[count++] = MelodicContourId::Neighbor;
-      break;
-    case RhythmFamily::MachineSyncopation:
-    case RhythmFamily::Funk16:
-      candidates[count++] = MelodicContourId::StepUp;
-      candidates[count++] = MelodicContourId::StepDown;
-      candidates[count++] = MelodicContourId::LeapReturn;
-      candidates[count++] = MelodicContourId::Neighbor;
-      break;
-    case RhythmFamily::Breakbeat:
-    case RhythmFamily::UkTwoStep:
-      candidates[count++] = MelodicContourId::LeapReturn;
-      candidates[count++] = MelodicContourId::Arch;
-      candidates[count++] = MelodicContourId::InvertedArch;
-      candidates[count++] = MelodicContourId::RepeatThenDown;
-      break;
-    case RhythmFamily::HipHopBackbeat:
-      candidates[count++] = MelodicContourId::Neighbor;
-      candidates[count++] = MelodicContourId::RepeatThenUp;
-      candidates[count++] = MelodicContourId::RepeatThenDown;
-      candidates[count++] = MelodicContourId::LeapReturn;
-      break;
-    case RhythmFamily::DubPulse:
-    case RhythmFamily::SparsePulse:
-      candidates[count++] = MelodicContourId::Static;
-      candidates[count++] = MelodicContourId::Neighbor;
-      candidates[count++] = MelodicContourId::StepDown;
-      candidates[count++] = MelodicContourId::Arch;
-      break;
-    case RhythmFamily::Count:
-      return MelodicContourId::Static;
-  }
-
+  const uint16_t mask = preferredOrAllowed(
+      request.policy.allowedContours, request.policy.preferredContours);
   const uint32_t seed = deriveGenerationSeed(
       request.generation, request.archetypeId, GenerationDomain::LeadPitch,
-      kContourSalt ^ static_cast<uint32_t>(request.family));
-  return candidates[deterministicValue(seed, request.barOrdinal) % count];
+      kContourSalt);
+  return static_cast<MelodicContourId>(chooseSetBit(
+      mask, static_cast<uint8_t>(MelodicContourId::Count),
+      deterministicValue(seed, request.barOrdinal)));
 }
 
 MelodicMotifOperationId selectOperation(
@@ -316,40 +308,15 @@ MelodicMotifOperationId selectOperation(
     return request.requestedOperation;
   if (onsetCount <= 1) return MelodicMotifOperationId::None;
 
-  MelodicMotifOperationId candidates[5]{};
-  uint8_t count = 0;
-  switch (request.family) {
-    case RhythmFamily::DubPulse:
-    case RhythmFamily::SparsePulse:
-      candidates[count++] = MelodicMotifOperationId::None;
-      candidates[count++] = MelodicMotifOperationId::TerminalReturn;
-      candidates[count++] = MelodicMotifOperationId::PivotRepeat;
-      break;
-    case RhythmFamily::HipHopBackbeat:
-      candidates[count++] = MelodicMotifOperationId::None;
-      candidates[count++] = MelodicMotifOperationId::ChangeTerminal;
-      candidates[count++] = MelodicMotifOperationId::PivotRepeat;
-      candidates[count++] = MelodicMotifOperationId::TerminalReturn;
-      break;
-    case RhythmFamily::FourFloor:
-    case RhythmFamily::MachineSyncopation:
-    case RhythmFamily::Breakbeat:
-    case RhythmFamily::UkTwoStep:
-    case RhythmFamily::Funk16:
-      candidates[count++] = MelodicMotifOperationId::None;
-      candidates[count++] = MelodicMotifOperationId::ChangeTerminal;
-      candidates[count++] = MelodicMotifOperationId::InvertLocal;
-      candidates[count++] = MelodicMotifOperationId::PivotRepeat;
-      candidates[count++] = MelodicMotifOperationId::TerminalReturn;
-      break;
-    case RhythmFamily::Count:
-      return MelodicMotifOperationId::None;
-  }
-
+  const uint16_t mask = preferredOrAllowed(
+      request.policy.allowedMotifOperations,
+      request.policy.preferredMotifOperations);
   const uint32_t seed = deriveGenerationSeed(
       request.generation, request.archetypeId, GenerationDomain::MotifSelection,
-      kOperationSalt ^ static_cast<uint32_t>(request.family));
-  return candidates[deterministicValue(seed, request.barOrdinal) % count];
+      kOperationSalt);
+  return static_cast<MelodicMotifOperationId>(chooseSetBit(
+      mask, static_cast<uint8_t>(MelodicMotifOperationId::Count),
+      deterministicValue(seed, request.barOrdinal)));
 }
 
 void buildContour(MelodicContourId contour, uint8_t count,
@@ -467,13 +434,29 @@ void enforceBounds(const MelodicPitchIntentRequest& request,
   }
 }
 
+bool explicitSelectionsAllowed(const MelodicPitchIntentRequest& request) {
+  if (request.requestedRhythmOperation != MelodicRhythmOperationId::Auto &&
+      !rhythmOperationAllowed(request.policy,
+                              request.requestedRhythmOperation)) {
+    return false;
+  }
+  if (request.requestedContour != MelodicContourId::Auto &&
+      !contourAllowed(request.policy, request.requestedContour)) {
+    return false;
+  }
+  if (request.requestedOperation != MelodicMotifOperationId::Auto &&
+      !motifOperationAllowed(request.policy, request.requestedOperation)) {
+    return false;
+  }
+  return true;
+}
+
 bool validRequest(const MelodicPitchIntentRequest& request) {
   if (request.archetypeId == kNoArchetypeId ||
-      static_cast<uint8_t>(request.family) >=
-          static_cast<uint8_t>(RhythmFamily::Count) ||
       !isValidMelodicRhythmOperationId(request.requestedRhythmOperation) ||
       !isValidMelodicContourId(request.requestedContour) ||
       !isValidMelodicMotifOperationId(request.requestedOperation) ||
+      !validPolicy(request.policy) || !explicitSelectionsAllowed(request) ||
       request.minDegreeOffset > 0 || request.maxDegreeOffset < 0 ||
       request.minDegreeOffset > request.maxDegreeOffset ||
       request.maxOnsets > kStepsPerBar ||
@@ -555,7 +538,9 @@ MelodicPitchIntentResult realizeMelodicPitchIntent(
   const MelodicMotifOperationId operation =
       selectOperation(request, result.plan.onsetCount);
   if (!isValidMelodicContourId(contour, false) ||
-      !isValidMelodicMotifOperationId(operation, false)) {
+      !isValidMelodicMotifOperationId(operation, false) ||
+      !contourAllowed(request.policy, contour) ||
+      !motifOperationAllowed(request.policy, operation)) {
     return result;
   }
 
