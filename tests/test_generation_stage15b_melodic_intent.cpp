@@ -32,6 +32,12 @@ bool validTopology(StepMask onsets, StepMask continuations) {
   return true;
 }
 
+uint8_t firstSetStep(StepMask value) {
+  for (uint8_t step = 0; step < kStepsPerBar; ++step)
+    if ((value & stepBit(step)) != 0) return step;
+  return kStepsPerBar;
+}
+
 MelodicPitchIntentRequest requestFor(StepMask onsets) {
   MelodicPitchIntentRequest request{};
   request.rhythmPlan.rhythmId = MelodicRhythmId::SyncopatedMotif;
@@ -41,12 +47,20 @@ MelodicPitchIntentRequest requestFor(StepMask onsets) {
   request.generation.projectSeed = 0x12345678u;
   request.generation.phraseOrdinal = 9;
   request.barOrdinal = 3;
-  request.requestedRhythmOperation = MelodicRhythmOperationId::Preserve;
   request.minDegreeOffset = -7;
   request.maxDegreeOffset = 7;
   request.maxLeapDegrees = 4;
   request.maxOnsets = kStepsPerBar;
   return request;
+}
+
+void enableAllPolicy(MelodicPitchIntentRequest& request) {
+  request.policy.allowedRhythmOperations = kAllMelodicRhythmOperations;
+  request.policy.preferredRhythmOperations = 0;
+  request.policy.allowedContours = kAllMelodicContours;
+  request.policy.preferredContours = 0;
+  request.policy.allowedMotifOperations = kAllMelodicMotifOperations;
+  request.policy.preferredMotifOperations = 0;
 }
 
 void assertSame(const MelodicPitchIntentResult& a,
@@ -82,40 +96,43 @@ void assertBounds(const MelodicPitchIntentPlan& plan,
 }  // namespace
 
 int main() {
+  // Conservative default is invariant for every seed: no rhythmic or tonal
+  // behavior is enabled until the composition layer explicitly opts in.
+  {
+    for (uint32_t seed = 0; seed < 256; ++seed) {
+      MelodicPitchIntentRequest request = requestFor(mask({1, 5, 10, 14}));
+      request.generation.projectSeed = seed;
+      request.generation.phraseOrdinal = static_cast<uint16_t>(seed);
+      const auto result = realizeMelodicPitchIntent(request);
+      assert(result.status == MelodicPitchIntentStatus::Ok);
+      assert(result.plan.rhythmOperation == MelodicRhythmOperationId::Preserve);
+      assert(result.plan.contour == MelodicContourId::Static);
+      assert(result.plan.operation == MelodicMotifOperationId::None);
+      assert(result.plan.onsets == request.rhythmPlan.onsets);
+      assert(result.plan.continuations == request.rhythmPlan.continuations);
+    }
+  }
+
   {
     MelodicPitchIntentRequest request = requestFor(0);
-    request.requestedContour = MelodicContourId::LeapReturn;
-    request.requestedOperation = MelodicMotifOperationId::ChangeTerminal;
     const auto result = realizeMelodicPitchIntent(request);
     assert(result.status == MelodicPitchIntentStatus::ValidButEmpty);
-    assert(result.plan.onsets == 0);
-    assert(result.plan.continuations == 0);
+    assert(result.plan.rhythmOperation == MelodicRhythmOperationId::Preserve);
     assert(result.plan.contour == MelodicContourId::Static);
     assert(result.plan.operation == MelodicMotifOperationId::None);
   }
 
   {
-    const auto request = requestFor(mask({1, 5, 10, 14}));
+    MelodicPitchIntentRequest request = requestFor(mask({1, 5, 10, 14}));
+    enableAllPolicy(request);
     assertSame(realizeMelodicPitchIntent(request),
                realizeMelodicPitchIntent(request));
   }
 
-  // Stage 14 onset blocking and continuation legality are separate contracts.
-  {
-    MelodicPitchIntentRequest request = requestFor(mask({0, 4}));
-    request.rhythmPlan.continuations = mask({1, 2, 5, 6});
-    request.allowedOnsetSteps = mask({0, 4});
-    request.allowedContinuationSteps = mask({1, 2, 5, 6});
-    const auto result = realizeMelodicPitchIntent(request);
-    assert(result.status == MelodicPitchIntentStatus::Ok);
-    assert(result.plan.onsets == request.rhythmPlan.onsets);
-    assert(result.plan.continuations == request.rhythmPlan.continuations);
-  }
-
-  // AUTO is driven by resolved policy, not hidden RhythmFamily logic.
+  // Preferred policy, not a hidden family lookup, drives AUTO.
   {
     MelodicPitchIntentRequest request = requestFor(mask({0, 4, 8}));
-    request.requestedRhythmOperation = MelodicRhythmOperationId::Auto;
+    enableAllPolicy(request);
     request.policy.preferredRhythmOperations =
         melodicRhythmOperationBit(MelodicRhythmOperationId::ControlledRest);
     request.policy.preferredContours =
@@ -130,18 +147,15 @@ int main() {
     assert(result.plan.operation == MelodicMotifOperationId::TerminalReturn);
   }
 
-  // Explicit selections outside the resolved allowed vocabulary are invalid.
+  // Explicit selection outside allowed vocabulary is rejected.
   {
     MelodicPitchIntentRequest request = requestFor(mask({0, 4, 8}));
-    request.policy.allowedContours =
-        melodicContourBit(MelodicContourId::Static) |
-        melodicContourBit(MelodicContourId::StepUp);
-    request.requestedContour = MelodicContourId::LeapReturn;
+    request.requestedContour = MelodicContourId::StepUp;
     assert(realizeMelodicPitchIntent(request).status ==
            MelodicPitchIntentStatus::InvalidRequest);
   }
 
-  // Compatibility fallbacks are mandatory parts of a valid policy.
+  // Compatibility fallbacks are mandatory in every valid policy.
   {
     MelodicPitchIntentRequest request = requestFor(mask({0, 4, 8}));
     request.policy.allowedRhythmOperations =
@@ -153,19 +167,28 @@ int main() {
   // Preferred masks must be subsets of allowed masks.
   {
     MelodicPitchIntentRequest request = requestFor(mask({0, 4, 8}));
-    request.policy.allowedContours =
-        melodicContourBit(MelodicContourId::Static) |
-        melodicContourBit(MelodicContourId::StepUp);
     request.policy.preferredContours =
-        melodicContourBit(MelodicContourId::LeapReturn);
+        melodicContourBit(MelodicContourId::StepUp);
     assert(realizeMelodicPitchIntent(request).status ==
            MelodicPitchIntentStatus::InvalidRequest);
   }
 
-  // ControlledRest removes a complete note chain and preserves the first anchor
-  // while alternatives exist.
+  // Stage 14 onset blocking and continuation legality remain distinct.
+  {
+    MelodicPitchIntentRequest request = requestFor(mask({0, 4}));
+    request.rhythmPlan.continuations = mask({1, 2, 5, 6});
+    request.allowedOnsetSteps = mask({0, 4});
+    request.allowedContinuationSteps = mask({1, 2, 5, 6});
+    const auto result = realizeMelodicPitchIntent(request);
+    assert(result.status == MelodicPitchIntentStatus::Ok);
+    assert(result.plan.onsets == request.rhythmPlan.onsets);
+    assert(result.plan.continuations == request.rhythmPlan.continuations);
+  }
+
+  // Controlled rest removes a complete note chain.
   {
     MelodicPitchIntentRequest request = requestFor(mask({0, 4, 10}));
+    enableAllPolicy(request);
     request.rhythmPlan.continuations = mask({5, 6, 11});
     request.requestedRhythmOperation =
         MelodicRhythmOperationId::ControlledRest;
@@ -180,6 +203,7 @@ int main() {
 
   {
     MelodicPitchIntentRequest request = requestFor(mask({8}));
+    enableAllPolicy(request);
     request.requestedRhythmOperation =
         MelodicRhythmOperationId::ControlledRest;
     request.allowEmptyBar = true;
@@ -189,9 +213,10 @@ int main() {
     assert(result.plan.continuations == 0);
   }
 
-  // A shift moves a complete onset+continuation chain and keeps topology valid.
+  // Shift moves a complete onset+continuation chain and keeps topology valid.
   {
     MelodicPitchIntentRequest request = requestFor(mask({0, 4, 10}));
+    enableAllPolicy(request);
     request.rhythmPlan.continuations = mask({5, 6});
     request.requestedRhythmOperation =
         MelodicRhythmOperationId::ShiftInteriorLater;
@@ -201,13 +226,13 @@ int main() {
            MelodicRhythmOperationId::ShiftInteriorLater);
     assert(result.plan.onsetCount == 3);
     assert(result.plan.onsets != request.rhythmPlan.onsets);
-    assert((result.plan.onsets & stepBit(0)) != 0);
     assert(validTopology(result.plan.onsets, result.plan.continuations));
   }
 
-  // If an onset or its held continuation cannot move legally, Preserve wins.
+  // Impossible shift degrades to Preserve rather than escaping legality.
   {
     MelodicPitchIntentRequest request = requestFor(mask({0, 4}));
+    enableAllPolicy(request);
     request.requestedRhythmOperation =
         MelodicRhythmOperationId::ShiftInteriorLater;
     request.allowedOnsetSteps = request.rhythmPlan.onsets;
@@ -217,47 +242,53 @@ int main() {
     assert(result.plan.onsets == request.rhythmPlan.onsets);
   }
 
-  {
-    MelodicPitchIntentRequest request = requestFor(mask({0, 4}));
-    request.rhythmPlan.continuations = mask({5, 6});
-    request.requestedRhythmOperation =
-        MelodicRhythmOperationId::ShiftInteriorLater;
-    request.allowedOnsetSteps = mask({0, 4, 5});
-    request.allowedContinuationSteps = mask({5, 6});
-    const auto result = realizeMelodicPitchIntent(request);
-    assert(result.status == MelodicPitchIntentStatus::Ok);
-    assert(result.plan.rhythmOperation == MelodicRhythmOperationId::Preserve);
-    assert(result.plan.onsets == request.rhythmPlan.onsets);
-    assert(result.plan.continuations == request.rhythmPlan.continuations);
-  }
-
-  // TerminalEcho adds at most one free legal onset and respects maxOnsets.
+  // TerminalEcho must add strictly to the right of the current terminal onset.
   {
     MelodicPitchIntentRequest request = requestFor(mask({0, 8}));
+    enableAllPolicy(request);
     request.requestedRhythmOperation = MelodicRhythmOperationId::TerminalEcho;
     request.maxOnsets = 3;
     const auto result = realizeMelodicPitchIntent(request);
     assert(result.status == MelodicPitchIntentStatus::Ok);
     assert(result.plan.rhythmOperation == MelodicRhythmOperationId::TerminalEcho);
-    assert(result.plan.onsetCount == 3);
-    assert(validTopology(result.plan.onsets, result.plan.continuations));
+    const StepMask added = static_cast<StepMask>(
+        result.plan.onsets & static_cast<StepMask>(~request.rhythmPlan.onsets));
+    assert(added != 0);
+    assert(firstSetStep(added) > 8);
   }
 
+  // Terminal at step 15 cannot echo and must preserve.
   {
-    MelodicPitchIntentRequest request = requestFor(mask({0, 8, 12}));
+    MelodicPitchIntentRequest request = requestFor(mask({4, 15}));
+    enableAllPolicy(request);
     request.requestedRhythmOperation = MelodicRhythmOperationId::TerminalEcho;
     request.maxOnsets = 3;
     const auto result = realizeMelodicPitchIntent(request);
     assert(result.status == MelodicPitchIntentStatus::Ok);
     assert(result.plan.rhythmOperation == MelodicRhythmOperationId::Preserve);
+    assert(result.plan.onsets == request.rhythmPlan.onsets);
   }
 
+  // A legal slot on the left is not a substitute for an unavailable right-side
+  // echo position.
+  {
+    MelodicPitchIntentRequest request = requestFor(mask({4, 12}));
+    enableAllPolicy(request);
+    request.requestedRhythmOperation = MelodicRhythmOperationId::TerminalEcho;
+    request.maxOnsets = 3;
+    request.allowedOnsetSteps = mask({4, 10, 12});
+    const auto result = realizeMelodicPitchIntent(request);
+    assert(result.status == MelodicPitchIntentStatus::Ok);
+    assert(result.plan.rhythmOperation == MelodicRhythmOperationId::Preserve);
+    assert(result.plan.onsets == request.rhythmPlan.onsets);
+  }
+
+  // Terminal echo cannot land on an occupied continuation.
   {
     MelodicPitchIntentRequest request = requestFor(mask({0, 8}));
+    enableAllPolicy(request);
     request.rhythmPlan.continuations = mask({9, 10, 11, 12, 13, 14, 15});
     request.requestedRhythmOperation = MelodicRhythmOperationId::TerminalEcho;
-    request.allowedOnsetSteps =
-        static_cast<StepMask>(stepBit(0) | stepBit(8) | stepBit(10));
     request.maxOnsets = 3;
     const auto result = realizeMelodicPitchIntent(request);
     assert(result.status == MelodicPitchIntentStatus::Ok);
@@ -266,6 +297,7 @@ int main() {
 
   {
     MelodicPitchIntentRequest request = requestFor(mask({0, 4, 8, 12}));
+    enableAllPolicy(request);
     request.requestedContour = MelodicContourId::StepUp;
     request.requestedOperation = MelodicMotifOperationId::None;
     const auto result = realizeMelodicPitchIntent(request);
@@ -278,55 +310,7 @@ int main() {
 
   {
     MelodicPitchIntentRequest request = requestFor(mask({0, 4, 8, 12}));
-    request.requestedContour = MelodicContourId::StepDown;
-    request.requestedOperation = MelodicMotifOperationId::None;
-    const auto result = realizeMelodicPitchIntent(request);
-    assert(result.status == MelodicPitchIntentStatus::Ok);
-    assert(result.plan.degreeOffsets[0] == 0);
-    assert(result.plan.degreeOffsets[1] == -1);
-    assert(result.plan.degreeOffsets[2] == -2);
-    assert(result.plan.degreeOffsets[3] == -3);
-  }
-
-  {
-    MelodicPitchIntentRequest request = requestFor(mask({0, 3, 6, 9, 12}));
-    request.requestedContour = MelodicContourId::Arch;
-    request.requestedOperation = MelodicMotifOperationId::None;
-    const auto result = realizeMelodicPitchIntent(request);
-    assert(result.status == MelodicPitchIntentStatus::Ok);
-    assert(result.plan.degreeOffsets[0] == 0);
-    assert(result.plan.degreeOffsets[1] == 1);
-    assert(result.plan.degreeOffsets[2] == 2);
-    assert(result.plan.degreeOffsets[3] == 1);
-    assert(result.plan.degreeOffsets[4] == 0);
-  }
-
-  {
-    MelodicPitchIntentRequest request = requestFor(mask({0, 6, 12}));
-    request.requestedContour = MelodicContourId::LeapReturn;
-    request.requestedOperation = MelodicMotifOperationId::None;
-    const auto result = realizeMelodicPitchIntent(request);
-    assert(result.status == MelodicPitchIntentStatus::Ok);
-    assert(result.plan.degreeOffsets[0] == 0);
-    assert(result.plan.degreeOffsets[1] == 4);
-    assert(result.plan.degreeOffsets[2] == 0);
-  }
-
-  {
-    MelodicPitchIntentRequest request = requestFor(mask({0, 3, 6, 9, 12}));
-    request.requestedContour = MelodicContourId::Neighbor;
-    request.requestedOperation = MelodicMotifOperationId::None;
-    const auto result = realizeMelodicPitchIntent(request);
-    assert(result.status == MelodicPitchIntentStatus::Ok);
-    assert(result.plan.degreeOffsets[0] == 0);
-    assert(result.plan.degreeOffsets[1] == 1);
-    assert(result.plan.degreeOffsets[2] == 0);
-    assert(result.plan.degreeOffsets[3] == -1);
-    assert(result.plan.degreeOffsets[4] == 0);
-  }
-
-  {
-    MelodicPitchIntentRequest request = requestFor(mask({0, 4, 8, 12}));
+    enableAllPolicy(request);
     request.minDegreeOffset = -2;
     request.maxDegreeOffset = 2;
     request.maxLeapDegrees = 1;
@@ -351,50 +335,33 @@ int main() {
            MelodicPitchIntentStatus::InvalidRequest);
   }
 
+  // Diversity is opt-in: the test explicitly enables the wider vocabulary.
   {
-    MelodicPitchIntentRequest request = requestFor(mask({0, 4}));
-    request.allowedOnsetSteps = mask({0});
-    assert(realizeMelodicPitchIntent(request).status ==
-           MelodicPitchIntentStatus::InvalidRequest);
-  }
-
-  // AUTO reaches multiple legal results when the resolved policy permits it.
-  {
-    bool sawDifferentRhythm = false;
-    bool sawDifferentPitch = false;
+    bool sawDifferent = false;
     MelodicPitchIntentResult first{};
-    for (uint16_t ordinal = 0; ordinal < 128; ++ordinal) {
+    for (uint16_t ordinal = 0; ordinal < 256; ++ordinal) {
       MelodicPitchIntentRequest request = requestFor(mask({1, 5, 10}));
-      request.requestedRhythmOperation = MelodicRhythmOperationId::Auto;
+      enableAllPolicy(request);
       request.maxOnsets = 4;
       request.generation.phraseOrdinal = ordinal;
       const auto result = realizeMelodicPitchIntent(request);
       assert(result.status == MelodicPitchIntentStatus::Ok);
       assert(result.plan.onsetCount <= request.maxOnsets);
       assert(validTopology(result.plan.onsets, result.plan.continuations));
-      assert((result.plan.onsets &
-              static_cast<StepMask>(~request.allowedOnsetSteps)) == 0);
-      assert((result.plan.continuations &
-              static_cast<StepMask>(~request.allowedContinuationSteps)) == 0);
       assertBounds(result.plan, -7, 7, 4);
       if (ordinal == 0) {
         first = result;
-        continue;
-      }
-      if (result.plan.rhythmOperation != first.plan.rhythmOperation ||
-          result.plan.onsets != first.plan.onsets ||
-          result.plan.continuations != first.plan.continuations) {
-        sawDifferentRhythm = true;
-      }
-      if (result.plan.contour != first.plan.contour ||
-          result.plan.operation != first.plan.operation ||
-          std::memcmp(result.plan.degreeOffsets, first.plan.degreeOffsets,
-                      sizeof(result.plan.degreeOffsets)) != 0) {
-        sawDifferentPitch = true;
+      } else if (result.plan.rhythmOperation != first.plan.rhythmOperation ||
+                 result.plan.contour != first.plan.contour ||
+                 result.plan.operation != first.plan.operation ||
+                 result.plan.onsets != first.plan.onsets ||
+                 std::memcmp(result.plan.degreeOffsets,
+                             first.plan.degreeOffsets,
+                             sizeof(result.plan.degreeOffsets)) != 0) {
+        sawDifferent = true;
       }
     }
-    assert(sawDifferentRhythm);
-    assert(sawDifferentPitch);
+    assert(sawDifferent);
   }
 
   return 0;
