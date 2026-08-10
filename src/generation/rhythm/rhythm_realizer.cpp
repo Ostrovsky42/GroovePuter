@@ -979,21 +979,52 @@ bool addPlanGhost(const RhythmArchetype& archetype,
   return true;
 }
 
-void addVariation(const RhythmArchetype& archetype,
-                  uint32_t seed,
-                  RhythmPhrasePlan& plan) {
-  if (plan.level == RealizationLevel::P1Canonical) return;
-  const MutationBudget& budget =
-      archetype.mutation.level[static_cast<uint8_t>(plan.level)];
-  PhraseOccupancy occupancy = structuralOccupancy(plan);
-  uint8_t additions = 0;
+uint8_t legacySecondaryBudget(const MutationBudget& budget) {
+  return (budget.flags & AllowOptionalAdds) ? budget.maxAdds : 0;
+}
 
+uint8_t legacyGhostBudget(const MutationBudget& budget) {
+  return (budget.flags & AllowGhostConversion) ? budget.maxAdds : 0;
+}
+
+uint8_t secondaryBudgetFor(const MutationBudget& budget) {
+  return budget.maxSecondaryAdds != 0
+             ? budget.maxSecondaryAdds
+             : legacySecondaryBudget(budget);
+}
+
+uint8_t ghostBudgetFor(const RhythmArchetype& archetype,
+                       RealizationLevel level) {
+  const MutationBudget& budget =
+      archetype.mutation.level[static_cast<uint8_t>(level)];
+  if (budget.maxGhostAdds != 0) return budget.maxGhostAdds;
+
+  const uint8_t direct = legacyGhostBudget(budget);
+  if (direct != 0 || level != RealizationLevel::P3Transformation) {
+    return direct;
+  }
+
+  // P3 is cumulative by contract: transformation keeps the P2 ornament layer
+  // unless the catalog later supplies an explicit P3 ghost budget. This turns
+  // P1/P2/P3 into canonical -> subtle -> transformed rather than replacing
+  // the P2 ghost class with a different P3 secondary class.
+  const MutationBudget& p2 = archetype.mutation.level[
+      static_cast<uint8_t>(RealizationLevel::P2Variation)];
+  return p2.maxGhostAdds != 0 ? p2.maxGhostAdds : legacyGhostBudget(p2);
+}
+
+void addVariationPass(const RhythmArchetype& archetype,
+                      uint32_t seed,
+                      RhythmPhrasePlan& plan,
+                      PhraseOccupancy& occupancy,
+                      uint8_t maxAdds,
+                      bool secondary) {
+  uint8_t additions = 0;
   for (uint8_t bar = 0;
-       bar < plan.barCount && additions < budget.maxAdds;
+       bar < plan.barCount && additions < maxAdds;
        ++bar) {
     for (uint8_t laneIndex = 0;
-         laneIndex < archetype.laneCount &&
-         additions < budget.maxAdds;
+         laneIndex < archetype.laneCount && additions < maxAdds;
          ++laneIndex) {
       const LaneGrammar& lane = archetype.lanes[laneIndex];
       const RoleRhythmPlan& rolePlan =
@@ -1018,18 +1049,34 @@ void addVariation(const RhythmArchetype& archetype,
       }
       if (bestStep < 0) continue;
 
-      bool added = false;
-      if (budget.flags & AllowOptionalAdds) {
-        added = addPlanSecondary(
-            archetype, plan, occupancy, bar, lane,
-            static_cast<uint8_t>(bestStep));
-      } else if (budget.flags & AllowGhostConversion) {
-        added = addPlanGhost(
-            archetype, plan, bar, lane,
-            static_cast<uint8_t>(bestStep));
-      }
+      const bool added = secondary
+          ? addPlanSecondary(archetype, plan, occupancy, bar, lane,
+                             static_cast<uint8_t>(bestStep))
+          : addPlanGhost(archetype, plan, bar, lane,
+                         static_cast<uint8_t>(bestStep));
       if (added) ++additions;
     }
+  }
+}
+
+void addVariation(const RhythmArchetype& archetype,
+                  uint32_t seed,
+                  RhythmPhrasePlan& plan) {
+  if (plan.level == RealizationLevel::P1Canonical) return;
+
+  const MutationBudget& budget =
+      archetype.mutation.level[static_cast<uint8_t>(plan.level)];
+  PhraseOccupancy occupancy = structuralOccupancy(plan);
+  const uint8_t secondaryAdds = secondaryBudgetFor(budget);
+  const uint8_t ghostAdds = ghostBudgetFor(archetype, plan.level);
+
+  if (secondaryAdds != 0) {
+    addVariationPass(archetype, seed ^ 0x53454331u,
+                     plan, occupancy, secondaryAdds, true);
+  }
+  if (ghostAdds != 0) {
+    addVariationPass(archetype, seed ^ 0x47484F31u,
+                     plan, occupancy, ghostAdds, false);
   }
 }
 
