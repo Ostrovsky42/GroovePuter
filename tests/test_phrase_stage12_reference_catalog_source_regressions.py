@@ -57,9 +57,6 @@ for needle in (
         f"Stage 12 candidate catalog lost contract: {needle}",
     )
 
-# halftime_switch remains phrase-capable, but its current lane minima leave no
-# removable headroom. Do not silently re-advertise Reduction/Break by assigning
-# the subtractive refs/policy to every Stage 12 identity.
 require(
     SOURCE,
     "archetypes[index].trajectories = kNonSubtractivePhraseTrajectoryRefs;",
@@ -71,8 +68,6 @@ require(
     "halftime_switch non-subtractive mutation policy disappeared",
 )
 
-# The accepted one-bar production path remains bit-for-bit owned by the original
-# ReferenceVocabulary until the physical ESP32-S3 gate is recorded.
 require(
     BASE,
     "value.allowedPhraseBars = phraseBarsBit(1);",
@@ -97,8 +92,6 @@ for production_source in (BRIDGE, MIGRATION):
             "Stage 12 candidate became production-reachable before hardware gate"
         )
 
-# The overlay is fixed-capacity and must not grow a second Scene/Song owner or
-# dynamic allocation path.
 for forbidden in (
     "Scene",
     "Song",
