@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_ROLES_BASS_RHYTHM_H
+#define GROOVEPUTER_GENERATION_ROLES_BASS_RHYTHM_H
 
 #include <cstdint>
 #include <type_traits>
@@ -62,3 +63,5 @@ static_assert(sizeof(BassRhythmPlan) <= 8,
               "BassRhythmPlan exceeded its command-time budget");
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_ROLES_BASS_RHYTHM_H

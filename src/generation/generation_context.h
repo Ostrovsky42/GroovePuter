@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_GENERATION_CONTEXT_H
+#define GROOVEPUTER_GENERATION_GENERATION_CONTEXT_H
 
 #include <cstdint>
 
@@ -25,3 +26,5 @@ uint32_t deriveVariationSeed(uint32_t identitySeed,
 uint32_t deterministicValue(uint32_t seed, uint32_t coordinate);
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_GENERATION_CONTEXT_H

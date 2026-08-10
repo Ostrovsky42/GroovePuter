@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_FEEL_FEEL_TYPES_H
+#define GROOVEPUTER_GENERATION_FEEL_FEEL_TYPES_H
 
 #include <cstdint>
 #include <type_traits>
@@ -69,3 +70,5 @@ static_assert(sizeof(TimedFeelPhrase) <= 1560,
               "TimedFeelPhrase exceeded the Stage 8 bounded RAM target");
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_FEEL_FEEL_TYPES_H

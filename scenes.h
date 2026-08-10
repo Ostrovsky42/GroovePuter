@@ -1257,12 +1257,8 @@ bool SceneManager::loadSceneJson(TReader&& reader) {
 
 template <typename TReader>
 bool SceneManager::loadSceneEvented(TReader&& reader) {
-  static size_t bytesRead = 0;
-  bytesRead = 0;
   JsonVisitor::NextChar nextChar = [&reader]() -> int { 
-    int c = reader.read();
-    if (c >= 0) bytesRead++;
-    return c; 
+    return reader.read();
   };
   return loadSceneEventedWithReader(nextChar);
 }

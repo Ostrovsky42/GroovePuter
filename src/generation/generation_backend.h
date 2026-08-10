@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_GENERATION_BACKEND_H
+#define GROOVEPUTER_GENERATION_GENERATION_BACKEND_H
 
 #include <cstdint>
 
@@ -32,3 +33,5 @@ constexpr bool validGenerationBackendRoute(
 }
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_GENERATION_BACKEND_H

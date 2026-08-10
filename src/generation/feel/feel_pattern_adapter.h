@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_FEEL_FEEL_PATTERN_ADAPTER_H
+#define GROOVEPUTER_GENERATION_FEEL_FEEL_PATTERN_ADAPTER_H
 
 #include "feel_interpreter.h"
 #include "../materialization/pattern_materializer.h"
@@ -25,3 +26,5 @@ FeelPatternApplyStatus applyFeelToMaterializedPattern(
     MaterializedPatterns& destination);
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_FEEL_FEEL_PATTERN_ADAPTER_H

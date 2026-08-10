@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_COMPOSITION_RHYTHM_SELECTION_H
+#define GROOVEPUTER_GENERATION_COMPOSITION_RHYTHM_SELECTION_H
 
 #include <cstdint>
 
@@ -66,3 +67,5 @@ RhythmSelectionResult resolveRhythmSelection(
 const char* rhythmSelectionName(RhythmArchetypeId archetypeId);
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_COMPOSITION_RHYTHM_SELECTION_H

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_RHYTHM_RELATIONSHIP_RESOLVER_H
+#define GROOVEPUTER_GENERATION_RHYTHM_RELATIONSHIP_RESOLVER_H
 
 #include <cstdint>
 
@@ -36,3 +37,5 @@ int16_t softRelationshipCandidateScore(const RhythmArchetype& archetype,
                                        uint8_t step);
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_RHYTHM_RELATIONSHIP_RESOLVER_H

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_RHYTHM_RHYTHM_CATALOG_H
+#define GROOVEPUTER_GENERATION_RHYTHM_RHYTHM_CATALOG_H
 
 #include <cstdint>
 
@@ -93,3 +94,5 @@ struct CatalogValidationResult {
 CatalogValidationResult validateRhythmCatalog(const RhythmCatalogView& catalog);
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_RHYTHM_RHYTHM_CATALOG_H

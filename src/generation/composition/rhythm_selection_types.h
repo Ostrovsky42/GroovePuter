@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_COMPOSITION_RHYTHM_SELECTION_TYPES_H
+#define GROOVEPUTER_GENERATION_COMPOSITION_RHYTHM_SELECTION_TYPES_H
 
 #include <cstdint>
 
@@ -13,3 +14,5 @@ enum class RhythmSelectionMode : uint8_t {
 };
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_COMPOSITION_RHYTHM_SELECTION_TYPES_H

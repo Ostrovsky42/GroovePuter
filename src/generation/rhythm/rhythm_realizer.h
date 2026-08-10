@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_RHYTHM_RHYTHM_REALIZER_H
+#define GROOVEPUTER_GENERATION_RHYTHM_RHYTHM_REALIZER_H
 
 #include <cstdint>
 #include <type_traits>
@@ -77,3 +78,5 @@ static_assert(sizeof(RhythmPhrasePlan) <= 640,
               "RhythmPhrasePlan exceeded the Stage 2 bounded RAM target");
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_RHYTHM_RHYTHM_REALIZER_H

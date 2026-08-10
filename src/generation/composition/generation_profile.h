@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_COMPOSITION_GENERATION_PROFILE_H
+#define GROOVEPUTER_GENERATION_COMPOSITION_GENERATION_PROFILE_H
 
 #include <cstdint>
 #include <type_traits>
@@ -111,3 +112,5 @@ static_assert(sizeof(GenerationCompositionResult) <= 32,
               "GenerationCompositionResult exceeded its planning budget");
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_COMPOSITION_GENERATION_PROFILE_H

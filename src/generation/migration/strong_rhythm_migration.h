@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_MIGRATION_STRONG_RHYTHM_MIGRATION_H
+#define GROOVEPUTER_GENERATION_MIGRATION_STRONG_RHYTHM_MIGRATION_H
 
 #include <cstdint>
 
@@ -125,3 +126,5 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     SynthPattern& synthB);
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_MIGRATION_STRONG_RHYTHM_MIGRATION_H

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_ROLES_SEMANTIC_PATTERN_PROJECTOR_H
+#define GROOVEPUTER_GENERATION_ROLES_SEMANTIC_PATTERN_PROJECTOR_H
 
 #include <cstdint>
 
@@ -42,3 +43,5 @@ FeelInterpretStatus applyFeelToSemanticPattern(
     SynthPattern& destination);
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_ROLES_SEMANTIC_PATTERN_PROJECTOR_H

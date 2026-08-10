@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_RHYTHM_RHYTHM_TYPES_H
+#define GROOVEPUTER_GENERATION_RHYTHM_RHYTHM_TYPES_H
 
 #include <cstdint>
 #include <type_traits>
@@ -395,3 +396,5 @@ static_assert(std::is_trivially_copyable<PhraseRhythmIdentity>::value,
               "PhraseRhythmIdentity must remain a fixed-capacity value");
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_RHYTHM_RHYTHM_TYPES_H

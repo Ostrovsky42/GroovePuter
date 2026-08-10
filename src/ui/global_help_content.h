@@ -215,6 +215,7 @@ constexpr const char* kFeelLines[] = {
     "Feel Amount Bounded role offset",
     "Vel Human   Velocity deviation",
     "Next gen; clock/pitch unchanged",
+    "No notes, roles or sound changes",
 };
 
 constexpr const char* kProjectLines[] = {

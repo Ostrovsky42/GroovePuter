@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_SHADOW_PATTERN_SHADOW_METRICS_H
+#define GROOVEPUTER_GENERATION_SHADOW_PATTERN_SHADOW_METRICS_H
 
 #include <cstdint>
 
@@ -36,3 +37,5 @@ ShadowPatternMetrics compareShadowPatterns(
     uint8_t targetFlags = kAllShadowTargets);
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_SHADOW_PATTERN_SHADOW_METRICS_H

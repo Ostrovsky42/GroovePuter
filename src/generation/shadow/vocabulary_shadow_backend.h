@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_SHADOW_VOCABULARY_SHADOW_BACKEND_H
+#define GROOVEPUTER_GENERATION_SHADOW_VOCABULARY_SHADOW_BACKEND_H
 
 #include <cstdint>
 
@@ -53,3 +54,5 @@ VocabularyShadowResult runVocabularyShadow(
     const SynthPattern& legacySynthB);
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_SHADOW_VOCABULARY_SHADOW_BACKEND_H

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_FEEL_FEEL_INTERPRETER_H
+#define GROOVEPUTER_GENERATION_FEEL_FEEL_INTERPRETER_H
 
 #include "../generation_context.h"
 #include "feel_types.h"
@@ -20,3 +21,5 @@ FeelInterpretStatus interpretFeelPhrase(const FeelInterpretRequest& request,
                                         TimedFeelPhrase& destination);
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_FEEL_FEEL_INTERPRETER_H

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_ROLES_CHORD_RHYTHM_H
+#define GROOVEPUTER_GENERATION_ROLES_CHORD_RHYTHM_H
 
 #include <cstdint>
 #include <type_traits>
@@ -61,3 +62,5 @@ static_assert(sizeof(ChordRhythmPlan) <= 8,
               "ChordRhythmPlan exceeded its command-time budget");
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_ROLES_CHORD_RHYTHM_H

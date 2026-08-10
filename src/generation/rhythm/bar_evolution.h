@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_RHYTHM_BAR_EVOLUTION_H
+#define GROOVEPUTER_GENERATION_RHYTHM_BAR_EVOLUTION_H
 
 #include <cstdint>
 #include <type_traits>
@@ -58,3 +59,5 @@ static_assert(std::is_trivially_copyable<BarEvolutionResult>::value,
               "BarEvolutionResult must remain fixed-capacity");
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_RHYTHM_BAR_EVOLUTION_H

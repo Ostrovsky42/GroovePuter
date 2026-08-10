@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_ROLES_MELODIC_MOTIF_H
+#define GROOVEPUTER_GENERATION_ROLES_MELODIC_MOTIF_H
 
 #include <cstdint>
 #include <type_traits>
@@ -82,3 +83,5 @@ static_assert(sizeof(MelodicMotifPlan) <= 16,
               "MelodicMotifPlan exceeded its command-time budget");
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_ROLES_MELODIC_MOTIF_H

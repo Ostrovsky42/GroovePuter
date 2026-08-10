@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_MIGRATION_STRONG_RHYTHM_LIVE_BRIDGE_H
+#define GROOVEPUTER_GENERATION_MIGRATION_STRONG_RHYTHM_LIVE_BRIDGE_H
 
 #include "strong_rhythm_migration.h"
 
@@ -14,3 +15,5 @@ StrongRhythmMigrationResult regenerateWithStrongRhythmMigration(
     MiniAcid& engine);
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_MIGRATION_STRONG_RHYTHM_LIVE_BRIDGE_H

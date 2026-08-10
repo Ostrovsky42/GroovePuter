@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_PHRASE_PHRASE_EVOLUTION_H
+#define GROOVEPUTER_GENERATION_PHRASE_PHRASE_EVOLUTION_H
 
 #include <cstdint>
 #include <type_traits>
@@ -66,3 +67,5 @@ static_assert(sizeof(PhraseEvolutionResult) <= 1408,
               "PhraseEvolutionResult exceeded its command-time RAM budget");
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_PHRASE_PHRASE_EVOLUTION_H

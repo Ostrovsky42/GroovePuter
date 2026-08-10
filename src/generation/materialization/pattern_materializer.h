@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_MATERIALIZATION_PATTERN_MATERIALIZER_H
+#define GROOVEPUTER_GENERATION_MATERIALIZATION_PATTERN_MATERIALIZER_H
 
 #include <cstdint>
 
@@ -78,3 +79,5 @@ PatternMaterializeStatus materializeRhythmPattern(
     PatternMaterializationDiagnostics* diagnostics = nullptr);
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_MATERIALIZATION_PATTERN_MATERIALIZER_H
