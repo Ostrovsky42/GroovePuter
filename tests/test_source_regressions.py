@@ -325,8 +325,23 @@ def test_recipe_selector_is_visible_and_navigable() -> None:
             "recipe overlay needs an explicit title")
     require("drawRecipeOverlay(gfx, recipeIndex_)" in page,
             "Apply focus must render the recipe list")
-    require("cycleRecipeSelection(-1);" in page and "cycleRecipeSelection(1);" in page,
-            "UP/DOWN must navigate visible recipes while Fn+UP/DOWN keeps morph")
+
+    left_right_start = page.index(
+        "if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT)"
+    )
+    left_right_end = page.index("const char key =", left_right_start)
+    left_right_block = page[left_right_start:left_right_end]
+    variant_start = left_right_block.index("case FocusRow::Variant:")
+    variant_end = left_right_block.index("case FocusRow::Rhythm:", variant_start)
+    variant_block = left_right_block[variant_start:variant_end]
+
+    require("cycleRecipeSelection(delta)" in variant_block,
+            "Variant LEFT/RIGHT must navigate visible recipes")
+    require("event.alt" in variant_block and
+            "adjustMorph(delta * 16)" in variant_block,
+            "Alt+LEFT/RIGHT must keep the Variant morph shortcut")
+    require("moveFocus(nav == GROOVEPUTER_UP ? -1 : 1);" in page,
+            "UP/DOWN must navigate Genre page fields")
 
 
 def test_enter_applies_selected_recipe() -> None:
