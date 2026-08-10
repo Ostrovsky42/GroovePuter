@@ -890,7 +890,9 @@ CatalogValidationResult validateTimingDensityAndMutation(
         budget.maxAdds > kMaxEventsPerBar ||
         budget.maxDrops > kMaxEventsPerBar ||
         budget.maxDisplacements > kMaxEventsPerBar ||
-        budget.maxAccentChanges > kMaxEventsPerBar) {
+        budget.maxAccentChanges > kMaxEventsPerBar ||
+        budget.maxSecondaryAdds > kMaxEventsPerBar ||
+        budget.maxGhostAdds > kMaxEventsPerBar) {
       return fail(CatalogValidationError::InvalidMutationPolicy,
                   archetypeIndex,
                   level);
@@ -906,7 +908,9 @@ CatalogValidationResult validateTimingDensityAndMutation(
       if (budget.allowedIntents ||
           (budget.flags & forbidden) ||
           budget.maxDrops ||
-          budget.maxDisplacements) {
+          budget.maxDisplacements ||
+          budget.maxSecondaryAdds ||
+          budget.maxGhostAdds) {
         return fail(CatalogValidationError::InvalidMutationPolicy,
                     archetypeIndex,
                     level);
