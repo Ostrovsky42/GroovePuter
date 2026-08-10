@@ -56,6 +56,7 @@ SOURCES := \
 	../src/generation/rhythm/relationship_resolver.cpp \
 	../src/generation/rhythm/rhythm_realizer.cpp \
 	../src/generation/rhythm/reference_vocabulary.cpp \
+	../src/generation/rhythm/reference_phrase_vocabulary.cpp \
 	../src/generation/rhythm/bar_evolution.cpp \
 	../src/generation/materialization/pattern_materializer.cpp \
 	../src/generation/roles/semantic_pattern_projector.cpp \
