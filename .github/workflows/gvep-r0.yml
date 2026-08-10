@@ -1,0 +1,58 @@
+name: GVEP R0 spike
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/gvep-r0.yml"
+      - "src/visual/**"
+      - "src/input/musical_event_queue.h"
+      - "scripts/build_gvep_r0.sh"
+      - "scripts/build.sh"
+      - "scripts/check_cardputer_dram_budget.sh"
+      - "scripts/install_arduino_deps.sh"
+      - "tests/test_gvep_r0.cpp"
+      - "tests/test_gvep_r0_event_tap.cpp"
+      - "tests/run_gvep_r0_tests.sh"
+      - "tools/gvep_receiver/**"
+      - "docs/tests/GVEP_R0_CARDPUTER_ADV.md"
+
+permissions:
+  contents: read
+
+jobs:
+  host-protocol:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run focused GVEP R0 host tests
+        run: bash tests/run_gvep_r0_tests.sh
+
+  cardputer-adv-gvep-r0-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV GVEP R0 firmware
+        run: bash scripts/build_gvep_r0.sh --warnings all
+
+      - name: Check unchanged fixed DRAM budget
+        run: bash scripts/check_cardputer_dram_budget.sh build/cardputer-adv-gvep-r0/GroovePuter.ino.elf
+
+      - name: Compile generic Cardputer receiver
+        run: |
+          RX_BUILD="$PWD/build/gvep-r0-receiver"
+          rm -rf "$RX_BUILD"
+          arduino-cli compile \
+            --clean \
+            --fqbn "m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc" \
+            --output-dir "$RX_BUILD" \
+            tools/gvep_receiver/GvepReceiver
