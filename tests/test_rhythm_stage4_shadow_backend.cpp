@@ -98,7 +98,11 @@ void test_all_reference_archetypes_shadow_without_mutation() {
   const SynthPattern legacyABefore = legacyA;
   const SynthPattern legacyBBefore = legacyB;
 
-  assert(ReferenceVocabulary::definitionCount() == 20);
+  // Stage 4 must exercise the complete production ReferenceVocabulary rather
+  // than pinning the historical Stage 3 catalog size. Stage 3/Stage 7 tests own
+  // the exact expected count; this layer owns shadow/materialization coverage.
+  assert(catalog.archetypeCount == ReferenceVocabulary::definitionCount());
+  assert(ReferenceVocabulary::definitionCount() > 0);
   for (uint8_t index = 0; index < ReferenceVocabulary::definitionCount(); ++index) {
     const ReferenceVocabulary::Definition& definition =
         ReferenceVocabulary::definition(index);
