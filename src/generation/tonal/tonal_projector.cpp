@@ -141,7 +141,6 @@ TonalProjectionResult projectTonalIntent(const TonalProjectionRequest& request) 
     return result;
   }
 
-  result.noteCount = request.onsetCount;
   for (uint8_t ordinal = 0; ordinal < request.onsetCount; ++ordinal) {
     const int displacement = isSemitoneOrdinal(request, ordinal)
         ? static_cast<int>(request.tonalOffsets[ordinal])
@@ -163,6 +162,7 @@ TonalProjectionResult projectTonalIntent(const TonalProjectionRequest& request) 
     }
   }
 
+  result.noteCount = request.onsetCount;
   result.status = TonalProjectionStatus::Ok;
   return result;
 }
