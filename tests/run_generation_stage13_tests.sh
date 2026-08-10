@@ -6,6 +6,7 @@ BUILD_DIR="${ROOT_DIR}/build/host-tests"
 mkdir -p "${BUILD_DIR}"
 
 python3 "${ROOT_DIR}/tests/test_generation_stage13_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_generation_orthogonality_source_regressions.py"
 
 SOURCES=(
   "${ROOT_DIR}/src/generation/generation_context.cpp"

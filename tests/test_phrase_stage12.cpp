@@ -1,7 +1,9 @@
 #include <cassert>
 #include <cstdint>
+#include <initializer_list>
 
 #include "src/generation/phrase/phrase_evolution.h"
+#include "src/generation/rhythm/reference_vocabulary.h"
 
 using namespace GroovePuterRhythm;
 
@@ -255,6 +257,46 @@ void testDeterminismAndInvalidRequests() {
   assert(missing.barCount == 0);
 }
 
+void testShippedVocabularyIsOneBarOnly() {
+  const RhythmCatalogView& catalog = ReferenceVocabulary::catalog();
+  assert(catalog.archetypeCount == ReferenceVocabulary::definitionCount());
+  assert(catalog.archetypeCount > 0);
+  assert(catalog.trajectoryCount == 1);
+  assert(catalog.trajectories[0].barCount == 1);
+  assert(catalog.trajectories[0].bars[0] == BarFunction::Statement);
+
+  for (uint8_t index = 0; index < catalog.archetypeCount; ++index) {
+    const RhythmArchetype& archetype = catalog.archetypes[index];
+    assert(archetype.allowedPhraseBars == phraseBarsBit(1));
+    for (uint8_t level = 0;
+         level < static_cast<uint8_t>(RealizationLevel::Count);
+         ++level) {
+      assert(archetype.mutation.level[level].maxDrops == 0);
+      assert(archetype.mutation.level[level].allowedIntents == 0);
+    }
+  }
+
+  PhraseEvolutionRequest shipped{};
+  shipped.catalog = &catalog;
+  shipped.archetypeId = ReferenceVocabulary::definition(0).archetypeId;
+  shipped.level = RealizationLevel::P1Canonical;
+  shipped.generation.projectSeed = 0x12008BAAu;
+  shipped.requestedTrajectoryId = catalog.trajectories[0].id;
+
+  shipped.phraseBars = 1;
+  const PhraseEvolutionResult one = evolveMultiBarPhrase(shipped);
+  assert(one.status == PhraseEvolutionStatus::Ok);
+  assert(one.barCount == 1);
+
+  for (const uint8_t bars : {2, 4, 8}) {
+    shipped.phraseBars = bars;
+    const PhraseEvolutionResult result = evolveMultiBarPhrase(shipped);
+    assert(result.status == PhraseEvolutionStatus::CoreEvolutionFailed);
+    assert(result.coreStatus == BarEvolutionStatus::BaseRealizationFailed);
+    assert(result.barCount == 0);
+  }
+}
+
 }  // namespace
 
 int main() {
@@ -262,5 +304,6 @@ int main() {
   testEightBarsReuseOneRhythmIdentity();
   testPLevelsPreserveIdentity();
   testDeterminismAndInvalidRequests();
+  testShippedVocabularyIsOneBarOnly();
   return 0;
 }

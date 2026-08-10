@@ -1,5 +1,7 @@
 # Generation Stage 11 — Melodic Rhythm and Motif Acceptance
 
+Status: `HOST-COMPLETE` for the single-secondary-lane contract.
+
 ## Purpose
 
 Separate when Synth B speaks from the legacy pitch phrase and give repeated
@@ -12,6 +14,25 @@ material a stable, pitch-agnostic motif ordering identity.
 - The explicit semantic binder maps either Chord or Melodic role to physical
   Synth B; one physical monophonic lane never pretends to host both roles.
 - Motif order reuses existing source events and cannot widen the pitch set.
+
+## Physical voice-allocation decision
+
+GroovePuter exposes two physical monophonic synth lanes. Bass occupies Synth A.
+Synth B therefore carries exactly one secondary semantic role per generated
+material transaction:
+
+```text
+Synth A = Bass
+Synth B = Chord XOR Melodic
+```
+
+This is an architectural capacity limit, not a temporary scheduler omission.
+A composition that requires a sustained chord layer and an independent melody
+at the same time is not expressible by Stages 7C–13. Supporting it requires an
+explicit product decision such as external MIDI ownership, role multiplexing
+with stated note-loss rules, or a third internal voice. The composition matrix
+must not pretend that selecting both semantic IDs makes both physically
+audible.
 
 ## Acceptance
 

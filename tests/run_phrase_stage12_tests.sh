@@ -10,6 +10,7 @@ python3 "${ROOT_DIR}/tests/test_phrase_stage12_source_regressions.py"
 SOURCES=(
   "${ROOT_DIR}/src/generation/generation_context.cpp"
   "${ROOT_DIR}/src/generation/rhythm/rhythm_catalog.cpp"
+  "${ROOT_DIR}/src/generation/rhythm/reference_vocabulary.cpp"
   "${ROOT_DIR}/src/generation/rhythm/relationship_resolver.cpp"
   "${ROOT_DIR}/src/generation/rhythm/rhythm_realizer.cpp"
   "${ROOT_DIR}/src/generation/rhythm/bar_evolution.cpp"

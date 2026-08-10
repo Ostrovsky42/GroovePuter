@@ -1,10 +1,13 @@
 # Generation Stage 12 — Multi-Bar Phrase Evolution Acceptance
 
+Status: `API-ONLY` — 1/2/4/8 bars are fixture-tested, but the shipped
+`ReferenceVocabulary` reaches only one bar.
+
 ## Purpose
 
-Provide deterministic 1/2/4/8-bar phrase orchestration over the existing
-`BarEvolution` owner without creating a second transform engine or a second
-phrase-length owner.
+Provide a deterministic fixed-capacity 1/2/4/8-bar orchestration API over the
+existing `BarEvolution` owner without creating a second transform engine or a
+second phrase-length owner.
 
 ## Architecture
 
@@ -18,12 +21,30 @@ phrase-length owner.
 
 ## Acceptance
 
-- 1/2/4/8 lengths are deterministic fixed-capacity values;
+- 1/2/4/8 lengths are deterministic fixed-capacity values in the dedicated
+  Stage 12 fixture catalog;
 - P1/P2/P3 preserve the same rhythm identity;
 - 8-bar output records two trajectory segments and variation history;
 - failure exposes no partial bars or role identities;
 - GCC, Clang, ASan/UBSan and `-Wvla -Werror` pass;
 - no production caller exists yet.
+
+## Shipped vocabulary reachability
+
+The production `ReferenceVocabulary` was not expanded by Stage 12:
+
+```text
+catalog trajectories       = 1
+trajectory barCount        = 1 (Statement)
+allowedPhraseBars          = phraseBarsBit(1) for every archetype
+maxDrops                   = 0 at P1/P2/P3
+allowedIntents             = 0 at P1/P2/P3
+```
+
+Consequently `evolveMultiBarPhrase` succeeds for one bar and fails through the
+core for 2/4/8 bars when called with shipped catalog data. The host matrix now
+pins that limitation explicitly so a future catalog expansion must also update
+this status and its acceptance evidence.
 
 ## Blocking hardware gate
 
@@ -34,6 +55,16 @@ largest internal heap block and worst-case 4-bar execution duration. Until then:
 
 ```text
 HOST_CORE = PASS
+SHIPPED_VOCABULARY_1_BAR = REACHABLE
+SHIPPED_VOCABULARY_2_4_8_BAR = UNREACHABLE
 PRODUCTION_REACHABILITY = BLOCKED_BY_STAGE_6_1_HARDWARE_GATE
 HARDWARE_MUSICAL = HARDWARE_PENDING
 ```
+
+Stage 12 may be reported only as `API-ONLY` until both conditions are met:
+
+1. `ReferenceVocabulary` contains validated 1/2/4-bar trajectories,
+   `allowedPhraseBars` coverage and non-zero bounded mutation intent where
+   musically required;
+2. the Stage 6.1 physical ESP32-S3 task high-water/heap/runtime gate permits the
+   first production caller.

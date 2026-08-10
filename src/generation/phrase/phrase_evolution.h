@@ -52,8 +52,9 @@ struct PhraseEvolutionResult {
 // Fixed-capacity orchestration over the existing BarEvolution owner. 1/2/4
 // bars use one core call. 8 bars use two deterministic 4-bar segments while
 // reusing one PhraseRhythmIdentity. This function owns no Scene/Song/PhraseCore
-// destination and is intentionally absent from production wiring until the
-// Stage 6.1 ESP32-S3 task high-water gate is recorded.
+// destination. This is an API-only, fixture-capable layer: the shipped
+// ReferenceVocabulary currently supports one bar only. Production wiring also
+// remains blocked until the Stage 6.1 ESP32-S3 task high-water gate is recorded.
 PhraseEvolutionResult evolveMultiBarPhrase(
     const PhraseEvolutionRequest& request);
 
