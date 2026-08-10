@@ -22,9 +22,13 @@ enum class PhraseEvolutionLawId : uint8_t {
   Count,
 };
 
+// One physical Synth B remains the destination. Hybrid means chord topology is
+// primary and sparse melodic events may fill only genuinely empty secondary
+// steps; it does not pretend that Cardputer has a third synth voice.
 enum class CompositionSecondaryRole : uint8_t {
   Chord = 0,
   Melodic,
+  ChordWithMelodicFill,
   Count,
 };
 
@@ -47,8 +51,6 @@ struct GenerationCorridor {
   uint8_t densityMax = 16;
 };
 
-// Read-only adjacent compatibility edges. Rhythm candidates remain owned by
-// Stage 7C; this view references that owner rather than duplicating its table.
 struct GenerationProfileView {
   uint8_t generativeMode = 0;
   uint8_t recipe = 0;
@@ -81,6 +83,8 @@ struct GenerationCompositionResult {
   ChordRhythmId chordRhythm = ChordRhythmId::Auto;
   MelodicRhythmId melodicRhythm = MelodicRhythmId::Auto;
   MotifShapeId motifShape = MotifShapeId::Auto;
+  // Planning metadata only. Production multi-bar execution remains blocked by
+  // the documented Stage 6.1 physical hardware gate.
   PhraseEvolutionLawId phraseLaw = PhraseEvolutionLawId::Loop;
   uint8_t phraseBars = 1;
   GenerationCorridor corridor{};
@@ -90,8 +94,6 @@ struct GenerationCompositionResult {
 GenerationProfileView generationProfileFor(const GenreSettings& settings);
 bool isValidGenerationProfile(const GenerationProfileView& profile);
 
-// Canonical ID ordering makes weighted selection independent of declaration
-// order. Duplicate IDs are combined with saturating weights.
 bool selectWeightedIdentityFromView(
     WeightedIdentityView view,
     GenerationDomain domain,
