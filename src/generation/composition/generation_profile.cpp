@@ -499,7 +499,7 @@ GenerationCompositionResult resolveGenerationComposition(
   if (!selectWeightedIdentityFromView(profile.feels, GenerationDomain::FeelProfileSelection, rhythm.archetypeId, baseSalt, generation, feel) ||
       !selectWeightedIdentityFromView(profile.bassRhythms, GenerationDomain::BassRhythmSelection, rhythm.archetypeId, baseSalt, generation, bass) ||
       !selectWeightedIdentityFromView(profile.chordRhythms, GenerationDomain::ChordRhythmSelection, rhythm.archetypeId, baseSalt | bass, generation, chord) ||
-      !selectWeightedIdentityFromView(profile.progressions, GenerationDomain::ChordPitch, rhythm.archetypeId, baseSalt | chord, generation, progression) ||
+      !selectWeightedIdentityFromView(profile.progressions, GenerationDomain::ChordPitch, rhythm.archetypeId, static_cast<uint8_t>(ProgressionId::Auto), generation, progression) ||
       !selectWeightedIdentityFromView(profile.melodicRhythms, GenerationDomain::MelodicRhythmSelection, rhythm.archetypeId, baseSalt | (static_cast<uint32_t>(bass) << 8u) | chord, generation, melodic) ||
       !selectWeightedIdentityFromView(profile.motifShapes, GenerationDomain::MotifSelection, rhythm.archetypeId, baseSalt | melodic, generation, motif) ||
       !selectWeightedIdentityFromView(profile.phraseLaws, GenerationDomain::PhraseLawSelection, rhythm.archetypeId, baseSalt, generation, phraseChoice)) {
