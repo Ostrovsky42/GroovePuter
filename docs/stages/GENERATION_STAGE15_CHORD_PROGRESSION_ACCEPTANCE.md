@@ -49,11 +49,11 @@ Proof is two-part:
 
 `tests/test_generation_stage15_reachability.cpp` enumerates every exact `(GenerativeMode, recipe)` profile in the current profile table and 1024 deterministic generation ordinals per profile. Every concrete `ProgressionId` must be observed as an actual selected composition result, not merely present in a candidate pool.
 
-The current repository has `GenerativeMode::Outrun`, not a separate `Synthwave` enum. Stage 15 does not invent a new genre to satisfy wording. The data-only reuse criterion is therefore pinned as:
+The current repository has `GenerativeMode::Outrun`, not a separate `Synthwave` enum. Stage 15 does not invent a new genre to satisfy wording. The data-only reuse criterion is pinned to three distinct genre identities for every demonstrated primitive:
 
 - `StaticModal`: Acid, Techno, Rave;
 - `TwoFiveOne`: LoFi, TripHop, FunkSoul;
-- `PopCycle`: House, Outrun, LoFiHouse.
+- `PopCycle`: House, Outrun, FunkSoul.
 
 Adding another genre that reuses these primitives requires only profile data, not edits to `chord_progression.cpp`.
 
@@ -109,6 +109,8 @@ Stage 15 is chained into the existing Stage 13/14 generation runner so the norma
 The Stage 15 runner executes:
 
 - source ownership regressions;
+- exact editorial grammar-catalog checks;
+- full selected-progression reachability over all exact profiles;
 - GCC C++17 build/run;
 - Clang C++17 build/run when available;
 - ASan + UBSan build/run;
@@ -125,6 +127,8 @@ Each assertion is non-tautological; the listed production mutation must make it 
 | plan/result ABI size | grow `ChordProgressionPlan` or `GenerationCompositionResult` beyond the pinned layout/budget |
 | profile-table reachability | remove/zero the last profile path for a concrete progression |
 | selected production reachability | alter selector/pool data so a concrete ID is never actually selected across the enumerated profile/ordinal matrix |
+| three-genre data reuse | remove the demonstrated primitive from any required third distinct genre |
+| exact editorial grammar | change a valid-but-wrong degree/quality/offset, e.g. `PopCycle` V to iii |
 | determinism | introduce mutable/random state or change same-input seed/salt semantics |
 | degree bound | emit degree `7+` |
 | root-offset bound | emit offset outside `[-2,+2]` |
@@ -169,7 +173,8 @@ Host:
 - every concrete progression is selected somewhere in the full profile reachability sweep;
 - repeated identical requests produce byte-identical plans;
 - all events satisfy degree/quality/offset/capacity bounds;
-- Stage 5, Stage 13/14/15, core host, SDL and Cardputer builds remain green.
+- exact editorial grammar variants remain pinned;
+- Stage 5, Stage 7C, Stage 13/14/15, core host, SDL and Cardputer builds remain green.
 
 Hardware after tonal integration:
 
@@ -180,7 +185,7 @@ Hardware after tonal integration:
 
 ## Troubleshooting
 
-- Linker error for `isValidProgressionId` or `realizeChordProgression`: the freestanding/build source list is missing `src/generation/roles/chord_progression.cpp`.
+- Linker error for `isValidProgressionId` or `realizeChordProgression`: a freestanding/build source list is missing `src/generation/roles/chord_progression.cpp`.
 - `InvalidRequest` in the production bridge: first check chord onset count (`<= 8`), `ProgressionId`, and the preserved one-bar guard.
 - A progression never appears in reachability: inspect profile candidate data and `ChordPitch` selector salt; do not add a genre switch to `chord_progression.cpp`.
 - Audible notes do not follow scale degrees on this branch: expected until Tonal Projector integration; do not add local interval tables as a workaround.
@@ -193,11 +198,13 @@ Hardware after tonal integration:
 - [ ] no `GenerativeMode` switch exists in `roles/chord_progression.*`.
 - [ ] every exact profile has a non-empty valid progression pool.
 - [ ] every concrete progression is actually selected in the reachability matrix.
+- [ ] every demonstrated primitive is reused across three distinct genres using only profile data.
+- [ ] exact editorial grammar variants are mutation-pinned.
 - [ ] same input produces byte-identical plans.
 - [ ] degree, quality, root-offset and capacity bounds pass for every concrete ID.
 - [ ] static progressions return `ValidButStatic` for non-empty requests.
 - [ ] one-bar production guard is unchanged.
-- [ ] Stage 5 freestanding migration harness links Stage 15.
+- [ ] Stage 5 and Stage 7C freestanding migration harnesses link Stage 15.
 - [ ] Stage 13/14/15 GCC + Clang + sanitizers pass.
 - [ ] stack usage is measured and `<= 192 B`.
 - [ ] `GenerationCompositionResult == 26 B`, leaving `6 B` under the existing ceiling.
