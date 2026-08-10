@@ -80,7 +80,8 @@ int main() {
   }
 
   {
-    const BassPitchBehaviorRequest request = requestFor(mask({0, 3, 7, 10, 14}));
+    const BassPitchBehaviorRequest request =
+        requestFor(mask({0, 3, 7, 10, 14}));
     assertSame(realizeBassPitchBehavior(request),
                realizeBassPitchBehavior(request));
   }
@@ -138,8 +139,11 @@ int main() {
     assert((result.plan.accentOnsets & stepBit(0)) != 0);
   }
 
+  // Slide intent is legal only when the existing timing topology already
+  // connects the previous onset to the destination with no empty gap.
   {
     BassPitchBehaviorRequest request = requestFor(mask({0, 2, 4}));
+    request.rhythmPlan.continuations = mask({1, 3});
     request.requestedContour = BassPitchContourId::NeighborReturn;
     request.requestedArticulation = BassArticulationStyleId::LegatoApproach;
     const auto result = realizeBassPitchBehavior(request);
@@ -148,6 +152,19 @@ int main() {
     assert((result.plan.slideIntoOnsets & stepBit(0)) == 0);
     assert((result.plan.slideIntoOnsets & stepBit(2)) != 0);
     assert((result.plan.slideIntoOnsets & stepBit(4)) != 0);
+    assert(result.plan.continuations == request.rhythmPlan.continuations);
+  }
+
+  // A sparse gap is not repaired by 15C just to realize a requested slide.
+  {
+    BassPitchBehaviorRequest request = requestFor(mask({0, 2, 4}));
+    request.requestedContour = BassPitchContourId::NeighborReturn;
+    request.requestedArticulation = BassArticulationStyleId::LegatoApproach;
+    const auto result = realizeBassPitchBehavior(request);
+    assert(result.status == BassPitchBehaviorStatus::Ok);
+    assert(result.plan.slideIntoOnsets == 0);
+    assert(result.plan.onsets == request.rhythmPlan.onsets);
+    assert(result.plan.continuations == 0);
   }
 
   {
@@ -175,7 +192,8 @@ int main() {
     bool sawDifferentBehavior = false;
     BassPitchBehaviorResult first{};
     for (uint16_t ordinal = 0; ordinal < 128; ++ordinal) {
-      BassPitchBehaviorRequest request = requestFor(mask({0, 3, 7, 10, 14}));
+      BassPitchBehaviorRequest request =
+          requestFor(mask({0, 3, 7, 10, 14}));
       request.generation.phraseOrdinal = ordinal;
       const auto result = realizeBassPitchBehavior(request);
       assert(result.status == BassPitchBehaviorStatus::Ok);
