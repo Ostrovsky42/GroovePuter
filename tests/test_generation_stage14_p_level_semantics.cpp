@@ -88,6 +88,7 @@ void testPLevelsAreCumulativeAndIdentityStable() {
   uint32_t observedCases = 0;
   uint32_t observedP3Secondary = 0;
   uint32_t observedP3Ghosts = 0;
+  uint32_t observedP3Combined = 0;
   uint32_t totalP2Surface = 0;
   uint32_t totalP3Surface = 0;
 
@@ -124,12 +125,14 @@ void testPLevelsAreCumulativeAndIdentityStable() {
     totalP3Surface += p3Secondary + p3Ghosts;
     if (p3Secondary != 0) ++observedP3Secondary;
     if (p3Ghosts != 0) ++observedP3Ghosts;
+    if (p3Secondary != 0 && p3Ghosts != 0) ++observedP3Combined;
     ++observedCases;
   }
 
   assert(observedCases == 128);
   assert(observedP3Secondary != 0);
   assert(observedP3Ghosts != 0);
+  assert(observedP3Combined != 0);
   assert(totalP3Surface > totalP2Surface);
 }
 
