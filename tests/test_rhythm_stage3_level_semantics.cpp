@@ -58,13 +58,14 @@ int main() {
         assert(variation.structural == base.structural);
         assert(transformation.structural == base.structural);
 
-        // P2 is ornament-only in the current reference policy.
+        // P2 remains ornament-only in the current reference policy.
         assert(variation.secondary == 0);
         if (variation.ghosts != 0) p2HasGhost = true;
 
-        // P3 is bounded secondary-onset expansion in Stage 3. Explicit
-        // Break/Reduce/Turnaround semantics remain Stage 6.
-        assert(transformation.ghosts == 0);
+        // Stage 14.1 makes P3 cumulative: it retains an ornament budget while
+        // adding bounded secondary onsets. Exact P3 ghost placement is allowed
+        // to differ from P2 because each level has an independent variation
+        // seed and the secondary pass may consume candidate coordinates first.
         if (transformation.secondary != 0) p3HasSecondary = true;
 
         // No P-level may remove any onset from the shared structural identity.
