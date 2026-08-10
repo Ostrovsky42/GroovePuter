@@ -36,48 +36,49 @@ int quantizedGeneratedNote(ScaleType scale, int sourceNote, int root = 0) {
     return result;
 }
 
-bool containsPitchClass(int pitchClass, const int* values, std::size_t count) {
-    for (std::size_t i = 0; i < count; ++i) {
-        if (values[i] == pitchClass) return true;
-    }
-    return false;
-}
-
-void assertScaleOutputsStayInSet(
-    ScaleType scale,
-    const int* pitchClasses,
-    std::size_t pitchClassCount) {
+void assertExactPitchClassMap(ScaleType scale, const int (&expected)[12]) {
     for (int sourcePitchClass = 0; sourcePitchClass < 12; ++sourcePitchClass) {
         const int result = quantizedGeneratedNote(scale, 48 + sourcePitchClass);
-        const int resultPitchClass = result % 12;
-        assert(containsPitchClass(resultPitchClass, pitchClasses, pitchClassCount));
+        assert(result == 48 + expected[sourcePitchClass]);
     }
 }
 
 }  // namespace
 
 int main() {
-    static constexpr int kMinor[] = {0, 2, 3, 5, 7, 8, 10};
-    static constexpr int kMajor[] = {0, 2, 4, 5, 7, 9, 11};
-    static constexpr int kDorian[] = {0, 2, 3, 5, 7, 9, 10};
-    static constexpr int kPhrygian[] = {0, 1, 3, 5, 7, 8, 10};
-    static constexpr int kLydian[] = {0, 2, 4, 6, 7, 9, 11};
-    static constexpr int kMixolydian[] = {0, 2, 4, 5, 7, 9, 10};
-    static constexpr int kLocrian[] = {0, 1, 3, 5, 6, 8, 10};
-    static constexpr int kMajorPentatonic[] = {0, 2, 4, 7, 9};
-    static constexpr int kMinorPentatonic[] = {0, 3, 5, 7, 10};
-    static constexpr int kChromatic[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+    // Exact legacy nearest-tone behavior for a C-root scale. These maps protect
+    // both scale membership and the existing first-match tie-breaking rule.
+    static constexpr int kMinorMap[12] =
+        {0, 0, 2, 3, 3, 5, 5, 7, 8, 8, 10, 10};
+    static constexpr int kMajorMap[12] =
+        {0, 0, 2, 2, 4, 5, 5, 7, 7, 9, 9, 11};
+    static constexpr int kDorianMap[12] =
+        {0, 0, 2, 3, 3, 5, 5, 7, 7, 9, 10, 10};
+    static constexpr int kPhrygianMap[12] =
+        {0, 1, 1, 3, 3, 5, 5, 7, 8, 8, 10, 10};
+    static constexpr int kLydianMap[12] =
+        {0, 0, 2, 2, 4, 4, 6, 7, 7, 9, 9, 11};
+    static constexpr int kMixolydianMap[12] =
+        {0, 0, 2, 2, 4, 5, 5, 7, 7, 9, 10, 10};
+    static constexpr int kLocrianMap[12] =
+        {0, 1, 1, 3, 3, 5, 6, 6, 8, 8, 10, 10};
+    static constexpr int kMajorPentatonicMap[12] =
+        {0, 0, 2, 2, 4, 4, 7, 7, 7, 9, 9, 9};
+    static constexpr int kMinorPentatonicMap[12] =
+        {0, 0, 3, 3, 3, 5, 5, 7, 7, 10, 10, 10};
+    static constexpr int kChromaticMap[12] =
+        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
 
-    assertScaleOutputsStayInSet(MINOR, kMinor, 7);
-    assertScaleOutputsStayInSet(MAJOR, kMajor, 7);
-    assertScaleOutputsStayInSet(DORIAN, kDorian, 7);
-    assertScaleOutputsStayInSet(PHRYGIAN, kPhrygian, 7);
-    assertScaleOutputsStayInSet(LYDIAN, kLydian, 7);
-    assertScaleOutputsStayInSet(MIXOLYDIAN, kMixolydian, 7);
-    assertScaleOutputsStayInSet(LOCRIAN, kLocrian, 7);
-    assertScaleOutputsStayInSet(PENTATONIC_MJ, kMajorPentatonic, 5);
-    assertScaleOutputsStayInSet(PENTATONIC_MN, kMinorPentatonic, 5);
-    assertScaleOutputsStayInSet(CHROMATIC, kChromatic, 12);
+    assertExactPitchClassMap(MINOR, kMinorMap);
+    assertExactPitchClassMap(MAJOR, kMajorMap);
+    assertExactPitchClassMap(DORIAN, kDorianMap);
+    assertExactPitchClassMap(PHRYGIAN, kPhrygianMap);
+    assertExactPitchClassMap(LYDIAN, kLydianMap);
+    assertExactPitchClassMap(MIXOLYDIAN, kMixolydianMap);
+    assertExactPitchClassMap(LOCRIAN, kLocrianMap);
+    assertExactPitchClassMap(PENTATONIC_MJ, kMajorPentatonicMap);
+    assertExactPitchClassMap(PENTATONIC_MN, kMinorPentatonicMap);
+    assertExactPitchClassMap(CHROMATIC, kChromaticMap);
 
     // These three probes specifically fail with the inherited `scale % 7`
     // aliasing: major pentatonic->minor, minor pentatonic->major,
