@@ -1,4 +1,5 @@
 #include "ay_synth_voice.h"
+#include "chip_tuning.h"
 
 #include <algorithm>
 #include <cmath>
@@ -49,11 +50,9 @@ void AySynthVoice::setSampleRate(float sampleRate) {
 void AySynthVoice::startNote(float freqHz, bool /*accent*/, bool slideFlag, uint8_t velocity) {
   if (freqHz <= 0.0f) return;
 
-  // AY/YM tone frequency quantization: f = clock / (16 * period).
-  float period = sampleRate_ / (16.0f * freqHz);
-  if (period < 1.0f) period = 1.0f;
-  const int p = static_cast<int>(period + 0.5f);
-  freqHz_ = sampleRate_ / (16.0f * static_cast<float>(p > 0 ? p : 1));
+  // Quantize against the PSG clock. The host sample rate only renders the
+  // resulting oscillator and must not be reused as the AY master clock.
+  freqHz_ = ChipTuning::quantizeAyToneFrequency(freqHz);
 
   gate_ = true;
   env_ = 1.0f;

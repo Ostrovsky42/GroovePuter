@@ -47,7 +47,7 @@ Pages inside each workflow:
 
 ```text
 PERFORM:  MIDI KEYBOARD -> MIDI PLAYER
-GENERATE: GENRE -> FEEL -> GENERATION -> TEXTURE
+GENERATE: GENRE -> FEEL -> GENERATION
 HUB:      OVERVIEW -> SYNTH A -> SYNTH B -> DRUMS -> SYNTH A SOUND -> SYNTH B SOUND
 SONG:     SONG -> PHRASE CORE
 SETTINGS: PROJECT / SETUP
@@ -72,7 +72,7 @@ SETTINGS: PROJECT / SETUP
 Direct note input remains active while transport runs. Step-based tools follow the
 project transport timeline and use the existing event router and MIDI dispatcher.
 
-## GENRE 1/4
+## GENRE 1/3
 
 | Key | Action |
 |---|---|
@@ -82,9 +82,9 @@ project transport timeline and use the existing event router and MIDI dispatcher
 | `Enter` | Apply profile or materialize according to the selected policy |
 | `M` | Cycle `PROFILE ONLY`, `MATERIALIZE`, `MATERIALIZE+BPM` |
 
-GENRE owns musical corridor and vocabulary. It does not own FEEL or TEXTURE.
+GENRE owns musical corridor and vocabulary. It does not own FEEL or sound design.
 
-## FEEL 2/4
+## FEEL 2/3
 
 | Key | Action |
 |---|---|
@@ -96,7 +96,7 @@ GENRE owns musical corridor and vocabulary. It does not own FEEL or TEXTURE.
 FEEL changes timing and velocity only. Browsing a preset does not mutate Scene until
 apply. Digits remain available to the global mute fallback; they are not FEEL hotkeys.
 
-## GENERATION 3/4
+## GENERATION 3/3
 
 | Key | Action |
 |---|---|
@@ -106,17 +106,25 @@ apply. Digits remain available to the global mute fallback; they are not FEEL ho
 | `Enter` / `G` | Generate material into a free slot and materialize the selected row |
 
 Target browsing is UI-only. Song position changes only when materialization succeeds.
-Phrase length is owned by Phrase Core, not by this page.
+Phrase length is owned by Phrase Core, not by this page. Sound design remains owned by
+the synth, Tape, delay, distortion, and related FX controls.
 
-## TEXTURE 4/4
+## PATTERN MATRIX
 
-| Key | Action |
-|---|---|
-| `Tab` / `Up/Down` | Select texture field |
-| `Left/Right` | Adjust texture mode, amount, or explicit flavor link |
-| `Enter` / `Space` | Apply texture |
+Pattern addresses use `PAGE + BANK + SLOT`: `1A1` through `16B8`. PAGE, BANK,
+and SLOT are independent coordinates. Changing page preserves bank and slot;
+changing bank preserves page and slot; changing slot preserves page and bank.
 
-TEXTURE changes sound surface only. It does not own note, rhythm, FEEL, or phrase form.
+```text
+1A1 --page 2--> 2A1
+2A1 --slot 2--> 2A2
+2A2 --bank B--> 2B2
+2B2 --page 3--> 3B2
+```
+
+On Synth A/B note-editor screens, the note/pattern header prints the composite address
+directly (for example `2A2 TB303`), and the global status chrome must show the same
+page/bank/slot identity.
 
 ## SYNTH A / SYNTH B PATTERN
 
@@ -196,7 +204,8 @@ TEXTURE changes sound surface only. It does not own note, rhythm, FEEL, or phras
 | `Ctrl+R` | Reverse playback |
 | `Alt+X` | LiveMix ON/OFF |
 | `Ctrl+C/V` | Copy / Paste |
-| `Ctrl+1..8` | Jump to edit page 1..8 |
+| `Ctrl+1..8` | Select pattern page 1..8 |
+| `Ctrl+Fn+1..8` | Select pattern page 9..16 |
 | `P` | Move cursor to playhead |
 | `Ctrl+W/S` | Jump 8 rows |
 | `Ctrl+Alt+W/S` | Jump 32 rows |
@@ -206,8 +215,9 @@ TEXTURE changes sound surface only. It does not own note, rhythm, FEEL, or phras
 | `Backspace` / `Tab` | Clear cell / selection |
 | `Alt+Backspace` | Clear full Song |
 
-`NO EMPTY PATTERN SLOTS` means generation changed neither Song references nor pattern
-content.
+`Q..I` changes only SLOT; PAGE and the target-track BANK remain unchanged.
+`Alt+[` / `Alt+]` moves one pattern page at a time. `NO EMPTY PATTERN SLOTS`
+means generation changed neither Song references nor pattern content.
 
 ## PHRASE CORE
 
@@ -234,7 +244,8 @@ the Phrase material; save/load preserves valid slots and cleared slots.
 |---|---|
 | `Up/Down` | Select track |
 | `Left/Right` | Select step |
-| `-` / `=` | Track volume |
+| `Fn+Left/Right` | Selected-track volume -/+ |
+| `-` / `=` | Track volume compatibility alias |
 | `X` | Toggle hit/note |
 | `A` | Toggle accent |
 | `Enter` | Open track detail |
@@ -244,9 +255,12 @@ the Phrase material; save/load preserves valid slots and cleared slots.
 | `B` | Toggle pattern bank |
 | `Ctrl+C/V` | Copy / Paste |
 
-In HUB MIDI mode, `H` returns to Player, `1..9` mutes physical SMF tracks, and `C`
-edits the selected route override (`AUTO`, `CH1..CH10`). Confirmed routes are persisted
-per file and restored when the file identity still matches.
+Internal HUB track volumes are scene/project state: saving a project at `0%` keeps that
+synth or drum lane at `0%` after reboot/load. In HUB MIDI mode, `H` returns to Player,
+`1..9` mutes physical SMF tracks, plain `Left/Right` edits the selected route override
+(`AUTO`, `CH1..CH10`), and `Fn+Left/Right` changes the selected physical-track level in
+5% steps. MIDI levels are session-only and reset to `100%` for a newly loaded SMF.
+Confirmed routes remain persisted per file when the file identity still matches.
 
 ## PROJECT / SETUP
 

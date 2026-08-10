@@ -13,8 +13,10 @@
 #include "src/midi/smf_session_generation.h"
 #include "src/midi/smf_structural_inspector.h"
 #include "src/midi/smf_track_inspector.h"
+#include "src/midi/smf_track_level.h"
 #include "src/midi/smf_track_mute.h"
 #include "src/midi/smf_track_output_route.h"
+#include "src/midi/transport_clock_runtime.h"
 
 namespace {
 using namespace GroovePuterMidi;
@@ -76,6 +78,55 @@ struct HubMidiProjection {
     }
 };
 
+struct HubMidiSoloState {
+    uint32_t generation{0};
+    uint16_t track{0};
+    uint64_t restoreMask{0};
+    bool active{false};
+};
+
+HubMidiSoloState& hubMidiSoloState() {
+    static HubMidiSoloState state{};
+    return state;
+}
+
+void syncHubMidiSoloGeneration(uint32_t generation) {
+    HubMidiSoloState& solo = hubMidiSoloState();
+    if (solo.active && solo.generation != generation) {
+        solo = HubMidiSoloState{};
+    }
+}
+
+void clearHubMidiSoloTracking() {
+    hubMidiSoloState() = HubMidiSoloState{};
+}
+
+bool restoreHubMidiSoloBeforeManualMute(uint32_t generation) {
+    HubMidiSoloState& solo = hubMidiSoloState();
+    if (!solo.active) return true;
+    if (solo.generation != generation) {
+        solo = HubMidiSoloState{};
+        return true;
+    }
+    const uint64_t restoreMask = solo.restoreMask;
+    if (!smfTrackMuteState().replaceMutedMask(restoreMask, generation)) {
+        return false;
+    }
+    solo = HubMidiSoloState{};
+    return true;
+}
+
+bool selectedTrackIsSolo(uint32_t generation, uint16_t track) {
+    const HubMidiSoloState& solo = hubMidiSoloState();
+    return solo.active && solo.generation == generation && solo.track == track;
+}
+
+uint64_t allSmfTracksMask(uint16_t trackCount) {
+    if (trackCount == 0u) return 0u;
+    if (trackCount >= 64u) return ~uint64_t{0};
+    return (uint64_t{1} << trackCount) - 1u;
+}
+
 HubMidiProjection captureHubMidiProjection() {
     HubMidiProjection projection{};
     projection.layers = smfStructuralInspectorState().snapshot();
@@ -105,6 +156,52 @@ bool routeCanBeEdited(const SmfPlayerSnapshot& player) {
     return !player.rawRouting &&
            (player.state == SmfPlayerState::Stopped ||
             player.state == SmfPlayerState::Paused);
+}
+
+bool smfStateIsActive(SmfPlayerState state) {
+    return state == SmfPlayerState::Playing ||
+           state == SmfPlayerState::Armed;
+}
+
+bool toggleHubMidiTransport(MiniAcid& miniAcid) {
+    ISmfPlayerService* service = smfPlayerService();
+    if (!service) {
+        UI::showToast("SMF player unavailable", 1200);
+        return true;
+    }
+
+    const SmfPlayerSnapshot state = service->snapshot();
+    if (state.state == SmfPlayerState::Unloaded ||
+        state.state == SmfPlayerState::Error) {
+        UI::showToast("LOAD MIDI IN PLAYER", 900);
+        return true;
+    }
+
+    const bool wasActive = smfStateIsActive(state.state);
+    const TransportClockRuntimeSnapshot clock = transportClockRuntime().snapshot();
+    if (!wasActive && state.tempoMode == SmfTempoMode::Project &&
+        !miniAcid.isPlaying() &&
+        clock.source == TransportClockSource::GroovePuterInternal) {
+        UI::showToast("G START FIRST / THEN SPACE", 1100);
+        return true;
+    }
+
+    const bool queued = service->togglePlayPause();
+    if (!queued) {
+        UI::showToast("MIDI PLAYER BUSY", 800);
+    } else if (wasActive) {
+        UI::showToast("MIDI: PAUSE", 700);
+    } else if (state.tempoMode == SmfTempoMode::Project) {
+        UI::showToast(clock.source == TransportClockSource::SeqtrakExternal
+                          ? (clock.externalFollowEnabled
+                                 ? "MIDI ARMED / PLAY SEQTRAK"
+                                 : "MIDI ARMED / FOLLOW OFF")
+                          : "MIDI: ARM NEXT BAR",
+                      900);
+    } else {
+        UI::showToast("MIDI: PLAY", 700);
+    }
+    return true;
 }
 
 bool muted(const SmfTrackMuteSnapshot& state, uint16_t track) {
@@ -271,8 +368,16 @@ void drawArrangementRow(IGfx& gfx,
             (static_cast<int>(segment) * gridWidth) / kArrangementSegments;
         const int x1 = gridX +
             (static_cast<int>(segment + 1u) * gridWidth) / kArrangementSegments;
-        const int cellWidth = std::max(1, x1 - x0 - kCellGap);
-        gfx.fillRect(x0, y0, cellWidth, rowHeight,
+        const int columnWidth = std::max(1, x1 - x0);
+        const int maxCellWidth = std::max(1, columnWidth - kCellGap);
+        const int maxCellHeight = std::max(1, rowHeight - 4);
+        const int cellSize = std::min(maxCellWidth, maxCellHeight);
+        const int cellX = x0 + std::max(0, (columnWidth - cellSize) / 2);
+        const int cellY = y0 + std::max(0, (rowHeight - cellSize) / 2);
+        gfx.fillRect(cellX,
+                     cellY,
+                     cellSize,
+                     cellSize,
                      activityColor(layer.form[segment], isMuted));
     }
 }
@@ -297,8 +402,10 @@ void drawOverlayBands(IGfx& gfx,
                       const SmfStructuralLayerSnapshot& selectedLayer,
                       const SmfTrackInfoSnapshot* selectedInfo,
                       int8_t destinationChannel,
+                      uint8_t trackLevel,
                       bool routeEdit,
                       int8_t routeDraft,
+                      bool soloActive,
                       bool partial) {
     const int width = gfx.width();
     const int height = gfx.height();
@@ -337,20 +444,22 @@ void drawOverlayBands(IGfx& gfx,
         if (player.rawRouting) {
             std::snprintf(line,
                           sizeof(line),
-                          "RAW %s N%u %s",
+                          "RAW %s V%u N%u %s",
                           channel,
+                          static_cast<unsigned>(trackLevel),
                           static_cast<unsigned>(selectedLayer.noteCount),
                           range);
         } else {
             std::snprintf(line,
                           sizeof(line),
-                          "%s>%s N%u %s",
+                          "%s>%s V%u N%u %s",
                           channel,
                           destination,
+                          static_cast<unsigned>(trackLevel),
                           static_cast<unsigned>(selectedLayer.noteCount),
                           range);
         }
-        hints = "C RTE H/E";
+        hints = soloActive ? "FN<>VOL S:OFF" : "FN<>VOL S:SOLO";
     }
     gfx.setTextColor(kBodyText);
     gfx.drawText(3, bottomY + 2, line);
@@ -434,6 +543,7 @@ bool SequencerHubPage::handleEvent(UIEvent& event) {
 void SequencerHubPage::syncMidiSessionSelection() {
     const HubMidiProjection projection = captureHubMidiProjection();
     if (!projection.ready()) return;
+    syncHubMidiSoloGeneration(projection.generation);
 
     if (midiGeneration_ != projection.generation) {
         midiGeneration_ = projection.generation;
@@ -483,6 +593,9 @@ bool SequencerHubPage::toggleMidiLayer(uint8_t layerIndex) {
         return false;
     }
 
+    syncHubMidiSoloGeneration(projection.generation);
+    if (!restoreHubMidiSoloBeforeManualMute(projection.generation)) return false;
+
     SmfTrackMuteState& state = smfTrackMuteState();
     const uint16_t track = projection.layers.layers[layerIndex].trackIndex;
     if (!state.toggleTrack(track, projection.generation)) return false;
@@ -508,7 +621,7 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
         returnFromMidiOverview();
         return true;
     }
-    if (UIInput::isBack(event)) {
+    if (event.scancode == GROOVEPUTER_ESCAPE || UIInput::isBack(event)) {
         if (midiRouteEdit_) {
             midiRouteEdit_ = false;
             midiRouteDraft_ = kSmfTrackOutputRouteAuto;
@@ -516,6 +629,37 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
         } else {
             returnFromMidiOverview();
         }
+        return true;
+    }
+
+    if (!midiRouteEdit_ && event.meta && !event.alt && !event.ctrl &&
+        (UIInput::isLeft(event) || UIInput::isRight(event))) {
+        ISmfPlayerService* levelService = smfPlayerService();
+        const SmfPlayerSnapshot levelPlayer =
+            levelService ? levelService->snapshot() : SmfPlayerSnapshot{};
+        const HubMidiProjection levelProjection = captureHubMidiProjection();
+        if (projectionIsSyncing(levelPlayer, levelProjection) ||
+            !levelProjection.ready() || levelProjection.layers.layerCount == 0u) {
+            UI::showToast("MIDI LAYERS: SYNCING", 800);
+            return true;
+        }
+        if (midiGeneration_ != levelProjection.generation) syncMidiSessionSelection();
+        const uint8_t levelSelected = std::min<uint8_t>(
+            midiSelected_, levelProjection.layers.layerCount - 1u);
+        const uint16_t levelTrack =
+            levelProjection.layers.layers[levelSelected].trackIndex;
+        uint8_t levelPercent = smfTrackLevelState().levelFor(levelTrack);
+        const int delta = UIInput::isRight(event) ? 5 : -5;
+        if (!smfTrackLevelState().adjustLevel(
+                levelTrack, delta, levelProjection.generation, levelPercent)) {
+            UI::showToast("MIDI LAYERS: SYNCING", 800);
+            return true;
+        }
+        char toast[40]{};
+        std::snprintf(toast, sizeof(toast), "MIDI TRK %02u VOL %u%%",
+                      static_cast<unsigned>(levelTrack + 1u),
+                      static_cast<unsigned>(levelPercent));
+        UI::showToast(toast, 700);
         return true;
     }
 
@@ -534,8 +678,7 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
             return true;
         }
         if (event.key == ' ') {
-            UI::showToast("MIDI TRANSPORT: PLAYER", 900);
-            return true;
+            return toggleHubMidiTransport(mini_acid_);
         }
     }
 
@@ -552,6 +695,7 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
         UI::showToast("LOAD MIDI IN PLAYER", 800);
         return true;
     }
+    syncHubMidiSoloGeneration(projection.generation);
     if (midiGeneration_ != projection.generation) syncMidiSessionSelection();
     if (projection.layers.layerCount == 0u) return true;
 
@@ -609,6 +753,72 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
         return true;
     }
 
+    if (event.key == 's' || event.key == 'S') {
+        if (selectedTrack >= projection.mute.trackCount || selectedTrack >= 64u) {
+            UI::showToast("MIDI SOLO UNAVAILABLE", 800);
+            return true;
+        }
+
+        SmfTrackMuteState& muteState = smfTrackMuteState();
+        HubMidiSoloState& solo = hubMidiSoloState();
+        if (solo.active && solo.generation == projection.generation &&
+            solo.track == selectedTrack) {
+            const uint64_t restoreMask = solo.restoreMask;
+            if (muteState.replaceMutedMask(restoreMask, projection.generation)) {
+                clearHubMidiSoloTracking();
+                UI::showToast("MIDI SOLO OFF", 700);
+            } else {
+                clearHubMidiSoloTracking();
+                UI::showToast("MIDI LAYERS: SYNCING", 800);
+            }
+            return true;
+        }
+
+        const uint64_t restoreMask =
+            solo.active && solo.generation == projection.generation
+                ? solo.restoreMask
+                : projection.mute.mutedMask;
+        uint64_t soloMask = allSmfTracksMask(projection.mute.trackCount);
+        soloMask &= ~(uint64_t{1} << selectedTrack);
+        if (!muteState.replaceMutedMask(soloMask, projection.generation)) {
+            clearHubMidiSoloTracking();
+            UI::showToast("MIDI LAYERS: SYNCING", 800);
+            return true;
+        }
+
+        solo.generation = projection.generation;
+        solo.track = selectedTrack;
+        solo.restoreMask = restoreMask;
+        solo.active = true;
+        char toast[32]{};
+        std::snprintf(toast,
+                      sizeof(toast),
+                      "MIDI SOLO TRK %02u",
+                      static_cast<unsigned>(selectedTrack + 1u));
+        UI::showToast(toast, 700);
+        return true;
+    }
+
+    int routeMove = 0;
+    if (event.scancode == GROOVEPUTER_LEFT) routeMove = -1;
+    else if (event.scancode == GROOVEPUTER_RIGHT) routeMove = 1;
+    if (routeMove != 0) {
+        if (player.rawRouting) {
+            UI::showToast("SEQTRAK ROUTING REQUIRED", 900);
+            return true;
+        }
+        if (!routeCanBeEdited(player)) {
+            UI::showToast("PAUSE MIDI FIRST", 900);
+            return true;
+        }
+        midiRouteDraft_ = cycleRouteDestination(
+            projection.routes.destinationFor(selectedTrack), routeMove);
+        midiRouteEdit_ = true;
+        return true;
+    }
+
+    // Keep C as a compatibility alias, but Left/Right is now the primary route
+    // edit entry and Enter remains the only confirmation action.
     if (event.key == 'c' || event.key == 'C') {
         if (player.rawRouting) {
             UI::showToast("SEQTRAK ROUTING REQUIRED", 900);
@@ -624,6 +834,7 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
     }
 
     if (event.key == 'a' || event.key == 'A') {
+        clearHubMidiSoloTracking();
         if (smfTrackMuteState().clear(projection.generation)) {
             UI::showToast("ALL MIDI TRACKS ON", 800);
         } else {
@@ -641,8 +852,6 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
     int move = 0;
     if (UIInput::isUp(event)) move = -1;
     else if (UIInput::isDown(event)) move = 1;
-    else if (event.scancode == GROOVEPUTER_LEFT) move = -kVisibleMidiRows;
-    else if (event.scancode == GROOVEPUTER_RIGHT) move = kVisibleMidiRows;
     if (move != 0) {
         const int count = static_cast<int>(projection.layers.layerCount);
         int movedSelection = (static_cast<int>(midiSelected_) + move) % count;
@@ -695,6 +904,7 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
         return;
     }
 
+    syncHubMidiSoloGeneration(projection.generation);
     if (midiGeneration_ != projection.generation) syncMidiSessionSelection();
     if (projection.layers.layerCount == 0u) {
         drawProjectionMessage(gfx, "NO AUDIBLE LAYERS", "H/ESC RETURN");
@@ -756,7 +966,10 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
                      selectedLayer,
                      selectedInfo,
                      projection.routes.destinationFor(selectedLayer.trackIndex),
+                     smfTrackLevelState().levelFor(selectedLayer.trackIndex),
                      midiRouteEdit_,
                      midiRouteDraft_,
+                     selectedTrackIsSolo(projection.generation,
+                                         selectedLayer.trackIndex),
                      projection.layers.partial);
 }

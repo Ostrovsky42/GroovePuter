@@ -64,6 +64,7 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   int visibleTrackCount() const;
   int logicalTrackCount() const;
   int maxEditableTrackColumn() const;
+  int maxPatternTrackColumn() const;
   const char* laneShortLabel() const;
   SongTrack thirdLaneTrack() const;
   const char* trackHeaderLabel(int col) const;

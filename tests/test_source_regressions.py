@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import json
+import os
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,8 +42,14 @@ def test_adv_amp_pin_is_not_used_as_rgb_data() -> None:
     )
     led = (ROOT / "src/ui/led_manager.cpp").read_text(encoding="utf-8")
 
-    require("GROOVEPUTER_CARDPUTER_ADV_PA_EN_PIN 21" in profile,
-            "Cardputer ADV PA_EN pin must remain explicit")
+    require("GROOVEPUTER_CARDPUTER_ADV_PA_EN_PIN" not in profile,
+            "Cardputer ADV must not claim a GPIO PA_EN pin")
+    require("struct UnusedPowerAmplifierEnablePin" in profile and
+            "kPowerAmplifierEnablePin{}" in profile,
+            "legacy PA setup call sites must resolve through the typed unused-pin no-op")
+    require("pinMode(UnusedPowerAmplifierEnablePin" in profile and
+            "digitalWrite(UnusedPowerAmplifierEnablePin" in profile,
+            "Cardputer ADV PA compatibility overloads must have no GPIO side effect")
     require("GROOVEPUTER_CARDPUTER_ADV_RGB_LED_PIN (-1)" in profile,
             "RGB output must remain disabled until a distinct ADV pin is verified")
     require("neopixelWrite(21" not in led,
@@ -226,7 +234,6 @@ def test_atlas_recipe_catalog_and_legacy_fallbacks() -> None:
         require(f"case {runtime_id}: return GrooveboxMode::{groove}" in manager,
                 f"{name} must select {groove} macro mode")
 
-    # The original probabilistic generators remain independent fallbacks.
     legacy_recipes = (
         (1, "UK Garage"),
         (2, "Drum&Bass"),
@@ -324,7 +331,7 @@ def test_recipe_selector_is_visible_and_navigable() -> None:
 
 def test_enter_applies_selected_recipe() -> None:
     page = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
-    start = page.index("// ENTER: apply the current genre/texture/recipe selection.")
+    start = page.index("// ENTER: apply the current genre/recipe selection.")
     end = page.index("// SPACE: toggle apply mode", start)
     enter_block = page[start:end]
     require("applyCurrent();" in enter_block,
@@ -335,22 +342,34 @@ def test_enter_applies_selected_recipe() -> None:
             "Apply footer must document Enter and M controls")
 
 
-
 def test_performance_workflow_boundaries() -> None:
     keyboard = (ROOT / "src/input/performance_keyboard.cpp").read_text(encoding="utf-8")
     header = (ROOT / "src/input/musical_event.h").read_text(encoding="utf-8")
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
+    pattern_page = (ROOT / "src/ui/pages/pattern_edit_page.cpp").read_text(
+        encoding="utf-8"
+    )
+    pattern_header = (ROOT / "src/ui/pages/pattern_edit_page.h").read_text(
+        encoding="utf-8"
+    )
 
     require('constexpr char kLowerRow[] = "asdfghjkl";' in keyboard,
             "performance key mapping must stay centralized")
     require('constexpr char kUpperRow[] = "qwertyuiop";' in keyboard,
             "performance key mapping must stay centralized")
     for path in (ROOT / "src/ui/pages").glob("*.cpp"):
+        if path.name == "pattern_edit_page.cpp":
+            continue
         page = path.read_text(encoding="utf-8")
         require("asdfghjkl" not in page and "qwertyuiop" not in page,
-                f"keyboard mapping duplicated in {path.name}")
+                f"performance keyboard mapping duplicated in {path.name}")
+    require("bool note_entry_mode_ = false;" in pattern_header and
+            '"asdfghjkl"' in pattern_page and '"qwertyuiop"' in pattern_page,
+            "PatternEditPage may own the chromatic rows only behind opt-in NOTE ENTRY")
+    require("if (note_entry_mode_" in pattern_page,
+            "pattern note-row routing must stay gated by NOTE ENTRY")
 
     require("MidiOutput" not in header,
             "MusicalEventTarget must describe logical voices, not output sinks")
@@ -380,6 +399,7 @@ def test_performance_settings_are_runtime_only() -> None:
             "performance scale/octave must not expand scene schema in this PR")
     require("PerformanceScale" not in storage and "octaveShift" not in storage,
             "performance settings must reset to runtime defaults after reboot")
+
 
 def test_ui_redraw_does_not_hold_audio_pause() -> None:
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
@@ -504,6 +524,49 @@ def test_project_midi_import_and_persistence_contracts() -> None:
     require("persistCurrentSceneName()" in storage,
             "existing scene selection must remain persistent")
 
+
+def test_synth_pitch_and_live_note_contracts() -> None:
+    ay = (ROOT / "src/dsp/ay_synth_voice.cpp").read_text(encoding="utf-8")
+    sn = (ROOT / "src/dsp/sn76489_synth_voice.cpp").read_text(encoding="utf-8")
+    engine_header = (ROOT / "src/dsp/miniacid_engine.h").read_text(
+        encoding="utf-8"
+    )
+
+    require('include "chip_tuning.h"' in ay and
+            "ChipTuning::quantizeAyToneFrequency(freqHz)" in ay,
+            "AY must quantize from the PSG clock helper")
+    require("sampleRate_ / (16.0f * freqHz)" not in ay,
+            "AY must not reuse host sample rate as its chip clock")
+
+    require('include "chip_tuning.h"' in sn and
+            "ChipTuning::quantizeSnToneFrequency" in sn and
+            "ChipTuning::snStackRatios" in sn,
+            "SN76489 must use the explicit low-register and stack policy")
+    require('"Oct+"' in sn,
+            "the upward octave stack must be named explicitly")
+
+    require('include "clamped_live_note_identity.h"' in engine_header and
+            "ClampedLiveNoteIdentity liveNotes_" in engine_header,
+            "live NoteOff must compare against the same clamp used by NoteOn")
+
+    build_dir = ROOT / "build" / "host-tests"
+    build_dir.mkdir(parents=True, exist_ok=True)
+    binary = build_dir / "test_chip_tuning"
+    cxx = os.environ.get("CXX", "g++")
+    subprocess.run([
+        cxx,
+        "-std=c++17",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        f"-I{ROOT}",
+        str(ROOT / "tests/test_chip_tuning.cpp"),
+        "-o",
+        str(binary),
+    ], check=True)
+    subprocess.run([str(binary)], check=True)
+
+
 def main() -> None:
     test_ppqn_dispatch_is_not_step_gated()
     test_all_substep_offsets_are_reachable()
@@ -524,6 +587,7 @@ def main() -> None:
     test_splash_closes_display_transaction()
     test_project_midi_import_and_persistence_contracts()
     test_scene_and_page_validation_share_one_scratch_buffer()
+    test_synth_pitch_and_live_note_contracts()
     print("source regressions: OK")
 
 

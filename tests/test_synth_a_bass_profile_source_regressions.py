@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 mode_source = (ROOT / "src/dsp/mode_manager.cpp").read_text(encoding="utf-8")
 genre_source = (ROOT / "src/dsp/genre_manager.cpp").read_text(encoding="utf-8")
+filter_source = (ROOT / "src/dsp/filter.cpp").read_text(encoding="utf-8")
 
 
 def require(source: str, needle: str, message: str) -> None:
@@ -61,5 +62,25 @@ for old_bound in (
     "if (decay > 0.25f) decay = 0.25f;",
 ):
     forbid(genre_source, old_bound, f"obsolete over-dark Synth A bound remains: {old_bound}")
+
+chamberlin_start = filter_source.index("float ChamberlinFilter::process")
+chamberlin_end = filter_source.index("// === DIODE FILTER", chamberlin_start)
+chamberlin_process = filter_source[chamberlin_start:chamberlin_end]
+
+require(
+    filter_source,
+    "fastSinForChamberlin",
+    "Synth A TB303 low-pass path must keep the non-transcendental Chamberlin coefficient",
+)
+require(
+    chamberlin_process,
+    "fastSinForChamberlin(phase)",
+    "Chamberlin process must use the fast coefficient approximation",
+)
+forbid(
+    chamberlin_process,
+    "sinf(",
+    "Chamberlin process must not call sinf per audio sample",
+)
 
 print("Synth A bass profile source regressions: OK")

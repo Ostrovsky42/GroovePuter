@@ -12,6 +12,7 @@ def require(condition: bool, message: str) -> None:
 def main() -> None:
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
     helper = (ROOT / "src/input/cardputer_input_edges.h").read_text(encoding="utf-8")
+    ui_input = (ROOT / "src/ui/ui_input.h").read_text(encoding="utf-8")
     normalize = (ROOT / "src/ui/key_normalize.h").read_text(encoding="utf-8")
     perform = (ROOT / "src/ui/pages/perform_page.cpp").read_text(encoding="utf-8")
     smf_wrapper = (
@@ -39,6 +40,25 @@ def main() -> None:
         require(arrow in helper, f"repeat whitelist missing {arrow}")
     require("modifierActivated" in helper and "modifierReleased" in helper,
             "modifier edges must be detected independently of key count")
+
+    require("isCardputerArrowHid" in helper and
+            "mayArmRepeatForPhysicalKey" in helper,
+            "physical Cardputer HID+word arrows need centralized repeat arming")
+    require("state.word.empty() || isCardputerArrowHid(hid)" in helper,
+            "arrow HID must stay repeatable when M5Cardputer also reports word text")
+    require("GroovePuterInput::mayArmRepeatForPhysicalKey(" in sketch,
+            "main input loop must use the centralized physical repeat policy")
+    require("ks.hid_keys.size() == 1 && ks.word.empty()" not in sketch,
+            "main input loop must not reject Cardputer HID+word arrows")
+
+    require("x1 -> x2 -> x3 -> x4" in ui_input,
+            "held numeric acceleration must document the softer bounded curve")
+    require("if (streak_ >= 24) return 4;" in ui_input and
+            "if (streak_ >= 14) return 3;" in ui_input and
+            "if (streak_ >= 6) return 2;" in ui_input,
+            "held numeric acceleration must use the release-candidate soft ramp")
+    require("if (forcedFast) return 5;" in ui_input,
+            "explicit fast-step compatibility must remain available")
 
     require("kCardputerTabHid = 0x2B" in helper,
             "Cardputer Tab HID code must remain explicit")

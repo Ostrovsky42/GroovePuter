@@ -7,6 +7,10 @@
 namespace GroovePuterInput {
 
 inline constexpr uint8_t kCardputerTabHid = 0x2B;
+inline constexpr uint8_t kCardputerArrowUpHid = 0x33;
+inline constexpr uint8_t kCardputerArrowLeftHid = 0x36;
+inline constexpr uint8_t kCardputerArrowDownHid = 0x37;
+inline constexpr uint8_t kCardputerArrowRightHid = 0x38;
 
 template <typename KeysState>
 inline bool sameModifiers(const KeysState& a, const KeysState& b) {
@@ -99,12 +103,43 @@ inline bool wordDigitAlreadyDispatched(WordChar value,
           static_cast<uint16_t>(1u << (digit - '0'))) != 0;
 }
 
+inline uint32_t letterDispatchMask(char value) {
+  if (value >= 'A' && value <= 'Z') value = static_cast<char>(value + ('a' - 'A'));
+  if (value < 'a' || value > 'z') return 0u;
+  return uint32_t{1} << static_cast<uint32_t>(value - 'a');
+}
+
+template <typename WordChar>
+inline bool wordLetterAlreadyDispatched(WordChar value, uint32_t mask) {
+  return (mask & letterDispatchMask(static_cast<char>(value))) != 0u;
+}
+
 inline bool mayRepeat(const UIEvent& event) {
   if (event.alt || event.ctrl || event.shift || event.meta) return false;
   return event.scancode == GROOVEPUTER_UP ||
          event.scancode == GROOVEPUTER_DOWN ||
          event.scancode == GROOVEPUTER_LEFT ||
          event.scancode == GROOVEPUTER_RIGHT;
+}
+
+inline bool isCardputerArrowHid(uint8_t hid) {
+  return hid == kCardputerArrowUpHid ||
+         hid == kCardputerArrowDownHid ||
+         hid == kCardputerArrowLeftHid ||
+         hid == kCardputerArrowRightHid;
+}
+
+template <typename KeysState>
+inline bool mayArmRepeatForPhysicalKey(const KeysState& state,
+                                       uint8_t hid,
+                                       const UIEvent& event) {
+  if (!mayRepeat(event) || state.hid_keys.size() != 1) return false;
+
+  // Cardputer arrow legends occupy punctuation positions. Some M5Cardputer
+  // versions report the physical arrow simultaneously through hid_keys and
+  // word. The canonical HID arrow remains repeatable in that representation;
+  // word.empty() is only required for other repeat candidates.
+  return state.word.empty() || isCardputerArrowHid(hid);
 }
 
 template <typename KeysState>

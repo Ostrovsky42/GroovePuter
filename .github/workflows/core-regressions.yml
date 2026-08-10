@@ -21,11 +21,42 @@ jobs:
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 
+      - name: Run pattern editor input ownership tests
+        run: python3 tests/test_pattern_editor_input_ownership.py
+
+      - name: Run step note entry source regressions
+        run: python3 tests/test_step_note_entry_source_regressions.py
+
+      - name: Run project pattern storage tests
+        run: |
+          mkdir -p build/host-tests
+          cat > build/host-tests/pattern_paging_scratch.cpp <<'CPP'
+          #include "scenes.h"
+
+          Scene& sceneTransactionScratch() {
+            static Scene scratch{};
+            return scratch;
+          }
+          CPP
+
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_pattern_paging.cpp \
+            src/audio/pattern_paging.cpp \
+            src/audio/pattern_project_cleanup.cpp \
+            build/host-tests/pattern_paging_scratch.cpp \
+            -o build/host-tests/test_pattern_paging
+          build/host-tests/test_pattern_paging
+
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_pattern_address.cpp \
+            -o build/host-tests/test_pattern_address
+          build/host-tests/test_pattern_address
+
       - name: Run UI status chrome tests
         run: |
           python3 tests/test_ui_status_chrome_source_regressions.py
           mkdir -p build/host-tests
-          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
             tests/test_ui_status_chrome.cpp \
             -o build/host-tests/test_ui_status_chrome
           build/host-tests/test_ui_status_chrome
@@ -39,13 +70,13 @@ jobs:
           assert not (root / 'src/dsp/opl2_synth_voice.h').exists()
           assert not (root / 'src/dsp/opl2_synth_voice.cpp').exists()
 
-          for path in (
-              root / 'src/ui/pages/synth_sequencer_page.cpp',
-              root / 'src/ui/pages/tb303_params_page.cpp',
-          ):
-              text = path.read_text(encoding='utf-8')
-              assert 'removeDisabledSynthEngines' in text
-              assert '{"TB303", "SID", "AY", "OPL2"' not in text
+          params = (root / 'src/ui/pages/tb303_params_page.cpp').read_text(encoding='utf-8')
+          synth_page = (root / 'src/ui/pages/synth_sequencer_page.cpp').read_text(encoding='utf-8')
+          assert 'removeDisabledSynthEngines' in params
+          assert 'availableSynthEngines' in params
+          assert '{"TB303", "SID", "AY", "OPL2"' not in params
+          assert 'removeDisabledSynthEngines' not in synth_page
+          assert 'std::make_shared<TB303ParamsPage>' in synth_page
 
           makefile = (root / 'platform_sdl/Makefile').read_text(encoding='utf-8')
           assert 'opl2_synth_voice' not in makefile
@@ -53,7 +84,7 @@ jobs:
           PY
 
           mkdir -p build/host-tests
-          g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter -I. \
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-c++20-extensions -I. \
             tests/test_new_synth_voices.cpp \
             src/dsp/swappable_synth_voice.cpp \
             src/dsp/mini_tb303.cpp \
@@ -71,10 +102,9 @@ jobs:
       - name: Run dirty-region display tests
         run: |
           mkdir -p build/host-tests
-          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
             tests/test_dirty_tile_tracker.cpp \
             -o build/host-tests/test_dirty_tile_tracker
-          build/host-tests/test_dirty_tile_tracker
 
   sdl-build:
     runs-on: ubuntu-latest

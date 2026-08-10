@@ -41,6 +41,11 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
  private:
   enum class Focus { Steps = 0, PatternRow, BankRow };
 
+  // The original page handler remains intact behind a strict input router.
+  // This keeps all non-navigation behavior unchanged and makes the ownership
+  // of arrows/pattern/bank shortcuts explicit.
+  bool handleEventLegacy(UIEvent& ui_event);
+
   void drawMinimalStyle(IGfx& gfx);
   void drawRetroClassicStyle(IGfx& gfx);
   void drawAmberStyle(IGfx& gfx);
@@ -51,6 +56,11 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   int bankIndexFromKey(char key) const;
   void setBankIndex(int bankIndex);
   void ensureStepFocus();
+  int noteForEntryKey(char key) const;
+  void resetNoteHoldTracking();
+  void advanceNoteEntryCursor();
+  void writeNoteEntryStep(int step, int note, bool continuation);
+  bool handleNoteEntryKey(char key);
   template <typename F>
   void withAudioGuard(F&& fn) {
       if (audio_guard_) audio_guard_(std::forward<F>(fn));
@@ -75,4 +85,13 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   int selection_start_step_ = 0;
   bool selection_locked_ = false;
   int last_page_ = -1;
+
+  // Optional fast step-entry layer. It is local to NOTES and leaves legacy
+  // editing bindings untouched while disabled.
+  bool note_entry_mode_ = false;
+  char last_note_key_ = 0;
+  int last_entered_note_ = -1;
+  int last_entered_step_ = -1;
+  unsigned long last_note_key_ms_ = 0;
+  bool note_hold_active_ = false;
 };

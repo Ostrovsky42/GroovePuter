@@ -331,6 +331,11 @@ bool MidiFileManager::scanDirectorySummary(const char* selectedName,
     windowStart_ = std::max(0, std::min(scroll_, maxWindowStart));
     windowCount_ = std::min(kWindowEntries, entryCount_ - windowStart_);
     for (Entry& entry : workspace_.entries) entry = Entry{};
+    if (parentCount > 0 && windowStart_ == 0 && windowCount_ > 0) {
+        workspace_.entries[0].kind = EntryKind::Parent;
+        copyText(workspace_.entries[0].name,
+                 sizeof(workspace_.entries[0].name), "..");
+    }
 
     rewinddir(root);
     int secondDirectoryCount = 0;

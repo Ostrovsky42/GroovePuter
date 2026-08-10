@@ -1,5 +1,8 @@
 #pragma once
 
+#ifndef GROOVEPUTER_SRC_UI_KEY_NORMALIZE_H_
+#define GROOVEPUTER_SRC_UI_KEY_NORMALIZE_H_
+
 #include <cstdint>
 #include <vector>
 #include <string>
@@ -221,3 +224,5 @@ static inline int scancodeToDrumVoice(KeyScanCode sc) {
 // Negligible - single branch + arithmetic per keystroke
 // (~2-3 CPU cycles on ESP32)
 //
+
+#endif  // GROOVEPUTER_SRC_UI_KEY_NORMALIZE_H_

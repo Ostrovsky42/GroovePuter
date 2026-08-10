@@ -17,7 +17,6 @@
 #include "pages/settings_page.h"
 #include "pages/project_page.h"
 #include "pages/mode_page.h"
-#include "pages/tb303_params_page.h"
 #include "pages/song_page.h"
 #include "pages/phrase_page.h"
 #include "pages/help_dialog.h"
@@ -35,8 +34,8 @@
 #include <esp_partition.h>
 #endif
 #include "esp_heap_caps.h"
-#include "../audio/pattern_paging.h"
 #endif
+#include "../audio/pattern_paging.h"
 #include <cstdio>
 #include "../debug_log.h"
 
@@ -77,7 +76,8 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx,
             GroovePuterState::masterVolumeToPermille(mini_acid_.mainVolume());
     }
     GroovePuterState::sanitizeUiSessionState(ui_session_);
-    page_index_ = ui_session_.activePage;
+    page_index_ = WorkflowPages::normalizeLegacyPage(ui_session_.activePage);
+    ui_session_.activePage = static_cast<int8_t>(page_index_);
     previous_page_index_ = page_index_;
     active_workspace_ = WorkflowPages::workspaceForPage(page_index_);
     Serial.printf("[SESSION] load=%d active=%d mem=%d,%d,%d,%d,%d\n",
@@ -122,8 +122,6 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case 0:  page = std::make_unique<GenrePage>(gfx_, mini_acid_, audio_guard_); break;
         case 1:  page = std::make_unique<SynthSequencerPage>(gfx_, mini_acid_, audio_guard_, 0); break;
         case 2:  page = std::make_unique<SynthSequencerPage>(gfx_, mini_acid_, audio_guard_, 1); break;
-        case 3:  page = std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 0); break;
-        case 4:  page = std::make_unique<TB303ParamsPage>(gfx_, mini_acid_, audio_guard_, 1); break;
         case 5:  page = std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_); break;
         case 6:  page = std::make_unique<SongPage>(gfx_, mini_acid_, audio_guard_); break;
         case 7:  page = std::make_unique<SequencerHubPage>(gfx_, mini_acid_, audio_guard_); break;
@@ -381,6 +379,7 @@ void MiniAcidDisplay::togglePreviousPage() {
 }
 
 void MiniAcidDisplay::transitionToPage_(int index, int context) {
+    index = WorkflowPages::normalizeLegacyPage(index);
     if (index < 0 || index >= kPageCount) {
         Serial.printf("[UI] transitionToPage(%d) INVALID\n", index);
         return;
@@ -473,12 +472,12 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 
         if (event.alt && (event.key == '[' || event.key == '{')) {
             int prev = mini_acid_.currentPageIndex() - 1;
-            if (prev < 0) prev = kPageCount - 1;
+            if (prev < 0) prev = kMaxPages - 1;
             mini_acid_.requestPageSwitch(prev);
             return true;
         }
         if (event.alt && (event.key == ']' || event.key == '}')) {
-            int next = (mini_acid_.currentPageIndex() + 1) % kPageCount;
+            int next = (mini_acid_.currentPageIndex() + 1) % kMaxPages;
             mini_acid_.requestPageSwitch(next);
             return true;
         }
@@ -548,8 +547,8 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             switch (event.key) {
                 case '1': targetPage = 1; break;
                 case '2': targetPage = 2; break;
-                case '3': targetPage = 3; break;
-                case '4': targetPage = 4; break;
+                case '3': targetPage = WorkflowPages::kSynthA; break;
+                case '4': targetPage = WorkflowPages::kSynthB; break;
                 case '5': targetPage = 5; break;
                 case '6': targetPage = 6; break;
                 case '7': targetPage = 7; break;
@@ -840,7 +839,6 @@ void MiniAcidDisplay::handlePaging_() {
     const int current = mini_acid_.currentPageIndex();
 
     withAudioGuard([&]() {
-#if defined(ESP32) || defined(ESP_PLATFORM)
         Scene& scene = mini_acid_.sceneManager().currentScene();
         if (!PatternPagingService::savePage(current, scene)) {
             result = PageSwitchResult::SaveCurrentFailed;
@@ -862,10 +860,6 @@ void MiniAcidDisplay::handlePaging_() {
                 result = PageSwitchResult::RollbackFailed;
             }
         }
-#else
-        mini_acid_.setCurrentPage(target);
-        result = PageSwitchResult::Switched;
-#endif
         mini_acid_.setTargetPage(-1);
         mini_acid_.setPageLoading(false);
     });

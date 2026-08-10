@@ -6,6 +6,7 @@
 #include "../axis_page_palette.h"
 #include "../layout_manager.h"
 #include "../ui_common.h"
+#include "../../state/scene_revision.h"
 
 namespace {
 constexpr const char* kPresetNames[3] = {"TIGHT", "HUMAN", "LOOSE"};
@@ -46,35 +47,50 @@ void FeelPage::adjustFocused(int delta, bool fast) {
 
   Scene& scene = mini_acid_.sceneManager().currentScene();
   const int multiplier = hold_accel_.multiplier(delta, fast);
+  bool changed = false;
 
   withAudioGuard([&]() {
     switch (focus_) {
       case FocusRow::Swing: {
         const int value = static_cast<int>(scene.feel.swingPct) +
                           delta * multiplier;
-        scene.feel.swingPct = static_cast<uint8_t>(
+        const uint8_t next = static_cast<uint8_t>(
             std::clamp(value, 50, 75));
-        mini_acid_.applyFeelTimingFromScene_();
+        if (next != scene.feel.swingPct) {
+          scene.feel.swingPct = next;
+          mini_acid_.applyFeelTimingFromScene_();
+          changed = true;
+        }
         break;
       }
       case FocusRow::TimingHumanize: {
         const float step = 0.01f * static_cast<float>(multiplier);
-        scene.generatorParams.microTimingAmount = std::clamp(
+        const float next = std::clamp(
             scene.generatorParams.microTimingAmount + delta * step,
             0.0f, 1.0f);
+        if (next != scene.generatorParams.microTimingAmount) {
+          scene.generatorParams.microTimingAmount = next;
+          changed = true;
+        }
         break;
       }
       case FocusRow::VelocityHumanize: {
         const float step = 0.01f * static_cast<float>(multiplier);
-        scene.generatorParams.velocityRange = std::clamp(
+        const float next = std::clamp(
             scene.generatorParams.velocityRange + delta * step,
             0.0f, 1.0f);
+        if (next != scene.generatorParams.velocityRange) {
+          scene.generatorParams.velocityRange = next;
+          changed = true;
+        }
         break;
       }
       case FocusRow::Preset:
         break;
     }
   });
+
+  if (changed) GroovePuterState::markSceneMutated();
 }
 
 void FeelPage::applyPreset(int index) {
@@ -82,26 +98,39 @@ void FeelPage::applyPreset(int index) {
   preset_index_ = index;
   Scene& scene = mini_acid_.sceneManager().currentScene();
 
-  withAudioGuard([&]() {
-    switch (index) {
-      case 0:
-        scene.feel.swingPct = 50;
-        scene.generatorParams.microTimingAmount = 0.02f;
-        scene.generatorParams.velocityRange = 0.10f;
-        break;
-      case 1:
-        scene.feel.swingPct = 58;
-        scene.generatorParams.microTimingAmount = 0.12f;
-        scene.generatorParams.velocityRange = 0.30f;
-        break;
-      case 2:
-        scene.feel.swingPct = 64;
-        scene.generatorParams.microTimingAmount = 0.22f;
-        scene.generatorParams.velocityRange = 0.45f;
-        break;
-    }
-    mini_acid_.applyFeelTimingFromScene_();
-  });
+  uint8_t nextSwing = scene.feel.swingPct;
+  float nextTiming = scene.generatorParams.microTimingAmount;
+  float nextVelocity = scene.generatorParams.velocityRange;
+  switch (index) {
+    case 0:
+      nextSwing = 50;
+      nextTiming = 0.02f;
+      nextVelocity = 0.10f;
+      break;
+    case 1:
+      nextSwing = 58;
+      nextTiming = 0.12f;
+      nextVelocity = 0.30f;
+      break;
+    case 2:
+      nextSwing = 64;
+      nextTiming = 0.22f;
+      nextVelocity = 0.45f;
+      break;
+  }
+
+  const bool changed = scene.feel.swingPct != nextSwing ||
+                       scene.generatorParams.microTimingAmount != nextTiming ||
+                       scene.generatorParams.velocityRange != nextVelocity;
+  if (changed) {
+    withAudioGuard([&]() {
+      scene.feel.swingPct = nextSwing;
+      scene.generatorParams.microTimingAmount = nextTiming;
+      scene.generatorParams.velocityRange = nextVelocity;
+      mini_acid_.applyFeelTimingFromScene_();
+    });
+    GroovePuterState::markSceneMutated();
+  }
 
   char toast[72];
   std::snprintf(toast, sizeof(toast), "FEEL %s SW %u TIME %d VEL %d",
@@ -125,7 +154,7 @@ void FeelPage::draw(IGfx& gfx) {
   const int x = Layout::COL_1;
   const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
   AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0),
-                      "FEEL 2/4", "TIMING / VELOCITY",
+                      "FEEL 2/3", "TIMING / VELOCITY",
                       axisColor, palette);
 
   char value[48];

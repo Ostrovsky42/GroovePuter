@@ -61,6 +61,15 @@ bool loadCardputerUiSession(GroovePuterState::UiSessionState& state) {
     if (read != sizeof(record) || !validRecord(record)) return false;
     state = record.state;
     GroovePuterState::sanitizeUiSessionState(state);
+
+    // MIDI Player opens its SD-backed browser immediately when no SMF is
+    // loaded. After a cold boot that can race the rest of storage/startup.
+    // Start the persisted PERFORM workflow on MIDI KEYBOARD instead; normal
+    // runtime navigation can still enter MIDI Player and persist it again.
+    if (state.activePage == GroovePuterState::SessionPages::kPlayer) {
+        GroovePuterState::rememberWorkflowPage(
+            state, GroovePuterState::SessionPages::kPerform);
+    }
     return true;
 #else
     (void)state;

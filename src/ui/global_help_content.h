@@ -14,7 +14,7 @@ constexpr const char* kGlobalLines[] = {
     "Fn+Sh+Tab   Previous workflow",
     "[ / ]       Prev/next page",
     "Fn+[ / ]    Prev/next workflow",
-    "Alt+[ / ]   Prev/next detail page",
+    "Alt+[ / ]   Prev/next pattern page",
     "Alt/Fn+1..0 Direct page jump",
     "Space       Active transport",
     "Alt+P       MIDI Player",
@@ -30,7 +30,7 @@ constexpr const char* kGlobalLines[] = {
 };
 
 constexpr const char* kGenreLines[] = {
-    "=== GENRE 1/4 ===",
+    "=== GENRE 1/2 ===",
     "Genre = corridor/vocabulary",
     "Tab/Up/Dn   Select field",
     "Left/Right  Genre/variant/apply",
@@ -47,6 +47,8 @@ constexpr const char* kSynthALines[] = {
     "Tab         Pattern/automation",
     "Q..I        Select pattern 1..8",
     "B           Toggle bank A/B",
+    "Ctrl+1/2    Bank A/B (direct)",
+    "Alt+[ / ]   Pattern page",
     "Arrows      Move cursor",
     "Shift/Ctrl+Arrows Select area",
     "A/Z         Note +/-",
@@ -67,6 +69,8 @@ constexpr const char* kSynthBLines[] = {
     "Tab         Pattern/automation",
     "Q..I        Select pattern 1..8",
     "B           Toggle bank A/B",
+    "Ctrl+1/2    Bank A/B (direct)",
+    "Alt+[ / ]   Pattern page",
     "Arrows      Move cursor",
     "Shift/Ctrl+Arrows Select area",
     "A/Z         Note +/-",
@@ -117,6 +121,8 @@ constexpr const char* kDrumLines[] = {
     "Tab         Sequencer/automation",
     "Q..I        Select pattern 1..8",
     "B           Toggle bank A/B",
+    "Ctrl+1/2    Bank A/B (direct)",
+    "Alt+[ / ]   Pattern page",
     "Arrows      Move cursor",
     "Shift/Ctrl+Arrows Select area",
     "Enter       Toggle hit",
@@ -196,21 +202,8 @@ constexpr const char* kHubLines[] = {
     "C           Edit saved per-file route",
 };
 
-constexpr const char* kTextureLines[] = {
-    "=== TEXTURE 4/4 ===",
-    "Texture = sound surface only",
-    "Tab/Up/Dn   Select field",
-    "Left/Right  Mode/amount/link",
-    "Enter/Space Apply texture",
-    "FLAVOR LINK Explicit cross-axis link",
-    "DI AG SP WD  Dirt/Age/Space/Width",
-    "IN GR DK     Instab/Aggression/Dark",
-    "Macro strip is read-only",
-    "No note or rhythm changes",
-};
-
 constexpr const char* kFeelLines[] = {
-    "=== FEEL 2/4 ===",
+    "=== FEEL 2/2 ===",
     "Feel = timing/velocity only",
     "Tab/Up/Dn   Select field",
     "Left/Right  Adjust value/preset",
@@ -232,19 +225,6 @@ constexpr const char* kProjectLines[] = {
     "Esc/Bksp    Close dialog/go up",
     "X           Delete selected scene",
     "Import: Tab Open MIDI matrix",
-};
-
-constexpr const char* kGenerationLines[] = {
-    "=== GENERATION 3/4 ===",
-    "Generation = material/development",
-    "Enter/G     Materialize current bar",
-    "SCOPE       Current Song row",
-    "PLAN        Single bar / base",
-    "A/S/FILL    Generation probabilities",
-    "Phrase len  Owned by PHRASE CORE",
-    "Linear constructive pass",
-    "No scoring or retry loop",
-    "No texture or microtiming changes",
 };
 
 constexpr const char* kPerformLines[] = {
@@ -304,13 +284,11 @@ inline const char* const* pageLines(int pageIndex, int& count) {
         case WorkflowPages::kPattern:
             count = sizeof(kHubLines) / sizeof(kHubLines[0]); return kHubLines;
         case WorkflowPages::kTexture:
-            count = sizeof(kTextureLines) / sizeof(kTextureLines[0]); return kTextureLines;
+        case WorkflowPages::kGeneration:
         case WorkflowPages::kFeel:
             count = sizeof(kFeelLines) / sizeof(kFeelLines[0]); return kFeelLines;
         case WorkflowPages::kProject:
             count = sizeof(kProjectLines) / sizeof(kProjectLines[0]); return kProjectLines;
-        case WorkflowPages::kGeneration:
-            count = sizeof(kGenerationLines) / sizeof(kGenerationLines[0]); return kGenerationLines;
         case WorkflowPages::kPerform:
             count = sizeof(kPerformLines) / sizeof(kPerformLines[0]); return kPerformLines;
         case WorkflowPages::kPlayer:

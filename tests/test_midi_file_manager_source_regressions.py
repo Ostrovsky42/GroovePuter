@@ -45,6 +45,19 @@ def main() -> None:
     require("../src/ui/midi_file_manager.cpp" in sdl_makefile,
             "desktop build must link the shared MIDI manager")
 
+    require("parentCount > 0 && windowStart_ == 0 && windowCount_ > 0" in manager_cpp and
+            "workspace_.entries[0].kind = EntryKind::Parent" in manager_cpp and
+            'sizeof(workspace_.entries[0].name), ".."' in manager_cpp,
+            "initial nested-folder window must materialize the synthetic parent row")
+    require("event.scancode == GROOVEPUTER_UP" in manager_cpp and
+            "event.scancode == GROOVEPUTER_DOWN" in manager_cpp,
+            "MIDI browser must consume repeated canonical arrow events")
+    require("serviceHeldNavigation" not in manager_h and
+            "serviceHeldNavigation" not in manager_cpp and
+            "heldNavigationDirectionFromCardputer" not in manager_cpp and
+            "M5Cardputer.h" not in manager_cpp,
+            "MIDI browser must not duplicate the central Cardputer repeat path")
+
     require("midi_file_manager.h" in project_h,
             "Project import must include the shared MIDI manager")
     require("midiFileManager().handleEvent" in project_cpp,

@@ -1,72 +1,65 @@
 # Dev Function/Input/UX Audit — Current Status
 
-## Purpose
+## Baseline
 
-Update the disposition of the static audit after the pre-release branch cleanup. The original audit remains a source snapshot and is not rewritten as if it covered later commits.
+```text
+release branch: dev_0.9
+base SHA: 538ae24a1c88253eb0cfc1a9a671e16091e449bf
+stabilization PR: #131
+hardware acceptance: PENDING
+```
 
-## Baselines
+## Integrated release inputs
 
-- Original audited revision: `98d215372e3c266600f0bc2e10009e373347757c`.
-- Branch synchronized with pre-release `dev`: `0514cf417b67457526e06b51e580eac19348fdac`.
-- Hardware acceptance: **not completed**.
+- #102: project-scoped pattern pages, Save As copy, New/Clear isolation, recovery and canonical `page + bank + slot` identity.
+- #125: AY/SN pitch policy and logical NoteOff identity.
+- #130: user-facing TEXTURE page removed; persisted legacy page ID 8 resolves to FEEL; Scene sound fields remain compatibility data.
+- #107: held-value acceleration and BPM chrome; hardware acceptance remains pending.
 
-## Disposition of the major directions
+## Rejected or deferred
 
-### Active before 0.9
+- #110 is a rejected genre experiment and is not a release input.
+- #101 Song-generation UX and #90 Phrase Arranger Stage 2 are deferred.
+- Tape/Sampler reachability is not promised by 0.9 documentation.
+- TEXTURE must not be restored by stabilization work.
+- static dead-code candidates remain candidates until linker and reachability proof exists.
 
-- PR #102 — project-scoped pattern storage and canonical pattern address. Synchronized with current `dev`; CI and Cardputer ADV storage acceptance remain required.
-- PR #110 — genre-owned variants, Atlas P1/P2/P3 roles, and sparse Dub/Trip-Hop materialization. Synchronized with current `dev`; CI and listening acceptance remain required.
-- Synth-engine P0/P1 findings from PR #106 — release-blocking until fixed, removed from the selectable surface, or explicitly accepted with evidence.
+## Revision ownership in PR #131
 
-### Merged but still awaiting hardware acceptance
+- FEEL selector browsing is preview-only.
+- a real FEEL value or preset change increments Scene revision once.
+- Genre/variant/morph browsing is preview-only.
+- Apply-mode selection is persistent and increments once.
+- Genre PROFILE ONLY increments only when committed state changes.
+- Genre materialization and materialization+BPM count as one logical mutation.
+- repeated no-op Apply does not create a revision.
 
-- PR #107 — held-value acceleration and BPM status restoration.
-- Recent SMF/MIDI tempo and transport work must be exercised in the final hardware matrix even where source tests exist.
+Still open: successful explicit Save and successful Load must call the revision success hooks; failed Save/Load and recovery autosave must not incorrectly clear dirty state.
 
-### Deferred beyond 0.9
+## Runtime workflow
 
-- PR #101 — old Song-generation UX prototype. Closed because the branch contained temporary apply scripts and only a partial product diff. Rebuild cleanly after the release blockers.
-- PR #90 — Phrase Arranger Stage 2. Closed because it replayed already integrated Phrase Core work and was too far diverged for safe release inclusion.
+The user-facing Generate workflow is:
+
+```text
+GENRE 1/3 → FEEL 2/3 → GENERATION 3/3
+```
+
+Legacy page IDs are compatibility inputs, not proof of reachable pages.
 
 ## Release cleanup rule
 
-Do not remove or remap a function solely because it appears unused in the static audit. Before deletion, verify all of the following:
-
-1. no active page constructs or references it;
-2. no persisted page ID, key binding, scene field, or migration path depends on it;
-3. host, SDL, Cardputer ADV, and MIDI acceptance still pass;
-4. documentation and global help are updated in the same PR.
-
-## Hardware assumptions
-
-- M5Stack Cardputer ADV.
-- Built-in keyboard and display.
-- Headphones or built-in speaker for audio paths.
-- Optional Yamaha SEQTRAK for USB-MIDI and clock acceptance.
-- No external GPIO wiring is required for this audit.
-
-## Build and flash
-
-```bash
-git fetch origin
-git switch dev
-git reset --hard origin/dev
-rm -rf build .pio .pioenvs .piolibdeps
-bash tests/run_host_tests.sh
-bash scripts/build.sh --warnings all
-```
-
-Flash using the normal Cardputer ADV upload command and monitor serial at `115200` baud.
+Do not remove or remap a function only because the static audit marks it unused. Prove navigation, persistence, migration and linker ownership first, then update tests and documentation in the same focused change.
 
 ## Acceptance checklist
 
-- [ ] Every visible page is reachable and has a reliable exit path.
-- [ ] Global shortcuts do not collide with local editor controls.
-- [ ] Discrete selectors advance one item per event; continuous controls remain precise on tap and accelerate on hold.
-- [ ] Transport, mute, generation, pattern identity, and persistence each have one documented owner.
-- [ ] Save, Save As, New, Clear, reload, and autosave recovery preserve the expected project boundary.
-- [ ] MIDI Player, MIDI Hub, live keyboard, and generated performance notes clean up NoteOff correctly.
-- [ ] No release page depends on a temporary apply script or an unmerged experiment branch.
-- [ ] Serial contains no crash, watchdog, allocation failure, or repeated recovery loop.
-
-The original audit findings remain candidates until individually closed by a focused implementation PR or an explicit release decision.
+- [ ] every advertised page is reachable and has a reliable exit;
+- [ ] TEXTURE page remains absent and legacy ID 8 resolves to FEEL;
+- [ ] global shortcuts do not collide with editor controls;
+- [ ] continuous controls are precise on tap and accelerate on hold;
+- [ ] discrete selectors advance one item per event;
+- [ ] Save/Save As/New/Clear/reboot/recovery preserve project ownership;
+- [ ] FEEL/Genre preview and commit revision contracts pass;
+- [ ] successful Save/Load clean dirty state and failed operations do not;
+- [ ] synth TYPE and visible parameters survive persistence without genre overwrite;
+- [ ] MIDI lifecycle cleans up NoteOff after Stop, mute and route changes;
+- [ ] documentation does not promise #110 behavior, Tape UI, TEXTURE UI or unverified direct mute hotkeys.

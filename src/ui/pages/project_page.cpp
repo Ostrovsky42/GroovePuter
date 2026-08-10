@@ -1244,12 +1244,6 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 withAudioGuard([&]() { mini_acid_.shiftGrooveFlavor(right ? 1 : -1); });
                 return true;
             }
-            if (main_focus_ == MainFocus::ApplyMacros) {
-                auto& genre = mini_acid_.sceneManager().currentScene().genre;
-                genre.applySoundMacros = !genre.applySoundMacros;
-                GroovePuterState::markSceneMutated();
-                return true;
-            }
             if (main_focus_ == MainFocus::LedMode) {
                 int m = static_cast<int>(led.mode);
                 m += right ? 1 : -1;
@@ -1565,11 +1559,6 @@ void ProjectPage::draw(IGfx& gfx) {
       case MainFocus::GrooveFlavor: {
         int f = mini_acid_.grooveFlavor();
         std::snprintf(line, sizeof(line), "Flavor     %s", grooveFlavorName(mini_acid_.grooveboxMode(), f));
-        break;
-      }
-      case MainFocus::ApplyMacros: {
-        bool on = mini_acid_.sceneManager().currentScene().genre.applySoundMacros;
-        std::snprintf(line, sizeof(line), "Apply Sound [%s]", on ? "ON" : "OFF");
         break;
       }
       case MainFocus::Volume: {

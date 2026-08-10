@@ -73,12 +73,10 @@ SOURCES := \
 	../src/ui/pages/song_page.cpp \
 	../src/ui/pages/phrase_page.cpp \
 	../src/ui/pages/project_page.cpp \
-	../src/ui/pages/generation_page.cpp \
 	../src/ui/pages/genre_page.cpp \
 	../src/ui/pages/perform_page.cpp \
 	../src/ui/pages/smf_player_page.cpp \
 	../src/ui/pages/smf_player_page_structural.cpp \
-	../src/ui/pages/texture_page.cpp \
 	../src/ui/pages/sequencer_hub_page.cpp \
 	../src/ui/pages/sequencer_hub_page_midi.cpp \
 	../src/ui/pages/feel_page.cpp \
@@ -91,6 +89,7 @@ SOURCES := \
 	../src/audio/desktop_audio_recorder.cpp \
 	../src/audio/wasm_audio_recorder.cpp \
 	../src/audio/pattern_paging.cpp \
+	../src/audio/pattern_project_cleanup.cpp \
 	../src/audio/midi_importer.cpp \
 	../src/sampler/sample_loader.cpp \
 	../src/sampler/ram_sample_store.cpp \

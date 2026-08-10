@@ -1,15 +1,15 @@
 #include "sn76489_synth_voice.h"
+#include "chip_tuning.h"
 
 #include <algorithm>
 #include <cmath>
 
 namespace {
-constexpr float kSnClockHz = 3579545.0f;
 constexpr float kDcBlockPole = 0.995f;
 }
 
 Sn76489SynthVoice::Sn76489SynthVoice(float sampleRate) {
-  static const char* const kStackOptions[] = {"Uni", "Oct", "Fifth", "Chord"};
+  static const char* const kStackOptions[] = {"Uni", "Oct+", "Fifth", "Chord"};
   static const char* const kNoiseOptions[] = {
       "W-Hi", "W-Mid", "W-Low", "W-T3",
       "P-Hi", "P-Mid", "P-Low", "P-T3"};
@@ -73,22 +73,19 @@ void Sn76489SynthVoice::updateEnvelopeCoefficients() {
 }
 
 float Sn76489SynthVoice::quantizeToneFrequency(float hz) const {
-  if (hz <= 0.0f) return 0.0f;
-  float divider = kSnClockHz / (32.0f * hz);
-  divider = std::clamp(std::floor(divider + 0.5f), 1.0f, 1023.0f);
-  return kSnClockHz / (32.0f * divider);
+  return ChipTuning::quantizeSnToneFrequency(hz);
 }
 
 void Sn76489SynthVoice::updateToneFrequencies() {
-  float ratios[3] = {1.0f, 1.0f, 1.0f};
-  switch (params_[0].optionIndex()) {
-    case 1: ratios[1] = 0.5f; ratios[2] = 0.25f; break;
-    case 2: ratios[1] = 1.5f; ratios[2] = 0.5f; break;
-    case 3: ratios[1] = 1.25f; ratios[2] = 1.5f; break;
-    default: ratios[1] = 1.003f; ratios[2] = 0.997f; break;
-  }
-  for (int i = 0; i < 3; ++i) {
-    toneFreq_[i] = quantizeToneFrequency(currentFreqHz_ * ratios[i]);
+  // Fold and quantize the requested root exactly once. Stack intervals are
+  // then applied to that playable root; folding each voice independently
+  // would collapse a low Oct+ stack onto one pitch.
+  float ratios[3]{};
+  ChipTuning::snStackRatios(params_[0].optionIndex(), ratios);
+  toneFreq_[0] = quantizeToneFrequency(currentFreqHz_);
+  for (int voice = 1; voice < 3; ++voice) {
+    toneFreq_[voice] = ChipTuning::quantizeSnRepresentableToneFrequency(
+        toneFreq_[0] * ratios[voice]);
   }
 }
 
@@ -179,7 +176,7 @@ float Sn76489SynthVoice::process() {
       if (tone3Wrapped) shiftNoise(whiteNoise);
     } else {
       const float divider = static_cast<float>(512u << rate);
-      const float noiseHz = kSnClockHz / divider;
+      const float noiseHz = ChipTuning::kSnClockHz / divider;
       noisePhase_ += noiseHz * invSampleRate_;
       while (noisePhase_ >= 1.0f) {
         noisePhase_ -= 1.0f;

@@ -30,6 +30,7 @@ python3 "${ROOT_DIR}/tests/test_seqtrak_master_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_smf_midi_wave_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_smf_route_persistence_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_atlas_sound_profile.py"
+python3 "${ROOT_DIR}/tests/test_synth_persistence_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${CXX}" \
@@ -516,3 +517,5 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -o "${BUILD_DIR}/test_song_pattern_materializer"
 
 "${BUILD_DIR}/test_song_pattern_materializer"
+
+python3 tests/test_remove_texture_mode_runtime.py

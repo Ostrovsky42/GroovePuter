@@ -707,6 +707,7 @@ void loop() {
     bool sawEdge = false;
     bool armedRepeat = false;
     uint16_t dispatchedDigitMask = 0;
+    uint32_t dispatchedLetterMask = 0;
 
     for (auto hid : ks.hid_keys) {
       if (!GroovePuterInput::shouldDispatchHid(
@@ -757,6 +758,11 @@ void loop() {
         evt.key = hid == 0x27 ? '0' : static_cast<char>('1' + (hid - 0x1E));
         dispatchedDigitMask |= GroovePuterInput::digitDispatchMask(evt.key);
         shouldSend = true;
+      } else if (!ks.ctrl && !ks.alt && !ks.fn && hid >= 0x04 && hid <= 0x1D) {
+        evt.key = static_cast<char>('a' + (hid - 0x04));
+        mapHidLetterScancode(hid, evt.scancode);
+        dispatchedLetterMask |= GroovePuterInput::letterDispatchMask(evt.key);
+        shouldSend = true;
       } else if (applyCtrlLetter(ks, hid, evt)) {
         mapHidLetterScancode(hid, evt.scancode);
         shouldSend = true;
@@ -769,8 +775,8 @@ void loop() {
       handleWithFallback(evt, "HID", pressId, false);
       dispatched = true;
 
-      if (GroovePuterInput::mayRepeat(evt) &&
-          ks.hid_keys.size() == 1 && ks.word.empty()) {
+      if (GroovePuterInput::mayArmRepeatForPhysicalKey(
+              ks, static_cast<uint8_t>(hid), evt)) {
         repeatEvent = evt;
         repeatHid = static_cast<uint8_t>(hid);
         repeatPressId = pressId;
@@ -793,6 +799,10 @@ void loop() {
           const unsigned char u = static_cast<unsigned char>(inputChar);
           if (GroovePuterInput::wordDigitAlreadyDispatched(
                   inputChar, dispatchedDigitMask)) {
+            continue;
+          }
+          if (GroovePuterInput::wordLetterAlreadyDispatched(
+                  inputChar, dispatchedLetterMask)) {
             continue;
           }
           if (u == '\n' || u == '\r' || u == '\b' || u == '\t') continue;

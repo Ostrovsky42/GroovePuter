@@ -132,6 +132,44 @@ public:
         return true;
     }
 
+    bool replaceMutedMask(uint64_t desiredMask, uint32_t generation) {
+        SmfSessionMutationGuard guard(generation);
+        if (!guard) return false;
+
+        const uint16_t count = trackCount_.load(std::memory_order_acquire);
+        uint64_t validMask = ~uint64_t{0};
+        if (count == 0u) {
+            validMask = 0u;
+        } else if (count < 64u) {
+            validMask = (uint64_t{1} << count) - 1u;
+        }
+        desiredMask &= validMask;
+
+        const uint64_t previousLow =
+            mutedMaskLow_.load(std::memory_order_acquire);
+        const uint64_t previousHigh =
+            mutedMaskHigh_.load(std::memory_order_acquire);
+        const uint64_t previousMask = previousLow | (previousHigh << 32u);
+        const uint64_t newlyMuted = desiredMask & ~previousMask;
+
+        const uint32_t desiredLow = static_cast<uint32_t>(desiredMask);
+        const uint32_t desiredHigh = static_cast<uint32_t>(desiredMask >> 32u);
+        const uint32_t newlyMutedLow = static_cast<uint32_t>(newlyMuted);
+        const uint32_t newlyMutedHigh = static_cast<uint32_t>(newlyMuted >> 32u);
+
+        mutedMaskLow_.store(desiredLow, std::memory_order_release);
+        mutedMaskHigh_.store(desiredHigh, std::memory_order_release);
+
+        // Preserve cleanup only for tracks that remain muted, cancel stale
+        // release requests for tracks made audible again, and schedule an
+        // immediate release for every track newly muted by the replacement.
+        pendingReleaseLow_.fetch_and(desiredLow, std::memory_order_acq_rel);
+        pendingReleaseHigh_.fetch_and(desiredHigh, std::memory_order_acq_rel);
+        pendingReleaseLow_.fetch_or(newlyMutedLow, std::memory_order_acq_rel);
+        pendingReleaseHigh_.fetch_or(newlyMutedHigh, std::memory_order_acq_rel);
+        return true;
+    }
+
     bool isMuted(uint16_t trackIndex) const {
         if (trackIndex >= 64u) return false;
         if (trackIndex < 32u) {

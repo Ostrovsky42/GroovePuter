@@ -17,18 +17,23 @@ def main() -> None:
     pattern = (ROOT / "src/ui/pages/pattern_edit_page.h").read_text(encoding="utf-8")
     feel_header = (ROOT / "src/ui/pages/feel_page.h").read_text(encoding="utf-8")
     feel_source = (ROOT / "src/ui/pages/feel_page.cpp").read_text(encoding="utf-8")
-    generation_header = (ROOT / "src/ui/pages/generation_page.h").read_text(encoding="utf-8")
-    generation_source = (ROOT / "src/ui/pages/generation_page.cpp").read_text(encoding="utf-8")
-    texture_header = (ROOT / "src/ui/pages/texture_page.h").read_text(encoding="utf-8")
-    texture_source = (ROOT / "src/ui/pages/texture_page.cpp").read_text(encoding="utf-8")
     song_header = (ROOT / "src/ui/pages/song_page.h").read_text(encoding="utf-8")
     song_source = (ROOT / "src/ui/pages/song_page.cpp").read_text(encoding="utf-8")
     genre_source = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
     voice_source = (ROOT / "src/ui/pages/voice_page.cpp").read_text(encoding="utf-8")
     sampler_source = (ROOT / "src/ui/pages/sampler_page.cpp").read_text(encoding="utf-8")
-    drum_source = (ROOT / "src/ui/pages/drum_sequencer_page.cpp").read_text(encoding="utf-8")
+    drum_source = (ROOT / "src/ui/pages/drum_sequencer_page_legacy.h").read_text(encoding="utf-8")
     automation_source = (ROOT / "src/ui/pages/drum_automation_page.cpp").read_text(encoding="utf-8")
     tape_source = (ROOT / "src/ui/pages/tape_page.cpp").read_text(encoding="utf-8")
+
+    require(not (ROOT / "src/ui/pages/texture_page.h").exists(),
+            "removed TEXTURE page header must not return")
+    require(not (ROOT / "src/ui/pages/texture_page.cpp").exists(),
+            "removed TEXTURE page source must not return")
+    require(not (ROOT / "src/ui/pages/generation_page.h").exists(),
+            "removed standalone GENERATION page header must not return")
+    require(not (ROOT / "src/ui/pages/generation_page.cpp").exists(),
+            "removed standalone GENERATION page source must not return")
 
     require("uint32_t currentRevision" in tracker and
             "uint32_t persistedRevision" in tracker,
@@ -47,7 +52,6 @@ def main() -> None:
     require("if (persisted) GroovePuterState::markSceneSaveSucceeded();" in project,
             "successful MIDI import persistence must establish a clean baseline")
     for mutation in (
-        "genre.applySoundMacros",
         "led.mode",
         "led.source",
         "led.color",
@@ -59,16 +63,28 @@ def main() -> None:
         require("markSceneMutated" in window,
                 f"Project persistent setting bypasses revision tracker: {mutation}")
 
+    require("applySoundMacros" not in project,
+            "removed Project sound-macro policy must not return")
+
     require("markSceneMutated();" in pattern,
             "step editor mutations must reach the tracker")
     require("markSceneMutated();" in feel_header,
             "FEEL timing/velocity mutations must reach the tracker")
-    generation_success = generation_source.index("if (result) {")
-    generation_failure = generation_source.index("} else {", generation_success)
-    require("markSceneMutated();" in generation_source[generation_success:generation_failure],
-            "successful GENERATION materialization must reach the tracker")
-    require("markSceneMutated();" in texture_header,
-            "TEXTURE mutations must reach the tracker")
+
+    # GENERATION no longer owns a standalone page. Song is the materialization
+    # owner, and its persistent guard marks every successful mutation path.
+    require("SongPatternMaterializer::Result materializeSongTracks" in song_header and
+            "bool generateCurrentCellPattern" in song_header and
+            "bool generateEntireRow" in song_header,
+            "Song must own current generation/materialization entry points")
+    persistent_guard = song_header.index("void withAudioGuard")
+    runtime_guard = song_header.index("void withRuntimeAudioGuard", persistent_guard)
+    require("GroovePuterState::markSceneMutated();" in
+            song_header[persistent_guard:runtime_guard],
+            "Song persistent mutations, including generation, must reach the revision tracker")
+    require("generateCurrentCellPattern();" in song_source and
+            "generateEntireRow();" in song_source,
+            "Song generation gestures must route through the current materialization owner")
 
     preset_guard = feel_source.index("if (focus_ == FocusRow::Preset)")
     feel_guard_end = feel_source.index("Scene& scene", preset_guard)
@@ -90,11 +106,6 @@ def main() -> None:
     apply_mode_end = genre_source.index("void GenrePage::applyCurrent", apply_mode_start)
     require("markSceneMutated" in genre_source[apply_mode_start:apply_mode_end],
             "GENRE apply policy must reach the revision tracker")
-
-    flavor_link_start = texture_source.index("void TexturePage::toggleFlavorLink")
-    flavor_link_end = texture_source.index("void TexturePage::applyTexture", flavor_link_start)
-    require("markSceneMutated" in texture_source[flavor_link_start:flavor_link_end],
-            "TEXTURE cross-axis link must reach the revision tracker")
 
     require("withRuntimeAudioGuard([&]()" in voice_source,
             "Voice preview and runtime controls need a non-persistent guard")

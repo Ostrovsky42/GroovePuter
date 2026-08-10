@@ -176,8 +176,9 @@ def main() -> None:
         "smfTrackMuteState().selectTrack(" in hub_cpp
         and "formatTrackChannel(" in hub_cpp
         and "formatPitchRange(" in hub_cpp
-        and "%s N%u %s" in hub_cpp,
-        "HUB MIDI selection and readable footer must remain projected from existing state",
+        and '"RAW %s V%u N%u %s"' in hub_cpp
+        and '"%s>%s V%u N%u %s"' in hub_cpp,
+        "HUB MIDI selection and readable level/route footer must remain projected from existing state",
     )
     require(
         "isSelected ? '>'" not in hub_cpp

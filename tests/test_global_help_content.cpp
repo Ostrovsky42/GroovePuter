@@ -66,14 +66,19 @@ int main() {
     assert(sectionContains(WorkflowPages::kPattern, "SEQUENCER HUB"));
     assert(sectionContains(WorkflowPages::kPattern, "saved per-file route"));
 
-    assert(sectionContains(WorkflowPages::kGenre, "GENRE 1/4"));
+    assert(sectionContains(WorkflowPages::kGenre, "GENRE 1/2"));
     assert(sectionContains(WorkflowPages::kGenre, "No texture or feel changes"));
-    assert(sectionContains(WorkflowPages::kFeel, "FEEL 2/4"));
+    assert(sectionContains(WorkflowPages::kFeel, "FEEL 2/2"));
     assert(sectionContains(WorkflowPages::kFeel, "No notes, roles or sound changes"));
-    assert(sectionContains(WorkflowPages::kGeneration, "GENERATION 3/4"));
-    assert(sectionContains(WorkflowPages::kGeneration, "No scoring or retry loop"));
-    assert(sectionContains(WorkflowPages::kTexture, "TEXTURE 4/4"));
-    assert(sectionContains(WorkflowPages::kTexture, "No note or rhythm changes"));
+
+    // Persisted legacy GENERATION/TEXTURE page ids remain readable but resolve
+    // to the current FEEL help content instead of reviving removed UI pages.
+    assert(std::strcmp(WorkflowPages::pageName(WorkflowPages::kTexture), "FEEL") == 0);
+    assert(std::strcmp(WorkflowPages::pageName(WorkflowPages::kGeneration), "FEEL") == 0);
+    assert(sectionContains(WorkflowPages::kTexture, "FEEL 2/2"));
+    assert(sectionContains(WorkflowPages::kGeneration, "FEEL 2/2"));
+    assert(!sectionContains(WorkflowPages::kTexture, "TEXTURE"));
+    assert(!sectionContains(WorkflowPages::kGeneration, "GENERATION"));
 
     std::cout << "global help content tests passed\n";
     return 0;
