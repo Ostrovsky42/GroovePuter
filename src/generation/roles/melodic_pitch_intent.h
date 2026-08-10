@@ -60,10 +60,13 @@ struct MelodicPitchIntentRequest {
   MelodicContourId requestedContour = MelodicContourId::Auto;
   MelodicMotifOperationId requestedOperation = MelodicMotifOperationId::Auto;
 
-  // Transient semantic space in which 15B may place melodic intent. This is
-  // not physical Synth B availability: Stage 14 still owns chord-first
-  // blocking and physical voice arbitration after this layer.
-  StepMask allowedSteps = kAllSteps;
+  // Transient semantic legality for 15B. Onset legality is intentionally
+  // separate from continuation legality because Stage 14 may permit a held
+  // melodic note to pass through a bass/chord onset while still forbidding a
+  // new melodic onset there. Neither mask is physical Synth B availability:
+  // chord-first blocking and voice arbitration remain downstream Stage 14.
+  StepMask allowedOnsetSteps = kAllSteps;
+  StepMask allowedContinuationSteps = kAllSteps;
   bool allowEmptyBar = false;
 
   // Scale-degree offsets relative to the current-bar harmonic anchor.
