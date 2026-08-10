@@ -56,7 +56,8 @@ for forbidden in (
 # executable Stage 15B code must not introduce any MIDI-named absolute-pitch
 # field/type/helper. Comments may document the downstream boundary and are
 # intentionally stripped before this check.
-assert re.search(r"\b(?:MIDI|Midi)\w*\b", CODE) is None, "absolute MIDI ownership leak"
+assert re.search(r"\bmidi\w*\b", CODE, flags=re.IGNORECASE) is None, \
+    "absolute MIDI ownership leak"
 
 assert re.search(r"\bnew\s+[A-Za-z_:]", CODE) is None, "heap new"
 assert re.search(r"\bdelete\s+[A-Za-z_]", CODE) is None, "heap delete"
