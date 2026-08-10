@@ -140,10 +140,45 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
   // existing Ctrl+Alt modifier pair for the explicit Stage 12 audition/probe.
   // Ctrl+G (one voice) and Alt+G (chaos) remain legacy and unchanged.
   if (keyG && ui_event.ctrl && ui_event.alt && !ui_event.meta) {
+    // Audition owns Song B and must enter it from pattern mode. Starting while
+    // already in song mode would make MiniAcid cache the current song-row
+    // selection as the pattern-mode return point, so reject that ambiguous case.
+    if (page->mini_acid_.songModeEnabled()) {
+      UI::showToast("AUD: EXIT SONG", 1400);
+      return true;
+    }
+
+    const int previousDrumBank = page->mini_acid_.currentDrumBankIndex();
+    const int previousDrumPattern = page->mini_acid_.currentDrumPatternIndex();
+    const int previousSynthBankA = page->mini_acid_.current303BankIndex(0);
+    const int previousSynthBankB = page->mini_acid_.current303BankIndex(1);
+    const int previousSynthPatternA = page->mini_acid_.current303PatternIndex(0);
+    const int previousSynthPatternB = page->mini_acid_.current303PatternIndex(1);
+
     GroovePuterRhythm::PhraseAuditionResult audition{};
     page->withAudioGuard([&]() {
       audition = GroovePuterRhythm::regeneratePhraseAuditionWithProbe(
           page->mini_acid_);
+
+      // The bridge writes Bank B by temporarily selecting every reserved slot.
+      // Rebase MiniAcid's pattern-mode return state to the user's pre-audition
+      // selection before re-entering Song B. Song-mode display/playback still
+      // resolves row 0 through Song B, but leaving song mode returns exactly to
+      // the original pattern selection rather than the last audition slot.
+      if (page->mini_acid_.songModeEnabled() &&
+          (audition.status ==
+               GroovePuterRhythm::PhraseAuditionStatus::AppliedEvolved ||
+           audition.status == GroovePuterRhythm::PhraseAuditionStatus::
+                                  AppliedVariationFallback)) {
+        page->mini_acid_.setSongMode(false);
+        page->mini_acid_.setDrumBankIndex(previousDrumBank);
+        page->mini_acid_.setDrumPatternIndex(previousDrumPattern);
+        page->mini_acid_.set303BankIndex(0, previousSynthBankA);
+        page->mini_acid_.set303BankIndex(1, previousSynthBankB);
+        page->mini_acid_.set303PatternIndex(0, previousSynthPatternA);
+        page->mini_acid_.set303PatternIndex(1, previousSynthPatternB);
+        page->mini_acid_.setSongMode(true);
+      }
     });
     char toast[64];
     std::snprintf(
