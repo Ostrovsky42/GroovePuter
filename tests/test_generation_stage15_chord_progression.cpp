@@ -139,11 +139,9 @@ void testDataOnlyGenreReuseCriterion() {
       generationProfileFor(settingsFor(GenerativeMode::House));
   const GenerationProfileView outrun =
       generationProfileFor(settingsFor(GenerativeMode::Outrun));
-  const GenerationProfileView loFiHouse = generationProfileFor(
-      settingsFor(GenerativeMode::LoFi, kLoFiHouseRecipeId));
   assert(contains(house.progressions, ProgressionId::PopCycle));
   assert(contains(outrun.progressions, ProgressionId::PopCycle));
-  assert(contains(loFiHouse.progressions, ProgressionId::PopCycle));
+  assert(contains(funkSoul.progressions, ProgressionId::PopCycle));
 }
 
 void testDeterminismAcrossEveryProfilePair() {
