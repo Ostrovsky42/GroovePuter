@@ -304,9 +304,17 @@ GrooveboxMode grooveboxModeForGenerative(GenerativeMode mode) {
 GrooveboxMode grooveboxModeForRecipe(GenreRecipeId id,
                                      GenerativeMode fallbackMode) {
     switch (id) {
-        case 1: case 2: case 3: case 8: case 9: return GrooveboxMode::Breaks;
-        case 4: case 6: case 7: return GrooveboxMode::Acid;
-        case 5: case 10: case 11: return GrooveboxMode::Dub;
+        case 1: return GrooveboxMode::Breaks;
+        case 2: return GrooveboxMode::Breaks;
+        case 3: return GrooveboxMode::Breaks;
+        case 4: return GrooveboxMode::Acid;
+        case 5: return GrooveboxMode::Dub;
+        case 6: return GrooveboxMode::Acid;
+        case 7: return GrooveboxMode::Acid;
+        case 8: return GrooveboxMode::Breaks;
+        case 9: return GrooveboxMode::Breaks;
+        case 10: return GrooveboxMode::Dub;
+        case 11: return GrooveboxMode::Dub;
         case 0:
         default: return grooveboxModeForGenerative(fallbackMode);
     }
