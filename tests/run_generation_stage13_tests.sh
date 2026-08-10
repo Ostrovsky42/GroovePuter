@@ -82,4 +82,5 @@ ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
   run_suite sanitize "${CXX:-g++}" \
     -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined
 
-printf 'Generation Stage 13/14 host matrix: OK\n'
+bash "${ROOT_DIR}/tests/run_generation_stage15_tests.sh"
+printf 'Generation Stage 13/14/15 host matrix: OK\n'
