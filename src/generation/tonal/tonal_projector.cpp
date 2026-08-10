@@ -3,6 +3,20 @@
 namespace GroovePuterRhythm {
 namespace {
 
+// Numeric ABI of the existing global ScaleType enum in scenes.h. A source
+// regression parses that enum and pins this exact order so drift cannot be
+// silent without introducing a second C++ scale enum here.
+constexpr ScaleTypeValue kScaleMinor = 0;
+constexpr ScaleTypeValue kScaleMajor = 1;
+constexpr ScaleTypeValue kScaleDorian = 2;
+constexpr ScaleTypeValue kScalePhrygian = 3;
+constexpr ScaleTypeValue kScaleLydian = 4;
+constexpr ScaleTypeValue kScaleMixolydian = 5;
+constexpr ScaleTypeValue kScaleLocrian = 6;
+constexpr ScaleTypeValue kScalePentatonicMajor = 7;
+constexpr ScaleTypeValue kScalePentatonicMinor = 8;
+constexpr ScaleTypeValue kScaleChromatic = 9;
+
 struct ScaleDefinition {
   const int8_t* intervals = nullptr;
   uint8_t count = 0;
@@ -19,20 +33,20 @@ constexpr int8_t kMajorPentatonic[] = {0, 2, 4, 7, 9};
 constexpr int8_t kMinorPentatonic[] = {0, 3, 5, 7, 10};
 constexpr int8_t kChromatic[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
 
-ScaleDefinition scaleDefinition(ScaleType scale) {
-  switch (scale) {
-    case MINOR: return {kMinor, 7};
-    case MAJOR: return {kMajor, 7};
-    case DORIAN: return {kDorian, 7};
-    case PHRYGIAN: return {kPhrygian, 7};
-    case LYDIAN: return {kLydian, 7};
-    case MIXOLYDIAN: return {kMixolydian, 7};
-    case LOCRIAN: return {kLocrian, 7};
-    case PENTATONIC_MJ: return {kMajorPentatonic, 5};
-    case PENTATONIC_MN: return {kMinorPentatonic, 5};
-    case CHROMATIC: return {kChromatic, 12};
+ScaleDefinition scaleDefinition(ScaleTypeValue scaleTypeValue) {
+  switch (scaleTypeValue) {
+    case kScaleMinor: return {kMinor, 7};
+    case kScaleMajor: return {kMajor, 7};
+    case kScaleDorian: return {kDorian, 7};
+    case kScalePhrygian: return {kPhrygian, 7};
+    case kScaleLydian: return {kLydian, 7};
+    case kScaleMixolydian: return {kMixolydian, 7};
+    case kScaleLocrian: return {kLocrian, 7};
+    case kScalePentatonicMajor: return {kMajorPentatonic, 5};
+    case kScalePentatonicMinor: return {kMinorPentatonic, 5};
+    case kScaleChromatic: return {kChromatic, 12};
+    default: return {};
   }
-  return {};
 }
 
 int floorDiv(int value, int divisor) {
@@ -57,7 +71,7 @@ uint16_t validOrdinalMask(uint8_t count) {
 bool validRequest(const TonalProjectionRequest& request) {
   if (request.onsetCount > kStepsPerBar ||
       request.rootPitchClass > 11 ||
-      !isValidScaleType(request.scale) ||
+      !isValidScaleTypeValue(request.scaleTypeValue) ||
       request.minMidi > request.maxMidi ||
       request.maxMidi > 127 ||
       request.maxAdjacentLeapSemitones > 127) {
@@ -105,12 +119,12 @@ uint8_t absoluteDifference(uint8_t a, uint8_t b) {
 
 }  // namespace
 
-bool isValidScaleType(ScaleType scale) {
-  return scaleDefinition(scale).intervals != nullptr;
+bool isValidScaleTypeValue(ScaleTypeValue scaleTypeValue) {
+  return scaleDefinition(scaleTypeValue).intervals != nullptr;
 }
 
-uint8_t scaleCardinality(ScaleType scale) {
-  return scaleDefinition(scale).count;
+uint8_t scaleCardinality(ScaleTypeValue scaleTypeValue) {
+  return scaleDefinition(scaleTypeValue).count;
 }
 
 TonalProjectionResult projectTonalIntent(const TonalProjectionRequest& request) {
@@ -121,7 +135,7 @@ TonalProjectionResult projectTonalIntent(const TonalProjectionRequest& request) 
     return result;
   }
 
-  const ScaleDefinition scale = scaleDefinition(request.scale);
+  const ScaleDefinition scale = scaleDefinition(request.scaleTypeValue);
   if (!findRootAnchor(request, result.rootAnchorMidi)) {
     result.status = TonalProjectionStatus::RootOutOfRegister;
     return result;
