@@ -79,20 +79,24 @@ int main() {
   assert(scaleCardinality(kChromaticValue) == 12);
   assert(scaleCardinality(255) == 0);
 
-  // The ordinal tag mask is exactly 16 bits. Pin the full-width boundary so
-  // onsetCount=16 accepts bit 15 without shifting by the word width.
+  // The ordinal tag mask is exactly 16 bits. Pin the full-width boundary and
+  // prove bit 15 still selects semitone units: in Locrian, untagged degree 7 is
+  // +12, while the tagged value below must remain the exact +7 fifth.
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = kStepsPerBar;
+    request.scaleTypeValue = kLocrianValue;
     request.semitoneOffsetOrdinals = static_cast<uint16_t>(1u << 15);
     for (uint8_t i = 0; i < kStepsPerBar; ++i)
       request.tonalOffsets[i] = 0;
+    request.tonalOffsets[15] = 7;
     const auto result = projectTonalIntent(request);
     assert(result.status == TonalProjectionStatus::Ok);
     assert(result.noteCount == kStepsPerBar);
     assert(result.rootAnchorMidi == 60);
-    for (uint8_t i = 0; i < kStepsPerBar; ++i)
+    for (uint8_t i = 0; i < 15; ++i)
       assert(result.midiNotes[i] == 60);
+    assert(result.midiNotes[15] == 67);
   }
 
   // Empty input is valid and does not require the root pitch class to occur in
