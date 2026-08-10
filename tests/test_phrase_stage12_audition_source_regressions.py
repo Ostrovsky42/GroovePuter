@@ -19,6 +19,7 @@ PRODUCTION = (
 REFERENCE = (
     ROOT / "src/generation/rhythm/reference_vocabulary.cpp"
 ).read_text(encoding="utf-8")
+SDL_MAKEFILE = (ROOT / "platform_sdl/Makefile").read_text(encoding="utf-8")
 
 
 def require(text: str, needle: str, message: str) -> None:
@@ -94,6 +95,16 @@ for needle in (
     "0x41554449u",
 ):
     require(BRIDGE_CPP, needle, f"audition evolution/fallback contract changed: {needle}")
+
+# SDL/WASM compile the same live bridge, so the candidate catalog implementation
+# must be linked there as well. This pins the exact build-boundary regression
+# that previously produced undefined references to phraseEvolutionEnabled() and
+# phraseEvolutionCatalog().
+require(
+    SDL_MAKEFILE,
+    "../src/generation/rhythm/reference_phrase_vocabulary.cpp",
+    "SDL/WASM target does not link the Stage 12 reference phrase catalog",
+)
 
 # Physical ESP32-S3 probe: execute the actual linked candidate catalog and record
 # stack lifetime minimum, internal heap, largest free block, and worst
