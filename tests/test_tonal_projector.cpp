@@ -40,6 +40,15 @@ void assertNotes(const TonalProjectionResult& result,
     assert(result.midiNotes[i] == expected[i]);
 }
 
+void assertAtomicFailure(const TonalProjectionResult& result,
+                         TonalProjectionStatus expectedStatus) {
+  assert(result.status == expectedStatus);
+  assert(result.noteCount == 0);
+  assert(result.rootAnchorMidi == 0);
+  for (uint8_t i = 0; i < kStepsPerBar; ++i)
+    assert(result.midiNotes[i] == 0);
+}
+
 }  // namespace
 
 int main() {
@@ -82,8 +91,8 @@ int main() {
     assert(result.noteCount == 0);
   }
 
-  // Root anchor is the selected root pitch-class occurrence nearest register
-  // center; ties resolve downward because the scan is ascending.
+  // Root anchor is the feasible selected root pitch-class occurrence nearest
+  // register center; ties resolve downward because the scan is ascending.
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 1;
@@ -98,6 +107,21 @@ int main() {
     assert(result.status == TonalProjectionStatus::Ok);
     assert(result.rootAnchorMidi == 62);
     assert(result.midiNotes[0] == 62);
+  }
+
+  // If the center-nearest root cannot fit the complete intent, choose the
+  // nearest feasible root rather than returning a false register failure.
+  {
+    TonalProjectionRequest request = baseRequest();
+    request.onsetCount = 1;
+    request.minMidi = 48;
+    request.maxMidi = 66;
+    request.tonalOffsets[0] = 12;
+    request.semitoneOffsetOrdinals = 1;
+    const auto result = projectTonalIntent(request);
+    assert(result.status == TonalProjectionStatus::Ok);
+    assert(result.rootAnchorMidi == 48);
+    assert(result.midiNotes[0] == 60);
   }
 
   // Seven-note diatonic scale-degree projection.
@@ -192,12 +216,12 @@ int main() {
     assertNotes(projectTonalIntent(request), expected, 3);
 
     request.maxAdjacentLeapSemitones = 6;
-    const auto rejected = projectTonalIntent(request);
-    assert(rejected.status == TonalProjectionStatus::LeapExceeded);
+    assertAtomicFailure(projectTonalIntent(request),
+                        TonalProjectionStatus::LeapExceeded);
   }
 
   // Named octave intent is not silently octave-folded. Only C60 exists as C
-  // root in 54..66, so tagged +12 is C72 and must reject.
+  // root in 54..66, so tagged +12 cannot be materialized in the corridor.
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 1;
@@ -205,50 +229,50 @@ int main() {
     request.maxMidi = 66;
     request.tonalOffsets[0] = 12;
     request.semitoneOffsetOrdinals = 1;
-    const auto result = projectTonalIntent(request);
-    assert(result.status == TonalProjectionStatus::NoteOutOfRegister);
+    assertAtomicFailure(projectTonalIntent(request),
+                        TonalProjectionStatus::NoteOutOfRegister);
   }
 
-  // Register without selected root pitch class has an explicit status.
+  // Register without selected root pitch class has an explicit atomic status.
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 1;
     request.minMidi = 61;
     request.maxMidi = 61;
-    const auto result = projectTonalIntent(request);
-    assert(result.status == TonalProjectionStatus::RootOutOfRegister);
+    assertAtomicFailure(projectTonalIntent(request),
+                        TonalProjectionStatus::RootOutOfRegister);
   }
 
-  // Invalid request contracts.
+  // Invalid request contracts are atomic too.
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = static_cast<uint8_t>(kStepsPerBar + 1u);
-    assert(projectTonalIntent(request).status ==
-           TonalProjectionStatus::InvalidRequest);
+    assertAtomicFailure(projectTonalIntent(request),
+                        TonalProjectionStatus::InvalidRequest);
   }
 
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 2;
     request.semitoneOffsetOrdinals = static_cast<uint16_t>(1u << 4);
-    assert(projectTonalIntent(request).status ==
-           TonalProjectionStatus::InvalidRequest);
+    assertAtomicFailure(projectTonalIntent(request),
+                        TonalProjectionStatus::InvalidRequest);
   }
 
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 1;
     request.rootPitchClass = 12;
-    assert(projectTonalIntent(request).status ==
-           TonalProjectionStatus::InvalidRequest);
+    assertAtomicFailure(projectTonalIntent(request),
+                        TonalProjectionStatus::InvalidRequest);
   }
 
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 1;
     request.scaleTypeValue = 255;
-    assert(projectTonalIntent(request).status ==
-           TonalProjectionStatus::InvalidRequest);
+    assertAtomicFailure(projectTonalIntent(request),
+                        TonalProjectionStatus::InvalidRequest);
   }
 
   {
@@ -256,8 +280,8 @@ int main() {
     request.onsetCount = 1;
     request.minMidi = 80;
     request.maxMidi = 70;
-    assert(projectTonalIntent(request).status ==
-           TonalProjectionStatus::InvalidRequest);
+    assertAtomicFailure(projectTonalIntent(request),
+                        TonalProjectionStatus::InvalidRequest);
   }
 
   // Identical transient input is field-stable.
