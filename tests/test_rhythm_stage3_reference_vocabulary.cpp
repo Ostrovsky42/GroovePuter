@@ -33,6 +33,23 @@ uint64_t identityFingerprint(const PhraseRhythmIdentity& identity) {
   return hash;
 }
 
+// Must remain bit-for-bit equivalent to the Stage 7B hardware-audition
+// signature. It intentionally ignores metadata such as RealizationLevel and
+// hashes only audible topology classes used by the audition verdict.
+uint64_t musicalSignature(const RhythmPhrasePlan& plan) {
+  uint64_t hash = 1469598103934665603ull;
+  for (uint8_t role = 0; role < kRhythmRoleCount; ++role) {
+    const RoleRhythmPlan& value = plan.bars[0].roles[role];
+    hash ^= value.structural;
+    hash *= 1099511628211ull;
+    hash ^= value.secondary;
+    hash *= 1099511628211ull;
+    hash ^= value.ghosts;
+    hash *= 1099511628211ull;
+  }
+  return hash;
+}
+
 uint64_t grammarFingerprint(const RhythmArchetype& archetype) {
   uint64_t hash = 1469598103934665603ull;
   hash = mix(hash, archetype.activeRoles);
@@ -401,7 +418,7 @@ void assertBatch2AuditionCorpusPreserved() {
   for (const Expected& item : expected) {
     const RhythmArchetype* archetype = archetypeFor(item.key);
     assert(archetype != nullptr);
-    std::array<uint64_t, 64> p1Fingerprints{};
+    std::array<uint64_t, 64> p1Signatures{};
     uint8_t p2Changed = 0;
     uint8_t p3Changed = 0;
 
@@ -417,24 +434,32 @@ void assertBatch2AuditionCorpusPreserved() {
 
       const RhythmRealizationResult p1 = realizeRhythmPhrase(request);
       assertPlanLegal(*archetype, p1);
-      p1Fingerprints[seedIndex] = identityFingerprint(p1.identity);
+      const uint64_t p1Signature = musicalSignature(p1.plan);
+      p1Signatures[seedIndex] = p1Signature;
 
       request.level = RealizationLevel::P2Variation;
       request.reuseIdentity = &p1.identity;
       const RhythmRealizationResult p2 = realizeRhythmPhrase(request);
       assertPlanLegal(*archetype, p2);
       assert(identityEqual(p1.identity, p2.identity));
-      if (!planEqual(p1.plan, p2.plan)) ++p2Changed;
+      if (musicalSignature(p2.plan) != p1Signature) ++p2Changed;
 
       request.level = RealizationLevel::P3Transformation;
       const RhythmRealizationResult p3 = realizeRhythmPhrase(request);
       assertPlanLegal(*archetype, p3);
       assert(identityEqual(p1.identity, p3.identity));
-      if (!planEqual(p1.plan, p3.plan)) ++p3Changed;
+      if (musicalSignature(p3.plan) != p1Signature) ++p3Changed;
+
+      request.level = RealizationLevel::P1Canonical;
+      request.reuseIdentity = nullptr;
+      const RhythmRealizationResult repeat = realizeRhythmPhrase(request);
+      assertPlanLegal(*archetype, repeat);
+      assert(musicalSignature(repeat.plan) == p1Signature);
+      assert(identityEqual(repeat.identity, p1.identity));
     }
 
-    const uint8_t distinct = distinctCount(p1Fingerprints);
-    const uint8_t maxBucket = maxBucketCount(p1Fingerprints);
+    const uint8_t distinct = distinctCount(p1Signatures);
+    const uint8_t maxBucket = maxBucketCount(p1Signatures);
     std::fprintf(stderr,
                  "stage7 production %-20s distinct=%u max_bucket=%u p2=%u/64 p3=%u/64\n",
                  item.name,
