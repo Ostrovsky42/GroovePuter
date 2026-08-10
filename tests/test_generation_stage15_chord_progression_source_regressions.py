@@ -79,8 +79,13 @@ require(
 )
 require(
     PROFILE_CPP,
+    "GenerationDomain::ChordPitch, rhythm.archetypeId, static_cast<uint8_t>(ProgressionId::Auto)",
+    "profile progression selection stopped using the stable Auto salt inside ChordPitch",
+)
+forbid(
+    PROFILE_CPP,
     "GenerationDomain::ChordPitch, rhythm.archetypeId, baseSalt | chord",
-    "profile progression selection stopped using the existing ChordPitch domain",
+    "profile progression selection became coupled to chord-rhythm salt",
 )
 for palette in (
     "kProgressionStatic",
