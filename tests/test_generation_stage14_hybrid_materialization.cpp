@@ -61,6 +61,13 @@ StrongRhythmMigrationContext contextFor(int16_t address) {
   return context;
 }
 
+void assertProgressionApplied(const StrongRhythmMigrationResult& result) {
+  assert(result.progressionId != ProgressionId::Auto);
+  assert(result.chordProgressionStatus == ChordProgressionStatus::Ok ||
+         result.chordProgressionStatus ==
+             ChordProgressionStatus::ValidButStatic);
+}
+
 void testLoFiUsesOneChordFirstHybridSynthB() {
   bool observedMelodicFill = false;
 
@@ -75,6 +82,7 @@ void testLoFiUsesOneChordFirstHybridSynthB() {
     assert(result.route == StrongRhythmRoute::Stage7Composition);
     assert(result.archetype == ReferenceVocabulary::Archetype::HalftimeSwitch);
     assert(result.synthBRole == SemanticSynthBRole::ChordWithMelodicFill);
+    assertProgressionApplied(result);
     assert(result.chordRhythmApplied);
     assert(result.melodicRhythmApplied);
     assert(result.chordProjectionStatus == SemanticPatternProjectStatus::Ok);
@@ -122,6 +130,7 @@ void testEveryStage14DirectionMaterializesDrumsAcrossAddresses() {
           drums, synthA, synthB);
       assert(result.status == StrongRhythmMigrationStatus::Applied);
       assert(result.route == StrongRhythmRoute::Stage7Composition);
+      assertProgressionApplied(result);
       assert(hasAnyDrumHit(drums));
     }
   }
@@ -143,6 +152,7 @@ void testMinimalSleepKeepsHybridAtLowBpm() {
   assert(result.status == StrongRhythmMigrationStatus::Applied);
   assert(result.corridor.suggestedBpm == 54);
   assert(result.synthBRole == SemanticSynthBRole::ChordWithMelodicFill);
+  assertProgressionApplied(result);
   assert(hasAnyDrumHit(drums));
 }
 
