@@ -138,10 +138,13 @@ void assertBatch2ProductionContracts() {
   assert(hard07 != nullptr);
   assert(hard08 != nullptr);
 
-  assert(hard01->id == 421);
-  assert(hard06->id == 422);
-  assert(hard07->id == 423);
-  assert(hard08->id == 424);
+  // IDs are part of deriveGenerationSeed(..., archetype.id, RhythmIdentity).
+  // Retain the exact Stage 7B IDs so the production seed corpus is identical
+  // to the hardware-audited corpus instead of merely using the same masks.
+  assert(hard01->id == 711);
+  assert(hard06->id == 712);
+  assert(hard07->id == 713);
+  assert(hard08->id == 714);
 
   assert(hard01->family == RhythmFamily::FourFloor);
   assert(hard06->family == RhythmFamily::MachineSyncopation);
@@ -351,6 +354,18 @@ uint8_t distinctCount(const std::array<uint64_t, 64>& values) {
   return distinct;
 }
 
+uint8_t maxBucketCount(const std::array<uint64_t, 64>& values) {
+  uint8_t maxBucket = 0;
+  for (uint8_t i = 0; i < values.size(); ++i) {
+    uint8_t bucket = 0;
+    for (uint8_t j = 0; j < values.size(); ++j) {
+      if (values[i] == values[j]) ++bucket;
+    }
+    if (bucket > maxBucket) maxBucket = bucket;
+  }
+  return maxBucket;
+}
+
 void assertPlanLegal(const RhythmArchetype& archetype,
                      const RhythmRealizationResult& result) {
   assert(result.status != RealizationStatus::InvalidConstraintSet);
@@ -364,6 +379,88 @@ void assertPlanLegal(const RhythmArchetype& archetype,
   assert(hardRelationshipsSatisfied(archetype, occupancy));
 }
 
+void assertBatch2AuditionCorpusPreserved() {
+  using namespace GroovePuterRhythm::ReferenceVocabulary;
+
+  struct Expected {
+    Archetype key;
+    const char* name;
+    uint8_t distinct;
+    uint8_t maxBucket;
+  };
+  constexpr Expected expected[] = {
+      {Archetype::StackedQuarters, "stacked_quarters", 6, 20},
+      {Archetype::ElectroBackskip, "electro_backskip", 39, 4},
+      {Archetype::FunkHouseBridge, "funk_house_bridge", 26, 6},
+      {Archetype::ElectroGapPush, "electro_gap_push", 32, 5},
+  };
+
+  const RhythmCatalogView& vocabulary = catalog();
+  for (const Expected& item : expected) {
+    const RhythmArchetype* archetype = archetypeFor(item.key);
+    assert(archetype != nullptr);
+    std::array<uint64_t, 64> p1Fingerprints{};
+    uint8_t p2Changed = 0;
+    uint8_t p3Changed = 0;
+
+    for (uint8_t seedIndex = 0; seedIndex < 64; ++seedIndex) {
+      RhythmRealizationRequest request{};
+      request.catalog = &vocabulary;
+      request.archetypeId = archetype->id;
+      request.phraseBars = 1;
+      request.level = RealizationLevel::P1Canonical;
+      // Stage 7B audition used the same project seed with phraseOrdinal=0.
+      request.generation = GenerationContext{
+          static_cast<uint32_t>(seedIndex + 1u), 0};
+
+      const RhythmRealizationResult p1 = realizeRhythmPhrase(request);
+      assertPlanLegal(*archetype, p1);
+      p1Fingerprints[seedIndex] = identityFingerprint(p1.identity);
+
+      request.level = RealizationLevel::P2Variation;
+      request.reuseIdentity = &p1.identity;
+      const RhythmRealizationResult p2 = realizeRhythmPhrase(request);
+      assertPlanLegal(*archetype, p2);
+      assert(identityEqual(p1.identity, p2.identity));
+      if (!planEqual(p1.plan, p2.plan)) ++p2Changed;
+
+      request.level = RealizationLevel::P3Transformation;
+      const RhythmRealizationResult p3 = realizeRhythmPhrase(request);
+      assertPlanLegal(*archetype, p3);
+      assert(identityEqual(p1.identity, p3.identity));
+      if (!planEqual(p1.plan, p3.plan)) ++p3Changed;
+    }
+
+    const uint8_t distinct = distinctCount(p1Fingerprints);
+    const uint8_t maxBucket = maxBucketCount(p1Fingerprints);
+    std::fprintf(stderr,
+                 "stage7 production %-20s distinct=%u max_bucket=%u p2=%u/64 p3=%u/64\n",
+                 item.name,
+                 static_cast<unsigned>(distinct),
+                 static_cast<unsigned>(maxBucket),
+                 static_cast<unsigned>(p2Changed),
+                 static_cast<unsigned>(p3Changed));
+    assert(distinct == item.distinct);
+    assert(maxBucket == item.maxBucket);
+    assert(p2Changed == 64);
+    assert(p3Changed == 64);
+  }
+
+  // HARD_06 and HARD_08 have different mandatory kick topology. This makes
+  // their separation a structural invariant in addition to the hardware
+  // listening verdict: HARD_06 always contains step 10; HARD_08 cannot.
+  const RhythmArchetype* hard06 = archetypeFor(Archetype::ElectroBackskip);
+  const RhythmArchetype* hard08 = archetypeFor(Archetype::ElectroGapPush);
+  assert(hard06 != nullptr && hard08 != nullptr);
+  const LaneGrammar* hard06Kick = laneFor(*hard06, RhythmRole::Kick);
+  const LaneGrammar* hard08Kick = laneFor(*hard08, RhythmRole::Kick);
+  assert(hard06Kick != nullptr && hard08Kick != nullptr);
+  assert((hard06Kick->canonicalAnchors & stepBit(10)) != 0);
+  assert((hard08Kick->canonicalAnchors & stepBit(10)) == 0);
+  assert(((hard08Kick->canonicalAnchors | hard08Kick->preferred |
+           hard08Kick->optional) & stepBit(10)) == 0);
+}
+
 }  // namespace
 
 int main() {
@@ -374,6 +471,7 @@ int main() {
   assert(definitionCount() == 24);
   assert(validateRhythmCatalog(vocabulary));
   assertBatch2ProductionContracts();
+  assertBatch2AuditionCorpusPreserved();
 
   std::array<uint64_t, 24> grammarFingerprints{};
   uint8_t familyPresence[static_cast<uint8_t>(RhythmFamily::Count)]{};
