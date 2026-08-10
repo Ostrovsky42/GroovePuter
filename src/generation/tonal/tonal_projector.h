@@ -26,14 +26,16 @@ enum class TonalProjectionStatus : uint8_t {
 };
 
 struct TonalProjectionRequest {
-  uint8_t onsetCount = 0;
+  // Keep the 16-bit tag first so this command-time struct stays exactly 24 B
+  // under the repository's C++17 host ABI instead of paying alignment padding.
+  uint16_t semitoneOffsetOrdinals = 0;
 
   // One value per onset ordinal. If bit N in semitoneOffsetOrdinals is set,
   // tonalOffsets[N] is a chromatic semitone offset from the harmonic root.
   // Otherwise it is a scale-degree offset in the selected ScaleType value.
   int8_t tonalOffsets[kStepsPerBar]{};
-  uint16_t semitoneOffsetOrdinals = 0;
 
+  uint8_t onsetCount = 0;
   uint8_t rootPitchClass = 0;  // 0=C ... 11=B
   ScaleTypeValue scaleTypeValue = kDefaultScaleTypeValue;
 
@@ -66,8 +68,8 @@ static_assert(std::is_trivially_copyable<TonalProjectionRequest>::value,
               "TonalProjectionRequest must remain transient/fixed-capacity");
 static_assert(std::is_trivially_copyable<TonalProjectionResult>::value,
               "TonalProjectionResult must remain transient/fixed-capacity");
-static_assert(sizeof(TonalProjectionRequest) <= 24,
-              "TonalProjectionRequest exceeded its command-time budget");
+static_assert(sizeof(TonalProjectionRequest) == 24,
+              "TonalProjectionRequest must stay packed at 24 bytes");
 static_assert(sizeof(TonalProjectionResult) <= 20,
               "TonalProjectionResult exceeded its command-time budget");
 
