@@ -125,27 +125,17 @@ constexpr TrajectoryRef kNonSubtractivePhraseTrajectoryRefs[] = {
 
 bool stage12PhraseEnabledId(RhythmArchetypeId id) {
   switch (id) {
-    // Broken / machine-syncopated material.
     case 404:  // broken_techno
     case 420:  // machine_syncopation
     case 712:  // electro_backskip
     case 714:  // electro_gap_push
-      return true;
-
-    // Breakbeat / DnB material.
     case 413:  // two_step_roll
     case 414:  // ghosted_roll
     case 415:  // sparse_fast_break
     case 416:  // halftime_switch
-      return true;
-
-    // UK Garage material. shuffled_4x4 (419) is intentionally excluded: its
-    // current hard Coincide maxMatches contract is phrase-wide and cannot
-    // validate unchanged across 2/4 bars.
     case 417:  // classic_2step
     case 418:  // skippy_2step
       return true;
-
     default:
       return false;
   }
@@ -164,11 +154,6 @@ struct PhraseCatalogStorage {
 
   PhraseCatalogStorage() {
     const RhythmCatalogView& base = catalog();
-
-    // Fail closed if ReferenceVocabulary changes without updating this fixed
-    // overlay. Returning the production catalog preserves behavior and makes
-    // the Stage 12 host acceptance fail loudly instead of exposing a partial
-    // copied catalog.
     if (base.archetypeCount != kReferenceArchetypeCapacity) {
       view = base;
       return;
