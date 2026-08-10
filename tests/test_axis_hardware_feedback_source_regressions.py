@@ -48,7 +48,8 @@ for token in (
 
 for token in (
     "LIVE: offbeat playback delay",
-    "NEXT GEN: note timing spread",
+    "NEXT GEN: bounded role timing",
+    "NEXT GEN: profile intensity",
     "NEXT GEN: note velocity spread",
     "HOLD L/R:ACCEL",
 ):

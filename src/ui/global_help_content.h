@@ -210,10 +210,11 @@ constexpr const char* kFeelLines[] = {
     "Left/Right  Adjust value/preset",
     "Shift/Ctrl  Fast adjustment",
     "Enter/Space Apply FEEL preset",
+    "Profile     Straight/Swing/Laid/Push",
     "Swing       Runtime offbeat timing",
-    "Time Human  Timing deviation",
+    "Feel Amount Bounded role offset",
     "Vel Human   Velocity deviation",
-    "No notes, roles or sound changes",
+    "Next gen; clock/pitch unchanged",
 };
 
 constexpr const char* kProjectLines[] = {

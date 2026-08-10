@@ -916,6 +916,12 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
       if (v < 0) v = 0;
       if (v > 0xFFFF) v = 0xFFFF;
       target_.feel.swingMask = static_cast<uint16_t>(v);
+    } else if (lastKey_ == "profile") {
+      if (v < 0 ||
+          v >= static_cast<int>(GroovePuterRhythm::FeelProfileId::Count)) {
+        v = static_cast<int>(GroovePuterRhythm::FeelProfileId::Straight);
+      }
+      target_.feel.timingProfile = static_cast<uint8_t>(v);
     } else if (lastKey_ == "lofiAmt") {
       if (v < 0) v = 0;
       if (v > 100) v = 100;
@@ -2492,6 +2498,7 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   feelObj["grid"] = scene_->feel.gridSteps;
   feelObj["tb"] = scene_->feel.timebase;
   feelObj["bars"] = scene_->feel.patternBars;
+  feelObj["profile"] = scene_->feel.timingProfile;
   feelObj["lofi"] = scene_->feel.lofiEnabled;
   feelObj["lofiAmt"] = scene_->feel.lofiAmount;
   feelObj["drive"] = scene_->feel.driveEnabled;
@@ -2771,6 +2778,15 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     int bars = valueToInt(feelObj["bars"], loaded->feel.patternBars);
     if (bars != 1 && bars != 2 && bars != 4 && bars != 8) bars = 1;
     loaded->feel.patternBars = static_cast<uint8_t>(bars);
+
+    int profile = valueToInt(
+        feelObj["profile"],
+        static_cast<int>(GroovePuterRhythm::FeelProfileId::Straight));
+    if (profile < 0 ||
+        profile >= static_cast<int>(GroovePuterRhythm::FeelProfileId::Count)) {
+      profile = static_cast<int>(GroovePuterRhythm::FeelProfileId::Straight);
+    }
+    loaded->feel.timingProfile = static_cast<uint8_t>(profile);
 
     loaded->feel.lofiEnabled = feelObj["lofi"].is<bool>() ? feelObj["lofi"].as<bool>() : loaded->feel.lofiEnabled;
     int lofiAmt = valueToInt(feelObj["lofiAmt"], loaded->feel.lofiAmount);

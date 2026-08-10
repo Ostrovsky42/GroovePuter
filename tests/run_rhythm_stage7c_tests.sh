@@ -10,6 +10,8 @@ python3 "${ROOT_DIR}/tests/test_rhythm_stage7c_source_regressions.py"
 SOURCES=(
   "${ROOT_DIR}/src/generation/generation_context.cpp"
   "${ROOT_DIR}/src/generation/composition/rhythm_selection.cpp"
+  "${ROOT_DIR}/src/generation/feel/feel_interpreter.cpp"
+  "${ROOT_DIR}/src/generation/feel/feel_pattern_adapter.cpp"
   "${ROOT_DIR}/src/generation/rhythm/rhythm_catalog.cpp"
   "${ROOT_DIR}/src/generation/rhythm/relationship_resolver.cpp"
   "${ROOT_DIR}/src/generation/rhythm/rhythm_realizer.cpp"

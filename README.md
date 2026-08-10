@@ -62,7 +62,7 @@ Atlas remains an optional source of curated factory seed patterns.
 The pages have separate ownership:
 
 1. **GENRE** — musical corridor, variant, `RHYTHM AUTO/MANUAL`, and explicit materialization policy.
-2. **FEEL** — swing, timing humanization, and velocity humanization only.
+2. **FEEL** — stable timing profile, swing, bounded profile amount, and velocity humanization only.
 3. **GENERATION** — bounded form/materialization into the selected Song row.
 
 Sound design is edited through the synth, Tape and FX controls that own the persisted DSP parameters. There is no separate runtime TEXTURE axis.
@@ -80,6 +80,13 @@ selects deterministically from the active Genre/Variant compatibility profile.
 Selecting a named rhythm fixes that identity while the pattern address and P-level
 continue to vary its realization. Scene files persist only this AUTO/MANUAL intent;
 derived selection plans and audition-only state are not persisted.
+
+FEEL persists one of four stable timing profiles: `STRAIGHT`, `SWING COMPAT`,
+`LAID BACK`, or `PUSH/PULL`. On vocabulary-generated drums the profile converts
+ideal grid events to bounded role-relative offsets (at most one quarter of the
+active grid cell). Offsets are recalculated from each bar origin, so they cannot
+accumulate drift. The existing swing control remains the only swing owner, and
+MIDI Clock/Start/Stop remain on the ideal transport timeline.
 
 ### Phrase Core
 

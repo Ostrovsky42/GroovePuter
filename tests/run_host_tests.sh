@@ -522,3 +522,6 @@ python3 tests/test_remove_texture_mode_runtime.py
 
 ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
   bash "${ROOT_DIR}/tests/run_rhythm_stage7c_tests.sh"
+
+ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
+  bash "${ROOT_DIR}/tests/run_feel_stage8_tests.sh"

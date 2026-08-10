@@ -13,9 +13,15 @@ StrongRhythmMigrationResult regenerateWithStrongRhythmMigration(
   StrongRhythmMigrationContext context{};
   context.patternAddress = engine.currentDrumPatternIndex();
   context.level = RealizationLevel::P2Variation;
+  const Scene& scene = engine.sceneManager().currentScene();
+  context.feelProfile = static_cast<FeelProfileId>(scene.feel.timingProfile);
+  float feelAmount = scene.generatorParams.microTimingAmount;
+  if (feelAmount < 0.0f) feelAmount = 0.0f;
+  if (feelAmount > 1.0f) feelAmount = 1.0f;
+  context.feelAmount = static_cast<uint8_t>(feelAmount * 100.0f + 0.5f);
 
   return migrateStrongRhythmMaterial(
-      engine.sceneManager().currentScene().genre,
+      scene.genre,
       context,
       engine.sceneManager().editCurrentDrumPattern(),
       engine.sceneManager().editCurrentSynthPattern(1));

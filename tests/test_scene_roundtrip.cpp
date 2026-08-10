@@ -53,6 +53,8 @@ void populateNonDefaultScene(SceneManager& manager) {
   scene.feel.patternBars = 4;
   scene.feel.swingPct = 63;
   scene.feel.swingMask = 0x0355;
+  scene.feel.timingProfile = static_cast<uint8_t>(
+      GroovePuterRhythm::FeelProfileId::PushPullControlled);
   scene.feel.lofiEnabled = true;
   scene.feel.lofiAmount = 74;
   scene.feel.driveEnabled = true;
@@ -161,6 +163,8 @@ void verifyRoundTrip(const SceneManager& manager) {
   assert(scene.feel.patternBars == 4);
   assert(scene.feel.swingPct == 63);
   assert(scene.feel.swingMask == 0x0355);
+  assert(scene.feel.timingProfile == static_cast<uint8_t>(
+             GroovePuterRhythm::FeelProfileId::PushPullControlled));
   assert(scene.feel.lofiEnabled);
   assert(scene.feel.lofiAmount == 74);
   assert(scene.feel.driveEnabled);
@@ -252,6 +256,7 @@ int main() {
   assert(json.find("\"ghost\":true") != std::string::npos);
   assert(json.find("\"swing\":63") != std::string::npos);
   assert(json.find("\"mask\":853") != std::string::npos);
+  assert(json.find("\"profile\":3") != std::string::npos);
   assert(json.find("\"phraseCore\":[") != std::string::npos);
   assert(json.find("\"synthState\":{\"version\":1") != std::string::npos);
   assert(json.find("\"synthParams\"") == std::string::npos);
@@ -275,6 +280,16 @@ int main() {
   assert(manager.currentScene().genre.rhythmSelectionMode == static_cast<uint8_t>(
              GroovePuterRhythm::RhythmSelectionMode::Auto));
   assert(manager.currentScene().genre.rhythmArchetypeId == 0);
+
+  // Legacy documents have no Feel profile and decode as Straight.
+  std::string legacyFeel = json;
+  const std::string feelProfile = ",\"profile\":3";
+  const size_t feelProfilePos = legacyFeel.find(feelProfile);
+  assert(feelProfilePos != std::string::npos);
+  legacyFeel.erase(feelProfilePos, feelProfile.size());
+  assert(manager.loadScene(legacyFeel));
+  assert(manager.currentScene().feel.timingProfile == static_cast<uint8_t>(
+             GroovePuterRhythm::FeelProfileId::Straight));
 
   assert(manager.loadScene(json));
   verifyRoundTrip(manager);

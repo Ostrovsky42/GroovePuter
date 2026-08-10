@@ -69,7 +69,8 @@ int main() {
     assert(sectionContains(WorkflowPages::kGenre, "GENRE 1/2"));
     assert(sectionContains(WorkflowPages::kGenre, "No texture or feel changes"));
     assert(sectionContains(WorkflowPages::kFeel, "FEEL 2/2"));
-    assert(sectionContains(WorkflowPages::kFeel, "No notes, roles or sound changes"));
+  assert(sectionContains(WorkflowPages::kFeel, "Profile     Straight/Swing/Laid/Push"));
+  assert(sectionContains(WorkflowPages::kFeel, "Next gen; clock/pitch unchanged"));
 
     // Historical GENERATION/TEXTURE page ids remain readable but both resolve
     // to FEEL content; neither is a normal navigation destination anymore.

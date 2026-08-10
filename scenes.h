@@ -12,6 +12,7 @@
 #include "src/dsp/mini_dsp_params.h"
 #include "src/dsp/genre_manager.h"
 #include "src/generation/composition/rhythm_selection_types.h"
+#include "src/generation/feel/feel_types.h"
 #include "src/phrase/phrase_types.h"
 #include "src/phrase/phrase_persistence.h"
 #include "json_evented.h"
@@ -338,6 +339,8 @@ struct FeelSettings {
     uint8_t patternBars = 1;  // 1,2,4,8
     uint8_t swingPct = 50;    // 50..75 (MPC Style)
     uint16_t swingMask = 0xFFFF; // Bitmask of VoiceId
+    uint8_t timingProfile = static_cast<uint8_t>(
+        GroovePuterRhythm::FeelProfileId::Straight);
     bool lofiEnabled = false;
     uint8_t lofiAmount = 50;  // 0..100
     bool driveEnabled = false;
@@ -1064,6 +1067,8 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeInt(scene_->feel.swingPct)) return false;
   if (!writeLiteral(",\"mask\":")) return false;
   if (!writeInt(scene_->feel.swingMask)) return false;
+  if (!writeLiteral(",\"profile\":")) return false;
+  if (!writeInt(scene_->feel.timingProfile)) return false;
   if (!writeLiteral(",\"lofi\":")) return false;
   if (!writeBool(scene_->feel.lofiEnabled)) return false;
   if (!writeLiteral(",\"lofiAmt\":")) return false;

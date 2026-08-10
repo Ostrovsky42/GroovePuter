@@ -127,6 +127,11 @@ Stage 7C is complete only when new production rhythm entries are audible through
 
 # Generation Stage 8 — Feel and Slow-Groove Temporal Model
 
+Implementation note: the fixed-capacity Phrase timing boundary, four stable
+profiles, Scene/FEEL selection path, and Stage 7C drum adapter are implemented.
+Host timing acceptance is complete; subjective Cardputer listening remains
+`HARDWARE_PENDING` on the frozen implementation SHA.
+
 Purpose:
 
 Make timing feel independent from BPM and from rhythm topology.

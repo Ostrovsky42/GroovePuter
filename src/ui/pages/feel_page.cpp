@@ -33,7 +33,7 @@ FeelPage::FeelPage(IGfx& gfx,
 
 void FeelPage::moveFocus(int delta) {
   int value = static_cast<int>(focus_) + delta;
-  value = wrapIndex(value, 4);
+  value = wrapIndex(value, 5);
   focus_ = static_cast<FocusRow>(value);
   hold_accel_.reset();
 }
@@ -51,6 +51,17 @@ void FeelPage::adjustFocused(int delta, bool fast) {
 
   withAudioGuard([&]() {
     switch (focus_) {
+      case FocusRow::Profile: {
+        const int count = static_cast<int>(
+            GroovePuterRhythm::FeelProfileId::Count);
+        const uint8_t next = static_cast<uint8_t>(wrapIndex(
+            static_cast<int>(scene.feel.timingProfile) + delta, count));
+        if (next != scene.feel.timingProfile) {
+          scene.feel.timingProfile = next;
+          changed = true;
+        }
+        break;
+      }
       case FocusRow::Swing: {
         const int value = static_cast<int>(scene.feel.swingPct) +
                           delta * multiplier;
@@ -101,30 +112,39 @@ void FeelPage::applyPreset(int index) {
   uint8_t nextSwing = scene.feel.swingPct;
   float nextTiming = scene.generatorParams.microTimingAmount;
   float nextVelocity = scene.generatorParams.velocityRange;
+  uint8_t nextProfile = scene.feel.timingProfile;
   switch (index) {
     case 0:
+      nextProfile = static_cast<uint8_t>(
+          GroovePuterRhythm::FeelProfileId::Straight);
       nextSwing = 50;
       nextTiming = 0.02f;
       nextVelocity = 0.10f;
       break;
     case 1:
+      nextProfile = static_cast<uint8_t>(
+          GroovePuterRhythm::FeelProfileId::SwingCompatible);
       nextSwing = 58;
       nextTiming = 0.12f;
       nextVelocity = 0.30f;
       break;
     case 2:
+      nextProfile = static_cast<uint8_t>(
+          GroovePuterRhythm::FeelProfileId::LaidBack);
       nextSwing = 64;
       nextTiming = 0.22f;
       nextVelocity = 0.45f;
       break;
   }
 
-  const bool changed = scene.feel.swingPct != nextSwing ||
+  const bool changed = scene.feel.timingProfile != nextProfile ||
+                       scene.feel.swingPct != nextSwing ||
                        scene.generatorParams.microTimingAmount != nextTiming ||
                        scene.generatorParams.velocityRange != nextVelocity;
   if (changed) {
     withAudioGuard([&]() {
       scene.feel.swingPct = nextSwing;
+      scene.feel.timingProfile = nextProfile;
       scene.generatorParams.microTimingAmount = nextTiming;
       scene.generatorParams.velocityRange = nextVelocity;
       mini_acid_.applyFeelTimingFromScene_();
@@ -133,8 +153,11 @@ void FeelPage::applyPreset(int index) {
   }
 
   char toast[72];
-  std::snprintf(toast, sizeof(toast), "FEEL %s SW %u TIME %d VEL %d",
+  std::snprintf(toast, sizeof(toast), "FEEL %s %s SW %u TIME %d VEL %d",
                 kPresetNames[index],
+                GroovePuterRhythm::feelProfileName(
+                    static_cast<GroovePuterRhythm::FeelProfileId>(
+                        scene.feel.timingProfile)),
                 static_cast<unsigned>(scene.feel.swingPct),
                 percent(scene.generatorParams.microTimingAmount),
                 percent(scene.generatorParams.velocityRange));
@@ -158,37 +181,44 @@ void FeelPage::draw(IGfx& gfx) {
                       axisColor, palette);
 
   char value[48];
+  AxisUI::drawValueRow(
+      gfx, x, LayoutManager::lineY(1), width, "PROFILE",
+      GroovePuterRhythm::feelProfileName(
+          static_cast<GroovePuterRhythm::FeelProfileId>(
+              scene.feel.timingProfile)),
+      focus_ == FocusRow::Profile, axisColor, palette);
+
   std::snprintf(value, sizeof(value), "%u%%",
                 static_cast<unsigned>(scene.feel.swingPct));
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(1), width,
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(2), width,
                        "SWING OFFBEAT", value,
                        focus_ == FocusRow::Swing,
                        axisColor, palette);
-  AxisUI::drawMeter(gfx, x + 142, LayoutManager::lineY(1) + 2,
+  AxisUI::drawMeter(gfx, x + 142, LayoutManager::lineY(2) + 2,
                     84, static_cast<int>(scene.feel.swingPct) - 50,
                     25, axisColor, palette);
 
   std::snprintf(value, sizeof(value), "%d%%",
                 percent(params.microTimingAmount));
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(2), width,
-                       "TIMING DRIFT", value,
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(3), width,
+                       "FEEL AMOUNT", value,
                        focus_ == FocusRow::TimingHumanize,
                        axisColor, palette);
-  AxisUI::drawMeter(gfx, x + 142, LayoutManager::lineY(2) + 2,
+  AxisUI::drawMeter(gfx, x + 142, LayoutManager::lineY(3) + 2,
                     84, percent(params.microTimingAmount),
                     100, axisColor, palette);
 
   std::snprintf(value, sizeof(value), "%d%%",
                 percent(params.velocityRange));
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(3), width,
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width,
                        "VELOCITY VAR", value,
                        focus_ == FocusRow::VelocityHumanize,
                        axisColor, palette);
-  AxisUI::drawMeter(gfx, x + 142, LayoutManager::lineY(3) + 2,
+  AxisUI::drawMeter(gfx, x + 142, LayoutManager::lineY(4) + 2,
                     84, percent(params.velocityRange),
                     100, axisColor, palette);
 
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width,
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width,
                        "PRESET", kPresetNames[preset_index_],
                        focus_ == FocusRow::Preset,
                        axisColor, palette);
@@ -197,15 +227,18 @@ void FeelPage::draw(IGfx& gfx) {
                 static_cast<unsigned>(recipe.stepsPerBar),
                 static_cast<unsigned>(scene.feel.swingMask));
   gfx.setTextColor(palette.muted);
-  gfx.drawText(x + 2, LayoutManager::lineY(5) + 1, value);
+  gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
 
   const char* explanation = "LIVE: offbeat playback delay";
   switch (focus_) {
+    case FocusRow::Profile:
+      explanation = "NEXT GEN: bounded role timing";
+      break;
     case FocusRow::Swing:
       explanation = "LIVE: offbeat playback delay";
       break;
     case FocusRow::TimingHumanize:
-      explanation = "NEXT GEN: note timing spread";
+      explanation = "NEXT GEN: profile intensity";
       break;
     case FocusRow::VelocityHumanize:
       explanation = "NEXT GEN: note velocity spread";
@@ -215,10 +248,7 @@ void FeelPage::draw(IGfx& gfx) {
       break;
   }
   gfx.setTextColor(palette.text);
-  gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, explanation);
-  gfx.setTextColor(palette.muted);
-  gfx.drawText(x + 2, LayoutManager::lineY(7) + 1,
-               "No note, pitch or texture changes");
+  gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, explanation);
 
   UI::drawStandardFooter(gfx,
                          "TAB/U/D:FIELD  L/R:CHANGE",

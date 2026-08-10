@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <cstring>
 #include <cstdio>
 #include <cstdlib>
 
@@ -277,6 +278,54 @@ void testMismatchedVariantCannotMaskGenre() {
           "mismatched Variant escaped base Genre in end-to-end migration");
 }
 
+void testStage8FeelReachesProductionMaterialization() {
+  GenreSettings settings = baseSettings(GenerativeMode::Darksynth);
+  settings.rhythmSelectionMode =
+      static_cast<uint8_t>(RhythmSelectionMode::Manual);
+  settings.rhythmArchetypeId = 711;  // fixed stacked-quarters fixture
+
+  StrongRhythmMigrationContext straight{};
+  straight.patternAddress = 0;
+  straight.level = RealizationLevel::P1Canonical;
+  DrumPatternSet straightDrums{};
+  const StrongRhythmMigrationResult straightResult =
+      migrateStrongRhythmDrums(settings, straight, straightDrums);
+  require(straightResult.status == StrongRhythmMigrationStatus::Applied,
+          "Straight production Feel failed");
+
+  StrongRhythmMigrationContext laidBack = straight;
+  laidBack.feelProfile = FeelProfileId::LaidBack;
+  laidBack.feelAmount = 100;
+  DrumPatternSet laidBackDrums{};
+  const StrongRhythmMigrationResult laidBackResult =
+      migrateStrongRhythmDrums(settings, laidBack, laidBackDrums);
+  require(laidBackResult.status == StrongRhythmMigrationStatus::Applied &&
+              laidBackResult.feelStatus == FeelPatternApplyStatus::Ok,
+          "LaidBack production Feel failed");
+
+  bool foundDelayedBackbeat = false;
+  for (int step = 0; step < DrumPattern::kSteps; ++step) {
+    const DrumStep& straightEvent = straightDrums.voices[SNARE].steps[step];
+    const DrumStep& laidBackEvent = laidBackDrums.voices[SNARE].steps[step];
+    if (!straightEvent.hit) continue;
+    require(straightEvent.timing == 0,
+            "Straight profile changed ideal grid timing");
+    if (laidBackEvent.timing > 0) foundDelayedBackbeat = true;
+  }
+  require(foundDelayedBackbeat,
+          "persisted LaidBack intent did not reach drum timing");
+
+  DrumPatternSet sentinel = straightDrums;
+  const DrumPatternSet before = sentinel;
+  StrongRhythmMigrationContext invalid = laidBack;
+  invalid.feelProfile = static_cast<FeelProfileId>(255);
+  const StrongRhythmMigrationResult invalidResult =
+      migrateStrongRhythmDrums(settings, invalid, sentinel);
+  require(invalidResult.status == StrongRhythmMigrationStatus::InvalidContext &&
+              std::memcmp(&sentinel, &before, sizeof(sentinel)) == 0,
+          "invalid Feel context escaped transactional fallback");
+}
+
 }  // namespace
 
 int main() {
@@ -285,6 +334,7 @@ int main() {
   testManualIdentityAndRealizationVariation();
   testIncompatibleManualFallsBackToAuto();
   testMismatchedVariantCannotMaskGenre();
+  testStage8FeelReachesProductionMaterialization();
   std::puts("Generation Stage 7C rhythm selection: OK");
   return 0;
 }

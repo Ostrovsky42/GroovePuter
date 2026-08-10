@@ -166,7 +166,9 @@ StrongRhythmMigrationResult migrateStrongRhythmDrums(
   }
   if (context.patternAddress < 0 ||
       context.patternAddress >= kMaxGlobalPatterns ||
-      !validLevel(context.level)) {
+      !validLevel(context.level) ||
+      !isValidFeelProfile(context.feelProfile) ||
+      context.feelAmount > 100) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
@@ -225,7 +227,16 @@ StrongRhythmMigrationResult migrateStrongRhythmDrums(
     return result;
   }
 
-  // Stage 5 owns drum event topology, not FEEL or automation. Replace every
+  result.feelStatus = applyFeelToMaterializedPattern(
+      realization.plan, binding, context.feelProfile, context.feelAmount,
+      request.generation, candidate);
+  if (result.feelStatus != FeelPatternApplyStatus::Ok) {
+    result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
+    return result;
+  }
+
+  // Vocabulary owns drum topology and Stage 8 owns bounded per-event timing.
+  // Existing swing, automation and transport remain authoritative. Replace every
   // physical drum voice so unmapped legacy tom/clap events cannot contaminate
   // the relational groove, while preserving legacy lanes and PatternGroove.
   DrumPatternSet next = destination;

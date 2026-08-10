@@ -20,7 +20,8 @@ class FeelPage : public IPage {
 
  private:
   enum class FocusRow : uint8_t {
-    Swing = 0,
+    Profile = 0,
+    Swing,
     TimingHumanize,
     VelocityHumanize,
     Preset,
@@ -40,7 +41,7 @@ class FeelPage : public IPage {
   MiniAcid& mini_acid_;
   AudioGuard& audio_guard_;
   VisualStyle style_ = VisualStyle::MINIMAL;
-  FocusRow focus_ = FocusRow::Swing;
+  FocusRow focus_ = FocusRow::Profile;
   int preset_index_ = 1;
   UIInput::HoldAccelerator hold_accel_;
   std::string title_ = "FEEL";

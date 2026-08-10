@@ -4,6 +4,7 @@
 
 #include "../../../scenes.h"
 #include "../composition/rhythm_selection.h"
+#include "../feel/feel_pattern_adapter.h"
 #include "../materialization/pattern_materializer.h"
 #include "../rhythm/reference_vocabulary.h"
 
@@ -30,6 +31,7 @@ enum class StrongRhythmMigrationStatus : uint8_t {
   RealizationFailed,
   MaterializationFailed,
   CompatibilityBindingFailed,
+  FeelApplyFailed,
   Count,
 };
 
@@ -38,6 +40,8 @@ struct StrongRhythmMigrationContext {
   // Stage 5 does not add a persisted backend/seed/ordinal to Scene.
   int16_t patternAddress = 0;
   RealizationLevel level = RealizationLevel::P2Variation;
+  FeelProfileId feelProfile = FeelProfileId::Straight;
+  uint8_t feelAmount = 0;
 };
 
 struct StrongRhythmMigrationResult {
@@ -50,6 +54,7 @@ struct StrongRhythmMigrationResult {
   RealizationStatus realizationStatus = RealizationStatus::InvalidConstraintSet;
   PatternMaterializeStatus materializationStatus =
       PatternMaterializeStatus::InvalidPlan;
+  FeelPatternApplyStatus feelStatus = FeelPatternApplyStatus::Ok;
 
   // Ephemeral compatibility output from the already-realized plan. It is never
   // persisted and carries no pitch/VoiceRole ownership.
