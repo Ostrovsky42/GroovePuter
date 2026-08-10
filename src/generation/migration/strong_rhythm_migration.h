@@ -86,9 +86,6 @@ struct StrongRhythmMigrationResult {
   ChordProgressionStatus chordProgressionStatus =
       ChordProgressionStatus::InvalidRequest;
   ProgressionId progressionId = ProgressionId::Auto;
-  // Production-visible semantic output. Absolute pitch stays with the existing
-  // compatibility projector until Tonal Projector integration is available.
-  ChordProgressionPlan chordProgressionPlan{};
   SemanticPatternProjectStatus chordProjectionStatus =
       SemanticPatternProjectStatus::Ok;
   FeelInterpretStatus chordFeelStatus = FeelInterpretStatus::Ok;
