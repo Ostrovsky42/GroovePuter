@@ -5,7 +5,9 @@
 
 #include "src/dsp/mini_dsp_params.h"
 
-// Persisted values remain byte-compatible with existing Scene documents.
+// Persisted values 0..8 remain byte-compatible with existing Scene documents.
+// New modes are append-only. Latin remains HARDWARE_PENDING until a production
+// rhythm topology has a recorded repository verdict.
 enum class GenerativeMode : uint8_t {
     Acid = 0,
     Outrun = 1,
@@ -15,13 +17,28 @@ enum class GenerativeMode : uint8_t {
     Reggae = 5,
     TripHop = 6,
     Broken = 7,
-    Chip = 8
+    Chip = 8,
+    House = 9,
+    Techno = 10,
+    HipHop = 11,
+    FunkSoul = 12,
+    UkGarage = 13,
+    DrumAndBass = 14,
+    LoFi = 15
 };
 
-
-static constexpr int kGenerativeModeCount = 9;
+static constexpr int kGenerativeModeCount = 16;
 using GenreRecipeId = uint8_t;
 static constexpr GenreRecipeId kBaseRecipeId = 0;
+
+// Semantic Lo-Fi / Boom-Bap variants. IDs are append-only relative to the
+// Stage 13 recipe table; existing recipe IDs 0..11 retain their meaning.
+static constexpr GenreRecipeId kClassicChillRecipeId = 12;
+static constexpr GenreRecipeId kDrunkenGrooveRecipeId = 13;
+static constexpr GenreRecipeId kLoFiHouseRecipeId = 14;
+static constexpr GenreRecipeId kMinimalSleepRecipeId = 15;
+static constexpr GenreRecipeId kGoldenEraRecipeId = 16;
+static constexpr GenreRecipeId kDustyJazzRecipeId = 17;
 
 struct GenerativeParams {
     int minNotes = 4;
@@ -55,7 +72,6 @@ struct GenerativeParams {
     int drumVoiceCount = 8;
 };
 
-// === GROOVE RECIPE (legacy compact adapter; full generation uses GenerativeParams)
 struct GrooveRecipe {
     uint8_t stepsPerBar = 16;
     uint8_t swingPercent = 50;
@@ -69,7 +85,6 @@ struct GrooveRecipe {
     bool noAccents = false;
     bool preferDownbeats = true;
 };
-
 
 struct GenreTimbre {
     float osc;
@@ -106,7 +121,6 @@ GrooveboxMode grooveboxModeForRecipe(GenreRecipeId id,
                                      GenerativeMode fallbackMode);
 GrooveboxMode grooveboxModeForGenerative(GenerativeMode mode);
 
-
 GenerativeParams compiledGenerativeParams(const GenreSettings& settings);
 const DrumGenreTemplate* drumTemplateOverride(const GenreSettings& settings);
 GenreBehavior behavior(const GenreSettings& settings);
@@ -114,7 +128,6 @@ GrooveRecipe grooveRecipe(const GenreSettings& settings);
 
 }  // namespace GenreCatalog
 
-// Non-owning runtime adapter. Persisted genre state lives only in Scene::genre.
 class GenreSceneView {
 public:
     explicit GenreSceneView(SceneManager& scenes) : scenes_(scenes) {}
@@ -140,10 +153,7 @@ public:
     const DrumGenreTemplate* drumTemplateOverride() const;
     GenreBehavior getBehavior() const;
 
-    // Pending manager-owned state was removed. Current callers retain this
-    // no-op boundary until their bar callback is simplified separately.
     bool commitPendingRecipe() { return false; }
-
 
     static const char* generativeModeName(GenerativeMode mode) {
         return GenreCatalog::generativeModeName(mode);
@@ -169,8 +179,6 @@ private:
     SceneManager& scenes_;
 };
 
-// Transitional source compatibility for production call sites. This is a type
-// alias to a non-owning Scene view; there is no GenreManager class or state owner.
 using GenreManager = GenreSceneView;
 
 struct GenrePreset {
