@@ -52,6 +52,11 @@ jobs:
           python3 tests/test_atlas_pass2_extractor.py
           python3 tests/test_atlas_pass2_outputs.py
 
+      - name: Run Generation Stage 13/14 tests
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_generation_stage13_tests.sh
+
       - name: Run core host regressions
         run: bash tests/run_host_tests.sh
 
