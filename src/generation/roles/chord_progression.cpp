@@ -173,7 +173,7 @@ const Grammar* selectGrammar(const ChordProgressionRequest& request,
   const GrammarSet* set = grammarSetFor(id);
   if (set == nullptr || set->count == 0) return nullptr;
   // The concrete progression id is the salt inside the existing ChordPitch
-  // domain. Keep existing enum values stable; append new values before Count.
+  // domain. Keep existing enum values stable; append additional values before Count.
   const uint32_t seed = deriveGenerationSeed(
       request.generation, kNoArchetypeId, GenerationDomain::ChordPitch,
       static_cast<uint8_t>(id));
