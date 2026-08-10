@@ -44,6 +44,7 @@ enum class StrongRhythmMigrationStatus : uint8_t {
 enum class SemanticSynthBRole : uint8_t {
   Chord = 0,
   Melodic,
+  ChordWithMelodicFill,
   Count,
 };
 
@@ -70,6 +71,7 @@ struct StrongRhythmMigrationResult {
   GenerationCompositionStatus compositionStatus =
       GenerationCompositionStatus::NoProfile;
   FeelProfileId suggestedFeel = FeelProfileId::Straight;
+  // Planning metadata only until Stage 12's physical reachability gate clears.
   PhraseEvolutionLawId phraseLaw = PhraseEvolutionLawId::Loop;
   uint8_t phraseBars = 1;
   GenerationCorridor corridor{};
@@ -92,32 +94,22 @@ struct StrongRhythmMigrationResult {
   FeelInterpretStatus melodicFeelStatus = FeelInterpretStatus::Ok;
   SemanticSynthBRole synthBRole = SemanticSynthBRole::Chord;
 
-  // Ephemeral semantic topology. It is never persisted and carries no
-  // pitch/voicing/physical-engine ownership.
+  // Ephemeral semantic topology. One physical Synth B remains monophonic:
+  // hybrid mode gives chord onsets/continuations priority and records only
+  // melodic onsets admitted into otherwise free cells.
   StepMask chordOnsets = 0;
+  StepMask melodicFillOnsets = 0;
   bool chordRhythmApplied = false;
   bool melodicRhythmApplied = false;
 };
 
-// Explicit Stage 5 allow-list. A non-zero recipe is authoritative: unsupported
-// recipes remain legacy even when their base generative mode is a strong style.
-// Cross-recipe morphs also remain legacy until GenreGenerationProfile owns
-// weighted vocabulary selection.
 StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings);
 
-// Transactional drum-only primitive. The destination is untouched for
-// Legacy/failure. On success only drum voices are replaced; legacy automation
-// lanes and PatternGroove remain authoritative. chordOnsets exposes only the
-// already-realized ChordRhythm topology for the compatibility adapter below.
 StrongRhythmMigrationResult migrateStrongRhythmDrums(
     const GenreSettings& settings,
     const StrongRhythmMigrationContext& context,
     DrumPatternSet& destination);
 
-// Cross-role production transaction. Legacy generation supplies both pitch
-// phrases; BassRhythm/ChordRhythm own only onset and continuation topology.
-// Drums + Synth A + Synth B commit atomically after every semantic plan,
-// projection and Feel step succeeds.
 StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     const GenreSettings& settings,
     const StrongRhythmMigrationContext& context,
