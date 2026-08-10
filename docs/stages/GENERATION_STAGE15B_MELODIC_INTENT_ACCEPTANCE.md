@@ -3,19 +3,21 @@
 ## Purpose
 
 Stage 15B adds bounded, deterministic **one-bar melodic intent** for Synth B.
-It receives the current Stage 14 melodic candidate and may perform a small
-rhythmic-intent transformation inside explicit transient legality masks, then
-assigns a scale-degree contour and a local pitch-domain motif operation.
+It receives the current Stage 14 melodic candidate plus a resolved transient
+`MelodicIntentPolicy`, may perform a small rhythmic-intent transformation inside
+explicit legality masks, then assigns a scale-degree contour and a local
+pitch-domain motif operation.
 
 Stage 15B owns only:
 
-- one-bar melodic rhythm intent;
-- one-bar pitch contour;
+- one-bar melodic rhythm intent execution;
+- one-bar pitch contour execution;
 - bounded local motif operations.
 
-It does **not** own physical Synth B arbitration, chord-first blocking,
-full-groove diversity/history, Phrase state, bass behavior, tonal MIDI-note
-projection, or multi-bar evolution.
+Genre/Variant/composition owns policy resolution. Stage 15B does **not** contain
+hidden Genre or `RhythmFamily` lookup tables. It does not own physical Synth B
+arbitration, chord-first blocking, full-groove diversity/history, Phrase state,
+bass behavior, tonal MIDI-note projection, or multi-bar evolution.
 
 Current reachability: **API-ONLY / host-testable**. Production migration wiring is
 intentionally deferred until the moving Stage 14 materialization contract and a
@@ -51,8 +53,8 @@ The gate compiles and executes with GCC, Clang when available, and ASan/UBSan.
 
 There is no Stage 15B-specific firmware flash acceptance yet because this branch
 has no production caller wiring. The repository-wide Cardputer-Adv and SEQTRAK
-MIDI-only builds are still useful compile guards, but they do not make this
-API-only feature hardware-reachable.
+MIDI-only builds remain compile guards only; they do not make this API-only
+feature hardware-reachable.
 
 After Stage 14 stabilizes, the production integration branch must pass the
 normal Cardputer-Adv builds before hardware audition.
@@ -68,6 +70,15 @@ Generation Stage 15B host matrix: OK
 
 The API must:
 
+- accept fixed-capacity allowed/preferred masks for rhythmic operations,
+  contours, and motif operations;
+- require `Preserve`, `Static`, and `None` as deterministic compatibility
+  fallbacks in every valid policy;
+- reject preferred masks that escape their corresponding allowed vocabulary;
+- reject an explicitly requested operation/contour that the resolved policy
+  forbids;
+- use preferred vocabulary for AUTO when supplied, otherwise use allowed
+  vocabulary;
 - provide `Preserve`, `ControlledRest`, `ShiftInteriorEarlier`,
   `ShiftInteriorLater`, and `TerminalEcho` one-bar rhythm operations;
 - keep every resulting onset inside caller-supplied `allowedOnsetSteps`;
@@ -77,22 +88,21 @@ The API must:
 - remove or move a complete onset+continuation chain rather than leaving orphan
   continuation cells;
 - permit an intentionally empty melodic bar only when `allowEmptyBar` is true;
-- degrade an impossible rhythm preference to `Preserve` instead of violating
+- degrade an impossible rhythm operation to `Preserve` instead of violating
   legality or density budgets;
-- produce deterministic scale-degree offsets for identical initial state;
 - support Static, StepUp, StepDown, Arch, InvertedArch, LeapReturn, Neighbor,
-  RepeatThenUp, and RepeatThenDown pitch contours;
+  RepeatThenUp, and RepeatThenDown scale-degree contours;
 - apply only one-bar pitch-domain motif operations;
 - keep every degree inside the requested bounds and adjacent movement inside the
   requested maximum leap;
 - use fixed-capacity storage with no heap allocation, global RNG, or unbounded
   retry loop.
 
-The two legality masks intentionally follow the current Stage 14 semantics:
-melodic **onsets** may be blocked by protected/bass/chord occupancy while an
+The two legality masks intentionally follow current Stage 14 semantics: melodic
+**onsets** may be blocked by protected/bass/chord occupancy while an
 already-started melodic **continuation** can have a different legal space. These
-masks are still semantic intent constraints, not physical Synth B availability.
-Stage 14 remains the owner of chord-first blocking and one-voice arbitration.
+masks are semantic intent constraints, not physical Synth B availability. Stage
+14 remains the owner of chord-first blocking and one-voice arbitration.
 
 ## Troubleshooting
 
@@ -100,19 +110,21 @@ If compilation fails in the Stage 15B test:
 
 1. Confirm the branch is based on the current Stage 14 generation headers.
 2. Confirm `src/generation/generation_context.cpp` is included in the host build.
-3. Do not repair Stage 14 hybrid chord/melody arbitration inside Stage 15B.
-4. Do not translate scale-degree offsets directly to arbitrary MIDI notes inside
+3. Do not add Genre/Variant switches to the role engine; resolve vocabulary into
+   `MelodicIntentPolicy` in the composition/integration layer.
+4. Do not repair Stage 14 hybrid chord/melody arbitration inside Stage 15B.
+5. Do not translate scale-degree offsets directly to arbitrary MIDI notes inside
    this role layer; production wiring needs the resolved current-bar tonal
    context.
-5. If Stage 14 changes `MelodicMotifPlan`, adapt only the transient input adapter;
+6. If Stage 14 changes `MelodicMotifPlan`, adapt only the transient input adapter;
    do not add Phrase or voice-allocation ownership.
 
 If a requested shift cannot fit its onset and continuation legality masks,
 `Preserve` is the expected fallback. If `TerminalEcho` cannot add a legal onset
 below `maxOnsets`, `Preserve` is also expected.
 
-If the source regression reports a forbidden owner such as `Scene`, `PhraseCore`,
-full-groove fingerprint history, physical `SynthPattern`, heap containers, or
+If the source regression reports `Scene`, `PhraseCore`, full-groove history,
+physical `SynthPattern`, hidden `RhythmFamily` routing, heap containers, or
 `StrongRhythmMigration`, the implementation has crossed the Stage 15B boundary.
 
 ## Acceptance checklist
@@ -120,6 +132,10 @@ full-groove fingerprint history, physical `SynthPattern`, heap containers, or
 - [ ] `bash tests/run_generation_stage15b_tests.sh` passes with GCC.
 - [ ] Clang run passes when Clang is installed.
 - [ ] ASan/UBSan run passes.
+- [ ] `MelodicIntentPolicy` is fixed-capacity and transient.
+- [ ] AUTO honors preferred/allowed vocabulary from the resolved policy.
+- [ ] Forbidden explicit vocabulary is rejected.
+- [ ] No hidden Genre/Variant/`RhythmFamily` lookup exists in Stage 15B.
 - [ ] `Preserve` leaves input onset and continuation masks unchanged.
 - [ ] Onsets never leave `allowedOnsetSteps`.
 - [ ] Continuations never leave `allowedContinuationSteps`.
@@ -130,8 +146,7 @@ full-groove fingerprint history, physical `SynthPattern`, heap containers, or
 - [ ] Impossible rhythm operations deterministically fall back to `Preserve`.
 - [ ] Empty melodic intent is produced only when the caller allows it.
 - [ ] Identical initial state produces identical rhythm/contour/motif intent.
-- [ ] AUTO reaches more than one legal rhythmic and pitch/motif result over the
-      deterministic host matrix.
+- [ ] AUTO reaches more than one legal result when policy permits diversity.
 - [ ] Degree and maximum-leap bounds are never violated.
 - [ ] No heap allocation, global RNG, or unbounded retry is introduced.
 - [ ] No Scene, Phrase, 15A-history, bass, or physical voice-allocation ownership
