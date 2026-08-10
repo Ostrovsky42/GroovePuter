@@ -25,6 +25,14 @@ SemanticPatternProjectStatus projectLegacyPitchPattern(
     StepMask continuationMask,
     SynthPattern& destination);
 
+SemanticPatternProjectStatus projectLegacyPitchPatternWithOrder(
+    const SynthPattern& source,
+    StepMask onsetMask,
+    StepMask continuationMask,
+    const uint8_t* sourceOrder,
+    uint8_t sourceOrderCount,
+    SynthPattern& destination);
+
 FeelInterpretStatus applyFeelToSemanticPattern(
     RhythmRole role,
     StepMask onsetMask,

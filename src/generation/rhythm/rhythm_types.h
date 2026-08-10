@@ -157,6 +157,8 @@ enum class GenerationDomain : uint8_t {
   BarEvolution,
   BassRhythmSelection,
   ChordRhythmSelection,
+  MelodicRhythmSelection,
+  MotifSelection,
   Count,
 };
 

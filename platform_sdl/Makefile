@@ -59,6 +59,7 @@ SOURCES := \
 	../src/generation/roles/semantic_pattern_projector.cpp \
 	../src/generation/roles/bass_rhythm.cpp \
 	../src/generation/roles/chord_rhythm.cpp \
+	../src/generation/roles/melodic_motif.cpp \
 	../src/generation/migration/strong_rhythm_migration.cpp \
 	../src/generation/migration/strong_rhythm_live_bridge.cpp \
 	../src/input/performance_keyboard.cpp \

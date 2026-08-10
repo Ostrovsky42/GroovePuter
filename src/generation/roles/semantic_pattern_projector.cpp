@@ -7,7 +7,20 @@ SemanticPatternProjectStatus projectLegacyPitchPattern(
     StepMask onsetMask,
     StepMask continuationMask,
     SynthPattern& destination) {
-  if ((onsetMask & continuationMask) != 0) {
+  return projectLegacyPitchPatternWithOrder(
+      source, onsetMask, continuationMask, nullptr, 0, destination);
+}
+
+SemanticPatternProjectStatus projectLegacyPitchPatternWithOrder(
+    const SynthPattern& source,
+    StepMask onsetMask,
+    StepMask continuationMask,
+    const uint8_t* sourceOrder,
+    uint8_t sourceOrderCount,
+    SynthPattern& destination) {
+  if ((onsetMask & continuationMask) != 0 ||
+      sourceOrderCount > SynthPattern::kSteps ||
+      (sourceOrderCount != 0 && sourceOrder == nullptr)) {
     return SemanticPatternProjectStatus::InvalidPlan;
   }
 
@@ -29,7 +42,11 @@ SemanticPatternProjectStatus projectLegacyPitchPattern(
   for (uint8_t step = 0; step < SynthPattern::kSteps; ++step) {
     const StepMask bit = stepBit(step);
     if ((onsetMask & bit) != 0) {
-      active = sourceEvents[sourceIndex % sourceCount];
+      uint8_t selected = sourceIndex;
+      if (sourceOrderCount != 0) {
+        selected = sourceOrder[sourceIndex % sourceOrderCount];
+      }
+      active = sourceEvents[selected % sourceCount];
       ++sourceIndex;
       next.steps[step] = active;
       hasActive = true;

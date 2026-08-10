@@ -51,6 +51,24 @@ StepMask protectedSpaceFor(const RhythmArchetype& archetype,
   return result;
 }
 
+SemanticSynthBRole synthBRoleFor(RhythmFamily family) {
+  switch (family) {
+    case RhythmFamily::HipHopBackbeat:
+    case RhythmFamily::DubPulse:
+    case RhythmFamily::SparsePulse:
+      return SemanticSynthBRole::Chord;
+    case RhythmFamily::FourFloor:
+    case RhythmFamily::MachineSyncopation:
+    case RhythmFamily::Breakbeat:
+    case RhythmFamily::UkTwoStep:
+    case RhythmFamily::Funk16:
+      return SemanticSynthBRole::Melodic;
+    case RhythmFamily::Count:
+      break;
+  }
+  return SemanticSynthBRole::Melodic;
+}
+
 }  // namespace
 
 StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings) {
@@ -318,20 +336,67 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
-  SynthPattern nextSynthB{};
-  result.chordProjectionStatus = projectLegacyPitchPattern(
-      synthB, chord.plan.onsets, chord.plan.continuations, nextSynthB);
-  if (result.chordProjectionStatus != SemanticPatternProjectStatus::Ok) {
-    result.status = StrongRhythmMigrationStatus::CompatibilityBindingFailed;
+  result.synthBRole = synthBRoleFor(definition->family);
+
+  MelodicMotifRequest melodicRequest{};
+  melodicRequest.family = definition->family;
+  melodicRequest.archetypeId = definition->archetypeId;
+  melodicRequest.bassOnsets = bass.plan.onsets;
+  melodicRequest.chordOnsets =
+      result.synthBRole == SemanticSynthBRole::Chord
+          ? chord.plan.onsets : 0;
+  melodicRequest.protectedSpace =
+      protectedSpaceFor(*archetype, RhythmRole::MelodicRhythm);
+  melodicRequest.generation = bassRequest.generation;
+  melodicRequest.allowEmptyBar =
+      definition->family == RhythmFamily::DubPulse ||
+      definition->family == RhythmFamily::SparsePulse ||
+      definition->family == RhythmFamily::HipHopBackbeat;
+  const MelodicMotifResult melodic = realizeMelodicMotif(melodicRequest);
+  result.melodicMotifStatus = melodic.status;
+  result.melodicRhythmId = melodic.plan.rhythmId;
+  result.motifShapeId = melodic.plan.motif.shape;
+  if (melodic.status != MelodicMotifStatus::Ok &&
+      melodic.status != MelodicMotifStatus::ValidButEmpty) {
+    result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
-  result.chordFeelStatus = applyFeelToSemanticPattern(
-      RhythmRole::ChordRhythm, chord.plan.onsets,
-      context.feelProfile, context.feelAmount,
-      chordRequest.generation, nextSynthB);
-  if (result.chordFeelStatus != FeelInterpretStatus::Ok) {
-    result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
-    return result;
+
+  SynthPattern nextSynthB{};
+  if (result.synthBRole == SemanticSynthBRole::Chord) {
+    result.chordProjectionStatus = projectLegacyPitchPattern(
+        synthB, chord.plan.onsets, chord.plan.continuations, nextSynthB);
+    if (result.chordProjectionStatus != SemanticPatternProjectStatus::Ok) {
+      result.status = StrongRhythmMigrationStatus::CompatibilityBindingFailed;
+      return result;
+    }
+    result.chordFeelStatus = applyFeelToSemanticPattern(
+        RhythmRole::ChordRhythm, chord.plan.onsets,
+        context.feelProfile, context.feelAmount,
+        chordRequest.generation, nextSynthB);
+    if (result.chordFeelStatus != FeelInterpretStatus::Ok) {
+      result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
+      return result;
+    }
+    result.chordRhythmApplied = true;
+  } else {
+    result.melodicProjectionStatus = projectLegacyPitchPatternWithOrder(
+        synthB, melodic.plan.onsets, melodic.plan.continuations,
+        melodic.plan.motif.sourceOrder,
+        melodic.plan.motif.sourceOrderCount, nextSynthB);
+    if (result.melodicProjectionStatus != SemanticPatternProjectStatus::Ok) {
+      result.status = StrongRhythmMigrationStatus::CompatibilityBindingFailed;
+      return result;
+    }
+    result.melodicFeelStatus = applyFeelToSemanticPattern(
+        RhythmRole::MelodicRhythm, melodic.plan.onsets,
+        context.feelProfile, context.feelAmount,
+        melodicRequest.generation, nextSynthB);
+    if (result.melodicFeelStatus != FeelInterpretStatus::Ok) {
+      result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
+      return result;
+    }
+    result.melodicRhythmApplied = true;
   }
 
   // Atomic cross-role commit: a failure in either semantic projection leaves
@@ -339,7 +404,6 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   drums = nextDrums;
   synthA = nextSynthA;
   synthB = nextSynthB;
-  result.chordRhythmApplied = true;
   return result;
 }
 

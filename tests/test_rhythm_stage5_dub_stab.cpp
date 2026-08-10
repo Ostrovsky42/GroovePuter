@@ -231,16 +231,18 @@ void testNonDubReceivesIndependentChordRhythm() {
 
     const StrongRhythmMigrationResult result = migrateStrongRhythmMaterial(
         baseAcid(), context, drums, synthA, synthB);
-    require(result.status == StrongRhythmMigrationStatus::Applied &&
-                result.chordRhythmApplied,
-            "base Acid failed Stage 10 material transaction");
-    if (result.chordOnsets != 0) {
-      require(synthOnsets(synthB) != 0,
-              "non-empty ChordRhythm produced empty Synth B");
-      reachedNonEmpty = true;
+    require(result.status == StrongRhythmMigrationStatus::Applied,
+            "base Acid failed semantic Synth B transaction");
+    if (result.synthBRole == SemanticSynthBRole::Melodic) {
+      require(result.melodicRhythmApplied && !result.chordRhythmApplied,
+              "melodic binder reported inconsistent role application");
+      if (synthOnsets(synthB) != 0) reachedNonEmpty = true;
+    } else {
+      require(result.chordRhythmApplied && !result.melodicRhythmApplied,
+              "chord binder reported inconsistent role application");
     }
   }
-  require(reachedNonEmpty, "Stage 10 never reached non-Dub Synth B");
+  require(reachedNonEmpty, "Stage 11 never reached non-Dub Synth B");
 }
 
 }  // namespace

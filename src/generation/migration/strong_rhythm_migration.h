@@ -9,6 +9,7 @@
 #include "../rhythm/reference_vocabulary.h"
 #include "../roles/bass_rhythm.h"
 #include "../roles/chord_rhythm.h"
+#include "../roles/melodic_motif.h"
 #include "../roles/semantic_pattern_projector.h"
 
 namespace GroovePuterRhythm {
@@ -35,6 +36,12 @@ enum class StrongRhythmMigrationStatus : uint8_t {
   MaterializationFailed,
   CompatibilityBindingFailed,
   FeelApplyFailed,
+  Count,
+};
+
+enum class SemanticSynthBRole : uint8_t {
+  Chord = 0,
+  Melodic,
   Count,
 };
 
@@ -68,11 +75,20 @@ struct StrongRhythmMigrationResult {
   SemanticPatternProjectStatus chordProjectionStatus =
       SemanticPatternProjectStatus::Ok;
   FeelInterpretStatus chordFeelStatus = FeelInterpretStatus::Ok;
+  MelodicMotifStatus melodicMotifStatus =
+      MelodicMotifStatus::InvalidRequest;
+  MelodicRhythmId melodicRhythmId = MelodicRhythmId::Auto;
+  MotifShapeId motifShapeId = MotifShapeId::Auto;
+  SemanticPatternProjectStatus melodicProjectionStatus =
+      SemanticPatternProjectStatus::Ok;
+  FeelInterpretStatus melodicFeelStatus = FeelInterpretStatus::Ok;
+  SemanticSynthBRole synthBRole = SemanticSynthBRole::Chord;
 
   // Ephemeral semantic topology. It is never persisted and carries no
   // pitch/voicing/physical-engine ownership.
   StepMask chordOnsets = 0;
   bool chordRhythmApplied = false;
+  bool melodicRhythmApplied = false;
 };
 
 // Explicit Stage 5 allow-list. A non-zero recipe is authoritative: unsupported

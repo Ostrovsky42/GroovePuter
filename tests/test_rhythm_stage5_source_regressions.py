@@ -111,6 +111,9 @@ require(MIGRATION.count("projectLegacyPitchPattern(") == 2,
         "Stage 9/10 must project both legacy semantic pitch roles")
 require("realizeChordRhythm" in MIGRATION,
         "Stage 10 ChordRhythm is absent from the shared transaction")
+require("realizeMelodicMotif" in MIGRATION and
+        "projectLegacyPitchPatternWithOrder" in MIGRATION,
+        "Stage 11 Melodic/Motif path is absent from the shared transaction")
 require("editCurrentSynthPattern(1)" in BRIDGE,
         "Stage 5 live bridge no longer binds the established Synth B stab slot")
 require(BRIDGE.count("editCurrentSynthPattern(0)") == 1,
