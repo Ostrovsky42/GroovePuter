@@ -60,6 +60,7 @@ SOURCES := \
 	../src/generation/roles/bass_rhythm.cpp \
 	../src/generation/roles/chord_rhythm.cpp \
 	../src/generation/roles/melodic_motif.cpp \
+	../src/generation/phrase/phrase_evolution.cpp \
 	../src/generation/migration/strong_rhythm_migration.cpp \
 	../src/generation/migration/strong_rhythm_live_bridge.cpp \
 	../src/input/performance_keyboard.cpp \
