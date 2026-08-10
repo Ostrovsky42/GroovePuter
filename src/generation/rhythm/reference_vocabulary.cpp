@@ -160,6 +160,13 @@ constexpr RhythmRoleMask kDrumsBassChord =
     static_cast<RhythmRoleMask>(
         kDrumsAndBass | rhythmRoleBit(RhythmRole::ChordRhythm));
 
+constexpr RhythmRoleMask kStage7Drums =
+    rhythmRoleBit(RhythmRole::Kick) |
+    rhythmRoleBit(RhythmRole::Backbeat) |
+    rhythmRoleBit(RhythmRole::ClosedHat) |
+    rhythmRoleBit(RhythmRole::OpenHat) |
+    rhythmRoleBit(RhythmRole::Percussion);
+
 constexpr RhythmRoleMask kSwingRhythmRoles =
     rhythmRoleBit(RhythmRole::ClosedHat) |
     rhythmRoleBit(RhythmRole::OpenHat) |
@@ -713,6 +720,123 @@ constexpr LaneRelationship kMachineSyncopationRelationships[] = {
     softRespond(RhythmRole::Kick, RhythmRole::Percussion, 1, 2, 75),
 };
 
+// Stage 7 / Batch 2 production curation ------------------------------------
+// These four one-bar drum identities are copied from the exact hardware-audited
+// Stage 7B contracts. No Bass/Chord/Melodic role is inferred during admission.
+
+// 421 stacked_quarters / HARD_01
+constexpr LaneGrammar kStackedQuartersLanes[] = {
+    lane(RhythmRole::Kick, 0,
+         stepBit(0) | stepBit(8),
+         stepBit(4) | stepBit(12),
+         stepBit(6) | stepBit(14),
+         2, 5),
+    lane(RhythmRole::Backbeat, 0,
+         stepBit(4) | stepBit(12),
+         0, 0,
+         2, 2),
+    lane(RhythmRole::ClosedHat, 0,
+         0,
+         stepBit(2) | stepBit(6) | stepBit(10) | stepBit(14),
+         stepBit(0) | stepBit(4) | stepBit(8) | stepBit(12),
+         2, 6, 2),
+    lane(RhythmRole::OpenHat, 0,
+         0, 0,
+         stepBit(6) | stepBit(14),
+         0, 2),
+    lane(RhythmRole::Percussion, 0,
+         0, 0,
+         stepBit(3) | stepBit(7) | stepBit(11) | stepBit(15),
+         0, 2, 1),
+};
+
+// 422 electro_backskip / HARD_06
+constexpr LaneGrammar kElectroBackskipLanes[] = {
+    lane(RhythmRole::Kick, 0,
+         stepBit(0) | stepBit(10),
+         stepBit(3) | stepBit(6) | stepBit(13),
+         stepBit(8) | stepBit(15),
+         2, 5),
+    lane(RhythmRole::Backbeat, 0,
+         stepBit(4) | stepBit(12),
+         0, 0,
+         2, 2),
+    lane(RhythmRole::ClosedHat, 0,
+         0,
+         stepBit(2) | stepBit(6) | stepBit(10) | stepBit(14),
+         stepBit(3) | stepBit(7) | stepBit(11) | stepBit(15),
+         2, 6, 2),
+    lane(RhythmRole::OpenHat, 0,
+         0, 0,
+         stepBit(6) | stepBit(14),
+         0, 2),
+    lane(RhythmRole::Percussion, 0,
+         0,
+         stepBit(1) | stepBit(9),
+         stepBit(5) | stepBit(13),
+         0, 3, 2),
+};
+constexpr LaneRelationship kElectroBackskipRelationships[] = {
+    hardExclude(RhythmRole::Backbeat, RhythmRole::Kick),
+};
+
+// 423 funk_house_bridge / HARD_07
+constexpr LaneGrammar kFunkHouseBridgeLanes[] = {
+    lane(RhythmRole::Kick, 0,
+         stepBit(0) | stepBit(8),
+         stepBit(3) | stepBit(10) | stepBit(14),
+         stepBit(2) | stepBit(6) | stepBit(15),
+         2, 5),
+    lane(RhythmRole::Backbeat, 0,
+         stepBit(4) | stepBit(12),
+         0, 0,
+         2, 2),
+    lane(RhythmRole::ClosedHat, 0,
+         0,
+         stepBit(2) | stepBit(6) | stepBit(10) | stepBit(14),
+         stepBit(1) | stepBit(5) | stepBit(9) | stepBit(13),
+         2, 6, 2),
+    lane(RhythmRole::OpenHat, 0,
+         0, 0,
+         stepBit(6) | stepBit(14),
+         0, 2),
+    lane(RhythmRole::Percussion, 0,
+         0,
+         stepBit(7) | stepBit(15),
+         stepBit(3) | stepBit(11),
+         1, 3, 2),
+};
+
+// 424 electro_gap_push / HARD_08
+constexpr LaneGrammar kElectroGapPushLanes[] = {
+    lane(RhythmRole::Kick, 0,
+         stepBit(0) | stepBit(6),
+         stepBit(9) | stepBit(14),
+         stepBit(3) | stepBit(11) | stepBit(15),
+         2, 5),
+    lane(RhythmRole::Backbeat, 0,
+         stepBit(4) | stepBit(12),
+         0, 0,
+         2, 2),
+    lane(RhythmRole::ClosedHat, 0,
+         0,
+         stepBit(2) | stepBit(6) | stepBit(10) | stepBit(14),
+         stepBit(0) | stepBit(8),
+         2, 5, 2),
+    lane(RhythmRole::OpenHat, 0,
+         0, 0,
+         stepBit(2) | stepBit(10),
+         0, 2),
+    lane(RhythmRole::Percussion, 0,
+         0,
+         stepBit(7) | stepBit(15),
+         stepBit(1) | stepBit(9) | stepBit(13),
+         0, 3, 2),
+};
+constexpr LaneRelationship kElectroGapPushRelationships[] = {
+    hardExclude(RhythmRole::Backbeat, RhythmRole::Kick),
+};
+
 constexpr RhythmArchetype kArchetypes[] = {
     archetype(401, RhythmFamily::FourFloor, kDrumsAndBass,
               kStraightDriveLanes, 6, nullptr, 0,
@@ -850,6 +974,30 @@ constexpr RhythmArchetype kArchetypes[] = {
               kMachineSyncopationRelationships, 2,
               DensityContract{13, 16, 27, 7},
               timing(TimingCompatibility::StraightOnly, 0, 0)),
+    archetype(421, RhythmFamily::FourFloor, kStage7Drums,
+              kStackedQuartersLanes, 5, nullptr, 0,
+              nullptr, 0,
+              DensityContract{6, 9, 16, 4},
+              timing(TimingCompatibility::StraightOnly, 0, 0)),
+    archetype(422, RhythmFamily::MachineSyncopation, kStage7Drums,
+              kElectroBackskipLanes, 5, nullptr, 0,
+              kElectroBackskipRelationships, 1,
+              DensityContract{7, 10, 18, 5},
+              timing(TimingCompatibility::StraightOnly, 0, 0)),
+    archetype(423, RhythmFamily::Funk16, kStage7Drums,
+              kFunkHouseBridgeLanes, 5, nullptr, 0,
+              nullptr, 0,
+              DensityContract{7, 11, 18, 5},
+              timing(TimingCompatibility::SwingCompatible,
+                     stepBit(3) | stepBit(7) | stepBit(11) | stepBit(15),
+                     rhythmRoleBit(RhythmRole::Kick) |
+                         rhythmRoleBit(RhythmRole::ClosedHat) |
+                         rhythmRoleBit(RhythmRole::Percussion))),
+    archetype(424, RhythmFamily::HipHopBackbeat, kStage7Drums,
+              kElectroGapPushLanes, 5, nullptr, 0,
+              kElectroGapPushRelationships, 1,
+              DensityContract{6, 9, 17, 5},
+              timing(TimingCompatibility::StraightOnly, 0, 0)),
 };
 
 constexpr Definition kDefinitions[] = {
@@ -873,6 +1021,10 @@ constexpr Definition kDefinitions[] = {
     {Archetype::SkippyTwoStep, 418, "skippy_2step", RhythmFamily::UkTwoStep, 130, 142},
     {Archetype::ShuffledFourFour, 419, "shuffled_4x4", RhythmFamily::UkTwoStep, 126, 140},
     {Archetype::MachineSyncopation, 420, "machine_syncopation", RhythmFamily::MachineSyncopation, 116, 142},
+    {Archetype::StackedQuarters, 421, "stacked_quarters", RhythmFamily::FourFloor, 122, 122},
+    {Archetype::ElectroBackskip, 422, "electro_backskip", RhythmFamily::MachineSyncopation, 116, 116},
+    {Archetype::FunkHouseBridge, 423, "funk_house_bridge", RhythmFamily::Funk16, 112, 112},
+    {Archetype::ElectroGapPush, 424, "electro_gap_push", RhythmFamily::HipHopBackbeat, 114, 114},
 };
 
 constexpr RhythmCatalogView kCatalog = {
@@ -881,11 +1033,11 @@ constexpr RhythmCatalogView kCatalog = {
     &kStatementTrajectory,
     1};
 
-static_assert(sizeof(kArchetypes) / sizeof(kArchetypes[0]) == 20,
-              "Stage 3 reference package must contain exactly 20 archetypes");
+static_assert(sizeof(kArchetypes) / sizeof(kArchetypes[0]) == 24,
+              "Reference vocabulary must contain 20 Stage 3 plus 4 Stage 7 archetypes");
 static_assert(sizeof(kDefinitions) / sizeof(kDefinitions[0]) ==
                   static_cast<uint8_t>(Archetype::Count),
-              "Stage 3 definition table is incomplete");
+              "Reference vocabulary definition table is incomplete");
 
 }  // namespace
 
