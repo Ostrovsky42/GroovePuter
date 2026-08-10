@@ -149,13 +149,14 @@ void requireLegacySequencePreserved(const SynthPattern& remapped) {
 
 void testDubRoute(uint8_t recipe, StrongRhythmRoute expectedRoute) {
   DrumPatternSet drums = sentinelDrums();
+  SynthPattern synthA = legacyStab();
   SynthPattern synthB = legacyStab();
   StrongRhythmMigrationContext context{};
   context.patternAddress = 5;
   context.level = RealizationLevel::P2Variation;
 
   const StrongRhythmMigrationResult result = migrateStrongRhythmMaterial(
-      recipeSettings(recipe), context, drums, synthB);
+      recipeSettings(recipe), context, drums, synthA, synthB);
 
   require(result.status == StrongRhythmMigrationStatus::Applied,
           "approved Dub material route did not apply");
@@ -173,13 +174,15 @@ void testDubRoute(uint8_t recipe, StrongRhythmRoute expectedRoute) {
 void testDubBindingFailureRollsBackEverything() {
   DrumPatternSet drums = sentinelDrums();
   const DrumPatternSet beforeDrums = drums;
+  SynthPattern synthA = legacyStab();
+  const SynthPattern beforeSynthA = synthA;
   SynthPattern synthB{};
   const SynthPattern beforeSynthB = synthB;
   StrongRhythmMigrationContext context{};
   context.patternAddress = 3;
 
   const StrongRhythmMigrationResult result = migrateStrongRhythmMaterial(
-      recipeSettings(5), context, drums, synthB);
+      recipeSettings(5), context, drums, synthA, synthB);
 
   require(result.status ==
               StrongRhythmMigrationStatus::CompatibilityBindingFailed,
@@ -188,19 +191,22 @@ void testDubBindingFailureRollsBackEverything() {
           "failed Dub binding incorrectly reported chord application");
   require(equalDrums(drums, beforeDrums),
           "failed Dub binding leaked Vocabulary drums");
+  require(equalSynth(synthA, beforeSynthA),
+          "failed Dub binding leaked BassRhythm projection");
   require(equalSynth(synthB, beforeSynthB),
           "failed Dub binding changed Synth B");
 }
 
 void testNonDubLeavesSynthBByteForBehavior() {
   DrumPatternSet drums = sentinelDrums();
+  SynthPattern synthA = legacyStab();
   SynthPattern synthB = legacyStab();
   const SynthPattern beforeSynthB = synthB;
   StrongRhythmMigrationContext context{};
   context.patternAddress = 7;
 
   const StrongRhythmMigrationResult result = migrateStrongRhythmMaterial(
-      baseAcid(), context, drums, synthB);
+      baseAcid(), context, drums, synthA, synthB);
 
   require(result.status == StrongRhythmMigrationStatus::Applied,
           "base Acid drum migration failed through material adapter");

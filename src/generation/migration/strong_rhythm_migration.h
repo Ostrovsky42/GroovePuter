@@ -7,6 +7,8 @@
 #include "../feel/feel_pattern_adapter.h"
 #include "../materialization/pattern_materializer.h"
 #include "../rhythm/reference_vocabulary.h"
+#include "../roles/bass_rhythm.h"
+#include "../roles/semantic_pattern_projector.h"
 
 namespace GroovePuterRhythm {
 
@@ -55,6 +57,11 @@ struct StrongRhythmMigrationResult {
   PatternMaterializeStatus materializationStatus =
       PatternMaterializeStatus::InvalidPlan;
   FeelPatternApplyStatus feelStatus = FeelPatternApplyStatus::Ok;
+  BassRhythmStatus bassRhythmStatus = BassRhythmStatus::InvalidRequest;
+  BassRhythmId bassRhythmId = BassRhythmId::Auto;
+  SemanticPatternProjectStatus bassProjectionStatus =
+      SemanticPatternProjectStatus::Ok;
+  FeelInterpretStatus bassFeelStatus = FeelInterpretStatus::Ok;
 
   // Ephemeral compatibility output from the already-realized plan. It is never
   // persisted and carries no pitch/VoiceRole ownership.
@@ -86,6 +93,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     const GenreSettings& settings,
     const StrongRhythmMigrationContext& context,
     DrumPatternSet& drums,
+    SynthPattern& synthA,
     SynthPattern& synthB);
 
 }  // namespace GroovePuterRhythm

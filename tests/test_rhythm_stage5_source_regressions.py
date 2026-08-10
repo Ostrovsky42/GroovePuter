@@ -92,9 +92,9 @@ for forbidden in (
     require(forbidden not in SCENES_H,
             f"Stage 5 must not persist migration state: {forbidden}")
 
-# Bass and melodic semantics remain deferred. ChordRhythm is also ignored by
-# the generic PatternMaterializer; the only synth compatibility path is legacy
-# Synth B event relocation for Dub Techno / Deep Chord.
+# The Stage 5 materializer still defers semantic synth roles. Later Stage 9 may
+# project legacy Synth A pitch through the same migration transaction, while
+# the original Dub compatibility path remains explicit and Synth B-only.
 for role in (
     "RhythmRole::BassRhythm",
     "RhythmRole::ChordRhythm",
@@ -113,7 +113,9 @@ require("sourceEvents[sourceCount++] = legacy.steps[step]" in MIGRATION,
         "Dub adapter no longer sources complete legacy Synth B events")
 require("editCurrentSynthPattern(1)" in BRIDGE,
         "Stage 5 live bridge no longer binds the established Synth B stab slot")
-require("editCurrentSynthPattern(0)" not in BRIDGE,
-        "Stage 5 must not bind Synth A/bass pitch before Bass Generator v2")
+require(BRIDGE.count("editCurrentSynthPattern(0)") == 1,
+        "Stage 9 live bridge must bind Synth A exactly once for BassRhythm projection")
+require("projectLegacyPitchPattern" in MIGRATION,
+        "Stage 9 BassRhythm projection is absent from the shared transaction")
 
 print("Groove Vocabulary Stage 5 source ownership: OK")

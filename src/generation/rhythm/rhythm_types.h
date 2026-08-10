@@ -155,6 +155,7 @@ enum class GenerationDomain : uint8_t {
   FeelExpression,
   PhysicalBinding,
   BarEvolution,
+  BassRhythmSelection,
   Count,
 };
 

@@ -24,6 +24,7 @@ StrongRhythmMigrationResult regenerateWithStrongRhythmMigration(
       scene.genre,
       context,
       engine.sceneManager().editCurrentDrumPattern(),
+      engine.sceneManager().editCurrentSynthPattern(0),
       engine.sceneManager().editCurrentSynthPattern(1));
 }
 

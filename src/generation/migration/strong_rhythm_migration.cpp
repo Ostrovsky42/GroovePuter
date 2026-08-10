@@ -43,6 +43,19 @@ StepMask roleOnsets(const RoleRhythmPlan& role) {
   return static_cast<StepMask>(role.structural | role.secondary | role.ghosts);
 }
 
+StepMask protectedSpaceFor(const RhythmArchetype& archetype,
+                           RhythmRole role) {
+  StepMask result = 0;
+  const RhythmRoleMask roleBit = rhythmRoleBit(role);
+  for (uint8_t index = 0; index < archetype.protectedSpaceCount; ++index) {
+    const ProtectedSpace& space = archetype.protectedSpaces[index];
+    if ((space.affectedRoles & roleBit) != 0) {
+      result = static_cast<StepMask>(result | space.steps);
+    }
+  }
+  return result;
+}
+
 bool remapLegacyStab(const SynthPattern& legacy,
                      StepMask chordOnsets,
                      SynthPattern& destination) {
@@ -253,6 +266,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     const GenreSettings& settings,
     const StrongRhythmMigrationContext& context,
     DrumPatternSet& drums,
+    SynthPattern& synthA,
     SynthPattern& synthB) {
   DrumPatternSet nextDrums = drums;
   StrongRhythmMigrationResult result =
@@ -261,8 +275,63 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     return result;
   }
 
+  const ReferenceVocabulary::Definition* definition =
+      ReferenceVocabulary::definitionFor(result.archetype);
+  const RhythmArchetype* archetype =
+      definition == nullptr
+          ? nullptr
+          : ReferenceVocabulary::archetypeFor(result.archetype);
+  if (definition == nullptr || archetype == nullptr) {
+    result.status = StrongRhythmMigrationStatus::InvalidContext;
+    return result;
+  }
+
+  BassRhythmRequest bassRequest{};
+  bassRequest.family = definition->family;
+  bassRequest.archetypeId = definition->archetypeId;
+  bassRequest.kickOnsets = 0;
+  for (uint8_t step = 0; step < kStepsPerBar; ++step) {
+    if (nextDrums.voices[KICK].steps[step].hit) {
+      bassRequest.kickOnsets = static_cast<StepMask>(
+          bassRequest.kickOnsets | stepBit(step));
+    }
+  }
+  bassRequest.protectedSpace =
+      protectedSpaceFor(*archetype, RhythmRole::BassRhythm);
+  bassRequest.generation.projectSeed = projectSeedFor(settings, result.route);
+  bassRequest.generation.phraseOrdinal =
+      static_cast<uint16_t>(context.patternAddress);
+  bassRequest.allowEmptyBar = definition->family == RhythmFamily::DubPulse ||
+                              definition->family == RhythmFamily::SparsePulse ||
+                              definition->family == RhythmFamily::HipHopBackbeat;
+  const BassRhythmResult bass = realizeBassRhythm(bassRequest);
+  result.bassRhythmStatus = bass.status;
+  result.bassRhythmId = bass.plan.id;
+  if (bass.status != BassRhythmStatus::Ok &&
+      bass.status != BassRhythmStatus::ValidButEmpty) {
+    result.status = StrongRhythmMigrationStatus::InvalidContext;
+    return result;
+  }
+
+  SynthPattern nextSynthA{};
+  result.bassProjectionStatus = projectLegacyPitchPattern(
+      synthA, bass.plan.onsets, bass.plan.continuations, nextSynthA);
+  if (result.bassProjectionStatus != SemanticPatternProjectStatus::Ok) {
+    result.status = StrongRhythmMigrationStatus::CompatibilityBindingFailed;
+    return result;
+  }
+  result.bassFeelStatus = applyFeelToSemanticPattern(
+      RhythmRole::BassRhythm, bass.plan.onsets,
+      context.feelProfile, context.feelAmount,
+      bassRequest.generation, nextSynthA);
+  if (result.bassFeelStatus != FeelInterpretStatus::Ok) {
+    result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
+    return result;
+  }
+
   if (!routeUsesLegacyStab(result.route)) {
     drums = nextDrums;
+    synthA = nextSynthA;
     return result;
   }
 
@@ -275,6 +344,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   // Atomic Stage 5 commit: if legacy pitch binding cannot be established,
   // neither the Vocabulary drums nor the stab topology escape the scratch copy.
   drums = nextDrums;
+  synthA = nextSynthA;
   synthB = nextSynthB;
   result.chordRhythmApplied = true;
   return result;

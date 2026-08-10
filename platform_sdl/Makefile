@@ -56,6 +56,8 @@ SOURCES := \
 	../src/generation/rhythm/rhythm_realizer.cpp \
 	../src/generation/rhythm/reference_vocabulary.cpp \
 	../src/generation/materialization/pattern_materializer.cpp \
+	../src/generation/roles/semantic_pattern_projector.cpp \
+	../src/generation/roles/bass_rhythm.cpp \
 	../src/generation/migration/strong_rhythm_migration.cpp \
 	../src/generation/migration/strong_rhythm_live_bridge.cpp \
 	../src/input/performance_keyboard.cpp \
