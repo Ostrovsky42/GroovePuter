@@ -9,6 +9,7 @@ python3 "${ROOT_DIR}/tests/test_generation_stage13_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_generation_orthogonality_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_generation_stage14_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_generation_stage14_drum_generate_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_generation_stage14_p_level_source_regressions.py"
 
 COMPOSITION_SOURCES=(
   "${ROOT_DIR}/src/generation/generation_context.cpp"
