@@ -10,6 +10,7 @@
 #include "../materialization/pattern_materializer.h"
 #include "../rhythm/reference_vocabulary.h"
 #include "../roles/bass_rhythm.h"
+#include "../roles/chord_progression.h"
 #include "../roles/chord_rhythm.h"
 #include "../roles/melodic_motif.h"
 #include "../roles/semantic_pattern_projector.h"
@@ -82,6 +83,9 @@ struct StrongRhythmMigrationResult {
   FeelInterpretStatus bassFeelStatus = FeelInterpretStatus::Ok;
   ChordRhythmStatus chordRhythmStatus = ChordRhythmStatus::InvalidRequest;
   ChordRhythmId chordRhythmId = ChordRhythmId::Auto;
+  ChordProgressionStatus chordProgressionStatus =
+      ChordProgressionStatus::InvalidRequest;
+  ProgressionId progressionId = ProgressionId::Auto;
   SemanticPatternProjectStatus chordProjectionStatus =
       SemanticPatternProjectStatus::Ok;
   FeelInterpretStatus chordFeelStatus = FeelInterpretStatus::Ok;
