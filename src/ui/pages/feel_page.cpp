@@ -10,6 +10,7 @@
 
 namespace {
 constexpr const char* kPresetNames[3] = {"TIGHT", "HUMAN", "LOOSE"};
+constexpr uint8_t kRepeatBars[4] = {1, 2, 4, 8};
 
 int wrapIndex(int value, int count) {
   if (count <= 0) return 0;
@@ -20,6 +21,25 @@ int wrapIndex(int value, int count) {
 
 int percent(float value) {
   return static_cast<int>(value * 100.0f + 0.5f);
+}
+
+uint8_t normalizedRepeatBars(uint8_t bars) {
+  for (uint8_t value : kRepeatBars) {
+    if (bars == value) return value;
+  }
+  return 1;
+}
+
+uint8_t shiftRepeatBars(uint8_t current, int delta) {
+  current = normalizedRepeatBars(current);
+  int index = 0;
+  for (int i = 0; i < 4; ++i) {
+    if (kRepeatBars[i] == current) {
+      index = i;
+      break;
+    }
+  }
+  return kRepeatBars[wrapIndex(index + delta, 4)];
 }
 }  // namespace
 
@@ -33,7 +53,7 @@ FeelPage::FeelPage(IGfx& gfx,
 
 void FeelPage::moveFocus(int delta) {
   int value = static_cast<int>(focus_) + delta;
-  value = wrapIndex(value, 5);
+  value = wrapIndex(value, 6);
   focus_ = static_cast<FocusRow>(value);
   hold_accel_.reset();
 }
@@ -58,6 +78,7 @@ void FeelPage::adjustFocused(int delta, bool fast) {
             static_cast<int>(scene.feel.timingProfile) + delta, count));
         if (next != scene.feel.timingProfile) {
           scene.feel.timingProfile = next;
+          mini_acid_.applyFeelTimingFromScene_();
           changed = true;
         }
         break;
@@ -92,6 +113,14 @@ void FeelPage::adjustFocused(int delta, bool fast) {
             0.0f, 1.0f);
         if (next != scene.generatorParams.velocityRange) {
           scene.generatorParams.velocityRange = next;
+          changed = true;
+        }
+        break;
+      }
+      case FocusRow::Repeats: {
+        const uint8_t next = shiftRepeatBars(scene.feel.patternBars, delta);
+        if (next != scene.feel.patternBars) {
+          scene.feel.patternBars = next;
           changed = true;
         }
         break;
@@ -169,7 +198,6 @@ void FeelPage::draw(IGfx& gfx) {
   const IGfxColor axisColor = palette.feel;
   const Scene& scene = mini_acid_.sceneManager().currentScene();
   const GeneratorParams& params = scene.generatorParams;
-  const GrooveRecipe recipe = mini_acid_.genreManager().getGrooveRecipe();
 
   UI::drawStandardHeader(gfx, mini_acid_, "FEEL");
   LayoutManager::clearContent(gfx);
@@ -218,16 +246,18 @@ void FeelPage::draw(IGfx& gfx) {
                     84, percent(params.velocityRange),
                     100, axisColor, palette);
 
+  std::snprintf(value, sizeof(value), "%u BAR%s",
+                static_cast<unsigned>(normalizedRepeatBars(scene.feel.patternBars)),
+                normalizedRepeatBars(scene.feel.patternBars) == 1 ? "" : "S");
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width,
+                       "REPEATS", value,
+                       focus_ == FocusRow::Repeats,
+                       axisColor, palette);
+
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(6), width,
                        "PRESET", kPresetNames[preset_index_],
                        focus_ == FocusRow::Preset,
                        axisColor, palette);
-
-  std::snprintf(value, sizeof(value), "GRID %u/BAR  MASK %04X",
-                static_cast<unsigned>(recipe.stepsPerBar),
-                static_cast<unsigned>(scene.feel.swingMask));
-  gfx.setTextColor(palette.muted);
-  gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
 
   const char* explanation = "LIVE: offbeat playback delay";
   switch (focus_) {
@@ -242,6 +272,9 @@ void FeelPage::draw(IGfx& gfx) {
       break;
     case FocusRow::VelocityHumanize:
       explanation = "NEXT GEN: note velocity spread";
+      break;
+    case FocusRow::Repeats:
+      explanation = "CYCLE: repeat 1/2/4/8 bars";
       break;
     case FocusRow::Preset:
       explanation = "ENTER: load all FEEL values";
