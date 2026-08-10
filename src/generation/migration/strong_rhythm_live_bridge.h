@@ -7,11 +7,17 @@ class MiniAcid;
 
 namespace GroovePuterRhythm {
 
-// Stage 5 live boundary: run the complete legacy generator first so synth pitch,
-// tempo/Atlas compatibility and rollback remain authoritative, then replace
-// drums only for the explicit strong-style allow-list. No backend state is
-// persisted and unsupported/failing routes remain byte-for-byte legacy.
+// GENRE materialization boundary. Legacy generation runs first so pitch/timbre,
+// Atlas compatibility and rollback remain authoritative; supported strong routes
+// then atomically replace drums and semantic synth topology.
 StrongRhythmMigrationResult regenerateWithStrongRhythmMigration(
+    MiniAcid& engine);
+
+// DRUMS-page G boundary. Regenerate only the drum pattern through the legacy
+// generator first, then apply the selected strong rhythm + FEEL timing to drums.
+// Synth A/B are intentionally untouched. Unsupported/failing strong routes keep
+// the freshly generated legacy drum pattern as a safe fallback.
+StrongRhythmMigrationResult regenerateDrumsWithStrongRhythmMigration(
     MiniAcid& engine);
 
 }  // namespace GroovePuterRhythm
