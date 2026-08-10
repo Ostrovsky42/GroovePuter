@@ -40,6 +40,28 @@ for needle in (
 ):
     require(DRUM_PAGE, needle, f"Stage 12 audition input contract changed: {needle}")
 
+# Audition must start from pattern mode. After the bridge temporarily visits all
+# reserved Bank B slots, the UI layer rebases MiniAcid's pattern-mode return
+# state to the exact pre-audition selection before re-entering Song B.
+for needle in (
+    'UI::showToast("AUD: EXIT SONG", 1400);',
+    "const int previousDrumBank = page->mini_acid_.currentDrumBankIndex();",
+    "const int previousDrumPattern = page->mini_acid_.currentDrumPatternIndex();",
+    "const int previousSynthBankA = page->mini_acid_.current303BankIndex(0);",
+    "const int previousSynthBankB = page->mini_acid_.current303BankIndex(1);",
+    "const int previousSynthPatternA = page->mini_acid_.current303PatternIndex(0);",
+    "const int previousSynthPatternB = page->mini_acid_.current303PatternIndex(1);",
+    "page->mini_acid_.setSongMode(false);",
+    "page->mini_acid_.setDrumBankIndex(previousDrumBank);",
+    "page->mini_acid_.setDrumPatternIndex(previousDrumPattern);",
+    "page->mini_acid_.set303BankIndex(0, previousSynthBankA);",
+    "page->mini_acid_.set303BankIndex(1, previousSynthBankB);",
+    "page->mini_acid_.set303PatternIndex(0, previousSynthPatternA);",
+    "page->mini_acid_.set303PatternIndex(1, previousSynthPatternB);",
+    "page->mini_acid_.setSongMode(true);",
+):
+    require(DRUM_PAGE, needle, f"audition pattern return-state contract changed: {needle}")
+
 require(
     DRUM_LEGACY,
     "mini_acid_.randomizeDrumVoice(voice);",
