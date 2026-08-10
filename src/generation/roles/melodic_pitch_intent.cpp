@@ -87,7 +87,8 @@ bool moveNote(uint8_t onsetStep, int8_t delta, StepMask allowedSteps,
   if ((newSpan & otherOccupied) != 0) return false;
 
   removeNote(onsetStep, onsets, continuations);
-  onsets = static_cast<StepMask>(onsets | stepBit(static_cast<uint8_t>(targetStart)));
+  onsets = static_cast<StepMask>(
+      onsets | stepBit(static_cast<uint8_t>(targetStart)));
   for (int step = targetStart + 1; step <= targetEnd; ++step) {
     continuations = static_cast<StepMask>(
         continuations | stepBit(static_cast<uint8_t>(step)));
@@ -193,28 +194,28 @@ bool applyInteriorShift(const MelodicPitchIntentRequest& request,
 }
 
 bool applyTerminalEcho(const MelodicPitchIntentRequest& request,
-                       StepMask& onsets) {
+                       StepMask& onsets,
+                       StepMask continuations) {
   uint8_t onsetSteps[kStepsPerBar]{};
   const uint8_t count = collectOnsetSteps(onsets, onsetSteps);
   if (count == 0 || count >= request.maxOnsets) return false;
 
   constexpr int8_t offsets[] = {2, -2, 3, -3, 1, -1};
+  constexpr uint8_t kOffsetCount =
+      static_cast<uint8_t>(sizeof(offsets) / sizeof(offsets[0]));
   const uint32_t seed = deriveGenerationSeed(
       request.generation, request.archetypeId,
       GenerationDomain::MelodicRhythmSelection, kRhythmSalt ^ 0x51u);
   const uint8_t rotation = static_cast<uint8_t>(
-      deterministicValue(seed, request.barOrdinal) %
-      (sizeof(offsets) / sizeof(offsets[0])));
+      deterministicValue(seed, request.barOrdinal) % kOffsetCount);
   const uint8_t terminal = onsetSteps[count - 1u];
-  for (uint8_t attempt = 0;
-       attempt < static_cast<uint8_t>(sizeof(offsets) / sizeof(offsets[0]));
-       ++attempt) {
-    const int8_t offset = offsets[(rotation + attempt) %
-                                  (sizeof(offsets) / sizeof(offsets[0]))];
+  const StepMask occupied = static_cast<StepMask>(onsets | continuations);
+  for (uint8_t attempt = 0; attempt < kOffsetCount; ++attempt) {
+    const int8_t offset = offsets[(rotation + attempt) % kOffsetCount];
     const int target = static_cast<int>(terminal) + offset;
     if (target < 0 || target >= kStepsPerBar) continue;
     const StepMask bit = stepBit(static_cast<uint8_t>(target));
-    if ((request.allowedSteps & bit) == 0 || (onsets & bit) != 0) continue;
+    if ((request.allowedSteps & bit) == 0 || (occupied & bit) != 0) continue;
     onsets = static_cast<StepMask>(onsets | bit);
     return true;
   }
@@ -240,7 +241,7 @@ MelodicRhythmOperationId applyRhythmOperation(
       applied = applyInteriorShift(request, 1, onsets, continuations);
       break;
     case MelodicRhythmOperationId::TerminalEcho:
-      applied = applyTerminalEcho(request, onsets);
+      applied = applyTerminalEcho(request, onsets, continuations);
       break;
     case MelodicRhythmOperationId::Auto:
     case MelodicRhythmOperationId::Count:
@@ -349,7 +350,8 @@ void buildContour(MelodicContourId contour, uint8_t count,
   if (count <= 1) return;
 
   const int8_t step = maxLeapDegrees == 0 ? 0 : 1;
-  const int8_t leap = static_cast<int8_t>(maxLeapDegrees < 4 ? maxLeapDegrees : 4);
+  const int8_t leap =
+      static_cast<int8_t>(maxLeapDegrees < 4 ? maxLeapDegrees : 4);
   switch (contour) {
     case MelodicContourId::Static:
       break;
@@ -395,7 +397,8 @@ void buildContour(MelodicContourId contour, uint8_t count,
       break;
     case MelodicContourId::RepeatThenDown:
       for (uint8_t index = 2; index < count; ++index)
-        values[index] = static_cast<int8_t>(-static_cast<int>((index - 1u) * step));
+        values[index] = static_cast<int8_t>(
+            -static_cast<int>((index - 1u) * step));
       break;
     case MelodicContourId::Auto:
     case MelodicContourId::Count:
