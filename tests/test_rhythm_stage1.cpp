@@ -225,6 +225,39 @@ void testCoincideCannotExceedRemainingLaneCapacity() {
   expectError(f.catalog, CatalogValidationError::ImpossibleHardRelationship);
 }
 
+void testExplicitMutationBudgetsAreValidated() {
+  Fixture p1Secondary;
+  p1Secondary.archetype.mutation.level[
+      static_cast<uint8_t>(RealizationLevel::P1Canonical)].maxSecondaryAdds = 1;
+  expectError(p1Secondary.catalog, CatalogValidationError::InvalidMutationPolicy);
+
+  Fixture p1Ghost;
+  p1Ghost.archetype.mutation.level[
+      static_cast<uint8_t>(RealizationLevel::P1Canonical)].maxGhostAdds = 1;
+  expectError(p1Ghost.catalog, CatalogValidationError::InvalidMutationPolicy);
+
+  Fixture tooManySecondary;
+  tooManySecondary.archetype.mutation.level[
+      static_cast<uint8_t>(RealizationLevel::P3Transformation)]
+      .maxSecondaryAdds = 255;
+  expectError(tooManySecondary.catalog,
+              CatalogValidationError::InvalidMutationPolicy);
+
+  Fixture tooManyGhosts;
+  tooManyGhosts.archetype.mutation.level[
+      static_cast<uint8_t>(RealizationLevel::P3Transformation)].maxGhostAdds =
+      255;
+  expectError(tooManyGhosts.catalog,
+              CatalogValidationError::InvalidMutationPolicy);
+
+  Fixture boundedP3;
+  MutationBudget& p3 = boundedP3.archetype.mutation.level[
+      static_cast<uint8_t>(RealizationLevel::P3Transformation)];
+  p3.maxSecondaryAdds = 3;
+  p3.maxGhostAdds = 2;
+  assert(validateRhythmCatalog(boundedP3.catalog));
+}
+
 void testStage1SemanticTypesRemainDistinct() {
   static_assert(static_cast<uint8_t>(RealizationStatus::ValidButSparse) !=
                     static_cast<uint8_t>(RealizationStatus::InvalidConstraintSet),
@@ -247,6 +280,7 @@ int main() {
   testPLevelTrajectoryPolicyComposition();
   testPhraseCoordinateCoincideCardinality();
   testCoincideCannotExceedRemainingLaneCapacity();
+  testExplicitMutationBudgetsAreValidated();
   testStage1SemanticTypesRemainDistinct();
   return 0;
 }
