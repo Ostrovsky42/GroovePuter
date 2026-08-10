@@ -77,7 +77,8 @@ No grammar is labelled measured/evidence-backed and no external progression tabl
 
 - Existing RNG domain: `GenerationDomain::ChordPitch`.
 - No new `GenerationDomain` value.
-- Grammar variant salt: `static_cast<uint8_t>(progressionId)`.
+- Profile selection while the requested progression is unresolved uses the stable `static_cast<uint8_t>(ProgressionId::Auto)` salt; it does not incorporate `ChordRhythm` identity or another profile-axis selection into that salt.
+- Concrete grammar variant salt: `static_cast<uint8_t>(progressionId)`.
 - `ProgressionId` is append-only; `Auto == 0` and `Count` is last.
 - `kMaxHarmonicEvents == 8`.
 - `ChordProgressionPlan` is trivially copyable and `<= 32 B`.
@@ -139,6 +140,7 @@ Each assertion is non-tautological; the listed production mutation must make it 
 | profile-only genre ownership | add `GenerativeMode` knowledge to `roles/chord_progression.*` |
 | no tonal ownership | add `ScaleType`, interval table, MIDI note array or Tonal Projector include to the Stage 15 axis |
 | existing RNG domain | replace `GenerationDomain::ChordPitch` or add a new RNG domain |
+| profile selector salt orthogonality | replace the stable `ProgressionId::Auto` salt with a chord-dependent or profile-axis-dependent salt |
 | event-count ownership | stop deriving `harmonicEventCount` from `chord.plan.onsets` in the bridge |
 | bridge ordering | move `realizeChordProgression()` after chord pitch materialization |
 | one-bar hardware guard | change either production `phraseBars = 1` guard |
@@ -200,6 +202,7 @@ Hardware after tonal integration:
 - [ ] every concrete progression is actually selected in the reachability matrix.
 - [ ] every demonstrated primitive is reused across three distinct genres using only profile data.
 - [ ] exact editorial grammar variants are mutation-pinned.
+- [ ] profile progression selection uses stable `ProgressionId::Auto` salt and is not coupled to `ChordRhythm` salt.
 - [ ] same input produces byte-identical plans.
 - [ ] degree, quality, root-offset and capacity bounds pass for every concrete ID.
 - [ ] static progressions return `ValidButStatic` for non-empty requests.
