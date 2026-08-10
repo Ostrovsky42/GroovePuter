@@ -7,8 +7,8 @@ DRUM_LEGACY = (ROOT / "src/ui/pages/drum_sequencer_page_legacy.h").read_text(enc
 BRIDGE_H = (ROOT / "src/generation/migration/strong_rhythm_live_bridge.h").read_text(encoding="utf-8")
 BRIDGE_CPP = (ROOT / "src/generation/migration/strong_rhythm_live_bridge.cpp").read_text(encoding="utf-8")
 MINI_DISPLAY = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
-FEEL_ADAPTER_H = (ROOT / "src/ui/pages/feel_texture_page.h").read_text(encoding="utf-8")
-FEEL_ADAPTER_CPP = (ROOT / "src/ui/pages/feel_texture_page.cpp").read_text(encoding="utf-8")
+WORKFLOW = (ROOT / "src/ui/workflow_mode.h").read_text(encoding="utf-8")
+SETTINGS_ALIAS = (ROOT / "pages/settings_page.h").read_text(encoding="utf-8")
 FEEL_PAGE_H = (ROOT / "src/ui/pages/feel_page.h").read_text(encoding="utf-8")
 FEEL_PAGE_CPP = (ROOT / "src/ui/pages/feel_page.cpp").read_text(encoding="utf-8")
 
@@ -41,8 +41,8 @@ for needle in (
     require(BRIDGE_CPP, needle, f"drum-only bridge missing live context: {needle}")
 
 # Cardputer key events may carry only the hardware scancode. The strong plain-G
-# owner must therefore match the same G representations as the retained legacy
-# handler; otherwise hardware falls through to randomizeDrumPattern().
+# owner must match the same G representations as the retained legacy handler;
+# otherwise hardware falls through to randomizeDrumPattern().
 require(
     DRUM_PAGE,
     "lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G",
@@ -72,29 +72,27 @@ require(
     "Alt+G chaos randomize contract disappeared",
 )
 
-# Page 8 is the actual production FEEL route. It historically instantiated
-# FeelTexturePage, so Stage 14 controls must be reachable through that concrete
-# type rather than existing only in an unused FeelPage implementation.
+# The production Generate workflow normalizes legacy page ids 8/11 to page 9.
+# Page 9 is still constructed under the historical SettingsPage factory name,
+# whose compatibility alias must resolve to the real Stage 14 FeelPage. Pin the
+# complete route so a green test cannot validate controls in an unreachable page.
+for needle in (
+    "constexpr int kTexture = 8",
+    "constexpr int kFeel = 9",
+    "constexpr int kGeneration = 11",
+    "if (page == kTexture || page == kGeneration) return kFeel;",
+):
+    require(WORKFLOW, needle, f"production FEEL workflow route changed: {needle}")
 require(
     MINI_DISPLAY,
-    "std::make_unique<FeelTexturePage>(gfx_, mini_acid_, audio_guard_)",
-    "production FEEL route changed unexpectedly",
+    "case 9:  page = std::make_unique<SettingsPage>(gfx_, mini_acid_, audio_guard_); break;",
+    "production page 9 factory route changed unexpectedly",
 )
 require(
-    FEEL_ADAPTER_H,
-    "FeelPage feel_page_;",
-    "production FeelTexturePage does not retain the Stage 14 FeelPage",
+    SETTINGS_ALIAS,
+    "using SettingsPage = FeelPage;",
+    "production page 9 no longer resolves to Stage 14 FeelPage",
 )
-for needle in (
-    "feel_page_.draw(gfx);",
-    "return feel_page_.handleEvent(ui_event);",
-    "feel_page_.setVisualStyle(style);",
-):
-    require(
-        FEEL_ADAPTER_CPP,
-        needle,
-        f"production FEEL adapter does not forward Stage 14 behavior: {needle}",
-    )
 
 for needle in (
     "Profile = 0",
