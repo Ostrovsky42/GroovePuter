@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstring>
+#include <initializer_list>
 
 #include "src/generation/roles/melodic_pitch_intent.h"
 
