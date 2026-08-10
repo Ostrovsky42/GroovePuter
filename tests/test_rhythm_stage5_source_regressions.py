@@ -103,14 +103,14 @@ for role in (
     require(role in MIGRATION, f"Stage 5 does not explicitly defer {role}")
 require("candidate.synthA" not in MIGRATION and "candidate.synthB" not in MIGRATION,
         "Stage 5 unexpectedly used fixed-note PatternMaterializer synth binding")
-require("route == StrongRhythmRoute::DubTechno" in MIGRATION,
+require("return StrongRhythmRoute::DubTechno" in MIGRATION,
         "Dub Techno stab compatibility route is not explicit")
-require("route == StrongRhythmRoute::DeepChord" in MIGRATION,
+require("return StrongRhythmRoute::DeepChord" in MIGRATION,
         "Deep Chord stab compatibility route is not explicit")
-require("remapLegacyStab" in MIGRATION,
-        "Stage 5 lacks the legacy-pitch stab compatibility adapter")
-require("sourceEvents[sourceCount++] = legacy.steps[step]" in MIGRATION,
-        "Dub adapter no longer sources complete legacy Synth B events")
+require(MIGRATION.count("projectLegacyPitchPattern(") == 2,
+        "Stage 9/10 must project both legacy semantic pitch roles")
+require("realizeChordRhythm" in MIGRATION,
+        "Stage 10 ChordRhythm is absent from the shared transaction")
 require("editCurrentSynthPattern(1)" in BRIDGE,
         "Stage 5 live bridge no longer binds the established Synth B stab slot")
 require(BRIDGE.count("editCurrentSynthPattern(0)") == 1,

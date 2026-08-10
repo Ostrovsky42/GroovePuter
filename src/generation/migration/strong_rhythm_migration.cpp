@@ -34,11 +34,6 @@ RhythmRoleMask deferredSynthRoles() {
       rhythmRoleBit(RhythmRole::MelodicRhythm));
 }
 
-bool routeUsesLegacyStab(StrongRhythmRoute route) {
-  return route == StrongRhythmRoute::DubTechno ||
-         route == StrongRhythmRoute::DeepChord;
-}
-
 StepMask roleOnsets(const RoleRhythmPlan& role) {
   return static_cast<StepMask>(role.structural | role.secondary | role.ghosts);
 }
@@ -54,32 +49,6 @@ StepMask protectedSpaceFor(const RhythmArchetype& archetype,
     }
   }
   return result;
-}
-
-bool remapLegacyStab(const SynthPattern& legacy,
-                     StepMask chordOnsets,
-                     SynthPattern& destination) {
-  if (chordOnsets == 0) return false;
-
-  SynthStep sourceEvents[SynthPattern::kSteps]{};
-  uint8_t sourceCount = 0;
-  for (int step = 0; step < SynthPattern::kSteps; ++step) {
-    if (legacy.steps[step].note < 0) continue;
-    sourceEvents[sourceCount++] = legacy.steps[step];
-  }
-  if (sourceCount == 0) return false;
-
-  SynthPattern next{};
-  uint8_t sourceIndex = 0;
-  for (uint8_t step = 0; step < kStepsPerBar; ++step) {
-    if ((chordOnsets & stepBit(step)) == 0) continue;
-    // Preserve the legacy musical event in chronological order. Vocabulary
-    // changes only its onset coordinate; pitch/performance data remain legacy.
-    next.steps[step] = sourceEvents[sourceIndex % sourceCount];
-    ++sourceIndex;
-  }
-  destination = next;
-  return true;
 }
 
 }  // namespace
@@ -329,20 +298,44 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     return result;
   }
 
-  if (!routeUsesLegacyStab(result.route)) {
-    drums = nextDrums;
-    synthA = nextSynthA;
+  ChordRhythmRequest chordRequest{};
+  chordRequest.family = definition->family;
+  chordRequest.archetypeId = definition->archetypeId;
+  chordRequest.bassOnsets = bass.plan.onsets;
+  chordRequest.protectedSpace =
+      protectedSpaceFor(*archetype, RhythmRole::ChordRhythm);
+  chordRequest.generation = bassRequest.generation;
+  chordRequest.allowEmptyBar =
+      definition->family == RhythmFamily::DubPulse ||
+      definition->family == RhythmFamily::SparsePulse ||
+      definition->family == RhythmFamily::HipHopBackbeat;
+  const ChordRhythmResult chord = realizeChordRhythm(chordRequest);
+  result.chordRhythmStatus = chord.status;
+  result.chordRhythmId = chord.plan.id;
+  result.chordOnsets = chord.plan.onsets;
+  if (chord.status != ChordRhythmStatus::Ok &&
+      chord.status != ChordRhythmStatus::ValidButEmpty) {
+    result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
-
   SynthPattern nextSynthB{};
-  if (!remapLegacyStab(synthB, result.chordOnsets, nextSynthB)) {
+  result.chordProjectionStatus = projectLegacyPitchPattern(
+      synthB, chord.plan.onsets, chord.plan.continuations, nextSynthB);
+  if (result.chordProjectionStatus != SemanticPatternProjectStatus::Ok) {
     result.status = StrongRhythmMigrationStatus::CompatibilityBindingFailed;
     return result;
   }
+  result.chordFeelStatus = applyFeelToSemanticPattern(
+      RhythmRole::ChordRhythm, chord.plan.onsets,
+      context.feelProfile, context.feelAmount,
+      chordRequest.generation, nextSynthB);
+  if (result.chordFeelStatus != FeelInterpretStatus::Ok) {
+    result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
+    return result;
+  }
 
-  // Atomic Stage 5 commit: if legacy pitch binding cannot be established,
-  // neither the Vocabulary drums nor the stab topology escape the scratch copy.
+  // Atomic cross-role commit: a failure in either semantic projection leaves
+  // all three caller-owned patterns byte-for-byte unchanged.
   drums = nextDrums;
   synthA = nextSynthA;
   synthB = nextSynthB;

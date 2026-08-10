@@ -99,6 +99,13 @@ void populateNonDefaultScene(SceneManager& manager) {
   synth.fx = 1;
   synth.fxParam = 4;
 
+  for (int step = 0; step < SynthPattern::kSteps; ++step) {
+    SynthStep& held = scene.synthBBanks[0].patterns[0].steps[step];
+    held.note = 55;
+    held.slide = step != 0;
+    held.velocity = 68;
+  }
+
   std::strncpy(scene.customPhrases[0], "line one\nline\ttwo",
                Scene::kMaxPhraseLength - 1);
   scene.customPhrases[0][Scene::kMaxPhraseLength - 1] = '\0';
@@ -201,6 +208,11 @@ void verifyRoundTrip(const SceneManager& manager) {
   const SynthStep& synth = scene.synthABanks[0].patterns[0].steps[5];
   assert(synth.note == 61);
   assert(synth.slide);
+  for (int step = 0; step < SynthPattern::kSteps; ++step) {
+    const SynthStep& held = scene.synthBBanks[0].patterns[0].steps[step];
+    assert(held.note == 55);
+    assert(held.slide == (step != 0));
+  }
   assert(synth.accent);
   assert(synth.ghost);
   assert(synth.velocity == 72);

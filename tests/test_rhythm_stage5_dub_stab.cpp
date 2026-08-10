@@ -83,6 +83,13 @@ bool equalSynth(const SynthPattern& a, const SynthPattern& b) {
   return true;
 }
 
+bool equalProjectedSourceEvent(const SynthStep& a, const SynthStep& b) {
+  return a.note == b.note && a.slide == b.slide &&
+         a.accent == b.accent && a.ghost == b.ghost &&
+         a.velocity == b.velocity && a.fx == b.fx &&
+         a.fxParam == b.fxParam && a.probability == b.probability;
+}
+
 DrumPatternSet sentinelDrums() {
   DrumPatternSet drums{};
   drums.groove.swing = 0.29f;
@@ -130,7 +137,21 @@ StepMask synthOnsets(const SynthPattern& pattern) {
   return mask;
 }
 
-void requireLegacySequencePreserved(const SynthPattern& remapped) {
+void requireProjectedTopology(const SynthPattern& projected,
+                              StepMask semanticOnsets) {
+  for (uint8_t step = 0; step < SynthPattern::kSteps; ++step) {
+    const SynthStep& event = projected.steps[step];
+    const bool onset = (semanticOnsets & stepBit(step)) != 0;
+    if (onset) {
+      require(event.note >= 0, "ChordRhythm onset has no projected pitch");
+    } else if (event.note >= 0) {
+      require(event.slide, "non-onset chord cell is not a tied continuation");
+    }
+  }
+}
+
+void requireLegacySequencePreserved(const SynthPattern& remapped,
+                                    StepMask semanticOnsets) {
   const SynthStep expected[] = {
       legacyStab().steps[1],
       legacyStab().steps[8],
@@ -138,13 +159,13 @@ void requireLegacySequencePreserved(const SynthPattern& remapped) {
   };
   uint8_t eventIndex = 0;
   for (uint8_t step = 0; step < SynthPattern::kSteps; ++step) {
-    if (remapped.steps[step].note < 0) continue;
-    require(equalSynthStep(remapped.steps[step],
-                           expected[eventIndex % 3]),
-            "Dub adapter changed legacy pitch/performance event data");
+    if ((semanticOnsets & stepBit(step)) == 0) continue;
+    require(equalProjectedSourceEvent(remapped.steps[step],
+                                      expected[eventIndex % 3]),
+            "Chord projection changed legacy pitch/articulation data");
     ++eventIndex;
   }
-  require(eventIndex > 0, "Dub adapter produced no stab events");
+  require(eventIndex > 0, "ChordRhythm produced no semantic onset events");
 }
 
 void testDubRoute(uint8_t recipe, StrongRhythmRoute expectedRoute) {
@@ -162,13 +183,15 @@ void testDubRoute(uint8_t recipe, StrongRhythmRoute expectedRoute) {
           "approved Dub material route did not apply");
   require(result.route == expectedRoute,
           "approved Dub route changed identity");
-  require(result.chordOnsets != 0,
-          "Dub reference archetype produced no ChordRhythm onsets");
   require(result.chordRhythmApplied,
-          "Dub compatibility adapter did not report chord rhythm application");
-  require(synthOnsets(synthB) == result.chordOnsets,
-          "Synth B onset topology does not match realized ChordRhythm");
-  requireLegacySequencePreserved(synthB);
+          "Dub route did not report Stage 10 chord rhythm application");
+  requireProjectedTopology(synthB, result.chordOnsets);
+  if (result.chordOnsets == 0) {
+    require(synthOnsets(synthB) == 0,
+            "intentional empty Dub bar retained Synth B events");
+  } else {
+    requireLegacySequencePreserved(synthB, result.chordOnsets);
+  }
 }
 
 void testDubBindingFailureRollsBackEverything() {
@@ -197,25 +220,27 @@ void testDubBindingFailureRollsBackEverything() {
           "failed Dub binding changed Synth B");
 }
 
-void testNonDubLeavesSynthBByteForBehavior() {
-  DrumPatternSet drums = sentinelDrums();
-  SynthPattern synthA = legacyStab();
-  SynthPattern synthB = legacyStab();
-  const SynthPattern beforeSynthB = synthB;
-  StrongRhythmMigrationContext context{};
-  context.patternAddress = 7;
+void testNonDubReceivesIndependentChordRhythm() {
+  bool reachedNonEmpty = false;
+  for (int address = 0; address < 32; ++address) {
+    DrumPatternSet drums = sentinelDrums();
+    SynthPattern synthA = legacyStab();
+    SynthPattern synthB = legacyStab();
+    StrongRhythmMigrationContext context{};
+    context.patternAddress = static_cast<int16_t>(address);
 
-  const StrongRhythmMigrationResult result = migrateStrongRhythmMaterial(
-      baseAcid(), context, drums, synthA, synthB);
-
-  require(result.status == StrongRhythmMigrationStatus::Applied,
-          "base Acid drum migration failed through material adapter");
-  require(!result.chordRhythmApplied,
-          "non-Dub route unexpectedly claimed chord ownership");
-  require(result.chordOnsets == 0,
-          "non-Dub reference unexpectedly emitted ChordRhythm");
-  require(equalSynth(synthB, beforeSynthB),
-          "non-Dub migration changed Synth B");
+    const StrongRhythmMigrationResult result = migrateStrongRhythmMaterial(
+        baseAcid(), context, drums, synthA, synthB);
+    require(result.status == StrongRhythmMigrationStatus::Applied &&
+                result.chordRhythmApplied,
+            "base Acid failed Stage 10 material transaction");
+    if (result.chordOnsets != 0) {
+      require(synthOnsets(synthB) != 0,
+              "non-empty ChordRhythm produced empty Synth B");
+      reachedNonEmpty = true;
+    }
+  }
+  require(reachedNonEmpty, "Stage 10 never reached non-Dub Synth B");
 }
 
 }  // namespace
@@ -224,7 +249,7 @@ int main() {
   testDubRoute(5, StrongRhythmRoute::DubTechno);
   testDubRoute(10, StrongRhythmRoute::DeepChord);
   testDubBindingFailureRollsBackEverything();
-  testNonDubLeavesSynthBByteForBehavior();
+  testNonDubReceivesIndependentChordRhythm();
   std::puts("Groove Vocabulary Stage 5 Dub stab compatibility: OK");
   return 0;
 }

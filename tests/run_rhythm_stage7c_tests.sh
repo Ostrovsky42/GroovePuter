@@ -19,6 +19,7 @@ SOURCES=(
   "${ROOT_DIR}/src/generation/materialization/pattern_materializer.cpp"
   "${ROOT_DIR}/src/generation/roles/semantic_pattern_projector.cpp"
   "${ROOT_DIR}/src/generation/roles/bass_rhythm.cpp"
+  "${ROOT_DIR}/src/generation/roles/chord_rhythm.cpp"
   "${ROOT_DIR}/src/generation/migration/strong_rhythm_migration.cpp"
 )
 

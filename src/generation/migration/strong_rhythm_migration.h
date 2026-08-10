@@ -8,6 +8,7 @@
 #include "../materialization/pattern_materializer.h"
 #include "../rhythm/reference_vocabulary.h"
 #include "../roles/bass_rhythm.h"
+#include "../roles/chord_rhythm.h"
 #include "../roles/semantic_pattern_projector.h"
 
 namespace GroovePuterRhythm {
@@ -62,9 +63,14 @@ struct StrongRhythmMigrationResult {
   SemanticPatternProjectStatus bassProjectionStatus =
       SemanticPatternProjectStatus::Ok;
   FeelInterpretStatus bassFeelStatus = FeelInterpretStatus::Ok;
+  ChordRhythmStatus chordRhythmStatus = ChordRhythmStatus::InvalidRequest;
+  ChordRhythmId chordRhythmId = ChordRhythmId::Auto;
+  SemanticPatternProjectStatus chordProjectionStatus =
+      SemanticPatternProjectStatus::Ok;
+  FeelInterpretStatus chordFeelStatus = FeelInterpretStatus::Ok;
 
-  // Ephemeral compatibility output from the already-realized plan. It is never
-  // persisted and carries no pitch/VoiceRole ownership.
+  // Ephemeral semantic topology. It is never persisted and carries no
+  // pitch/voicing/physical-engine ownership.
   StepMask chordOnsets = 0;
   bool chordRhythmApplied = false;
 };
@@ -84,11 +90,10 @@ StrongRhythmMigrationResult migrateStrongRhythmDrums(
     const StrongRhythmMigrationContext& context,
     DrumPatternSet& destination);
 
-// Stage 5 compatibility adapter for the two strong Dub routes. Synth B is the
-// established legacy lead/stab physical slot (and Atlas Deep Chord target 9).
-// Vocabulary owns only ChordRhythm onset placement; pitches, velocity, timing,
-// accent, slide and timbre remain sourced from the just-generated legacy Synth B.
-// Commit of drums + Synth B is atomic. No semantic VoiceRole is introduced.
+// Cross-role production transaction. Legacy generation supplies both pitch
+// phrases; BassRhythm/ChordRhythm own only onset and continuation topology.
+// Drums + Synth A + Synth B commit atomically after every semantic plan,
+// projection and Feel step succeeds.
 StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     const GenreSettings& settings,
     const StrongRhythmMigrationContext& context,
