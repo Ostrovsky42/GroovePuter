@@ -20,12 +20,11 @@ SCENES_CODE = strip_comments(SCENES)
 # Scene header into the projector C++ API and without defining a second enum.
 match = re.search(r"enum\s+ScaleType\s*\{([^}]*)\};", SCENES_CODE, re.DOTALL)
 assert match is not None, "ScaleType enum must remain discoverable"
-entries = []
-for raw_entry in match.group(1).split(","):
-    entry = raw_entry.strip()
-    if not entry:
-        continue
-    entries.append(entry.split("=", 1)[0].strip())
+enum_body = match.group(1)
+# The lightweight ABI constants below depend on the existing implicit 0..9
+# values. An explicit numeric assignment is therefore ABI drift and must fail.
+assert "=" not in enum_body, "ScaleType numeric assignments changed"
+entries = [entry.strip() for entry in enum_body.split(",") if entry.strip()]
 assert entries == [
     "MINOR",
     "MAJOR",
@@ -105,21 +104,31 @@ assert "% 7" not in CODE
 assert "AdvancedPatternGenerator" not in CODE
 assert "quantizeToScale" not in CODE
 
-# Tagged semitone intent and scale-degree intent are resolved before the common
-# MIDI leap check.
+# Tagged semitone intent and scale-degree intent are converted to displacement
+# first. Root selection then considers the complete bar and chooses the root
+# nearest register center among anchors that can materialize every note.
+assert "resolveDisplacements(" in SOURCE
 assert "isSemitoneOrdinal(request, ordinal)" in SOURCE
 assert "degreeToSemitone(request.tonalOffsets[ordinal], scale)" in SOURCE
+assert "anchorFitsAllNotes(" in SOURCE
+assert "findFeasibleRootAnchor(" in SOURCE
+assert "rootPitchClassPresent" in SOURCE
 assert "request.maxAdjacentLeapSemitones" in SOURCE
 
-# Projection result is atomic: noteCount becomes non-zero only after the full
-# register/leap loop succeeds. Any failure status leaves noteCount at zero.
+# Projection result is atomic: register/leap validation operates on local root
+# and local notes. Result fields are published only after the full loop succeeds.
 projector = SOURCE[SOURCE.index("TonalProjectionResult projectTonalIntent") :]
 loop_pos = projector.index("for (uint8_t ordinal = 0;")
+root_publish_pos = projector.index("result.rootAnchorMidi = rootAnchor;")
 note_count_pos = projector.index("result.noteCount = request.onsetCount;")
+midi_publish_pos = projector.index("result.midiNotes[ordinal] = midiNotes[ordinal];")
 ok_pos = projector.index("result.status = TonalProjectionStatus::Ok;")
-assert note_count_pos > loop_pos
-assert ok_pos > note_count_pos
+assert root_publish_pos > loop_pos
+assert note_count_pos > root_publish_pos
+assert midi_publish_pos > note_count_pos
+assert ok_pos > midi_publish_pos
 assert projector.count("result.noteCount =") == 1
+assert projector.count("result.rootAnchorMidi =") == 1
 
 # No retry loop or hidden register octave-folding.
 assert "while (" not in CODE
