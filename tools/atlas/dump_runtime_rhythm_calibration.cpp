@@ -18,6 +18,7 @@ namespace {
 
 constexpr uint8_t kSamplesPerArchetype = 64;
 constexpr uint8_t kDrumRoleCount = 5;
+constexpr uint8_t kAtlasPass2FrozenDefinitionCount = 20;
 constexpr double kRoleWeights[kDrumRoleCount] = {3.0, 3.0, 1.5, 1.0, 1.0};
 
 struct DrumSample {
@@ -80,18 +81,27 @@ int main() {
   using namespace GroovePuterRhythm::ReferenceVocabulary;
 
   const RhythmCatalogView& vocabulary = catalog();
-  if (vocabulary.archetypeCount != 20 || definitionCount() != 20) return 2;
+  if (vocabulary.archetypeCount != definitionCount() ||
+      definitionCount() < kAtlasPass2FrozenDefinitionCount) {
+    return 2;
+  }
 
-  std::array<std::array<DrumSample, kSamplesPerArchetype>, 20> samples{};
-  std::array<std::array<RhythmPhrasePlan, kSamplesPerArchetype>, 20> plans{};
-  std::array<std::array<uint8_t, 20>, 20> confusion{};
-  std::array<std::vector<double>, 20> selfDistances{};
+  std::array<std::array<DrumSample, kSamplesPerArchetype>,
+             kAtlasPass2FrozenDefinitionCount> samples{};
+  std::array<std::array<RhythmPhrasePlan, kSamplesPerArchetype>,
+             kAtlasPass2FrozenDefinitionCount> plans{};
+  std::array<std::array<uint8_t, kAtlasPass2FrozenDefinitionCount>,
+             kAtlasPass2FrozenDefinitionCount> confusion{};
+  std::array<std::vector<double>, kAtlasPass2FrozenDefinitionCount>
+      selfDistances{};
   std::vector<double> allSelfDistances;
 
   std::cout << "FORMAT\tGROOVEPUTER_RUNTIME_RHYTHM_CALIBRATION_V1\n";
   std::cout << std::fixed << std::setprecision(6);
 
-  for (uint8_t sourceIndex = 0; sourceIndex < definitionCount(); ++sourceIndex) {
+  for (uint8_t sourceIndex = 0;
+       sourceIndex < kAtlasPass2FrozenDefinitionCount;
+       ++sourceIndex) {
     const Definition& sourceDefinition = definition(sourceIndex);
     const RhythmArchetype* source = archetypeFor(sourceDefinition.key);
     if (source == nullptr) return 3;
@@ -118,7 +128,9 @@ int main() {
       }
       distinct.insert(sampleFingerprint(samples[sourceIndex][seedIndex]));
 
-      for (uint8_t targetIndex = 0; targetIndex < definitionCount(); ++targetIndex) {
+      for (uint8_t targetIndex = 0;
+           targetIndex < kAtlasPass2FrozenDefinitionCount;
+           ++targetIndex) {
         const RhythmArchetype* target = archetypeFor(definition(targetIndex).key);
         if (target == nullptr) return 5;
         if (coveredBy(*target, result.plan)) {
@@ -151,8 +163,12 @@ int main() {
 
   uint32_t crossCovered = 0;
   uint32_t crossTotal = 0;
-  for (uint8_t sourceIndex = 0; sourceIndex < definitionCount(); ++sourceIndex) {
-    for (uint8_t targetIndex = 0; targetIndex < definitionCount(); ++targetIndex) {
+  for (uint8_t sourceIndex = 0;
+       sourceIndex < kAtlasPass2FrozenDefinitionCount;
+       ++sourceIndex) {
+    for (uint8_t targetIndex = 0;
+         targetIndex < kAtlasPass2FrozenDefinitionCount;
+         ++targetIndex) {
       if (sourceIndex == targetIndex) continue;
       const uint8_t covered = confusion[sourceIndex][targetIndex];
       crossCovered += covered;
@@ -174,6 +190,7 @@ int main() {
                                  static_cast<double>(crossTotal)
                            : 0.0)
             << '\n';
-  std::cout << "COUNT\t" << static_cast<unsigned>(definitionCount()) << '\n';
+  std::cout << "COUNT\t"
+            << static_cast<unsigned>(kAtlasPass2FrozenDefinitionCount) << '\n';
   return 0;
 }

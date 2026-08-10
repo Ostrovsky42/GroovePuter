@@ -69,7 +69,7 @@ After source deduplication, observations are re-normalized through the semantic 
 
 Runtime topology schema: `GROOVEPUTER_RUNTIME_RHYTHM_TOPOLOGY_V2`.
 
-The V2 runtime dump is generated directly from the current 20 `ReferenceVocabulary` archetypes and includes lane anchors/support, forbidden space, lane density bounds, protected spaces and relationships.
+The V2 runtime dump is generated from the frozen pre-Stage-7 set of 20 `ReferenceVocabulary` archetypes and includes lane anchors/support, forbidden space, lane density bounds, protected spaces and relationships. Later production admissions are intentionally excluded so the evidence used to justify those admissions cannot become circular.
 
 Observation-to-grammar comparison is asymmetric. A concrete Atlas observation is never compared to `canonical|preferred|optional` as though that union were one concrete rhythm.
 
@@ -132,7 +132,7 @@ recurring-candidate internal:
   max = 0.368421
 ```
 
-A separate host calibration uses the actual `RhythmPhraseRealizer` over all 20 current grammars and 64 deterministic P1 seeds each. The generated compact calibration is compared against committed `RUNTIME_RHYTHM_CALIBRATION_V1.tsv` in CI.
+A separate host calibration uses the actual `RhythmPhraseRealizer` over the same frozen 20 pre-Stage-7 grammars and 64 deterministic P1 seeds each. The generated compact calibration is compared against committed `RUNTIME_RHYTHM_CALIBRATION_V1.tsv` in CI.
 
 ```text
 within-own-archetype pairs: 40320
@@ -145,7 +145,7 @@ non-own grammar coverage:
 335 / 24320 = 0.013775
 ```
 
-All 20 current grammars cover 64/64 of their own generated P1 samples. Non-own overlap is sparse rather than zero; the compact baseline records the nine non-zero directed confusion edges. No single weighted novelty score is used.
+All 20 frozen pre-Stage-7 grammars cover 64/64 of their own generated P1 samples. Non-own overlap is sparse rather than zero; the compact baseline records the nine non-zero directed confusion edges. Current production-catalog cardinality and later admissions are validated by their own Stage 7 gates. No single weighted novelty score is used.
 
 ## 8. Negative / protected-space evidence
 

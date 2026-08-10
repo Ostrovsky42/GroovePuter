@@ -5,12 +5,25 @@
 
 using namespace GroovePuterRhythm;
 
+namespace {
+
+// Atlas Pass 2 was frozen before Stage 7 admitted four additional grammars.
+// Keep this evidence dump on the exact non-circular catalog that was measured.
+constexpr uint8_t kAtlasPass2FrozenDefinitionCount = 20;
+
+}  // namespace
+
 int main() {
   const RhythmCatalogView& catalog = ReferenceVocabulary::catalog();
+  if (catalog.archetypeCount != ReferenceVocabulary::definitionCount() ||
+      ReferenceVocabulary::definitionCount() <
+          kAtlasPass2FrozenDefinitionCount) {
+    return 3;
+  }
   std::cout << "FORMAT\tGROOVEPUTER_RUNTIME_RHYTHM_V1\n";
 
   for (uint8_t definitionIndex = 0;
-       definitionIndex < ReferenceVocabulary::definitionCount();
+       definitionIndex < kAtlasPass2FrozenDefinitionCount;
        ++definitionIndex) {
     const ReferenceVocabulary::Definition& definition =
         ReferenceVocabulary::definition(definitionIndex);
@@ -70,6 +83,7 @@ int main() {
     }
   }
 
-  std::cout << "COUNT\t" << catalog.archetypeCount << '\n';
-  return catalog.archetypeCount == ReferenceVocabulary::definitionCount() ? 0 : 3;
+  std::cout << "COUNT\t"
+            << static_cast<unsigned>(kAtlasPass2FrozenDefinitionCount) << '\n';
+  return 0;
 }

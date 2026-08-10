@@ -82,7 +82,7 @@ Stage 7 admission           CLOSED
 ## Acceptance checklist
 
 - [ ] Atlas ZIP SHA-256 matches the pinned value.
-- [ ] Runtime baseline dump is exactly 20 current archetypes.
+- [ ] Runtime baseline dump is exactly the 20 frozen pre-Stage-7 archetypes; later production admissions remain covered by their own gates.
 - [ ] Runtime baseline diff passes.
 - [ ] Extractor unit contracts pass.
 - [ ] Aggregate output schema/rights test passes.
