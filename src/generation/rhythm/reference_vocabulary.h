@@ -28,6 +28,10 @@ enum class Archetype : uint8_t {
   SkippyTwoStep,
   ShuffledFourFour,
   MachineSyncopation,
+  StackedQuarters,
+  ElectroBackskip,
+  FunkHouseBridge,
+  ElectroGapPush,
   Count,
 };
 
