@@ -20,25 +20,36 @@ SOURCES=(
   "${ROOT_DIR}/src/generation/roles/melodic_motif.cpp"
 )
 
-build_and_run() {
+build_one() {
   local compiler="$1"
   local suffix="$2"
-  shift 2
+  local test_name="$3"
+  shift 3
   "${compiler}" -std=c++17 -Wall -Wextra -Werror -Wvla \
     -Wno-c++20-extensions -Wno-unused-but-set-variable \
     -I"${ROOT_DIR}" "$@" \
     "${SOURCES[@]}" \
-    "${ROOT_DIR}/tests/test_generation_stage15_chord_progression.cpp" \
-    -o "${BUILD_DIR}/test_generation_stage15_chord_progression_${suffix}"
-  "${BUILD_DIR}/test_generation_stage15_chord_progression_${suffix}"
+    "${ROOT_DIR}/tests/${test_name}.cpp" \
+    -o "${BUILD_DIR}/${test_name}_${suffix}"
+  "${BUILD_DIR}/${test_name}_${suffix}"
 }
 
-build_and_run "${CXX:-g++}" gcc
+run_suite() {
+  local compiler="$1"
+  local suffix="$2"
+  shift 2
+  build_one "${compiler}" "${suffix}" \
+    test_generation_stage15_chord_progression "$@"
+  build_one "${compiler}" "${suffix}" \
+    test_generation_stage15_reachability "$@"
+}
+
+run_suite "${CXX:-g++}" gcc
 if command -v clang++ >/dev/null 2>&1; then
-  build_and_run clang++ clang
+  run_suite clang++ clang
 fi
 ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
-  build_and_run "${CXX:-g++}" sanitize \
+  run_suite "${CXX:-g++}" sanitize \
     -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined
 
 STACK_OBJECT="${BUILD_DIR}/stage15_chord_progression_stack.o"
