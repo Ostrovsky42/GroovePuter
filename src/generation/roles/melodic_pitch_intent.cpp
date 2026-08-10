@@ -71,7 +71,9 @@ void removeNote(uint8_t onsetStep, StepMask& onsets, StepMask& continuations) {
   }
 }
 
-bool moveNote(uint8_t onsetStep, int8_t delta, StepMask allowedSteps,
+bool moveNote(uint8_t onsetStep, int8_t delta,
+              StepMask allowedOnsetSteps,
+              StepMask allowedContinuationSteps,
               StepMask& onsets, StepMask& continuations) {
   const uint8_t end = noteEndStep(onsetStep, continuations);
   const int targetStart = static_cast<int>(onsetStep) + delta;
@@ -81,18 +83,21 @@ bool moveNote(uint8_t onsetStep, int8_t delta, StepMask allowedSteps,
   const StepMask oldSpan = spanMask(onsetStep, end);
   const StepMask newSpan = spanMask(static_cast<uint8_t>(targetStart),
                                     static_cast<uint8_t>(targetEnd));
+  const StepMask newOnset = stepBit(static_cast<uint8_t>(targetStart));
+  const StepMask newContinuations = static_cast<StepMask>(newSpan & ~newOnset);
   const StepMask occupied = static_cast<StepMask>(onsets | continuations);
   const StepMask otherOccupied = static_cast<StepMask>(occupied & ~oldSpan);
-  if ((newSpan & static_cast<StepMask>(~allowedSteps)) != 0) return false;
+  if ((newOnset & static_cast<StepMask>(~allowedOnsetSteps)) != 0)
+    return false;
+  if ((newContinuations &
+       static_cast<StepMask>(~allowedContinuationSteps)) != 0) {
+    return false;
+  }
   if ((newSpan & otherOccupied) != 0) return false;
 
   removeNote(onsetStep, onsets, continuations);
-  onsets = static_cast<StepMask>(
-      onsets | stepBit(static_cast<uint8_t>(targetStart)));
-  for (int step = targetStart + 1; step <= targetEnd; ++step) {
-    continuations = static_cast<StepMask>(
-        continuations | stepBit(static_cast<uint8_t>(step)));
-  }
+  onsets = static_cast<StepMask>(onsets | newOnset);
+  continuations = static_cast<StepMask>(continuations | newContinuations);
   return true;
 }
 
@@ -182,7 +187,9 @@ bool applyInteriorShift(const MelodicPitchIntentRequest& request,
         1u + ((start + attempt) % mutableCount));
     StepMask candidateOnsets = onsets;
     StepMask candidateContinuations = continuations;
-    if (!moveNote(onsetSteps[ordinal], delta, request.allowedSteps,
+    if (!moveNote(onsetSteps[ordinal], delta,
+                  request.allowedOnsetSteps,
+                  request.allowedContinuationSteps,
                   candidateOnsets, candidateContinuations)) {
       continue;
     }
@@ -215,7 +222,8 @@ bool applyTerminalEcho(const MelodicPitchIntentRequest& request,
     const int target = static_cast<int>(terminal) + offset;
     if (target < 0 || target >= kStepsPerBar) continue;
     const StepMask bit = stepBit(static_cast<uint8_t>(target));
-    if ((request.allowedSteps & bit) == 0 || (occupied & bit) != 0) continue;
+    if ((request.allowedOnsetSteps & bit) == 0 || (occupied & bit) != 0)
+      continue;
     onsets = static_cast<StepMask>(onsets | bit);
     return true;
   }
@@ -460,8 +468,6 @@ void enforceBounds(const MelodicPitchIntentRequest& request,
 }
 
 bool validRequest(const MelodicPitchIntentRequest& request) {
-  const StepMask inputOccupied = static_cast<StepMask>(
-      request.rhythmPlan.onsets | request.rhythmPlan.continuations);
   if (request.archetypeId == kNoArchetypeId ||
       static_cast<uint8_t>(request.family) >=
           static_cast<uint8_t>(RhythmFamily::Count) ||
@@ -471,7 +477,10 @@ bool validRequest(const MelodicPitchIntentRequest& request) {
       request.minDegreeOffset > 0 || request.maxDegreeOffset < 0 ||
       request.minDegreeOffset > request.maxDegreeOffset ||
       request.maxOnsets > kStepsPerBar ||
-      (inputOccupied & static_cast<StepMask>(~request.allowedSteps)) != 0 ||
+      (request.rhythmPlan.onsets &
+       static_cast<StepMask>(~request.allowedOnsetSteps)) != 0 ||
+      (request.rhythmPlan.continuations &
+       static_cast<StepMask>(~request.allowedContinuationSteps)) != 0 ||
       !validContinuationTopology(request.rhythmPlan.onsets,
                                  request.rhythmPlan.continuations)) {
     return false;
@@ -522,9 +531,12 @@ MelodicPitchIntentResult realizeMelodicPitchIntent(
   result.plan.rhythmOperation = applyRhythmOperation(
       request, requestedRhythmOperation, onsets, continuations);
   if (!validContinuationTopology(onsets, continuations)) return result;
-  const StepMask outputOccupied = static_cast<StepMask>(onsets | continuations);
-  if ((outputOccupied & static_cast<StepMask>(~request.allowedSteps)) != 0)
+  if ((onsets & static_cast<StepMask>(~request.allowedOnsetSteps)) != 0)
     return result;
+  if ((continuations &
+       static_cast<StepMask>(~request.allowedContinuationSteps)) != 0) {
+    return result;
+  }
 
   result.plan.onsets = onsets;
   result.plan.continuations = continuations;
