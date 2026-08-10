@@ -7,8 +7,9 @@ mkdir -p "${BUILD_DIR}"
 
 python3 "${ROOT_DIR}/tests/test_generation_stage13_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_generation_orthogonality_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_generation_stage14_source_regressions.py"
 
-SOURCES=(
+COMPOSITION_SOURCES=(
   "${ROOT_DIR}/src/generation/generation_context.cpp"
   "${ROOT_DIR}/src/generation/composition/rhythm_selection.cpp"
   "${ROOT_DIR}/src/generation/composition/generation_profile.cpp"
@@ -20,23 +21,59 @@ SOURCES=(
   "${ROOT_DIR}/src/generation/roles/melodic_motif.cpp"
 )
 
+MIGRATION_SOURCES=(
+  "${COMPOSITION_SOURCES[@]}"
+  "${ROOT_DIR}/src/generation/feel/feel_pattern_adapter.cpp"
+  "${ROOT_DIR}/src/generation/rhythm/relationship_resolver.cpp"
+  "${ROOT_DIR}/src/generation/rhythm/rhythm_realizer.cpp"
+  "${ROOT_DIR}/src/generation/materialization/pattern_materializer.cpp"
+  "${ROOT_DIR}/src/generation/roles/semantic_pattern_projector.cpp"
+  "${ROOT_DIR}/src/generation/migration/strong_rhythm_migration.cpp"
+)
+
 build_and_run() {
   local compiler="$1"
-  local output="$2"
-  shift 2
+  local test_source="$2"
+  local output="$3"
+  local source_set="$4"
+  shift 4
+
+  local -a sources
+  if [[ "${source_set}" == "migration" ]]; then
+    sources=("${MIGRATION_SOURCES[@]}")
+  else
+    sources=("${COMPOSITION_SOURCES[@]}")
+  fi
+
   "${compiler}" -std=c++17 -Wall -Wextra -Werror -Wvla \
-    -Wno-c++20-extensions -I"${ROOT_DIR}" "$@" \
-    "${SOURCES[@]}" "${ROOT_DIR}/tests/test_generation_stage13.cpp" \
-    -o "${output}"
+    -Wno-c++20-extensions -Wno-unused-but-set-variable \
+    -I"${ROOT_DIR}" "$@" \
+    "${sources[@]}" "${test_source}" -o "${output}"
   "${output}"
 }
 
-build_and_run "${CXX:-g++}" "${BUILD_DIR}/test_generation_stage13_gcc"
-if command -v clang++ >/dev/null 2>&1; then
-  build_and_run clang++ "${BUILD_DIR}/test_generation_stage13_clang"
-fi
-build_and_run "${CXX:-g++}" \
-  "${BUILD_DIR}/test_generation_stage13_sanitize" \
-  -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined
+run_suite() {
+  local suffix="$1"
+  local compiler="$2"
+  shift 2
 
-printf 'Generation Stage 13 host matrix: OK\n'
+  build_and_run "${compiler}" \
+    "${ROOT_DIR}/tests/test_generation_stage13.cpp" \
+    "${BUILD_DIR}/test_generation_stage13_${suffix}" composition "$@"
+  build_and_run "${compiler}" \
+    "${ROOT_DIR}/tests/test_generation_stage14_genres.cpp" \
+    "${BUILD_DIR}/test_generation_stage14_${suffix}" composition "$@"
+  build_and_run "${compiler}" \
+    "${ROOT_DIR}/tests/test_generation_stage14_hybrid_materialization.cpp" \
+    "${BUILD_DIR}/test_generation_stage14_hybrid_${suffix}" migration "$@"
+}
+
+run_suite gcc "${CXX:-g++}"
+if command -v clang++ >/dev/null 2>&1; then
+  run_suite clang clang++
+fi
+ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
+  run_suite sanitize "${CXX:-g++}" \
+    -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined
+
+printf 'Generation Stage 13/14 host matrix: OK\n'
