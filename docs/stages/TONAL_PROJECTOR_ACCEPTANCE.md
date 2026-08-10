@@ -4,8 +4,9 @@
 
 The Tonal Projector is a shared transient adapter between Stage 15 tonal intent
 and Stage 14 materialization. It converts tagged one-bar tonal offsets into
-absolute MIDI notes using the current harmonic root, `ScaleType`, register
-corridor, and an optional post-projection adjacent-leap limit.
+absolute MIDI notes using the current harmonic root, the existing `ScaleType`
+ABI value, a register corridor, and an optional post-projection adjacent-leap
+limit.
 
 Conceptual boundary:
 
@@ -49,7 +50,7 @@ bash tests/run_tonal_projector_tests.sh
 ```
 
 The gate runs source ownership checks and compiles/executes with GCC, Clang when
-available, and ASan/UBSan.
+available, and ASan/UBSan under C++17.
 
 There is no projector-specific firmware flash acceptance yet because this branch
 has no production caller. Repository Cardputer/SDL builds are compile guards
@@ -70,8 +71,38 @@ For ordinal `N`:
   the transient root;
 - tag bit clear: `tonalOffsets[N]` is a scale-degree displacement.
 
+### Existing ScaleType without Scene ownership
+
+`ScaleType` is currently declared inside the large `scenes.h`. Importing that
+header into this small shared adapter would drag Scene dependencies and existing
+C++20 bit-field extensions into a C++17 host contract. The projector therefore
+stores only the compact numeric value:
+
+```cpp
+using ScaleTypeValue = uint8_t;
+ScaleTypeValue scaleTypeValue;
+```
+
+A later integration adapter passes:
+
+```cpp
+static_cast<uint8_t>(currentScaleType)
+```
+
+No second C++ scale enum is defined. The source regression parses the actual
+`enum ScaleType` in `scenes.h` and pins its exact current order:
+
+```text
+MINOR, MAJOR, DORIAN, PHRYGIAN, LYDIAN, MIXOLYDIAN, LOCRIAN,
+PENTATONIC_MJ, PENTATONIC_MN, CHROMATIC
+```
+
+It also pins the existing default `ScaleType scale = DORIAN`. Any ABI reorder
+must therefore fail the projector gate instead of silently changing music.
+
 The projector must:
 
+- keep `TonalProjectionRequest` fixed-capacity at 24 bytes;
 - use the real `ScaleType` cardinality:
   - seven degrees for MINOR/MAJOR/DORIAN/PHRYGIAN/LYDIAN/MIXOLYDIAN/LOCRIAN;
   - five degrees for PENTATONIC_MJ/PENTATONIC_MN;
@@ -90,6 +121,8 @@ The projector must:
 - evaluate the common adjacent-leap limit only after both inputs have become
   absolute MIDI notes;
 - return `LeapExceeded` when that projected limit is exceeded;
+- expose an atomic result: `noteCount` becomes non-zero only after the entire
+  projection succeeds; every failure leaves `noteCount == 0`;
 - return an explicit status for invalid/empty requests;
 - use fixed-capacity storage, no heap allocation, no global RNG, and no retry
   loop.
@@ -102,23 +135,31 @@ and chromatic `ScaleType` values correctly.
 
 If the isolated host gate fails:
 
-1. Confirm all ten current `ScaleType` values are handled explicitly.
-2. Confirm pentatonic cardinality is 5 and chromatic cardinality is 12.
-3. Confirm negative degree conversion uses floor division.
-4. Confirm semitone-tagged entries bypass scale-degree conversion.
-5. Confirm register failures return status instead of octave-folding.
-6. Confirm mixed degree/semitone entries are compared only after absolute MIDI
+1. Confirm the actual `ScaleType` order in `scenes.h` still matches the pinned
+   compact ABI values.
+2. Confirm the projector header does not include `scenes.h` or define a second
+   `ScaleType` enum.
+3. Confirm pentatonic cardinality is 5 and chromatic cardinality is 12.
+4. Confirm negative degree conversion uses floor division.
+5. Confirm semitone-tagged entries bypass scale-degree conversion.
+6. Confirm register failures return status instead of octave-folding.
+7. Confirm mixed degree/semitone entries are compared only after absolute MIDI
    projection.
-7. Do not add Genre, policy selection, rhythm, Synth A/B routing, Scene, Phrase,
+8. Confirm failure statuses do not publish a non-zero `noteCount`.
+9. Do not add Genre, policy selection, rhythm, Synth A/B routing, Scene, Phrase,
    persistence, or synth-engine ownership to solve integration failures.
-8. Do not wire 15B/15C production callers in this checkpoint PR.
+10. Do not wire 15B/15C production callers in this checkpoint PR.
 
 ## Acceptance checklist
 
 - [ ] `bash tests/run_tonal_projector_tests.sh` passes with GCC.
 - [ ] Clang run passes when Clang is installed.
 - [ ] ASan/UBSan run passes.
-- [ ] All ten existing `ScaleType` values are accepted; invalid values reject.
+- [ ] Projector C++ header remains independent of `scenes.h`.
+- [ ] No second C++ `ScaleType` enum is introduced.
+- [ ] Source gate pins the actual `ScaleType` order and DORIAN default.
+- [ ] `TonalProjectionRequest` remains exactly 24 bytes.
+- [ ] All ten existing `ScaleType` ABI values are accepted; invalid values reject.
 - [ ] Seven-note modes report cardinality 7.
 - [ ] Major/minor pentatonic report cardinality 5.
 - [ ] Chromatic reports cardinality 12.
@@ -130,6 +171,7 @@ If the isolated host gate fails:
 - [ ] Common adjacent-leap validation happens after MIDI projection.
 - [ ] Exact out-of-register intent returns `NoteOutOfRegister`.
 - [ ] Missing root pitch class returns `RootOutOfRegister`.
+- [ ] Failure result leaves `noteCount == 0`.
 - [ ] No silent octave-folding is introduced.
 - [ ] No heap allocation, global RNG, or unbounded retry is introduced.
 - [ ] No Genre, policy, rhythm, voice, Scene, Phrase, persistence, or timbre
