@@ -4,8 +4,8 @@
 
 Stage 15B adds bounded, deterministic **one-bar melodic intent** for Synth B.
 It receives the current Stage 14 melodic candidate and may perform a small
-rhythmic-intent transformation inside an explicit transient legal-step mask,
-then assigns a scale-degree contour and a local pitch-domain motif operation.
+rhythmic-intent transformation inside explicit transient legality masks, then
+assigns a scale-degree contour and a local pitch-domain motif operation.
 
 Stage 15B owns only:
 
@@ -70,14 +70,15 @@ The API must:
 
 - provide `Preserve`, `ControlledRest`, `ShiftInteriorEarlier`,
   `ShiftInteriorLater`, and `TerminalEcho` one-bar rhythm operations;
-- keep all resulting onset/continuation cells inside caller-supplied
-  `allowedSteps`;
+- keep every resulting onset inside caller-supplied `allowedOnsetSteps`;
+- keep every resulting continuation inside caller-supplied
+  `allowedContinuationSteps`;
 - keep onset count at or below `maxOnsets`;
 - remove or move a complete onset+continuation chain rather than leaving orphan
   continuation cells;
 - permit an intentionally empty melodic bar only when `allowEmptyBar` is true;
 - degrade an impossible rhythm preference to `Preserve` instead of violating
-  the legal mask or density budget;
+  legality or density budgets;
 - produce deterministic scale-degree offsets for identical initial state;
 - support Static, StepUp, StepDown, Arch, InvertedArch, LeapReturn, Neighbor,
   RepeatThenUp, and RepeatThenDown pitch contours;
@@ -87,9 +88,11 @@ The API must:
 - use fixed-capacity storage with no heap allocation, global RNG, or unbounded
   retry loop.
 
-`allowedSteps` is semantic melodic-intent space only. It is deliberately **not**
-a replacement for Stage 14 physical Synth B availability: chord/melody blocking
-and one-voice arbitration still happen downstream.
+The two legality masks intentionally follow the current Stage 14 semantics:
+melodic **onsets** may be blocked by protected/bass/chord occupancy while an
+already-started melodic **continuation** can have a different legal space. These
+masks are still semantic intent constraints, not physical Synth B availability.
+Stage 14 remains the owner of chord-first blocking and one-voice arbitration.
 
 ## Troubleshooting
 
@@ -104,9 +107,9 @@ If compilation fails in the Stage 15B test:
 5. If Stage 14 changes `MelodicMotifPlan`, adapt only the transient input adapter;
    do not add Phrase or voice-allocation ownership.
 
-If a requested shift cannot fit inside `allowedSteps`, `Preserve` is the expected
-fallback. If `TerminalEcho` cannot add a legal onset below `maxOnsets`,
-`Preserve` is also expected.
+If a requested shift cannot fit its onset and continuation legality masks,
+`Preserve` is the expected fallback. If `TerminalEcho` cannot add a legal onset
+below `maxOnsets`, `Preserve` is also expected.
 
 If the source regression reports a forbidden owner such as `Scene`, `PhraseCore`,
 full-groove fingerprint history, physical `SynthPattern`, heap containers, or
@@ -118,9 +121,12 @@ full-groove fingerprint history, physical `SynthPattern`, heap containers, or
 - [ ] Clang run passes when Clang is installed.
 - [ ] ASan/UBSan run passes.
 - [ ] `Preserve` leaves input onset and continuation masks unchanged.
+- [ ] Onsets never leave `allowedOnsetSteps`.
+- [ ] Continuations never leave `allowedContinuationSteps`.
 - [ ] Controlled rests remove whole note chains with no orphan continuation.
 - [ ] Shifts preserve note count and continuation-chain validity.
-- [ ] Terminal echo never exceeds `maxOnsets` or leaves `allowedSteps`.
+- [ ] Terminal echo never exceeds `maxOnsets`, collides with an occupied cell,
+      or leaves `allowedOnsetSteps`.
 - [ ] Impossible rhythm operations deterministically fall back to `Preserve`.
 - [ ] Empty melodic intent is produced only when the caller allows it.
 - [ ] Identical initial state produces identical rhythm/contour/motif intent.
