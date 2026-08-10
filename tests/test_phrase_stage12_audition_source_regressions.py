@@ -26,20 +26,20 @@ def require(text: str, needle: str, message: str) -> None:
         raise AssertionError(message)
 
 
-# Shift+G owns the explicit audition path, including Cardputer's scancode-only G
-# representation. Plain G must explicitly reject Shift so the two commands can
-# never alias on hardware.
+# Cardputer ADV has no dedicated Shift key in this workflow. Ctrl+Alt+G owns the
+# explicit audition path and still recognizes scancode-only G. Plain G, Ctrl+G,
+# and Alt+G must remain disjoint.
 for needle in (
     "lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G",
-    "if (keyG && ui_event.shift &&",
+    "if (keyG && ui_event.ctrl && ui_event.alt && !ui_event.meta)",
     "regeneratePhraseAuditionWithProbe",
     '"AUD %uB %s #%u"',
-    "if (keyG && !ui_event.shift &&",
+    "if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta)",
     "regenerateDrumsWithStrongRhythmMigration",
 ):
     require(DRUM_PAGE, needle, f"Stage 12 audition input contract changed: {needle}")
 
-# Existing destructive/editor tools stay separate from both normal G and Shift+G.
+# Existing destructive/editor tools stay separate from normal G and audition.
 require(
     DRUM_LEGACY,
     "mini_acid_.randomizeDrumVoice(voice);",
