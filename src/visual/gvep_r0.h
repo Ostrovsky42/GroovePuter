@@ -78,6 +78,10 @@ public:
                     uint32_t musicalTick,
                     uint16_t bar,
                     uint8_t step) {
+        // There is exactly one producer: AudioTask. Allocate the sequence before
+        // the fullness check so a local visual-queue drop is visible to remote
+        // receivers as a sequence gap as well as in the local drop counter.
+        const uint32_t sequence = nextSequence_++;
         const uint32_t write = writeIndex_.load(std::memory_order_relaxed);
         const uint32_t read = readIndex_.load(std::memory_order_acquire);
         const uint32_t depth = write - read;
@@ -89,14 +93,22 @@ public:
         GvepEvent& slot = queue_[write & (kCapacity - 1u)];
         slot.type = type;
         slot.value = value;
-        slot.sequence = nextSequence_++;
+        slot.sequence = sequence;
         slot.musicalTick = musicalTick;
         slot.bar = bar;
         slot.step = step;
 
         writeIndex_.store(write + 1u, std::memory_order_release);
         published_.fetch_add(1, std::memory_order_relaxed);
-        updateHighWater(depth + 1u);
+
+        // AudioTask is the only writer of highWater_. The TX task only reads
+        // it for diagnostics, so a single bounded load/store is sufficient and
+        // avoids a compare-exchange retry loop on the realtime producer path.
+        const uint32_t currentHighWater =
+            highWater_.load(std::memory_order_relaxed);
+        if (depth + 1u > currentHighWater) {
+            highWater_.store(depth + 1u, std::memory_order_relaxed);
+        }
         return true;
     }
 
@@ -128,17 +140,6 @@ public:
     }
 
 private:
-    void updateHighWater(uint32_t depth) {
-        uint32_t current = highWater_.load(std::memory_order_relaxed);
-        while (depth > current &&
-               !highWater_.compare_exchange_weak(
-                   current,
-                   depth,
-                   std::memory_order_relaxed,
-                   std::memory_order_relaxed)) {
-        }
-    }
-
     static_assert((kCapacity & (kCapacity - 1u)) == 0u,
                   "GVEP R0 queue capacity must be a power of two");
 
