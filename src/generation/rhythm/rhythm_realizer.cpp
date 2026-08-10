@@ -1070,12 +1070,19 @@ void addVariation(const RhythmArchetype& archetype,
   const uint8_t secondaryAdds = secondaryBudgetFor(budget);
   const uint8_t ghostAdds = ghostBudgetFor(archetype, plan.level);
 
+  // Preserve legacy deterministic output for the variation class that already
+  // existed at this level. P2 remains bit-for-bit on its old unsalted ghost
+  // path; P3 keeps the old unsalted secondary path. Only the new second pass
+  // receives a disjoint salt.
   if (secondaryAdds != 0) {
-    addVariationPass(archetype, seed ^ 0x53454331u,
+    addVariationPass(archetype, seed,
                      plan, occupancy, secondaryAdds, true);
   }
   if (ghostAdds != 0) {
-    addVariationPass(archetype, seed ^ 0x47484F31u,
+    const uint32_t ghostSeed = secondaryAdds != 0
+        ? seed ^ 0x47484F31u
+        : seed;
+    addVariationPass(archetype, ghostSeed,
                      plan, occupancy, ghostAdds, false);
   }
 }
