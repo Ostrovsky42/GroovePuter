@@ -156,6 +156,8 @@ ProgressionId selectId(const ChordProgressionRequest& request) {
   if (request.requestedId != ProgressionId::Auto) return request.requestedId;
   const ProgressionCandidates candidates = candidatesFor(request.family);
   if (candidates.count == 0) return ProgressionId::Auto;
+  // ProgressionId is append-only: this numeric value is the stable ChordPitch
+  // salt, so renumbering an existing id would change the deterministic corpus.
   const uint32_t seed = deriveGenerationSeed(
       request.generation, kNoArchetypeId, GenerationDomain::ChordPitch,
       static_cast<uint8_t>(ProgressionId::Auto));
@@ -170,6 +172,8 @@ const Grammar* selectGrammar(const ChordProgressionRequest& request,
                              ProgressionId id) {
   const GrammarSet* set = grammarSetFor(id);
   if (set == nullptr || set->count == 0) return nullptr;
+  // The concrete progression id is the salt inside the existing ChordPitch
+  // domain. Keep existing enum values stable; append new values before Count.
   const uint32_t seed = deriveGenerationSeed(
       request.generation, kNoArchetypeId, GenerationDomain::ChordPitch,
       static_cast<uint8_t>(id));
