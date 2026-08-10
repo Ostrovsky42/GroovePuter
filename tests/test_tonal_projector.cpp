@@ -79,6 +79,22 @@ int main() {
   assert(scaleCardinality(kChromaticValue) == 12);
   assert(scaleCardinality(255) == 0);
 
+  // The ordinal tag mask is exactly 16 bits. Pin the full-width boundary so
+  // onsetCount=16 accepts bit 15 without shifting by the word width.
+  {
+    TonalProjectionRequest request = baseRequest();
+    request.onsetCount = kStepsPerBar;
+    request.semitoneOffsetOrdinals = static_cast<uint16_t>(1u << 15);
+    for (uint8_t i = 0; i < kStepsPerBar; ++i)
+      request.tonalOffsets[i] = 0;
+    const auto result = projectTonalIntent(request);
+    assert(result.status == TonalProjectionStatus::Ok);
+    assert(result.noteCount == kStepsPerBar);
+    assert(result.rootAnchorMidi == 60);
+    for (uint8_t i = 0; i < kStepsPerBar; ++i)
+      assert(result.midiNotes[i] == 60);
+  }
+
   // Empty input is valid and does not require the root pitch class to occur in
   // the register because no note is materialized.
   {
