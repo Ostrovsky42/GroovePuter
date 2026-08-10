@@ -7,25 +7,19 @@ header = (ROOT / "src/dsp/genre_manager.h").read_text(encoding="utf-8")
 engine = (ROOT / "src/dsp/miniacid_engine.h").read_text(encoding="utf-8")
 page = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
 
-start = source.index("void GenreSceneView::applyGenreTimbre")
-block = source[start:]
-
-required = (
-    "recipe() == 6 || recipe() == 7",
-    "recipe() >= 8 && recipe() <= 11",
-    'engine.setSynthEngine(0, "TB303")',
-    'engine.setSynthEngine(1, "TB303")',
-    'engine.setSynthEngine(1, "OPL2")',
-    'engine.currentSynthEngineName(v) != "TB303"',
-)
-for item in required:
-    if item not in block:
-        raise AssertionError(f"missing Atlas sound-profile invariant: {item}")
-
-engine_switch = block.index('engine.setSynthEngine(0, "TB303")')
-parameter_write = block.index("engine.set303ParameterNormalized")
-if engine_switch >= parameter_write:
-    raise AssertionError("preview engines must be selected before parameter writes")
+# Genre/Atlas metadata may constrain generation, but it must not project a
+# physical synth engine or overwrite the persisted user patch.
+for path, text in (
+    ("genre_manager.h", header),
+    ("genre_manager.cpp", source),
+    ("genre_page.cpp", page),
+):
+    if "applyGenreTimbre" in text:
+        raise AssertionError(f"dead genre timbre projection API returned: {path}")
+if "setSynthEngine(" in source or "set303ParameterNormalized" in source:
+    raise AssertionError("GenreSceneView must not project synth TYPE or parameters")
+if '"miniacid_engine.h"' in source:
+    raise AssertionError("genre catalog/view must not depend on synth engine runtime")
 
 for removed_texture_symbol in (
     "TextureMode",

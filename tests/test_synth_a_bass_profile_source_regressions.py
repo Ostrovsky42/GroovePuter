@@ -43,25 +43,16 @@ forbid(
     "MIDI-note range must not be treated as an octave index or ignored at 36+",
 )
 
-for bound in (
-    "if (cut < 0.18f) cut = 0.18f;",
-    "if (cut > 0.62f) cut = 0.62f;",
-    "if (env < 0.18f) env = 0.18f;",
-    "if (env > 0.55f) env = 0.55f;",
-    "if (decay < 0.10f) decay = 0.10f;",
-    "if (decay > 0.45f) decay = 0.45f;",
+# The former audibility clamps lived only in the dead applyGenreTimbre API and
+# had no callers. Genre metadata must not regain physical synth patch ownership;
+# audible TB303 safety remains enforced in the actual DSP path below.
+for projection in (
+    "applyGenreTimbre",
+    "setSynthEngine(",
+    "set303ParameterNormalized",
 ):
-    require(genre_source, bound, f"missing Synth A audibility bound: {bound}")
-
-for old_bound in (
-    "if (cut < 0.05f) cut = 0.05f;",
-    "if (cut > 0.45f) cut = 0.45f;",
-    "if (env < 0.02f) env = 0.02f;",
-    "if (env > 0.20f) env = 0.20f;",
-    "if (decay < 0.04f) decay = 0.04f;",
-    "if (decay > 0.25f) decay = 0.25f;",
-):
-    forbid(genre_source, old_bound, f"obsolete over-dark Synth A bound remains: {old_bound}")
+    forbid(genre_source, projection,
+           f"Genre code must not project the Synth A patch: {projection}")
 
 chamberlin_start = filter_source.index("float ChamberlinFilter::process")
 chamberlin_end = filter_source.index("// === DIODE FILTER", chamberlin_start)
