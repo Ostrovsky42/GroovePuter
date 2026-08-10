@@ -1,0 +1,18 @@
+name: Tonal Projector
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tonal-projector-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Tonal Projector host matrix
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_tonal_projector_tests.sh
