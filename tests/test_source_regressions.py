@@ -355,7 +355,11 @@ def test_enter_applies_selected_recipe() -> None:
             "Enter must apply the selected recipe")
     require("cycleApplyMode" not in enter_block,
             "Enter must not cycle the apply mode")
-    require('right = "ENTER:Apply M:ApplyMode";' in page,
+
+    footer_start = page.index("UI::drawStandardFooter(gfx")
+    footer_end = page.index(");", footer_start)
+    footer_block = page[footer_start:footer_end]
+    require('"ENTER:Apply M:ApplyMode"' in footer_block,
             "Apply footer must document Enter and M controls")
 
 
