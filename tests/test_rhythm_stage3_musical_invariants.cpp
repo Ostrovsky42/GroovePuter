@@ -28,35 +28,18 @@ StepMask onsets(const RhythmPhrasePlan& plan, RhythmRole role) {
       lane.structural | lane.secondary | lane.ghosts);
 }
 
-bool rolePlanEqual(const RoleRhythmPlan& lhs,
-                   const RoleRhythmPlan& rhs) {
-  return lhs.structural == rhs.structural &&
-         lhs.secondary == rhs.secondary &&
-         lhs.ghosts == rhs.ghosts &&
-         lhs.shortGate == rhs.shortGate &&
-         lhs.heldGate == rhs.heldGate &&
-         lhs.tieGate == rhs.tieGate &&
-         lhs.accents == rhs.accents;
-}
-
-bool planEqual(const RhythmPhrasePlan& lhs,
-               const RhythmPhrasePlan& rhs) {
-  if (lhs.barCount != rhs.barCount ||
-      lhs.trajectoryId != rhs.trajectoryId ||
-      lhs.level != rhs.level ||
-      lhs.intent != rhs.intent) {
-    return false;
+uint64_t musicalSignature(const RhythmPhrasePlan& plan) {
+  uint64_t hash = 1469598103934665603ull;
+  for (uint8_t role = 0; role < kRhythmRoleCount; ++role) {
+    const RoleRhythmPlan& value = plan.bars[0].roles[role];
+    hash ^= value.structural;
+    hash *= 1099511628211ull;
+    hash ^= value.secondary;
+    hash *= 1099511628211ull;
+    hash ^= value.ghosts;
+    hash *= 1099511628211ull;
   }
-  for (uint8_t bar = 0; bar < kMaxPhraseBars; ++bar) {
-    if (lhs.bars[bar].function != rhs.bars[bar].function) return false;
-    for (uint8_t role = 0; role < kRhythmRoleCount; ++role) {
-      if (!rolePlanEqual(lhs.bars[bar].roles[role],
-                         rhs.bars[bar].roles[role])) {
-        return false;
-      }
-    }
-  }
-  return true;
+  return hash;
 }
 
 RhythmRealizationResult realize(const RhythmCatalogView& vocabulary,
@@ -188,14 +171,15 @@ int main() {
       const auto p1 = realize(vocabulary, *archetype, seed, index,
                               RealizationLevel::P1Canonical);
       assert(p1.status != RealizationStatus::InvalidConstraintSet);
+      const uint64_t p1Signature = musicalSignature(p1.plan);
       const auto p2 = realize(vocabulary, *archetype, seed, index,
                               RealizationLevel::P2Variation, &p1.identity);
       const auto p3 = realize(vocabulary, *archetype, seed, index,
                               RealizationLevel::P3Transformation, &p1.identity);
       assert(p2.status != RealizationStatus::InvalidConstraintSet);
       assert(p3.status != RealizationStatus::InvalidConstraintSet);
-      if (!planEqual(p1.plan, p2.plan)) ++p2ChangedSeeds;
-      if (!planEqual(p1.plan, p3.plan)) ++p3ChangedSeeds;
+      if (musicalSignature(p2.plan) != p1Signature) ++p2ChangedSeeds;
+      if (musicalSignature(p3.plan) != p1Signature) ++p3ChangedSeeds;
     }
 
     std::fprintf(stderr,
@@ -207,9 +191,10 @@ int main() {
     if (p3ChangedSeeds != 0) ++p3VariedArchetypes;
   }
 
-  // Stage 3 is a reference package, not a fixed-pattern library. Every
-  // archetype must expose at least one legal P2 and P3 realization distinct
-  // from its P1 statement somewhere in the deterministic seed corpus.
+  // ReferenceVocabulary is a generative catalog, not a fixed-pattern library.
+  // Every archetype must expose at least one legal P2 and P3 audible topology
+  // change somewhere in the deterministic seed corpus. Compare event topology,
+  // not the RealizationLevel metadata field.
   assert(p2VariedArchetypes == definitionCount());
   assert(p3VariedArchetypes == definitionCount());
 
