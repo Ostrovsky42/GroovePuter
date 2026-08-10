@@ -76,13 +76,21 @@ forbid(
 for needle in (
     '"FEEL 2/2"',
     '"TIMING / VELOCITY"',
+    "scene.feel.timingProfile",
+    "mini_acid_.applyFeelTimingFromScene_();",
     "scene.feel.swingPct",
     "microTimingAmount",
     "velocityRange",
+    "FocusRow::Repeats",
+    "scene.feel.patternBars",
+    "shiftRepeatBars",
+    '"REPEATS"',
     "if (focus_ == FocusRow::Preset)",
     "preset_index_ = wrapIndex",
 ):
     require(FEEL, needle, f"FEEL contract missing: {needle}")
+for repeat_value in ("1, 2, 4, 8", '"CYCLE: repeat 1/2/4/8 bars"'):
+    require(FEEL, repeat_value, f"FEEL repeat contract missing: {repeat_value}")
 forbid(
     FEEL,
     (
