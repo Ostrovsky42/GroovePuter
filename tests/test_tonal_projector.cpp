@@ -182,11 +182,12 @@ int main() {
   }
 
   // Named octave intent is not silently octave-folded to satisfy the register.
+  // The only C root in 54..66 is C60, so tagged +12 must reject as C72.
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 1;
-    request.minMidi = 48;
-    request.maxMidi = 60;
+    request.minMidi = 54;
+    request.maxMidi = 66;
     request.tonalOffsets[0] = 12;
     request.semitoneOffsetOrdinals = 1;
     const auto result = projectTonalIntent(request);
