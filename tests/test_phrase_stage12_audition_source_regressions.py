@@ -39,7 +39,6 @@ for needle in (
 ):
     require(DRUM_PAGE, needle, f"Stage 12 audition input contract changed: {needle}")
 
-# Existing destructive/editor tools stay separate from normal G and audition.
 require(
     DRUM_LEGACY,
     "mini_acid_.randomizeDrumVoice(voice);",
@@ -52,18 +51,26 @@ require(
 )
 
 # Audition is deliberately destructive only inside current-page Bank B + Song B
-# and must route playback through the existing song transport rather than adding
-# a second sequencer/transport owner.
+# and uses explicitly addressed current-bank local slots. The normal current-
+# pattern synth bindings must remain unique to the ordinary whole-pattern G path.
 for needle in (
     "constexpr int kPhraseAuditionBank = 1;",
     "constexpr int kPhraseAuditionSongSlot = 1;",
     "songPatternFromPageBankIndex",
+    "manager.editDrumPatternSet(bar)",
+    "manager.editSynthPattern(0, bar)",
+    "manager.editSynthPattern(1, bar)",
     "engine.setActiveSongSlot(kPhraseAuditionSongSlot);",
     "engine.setSongPlaybackSlot(kPhraseAuditionSongSlot);",
     "engine.setSongMode(true);",
     "engine.setLoopRange(0, result.requestedBars - 1);",
 ):
     require(BRIDGE_CPP, needle, f"audition storage/transport contract changed: {needle}")
+
+if BRIDGE_CPP.count("engine.sceneManager().editCurrentSynthPattern(0)") != 1:
+    raise AssertionError("normal Synth A live binding is no longer unique")
+if BRIDGE_CPP.count("engine.sceneManager().editCurrentSynthPattern(1)") != 1:
+    raise AssertionError("normal Synth B live binding is no longer unique")
 
 # One production Stage 14 identity is selected and locked before writing bars.
 for needle in (
@@ -89,7 +96,8 @@ for needle in (
     require(BRIDGE_CPP, needle, f"audition evolution/fallback contract changed: {needle}")
 
 # Physical ESP32-S3 probe: execute the actual linked candidate catalog and record
-# stack, internal heap, largest free block, and worst Reduction/Break duration.
+# stack lifetime minimum, internal heap, largest free block, and worst
+# Reduction/Break duration.
 for needle in (
     "uxTaskGetStackHighWaterMark(nullptr)",
     "heap_caps_get_free_size(caps)",
@@ -125,8 +133,6 @@ for forbidden in ("phraseEvolutionCatalog", "evolveMultiBarPhrase"):
             f"normal strong migration leaked audition-only symbol: {forbidden}"
         )
 
-# Header must make the destructive reservation and opt-in nature visible to
-# callers; this is test firmware behavior, not a hidden change to normal G.
 for needle in (
     "Explicit Stage 12 audition/probe command. It never replaces normal G.",
     "reserves Bank B (current page) patterns 1..8 and Song B for audition",
