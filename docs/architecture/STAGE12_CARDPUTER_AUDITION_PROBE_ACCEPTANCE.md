@@ -127,12 +127,13 @@ normal transport controls responsible for playback.
 
 ## All-genre listening matrix
 
-Run at least one audition for every visible genre:
+The host gate covers every current `GenerativeMode`, and hardware acceptance
+must listen to the same 16 modes:
 
 ```text
 Acid
-Minimal / Outrun
-Techno / Darksynth
+Outrun
+Darksynth
 Electro
 Rave
 Reggae
@@ -149,7 +150,8 @@ LoFi
 ```
 
 Use the labels shown by the current GENRE page if a display label differs from
-the internal enum name.
+the internal enum name. Do not combine Outrun/Darksynth or otherwise reduce the
+matrix: each enum is a separate compatibility/selection case.
 
 For multi-bar-focused listening, use FEEL REPEATS `4` first, then `8` on styles
 where longer development matters most: LoFi, TripHop, HipHop, Broken,
@@ -196,17 +198,22 @@ whole audition command duration
 worst measured 4-bar P2 Reduction duration + archetype id
 worst measured 4-bar P3 Break duration + archetype id
 stack high-water before/after
-remaining stack bytes after probe
+stack high-water converted to bytes
 internal free heap before/after
 largest internal heap block before/after
 ```
+
+`uxTaskGetStackHighWaterMark()` is a **lifetime minimum remaining stack** for the
+current task, not an instantaneous free-stack reading. A lower after-value means
+this command established a new deeper stack-use watermark. Record the raw words
+and byte conversion from Serial; do not describe it as current remaining stack.
 
 Keep the complete line from the first 4-bar run and the first 8-bar run.
 
 ### Musical behavior
 
-- All supported genres must produce a listenable audition rather than silently
-  falling back to an unrelated random drum pattern.
+- All 16 modes must produce a listenable audition rather than silently falling
+  back to an unrelated random drum pattern.
 - Stage 12-enabled Broken / DnB / UKG / Electro identities should exhibit real
   inter-bar structure when selected.
 - `416 halftime_switch` remains multi-bar but non-subtractive: its accepted P1
@@ -223,7 +230,7 @@ works musically. Record the probe values first.
 The physical gate must review together:
 
 ```text
-minimum observed remaining stack after command
+lowest observed task stack high-water mark after command
 largest internal heap block after command
 fixed-DRAM build result with candidate catalog linked
 worst Reduction duration
@@ -274,6 +281,7 @@ separate existing meanings.
 ```text
 [ ] Focused Stage 12 tests pass.
 [ ] Full host suite exits 0.
+[ ] All 16 GenerativeMode base profiles resolve through the strong audition boundary.
 [ ] SDL build passes.
 [ ] Cardputer ADV normal compile passes.
 [ ] Fixed DRAM gate passes with the candidate catalog now linked.
@@ -290,13 +298,29 @@ separate existing meanings.
 [ ] Song A remains untouched by audition.
 [ ] Current-page Bank B is the only pattern-bank reservation.
 [ ] Song B is the only song reservation.
-[ ] Every visible genre produces EVOLVED or VARIATION, not SELECT_FAIL/MATERIAL_FAIL.
+[ ] Acid audition is listenable.
+[ ] Outrun audition is listenable.
+[ ] Darksynth audition is listenable.
+[ ] Electro audition is listenable.
+[ ] Rave audition is listenable.
+[ ] Reggae audition is listenable.
+[ ] TripHop audition is listenable.
+[ ] Broken audition is listenable.
+[ ] Chip audition is listenable.
+[ ] House audition is listenable.
+[ ] Techno audition is listenable.
+[ ] HipHop audition is listenable.
+[ ] FunkSoul audition is listenable.
+[ ] UK Garage audition is listenable.
+[ ] Drum & Bass audition is listenable.
+[ ] LoFi audition is listenable.
+[ ] No genre returns SELECT_FAIL/MATERIAL_FAIL under base AUTO selection.
 [ ] Stage 12-enabled selections audibly differ across bars.
 [ ] 416 halftime_switch does not fake Reduction/Break.
 [ ] A [PHRASE-PROBE] line is captured for a 4-bar audition.
 [ ] A [PHRASE-PROBE] line is captured for an 8-bar audition.
 [ ] Reduction/Break worst-case timings are recorded.
-[ ] Remaining stack and largest internal heap block are recorded.
+[ ] Task stack lifetime-minimum and largest internal heap block are recorded.
 [ ] No watchdog/reset occurs during repeated audition generation.
 [ ] No new audio underruns appear during the listening matrix.
 [ ] 30-minute Song B playback soak completes without regression.
