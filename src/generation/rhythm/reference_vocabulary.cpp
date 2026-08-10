@@ -722,9 +722,10 @@ constexpr LaneRelationship kMachineSyncopationRelationships[] = {
 
 // Stage 7 / Batch 2 production curation ------------------------------------
 // These four one-bar drum identities are copied from the exact hardware-audited
-// Stage 7B contracts. No Bass/Chord/Melodic role is inferred during admission.
+// Stage 7B contracts. IDs 711..714 are retained because archetype.id is part of
+// the RhythmIdentity seed domain; renumbering would change the audited corpus.
 
-// 421 stacked_quarters / HARD_01
+// 711 stacked_quarters / HARD_01
 constexpr LaneGrammar kStackedQuartersLanes[] = {
     lane(RhythmRole::Kick, 0,
          stepBit(0) | stepBit(8),
@@ -750,7 +751,7 @@ constexpr LaneGrammar kStackedQuartersLanes[] = {
          0, 2, 1),
 };
 
-// 422 electro_backskip / HARD_06
+// 712 electro_backskip / HARD_06
 constexpr LaneGrammar kElectroBackskipLanes[] = {
     lane(RhythmRole::Kick, 0,
          stepBit(0) | stepBit(10),
@@ -780,7 +781,7 @@ constexpr LaneRelationship kElectroBackskipRelationships[] = {
     hardExclude(RhythmRole::Backbeat, RhythmRole::Kick),
 };
 
-// 423 funk_house_bridge / HARD_07
+// 713 funk_house_bridge / HARD_07
 constexpr LaneGrammar kFunkHouseBridgeLanes[] = {
     lane(RhythmRole::Kick, 0,
          stepBit(0) | stepBit(8),
@@ -807,7 +808,7 @@ constexpr LaneGrammar kFunkHouseBridgeLanes[] = {
          1, 3, 2),
 };
 
-// 424 electro_gap_push / HARD_08
+// 714 electro_gap_push / HARD_08
 constexpr LaneGrammar kElectroGapPushLanes[] = {
     lane(RhythmRole::Kick, 0,
          stepBit(0) | stepBit(6),
@@ -974,17 +975,17 @@ constexpr RhythmArchetype kArchetypes[] = {
               kMachineSyncopationRelationships, 2,
               DensityContract{13, 16, 27, 7},
               timing(TimingCompatibility::StraightOnly, 0, 0)),
-    archetype(421, RhythmFamily::FourFloor, kStage7Drums,
+    archetype(711, RhythmFamily::FourFloor, kStage7Drums,
               kStackedQuartersLanes, 5, nullptr, 0,
               nullptr, 0,
               DensityContract{6, 9, 16, 4},
               timing(TimingCompatibility::StraightOnly, 0, 0)),
-    archetype(422, RhythmFamily::MachineSyncopation, kStage7Drums,
+    archetype(712, RhythmFamily::MachineSyncopation, kStage7Drums,
               kElectroBackskipLanes, 5, nullptr, 0,
               kElectroBackskipRelationships, 1,
               DensityContract{7, 10, 18, 5},
               timing(TimingCompatibility::StraightOnly, 0, 0)),
-    archetype(423, RhythmFamily::Funk16, kStage7Drums,
+    archetype(713, RhythmFamily::Funk16, kStage7Drums,
               kFunkHouseBridgeLanes, 5, nullptr, 0,
               nullptr, 0,
               DensityContract{7, 11, 18, 5},
@@ -993,7 +994,7 @@ constexpr RhythmArchetype kArchetypes[] = {
                      rhythmRoleBit(RhythmRole::Kick) |
                          rhythmRoleBit(RhythmRole::ClosedHat) |
                          rhythmRoleBit(RhythmRole::Percussion))),
-    archetype(424, RhythmFamily::HipHopBackbeat, kStage7Drums,
+    archetype(714, RhythmFamily::HipHopBackbeat, kStage7Drums,
               kElectroGapPushLanes, 5, nullptr, 0,
               kElectroGapPushRelationships, 1,
               DensityContract{6, 9, 17, 5},
@@ -1021,10 +1022,10 @@ constexpr Definition kDefinitions[] = {
     {Archetype::SkippyTwoStep, 418, "skippy_2step", RhythmFamily::UkTwoStep, 130, 142},
     {Archetype::ShuffledFourFour, 419, "shuffled_4x4", RhythmFamily::UkTwoStep, 126, 140},
     {Archetype::MachineSyncopation, 420, "machine_syncopation", RhythmFamily::MachineSyncopation, 116, 142},
-    {Archetype::StackedQuarters, 421, "stacked_quarters", RhythmFamily::FourFloor, 122, 122},
-    {Archetype::ElectroBackskip, 422, "electro_backskip", RhythmFamily::MachineSyncopation, 116, 116},
-    {Archetype::FunkHouseBridge, 423, "funk_house_bridge", RhythmFamily::Funk16, 112, 112},
-    {Archetype::ElectroGapPush, 424, "electro_gap_push", RhythmFamily::HipHopBackbeat, 114, 114},
+    {Archetype::StackedQuarters, 711, "stacked_quarters", RhythmFamily::FourFloor, 122, 122},
+    {Archetype::ElectroBackskip, 712, "electro_backskip", RhythmFamily::MachineSyncopation, 116, 116},
+    {Archetype::FunkHouseBridge, 713, "funk_house_bridge", RhythmFamily::Funk16, 112, 112},
+    {Archetype::ElectroGapPush, 714, "electro_gap_push", RhythmFamily::HipHopBackbeat, 114, 114},
 };
 
 constexpr RhythmCatalogView kCatalog = {
