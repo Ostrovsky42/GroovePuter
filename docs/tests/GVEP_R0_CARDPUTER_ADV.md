@@ -11,11 +11,14 @@ R0 is intentionally narrow:
 - fixed 24-byte GVEP v1 packets;
 - `KICK`, `PLAY`, `STOP` only;
 - fixed 16-event SPSC queue;
+- at most one ESP-NOW send outstanding at a time;
 - no acknowledgement/retry protocol;
 - no Scene/project persistence;
 - no production Settings UI change.
 
-The normal build keeps `GROOVEPUTER_GVEP_R0=0`. The dedicated R0 build sets it to `1`. In the R0 build the transmitter starts only after the normal GroovePuter UI object exists, then waits another 2 seconds before Wi-Fi initialization so the serial checkpoints measure the loaded application rather than early boot.
+The normal build keeps `GROOVEPUTER_GVEP_R0=0`. The dedicated R0 build sets it to `1`. In the R0 build a small static TX worker exists, but it does not initialize Wi-Fi or ESP-NOW until AudioTask publishes the first real GVEP semantic event. For normal local operation this is the first `PLAY` after setup has completed. This keeps the bootstrap independent of UI objects and lets the serial checkpoints measure radio allocation against an already loaded GroovePuter runtime.
+
+The first event is retained in the fixed queue while Wi-Fi/ESP-NOW initializes, so the receiver may see that initial `PLAY` later than steady-state events. R0 measures feasibility; startup latency optimization belongs after the memory/jitter gate passes.
 
 The final feature still requires the documented production contract:
 
@@ -76,7 +79,7 @@ bash scripts/install_arduino_deps.sh
 
 The repository pins the M5Stack ESP32 core and M5 libraries used by the normal Cardputer ADV build.
 
-### 3. Run the focused host protocol test
+### 3. Run the focused host protocol tests
 
 ```bash
 bash tests/run_gvep_r0_tests.sh
@@ -87,6 +90,8 @@ Expected:
 ```text
 GVEP R0 host tests: PASS
 ```
+
+The focused suite checks the exact 24-byte wire layout, bounded queue overflow/sequence-gap behavior, and the normalized `PLAY -> KICK -> bar wrap -> KICK -> STOP` event tap.
 
 ### 4. Build the normal OFF baseline
 
@@ -146,7 +151,9 @@ The normal GroovePuter UI must look and behave exactly as before. R0 adds no pag
 
 ### Cardputer ADV serial
 
-After the normal UI is constructed, serial must show the ordered resource checkpoints:
+Before the first GVEP semantic event, the R0 build must not print radio-ready diagnostics and must not initialize Wi-Fi for GVEP.
+
+Start playback once. The first `PLAY` is queued, then serial must show the ordered resource checkpoints:
 
 ```text
 [GVEP-R0][before-wifi] freeInt=... minInt=... largestInt=... freePsram=...
@@ -156,10 +163,10 @@ After the normal UI is constructed, serial must show the ordered resource checkp
 [GVEP-R0] READY channel=6 tx=..:..:..:..:..:.. packet=24B
 ```
 
-Every five seconds while enabled:
+Every five seconds while the R0 transport is active:
 
 ```text
-[GVEP-R0][RUN] freeInt=... minInt=... largestInt=... pub=... pop=... drop=... high=... send=.../... cb=.../... initFail=...
+[GVEP-R0][RUN] freeInt=... minInt=... largestInt=... pub=... pop=... drop=... high=... send=.../... cb=.../... inFlight=... initFail=...
 ```
 
 Interpretation:
@@ -170,7 +177,10 @@ Interpretation:
 - `high`: maximum observed queue depth, maximum `16`;
 - `send=A/B`: `esp_now_send()` accepted/failed enqueue counts;
 - `cb=A/B`: ESP-NOW send callback success/fail counts;
+- `inFlight`: `1` only while one accepted ESP-NOW send awaits its callback;
 - `initFail`: initialization failures.
+
+A queue overflow consumes a GVEP sequence number even though that event is not sent. The next transmitted event therefore exposes a sequence gap to the receiver as well as incrementing the local `drop` counter.
 
 ### Receiver serial
 
@@ -181,7 +191,7 @@ GVEP R0 reference receiver
 [GVEP] READY channel=6 rx=..:..:..:..:..:..
 ```
 
-Starting GroovePuter playback should produce a `PLAY` event. Pattern kick hits should produce `KICK`. Stopping playback should produce `STOP`.
+Starting GroovePuter playback should eventually produce a `PLAY` event after one-time R0 radio initialization. Pattern kick hits should produce `KICK`. Stopping playback should produce `STOP`.
 
 Example:
 
@@ -199,7 +209,7 @@ Flash the normal build from step 4 and record the existing GroovePuter heap diag
 
 ### B. R0 radio deltas
 
-Flash the R0 build and copy these four lines verbatim:
+Flash the R0 build. Do not start playback immediately; confirm normal UI/audio startup first. Then start playback once and copy these four lines verbatim:
 
 ```text
 before-wifi
@@ -231,6 +241,8 @@ Listen for:
 - UI stalls;
 - MIDI/SEQTRAK clock degradation.
 
+Only one ESP-NOW frame may be outstanding. If radio delivery cannot keep up, the fixed producer queue eventually drops visual events rather than making AudioTask wait.
+
 `drop > 0` is preferable to any audio failure.
 
 ### D. 30-minute soak
@@ -250,6 +262,10 @@ Broadcast delivery is best-effort. R0 intentionally has no application ACK/retry
 
 ## Troubleshooting
 
+### No `[GVEP-R0]` radio lines after boot
+
+This is expected until the first semantic event. Start normal GroovePuter playback once. The `PLAY` event triggers lazy Wi-Fi/ESP-NOW initialization in the R0 build.
+
 ### Receiver prints READY but no events
 
 Check that both devices report channel `6`. The R0 transmitter does not scan or hop channels.
@@ -266,6 +282,10 @@ A normal `scripts/build.sh` build intentionally has GVEP disabled.
 
 Copy all `[GVEP-R0]` initialization lines. Do not add retries inside the audio producer. R0 treats initialization failure as visual-output failure and leaves GroovePuter itself running.
 
+### `inFlight=1` remains stuck
+
+Record the full `[GVEP-R0][RUN]` line. R0 intentionally does not let AudioTask participate in radio recovery. A stuck visual transmitter is preferable to a recovery path that can perturb audio; transport recovery policy belongs to a later stage if hardware evidence requires it.
+
 ### Audio crackles after `READY`
 
 Treat R0 as failed. Record:
@@ -280,7 +300,7 @@ Do not lower the existing DRAM gate to make GVEP pass.
 
 ### `drop` increases
 
-This is not automatically a failure. The producer is deliberately non-blocking. Check `high`, send callback results, and whether the visual output still feels acceptable.
+This is not automatically a failure. The producer is deliberately non-blocking. Check `high`, send callback results, sequence gaps, and whether the visual output still feels acceptable.
 
 ### `cb` failures increase when receiver is absent
 
@@ -294,13 +314,16 @@ This can occur with best-effort ESP-NOW delivery. GroovePuter must remain unaffe
 - [ ] `bash tests/run_gvep_r0_tests.sh` passes;
 - [ ] normal Cardputer ADV build still succeeds;
 - [ ] dedicated `scripts/build_gvep_r0.sh` build succeeds;
+- [ ] unchanged fixed-DRAM gate passes for the R0 build;
+- [ ] generic reference receiver build succeeds;
 - [ ] receiver accepts only the documented 24-byte `GVE1`/v1 EVENT frame;
 - [ ] `KICK=0x01`, `PLAY=0x20`, `STOP=0x21` remain unchanged.
 
 ### Screen / serial
 
 - [ ] Cardputer screen/UI is unchanged;
-- [ ] four ordered heap checkpoints appear;
+- [ ] no GVEP-owned Wi-Fi initialization occurs before the first semantic event;
+- [ ] four ordered heap checkpoints appear after first PLAY;
 - [ ] `READY channel=6` appears;
 - [ ] receiver logs PLAY on playback start;
 - [ ] receiver logs actual PatternPlayer kick hits;
@@ -316,7 +339,9 @@ This can occur with best-effort ESP-NOW delivery. GroovePuter must remain unaffe
 - [ ] no I2S/audio underrun regression during dense traffic;
 - [ ] no audible crackle correlated with GVEP traffic;
 - [ ] no transport/MIDI timing regression;
+- [ ] at most one ESP-NOW send is outstanding;
 - [ ] queue overflow drops visual events rather than blocking audio;
+- [ ] queue overflow is visible through both local `drop` and remote sequence gap;
 - [ ] receiver-off/reboot does not disturb GroovePuter;
 - [ ] 30-minute soak passes.
 
