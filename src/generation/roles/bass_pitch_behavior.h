@@ -68,12 +68,13 @@ constexpr uint16_t kAllBassArticulationStyles =
     bassArticulationStyleBit(BassArticulationStyleId::Dynamic);
 
 struct BassBehaviorPolicy {
-  // Genre/Variant/composition resolves these transient masks. Preferred masks
-  // are optional subsets; AUTO falls back to allowed when preferred is empty.
-  // RootAnchor and Plain must stay allowed as compatibility fallbacks.
-  uint16_t allowedContours = kAllBassPitchContours;
+  // Fail-safe defaults preserve the Stage 14 bass behavior. Wider vocabulary
+  // must be enabled explicitly by the composition/Genre integration layer.
+  uint16_t allowedContours =
+      bassPitchContourBit(BassPitchContourId::RootAnchor);
   uint16_t preferredContours = 0;
-  uint16_t allowedArticulations = kAllBassArticulationStyles;
+  uint16_t allowedArticulations =
+      bassArticulationStyleBit(BassArticulationStyleId::Plain);
   uint16_t preferredArticulations = 0;
 };
 
@@ -87,9 +88,10 @@ struct BassPitchBehaviorRequest {
   BassArticulationStyleId requestedArticulation =
       BassArticulationStyleId::Auto;
 
-  // Scale-degree offsets relative to the current-bar harmonic root.
-  // Absolute MIDI note selection and synth-specific slide implementation are
-  // downstream concerns.
+  // These bounds apply only to entries tagged as scale-degree intent. Entries
+  // tagged as semitone intent retain their named chromatic meaning. A common
+  // musical leap bound is evaluated later, after Tonal Projector resolves all
+  // entries to absolute MIDI notes.
   int8_t minDegreeOffset = -7;
   int8_t maxDegreeOffset = 7;
   uint8_t maxLeapDegrees = 7;
@@ -103,15 +105,19 @@ struct BassPitchBehaviorPlan {
   StepMask onsets = 0;
   StepMask continuations = 0;
 
-  // Engine-neutral articulation intent only. A downstream engine adapter may
-  // drop an unsupported accent/slide, but must never add/move an onset or
-  // extend/create a continuation to force the articulation to happen.
+  // Engine-neutral articulation intent only. A downstream adapter may drop an
+  // unsupported articulation but may not alter timing to force it.
   StepMask accentOnsets = 0;
   StepMask slideIntoOnsets = 0;
 
   uint8_t onsetCount = 0;
   uint8_t onsetSteps[kStepsPerBar]{};
-  int8_t degreeOffsets[kStepsPerBar]{};
+
+  // Bit N describes tonalOffsets[N]: set means chromatic semitones, clear means
+  // scale degrees. RootFifth/RootOctave therefore remain unambiguous for 5-,
+  // 7-, and 12-note scales while neighbor/approach vocabulary stays modal.
+  int8_t tonalOffsets[kStepsPerBar]{};
+  uint16_t semitoneOffsetOrdinals = 0;
 };
 
 struct BassPitchBehaviorResult {
@@ -136,7 +142,7 @@ static_assert(std::is_trivially_copyable<BassBehaviorPolicy>::value,
               "BassBehaviorPolicy must remain fixed-capacity");
 static_assert(std::is_trivially_copyable<BassPitchBehaviorPlan>::value,
               "BassPitchBehaviorPlan must remain fixed-capacity");
-static_assert(sizeof(BassPitchBehaviorPlan) <= 56,
+static_assert(sizeof(BassPitchBehaviorPlan) <= 60,
               "BassPitchBehaviorPlan exceeded its command-time budget");
 
 }  // namespace GroovePuterRhythm
