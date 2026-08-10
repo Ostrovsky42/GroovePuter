@@ -3,6 +3,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TYPES = (ROOT / "src/generation/rhythm/rhythm_types.h").read_text(encoding="utf-8")
+CATALOG = (ROOT / "src/generation/rhythm/rhythm_catalog.cpp").read_text(encoding="utf-8")
 REALIZER = (ROOT / "src/generation/rhythm/rhythm_realizer.cpp").read_text(encoding="utf-8")
 LIVE_BRIDGE = (ROOT / "src/generation/migration/strong_rhythm_live_bridge.cpp").read_text(encoding="utf-8")
 
@@ -18,6 +19,16 @@ legacy_tail = """uint16_t flags = 0;\n  TransformationIntentMask allowedIntents 
 require(TYPES, legacy_tail, "MutationBudget legacy field order changed")
 require(TYPES, "uint8_t maxSecondaryAdds = 0;", "secondary budget missing")
 require(TYPES, "uint8_t maxGhostAdds = 0;", "ghost budget missing")
+
+# Catalog validation must understand the new fields rather than accepting
+# malformed explicit budgets that only fail or saturate later in realization.
+for needle in (
+    "budget.maxSecondaryAdds > kMaxEventsPerBar",
+    "budget.maxGhostAdds > kMaxEventsPerBar",
+    "budget.maxSecondaryAdds ||",
+    "budget.maxGhostAdds)",
+):
+    require(CATALOG, needle, f"Stage 14.1 catalog validation missing: {needle}")
 
 # P3 is cumulative over P2 ornaments and both variation classes use independent
 # deterministic salt domains.
