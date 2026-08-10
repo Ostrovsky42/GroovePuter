@@ -8,10 +8,23 @@ using namespace GroovePuterRhythm;
 
 namespace {
 
+// These numeric values are the existing global ScaleType ABI. The source
+// regression independently parses scenes.h and pins the exact enum order.
+constexpr ScaleTypeValue kMinorValue = 0;
+constexpr ScaleTypeValue kMajorValue = 1;
+constexpr ScaleTypeValue kDorianValue = 2;
+constexpr ScaleTypeValue kPhrygianValue = 3;
+constexpr ScaleTypeValue kLydianValue = 4;
+constexpr ScaleTypeValue kMixolydianValue = 5;
+constexpr ScaleTypeValue kLocrianValue = 6;
+constexpr ScaleTypeValue kMajorPentatonicValue = 7;
+constexpr ScaleTypeValue kMinorPentatonicValue = 8;
+constexpr ScaleTypeValue kChromaticValue = 9;
+
 TonalProjectionRequest baseRequest() {
   TonalProjectionRequest request{};
   request.rootPitchClass = 0;  // C
-  request.scale = MAJOR;
+  request.scaleTypeValue = kMajorValue;
   request.minMidi = 48;
   request.maxMidi = 72;
   request.maxAdjacentLeapSemitones = 127;
@@ -30,32 +43,34 @@ void assertNotes(const TonalProjectionResult& result,
 }  // namespace
 
 int main() {
-  // Exact ScaleType coverage and real cardinalities.
-  assert(isValidScaleType(MINOR));
-  assert(isValidScaleType(MAJOR));
-  assert(isValidScaleType(DORIAN));
-  assert(isValidScaleType(PHRYGIAN));
-  assert(isValidScaleType(LYDIAN));
-  assert(isValidScaleType(MIXOLYDIAN));
-  assert(isValidScaleType(LOCRIAN));
-  assert(isValidScaleType(PENTATONIC_MJ));
-  assert(isValidScaleType(PENTATONIC_MN));
-  assert(isValidScaleType(CHROMATIC));
-  assert(!isValidScaleType(static_cast<ScaleType>(255)));
+  assert(kDefaultScaleTypeValue == kDorianValue);
 
-  assert(scaleCardinality(MINOR) == 7);
-  assert(scaleCardinality(MAJOR) == 7);
-  assert(scaleCardinality(DORIAN) == 7);
-  assert(scaleCardinality(PHRYGIAN) == 7);
-  assert(scaleCardinality(LYDIAN) == 7);
-  assert(scaleCardinality(MIXOLYDIAN) == 7);
-  assert(scaleCardinality(LOCRIAN) == 7);
-  assert(scaleCardinality(PENTATONIC_MJ) == 5);
-  assert(scaleCardinality(PENTATONIC_MN) == 5);
-  assert(scaleCardinality(CHROMATIC) == 12);
-  assert(scaleCardinality(static_cast<ScaleType>(255)) == 0);
+  // Exact ScaleType ABI coverage and real cardinalities.
+  assert(isValidScaleTypeValue(kMinorValue));
+  assert(isValidScaleTypeValue(kMajorValue));
+  assert(isValidScaleTypeValue(kDorianValue));
+  assert(isValidScaleTypeValue(kPhrygianValue));
+  assert(isValidScaleTypeValue(kLydianValue));
+  assert(isValidScaleTypeValue(kMixolydianValue));
+  assert(isValidScaleTypeValue(kLocrianValue));
+  assert(isValidScaleTypeValue(kMajorPentatonicValue));
+  assert(isValidScaleTypeValue(kMinorPentatonicValue));
+  assert(isValidScaleTypeValue(kChromaticValue));
+  assert(!isValidScaleTypeValue(255));
 
-  // Empty input is a valid transient result and does not require a root note in
+  assert(scaleCardinality(kMinorValue) == 7);
+  assert(scaleCardinality(kMajorValue) == 7);
+  assert(scaleCardinality(kDorianValue) == 7);
+  assert(scaleCardinality(kPhrygianValue) == 7);
+  assert(scaleCardinality(kLydianValue) == 7);
+  assert(scaleCardinality(kMixolydianValue) == 7);
+  assert(scaleCardinality(kLocrianValue) == 7);
+  assert(scaleCardinality(kMajorPentatonicValue) == 5);
+  assert(scaleCardinality(kMinorPentatonicValue) == 5);
+  assert(scaleCardinality(kChromaticValue) == 12);
+  assert(scaleCardinality(255) == 0);
+
+  // Empty input is valid and does not require the root pitch class to occur in
   // the register because no note is materialized.
   {
     TonalProjectionRequest request = baseRequest();
@@ -67,7 +82,8 @@ int main() {
     assert(result.noteCount == 0);
   }
 
-  // The root anchor is the root pitch-class occurrence nearest register center.
+  // Root anchor is the selected root pitch-class occurrence nearest register
+  // center; ties resolve downward because the scan is ascending.
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 1;
@@ -88,7 +104,7 @@ int main() {
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 5;
-    request.scale = MAJOR;
+    request.scaleTypeValue = kMajorValue;
     request.tonalOffsets[0] = 0;
     request.tonalOffsets[1] = 1;
     request.tonalOffsets[2] = 2;
@@ -102,7 +118,7 @@ int main() {
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 4;
-    request.scale = MAJOR;
+    request.scaleTypeValue = kMajorValue;
     request.tonalOffsets[0] = -1;  // B below C
     request.tonalOffsets[1] = -2;  // A below C
     request.tonalOffsets[2] = -7;  // C one octave below
@@ -115,7 +131,7 @@ int main() {
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 4;
-    request.scale = PENTATONIC_MJ;
+    request.scaleTypeValue = kMajorPentatonicValue;
     request.tonalOffsets[0] = 1;
     request.tonalOffsets[1] = 4;
     request.tonalOffsets[2] = 5;
@@ -124,11 +140,11 @@ int main() {
     assertNotes(projectTonalIntent(request), expected, 4);
   }
 
-  // Minor pentatonic and chromatic have independent real cardinalities.
+  // Minor pentatonic and chromatic use their own real cardinalities.
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 3;
-    request.scale = PENTATONIC_MN;
+    request.scaleTypeValue = kMinorPentatonicValue;
     request.tonalOffsets[0] = 1;
     request.tonalOffsets[1] = 4;
     request.tonalOffsets[2] = -1;
@@ -139,7 +155,7 @@ int main() {
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 4;
-    request.scale = CHROMATIC;
+    request.scaleTypeValue = kChromaticValue;
     request.tonalOffsets[0] = 1;
     request.tonalOffsets[1] = 11;
     request.tonalOffsets[2] = 12;
@@ -149,11 +165,11 @@ int main() {
   }
 
   // Tagged semitone intent bypasses scale-degree interpretation. Locrian degree
-  // 4 would be +6, but a tagged fifth remains an exact +7 semitones.
+  // 4 would be +6, but a tagged fifth stays exact +7 semitones.
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 3;
-    request.scale = LOCRIAN;
+    request.scaleTypeValue = kLocrianValue;
     request.tonalOffsets[0] = 0;
     request.tonalOffsets[1] = 7;
     request.tonalOffsets[2] = 4;
@@ -162,12 +178,11 @@ int main() {
     assertNotes(projectTonalIntent(request), expected, 3);
   }
 
-  // Mixed unit input is unambiguous and common leap validation occurs only
-  // after every value has become an absolute MIDI note.
+  // Mixed units are compared for common leap only after absolute projection.
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 3;
-    request.scale = PENTATONIC_MJ;
+    request.scaleTypeValue = kMajorPentatonicValue;
     request.tonalOffsets[0] = 0;   // degree root => C60
     request.tonalOffsets[1] = 7;   // tagged fifth => G67
     request.tonalOffsets[2] = 1;   // degree 1 => D62
@@ -181,8 +196,8 @@ int main() {
     assert(rejected.status == TonalProjectionStatus::LeapExceeded);
   }
 
-  // Named octave intent is not silently octave-folded to satisfy the register.
-  // The only C root in 54..66 is C60, so tagged +12 must reject as C72.
+  // Named octave intent is not silently octave-folded. Only C60 exists as C
+  // root in 54..66, so tagged +12 is C72 and must reject.
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 1;
@@ -194,7 +209,7 @@ int main() {
     assert(result.status == TonalProjectionStatus::NoteOutOfRegister);
   }
 
-  // A register without the selected root pitch class has an explicit status.
+  // Register without selected root pitch class has an explicit status.
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 1;
@@ -231,7 +246,7 @@ int main() {
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 1;
-    request.scale = static_cast<ScaleType>(255);
+    request.scaleTypeValue = 255;
     assert(projectTonalIntent(request).status ==
            TonalProjectionStatus::InvalidRequest);
   }
@@ -245,11 +260,11 @@ int main() {
            TonalProjectionStatus::InvalidRequest);
   }
 
-  // Identical transient input is byte-stable at the semantic field level.
+  // Identical transient input is field-stable.
   {
     TonalProjectionRequest request = baseRequest();
     request.onsetCount = 3;
-    request.scale = DORIAN;
+    request.scaleTypeValue = kDorianValue;
     request.tonalOffsets[0] = 0;
     request.tonalOffsets[1] = 2;
     request.tonalOffsets[2] = -1;
