@@ -21,6 +21,25 @@ constexpr ScaleTypeValue kMajorPentatonicValue = 7;
 constexpr ScaleTypeValue kMinorPentatonicValue = 8;
 constexpr ScaleTypeValue kChromaticValue = 9;
 
+struct ScaleExpectation {
+  ScaleTypeValue scale = 0;
+  uint8_t count = 0;
+  int8_t intervals[12]{};
+};
+
+constexpr ScaleExpectation kScaleExpectations[] = {
+    {kMinorValue, 7, {0, 2, 3, 5, 7, 8, 10}},
+    {kMajorValue, 7, {0, 2, 4, 5, 7, 9, 11}},
+    {kDorianValue, 7, {0, 2, 3, 5, 7, 9, 10}},
+    {kPhrygianValue, 7, {0, 1, 3, 5, 7, 8, 10}},
+    {kLydianValue, 7, {0, 2, 4, 6, 7, 9, 11}},
+    {kMixolydianValue, 7, {0, 2, 4, 5, 7, 9, 10}},
+    {kLocrianValue, 7, {0, 1, 3, 5, 6, 8, 10}},
+    {kMajorPentatonicValue, 5, {0, 2, 4, 7, 9}},
+    {kMinorPentatonicValue, 5, {0, 3, 5, 7, 10}},
+    {kChromaticValue, 12, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}},
+};
+
 TonalProjectionRequest baseRequest() {
   TonalProjectionRequest request{};
   request.rootPitchClass = 0;  // C
@@ -78,6 +97,24 @@ int main() {
   assert(scaleCardinality(kMinorPentatonicValue) == 5);
   assert(scaleCardinality(kChromaticValue) == 12);
   assert(scaleCardinality(255) == 0);
+
+  // Pin the exact interval content of every current ScaleType, not only its
+  // cardinality. Degrees 0..N-1 from C60 must match the production table.
+  for (const auto& expectation : kScaleExpectations) {
+    TonalProjectionRequest request = baseRequest();
+    request.scaleTypeValue = expectation.scale;
+    request.onsetCount = expectation.count;
+    for (uint8_t degree = 0; degree < expectation.count; ++degree)
+      request.tonalOffsets[degree] = static_cast<int8_t>(degree);
+    const auto result = projectTonalIntent(request);
+    assert(result.status == TonalProjectionStatus::Ok);
+    assert(result.rootAnchorMidi == 60);
+    assert(result.noteCount == expectation.count);
+    for (uint8_t degree = 0; degree < expectation.count; ++degree) {
+      assert(result.midiNotes[degree] ==
+             static_cast<uint8_t>(60 + expectation.intervals[degree]));
+    }
+  }
 
   // The ordinal tag mask is exactly 16 bits. Pin the full-width boundary and
   // prove bit 15 still selects semitone units: in Locrian, untagged degree 7 is
