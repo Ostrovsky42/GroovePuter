@@ -41,6 +41,8 @@ run_suite() {
   build_one "${compiler}" "${suffix}" \
     test_generation_stage15_chord_progression "$@"
   build_one "${compiler}" "${suffix}" \
+    test_generation_stage15_grammar_catalog "$@"
+  build_one "${compiler}" "${suffix}" \
     test_generation_stage15_reachability "$@"
 }
 
