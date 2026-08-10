@@ -14,14 +14,16 @@ def strip_comments(text: str) -> str:
 
 CODE = strip_comments(TEXT)
 
-# 15C assigns pitch/articulation to an existing bass rhythm. It must not own
-# timing, Scene state, Phrase state, Synth B material, or heap-backed retries.
 for forbidden in (
     "Scene",
     "PhraseCore",
     "StrongRhythmMigration",
     "MelodicMotif",
     "SynthPattern",
+    "request.family",
+    "RhythmFamily family",
+    "switch (request.family)",
+    "degreeOffsets",
     "std::vector",
     "std::map",
     "std::unordered",
@@ -33,14 +35,38 @@ for forbidden in (
 assert re.search(r"\bnew\s+[A-Za-z_:]", CODE) is None, "heap new"
 assert re.search(r"\bdelete\s+[A-Za-z_]", CODE) is None, "heap delete"
 
-assert "StepMask onsets" in HEADER
-assert "StepMask continuations" in HEADER
-assert "StepMask accentOnsets" in HEADER
-assert "StepMask slideIntoOnsets" in HEADER
-assert "int8_t degreeOffsets[kStepsPerBar]" in HEADER
+assert "struct BassBehaviorPolicy" in HEADER
+assert "allowedContours =\n      bassPitchContourBit(BassPitchContourId::RootAnchor)" in HEADER
+assert "allowedArticulations =\n      bassArticulationStyleBit(BassArticulationStyleId::Plain)" in HEADER
+assert "preferredContours = 0" in HEADER
+assert "preferredArticulations = 0" in HEADER
+assert "BassBehaviorPolicy policy{}" in HEADER
+
+assert "int8_t tonalOffsets[kStepsPerBar]" in HEADER
+assert "uint16_t semitoneOffsetOrdinals = 0" in HEADER
+assert "int8_t minDegreeOffset = -7" in HEADER
+assert "uint8_t maxLeapDegrees = 7" in HEADER
+
+assert "preferredOrAllowed(" in SOURCE
+assert "validPolicy(" in SOURCE
+assert "explicitSelectionsAllowed(" in SOURCE
+assert "request.policy.allowedContours" in SOURCE
+assert "request.policy.allowedArticulations" in SOURCE
 assert "GenerationDomain::BassPitch" in SOURCE
 assert "kBassContourSalt" in SOURCE
 assert "kBassArticulationSalt" in SOURCE
+
+# Named fifth/octave relations are chromatic semitone intent and are tagged by
+# onset ordinal. Generic neighbor/approach vocabulary remains degree intent.
+assert "values[index] = 7;" in SOURCE
+assert "values[index] = 12;" in SOURCE
+assert "markSemitoneOrdinal(semitoneOrdinals, index)" in SOURCE
+assert "BassPitchContourId::NeighborReturn" in SOURCE
+assert "BassPitchContourId::StepApproach" in SOURCE
+assert "sameTonalUnit(" in SOURCE
+assert "isSemitoneOrdinal(" in SOURCE
+assert "enforceDegreeBounds(" in SOURCE
+
 assert "result.plan.onsets = request.rhythmPlan.onsets" in SOURCE
 assert "result.plan.continuations = request.rhythmPlan.continuations" in SOURCE
 assert "result.plan.accentOnsets & result.plan.onsets" in SOURCE
