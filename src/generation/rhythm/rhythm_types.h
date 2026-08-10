@@ -312,12 +312,22 @@ constexpr uint16_t kAllMutationFlags =
     AllowTurnaround | AllowBreak;
 
 struct MutationBudget {
+  // Legacy combined addition budget. Retained for aggregate-initializer and
+  // BarEvolution compatibility; Stage 14.1 realizer paths prefer the two
+  // explicit budgets below when they are non-zero.
   uint8_t maxAdds = 0;
   uint8_t maxDrops = 0;
   uint8_t maxDisplacements = 0;
   uint8_t maxAccentChanges = 0;
   uint16_t flags = 0;
   TransformationIntentMask allowedIntents = 0;
+
+  // Independent realization budgets. Appended to preserve all existing
+  // six-field aggregate initializers. A zero value falls back to maxAdds for
+  // the corresponding legacy flag, so old catalog/test data keeps its exact
+  // semantics until explicitly migrated.
+  uint8_t maxSecondaryAdds = 0;
+  uint8_t maxGhostAdds = 0;
 };
 
 struct MutationPolicy {
