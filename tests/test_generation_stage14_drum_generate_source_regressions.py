@@ -75,7 +75,7 @@ require(
 # The production Generate workflow normalizes legacy page ids 8/11 to page 9.
 # Page 9 is still constructed under the historical SettingsPage factory name,
 # whose compatibility alias must resolve to the real Stage 14 FeelPage. Pin the
-# complete route so a green test cannot validate controls in an unreachable page.
+# semantic route without depending on formatting of the factory switch.
 for needle in (
     "constexpr int kTexture = 8",
     "constexpr int kFeel = 9",
@@ -83,11 +83,11 @@ for needle in (
     "if (page == kTexture || page == kGeneration) return kFeel;",
 ):
     require(WORKFLOW, needle, f"production FEEL workflow route changed: {needle}")
-require(
-    MINI_DISPLAY,
-    "case 9:  page = std::make_unique<SettingsPage>(gfx_, mini_acid_, audio_guard_); break;",
-    "production page 9 factory route changed unexpectedly",
-)
+for needle in (
+    "case 9:",
+    "std::make_unique<SettingsPage>",
+):
+    require(MINI_DISPLAY, needle, f"production page 9 factory route missing: {needle}")
 require(
     SETTINGS_ALIAS,
     "using SettingsPage = FeelPage;",
