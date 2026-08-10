@@ -6,6 +6,7 @@
 
 #include "../feel/feel_types.h"
 #include "../roles/bass_rhythm.h"
+#include "../roles/chord_progression.h"
 #include "../roles/chord_rhythm.h"
 #include "../roles/melodic_motif.h"
 #include "rhythm_selection.h"
@@ -58,6 +59,7 @@ struct GenerationProfileView {
   WeightedIdentityView feels{};
   WeightedIdentityView bassRhythms{};
   WeightedIdentityView chordRhythms{};
+  WeightedIdentityView progressions{};
   WeightedIdentityView melodicRhythms{};
   WeightedIdentityView motifShapes{};
   WeightedIdentityView phraseLaws{};
@@ -81,6 +83,7 @@ struct GenerationCompositionResult {
   FeelProfileId suggestedFeel = FeelProfileId::Straight;
   BassRhythmId bassRhythm = BassRhythmId::Auto;
   ChordRhythmId chordRhythm = ChordRhythmId::Auto;
+  ProgressionId progression = ProgressionId::Auto;
   MelodicRhythmId melodicRhythm = MelodicRhythmId::Auto;
   MotifShapeId motifShape = MotifShapeId::Auto;
   // Planning metadata only. Production multi-bar execution remains blocked by
