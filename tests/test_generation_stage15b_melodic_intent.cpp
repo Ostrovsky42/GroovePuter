@@ -35,7 +35,16 @@ MelodicPitchIntentRequest requestFor(StepMask onsets) {
 
 void assertSame(const MelodicPitchIntentResult& a,
                 const MelodicPitchIntentResult& b) {
-  assert(std::memcmp(&a, &b, sizeof(a)) == 0);
+  assert(a.status == b.status);
+  assert(a.plan.contour == b.plan.contour);
+  assert(a.plan.operation == b.plan.operation);
+  assert(a.plan.onsets == b.plan.onsets);
+  assert(a.plan.continuations == b.plan.continuations);
+  assert(a.plan.onsetCount == b.plan.onsetCount);
+  assert(std::memcmp(a.plan.onsetSteps, b.plan.onsetSteps,
+                     sizeof(a.plan.onsetSteps)) == 0);
+  assert(std::memcmp(a.plan.degreeOffsets, b.plan.degreeOffsets,
+                     sizeof(a.plan.degreeOffsets)) == 0);
 }
 
 void assertBounds(const MelodicPitchIntentPlan& plan,
