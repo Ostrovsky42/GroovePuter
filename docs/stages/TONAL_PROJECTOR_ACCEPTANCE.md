@@ -97,8 +97,10 @@ MINOR, MAJOR, DORIAN, PHRYGIAN, LYDIAN, MIXOLYDIAN, LOCRIAN,
 PENTATONIC_MJ, PENTATONIC_MN, CHROMATIC
 ```
 
-It also pins the existing default `ScaleType scale = DORIAN`. Any ABI reorder
-must therefore fail the projector gate instead of silently changing music.
+It also pins the existing default `ScaleType scale = DORIAN` and requires the
+current enum entries to remain implicit/contiguous rather than acquiring hidden
+numeric assignments. Any ABI reorder or explicit-value drift must therefore fail
+the projector gate instead of silently changing music.
 
 The projector must:
 
@@ -111,18 +113,23 @@ The projector must:
   truncation toward zero;
 - preserve tagged semitone relations exactly, including `+7` fifth and `+12`
   octave intent;
-- choose the selected root pitch-class occurrence nearest the center of the
-  inclusive MIDI register as a deterministic transient root anchor;
+- enumerate occurrences of the selected root pitch class inside the inclusive
+  MIDI register and reject an anchor candidate if any projected note would fall
+  outside that register;
+- choose the **feasible** root anchor nearest the register center; ties resolve
+  downward deterministically;
 - apply each displacement exactly from that anchor;
-- return `NoteOutOfRegister` instead of silently octave-folding an exact tagged
-  relation into a different interval;
 - return `RootOutOfRegister` when the register contains no selected root pitch
-  class;
-- evaluate the common adjacent-leap limit only after both inputs have become
-  absolute MIDI notes;
+  class at all;
+- return `NoteOutOfRegister` when the root pitch class exists in the register but
+  no candidate root can fit the complete projected phrase without changing its
+  tagged/degree relations;
+- never silently octave-fold an exact tagged relation to make it fit;
+- evaluate the common adjacent-leap limit only after tagged and degree offsets
+  have both become absolute MIDI notes;
 - return `LeapExceeded` when that projected limit is exceeded;
-- expose an atomic result: `noteCount` becomes non-zero only after the entire
-  projection succeeds; every failure leaves `noteCount == 0`;
+- expose an atomic result: only `Ok` publishes `rootAnchorMidi`, `noteCount`, and
+  `midiNotes`; every failure leaves all three at their zero defaults;
 - return an explicit status for invalid/empty requests;
 - use fixed-capacity storage, no heap allocation, no global RNG, and no retry
   loop.
@@ -136,19 +143,22 @@ and chromatic `ScaleType` values correctly.
 If the isolated host gate fails:
 
 1. Confirm the actual `ScaleType` order in `scenes.h` still matches the pinned
-   compact ABI values.
+   compact ABI values and that no explicit numeric enum assignments were added.
 2. Confirm the projector header does not include `scenes.h` or define a second
    `ScaleType` enum.
 3. Confirm pentatonic cardinality is 5 and chromatic cardinality is 12.
 4. Confirm negative degree conversion uses floor division.
 5. Confirm semitone-tagged entries bypass scale-degree conversion.
-6. Confirm register failures return status instead of octave-folding.
-7. Confirm mixed degree/semitone entries are compared only after absolute MIDI
+6. Confirm root-anchor selection evaluates complete-phrase register feasibility
+   before choosing the nearest candidate.
+7. Confirm register failures return status instead of octave-folding.
+8. Confirm mixed degree/semitone entries are compared only after absolute MIDI
    projection.
-8. Confirm failure statuses do not publish a non-zero `noteCount`.
-9. Do not add Genre, policy selection, rhythm, Synth A/B routing, Scene, Phrase,
-   persistence, or synth-engine ownership to solve integration failures.
-10. Do not wire 15B/15C production callers in this checkpoint PR.
+9. Confirm failure statuses do not publish a root anchor, note count, or partial
+   MIDI-note array.
+10. Do not add Genre, policy selection, rhythm, Synth A/B routing, Scene, Phrase,
+    persistence, or synth-engine ownership to solve integration failures.
+11. Do not wire 15B/15C production callers in this checkpoint PR.
 
 ## Acceptance checklist
 
@@ -157,7 +167,8 @@ If the isolated host gate fails:
 - [ ] ASan/UBSan run passes.
 - [ ] Projector C++ header remains independent of `scenes.h`.
 - [ ] No second C++ `ScaleType` enum is introduced.
-- [ ] Source gate pins the actual `ScaleType` order and DORIAN default.
+- [ ] Source gate pins the actual `ScaleType` order, implicit contiguous values,
+      and DORIAN default.
 - [ ] `TonalProjectionRequest` remains exactly 24 bytes.
 - [ ] All ten existing `ScaleType` ABI values are accepted; invalid values reject.
 - [ ] Seven-note modes report cardinality 7.
@@ -168,10 +179,13 @@ If the isolated host gate fails:
 - [ ] Chromatic octave occurs after degree 12.
 - [ ] A tagged fifth remains exactly +7 semitones even in Locrian.
 - [ ] Mixed tagged/untagged intent projects unambiguously.
+- [ ] Root selection chooses the nearest **feasible** pitch-class occurrence.
+- [ ] An infeasible center-nearest root falls back to a farther feasible root.
 - [ ] Common adjacent-leap validation happens after MIDI projection.
-- [ ] Exact out-of-register intent returns `NoteOutOfRegister`.
-- [ ] Missing root pitch class returns `RootOutOfRegister`.
-- [ ] Failure result leaves `noteCount == 0`.
+- [ ] Root pitch class absent from the register returns `RootOutOfRegister`.
+- [ ] Root present but no complete phrase fits returns `NoteOutOfRegister`.
+- [ ] Failure result leaves `rootAnchorMidi == 0`, `noteCount == 0`, and no
+      published partial MIDI notes.
 - [ ] No silent octave-folding is introduced.
 - [ ] No heap allocation, global RNG, or unbounded retry is introduced.
 - [ ] No Genre, policy, rhythm, voice, Scene, Phrase, persistence, or timbre
