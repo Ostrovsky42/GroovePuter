@@ -6,7 +6,7 @@ SOURCE = (ROOT / "src/generation/roles/melodic_pitch_intent.cpp").read_text()
 TEXT = HEADER + "\n" + SOURCE
 
 # 15B is a fixed-capacity one-bar melodic-intent layer. It may transform the
-# current bar's melodic topology inside an explicit semantic legal mask, then
+# current bar's melodic topology inside explicit semantic legality masks, then
 # assign contour and a local motif operation. It must not become a persistence,
 # Phrase, full-groove diversity, physical voice-allocation, or heap owner.
 for forbidden in (
@@ -33,7 +33,8 @@ assert "ControlledRest" in HEADER
 assert "ShiftInteriorEarlier" in HEADER
 assert "ShiftInteriorLater" in HEADER
 assert "TerminalEcho" in HEADER
-assert "StepMask allowedSteps = kAllSteps" in HEADER
+assert "StepMask allowedOnsetSteps = kAllSteps" in HEADER
+assert "StepMask allowedContinuationSteps = kAllSteps" in HEADER
 assert "bool allowEmptyBar = false" in HEADER
 assert "StepMask onsets" in HEADER
 assert "StepMask continuations" in HEADER
@@ -46,10 +47,10 @@ assert "kRhythmSalt" in SOURCE
 assert "kContourSalt" in SOURCE
 assert "kOperationSalt" in SOURCE
 assert "applyRhythmOperation(" in SOURCE
-assert "request.allowedSteps" in SOURCE
+assert "request.allowedOnsetSteps" in SOURCE
+assert "request.allowedContinuationSteps" in SOURCE
 assert "request.maxOnsets" in SOURCE
 assert "validContinuationTopology(onsets, continuations)" in SOURCE
-assert "outputOccupied" in SOURCE
 assert "MelodicRhythmOperationId::Preserve" in SOURCE
 assert "while (" not in SOURCE
 
