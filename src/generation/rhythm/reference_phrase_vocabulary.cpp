@@ -11,7 +11,7 @@ constexpr RealizationLevelMask kP2P3 = static_cast<RealizationLevelMask>(
     realizationLevelBit(RealizationLevel::P2Variation) |
     realizationLevelBit(RealizationLevel::P3Transformation));
 
-constexpr MutationPolicy stage12MutationPolicy() {
+constexpr MutationPolicy stage12SubtractiveMutationPolicy() {
   MutationPolicy policy{};
   policy.level[static_cast<uint8_t>(RealizationLevel::P1Canonical)] =
       MutationBudget{};
@@ -40,6 +40,29 @@ constexpr MutationPolicy stage12MutationPolicy() {
               transformationIntentBit(TransformationIntent::Reduce) |
               transformationIntentBit(TransformationIntent::Turnaround) |
               transformationIntentBit(TransformationIntent::Break))};
+  return policy;
+}
+
+constexpr MutationPolicy stage12NonSubtractiveMutationPolicy() {
+  MutationPolicy policy{};
+  policy.level[static_cast<uint8_t>(RealizationLevel::P1Canonical)] =
+      MutationBudget{};
+  policy.level[static_cast<uint8_t>(RealizationLevel::P2Variation)] =
+      MutationBudget{
+          2,
+          0,
+          0,
+          0,
+          AllowGhostConversion,
+          0};
+  policy.level[static_cast<uint8_t>(RealizationLevel::P3Transformation)] =
+      MutationBudget{
+          3,
+          0,
+          0,
+          0,
+          static_cast<uint16_t>(AllowOptionalAdds | AllowTurnaround),
+          transformationIntentBit(TransformationIntent::Turnaround)};
   return policy;
 }
 
@@ -78,7 +101,7 @@ constexpr BarTrajectory kPhraseTrajectories[] = {
             BarFunction::Return}},
 };
 
-constexpr TrajectoryRef kPhraseTrajectoryRefs[] = {
+constexpr TrajectoryRef kSubtractivePhraseTrajectoryRefs[] = {
     {1, 100, kAllRealizationLevels},
     {2, 70, kAllRealizationLevels},
     {3, 30, kP2P3},
@@ -86,6 +109,18 @@ constexpr TrajectoryRef kPhraseTrajectoryRefs[] = {
     {6, 30, kP2P3},
     {7, 20, realizationLevelBit(RealizationLevel::P3Transformation)},
     {8, 20, realizationLevelBit(RealizationLevel::P3Transformation)},
+};
+
+// halftime_switch has no removable headroom at its current structural minima.
+// Keep its accepted P1 identity intact and expose only non-subtractive phrase
+// functions until an evidence-backed archetype revision can create real drop
+// headroom without weakening the canonical groove.
+constexpr TrajectoryRef kNonSubtractivePhraseTrajectoryRefs[] = {
+    {1, 100, kAllRealizationLevels},
+    {2, 70, kAllRealizationLevels},
+    {3, 30, kP2P3},
+    {5, 70, kAllRealizationLevels},
+    {7, 20, realizationLevelBit(RealizationLevel::P3Transformation)},
 };
 
 bool stage12PhraseEnabledId(RhythmArchetypeId id) {
@@ -116,6 +151,10 @@ bool stage12PhraseEnabledId(RhythmArchetypeId id) {
   }
 }
 
+bool stage12SubtractiveEnabledId(RhythmArchetypeId id) {
+  return stage12PhraseEnabledId(id) && id != 416;
+}
+
 constexpr uint16_t kReferenceArchetypeCapacity =
     static_cast<uint16_t>(Archetype::Count);
 
@@ -140,10 +179,19 @@ struct PhraseCatalogStorage {
       if (!stage12PhraseEnabledId(archetypes[index].id)) continue;
 
       archetypes[index].allowedPhraseBars = kStage12PhraseBars;
-      archetypes[index].trajectories = kPhraseTrajectoryRefs;
-      archetypes[index].trajectoryCount = static_cast<uint8_t>(
-          sizeof(kPhraseTrajectoryRefs) / sizeof(kPhraseTrajectoryRefs[0]));
-      archetypes[index].mutation = stage12MutationPolicy();
+      if (stage12SubtractiveEnabledId(archetypes[index].id)) {
+        archetypes[index].trajectories = kSubtractivePhraseTrajectoryRefs;
+        archetypes[index].trajectoryCount = static_cast<uint8_t>(
+            sizeof(kSubtractivePhraseTrajectoryRefs) /
+            sizeof(kSubtractivePhraseTrajectoryRefs[0]));
+        archetypes[index].mutation = stage12SubtractiveMutationPolicy();
+      } else {
+        archetypes[index].trajectories = kNonSubtractivePhraseTrajectoryRefs;
+        archetypes[index].trajectoryCount = static_cast<uint8_t>(
+            sizeof(kNonSubtractivePhraseTrajectoryRefs) /
+            sizeof(kNonSubtractivePhraseTrajectoryRefs[0]));
+        archetypes[index].mutation = stage12NonSubtractiveMutationPolicy();
+      }
     }
 
     view.archetypes = archetypes;
