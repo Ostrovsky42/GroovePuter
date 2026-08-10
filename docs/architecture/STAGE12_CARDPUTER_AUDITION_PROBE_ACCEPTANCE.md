@@ -116,14 +116,17 @@ Ctrl+Alt+G    Stage 12 audition + physical runtime probe
 
 Before `Ctrl+Alt+G`:
 
-1. Select the genre on GENRE.
-2. Select RHYTHM AUTO or MANUAL as desired.
-3. On FEEL set REPEATS to `1`, `2`, `4`, or `8`.
-4. Return to the main DRUMS grid.
-5. Press `Ctrl+Alt+G` once.
+1. Exit Song mode first. Audition starts only from pattern mode.
+2. Select the genre on GENRE.
+3. Select RHYTHM AUTO or MANUAL as desired.
+4. On FEEL set REPEATS to `1`, `2`, `4`, or `8`.
+5. Return to the main DRUMS grid.
+6. Press `Ctrl+Alt+G` once.
 
-The audition command switches to Song B, loops the generated rows, and leaves
-normal transport controls responsible for playback.
+The audition command switches to Song B, starts from row 0, loops the generated
+rows, and leaves normal transport controls responsible for playback. When Song
+mode is later exited, the Drum, Synth A, and Synth B bank/pattern selections that
+were active before audition must be restored exactly.
 
 ## All-genre listening matrix
 
@@ -171,12 +174,21 @@ AUD 4B VARIATION #<id>
 The bar count follows FEEL REPEATS. `EVOLVED` means the selected archetype used
 the Stage 12 phrase catalog. `VARIATION` means the selected identity remains
 one-bar-only and the audition used deterministic per-bar strong variations.
+Song B must begin at row 0. After leaving Song mode, the pre-audition Drum,
+Synth A, and Synth B bank/pattern selections must be restored.
 
 Unexpected statuses:
 
 ```text
 SELECT_FAIL
 MATERIAL_FAIL
+```
+
+If audition is requested while Song mode is already active, it must not modify
+audition storage and must show:
+
+```text
+AUD: EXIT SONG
 ```
 
 ### Serial
@@ -244,6 +256,12 @@ UI/audio stall keeps normal production wiring blocked.
 
 ## Troubleshooting
 
+### `AUD: EXIT SONG`
+
+Audition was requested while Song mode was already active. Leave Song mode,
+return to the main DRUMS grid, and retry `Ctrl+Alt+G`. Do not make the audition
+reuse the currently playing song as its pattern-mode return state.
+
 ### `SELECT_FAIL`
 
 The current GENRE/RHYTHM selection did not resolve through the Stage 14 strong
@@ -290,10 +308,13 @@ separate existing meanings.
 [ ] Ctrl+G remains selected-voice randomize.
 [ ] Alt+G remains chaos randomize.
 [ ] Ctrl+Alt+G is recognized on physical Cardputer ADV.
+[ ] Ctrl+Alt+G rejects while already in Song mode with AUD: EXIT SONG.
 [ ] FEEL REPEATS 1 produces one audition row.
 [ ] FEEL REPEATS 2 produces two audition rows.
 [ ] FEEL REPEATS 4 produces four audition rows.
 [ ] FEEL REPEATS 8 produces eight audition rows.
+[ ] Song B begins playback from audition row 0.
+[ ] Leaving audition Song B restores original Drum/Synth A/Synth B bank+pattern selection.
 [ ] Bank A remains untouched by audition.
 [ ] Song A remains untouched by audition.
 [ ] Current-page Bank B is the only pattern-bank reservation.
