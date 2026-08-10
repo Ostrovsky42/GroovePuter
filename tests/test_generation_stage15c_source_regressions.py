@@ -14,6 +14,15 @@ def strip_comments(text: str) -> str:
 
 CODE = strip_comments(TEXT)
 
+# Stage 15C emits tagged degree/semitone intent only. Tonal projection and
+# absolute MIDI realization stay downstream even if future projector symbols
+# are renamed.
+assert re.search(
+    r'^\s*#\s*include\s*[<"][^">]*tonal/',
+    TEXT,
+    flags=re.MULTILINE | re.IGNORECASE,
+) is None, "tonal include ownership leak"
+
 for forbidden in (
     "Scene",
     "PhraseCore",
@@ -41,6 +50,9 @@ for forbidden in (
     "random_device",
 ):
     assert forbidden not in CODE, forbidden
+
+assert re.search(r"\bmidi\w*\b", CODE, flags=re.IGNORECASE) is None, \
+    "absolute MIDI ownership leak"
 
 assert re.search(r"\bnew\s+[A-Za-z_:]", CODE) is None, "heap new"
 assert re.search(r"\bdelete\s+[A-Za-z_]", CODE) is None, "heap delete"
