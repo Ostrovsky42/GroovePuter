@@ -49,6 +49,7 @@ SOURCES := \
 	../src/dsp/advanced_pattern_generator.cpp \
 	../src/generation/generation_context.cpp \
 	../src/generation/composition/rhythm_selection.cpp \
+	../src/generation/composition/generation_profile.cpp \
 	../src/generation/feel/feel_interpreter.cpp \
 	../src/generation/feel/feel_pattern_adapter.cpp \
 	../src/generation/rhythm/rhythm_catalog.cpp \

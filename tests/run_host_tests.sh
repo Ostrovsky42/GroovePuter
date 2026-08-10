@@ -537,3 +537,6 @@ ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
 
 ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
   bash "${ROOT_DIR}/tests/run_phrase_stage12_tests.sh"
+
+ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
+  bash "${ROOT_DIR}/tests/run_generation_stage13_tests.sh"

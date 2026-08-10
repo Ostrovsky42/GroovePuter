@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "../../../scenes.h"
+#include "../composition/generation_profile.h"
 #include "../composition/rhythm_selection.h"
 #include "../feel/feel_pattern_adapter.h"
 #include "../materialization/pattern_materializer.h"
@@ -65,6 +66,12 @@ struct StrongRhythmMigrationResult {
   PatternMaterializeStatus materializationStatus =
       PatternMaterializeStatus::InvalidPlan;
   FeelPatternApplyStatus feelStatus = FeelPatternApplyStatus::Ok;
+  GenerationCompositionStatus compositionStatus =
+      GenerationCompositionStatus::NoProfile;
+  FeelProfileId suggestedFeel = FeelProfileId::Straight;
+  PhraseEvolutionLawId phraseLaw = PhraseEvolutionLawId::Loop;
+  uint8_t phraseBars = 1;
+  GenerationCorridor corridor{};
   BassRhythmStatus bassRhythmStatus = BassRhythmStatus::InvalidRequest;
   BassRhythmId bassRhythmId = BassRhythmId::Auto;
   SemanticPatternProjectStatus bassProjectionStatus =

@@ -51,24 +51,6 @@ StepMask protectedSpaceFor(const RhythmArchetype& archetype,
   return result;
 }
 
-SemanticSynthBRole synthBRoleFor(RhythmFamily family) {
-  switch (family) {
-    case RhythmFamily::HipHopBackbeat:
-    case RhythmFamily::DubPulse:
-    case RhythmFamily::SparsePulse:
-      return SemanticSynthBRole::Chord;
-    case RhythmFamily::FourFloor:
-    case RhythmFamily::MachineSyncopation:
-    case RhythmFamily::Breakbeat:
-    case RhythmFamily::UkTwoStep:
-    case RhythmFamily::Funk16:
-      return SemanticSynthBRole::Melodic;
-    case RhythmFamily::Count:
-      break;
-  }
-  return SemanticSynthBRole::Melodic;
-}
-
 }  // namespace
 
 StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings) {
@@ -178,17 +160,30 @@ StrongRhythmMigrationResult migrateStrongRhythmDrums(
   selectionGeneration.projectSeed = projectSeed;
   selectionGeneration.phraseOrdinal =
       static_cast<uint16_t>(context.patternAddress);
-  const RhythmSelectionResult selection =
-      resolveRhythmSelection(settings, selectionGeneration);
-  if (selection.status != RhythmSelectionStatus::Ok) {
+  const GenerationCompositionResult composition =
+      resolveGenerationComposition(settings, selectionGeneration);
+  result.compositionStatus = composition.status;
+  if (composition.status != GenerationCompositionStatus::Ok) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
-  result.selectionMode = selection.mode;
-  result.normalizedSelectionToAuto = selection.normalizedToAuto;
+  result.selectionMode = composition.rhythmSelectionMode;
+  result.normalizedSelectionToAuto = composition.normalizedRhythmToAuto;
+  result.suggestedFeel = composition.suggestedFeel;
+  result.bassRhythmId = composition.bassRhythm;
+  result.chordRhythmId = composition.chordRhythm;
+  result.melodicRhythmId = composition.melodicRhythm;
+  result.motifShapeId = composition.motifShape;
+  result.phraseLaw = composition.phraseLaw;
+  result.phraseBars = composition.phraseBars;
+  result.corridor = composition.corridor;
+  result.synthBRole =
+      composition.secondaryRole == CompositionSecondaryRole::Chord
+          ? SemanticSynthBRole::Chord
+          : SemanticSynthBRole::Melodic;
 
   const ReferenceVocabulary::Definition* definition =
-      ReferenceVocabulary::definitionForId(selection.archetypeId);
+      ReferenceVocabulary::definitionForId(composition.rhythmArchetypeId);
   if (definition == nullptr) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
@@ -274,6 +269,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   }
 
   BassRhythmRequest bassRequest{};
+  bassRequest.requestedId = result.bassRhythmId;
   bassRequest.family = definition->family;
   bassRequest.archetypeId = definition->archetypeId;
   bassRequest.kickOnsets = 0;
@@ -317,6 +313,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   }
 
   ChordRhythmRequest chordRequest{};
+  chordRequest.requestedId = result.chordRhythmId;
   chordRequest.family = definition->family;
   chordRequest.archetypeId = definition->archetypeId;
   chordRequest.bassOnsets = bass.plan.onsets;
@@ -336,9 +333,9 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
-  result.synthBRole = synthBRoleFor(definition->family);
-
   MelodicMotifRequest melodicRequest{};
+  melodicRequest.requestedRhythm = result.melodicRhythmId;
+  melodicRequest.requestedShape = result.motifShapeId;
   melodicRequest.family = definition->family;
   melodicRequest.archetypeId = definition->archetypeId;
   melodicRequest.bassOnsets = bass.plan.onsets;
