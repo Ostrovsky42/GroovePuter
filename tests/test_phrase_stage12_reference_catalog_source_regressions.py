@@ -23,6 +23,12 @@ def require(text: str, needle: str, message: str) -> None:
         raise AssertionError(message)
 
 
+def section_between(text: str, start: str, end: str) -> str:
+    if start not in text or end not in text:
+        raise AssertionError(f"unable to isolate source section: {start} -> {end}")
+    return text.split(start, 1)[1].split(end, 1)[0]
+
+
 require(
     HEADER,
     "phraseEvolutionCatalog",
@@ -68,6 +74,9 @@ require(
     "halftime_switch non-subtractive mutation policy disappeared",
 )
 
+# The accepted normal production path remains one-bar. The explicit audition
+# command is the sole live bridge section allowed to execute the candidate
+# phrase catalog before the physical ESP32-S3 gate is accepted.
 require(
     BASE,
     "value.allowedPhraseBars = phraseBarsBit(1);",
@@ -83,14 +92,42 @@ require(
     "request.phraseBars = 1;",
     "production strong migration escaped the one-bar hardware guard",
 )
-for production_source in (BRIDGE, MIGRATION):
+if "phraseEvolutionCatalog" in MIGRATION or "evolveMultiBarPhrase" in MIGRATION:
+    raise AssertionError("normal strong migration became multi-bar reachable")
+
+normal_whole = section_between(
+    BRIDGE,
+    "StrongRhythmMigrationResult regenerateWithStrongRhythmMigration",
+    "StrongRhythmMigrationResult regenerateDrumsWithStrongRhythmMigration",
+)
+normal_drums = section_between(
+    BRIDGE,
+    "StrongRhythmMigrationResult regenerateDrumsWithStrongRhythmMigration",
+    "const char* phraseAuditionStatusName",
+)
+for name, production_source in (
+    ("normal whole-pattern G", normal_whole),
+    ("normal DRUMS G", normal_drums),
+):
     if (
         "phraseEvolutionCatalog" in production_source
         or "evolveMultiBarPhrase" in production_source
     ):
-        raise AssertionError(
-            "Stage 12 candidate became production-reachable before hardware gate"
-        )
+        raise AssertionError(f"{name} became Stage 12 phrase-reachable")
+
+audition = BRIDGE.split(
+    "PhraseAuditionResult regeneratePhraseAuditionWithProbe", 1
+)[1]
+require(
+    audition,
+    "ReferenceVocabulary::phraseEvolutionCatalog()",
+    "explicit audition no longer executes the candidate phrase catalog",
+)
+require(
+    audition,
+    "evolveMultiBarPhrase(request)",
+    "explicit audition no longer executes PhraseEvolution",
+)
 
 for forbidden in (
     "Scene",
