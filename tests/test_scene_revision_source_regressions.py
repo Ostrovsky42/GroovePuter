@@ -17,7 +17,6 @@ def main() -> None:
     pattern = (ROOT / "src/ui/pages/pattern_edit_page.h").read_text(encoding="utf-8")
     feel_header = (ROOT / "src/ui/pages/feel_page.h").read_text(encoding="utf-8")
     feel_source = (ROOT / "src/ui/pages/feel_page.cpp").read_text(encoding="utf-8")
-    generation_source = (ROOT / "src/ui/pages/generation_page.cpp").read_text(encoding="utf-8")
     song_header = (ROOT / "src/ui/pages/song_page.h").read_text(encoding="utf-8")
     song_source = (ROOT / "src/ui/pages/song_page.cpp").read_text(encoding="utf-8")
     genre_source = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
@@ -31,6 +30,10 @@ def main() -> None:
             "removed TEXTURE page header must not return")
     require(not (ROOT / "src/ui/pages/texture_page.cpp").exists(),
             "removed TEXTURE page source must not return")
+    require(not (ROOT / "src/ui/pages/generation_page.h").exists(),
+            "removed standalone GENERATION page header must not return")
+    require(not (ROOT / "src/ui/pages/generation_page.cpp").exists(),
+            "removed standalone GENERATION page source must not return")
 
     require("uint32_t currentRevision" in tracker and
             "uint32_t persistedRevision" in tracker,
@@ -67,10 +70,21 @@ def main() -> None:
             "step editor mutations must reach the tracker")
     require("markSceneMutated();" in feel_header,
             "FEEL timing/velocity mutations must reach the tracker")
-    generation_success = generation_source.index("if (result) {")
-    generation_failure = generation_source.index("} else {", generation_success)
-    require("markSceneMutated();" in generation_source[generation_success:generation_failure],
-            "successful GENERATION materialization must reach the tracker")
+
+    # GENERATION no longer owns a standalone page. Song is the materialization
+    # owner, and its persistent guard marks every successful mutation path.
+    require("SongPatternMaterializer::Result materializeSongTracks" in song_header and
+            "bool generateCurrentCellPattern" in song_header and
+            "bool generateEntireRow" in song_header,
+            "Song must own current generation/materialization entry points")
+    persistent_guard = song_header.index("void withAudioGuard")
+    runtime_guard = song_header.index("void withRuntimeAudioGuard", persistent_guard)
+    require("GroovePuterState::markSceneMutated();" in
+            song_header[persistent_guard:runtime_guard],
+            "Song persistent mutations, including generation, must reach the revision tracker")
+    require("generateCurrentCellPattern();" in song_source and
+            "generateEntireRow();" in song_source,
+            "Song generation gestures must route through the current materialization owner")
 
     preset_guard = feel_source.index("if (focus_ == FocusRow::Preset)")
     feel_guard_end = feel_source.index("Scene& scene", preset_guard)

@@ -65,9 +65,12 @@ for token in ("applyTexture(*this)", "setTextureMode(", "resetTextureBiasTrackin
         raise AssertionError(f"scene/reset path still projects TEXTURE: {token}")
 
 workflow = (ROOT / "src/ui/workflow_mode.h").read_text(encoding="utf-8")
-if "case WorkflowMode::Generate: return 3;" not in workflow:
-    raise AssertionError("GENERATE must remain exactly three pages")
-if "case kTexture:" not in workflow or "if (page == kTexture) page = kFeel;" not in workflow:
-    raise AssertionError("legacy page id 8 must remain a FEEL redirect")
+if "case WorkflowMode::Generate: return 2;" not in workflow:
+    raise AssertionError("GENERATE must expose exactly GENRE and FEEL")
+generate_pages = workflow.split("static constexpr int kGeneratePages[]", 1)[1].split("};", 1)[0]
+if "kTexture" in generate_pages or "kGeneration" in generate_pages:
+    raise AssertionError("retired TEXTURE/GENERATION ids must not return to normal GENERATE navigation")
+if "if (page == kTexture || page == kGeneration) return kFeel;" not in workflow:
+    raise AssertionError("legacy TEXTURE/GENERATION page ids must remain FEEL redirects")
 
 print("TextureMode runtime removal regressions: PASS")

@@ -42,8 +42,14 @@ def test_adv_amp_pin_is_not_used_as_rgb_data() -> None:
     )
     led = (ROOT / "src/ui/led_manager.cpp").read_text(encoding="utf-8")
 
-    require("GROOVEPUTER_CARDPUTER_ADV_PA_EN_PIN 21" in profile,
-            "Cardputer ADV PA_EN pin must remain explicit")
+    require("GROOVEPUTER_CARDPUTER_ADV_PA_EN_PIN" not in profile,
+            "Cardputer ADV must not claim a GPIO PA_EN pin")
+    require("struct UnusedPowerAmplifierEnablePin" in profile and
+            "kPowerAmplifierEnablePin{}" in profile,
+            "legacy PA setup must use the typed unused-pin no-op")
+    require("pinMode(UnusedPowerAmplifierEnablePin" in profile and
+            "digitalWrite(UnusedPowerAmplifierEnablePin" in profile,
+            "Cardputer ADV PA compatibility overloads must not drive GPIO")
     require("GROOVEPUTER_CARDPUTER_ADV_RGB_LED_PIN (-1)" in profile,
             "RGB output must remain disabled until a distinct ADV pin is verified")
     require("neopixelWrite(21" not in led,
@@ -260,7 +266,7 @@ def test_genre_page_uses_recipe_mode_and_tempo_order() -> None:
     page = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
 
     link_start = page.index("const char* linkStateShort")
-    link_end = page.index("int clampRecipeIndex", link_start)
+    link_end = page.index("const char* yesNo", link_start)
     link_block = page[link_start:link_end]
     require("grooveboxModeForRecipe" in link_block,
             "Genre page LINK state must account for the active recipe")
@@ -342,15 +348,28 @@ def test_performance_workflow_boundaries() -> None:
     engine = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
     sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
+    pattern_page = (ROOT / "src/ui/pages/pattern_edit_page.cpp").read_text(
+        encoding="utf-8"
+    )
+    pattern_header = (ROOT / "src/ui/pages/pattern_edit_page.h").read_text(
+        encoding="utf-8"
+    )
 
     require('constexpr char kLowerRow[] = "asdfghjkl";' in keyboard,
             "performance key mapping must stay centralized")
     require('constexpr char kUpperRow[] = "qwertyuiop";' in keyboard,
             "performance key mapping must stay centralized")
     for path in (ROOT / "src/ui/pages").glob("*.cpp"):
+        if path.name == "pattern_edit_page.cpp":
+            continue
         page = path.read_text(encoding="utf-8")
         require("asdfghjkl" not in page and "qwertyuiop" not in page,
-                f"keyboard mapping duplicated in {path.name}")
+                f"performance keyboard mapping duplicated in {path.name}")
+    require("bool note_entry_mode_ = false;" in pattern_header and
+            '"asdfghjkl"' in pattern_page and '"qwertyuiop"' in pattern_page,
+            "PatternEditPage may own chromatic rows only behind opt-in NOTE ENTRY")
+    require("if (note_entry_mode_" in pattern_page,
+            "pattern note-row routing must stay gated by NOTE ENTRY")
 
     require("MidiOutput" not in header,
             "MusicalEventTarget must describe logical voices, not output sinks")

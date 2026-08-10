@@ -184,10 +184,11 @@ def main() -> None:
         "formatTrackChannel(" in page
         and "formatRouteDestination(" in page
         and "formatPitchRange(" in page
-        and "%s>%s N%u %s" in page
+        and '"RAW %s V%u N%u %s"' in page
+        and '"%s>%s V%u N%u %s"' in page
         and "ROUTE %s" in page
-        and 'hints = soloActive ? "S UNSOLO <>RTE" : "S SOLO <>RTE";' in page,
-        "selected-layer footer must expose live Solo and direct route arrows",
+        and 'hints = soloActive ? "FN<>VOL S:OFF" : "FN<>VOL S:SOLO";' in page,
+        "selected-layer footer must expose live Solo, level and route state",
     )
 
     solo_start = page.index("if (event.key == 's' || event.key == 'S')")

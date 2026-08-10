@@ -252,8 +252,8 @@ def test_tr606_shared_clock_is_not_owned_by_kick() -> None:
     require("6200.0f" in source and "0.55f" in source and
             "fast_tanh(metalSignal * 1.6f)" in source,
             "TR-606 cymbal must retain the tamed 22.05 kHz profile")
-    require('if (voice == 6) return "CY";' in grid and
-            'if (voice == 7) return "--";' in grid,
+    require('if (voice == 6) return "CYM";' in grid and
+            'if (voice == 7) return "---";' in grid,
             "the 606 grid must label its actual cymbal and unavailable clap lane")
 
 
