@@ -5,49 +5,44 @@
 
 #include <cmath>
 
-const GenerativeParams kGenerativePresets[kGenerativeModeCount] = {
+namespace {
+
+constexpr GenerativeParams kPresetAcid =
     {8, 14, 36, 72, 0.40f, 0.50f, 0.8f, 0.0f, 0.1f, 85, 120,
      false, true, 0.25f, 0.10f, 0.15f, false, false, false, 0.6f,
-     0.20f, false, 8},
+     0.20f, false, 8};
+constexpr GenerativeParams kPresetOutrun =
     {10, 14, 48, 72, 0.12f, 0.25f, 0.70f, 0.08f, 0.01f, 90, 118,
      false, true, 0.10f, 0.03f, 0.05f, false, false, false, 0.4f,
-     0.12f, false, 6},
+     0.12f, false, 6};
+constexpr GenerativeParams kPresetDarksynth =
     {4, 7, 24, 48, 0.05f, 0.50f, 0.35f, 0.0f, 0.0f, 100, 125,
      true, true, 0.70f, 0.0f, 0.03f, false, true, false, 0.25f,
-     0.05f, false, 8},
+     0.05f, false, 8};
+constexpr GenerativeParams kPresetElectro =
     {6, 10, 36, 60, 0.0f, 0.70f, 0.3f, 0.0f, 0.0f, 105, 115,
      false, true, 0.30f, 0.05f, 0.10f, false, false, false, 0.5f,
-     0.35f, false, 8},
+     0.35f, false, 8};
+constexpr GenerativeParams kPresetRave =
     {12, 16, 36, 72, 0.20f, 0.80f, 0.5f, 0.0f, 0.0f, 110, 127,
      false, true, 0.20f, 0.05f, 0.20f, false, false, false, 0.7f,
-     0.08f, false, 8},
+     0.08f, false, 8};
+constexpr GenerativeParams kPresetReggae =
     {4, 8, 24, 48, 0.05f, 0.15f, 0.55f, 0.20f, 0.15f, 80, 110,
      false, true, 0.60f, 0.12f, 0.05f, true, true, true, 0.25f,
-     0.28f, true, 6},
+     0.28f, true, 6};
+constexpr GenerativeParams kPresetTripHop =
     {5, 9, 36, 60, 0.05f, 0.25f, 0.60f, 0.18f, 0.25f, 75, 108,
      false, true, 0.35f, 0.18f, 0.10f, true, true, false, 0.20f,
-     0.30f, true, 6},
+     0.30f, true, 6};
+constexpr GenerativeParams kPresetBroken =
     {7, 12, 36, 72, 0.10f, 0.35f, 0.45f, 0.28f, 0.12f, 90, 120,
      false, true, 0.20f, 0.08f, 0.12f, false, false, false, 0.35f,
-     0.45f, true, 8},
+     0.45f, true, 8};
+constexpr GenerativeParams kPresetChip =
     {8, 12, 48, 72, 0.02f, 0.15f, 0.38f, 0.0f, 0.0f, 96, 122,
      true, true, 0.40f, 0.02f, 0.06f, false, true, true, 0.12f,
-     0.02f, false, 4},
-};
-
-
-const GenrePreset kGenrePresets[8] = {
-    {GenerativeMode::Acid, "Classic Acid"},
-    {GenerativeMode::Outrun, "Outrun Lead"},
-    {GenerativeMode::Darksynth, "Darksynth Bass"},
-    {GenerativeMode::Outrun, "Synthwave"},
-    {GenerativeMode::Electro, "EBM"},
-    {GenerativeMode::Rave, "Rave Acid"},
-    {GenerativeMode::Darksynth, "Hotline"},
-    {GenerativeMode::Electro, "Detroit"},
-};
-
-namespace {
+     0.02f, false, 4};
 
 float clamp01(float value) {
     return value < 0.0f ? 0.0f : (value > 1.0f ? 1.0f : value);
@@ -73,7 +68,6 @@ GenerativeMode sceneGenerativeMode(const GenreSettings& settings) {
             ? settings.generativeMode
             : 0);
 }
-
 
 struct RecipeOverride {
     int minNotes = -1;
@@ -105,70 +99,65 @@ struct GenreRecipeDef {
 const GenreRecipeDef kGenreRecipes[] = {
     {1, "UK Garage",
      {6, 10, 0.28f, 0.18f, 84, 116, 0.45f, 0.12f, 0.10f, 0.28f,
-      0, 0, 0, 0.55f, 1, 8},
-     true,
+      0, 0, 0, 0.55f, 1, 8}, true,
      {0x8121, 0x0808, 0xFFFF, 0x2222, 0.08f, 0.10f, 0.35f,
       104, 102, 82, false, true}},
     {2, "Drum&Bass",
      {7, 12, 0.08f, 0.10f, 96, 124, 0.40f, 0.06f, 0.10f, 0.35f,
-      0, 0, 0, 0.65f, 1, 8},
-     true,
+      0, 0, 0, 0.65f, 1, 8}, true,
      {0x8060, 0x0808, 0xFFFF, 0x2222, 0.05f, 0.08f, 0.25f,
       118, 110, 98, false, false}},
     {3, "Footwork",
      {8, 12, 0.00f, 0.22f, 90, 120, 0.35f, 0.08f, 0.14f, 0.30f,
-      0, 0, 0, 0.80f, 1, 8},
-     true,
+      0, 0, 0, 0.80f, 1, 8}, true,
      {0x9129, 0x0808, 0xFFFF, 0x1111, 0.10f, 0.10f, 0.42f,
       112, 108, 90, false, true}},
     {4, "Psytrance",
      {12, 16, 0.00f, 0.04f, 102, 126, 0.22f, 0.05f, 0.10f, 0.55f,
-      0, 0, 0, 0.12f, 0, 8},
-     true,
+      0, 0, 0, 0.12f, 0, 8}, true,
      {0x8888, 0x0808, 0xFFFF, 0x2222, 0.04f, 0.04f, 0.15f,
       122, 112, 102, false, true}},
     {5, "Dub Techno",
      {3, 6, 0.12f, 0.16f, 72, 108, 0.78f, 0.28f, 0.05f, 0.18f,
-      1, 1, 1, 0.30f, 1, 6},
-     true,
+      1, 1, 1, 0.30f, 1, 6}, true,
      {0x8080, 0x0808, 0x2222, 0x0202, 0.10f, 0.06f, 0.22f,
       92, 88, 70, true, false}},
     {6, "Chicago Jack",
      {8, 13, 0.02f, 0.04f, 76, 122, 0.58f, 0.04f, 0.08f, 0.35f,
-      0, 0, 0, 0.20f, 0, 8},
-     true,
+      0, 0, 0, 0.20f, 0, 8}, true,
      {0x8888, 0x0808, 0x2222, 0x0202, 0.04f, 0.04f, 0.18f,
       122, 102, 82, false, true}},
     {7, "Rolling Acid",
      {10, 16, 0.04f, 0.06f, 82, 124, 0.42f, 0.05f, 0.10f, 0.42f,
-      0, 0, 0, 0.24f, 0, 8},
-     true,
+      0, 0, 0, 0.24f, 0, 8}, true,
      {0x8888, 0x0808, 0xAAAA, 0x2222, 0.04f, 0.05f, 0.20f,
       124, 104, 84, false, true}},
     {8, "Classic 2-Step",
      {4, 8, 0.32f, 0.18f, 82, 116, 0.52f, 0.14f, 0.08f, 0.28f,
-      0, 0, 0, 0.58f, 1, 8},
-     true,
+      0, 0, 0, 0.58f, 1, 8}, true,
      {0x8121, 0x0808, 0xFFFF, 0x2222, 0.08f, 0.10f, 0.35f,
       104, 102, 82, false, true}},
     {9, "Dark Skippy",
      {4, 9, 0.34f, 0.20f, 80, 116, 0.48f, 0.16f, 0.10f, 0.32f,
-      0, 0, 0, 0.66f, 1, 8},
-     true,
+      0, 0, 0, 0.66f, 1, 8}, true,
      {0x8121, 0x0808, 0xAAAA, 0x2222, 0.10f, 0.12f, 0.40f,
       106, 102, 80, false, true}},
     {10, "Deep Chord",
      {3, 6, 0.10f, 0.10f, 72, 108, 0.80f, 0.24f, 0.04f, 0.16f,
-      1, 1, 1, 0.28f, 1, 6},
-     true,
+      1, 1, 1, 0.28f, 1, 6}, true,
      {0x8888, 0x0808, 0x2222, 0x0202, 0.08f, 0.06f, 0.20f,
       94, 88, 70, true, false}},
     {11, "Minimal Space",
      {2, 5, 0.02f, 0.08f, 68, 104, 0.84f, 0.20f, 0.03f, 0.12f,
-      1, 1, 1, 0.22f, 1, 6},
-     true,
+      1, 1, 1, 0.22f, 1, 6}, true,
      {0x8080, 0x0808, 0x2222, 0x0202, 0.06f, 0.05f, 0.16f,
       90, 84, 68, true, false}},
+    {kClassicChillRecipeId, "Classic Chill", {}, false, {}},
+    {kDrunkenGrooveRecipeId, "Drunken Groove", {}, false, {}},
+    {kLoFiHouseRecipeId, "Lo-Fi House", {}, false, {}},
+    {kMinimalSleepRecipeId, "Minimal Sleep", {}, false, {}},
+    {kGoldenEraRecipeId, "Golden Era", {}, false, {}},
+    {kDustyJazzRecipeId, "Dusty Jazz", {}, false, {}},
 };
 
 const GenreRecipeDef* findRecipe(GenreRecipeId id) {
@@ -183,34 +172,20 @@ void applyRecipeOverride(GenerativeParams& params,
                          const RecipeOverride& overrideValues) {
     if (overrideValues.minNotes >= 0) params.minNotes = overrideValues.minNotes;
     if (overrideValues.maxNotes >= 0) params.maxNotes = overrideValues.maxNotes;
-    if (overrideValues.swingAmount >= 0.0f)
-        params.swingAmount = overrideValues.swingAmount;
-    if (overrideValues.microTimingAmount >= 0.0f)
-        params.microTimingAmount = overrideValues.microTimingAmount;
-    if (overrideValues.velocityMin >= 0)
-        params.velocityMin = overrideValues.velocityMin;
-    if (overrideValues.velocityMax >= 0)
-        params.velocityMax = overrideValues.velocityMax;
-    if (overrideValues.rootNoteBias >= 0.0f)
-        params.rootNoteBias = overrideValues.rootNoteBias;
-    if (overrideValues.ghostProbability >= 0.0f)
-        params.ghostProbability = overrideValues.ghostProbability;
-    if (overrideValues.chromaticProbability >= 0.0f)
-        params.chromaticProbability = overrideValues.chromaticProbability;
-    if (overrideValues.fillProbability >= 0.0f)
-        params.fillProbability = overrideValues.fillProbability;
-    if (overrideValues.sparseKick >= 0)
-        params.sparseKick = overrideValues.sparseKick != 0;
-    if (overrideValues.sparseHats >= 0)
-        params.sparseHats = overrideValues.sparseHats != 0;
-    if (overrideValues.noAccents >= 0)
-        params.noAccents = overrideValues.noAccents != 0;
-    if (overrideValues.drumSyncopation >= 0.0f)
-        params.drumSyncopation = overrideValues.drumSyncopation;
-    if (overrideValues.drumPreferOffbeat >= 0)
-        params.drumPreferOffbeat = overrideValues.drumPreferOffbeat != 0;
-    if (overrideValues.drumVoiceCount >= 0)
-        params.drumVoiceCount = overrideValues.drumVoiceCount;
+    if (overrideValues.swingAmount >= 0.0f) params.swingAmount = overrideValues.swingAmount;
+    if (overrideValues.microTimingAmount >= 0.0f) params.microTimingAmount = overrideValues.microTimingAmount;
+    if (overrideValues.velocityMin >= 0) params.velocityMin = overrideValues.velocityMin;
+    if (overrideValues.velocityMax >= 0) params.velocityMax = overrideValues.velocityMax;
+    if (overrideValues.rootNoteBias >= 0.0f) params.rootNoteBias = overrideValues.rootNoteBias;
+    if (overrideValues.ghostProbability >= 0.0f) params.ghostProbability = overrideValues.ghostProbability;
+    if (overrideValues.chromaticProbability >= 0.0f) params.chromaticProbability = overrideValues.chromaticProbability;
+    if (overrideValues.fillProbability >= 0.0f) params.fillProbability = overrideValues.fillProbability;
+    if (overrideValues.sparseKick >= 0) params.sparseKick = overrideValues.sparseKick != 0;
+    if (overrideValues.sparseHats >= 0) params.sparseHats = overrideValues.sparseHats != 0;
+    if (overrideValues.noAccents >= 0) params.noAccents = overrideValues.noAccents != 0;
+    if (overrideValues.drumSyncopation >= 0.0f) params.drumSyncopation = overrideValues.drumSyncopation;
+    if (overrideValues.drumPreferOffbeat >= 0) params.drumPreferOffbeat = overrideValues.drumPreferOffbeat != 0;
+    if (overrideValues.drumVoiceCount >= 0) params.drumVoiceCount = overrideValues.drumVoiceCount;
 }
 
 void clampGenerativeParams(GenerativeParams& params) {
@@ -218,52 +193,74 @@ void clampGenerativeParams(GenerativeParams& params) {
     if (params.maxNotes < params.minNotes) params.maxNotes = params.minNotes;
     if (params.maxNotes > 16) params.maxNotes = 16;
     if (params.minNotes > 16) params.minNotes = 16;
-
     if (params.minOctave > params.maxOctave) {
         const int value = params.minOctave;
         params.minOctave = params.maxOctave;
         params.maxOctave = value;
     }
-
     params.slideProbability = clamp01(params.slideProbability);
     params.accentProbability = clamp01(params.accentProbability);
-    params.gateLengthMultiplier =
-        params.gateLengthMultiplier < 0.1f
-            ? 0.1f
-            : (params.gateLengthMultiplier > 1.0f
-                   ? 1.0f
-                   : params.gateLengthMultiplier);
-    params.swingAmount =
-        params.swingAmount < 0.0f
-            ? 0.0f
-            : (params.swingAmount > 0.66f ? 0.66f : params.swingAmount);
+    params.gateLengthMultiplier = params.gateLengthMultiplier < 0.1f ? 0.1f :
+        (params.gateLengthMultiplier > 1.0f ? 1.0f : params.gateLengthMultiplier);
+    params.swingAmount = params.swingAmount < 0.0f ? 0.0f :
+        (params.swingAmount > 0.66f ? 0.66f : params.swingAmount);
     params.microTimingAmount = clamp01(params.microTimingAmount);
-    params.velocityMin =
-        params.velocityMin < 1
-            ? 1
-            : (params.velocityMin > 127 ? 127 : params.velocityMin);
-    params.velocityMax =
-        params.velocityMax < params.velocityMin
-            ? params.velocityMin
-            : (params.velocityMax > 127 ? 127 : params.velocityMax);
+    params.velocityMin = params.velocityMin < 1 ? 1 :
+        (params.velocityMin > 127 ? 127 : params.velocityMin);
+    params.velocityMax = params.velocityMax < params.velocityMin ? params.velocityMin :
+        (params.velocityMax > 127 ? 127 : params.velocityMax);
     params.rootNoteBias = clamp01(params.rootNoteBias);
     params.ghostProbability = clamp01(params.ghostProbability);
     params.chromaticProbability = clamp01(params.chromaticProbability);
     params.fillProbability = clamp01(params.fillProbability);
     params.drumSyncopation = clamp01(params.drumSyncopation);
-    params.drumVoiceCount =
-        params.drumVoiceCount < 1
-            ? 1
-            : (params.drumVoiceCount > 8 ? 8 : params.drumVoiceCount);
+    params.drumVoiceCount = params.drumVoiceCount < 1 ? 1 :
+        (params.drumVoiceCount > 8 ? 8 : params.drumVoiceCount);
 }
 
+constexpr GenreBehavior kBehaviorAcid =
+    {0xFFFF, 4, 1, true, true, true, false, {0.0f, 0.55f, 0.35f, 0.85f, 0.35f}};
+constexpr GenreBehavior kBehaviorOutrun =
+    {0xFFFF, 6, 2, true, false, true, false, {0.0f, 0.72f, 0.18f, 0.58f, 0.30f}};
+constexpr GenreBehavior kBehaviorDarksynth =
+    {0xAAAA, 3, 1, true, false, false, false, {1.0f, 0.34f, 0.50f, 0.92f, 0.22f}};
+constexpr GenreBehavior kBehaviorElectro =
+    {0xAA55, 3, 3, true, true, false, false, {0.2f, 0.60f, 0.30f, 0.75f, 0.20f}};
+constexpr GenreBehavior kBehaviorRave =
+    {0xFFFF, 6, 1, true, true, true, false, {0.0f, 0.78f, 0.32f, 0.80f, 0.50f}};
+constexpr GenreBehavior kBehaviorReggae =
+    {0xAAAA, 4, 0, true, false, false, true, {1.0f, 0.28f, 0.40f, 0.55f, 0.18f}};
+constexpr GenreBehavior kBehaviorTripHop =
+    {0xF0F0, 4, 2, true, false, false, true, {0.2f, 0.45f, 0.25f, 0.55f, 0.30f}};
+constexpr GenreBehavior kBehaviorBroken =
+    {0xAA55, 3, 3, true, true, true, false, {0.0f, 0.62f, 0.32f, 0.70f, 0.25f}};
+constexpr GenreBehavior kBehaviorChip =
+    {0xFFFF, 2, 0, true, false, false, true, {1.0f, 0.68f, 0.22f, 0.82f, 0.12f}};
+
 }  // namespace
+
+const GenerativeParams kGenerativePresets[kGenerativeModeCount] = {
+    kPresetAcid, kPresetOutrun, kPresetDarksynth, kPresetElectro,
+    kPresetRave, kPresetReggae, kPresetTripHop, kPresetBroken, kPresetChip,
+    kPresetOutrun, kPresetDarksynth, kPresetTripHop, kPresetTripHop,
+    kPresetBroken, kPresetBroken, kPresetTripHop,
+};
+
+const GenrePreset kGenrePresets[8] = {
+    {GenerativeMode::Acid, "Classic Acid"},
+    {GenerativeMode::Outrun, "Outrun Lead"},
+    {GenerativeMode::Darksynth, "Darksynth Bass"},
+    {GenerativeMode::Outrun, "Synthwave"},
+    {GenerativeMode::Electro, "EBM"},
+    {GenerativeMode::Rave, "Rave Acid"},
+    {GenerativeMode::Darksynth, "Hotline"},
+    {GenerativeMode::Electro, "Detroit"},
+};
 
 namespace GenreCatalog {
 
 uint8_t recipeCount() {
-    return static_cast<uint8_t>(
-        1 + sizeof(kGenreRecipes) / sizeof(kGenreRecipes[0]));
+    return static_cast<uint8_t>(1 + sizeof(kGenreRecipes) / sizeof(kGenreRecipes[0]));
 }
 
 const char* recipeName(GenreRecipeId id) {
@@ -274,8 +271,10 @@ const char* recipeName(GenreRecipeId id) {
 
 const char* generativeModeName(GenerativeMode mode) {
     static const char* const names[kGenerativeModeCount] = {
-        "Acid", "Minimal", "Techno", "Electro", "Rave",
-        "Reggae", "TripHop", "Broken", "Chip",
+        "Acid", "Synthwave", "Darksynth", "Electro", "Rave",
+        "Dub/Reggae", "Trip-Hop", "Breaks", "Chip", "House",
+        "Techno", "Hip-Hop", "Funk/Soul", "UK Garage", "Drum&Bass",
+        "Lo-Fi",
     };
     return names[generativeIndex(mode)];
 }
@@ -291,6 +290,13 @@ GrooveboxMode grooveboxModeForGenerative(GenerativeMode mode) {
         case GenerativeMode::TripHop: return GrooveboxMode::Dub;
         case GenerativeMode::Broken: return GrooveboxMode::Breaks;
         case GenerativeMode::Chip: return GrooveboxMode::Electro;
+        case GenerativeMode::House: return GrooveboxMode::Minimal;
+        case GenerativeMode::Techno: return GrooveboxMode::Electro;
+        case GenerativeMode::HipHop: return GrooveboxMode::Breaks;
+        case GenerativeMode::FunkSoul: return GrooveboxMode::Breaks;
+        case GenerativeMode::UkGarage: return GrooveboxMode::Breaks;
+        case GenerativeMode::DrumAndBass: return GrooveboxMode::Breaks;
+        case GenerativeMode::LoFi: return GrooveboxMode::Breaks;
         default: return GrooveboxMode::Minimal;
     }
 }
@@ -298,27 +304,17 @@ GrooveboxMode grooveboxModeForGenerative(GenerativeMode mode) {
 GrooveboxMode grooveboxModeForRecipe(GenreRecipeId id,
                                      GenerativeMode fallbackMode) {
     switch (id) {
-        case 1: return GrooveboxMode::Breaks;
-        case 2: return GrooveboxMode::Breaks;
-        case 3: return GrooveboxMode::Breaks;
-        case 4: return GrooveboxMode::Acid;
-        case 5: return GrooveboxMode::Dub;
-        case 6: return GrooveboxMode::Acid;
-        case 7: return GrooveboxMode::Acid;
-        case 8: return GrooveboxMode::Breaks;
-        case 9: return GrooveboxMode::Breaks;
-        case 10: return GrooveboxMode::Dub;
-        case 11: return GrooveboxMode::Dub;
+        case 1: case 2: case 3: case 8: case 9: return GrooveboxMode::Breaks;
+        case 4: case 6: case 7: return GrooveboxMode::Acid;
+        case 5: case 10: case 11: return GrooveboxMode::Dub;
         case 0:
-        default:
-            return grooveboxModeForGenerative(fallbackMode);
+        default: return grooveboxModeForGenerative(fallbackMode);
     }
 }
 
 GenerativeParams compiledGenerativeParams(const GenreSettings& settings) {
     const GenerativeMode mode = sceneGenerativeMode(settings);
     GenerativeParams params = kGenerativePresets[generativeIndex(mode)];
-
     const GenreRecipeDef* baseRecipe = findRecipe(settings.recipe);
     if (baseRecipe) applyRecipeOverride(params, baseRecipe->params);
 
@@ -328,31 +324,19 @@ GenerativeParams compiledGenerativeParams(const GenreSettings& settings) {
         GenerativeParams target = kGenerativePresets[generativeIndex(mode)];
         applyRecipeOverride(target, morphRecipe->params);
         clampGenerativeParams(target);
-
-        const float amount =
-            static_cast<float>(settings.morphAmount) / 255.0f;
+        const float amount = static_cast<float>(settings.morphAmount) / 255.0f;
         params.minNotes = lerpi(params.minNotes, target.minNotes, amount);
         params.maxNotes = lerpi(params.maxNotes, target.maxNotes, amount);
-        params.swingAmount =
-            lerpf(params.swingAmount, target.swingAmount, amount);
-        params.microTimingAmount =
-            lerpf(params.microTimingAmount, target.microTimingAmount, amount);
-        params.velocityMin =
-            lerpi(params.velocityMin, target.velocityMin, amount);
-        params.velocityMax =
-            lerpi(params.velocityMax, target.velocityMax, amount);
-        params.rootNoteBias =
-            lerpf(params.rootNoteBias, target.rootNoteBias, amount);
-        params.ghostProbability =
-            lerpf(params.ghostProbability, target.ghostProbability, amount);
-        params.chromaticProbability = lerpf(
-            params.chromaticProbability, target.chromaticProbability, amount);
-        params.fillProbability =
-            lerpf(params.fillProbability, target.fillProbability, amount);
-        params.drumSyncopation =
-            lerpf(params.drumSyncopation, target.drumSyncopation, amount);
-        params.drumVoiceCount =
-            lerpi(params.drumVoiceCount, target.drumVoiceCount, amount);
+        params.swingAmount = lerpf(params.swingAmount, target.swingAmount, amount);
+        params.microTimingAmount = lerpf(params.microTimingAmount, target.microTimingAmount, amount);
+        params.velocityMin = lerpi(params.velocityMin, target.velocityMin, amount);
+        params.velocityMax = lerpi(params.velocityMax, target.velocityMax, amount);
+        params.rootNoteBias = lerpf(params.rootNoteBias, target.rootNoteBias, amount);
+        params.ghostProbability = lerpf(params.ghostProbability, target.ghostProbability, amount);
+        params.chromaticProbability = lerpf(params.chromaticProbability, target.chromaticProbability, amount);
+        params.fillProbability = lerpf(params.fillProbability, target.fillProbability, amount);
+        params.drumSyncopation = lerpf(params.drumSyncopation, target.drumSyncopation, amount);
+        params.drumVoiceCount = lerpi(params.drumVoiceCount, target.drumVoiceCount, amount);
         if (amount >= 0.5f) {
             params.sparseKick = target.sparseKick;
             params.sparseHats = target.sparseHats;
@@ -360,17 +344,14 @@ GenerativeParams compiledGenerativeParams(const GenreSettings& settings) {
             params.drumPreferOffbeat = target.drumPreferOffbeat;
         }
     }
-
     clampGenerativeParams(params);
     return params;
 }
 
-const DrumGenreTemplate* drumTemplateOverride(
-        const GenreSettings& settings) {
+const DrumGenreTemplate* drumTemplateOverride(const GenreSettings& settings) {
     const GenreRecipeDef* selected = findRecipe(settings.recipe);
     const DrumGenreTemplate* result =
         selected && selected->hasDrumOverride ? &selected->drum : nullptr;
-
     const GenreRecipeDef* morph = findRecipe(settings.morphTarget);
     if (morph && morph->hasDrumOverride && settings.morphAmount >= 128 &&
         settings.morphTarget != settings.recipe) {
@@ -381,67 +362,25 @@ const DrumGenreTemplate* drumTemplateOverride(
 
 GenreBehavior behavior(const GenreSettings& settings) {
     static const GenreBehavior base[kGenerativeModeCount] = {
-        {0xFFFF, 4, 1, true, true, true, false,
-         {0.0f, 0.55f, 0.35f, 0.85f, 0.35f}},
-        {0xFFFF, 6, 2, true, false, true, false,
-         {0.0f, 0.72f, 0.18f, 0.58f, 0.30f}},
-        {0xAAAA, 3, 1, true, false, false, false,
-         {1.0f, 0.34f, 0.50f, 0.92f, 0.22f}},
-        {0xAA55, 3, 3, true, true, false, false,
-         {0.2f, 0.60f, 0.30f, 0.75f, 0.20f}},
-        {0xFFFF, 6, 1, true, true, true, false,
-         {0.0f, 0.78f, 0.32f, 0.80f, 0.50f}},
-        {0xAAAA, 4, 0, true, false, false, true,
-         {1.0f, 0.28f, 0.40f, 0.55f, 0.18f}},
-        {0xF0F0, 4, 2, true, false, false, true,
-         {0.2f, 0.45f, 0.25f, 0.55f, 0.30f}},
-        {0xAA55, 3, 3, true, true, true, false,
-         {0.0f, 0.62f, 0.32f, 0.70f, 0.25f}},
-        {0xFFFF, 2, 0, true, false, false, true,
-         {1.0f, 0.68f, 0.22f, 0.82f, 0.12f}},
+        kBehaviorAcid, kBehaviorOutrun, kBehaviorDarksynth, kBehaviorElectro,
+        kBehaviorRave, kBehaviorReggae, kBehaviorTripHop, kBehaviorBroken,
+        kBehaviorChip, kBehaviorOutrun, kBehaviorDarksynth, kBehaviorTripHop,
+        kBehaviorTripHop, kBehaviorBroken, kBehaviorBroken, kBehaviorTripHop,
     };
-
-    GenreBehavior result =
-        base[generativeIndex(sceneGenerativeMode(settings))];
-
+    GenreBehavior result = base[generativeIndex(sceneGenerativeMode(settings))];
     if (settings.recipe == 6) {
-        result.stepMask = 0xFFFF;
-        result.motifLength = 4;
-        result.preferredScale = 1;
-        result.useMotif = true;
-        result.allowChromatic = true;
-        result.forceOctaveJump = false;
-        result.avoidClusters = false;
-        result.timbre = {0.0f, 0.52f, 0.55f, 0.82f, 0.25f};
+        result = {0xFFFF, 4, 1, true, true, false, false,
+                  {0.0f, 0.52f, 0.55f, 0.82f, 0.25f}};
     } else if (settings.recipe == 7) {
-        result.stepMask = 0xFFFF;
-        result.motifLength = 6;
-        result.preferredScale = 1;
-        result.useMotif = true;
-        result.allowChromatic = true;
-        result.forceOctaveJump = false;
-        result.avoidClusters = false;
-        result.timbre = {0.0f, 0.60f, 0.62f, 0.88f, 0.32f};
+        result = {0xFFFF, 6, 1, true, true, false, false,
+                  {0.0f, 0.60f, 0.62f, 0.88f, 0.32f}};
     } else if (settings.recipe == 8 || settings.recipe == 9) {
-        result.stepMask = 0xAA55;
-        result.motifLength = 4;
-        result.preferredScale = 3;
-        result.useMotif = true;
-        result.allowChromatic = false;
-        result.forceOctaveJump = false;
-        result.avoidClusters = true;
-        result.timbre = {0.2f, 0.46f, 0.24f, 0.58f, 0.22f};
+        result = {0xAA55, 4, 3, true, false, false, true,
+                  {0.2f, 0.46f, 0.24f, 0.58f, 0.22f}};
     } else if (settings.recipe == 10 || settings.recipe == 11) {
-        result.stepMask = 0x8888;
-        result.motifLength = 4;
-        result.preferredScale = 3;
-        result.useMotif = true;
-        result.allowChromatic = false;
-        result.forceOctaveJump = false;
-        result.avoidClusters = true;
-        result.timbre = {1.0f, 0.30f, 0.34f, 0.50f, 0.20f};
+        result = {0x8888, 4, 3, true, false, false, true,
+                  {1.0f, 0.30f, 0.34f, 0.50f, 0.20f}};
     }
-
     return result;
 }
 
@@ -449,8 +388,7 @@ GrooveRecipe grooveRecipe(const GenreSettings& settings) {
     const GenerativeParams params = compiledGenerativeParams(settings);
     GrooveRecipe recipe;
     recipe.stepsPerBar = 16;
-    recipe.swingPercent =
-        50 + static_cast<uint8_t>(std::round(params.swingAmount * 100.0f));
+    recipe.swingPercent = 50 + static_cast<uint8_t>(std::round(params.swingAmount * 100.0f));
     if (recipe.swingPercent < 50) recipe.swingPercent = 50;
     if (recipe.swingPercent > 75) recipe.swingPercent = 75;
     recipe.gateLengthRatio = params.gateLengthMultiplier;
@@ -467,32 +405,19 @@ GrooveRecipe grooveRecipe(const GenreSettings& settings) {
 
 }  // namespace GenreCatalog
 
-GenreSettings& GenreSceneView::settings() {
-    return scenes_.currentScene().genre;
-}
-
-const GenreSettings& GenreSceneView::settings() const {
-    return scenes_.currentScene().genre;
-}
+GenreSettings& GenreSceneView::settings() { return scenes_.currentScene().genre; }
+const GenreSettings& GenreSceneView::settings() const { return scenes_.currentScene().genre; }
 
 void GenreSceneView::setGenerativeMode(GenerativeMode mode) {
-    settings().generativeMode =
-        static_cast<uint8_t>(generativeIndex(mode));
+    settings().generativeMode = static_cast<uint8_t>(generativeIndex(mode));
 }
-
 void GenreSceneView::setRecipe(GenreRecipeId value) {
-    settings().recipe =
-        value < GenreCatalog::recipeCount() ? value : kBaseRecipeId;
+    settings().recipe = value < GenreCatalog::recipeCount() ? value : kBaseRecipeId;
 }
-
 void GenreSceneView::setMorphTarget(GenreRecipeId value) {
-    settings().morphTarget =
-        value < GenreCatalog::recipeCount() ? value : kBaseRecipeId;
+    settings().morphTarget = value < GenreCatalog::recipeCount() ? value : kBaseRecipeId;
 }
-
-void GenreSceneView::setMorphAmount(uint8_t value) {
-    settings().morphAmount = value;
-}
+void GenreSceneView::setMorphAmount(uint8_t value) { settings().morphAmount = value; }
 
 void GenreSceneView::cycleGenerative(int direction) {
     int next = generativeIndex(generativeMode()) + direction;
@@ -510,38 +435,19 @@ void GenreSceneView::cycleRecipe(int direction) {
     settings().recipe = static_cast<uint8_t>(next);
 }
 
-GenerativeMode GenreSceneView::generativeMode() const {
-    return sceneGenerativeMode(settings());
-}
-
+GenerativeMode GenreSceneView::generativeMode() const { return sceneGenerativeMode(settings()); }
 GenreRecipeId GenreSceneView::recipe() const {
-    return settings().recipe < GenreCatalog::recipeCount()
-               ? settings().recipe
-               : kBaseRecipeId;
+    return settings().recipe < GenreCatalog::recipeCount() ? settings().recipe : kBaseRecipeId;
 }
-
 GenreRecipeId GenreSceneView::morphTarget() const {
-    return settings().morphTarget < GenreCatalog::recipeCount()
-               ? settings().morphTarget
-               : kBaseRecipeId;
+    return settings().morphTarget < GenreCatalog::recipeCount() ? settings().morphTarget : kBaseRecipeId;
 }
-
-uint8_t GenreSceneView::morphAmount() const {
-    return settings().morphAmount;
-}
-
+uint8_t GenreSceneView::morphAmount() const { return settings().morphAmount; }
 GenerativeParams GenreSceneView::getCompiledGenerativeParams() const {
     return GenreCatalog::compiledGenerativeParams(settings());
 }
-
-GrooveRecipe GenreSceneView::getGrooveRecipe() const {
-    return GenreCatalog::grooveRecipe(settings());
-}
-
+GrooveRecipe GenreSceneView::getGrooveRecipe() const { return GenreCatalog::grooveRecipe(settings()); }
 const DrumGenreTemplate* GenreSceneView::drumTemplateOverride() const {
     return GenreCatalog::drumTemplateOverride(settings());
 }
-
-GenreBehavior GenreSceneView::getBehavior() const {
-    return GenreCatalog::behavior(settings());
-}
+GenreBehavior GenreSceneView::getBehavior() const { return GenreCatalog::behavior(settings()); }
