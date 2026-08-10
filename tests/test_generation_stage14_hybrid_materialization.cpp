@@ -18,6 +18,15 @@ uint8_t popcount16(StepMask mask) {
   return count;
 }
 
+bool hasAnyDrumHit(const DrumPatternSet& drums) {
+  for (int voice = 0; voice < DrumPatternSet::kVoices; ++voice) {
+    for (int step = 0; step < DrumPattern::kSteps; ++step) {
+      if (drums.voices[voice].steps[step].hit) return true;
+    }
+  }
+  return false;
+}
+
 SynthPattern pitchSource(int baseNote) {
   SynthPattern pattern{};
   for (uint8_t step = 0; step < SynthPattern::kSteps; ++step) {
@@ -27,10 +36,17 @@ SynthPattern pitchSource(int baseNote) {
   return pattern;
 }
 
-GenreSettings lofiSettings(uint8_t recipe = 0) {
+GenreSettings settingsFor(GenerativeMode mode, uint8_t recipe = 0) {
   GenreSettings settings{};
-  settings.generativeMode = static_cast<uint8_t>(GenerativeMode::LoFi);
+  settings.generativeMode = static_cast<uint8_t>(mode);
   settings.recipe = recipe;
+  settings.rhythmSelectionMode = static_cast<uint8_t>(RhythmSelectionMode::Auto);
+  settings.rhythmArchetypeId = kNoArchetypeId;
+  return settings;
+}
+
+GenreSettings lofiSettings(uint8_t recipe = 0) {
+  GenreSettings settings = settingsFor(GenerativeMode::LoFi, recipe);
   settings.rhythmSelectionMode = static_cast<uint8_t>(RhythmSelectionMode::Manual);
   settings.rhythmArchetypeId = 416;  // approved halftime_switch
   return settings;
@@ -67,11 +83,48 @@ void testLoFiUsesOneChordFirstHybridSynthB() {
     assert(result.melodicFeelStatus == FeelInterpretStatus::Ok);
     assert((result.melodicFillOnsets & result.chordOnsets) == 0);
     assert(popcount16(result.melodicFillOnsets) <= 3);
+    assert(hasAnyDrumHit(drums));
 
     if (result.melodicFillOnsets != 0) observedMelodicFill = true;
   }
 
   assert(observedMelodicFill);
+}
+
+void testEveryStage14DirectionMaterializesDrumsAcrossAddresses() {
+  struct ProfileCase {
+    GenerativeMode mode;
+    uint8_t recipe;
+  };
+  constexpr ProfileCase profiles[] = {
+      {GenerativeMode::House, kBaseRecipeId},
+      {GenerativeMode::Techno, kBaseRecipeId},
+      {GenerativeMode::HipHop, kBaseRecipeId},
+      {GenerativeMode::FunkSoul, kBaseRecipeId},
+      {GenerativeMode::UkGarage, kBaseRecipeId},
+      {GenerativeMode::DrumAndBass, kBaseRecipeId},
+      {GenerativeMode::LoFi, kBaseRecipeId},
+      {GenerativeMode::LoFi, kClassicChillRecipeId},
+      {GenerativeMode::LoFi, kDrunkenGrooveRecipeId},
+      {GenerativeMode::LoFi, kLoFiHouseRecipeId},
+      {GenerativeMode::LoFi, kMinimalSleepRecipeId},
+      {GenerativeMode::HipHop, kGoldenEraRecipeId},
+      {GenerativeMode::HipHop, kDustyJazzRecipeId},
+  };
+
+  for (const ProfileCase& profile : profiles) {
+    for (int16_t address = 0; address < 64; ++address) {
+      DrumPatternSet drums{};
+      SynthPattern synthA = pitchSource(36);
+      SynthPattern synthB = pitchSource(60);
+      const StrongRhythmMigrationResult result = migrateStrongRhythmMaterial(
+          settingsFor(profile.mode, profile.recipe), contextFor(address),
+          drums, synthA, synthB);
+      assert(result.status == StrongRhythmMigrationStatus::Applied);
+      assert(result.route == StrongRhythmRoute::Stage7Composition);
+      assert(hasAnyDrumHit(drums));
+    }
+  }
 }
 
 void testMinimalSleepKeepsHybridAtLowBpm() {
@@ -90,6 +143,7 @@ void testMinimalSleepKeepsHybridAtLowBpm() {
   assert(result.status == StrongRhythmMigrationStatus::Applied);
   assert(result.corridor.suggestedBpm == 54);
   assert(result.synthBRole == SemanticSynthBRole::ChordWithMelodicFill);
+  assert(hasAnyDrumHit(drums));
 }
 
 void testRestHeavyCanBeIntentionallyEmptyOnSlowBarCoordinate() {
@@ -111,6 +165,7 @@ void testRestHeavyCanBeIntentionallyEmptyOnSlowBarCoordinate() {
 
 int main() {
   testLoFiUsesOneChordFirstHybridSynthB();
+  testEveryStage14DirectionMaterializesDrumsAcrossAddresses();
   testMinimalSleepKeepsHybridAtLowBpm();
   testRestHeavyCanBeIntentionallyEmptyOnSlowBarCoordinate();
   return 0;
