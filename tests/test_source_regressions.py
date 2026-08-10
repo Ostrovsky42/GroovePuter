@@ -347,8 +347,10 @@ def test_recipe_selector_is_visible_and_navigable() -> None:
 def test_enter_applies_selected_recipe() -> None:
     page = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
     start = page.index("// ENTER: apply the current genre/recipe selection.")
-    end = page.index("// SPACE: toggle apply mode", start)
+    end = page.index("if (event.key == ' ' && focus_ == FocusRow::Apply)", start)
     enter_block = page[start:end]
+    require("if (event.key == '\\n' || event.key == '\\r')" in enter_block,
+            "Enter apply block must remain explicitly bound to Enter")
     require("applyCurrent();" in enter_block,
             "Enter must apply the selected recipe")
     require("cycleApplyMode" not in enter_block,
