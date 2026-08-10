@@ -136,12 +136,33 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
   const bool keyG =
       lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G;
 
-  // Whole-pattern G is a generation command, not a local edit. Preserve the
-  // legacy pattern as fallback, then apply selected Stage7/14 RHYTHM + FEEL to
-  // drums only. Cardputer may report G by scancode with key == 0, so this must
-  // recognize both input representations. Ctrl+G (one voice) and Alt+G (chaos)
-  // stay intentionally legacy.
-  if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
+  // Shift+G is an explicit Stage 12 audition/probe command. It reserves Bank B
+  // + Song B for a 1/2/4/8-bar audition and never changes the normal G contract.
+  if (keyG && ui_event.shift &&
+      !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
+    GroovePuterRhythm::PhraseAuditionResult audition{};
+    page->withAudioGuard([&]() {
+      audition = GroovePuterRhythm::regeneratePhraseAuditionWithProbe(
+          page->mini_acid_);
+    });
+    char toast[64];
+    std::snprintf(
+        toast,
+        sizeof(toast),
+        "AUD %uB %s #%u",
+        static_cast<unsigned>(audition.requestedBars),
+        GroovePuterRhythm::phraseAuditionStatusName(audition.status),
+        static_cast<unsigned>(audition.archetypeId));
+    UI::showToast(toast, 1800);
+    return true;
+  }
+
+  // Whole-pattern plain G is a generation command, not a local edit. Preserve
+  // the legacy pattern as fallback, then apply selected Stage7/14 RHYTHM + FEEL
+  // to drums only. Cardputer may report G by scancode with key == 0. Ctrl+G
+  // (one voice), Alt+G (chaos), and Shift+G (audition) are separate contracts.
+  if (keyG && !ui_event.shift &&
+      !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
     page->withAudioGuard([&]() {
       GroovePuterRhythm::regenerateDrumsWithStrongRhythmMigration(
           page->mini_acid_);
