@@ -2,15 +2,19 @@
 
 ## Purpose
 
-Stage 15C adds bounded, deterministic one-bar bass pitch behavior and
+Stage 15C adds bounded, deterministic one-bar bass tonal behavior and
 engine-neutral articulation intent for Synth A. It consumes an already-resolved
-bass rhythm topology and assigns scale-degree movement, accent intent, and
-slide-into intent without changing where bass onsets or continuations occur.
+bass rhythm topology plus a transient `BassBehaviorPolicy` and never changes
+where bass onsets or continuations occur.
+
+Genre/Variant/composition owns policy resolution. Stage 15C contains no hidden
+Genre or `RhythmFamily` routing. It does not claim Stage 9 rhythm ownership,
+physical synth-engine ownership, Phrase state, Scene state, persistence, or
+multi-bar bass evolution.
 
 Current reachability: **API-ONLY / host-testable**. Production migration wiring is
-intentionally deferred until the moving Stage 14 materialization contract and a
-transient tonal projection adapter are stabilized. Stage 15C does not claim
-Stage 9 rhythm ownership and does not claim multi-bar bass evolution.
+intentionally deferred until Stage 14 is stable and the shared transient Tonal
+Projector exists. Hardware musical acceptance is not claimed here.
 
 ## Hardware list
 
@@ -40,12 +44,9 @@ bash tests/run_generation_stage15c_tests.sh
 The gate compiles and executes with GCC, Clang when available, and ASan/UBSan.
 
 There is no Stage 15C-specific firmware flash acceptance yet because this branch
-has no production caller wiring. The repository-wide Cardputer-Adv, fixed-DRAM,
-SEQTRAK MIDI-only, and SDL jobs remain useful compile/regression guards but do
-not make this API-only feature hardware-reachable.
-
-After Stage 14 stabilizes, the integration branch must pass the normal
-Cardputer-Adv and SEQTRAK MIDI-only builds before hardware audition.
+has no production caller wiring. Repository-wide Cardputer-Adv, fixed-DRAM,
+SEQTRAK MIDI-only, and SDL jobs are compile/regression guards only; they do not
+make this API-only feature hardware-reachable.
 
 ## Expected behavior
 
@@ -58,68 +59,85 @@ Generation Stage 15C host matrix: OK
 
 The API must:
 
+- default to the conservative vocabulary `RootAnchor / Plain` for every seed;
+- require explicit composition-layer opt-in before wider contour/articulation
+  vocabulary is reachable;
+- reject preferred masks that escape their corresponding allowed masks;
+- reject explicitly requested vocabulary that policy forbids;
 - preserve the input bass onset and continuation masks exactly;
-- produce deterministic scale-degree offsets for identical inputs;
-- support RootAnchor, RootFifth, RootOctave, NeighborReturn, StepApproach,
-  LeapReturn, RootFifthNeighbor, and PedalTurn contours;
-- keep pitch movement inside the requested degree and maximum-leap bounds;
-- emit accent and slide-into masks that are strict subsets of real bass onsets;
-- never create a slide target on the first onset;
-- emit slide intent only when the existing timing topology already connects the
-  previous onset to the destination directly or through uninterrupted
-  continuation cells;
-- return a valid empty result for a valid empty bass rhythm plan;
-- use fixed-capacity storage with no heap allocation or global RNG;
-- remain independent from Synth B, Phrase, Scene, and physical synth type.
+- emit a fixed-capacity tagged tonal representation:
 
-`accentOnsets` and `slideIntoOnsets` are semantic articulation intent only. A
-future engine adapter may drop an unsupported accent/slide. It must **not** add
-or move a bass onset, create/extend a continuation, or lengthen a gate merely to
-force an articulation to happen. Timing topology remains owned by the existing
-bass-rhythm/materialization path. A sparse timing gap therefore suppresses slide
-intent rather than being repaired by Stage 15C.
+```cpp
+int8_t tonalOffsets[kStepsPerBar]{};
+uint16_t semitoneOffsetOrdinals = 0;
+```
 
-Scale-degree offsets are also semantic. Absolute MIDI-note realization remains a
-downstream tonal-projection concern using the current transient scale/root and
-register context; Stage 15C does not persist tonal state.
+- interpret bit N of `semitoneOffsetOrdinals` as the unit tag for
+  `tonalOffsets[N]`: set = semitones, clear = scale degrees;
+- encode `RootFifth` as tagged `+7` semitones;
+- encode `RootOctave` as tagged `+12` semitones;
+- keep `NeighborReturn` and `StepApproach` as untagged scale-degree intent;
+- allow mixed tagged vocabulary such as `RootFifthNeighbor` without ambiguous
+  units;
+- apply `minDegreeOffset`, `maxDegreeOffset`, and `maxLeapDegrees` only to
+  untagged scale-degree entries;
+- never compare a scale-degree entry directly with a semitone-tagged entry for
+  `maxLeapDegrees`; the common musical leap is checked only after Tonal Projector
+  resolves both to absolute MIDI notes;
+- emit accent and slide masks as strict subsets of real bass onsets;
+- emit slide intent only when existing timing already connects the previous
+  onset to the destination directly or through uninterrupted continuations;
+- never create or extend a continuation merely to realize a slide;
+- use fixed-capacity storage with no heap allocation, global RNG, or unbounded
+  retry loop.
+
+`tonalOffsets` are not final MIDI notes. The future Tonal Projector reads the
+current transient root, `ScaleType`, register bounds, values, and unit tags and
+returns absolute MIDI notes with an explicit status. The projector must use the
+real scale cardinality (5, 7, or 12), not the existing seven-mode modulo shortcut.
+
+Stage 15C does not own that projector and does not gain Genre, rhythm, voice,
+Scene, Phrase, or persistence ownership through it.
 
 ## Troubleshooting
 
 If compilation fails in the Stage 15C test:
 
-1. Confirm the branch is based on the current Stage 14 generation headers.
-2. Confirm `src/generation/generation_context.cpp` is included in the host build.
-3. Do not move bass onset generation from `bass_rhythm.*` into Stage 15C.
-4. Do not map semantic articulation directly to TB303/SID/AY/other engine
-   internals in this API-only stage.
-5. Do not create/extend ties or gates to make a requested slide possible; a
-   sparse gap must remain a gap and unsupported articulation is dropped.
-6. If Stage 14 changes `BassRhythmPlan`, adapt only the transient input adapter.
+1. Confirm `request.family` is absent from `bass_pitch_behavior.*` and tests.
+2. Confirm `selectContour()` and `selectArticulation()` use policy masks only.
+3. Confirm the default policy allows only `RootAnchor` and `Plain`.
+4. Confirm `RootFifth` is tagged `+7` semitones and `RootOctave` is tagged `+12`.
+5. Confirm neighbor/approach values remain scale-degree intent with their tag
+   bits clear.
+6. Do not apply `maxLeapDegrees` across mixed-unit adjacent entries.
+7. Do not move bass onset generation from `bass_rhythm.*` into Stage 15C.
+8. Do not map semantic articulation directly to TB303/SID/AY internals here.
+9. Do not create/extend ties or gates to make a requested slide possible.
 
-If the source regression reports a forbidden owner such as `Scene`, `PhraseCore`,
-`StrongRhythmMigration`, `SynthPattern`, melodic code, heap containers, or global
-randomness, the implementation has crossed the Stage 15C architecture boundary.
+If the source regression reports `Scene`, `PhraseCore`, `StrongRhythmMigration`,
+`SynthPattern`, melodic ownership, `request.family`, heap containers, or global
+randomness, the implementation has crossed the Stage 15C boundary.
 
 ## Acceptance checklist
 
 - [ ] `bash tests/run_generation_stage15c_tests.sh` passes with GCC.
 - [ ] Clang run passes when Clang is installed.
 - [ ] ASan/UBSan run passes.
+- [ ] Default AUTO remains `RootAnchor / Plain` across the seed sweep.
+- [ ] `BassBehaviorPolicy` is fixed-capacity and transient.
+- [ ] No `request.family` or hidden Genre/Variant routing exists in Stage 15C.
 - [ ] Input bass onset mask equals output onset mask.
 - [ ] Input continuation mask equals output continuation mask.
-- [ ] Identical initial state produces identical bass behavior.
-- [ ] Auto selection reaches more than one legal contour/articulation behavior
-      over the deterministic test matrix.
-- [ ] Degree and maximum-leap bounds are never violated.
+- [ ] `RootFifth` yields tagged `+7` semitone intent.
+- [ ] `RootOctave` yields tagged `+12` semitone intent.
+- [ ] `NeighborReturn` and `StepApproach` remain untagged scale-degree intent.
+- [ ] Mixed unit entries never use `maxLeapDegrees` across the unit boundary.
+- [ ] Degree-only bounds remain enforced for degree-only adjacency.
 - [ ] Accent and slide masks never contain a non-onset cell.
 - [ ] Slide intent is absent across an existing empty timing gap.
-- [ ] No new onset or continuation is synthesized.
-- [ ] A downstream articulation adapter is permitted to drop unsupported intent
-      but not to alter timing topology to realize it.
-- [ ] No heap allocation or global RNG is introduced.
-- [ ] No Scene, Phrase, Synth B, voice-allocation, or synth-engine ownership
-      appears.
-- [ ] Production tonal projection remains outside the role engine.
-- [ ] Production reachability remains explicitly unclaimed until Stage 14 wiring
-      is stabilized and separately reviewed.
+- [ ] No onset/continuation is created or moved by Stage 15C.
+- [ ] No heap allocation, global RNG, or unbounded retry is introduced.
+- [ ] Production tonal projection remains outside Stage 15C.
+- [ ] Production reachability remains explicitly unclaimed until integration is
+      separately reviewed.
 - [ ] Hardware bass musical verdict remains **PENDING**.
