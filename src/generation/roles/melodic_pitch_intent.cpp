@@ -235,7 +235,7 @@ bool applyTerminalEcho(const MelodicPitchIntentRequest& request,
   const uint8_t count = collectOnsetSteps(onsets, onsetSteps);
   if (count == 0 || count >= request.maxOnsets) return false;
 
-  constexpr int8_t offsets[] = {2, -2, 3, -3, 1, -1};
+  constexpr uint8_t offsets[] = {1, 2, 3};
   constexpr uint8_t kOffsetCount =
       static_cast<uint8_t>(sizeof(offsets) / sizeof(offsets[0]));
   const uint32_t seed = deriveGenerationSeed(
@@ -246,10 +246,10 @@ bool applyTerminalEcho(const MelodicPitchIntentRequest& request,
   const uint8_t terminal = onsetSteps[count - 1u];
   const StepMask occupied = static_cast<StepMask>(onsets | continuations);
   for (uint8_t attempt = 0; attempt < kOffsetCount; ++attempt) {
-    const int8_t offset = offsets[(rotation + attempt) % kOffsetCount];
-    const int target = static_cast<int>(terminal) + offset;
-    if (target < 0 || target >= kStepsPerBar) continue;
-    const StepMask bit = stepBit(static_cast<uint8_t>(target));
+    const uint8_t offset = offsets[(rotation + attempt) % kOffsetCount];
+    const uint8_t target = static_cast<uint8_t>(terminal + offset);
+    if (target <= terminal || target >= kStepsPerBar) continue;
+    const StepMask bit = stepBit(target);
     if ((request.allowedOnsetSteps & bit) == 0 || (occupied & bit) != 0)
       continue;
     onsets = static_cast<StepMask>(onsets | bit);
