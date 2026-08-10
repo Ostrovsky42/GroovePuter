@@ -17,12 +17,16 @@ Stage 15B owns only:
 Genre/Variant/composition owns policy resolution. Stage 15B does **not** contain
 hidden Genre or `RhythmFamily` lookup tables. It does not own physical Synth B
 arbitration, chord-first blocking, full-groove diversity/history, Phrase state,
-bass behavior, tonal MIDI-note projection, or multi-bar evolution.
+bass behavior, `ScaleType` mapping, MIDI register selection, absolute MIDI-note
+projection, or multi-bar evolution.
 
-Current reachability: **API-ONLY / host-testable**. Production migration wiring is
-intentionally deferred until the moving Stage 14 materialization contract and a
-transient tonal projection adapter are stable. Do not claim hardware musical
-acceptance from this checkpoint.
+Current reachability: **API-ONLY / host-testable**. This current-base rebuild sits
+on the verified Tonal Projector checkpoint `f170584a`. The projector is therefore
+available to the later Stage 15 integration layer, but this role engine does not
+call it directly. Production wiring is intentionally deferred to the single
+Stage 15 integration path, which will supply harmonic root / `ScaleType` /
+register context and project this role's degree intent through the shared Tonal
+Projector. Do not claim hardware musical acceptance from this checkpoint.
 
 ## Hardware list
 
@@ -56,8 +60,9 @@ has no production caller wiring. The repository-wide Cardputer-Adv and SEQTRAK
 MIDI-only builds remain compile guards only; they do not make this API-only
 feature hardware-reachable.
 
-After Stage 14 stabilizes, the production integration branch must pass the
-normal Cardputer-Adv builds before hardware audition.
+The later Stage 15 integration branch must pass the normal host, Tonal Projector,
+SDL, Cardputer-Adv fixed-DRAM, and SEQTRAK MIDI-only gates before hardware
+audition.
 
 ## Expected behavior
 
@@ -100,6 +105,8 @@ The API must:
 - apply only one-bar pitch-domain motif operations;
 - keep every degree inside the requested bounds and adjacent movement inside the
   requested maximum leap;
+- emit semantic degree intent only; it must not choose `ScaleType`, a MIDI
+  register, an absolute MIDI note, or a physical synth;
 - use fixed-capacity storage with no heap allocation, global RNG, or unbounded
   retry loop.
 
@@ -113,14 +120,16 @@ masks are semantic intent constraints, not physical Synth B availability. Stage
 
 If compilation fails in the Stage 15B test:
 
-1. Confirm the branch is based on the current Stage 14 generation headers.
+1. Confirm the branch is based on the current Tonal Projector checkpoint
+   `f170584a` (or its reviewed descendant), not the old `c8cd061` Stage 14 line.
 2. Confirm `src/generation/generation_context.cpp` is included in the host build.
 3. Do not add Genre/Variant switches to the role engine; resolve vocabulary into
    `MelodicIntentPolicy` in the composition/integration layer.
 4. Do not repair Stage 14 hybrid chord/melody arbitration inside Stage 15B.
-5. Do not translate scale-degree offsets directly to arbitrary MIDI notes inside
-   this role layer; production wiring needs the resolved current-bar tonal
-   context.
+5. Do not translate scale-degree offsets to MIDI, choose `ScaleType`, choose a
+   register corridor, or select a physical synth inside this role layer. The
+   Stage 15 integration adapter owns construction of `TonalProjectionRequest`
+   and the call to the shared projector.
 6. If Stage 14 changes `MelodicMotifPlan`, adapt only the transient input adapter;
    do not add Phrase or voice-allocation ownership.
 
@@ -129,8 +138,10 @@ If a requested shift cannot fit its onset and continuation legality masks,
 strictly after the terminal onset below `maxOnsets`, `Preserve` is also expected.
 
 If the source regression reports `Scene`, `PhraseCore`, full-groove history,
-physical `SynthPattern`, hidden `RhythmFamily` routing, heap containers, or
-`StrongRhythmMigration`, the implementation has crossed the Stage 15B boundary.
+physical `SynthPattern`, hidden `RhythmFamily` routing, `ScaleType`, Tonal
+Projector request/result calls, MIDI register/note fields, physical synth types,
+heap containers, or `StrongRhythmMigration`, the implementation has crossed the
+Stage 15B boundary.
 
 ## Acceptance checklist
 
@@ -159,7 +170,10 @@ physical `SynthPattern`, hidden `RhythmFamily` routing, heap containers, or
 - [ ] No heap allocation, global RNG, or unbounded retry is introduced.
 - [ ] No Scene, Phrase, 15A-history, bass, or physical voice-allocation ownership
       appears.
-- [ ] Production tonal projection remains outside the role engine.
-- [ ] Production reachability remains explicitly unclaimed until Stage 14 wiring
-      is stabilized and separately reviewed.
+- [ ] No `ScaleType` mapping, register selection, absolute MIDI projection, or
+      physical synth selection appears in the role engine.
+- [ ] Shared Tonal Projector remains outside the role engine and is consumed only
+      by the later Stage 15 integration adapter.
+- [ ] Production reachability remains explicitly unclaimed until Stage 15
+      integration is separately reviewed.
 - [ ] Hardware musical verdict remains **PENDING**.
