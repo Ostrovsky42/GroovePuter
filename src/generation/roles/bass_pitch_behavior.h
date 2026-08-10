@@ -37,12 +37,52 @@ enum class BassPitchBehaviorStatus : uint8_t {
   Count,
 };
 
+constexpr uint16_t bassPitchContourBit(BassPitchContourId id) {
+  const uint8_t value = static_cast<uint8_t>(id);
+  return value == 0 || value >= static_cast<uint8_t>(BassPitchContourId::Count)
+      ? 0u
+      : static_cast<uint16_t>(1u << value);
+}
+
+constexpr uint16_t bassArticulationStyleBit(BassArticulationStyleId id) {
+  const uint8_t value = static_cast<uint8_t>(id);
+  return value == 0 || value >= static_cast<uint8_t>(BassArticulationStyleId::Count)
+      ? 0u
+      : static_cast<uint16_t>(1u << value);
+}
+
+constexpr uint16_t kAllBassPitchContours =
+    bassPitchContourBit(BassPitchContourId::RootAnchor) |
+    bassPitchContourBit(BassPitchContourId::RootFifth) |
+    bassPitchContourBit(BassPitchContourId::RootOctave) |
+    bassPitchContourBit(BassPitchContourId::NeighborReturn) |
+    bassPitchContourBit(BassPitchContourId::StepApproach) |
+    bassPitchContourBit(BassPitchContourId::LeapReturn) |
+    bassPitchContourBit(BassPitchContourId::RootFifthNeighbor) |
+    bassPitchContourBit(BassPitchContourId::PedalTurn);
+
+constexpr uint16_t kAllBassArticulationStyles =
+    bassArticulationStyleBit(BassArticulationStyleId::Plain) |
+    bassArticulationStyleBit(BassArticulationStyleId::AccentPulse) |
+    bassArticulationStyleBit(BassArticulationStyleId::LegatoApproach) |
+    bassArticulationStyleBit(BassArticulationStyleId::Dynamic);
+
+struct BassBehaviorPolicy {
+  // Genre/Variant/composition resolves these transient masks. Preferred masks
+  // are optional subsets; AUTO falls back to allowed when preferred is empty.
+  // RootAnchor and Plain must stay allowed as compatibility fallbacks.
+  uint16_t allowedContours = kAllBassPitchContours;
+  uint16_t preferredContours = 0;
+  uint16_t allowedArticulations = kAllBassArticulationStyles;
+  uint16_t preferredArticulations = 0;
+};
+
 struct BassPitchBehaviorRequest {
   BassRhythmPlan rhythmPlan{};
-  RhythmFamily family = RhythmFamily::FourFloor;
   RhythmArchetypeId archetypeId = kNoArchetypeId;
   GenerationContext generation{};
   uint8_t barOrdinal = 0;
+  BassBehaviorPolicy policy{};
   BassPitchContourId requestedContour = BassPitchContourId::Auto;
   BassArticulationStyleId requestedArticulation =
       BassArticulationStyleId::Auto;
@@ -88,6 +128,12 @@ bool isValidBassArticulationStyleId(
 const char* bassPitchContourName(BassPitchContourId id);
 const char* bassArticulationStyleName(BassArticulationStyleId id);
 
+static_assert(static_cast<uint8_t>(BassPitchContourId::Count) <= 16,
+              "Bass pitch contour mask exceeded uint16_t");
+static_assert(static_cast<uint8_t>(BassArticulationStyleId::Count) <= 16,
+              "Bass articulation mask exceeded uint16_t");
+static_assert(std::is_trivially_copyable<BassBehaviorPolicy>::value,
+              "BassBehaviorPolicy must remain fixed-capacity");
 static_assert(std::is_trivially_copyable<BassPitchBehaviorPlan>::value,
               "BassPitchBehaviorPlan must remain fixed-capacity");
 static_assert(sizeof(BassPitchBehaviorPlan) <= 56,
