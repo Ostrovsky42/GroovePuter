@@ -1,8 +1,14 @@
-# GroovePuter Generation Roadmap — Stages 7–13
+# GroovePuter Generation Roadmap — Generation Stages 7C–13
 
-Status: design / planning branch
+Status: execution roadmap
 
-Base: PR #195 head `704f6976f74a7d227e4d38f8a86a487f35a37506`
+Production base: `agent/20260810-03-stage7c-production-routing-ui` @
+`354277c68fdfd9825a9c07a1a5f8fd166fb46398`
+
+Required predecessor stack: composition/Atlas contract integration, preflight
+test-signal repair, and dead genre timbre projection removal. The normative
+ownership and RNG contracts are defined by
+[`GENERATION_COMPOSITION_MODEL.md`](GENERATION_COMPOSITION_MODEL.md).
 
 This document defines the next cross-genre generation stages after the Groove Vocabulary Stage 1–6.1 foundation and Stage 7 hardware curation work.
 
@@ -60,11 +66,11 @@ Lo-Fi therefore acts as a useful falsification target for the generic architectu
 
 ---
 
-# Stage 7 — Production Rhythm Vocabulary Completion and Reachability
+# Generation Stage 7 — Production Rhythm Vocabulary Completion and Reachability
 
 Stage 7 owns the transition from researched / auditioned rhythm identities to normal user-reachable production generation.
 
-## Stage 7A / 7B — completed audition work
+## Generation Stage 7A / 7B — completed audition work
 
 Already established:
 
@@ -75,7 +81,7 @@ Already established:
 - safe backup / restore;
 - candidate distinction decisions.
 
-## Stage 7C — production routing and UI reachability
+## Generation Stage 7C — production routing and UI reachability
 
 Purpose:
 
@@ -119,7 +125,7 @@ Stage 7C is complete only when new production rhythm entries are audible through
 
 ---
 
-# Stage 8 — Feel and Slow-Groove Temporal Model
+# Generation Stage 8 — Feel and Slow-Groove Temporal Model
 
 Purpose:
 
@@ -185,7 +191,7 @@ The stage fails if slow feel only works by special-casing Lo-Fi or if fast genre
 
 ---
 
-# Stage 9 — Bass Rhythm Vocabulary v2
+# Generation Stage 9 — Bass Rhythm Vocabulary v2
 
 Purpose:
 
@@ -244,7 +250,7 @@ Bass must be able to relate to Kick without being generated as a copy of Kick.
 
 ---
 
-# Stage 10 — Chord and Harmonic Rhythm Vocabulary
+# Generation Stage 10 — Chord and Harmonic Rhythm Vocabulary
 
 Purpose:
 
@@ -300,7 +306,7 @@ The chord layer must support:
 
 ---
 
-# Stage 11 — Melodic Rhythm and Motif Vocabulary
+# Generation Stage 11 — Melodic Rhythm and Motif Vocabulary
 
 Purpose:
 
@@ -355,7 +361,7 @@ P1/P2/P3 transformations must preserve recognizable motif identity when a motif 
 
 ---
 
-# Stage 12 — Multi-Bar Phrase Evolution
+# Generation Stage 12 — Multi-Bar Phrase Evolution
 
 Purpose:
 
@@ -431,7 +437,7 @@ The same architecture must also support high-energy four-bar evolution for House
 
 ---
 
-# Stage 13 — Genre / Variant Composition Matrix and Production Curation
+# Generation Stage 13 — Genre / Variant Composition Matrix and Production Curation
 
 Purpose:
 
@@ -735,7 +741,7 @@ If Lo-Fi requires a separate hardcoded generator to sound convincing, the generi
 
 ---
 
-# Definition of Done for Stage 13
+# Definition of Done for Generation Stage 13
 
 The Stage 7–13 program is complete only when:
 

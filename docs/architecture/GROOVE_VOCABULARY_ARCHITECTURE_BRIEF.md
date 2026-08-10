@@ -1688,6 +1688,12 @@ Scene codec update.
 
 ---
 
+> **SUPERSEDED FOR STAGE NUMBERING:** Stage numbers in this implementation
+> sequence are defined by
+> [`GENERATION_STAGES_7_13_ROADMAP.md`](GENERATION_STAGES_7_13_ROADMAP.md).
+> The architecture contracts below remain normative; only their execution
+> numbers are superseded.
+
 ## Stage 8 — VoiceRole persistence
 
 ### Purpose

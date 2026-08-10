@@ -449,6 +449,9 @@ Stage 7
     only then expand toward approximately 30–40
     later evidence-gated coverage may grow toward 50–70
 
+SUPERSEDED FOR STAGE NUMBERING: execution numbers are defined by
+GENERATION_STAGES_7_13_ROADMAP.md; the contracts in this sequence remain normative.
+
 Stage 8
     VoiceRole runtime + Bass Generator v2
     separate bass rhythm relationship and bass pitch/contour vocabularies

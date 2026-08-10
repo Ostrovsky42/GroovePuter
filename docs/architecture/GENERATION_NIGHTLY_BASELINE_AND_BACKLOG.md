@@ -6,21 +6,26 @@ Date: 2026-08-10
 
 ## Baseline
 
-The implementation loop must treat `dev_0.9_test` as the production source of truth for all pre-existing application behavior.
+The implementation loop starts from the reviewed production line below and
+must preserve all of its pre-existing application behavior.
 
 At the time this document was added:
 
 ```text
-dev_0.9_test
-0a2fe15696eb7c8f0bdcc1a986aed3ca342dd948
-
-roadmap branch
-agent/20260810-03-stage7-13-generation-vocabulary-roadmap
+agent/20260810-03-stage7c-production-routing-ui
+354277c68fdfd9825a9c07a1a5f8fd166fb46398
 ```
 
-The roadmap branch is not behind `dev_0.9_test`; the current `dev_0.9_test` head is already an ancestor of the Groove Vocabulary stack. Do not create a meaningless merge commit when `git merge-base`/`git rev-list` proves there are no missing devtest commits.
+Before Generation Stage 7C, restore the composition/Atlas contract line, repair
+the full preflight test signal, remove the dead genre timbre projection, and
+rebase this roadmap in that dependency order. Do not use the original roadmap
+fork at `704f697`; it omits `6e4a871` and `354277c`.
 
-Before starting every new production stage, fetch origin and repeat the ancestry check. If `dev_0.9_test` has advanced, integrate the new production changes first, resolve conflicts by preserving the newer devtest user behavior unless the current stage explicitly replaces it, run the relevant regressions, then freeze the new stage base SHA.
+Before starting every new production stage, fetch origin and repeat the ancestry
+check against the frozen dependency head. If the target production branch has
+advanced, integrate the new production changes first, preserve newer user
+behavior unless the current stage explicitly replaces it, run the relevant
+regressions, then freeze the new stage base SHA.
 
 ## Mandatory pre-Stage-7C backlog audit
 
@@ -65,9 +70,10 @@ The event/performance looper is not required by Stage 7–13 unless current Phra
 
 ### Dead Genre timbre projection — PR #191
 
-This old cleanup branch diverges from the current Groove Vocabulary stack. Do not merge/cherry-pick it mechanically.
-
-Audit current `GenreSceneView` / Genre ownership. If the dead synth projection still exists with no production caller, remove it in a narrow current-base cleanup PR and lock the ownership with a source regression. If it is already gone or superseded, classify it accordingly.
+Classification: `BLOCKS_STAGE_7_13`, resolved in the required predecessor stack.
+The old cleanup branch diverged from the production line, so only its three
+content commits were replayed on the current base. `GenreSceneView` no longer
+projects synth TYPE or patch parameters; source regressions lock that ownership.
 
 ### AY articulation — PR #142
 
