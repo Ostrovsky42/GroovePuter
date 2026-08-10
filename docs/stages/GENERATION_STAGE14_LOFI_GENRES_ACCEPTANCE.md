@@ -71,6 +71,8 @@ No external wiring is required.
 
 Use USB-C for flashing, Serial, and USB MIDI. Stage 14 adds no GPIO, I2C, or SPI ownership.
 
+If PORT.A hardware is attached for an otherwise existing setup, its Cardputer ADV I2C contract remains unchanged: GPIO2 = SDA, GPIO1 = SCL, shared `Wire`, 3.3 V logic. Stage 14 neither configures nor accesses that bus and introduces no new power or voltage requirement.
+
 ## Build / Flash
 
 From the repository root:
