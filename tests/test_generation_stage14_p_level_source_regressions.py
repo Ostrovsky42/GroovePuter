@@ -30,17 +30,23 @@ for needle in (
 ):
     require(CATALOG, needle, f"Stage 14.1 catalog validation missing: {needle}")
 
-# P3 is cumulative over P2 ornaments and both variation classes use independent
-# deterministic salt domains.
+# P3 is cumulative over P2 ornaments. The pre-existing variation class must keep
+# the old unsalted seed so the production P2 path remains bit-stable; only the
+# newly-added second pass receives a disjoint salt.
 for needle in (
     "uint8_t secondaryBudgetFor(const MutationBudget& budget)",
     "uint8_t ghostBudgetFor(const RhythmArchetype& archetype,",
     "level != RealizationLevel::P3Transformation",
     "RealizationLevel::P2Variation",
-    "seed ^ 0x53454331u",
+    "addVariationPass(archetype, seed,",
+    "const uint32_t ghostSeed = secondaryAdds != 0",
     "seed ^ 0x47484F31u",
+    ": seed;",
 ):
     require(REALIZER, needle, f"Stage 14.1 realizer contract missing: {needle}")
+
+if "seed ^ 0x53454331u" in REALIZER:
+    raise AssertionError("legacy secondary/P2-compatible variation path was re-salted")
 
 # Stage 14.1 deliberately does not change the production sound path. P-level UI
 # reachability/persistence belongs to Stage 14.2.
