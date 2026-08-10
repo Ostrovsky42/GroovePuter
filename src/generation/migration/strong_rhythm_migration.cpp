@@ -50,7 +50,8 @@ bool sparseSemanticBarsAllowed(const GenreSettings& settings, RhythmFamily famil
   return family == RhythmFamily::DubPulse || family == RhythmFamily::SparsePulse ||
          family == RhythmFamily::HipHopBackbeat ||
          settings.generativeMode == static_cast<uint8_t>(GenerativeMode::LoFi) ||
-         settings.generativeMode == static_cast<uint8_t>(GenerativeMode::HipHop);
+         settings.generativeMode == static_cast<uint8_t>(GenerativeMode::HipHop) ||
+         settings.generativeMode == static_cast<uint8_t>(GenerativeMode::FunkSoul);
 }
 
 uint8_t semanticBarOrdinal(const GenreSettings& settings, int16_t patternAddress) {
