@@ -2,6 +2,7 @@
 #include "drum_automation_page.h"
 #include "../ui_common.h"
 #include "src/state/scene_revision.h"
+#include "src/generation/migration/strong_rhythm_live_bridge.h"
 
 #include <algorithm>
 #include <cctype>
@@ -132,6 +133,17 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
   const char lowerKey = key
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(key)))
       : 0;
+
+  // Whole-pattern G is a generation command, not a local edit. Preserve the
+  // legacy pattern as fallback, then apply selected Stage7/14 RHYTHM + FEEL to
+  // drums only. Ctrl+G (one voice) and Alt+G (chaos) stay intentionally legacy.
+  if (lowerKey == 'g' && !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
+    page->withAudioGuard([&]() {
+      GroovePuterRhythm::regenerateDrumsWithStrongRhythmMigration(
+          page->mini_acid_);
+    });
+    return true;
+  }
 
   // Q-I changes the active slot but never hands keyboard focus to the selector.
   if (!ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
