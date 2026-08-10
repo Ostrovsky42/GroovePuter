@@ -38,6 +38,7 @@ assert entries == [
     "PENTATONIC_MN",
     "CHROMATIC",
 ], entries
+assert "ScaleType scale = DORIAN" in SCENES_CODE
 
 assert '#include "scenes.h"' not in HEADER
 assert "enum ScaleType" not in HEADER
@@ -45,6 +46,7 @@ assert "enum class ScaleType" not in HEADER
 assert "using ScaleTypeValue = uint8_t" in HEADER
 assert "kDefaultScaleTypeValue = 2u" in HEADER
 assert "ScaleTypeValue scaleTypeValue = kDefaultScaleTypeValue" in HEADER
+assert "sizeof(TonalProjectionRequest) == 24" in HEADER
 
 for expected in (
     "constexpr ScaleTypeValue kScaleMinor = 0;",
@@ -108,6 +110,16 @@ assert "quantizeToScale" not in CODE
 assert "isSemitoneOrdinal(request, ordinal)" in SOURCE
 assert "degreeToSemitone(request.tonalOffsets[ordinal], scale)" in SOURCE
 assert "request.maxAdjacentLeapSemitones" in SOURCE
+
+# Projection result is atomic: noteCount becomes non-zero only after the full
+# register/leap loop succeeds. Any failure status leaves noteCount at zero.
+projector = SOURCE[SOURCE.index("TonalProjectionResult projectTonalIntent") :]
+loop_pos = projector.index("for (uint8_t ordinal = 0;")
+note_count_pos = projector.index("result.noteCount = request.onsetCount;")
+ok_pos = projector.index("result.status = TonalProjectionStatus::Ok;")
+assert note_count_pos > loop_pos
+assert ok_pos > note_count_pos
+assert projector.count("result.noteCount =") == 1
 
 # No retry loop or hidden register octave-folding.
 assert "while (" not in CODE
