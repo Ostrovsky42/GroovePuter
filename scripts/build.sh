@@ -11,6 +11,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_PATH="${BUILD_PATH:-${PROJECT_ROOT}/build/cardputer-adv-current}"
 ARDUINO_BUILD_PATH="${ARDUINO_BUILD_PATH:-${BUILD_PATH}/.arduino-build}"
+# Genre materialization keeps several transactional pattern copies alive in
+# the Arduino loop task. The ESP32 core defaults that task to 8 KiB, which is
+# insufficient on the DRAM-only Cardputer build and resets the device when
+# ENTER applies a genre. Keep the audio task unchanged and reserve 12 KiB for
+# the control/UI task instead.
+ARDUINO_LOOP_STACK_SIZE="${ARDUINO_LOOP_STACK_SIZE:-12288}"
 
 if ! command -v "${ARDUINO_CLI}" >/dev/null 2>&1; then
   echo "arduino-cli was not found: ${ARDUINO_CLI}" >&2
@@ -44,6 +50,7 @@ rsync -a --delete \
   --clean \
   --fqbn "${FQBN}" \
   --build-path "${ARDUINO_BUILD_PATH}" \
+  --build-property "compiler.cpp.extra_flags=-DARDUINO_LOOP_STACK_SIZE=${ARDUINO_LOOP_STACK_SIZE}" \
   --output-dir "${BUILD_PATH}" \
   "$@" \
   "${TEMP_ROOT}/GroovePuter"
