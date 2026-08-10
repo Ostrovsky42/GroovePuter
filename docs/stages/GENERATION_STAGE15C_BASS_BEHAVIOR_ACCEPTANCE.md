@@ -65,6 +65,9 @@ The API must:
 - keep pitch movement inside the requested degree and maximum-leap bounds;
 - emit accent and slide-into masks that are strict subsets of real bass onsets;
 - never create a slide target on the first onset;
+- emit slide intent only when the existing timing topology already connects the
+  previous onset to the destination directly or through uninterrupted
+  continuation cells;
 - return a valid empty result for a valid empty bass rhythm plan;
 - use fixed-capacity storage with no heap allocation or global RNG;
 - remain independent from Synth B, Phrase, Scene, and physical synth type.
@@ -73,7 +76,8 @@ The API must:
 future engine adapter may drop an unsupported accent/slide. It must **not** add
 or move a bass onset, create/extend a continuation, or lengthen a gate merely to
 force an articulation to happen. Timing topology remains owned by the existing
-bass-rhythm/materialization path.
+bass-rhythm/materialization path. A sparse timing gap therefore suppresses slide
+intent rather than being repaired by Stage 15C.
 
 Scale-degree offsets are also semantic. Absolute MIDI-note realization remains a
 downstream tonal-projection concern using the current transient scale/root and
@@ -88,9 +92,8 @@ If compilation fails in the Stage 15C test:
 3. Do not move bass onset generation from `bass_rhythm.*` into Stage 15C.
 4. Do not map semantic articulation directly to TB303/SID/AY/other engine
    internals in this API-only stage.
-5. Do not create/extend ties or gates to make a requested slide possible; an
-   unsupported physical articulation should be dropped by the downstream
-   adapter instead.
+5. Do not create/extend ties or gates to make a requested slide possible; a
+   sparse gap must remain a gap and unsupported articulation is dropped.
 6. If Stage 14 changes `BassRhythmPlan`, adapt only the transient input adapter.
 
 If the source regression reports a forbidden owner such as `Scene`, `PhraseCore`,
@@ -109,6 +112,7 @@ randomness, the implementation has crossed the Stage 15C architecture boundary.
       over the deterministic test matrix.
 - [ ] Degree and maximum-leap bounds are never violated.
 - [ ] Accent and slide masks never contain a non-onset cell.
+- [ ] Slide intent is absent across an existing empty timing gap.
 - [ ] No new onset or continuation is synthesized.
 - [ ] A downstream articulation adapter is permitted to drop unsupported intent
       but not to alter timing topology to realize it.
