@@ -33,19 +33,26 @@ The explicit Break trajectory is evidence-gated by Atlas Pass 2 observations of
 remove at most three. Anchors, protected space, lane minima and hard
 relationships remain enforced by `BarEvolution` validation.
 
+A transform is exposed only when the archetype has actual structural headroom.
+`halftime_switch` remains multi-bar capable, but its current lane minima leave no
+legal event that Reduction/Break may remove. It therefore uses a non-subtractive
+trajectory/policy set and keeps Repeat / Response / Build / Turnaround while
+rejecting trajectories 6 and 8. Its P1 groove is not weakened to manufacture
+headroom.
+
 ## Admitted rhythm identities
 
 ```text
-404 broken_techno
-413 two_step_roll
-414 ghosted_roll
-415 sparse_fast_break
-416 halftime_switch
-417 classic_2step
-418 skippy_2step
-420 machine_syncopation
-712 electro_backskip
-714 electro_gap_push
+404 broken_techno          subtractive
+413 two_step_roll          subtractive
+414 ghosted_roll           subtractive
+415 sparse_fast_break      subtractive
+416 halftime_switch        non-subtractive
+417 classic_2step          subtractive
+418 skippy_2step           subtractive
+420 machine_syncopation    subtractive
+712 electro_backskip       subtractive
+714 electro_gap_push       subtractive
 ```
 
 These cover the first Broken / DnB / UK Garage / Electro phrase-evolution
@@ -125,10 +132,12 @@ Host Stage 12 acceptance additionally proves:
 
 ```text
 phraseEvolutionCatalog() validates as a complete RhythmCatalogView
-admitted identities reach 2 and 4 bars directly
-admitted identities reach 8 bars through two deterministic 4-bar segments
-P2 Reduction performs a real bounded subtraction on elastic representatives
-P3 Break performs a real bounded subtraction on elastic representatives
+all ten admitted identities reach 2 and 4 bars directly
+all ten admitted identities reach 8 bars through two deterministic 4-bar segments
+all nine archetypes advertising P2 Reduction perform a real bounded subtraction
+all nine archetypes advertising P3 Break perform a real bounded subtraction
+halftime_switch rejects Reduction/Break and succeeds on non-subtractive 4-bar paths
+second 4-bar segment differs topologically from the first for every admitted identity
 one-bar production catalog remains unchanged
 ```
 
@@ -147,9 +156,10 @@ If catalog validation fails with `ImpossibleHardRelationship`, do not widen
 cardinality or remove a hard relationship merely to admit an archetype. Leave
 that identity one-bar and fix its phrase-level semantic contract separately.
 
-If `Reduction` or `Break` succeeds but removes nothing in the representative
-subtractive test, inspect preferred density, lane minima and P-level additions.
-Do not weaken the assertion to allow a no-op transform.
+If an archetype advertises `Reduction` or `Break` but the all-capabilities test
+observes no removed event, remove those trajectories/flags from that archetype
+until evidence-backed structural headroom exists. Do not lower `structuralMin`
+just to make a transform pass and do not weaken the assertion to allow a no-op.
 
 If a production source starts referencing `phraseEvolutionCatalog()` or
 `evolveMultiBarPhrase()`, revert that wiring. The physical Stage 6.1 gate must be
@@ -169,11 +179,15 @@ reachability instead of the candidate overlay.
 [ ] Only the declared candidate identities gain 1/2/4-bar capability.
 [ ] shuffled_4x4 remains one-bar pending its Coincide cardinality fix.
 [ ] Strong FourFloor/Acid/stacked_quarters loop identities remain one-bar.
-[ ] Every admitted identity reaches 2 bars with Statement -> Repeat.
-[ ] Every admitted identity reaches 4 bars with bounded Reduction.
-[ ] Every admitted identity reaches 8 bars via two 4-bar Break segments.
-[ ] P2 Reduction demonstrably removes material without breaking invariants.
-[ ] P3 Break demonstrably removes material without breaking invariants.
+[ ] Every admitted identity reaches 2 bars.
+[ ] Every admitted identity reaches 4 bars through an allowed trajectory.
+[ ] Every admitted identity reaches 8 bars through two deterministic 4-bar segments.
+[ ] The second 4-bar segment differs topologically from the first for all ten.
+[ ] Every archetype advertising P2 Reduction demonstrably removes material.
+[ ] Every archetype advertising P3 Break demonstrably removes material.
+[ ] halftime_switch exposes no Reduction/Break flags or trajectory refs.
+[ ] halftime_switch rejects requested trajectories 6/8.
+[ ] halftime_switch succeeds on Response and Build/Turnaround paths.
 [ ] Normal ReferenceVocabulary::catalog() remains one-bar.
 [ ] strong_rhythm_migration.cpp still sets request.phraseBars = 1.
 [ ] No Scene/Song/PhraseCore ownership is added.
