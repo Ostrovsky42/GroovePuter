@@ -11,7 +11,7 @@ build_and_run() {
   shift 2
 
   "${compiler}" -std=c++17 -Wall -Wextra -Werror -Wvla \
-    -Wno-c++20-extensions -Wno-unused-but-set-variable \
+    -Wno-c++20-extensions -Wno-unused-but-set-variable -Wno-unused-parameter \
     -I"${ROOT_DIR}" "$@" \
     "${ROOT_DIR}/src/dsp/advanced_pattern_generator.cpp" \
     "${ROOT_DIR}/tests/test_legacy_scale_quantizer.cpp" \
