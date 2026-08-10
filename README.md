@@ -61,7 +61,7 @@ Atlas remains an optional source of curated factory seed patterns.
 
 The pages have separate ownership:
 
-1. **GENRE** — musical corridor, vocabulary, recipe, and explicit materialization policy.
+1. **GENRE** — musical corridor, variant, `RHYTHM AUTO/MANUAL`, and explicit materialization policy.
 2. **FEEL** — swing, timing humanization, and velocity humanization only.
 3. **GENERATION** — bounded form/materialization into the selected Song row.
 
@@ -74,6 +74,12 @@ GENRE -> FEEL -> GENERATION
 ```
 
 Changing one page must not silently mutate another page. Page-aware `Alt+H` states the ownership and non-scope of each page.
+
+The production rhythm vocabulary contains 24 stable identities. `RHYTHM AUTO`
+selects deterministically from the active Genre/Variant compatibility profile.
+Selecting a named rhythm fixes that identity while the pattern address and P-level
+continue to vary its realization. Scene files persist only this AUTO/MANUAL intent;
+derived selection plans and audition-only state are not persisted.
 
 ### Phrase Core
 

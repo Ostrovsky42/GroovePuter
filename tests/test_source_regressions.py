@@ -266,7 +266,7 @@ def test_genre_page_uses_recipe_mode_and_tempo_order() -> None:
     page = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
 
     link_start = page.index("const char* linkStateShort")
-    link_end = page.index("const char* yesNo", link_start)
+    link_end = page.index("void drawRecipeOverlay", link_start)
     link_block = page[link_start:link_end]
     require("grooveboxModeForRecipe" in link_block,
             "Genre page LINK state must account for the active recipe")

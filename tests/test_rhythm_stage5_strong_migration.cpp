@@ -25,7 +25,16 @@ GenreSettings baseSettings(GenerativeMode mode) {
 }
 
 GenreSettings recipeSettings(uint8_t recipe) {
-  GenreSettings settings = baseSettings(GenerativeMode::Acid);
+  GenerativeMode genre = GenerativeMode::Acid;
+  if (recipe == 1 || recipe == 2 || recipe == 3 ||
+      recipe == 8 || recipe == 9) {
+    genre = GenerativeMode::Broken;
+  } else if (recipe == 4) {
+    genre = GenerativeMode::Rave;
+  } else if (recipe == 5 || recipe == 10 || recipe == 11) {
+    genre = GenerativeMode::Reggae;
+  }
+  GenreSettings settings = baseSettings(genre);
   settings.recipe = recipe;
   return settings;
 }
@@ -100,7 +109,7 @@ void testAllowList() {
               StrongRhythmRoute::RaveBase,
           "base Rave must migrate");
 
-  const GenerativeMode legacyModes[] = {
+  const GenerativeMode stage7Modes[] = {
       GenerativeMode::Outrun,
       GenerativeMode::Electro,
       GenerativeMode::Reggae,
@@ -108,10 +117,10 @@ void testAllowList() {
       GenerativeMode::Broken,
       GenerativeMode::Chip,
   };
-  for (GenerativeMode mode : legacyModes) {
+  for (GenerativeMode mode : stage7Modes) {
     require(selectStrongRhythmRoute(baseSettings(mode)) ==
-                StrongRhythmRoute::Legacy,
-            "non-control base mode leaked into Stage 5");
+                StrongRhythmRoute::Stage7Composition,
+            "valid base mode did not reach Stage 7 composition routing");
   }
 
   struct RecipeExpectation {
@@ -130,11 +139,11 @@ void testAllowList() {
             "approved recipe did not select its Stage 5 route");
   }
 
-  const uint8_t legacyRecipes[] = {1, 3, 4, 8, 9, 11};
-  for (uint8_t recipe : legacyRecipes) {
+  const uint8_t stage7Recipes[] = {1, 3, 4, 8, 9, 11};
+  for (uint8_t recipe : stage7Recipes) {
     require(selectStrongRhythmRoute(recipeSettings(recipe)) ==
-                StrongRhythmRoute::Legacy,
-            "unsupported recipe leaked into Stage 5");
+                StrongRhythmRoute::Stage7Composition,
+            "valid recipe did not reach Stage 7 composition routing");
   }
 
   GenreSettings crossMorph = recipeSettings(5);
@@ -150,10 +159,12 @@ void testLegacyAndFailureAreTransactional() {
   StrongRhythmMigrationContext context{};
   context.patternAddress = 3;
 
+  GenreSettings unsupported = baseSettings(GenerativeMode::Reggae);
+  unsupported.recipe = 255;
   const StrongRhythmMigrationResult legacyResult = migrateStrongRhythmDrums(
-      baseSettings(GenerativeMode::Reggae), context, destination);
+      unsupported, context, destination);
   require(legacyResult.status == StrongRhythmMigrationStatus::Legacy,
-          "Reggae must report legacy route");
+          "unknown recipe must report legacy route");
   require(equalVoices(destination, legacy),
           "legacy route changed drum voices");
   require(destination.groove.swing == legacy.groove.swing &&

@@ -48,6 +48,7 @@ SOURCES := \
 	../src/dsp/groove_profile.cpp \
 	../src/dsp/advanced_pattern_generator.cpp \
 	../src/generation/generation_context.cpp \
+	../src/generation/composition/rhythm_selection.cpp \
 	../src/generation/rhythm/rhythm_catalog.cpp \
 	../src/generation/rhythm/relationship_resolver.cpp \
 	../src/generation/rhythm/rhythm_realizer.cpp \

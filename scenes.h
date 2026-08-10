@@ -11,6 +11,7 @@
 #include "ArduinoJson-v7.4.2.h"
 #include "src/dsp/mini_dsp_params.h"
 #include "src/dsp/genre_manager.h"
+#include "src/generation/composition/rhythm_selection_types.h"
 #include "src/phrase/phrase_types.h"
 #include "src/phrase/phrase_persistence.h"
 #include "json_evented.h"
@@ -351,6 +352,9 @@ struct GenreSettings {
     uint8_t morphAmount = 0;      // 0..255
     bool regenerateOnApply = false; // true: SOUND+PATTERN, false: SOUND ONLY (default)
     bool applyTempoOnApply = false; // true: SOUND+PATTERN+TEMPO
+    uint8_t rhythmSelectionMode = static_cast<uint8_t>(
+        GroovePuterRhythm::RhythmSelectionMode::Auto);
+    uint16_t rhythmArchetypeId = 0; // stable ID; meaningful only in MANUAL
 };
 
 struct DrumFX {
@@ -1084,6 +1088,10 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeBool(scene_->genre.regenerateOnApply)) return false;
   if (!writeLiteral(",\"tempo\":")) return false;
   if (!writeBool(scene_->genre.applyTempoOnApply)) return false;
+  if (!writeLiteral(",\"rsm\":")) return false;
+  if (!writeInt(scene_->genre.rhythmSelectionMode)) return false;
+  if (!writeLiteral(",\"rid\":")) return false;
+  if (!writeInt(scene_->genre.rhythmArchetypeId)) return false;
   if (!writeChar('}')) return false;
 
   if (!writeLiteral(",\"generatorParams\":{\"minNotes\":")) return false;

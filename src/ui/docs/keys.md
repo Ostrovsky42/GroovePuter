@@ -76,11 +76,16 @@ project transport timeline and use the existing event router and MIDI dispatcher
 
 | Key | Action |
 |---|---|
-| `Tab` / `Up/Down` | Select genre, variant, morph, or apply-policy field |
+| `Tab` / `Up/Down` | Select genre, variant, rhythm, morph, or apply-policy field |
 | `Left/Right` | Adjust the selected field |
 | `Alt+Left/Right` | Morph the selected variant |
 | `Enter` | Apply profile or materialize according to the selected policy |
 | `M` | Cycle `PROFILE ONLY`, `MATERIALIZE`, `MATERIALIZE+BPM` |
+
+`RHYTHM` cycles `AUTO` plus only the stable rhythm identities compatible with the
+pending Genre/Variant. A manual identity remains fixed while pattern address and
+P-level vary its realization. Changing Genre/Variant resets an incompatible manual
+identity to `AUTO` and shows a short notice.
 
 GENRE owns musical corridor and vocabulary. It does not own FEEL or sound design.
 

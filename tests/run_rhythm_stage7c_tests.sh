@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build/host-tests"
 mkdir -p "${BUILD_DIR}"
 
-python3 "${ROOT_DIR}/tests/test_rhythm_stage5_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_rhythm_stage7c_source_regressions.py"
 
 SOURCES=(
   "${ROOT_DIR}/src/generation/generation_context.cpp"
@@ -20,47 +20,25 @@ SOURCES=(
 
 build_and_run() {
   local compiler="$1"
-  local test_source="$2"
-  local output="$3"
-  shift 3
+  local output="$2"
+  shift 2
   "${compiler}" -std=c++17 -Wall -Wextra -Werror \
     -Wno-c++20-extensions -Wno-unused-but-set-variable \
     -I"${ROOT_DIR}" \
     "$@" \
     "${SOURCES[@]}" \
-    "${test_source}" \
+    "${ROOT_DIR}/tests/test_rhythm_stage7c_selection.cpp" \
     -o "${output}"
   "${output}"
 }
 
-run_suite() {
-  local suffix="$1"
-  local compiler="$2"
-  shift 2
-
-  build_and_run "${compiler}" \
-    "${ROOT_DIR}/tests/test_rhythm_stage5_strong_migration.cpp" \
-    "${BUILD_DIR}/test_rhythm_stage5_${suffix}" \
-    "$@"
-
-  build_and_run "${compiler}" \
-    "${ROOT_DIR}/tests/test_rhythm_stage5_invalid_context.cpp" \
-    "${BUILD_DIR}/test_rhythm_stage5_invalid_${suffix}" \
-    "$@"
-
-  build_and_run "${compiler}" \
-    "${ROOT_DIR}/tests/test_rhythm_stage5_dub_stab.cpp" \
-    "${BUILD_DIR}/test_rhythm_stage5_dub_stab_${suffix}" \
-    "$@"
-}
-
-run_suite gcc "${CXX:-g++}"
+build_and_run "${CXX:-g++}" "${BUILD_DIR}/test_rhythm_stage7c_gcc"
 
 if command -v clang++ >/dev/null 2>&1; then
-  run_suite clang clang++
+  build_and_run clang++ "${BUILD_DIR}/test_rhythm_stage7c_clang"
 fi
 
-run_suite sanitize "${CXX:-g++}" \
+build_and_run "${CXX:-g++}" "${BUILD_DIR}/test_rhythm_stage7c_sanitize" \
   -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined
 
-printf 'Groove Vocabulary Stage 5 strong migration host matrix: OK\n'
+printf 'Generation Stage 7C host matrix: OK\n'

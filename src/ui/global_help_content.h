@@ -33,12 +33,13 @@ constexpr const char* kGenreLines[] = {
     "=== GENRE 1/2 ===",
     "Genre = corridor/vocabulary",
     "Tab/Up/Dn   Select field",
-    "Left/Right  Genre/variant/apply",
+    "Left/Right  Genre/variant/rhythm/apply",
     "Alt+L/R     Morph selected variant",
     "Enter       Apply profile/materialize",
     "M           Cycle apply mode",
     "PROFILE     Keep existing patterns",
     "MATERIALIZE Regenerate patterns",
+    "RHYTHM AUTO or fixed identity",
     "No texture or feel changes",
 };
 

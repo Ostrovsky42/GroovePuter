@@ -1,105 +1,10 @@
 #include "strong_rhythm_migration.h"
 
-#include <cstddef>
-
 #include "../generation_context.h"
 #include "../rhythm/rhythm_realizer.h"
 
 namespace GroovePuterRhythm {
 namespace {
-
-using Archetype = ReferenceVocabulary::Archetype;
-
-struct ArchetypeSet {
-  const Archetype* values = nullptr;
-  uint8_t count = 0;
-};
-
-constexpr Archetype kAcid[] = {
-    Archetype::StraightAcid,
-    Archetype::RollingAcid,
-    Archetype::SyncopatedAcid,
-    Archetype::SparseAcid,
-};
-
-constexpr Archetype kTechno[] = {
-    Archetype::StraightDrive,
-    Archetype::OffbeatOpenHat,
-    Archetype::HypnoticSparse,
-    Archetype::BrokenTechno,
-};
-
-constexpr Archetype kRave[] = {
-    Archetype::StraightDrive,
-    Archetype::OffbeatOpenHat,
-    Archetype::BrokenTechno,
-    Archetype::ShuffledFourFour,
-};
-
-constexpr Archetype kDrumAndBass[] = {
-    Archetype::TwoStepRoll,
-    Archetype::GhostedRoll,
-    Archetype::SparseFastBreak,
-    Archetype::HalftimeSwitch,
-};
-
-constexpr Archetype kDub[] = {
-    Archetype::OneDropSpace,
-    Archetype::Steppers,
-    Archetype::SparseSkank,
-    Archetype::ChordResponse,
-};
-
-// Hardware acceptance found Chicago Jack and Rolling Acid too similar. Keep
-// their Stage 5 rhythm identities disjoint without changing the frozen Stage 3
-// vocabulary or the legacy synth-pitch path.
-constexpr Archetype kChicagoJack[] = {
-    Archetype::StraightAcid,
-    Archetype::SparseAcid,
-};
-
-constexpr Archetype kRollingAcid[] = {
-    Archetype::RollingAcid,
-    Archetype::SyncopatedAcid,
-};
-
-// Deep Chord must stay chord-centric. The broader Dub pool can legitimately
-// select one-drop/steppers grammars, but those made Deep Chord sound like a
-// second Dub Techno route on hardware. Variation still comes from the Stage 2
-// realizer and the deterministic pattern-address context.
-constexpr Archetype kDeepChord[] = {
-    Archetype::ChordResponse,
-};
-
-template <size_t N>
-constexpr ArchetypeSet archetypeSet(const Archetype (&values)[N]) {
-  return ArchetypeSet{values, static_cast<uint8_t>(N)};
-}
-
-ArchetypeSet archetypesFor(StrongRhythmRoute route) {
-  switch (route) {
-    case StrongRhythmRoute::AcidBase:
-      return archetypeSet(kAcid);
-    case StrongRhythmRoute::TechnoBase:
-      return archetypeSet(kTechno);
-    case StrongRhythmRoute::RaveBase:
-      return archetypeSet(kRave);
-    case StrongRhythmRoute::DrumAndBass:
-      return archetypeSet(kDrumAndBass);
-    case StrongRhythmRoute::DubTechno:
-      return archetypeSet(kDub);
-    case StrongRhythmRoute::ChicagoJack:
-      return archetypeSet(kChicagoJack);
-    case StrongRhythmRoute::RollingAcid:
-      return archetypeSet(kRollingAcid);
-    case StrongRhythmRoute::DeepChord:
-      return archetypeSet(kDeepChord);
-    case StrongRhythmRoute::Legacy:
-    case StrongRhythmRoute::Count:
-    default:
-      return {};
-  }
-}
 
 uint32_t mixByte(uint32_t hash, uint8_t value) {
   // Compact FNV-1a-style mixer. This is context construction, not an RNG.
@@ -113,17 +18,6 @@ uint32_t projectSeedFor(const GenreSettings& settings,
   hash = mixByte(hash, settings.recipe);
   hash = mixByte(hash, settings.morphTarget);
   hash = mixByte(hash, settings.morphAmount);
-  hash = mixByte(hash, static_cast<uint8_t>(route));
-  return hash;
-}
-
-uint32_t archetypeCoordinateValue(uint32_t projectSeed,
-                                  int16_t patternAddress,
-                                  StrongRhythmRoute route) {
-  uint32_t hash = projectSeed;
-  const uint16_t address = static_cast<uint16_t>(patternAddress);
-  hash = mixByte(hash, static_cast<uint8_t>(address & 0xFFu));
-  hash = mixByte(hash, static_cast<uint8_t>((address >> 8u) & 0xFFu));
   hash = mixByte(hash, static_cast<uint8_t>(route));
   return hash;
 }
@@ -183,30 +77,64 @@ StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings) {
     return StrongRhythmRoute::Legacy;
   }
 
-  // Recipe selection is stronger than the base genre. Unsupported recipes must
-  // not leak into Stage 5 simply because they map to Acid/Breaks/Dub internally.
+  if (settings.generativeMode >= kGenerativeModeCount) {
+    return StrongRhythmRoute::Legacy;
+  }
+  const GenerativeMode mode =
+      static_cast<GenerativeMode>(settings.generativeMode);
+
+  // Variant refines Genre; it never masks an incompatible Genre. Corrupted or
+  // legacy mismatched pairs fall through to the base Genre route.
   switch (settings.recipe) {
     case 2:  // Drum&Bass
-      return StrongRhythmRoute::DrumAndBass;
+      if (mode == GenerativeMode::Broken) {
+        return StrongRhythmRoute::DrumAndBass;
+      }
+      break;
     case 5:  // Dub Techno
-      return StrongRhythmRoute::DubTechno;
+      if (mode == GenerativeMode::Reggae) {
+        return StrongRhythmRoute::DubTechno;
+      }
+      break;
     case 6:  // Chicago Jack
-      return StrongRhythmRoute::ChicagoJack;
+      if (mode == GenerativeMode::Acid) {
+        return StrongRhythmRoute::ChicagoJack;
+      }
+      break;
     case 7:  // Rolling Acid
-      return StrongRhythmRoute::RollingAcid;
+      if (mode == GenerativeMode::Acid) {
+        return StrongRhythmRoute::RollingAcid;
+      }
+      break;
     case 10:  // Deep Chord
-      return StrongRhythmRoute::DeepChord;
+      if (mode == GenerativeMode::Reggae) {
+        return StrongRhythmRoute::DeepChord;
+      }
+      break;
+    case 1:   // UK Garage
+    case 3:   // Footwork
+    case 8:   // Classic 2-Step
+    case 9:   // Dark Skippy
+      if (mode == GenerativeMode::Broken) {
+        return StrongRhythmRoute::Stage7Composition;
+      }
+      break;
+    case 4:   // Psytrance
+      if (mode == GenerativeMode::Rave) {
+        return StrongRhythmRoute::Stage7Composition;
+      }
+      break;
+    case 11:  // Minimal Space
+      if (mode == GenerativeMode::Reggae) {
+        return StrongRhythmRoute::Stage7Composition;
+      }
+      break;
     case kBaseRecipeId:
       break;
     default:
       return StrongRhythmRoute::Legacy;
   }
 
-  if (settings.generativeMode >= kGenerativeModeCount) {
-    return StrongRhythmRoute::Legacy;
-  }
-  const GenerativeMode mode =
-      static_cast<GenerativeMode>(settings.generativeMode);
   switch (mode) {
     case GenerativeMode::Acid:
       return StrongRhythmRoute::AcidBase;
@@ -214,6 +142,13 @@ StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings) {
       return StrongRhythmRoute::TechnoBase;
     case GenerativeMode::Rave:
       return StrongRhythmRoute::RaveBase;
+    case GenerativeMode::Outrun:
+    case GenerativeMode::Electro:
+    case GenerativeMode::Reggae:
+    case GenerativeMode::TripHop:
+    case GenerativeMode::Broken:
+    case GenerativeMode::Chip:
+      return StrongRhythmRoute::Stage7Composition;
     default:
       return StrongRhythmRoute::Legacy;
   }
@@ -236,25 +171,27 @@ StrongRhythmMigrationResult migrateStrongRhythmDrums(
     return result;
   }
 
-  const ArchetypeSet choices = archetypesFor(result.route);
-  if (choices.values == nullptr || choices.count == 0) {
+  const uint32_t projectSeed = projectSeedFor(settings, result.route);
+  GenerationContext selectionGeneration{};
+  selectionGeneration.projectSeed = projectSeed;
+  selectionGeneration.phraseOrdinal =
+      static_cast<uint16_t>(context.patternAddress);
+  const RhythmSelectionResult selection =
+      resolveRhythmSelection(settings, selectionGeneration);
+  if (selection.status != RhythmSelectionStatus::Ok) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
-
-  const uint32_t projectSeed = projectSeedFor(settings, result.route);
-  const uint32_t selectionValue = archetypeCoordinateValue(
-      projectSeed, context.patternAddress, result.route);
-  const uint8_t choiceIndex = static_cast<uint8_t>(
-      selectionValue % choices.count);
-  result.archetype = choices.values[choiceIndex];
+  result.selectionMode = selection.mode;
+  result.normalizedSelectionToAuto = selection.normalizedToAuto;
 
   const ReferenceVocabulary::Definition* definition =
-      ReferenceVocabulary::definitionFor(result.archetype);
+      ReferenceVocabulary::definitionForId(selection.archetypeId);
   if (definition == nullptr) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
+  result.archetype = definition->key;
 
   RhythmRealizationRequest request{};
   request.catalog = &ReferenceVocabulary::catalog();

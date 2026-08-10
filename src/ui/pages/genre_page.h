@@ -6,6 +6,7 @@
 
 #include "../ui_core.h"
 #include "src/dsp/miniacid_engine.h"
+#include "src/generation/composition/rhythm_selection.h"
 #include "src/state/scene_revision.h"
 
 class GenrePage : public IPage {
@@ -21,6 +22,7 @@ class GenrePage : public IPage {
   enum class FocusRow : uint8_t {
     Genre = 0,
     Variant,
+    Rhythm,
     Morph,
     Apply,
   };
@@ -35,12 +37,15 @@ class GenrePage : public IPage {
   void moveFocus(int delta);
   void shiftGenre(int delta);
   void cycleRecipeSelection(int delta);
+  void cycleRhythmSelection(int delta);
+  bool normalizePendingRhythm(bool notify);
   void adjustMorph(int delta);
   void cycleApplyMode(int delta);
   void applyCurrent();
 
   ApplyMode currentApplyMode() const;
   const char* applyModeName() const;
+  GenreSettings pendingSettings() const;
 
   template <typename F>
   void withAudioGuard(F&& fn) {
@@ -54,6 +59,11 @@ class GenrePage : public IPage {
   FocusRow focus_ = FocusRow::Genre;
   int genre_index_ = 0;
   int recipeIndex_ = 0;
+  GroovePuterRhythm::RhythmSelectionMode rhythmMode_ =
+      GroovePuterRhythm::RhythmSelectionMode::Auto;
+  GroovePuterRhythm::RhythmArchetypeId rhythmArchetypeId_ =
+      GroovePuterRhythm::kNoArchetypeId;
+  bool rhythmFallbackPending_ = false;
   int morph_amount_ = 0;
   std::string title_ = "GENRE";
 };

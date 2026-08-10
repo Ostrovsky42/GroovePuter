@@ -118,10 +118,6 @@ const char* linkStateShort(MiniAcid& mini_acid) {
   return mapped == mini_acid.grooveboxMode() ? "GENRE" : "OVERRIDE";
 }
 
-const char* yesNo(bool value) {
-  return value ? "YES" : "NO";
-}
-
 // The selector is rendered by the VARIANT row below. This named hook preserves
 // the existing visible-recipe source contract without creating a second overlay.
 void drawRecipeOverlay(IGfx& gfx, int recipeIndex) {
@@ -158,7 +154,7 @@ const char* GenrePage::applyModeName() const {
 }
 
 void GenrePage::moveFocus(int delta) {
-  constexpr int kCount = 4;
+  constexpr int kCount = 5;
   int value = static_cast<int>(focus_) + delta;
   value = wrapIndex(value, kCount);
   focus_ = static_cast<FocusRow>(value);
@@ -169,6 +165,7 @@ void GenrePage::shiftGenre(int delta) {
   recipeIndex_ = static_cast<int>(normalizeRecipeForGenre(
       static_cast<GenerativeMode>(genre_index_),
       static_cast<GenreRecipeId>(recipeIndex_)));
+  normalizePendingRhythm(true);
 }
 
 void GenrePage::cycleRecipeSelection(int delta) {
@@ -184,6 +181,67 @@ void GenrePage::cycleRecipeSelection(int delta) {
   const int currentIndex = recipeChoiceIndex(choices, current);
   const int nextIndex = wrapIndex(currentIndex + delta, choices.count);
   recipeIndex_ = static_cast<int>(choices.values[nextIndex]);
+  normalizePendingRhythm(true);
+}
+
+GenreSettings GenrePage::pendingSettings() const {
+  GenreSettings settings = mini_acid_.sceneManager().currentScene().genre;
+  settings.generativeMode = static_cast<uint8_t>(
+      std::clamp(genre_index_, 0, kGenerativeModeCount - 1));
+  settings.recipe = static_cast<uint8_t>(normalizeRecipeForGenre(
+      static_cast<GenerativeMode>(settings.generativeMode),
+      static_cast<GenreRecipeId>(recipeIndex_)));
+  settings.rhythmSelectionMode = static_cast<uint8_t>(rhythmMode_);
+  settings.rhythmArchetypeId = rhythmArchetypeId_;
+  return settings;
+}
+
+bool GenrePage::normalizePendingRhythm(bool notify) {
+  if (rhythmMode_ != GroovePuterRhythm::RhythmSelectionMode::Manual) {
+    rhythmArchetypeId_ = GroovePuterRhythm::kNoArchetypeId;
+    return false;
+  }
+  const GenreSettings settings = pendingSettings();
+  if (GroovePuterRhythm::isRhythmCompatible(
+          settings, rhythmArchetypeId_)) {
+    return false;
+  }
+  rhythmMode_ = GroovePuterRhythm::RhythmSelectionMode::Auto;
+  rhythmArchetypeId_ = GroovePuterRhythm::kNoArchetypeId;
+  if (notify) UI::showToast("RHYTHM RESET TO AUTO", 1200);
+  return true;
+}
+
+void GenrePage::cycleRhythmSelection(int delta) {
+  const GenreSettings settings = pendingSettings();
+  const uint8_t compatibleCount =
+      GroovePuterRhythm::compatibleRhythmCount(settings);
+  if (compatibleCount == 0) {
+    rhythmMode_ = GroovePuterRhythm::RhythmSelectionMode::Auto;
+    rhythmArchetypeId_ = GroovePuterRhythm::kNoArchetypeId;
+    return;
+  }
+
+  int position = 0;  // AUTO
+  if (rhythmMode_ == GroovePuterRhythm::RhythmSelectionMode::Manual) {
+    for (uint8_t index = 0; index < compatibleCount; ++index) {
+      if (GroovePuterRhythm::compatibleRhythmId(settings, index) ==
+          rhythmArchetypeId_) {
+        position = static_cast<int>(index) + 1;
+        break;
+      }
+    }
+  }
+  position = wrapIndex(position + delta,
+                       static_cast<int>(compatibleCount) + 1);
+  if (position == 0) {
+    rhythmMode_ = GroovePuterRhythm::RhythmSelectionMode::Auto;
+    rhythmArchetypeId_ = GroovePuterRhythm::kNoArchetypeId;
+    return;
+  }
+  rhythmMode_ = GroovePuterRhythm::RhythmSelectionMode::Manual;
+  rhythmArchetypeId_ = GroovePuterRhythm::compatibleRhythmId(
+      settings, static_cast<uint8_t>(position - 1));
 }
 
 void GenrePage::adjustMorph(int delta) {
@@ -211,6 +269,7 @@ void GenrePage::applyCurrent() {
   const auto recipe = normalizeRecipeForGenre(
       genre, static_cast<GenreRecipeId>(recipeIndex_));
   recipeIndex_ = static_cast<int>(recipe);
+  normalizePendingRhythm(true);
   const auto morphTarget =
       morph_amount_ > 0 ? recipe : static_cast<GenreRecipeId>(kBaseRecipeId);
   const GrooveboxMode nextMode =
@@ -222,13 +281,18 @@ void GenrePage::applyCurrent() {
                        settings.generativeMode != static_cast<uint8_t>(genre_index_) ||
                        settings.recipe != static_cast<uint8_t>(recipe) ||
                        settings.morphTarget != static_cast<uint8_t>(morphTarget) ||
-                       settings.morphAmount != static_cast<uint8_t>(morph_amount_);
+                       settings.morphAmount != static_cast<uint8_t>(morph_amount_) ||
+                       settings.rhythmSelectionMode !=
+                           static_cast<uint8_t>(rhythmMode_) ||
+                       settings.rhythmArchetypeId != rhythmArchetypeId_;
 
   withAudioGuard([&]() {
     settings.generativeMode = static_cast<uint8_t>(genre_index_);
     settings.recipe = static_cast<uint8_t>(recipe);
     settings.morphTarget = static_cast<uint8_t>(morphTarget);
     settings.morphAmount = static_cast<uint8_t>(morph_amount_);
+    settings.rhythmSelectionMode = static_cast<uint8_t>(rhythmMode_);
+    settings.rhythmArchetypeId = rhythmArchetypeId_;
 
     mini_acid_.setGrooveboxMode(nextMode);
 
@@ -261,10 +325,20 @@ void GenrePage::updateFromEngine() {
   genre_index_ = static_cast<int>(genre);
   recipeIndex_ = static_cast<int>(normalizeRecipeForGenre(
       genre, sceneRecipe(settings)));
+  rhythmMode_ = settings.rhythmSelectionMode == static_cast<uint8_t>(
+                    GroovePuterRhythm::RhythmSelectionMode::Manual)
+                    ? GroovePuterRhythm::RhythmSelectionMode::Manual
+                    : GroovePuterRhythm::RhythmSelectionMode::Auto;
+  rhythmArchetypeId_ = settings.rhythmArchetypeId;
+  rhythmFallbackPending_ = normalizePendingRhythm(false);
   morph_amount_ = static_cast<int>(settings.morphAmount);
 }
 
 void GenrePage::draw(IGfx& gfx) {
+  if (rhythmFallbackPending_) {
+    UI::showToast("RHYTHM RESET TO AUTO", 1200);
+    rhythmFallbackPending_ = false;
+  }
   const AxisUI::Palette palette = AxisUI::paletteFor(style_);
   const IGfxColor axisColor = palette.genre;
   const int profileIndex =
@@ -299,13 +373,23 @@ void GenrePage::draw(IGfx& gfx) {
                        value, focus_ == FocusRow::Variant,
                        axisColor, palette);
 
+  const char* rhythmName = "AUTO";
+  if (rhythmMode_ == GroovePuterRhythm::RhythmSelectionMode::Manual) {
+    const char* selectedName =
+        GroovePuterRhythm::rhythmSelectionName(rhythmArchetypeId_);
+    rhythmName = selectedName == nullptr ? "AUTO" : selectedName;
+  }
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(3), width, "RHYTHM",
+                       rhythmName, focus_ == FocusRow::Rhythm,
+                       axisColor, palette);
+
   std::snprintf(value, sizeof(value), "%d%%",
                 (morph_amount_ * 100) / 255);
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(3), width, "MORPH",
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width, "MORPH",
                        value, focus_ == FocusRow::Morph,
                        axisColor, palette);
 
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width, "APPLY",
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "APPLY",
                        applyModeName(), focus_ == FocusRow::Apply,
                        axisColor, palette);
 
@@ -314,14 +398,6 @@ void GenrePage::draw(IGfx& gfx) {
                 static_cast<unsigned>(kGenreBpm[profileIndex]),
                 params.minNotes, params.maxNotes,
                 params.velocityMin, params.velocityMax);
-  gfx.setTextColor(palette.muted);
-  gfx.drawText(x + 2, LayoutManager::lineY(5) + 1, value);
-
-  std::snprintf(value, sizeof(value),
-                "DOWNBEAT %s  KICK %s  HATS %s",
-                yesNo(params.preferDownbeats),
-                params.sparseKick ? "SPARSE" : "OPEN",
-                params.sparseHats ? "SPARSE" : "OPEN");
   gfx.setTextColor(palette.muted);
   gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
 
@@ -379,6 +455,10 @@ bool GenrePage::handleEvent(UIEvent& event) {
           morphAccelerator.reset();
           cycleRecipeSelection(1);
         }
+        return true;
+      case FocusRow::Rhythm:
+        morphAccelerator.reset();
+        cycleRhythmSelection(delta);
         return true;
       case FocusRow::Morph: {
         const bool modified = event.shift || event.ctrl || event.alt || event.meta;

@@ -1062,6 +1062,13 @@ const Definition* definitionFor(Archetype key) {
   return nullptr;
 }
 
+const Definition* definitionForId(RhythmArchetypeId archetypeId) {
+  for (uint8_t i = 0; i < definitionCount(); ++i) {
+    if (kDefinitions[i].archetypeId == archetypeId) return &kDefinitions[i];
+  }
+  return nullptr;
+}
+
 const RhythmArchetype* archetypeFor(Archetype key) {
   const Definition* def = definitionFor(key);
   if (!def) return nullptr;

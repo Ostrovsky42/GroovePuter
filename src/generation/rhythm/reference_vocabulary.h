@@ -48,6 +48,7 @@ const RhythmCatalogView& catalog();
 uint8_t definitionCount();
 const Definition& definition(uint8_t index);
 const Definition* definitionFor(Archetype key);
+const Definition* definitionForId(RhythmArchetypeId archetypeId);
 const RhythmArchetype* archetypeFor(Archetype key);
 
 }  // namespace ReferenceVocabulary

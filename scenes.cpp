@@ -948,6 +948,17 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
       if (v < 0) v = 0;
       if (v > 255) v = 255;
       target_.genre.morphAmount = static_cast<uint8_t>(v);
+    } else if (lastKey_ == "rsm") {
+      target_.genre.rhythmSelectionMode =
+          v == static_cast<int>(GroovePuterRhythm::RhythmSelectionMode::Manual)
+              ? static_cast<uint8_t>(
+                    GroovePuterRhythm::RhythmSelectionMode::Manual)
+              : static_cast<uint8_t>(
+                    GroovePuterRhythm::RhythmSelectionMode::Auto);
+    } else if (lastKey_ == "rid") {
+      if (v < 0) v = 0;
+      if (v > 0xFFFF) v = 0xFFFF;
+      target_.genre.rhythmArchetypeId = static_cast<uint16_t>(v);
     }
     return;
   }
@@ -2494,6 +2505,8 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   genreObj["mam"] = scene_->genre.morphAmount;
   genreObj["regen"] = scene_->genre.regenerateOnApply;
   genreObj["tempo"] = scene_->genre.applyTempoOnApply;
+  genreObj["rsm"] = scene_->genre.rhythmSelectionMode;
+  genreObj["rid"] = scene_->genre.rhythmArchetypeId;
 
   ArduinoJson::JsonObject genParams = root["generatorParams"].to<ArduinoJson::JsonObject>();
   serializeGeneratorParams(scene_->generatorParams, genParams);
@@ -2803,6 +2816,21 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
 
     loaded->genre.regenerateOnApply = genreObj["regen"].is<bool>() ? genreObj["regen"].as<bool>() : loaded->genre.regenerateOnApply;
     loaded->genre.applyTempoOnApply = genreObj["tempo"].is<bool>() ? genreObj["tempo"].as<bool>() : loaded->genre.applyTempoOnApply;
+
+    int rhythmMode = valueToInt(
+        genreObj["rsm"],
+        static_cast<int>(GroovePuterRhythm::RhythmSelectionMode::Auto));
+    loaded->genre.rhythmSelectionMode =
+        rhythmMode == static_cast<int>(
+                          GroovePuterRhythm::RhythmSelectionMode::Manual)
+            ? static_cast<uint8_t>(
+                  GroovePuterRhythm::RhythmSelectionMode::Manual)
+            : static_cast<uint8_t>(
+                  GroovePuterRhythm::RhythmSelectionMode::Auto);
+    int rhythmId = valueToInt(genreObj["rid"], 0);
+    if (rhythmId < 0) rhythmId = 0;
+    if (rhythmId > 0xFFFF) rhythmId = 0xFFFF;
+    loaded->genre.rhythmArchetypeId = static_cast<uint16_t>(rhythmId);
   }
 
   ArduinoJson::JsonObjectConst drumFXObj = obj["drumFX"].as<ArduinoJson::JsonObjectConst>();

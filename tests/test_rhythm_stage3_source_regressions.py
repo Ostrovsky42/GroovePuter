@@ -4,11 +4,13 @@ ROOT = Path(__file__).resolve().parents[1]
 HEADER = ROOT / "src/generation/rhythm/reference_vocabulary.h"
 SOURCE = ROOT / "src/generation/rhythm/reference_vocabulary.cpp"
 STRONG_MIGRATION = ROOT / "src/generation/migration/strong_rhythm_migration.cpp"
+RHYTHM_SELECTION = ROOT / "src/generation/composition/rhythm_selection.cpp"
 
 header = HEADER.read_text()
 source = SOURCE.read_text()
 combined = header + "\n" + source
 strong_migration = STRONG_MIGRATION.read_text()
+rhythm_selection = RHYTHM_SELECTION.read_text()
 
 required = [
     "enum class Archetype",
@@ -69,16 +71,17 @@ for forbidden in [
 ]:
     assert forbidden not in combined, f"reference vocabulary ownership/heap leak: {forbidden}"
 
-# Stage 7 production curation is catalog-only. The four identities must not
-# become reachable through the existing Stage 5 Genre/Variant selector in this
-# PR; a later routing PR must make that decision explicitly.
+# Generation Stage 7C makes the four curated identities reachable only through
+# the data-only compatibility layer, never by adding Genre ownership to the
+# vocabulary catalog or realizer.
 for token in [
     "Archetype::StackedQuarters",
     "Archetype::ElectroBackskip",
     "Archetype::FunkHouseBridge",
     "Archetype::ElectroGapPush",
 ]:
-    assert token not in strong_migration, f"Stage 7 routing leaked into curation PR: {token}"
+    assert token in rhythm_selection, f"Stage 7 identity is not production reachable: {token}"
+    assert token not in strong_migration, f"Stage 7 identity bypassed composition routing: {token}"
 
 # Acid remains a genre/bass/articulation interpretation over generic rhythm
 # families. It must not be introduced as a RhythmFamily in the reference pack.

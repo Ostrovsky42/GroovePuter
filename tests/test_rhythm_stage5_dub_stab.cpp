@@ -17,7 +17,7 @@ void require(bool condition, const char* message) {
 
 GenreSettings recipeSettings(uint8_t recipe) {
   GenreSettings settings{};
-  settings.generativeMode = static_cast<uint8_t>(GenerativeMode::Acid);
+  settings.generativeMode = static_cast<uint8_t>(GenerativeMode::Reggae);
   settings.recipe = recipe;
   settings.morphTarget = kBaseRecipeId;
   settings.morphAmount = 0;

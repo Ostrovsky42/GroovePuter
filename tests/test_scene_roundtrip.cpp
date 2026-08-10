@@ -58,6 +58,11 @@ void populateNonDefaultScene(SceneManager& manager) {
   scene.feel.driveEnabled = true;
   scene.feel.driveAmount = 81;
   scene.feel.tapeEnabled = true;
+  scene.genre.generativeMode = static_cast<uint8_t>(GenerativeMode::Electro);
+  scene.genre.recipe = kBaseRecipeId;
+  scene.genre.rhythmSelectionMode = static_cast<uint8_t>(
+      GroovePuterRhythm::RhythmSelectionMode::Manual);
+  scene.genre.rhythmArchetypeId = 712;
 
   scene.generatorParams.minNotes = 3;
   scene.generatorParams.maxNotes = 11;
@@ -126,6 +131,7 @@ void destroyRoundTripFields(SceneManager& manager) {
 
   Scene& scene = manager.currentScene();
   scene.feel = FeelSettings();
+  scene.genre = GenreSettings();
   scene.generatorParams = GeneratorParams();
   scene.drumBanks[0].patterns[0].voices[0].steps[3] = DrumStep();
   scene.synthABanks[0].patterns[0].steps[5] = SynthStep();
@@ -160,6 +166,11 @@ void verifyRoundTrip(const SceneManager& manager) {
   assert(scene.feel.driveEnabled);
   assert(scene.feel.driveAmount == 81);
   assert(scene.feel.tapeEnabled);
+  assert(scene.genre.generativeMode ==
+         static_cast<uint8_t>(GenerativeMode::Electro));
+  assert(scene.genre.rhythmSelectionMode == static_cast<uint8_t>(
+             GroovePuterRhythm::RhythmSelectionMode::Manual));
+  assert(scene.genre.rhythmArchetypeId == 712);
 
   assert(scene.generatorParams.minNotes == 3);
   assert(scene.generatorParams.maxNotes == 11);
@@ -244,6 +255,8 @@ int main() {
   assert(json.find("\"phraseCore\":[") != std::string::npos);
   assert(json.find("\"synthState\":{\"version\":1") != std::string::npos);
   assert(json.find("\"synthParams\"") == std::string::npos);
+  assert(json.find("\"rsm\":1") != std::string::npos);
+  assert(json.find("\"rid\":712") != std::string::npos);
 
   const std::string stableSynthState = extractSynthState(json);
   destroyRoundTripFields(manager);
@@ -251,6 +264,20 @@ int main() {
   verifyRoundTrip(manager);
   const std::string secondJson = manager.dumpCurrentScene();
   assert(extractSynthState(secondJson) == stableSynthState);
+
+  // Legacy documents have no rhythm intent fields and decode as AUTO.
+  std::string legacy = json;
+  const std::string rhythmFields = ",\"rsm\":1,\"rid\":712";
+  const size_t rhythmPos = legacy.find(rhythmFields);
+  assert(rhythmPos != std::string::npos);
+  legacy.erase(rhythmPos, rhythmFields.size());
+  assert(manager.loadScene(legacy));
+  assert(manager.currentScene().genre.rhythmSelectionMode == static_cast<uint8_t>(
+             GroovePuterRhythm::RhythmSelectionMode::Auto));
+  assert(manager.currentScene().genre.rhythmArchetypeId == 0);
+
+  assert(manager.loadScene(json));
+  verifyRoundTrip(manager);
 
   // Unknown version is transactional: current state must remain intact.
   std::string malformed = json;

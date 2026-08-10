@@ -6,6 +6,7 @@ MIGRATION = (ROOT / "src/generation/migration/strong_rhythm_migration.cpp").read
 BRIDGE = (ROOT / "src/generation/migration/strong_rhythm_live_bridge.cpp").read_text()
 GENRE_PAGE = (ROOT / "src/ui/pages/genre_page.cpp").read_text()
 SCENES_H = (ROOT / "scenes.h").read_text()
+SELECTION = (ROOT / "src/generation/composition/rhythm_selection.cpp").read_text()
 
 
 def require(condition: bool, message: str) -> None:
@@ -51,11 +52,16 @@ require("recipeIndex_ = static_cast<int>(normalizeRecipeForGenre(" in GENRE_PAGE
 # Keep their curated Stage 5 archetype pools disjoint. Deep Chord must use the
 # chord-response grammar instead of behaving like another generic Dub route.
 for token in (
-    "Archetype::StraightAcid,\n    Archetype::SparseAcid",
-    "Archetype::RollingAcid,\n    Archetype::SyncopatedAcid",
-    "constexpr Archetype kDeepChord[] = {\n    Archetype::ChordResponse",
+    "constexpr RhythmCompatibilityCandidate kChicagoJack[]",
+    "candidate(Archetype::StraightAcid, 120)",
+    "candidate(Archetype::SparseAcid, 100)",
+    "constexpr RhythmCompatibilityCandidate kRollingAcid[]",
+    "candidate(Archetype::RollingAcid, 120)",
+    "candidate(Archetype::SyncopatedAcid, 110)",
+    "constexpr RhythmCompatibilityCandidate kDeepChord[]",
+    "candidate(Archetype::ChordResponse, 120)",
 ):
-    require(token in MIGRATION,
+    require(token in SELECTION,
             f"hardware identity correction missing: {token}")
 
 # Runtime bridge must preserve rollback ordering: complete legacy output is
@@ -74,12 +80,12 @@ require("regenerateWithStrongRhythmMigration(mini_acid_)" in GENRE_PAGE,
 require("mini_acid_.regeneratePatternsWithGenre();" not in GENRE_PAGE,
         "GenrePage still calls legacy regeneration directly")
 
-# No persisted migration/backend ownership may be added to Scene in Stage 5.
+# Stage 7C may persist explicit user rhythm intent. Derived backend, seed and
+# phrase coordinates must still stay out of Scene.
 for forbidden in (
     "generationBackend",
     "rhythmBackend",
     "vocabularyBackend",
-    "archetypeId",
     "generationSeed",
     "phraseOrdinal",
 ):

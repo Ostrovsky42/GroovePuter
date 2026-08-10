@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "../../../scenes.h"
+#include "../composition/rhythm_selection.h"
 #include "../materialization/pattern_materializer.h"
 #include "../rhythm/reference_vocabulary.h"
 
@@ -18,6 +19,7 @@ enum class StrongRhythmRoute : uint8_t {
   ChicagoJack,
   RollingAcid,
   DeepChord,
+  Stage7Composition,
   Count,
 };
 
@@ -43,6 +45,8 @@ struct StrongRhythmMigrationResult {
   StrongRhythmRoute route = StrongRhythmRoute::Legacy;
   ReferenceVocabulary::Archetype archetype =
       ReferenceVocabulary::Archetype::Count;
+  RhythmSelectionMode selectionMode = RhythmSelectionMode::Auto;
+  bool normalizedSelectionToAuto = false;
   RealizationStatus realizationStatus = RealizationStatus::InvalidConstraintSet;
   PatternMaterializeStatus materializationStatus =
       PatternMaterializeStatus::InvalidPlan;
