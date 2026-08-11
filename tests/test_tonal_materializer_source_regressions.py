@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 HEADER = (ROOT / "src/generation/tonal/tonal_materializer.h").read_text()
 SOURCE = (ROOT / "src/generation/tonal/tonal_materializer.cpp").read_text()
 CATALOG = (ROOT / "src/generation/tonal/scale_catalog.h").read_text()
+RUNNER = (ROOT / "tests/run_tonal_materializer_tests.sh").read_text()
 TEXT = HEADER + "\n" + SOURCE
 
 
@@ -84,5 +85,14 @@ for pitch_name in (
     assert f"{pitch_name} += 12" not in CODE
     assert f"{pitch_name} -= 12" not in CODE
 assert "projection.rootPitchClass = request.rootPitchClass;" not in SOURCE
+
+# The stack gate must measure the owner with the same size-optimization policy
+# as the firmware. Do not silently regress to an unoptimized host-only `.su`
+# number while continuing to print the same 384 B ceiling.
+stack_compile = RUNNER[RUNNER.index('"${CXX:-g++}" -std=c++17'):RUNNER.index('STACK_FILE=')]
+assert " -Os " in stack_compile, "materializer stack probe must use firmware -Os"
+assert "-fstack-usage" in stack_compile
+assert "Tonal Materializer stack usage (-Os):" in RUNNER
+assert 'test "${STACK_BYTES}" -le 384' in RUNNER
 
 print("Stage 15 Tonal Materializer source regressions: OK")
