@@ -10,6 +10,7 @@ python3 "${ROOT_DIR}/tests/test_generation_orthogonality_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_generation_stage14_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_generation_stage14_drum_generate_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_generation_stage14_p_level_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_release_generation_routing_source_regressions.py"
 
 COMPOSITION_SOURCES=(
   "${ROOT_DIR}/src/generation/generation_context.cpp"
@@ -78,6 +79,9 @@ run_suite() {
   build_and_run "${compiler}" \
     "${ROOT_DIR}/tests/test_generation_stage14_p_level_semantics.cpp" \
     "${BUILD_DIR}/test_generation_stage14_p_levels_${suffix}" migration "$@"
+  build_and_run "${compiler}" \
+    "${ROOT_DIR}/tests/test_stage12_audition_genre_coverage.cpp" \
+    "${BUILD_DIR}/test_stage12_audition_genres_${suffix}" migration "$@"
 }
 
 run_suite gcc "${CXX:-g++}"
