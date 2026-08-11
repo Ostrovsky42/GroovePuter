@@ -26,8 +26,10 @@ struct ScaleDefinitionView {
   uint8_t count = 0;
 };
 
-// Single repository owner of ScaleType interval data. Generation projection,
-// legacy quantization and the live performance keyboard consume this catalog.
+// Single generation-side owner of the global ScaleType interval data.
+// TonalProjector and legacy AdvancedPatternGenerator consume this catalog.
+// PerformanceKeyboard deliberately remains a separate live-input compatibility
+// context for this Stage 15 release and is not a generated-pitch owner.
 inline constexpr int8_t kScaleIntervalsMinor[] = {0, 2, 3, 5, 7, 8, 10};
 inline constexpr int8_t kScaleIntervalsMajor[] = {0, 2, 4, 5, 7, 9, 11};
 inline constexpr int8_t kScaleIntervalsDorian[] = {0, 2, 3, 5, 7, 9, 10};
