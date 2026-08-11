@@ -54,14 +54,14 @@ While audition is active, normal Cardputer HID/word input is consumed by the har
 The harness snapshots only state it touches in RAM:
 
 - Synth B bank-0 slots 1..4 used by the fixtures;
-- active song data used temporarily by fixture 4;
+- active song rows 1..4 plus length/reverse used temporarily by fixture 4;
 - current Synth B bank/pattern selection;
 - song mode/position/playback slot;
 - Synth B mute state;
 - track volumes;
 - previous UI page / previous play state.
 
-It does not call scene persistence or mark the Scene revision dirty. `Esc` restores the snapshot before returning to the previous page.
+It does not call scene persistence or mark the Scene revision dirty. All state mutations run through the existing audio mutation guard. `Esc` restores the snapshot before returning to the previous page.
 
 ## Hardware controls
 
@@ -107,6 +107,8 @@ bar 2: CCCC R-----------
 
 For this fixture the hardware renderer deliberately uses one repeating 16-step Synth B pattern rather than Song rows. This is required because current Stage15 Song row selection emits `AllNotesOff` at a row boundary, which would invalidate the hold test. The first audible onset occurs late in the first bar, then the existing `SynthPattern` TIE semantics must carry it through step 15 -> step 0.
 
+Important diagnostic boundary: current Stage15 Synth B physical gating caps the initial gate below one full step (`effectiveGateMult <= 0.98`), while a TIE only extends an already-active gate. Therefore a gap before the next TIE is a plausible existing physical-adapter blocker. If Ctrl+3 gaps, classify it as `P2 timeline -> SynthPattern gate/continuation` integration failure, not as rejection of the P2 timeline core.
+
 ### 4. MULTI_BAR_NS
 
 Four bars containing N/S actions. Bars 2 and 4 deliberately begin with `S`; those attacks map to the source identity established in the preceding bar through explicit incoming-source composition.
@@ -141,8 +143,8 @@ CTRL+2 DENSE
 
 CTRL+3 CROSS-BAR HOLD
 [ ] onset near end of bar
-[ ] note remains held through 15 -> 0
-[ ] no fresh attack exactly at bar boundary
+[ ] report whether note survives through 15 -> 0
+[ ] report any gap or fresh re-attack exactly at bar boundary
 [ ] release occurs after the explicit continuation span
 
 CTRL+4 MULTI-BAR N/S
