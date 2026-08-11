@@ -6,14 +6,19 @@
 #include "../../../scenes.h"
 #include "../composition/generation_profile.h"
 #include "../composition/rhythm_selection.h"
+#include "../composition/tonal_profile.h"
 #include "../feel/feel_pattern_adapter.h"
 #include "../materialization/pattern_materializer.h"
 #include "../rhythm/reference_vocabulary.h"
+#include "../roles/bass_pitch_behavior.h"
 #include "../roles/bass_rhythm.h"
 #include "../roles/chord_progression.h"
 #include "../roles/chord_rhythm.h"
 #include "../roles/melodic_motif.h"
+#include "../roles/melodic_pitch_intent.h"
 #include "../roles/semantic_pattern_projector.h"
+#include "../tonal/tonal_materializer.h"
+#include "tonal_pattern_adapter.h"
 
 namespace GroovePuterRhythm {
 
@@ -56,6 +61,12 @@ struct StrongRhythmMigrationContext {
   RealizationLevel level = RealizationLevel::P2Variation;
   FeelProfileId feelProfile = FeelProfileId::Straight;
   uint8_t feelAmount = 0;
+
+  // Stage 15 tonal integration is explicit and transient. Legacy callers that
+  // do not provide tonal context keep the established pitch-redistribution path.
+  bool tonalMaterializationEnabled = false;
+  uint8_t rootPitchClass = 0;
+  ScaleTypeValue scaleTypeValue = kDefaultScaleTypeValue;
 };
 
 struct StrongRhythmMigrationResult {
@@ -78,8 +89,17 @@ struct StrongRhythmMigrationResult {
   GenerationCorridor corridor{};
   BassRhythmStatus bassRhythmStatus = BassRhythmStatus::InvalidRequest;
   BassRhythmId bassRhythmId = BassRhythmId::Auto;
+  BassPitchBehaviorStatus bassPitchBehaviorStatus =
+      BassPitchBehaviorStatus::InvalidRequest;
+  BassPitchContourId bassPitchContour = BassPitchContourId::Auto;
   SemanticPatternProjectStatus bassProjectionStatus =
       SemanticPatternProjectStatus::Ok;
+  TonalMaterializationStatus bassTonalStatus =
+      TonalMaterializationStatus::InvalidRequest;
+  TonalProjectionStatus bassTonalProjectionStatus =
+      TonalProjectionStatus::InvalidRequest;
+  TonalPatternAdaptStatus bassTonalAdaptStatus =
+      TonalPatternAdaptStatus::InvalidPlan;
   FeelInterpretStatus bassFeelStatus = FeelInterpretStatus::Ok;
   ChordRhythmStatus chordRhythmStatus = ChordRhythmStatus::InvalidRequest;
   ChordRhythmId chordRhythmId = ChordRhythmId::Auto;
@@ -88,13 +108,28 @@ struct StrongRhythmMigrationResult {
   ProgressionId progressionId = ProgressionId::Auto;
   SemanticPatternProjectStatus chordProjectionStatus =
       SemanticPatternProjectStatus::Ok;
+  TonalMaterializationStatus chordTonalStatus =
+      TonalMaterializationStatus::InvalidRequest;
+  TonalProjectionStatus chordTonalProjectionStatus =
+      TonalProjectionStatus::InvalidRequest;
+  TonalPatternAdaptStatus chordTonalAdaptStatus =
+      TonalPatternAdaptStatus::InvalidPlan;
   FeelInterpretStatus chordFeelStatus = FeelInterpretStatus::Ok;
   MelodicMotifStatus melodicMotifStatus =
       MelodicMotifStatus::InvalidRequest;
   MelodicRhythmId melodicRhythmId = MelodicRhythmId::Auto;
   MotifShapeId motifShapeId = MotifShapeId::Auto;
+  MelodicPitchIntentStatus melodicPitchIntentStatus =
+      MelodicPitchIntentStatus::InvalidRequest;
+  MelodicContourId melodicPitchContour = MelodicContourId::Auto;
   SemanticPatternProjectStatus melodicProjectionStatus =
       SemanticPatternProjectStatus::Ok;
+  TonalMaterializationStatus melodicTonalStatus =
+      TonalMaterializationStatus::InvalidRequest;
+  TonalProjectionStatus melodicTonalProjectionStatus =
+      TonalProjectionStatus::InvalidRequest;
+  TonalPatternAdaptStatus melodicTonalAdaptStatus =
+      TonalPatternAdaptStatus::InvalidPlan;
   FeelInterpretStatus melodicFeelStatus = FeelInterpretStatus::Ok;
   SemanticSynthBRole synthBRole = SemanticSynthBRole::Chord;
 
@@ -105,6 +140,7 @@ struct StrongRhythmMigrationResult {
   StepMask melodicFillOnsets = 0;
   bool chordRhythmApplied = false;
   bool melodicRhythmApplied = false;
+  bool tonalMaterializationApplied = false;
 };
 
 StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings);
