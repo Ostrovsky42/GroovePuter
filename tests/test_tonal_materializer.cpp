@@ -54,10 +54,11 @@ void testHarmonicTimelineSelectsEvents() {
 
   const TonalMaterializationResult result = materializeTonalIntent(request);
   assert(result.status == TonalMaterializationStatus::Ok);
-  assert(result.plan.midiNotes[0] == 60);
-  assert(result.plan.midiNotes[1] == 60);
-  assert(result.plan.midiNotes[2] == 67);
-  assert(result.plan.midiNotes[3] == 67);
+  // C3=48 is the feasible C root nearest the center of [36,71].
+  assert(result.plan.midiNotes[0] == 48);
+  assert(result.plan.midiNotes[1] == 48);
+  assert(result.plan.midiNotes[2] == 55);
+  assert(result.plan.midiNotes[3] == 55);
 }
 
 void testChromaticRootOffsetIsExact() {
