@@ -72,9 +72,17 @@ assert "event.rootOffsetSemitones" in SOURCE
 assert "popcount(request.harmonicEventOnsets) != request.progression.eventCount" in SOURCE
 
 # No unbounded retry, hidden octave folding or phrase-global root anchor.
+# `normalizePitchClass()` may add 12 solely to normalize a negative modulo; the
+# emitted/relative pitch paths themselves may never octave-fold to force fit.
 assert "while (" not in CODE
-assert "+= 12" not in CODE
-assert "-= 12" not in CODE
+for pitch_name in (
+    "relativeSemitone",
+    "targetSemitone",
+    "projection.tonalOffsets",
+    "result.plan.midiNotes",
+):
+    assert f"{pitch_name} += 12" not in CODE
+    assert f"{pitch_name} -= 12" not in CODE
 assert "projection.rootPitchClass = request.rootPitchClass;" not in SOURCE
 
 print("Stage 15 Tonal Materializer source regressions: OK")
