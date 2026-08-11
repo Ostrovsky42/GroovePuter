@@ -6,7 +6,11 @@ on:
       - "src/generation/roles/chord_rhythm_timeline.*"
       - "src/generation/roles/chord_rhythm_retrigger.*"
       - "src/generation/migration/p2_p3_hardware_audition.*"
+      - "src/platform/cardputer_p2_p3_audition.cpp"
+      - "src/input/cardputer_input_edges.h"
+      - "src/ui/miniacid_display.h"
       - "tests/test_p2_p3_hardware_audition.cpp"
+      - "tests/test_p2_p3_cardputer_binding.py"
       - "tests/run_p2_p3_hardware_audition_tests.sh"
       - "docs/architecture/P2_P3_HARDWARE_AUDITION.md"
       - ".github/workflows/p2-p3-hardware-audition.yml"
@@ -25,7 +29,9 @@ jobs:
       - name: Run P2+P3 composition matrix
         env:
           ASAN_OPTIONS: "detect_leaks=0"
-        run: bash tests/run_p2_p3_hardware_audition_tests.sh
+        run: |
+          python3 tests/test_p2_p3_cardputer_binding.py
+          bash tests/run_p2_p3_hardware_audition_tests.sh
 
   cardputer:
     runs-on: ubuntu-latest
