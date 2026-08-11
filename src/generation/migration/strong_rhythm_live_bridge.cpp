@@ -209,7 +209,7 @@ void printProbe(const PhraseAuditionResult& result) {
       "stack_after_words=%lu stack_after_bytes=%lu free_internal=%lu->%lu "
       "largest_internal=%lu->%lu\n",
       phraseAuditionStatusName(result.status),
-      GroovePuterState::generationLevelShortName(result.level),
+      GroovePuterState::generationLevelCode(result.level),
       static_cast<unsigned>(result.requestedBars),
       static_cast<unsigned>(result.profileBars),
       static_cast<unsigned>(result.archetypeId),
