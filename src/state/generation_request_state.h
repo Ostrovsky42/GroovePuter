@@ -4,16 +4,16 @@
 
 #include "src/generation/rhythm/rhythm_types.h"
 
-#if defined(ARDUINO) && (defined(ESP32) || defined(ESP_PLATFORM))
-#include <Preferences.h>
-#endif
-
 namespace GroovePuterState {
 
 // P1/P2/P3 describes how the next generation request realizes the selected
-// vocabulary. It is intentionally a device-session preference rather than Scene
-// content: generated patterns are already persisted in Scene, while the level is
-// an instruction for future G / phrase-audition requests.
+// vocabulary. It is intentionally runtime/session state rather than Scene
+// musical content: generated patterns are already persisted in Scene, while
+// the level is an instruction for future G / phrase-audition requests.
+//
+// P2 is the compatibility default because live production was hard-coded to P2
+// before the selector existed. Persistence is deliberately deferred: changing
+// P-level must never perform synchronous flash/NVS writes on the input path.
 inline GroovePuterRhythm::RealizationLevel sanitizeGenerationLevel(uint8_t raw) {
     using GroovePuterRhythm::RealizationLevel;
     return raw < static_cast<uint8_t>(RealizationLevel::Count)
@@ -64,50 +64,16 @@ inline GroovePuterRhythm::RealizationLevel& levelStorage() {
         GroovePuterRhythm::RealizationLevel::P2Variation;
     return level;
 }
-
-inline bool& loadedStorage() {
-    static bool loaded = false;
-    return loaded;
-}
-
-inline void loadOnce() {
-    if (loadedStorage()) return;
-    loadedStorage() = true;
-#if defined(ARDUINO) && (defined(ESP32) || defined(ESP_PLATFORM))
-    Preferences preferences;
-    if (preferences.begin("gp-generation", true)) {
-        const uint8_t raw = preferences.getUChar(
-            "p-level",
-            static_cast<uint8_t>(
-                GroovePuterRhythm::RealizationLevel::P2Variation));
-        levelStorage() = sanitizeGenerationLevel(raw);
-        preferences.end();
-    }
-#endif
-}
-
-inline void persist() {
-#if defined(ARDUINO) && (defined(ESP32) || defined(ESP_PLATFORM))
-    Preferences preferences;
-    if (!preferences.begin("gp-generation", false)) return;
-    preferences.putUChar(
-        "p-level", static_cast<uint8_t>(levelStorage()));
-    preferences.end();
-#endif
-}
 }  // namespace generation_request_detail
 
 inline GroovePuterRhythm::RealizationLevel currentGenerationLevel() {
-    generation_request_detail::loadOnce();
     return generation_request_detail::levelStorage();
 }
 
 inline bool setGenerationLevel(GroovePuterRhythm::RealizationLevel level) {
-    generation_request_detail::loadOnce();
     const auto sanitized = sanitizeGenerationLevel(static_cast<uint8_t>(level));
     if (generation_request_detail::levelStorage() == sanitized) return false;
     generation_request_detail::levelStorage() = sanitized;
-    generation_request_detail::persist();
     return true;
 }
 
