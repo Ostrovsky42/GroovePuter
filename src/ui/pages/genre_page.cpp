@@ -387,6 +387,7 @@ bool GenrePage::handleEvent(UIEvent& event) {
 
   const char key = static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)));
   const bool keyG = key == 'g' || event.scancode == GROOVEPUTER_G;
+  const bool keyP = key == 'p' || event.scancode == GROOVEPUTER_P;
 
   // ENTER follows the APPLY selector. Plain G is always the explicit full
   // Stage 15 materialization command for the pending GENRE/VARIANT/RHYTHM.
@@ -401,7 +402,7 @@ bool GenrePage::handleEvent(UIEvent& event) {
     return true;
   }
 
-  if (key == 'p' && !event.ctrl && !event.alt && !event.meta) {
+  if (keyP && !event.ctrl && !event.alt && !event.meta) {
     const auto level = GroovePuterState::cycleGenerationLevel();
     UI::showToast(GroovePuterState::generationLevelShortName(level), 1200);
     return true;
