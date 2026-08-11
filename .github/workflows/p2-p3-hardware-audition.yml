@@ -50,3 +50,9 @@ jobs:
         run: bash scripts/install_arduino_deps.sh
       - name: Build Cardputer ADV profile
         run: bash scripts/build_cardputer_memory_baseline.sh "${{ matrix.profile }}" product --warnings all
+      - name: Prove audition runtime is linked
+        run: |
+          ELF="build/cardputer-memory-baseline-${{ matrix.profile }}-product/GroovePuter.ino.elf"
+          test -f "$ELF"
+          grep -a -F -q "P23 AUDITION CTRL+1..4" "$ELF"
+          grep -a -F -q "P23 AUDITION OFF" "$ELF"
