@@ -6,6 +6,7 @@ BUILD_DIR="${ROOT}/build/host-tests"
 mkdir -p "${BUILD_DIR}"
 
 python3 "${ROOT}/tests/test_stage15_tonal_integration_source_regressions.py"
+python3 "${ROOT}/tests/test_scale_catalog_ownership.py"
 
 "${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror -Wvla \
   -Wno-c++20-extensions -Wno-unused-but-set-variable \
