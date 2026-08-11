@@ -1,0 +1,16 @@
+name: Stage 15 tonal baseline
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  baseline-dump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dump frozen legacy tonal fingerprints
+        run: bash tests/run_stage15_tonal_baseline_dump.sh
