@@ -24,11 +24,15 @@ assert "hid == kHidEscape" in runtime
 assert "P23 AUDITION CTRL+1..4" in runtime
 assert "P23 AUDITION OFF" in runtime
 
-# The harness is temporary RAM state, not a persistence path.
+# The harness is temporary RAM state, not a persistence path, and all state
+# mutation runs through the existing audio mutation guard.
 for forbidden in ("markSceneMutated", "saveScene", "autoSave", "saveCurrentPage"):
     assert forbidden not in runtime, forbidden
 assert "P23AuditionBackup" in runtime
 assert "restoreBackup" in runtime
+assert "withAudioGuard" in runtime
+assert "Song activeSong" not in runtime
+assert "SongPosition songPositions[kAuditionPatternSlots]" in runtime
 
 # Cross-bar HOLD must explicitly avoid Song row switching because Stage15 Song
 # selection emits AllNotesOff at row boundaries. Only MultiBarNS may use Song.
