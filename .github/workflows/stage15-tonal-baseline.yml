@@ -5,27 +5,16 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  baseline-capture:
+  baseline-compare:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.head_ref || github.ref_name }}
-      - name: Capture frozen legacy tonal fingerprints
+      - name: Compare frozen legacy tonal fingerprints
         run: |
-          mkdir -p tests/data
-          bash tests/run_stage15_tonal_baseline_dump.sh > tests/data/stage15_tonal_legacy_baseline.tsv
-      - name: Commit corpus when it changes
-        run: |
-          if git diff --quiet -- tests/data/stage15_tonal_legacy_baseline.tsv && git ls-files --error-unmatch tests/data/stage15_tonal_legacy_baseline.tsv >/dev/null 2>&1; then
-            echo "Baseline already frozen"
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tests/data/stage15_tonal_legacy_baseline.tsv
-          git commit -m "test: capture Stage 15 tonal legacy baseline"
-          git push origin HEAD:${{ github.head_ref || github.ref_name }}
+          mkdir -p build/host-tests
+          bash tests/run_stage15_tonal_baseline_dump.sh > build/host-tests/stage15_tonal_actual.tsv
+          test "$(wc -l < build/host-tests/stage15_tonal_actual.tsv)" -eq 257
+          diff -u tests/data/stage15_tonal_legacy_baseline.tsv build/host-tests/stage15_tonal_actual.tsv
