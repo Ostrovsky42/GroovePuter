@@ -136,11 +136,60 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
   const bool keyG =
       lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G;
 
-  // Whole-pattern G is a generation command, not a local edit. Preserve the
-  // legacy pattern as fallback, then apply selected Stage7/14 RHYTHM + FEEL to
-  // drums only. Cardputer may report G by scancode with key == 0, so this must
-  // recognize both input representations. Ctrl+G (one voice) and Alt+G (chaos)
-  // stay intentionally legacy.
+  // Cardputer ADV has no dedicated Shift key in the physical workflow. Use the
+  // existing Ctrl+Alt modifier pair for the explicit Stage 12 audition/probe.
+  // Plain G, Ctrl+G, Alt+G and Ctrl+Alt+G stay four separate contracts.
+  if (keyG && ui_event.ctrl && ui_event.alt && !ui_event.meta) {
+    if (page->mini_acid_.songModeEnabled()) {
+      UI::showToast("AUD: EXIT SONG", 1400);
+      return true;
+    }
+
+    const int previousDrumBank = page->mini_acid_.currentDrumBankIndex();
+    const int previousDrumPattern = page->mini_acid_.currentDrumPatternIndex();
+    const int previousSynthBankA = page->mini_acid_.current303BankIndex(0);
+    const int previousSynthBankB = page->mini_acid_.current303BankIndex(1);
+    const int previousSynthPatternA = page->mini_acid_.current303PatternIndex(0);
+    const int previousSynthPatternB = page->mini_acid_.current303PatternIndex(1);
+
+    GroovePuterRhythm::PhraseAuditionResult audition{};
+    page->withAudioGuard([&]() {
+      audition = GroovePuterRhythm::regeneratePhraseAuditionWithProbe(
+          page->mini_acid_);
+
+      // The bridge writes Bank B by temporarily selecting every reserved slot.
+      // Rebase MiniAcid's pattern-mode return state to the exact pre-audition
+      // selection before re-entering Song B.
+      if (page->mini_acid_.songModeEnabled() &&
+          (audition.status ==
+               GroovePuterRhythm::PhraseAuditionStatus::AppliedEvolved ||
+           audition.status == GroovePuterRhythm::PhraseAuditionStatus::
+                                  AppliedVariationFallback)) {
+        page->mini_acid_.setSongMode(false);
+        page->mini_acid_.setDrumBankIndex(previousDrumBank);
+        page->mini_acid_.setDrumPatternIndex(previousDrumPattern);
+        page->mini_acid_.set303BankIndex(0, previousSynthBankA);
+        page->mini_acid_.set303BankIndex(1, previousSynthBankB);
+        page->mini_acid_.set303PatternIndex(0, previousSynthPatternA);
+        page->mini_acid_.set303PatternIndex(1, previousSynthPatternB);
+        page->mini_acid_.setSongMode(true);
+      }
+    });
+    char toast[64];
+    std::snprintf(
+        toast,
+        sizeof(toast),
+        "AUD %uB %s #%u",
+        static_cast<unsigned>(audition.requestedBars),
+        GroovePuterRhythm::phraseAuditionStatusName(audition.status),
+        static_cast<unsigned>(audition.archetypeId));
+    UI::showToast(toast, 1800);
+    return true;
+  }
+
+  // Whole-pattern plain G is a generation command, not a local edit. Preserve
+  // the legacy pattern as fallback, then apply selected Stage7/14 RHYTHM + FEEL
+  // to drums only. Cardputer may report G by scancode with key == 0.
   if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
     page->withAudioGuard([&]() {
       GroovePuterRhythm::regenerateDrumsWithStrongRhythmMigration(
