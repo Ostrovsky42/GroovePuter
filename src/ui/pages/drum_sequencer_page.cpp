@@ -136,6 +136,8 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
       : 0;
   const bool keyG =
       lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G;
+  const bool keyP =
+      lowerKey == 'p' || ui_event.scancode == GROOVEPUTER_P;
 
   // Cardputer ADV has no dedicated Shift key in the physical workflow. Use the
   // existing Ctrl+Alt modifier pair for the explicit Stage 12 audition/probe.
@@ -202,7 +204,7 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
 
   // P owns the single P1/P2/P3 request selector. O remains blocked from the old
   // sketch-level Synth B generator; I remains a valid Q-I pattern-slot key.
-  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lowerKey == 'p') {
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && keyP) {
     const auto level = GroovePuterState::cycleGenerationLevel();
     UI::showToast(GroovePuterState::generationLevelShortName(level), 1200);
     return true;
