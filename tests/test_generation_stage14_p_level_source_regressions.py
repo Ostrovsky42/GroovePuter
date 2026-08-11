@@ -55,8 +55,8 @@ if "seed ^ 0x53454331u" in REALIZER:
 # hard-coding P2 forever.
 for needle in (
     "RealizationLevel::P2Variation",
-    "currentGenerationLevel()",
-    "cycleGenerationLevel()",
+    "currentGenerationLevel",
+    "cycleGenerationLevel",
 ):
     require(REQUEST_STATE, needle, f"P-level request-state contract missing: {needle}")
 
