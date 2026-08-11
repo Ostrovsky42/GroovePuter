@@ -11,6 +11,7 @@ python3 "${ROOT_DIR}/tests/test_generation_stage14_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_generation_stage14_drum_generate_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_generation_stage14_p_level_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_release_generation_routing_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_p_level_production_selector_source_regressions.py"
 
 COMPOSITION_SOURCES=(
   "${ROOT_DIR}/src/generation/generation_context.cpp"
@@ -62,11 +63,24 @@ build_and_run() {
   "${output}"
 }
 
+build_request_state_test() {
+  local compiler="$1"
+  local output="$2"
+  shift 2
+  "${compiler}" -std=c++17 -Wall -Wextra -Werror -Wvla \
+    -I"${ROOT_DIR}" "$@" \
+    "${ROOT_DIR}/tests/test_generation_request_state.cpp" \
+    -o "${output}"
+  "${output}"
+}
+
 run_suite() {
   local suffix="$1"
   local compiler="$2"
   shift 2
 
+  build_request_state_test "${compiler}" \
+    "${BUILD_DIR}/test_generation_request_state_${suffix}" "$@"
   build_and_run "${compiler}" \
     "${ROOT_DIR}/tests/test_generation_stage13.cpp" \
     "${BUILD_DIR}/test_generation_stage13_${suffix}" composition "$@"
