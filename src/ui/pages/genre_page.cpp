@@ -396,6 +396,18 @@ bool GenrePage::handleEvent(UIEvent& event) {
     applyCurrent(true);
     return true;
   }
+
+  // Retire the old global I/O/P generator shortcuts on the GENRE screen. They
+  // used GrooveboxModeManager directly and bypassed Stage 15 tonal ownership.
+  if (!event.ctrl && !event.alt && !event.meta &&
+      (key == 'i' || key == 'o' || key == 'p')) {
+    UI::showToast(key == 'p'
+                      ? "CONTINUE: Ctrl+Alt+G"
+                      : "LEGACY SYNTH GEN OFF",
+                  1200);
+    return true;
+  }
+
   if (event.key == ' ' && focus_ == FocusRow::Apply) {
     morphAccelerator.reset();
     cycleApplyMode(1);
