@@ -99,10 +99,10 @@ uint8_t harmonicEventIndexForStep(const TonalMaterializationRequest& request,
   return selected;
 }
 
-HarmonicEvent harmonicEventForStep(const TonalMaterializationRequest& request,
-                                   uint8_t step) {
+HarmonicEvent harmonicEventAt(const TonalMaterializationRequest& request,
+                              uint8_t eventIndex) {
   if (request.progression.eventCount == 0) return HarmonicEvent{};
-  return request.progression.events[harmonicEventIndexForStep(request, step)];
+  return request.progression.events[eventIndex];
 }
 
 bool semitoneIntentAt(const TonalMaterializationRequest& request,
@@ -111,32 +111,71 @@ bool semitoneIntentAt(const TonalMaterializationRequest& request,
           static_cast<uint16_t>(1u << ordinal)) != 0;
 }
 
-bool buildProjectionRequest(const TonalMaterializationRequest& request,
-                            const uint8_t* onsetSteps,
-                            uint8_t onsetCount,
-                            TonalProjectionRequest& projection) {
-  projection.onsetCount = onsetCount;
-  projection.rootPitchClass = request.rootPitchClass;
+uint8_t normalizePitchClass(int value) {
+  value %= 12;
+  if (value < 0) value += 12;
+  return static_cast<uint8_t>(value);
+}
+
+int eventSemitoneFromGlobalRoot(const TonalMaterializationRequest& request,
+                                const HarmonicEvent& event) {
+  return scaleDegreeToSemitone(request.scaleTypeValue, event.degree) +
+         static_cast<int>(event.rootOffsetSemitones);
+}
+
+int targetSemitoneFromGlobalRoot(const TonalMaterializationRequest& request,
+                                 const HarmonicEvent& event,
+                                 uint8_t globalOrdinal) {
+  const int eventSemitone = eventSemitoneFromGlobalRoot(request, event);
+  if (semitoneIntentAt(request, globalOrdinal)) {
+    return eventSemitone +
+           static_cast<int>(request.tonalOffsets[globalOrdinal]);
+  }
+
+  return scaleDegreeToSemitone(
+             request.scaleTypeValue,
+             static_cast<int>(event.degree) +
+                 static_cast<int>(request.tonalOffsets[globalOrdinal])) +
+         static_cast<int>(event.rootOffsetSemitones);
+}
+
+bool buildEventProjectionRequest(const TonalMaterializationRequest& request,
+                                 const uint8_t* onsetSteps,
+                                 uint8_t onsetCount,
+                                 uint8_t eventIndex,
+                                 uint8_t* globalOrdinals,
+                                 TonalProjectionRequest& projection) {
+  const HarmonicEvent event = harmonicEventAt(request, eventIndex);
+  const int eventSemitone = eventSemitoneFromGlobalRoot(request, event);
+
+  projection.rootPitchClass = normalizePitchClass(
+      static_cast<int>(request.rootPitchClass) + eventSemitone);
   projection.scaleTypeValue = request.scaleTypeValue;
   projection.minMidi = request.minMidi;
   projection.maxMidi = request.maxMidi;
   projection.maxAdjacentLeapSemitones = request.maxAdjacentLeapSemitones;
-  projection.semitoneOffsetOrdinals = ordinalMask(onsetCount);
 
-  for (uint8_t ordinal = 0; ordinal < onsetCount; ++ordinal) {
-    const HarmonicEvent event = harmonicEventForStep(request, onsetSteps[ordinal]);
-    const int displacement = semitoneIntentAt(request, ordinal)
-        ? scaleDegreeToSemitone(request.scaleTypeValue, event.degree) +
-              static_cast<int>(request.tonalOffsets[ordinal]) +
-              static_cast<int>(event.rootOffsetSemitones)
-        : scaleDegreeToSemitone(
-              request.scaleTypeValue,
-              static_cast<int>(event.degree) +
-                  static_cast<int>(request.tonalOffsets[ordinal])) +
-              static_cast<int>(event.rootOffsetSemitones);
-    if (displacement < -128 || displacement > 127) return false;
-    projection.tonalOffsets[ordinal] = static_cast<int8_t>(displacement);
+  uint8_t localOrdinal = 0;
+  for (uint8_t globalOrdinal = 0;
+       globalOrdinal < onsetCount; ++globalOrdinal) {
+    if (harmonicEventIndexForStep(request, onsetSteps[globalOrdinal]) !=
+        eventIndex) {
+      continue;
+    }
+
+    const int targetSemitone =
+        targetSemitoneFromGlobalRoot(request, event, globalOrdinal);
+    const int relativeSemitone = targetSemitone - eventSemitone;
+    if (relativeSemitone < -128 || relativeSemitone > 127) return false;
+
+    globalOrdinals[localOrdinal] = globalOrdinal;
+    projection.tonalOffsets[localOrdinal] =
+        static_cast<int8_t>(relativeSemitone);
+    ++localOrdinal;
   }
+
+  projection.onsetCount = localOrdinal;
+  projection.semitoneOffsetOrdinals = ordinalMask(localOrdinal);
   return true;
 }
 
@@ -161,23 +200,40 @@ TonalMaterializationResult materializeTonalIntent(
     return result;
   }
 
-  TonalProjectionRequest projectionRequest{};
-  if (!buildProjectionRequest(request, onsetSteps, onsetCount,
-                              projectionRequest)) {
-    return result;
+  // A harmonic event owns only its local root target. Each event is projected
+  // independently into the role corridor, so a later chord does not inherit the
+  // previous event's register anchor. All scale-degree arithmetic above remains
+  // relative to the one Scene/global ScaleType; this is not voice leading.
+  const uint8_t eventCount = request.progression.eventCount == 0
+      ? 1
+      : request.progression.eventCount;
+  for (uint8_t eventIndex = 0; eventIndex < eventCount; ++eventIndex) {
+    uint8_t globalOrdinals[kStepsPerBar]{};
+    TonalProjectionRequest projectionRequest{};
+    if (!buildEventProjectionRequest(request, onsetSteps, onsetCount,
+                                     eventIndex, globalOrdinals,
+                                     projectionRequest)) {
+      return result;
+    }
+    if (projectionRequest.onsetCount == 0) continue;
+
+    const TonalProjectionResult projection =
+        projectTonalIntent(projectionRequest);
+    result.projectionStatus = projection.status;
+    if (projection.status != TonalProjectionStatus::Ok ||
+        projection.noteCount != projectionRequest.onsetCount) {
+      result.status = TonalMaterializationStatus::ProjectionFailed;
+      return result;
+    }
+
+    for (uint8_t localOrdinal = 0;
+         localOrdinal < projection.noteCount; ++localOrdinal) {
+      result.plan.midiNotes[globalOrdinals[localOrdinal]] =
+          projection.midiNotes[localOrdinal];
+    }
   }
 
-  const TonalProjectionResult projection =
-      projectTonalIntent(projectionRequest);
-  result.projectionStatus = projection.status;
-  if (projection.status != TonalProjectionStatus::Ok ||
-      projection.noteCount != onsetCount) {
-    result.status = TonalMaterializationStatus::ProjectionFailed;
-    return result;
-  }
-
-  for (uint8_t ordinal = 0; ordinal < onsetCount; ++ordinal)
-    result.plan.midiNotes[ordinal] = projection.midiNotes[ordinal];
+  result.projectionStatus = TonalProjectionStatus::Ok;
   result.status = TonalMaterializationStatus::Ok;
   return result;
 }
