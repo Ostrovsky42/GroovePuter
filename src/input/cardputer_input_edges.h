@@ -12,6 +12,18 @@ inline constexpr uint8_t kCardputerArrowLeftHid = 0x36;
 inline constexpr uint8_t kCardputerArrowDownHid = 0x37;
 inline constexpr uint8_t kCardputerArrowRightHid = 0x38;
 
+#if defined(ARDUINO_M5STACK_CARDPUTER)
+// Temporary #239 hardware-audition hook. It consumes only the exact
+// Ctrl+Alt+O entry chord and, while active, owns Cardputer HID/word input so
+// the user's project cannot be edited accidentally during the fixture test.
+bool p23AuditionConsumeCardputerHid(bool alt,
+                                    bool ctrl,
+                                    bool shift,
+                                    bool fn,
+                                    uint8_t hid);
+bool p23AuditionActive();
+#endif
+
 template <typename KeysState>
 inline bool sameModifiers(const KeysState& a, const KeysState& b) {
   return a.alt == b.alt &&
@@ -59,9 +71,17 @@ inline bool shouldDispatchHid(const KeysState& current,
                               const KeysState& previous,
                               bool hadPrevious,
                               uint8_t hid) {
-  if (!hadPrevious) return true;
-  if (!containsHid(previous, hid)) return true;
-  return modifierActivated(current, previous);
+  const bool dispatch =
+      !hadPrevious || !containsHid(previous, hid) ||
+      modifierActivated(current, previous);
+  if (!dispatch) return false;
+#if defined(ARDUINO_M5STACK_CARDPUTER)
+  if (p23AuditionConsumeCardputerHid(
+          current.alt, current.ctrl, current.shift, current.fn, hid)) {
+    return false;
+  }
+#endif
+  return true;
 }
 
 template <typename KeysState, typename WordChar>
@@ -69,6 +89,9 @@ inline bool shouldDispatchWord(const KeysState& current,
                                const KeysState& previous,
                                bool hadPrevious,
                                WordChar& value) {
+#if defined(ARDUINO_M5STACK_CARDPUTER)
+  if (p23AuditionActive()) return false;
+#endif
   const WordChar rawValue = value;
 
   // M5Cardputer library versions differ: dedicated Tab can appear only in
