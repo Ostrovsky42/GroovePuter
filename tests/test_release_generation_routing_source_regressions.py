@@ -29,7 +29,7 @@ for needle in (
     "const bool keyG = key == 'g' || event.scancode == GROOVEPUTER_G;",
     "if (keyG && !event.ctrl && !event.alt && !event.meta)",
     "applyCurrent(true);",
-    '"ENTER:Apply G:Gen M:Mode"',
+    '"G:GEN P:LEVEL M:MODE"',
 ):
     require(GENRE, needle, f"GENRE G release route changed: {needle}")
 
@@ -42,24 +42,14 @@ for forbidden in ("randomize303Pattern", "randomizeDrumPattern", "modeManager_")
     if forbidden in GENRE:
         raise AssertionError(f"GENRE page gained legacy generation owner: {forbidden}")
 
-# The two GENERATE pages consume stale I/O/P before Cardputer's retained
-# sketch-level compatibility fallback can reach GrooveboxModeManager. P points
-# to the explicit audition command instead of silently replacing the drums.
-for needle in (
-    "(key == 'i' || key == 'o' || key == 'p')",
-    '"CONTINUE: Ctrl+Alt+G"',
-    '"LEGACY SYNTH GEN OFF"',
-):
-    require(GENRE, needle, f"GENRE legacy-generation guard changed: {needle}")
-
-for needle in (
-    "event.key == 'i' || event.key == 'I'",
-    "event.key == 'o' || event.key == 'O'",
-    "event.key == 'p' || event.key == 'P'",
-    '"CONTINUE: Ctrl+Alt+G"',
-    '"LEGACY SYNTH GEN OFF"',
-):
-    require(FEEL, needle, f"FEEL legacy-generation guard changed: {needle}")
+# The two GENERATE pages still consume stale I/O before Cardputer's retained
+# sketch-level compatibility fallback can reach GrooveboxModeManager. P is now
+# separately owned by the P1/P2/P3 request selector rather than continuation.
+for source, name in ((GENRE, "GENRE"), (FEEL, "FEEL")):
+    require(source, '"LEGACY SYNTH GEN OFF"',
+            f"{name} legacy synth-generation guard disappeared")
+    require(source, "GroovePuterState::cycleGenerationLevel()",
+            f"{name} lost page-first P-level ownership")
 
 # DRUMS plain G remains drums-only strong generation. Ctrl+Alt+G is the
 # multi-bar audition. Ctrl+G and Alt+G stay distinct edit/chaos commands.
@@ -68,8 +58,7 @@ for needle in (
     "regeneratePhraseAuditionWithProbe",
     "if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta)",
     "regenerateDrumsWithStrongRhythmMigration",
-    "(lowerKey == 'o' || lowerKey == 'p')",
-    '"CONTINUE: Ctrl+Alt+G"',
+    "GroovePuterState::cycleGenerationLevel()",
     '"LEGACY O GEN OFF"',
 ):
     require(DRUM, needle, f"DRUMS release route changed: {needle}")
@@ -86,8 +75,8 @@ require(
 )
 
 # The sketch compatibility fallback still exists for non-release surfaces. Pin
-# it explicitly so nobody mistakes this PR for full legacy-generator deletion.
-# Release safety comes from the page-first guards above.
+# it explicitly so nobody mistakes the stacked selector PR for full
+# legacy-generator deletion. Release safety comes from page-first ownership.
 for needle in (
     "g_miniDisplay ? g_miniDisplay->handleEvent(evt) : false",
     "if (handled)",
