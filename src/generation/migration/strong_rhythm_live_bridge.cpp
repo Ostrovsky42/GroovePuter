@@ -15,6 +15,15 @@ StrongRhythmMigrationContext liveMigrationContext(MiniAcid& engine) {
   if (feelAmount < 0.0f) feelAmount = 0.0f;
   if (feelAmount > 1.0f) feelAmount = 1.0f;
   context.feelAmount = static_cast<uint8_t>(feelAmount * 100.0f + 0.5f);
+
+  // Scene remains the owner of key/scale. Stage 15 receives only a transient
+  // compact tonal context and never imports Scene into roles/tonal code.
+  int root = scene.generatorParams.scaleRoot % 12;
+  if (root < 0) root += 12;
+  context.tonalMaterializationEnabled = true;
+  context.rootPitchClass = static_cast<uint8_t>(root);
+  context.scaleTypeValue =
+      static_cast<ScaleTypeValue>(scene.generatorParams.scale);
   return context;
 }
 
@@ -22,8 +31,9 @@ StrongRhythmMigrationContext liveMigrationContext(MiniAcid& engine) {
 
 StrongRhythmMigrationResult regenerateWithStrongRhythmMigration(
     MiniAcid& engine) {
-  // Legacy remains the rollback source and still owns synth pitch/timbre,
-  // Atlas tempo metadata and every unsupported genre/recipe.
+  // Legacy generation remains the rollback/metadata source and still owns
+  // timbre, Atlas tempo metadata and every unsupported genre/recipe. For a
+  // supported strong-rhythm route, Stage 15 now owns the final semantic pitch.
   engine.regeneratePatternsWithGenre();
 
   const StrongRhythmMigrationContext context = liveMigrationContext(engine);
