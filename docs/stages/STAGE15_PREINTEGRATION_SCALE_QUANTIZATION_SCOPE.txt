@@ -1,0 +1,22 @@
+Purpose: pin the exact file scope of the Stage 15 pre-integration scale correctness gate.
+
+Allowed production file:
+- src/dsp/advanced_pattern_generator.cpp
+
+Allowed validation/docs files:
+- tests/test_scale_quantization.cpp
+- tests/test_scale_quantization_source_regressions.py
+- tests/run_scale_quantization_tests.sh
+- .github/workflows/scale-quantization.yml
+- docs/stages/STAGE15_PREINTEGRATION_SCALE_QUANTIZATION_ACCEPTANCE.md
+- docs/stages/STAGE15_PREINTEGRATION_SCALE_QUANTIZATION_SCOPE.txt
+
+Explicitly outside scope:
+- src/generation/tonal/tonal_projector.*
+- src/generation/roles/chord_progression.*
+- src/generation/roles/melodic_pitch_intent.*
+- src/generation/roles/bass_pitch_behavior.*
+- src/generation/migration/strong_rhythm_migration.*
+- Scene/Song/Phrase/FEEL/persistence
+
+This checkpoint fixes legacy ScaleType quantization only.
