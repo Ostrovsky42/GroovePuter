@@ -68,28 +68,78 @@ require(
     "halftime_switch non-subtractive mutation policy disappeared",
 )
 
+# Normal production remains one-bar. The wider Stage 12 candidate catalog is
+# reachable only through the explicit audition/probe path restored for 0.9.1.
 require(
     BASE,
     "value.allowedPhraseBars = phraseBarsBit(1);",
-    "production ReferenceVocabulary was widened before hardware gate",
+    "normal production ReferenceVocabulary widened beyond one bar",
 )
 require(
     BASE,
     "value.trajectories = &kStatementRef;",
-    "production ReferenceVocabulary trajectory ownership changed",
+    "normal production ReferenceVocabulary trajectory ownership changed",
 )
 require(
     MIGRATION,
     "request.phraseBars = 1;",
-    "production strong migration escaped the one-bar hardware guard",
+    "normal strong migration escaped its one-bar contract",
 )
-for production_source in (BRIDGE, MIGRATION):
-    if (
-        "phraseEvolutionCatalog" in production_source
-        or "evolveMultiBarPhrase" in production_source
-    ):
+if "phraseEvolutionCatalog" in MIGRATION or "evolveMultiBarPhrase" in MIGRATION:
+    raise AssertionError(
+        "normal strong migration gained Stage 12 multi-bar ownership"
+    )
+
+require(
+    BRIDGE,
+    "void runSubtractiveRuntimeProbe",
+    "Stage 12 physical runtime probe disappeared",
+)
+require(
+    BRIDGE,
+    "PhraseAuditionResult regeneratePhraseAuditionWithProbe",
+    "explicit Stage 12 audition owner disappeared",
+)
+require(
+    BRIDGE,
+    "ReferenceVocabulary::phraseEvolutionCatalog()",
+    "explicit Stage 12 audition/probe lost the candidate catalog",
+)
+require(
+    BRIDGE,
+    "evolveMultiBarPhrase(",
+    "explicit Stage 12 audition/probe lost multi-bar evolution",
+)
+
+probe_start = BRIDGE.index("void runSubtractiveRuntimeProbe")
+probe_end = BRIDGE.index("void printProbe", probe_start)
+audition_start = BRIDGE.index(
+    "PhraseAuditionResult regeneratePhraseAuditionWithProbe"
+)
+
+probe_section = BRIDGE[probe_start:probe_end]
+audition_section = BRIDGE[audition_start:]
+outside_allowed_stage12 = BRIDGE[:probe_start] + BRIDGE[probe_end:audition_start]
+
+for section, name in (
+    (probe_section, "runtime probe"),
+    (audition_section, "audition owner"),
+):
+    require(
+        section,
+        "ReferenceVocabulary::phraseEvolutionCatalog()",
+        f"Stage 12 {name} lost candidate-catalog ownership",
+    )
+    require(
+        section,
+        "evolveMultiBarPhrase(",
+        f"Stage 12 {name} lost multi-bar evolution",
+    )
+
+for forbidden in ("phraseEvolutionCatalog", "evolveMultiBarPhrase"):
+    if forbidden in outside_allowed_stage12:
         raise AssertionError(
-            "Stage 12 candidate became production-reachable before hardware gate"
+            f"Stage 12 candidate leaked outside explicit audition/probe owners: {forbidden}"
         )
 
 for forbidden in (
