@@ -35,4 +35,4 @@ OUT="${BUILD_DIR}/stage15_tonal_baseline_dump"
 "${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror -Wvla \
   -Wno-c++20-extensions -Wno-unused-but-set-variable \
   -I"${ROOT}" "${SOURCES[@]}" -o "${OUT}"
-"${OUT}"
+"${OUT}" "$@"
