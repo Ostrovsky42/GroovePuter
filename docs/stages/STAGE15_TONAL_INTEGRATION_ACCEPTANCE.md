@@ -56,6 +56,7 @@ Automated focused gates:
 ```bash
 bash tests/run_tonal_projector_tests.sh
 bash tests/run_tonal_materializer_tests.sh
+bash tests/run_tonal_materializer_global_scale_test.sh
 bash tests/run_stage15_tonal_integration_tests.sh
 bash tests/run_stage15_tonal_register_sweep.sh
 bash tests/run_stage15_tonal_baseline_dump.sh > /tmp/stage15_legacy.tsv
@@ -92,6 +93,9 @@ Flash the **exact frozen PR head** reported in the final PR checkpoint. Do not a
 - ChordRhythm remains the owner of harmonic event timing.
 - ChordProgression supplies degree / quality / chromatic root-offset content only.
 - BassPitchBehavior and MelodicPitchIntent supply semantic contour intent only.
+- TonalMaterializer resolves every scale-degree target against the one Scene/global `ScaleType`.
+- Each harmonic event is projected independently into the role corridor and may therefore choose its own TonalProjector root anchor.
+- Event-local anchor selection is not voice leading: no previous event note is used to choose the next event anchor.
 - FEEL is applied after pitch materialization exactly as before.
 - The legacy `projectLegacyPitchPattern` path remains available when tonal materialization is explicitly disabled and must continue to match the frozen legacy corpus byte-for-byte.
 
@@ -104,7 +108,17 @@ Synth A / bass       24..47
 Synth B / secondary  48..71
 ```
 
-Every exact generation profile and every production pattern address `0..255` is swept by CI. The current contract therefore covers `33 × 256 = 8448` production cases; the bridge does not accept 512 distinct addresses because `kMaxGlobalPatterns == 256`.
+Every exact generation profile and every production pattern address `0..255` is swept at the canonical C/Dorian context. The address-space contract therefore covers `33 × 256 = 8448` production cases; the bridge does not accept 512 distinct addresses because `kMaxGlobalPatterns == 256`.
+
+A second exhaustive key/scale gate checks all exact profiles across all ten `ScaleType` values, all twelve roots and eight deterministic addresses per profile:
+
+```text
+33 profiles × 10 scales × 12 roots × 8 addresses = 31,680 cases
+```
+
+Together the production register gate executes **40,128 cases**. Every successful case must keep Synth A in `24..47` and Synth B in `48..71`.
+
+Within one harmonic event, the role-specific adjacent-leap guard remains active. A transition to a new harmonic event starts a new projector request/root anchor; there is deliberately no cross-event leap optimization or voice-leading policy in Stage 15.
 
 ### Conservative accepted genres
 
@@ -122,6 +136,22 @@ This prevents the new owner from adding a new contour axis to styles already acc
 The production data profiles permit wider tonal intent for Acid, Outrun, Darksynth, Electro, Broken, TripHop, HipHop, FunkSoul, UK Garage, Drum & Bass, LoFi, Reggae and Chip where the existing rhythmic framework alone did not provide sufficient pitch motion.
 
 `RootOctave` remains a valid Stage 15C API vocabulary item but is intentionally excluded from current production AUTO synth-profile selection: with a moving harmonic root it cannot be guaranteed to fit the fixed bass corridor for every scale/progression combination without octave-folding or register collision. No projector invariant is weakened to force it.
+
+### Global-scale harmonic semantics
+
+A harmonic event changes the active harmonic root, not the global scale definition. Degree intent is evaluated against `Scene.generatorParams.scale` before being converted to an exact event-local semitone displacement.
+
+Canonical regression:
+
+```text
+Scene: C major
+harmonic event: B
+melodic intent: +1 scale degree
+result: C
+not: C#
+```
+
+Chromatic `rootOffsetSemitones` shifts the event root after the global scale degree has been resolved. TonalProjector receives exact tagged semitone offsets for event-local projection; it does not receive a transposed `ScaleType`.
 
 ### Absolute-pitch independence from legacy source
 
@@ -165,7 +195,8 @@ For each case also listen for:
 - no stuck notes;
 - no missing generated Synth A/B pattern;
 - no octave-fold artifacts;
-- no unexpected rhythm/onset movement caused by tonal code.
+- no unexpected rhythm/onset movement caused by tonal code;
+- chord/event transitions sounding intentional rather than like octave jumps chosen to connect adjacent events.
 
 Status remains **HARDWARE_PENDING** until this matrix is heard on Cardputer ADV.
 
@@ -183,7 +214,7 @@ Do not octave-fold in TonalProjector and do not widen bass into the secondary re
 
 ### `ProjectionFailed / LeapExceeded`
 
-Check the role-specific `TonalRegisterCorridor` policy. The limit is profile data, not a global projector constant. Do not remove the TonalProjector guard globally.
+Check the role-specific `TonalRegisterCorridor` policy. The limit is profile data, not a global projector constant. The guard applies within one harmonic-event projection. Do not add cross-event voice leading or remove the TonalProjector guard globally to make a failing case pass.
 
 ### Legacy baseline changes
 
@@ -205,8 +236,11 @@ The new tonal path must not return `MissingPitchSource`. Check `TonalPatternAdap
 | key/scale stay Scene-owned | add Scene access inside `roles/` or `tonal/` |
 | roles do not own MIDI projection | call `projectTonalIntent()` from BassPitchBehavior or MelodicPitchIntent |
 | ChordRhythm owns harmonic timing | derive new harmonic event positions inside TonalMaterializer |
+| event-local anchors stay independent | collapse all harmonic events into one phrase-global TonalProjectionRequest |
+| global scale is preserved across events | derive or transpose a new `ScaleType` from the active harmonic root |
 | bass/secondary registers never overlap | raise bass max to 48 or lower secondary min to 47 |
 | all production addresses materialize | introduce a contour/progression combination that returns projection failure in the 8448-case sweep |
+| all key/scale contexts materialize | introduce a root/scale-dependent failure in the 31,680-case sweep |
 | exact fifth stays chromatic | route tagged `+7` through scale-degree conversion |
 | pentatonic/chromatic cardinality is correct | restore `% 7` or a fixed seven-entry scale loop |
 | empty legacy pitch source still works | require `projectLegacyPitchPattern` before tonal materialization |
@@ -236,10 +270,12 @@ Stage 15 does **not** add:
 - [ ] TonalProjector consumes ScaleCatalog and all its existing tests pass.
 - [ ] TonalMaterializer source ownership gate passes.
 - [ ] TonalMaterializer GCC/Clang/ASan+UBSan gate passes.
+- [ ] TonalMaterializer global-scale/event-local harmonic regression passes.
 - [ ] TonalMaterializer measured stack stays under its explicit gate.
 - [ ] Stage 15 production integration GCC/Clang/ASan+UBSan gate passes.
 - [ ] 16 base modes × 8 addresses deterministic matrix passes.
-- [ ] 33 exact profiles × all 256 production addresses register sweep passes.
+- [ ] 33 exact profiles × all 256 production addresses register sweep passes (`8,448`).
+- [ ] 33 exact profiles × 10 scales × 12 roots × 8 addresses sweep passes (`31,680`).
 - [ ] Synth A notes stay in 24..47.
 - [ ] Synth B notes stay in 48..71.
 - [ ] Legacy tonal baseline remains byte-for-byte unchanged with tonal materialization disabled.
