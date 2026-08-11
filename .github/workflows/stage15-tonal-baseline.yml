@@ -5,13 +5,15 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   baseline-compare:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
       - name: Compare frozen legacy tonal fingerprints
         run: |
           mkdir -p build/host-tests
@@ -23,17 +25,17 @@ jobs:
           mkdir -p build/host-tests
           bash tests/run_stage15_tonal_baseline_dump.sh --tonal > build/host-tests/stage15_tonal_enabled_actual.tsv
           test "$(wc -l < build/host-tests/stage15_tonal_enabled_actual.tsv)" -eq 257
-      - name: Export tonal-materialized bootstrap corpus
+      - name: Freeze tonal-materialized bootstrap corpus
         if: ${{ !hashFiles('tests/data/stage15_tonal_enabled_baseline.tsv') }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: stage15-tonal-enabled-baseline
-          path: build/host-tests/stage15_tonal_enabled_actual.tsv
-          if-no-files-found: error
+        run: |
+          cp build/host-tests/stage15_tonal_enabled_actual.tsv tests/data/stage15_tonal_enabled_baseline.tsv
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/data/stage15_tonal_enabled_baseline.tsv
+          git commit -m "test: freeze tonal-enabled Stage 15 corpus"
+          git push origin "HEAD:${GITHUB_HEAD_REF}"
+          echo "BOOTSTRAPPED_STAGE15_TONAL_ENABLED_BASELINE"
+          exit 1
       - name: Compare frozen tonal-materialized fingerprints
         run: |
-          if [[ ! -f tests/data/stage15_tonal_enabled_baseline.tsv ]]; then
-            echo "BOOTSTRAP_STAGE15_TONAL_ENABLED_BASELINE"
-            exit 1
-          fi
           diff -u tests/data/stage15_tonal_enabled_baseline.tsv build/host-tests/stage15_tonal_enabled_actual.tsv
