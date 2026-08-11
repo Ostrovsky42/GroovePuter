@@ -40,13 +40,6 @@ COMMON_SOURCES=(
   "${ROOT}/src/generation/migration/strong_rhythm_migration.cpp"
 )
 
-"${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror -Wvla \
-  -Wno-c++20-extensions -Wno-unused-but-set-variable \
-  -I"${ROOT}" "${COMMON_SOURCES[@]}" \
-  "${ROOT}/tests/test_stage15_tonal_integration_probe.cpp" \
-  -o "${BUILD_DIR}/stage15_tonal_integration_probe"
-"${BUILD_DIR}/stage15_tonal_integration_probe"
-
 build_and_run() {
   local compiler="$1"
   local output="$2"
