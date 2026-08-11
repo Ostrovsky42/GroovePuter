@@ -50,6 +50,15 @@ MiniAcid* engine() {
   return g_miniAcid;
 }
 
+template <typename Fn>
+void withAudioMutation(Fn&& fn) {
+  if (g_miniDisplay != nullptr) {
+    g_miniDisplay->withAudioGuard(static_cast<Fn&&>(fn));
+  } else {
+    fn();
+  }
+}
+
 uint8_t noteForSource(uint8_t sourceOrdinal) {
   // Deliberately non-monotonic so accidental source advancement is easy to
   // hear. These are pitch probes only, not Harmony Atlas vocabulary.
@@ -173,15 +182,12 @@ void restoreBackup(MiniAcid& mini) {
   if (g_p23Backup.songMode)
     mini.setSongPosition(g_p23Backup.songPosition);
 
-  if (g_miniDisplay != nullptr)
-    g_miniDisplay->goToPage(g_p23Backup.previousUiPage);
-
   const bool resume = g_p23Backup.wasPlaying;
   g_p23Backup.valid = false;
   if (resume) mini.start();
 }
 
-bool loadFixture(uint8_t fixtureNumber) {
+bool applyFixture(uint8_t fixtureNumber) {
   if (fixtureNumber < 1 || fixtureNumber > 4) return false;
   MiniAcid* mini = engine();
   if (mini == nullptr) return false;
@@ -235,21 +241,31 @@ bool loadFixture(uint8_t fixtureNumber) {
   }
 
   mini->start();
-  if (g_miniDisplay != nullptr) {
+  return true;
+}
+
+bool loadFixture(uint8_t fixtureNumber) {
+  bool applied = false;
+  withAudioMutation([&]() { applied = applyFixture(fixtureNumber); });
+  if (applied && g_miniDisplay != nullptr) {
+    const auto fixture =
+        static_cast<GroovePuterRhythm::P2P3HardwareAuditionFixture>(fixtureNumber);
     char message[32]{};
     snprintf(message, sizeof(message), "P23 #%u %s",
              static_cast<unsigned>(fixtureNumber),
              GroovePuterRhythm::p2P3HardwareAuditionFixtureName(fixture));
     g_miniDisplay->showToast(message, kLongToastMs);
   }
-  return true;
+  return applied;
 }
 
 void enterAudition() {
   MiniAcid* mini = engine();
   if (mini == nullptr || g_p23AuditionActive) return;
-  saveBackup(*mini);
-  mini->stop();
+  withAudioMutation([&]() {
+    saveBackup(*mini);
+    mini->stop();
+  });
   g_p23AuditionActive = true;
   if (g_miniDisplay != nullptr) {
     g_miniDisplay->goToPage(2);  // Existing Synth B page; no new UI owner.
@@ -261,9 +277,12 @@ void exitAudition() {
   MiniAcid* mini = engine();
   if (!g_p23AuditionActive) return;
   g_p23AuditionActive = false;
-  if (mini != nullptr) restoreBackup(*mini);
-  if (g_miniDisplay != nullptr)
+  if (mini != nullptr)
+    withAudioMutation([&]() { restoreBackup(*mini); });
+  if (g_miniDisplay != nullptr) {
+    g_miniDisplay->goToPage(g_p23Backup.previousUiPage);
     g_miniDisplay->showToast("P23 AUDITION OFF", 1500);
+  }
 }
 
 }  // namespace
