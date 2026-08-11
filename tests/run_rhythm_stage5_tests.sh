@@ -11,6 +11,7 @@ SOURCES=(
   "${ROOT_DIR}/src/generation/generation_context.cpp"
   "${ROOT_DIR}/src/generation/composition/rhythm_selection.cpp"
   "${ROOT_DIR}/src/generation/composition/generation_profile.cpp"
+  "${ROOT_DIR}/src/generation/composition/tonal_profile.cpp"
   "${ROOT_DIR}/src/generation/feel/feel_interpreter.cpp"
   "${ROOT_DIR}/src/generation/feel/feel_pattern_adapter.cpp"
   "${ROOT_DIR}/src/generation/rhythm/rhythm_catalog.cpp"
@@ -20,9 +21,14 @@ SOURCES=(
   "${ROOT_DIR}/src/generation/materialization/pattern_materializer.cpp"
   "${ROOT_DIR}/src/generation/roles/semantic_pattern_projector.cpp"
   "${ROOT_DIR}/src/generation/roles/bass_rhythm.cpp"
+  "${ROOT_DIR}/src/generation/roles/bass_pitch_behavior.cpp"
   "${ROOT_DIR}/src/generation/roles/chord_rhythm.cpp"
   "${ROOT_DIR}/src/generation/roles/chord_progression.cpp"
   "${ROOT_DIR}/src/generation/roles/melodic_motif.cpp"
+  "${ROOT_DIR}/src/generation/roles/melodic_pitch_intent.cpp"
+  "${ROOT_DIR}/src/generation/tonal/tonal_projector.cpp"
+  "${ROOT_DIR}/src/generation/tonal/tonal_materializer.cpp"
+  "${ROOT_DIR}/src/generation/migration/tonal_pattern_adapter.cpp"
   "${ROOT_DIR}/src/generation/migration/strong_rhythm_migration.cpp"
 )
 
