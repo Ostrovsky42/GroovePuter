@@ -3,17 +3,22 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "src/generation/tonal/tonal_materializer.cpp").read_text()
 
-# Event-local register placement must preserve the Scene/global scale. The role
-# degree is resolved in the global scale and converted to an exact relative
-# semitone displacement around the harmonic event root.
-assert "const int targetDegree = static_cast<int>(event.degree) +" in SOURCE
-assert "scaleDegreeToSemitone(request.scaleTypeValue, targetDegree) -" in SOURCE
-assert "eventScaleSemitone" in SOURCE
-assert "projection.semitoneOffsetOrdinals = static_cast<uint16_t>(" in SOURCE
+# Harmonic events may change the local harmonic target, but they must never
+# transpose the Scene/global ScaleType. TonalMaterializer resolves every role
+# degree through request.scaleTypeValue and passes exact semitone displacements
+# to the shared TonalProjector.
+assert "projection.scaleTypeValue = request.scaleTypeValue;" in SOURCE
+assert "const HarmonicEvent event = harmonicEventForStep(" in SOURCE
+assert "scaleDegreeToSemitone(request.scaleTypeValue, event.degree) +" in SOURCE
+assert "static_cast<int>(event.degree) +" in SOURCE
+assert "static_cast<int>(request.tonalOffsets[ordinal])) +" in SOURCE
+assert "static_cast<int>(event.rootOffsetSemitones)" in SOURCE
+assert "projection.semitoneOffsetOrdinals = ordinalMask(onsetCount);" in SOURCE
 
-# Regression guard: do not pass raw untagged role degree offsets into a
-# TonalProjector request rooted at each harmonic event, which would transpose
-# the ScaleType itself at every chord root.
-assert "projection.tonalOffsets[projectedOrdinal] =\n        request.tonalOffsets[ordinal]" not in SOURCE
+# Regression guards: do not derive a new/transposed scale from a harmonic event,
+# and do not pass role degree offsets to TonalProjector as untagged scale degrees.
+assert "projection.scaleTypeValue = event" not in SOURCE
+assert "projection.rootPitchClass = event" not in SOURCE
+assert "projection.semitoneOffsetOrdinals = 0" not in SOURCE
 
 print("Stage 15 global-scale materializer source regression: OK")
