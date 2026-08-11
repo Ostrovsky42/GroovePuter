@@ -6,6 +6,7 @@
 #include "../axis_page_palette.h"
 #include "../layout_manager.h"
 #include "../ui_common.h"
+#include "../../state/generation_request_state.h"
 #include "../../state/scene_revision.h"
 
 namespace {
@@ -256,8 +257,7 @@ void FeelPage::draw(IGfx& gfx) {
 
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(6), width,
                        "PRESET", kPresetNames[preset_index_],
-                       focus_ == FocusRow::Preset,
-                       axisColor, palette);
+                       focus_ == FocusRow::Preset, axisColor, palette);
 
   const char* explanation = "LIVE: offbeat playback delay";
   switch (focus_) {
@@ -284,8 +284,8 @@ void FeelPage::draw(IGfx& gfx) {
   gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, explanation);
 
   UI::drawStandardFooter(gfx,
-                         "TAB/U/D:FIELD  L/R:CHANGE",
-                         "HOLD L/R:ACCEL  ENTER:PRESET");
+                         "TAB/U/D:FIELD L/R:CHANGE",
+                         "P:LEVEL ENTER:PRESET");
 }
 
 bool FeelPage::handleEvent(UIEvent& event) {
@@ -317,17 +317,21 @@ bool FeelPage::handleEvent(UIEvent& event) {
     return true;
   }
 
-  // The GENERATE workflow must not fall through to the old global I/O/P
-  // GrooveboxModeManager shortcuts. Continuation is the explicit DRUMS
-  // Ctrl+Alt+G audition command; single-synth Stage 15 randomize is deferred.
+  const char lowerKey = event.key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)))
+      : 0;
+  if (!event.ctrl && !event.alt && !event.meta && lowerKey == 'p') {
+    const auto level = GroovePuterState::cycleGenerationLevel();
+    UI::showToast(GroovePuterState::generationLevelShortName(level), 1200);
+    return true;
+  }
+
+  // The GENERATE workflow must not fall through to the old global I/O
+  // GrooveboxModeManager shortcuts. P is now owned above by the single
+  // P1/P2/P3 generation-request selector.
   if (!event.ctrl && !event.alt && !event.meta &&
-      (event.key == 'i' || event.key == 'I' ||
-       event.key == 'o' || event.key == 'O' ||
-       event.key == 'p' || event.key == 'P')) {
-    UI::showToast(event.key == 'p' || event.key == 'P'
-                      ? "CONTINUE: Ctrl+Alt+G"
-                      : "LEGACY SYNTH GEN OFF",
-                  1200);
+      (lowerKey == 'i' || lowerKey == 'o')) {
+    UI::showToast("LEGACY SYNTH GEN OFF", 1200);
     return true;
   }
 
