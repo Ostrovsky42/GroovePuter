@@ -5,12 +5,27 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  baseline-dump:
+  baseline-capture:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Dump frozen legacy tonal fingerprints
-        run: bash tests/run_stage15_tonal_baseline_dump.sh
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+      - name: Capture frozen legacy tonal fingerprints
+        run: |
+          mkdir -p tests/data
+          bash tests/run_stage15_tonal_baseline_dump.sh > tests/data/stage15_tonal_legacy_baseline.tsv
+      - name: Commit corpus when it changes
+        run: |
+          if git diff --quiet -- tests/data/stage15_tonal_legacy_baseline.tsv && git ls-files --error-unmatch tests/data/stage15_tonal_legacy_baseline.tsv >/dev/null 2>&1; then
+            echo "Baseline already frozen"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/data/stage15_tonal_legacy_baseline.tsv
+          git commit -m "test: capture Stage 15 tonal legacy baseline"
+          git push origin HEAD:${{ github.head_ref || github.ref_name }}
