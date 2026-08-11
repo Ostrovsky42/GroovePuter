@@ -1,0 +1,18 @@
+name: Stage 15 tonal integration
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tonal-integration-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Stage 15 tonal integration matrix
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_stage15_tonal_integration_tests.sh
