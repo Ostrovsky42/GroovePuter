@@ -57,17 +57,24 @@ assert "scaleDefinitionFor(" not in SOURCE
 assert "kScaleIntervals" not in SOURCE
 assert "kScaleIntervalsMinor" in CATALOG
 
-# Materializer converts final combined displacements to tagged semitone intent,
-# then delegates register/root-anchor selection to Tonal Projector.
-assert "projection.semitoneOffsetOrdinals = ordinalMask(onsetCount)" in SOURCE
+# Materializer groups role onsets by harmonic event, resolves each event root in
+# the global scale, converts all event-local role intent to exact semitone
+# displacement, then delegates only register/root-anchor selection to projector.
+assert "eventSemitoneFromGlobalRoot(" in SOURCE
+assert "targetSemitoneFromGlobalRoot(" in SOURCE
+assert "harmonicEventIndexForStep(" in SOURCE
+assert "projection.rootPitchClass = normalizePitchClass(" in SOURCE
+assert "projection.scaleTypeValue = request.scaleTypeValue" in SOURCE
+assert "projection.semitoneOffsetOrdinals = ordinalMask(localOrdinal)" in SOURCE
+assert "for (uint8_t eventIndex = 0; eventIndex < eventCount; ++eventIndex)" in SOURCE
 assert "projectTonalIntent(projectionRequest)" in SOURCE
 assert "event.rootOffsetSemitones" in SOURCE
-assert "harmonicEventIndexForStep(" in SOURCE
 assert "popcount(request.harmonicEventOnsets) != request.progression.eventCount" in SOURCE
 
-# No unbounded retry or hidden octave folding.
+# No unbounded retry, hidden octave folding or phrase-global root anchor.
 assert "while (" not in CODE
 assert "+= 12" not in CODE
 assert "-= 12" not in CODE
+assert "projection.rootPitchClass = request.rootPitchClass;" not in SOURCE
 
 print("Stage 15 Tonal Materializer source regressions: OK")
