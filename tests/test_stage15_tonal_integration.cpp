@@ -79,6 +79,42 @@ void assertDrumsEqual(const DrumPatternSet& a, const DrumPatternSet& b) {
   assert(std::memcmp(&a, &b, sizeof(DrumPatternSet)) == 0);
 }
 
+void assertResultDeterministic(const StrongRhythmMigrationResult& a,
+                               const StrongRhythmMigrationResult& b) {
+  // Compare semantic fields explicitly. Raw memcmp is invalid here because
+  // compiler-dependent padding bytes are not part of the result contract.
+  assert(a.status == b.status);
+  assert(a.route == b.route);
+  assert(a.archetype == b.archetype);
+  assert(a.compositionStatus == b.compositionStatus);
+  assert(a.bassRhythmStatus == b.bassRhythmStatus);
+  assert(a.bassRhythmId == b.bassRhythmId);
+  assert(a.bassPitchBehaviorStatus == b.bassPitchBehaviorStatus);
+  assert(a.bassPitchContour == b.bassPitchContour);
+  assert(a.bassTonalStatus == b.bassTonalStatus);
+  assert(a.bassTonalProjectionStatus == b.bassTonalProjectionStatus);
+  assert(a.bassTonalAdaptStatus == b.bassTonalAdaptStatus);
+  assert(a.chordRhythmStatus == b.chordRhythmStatus);
+  assert(a.chordRhythmId == b.chordRhythmId);
+  assert(a.chordProgressionStatus == b.chordProgressionStatus);
+  assert(a.progressionId == b.progressionId);
+  assert(a.chordTonalStatus == b.chordTonalStatus);
+  assert(a.chordTonalProjectionStatus == b.chordTonalProjectionStatus);
+  assert(a.chordTonalAdaptStatus == b.chordTonalAdaptStatus);
+  assert(a.melodicMotifStatus == b.melodicMotifStatus);
+  assert(a.melodicPitchIntentStatus == b.melodicPitchIntentStatus);
+  assert(a.melodicPitchContour == b.melodicPitchContour);
+  assert(a.melodicTonalStatus == b.melodicTonalStatus);
+  assert(a.melodicTonalProjectionStatus == b.melodicTonalProjectionStatus);
+  assert(a.melodicTonalAdaptStatus == b.melodicTonalAdaptStatus);
+  assert(a.synthBRole == b.synthBRole);
+  assert(a.chordOnsets == b.chordOnsets);
+  assert(a.melodicFillOnsets == b.melodicFillOnsets);
+  assert(a.chordRhythmApplied == b.chordRhythmApplied);
+  assert(a.melodicRhythmApplied == b.melodicRhythmApplied);
+  assert(a.tonalMaterializationApplied == b.tonalMaterializationApplied);
+}
+
 constexpr GenerativeMode kModes[] = {
     GenerativeMode::Acid,
     GenerativeMode::Outrun,
@@ -138,7 +174,7 @@ void testAllModesDeterministicAndInRegister() {
       const StrongRhythmMigrationResult repeat = migrateStrongRhythmMaterial(
           settings, contextFor(ordinal, true), repeatDrums, repeatA, repeatB);
       assert(repeat.status == StrongRhythmMigrationStatus::Applied);
-      assert(std::memcmp(&tonal, &repeat, sizeof(StrongRhythmMigrationResult)) == 0);
+      assertResultDeterministic(tonal, repeat);
       assertDrumsEqual(tonalDrums, repeatDrums);
       assertPatternsEqual(tonalA, repeatA);
       assertPatternsEqual(tonalB, repeatB);
