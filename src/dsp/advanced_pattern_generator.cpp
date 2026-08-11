@@ -1,5 +1,6 @@
 #include "advanced_pattern_generator.h"
 #include "drum_genre_templates.h"
+#include "src/generation/tonal/scale_catalog.h"
 #include <vector>
 #include <algorithm>
 #include <cmath>
@@ -105,32 +106,11 @@ void AdvancedPatternGenerator::applySwing(SynthPattern& pattern, float amount) {
 }
 
 int AdvancedPatternGenerator::quantizeToScale(int note, int root, ScaleType scale) {
-    // Keep this legacy generator behavior-local for the correctness gate. The
-    // later Stage 15 tonal integration will consolidate interval ownership with
-    // the shared tonal path; this PR only removes the incorrect `% 7` aliasing.
-    static const int intervals[][12] = {
-        {0, 2, 3, 5, 7, 8, 10, 0, 0, 0, 0, 0},       // MINOR
-        {0, 2, 4, 5, 7, 9, 11, 0, 0, 0, 0, 0},       // MAJOR
-        {0, 2, 3, 5, 7, 9, 10, 0, 0, 0, 0, 0},       // DORIAN
-        {0, 1, 3, 5, 7, 8, 10, 0, 0, 0, 0, 0},       // PHRYGIAN
-        {0, 2, 4, 6, 7, 9, 11, 0, 0, 0, 0, 0},       // LYDIAN
-        {0, 2, 4, 5, 7, 9, 10, 0, 0, 0, 0, 0},       // MIXOLYDIAN
-        {0, 1, 3, 5, 6, 8, 10, 0, 0, 0, 0, 0},       // LOCRIAN
-        {0, 2, 4, 7, 9, 0, 0, 0, 0, 0, 0, 0},        // PENTATONIC_MJ
-        {0, 3, 5, 7, 10, 0, 0, 0, 0, 0, 0, 0},       // PENTATONIC_MN
-        {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},      // CHROMATIC
-    };
-    static const uint8_t intervalCounts[] = {7, 7, 7, 7, 7, 7, 7, 5, 5, 12};
-
     static_assert(MINOR == 0 && MAJOR == 1 && DORIAN == 2 &&
                   PHRYGIAN == 3 && LYDIAN == 4 && MIXOLYDIAN == 5 &&
                   LOCRIAN == 6 && PENTATONIC_MJ == 7 &&
                   PENTATONIC_MN == 8 && CHROMATIC == 9,
-                  "ScaleType order changed; update quantization table explicitly");
-    static_assert(sizeof(intervals) / sizeof(intervals[0]) == 10,
-                  "quantization table must cover every ScaleType");
-    static_assert(sizeof(intervalCounts) / sizeof(intervalCounts[0]) == 10,
-                  "quantization cardinality table must cover every ScaleType");
+                  "ScaleType order changed; update ScaleCatalog ABI explicitly");
 
     int scaleIndex = static_cast<int>(scale);
     if (scaleIndex < static_cast<int>(MINOR) ||
@@ -138,14 +118,15 @@ int AdvancedPatternGenerator::quantizeToScale(int note, int root, ScaleType scal
         scaleIndex = static_cast<int>(DORIAN);
     }
 
-    const int* pIntervals = intervals[scaleIndex];
-    const uint8_t intervalCount = intervalCounts[scaleIndex];
+    const GroovePuterRhythm::ScaleDefinitionView definition =
+        GroovePuterRhythm::scaleDefinitionFor(
+            static_cast<GroovePuterRhythm::ScaleTypeValue>(scaleIndex));
     int octave = note / 12;
     int semitone = note % 12;
     int closest = 0;
     int minDist = 12;
-    for (uint8_t i = 0; i < intervalCount; i++) {
-        int scaleTone = (root + pIntervals[i]) % 12;
+    for (uint8_t i = 0; i < definition.count; ++i) {
+        int scaleTone = (root + definition.intervals[i]) % 12;
         int dist = std::abs(semitone - scaleTone);
         if (dist < minDist) { minDist = dist; closest = scaleTone; }
     }
