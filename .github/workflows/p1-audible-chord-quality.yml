@@ -1,0 +1,84 @@
+name: P1 Audible Chord Quality Feasibility
+
+on:
+  pull_request:
+    paths:
+      - "src/generation/tonal/chord_quality_projector.*"
+      - "tests/test_chord_quality_*"
+      - "tests/run_chord_quality_feasibility_tests.sh"
+      - "scripts/measure_p1_chord_quality_resources.sh"
+      - "docs/architecture/P1_AUDIBLE_CHORD_QUALITY_FEASIBILITY.md"
+      - ".github/workflows/p1-audible-chord-quality.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ownership-and-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Guard P1 scope against live integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          forbidden='^(scenes\.h|src/generation/migration/|src/generation/roles/chord_progression\.|src/dsp/mono_synth_voice\.h|src/dsp/swappable_synth_voice\.h)'
+          changed="$(git diff --name-only fc42763e7798866e61895bf1b8d62339ec59e0a7...HEAD)"
+          printf '%s\n' "${changed}"
+          if printf '%s\n' "${changed}" | grep -E "${forbidden}"; then
+            echo "P1 feasibility PR may not modify live rhythm/physical owners" >&2
+            exit 1
+          fi
+      - name: Run P1 host matrix
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_chord_quality_feasibility_tests.sh
+
+  esp32-resource-probe:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [normal, midi-only]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Measure P1 projector on ESP32-S3 ${{ matrix.profile }}
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build
+          bash scripts/measure_p1_chord_quality_resources.sh "${{ matrix.profile }}" \
+            2>&1 | tee "build/p1-chord-quality-${{ matrix.profile }}.log"
+      - name: Verify frozen P1 ESP32-S3 resource evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.profile }}" in
+            normal)
+              expected='P1_RESOURCE profile=normal linked_load_delta=+628 fixed_dram_delta=+0 bss_delta=+0 object_text=985 object_data=0 object_bss=0 stack=128'
+              ;;
+            midi-only)
+              expected='P1_RESOURCE profile=midi-only linked_load_delta=+612 fixed_dram_delta=+0 bss_delta=+0 object_text=985 object_data=0 object_bss=0 stack=128'
+              ;;
+            *) exit 2 ;;
+          esac
+          grep -Fx -- "${expected}" "build/p1-chord-quality-${{ matrix.profile }}.log"
+      - name: Upload P1 resource log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p1-chord-quality-${{ matrix.profile }}-resources
+          path: build/p1-chord-quality-${{ matrix.profile }}.log
+          if-no-files-found: error
