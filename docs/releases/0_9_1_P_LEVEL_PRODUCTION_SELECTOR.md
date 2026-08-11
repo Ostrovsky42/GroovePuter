@@ -31,8 +31,8 @@ P3  TRANSFORMATION  stronger fill/reduction/build/break behavior where allowed
 
 `Alt+G` CHAOS is deliberately outside this selector. P3 is not CHAOS.
 
-The selector is a device-session preference for the **next generation request**.
-It is not Scene musical content. Generated patterns remain persisted normally in
+The selector is runtime/session state for the **next generation request**. It is
+not Scene musical content. Generated patterns remain persisted normally in
 Scene/project storage.
 
 ## Hardware list
@@ -76,21 +76,24 @@ Alt+G         CHAOS; deliberately outside P1/P2/P3
 screens. `O` remains blocked on the main DRUMS grid. `I` on DRUMS remains the
 normal Q-I pattern-slot key.
 
-## Persistence contract
+## Runtime-state contract
 
-The selector is stored in Cardputer NVS under its own compact device-session
-key. It does not change the Scene JSON schema.
+P-level has one runtime/session owner and does not change the Scene JSON schema.
+The boot/default value is `P2 VAR`, matching the pre-selector live production
+behavior that hard-coded `P2Variation`.
+
+Changing P-level performs no synchronous flash/NVS write. This is intentional:
+`P` is a realtime UI command and must not introduce a flash stall into playback.
+A later persistence change, if wanted, must use a deferred session-save path and
+is outside this PR.
 
 Compatibility behavior:
 
 ```text
-no stored key       -> P2 VAR
-invalid stored key  -> P2 VAR
-valid P1/P2/P3      -> restored after reboot
+boot / firmware start -> P2 VAR
+invalid raw value     -> P2 VAR
+P press               -> runtime selector only
 ```
-
-This preserves the previous live-production behavior because the bridge was
-hard-coded to P2 before this PR.
 
 ## Build / Flash
 
@@ -151,12 +154,15 @@ is the existing Stage 12 capability boundary, not a selector failure.
 
 ### Serial
 
-The Cardputer phrase probe must include the selected level:
+The Cardputer phrase probe reports the selected level with a compact
+machine-readable token:
 
 ```text
-[PHRASE-PROBE] status=... level=P2 VAR bars=4 ...
+[PHRASE-PROBE] status=EVOLVED level=P2 bars=4 ...
 ```
 
+UI/toasts use the longer `P1 CANON` / `P2 VAR` / `P3 TRANS` labels; Serial uses
+`P1` / `P2` / `P3` so every diagnostic field remains a single `key=value` token.
 The existing stack, internal heap, largest-block and duration fields remain
 present.
 
@@ -201,9 +207,8 @@ Then set FEEL `REPEATS=4` and repeat P1/P2/P3 with `Ctrl+Alt+G` for UK Garage,
 Drum & Bass and Electro. Preserve the complete `[PHRASE-PROBE]` line from at
 least one P1, P2 and P3 run.
 
-Finally choose `P3 TRANS`, reboot Cardputer, return to GENRE and verify the
-selector still reports P3. Restore P2 afterward if you want the compatibility
-default for subsequent tests.
+A reboot intentionally resets the request selector to `P2 VAR` in this PR. This
+must not alter already generated/saved pattern material.
 
 ## Troubleshooting
 
@@ -223,10 +228,10 @@ limited transformation headroom.
 Fail if the route itself changed. `Alt+G` remains the separate legacy CHAOS
 command and is not the implementation of P3.
 
-### Level resets after reboot
+### Level returns to P2 after reboot
 
-Check the `gp-generation` / `p-level` NVS preference path. Missing or invalid
-storage intentionally falls back to P2; a valid user-selected level must persist.
+Expected in this PR. P-level is runtime/session request state and persistence is
+deliberately deferred to avoid synchronous NVS writes from the live input path.
 
 ### Stage 12 audition says VARIATION
 
@@ -245,23 +250,24 @@ ignored. Confirm the toast/Serial line reports the requested level.
 [ ] Cardputer ADV normal build passes.
 [ ] Cardputer ADV fixed-DRAM gate passes.
 [ ] Cardputer ADV SEQTRAK MIDI-only build passes.
-[ ] Default with no stored preference is P2 VAR.
-[ ] Invalid stored preference sanitizes to P2 VAR.
+[ ] Boot/default P-level is P2 VAR.
+[ ] Invalid raw P-level sanitizes to P2 VAR.
 [ ] P cycles P1 -> P2 -> P3 -> P1 on GENRE.
 [ ] P cycles the same shared selector on FEEL.
 [ ] P cycles the same shared selector on DRUMS.
 [ ] Pressing P alone does not mutate current patterns.
+[ ] Pressing P performs no synchronous Preferences/NVS write.
 [ ] GENRE G consumes the selected P-level.
 [ ] DRUMS G consumes the selected P-level and remains drums-only.
 [ ] Ctrl+Alt+G consumes the selected P-level.
-[ ] Phrase probe Serial line reports the selected P-level.
+[ ] Phrase probe Serial line reports compact level=P1/P2/P3.
 [ ] P1/P2/P3 keep the chosen genre/rhythm identity recognizable.
 [ ] P2 remains compatible with the preceding accepted sound/behavior.
 [ ] P3 remains distinct from Alt+G CHAOS routing.
 [ ] Ctrl+G selected-voice behavior is unchanged.
 [ ] Alt+G CHAOS behavior is unchanged.
 [ ] Stage 15 remains the sole generated tonal projection path on strong routes.
-[ ] Selected level survives a Cardputer reboot.
+[ ] Reboot returns the request selector to P2 without altering saved material.
 [ ] No Scene JSON schema field was added for P-level.
 [ ] Hardware musical verdict is recorded on the exact tested SHA.
 [ ] Three consecutive clean reviews are completed on one unchanged final SHA.
