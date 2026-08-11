@@ -24,6 +24,18 @@ build_and_run() {
   "${output}"
 }
 
+# Fixed-capacity generation is not enough if a later edit silently grows the
+# call frame. Measure the owner itself under the host ABI and keep an explicit
+# ceiling; this does not include the separately-gated projector call frame.
+"${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror -Wvla -fstack-usage \
+  -I"${ROOT}" -c "${ROOT}/src/generation/tonal/tonal_materializer.cpp" \
+  -o "${BUILD_DIR}/tonal_materializer_stack.o"
+STACK_FILE="${BUILD_DIR}/tonal_materializer_stack.su"
+STACK_BYTES="$(grep 'materializeTonalIntent' "${STACK_FILE}" | head -n1 | awk -F '\t' '{print $2}')"
+test -n "${STACK_BYTES}"
+test "${STACK_BYTES}" -le 384
+echo "Tonal Materializer stack usage: ${STACK_BYTES} B (gate 384 B)"
+
 build_and_run "${CXX:-g++}" "${BUILD_DIR}/tonal_materializer_gcc"
 if command -v clang++ >/dev/null 2>&1; then
   build_and_run clang++ "${BUILD_DIR}/tonal_materializer_clang"
