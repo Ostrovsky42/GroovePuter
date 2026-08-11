@@ -22,6 +22,12 @@ int main() {
   assert(nextGenerationLevel(RealizationLevel::P1Canonical, -1) ==
          RealizationLevel::P3Transformation);
 
+  assert(std::strcmp(generationLevelCode(RealizationLevel::P1Canonical),
+                     "P1") == 0);
+  assert(std::strcmp(generationLevelCode(RealizationLevel::P2Variation),
+                     "P2") == 0);
+  assert(std::strcmp(generationLevelCode(RealizationLevel::P3Transformation),
+                     "P3") == 0);
   assert(std::strcmp(generationLevelShortName(RealizationLevel::P1Canonical),
                      "P1 CANON") == 0);
   assert(std::strcmp(generationLevelShortName(RealizationLevel::P2Variation),
