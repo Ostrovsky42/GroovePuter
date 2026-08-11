@@ -7,6 +7,14 @@ mkdir -p "${BUILD_DIR}"
 
 python3 "${ROOT}/tests/test_stage15_tonal_integration_source_regressions.py"
 
+"${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror -Wvla \
+  -Wno-c++20-extensions -Wno-unused-but-set-variable \
+  -I"${ROOT}" \
+  "${ROOT}/src/generation/composition/tonal_profile.cpp" \
+  "${ROOT}/tests/test_tonal_profile.cpp" \
+  -o "${BUILD_DIR}/stage15_tonal_profile"
+"${BUILD_DIR}/stage15_tonal_profile"
+
 COMMON_SOURCES=(
   "${ROOT}/src/generation/generation_context.cpp"
   "${ROOT}/src/generation/composition/rhythm_selection.cpp"
