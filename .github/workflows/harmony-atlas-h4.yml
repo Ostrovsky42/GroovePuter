@@ -1,0 +1,233 @@
+name: Harmony Atlas H4
+
+on:
+  pull_request:
+    paths:
+      - "tools/research/harmony_atlas_h0.py"
+      - "tools/research/harmony_atlas_h1.py"
+      - "tools/research/harmony_atlas_h2.py"
+      - "tools/research/harmony_atlas_h3.py"
+      - "tools/research/harmony_atlas_h4.py"
+      - "tests/test_harmony_atlas_h0.py"
+      - "tests/test_harmony_atlas_h1.py"
+      - "tests/test_harmony_atlas_h2.py"
+      - "tests/test_harmony_atlas_h3.py"
+      - "tests/test_harmony_atlas_h4.py"
+      - "tests/test_harmony_atlas_h4_identity.py"
+      - "docs/research/HARMONY_ATLAS_H1_NORMALIZED.sha256"
+      - "docs/research/HARMONY_ATLAS_H2_FINGERPRINTS.sha256"
+      - "docs/research/HARMONY_ATLAS_H3_FUNCTIONAL.sha256"
+      - "docs/research/HARMONY_ATLAS_H4_CHORD_RHYTHM.md"
+      - "docs/research/HARMONY_ATLAS_H4_CHORD_RHYTHM.sha256"
+      - "docs/research/HARMONY_ATLAS_H4_RHYTHM_CONTRACT.md"
+      - ".github/workflows/harmony-atlas-h4.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  chord-rhythm-extraction:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GroovePuter
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned harmony source
+        uses: actions/checkout@v4
+        with:
+          repository: ldrolez/free-midi-chords
+          ref: baf0896694de6b09ac00250722f2414202e668ed
+          path: build/harmony-atlas-source
+          fetch-depth: 1
+
+      - name: Run H0-H3 dependency tests
+        run: |
+          python3 tests/test_harmony_atlas_h0.py
+          python3 tests/test_harmony_atlas_h1.py
+          python3 tests/test_harmony_atlas_h2.py
+          python3 tests/test_harmony_atlas_h3.py
+
+      - name: Regenerate verified H1 normalization
+        run: |
+          python3 tools/research/harmony_atlas_h1.py \
+            --source-root build/harmony-atlas-source \
+            --output build/HARMONY_ATLAS_H1_NORMALIZED.json
+          sha256sum -c docs/research/HARMONY_ATLAS_H1_NORMALIZED.sha256
+
+      - name: Regenerate verified H2 fingerprints
+        run: |
+          python3 tools/research/harmony_atlas_h2.py \
+            --normalization build/HARMONY_ATLAS_H1_NORMALIZED.json \
+            --output build/HARMONY_ATLAS_H2_FINGERPRINTS.json
+          sha256sum -c docs/research/HARMONY_ATLAS_H2_FINGERPRINTS.sha256
+
+      - name: Regenerate verified H3 functional evidence
+        run: |
+          python3 tools/research/harmony_atlas_h3.py \
+            --normalization build/HARMONY_ATLAS_H1_NORMALIZED.json \
+            --fingerprints build/HARMONY_ATLAS_H2_FINGERPRINTS.json \
+            --output build/HARMONY_ATLAS_H3_FUNCTIONAL.json
+          sha256sum -c docs/research/HARMONY_ATLAS_H3_FUNCTIONAL.sha256
+
+      - name: Run H4 unit and identity tests
+        run: |
+          python3 tests/test_harmony_atlas_h4.py
+          python3 tests/test_harmony_atlas_h4_identity.py
+
+      - name: Generate H4 ChordRhythm evidence
+        run: |
+          python3 tools/research/harmony_atlas_h4.py \
+            --source-root build/harmony-atlas-source \
+            --normalization build/HARMONY_ATLAS_H1_NORMALIZED.json \
+            --fingerprints build/HARMONY_ATLAS_H2_FINGERPRINTS.json \
+            --functional build/HARMONY_ATLAS_H3_FUNCTIONAL.json \
+            --output build/HARMONY_ATLAS_H4_CHORD_RHYTHM.json \
+            --markdown-output build/HARMONY_ATLAS_H4_CHORD_RHYTHM.md
+
+      - name: Verify pinned-source H4 acceptance
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(Path("build/HARMONY_ATLAS_H4_CHORD_RHYTHM.json").read_text())
+          assert result["stage"] == "H4_CHORD_RHYTHM_EXTRACTION"
+
+          deps = result["dependencies"]
+          assert deps["h1_normalized_json_sha256"] == "4783be1f77784a978f2239d8527214b3912eaf262e92430bff755679fec0734e"
+          assert deps["h2_fingerprints_json_sha256"] == "453287577707e676128f3f83d1215922e22049ab0d880492f95af20ea7e68b0b"
+          assert deps["h3_functional_json_sha256"] == "f15d127722691789f6c1d1a003028da755e06a1cba1d2c1014c1232697cc456d"
+          assert deps["f0_f4_stability"] == {
+              "verified": True,
+              "definition_count": 190,
+              "frozen_levels": ["F0", "F1", "F2", "F3", "F4"],
+          }
+
+          provenance = result["source_rhythm_provenance"]
+          assert provenance["generator_source_styles_raw"] == ["", "pop", "pop2", "hiphop2", "soul"]
+          assert provenance["generator_source_style_count"] == 5
+          assert provenance["renderer_pattern_inventory_count"] == 14
+          assert provenance["renderer_patterns_used_by_progression_pack"] == ["hiphop2", "long", "pop", "pop2", "soul"]
+          assert provenance["renderer_execution"] == "NOT_PERFORMED"
+          assert provenance["midi_decode"] == "NOT_PERFORMED"
+          assert provenance["unknown_pattern_token_policy"] == "REJECT_NO_LEGACY_FALLBACK"
+
+          support = result["support_contract"]
+          assert support == {
+              "logical_harmonic_support_count": 190,
+              "rhythm_style_observation_count": 950,
+              "styles_per_logical_definition": 5,
+              "key_projection_count": 12,
+              "physical_progression_materialization_count": 11400,
+              "style_materialization_increases_harmonic_support": False,
+              "key_transposition_increases_harmonic_support": False,
+              "definitions_removed": 0,
+              "runtime_admission": "NOT_PERFORMED",
+              "source_incidence_to_runtime_weight": "FORBIDDEN",
+              "next_stage": "H5_STAGE15_REPRESENTABILITY",
+          }
+
+          assert result["source_form_distribution"] == {
+              "3": 14, "4": 144, "5": 5, "6": 7, "8": 19, "9": 1,
+          }
+          assert result["rhythm_vocabulary_interpretation"] == {
+              "source_pattern_masks_used": 5,
+              "source_event_count_classes": 6,
+              "realized_f5_identity_count": 30,
+              "realized_f5_count_is_independent_authored_pattern_count": False,
+          }
+          assert result["segment_statistics"] == {
+              "total_segments": 6165,
+              "note_onset_segments": 5299,
+              "same_chord_retrigger_segments": 1069,
+              "rest_segments": 866,
+              "pattern_rest_segments": 866,
+              "source_rest_segments": 0,
+              "continuation_segments": 0,
+          }
+
+          f5 = result["F5"]
+          assert f5["definition_observation_count"] == 950
+          assert f5["unique_class_count"] == 30
+          assert f5["duplicate_group_count"] == 25
+          assert f5["duplicate_surplus_count"] == 920
+          assert f5["largest_class_size"] == 144
+          assert f5["cross_style_duplicate_group_count"] == 0
+
+          f6 = result["F6"]
+          assert f6["definition_observation_count"] == 950
+          assert f6["unique_class_count"] == 945
+          assert f6["duplicate_group_count"] == 5
+          assert f6["duplicate_surplus_count"] == 5
+          assert f6["largest_class_size"] == 2
+          assert f6["cross_style_duplicate_group_count"] == 0
+          assert len(f6["duplicate_groups"]) == 5
+          assert {tuple(group["source_ids"]) for group in f6["duplicate_groups"]} == {
+              ("Modal:053", "Modal:079")
+          }
+          assert {group["source_styles"][0] for group in f6["duplicate_groups"]} == {
+              "default", "pop", "pop2", "hiphop2", "soul"
+          }
+
+          cross = result["harmonic_rhythm_cross_table"]
+          assert cross["f3_class_count"] == 189
+          assert cross["logical_source_count"] == 190
+          assert cross["rhythm_observation_count"] == 950
+          assert cross["unique_f5_count_per_f3_distribution"] == {"5": 189}
+
+          styles = result["styles"]
+          assert set(styles) == {"default", "pop", "pop2", "hiphop2", "soul"}
+          for style in styles.values():
+              assert style["observation_count"] == 190
+              assert style["unique_f5_count"] == 6
+              assert style["continuation_segment_count"] == 0
+          assert styles["hiphop2"]["rest_segment_count"] == 866
+          assert styles["hiphop2"]["same_chord_retrigger_count"] == 846
+          assert styles["soul"]["same_chord_retrigger_count"] == 223
+          assert styles["default"]["same_chord_retrigger_count"] == 0
+          assert styles["pop"]["same_chord_retrigger_count"] == 0
+          assert styles["pop2"]["same_chord_retrigger_count"] == 0
+
+          assert len(result["rhythm_shapes"]) == 30
+          for shape in result["rhythm_shapes"]:
+              assert not any(shape["continuation_mask"])
+              assert all(
+                  segment["kind"] in {"CHORD_ONSET", "CHORD_RETRIGGER", "REST"}
+                  for segment in shape["canonical_f5_segments"]
+              )
+
+          status = result["fingerprint_status"]
+          assert status == {
+              "F0": "FROZEN_FROM_H2",
+              "F1": "FROZEN_FROM_H2",
+              "F2": "FROZEN_FROM_H2",
+              "F3": "FROZEN_FROM_H2",
+              "F4": "FROZEN_FROM_H3",
+              "F5": "COMPUTED_H4_CHORD_RHYTHM",
+              "F6": "COMPUTED_H4_F3_PLUS_F5",
+          }
+          PY
+
+      - name: Verify H4 evidence digest
+        run: sha256sum -c docs/research/HARMONY_ATLAS_H4_CHORD_RHYTHM.sha256
+
+      - name: Verify generated H4 report is reproducible
+        run: diff -u docs/research/HARMONY_ATLAS_H4_CHORD_RHYTHM.md build/HARMONY_ATLAS_H4_CHORD_RHYTHM.md
+
+      - name: Verify H4 rhythm contract
+        run: |
+          grep -q "F5 ChordRhythmIdentity         COMPUTED_H4_CHORD_RHYTHM" docs/research/HARMONY_ATLAS_H4_RHYTHM_CONTRACT.md
+          grep -q "F6 CombinedIdentity            COMPUTED_H4_F3_PLUS_F5" docs/research/HARMONY_ATLAS_H4_RHYTHM_CONTRACT.md
+          grep -q "S -> CHORD_RETRIGGER" docs/research/HARMONY_ATLAS_H4_RHYTHM_CONTRACT.md
+          grep -q "REST_SOURCE  == REST_PATTERN" docs/research/HARMONY_ATLAS_H4_RHYTHM_CONTRACT.md
+          grep -q "realized F5 identities         30" docs/research/HARMONY_ATLAS_H4_RHYTHM_CONTRACT.md
+
+      - name: Upload generated H4 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: harmony-atlas-h4-evidence
+          path: |
+            build/HARMONY_ATLAS_H4_CHORD_RHYTHM.json
+            build/HARMONY_ATLAS_H4_CHORD_RHYTHM.md
+          if-no-files-found: error
