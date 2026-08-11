@@ -4,16 +4,10 @@
 #include <cstdint>
 #include <type_traits>
 
+#include "scale_catalog.h"
 #include "src/generation/rhythm/rhythm_types.h"
 
 namespace GroovePuterRhythm {
-
-// Compact transient ABI value of the existing global ScaleType enum in
-// scenes.h. We intentionally do not define a second scale enum here: the future
-// integration adapter passes static_cast<uint8_t>(ScaleType), while source
-// regressions pin the existing enum order so ABI drift fails loudly.
-using ScaleTypeValue = uint8_t;
-constexpr ScaleTypeValue kDefaultScaleTypeValue = 2u;  // DORIAN
 
 enum class TonalProjectionStatus : uint8_t {
   Ok = 0,
