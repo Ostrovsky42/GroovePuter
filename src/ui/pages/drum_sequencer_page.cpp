@@ -198,6 +198,17 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
+  // Retire the global legacy P/O generation fallthrough on the DRUMS grid.
+  // I remains a valid Q-I pattern-slot key and is handled below.
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta &&
+      (lowerKey == 'o' || lowerKey == 'p')) {
+    UI::showToast(lowerKey == 'p'
+                      ? "CONTINUE: Ctrl+Alt+G"
+                      : "LEGACY O GEN OFF",
+                  1200);
+    return true;
+  }
+
   // Q-I changes the active slot but never hands keyboard focus to the selector.
   if (!ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
     int patternIdx = page->patternIndexFromKey(lowerKey);
