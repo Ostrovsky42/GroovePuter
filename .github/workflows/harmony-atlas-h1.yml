@@ -1,0 +1,75 @@
+name: Harmony Atlas H1
+
+on:
+  pull_request:
+    paths:
+      - "tools/research/harmony_atlas_h0.py"
+      - "tools/research/harmony_atlas_h1.py"
+      - "tests/test_harmony_atlas_h1.py"
+      - "docs/research/HARMONY_ATLAS_H1_NORMALIZED.sha256"
+      - "docs/research/HARMONY_ATLAS_H1_NORMALIZED.md"
+      - "docs/research/HARMONY_ATLAS_H1_RENDERER_BOUNDARY.md"
+      - ".github/workflows/harmony-atlas-h1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  canonical-normalization:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GroovePuter
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned harmony source
+        uses: actions/checkout@v4
+        with:
+          repository: ldrolez/free-midi-chords
+          ref: baf0896694de6b09ac00250722f2414202e668ed
+          path: build/harmony-atlas-source
+          fetch-depth: 1
+
+      - name: Run H0 dependency tests
+        run: python3 tests/test_harmony_atlas_h0.py
+
+      - name: Run H1 unit and contract tests
+        run: python3 tests/test_harmony_atlas_h1.py
+
+      - name: Generate H1 normalized evidence
+        run: |
+          python3 tools/research/harmony_atlas_h1.py \
+            --source-root build/harmony-atlas-source \
+            --output build/HARMONY_ATLAS_H1_NORMALIZED.json \
+            --markdown-output build/HARMONY_ATLAS_H1_NORMALIZED.md
+
+      - name: Verify pinned-source H1 acceptance
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("build/HARMONY_ATLAS_H1_NORMALIZED.json").read_text())
+          summary = data["summary"]
+          assert summary["logical_definition_count"] == 190
+          assert summary["admitted_definition_count"] == 190
+          assert summary["quarantined_definition_count"] == 0
+          assert summary["quarantine_reason_count"] == 0
+          assert summary["raw_token_vocabulary_count"] == 85
+          assert summary["observed_raw_suffix_count"] == 20
+          assert data["quarantine"] == []
+          PY
+
+      - name: Verify normalized JSON digest
+        run: sha256sum -c docs/research/HARMONY_ATLAS_H1_NORMALIZED.sha256
+
+      - name: Verify generated report is reproducible
+        run: diff -u docs/research/HARMONY_ATLAS_H1_NORMALIZED.md build/HARMONY_ATLAS_H1_NORMALIZED.md
+
+      - name: Upload generated H1 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: harmony-atlas-h1-evidence
+          path: |
+            build/HARMONY_ATLAS_H1_NORMALIZED.json
+            build/HARMONY_ATLAS_H1_NORMALIZED.md
+          if-no-files-found: error
