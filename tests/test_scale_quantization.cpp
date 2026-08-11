@@ -72,6 +72,48 @@ void testAllScaleTypes() {
                             pitchClassMask({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}));
 }
 
+int legacySevenScaleQuantize(int note, int root, ScaleType scale) {
+    static const int intervals[][7] = {
+        {0, 2, 3, 5, 7, 8, 10},
+        {0, 2, 4, 5, 7, 9, 11},
+        {0, 2, 3, 5, 7, 9, 10},
+        {0, 1, 3, 5, 7, 8, 10},
+        {0, 2, 4, 6, 7, 9, 11},
+        {0, 2, 4, 5, 7, 9, 10},
+        {0, 1, 3, 5, 6, 8, 10},
+    };
+
+    const int* scaleIntervals = intervals[static_cast<int>(scale)];
+    const int octave = note / 12;
+    const int semitone = note % 12;
+    int closest = 0;
+    int minDistance = 12;
+    for (int i = 0; i < 7; ++i) {
+        const int scaleTone = (root + scaleIntervals[i]) % 12;
+        const int difference = semitone - scaleTone;
+        const int distance = difference < 0 ? -difference : difference;
+        if (distance < minDistance) {
+            minDistance = distance;
+            closest = scaleTone;
+        }
+    }
+    return octave * 12 + closest;
+}
+
+void testSevenLegacyScalesRemainExact() {
+    for (int scaleValue = static_cast<int>(MINOR);
+         scaleValue <= static_cast<int>(LOCRIAN); ++scaleValue) {
+        const ScaleType scale = static_cast<ScaleType>(scaleValue);
+        for (int root : {0, 2, 11}) {
+            for (int note = 36; note <= 95; ++note) {
+                const int expected = legacySevenScaleQuantize(note, root, scale);
+                const int actual = generateFixedInputNote(note, root, scale);
+                assert(actual == expected);
+            }
+        }
+    }
+}
+
 void testChromaticIsIdentity() {
     for (int root : {0, 5, 11}) {
         for (int note = 48; note < 84; ++note) {
@@ -84,6 +126,7 @@ void testChromaticIsIdentity() {
 
 int main() {
     testAllScaleTypes();
+    testSevenLegacyScalesRemainExact();
     testChromaticIsIdentity();
     std::cout << "Scale quantization host matrix: OK\n";
     return 0;
