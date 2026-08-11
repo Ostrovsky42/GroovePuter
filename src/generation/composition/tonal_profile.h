@@ -2,6 +2,7 @@
 #define GROOVEPUTER_GENERATION_COMPOSITION_TONAL_PROFILE_H
 
 #include <cstdint>
+#include <initializer_list>
 #include <type_traits>
 
 #include "../roles/bass_pitch_behavior.h"
