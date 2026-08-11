@@ -30,14 +30,16 @@ struct P23AuditionBackup {
   bool wasPlaying = false;
   bool songMode = false;
   bool synthBMuted = false;
+  bool songReverse = false;
   int previousUiPage = 0;
   int synthBBank = 0;
   int synthBPattern = 0;
   int songPosition = 0;
   int songPlaybackSlot = 0;
   int activeSongSlot = 0;
+  int songLength = 1;
   SynthPattern synthBPatterns[kAuditionPatternSlots]{};
-  Song activeSong{};
+  SongPosition songPositions[kAuditionPatternSlots]{};
   float trackVolumes[static_cast<int>(VoiceId::Count)]{};
 };
 
@@ -128,7 +130,13 @@ void saveBackup(MiniAcid& mini) {
   for (int slot = 0; slot < kAuditionPatternSlots; ++slot)
     g_p23Backup.synthBPatterns[slot] =
         scene.synthBBanks[kAuditionBank].patterns[slot];
-  g_p23Backup.activeSong = scene.songs[g_p23Backup.activeSongSlot];
+
+  const Song& song = scene.songs[g_p23Backup.activeSongSlot];
+  g_p23Backup.songLength = song.length;
+  g_p23Backup.songReverse = song.reverse;
+  for (int row = 0; row < kAuditionPatternSlots; ++row)
+    g_p23Backup.songPositions[row] = song.positions[row];
+
   for (int i = 0; i < static_cast<int>(VoiceId::Count); ++i)
     g_p23Backup.trackVolumes[i] = scene.trackVolumes[i];
 }
@@ -144,7 +152,13 @@ void restoreBackup(MiniAcid& mini) {
   for (int slot = 0; slot < kAuditionPatternSlots; ++slot)
     scene.synthBBanks[kAuditionBank].patterns[slot] =
         g_p23Backup.synthBPatterns[slot];
-  scene.songs[g_p23Backup.activeSongSlot] = g_p23Backup.activeSong;
+
+  Song& song = scene.songs[g_p23Backup.activeSongSlot];
+  song.length = g_p23Backup.songLength;
+  song.reverse = g_p23Backup.songReverse;
+  for (int row = 0; row < kAuditionPatternSlots; ++row)
+    song.positions[row] = g_p23Backup.songPositions[row];
+
   for (int i = 0; i < static_cast<int>(VoiceId::Count); ++i)
     scene.trackVolumes[i] = g_p23Backup.trackVolumes[i];
 
