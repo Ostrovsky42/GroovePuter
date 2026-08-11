@@ -11,6 +11,7 @@ DRUM_LEGACY = (
 BRIDGE = (
     ROOT / "src/generation/migration/strong_rhythm_live_bridge.cpp"
 ).read_text(encoding="utf-8")
+SKETCH = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
 
 
 def require(text: str, needle: str, message: str) -> None:
@@ -41,9 +42,9 @@ for forbidden in ("randomize303Pattern", "randomizeDrumPattern", "modeManager_")
     if forbidden in GENRE:
         raise AssertionError(f"GENRE page gained legacy generation owner: {forbidden}")
 
-# The two GENERATE pages consume stale I/O/P before Cardputer's old sketch-level
-# fallback can reach GrooveboxModeManager. P now points to the explicit audition
-# command instead of silently replacing the drum pattern.
+# The two GENERATE pages consume stale I/O/P before Cardputer's retained
+# sketch-level compatibility fallback can reach GrooveboxModeManager. P points
+# to the explicit audition command instead of silently replacing the drums.
 for needle in (
     "(key == 'i' || key == 'o' || key == 'p')",
     '"CONTINUE: Ctrl+Alt+G"',
@@ -83,6 +84,18 @@ require(
     "mini_acid_.randomizeDrumPatternChaos();",
     "Alt+G chaos route disappeared",
 )
+
+# The sketch compatibility fallback still exists for non-release surfaces. Pin
+# it explicitly so nobody mistakes this PR for full legacy-generator deletion.
+# Release safety comes from the page-first guards above.
+for needle in (
+    "g_miniDisplay ? g_miniDisplay->handleEvent(evt) : false",
+    "if (handled)",
+    "g_miniAcid->randomize303Pattern(0);",
+    "g_miniAcid->randomize303Pattern(1);",
+    "g_miniAcid->randomizeDrumPattern();",
+):
+    require(SKETCH, needle, f"sketch fallback boundary changed: {needle}")
 
 # Stage 15 tonal context is shared by full G and restored multi-bar audition.
 for needle in (
