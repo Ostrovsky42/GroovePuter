@@ -21,6 +21,18 @@ inline GroovePuterRhythm::RealizationLevel sanitizeGenerationLevel(uint8_t raw) 
         : RealizationLevel::P2Variation;
 }
 
+inline const char* generationLevelCode(
+        GroovePuterRhythm::RealizationLevel level) {
+    using GroovePuterRhythm::RealizationLevel;
+    switch (sanitizeGenerationLevel(static_cast<uint8_t>(level))) {
+        case RealizationLevel::P1Canonical: return "P1";
+        case RealizationLevel::P2Variation: return "P2";
+        case RealizationLevel::P3Transformation: return "P3";
+        case RealizationLevel::Count: break;
+    }
+    return "P2";
+}
+
 inline const char* generationLevelShortName(
         GroovePuterRhythm::RealizationLevel level) {
     using GroovePuterRhythm::RealizationLevel;
