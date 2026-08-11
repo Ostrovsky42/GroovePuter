@@ -1,6 +1,7 @@
 #include "feel_page.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 
 #include "../axis_page_palette.h"
