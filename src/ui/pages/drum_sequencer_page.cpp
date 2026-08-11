@@ -1,6 +1,7 @@
 #include "drum_sequencer_page.h"
 #include "drum_automation_page.h"
 #include "../ui_common.h"
+#include "src/state/generation_request_state.h"
 #include "src/state/scene_revision.h"
 #include "src/generation/migration/strong_rhythm_live_bridge.h"
 
@@ -135,17 +136,81 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
       : 0;
   const bool keyG =
       lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G;
+  const bool keyP =
+      lowerKey == 'p' || ui_event.scancode == GROOVEPUTER_P;
 
-  // Whole-pattern G is a generation command, not a local edit. Preserve the
-  // legacy pattern as fallback, then apply selected Stage7/14 RHYTHM + FEEL to
-  // drums only. Cardputer may report G by scancode with key == 0, so this must
-  // recognize both input representations. Ctrl+G (one voice) and Alt+G (chaos)
-  // stay intentionally legacy.
+  // Cardputer ADV has no dedicated Shift key in the physical workflow. Use the
+  // existing Ctrl+Alt modifier pair for the explicit Stage 12 audition/probe.
+  // Plain G, Ctrl+G, Alt+G and Ctrl+Alt+G stay four separate contracts.
+  if (keyG && ui_event.ctrl && ui_event.alt && !ui_event.meta) {
+    if (page->mini_acid_.songModeEnabled()) {
+      UI::showToast("AUD: EXIT SONG", 1400);
+      return true;
+    }
+
+    const int previousDrumBank = page->mini_acid_.currentDrumBankIndex();
+    const int previousDrumPattern = page->mini_acid_.currentDrumPatternIndex();
+    const int previousSynthBankA = page->mini_acid_.current303BankIndex(0);
+    const int previousSynthBankB = page->mini_acid_.current303BankIndex(1);
+    const int previousSynthPatternA = page->mini_acid_.current303PatternIndex(0);
+    const int previousSynthPatternB = page->mini_acid_.current303PatternIndex(1);
+
+    GroovePuterRhythm::PhraseAuditionResult audition{};
+    page->withAudioGuard([&]() {
+      audition = GroovePuterRhythm::regeneratePhraseAuditionWithProbe(
+          page->mini_acid_);
+
+      // The bridge writes Bank B by temporarily selecting every reserved slot.
+      // Rebase MiniAcid's pattern-mode return state to the exact pre-audition
+      // selection before re-entering Song B.
+      if (page->mini_acid_.songModeEnabled() &&
+          (audition.status ==
+               GroovePuterRhythm::PhraseAuditionStatus::AppliedEvolved ||
+           audition.status == GroovePuterRhythm::PhraseAuditionStatus::
+                                  AppliedVariationFallback)) {
+        page->mini_acid_.setSongMode(false);
+        page->mini_acid_.setDrumBankIndex(previousDrumBank);
+        page->mini_acid_.setDrumPatternIndex(previousDrumPattern);
+        page->mini_acid_.set303BankIndex(0, previousSynthBankA);
+        page->mini_acid_.set303BankIndex(1, previousSynthBankB);
+        page->mini_acid_.set303PatternIndex(0, previousSynthPatternA);
+        page->mini_acid_.set303PatternIndex(1, previousSynthPatternB);
+        page->mini_acid_.setSongMode(true);
+      }
+    });
+    char toast[72];
+    std::snprintf(
+        toast,
+        sizeof(toast),
+        "AUD %uB %s %s #%u",
+        static_cast<unsigned>(audition.requestedBars),
+        GroovePuterState::generationLevelShortName(audition.level),
+        GroovePuterRhythm::phraseAuditionStatusName(audition.status),
+        static_cast<unsigned>(audition.archetypeId));
+    UI::showToast(toast, 1800);
+    return true;
+  }
+
+  // Whole-pattern plain G is a generation command, not a local edit. Preserve
+  // the legacy pattern as fallback, then apply selected Stage7/14 RHYTHM + FEEL
+  // to drums only. Cardputer may report G by scancode with key == 0.
   if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
     page->withAudioGuard([&]() {
       GroovePuterRhythm::regenerateDrumsWithStrongRhythmMigration(
           page->mini_acid_);
     });
+    return true;
+  }
+
+  // P owns the single P1/P2/P3 request selector. O remains blocked from the old
+  // sketch-level Synth B generator; I remains a valid Q-I pattern-slot key.
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && keyP) {
+    const auto level = GroovePuterState::cycleGenerationLevel();
+    UI::showToast(GroovePuterState::generationLevelShortName(level), 1200);
+    return true;
+  }
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lowerKey == 'o') {
+    UI::showToast("LEGACY O GEN OFF", 1200);
     return true;
   }
 

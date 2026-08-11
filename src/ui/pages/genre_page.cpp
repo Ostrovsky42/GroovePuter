@@ -10,6 +10,7 @@
 #include "../ui_input.h"
 #include "../../generation/composition/generation_profile.h"
 #include "../../generation/migration/strong_rhythm_live_bridge.h"
+#include "../../state/generation_request_state.h"
 #include "../../state/scene_revision.h"
 
 namespace {
@@ -212,9 +213,9 @@ void GenrePage::cycleApplyMode(int delta) {
   GroovePuterState::markSceneMutated();
 }
 
-void GenrePage::applyCurrent() {
+void GenrePage::applyCurrent(bool forceRegenerate) {
   const ApplyMode applyMode = currentApplyMode();
-  const bool doRegenerate = applyMode != ApplyMode::ProfileOnly;
+  const bool doRegenerate = forceRegenerate || applyMode != ApplyMode::ProfileOnly;
   const bool doApplyTempo = applyMode == ApplyMode::RegenerateTempo;
   const bool wasPlaying = mini_acid_.isPlaying();
   if (wasPlaying && doRegenerate) mini_acid_.stop();
@@ -261,7 +262,8 @@ void GenrePage::applyCurrent() {
   char toast[96];
   std::snprintf(toast, sizeof(toast), "%s / %s: %s",
                 GenreCatalog::generativeModeName(genre),
-                GenreCatalog::recipeName(recipe), applyModeName());
+                GenreCatalog::recipeName(recipe),
+                forceRegenerate ? "GENERATED" : applyModeName());
   UI::showToast(toast, 1600);
 }
 
@@ -335,14 +337,17 @@ void GenrePage::draw(IGfx& gfx) {
   gfx.setTextColor(palette.muted);
   gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
 
-  std::snprintf(value, sizeof(value), "ACTIVE %s/%s MAP:%s",
-      GenreCatalog::generativeModeName(activeGenre), GenreCatalog::recipeName(activeRecipe),
-      linkStateShort(mini_acid_));
+  std::snprintf(value, sizeof(value), "A:%s/%s %s %s",
+      GenreCatalog::generativeModeName(activeGenre),
+      GenreCatalog::recipeName(activeRecipe),
+      linkStateShort(mini_acid_),
+      GroovePuterState::generationLevelShortName(
+          GroovePuterState::currentGenerationLevel()));
   gfx.setTextColor(activeGenre == selectedGenre && activeRecipe == selectedRecipe
                        ? axisColor : palette.warning);
   gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, value);
 
-  UI::drawStandardFooter(gfx, "TAB/U/D:FIELD L/R:CHANGE", "ENTER:Apply M:ApplyMode");
+  UI::drawStandardFooter(gfx, "TAB/U/D:FIELD L/R:CHANGE", "G:GEN P:LEVEL M:MODE");
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
@@ -381,14 +386,36 @@ bool GenrePage::handleEvent(UIEvent& event) {
   }
 
   const char key = static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)));
+  const bool keyG = key == 'g' || event.scancode == GROOVEPUTER_G;
+  const bool keyP = key == 'p' || event.scancode == GROOVEPUTER_P;
 
-  // ENTER: apply the current genre/recipe selection.
-  // Texture compatibility remains persisted but is not changed by this page.
+  // ENTER follows the APPLY selector. Plain G is always the explicit full
+  // Stage 15 materialization command for the pending GENRE/VARIANT/RHYTHM.
   if (event.key == '\n' || event.key == '\r') {
     morphAccelerator.reset();
     applyCurrent();
     return true;
   }
+  if (keyG && !event.ctrl && !event.alt && !event.meta) {
+    morphAccelerator.reset();
+    applyCurrent(true);
+    return true;
+  }
+
+  if (keyP && !event.ctrl && !event.alt && !event.meta) {
+    const auto level = GroovePuterState::cycleGenerationLevel();
+    UI::showToast(GroovePuterState::generationLevelShortName(level), 1200);
+    return true;
+  }
+
+  // Retire the old global I/O generator shortcuts on the GENRE screen. P is
+  // owned above by the single P1/P2/P3 generation-request selector.
+  if (!event.ctrl && !event.alt && !event.meta &&
+      (key == 'i' || key == 'o')) {
+    UI::showToast("LEGACY SYNTH GEN OFF", 1200);
+    return true;
+  }
+
   if (event.key == ' ' && focus_ == FocusRow::Apply) {
     morphAccelerator.reset();
     cycleApplyMode(1);

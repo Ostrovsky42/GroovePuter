@@ -77,9 +77,11 @@ for required_scene_write in (
 if ".genreManager()" in page:
     raise AssertionError("Genre page must not edit genre state through a manager facade")
 
-apply_start = page.index("void GenrePage::applyCurrent()")
+apply_start = page.index("void GenrePage::applyCurrent(bool forceRegenerate)")
 apply_end = page.index("void GenrePage::updateFromEngine()", apply_start)
 apply_block = page[apply_start:apply_end]
+if "forceRegenerate || applyMode != ApplyMode::ProfileOnly" not in apply_block:
+    raise AssertionError("Genre APPLY must preserve Enter ApplyMode and forced-G split")
 if apply_block.count("GroovePuterState::markSceneMutated();") != 1:
     raise AssertionError("Genre APPLY must produce exactly one Scene revision")
 
