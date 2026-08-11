@@ -58,15 +58,14 @@ constexpr uint16_t kBassAcidPreferred = bassContours({
 constexpr uint16_t kBassSynthAllowed = bassContours({
     BassPitchContourId::RootAnchor,
     BassPitchContourId::RootFifth,
-    BassPitchContourId::RootOctave,
     BassPitchContourId::NeighborReturn,
     BassPitchContourId::LeapReturn,
     BassPitchContourId::PedalTurn,
 });
 constexpr uint16_t kBassSynthPreferred = bassContours({
     BassPitchContourId::RootFifth,
-    BassPitchContourId::RootOctave,
     BassPitchContourId::LeapReturn,
+    BassPitchContourId::NeighborReturn,
 });
 constexpr uint16_t kBassBrokenAllowed = bassContours({
     BassPitchContourId::RootAnchor,
@@ -164,30 +163,29 @@ constexpr uint16_t kMelodyAcidPreferred = melodicContours({
     MelodicContourId::Neighbor,
 });
 
-constexpr TonalRegisterCorridor kBassRegister{24, 47, 12};
-// Synth-driven bass vocabulary intentionally includes RootOctave/LeapReturn.
-// When those offsets combine with a moving harmonic root, the musical leap can
-// exceed 12 semitones while every note still remains inside the two-octave bass
-// corridor. Use the corridor's physical maximum (23) only for that profile.
-constexpr TonalRegisterCorridor kSynthBassRegister{24, 47, 23};
+constexpr TonalRegisterCorridor kStaticBassRegister{24, 47, 12};
+// Any production profile that combines a moving harmonic root with tagged
+// fifth or wider degree contours must allow the full physical span of the bass
+// corridor. The projector still rejects a note outside [24,47].
+constexpr TonalRegisterCorridor kMovingBassRegister{24, 47, 23};
 constexpr TonalRegisterCorridor kSecondaryRegister{48, 71, 16};
 
 constexpr TonalGenerationProfile tonal(
     BassBehaviorPolicy bass,
     MelodicIntentPolicy melodic,
-    TonalRegisterCorridor bassRegister = kBassRegister) {
+    TonalRegisterCorridor bassRegister = kMovingBassRegister) {
   return {bass, melodic, bassRegister, kSecondaryRegister};
 }
 
-constexpr TonalGenerationProfile kStaticProfile = tonal(
-    bassPolicy(kBassRoot), melodicPolicy(kMelodyStatic));
+constexpr TonalGenerationProfile kStaticProfile = {
+    bassPolicy(kBassRoot), melodicPolicy(kMelodyStatic),
+    kStaticBassRegister, kSecondaryRegister};
 constexpr TonalGenerationProfile kAcidProfile = tonal(
     bassPolicy(kBassAcidAllowed, kBassAcidPreferred),
     melodicPolicy(kMelodyAcidAllowed, kMelodyAcidPreferred));
 constexpr TonalGenerationProfile kSynthProfile = tonal(
     bassPolicy(kBassSynthAllowed, kBassSynthPreferred),
-    melodicPolicy(kMelodyDriveAllowed, kMelodyDrivePreferred),
-    kSynthBassRegister);
+    melodicPolicy(kMelodyDriveAllowed, kMelodyDrivePreferred));
 constexpr TonalGenerationProfile kBrokenProfile = tonal(
     bassPolicy(kBassBrokenAllowed, kBassBrokenPreferred),
     melodicPolicy(kMelodyBrokenAllowed, kMelodyBrokenPreferred));
