@@ -1,0 +1,37 @@
+name: Stage 15 final tonal acceptance
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  final-tonal-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tonal Projector
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_tonal_projector_tests.sh
+      - name: Tonal Materializer
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_tonal_materializer_tests.sh
+      - name: Global-scale harmonic-event regression
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_tonal_materializer_global_scale_test.sh
+      - name: Production tonal integration
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_stage15_tonal_integration_tests.sh
+      - name: Exhaust address and key-scale space
+        run: bash tests/run_stage15_tonal_register_sweep.sh
+      - name: Legacy rollback corpus remains frozen
+        run: |
+          bash tests/run_stage15_tonal_baseline_dump.sh > /tmp/stage15_legacy.tsv
+          test "$(wc -l < /tmp/stage15_legacy.tsv)" -eq 257
+          diff -u tests/data/stage15_tonal_legacy_baseline.tsv /tmp/stage15_legacy.tsv
