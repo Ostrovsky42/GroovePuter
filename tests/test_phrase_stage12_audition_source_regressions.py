@@ -34,7 +34,7 @@ for needle in (
     "lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G",
     "if (keyG && ui_event.ctrl && ui_event.alt && !ui_event.meta)",
     "regeneratePhraseAuditionWithProbe",
-    '"AUD %uB %s #%u"',
+    '"AUD %uB %s %s #%u"',
     "if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta)",
     "regenerateDrumsWithStrongRhythmMigration",
 ):
@@ -87,14 +87,19 @@ for needle in (
 ):
     require(BRIDGE_CPP, needle, f"audition storage/transport contract changed: {needle}")
 
-# Stage 15 remains the tonal owner inside the restored audition path.
+# Stage 15 remains the tonal owner inside the restored audition path, and the
+# one shared request P-level is carried into both phrase evolution and evolved
+# drum materialization.
 for needle in (
     "context.tonalMaterializationEnabled = true;",
     "context.rootPitchClass",
     "context.scaleTypeValue",
     "migrateStrongRhythmMaterial(",
+    "result.level = baseContext.level;",
+    "request.level = baseContext.level;",
+    "context.level,",
 ):
-    require(BRIDGE_CPP, needle, f"Stage 15 audition tonal context changed: {needle}")
+    require(BRIDGE_CPP, needle, f"Stage 15 audition context changed: {needle}")
 
 if BRIDGE_CPP.count("engine.sceneManager().editCurrentSynthPattern(0)") != 1:
     raise AssertionError("normal Synth A live binding is no longer unique")
@@ -135,7 +140,7 @@ for needle in (
     "heap_caps_get_largest_free_block(caps)",
     "maxReductionDurationUs",
     "maxBreakDurationUs",
-    '"[PHRASE-PROBE] status=%s',
+    '"[PHRASE-PROBE] status=%s level=%s',
 ):
     require(BRIDGE_CPP, needle, f"Cardputer phrase probe contract changed: {needle}")
 
@@ -167,6 +172,7 @@ for forbidden in ("phraseEvolutionCatalog", "evolveMultiBarPhrase"):
 for needle in (
     "Explicit Stage 12 audition/probe command. It never replaces normal G.",
     "reserves Bank B (current page) patterns 1..8 and Song B for audition",
+    "uses the current session P1/P2/P3 request level for selection/evolution",
     "uses the current Stage 15 tonal materialization context for synth A/B",
     "PhraseAuditionProbe",
     "regeneratePhraseAuditionWithProbe",

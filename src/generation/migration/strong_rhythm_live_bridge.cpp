@@ -1,6 +1,7 @@
 #include "strong_rhythm_live_bridge.h"
 
 #include "../../dsp/miniacid_engine.h"
+#include "../../state/generation_request_state.h"
 #include "../feel/feel_pattern_adapter.h"
 #include "../materialization/pattern_materializer.h"
 #include "../phrase/phrase_evolution.h"
@@ -30,7 +31,7 @@ constexpr RhythmArchetypeId kSubtractiveProbeIds[] = {
 StrongRhythmMigrationContext liveMigrationContext(MiniAcid& engine) {
   StrongRhythmMigrationContext context{};
   context.patternAddress = engine.currentDrumPatternIndex();
-  context.level = RealizationLevel::P2Variation;
+  context.level = GroovePuterState::currentGenerationLevel();
   const Scene& scene = engine.sceneManager().currentScene();
   context.feelProfile = static_cast<FeelProfileId>(scene.feel.timingProfile);
   float feelAmount = scene.generatorParams.microTimingAmount;
@@ -202,12 +203,13 @@ void runSubtractiveRuntimeProbe(const GenreSettings& settings,
 void printProbe(const PhraseAuditionResult& result) {
   const PhraseAuditionProbe& probe = result.probe;
   Serial.printf(
-      "[PHRASE-PROBE] status=%s bars=%u profileBars=%u archetype=%u "
+      "[PHRASE-PROBE] status=%s level=%s bars=%u profileBars=%u archetype=%u "
       "traj=%u/%u command_us=%lu reduce_max_us=%lu reduce_id=%u "
       "break_max_us=%lu break_id=%u stack_before_words=%lu "
       "stack_after_words=%lu stack_after_bytes=%lu free_internal=%lu->%lu "
       "largest_internal=%lu->%lu\n",
       phraseAuditionStatusName(result.status),
+      GroovePuterState::generationLevelCode(result.level),
       static_cast<unsigned>(result.requestedBars),
       static_cast<unsigned>(result.profileBars),
       static_cast<unsigned>(result.archetypeId),
@@ -288,7 +290,7 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
       page, kPhraseAuditionBank, 0);
   StrongRhythmMigrationContext baseContext = liveMigrationContext(engine);
   baseContext.patternAddress = basePatternAddress;
-  baseContext.level = RealizationLevel::P2Variation;
+  result.level = baseContext.level;
 
   // Resolve exactly one Stage 14 rhythm identity before mutating audition
   // storage. The selected identity is then locked across every bar.
@@ -335,7 +337,7 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
     request.catalog = &ReferenceVocabulary::phraseEvolutionCatalog();
     request.archetypeId = result.archetypeId;
     request.phraseBars = result.requestedBars;
-    request.level = RealizationLevel::P2Variation;
+    request.level = baseContext.level;
     request.generation = auditionGenerationContext(
         lockedSettings,
         result.archetypeId,
@@ -425,7 +427,7 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
       DrumPatternSet evolvedDrums{};
       if (!materializeEvolvedDrumBar(
               phrase.bars[bar],
-              RealizationLevel::P2Variation,
+              context.level,
               context.feelProfile,
               context.feelAmount,
               feelGeneration,
