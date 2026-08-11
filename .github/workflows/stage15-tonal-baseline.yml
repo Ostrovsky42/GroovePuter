@@ -15,6 +15,14 @@ jobs:
       - name: Compare frozen legacy tonal fingerprints
         run: |
           mkdir -p build/host-tests
-          bash tests/run_stage15_tonal_baseline_dump.sh > build/host-tests/stage15_tonal_actual.tsv
-          test "$(wc -l < build/host-tests/stage15_tonal_actual.tsv)" -eq 257
-          diff -u tests/data/stage15_tonal_legacy_baseline.tsv build/host-tests/stage15_tonal_actual.tsv
+          bash tests/run_stage15_tonal_baseline_dump.sh > build/host-tests/stage15_tonal_legacy_actual.tsv
+          test "$(wc -l < build/host-tests/stage15_tonal_legacy_actual.tsv)" -eq 257
+          diff -u tests/data/stage15_tonal_legacy_baseline.tsv build/host-tests/stage15_tonal_legacy_actual.tsv
+      - name: Compare frozen tonal-materialized fingerprints
+        run: |
+          mkdir -p build/host-tests
+          bash tests/run_stage15_tonal_baseline_dump.sh --tonal > build/host-tests/stage15_tonal_enabled_actual.tsv
+          test "$(wc -l < build/host-tests/stage15_tonal_enabled_actual.tsv)" -eq 257
+          diff -u tests/data/stage15_tonal_enabled_baseline.tsv build/host-tests/stage15_tonal_enabled_actual.tsv
+      - name: Check tonal ownership boundary across corpora
+        run: python3 tests/test_stage15_tonal_corpus_boundary.py

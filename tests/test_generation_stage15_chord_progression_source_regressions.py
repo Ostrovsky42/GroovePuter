@@ -9,6 +9,9 @@ PROFILE_CPP = (ROOT / "src/generation/composition/generation_profile.cpp").read_
 BRIDGE = (ROOT / "src/generation/migration/strong_rhythm_migration.cpp").read_text(encoding="utf-8")
 RUNNER = (ROOT / "tests/run_generation_stage15_tests.sh").read_text(encoding="utf-8")
 MODULE = HEADER + "\n" + SOURCE
+MATERIAL_BRIDGE = BRIDGE[
+    BRIDGE.index("StrongRhythmMigrationResult migrateStrongRhythmMaterial(") :
+]
 
 
 def require(text: str, needle: str, message: str) -> None:
@@ -102,17 +105,17 @@ for palette in (
     require(PROFILE_CPP, palette, f"editorial progression palette disappeared: {palette}")
 
 require(
-    BRIDGE,
+    MATERIAL_BRIDGE,
     "const ChordProgressionResult progression =\n      realizeChordProgression(progressionRequest);",
     "Stage 15 is no longer production-reachable from the strong migration bridge",
 )
 require(
-    BRIDGE,
+    MATERIAL_BRIDGE,
     "progressionRequest.harmonicEventCount = onsetCount(chord.plan.onsets);",
     "ChordProgression started owning harmonic event timing/count",
 )
 require(
-    BRIDGE,
+    MATERIAL_BRIDGE,
     "progressionRequest.phraseBars = 1;",
     "Stage 15 crossed the one-bar production hardware guard",
 )
@@ -121,16 +124,32 @@ require(
     "request.phraseBars = 1;",
     "Stage 12 one-bar production guard was modified by Stage 15",
 )
-if BRIDGE.index("realizeChordProgression(progressionRequest)") > BRIDGE.index(
-    "projectLegacyPitchPattern(\n        synthB, chord.plan.onsets"
+
+# ChordProgression must be realized before pitch-path arbitration. The final
+# Stage 15 bridge has two downstream owners: the frozen legacy projector when
+# tonal materialization is disabled, and TonalMaterializer when it is enabled.
+# Pin semantic ordering without depending on old whitespace or one particular
+# legacy Synth B call shape.
+progression_call = MATERIAL_BRIDGE.index("realizeChordProgression(progressionRequest)")
+pitch_path_branch = MATERIAL_BRIDGE.index("if (!context.tonalMaterializationEnabled)")
+legacy_projection = MATERIAL_BRIDGE.index(
+    "result.bassProjectionStatus = projectLegacyPitchPattern("
+)
+tonal_projection = MATERIAL_BRIDGE.index(
+    "const TonalMaterializationResult bassTonal = materializeRole("
+)
+if not (
+    progression_call < pitch_path_branch
+    and progression_call < legacy_projection
+    and progression_call < tonal_projection
 ):
-    raise AssertionError("ChordProgression moved after chord pitch materialization")
+    raise AssertionError("ChordProgression moved after production pitch materialization")
 
 for changed_layer in (PROFILE_H, PROFILE_CPP, BRIDGE):
     forbid(
         changed_layer,
         "src/generation/tonal/",
-        "Stage 15 gained a forbidden Tonal Projector dependency",
+        "Stage 15 gained a forbidden direct Tonal Projector include",
     )
 
 require(RUNNER, "-Wvla", "Stage 15 runner lost VLA rejection")

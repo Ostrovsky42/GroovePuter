@@ -7,6 +7,7 @@ mkdir -p "${BUILD_DIR}"
 
 python3 "${ROOT_DIR}/tests/test_phrase_stage12_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_phrase_stage12_reference_catalog_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_phrase_stage12_audition_source_regressions.py"
 
 SOURCES=(
   "${ROOT_DIR}/src/generation/generation_context.cpp"

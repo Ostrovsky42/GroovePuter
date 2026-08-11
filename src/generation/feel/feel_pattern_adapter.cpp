@@ -20,8 +20,6 @@ FeelPatternApplyStatus applyFeelToMaterializedPattern(
 
   FeelPhrase phrase{};
   phrase.barCount = 1;
-  uint8_t eventRole[kMaxFeelEvents]{};
-  uint8_t eventStep[kMaxFeelEvents]{};
   for (uint8_t step = 0; step < kStepsPerBar; ++step) {
     for (uint8_t roleIndex = 0; roleIndex < kRhythmRoleCount; ++roleIndex) {
       const int8_t drumVoice = binding.drumVoiceByRole[roleIndex];
@@ -41,8 +39,6 @@ FeelPatternApplyStatus applyFeelToMaterializedPattern(
       phrase.events[index].idealTick =
           static_cast<uint16_t>(step * kFeelTicksPerStep);
       phrase.events[index].durationTicks = kFeelTicksPerStep;
-      eventRole[index] = roleIndex;
-      eventStep[index] = step;
     }
   }
 
@@ -56,13 +52,18 @@ FeelPatternApplyStatus applyFeelToMaterializedPattern(
     return FeelPatternApplyStatus::InterpretFailed;
   }
 
-  MaterializedPatterns next = destination;
+  // Every fallible operation has completed. destination is still a local
+  // materialization candidate, so write its timing in place instead of making
+  // a second full pattern copy on the constrained Cardputer UI stack.
   for (uint16_t i = 0; i < timed.eventCount; ++i) {
-    const int8_t drumVoice = binding.drumVoiceByRole[eventRole[i]];
-    next.drums.voices[drumVoice].steps[eventStep[i]].timing =
+    const FeelPhraseEvent& source = phrase.events[i];
+    const int8_t drumVoice = binding.drumVoiceByRole[
+        static_cast<uint8_t>(source.role)];
+    const uint8_t step = static_cast<uint8_t>(
+        source.idealTick / kFeelTicksPerStep);
+    destination.drums.voices[drumVoice].steps[step].timing =
         timed.events[i].offsetTicks;
   }
-  destination = next;
   return FeelPatternApplyStatus::Ok;
 }
 

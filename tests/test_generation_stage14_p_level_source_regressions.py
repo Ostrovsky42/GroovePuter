@@ -6,6 +6,7 @@ TYPES = (ROOT / "src/generation/rhythm/rhythm_types.h").read_text(encoding="utf-
 CATALOG = (ROOT / "src/generation/rhythm/rhythm_catalog.cpp").read_text(encoding="utf-8")
 REALIZER = (ROOT / "src/generation/rhythm/rhythm_realizer.cpp").read_text(encoding="utf-8")
 LIVE_BRIDGE = (ROOT / "src/generation/migration/strong_rhythm_live_bridge.cpp").read_text(encoding="utf-8")
+REQUEST_STATE = (ROOT / "src/state/generation_request_state.h").read_text(encoding="utf-8")
 
 
 def require(text: str, needle: str, message: str) -> None:
@@ -31,8 +32,8 @@ for needle in (
     require(CATALOG, needle, f"Stage 14.1 catalog validation missing: {needle}")
 
 # P3 is cumulative over P2 ornaments. The pre-existing variation class must keep
-# the old unsalted seed so the production P2 path remains bit-stable; only the
-# newly-added second pass receives a disjoint salt.
+# the old unsalted seed so P2 remains bit-compatible; only the newly-added
+# second pass receives a disjoint salt.
 for needle in (
     "uint8_t secondaryBudgetFor(const MutationBudget& budget)",
     "uint8_t ghostBudgetFor(const RhythmArchetype& archetype,",
@@ -48,12 +49,23 @@ for needle in (
 if "seed ^ 0x53454331u" in REALIZER:
     raise AssertionError("legacy secondary/P2-compatible variation path was re-salted")
 
-# Stage 14.1 deliberately does not change the production sound path. P-level UI
-# reachability/persistence belongs to Stage 14.2.
+# 0.9.1 now exposes P1/P2/P3 as a runtime request selector. Preserve the old
+# Stage 14.1 compatibility baseline by keeping P2 as the boot/invalid default,
+# while requiring the live bridge to read the shared selector rather than
+# hard-coding P2 forever.
+for needle in (
+    "RealizationLevel::P2Variation",
+    "currentGenerationLevel",
+    "cycleGenerationLevel",
+):
+    require(REQUEST_STATE, needle, f"P-level request-state contract missing: {needle}")
+
 require(
     LIVE_BRIDGE,
-    "context.level = RealizationLevel::P2Variation;",
-    "Stage 14.1 unexpectedly changed the production P-level baseline",
+    "context.level = GroovePuterState::currentGenerationLevel();",
+    "live bridge stopped consuming the shared P-level selector",
 )
+if "context.level = RealizationLevel::P2Variation;" in LIVE_BRIDGE:
+    raise AssertionError("live bridge regressed to hard-coded P2 production level")
 
 print("Stage 14.1 P-level source regressions: OK")
