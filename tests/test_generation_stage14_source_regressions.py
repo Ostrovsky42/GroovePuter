@@ -22,6 +22,7 @@ def main() -> None:
     profile_cpp = read("src/generation/composition/generation_profile.cpp")
     migration_h = read("src/generation/migration/strong_rhythm_migration.h")
     migration_cpp = read("src/generation/migration/strong_rhythm_migration.cpp")
+    bridge_cpp = read("src/generation/migration/strong_rhythm_live_bridge.cpp")
     ui = read("src/ui/pages/genre_page.cpp")
     scenes = read("scenes.cpp")
     backlog = read("docs/architecture/GENERATION_NIGHTLY_BASELINE_AND_BACKLOG.md")
@@ -112,19 +113,31 @@ def main() -> None:
         lofi_end = profile_cpp.index("};", lofi_start)
         assert dense_id not in profile_cpp[lofi_start:lofi_end], dense_id
 
-    # Stage 12 remains intentionally production-blocked. Stage 14 may select and
-    # report phrase planning metadata but must not wire a forbidden multi-bar caller.
+    # Stage 12 candidate reachability is now intentionally exposed only through
+    # the hardware-tested Ctrl+Alt+G audition/probe owner. Normal Stage 14 strong
+    # migration remains one-bar and must not acquire the multi-bar caller.
     require(
         stage12,
-        "no production caller exists yet",
+        "AUDITION_PROBE_REACHABILITY = HARDWARE_ACCEPTED",
         "GROOVE_VOCABULARY_STAGE12_ACCEPTANCE.md",
     )
     require(
         stage12,
-        "BLOCKED_BY_STAGE_6_1_HARDWARE_GATE",
+        "NORMAL_PRODUCTION_G = ONE_BAR",
         "GROOVE_VOCABULARY_STAGE12_ACCEPTANCE.md",
     )
     require(migration_cpp, "request.phraseBars = 1;", "strong_rhythm_migration.cpp")
+    assert "evolveMultiBarPhrase" not in migration_cpp
+    require(
+        bridge_cpp,
+        "PhraseAuditionResult regeneratePhraseAuditionWithProbe",
+        "strong_rhythm_live_bridge.cpp",
+    )
+    require(
+        bridge_cpp,
+        "evolveMultiBarPhrase(request)",
+        "strong_rhythm_live_bridge.cpp",
+    )
     require(profile_h, "Planning metadata only", "generation_profile.h")
 
     # Variant-specific BPM is owned by the selected generation corridor.
@@ -134,12 +147,16 @@ def main() -> None:
     require(ui, "selectedProfile.corridor.bpmMax", "genre_page.cpp")
     assert "kGenreBpm" not in ui
 
-    # Preserve the full-host-suite source contract that the previous revision broke.
+    # ENTER still follows the APPLY selector while plain G is the explicit full
+    # generation command. Pin behavior rather than a historical comment literal.
+    require(ui, "void GenrePage::applyCurrent(bool forceRegenerate)", "genre_page.cpp")
     require(
         ui,
-        "// ENTER: apply the current genre/recipe selection.",
+        "forceRegenerate || applyMode != ApplyMode::ProfileOnly",
         "genre_page.cpp",
     )
+    require(ui, "applyCurrent();", "genre_page.cpp")
+    require(ui, "applyCurrent(true);", "genre_page.cpp")
 
     # New persisted Genre values use the dynamic decoder bound; existing Rhythm
     # selection intent remains persisted by the unchanged Scene codec.
