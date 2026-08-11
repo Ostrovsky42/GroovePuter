@@ -41,7 +41,7 @@ class GenrePage : public IPage {
   bool normalizePendingRhythm(bool notify);
   void adjustMorph(int delta);
   void cycleApplyMode(int delta);
-  void applyCurrent();
+  void applyCurrent(bool forceRegenerate = false);
 
   ApplyMode currentApplyMode() const;
   const char* applyModeName() const;
