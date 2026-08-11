@@ -1,0 +1,127 @@
+name: Harmony Atlas H2
+
+on:
+  pull_request:
+    paths:
+      - "tools/research/harmony_atlas_h0.py"
+      - "tools/research/harmony_atlas_h1.py"
+      - "tools/research/harmony_atlas_h2.py"
+      - "tests/test_harmony_atlas_h1.py"
+      - "tests/test_harmony_atlas_h2.py"
+      - "docs/research/HARMONY_ATLAS_H1_NORMALIZED.sha256"
+      - "docs/research/HARMONY_ATLAS_H2_FINGERPRINTS.md"
+      - "docs/research/HARMONY_ATLAS_H2_FINGERPRINTS.sha256"
+      - ".github/workflows/harmony-atlas-h2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  structural-fingerprints:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GroovePuter
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned harmony source
+        uses: actions/checkout@v4
+        with:
+          repository: ldrolez/free-midi-chords
+          ref: baf0896694de6b09ac00250722f2414202e668ed
+          path: build/harmony-atlas-source
+          fetch-depth: 1
+
+      - name: Run H0/H1 dependency tests
+        run: |
+          python3 tests/test_harmony_atlas_h0.py
+          python3 tests/test_harmony_atlas_h1.py
+
+      - name: Generate verified H1 normalization
+        run: |
+          python3 tools/research/harmony_atlas_h1.py \
+            --source-root build/harmony-atlas-source \
+            --output build/HARMONY_ATLAS_H1_NORMALIZED.json
+          sha256sum -c docs/research/HARMONY_ATLAS_H1_NORMALIZED.sha256
+
+      - name: Run H2 unit and contract tests
+        run: python3 tests/test_harmony_atlas_h2.py
+
+      - name: Generate H2 fingerprint evidence
+        run: |
+          python3 tools/research/harmony_atlas_h2.py \
+            --normalization build/HARMONY_ATLAS_H1_NORMALIZED.json \
+            --output build/HARMONY_ATLAS_H2_FINGERPRINTS.json \
+            --markdown-output build/HARMONY_ATLAS_H2_FINGERPRINTS.md
+
+      - name: Verify pinned-source H2 acceptance
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(Path("build/HARMONY_ATLAS_H2_FINGERPRINTS.json").read_text())
+
+          expected_levels = {
+              "F0": (190, 0, 0, 0),
+              "F1": (189, 1, 1, 0),
+              "F2": (172, 17, 18, 11),
+              "F3": (189, 1, 1, 0),
+          }
+          for level, expected in expected_levels.items():
+              summary = result["levels"][level]["summary"]
+              observed = (
+                  summary["unique_class_count"],
+                  summary["duplicate_group_count"],
+                  summary["duplicate_surplus_count"],
+                  summary["cross_family_duplicate_group_count"],
+              )
+              assert observed == expected, (level, observed, expected)
+
+          assert result["levels"]["F1"]["duplicate_groups"][0]["source_ids"] == [
+              "Modal:053", "Modal:079"
+          ]
+          assert result["levels"]["F3"]["duplicate_groups"][0]["source_ids"] == [
+              "Modal:053", "Modal:079"
+          ]
+
+          diagnostics = result["cross_level_diagnostics"]
+          assert diagnostics["f2_quality_sensitive_group_count"] == 16
+          assert diagnostics["f3_source_notation_variant_group_count"] == 0
+          assert diagnostics["f1_metadata_variant_group_count"] == 1
+          metadata = diagnostics["f1_metadata_variant_groups"][0]
+          assert metadata["source_ids"] == ["Modal:053", "Modal:079"]
+          assert metadata["tag_variant_count"] == 2
+
+          near = result["near_relations"]
+          assert near["pair_relation_count"] == 14
+          assert near["pair_count_by_kind"] == {"CYCLIC_ROTATION": 14}
+          assert near["component_count"] == 7
+          assert near["component_count_by_kind"] == {"CYCLIC_ROTATION": 7}
+          assert all(row["dedup_equivalent"] is False for row in near["relations"])
+
+          for level in ("F4", "F5", "F6"):
+              assert result["levels"][level]["status"] == "DEFERRED"
+              assert result["levels"][level]["classes"] == []
+
+          assert result["dedup_contract"]["definitions_removed"] == 0
+          assert result["dedup_contract"]["representative_selection"] == "NOT_PERFORMED"
+          assert result["dedup_contract"]["runtime_admission"] == "NOT_PERFORMED"
+          assert result["h1_dependency"]["normalized_json_sha256"] == \
+              "4783be1f77784a978f2239d8527214b3912eaf262e92430bff755679fec0734e"
+          PY
+
+      - name: Verify H2 evidence digest
+        run: sha256sum -c docs/research/HARMONY_ATLAS_H2_FINGERPRINTS.sha256
+
+      - name: Verify generated H2 report is reproducible
+        run: diff -u docs/research/HARMONY_ATLAS_H2_FINGERPRINTS.md build/HARMONY_ATLAS_H2_FINGERPRINTS.md
+
+      - name: Upload generated H2 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: harmony-atlas-h2-evidence
+          path: |
+            build/HARMONY_ATLAS_H2_FINGERPRINTS.json
+            build/HARMONY_ATLAS_H2_FINGERPRINTS.md
+          if-no-files-found: error
