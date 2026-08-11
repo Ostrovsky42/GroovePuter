@@ -12,7 +12,7 @@ The branch imports the corrected source contracts from:
 - P2 #237 current corrected head `39423a7a66ed1576624d5624341fc7fa7398f353`;
 - P3 #238 current corrected head `eb697d9916f4faa64b50428c0a705d7c2948f0ce`.
 
-The audition layer answers one question: can the two capabilities compose without introducing a second rhythm or harmonic owner before we expose deterministic fixtures on Cardputer hardware?
+The audition layer answers one question: can the two capabilities compose and remain musically distinguishable on Cardputer hardware without introducing a second rhythm or harmonic owner?
 
 ## Composition ownership
 
@@ -38,10 +38,44 @@ Audition bar plan
 
 P2 is the sole gate-topology validator in the composed path. P3 is invoked with N/S masks and explicit incoming-source availability only; continuation/release masks are not independently reinterpreted by P3 at a bar boundary.
 
-This avoids two incorrect models:
+## Cardputer entry and safety contract
 
-1. treating every audible onset as a new harmonic event;
-2. requiring a one-bar P3 validator to rediscover cross-bar gate state already owned by P2.
+Exact global entry chord:
+
+```text
+Ctrl+Alt+O   enter P2/P3 AUDITION
+Esc          exit and restore temporary state
+```
+
+`Alt+H` remains the existing help screen. Plain `O`, `Ctrl+O` and `Alt+O` do not enter audition.
+
+While audition is active, normal Cardputer HID/word input is consumed by the harness so accidental editing/saving cannot leak through the ordinary UI. The existing Synth B page remains the visual owner; a long-lived toast identifies the active audition/test instead of adding another production page.
+
+The harness snapshots only state it touches in RAM:
+
+- Synth B bank-0 slots 1..4 used by the fixtures;
+- active song data used temporarily by fixture 4;
+- current Synth B bank/pattern selection;
+- song mode/position/playback slot;
+- Synth B mute state;
+- track volumes;
+- previous UI page / previous play state.
+
+It does not call scene persistence or mark the Scene revision dirty. `Esc` restores the snapshot before returning to the previous page.
+
+## Hardware controls
+
+After `Ctrl+Alt+O`:
+
+```text
+Ctrl+1  RETRIGGER
+Ctrl+2  DENSE_RETRIGGER
+Ctrl+3  CROSS_BAR_HOLD
+Ctrl+4  MULTI_BAR_NS
+Esc     restore + exit
+```
+
+Selecting a fixture stops the previous fixture, installs deterministic Synth B probe material and starts playback from the beginning automatically. No extra Play key is required.
 
 ## Deterministic fixtures
 
@@ -52,7 +86,7 @@ N---S---N---S---
 source 0  0   1   1
 ```
 
-Expected: four audible attacks, two harmonic source advances.
+Expected: four audible attacks, two pitch/source identities. `S` repeats the same pitch as its preceding source; it must not advance to a new pitch.
 
 ### 2. DENSE_RETRIGGER
 
@@ -60,7 +94,7 @@ Expected: four audible attacks, two harmonic source advances.
 NSSSSSSSSSSSSSSS
 ```
 
-Expected: sixteen audible attacks, one harmonic source advance.
+Expected: sixteen audible attacks of the same pitch, one harmonic source advance.
 
 ### 3. CROSS_BAR_HOLD
 
@@ -71,38 +105,57 @@ bar 2: CCCC R-----------
 
 `C` is explicit continuation and `R` explicit release. The bar boundary itself creates neither a new onset nor a new harmonic source.
 
+For this fixture the hardware renderer deliberately uses one repeating 16-step Synth B pattern rather than Song rows. This is required because current Stage15 Song row selection emits `AllNotesOff` at a row boundary, which would invalidate the hold test. The first audible onset occurs late in the first bar, then the existing `SynthPattern` TIE semantics must carry it through step 15 -> step 0.
+
 ### 4. MULTI_BAR_NS
 
-Four bars containing N/S actions. Bars 2 and 4 deliberately begin with `S`; those attacks must map to the source identity established in the preceding bar through explicit incoming-source composition.
+Four bars containing N/S actions. Bars 2 and 4 deliberately begin with `S`; those attacks map to the source identity established in the preceding bar through explicit incoming-source composition.
 
-## Current branch stage
+This fixture may use four temporary Song rows because every tested row boundary begins with an audible N or S attack; the current Song `AllNotesOff` before row selection therefore does not masquerade as a continuation result.
 
-Implemented now:
+## Hardware-rendering rules
 
-- corrected P2/P3 capability sources imported from the current PR heads;
-- four deterministic fixture definitions;
-- P2 whole-phrase gate validation;
-- P3 per-bar source-identity validation;
-- phrase-global source ordinal mapping;
-- GCC/Clang/ASAN/UBSAN host matrix;
-- Cardputer ADV normal + MIDI-only compile gates.
+- deterministic probe pitches make source advancement obvious;
+- `N` changes to the pitch assigned to the new global source ordinal;
+- `S` attacks again using the existing source pitch;
+- continuation renders through existing `SynthPattern` TIE (`note = -2`);
+- release remains silence after the final TIE;
+- Synth B is isolated by temporary track-volume state;
+- no P1 chord-quality/polyphony is needed;
+- no H6 progression/rhythm candidate is admitted.
 
-Still intentionally separate from this composition core:
+## Acceptance checklist
 
-- Cardputer key binding / temporary audition UI;
-- writing fixtures into temporary Synth B/song slots;
-- hardware listening acceptance;
-- any H6 R2 vocabulary or production routing.
+```text
+ENTRY
+[ ] Ctrl+Alt+O enters; toast says P23 AUDITION CTRL+1..4
+[ ] Alt+H still opens normal help outside audition
 
-## Hardware binding target
+CTRL+1 RETRIGGER
+[ ] 4 attacks
+[ ] pitch pattern is A A B B, not A B C D
 
-The next binding layer may materialize the four plans into temporary Synth B patterns/song rows for audition. It must preserve these rules:
+CTRL+2 DENSE
+[ ] 16 attacks
+[ ] all attacks use one pitch/source
 
-- `harmonicEventOnsets = N`, never `N | S`;
-- `audibleOnsets = N | S`;
-- continuation steps must not become new attacks;
-- bar boundaries must not reset source identity or invent holds;
-- only temporary audition state may be modified; no Scene persistence contract changes;
-- no H6 progression/rhythm candidate admission.
+CTRL+3 CROSS-BAR HOLD
+[ ] onset near end of bar
+[ ] note remains held through 15 -> 0
+[ ] no fresh attack exactly at bar boundary
+[ ] release occurs after the explicit continuation span
 
-The audition branch may use deterministic notes to make source changes audible. Chord-quality/polyphony from P1 is not required to validate P2/P3 timing semantics.
+CTRL+4 MULTI-BAR N/S
+[ ] four-bar loop plays
+[ ] bar-start S repeats the preceding source pitch
+[ ] N advances to a new deterministic source pitch
+
+EXIT
+[ ] Esc stops audition
+[ ] previous UI page/pattern/song/volumes are restored
+[ ] normal controls work again
+```
+
+## Scope boundary
+
+This PR remains a temporary hardware audition harness. It must not become the production persistence/UI owner for P2/P3. Successful hardware listening may justify later production integration, but H6 R2 vocabulary admission remains separate.
