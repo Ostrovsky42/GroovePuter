@@ -81,8 +81,6 @@ void assertDrumsEqual(const DrumPatternSet& a, const DrumPatternSet& b) {
 
 void assertResultDeterministic(const StrongRhythmMigrationResult& a,
                                const StrongRhythmMigrationResult& b) {
-  // Compare semantic fields explicitly. Raw memcmp is invalid here because
-  // compiler-dependent padding bytes are not part of the result contract.
   assert(a.status == b.status);
   assert(a.route == b.route);
   assert(a.archetype == b.archetype);
@@ -138,6 +136,7 @@ void testAllModesDeterministicAndInRegister() {
   uint32_t tonalRows = 0;
   uint32_t changedPitchRows = 0;
   uint32_t movingAcidBassRows = 0;
+  uint16_t changedRowsByMode[kGenerativeModeCount]{};
 
   for (GenerativeMode mode : kModes) {
     for (int16_t ordinal = 0; ordinal < 8; ++ordinal) {
@@ -159,8 +158,6 @@ void testAllModesDeterministicAndInRegister() {
       assert(tonal.status == StrongRhythmMigrationStatus::Applied);
       assert(tonal.tonalMaterializationApplied);
 
-      // Tonal integration owns pitch only. Rhythm/FEEL generation is identical
-      // under identical context, so active semantic sites must not move.
       assertDrumsEqual(legacyDrums, tonalDrums);
       assert(activeMask(legacyA) == activeMask(tonalA));
       assert(activeMask(legacyB) == activeMask(tonalB));
@@ -180,8 +177,10 @@ void testAllModesDeterministicAndInRegister() {
       assertPatternsEqual(tonalB, repeatB);
 
       ++tonalRows;
-      if (pitchDiffers(legacyA, tonalA) || pitchDiffers(legacyB, tonalB))
+      if (pitchDiffers(legacyA, tonalA) || pitchDiffers(legacyB, tonalB)) {
         ++changedPitchRows;
+        ++changedRowsByMode[static_cast<uint8_t>(mode)];
+      }
       if (mode == GenerativeMode::Acid &&
           tonal.bassPitchContour != BassPitchContourId::RootAnchor &&
           tonal.bassPitchContour != BassPitchContourId::Auto) {
@@ -192,7 +191,19 @@ void testAllModesDeterministicAndInRegister() {
 
   assert(tonalRows == 16u * 8u);
   assert(changedPitchRows > 0);
+  assert(changedRowsByMode[static_cast<uint8_t>(GenerativeMode::Acid)] > 0);
+  assert(changedRowsByMode[static_cast<uint8_t>(GenerativeMode::Outrun)] > 0);
+  assert(changedRowsByMode[static_cast<uint8_t>(GenerativeMode::Darksynth)] > 0);
   assert(movingAcidBassRows > 0);
+
+  std::cout
+      << "Pitch-diff rows: Acid="
+      << changedRowsByMode[static_cast<uint8_t>(GenerativeMode::Acid)]
+      << " Outrun="
+      << changedRowsByMode[static_cast<uint8_t>(GenerativeMode::Outrun)]
+      << " Darksynth="
+      << changedRowsByMode[static_cast<uint8_t>(GenerativeMode::Darksynth)]
+      << " total=" << changedPitchRows << '\n';
 }
 
 void testNoPitchSourceStillMaterializes() {
