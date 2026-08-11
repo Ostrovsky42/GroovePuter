@@ -337,8 +337,10 @@ void GenrePage::draw(IGfx& gfx) {
   gfx.setTextColor(palette.muted);
   gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
 
-  std::snprintf(value, sizeof(value), "ACTIVE %s/%s %s",
-      GenreCatalog::generativeModeName(activeGenre), GenreCatalog::recipeName(activeRecipe),
+  std::snprintf(value, sizeof(value), "A:%s/%s %s %s",
+      GenreCatalog::generativeModeName(activeGenre),
+      GenreCatalog::recipeName(activeRecipe),
+      linkStateShort(mini_acid_),
       GroovePuterState::generationLevelShortName(
           GroovePuterState::currentGenerationLevel()));
   gfx.setTextColor(activeGenre == selectedGenre && activeRecipe == selectedRecipe
