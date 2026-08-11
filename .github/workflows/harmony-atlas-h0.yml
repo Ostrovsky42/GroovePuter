@@ -1,0 +1,41 @@
+name: Harmony Atlas H0
+
+on:
+  pull_request:
+    paths:
+      - "tools/research/harmony_atlas_h0.py"
+      - "tests/test_harmony_atlas_h0.py"
+      - "docs/research/HARMONY_ATLAS_H0_SOURCE_AUDIT.json"
+      - "docs/research/HARMONY_ATLAS_H0_SOURCE_AUDIT.md"
+      - ".github/workflows/harmony-atlas-h0.yml"
+  workflow_dispatch:
+
+jobs:
+  source-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GroovePuter
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned harmony source
+        uses: actions/checkout@v4
+        with:
+          repository: ldrolez/free-midi-chords
+          ref: baf0896694de6b09ac00250722f2414202e668ed
+          path: build/harmony-atlas-source
+          fetch-depth: 1
+
+      - name: Run H0 unit and contract tests
+        run: python3 tests/test_harmony_atlas_h0.py
+
+      - name: Regenerate pinned H0 audit
+        run: |
+          python3 tools/research/harmony_atlas_h0.py \
+            --source-root build/harmony-atlas-source \
+            --output build/HARMONY_ATLAS_H0_SOURCE_AUDIT.json \
+            --markdown-output build/HARMONY_ATLAS_H0_SOURCE_AUDIT.md
+
+      - name: Verify committed evidence is reproducible
+        run: |
+          diff -u docs/research/HARMONY_ATLAS_H0_SOURCE_AUDIT.json build/HARMONY_ATLAS_H0_SOURCE_AUDIT.json
+          diff -u docs/research/HARMONY_ATLAS_H0_SOURCE_AUDIT.md build/HARMONY_ATLAS_H0_SOURCE_AUDIT.md

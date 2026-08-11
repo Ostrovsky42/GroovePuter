@@ -1,0 +1,269 @@
+{
+  "declared_chord_types": {
+    "major_third": [
+      "2",
+      "6",
+      "69",
+      "7",
+      "7+11",
+      "7+5",
+      "7-5",
+      "7-9",
+      "7sus4",
+      "9",
+      "9sus4",
+      "M7+5",
+      "add11",
+      "add4",
+      "add9",
+      "maj7",
+      "maj9",
+      "sus2",
+      "sus4",
+      "sus4add9"
+    ],
+    "major_third_count": 20,
+    "minor_third": [
+      "7sus4",
+      "9sus4",
+      "dim6",
+      "dim7",
+      "m6",
+      "m69",
+      "m7",
+      "m7+5",
+      "m7-5",
+      "m7add11",
+      "m7b9b5",
+      "m9",
+      "mM7",
+      "mM7add11",
+      "madd4",
+      "madd9",
+      "sus2",
+      "sus4",
+      "sus4add9"
+    ],
+    "minor_third_count": 19,
+    "union": [
+      "2",
+      "6",
+      "69",
+      "7",
+      "7+11",
+      "7+5",
+      "7-5",
+      "7-9",
+      "7sus4",
+      "9",
+      "9sus4",
+      "M7+5",
+      "add11",
+      "add4",
+      "add9",
+      "dim6",
+      "dim7",
+      "m6",
+      "m69",
+      "m7",
+      "m7+5",
+      "m7-5",
+      "m7add11",
+      "m7b9b5",
+      "m9",
+      "mM7",
+      "mM7add11",
+      "madd4",
+      "madd9",
+      "maj7",
+      "maj9",
+      "sus2",
+      "sus4",
+      "sus4add9"
+    ],
+    "union_count": 34
+  },
+  "generation": {
+    "key_pair_count": 12,
+    "key_pairs": [
+      [
+        "C",
+        "A"
+      ],
+      [
+        "Db",
+        "Bb"
+      ],
+      [
+        "D",
+        "B"
+      ],
+      [
+        "Eb",
+        "C"
+      ],
+      [
+        "E",
+        "C#"
+      ],
+      [
+        "F",
+        "D"
+      ],
+      [
+        "Gb",
+        "Eb"
+      ],
+      [
+        "G",
+        "E"
+      ],
+      [
+        "Ab",
+        "F"
+      ],
+      [
+        "A",
+        "F#"
+      ],
+      [
+        "Bb",
+        "G"
+      ],
+      [
+        "B",
+        "G#"
+      ]
+    ],
+    "materializations_per_logical_progression": 60,
+    "style_count": 5,
+    "styles": [
+      "default",
+      "pop",
+      "pop2",
+      "hiphop2",
+      "soul"
+    ]
+  },
+  "methodology": {
+    "canonical_unit": "LogicalProgressionDefinition",
+    "catalog_incidence_is_musical_popularity": false,
+    "generated_file_is_independent_observation": false,
+    "next_stage": "H1_CANONICAL_PARSER_NORMALIZATION",
+    "runtime_weight_from_file_count": "FORBIDDEN"
+  },
+  "progressions": {
+    "altered_degree_classes": [
+      "#IV",
+      "bI",
+      "bII",
+      "bIII",
+      "bVI",
+      "bVII"
+    ],
+    "by_family": {
+      "Major": 50,
+      "Minor": 58,
+      "Modal": 82
+    },
+    "catalog_tag_vocabulary": [
+      "New"
+    ],
+    "definitions_tagged_cadence": 6,
+    "definitions_tagged_new": 14,
+    "descriptor_vocabulary": [
+      "Anguished",
+      "Cadence",
+      "Dark",
+      "Dramatic",
+      "Empowered",
+      "Excited",
+      "Fearful",
+      "Hopeful",
+      "Joyful",
+      "Lonely",
+      "Mysterious",
+      "New",
+      "Nostalgic",
+      "Peaceful",
+      "Playful",
+      "Rebellious",
+      "Relaxed",
+      "Romantic",
+      "Sad",
+      "Spiritual",
+      "Surprised",
+      "Tender",
+      "Triumphant"
+    ],
+    "explicit_double_space_rest_markers": 0,
+    "lexically_unclassified_tokens": [],
+    "logical_definition_count": 190,
+    "mood_tag_vocabulary": [
+      "Anguished",
+      "Dark",
+      "Dramatic",
+      "Empowered",
+      "Excited",
+      "Fearful",
+      "Hopeful",
+      "Joyful",
+      "Lonely",
+      "Mysterious",
+      "Nostalgic",
+      "Peaceful",
+      "Playful",
+      "Rebellious",
+      "Relaxed",
+      "Romantic",
+      "Sad",
+      "Spiritual",
+      "Surprised",
+      "Tender",
+      "Triumphant"
+    ],
+    "projected_materialization_count": 11400,
+    "projected_materializations_by_family": {
+      "Major": 3000,
+      "Minor": 3480,
+      "Modal": 4920
+    },
+    "raw_chord_token_unique_count": 85,
+    "raw_suffix_vocabulary": [
+      "",
+      "5",
+      "6",
+      "69",
+      "7",
+      "9",
+      "M",
+      "M-5",
+      "M6",
+      "M7",
+      "add9",
+      "dim",
+      "dom7",
+      "m",
+      "m6",
+      "m7",
+      "m9",
+      "madd9",
+      "sus2",
+      "sus4"
+    ],
+    "structural_tag_vocabulary": [
+      "Cadence"
+    ]
+  },
+  "schema_version": "1.0.0",
+  "source": {
+    "commit": "baf0896694de6b09ac00250722f2414202e668ed",
+    "evidence_class": "EDITORIAL_CATALOG_EVIDENCE",
+    "repository": "ldrolez/free-midi-chords",
+    "verified_blob_sha1": {
+      "README.md": "41a5ad11e13efb788dc9c1c1b525fce029825ca7",
+      "chords.py": "33c73d789dfbce449654e1dfa9561923b0b3db12",
+      "gen.py": "55ff32d43f8c3754b807530e3a49240f8c5174b4"
+    }
+  }
+}
