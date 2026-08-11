@@ -1,6 +1,7 @@
 #include "drum_sequencer_page.h"
 #include "drum_automation_page.h"
 #include "../ui_common.h"
+#include "src/state/generation_request_state.h"
 #include "src/state/scene_revision.h"
 #include "src/generation/migration/strong_rhythm_live_bridge.h"
 
@@ -175,12 +176,13 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
         page->mini_acid_.setSongMode(true);
       }
     });
-    char toast[64];
+    char toast[72];
     std::snprintf(
         toast,
         sizeof(toast),
-        "AUD %uB %s #%u",
+        "AUD %uB %s %s #%u",
         static_cast<unsigned>(audition.requestedBars),
+        GroovePuterState::generationLevelShortName(audition.level),
         GroovePuterRhythm::phraseAuditionStatusName(audition.status),
         static_cast<unsigned>(audition.archetypeId));
     UI::showToast(toast, 1800);
@@ -198,14 +200,15 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // Retire the global legacy P/O generation fallthrough on the DRUMS grid.
-  // I remains a valid Q-I pattern-slot key and is handled below.
-  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta &&
-      (lowerKey == 'o' || lowerKey == 'p')) {
-    UI::showToast(lowerKey == 'p'
-                      ? "CONTINUE: Ctrl+Alt+G"
-                      : "LEGACY O GEN OFF",
-                  1200);
+  // P owns the single P1/P2/P3 request selector. O remains blocked from the old
+  // sketch-level Synth B generator; I remains a valid Q-I pattern-slot key.
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lowerKey == 'p') {
+    const auto level = GroovePuterState::cycleGenerationLevel();
+    UI::showToast(GroovePuterState::generationLevelShortName(level), 1200);
+    return true;
+  }
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lowerKey == 'o') {
+    UI::showToast("LEGACY O GEN OFF", 1200);
     return true;
   }
 
