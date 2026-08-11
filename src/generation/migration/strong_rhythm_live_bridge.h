@@ -49,6 +49,7 @@ struct PhraseAuditionResult {
   StrongRhythmMigrationStatus selectionStatus =
       StrongRhythmMigrationStatus::Legacy;
   RhythmArchetypeId archetypeId = kNoArchetypeId;
+  RealizationLevel level = RealizationLevel::P2Variation;
   uint8_t requestedBars = 1;
   uint8_t profileBars = 1;
   TrajectoryId firstTrajectoryId = kNoTrajectoryId;
@@ -61,6 +62,7 @@ struct PhraseAuditionResult {
 // Contract:
 // - reserves Bank B (current page) patterns 1..8 and Song B for audition;
 // - locks one selected rhythm identity across the generated phrase;
+// - uses the current session P1/P2/P3 request level for selection/evolution;
 // - uses BarEvolution when that identity is admitted by phraseEvolutionCatalog;
 // - otherwise writes deterministic one-bar strong variations for the requested
 //   1/2/4/8-bar length, so every supported genre remains listenable;
