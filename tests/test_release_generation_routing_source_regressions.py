@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 GENRE = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
 GENRE_H = (ROOT / "src/ui/pages/genre_page.h").read_text(encoding="utf-8")
+FEEL = (ROOT / "src/ui/pages/feel_page.cpp").read_text(encoding="utf-8")
 DRUM = (ROOT / "src/ui/pages/drum_sequencer_page.cpp").read_text(encoding="utf-8")
 DRUM_LEGACY = (
     ROOT / "src/ui/pages/drum_sequencer_page_legacy.h"
@@ -40,13 +41,35 @@ for forbidden in ("randomize303Pattern", "randomizeDrumPattern", "modeManager_")
     if forbidden in GENRE:
         raise AssertionError(f"GENRE page gained legacy generation owner: {forbidden}")
 
+# The two GENERATE pages consume stale I/O/P before Cardputer's old sketch-level
+# fallback can reach GrooveboxModeManager. P now points to the explicit audition
+# command instead of silently replacing the drum pattern.
+for needle in (
+    "(key == 'i' || key == 'o' || key == 'p')",
+    '"CONTINUE: Ctrl+Alt+G"',
+    '"LEGACY SYNTH GEN OFF"',
+):
+    require(GENRE, needle, f"GENRE legacy-generation guard changed: {needle}")
+
+for needle in (
+    "event.key == 'i' || event.key == 'I'",
+    "event.key == 'o' || event.key == 'O'",
+    "event.key == 'p' || event.key == 'P'",
+    '"CONTINUE: Ctrl+Alt+G"',
+    '"LEGACY SYNTH GEN OFF"',
+):
+    require(FEEL, needle, f"FEEL legacy-generation guard changed: {needle}")
+
 # DRUMS plain G remains drums-only strong generation. Ctrl+Alt+G is the
-# multi-bar audition. Ctrl+G and Alt+G stay distinct legacy edit/chaos commands.
+# multi-bar audition. Ctrl+G and Alt+G stay distinct edit/chaos commands.
 for needle in (
     "if (keyG && ui_event.ctrl && ui_event.alt && !ui_event.meta)",
     "regeneratePhraseAuditionWithProbe",
     "if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta)",
     "regenerateDrumsWithStrongRhythmMigration",
+    "(lowerKey == 'o' || lowerKey == 'p')",
+    '"CONTINUE: Ctrl+Alt+G"',
+    '"LEGACY O GEN OFF"',
 ):
     require(DRUM, needle, f"DRUMS release route changed: {needle}")
 
