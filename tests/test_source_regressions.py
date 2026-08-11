@@ -271,11 +271,13 @@ def test_genre_page_uses_recipe_mode_and_tempo_order() -> None:
     require("grooveboxModeForRecipe" in link_block,
             "Genre page LINK state must account for the active recipe")
 
-    apply_start = page.index("void GenrePage::applyCurrent()")
+    apply_start = page.index("void GenrePage::applyCurrent(bool forceRegenerate)")
     apply_end = page.index("void GenrePage::updateFromEngine()", apply_start)
     apply_block = page[apply_start:apply_end]
     require("grooveboxModeForRecipe" in apply_block,
             "Genre Apply must select recipe-aware macro mode")
+    require("forceRegenerate || applyMode != ApplyMode::ProfileOnly" in apply_block,
+            "Genre G must be able to force full generation while Enter follows ApplyMode")
     tempo_pos = apply_block.index("if (doApplyTempo)")
     regenerate_pos = apply_block.index("if (doRegenerate)")
     require(tempo_pos < regenerate_pos,
@@ -346,21 +348,23 @@ def test_recipe_selector_is_visible_and_navigable() -> None:
 
 def test_enter_applies_selected_recipe() -> None:
     page = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
-    start = page.index("// ENTER: apply the current genre/recipe selection.")
+    start = page.index("// ENTER follows the APPLY selector.")
     end = page.index("if (event.key == ' ' && focus_ == FocusRow::Apply)", start)
-    enter_block = page[start:end]
-    require("if (event.key == '\\n' || event.key == '\\r')" in enter_block,
+    command_block = page[start:end]
+    require("if (event.key == '\\n' || event.key == '\\r')" in command_block,
             "Enter apply block must remain explicitly bound to Enter")
-    require("applyCurrent();" in enter_block,
-            "Enter must apply the selected recipe")
-    require("cycleApplyMode" not in enter_block,
-            "Enter must not cycle the apply mode")
+    require("applyCurrent();" in command_block,
+            "Enter must apply the selected recipe through the current ApplyMode")
+    require("applyCurrent(true);" in command_block,
+            "plain G must force full Stage 15 generation")
+    require("cycleApplyMode" not in command_block,
+            "Enter/G generation commands must not cycle the apply mode")
 
     footer_start = page.index("UI::drawStandardFooter(gfx")
     footer_end = page.index(");", footer_start)
     footer_block = page[footer_start:footer_end]
-    require('"ENTER:Apply M:ApplyMode"' in footer_block,
-            "Apply footer must document Enter and M controls")
+    require('"G:GEN P:LEVEL M:MODE"' in footer_block,
+            "Genre footer must document generation, P-level and ApplyMode controls")
 
 
 def test_performance_workflow_boundaries() -> None:
