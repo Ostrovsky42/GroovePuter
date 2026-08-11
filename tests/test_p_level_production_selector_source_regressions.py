@@ -18,19 +18,28 @@ def require(text: str, needle: str, message: str) -> None:
         raise AssertionError(message)
 
 
-# P-level has one request/session owner. P2 is the compatibility default so
+# P-level has one runtime/session owner. P2 is the compatibility default so
 # upgrading the firmware cannot silently alter existing generation behavior.
 for needle in (
     "RealizationLevel::P2Variation",
-    'preferences.begin("gp-generation", true)',
-    '"p-level"',
     "currentGenerationLevel()",
     "cycleGenerationLevel(int direction = 1)",
+    "generationLevelCode(",
+    'return "P1";',
+    'return "P2";',
+    'return "P3";',
     'return "P1 CANON";',
     'return "P2 VAR";',
     'return "P3 TRANS";',
+    "Persistence is deliberately deferred",
 ):
     require(STATE, needle, f"P-level request owner changed: {needle}")
+
+# P is a realtime input action. Synchronous flash/NVS writes must not enter this
+# path; any future persistence belongs in a deferred session service.
+for forbidden in ("Preferences", "putUChar", "putBytes", "gp-generation"):
+    if forbidden in STATE:
+        raise AssertionError(f"P-level selector performs/depend on NVS I/O: {forbidden}")
 
 # The production bridge must consume the one shared request level. There must be
 # no separate live-G or audition P-level owner.
@@ -40,6 +49,7 @@ for needle in (
     "request.level = baseContext.level;",
     "context.level,",
     '"[PHRASE-PROBE] status=%s level=%s',
+    "GroovePuterState::generationLevelCode(result.level)",
 ):
     require(BRIDGE, needle, f"P-level live bridge contract changed: {needle}")
 
