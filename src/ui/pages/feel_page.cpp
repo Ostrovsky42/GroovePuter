@@ -317,5 +317,19 @@ bool FeelPage::handleEvent(UIEvent& event) {
     return true;
   }
 
+  // The GENERATE workflow must not fall through to the old global I/O/P
+  // GrooveboxModeManager shortcuts. Continuation is the explicit DRUMS
+  // Ctrl+Alt+G audition command; single-synth Stage 15 randomize is deferred.
+  if (!event.ctrl && !event.alt && !event.meta &&
+      (event.key == 'i' || event.key == 'I' ||
+       event.key == 'o' || event.key == 'O' ||
+       event.key == 'p' || event.key == 'P')) {
+    UI::showToast(event.key == 'p' || event.key == 'P'
+                      ? "CONTINUE: Ctrl+Alt+G"
+                      : "LEGACY SYNTH GEN OFF",
+                  1200);
+    return true;
+  }
+
   return false;
 }
