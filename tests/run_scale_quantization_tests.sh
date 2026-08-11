@@ -17,6 +17,13 @@ COMMON_FLAGS=(
   -Wall
   -Wextra
   -Werror
+  # Existing scenes.h uses C++20 bit-field default initializers while this
+  # legacy host path is still compiled as C++17. Keep the warning visible but
+  # do not make that inherited extension an error in this focused gate.
+  -Wno-error=c++20-extensions
+  # Existing generateTiming(step, ...) does not consume step. This correctness
+  # PR intentionally does not mix that cleanup into the scale fix.
+  -Wno-error=unused-parameter
   -I"$ROOT"
 )
 
