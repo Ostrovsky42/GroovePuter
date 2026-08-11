@@ -18,14 +18,22 @@ jobs:
           bash tests/run_stage15_tonal_baseline_dump.sh > build/host-tests/stage15_tonal_legacy_actual.tsv
           test "$(wc -l < build/host-tests/stage15_tonal_legacy_actual.tsv)" -eq 257
           diff -u tests/data/stage15_tonal_legacy_baseline.tsv build/host-tests/stage15_tonal_legacy_actual.tsv
-      - name: Compare frozen tonal-materialized fingerprints
+      - name: Generate tonal-materialized fingerprints
         run: |
           mkdir -p build/host-tests
           bash tests/run_stage15_tonal_baseline_dump.sh --tonal > build/host-tests/stage15_tonal_enabled_actual.tsv
           test "$(wc -l < build/host-tests/stage15_tonal_enabled_actual.tsv)" -eq 257
+      - name: Export tonal-materialized bootstrap corpus
+        if: ${{ !hashFiles('tests/data/stage15_tonal_enabled_baseline.tsv') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage15-tonal-enabled-baseline
+          path: build/host-tests/stage15_tonal_enabled_actual.tsv
+          if-no-files-found: error
+      - name: Compare frozen tonal-materialized fingerprints
+        run: |
           if [[ ! -f tests/data/stage15_tonal_enabled_baseline.tsv ]]; then
             echo "BOOTSTRAP_STAGE15_TONAL_ENABLED_BASELINE"
-            cat build/host-tests/stage15_tonal_enabled_actual.tsv
             exit 1
           fi
           diff -u tests/data/stage15_tonal_enabled_baseline.tsv build/host-tests/stage15_tonal_enabled_actual.tsv
