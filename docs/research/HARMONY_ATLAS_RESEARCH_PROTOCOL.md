@@ -5,7 +5,7 @@
 **Source project:** `ldrolez/free-midi-chords`  
 **Pinned source revision:** `baf0896694de6b09ac00250722f2414202e668ed`  
 **Evidence class:** `EDITORIAL_CATALOG_EVIDENCE`  
-**Runtime impact:** none  
+**Runtime impact:** none
 
 ---
 
@@ -13,9 +13,9 @@
 
 Define a falsifiable research protocol for a future GroovePuter Harmony Atlas.
 
-The goal is not to import a large chord pack into firmware and not to create another chord generator. The goal is to extract, normalize, classify and review useful harmonic evidence that may later strengthen the existing Stage 15 harmonic vocabulary.
+The goal is not to import a chord pack into firmware and not to create another runtime chord generator. The goal is to extract, normalize, classify and review useful harmonic evidence that may later strengthen the existing Stage 15 harmonic vocabulary.
 
-The research boundary is:
+Research flow:
 
 ```text
 source catalog
@@ -24,7 +24,7 @@ offline extraction
     ↓
 normalized / deduplicated evidence
     ↓
-functional and rhythmic analysis
+functional + rhythmic analysis
     ↓
 human-reviewed runtime candidates
     ↓
@@ -57,7 +57,7 @@ Harmony Atlas may provide evidence for:
 - loop and cadence classes;
 - chord-rhythm identities;
 - progression-family coverage;
-- later selection priors.
+- later bounded selection priors.
 
 Harmony Atlas MUST NOT:
 
@@ -69,11 +69,11 @@ Harmony Atlas MUST NOT:
 - make corpus frequency equal runtime selection probability;
 - bypass current Stage 15 ownership with a parallel generator.
 
-Research representation is explicitly allowed to be richer than the current runtime representation. An observation that current Stage 15 cannot represent must remain valid deferred evidence rather than being silently simplified to fit current C++ structures.
+Research representation may be richer than current runtime representation. An observation that Stage 15 cannot currently represent must remain valid deferred evidence rather than being silently simplified to fit current C++ structures.
 
 ---
 
-## 3. Source facts that constrain the methodology
+## 3. Source facts that constrain methodology
 
 The pinned `free-midi-chords` source is a generated editorial catalog, not an observational corpus of independent songs.
 
@@ -82,8 +82,8 @@ At the pinned revision:
 - progression definitions are authored as Roman-numeral strings in source data;
 - the repository advertises more than 13,000 MIDI files and roughly 190 chord progressions per key;
 - generation iterates over 12 major / relative-minor key pairs;
-- each progression can be emitted using multiple rhythmic styles;
-- current progression styles are the default long/basic form plus `pop`, `pop2`, `hiphop2` and `soul`;
+- each progression can be emitted using several rhythmic styles;
+- current styles are the default long/basic form plus `pop`, `pop2`, `hiphop2` and `soul`;
 - progression definitions carry human-authored descriptors such as `Hopeful`, `Nostalgic`, `Dark`, `Mysterious`, `Cadence` and `New`;
 - Major, Minor and Modal source families use related but not identical Roman-numeral conventions;
 - Modal entries include chromatically altered roots such as flat or sharp degrees.
@@ -94,42 +94,42 @@ Therefore:
 
 and:
 
-> The number of files carrying a progression must never be interpreted as real-world musical popularity.
+> Generated file count must never be interpreted as real-world musical popularity.
 
-The primary source identity is the logical progression definition before transposition and rhythmic materialization.
+The primary harmonic source identity is the logical progression definition before transposition and rhythmic materialization.
 
 ---
 
 ## 4. Evidence class
 
-This project assigns the source the explicit class:
+The source is classified as:
 
 ```text
 EDITORIAL_CATALOG_EVIDENCE
 ```
 
-This class supports conclusions of the form:
+This class supports conclusions such as:
 
 - a harmonic construction is present in a curated utility catalog;
 - a family has more or less editorial coverage inside this source;
 - several source definitions collapse to the same normalized structural identity;
 - a progression uses a given alteration, quality, cadence type or loop shape;
-- the source provides several rhythmic materializations for one harmonic identity.
+- one harmonic identity has several source rhythm materializations.
 
-It does NOT support conclusions of the form:
+It does NOT support conclusions such as:
 
 - progression X is used N times more often than progression Y in released music;
 - mood tag X predicts listener emotion with measured probability;
 - source file count is a popularity prior;
-- one source family is inherently more important because it generated more MIDI payloads.
+- source ratios should be copied directly into firmware selection weights.
 
-Reports must use terms such as `catalog incidence`, `source coverage` or `editorial support`, not `musical frequency`, unless a later observational corpus independently justifies that claim.
+Reports must use terms such as `catalog incidence`, `source coverage` or `editorial support`, not `musical frequency`, unless a later observational corpus independently supports that claim.
 
 ---
 
 ## 5. Unit of analysis
 
-The canonical research unit is:
+The canonical harmonic research unit is:
 
 ```text
 LogicalProgressionDefinition
@@ -145,9 +145,7 @@ folder entry
 filename
 ```
 
-A source progression may generate many physical files. Those files belong to one harmonic source identity plus zero or more rhythm materializations.
-
-Required grouping hierarchy:
+Required grouping model:
 
 ```text
 LogicalProgressionDefinition
@@ -161,7 +159,7 @@ LogicalProgressionDefinition
 
 Key transpositions must not increase harmonic support counts.
 
-Rhythmic styles may increase `ChordRhythm` evidence counts only when the report explicitly states that it is counting distinct source style definitions rather than independent musical observations.
+Rhythmic styles may provide `ChordRhythm` evidence, but must not inflate harmonic support counts.
 
 ---
 
@@ -171,15 +169,15 @@ The research schema is intentionally independent from the final embedded represe
 
 ### 6.1 Functional degree
 
-Do not collapse altered/modal degrees into plain `0..6` degree identity.
+Do not collapse altered/modal degrees into a plain `0..6` identity.
 
-Conceptual schema:
+Conceptual shape:
 
 ```text
 FunctionalDegree
-  diatonic_degree      0..6
-  alteration_semitones signed bounded integer
-  notation_class       source-normalization metadata
+  diatonic_degree       0..6
+  alteration_semitones  signed bounded integer
+  notation_class        source-normalization metadata
 ```
 
 Examples:
@@ -191,11 +189,11 @@ bIII   -> degree 2, alteration -1
 bVII   -> degree 6, alteration -1
 ```
 
-The exact encoding is not frozen here. The invariant is that normalization MUST preserve the distinction between altered and unaltered functional roots.
+The exact encoding is not frozen here. The invariant is that altered and unaltered functional roots remain distinguishable.
 
-### 6.2 Normalized progression
+### 6.2 Normalized harmonic observation
 
-Initial research shape:
+Conceptual shape:
 
 ```text
 HarmonyObservation
@@ -227,24 +225,27 @@ mood_tags
 
 structural_tags
   Cadence
-  ...future structural labels
+  ...
 
 catalog_tags
   New
-  ...future source-maintenance labels
+  ...
 ```
 
-`New` is not a mood.
+Normative rules:
 
-`Cadence` is not a mood.
+```text
+New     != mood
+Cadence != mood
+```
 
-Unknown descriptors must be reported explicitly instead of silently entering the mood set.
+Unknown descriptors must be reported explicitly rather than silently entering the mood set.
 
 ### 6.4 Chord rhythm
 
-Harmonic identity and chord timing are orthogonal research dimensions.
+Harmonic identity and chord timing are orthogonal dimensions.
 
-Conceptual schema:
+Conceptual shape:
 
 ```text
 ChordRhythmObservation
@@ -258,13 +259,13 @@ ChordRhythmObservation
   phrase_length
 ```
 
-The exact runtime `ChordRhythmDefinition` representation remains separate work.
+The final embedded `ChordRhythm` representation remains separate work.
 
 ---
 
 ## 7. Normalization rules
 
-Normalization must be deterministic and reversible enough for diagnostics.
+Normalization must be deterministic and sufficiently reversible for diagnostics.
 
 Required rules:
 
@@ -276,45 +277,45 @@ Required rules:
 6. Preserve repeated harmonic events before dedup classification.
 7. Preserve source tags with their typed category.
 8. Do not infer absolute MIDI pitch into normalized harmonic identity.
-9. Do not use filename text as the canonical identity when source definitions are available.
+9. Do not use filenames as canonical identity when source definitions are available.
 10. Reject or quarantine unknown notation rather than silently mapping it to a familiar degree or quality.
 
 Parser diagnostics must make unsupported syntax enumerable and testable.
 
 ---
 
-## 8. Deduplication model
+## 8. Fingerprint and deduplication model
 
 Harmony Atlas MUST NOT use one universal fingerprint.
 
-Different questions require different equivalence classes.
+Fingerprint namespaces are `F0..F6`; research stage namespaces are separately `H0..H6`.
 
 Required fingerprint levels:
 
 ```text
-H0 SourceIdentity
-   exact normalized source definition including tags where relevant
+F0 SourceIdentity
+   exact normalized source definition including source identity metadata
 
-H1 TranspositionInvariant
+F1 TranspositionInvariant
    progression identity independent of absolute key projection
 
-H2 RootSequence
+F2 RootSequence
    ordered functional roots including chromatic alterations
 
-H3 RootQualitySequence
+F3 RootQualitySequence
    ordered functional roots + chord qualities
 
-H4 FunctionalClassSequence
-   optional higher-level tonic / predominant / dominant / borrowed analysis
+F4 FunctionalClassSequence
+   optional tonic / predominant / dominant / borrowed analysis
 
-H5 ChordRhythmIdentity
-   ordered timing/rest/continuation identity independent of pitch
+F5 ChordRhythmIdentity
+   ordered timing / rest / continuation identity independent of pitch
 
-H6 CombinedIdentity
-   H3 harmonic identity + H5 chord-rhythm identity
+F6 CombinedIdentity
+   F3 harmonic identity + F5 chord-rhythm identity
 ```
 
-The research report must state which fingerprint is used for every duplicate count.
+Every duplicate count must name the fingerprint used.
 
 ### 8.1 Forbidden naive equivalences
 
@@ -325,7 +326,7 @@ I V vi IV
 I V vi IV I V vi IV
 ```
 
-The second may encode phrase repetition or an explicit longer form.
+The second may encode phrase repetition or a longer explicit form.
 
 Do not automatically use cyclic rotation equivalence:
 
@@ -334,17 +335,17 @@ I V vi IV
 V vi IV I
 ```
 
-They share cyclic content but have different phrase starts and potentially different functional closure.
+They share cyclic content but differ in phrase start and potentially in functional closure.
 
 Do not collapse chord qualities when the question concerns harmonic color.
 
-Near-duplicate reports may compare these forms, but admission decisions must retain the exact reason why two entries were grouped.
+Near-duplicate reports may compare such forms, but must preserve the reason for grouping.
 
 ---
 
 ## 9. Functional-analysis dimensions
 
-After exact normalization is validated, the research may derive higher-level features.
+After exact normalization is validated, research may derive higher-level features.
 
 Candidate features:
 
@@ -362,7 +363,7 @@ cadence_class
 functional_motion_histogram
 ```
 
-Candidate `loop_closure_class` values:
+Candidate loop classes:
 
 ```text
 OPEN_LOOP
@@ -373,13 +374,13 @@ TURNAROUND
 CADENTIAL
 ```
 
-These are derived research labels. They must not replace the normalized source identity.
+Derived labels must not replace normalized source identity.
 
 Any heuristic classifier requires:
 
 - deterministic rules;
-- confidence or reason codes where ambiguity exists;
-- a mutation/falsification test set;
+- reason codes or confidence when ambiguity exists;
+- falsification tests;
 - explicit `UNKNOWN` rather than forced classification.
 
 ---
@@ -397,41 +398,41 @@ rhythm_materialization_count
 
 The report MUST NOT rank runtime candidates by generated MIDI file count.
 
-If a later candidate-selection prior is proposed, it must be a separate reviewed policy combining musical goals and evidence. A source catalog ratio may be one input, but it is never copied directly into runtime weights.
-
 Forbidden shortcut:
 
 ```text
 source says 31% -> runtime weight = 31
 ```
 
-Allowed model:
+A later runtime prior may combine:
 
 ```text
 source evidence
     + Genre corridor
-    + VoiceRole / harmonic role
+    + harmonic / voice role
     + P-level / phrase function
     + diversity target
     + human review
     -> bounded runtime selection prior
 ```
 
+Evidence and runtime weighting are separate decisions.
+
 ---
 
-## 11. Research confidence and provenance
+## 11. Provenance, support and confidence
 
-Every derived research result intended for later admission must carry enough metadata to answer:
+Every derived result intended for later admission must answer:
 
 - what source revision produced it;
-- which logical source definitions support it;
+- which logical definitions support it;
 - which extractor version produced it;
 - which normalization/fingerprint class was used;
-- how much support exists;
-- whether the result was exact or heuristic;
-- whether a human reviewed it.
+- how much logical support exists;
+- whether it is exact or heuristic;
+- whether it has human review.
 
-Conceptual provenance shape:
+Conceptual provenance:
 
 ```text
 ResearchSource
@@ -443,7 +444,7 @@ ResearchSource
   license_class
 ```
 
-Conceptual derived-evidence shape:
+Conceptual derived evidence:
 
 ```text
 HarmonyEvidence
@@ -456,15 +457,15 @@ HarmonyEvidence
   review_state
 ```
 
-`support_source_definitions` must count logical definitions, not transposed output files.
+`support_source_definitions` counts logical definitions, not transposed output files.
 
 ---
 
-## 12. Runtime representability is a report, not an extraction constraint
+## 12. Runtime representability is a report
 
-The current Stage 15 runtime vocabulary is deliberately bounded. Harmony research must not distort source evidence to fit it.
+Current Stage 15 is deliberately bounded. Research must not distort source evidence to fit it.
 
-After normalization, publish a representability classification such as:
+After normalization, classify observations such as:
 
 ```text
 REPRESENTABLE_CURRENT
@@ -478,14 +479,12 @@ DEFERRED_OTHER
 The report should answer:
 
 ```text
-What fraction of normalized source identities can current Stage 15 represent exactly?
-What information would be lost by current representation?
-Which missing capability has the highest evidence support?
+What can current Stage 15 represent exactly?
+What information would current representation lose?
+Which missing capability has the strongest logical-source support?
 ```
 
 A missing capability is not automatically a request to expand production code.
-
-Production expansion remains a separate architecture and musical-admission decision.
 
 ---
 
@@ -506,10 +505,10 @@ R2 CURATED RUNTIME CANDIDATE
 
 Rules:
 
-- R0 may contain source-specific identifiers needed for reproducibility.
-- R1 may contain normalized source references and aggregate evidence.
+- R0 may contain source-specific identity needed for reproducibility.
+- R1 contains normalized/generalized evidence.
 - R2 must be generic, bounded and explicitly reviewed.
-- production runtime may consume only R2 artifacts or manually encoded equivalents approved by a production PR.
+- production runtime may consume only R2 artifacts or manually encoded equivalents approved by a separate production PR.
 - R0/R1 artifacts do not gain runtime ownership merely because they are generated automatically.
 
 ---
@@ -524,7 +523,7 @@ Required outputs:
 
 ```text
 source revision
-source file / definition inventory
+source definition inventory
 logical progression count
 Major / Minor / Modal counts
 tag vocabulary and typed classification
@@ -544,7 +543,7 @@ Gate:
 
 ### H1 — Canonical parser and normalization
 
-Goal: parse every progression definition into loss-aware functional representation.
+Goal: parse every progression definition into a loss-aware functional representation.
 
 Required tests:
 
@@ -559,16 +558,16 @@ Required tests:
 Gate:
 
 - zero silent parser fallback;
-- complete source coverage or an explicit quarantine report.
+- complete coverage or an explicit quarantine report.
 
 ### H2 — Structural fingerprinting and dedup
 
-Goal: quantify how many distinct identities exist under several explicit equivalence models.
+Goal: quantify distinct identities under several explicit equivalence models.
 
 Required outputs:
 
 ```text
-H0..H6 duplicate reports
+F0..F6 duplicate reports
 near-duplicate candidate report
 repetition-expansion report
 rotation-similarity report without automatic equivalence
@@ -597,8 +596,8 @@ uncertain / unknown classification report
 Gate:
 
 - heuristic classes are falsifiable;
-- ambiguous cases can remain `UNKNOWN`;
-- no heuristic is used to rewrite normalized evidence.
+- ambiguous cases may remain `UNKNOWN`;
+- no heuristic rewrites normalized evidence.
 
 ### H4 — ChordRhythm extraction
 
@@ -609,19 +608,19 @@ Required outputs:
 ```text
 source rhythm-style inventory
 normalized rhythm fingerprints
-rest/continuation statistics
+rest / continuation statistics
 style-to-rhythm duplicate report
 harmonic-identity vs rhythm-identity cross table
 ```
 
 Gate:
 
-- one harmonic identity can reference multiple rhythm identities without duplication of harmonic support;
+- one harmonic identity may reference several rhythm identities without duplicating harmonic support;
 - ChordRhythm remains an independent dimension.
 
 ### H5 — Stage 15 representability report
 
-Goal: compare evidence against the current production contract without changing production.
+Goal: compare evidence against current production contracts without changing production.
 
 Required outputs:
 
@@ -643,7 +642,7 @@ Gate:
 
 Goal: propose the first small runtime batch only after H0-H5 evidence is stable.
 
-Candidate categories may include:
+Candidate organization classes may include:
 
 ```text
 STATIC / PEDAL
@@ -658,7 +657,7 @@ BORROWED_COLOR
 EXTENDED_PHRASE
 ```
 
-These are candidate runtime organization classes, not claims about source-native categories.
+These are candidate runtime organization classes, not claims about source-native taxonomy.
 
 Gate:
 
@@ -673,7 +672,7 @@ Gate:
 
 ## 15. Required tests for future extractor PRs
 
-Future Harmony Atlas tooling must include tests for at least:
+Future Harmony Atlas tooling must test at least:
 
 ```text
 same source revision + extractor version -> byte-identical export
@@ -681,7 +680,7 @@ key transposition does not increase logical harmonic support
 style materialization does not increase logical harmonic support
 bIII != III
 #IV != IV
-I != i when quality/root semantics differ
+quality information survives normalization
 New cannot enter mood_tags
 Cadence cannot enter mood_tags
 unknown tag/token is reported
@@ -691,11 +690,11 @@ harmonic fingerprint independent from chord-rhythm fingerprint
 no normalized identity requires absolute MIDI pitch
 ```
 
-Mutation tests should demonstrate that the suite fails if:
+Mutation tests should demonstrate failure if:
 
 - accidental signs are discarded;
 - quality is discarded;
-- key-generated files are counted as independent progression support;
+- key-generated files count as independent progression support;
 - source style variants inflate harmonic support;
 - tag categories are merged;
 - fingerprint ordering is lost;
@@ -707,16 +706,16 @@ Mutation tests should demonstrate that the suite fails if:
 
 The pinned source project is MIT-licensed.
 
-Research tooling must record the source revision and license provenance. If source code is copied or adapted into repository tooling, required copyright/license notices must be retained.
+Research tooling must record source revision and license provenance. If source code is copied or adapted into repository tooling, required copyright/license notices must be retained.
 
-Preferred approach:
+Preferred repository policy:
 
-- independently parse the small source data representation or exported research input;
+- parse the small source-data representation or a controlled research export;
 - keep external corpus payload outside firmware;
-- do not commit generated 13k MIDI payloads to normal GroovePuter repository history;
+- do not commit the generated 13k MIDI payloads to normal GroovePuter repository history;
 - commit only bounded research tooling, manifests, normalized reports and reviewed generic candidates where appropriate.
 
-This protocol does not itself import or redistribute the external MIDI pack.
+This protocol does not import or redistribute the external MIDI pack.
 
 ---
 
@@ -724,17 +723,17 @@ This protocol does not itself import or redistribute the external MIDI pack.
 
 | Risk | Likelihood | Impact | Required control |
 |---|---|---|---|
-| Generated MIDI files counted as independent observations | High | Critical | logical-definition unit of analysis |
+| Generated MIDI files counted as independent observations | High | Critical | logical-definition analysis unit |
 | Catalog incidence described as real-world popularity | High | High | evidence-class terminology |
 | Flat/sharp degree alteration lost | Medium | Critical | alteration-preserving schema/tests |
 | `Mood`, `New`, `Cadence` mixed into one tag axis | High | High | typed tag taxonomy |
-| One fingerprint used for every dedup question | High | High | H0-H6 fingerprint levels |
+| One fingerprint used for every dedup question | High | High | F0-F6 fingerprint levels |
 | Phrase repetition collapsed as duplicate | Medium | High | repetition-aware comparison |
 | Cyclic rotations treated as identical | Medium | High | similarity only, no default equivalence |
-| Chord rhythm coupled to progression identity | Medium | High | orthogonal schemas and support counts |
+| Chord rhythm coupled to progression identity | Medium | High | orthogonal schemas/support counts |
 | Research schema constrained by current Stage 15 | High | High | deferred representability classes |
-| Source ratios copied directly into runtime weights | Medium | High | separate human-reviewed admission policy |
-| Atlas becomes a new runtime owner | Medium | Critical | R0/R1/R2 boundary + existing ownership chain |
+| Source ratios copied directly into runtime weights | Medium | High | separate admission policy |
+| Atlas becomes a new runtime owner | Medium | Critical | R0/R1/R2 + existing ownership chain |
 | Embedded catalog expands without effective diversity | Medium | High | small H6 batch + musical coverage gate |
 
 ---
@@ -757,23 +756,23 @@ This protocol does not:
 
 ## 19. Definition of done for the research foundation
 
-The Harmony Atlas research foundation is ready for extractor implementation when all of the following are true:
+The Harmony Atlas research foundation is ready for extractor implementation when:
 
 ```text
 [ ] pinned source revision recorded
-[ ] evidence class recorded as EDITORIAL_CATALOG_EVIDENCE
+[ ] evidence class is EDITORIAL_CATALOG_EVIDENCE
 [ ] logical progression definition is the canonical analysis unit
 [ ] source-file multiplicity is explicitly non-statistical
 [ ] altered-degree representation is loss-aware
 [ ] tag taxonomy separates mood / structural / catalog metadata
 [ ] harmonic and chord-rhythm identities are orthogonal
-[ ] H0-H6 fingerprint model is documented
+[ ] F0-F6 fingerprint model is documented
+[ ] H0-H6 research sequence is documented
 [ ] popularity claims are prohibited without observational evidence
 [ ] provenance/support/confidence contract is documented
 [ ] runtime representability is a post-extraction report
 [ ] R0/R1/R2 admission boundary is documented
-[ ] H0-H6 implementation sequence is documented
 [ ] production ownership remains ChordProgression -> ChordRhythm -> Tonal Projector
 ```
 
-After this foundation is accepted, the next PR should implement **H0 source audit only**. It should not jump directly to runtime vocabulary admission.
+After this foundation is accepted, the next PR should implement **H0 source audit only**. It must not jump directly to runtime vocabulary admission.
