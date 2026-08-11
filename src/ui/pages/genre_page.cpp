@@ -10,6 +10,7 @@
 #include "../ui_input.h"
 #include "../../generation/composition/generation_profile.h"
 #include "../../generation/migration/strong_rhythm_live_bridge.h"
+#include "../../state/generation_request_state.h"
 #include "../../state/scene_revision.h"
 
 namespace {
@@ -336,14 +337,15 @@ void GenrePage::draw(IGfx& gfx) {
   gfx.setTextColor(palette.muted);
   gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
 
-  std::snprintf(value, sizeof(value), "ACTIVE %s/%s MAP:%s",
+  std::snprintf(value, sizeof(value), "ACTIVE %s/%s %s",
       GenreCatalog::generativeModeName(activeGenre), GenreCatalog::recipeName(activeRecipe),
-      linkStateShort(mini_acid_));
+      GroovePuterState::generationLevelShortName(
+          GroovePuterState::currentGenerationLevel()));
   gfx.setTextColor(activeGenre == selectedGenre && activeRecipe == selectedRecipe
                        ? axisColor : palette.warning);
   gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, value);
 
-  UI::drawStandardFooter(gfx, "TAB/U/D:FIELD L/R:CHANGE", "ENTER:Apply G:Gen M:Mode");
+  UI::drawStandardFooter(gfx, "TAB/U/D:FIELD L/R:CHANGE", "G:GEN P:LEVEL M:MODE");
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
@@ -397,14 +399,17 @@ bool GenrePage::handleEvent(UIEvent& event) {
     return true;
   }
 
-  // Retire the old global I/O/P generator shortcuts on the GENRE screen. They
-  // used GrooveboxModeManager directly and bypassed Stage 15 tonal ownership.
+  if (key == 'p' && !event.ctrl && !event.alt && !event.meta) {
+    const auto level = GroovePuterState::cycleGenerationLevel();
+    UI::showToast(GroovePuterState::generationLevelShortName(level), 1200);
+    return true;
+  }
+
+  // Retire the old global I/O generator shortcuts on the GENRE screen. P is
+  // owned above by the single P1/P2/P3 generation-request selector.
   if (!event.ctrl && !event.alt && !event.meta &&
-      (key == 'i' || key == 'o' || key == 'p')) {
-    UI::showToast(key == 'p'
-                      ? "CONTINUE: Ctrl+Alt+G"
-                      : "LEGACY SYNTH GEN OFF",
-                  1200);
+      (key == 'i' || key == 'o')) {
+    UI::showToast("LEGACY SYNTH GEN OFF", 1200);
     return true;
   }
 
