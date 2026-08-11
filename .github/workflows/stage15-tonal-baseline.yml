@@ -1,0 +1,20 @@
+name: Stage 15 tonal baseline
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  baseline-compare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare frozen legacy tonal fingerprints
+        run: |
+          mkdir -p build/host-tests
+          bash tests/run_stage15_tonal_baseline_dump.sh > build/host-tests/stage15_tonal_actual.tsv
+          test "$(wc -l < build/host-tests/stage15_tonal_actual.tsv)" -eq 257
+          diff -u tests/data/stage15_tonal_legacy_baseline.tsv build/host-tests/stage15_tonal_actual.tsv
