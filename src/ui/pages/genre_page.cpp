@@ -212,9 +212,9 @@ void GenrePage::cycleApplyMode(int delta) {
   GroovePuterState::markSceneMutated();
 }
 
-void GenrePage::applyCurrent() {
+void GenrePage::applyCurrent(bool forceRegenerate) {
   const ApplyMode applyMode = currentApplyMode();
-  const bool doRegenerate = applyMode != ApplyMode::ProfileOnly;
+  const bool doRegenerate = forceRegenerate || applyMode != ApplyMode::ProfileOnly;
   const bool doApplyTempo = applyMode == ApplyMode::RegenerateTempo;
   const bool wasPlaying = mini_acid_.isPlaying();
   if (wasPlaying && doRegenerate) mini_acid_.stop();
@@ -261,7 +261,8 @@ void GenrePage::applyCurrent() {
   char toast[96];
   std::snprintf(toast, sizeof(toast), "%s / %s: %s",
                 GenreCatalog::generativeModeName(genre),
-                GenreCatalog::recipeName(recipe), applyModeName());
+                GenreCatalog::recipeName(recipe),
+                forceRegenerate ? "GENERATED" : applyModeName());
   UI::showToast(toast, 1600);
 }
 
@@ -342,7 +343,7 @@ void GenrePage::draw(IGfx& gfx) {
                        ? axisColor : palette.warning);
   gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, value);
 
-  UI::drawStandardFooter(gfx, "TAB/U/D:FIELD L/R:CHANGE", "ENTER:Apply M:ApplyMode");
+  UI::drawStandardFooter(gfx, "TAB/U/D:FIELD L/R:CHANGE", "ENTER:Apply G:Gen M:Mode");
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
@@ -381,12 +382,18 @@ bool GenrePage::handleEvent(UIEvent& event) {
   }
 
   const char key = static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)));
+  const bool keyG = key == 'g' || event.scancode == GROOVEPUTER_G;
 
-  // ENTER: apply the current genre/recipe selection.
-  // Texture compatibility remains persisted but is not changed by this page.
+  // ENTER follows the APPLY selector. Plain G is always the explicit full
+  // Stage 15 materialization command for the pending GENRE/VARIANT/RHYTHM.
   if (event.key == '\n' || event.key == '\r') {
     morphAccelerator.reset();
     applyCurrent();
+    return true;
+  }
+  if (keyG && !event.ctrl && !event.alt && !event.meta) {
+    morphAccelerator.reset();
+    applyCurrent(true);
     return true;
   }
   if (event.key == ' ' && focus_ == FocusRow::Apply) {
