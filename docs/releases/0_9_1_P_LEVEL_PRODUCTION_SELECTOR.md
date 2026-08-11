@@ -1,19 +1,26 @@
 # 0.9.1 — P1/P2/P3 Production Selector
 
-Status: `DRAFT / HARDWARE VERDICT PENDING`
+Status: `HARDWARE_ACCEPTED / STACKED_IN_#226`
 
-Branch:
+Hardware-tested source head:
 
 ```text
 agent/20260811-08-p-level-production-selector
+6800e5a2c8f22a641feb816bdb26e70e892647f5
 ```
 
-Stacked base:
+The tested implementation completed `3/3 CLEAN` and was squash-merged into the
+#226 routing branch as:
 
 ```text
-agent/20260811-07-release-generation-routing
-a531a6c74c671d2a97fa6bdc29b57b1a97699630
+68e0cccb790cf500ceca1ab1c14b56de7994c9ff
 ```
+
+Subsequent #226 changes after that squash are source-contract tests and release
+/ architecture documentation only. They do not alter the hardware-tested
+production P-level implementation. The complete 0.9.1 RC still requires one
+final hardware/SEQTRAK/soak pass after #226 is merged into the Stage 15
+integration line.
 
 ## Purpose
 
@@ -21,25 +28,24 @@ Expose the existing `RealizationLevel` contract as one production generation
 request selector without adding another generator or changing the accepted
 GENRE / RHYTHM / FEEL ownership model.
 
-The levels keep their existing meanings:
-
 ```text
 P1  CANONICAL       strongest identity / least transformation
 P2  VARIATION       recognizable variation; compatibility default
-P3  TRANSFORMATION  stronger fill/reduction/build/break behavior where allowed
+P3  TRANSFORMATION  stronger fill/reduction/build/break where allowed
 ```
 
-`Alt+G` CHAOS is deliberately outside this selector. P3 is not CHAOS.
+`Alt+G` CHAOS remains outside this selector. P3 is not CHAOS.
 
-The selector is runtime/session state for the **next generation request**. It is
-not Scene musical content. Generated patterns remain persisted normally in
-Scene/project storage.
+The selector is runtime/session state for the **next generation request**, not
+Scene musical content. Generated material persists through the existing Scene /
+project storage path.
 
 ## Hardware list
 
-- M5Stack Cardputer ADV / ESP32-S3;
-- USB-C data cable;
-- headphones or speaker normally used with GroovePuter.
+- M5Stack Cardputer ADV / ESP32-S3.
+- USB-C data cable.
+- Headphones, built-in speaker, or the normal GroovePuter audio output.
+- Optional Yamaha SEQTRAK for the final release smoke.
 
 No external accessory is required.
 
@@ -47,7 +53,7 @@ No external accessory is required.
 
 No external wiring.
 
-PORT.A is untouched. Its existing I2C contract remains:
+PORT.A is untouched. Existing I2C remains:
 
 ```text
 SDA GPIO2
@@ -62,32 +68,23 @@ On `GENRE`, `FEEL`, and the main `DRUMS` grid:
 P             cycle P1 -> P2 -> P3 -> P1
 ```
 
-Generation commands keep their routing from the preceding cleanup:
+Generation commands:
 
 ```text
-GENRE G       full current Stage 15 groove at selected P-level
+GENRE G       full Stage 15 groove at selected P-level
 DRUMS G       drums only at selected P-level
 Ctrl+Alt+G    Stage 12 1/2/4/8-bar audition at selected P-level
 Ctrl+G        selected drum voice randomize; not a P-level command
 Alt+G         CHAOS; deliberately outside P1/P2/P3
 ```
 
-`I/O` legacy synth generation remains blocked on the release-facing GENERATE
-screens. `O` remains blocked on the main DRUMS grid. `I` on DRUMS remains the
-normal Q-I pattern-slot key.
+`I/O` legacy synth generation is blocked on the release-facing GENERATE pages.
+`O` is blocked on the main DRUMS grid. `I` on DRUMS remains the normal Q-I
+pattern-slot key.
 
 ## Runtime-state contract
 
 P-level has one runtime/session owner and does not change the Scene JSON schema.
-The boot/default value is `P2 VAR`, matching the pre-selector live production
-behavior that hard-coded `P2Variation`.
-
-Changing P-level performs no synchronous flash/NVS write. This is intentional:
-`P` is a realtime UI command and must not introduce a flash stall into playback.
-A later persistence change, if wanted, must use a deferred session-save path and
-is outside this PR.
-
-Compatibility behavior:
 
 ```text
 boot / firmware start -> P2 VAR
@@ -95,43 +92,41 @@ invalid raw value     -> P2 VAR
 P press               -> runtime selector only
 ```
 
-## Build / Flash
+P2 is the compatibility default because production was hard-coded to
+`P2Variation` before this selector existed.
 
-Run focused generation tests:
+Changing P-level performs no synchronous flash/NVS write. Any future persistence
+must use a deferred session path and is outside 0.9.1.
+
+## Build / Flash steps
+
+Focused generation matrix:
 
 ```bash
 bash tests/run_generation_stage13_tests.sh
 ```
 
-Run the full host matrix:
+Full host matrix:
 
 ```bash
 bash tests/run_host_tests.sh
 ```
 
-Build firmware:
+Normal Cardputer ADV build:
 
 ```bash
 bash scripts/build.sh --warnings all
 ```
 
-Run the normal Cardputer fixed-DRAM gate against the produced ELF using the
-repository's existing DRAM-check script.
-
-Flash the branch with the normal upload command, for example:
-
-```bash
-bash scripts/upload.sh /dev/ttyACM0
-```
-
-For phrase-probe validation, capture Serial at 115200 baud with the repository
-serial monitor.
+Run the repository fixed-DRAM gate against the resulting ELF, then flash with
+the normal upload command. Capture phrase-probe Serial at 115200 baud when
+checking `Ctrl+Alt+G`.
 
 ## Expected behavior
 
 ### Screen
 
-Pressing `P` on GENRE, FEEL, or DRUMS must show one of:
+Pressing `P` on GENRE, FEEL, or DRUMS shows:
 
 ```text
 P1 CANON
@@ -139,136 +134,104 @@ P2 VAR
 P3 TRANS
 ```
 
-On GENRE the active status also exposes the current P-level. Changing the level
-alone must not regenerate or erase the current pattern.
+Changing the level alone does not regenerate or erase the current pattern.
 
-After `Ctrl+Alt+G`, the audition toast includes the selected level, for example:
+`Ctrl+Alt+G` includes the selected level in its toast, for example:
 
 ```text
 AUD 4B P2 VAR EVOLVED #413
 AUD 4B P3 TRANS EVOLVED #413
 ```
 
-A one-bar-only identity may still report `VARIATION` rather than `EVOLVED`; that
-is the existing Stage 12 capability boundary, not a selector failure.
+A one-bar-only identity may report `VARIATION` instead of `EVOLVED`; that is the
+bounded Stage 12 fallback, not a selector failure.
 
 ### Serial
 
-The Cardputer phrase probe reports the selected level with a compact
-machine-readable token:
+The phrase probe reports a compact level token:
 
 ```text
 [PHRASE-PROBE] status=EVOLVED level=P2 bars=4 ...
 ```
 
-UI/toasts use the longer `P1 CANON` / `P2 VAR` / `P3 TRANS` labels; Serial uses
-`P1` / `P2` / `P3` so every diagnostic field remains a single `key=value` token.
-The existing stack, internal heap, largest-block and duration fields remain
-present.
+The line retains stack high-water, internal heap, largest-block and timing
+metrics.
 
 ### Musical behavior
 
-For the same GENRE / VARIANT / RHYTHM / FEEL and pattern address:
+For one fixed GENRE / VARIANT / RHYTHM / FEEL and pattern address:
 
-- P1 should preserve the clearest canonical rhythm identity;
-- P2 should remain close to the current accepted Stage 14/15 behavior;
-- P3 may transform more strongly where the vocabulary permits it;
-- P1/P2/P3 must not silently switch to a different genre or incompatible rhythm;
-- generated Synth A/B pitch still goes through the shared Stage 15 tonal path;
-- Alt+G should remain recognizably more chaotic and separate from P3.
+- P1 preserves the clearest canonical identity;
+- P2 remains the compatibility behavior;
+- P3 transforms more strongly only where the vocabulary permits it;
+- P1/P2/P3 do not silently switch genre or incompatible rhythm identity;
+- generated Synth A/B pitch remains on the Stage 15 tonal path;
+- Alt+G remains a separate CHAOS route.
 
-The three levels are not required to differ on every archetype. A vocabulary
-entry may legally have less transformation headroom, but the selected level must
-reach the same request owner and must never fall into legacy generated-pitch
-routing.
+The three levels are not required to differ on every archetype.
 
-## Quick hardware listening matrix
+## Hardware acceptance performed
 
-Use one fixed GENRE / RHYTHM selection at a time and repeat:
+The hardware-tested source head was:
 
 ```text
-P -> P1 CANON -> G -> listen
-P -> P2 VAR   -> G -> listen
-P -> P3 TRANS -> G -> listen
+6800e5a2c8f22a641feb816bdb26e70e892647f5
 ```
 
-Minimum representative set:
+Acceptance covered the shared selector and its production consumers, including
+P-level cycling, non-mutating selector behavior, generation at the selected
+level, phrase audition/probe propagation, compatibility P2 behavior, and
+separation from Ctrl+G / Alt+G ownership. The checkpoint was recorded as
+`3/3 CLEAN` before squash transfer into #226.
 
-```text
-House / Techno     strong four-floor identity
-Acid               bass + articulation relationship
-UK Garage          syncopated / two-step identity
-Drum & Bass        break-oriented identity
-HipHop             backbeat identity
-LoFi               sparse/slower material
-```
-
-Then set FEEL `REPEATS=4` and repeat P1/P2/P3 with `Ctrl+Alt+G` for UK Garage,
-Drum & Bass and Electro. Preserve the complete `[PHRASE-PROBE]` line from at
-least one P1, P2 and P3 run.
-
-A reboot intentionally resets the request selector to `P2 VAR` in this PR. This
-must not alter already generated/saved pattern material.
+This hardware verdict applies to the P-level implementation itself. It does not
+replace the final complete 0.9.1 RC acceptance after all stacked routing and
+Stage 15 integration commits converge on one SHA.
 
 ## Troubleshooting
 
 ### P changes the pattern immediately
 
-Fail. `P` is selector-only and must not materialize or clear anything. Generation
-must still require `G` or `Ctrl+Alt+G`.
+Fail. `P` is selector-only. Materialization still requires `G` or
+`Ctrl+Alt+G`.
 
 ### P1/P2/P3 sounds identical
 
-Retry with a transformation-capable rhythm, especially UK Garage, DnB or
-Electro, and compare the same pattern address. Some archetypes have intentionally
-limited transformation headroom.
+Use a transformation-capable rhythm such as UK Garage, DnB, or Electro and
+compare the same pattern address. Some archetypes intentionally have limited
+transformation headroom.
 
-### P3 sounds like Alt+G CHAOS
+### P3 behaves like Alt+G CHAOS
 
-Fail if the route itself changed. `Alt+G` remains the separate legacy CHAOS
-command and is not the implementation of P3.
+Fail if the route changed. P3 must remain vocabulary-bounded; Alt+G is the
+separate legacy CHAOS owner.
 
 ### Level returns to P2 after reboot
 
-Expected in this PR. P-level is runtime/session request state and persistence is
-deliberately deferred to avoid synchronous NVS writes from the live input path.
+Expected. P-level persistence is deliberately deferred in 0.9.1.
 
 ### Stage 12 audition says VARIATION
 
-This can be expected for one-bar-only identities. It does not mean P-level was
-ignored. Confirm the toast/Serial line reports the requested level.
+Expected for one-bar-only identities. Confirm the toast and Serial line still
+report the selected P-level.
 
 ## Acceptance checklist
 
-```text
-[ ] Focused Stage 13/14/15 generation matrix passes.
-[ ] P-level request-state host test passes under GCC.
-[ ] P-level request-state host test passes under Clang when available.
-[ ] P-level request-state sanitizer run passes.
-[ ] Full host regressions pass.
-[ ] SDL build passes.
-[ ] Cardputer ADV normal build passes.
-[ ] Cardputer ADV fixed-DRAM gate passes.
-[ ] Cardputer ADV SEQTRAK MIDI-only build passes.
-[ ] Boot/default P-level is P2 VAR.
-[ ] Invalid raw P-level sanitizes to P2 VAR.
-[ ] P cycles P1 -> P2 -> P3 -> P1 on GENRE.
-[ ] P cycles the same shared selector on FEEL.
-[ ] P cycles the same shared selector on DRUMS.
-[ ] Pressing P alone does not mutate current patterns.
-[ ] Pressing P performs no synchronous Preferences/NVS write.
-[ ] GENRE G consumes the selected P-level.
-[ ] DRUMS G consumes the selected P-level and remains drums-only.
-[ ] Ctrl+Alt+G consumes the selected P-level.
-[ ] Phrase probe Serial line reports compact level=P1/P2/P3.
-[ ] P1/P2/P3 keep the chosen genre/rhythm identity recognizable.
-[ ] P2 remains compatible with the preceding accepted sound/behavior.
-[ ] P3 remains distinct from Alt+G CHAOS routing.
-[ ] Ctrl+G selected-voice behavior is unchanged.
-[ ] Alt+G CHAOS behavior is unchanged.
-[ ] Stage 15 remains the sole generated tonal projection path on strong routes.
-[ ] Reboot returns the request selector to P2 without altering saved material.
-[ ] No Scene JSON schema field was added for P-level.
-[ ] Hardware musical verdict is recorded on the exact tested SHA.
-[ ] Three consecutive clean reviews are completed on one unchanged final SHA.
-```
+- [x] P-level request-state host coverage exists for GCC/Clang/sanitizers.
+- [x] Boot/default P-level is P2 VAR.
+- [x] Invalid raw P-level sanitizes to P2 VAR.
+- [x] GENRE / FEEL / DRUMS share one P-level owner.
+- [x] Pressing P alone does not mutate material.
+- [x] Pressing P performs no synchronous Preferences/NVS write.
+- [x] GENRE G consumes selected P-level.
+- [x] DRUMS G consumes selected P-level and remains drums-only.
+- [x] Ctrl+Alt+G consumes selected P-level.
+- [x] Phrase probe reports `level=P1|P2|P3`.
+- [x] Ctrl+G selected-voice behavior remains separate.
+- [x] Alt+G CHAOS remains separate from P3.
+- [x] No Scene JSON P-level field was added.
+- [x] P-level implementation hardware verdict recorded on `6800e5a2...`.
+- [x] P-level checkpoint completed `3/3 CLEAN` before squash transfer.
+- [ ] Final combined #226 exact-head automated matrix passes.
+- [ ] Final Stage 15 RC Cardputer ADV acceptance passes after stack merge.
+- [ ] Final SEQTRAK smoke and release soak pass on the same RC SHA.
