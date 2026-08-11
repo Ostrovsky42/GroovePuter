@@ -1,0 +1,258 @@
+name: Harmony Atlas H6
+
+on:
+  pull_request:
+    paths:
+      - "tools/research/harmony_atlas_h0.py"
+      - "tools/research/harmony_atlas_h1.py"
+      - "tools/research/harmony_atlas_h2.py"
+      - "tools/research/harmony_atlas_h3.py"
+      - "tools/research/harmony_atlas_h4.py"
+      - "tools/research/harmony_atlas_h5.py"
+      - "tools/research/harmony_atlas_h6.py"
+      - "tools/research/harmony_atlas_h6_sweep.py"
+      - "tools/research/harmony_atlas_h6_decision.py"
+      - "tests/test_harmony_atlas_h*.py"
+      - "docs/research/HARMONY_ATLAS_H1_NORMALIZED.sha256"
+      - "docs/research/HARMONY_ATLAS_H2_FINGERPRINTS.sha256"
+      - "docs/research/HARMONY_ATLAS_H3_FUNCTIONAL.sha256"
+      - "docs/research/HARMONY_ATLAS_H4_CHORD_RHYTHM.sha256"
+      - "docs/research/HARMONY_ATLAS_H5_REPRESENTABILITY.sha256"
+      - "docs/research/HARMONY_ATLAS_H6_*"
+      - ".github/workflows/harmony-atlas-h6.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  curated-candidate-simulation:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout research stack
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned harmony source
+        uses: actions/checkout@v4
+        with:
+          repository: ldrolez/free-midi-chords
+          ref: baf0896694de6b09ac00250722f2414202e668ed
+          path: build/harmony-atlas-source
+          fetch-depth: 1
+
+      - name: Checkout exact Stage 15 target
+        uses: actions/checkout@v4
+        with:
+          repository: Ostrovsky42/GroovePuter
+          ref: fc42763e7798866e61895bf1b8d62339ec59e0a7
+          path: build/stage15-target
+          fetch-depth: 1
+
+      - name: Run H0-H5 dependency tests
+        run: |
+          python3 tests/test_harmony_atlas_h0.py
+          python3 tests/test_harmony_atlas_h1.py
+          python3 tests/test_harmony_atlas_h2.py
+          python3 tests/test_harmony_atlas_h3.py
+          python3 tests/test_harmony_atlas_h4.py
+          python3 tests/test_harmony_atlas_h4_identity.py
+          python3 tests/test_harmony_atlas_h5.py
+
+      - name: Regenerate frozen H1-H5 evidence
+        run: |
+          python3 tools/research/harmony_atlas_h1.py --source-root build/harmony-atlas-source --output build/HARMONY_ATLAS_H1_NORMALIZED.json
+          sha256sum -c docs/research/HARMONY_ATLAS_H1_NORMALIZED.sha256
+          python3 tools/research/harmony_atlas_h2.py --normalization build/HARMONY_ATLAS_H1_NORMALIZED.json --output build/HARMONY_ATLAS_H2_FINGERPRINTS.json
+          sha256sum -c docs/research/HARMONY_ATLAS_H2_FINGERPRINTS.sha256
+          python3 tools/research/harmony_atlas_h3.py --normalization build/HARMONY_ATLAS_H1_NORMALIZED.json --fingerprints build/HARMONY_ATLAS_H2_FINGERPRINTS.json --output build/HARMONY_ATLAS_H3_FUNCTIONAL.json
+          sha256sum -c docs/research/HARMONY_ATLAS_H3_FUNCTIONAL.sha256
+          python3 tools/research/harmony_atlas_h4.py --source-root build/harmony-atlas-source --normalization build/HARMONY_ATLAS_H1_NORMALIZED.json --fingerprints build/HARMONY_ATLAS_H2_FINGERPRINTS.json --functional build/HARMONY_ATLAS_H3_FUNCTIONAL.json --output build/HARMONY_ATLAS_H4_CHORD_RHYTHM.json
+          sha256sum -c docs/research/HARMONY_ATLAS_H4_CHORD_RHYTHM.sha256
+          python3 tools/research/harmony_atlas_h5.py --normalization build/HARMONY_ATLAS_H1_NORMALIZED.json --rhythm build/HARMONY_ATLAS_H4_CHORD_RHYTHM.json --stage15-root build/stage15-target --output build/HARMONY_ATLAS_H5_REPRESENTABILITY.json
+          sha256sum -c docs/research/HARMONY_ATLAS_H5_REPRESENTABILITY.sha256
+
+      - name: Run H6 adversarial tests
+        run: |
+          python3 tests/test_harmony_atlas_h6.py
+          python3 tests/test_harmony_atlas_h6_sweep.py
+
+      - name: Generate H6 candidate simulation
+        run: |
+          python3 tools/research/harmony_atlas_h6.py \
+            --normalization build/HARMONY_ATLAS_H1_NORMALIZED.json \
+            --functional build/HARMONY_ATLAS_H3_FUNCTIONAL.json \
+            --rhythm build/HARMONY_ATLAS_H4_CHORD_RHYTHM.json \
+            --representability build/HARMONY_ATLAS_H5_REPRESENTABILITY.json \
+            --output build/HARMONY_ATLAS_H6_CANDIDATES.json \
+            --markdown-output build/HARMONY_ATLAS_H6_CANDIDATES.md
+
+      - name: Run exhaustive bounded bundle sweep
+        run: |
+          python3 tools/research/harmony_atlas_h6_sweep.py \
+            --normalization build/HARMONY_ATLAS_H1_NORMALIZED.json \
+            --functional build/HARMONY_ATLAS_H3_FUNCTIONAL.json \
+            --rhythm build/HARMONY_ATLAS_H4_CHORD_RHYTHM.json \
+            --representability build/HARMONY_ATLAS_H5_REPRESENTABILITY.json \
+            --output build/HARMONY_ATLAS_H6_SWEEP.json
+
+      - name: Generate human-reviewed H6 R2 decision
+        run: |
+          python3 tools/research/harmony_atlas_h6_decision.py \
+            --normalization build/HARMONY_ATLAS_H1_NORMALIZED.json \
+            --functional build/HARMONY_ATLAS_H3_FUNCTIONAL.json \
+            --rhythm build/HARMONY_ATLAS_H4_CHORD_RHYTHM.json \
+            --representability build/HARMONY_ATLAS_H5_REPRESENTABILITY.json \
+            --sweep build/HARMONY_ATLAS_H6_SWEEP.json \
+            --output build/HARMONY_ATLAS_H6_DECISION.json \
+            --markdown-output build/HARMONY_ATLAS_H6_DECISION.md
+
+      - name: Verify measured H6 acceptance
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          candidates = json.loads(Path("build/HARMONY_ATLAS_H6_CANDIDATES.json").read_text())
+          sweep = json.loads(Path("build/HARMONY_ATLAS_H6_SWEEP.json").read_text())
+          decision = json.loads(Path("build/HARMONY_ATLAS_H6_DECISION.json").read_text())
+
+          assert candidates["stage"] == "H6_CURATED_RUNTIME_CANDIDATES"
+          assert candidates["dependencies"] == {
+              "h1_normalized_json_sha256": "4783be1f77784a978f2239d8527214b3912eaf262e92430bff755679fec0734e",
+              "h3_functional_json_sha256": "f15d127722691789f6c1d1a003028da755e06a1cba1d2c1014c1232697cc456d",
+              "h4_chord_rhythm_json_sha256": "68c51f4ca8827167f2b6ff12543ed226164c9c8aa691816caac9102058849e81",
+              "h5_representability_json_sha256": "df6b05edafd7d0fee34714fe957637ce3c1f5e392829fcfd66bdec7746395060",
+              "stage15_target_commit": "fc42763e7798866e61895bf1b8d62339ec59e0a7",
+          }
+          assert candidates["baseline"] == {
+              "logical_definitions": 190,
+              "unique_f3": 189,
+              "unique_f5": 30,
+              "unique_f6": 945,
+              "current_exact_f3": 0,
+              "current_exact_f5": 0,
+              "current_exact_f6": 0,
+          }
+          named = {row["name"]: row for row in candidates["bundle_results"]}
+          assert (named["MINIMAL"]["capability_envelope"]["exact_unique_f3"], named["MINIMAL"]["capability_envelope"]["exact_unique_f5"], named["MINIMAL"]["capability_envelope"]["exact_unique_f6"]) == (98, 12, 285)
+          assert (named["MINIMAL"]["bounded_r2_proposal"]["exact_unique_f3"], named["MINIMAL"]["bounded_r2_proposal"]["exact_unique_f5"], named["MINIMAL"]["bounded_r2_proposal"]["exact_unique_f6"]) == (4, 7, 6)
+          assert (named["BALANCED"]["capability_envelope"]["exact_unique_f3"], named["BALANCED"]["capability_envelope"]["exact_unique_f5"], named["BALANCED"]["capability_envelope"]["exact_unique_f6"]) == (98, 18, 465)
+          assert (named["BALANCED"]["bounded_r2_proposal"]["exact_unique_f3"], named["BALANCED"]["bounded_r2_proposal"]["exact_unique_f5"], named["BALANCED"]["bounded_r2_proposal"]["exact_unique_f6"]) == (8, 9, 18)
+          assert (named["WIDE"]["capability_envelope"]["exact_unique_f3"], named["WIDE"]["capability_envelope"]["exact_unique_f5"], named["WIDE"]["capability_envelope"]["exact_unique_f6"]) == (189, 30, 945)
+          assert (named["WIDE"]["bounded_r2_proposal"]["exact_unique_f3"], named["WIDE"]["bounded_r2_proposal"]["exact_unique_f5"], named["WIDE"]["bounded_r2_proposal"]["exact_unique_f6"]) == (12, 30, 60)
+
+          assert sweep["stage"] == "H6_BOUNDED_BUNDLE_SWEEP"
+          assert sweep["search_space"]["evaluated_bundle_count"] == 7936
+          assert sweep["phase1_candidate_count"] == 2346
+          assert sweep["phase1_pareto_count"] == 146
+          assert sweep["global_pareto_count"] == 191
+          assert sweep["phase1_limits"] == {
+              "max_harmonic_templates": 8,
+              "max_rhythm_grammars": 4,
+              "max_capability_complexity_points": 16,
+              "max_reference_payload_bytes": 160,
+              "require_distinct_rhythm_macro_families": True,
+          }
+          assert sweep["phase1_rank_objective"] == "MAX_F6_THEN_F5_THEN_F3_THEN_MIN_COMPLEXITY_THEN_MIN_REFERENCE_PAYLOAD_AFTER_MACRO_DIVERSITY_GATE"
+          top = sweep["top_phase1"]
+          assert [row["sweep_id"] for row in top[:5]] == ["S00803", "S00804", "S00865", "S00866", "S00617"]
+          assert all(len(row["rhythm_macro_families"]) == len(set(row["rhythm_macro_families"])) for row in top)
+
+          assert decision["stage"] == "H6_HUMAN_REVIEWED_R2_DECISION"
+          assert decision["decision"] == "RECOMMEND_R2_PHASE1"
+          assert decision["selected_sweep_id"] == "S00617"
+          selected = decision["selected_bundle"]
+          assert selected["capabilities"] == [
+              "MULTI_BAR_CHORD_RHYTHM_IDENTITY",
+              "QUALITY_RENDERING_CONSUMPTION",
+              "SAME_CHORD_RETRIGGER_WITHOUT_HARMONIC_ADVANCE",
+              "TRIAD_POLARITY_OR_EXPLICIT_CONTEXT",
+          ]
+          assert selected["harmonic_template_budget"] == 8
+          assert selected["rhythm_style_candidates"] == ["default", "pop", "hiphop2", "soul"]
+          assert selected["rhythm_macro_families"] == ["HELD", "ASYMMETRIC_CHANGE", "GAPPED_RETRIGGER", "RETRIGGERED_COMP"]
+          assert selected["capability_envelope"] == {
+              "exact_unique_f3": 98,
+              "exact_unique_f5": 18,
+              "exact_f5_observations": 864,
+              "exact_unique_f6": 465,
+              "exact_f6_observations": 465,
+          }
+          proposal = selected["bounded_r2_proposal"]
+          assert (proposal["exact_unique_f3"], proposal["exact_unique_f5"], proposal["exact_unique_f6"]) == (8, 13, 25)
+          assert proposal["exact_f5_observations"] == 675
+          assert proposal["exact_f6_observations"] == 25
+          assert [(row["candidate_id"], row["source_ids"], row["harmonic_event_count"], row["encoding_strategy"]) for row in proposal["harmonic_candidates"]] == [
+              ("R2H_CADENCE_01", ["Minor:034"], 3, "ROOT_PATH_OVERLAY"),
+              ("R2H_FOUR_CHORD_LOOP_01", ["Major:025"], 4, "ROOT_PATH_OVERLAY"),
+              ("R2H_MODAL_LOOP_01", ["Modal:041"], 6, "NEW_GENERIC_TEMPLATE"),
+              ("R2H_TURNAROUND_01", ["Major:018"], 5, "NEW_GENERIC_TEMPLATE"),
+              ("R2H_EXTENDED_PHRASE_01", ["Minor:040"], 8, "NEW_GENERIC_TEMPLATE"),
+              ("R2H_THREE_CHORD_LOOP_01", ["Minor:009"], 3, "ROOT_PATH_OVERLAY"),
+              ("R2H_FOUR_CHORD_LOOP_02", ["Minor:011"], 4, "NEW_GENERIC_TEMPLATE"),
+              ("R2H_CADENCE_02", ["Minor:045"], 3, "NEW_GENERIC_TEMPLATE"),
+          ]
+          assert [(row["candidate_id"], row["candidate_name"], row["source_style_provenance"]) for row in proposal["rhythm_candidates"]] == [
+              ("R2R_HELD_PER_CHORD", "HELD_PER_CHORD", "default"),
+              ("R2R_ASYMMETRIC_6_10", "ASYMMETRIC_6_10", "pop"),
+              ("R2R_GAPPED_RETRIGGER", "GAPPED_RETRIGGER", "hiphop2"),
+              ("R2R_RETRIGGERED_COMP", "RETRIGGERED_COMP", "soul"),
+          ]
+          assert selected["reference_cost"]["harmonic_candidate_payload_bytes"] == 96
+          assert selected["reference_cost"]["rhythm_candidate_payload_bytes"] == 52
+          assert selected["reference_cost"]["total_candidate_payload_bytes"] == 148
+          assert selected["reference_cost"]["capability_complexity_points"] == 12
+          assert selected["reference_cost"]["production_compiled_flash_bytes"] == "NOT_MEASURED_H6_NO_PRODUCTION"
+          assert selected["reference_cost"]["production_runtime_ram_bytes"] == "NOT_MEASURED_H6_NO_PRODUCTION"
+          raw = decision["selection_rationale"]["raw_count_winner"]
+          assert raw == {
+              "sweep_id": "S00803",
+              "proposal_f6": 28,
+              "complexity_points": 15,
+              "payload_bytes": 148,
+              "additional_capability": "CHORD_RHYTHM_BEYOND_GENERIC_4_BAR_CONTAINER",
+              "incremental_f6_over_selected": 3,
+              "decision": "HOLD_PHASE2",
+              "reason": "Crosses the project-wide generic 4-bar container for only three additional exact F6 identities in this bounded batch; compiled RAM/flash cost is still unmeasured.",
+          }
+          asym = decision["selection_rationale"]["asymmetric_pair_choice"]
+          assert asym["selected"] == "ASYMMETRIC_6_10"
+          assert asym["alternate"] == "ASYMMETRIC_7_9"
+          assert asym["alternate_sweep_id"] == "S00618"
+          assert asym["coverage_tie"] is True and asym["payload_tie"] is True
+          assert decision["admission_boundary"]["production_runtime_admission"] is False
+          assert decision["admission_boundary"]["production_code_changes"] == 0
+          assert decision["admission_boundary"]["source_incidence_to_runtime_weight"] == "FORBIDDEN"
+          PY
+
+      - name: Verify H6 artifact digests
+        run: |
+          sha256sum -c docs/research/HARMONY_ATLAS_H6_CANDIDATES.sha256
+          sha256sum -c docs/research/HARMONY_ATLAS_H6_SWEEP.sha256
+          sha256sum -c docs/research/HARMONY_ATLAS_H6_DECISION.sha256
+
+      - name: Verify generated H6 reports are reproducible
+        run: |
+          diff -u docs/research/HARMONY_ATLAS_H6_CANDIDATES.md build/HARMONY_ATLAS_H6_CANDIDATES.md
+          diff -u docs/research/HARMONY_ATLAS_H6_DECISION.md build/HARMONY_ATLAS_H6_DECISION.md
+
+      - name: Verify H6 R2 contract boundary
+        run: |
+          grep -q 'Selected sweep: \*\*`S00617`\*\*' docs/research/HARMONY_ATLAS_H6_R2_CONTRACT.md
+          grep -q 'bounded R2 proposal: F3 8 / F5 13 / F6 25' docs/research/HARMONY_ATLAS_H6_R2_CONTRACT.md
+          grep -q 'Reference candidate payload: \*\*148 B\*\*' docs/research/HARMONY_ATLAS_H6_R2_CONTRACT.md
+          grep -q 'Production runtime admission:\*\* false' docs/research/HARMONY_ATLAS_H6_R2_CONTRACT.md
+          grep -q 'S00803' docs/research/HARMONY_ATLAS_H6_R2_CONTRACT.md
+          grep -q 'HOLD_PHASE2' docs/research/HARMONY_ATLAS_H6_R2_CONTRACT.md
+
+      - name: Upload generated H6 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: harmony-atlas-h6-evidence
+          path: |
+            build/HARMONY_ATLAS_H6_CANDIDATES.json
+            build/HARMONY_ATLAS_H6_CANDIDATES.md
+            build/HARMONY_ATLAS_H6_SWEEP.json
+            build/HARMONY_ATLAS_H6_DECISION.json
+            build/HARMONY_ATLAS_H6_DECISION.md
+          if-no-files-found: error
