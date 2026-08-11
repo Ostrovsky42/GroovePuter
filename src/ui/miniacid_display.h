@@ -43,6 +43,11 @@ public:
   bool handleEvent(UIEvent event);
   int currentPageIndex() const { return page_index_; }
 
+  // Public so temporary hardware-audition harnesses can expose an unmistakable
+  // mode/test banner without adding a second UI owner. Production pages keep
+  // using the same toast renderer.
+  void showToast(const char* msg, int durationMs = 1500);
+
 private:
   void initMuteButtons(int x, int y, int w, int h);
   void initPageHint(int x, int y, int w);
@@ -92,7 +97,6 @@ private:
   HeaderState buildHeaderState() const;
   FooterState buildFooterState() const;
   
-  void showToast(const char* msg, int durationMs = 1500);
   void updateCyclePulse_();
   void handlePaging_();
   void captureUiSession_();
