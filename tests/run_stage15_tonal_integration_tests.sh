@@ -7,7 +7,7 @@ mkdir -p "${BUILD_DIR}"
 
 python3 "${ROOT}/tests/test_stage15_tonal_integration_source_regressions.py"
 
-SOURCES=(
+COMMON_SOURCES=(
   "${ROOT}/src/generation/generation_context.cpp"
   "${ROOT}/src/generation/composition/rhythm_selection.cpp"
   "${ROOT}/src/generation/composition/generation_profile.cpp"
@@ -30,8 +30,14 @@ SOURCES=(
   "${ROOT}/src/generation/tonal/tonal_materializer.cpp"
   "${ROOT}/src/generation/migration/tonal_pattern_adapter.cpp"
   "${ROOT}/src/generation/migration/strong_rhythm_migration.cpp"
-  "${ROOT}/tests/test_stage15_tonal_integration.cpp"
 )
+
+"${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror -Wvla \
+  -Wno-c++20-extensions -Wno-unused-but-set-variable \
+  -I"${ROOT}" "${COMMON_SOURCES[@]}" \
+  "${ROOT}/tests/test_stage15_tonal_integration_probe.cpp" \
+  -o "${BUILD_DIR}/stage15_tonal_integration_probe"
+"${BUILD_DIR}/stage15_tonal_integration_probe"
 
 build_and_run() {
   local compiler="$1"
@@ -39,7 +45,8 @@ build_and_run() {
   shift 2
   "${compiler}" -std=c++17 -Wall -Wextra -Werror -Wvla \
     -Wno-c++20-extensions -Wno-unused-but-set-variable \
-    -I"${ROOT}" "$@" "${SOURCES[@]}" -o "${output}"
+    -I"${ROOT}" "$@" "${COMMON_SOURCES[@]}" \
+    "${ROOT}/tests/test_stage15_tonal_integration.cpp" -o "${output}"
   "${output}"
 }
 
