@@ -77,7 +77,31 @@ void testAcceptedStaticModesStayConservative() {
   }
 }
 
-void testSynthProfilesOwnWideBassLeapData() {
+void testMovingProfilesUseFullBassCorridorLeapBudget() {
+  for (GenerativeMode mode : {
+           GenerativeMode::Acid,
+           GenerativeMode::Outrun,
+           GenerativeMode::Darksynth,
+           GenerativeMode::Electro,
+           GenerativeMode::Reggae,
+           GenerativeMode::TripHop,
+           GenerativeMode::Broken,
+           GenerativeMode::Chip,
+           GenerativeMode::HipHop,
+           GenerativeMode::FunkSoul,
+           GenerativeMode::UkGarage,
+           GenerativeMode::DrumAndBass,
+           GenerativeMode::LoFi,
+       }) {
+    const TonalGenerationProfile profile = tonalGenerationProfileFor(
+        settingsFor(mode));
+    assert(profile.bassRegister.minMidi == 24);
+    assert(profile.bassRegister.maxMidi == 47);
+    assert(profile.bassRegister.maxAdjacentLeapSemitones == 23);
+  }
+}
+
+void testSynthProfilesAvoidUnmaterializableRootOctaveAuto() {
   for (GenerativeMode mode : {
            GenerativeMode::Outrun,
            GenerativeMode::Darksynth,
@@ -85,11 +109,12 @@ void testSynthProfilesOwnWideBassLeapData() {
        }) {
     const TonalGenerationProfile profile = tonalGenerationProfileFor(
         settingsFor(mode));
-    assert(profile.bassRegister.minMidi == 24);
-    assert(profile.bassRegister.maxMidi == 47);
-    assert(profile.bassRegister.maxAdjacentLeapSemitones == 23);
     assert((profile.bassPolicy.allowedContours &
-            bassPitchContourBit(BassPitchContourId::RootOctave)) != 0);
+            bassPitchContourBit(BassPitchContourId::RootOctave)) == 0);
+    assert((profile.bassPolicy.allowedContours &
+            bassPitchContourBit(BassPitchContourId::RootFifth)) != 0);
+    assert((profile.bassPolicy.allowedContours &
+            bassPitchContourBit(BassPitchContourId::LeapReturn)) != 0);
     assert(profile.bassPolicy.preferredContours != 0);
   }
 }
@@ -126,7 +151,8 @@ void testVariantsInheritModePolicy() {
 int main() {
   testAllModes();
   testAcceptedStaticModesStayConservative();
-  testSynthProfilesOwnWideBassLeapData();
+  testMovingProfilesUseFullBassCorridorLeapBudget();
+  testSynthProfilesAvoidUnmaterializableRootOctaveAuto();
   testVariantsInheritModePolicy();
   std::cout << "Stage 15 tonal profile matrix: OK\n";
   return 0;
