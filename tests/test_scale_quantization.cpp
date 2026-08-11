@@ -1,6 +1,7 @@
 #include <cassert>
 #include <cstdint>
 #include <cstdlib>
+#include <initializer_list>
 #include <iostream>
 
 #include "src/dsp/advanced_pattern_generator.h"
