@@ -66,6 +66,8 @@ int main() {
           << "FAIL mode=" << static_cast<int>(mode)
           << " ordinal=" << ordinal
           << " status=" << static_cast<int>(r.status)
+          << " progression=" << static_cast<int>(r.progressionId)
+          << " bassContour=" << static_cast<int>(r.bassPitchContour)
           << " bassPitch=" << static_cast<int>(r.bassPitchBehaviorStatus)
           << " bassTonal=" << static_cast<int>(r.bassTonalStatus)
           << " bassProj=" << static_cast<int>(r.bassTonalProjectionStatus)
@@ -74,6 +76,7 @@ int main() {
           << " chordTonal=" << static_cast<int>(r.chordTonalStatus)
           << " chordProj=" << static_cast<int>(r.chordTonalProjectionStatus)
           << " chordAdapt=" << static_cast<int>(r.chordTonalAdaptStatus)
+          << " melodyContour=" << static_cast<int>(r.melodicPitchContour)
           << " melodyPitch=" << static_cast<int>(r.melodicPitchIntentStatus)
           << " melodyTonal=" << static_cast<int>(r.melodicTonalStatus)
           << " melodyProj=" << static_cast<int>(r.melodicTonalProjectionStatus)
