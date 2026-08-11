@@ -165,11 +165,18 @@ constexpr uint16_t kMelodyAcidPreferred = melodicContours({
 });
 
 constexpr TonalRegisterCorridor kBassRegister{24, 47, 12};
+// Synth-driven bass vocabulary intentionally includes RootOctave/LeapReturn.
+// When those offsets combine with a moving harmonic root, the musical leap can
+// exceed 12 semitones while every note still remains inside the two-octave bass
+// corridor. Use the corridor's physical maximum (23) only for that profile.
+constexpr TonalRegisterCorridor kSynthBassRegister{24, 47, 23};
 constexpr TonalRegisterCorridor kSecondaryRegister{48, 71, 16};
 
-constexpr TonalGenerationProfile tonal(BassBehaviorPolicy bass,
-                                       MelodicIntentPolicy melodic) {
-  return {bass, melodic, kBassRegister, kSecondaryRegister};
+constexpr TonalGenerationProfile tonal(
+    BassBehaviorPolicy bass,
+    MelodicIntentPolicy melodic,
+    TonalRegisterCorridor bassRegister = kBassRegister) {
+  return {bass, melodic, bassRegister, kSecondaryRegister};
 }
 
 constexpr TonalGenerationProfile kStaticProfile = tonal(
@@ -179,7 +186,8 @@ constexpr TonalGenerationProfile kAcidProfile = tonal(
     melodicPolicy(kMelodyAcidAllowed, kMelodyAcidPreferred));
 constexpr TonalGenerationProfile kSynthProfile = tonal(
     bassPolicy(kBassSynthAllowed, kBassSynthPreferred),
-    melodicPolicy(kMelodyDriveAllowed, kMelodyDrivePreferred));
+    melodicPolicy(kMelodyDriveAllowed, kMelodyDrivePreferred),
+    kSynthBassRegister);
 constexpr TonalGenerationProfile kBrokenProfile = tonal(
     bassPolicy(kBassBrokenAllowed, kBassBrokenPreferred),
     melodicPolicy(kMelodyBrokenAllowed, kMelodyBrokenPreferred));
