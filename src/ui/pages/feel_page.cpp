@@ -321,7 +321,8 @@ bool FeelPage::handleEvent(UIEvent& event) {
   const char lowerKey = event.key
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)))
       : 0;
-  if (!event.ctrl && !event.alt && !event.meta && lowerKey == 'p') {
+  const bool keyP = lowerKey == 'p' || event.scancode == GROOVEPUTER_P;
+  if (!event.ctrl && !event.alt && !event.meta && keyP) {
     const auto level = GroovePuterState::cycleGenerationLevel();
     UI::showToast(GroovePuterState::generationLevelShortName(level), 1200);
     return true;
