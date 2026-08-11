@@ -68,7 +68,8 @@ require(
 )
 
 # P is reachable from both GENERATE pages and the main DRUMS grid, always through
-# the same session owner. The temporary 'P means continuation' guard is gone.
+# the same session owner. Cardputer may deliver a printable key or only scancode,
+# so every public P-level surface must accept GROOVEPUTER_P as well.
 for name, source in (("GENRE", GENRE), ("FEEL", FEEL), ("DRUMS", DRUM)):
     require(
         source,
@@ -79,6 +80,11 @@ for name, source in (("GENRE", GENRE), ("FEEL", FEEL), ("DRUMS", DRUM)):
         source,
         "GroovePuterState::generationLevelShortName(level)",
         f"{name} no longer reports the selected P-level",
+    )
+    require(
+        source,
+        "GROOVEPUTER_P",
+        f"{name} no longer recognizes scancode-only P",
     )
     if "CONTINUE: Ctrl+Alt+G" in source:
         raise AssertionError(f"{name} still treats plain P as continuation")
