@@ -50,6 +50,7 @@ SOURCES := \
 	../src/generation/generation_context.cpp \
 	../src/generation/composition/rhythm_selection.cpp \
 	../src/generation/composition/generation_profile.cpp \
+	../src/generation/composition/tonal_profile.cpp \
 	../src/generation/feel/feel_interpreter.cpp \
 	../src/generation/feel/feel_pattern_adapter.cpp \
 	../src/generation/rhythm/rhythm_catalog.cpp \
@@ -60,10 +61,15 @@ SOURCES := \
 	../src/generation/materialization/pattern_materializer.cpp \
 	../src/generation/roles/semantic_pattern_projector.cpp \
 	../src/generation/roles/bass_rhythm.cpp \
+	../src/generation/roles/bass_pitch_behavior.cpp \
 	../src/generation/roles/chord_rhythm.cpp \
 	../src/generation/roles/chord_progression.cpp \
 	../src/generation/roles/melodic_motif.cpp \
+	../src/generation/roles/melodic_pitch_intent.cpp \
+	../src/generation/tonal/tonal_projector.cpp \
+	../src/generation/tonal/tonal_materializer.cpp \
 	../src/generation/phrase/phrase_evolution.cpp \
+	../src/generation/migration/tonal_pattern_adapter.cpp \
 	../src/generation/migration/strong_rhythm_migration.cpp \
 	../src/generation/migration/strong_rhythm_live_bridge.cpp \
 	../src/input/performance_keyboard.cpp \
