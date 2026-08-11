@@ -1,0 +1,199 @@
+name: Harmony Atlas H3
+
+on:
+  pull_request:
+    paths:
+      - "tools/research/harmony_atlas_h0.py"
+      - "tools/research/harmony_atlas_h1.py"
+      - "tools/research/harmony_atlas_h2.py"
+      - "tools/research/harmony_atlas_h3.py"
+      - "tests/test_harmony_atlas_h1.py"
+      - "tests/test_harmony_atlas_h2.py"
+      - "tests/test_harmony_atlas_h3.py"
+      - "docs/research/HARMONY_ATLAS_H1_NORMALIZED.sha256"
+      - "docs/research/HARMONY_ATLAS_H2_FINGERPRINTS.sha256"
+      - "docs/research/HARMONY_ATLAS_H3_FUNCTIONAL.md"
+      - "docs/research/HARMONY_ATLAS_H3_FUNCTIONAL.sha256"
+      - "docs/research/HARMONY_ATLAS_H3_FEATURE_CONTRACT.md"
+      - ".github/workflows/harmony-atlas-h3.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  functional-analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout GroovePuter
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned harmony source
+        uses: actions/checkout@v4
+        with:
+          repository: ldrolez/free-midi-chords
+          ref: baf0896694de6b09ac00250722f2414202e668ed
+          path: build/harmony-atlas-source
+          fetch-depth: 1
+
+      - name: Run H0-H2 dependency tests
+        run: |
+          python3 tests/test_harmony_atlas_h0.py
+          python3 tests/test_harmony_atlas_h1.py
+          python3 tests/test_harmony_atlas_h2.py
+
+      - name: Regenerate verified H1 normalization
+        run: |
+          python3 tools/research/harmony_atlas_h1.py \
+            --source-root build/harmony-atlas-source \
+            --output build/HARMONY_ATLAS_H1_NORMALIZED.json
+          sha256sum -c docs/research/HARMONY_ATLAS_H1_NORMALIZED.sha256
+
+      - name: Regenerate verified H2 fingerprints
+        run: |
+          python3 tools/research/harmony_atlas_h2.py \
+            --normalization build/HARMONY_ATLAS_H1_NORMALIZED.json \
+            --output build/HARMONY_ATLAS_H2_FINGERPRINTS.json
+          sha256sum -c docs/research/HARMONY_ATLAS_H2_FINGERPRINTS.sha256
+
+      - name: Run H3 unit and contract tests
+        run: python3 tests/test_harmony_atlas_h3.py
+
+      - name: Generate H3 functional evidence
+        run: |
+          python3 tools/research/harmony_atlas_h3.py \
+            --normalization build/HARMONY_ATLAS_H1_NORMALIZED.json \
+            --fingerprints build/HARMONY_ATLAS_H2_FINGERPRINTS.json \
+            --output build/HARMONY_ATLAS_H3_FUNCTIONAL.json \
+            --markdown-output build/HARMONY_ATLAS_H3_FUNCTIONAL.md
+
+      - name: Verify pinned-source H3 acceptance
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          result = json.loads(Path("build/HARMONY_ATLAS_H3_FUNCTIONAL.json").read_text())
+
+          assert result["stage"] == "H3_FUNCTIONAL_ANALYSIS"
+          deps = result["dependencies"]
+          assert deps["h1_normalized_json_sha256"] == "4783be1f77784a978f2239d8527214b3912eaf262e92430bff755679fec0734e"
+          assert deps["h2_fingerprints_json_sha256"] == "453287577707e676128f3f83d1215922e22049ab0d880492f95af20ea7e68b0b"
+          assert deps["f0_f3_stability"] == {
+              "verified": True,
+              "definition_count": 190,
+              "levels": ["F0", "F1", "F2", "F3"],
+          }
+
+          f4 = result["f4"]
+          assert f4["definition_count"] == 190
+          assert f4["unique_class_count"] == 101
+          assert f4["duplicate_group_count"] == 27
+          assert f4["duplicate_surplus_count"] == 89
+          assert f4["largest_class_size"] == 29
+          assert f4["cross_family_duplicate_group_count"] == 14
+
+          abstraction = result["f4_abstraction_report"]
+          assert abstraction["f4_groups_spanning_multiple_f3_classes"] == 27
+          assert abstraction["definitions_in_f4_overcollapse_groups"] == 116
+          assert abstraction["largest_distinct_f3_count_inside_one_f4"] == 29
+          assert abstraction["dedup_authority"] == "FORBIDDEN"
+
+          reports = result["reports"]
+          assert reports["closure_class_distribution"] == {
+              "CADENTIAL": 17,
+              "CLOSED_TONIC_LOOP": 4,
+              "DOMINANT_LOOP": 27,
+              "MODAL_AMBIGUOUS_LOOP": 82,
+              "OPEN_LOOP": 48,
+              "TURNAROUND": 12,
+          }
+          assert reports["cadence_class_distribution"] == {
+              "AUTHENTIC_CADENCE_CANDIDATE": 10,
+              "DECEPTIVE_CADENCE_CANDIDATE": 3,
+              "HALF_CADENCE_CANDIDATE": 27,
+              "MODAL_AMBIGUOUS": 82,
+              "NO_CADENCE": 64,
+              "PLAGAL_CADENCE_CANDIDATE": 4,
+          }
+          assert reports["cadence_tag_comparison_distribution"] == {
+              "DERIVED_ONLY": 44,
+              "NEITHER": 140,
+              "TAGGED_MODAL_UNRESOLVED": 6,
+          }
+
+          chromatic = reports["chromatic_report"]
+          assert chromatic["definition_count"] == 71
+          assert chromatic["total_chromatic_root_events"] == 123
+          assert chromatic["event_count_by_family"] == {"Modal": 123}
+          assert chromatic["altered_degree_class_counts"] == {
+              "#IV": 2,
+              "bI": 2,
+              "bII": 31,
+              "bIII": 26,
+              "bVI": 27,
+              "bVII": 35,
+          }
+
+          borrowed = reports["borrowed_candidate_report"]
+          assert borrowed["definition_count"] == 0
+          assert borrowed["total_borrowed_candidate_events"] == 0
+          assert borrowed["event_count_by_family"] == {}
+          assert borrowed["claim_level"] == "CANDIDATE_ONLY_NOT_CONFIRMED_BORROWING"
+
+          quality = reports["quality_diversity_report"]
+          assert quality["unique_quality_count_distribution"] == {
+              "1": 26,
+              "2": 129,
+              "3": 25,
+              "4": 8,
+              "5": 2,
+          }
+          assert quality["quality_entropy_bits_mean"] == 0.89766
+          assert quality["quality_entropy_bits_min"] == 0.0
+          assert quality["quality_entropy_bits_max"] == 2.155639
+
+          motion = reports["functional_motion_report"]
+          assert motion["dominant_resolution_total"] == 17
+          assert motion["role_event_counts"] == {
+              "DOMINANT": 80,
+              "MODAL_COLOR": 256,
+              "PREDOMINANT": 108,
+              "TONIC": 241,
+              "UNALTERED_OTHER": 161,
+          }
+          assert reports["uncertain_unknown_report"]["definition_count"] == 82
+
+          contract = result["analysis_contract"]
+          assert contract["derived_labels_rewrite_source_identity"] is False
+          assert contract["f0_f3_rewrite"] == "FORBIDDEN"
+          assert contract["modal_common_practice_function_forced"] is False
+          assert contract["borrowed_label_strength"] == "CANDIDATE_ONLY"
+          assert contract["f4_destructive_dedup_authority"] == "FORBIDDEN"
+          assert contract["runtime_admission"] == "NOT_PERFORMED"
+          assert contract["source_incidence_to_runtime_weight"] == "FORBIDDEN"
+          assert contract["harmonic_event_density_timing_claim"] == "DEFERRED_TO_H4"
+          assert contract["next_stage"] == "H4_CHORD_RHYTHM_EXTRACTION"
+          PY
+
+      - name: Verify H3 evidence digest
+        run: sha256sum -c docs/research/HARMONY_ATLAS_H3_FUNCTIONAL.sha256
+
+      - name: Verify generated H3 report is reproducible
+        run: diff -u docs/research/HARMONY_ATLAS_H3_FUNCTIONAL.md build/HARMONY_ATLAS_H3_FUNCTIONAL.md
+
+      - name: Verify H3 feature boundary document
+        run: |
+          grep -q "F4 FunctionalClassSequence     COMPUTED_H3" docs/research/HARMONY_ATLAS_H3_FEATURE_CONTRACT.md
+          grep -q "F5 ChordRhythmIdentity         DEFERRED_H4_CHORD_RHYTHM" docs/research/HARMONY_ATLAS_H3_FEATURE_CONTRACT.md
+          grep -q "F6 CombinedIdentity            DEFERRED_UNTIL_F5" docs/research/HARMONY_ATLAS_H3_FEATURE_CONTRACT.md
+          grep -q "no destructive-dedup authority" docs/research/HARMONY_ATLAS_H3_FEATURE_CONTRACT.md
+
+      - name: Upload generated H3 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: harmony-atlas-h3-evidence
+          path: |
+            build/HARMONY_ATLAS_H3_FUNCTIONAL.json
+            build/HARMONY_ATLAS_H3_FUNCTIONAL.md
+          if-no-files-found: error
