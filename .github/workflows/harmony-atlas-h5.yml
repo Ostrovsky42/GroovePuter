@@ -1,0 +1,216 @@
+name: Harmony Atlas H5
+
+on:
+  pull_request:
+    paths:
+      - "tools/research/harmony_atlas_h0.py"
+      - "tools/research/harmony_atlas_h1.py"
+      - "tools/research/harmony_atlas_h2.py"
+      - "tools/research/harmony_atlas_h3.py"
+      - "tools/research/harmony_atlas_h4.py"
+      - "tools/research/harmony_atlas_h5.py"
+      - "tests/test_harmony_atlas_h*.py"
+      - "docs/research/HARMONY_ATLAS_H1_NORMALIZED.sha256"
+      - "docs/research/HARMONY_ATLAS_H2_FINGERPRINTS.sha256"
+      - "docs/research/HARMONY_ATLAS_H3_FUNCTIONAL.sha256"
+      - "docs/research/HARMONY_ATLAS_H4_CHORD_RHYTHM.sha256"
+      - "docs/research/HARMONY_ATLAS_H5_*"
+      - ".github/workflows/harmony-atlas-h5.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stage15-representability:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout research stack
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned harmony source
+        uses: actions/checkout@v4
+        with:
+          repository: ldrolez/free-midi-chords
+          ref: baf0896694de6b09ac00250722f2414202e668ed
+          path: build/harmony-atlas-source
+          fetch-depth: 1
+
+      - name: Checkout exact Stage 15 target
+        uses: actions/checkout@v4
+        with:
+          repository: Ostrovsky42/GroovePuter
+          ref: fc42763e7798866e61895bf1b8d62339ec59e0a7
+          path: build/stage15-target
+          fetch-depth: 1
+
+      - name: Run H0-H4 dependency tests
+        run: |
+          python3 tests/test_harmony_atlas_h0.py
+          python3 tests/test_harmony_atlas_h1.py
+          python3 tests/test_harmony_atlas_h2.py
+          python3 tests/test_harmony_atlas_h3.py
+          python3 tests/test_harmony_atlas_h4.py
+          python3 tests/test_harmony_atlas_h4_identity.py
+
+      - name: Regenerate frozen H1-H4 evidence
+        run: |
+          python3 tools/research/harmony_atlas_h1.py --source-root build/harmony-atlas-source --output build/HARMONY_ATLAS_H1_NORMALIZED.json
+          sha256sum -c docs/research/HARMONY_ATLAS_H1_NORMALIZED.sha256
+          python3 tools/research/harmony_atlas_h2.py --normalization build/HARMONY_ATLAS_H1_NORMALIZED.json --output build/HARMONY_ATLAS_H2_FINGERPRINTS.json
+          sha256sum -c docs/research/HARMONY_ATLAS_H2_FINGERPRINTS.sha256
+          python3 tools/research/harmony_atlas_h3.py --normalization build/HARMONY_ATLAS_H1_NORMALIZED.json --fingerprints build/HARMONY_ATLAS_H2_FINGERPRINTS.json --output build/HARMONY_ATLAS_H3_FUNCTIONAL.json
+          sha256sum -c docs/research/HARMONY_ATLAS_H3_FUNCTIONAL.sha256
+          python3 tools/research/harmony_atlas_h4.py --source-root build/harmony-atlas-source --normalization build/HARMONY_ATLAS_H1_NORMALIZED.json --fingerprints build/HARMONY_ATLAS_H2_FINGERPRINTS.json --functional build/HARMONY_ATLAS_H3_FUNCTIONAL.json --output build/HARMONY_ATLAS_H4_CHORD_RHYTHM.json
+          sha256sum -c docs/research/HARMONY_ATLAS_H4_CHORD_RHYTHM.sha256
+
+      - name: Run H5 unit and contract tests
+        run: python3 tests/test_harmony_atlas_h5.py
+
+      - name: Generate H5 representability evidence
+        run: |
+          python3 tools/research/harmony_atlas_h5.py \
+            --normalization build/HARMONY_ATLAS_H1_NORMALIZED.json \
+            --rhythm build/HARMONY_ATLAS_H4_CHORD_RHYTHM.json \
+            --stage15-root build/stage15-target \
+            --output build/HARMONY_ATLAS_H5_REPRESENTABILITY.json \
+            --markdown-output build/HARMONY_ATLAS_H5_REPRESENTABILITY.md
+
+      - name: Verify pinned-target H5 acceptance
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          r = json.loads(Path("build/HARMONY_ATLAS_H5_REPRESENTABILITY.json").read_text())
+          assert r["stage"] == "H5_STAGE15_REPRESENTABILITY"
+          assert r["dependencies"] == {
+              "h1_normalized_json_sha256": "4783be1f77784a978f2239d8527214b3912eaf262e92430bff755679fec0734e",
+              "h4_chord_rhythm_json_sha256": "68c51f4ca8827167f2b6ff12543ed226164c9c8aa691816caac9102058849e81",
+          }
+          t = r["target_contract"]
+          assert t["commit"] == "fc42763e7798866e61895bf1b8d62339ec59e0a7"
+          assert t["evidence_class"] == "TARGET_CONTRACT_EVIDENCE"
+          assert t["max_harmonic_events"] == 8
+          assert t["max_root_offset_semitones"] == 2
+          assert t["steps_per_bar"] == 16
+          assert t["max_phrase_bars_generic"] == 4
+          assert t["live_progression_phrase_bars"] == 1
+          assert t["quality_consumed_for_pitch"] is False
+          assert t["root_offset_consumed_for_pitch"] is True
+          assert t["same_chord_retrigger_field"] is False
+
+          m = r["methodology"]
+          assert m["production_files_changed"] == 0
+          assert m["runtime_admission"] == "NOT_PERFORMED"
+          assert m["source_incidence_to_runtime_weight"] == "FORBIDDEN"
+          assert m["support_unit"] == "LogicalProgressionDefinition"
+          assert m["style_observations_are_support"] is False
+          assert m["key_materializations_are_support"] is False
+          assert m["capability_support_counts_are_additive"] is False
+          assert m["next_stage"] == "H6_CURATED_RUNTIME_CANDIDATES"
+
+          h = r["harmonic"]
+          assert h["definition_count"] == 190
+          assert h["raw_field_shape_encodable_definition_count"] == 160
+          assert h["exact_quality_field_encodable_definition_count"] == 1
+          assert h["current_catalog_exact_definition_count"] == 0
+          assert h["current_catalog_root_only_match_definition_count"] == 11
+          assert h["audible_f3_exact_definition_count"] == 0
+          assert h["definitions_with_altered_degree"] == 71
+          assert h["definitions_over_max_harmonic_events"] == 1
+          assert h["over_max_harmonic_event_source_ids"] == ["Minor:023"]
+          assert h["quality_event_class_distribution"] == {
+              "CONTEXT_DEPENDENT_TRIAD": 746,
+              "EXACT_ENUM_LABEL": 49,
+              "UNREPRESENTABLE_QUALITY": 51,
+          }
+          assert h["quality_definition_support"] == {
+              "CONTEXT_DEPENDENT_TRIAD": 185,
+              "EXACT_ENUM_LABEL": 32,
+              "UNREPRESENTABLE_QUALITY": 29,
+          }
+          assert h["current_catalog_root_only_match_source_ids"] == [
+              "Major:011", "Major:019", "Major:025", "Major:026", "Major:029", "Major:031",
+              "Minor:009", "Minor:015", "Minor:016", "Minor:019", "Minor:034",
+          ]
+
+          q = {row["quality_signature"]: (row["logical_definition_support"], row["event_count"])
+               for row in h["unsupported_quality_signatures"]}
+          assert q == {
+              "MAJOR|SEVENTH|UNSPECIFIED|0": (16, 24),
+              "MAJOR|SIXTH|NONE|0": (6, 7),
+              "SUSPENDED_2|NONE|NONE|0": (4, 4),
+              "MAJOR|ADD_NINTH|NONE|0": (3, 3),
+              "POWER_5|NONE|NONE|0": (2, 5),
+              "MINOR|ADD_NINTH|NONE|0": (2, 2),
+              "MINOR|SIXTH|NONE|0": (2, 2),
+              "MAJOR|NONE|NONE|-1": (1, 2),
+              "MAJOR|NINTH|UNSPECIFIED|0": (1, 1),
+              "MAJOR|SIX_NINE|NONE|0": (1, 1),
+          }
+
+          rr = r["rhythm"]
+          assert rr["observation_count"] == 950
+          assert rr["unique_f5_count"] == 30
+          assert rr["exact_observation_count"] == 0
+          assert rr["exact_unique_f5_count"] == 0
+          assert rr["quarter_beat_grid_compatible_observations"] == 950
+          assert rr["quarter_beat_grid_gap_observations"] == 0
+          assert rr["gap_observation_counts"] == {
+              "GENERIC_PHRASE_GT4_BARS": 67,
+              "HARMONIC_EVENTS_GT8": 55,
+              "LIVE_ONE_BAR_DURATION": 950,
+              "SAME_CHORD_RETRIGGER_SEMANTICS": 380,
+          }
+          assert rr["gap_logical_definition_support"] == {
+              "GENERIC_PHRASE_GT4_BARS": 32,
+              "HARMONIC_EVENTS_GT8": 32,
+              "LIVE_ONE_BAR_DURATION": 190,
+              "SAME_CHORD_RETRIGGER_SEMANTICS": 190,
+          }
+
+          c = r["combined"]
+          assert c["h4_unique_f6_count"] == 945
+          assert c["h4_observation_count"] == 950
+          assert c["current_exact_f6_unique_count"] == 0
+          assert c["current_exact_f6_observation_count"] == 0
+          assert c["exact_rule"] == "AUDIBLE_F3_EXACT AND CURRENT_CHORD_RHYTHM_F5_EXACT"
+
+          caps = {row["capability"]: row["logical_definition_support"] for row in r["ranked_deferred_capabilities"]}
+          assert caps == {
+              "MULTI_BAR_CHORD_RHYTHM_IDENTITY": 190,
+              "QUALITY_RENDERING_CONSUMPTION": 190,
+              "SAME_CHORD_RETRIGGER_WITHOUT_HARMONIC_ADVANCE": 190,
+              "TRIAD_POLARITY_OR_EXPLICIT_CONTEXT": 185,
+              "GENERIC_ALTERED_DEGREE_REACHABILITY": 71,
+              "CHORD_RHYTHM_BEYOND_GENERIC_4_BAR_CONTAINER": 32,
+              "MORE_THAN_8_HARMONIC_ONSETS": 32,
+              "ADDITIONAL_CHORD_QUALITY_VOCABULARY": 29,
+              "SOURCE_HARMONIC_FORM_GT8": 1,
+          }
+          assert all(row["support_is_non_additive"] for row in r["ranked_deferred_capabilities"])
+          PY
+
+      - name: Verify H5 evidence digest
+        run: sha256sum -c docs/research/HARMONY_ATLAS_H5_REPRESENTABILITY.sha256
+
+      - name: Verify generated H5 report is reproducible
+        run: diff -u docs/research/HARMONY_ATLAS_H5_REPRESENTABILITY.md build/HARMONY_ATLAS_H5_REPRESENTABILITY.md
+
+      - name: Verify H5 contract boundary
+        run: |
+          grep -q "unique H4 F3 identities   189" docs/research/HARMONY_ATLAS_H5_CONTRACT.md
+          grep -q "exact current F3            0" docs/research/HARMONY_ATLAS_H5_CONTRACT.md
+          grep -q "exact current F5            0" docs/research/HARMONY_ATLAS_H5_CONTRACT.md
+          grep -q "exact current F6            0" docs/research/HARMONY_ATLAS_H5_CONTRACT.md
+          grep -q "support ties" docs/research/HARMONY_ATLAS_H5_CONTRACT.md
+          grep -q "Production integration remains a later separate PR" docs/research/HARMONY_ATLAS_H5_CONTRACT.md
+
+      - name: Upload generated H5 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: harmony-atlas-h5-evidence
+          path: |
+            build/HARMONY_ATLAS_H5_REPRESENTABILITY.json
+            build/HARMONY_ATLAS_H5_REPRESENTABILITY.md
+          if-no-files-found: error
