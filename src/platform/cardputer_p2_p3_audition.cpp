@@ -5,6 +5,7 @@
 #include "../../scenes.h"
 #include "../dsp/miniacid_engine.h"
 #include "../generation/migration/p2_p3_hardware_audition.h"
+#include "../generation/roles/chord_rhythm_retrigger.h"
 #include "../input/cardputer_input_edges.h"
 #include "../ui/miniacid_display.h"
 
