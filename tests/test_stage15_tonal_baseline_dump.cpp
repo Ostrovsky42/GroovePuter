@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <cstring>
 #include <iomanip>
 #include <iostream>
 
@@ -84,12 +85,14 @@ GenreSettings settingsFor(GenerativeMode mode) {
   return settings;
 }
 
-StrongRhythmMigrationContext contextFor(int16_t ordinal) {
+StrongRhythmMigrationContext contextFor(int16_t ordinal,
+                                        bool tonalMaterializationEnabled) {
   StrongRhythmMigrationContext context{};
   context.patternAddress = ordinal;
   context.level = RealizationLevel::P2Variation;
   context.feelProfile = FeelProfileId::Straight;
   context.feelAmount = 0;
+  context.tonalMaterializationEnabled = tonalMaterializationEnabled;
   return context;
 }
 
@@ -137,7 +140,15 @@ void printVoice(const char* mode, int ordinal, const char* voice,
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
+  bool tonalMaterializationEnabled = false;
+  if (argc == 2 && std::strcmp(argv[1], "--tonal") == 0) {
+    tonalMaterializationEnabled = true;
+  } else if (argc != 1) {
+    std::cerr << "usage: stage15_tonal_baseline_dump [--tonal]\n";
+    return 2;
+  }
+
   constexpr GenerativeMode modes[] = {
       GenerativeMode::Acid,
       GenerativeMode::Outrun,
@@ -164,7 +175,9 @@ int main() {
       SynthPattern synthA = pitchSource(36, 5);
       SynthPattern synthB = pitchSource(60, 7);
       const StrongRhythmMigrationResult result = migrateStrongRhythmMaterial(
-          settingsFor(mode), contextFor(ordinal), drums, synthA, synthB);
+          settingsFor(mode),
+          contextFor(ordinal, tonalMaterializationEnabled),
+          drums, synthA, synthB);
       printVoice(modeName(mode), ordinal, "A", fingerprint(synthA), result);
       printVoice(modeName(mode), ordinal, "B", fingerprint(synthB), result);
     }
