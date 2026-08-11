@@ -1,0 +1,46 @@
+name: P2 P3 Hardware Audition
+
+on:
+  pull_request:
+    paths:
+      - "src/generation/roles/chord_rhythm_timeline.*"
+      - "src/generation/roles/chord_rhythm_retrigger.*"
+      - "src/generation/migration/p2_p3_hardware_audition.*"
+      - "tests/test_p2_p3_hardware_audition.cpp"
+      - "tests/run_p2_p3_hardware_audition_tests.sh"
+      - "docs/architecture/P2_P3_HARDWARE_AUDITION.md"
+      - ".github/workflows/p2-p3-hardware-audition.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Run P2+P3 composition matrix
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_p2_p3_hardware_audition_tests.sh
+
+  cardputer:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [normal, midi-only]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Build Cardputer ADV profile
+        run: bash scripts/build_cardputer_memory_baseline.sh "${{ matrix.profile }}" product --warnings all
