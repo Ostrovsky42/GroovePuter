@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,6 +14,11 @@ SCENES = (ROOT / "scenes.h").read_text(encoding="utf-8")
 def require(text: str, needle: str, message: str) -> None:
     if needle not in text:
         raise AssertionError(message)
+
+
+def strip_cpp_comments(text: str) -> str:
+    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+    return re.sub(r"//.*", "", text)
 
 
 # F-02: MORPH remains decode-compatible Scene data but is no longer a route or
@@ -83,13 +89,20 @@ for needle in (
     require(STATE, needle, f"attempt owner contract changed: {needle}")
 if "GenerationAttemptStatus::TableFull" in STATE or "OrdinalExhausted" in STATE:
     raise AssertionError("attempt history capacity must not disable generation")
+
+# Inspect executable source, not English comments. This keeps the gate strict
+# against real heap/persistence dependencies without false positives such as
+# comments saying "new tuple" or "no NVS".
+state_code = strip_cpp_comments(STATE)
 for forbidden in (
     "Preferences", "putUChar", "putUInt", "putBytes", "begin(\"gp-",
     "std::vector", "std::map", "unordered_map",
-    "malloc(", "calloc(", "new ",
+    "malloc(", "calloc(",
 ):
-    if forbidden in STATE:
+    if forbidden in state_code:
         raise AssertionError(f"attempt owner gained persistence/heap dependency: {forbidden}")
+if re.search(r"\bnew\s+[A-Za-z_:]", state_code):
+    raise AssertionError("attempt owner gained C++ heap allocation")
 for forbidden in ("generationAttemptOrdinal", "attemptOrdinal"):
     if forbidden in SCENES:
         raise AssertionError(f"attempt identity leaked into Scene persistence: {forbidden}")
