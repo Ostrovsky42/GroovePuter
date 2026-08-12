@@ -153,6 +153,54 @@ inline int findContiguousEmptySlots(const Scene& scene, int bars) {
   return -1;
 }
 
+inline bool globalPatternIsReferenced(const Scene& scene, int globalPattern) {
+  if (globalPattern < 0) return true;
+  for (int songSlot = 0; songSlot < 2; ++songSlot) {
+    const Song& song = scene.songs[songSlot];
+    for (int row = 0; row < Song::kMaxPositions; ++row) {
+      for (int track = 0; track < 3; ++track) {
+        if (song.positions[row].patterns[track] == globalPattern) return true;
+      }
+    }
+  }
+  return false;
+}
+
+inline bool localSlotIsSafeForPhrase(const Scene& scene,
+                                     int pageIndex,
+                                     int localSlot) {
+  if (pageIndex < 0 || pageIndex >= kMaxPages ||
+      !localSlotIsEmpty(scene, localSlot)) {
+    return false;
+  }
+  const int bank = localSlot / Bank<SynthPattern>::kPatterns;
+  const int index = localSlot % Bank<SynthPattern>::kPatterns;
+  const int globalPattern = songPatternFromPageBankIndex(
+      pageIndex, bank, index);
+  return !globalPatternIsReferenced(scene, globalPattern);
+}
+
+inline int findSafeContiguousEmptySlots(const Scene& scene,
+                                        int pageIndex,
+                                        int bars) {
+  if (pageIndex < 0 || pageIndex >= kMaxPages ||
+      !isSupportedLength(bars) || bars > kPatternsPerPage) {
+    return -1;
+  }
+  const int lastStart = kPatternsPerPage - bars;
+  for (int start = 0; start <= lastStart; ++start) {
+    bool allSafe = true;
+    for (int offset = 0; offset < bars; ++offset) {
+      if (!localSlotIsSafeForPhrase(scene, pageIndex, start + offset)) {
+        allSafe = false;
+        break;
+      }
+    }
+    if (allSafe) return start;
+  }
+  return -1;
+}
+
 inline bool songRowsAreAvailable(const Song& song, int start, int bars) {
   if (start < 0 || bars < 1 || start + bars > Song::kMaxPositions) return false;
   for (int row = start; row < start + bars; ++row) {
@@ -352,7 +400,8 @@ PhraseResult generateBarsToSong(Scene& scene,
     return result;
   }
 
-  const int firstLocalSlot = findContiguousEmptySlots(scene, request.bars);
+  const int firstLocalSlot = findSafeContiguousEmptySlots(
+      scene, request.pageIndex, request.bars);
   if (firstLocalSlot < 0) {
     result.error = PhraseError::NoContiguousPatternSlots;
     return result;
