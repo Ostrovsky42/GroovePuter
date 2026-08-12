@@ -80,7 +80,8 @@ for needle in (
 ):
     require(STATE, needle, f"attempt owner contract changed: {needle}")
 for forbidden in (
-    "Preferences", "NVS", "std::vector", "std::map", "unordered_map",
+    "Preferences", "putUChar", "putUInt", "putBytes", "begin(\"gp-",
+    "std::vector", "std::map", "unordered_map",
     "malloc(", "calloc(", "new ",
 ):
     if forbidden in STATE:
