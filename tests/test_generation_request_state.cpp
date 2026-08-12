@@ -42,8 +42,73 @@ int main() {
   assert(cycleGenerationLevel() == RealizationLevel::P3Transformation);
   assert(cycleGenerationLevel() == RealizationLevel::P1Canonical);
 
+  // GA-01 / GA-03: attemptOrdinal belongs to the accepted generation tuple and
+  // is allocated monotonically when that tuple is accepted, not at publication.
+  resetGenerationAttemptState();
+  assert(generationAttemptCapacity() == 64);
+  auto attempt = allocateGenerationAttempt(1, 6,
+      RealizationLevel::P2Variation, 42);
+  assert(attempt.ok() && attempt.ordinal == 0);
+  attempt = allocateGenerationAttempt(1, 6,
+      RealizationLevel::P2Variation, 42);
+  assert(attempt.ok() && attempt.ordinal == 1);
+  attempt = allocateGenerationAttempt(1, 6,
+      RealizationLevel::P2Variation, 42);
+  assert(attempt.ok() && attempt.ordinal == 2);
+
+  // Every tuple axis is identity-bearing. Switching one axis starts its own
+  // ordinal sequence and does not reset the original tuple.
+  assert(allocateGenerationAttempt(2, 6,
+      RealizationLevel::P2Variation, 42).ordinal == 0);
+  assert(allocateGenerationAttempt(1, 7,
+      RealizationLevel::P2Variation, 42).ordinal == 0);
+  assert(allocateGenerationAttempt(1, 6,
+      RealizationLevel::P1Canonical, 42).ordinal == 0);
+  assert(allocateGenerationAttempt(1, 6,
+      RealizationLevel::P2Variation, 43).ordinal == 0);
+  attempt = allocateGenerationAttempt(1, 6,
+      RealizationLevel::P2Variation, 42);
+  assert(attempt.ok() && attempt.ordinal == 3);
+
+  // Invalid requests are not accepted and therefore consume no ordinal.
+  resetGenerationAttemptState();
+  assert(allocateGenerationAttempt(16, 6,
+      RealizationLevel::P2Variation, 42).status ==
+      GenerationAttemptStatus::InvalidTuple);
+  assert(allocateGenerationAttempt(1, 6,
+      RealizationLevel::Count, 42).status ==
+      GenerationAttemptStatus::InvalidTuple);
+  assert(allocateGenerationAttempt(1, 6,
+      RealizationLevel::P2Variation, -1).status ==
+      GenerationAttemptStatus::InvalidTuple);
+  attempt = allocateGenerationAttempt(1, 6,
+      RealizationLevel::P2Variation, 42);
+  assert(attempt.ok() && attempt.ordinal == 0);
+
+  // GA-06: capacity exhaustion fails closed. It must not evict/reset another
+  // tuple merely to accept a new one.
+  resetGenerationAttemptState();
+  for (int address = 0; address < 64; ++address) {
+    const auto filled = allocateGenerationAttempt(
+        1, 6, RealizationLevel::P2Variation, address);
+    assert(filled.ok() && filled.ordinal == 0);
+  }
+  const auto full = allocateGenerationAttempt(
+      1, 6, RealizationLevel::P2Variation, 64);
+  assert(full.status == GenerationAttemptStatus::TableFull);
+  attempt = allocateGenerationAttempt(
+      1, 6, RealizationLevel::P2Variation, 0);
+  assert(attempt.ok() && attempt.ordinal == 1);
+
+  // Session reset is explicit and non-persistent.
+  resetGenerationAttemptState();
+  attempt = allocateGenerationAttempt(1, 6,
+      RealizationLevel::P2Variation, 42);
+  assert(attempt.ok() && attempt.ordinal == 0);
+
   // Restore the compatibility default so this test is order-independent if it
   // is ever embedded in a larger host runner.
   setGenerationLevel(RealizationLevel::P2Variation);
+  resetGenerationAttemptState();
   return 0;
 }
