@@ -10,15 +10,37 @@ uint32_t mixByte(uint32_t hash, uint8_t value) {
   return (hash ^ static_cast<uint32_t>(value)) * 16777619u;
 }
 
+uint32_t mix32(uint32_t value) {
+  value ^= value >> 16u;
+  value *= 0x7feb352du;
+  value ^= value >> 15u;
+  value *= 0x846ca68bu;
+  value ^= value >> 16u;
+  return value;
+}
+
+constexpr uint32_t kGenerationAttemptSalt = 0x4750524cu;  // "GPRL"
+
 uint32_t projectSeedFor(const GenreSettings& settings,
                         StrongRhythmRoute route) {
   uint32_t hash = 2166136261u;
   hash = mixByte(hash, settings.generativeMode);
   hash = mixByte(hash, settings.recipe);
-  hash = mixByte(hash, settings.morphTarget);
-  hash = mixByte(hash, settings.morphAmount);
+
+  // F-02/F-07 migration: these two zero bytes intentionally occupy the exact
+  // slots previously owned by morphTarget/morphAmount. A historical default
+  // scene (morphTarget=0, morphAmount=0) therefore keeps the exact pre-migration
+  // attempt-0 seed, while persisted MORPH state can no longer alter generation.
+  hash = mixByte(hash, 0);
+  hash = mixByte(hash, 0);
   hash = mixByte(hash, static_cast<uint8_t>(route));
   return hash;
+}
+
+uint32_t realizationSeedFor(uint32_t selectionSeed, uint32_t attemptOrdinal) {
+  if (attemptOrdinal == 0) return selectionSeed;
+  return mix32(selectionSeed ^
+               mix32(attemptOrdinal ^ kGenerationAttemptSalt));
 }
 
 bool validLevel(RealizationLevel level) {
@@ -126,10 +148,6 @@ bool stage14BaseGenre(GenerativeMode mode) {
 }  // namespace
 
 StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings) {
-  if (settings.morphAmount > 0 && settings.morphTarget != kBaseRecipeId &&
-      settings.morphTarget != settings.recipe) {
-    return StrongRhythmRoute::Legacy;
-  }
   if (settings.generativeMode >= kGenerativeModeCount)
     return StrongRhythmRoute::Legacy;
 
@@ -217,9 +235,11 @@ StrongRhythmMigrationResult migrateStrongRhythmDrums(
     return result;
   }
 
-  const uint32_t projectSeed = projectSeedFor(settings, result.route);
+  const uint32_t selectionSeed = projectSeedFor(settings, result.route);
+  const uint32_t realizationSeed =
+      realizationSeedFor(selectionSeed, context.generationAttemptOrdinal);
   GenerationContext selectionGeneration{};
-  selectionGeneration.projectSeed = projectSeed;
+  selectionGeneration.projectSeed = selectionSeed;
   selectionGeneration.phraseOrdinal =
       static_cast<uint16_t>(context.patternAddress);
   const GenerationCompositionResult composition =
@@ -256,7 +276,7 @@ StrongRhythmMigrationResult migrateStrongRhythmDrums(
   request.archetypeId = definition->archetypeId;
   request.phraseBars = 1;
   request.level = context.level;
-  request.generation.projectSeed = projectSeed;
+  request.generation.projectSeed = realizationSeed;
   request.generation.phraseOrdinal =
       static_cast<uint16_t>(context.patternAddress);
 
@@ -378,6 +398,9 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
       semanticBarOrdinal(settings, context.patternAddress);
   const TonalGenerationProfile tonalProfile =
       tonalGenerationProfileFor(settings);
+  const uint32_t selectionSeed = projectSeedFor(settings, result.route);
+  const uint32_t realizationSeed =
+      realizationSeedFor(selectionSeed, context.generationAttemptOrdinal);
 
   BassRhythmRequest bassRequest{};
   bassRequest.requestedId = result.bassRhythmId;
@@ -390,7 +413,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   }
   bassRequest.protectedSpace =
       protectedSpaceFor(*archetype, RhythmRole::BassRhythm);
-  bassRequest.generation.projectSeed = projectSeedFor(settings, result.route);
+  bassRequest.generation.projectSeed = realizationSeed;
   bassRequest.generation.phraseOrdinal =
       static_cast<uint16_t>(context.patternAddress);
   bassRequest.barOrdinal = barOrdinal;
