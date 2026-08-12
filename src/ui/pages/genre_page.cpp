@@ -256,16 +256,25 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
   GroovePuterRhythm::QuantizedGenerationResult generationResult =
       GroovePuterRhythm::QuantizedGenerationResult::Failed;
 
-  withAudioGuard([&]() {
-    if (doRegenerate) {
-      generationResult = GroovePuterRhythm::regenerateWithQuantizedCommit(
-          mini_acid_, requestedSettings, nextMode, doApplyTempo, requestedBpm);
-      return;
-    }
-
-    activeSettings = requestedSettings;
-    mini_acid_.setGrooveboxMode(nextMode);
-  });
+  if (doRegenerate && mini_acid_.isPlaying()) {
+    // PLAY preparation is scratch-only and deliberately does not acquire the
+    // AudioMutationGate. AudioTask keeps rendering the current bar while the
+    // complete next-bar candidate is built and atomically published.
+    generationResult = GroovePuterRhythm::regenerateWithQuantizedCommit(
+        mini_acid_, requestedSettings, nextMode, doApplyTempo, requestedBpm);
+  } else {
+    // STOP generation and PROFILE ONLY intentionally mutate live state and keep
+    // the existing structural audio-mutation guard.
+    withAudioGuard([&]() {
+      if (doRegenerate) {
+        generationResult = GroovePuterRhythm::regenerateWithQuantizedCommit(
+            mini_acid_, requestedSettings, nextMode, doApplyTempo, requestedBpm);
+        return;
+      }
+      activeSettings = requestedSettings;
+      mini_acid_.setGrooveboxMode(nextMode);
+    });
+  }
 
   if (changed &&
       (!doRegenerate ||
