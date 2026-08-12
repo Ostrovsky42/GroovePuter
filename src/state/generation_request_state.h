@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "src/generation/rhythm/rhythm_types.h"
@@ -58,11 +59,70 @@ inline GroovePuterRhythm::RealizationLevel nextGenerationLevel(
     return static_cast<RealizationLevel>(value);
 }
 
+enum class GenerationAttemptStatus : uint8_t {
+    Ok = 0,
+    InvalidTuple,
+    TableFull,
+    OrdinalExhausted,
+};
+
+struct GenerationAttemptAllocation {
+    GenerationAttemptStatus status = GenerationAttemptStatus::InvalidTuple;
+    uint32_t ordinal = 0;
+
+    bool ok() const { return status == GenerationAttemptStatus::Ok; }
+};
+
 namespace generation_request_detail {
 inline GroovePuterRhythm::RealizationLevel& levelStorage() {
     static GroovePuterRhythm::RealizationLevel level =
         GroovePuterRhythm::RealizationLevel::P2Variation;
     return level;
+}
+
+// Reroll identity is deliberately session-only and allocation-free. The key is
+// exactly (generativeMode, recipe, P-level, patternAddress). Current production
+// has 16 GenerativeMode values, so four bits are sufficient and the remaining
+// fields fit in one 30-bit packed key. A zero key slot means unused; stored keys
+// are offset by one so the all-zero tuple remains representable.
+//
+// The table intentionally fails closed instead of evicting another tuple. That
+// guarantees a failed/cancelled request can never reset or mutate the ordinal of
+// a different generation tuple (GA-06). 64 live tuple identities cost 512 B of
+// fixed session state and require no heap/NVS traffic.
+constexpr std::size_t kGenerationAttemptCapacity = 64;
+
+struct GenerationAttemptEntry {
+    uint32_t keyPlusOne = 0;
+    uint32_t nextOrdinal = 0;
+};
+
+inline GenerationAttemptEntry* attemptStorage() {
+    static GenerationAttemptEntry entries[kGenerationAttemptCapacity]{};
+    return entries;
+}
+
+inline bool packAttemptKey(uint8_t generativeMode,
+                           uint8_t recipe,
+                           GroovePuterRhythm::RealizationLevel level,
+                           int patternAddress,
+                           uint32_t& packed) {
+    using GroovePuterRhythm::RealizationLevel;
+    if (generativeMode >= 16 ||
+        static_cast<uint8_t>(level) >= static_cast<uint8_t>(RealizationLevel::Count) ||
+        patternAddress < 0 || patternAddress > 0xFFFF) {
+        return false;
+    }
+    packed = (static_cast<uint32_t>(generativeMode) << 26u) |
+             (static_cast<uint32_t>(recipe) << 18u) |
+             (static_cast<uint32_t>(level) << 16u) |
+             static_cast<uint16_t>(patternAddress);
+    return true;
+}
+
+inline std::size_t attemptStartIndex(uint32_t packed) {
+    return static_cast<std::size_t>(
+        (packed * 2654435761u) >> (32u - 6u));
 }
 }  // namespace generation_request_detail
 
@@ -81,6 +141,55 @@ inline GroovePuterRhythm::RealizationLevel cycleGenerationLevel(int direction = 
     const auto next = nextGenerationLevel(currentGenerationLevel(), direction);
     setGenerationLevel(next);
     return next;
+}
+
+inline constexpr std::size_t generationAttemptCapacity() {
+    return generation_request_detail::kGenerationAttemptCapacity;
+}
+
+inline GenerationAttemptAllocation allocateGenerationAttempt(
+        uint8_t generativeMode,
+        uint8_t recipe,
+        GroovePuterRhythm::RealizationLevel level,
+        int patternAddress) {
+    uint32_t packed = 0;
+    if (!generation_request_detail::packAttemptKey(
+            generativeMode, recipe, level, patternAddress, packed)) {
+        return {GenerationAttemptStatus::InvalidTuple, 0};
+    }
+
+    const uint32_t keyPlusOne = packed + 1u;
+    auto* entries = generation_request_detail::attemptStorage();
+    const std::size_t start = generation_request_detail::attemptStartIndex(packed);
+    for (std::size_t probe = 0;
+         probe < generation_request_detail::kGenerationAttemptCapacity;
+         ++probe) {
+        auto& entry = entries[
+            (start + probe) & (generation_request_detail::kGenerationAttemptCapacity - 1u)];
+        if (entry.keyPlusOne == keyPlusOne) {
+            if (entry.nextOrdinal == UINT32_MAX) {
+                return {GenerationAttemptStatus::OrdinalExhausted, 0};
+            }
+            const uint32_t ordinal = entry.nextOrdinal;
+            ++entry.nextOrdinal;
+            return {GenerationAttemptStatus::Ok, ordinal};
+        }
+        if (entry.keyPlusOne == 0) {
+            entry.keyPlusOne = keyPlusOne;
+            entry.nextOrdinal = 1;
+            return {GenerationAttemptStatus::Ok, 0};
+        }
+    }
+    return {GenerationAttemptStatus::TableFull, 0};
+}
+
+inline void resetGenerationAttemptState() {
+    auto* entries = generation_request_detail::attemptStorage();
+    for (std::size_t index = 0;
+         index < generation_request_detail::kGenerationAttemptCapacity;
+         ++index) {
+        entries[index] = {};
+    }
 }
 
 }  // namespace GroovePuterState
