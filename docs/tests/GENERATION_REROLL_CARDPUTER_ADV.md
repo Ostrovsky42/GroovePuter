@@ -96,6 +96,8 @@ Expected:
 - repeated accepted G requests preserve their own assigned attempt identity even if an older pending candidate is superseded;
 - target cancellation never publishes material into a different page/bank/slot.
 
+The attempt ordinal is assigned when the generation request is accepted, before the later target-validity check at publication. Therefore a request cancelled because the page/bank/slot changed **still consumes its ordinal**. Returning to the original tuple may legitimately skip one deterministic candidate (for example A -> cancelled B -> audible C). This is expected GA-03 behavior, not a reroll bug.
+
 ### 5. Saved historical MORPH scene
 
 Use a project saved by a pre-migration build with non-zero MORPH if available.
@@ -125,17 +127,21 @@ Expected:
 - attempt counter is not persisted in Scene/project data;
 - the first accepted generation request for that tuple after reboot starts again at attempt 0.
 
-### 7. Capacity fail-closed smoke
+### 7. Capacity eviction smoke
 
-Normal use should not hit the fixed attempt table limit. If a stress build/session deliberately generates more than 64 distinct `(mode, recipe, P-level, patternAddress)` tuples, the next new tuple must fail generation cleanly instead of evicting another tuple or mutating Scene.
+The fixed table remembers 64 exact `(mode, recipe, P-level, patternAddress)` histories. Capacity limits remembered reroll history, **not generation availability**.
 
-Expected Genre toast:
+In a deliberate stress session, generate more than 64 distinct tuples.
 
-```text
-GEN ATTEMPT FULL
-```
+Expected:
 
-Existing tuple identities must remain usable.
+- every accepted `G` still generates; there is no `GEN ATTEMPT FULL` failure mode;
+- once the table is full, new tuple identities replace remembered histories in deterministic round-robin order;
+- a tuple whose history was evicted starts again from attempt 0 when revisited;
+- a tuple that has not been evicted continues its existing ordinal sequence;
+- eviction never writes attempt state to Scene/NVS and never publishes to a different target.
+
+The current memory contract is a 64-entry / 512-byte attempt table plus one byte of eviction cursor state.
 
 ## Troubleshooting
 
@@ -155,9 +161,13 @@ Treat as a blocker. `generationAttemptOrdinal` must not participate in rhythm/co
 
 Treat as a blocker. Attempt state is session-only and must not be written to Scene/NVS/project storage.
 
-### `GEN ATTEMPT FULL` appears during ordinary short testing
+### A revisited tuple unexpectedly starts again at candidate A after a long stress session
 
-Record the sequence of distinct Genre/Variant/P-level/pattern addresses used. The fixed 64-entry table is intended to fail closed, but ordinary workflow should not exhaust it unexpectedly.
+If more than 64 distinct generation tuples were accepted, this can be expected round-robin history eviction. Reproduce in a short session with fewer than 64 distinct tuples; there the ordinal sequence must remain monotonic.
+
+### Candidate numbering appears to skip after changing page/bank/slot during PLAY
+
+Expected if a previously accepted pending request was cancelled by target validation. Accepted requests consume their ordinal before publication, so the next request can skip the cancelled candidate.
 
 ### Click, gap or partial pattern on PLAY reroll
 
@@ -171,9 +181,10 @@ This is a quantized publication regression, not expected reroll behavior. Re-run
 - [ ] Repeated G produces bounded variation without changing selected archetype identity.
 - [ ] PLAY publication remains complete A+B+Drums at the quantized boundary.
 - [ ] Superseded/cancelled requests never publish to another target.
+- [ ] A target-cancelled accepted request consumes its ordinal; a later request may skip that candidate.
 - [ ] Loading a historical non-zero-MORPH scene does not regenerate or rewrite saved material.
 - [ ] Explicit Apply/G normalizes historical MORPH fields for future generation.
 - [ ] Reboot resets attempt state; no Scene/project persistence.
-- [ ] Capacity exhaustion, if deliberately induced, fails closed with no unrelated tuple eviction.
+- [ ] More than 64 distinct tuples still generate; evicted histories restart cleanly at attempt 0.
 - [ ] Serial shows no crash/watchdog/reset during repeated generation.
 - [ ] 10-minute repeated-G runtime smoke is clean.
