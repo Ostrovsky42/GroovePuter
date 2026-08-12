@@ -1,6 +1,5 @@
 #include <cassert>
 #include <cstdint>
-#include <cstring>
 
 #include "src/generation/migration/strong_rhythm_migration.h"
 
@@ -15,9 +14,11 @@ uint32_t drumFingerprint(const DrumPatternSet& drums) {
       const DrumStep& event = drums.voices[voice].steps[step];
       const uint8_t bytes[] = {
           static_cast<uint8_t>(event.hit ? 1 : 0),
+          static_cast<uint8_t>(event.accent ? 1 : 0),
           event.velocity,
-          static_cast<uint8_t>(event.ghost ? 1 : 0),
           static_cast<uint8_t>(event.timing),
+          event.fx,
+          event.fxParam,
           event.probability,
       };
       for (uint8_t byte : bytes) {
@@ -106,7 +107,8 @@ void assertAttemptKeepsArchetypeAndIsDeterministic() {
       assert(oneA.status == StrongRhythmMigrationStatus::Applied);
       assert(oneB.status == StrongRhythmMigrationStatus::Applied);
 
-      // GA-07: attemptOrdinal cannot select another rhythm archetype.
+      // GA-07: attemptOrdinal cannot select another rhythm archetype or
+      // composition identity.
       assert(zero.archetype == oneA.archetype);
       assert(zero.bassRhythmId == oneA.bassRhythmId);
       assert(zero.chordRhythmId == oneA.chordRhythmId);
