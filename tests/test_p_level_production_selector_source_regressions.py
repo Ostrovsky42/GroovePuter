@@ -6,7 +6,7 @@ BRIDGE = (
     ROOT / "src/generation/migration/strong_rhythm_live_bridge.cpp"
 ).read_text(encoding="utf-8")
 QUANTIZED = (
-    ROOT / "src/generation/migration/quantized_generation_commit.h"
+    ROOT / "src/generation/migration/quantized_generation_commit_impl.h"
 ).read_text(encoding="utf-8")
 GENRE_MANAGER = (ROOT / "src/dsp/genre_manager.h").read_text(encoding="utf-8")
 ENGINE = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
