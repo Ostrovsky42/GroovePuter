@@ -1,0 +1,71 @@
+name: P3 Same-Chord Retrigger
+
+on:
+  pull_request:
+    paths:
+      - "src/generation/roles/chord_rhythm_retrigger.*"
+      - "tests/test_same_chord_retrigger*"
+      - "tests/run_same_chord_retrigger_tests.sh"
+      - "scripts/measure_p3_retrigger_resources.sh"
+      - "docs/architecture/P3_SAME_CHORD_RETRIGGER.md"
+      - ".github/workflows/p3-same-chord-retrigger.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ownership-and-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+      - name: Guard isolated P3 scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git diff --name-only fc42763e7798866e61895bf1b8d62339ec59e0a7...HEAD)"
+          printf '%s\n' "${changed}"
+          unexpected="$(printf '%s\n' "${changed}" | grep -Ev '^(\.github/workflows/p3-same-chord-retrigger\.yml|docs/architecture/P3_SAME_CHORD_RETRIGGER\.md|scripts/measure_p3_retrigger_resources\.sh|src/generation/roles/chord_rhythm_retrigger\.(h|cpp)|tests/run_same_chord_retrigger_tests\.sh|tests/test_same_chord_retrigger(_source_regressions\.py|\.cpp))$' || true)"
+          if [[ -n "${unexpected}" ]]; then
+            echo "P3 touched files outside isolated capability scope:" >&2
+            printf '%s\n' "${unexpected}" >&2
+            exit 1
+          fi
+      - name: Run P3 host matrix
+        env:
+          ASAN_OPTIONS: "detect_leaks=0"
+        run: bash tests/run_same_chord_retrigger_tests.sh
+
+  esp32-resource-probe:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [normal, midi-only]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+      - name: Measure P3 retrigger on ESP32-S3 ${{ matrix.profile }}
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build
+          bash scripts/measure_p3_retrigger_resources.sh "${{ matrix.profile }}" \
+            2>&1 | tee "build/p3-retrigger-${{ matrix.profile }}.log"
+      - name: Upload P3 resource log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: p3-retrigger-${{ matrix.profile }}-resources
+          path: build/p3-retrigger-${{ matrix.profile }}.log
+          if-no-files-found: error
