@@ -9,6 +9,7 @@
 #include "../ui_common.h"
 #include "../ui_input.h"
 #include "../../generation/composition/generation_profile.h"
+#include "../../generation/migration/quantized_generation_commit.h"
 #include "../../generation/migration/strong_rhythm_live_bridge.h"
 #include "../../state/generation_request_state.h"
 #include "../../state/scene_revision.h"
@@ -217,8 +218,6 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
   const ApplyMode applyMode = currentApplyMode();
   const bool doRegenerate = forceRegenerate || applyMode != ApplyMode::ProfileOnly;
   const bool doApplyTempo = applyMode == ApplyMode::RegenerateTempo;
-  const bool wasPlaying = mini_acid_.isPlaying();
-  if (wasPlaying && doRegenerate) mini_acid_.stop();
 
   const auto genre = static_cast<GenerativeMode>(genre_index_);
   const auto recipe = normalizeRecipeForGenre(
@@ -228,42 +227,72 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
   const auto morphTarget =
       morph_amount_ > 0 ? recipe : static_cast<GenreRecipeId>(kBaseRecipeId);
   const GrooveboxMode nextMode = GenreCatalog::grooveboxModeForRecipe(recipe, genre);
-  auto& settings = mini_acid_.sceneManager().currentScene().genre;
+  auto& activeSettings = mini_acid_.sceneManager().currentScene().genre;
+
+  GenreSettings requestedSettings = activeSettings;
+  requestedSettings.generativeMode = static_cast<uint8_t>(genre_index_);
+  requestedSettings.recipe = static_cast<uint8_t>(recipe);
+  requestedSettings.morphTarget = static_cast<uint8_t>(morphTarget);
+  requestedSettings.morphAmount = static_cast<uint8_t>(morph_amount_);
+  requestedSettings.rhythmSelectionMode = static_cast<uint8_t>(rhythmMode_);
+  requestedSettings.rhythmArchetypeId = rhythmArchetypeId_;
 
   const bool changed = doRegenerate || mini_acid_.grooveboxMode() != nextMode ||
-      settings.generativeMode != static_cast<uint8_t>(genre_index_) ||
-      settings.recipe != static_cast<uint8_t>(recipe) ||
-      settings.morphTarget != static_cast<uint8_t>(morphTarget) ||
-      settings.morphAmount != static_cast<uint8_t>(morph_amount_) ||
-      settings.rhythmSelectionMode != static_cast<uint8_t>(rhythmMode_) ||
-      settings.rhythmArchetypeId != rhythmArchetypeId_;
+      activeSettings.generativeMode != requestedSettings.generativeMode ||
+      activeSettings.recipe != requestedSettings.recipe ||
+      activeSettings.morphTarget != requestedSettings.morphTarget ||
+      activeSettings.morphAmount != requestedSettings.morphAmount ||
+      activeSettings.rhythmSelectionMode != requestedSettings.rhythmSelectionMode ||
+      activeSettings.rhythmArchetypeId != requestedSettings.rhythmArchetypeId;
+
+  float requestedBpm = mini_acid_.bpm();
+  if (doApplyTempo) {
+    const GroovePuterRhythm::GenerationProfileView profile =
+        GroovePuterRhythm::generationProfileFor(requestedSettings);
+    if (profile.corridor.suggestedBpm > 0)
+      requestedBpm = static_cast<float>(profile.corridor.suggestedBpm);
+  }
+
+  GroovePuterRhythm::QuantizedGenerationResult generationResult =
+      GroovePuterRhythm::QuantizedGenerationResult::Failed;
 
   withAudioGuard([&]() {
-    settings.generativeMode = static_cast<uint8_t>(genre_index_);
-    settings.recipe = static_cast<uint8_t>(recipe);
-    settings.morphTarget = static_cast<uint8_t>(morphTarget);
-    settings.morphAmount = static_cast<uint8_t>(morph_amount_);
-    settings.rhythmSelectionMode = static_cast<uint8_t>(rhythmMode_);
-    settings.rhythmArchetypeId = rhythmArchetypeId_;
-    mini_acid_.setGrooveboxMode(nextMode);
-    if (doApplyTempo) {
-      const GroovePuterRhythm::GenerationProfileView profile =
-          GroovePuterRhythm::generationProfileFor(settings);
-      if (profile.corridor.suggestedBpm > 0)
-        mini_acid_.setBpm(static_cast<float>(profile.corridor.suggestedBpm));
+    if (doRegenerate) {
+      generationResult = GroovePuterRhythm::regenerateWithQuantizedCommit(
+          mini_acid_, requestedSettings, nextMode, doApplyTempo, requestedBpm);
+      return;
     }
-    if (doRegenerate)
-      GroovePuterRhythm::regenerateWithStrongRhythmMigration(mini_acid_);
+
+    activeSettings = requestedSettings;
+    mini_acid_.setGrooveboxMode(nextMode);
   });
 
-  if (changed) GroovePuterState::markSceneMutated();
-  if (wasPlaying && doRegenerate) mini_acid_.start();
+  if (changed &&
+      (!doRegenerate ||
+       generationResult == GroovePuterRhythm::QuantizedGenerationResult::CommittedNow)) {
+    GroovePuterState::markSceneMutated();
+  }
+
+  const char* resultLabel = applyModeName();
+  if (doRegenerate) {
+    switch (generationResult) {
+      case GroovePuterRhythm::QuantizedGenerationResult::PendingNextBar:
+        resultLabel = "GEN -> NEXT BAR";
+        break;
+      case GroovePuterRhythm::QuantizedGenerationResult::CommittedNow:
+        resultLabel = "GENERATED";
+        break;
+      case GroovePuterRhythm::QuantizedGenerationResult::Failed:
+      default:
+        resultLabel = "GEN FAILED";
+        break;
+    }
+  }
 
   char toast[96];
   std::snprintf(toast, sizeof(toast), "%s / %s: %s",
                 GenreCatalog::generativeModeName(genre),
-                GenreCatalog::recipeName(recipe),
-                forceRegenerate ? "GENERATED" : applyModeName());
+                GenreCatalog::recipeName(recipe), resultLabel);
   UI::showToast(toast, 1600);
 }
 
@@ -337,12 +366,17 @@ void GenrePage::draw(IGfx& gfx) {
   gfx.setTextColor(palette.muted);
   gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
 
-  std::snprintf(value, sizeof(value), "A:%s/%s %s %s",
+  const char* pendingSuffix =
+      GroovePuterRhythm::hasPendingQuantizedGeneration(mini_acid_)
+          ? " NEXT"
+          : "";
+  std::snprintf(value, sizeof(value), "A:%s/%s %s %s%s",
       GenreCatalog::generativeModeName(activeGenre),
       GenreCatalog::recipeName(activeRecipe),
       linkStateShort(mini_acid_),
       GroovePuterState::generationLevelShortName(
-          GroovePuterState::currentGenerationLevel()));
+          GroovePuterState::currentGenerationLevel()),
+      pendingSuffix);
   gfx.setTextColor(activeGenre == selectedGenre && activeRecipe == selectedRecipe
                        ? axisColor : palette.warning);
   gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, value);
