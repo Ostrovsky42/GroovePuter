@@ -123,6 +123,26 @@ for needle in (
 if "g_commitSerial" in MIGRATION or "g_commitSerial" in STATE:
     raise AssertionError("publication serial leaked into generation identity")
 
+# Embedded/Arduino safety and full-address identity: the implementation header
+# must survive duplicate/preprocessed includes, and quantized STOP/PLAY requests
+# must distinguish the complete 0..255 project pattern address. Reusing only the
+# local 0..7 slot would alias different pages/banks into one reroll history.
+for needle in (
+    "#ifndef GROOVEPUTER_QUANTIZED_GENERATION_COMMIT_IMPL_H",
+    "#define GROOVEPUTER_QUANTIZED_GENERATION_COMMIT_IMPL_H",
+    "songPatternFromPageBankIndex(",
+    "target.page, target.drumBank, target.drumSlot",
+    "context.patternAddress = static_cast<int16_t>(patternAddressFor(target));",
+    "genre.generativeMode, genre.recipe, level, patternAddressFor(target)",
+):
+    require(QUANTIZED, needle, f"quantized full-address/include contract changed: {needle}")
+for forbidden in (
+    "context.patternAddress = static_cast<int16_t>(target.drumSlot);",
+    "genre.generativeMode, genre.recipe, level, target.drumSlot",
+):
+    if forbidden in QUANTIZED:
+        raise AssertionError(f"quantized reroll identity collapsed back to local slot: {forbidden}")
+
 # UI migration is explicit: future Genre apply/G zeroes saved MORPH fields and
 # exposes repeated G as reroll. Scene codec fields themselves are intentionally
 # retained elsewhere for backwards decode.
