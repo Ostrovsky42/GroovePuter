@@ -22,6 +22,8 @@ SOURCES=(
   "${ROOT}/src/generation/roles/bass_pitch_behavior.cpp"
   "${ROOT}/src/generation/roles/chord_rhythm.cpp"
   "${ROOT}/src/generation/roles/chord_progression.cpp"
+  "${ROOT}/src/generation/roles/chord_rhythm_timeline.cpp"
+  "${ROOT}/src/generation/roles/chord_rhythm_retrigger.cpp"
   "${ROOT}/src/generation/roles/melodic_motif.cpp"
   "${ROOT}/src/generation/roles/melodic_pitch_intent.cpp"
   "${ROOT}/src/generation/tonal/tonal_projector.cpp"

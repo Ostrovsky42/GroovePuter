@@ -65,6 +65,8 @@ SOURCES := \
 	../src/generation/roles/bass_pitch_behavior.cpp \
 	../src/generation/roles/chord_rhythm.cpp \
 	../src/generation/roles/chord_progression.cpp \
+	../src/generation/roles/chord_rhythm_timeline.cpp \
+	../src/generation/roles/chord_rhythm_retrigger.cpp \
 	../src/generation/roles/melodic_motif.cpp \
 	../src/generation/roles/melodic_pitch_intent.cpp \
 	../src/generation/tonal/tonal_projector.cpp \

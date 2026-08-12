@@ -35,6 +35,8 @@ MIGRATION_SOURCES=(
   "${ROOT_DIR}/src/generation/materialization/pattern_materializer.cpp"
   "${ROOT_DIR}/src/generation/roles/semantic_pattern_projector.cpp"
   "${ROOT_DIR}/src/generation/roles/bass_pitch_behavior.cpp"
+  "${ROOT_DIR}/src/generation/roles/chord_rhythm_timeline.cpp"
+  "${ROOT_DIR}/src/generation/roles/chord_rhythm_retrigger.cpp"
   "${ROOT_DIR}/src/generation/roles/melodic_pitch_intent.cpp"
   "${ROOT_DIR}/src/generation/tonal/tonal_projector.cpp"
   "${ROOT_DIR}/src/generation/tonal/tonal_materializer.cpp"

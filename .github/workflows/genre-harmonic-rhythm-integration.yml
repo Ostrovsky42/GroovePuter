@@ -1,0 +1,32 @@
+name: Genre harmonic rhythm integration
+
+on:
+  pull_request:
+    paths:
+      - 'src/generation/composition/genre_harmonic_rhythm.h'
+      - 'src/generation/migration/strong_rhythm_migration.cpp'
+      - 'src/generation/migration/strong_rhythm_migration.h'
+      - 'src/generation/roles/chord_rhythm_timeline.*'
+      - 'src/generation/roles/chord_rhythm_retrigger.*'
+      - 'tests/test_genre_harmonic_rhythm.cpp'
+      - 'tests/test_genre_harmonic_rhythm_source_regressions.py'
+      - 'tests/run_genre_harmonic_rhythm_tests.sh'
+      - '.github/workflows/genre-harmonic-rhythm-integration.yml'
+  workflow_dispatch:
+
+jobs:
+  host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run production harmonic-rhythm semantics
+        run: bash tests/run_genre_harmonic_rhythm_tests.sh
+      - name: Run source ownership regressions
+        run: python3 tests/test_genre_harmonic_rhythm_source_regressions.py
+
+  core-regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run core host suite
+        run: bash tests/run_host_tests.sh

@@ -117,7 +117,20 @@ void testProtectedSpaceAndEmptyBarAreValid() {
   empty.barOrdinal = 1;
   const ChordRhythmResult result = realizeChordRhythm(empty);
   assert(result.status == ChordRhythmStatus::ValidButEmpty);
-  assert(result.plan.onsets == 0 && result.plan.continuations == 0);
+  assert(result.plan.onsets == 0 && result.plan.continuations == 0 &&
+         result.plan.releasePoints == 0);
+}
+
+void testBlockedHeldPadClearsOrphanRelease() {
+  ChordRhythmRequest request = requestFor(ChordRhythmId::HeldPad);
+  request.bassOnsets = stepBit(0);
+  request.protectedSpace = 0;
+  const ChordRhythmResult result = realizeChordRhythm(request);
+  assert(result.status == ChordRhythmStatus::ValidButEmpty);
+  assert(result.plan.id == ChordRhythmId::HeldPad);
+  assert(result.plan.onsets == 0);
+  assert(result.plan.continuations == 0);
+  assert(result.plan.releasePoints == 0);
 }
 
 void testAutoDeterminism() {
@@ -144,6 +157,7 @@ int main() {
   testHarmonyIsIndependentFromChordRhythm();
   testWholeBarHoldProjectionAndFeel();
   testProtectedSpaceAndEmptyBarAreValid();
+  testBlockedHeldPadClearsOrphanRelease();
   testAutoDeterminism();
   return 0;
 }

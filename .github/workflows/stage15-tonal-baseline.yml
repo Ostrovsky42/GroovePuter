@@ -18,11 +18,13 @@ jobs:
           bash tests/run_stage15_tonal_baseline_dump.sh > build/host-tests/stage15_tonal_legacy_actual.tsv
           test "$(wc -l < build/host-tests/stage15_tonal_legacy_actual.tsv)" -eq 257
           diff -u tests/data/stage15_tonal_legacy_baseline.tsv build/host-tests/stage15_tonal_legacy_actual.tsv
-      - name: Compare frozen tonal-materialized fingerprints
+      - name: Check deterministic current tonal corpus
         run: |
           mkdir -p build/host-tests
-          bash tests/run_stage15_tonal_baseline_dump.sh --tonal > build/host-tests/stage15_tonal_enabled_actual.tsv
-          test "$(wc -l < build/host-tests/stage15_tonal_enabled_actual.tsv)" -eq 257
-          diff -u tests/data/stage15_tonal_enabled_baseline.tsv build/host-tests/stage15_tonal_enabled_actual.tsv
-      - name: Check tonal ownership boundary across corpora
-        run: python3 tests/test_stage15_tonal_corpus_boundary.py
+          bash tests/run_stage15_tonal_baseline_dump.sh --tonal > build/host-tests/stage15_tonal_enabled_actual_a.tsv
+          bash tests/run_stage15_tonal_baseline_dump.sh --tonal > build/host-tests/stage15_tonal_enabled_actual_b.tsv
+          test "$(wc -l < build/host-tests/stage15_tonal_enabled_actual_a.tsv)" -eq 257
+          cmp build/host-tests/stage15_tonal_enabled_actual_a.tsv build/host-tests/stage15_tonal_enabled_actual_b.tsv
+          echo "bff6149f9c3c4d585720e2c4a0a5efa58a27915631d24ec63e049d400b4685df  build/host-tests/stage15_tonal_enabled_actual_a.tsv" | sha256sum -c -
+      - name: Check current tonal ownership boundary
+        run: python3 tests/test_stage15_tonal_corpus_boundary.py build/host-tests/stage15_tonal_enabled_actual_a.tsv
