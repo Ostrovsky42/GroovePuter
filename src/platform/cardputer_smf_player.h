@@ -154,7 +154,7 @@ private:
             uint8_t sourceChannel,
             uint8_t sourceNote) {
         const int8_t destinationOverride =
-            GroovePuterMidi::smfTrackOutputRouteState().destinationFor(
+            GroovePuterMidi::smfTrackOutputRouteState().destinationForProducer(
                 pendingEvent_.trackIndex,
                 fileIndex_.trackCount);
         return GroovePuterMidi::routeSmfTrackNote(
