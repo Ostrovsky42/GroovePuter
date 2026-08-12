@@ -31,9 +31,16 @@ enum class PerformanceArpDirection : uint8_t {
     Count,
 };
 
+enum class PerformanceVoiceMode : uint8_t {
+    Mono = 0,
+    Poly,
+    Count,
+};
+
 class PerformanceKeyboard {
 public:
     static constexpr std::size_t kMaxHeldNotes = 19;
+    static constexpr std::size_t kMaxPolyChordNotes = 16;
     static constexpr uint8_t kMinNote = 12;
     static constexpr uint8_t kMaxNote = 95;
     static constexpr uint8_t kRootC2 = 36;
@@ -42,11 +49,17 @@ public:
     static constexpr uint8_t kSeqtrakDrumNote = 60;
     static constexpr uint8_t kSeqtrakDrumChannelCount = 7;
     static constexpr uint8_t kEuclideanSteps = 16;
+    static constexpr uint8_t kMinVelocity = 10;
+    static constexpr uint8_t kMaxVelocity = 120;
+    static constexpr uint8_t kVelocityStep = 10;
+    static constexpr uint8_t kDefaultVelocity = 100;
 
     explicit PerformanceKeyboard(MusicalEventRouter& router)
         : router_(router) {}
 
-    bool keyDown(char physicalKey, uint8_t velocity = 100);
+    // velocity == 0 means use the current fixed Cardputer key velocity. Real
+    // external velocity values may still be supplied explicitly by tests/callers.
+    bool keyDown(char physicalKey, uint8_t velocity = 0);
     bool keyUp(char physicalKey);
     void releaseMissingKeys(const char* pressedKeys, std::size_t pressedCount);
 
@@ -74,6 +87,21 @@ public:
     void cycleTarget(int direction);
     const char* targetName() const;
     uint8_t targetMidiChannel() const;
+
+    void setVoiceMode(PerformanceVoiceMode mode);
+    void toggleVoiceMode();
+    PerformanceVoiceMode voiceMode() const { return voiceMode_; }
+    const char* voiceModeName() const;
+    // MONO/POLY selects the receiving external synth mode. Plain Cardputer key
+    // events themselves retain exact physical NoteOn/NoteOff ownership in both
+    // modes; the receiver decides one-voice priority/legato versus polyphony.
+    // Direct POLY+CHORD additionally owns the union of all held-root chord notes
+    // without retriggering unchanged tones, bounded to kMaxPolyChordNotes.
+    bool directPolyphonyEnabled() const;
+
+    void setVelocity(uint8_t velocity);
+    bool adjustVelocity(int direction);
+    uint8_t velocity() const { return keyVelocity_; }
 
     void panic();
 
@@ -136,7 +164,7 @@ public:
     static bool scaleDegreeForKey(char physicalKey, uint8_t& degree);
 
 private:
-    static constexpr std::size_t kMaxGeneratedNotes = 16;
+    static constexpr std::size_t kMaxGeneratedNotes = kMaxPolyChordNotes;
     // One maximum-density step can contain 8 chord notes * 4 ratchets *
     // NoteOn/NoteOff = 64 events. Keep headroom for the second half of the
     // current step while the following transport step is prepared.
@@ -166,6 +194,8 @@ private:
     int findHeld(char physicalKey) const;
     void emitNoteOn(const HeldNote& held);
     void emitNoteOff(uint8_t note, uint8_t channel = 0);
+    void emitPolyNoteOn(const HeldNote& held);
+    void emitPolyNoteOff(uint8_t note);
     void emitAllNotesOff();
     void routeGenerated(MusicalEventType type,
                         uint8_t note,
@@ -185,6 +215,7 @@ private:
     void forgetGenerated(uint8_t note);
 
     bool stepEngineEnabled() const;
+    bool polyChordSustainEnabled() const;
     uint32_t stepDurationMicros() const;
     bool serviceTransportStepClock(uint32_t nowMicros);
     bool euclideanStepActive(uint8_t step) const;
@@ -196,6 +227,7 @@ private:
                            std::size_t capacity) const;
     std::size_t buildArpPool(uint8_t* notes, std::size_t capacity) const;
     uint8_t selectArpNote(const uint8_t* notes, std::size_t count);
+    void reconcileDirectPolyChord(uint32_t nowMicros);
     void triggerDirectTransformed(uint32_t nowMicros);
     void restartAfterConfigurationChange();
 
@@ -205,8 +237,10 @@ private:
     PerformanceScale scale_{PerformanceScale::NaturalMinor};
     PerformanceChordMode chordMode_{PerformanceChordMode::Off};
     PerformanceArpDirection arpDirection_{PerformanceArpDirection::Up};
+    PerformanceVoiceMode voiceMode_{PerformanceVoiceMode::Mono};
     MusicalEventTarget target_{MusicalEventTarget::SynthA};
     int8_t octaveShift_{0};
+    uint8_t keyVelocity_{kDefaultVelocity};
     bool enabled_{true};
     bool noteModeEnabled_{true};
     bool transportPlaying_{false};
