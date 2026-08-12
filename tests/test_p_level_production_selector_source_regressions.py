@@ -23,6 +23,14 @@ def require(text: str, needle: str, message: str) -> None:
         raise AssertionError(message)
 
 
+def function_body(text: str, signature: str, next_signature: str) -> str:
+    require(text, signature, f"missing function boundary: {signature}")
+    body = text.split(signature, 1)[1]
+    if next_signature in body:
+        body = body.split(next_signature, 1)[0]
+    return body
+
+
 # P-level has one runtime/session owner. P2 is the compatibility default so
 # upgrading the firmware cannot silently alter existing generation behavior.
 for needle in (
@@ -116,38 +124,86 @@ if "cycleGenerationLevel" in DRUM_LEGACY:
     raise AssertionError("legacy Ctrl/Alt+G handler became a second P-level owner")
 
 # Full GENRE materialization is quantized while transport is running. The page
-# must not stop/restart transport to hide an in-place mutation: current material
-# remains active and the prepared A+B+Drums transaction publishes at BAR_START.
-require(
-    GENRE,
+# must neither stop/restart transport nor hold AudioMutationGate while the heavy
+# candidate is prepared. AudioTask must continue rendering the current bar.
+for needle in (
     "regenerateWithQuantizedCommit(",
-    "GENRE no longer routes full generation through quantized commit",
-)
-require(GENRE, 'resultLabel = "GEN -> NEXT BAR";', "pending GEN feedback disappeared")
+    "if (doRegenerate && mini_acid_.isPlaying())",
+    "AudioTask keeps rendering the current bar",
+    'resultLabel = "GEN -> NEXT BAR";',
+):
+    require(GENRE, needle, f"GENRE quantized route changed: {needle}")
 if "mini_acid_.stop();" in GENRE or "mini_acid_.start();" in GENRE:
     raise AssertionError("GENRE generation reintroduced transport stop/restart")
 
+playing_branch = GENRE.split(
+    "if (doRegenerate && mini_acid_.isPlaying())", 1
+)[1].split("} else {", 1)[0]
+if "withAudioGuard" in playing_branch:
+    raise AssertionError("PLAY generation still pauses AudioTask through AudioGuard")
+
+# Pending publication is a fixed-size double buffer. The control side owns only
+# Writing slots; BAR_START claims an immutable Ready slot as Reading. Repeated G
+# reclaims the currently Ready slot when possible so newest intent wins without
+# racing an already-running BAR_START commit.
+for needle in (
+    "inline PendingGeneration g_slots[2]{};",
+    "SlotState::Writing",
+    "SlotState::Ready",
+    "SlotState::Reading",
+    "g_publishedSlot.exchange(-1, std::memory_order_acq_rel)",
+    "WriteLease acquireWriteLease()",
+    "lease.hasPreviousPending",
+    "publishWriteSlot(lease.slot);",
+    "targetStillActive(scenes, target)",
+    "targetStillActive(scenes, pending.target)",
+    "setPendingCommitHook(&commitQuantizedGenerationAtBarStart)",
+    "QuantizedGenerationResult::PendingNextBar",
+    "QuantizedGenerationResult::CommittedNow",
+):
+    require(QUANTIZED, needle, f"lock-free quantized contract changed: {needle}")
+
+# PLAY preparation must be scratch-only: Atlas or a private ModeManager creates
+# candidate A/B/Drums, then the pure Stage 15 materializer transforms those local
+# values. It must not write live Scene patterns, mode, BPM or call the active
+# legacy bridge before publication.
+prepare = function_body(
+    QUANTIZED,
+    "inline bool preparePlayingCandidate(",
+    "}  // namespace QuantizedGenerationDetail",
+)
+for needle in (
+    "AtlasRuntime::applyRecipe(",
+    "GrooveboxModeManager scratchMode(engine);",
+    "scratchMode.setModeLocal(requestedMode);",
+    "scratchMode.setGenerationSeed(engine.modeManager().generationSeed());",
+    "scratchMode.generatePattern(",
+    "scratchMode.generateDrumPattern(",
+    "migrateStrongRhythmMaterial(",
+):
+    require(prepare, needle, f"PLAY scratch generation lost: {needle}")
+for forbidden in (
+    "scene.genre =",
+    "engine.setGrooveboxMode(",
+    "engine.setBpm(",
+    "editCurrentSynthPattern(",
+    "editCurrentDrumPattern(",
+    "regenerateWithStrongRhythmMigration(",
+):
+    if forbidden in prepare:
+        raise AssertionError(f"PLAY preparation mutates live runtime: {forbidden}")
+
+# STOP remains immediate and may use the active bridge under the caller's guard.
 for needle in (
     "if (!engine.isPlaying())",
-    "QuantizedGenerationResult::CommittedNow",
-    "QuantizedGenerationResult::PendingNextBar",
-    "const SynthPattern activeSynthA",
-    "const SynthPattern activeSynthB",
-    "const DrumPatternSet activeDrums",
-    "scenes.editCurrentSynthPattern(0) = activeSynthA;",
-    "scenes.editCurrentSynthPattern(1) = activeSynthB;",
-    "scenes.editCurrentDrumPattern() = activeDrums;",
-    "g_pendingValid.store(true, std::memory_order_release);",
-    "setPendingCommitHook(&commitQuantizedGenerationAtBarStart)",
-    "targetStillActive(scenes, g_pending.target)",
-    "GroovePuterState::markSceneMutated();",
+    "scene.genre = requestedGenre;",
+    "regenerateWithStrongRhythmMigration(engine);",
 ):
-    require(QUANTIZED, needle, f"quantized generation contract changed: {needle}")
+    require(QUANTIZED, needle, f"STOP immediate contract changed: {needle}")
 
-# Heavy Stage 15 generation must happen only on the control-side preparation
-# path. The existing audio BAR_START call remains a bounded callback bridge; its
-# boolean return stays false so MiniAcid never falls through to the historical
-# audio-thread regeneratePatternsWithGenre() branch.
+# Heavy generation must never run from the audio BAR_START path. The existing
+# transport callback invokes only the bounded commit hook; its boolean remains
+# false so MiniAcid cannot fall through to historical audio-thread regeneration.
 require(
     ENGINE,
     "if (genreManager_.commitPendingRecipe()) {",
@@ -164,10 +220,31 @@ require(
     "BAR_START hook may fall through into heavy audio-thread generation",
 )
 
+commit = function_body(
+    QUANTIZED,
+    "inline bool commitQuantizedGenerationAtBarStart(",
+    "inline QuantizedGenerationResult regenerateWithQuantizedCommit(",
+)
+for forbidden in (
+    "AtlasRuntime::applyRecipe(",
+    "generatePattern(",
+    "generateDrumPattern(",
+    "migrateStrongRhythmMaterial(",
+    "regenerateWithStrongRhythmMigration(",
+):
+    if forbidden in commit:
+        raise AssertionError(f"BAR_START performs heavy generation: {forbidden}")
+
 for forbidden in ("std::vector", "std::string", "new ", "malloc(", "calloc("):
     if forbidden in QUANTIZED:
         raise AssertionError(
             f"quantized generation pending state is no longer allocation-free: {forbidden}"
         )
 
-print("P-level production selector + quantized generation source regressions: OK")
+require(
+    QUANTIZED,
+    "GroovePuterState::markSceneMutated();",
+    "successful BAR_START commit no longer publishes Scene revision",
+)
+
+print("P-level production selector + lock-free quantized generation regressions: OK")
