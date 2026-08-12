@@ -190,17 +190,18 @@ page/bank/slot identity.
 
 | Key | Action |
 |---|---|
-| `Arrows` | Move cursor |
-| `Shift/Ctrl+Arrows` | Extend selection |
+| `Left/Right` | Move `A -> B -> DR`; crossing the outer edge changes edit Song slot A/B |
+| `Up/Down` | Move Song row |
+| `Shift/Ctrl+Arrows` | Extend selection inside the visible track rectangle; does not cross Song slot |
 | `Enter` | Jump to the referenced pattern editor |
-| `Q..I` | Assign an existing pattern without regeneration |
+| `Q..I` | Assign existing slot `1..8` from the visible Song `PAT:A/B` bank |
 | `G` | Generate material into a free slot and assign the selected cell |
 | double `G` | Generate and materialize the current row atomically |
 | `Alt+G` | Generate the selected area |
 | `Ctrl+G` | Cycle Song generator mode |
-| `B` | Flip referenced pattern bank |
+| `B` | Toggle visible `PAT:A/B` assignment bank |
 | `Ctrl+N` / `Ctrl+M` | Insert / delete row |
-| `Alt+B` | Edit Song slot A/B |
+| `Alt+B` | Flip bank of stored reference / selection |
 | `Ctrl+B` | Play Song slot A/B |
 | `V` | Toggle DR/VO lane |
 | `X` | Split compare |
@@ -220,7 +221,7 @@ page/bank/slot identity.
 | `Backspace` / `Tab` | Clear cell / selection |
 | `Alt+Backspace` | Clear full Song |
 
-`Q..I` changes only SLOT; PAGE and the target-track BANK remain unchanged.
+`Q..I` changes SLOT using the visible Song `PAT:A/B` assignment bank; PAGE remains unchanged. `B` changes that assignment context without mutating Song data. Plain Left/Right crosses edit Song Slot `A <-> B` only at the outer track edge.
 `Alt+[` / `Alt+]` moves one pattern page at a time. `NO EMPTY PATTERN SLOTS`
 means generation changed neither Song references nor pattern content.
 

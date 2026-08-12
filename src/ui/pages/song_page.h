@@ -123,6 +123,7 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   uint32_t ctrl_r_hold_start_ms_ = 0;
   bool ctrl_r_long_fired_ = false;
   LaneFocusMode lane_focus_mode_ = LaneFocusMode::AllTracks;
+  int assignment_bank_index_ = 0;  // Song Q..I assignment context; independent from playback banks.
   bool split_compare_ = true;       // single-pane editor by default
   int row_markers_[4] = {-1, -1, -1, -1};
 

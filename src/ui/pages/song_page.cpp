@@ -68,6 +68,7 @@ inline void drawQuarterStrip(IGfx& gfx, int x, int y, int height, int activeQuar
 constexpr uint32_t kCtrlRRepeatGapMs = 220;
 constexpr uint32_t kCtrlRLongPressMs = 650;
 constexpr bool kVoiceLaneInSongEditor = false;
+constexpr int kSongSlotCount = 2;
 
 inline IGfxColor colorForSongTrack(SongTrack track) {
   switch (track) {
@@ -180,6 +181,10 @@ SongPage::SongPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
   if (maxSongRow < 0) maxSongRow = 0;
   if (cursor_row_ > maxSongRow) cursor_row_ = maxSongRow;
   if (cursor_row_ >= Song::kMaxPositions) cursor_row_ = Song::kMaxPositions - 1;
+  assignment_bank_index_ = bankIndexForTrack(SongTrack::SynthA);
+  if (assignment_bank_index_ < 0 || assignment_bank_index_ >= kBankCount) {
+    assignment_bank_index_ = 0;
+  }
 }
 
 int SongPage::clampCursorRow(int row) const {
@@ -202,8 +207,9 @@ int SongPage::cursorTrack() const {
   return track;
 }
 
-bool SongPage::cursorOnModeButton() const { 
-  return cursor_track_ == visibleTrackCount(); 
+bool SongPage::cursorOnModeButton() const {
+  // MODE remains clickable, but it is no longer a hidden fourth keyboard column.
+  return false;
 }
 bool SongPage::cursorOnPlayheadLabel() const { 
   return false; // Not implemented yet
@@ -227,7 +233,7 @@ int SongPage::visibleTrackCount() const {
 }
 
 int SongPage::maxEditableTrackColumn() const {
-  return visibleTrackCount(); // Grid + Mode Button
+  return maxPatternTrackColumn();
 }
 
 int SongPage::maxPatternTrackColumn() const {
@@ -298,7 +304,7 @@ void SongPage::normalizeCursorTrackAfterFocusChange(LaneFocusMode previous_mode)
   }();
   const bool wasModeButton = cursor_track_ == oldVisibleTracks;
   if (wasModeButton) {
-    cursor_track_ = visibleTrackCount();
+    cursor_track_ = maxPatternTrackColumn();
     return;
   }
 
@@ -507,25 +513,56 @@ void SongPage::getSelectionBounds(int& min_row, int& max_row, int& min_track, in
 void SongPage::moveCursorHorizontal(int delta, bool extend_selection) {
   int before_row = cursor_row_;
   int before_track = cursor_track_;
+  int before_slot = mini_acid_.activeSongSlot();
   if (extend_selection) {
     updateSelection();
   }
-  // Don't clear selection on plain arrow - Cardputer fires arrow-without-Ctrl
-  // when Ctrl is released before arrow key.  Selection is cleared on action
-  // (pattern assign, ESC, etc.) instead.
+
+  // Horizontal arranger contract:
+  // - arrows move only across the visible musical columns;
+  // - PAT:A/B is an independent assignment context changed with B;
+  // - at the outer track edge, plain arrows cross the edit Song Slot A/B
+  //   boundary instead of silently changing PAT bank.
   int track = cursorTrack();
-  track += delta;
-  if (track < 0) track = 0;
-  int maxTrack = maxEditableTrackColumn();
-  if (track > maxTrack) track = maxTrack;
+  const int maxTrack = maxPatternTrackColumn();
+  bool slotChanged = false;
+
+  if (!extend_selection && delta > 0 && track >= maxTrack) {
+    const int nextSlot = before_slot + 1;
+    if (nextSlot < kSongSlotCount) {
+      withAudioGuard([&]() { mini_acid_.setActiveSongSlot(nextSlot); });
+      track = 0;
+      slotChanged = true;
+    }
+  } else if (!extend_selection && delta < 0 && track <= 0) {
+    const int nextSlot = before_slot - 1;
+    if (nextSlot >= 0) {
+      withAudioGuard([&]() { mini_acid_.setActiveSongSlot(nextSlot); });
+      track = maxTrack;
+      slotChanged = true;
+    }
+  } else {
+    track += delta;
+    if (track < 0) track = 0;
+    if (track > maxTrack) track = maxTrack;
+  }
+
   cursor_track_ = track;
   syncSongPositionToCursor();
   if (extend_selection) {
     updateLoopRangeFromSelection();
   }
-  LOG_DEBUG_INPUT("Cursor H delta=%d extend=%d (%d,%d)->(%d,%d) sel=%d",
-                  delta, (int)extend_selection,
-                  before_row, before_track, cursor_row_, cursor_track_, (int)has_selection_);
+  if (slotChanged) {
+    char slotToast[20];
+    std::snprintf(slotToast, sizeof(slotToast), "EDIT SLOT %c",
+                  static_cast<char>('A' + mini_acid_.activeSongSlot()));
+    showToast(slotToast, 650);
+  }
+  LOG_DEBUG_INPUT("Cursor H delta=%d extend=%d slot=%d->%d bank=%d (%d,%d)->(%d,%d) sel=%d",
+                  delta, (int)extend_selection, before_slot,
+                  mini_acid_.activeSongSlot(), assignment_bank_index_,
+                  before_row, before_track, cursor_row_, cursor_track_,
+                  (int)has_selection_);
 }
 
 void SongPage::moveCursorVertical(int delta, bool extend_selection) {
@@ -749,7 +786,7 @@ bool SongPage::assignPattern(int patternIdx) {
           bool valid = false;
           SongTrack track = trackForColumn(t, valid);
           if (!valid) continue;
-          int bankIndex = bankIndexForTrack(track);
+          int bankIndex = assignment_bank_index_;
           int combined = songPatternFromPageBankIndex(mini_acid_.currentPageIndex(), bankIndex, patternIdx);
           int before = mini_acid_.songPatternAt(r, track);
           mini_acid_.setSongPattern(r, track, combined);
@@ -775,7 +812,7 @@ bool SongPage::assignPattern(int patternIdx) {
   SongTrack track = trackForColumn(cursorTrack(), trackValid);
   if (!trackValid) return false;
   int row = cursorRow();
-  int bankIndex = bankIndexForTrack(track);
+  int bankIndex = assignment_bank_index_;
   int combined = songPatternFromPageBankIndex(mini_acid_.currentPageIndex(), bankIndex, patternIdx);
   withAudioGuard([&]() {
     mini_acid_.setSongPattern(row, track, combined);
@@ -1451,15 +1488,19 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
   }
 
   if (ui_event.alt && !ui_event.ctrl && key_b) {
-    int nextSlot = mini_acid_.activeSongSlot() == 0 ? 1 : 0;
-    LOG_INFO_UI("Switch to Song Slot %c", 'A' + nextSlot);
-    withAudioGuard([&]() { mini_acid_.setActiveSongSlot(nextSlot); });
-    showToast(nextSlot == 0 ? "Slot: A" : "Slot: B", 800);
-    return true;
+    // Alt+B keeps the explicit destructive operation: flip the bank of the
+    // already stored Song reference (or selection). Edit-slot switching now
+    // belongs to the plain Left/Right outer boundary.
+    return flipSongPatternBankAtCursorOrSelection();
   }
 
   if (!ui_event.alt && !ui_event.ctrl && key_b) {
-    return flipSongPatternBankAtCursorOrSelection();
+    assignment_bank_index_ = assignment_bank_index_ == 0 ? 1 : 0;
+    char bankToast[20];
+    std::snprintf(bankToast, sizeof(bankToast), "PAT BANK %c",
+                  static_cast<char>('A' + assignment_bank_index_));
+    showToast(bankToast, 650);
+    return true;
   }
 
   // Song operations (Ctrl held)
@@ -1756,21 +1797,26 @@ void SongPage::drawMinimalStyle(IGfx &gfx) {
   gfx.fillRect(x, y, w, statusH, palette.panel);
   gfx.drawLine(x, y + statusH - 1, x + w - 1, y + statusH - 1, palette.dim);
 
-  char stateBuf[32];
-  std::snprintf(stateBuf, sizeof(stateBuf), "E:%c P:%c%s %s", 'A' + activeSlot,
-                'A' + playSlot, liveMix ? " LM" : "", laneShortLabel());
+  char stateBuf[40];
+  std::snprintf(stateBuf, sizeof(stateBuf), "E:%c P:%c PAT:%c%s %s", 'A' + activeSlot,
+                'A' + playSlot, 'A' + assignment_bank_index_,
+                liveMix ? " LM" : "", laneShortLabel());
   gfx.setTextColor(palette.secondary);
   gfx.drawText(x + 2, y + 2, stateBuf);
-
-  char barBuf[20];
-  std::snprintf(barBuf, sizeof(barBuf), "B%02d/%02d", playhead + 1, songLength);
-  const int barX = x + 92;
-  gfx.setTextColor(playing && songMode ? palette.active : palette.dim);
-  gfx.drawText(barX, y + 2, barBuf);
 
   const char *modeText = songMode ? "PLAY" : "EDIT";
   const int modeW = textWidth(gfx, modeText) + 8;
   const int modeX = x + w - modeW - 2;
+
+  char barBuf[20];
+  std::snprintf(barBuf, sizeof(barBuf), "B%02d/%02d", playhead + 1, songLength);
+  const int barW = textWidth(gfx, barBuf);
+  int barX = x + 2 + textWidth(gfx, stateBuf) + 5;
+  const int maxBarX = modeX - barW - 3;
+  if (barX > maxBarX) barX = maxBarX;
+  if (barX < x + 2) barX = x + 2;
+  gfx.setTextColor(playing && songMode ? palette.active : palette.dim);
+  gfx.drawText(barX, y + 2, barBuf);
   gfx.fillRect(modeX, y + 1, modeW, statusH - 3, palette.inset);
   gfx.drawRect(modeX, y + 1, modeW, statusH - 3,
                cursorOnModeButton() ? palette.focus : palette.dim);
@@ -1835,7 +1881,7 @@ void SongPage::drawMinimalStyle(IGfx &gfx) {
 
   auto drawPane = [&](int paneX, int paneW, int paneSlot, bool editable) {
     const int rightInset = 4;
-    const int barW = split_compare_ ? 17 : 22;
+    const int barW = 24;
     const int usableW = paneW - rightInset;
     int cellW = (usableW - barW) / trackCount;
     if (cellW < 12)
@@ -1885,10 +1931,20 @@ void SongPage::drawMinimalStyle(IGfx &gfx) {
 
       if (row == playhead) {
         const bool activePlay = playing && songMode && paneSlot == playSlot;
-        gfx.fillRect(paneX + barW, rowY, usableW - barW - 1, rowH,
-                     activePlay ? palette.inset : palette.panel);
-        gfx.fillRect(paneX + 1, rowY, 2, rowH,
-                     activePlay ? palette.active : palette.secondary);
+        if (activePlay) {
+          gfx.fillRect(paneX + 1, rowY, usableW - 2, rowH, palette.inset);
+          gfx.drawLine(paneX + 1, rowY, paneX + usableW - 2, rowY, palette.active);
+          gfx.drawLine(paneX + 1, rowY + rowH - 1, paneX + usableW - 2,
+                       rowY + rowH - 1, palette.active);
+          char playRowBuf[8];
+          std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+          gfx.setTextColor(palette.active);
+          gfx.drawText(paneX + 2, rowY + 1, playRowBuf);
+        } else {
+          gfx.fillRect(paneX + barW, rowY, usableW - barW - 1, rowH,
+                       palette.panel);
+          gfx.fillRect(paneX + 1, rowY, 2, rowH, palette.secondary);
+        }
       }
 
       if (mini_acid_.loopModeEnabled() && (row == mini_acid_.loopStartRow() ||
@@ -1933,6 +1989,16 @@ void SongPage::drawMinimalStyle(IGfx &gfx) {
           gfx.drawRect(tx, rowY, cellW - 1, rowH, palette.focus);
         }
       }
+
+      // Final playhead overlay: draw after cells so populated patterns cannot
+      // erase the row outline or marker.
+      if (row == playhead && playing && songMode && paneSlot == playSlot) {
+        gfx.drawRect(paneX + 1, rowY, usableW - 2, rowH, palette.active);
+        char playRowBuf[8];
+        std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+        gfx.setTextColor(palette.active);
+        gfx.drawText(paneX + 2, rowY + 1, playRowBuf);
+      }
     }
 
     drawQuarterStrip(gfx, paneX + paneW - 3, cellsTop, visibleRows * rowH,
@@ -1952,7 +2018,7 @@ void SongPage::drawMinimalStyle(IGfx &gfx) {
   gfx.fillRect(x, footerY, w, footerH, palette.panel);
   gfx.drawLine(x, footerY, x + w - 1, footerY, palette.dim);
   gfx.setTextColor(palette.secondary);
-  gfx.drawText(x + 2, footerY + 2, "Q-I:P G:GEN B:BNK V:LANE X:SPLIT");
+  gfx.drawText(x + 2, footerY + 2, "Q-I:P B:PAT <>:TRK/SLOT V:LANE X:SPL");
 
   if (mini_acid_.isPageLoading()) {
     char loadBuf[32];
@@ -2049,9 +2115,9 @@ void SongPage::drawTEGridStyle(IGfx &gfx) {
   int len = mini_acid_.songLength();
   bool playing = mini_acid_.isPlaying();
   bool songMode = mini_acid_.songModeEnabled();
-  snprintf(statusBuf, sizeof(statusBuf), "%s %d/%d %s",
+  snprintf(statusBuf, sizeof(statusBuf), "%s %d/%d PAT:%c %s",
            playing ? (songMode ? ">" : "||") : "[]", pos, len,
-           laneShortLabel());
+           'A' + assignment_bank_index_, laneShortLabel());
   int statusW = textWidth(gfx, statusBuf);
   if (playing && songMode) {
     // Dynamic pulsing indicator in header
@@ -2101,7 +2167,7 @@ void SongPage::drawTEGridStyle(IGfx &gfx) {
   auto drawPane = [=, &gfx, this](int paneX, int paneW, int paneSlot,
                                   bool editable) {
     int tracks = visibleTrackCount();
-    int pos_w = 0;
+    const int pos_w = 24;
     int col_gap = 1;
     int totalCellW = paneW - pos_w - 1 - col_gap * (tracks - 1);
     int cell_w = totalCellW / tracks;
@@ -2163,24 +2229,24 @@ void SongPage::drawTEGridStyle(IGfx &gfx) {
       }
       gfx.fillRect(paneX, ry, paneW, cell_h, rowBg);
 
-      // Playhead (only on active slot if playing)
+      const bool activePlayRow =
+          row_idx == playhead && playing && songMode && paneSlot == playSlot;
       if (row_idx == playhead) {
-        bool pulse = (millis() % 600) < 300;
-        bool activePlay = playing && songMode;
-        IGfxColor playColor =
-            activePlay ? (pulse ? TE_ACCENT : TE_DIM) : TE_DIM;
-        // Full row tint for playhead row
-        gfx.fillRect(paneX, ry, paneW, cell_h,
-                     activePlay ? (paneSlot == playSlot ? IGfxColor(0x303030)
-                                                        : IGfxColor(0x202020))
-                                : IGfxColor(0x1A1A1A));
-        gfx.drawLine(paneX, ry + cell_h - 1, paneX + paneW - 1, ry + cell_h - 1,
-                     activePlay ? (paneSlot == playSlot ? TE_ACCENT : TE_DIM)
-                                : TE_DIM);
-        // Play cursor indicator
-        gfx.setTextColor(playColor);
-        gfx.drawText(paneX + paneW - 10, ry + 1, ">");
+        if (activePlayRow) {
+          gfx.fillRect(paneX, ry, paneW, cell_h, IGfxColor(0x303030));
+          gfx.drawLine(paneX, ry, paneX + paneW - 1, ry, TE_ACCENT);
+          gfx.drawLine(paneX, ry + cell_h - 1, paneX + paneW - 1,
+                       ry + cell_h - 1, TE_ACCENT);
+        } else {
+          gfx.fillRect(paneX + pos_w, ry, paneW - pos_w, cell_h,
+                       IGfxColor(0x1A1A1A));
+        }
       }
+      char teRowBuf[8];
+      std::snprintf(teRowBuf, sizeof(teRowBuf), activePlayRow ? ">%d" : "%d",
+                    row_idx + 1);
+      gfx.setTextColor(activePlayRow ? TE_ACCENT : TE_DIM);
+      gfx.drawText(paneX + 1, ry + 1, teRowBuf);
 
       for (int t = 0; t < tracks; ++t) {
         int tx = paneX + pos_w + t * (cell_w + col_gap);
@@ -2231,6 +2297,13 @@ void SongPage::drawTEGridStyle(IGfx &gfx) {
           gfx.drawText(tx + 1, ry + 1, "--");
         }
       }
+
+      // Final playhead overlay must remain visible above populated cells.
+      if (activePlayRow) {
+        gfx.drawRect(paneX, ry, paneW, cell_h, TE_ACCENT);
+        gfx.setTextColor(TE_ACCENT);
+        gfx.drawText(paneX + 1, ry + 1, teRowBuf);
+      }
     }
   };
 
@@ -2264,8 +2337,9 @@ void SongPage::drawTEGridStyle(IGfx &gfx) {
   // "EDIT:A PLAY:A" (future)
   int editSlot = mini_acid_.activeSongSlot();
   std::snprintf(footerBuf, sizeof(footerBuf),
-                "E:%c P:%c%s  N:ins M:del X:split p:PH A+B:EDIT",
-                'A' + editSlot, 'A' + playSlot, liveMix ? " LM" : "");
+                "E:%c P:%c PAT:%c%s C+N/M:row P:PH",
+                'A' + editSlot, 'A' + playSlot, 'A' + assignment_bank_index_,
+                liveMix ? " LM" : "");
 
   gfx.setTextColor(TE_DIM);
   gfx.drawText(x + 2, footer_y + 2, footerBuf);
@@ -2320,10 +2394,10 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
   gfx.fillRect(x, statusY, w, statusH, IGfxColor(RetroTheme::BG_PANEL));
   gfx.drawLine(x, statusY + statusH, x + w - 1, statusY + statusH,
                IGfxColor(RetroTheme::GRID_DIM));
-  char statusBuf[40];
-  std::snprintf(statusBuf, sizeof(statusBuf), "EDIT:%c  PLAY:%c%s  %s",
-                'A' + activeSlot, 'A' + playSlot, liveMix ? " LM" : "",
-                laneShortLabel());
+  char statusBuf[48];
+  std::snprintf(statusBuf, sizeof(statusBuf), "EDIT:%c PLAY:%c PAT:%c%s %s",
+                'A' + activeSlot, 'A' + playSlot, 'A' + assignment_bank_index_,
+                liveMix ? " LM" : "", laneShortLabel());
   gfx.setTextColor(IGfxColor(RetroTheme::TEXT_SECONDARY));
   gfx.drawText(x + 3, statusY + 1, statusBuf);
   if (liveMix) {
@@ -2343,10 +2417,18 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
 
   const int cursorRowValue = cursorRow();
   const int playhead = mini_acid_.songPlayheadPosition();
-  if (cursorRowValue < scroll_row_)
-    scroll_row_ = cursorRowValue;
-  if (cursorRowValue >= scroll_row_ + visibleRows) {
-    scroll_row_ = cursorRowValue - visibleRows + 1;
+  if (playing && songMode) {
+    const int minTarget = std::min(cursorRowValue, playhead);
+    const int maxTarget = std::max(cursorRowValue, playhead);
+    if (minTarget < scroll_row_)
+      scroll_row_ = minTarget;
+    if (maxTarget >= scroll_row_ + visibleRows)
+      scroll_row_ = maxTarget - visibleRows + 1;
+  } else {
+    if (cursorRowValue < scroll_row_)
+      scroll_row_ = cursorRowValue;
+    if (cursorRowValue >= scroll_row_ + visibleRows)
+      scroll_row_ = cursorRowValue - visibleRows + 1;
   }
   if (scroll_row_ < 0)
     scroll_row_ = 0;
@@ -2369,7 +2451,7 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
 
   auto drawPane = [&](int paneX, int paneW, int paneSlot, bool editable) {
     const int rightInset = 4;
-    const int barW = split_compare_ ? 17 : 21;
+    const int barW = 24;
     const int usableW = paneW - rightInset;
     int cellW = (usableW - barW) / trackCount;
     if (cellW < 12)
@@ -2425,11 +2507,22 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
 
       if (row == playhead) {
         const bool activePlay = playing && songMode && paneSlot == playSlot;
-        gfx.fillRect(paneX + barW, ry, usableW - barW - 1, rowH,
-                     activePlay ? IGfxColor(0x13261E) : IGfxColor(0x11161B));
-        gfx.fillRect(paneX + 1, ry, 2, rowH,
-                     activePlay ? IGfxColor(RetroTheme::NEON_CYAN)
-                                : IGfxColor(RetroTheme::TEXT_DIM));
+        if (activePlay) {
+          gfx.fillRect(paneX + 1, ry, usableW - 2, rowH, IGfxColor(0x13261E));
+          gfx.drawLine(paneX + 1, ry, paneX + usableW - 2, ry,
+                       IGfxColor(RetroTheme::NEON_CYAN));
+          gfx.drawLine(paneX + 1, ry + rowH - 1, paneX + usableW - 2,
+                       ry + rowH - 1, IGfxColor(RetroTheme::NEON_CYAN));
+          char playRowBuf[8];
+          std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+          gfx.setTextColor(IGfxColor(RetroTheme::NEON_CYAN));
+          gfx.drawText(paneX + 2, ry + 1, playRowBuf);
+        } else {
+          gfx.fillRect(paneX + barW, ry, usableW - barW - 1, rowH,
+                       IGfxColor(0x11161B));
+          gfx.fillRect(paneX + 1, ry, 2, rowH,
+                       IGfxColor(RetroTheme::TEXT_DIM));
+        }
       }
 
       if (mini_acid_.loopModeEnabled() && (row == mini_acid_.loopStartRow() ||
@@ -2480,6 +2573,16 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
           gfx.drawRect(tx, ry, cellW - 1, rowH, themedTrackColor(track));
         }
       }
+
+      // Final playhead overlay must remain visible above populated cells.
+      if (row == playhead && playing && songMode && paneSlot == playSlot) {
+        gfx.drawRect(paneX + 1, ry, usableW - 2, rowH,
+                     IGfxColor(RetroTheme::NEON_CYAN));
+        char playRowBuf[8];
+        std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+        gfx.setTextColor(IGfxColor(RetroTheme::NEON_CYAN));
+        gfx.drawText(paneX + 2, ry + 1, playRowBuf);
+      }
     }
 
     drawQuarterStrip(gfx, paneX + paneW - 3, cellsTop, visibleRows * rowH,
@@ -2514,7 +2617,7 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
   }
 
   retro::drawFooterBar(gfx, x, footerY, w, 12,
-                       "Q-I:Pat G:Gen B:Bank C+N/M:Row X:Split", "SONG");
+                       "Q-I:Pat  <-/->:Track/Bank  C+N/M:Row", "SONG");
 }
 
 void SongPage::drawAmberStyle(IGfx &gfx) {
@@ -2549,10 +2652,10 @@ void SongPage::drawAmberStyle(IGfx &gfx) {
   gfx.fillRect(x, statusY, w, statusH, IGfxColor(AmberTheme::BG_PANEL));
   gfx.drawLine(x, statusY + statusH, x + w - 1, statusY + statusH,
                IGfxColor(AmberTheme::GRID_DIM));
-  char statusBuf[40];
-  std::snprintf(statusBuf, sizeof(statusBuf), "EDIT:%c  PLAY:%c%s  %s",
-                'A' + activeSlot, 'A' + playSlot, liveMix ? " LM" : "",
-                laneShortLabel());
+  char statusBuf[48];
+  std::snprintf(statusBuf, sizeof(statusBuf), "EDIT:%c PLAY:%c PAT:%c%s %s",
+                'A' + activeSlot, 'A' + playSlot, 'A' + assignment_bank_index_,
+                liveMix ? " LM" : "", laneShortLabel());
   gfx.setTextColor(IGfxColor(AmberTheme::TEXT_SECONDARY));
   gfx.drawText(x + 3, statusY + 1, statusBuf);
   if (liveMix) {
@@ -2572,10 +2675,18 @@ void SongPage::drawAmberStyle(IGfx &gfx) {
 
   const int cursorRowValue = cursorRow();
   const int playhead = mini_acid_.songPlayheadPosition();
-  if (cursorRowValue < scroll_row_)
-    scroll_row_ = cursorRowValue;
-  if (cursorRowValue >= scroll_row_ + visibleRows) {
-    scroll_row_ = cursorRowValue - visibleRows + 1;
+  if (playing && songMode) {
+    const int minTarget = std::min(cursorRowValue, playhead);
+    const int maxTarget = std::max(cursorRowValue, playhead);
+    if (minTarget < scroll_row_)
+      scroll_row_ = minTarget;
+    if (maxTarget >= scroll_row_ + visibleRows)
+      scroll_row_ = maxTarget - visibleRows + 1;
+  } else {
+    if (cursorRowValue < scroll_row_)
+      scroll_row_ = cursorRowValue;
+    if (cursorRowValue >= scroll_row_ + visibleRows)
+      scroll_row_ = cursorRowValue - visibleRows + 1;
   }
   if (scroll_row_ < 0)
     scroll_row_ = 0;
@@ -2598,7 +2709,7 @@ void SongPage::drawAmberStyle(IGfx &gfx) {
 
   auto drawPane = [&](int paneX, int paneW, int paneSlot, bool editable) {
     const int rightInset = 4;
-    const int barW = split_compare_ ? 17 : 21;
+    const int barW = 24;
     const int usableW = paneW - rightInset;
     int cellW = (usableW - barW) / trackCount;
     if (cellW < 12)
@@ -2654,12 +2765,23 @@ void SongPage::drawAmberStyle(IGfx &gfx) {
 
       if (row == playhead) {
         const bool activePlay = playing && songMode && paneSlot == playSlot;
-        gfx.fillRect(paneX + barW, ry, usableW - barW - 1, rowH,
-                     activePlay ? IGfxColor(AmberTheme::BG_INSET)
-                                : IGfxColor(AmberTheme::BG_PANEL));
-        gfx.fillRect(paneX + 1, ry, 2, rowH,
-                     activePlay ? IGfxColor(AmberTheme::SELECT_BRIGHT)
-                                : IGfxColor(AmberTheme::TEXT_DIM));
+        if (activePlay) {
+          gfx.fillRect(paneX + 1, ry, usableW - 2, rowH,
+                       IGfxColor(AmberTheme::BG_INSET));
+          gfx.drawLine(paneX + 1, ry, paneX + usableW - 2, ry,
+                       IGfxColor(AmberTheme::SELECT_BRIGHT));
+          gfx.drawLine(paneX + 1, ry + rowH - 1, paneX + usableW - 2,
+                       ry + rowH - 1, IGfxColor(AmberTheme::SELECT_BRIGHT));
+          char playRowBuf[8];
+          std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+          gfx.setTextColor(IGfxColor(AmberTheme::SELECT_BRIGHT));
+          gfx.drawText(paneX + 2, ry + 1, playRowBuf);
+        } else {
+          gfx.fillRect(paneX + barW, ry, usableW - barW - 1, rowH,
+                       IGfxColor(AmberTheme::BG_PANEL));
+          gfx.fillRect(paneX + 1, ry, 2, rowH,
+                       IGfxColor(AmberTheme::TEXT_DIM));
+        }
       }
 
       if (mini_acid_.loopModeEnabled() && (row == mini_acid_.loopStartRow() ||
@@ -2710,6 +2832,16 @@ void SongPage::drawAmberStyle(IGfx &gfx) {
           gfx.drawRect(tx, ry, cellW - 1, rowH, themedTrackColor(track));
         }
       }
+
+      // Final playhead overlay must remain visible above populated cells.
+      if (row == playhead && playing && songMode && paneSlot == playSlot) {
+        gfx.drawRect(paneX + 1, ry, usableW - 2, rowH,
+                     IGfxColor(AmberTheme::SELECT_BRIGHT));
+        char playRowBuf[8];
+        std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
+        gfx.setTextColor(IGfxColor(AmberTheme::SELECT_BRIGHT));
+        gfx.drawText(paneX + 2, ry + 1, playRowBuf);
+      }
     }
 
     drawQuarterStrip(gfx, paneX + paneW - 3, cellsTop, visibleRows * rowH,
@@ -2744,7 +2876,7 @@ void SongPage::drawAmberStyle(IGfx &gfx) {
   }
 
   amber::drawFooterBar(gfx, x, footerY, w, 12,
-                       "Q-I:Pat G:Gen B:Bank C+N/M:Row X:Split", "SONG");
+                       "Q-I:Pat  <-/->:Track/Bank  C+N/M:Row", "SONG");
 }
 
 std::unique_ptr<MultiPageHelpDialog> SongPage::getHelpDialog() {
