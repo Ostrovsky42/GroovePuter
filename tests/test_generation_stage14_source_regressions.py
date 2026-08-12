@@ -140,8 +140,11 @@ def main() -> None:
     )
     require(profile_h, "Planning metadata only", "generation_profile.h")
 
-    # Variant-specific BPM is owned by the selected generation corridor.
-    require(ui, "generationProfileFor(settings)", "genre_page.cpp")
+    # Variant-specific BPM is owned by the pending generation corridor. During
+    # PLAY the requested Genre is intentionally not active Scene state until the
+    # BAR_START transaction commits, so deriving BPM from the old active
+    # `settings` would use the wrong genre/variant.
+    require(ui, "generationProfileFor(requestedSettings)", "genre_page.cpp")
     require(ui, "profile.corridor.suggestedBpm", "genre_page.cpp")
     require(ui, "selectedProfile.corridor.bpmMin", "genre_page.cpp")
     require(ui, "selectedProfile.corridor.bpmMax", "genre_page.cpp")
