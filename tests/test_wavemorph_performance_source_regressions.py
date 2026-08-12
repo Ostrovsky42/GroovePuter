@@ -119,14 +119,21 @@ def test_performance_tools_use_fixed_control_rate_state() -> None:
             "generatedActive_" in usb_header and
             "generatedPendingRelease_" in usb_header,
             "generated performance MIDI must use bounded fixed-size polyphonic state")
-    require("event.source == MusicalEventSource::Arpeggiator" in usb_source and
+    performance_sources = block(
+        usb_source,
+        "bool UsbMidiOutput::isSynthPerformanceSource",
+        "bool UsbMidiOutput::sourceRequestsPolyReceiver")
+    for source_name in ("PerformanceKeyboard", "PerformanceKeyboardPoly", "Arpeggiator"):
+        require(f"MusicalEventSource::{source_name}" in performance_sources,
+                f"USB MIDI performance-source domain must include {source_name}")
+    require("isSynthPerformanceSource(event.source)" in usb_source and
             "acquireGeneratedNote" in usb_source and
             "releaseGeneratedNote" in usb_source and
             "releaseGeneratedTarget" in usb_source,
             "Arpeggiator/Chord/Strum/Ratchet/Euclidean events must reach USB MIDI")
-    require("source == MusicalEventSource::PerformanceKeyboard" in usb_source and
+    require("isSynthPerformanceSource(source)" in usb_source and
             "releaseGeneratedTarget(target);" in usb_source,
-            "the existing performance panic domain must clean generated MIDI too")
+            "the shared performance panic domain must clean generated MIDI too")
     require("testPerformanceTransformMidiPolyphony" in usb_test and
             "MusicalEventSource::MidiInput" in usb_test,
             "host tests must prove generated polyphony while raw MidiInput stays closed")
