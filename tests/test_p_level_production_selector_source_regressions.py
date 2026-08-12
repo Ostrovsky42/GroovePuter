@@ -31,6 +31,10 @@ def function_body(text: str, signature: str, next_signature: str) -> str:
     return body
 
 
+def without_line_comments(text: str) -> str:
+    return "\n".join(line.split("//", 1)[0] for line in text.splitlines())
+
+
 # P-level has one runtime/session owner. P2 is the compatibility default so
 # upgrading the firmware cannot silently alter existing generation behavior.
 for needle in (
@@ -48,20 +52,29 @@ for needle in (
 ):
     require(STATE, needle, f"P-level request owner changed: {needle}")
 
-# F-07 shares the same runtime/session owner but not the same axis: attempt
-# identity is keyed by mode/recipe/P-level/address, fixed-size, allocation-free,
-# fail-closed and explicitly non-persistent.
+# F-07 shares the same runtime/session owner but not the same axis. The table is
+# a bounded, allocation-free history cache: capacity may forget an old tuple but
+# must never reject a newly accepted generation request.
 for needle in (
     "GenerationAttemptStatus",
     "GenerationAttemptAllocation",
     "kGenerationAttemptCapacity = 64",
+    "generation attempt table memory contract",
     "allocateGenerationAttempt(",
     "resetGenerationAttemptState()",
-    "GenerationAttemptStatus::TableFull",
-    "GenerationAttemptStatus::OrdinalExhausted",
-    "entries[kGenerationAttemptCapacity]",
+    "generationAttemptVictimStorage()",
+    "evictedRememberedTuple",
+    "std::array<GenerationAttemptEntry, kGenerationAttemptCapacity>",
+    "return {GenerationAttemptStatus::Ok, 0u, true};",
 ):
     require(STATE, needle, f"reroll request owner changed: {needle}")
+for forbidden in (
+    "GenerationAttemptStatus::TableFull",
+    "GenerationAttemptStatus::OrdinalExhausted",
+):
+    if forbidden in STATE:
+        raise AssertionError(f"reroll history capacity became a generation failure again: {forbidden}")
+state_code = without_line_comments(STATE)
 for forbidden in (
     "Preferences",
     "putUChar",
@@ -73,7 +86,7 @@ for forbidden in (
     "new ",
     "malloc(",
 ):
-    if forbidden in STATE:
+    if forbidden in state_code:
         raise AssertionError(f"generation request state gained persistence/heap: {forbidden}")
 
 # The generic live bridge consumes the one shared P-level and allocates an
@@ -156,7 +169,6 @@ for needle in (
     "if (doRegenerate && mini_acid_.isPlaying())",
     "AudioTask keeps rendering the current bar",
     'resultLabel = "GEN -> NEXT BAR";',
-    'resultLabel = "GEN ATTEMPT FULL";',
 ):
     require(GENRE, needle, f"GENRE quantized route changed: {needle}")
 if "mini_acid_.stop();" in GENRE or "mini_acid_.start();" in GENRE:
@@ -285,5 +297,9 @@ require(
     "GroovePuterState::markSceneMutated();",
     "successful BAR_START commit no longer publishes Scene revision",
 )
+
+require("g_commitSerial" not in STATE, "generation request state must not depend on commit serial")
+require("morph_amount_" not in GENRE, "retired MORPH UI must not remain in GENRE body")
+require("FocusRow::Morph" not in GENRE, "retired MORPH focus row must not remain in GENRE body")
 
 print("P-level + bounded reroll + lock-free quantized generation regressions: OK")
