@@ -5,6 +5,11 @@ STATE = (ROOT / "src/state/generation_request_state.h").read_text(encoding="utf-
 BRIDGE = (
     ROOT / "src/generation/migration/strong_rhythm_live_bridge.cpp"
 ).read_text(encoding="utf-8")
+QUANTIZED = (
+    ROOT / "src/generation/migration/quantized_generation_commit.h"
+).read_text(encoding="utf-8")
+GENRE_MANAGER = (ROOT / "src/dsp/genre_manager.h").read_text(encoding="utf-8")
+ENGINE = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
 GENRE = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
 FEEL = (ROOT / "src/ui/pages/feel_page.cpp").read_text(encoding="utf-8")
 DRUM = (ROOT / "src/ui/pages/drum_sequencer_page.cpp").read_text(encoding="utf-8")
@@ -110,4 +115,59 @@ require(
 if "cycleGenerationLevel" in DRUM_LEGACY:
     raise AssertionError("legacy Ctrl/Alt+G handler became a second P-level owner")
 
-print("P-level production selector source regressions: OK")
+# Full GENRE materialization is quantized while transport is running. The page
+# must not stop/restart transport to hide an in-place mutation: current material
+# remains active and the prepared A+B+Drums transaction publishes at BAR_START.
+require(
+    GENRE,
+    "regenerateWithQuantizedCommit(",
+    "GENRE no longer routes full generation through quantized commit",
+)
+require(GENRE, 'resultLabel = "GEN -> NEXT BAR";', "pending GEN feedback disappeared")
+if "mini_acid_.stop();" in GENRE or "mini_acid_.start();" in GENRE:
+    raise AssertionError("GENRE generation reintroduced transport stop/restart")
+
+for needle in (
+    "if (!engine.isPlaying())",
+    "QuantizedGenerationResult::CommittedNow",
+    "QuantizedGenerationResult::PendingNextBar",
+    "const SynthPattern activeSynthA",
+    "const SynthPattern activeSynthB",
+    "const DrumPatternSet activeDrums",
+    "scenes.editCurrentSynthPattern(0) = activeSynthA;",
+    "scenes.editCurrentSynthPattern(1) = activeSynthB;",
+    "scenes.editCurrentDrumPattern() = activeDrums;",
+    "g_pendingValid.store(true, std::memory_order_release);",
+    "setPendingCommitHook(&commitQuantizedGenerationAtBarStart)",
+    "targetStillActive(scenes, g_pending.target)",
+    "GroovePuterState::markSceneMutated();",
+):
+    require(QUANTIZED, needle, f"quantized generation contract changed: {needle}")
+
+# Heavy Stage 15 generation must happen only on the control-side preparation
+# path. The existing audio BAR_START call remains a bounded callback bridge; its
+# boolean return stays false so MiniAcid never falls through to the historical
+# audio-thread regeneratePatternsWithGenre() branch.
+require(
+    ENGINE,
+    "if (genreManager_.commitPendingRecipe()) {",
+    "real BAR_START commit hook disappeared",
+)
+require(
+    GENRE_MANAGER,
+    "if (pendingCommitHook_ != nullptr) pendingCommitHook_(scenes_);",
+    "Genre BAR_START compatibility hook no longer invokes pending commit",
+)
+require(
+    GENRE_MANAGER,
+    "return false;",
+    "BAR_START hook may fall through into heavy audio-thread generation",
+)
+
+for forbidden in ("std::vector", "std::string", "new ", "malloc(", "calloc("):
+    if forbidden in QUANTIZED:
+        raise AssertionError(
+            f"quantized generation pending state is no longer allocation-free: {forbidden}"
+        )
+
+print("P-level production selector + quantized generation source regressions: OK")
