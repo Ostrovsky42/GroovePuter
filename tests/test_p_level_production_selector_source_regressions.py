@@ -298,8 +298,11 @@ require(
     "successful BAR_START commit no longer publishes Scene revision",
 )
 
-require("g_commitSerial" not in STATE, "generation request state must not depend on commit serial")
-require("morph_amount_" not in GENRE, "retired MORPH UI must not remain in GENRE body")
-require("FocusRow::Morph" not in GENRE, "retired MORPH focus row must not remain in GENRE body")
+if "g_commitSerial" in STATE:
+    raise AssertionError("generation request state must not depend on commit serial")
+if "morph_amount_" in GENRE:
+    raise AssertionError("retired MORPH UI must not remain in GENRE body")
+if "FocusRow::Morph" in GENRE:
+    raise AssertionError("retired MORPH focus row must not remain in GENRE body")
 
 print("P-level + bounded reroll + lock-free quantized generation regressions: OK")
