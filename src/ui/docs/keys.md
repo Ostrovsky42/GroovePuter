@@ -29,7 +29,7 @@ page-aware reference; README screenshots show the same primary footer hints.
 | `Space` | Active transport unless the page consumes it |
 | `Alt+P` | MIDI Player |
 | `Alt+V` | First GENERATE page |
-| `Alt+W` | Waveform overlay, except Phrase explicit overwrite |
+| `Alt+W` | Waveform overlay, except Phrase explicit replace |
 | `Alt+X` | LiveMix ON/OFF |
 | `Alt+M` | Song mode ON/OFF |
 | `Alt+\` | Toggle `CARBON <-> CYBER` |
@@ -232,17 +232,18 @@ means generation changed neither Song references nor pattern content.
 | `1..4` | Select Phrase A/B/C/D |
 | `Up/Down` | Capture length `1/2/4/8` bars |
 | `Left/Right` | Preview saved Phrase bar |
+| `Ctrl+Left/Right` | Move visible `TO:` destination by one row |
+| `Ctrl+Up/Down` | Move visible `TO:` destination by eight rows |
 | `R` | Cycle capture role |
 | `Shift+R` | Previous role |
 | `P` | Cycle derive parent |
 | `Enter` | Capture current Song region |
 | `D` | Derive parent into selected slot |
-| `W` | Write to an empty Song destination |
-| `Alt+W` | Explicit destructive overwrite |
+| `W` | INSERT before visible `TO:` row; shift following rows down |
+| `Alt+W` | REPLACE Phrase lanes at visible `TO:` row; no row shift |
 | `Backspace` / `Delete` | Clear selected Phrase |
 
-Phrase storage is `REFERENCE VIEW / REF MUTABLE`. Editing a referenced pattern changes
-the Phrase material; save/load preserves valid slots and cleared slots.
+Cardputer's physical punctuation positions are canonical arrow HID keys, so raw `,` / `.` are not a reliable independent PHRASE control. Hold `Ctrl` with the arrow cluster to edit `TO:`. Phrase storage is `REFERENCE VIEW / REF MUTABLE`. Editing a referenced pattern changes the Phrase material; save/load preserves valid slots and cleared slots. After capture, `TO:` moves to the first row after the captured region. Normal `W` accepts occupied rows by inserting before them, and an explicit `TO:` beyond Song end creates an empty gap. After a successful insert, `TO:` advances by the Phrase length for repeated writes.
 
 ## OVERVIEW / SEQUENCER HUB
 

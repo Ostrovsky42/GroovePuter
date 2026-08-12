@@ -3,7 +3,7 @@
 #include <cstring>
 #include <iostream>
 
-#include "src/phrase/phrase_core.h"
+#include "src/phrase/phrase_song_insert.h"
 
 namespace {
 
@@ -255,6 +255,125 @@ void testWriteToSongIsPrevalidated() {
   assert(overwrite);
 }
 
+void testInsertShiftsWholeSongRows() {
+  PhraseCore::PhraseBank bank{};
+  PhraseCore::reset(bank);
+  Song source = makeSong(2);
+  assert(PhraseCore::captureSongRegion(
+      bank,
+      PhraseCore::SlotId::A,
+      source,
+      0,
+      0,
+      2,
+      PhraseCore::Role::Main,
+      PhraseCore::Source::InternalPattern));
+
+  Song destination = makeSong(4);
+  for (int row = 0; row < 4; ++row) {
+    destination.positions[row].patterns[3] = static_cast<int16_t>(100 + row);
+  }
+
+  const PhraseCore::Result inserted = PhraseCore::insertIntoSong(
+      bank, PhraseCore::SlotId::A, destination, 1);
+  assert(inserted);
+  assert(destination.length == 6);
+
+  assert(destination.positions[0].patterns[0] == 1);
+  assert(destination.positions[0].patterns[3] == 100);
+
+  assert(destination.positions[1].patterns[0] == 1);
+  assert(destination.positions[1].patterns[1] == 33);
+  assert(destination.positions[1].patterns[2] == 65);
+  assert(destination.positions[1].patterns[3] == -1);
+  assert(destination.positions[2].patterns[0] == 2);
+  assert(destination.positions[2].patterns[1] == 34);
+  assert(destination.positions[2].patterns[2] == 66);
+  assert(destination.positions[2].patterns[3] == -1);
+
+  assert(destination.positions[3].patterns[0] == 2);
+  assert(destination.positions[3].patterns[1] == 34);
+  assert(destination.positions[3].patterns[2] == 66);
+  assert(destination.positions[3].patterns[3] == 101);
+  assert(destination.positions[5].patterns[0] == 4);
+  assert(destination.positions[5].patterns[3] == 103);
+}
+
+void testInsertHandlesEmptyPlaceholderAppendAndSparseTarget() {
+  PhraseCore::PhraseBank bank{};
+  PhraseCore::reset(bank);
+  Song source = makeSong(2);
+  assert(PhraseCore::captureSongRegion(
+      bank,
+      PhraseCore::SlotId::B,
+      source,
+      0,
+      0,
+      2,
+      PhraseCore::Role::Variation,
+      PhraseCore::Source::InternalPattern));
+
+  Song empty = makeSong(1);
+  for (int track = 0; track < SongPosition::kTrackCount; ++track) {
+    empty.positions[0].patterns[track] = -1;
+  }
+  assert(PhraseCore::logicalSongLengthForInsert(empty) == 0);
+  assert(PhraseCore::insertIntoSong(
+      bank, PhraseCore::SlotId::B, empty, 0));
+  assert(empty.length == 2);
+  assert(empty.positions[0].patterns[0] == 1);
+  assert(empty.positions[1].patterns[2] == 66);
+
+  Song append = makeSong(2);
+  assert(PhraseCore::insertIntoSong(
+      bank, PhraseCore::SlotId::B, append, 2));
+  assert(append.length == 4);
+  assert(append.positions[0].patterns[0] == 1);
+  assert(append.positions[1].patterns[0] == 2);
+  assert(append.positions[2].patterns[0] == 1);
+  assert(append.positions[3].patterns[2] == 66);
+
+  Song sparse = makeSong(2);
+  assert(PhraseCore::insertIntoSong(
+      bank, PhraseCore::SlotId::B, sparse, 5));
+  assert(sparse.length == 7);
+  assert(sparse.positions[0].patterns[0] == 1);
+  assert(sparse.positions[1].patterns[0] == 2);
+  for (int row = 2; row < 5; ++row) {
+    for (int track = 0; track < SongPosition::kTrackCount; ++track) {
+      assert(sparse.positions[row].patterns[track] == -1);
+    }
+  }
+  assert(sparse.positions[5].patterns[0] == 1);
+  assert(sparse.positions[5].patterns[1] == 33);
+  assert(sparse.positions[5].patterns[2] == 65);
+  assert(sparse.positions[6].patterns[0] == 2);
+  assert(sparse.positions[6].patterns[2] == 66);
+}
+
+void testInsertCapacityFailureIsAtomic() {
+  PhraseCore::PhraseBank bank{};
+  PhraseCore::reset(bank);
+  Song source = makeSong(2);
+  assert(PhraseCore::captureSongRegion(
+      bank,
+      PhraseCore::SlotId::D,
+      source,
+      0,
+      0,
+      2,
+      PhraseCore::Role::Ending,
+      PhraseCore::Source::InternalPattern));
+
+  Song destination = makeSong(127);
+  const Song before = destination;
+  const PhraseCore::Result overflow = PhraseCore::insertIntoSong(
+      bank, PhraseCore::SlotId::D, destination, 127);
+  assert(!overflow);
+  assert(overflow.error == PhraseCore::Error::RegionOutOfRange);
+  assert(std::memcmp(&destination, &before, sizeof(destination)) == 0);
+}
+
 void testSanitizePersistenceBoundary() {
   PhraseCore::PhraseBank legacy{};
   legacy.version = 0;
@@ -289,6 +408,9 @@ int main() {
   testInvalidCaptureIsAtomic();
   testDerivedParentIdentity();
   testWriteToSongIsPrevalidated();
+  testInsertShiftsWholeSongRows();
+  testInsertHandlesEmptyPlaceholderAppendAndSparseTarget();
+  testInsertCapacityFailureIsAtomic();
   testSanitizePersistenceBoundary();
   std::cout << "Phrase Core tests passed\n";
   return 0;

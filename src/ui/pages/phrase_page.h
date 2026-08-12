@@ -26,6 +26,7 @@ class PhrasePage : public IPage {
   void cycleRole(int delta);
   void cyclePreviewBar(int delta);
   void cycleParent(int delta);
+  void cycleDestinationRow(int delta);
   bool captureCurrentRegion();
   bool deriveFromParent();
   bool writeToCurrentRow(bool overwrite);
@@ -41,6 +42,7 @@ class PhrasePage : public IPage {
   PhraseCore::Role capture_role_ = PhraseCore::Role::Main;
   uint8_t capture_length_ = 4;
   uint8_t preview_bar_ = 0;
+  uint8_t destination_row_ = 0;
 
   // Fixed-size/allocation-free cache for the complete bounded Phrase shape.
   // It is refreshed only when the Phrase identity, Scene revision or source

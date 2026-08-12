@@ -230,6 +230,9 @@ PhrasePage::PhrasePage(IGfx& gfx,
                        AudioGuard audio_guard)
     : mini_acid_(mini_acid), audio_guard_(audio_guard) {
   (void)gfx;
+  destination_row_ = static_cast<uint8_t>(
+      std::clamp(mini_acid_.currentSongPosition(), 0,
+                 Song::kMaxPositions - 1));
 }
 
 PhraseCore::Role PhrasePage::defaultRoleForSlot(PhraseCore::SlotId slot) {
@@ -310,6 +313,12 @@ void PhrasePage::cycleParent(int delta) {
     value += delta;
     parent_slot_ = slotFromIndex(value);
   } while (parent_slot_ == selected_slot_);
+}
+
+void PhrasePage::cycleDestinationRow(int delta) {
+  int row = static_cast<int>(destination_row_) + delta;
+  row = std::clamp(row, 0, Song::kMaxPositions - 1);
+  destination_row_ = static_cast<uint8_t>(row);
 }
 
 void PhrasePage::invalidatePreview() {
@@ -404,6 +413,10 @@ bool PhrasePage::captureCurrentRegion() {
       });
   if (result) {
     preview_bar_ = 0;
+    const int nextRow = std::min(
+        Song::kMaxPositions - 1,
+        static_cast<int>(request.startRow) + static_cast<int>(request.lengthBars));
+    destination_row_ = static_cast<uint8_t>(nextRow);
     invalidatePreview();
   }
   showResult("CAPTURED", result);
@@ -434,13 +447,13 @@ bool PhrasePage::deriveFromParent() {
 
 bool PhrasePage::writeToCurrentRow(bool overwrite) {
   Scene& scene = mini_acid_.sceneManager().currentScene();
+  const PhraseCore::SlotSummary source =
+      PhraseWorkspace::summary(scene, selected_slot_);
   PhraseWorkspace::WriteRequest request{};
   request.sourceSlot = selected_slot_;
   request.destinationSongSlot =
       static_cast<uint8_t>(std::clamp(scene.activeSongSlot, 0, 1));
-  request.startRow = static_cast<uint8_t>(
-      std::clamp(mini_acid_.currentSongPosition(), 0,
-                 Song::kMaxPositions - 1));
+  request.startRow = destination_row_;
   request.overwrite = overwrite;
 
   const PhraseCore::Result result = PhraseWorkspace::writeToSong(
@@ -451,8 +464,16 @@ bool PhrasePage::writeToCurrentRow(bool overwrite) {
           operation();
         }
       });
-  if (result) invalidatePreview();
-  showResult(overwrite ? "WRITE!" : "WRITE", result);
+  if (result) {
+    if (!overwrite && source.valid) {
+      const int nextRow = std::min(
+          Song::kMaxPositions - 1,
+          static_cast<int>(request.startRow) + static_cast<int>(source.lengthBars));
+      destination_row_ = static_cast<uint8_t>(nextRow);
+    }
+    invalidatePreview();
+  }
+  showResult(overwrite ? "REPLACED" : "INSERTED", result);
   return true;
 }
 
@@ -535,19 +556,23 @@ void PhrasePage::draw(IGfx& gfx) {
   gfx.drawText(x, summaryY, line);
 
   const int contextY = LayoutManager::lineY(2);
+  const int songSlot = std::clamp(scene.activeSongSlot, 0, 1);
   if (current.valid) {
     char tracks[20];
     formatTrackMask(current.trackMask, tracks, sizeof(tracks));
-    std::snprintf(line, sizeof(line), "ID:%u  P:%u  TRACKS:%s",
+    std::snprintf(line, sizeof(line), "ID:%u P:%u %s  TO:%c%d",
                   static_cast<unsigned>(current.phraseId),
                   static_cast<unsigned>(current.parentId),
-                  tracks);
+                  tracks,
+                  static_cast<char>('A' + songSlot),
+                  static_cast<int>(destination_row_) + 1);
   } else {
-    const int songSlot = std::clamp(scene.activeSongSlot, 0, 1);
-    std::snprintf(line, sizeof(line), "FROM SONG %c ROW %d  DERIVE:%s",
+    std::snprintf(line, sizeof(line), "FROM:%c%d DERIVE:%s  TO:%c%d",
                   static_cast<char>('A' + songSlot),
                   mini_acid_.currentSongPosition() + 1,
-                  PhraseCore::slotName(parent_slot_));
+                  PhraseCore::slotName(parent_slot_),
+                  static_cast<char>('A' + songSlot),
+                  static_cast<int>(destination_row_) + 1);
   }
   gfx.setTextColor(palette.dim);
   gfx.drawText(x, contextY, line);
@@ -605,13 +630,38 @@ void PhrasePage::draw(IGfx& gfx) {
 
   UI::drawStandardFooter(gfx,
                          "1-4:SLOT  L/R:BAR  U/D:LEN",
-                         "ENT:CAP R:ROLE P:PARENT D/W/DEL");
+                         "C+LR:TO C+UD:8 ENT:CAP D/W");
 }
 
 bool PhrasePage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
   const int nav = UIInput::navCode(ui_event);
+
+  // Cardputer's physical punctuation/arrow keys are canonical HID arrows:
+  // 0x36/0x37/0x38 are normalized before KeysState::word reaches pages.
+  // Therefore comma/period are not a reliable independent control surface.
+  // Modifier + canonical arrows gives PHRASE a deterministic destination
+  // contract on both Cardputer and SDL without changing plain navigation.
+  if (ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
+    if (nav == GROOVEPUTER_LEFT) {
+      cycleDestinationRow(-1);
+      return true;
+    }
+    if (nav == GROOVEPUTER_RIGHT) {
+      cycleDestinationRow(1);
+      return true;
+    }
+    if (nav == GROOVEPUTER_UP) {
+      cycleDestinationRow(-8);
+      return true;
+    }
+    if (nav == GROOVEPUTER_DOWN) {
+      cycleDestinationRow(8);
+      return true;
+    }
+  }
+
   if (nav == GROOVEPUTER_UP) {
     cycleLength(1);
     return true;

@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <utility>
 
-#include "phrase_core.h"
+#include "phrase_song_insert.h"
 #include "src/state/scene_revision.h"
 
 namespace PhraseWorkspace {
@@ -28,6 +28,8 @@ struct WriteRequest {
   PhraseCore::SlotId sourceSlot = PhraseCore::SlotId::A;
   uint8_t destinationSongSlot = 0;
   uint8_t startRow = 0;
+  // false = INSERT at startRow and shift existing Song rows down.
+  // true = REPLACE only the Phrase lanes at startRow without shifting rows.
   bool overwrite = false;
 };
 
@@ -144,12 +146,20 @@ PhraseCore::Result writeToSong(Scene& scene,
 
   auto&& guardedCommit = commit;
   guardedCommit([&]() {
-    result = PhraseCore::writeToSong(
-        scene.phraseBank,
-        request.sourceSlot,
-        scene.songs[request.destinationSongSlot],
-        request.startRow,
-        request.overwrite);
+    if (request.overwrite) {
+      result = PhraseCore::writeToSong(
+          scene.phraseBank,
+          request.sourceSlot,
+          scene.songs[request.destinationSongSlot],
+          request.startRow,
+          true);
+    } else {
+      result = PhraseCore::insertIntoSong(
+          scene.phraseBank,
+          request.sourceSlot,
+          scene.songs[request.destinationSongSlot],
+          request.startRow);
+    }
   });
   if (result) GroovePuterState::markSceneMutated();
   return result;
