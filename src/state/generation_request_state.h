@@ -62,8 +62,6 @@ inline GroovePuterRhythm::RealizationLevel nextGenerationLevel(
 enum class GenerationAttemptStatus : uint8_t {
     Ok = 0,
     InvalidTuple,
-    TableFull,
-    OrdinalExhausted,
 };
 
 struct GenerationAttemptAllocation {
@@ -86,14 +84,18 @@ inline GroovePuterRhythm::RealizationLevel& levelStorage() {
 // fields fit in one 30-bit packed key. A zero key slot means unused; stored keys
 // are offset by one so the all-zero tuple remains representable.
 //
-// The table intentionally fails closed instead of evicting another tuple. That
-// guarantees a failed/cancelled request can never reset or mutate the ordinal of
-// a different generation tuple (GA-06). 64 live tuple identities cost 512 B of
-// fixed session state and require no heap/NVS traffic.
+// The 64-entry table keeps 512 B of exact tuple history plus one byte of
+// round-robin eviction state. Capacity exhaustion must never disable G: once the
+// table is full, an accepted new tuple deterministically replaces one stored
+// history entry and starts at attempt 0. This is compatible with GA-06 because
+// eviction happens while accepting a different request, never as a side effect
+// of cancelled/failed publication. No heap/NVS traffic is introduced.
 constexpr std::size_t kGenerationAttemptCapacity = 64;
 static_assert(kGenerationAttemptCapacity != 0 &&
               (kGenerationAttemptCapacity & (kGenerationAttemptCapacity - 1u)) == 0,
               "generation attempt table must remain power-of-two");
+static_assert(kGenerationAttemptCapacity <= 256,
+              "one-byte generation attempt eviction cursor overflow");
 
 constexpr unsigned attemptCapacityBits() {
     std::size_t value = kGenerationAttemptCapacity;
@@ -110,9 +112,17 @@ struct GenerationAttemptEntry {
     uint32_t nextOrdinal = 0;
 };
 
+static_assert(sizeof(GenerationAttemptEntry) * kGenerationAttemptCapacity == 512,
+              "generation attempt table memory contract");
+
 inline GenerationAttemptEntry* attemptStorage() {
     static GenerationAttemptEntry entries[kGenerationAttemptCapacity]{};
     return entries;
+}
+
+inline uint8_t& attemptVictimStorage() {
+    static uint8_t victim = 0;
+    return victim;
 }
 
 inline bool packAttemptKey(uint8_t generativeMode,
@@ -180,11 +190,8 @@ inline GenerationAttemptAllocation allocateGenerationAttempt(
         auto& entry = entries[
             (start + probe) & (generation_request_detail::kGenerationAttemptCapacity - 1u)];
         if (entry.keyPlusOne == keyPlusOne) {
-            if (entry.nextOrdinal == UINT32_MAX) {
-                return {GenerationAttemptStatus::OrdinalExhausted, 0};
-            }
             const uint32_t ordinal = entry.nextOrdinal;
-            ++entry.nextOrdinal;
+            ++entry.nextOrdinal;  // Defined unsigned wrap returns to attempt 0.
             return {GenerationAttemptStatus::Ok, ordinal};
         }
         if (entry.keyPlusOne == 0) {
@@ -193,7 +200,18 @@ inline GenerationAttemptAllocation allocateGenerationAttempt(
             return {GenerationAttemptStatus::Ok, 0};
         }
     }
-    return {GenerationAttemptStatus::TableFull, 0};
+
+    // Full table: generation itself must remain available. Reuse one exact-key
+    // slot in deterministic round-robin order; revisiting the evicted tuple later
+    // is observably equivalent to beginning a fresh session sequence at attempt 0.
+    auto& victimIndex = generation_request_detail::attemptVictimStorage();
+    auto& evicted = entries[victimIndex];
+    evicted.keyPlusOne = keyPlusOne;
+    evicted.nextOrdinal = 1;
+    victimIndex = static_cast<uint8_t>(
+        (static_cast<std::size_t>(victimIndex) + 1u) &
+        (generation_request_detail::kGenerationAttemptCapacity - 1u));
+    return {GenerationAttemptStatus::Ok, 0};
 }
 
 inline void resetGenerationAttemptState() {
@@ -203,6 +221,7 @@ inline void resetGenerationAttemptState() {
          ++index) {
         entries[index] = {};
     }
+    generation_request_detail::attemptVictimStorage() = 0;
 }
 
 }  // namespace GroovePuterState
