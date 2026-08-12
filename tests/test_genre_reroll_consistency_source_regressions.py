@@ -76,6 +76,39 @@ for needle in (
 ):
     require(QUANTIZED, needle, f"quantized synth-only ownership missing: {needle}")
 
+# A Synth Notes reroll is lane-scoped only at publication. Seed/composition
+# identity must remain the exact same full-material tuple used by GENRE G.
+# Using the physical synth bank/slot as phraseOrdinal changes
+# resolveGenerationComposition() and can audibly sound like another genre.
+prepare_synth = QUANTIZED.split("inline bool prepareSynthCandidate(", 1)[1]
+prepare_synth = prepare_synth.split("}  // namespace QuantizedGenerationDetail", 1)[0]
+require(
+    prepare_synth,
+    "StrongRhythmMigrationContext context = migrationContextFor(scene, target);",
+    "synth reroll no longer inherits the full-material generation context",
+)
+if "synthPatternAddressFor(" in prepare_synth:
+    raise AssertionError(
+        "synth reroll must not replace full-material phraseOrdinal with a synth address"
+    )
+
+regen_synth = QUANTIZED.split(
+    "inline QuantizedGenerationResult regenerateSynthWithQuantizedCommit(", 1
+)[1]
+regen_synth = regen_synth.split("inline bool hasPendingQuantizedGeneration(", 1)[0]
+require(
+    regen_synth,
+    "if (!allocateAttemptFor(genre, requestLevel, target, attemptOrdinal))",
+    "synth reroll must consume the same tuple-local attempt stream as GENRE G",
+)
+if "allocateSynthAttemptFor(" in regen_synth:
+    raise AssertionError(
+        "synth reroll must not create a second attempt domain from synth bank/slot"
+    )
+for forbidden in ("synthPatternAddressFor(", "allocateSynthAttemptFor("):
+    if forbidden in QUANTIZED:
+        raise AssertionError(f"retired synth-specific identity helper returned: {forbidden}")
+
 # PLAY still publishes only the complete transaction at BAR_START.
 commit = QUANTIZED.split("inline bool commitQuantizedGenerationAtBarStart(", 1)[1]
 commit = commit.split("inline QuantizedGenerationResult regenerateWithQuantizedCommit(", 1)[0]
