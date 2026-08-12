@@ -65,28 +65,44 @@ for token in (
     require(token in SELECTION,
             f"hardware identity correction missing: {token}")
 
-# Runtime bridge must preserve rollback ordering: complete legacy output is
-# materialized first, then the transactional Vocabulary material migration.
+# The stopped/immediate bridge preserves rollback ordering: complete legacy
+# output is materialized first, then Vocabulary/Stage15 migration transforms it.
 legacy_call = BRIDGE.find("engine.regeneratePatternsWithGenre();")
 migration_call = BRIDGE.find("migrateStrongRhythmMaterial(")
 require(legacy_call >= 0, "Stage 5 bridge no longer calls legacy generator")
 require(migration_call > legacy_call,
         "Stage 5 migration must run after legacy rollback snapshot exists")
 
-# GENRE materialization still opts into the established Stage 5/15 bridge, but
-# while PLAY is active the UI must enter it through the quantized transaction
-# owner so generated material can be prepared before BAR_START rather than
-# mutating the sounding pattern in place.
+# GENRE full generation enters the quantized owner. STOP may use the existing
+# active bridge; PLAY must run the same migration core directly over scratch
+# A/B/Drums so no live Scene mutation or renderer pause is required.
 require("quantized_generation_commit.h" in GENRE_PAGE,
         "GenrePage is not wired to quantized material commit")
 require("regenerateWithQuantizedCommit(" in GENRE_PAGE,
         "GenrePage MATERIALIZE bypasses quantized commit")
 require("strong_rhythm_live_bridge.h" in QUANTIZED,
-        "quantized owner lost the Stage 5/15 bridge dependency")
+        "quantized owner lost stopped-path Stage 5/15 bridge dependency")
 require("regenerateWithStrongRhythmMigration(engine);" in QUANTIZED,
-        "quantized owner no longer prepares through Stage 5/15 migration")
+        "quantized STOP path no longer uses Stage 5/15 bridge")
+require("migrateStrongRhythmMaterial(" in QUANTIZED,
+        "quantized PLAY path no longer applies Stage 5/15 migration to scratch material")
+require("GrooveboxModeManager scratchMode(engine);" in QUANTIZED,
+        "quantized PLAY path lost scratch legacy fallback generation")
 require("mini_acid_.regeneratePatternsWithGenre();" not in GENRE_PAGE,
         "GenrePage still calls legacy regeneration directly")
+
+prepare = QUANTIZED.split("inline bool preparePlayingCandidate(", 1)[1].split(
+    "}  // namespace QuantizedGenerationDetail", 1
+)[0]
+for forbidden in (
+    "editCurrentSynthPattern(",
+    "editCurrentDrumPattern(",
+    "engine.setGrooveboxMode(",
+    "engine.setBpm(",
+    "regenerateWithStrongRhythmMigration(",
+):
+    require(forbidden not in prepare,
+            f"playing Stage 5 preparation mutates live runtime: {forbidden}")
 
 # Stage 7C may persist explicit user rhythm intent. Derived backend, seed and
 # phrase coordinates must still stay out of Scene.
