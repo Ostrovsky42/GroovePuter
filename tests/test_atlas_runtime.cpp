@@ -87,6 +87,8 @@ void testPhrasePlanningAndCommit() {
   Scene scene{};
   scene.activeSongSlot = 0;
   scene.feel.patternBars = 4;
+  scene.songs[0].positions[4].patterns[
+      static_cast<int>(SongTrack::Voice)] = 77;
 
   PhraseGenerator::PhraseRequest request{};
   request.bars = 4;
@@ -111,6 +113,8 @@ void testPhrasePlanningAndCommit() {
     assert(position.patterns[static_cast<int>(SongTrack::SynthB)] == expectedGlobal);
     assert(position.patterns[static_cast<int>(SongTrack::Drums)] == expectedGlobal);
   }
+  assert(scene.songs[0].positions[4].patterns[
+      static_cast<int>(SongTrack::Voice)] == 77);
 
   const SynthPattern& baseA = scene.synthABanks[0].patterns[0];
   const SynthPattern& variationA = scene.synthABanks[0].patterns[1];
@@ -145,6 +149,8 @@ void testPhrasePreflightAndRollback() {
   assert(PhraseGenerator::localSlotIsEmpty(occupied, 0));
 
   Scene rollback{};
+  rollback.songs[0].positions[0].patterns[
+      static_cast<int>(SongTrack::Voice)] = 88;
   request.songStart = 0;
   int generatedBars = 0;
   result = PhraseGenerator::generateBarsToSong(
@@ -169,6 +175,8 @@ void testPhrasePreflightAndRollback() {
     assert(position.patterns[static_cast<int>(SongTrack::SynthB)] == -1);
     assert(position.patterns[static_cast<int>(SongTrack::Drums)] == -1);
   }
+  assert(rollback.songs[0].positions[0].patterns[
+      static_cast<int>(SongTrack::Voice)] == 88);
 }
 
 void testPhraseAllocatorProtectsNonDefaultSteps() {
@@ -184,6 +192,28 @@ void testPhraseAllocatorProtectsNonDefaultSteps() {
   nonDefaultSteps.drumBanks[0].patterns[2].voices[0].steps[0].fx =
       static_cast<uint8_t>(StepFx::Roll);
   assert(PhraseGenerator::findContiguousEmptySlots(nonDefaultSteps, 1) == 3);
+
+  Scene referenced{};
+  referenced.activeSongSlot = 0;
+  const int referencedPattern = songPatternFromPageBankIndex(3, 0, 0);
+  referenced.songs[1].positions[12].patterns[
+      static_cast<int>(SongTrack::SynthA)] = referencedPattern;
+  assert(PhraseGenerator::localSlotIsEmpty(referenced, 0));
+  assert(PhraseGenerator::globalPatternIsReferenced(
+      referenced, referencedPattern));
+  assert(!PhraseGenerator::localSlotIsSafeForPhrase(referenced, 3, 0));
+  assert(PhraseGenerator::findSafeContiguousEmptySlots(referenced, 3, 1) == 1);
+
+  PhraseGenerator::PhraseRequest safeRequest{};
+  safeRequest.bars = 1;
+  safeRequest.songStart = 0;
+  safeRequest.pageIndex = 3;
+  const PhraseGenerator::PhraseResult safeResult =
+      PhraseGenerator::generateToSong(referenced, safeRequest, generateTestBase);
+  assert(safeResult);
+  assert(safeResult.firstLocalSlot == 1);
+  assert(referenced.songs[1].positions[12].patterns[
+      static_cast<int>(SongTrack::SynthA)] == referencedPattern);
 
   assert(PhraseGenerator::roleForBar(4, 0) ==
          PhraseGenerator::PhraseBarRole::Base);

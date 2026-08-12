@@ -5,10 +5,12 @@
 #include <cstdio>
 #include <utility>
 
+#include "../../debug_log.h"
 #include "../layout_manager.h"
 #include "../ui_colors.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "src/dsp/generated_phrase_song.h"
 #include "src/state/scene_revision.h"
 
 namespace {
@@ -423,6 +425,54 @@ bool PhrasePage::captureCurrentRegion() {
   return true;
 }
 
+bool PhrasePage::generatePhraseToSong() {
+  if (mini_acid_.isPlaying()) {
+    LOG_WARN_UI("Generated Phrase -> Song rejected while transport is playing");
+    UI::showToast("STOP PLAYBACK FOR PHRASE", 1400);
+    return true;
+  }
+
+  const int songStart = static_cast<int>(destination_row_);
+  const PhraseGenerator::PhraseResult result = GeneratedPhraseSong::generate(
+      mini_acid_, capture_length_, songStart,
+      [&](auto&& operation) {
+        if (audio_guard_) {
+          audio_guard_(std::forward<decltype(operation)>(operation));
+        } else {
+          operation();
+        }
+      });
+
+  if (!result) {
+    LOG_WARN_UI("Generated Phrase -> Song failed at TO=%d: %s",
+                songStart + 1,
+                PhraseGenerator::errorText(result.error));
+    UI::showToast(PhraseGenerator::errorText(result.error), 1600);
+    return true;
+  }
+
+  preview_bar_ = 0;
+  const int nextRow = std::min(
+      Song::kMaxPositions - 1,
+      static_cast<int>(songStart) + result.bars);
+  destination_row_ = static_cast<uint8_t>(nextRow);
+  invalidatePreview();
+
+  char message[64];
+  std::snprintf(message, sizeof(message), "%dB GEN -> SONG %d-%d",
+                result.bars,
+                result.songStart + 1,
+                result.songStart + result.bars);
+  UI::showToast(message, 1600);
+  LOG_INFO_UI("Generated %dB phrase -> Song rows %d..%d page=%d firstPattern=%d",
+              result.bars,
+              result.songStart + 1,
+              result.songStart + result.bars,
+              mini_acid_.currentPageIndex() + 1,
+              result.firstGlobalPattern);
+  return true;
+}
+
 bool PhrasePage::deriveFromParent() {
   Scene& scene = mini_acid_.sceneManager().currentScene();
   PhraseWorkspace::DeriveRequest request{};
@@ -630,7 +680,7 @@ void PhrasePage::draw(IGfx& gfx) {
 
   UI::drawStandardFooter(gfx,
                          "1-4:SLOT  L/R:BAR  U/D:LEN",
-                         "C+LR:TO C+UD:8 ENT:CAP D/W");
+                         "G:GEN C+LR:TO C+UD:8 ENT/D/W");
 }
 
 bool PhrasePage::handleEvent(UIEvent& ui_event) {
@@ -690,6 +740,9 @@ bool PhrasePage::handleEvent(UIEvent& ui_event) {
   }
   if (key == '\n' || key == '\r') return captureCurrentRegion();
   if (key == '\b' || key == 0x7F) return clearCurrentSlot();
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'g') {
+    return generatePhraseToSong();
+  }
 
   switch (lower) {
     case 'r': cycleRole(ui_event.shift ? -1 : 1); return true;

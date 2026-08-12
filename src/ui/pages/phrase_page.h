@@ -28,6 +28,7 @@ class PhrasePage : public IPage {
   void cycleParent(int delta);
   void cycleDestinationRow(int delta);
   bool captureCurrentRegion();
+  bool generatePhraseToSong();
   bool deriveFromParent();
   bool writeToCurrentRow(bool overwrite);
   bool clearCurrentSlot();

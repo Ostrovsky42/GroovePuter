@@ -16,6 +16,7 @@ DISPLAY = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
 CARDPUTER = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
 HELP = (ROOT / "src/ui/global_help_content.h").read_text(encoding="utf-8")
 DOC = (ROOT / "docs/stages/PHRASE_CORE_INSERT_WORKFLOW.md").read_text(encoding="utf-8")
+GEN_DOC = (ROOT / "docs/tests/GENERATED_PHRASE_TO_SONG.md").read_text(encoding="utf-8")
 
 
 def require(text: str, needle: str, message: str) -> None:
@@ -59,16 +60,44 @@ require(CPP, "VisualStyle::MINIMAL", "CARBON palette is missing")
 if "LayoutManager::clearContent" in CPP:
     raise AssertionError("Phrase page must not clear the full content twice")
 
-# Existing command contract remains present, with destination controls added.
+# Existing command contract remains present, with one visible destination owner.
 for needle in (
     "PhraseWorkspace::capture",
     "PhraseWorkspace::derive",
     "PhraseWorkspace::writeToSong",
     "PhraseWorkspace::clear",
+    "case 'r': cycleRole",
+    "case 'p': cycleParent",
+    "case 'd': return deriveFromParent();",
+    "case 'w': return writeToCurrentRow(ui_event.alt);",
+    "return clearCurrentSlot();",
     '"1-4:SLOT  L/R:BAR  U/D:LEN"',
-    '"C+LR:TO C+UD:8 ENT:CAP D/W"',
+    '"G:GEN C+LR:TO C+UD:8 ENT/D/W"',
 ):
     require(CPP, needle, f"Phrase UI command/legend regression: {needle}")
+
+# Generated Phrase recovery uses plain G, current 1/2/4/8B length and the same
+# explicit TO destination that W/Alt+W already expose. It stays STOP-only.
+require(HEADER, "bool generatePhraseToSong();",
+        "Phrase page must expose the generated Phrase action")
+require(CPP, '#include "src/dsp/generated_phrase_song.h"',
+        "Phrase page must use the current generated-Phrase adapter")
+require(CPP, "bool PhrasePage::generatePhraseToSong()",
+        "generated Phrase action implementation is missing")
+require(CPP, "const int songStart = static_cast<int>(destination_row_);",
+        "Phrase G must start at the visible TO destination")
+require(CPP, "GeneratedPhraseSong::generate(",
+        "Phrase G must route through the current generated-Phrase adapter")
+require(CPP, "mini_acid_.isPlaying()",
+        "multi-row Phrase generation must guard moving Song ownership")
+require(CPP, '"STOP PLAYBACK FOR PHRASE"',
+        "PLAY rejection must be visible to the user")
+require(CPP, "!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'g'",
+        "only plain G may own generated Phrase materialization")
+require(CPP, "static_cast<int>(songStart) + result.bars",
+        "successful generated Phrase must advance TO by generated length")
+if "mini_acid_.stop()" in CPP or "mini_acid_.start()" in CPP:
+    raise AssertionError("Phrase G must not hide stop/generate/restart transport ownership")
 
 # Destination must be explicit and independent of hidden engine playhead state.
 require(HEADER, "uint8_t destination_row_ = 0;",
@@ -76,7 +105,7 @@ require(HEADER, "uint8_t destination_row_ = 0;",
 require(CPP, "void PhrasePage::cycleDestinationRow(int delta)",
         "Phrase destination row must be keyboard-adjustable")
 require(CPP, "request.startRow = destination_row_;",
-        "Phrase writes must use the visible destination row")
+        "saved Phrase writes must use the visible destination row")
 require(CPP, "ui_event.ctrl && !ui_event.alt && !ui_event.meta",
         "Phrase destination navigation must be modifier-gated")
 require(CPP, "if (nav == GROOVEPUTER_LEFT)",
@@ -162,5 +191,11 @@ require(DOC, "`Ctrl+Left` / `Ctrl+Right`",
         "hardware doc must describe fine destination movement")
 require(DOC, "`Ctrl+Up` / `Ctrl+Down`",
         "hardware doc must describe coarse destination movement")
+require(GEN_DOC, "`G` generates a fresh connected phrase",
+        "generated Phrase doc must define G against the visible TO destination")
+require(GEN_DOC, "`W` inserts the selected saved Phrase",
+        "generated Phrase doc must preserve W insertion semantics")
+require(GEN_DOC, "`Alt+W` replaces saved-Phrase lanes",
+        "generated Phrase doc must preserve Alt+W replacement semantics")
 
 print("Phrase UI source regressions: PASS")
