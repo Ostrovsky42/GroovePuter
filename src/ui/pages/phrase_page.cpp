@@ -5,10 +5,12 @@
 #include <cstdio>
 #include <utility>
 
+#include "../../debug_log.h"
 #include "../layout_manager.h"
 #include "../ui_colors.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "src/dsp/generated_phrase_song.h"
 #include "src/state/scene_revision.h"
 
 namespace {
@@ -410,6 +412,49 @@ bool PhrasePage::captureCurrentRegion() {
   return true;
 }
 
+bool PhrasePage::generatePhraseToSong() {
+  if (mini_acid_.isPlaying()) {
+    LOG_WARN_UI("Generated Phrase -> Song rejected while transport is playing");
+    UI::showToast("STOP PLAYBACK FOR PHRASE", 1400);
+    return true;
+  }
+
+  const int songStart = std::clamp(
+      mini_acid_.currentSongPosition(), 0, Song::kMaxPositions - 1);
+  const PhraseGenerator::PhraseResult result = GeneratedPhraseSong::generate(
+      mini_acid_, capture_length_, songStart,
+      [&](auto&& operation) {
+        if (audio_guard_) {
+          audio_guard_(std::forward<decltype(operation)>(operation));
+        } else {
+          operation();
+        }
+      });
+
+  if (!result) {
+    LOG_WARN_UI("Generated Phrase -> Song failed: %s",
+                PhraseGenerator::errorText(result.error));
+    UI::showToast(PhraseGenerator::errorText(result.error), 1600);
+    return true;
+  }
+
+  preview_bar_ = 0;
+  invalidatePreview();
+  char message[64];
+  std::snprintf(message, sizeof(message), "%dB GEN -> SONG %d-%d",
+                result.bars,
+                result.songStart + 1,
+                result.songStart + result.bars);
+  UI::showToast(message, 1600);
+  LOG_INFO_UI("Generated %dB phrase -> Song rows %d..%d page=%d firstPattern=%d",
+              result.bars,
+              result.songStart + 1,
+              result.songStart + result.bars,
+              mini_acid_.currentPageIndex() + 1,
+              result.firstGlobalPattern);
+  return true;
+}
+
 bool PhrasePage::deriveFromParent() {
   Scene& scene = mini_acid_.sceneManager().currentScene();
   PhraseWorkspace::DeriveRequest request{};
@@ -605,7 +650,7 @@ void PhrasePage::draw(IGfx& gfx) {
 
   UI::drawStandardFooter(gfx,
                          "1-4:SLOT  L/R:BAR  U/D:LEN",
-                         "ENT:CAP R:ROLE P:PARENT D/W/DEL");
+                         "G:GEN ENT:CAP D:DER W:WRITE");
 }
 
 bool PhrasePage::handleEvent(UIEvent& ui_event) {
@@ -644,6 +689,7 @@ bool PhrasePage::handleEvent(UIEvent& ui_event) {
   switch (lower) {
     case 'r': cycleRole(ui_event.shift ? -1 : 1); return true;
     case 'p': cycleParent(ui_event.shift ? -1 : 1); return true;
+    case 'g': return generatePhraseToSong();
     case 'd': return deriveFromParent();
     case 'w': return writeToCurrentRow(ui_event.alt);
     default: break;
