@@ -24,12 +24,12 @@ def require(text: str, needle: str, message: str) -> None:
 
 # GENRE plain G is explicit full materialization, independent of ENTER's APPLY
 # selector. It prepares the pending GENRE / VARIANT / RHYTHM state and routes
-# through the quantized owner; that owner still invokes the same Stage 15 bridge
-# while preparing the complete candidate.
+# through the quantized owner.
 for needle in (
     "void GenrePage::applyCurrent(bool forceRegenerate)",
     "forceRegenerate || applyMode != ApplyMode::ProfileOnly",
     "regenerateWithQuantizedCommit(",
+    "if (doRegenerate && mini_acid_.isPlaying())",
     "const bool keyG = key == 'g' || event.scancode == GROOVEPUTER_G;",
     "if (keyG && !event.ctrl && !event.alt && !event.meta)",
     "applyCurrent(true);",
@@ -37,16 +37,16 @@ for needle in (
 ):
     require(GENRE, needle, f"GENRE G release route changed: {needle}")
 
-require(
-    QUANTIZED,
+# STOP retains the existing active bridge; PLAY prepares the same Stage15
+# semantic materialization directly into scratch A/B/Drums without pausing the
+# renderer or mutating the live Scene before BAR_START.
+for needle in (
     "regenerateWithStrongRhythmMigration(engine);",
-    "quantized GENRE owner no longer prepares through the Stage 15 bridge",
-)
-require(
-    QUANTIZED,
+    "migrateStrongRhythmMaterial(",
+    "GrooveboxModeManager scratchMode(engine);",
     "QuantizedGenerationResult::PendingNextBar",
-    "playing GENRE generation lost next-bar publication",
-)
+):
+    require(QUANTIZED, needle, f"quantized Stage15 route changed: {needle}")
 
 require(
     GENRE_H,
@@ -90,8 +90,7 @@ require(
 )
 
 # The sketch compatibility fallback still exists for non-release surfaces. Pin
-# it explicitly so nobody mistakes the stacked selector PR for full
-# legacy-generator deletion. Release safety comes from page-first ownership.
+# it explicitly so nobody mistakes this PR for full legacy-generator deletion.
 for needle in (
     "g_miniDisplay ? g_miniDisplay->handleEvent(evt) : false",
     "if (handled)",
@@ -101,7 +100,8 @@ for needle in (
 ):
     require(SKETCH, needle, f"sketch fallback boundary changed: {needle}")
 
-# Stage 15 tonal context is shared by full G and restored multi-bar audition.
+# The established live bridge and the scratch playing path must both retain the
+# current Stage15 tonal context/materializer.
 for needle in (
     "context.tonalMaterializationEnabled = true;",
     "context.rootPitchClass",
@@ -109,5 +109,13 @@ for needle in (
     "migrateStrongRhythmMaterial(",
 ):
     require(BRIDGE, needle, f"shared Stage 15 tonal route changed: {needle}")
+
+for needle in (
+    "context.tonalMaterializationEnabled = true;",
+    "context.rootPitchClass",
+    "context.scaleTypeValue",
+    "migrateStrongRhythmMaterial(",
+):
+    require(QUANTIZED, needle, f"scratch Stage 15 tonal route changed: {needle}")
 
 print("Release generation routing source regressions: OK")
