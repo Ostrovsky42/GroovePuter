@@ -124,7 +124,7 @@ const char* GenrePage::applyModeName() const {
 }
 
 void GenrePage::moveFocus(int delta) {
-  constexpr int kCount = 5;
+  constexpr int kCount = 4;
   focus_ = static_cast<FocusRow>(wrapIndex(static_cast<int>(focus_) + delta, kCount));
 }
 
@@ -155,6 +155,10 @@ GenreSettings GenrePage::pendingSettings() const {
   settings.recipe = static_cast<uint8_t>(normalizeRecipeForGenre(
       static_cast<GenerativeMode>(settings.generativeMode),
       static_cast<GenreRecipeId>(recipeIndex_)));
+  // F-02 migration: persisted fields remain decode-compatible, but future Genre
+  // generation no longer treats historical MORPH state as a generative input.
+  settings.morphTarget = 0;
+  settings.morphAmount = 0;
   settings.rhythmSelectionMode = static_cast<uint8_t>(rhythmMode_);
   settings.rhythmArchetypeId = rhythmArchetypeId_;
   return settings;
@@ -201,10 +205,6 @@ void GenrePage::cycleRhythmSelection(int delta) {
   }
 }
 
-void GenrePage::adjustMorph(int delta) {
-  morph_amount_ = std::clamp(morph_amount_ + delta, 0, 255);
-}
-
 void GenrePage::cycleApplyMode(int delta) {
   const ApplyMode next = static_cast<ApplyMode>(
       wrapIndex(static_cast<int>(currentApplyMode()) + delta, 3));
@@ -224,16 +224,14 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
       genre, static_cast<GenreRecipeId>(recipeIndex_));
   recipeIndex_ = static_cast<int>(recipe);
   normalizePendingRhythm(true);
-  const auto morphTarget =
-      morph_amount_ > 0 ? recipe : static_cast<GenreRecipeId>(kBaseRecipeId);
   const GrooveboxMode nextMode = GenreCatalog::grooveboxModeForRecipe(recipe, genre);
   auto& activeSettings = mini_acid_.sceneManager().currentScene().genre;
 
   GenreSettings requestedSettings = activeSettings;
   requestedSettings.generativeMode = static_cast<uint8_t>(genre_index_);
   requestedSettings.recipe = static_cast<uint8_t>(recipe);
-  requestedSettings.morphTarget = static_cast<uint8_t>(morphTarget);
-  requestedSettings.morphAmount = static_cast<uint8_t>(morph_amount_);
+  requestedSettings.morphTarget = 0;
+  requestedSettings.morphAmount = 0;
   requestedSettings.rhythmSelectionMode = static_cast<uint8_t>(rhythmMode_);
   requestedSettings.rhythmArchetypeId = rhythmArchetypeId_;
 
@@ -291,6 +289,9 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
       case GroovePuterRhythm::QuantizedGenerationResult::CommittedNow:
         resultLabel = "GENERATED";
         break;
+      case GroovePuterRhythm::QuantizedGenerationResult::AttemptUnavailable:
+        resultLabel = "GEN ATTEMPT FULL";
+        break;
       case GroovePuterRhythm::QuantizedGenerationResult::Failed:
       default:
         resultLabel = "GEN FAILED";
@@ -316,7 +317,6 @@ void GenrePage::updateFromEngine() {
                     : GroovePuterRhythm::RhythmSelectionMode::Auto;
   rhythmArchetypeId_ = settings.rhythmArchetypeId;
   rhythmFallbackPending_ = normalizePendingRhythm(false);
-  morph_amount_ = static_cast<int>(settings.morphAmount);
 }
 
 void GenrePage::draw(IGfx& gfx) {
@@ -360,9 +360,8 @@ void GenrePage::draw(IGfx& gfx) {
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(3), width, "RHYTHM", rhythmName,
                        focus_ == FocusRow::Rhythm, axisColor, palette);
 
-  std::snprintf(value, sizeof(value), "%d%%", (morph_amount_ * 100) / 255);
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width, "MORPH", value,
-                       focus_ == FocusRow::Morph, axisColor, palette);
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width, "REROLL", "REPEAT G",
+                       false, axisColor, palette);
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "APPLY",
                        applyModeName(), focus_ == FocusRow::Apply, axisColor, palette);
 
@@ -395,36 +394,23 @@ void GenrePage::draw(IGfx& gfx) {
 
 bool GenrePage::handleEvent(UIEvent& event) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
-  static UIInput::HoldAccelerator morphAccelerator;
 
   if (UIInput::isTab(event)) {
-    morphAccelerator.reset();
     moveFocus(1);
     return true;
   }
   const int nav = UIInput::navCode(event);
   if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
-    morphAccelerator.reset();
     moveFocus(nav == GROOVEPUTER_UP ? -1 : 1);
     return true;
   }
   if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
     const int delta = nav == GROOVEPUTER_RIGHT ? 1 : -1;
     switch (focus_) {
-      case FocusRow::Genre: morphAccelerator.reset(); shiftGenre(delta); return true;
-      case FocusRow::Variant:
-        morphAccelerator.reset();
-        if (event.alt) adjustMorph(delta * 16); else cycleRecipeSelection(delta);
-        return true;
-      case FocusRow::Rhythm: morphAccelerator.reset(); cycleRhythmSelection(delta); return true;
-      case FocusRow::Morph: {
-        const bool modified = event.shift || event.ctrl || event.alt || event.meta;
-        const int multiplier = modified ? 1 : morphAccelerator.multiplier(delta);
-        if (modified) morphAccelerator.reset();
-        adjustMorph(delta * (event.shift || event.ctrl ? 32 : 8) * multiplier);
-        return true;
-      }
-      case FocusRow::Apply: morphAccelerator.reset(); cycleApplyMode(delta); return true;
+      case FocusRow::Genre: shiftGenre(delta); return true;
+      case FocusRow::Variant: cycleRecipeSelection(delta); return true;
+      case FocusRow::Rhythm: cycleRhythmSelection(delta); return true;
+      case FocusRow::Apply: cycleApplyMode(delta); return true;
     }
   }
 
@@ -433,14 +419,13 @@ bool GenrePage::handleEvent(UIEvent& event) {
   const bool keyP = key == 'p' || event.scancode == GROOVEPUTER_P;
 
   // ENTER follows the APPLY selector. Plain G is always the explicit full
-  // Stage 15 materialization command for the pending GENRE/VARIANT/RHYTHM.
+  // Stage 15 materialization command. Repeated accepted G requests advance the
+  // bounded session reroll ordinal for this mode/recipe/P-level/address tuple.
   if (event.key == '\n' || event.key == '\r') {
-    morphAccelerator.reset();
     applyCurrent();
     return true;
   }
   if (keyG && !event.ctrl && !event.alt && !event.meta) {
-    morphAccelerator.reset();
     applyCurrent(true);
     return true;
   }
@@ -460,12 +445,10 @@ bool GenrePage::handleEvent(UIEvent& event) {
   }
 
   if (event.key == ' ' && focus_ == FocusRow::Apply) {
-    morphAccelerator.reset();
     cycleApplyMode(1);
     return true;
   }
   if (key == 'm' && !event.ctrl && !event.alt && !event.meta) {
-    morphAccelerator.reset();
     cycleApplyMode(1);
     return true;
   }
