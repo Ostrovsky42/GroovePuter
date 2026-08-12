@@ -185,6 +185,28 @@ void testPhraseAllocatorProtectsNonDefaultSteps() {
       static_cast<uint8_t>(StepFx::Roll);
   assert(PhraseGenerator::findContiguousEmptySlots(nonDefaultSteps, 1) == 3);
 
+  Scene referenced{};
+  referenced.activeSongSlot = 0;
+  const int referencedPattern = songPatternFromPageBankIndex(3, 0, 0);
+  referenced.songs[1].positions[12].patterns[
+      static_cast<int>(SongTrack::SynthA)] = referencedPattern;
+  assert(PhraseGenerator::localSlotIsEmpty(referenced, 0));
+  assert(PhraseGenerator::globalPatternIsReferenced(
+      referenced, referencedPattern));
+  assert(!PhraseGenerator::localSlotIsSafeForPhrase(referenced, 3, 0));
+  assert(PhraseGenerator::findSafeContiguousEmptySlots(referenced, 3, 1) == 1);
+
+  PhraseGenerator::PhraseRequest safeRequest{};
+  safeRequest.bars = 1;
+  safeRequest.songStart = 0;
+  safeRequest.pageIndex = 3;
+  const PhraseGenerator::PhraseResult safeResult =
+      PhraseGenerator::generateToSong(referenced, safeRequest, generateTestBase);
+  assert(safeResult);
+  assert(safeResult.firstLocalSlot == 1);
+  assert(referenced.songs[1].positions[12].patterns[
+      static_cast<int>(SongTrack::SynthA)] == referencedPattern);
+
   assert(PhraseGenerator::roleForBar(4, 0) ==
          PhraseGenerator::PhraseBarRole::Base);
   assert(PhraseGenerator::roleForBar(4, 1) ==
