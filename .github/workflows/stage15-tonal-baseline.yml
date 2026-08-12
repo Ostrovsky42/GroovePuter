@@ -26,10 +26,18 @@ jobs:
           python3 tests/test_stage15_tonal_f13_corpus.py \
             tests/data/stage15_tonal_enabled_baseline.tsv \
             build/host-tests/stage15_tonal_enabled_actual.tsv
-      - name: Upload F-13 tonal candidate corpus
+      - name: Compare exact frozen F-13 tonal corpus
+        run: |
+          base64 -d tests/data/stage15_tonal_enabled_f13_baseline.tsv.gz.b64 \
+            | gzip -dc > build/host-tests/stage15_tonal_enabled_f13_expected.tsv
+          test "$(wc -l < build/host-tests/stage15_tonal_enabled_f13_expected.tsv)" -eq 257
+          diff -u \
+            build/host-tests/stage15_tonal_enabled_f13_expected.tsv \
+            build/host-tests/stage15_tonal_enabled_actual.tsv
+      - name: Upload F-13 tonal corpus
         uses: actions/upload-artifact@v4
         with:
-          name: stage15-tonal-f13-candidate
+          name: stage15-tonal-f13-corpus
           path: build/host-tests/stage15_tonal_enabled_actual.tsv
           if-no-files-found: error
       - name: Check tonal ownership boundary across corpora
