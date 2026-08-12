@@ -4,6 +4,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = (ROOT / "src/generation/migration/strong_rhythm_migration.cpp").read_text()
 BRIDGE = (ROOT / "src/generation/migration/strong_rhythm_live_bridge.cpp").read_text()
+QUANTIZED = (ROOT / "src/generation/migration/quantized_generation_commit.h").read_text()
 GENRE_PAGE = (ROOT / "src/ui/pages/genre_page.cpp").read_text()
 SCENES_H = (ROOT / "scenes.h").read_text()
 SELECTION = (ROOT / "src/generation/composition/rhythm_selection.cpp").read_text()
@@ -72,11 +73,18 @@ require(legacy_call >= 0, "Stage 5 bridge no longer calls legacy generator")
 require(migration_call > legacy_call,
         "Stage 5 migration must run after legacy rollback snapshot exists")
 
-# Only the explicit GENRE materialization boundary opts into Stage 5 in this PR.
-require("strong_rhythm_live_bridge.h" in GENRE_PAGE,
-        "GenrePage is not wired to Stage 5 bridge")
-require("regenerateWithStrongRhythmMigration(mini_acid_)" in GENRE_PAGE,
-        "GenrePage MATERIALIZE bypasses Stage 5 bridge")
+# GENRE materialization still opts into the established Stage 5/15 bridge, but
+# while PLAY is active the UI must enter it through the quantized transaction
+# owner so generated material can be prepared before BAR_START rather than
+# mutating the sounding pattern in place.
+require("quantized_generation_commit.h" in GENRE_PAGE,
+        "GenrePage is not wired to quantized material commit")
+require("regenerateWithQuantizedCommit(" in GENRE_PAGE,
+        "GenrePage MATERIALIZE bypasses quantized commit")
+require("strong_rhythm_live_bridge.h" in QUANTIZED,
+        "quantized owner lost the Stage 5/15 bridge dependency")
+require("regenerateWithStrongRhythmMigration(engine);" in QUANTIZED,
+        "quantized owner no longer prepares through Stage 5/15 migration")
 require("mini_acid_.regeneratePatternsWithGenre();" not in GENRE_PAGE,
         "GenrePage still calls legacy regeneration directly")
 
