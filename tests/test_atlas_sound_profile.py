@@ -65,15 +65,29 @@ for required_owner_boundary in (
 if "GenreManager genreManager_{sceneManager_};" not in engine:
     raise AssertionError("engine genre adapter must be bound to the canonical SceneManager")
 
-for required_scene_write in (
-    "settings.generativeMode =",
-    "settings.recipe =",
-    "settings.morphTarget =",
-    "settings.morphAmount =",
-    "GenreCatalog::grooveboxModeForRecipe",
+# GenrePage now constructs one complete requested GenreSettings transaction.
+# STOP/PROFILE commits it to Scene directly; PLAY/full-generation passes the
+# same transaction to the bounded quantized owner and BAR_START publishes it.
+# Pin that ownership contract instead of depending on the historical local
+# variable name `settings` used before quantized generation was introduced.
+for required_request_write in (
+    "requestedSettings.generativeMode =",
+    "requestedSettings.recipe =",
+    "requestedSettings.morphTarget =",
+    "requestedSettings.morphAmount =",
+    "requestedSettings.rhythmSelectionMode =",
+    "requestedSettings.rhythmArchetypeId =",
 ):
-    if required_scene_write not in page:
-        raise AssertionError(f"Genre page Scene write missing: {required_scene_write}")
+    if required_request_write not in page:
+        raise AssertionError(
+            f"Genre requested-settings transaction missing: {required_request_write}"
+        )
+if "GenreCatalog::grooveboxModeForRecipe" not in page:
+    raise AssertionError("Genre page must still derive the linked Groovebox mode")
+if "activeSettings = requestedSettings;" not in page:
+    raise AssertionError("Genre PROFILE/STOP path must commit the complete requested settings")
+if "regenerateWithQuantizedCommit(\n        mini_acid_, requestedSettings" not in page:
+    raise AssertionError("Genre PLAY path must pass the complete requested settings to quantized generation")
 if ".genreManager()" in page:
     raise AssertionError("Genre page must not edit genre state through a manager facade")
 
