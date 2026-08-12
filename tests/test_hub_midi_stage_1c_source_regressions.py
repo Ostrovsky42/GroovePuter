@@ -25,6 +25,12 @@ def main() -> None:
     route_state = (ROOT / "src/midi/smf_track_output_route.h").read_text(
         encoding="utf-8"
     )
+    scheduled_event = (ROOT / "src/midi/scheduled_smf_midi_event.h").read_text(
+        encoding="utf-8"
+    )
+    scheduled_queue = (
+        ROOT / "src/midi/scheduled_smf_midi_event_queue.h"
+    ).read_text(encoding="utf-8")
     routing = (ROOT / "src/midi/smf_routing.h").read_text(encoding="utf-8")
     player_header = (ROOT / "src/platform/cardputer_smf_player.h").read_text(
         encoding="utf-8"
@@ -51,7 +57,12 @@ def main() -> None:
         and "uint32_t midiGeneration_{0};" in header,
         "HUB MIDI state must remain page-local and bounded",
     )
-    for forbidden in ("std::vector", "std::array", "SmfPlayerSnapshot player_", "static Smf"):
+    for forbidden in (
+        "std::vector",
+        "std::array",
+        "SmfPlayerSnapshot player_",
+        "static Smf",
+    ):
         require(
             forbidden not in header,
             f"HUB MIDI header must not retain runtime snapshot/cache state: {forbidden}",
@@ -105,15 +116,14 @@ def main() -> None:
         "if (event.scancode == GROOVEPUTER_ESCAPE || UIInput::isBack(event))",
         shortcut_pos,
     )
-    modifier_pos = page.index("if (event.alt || event.ctrl || event.meta)", back_pos)
+    modifier_pos = page.index("if (event.meta", back_pos)
     require(
         shortcut_pos < back_pos < modifier_pos
         and "event.key == 'h'" in page[shortcut_pos:back_pos]
-        and "returnFromMidiOverview();" in page[shortcut_pos:back_pos]
-        and "midiRouteEdit_" in page[back_pos:modifier_pos]
-        and "ROUTE CANCELLED" in page[back_pos:modifier_pos]
+        and "returnFromMidiOverview();" in page[shortcut_pos:modifier_pos]
+        and "ROUTE CANCELLED" not in page[back_pos:modifier_pos]
         and "GROOVEPUTER_ESCAPE" in page[back_pos:modifier_pos],
-        "H and physical Escape must exit while Escape first cancels an active route edit",
+        "H and physical Escape must exit directly; live routing has no cancelable draft",
     )
 
     require(
@@ -184,11 +194,9 @@ def main() -> None:
         "formatTrackChannel(" in page
         and "formatRouteDestination(" in page
         and "formatPitchRange(" in page
-        and '"RAW %s V%u N%u %s"' in page
-        and '"%s>%s V%u N%u %s"' in page
-        and "ROUTE %s" in page
-        and 'hints = soloActive ? "FN<>VOL S:OFF" : "FN<>VOL S:SOLO";' in page,
-        "selected-layer footer must expose live Solo, level and route state",
+        and "%s>%s V%u N%u %s" in page
+        and 'hints = soloActive ? "S:OFF <>RTE" : "S:SOLO <>RTE";' in page,
+        "selected-layer footer must expose level, Solo and direct route arrows",
     )
 
     solo_start = page.index("if (event.key == 's' || event.key == 'S')")
@@ -222,45 +230,80 @@ def main() -> None:
         "legacy mute/All On actions must leave Solo state deterministically",
     )
 
+    route_start = page.index("int routeMove = 0;", solo_end)
+    c_alias_pos = page.index("if (event.key == 'c' || event.key == 'C')", route_start)
+    route_block = page[route_start:c_alias_pos]
+    require(
+        "GROOVEPUTER_LEFT" in route_block
+        and "GROOVEPUTER_RIGHT" in route_block
+        and "projection.routes.destinationFor(selectedTrack), routeMove" in route_block
+        and "smfTrackOutputRouteState().setDestination(" in route_block
+        and "persistTrackOutputRoutes(projection.generation)" in route_block
+        and "projection.generation" in route_block
+        and "projection.mute.trackCount" in route_block,
+        "Left/Right must apply and persist one generation-aware physical-track route immediately",
+    )
+    require(
+        "routeCanBeEdited(" not in page
+        and "PAUSE MIDI FIRST" not in page
+        and "midiRouteEdit_ = true;" not in page
+        and "SEQTRAK ROUTING REQUIRED" in route_block,
+        "live route changes must not depend on pause or an Enter-to-commit edit mode",
+    )
     require(
         "cycleRouteDestination(" in page
-        and "GROOVEPUTER_LEFT" in page
-        and "GROOVEPUTER_RIGHT" in page
-        and "projection.routes.destinationFor(selectedTrack), routeMove" in page
-        and "midiRouteEdit_ = true;" in page
-        and "smfTrackOutputRouteState().setDestination(" in page
-        and "projection.generation" in page
-        and "projection.mute.trackCount" in page,
-        "Left/Right must enter route editing directly and Enter must apply one generation-aware physical-track route",
+        and "choice = static_cast<int>(current) + 1;" in page
+        and "return static_cast<int8_t>(choice - 1);" in page,
+        "route cycling must retain AUTO/CH1..CH10 ordering so Right hits drums and Left hits DX first",
     )
     require(
         "event.key == 'c' || event.key == 'C'" in page
-        and "compatibility alias" in page,
-        "legacy C route entry may remain only as a compatibility alias",
+        and "ROUTE: USE LEFT / RIGHT" in page,
+        "legacy C must only explain direct arrow routing",
     )
+
+    enter_pos = page.index("if (event.key == '\\n' || event.key == '\\r')")
+    enter_block = page[enter_pos : page.index("return true;", enter_pos) + len("return true;")]
     require(
-        "routeCanBeEdited(" in page
-        and "SmfPlayerState::Stopped" in page
-        and "SmfPlayerState::Paused" in page
-        and "PAUSE MIDI FIRST" in page
-        and "SEQTRAK ROUTING REQUIRED" in page,
-        "route edits must be limited to safe paused/stopped SEQTRAK routing",
+        "toggleMidiLayer(midiSelected_)" in enter_block
+        and "setDestination(" not in enter_block
+        and "persistTrackOutputRoutes(" not in enter_block,
+        "Enter must remain the selected-layer mute toggle and must not commit routing",
     )
 
     require(
         "kSmfTrackOutputRouteCapacity = 32u" in route_state
         and "kSmfSeqtrakOutputChannelCount = 10u" in route_state
+        and "kSmfTrackOutputRouteRevisionCleanup = 0x0Fu" in route_state
         and "packedRoutes_[kPackedRouteWords]" in route_state
-        and "std::atomic<uint32_t> boundGeneration_" in route_state
-        and "SmfSessionMutationGuard guard(generation)" in route_state
-        and "kInitializingGeneration" in route_state,
-        "per-track routes must remain bounded, atomic and session-generation aware",
+        and "std::atomic<uint32_t> pendingReleaseMask_" in route_state
+        and "std::atomic<uint32_t> producerRouteStamp_" in route_state
+        and "destinationForProducer(" in route_state
+        and "takePendingReleaseTrack(" in route_state
+        and "SmfSessionMutationGuard guard(generation)" in route_state,
+        "live route state must stay bounded, atomic, generation-aware and cleanup-capable",
     )
     for forbidden in ("std::vector", "new ", "malloc", "free("):
         require(
             forbidden not in route_state,
             f"route state must not allocate dynamically: {forbidden}",
         )
+
+    require(
+        "kScheduledSmfQueueGenerationMask = 0x0FFFFFFFu" in scheduled_event
+        and "scheduledSmfMidiEventRouteRevisionTag(" in scheduled_event
+        and "kSmfTrackOutputRouteRevisionCleanup" in scheduled_event
+        and "scheduledSmfMidiEventRouteRevisionIsCurrent(" in scheduled_event
+        and "sizeof(ScheduledSmfMidiEvent) == 16" in scheduled_event,
+        "route revisions must remain packed into the existing 16-byte realtime event",
+    )
+    require(
+        "smfTrackOutputRouteState()" in scheduled_queue
+        and ".takePendingReleaseTrack(requestedTrack)" in scheduled_queue
+        and ".consumeProducerRevisionTag(event.trackIndex)" in scheduled_queue
+        and "kSmfTrackOutputRouteRevisionCleanup" in scheduled_queue,
+        "SMF queue must perform scoped route cleanup and tag producer events",
+    )
 
     require(
         "routeSmfNoteToSeqtrakDestination(" in routing
@@ -273,9 +316,9 @@ def main() -> None:
         "SmfRoutedNote routeSmfNote(" in player_header
         and "pendingEvent_.trackIndex" in player_header
         and "fileIndex_.trackCount" in player_header
-        and "smfTrackOutputRouteState().destinationFor(" in player_header
+        and "smfTrackOutputRouteState().destinationForProducer(" in player_header
         and "GroovePuterMidi::routeSmfTrackNote(" in player_header,
-        "Cardputer player must apply the selected physical-track route at the existing scheduling boundary",
+        "Cardputer player must atomically capture route destination/revision at scheduling",
     )
 
     require(
@@ -331,7 +374,7 @@ def main() -> None:
         "Internal Hub behavior must remain delegated to the existing implementation",
     )
 
-    print("HUB MIDI navigation/solo source regressions: OK")
+    print("HUB MIDI live-route navigation/source regressions: OK")
 
 
 if __name__ == "__main__":
