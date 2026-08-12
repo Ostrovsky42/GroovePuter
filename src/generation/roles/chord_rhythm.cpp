@@ -154,7 +154,9 @@ ChordRhythmResult realizeChordRhythm(const ChordRhythmRequest& request) {
   continuations = static_cast<StepMask>(
       continuations & ~request.protectedSpace & ~onsets);
   continuations = anchoredContinuations(onsets, continuations);
-  releases = static_cast<StepMask>(releases & ~onsets & ~continuations);
+  releases = onsets == 0
+      ? StepMask{0}
+      : static_cast<StepMask>(releases & ~onsets & ~continuations);
 
   result.plan.id = id;
   result.plan.onsets = onsets;

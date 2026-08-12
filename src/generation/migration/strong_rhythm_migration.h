@@ -5,6 +5,7 @@
 
 #include "../../../scenes.h"
 #include "../composition/generation_profile.h"
+#include "../composition/genre_harmonic_rhythm.h"
 #include "../composition/rhythm_selection.h"
 #include "../composition/tonal_profile.h"
 #include "../feel/feel_pattern_adapter.h"
@@ -83,7 +84,6 @@ struct StrongRhythmMigrationResult {
   GenerationCompositionStatus compositionStatus =
       GenerationCompositionStatus::NoProfile;
   FeelProfileId suggestedFeel = FeelProfileId::Straight;
-  // Planning metadata only until Stage 12's physical reachability gate clears.
   PhraseEvolutionLawId phraseLaw = PhraseEvolutionLawId::Loop;
   uint8_t phraseBars = 1;
   GenerationCorridor corridor{};
@@ -106,6 +106,12 @@ struct StrongRhythmMigrationResult {
   ChordProgressionStatus chordProgressionStatus =
       ChordProgressionStatus::InvalidRequest;
   ProgressionId progressionId = ProgressionId::Auto;
+  GenreHarmonicRhythmStatus harmonicRhythmStatus =
+      GenreHarmonicRhythmStatus::InvalidRequest;
+  ChordRhythmTimelineStatus chordTimelineStatus =
+      ChordRhythmTimelineStatus::InvalidRequest;
+  ChordRhythmRetriggerStatus chordRetriggerStatus =
+      ChordRhythmRetriggerStatus::ValidButEmpty;
   SemanticPatternProjectStatus chordProjectionStatus =
       SemanticPatternProjectStatus::Ok;
   TonalMaterializationStatus chordTonalStatus =
@@ -133,11 +139,18 @@ struct StrongRhythmMigrationResult {
   FeelInterpretStatus melodicFeelStatus = FeelInterpretStatus::Ok;
   SemanticSynthBRole synthBRole = SemanticSynthBRole::Chord;
 
-  // Ephemeral semantic topology. One physical Synth B remains monophonic:
-  // hybrid mode gives chord onsets/continuations priority and records only
-  // melodic onsets admitted into otherwise free cells.
+  // Ephemeral semantic topology. P2/P3 never add a sequencer onset here:
+  // chordOnsets is the audible ChordRhythm mask, while the two masks below
+  // classify those same onsets as source advance (N) or same-source retrigger
+  // (S). One physical Synth B remains monophonic.
   StepMask chordOnsets = 0;
+  StepMask chordSourceAdvanceOnsets = 0;
+  StepMask chordSameChordRetriggers = 0;
   StepMask melodicFillOnsets = 0;
+  uint8_t chordSourceAdvanceCount = 0;
+  uint8_t chordAudibleOnsetCount = 0;
+  uint8_t harmonicPhraseBars = 1;
+  uint8_t harmonicPhraseBarOrdinal = 0;
   bool chordRhythmApplied = false;
   bool melodicRhythmApplied = false;
   bool tonalMaterializationApplied = false;

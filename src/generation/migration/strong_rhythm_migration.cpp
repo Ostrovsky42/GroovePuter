@@ -75,6 +75,14 @@ uint8_t semanticBarOrdinal(const GenreSettings& settings,
   return useAddress ? static_cast<uint8_t>(patternAddress & 0xFF) : 0;
 }
 
+uint8_t harmonicBarOrdinal(int16_t patternAddress) {
+  // P2/P3 phrase identity is independent from the established one-bar rhythm
+  // realizers. Pattern address is already deterministic and transient, so the
+  // harmonic layer gains 1..4-bar variation without changing legacy rhythm
+  // selection or adding transport/persistence ownership.
+  return static_cast<uint8_t>(patternAddress & 0xFF);
+}
+
 SemanticSynthBRole semanticSynthBRole(CompositionSecondaryRole role) {
   switch (role) {
     case CompositionSecondaryRole::Chord: return SemanticSynthBRole::Chord;
@@ -442,12 +450,52 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     return result;
   }
 
+  StepMask harmonicEventOnsets = chord.plan.onsets;
+  uint8_t harmonicEventCount = onsetCount(chord.plan.onsets);
+  uint8_t progressionPhraseBars = 1;
+
+  if (context.tonalMaterializationEnabled) {
+    GenreHarmonicRhythmRequest harmonicRequest{};
+    harmonicRequest.family = definition->family;
+    harmonicRequest.chord = chord.plan;
+    harmonicRequest.progression = result.progressionId;
+    harmonicRequest.phraseLaw = result.phraseLaw;
+    harmonicRequest.phraseBars = result.phraseBars;
+    harmonicRequest.barOrdinal = harmonicBarOrdinal(context.patternAddress);
+    const GenreHarmonicRhythmPlan harmonic =
+        realizeGenreHarmonicRhythm(harmonicRequest);
+    result.harmonicRhythmStatus = harmonic.status;
+    result.chordTimelineStatus = harmonic.timelineStatus;
+    result.chordRetriggerStatus = harmonic.retriggerStatus;
+    result.harmonicPhraseBars = harmonic.boundedPhraseBars;
+    result.harmonicPhraseBarOrdinal = harmonic.phraseBarOrdinal;
+    result.chordSourceAdvanceOnsets = harmonic.currentBar.sourceAdvanceOnsets;
+    result.chordSameChordRetriggers = harmonic.currentBar.sameChordRetriggers;
+    result.chordSourceAdvanceCount = harmonic.currentBar.sourceAdvanceCount;
+    result.chordAudibleOnsetCount = harmonic.currentBar.audibleOnsetCount;
+    if (harmonic.status != GenreHarmonicRhythmStatus::Ok &&
+        harmonic.status != GenreHarmonicRhythmStatus::ValidButEmpty) {
+      result.status = StrongRhythmMigrationStatus::InvalidContext;
+      return result;
+    }
+    if (harmonic.currentBar.audibleOnsets != chord.plan.onsets ||
+        harmonic.currentBar.continuations != chord.plan.continuations ||
+        harmonic.currentBar.releasePoints != chord.plan.releasePoints) {
+      result.status = StrongRhythmMigrationStatus::InvalidContext;
+      return result;
+    }
+
+    harmonicEventOnsets = harmonic.currentBar.sourceAdvanceOnsets;
+    harmonicEventCount = harmonic.currentBar.sourceAdvanceCount;
+    progressionPhraseBars = harmonic.boundedPhraseBars;
+  }
+
   ChordProgressionRequest progressionRequest{};
   progressionRequest.requestedId = result.progressionId;
   progressionRequest.family = definition->family;
   progressionRequest.generation = chordRequest.generation;
-  progressionRequest.harmonicEventCount = onsetCount(chord.plan.onsets);
-  progressionRequest.phraseBars = 1;
+  progressionRequest.harmonicEventCount = harmonicEventCount;
+  progressionRequest.phraseBars = progressionPhraseBars;
   const ChordProgressionResult progression =
       realizeChordProgression(progressionRequest);
   result.chordProgressionStatus = progression.status;
@@ -507,6 +555,8 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   SynthPattern nextSynthB{};
 
   if (!context.tonalMaterializationEnabled) {
+    // Legacy redistribution remains a compatibility/rollback binding. It does
+    // not execute P2/P3 and keeps the Stage15 one-bar progression contract.
     result.bassProjectionStatus = projectLegacyPitchPattern(
         synthA, bass.plan.onsets, bass.plan.continuations, nextSynthA);
     if (result.bassProjectionStatus != SemanticPatternProjectStatus::Ok) {
@@ -609,7 +659,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   } else {
     const TonalMaterializationResult bassTonal = materializeRole(
         context, tonalProfile.bassRegister, progression.plan,
-        chord.plan.onsets, bassPitch.plan.onsets,
+        harmonicEventOnsets, bassPitch.plan.onsets,
         bassPitch.plan.continuations, bassPitch.plan.tonalOffsets,
         bassPitch.plan.semitoneOffsetOrdinals);
     result.bassTonalStatus = bassTonal.status;
@@ -636,7 +686,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     if (result.synthBRole == SemanticSynthBRole::Chord) {
       const TonalMaterializationResult chordTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
-          chord.plan.onsets, chord.plan.onsets, chord.plan.continuations,
+          harmonicEventOnsets, chord.plan.onsets, chord.plan.continuations,
           nullptr, 0);
       result.chordTonalStatus = chordTonal.status;
       result.chordTonalProjectionStatus = chordTonal.projectionStatus;
@@ -661,7 +711,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     } else if (result.synthBRole == SemanticSynthBRole::Melodic) {
       const TonalMaterializationResult melodicTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
-          chord.plan.onsets, melodicPitch.plan.onsets,
+          harmonicEventOnsets, melodicPitch.plan.onsets,
           melodicPitch.plan.continuations, melodicPitch.plan.degreeOffsets, 0);
       result.melodicTonalStatus = melodicTonal.status;
       result.melodicTonalProjectionStatus = melodicTonal.projectionStatus;
@@ -688,7 +738,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     } else {
       const TonalMaterializationResult chordTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
-          chord.plan.onsets, chord.plan.onsets, chord.plan.continuations,
+          harmonicEventOnsets, chord.plan.onsets, chord.plan.continuations,
           nullptr, 0);
       result.chordTonalStatus = chordTonal.status;
       result.chordTonalProjectionStatus = chordTonal.projectionStatus;
@@ -729,7 +779,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
 
       const TonalMaterializationResult melodicTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
-          chord.plan.onsets, admittedOnsets, admittedContinuations,
+          harmonicEventOnsets, admittedOnsets, admittedContinuations,
           admittedOffsets, 0);
       result.melodicTonalStatus = melodicTonal.status;
       result.melodicTonalProjectionStatus = melodicTonal.projectionStatus;

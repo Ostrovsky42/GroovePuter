@@ -47,8 +47,12 @@ for forbidden in (
     "tonal_projector",
     "src/generation/tonal/",
     "GenerativeMode",
+    "StepMask",
+    "ChordRhythmPlan",
+    "sourceAdvanceOnsets",
+    "sameChordRetriggers",
 ):
-    forbid(MODULE, forbidden, f"ChordProgression crossed tonal/genre ownership: {forbidden}")
+    forbid(MODULE, forbidden, f"ChordProgression crossed tonal/rhythm ownership: {forbidden}")
 
 require(
     SOURCE,
@@ -109,27 +113,50 @@ require(
     "const ChordProgressionResult progression =\n      realizeChordProgression(progressionRequest);",
     "Stage 15 is no longer production-reachable from the strong migration bridge",
 )
+
+# Harmonic timing/count ownership remains outside ChordProgression. The bridge
+# defaults to the historical one-bar onset clock, while the explicit tonal
+# P2/P3 planner may replace those external request values with its bounded N
+# clock. ChordProgression itself still receives only count + phraseBars.
 require(
     MATERIAL_BRIDGE,
-    "progressionRequest.harmonicEventCount = onsetCount(chord.plan.onsets);",
-    "ChordProgression started owning harmonic event timing/count",
+    "uint8_t harmonicEventCount = onsetCount(chord.plan.onsets);",
+    "legacy harmonic event count is no longer externally derived",
 )
 require(
     MATERIAL_BRIDGE,
-    "progressionRequest.phraseBars = 1;",
-    "Stage 15 crossed the one-bar production hardware guard",
+    "uint8_t progressionPhraseBars = 1;",
+    "legacy one-bar progression default disappeared",
+)
+require(
+    MATERIAL_BRIDGE,
+    "harmonicEventCount = harmonic.currentBar.sourceAdvanceCount;",
+    "P3 source-advance count is no longer supplied by the external planner",
+)
+require(
+    MATERIAL_BRIDGE,
+    "progressionPhraseBars = harmonic.boundedPhraseBars;",
+    "P2 bounded phrase length is no longer supplied by the external planner",
+)
+require(
+    MATERIAL_BRIDGE,
+    "progressionRequest.harmonicEventCount = harmonicEventCount;",
+    "ChordProgression request stopped consuming the externally-owned count",
+)
+require(
+    MATERIAL_BRIDGE,
+    "progressionRequest.phraseBars = progressionPhraseBars;",
+    "ChordProgression request stopped consuming the externally-owned phrase bound",
 )
 require(
     BRIDGE,
     "request.phraseBars = 1;",
-    "Stage 12 one-bar production guard was modified by Stage 15",
+    "Stage 12 rhythm realization stopped being a one-bar physical pattern surface",
 )
 
 # ChordProgression must be realized before pitch-path arbitration. The final
 # Stage 15 bridge has two downstream owners: the frozen legacy projector when
 # tonal materialization is disabled, and TonalMaterializer when it is enabled.
-# Pin semantic ordering without depending on old whitespace or one particular
-# legacy Synth B call shape.
 progression_call = MATERIAL_BRIDGE.index("realizeChordProgression(progressionRequest)")
 pitch_path_branch = MATERIAL_BRIDGE.index("if (!context.tonalMaterializationEnabled)")
 legacy_projection = MATERIAL_BRIDGE.index(
