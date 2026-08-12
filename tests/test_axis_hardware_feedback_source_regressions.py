@@ -11,6 +11,7 @@ def read(path: str) -> str:
 song = read("src/ui/pages/song_page.cpp")
 feel = read("src/ui/pages/feel_page.cpp")
 genre = read("src/ui/pages/genre_page.cpp")
+genre_header = read("src/ui/pages/genre_page.h")
 tb303 = read("src/ui/pages/tb303_params_page.cpp")
 drum_automation = read("src/ui/pages/drum_automation_page.cpp")
 genre_manager = read("src/dsp/genre_manager.cpp")
@@ -69,16 +70,28 @@ for token in (
 ):
     assert token in ui_input, f"Hold acceleration missing: {token}"
 
-# The standalone GENERATION page was removed. Generation target/navigation
-# feedback must not reappear as a second UI owner; surviving generation UX is
-# exercised by SONG's existing genre materialization contract above.
-
+# F-02/F-07 retires the misleading MORPH percentage from the live Genre axis.
+# Repeated G is now the only explicit variation/reroll surface. Persisted MORPH
+# fields stay in the Scene codec for backwards decode, but this page normalizes
+# them to zero on explicit apply/generation and must not own an accelerator.
 for token in (
-    "static UIInput::HoldAccelerator morphAccelerator",
-    "morphAccelerator.multiplier(delta)",
-    "adjustMorph(delta * (event.shift || event.ctrl ? 32 : 8) * multiplier)",
+    '"REROLL"',
+    '"REPEAT G"',
+    "settings.morphTarget = 0;",
+    "settings.morphAmount = 0;",
+    "requestedSettings.morphTarget = 0;",
+    "requestedSettings.morphAmount = 0;",
 ):
-    assert token in genre, f"Genre MORPH hold acceleration missing: {token}"
+    assert token in genre, f"Genre reroll migration contract missing: {token}"
+for retired in (
+    "adjustMorph",
+    "morphAccelerator",
+    "morph_amount_",
+    "FocusRow::Morph",
+):
+    assert retired not in genre + genre_header, (
+        f"Retired Genre MORPH owner returned: {retired}"
+    )
 
 for token in (
     "static UIInput::HoldAccelerator knobAccelerator",
