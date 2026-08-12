@@ -91,6 +91,19 @@ inline GroovePuterRhythm::RealizationLevel& levelStorage() {
 // a different generation tuple (GA-06). 64 live tuple identities cost 512 B of
 // fixed session state and require no heap/NVS traffic.
 constexpr std::size_t kGenerationAttemptCapacity = 64;
+static_assert(kGenerationAttemptCapacity != 0 &&
+              (kGenerationAttemptCapacity & (kGenerationAttemptCapacity - 1u)) == 0,
+              "generation attempt table must remain power-of-two");
+
+constexpr unsigned attemptCapacityBits() {
+    std::size_t value = kGenerationAttemptCapacity;
+    unsigned bits = 0;
+    while (value > 1) {
+        value >>= 1u;
+        ++bits;
+    }
+    return bits;
+}
 
 struct GenerationAttemptEntry {
     uint32_t keyPlusOne = 0;
@@ -122,7 +135,7 @@ inline bool packAttemptKey(uint8_t generativeMode,
 
 inline std::size_t attemptStartIndex(uint32_t packed) {
     return static_cast<std::size_t>(
-        (packed * 2654435761u) >> (32u - 6u));
+        (packed * 2654435761u) >> (32u - attemptCapacityBits()));
 }
 }  // namespace generation_request_detail
 
