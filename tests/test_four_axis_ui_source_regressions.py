@@ -51,16 +51,27 @@ for filename in (
 for needle in (
     '"GENRE 1/2"',
     '"CORRIDOR / VOCABULARY"',
-    "settings.generativeMode =",
-    "settings.recipe =",
     "GenreCatalog::grooveboxModeForRecipe",
     '"PROFILE ONLY"',
     '"MATERIALIZE"',
 ):
     require(GENRE, needle, f"GENRE contract missing: {needle}")
+
+# Full generation may now build a complete requested Genre state without
+# mutating the active sounding Scene until BAR_START. Accept either the legacy
+# direct-settings spelling or the current transactional requested-settings
+# spelling, but require both Genre and Recipe ownership to remain on this page.
+for field in ("generativeMode", "recipe"):
+    if not (
+        f"settings.{field} =" in GENRE or
+        f"requestedSettings.{field} =" in GENRE
+    ):
+        raise AssertionError(f"GENRE contract missing state owner: {field}")
+
 if not (
     "regeneratePatternsWithGenre" in GENRE or
-    "regenerateWithStrongRhythmMigration" in GENRE
+    "regenerateWithStrongRhythmMigration" in GENRE or
+    "regenerateWithQuantizedCommit" in GENRE
 ):
     raise AssertionError("GENRE MATERIALIZE has no generation boundary")
 forbid(
