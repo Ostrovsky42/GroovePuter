@@ -85,22 +85,35 @@ int main() {
       RealizationLevel::P2Variation, 42);
   assert(attempt.ok() && attempt.ordinal == 0);
 
-  // GA-06: capacity exhaustion fails closed. It must not evict/reset another
-  // tuple merely to accept a new one.
+  // Capacity is a history-comfort bound, not a generation-availability bound.
+  // Fill the exact table, then accept another full table of distinct tuples.
+  // Every new tuple must still start at attempt 0. After a complete eviction
+  // cycle, an old tuple also restarts at 0 while a non-evicted recent tuple
+  // continues monotonically.
   resetGenerationAttemptState();
   for (int address = 0; address < 64; ++address) {
     const auto filled = allocateGenerationAttempt(
         1, 6, RealizationLevel::P2Variation, address);
     assert(filled.ok() && filled.ordinal == 0);
   }
-  const auto full = allocateGenerationAttempt(
-      1, 6, RealizationLevel::P2Variation, 64);
-  assert(full.status == GenerationAttemptStatus::TableFull);
   attempt = allocateGenerationAttempt(
       1, 6, RealizationLevel::P2Variation, 0);
   assert(attempt.ok() && attempt.ordinal == 1);
 
-  // Session reset is explicit and non-persistent.
+  for (int address = 64; address < 128; ++address) {
+    const auto rerouted = allocateGenerationAttempt(
+        1, 6, RealizationLevel::P2Variation, address);
+    assert(rerouted.ok() && rerouted.ordinal == 0);
+  }
+
+  attempt = allocateGenerationAttempt(
+      1, 6, RealizationLevel::P2Variation, 0);
+  assert(attempt.ok() && attempt.ordinal == 0);
+  attempt = allocateGenerationAttempt(
+      1, 6, RealizationLevel::P2Variation, 127);
+  assert(attempt.ok() && attempt.ordinal == 1);
+
+  // Session reset is explicit and non-persistent, including eviction order.
   resetGenerationAttemptState();
   attempt = allocateGenerationAttempt(1, 6,
       RealizationLevel::P2Variation, 42);
