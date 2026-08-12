@@ -164,6 +164,16 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     SynthPattern& synthA,
     SynthPattern& synthB);
 
+// Genre-aware synth-only materialization. Drums are rhythm context and remain
+// byte-for-byte unchanged; both synth candidates are produced so the caller can
+// atomically publish only the selected physical voice.
+StrongRhythmMigrationResult migrateStrongRhythmSynths(
+    const GenreSettings& settings,
+    const StrongRhythmMigrationContext& context,
+    DrumPatternSet& drums,
+    SynthPattern& synthA,
+    SynthPattern& synthB);
+
 }  // namespace GroovePuterRhythm
 
 #endif  // GROOVEPUTER_GENERATION_MIGRATION_STRONG_RHYTHM_MIGRATION_H

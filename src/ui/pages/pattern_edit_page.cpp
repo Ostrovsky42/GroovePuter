@@ -19,6 +19,8 @@
 #include "../components/bank_selection_bar.h"
 #include "../components/pattern_selection_bar.h"
 #include "../../debug_log.h"
+#include "../../generation/migration/quantized_generation_commit.h"
+#include "../../state/scene_revision.h"
 #include "../key_normalize.h"
 
 namespace UI {
@@ -154,6 +156,8 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(key)))
       : 0;
   const int nav = UIInput::navCode(ui_event);
+  const bool keyG =
+      lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G;
   const bool gridArrow =
       nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT ||
       nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN;
@@ -235,6 +239,37 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     // mistaken for a held-key repeat. The last entered pitch is intentionally
     // retained so ';' can still recall it after navigation.
     resetNoteHoldTracking();
+  }
+
+  // Outside NOTE ENTRY, plain G rerolls only this physical synth voice through
+  // the active Genre/recipe/P-level/harmony context. Drums and the other synth
+  // remain owned by their current patterns. Modified editor commands remain in
+  // the retained legacy handler.
+  if (!note_entry_mode_ && keyG &&
+      !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
+    using GroovePuterRhythm::QuantizedGenerationResult;
+    QuantizedGenerationResult result = QuantizedGenerationResult::Failed;
+    const auto generate = [&]() {
+      result = GroovePuterRhythm::regenerateSynthWithQuantizedCommit(
+          mini_acid_, voice_index_);
+    };
+    if (mini_acid_.isPlaying()) {
+      generate();
+    } else {
+      withAudioGuard(generate);
+    }
+    if (result == QuantizedGenerationResult::CommittedNow)
+      GroovePuterState::markSceneMutated();
+
+    const char* label = "GEN FAILED";
+    if (result == QuantizedGenerationResult::CommittedNow)
+      label = "GENERATED";
+    else if (result == QuantizedGenerationResult::PendingNextBar)
+      label = "GEN -> NEXT BAR";
+    else if (result == QuantizedGenerationResult::AttemptUnavailable)
+      label = "GEN ATTEMPT FULL";
+    UI::showToast(label, 1200);
+    return true;
   }
 
   // Global navigation, pattern rotation/FX editing and meta note editing keep

@@ -8,6 +8,7 @@ DRUM = (ROOT / "src/ui/pages/drum_sequencer_page.cpp").read_text(encoding="utf-8
 DRUM_LEGACY = (
     ROOT / "src/ui/pages/drum_sequencer_page_legacy.h"
 ).read_text(encoding="utf-8")
+PATTERN = (ROOT / "src/ui/pages/pattern_edit_page.cpp").read_text(encoding="utf-8")
 BRIDGE = (
     ROOT / "src/generation/migration/strong_rhythm_live_bridge.cpp"
 ).read_text(encoding="utf-8")
@@ -112,6 +113,11 @@ for needle in (
     '"LEGACY O GEN OFF"',
 ):
     require(DRUM, needle, f"DRUMS release route changed: {needle}")
+
+require(PATTERN, "regenerateSynthWithQuantizedCommit(",
+        "SYNTH plain G bypasses Genre-aware synth generation")
+require(PATTERN, "if (!note_entry_mode_ && keyG &&",
+        "SYNTH plain G does not preserve note-entry G ownership")
 
 require(
     DRUM_LEGACY,

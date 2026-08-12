@@ -16,6 +16,7 @@ DRUM = (ROOT / "src/ui/pages/drum_sequencer_page.cpp").read_text(encoding="utf-8
 DRUM_LEGACY = (
     ROOT / "src/ui/pages/drum_sequencer_page_legacy.h"
 ).read_text(encoding="utf-8")
+PATTERN = (ROOT / "src/ui/pages/pattern_edit_page.cpp").read_text(encoding="utf-8")
 
 
 def require(text: str, needle: str, message: str) -> None:
@@ -179,6 +180,9 @@ playing_branch = GENRE.split(
 )[1].split("} else {", 1)[0]
 if "withAudioGuard" in playing_branch:
     raise AssertionError("PLAY generation still pauses AudioTask through AudioGuard")
+
+require(PATTERN, "regenerateSynthWithQuantizedCommit(",
+        "SYNTH G lost the Genre-aware synth-only owner")
 
 # Pending publication remains a fixed-size double buffer. Repeated G may reclaim
 # Ready (newest intent); attempt identity is assigned before preparation and is
