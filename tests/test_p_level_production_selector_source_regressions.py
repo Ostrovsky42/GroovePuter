@@ -58,14 +58,14 @@ for needle in (
 for needle in (
     "GenerationAttemptStatus",
     "GenerationAttemptAllocation",
+    "GenerationAttemptStatus::InvalidTuple",
     "kGenerationAttemptCapacity = 64",
     "generation attempt table memory contract",
     "allocateGenerationAttempt(",
     "resetGenerationAttemptState()",
-    "generationAttemptVictimStorage()",
-    "evictedRememberedTuple",
-    "std::array<GenerationAttemptEntry, kGenerationAttemptCapacity>",
-    "return {GenerationAttemptStatus::Ok, 0u, true};",
+    "attemptVictimStorage()",
+    "GenerationAttemptEntry entries[kGenerationAttemptCapacity]{}",
+    "return {GenerationAttemptStatus::Ok, 0};",
 ):
     require(STATE, needle, f"reroll request owner changed: {needle}")
 for forbidden in (
