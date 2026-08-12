@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_MIGRATION_QUANTIZED_GENERATION_COMMIT_IMPL_H
+#define GROOVEPUTER_GENERATION_MIGRATION_QUANTIZED_GENERATION_COMMIT_IMPL_H
 
 #include <atomic>
 #include <cstdint>
@@ -440,3 +441,5 @@ inline uint32_t quantizedGenerationCommitSerial() {
 }
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_MIGRATION_QUANTIZED_GENERATION_COMMIT_IMPL_H
