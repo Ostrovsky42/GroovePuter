@@ -39,16 +39,6 @@ bool validPlan(const TonalMaterializationPlan& plan,
   return ordinal == plan.onsetCount;
 }
 
-uint8_t collectCompatibilityEvents(const SynthPattern& source,
-                                   SynthStep* events) {
-  uint8_t count = 0;
-  for (uint8_t step = 0; step < SynthPattern::kSteps; ++step) {
-    if (source.steps[step].note < 0) continue;
-    events[count++] = source.steps[step];
-  }
-  return count;
-}
-
 }  // namespace
 
 TonalPatternAdaptStatus adaptTonalPlanToSynthPattern(
@@ -64,9 +54,12 @@ TonalPatternAdaptStatus adaptTonalPlanToSynthPattern(
     return TonalPatternAdaptStatus::InvalidPlan;
   }
 
-  SynthStep sourceEvents[SynthPattern::kSteps]{};
-  const uint8_t sourceCount =
-      collectCompatibilityEvents(compatibilitySource, sourceEvents);
+  // F-13: compatibilitySource and sourceOrder remain part of the adapter API so
+  // existing planning/validation contracts stay intact, but incidental previous
+  // destination contents must not become audible generation inputs. Motif/source
+  // ordering is therefore planning metadata only in this tonal adapter until a
+  // separate musical contract explicitly defines how it transforms pitch.
+  (void)compatibilitySource;
 
   SynthPattern next{};
   SynthStep active{};
@@ -76,12 +69,6 @@ TonalPatternAdaptStatus adaptTonalPlanToSynthPattern(
     const StepMask bit = stepBit(step);
     if ((tonalPlan.onsets & bit) != 0) {
       active = SynthStep{};
-      if (sourceCount != 0) {
-        uint8_t selected = ordinal;
-        if (sourceOrderCount != 0)
-          selected = sourceOrder[ordinal % sourceOrderCount];
-        active = sourceEvents[selected % sourceCount];
-      }
       active.note = static_cast<int8_t>(tonalPlan.midiNotes[ordinal]);
       if ((accentOnsets & bit) != 0) active.accent = true;
       if ((slideIntoOnsets & bit) != 0) active.slide = true;
