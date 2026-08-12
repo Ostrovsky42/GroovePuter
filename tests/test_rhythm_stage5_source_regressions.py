@@ -4,7 +4,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = (ROOT / "src/generation/migration/strong_rhythm_migration.cpp").read_text()
 BRIDGE = (ROOT / "src/generation/migration/strong_rhythm_live_bridge.cpp").read_text()
-QUANTIZED = (ROOT / "src/generation/migration/quantized_generation_commit.h").read_text()
+QUANTIZED_WRAPPER = (ROOT / "src/generation/migration/quantized_generation_commit.h").read_text()
+QUANTIZED_IMPL = (ROOT / "src/generation/migration/quantized_generation_commit_impl.h").read_text()
+QUANTIZED = QUANTIZED_WRAPPER + "\n" + QUANTIZED_IMPL
 GENRE_PAGE = (ROOT / "src/ui/pages/genre_page.cpp").read_text()
 SCENES_H = (ROOT / "scenes.h").read_text()
 SELECTION = (ROOT / "src/generation/composition/rhythm_selection.cpp").read_text()
@@ -14,6 +16,12 @@ def require(condition: bool, message: str) -> None:
     if not condition:
         raise AssertionError(message)
 
+
+# Arduino consumes a thin .h wrapper around the implementation header. Source
+# ownership checks must inspect the complete quantized owner rather than assume
+# every dependency remains textually present in the wrapper itself.
+require("quantized_generation_commit_impl.h" in QUANTIZED_WRAPPER,
+        "quantized Arduino wrapper no longer exposes its implementation header")
 
 # The allow-list must remain explicit. In particular, routing by GrooveboxMode
 # would accidentally absorb Reggae/TripHop/UK Garage/Footwork before Stage 12.
