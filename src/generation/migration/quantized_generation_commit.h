@@ -206,11 +206,11 @@ inline StrongRhythmMigrationContext migrationContextFor(
   return context;
 }
 
-inline void applyReggaeRoleSplit(
-    GenerativeMode genre,
+inline void applyLegacyRoleSplit(
+    GenerativeMode mode,
     GenreBehavior& bassBehavior,
     GenreBehavior& leadBehavior) {
-  if (genre != GenerativeMode::Reggae) return;
+  if (mode != GenerativeMode::Reggae) return;
 
   bassBehavior.stepMask = 0x1111;
   bassBehavior.motifLength = 2;
@@ -281,7 +281,7 @@ inline bool preparePlayingCandidate(
     const GenreBehavior behavior = GenreCatalog::behavior(requestedGenre);
     GenreBehavior bassBehavior = behavior;
     GenreBehavior leadBehavior = behavior;
-    applyReggaeRoleSplit(
+    applyLegacyRoleSplit(
         static_cast<GenerativeMode>(requestedGenre.generativeMode),
         bassBehavior,
         leadBehavior);
