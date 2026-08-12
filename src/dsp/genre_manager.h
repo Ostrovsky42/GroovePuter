@@ -131,6 +131,8 @@ GrooveRecipe grooveRecipe(const GenreSettings& settings);
 
 class GenreSceneView {
 public:
+    using PendingCommitHook = bool (*)(SceneManager&);
+
     explicit GenreSceneView(SceneManager& scenes) : scenes_(scenes) {}
 
     void setGenerativeMode(GenerativeMode mode);
@@ -154,7 +156,15 @@ public:
     const DrumGenreTemplate* drumTemplateOverride() const;
     GenreBehavior getBehavior() const;
 
-    bool commitPendingRecipe() { return false; }
+    // Compatibility bridge for MiniAcid's existing BAR_START hook. The old
+    // pending-recipe owner was removed; quantized material generation installs
+    // a bounded commit callback instead. Returning false prevents the legacy
+    // audio-thread regeneration path from running after the callback commits.
+    void setPendingCommitHook(PendingCommitHook hook) { pendingCommitHook_ = hook; }
+    bool commitPendingRecipe() {
+        if (pendingCommitHook_ != nullptr) pendingCommitHook_(scenes_);
+        return false;
+    }
 
     static const char* generativeModeName(GenerativeMode mode) {
         return GenreCatalog::generativeModeName(mode);
@@ -177,6 +187,7 @@ private:
     GenreSettings& settings();
     const GenreSettings& settings() const;
 
+    inline static PendingCommitHook pendingCommitHook_ = nullptr;
     SceneManager& scenes_;
 };
 
