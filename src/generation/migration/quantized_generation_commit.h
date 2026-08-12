@@ -3,9 +3,13 @@
 #include <atomic>
 #include <cstdint>
 
+#include "../../dsp/atlas_runtime.h"
 #include "../../dsp/miniacid_engine.h"
+#include "../../dsp/mode_manager.h"
+#include "../../state/generation_request_state.h"
 #include "../../state/scene_revision.h"
 #include "strong_rhythm_live_bridge.h"
+#include "strong_rhythm_migration.h"
 
 namespace GroovePuterRhythm {
 
@@ -20,6 +24,7 @@ enum class QuantizedGenerationStatus : uint8_t {
   PendingNextBar,
   Committed,
   CancelledTargetChanged,
+  Busy,
 };
 
 namespace QuantizedGenerationDetail {
@@ -43,8 +48,24 @@ struct PendingGeneration {
   DrumPatternSet drums{};
 };
 
-inline PendingGeneration g_pending{};
-inline std::atomic<bool> g_pendingValid{false};
+enum class SlotState : uint8_t {
+  Empty = 0,
+  Writing,
+  Ready,
+  Reading,
+};
+
+// Double-buffer publication keeps the AudioTask completely out of control-side
+// generation. The UI writes only an Empty slot, then atomically publishes its
+// index. BAR_START atomically claims one immutable Ready slot and never waits
+// for the writer. This costs one extra fixed-size transaction but removes the
+// need to hold AudioMutationGate while Stage 15 generation runs.
+inline PendingGeneration g_slots[2]{};
+inline std::atomic<uint8_t> g_slotState[2]{
+    static_cast<uint8_t>(SlotState::Empty),
+    static_cast<uint8_t>(SlotState::Empty),
+};
+inline std::atomic<int8_t> g_publishedSlot{-1};
 inline std::atomic<uint8_t> g_status{
     static_cast<uint8_t>(QuantizedGenerationStatus::Idle)};
 inline std::atomic<uint32_t> g_commitSerial{0};
@@ -87,45 +108,225 @@ inline bool targetStillActive(SceneManager& scenes, const PatternTarget& target)
   return sameTarget(captureTarget(scenes), target);
 }
 
-inline void clearPending(QuantizedGenerationStatus status) {
-  g_pendingValid.store(false, std::memory_order_release);
+inline void retireReadySlot(int slot) {
+  if (slot < 0 || slot > 1) return;
+  uint8_t expected = static_cast<uint8_t>(SlotState::Ready);
+  g_slotState[slot].compare_exchange_strong(
+      expected,
+      static_cast<uint8_t>(SlotState::Empty),
+      std::memory_order_acq_rel,
+      std::memory_order_acquire);
+}
+
+inline void clearPublished(QuantizedGenerationStatus status) {
+  const int old = g_publishedSlot.exchange(-1, std::memory_order_acq_rel);
+  retireReadySlot(old);
   g_status.store(static_cast<uint8_t>(status), std::memory_order_release);
 }
 
-inline bool compatiblePending(MiniAcid& engine, const PatternTarget& target) {
-  return g_pendingValid.load(std::memory_order_acquire) &&
-         g_pending.owner == &engine &&
-         sameTarget(g_pending.target, target);
+inline int acquireWriteSlot() {
+  const int published = g_publishedSlot.load(std::memory_order_acquire);
+  for (int slot = 0; slot < 2; ++slot) {
+    if (slot == published) continue;
+    uint8_t expected = static_cast<uint8_t>(SlotState::Empty);
+    if (g_slotState[slot].compare_exchange_strong(
+            expected,
+            static_cast<uint8_t>(SlotState::Writing),
+            std::memory_order_acq_rel,
+            std::memory_order_acquire)) {
+      return slot;
+    }
+  }
+  return -1;
+}
+
+inline void releaseWriteSlot(int slot) {
+  if (slot < 0 || slot > 1) return;
+  g_slotState[slot].store(
+      static_cast<uint8_t>(SlotState::Empty), std::memory_order_release);
+}
+
+inline void publishWriteSlot(int slot) {
+  g_slotState[slot].store(
+      static_cast<uint8_t>(SlotState::Ready), std::memory_order_release);
+  const int old = g_publishedSlot.exchange(
+      static_cast<int8_t>(slot), std::memory_order_acq_rel);
+  if (old >= 0 && old != slot) retireReadySlot(old);
+  g_status.store(
+      static_cast<uint8_t>(QuantizedGenerationStatus::PendingNextBar),
+      std::memory_order_release);
+}
+
+inline StrongRhythmMigrationContext migrationContextFor(
+    const MiniAcid& engine,
+    const Scene& scene,
+    const PatternTarget& target) {
+  StrongRhythmMigrationContext context{};
+  context.patternAddress = static_cast<int16_t>(target.drumSlot);
+  context.level = GroovePuterState::currentGenerationLevel();
+  context.feelProfile = static_cast<FeelProfileId>(scene.feel.timingProfile);
+  float feelAmount = scene.generatorParams.microTimingAmount;
+  if (feelAmount < 0.0f) feelAmount = 0.0f;
+  if (feelAmount > 1.0f) feelAmount = 1.0f;
+  context.feelAmount = static_cast<uint8_t>(feelAmount * 100.0f + 0.5f);
+
+  int root = scene.generatorParams.scaleRoot % 12;
+  if (root < 0) root += 12;
+  context.tonalMaterializationEnabled = true;
+  context.rootPitchClass = static_cast<uint8_t>(root);
+  context.scaleTypeValue =
+      static_cast<ScaleTypeValue>(scene.generatorParams.scale);
+  (void)engine;
+  return context;
+}
+
+inline void applyReggaeRoleSplit(
+    GenerativeMode genre,
+    GenreBehavior& bassBehavior,
+    GenreBehavior& leadBehavior) {
+  if (genre != GenerativeMode::Reggae) return;
+
+  bassBehavior.stepMask = 0x1111;
+  bassBehavior.motifLength = 2;
+  bassBehavior.avoidClusters = true;
+  bassBehavior.forceOctaveJump = false;
+
+  leadBehavior.stepMask = 0xAAAA;
+  leadBehavior.motifLength = 4;
+  leadBehavior.avoidClusters = false;
+  leadBehavior.forceOctaveJump = false;
+}
+
+inline bool preparePlayingCandidate(
+    MiniAcid& engine,
+    const GenreSettings& requestedGenre,
+    GrooveboxMode requestedMode,
+    bool applyTempo,
+    float requestedBpm,
+    PendingGeneration& candidate) {
+  SceneManager& scenes = engine.sceneManager();
+  const Scene& scene = scenes.currentScene();
+  const PatternTarget target = captureTarget(scenes);
+  if (!targetValid(target)) return false;
+
+  candidate = PendingGeneration{};
+  candidate.owner = &engine;
+  candidate.target = target;
+  candidate.genre = requestedGenre;
+  candidate.mode = requestedMode;
+  candidate.bpm = applyTempo && requestedBpm > 0.0f
+      ? requestedBpm
+      : engine.bpm();
+  candidate.swingPct = scene.feel.swingPct;
+
+  // Copy the exact captured target, not a second lookup through mutable current
+  // indices. If Song/page ownership moves while preparation is running, the
+  // final targetStillActive() gate rejects publication.
+  candidate.synth[0] = scene.synthABanks[target.synthBank[0]]
+      .patterns[target.synthSlot[0]];
+  candidate.synth[1] = scene.synthBBanks[target.synthBank[1]]
+      .patterns[target.synthSlot[1]];
+  candidate.drums = scene.drumBanks[target.drumBank]
+      .patterns[target.drumSlot];
+
+  AtlasRuntimeMetadata atlasMetadata{};
+  const bool atlasBacked = AtlasRuntime::applyRecipe(
+      requestedGenre.recipe,
+      0,
+      candidate.synth[0],
+      candidate.synth[1],
+      candidate.drums,
+      &atlasMetadata);
+
+  if (atlasBacked) {
+    candidate.swingPct = atlasMetadata.swingPercent;
+    if (applyTempo && atlasMetadata.bpm > 0) {
+      candidate.bpm = static_cast<float>(atlasMetadata.bpm);
+    }
+  } else {
+    const GenerativeParams genreParams =
+        GenreCatalog::compiledGenerativeParams(requestedGenre);
+    const GenreBehavior behavior = GenreCatalog::behavior(requestedGenre);
+    GenreBehavior bassBehavior = behavior;
+    GenreBehavior leadBehavior = behavior;
+    applyReggaeRoleSplit(
+        static_cast<GenerativeMode>(requestedGenre.generativeMode),
+        bassBehavior,
+        leadBehavior);
+
+    // Use a private generator state so requested Genre mode affects the same
+    // deterministic RNG domain without touching the live ModeManager observed
+    // by AudioTask. Engine access from generation is read-only here.
+    GrooveboxModeManager scratchMode(engine);
+    scratchMode.setModeLocal(requestedMode);
+    scratchMode.setFlavorLocal(engine.modeManager().flavor());
+    scratchMode.setGenerationSeed(engine.modeManager().generationSeed());
+    scratchMode.generatePattern(
+        candidate.synth[0], candidate.bpm, genreParams, bassBehavior, 0);
+    scratchMode.generatePattern(
+        candidate.synth[1], candidate.bpm, genreParams, leadBehavior, 1);
+    scratchMode.generateDrumPattern(candidate.drums, genreParams, behavior);
+  }
+
+  const StrongRhythmMigrationContext context =
+      migrationContextFor(engine, scene, target);
+  (void)migrateStrongRhythmMaterial(
+      requestedGenre,
+      context,
+      candidate.drums,
+      candidate.synth[0],
+      candidate.synth[1]);
+
+  // The audio transport may advance Song/page ownership while generation runs.
+  // Never publish a candidate for a target that is no longer the exact active
+  // page/bank/slot tuple the user generated from.
+  return targetStillActive(scenes, target);
 }
 
 }  // namespace QuantizedGenerationDetail
 
 inline bool commitQuantizedGenerationAtBarStart(SceneManager& scenes) {
   using namespace QuantizedGenerationDetail;
-  if (!g_pendingValid.load(std::memory_order_acquire)) return false;
+  const int slot = g_publishedSlot.exchange(-1, std::memory_order_acq_rel);
+  if (slot < 0 || slot > 1) return false;
 
-  MiniAcid* owner = g_pending.owner;
+  uint8_t expected = static_cast<uint8_t>(SlotState::Ready);
+  if (!g_slotState[slot].compare_exchange_strong(
+          expected,
+          static_cast<uint8_t>(SlotState::Reading),
+          std::memory_order_acq_rel,
+          std::memory_order_acquire)) {
+    return false;
+  }
+
+  const PendingGeneration& pending = g_slots[slot];
+  MiniAcid* owner = pending.owner;
   if (owner == nullptr || &owner->sceneManager() != &scenes ||
-      !targetValid(g_pending.target) ||
-      !targetStillActive(scenes, g_pending.target)) {
-    clearPending(QuantizedGenerationStatus::CancelledTargetChanged);
+      !targetValid(pending.target) ||
+      !targetStillActive(scenes, pending.target)) {
+    g_slotState[slot].store(
+        static_cast<uint8_t>(SlotState::Empty), std::memory_order_release);
+    g_status.store(
+        static_cast<uint8_t>(QuantizedGenerationStatus::CancelledTargetChanged),
+        std::memory_order_release);
     return false;
   }
 
   Scene& scene = scenes.currentScene();
-  scene.synthABanks[g_pending.target.synthBank[0]]
-      .patterns[g_pending.target.synthSlot[0]] = g_pending.synth[0];
-  scene.synthBBanks[g_pending.target.synthBank[1]]
-      .patterns[g_pending.target.synthSlot[1]] = g_pending.synth[1];
-  scene.drumBanks[g_pending.target.drumBank]
-      .patterns[g_pending.target.drumSlot] = g_pending.drums;
-  scene.genre = g_pending.genre;
-  scene.feel.swingPct = g_pending.swingPct;
+  scene.synthABanks[pending.target.synthBank[0]]
+      .patterns[pending.target.synthSlot[0]] = pending.synth[0];
+  scene.synthBBanks[pending.target.synthBank[1]]
+      .patterns[pending.target.synthSlot[1]] = pending.synth[1];
+  scene.drumBanks[pending.target.drumBank]
+      .patterns[pending.target.drumSlot] = pending.drums;
+  scene.genre = pending.genre;
+  scene.feel.swingPct = pending.swingPct;
 
-  owner->setGrooveboxMode(g_pending.mode);
-  owner->setBpm(g_pending.bpm);
+  owner->setGrooveboxMode(pending.mode);
+  owner->setBpm(pending.bpm);
 
-  g_pendingValid.store(false, std::memory_order_release);
+  g_slotState[slot].store(
+      static_cast<uint8_t>(SlotState::Empty), std::memory_order_release);
   g_status.store(
       static_cast<uint8_t>(QuantizedGenerationStatus::Committed),
       std::memory_order_release);
@@ -145,8 +346,10 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
   SceneManager& scenes = engine.sceneManager();
   Scene& scene = scenes.currentScene();
 
+  // STOP remains the immediate-edit path. The caller executes this branch under
+  // its existing AudioGuard because it intentionally mutates live Scene/DSP.
   if (!engine.isPlaying()) {
-    clearPending(QuantizedGenerationStatus::Idle);
+    clearPublished(QuantizedGenerationStatus::Idle);
     scene.genre = requestedGenre;
     engine.setGrooveboxMode(requestedMode);
     if (applyTempo && requestedBpm > 0.0f) engine.setBpm(requestedBpm);
@@ -158,68 +361,40 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
     return QuantizedGenerationResult::CommittedNow;
   }
 
-  const PatternTarget target = captureTarget(scenes);
-  if (!targetValid(target)) return QuantizedGenerationResult::Failed;
-
-  const SynthPattern activeSynthA = scenes.getCurrentSynthPattern(0);
-  const SynthPattern activeSynthB = scenes.getCurrentSynthPattern(1);
-  const DrumPatternSet activeDrums = scenes.getCurrentDrumPattern();
-  const GenreSettings activeGenre = scene.genre;
-  const GrooveboxMode activeMode = engine.grooveboxMode();
-  const float activeBpm = engine.bpm();
-  const uint8_t activeSwingPct = scene.feel.swingPct;
-
-  SynthPattern generationBaseA = activeSynthA;
-  SynthPattern generationBaseB = activeSynthB;
-  DrumPatternSet generationBaseDrums = activeDrums;
-  if (compatiblePending(engine, target)) {
-    generationBaseA = g_pending.synth[0];
-    generationBaseB = g_pending.synth[1];
-    generationBaseDrums = g_pending.drums;
+  // PLAY preparation is deliberately lock-free with respect to AudioTask. It
+  // only reads live state and writes an unpublished fixed-size slot.
+  const int writeSlot = acquireWriteSlot();
+  if (writeSlot < 0) {
+    g_status.store(
+        static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
+        std::memory_order_release);
+    return QuantizedGenerationResult::Failed;
   }
 
-  g_pendingValid.store(false, std::memory_order_release);
+  PendingGeneration& candidate = g_slots[writeSlot];
+  if (!preparePlayingCandidate(
+          engine,
+          requestedGenre,
+          requestedMode,
+          applyTempo,
+          requestedBpm,
+          candidate)) {
+    releaseWriteSlot(writeSlot);
+    g_status.store(
+        static_cast<uint8_t>(QuantizedGenerationStatus::CancelledTargetChanged),
+        std::memory_order_release);
+    return QuantizedGenerationResult::Failed;
+  }
 
-  scene.genre = requestedGenre;
-  engine.setGrooveboxMode(requestedMode);
-  if (applyTempo && requestedBpm > 0.0f) engine.setBpm(requestedBpm);
-  scenes.editCurrentSynthPattern(0) = generationBaseA;
-  scenes.editCurrentSynthPattern(1) = generationBaseB;
-  scenes.editCurrentDrumPattern() = generationBaseDrums;
-
-  regenerateWithStrongRhythmMigration(engine);
-
-  PendingGeneration candidate{};
-  candidate.owner = &engine;
-  candidate.target = target;
-  candidate.genre = scene.genre;
-  candidate.mode = engine.grooveboxMode();
-  candidate.bpm = engine.bpm();
-  candidate.swingPct = scene.feel.swingPct;
-  candidate.synth[0] = scenes.getCurrentSynthPattern(0);
-  candidate.synth[1] = scenes.getCurrentSynthPattern(1);
-  candidate.drums = scenes.getCurrentDrumPattern();
-
-  scenes.editCurrentSynthPattern(0) = activeSynthA;
-  scenes.editCurrentSynthPattern(1) = activeSynthB;
-  scenes.editCurrentDrumPattern() = activeDrums;
-  scene.genre = activeGenre;
-  scene.feel.swingPct = activeSwingPct;
-  engine.setGrooveboxMode(activeMode);
-  engine.setBpm(activeBpm);
-
-  g_pending = candidate;
-  g_pendingValid.store(true, std::memory_order_release);
-  g_status.store(
-      static_cast<uint8_t>(QuantizedGenerationStatus::PendingNextBar),
-      std::memory_order_release);
+  publishWriteSlot(writeSlot);
   engine.genreManager().setPendingCommitHook(&commitQuantizedGenerationAtBarStart);
   return QuantizedGenerationResult::PendingNextBar;
 }
 
 inline bool hasPendingQuantizedGeneration(const MiniAcid& engine) {
-  return QuantizedGenerationDetail::g_pendingValid.load(std::memory_order_acquire) &&
-         QuantizedGenerationDetail::g_pending.owner == &engine;
+  (void)engine;
+  return QuantizedGenerationDetail::g_publishedSlot.load(
+      std::memory_order_acquire) >= 0;
 }
 
 inline QuantizedGenerationStatus quantizedGenerationStatus() {
