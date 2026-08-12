@@ -6,6 +6,7 @@
 #include "scenes.h"
 #include "src/dsp/genre_manager.h"
 #include "src/generation/migration/strong_rhythm_migration.h"
+#include "src/generation/migration/tonal_pattern_adapter.h"
 
 using namespace GroovePuterRhythm;
 
@@ -22,6 +23,23 @@ SynthPattern pitchSource(int baseNote, int cycle) {
     event.ghost = false;
     event.timing = static_cast<int8_t>((step % 3u) - 1);
     event.probability = 100;
+  }
+  return pattern;
+}
+
+SynthPattern hostileHistoricalSource() {
+  SynthPattern pattern{};
+  for (uint8_t step = 0; step < SynthPattern::kSteps; ++step) {
+    SynthStep& event = pattern.steps[step];
+    event.note = static_cast<int8_t>(24 + step);
+    event.velocity = static_cast<uint8_t>(1 + step);
+    event.accent = true;
+    event.slide = true;
+    event.ghost = true;
+    event.timing = static_cast<int8_t>(step - 8);
+    event.fx = static_cast<uint8_t>(0x80u + step);
+    event.fxParam = static_cast<uint8_t>(0x40u + step);
+    event.probability = static_cast<uint8_t>(7 + step);
   }
   return pattern;
 }
@@ -131,6 +149,80 @@ constexpr GenerativeMode kModes[] = {
     GenerativeMode::DrumAndBass,
     GenerativeMode::LoFi,
 };
+
+void testTonalAdapterIgnoresDestinationHistory() {
+  TonalMaterializationPlan plan{};
+  plan.onsets = static_cast<StepMask>(stepBit(0) | stepBit(4) | stepBit(8));
+  plan.continuations = static_cast<StepMask>(stepBit(1) | stepBit(5) | stepBit(9));
+  plan.onsetCount = 3;
+  plan.onsetSteps[0] = 0;
+  plan.onsetSteps[1] = 4;
+  plan.onsetSteps[2] = 8;
+  plan.midiNotes[0] = 36;
+  plan.midiNotes[1] = 41;
+  plan.midiNotes[2] = 43;
+
+  const StepMask accents = stepBit(4);
+  const StepMask slides = stepBit(8);
+  const uint8_t sourceOrderA[] = {2, 0, 1};
+  const uint8_t sourceOrderB[] = {0, 1, 2};
+
+  SynthPattern emptySource{};
+  SynthPattern emptyDestination{};
+  const TonalPatternAdaptStatus emptyStatus = adaptTonalPlanToSynthPattern(
+      emptySource, plan, accents, slides, emptyDestination,
+      sourceOrderA, 3);
+  assert(emptyStatus == TonalPatternAdaptStatus::Ok);
+
+  SynthPattern hostileSource = hostileHistoricalSource();
+  SynthPattern hostileDestination = hostileSource;
+  const TonalPatternAdaptStatus hostileStatus = adaptTonalPlanToSynthPattern(
+      hostileSource, plan, accents, slides, hostileDestination,
+      sourceOrderA, 3);
+  assert(hostileStatus == TonalPatternAdaptStatus::Ok);
+  assertPatternsEqual(emptyDestination, hostileDestination);
+
+  SynthPattern reorderedDestination = hostileHistoricalSource();
+  const TonalPatternAdaptStatus reorderedStatus = adaptTonalPlanToSynthPattern(
+      hostileSource, plan, accents, slides, reorderedDestination,
+      sourceOrderB, 3);
+  assert(reorderedStatus == TonalPatternAdaptStatus::Ok);
+  assertPatternsEqual(emptyDestination, reorderedDestination);
+
+  const SynthStep& first = emptyDestination.steps[0];
+  assert(first.note == 36);
+  assert(first.velocity == 100);
+  assert(first.accent == 0);
+  assert(first.slide == 0);
+  assert(first.ghost == 0);
+  assert(first.timing == 0);
+  assert(first.fx == 0);
+  assert(first.fxParam == 0);
+  assert(first.probability == 100);
+
+  const SynthStep& firstContinuation = emptyDestination.steps[1];
+  assert(firstContinuation.note == 36);
+  assert(firstContinuation.velocity == 100);
+  assert(firstContinuation.accent == 0);
+  assert(firstContinuation.slide == 1);
+  assert(firstContinuation.ghost == 0);
+  assert(firstContinuation.timing == 0);
+  assert(firstContinuation.fx == 0);
+  assert(firstContinuation.fxParam == 0);
+  assert(firstContinuation.probability == 100);
+
+  const SynthStep& accented = emptyDestination.steps[4];
+  assert(accented.note == 41);
+  assert(accented.accent == 1);
+  assert(accented.slide == 0);
+
+  const SynthStep& slideInto = emptyDestination.steps[8];
+  assert(slideInto.note == 43);
+  assert(slideInto.accent == 0);
+  assert(slideInto.slide == 1);
+
+  assert(emptyDestination.steps[2].note == -1);
+}
 
 void testAllModesDeterministicAndInRegister() {
   uint32_t tonalRows = 0;
@@ -243,6 +335,7 @@ void testInvalidTonalContextIsAtomic() {
 }  // namespace
 
 int main() {
+  testTonalAdapterIgnoresDestinationHistory();
   testAllModesDeterministicAndInRegister();
   testNoPitchSourceStillMaterializes();
   testInvalidTonalContextIsAtomic();
