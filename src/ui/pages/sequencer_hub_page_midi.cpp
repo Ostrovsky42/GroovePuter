@@ -152,12 +152,6 @@ bool projectionIsSyncing(const SmfPlayerSnapshot& player,
            (playerExpectsMidiProjection(player.state) && !projection.ready());
 }
 
-bool routeCanBeEdited(const SmfPlayerSnapshot& player) {
-    return !player.rawRouting &&
-           (player.state == SmfPlayerState::Stopped ||
-            player.state == SmfPlayerState::Paused);
-}
-
 bool smfStateIsActive(SmfPlayerState state) {
     return state == SmfPlayerState::Playing ||
            state == SmfPlayerState::Armed;
@@ -403,8 +397,6 @@ void drawOverlayBands(IGfx& gfx,
                       const SmfTrackInfoSnapshot* selectedInfo,
                       int8_t destinationChannel,
                       uint8_t trackLevel,
-                      bool routeEdit,
-                      int8_t routeDraft,
                       bool soloActive,
                       bool partial) {
     const int width = gfx.width();
@@ -425,42 +417,34 @@ void drawOverlayBands(IGfx& gfx,
                   static_cast<unsigned long>(std::max<uint32_t>(player.totalBars, 1u)));
     gfx.drawText(std::max(3, width - gfx.textWidth(line) - 3), 2, line);
 
-    const char* hints = nullptr;
-    if (routeEdit) {
-        char destination[20]{};
-        formatRouteDestination(routeDraft, true, destination, sizeof(destination));
-        std::snprintf(line, sizeof(line), "ROUTE %s", destination);
-        hints = "<> ENT ESC";
+    char channel[8]{};
+    char destination[8]{};
+    char range[12]{};
+    formatTrackChannel(selectedInfo, channel, sizeof(channel));
+    formatRouteDestination(destinationChannel,
+                           false,
+                           destination,
+                           sizeof(destination));
+    formatPitchRange(selectedLayer, range, sizeof(range));
+    if (player.rawRouting) {
+        std::snprintf(line,
+                      sizeof(line),
+                      "RAW %s V%u N%u %s",
+                      channel,
+                      static_cast<unsigned>(trackLevel),
+                      static_cast<unsigned>(selectedLayer.noteCount),
+                      range);
     } else {
-        char channel[8]{};
-        char destination[8]{};
-        char range[12]{};
-        formatTrackChannel(selectedInfo, channel, sizeof(channel));
-        formatRouteDestination(destinationChannel,
-                               false,
-                               destination,
-                               sizeof(destination));
-        formatPitchRange(selectedLayer, range, sizeof(range));
-        if (player.rawRouting) {
-            std::snprintf(line,
-                          sizeof(line),
-                          "RAW %s V%u N%u %s",
-                          channel,
-                          static_cast<unsigned>(trackLevel),
-                          static_cast<unsigned>(selectedLayer.noteCount),
-                          range);
-        } else {
-            std::snprintf(line,
-                          sizeof(line),
-                          "%s>%s V%u N%u %s",
-                          channel,
-                          destination,
-                          static_cast<unsigned>(trackLevel),
-                          static_cast<unsigned>(selectedLayer.noteCount),
-                          range);
-        }
-        hints = soloActive ? "FN<>VOL S:OFF" : "FN<>VOL S:SOLO";
+        std::snprintf(line,
+                      sizeof(line),
+                      "%s>%s V%u N%u %s",
+                      channel,
+                      destination,
+                      static_cast<unsigned>(trackLevel),
+                      static_cast<unsigned>(selectedLayer.noteCount),
+                      range);
     }
+    const char* hints = soloActive ? "S:OFF <>RTE" : "S:SOLO <>RTE";
     gfx.setTextColor(kBodyText);
     gfx.drawText(3, bottomY + 2, line);
 
@@ -622,17 +606,11 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
         return true;
     }
     if (event.scancode == GROOVEPUTER_ESCAPE || UIInput::isBack(event)) {
-        if (midiRouteEdit_) {
-            midiRouteEdit_ = false;
-            midiRouteDraft_ = kSmfTrackOutputRouteAuto;
-            UI::showToast("ROUTE CANCELLED", 600);
-        } else {
-            returnFromMidiOverview();
-        }
+        returnFromMidiOverview();
         return true;
     }
 
-    if (!midiRouteEdit_ && event.meta && !event.alt && !event.ctrl &&
+    if (event.meta && !event.alt && !event.ctrl &&
         (UIInput::isLeft(event) || UIInput::isRight(event))) {
         ISmfPlayerService* levelService = smfPlayerService();
         const SmfPlayerSnapshot levelPlayer =
@@ -665,21 +643,19 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
 
     if (event.alt || event.ctrl || event.meta) return true;
 
-    if (!midiRouteEdit_) {
-        // Retain the old aliases without advertising them in the compact Hub UI.
-        if (event.key == 'p' || event.key == 'P') {
-            midiReturnToPlayer_ = true;
-            returnFromMidiOverview();
-            return true;
-        }
-        if (event.key == 'm' || event.key == 'M') {
-            midiOverview_ = false;
-            midiReturnToPlayer_ = false;
-            return true;
-        }
-        if (event.key == ' ') {
-            return toggleHubMidiTransport(mini_acid_);
-        }
+    // Retain the old page aliases without advertising them in the compact Hub UI.
+    if (event.key == 'p' || event.key == 'P') {
+        midiReturnToPlayer_ = true;
+        returnFromMidiOverview();
+        return true;
+    }
+    if (event.key == 'm' || event.key == 'M') {
+        midiOverview_ = false;
+        midiReturnToPlayer_ = false;
+        return true;
+    }
+    if (event.key == ' ') {
+        return toggleHubMidiTransport(mini_acid_);
     }
 
     ISmfPlayerService* service = smfPlayerService();
@@ -703,55 +679,6 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
         midiSelected_, projection.layers.layerCount - 1u);
     const uint16_t selectedTrack =
         projection.layers.layers[selected].trackIndex;
-
-    if (midiRouteEdit_) {
-        if (!routeCanBeEdited(player)) {
-            midiRouteEdit_ = false;
-            UI::showToast(player.rawRouting
-                              ? "SEQTRAK ROUTING REQUIRED"
-                              : "PAUSE MIDI FIRST",
-                          900);
-            return true;
-        }
-
-        int routeMove = 0;
-        if (event.scancode == GROOVEPUTER_LEFT) routeMove = -1;
-        else if (event.scancode == GROOVEPUTER_RIGHT) routeMove = 1;
-        if (routeMove != 0) {
-            midiRouteDraft_ = cycleRouteDestination(midiRouteDraft_, routeMove);
-            return true;
-        }
-        if (event.key == '\n' || event.key == '\r') {
-            if (smfTrackOutputRouteState().setDestination(
-                    selectedTrack,
-                    midiRouteDraft_,
-                    projection.generation,
-                    projection.mute.trackCount)) {
-                const bool saveQueued = service &&
-                    service->persistTrackOutputRoutes(projection.generation);
-                char destination[20]{};
-                char toast[40]{};
-                formatRouteDestination(midiRouteDraft_,
-                                       false,
-                                       destination,
-                                       sizeof(destination));
-                std::snprintf(toast,
-                              sizeof(toast),
-                              saveQueued
-                                  ? "TRK %02u > %s"
-                                  : "TRK %02u > %s / SAVE BUSY",
-                              static_cast<unsigned>(selectedTrack + 1u),
-                              destination);
-                UI::showToast(toast, saveQueued ? 800 : 1100);
-                midiRouteEdit_ = false;
-            } else {
-                UI::showToast("ROUTE SESSION CHANGED", 900);
-                midiRouteEdit_ = false;
-            }
-            return true;
-        }
-        return true;
-    }
 
     if (event.key == 's' || event.key == 'S') {
         if (selectedTrack >= projection.mute.trackCount || selectedTrack >= 64u) {
@@ -807,29 +734,41 @@ bool SequencerHubPage::handleMidiOverviewEvent(UIEvent& event) {
             UI::showToast("SEQTRAK ROUTING REQUIRED", 900);
             return true;
         }
-        if (!routeCanBeEdited(player)) {
-            UI::showToast("PAUSE MIDI FIRST", 900);
+
+        const int8_t destination = cycleRouteDestination(
+            projection.routes.destinationFor(selectedTrack), routeMove);
+        if (!smfTrackOutputRouteState().setDestination(
+                selectedTrack,
+                destination,
+                projection.generation,
+                projection.mute.trackCount)) {
+            UI::showToast("ROUTE SESSION CHANGED", 900);
             return true;
         }
-        midiRouteDraft_ = cycleRouteDestination(
-            projection.routes.destinationFor(selectedTrack), routeMove);
-        midiRouteEdit_ = true;
+
+        const bool saveQueued = service &&
+            service->persistTrackOutputRoutes(projection.generation);
+        char destinationText[20]{};
+        char toast[40]{};
+        formatRouteDestination(destination,
+                               false,
+                               destinationText,
+                               sizeof(destinationText));
+        std::snprintf(toast,
+                      sizeof(toast),
+                      saveQueued
+                          ? "TRK %02u > %s"
+                          : "TRK %02u > %s / SAVE BUSY",
+                      static_cast<unsigned>(selectedTrack + 1u),
+                      destinationText);
+        UI::showToast(toast, saveQueued ? 700 : 1000);
         return true;
     }
 
-    // Keep C as a compatibility alias, but Left/Right is now the primary route
-    // edit entry and Enter remains the only confirmation action.
+    // C was the old route-edit entry. Keep it as a harmless reminder rather
+    // than reintroducing a hidden Enter-to-commit mode.
     if (event.key == 'c' || event.key == 'C') {
-        if (player.rawRouting) {
-            UI::showToast("SEQTRAK ROUTING REQUIRED", 900);
-            return true;
-        }
-        if (!routeCanBeEdited(player)) {
-            UI::showToast("PAUSE MIDI FIRST", 900);
-            return true;
-        }
-        midiRouteDraft_ = projection.routes.destinationFor(selectedTrack);
-        midiRouteEdit_ = true;
+        UI::showToast("ROUTE: USE LEFT / RIGHT", 900);
         return true;
     }
 
@@ -967,8 +906,6 @@ void SequencerHubPage::drawMidiOverview(IGfx& gfx) {
                      selectedInfo,
                      projection.routes.destinationFor(selectedLayer.trackIndex),
                      smfTrackLevelState().levelFor(selectedLayer.trackIndex),
-                     midiRouteEdit_,
-                     midiRouteDraft_,
                      selectedTrackIsSolo(projection.generation,
                                          selectedLayer.trackIndex),
                      projection.layers.partial);
