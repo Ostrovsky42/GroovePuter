@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_DSP_MODE_CONFIG_H
+#define GROOVEPUTER_DSP_MODE_CONFIG_H
 #include <stdint.h>
 #include "mini_dsp_params.h"
 #include "src/dsp/tape_defs.h"
@@ -260,3 +262,5 @@ const ModeConfig kElectroConfig = {
     .accentColor = 0xF472B6,
     .displayName = "ELECTRO"
 };
+
+#endif  // GROOVEPUTER_DSP_MODE_CONFIG_H

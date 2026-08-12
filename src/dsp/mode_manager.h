@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_DSP_MODE_MANAGER_H
+#define GROOVEPUTER_DSP_MODE_MANAGER_H
 #include "mode_config.h"
 #include "mini_tb303.h"
 #include "mini_drumvoices.h"
@@ -107,3 +109,5 @@ private:
     int currentFlavor_;
     mutable uint32_t generationSeed_;
 };
+
+#endif  // GROOVEPUTER_DSP_MODE_MANAGER_H

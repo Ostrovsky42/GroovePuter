@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_DSP_FILTER_H
+#define GROOVEPUTER_DSP_FILTER_H
 
 class AudioFilter {
 public:
@@ -47,3 +49,4 @@ private:
   float _sampleRate;
 };
 
+#endif  // GROOVEPUTER_DSP_FILTER_H

@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_DSP_MINI_TB303_H
+#define GROOVEPUTER_DSP_MINI_TB303_H
 
 #include <stdint.h>
 #include <memory>
@@ -134,3 +136,5 @@ private:
   float cachedLoFiLevels_ = 1.0f;
   float cachedRecipLoFiLevels_ = 1.0f;
 };
+
+#endif  // GROOVEPUTER_DSP_MINI_TB303_H
