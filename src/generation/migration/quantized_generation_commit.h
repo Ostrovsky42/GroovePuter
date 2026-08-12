@@ -55,11 +55,15 @@ enum class SlotState : uint8_t {
   Reading,
 };
 
+struct WriteLease {
+  int slot = -1;
+  bool hasPreviousPending = false;
+};
+
 // Double-buffer publication keeps the AudioTask completely out of control-side
-// generation. The UI writes only an Empty slot, then atomically publishes its
-// index. BAR_START atomically claims one immutable Ready slot and never waits
-// for the writer. This costs one extra fixed-size transaction but removes the
-// need to hold AudioMutationGate while Stage 15 generation runs.
+// generation. The UI writes only a slot it exclusively owns, then atomically
+// publishes its index. BAR_START atomically claims one immutable Ready slot and
+// never waits for the writer. The second slot is fixed DRAM, not heap state.
 inline PendingGeneration g_slots[2]{};
 inline std::atomic<uint8_t> g_slotState[2]{
     static_cast<uint8_t>(SlotState::Empty),
@@ -124,20 +128,44 @@ inline void clearPublished(QuantizedGenerationStatus status) {
   g_status.store(static_cast<uint8_t>(status), std::memory_order_release);
 }
 
-inline int acquireWriteSlot() {
-  const int published = g_publishedSlot.load(std::memory_order_acquire);
+inline WriteLease acquireWriteLease() {
+  // Newest intent wins. First try to claim the currently published transaction
+  // back from BAR_START. If BAR_START already claimed it for Reading, fail fast
+  // rather than touching Scene while the audio thread is publishing material.
+  const int old = g_publishedSlot.exchange(-1, std::memory_order_acq_rel);
+  if (old >= 0 && old <= 1) {
+    uint8_t expected = static_cast<uint8_t>(SlotState::Ready);
+    if (g_slotState[old].compare_exchange_strong(
+            expected,
+            static_cast<uint8_t>(SlotState::Writing),
+            std::memory_order_acq_rel,
+            std::memory_order_acquire)) {
+      return WriteLease{old, true};
+    }
+    return WriteLease{};
+  }
+
+  // A non-published Ready/Reading/Writing slot means BAR_START and the control
+  // side are crossing exactly now. The boundary copy is intentionally tiny;
+  // reject this keypress as Busy instead of introducing a data race or spin in
+  // AudioTask. A subsequent keypress can stage normally.
   for (int slot = 0; slot < 2; ++slot) {
-    if (slot == published) continue;
+    const auto state = static_cast<SlotState>(
+        g_slotState[slot].load(std::memory_order_acquire));
+    if (state != SlotState::Empty) return WriteLease{};
+  }
+
+  for (int slot = 0; slot < 2; ++slot) {
     uint8_t expected = static_cast<uint8_t>(SlotState::Empty);
     if (g_slotState[slot].compare_exchange_strong(
             expected,
             static_cast<uint8_t>(SlotState::Writing),
             std::memory_order_acq_rel,
             std::memory_order_acquire)) {
-      return slot;
+      return WriteLease{slot, false};
     }
   }
-  return -1;
+  return WriteLease{};
 }
 
 inline void releaseWriteSlot(int slot) {
@@ -158,7 +186,6 @@ inline void publishWriteSlot(int slot) {
 }
 
 inline StrongRhythmMigrationContext migrationContextFor(
-    const MiniAcid& engine,
     const Scene& scene,
     const PatternTarget& target) {
   StrongRhythmMigrationContext context{};
@@ -176,7 +203,6 @@ inline StrongRhythmMigrationContext migrationContextFor(
   context.rootPitchClass = static_cast<uint8_t>(root);
   context.scaleTypeValue =
       static_cast<ScaleTypeValue>(scene.generatorParams.scale);
-  (void)engine;
   return context;
 }
 
@@ -203,13 +229,17 @@ inline bool preparePlayingCandidate(
     GrooveboxMode requestedMode,
     bool applyTempo,
     float requestedBpm,
+    bool usePreviousPending,
     PendingGeneration& candidate) {
   SceneManager& scenes = engine.sceneManager();
   const Scene& scene = scenes.currentScene();
   const PatternTarget target = captureTarget(scenes);
   if (!targetValid(target)) return false;
 
-  candidate = PendingGeneration{};
+  const bool reusePriorMaterial = usePreviousPending &&
+      candidate.owner == &engine &&
+      sameTarget(candidate.target, target);
+
   candidate.owner = &engine;
   candidate.target = target;
   candidate.genre = requestedGenre;
@@ -219,15 +249,17 @@ inline bool preparePlayingCandidate(
       : engine.bpm();
   candidate.swingPct = scene.feel.swingPct;
 
-  // Copy the exact captured target, not a second lookup through mutable current
-  // indices. If Song/page ownership moves while preparation is running, the
-  // final targetStillActive() gate rejects publication.
-  candidate.synth[0] = scene.synthABanks[target.synthBank[0]]
-      .patterns[target.synthSlot[0]];
-  candidate.synth[1] = scene.synthBBanks[target.synthBank[1]]
-      .patterns[target.synthSlot[1]];
-  candidate.drums = scene.drumBanks[target.drumBank]
-      .patterns[target.drumSlot];
+  if (!reusePriorMaterial) {
+    // Copy the exact captured target, not a second lookup through mutable current
+    // indices. If Song/page ownership moves while preparation is running, the
+    // final targetStillActive() gate rejects publication.
+    candidate.synth[0] = scene.synthABanks[target.synthBank[0]]
+        .patterns[target.synthSlot[0]];
+    candidate.synth[1] = scene.synthBBanks[target.synthBank[1]]
+        .patterns[target.synthSlot[1]];
+    candidate.drums = scene.drumBanks[target.drumBank]
+        .patterns[target.drumSlot];
+  }
 
   AtlasRuntimeMetadata atlasMetadata{};
   const bool atlasBacked = AtlasRuntime::applyRecipe(
@@ -269,7 +301,7 @@ inline bool preparePlayingCandidate(
   }
 
   const StrongRhythmMigrationContext context =
-      migrationContextFor(engine, scene, target);
+      migrationContextFor(scene, target);
   (void)migrateStrongRhythmMaterial(
       requestedGenre,
       context,
@@ -362,31 +394,32 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
   }
 
   // PLAY preparation is deliberately lock-free with respect to AudioTask. It
-  // only reads live state and writes an unpublished fixed-size slot.
-  const int writeSlot = acquireWriteSlot();
-  if (writeSlot < 0) {
+  // only reads live state and writes a slot exclusively leased to this caller.
+  const WriteLease lease = acquireWriteLease();
+  if (lease.slot < 0) {
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
         std::memory_order_release);
     return QuantizedGenerationResult::Failed;
   }
 
-  PendingGeneration& candidate = g_slots[writeSlot];
+  PendingGeneration& candidate = g_slots[lease.slot];
   if (!preparePlayingCandidate(
           engine,
           requestedGenre,
           requestedMode,
           applyTempo,
           requestedBpm,
+          lease.hasPreviousPending,
           candidate)) {
-    releaseWriteSlot(writeSlot);
+    releaseWriteSlot(lease.slot);
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::CancelledTargetChanged),
         std::memory_order_release);
     return QuantizedGenerationResult::Failed;
   }
 
-  publishWriteSlot(writeSlot);
+  publishWriteSlot(lease.slot);
   engine.genreManager().setPendingCommitHook(&commitQuantizedGenerationAtBarStart);
   return QuantizedGenerationResult::PendingNextBar;
 }
