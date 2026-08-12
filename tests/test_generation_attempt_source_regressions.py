@@ -67,18 +67,22 @@ for needle in (
 ):
     require(drums, needle, f"selection/realization seed split changed: {needle}")
 
-# GA-01/03/05/06: fixed session-only owner, exact tuple axes, no eviction,
-# persistence or heap. Capacity exhaustion must fail closed.
+# GA-01/03/05/06: fixed session-only owner, exact tuple axes, deterministic
+# round-robin history eviction, no persistence or heap. Table capacity may bound
+# remembered history but must never disable accepted G generation.
 for needle in (
     "kGenerationAttemptCapacity = 64",
     "generativeMode",
     "recipe",
     "RealizationLevel level",
     "patternAddress",
-    "GenerationAttemptStatus::TableFull",
-    "return {GenerationAttemptStatus::TableFull, 0};",
+    "attemptVictimStorage()",
+    "generation attempt table memory contract",
+    "generation_request_detail::attemptVictimStorage() = 0;",
 ):
     require(STATE, needle, f"attempt owner contract changed: {needle}")
+if "GenerationAttemptStatus::TableFull" in STATE or "OrdinalExhausted" in STATE:
+    raise AssertionError("attempt history capacity must not disable generation")
 for forbidden in (
     "Preferences", "putUChar", "putUInt", "putBytes", "begin(\"gp-",
     "std::vector", "std::map", "unordered_map",
