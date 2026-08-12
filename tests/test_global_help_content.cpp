@@ -54,6 +54,7 @@ int main() {
     assert(globalContains("Alt+H"));
     assert(globalContains("Fn+M"));
     assert(globalContains("Track mute fallback"));
+    assert(globalContains("Waveform except PHRASE"));
     assert(!globalContains("Ctrl+H"));
 
     assert(sectionContains(WorkflowPages::kArrange, "Assign existing pattern"));
@@ -61,6 +62,12 @@ int main() {
     assert(sectionContains(WorkflowPages::kArrange, "Generate current row"));
     assert(sectionContains(WorkflowPages::kPhrase, "PHRASE CORE"));
     assert(sectionContains(WorkflowPages::kPhrase, "Mutable pattern references"));
+    assert(sectionContains(WorkflowPages::kPhrase, "Ctrl+L/R    Move TO row +/-1"));
+    assert(sectionContains(WorkflowPages::kPhrase, "Ctrl+U/D    Move TO row +/-8"));
+    assert(sectionContains(WorkflowPages::kPhrase, "INSERT before TO row"));
+    assert(sectionContains(WorkflowPages::kPhrase, "Shifts following rows"));
+    assert(sectionContains(WorkflowPages::kPhrase, "REPLACE at TO row"));
+    assert(sectionContains(WorkflowPages::kPhrase, "No row shift"));
     assert(sectionContains(WorkflowPages::kPerform, "PERFORMANCE TOOLS"));
     assert(sectionContains(WorkflowPages::kPlayer, "Physical track mute"));
     assert(sectionContains(WorkflowPages::kPattern, "SEQUENCER HUB"));
@@ -69,8 +76,8 @@ int main() {
     assert(sectionContains(WorkflowPages::kGenre, "GENRE 1/2"));
     assert(sectionContains(WorkflowPages::kGenre, "No texture or feel changes"));
     assert(sectionContains(WorkflowPages::kFeel, "FEEL 2/2"));
-  assert(sectionContains(WorkflowPages::kFeel, "Profile     Straight/Swing/Laid/Push"));
-  assert(sectionContains(WorkflowPages::kFeel, "Next gen; clock/pitch unchanged"));
+    assert(sectionContains(WorkflowPages::kFeel, "Profile     Straight/Swing/Laid/Push"));
+    assert(sectionContains(WorkflowPages::kFeel, "Next gen; clock/pitch unchanged"));
 
     // Historical GENERATION/TEXTURE page ids remain readable but both resolve
     // to FEEL content; neither is a normal navigation destination anymore.

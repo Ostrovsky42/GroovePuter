@@ -493,7 +493,8 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             return true;
         }
 
-        if (event.alt && (event.key == 'w' || event.key == 'W')) {
+        if (event.alt && (event.key == 'w' || event.key == 'W') &&
+            page_index_ != WorkflowPages::kPhrase) {
             UI::waveformOverlay.enabled = !UI::waveformOverlay.enabled;
             return true;
         }
