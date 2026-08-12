@@ -123,12 +123,6 @@ inline int patternAddressFor(const PatternTarget& target) {
       target.page, target.drumBank, target.drumSlot);
 }
 
-inline int synthPatternAddressFor(const PatternTarget& target, int voice) {
-  if (voice < 0 || voice > 1) return -1;
-  return songPatternFromPageBankIndex(
-      target.page, target.synthBank[voice], target.synthSlot[voice]);
-}
-
 inline bool targetStillActive(SceneManager& scenes, const PatternTarget& target) {
   return sameTarget(captureTarget(scenes), target);
 }
@@ -236,22 +230,6 @@ inline bool allocateAttemptFor(
   if (selectStrongRhythmRoute(genre) == StrongRhythmRoute::Legacy) return true;
   const auto allocation = GroovePuterState::allocateGenerationAttempt(
       genre.generativeMode, genre.recipe, level, patternAddressFor(target));
-  if (!allocation.ok()) return false;
-  attemptOrdinal = allocation.ordinal;
-  return true;
-}
-
-inline bool allocateSynthAttemptFor(
-    const GenreSettings& genre,
-    RealizationLevel level,
-    const PatternTarget& target,
-    int voice,
-    uint32_t& attemptOrdinal) {
-  attemptOrdinal = 0;
-  if (selectStrongRhythmRoute(genre) == StrongRhythmRoute::Legacy) return true;
-  const auto allocation = GroovePuterState::allocateGenerationAttempt(
-      genre.generativeMode, genre.recipe, level,
-      synthPatternAddressFor(target, voice));
   if (!allocation.ok()) return false;
   attemptOrdinal = allocation.ordinal;
   return true;
@@ -398,9 +376,10 @@ inline bool prepareSynthCandidate(
   candidate.drums = scene.drumBanks[target.drumBank]
       .patterns[target.drumSlot];
 
+  // Synth-only rerolls must keep the exact full-material address used by GENRE
+  // G. The address is part of phraseOrdinal and therefore composition/archetype
+  // identity; voice isolation belongs only to commit scope, not seed identity.
   StrongRhythmMigrationContext context = migrationContextFor(scene, target);
-  context.patternAddress = static_cast<int16_t>(
-      synthPatternAddressFor(target, voice));
   context.level = requestLevel;
   context.generationAttemptOrdinal = generationAttemptOrdinal;
   const StrongRhythmMigrationResult migration = migrateStrongRhythmSynths(
@@ -589,9 +568,11 @@ inline QuantizedGenerationResult regenerateSynthWithQuantizedCommit(
     return QuantizedGenerationResult::Failed;
   }
 
+  // Synth A/B rerolls consume the same tuple-local attempt stream as GENRE G.
+  // This keeps realization progression coherent and prevents synth-bank/slot
+  // addresses from creating a second composition identity domain.
   uint32_t attemptOrdinal = 0;
-  if (!allocateSynthAttemptFor(
-          genre, requestLevel, target, voice, attemptOrdinal)) {
+  if (!allocateAttemptFor(genre, requestLevel, target, attemptOrdinal)) {
     releaseWriteSlot(lease.slot);
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::AttemptUnavailable),
