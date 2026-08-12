@@ -12,6 +12,7 @@ python3 "${ROOT_DIR}/tests/test_generation_stage14_drum_generate_source_regressi
 python3 "${ROOT_DIR}/tests/test_generation_stage14_p_level_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_release_generation_routing_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_p_level_production_selector_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_generation_attempt_source_regressions.py"
 
 COMPOSITION_SOURCES=(
   "${ROOT_DIR}/src/generation/generation_context.cpp"
