@@ -1,83 +1,107 @@
-# Generated Phrase to Song test
+# Generated Phrase -> Song — Cardputer ADV acceptance
 
 ## Purpose
 
-Verify that Groove Lab can generate a connected `1B`, `2B`, `4B`, or `8B` phrase into consecutive one-bar Song rows without changing the 16-step pattern storage format.
+Verify the recovered user-facing `1B` / `2B` / `4B` / `8B` generated Phrase workflow on the current **PHRASE CORE** page.
 
-The phrase uses one generated base bar and derives related roles:
+`G` generates a connected phrase into consecutive one-bar Song rows beginning at the current Song position. Existing Phrase Core operations remain separate: `Enter` captures, `D` derives, and `W` writes an existing Phrase slot.
+
+Procedural roles are:
 
 - `2B`: `BASE -> MICRO VARIATION`;
 - `4B`: `BASE -> MICRO VARIATION -> RETURN -> FILL`;
 - `8B`: `BASE -> MICRO VARIATION -> RETURN -> FILL -> DEVELOPMENT -> BREAKDOWN -> BUILD -> ENDING FILL`.
 
-For compiled Atlas recipes the same Song workflow maps `P1/P2/P1/P3` across the first four bars.
+Atlas-backed recipes keep the historical role mapping `P1/P2/P1/P3` across the first four bars, then reuse the same three bounded variation coordinates for the 8-bar roles. Generated material passes through the current strong-rhythm + Stage 15 tonal migration before Song commit.
 
 ## Hardware list
 
 - M5Stack Cardputer-Adv;
 - USB-C data cable;
 - built-in speaker or headphones;
-- microSD card only when testing pattern-page persistence.
+- optional Yamaha SEQTRAK only for a combined integration smoke; it is not required for this test.
 
 ## Wiring
 
-No external wiring is required. The test uses the built-in keyboard, display, ES8311 audio path, and internal storage model.
+No GPIO or I2C wiring is required. Use the built-in keyboard/display/audio path.
 
-## Build and flash
+If SEQTRAK is also attached for the combined runtime-recovery smoke, keep the existing GroovePuter USB-MIDI connection; this test adds no new MIDI wiring.
+
+## Build / Flash
+
+From the repository root:
 
 ```bash
-bash tests/run_host_tests.sh
-bash scripts/build.sh --warnings all
-bash scripts/upload.sh /dev/ttyACM0
-arduino-cli monitor -p /dev/ttyACM0 -c baudrate=115200
+./tests/run_host_tests.sh
+./scripts/build.sh
+./scripts/build_seqtrak_midi_only.sh
 ```
+
+Flash with the normal Cardputer-Adv procedure and open Serial Monitor at the project's normal baud rate.
 
 ## Test procedure
 
-1. Open **Groove Lab**.
-2. Select a Mode and Flavor, or select an Atlas recipe on Genre first.
-3. Select `PHRASE 4 BARS -> SONG`.
-4. Move the Song cursor to four empty rows.
-5. Ensure four consecutive pattern slots on the current pattern page are empty.
-6. Focus `GENERATE` and press `Enter`, or press `G`.
-7. Open Song and play the generated rows.
-8. Repeat with `2B` and `8B`.
+1. Stop transport.
+2. Select the desired Genre/recipe and tonal settings.
+3. Open **PHRASE CORE**.
+4. Use `Up/Down` until the visible `NEXT` length is `4B`.
+5. Make sure the current Song row and the next three rows are empty for Synth A, Synth B, and Drums.
+6. Press `G` once.
+7. Open Song and verify four consecutive rows were assigned.
+8. Play the generated four bars.
+9. Repeat for `1B`, `2B`, and `8B`.
+10. While transport is playing, return to PHRASE and press `G` once.
 
 ## Expected behavior
 
-- Generation writes to the active Song slot only.
-- Synth A, Synth B, and Drums use the same consecutive pattern IDs for each bar.
-- The Song rows are one bar long after generation.
-- Procedural `4B` returns to the base idea on bar 3 and produces a clear fill on bar 4.
-- Atlas `4B` uses `P1 -> P2 -> P1 -> P3`.
-- `8B` contains an audible breakdown/build section without becoming eight unrelated loops.
-- Existing occupied Song rows are never overwritten.
-- Existing occupied pattern slots are never overwritten.
-- When generation fails, committed temporary bars are rolled back.
+- `G` uses the visible PHRASE length `1/2/4/8B`.
+- Success toast: for example `4B GEN -> SONG 1-4`.
+- Serial success contains `Generated 4B phrase -> Song rows ...`.
+- Generation writes only to the active Song slot.
+- Synth A, Synth B, and Drums use the same consecutive pattern IDs for each generated bar.
+- Generated Song rows are normalized to one bar each.
+- Procedural `4B` returns to the base idea on bar 3 and produces a stronger fill on bar 4.
+- Atlas `4B` keeps `P1 -> P2 -> P1 -> P3` identity through the current migration path.
+- `8B` adds development, breakdown, build, and ending-fill roles instead of eight unrelated regenerations.
+- Occupied destination Song rows are rejected without writes.
+- A pattern slot is not reusable merely because its pattern data is empty: if its global pattern ID is still referenced by either Song slot, the allocator skips it.
+- Existing occupied pattern data is never overwritten.
+- If generation unexpectedly fails after partial commit, temporary bars are rolled back.
+- `Enter`, `D`, `W`, slot selection, preview navigation, and Phrase capture length controls keep their existing behavior.
+- During PLAY, `G` shows `STOP PLAYBACK FOR PHRASE`; transport keeps running and no generation is committed. There is no hidden stop/generate/restart cycle.
 
 ## Troubleshooting
 
-- `Song rows are not empty`: move the Song cursor to an empty range or clear those rows.
-- `Need consecutive empty slots`: clear or move patterns on the current page. A phrase requires `2`, `4`, or `8` consecutive local slots shared by Synth A, Synth B, and Drums.
+- `STOP PLAYBACK FOR PHRASE`: expected protection. Stop transport and press `G` again.
+- `Song rows are not empty`: move Song position to an empty range or clear the destination rows.
+- `Need consecutive empty slots`: free enough consecutive local pattern slots on the current page. Also check whether empty-looking IDs are still referenced by Song A or Song B.
 - `Pattern page unavailable`: wait for the requested pattern page to finish loading.
-- Only the first bar repeats: confirm Song mode is active and the generated Song rows contain consecutive pattern IDs.
-- Every Song row repeats for several bars: regenerate the phrase; generation normalizes `FEEL Length` to `1B` so each generated row advances after one bar.
-- Phrase sounds unrelated: compare bars with FX disabled. Bar 3 of a procedural `4B` phrase must preserve the base note layout, and bar 4 must mainly change end-of-bar articulation and drums.
+- Only one bar plays: confirm Song mode is active and the generated rows contain consecutive pattern references.
+- A row lasts more than one bar: regression; successful generated Phrase commit must normalize Song row length to `1B`.
+- Procedural bars sound unrelated: bar 3 of a `4B` phrase should retain the base note layout; bar 4 should mainly strengthen end-of-bar articulation/drums.
+- No Serial success line after `G`: check the on-screen toast first; a rejection/failure should also emit a warning line describing the reason.
 
 ## Acceptance checklist
 
-- [ ] Host tests pass.
-- [ ] Cardputer-Adv release build passes with warnings enabled.
-- [ ] `1B`, `2B`, `4B`, and `8B` can be selected.
+- [ ] Host suite passes.
+- [ ] Cardputer-Adv normal build passes.
+- [ ] Cardputer-Adv fixed-DRAM gate passes.
+- [ ] SEQTRAK MIDI-only build passes.
+- [ ] PHRASE still selects `1B`, `2B`, `4B`, and `8B` with `Up/Down`.
+- [ ] `G` generates exactly the selected length starting at current Song position.
 - [ ] `4B` creates four consecutive pattern IDs and four Song rows.
 - [ ] Bar 2 is related to bar 1 rather than independently regenerated.
 - [ ] Bar 3 of procedural `4B` returns to the base note layout.
 - [ ] Bar 4 contains a stronger last-quarter fill.
 - [ ] Atlas `4B` follows `P1/P2/P1/P3`.
 - [ ] `8B` contains development, breakdown, build, and ending-fill roles.
-- [ ] Song row length becomes `1B` after phrase generation.
-- [ ] Occupied Song rows reject the operation without partial writes.
-- [ ] Insufficient consecutive pattern slots reject the operation without partial writes.
-- [ ] Generator failure rolls back committed bars.
-- [ ] Existing scenes and binary pattern-page format remain compatible.
-- [ ] No new audio underruns appear while playing the generated phrase.
+- [ ] Current Genre + root/scale affect generated material through the current migration path.
+- [ ] Song rows advance as `1B` after successful generation.
+- [ ] Occupied Song rows reject without partial writes.
+- [ ] Referenced empty-looking pattern IDs are skipped.
+- [ ] Insufficient safe consecutive slots reject without partial writes.
+- [ ] Generator failure rolls back committed temporary bars.
+- [ ] During PLAY, `G` does not stop/restart transport and shows `STOP PLAYBACK FOR PHRASE`.
+- [ ] `Enter=Capture`, `D=Derive`, `W=Write`, `1-4=Slot`, and `Left/Right=Preview bar` remain unchanged.
+- [ ] Screen shows the success/rejection toast and Serial emits the matching generated/rejected line.
+- [ ] No reset, watchdog, stuck transport, or new sustained underrun appears during the smoke test.
