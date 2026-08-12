@@ -40,6 +40,7 @@ enum class StrongRhythmMigrationStatus : uint8_t {
   Legacy = 0,
   Applied,
   InvalidContext,
+  AttemptUnavailable,
   RealizationFailed,
   MaterializationFailed,
   CompatibilityBindingFailed,
@@ -146,6 +147,7 @@ struct StrongRhythmMigrationResult {
   StepMask melodicFillOnsets = 0;
   bool chordRhythmApplied = false;
   bool melodicRhythmApplied = false;
+  bool tonalMaterializationApplied = false;
 };
 
 StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings);
@@ -164,4 +166,4 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
 
 }  // namespace GroovePuterRhythm
 
-#endif
+#endif  // GROOVEPUTER_GENERATION_MIGRATION_STRONG_RHYTHM_MIGRATION_H
