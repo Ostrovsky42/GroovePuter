@@ -43,6 +43,99 @@ uint32_t realizationSeedFor(uint32_t selectionSeed, uint32_t attemptOrdinal) {
                mix32(attemptOrdinal ^ kGenerationAttemptSalt));
 }
 
+void applyFullMaterialRerollArticulation(uint32_t attemptOrdinal,
+                                         DrumPatternSet& drums) {
+  if (attemptOrdinal == 0) return;
+
+  uint16_t hitCount = 0;
+  for (int voice = 0; voice < DrumPatternSet::kVoices; ++voice) {
+    for (int step = 0; step < DrumPattern::kSteps; ++step) {
+      if (drums.voices[voice].steps[step].hit) ++hitCount;
+    }
+  }
+  if (hitCount == 0) return;
+
+  // Realization is intentionally bounded and can occasionally quantize two
+  // adjacent RNG seeds to the same topology. Give every non-zero full-material
+  // reroll a deterministic articulation within that topology. Attempt zero is
+  // untouched for compatibility; selection/composition metadata is untouched.
+  uint16_t target = static_cast<uint16_t>((attemptOrdinal - 1u) % hitCount);
+  for (int voice = 0; voice < DrumPatternSet::kVoices; ++voice) {
+    for (int step = 0; step < DrumPattern::kSteps; ++step) {
+      DrumStep& event = drums.voices[voice].steps[step];
+      if (!event.hit) continue;
+      if (target != 0) {
+        --target;
+        continue;
+      }
+      event.accent = !event.accent;
+      constexpr uint8_t kVelocityDelta = 9;
+      event.velocity = event.velocity <= 127u - kVelocityDelta
+          ? static_cast<uint8_t>(event.velocity + kVelocityDelta)
+          : static_cast<uint8_t>(event.velocity - kVelocityDelta);
+      return;
+    }
+  }
+}
+
+void applySynthRerollArticulation(uint32_t attemptOrdinal,
+                                  SynthPattern& pattern) {
+  if (attemptOrdinal == 0) return;
+
+  uint8_t noteCount = 0;
+  for (const SynthStep& event : pattern.steps) {
+    if (event.note >= 0) ++noteCount;
+  }
+  if (noteCount == 0) return;
+
+  uint8_t target = static_cast<uint8_t>((attemptOrdinal - 1u) % noteCount);
+  for (SynthStep& event : pattern.steps) {
+    if (event.note < 0) continue;
+    if (target != 0) {
+      --target;
+      continue;
+    }
+    event.accent = !event.accent;
+    constexpr uint8_t kVelocityDelta = 7;
+    event.velocity = event.velocity <= 127u - kVelocityDelta
+        ? static_cast<uint8_t>(event.velocity + kVelocityDelta)
+        : static_cast<uint8_t>(event.velocity - kVelocityDelta);
+    return;
+  }
+}
+
+bool sameDrumMaterial(const DrumPatternSet& left,
+                      const DrumPatternSet& right) {
+  for (int voice = 0; voice < DrumPatternSet::kVoices; ++voice) {
+    for (int step = 0; step < DrumPattern::kSteps; ++step) {
+      const DrumStep& a = left.voices[voice].steps[step];
+      const DrumStep& b = right.voices[voice].steps[step];
+      if (a.hit != b.hit || a.accent != b.accent ||
+          a.velocity != b.velocity || a.timing != b.timing ||
+          a.fx != b.fx || a.fxParam != b.fxParam ||
+          a.probability != b.probability) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+bool sameSynthMaterial(const SynthPattern& left,
+                       const SynthPattern& right) {
+  for (int step = 0; step < SynthPattern::kSteps; ++step) {
+    const SynthStep& a = left.steps[step];
+    const SynthStep& b = right.steps[step];
+    if (a.note != b.note || a.slide != b.slide || a.accent != b.accent ||
+        a.ghost != b.ghost || a.velocity != b.velocity ||
+        a.timing != b.timing || a.fx != b.fx ||
+        a.fxParam != b.fxParam || a.probability != b.probability) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool validLevel(RealizationLevel level) {
   return static_cast<uint8_t>(level) < static_cast<uint8_t>(RealizationLevel::Count);
 }
@@ -368,16 +461,20 @@ uint8_t filteredMelodicOffsets(const MelodicPitchIntentPlan& plan,
 
 }  // namespace
 
+namespace {
+
 StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     const GenreSettings& settings,
     const StrongRhythmMigrationContext& context,
     DrumPatternSet& drums,
     SynthPattern& synthA,
-    SynthPattern& synthB) {
+    SynthPattern& synthB,
+    bool replaceDrums) {
   DrumPatternSet nextDrums = drums;
   StrongRhythmMigrationResult result =
       migrateStrongRhythmDrums(settings, context, nextDrums);
   if (result.status != StrongRhythmMigrationStatus::Applied) return result;
+  if (!replaceDrums) nextDrums = drums;
   if (context.tonalMaterializationEnabled && !validTonalContext(context)) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
@@ -792,10 +889,51 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     result.tonalMaterializationApplied = true;
   }
 
-  drums = nextDrums;
+  if (replaceDrums) {
+    const bool unchanged =
+        sameDrumMaterial(nextDrums, drums) &&
+        sameSynthMaterial(nextSynthA, synthA) &&
+        sameSynthMaterial(nextSynthB, synthB);
+    if (unchanged) {
+      applyFullMaterialRerollArticulation(
+          context.generationAttemptOrdinal, nextDrums);
+    }
+    drums = nextDrums;
+  } else {
+    if (sameSynthMaterial(nextSynthA, synthA)) {
+      applySynthRerollArticulation(
+          context.generationAttemptOrdinal, nextSynthA);
+    }
+    if (sameSynthMaterial(nextSynthB, synthB)) {
+      applySynthRerollArticulation(
+          context.generationAttemptOrdinal, nextSynthB);
+    }
+  }
   synthA = nextSynthA;
   synthB = nextSynthB;
   return result;
+}
+
+}  // namespace
+
+StrongRhythmMigrationResult migrateStrongRhythmMaterial(
+    const GenreSettings& settings,
+    const StrongRhythmMigrationContext& context,
+    DrumPatternSet& drums,
+    SynthPattern& synthA,
+    SynthPattern& synthB) {
+  return migrateStrongRhythmMaterial(
+      settings, context, drums, synthA, synthB, true);
+}
+
+StrongRhythmMigrationResult migrateStrongRhythmSynths(
+    const GenreSettings& settings,
+    const StrongRhythmMigrationContext& context,
+    DrumPatternSet& drums,
+    SynthPattern& synthA,
+    SynthPattern& synthB) {
+  return migrateStrongRhythmMaterial(
+      settings, context, drums, synthA, synthB, false);
 }
 
 }  // namespace GroovePuterRhythm

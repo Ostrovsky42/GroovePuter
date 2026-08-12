@@ -30,6 +30,12 @@ enum class QuantizedGenerationStatus : uint8_t {
   AttemptUnavailable,
 };
 
+enum class QuantizedGenerationScope : uint8_t {
+  Full = 0,
+  SynthA,
+  SynthB,
+};
+
 namespace QuantizedGenerationDetail {
 
 struct PatternTarget {
@@ -47,6 +53,7 @@ struct PendingGeneration {
   GrooveboxMode mode = GrooveboxMode::Minimal;
   float bpm = 100.0f;
   uint8_t swingPct = 0;
+  QuantizedGenerationScope scope = QuantizedGenerationScope::Full;
   SynthPattern synth[2]{};
   DrumPatternSet drums{};
 };
@@ -114,6 +121,12 @@ inline bool sameTarget(const PatternTarget& lhs, const PatternTarget& rhs) {
 inline int patternAddressFor(const PatternTarget& target) {
   return songPatternFromPageBankIndex(
       target.page, target.drumBank, target.drumSlot);
+}
+
+inline int synthPatternAddressFor(const PatternTarget& target, int voice) {
+  if (voice < 0 || voice > 1) return -1;
+  return songPatternFromPageBankIndex(
+      target.page, target.synthBank[voice], target.synthSlot[voice]);
 }
 
 inline bool targetStillActive(SceneManager& scenes, const PatternTarget& target) {
@@ -228,6 +241,22 @@ inline bool allocateAttemptFor(
   return true;
 }
 
+inline bool allocateSynthAttemptFor(
+    const GenreSettings& genre,
+    RealizationLevel level,
+    const PatternTarget& target,
+    int voice,
+    uint32_t& attemptOrdinal) {
+  attemptOrdinal = 0;
+  if (selectStrongRhythmRoute(genre) == StrongRhythmRoute::Legacy) return true;
+  const auto allocation = GroovePuterState::allocateGenerationAttempt(
+      genre.generativeMode, genre.recipe, level,
+      synthPatternAddressFor(target, voice));
+  if (!allocation.ok()) return false;
+  attemptOrdinal = allocation.ordinal;
+  return true;
+}
+
 inline void applyLegacyRoleSplit(
     GenerativeMode mode,
     GenreBehavior& bassBehavior,
@@ -272,6 +301,7 @@ inline bool preparePlayingCandidate(
       ? requestedBpm
       : engine.bpm();
   candidate.swingPct = scene.feel.swingPct;
+  candidate.scope = QuantizedGenerationScope::Full;
 
   if (!reusePriorMaterial) {
     // Copy the exact captured target, not a second lookup through mutable current
@@ -340,6 +370,49 @@ inline bool preparePlayingCandidate(
   return targetStillActive(scenes, target);
 }
 
+inline bool prepareSynthCandidate(
+    MiniAcid& engine,
+    const GenreSettings& requestedGenre,
+    const PatternTarget& target,
+    int voice,
+    RealizationLevel requestLevel,
+    uint32_t generationAttemptOrdinal,
+    PendingGeneration& candidate) {
+  SceneManager& scenes = engine.sceneManager();
+  const Scene& scene = scenes.currentScene();
+  if (!targetValid(target) || voice < 0 || voice > 1) return false;
+
+  candidate.owner = &engine;
+  candidate.target = target;
+  candidate.genre = requestedGenre;
+  candidate.mode = engine.grooveboxMode();
+  candidate.bpm = engine.bpm();
+  candidate.swingPct = scene.feel.swingPct;
+  candidate.scope = voice == 0
+      ? QuantizedGenerationScope::SynthA
+      : QuantizedGenerationScope::SynthB;
+  candidate.synth[0] = scene.synthABanks[target.synthBank[0]]
+      .patterns[target.synthSlot[0]];
+  candidate.synth[1] = scene.synthBBanks[target.synthBank[1]]
+      .patterns[target.synthSlot[1]];
+  candidate.drums = scene.drumBanks[target.drumBank]
+      .patterns[target.drumSlot];
+
+  StrongRhythmMigrationContext context = migrationContextFor(scene, target);
+  context.patternAddress = static_cast<int16_t>(
+      synthPatternAddressFor(target, voice));
+  context.level = requestLevel;
+  context.generationAttemptOrdinal = generationAttemptOrdinal;
+  const StrongRhythmMigrationResult migration = migrateStrongRhythmSynths(
+      requestedGenre,
+      context,
+      candidate.drums,
+      candidate.synth[0],
+      candidate.synth[1]);
+  return migration.status == StrongRhythmMigrationStatus::Applied &&
+         targetStillActive(scenes, target);
+}
+
 }  // namespace QuantizedGenerationDetail
 
 inline bool commitQuantizedGenerationAtBarStart(SceneManager& scenes) {
@@ -370,17 +443,24 @@ inline bool commitQuantizedGenerationAtBarStart(SceneManager& scenes) {
   }
 
   Scene& scene = scenes.currentScene();
-  scene.synthABanks[pending.target.synthBank[0]]
-      .patterns[pending.target.synthSlot[0]] = pending.synth[0];
-  scene.synthBBanks[pending.target.synthBank[1]]
-      .patterns[pending.target.synthSlot[1]] = pending.synth[1];
-  scene.drumBanks[pending.target.drumBank]
-      .patterns[pending.target.drumSlot] = pending.drums;
-  scene.genre = pending.genre;
-  scene.feel.swingPct = pending.swingPct;
-
-  owner->setGrooveboxMode(pending.mode);
-  owner->setBpm(pending.bpm);
+  if (pending.scope == QuantizedGenerationScope::Full) {
+    scene.synthABanks[pending.target.synthBank[0]]
+        .patterns[pending.target.synthSlot[0]] = pending.synth[0];
+    scene.synthBBanks[pending.target.synthBank[1]]
+        .patterns[pending.target.synthSlot[1]] = pending.synth[1];
+    scene.drumBanks[pending.target.drumBank]
+        .patterns[pending.target.drumSlot] = pending.drums;
+    scene.genre = pending.genre;
+    scene.feel.swingPct = pending.swingPct;
+    owner->setGrooveboxMode(pending.mode);
+    owner->setBpm(pending.bpm);
+  } else {
+    const int voice = pending.scope == QuantizedGenerationScope::SynthA ? 0 : 1;
+    Bank<SynthPattern>& bank = voice == 0
+        ? scene.synthABanks[pending.target.synthBank[0]]
+        : scene.synthBBanks[pending.target.synthBank[1]];
+    bank.patterns[pending.target.synthSlot[voice]] = pending.synth[voice];
+  }
 
   g_slotState[slot].store(
       static_cast<uint8_t>(SlotState::Empty), std::memory_order_release);
@@ -482,6 +562,76 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
 
   publishWriteSlot(lease.slot);
   engine.genreManager().setPendingCommitHook(&commitQuantizedGenerationAtBarStart);
+  return QuantizedGenerationResult::PendingNextBar;
+}
+
+inline QuantizedGenerationResult regenerateSynthWithQuantizedCommit(
+    MiniAcid& engine,
+    int voice) {
+  using namespace QuantizedGenerationDetail;
+
+  if (voice < 0 || voice > 1) return QuantizedGenerationResult::Failed;
+  SceneManager& scenes = engine.sceneManager();
+  const PatternTarget target = captureTarget(scenes);
+  if (!targetValid(target)) return QuantizedGenerationResult::Failed;
+
+  GenreSettings genre = scenes.currentScene().genre;
+  genre.morphTarget = 0;
+  genre.morphAmount = 0;
+  const RealizationLevel requestLevel =
+      GroovePuterState::currentGenerationLevel();
+
+  const WriteLease lease = acquireWriteLease();
+  if (lease.slot < 0) {
+    g_status.store(
+        static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
+        std::memory_order_release);
+    return QuantizedGenerationResult::Failed;
+  }
+
+  uint32_t attemptOrdinal = 0;
+  if (!allocateSynthAttemptFor(
+          genre, requestLevel, target, voice, attemptOrdinal)) {
+    releaseWriteSlot(lease.slot);
+    g_status.store(
+        static_cast<uint8_t>(QuantizedGenerationStatus::AttemptUnavailable),
+        std::memory_order_release);
+    return QuantizedGenerationResult::AttemptUnavailable;
+  }
+
+  PendingGeneration& candidate = g_slots[lease.slot];
+  if (!prepareSynthCandidate(
+          engine,
+          genre,
+          target,
+          voice,
+          requestLevel,
+          attemptOrdinal,
+          candidate)) {
+    releaseWriteSlot(lease.slot);
+    g_status.store(
+        static_cast<uint8_t>(QuantizedGenerationStatus::CancelledTargetChanged),
+        std::memory_order_release);
+    return QuantizedGenerationResult::Failed;
+  }
+
+  if (!engine.isPlaying()) {
+    Scene& scene = scenes.currentScene();
+    Bank<SynthPattern>& bank = voice == 0
+        ? scene.synthABanks[target.synthBank[0]]
+        : scene.synthBBanks[target.synthBank[1]];
+    bank.patterns[target.synthSlot[voice]] = candidate.synth[voice];
+    releaseWriteSlot(lease.slot);
+    g_status.store(
+        static_cast<uint8_t>(QuantizedGenerationStatus::Committed),
+        std::memory_order_release);
+    g_commitSerial.fetch_add(1, std::memory_order_release);
+    return QuantizedGenerationResult::CommittedNow;
+  }
+
+  publishWriteSlot(lease.slot);
+  engine.genreManager().setPendingCommitHook(
+      &commitQuantizedGenerationAtBarStart);
   return QuantizedGenerationResult::PendingNextBar;
 }
 

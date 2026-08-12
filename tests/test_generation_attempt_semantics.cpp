@@ -30,6 +30,47 @@ uint32_t drumFingerprint(const DrumPatternSet& drums) {
   return hash;
 }
 
+uint32_t synthFingerprint(const SynthPattern& pattern) {
+  uint32_t hash = 2166136261u;
+  for (const SynthStep& event : pattern.steps) {
+    const uint8_t bytes[] = {
+        static_cast<uint8_t>(event.note),
+        static_cast<uint8_t>(event.slide ? 1 : 0),
+        static_cast<uint8_t>(event.accent ? 1 : 0),
+        static_cast<uint8_t>(event.ghost ? 1 : 0),
+        event.velocity,
+        static_cast<uint8_t>(event.timing),
+        event.fx,
+        event.fxParam,
+        event.probability,
+    };
+    for (uint8_t byte : bytes) {
+      hash ^= byte;
+      hash *= 16777619u;
+    }
+  }
+  return hash;
+}
+
+uint8_t synthNoteCount(const SynthPattern& pattern) {
+  uint8_t result = 0;
+  for (const SynthStep& event : pattern.steps) {
+    if (event.note >= 0) ++result;
+  }
+  return result;
+}
+
+uint32_t materialFingerprint(const DrumPatternSet& drums,
+                             const SynthPattern& synthA,
+                             const SynthPattern& synthB) {
+  uint32_t hash = drumFingerprint(drums);
+  hash ^= synthFingerprint(synthA);
+  hash *= 16777619u;
+  hash ^= synthFingerprint(synthB);
+  hash *= 16777619u;
+  return hash;
+}
+
 GenreSettings settingsFor(GenerativeMode mode, uint8_t recipe) {
   GenreSettings settings{};
   settings.generativeMode = static_cast<uint8_t>(mode);
@@ -128,10 +169,106 @@ void assertAttemptKeepsArchetypeAndIsDeterministic() {
   assert(observedBoundedVariation);
 }
 
+void assertReachableFullMaterialRerollsDiffer() {
+  struct Profile {
+    GenerativeMode mode;
+    uint8_t recipe;
+  };
+  constexpr Profile profiles[] = {
+      {GenerativeMode::Acid, 0}, {GenerativeMode::Outrun, 0},
+      {GenerativeMode::Darksynth, 0}, {GenerativeMode::Electro, 0},
+      {GenerativeMode::Rave, 0}, {GenerativeMode::Reggae, 0},
+      {GenerativeMode::TripHop, 0}, {GenerativeMode::Broken, 0},
+      {GenerativeMode::Chip, 0}, {GenerativeMode::House, 0},
+      {GenerativeMode::Techno, 0}, {GenerativeMode::HipHop, 0},
+      {GenerativeMode::FunkSoul, 0}, {GenerativeMode::UkGarage, 0},
+      {GenerativeMode::DrumAndBass, 0}, {GenerativeMode::LoFi, 0},
+      {GenerativeMode::Broken, 1}, {GenerativeMode::Broken, 2},
+      {GenerativeMode::Broken, 3}, {GenerativeMode::Rave, 4},
+      {GenerativeMode::Reggae, 5}, {GenerativeMode::Acid, 6},
+      {GenerativeMode::Acid, 7}, {GenerativeMode::Broken, 8},
+      {GenerativeMode::Broken, 9}, {GenerativeMode::Reggae, 10},
+      {GenerativeMode::Reggae, 11},
+      {GenerativeMode::LoFi, kClassicChillRecipeId},
+      {GenerativeMode::LoFi, kDrunkenGrooveRecipeId},
+      {GenerativeMode::LoFi, kLoFiHouseRecipeId},
+      {GenerativeMode::LoFi, kMinimalSleepRecipeId},
+      {GenerativeMode::HipHop, kGoldenEraRecipeId},
+      {GenerativeMode::HipHop, kDustyJazzRecipeId},
+  };
+  constexpr RealizationLevel levels[] = {
+      RealizationLevel::P1Canonical,
+      RealizationLevel::P2Variation,
+      RealizationLevel::P3Transformation,
+  };
+
+  for (const Profile& profile : profiles) {
+    const GenreSettings settings = settingsFor(profile.mode, profile.recipe);
+    for (RealizationLevel level : levels) {
+      for (int address = 0; address < 32; ++address) {
+        StrongRhythmMigrationContext zeroContext = contextFor(address, 0);
+        StrongRhythmMigrationContext oneContext = contextFor(address, 1);
+        zeroContext.level = level;
+        oneContext.level = level;
+        zeroContext.tonalMaterializationEnabled = true;
+        oneContext.tonalMaterializationEnabled = true;
+
+        DrumPatternSet zeroDrums{};
+        DrumPatternSet oneDrums{};
+        SynthPattern zeroA{};
+        SynthPattern zeroB{};
+        SynthPattern oneA{};
+        SynthPattern oneB{};
+        const auto zero = migrateStrongRhythmMaterial(
+            settings, zeroContext, zeroDrums, zeroA, zeroB);
+        oneDrums = zeroDrums;
+        oneA = zeroA;
+        oneB = zeroB;
+        const auto one = migrateStrongRhythmMaterial(
+            settings, oneContext, oneDrums, oneA, oneB);
+        assert(zero.status == StrongRhythmMigrationStatus::Applied);
+        assert(one.status == StrongRhythmMigrationStatus::Applied);
+        assert(zero.archetype == one.archetype);
+        assert(zero.bassRhythmId == one.bassRhythmId);
+        assert(zero.chordRhythmId == one.chordRhythmId);
+        assert(zero.progressionId == one.progressionId);
+        assert(zero.melodicRhythmId == one.melodicRhythmId);
+        assert(zero.motifShapeId == one.motifShapeId);
+        assert(materialFingerprint(zeroDrums, zeroA, zeroB) !=
+               materialFingerprint(oneDrums, oneA, oneB));
+
+        DrumPatternSet synthOnlyDrums = zeroDrums;
+        SynthPattern synthOnlyA = zeroA;
+        SynthPattern synthOnlyB = zeroB;
+        const uint32_t preservedDrums = drumFingerprint(synthOnlyDrums);
+        const auto synthOnly = migrateStrongRhythmSynths(
+            settings,
+            oneContext,
+            synthOnlyDrums,
+            synthOnlyA,
+            synthOnlyB);
+        assert(synthOnly.status == StrongRhythmMigrationStatus::Applied);
+        assert(synthOnly.archetype == zero.archetype);
+        assert(synthOnly.bassRhythmId == zero.bassRhythmId);
+        assert(synthOnly.chordRhythmId == zero.chordRhythmId);
+        assert(synthOnly.progressionId == zero.progressionId);
+        assert(synthOnly.melodicRhythmId == zero.melodicRhythmId);
+        assert(synthOnly.motifShapeId == zero.motifShapeId);
+        assert(drumFingerprint(synthOnlyDrums) == preservedDrums);
+        if (synthNoteCount(zeroA) != 0)
+          assert(synthFingerprint(synthOnlyA) != synthFingerprint(zeroA));
+        if (synthNoteCount(zeroB) != 0)
+          assert(synthFingerprint(synthOnlyB) != synthFingerprint(zeroB));
+      }
+    }
+  }
+}
+
 }  // namespace
 
 int main() {
   assertMorphIsRetired();
   assertAttemptKeepsArchetypeAndIsDeterministic();
+  assertReachableFullMaterialRerollsDiffer();
   return 0;
 }
