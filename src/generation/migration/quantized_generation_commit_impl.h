@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_QUANTIZED_GENERATION_COMMIT_IMPL_H
+#define GROOVEPUTER_QUANTIZED_GENERATION_COMMIT_IMPL_H
 
 #include <atomic>
 #include <cstdint>
@@ -110,6 +111,11 @@ inline bool sameTarget(const PatternTarget& lhs, const PatternTarget& rhs) {
          lhs.drumSlot == rhs.drumSlot;
 }
 
+inline int patternAddressFor(const PatternTarget& target) {
+  return songPatternFromPageBankIndex(
+      target.page, target.drumBank, target.drumSlot);
+}
+
 inline bool targetStillActive(SceneManager& scenes, const PatternTarget& target) {
   return sameTarget(captureTarget(scenes), target);
 }
@@ -191,7 +197,7 @@ inline StrongRhythmMigrationContext migrationContextFor(
     const Scene& scene,
     const PatternTarget& target) {
   StrongRhythmMigrationContext context{};
-  context.patternAddress = static_cast<int16_t>(target.drumSlot);
+  context.patternAddress = static_cast<int16_t>(patternAddressFor(target));
   context.level = GroovePuterState::currentGenerationLevel();
   context.feelProfile = static_cast<FeelProfileId>(scene.feel.timingProfile);
   float feelAmount = scene.generatorParams.microTimingAmount;
@@ -216,7 +222,7 @@ inline bool allocateAttemptFor(
   attemptOrdinal = 0;
   if (selectStrongRhythmRoute(genre) == StrongRhythmRoute::Legacy) return true;
   const auto allocation = GroovePuterState::allocateGenerationAttempt(
-      genre.generativeMode, genre.recipe, level, target.drumSlot);
+      genre.generativeMode, genre.recipe, level, patternAddressFor(target));
   if (!allocation.ok()) return false;
   attemptOrdinal = allocation.ordinal;
   return true;
@@ -495,3 +501,5 @@ inline uint32_t quantizedGenerationCommitSerial() {
 }
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_QUANTIZED_GENERATION_COMMIT_IMPL_H
