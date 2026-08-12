@@ -18,11 +18,19 @@ jobs:
           bash tests/run_stage15_tonal_baseline_dump.sh > build/host-tests/stage15_tonal_legacy_actual.tsv
           test "$(wc -l < build/host-tests/stage15_tonal_legacy_actual.tsv)" -eq 257
           diff -u tests/data/stage15_tonal_legacy_baseline.tsv build/host-tests/stage15_tonal_legacy_actual.tsv
-      - name: Compare frozen tonal-materialized fingerprints
+      - name: Verify F-13 tonal identity against frozen pre-F13 corpus
         run: |
           mkdir -p build/host-tests
           bash tests/run_stage15_tonal_baseline_dump.sh --tonal > build/host-tests/stage15_tonal_enabled_actual.tsv
           test "$(wc -l < build/host-tests/stage15_tonal_enabled_actual.tsv)" -eq 257
-          diff -u tests/data/stage15_tonal_enabled_baseline.tsv build/host-tests/stage15_tonal_enabled_actual.tsv
+          python3 tests/test_stage15_tonal_f13_corpus.py \
+            tests/data/stage15_tonal_enabled_baseline.tsv \
+            build/host-tests/stage15_tonal_enabled_actual.tsv
+      - name: Upload F-13 tonal candidate corpus
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage15-tonal-f13-candidate
+          path: build/host-tests/stage15_tonal_enabled_actual.tsv
+          if-no-files-found: error
       - name: Check tonal ownership boundary across corpora
         run: python3 tests/test_stage15_tonal_corpus_boundary.py
