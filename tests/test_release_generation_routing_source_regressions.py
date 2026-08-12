@@ -11,6 +11,9 @@ DRUM_LEGACY = (
 BRIDGE = (
     ROOT / "src/generation/migration/strong_rhythm_live_bridge.cpp"
 ).read_text(encoding="utf-8")
+QUANTIZED = (
+    ROOT / "src/generation/migration/quantized_generation_commit.h"
+).read_text(encoding="utf-8")
 SKETCH = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
 
 
@@ -20,18 +23,30 @@ def require(text: str, needle: str, message: str) -> None:
 
 
 # GENRE plain G is explicit full materialization, independent of ENTER's APPLY
-# selector. It commits the pending GENRE / VARIANT / RHYTHM settings first and
-# uses the same Stage 15 bridge as normal full regeneration.
+# selector. It prepares the pending GENRE / VARIANT / RHYTHM state and routes
+# through the quantized owner; that owner still invokes the same Stage 15 bridge
+# while preparing the complete candidate.
 for needle in (
     "void GenrePage::applyCurrent(bool forceRegenerate)",
     "forceRegenerate || applyMode != ApplyMode::ProfileOnly",
-    "regenerateWithStrongRhythmMigration(mini_acid_)",
+    "regenerateWithQuantizedCommit(",
     "const bool keyG = key == 'g' || event.scancode == GROOVEPUTER_G;",
     "if (keyG && !event.ctrl && !event.alt && !event.meta)",
     "applyCurrent(true);",
     '"G:GEN P:LEVEL M:MODE"',
 ):
     require(GENRE, needle, f"GENRE G release route changed: {needle}")
+
+require(
+    QUANTIZED,
+    "regenerateWithStrongRhythmMigration(engine);",
+    "quantized GENRE owner no longer prepares through the Stage 15 bridge",
+)
+require(
+    QUANTIZED,
+    "QuantizedGenerationResult::PendingNextBar",
+    "playing GENRE generation lost next-bar publication",
+)
 
 require(
     GENRE_H,
