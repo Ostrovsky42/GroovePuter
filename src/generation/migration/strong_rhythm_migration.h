@@ -55,10 +55,16 @@ enum class SemanticSynthBRole : uint8_t {
 };
 
 struct StrongRhythmMigrationContext {
-  // Existing pattern address is an explicit deterministic variation coordinate.
-  // Stage 5 does not add a persisted backend/seed/ordinal to Scene.
+  // Existing pattern address remains part of deterministic generation identity.
   int16_t patternAddress = 0;
   RealizationLevel level = RealizationLevel::P2Variation;
+
+  // F-07: assigned when a generation request is accepted. It is transient
+  // session/request state, never Scene/project persistence. Ordinal zero is the
+  // compatibility path; non-zero ordinals may vary realization while the
+  // selected rhythm archetype remains attempt-invariant.
+  uint32_t generationAttemptOrdinal = 0;
+
   FeelProfileId feelProfile = FeelProfileId::Straight;
   uint8_t feelAmount = 0;
 
@@ -140,7 +146,6 @@ struct StrongRhythmMigrationResult {
   StepMask melodicFillOnsets = 0;
   bool chordRhythmApplied = false;
   bool melodicRhythmApplied = false;
-  bool tonalMaterializationApplied = false;
 };
 
 StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings);
@@ -159,4 +164,4 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
 
 }  // namespace GroovePuterRhythm
 
-#endif  // GROOVEPUTER_GENERATION_MIGRATION_STRONG_RHYTHM_MIGRATION_H
+#endif
