@@ -69,8 +69,13 @@ def test_synth_track_owns_notes_knobs_more_cycle() -> None:
             "only SynthSequencerPage may own the three-state Tab cycle")
     require("UI::drawStandardFooter" not in source,
             "parent must not redraw the params footer")
-    require('"[TAB]NOTES [U/D]ROW [L/R]CHANGE"' in params,
+    require('"[TAB]N [U/D]ROW [L/R]CHANGE"' in params and
+            '"[TAB]M [L/R]FOCUS [U/D]VAL"' in params,
             "MORE footer must describe the new return-to-NOTES behavior")
+    require('return "NOTES"' not in source and
+            'return "KNOBS"' not in source and
+            'return "MORE"' not in source,
+            "tab toast must reuse compact N/K/M orientation markers")
     require('gfx.textWidth("TAB >")' not in params,
             "summary must not duplicate the footer Tab hint")
     require("constexpr LayoutRect PERFORMANCE_HUD" in geometry,
@@ -88,9 +93,10 @@ def test_synth_track_owns_notes_knobs_more_cycle() -> None:
             "Layout::PERFORMANCE_WAVEFORM.x" in common and
             "Layout::PERFORMANCE_WAVEFORM.w" in common,
             "waveform must remain inside its reserved HUD slot")
-    require("overlayPhase + 7u" in common and
-            "mini_acid.isPlaying() && sourcePeak >= 128" in common,
-            "physical waveform must scroll only for audible PLAY material")
+    require("overlayPhase" not in common and "sourcePeak" not in common,
+            "physical waveform must not force synthetic full-width motion")
+    require("waveBuffer.count - 1" in common and "points - 1" in common,
+            "physical waveform must sample the real post-volume audio buffer")
     require("amplitudeUp" in common and "amplitudeDown" in common,
             "physical waveform must use the full asymmetric HUD height")
     require("overlayHistory" not in common and "kOverlayFadeColors" not in common,

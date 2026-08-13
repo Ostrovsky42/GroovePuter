@@ -70,11 +70,11 @@ void SynthSequencerPage::setSynthTab(SynthTab tab) {
 
 const char* SynthSequencerPage::activeTabName() const {
   switch (synth_tab_) {
-    case SynthTab::Notes: return "NOTES";
-    case SynthTab::Knobs: return "KNOBS";
-    case SynthTab::More: return "MORE";
+    case SynthTab::Notes: return "[N]KM";
+    case SynthTab::Knobs: return "N[K]M";
+    case SynthTab::More: return "NK[M]";
   }
-  return "NOTES";
+  return "[N]KM";
 }
 
 void SynthSequencerPage::drawTabIndicator(IGfx& gfx) const {

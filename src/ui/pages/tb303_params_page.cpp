@@ -804,11 +804,11 @@ void TB303ParamsPage::draw(IGfx& gfx) {
 
   if (!more_tab_) {
     UI::drawStandardFooter(gfx,
-                           "[TAB]MORE [L/R]FOCUS [U/D]VAL",
+                           "[TAB]M [L/R]FOCUS [U/D]VAL",
                            "HOLD:ACCEL [CTRL]FINE");
   } else {
     UI::drawStandardFooter(gfx,
-                           "[TAB]NOTES [U/D]ROW [L/R]CHANGE",
+                           "[TAB]N [U/D]ROW [L/R]CHANGE",
                            "TYPE OSC FLT DST DLY");
   }
 }

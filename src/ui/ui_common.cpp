@@ -26,7 +26,6 @@ namespace UI {
         constexpr int kOverlayMaxPoints = 256;
         int16_t overlayWave[kOverlayMaxPoints];
         int overlayLength = 0;
-        uint16_t overlayPhase = 0;
 
         char gToastMsg[64] = {0};
         unsigned long gToastEndMs = 0;
@@ -359,25 +358,16 @@ namespace UI {
         // 1) Reference center line (matches page)
         gfx.drawLine(x, midY, x + w - 1, midY, COLOR_WAVE);
 
-        // 2) Snapshot one trace. A rolling sample phase keeps sustained tones
-        // visibly moving on the physical 1x display instead of looking like a
-        // trigger-locked oscilloscope. Silence never advances the phase.
+        // 2) Snapshot one real audio trace. Do not add synthetic phase motion:
+        // it dirties the entire wide HUD every UI frame and can starve the
+        // physical display/audio schedule. At volume zero a flat trace is the
+        // correct representation of the post-volume output buffer.
         if (waveBuffer.count > 1 && points > 1) {
-            int32_t sourcePeak = 0;
-            for (size_t idx = 0; idx < waveBuffer.count; ++idx) {
-                int32_t sample = waveBuffer.data[idx];
-                if (sample < 0) sample = -sample;
-                if (sample > sourcePeak) sourcePeak = sample;
-            }
-            if (mini_acid.isPlaying() && sourcePeak >= 128) {
-                overlayPhase = static_cast<uint16_t>(
-                    (overlayPhase + 7u) % waveBuffer.count);
-            }
             overlayLength = points;
             for (int px = 0; px < points; ++px) {
-                const size_t base = static_cast<size_t>(
-                    (static_cast<uint64_t>(px) * waveBuffer.count) / points);
-                const size_t idx = (base + overlayPhase) % waveBuffer.count;
+                const size_t idx = static_cast<size_t>(
+                    (static_cast<uint64_t>(px) * (waveBuffer.count - 1)) /
+                    (points - 1));
                 overlayWave[px] = waveBuffer.data[idx];
             }
         }
