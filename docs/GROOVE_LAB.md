@@ -1,69 +1,52 @@
-# Groove Lab (Mode Page)
+# Groove Lab — Historical Page Note
 
-Source: `src/ui/pages/generation_page.cpp`.
+## Status in 0.9.1
 
-## Purpose
-`GROOVE LAB` is the control surface for:
-- Groove `Mode` (ACID/MINIMAL/BREAKS/DUB/ELECTRO)
-- Groove `Flavor` (5 per mode)
-- Sound macro routing (`applySoundMacros`)
-- Corridor preview after budget rules (`delayMix`, `tapeSpace`)
+The old standalone **GROOVE LAB / Mode Page is retired** and is not an active 0.9.1
+workflow page.
 
-This page is the operational UI for the new `groove_profile` pipeline.
+The current GENERATE workflow is:
 
-## Controls
-- `Tab`: focus rows (`MODE`, `FLAVOR`, `MACROS`, `PREVIEW`)
-- `Up/Down`: move focus
-- `Left/Right`: adjust focused row
-- `Enter`: action on focused row
-- `A`: apply flavor voicing preset to `303A`
-- `B`: apply flavor voicing preset to `303B`
-- `D`: randomize drum pattern using flavor rules
-- `M`: toggle `applySoundMacros`
-- `Space`: preview regenerate and start playback
+```text
+GENRE 1/2 -> FEEL 2/2
+```
 
-## Corridor Line
-Displayed in-page:
-- `N`: notes min..max
-- `A`: accent probability
-- `S`: slide probability
-- `SW`: swing amount
+Do not use this document as a current key map or runtime ownership contract. The old
+Mode/Flavor control surface, `generation_page.cpp` UI and direct `applySoundMacros`
+workflow described by earlier revisions were implementation history and should not be
+revived as a second musical owner.
 
-These come from `GrooveProfile::getCorridors(mode, flavor)` and then pass through `GrooveProfile::applyBudgetRules(...)`.
+## Current ownership
 
-## Budget Line
-Displayed as:
-- `DUCK OFF` or `DUCK ON`
-- current `delayMix` and `tapeSpace`
+0.9.1 uses these release-facing boundaries:
 
-`DUCK ON` means budget rules reduced density/accents to avoid mix overload (notably in DUB profiles).
+- **GENRE** — musical corridor, Variant/recipe, Rhythm identity, Apply policy and
+  explicit full Stage 15 generation;
+- **FEEL** — timing profile, swing, bounded feel amount, velocity variation, repeat
+  cycle and FEEL presets;
+- **P1/P2/P3 request state** — session-scoped realization strength shared by current
+  generation surfaces;
+- **Synth A/B KNOBS/MORE** — synth TYPE, parameters and sound design;
+- **Tonal / rhythm generation stack** — current production generation implementation,
+  without exposing a second Mode Page owner.
 
-## Separation of Responsibility
-- `GrooveProfile` (`src/dsp/groove_profile.*`): source of truth for corridors + budget rules
-- `ModeManager`: applies selected mode/flavor to generator + presets
-- `GenrePage`: selection/apply workflow, not corridor authority
+Legacy `GrooveboxMode`/Flavor data may still exist inside compatibility or generation
+implementation paths. Their presence does not make the retired GROOVE LAB page
+reachable.
 
-## Important: Groove vs Genre
-- `GROOVE LAB` operates on `GrooveboxMode` (5 modes: ACID/MINIMAL/BREAKS/DUB/ELECTRO).
-- `GenrePage` operates on `GenerativeMode` (9 genres: Acid..Chip) + texture layer.
-- They are related but not identical systems.
-- When applying a genre in `GenrePage`, the engine now auto-maps genre to a compatible `GrooveboxMode` so voicing/feel are coherent.
+## Current controls
 
-## Conflict Guard (5-mode vs 9-genre)
-To reduce "mode fights genre" behavior:
-- Genre apply keeps genre as source of truth for generation.
-- Groove mode is auto-realigned to mapped genre mode during apply/state sync.
-- This keeps macro voicing coherent while preserving per-genre rhythm identity.
+Use:
 
-## Recipe Layer (New DSP Core)
-Genre now has a second layer (subgenre recipe) that does not change `GenerativeMode` count:
-- base = `GenerativeMode` preset
-- recipe = parameter/drum override
-- morph = optional blend to target recipe
+- [`../README.md`](../README.md) for the release overview;
+- [`../MANUAL.md`](../MANUAL.md) for the 0.9.1 workflow manual;
+- [`../src/ui/docs/keys.md`](../src/ui/docs/keys.md) for the canonical key map;
+- [`releases/0_9_1_RELEASE.md`](releases/0_9_1_RELEASE.md) for the release freeze.
 
-This is compiled inside `GenreManager` and consumed by DSP as already-compiled params.  
-Bar-safe switching is done with queued recipe commit on step `0` (bar boundary) to avoid mid-bar mask jumps.
+## Historical purpose
 
-## Related Docs
-- `docs/drum_genre_templates.md`
-- `docs/DRUM_AUTOMATION.md`
+Earlier GroovePuter revisions used GROOVE LAB to expose Mode/Flavor corridors and
+sound-macro experiments. Those revisions are useful architecture history, but they do
+not define current UI behavior. New post-0.9.1 work should extend the current
+Genre/Feel/generation-request ownership model instead of restoring the removed page by
+accident.
