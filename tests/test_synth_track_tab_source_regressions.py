@@ -43,18 +43,21 @@ def test_synth_track_owns_notes_knobs_more_cycle() -> None:
             "compact KNOBS indicator must be visible")
     require('"NK[M]"' in source,
             "compact MORE indicator must be visible")
-    require("constexpr int kTabStripX = 72;" in source,
-            "compact synth tabs must occupy the former PTRN label slot")
+    require("constexpr int kNotesTabStripX = 190;" in source,
+            "NOTES tab must appear after the pattern-number row")
+    require("constexpr int kParamsTabStripX = 172;" in source,
+            "params tab must sit near the right edge before its mode label")
     require("constexpr int kTabStripW = 32;" in source,
             "compact synth tabs must stop before the pattern-number row")
-    require("kTabStripX + kTabStripW <= kPatternNumbersX" in source,
-            "synth tabs must prove that they cannot cover pattern numbers")
+    require("kNotesTabStripX > kPatternNumbersEndX" in source and
+            "kNotesTabStripX + kTabStripW <= Layout::SCREEN_W" in source,
+            "NOTES tab must prove it is after pattern numbers and on screen")
     require("notesTab &&" in source and
             "UI::currentStyle != VisualStyle::RETRO_CLASSIC" in source and
             "UI::currentStyle != VisualStyle::AMBER" in source,
             "MINIMAL NOTES must suppress tabs instead of covering pattern numbers")
-    require("const int x = kTabStripX;" in source,
-            "all three synth tabs must share one stable indicator position")
+    require("notesTab ? kNotesTabStripX : kParamsTabStripX" in source,
+            "tabs must use their respective right-side safe slots")
     require('"[NOTES] KNOBS MORE"' not in source and
             '"NOTES [KNOBS] MORE"' not in source and
             '"NOTES KNOBS [MORE]"' not in source,

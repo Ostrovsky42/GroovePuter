@@ -17,15 +17,19 @@
 #include "../ui_theme.h"
 
 namespace {
-// The parent owns one compact tab indicator across NOTES, KNOBS and MORE. On
-// NOTES it replaces the child page's PTRN label; pattern numbers begin at
-// x=106, so the indicator must end before that fixed selector row.
-constexpr int kTabStripX = 72;
+// The parent owns one compact tab indicator across NOTES, KNOBS and MORE.
+// NOTES places it after the eight fixed pattern numbers. Params pages keep it
+// immediately left of their mode label at the right edge.
+constexpr int kNotesTabStripX = 190;
+constexpr int kParamsTabStripX = 172;
 constexpr int kTabStripW = 32;
 constexpr int kTabStripH = 11;
 constexpr int kPatternNumbersX = 106;
-static_assert(kTabStripX + kTabStripW <= kPatternNumbersX,
-              "synth tabs must not cover pattern numbers");
+constexpr int kPatternNumbersEndX = kPatternNumbersX + 8 * 10 - 1;
+static_assert(kNotesTabStripX > kPatternNumbersEndX,
+              "NOTES tab must stay after the pattern numbers");
+static_assert(kNotesTabStripX + kTabStripW <= Layout::SCREEN_W,
+              "NOTES tab must stay on screen");
 
 inline IGfxColor synthTabColor(int voiceIndex) {
   return voiceIndex == 0 ? IGfxColor(0x33C8FF) : IGfxColor(0xFF4FCB);
@@ -90,7 +94,7 @@ void SynthSequencerPage::drawTabIndicator(IGfx& gfx) const {
       UI::currentStyle != VisualStyle::AMBER) {
     return;
   }
-  const int x = kTabStripX;
+  const int x = notesTab ? kNotesTabStripX : kParamsTabStripX;
   const int y = Layout::CONTENT.y;
   gfx.fillRect(x, y, kTabStripW, kTabStripH, IGfxColor::Black());
   gfx.setTextColor(synthTabColor(voice_index_));
