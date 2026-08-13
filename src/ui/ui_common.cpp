@@ -21,19 +21,12 @@ namespace UI {
     WaveformOverlayState waveformOverlay;
     VisualStyle currentStyle = VisualStyle::RETRO_CLASSIC;
 
-    // Internal state for wave history (compact overlay version)
+    // Internal state for the compact global audio waveform.
     namespace {
         constexpr int kOverlayMaxPoints = 256;
-        constexpr int kOverlayHistoryLayers = 2; // Reduced from 4 for performance
-        int16_t overlayHistory[kOverlayHistoryLayers][kOverlayMaxPoints];
-        int overlayLengths[kOverlayHistoryLayers] = {0};
-        
-        constexpr IGfxColor kOverlayFadeColors[] = {
-            IGfxColor(0x808080),  // Brightest fade
-            IGfxColor(0x404040),
-            IGfxColor(0x202020),
-        };
-        constexpr int kFadeColorCount = 3;
+        int16_t overlayWave[kOverlayMaxPoints];
+        int overlayLength = 0;
+        uint16_t overlayPhase = 0;
 
         char gToastMsg[64] = {0};
         unsigned long gToastEndMs = 0;
@@ -359,26 +352,33 @@ namespace UI {
         const auto& waveBuffer = mini_acid.getWaveformBuffer();
         
         const int midY = y + h / 2;
-        const int amplitude = h / 2 - 1;
+        const int amplitudeUp = midY - y;
+        const int amplitudeDown = y + h - 1 - midY;
         int points = w < kOverlayMaxPoints ? w : kOverlayMaxPoints;
 
         // 1) Reference center line (matches page)
         gfx.drawLine(x, midY, x + w - 1, midY, COLOR_WAVE);
 
-        // 2) Update wave history
+        // 2) Snapshot one trace. A rolling sample phase keeps sustained tones
+        // visibly moving on the physical 1x display instead of looking like a
+        // trigger-locked oscilloscope. Silence never advances the phase.
         if (waveBuffer.count > 1 && points > 1) {
-            for (int layer = kOverlayHistoryLayers - 1; layer > 0; --layer) {
-                overlayLengths[layer] = overlayLengths[layer - 1];
-                for (int px = 0; px < overlayLengths[layer]; ++px) {
-                    overlayHistory[layer][px] = overlayHistory[layer - 1][px];
-                }
+            int32_t sourcePeak = 0;
+            for (size_t idx = 0; idx < waveBuffer.count; ++idx) {
+                int32_t sample = waveBuffer.data[idx];
+                if (sample < 0) sample = -sample;
+                if (sample > sourcePeak) sourcePeak = sample;
             }
-
-            overlayLengths[0] = points;
+            if (mini_acid.isPlaying() && sourcePeak >= 128) {
+                overlayPhase = static_cast<uint16_t>(
+                    (overlayPhase + 7u) % waveBuffer.count);
+            }
+            overlayLength = points;
             for (int px = 0; px < points; ++px) {
-                // Shared sampling math with Page
-                size_t idx = static_cast<size_t>((uint64_t)px * (waveBuffer.count - 1) / (points - 1));
-                overlayHistory[0][px] = waveBuffer.data[idx];
+                const size_t base = static_cast<size_t>(
+                    (static_cast<uint64_t>(px) * waveBuffer.count) / points);
+                const size_t idx = (base + overlayPhase) % waveBuffer.count;
+                overlayWave[px] = waveBuffer.data[idx];
             }
         }
 
@@ -398,22 +398,20 @@ namespace UI {
             if (peak < 128) return;
             const int32_t visualPeak = peak < 2048 ? 2048 : peak;
             for (int px = 0; px < drawLen - 1; ++px) {
-                const int y0 = midY - static_cast<int>(
-                    (static_cast<int32_t>(wave[px]) * amplitude) / visualPeak);
-                const int y1 = midY - static_cast<int>(
-                    (static_cast<int32_t>(wave[px + 1]) * amplitude) / visualPeak);
+                const int32_t sample0 = wave[px];
+                const int32_t sample1 = wave[px + 1];
+                const int scale0 = sample0 >= 0 ? amplitudeUp : amplitudeDown;
+                const int scale1 = sample1 >= 0 ? amplitudeUp : amplitudeDown;
+                const int y0 = midY - static_cast<int>((sample0 * scale0) / visualPeak);
+                const int y1 = midY - static_cast<int>((sample1 * scale1) / visualPeak);
                 drawLineColored(gfx, x + px, y0, x + px + 1, y1, color);
             }
         };
 
-        // 4) Draw history (reduced layers)
-        if (kOverlayHistoryLayers > 1) {
-            drawWave(overlayHistory[1], overlayLengths[1], kOverlayFadeColors[0]);
-        }
-
-        // 5) Draw current (synchronized color)
+        // 4) Draw one crisp current trace. The HUD owner clears the previous
+        // frame, so a ghost layer only masks motion on the physical display.
         IGfxColor waveColor = WAVE_COLORS[waveformOverlay.colorIndex % NUM_WAVE_COLORS];
-        drawWave(overlayHistory[0], overlayLengths[0], waveColor);
+        drawWave(overlayWave, overlayLength, waveColor);
     }
 
     void drawMutesOverlay(IGfx& gfx, MiniAcid& mini_acid) {

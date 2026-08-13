@@ -88,6 +88,13 @@ def test_synth_track_owns_notes_knobs_more_cycle() -> None:
             "Layout::PERFORMANCE_WAVEFORM.x" in common and
             "Layout::PERFORMANCE_WAVEFORM.w" in common,
             "waveform must remain inside its reserved HUD slot")
+    require("overlayPhase + 7u" in common and
+            "mini_acid.isPlaying() && sourcePeak >= 128" in common,
+            "physical waveform must scroll only for audible PLAY material")
+    require("amplitudeUp" in common and "amplitudeDown" in common,
+            "physical waveform must use the full asymmetric HUD height")
+    require("overlayHistory" not in common and "kOverlayFadeColors" not in common,
+            "ghost history must not mask motion on the 1x hardware display")
     require("void drawPerformanceHud" in common and
             "gfx.fillRect(Layout::PERFORMANCE_HUD.x" in common and
             "palette.background" in common,
