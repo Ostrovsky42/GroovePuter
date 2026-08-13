@@ -1,123 +1,226 @@
-# GroovePuter Manual (Current `dev_0.9` Firmware)
+# GroovePuter 0.9.1 Manual
 
-This manual describes reachable user-visible behavior. Persisted compatibility fields and legacy page IDs are not proof that a page is available.
+This manual describes the user-visible Cardputer ADV runtime shipped by the 0.9.1
+release line. Persisted compatibility IDs and old stage documents are not proof that a
+page is still reachable.
 
-For the exhaustive key map, use [`src/ui/docs/keys.md`](src/ui/docs/keys.md) and [`docs/keys_sheet.md`](docs/keys_sheet.md).
+For exact key-by-key behavior use [`src/ui/docs/keys.md`](src/ui/docs/keys.md).
+For the release freeze and acceptance boundary use
+[`docs/releases/0_9_1_RELEASE.md`](docs/releases/0_9_1_RELEASE.md).
 
-## Quick keys
+## 1. Workflow map
 
-| Key | Action |
-|---|---|
-| `Space` | Play/stop the active transport |
-| `Arrows` | Move cursor, selection, or list focus |
-| `Enter` | Confirm/apply/toggle |
-| `Tab` | Change section; on PERFORM, open PERFORMANCE TOOLS |
-| `Alt/Fn+1..0` | Direct page jump where mapped |
-| `Alt+[` / `Alt+]` | Previous/next page in the current workflow |
-| `Fn+Tab` | Next workflow |
-| `Fn+Shift+Tab` | Previous workflow |
-| `Alt+P` | Open MIDI Player |
-| `Alt+W` | Toggle waveform overlay |
-| `Alt+\` | Toggle `CARBON ↔ CYBER` |
-| `Esc` | Back/dismiss |
-
-Page-local commands have priority over global fallbacks.
-
-## 1. Generate workflow
-
-The reachable workflow has three pages:
+GroovePuter 0.9.1 has **11 active pages** in five workflows:
 
 ```text
-GENRE 1/3 → FEEL 2/3 → GENERATION 3/3
+PERFORM:  MIDI KEYBOARD -> MIDI PLAYER
+GENERATE: GENRE -> FEEL
+HUB:      OVERVIEW -> SYNTH A -> SYNTH B -> DRUMS
+SONG:     SONG -> PHRASE CORE
+SETTINGS: PROJECT / SETUP
 ```
 
-- `GENRE`: corridor, variant, morph and explicit Apply policy.
-- `FEEL`: swing, timing variation and velocity variation.
-- `GENERATION`: materialize one Song bar in the current empty Song row.
+Global navigation:
 
-The former user-facing TEXTURE page is removed. Legacy persisted page ID 8 resolves to FEEL. Existing Scene sound/texture fields remain compatibility data, but the firmware does not promise a standalone TEXTURE, Tape, Sampler or Generator main page.
+- `Fn+Tab` / `Fn+Shift+Tab`: next / previous workflow;
+- `[` / `]`: previous / next page inside the workflow;
+- `Fn+[` / `Fn+]`: previous / next workflow;
+- `Fn+M`: workspace launcher;
+- `Alt+H`: page-aware on-device help;
+- `Alt+P`: MIDI Player;
+- `Alt+V`: GENRE;
+- `Alt+W`: waveform overlay except Phrase `Alt+W` REPLACE;
+- `Alt+X`: LiveMix;
+- `Alt+M`: Song mode;
+- `Alt+\`: public `CARBON <-> CYBER` theme cycle.
 
-Browsing Genre, variant, morph or a FEEL preset does not commit Scene state. Applying a changed FEEL value/preset or Genre policy marks one logical Scene mutation.
+The active page receives input before global digit/mute fallbacks.
 
-## 2. Sound engines
+### Compatibility page IDs
 
-Synth A and Synth B can select:
+The following old persisted values are decode/navigation aliases only:
 
-- `TB303`
-- `SID`
-- `AY` / YM2149
-- `SH101`
-- `SN76489`
-- `WAVEMORPH`
+```text
+GENERATION -> FEEL
+TEXTURE    -> FEEL
+Synth A SOUND -> SYNTH A
+Synth B SOUND -> SYNTH B
+```
 
-OPL2 is not selectable. Its legacy persisted value remains decode-only and maps to `TB303`.
+There is no active standalone GENERATION, TEXTURE or SOUND workflow page in 0.9.1.
+Synth sound editing lives in each synth's local `NOTES -> KNOBS -> MORE` tabs.
 
-The final 0.9 persistence gate is still open: do not accept a release until TYPE and every visible parameter, including parameter 5 where present, survive Save/reboot/Load independently on Synth A and Synth B.
+## 2. GENRE and FEEL
 
-## 3. Pattern identity and projects
+The release ownership rule is:
+
+```text
+GENRE != FEEL != GENERATION REQUEST != SOUND
+```
+
+### GENRE 1/2
+
+GENRE owns the musical corridor, Variant/recipe, Rhythm identity and Apply policy.
+
+Main controls:
+
+- `G`: explicit full Stage 15 generation;
+- `P`: `P1 CANON -> P2 VAR -> P3 TRANS`;
+- `M`: apply policy (`PROFILE`, `MATERIALIZE`, `MATERIALIZE+BPM`);
+- `Enter`: apply according to the selected policy;
+- arrows/Tab: browse the visible Genre fields.
+
+While stopped, accepted generation commits immediately. While PLAY is active, full
+Genre material is prepared away from the sounding bar and the complete Synth A +
+Synth B + Drums result publishes at the next real `BAR_START`. The transport is not
+stopped/restarted around generation.
+
+Repeated accepted `G` requests use a bounded session reroll attempt while keeping the
+selected Genre/Variant/P-level composition identity.
+
+### FEEL 2/2
+
+FEEL owns timing and velocity only:
+
+- timing profile;
+- swing;
+- bounded FEEL amount;
+- velocity variation;
+- repeat cycle `1/2/4/8`;
+- FEEL presets;
+- the same shared `P` selector.
+
+FEEL does not select notes, harmony, synth TYPE or timbre.
+
+### P1 / P2 / P3
+
+```text
+P1 CANON  clearest identity / least transformation
+P2 VAR    recognizable variation; boot/session default
+P3 TRANS  stronger related transformation where vocabulary allows
+```
+
+P3 is not CHAOS. Drums `Alt+G` is the separate explicit chaos command.
+
+## 3. Synth A and Synth B
+
+Current selectable synth engines are:
+
+- `TB303`;
+- `SID`;
+- `AY`;
+- `SH101`;
+- `SN76489`;
+- `WAVEMORPH`.
+
+Legacy OPL2 scene values are decode-only; OPL2 is not a current selectable engine.
+
+Each synth page owns one `Tab` cycle:
+
+```text
+[N]KM  NOTES
+N[K]M  KNOBS
+NK[M]  MORE
+```
+
+### NOTES
+
+- `Q..I`: pattern slot `1..8` outside NOTE ENTRY;
+- `B`: bank A/B;
+- `Alt+[` / `Alt+]`: pattern page;
+- arrows: step cursor;
+- `N`: NOTE ENTRY on/off;
+- `G`: reroll only the selected Synth A or Synth B lane when NOTE ENTRY is off.
+
+Selected-lane `G` uses the active Genre/Variant/Rhythm/P-level/harmony composition
+identity. During PLAY it publishes at `BAR_START`. Drums and the neighboring synth are
+not replaced. Inside NOTE ENTRY, `G` remains a note key.
+
+### KNOBS / MORE
+
+These tabs own synth TYPE, engine parameters and supported FX/sound editing. They are
+not separate workflow pages.
+
+## 4. Drums
+
+The main drum-grid generation commands are deliberately distinct:
+
+```text
+G             drums-only strong generation at current P-level
+Ctrl+G        randomize focused drum voice
+Alt+G         explicit full-pattern CHAOS
+Ctrl+Alt+G    Stage 12 phrase audition/probe
+P             shared P1/P2/P3 selector
+```
+
+Pattern navigation remains `Q..I`, bank A/B and pattern page selection. Editing owns
+its own cursor, accent and selection commands.
+
+## 5. Pattern identity and project storage
 
 A pattern address is:
 
 ```text
-page + bank + slot
+PAGE 1..16 x BANK A/B x SLOT 1..8
 ```
 
-Examples: `1A1`, `2B7`.
+Example: `2B7`.
 
-Each project owns its pattern-page namespace. Save As copies the source project's pages into the new namespace. New starts with its own pages. Clear removes `.gpp`, `.tmp` and `.bak` only from the active project. The binary pattern format remains version 3.
+Project-scoped pattern storage prevents one project from silently reusing another
+project's pattern-page namespace. Song/Phrase generation uses safe destination checks
+rather than overwriting referenced material without validation.
 
-Use [`docs/tests/PROJECT_PATTERN_STORAGE_CARDPUTER_ADV.md`](docs/tests/PROJECT_PATTERN_STORAGE_CARDPUTER_ADV.md) for the post-merge smoke.
+## 6. Song
 
-## 4. Main editing pages
+Song has two arrangement slots, A and B. Horizontal edit navigation is one bounded
+strip across Synth A -> Synth B -> Drums; crossing the outer track edge moves between
+edit Song A/B.
 
-- `Pattern Edit A/B`: note, accent, slide, probability and selection editing.
-- `Synth Params A/B`: select and edit the current synth engine.
-- `Drum Sequencer`: drum grid and selection editing.
-- `Song`: arrangements A/B, selection, generation, copy/paste, markers, reverse and loop.
-- `Sequencer Hub`: compact pattern overview; HUB MIDI is available from a loaded MIDI Player session.
-- `Groove Lab`: mode/flavor and corridor preview.
-- `Project`: Scene storage, MIDI import and settings.
-- `PERFORM`: live keyboard, targets and PERFORMANCE TOOLS.
-- `MIDI Player`: realtime SMF playback, inspection, mute and routing.
+Important bank/slot controls:
 
-## 5. Song workflow
+- `B`: change visible `PAT:A/B` assignment context only;
+- `Alt+B`: flip stored-reference/selection bank;
+- `Ctrl+B`: choose playback Song slot A/B;
+- `Q..I`: assign an existing slot from the visible pattern context;
+- `G`: generate safe free material and assign the selected cell;
+- double `G`: materialize Synth A + Synth B + Drums for the current row as one logical mutation;
+- `Ctrl+N` / `Ctrl+M`: insert / delete row.
 
-- `Q..I`: assign existing slot `1..8` in the selected bank; content is not regenerated.
-- `Ctrl+1..8`: select Song pattern page `1..8`.
-- `B`: flip bank `A/B` for the selected cell or selection.
-- `Alt+B`: edit Song slot A/B.
-- `Ctrl+B`: play Song slot A/B.
-- `X`: split compare.
-- `Alt+X`: LiveMix on/off.
-- `Bksp` or `Tab`: clear the selected Song cell/area.
-- `Ctrl+C` / `Ctrl+V`: copy/paste selection.
-- `Ctrl+Z`: undo the last supported Song edit.
+Copy-on-write generation must not silently replace a pattern still referenced by other
+Song/Phrase locations.
 
-`G` generates a new pattern for the selected Song cell. It commits the assignment only after a safe destination has been generated successfully.
+## 7. Phrase Core
 
-Double-tap `G` prepares Synth A, Synth B and Drums for the current row and commits the row as one logical mutation after destination validation.
+Phrase Core is the second SONG page. It has four saved slots (`A/B/C/D`) and one
+visible Song destination, `TO:`.
 
-`NO EMPTY PATTERN SLOTS` and `GENERATION FAILED` leave the Song assignment and destination banks unchanged.
+Main controls:
 
-Detailed navigation: [`docs/SONG_PAGE_QUICKSTART.md`](docs/SONG_PAGE_QUICKSTART.md).
+```text
+1..4              select Phrase A/B/C/D
+Up/Down           length 1/2/4/8 bars
+Left/Right        preview saved Phrase bar
+Ctrl+Left/Right   TO +/-1 row
+Ctrl+Up/Down      TO +/-8 rows
+Enter             capture current Song region
+D                 derive parent into selected slot
+G                 generate fresh connected material at TO
+W                 INSERT saved Phrase before TO and shift later rows
+Alt+W             REPLACE Phrase lanes at TO without row shift
+```
 
-## 6. PERFORM and PERFORMANCE TOOLS
+Fresh multi-row Phrase generation is deliberately STOP-only. During PLAY it reports
+`STOP PLAYBACK FOR PHRASE` instead of stopping and restarting transport implicitly.
+Successful `G` or `W` advances `TO:` by the Phrase length.
 
-### Live keyboard
+Phrase storage remains `REFERENCE VIEW / REF MUTABLE`: saved Phrase slots keep bounded
+references to pattern material rather than secretly taking a second copy of note
+ownership.
 
-- `N`: NOTE mode on/off.
-- `ASDFGHJKL`: lower scale-aware manual.
-- `QWERTYUIOP`: upper manual.
-- `\`: cycle target.
-- `,` / `.`: previous/next scale.
-- `-` / `=`: octave down/up.
-- `X`: panic the live-owned target.
+## 8. PERFORM and PERFORMANCE TOOLS
 
-Native drums use MIDI `CH1..CH7`; Synth A uses `CH8`, Synth B `CH9`, and DX `CH10` for SEQTRAK performance output.
-
-### Tools layer
-
-Press `Tab`, then:
+MIDI KEYBOARD provides the live scale-aware QWERTY performance surface. `Tab` opens
+PERFORMANCE TOOLS:
 
 | Key | Tool |
 |---|---|
@@ -129,49 +232,94 @@ Press `Tab`, then:
 | `6` | RATCHET |
 | `7` | EUCLIDEAN |
 | `8` | ROTATE |
+| `9` | receiver `MONO/POLY` |
+| `-` / `+` | performance velocity `10..120` |
 
-Use `Shift+1..8` to cycle adjustable values backward. Events use the normal performance event router and MIDI dispatcher.
+Receiver MONO/POLY is an external-MIDI receiver contract. Internal Synth A/B remain
+sequencer/pattern instruments. SEQTRAK Synth/DX targets use the current receiver-mode
+MIDI control path.
 
-## 7. MIDI Player and HUB MIDI
+## 9. MIDI Player and HUB MIDI
 
-Open with `Alt+P`, choose a MIDI file and press `Enter`.
+Open MIDI Player with `Alt+P`, choose a file and press `Enter`.
 
-- `Space`: Player play/pause.
-- `G`: GroovePuter Pattern/Song transport.
-- `M`: RAW / SEQTRAK-safe routing.
-- `T`: original-file/project tempo mode.
-- `C`: internal/SEQTRAK clock-source control.
-- `Left/Right`: seek one bar; Shift seeks four.
-- `U`: physical-track mute mixer.
-- `I`: channel inspector.
-- `S`: structural inspector.
-- `D`: throughput panel.
-- `H`: Player ↔ HUB MIDI.
+Main Player controls include:
 
-Inside the `U` mixer, arrows select a physical track, `Enter` or `K` toggles it, and `A` unmutes all.
+- `Space`: MIDI transport;
+- `1..9`: physical-track mute;
+- `U`: physical mute mixer;
+- `I`: channel inspector;
+- `S`: structural inspector;
+- `D`: performance/throughput panel;
+- `H`: Player <-> HUB MIDI;
+- `M`: RAW / SEQTRAK routing mode;
+- `C`: clock source;
+- `T`: tempo mode;
+- `R`: restart file;
+- `X`: SMF-owned note cleanup/panic.
 
-Direct `1..9` mute shortcuts are not documented as reliable for 0.9 until Cardputer ADV acceptance confirms them. Use the `U` mixer.
+### HUB MIDI
 
-RAW preserves source channels. SEQTRAK-safe routing uses `CH1..CH7` for drums, `CH8` for Synth 1, `CH9` for Synth 2 and `CH10` for DX.
+With a loaded MIDI session:
 
-## 8. Persistence, dirty state and recovery
+- `Up/Down`: select projected physical layer;
+- plain `Left/Right`: change route immediately (`AUTO`, `CH1..CH10`), including during PLAY;
+- `Fn+Left/Right`: physical-track level;
+- `Enter` or `1..9`: mute/unmute;
+- `S`: solo;
+- `A`: all MIDI tracks on;
+- `H`: return to Player.
 
-UI session state and Scene state are separate.
+There is no pause-first or Enter-to-commit route-edit mode. Route revisions reject
+stale queued events from the previous target and scoped cleanup NoteOff prevents stuck
+notes without a global panic.
 
-A successful persistent Scene mutation adds the dirty `*`. FEEL and Genre preview/browse actions do not. Explicit Save must clear dirty only after the main Scene and recovery cleanup succeed. Successful Load must mark the loaded Scene clean; failed Save/Load must leave the previous revision state unchanged. Recovery autosave must not masquerade as manual Save.
+RAW routing preserves source channels and does not accept explicit SEQTRAK destination
+overrides. SEQTRAK-safe mapping uses drums on `CH1..CH7`, Synth 1 on `CH8`, Synth 2 on
+`CH9`, and DX on `CH10`.
 
-Synth TYPE/parameter migration and load ownership remain release blockers documented in [`docs/releases/PRE_0_9_RELEASE_GATE.md`](docs/releases/PRE_0_9_RELEASE_GATE.md).
+## 10. Persistence and recovery
 
-## 9. Safety and troubleshooting
+0.9.1 release acceptance includes:
 
-- Monitor `[PERF]`; `underruns` must not continuously increase.
-- A failed generation or Apply transaction must not leave partial data or increment revision.
-- After Stop, page changes, mutes, route changes and Panic, verify no internal or external note remains stuck.
-- A TYPE or parameter-5 mismatch after Load is a release blocker.
-- The fixed-DRAM CI gate is a regression budget, not hardware runtime acceptance.
+- Scene Save/Load;
+- project-scoped pattern storage;
+- independent Synth A/B TYPE and visible parameter persistence;
+- safe legacy decode/defaults;
+- Song references;
+- Phrase Core state;
+- supported UI-session state.
 
-## 10. Release documents
+A loaded synth patch remains the owner of its saved TYPE/parameters; loading a project
+must not silently replace it with hidden genre timbre defaults.
 
-- [`docs/releases/PRE_0_9_RELEASE_GATE.md`](docs/releases/PRE_0_9_RELEASE_GATE.md): open blockers and automated gate.
-- [`docs/releases/0_9_FINAL_ACCEPTANCE.md`](docs/releases/0_9_FINAL_ACCEPTANCE.md): exact final hardware record.
-- [`docs/reviews/SYNTH_ENGINE_AUDIT_0_9_CURRENT_STATUS.md`](docs/reviews/SYNTH_ENGINE_AUDIT_0_9_CURRENT_STATUS.md): synth finding disposition.
+The older `PRE_0_9_RELEASE_GATE.md` and `0_9_FINAL_ACCEPTANCE.md` documents are retained
+as historical 0.9 evidence. They are **not** the current 0.9.1 release gate.
+
+## 11. Waveform HUD
+
+The bottom performance HUD has one compositing owner. The optional waveform is cleared
+and redrawn without accumulating stale pixels, runs beneath mute/activity digits, and
+uses bounded visual auto-gain. MIDI Player uses the taller progress waveform from the
+final 0.9.1 HUD fix.
+
+## 12. Build and flash
+
+```bash
+bash scripts/install_arduino_deps.sh
+bash tests/run_host_tests.sh
+bash scripts/build.sh --warnings all
+bash scripts/check_cardputer_dram_budget.sh \
+  build/cardputer-adv-current/GroovePuter.ino.elf
+bash scripts/build_seqtrak_midi_only.sh --warnings all
+bash scripts/upload.sh /dev/ttyACM0
+arduino-cli monitor -p /dev/ttyACM0 -c baudrate=115200
+```
+
+## 13. Release acceptance
+
+The normative checklist and exact frozen runtime SHA are in
+[`docs/releases/0_9_1_RELEASE.md`](docs/releases/0_9_1_RELEASE.md).
+
+A new feature, architecture cleanup or research admission after that boundary belongs
+to the next release line unless it fixes a concrete 0.9.1 correctness defect.
