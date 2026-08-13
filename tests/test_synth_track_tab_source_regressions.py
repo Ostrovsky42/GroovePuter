@@ -29,12 +29,30 @@ def test_synth_track_owns_notes_knobs_more_cycle() -> None:
             "duplicate technical synth settings page must be removed")
     require("(static_cast<int>(synth_tab_) + 1) % 3" in source,
             "plain Tab must cycle exactly three local synth states")
-    require('"[NOTES] KNOBS MORE"' in source,
-            "NOTES indicator must be visible")
-    require('"NOTES [KNOBS] MORE"' in source,
-            "KNOBS indicator must be visible")
-    require('"NOTES KNOBS [MORE]"' in source,
-            "MORE indicator must be visible")
+    require('"[N]KM"' in source,
+            "compact NOTES indicator must be visible")
+    require('"N[K]M"' in source,
+            "compact KNOBS indicator must be visible")
+    require('"NK[M]"' in source,
+            "compact MORE indicator must be visible")
+    require("constexpr int kTabStripX = 72;" in source,
+            "compact synth tabs must occupy the former PTRN label slot")
+    require("constexpr int kParamsTabStripX = 42;" in source,
+            "KNOBS/MORE indicator must stay left of the child MAIN/MORE switcher")
+    require("constexpr int kTabStripW = 32;" in source,
+            "compact synth tabs must stop before the pattern-number row")
+    require("kTabStripX + kTabStripW <= kPatternNumbersX" in source,
+            "synth tabs must prove that they cannot cover pattern numbers")
+    require("notesTab &&" in source and
+            "UI::currentStyle != VisualStyle::RETRO_CLASSIC" in source and
+            "UI::currentStyle != VisualStyle::AMBER" in source,
+            "MINIMAL NOTES must suppress tabs instead of covering pattern numbers")
+    require("synth_tab_ == SynthTab::Notes ? kTabStripX : kParamsTabStripX" in source,
+            "tab x-position must follow the active child layout")
+    require('"[NOTES] KNOBS MORE"' not in source and
+            '"NOTES [KNOBS] MORE"' not in source and
+            '"NOTES KNOBS [MORE]"' not in source,
+            "wide synth tab labels must not return over pattern controls")
     require('"[TAB]NOTES [U/D]ROW [L/R]CHANGE"' in source,
             "MORE footer must describe the new return-to-NOTES behavior")
 

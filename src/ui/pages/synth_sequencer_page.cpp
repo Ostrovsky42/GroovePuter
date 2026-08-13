@@ -16,9 +16,16 @@
 #include "../ui_input.h"
 
 namespace {
-constexpr int kTabStripY = Layout::CONTENT.y + 1;
-constexpr int kTabStripH = 14;
-constexpr int kTabStripW = 126;
+// The compact strip replaces only the child page's PTRN label. Pattern numbers
+// begin at x=106 in the retro/amber editor, so the tab affordance must end
+// before that fixed selector row instead of being centered over it.
+constexpr int kTabStripX = 72;
+constexpr int kParamsTabStripX = 42;
+constexpr int kTabStripW = 32;
+constexpr int kTabStripH = 11;
+constexpr int kPatternNumbersX = 106;
+static_assert(kTabStripX + kTabStripW <= kPatternNumbersX,
+              "synth tabs must not cover pattern numbers");
 
 inline IGfxColor synthTabColor(int voiceIndex) {
   return voiceIndex == 0 ? IGfxColor(0x33C8FF) : IGfxColor(0xFF4FCB);
@@ -67,18 +74,28 @@ const char* SynthSequencerPage::activeTabName() const {
 }
 
 void SynthSequencerPage::drawTabIndicator(IGfx& gfx) const {
-  const char* label = "[NOTES] KNOBS MORE";
+  const char* label = "[N]KM";
   switch (synth_tab_) {
-    case SynthTab::Notes: label = "[NOTES] KNOBS MORE"; break;
-    case SynthTab::Knobs: label = "NOTES [KNOBS] MORE"; break;
-    case SynthTab::More: label = "NOTES KNOBS [MORE]"; break;
+    case SynthTab::Notes: label = "[N]KM"; break;
+    case SynthTab::Knobs: label = "N[K]M"; break;
+    case SynthTab::More: label = "NK[M]"; break;
   }
 
-  const int x = (Layout::SCREEN_W - kTabStripW) / 2;
-  gfx.fillRect(x, kTabStripY, kTabStripW, kTabStripH, IGfxColor::Black());
+  const bool notesTab = synth_tab_ == SynthTab::Notes;
+  // MINIMAL has no free inline label slot: its pattern-number cells span the
+  // row below status chrome. Suppress the parent strip there rather than hide
+  // another pattern address. Full tab names remain in toast/help.
+  if (notesTab &&
+      UI::currentStyle != VisualStyle::RETRO_CLASSIC &&
+      UI::currentStyle != VisualStyle::AMBER) {
+    return;
+  }
+  const int x = synth_tab_ == SynthTab::Notes ? kTabStripX : kParamsTabStripX;
+  const int y = Layout::CONTENT.y;
+  gfx.fillRect(x, y, kTabStripW, kTabStripH, IGfxColor::Black());
   gfx.setTextColor(synthTabColor(voice_index_));
   gfx.drawText(x + (kTabStripW - gfx.textWidth(label)) / 2,
-               kTabStripY + 2,
+               y + 1,
                label);
 }
 
