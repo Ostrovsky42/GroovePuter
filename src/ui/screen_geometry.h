@@ -20,10 +20,11 @@ namespace Layout {
     constexpr int PERFORMANCE_HUD_H = 10;
     constexpr LayoutRect PERFORMANCE_HUD = {
         0, FOOTER.y - PERFORMANCE_HUD_H, SCREEN_W, PERFORMANCE_HUD_H};
-    // FEEL text owns the left side and mute digits own the right side. The
-    // optional waveform is confined to the gap between them.
+    // FEEL text owns the left side. The waveform starts after it, sits four
+    // pixels lower, and continues beneath the mute/activity digits as their
+    // animated background; the digits are composited last by drawPerformanceHud.
     constexpr LayoutRect PERFORMANCE_WAVEFORM = {
-        84, PERFORMANCE_HUD.y, 50, PERFORMANCE_HUD.h};
+        84, PERFORMANCE_HUD.y + 4, SCREEN_W - 88, PERFORMANCE_HUD.h - 4};
 
     // Content padding and typography
     constexpr int CONTENT_PAD_X = 4;

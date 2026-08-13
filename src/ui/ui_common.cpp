@@ -1,6 +1,7 @@
 #include "ui_common.h"
 #include "ui_utils.h"
 #include "ui_widgets.h"
+#include "ui_theme.h"
 #include "ui_active_page_title.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/smf_player_service.h"
@@ -20,19 +21,11 @@ namespace UI {
     WaveformOverlayState waveformOverlay;
     VisualStyle currentStyle = VisualStyle::RETRO_CLASSIC;
 
-    // Internal state for wave history (compact overlay version)
+    // Internal state for the compact global audio waveform.
     namespace {
         constexpr int kOverlayMaxPoints = 256;
-        constexpr int kOverlayHistoryLayers = 2; // Reduced from 4 for performance
-        int16_t overlayHistory[kOverlayHistoryLayers][kOverlayMaxPoints];
-        int overlayLengths[kOverlayHistoryLayers] = {0};
-        
-        constexpr IGfxColor kOverlayFadeColors[] = {
-            IGfxColor(0x808080),  // Brightest fade
-            IGfxColor(0x404040),
-            IGfxColor(0x202020),
-        };
-        constexpr int kFadeColorCount = 3;
+        int16_t overlayWave[kOverlayMaxPoints];
+        int overlayLength = 0;
 
         char gToastMsg[64] = {0};
         unsigned long gToastEndMs = 0;
@@ -358,26 +351,24 @@ namespace UI {
         const auto& waveBuffer = mini_acid.getWaveformBuffer();
         
         const int midY = y + h / 2;
-        const int amplitude = h / 2 - 2; 
+        const int amplitudeUp = midY - y;
+        const int amplitudeDown = y + h - 1 - midY;
         int points = w < kOverlayMaxPoints ? w : kOverlayMaxPoints;
 
         // 1) Reference center line (matches page)
         gfx.drawLine(x, midY, x + w - 1, midY, COLOR_WAVE);
 
-        // 2) Update wave history
+        // 2) Snapshot one real audio trace. Do not add synthetic phase motion:
+        // it dirties the entire wide HUD every UI frame and can starve the
+        // physical display/audio schedule. At volume zero a flat trace is the
+        // correct representation of the post-volume output buffer.
         if (waveBuffer.count > 1 && points > 1) {
-            for (int layer = kOverlayHistoryLayers - 1; layer > 0; --layer) {
-                overlayLengths[layer] = overlayLengths[layer - 1];
-                for (int px = 0; px < overlayLengths[layer]; ++px) {
-                    overlayHistory[layer][px] = overlayHistory[layer - 1][px];
-                }
-            }
-
-            overlayLengths[0] = points;
+            overlayLength = points;
             for (int px = 0; px < points; ++px) {
-                // Shared sampling math with Page
-                size_t idx = static_cast<size_t>((uint64_t)px * (waveBuffer.count - 1) / (points - 1));
-                overlayHistory[0][px] = waveBuffer.data[idx];
+                const size_t idx = static_cast<size_t>(
+                    (static_cast<uint64_t>(px) * (waveBuffer.count - 1)) /
+                    (points - 1));
+                overlayWave[px] = waveBuffer.data[idx];
             }
         }
 
@@ -385,27 +376,32 @@ namespace UI {
         auto drawWave = [&](const int16_t* wave, int len, IGfxColor color) {
             if (len < 2) return;
             int drawLen = len < w ? len : w;
+            int32_t peak = 0;
+            for (int px = 0; px < drawLen; ++px) {
+                int32_t sample = wave[px];
+                if (sample < 0) sample = -sample;
+                if (sample > peak) peak = sample;
+            }
+            // A small noise gate keeps silence flat. Above it, bounded visual
+            // auto-gain lets quiet but intentional material use the compact
+            // four-pixel half-height without changing the audio signal.
+            if (peak < 128) return;
+            const int32_t visualPeak = peak < 2048 ? 2048 : peak;
             for (int px = 0; px < drawLen - 1; ++px) {
-                // High visual gain (3.5x) for compact overlay to ensure "dance"
-                float s0 = (wave[px] * 3.5f) / 32768.0f;
-                float s1 = (wave[px + 1] * 3.5f) / 32768.0f;
-                if (s0 > 1.0f) s0 = 1.0f; else if (s0 < -1.0f) s0 = -1.0f;
-                if (s1 > 1.0f) s1 = 1.0f; else if (s1 < -1.0f) s1 = -1.0f;
-                
-                int y0 = midY - static_cast<int>(s0 * amplitude);
-                int y1 = midY - static_cast<int>(s1 * amplitude);
+                const int32_t sample0 = wave[px];
+                const int32_t sample1 = wave[px + 1];
+                const int scale0 = sample0 >= 0 ? amplitudeUp : amplitudeDown;
+                const int scale1 = sample1 >= 0 ? amplitudeUp : amplitudeDown;
+                const int y0 = midY - static_cast<int>((sample0 * scale0) / visualPeak);
+                const int y1 = midY - static_cast<int>((sample1 * scale1) / visualPeak);
                 drawLineColored(gfx, x + px, y0, x + px + 1, y1, color);
             }
         };
 
-        // 4) Draw history (reduced layers)
-        if (kOverlayHistoryLayers > 1) {
-            drawWave(overlayHistory[1], overlayLengths[1], kOverlayFadeColors[0]);
-        }
-
-        // 5) Draw current (synchronized color)
+        // 4) Draw one crisp current trace. The HUD owner clears the previous
+        // frame, so a ghost layer only masks motion on the physical display.
         IGfxColor waveColor = WAVE_COLORS[waveformOverlay.colorIndex % NUM_WAVE_COLORS];
-        drawWave(overlayHistory[0], overlayLengths[0], waveColor);
+        drawWave(overlayWave, overlayLength, waveColor);
     }
 
     void drawMutesOverlay(IGfx& gfx, MiniAcid& mini_acid) {
@@ -502,7 +498,7 @@ namespace UI {
             // Compact flash block on musical trigger, keeps palette consistent per theme.
             if (hitNow && blink) {
                 IGfxColor flashBg = muted ? kMuted : kActive;
-                gfx.fillRect(cx - 1, y - 1, itemW, 9, flashBg);
+                gfx.fillRect(cx - 1, y, itemW, 8, flashBg);
                 color = COLOR_BLACK;
             }
             
@@ -513,9 +509,9 @@ namespace UI {
             gfx.setTextColor(color);
             gfx.drawText(cx, y, num);
             
-            // Small timing tick above active lane.
+            // Small timing tick stays inside the owned HUD strip.
             if (active && !muted && blink) {
-                gfx.fillRect(cx + 3, y - 4, 2, 2, hitNow ? kActive : kIdle);
+                gfx.fillRect(cx + 3, y + 8, 2, 2, hitNow ? kActive : kIdle);
             }
             
         }
@@ -555,6 +551,20 @@ namespace UI {
         }
 
         gfx.drawText(x, y, buf);
+    }
+
+    void drawPerformanceHud(IGfx& gfx, MiniAcid& mini_acid, bool feelPulse) {
+        const ThemePalette palette = themePalette();
+        gfx.fillRect(Layout::PERFORMANCE_HUD.x,
+                     Layout::PERFORMANCE_HUD.y,
+                     Layout::PERFORMANCE_HUD.w,
+                     Layout::PERFORMANCE_HUD.h,
+                     palette.background);
+        drawWaveformOverlay(gfx, mini_acid);
+        drawFeelOverlay(gfx, mini_acid, feelPulse);
+        // Mutes are intentionally last so their digits remain the topmost,
+        // readable layer even while the waveform is moving.
+        drawMutesOverlay(gfx, mini_acid);
     }
 
     void drawFeelHeaderHud(IGfx& gfx, MiniAcid& mini_acid, int x, int y) {

@@ -82,6 +82,13 @@ namespace UI {
     void drawFeelOverlay(IGfx& gfx, MiniAcid& mini_acid, bool pulse);
 
     /**
+     * Owns the complete bottom performance strip for one frame. Clears stale
+     * pixels first, then draws waveform, feel and mute activity in a stable
+     * back-to-front order.
+     */
+    void drawPerformanceHud(IGfx& gfx, MiniAcid& mini_acid, bool feelPulse);
+
+    /**
      * Global toast (single line).
      */
     void showToast(const char* msg, int durationMs = 1500);

@@ -223,7 +223,7 @@ def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
             "case GROOVEPUTER_RIGHT:" in more_navigation and
             "adjustFocusedElement(1, fine);" in more_navigation,
             "MORE must use Up/Down for rows and Left/Right for values")
-    require('"[TAB]NOTES [U/D]ROW [L/R]CHANGE"' in page,
+    require('"[TAB]N [U/D]ROW [L/R]CHANGE"' in page,
             "the MORE footer must advertise the physical arrow mapping")
 
     require("Both effects are per-voice post-engine stages" in page and

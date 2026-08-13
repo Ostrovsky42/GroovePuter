@@ -686,8 +686,8 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
                                   total,
                                   stateColor);
     drawMidiWaveOverlay(gfx, state,
-                        Rect(Layout::COL_1 + 2, LayoutManager::lineY(3) + 3,
-                             Layout::CONTENT.w - 16, 5),
+                        Rect(Layout::COL_1 + 2, LayoutManager::lineY(3) + 1,
+                             Layout::CONTENT.w - 16, 9),
                         MusicVisuals::secondaryForStyle());
 
     const unsigned percent = static_cast<unsigned>((static_cast<uint64_t>(current) * 100u) / total);
@@ -848,12 +848,14 @@ void SmfPlayerPage::drawMidiWaveOverlay(
     } else if (state.state == SmfPlayerState::Playing &&
                visual.pulseCounter != lastMidiVisualPulse_) {
         lastMidiVisualPulse_ = visual.pulseCounter;
-        midiWaveEnvelope_ = std::max<uint8_t>(24, visual.velocity);
+        // Fast attack: even a quiet accepted NoteOn must visibly move the
+        // progress waveform. Velocity still controls the remaining range.
+        midiWaveEnvelope_ = std::max<uint8_t>(64, visual.velocity);
         midiWavePhase_ = static_cast<uint16_t>(
             midiWavePhase_ + visual.note * 3u + visual.channel * 11u + 7u);
     } else if (midiWaveEnvelope_ > 0) {
-        midiWaveEnvelope_ = midiWaveEnvelope_ > 7u
-            ? static_cast<uint8_t>(midiWaveEnvelope_ - 7u)
+        midiWaveEnvelope_ = midiWaveEnvelope_ > 5u
+            ? static_cast<uint8_t>(midiWaveEnvelope_ - 5u)
             : 0u;
     }
 
@@ -861,8 +863,10 @@ void SmfPlayerPage::drawMidiWaveOverlay(
     gfx.drawLine(region.x, midY, region.x + region.w - 1, midY, COLOR_LABEL);
     if (midiWaveEnvelope_ == 0 || region.w < 3 || region.h < 3) return;
 
-    const int amplitude = std::max(
-        1, ((region.h / 2) * static_cast<int>(midiWaveEnvelope_)) / 127);
+    const int maxAmplitude = std::max(1, region.h / 2);
+    const int amplitude = std::min(
+        maxAmplitude,
+        1 + ((maxAmplitude - 1) * static_cast<int>(midiWaveEnvelope_) + 63) / 127);
     const int cycles = 2 + static_cast<int>(visual.note % 7u);
     int previousX = region.x;
     int previousY = midY;

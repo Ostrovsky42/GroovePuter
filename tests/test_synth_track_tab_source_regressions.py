@@ -21,6 +21,7 @@ def test_synth_track_owns_notes_knobs_more_cycle() -> None:
     )
     geometry = (ROOT / "src/ui/screen_geometry.h").read_text(encoding="utf-8")
     common = (ROOT / "src/ui/ui_common.cpp").read_text(encoding="utf-8")
+    display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
     header = (ROOT / "src/ui/pages/synth_sequencer_page.h").read_text(
         encoding="utf-8"
     )
@@ -68,14 +69,23 @@ def test_synth_track_owns_notes_knobs_more_cycle() -> None:
             "only SynthSequencerPage may own the three-state Tab cycle")
     require("UI::drawStandardFooter" not in source,
             "parent must not redraw the params footer")
-    require('"[TAB]NOTES [U/D]ROW [L/R]CHANGE"' in params,
+    require('"[TAB]N [U/D]ROW [L/R]CHANGE"' in params and
+            '"[TAB]M [L/R]FOCUS [U/D]VAL"' in params,
             "MORE footer must describe the new return-to-NOTES behavior")
+    require('return "NOTES"' not in source and
+            'return "KNOBS"' not in source and
+            'return "MORE"' not in source,
+            "tab toast must reuse compact N/K/M orientation markers")
     require('gfx.textWidth("TAB >")' not in params,
             "summary must not duplicate the footer Tab hint")
     require("constexpr LayoutRect PERFORMANCE_HUD" in geometry,
             "global performance overlays need a reserved layout strip")
     require("constexpr LayoutRect PERFORMANCE_WAVEFORM" in geometry,
             "waveform needs a non-overlapping slot inside the HUD strip")
+    require("PERFORMANCE_HUD.y + 4" in geometry and
+            "SCREEN_W - 88" in geometry and
+            "PERFORMANCE_HUD.h - 4" in geometry,
+            "waveform must sit lower and continue beneath the mute indicators")
     require(common.count("const int y = Layout::PERFORMANCE_HUD.y;") == 2,
             "Feel and Mutes overlays must share the reserved strip")
     require("Layout::PERFORMANCE_WAVEFORM.h" in common and
@@ -83,9 +93,32 @@ def test_synth_track_owns_notes_knobs_more_cycle() -> None:
             "Layout::PERFORMANCE_WAVEFORM.x" in common and
             "Layout::PERFORMANCE_WAVEFORM.w" in common,
             "waveform must remain inside its reserved HUD slot")
-    require("gfx.fillRect(Layout::PERFORMANCE_HUD.x" in source and
-            "palette.background" in source,
-            "synth pages must clear their reserved HUD strip before overlays")
+    require("overlayPhase" not in common and "sourcePeak" not in common,
+            "physical waveform must not force synthetic full-width motion")
+    require("waveBuffer.count - 1" in common and "points - 1" in common,
+            "physical waveform must sample the real post-volume audio buffer")
+    require("amplitudeUp" in common and "amplitudeDown" in common,
+            "physical waveform must use the full asymmetric HUD height")
+    require("overlayHistory" not in common and "kOverlayFadeColors" not in common,
+            "ghost history must not mask motion on the 1x hardware display")
+    require("void drawPerformanceHud" in common and
+            "gfx.fillRect(Layout::PERFORMANCE_HUD.x" in common and
+            "palette.background" in common,
+            "one global owner must clear the performance HUD every frame")
+    require("UI::drawPerformanceHud" in display and
+            "UI::drawWaveformOverlay" not in display and
+            "UI::drawFeelOverlay" not in display and
+            "UI::drawMutesOverlay" not in display,
+            "display must compose the performance HUD through its single owner")
+    hud_start = common.index("void drawPerformanceHud")
+    hud = common[hud_start:hud_start + 1100]
+    require(hud.index("drawWaveformOverlay") < hud.index("drawFeelOverlay") <
+            hud.index("drawMutesOverlay"),
+            "mute digits must be the topmost performance HUD layer")
+    require("gfx.fillRect(Layout::PERFORMANCE_HUD.x" not in source,
+            "synth page must not retain a page-local HUD clearing workaround")
+    require("y + 8" in common and "y - 4" not in common,
+            "mute timing ticks must stay inside the owned HUD strip")
     require("synth summary must stay above the performance HUD" in params and
             "synth MORE rows must stay above the performance HUD" in params,
             "params layout must prove that it cannot enter the HUD strip")
@@ -118,10 +151,11 @@ def test_hub_hides_legacy_sound_pages_but_keeps_ids_compatible() -> None:
 
     ownership_start = workflow.index("inline bool allowsPerformanceKeyboard")
     ownership = workflow[ownership_start:]
-    require("if (page == kSynthAParameters) return true;" in ownership,
-            "legacy Synth A SOUND input ownership must remain compatible")
     require("return normalizeLegacyPage(page) == kPerform;" in ownership,
-            "normal SYNTH A/B editor pages must not acquire performance-keyboard ownership")
+            "only PERFORM may own the global performance-keyboard route")
+    require("kSynthAParameters" not in ownership and
+            "kSynthBParameters" not in ownership,
+            "retired SOUND ids must normalize to synth editors without stealing letter keys")
     require("page == kSynthA || page == kSynthB" not in ownership,
             "track collapse must not steal letter keys from the note editor")
 
