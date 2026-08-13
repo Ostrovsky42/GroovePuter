@@ -16,6 +16,7 @@ DRUM = (ROOT / "src/ui/pages/drum_sequencer_page.cpp").read_text(encoding="utf-8
 DRUM_LEGACY = (
     ROOT / "src/ui/pages/drum_sequencer_page_legacy.h"
 ).read_text(encoding="utf-8")
+PATTERN = (ROOT / "src/ui/pages/pattern_edit_page.cpp").read_text(encoding="utf-8")
 
 
 def require(text: str, needle: str, message: str) -> None:
@@ -29,6 +30,10 @@ def function_body(text: str, signature: str, next_signature: str) -> str:
     if next_signature in body:
         body = body.split(next_signature, 1)[0]
     return body
+
+
+def without_line_comments(text: str) -> str:
+    return "\n".join(line.split("//", 1)[0] for line in text.splitlines())
 
 
 # P-level has one runtime/session owner. P2 is the compatibility default so
@@ -48,23 +53,57 @@ for needle in (
 ):
     require(STATE, needle, f"P-level request owner changed: {needle}")
 
-# P is a realtime input action. Synchronous flash/NVS writes must not enter this
-# path; any future persistence belongs in a deferred session service.
-for forbidden in ("Preferences", "putUChar", "putBytes", "gp-generation"):
+# F-07 shares the same runtime/session owner but not the same axis. The table is
+# a bounded, allocation-free history cache: capacity may forget an old tuple but
+# must never reject a newly accepted generation request.
+for needle in (
+    "GenerationAttemptStatus",
+    "GenerationAttemptAllocation",
+    "GenerationAttemptStatus::InvalidTuple",
+    "kGenerationAttemptCapacity = 64",
+    "generation attempt table memory contract",
+    "allocateGenerationAttempt(",
+    "resetGenerationAttemptState()",
+    "attemptVictimStorage()",
+    "GenerationAttemptEntry entries[kGenerationAttemptCapacity]{}",
+    "return {GenerationAttemptStatus::Ok, 0};",
+):
+    require(STATE, needle, f"reroll request owner changed: {needle}")
+for forbidden in (
+    "GenerationAttemptStatus::TableFull",
+    "GenerationAttemptStatus::OrdinalExhausted",
+):
     if forbidden in STATE:
-        raise AssertionError(f"P-level selector performs/depend on NVS I/O: {forbidden}")
+        raise AssertionError(f"reroll history capacity became a generation failure again: {forbidden}")
+state_code = without_line_comments(STATE)
+for forbidden in (
+    "Preferences",
+    "putUChar",
+    "putBytes",
+    "gp-generation",
+    "std::vector",
+    "std::map",
+    "unordered_map",
+    "new ",
+    "malloc(",
+):
+    if forbidden in state_code:
+        raise AssertionError(f"generation request state gained persistence/heap: {forbidden}")
 
-# The production bridge must consume the one shared request level. There must be
-# no separate live-G or audition P-level owner.
+# The generic live bridge consumes the one shared P-level and allocates an
+# attempt only for callers that did not already accept it in the quantized owner.
 for needle in (
     "context.level = GroovePuterState::currentGenerationLevel();",
+    "assignGenerationAttempt(scene.genre, context",
+    "GroovePuterState::allocateGenerationAttempt(",
+    "context.generationAttemptOrdinal = allocation.ordinal;",
     "result.level = baseContext.level;",
     "request.level = baseContext.level;",
     "context.level,",
     '"[PHRASE-PROBE] status=%s level=%s',
     "GroovePuterState::generationLevelCode(result.level)",
 ):
-    require(BRIDGE, needle, f"P-level live bridge contract changed: {needle}")
+    require(BRIDGE, needle, f"P-level/reroll live bridge contract changed: {needle}")
 
 # The fixed P2/P3 values in runSubtractiveRuntimeProbe are deliberate capability
 # benchmarks. They are not the current production request level and must not be
@@ -81,8 +120,7 @@ require(
 )
 
 # P is reachable from both GENERATE pages and the main DRUMS grid, always through
-# the same session owner. Cardputer may deliver a printable key or only scancode,
-# so every public P-level surface must accept GROOVEPUTER_P as well.
+# the same session owner. Cardputer may deliver a printable key or only scancode.
 for name, source in (("GENRE", GENRE), ("FEEL", FEEL), ("DRUMS", DRUM)):
     require(
         source,
@@ -102,9 +140,10 @@ for name, source in (("GENRE", GENRE), ("FEEL", FEEL), ("DRUMS", DRUM)):
     if "CONTINUE: Ctrl+Alt+G" in source:
         raise AssertionError(f"{name} still treats plain P as continuation")
 
-# Existing generation ownership remains separate: normal generation is still G,
-# phrase continuation/audition is Ctrl+Alt+G, and CHAOS stays outside P1/P2/P3.
+# Existing generation ownership remains separate: normal generation is G,
+# phrase audition is Ctrl+Alt+G, and CHAOS stays outside P1/P2/P3/reroll.
 require(GENRE, "applyCurrent(true);", "GENRE G production route disappeared")
+require(GENRE, '"REROLL", "REPEAT G"', "GENRE reroll affordance disappeared")
 require(
     DRUM,
     "regenerateDrumsWithStrongRhythmMigration",
@@ -125,7 +164,7 @@ if "cycleGenerationLevel" in DRUM_LEGACY:
 
 # Full GENRE materialization is quantized while transport is running. The page
 # must neither stop/restart transport nor hold AudioMutationGate while the heavy
-# candidate is prepared. AudioTask must continue rendering the current bar.
+# candidate is prepared. AudioTask continues rendering the current bar.
 for needle in (
     "regenerateWithQuantizedCommit(",
     "if (doRegenerate && mini_acid_.isPlaying())",
@@ -142,10 +181,12 @@ playing_branch = GENRE.split(
 if "withAudioGuard" in playing_branch:
     raise AssertionError("PLAY generation still pauses AudioTask through AudioGuard")
 
-# Pending publication is a fixed-size double buffer. The control side owns only
-# Writing slots; BAR_START claims an immutable Ready slot as Reading. Repeated G
-# reclaims the currently Ready slot when possible so newest intent wins without
-# racing an already-running BAR_START commit.
+require(PATTERN, "regenerateSynthWithQuantizedCommit(",
+        "SYNTH G lost the Genre-aware synth-only owner")
+
+# Pending publication remains a fixed-size double buffer. Repeated G may reclaim
+# Ready (newest intent); attempt identity is assigned before preparation and is
+# carried by the request even if that publication is later cancelled/superseded.
 for needle in (
     "inline PendingGeneration g_slots[2]{};",
     "SlotState::Writing",
@@ -160,50 +201,63 @@ for needle in (
     "setPendingCommitHook(&commitQuantizedGenerationAtBarStart)",
     "QuantizedGenerationResult::PendingNextBar",
     "QuantizedGenerationResult::CommittedNow",
+    "QuantizedGenerationResult::AttemptUnavailable",
+    "allocateAttemptFor(requestedGenre, requestLevel, target, attemptOrdinal)",
 ):
-    require(QUANTIZED, needle, f"lock-free quantized contract changed: {needle}")
+    require(QUANTIZED, needle, f"lock-free quantized/reroll contract changed: {needle}")
 
-# PLAY preparation must be scratch-only: Atlas or a private ModeManager creates
-# candidate A/B/Drums, then the pure Stage 15 materializer transforms those local
-# values. It must not write live Scene patterns, mode, BPM or call the active
-# legacy bridge before publication.
+# PLAY preparation must be scratch-only and receive the already accepted
+# P-level/attempt. It must not mutate live Scene/DSP before publication.
 prepare = function_body(
     QUANTIZED,
     "inline bool preparePlayingCandidate(",
     "}  // namespace QuantizedGenerationDetail",
 )
 for needle in (
+    "RealizationLevel requestLevel",
+    "uint32_t generationAttemptOrdinal",
     "AtlasRuntime::applyRecipe(",
     "GrooveboxModeManager scratchMode(engine);",
     "scratchMode.setModeLocal(requestedMode);",
     "scratchMode.setGenerationSeed(engine.modeManager().generationSeed());",
     "scratchMode.generatePattern(",
     "scratchMode.generateDrumPattern(",
+    "context.level = requestLevel;",
+    "context.generationAttemptOrdinal = generationAttemptOrdinal;",
     "migrateStrongRhythmMaterial(",
 ):
-    require(prepare, needle, f"PLAY scratch generation lost: {needle}")
+    require(prepare, needle, f"PLAY scratch request lost: {needle}")
 for forbidden in (
     "scene.genre =",
     "engine.setGrooveboxMode(",
     "engine.setBpm(",
     "editCurrentSynthPattern(",
     "editCurrentDrumPattern(",
+    "allocateGenerationAttempt(",
     "regenerateWithStrongRhythmMigration(",
 ):
     if forbidden in prepare:
-        raise AssertionError(f"PLAY preparation mutates live runtime: {forbidden}")
+        raise AssertionError(f"PLAY preparation mutates/reallocates request: {forbidden}")
 
-# STOP remains immediate and may use the active bridge under the caller's guard.
+# STOP remains immediate but now allocates before the first live mutation and
+# performs migration directly with that exact ordinal to avoid double allocation.
+stop = QUANTIZED.split("if (!engine.isPlaying())", 1)[1].split(
+    "// PLAY preparation", 1
+)[0]
 for needle in (
-    "if (!engine.isPlaying())",
+    "allocateAttemptFor(requestedGenre, requestLevel, target, attemptOrdinal)",
     "scene.genre = requestedGenre;",
-    "regenerateWithStrongRhythmMigration(engine);",
+    "engine.regeneratePatternsWithGenre();",
+    "context.level = requestLevel;",
+    "context.generationAttemptOrdinal = attemptOrdinal;",
+    "migrateStrongRhythmMaterial(",
 ):
-    require(QUANTIZED, needle, f"STOP immediate contract changed: {needle}")
+    require(stop, needle, f"STOP immediate/reroll contract changed: {needle}")
+if "regenerateWithStrongRhythmMigration(engine);" in stop:
+    raise AssertionError("STOP double-allocates accepted reroll through live bridge")
 
-# Heavy generation must never run from the audio BAR_START path. The existing
-# transport callback invokes only the bounded commit hook; its boolean remains
-# false so MiniAcid cannot fall through to historical audio-thread regeneration.
+# Heavy generation must never run from audio BAR_START. Commit serial is allowed
+# only as publication telemetry; it must never be consumed by generation RNG.
 require(
     ENGINE,
     "if (genreManager_.commitPendingRecipe()) {",
@@ -230,10 +284,11 @@ for forbidden in (
     "generatePattern(",
     "generateDrumPattern(",
     "migrateStrongRhythmMaterial(",
+    "allocateGenerationAttempt(",
     "regenerateWithStrongRhythmMigration(",
 ):
     if forbidden in commit:
-        raise AssertionError(f"BAR_START performs heavy generation: {forbidden}")
+        raise AssertionError(f"BAR_START performs heavy generation/request allocation: {forbidden}")
 
 for forbidden in ("std::vector", "std::string", "new ", "malloc(", "calloc("):
     if forbidden in QUANTIZED:
@@ -247,4 +302,11 @@ require(
     "successful BAR_START commit no longer publishes Scene revision",
 )
 
-print("P-level production selector + lock-free quantized generation regressions: OK")
+if "g_commitSerial" in STATE:
+    raise AssertionError("generation request state must not depend on commit serial")
+if "morph_amount_" in GENRE:
+    raise AssertionError("retired MORPH UI must not remain in GENRE body")
+if "FocusRow::Morph" in GENRE:
+    raise AssertionError("retired MORPH focus row must not remain in GENRE body")
+
+print("P-level + bounded reroll + lock-free quantized generation regressions: OK")

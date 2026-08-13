@@ -50,12 +50,29 @@ for token in (
 ):
     require(token in GENRE_PAGE,
             f"genre-scoped VARIANT contract missing: {token}")
-require("GenreCatalog::recipeCount()" not in GENRE_PAGE.split(
-            "void GenrePage::cycleRecipeSelection", 1)[1].split(
-            "void GenrePage::adjustMorph", 1)[0],
+variant_block = GENRE_PAGE.split(
+    "void GenrePage::cycleRecipeSelection", 1
+)[1].split("GenreSettings GenrePage::pendingSettings", 1)[0]
+require("GenreCatalog::recipeCount()" not in variant_block,
         "VARIANT selector regressed to the global recipe catalog")
 require("recipeIndex_ = static_cast<int>(normalizeRecipeForGenre(" in GENRE_PAGE,
         "changing GENRE must normalize an incompatible VARIANT")
+
+# F-02/F-07 retires MORPH as an active generation axis. Persisted fields stay in
+# Scene for decode compatibility, but the Genre surface explicitly normalizes
+# them and repeated accepted G owns variation through attemptOrdinal instead.
+for token in (
+    "settings.morphTarget = 0;",
+    "settings.morphAmount = 0;",
+    "requestedSettings.morphTarget = 0;",
+    "requestedSettings.morphAmount = 0;",
+    '"REROLL"',
+    '"REPEAT G"',
+):
+    require(token in GENRE_PAGE, f"MORPH retirement contract missing: {token}")
+for retired in ("adjustMorph", "morphAccelerator", "morph_amount_", "FocusRow::Morph"):
+    require(retired not in GENRE_PAGE,
+            f"retired MORPH UI owner returned: {retired}")
 
 # Hardware correction: Chicago Jack and Rolling Acid were audibly too similar.
 # Keep their curated Stage 5 archetype pools disjoint. Deep Chord must use the
@@ -73,27 +90,34 @@ for token in (
     require(token in SELECTION,
             f"hardware identity correction missing: {token}")
 
-# The stopped/immediate bridge preserves rollback ordering: complete legacy
-# output is materialized first, then Vocabulary/Stage15 migration transforms it.
+# The generic live bridge preserves rollback ordering: request identity is
+# accepted first, complete legacy output is materialized second, then the strong
+# Stage15 migration transforms it using that already-assigned ordinal.
+allocation_call = BRIDGE.find("assignGenerationAttempt(scene.genre, context")
 legacy_call = BRIDGE.find("engine.regeneratePatternsWithGenre();")
 migration_call = BRIDGE.find("migrateStrongRhythmMaterial(")
-require(legacy_call >= 0, "Stage 5 bridge no longer calls legacy generator")
+require(allocation_call >= 0, "live Stage 5 bridge no longer accepts reroll request")
+require(legacy_call > allocation_call,
+        "generation attempt must be allocated before live legacy mutation")
 require(migration_call > legacy_call,
         "Stage 5 migration must run after legacy rollback snapshot exists")
 
-# GENRE full generation enters the quantized owner. STOP may use the existing
-# active bridge; PLAY must run the same migration core directly over scratch
-# A/B/Drums so no live Scene mutation or renderer pause is required.
+# GENRE full generation enters the quantized owner. PLAY and STOP must use the
+# same migration core with an ordinal allocated before publication/live mutation.
+# STOP intentionally performs the core directly instead of calling the generic
+# bridge, which would allocate the same request a second time.
 require("quantized_generation_commit.h" in GENRE_PAGE,
         "GenrePage is not wired to quantized material commit")
 require("regenerateWithQuantizedCommit(" in GENRE_PAGE,
         "GenrePage MATERIALIZE bypasses quantized commit")
-require("strong_rhythm_live_bridge.h" in QUANTIZED,
-        "quantized owner lost stopped-path Stage 5/15 bridge dependency")
-require("regenerateWithStrongRhythmMigration(engine);" in QUANTIZED,
-        "quantized STOP path no longer uses Stage 5/15 bridge")
+require("allocateAttemptFor(" in QUANTIZED,
+        "quantized owner lost accepted-request ordinal allocation")
+require("engine.regeneratePatternsWithGenre();" in QUANTIZED,
+        "quantized STOP path lost legacy rollback generation")
+require("context.generationAttemptOrdinal = attemptOrdinal;" in QUANTIZED,
+        "quantized STOP/PLAY path lost assigned attempt identity")
 require("migrateStrongRhythmMaterial(" in QUANTIZED,
-        "quantized PLAY path no longer applies Stage 5/15 migration to scratch material")
+        "quantized owner no longer applies Stage 5/15 migration")
 require("GrooveboxModeManager scratchMode(engine);" in QUANTIZED,
         "quantized PLAY path lost scratch legacy fallback generation")
 require("mini_acid_.regeneratePatternsWithGenre();" not in GENRE_PAGE,
@@ -102,6 +126,14 @@ require("mini_acid_.regeneratePatternsWithGenre();" not in GENRE_PAGE,
 prepare = QUANTIZED.split("inline bool preparePlayingCandidate(", 1)[1].split(
     "}  // namespace QuantizedGenerationDetail", 1
 )[0]
+for required in (
+    "RealizationLevel requestLevel",
+    "uint32_t generationAttemptOrdinal",
+    "context.level = requestLevel;",
+    "context.generationAttemptOrdinal = generationAttemptOrdinal;",
+):
+    require(required in prepare,
+            f"playing Stage 5 preparation lost accepted request state: {required}")
 for forbidden in (
     "editCurrentSynthPattern(",
     "editCurrentDrumPattern(",
@@ -112,14 +144,16 @@ for forbidden in (
     require(forbidden not in prepare,
             f"playing Stage 5 preparation mutates live runtime: {forbidden}")
 
-# Stage 7C may persist explicit user rhythm intent. Derived backend, seed and
-# phrase coordinates must still stay out of Scene.
+# Stage 7C may persist explicit user rhythm intent. Derived backend, seed, phrase
+# coordinates and reroll attempt must still stay out of Scene.
 for forbidden in (
     "generationBackend",
     "rhythmBackend",
     "vocabularyBackend",
     "generationSeed",
     "phraseOrdinal",
+    "generationAttemptOrdinal",
+    "attemptOrdinal",
 ):
     require(forbidden not in SCENES_H,
             f"Stage 5 must not persist migration state: {forbidden}")

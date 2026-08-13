@@ -24,6 +24,12 @@ GenreSettings baseSettings(GenerativeMode mode) {
   return settings;
 }
 
+GenreSettings modeRecipeSettings(GenerativeMode mode, uint8_t recipe) {
+  GenreSettings settings = baseSettings(mode);
+  settings.recipe = recipe;
+  return settings;
+}
+
 GenreSettings recipeSettings(uint8_t recipe) {
   GenerativeMode genre = GenerativeMode::Acid;
   if (recipe == 1 || recipe == 2 || recipe == 3 ||
@@ -34,9 +40,7 @@ GenreSettings recipeSettings(uint8_t recipe) {
   } else if (recipe == 5 || recipe == 10 || recipe == 11) {
     genre = GenerativeMode::Reggae;
   }
-  GenreSettings settings = baseSettings(genre);
-  settings.recipe = recipe;
-  return settings;
+  return modeRecipeSettings(genre, recipe);
 }
 
 bool equalDrumStep(const DrumStep& a, const DrumStep& b) {
@@ -146,11 +150,54 @@ void testAllowList() {
             "valid recipe did not reach Stage 7 composition routing");
   }
 
+  // F-02: persisted MORPH is decode-only compatibility data. Even historical
+  // cross-recipe values must not change the strong route selected by mode+recipe.
   GenreSettings crossMorph = recipeSettings(5);
   crossMorph.morphTarget = 10;
   crossMorph.morphAmount = 128;
-  require(selectStrongRhythmRoute(crossMorph) == StrongRhythmRoute::Legacy,
-          "cross-recipe morph must stay legacy");
+  require(selectStrongRhythmRoute(crossMorph) ==
+              selectStrongRhythmRoute(recipeSettings(5)),
+          "persisted MORPH must not influence route selection");
+}
+
+void testReachableGenreTuplesNeverUseLegacy() {
+  // F-01 defensive invariant: every tuple reachable from the current Genre UI
+  // must stay off the legacy fallback, whose unused drum-template rows can be
+  // empty. Invalid/unknown tuples are still allowed to report Legacy.
+  for (uint8_t mode = 0; mode < kGenerativeModeCount; ++mode) {
+    const auto settings = baseSettings(static_cast<GenerativeMode>(mode));
+    require(selectStrongRhythmRoute(settings) != StrongRhythmRoute::Legacy,
+            "valid base genre tuple must never route to legacy empty drums");
+  }
+
+  struct ReachableVariant {
+    GenerativeMode mode;
+    uint8_t recipe;
+  };
+  const ReachableVariant variants[] = {
+      {GenerativeMode::Acid, 6},
+      {GenerativeMode::Acid, 7},
+      {GenerativeMode::Rave, 4},
+      {GenerativeMode::Reggae, 5},
+      {GenerativeMode::Reggae, 10},
+      {GenerativeMode::Reggae, 11},
+      {GenerativeMode::Broken, 1},
+      {GenerativeMode::Broken, 2},
+      {GenerativeMode::Broken, 3},
+      {GenerativeMode::Broken, 8},
+      {GenerativeMode::Broken, 9},
+      {GenerativeMode::LoFi, kClassicChillRecipeId},
+      {GenerativeMode::LoFi, kDrunkenGrooveRecipeId},
+      {GenerativeMode::LoFi, kLoFiHouseRecipeId},
+      {GenerativeMode::LoFi, kMinimalSleepRecipeId},
+      {GenerativeMode::HipHop, kGoldenEraRecipeId},
+      {GenerativeMode::HipHop, kDustyJazzRecipeId},
+  };
+  for (const auto& item : variants) {
+    const auto settings = modeRecipeSettings(item.mode, item.recipe);
+    require(selectStrongRhythmRoute(settings) != StrongRhythmRoute::Legacy,
+            "reachable genre variant must never route to legacy empty drums");
+  }
 }
 
 void testLegacyAndFailureAreTransactional() {
@@ -313,6 +360,7 @@ void testAllPLevelsRemainLegal() {
 
 int main() {
   testAllowList();
+  testReachableGenreTuplesNeverUseLegacy();
   testLegacyAndFailureAreTransactional();
   testAppliedRoutesAndCompatibilityState();
   testHardwareIdentityCorrections();

@@ -23,7 +23,6 @@ class GenrePage : public IPage {
     Genre = 0,
     Variant,
     Rhythm,
-    Morph,
     Apply,
   };
 
@@ -39,7 +38,6 @@ class GenrePage : public IPage {
   void cycleRecipeSelection(int delta);
   void cycleRhythmSelection(int delta);
   bool normalizePendingRhythm(bool notify);
-  void adjustMorph(int delta);
   void cycleApplyMode(int delta);
   void applyCurrent(bool forceRegenerate = false);
 
@@ -64,6 +62,5 @@ class GenrePage : public IPage {
   GroovePuterRhythm::RhythmArchetypeId rhythmArchetypeId_ =
       GroovePuterRhythm::kNoArchetypeId;
   bool rhythmFallbackPending_ = false;
-  int morph_amount_ = 0;
   std::string title_ = "GENRE";
 };

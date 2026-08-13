@@ -12,6 +12,8 @@ python3 "${ROOT_DIR}/tests/test_generation_stage14_drum_generate_source_regressi
 python3 "${ROOT_DIR}/tests/test_generation_stage14_p_level_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_release_generation_routing_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_p_level_production_selector_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_generation_attempt_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_genre_reroll_consistency_source_regressions.py"
 
 COMPOSITION_SOURCES=(
   "${ROOT_DIR}/src/generation/generation_context.cpp"
@@ -93,6 +95,9 @@ run_suite() {
   build_and_run "${compiler}" \
     "${ROOT_DIR}/tests/test_generation_stage14_p_level_semantics.cpp" \
     "${BUILD_DIR}/test_generation_stage14_p_levels_${suffix}" migration "$@"
+  build_and_run "${compiler}" \
+    "${ROOT_DIR}/tests/test_generation_attempt_semantics.cpp" \
+    "${BUILD_DIR}/test_generation_attempt_semantics_${suffix}" migration "$@"
   build_and_run "${compiler}" \
     "${ROOT_DIR}/tests/test_stage12_audition_genre_coverage.cpp" \
     "${BUILD_DIR}/test_stage12_audition_genres_${suffix}" migration "$@"

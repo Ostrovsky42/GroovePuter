@@ -8,6 +8,7 @@ DRUM = (ROOT / "src/ui/pages/drum_sequencer_page.cpp").read_text(encoding="utf-8
 DRUM_LEGACY = (
     ROOT / "src/ui/pages/drum_sequencer_page_legacy.h"
 ).read_text(encoding="utf-8")
+PATTERN = (ROOT / "src/ui/pages/pattern_edit_page.cpp").read_text(encoding="utf-8")
 BRIDGE = (
     ROOT / "src/generation/migration/strong_rhythm_live_bridge.cpp"
 ).read_text(encoding="utf-8")
@@ -34,28 +35,63 @@ for needle in (
     "if (keyG && !event.ctrl && !event.alt && !event.meta)",
     "applyCurrent(true);",
     '"G:GEN P:LEVEL M:MODE"',
+    '"REROLL"',
+    '"REPEAT G"',
 ):
     require(GENRE, needle, f"GENRE G release route changed: {needle}")
 
-# STOP retains the existing active bridge; PLAY prepares the same Stage15
-# semantic materialization directly into scratch A/B/Drums without pausing the
-# renderer or mutating the live Scene before BAR_START.
+# F-02/F-07: STOP and PLAY both allocate the request identity before live
+# publication/mutation. STOP then runs legacy rollback + Stage15 migration
+# directly with that assigned ordinal; calling the generic live bridge here
+# would allocate the same accepted request twice.
 for needle in (
-    "regenerateWithStrongRhythmMigration(engine);",
+    "allocateAttemptFor(",
+    "engine.regeneratePatternsWithGenre();",
+    "context.generationAttemptOrdinal = attemptOrdinal;",
     "migrateStrongRhythmMaterial(",
     "GrooveboxModeManager scratchMode(engine);",
     "QuantizedGenerationResult::PendingNextBar",
+    "QuantizedGenerationResult::AttemptUnavailable",
 ):
-    require(QUANTIZED, needle, f"quantized Stage15 route changed: {needle}")
+    require(QUANTIZED, needle, f"quantized Stage15/reroll route changed: {needle}")
+
+stop_block = QUANTIZED.split("if (!engine.isPlaying())", 1)[1].split(
+    "// PLAY preparation", 1
+)[0]
+for needle in (
+    "allocateAttemptFor(requestedGenre, requestLevel, target, attemptOrdinal)",
+    "scene.genre = requestedGenre;",
+    "engine.regeneratePatternsWithGenre();",
+    "context.generationAttemptOrdinal = attemptOrdinal;",
+    "migrateStrongRhythmMaterial(",
+):
+    require(stop_block, needle, f"STOP accepted-attempt contract changed: {needle}")
+if "regenerateWithStrongRhythmMigration(engine);" in stop_block:
+    raise AssertionError("quantized STOP path double-allocates through live bridge")
 
 require(
     GENRE_H,
     "void applyCurrent(bool forceRegenerate = false);",
     "GenrePage lost explicit forced-regeneration API",
 )
-for forbidden in ("randomize303Pattern", "randomizeDrumPattern", "modeManager_"):
-    if forbidden in GENRE:
-        raise AssertionError(f"GENRE page gained legacy generation owner: {forbidden}")
+for forbidden in (
+    "randomize303Pattern",
+    "randomizeDrumPattern",
+    "modeManager_",
+    "adjustMorph",
+    "morphAccelerator",
+    "morph_amount_",
+    "FocusRow::Morph",
+):
+    if forbidden in GENRE + GENRE_H:
+        raise AssertionError(f"GENRE page gained retired/legacy generation owner: {forbidden}")
+for needle in (
+    "settings.morphTarget = 0;",
+    "settings.morphAmount = 0;",
+    "requestedSettings.morphTarget = 0;",
+    "requestedSettings.morphAmount = 0;",
+):
+    require(GENRE, needle, f"persisted MORPH migration changed: {needle}")
 
 # The two GENERATE pages still consume stale I/O before Cardputer's retained
 # sketch-level compatibility fallback can reach GrooveboxModeManager. P is now
@@ -77,6 +113,11 @@ for needle in (
     '"LEGACY O GEN OFF"',
 ):
     require(DRUM, needle, f"DRUMS release route changed: {needle}")
+
+require(PATTERN, "regenerateSynthWithQuantizedCommit(",
+        "SYNTH plain G bypasses Genre-aware synth generation")
+require(PATTERN, "if (!note_entry_mode_ && keyG &&",
+        "SYNTH plain G does not preserve note-entry G ownership")
 
 require(
     DRUM_LEGACY,
@@ -100,22 +141,25 @@ for needle in (
 ):
     require(SKETCH, needle, f"sketch fallback boundary changed: {needle}")
 
-# The established live bridge and the scratch playing path must both retain the
-# current Stage15 tonal context/materializer.
+# The established live bridge and scratch playing path retain the current Stage15
+# tonal context/materializer. The generic bridge owns attempt allocation only for
+# callers that did not already accept the request in the quantized owner.
 for needle in (
     "context.tonalMaterializationEnabled = true;",
     "context.rootPitchClass",
     "context.scaleTypeValue",
+    "assignGenerationAttempt(scene.genre, context",
     "migrateStrongRhythmMaterial(",
 ):
-    require(BRIDGE, needle, f"shared Stage 15 tonal route changed: {needle}")
+    require(BRIDGE, needle, f"shared Stage 15/reroll route changed: {needle}")
 
 for needle in (
     "context.tonalMaterializationEnabled = true;",
     "context.rootPitchClass",
     "context.scaleTypeValue",
+    "context.generationAttemptOrdinal = generationAttemptOrdinal;",
     "migrateStrongRhythmMaterial(",
 ):
-    require(QUANTIZED, needle, f"scratch Stage 15 tonal route changed: {needle}")
+    require(QUANTIZED, needle, f"scratch Stage 15/reroll route changed: {needle}")
 
 print("Release generation routing source regressions: OK")
