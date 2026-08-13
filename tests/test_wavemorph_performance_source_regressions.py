@@ -151,31 +151,33 @@ def test_knob_keys_use_coarse_and_fine_steps() -> None:
 def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
     header = (ROOT / "src/ui/pages/tb303_params_page.h").read_text(encoding="utf-8")
     page = (ROOT / "src/ui/pages/tb303_params_page.cpp").read_text(encoding="utf-8")
+    synth_page = (ROOT / "src/ui/pages/synth_sequencer_page.cpp").read_text(
+        encoding="utf-8"
+    )
 
     require("kMainKnobRadius = 18" in page and "kMainKnobRadius = 13" not in page,
             "MAIN must spend the freed vertical budget on radius-18 performance knobs")
-    require("kSegmentHeight = 14" in page and
-            "knobRowY = content.y + 45" in page and
-            "keyY = content.y + 75" in page and
-            "const int y = content.y + 89" in page,
-            "the documented 103-pixel MAIN vertical budget must remain explicit")
-    for marker in ("tab segment ends at +15", "value text starts at +17",
-                   "R18 circle spans +27..+63", "label starts at +67",
-                   "key hint starts at +75", "summary starts at +89"):
-        require(marker in page, f"MAIN layout budget must document {marker}")
-    require('drawSegment(x, "MAIN", !more_tab_)' in page and
-            '"MORE", more_tab_' in page and '"TAB >"' in page,
-            "MAIN/MORE discoverability must be visible on the parameter page")
+    require("knobRowY = content.y + kMainKnobCenterY" in page and
+            "keyY = content.y + kMainKeyHintY" in page and
+            "const int y = content.y + kMainSummaryY" in page,
+            "the compact knob layout must use its explicit vertical budget")
+    require("kMainSummaryY + kMainSummaryH <=" in page and
+            "synth summary must stay above the performance HUD" in page,
+            "summary must remain above the global performance HUD")
+    require('"[N]KM"' in synth_page and '"N[K]M"' in synth_page and
+            '"NK[M]"' in synth_page,
+            "SynthSequencerPage must own the single visible NOTES/KNOBS/MORE switcher")
+    require("drawTabSwitcher" not in page and '"TAB >"' not in page,
+            "params page must not duplicate the parent tab affordance")
     require("const Rect contentRect{content.x, content.y, content.w, content.h}" in page and
-            "drawTabSwitcher(gfx, contentRect)" in page and
             "drawMainSummary(gfx, contentRect)" in page,
-            "tab helpers must receive explicit Rect geometry on every target")
-    require("setActiveTab(!more_tab_)" in page and
-            "if (ui_event.ctrl || ui_event.alt || ui_event.meta) return false;" in page,
-            "plain Tab must toggle local tabs while Fn/meta Tab stays global")
+            "summary must receive explicit content geometry")
+    require("UIInput::isTab(ui_event)" in synth_page and
+            "UIInput::isTab(ui_event)" not in page,
+            "plain Tab must be owned once by the parent three-state cycle")
     require("main_focus_slot_" in header and "more_focus_slot_" in header and
             "rememberFocusedSlot" in page and "restoreFocusedSlot" in page,
-            "MAIN and MORE must remember focus independently")
+            "Knobs and More must remember focus independently")
     require(page.count("LabelValueComponent::Style::Stepper") == 3,
             "TYPE/OSC/FLT must use full-row steppers")
     require(page.count("LabelValueComponent::Style::Toggle") == 2,
@@ -183,8 +185,9 @@ def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
     require("if (focused)" in page and
             "gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, focus_color_)" in page,
             "the active MORE row must use a filled focus state")
-    require("kMoreRowHeight = 15" in page and "LabelValueComponent* rows[5]" in page,
-            "MORE must use five stable full-width rows")
+    require("kMoreRowHeight = 13" in page and "LabelValueComponent* rows[5]" in page and
+            "synth MORE rows must stay above the performance HUD" in page,
+            "MORE must use five stable full-width rows above the HUD")
     require("setEnabled(oscAvailable)" in page and
             "setEnabled(filterAvailable)" in page and
             'setValue("--")' in page,
@@ -220,7 +223,7 @@ def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
             "case GROOVEPUTER_RIGHT:" in more_navigation and
             "adjustFocusedElement(1, fine);" in more_navigation,
             "MORE must use Up/Down for rows and Left/Right for values")
-    require('"[TAB]MAIN [U/D]ROW [L/R]CHANGE"' in page,
+    require('"[TAB]NOTES [U/D]ROW [L/R]CHANGE"' in page,
             "the MORE footer must advertise the physical arrow mapping")
 
     require("Both effects are per-voice post-engine stages" in page and

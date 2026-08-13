@@ -14,11 +14,22 @@
 #include "../screen_geometry.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "../ui_theme.h"
 
 namespace {
-constexpr int kTabStripY = Layout::CONTENT.y + 1;
-constexpr int kTabStripH = 14;
-constexpr int kTabStripW = 126;
+// The parent owns one compact tab indicator across NOTES, KNOBS and MORE.
+// NOTES places it after the eight fixed pattern numbers. Params pages keep it
+// immediately left of their mode label at the right edge.
+constexpr int kNotesTabStripX = 190;
+constexpr int kParamsTabStripX = 172;
+constexpr int kTabStripW = 32;
+constexpr int kTabStripH = 11;
+constexpr int kPatternNumbersX = 106;
+constexpr int kPatternNumbersEndX = kPatternNumbersX + 8 * 10 - 1;
+static_assert(kNotesTabStripX > kPatternNumbersEndX,
+              "NOTES tab must stay after the pattern numbers");
+static_assert(kNotesTabStripX + kTabStripW <= Layout::SCREEN_W,
+              "NOTES tab must stay on screen");
 
 inline IGfxColor synthTabColor(int voiceIndex) {
   return voiceIndex == 0 ? IGfxColor(0x33C8FF) : IGfxColor(0xFF4FCB);
@@ -67,34 +78,40 @@ const char* SynthSequencerPage::activeTabName() const {
 }
 
 void SynthSequencerPage::drawTabIndicator(IGfx& gfx) const {
-  const char* label = "[NOTES] KNOBS MORE";
+  const char* label = "[N]KM";
   switch (synth_tab_) {
-    case SynthTab::Notes: label = "[NOTES] KNOBS MORE"; break;
-    case SynthTab::Knobs: label = "NOTES [KNOBS] MORE"; break;
-    case SynthTab::More: label = "NOTES KNOBS [MORE]"; break;
+    case SynthTab::Notes: label = "[N]KM"; break;
+    case SynthTab::Knobs: label = "N[K]M"; break;
+    case SynthTab::More: label = "NK[M]"; break;
   }
 
-  const int x = (Layout::SCREEN_W - kTabStripW) / 2;
-  gfx.fillRect(x, kTabStripY, kTabStripW, kTabStripH, IGfxColor::Black());
+  const bool notesTab = synth_tab_ == SynthTab::Notes;
+  // MINIMAL has no free inline label slot: its pattern-number cells span the
+  // row below status chrome. Suppress the parent strip there rather than hide
+  // another pattern address. Full tab names remain in toast/help.
+  if (notesTab &&
+      UI::currentStyle != VisualStyle::RETRO_CLASSIC &&
+      UI::currentStyle != VisualStyle::AMBER) {
+    return;
+  }
+  const int x = notesTab ? kNotesTabStripX : kParamsTabStripX;
+  const int y = Layout::CONTENT.y;
+  gfx.fillRect(x, y, kTabStripW, kTabStripH, IGfxColor::Black());
   gfx.setTextColor(synthTabColor(voice_index_));
   gfx.drawText(x + (kTabStripW - gfx.textWidth(label)) / 2,
-               kTabStripY + 2,
+               y + 1,
                label);
 }
 
 void SynthSequencerPage::draw(IGfx& gfx) {
   MultiPage::draw(gfx);
+  const UI::ThemePalette palette = UI::themePalette();
+  gfx.fillRect(Layout::PERFORMANCE_HUD.x,
+               Layout::PERFORMANCE_HUD.y,
+               Layout::PERFORMANCE_HUD.w,
+               Layout::PERFORMANCE_HUD.h,
+               palette.background);
   drawTabIndicator(gfx);
-
-  if (synth_tab_ == SynthTab::Knobs) {
-    UI::drawStandardFooter(gfx,
-                           "[TAB]MORE [L/R]FOCUS [U/D]VAL",
-                           "HOLD:ACCEL [CTRL]FINE");
-  } else if (synth_tab_ == SynthTab::More) {
-    UI::drawStandardFooter(gfx,
-                           "[TAB]NOTES [U/D]ROW [L/R]CHANGE",
-                           "TYPE OSC FLT DST DLY");
-  }
 }
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {

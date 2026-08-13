@@ -1009,7 +1009,7 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
   int cell_w = (w - column_spacing * (kPatternStepColumns - 1) - 2) /
                kPatternStepColumns;
   if (cell_w < 12) cell_w = 12;
-  const int grid_bottom = y + h - 2;
+  const int grid_bottom = std::min(y + h - 2, Layout::PERFORMANCE_HUD.y);
   int row_height =
       (grid_bottom - grid_top - row_spacing * (kPatternStepRows - 1)) /
       kPatternStepRows;
@@ -1107,7 +1107,8 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
 
   // 2. Background (deep black for contrast, like GenrePage)
   int contentY = y + 15;
-  int contentH = h - 15 - 12;
+  int contentH =
+      std::min(y + h - 12, Layout::PERFORMANCE_HUD.y) - contentY;
   gfx.fillRect(x, contentY, w, contentH, IGfxColor(BG_DEEP_BLACK));
 
   // 3. Bank/Pattern Selectors (inline, with selective highlighting)
@@ -1325,7 +1326,8 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
       playing);
 
   int contentY = y + 15;
-  int contentH = h - 15 - 12;
+  int contentH =
+      std::min(y + h - 12, Layout::PERFORMANCE_HUD.y) - contentY;
   gfx.fillRect(x, contentY, w, contentH, IGfxColor(AmberTheme::BG_DEEP_BLACK));
 
   gfx.setTextColor(IGfxColor(AmberTheme::TEXT_SECONDARY));

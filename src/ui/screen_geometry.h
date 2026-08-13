@@ -15,6 +15,16 @@ namespace Layout {
     constexpr LayoutRect CONTENT = {0, 16, 240, 103};  // y: 16..118
     constexpr LayoutRect FOOTER  = {0, 119, 240, 16};  // y: 119..134
 
+    // Global performance HUDs are drawn after the active page. Page layouts
+    // that use the bottom of CONTENT must stop above this reserved strip.
+    constexpr int PERFORMANCE_HUD_H = 10;
+    constexpr LayoutRect PERFORMANCE_HUD = {
+        0, FOOTER.y - PERFORMANCE_HUD_H, SCREEN_W, PERFORMANCE_HUD_H};
+    // FEEL text owns the left side and mute digits own the right side. The
+    // optional waveform is confined to the gap between them.
+    constexpr LayoutRect PERFORMANCE_WAVEFORM = {
+        84, PERFORMANCE_HUD.y, 50, PERFORMANCE_HUD.h};
+
     // Content padding and typography
     constexpr int CONTENT_PAD_X = 4;
     constexpr int CONTENT_PAD_Y = 2;

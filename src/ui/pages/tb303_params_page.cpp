@@ -26,6 +26,24 @@
 #include "../ui_input.h"
 
 namespace {
+constexpr int kMainKnobCenterY = 41;
+constexpr int kMainKeyHintY = 72;
+constexpr int kMainSummaryY = 81;
+constexpr int kMainSummaryH = 11;
+constexpr int kMoreRowY = 20;
+constexpr int kMoreRowHeight = 13;
+constexpr int kMoreRowGap = 1;
+constexpr int kMoreRowCount = 5;
+
+static_assert(Layout::CONTENT.y + kMainSummaryY + kMainSummaryH <=
+                  Layout::PERFORMANCE_HUD.y,
+              "synth summary must stay above the performance HUD");
+static_assert(Layout::CONTENT.y + kMoreRowY +
+                      (kMoreRowCount - 1) * (kMoreRowHeight + kMoreRowGap) +
+                      kMoreRowHeight <=
+                  Layout::PERFORMANCE_HUD.y,
+              "synth MORE rows must stay above the performance HUD");
+
 inline constexpr IGfxColor kDimText = IGfxColor(0x808080);
 inline constexpr int kKnobStepCoarse = 5;
 inline constexpr int kKnobStepFine = 1;
@@ -487,12 +505,10 @@ void TB303ParamsPage::layoutComponents() {
   delay_control_->setEnabled(true);
 
   if (!more_tab_) {
-    // Vertical budget inside the 103 px content area:
-    // tab segment ends at +15, value text starts at +17,
-    // the R18 circle spans +27..+63, label starts at +67,
-    // key hint starts at +75, and the summary starts at +89.
+    // Leave the compact parent tab at the top and the global performance HUD
+    // at the bottom. Everything owned by this page stays between those zones.
     constexpr int kMainKnobRadius = 18;
-    const int knobRowY = content.y + 45;
+    const int knobRowY = content.y + kMainKnobCenterY;
     const int spacing = width / 5;
 
     cutoff_knob_->setBoundaries(Rect{x0 + spacing * 1 - kMainKnobRadius,
@@ -512,9 +528,6 @@ void TB303ParamsPage::layoutComponents() {
                                         kMainKnobRadius * 2,
                                         kMainKnobRadius * 2});
   } else {
-    constexpr int kMoreRowY = 20;
-    constexpr int kMoreRowHeight = 15;
-    constexpr int kMoreRowGap = 1;
     LabelValueComponent* rows[5] = {
         engine_type_control_.get(),
         osc_control_.get(),
@@ -636,31 +649,6 @@ void TB303ParamsPage::setActiveTab(bool more) {
   restoreFocusedSlot();
 }
 
-void TB303ParamsPage::drawTabSwitcher(IGfx& gfx, const Rect& content) {
-  constexpr int kSegmentWidth = 38;
-  constexpr int kSegmentHeight = 14;
-  constexpr int kSegmentGap = 2;
-  const int totalWidth = kSegmentWidth * 2 + kSegmentGap;
-  const int x = content.x + (content.w - totalWidth) / 2;
-  const int y = content.y + 1;
-  const IGfxColor accent = voiceColor(voice_index_);
-
-  auto drawSegment = [&](int segmentX, const char* label, bool active) {
-    if (active) {
-      gfx.fillRect(segmentX, y, kSegmentWidth, kSegmentHeight, accent);
-    } else {
-      gfx.drawRect(segmentX, y, kSegmentWidth, kSegmentHeight, accent);
-    }
-    gfx.setTextColor(active ? IGfxColor::Black() : kDimText);
-    gfx.drawText(segmentX + (kSegmentWidth - gfx.textWidth(label)) / 2,
-                 y + (kSegmentHeight - gfx.fontHeight()) / 2,
-                 label);
-  };
-
-  drawSegment(x, "MAIN", !more_tab_);
-  drawSegment(x + kSegmentWidth + kSegmentGap, "MORE", more_tab_);
-}
-
 void TB303ParamsPage::drawMainSummary(IGfx& gfx, const Rect& content) {
   char first[20] = "--";
   char second[20] = "--";
@@ -686,12 +674,10 @@ void TB303ParamsPage::drawMainSummary(IGfx& gfx, const Rect& content) {
   std::snprintf(summary, sizeof(summary), "%s %s %s",
                 engineName.c_str(), first, second);
 
-  const int y = content.y + 89;
-  const int tabHintX = content.x + content.w - gfx.textWidth("TAB >") - 4;
+  const int y = content.y + kMainSummaryY;
   constexpr int kBadgeWidth = 29;
-  constexpr int kBadgeHeight = 11;
   constexpr int kBadgeGap = 3;
-  const int dlyX = tabHintX - kBadgeGap - kBadgeWidth;
+  const int dlyX = content.x + content.w - 4 - kBadgeWidth;
   const int dstX = dlyX - kBadgeGap - kBadgeWidth;
   const int summaryX = content.x + 4;
   const int summaryWidth = std::max(1, dstX - summaryX - 4);
@@ -706,9 +692,9 @@ void TB303ParamsPage::drawMainSummary(IGfx& gfx, const Rect& content) {
 
   auto drawBadge = [&](int x, const char* label, bool active) {
     if (active) {
-      gfx.fillRect(x, y, kBadgeWidth, kBadgeHeight, accent);
+      gfx.fillRect(x, y, kBadgeWidth, kMainSummaryH, accent);
     } else {
-      gfx.drawRect(x, y, kBadgeWidth, kBadgeHeight, accent);
+      gfx.drawRect(x, y, kBadgeWidth, kMainSummaryH, accent);
     }
     gfx.setTextColor(active ? IGfxColor::Black() : accent);
     gfx.drawText(x + (kBadgeWidth - gfx.textWidth(label)) / 2, y + 2, label);
@@ -716,8 +702,6 @@ void TB303ParamsPage::drawMainSummary(IGfx& gfx, const Rect& content) {
 
   drawBadge(dstX, "DST", mini_acid_.is303DistortionEnabled(voice_index_));
   drawBadge(dlyX, "DLY", mini_acid_.is303DelayEnabled(voice_index_));
-  gfx.setTextColor(kDimText);
-  gfx.drawText(tabHintX, y + 2, "TAB >");
 }
 
 void TB303ParamsPage::adjustFocusedElement(int direction, bool fine) {
@@ -797,7 +781,6 @@ void TB303ParamsPage::draw(IGfx& gfx) {
 
   const auto& content = Layout::CONTENT;
   const Rect contentRect{content.x, content.y, content.w, content.h};
-  drawTabSwitcher(gfx, contentRect);
   gfx.setTextColor(kDimText);
   gfx.drawText(content.x + content.w - gfx.textWidth(modeName) - 4,
                content.y + 3,
@@ -808,7 +791,7 @@ void TB303ParamsPage::draw(IGfx& gfx) {
     const int width = content.w - Layout::CONTENT_PAD_X * 2;
     const int spacing = width / 5;
     const char* keyHints[4] = {"A/Z", "S/X", "D/C", "F/V"};
-    const int keyY = content.y + 75;
+    const int keyY = content.y + kMainKeyHintY;
     gfx.setTextColor(kDimText);
     for (int i = 0; i < 4; ++i) {
       const int cx = x0 + spacing * (i + 1);
@@ -825,7 +808,7 @@ void TB303ParamsPage::draw(IGfx& gfx) {
                            "HOLD:ACCEL [CTRL]FINE");
   } else {
     UI::drawStandardFooter(gfx,
-                           "[TAB]MAIN [U/D]ROW [L/R]CHANGE",
+                           "[TAB]NOTES [U/D]ROW [L/R]CHANGE",
                            "TYPE OSC FLT DST DLY");
   }
 }
@@ -842,13 +825,6 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
   static UIInput::HoldAccelerator knobAccelerator;
 
   if (UIInput::isGlobalNav(ui_event)) return false;
-  if (UIInput::isTab(ui_event)) {
-    if (ui_event.ctrl || ui_event.alt || ui_event.meta) return false;
-    knobAccelerator.reset();
-    setActiveTab(!more_tab_);
-    return true;
-  }
-
   const int nav = UIInput::navCode(ui_event);
   const bool fine = ui_event.shift || ui_event.ctrl;
   if (more_tab_) {
