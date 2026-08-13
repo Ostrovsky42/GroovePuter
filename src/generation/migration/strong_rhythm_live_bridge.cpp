@@ -50,6 +50,25 @@ StrongRhythmMigrationContext liveMigrationContext(MiniAcid& engine) {
   return context;
 }
 
+bool assignGenerationAttempt(const GenreSettings& settings,
+                             StrongRhythmMigrationContext& context,
+                             StrongRhythmMigrationResult& failure) {
+  failure.route = selectStrongRhythmRoute(settings);
+  if (failure.route == StrongRhythmRoute::Legacy) return true;
+
+  const auto allocation = GroovePuterState::allocateGenerationAttempt(
+      settings.generativeMode,
+      settings.recipe,
+      context.level,
+      context.patternAddress);
+  if (!allocation.ok()) {
+    failure.status = StrongRhythmMigrationStatus::AttemptUnavailable;
+    return false;
+  }
+  context.generationAttemptOrdinal = allocation.ordinal;
+  return true;
+}
+
 uint8_t normalizedPhraseBars(uint8_t bars) {
   if (bars == 1 || bars == 2 || bars == 4 || bars == 8) return bars;
   return 1;
@@ -234,13 +253,18 @@ void printProbe(const PhraseAuditionResult& result) {
 
 StrongRhythmMigrationResult regenerateWithStrongRhythmMigration(
     MiniAcid& engine) {
+  StrongRhythmMigrationContext context = liveMigrationContext(engine);
+  const Scene& scene = engine.sceneManager().currentScene();
+  StrongRhythmMigrationResult allocationFailure{};
+  if (!assignGenerationAttempt(scene.genre, context, allocationFailure))
+    return allocationFailure;
+
   // Legacy generation remains the rollback/metadata source and still owns
   // timbre, Atlas tempo metadata and every unsupported genre/recipe. For a
   // supported strong-rhythm route, Stage 15 now owns the final semantic pitch.
+  // The attempt is allocated before this mutation (GA-03).
   engine.regeneratePatternsWithGenre();
 
-  const StrongRhythmMigrationContext context = liveMigrationContext(engine);
-  const Scene& scene = engine.sceneManager().currentScene();
   return migrateStrongRhythmMaterial(
       scene.genre,
       context,
@@ -251,12 +275,17 @@ StrongRhythmMigrationResult regenerateWithStrongRhythmMigration(
 
 StrongRhythmMigrationResult regenerateDrumsWithStrongRhythmMigration(
     MiniAcid& engine) {
+  StrongRhythmMigrationContext context = liveMigrationContext(engine);
+  const Scene& scene = engine.sceneManager().currentScene();
+  StrongRhythmMigrationResult allocationFailure{};
+  if (!assignGenerationAttempt(scene.genre, context, allocationFailure))
+    return allocationFailure;
+
   // Whole-pattern DRUMS generation must preserve its historical fallback and
-  // must not regenerate either synth voice.
+  // must not regenerate either synth voice. Allocation precedes mutation so a
+  // rejected request cannot modify the live drum pattern.
   engine.randomizeDrumPattern();
 
-  const StrongRhythmMigrationContext context = liveMigrationContext(engine);
-  const Scene& scene = engine.sceneManager().currentScene();
   return migrateStrongRhythmDrums(
       scene.genre,
       context,
@@ -293,7 +322,9 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(MiniAcid& engine) {
   result.level = baseContext.level;
 
   // Resolve exactly one Stage 14 rhythm identity before mutating audition
-  // storage. The selected identity is then locked across every bar.
+  // storage. The selected identity is then locked across every bar. Phrase
+  // audition deliberately remains attemptOrdinal=0; the production G reroll
+  // surface does not leak into the destructive audition harness.
   DrumPatternSet selectionScratch{};
   const StrongRhythmMigrationResult selection = migrateStrongRhythmDrums(
       scene.genre, baseContext, selectionScratch);

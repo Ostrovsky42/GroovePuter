@@ -40,6 +40,7 @@ enum class StrongRhythmMigrationStatus : uint8_t {
   Legacy = 0,
   Applied,
   InvalidContext,
+  AttemptUnavailable,
   RealizationFailed,
   MaterializationFailed,
   CompatibilityBindingFailed,
@@ -55,10 +56,16 @@ enum class SemanticSynthBRole : uint8_t {
 };
 
 struct StrongRhythmMigrationContext {
-  // Existing pattern address is an explicit deterministic variation coordinate.
-  // Stage 5 does not add a persisted backend/seed/ordinal to Scene.
+  // Existing pattern address remains part of deterministic generation identity.
   int16_t patternAddress = 0;
   RealizationLevel level = RealizationLevel::P2Variation;
+
+  // F-07: assigned when a generation request is accepted. It is transient
+  // session/request state, never Scene/project persistence. Ordinal zero is the
+  // compatibility path; non-zero ordinals may vary realization while the
+  // selected rhythm archetype remains attempt-invariant.
+  uint32_t generationAttemptOrdinal = 0;
+
   FeelProfileId feelProfile = FeelProfileId::Straight;
   uint8_t feelAmount = 0;
 
@@ -151,6 +158,16 @@ StrongRhythmMigrationResult migrateStrongRhythmDrums(
     DrumPatternSet& destination);
 
 StrongRhythmMigrationResult migrateStrongRhythmMaterial(
+    const GenreSettings& settings,
+    const StrongRhythmMigrationContext& context,
+    DrumPatternSet& drums,
+    SynthPattern& synthA,
+    SynthPattern& synthB);
+
+// Genre-aware synth-only materialization. Drums are rhythm context and remain
+// byte-for-byte unchanged; both synth candidates are produced so the caller can
+// atomically publish only the selected physical voice.
+StrongRhythmMigrationResult migrateStrongRhythmSynths(
     const GenreSettings& settings,
     const StrongRhythmMigrationContext& context,
     DrumPatternSet& drums,

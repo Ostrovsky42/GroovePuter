@@ -321,6 +321,7 @@ def test_atlas_compiler_matches_manifest_contract() -> None:
 
 def test_recipe_selector_is_visible_and_navigable() -> None:
     page = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
+    header = (ROOT / "src/ui/pages/genre_page.h").read_text(encoding="utf-8")
     require("void drawRecipeOverlay" in page,
             "recipe selection must be visible instead of Fn-only hidden state")
     require("RECIPE SELECT" in page,
@@ -339,9 +340,13 @@ def test_recipe_selector_is_visible_and_navigable() -> None:
 
     require("cycleRecipeSelection(delta)" in variant_block,
             "Variant LEFT/RIGHT must navigate visible recipes")
-    require("event.alt" in variant_block and
-            "adjustMorph(delta * 16)" in variant_block,
-            "Alt+LEFT/RIGHT must keep the Variant morph shortcut")
+    require("event.alt" not in variant_block and "adjustMorph" not in variant_block,
+            "Variant navigation must not retain the retired MORPH shortcut")
+    for retired in ("adjustMorph", "morphAccelerator", "morph_amount_", "FocusRow::Morph"):
+        require(retired not in page + header,
+                f"retired Genre MORPH owner returned: {retired}")
+    require('"REROLL", "REPEAT G"' in page,
+            "Genre page must expose repeated G as the reroll surface")
     require("moveFocus(nav == GROOVEPUTER_UP ? -1 : 1);" in page,
             "UP/DOWN must navigate Genre page fields")
 

@@ -41,12 +41,18 @@ require(feel_preset, "const bool changed =", "FEEL preset needs change detection
 require(feel_preset, "if (changed)", "FEEL preset must skip repeated no-op apply")
 require_marks(feel_preset, 1, "FEEL preset")
 
+# GENRE browsing is pending UI state only. F-02 retired the old adjustMorph()
+# navigation surface; keep the remaining browse functions explicitly guarded
+# against dirtying Scene before Apply/G.
 for start, end, owner in (
     ("void GenrePage::shiftGenre", "void GenrePage::cycleRecipeSelection", "Genre browse"),
-    ("void GenrePage::cycleRecipeSelection", "void GenrePage::adjustMorph", "Recipe browse"),
-    ("void GenrePage::adjustMorph", "void GenrePage::cycleApplyMode", "Morph browse"),
+    ("void GenrePage::cycleRecipeSelection", "GenreSettings GenrePage::pendingSettings", "Recipe browse"),
+    ("void GenrePage::cycleRhythmSelection", "void GenrePage::cycleApplyMode", "Rhythm browse"),
 ):
     require_marks(body(GENRE, start, end), 0, owner)
+
+if "void GenrePage::adjustMorph" in GENRE:
+    raise AssertionError("retired MORPH navigation must not return to GenrePage")
 
 genre_mode = body(GENRE, "void GenrePage::cycleApplyMode", "void GenrePage::applyCurrent")
 genre_apply = body(GENRE, "void GenrePage::applyCurrent", "void GenrePage::updateFromEngine")
@@ -58,7 +64,12 @@ require(
 )
 require(
     genre_apply,
-    "if (changed) GroovePuterState::markSceneMutated();",
+    "if (changed)",
+    "Genre Apply must guard Scene revision mutation",
+)
+require(
+    genre_apply,
+    "GroovePuterState::markSceneMutated();",
     "Genre Apply must mark after the guarded transaction",
 )
 require_marks(genre_apply, 1, "Genre Apply")
