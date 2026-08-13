@@ -28,6 +28,12 @@ def main() -> None:
             "wave overlay must be drawn over the current MIDI progress track")
     require("midiWaveEnvelope_" in header and "midiWavePhase_" in header,
             "animation state must stay local to the UI page")
+    require("LayoutManager::lineY(3) + 1" in page and
+            "Layout::CONTENT.w - 16, 9" in page,
+            "MIDI progress wave must use the full nine-pixel progress region")
+    require("std::max<uint8_t>(64, visual.velocity)" in page and
+            "midiWaveEnvelope_ - 5u" in page,
+            "MIDI wave needs visible attack and a readable decay tail")
     require("TinyUSB" not in page and "USBMIDI" not in page,
             "MIDI Player UI must not become a USB owner")
     print("SMF MIDI wave source regressions: OK")

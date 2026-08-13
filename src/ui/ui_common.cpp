@@ -1,6 +1,7 @@
 #include "ui_common.h"
 #include "ui_utils.h"
 #include "ui_widgets.h"
+#include "ui_theme.h"
 #include "ui_active_page_title.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/smf_player_service.h"
@@ -358,7 +359,7 @@ namespace UI {
         const auto& waveBuffer = mini_acid.getWaveformBuffer();
         
         const int midY = y + h / 2;
-        const int amplitude = h / 2 - 2; 
+        const int amplitude = h / 2 - 1;
         int points = w < kOverlayMaxPoints ? w : kOverlayMaxPoints;
 
         // 1) Reference center line (matches page)
@@ -385,15 +386,22 @@ namespace UI {
         auto drawWave = [&](const int16_t* wave, int len, IGfxColor color) {
             if (len < 2) return;
             int drawLen = len < w ? len : w;
+            int32_t peak = 0;
+            for (int px = 0; px < drawLen; ++px) {
+                int32_t sample = wave[px];
+                if (sample < 0) sample = -sample;
+                if (sample > peak) peak = sample;
+            }
+            // A small noise gate keeps silence flat. Above it, bounded visual
+            // auto-gain lets quiet but intentional material use the compact
+            // four-pixel half-height without changing the audio signal.
+            if (peak < 128) return;
+            const int32_t visualPeak = peak < 2048 ? 2048 : peak;
             for (int px = 0; px < drawLen - 1; ++px) {
-                // High visual gain (3.5x) for compact overlay to ensure "dance"
-                float s0 = (wave[px] * 3.5f) / 32768.0f;
-                float s1 = (wave[px + 1] * 3.5f) / 32768.0f;
-                if (s0 > 1.0f) s0 = 1.0f; else if (s0 < -1.0f) s0 = -1.0f;
-                if (s1 > 1.0f) s1 = 1.0f; else if (s1 < -1.0f) s1 = -1.0f;
-                
-                int y0 = midY - static_cast<int>(s0 * amplitude);
-                int y1 = midY - static_cast<int>(s1 * amplitude);
+                const int y0 = midY - static_cast<int>(
+                    (static_cast<int32_t>(wave[px]) * amplitude) / visualPeak);
+                const int y1 = midY - static_cast<int>(
+                    (static_cast<int32_t>(wave[px + 1]) * amplitude) / visualPeak);
                 drawLineColored(gfx, x + px, y0, x + px + 1, y1, color);
             }
         };
@@ -502,7 +510,7 @@ namespace UI {
             // Compact flash block on musical trigger, keeps palette consistent per theme.
             if (hitNow && blink) {
                 IGfxColor flashBg = muted ? kMuted : kActive;
-                gfx.fillRect(cx - 1, y - 1, itemW, 9, flashBg);
+                gfx.fillRect(cx - 1, y, itemW, 8, flashBg);
                 color = COLOR_BLACK;
             }
             
@@ -513,9 +521,9 @@ namespace UI {
             gfx.setTextColor(color);
             gfx.drawText(cx, y, num);
             
-            // Small timing tick above active lane.
+            // Small timing tick stays inside the owned HUD strip.
             if (active && !muted && blink) {
-                gfx.fillRect(cx + 3, y - 4, 2, 2, hitNow ? kActive : kIdle);
+                gfx.fillRect(cx + 3, y + 8, 2, 2, hitNow ? kActive : kIdle);
             }
             
         }
@@ -555,6 +563,20 @@ namespace UI {
         }
 
         gfx.drawText(x, y, buf);
+    }
+
+    void drawPerformanceHud(IGfx& gfx, MiniAcid& mini_acid, bool feelPulse) {
+        const ThemePalette palette = themePalette();
+        gfx.fillRect(Layout::PERFORMANCE_HUD.x,
+                     Layout::PERFORMANCE_HUD.y,
+                     Layout::PERFORMANCE_HUD.w,
+                     Layout::PERFORMANCE_HUD.h,
+                     palette.background);
+        drawWaveformOverlay(gfx, mini_acid);
+        drawFeelOverlay(gfx, mini_acid, feelPulse);
+        // Mutes are intentionally last so their digits remain the topmost,
+        // readable layer even while the waveform is moving.
+        drawMutesOverlay(gfx, mini_acid);
     }
 
     void drawFeelHeaderHud(IGfx& gfx, MiniAcid& mini_acid, int x, int y) {

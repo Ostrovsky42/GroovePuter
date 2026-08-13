@@ -228,12 +228,10 @@ void MiniAcidDisplay::update() {
         LayoutManager::drawFooter(gfx_, "[ ] workspaces", "Fn+M menu");
     }
     
-    UI::drawWaveformOverlay(gfx_, mini_acid_);
     UI::drawLiveMixLockBadge(gfx_, mini_acid_);
-    
+
     updateCyclePulse_();
-    UI::drawFeelOverlay(gfx_, mini_acid_, millis() < cycle_pulse_until_ms_);
-    UI::drawMutesOverlay(gfx_, mini_acid_);
+    UI::drawPerformanceHud(gfx_, mini_acid_, millis() < cycle_pulse_until_ms_);
 
     if (workspace_launcher_.isVisible()) {
         workspace_launcher_.draw(gfx_);
