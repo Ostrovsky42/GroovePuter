@@ -14,13 +14,13 @@
 #include "../screen_geometry.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "../ui_theme.h"
 
 namespace {
-// The compact strip replaces only the child page's PTRN label. Pattern numbers
-// begin at x=106 in the retro/amber editor, so the tab affordance must end
-// before that fixed selector row instead of being centered over it.
+// The parent owns one compact tab indicator across NOTES, KNOBS and MORE. On
+// NOTES it replaces the child page's PTRN label; pattern numbers begin at
+// x=106, so the indicator must end before that fixed selector row.
 constexpr int kTabStripX = 72;
-constexpr int kParamsTabStripX = 42;
 constexpr int kTabStripW = 32;
 constexpr int kTabStripH = 11;
 constexpr int kPatternNumbersX = 106;
@@ -90,7 +90,7 @@ void SynthSequencerPage::drawTabIndicator(IGfx& gfx) const {
       UI::currentStyle != VisualStyle::AMBER) {
     return;
   }
-  const int x = synth_tab_ == SynthTab::Notes ? kTabStripX : kParamsTabStripX;
+  const int x = kTabStripX;
   const int y = Layout::CONTENT.y;
   gfx.fillRect(x, y, kTabStripW, kTabStripH, IGfxColor::Black());
   gfx.setTextColor(synthTabColor(voice_index_));
@@ -101,17 +101,13 @@ void SynthSequencerPage::drawTabIndicator(IGfx& gfx) const {
 
 void SynthSequencerPage::draw(IGfx& gfx) {
   MultiPage::draw(gfx);
+  const UI::ThemePalette palette = UI::themePalette();
+  gfx.fillRect(Layout::PERFORMANCE_HUD.x,
+               Layout::PERFORMANCE_HUD.y,
+               Layout::PERFORMANCE_HUD.w,
+               Layout::PERFORMANCE_HUD.h,
+               palette.background);
   drawTabIndicator(gfx);
-
-  if (synth_tab_ == SynthTab::Knobs) {
-    UI::drawStandardFooter(gfx,
-                           "[TAB]MORE [L/R]FOCUS [U/D]VAL",
-                           "HOLD:ACCEL [CTRL]FINE");
-  } else if (synth_tab_ == SynthTab::More) {
-    UI::drawStandardFooter(gfx,
-                           "[TAB]NOTES [U/D]ROW [L/R]CHANGE",
-                           "TYPE OSC FLT DST DLY");
-  }
 }
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {

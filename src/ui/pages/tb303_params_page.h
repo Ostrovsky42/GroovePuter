@@ -43,7 +43,6 @@ class TB303ParamsPage : public IPage, public IMultiHelpFramesProvider {
   void rememberFocusedSlot();
   void restoreFocusedSlot();
   void focusComponent(Component* component);
-  void drawTabSwitcher(IGfx& gfx, const Rect& content);
   void drawMainSummary(IGfx& gfx, const Rect& content);
   void loadModePreset(int index);
 

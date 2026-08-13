@@ -344,12 +344,13 @@ namespace UI {
 
     void drawWaveformOverlay(IGfx& gfx, MiniAcid& mini_acid) {
         if (!waveformOverlay.enabled) return;
-        
-        // Compact dimensions at bottom of screen - increased height for better visibility
-        const int h = 24; 
-        const int y = Layout::FOOTER.y - h - 2;
-        const int x = 8;
-        const int w = Layout::FOOTER.w - 12;
+
+        // The waveform shares the reserved performance strip without entering
+        // either the FEEL label on the left or mute/activity digits on the right.
+        const int h = Layout::PERFORMANCE_WAVEFORM.h;
+        const int y = Layout::PERFORMANCE_WAVEFORM.y;
+        const int x = Layout::PERFORMANCE_WAVEFORM.x;
+        const int w = Layout::PERFORMANCE_WAVEFORM.w;
 
         if (w < 10 || h < 4) return;
 
@@ -432,7 +433,7 @@ namespace UI {
         const int spacing = 2;
         const int totalW = (10 * itemW) + (9 * spacing);
         const int x = gfx.width() - totalW - 4; // Right aligned
-        const int y = Layout::FOOTER.y - 10;
+        const int y = Layout::PERFORMANCE_HUD.y;
         const bool playing = mini_acid.isPlaying();
         int step = mini_acid.currentStep();
         if (step < 0 || step >= 16) step = 0;
@@ -536,7 +537,7 @@ namespace UI {
         snprintf(buf, sizeof(buf), "G%s T%s L%dB", gridStr, tbStr, bars);
 
         const int x = Layout::CONTENT_PAD_X;
-        const int y = Layout::FOOTER.y - 10;
+        const int y = Layout::PERFORMANCE_HUD.y;
 
         IGfxColor textColor = COLOR_LABEL;
         if (currentStyle == VisualStyle::RETRO_CLASSIC) {

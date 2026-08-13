@@ -13,6 +13,14 @@ def test_synth_track_owns_notes_knobs_more_cycle() -> None:
     source = (ROOT / "src/ui/pages/synth_sequencer_page.cpp").read_text(
         encoding="utf-8"
     )
+    params = (ROOT / "src/ui/pages/tb303_params_page.cpp").read_text(
+        encoding="utf-8"
+    )
+    pattern = (ROOT / "src/ui/pages/pattern_edit_page_legacy.h").read_text(
+        encoding="utf-8"
+    )
+    geometry = (ROOT / "src/ui/screen_geometry.h").read_text(encoding="utf-8")
+    common = (ROOT / "src/ui/ui_common.cpp").read_text(encoding="utf-8")
     header = (ROOT / "src/ui/pages/synth_sequencer_page.h").read_text(
         encoding="utf-8"
     )
@@ -37,8 +45,6 @@ def test_synth_track_owns_notes_knobs_more_cycle() -> None:
             "compact MORE indicator must be visible")
     require("constexpr int kTabStripX = 72;" in source,
             "compact synth tabs must occupy the former PTRN label slot")
-    require("constexpr int kParamsTabStripX = 42;" in source,
-            "KNOBS/MORE indicator must stay left of the child MAIN/MORE switcher")
     require("constexpr int kTabStripW = 32;" in source,
             "compact synth tabs must stop before the pattern-number row")
     require("kTabStripX + kTabStripW <= kPatternNumbersX" in source,
@@ -47,14 +53,45 @@ def test_synth_track_owns_notes_knobs_more_cycle() -> None:
             "UI::currentStyle != VisualStyle::RETRO_CLASSIC" in source and
             "UI::currentStyle != VisualStyle::AMBER" in source,
             "MINIMAL NOTES must suppress tabs instead of covering pattern numbers")
-    require("synth_tab_ == SynthTab::Notes ? kTabStripX : kParamsTabStripX" in source,
-            "tab x-position must follow the active child layout")
+    require("const int x = kTabStripX;" in source,
+            "all three synth tabs must share one stable indicator position")
     require('"[NOTES] KNOBS MORE"' not in source and
             '"NOTES [KNOBS] MORE"' not in source and
             '"NOTES KNOBS [MORE]"' not in source,
             "wide synth tab labels must not return over pattern controls")
-    require('"[TAB]NOTES [U/D]ROW [L/R]CHANGE"' in source,
+    require("drawTabSwitcher" not in params and '"MAIN"' not in params,
+            "params page must not duplicate the parent N/K/M switcher")
+    require("UIInput::isTab(ui_event)" not in params,
+            "only SynthSequencerPage may own the three-state Tab cycle")
+    require("UI::drawStandardFooter" not in source,
+            "parent must not redraw the params footer")
+    require('"[TAB]NOTES [U/D]ROW [L/R]CHANGE"' in params,
             "MORE footer must describe the new return-to-NOTES behavior")
+    require('gfx.textWidth("TAB >")' not in params,
+            "summary must not duplicate the footer Tab hint")
+    require("constexpr LayoutRect PERFORMANCE_HUD" in geometry,
+            "global performance overlays need a reserved layout strip")
+    require("constexpr LayoutRect PERFORMANCE_WAVEFORM" in geometry,
+            "waveform needs a non-overlapping slot inside the HUD strip")
+    require(common.count("const int y = Layout::PERFORMANCE_HUD.y;") == 2,
+            "Feel and Mutes overlays must share the reserved strip")
+    require("Layout::PERFORMANCE_WAVEFORM.h" in common and
+            "Layout::PERFORMANCE_WAVEFORM.y" in common and
+            "Layout::PERFORMANCE_WAVEFORM.x" in common and
+            "Layout::PERFORMANCE_WAVEFORM.w" in common,
+            "waveform must remain inside its reserved HUD slot")
+    require("gfx.fillRect(Layout::PERFORMANCE_HUD.x" in source and
+            "palette.background" in source,
+            "synth pages must clear their reserved HUD strip before overlays")
+    require("synth summary must stay above the performance HUD" in params and
+            "synth MORE rows must stay above the performance HUD" in params,
+            "params layout must prove that it cannot enter the HUD strip")
+    require("std::min(y + h - 2, Layout::PERFORMANCE_HUD.y)" in pattern,
+            "minimal NOTES grid must stop above the performance HUD")
+    require(pattern.count(
+                "std::min(y + h - 12, Layout::PERFORMANCE_HUD.y) - contentY"
+            ) == 2,
+            "retro and amber NOTES grids must stop above the performance HUD")
 
 
 def test_hub_hides_legacy_sound_pages_but_keeps_ids_compatible() -> None:
