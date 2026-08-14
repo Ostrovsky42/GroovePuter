@@ -9,8 +9,10 @@
 #include <limits>
 #include <algorithm>
 
-// External WAV loader
-bool loadWavFile(const char* path, WavInfo& info, int16_t** outPcm);
+// External WAV loader. The store supplies its current pool budget so metadata
+// admission can reject oversized decoded PCM before allocation or data read.
+bool loadWavFileBounded(const char* path, WavInfo& info, int16_t** outPcm,
+                        std::size_t maxDecodedBytes);
 
 namespace {
 
@@ -169,10 +171,11 @@ bool RamSampleStore::preload(SampleId id) {
 
   printf("Preload: Loading %s ...\n", path.c_str());
 
-  // 3. Load from disk.
+  // 3. Parse metadata and load only if the final decoded mono PCM fits the
+  // whole sampler pool. Oversized files fail before PCM allocation/data read.
   WavInfo info{};
   int16_t* pcm = nullptr;
-  if (!loadWavFile(path.c_str(), info, &pcm)) {
+  if (!loadWavFileBounded(path.c_str(), info, &pcm, maxPoolBytes_)) {
     printf("Preload: loadWavFile failed for %s\n", path.c_str());
     return false;
   }
@@ -183,6 +186,8 @@ bool RamSampleStore::preload(SampleId id) {
          static_cast<unsigned>(currentPoolUsage_),
          static_cast<unsigned>(maxPoolBytes_));
 
+  // Defensive invariant: bounded loader must never return an allocation that
+  // is larger than the store's pool admission budget.
   if (size > maxPoolBytes_) {
     printf("Preload: Sample is larger than the entire pool\n");
     free(pcm);
@@ -190,7 +195,7 @@ bool RamSampleStore::preload(SampleId id) {
   }
 
   // 4. Evict until enough capacity exists. Abort when eviction makes no
-  // progress; all candidates are then referenced by active audio voices.
+  // progress all candidates are then referenced by active audio voices.
   while (currentPoolUsage_ + size > maxPoolBytes_) {
     const std::size_t usageBefore = currentPoolUsage_;
     evictLRU();
@@ -207,88 +212,41 @@ bool RamSampleStore::preload(SampleId id) {
   for (int i = 0; i < kMaxSampleSlots; ++i) {
     auto& slot = slots_[i];
     if (slot.id.load(std::memory_order_acquire) == 0 &&
-        !slot.ready.load(std::memory_order_acquire) &&
-        slot.refCount.load(std::memory_order_acquire) == 0 &&
-        slot.data.load(std::memory_order_acquire) == nullptr) {
-      slotIdx = i;
-      break;
-    }
-  }
+        \Ûİœ™XYK›ØY
+İ›Y[[ÜWÛÜ™\—ØXÜ]Z\™JH	‰‚ˆÛİœ™YÛİ[›ØY
+İ›Y[[ÜWÛÜ™\—ØXÜ]Z\™JHOH	‰‚ˆÛİ™]K›ØY
+İ›Y[[ÜWÛÜ™\—ØXÜ]Z\™JHOH[ŠHÂˆÛİYHNÂˆœ™XZÎÂˆBˆB‚ˆYˆ
+ÛİY
+HÂˆš[Š”™[ØYˆ›È]ZY\ØÙ[œ™YHÛİ×ˆŠNÂˆœ™YJÛJNÂˆ™]\›ˆ˜[ÙNÂˆB‚ˆËÈ‹ˆš[[™X›\ÚHÛİˆ›Û‹X]ÛZXÈY]Y]H\È›İXİYHBˆËÈš[˜[™XYH™[X\ÙH[™X]Ú[™ÈXÜ]Z\™H[ˆ™XY\œË‚ˆ]]ÉˆÛİHÛİ×ÖÜÛİYNÂˆÛİ™œ˜[Y\ÈH[™›Ë›[Qœ˜[Y\ÎÂˆÛİœØ[\T˜]HH[™›ËœØ[\T˜]NÂˆÛİœÚ^™P]\ÈHÚ^™NÂˆÛİ™]KœİÜ™JÛKİ›Y[[ÜWÛÜ™\—Ü™[^Y
+NÂˆÛİ›\İXØÙ\ÜËœİÜ™J™^[YJ
+Kİ›Y[[ÜWÛÜ™\—Ü™[^Y
+NÂˆÛİœ™YÛİ[œİÜ™Jİ›Y[[ÜWÛÜ™\—Ü™[^Y
+NÂˆÛİšYœİÜ™JY˜[YKİ›Y[[ÜWÛÜ™\—Ü™[^Y
+NÂˆÛİœ™XYKœİÜ™JYKİ›Y[[ÜWÛÜ™\—Ü™[X\ÙJNÂ‚ˆİ\œ™[ÛÛ\ØYÙWÈ
+ÏHÚ^™NÂˆ™]\›ˆYNÂŸB‚›ÚY˜[TØ[\TİÜ™N™]šXİ•J
+HÂˆ[Ø[™Y]RYHLNÂˆZ[Ì—İÛ\İ[YHHİ›[Y\šX×Û[Z]ÏZ[Ì—İ›X^
 
-  if (slotIdx < 0) {
-    printf("Preload: No quiescent free slots\n");
-    free(pcm);
-    return false;
-  }
-
-  // 6. Fill and publish the slot. Non-atomic metadata is protected by the
-  // final ready release and matching acquire in readers.
-  auto& slot = slots_[slotIdx];
-  slot.frames = info.numFrames;
-  slot.sampleRate = info.sampleRate;
-  slot.sizeBytes = size;
-  slot.data.store(pcm, std::memory_order_relaxed);
-  slot.lastAccess.store(nextTime(), std::memory_order_relaxed);
-  slot.refCount.store(0, std::memory_order_relaxed);
-  slot.id.store(id.value, std::memory_order_relaxed);
-  slot.ready.store(true, std::memory_order_release);
-
-  currentPoolUsage_ += size;
-  return true;
-}
-
-void RamSampleStore::evictLRU() {
-  int candidateIdx = -1;
-  uint32_t oldestTime = std::numeric_limits<uint32_t>::max();
-
-  for (int i = 0; i < kMaxSampleSlots; ++i) {
-    auto& slot = slots_[i];
-    const uint32_t id = slot.id.load(std::memory_order_acquire);
-    if (id != 0 && slot.ready.load(std::memory_order_acquire) &&
-        slot.refCount.load(std::memory_order_acquire) == 0) {
-      const uint32_t access = slot.lastAccess.load(std::memory_order_relaxed);
-      if (access < oldestTime) {
-        oldestTime = access;
-        candidateIdx = i;
-      }
-    }
-  }
-
-  if (candidateIdx < 0) return;
-
-  auto& slot = slots_[candidateIdx];
-
-  // Withdraw publication first. Any acquisition that observed the old ready
-  // value must increment and then revalidate it before returning a handle.
-  bool expectedReady = true;
-  if (!slot.ready.compare_exchange_strong(
-          expectedReady, false,
-          std::memory_order_acq_rel,
-          std::memory_order_acquire)) {
-    return;
-  }
-
-  if (slot.refCount.load(std::memory_order_acquire) != 0) {
-    slot.ready.store(true, std::memory_order_release);
-    return;
-  }
-
-  slot.id.store(0, std::memory_order_release);
-  int16_t* ptr = const_cast<int16_t*>(
-      slot.data.exchange(nullptr, std::memory_order_acq_rel));
-  if (ptr) free(ptr);
-
-  if (slot.sizeBytes <= currentPoolUsage_) {
-    currentPoolUsage_ -= slot.sizeBytes;
-  } else {
-    currentPoolUsage_ = 0;
-  }
-  slot.frames = 0;
-  slot.sampleRate = 0;
-  slot.sizeBytes = 0;
-}
-
-std::size_t RamSampleStore::freePoolBytes() const {
-  if (currentPoolUsage_ > maxPoolBytes_) return 0;
-  return maxPoolBytes_ - currentPoolUsage_;
-}
+NÂ‚ˆ›Üˆ
+[HHÈHÓX^Ø[\TÛİÎÈ
+ÊÚJHÂˆ]]ÉˆÛİHÛİ×ÖÚWNÂˆÛÛœİZ[Ì—İYHÛİšY›ØY
+İ›Y[[ÜWÛÜ™\—ØXÜ]Z\™JNÂˆYˆ
+YOH	‰ˆÛİœ™XYK›ØY
+İ›Y[[ÜWÛÜ™\—ØXÜ]Z\™JH	‰‚ˆÛİœ™YÛİ[›ØY
+İ›Y[[ÜWÛÜ™\—ØXÜ]Z\™JHOH
+HÂˆÛÛœİZ[Ì—İXØÙ\ÜÈHÛİ›\İXØÙ\ÜË›ØY
+İ›Y[[ÜWÛÜ™\—Ü™[^Y
+NÂˆYˆ
+XØÙ\ÜÈÛ\İ[YJHÂˆÛ\İ[YHHXØÙ\ÜÎÂˆØ[™Y]RYHNÂˆBˆBˆB‚ˆYˆ
+Ø[™Y]RY
+H™]\›Â‚ˆ]]ÉˆÛİHÛİ×ÖØØ[™Y]RYNÂ‚ˆËÈÚ]˜]ÈX›XØ][Ûˆš\œİˆ[HXÜ]Z\Ú][Ûˆ]ØœÙ\™YHÛ™XYBˆËÈ˜[YH]\İ[˜Ü™[Y[[™[ˆ™]˜[Y]H]™Y›Ü™H™]\›š[™ÈH[™K‚ˆ›ÛÛ^XİY™XYHHYNÂˆYˆ
+\Ûİœ™XYK˜ÛÛ\\™WÙ^Ú[™ÙWÜİ›Û™Êˆ^XİY™XYK˜[ÙKˆİ›Y[[ÜWÛÜ™\—ØXÜWÜ™[ˆİ›Y[[ÜWÛÜ™\—ØXÜ]Z\™JJHÂˆ™]\›ÂˆB‚ˆYˆ
+Ûİœ™YÛİ[›ØY
+İ›Y[[ÜWÛÜ™\—ØXÜ]Z\™JHOH
+HÂˆÛİœ™XYKœİÜ™JYKİ›Y[[ÜWÛÜ™\—Ü™[X\ÙJNÂˆ™]\›ÂˆB‚ˆÛİšYœİÜ™Jİ›Y[[ÜWÛÜ™\—Ü™[X\ÙJNÂˆ[M—İ
+ˆˆHÛÛœİØØ\İ[M—İ
+ŠˆÛİ™]K™^Ú[™ÙJ[‹İ›Y[[ÜWÛÜ™\—ØXÜWÜ™[
+JNÂˆYˆ
+ŠHœ™YJŠNÂ‚ˆYˆ
+ÛİœÚ^™P]\ÈHİ\œ™[ÛÛ\ØYÙWÊHÂˆİ\œ™[ÛÛ\ØYÙWÈOHÛİœÚ^™P]\ÎÂˆH[ÙHÂˆİ\œ™[ÛÛ\ØYÙWÈHÂˆBˆÛİ™œ˜[Y\ÈHÂˆÛİœØ[\T˜]HHÂˆÛİœÚ^™P]\ÈHÂŸB‚œİœÚ^™Wİ˜[TØ[\TİÜ™N™œ™YTÛÛ]\Ê
+HÛÛœİÂˆYˆ
+İ\œ™[ÛÛ\ØYÙWÈˆX^ÛÛ]\×ÊH™]\›ˆÂˆ™]\›ˆX^ÛÛ]\×ÈHİ\œ™[ÛÛ\ØYÙWÎÂŸB

@@ -23,6 +23,7 @@ bool decodeSampleRefHex(const char* data, std::size_t len, SampleRef& out);
 
 class SamplerSceneFilter {
 public:
+  static constexpr std::size_t kSamplerPadCount = 16;
   static constexpr std::size_t kMaxPadObjectBytes = 384;
   static constexpr std::size_t kMaxOutputBytes = 448;
 
@@ -46,6 +47,7 @@ private:
   const SampleIndex* index_;
 
   bool failed_ = false;
+  bool finished_ = false;
   bool inSamplerArray_ = false;
   bool bufferingPad_ = false;
   int padBraceDepth_ = 0;
@@ -64,6 +66,8 @@ private:
   char padBuffer_[kMaxPadObjectBytes] = {};
   std::size_t padLen_ = 0;
   char outputBuffer_[kMaxOutputBytes] = {};
+  std::size_t samplerPadIndex_ = 0;
+  SampleRef pendingUnresolvedRefs_[kSamplerPadCount] = {};
 };
 
 bool transformSamplerSceneString(const std::string& input,
@@ -149,7 +153,7 @@ public:
       const int value = reader_.read();
       if (value < 0) {
         eof_ = true;
-        if (!filter_.finish()) failed_ = true;
+        finalizeFilter();
         return -1;
       }
 
@@ -168,10 +172,19 @@ public:
     }
   }
 
-  bool failed() const { return failed_ || filter_.failed(); }
+  bool failed() {
+    finalizeFilter();
+    return failed_ || filter_.failed();
+  }
   bool eof() const { return eof_; }
 
 private:
+  void finalizeFilter() {
+    if (filterFinalized_) return;
+    filterFinalized_ = true;
+    if (!filter_.finish()) failed_ = true;
+  }
+
   Reader& reader_;
   SamplerSceneFilter filter_;
   const char* pending_ = nullptr;
@@ -179,6 +192,7 @@ private:
   std::size_t pendingLen_ = 0;
   bool failed_ = false;
   bool eof_ = false;
+  bool filterFinalized_ = false;
 };
 
 }  // namespace GroovePuterSampler

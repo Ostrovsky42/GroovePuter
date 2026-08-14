@@ -11,6 +11,7 @@ namespace GroovePuterSampler {
 namespace {
 
 const SampleIndex* g_scenePersistenceSampleIndex = nullptr;
+SampleRef g_unresolvedSampleRefs[SamplerSceneFilter::kSamplerPadCount] = {};
 
 struct FlatPadFields {
   bool hasId = false;
@@ -149,6 +150,15 @@ bool appendUint32(char* output, std::size_t cap, std::size_t& pos,
                      static_cast<std::size_t>(written));
 }
 
+bool appendRefField(char* output, std::size_t cap, std::size_t& pos,
+                    SampleRef ref) {
+  char refHex[17] = {};
+  if (!encodeSampleRefHex(ref, refHex)) return false;
+  return appendBytes(output, cap, pos, ",\"ref\":\"", 8) &&
+         appendBytes(output, cap, pos, refHex, 16) &&
+         appendBytes(output, cap, pos, "\"", 1);
+}
+
 }  // namespace
 
 void setScenePersistenceSampleIndex(const SampleIndex* index) {
@@ -194,7 +204,13 @@ bool decodeSampleRefHex(const char* data, std::size_t len, SampleRef& out) {
 SamplerSceneFilter::SamplerSceneFilter(SceneSampleFilterDirection direction,
                                        const SampleIndex* index)
     : direction_(direction),
-      index_(index ? index : scenePersistenceSampleIndex()) {}
+      index_(index ? index : scenePersistenceSampleIndex()) {
+  if (direction_ == SceneSampleFilterDirection::Load) {
+    // A new Scene load owns the unresolved-asset sidecar. Failed loads leave
+    // it empty; only finish() publishes refs from a successfully parsed Scene.
+    for (auto& ref : g_unresolvedSampleRefs) ref = {};
+  }
+}
 
 bool SamplerSceneFilter::appendPadChar(char c) {
   if (padLen_ >= kMaxPadObjectBytes) {
@@ -297,8 +313,8 @@ bool SamplerSceneFilter::transformPad(
           index_->legacyMatchCount(SampleId{fields.id});
       if (matches > 1) return false;
       if (matches == 0) {
-        // Preserve legacy missing-sample behavior. The Scene still loads and
-        // the existing preload path reports the absent registry entry.
+        // Legacy ID-only Scenes have no stable path to retain. Preserve the
+        // historical missing-ID behavior without guessing another file.
         return appendBytes(output, outputCap, outputLen, input, inputLen);
       }
 
@@ -315,12 +331,15 @@ bool SamplerSceneFilter::transformPad(
     }
 
     SampleRef ref{};
-    if (!decodeSampleRefHex(fields.ref, fields.refLen, ref) ||
-        index_ == nullptr) {
-      return false;
+    if (!decodeSampleRefHex(fields.ref, fields.refLen, ref)) return false;
+
+    const SampleId runtime =
+        index_ ? index_->runtimeIdForRef(ref) : SampleId{0};
+    if (runtime.value == 0 && samplerPadIndex_ < kSamplerPadCount) {
+      // External asset is missing, not the project. Keep the stable identity
+      // in a control-side sidecar and publish a silent runtime pad.
+      pendingUnresolvedRefs_[samplerPadIndex_] = ref;
     }
-    const SampleId runtime = index_->runtimeIdForRef(ref);
-    if (runtime.value == 0) return false;
 
     if (!appendBytes(output, outputCap, outputLen,
                      input, fields.idStart)) return false;
@@ -334,7 +353,24 @@ bool SamplerSceneFilter::transformPad(
   // Save path: SceneManager gives us runtime IDs only. Persist an exact stable
   // ref while keeping the historical basename ID as the compatibility field.
   if (fields.hasRef) return false;
-  if (fields.id == 0 || index_ == nullptr) {
+
+  if (fields.id == 0) {
+    const SampleRef unresolved = samplerPadIndex_ < kSamplerPadCount
+        ? g_unresolvedSampleRefs[samplerPadIndex_]
+        : SampleRef{};
+    if (!unresolved.valid()) {
+      return appendBytes(output, outputCap, outputLen, input, inputLen);
+    }
+
+    if (!appendBytes(output, outputCap, outputLen,
+                     input, fields.idEnd)) return false;
+    if (!appendRefField(output, outputCap, outputLen, unresolved)) return false;
+    return appendBytes(output, outputCap, outputLen,
+                       input + fields.idEnd,
+                       inputLen - fields.idEnd);
+  }
+
+  if (index_ == nullptr) {
     return appendBytes(output, outputCap, outputLen, input, inputLen);
   }
 
@@ -346,17 +382,11 @@ bool SamplerSceneFilter::transformPad(
     return appendBytes(output, outputCap, outputLen, input, inputLen);
   }
 
-  char refHex[17];
-  if (!encodeSampleRefHex(ref, refHex)) return false;
-
   if (!appendBytes(output, outputCap, outputLen,
                    input, fields.idStart)) return false;
   if (!appendUint32(output, outputCap, outputLen,
                     file->id.value)) return false;
-  if (!appendBytes(output, outputCap, outputLen,
-                   ",\"ref\":\"", 8)) return false;
-  if (!appendBytes(output, outputCap, outputLen, refHex, 16)) return false;
-  if (!appendBytes(output, outputCap, outputLen, "\"", 1)) return false;
+  if (!appendRefField(output, outputCap, outputLen, ref)) return false;
   return appendBytes(output, outputCap, outputLen,
                      input + fields.idEnd,
                      inputLen - fields.idEnd);
@@ -395,6 +425,7 @@ bool SamplerSceneFilter::acceptPad(char c, const char*& data,
     failed_ = true;
     return false;
   }
+  ++samplerPadIndex_;
   data = outputBuffer_;
   len = transformedLen;
   return true;
@@ -408,12 +439,20 @@ bool SamplerSceneFilter::accept(char c, const char*& data,
 }
 
 bool SamplerSceneFilter::finish() {
+  if (finished_) return !failed_;
   if (failed_) return false;
   if (bufferingPad_ || inSamplerArray_ || globalInString_ ||
       waitingSamplerArray_) {
     failed_ = true;
     return false;
   }
+
+  if (direction_ == SceneSampleFilterDirection::Load) {
+    for (std::size_t i = 0; i < kSamplerPadCount; ++i) {
+      g_unresolvedSampleRefs[i] = pendingUnresolvedRefs_[i];
+    }
+  }
+  finished_ = true;
   return true;
 }
 

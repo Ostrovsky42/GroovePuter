@@ -199,8 +199,8 @@ void testCollisionPairStableRefsAreBothUsableButLegacyIsNot() {
   fs::remove_all(root);
 }
 
-void testStableRefIsAuthoritativeAndFailsClosed() {
-  const fs::path root = fs::temp_directory_path() / "grooveputer_sampler_d_fail_closed";
+void testMalformedStableRefStillFailsClosed() {
+  const fs::path root = fs::temp_directory_path() / "grooveputer_sampler_d_malformed";
   fs::remove_all(root);
   fs::create_directories(root);
   touch(root / "hat.wav");
@@ -219,18 +219,73 @@ void testStableRefIsAuthoritativeAndFailsClosed() {
 
   const std::size_t refStart = persisted.find("\"ref\":\"");
   assert(refStart != std::string::npos);
-
   std::string malformed = persisted;
   malformed[refStart + 7] = 'z';
   std::string out;
   assert(!GroovePuterSampler::transformSamplerSceneString(
       malformed, SceneSampleFilterDirection::Load, &index, out));
 
-  std::string unresolved = persisted;
-  const std::size_t firstHex = refStart + 7;
-  unresolved.replace(firstHex, 16, "1111111111111111");
-  assert(!GroovePuterSampler::transformSamplerSceneString(
-      unresolved, SceneSampleFilterDirection::Load, &index, out));
+  fs::remove_all(root);
+}
+
+void testMissingStableRefDegradesSilentAndSurvivesResave() {
+  const fs::path root = fs::temp_directory_path() / "grooveputer_sampler_d_missing_ref";
+  fs::remove_all(root);
+  fs::create_directories(root);
+  const fs::path wav = root / "clap.wav";
+  touch(wav);
+
+  SampleIndex presentIndex;
+  presentIndex.scanDirectory(root.string());
+  CaptureStore presentStore;
+  assert(presentIndex.bindToStore(presentStore).registered == 1);
+  const SampleRef originalRef = presentIndex.findRefByFilename("clap.wav");
+  const SampleId runtime = presentIndex.runtimeIdForRef(originalRef);
+  assert(originalRef.valid() && runtime.value != 0);
+
+  std::string persisted;
+  assert(GroovePuterSampler::transformSamplerSceneString(
+      onePadScene(runtime.value), SceneSampleFilterDirection::Save,
+      &presentIndex, persisted));
+  const std::size_t refKey = persisted.find("\"ref\":\"");
+  assert(refKey != std::string::npos);
+  const std::string persistedRef = persisted.substr(refKey + 7, 16);
+
+  fs::remove(wav);
+  SampleIndex missingIndex;
+  missingIndex.scanDirectory(root.string());
+  std::string loadedMissing;
+  assert(GroovePuterSampler::transformSamplerSceneString(
+      persisted, SceneSampleFilterDirection::Load,
+      &missingIndex, loadedMissing));
+  assert(loadedMissing.find("\"id\":0") != std::string::npos);
+  assert(loadedMissing.find("\"ref\":\"" + persistedRef + "\"") !=
+         std::string::npos);
+
+  // SceneManager only retains runtime id=0. The control-side unresolved-ref
+  // sidecar must keep the physical identity alive across a later Save.
+  std::string resavedMissing;
+  assert(GroovePuterSampler::transformSamplerSceneString(
+      onePadScene(0), SceneSampleFilterDirection::Save,
+      &missingIndex, resavedMissing));
+  assert(resavedMissing.find("\"id\":0") != std::string::npos);
+  assert(resavedMissing.find("\"ref\":\"" + persistedRef + "\"") !=
+         std::string::npos);
+
+  touch(wav);
+  SampleIndex restoredIndex;
+  restoredIndex.scanDirectory(root.string());
+  CaptureStore restoredStore;
+  assert(restoredIndex.bindToStore(restoredStore).registered == 1);
+  const SampleId restoredRuntime = restoredIndex.runtimeIdForRef(originalRef);
+  assert(restoredRuntime.value != 0);
+
+  std::string restored;
+  assert(GroovePuterSampler::transformSamplerSceneString(
+      resavedMissing, SceneSampleFilterDirection::Load,
+      &restoredIndex, restored));
+  assert(restored.find("\"id\":" + std::to_string(restoredRuntime.value)) !=
+         std::string::npos);
 
   fs::remove_all(root);
 }
@@ -286,7 +341,8 @@ int main() {
   testUniqueSaveLoadPreservesPadParameters();
   testLegacyIdOnlyCompatibilityAndMissingSampleBehavior();
   testCollisionPairStableRefsAreBothUsableButLegacyIsNot();
-  testStableRefIsAuthoritativeAndFailsClosed();
+  testMalformedStableRefStillFailsClosed();
+  testMissingStableRefDegradesSilentAndSurvivesResave();
   testBoundedStreamingReaderWriter();
   return 0;
 }

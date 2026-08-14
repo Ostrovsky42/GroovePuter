@@ -24,6 +24,8 @@ def main() -> None:
     page = read("src/ui/pages/sampler_page.cpp")
     page_h = read("src/ui/pages/sampler_page.h")
     store_h = read("src/sampler/sample_store.h")
+    ram_store = read("src/sampler/ram_sample_store.cpp")
+    loader = read("src/sampler/sample_loader.cpp")
 
     selection = function_body(
         page,
@@ -60,6 +62,19 @@ def main() -> None:
             "direct/prelisten trigger may remain a short guarded audio mutation")
     require("Main Thread: Request to load a sample into RAM" in store_h,
             "ISampleStore must keep preload explicitly control-thread owned")
+
+    # Oversized WAV admission belongs before any PCM allocation or data-chunk
+    # read. Metadata parsing may read RIFF/fmt/data headers first.
+    bounded_start = loader.index("bool loadWavFileBounded(")
+    wrapper_start = loader.index("\nbool loadWavFile(", bounded_start)
+    bounded = loader[bounded_start:wrapper_start]
+    admission_pos = bounded.index("decodedBytes > maxDecodedBytes")
+    allocation_pos = bounded.index("SAMPLE_MALLOC_PSRAM(rawBytes)")
+    payload_pos = bounded.index("Data-chunk read starts only after final decoded-size admission")
+    require(admission_pos < allocation_pos < payload_pos,
+            "decoded-size admission must happen before PCM allocation/data read")
+    require("loadWavFileBounded(path.c_str(), info, &pcm, maxPoolBytes_)" in ram_store,
+            "RamSampleStore must pass the active sampler pool budget into WAV admission")
 
     # 0.9.3 deliberately removes the unsafe historical kit shortcut rather
     # than leaving a second scan/register/preload path with different rules.

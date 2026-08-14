@@ -22,6 +22,19 @@ python3 "${ROOT_DIR}/tests/test_sampler_page_navigation_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_ui_session_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_sampler_recovery_0_9_3_source_regressions.py"
 
+# Final oversized-WAV admission contract: decoded-size gate before PCM alloc/read.
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_sampler_wav_admission.cpp" \
+  "${ROOT_DIR}/src/sampler/sample_loader.cpp" \
+  -o "${BUILD_DIR}/test_sampler_wav_admission"
+
+"${BUILD_DIR}/test_sampler_wav_admission"
+
 # Existing SamplerVoice lifetime/reverse regression stays executable as a
 # behavior test rather than being replaced by a source assertion.
 "${CXX}" \
