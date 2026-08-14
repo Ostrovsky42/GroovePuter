@@ -133,6 +133,9 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case WorkflowPages::kPhrase:
             page = std::make_unique<PhrasePage>(gfx_, mini_acid_, audio_guard_);
             break;
+        case WorkflowPages::kSampler:
+            page = std::make_unique<SamplerPage>(gfx_, mini_acid_, audio_guard_);
+            break;
         case kSmfPlayerPage:
             page = std::make_unique<SmfPlayerPage>(gfx_, mini_acid_, audio_guard_);
             break;
@@ -249,7 +252,11 @@ void MiniAcidDisplay::update() {
 
 void MiniAcidDisplay::captureUiSession_() {
     GroovePuterState::UiSessionState next = ui_session_;
-    GroovePuterState::rememberWorkflowPage(next, page_index_);
+    if (WorkflowPages::isStandalonePage(page_index_)) {
+        next.activePage = static_cast<int8_t>(page_index_);
+    } else {
+        GroovePuterState::rememberWorkflowPage(next, page_index_);
+    }
     next.visualStyle = static_cast<uint8_t>(UI::currentStyle);
     next.waveformOverlayEnabled = UI::waveformOverlay.enabled ? 1 : 0;
     next.masterVolumePermille =
@@ -395,7 +402,13 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
     if (WorkflowPages::isWorkspacePage(index)) {
         active_workspace_ = WorkflowPages::workspaceForPage(index);
     }
-    GroovePuterState::rememberWorkflowPage(ui_session_, index);
+    if (WorkflowPages::isStandalonePage(index)) {
+        // A direct utility page must not replace the user's remembered
+        // workflow child in the compact session state.
+        ui_session_.activePage = static_cast<int8_t>(index);
+    } else {
+        GroovePuterState::rememberWorkflowPage(ui_session_, index);
+    }
     scheduleUiSessionSave_();
 
     IPage* newPage = getPage_(index);
@@ -488,6 +501,11 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 
         if (event.alt && (event.key == 'p' || event.key == 'P')) {
             goToPage(kSmfPlayerPage);
+            return true;
+        }
+
+        if (event.alt && (event.key == 'k' || event.key == 'K')) {
+            goToPage(WorkflowPages::kSampler);
             return true;
         }
 
