@@ -78,11 +78,13 @@ void testUniqueRegistryBinding() {
   const SampleRef kickRef = index.findRefByFilename("kick.wav");
   assert(kickRef.valid());
   assert(index.findByRef(kickRef) == kick);
+  assert(index.runtimeIdForRef(kickRef) == kickLegacy);
+  assert(index.resolveRuntimeId(kickLegacy) == kickRef);
 
   fs::remove_all(root);
 }
 
-void testLegacyCollisionRejectedBeforeStoreBinding() {
+void testLegacyCollisionGetsStableRuntimeOwnership() {
   // Real FNV-1a32 collision already frozen by 0.9.3-B.
   constexpr const char* kNameA = "5oetw2k1.wav";
   constexpr const char* kNameB = "qp363n87.wav";
@@ -108,16 +110,30 @@ void testLegacyCollisionRejectedBeforeStoreBinding() {
   assert(refB.valid());
   assert(refA != refB);
 
+  const SampleId runtimeA = index.runtimeIdForRef(refA);
+  const SampleId runtimeB = index.runtimeIdForRef(refB);
+  assert(runtimeA.value != 0);
+  assert(runtimeB.value != 0);
+  assert(runtimeA != runtimeB);
+  // Never bind either stable file to the ambiguous historical hash.
+  assert(runtimeA.value != hashA);
+  assert(runtimeB.value != hashA);
+  assert(index.resolveRuntimeId(runtimeA) == refA);
+  assert(index.resolveRuntimeId(runtimeB) == refB);
+
   CaptureStore store;
   const SampleRegistryBindResult result = index.bindToStore(store);
   assert(result.discovered == 2);
-  assert(result.registered == 0);
+  assert(result.registered == 2);
   assert(result.rejectedStable == 0);
+  // Both files remain impossible to resolve from the old ambiguous ID.
   assert(result.rejectedLegacy == 2);
   assert(result.rejectedStore == 0);
   assert(!result.clean());
-  assert(store.paths.empty());
+  assert(store.paths.size() == 2);
+  assert(store.paths.count(hashA) == 0);
   assert(index.resolveLegacyFile(SampleId{hashA}) == nullptr);
+  assert(index.runtimeIdForLegacyId(SampleId{hashA}).value == 0);
 
   fs::remove_all(root);
 }
@@ -134,7 +150,7 @@ void testRamStoreRefusesConflictingRuntimeRebind() {
 
 int main() {
   testUniqueRegistryBinding();
-  testLegacyCollisionRejectedBeforeStoreBinding();
+  testLegacyCollisionGetsStableRuntimeOwnership();
   testRamStoreRefusesConflictingRuntimeRebind();
   return 0;
 }
