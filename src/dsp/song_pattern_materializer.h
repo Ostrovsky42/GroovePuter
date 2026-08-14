@@ -24,6 +24,12 @@ constexpr uint8_t kEditableTrackMask =
     kSynthAMask | kSynthBMask | kDrumsMask;
 constexpr int kEditableTrackCount = 3;
 
+// Song-generated ownership lives in a bit that was already reserved in the
+// raw pattern step layout. This costs no additional Scene/DRAM and survives
+// PatternPagingService .gpp persistence without changing the page format.
+// Legacy/manual/imported material has the bit clear and is never reclaimed.
+constexpr uint8_t kSongGeneratedOwnershipBit = 0x01u;
+
 struct Request {
     int row = 0;
     int pageIndex = 0;
@@ -37,6 +43,8 @@ struct Result {
     Error error = Error::None;
     int generatedTracks = 0;
     int globalPattern[kEditableTrackCount] = {-1, -1, -1};
+    int reusedGeneratedTracks = 0;
+    int failedTrackIndex = -1;
 
     explicit operator bool() const { return error == Error::None; }
 };
@@ -44,6 +52,7 @@ struct Result {
 struct PreparedMaterial {
     int localSlot[kEditableTrackCount] = {-1, -1, -1};
     int globalPattern[kEditableTrackCount] = {-1, -1, -1};
+    bool reusedGenerated[kEditableTrackCount] = {false, false, false};
     SynthPattern synthA{};
     SynthPattern synthB{};
     DrumPatternSet drums{};
@@ -113,8 +122,23 @@ inline const SynthPattern& synthPatternAtLocalSlot(
         : scene.synthBBanks[bank].patterns[index];
 }
 
+inline SynthPattern& synthPatternAtLocalSlot(
+        Scene& scene, SongTrack track, int localSlot) {
+    const int bank = localSlot / Bank<SynthPattern>::kPatterns;
+    const int index = localSlot % Bank<SynthPattern>::kPatterns;
+    return track == SongTrack::SynthA
+        ? scene.synthABanks[bank].patterns[index]
+        : scene.synthBBanks[bank].patterns[index];
+}
+
 inline const DrumPatternSet& drumPatternAtLocalSlot(
         const Scene& scene, int localSlot) {
+    const int bank = localSlot / Bank<DrumPatternSet>::kPatterns;
+    const int index = localSlot % Bank<DrumPatternSet>::kPatterns;
+    return scene.drumBanks[bank].patterns[index];
+}
+
+inline DrumPatternSet& drumPatternAtLocalSlot(Scene& scene, int localSlot) {
     const int bank = localSlot / Bank<DrumPatternSet>::kPatterns;
     const int index = localSlot % Bank<DrumPatternSet>::kPatterns;
     return scene.drumBanks[bank].patterns[index];
@@ -134,21 +158,125 @@ inline bool slotContentIsEmpty(
     return false;
 }
 
-inline bool globalPatternIsReferenced(
-        const Scene& scene, SongTrack track, int globalPattern) {
-    const int trackIndex = editableTrackIndex(track);
-    if (trackIndex < 0) return true;
-    for (int songSlot = 0; songSlot < 2; ++songSlot) {
-        const Song& song = scene.songs[songSlot];
-        for (int row = 0; row < Song::kMaxPositions; ++row) {
-            if (song.positions[row].patterns[trackIndex] == globalPattern) {
-                return true;
-            }
-        }
+inline bool slotIsSongGenerated(
+        const Scene& scene, SongTrack track, int localSlot) {
+    if (localSlot < 0 || localSlot >= kPatternsPerPage) return false;
+    if (track == SongTrack::SynthA || track == SongTrack::SynthB) {
+        return (synthPatternAtLocalSlot(scene, track, localSlot).steps[0].unused &
+                kSongGeneratedOwnershipBit) != 0;
+    }
+    if (track == SongTrack::Drums) {
+        return (drumPatternAtLocalSlot(scene, localSlot)
+                    .voices[0].steps[0].unused &
+                kSongGeneratedOwnershipBit) != 0;
     }
     return false;
 }
 
+inline void markSlotSongGenerated(
+        Scene& scene, SongTrack track, int localSlot) {
+    if (localSlot < 0 || localSlot >= kPatternsPerPage) return;
+    if (track == SongTrack::SynthA || track == SongTrack::SynthB) {
+        SynthStep& step = synthPatternAtLocalSlot(scene, track, localSlot).steps[0];
+        step.unused = static_cast<uint8_t>(
+            step.unused | kSongGeneratedOwnershipBit);
+        return;
+    }
+    if (track == SongTrack::Drums) {
+        DrumStep& step = drumPatternAtLocalSlot(scene, localSlot)
+                             .voices[0].steps[0];
+        step.unused = static_cast<uint8_t>(
+            step.unused | kSongGeneratedOwnershipBit);
+    }
+}
+
+inline int globalPatternReferenceCount(
+        const Scene& scene, SongTrack track, int globalPattern) {
+    const int trackIndex = editableTrackIndex(track);
+    if (trackIndex < 0 || globalPattern < 0) return 0;
+    int references = 0;
+    for (int songSlot = 0; songSlot < 2; ++songSlot) {
+        const Song& song = scene.songs[songSlot];
+        for (int row = 0; row < Song::kMaxPositions; ++row) {
+            if (song.positions[row].patterns[trackIndex] == globalPattern) {
+                ++references;
+            }
+        }
+    }
+    return references;
+}
+
+inline bool globalPatternIsReferenced(
+        const Scene& scene, SongTrack track, int globalPattern) {
+    return globalPatternReferenceCount(scene, track, globalPattern) > 0;
+}
+
+inline int localSlotFromGlobalPattern(int globalPattern) {
+    if (globalPattern < 0) return -1;
+    const int bank = songPatternBank(globalPattern);
+    const int index = songPatternIndexInBank(globalPattern);
+    if (bank < 0 || bank >= kBankCount || index < 0 ||
+        index >= Bank<SynthPattern>::kPatterns) {
+        return -1;
+    }
+    return bank * Bank<SynthPattern>::kPatterns + index;
+}
+
+inline int findReusableLocalSlot(
+        const Scene& scene,
+        const Request& request,
+        SongTrack track,
+        int preferredLocalSlot,
+        bool& reusedGenerated) {
+    reusedGenerated = false;
+    if (request.pageIndex < 0 || request.pageIndex >= kMaxPages ||
+        request.row < 0 || request.row >= Song::kMaxPositions ||
+        editableTrackIndex(track) < 0) {
+        return -1;
+    }
+
+    // First choice: reroll a uniquely-owned generated pattern in place. Repeated
+    // G on one Song cell therefore consumes no additional pattern slots.
+    const int activeSongSlot = std::clamp(scene.activeSongSlot, 0, 1);
+    const int trackIndex = editableTrackIndex(track);
+    const int currentGlobal =
+        scene.songs[activeSongSlot].positions[request.row].patterns[trackIndex];
+    if (currentGlobal >= 0 && songPatternPage(currentGlobal) == request.pageIndex) {
+        const int localSlot = localSlotFromGlobalPattern(currentGlobal);
+        if (localSlot >= 0 && slotIsSongGenerated(scene, track, localSlot) &&
+            globalPatternReferenceCount(scene, track, currentGlobal) == 1) {
+            reusedGenerated = true;
+            return localSlot;
+        }
+    }
+
+    // Otherwise allocate an empty slot, or reclaim an orphan that is known to
+    // have been created by Song generation. Non-empty manual/imported material
+    // is intentionally never reclaimed even when it has no Song references.
+    int start = preferredLocalSlot;
+    if (start < 0 || start >= kPatternsPerPage) start = 0;
+    for (int offset = 0; offset < kPatternsPerPage; ++offset) {
+        const int localSlot = (start + offset) % kPatternsPerPage;
+        const int bank = localSlot / Bank<SynthPattern>::kPatterns;
+        const int index = localSlot % Bank<SynthPattern>::kPatterns;
+        const int globalPattern = songPatternFromPageBankIndex(
+            request.pageIndex, bank, index);
+        if (globalPatternReferenceCount(scene, track, globalPattern) != 0) {
+            continue;
+        }
+        if (slotContentIsEmpty(scene, track, localSlot)) {
+            return localSlot;
+        }
+        if (slotIsSongGenerated(scene, track, localSlot)) {
+            reusedGenerated = true;
+            return localSlot;
+        }
+    }
+    return -1;
+}
+
+// Compatibility helper retained for existing host/source tests. It intentionally
+// has no row context, so it only reports physically empty, unreferenced slots.
 inline int findSafeFreeLocalSlot(
         const Scene& scene,
         int pageIndex,
@@ -172,6 +300,29 @@ inline int findSafeFreeLocalSlot(
         }
     }
     return -1;
+}
+
+inline int reusableSlotCount(
+        const Scene& scene, int pageIndex, SongTrack track) {
+    if (pageIndex < 0 || pageIndex >= kMaxPages ||
+        editableTrackIndex(track) < 0) {
+        return 0;
+    }
+    int available = 0;
+    for (int localSlot = 0; localSlot < kPatternsPerPage; ++localSlot) {
+        const int bank = localSlot / Bank<SynthPattern>::kPatterns;
+        const int index = localSlot % Bank<SynthPattern>::kPatterns;
+        const int globalPattern = songPatternFromPageBankIndex(
+            pageIndex, bank, index);
+        if (globalPatternReferenceCount(scene, track, globalPattern) != 0) {
+            continue;
+        }
+        if (slotContentIsEmpty(scene, track, localSlot) ||
+            slotIsSongGenerated(scene, track, localSlot)) {
+            ++available;
+        }
+    }
+    return available;
 }
 
 inline uint32_t actionSeed(const Request& request, int localSlot) {
@@ -208,6 +359,7 @@ inline void writePreparedTrack(
         case SongTrack::Voice:
             return;
     }
+    markSlotSongGenerated(scene, track, localSlot);
     song.positions[row].patterns[trackIndex] =
         static_cast<int16_t>(prepared.globalPattern[trackIndex]);
 }
@@ -240,16 +392,20 @@ Result generate(
         const uint8_t bit = static_cast<uint8_t>(1u << trackIndex);
         if ((request.trackMask & bit) == 0) continue;
         const SongTrack track = editableTrackForIndex(trackIndex);
-        const int localSlot = findSafeFreeLocalSlot(
+        bool reusedGenerated = false;
+        const int localSlot = findReusableLocalSlot(
             scene,
-            request.pageIndex,
+            request,
             track,
-            request.preferredLocalSlot[trackIndex]);
+            request.preferredLocalSlot[trackIndex],
+            reusedGenerated);
         if (localSlot < 0) {
             result.error = Error::NoEmptyPatternSlots;
+            result.failedTrackIndex = trackIndex;
             return result;
         }
         prepared.localSlot[trackIndex] = localSlot;
+        prepared.reusedGenerated[trackIndex] = reusedGenerated;
         const int bank = localSlot / Bank<SynthPattern>::kPatterns;
         const int index = localSlot % Bank<SynthPattern>::kPatterns;
         prepared.globalPattern[trackIndex] = songPatternFromPageBankIndex(
@@ -270,6 +426,7 @@ Result generate(
                 synth,
                 prepared.drums)) {
             result.error = Error::GenerationFailed;
+            result.failedTrackIndex = trackIndex;
             return result;
         }
         const bool empty = track == SongTrack::Drums
@@ -277,6 +434,7 @@ Result generate(
             : synthPatternIsStrictlyEmpty(synth);
         if (empty) {
             result.error = Error::GenerationFailed;
+            result.failedTrackIndex = trackIndex;
             return result;
         }
     }
@@ -304,6 +462,9 @@ Result generate(
         const uint8_t bit = static_cast<uint8_t>(1u << trackIndex);
         if ((request.trackMask & bit) == 0) continue;
         result.globalPattern[trackIndex] = prepared.globalPattern[trackIndex];
+        if (prepared.reusedGenerated[trackIndex]) {
+            ++result.reusedGeneratedTracks;
+        }
         ++result.generatedTracks;
     }
     return result;
