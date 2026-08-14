@@ -1,0 +1,24 @@
+name: Sampler 0.9.5 Research Contracts
+
+on:
+  push:
+    branches:
+      - agent/20260814-0.9.5-sampler-research
+  pull_request:
+    paths:
+      - 'docs/sampler/SAMPLER_0_9_5_RESEARCH_CONTRACT.md'
+      - 'tests/test_sampler_0_9_5_wav_contract.py'
+      - 'tests/test_sampler_0_9_5_kit_contract.py'
+      - 'tests/run_sampler_0_9_5_research_tests.sh'
+      - '.github/workflows/sampler-0-9-5-research.yml'
+
+jobs:
+  research-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run sampler 0.9.5 research contracts
+        run: bash tests/run_sampler_0_9_5_research_tests.sh
