@@ -1,4 +1,5 @@
 #include "src/platform/cardputer_sd.h"
+#include "src/sampler/sample_scene_persistence.h"
 
 namespace {
 
@@ -14,6 +15,7 @@ void prepareSamplerRegistryAfterSdMount() {
     index.scanDirectory("/samples");
   }
 
+  GroovePuterSampler::setScenePersistenceSampleIndex(&index);
   const SampleRegistryBindResult bind = index.bindToStore(g_sampleStore);
   Serial.printf(
       "[SAMPLER-REGISTRY] ready discovered=%u registered=%u stableReject=%u legacyReject=%u storeReject=%u\n",
