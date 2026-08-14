@@ -10,6 +10,7 @@ index_cpp = (ROOT / "src/sampler/sample_index.cpp").read_text(encoding="utf-8")
 persist_h = (ROOT / "src/sampler/sample_scene_persistence.h").read_text(encoding="utf-8")
 persist_cpp = (ROOT / "src/sampler/sample_scene_persistence.cpp").read_text(encoding="utf-8")
 boot = (ROOT / "sampler_boot_registry.ino").read_text(encoding="utf-8")
+engine_cpp = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
 
 # D must not expand resident Scene sampler state or the audio/runtime ABI.
 assert "uint32_t sampleId = 0;" in scene_h
@@ -57,5 +58,28 @@ assert "char outputBuffer_[kMaxOutputBytes]" in persist_h
 assert "setScenePersistenceSampleIndex(&index)" in boot
 assert "index.bindToStore(g_sampleStore)" in boot
 assert "preload(" not in boot
+
+# Production Save must first copy every realtime sampler pad field into the
+# resident 32-bit Scene. The streaming writer can only derive SampleRef from
+# the runtime SampleId after this mirror has happened.
+sync_start = engine_cpp.index("void MiniAcid::syncSceneStateToManager()")
+sync_end = engine_cpp.index("int dorian_intervals", sync_start)
+sync_body = engine_cpp[sync_start:sync_end]
+for field in (
+    "sampleId = runtimePad.id.value",
+    "volume = runtimePad.volume",
+    "pitch = runtimePad.pitch",
+    "startFrame = runtimePad.startFrame",
+    "endFrame = runtimePad.endFrame",
+    "chokeGroup = runtimePad.chokeGroup",
+    "reverse = runtimePad.reverse",
+    "loop = runtimePad.loop",
+):
+    assert field in sync_body, f"runtime sampler Save mirror missing: {field}"
+
+save_start = engine_cpp.index("bool MiniAcid::saveSceneToStorage()")
+save_end = engine_cpp.index("bool MiniAcid::autoSaveSceneRecovery()", save_start)
+save_body = engine_cpp[save_start:save_end]
+assert save_body.index("syncSceneStateToManager()") < save_body.index("writeScene(sceneManager_)")
 
 print("sampler persistence source regressions passed")
