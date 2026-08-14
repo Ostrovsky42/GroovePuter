@@ -1,5 +1,4 @@
 #include "sample_index.h"
-#include "sample_scene_persistence.h"
 
 #include <cstring>
 #include <algorithm>
@@ -310,10 +309,6 @@ const SampleFileInfo* SampleIndex::resolveRuntimeFile(
 }
 
 SampleRegistryBindResult SampleIndex::bindToStore(ISampleStore& store) const {
-  // C guarantees bind happens before Scene restore on Cardputer. D reuses the
-  // same moment to publish the control-side identity authority to persistence.
-  GroovePuterSampler::setScenePersistenceSampleIndex(this);
-
   SampleRegistryBindResult result{};
   result.discovered = files_.size();
 
