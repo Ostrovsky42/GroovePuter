@@ -1,5 +1,6 @@
 #include "sampler_page.h"
 #include "../../dsp/miniacid_engine.h"
+#include "../screen_geometry.h"
 
 #include <algorithm>
 #include <cctype>
@@ -93,7 +94,10 @@ void SamplerPage::initComponents() {
   addChild(choke_ctrl_);
 
   const int x = dx() + 4;
-  int y = dy() + 2;
+  // MiniAcidDisplay composites the global 16 px status header after the page.
+  // Keep the first sampler control inside CONTENT so PAD and its number remain
+  // visible even though SamplerPage itself receives full-screen boundaries.
+  int y = Layout::CONTENT.y + Layout::CONTENT_PAD_Y;
   constexpr int h = 12;
   const int w_full = width() - 8;
   const int w1 = (width() - 8) / 2;

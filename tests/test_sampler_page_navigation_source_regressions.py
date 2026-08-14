@@ -44,6 +44,9 @@ def main() -> None:
     require("kit_ctrl_" not in page_h and "openLoadKitDialog" not in page_cpp and
             '"/bonnethead/kits"' not in page_cpp,
             "unsafe historical KIT LOAD must remain outside 0.9.3")
+    require('#include "../screen_geometry.h"' in page_cpp and
+            "int y = Layout::CONTENT.y + Layout::CONTENT_PAD_Y;" in page_cpp,
+            "first sampler row must start below the global status header")
 
     require('"Alt+K       Sampler"' in help_source and
             '"=== SAMPLER ==="' in help_source,
