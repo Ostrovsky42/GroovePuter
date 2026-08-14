@@ -46,7 +46,7 @@ void logDiscoveredSample(const SampleFileInfo& info) {
 void SampleIndex::scanDirectory(const std::string& dirPath) {
   files_.clear();
   nameToId_.clear();
-  
+
   printf("SampleIndex::scanDirectory: Scanning '%s'...\n", dirPath.c_str());
 
 #if USE_ARDUINO_SD
@@ -61,11 +61,11 @@ void SampleIndex::scanDirectory(const std::string& dirPath) {
     dir.close();
     return;
   }
-  
+
   while (true) {
     File entry = dir.openNextFile();
     if (!entry) break;
-    
+
     if (!entry.isDirectory()) {
       const char* name = entry.name();
       // Skip leading '/' if present
@@ -73,7 +73,7 @@ void SampleIndex::scanDirectory(const std::string& dirPath) {
       // Find last component of path
       const char* lastSlash = strrchr(name, '/');
       if (lastSlash) name = lastSlash + 1;
-      
+
       const char* ext = strrchr(name, '.');
       if (ext && strcasecmp(ext, ".wav") == 0) {
         SampleFileInfo info;
@@ -84,7 +84,7 @@ void SampleIndex::scanDirectory(const std::string& dirPath) {
         }
         info.fullPath += name;
         populateLegacySampleId(info);
-        
+
         files_.push_back(info);
         nameToId_[info.filename] = info.id;
         logDiscoveredSample(info);
@@ -93,7 +93,7 @@ void SampleIndex::scanDirectory(const std::string& dirPath) {
     entry.close();
   }
   dir.close();
-  
+
 #else
   // POSIX path (for SDL/Desktop)
   DIR* dir = opendir(dirPath.c_str());
@@ -101,7 +101,7 @@ void SampleIndex::scanDirectory(const std::string& dirPath) {
     printf("SampleIndex::scanDirectory: opendir failed\n");
     return;
   }
-  
+
   struct dirent* entry;
   while ((entry = readdir(dir)) != nullptr) {
     if (entry->d_type == DT_REG) { // regular file
@@ -115,7 +115,7 @@ void SampleIndex::scanDirectory(const std::string& dirPath) {
         }
         info.fullPath += entry->d_name;
         populateLegacySampleId(info);
-        
+
         files_.push_back(info);
         nameToId_[info.filename] = info.id;
         logDiscoveredSample(info);
@@ -124,9 +124,9 @@ void SampleIndex::scanDirectory(const std::string& dirPath) {
   }
   closedir(dir);
 #endif
-  
+
   printf("SampleIndex::scanDirectory: Found %zu files\n", files_.size());
-  
+
   // Sort files by name for consistent UI. Identity is path-derived and does
   // not depend on this presentation order.
   std::sort(files_.begin(), files_.end(), [](const SampleFileInfo& a, const SampleFileInfo& b) {
@@ -185,6 +185,44 @@ GroovePuterSampler::SampleRef SampleIndex::resolveLegacyId(
   return found ? resolved : GroovePuterSampler::SampleRef{};
 }
 
+const SampleFileInfo* SampleIndex::resolveLegacyFile(SampleId legacyId) const {
+  const auto ref = resolveLegacyId(legacyId);
+  if (!ref.valid()) return nullptr;
+  return findByRef(ref);
+}
+
+SampleRegistryBindResult SampleIndex::bindToStore(ISampleStore& store) const {
+  SampleRegistryBindResult result{};
+  result.discovered = files_.size();
+
+  for (const auto& file : files_) {
+    const auto stableRef = calculateStableRef(file.fullPath);
+    const SampleFileInfo* stableFile = findByRef(stableRef);
+    if (!stableRef.valid() || stableFile == nullptr ||
+        stableFile->fullPath != file.fullPath) {
+      ++result.rejectedStable;
+      continue;
+    }
+
+    // Until 0.9.3-D persists SampleRef, a Scene still arrives with the old
+    // basename hash. Only bind a path when that legacy ID resolves back to the
+    // exact same stable file. Ambiguous old IDs therefore fail closed.
+    const SampleFileInfo* legacyFile = resolveLegacyFile(file.id);
+    if (legacyFile == nullptr || legacyFile->fullPath != file.fullPath) {
+      ++result.rejectedLegacy;
+      continue;
+    }
+
+    if (!store.registerFile(file.id, file.fullPath)) {
+      ++result.rejectedStore;
+      continue;
+    }
+    ++result.registered;
+  }
+
+  return result;
+}
+
 std::vector<std::string> SampleIndex::getSubdirectories(const std::string& dirPath) {
   std::vector<std::string> dirs;
   printf("SampleIndex::getSubdirectories: Scanning '%s'...\n", dirPath.c_str());
@@ -202,10 +240,10 @@ std::vector<std::string> SampleIndex::getSubdirectories(const std::string& dirPa
       if (name[0] == '/') name++;
       const char* lastSlash = strrchr(name, '/');
       if (lastSlash) name = lastSlash + 1;
-      
+
       // Skip system dirs or hidden
       if (name[0] != '.') {
-          dirs.push_back(name);
+        dirs.push_back(name);
       }
     }
     entry.close();
@@ -214,7 +252,7 @@ std::vector<std::string> SampleIndex::getSubdirectories(const std::string& dirPa
 #else
   DIR* dir = opendir(dirPath.c_str());
   if (!dir) return dirs;
-  
+
   struct dirent* entry;
   while ((entry = readdir(dir)) != nullptr) {
     if (entry->d_type == DT_DIR) {
