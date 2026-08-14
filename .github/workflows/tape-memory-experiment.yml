@@ -1,0 +1,57 @@
+name: Tape memory experiment
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/tape-memory-experiment.yml"
+      - "docs/experiments/TAPE_MEMORY_EXPERIMENT.md"
+      - "scripts/build_cardputer_tape_memory_experiment.sh"
+      - "scripts/instrument_tape_memory_experiment.py"
+      - "scripts/instrument_cardputer_memory_runtime.py"
+      - "src/dsp/miniacid_engine.cpp"
+      - "src/dsp/tape_fx.h"
+      - "src/dsp/tape_fx.cpp"
+      - "src/dsp/tape_looper.h"
+      - "src/dsp/tape_looper.cpp"
+      - "GroovePuter.ino"
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [A, B, C]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Build Tape memory variant ${{ matrix.variant }}
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p build
+          bash scripts/build_cardputer_tape_memory_experiment.sh \
+            "${{ matrix.variant }}" normal --warnings all \
+            2>&1 | tee "build/tape-memory-${{ matrix.variant }}.log"
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tape-memory-${{ matrix.variant }}
+          path: build/tape-memory-${{ matrix.variant }}.log
+          if-no-files-found: error
