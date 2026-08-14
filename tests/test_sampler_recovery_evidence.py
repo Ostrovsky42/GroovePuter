@@ -47,13 +47,21 @@ assert "ISampleStore* sampleStore = nullptr;" in engine_h
 assert "std::unique_ptr<float[]> samplerOutBuffer;" in engine_h
 assert "std::unique_ptr<DrumSamplerTrack> samplerTrack;" in engine_h
 
-# Persistence schema exists and serializes sampler pad fields.
+# Persistence schema exists and the current writer consumes every SamplerPadState
+# field. Assert the semantic write operations instead of C++ escaped JSON spelling.
 assert "SamplerPadState samplerPads[16];" in scene
-for token in (
-    '\"samplerPads\"', '\"id\"', '\"vol\"', '\"pch\"',
-    '\"start\"', '\"end\"', '\"choke\"', '\"rev\"', '\"loop\"',
+for expression in (
+    "scene_->samplerPads[i]",
+    "writeInt(p.sampleId)",
+    "writeFloat(p.volume)",
+    "writeFloat(p.pitch)",
+    "writeInt(p.startFrame)",
+    "writeInt(p.endFrame)",
+    "writeInt(p.chokeGroup)",
+    "writeBool(p.reverse)",
+    "writeBool(p.loop)",
 ):
-    assert token in scene
+    assert expression in scene
 
 # Evidence of the current boot-order defect: scene init/restore happens before
 # sample scan and registry population. This assertion is intentionally expected
