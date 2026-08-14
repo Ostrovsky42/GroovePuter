@@ -235,8 +235,8 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
     )
     project = (ROOT / "src/ui/pages/project_page.cpp").read_text(encoding="utf-8")
 
-    require("kPageCount = 14" in ui_config,
-            "MIDI Player must remain a real lazy-loaded UI page")
+    require("kPageCount = 16" in ui_config,
+            "MIDI Player and standalone Sampler must remain real lazy-loaded UI pages")
     require("case kSmfPlayerPage:" in display and
             "std::make_unique<SmfPlayerPage>" in display,
             "MiniAcidDisplay must construct the MIDI Player page")

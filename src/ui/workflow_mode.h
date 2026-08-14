@@ -60,6 +60,8 @@ constexpr int kGeneration = 11; // legacy persisted page id -> FEEL
 constexpr int kPerform = 12;
 constexpr int kPlayer = 13;
 constexpr int kPhrase = 14;
+// Standalone direct page; intentionally not a workflow child.
+constexpr int kSampler = 15;
 
 inline int normalizeLegacyPage(int page) {
     if (page == kTexture || page == kGeneration) return kFeel;
@@ -106,6 +108,10 @@ inline bool isWorkspacePage(int page) {
            page == kArrange ||
            page == kPhrase ||
            isSettingsWorkflowPage(page);
+}
+
+inline bool isStandalonePage(int page) {
+    return page == kSampler;
 }
 
 inline Workspace workspaceForPage(int page) {
@@ -192,6 +198,7 @@ inline const char* pageName(int page) {
         case kArrange: return "SONG";
         case kPhrase: return "PHRASE CORE";
         case kProject: return "PROJECT / SETUP";
+        case kSampler: return "SAMPLER";
         default: return "PAGE";
     }
 }
