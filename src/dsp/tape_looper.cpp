@@ -26,6 +26,24 @@ TapeLooper::~TapeLooper() {
 }
 
 bool TapeLooper::init(float maxSeconds) {
+#if defined(ARDUINO_M5STACK_CARDPUTER)
+    // Current Cardputer ADV product policy: Tape is not exposed in the workflow
+    // and must not compete with sampler/runtime for a contiguous DRAM block.
+    // Preserve the implementation for future Tape recovery, but make the
+    // current target explicitly storage-unavailable instead of attempting the
+    // known-to-fail 0.5 s allocation during boot.
+    (void)maxSeconds;
+    if (buffer_) {
+        free(buffer_);
+        buffer_ = nullptr;
+    }
+    maxSamples_ = 0;
+    length_ = 0;
+    playhead_ = 0;
+    firstRecord_ = false;
+    stutterActive_ = false;
+    return false;
+#else
     if (buffer_) {
         free(buffer_);
         buffer_ = nullptr;
@@ -56,6 +74,7 @@ bool TapeLooper::init(float maxSeconds) {
     
     maxSamples_ = 0;
     return false;
+#endif
 }
 
 void TapeLooper::clear() {
