@@ -1,4 +1,7 @@
 #include "tape_fx.h"
+
+#if !defined(ARDUINO_M5STACK_CARDPUTER)
+
 #include <algorithm>
 #include <cmath>
 #include "audio_wavetables.h"
@@ -242,3 +245,5 @@ float TapeFX::readDelayInterpolated(float delaySamples) {
     float frac = readPos - floorf(readPos);
     return buffer_[i0] + frac * (buffer_[i1] - buffer_[i0]);
 }
+
+#endif

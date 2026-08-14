@@ -5,6 +5,26 @@
 #include "../audio/audio_config.h"
 #include "../../scenes.h"
 
+// Cardputer ADV has no PSRAM and the Tape page is not part of the current
+// product workflow. Keep the public TapeFX API source-compatible for legacy
+// scene/control code, but compile it to a zero-DSP bypass on this target so the
+// dormant 1024 + 4096 float delay arrays do not consume scarce internal DRAM.
+#if defined(ARDUINO_M5STACK_CARDPUTER)
+
+class TapeFX {
+public:
+    TapeFX() = default;
+
+    void applyMacro(const TapeMacro&) {}
+    float process(float input) { return input; }
+    void applyMinimalParams(uint8_t, uint8_t, uint8_t) {}
+    void invalidateParams() {}
+    void setEnabled(bool) {}
+    bool isEnabled() const { return false; }
+};
+
+#else
+
 // TapeFX provides lo-fi tape characteristics with 5 macro controls:
 // - WOW:  Slow pitch modulation (motor drift)
 // - AGE:  Noise + high frequency rolloff
@@ -144,3 +164,5 @@ private:
     float generatePinkNoise();
     float readDelayInterpolated(float delaySamples);
 };
+
+#endif

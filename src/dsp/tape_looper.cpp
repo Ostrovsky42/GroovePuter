@@ -25,14 +25,39 @@ TapeLooper::~TapeLooper() {
     }
 }
 
+void TapeLooper::forceStoppedWithoutStorage_() {
+    mode_ = TapeMode::Stop;
+    maxSamples_ = 0;
+    length_ = 0;
+    playhead_ = 0.0f;
+    firstRecord_ = false;
+    stutterActive_ = false;
+    dubAutoExit_ = false;
+    peak_ = 0.0f;
+}
+
 bool TapeLooper::init(float maxSeconds) {
+#if defined(ARDUINO_M5STACK_CARDPUTER)
+    // Current Cardputer ADV product policy: Tape is not exposed in the workflow
+    // and must not compete with sampler/runtime for a contiguous DRAM block.
+    // Preserve the implementation for future Tape recovery, but make the
+    // current target explicitly storage-unavailable instead of attempting the
+    // known-to-fail 0.5 s allocation during boot.
+    (void)maxSeconds;
     if (buffer_) {
         free(buffer_);
         buffer_ = nullptr;
     }
+    forceStoppedWithoutStorage_();
+    return false;
+#else
+    if (buffer_) {
+        free(buffer_);
+        buffer_ = nullptr;
+    }
+    forceStoppedWithoutStorage_();
 
     if (!(maxSeconds > 0.0f)) {
-        maxSamples_ = 0;
         return false;
     }
 
@@ -51,17 +76,22 @@ bool TapeLooper::init(float maxSeconds) {
     
     if (buffer_) {
         clear();
+        mode_ = TapeMode::Stop;
         return true;
     }
     
-    maxSamples_ = 0;
+    forceStoppedWithoutStorage_();
     return false;
+#endif
 }
 
 void TapeLooper::clear() {
-    if (buffer_ && maxSamples_ > 0) {
-        std::memset(buffer_, 0, maxSamples_ * sizeof(int16_t));
+    if (!storageReady()) {
+        forceStoppedWithoutStorage_();
+        return;
     }
+
+    std::memset(buffer_, 0, maxSamples_ * sizeof(int16_t));
     length_ = 0;
     playhead_ = 0;
     firstRecord_ = false;
@@ -77,6 +107,11 @@ void TapeLooper::eject() {
 }
 
 void TapeLooper::setMode(TapeMode mode) {
+    if (!storageReady()) {
+        forceStoppedWithoutStorage_();
+        return;
+    }
+
     TapeMode oldMode = mode_;
     mode_ = mode;
     
@@ -125,6 +160,11 @@ void TapeLooper::setSpeed(uint8_t speed) {
 }
 
 void TapeLooper::setStutter(bool active) {
+    if (!storageReady()) {
+        stutterActive_ = false;
+        return;
+    }
+
     if (active && !stutterActive_) {
         // Starting stutter - remember current position
         stutterStart_ = playhead_;
@@ -147,7 +187,7 @@ float TapeLooper::loopLengthSeconds() const {
 }
 
 float TapeLooper::readInterpolated(float pos) const {
-    if (!buffer_ || maxSamples_ == 0) return 0.0f;
+    if (!storageReady()) return 0.0f;
     
     // Handle negative positions (can happen with stutter)
     while (pos < 0) pos += static_cast<float>(maxSamples_);
@@ -165,7 +205,7 @@ float TapeLooper::readInterpolated(float pos) const {
 }
 
 void TapeLooper::writeSample(uint32_t pos, float value) {
-    if (!buffer_ || pos >= maxSamples_) return;
+    if (!storageReady() || pos >= maxSamples_) return;
     
     // Soft clip before writing
     if (value > 1.0f) value = 1.0f;
@@ -175,7 +215,8 @@ void TapeLooper::writeSample(uint32_t pos, float value) {
 }
 
 void TapeLooper::process(float input, float* loopPart) {
-    if (!buffer_) {
+    if (!storageReady()) {
+        forceStoppedWithoutStorage_();
         *loopPart = 0.0f;
         return;
     }
@@ -263,7 +304,7 @@ void TapeLooper::process(float input, float* loopPart) {
 }
 
 void TapeLooper::bakeLoopCrossfade() {
-    if (!buffer_ || length_ < kCrossfadeFrames * 2) return;
+    if (!storageReady() || length_ < kCrossfadeFrames * 2) return;
     const uint32_t cf = kCrossfadeFrames;
 
     // Two-sided crossfade: both ends converge to a shared junction value
