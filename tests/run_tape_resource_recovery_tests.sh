@@ -14,6 +14,7 @@ python3 "${ROOT_DIR}/tests/test_tape_resource_recovery_source_regressions.py"
   -Wall \
   -Wextra \
   -Werror \
+  -Wno-c++20-extensions \
   -DARDUINO_M5STACK_CARDPUTER=1 \
   -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_tape_unavailable_contract.cpp" \
