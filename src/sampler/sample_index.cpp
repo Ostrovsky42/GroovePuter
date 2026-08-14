@@ -28,9 +28,17 @@ GroovePuterSampler::SampleRef SampleIndex::calculateStableRef(
 
 namespace {
 
-void populateSampleIdentity(SampleFileInfo& info) {
+void populateLegacySampleId(SampleFileInfo& info) {
   info.id.value = SampleIndex::calculateHash(info.filename.c_str());
-  info.ref = SampleIndex::calculateStableRef(info.fullPath);
+}
+
+void logDiscoveredSample(const SampleFileInfo& info) {
+  const auto ref = SampleIndex::calculateStableRef(info.fullPath);
+  printf("SampleIndex: Found: %s legacy=%u ref=%08x%08x\n",
+         info.fullPath.c_str(),
+         static_cast<unsigned>(info.id.value),
+         static_cast<unsigned>(ref.value >> 32),
+         static_cast<unsigned>(ref.value & 0xFFFFFFFFULL));
 }
 
 }  // namespace
@@ -75,16 +83,11 @@ void SampleIndex::scanDirectory(const std::string& dirPath) {
           info.fullPath += "/";
         }
         info.fullPath += name;
-        populateSampleIdentity(info);
+        populateLegacySampleId(info);
         
         files_.push_back(info);
         nameToId_[info.filename] = info.id;
-        
-        printf("SampleIndex: Found: %s legacy=%u ref=%08x%08x\n",
-               info.fullPath.c_str(),
-               static_cast<unsigned>(info.id.value),
-               static_cast<unsigned>(info.ref.value >> 32),
-               static_cast<unsigned>(info.ref.value & 0xFFFFFFFFULL));
+        logDiscoveredSample(info);
       }
     }
     entry.close();
@@ -111,16 +114,11 @@ void SampleIndex::scanDirectory(const std::string& dirPath) {
           info.fullPath += "/";
         }
         info.fullPath += entry->d_name;
-        populateSampleIdentity(info);
+        populateLegacySampleId(info);
         
         files_.push_back(info);
         nameToId_[info.filename] = info.id;
-        
-        printf("SampleIndex: Found: %s legacy=%u ref=%08x%08x\n",
-               info.fullPath.c_str(),
-               static_cast<unsigned>(info.id.value),
-               static_cast<unsigned>(info.ref.value >> 32),
-               static_cast<unsigned>(info.ref.value & 0xFFFFFFFFULL));
+        logDiscoveredSample(info);
       }
     }
   }
@@ -145,7 +143,7 @@ SampleId SampleIndex::findIdByFilename(const std::string& filename) const {
 GroovePuterSampler::SampleRef SampleIndex::findRefByFilename(
     const std::string& filename) const {
   for (const auto& file : files_) {
-    if (file.filename == filename) return file.ref;
+    if (file.filename == filename) return calculateStableRef(file.fullPath);
   }
   return {};
 }
@@ -153,10 +151,19 @@ GroovePuterSampler::SampleRef SampleIndex::findRefByFilename(
 const SampleFileInfo* SampleIndex::findByRef(
     GroovePuterSampler::SampleRef ref) const {
   if (!ref.valid()) return nullptr;
+
+  const SampleFileInfo* match = nullptr;
   for (const auto& file : files_) {
-    if (file.ref == ref) return &file;
+    if (calculateStableRef(file.fullPath) != ref) continue;
+    if (match && match->fullPath != file.fullPath) {
+      printf("SampleIndex: Stable SampleRef collision for %08x%08x\n",
+             static_cast<unsigned>(ref.value >> 32),
+             static_cast<unsigned>(ref.value & 0xFFFFFFFFULL));
+      return nullptr;
+    }
+    match = &file;
   }
-  return nullptr;
+  return match;
 }
 
 GroovePuterSampler::SampleRef SampleIndex::resolveLegacyId(
@@ -167,12 +174,12 @@ GroovePuterSampler::SampleRef SampleIndex::resolveLegacyId(
   bool found = false;
   for (const auto& file : files_) {
     if (file.id != legacyId) continue;
-    if (found && file.ref != resolved) {
+    if (found) {
       printf("SampleIndex: Legacy ID %u is ambiguous\n",
              static_cast<unsigned>(legacyId.value));
       return {};
     }
-    resolved = file.ref;
+    resolved = calculateStableRef(file.fullPath);
     found = true;
   }
   return found ? resolved : GroovePuterSampler::SampleRef{};

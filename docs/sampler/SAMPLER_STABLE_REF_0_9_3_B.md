@@ -2,7 +2,7 @@
 
 Base: `dev_0.9.3 @ 6cb6875591b2b9a0e623bc0fcbc1a0fb77ea37a5`
 
-Status: DRAFT / CI + review required before merge.
+Status: DRAFT / CI + hardware smoke required before merge.
 
 ## Purpose
 
@@ -14,7 +14,7 @@ Introduce a stable, compact control-side identity for sampler files before chang
 
 `SampleRef` is a 64-bit FNV-1a value derived from a canonical logical sample path.
 
-Canonicalization currently guarantees:
+Canonicalization guarantees:
 
 - `/sd/samples/kick.wav` and `/samples/kick.wav` resolve to the same logical key;
 - repeated `/` separators do not change identity;
@@ -31,12 +31,13 @@ The logical folder path is intentionally part of identity. Renaming or physicall
 
 Historical sampler `SampleId` is a 32-bit FNV-1a hash of the basename only. That runtime ID remains unchanged in 0.9.3-B.
 
-`SampleFileInfo` now carries both:
+`SampleFileInfo` retains its pre-0.9.3-B fields and size class: legacy `SampleId`, filename and full path. Stable `SampleRef` is derived from the already-stored `fullPath` on the control side rather than retained per file.
 
-- legacy `SampleId id` — current audio/store compatibility;
-- stable `SampleRef ref` — new control-side identity.
+`SampleIndex::resolveLegacyId()` is the migration bridge for old persisted IDs. It returns a stable ref only when the current index can resolve the legacy ID to exactly one file; missing or ambiguous IDs fail closed.
 
-`SampleIndex::resolveLegacyId()` is the migration bridge for old persisted IDs. It returns a stable ref only when the current index can resolve the legacy ID to one file; missing or ambiguous IDs fail closed.
+A regression uses the real colliding legacy filenames `5oetw2k1.wav` and `qp363n87.wav` (both FNV-1a32 `3960902837`) and requires migration to reject the ambiguous legacy ID while their path-derived stable refs remain distinct.
+
+`findByRef()` also fails closed if the current index ever observes two different paths with the same 64-bit stable ref.
 
 The registry/boot cut-over to stable refs belongs to **0.9.3-C**. Scene write-back and save/reboot/load ownership belong to **0.9.3-D**.
 
@@ -51,7 +52,7 @@ Accepted Cardputer ADV baseline before this PR:
 
 This PR does not replace 32-bit atomics in the audio path with 64-bit atomics. `SampleRef` is control-side metadata only.
 
-The only per-index-file growth is one 64-bit ref in `SampleFileInfo`; there is no new fixed sample-pool allocation and no new audio buffer.
+There is no new persistent per-file `SampleRef` field, no new fixed sample-pool allocation and no new audio buffer. Stable refs are calculated from `SampleFileInfo::fullPath` only when control-side code asks for them.
 
 ## Hardware list
 
@@ -84,7 +85,7 @@ bash scripts/check_cardputer_dram_budget.sh \
 bash scripts/build_seqtrak_midi_only.sh --warnings all
 ```
 
-Optional hardware smoke after CI:
+Hardware smoke after CI:
 
 ```bash
 bash scripts/upload.sh /dev/ttyACM0
@@ -102,7 +103,8 @@ arduino-cli monitor -p /dev/ttyACM0 -c baudrate=115200
 - same basename in different logical folders produces different refs;
 - re-scanning the same directory preserves refs independent of discovery order;
 - a known legacy basename ID resolves to the corresponding stable ref;
-- unknown legacy IDs fail closed.
+- unknown legacy IDs fail closed;
+- a real legacy FNV-1a32 collision fails closed.
 
 ### Cardputer ADV
 
@@ -118,7 +120,7 @@ If two equal basenames in different folders produce the same stable ref, treat t
 
 If an old basename `SampleId` cannot resolve, confirm the corresponding file exists in the currently scanned index. Do not guess a different file on missing or ambiguous legacy identity.
 
-If Cardputer fixed DRAM changes materially, inspect accidental fixed/static allocations. This PR should not consume the memory recovered by #266.
+If Cardputer runtime memory regresses materially from the #266 baseline, inspect accidental persistent index metadata/static allocations. This PR is designed to keep stable identity out of the resident per-file structure.
 
 ## Acceptance checklist
 
@@ -130,6 +132,7 @@ If Cardputer fixed DRAM changes materially, inspect accidental fixed/static allo
 - [ ] Directory enumeration order does not affect stable refs.
 - [ ] Legacy basename ID resolves only through an explicit compatibility API.
 - [ ] Missing/ambiguous legacy identity fails closed.
+- [ ] Real FNV-1a32 legacy collision is rejected deterministically.
 
 ### Regression
 
@@ -141,13 +144,14 @@ If Cardputer fixed DRAM changes materially, inspect accidental fixed/static allo
 - [ ] SEQTRAK MIDI-only build green.
 - [ ] No audio-thread 64-bit identity conversion.
 - [ ] No sampler pool/buffer increase.
+- [ ] No persistent per-file SampleRef heap growth.
 
 ### Hardware smoke
 
 - [ ] Cold boot reaches normal UI.
 - [ ] No WDT/reset/crash.
 - [ ] Audio underruns remain `0`.
-- [ ] Runtime memory remains in the same class as the accepted #266 baseline.
+- [ ] Runtime memory remains in the same class as the accepted #266 baseline (`free8 ≈ 38.36 KiB`, `largest8 ≈ 21.49 KiB`).
 
 ## Out of scope
 

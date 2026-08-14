@@ -10,10 +10,6 @@ struct SampleFileInfo {
   // identity PR does not alter the audio-thread/store ABI before lifecycle
   // migration in 0.9.3-C.
   SampleId id{0};
-
-  // Stable control-side identity derived from the canonical logical path.
-  GroovePuterSampler::SampleRef ref{};
-
   std::string filename;
   std::string fullPath;
 };
@@ -32,7 +28,8 @@ public:
   // registry ownership to stable SampleRef.
   SampleId findIdByFilename(const std::string& filename) const;
 
-  // New stable identity lookup for control-side code.
+  // Stable identity is derived from the already-stored fullPath on demand.
+  // Keeping it out of SampleFileInfo avoids per-file heap growth on ADV.
   GroovePuterSampler::SampleRef findRefByFilename(const std::string& filename) const;
   const SampleFileInfo* findByRef(GroovePuterSampler::SampleRef ref) const;
 
