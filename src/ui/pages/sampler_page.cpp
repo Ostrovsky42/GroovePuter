@@ -1,6 +1,7 @@
 #include "sampler_page.h"
 #include "../../dsp/miniacid_engine.h"
 #include "../screen_geometry.h"
+#include "../ui_input.h"
 
 #include <algorithm>
 #include <cctype>
@@ -274,7 +275,8 @@ bool SamplerPage::handleEvent(UIEvent& ui_event) {
     return Container::handleEvent(ui_event);
   }
 
-  switch (ui_event.scancode) {
+  const int nav = UIInput::navCode(ui_event);
+  switch (nav) {
     case GROOVEPUTER_UP:
       focusPrev();
       return true;

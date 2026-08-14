@@ -41,6 +41,10 @@ def main() -> None:
             "SamplerPage must support backward selection/adjustment")
     require("GROOVEPUTER_RIGHT" in page_cpp and "adjustFocusedElement(1)" in page_cpp,
             "SamplerPage must support forward selection/adjustment")
+    require('#include "../ui_input.h"' in page_cpp and
+            "const int nav = UIInput::navCode(ui_event);" in page_cpp and
+            "switch (nav)" in page_cpp,
+            "SamplerPage arrows must accept both Cardputer key and scancode paths")
     require("kit_ctrl_" not in page_h and "openLoadKitDialog" not in page_cpp and
             '"/bonnethead/kits"' not in page_cpp,
             "unsafe historical KIT LOAD must remain outside 0.9.3")
