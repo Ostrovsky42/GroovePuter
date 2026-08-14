@@ -138,6 +138,12 @@ void testSingleTrack(SongTrack track, uint8_t mask) {
     expect(scene.songs[0].positions[3].patterns[trackIndex] == globalPattern,
            "Song cell did not receive generated pattern reference");
 
+    const int localSlot = SongPatternMaterializer::localSlotFromGlobalPattern(
+        globalPattern);
+    expect(SongPatternMaterializer::slotIsSongGenerated(
+               scene, track, localSlot),
+           "generated pattern did not receive Song ownership marker");
+
     if (track == SongTrack::SynthA || track == SongTrack::SynthB) {
         expect(!SongPatternMaterializer::synthPatternIsStrictlyEmpty(
                    synthAtGlobal(scene, track, globalPattern)),
@@ -202,6 +208,119 @@ void testCopyOnWrite() {
            "unselected cell lost shared source reference");
     expect(byteEqual(scene.synthABanks[0].patterns[0], original),
            "copy-on-write modified the shared source pattern");
+}
+
+void testGeneratedRerollReusesUniqueSlot() {
+    Scene scene{};
+    resetRevision();
+
+    TestGenerator firstGenerator{};
+    const auto first = SongPatternMaterializer::generate(
+        scene,
+        requestFor(4, SongPatternMaterializer::kSynthAMask, 0x11111111u),
+        firstGenerator,
+        [](auto&& apply) { apply(); });
+    expect(static_cast<bool>(first), "initial generated reroll setup failed");
+    const int originalRef = first.globalPattern[0];
+    const SynthPattern original = synthAtGlobal(
+        scene, SongTrack::SynthA, originalRef);
+
+    TestGenerator secondGenerator{};
+    const auto second = SongPatternMaterializer::generate(
+        scene,
+        requestFor(4, SongPatternMaterializer::kSynthAMask, 0x22222222u),
+        secondGenerator,
+        [](auto&& apply) { apply(); });
+
+    expect(static_cast<bool>(second), "generated reroll failed");
+    expect(second.globalPattern[0] == originalRef,
+           "unique generated reroll consumed a new pattern slot");
+    expect(second.reusedGeneratedTracks == 1,
+           "unique generated reroll did not report slot reuse");
+    expect(!byteEqual(original,
+                      synthAtGlobal(scene, SongTrack::SynthA, originalRef)),
+           "reroll did not replace generated material");
+}
+
+void testGeneratedSharedReferenceUsesCopyOnWrite() {
+    Scene scene{};
+    resetRevision();
+
+    TestGenerator firstGenerator{};
+    const auto first = SongPatternMaterializer::generate(
+        scene,
+        requestFor(0, SongPatternMaterializer::kSynthAMask, 0x33333333u),
+        firstGenerator,
+        [](auto&& apply) { apply(); });
+    expect(static_cast<bool>(first), "shared generated setup failed");
+    const int sharedRef = first.globalPattern[0];
+    const SynthPattern sharedBefore = synthAtGlobal(
+        scene, SongTrack::SynthA, sharedRef);
+    scene.songs[0].positions[1].patterns[0] =
+        static_cast<int16_t>(sharedRef);
+    scene.songs[0].length = 2;
+
+    TestGenerator secondGenerator{};
+    const auto second = SongPatternMaterializer::generate(
+        scene,
+        requestFor(0, SongPatternMaterializer::kSynthAMask, 0x44444444u),
+        secondGenerator,
+        [](auto&& apply) { apply(); });
+
+    expect(static_cast<bool>(second), "shared generated copy-on-write failed");
+    expect(second.globalPattern[0] != sharedRef,
+           "shared generated pattern was overwritten in place");
+    expect(scene.songs[0].positions[1].patterns[0] == sharedRef,
+           "shared row lost its generated source reference");
+    expect(byteEqual(sharedBefore,
+                     synthAtGlobal(scene, SongTrack::SynthA, sharedRef)),
+           "shared generated source bytes changed");
+}
+
+void testGeneratedOrphanIsReclaimed() {
+    Scene scene{};
+    resetRevision();
+
+    TestGenerator firstGenerator{};
+    const auto first = SongPatternMaterializer::generate(
+        scene,
+        requestFor(0, SongPatternMaterializer::kSynthAMask, 0x55555555u),
+        firstGenerator,
+        [](auto&& apply) { apply(); });
+    expect(static_cast<bool>(first), "orphan reclaim setup failed");
+    const int orphanRef = first.globalPattern[0];
+    const int orphanLocal = SongPatternMaterializer::localSlotFromGlobalPattern(
+        orphanRef);
+
+    // Simulate Song Backspace/Delete: the arrangement reference is removed but
+    // the generated pattern bytes remain intact for immediate Undo.
+    scene.songs[0].positions[0].patterns[0] = -1;
+    for (int localSlot = 0; localSlot < kPatternsPerPage; ++localSlot) {
+        if (localSlot == orphanLocal) continue;
+        const int bank = localSlot / Bank<SynthPattern>::kPatterns;
+        const int index = localSlot % Bank<SynthPattern>::kPatterns;
+        occupySynth(scene.synthABanks[bank].patterns[index], 48 + index);
+    }
+
+    expect(SongPatternMaterializer::globalPatternReferenceCount(
+               scene, SongTrack::SynthA, orphanRef) == 0,
+           "deleted generated pattern is still referenced");
+    expect(SongPatternMaterializer::slotIsSongGenerated(
+               scene, SongTrack::SynthA, orphanLocal),
+           "deleted generated pattern lost ownership marker");
+
+    TestGenerator secondGenerator{};
+    const auto second = SongPatternMaterializer::generate(
+        scene,
+        requestFor(1, SongPatternMaterializer::kSynthAMask, 0x66666666u),
+        secondGenerator,
+        [](auto&& apply) { apply(); });
+
+    expect(static_cast<bool>(second), "generated orphan was not reclaimable");
+    expect(second.globalPattern[0] == orphanRef,
+           "allocator skipped the only reclaimable generated orphan");
+    expect(second.reusedGeneratedTracks == 1,
+           "orphan reclaim was not reported as generated reuse");
 }
 
 void testDeterminism() {
@@ -290,6 +409,8 @@ void testNoFreeSlot() {
     expect(result.error ==
                SongPatternMaterializer::Error::NoEmptyPatternSlots,
            "full bank did not return NoEmptyPatternSlots");
+    expect(result.failedTrackIndex == 0,
+           "full bank did not identify the exhausted track");
     expect(byteEqual(scene, before), "full-bank failure changed Scene bytes");
     expect(byteEqual(GroovePuterState::sceneRevisionSnapshot(), revisionBefore),
            "full-bank failure changed dirty revision");
@@ -365,6 +486,9 @@ int main() {
     testSingleTrack(SongTrack::SynthB, SongPatternMaterializer::kSynthBMask);
     testSingleTrack(SongTrack::Drums, SongPatternMaterializer::kDrumsMask);
     testCopyOnWrite();
+    testGeneratedRerollReusesUniqueSlot();
+    testGeneratedSharedReferenceUsesCopyOnWrite();
+    testGeneratedOrphanIsReclaimed();
     testDeterminism();
     testOrderIndependence();
     testNoFreeSlot();
