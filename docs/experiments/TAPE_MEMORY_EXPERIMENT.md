@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Measure the real internal-DRAM cost and fragmentation impact of the current Tape runtime on Cardputer ADV without changing product source.
+Measure the internal-DRAM cost and fragmentation impact of the dormant Tape runtime on Cardputer ADV without changing release product source.
 
-The experiment is built from one exact source revision and creates three temporary-source variants:
+Temporary-source variants:
 
 | Variant | TapeFX | TapeLooper object | TapeLooper buffer |
 |---|---:|---:|---:|
@@ -12,96 +12,70 @@ The experiment is built from one exact source revision and creates three tempora
 | B — NO TAPE FX | absent | present | current `init(0.5f)` attempt |
 | C — NO TAPE RUNTIME | absent | absent | absent |
 
-The branch does not remove Tape from the product tree. `scripts/instrument_tape_memory_experiment.py` edits only the temporary source copied by the experiment build.
+The instrumentation edits only a temporary source copy. PR #263 is an evidence snapshot and is not intended for merge into the release line.
 
-This PR is an evidence snapshot. It is intentionally not a release-line product change and should remain separate from the eventual product PRs.
+### Source-known sizes
 
-### Source-known allocation sizes
+- TapeFX embedded arrays: `1024 + 4096` floats = **20480 bytes**.
+- ADV TapeLooper request: `22050 Hz × 0.5 s × int16` = **22050 bytes**.
 
-`TapeFX` owns two embedded float arrays:
+## Preliminary hardware result
 
-- 1024 samples × 4 bytes = 4096 bytes
-- 4096 samples × 4 bytes = 16384 bytes
-- arrays alone = **20480 bytes**
+Status: **one cold boot per A/B/C captured; final 3× medians pending**.
 
-The DRAM-only Cardputer path calls `TapeLooper::init(0.5f)`. At the current 22050 Hz sample rate this requests:
-
-- 22050 × 0.5 × 2 bytes = **22050 bytes**
-
-The original hypothesis expected both allocations to be resident. Hardware evidence below disproved the TapeLooper part of that hypothesis on the current ADV memory profile.
-
-## Preliminary hardware evidence — one cold boot per variant
-
-Status: **PRELIMINARY**. One cold boot has been captured for each A/B/C image. The required three-cold-boot cycle per variant is still pending, so these values are not final medians.
-
-All captured runs reported heap integrity `1`.
+All three preliminary runs reported heap integrity `1`.
 
 | Variant | Checkpoint | freeInt | largest internal block |
 |---|---|---:|---:|
-| A | after static construction | 163284 | 94196 |
-| A | after `MiniAcid::init()` | 17836 | 7668 |
-| A | after UI | 16872 | 7668 |
-| B | after static construction | 184792 | 114676 |
+| A | static | 163284 | 94196 |
+| A | `MiniAcid::init()` | 17836 | 7668 |
+| A | UI | 16872 | 7668 |
+| B | static | 184792 | 114676 |
 | B | after SD | 47996 | 21492 |
-| B | after `MiniAcid::init()` | 39348 | 21492 |
-| B | after UI | 38384 | 21492 |
+| B | `MiniAcid::init()` | 39348 | 21492 |
+| B | UI | 38384 | 21492 |
 | C | after SD | 48056 | 21492 |
-| C | after `MiniAcid::init()` | 39408 | 21492 |
-| C | after UI | 38444 | 21492 |
+| C | `MiniAcid::init()` | 39408 | 21492 |
+| C | UI | 38444 | 21492 |
 
-### Preliminary causal deltas
+### Causal findings
 
-- `B - A` at static construction: **+21508 bytes freeInt** and **+20480 bytes largest block**.
-- `B - A` after `MiniAcid::init()`: **+21512 bytes freeInt**.
-- `B - A` after UI: **+21512 bytes freeInt**.
-- `C - B` after SD / `MiniAcid::init()` / UI: approximately **+60 bytes freeInt**, with **no largest-block delta**.
-- Immediately after SD, the measured largest internal block is **21492 bytes**.
-- The requested 0.5 s TapeLooper buffer is **22050 bytes**, therefore the allocation is short by **558 bytes even before allowing allocator metadata or safety margin**.
+1. **TapeFX cost is confirmed.** B recovers `21508` bytes at static construction and `21512` bytes after MiniAcid/UI. Static `largest` improves by exactly `20480` bytes, matching the embedded arrays.
+2. **The current ADV TapeLooper buffer is not resident.** After SD the largest internal block is `21492` bytes, but `init(0.5f)` requests `22050` bytes: a shortfall of `558` bytes before any safety margin.
+3. **B→C is only allocator/object noise.** C has about `60` bytes more freeInt than B and the same largest block after SD/init/UI. This falsifies the original expectation of a ~22 KiB B-only looper allocation.
+4. **Late lazy allocation of the current 0.5 s buffer is rejected.** The required contiguous block is already unavailable after SD; later project/MIDI/sampler activity cannot be assumed to improve it.
+5. `TapeLooper::init()` returns failure and clears `maxSamples_`, but the current DRAM `MiniAcid::init()` call ignores that return value. Mode control can therefore advertise REC while no storage exists.
+6. Current product navigation does not expose TapePage. Reserving ~22 KiB early now would spend ADV DRAM on a dormant workflow and would erase almost all memory recovered by removing TapeFX.
 
-### What the first hardware pass proves
-
-1. **TapeFX cost is confirmed.** The observed free-heap recovery is about 21.5 KiB and the static largest-block recovery matches the 20480-byte embedded arrays exactly.
-2. **The expected TapeLooper allocation is not resident on the current ADV image.** B and C are effectively identical after SD and `MiniAcid::init()`, which is inconsistent with a successful 22050-byte B-only allocation and consistent with the allocation attempt failing.
-3. **Late lazy allocation of the current 0.5 s buffer is not viable on this measured memory profile.** The required 22050-byte contiguous block is already larger than the observed 21492-byte largest block after SD, and later runtime/project activity cannot be assumed to improve it.
-4. The original expected B→C ~22 KiB delta was therefore a falsified hypothesis, not a failed experiment.
-
-Source behavior is consistent with the measurement: `TapeLooper::init()` returns `false` and resets `maxSamples_` when allocation fails, while the current DRAM `MiniAcid::init()` call does not consume the return value. This creates a separate product-correctness issue: allocation failure is not surfaced as an explicit Tape-unavailable state.
+The missing B→C delta is therefore a useful hardware result, not an inconclusive experiment.
 
 ## Hardware list
 
 - M5Stack Cardputer ADV / ESP32-S3
 - USB-C data cable
-- Same microSD card for all three variants and every repeated boot
-- Development computer with Arduino CLI and the repository dependencies installed
+- Same microSD card for every run
+- Development computer with Arduino CLI and repository dependencies
 
-No external I2C, MIDI, audio, or PORT.A device is required for the boot-cost experiment.
+No external I2C, MIDI, audio, or PORT.A device is required for the A/B/C boot-memory test.
 
 ## Wiring
 
-- Power/program the Cardputer ADV over USB-C.
-- Keep the same SD card inserted for A, B, and C.
-- Do not change attached peripherals between runs.
+- Power/program Cardputer ADV over USB-C.
+- Keep the same SD card and peripherals for every A/B/C run.
+- Target the normal PSRAM-disabled Cardputer ADV profile.
 
-The experiment targets the normal Cardputer ADV DRAM-only build: PSRAM disabled, internal heap is the quantity under test.
-
-## Build / Flash steps
-
-Start from the experiment branch:
+## Build / Flash
 
 ```bash
 git checkout agent/20260814-tape-memory-experiment
 bash scripts/install_arduino_deps.sh
-```
 
-Build all three variants:
-
-```bash
 bash scripts/build_cardputer_tape_memory_experiment.sh A normal --warnings all
 bash scripts/build_cardputer_tape_memory_experiment.sh B normal --warnings all
 bash scripts/build_cardputer_tape_memory_experiment.sh C normal --warnings all
 ```
 
-Flash one variant at a time:
+Flash one image at a time:
 
 ```bash
 BUILD_PATH=build/tape-memory-A-normal bash scripts/upload.sh /dev/ttyACM0
@@ -109,21 +83,19 @@ BUILD_PATH=build/tape-memory-B-normal bash scripts/upload.sh /dev/ttyACM0
 BUILD_PATH=build/tape-memory-C-normal bash scripts/upload.sh /dev/ttyACM0
 ```
 
-Capture Serial at 115200 baud after every flash.
+Capture Serial at 115200 baud.
 
-### Cold-boot measurement protocol
+## Final cold-boot protocol
 
-For each of A, B, and C:
+For each variant A/B/C:
 
-1. Flash the selected image once.
-2. Remove power completely from the Cardputer ADV.
-3. Restore power and capture the complete boot log from the first boot.
-4. Repeat the full power-off/power-on cycle until **three cold boots** have been captured for that variant.
-5. Keep the same SD card, USB profile, peripherals, scene/project contents, and physical setup for all nine boots.
-6. Record every raw value from every boot.
-7. Use the **median of the three cold boots** for each checkpoint and metric when comparing A/B/C. Do not select a preferred or merely repeated run.
+1. Use the same Cardputer ADV, SD card, USB profile, peripherals, scene/project contents, and physical setup.
+2. Remove power completely and capture a full boot log.
+3. Repeat until **three cold boots** exist for that variant.
+4. Preserve all raw values.
+5. Compare variants using the **median of all three boots** for every checkpoint/metric.
 
-For every boot record these exact lines:
+Capture:
 
 ```text
 [tape-exp-after-static-construction]
@@ -135,147 +107,90 @@ For every boot record these exact lines:
 [MEM-BASE] phase=periodic
 ```
 
-Each Tape checkpoint contains:
-
-```text
-freeInt
-largInt
-free8
-larg8
-```
-
-The existing runtime memory instrumentation additionally records minimum sampled heap values, largest-block watermarks, task stack high-water marks, and heap integrity.
+Record `freeInt`, `largInt`, `free8`, `larg8`, runtime minimum largest-block watermarks, task stack watermarks, and heap integrity.
 
 ## Expected behavior
 
 ### Screen
 
-- All three images should reach the normal GroovePuter UI.
-- The experiment is for boot/runtime memory evidence only.
-- Do not navigate to or operate the Tape page in variants B or C. Those variants intentionally remove runtime owners from the temporary build and are not product-functionality images.
+- A/B/C should boot to normal GroovePuter UI.
+- Do not open/operate Tape UI in B/C; those temporary images remove owners without product UI redesign.
 
-### Serial
+### Serial / expected final shape
 
-Variant A prints:
+| Comparison | Expected after preliminary hardware pass |
+|---|---|
+| A→B | approximately `+21.5 KiB freeInt`; static `largest` approximately `+20480` |
+| B→C | only small object/allocator delta; **no 22 KiB buffer delta** |
+| B `largest` after SD | remains below the `22050`-byte 0.5 s request on the current profile |
+| integrity | `1` for all accepted runs |
 
-```text
-[TAPE-MEM] variant=A
-```
+## Product decision
 
-Variant B prints:
+### TapeFX
 
-```text
-[TAPE-MEM] variant=B
-```
+Proceed as a separate product PR after the evidence baseline is preserved:
 
-Variant C prints:
+- remove the dormant TapeFX runtime owner and DSP implementation from the active product;
+- remove dead TapeFX control dependencies;
+- preserve legacy Scene decode compatibility if old fields remain in persisted data;
+- rerun Cardputer ADV memory, audio, Scene, UI, and normal regression gates.
 
-```text
-[TAPE-MEM] variant=C
-```
+### TapeLooper on current ADV
 
-### Causal delta interpretation
+Do **not** reserve a 0.5 s buffer early and do **not** implement late lazy allocation merely to make the dormant subsystem resident.
 
-The original expected shape has now been partially validated and partially falsified by hardware:
+Current ADV policy should be explicit and deterministic:
 
-| Comparison | Original expectation | Preliminary hardware result |
-|---|---|---|
-| A→B | ~20 KiB TapeFX recovery from static construction onward | **confirmed**: +21508…21512 bytes freeInt; +20480 largest at static |
-| B→C before `MiniAcid::init()` | small ownership-only delta | **confirmed** within allocator noise |
-| B→C after `MiniAcid::init()` | ~22 KiB recovery if B owns the looper buffer | **falsified**: ~60 bytes only; B never acquired the 22050-byte buffer |
-| `largInt` | should expose fragmentation/contiguous allocation constraints | **confirmed**: 21492-byte block explains failure of a 22050-byte request |
+- no TapeLooper sample-buffer reservation while Tape is absent from the current workflow;
+- no opportunistic “allocate whatever fits” behavior;
+- no REC state when storage is unavailable;
+- preserve TapeLooper source for a later intentional Tape recovery/productization pass.
 
-Do not reinterpret the missing B→C delta as noise to be averaged away. The contiguous-block measurement provides the causal explanation and must remain part of the final evidence.
+This retains the ~21.5 KiB TapeFX recovery for sampler/runtime instead of exchanging it for ~22.05 KiB of unreachable looper storage.
 
-## Product conclusions and follow-up boundaries
+### Future Tape recovery gate
 
-Keep product changes separate from this evidence branch.
+When Tape is intentionally restored to the workflow, reopen the allocation question with a separate evidence build.
 
-### Product PR 1 — remove TapeFX
+First candidate:
 
-Hardware already confirms the intended result strongly enough to design this PR:
+- reserve the existing 0.5 s / 22050-byte looper **after the critical AudioTask and constrained delay allocations, but before SD/SMF fragmentation**;
+- then run full sampler/runtime memory and musical acceptance.
 
-- remove the disabled/unexposed `TapeFX` runtime owner on Cardputer ADV;
-- remove or simplify UI/state paths that only control TapeFX rather than leaving dangling dereferences;
-- preserve Scene backward decoding if old TapeFX-related state still exists in persisted scenes;
-- run the normal Cardputer ADV memory gate and product regressions on the removal PR.
+If that is too expensive, test a smaller deterministic fixed ADV duration with deliberate contiguous-block safety margin. Allocation must stay outside the audio callback, a successful buffer must remain allocated for the boot session, and failure must leave Tape in STOP with a clear unavailable/no-memory indication.
 
-Final merge can still reference the completed 3× A/B/C median table from this evidence PR.
-
-### TapeLooper — do not implement the previously proposed late lazy allocation
-
-The preliminary hardware evidence rejects the prior `lazy-after-SD/UI/project` design for the current 0.5 s / 22050-byte buffer.
-
-The next product decision must choose an explicit ADV allocation policy instead of relying on opportunistic heap state:
-
-1. **Early one-time reservation** — allocate the full 0.5 s buffer before SD and other fragmentation-prone allocations. This can make TapeLooper deterministic, but it spends almost all memory recovered by deleting TapeFX and must be measured against sampler/runtime headroom.
-2. **Smaller fixed ADV buffer** — reduce the requested duration to a size with a deliberate contiguous-block safety margin. Do not choose a size merely because it fits the current 21492-byte observation; later project/MIDI/sampler activity can reduce the available block.
-3. **ADV unavailable policy** — keep TapeLooper disabled on the current DRAM-only profile and expose a clear unavailable state rather than silently entering REC without storage.
-
-Do not implement “allocate whatever currently fits”. Tape duration and feature availability must remain deterministic and reproducible for a given build/profile.
-
-### Required failure-path correction for any retained ADV TapeLooper
-
-Regardless of the chosen memory policy:
-
-- consume and preserve the result of looper buffer preparation;
-- never enter/advertise `TapeMode::Rec` when no buffer is available;
-- keep mode `Stop` on preparation failure;
-- show a clear user-facing status such as `TAPE: NO MEMORY` or `TAPE: UNAVAILABLE`;
-- do not allocate from the audio callback;
-- if a buffer is successfully allocated, retain it for the boot session rather than free/reallocate on REC/STOP.
-
-## Next TapeLooper evidence before product implementation
-
-The current A/B/C experiment answers the original memory-accounting question. A separate narrow allocation-policy experiment should answer the remaining product question.
-
-Recommended candidate to measure first:
-
-- **D — NO TAPE FX + EARLY 0.5 s LOOPER RESERVATION**
-
-Reserve the existing 22050-byte looper buffer before SD/fragmentation, then capture the same boot checkpoints plus normal production runtime and sampler memory/performance evidence.
-
-This test answers whether the dead TapeFX allocation can be exchanged for a working full-length TapeLooper without creating an unacceptable later `largestInt` / sampler regression. It should not be inferred from total free bytes alone.
-
-If D is unacceptable, evaluate a deliberately smaller fixed ADV buffer in a separate candidate with an explicit safety margin and musical acceptance test.
+This future test is **not a blocker for closing PR #263 or continuing sampler recovery**.
 
 ## Troubleshooting
 
 ### Instrumentation reports a missing anchor
 
-The source moved relative to the experiment base. Do not weaken the script to replace multiple matches. Rebase the experiment and update the exact anchor deliberately.
+The source moved relative to the experiment base. Rebase/update the exact anchor deliberately; do not weaken the script to patch multiple matches.
 
-### Variant B or C resets when opening Tape UI
+### B/C resets when opening Tape UI
 
-Expected for these diagnostic images. They remove Tape runtime ownership in the temporary source but do not redesign the Tape page. Reboot and collect only the boot/runtime memory evidence.
+Expected for diagnostic B/C images. Reboot and collect only boot/runtime memory evidence.
 
-### Values differ substantially between repeated runs
+### Tape appears to enter REC but records nothing
 
-Use the same SD card, USB profile, peripherals, scene contents, and boot procedure. Preserve all three cold-boot measurements. Compare medians and inspect the complete checkpoint series plus `[MEM-BASE]` heap-integrity output rather than discarding an inconvenient run.
+The current ADV allocation may have failed. Visible REC state is not proof that a looper buffer exists.
 
-### `largInt` is unexpectedly much smaller although `freeInt` increased
+### `freeInt` improves but `largInt` does not
 
-That is a valid result and indicates fragmentation/allocation-order effects. Preserve the full checkpoint series; do not reduce the experiment to final free bytes.
-
-### Tape mode enters REC but no loop is recorded
-
-On the current ADV implementation this can be caused by the 0.5 s looper allocation failing during boot while the failure result is not surfaced to the UI/mode state. Preserve the Serial memory evidence; do not treat a visible REC state alone as proof that TapeLooper storage exists.
+Treat this as real fragmentation evidence. Preserve the complete checkpoint series; do not reduce the result to total free heap.
 
 ## Acceptance checklist
 
-- [x] A, B, and C compile from the same experiment branch SHA.
-- [x] CI matrix A/B/C is green on the exact experiment SHA.
-- [x] One preliminary cold boot has been captured for A, B, and C.
-- [x] Preliminary heap integrity remains `1` for all three variants.
-- [x] Preliminary A→B separation confirms the TapeFX memory cost.
-- [x] Preliminary B→C result plus `largInt=21492` demonstrates that the current 22050-byte TapeLooper request is not successfully resident.
-- [ ] Three complete cold boots are captured for A, three for B, and three for C.
-- [ ] The same Cardputer ADV, SD card, USB profile, peripherals, scene/project contents, and physical setup are used for every repeated run.
-- [ ] All raw measurements are preserved; medians are calculated from all three boots per variant.
-- [ ] All five `tape-exp-*` checkpoints are captured for every final evidence boot.
-- [ ] `[MEM-BASE] phase=runtime-start` and at least one periodic sample are captured for every final evidence boot.
-- [ ] Final median heap integrity remains `integrity=1`.
-- [ ] Final median A→B behavior remains consistent with the preliminary TapeFX result.
-- [ ] Final B→C behavior and largest-block measurements remain consistent with failed 0.5 s looper allocation.
-- [ ] Final hardware table and medians are copied into PR #263.
-- [ ] PR #263 remains an evidence snapshot and is closed without merge after evidence is complete.
+- [x] A/B/C compile from the same experiment source.
+- [x] A/B/C CI matrix is green on the experiment checkpoint.
+- [x] One preliminary cold boot captured for A/B/C.
+- [x] Preliminary heap integrity is `1` for A/B/C.
+- [x] Preliminary A→B confirms TapeFX cost.
+- [x] Preliminary B→C + `largest=21492` confirms the 0.5 s looper allocation is not resident.
+- [ ] Three complete cold boots captured for A/B/C.
+- [ ] All raw values preserved and medians calculated from all three boots.
+- [ ] All five Tape checkpoints plus runtime baseline captured for final accepted boots.
+- [ ] Final medians remain consistent with TapeFX recovery and failed 0.5 s looper allocation.
+- [ ] Final hardware table recorded in PR #263.
+- [ ] PR #263 closed without merge after evidence completion.
