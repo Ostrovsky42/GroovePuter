@@ -43,7 +43,7 @@ assert "SamplerScene" not in raw_write_body
 assert "runtimeIdForRef" in index_h
 assert "resolveRuntimeId" in index_h
 assert "runtimeCandidateReserved" in index_cpp
-assert "setScenePersistenceSampleIndex(this)" in index_cpp
+assert "setScenePersistenceSampleIndex" not in index_cpp
 assert "if (file.id.value == candidate) return true;" in index_cpp
 
 # Bounded scratch only: one sampler pad object, not a second Scene buffer.
@@ -52,7 +52,9 @@ assert "kMaxOutputBytes = 448" in persist_h
 assert "char padBuffer_[kMaxPadObjectBytes]" in persist_h
 assert "char outputBuffer_[kMaxOutputBytes]" in persist_h
 
-# C boot ordering remains the authority and no PCM preload moved into it.
+# C boot ordering remains the authority and publishes the persistence index
+# before the same bind that precedes MiniAcid Scene restore. No PCM moved here.
+assert "setScenePersistenceSampleIndex(&index)" in boot
 assert "index.bindToStore(g_sampleStore)" in boot
 assert "preload(" not in boot
 
