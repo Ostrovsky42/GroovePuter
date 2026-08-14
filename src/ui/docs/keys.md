@@ -1,6 +1,6 @@
-# GroovePuter 0.9.1 Key Map — Cardputer ADV
+# GroovePuter 0.9.2 Key Map — Cardputer ADV
 
-This is the canonical external key reference for the current 0.9.1 runtime. `Alt+H`
+This is the canonical external key reference for the current 0.9.2 hardening runtime. `Alt+H`
 opens page-aware on-device help; this file is the fuller release reference.
 
 ## Workflows
@@ -157,13 +157,15 @@ Inside NOTE ENTRY, `G` remains note input.
 | `Up/Down` | Move Song row |
 | `Enter` | Jump to referenced pattern editor |
 | `Q..I` | Assign existing slot from visible `PAT:A/B` context |
-| `G` | Generate safe free material and assign selected cell |
+| `G` | Generate safe material and assign selected cell; unique Song-generated material rerolls in place |
 | double `G` | Materialize Synth A + Synth B + Drums for current row |
 | `Alt+G` | Generate selected area |
 | `Ctrl+G` | Cycle Song generator mode |
+| `Backspace` | Clear current cell / selected Song cells |
 | `B` | Toggle visible `PAT:A/B` assignment bank |
 | `Alt+B` | Flip stored-reference/selection bank |
 | `Ctrl+B` | Play Song slot A/B |
+| `Alt+[` / `Alt+]` | Previous / next pattern page when the resident 16-slot page is full |
 | `Ctrl+N` / `Ctrl+M` | Insert / remove row |
 | `V` | Toggle DR/VO lane |
 | `X` | Split compare |
@@ -176,6 +178,15 @@ Inside NOTE ENTRY, `G` remains note input.
 
 `B` changes assignment context only. `Alt+B` changes stored references. Song-slot
 crossing and the visible PAT assignment bank are independent controls.
+
+0.9.2 hardening distinguishes Song-generated material from manual/imported material.
+Clearing a Song cell removes its arrangement reference; an unreferenced Song-generated
+orphan may be reused by later Song generation, while non-empty manual/imported patterns
+are never reclaimed automatically. A resident page still contains 16 slots per track;
+if all of them are legitimately referenced/manual, use `Alt+]` to move to another
+pattern page instead of clearing the project. Song stores page-aware global pattern IDs,
+so playback can return to the required page through the existing deferred page-switch
+path.
 
 ## PHRASE CORE
 
