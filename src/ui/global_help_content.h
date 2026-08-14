@@ -274,10 +274,11 @@ constexpr const char* kPlayerLines[] = {
 constexpr const char* kSamplerLines[] = {
     "=== SAMPLER ===",
     "Up/Down     Focus field",
-    "Right       Adjust/select",
-    "Q..U        Trigger pads 1..7",
+    "Left/Right  Adjust/select",
+    "Q W E R T Y U I  Pads 1..8",
     "Space       Prelisten current pad",
     "Alt+0       Project / explicit Save",
+    "KIT LOAD    Deferred to 0.9.4",
 };
 
 inline const char* const* pageLines(int pageIndex, int& count) {
