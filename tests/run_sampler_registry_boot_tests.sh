@@ -15,6 +15,7 @@ mkdir -p "${BUILD_DIR}"
   -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_sample_registry_boot.cpp" \
   "${ROOT_DIR}/src/sampler/sample_index.cpp" \
+  "${ROOT_DIR}/src/sampler/sample_scene_persistence.cpp" \
   "${ROOT_DIR}/src/sampler/ram_sample_store.cpp" \
   -o "${BUILD_DIR}/test_sample_registry_boot"
 
