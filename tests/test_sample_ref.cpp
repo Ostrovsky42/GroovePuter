@@ -116,6 +116,38 @@ void testLegacyFallbackResolvesKnownFile() {
   fs::remove_all(root);
 }
 
+void testLegacyHashCollisionFailsClosed() {
+  // These two distinct filenames are a real FNV-1a32 collision. They model the
+  // exact failure class that basename-only persistence could not disambiguate.
+  constexpr const char* kNameA = "5oetw2k1.wav";
+  constexpr const char* kNameB = "qp363n87.wav";
+  const uint32_t hashA = SampleIndex::calculateHash(kNameA);
+  const uint32_t hashB = SampleIndex::calculateHash(kNameB);
+  assert(hashA == hashB);
+
+  const fs::path root =
+      fs::temp_directory_path() / "grooveputer_sample_ref_collision";
+  fs::remove_all(root);
+  fs::create_directories(root);
+  touch(root / kNameA);
+  touch(root / kNameB);
+
+  SampleIndex index;
+  index.scanDirectory(root.string());
+  assert(index.getFiles().size() == 2);
+
+  const SampleRef refA = index.findRefByFilename(kNameA);
+  const SampleRef refB = index.findRefByFilename(kNameB);
+  assert(refA.valid());
+  assert(refB.valid());
+  assert(refA != refB);
+
+  const SampleId ambiguousLegacy{hashA};
+  assert(!index.resolveLegacyId(ambiguousLegacy).valid());
+
+  fs::remove_all(root);
+}
+
 }  // namespace
 
 int main() {
@@ -124,5 +156,6 @@ int main() {
   testDuplicateBasenameNoLongerCollides();
   testIndexIdentityIsIndependentOfDirectoryEnumerationOrder();
   testLegacyFallbackResolvesKnownFile();
+  testLegacyHashCollisionFailsClosed();
   return 0;
 }
