@@ -124,9 +124,25 @@ SampleView RamSampleStore::view(SampleId id) const {
   return {nullptr, 0, 0};
 }
 
-void RamSampleStore::registerFile(SampleId id, const std::string& path) {
+bool RamSampleStore::registerFile(SampleId id, const std::string& path) {
+  if (id.value == 0 || path.empty()) return false;
+
   std::lock_guard<std::mutex> lk(pathsMutex_);
-  filePaths_[id.value] = path;
+  const auto it = filePaths_.find(id.value);
+  if (it == filePaths_.end()) {
+    filePaths_.emplace(id.value, path);
+    return true;
+  }
+
+  if (it->second == path) return true;
+
+  // A runtime ID may never silently change physical ownership. This protects
+  // legacy basename hashes from last-write-wins corruption while 0.9.3-D
+  // migrates persisted sampler ownership to stable SampleRef.
+  printf("Sample registry: refusing conflicting ID %u: %s != %s\n",
+         static_cast<unsigned>(id.value),
+         it->second.c_str(), path.c_str());
+  return false;
 }
 
 bool RamSampleStore::preload(SampleId id) {
