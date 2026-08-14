@@ -195,7 +195,7 @@ bool RamSampleStore::preload(SampleId id) {
   }
 
   // 4. Evict until enough capacity exists. Abort when eviction makes no
-  // progress all candidates are then referenced by active audio voices.
+  // progress; all candidates are then referenced by active audio voices.
   while (currentPoolUsage_ + size > maxPoolBytes_) {
     const std::size_t usageBefore = currentPoolUsage_;
     evictLRU();
@@ -212,41 +212,88 @@ bool RamSampleStore::preload(SampleId id) {
   for (int i = 0; i < kMaxSampleSlots; ++i) {
     auto& slot = slots_[i];
     if (slot.id.load(std::memory_order_acquire) == 0 &&
-        \ÛÝœ™XYK›ØY
-ÝŽ›Y[[ÜžWÛÜ™\—ØXÜ]Z\™JH	‰‚ˆÛÝœ™YÛÝ[›ØY
-ÝŽ›Y[[ÜžWÛÜ™\—ØXÜ]Z\™JHOH	‰‚ˆÛÝ™]K›ØY
-ÝŽ›Y[[ÜžWÛÜ™\—ØXÜ]Z\™JHOH[ŠHÂˆÛÝYHNÂˆœ™XZÎÂˆBˆB‚ˆYˆ
-ÛÝY
-HÂˆš[Š”™[ØYˆ›È]ZY\ØÙ[œ™YHÛÝ×ˆŠNÂˆœ™YJÛJNÂˆ™]\›ˆ˜[ÙNÂˆB‚ˆËÈ‹ˆš[[™X›\ÚHÛÝˆ›Û‹X]ÛZXÈY]Y]H\È›ÝXÝYžHBˆËÈš[˜[™XYH™[X\ÙH[™X]Ú[™ÈXÜ]Z\™H[ˆ™XY\œË‚ˆ]]ÉˆÛÝHÛÝ×ÖÜÛÝYNÂˆÛÝ™œ˜[Y\ÈH[™›Ë›[Qœ˜[Y\ÎÂˆÛÝœØ[\T˜]HH[™›ËœØ[\T˜]NÂˆÛÝœÚ^™Pž]\ÈHÚ^™NÂˆÛÝ™]KœÝÜ™JÛKÝŽ›Y[[ÜžWÛÜ™\—Ü™[^Y
-NÂˆÛÝ›\ÝXØÙ\ÜËœÝÜ™J™^[YJ
-KÝŽ›Y[[ÜžWÛÜ™\—Ü™[^Y
-NÂˆÛÝœ™YÛÝ[œÝÜ™JÝŽ›Y[[ÜžWÛÜ™\—Ü™[^Y
-NÂˆÛÝšYœÝÜ™JY˜[YKÝŽ›Y[[ÜžWÛÜ™\—Ü™[^Y
-NÂˆÛÝœ™XYKœÝÜ™JYKÝŽ›Y[[ÜžWÛÜ™\—Ü™[X\ÙJNÂ‚ˆÝ\œ™[ÛÛ\ØYÙWÈ
-ÏHÚ^™NÂˆ™]\›ˆYNÂŸB‚›ÚY˜[TØ[\TÝÜ™NŽ™]šXÝ•J
-HÂˆ[Ø[™Y]RYHLNÂˆZ[Ì—ÝÛ\Ý[YHHÝŽ›[Y\šX×Û[Z]ÏZ[Ì—ÝŽŽ›X^
+        !slot.ready.load(std::memory_order_acquire) &&
+        slot.refCount.load(std::memory_order_acquire) == 0 &&
+        slot.data.load(std::memory_order_acquire) == nullptr) {
+      slotIdx = i;
+      break;
+    }
+  }
 
-NÂ‚ˆ›Üˆ
-[HHÈHÓX^Ø[\TÛÝÎÈ
-ÊÚJHÂˆ]]ÉˆÛÝHÛÝ×ÖÚWNÂˆÛÛœÝZ[Ì—ÝYHÛÝšY›ØY
-ÝŽ›Y[[ÜžWÛÜ™\—ØXÜ]Z\™JNÂˆYˆ
-YOH	‰ˆÛÝœ™XYK›ØY
-ÝŽ›Y[[ÜžWÛÜ™\—ØXÜ]Z\™JH	‰‚ˆÛÝœ™YÛÝ[›ØY
-ÝŽ›Y[[ÜžWÛÜ™\—ØXÜ]Z\™JHOH
-HÂˆÛÛœÝZ[Ì—ÝXØÙ\ÜÈHÛÝ›\ÝXØÙ\ÜË›ØY
-ÝŽ›Y[[ÜžWÛÜ™\—Ü™[^Y
-NÂˆYˆ
-XØÙ\ÜÈÛ\Ý[YJHÂˆÛ\Ý[YHHXØÙ\ÜÎÂˆØ[™Y]RYHNÂˆBˆBˆB‚ˆYˆ
-Ø[™Y]RY
-H™]\›ŽÂ‚ˆ]]ÉˆÛÝHÛÝ×ÖØØ[™Y]RYNÂ‚ˆËÈÚ]˜]ÈX›XØ][Ûˆš\œÝˆ[žHXÜ]Z\Ú][Ûˆ]ØœÙ\™YHÛ™XYBˆËÈ˜[YH]\Ý[˜Ü™[Y[[™[ˆ™]˜[Y]H]™Y›Ü™H™]\›š[™ÈH[™K‚ˆ›ÛÛ^XÝY™XYHHYNÂˆYˆ
-\ÛÝœ™XYK˜ÛÛ\\™WÙ^Ú[™ÙWÜÝ›Û™Êˆ^XÝY™XYK˜[ÙKˆÝŽ›Y[[ÜžWÛÜ™\—ØXÜWÜ™[ˆÝŽ›Y[[ÜžWÛÜ™\—ØXÜ]Z\™JJHÂˆ™]\›ŽÂˆB‚ˆYˆ
-ÛÝœ™YÛÝ[›ØY
-ÝŽ›Y[[ÜžWÛÜ™\—ØXÜ]Z\™JHOH
-HÂˆÛÝœ™XYKœÝÜ™JYKÝŽ›Y[[ÜžWÛÜ™\—Ü™[X\ÙJNÂˆ™]\›ŽÂˆB‚ˆÛÝšYœÝÜ™JÝŽ›Y[[ÜžWÛÜ™\—Ü™[X\ÙJNÂˆ[M—Ý
-ˆˆHÛÛœÝØØ\Ý[M—Ý
-ŠˆÛÝ™]K™^Ú[™ÙJ[‹ÝŽ›Y[[ÜžWÛÜ™\—ØXÜWÜ™[
-JNÂˆYˆ
-ŠHœ™YJŠNÂ‚ˆYˆ
-ÛÝœÚ^™Pž]\ÈHÝ\œ™[ÛÛ\ØYÙWÊHÂˆÝ\œ™[ÛÛ\ØYÙWÈOHÛÝœÚ^™Pž]\ÎÂˆH[ÙHÂˆÝ\œ™[ÛÛ\ØYÙWÈHÂˆBˆÛÝ™œ˜[Y\ÈHÂˆÛÝœØ[\T˜]HHÂˆÛÝœÚ^™Pž]\ÈHÂŸB‚œÝŽœÚ^™WÝ˜[TØ[\TÝÜ™NŽ™œ™YTÛÛž]\Ê
-HÛÛœÝÂˆYˆ
-Ý\œ™[ÛÛ\ØYÙWÈˆX^ÛÛž]\×ÊH™]\›ˆÂˆ™]\›ˆX^ÛÛž]\×ÈHÝ\œ™[ÛÛ\ØYÙWÎÂŸB
+  if (slotIdx < 0) {
+    printf("Preload: No quiescent free slots\n");
+    free(pcm);
+    return false;
+  }
+
+  // 6. Fill and publish the slot. Non-atomic metadata is protected by the
+  // final ready release and matching acquire in readers.
+  auto& slot = slots_[slotIdx];
+  slot.frames = info.numFrames;
+  slot.sampleRate = info.sampleRate;
+  slot.sizeBytes = size;
+  slot.data.store(pcm, std::memory_order_relaxed);
+  slot.lastAccess.store(nextTime(), std::memory_order_relaxed);
+  slot.refCount.store(0, std::memory_order_relaxed);
+  slot.id.store(id.value, std::memory_order_relaxed);
+  slot.ready.store(true, std::memory_order_release);
+
+  currentPoolUsage_ += size;
+  return true;
+}
+
+void RamSampleStore::evictLRU() {
+  int candidateIdx = -1;
+  uint32_t oldestTime = std::numeric_limits<uint32_t>::max();
+
+  for (int i = 0; i < kMaxSampleSlots; ++i) {
+    auto& slot = slots_[i];
+    const uint32_t id = slot.id.load(std::memory_order_acquire);
+    if (id != 0 && slot.ready.load(std::memory_order_acquire) &&
+        slot.refCount.load(std::memory_order_acquire) == 0) {
+      const uint32_t access = slot.lastAccess.load(std::memory_order_relaxed);
+      if (access < oldestTime) {
+        oldestTime = access;
+        candidateIdx = i;
+      }
+    }
+  }
+
+  if (candidateIdx < 0) return;
+
+  auto& slot = slots_[candidateIdx];
+
+  // Withdraw publication first. Any acquisition that observed the old ready
+  // value must increment and then revalidate it before returning a handle.
+  bool expectedReady = true;
+  if (!slot.ready.compare_exchange_strong(
+          expectedReady, false,
+          std::memory_order_acq_rel,
+          std::memory_order_acquire)) {
+    return;
+  }
+
+  if (slot.refCount.load(std::memory_order_acquire) != 0) {
+    slot.ready.store(true, std::memory_order_release);
+    return;
+  }
+
+  slot.id.store(0, std::memory_order_release);
+  int16_t* ptr = const_cast<int16_t*>(
+      slot.data.exchange(nullptr, std::memory_order_acq_rel));
+  if (ptr) free(ptr);
+
+  if (slot.sizeBytes <= currentPoolUsage_) {
+    currentPoolUsage_ -= slot.sizeBytes;
+  } else {
+    currentPoolUsage_ = 0;
+  }
+  slot.frames = 0;
+  slot.sampleRate = 0;
+  slot.sizeBytes = 0;
+}
+
+std::size_t RamSampleStore::freePoolBytes() const {
+  if (currentPoolUsage_ > maxPoolBytes_) return 0;
+  return maxPoolBytes_ - currentPoolUsage_;
+}
