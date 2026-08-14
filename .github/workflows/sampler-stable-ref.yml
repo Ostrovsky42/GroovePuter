@@ -1,0 +1,15 @@
+name: Sampler stable SampleRef
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  sample-ref-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run stable SampleRef contract tests
+        run: bash tests/run_sampler_ref_tests.sh
