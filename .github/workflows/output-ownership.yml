@@ -1,0 +1,32 @@
+name: 0.9.6 output ownership
+
+on:
+  pull_request:
+    paths:
+      - "src/output/output_ownership.h"
+      - "tests/test_output_ownership.cpp"
+      - "tests/run_output_ownership_tests.sh"
+      - "docs/releases/0_9_6_B_OUTPUT_OWNERSHIP_CONTRACT.md"
+      - ".github/workflows/output-ownership.yml"
+  push:
+    branches:
+      - dev_0.9.6
+    paths:
+      - "src/output/output_ownership.h"
+      - "tests/test_output_ownership.cpp"
+      - "tests/run_output_ownership_tests.sh"
+      - "docs/releases/0_9_6_B_OUTPUT_OWNERSHIP_CONTRACT.md"
+      - ".github/workflows/output-ownership.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  output-ownership:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run output ownership contract
+        run: bash tests/run_output_ownership_tests.sh
