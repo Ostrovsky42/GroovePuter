@@ -61,11 +61,22 @@ std::array<DrumMidiRoute, kMidiDrumVoiceCount> generalMidiDrumRoutes() {
     return routes;
 }
 
+std::array<DrumMidiRoute, kMidiDrumVoiceCount> genericMidiDrumRoutes() {
+    std::array<DrumMidiRoute, kMidiDrumVoiceCount> routes{};
+    for (DrumMidiRoute& drumRoute : routes) {
+        drumRoute.enabled = false;
+        drumRoute.channel = 0;
+        drumRoute.note = 60;
+    }
+    return routes;
+}
+
 bool validProfile(MidiDeviceProfile profile) {
     switch (profile) {
         case MidiDeviceProfile::SeqtrakNative:
         case MidiDeviceProfile::GeneralMidi:
         case MidiDeviceProfile::Custom:
+        case MidiDeviceProfile::GenericMidi:
             return true;
     }
     return false;
@@ -100,6 +111,8 @@ const char* midiDeviceProfileName(MidiDeviceProfile profile) {
             return "GENERAL MIDI";
         case MidiDeviceProfile::Custom:
             return "CUSTOM";
+        case MidiDeviceProfile::GenericMidi:
+            return "GENERIC MIDI";
     }
     return "UNKNOWN";
 }
@@ -190,6 +203,12 @@ void applyMidiDeviceProfile(MidiDeviceProfile profile,
             settings.synthAChannel = 0;
             settings.synthBChannel = 1;
             settings.drumRoutes = generalMidiDrumRoutes();
+            break;
+        case MidiDeviceProfile::GenericMidi:
+            settings.liveChannel = 0;
+            settings.synthAChannel = 0;
+            settings.synthBChannel = 1;
+            settings.drumRoutes = genericMidiDrumRoutes();
             break;
         case MidiDeviceProfile::Custom:
             break;

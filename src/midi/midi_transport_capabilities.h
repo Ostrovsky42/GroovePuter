@@ -31,6 +31,9 @@ struct MidiTransportCapabilities {
     MidiContinueBehavior continueBehavior = MidiContinueBehavior::Unsupported;
 };
 
+// Historical GeneralMidi behavior. Preserve this surface in R2 so the semantic
+// split does not silently alter existing profile behavior before the release
+// migration decision is made.
 constexpr MidiTransportCapabilities genericClassCompliantTransportCapabilities() {
     MidiTransportCapabilities capabilities{};
     capabilities.clockTx = true;
@@ -39,6 +42,18 @@ constexpr MidiTransportCapabilities genericClassCompliantTransportCapabilities()
     capabilities.continueTx = true;
     capabilities.songPositionTx = true;
     capabilities.continueBehavior = MidiContinueBehavior::ContinueFromPosition;
+    return capabilities;
+}
+
+// Generic MIDI makes no GM-percussion or device-specific transport promises.
+// Clock/Start/Stop TX remain available as ordinary standard MIDI messages;
+// Continue/SPP and all RX claims stay off until a concrete target validates them.
+constexpr MidiTransportCapabilities conservativeGenericMidiTransportCapabilities() {
+    MidiTransportCapabilities capabilities{};
+    capabilities.clockTx = true;
+    capabilities.startTx = true;
+    capabilities.stopTx = true;
+    capabilities.continueBehavior = MidiContinueBehavior::RestartFromBeginning;
     return capabilities;
 }
 
@@ -80,6 +95,8 @@ constexpr MidiTransportCapabilities midiTransportCapabilitiesForProfile(
             return seqtrakValidatedTransportCapabilities();
         case MidiDeviceProfile::GeneralMidi:
             return genericClassCompliantTransportCapabilities();
+        case MidiDeviceProfile::GenericMidi:
+            return conservativeGenericMidiTransportCapabilities();
         case MidiDeviceProfile::Custom:
             return conservativeCustomTransportCapabilities();
     }
@@ -95,7 +112,7 @@ public:
 
     MidiDeviceProfile deviceProfile() const {
         const uint8_t raw = profile_.load(std::memory_order_acquire);
-        if (raw > static_cast<uint8_t>(MidiDeviceProfile::Custom)) {
+        if (raw > static_cast<uint8_t>(MidiDeviceProfile::GenericMidi)) {
             return MidiDeviceProfile::SeqtrakNative;
         }
         return static_cast<MidiDeviceProfile>(raw);

@@ -23,6 +23,10 @@ enum class MidiDeviceProfile : uint8_t {
     SeqtrakNative = 0,
     GeneralMidi = 1,
     Custom = 2,
+    // Added as a distinct semantic identity in 0.9.7-R2. This is deliberately
+    // not an alias for GeneralMidi: generic MIDI must not imply a GM drum map.
+    // No runtime/UI selection path is introduced by R2.
+    GenericMidi = 3,
 };
 
 enum class MidiLiveTarget : uint8_t {
