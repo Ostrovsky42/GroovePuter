@@ -15,6 +15,14 @@ public:
   // Audio Thread: Render and mix all active voices.
   void process(float* output, uint32_t numFrames, ISampleStore& store);
 
+  // Audio Thread: Render one frame after same-frame trigger dispatch.
+  inline __attribute__((always_inline)) void processFrame(
+      float& output, ISampleStore& store) {
+    for (auto& voice : voices_) {
+      if (voice.isActive()) voice.processFrame(output, store);
+    }
+  }
+
   // Stop all voices immediately
   void stopAll();
   

@@ -223,7 +223,6 @@ MiniAcid::MiniAcid(float sampleRate, SceneStorage* sceneStorage)
     sampleRateValue(sampleRate),
     drumEngineName_("808"),
     sceneStorage_(sceneStorage),
-    samplerOutBuffer(std::make_unique<float[]>(AUDIO_BUFFER_SAMPLES)),
     samplerTrack(std::make_unique<DrumSamplerTrack>()),
     tapeFX(std::make_unique<TapeFX>()),
     tapeLooper(std::make_unique<TapeLooper>()),
@@ -2130,14 +2129,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   }
   tapeControlCached_ = true;
 
-  // Optimization: render sampler track in a block once per buffer
-  uint32_t tSamplerStart = micros();
-  bool hasSampleStore = (sampleStore != nullptr);
-  if (hasSampleStore) {
-    std::fill(samplerOutBuffer.get(), samplerOutBuffer.get() + numSamples, 0.0f);
-    samplerTrack->process(samplerOutBuffer.get(), numSamples, *sampleStore);
-  }
-  uint32_t tSamplerTime = micros() - tSamplerStart;
+  const bool hasSampleStore = (sampleStore != nullptr);
 
   // Cache immutable-per-buffer flags
   const float* trackVolumes = sceneManager_.currentScene().trackVolumes;
@@ -2175,6 +2167,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   // Profiling accumulators (detailed sections only when diagnostics is enabled)
   uint32_t tVoicesTotal = 0;
   uint32_t tDrumsTotal = 0;
+  uint32_t tSamplerTotal = 0;
   uint32_t tFxTotal = 0;
   uint32_t tVocalTotal = 0;
   uint32_t tLoopStart = micros();
@@ -2331,15 +2324,21 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
     uint32_t tS0 = 0;
     if (detailedProfile) tS0 = micros();
     if (hasSampleStore) {
-      samplerSample = samplerOutBuffer[i];
+      // Tick/retrig dispatch above can start a sampler voice at this exact
+      // frame. Render only after those triggers so the WAV stays aligned with
+      // the built-in drum instead of slipping by one 512-frame audio block.
+      samplerTrack->processFrame(samplerSample, *sampleStore);
       sample += samplerSample;
     }
+    if (detailedProfile) tSamplerTotal += (micros() - tS0);
+    uint32_t tVocal0 = 0;
+    if (detailedProfile) tVocal0 = micros();
     float vocalSample = 0.0f;
     if (!voiceTrackMuted_ && vocalSynth_.isActive()) {
       vocalSample = voiceCompressor_.process(vocalSynth_.process());
     }
     sample += vocalSample;
-    if (detailedProfile) tVocalTotal += (micros() - tS0);
+    if (detailedProfile) tVocalTotal += (micros() - tVocal0);
 
     uint32_t tF0 = 0;
     if (detailedProfile) tF0 = micros();
@@ -2388,11 +2387,11 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
   }
   // seq handled by wrapper for accuracy
 
-  perfStats.dspTimeUs = (micros() - tLoopStart) + tSamplerTime;
+  perfStats.dspTimeUs = micros() - tLoopStart;
   if (detailedProfile) {
     perfStats.dspVoicesUs = tVoicesTotal;
     perfStats.dspDrumsUs = tDrumsTotal;
-    perfStats.dspSamplerUs = tSamplerTime + tVocalTotal;
+    perfStats.dspSamplerUs = tSamplerTotal + tVocalTotal;
     perfStats.dspFxUs = tFxTotal;
   }
 

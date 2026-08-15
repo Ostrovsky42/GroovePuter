@@ -45,8 +45,19 @@ def main() -> None:
             "drum sequencer must still trigger sampler pads")
     require(engine_cpp.count("samplerTrack->triggerPad") >= 8,
             "all eight recovered drum lanes must retain sampler triggers")
-    require("samplerTrack->process" in engine_cpp and "samplerOutBuffer" in engine_cpp,
-            "sampler render must remain mixed into the real audio path")
+    audio_start = engine_cpp.index("void MiniAcid::generateAudioBuffer")
+    audio_end = engine_cpp.index("void MiniAcid::randomize303Pattern", audio_start)
+    audio_body = engine_cpp[audio_start:audio_end]
+    sampler_render = audio_body.find(
+        "samplerTrack->processFrame(samplerSample, *sampleStore)")
+    require(sampler_render >= 0,
+            "sampler must render inside the audio frame that owns its triggers")
+    require(sampler_render > audio_body.rfind("samplerTrack->triggerPad"),
+            "sampler render must follow every in-frame sequencer/retrig trigger")
+    require(sampler_render > audio_body.find("advanceTick();"),
+            "sampler render must follow the current frame's tick dispatch")
+    require("samplerOutBuffer" not in engine_cpp,
+            "sampler must not be pre-rendered before current-block triggers")
     require("setPoolSize(32 * 1024)" in engine_cpp,
             "0.9.3 must not increase the accepted 32 KiB sampler pool")
 

@@ -27,6 +27,12 @@ public:
 
   // Audio Thread: Process audio loop
   void process(float* output, uint32_t numFrames, ISampleStore& store);
+
+  // Audio Thread: Process one frame after same-frame drum trigger dispatch.
+  inline __attribute__((always_inline)) void processFrame(
+      float& output, ISampleStore& store) {
+    pool_.processFrame(output, store);
+  }
   
   SamplerPad& pad(int index) { return pads_[index]; }
   const SamplerPad& pad(int index) const { return pads_[index]; }

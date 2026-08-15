@@ -530,7 +530,6 @@ private:
 public:
   PerfStats perfStats;
   ISampleStore* sampleStore = nullptr;
-  std::unique_ptr<float[]> samplerOutBuffer;
   SampleIndex sampleIndex;
   std::unique_ptr<DrumSamplerTrack> samplerTrack;
   std::unique_ptr<TapeFX> tapeFX;
