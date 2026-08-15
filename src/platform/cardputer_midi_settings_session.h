@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_CARDPUTER_MIDI_SETTINGS_SESSION_H
+#define GROOVEPUTER_CARDPUTER_MIDI_SETTINGS_SESSION_H
 
 namespace GroovePuterPlatform {
 
@@ -7,9 +9,9 @@ namespace GroovePuterPlatform {
 // MIDI settings codec into the SDL link.
 void initializeCardputerMidiSettingsSession();
 
-// A lightweight member of the root UI object. On Cardputer it restores the
-// versioned MIDI settings record before user interaction. On desktop it has no
-// platform dependency and performs no work.
+// A lightweight member of the root UI object. On Cardputer it may call the
+// idempotent initializer for compatibility, but boot now restores persisted
+// MIDI settings explicitly before the USB dispatcher starts.
 class CardputerMidiSettingsBinding {
 public:
     CardputerMidiSettingsBinding() {
@@ -20,3 +22,5 @@ public:
 };
 
 }  // namespace GroovePuterPlatform
+
+#endif  // GROOVEPUTER_CARDPUTER_MIDI_SETTINGS_SESSION_H
