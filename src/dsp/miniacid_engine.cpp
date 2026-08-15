@@ -2726,6 +2726,10 @@ void MiniAcid::loadSceneFromStorage() {
 bool MiniAcid::saveSceneToStorage() {
   if (!sceneStorage_) return false;
   syncSceneStateToManager();
+#ifdef ARDUINO
+  Serial.printf("[SamplerScene] save layer=%d\n",
+                sceneManager_.currentScene().samplerEnabled ? 1 : 0);
+#endif
   if (!sceneStorage_->writeScene(sceneManager_)) return false;
   if (!sceneStorage_->clearSceneAuto()) {
     Serial.println("[SceneSave] main saved but recovery cleanup failed");
@@ -2877,6 +2881,10 @@ void MiniAcid::applySceneStateFromManager() {
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: syncing Sampler...");
   // Sync Sampler
   samplerTrack->setEnabled(sceneManager_.currentScene().samplerEnabled);
+#ifdef ARDUINO
+  Serial.printf("[SamplerScene] apply layer=%d\n",
+                samplerTrack->isEnabled() ? 1 : 0);
+#endif
   for (int i = 0; i < 16; ++i) {
     const auto& s = sceneManager_.currentScene().samplerPads[i];
     auto& p = samplerTrack->pad(i);

@@ -1342,7 +1342,10 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
 void SceneJsonObserver::handlePrimitiveBool(bool value) {
   if (error_ || stackSize_ == 0) return;
   Path path = stack_[stackSize_ - 1].path;
-  if (path == Path::Root && lastKey_ == "samplerEnabled") {
+  // The streaming writer keeps project state in "state"; the older document
+  // writer placed this value at the root. Accept both layouts.
+  if ((path == Path::Root || path == Path::State) &&
+      lastKey_ == "samplerEnabled") {
     target_.samplerEnabled = value;
     return;
   }
