@@ -5,6 +5,7 @@ DrumSamplerTrack::DrumSamplerTrack() {
 }
 
 void DrumSamplerTrack::triggerPad(int padIndex, float velocity, ISampleStore& store, bool forceReverse) {
+    if (!enabled_) return;
     if (padIndex < 0 || padIndex >= kNumPads) return;
     
     SamplerPad& p = pads_[padIndex];
@@ -40,6 +41,13 @@ void DrumSamplerTrack::stopPad(int padIndex) {
     pool_.stopByTag(padIndex);
 }
 
+void DrumSamplerTrack::setEnabled(bool enabled) {
+    if (enabled_ == enabled) return;
+    enabled_ = enabled;
+    if (!enabled_) pool_.stopAll();
+}
+
 void DrumSamplerTrack::process(float* output, uint32_t numFrames, ISampleStore& store) {
+    if (!enabled_) return;
     pool_.process(output, numFrames, store);
 }
