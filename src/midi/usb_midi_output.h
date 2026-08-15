@@ -31,18 +31,9 @@ enum class UsbMidiStatus : uint8_t {
 };
 
 // Translates normalized GroovePuter events into fixed logical lanes.
-// Cardputer Synth A/B/DX key events keep exact per-note ownership regardless of
-// MONO/POLY. The external receiver owns voice allocation. For the established
-// SEQTRAK CH8..10 profile, CC26 is sent once when the requested receiver mode
-// changes: 0=MONO, 1=POLY. Generated performance tools request POLY so CHORD
-// output is never collapsed by a receiver left in mono mode. Unsupported CC26
-// is fail-open: notes still play, while generic receivers may require their
-// own mono/poly setting.
-//
-// R5 keeps live Performance routes unchanged, but Pattern Synth A/B and Pattern
-// Drums may consume a frozen profile-derived startup snapshot in begin(). The
-// snapshot is copied into lane state before any event is accepted, so NoteOn,
-// NoteOff and scoped cleanup always refer to the same physical wire address.
+// Device-profile routes are frozen while begin() configures the lanes. No
+// control-side profile state is re-read from the dispatcher path, so NoteOn,
+// NoteOff and scoped cleanup retain one physical wire identity until restart.
 class UsbMidiOutput final : public IMusicalEventSink {
 public:
     static constexpr uint8_t kSeqtrakDrumLaneCount = 7;
@@ -184,11 +175,12 @@ private:
     PerformanceReceiverMode performanceReceiverMode_[kGeneratedTargetCount];
     uint8_t wireOwners_[kMidiChannelCount][kMidiNoteCount];
     uint8_t smfOwners_[kMidiChannelCount][kMidiNoteCount];
-    // Only eight bytes of derived drum-note state are retained after begin();
-    // the full profile/settings projection stays control-side.
     uint8_t patternDrumNotes_[kPatternDrumVoiceCount];
+    uint8_t performanceDrumNotes_[kSeqtrakDrumLaneCount];
     uint16_t abandonedSmfChannels_;
     bool patternStartupRoutesBound_;
+    bool performanceStartupRoutesComplete_;
+    bool seqtrakReceiverModeControl_;
     bool enabled_;
     bool begun_;
     bool mounted_;

@@ -8,6 +8,8 @@ UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
       config_(config),
       abandonedSmfChannels_(0),
       patternStartupRoutesBound_(false),
+      performanceStartupRoutesComplete_(false),
+      seqtrakReceiverModeControl_(true),
       enabled_(true),
       begun_(false),
       mounted_(false) {
@@ -40,8 +42,27 @@ void UsbMidiOutput::configureLanes() {
     GroovePuterMidi::MidiPatternStartupRoutes startup{};
     patternStartupRoutesBound_ =
         GroovePuterMidi::midiPatternStartupRouteRuntime().snapshot(startup);
+    performanceStartupRoutesComplete_ =
+        patternStartupRoutesBound_ && startup.performanceRoutesComplete;
+    seqtrakReceiverModeControl_ = !patternStartupRoutesBound_ ||
+        startup.receiverModeControl ==
+            GroovePuterMidi::MidiReceiverModeControl::SeqtrakCc26;
+
     for (uint8_t voice = 0; voice < kPatternDrumVoiceCount; ++voice) {
         patternDrumNotes_[voice] = kSeqtrakDrumNote;
+    }
+    for (uint8_t lane = 0; lane < kSeqtrakDrumLaneCount; ++lane) {
+        performanceDrumNotes_[lane] = kSeqtrakDrumNote;
+    }
+
+    if (performanceStartupRoutesComplete_) {
+        config_.performanceSynthAChannel =
+            clampChannel(startup.performanceSynthA.channel);
+        config_.performanceSynthBChannel =
+            clampChannel(startup.performanceSynthB.channel);
+        config_.performanceDxChannel =
+            clampChannel(startup.performanceDx.channel);
+        config_.performanceKeyboardEnabled = startup.performanceSynthA.enabled;
     }
 
     std::size_t lane = 0;
@@ -52,7 +73,9 @@ void UsbMidiOutput::configureLanes() {
         clampChannel(config_.performanceSynthAChannel),
         -1,
         0,
-        config_.performanceKeyboardEnabled,
+        config_.performanceKeyboardEnabled &&
+            (!performanceStartupRoutesComplete_ ||
+             startup.performanceSynthA.enabled),
         false,
     };
     lanes_[lane++] = MidiVoiceLane{
@@ -62,7 +85,9 @@ void UsbMidiOutput::configureLanes() {
         clampChannel(config_.performanceSynthBChannel),
         -1,
         0,
-        config_.performanceKeyboardEnabled,
+        config_.performanceKeyboardEnabled &&
+            (!performanceStartupRoutesComplete_ ||
+             startup.performanceSynthB.enabled),
         false,
     };
     lanes_[lane++] = MidiVoiceLane{
@@ -72,20 +97,31 @@ void UsbMidiOutput::configureLanes() {
         clampChannel(config_.performanceDxChannel),
         -1,
         0,
-        config_.performanceKeyboardEnabled,
+        config_.performanceKeyboardEnabled &&
+            (!performanceStartupRoutesComplete_ ||
+             startup.performanceDx.enabled),
         false,
     };
     for (uint8_t drumChannel = 0;
          drumChannel < kSeqtrakDrumLaneCount;
          ++drumChannel) {
+        const GroovePuterMidi::DrumMidiRoute& route =
+            startup.performanceDrums[drumChannel];
+        const uint8_t channel = performanceStartupRoutesComplete_
+            ? clampChannel(route.channel)
+            : drumChannel;
+        performanceDrumNotes_[drumChannel] = performanceStartupRoutesComplete_
+            ? clampDataByte(route.note)
+            : kSeqtrakDrumNote;
         lanes_[lane++] = MidiVoiceLane{
             MusicalEventSource::PerformanceKeyboard,
             MusicalEventTarget::Drums,
             drumChannel,
-            drumChannel,
+            channel,
             -1,
             0,
-            config_.performanceKeyboardEnabled,
+            config_.performanceKeyboardEnabled &&
+                (!performanceStartupRoutesComplete_ || route.enabled),
             false,
         };
     }
@@ -147,6 +183,12 @@ uint8_t UsbMidiOutput::clampDataByte(uint8_t value) {
 
 uint8_t UsbMidiOutput::wireNoteFor(const MidiVoiceLane& lane,
                                    uint8_t eventNote) const {
+    if (performanceStartupRoutesComplete_ &&
+        lane.source == MusicalEventSource::PerformanceKeyboard &&
+        lane.target == MusicalEventTarget::Drums &&
+        lane.logicalChannel < kSeqtrakDrumLaneCount) {
+        return performanceDrumNotes_[lane.logicalChannel];
+    }
     if (patternStartupRoutesBound_ &&
         lane.source == MusicalEventSource::PatternPlayer &&
         lane.target == MusicalEventTarget::Drums &&
@@ -194,13 +236,14 @@ void UsbMidiOutput::ensurePerformanceReceiverMode(
         : PerformanceReceiverMode::Mono;
     if (performanceReceiverMode_[targetIndex] == desired) return;
 
-    // Yamaha SEQTRAK exposes its CH8..10 MONO/POLY/CHORD voice mode on CC26.
-    // Prefer this device parameter over MIDI CC126/127: standard channel-mode
-    // messages imply All Notes Off and could cut Pattern/SMF owners sharing the
-    // same physical channel. CC26 changes the SEQTRAK voice mode without moving
-    // note ownership into the controller. Generic transports may return false;
-    // note delivery remains fail-open and the external synth can be configured
-    // manually in that case.
+    // Only a profile that explicitly advertises SEQTRAK CC26 may emit this
+    // vendor parameter. GM, Generic and Custom must never inherit it merely
+    // because the historical USB output was SEQTRAK-first.
+    if (!seqtrakReceiverModeControl_) {
+        performanceReceiverMode_[targetIndex] = desired;
+        return;
+    }
+
     if (transport_.sendControlChange(
             generatedChannel(target),
             kSeqtrakMonoPolyController,
