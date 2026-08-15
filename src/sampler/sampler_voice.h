@@ -38,20 +38,21 @@ public:
     // playhead precision while avoiding software double/floor in this hot path.
     const float pos = position_;
     const int i0 = static_cast<int>(pos);
-    const int i1 = i0 + 1;
-
     if (i0 < static_cast<int>(startFrame_) ||
         i0 >= static_cast<int>(endFrame_)) {
       releaseHandle_(store);
       return;
     }
 
-    const float s0 = static_cast<float>(pcm_[i0]) * (1.0f / 32768.0f);
-    float s1 = s0;
-    if (i1 < static_cast<int>(endFrame_)) {
-      s1 = static_cast<float>(pcm_[i1]) * (1.0f / 32768.0f);
+    float sample = static_cast<float>(pcm_[i0]);
+    if (interpolate_) {
+      const int i1 = i0 + 1;
+      float next = sample;
+      if (i1 < static_cast<int>(endFrame_)) {
+        next = static_cast<float>(pcm_[i1]);
+      }
+      sample += (pos - static_cast<float>(i0)) * (next - sample);
     }
-    const float sample = s0 + (pos - static_cast<float>(i0)) * (s1 - s0);
 
     float fadeGain = 1.0f;
     if (fadingOut_) {
@@ -70,7 +71,7 @@ public:
       --fadeCounter_;
     }
 
-    output += sample * fadeGain * gain_;
+    output += sample * fadeGain * pcmGain_;
     position_ += step_;
 
     if (reverse_) {
@@ -104,11 +105,12 @@ private:
   
   // Internal playback state
   float step_ = 1.0f;
-  float gain_ = 1.0f;
+  float pcmGain_ = 1.0f / 32768.0f;
   uint32_t startFrame_ = 0;
   uint32_t endFrame_ = 0;
   bool reverse_ = false;
   bool loop_ = false;
+  bool interpolate_ = false;
   
   bool active_ = false;
   

@@ -52,7 +52,9 @@ void SamplerVoice::trigger(const Params& params, ISampleStore& store) {
           (static_cast<float>(view.sampleRate) /
            static_cast<float>(kSampleRate));
   if (reverse_) step_ = -step_;
-  gain_ = params.gain;
+  const float absStep = step_ < 0.0f ? -step_ : step_;
+  interpolate_ = absStep < 0.99999f || absStep > 1.00001f;
+  pcmGain_ = params.gain * (1.0f / 32768.0f);
 
   position_ = reverse_
       ? static_cast<float>(actualEnd - 1)
