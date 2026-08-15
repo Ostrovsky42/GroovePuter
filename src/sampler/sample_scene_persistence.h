@@ -5,6 +5,7 @@
 #include <string>
 
 #include "sample_ref.h"
+#include "../output/output_scene_persistence.h"
 
 class SampleIndex;
 
@@ -108,13 +109,22 @@ public:
   std::size_t write(const uint8_t* data, std::size_t len) {
     std::size_t consumed = 0;
     for (; consumed < len; ++consumed) {
-      const char* out = nullptr;
-      std::size_t outLen = 0;
-      if (!filter_.accept(static_cast<char>(data[consumed]), out, outLen)) {
+      const char* samplerOut = nullptr;
+      std::size_t samplerOutLen = 0;
+      if (!filter_.accept(static_cast<char>(data[consumed]),
+                          samplerOut, samplerOutLen)) {
         break;
       }
-      if (outLen > 0 && detail::writeBytes(writer_, out, outLen) != outLen) {
-        break;
+      for (std::size_t i = 0; i < samplerOutLen; ++i) {
+        const char* outputOut = nullptr;
+        std::size_t outputOutLen = 0;
+        if (!outputFilter_.accept(samplerOut[i], outputOut, outputOutLen)) {
+          return consumed;
+        }
+        if (outputOutLen > 0 &&
+            detail::writeBytes(writer_, outputOut, outputOutLen) != outputOutLen) {
+          return consumed;
+        }
       }
     }
     return consumed;
@@ -124,12 +134,18 @@ public:
     return write(reinterpret_cast<const uint8_t*>(data), len);
   }
 
-  bool finish() { return filter_.finish() && !filter_.failed(); }
-  bool failed() const { return filter_.failed(); }
+  bool finish() {
+    return filter_.finish() && !filter_.failed() &&
+           outputFilter_.finish() && !outputFilter_.failed();
+  }
+  bool failed() const {
+    return filter_.failed() || outputFilter_.failed();
+  }
 
 private:
   Writer& writer_;
   SamplerSceneFilter filter_;
+  GroovePuterOutput::OutputSceneWriteState outputFilter_;
 };
 
 template <typename Reader>
@@ -157,6 +173,11 @@ public:
         return -1;
       }
 
+      if (!outputState_.accept(static_cast<char>(value))) {
+        failed_ = true;
+        return -1;
+      }
+
       const char* out = nullptr;
       std::size_t outLen = 0;
       if (!filter_.accept(static_cast<char>(value), out, outLen)) {
@@ -174,7 +195,12 @@ public:
 
   bool failed() {
     finalizeFilter();
-    return failed_ || filter_.failed();
+    if (!failed_ && !filter_.failed() && !outputState_.failed() &&
+        !outputCommitted_) {
+      outputCommitted_ = true;
+      if (!outputState_.commit()) failed_ = true;
+    }
+    return failed_ || filter_.failed() || outputState_.failed();
   }
   bool eof() const { return eof_; }
 
@@ -183,16 +209,19 @@ private:
     if (filterFinalized_) return;
     filterFinalized_ = true;
     if (!filter_.finish()) failed_ = true;
+    if (!outputState_.finish()) failed_ = true;
   }
 
   Reader& reader_;
   SamplerSceneFilter filter_;
+  GroovePuterOutput::OutputSceneReadState outputState_;
   const char* pending_ = nullptr;
   std::size_t pendingPos_ = 0;
   std::size_t pendingLen_ = 0;
   bool failed_ = false;
   bool eof_ = false;
   bool filterFinalized_ = false;
+  bool outputCommitted_ = false;
 };
 
 }  // namespace GroovePuterSampler

@@ -6,15 +6,19 @@
 #include "../../../platform_sdl/arduino_compat.h"
 #endif
 
+#include <cctype>
 #include <cstdio>
 
 #include "pattern_edit_page.h"
 #include "tb303_params_page.h"
 #include "../help_dialog_frames.h"
+#include "../key_normalize.h"
 #include "../screen_geometry.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
 #include "../ui_theme.h"
+#include "src/output/output_mode_runtime.h"
+#include "src/state/scene_revision.h"
 
 namespace {
 // The parent owns one compact tab indicator across NOTES, KNOBS and MORE.
@@ -34,13 +38,26 @@ static_assert(kNotesTabStripX + kTabStripW <= Layout::SCREEN_W,
 inline IGfxColor synthTabColor(int voiceIndex) {
   return voiceIndex == 0 ? IGfxColor(0x33C8FF) : IGfxColor(0xFF4FCB);
 }
+
+bool isOutputCycleKey(const UIEvent& event) {
+  if (event.event_type != GROOVEPUTER_KEY_DOWN ||
+      !event.alt || event.ctrl || event.meta) {
+    return false;
+  }
+  const char key = event.key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)))
+      : 0;
+  return key == 'o' || event.scancode == GROOVEPUTER_O;
+}
 }  // namespace
 
 SynthSequencerPage::SynthSequencerPage(IGfx& gfx,
                                        MiniAcid& mini_acid,
                                        AudioGuard audio_guard,
                                        int voice_index)
-    : voice_index_(voice_index) {
+    : mini_acid_(mini_acid),
+      audio_guard_(audio_guard),
+      voice_index_(voice_index) {
   fallback_title_ = (voice_index_ == 0) ? "SYNTH A" : "SYNTH B";
 
   pattern_page_ = std::make_shared<PatternEditPage>(gfx, mini_acid, audio_guard, voice_index_);
@@ -109,6 +126,32 @@ void SynthSequencerPage::draw(IGfx& gfx) {
 }
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
+  if (isOutputCycleKey(ui_event)) {
+    const GroovePuterOutput::Track track = voice_index_ == 0
+        ? GroovePuterOutput::Track::SynthA
+        : GroovePuterOutput::Track::SynthB;
+    const GroovePuterOutput::Mode next =
+        GroovePuterOutput::hasExplicitMode(track)
+            ? GroovePuterOutput::cycleMode(GroovePuterOutput::mode(track))
+            : GroovePuterOutput::Mode::Layer;
+
+    bool changed = false;
+    auto apply = [&]() {
+      changed = GroovePuterOutput::applyModeWithLocalCleanup(
+          mini_acid_, track, next);
+    };
+    if (audio_guard_) audio_guard_(apply);
+    else apply();
+
+    if (changed) GroovePuterState::markSceneMutated();
+    char toast[48];
+    std::snprintf(toast, sizeof(toast), "SYNTH %c OUT:%s",
+                  voice_index_ == 0 ? 'A' : 'B',
+                  GroovePuterOutput::modeName(next));
+    UI::showToast(toast, 1200);
+    return true;
+  }
+
   if (ui_event.event_type == GROOVEPUTER_KEY_DOWN && UIInput::isTab(ui_event)) {
     if (ui_event.ctrl || ui_event.alt || ui_event.meta) return false;
 

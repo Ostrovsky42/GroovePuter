@@ -90,9 +90,98 @@ def test_transition_cleanup_reuses_existing_dispatcher() -> None:
             "removing Drum local ownership must terminate sampler loops")
     require("setMode(track, nextMode)" in runtime,
             "runtime cleanup must publish through the single canonical owner")
-    require("UsbMidi" not in runtime and "TinyUSB" not in runtime and
-            "SD." not in runtime and "preload" not in runtime,
+    forbidden_calls = (
+        "UsbMidiOutput",
+        "TinyUSB",
+        "SD.",
+        "SD::",
+        "preload(",
+        "loadWav",
+        "malloc(",
+        "calloc(",
+        "realloc(",
+        "make_unique",
+        "make_shared",
+    )
+    require(all(token not in runtime for token in forbidden_calls),
             "output transition helper must stay allocation/IO/USB free")
+
+
+def test_scene_persistence_is_transactional_and_composed() -> None:
+    sampler = (ROOT / "src/sampler/sample_scene_persistence.h").read_text(encoding="utf-8")
+    sdl = (ROOT / "platform_sdl/scene_storage_sdl.cpp").read_text(encoding="utf-8")
+    persistence = (ROOT / "src/output/output_scene_persistence.h").read_text(encoding="utf-8")
+
+    require("OutputSceneWriteState outputFilter_" in sampler,
+            "Cardputer sampler Scene writer must compose OutputMode into the existing stream")
+    require("OutputSceneReadState outputState_" in sampler,
+            "Cardputer sampler Scene reader must capture OutputMode in the existing stream")
+    failed_start = sampler.index("bool failed()")
+    failed_end = sampler.index("bool eof() const", failed_start)
+    failed_block = sampler[failed_start:failed_end]
+    require("outputState_.commit()" in failed_block,
+            "Cardputer OutputMode must commit only after SceneManager completed the filtered read")
+    require("outputState_.commit()" not in sampler[:failed_start],
+            "Cardputer output state must not mutate runtime during parsing")
+
+    require("manager.loadScene(serialized)" in sdl,
+            "SDL must validate Scene content before committing OutputMode")
+    main_load = sdl.index("bool SceneStorageSdl::readScene(SceneManager& manager)")
+    main_end = sdl.index("bool SceneStorageSdl::writeScene(const std::string& data)", main_load)
+    main_block = sdl[main_load:main_end]
+    require(main_block.index("manager.loadScene(serialized)") <
+            main_block.index("outputModes.commit()"),
+            "SDL main Scene must commit OutputMode only after successful manager load")
+    auto_load = sdl.index("bool SceneStorageSdl::readSceneAuto(SceneManager& manager)")
+    auto_end = sdl.index("bool SceneStorageSdl::hasSceneAuto()", auto_load)
+    auto_block = sdl[auto_load:auto_end]
+    require(auto_block.index("manager.loadScene(serialized)") <
+            auto_block.index("outputModes.commit()"),
+            "SDL autosave must commit OutputMode only after successful manager load")
+
+    require("\"out\"" in persistence and "values[3]" in persistence,
+            "Output persistence must remain a bounded three-track extension")
+    require("present ? values[i] : 0u" in persistence,
+            "missing output field must restore hidden legacy compatibility")
+
+
+def test_alt_o_ui_uses_existing_audio_guards_and_dirty_state() -> None:
+    synth = (ROOT / "src/ui/pages/synth_sequencer_page.cpp").read_text(encoding="utf-8")
+    drum = (ROOT / "src/ui/pages/drum_sequencer_page.cpp").read_text(encoding="utf-8")
+
+    require("event.alt" in synth and "GROOVEPUTER_O" in synth,
+            "Synth pages must expose Alt+O")
+    require("Mode::Layer" in synth and "hasExplicitMode(track)" in synth,
+            "first Synth Alt+O on legacy state must canonicalize to LAYER")
+    require("audio_guard_(apply)" in synth and
+            "applyModeWithLocalCleanup" in synth,
+            "Synth Alt+O must use the existing AudioGuard and lifecycle helper")
+    require("markSceneMutated" in synth,
+            "Synth output changes must mark the project dirty")
+    require("SYNTH %c OUT:%s" in synth,
+            "Synth output change must give an explicit toast")
+
+    output_key = drum.index("if (isDrumOutputCycleKey(ui_event))")
+    active_tab_gate = drum.index("if (activePageIndex() != 0")
+    require(output_key < active_tab_gate,
+            "Drums Alt+O must work from GRID/FEEL/AUTO/SAMPLES, not only main grid")
+    require("Mode::Layer" in drum and "hasExplicitMode(track)" in drum,
+            "first Drums Alt+O on legacy state must canonicalize to LAYER")
+    require("withAudioGuard" in drum[output_key:active_tab_gate] and
+            "applyModeWithLocalCleanup" in drum[output_key:active_tab_gate],
+            "Drums Alt+O must use the existing AudioGuard and lifecycle helper")
+    require("markSceneMutated" in drum[output_key:active_tab_gate],
+            "Drums output changes must mark the project dirty")
+    require("DRUMS OUT:%s" in drum,
+            "Drums output change must give an explicit toast")
+
+
+def test_sampler_layer_label_remains_source_layer() -> None:
+    sampler = (ROOT / "src/ui/pages/sampler_page.cpp").read_text(encoding="utf-8")
+    require("LAYER" in sampler and "samplerTrack" in sampler,
+            "existing sampler LAYER control must remain present as sampler source state")
+    require("OutputMode" not in sampler and "Alt+O" not in sampler,
+            "SamplerPage LAYER must not be silently redefined as MIDI output ownership")
 
 
 def test_no_new_routing_framework() -> None:
@@ -114,5 +203,8 @@ if __name__ == "__main__":
     test_sampler_is_internal_source_layer_not_output_owner()
     test_perform_drums_reuse_existing_local_owner()
     test_transition_cleanup_reuses_existing_dispatcher()
+    test_scene_persistence_is_transactional_and_composed()
+    test_alt_o_ui_uses_existing_audio_guards_and_dirty_state()
+    test_sampler_layer_label_remains_source_layer()
     test_no_new_routing_framework()
     print("Output ownership source contract: PASS")

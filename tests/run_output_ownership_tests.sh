@@ -23,8 +23,13 @@ COMMON_FLAGS=(
   "${ROOT_DIR}/tests/test_output_ownership_queues.cpp" \
   -o "${BUILD_DIR}/test_output_ownership_queues"
 
+"${CXX}" "${COMMON_FLAGS[@]}" \
+  "${ROOT_DIR}/tests/test_output_scene_persistence.cpp" \
+  -o "${BUILD_DIR}/test_output_scene_persistence"
+
 "${BUILD_DIR}/test_output_ownership"
 "${BUILD_DIR}/test_output_ownership_queues"
+"${BUILD_DIR}/test_output_scene_persistence"
 python3 "${ROOT_DIR}/tests/test_output_ownership_source_contract.py"
 
 echo "0.9.6 output ownership contract gate: PASS"

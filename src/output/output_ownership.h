@@ -223,6 +223,23 @@ inline void restoreLegacyCompatibility(Track track) {
     detail::stateWord().storeRelease(word);
 }
 
+inline uint8_t persistedModeValue(Track track) {
+    return detail::rawMode(track);
+}
+
+inline bool restorePersistedModeValue(Track track, uint8_t raw) {
+    if (raw == 0u) {
+        restoreLegacyCompatibility(track);
+        return true;
+    }
+    if (raw < static_cast<uint8_t>(Mode::Internal) ||
+        raw > static_cast<uint8_t>(Mode::Layer)) {
+        return false;
+    }
+    if (detail::rawMode(track) == raw) return true;
+    return setMode(track, static_cast<Mode>(raw));
+}
+
 inline uint8_t midiDisableEpoch(Track track) {
     const uint32_t shift = static_cast<uint32_t>(track) * 8u;
     return static_cast<uint8_t>(
