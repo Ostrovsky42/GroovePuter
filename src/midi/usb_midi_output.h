@@ -39,11 +39,10 @@ enum class UsbMidiStatus : uint8_t {
 // is fail-open: notes still play, while generic receivers may require their
 // own mono/poly setting.
 //
-// Live Drums owns seven independent native SEQTRAK lanes (logical 0..6 -> MIDI
-// CH1..7). Pattern Drums retains all eight internal drum voices and maps them
-// onto the seven native SEQTRAK drum tracks. Wire-level channel+note ownership
-// remains reference counted so Pattern/SMF/PERFORM cleanup cannot silence a
-// still-owned shared note.
+// R5 keeps live Performance routes unchanged, but Pattern Synth A/B and Pattern
+// Drums may consume a frozen profile-derived startup snapshot in begin(). The
+// snapshot is copied into lane state before any event is accepted, so NoteOn,
+// NoteOff and scoped cleanup always refer to the same physical wire address.
 class UsbMidiOutput final : public IMusicalEventSink {
 public:
     static constexpr uint8_t kSeqtrakDrumLaneCount = 7;
@@ -130,6 +129,7 @@ private:
     static bool sourceRequestsPolyReceiver(MusicalEventSource source);
 
     void configureLanes();
+    uint8_t wireNoteFor(const MidiVoiceLane& lane, uint8_t eventNote) const;
     uint8_t generatedChannel(MusicalEventTarget target) const;
     void ensurePerformanceReceiverMode(MusicalEventTarget target,
                                        bool polyphonic);
@@ -184,7 +184,11 @@ private:
     PerformanceReceiverMode performanceReceiverMode_[kGeneratedTargetCount];
     uint8_t wireOwners_[kMidiChannelCount][kMidiNoteCount];
     uint8_t smfOwners_[kMidiChannelCount][kMidiNoteCount];
+    // Only eight bytes of derived drum-note state are retained after begin();
+    // the full profile/settings projection stays control-side.
+    uint8_t patternDrumNotes_[kPatternDrumVoiceCount];
     uint16_t abandonedSmfChannels_;
+    bool patternStartupRoutesBound_;
     bool enabled_;
     bool begun_;
     bool mounted_;

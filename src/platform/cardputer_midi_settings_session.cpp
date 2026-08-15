@@ -10,6 +10,7 @@
 
 #include "src/midi/midi_companion_settings_codec.h"
 #include "src/midi/midi_device_profile_runtime.h"
+#include "src/midi/midi_pattern_startup_routes.h"
 #include "src/midi/transport_clock_runtime.h"
 
 namespace GroovePuterPlatform {
@@ -75,6 +76,11 @@ public:
         profileRuntime.initialize(loadedSettings);
         const GroovePuterMidi::MidiOutputSettings& settings =
             profileRuntime.settings();
+
+        // R5 publishes only the derived Pattern wire snapshot needed by the USB
+        // output. R5a guarantees this session runs before the dispatcher task,
+        // and UsbMidiOutput consumes the snapshot once in begin().
+        GroovePuterMidi::publishMidiPatternStartupRoutes(settings);
 
         GroovePuterMidi::TransportClockRuntime& runtime =
             GroovePuterMidi::transportClockRuntime();

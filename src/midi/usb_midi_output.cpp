@@ -1,10 +1,13 @@
 #include "usb_midi_output.h"
 
+#include "midi_pattern_startup_routes.h"
+
 UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
                              UsbMidiRouteConfig config)
     : transport_(transport),
       config_(config),
       abandonedSmfChannels_(0),
+      patternStartupRoutesBound_(false),
       enabled_(true),
       begun_(false),
       mounted_(false) {
@@ -34,6 +37,13 @@ uint8_t UsbMidiOutput::patternDrumChannel(uint8_t logicalVoice) {
 }
 
 void UsbMidiOutput::configureLanes() {
+    GroovePuterMidi::MidiPatternStartupRoutes startup{};
+    patternStartupRoutesBound_ =
+        GroovePuterMidi::midiPatternStartupRouteRuntime().snapshot(startup);
+    for (uint8_t voice = 0; voice < kPatternDrumVoiceCount; ++voice) {
+        patternDrumNotes_[voice] = kSeqtrakDrumNote;
+    }
+
     std::size_t lane = 0;
     lanes_[lane++] = MidiVoiceLane{
         MusicalEventSource::PerformanceKeyboard,
@@ -83,31 +93,45 @@ void UsbMidiOutput::configureLanes() {
         MusicalEventSource::PatternPlayer,
         MusicalEventTarget::SynthA,
         0,
-        clampChannel(config_.patternSynthAChannel),
+        clampChannel(patternStartupRoutesBound_
+                         ? startup.synthAChannel
+                         : config_.patternSynthAChannel),
         -1,
         0,
-        config_.patternPlayerEnabled,
+        config_.patternPlayerEnabled &&
+            (!patternStartupRoutesBound_ || startup.synthAEnabled),
         false,
     };
     lanes_[lane++] = MidiVoiceLane{
         MusicalEventSource::PatternPlayer,
         MusicalEventTarget::SynthB,
         0,
-        clampChannel(config_.patternSynthBChannel),
+        clampChannel(patternStartupRoutesBound_
+                         ? startup.synthBChannel
+                         : config_.patternSynthBChannel),
         -1,
         0,
-        config_.patternPlayerEnabled,
+        config_.patternPlayerEnabled &&
+            (!patternStartupRoutesBound_ || startup.synthBEnabled),
         false,
     };
     for (uint8_t voice = 0; voice < kPatternDrumVoiceCount; ++voice) {
+        const GroovePuterMidi::DrumMidiRoute& route = startup.drums[voice];
+        const uint8_t channel = patternStartupRoutesBound_
+            ? clampChannel(route.channel)
+            : patternDrumChannel(voice);
+        patternDrumNotes_[voice] = patternStartupRoutesBound_
+            ? clampDataByte(route.note)
+            : kSeqtrakDrumNote;
         lanes_[lane++] = MidiVoiceLane{
             MusicalEventSource::PatternPlayer,
             MusicalEventTarget::Drums,
             voice,
-            patternDrumChannel(voice),
+            channel,
             -1,
             0,
-            config_.patternPlayerEnabled,
+            config_.patternPlayerEnabled &&
+                (!patternStartupRoutesBound_ || route.enabled),
             false,
         };
     }
@@ -119,6 +143,17 @@ uint8_t UsbMidiOutput::clampChannel(uint8_t channel) {
 
 uint8_t UsbMidiOutput::clampDataByte(uint8_t value) {
     return value > 127 ? 127 : value;
+}
+
+uint8_t UsbMidiOutput::wireNoteFor(const MidiVoiceLane& lane,
+                                   uint8_t eventNote) const {
+    if (patternStartupRoutesBound_ &&
+        lane.source == MusicalEventSource::PatternPlayer &&
+        lane.target == MusicalEventTarget::Drums &&
+        lane.logicalChannel < kPatternDrumVoiceCount) {
+        return patternDrumNotes_[lane.logicalChannel];
+    }
+    return clampDataByte(eventNote);
 }
 
 int UsbMidiOutput::generatedTargetIndex(MusicalEventTarget target) {
@@ -895,13 +930,13 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
     }
 
     if (event.target == MusicalEventTarget::Drums) {
+        const uint8_t wireNote = wireNoteFor(*lane, event.note);
         switch (event.type) {
             case MusicalEventType::NoteOn:
-                acquirePercussiveNote(*lane, event.note, event.velocity);
+                acquirePercussiveNote(*lane, wireNote, event.velocity);
                 break;
             case MusicalEventType::NoteOff:
-                if (lane->activeNote ==
-                    static_cast<int16_t>(clampDataByte(event.note))) {
+                if (lane->activeNote == static_cast<int16_t>(wireNote)) {
                     releasePercussiveNote(*lane, event.velocity);
                 }
                 break;
