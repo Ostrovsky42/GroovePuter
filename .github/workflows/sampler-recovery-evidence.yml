@@ -1,0 +1,48 @@
+name: Sampler recovery evidence
+
+on:
+  pull_request:
+    branches:
+      - dev_0.9.3
+    paths:
+      - "src/sampler/**"
+      - "src/dsp/miniacid_engine.*"
+      - "src/ui/pages/sampler_page.*"
+      - "src/ui/workflow_mode.h"
+      - "GroovePuter.ino"
+      - "scenes.h"
+      - "tests/test_sampler_recovery_evidence.py"
+      - "tests/hardware/CardputerAdvSamplerEvidence/**"
+      - "docs/sampler/**"
+      - ".github/workflows/sampler-recovery-evidence.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify current sampler recovery baseline
+        run: python3 tests/test_sampler_recovery_evidence.py
+
+  cardputer-adv-evidence-sketch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+        with:
+          version: "1.x"
+
+      - name: Install pinned M5Stack dependencies
+        run: bash scripts/install_arduino_deps.sh
+
+      - name: Compile Cardputer ADV sampler evidence sketch
+        run: |
+          FQBN="m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc"
+          arduino-cli compile --clean --warnings all --fqbn "$FQBN" \
+            tests/hardware/CardputerAdvSamplerEvidence
