@@ -165,7 +165,7 @@ bundle: $(TARGET)
 	codesign --force --deep --sign - $(APP_BUNDLE)/Contents/MacOS/$(TARGET)
 	codesign --force --deep --sign - $(APP_BUNDLE)
 	@echo '<?xml version="1.0" encoding="UTF-8"?>' > $(APP_BUNDLE)/Contents/Info.plist
-	@echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0.dtd" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> $(APP_BUNDLE)/Contents/Info.plist
+	@echo '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' >> $(APP_BUNDLE)/Contents/Info.plist
 	@echo '<plist version="1.0"><dict>' >> $(APP_BUNDLE)/Contents/Info.plist
 	@echo '<key>CFBundleExecutable</key><string>$(TARGET)</string>' >> $(APP_BUNDLE)/Contents/Info.plist
 	@echo '<key>CFBundleIdentifier</key><string>com.grooveputer.app</string>' >> $(APP_BUNDLE)/Contents/Info.plist
