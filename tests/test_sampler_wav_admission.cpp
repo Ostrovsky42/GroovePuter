@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -55,13 +56,18 @@ void testOversizedRejectsFromMetadata() {
   const std::vector<int16_t> source(kFrames, 0);
   writePcm16Wav(path, 1, 22050, kFrames, source);
 
+  // Prove this is a physically valid WAV first; the bounded failure below must
+  // be the decoded-size admission path, not the truncation path.
+  WavInfo inspected{};
+  assert(inspectWavFileBounded(path.string().c_str(), inspected,
+                               std::numeric_limits<std::size_t>::max()));
+  assert(inspected.channels == 1);
+  assert(inspected.numFrames == kFrames);
+
   WavInfo info{};
   int16_t* pcm = reinterpret_cast<int16_t*>(0x1);
   assert(!loadWavFileBounded(path.string().c_str(), info, &pcm, kPoolBytes));
   assert(pcm == nullptr);
-  // The shared metadata parser reached decoded-size admission on a physically
-  // valid WAV rather than rejecting the fixture as truncated.
-  assert(info.channels == 0 || info.channels == 1);
   fs::remove(path);
 }
 
