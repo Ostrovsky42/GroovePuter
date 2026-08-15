@@ -24,6 +24,9 @@ public:
   
   // Audio Thread: Stop a pad
   void stopPad(int padIndex);
+  // Audio/control lifecycle cleanup. Stops active sampler voices only; pad
+  // assignments, SampleRefs, preload state and samplerEnabled stay unchanged.
+  void stopAll() { pool_.stopAll(); }
 
   // Audio/control boundary: enable or bypass the whole sample layer. Turning
   // the layer off stops active sampler voices but preserves every pad assignment.

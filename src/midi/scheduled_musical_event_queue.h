@@ -13,6 +13,7 @@
 
 #include "midi_realtime_word.h"
 #include "scheduled_musical_event.h"
+#include "../output/output_ownership.h"
 
 // Single-producer/single-consumer handoff from AudioTask PatternPlayer events to
 // MidiDispatchTask. Publication never allocates or blocks. Lifecycle changes
@@ -66,12 +67,22 @@ public:
     }
 
     bool tryPop(ScheduledMusicalEvent& scheduled) {
-        const uint32_t tail = tail_.loadRelaxed();
-        if (tail == head_.loadAcquire()) return false;
+        while (true) {
+            const uint32_t tail = tail_.loadRelaxed();
+            if (tail == head_.loadAcquire()) return false;
 
-        scheduled = events_[tail];
-        tail_.storeRelease((tail + 1u) % kStorageSize);
-        return true;
+            scheduled = events_[tail];
+            tail_.storeRelease((tail + 1u) % kStorageSize);
+
+            // A scheduled NoteOn may predate a live output-mode change. Drop it
+            // at the consumer boundary if the external side is no longer owned.
+            // NoteOff remains valid cleanup and must never be filtered here.
+            if (scheduled.event.type == MusicalEventType::NoteOn &&
+                !GroovePuterOutput::allowsMidiNoteOn(scheduled.event)) {
+                continue;
+            }
+            return true;
+        }
     }
 
     void invalidateTarget(MusicalEventTarget target) {
@@ -126,6 +137,16 @@ public:
             consumedDrumsEpoch_ = drumsEpoch;
             mask |= kDrumsMask;
         }
+
+        // OutputOwnership increments these bounded epochs only when a transition
+        // removes the external side. The existing dispatcher turns the mask into
+        // source/target-scoped NoteOff cleanup; no direct USB call is added here.
+        const uint32_t outputEpochs = packedOutputDisableEpochs();
+        const uint32_t changed = outputEpochs ^ consumedOutputDisableEpochs_;
+        if ((changed & 0x000000FFu) != 0u) mask |= kSynthAMask;
+        if ((changed & 0x0000FF00u) != 0u) mask |= kSynthBMask;
+        if ((changed & 0x00FF0000u) != 0u) mask |= kDrumsMask;
+        consumedOutputDisableEpochs_ = outputEpochs;
         return mask;
     }
 
@@ -171,6 +192,15 @@ public:
     }
 
 private:
+    static uint32_t packedOutputDisableEpochs() {
+        return static_cast<uint32_t>(GroovePuterOutput::midiDisableEpoch(
+                   GroovePuterOutput::Track::SynthA)) |
+               (static_cast<uint32_t>(GroovePuterOutput::midiDisableEpoch(
+                    GroovePuterOutput::Track::SynthB)) << 8u) |
+               (static_cast<uint32_t>(GroovePuterOutput::midiDisableEpoch(
+                    GroovePuterOutput::Track::Drums)) << 16u);
+    }
+
     static bool isRealtimeProducerContext() {
 #if defined(ESP32) || defined(ESP_PLATFORM)
         const char* taskName = pcTaskGetName(nullptr);
@@ -196,6 +226,7 @@ private:
     uint32_t consumedSynthAEpoch_{0};
     uint32_t consumedSynthBEpoch_{0};
     uint32_t consumedDrumsEpoch_{0};
+    uint32_t consumedOutputDisableEpochs_{0};
 };
 
 #endif  // GROOVEPUTER_SCHEDULED_MUSICAL_EVENT_QUEUE_H

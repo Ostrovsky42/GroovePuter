@@ -162,11 +162,66 @@ void expectPatternQueuePolicy() {
     queue.endMidiRenderBlock();
 }
 
+void expectControlTransitionCleanup() {
+    resetLegacy();
+    MidiControlEventQueue queue;
+    MusicalEvent popped{};
+    (void)queue.takePendingAllNotesOffMask();  // sync prior test epochs
+
+    assert(GroovePuterOutput::setMode(Track::SynthA, Mode::Layer));
+    auto noteOn = event(MusicalEventType::NoteOn,
+                        MusicalEventSource::PerformanceKeyboard,
+                        MusicalEventTarget::SynthA, 69);
+    assert(queue.tryPush(noteOn));
+
+    // Disable MIDI before the queued NoteOn reaches the sole USB owner.
+    assert(GroovePuterOutput::setMode(Track::SynthA, Mode::Internal));
+    const uint8_t panic = queue.takePendingAllNotesOffMask();
+    assert((panic & MidiControlEventQueue::kSynthAMask) != 0u);
+    assert((queue.takePendingAllNotesOffMask() &
+            MidiControlEventQueue::kSynthAMask) == 0u);
+    // Stale pre-switch NoteOn is discarded at consumer time.
+    assert(!queue.tryPop(popped));
+
+    // Enabling MIDI does not request cleanup. Removing it again does.
+    assert(GroovePuterOutput::setMode(Track::SynthA, Mode::Midi));
+    (void)queue.takePendingAllNotesOffMask();
+    assert(GroovePuterOutput::setMode(Track::SynthA, Mode::Internal));
+    assert((queue.takePendingAllNotesOffMask() &
+            MidiControlEventQueue::kSynthAMask) != 0u);
+}
+
+void expectPatternTransitionCleanup() {
+    resetLegacy();
+    MusicalEventQueue queue;
+    queue.setPhaseReader(&phaseReader, nullptr);
+    queue.beginMidiRenderBlock(11, 512, 0.0f, 120.0f, 22050.0f, true);
+    ScheduledMusicalEvent scheduled{};
+    (void)queue.takePendingAllNotesOffMask();  // sync prior test epochs
+
+    assert(GroovePuterOutput::setMode(Track::Drums, Mode::Layer));
+    auto drumOn = event(MusicalEventType::NoteOn,
+                        MusicalEventSource::PatternPlayer,
+                        MusicalEventTarget::Drums, 60, 3);
+    assert(queue.tryPush(drumOn));
+    assert(GroovePuterOutput::setMode(Track::Drums, Mode::Internal));
+
+    const uint8_t panic = queue.takePendingAllNotesOffMask();
+    assert((panic & ScheduledMusicalEventQueue::kDrumsMask) != 0u);
+    assert((queue.takePendingAllNotesOffMask() &
+            ScheduledMusicalEventQueue::kDrumsMask) == 0u);
+    assert(!queue.tryPop(scheduled));
+
+    queue.endMidiRenderBlock();
+}
+
 }  // namespace
 
 int main() {
     expectControlQueuePolicy();
     expectPatternQueuePolicy();
+    expectControlTransitionCleanup();
+    expectPatternTransitionCleanup();
     std::cout << "Output ownership queue tests: PASS\n";
     return 0;
 }
