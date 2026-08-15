@@ -22,6 +22,7 @@ class DrumSequencerPage : public DrumSequencerLegacyMultiPage,
  public:
   DrumSequencerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
   bool handleEvent(UIEvent& ui_event) override;
+  void draw(IGfx& gfx) override;
   const std::string & getTitle() const override;
   std::unique_ptr<MultiPageHelpDialog> getHelpDialog() override;
   int getHelpFrameCount() const override;

@@ -47,12 +47,21 @@ inline void drawDrumInputLockedFooter(IGfx& gfx,
 }
 }  // namespace UI
 
+namespace {
+bool g_suppressPatternLockedChildDraw = false;
+}
+
 class DrumSequencerMainPage;
 
 class PatternLockedDrumContainer : public Container {
  public:
   bool handleEvent(UIEvent& ui_event) override {
     return handleEventLegacy(ui_event);
+  }
+
+  void draw(IGfx& gfx) override {
+    if (g_suppressPatternLockedChildDraw) return;
+    Container::draw(gfx);
   }
 
   virtual bool handleEventLegacy(UIEvent& ui_event) {
@@ -75,7 +84,40 @@ class PatternLockedDrumContainer : public Container {
 #undef Container
 #undef drawStandardFooter
 
+void DrumSequencerPage::draw(IGfx& gfx) {
+  // The retained Minimal draw path renders grid_component_ explicitly and then
+  // calls Container::draw(), which would render the same child a second time.
+  // Suppress only that inherited child pass while the main grid tab is active.
+  const bool previous = g_suppressPatternLockedChildDraw;
+  g_suppressPatternLockedChildDraw = (activePageIndex() == 0);
+  DrumSequencerLegacyMultiPage::draw(gfx);
+  g_suppressPatternLockedChildDraw = previous;
+}
+
 bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
+  // Global Drum Feel replaces the owning DrumSynthVoice when Character changes.
+  // That object is read by AudioTask for every rendered sample, so the existing
+  // page AudioGuard must stop the renderer at a block boundary before the legacy
+  // handler performs setDrumEngine(). Other Feel rows keep their old realtime
+  // path and global navigation must not acquire the guard.
+  if (activePageIndex() == 1 &&
+      ui_event.event_type == GROOVEPUTER_KEY_DOWN &&
+      !UIInput::isGlobalNav(ui_event)) {
+    std::shared_ptr<Container> feel = getPagePtr(1);
+    std::shared_ptr<Container> main = getPagePtr(0);
+    if (feel && main) {
+      auto* feelPage = static_cast<GlobalDrumFeelPage*>(feel.get());
+      auto* mainPage = static_cast<DrumSequencerMainPage*>(main.get());
+      if (feelPage->selected_row_ == 0 && mainPage->audio_guard_) {
+        bool handled = false;
+        mainPage->audio_guard_([&]() {
+          handled = handleEventLegacy(ui_event);
+        });
+        return handled;
+      }
+    }
+  }
+
   // Only the first tab is the DrumSequencerMainPage. All other drum tabs keep
   // their previous handlers and must not inherit the pattern-grid bindings.
   if (activePageIndex() != 0 ||
