@@ -27,6 +27,14 @@ void SamplerPool::process(float* output, uint32_t numFrames, ISampleStore& store
   }
 }
 
+void SamplerPool::processFrame(float& output, ISampleStore& store) {
+  for (auto& voice : voices_) {
+    if (voice.isActive()) {
+      voice.processFrame(output, store);
+    }
+  }
+}
+
 void SamplerPool::stopAll() {
   for (auto& voice : voices_) {
       if (voice.isActive()) {

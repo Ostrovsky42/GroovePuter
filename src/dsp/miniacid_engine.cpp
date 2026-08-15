@@ -2327,7 +2327,7 @@ void MiniAcid::generateAudioBuffer(int16_t *buffer, size_t numSamples) {
       // Tick/retrig dispatch above can start a sampler voice at this exact
       // frame. Render only after those triggers so the WAV stays aligned with
       // the built-in drum instead of slipping by one 512-frame audio block.
-      samplerTrack->process(&samplerSample, 1, *sampleStore);
+      samplerTrack->processFrame(samplerSample, *sampleStore);
       sample += samplerSample;
     }
     if (detailedProfile) tSamplerTotal += (micros() - tS0);

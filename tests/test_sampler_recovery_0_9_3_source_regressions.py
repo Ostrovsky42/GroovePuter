@@ -49,7 +49,7 @@ def main() -> None:
     audio_end = engine_cpp.index("void MiniAcid::randomize303Pattern", audio_start)
     audio_body = engine_cpp[audio_start:audio_end]
     sampler_render = audio_body.find(
-        "samplerTrack->process(&samplerSample, 1, *sampleStore)")
+        "samplerTrack->processFrame(samplerSample, *sampleStore)")
     require(sampler_render >= 0,
             "sampler must render inside the audio frame that owns its triggers")
     require(sampler_render > audio_body.rfind("samplerTrack->triggerPad"),

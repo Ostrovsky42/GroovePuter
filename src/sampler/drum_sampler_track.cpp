@@ -43,3 +43,7 @@ void DrumSamplerTrack::stopPad(int padIndex) {
 void DrumSamplerTrack::process(float* output, uint32_t numFrames, ISampleStore& store) {
     pool_.process(output, numFrames, store);
 }
+
+void DrumSamplerTrack::processFrame(float& output, ISampleStore& store) {
+    pool_.processFrame(output, store);
+}

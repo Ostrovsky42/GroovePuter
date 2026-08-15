@@ -15,6 +15,9 @@ public:
   // Audio Thread: Render and mix all active voices.
   void process(float* output, uint32_t numFrames, ISampleStore& store);
 
+  // Audio Thread: Render one frame after same-frame trigger dispatch.
+  void processFrame(float& output, ISampleStore& store);
+
   // Stop all voices immediately
   void stopAll();
   

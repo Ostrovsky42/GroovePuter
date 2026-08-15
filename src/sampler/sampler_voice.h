@@ -28,6 +28,10 @@ public:
   // Note: will call store.release(id) when playback finishes.
   void process(float* output, uint32_t numFrames, ISampleStore& store);
 
+  // Audio Thread: Render exactly one frame after current-frame sequencer
+  // dispatch. Uses metadata cached by trigger(), so it performs no store lookup.
+  void processFrame(float& output, ISampleStore& store);
+
   bool isActive() const { return active_; }
   
   // Tag used for choke groups or identifying the source (e.g. pad index)
@@ -36,11 +40,13 @@ public:
 
 private:
   SampleHandle handle_;  // Handle to acquired slot
+  const int16_t* pcm_ = nullptr;  // Pinned by handle_ while the voice is active.
   double position_ = 0;
   int tag_ = -1;
   
   // Internal playback state
   double playbackRate_ = 1.0;
+  double step_ = 1.0;
   float gain_ = 1.0f;
   uint32_t startFrame_ = 0;
   uint32_t endFrame_ = 0;
@@ -54,4 +60,5 @@ private:
   bool fadingOut_ = false;
   
   void reset();
+  void releaseHandle_(ISampleStore& store);
 };
