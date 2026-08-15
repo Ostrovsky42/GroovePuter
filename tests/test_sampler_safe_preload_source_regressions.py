@@ -25,7 +25,6 @@ def main() -> None:
     page_h = read("src/ui/pages/sampler_page.h")
     store_h = read("src/sampler/sample_store.h")
     ram_store = read("src/sampler/ram_sample_store.cpp")
-    probe = read("src/sampler/sample_probe.cpp")
     loader = read("src/sampler/sample_loader.cpp")
 
     selection = function_body(
@@ -64,16 +63,32 @@ def main() -> None:
     require("Main Thread: Request to load a sample into RAM" in store_h,
             "ISampleStore must keep preload explicitly control-thread owned")
 
-    # Whole-pool oversized WAV admission still belongs before any PCM allocation
-    # or data-chunk read inside the bounded decoder.
-    bounded_start = loader.index("bool loadWavFileBounded(")
+    # inspectWavFileBounded() and loadWavFileBounded() must share the same
+    # metadata parser. The probe path itself may not allocate PCM, and the
+    # decoder must finish metadata admission before its first allocation/read.
+    parser_start = loader.index("bool probeWavMetadata(")
+    parser_end = loader.index("\n}  // namespace", parser_start)
+    parser = loader[parser_start:parser_end]
+    require("SAMPLE_MALLOC" not in parser and "malloc(" not in parser,
+            "shared WAV metadata parser must never allocate PCM")
+    require("truncated data payload" in parser,
+            "shared metadata parser must reject physically truncated data")
+    require("decodedBytes > maxDecodedBytes" in parser,
+            "shared metadata parser must enforce decoded-byte admission")
+
+    inspect_start = loader.index("bool inspectWavFileBounded(")
+    bounded_start = loader.index("bool loadWavFileBounded(", inspect_start)
+    inspect = loader[inspect_start:bounded_start]
+    require("probeWavMetadata(path, probe, maxDecodedBytes)" in inspect,
+            "allocation-free inspect must use the shared WAV metadata parser")
+
     wrapper_start = loader.index("\nbool loadWavFile(", bounded_start)
     bounded = loader[bounded_start:wrapper_start]
-    admission_pos = bounded.index("decodedBytes > maxDecodedBytes")
+    admission_pos = bounded.index("probeWavMetadata(path, probe, maxDecodedBytes)")
     allocation_pos = bounded.index("SAMPLE_MALLOC_PSRAM(rawBytes)")
-    payload_pos = bounded.index("Data-chunk read starts only after final decoded-size admission")
+    payload_pos = bounded.index("Data-chunk read starts only after shared metadata admission")
     require(admission_pos < allocation_pos < payload_pos,
-            "decoded-size admission must happen before PCM allocation/data read")
+            "shared metadata admission must happen before PCM allocation/data read")
 
     # Near-full-pool admission is two-pass: metadata-only inspection first,
     # then LRU reclamation/slot admission, then decode with the actual remaining
@@ -83,9 +98,11 @@ def main() -> None:
         "bool RamSampleStore::preload(SampleId id)",
         "void RamSampleStore::evictLRU()",
     )
-    inspect_pos = preload_body.index("inspectWavFileBounded(path.c_str(), inspectedInfo, maxPoolBytes_)")
+    inspect_pos = preload_body.index(
+        "inspectWavFileBounded(path.c_str(), inspectedInfo, maxPoolBytes_)")
     evict_pos = preload_body.index("evictLRU();", inspect_pos)
-    budget_pos = preload_body.index("const std::size_t decodeBudget = freePoolBytes();", evict_pos)
+    budget_pos = preload_body.index(
+        "const std::size_t decodeBudget = freePoolBytes();", evict_pos)
     decode_pos = preload_body.index(
         "loadWavFileBounded(path.c_str(), info, &pcm, decodeBudget)", budget_pos)
     require(inspect_pos < evict_pos < budget_pos < decode_pos,
@@ -94,16 +111,6 @@ def main() -> None:
             "RamSampleStore must reclaim capacity based on probed decoded size")
     require("Pool is busy; no evictable sample slots" in preload_body,
             "busy referenced pool must fail before decode allocation")
-
-    probe_body = function_body(
-        probe,
-        "bool inspectWavFileBounded(",
-        "\n}",
-    )
-    require("SAMPLE_MALLOC" not in probe and "malloc(" not in probe,
-            "metadata probe must never allocate PCM")
-    require("truncated data payload" in probe,
-            "metadata probe must reject physically truncated data before eviction")
 
     # 0.9.3 deliberately removes the unsafe historical kit shortcut rather
     # than leaving a second scan/register/preload path with different rules.
