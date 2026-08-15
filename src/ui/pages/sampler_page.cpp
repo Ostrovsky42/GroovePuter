@@ -31,6 +31,12 @@ void logSampleSelectionFailure(const char* reason, const std::string& path,
                static_cast<unsigned>(runtimeId));
 #endif
 }
+
+std::string compactFilename(std::string filename) {
+  constexpr size_t kMaxChars = 26;
+  if (filename.size() <= kMaxChars) return filename;
+  return std::string("...") + filename.substr(filename.size() - (kMaxChars - 3));
+}
 }  // namespace
 
 class SamplerPage::LabelValueComponent : public FocusableComponent {
@@ -52,7 +58,7 @@ class SamplerPage::LabelValueComponent : public FocusableComponent {
     gfx.drawText(bounds.x + label_w + 5, bounds.y, value_.c_str());
 
     if (isFocused()) {
-      constexpr int pad = 2;
+      constexpr int pad = 1;
       gfx.drawRect(bounds.x - pad, bounds.y - pad,
                    bounds.w + pad * 2, bounds.h + pad * 2, kFocusColor);
     }
@@ -74,16 +80,18 @@ void SamplerPage::setBoundaries(const Rect& rect) {
 }
 
 void SamplerPage::initComponents() {
-  pad_ctrl_ = std::make_shared<LabelValueComponent>("PAD:", COLOR_WHITE, COLOR_KNOB_1);
-  file_ctrl_ = std::make_shared<LabelValueComponent>("SMP:", COLOR_WHITE, COLOR_KNOB_2);
-  volume_ctrl_ = std::make_shared<LabelValueComponent>("VOL:", COLOR_WHITE, COLOR_KNOB_3);
-  pitch_ctrl_ = std::make_shared<LabelValueComponent>("PCH:", COLOR_WHITE, COLOR_KNOB_3);
-  start_ctrl_ = std::make_shared<LabelValueComponent>("STR:", COLOR_WHITE, COLOR_KNOB_4);
-  end_ctrl_ = std::make_shared<LabelValueComponent>("END:", COLOR_WHITE, COLOR_KNOB_4);
-  loop_ctrl_ = std::make_shared<LabelValueComponent>("LOP:", COLOR_WHITE, COLOR_KNOB_1);
-  reverse_ctrl_ = std::make_shared<LabelValueComponent>("REV:", COLOR_WHITE, COLOR_KNOB_1);
-  choke_ctrl_ = std::make_shared<LabelValueComponent>("CHK:", COLOR_WHITE, COLOR_KNOB_1);
+  layer_ctrl_ = std::make_shared<LabelValueComponent>("LAYER:", COLOR_LABEL, COLOR_WHITE);
+  pad_ctrl_ = std::make_shared<LabelValueComponent>("PAD:", COLOR_LABEL, COLOR_KNOB_1);
+  file_ctrl_ = std::make_shared<LabelValueComponent>("SAMPLE:", COLOR_LABEL, COLOR_KNOB_2);
+  volume_ctrl_ = std::make_shared<LabelValueComponent>("VOL:", COLOR_LABEL, COLOR_KNOB_3);
+  pitch_ctrl_ = std::make_shared<LabelValueComponent>("PITCH:", COLOR_LABEL, COLOR_KNOB_3);
+  start_ctrl_ = std::make_shared<LabelValueComponent>("START:", COLOR_LABEL, COLOR_KNOB_4);
+  end_ctrl_ = std::make_shared<LabelValueComponent>("END:", COLOR_LABEL, COLOR_KNOB_4);
+  loop_ctrl_ = std::make_shared<LabelValueComponent>("LOOP:", COLOR_LABEL, COLOR_KNOB_1);
+  reverse_ctrl_ = std::make_shared<LabelValueComponent>("REV:", COLOR_LABEL, COLOR_KNOB_1);
+  choke_ctrl_ = std::make_shared<LabelValueComponent>("CHOKE:", COLOR_LABEL, COLOR_KNOB_1);
 
+  addChild(layer_ctrl_);
   addChild(pad_ctrl_);
   addChild(file_ctrl_);
   addChild(volume_ctrl_);
@@ -95,20 +103,19 @@ void SamplerPage::initComponents() {
   addChild(choke_ctrl_);
 
   const int x = dx() + 4;
-  // MiniAcidDisplay composites the global 16 px status header after the page.
-  // Keep the first sampler control inside CONTENT so PAD and its number remain
-  // visible even though SamplerPage itself receives full-screen boundaries.
   int y = Layout::CONTENT.y + Layout::CONTENT_PAD_Y;
-  constexpr int h = 12;
+  constexpr int h = 10;
   const int w_full = width() - 8;
-  const int w1 = (width() - 8) / 2;
+  const int w1 = (width() - 12) / 2;
+  const int mid_x = x + w1 + 4;
 
+  layer_ctrl_->setBoundaries(Rect(x, y, w_full, h));
+  y += h;
   pad_ctrl_->setBoundaries(Rect(x, y, w_full, h));
   y += h;
   file_ctrl_->setBoundaries(Rect(x, y, w_full, h));
   y += h + 2;
 
-  const int mid_x = x + w1 + 4;
   volume_ctrl_->setBoundaries(Rect(x, y, w1, h));
   pitch_ctrl_->setBoundaries(Rect(mid_x, y, w1, h));
   y += h;
@@ -121,9 +128,17 @@ void SamplerPage::initComponents() {
   reverse_ctrl_->setBoundaries(Rect(mid_x, y, w1, h));
   y += h;
 
-  choke_ctrl_->setBoundaries(Rect(x, y, w1, h));
+  choke_ctrl_->setBoundaries(Rect(x, y, w_full, h));
 
   initialized_ = true;
+}
+
+int SamplerPage::assignedPadCount() const {
+  int count = 0;
+  for (int i = 0; i < kRecoveredPadCount; ++i) {
+    if (mini_acid_.samplerTrack->pad(i).id.value != 0) ++count;
+  }
+  return count;
 }
 
 void SamplerPage::draw(IGfx& gfx) {
@@ -132,11 +147,15 @@ void SamplerPage::draw(IGfx& gfx) {
   const auto& p = mini_acid_.samplerTrack->pad(current_pad_);
 
   char buf[64];
+  std::snprintf(buf, sizeof(buf), "%s  %d/%d",
+                mini_acid_.samplerTrack->isEnabled() ? "ON" : "OFF",
+                assignedPadCount(), kRecoveredPadCount);
+  layer_ctrl_->setValue(buf);
   pad_ctrl_->setValue(std::to_string(current_pad_ + 1));
 
-  std::string filename = "(empty)";
+  std::string filename = "OFF";
   if (const SampleFileInfo* file = mini_acid_.sampleIndex.resolveRuntimeFile(p.id)) {
-    filename = file->filename;
+    filename = compactFilename(file->filename);
   }
   file_ctrl_->setValue(filename);
 
@@ -200,11 +219,9 @@ bool SamplerPage::selectIndexedSample(int direction) {
     } else if (candidateId == previousId) {
       return false;
     } else {
-      // E invariant: path lookup, WAV I/O, allocation, conversion, LRU work and
-      // sample-store publication happen on the control/UI side, never while the
-      // audio mutation boundary is held.
+      // Path lookup, WAV I/O, allocation, conversion, LRU work and sample-store
+      // publication stay control-side, outside the short audio mutation guard.
       if (mini_acid_.sampleStore->preload(candidateId)) {
-        // Only the pad identity publication is protected by the short audio guard.
         withAudioGuard([&]() {
           mini_acid_.samplerTrack->pad(padIndex).id = candidateId;
         });
@@ -212,7 +229,7 @@ bool SamplerPage::selectIndexedSample(int direction) {
       }
       logSampleSelectionFailure(
           "preload failed; trying next candidate; previous pad assignment kept",
-                                candidate.fullPath, candidateId.value);
+          candidate.fullPath, candidateId.value);
     }
 
     nextIndex = (nextIndex + step + fileCount) % fileCount;
@@ -221,12 +238,32 @@ bool SamplerPage::selectIndexedSample(int direction) {
   return false;
 }
 
+bool SamplerPage::clearCurrentPad() {
+  auto& p = mini_acid_.samplerTrack->pad(current_pad_);
+  if (p.id.value == 0) return false;
+  withAudioGuard([&]() {
+    mini_acid_.samplerTrack->stopPad(current_pad_);
+    p.id = SampleId{0};
+  });
+  GroovePuterState::markSceneMutated();
+  return true;
+}
+
+void SamplerPage::toggleSampleLayer() {
+  withAudioGuard([&]() {
+    mini_acid_.samplerTrack->toggleEnabled();
+  });
+}
+
 void SamplerPage::adjustFocusedElement(int direction) {
+  if (layer_ctrl_->isFocused()) {
+    toggleSampleLayer();
+    return;
+  }
+
   if (pad_ctrl_->isFocused()) {
-    withAudioGuard([&]() {
-      current_pad_ =
-          (current_pad_ + direction + kRecoveredPadCount) % kRecoveredPadCount;
-    });
+    current_pad_ =
+        (current_pad_ + direction + kRecoveredPadCount) % kRecoveredPadCount;
     return;
   }
 
@@ -273,7 +310,8 @@ void SamplerPage::adjustFocusedElement(int direction) {
 }
 
 void SamplerPage::prelisten() {
-  if (mini_acid_.sampleStore == nullptr) return;
+  if (mini_acid_.sampleStore == nullptr ||
+      !mini_acid_.samplerTrack->isEnabled()) return;
   withAudioGuard([&]() {
     mini_acid_.samplerTrack->triggerPad(current_pad_, 1.0f,
                                         *mini_acid_.sampleStore);
@@ -305,6 +343,18 @@ bool SamplerPage::handleEvent(UIEvent& ui_event) {
 
   const char lowerKey = static_cast<char>(
       std::tolower(static_cast<unsigned char>(ui_event.key)));
+
+  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta && lowerKey == 'm') {
+    toggleSampleLayer();
+    return true;
+  }
+
+  if ((ui_event.key == '\b' || ui_event.key == 0x7F) &&
+      file_ctrl_->isFocused()) {
+    clearCurrentPad();
+    return true;
+  }
+
   const char* found = std::strchr(kSequencedPadKeys, lowerKey);
   if (found != nullptr && mini_acid_.sampleStore != nullptr) {
     const int padIdx = static_cast<int>(found - kSequencedPadKeys);
@@ -315,11 +365,13 @@ bool SamplerPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  if (ui_event.key == ' ') {
+  if (ui_event.key == '\n' || ui_event.key == '\r') {
     prelisten();
     return true;
   }
 
+  // Space deliberately falls through. Once SAMPLES lives inside DRUMS,
+  // transport keeps owning Space instead of the sampler page hijacking it.
   return Container::handleEvent(ui_event);
 }
 
