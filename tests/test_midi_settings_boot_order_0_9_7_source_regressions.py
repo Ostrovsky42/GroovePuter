@@ -4,6 +4,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
+session_h = (
+    ROOT / "src/platform/cardputer_midi_settings_session.h"
+).read_text(encoding="utf-8")
 session_cpp = (
     ROOT / "src/platform/cardputer_midi_settings_session.cpp"
 ).read_text(encoding="utf-8")
@@ -34,6 +37,13 @@ assert bootstrap_pos < register_pos, (
 assert register_pos < display_pos, (
     "USB dispatcher is intentionally started before the heavy UI allocation"
 )
+
+# Arduino's sketch build can encounter the same header through two path forms
+# (direct sketch include and transitive UI include). A unique macro guard is
+# required in addition to #pragma once so the binding class cannot be redefined.
+assert "#ifndef GROOVEPUTER_CARDPUTER_MIDI_SETTINGS_SESSION_H" in session_h
+assert "#define GROOVEPUTER_CARDPUTER_MIDI_SETTINGS_SESSION_H" in session_h
+assert "#endif  // GROOVEPUTER_CARDPUTER_MIDI_SETTINGS_SESSION_H" in session_h
 
 # Settings storage stays on the control-side platform unit. The bootstrap may
 # call it during setup, but NVS/Preferences must not leak into dispatcher/audio.
