@@ -57,6 +57,10 @@ def main() -> None:
             "turning the layer OFF must stop already active sample voices")
     require("toggleSampleLayer();" in page_cpp and "lowerKey == 'm'" in page_cpp,
             "SAMPLES M must toggle the whole sample layer")
+    toggle_start = page_cpp.index("void SamplerPage::toggleSampleLayer()")
+    toggle_end = page_cpp.index("void SamplerPage::adjustFocusedElement", toggle_start)
+    require("GroovePuterState::markSceneMutated();" in page_cpp[toggle_start:toggle_end],
+            "SAMPLES layer toggle must dirty the project for persistence")
 
     require("bool SamplerPage::clearCurrentPad()" in page_cpp and
             "p.id = SampleId{0};" in page_cpp and

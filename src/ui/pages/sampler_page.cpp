@@ -255,6 +255,7 @@ void SamplerPage::toggleSampleLayer() {
   withAudioGuard([&]() {
     mini_acid_.samplerTrack->toggleEnabled();
   });
+  GroovePuterState::markSceneMutated();
 }
 
 void SamplerPage::adjustFocusedElement(int direction) {

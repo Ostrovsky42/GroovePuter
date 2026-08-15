@@ -2876,6 +2876,7 @@ void MiniAcid::applySceneStateFromManager() {
 
   LOG_PRINTLN("  - MiniAcid::applySceneStateFromManager: syncing Sampler...");
   // Sync Sampler
+  samplerTrack->setEnabled(sceneManager_.currentScene().samplerEnabled);
   for (int i = 0; i < 16; ++i) {
     const auto& s = sceneManager_.currentScene().samplerPads[i];
     auto& p = samplerTrack->pad(i);
@@ -3038,6 +3039,7 @@ void MiniAcid::syncSceneStateToManager() {
   // those values into the resident Scene before the Scene writer converts the
   // compact runtime SampleId to its authoritative stable SampleRef.
   if (samplerTrack) {
+    sceneManager_.currentScene().samplerEnabled = samplerTrack->isEnabled();
     for (int i = 0; i < 16; ++i) {
       const auto& runtimePad = samplerTrack->pad(i);
       auto& scenePad = sceneManager_.currentScene().samplerPads[i];

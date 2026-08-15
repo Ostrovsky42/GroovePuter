@@ -15,6 +15,7 @@ engine_cpp = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
 # D must not expand resident Scene sampler state or the audio/runtime ABI.
 assert "uint32_t sampleId = 0;" in scene_h
 assert "SamplerPadState samplerPads[16];" in scene_h
+assert "bool samplerEnabled = true;" in scene_h
 assert "uint64_t sampleRef" not in scene_h
 assert "SampleRef sampleRef" not in scene_h
 
@@ -31,6 +32,13 @@ assert store_cpp.count("SamplerSceneReadFilter<File>") >= 4
 assert store_cpp.count("SamplerSceneWriteFilter<File>") >= 2
 assert "manager.loadSceneEvented(filtered)" in store_cpp
 assert "manager.writeSceneJson(filtered) && filtered.finish()" in store_cpp
+
+# Sample IDs use all 32 bits. A signed JSON conversion turns IDs above INT_MAX
+# negative and makes the stable-ref filter reject the whole Scene save.
+assert "auto writeUint32" in scene_h
+assert "writeUint32(p.sampleId)" in scene_h
+assert "writeInt(p.sampleId)" not in scene_h
+assert "samplerEnabled" in scene_h
 
 # Keep the public raw string storage overload raw; applying the filter there as
 # well would permit accidental double encoding of a stable ref.
@@ -76,6 +84,8 @@ for field in (
     "loop = runtimePad.loop",
 ):
     assert field in sync_body, f"runtime sampler Save mirror missing: {field}"
+assert "samplerEnabled = samplerTrack->isEnabled()" in sync_body
+assert "setEnabled(sceneManager_.currentScene().samplerEnabled)" in engine_cpp
 
 save_start = engine_cpp.index("bool MiniAcid::saveSceneToStorage()")
 save_end = engine_cpp.index("bool MiniAcid::autoSaveSceneRecovery()", save_start)

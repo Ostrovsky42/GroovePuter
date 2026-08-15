@@ -373,6 +373,8 @@ struct Scene {
   Bank<SynthPattern> synthABanks[kBankCount];
   Bank<SynthPattern> synthBBanks[kBankCount];
   SamplerPadState samplerPads[16];
+  // OFF preserves pad assignments and must survive an explicit project save.
+  bool samplerEnabled = true;
   TapeState tape;
   FeelSettings feel;
   GenreSettings genre;
@@ -744,6 +746,13 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   auto writeInt = [&](int value) -> bool {
     char buffer[16];
     int written = std::snprintf(buffer, sizeof(buffer), "%d", value);
+    if (written < 0 || written >= static_cast<int>(sizeof(buffer))) return false;
+    return writeChunk(buffer, static_cast<size_t>(written));
+  };
+  auto writeUint32 = [&](uint32_t value) -> bool {
+    char buffer[16];
+    int written = std::snprintf(buffer, sizeof(buffer), "%u",
+                                static_cast<unsigned>(value));
     if (written < 0 || written >= static_cast<int>(sizeof(buffer))) return false;
     return writeChunk(buffer, static_cast<size_t>(written));
   };
@@ -1137,7 +1146,9 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
     if (i > 0 && !writeChar(',')) return false;
     const auto& p = scene_->samplerPads[i];
     if (!writeLiteral("{\"id\":")) return false;
-    if (!writeInt(p.sampleId)) return false;
+    // A runtime SampleId uses all 32 bits. Signed output makes high IDs
+    // negative, which the sampler stable-ref filter correctly rejects.
+    if (!writeUint32(p.sampleId)) return false;
     if (!writeLiteral(",\"vol\":")) return false;
     if (!writeFloat(p.volume)) return false;
     if (!writeLiteral(",\"pch\":")) return false;
@@ -1155,6 +1166,8 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
     if (!writeChar('}')) return false;
   }
   if (!writeChar(']')) return false;
+  if (!writeLiteral(",\"samplerEnabled\":")) return false;
+  if (!writeBool(scene_->samplerEnabled)) return false;
   // Serial.print(".");
 
   if (!writeLiteral(",\"tape\":{\"mode\":")) return false;
