@@ -38,12 +38,17 @@ def main() -> None:
     assign_pos = selection.index(".id = candidateId", guard_pos)
     require(preload_pos < guard_pos < assign_pos,
             "WAV preload must complete before the short guarded pad publication")
-    require("if (!mini_acid_.sampleStore->preload(candidateId))" in selection,
+    require("mini_acid_.sampleStore->preload(candidateId)" in selection and
+            "if (mini_acid_.sampleStore->preload(candidateId))" in selection,
             "sample assignment must validate preload success")
     require("previous pad assignment kept" in selection,
             "failed preload must preserve the previous valid pad assignment")
-    require("return false;" in selection[preload_pos:guard_pos],
-            "failed preload must exit before publishing candidateId")
+    require("for (int attempt = 0; attempt < fileCount; ++attempt)" in selection and
+            "preload failed; trying next candidate" in selection,
+            "failed candidates must be skipped so arrows cannot trap the user")
+    require("return true;" in selection[guard_pos:assign_pos + 80] and
+            "return false;" in selection[assign_pos:],
+            "only a successfully preloaded candidate may publish candidateId")
 
     # Prevent the historical regression even if code is later rearranged.
     guarded_blocks = re.findall(

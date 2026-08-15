@@ -184,31 +184,41 @@ bool SamplerPage::selectIndexedSample(int direction) {
                 static_cast<int>(files.size());
   }
 
-  const SampleFileInfo& candidate = files[static_cast<size_t>(nextIndex)];
-  const auto candidateRef = SampleIndex::calculateStableRef(candidate.fullPath);
-  const SampleId candidateId = mini_acid_.sampleIndex.runtimeIdForRef(candidateRef);
-  if (candidateId.value == 0) {
-    logSampleSelectionFailure("stable identity did not resolve",
-                              candidate.fullPath, candidateId.value);
-    return false;
+  const int fileCount = static_cast<int>(files.size());
+  const int step = direction < 0 ? -1 : 1;
+
+  // A rejected WAV must not trap the user on the same catalogue entry. Keep
+  // probing in the requested direction until the first playable candidate;
+  // metadata rejection is cheap and decode remains control-side.
+  for (int attempt = 0; attempt < fileCount; ++attempt) {
+    const SampleFileInfo& candidate = files[static_cast<size_t>(nextIndex)];
+    const auto candidateRef = SampleIndex::calculateStableRef(candidate.fullPath);
+    const SampleId candidateId = mini_acid_.sampleIndex.runtimeIdForRef(candidateRef);
+    if (candidateId.value == 0) {
+      logSampleSelectionFailure("stable identity did not resolve",
+                                candidate.fullPath, candidateId.value);
+    } else if (candidateId == previousId) {
+      return false;
+    } else {
+      // E invariant: path lookup, WAV I/O, allocation, conversion, LRU work and
+      // sample-store publication happen on the control/UI side, never while the
+      // audio mutation boundary is held.
+      if (mini_acid_.sampleStore->preload(candidateId)) {
+        // Only the pad identity publication is protected by the short audio guard.
+        withAudioGuard([&]() {
+          mini_acid_.samplerTrack->pad(padIndex).id = candidateId;
+        });
+        return true;
+      }
+      logSampleSelectionFailure(
+          "preload failed; trying next candidate; previous pad assignment kept",
+                                candidate.fullPath, candidateId.value);
+    }
+
+    nextIndex = (nextIndex + step + fileCount) % fileCount;
   }
 
-  // E invariant: path lookup, WAV I/O, allocation, conversion, LRU work and
-  // sample-store publication happen on the control/UI side, never while the
-  // audio mutation boundary is held.
-  if (!mini_acid_.sampleStore->preload(candidateId)) {
-    logSampleSelectionFailure("preload failed; previous pad assignment kept",
-                              candidate.fullPath, candidateId.value);
-    return false;
-  }
-
-  if (candidateId == previousId) return false;
-
-  // Only the pad identity publication is protected by the short audio guard.
-  withAudioGuard([&]() {
-    mini_acid_.samplerTrack->pad(padIndex).id = candidateId;
-  });
-  return true;
+  return false;
 }
 
 void SamplerPage::adjustFocusedElement(int direction) {
