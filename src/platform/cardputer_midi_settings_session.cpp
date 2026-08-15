@@ -9,7 +9,7 @@
 #include <cstdint>
 
 #include "src/midi/midi_companion_settings_codec.h"
-#include "src/midi/midi_transport_capabilities.h"
+#include "src/midi/midi_device_profile_runtime.h"
 #include "src/midi/transport_clock_runtime.h"
 
 namespace GroovePuterPlatform {
@@ -64,18 +64,22 @@ public:
     void initialize() {
         if (initialized_) return;
 
-        settings_ = GroovePuterMidi::makeDefaultMidiOutputSettings(
-            GroovePuterMidi::MidiDeviceProfile::SeqtrakNative);
+        GroovePuterMidi::MidiOutputSettings loadedSettings =
+            GroovePuterMidi::makeDefaultMidiOutputSettings(
+                GroovePuterMidi::MidiDeviceProfile::SeqtrakNative);
         const GroovePuterMidi::MidiSettingsLoadStatus status =
-            persistence_.load(settings_);
+            persistence_.load(loadedSettings);
 
-        GroovePuterMidi::midiTransportCapabilityRuntime().setDeviceProfile(
-            settings_.profile);
+        GroovePuterMidi::MidiDeviceProfileRuntime& profileRuntime =
+            GroovePuterMidi::midiDeviceProfileRuntime();
+        profileRuntime.initialize(loadedSettings);
+        const GroovePuterMidi::MidiOutputSettings& settings =
+            profileRuntime.settings();
 
         GroovePuterMidi::TransportClockRuntime& runtime =
             GroovePuterMidi::transportClockRuntime();
-        runtime.applyPersistedControl(settings_.transportClockSource,
-                                      settings_.externalFollowEnabled);
+        runtime.applyPersistedControl(settings.transportClockSource,
+                                      settings.externalFollowEnabled);
         initialized_ = true;
         runtime.setControlChangedCallback(&persistControlChange);
 
@@ -84,25 +88,29 @@ public:
             static_cast<unsigned>(status),
             static_cast<unsigned>(
                 GroovePuterMidi::MidiSettingsCodec::kSchemaVersion),
-            GroovePuterMidi::midiDeviceProfileName(settings_.profile),
+            GroovePuterMidi::midiDeviceProfileName(settings.profile),
             GroovePuterMidi::transportClockSourceName(
-                settings_.transportClockSource),
-            static_cast<unsigned>(settings_.externalFollowEnabled ? 1 : 0));
+                settings.transportClockSource),
+            static_cast<unsigned>(settings.externalFollowEnabled ? 1 : 0));
     }
 
     bool persist(GroovePuterMidi::TransportClockSource source,
                  bool externalFollowEnabled) {
         if (!initialized_) initialize();
-        settings_.transportClockSource =
-            GroovePuterMidi::normalizeTransportClockSource(
-                static_cast<uint8_t>(source));
-        settings_.externalFollowEnabled = externalFollowEnabled;
-        const bool saved = persistence_.save(settings_);
+
+        GroovePuterMidi::MidiDeviceProfileRuntime& profileRuntime =
+            GroovePuterMidi::midiDeviceProfileRuntime();
+        profileRuntime.updateTransportControl(source, externalFollowEnabled);
+        const GroovePuterMidi::MidiOutputSettings& settings =
+            profileRuntime.settings();
+
+        const bool saved = persistence_.save(settings);
         Serial.printf("[MIDI-SETTINGS] save=%u source=%s follow=%u\n",
                       static_cast<unsigned>(saved ? 1 : 0),
                       GroovePuterMidi::transportClockSourceName(
-                          settings_.transportClockSource),
-                      static_cast<unsigned>(externalFollowEnabled ? 1 : 0));
+                          settings.transportClockSource),
+                      static_cast<unsigned>(
+                          settings.externalFollowEnabled ? 1 : 0));
         return saved;
     }
 
@@ -113,7 +121,6 @@ private:
 
     CardputerMidiSettingsStorage storage_;
     GroovePuterMidi::MidiSettingsPersistence persistence_{storage_};
-    GroovePuterMidi::MidiOutputSettings settings_{};
     bool initialized_{false};
 };
 

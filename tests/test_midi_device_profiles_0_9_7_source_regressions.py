@@ -19,9 +19,9 @@ assert "settings.liveChannel = 7" in settings_cpp
 assert "settings.synthAChannel = 7" in settings_cpp
 assert "settings.synthBChannel = 8" in settings_cpp
 
-# Record the current semantic conflation explicitly: GeneralMidi provides a GM
-# percussion map while transport capabilities treat the same profile as generic
-# class-compliant MIDI. Production 0.9.7 must resolve this intentionally.
+# Record the historical semantic conflation explicitly: GeneralMidi provides a
+# GM percussion map while its legacy transport capability surface remains the
+# pre-0.9.7 generic-class-compliant behavior. R2 adds GenericMidi separately.
 assert "generalMidiDrumRoutes" in settings_cpp
 assert "kGeneralMidiDrumChannel = 9" in settings_cpp
 assert "case MidiDeviceProfile::GeneralMidi:" in transport_h
@@ -33,9 +33,13 @@ assert "seqtrakValidatedTransportCapabilities" in transport_h
 assert "capabilities.continueRx = true" in transport_h
 assert "capabilities.continueBehavior = MidiContinueBehavior::RestartFromBeginning" in transport_h
 
-# Current Cardputer boot consumes a persisted profile for transport capability
-# selection, but there is no runtime profile-selection/apply path here yet.
-assert "midiTransportCapabilityRuntime().setDeviceProfile" in session_cpp
-assert "applyMidiDeviceProfile(" not in session_cpp
+# R3 replaces the duplicate Cardputer settings snapshot with the single
+# control-side profile runtime owner. Session boot/persistence may consume that
+# owner, but USB routing remains a later binding step.
+assert 'midi_device_profile_runtime.h' in session_cpp
+assert "profileRuntime.initialize(loadedSettings)" in session_cpp
+assert "profileRuntime.updateTransportControl" in session_cpp
+assert "MidiOutputSettings settings_{}" not in session_cpp
+assert "midiTransportCapabilityRuntime().setDeviceProfile" not in session_cpp
 
-print("0.9.7-R1 MIDI device-profile source contract: PASS")
+print("0.9.7 MIDI device-profile source contract: PASS")
