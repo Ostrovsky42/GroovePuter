@@ -16,10 +16,16 @@ enum class MidiDrumMappingKind : uint8_t {
     UserDefined,
 };
 
+enum class MidiReceiverModeControl : uint8_t {
+    None = 0,
+    SeqtrakCc26,
+};
+
 struct MidiDeviceCapabilities {
     MidiDeviceProfile profile{MidiDeviceProfile::Custom};
     MidiDrumMappingKind drumMapping{MidiDrumMappingKind::UserDefined};
     MidiTransportCapabilities transport{};
+    MidiReceiverModeControl receiverModeControl{MidiReceiverModeControl::None};
     bool fixedSynthChannelDefaults{false};
     bool vendorSpecificControls{false};
 };
@@ -33,6 +39,7 @@ constexpr MidiDeviceCapabilities midiDeviceCapabilitiesForProfile(
     switch (profile) {
         case MidiDeviceProfile::SeqtrakNative:
             capabilities.drumMapping = MidiDrumMappingKind::SeqtrakNative;
+            capabilities.receiverModeControl = MidiReceiverModeControl::SeqtrakCc26;
             capabilities.fixedSynthChannelDefaults = true;
             capabilities.vendorSpecificControls = true;
             return capabilities;
