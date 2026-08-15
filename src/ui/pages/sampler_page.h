@@ -7,6 +7,7 @@
 
 class SamplerPage : public IPage {
  public:
+  SamplerPage(MiniAcid& mini_acid, AudioGuard audio_guard);
   SamplerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
@@ -25,20 +26,23 @@ class SamplerPage : public IPage {
   void initComponents();
   void adjustFocusedElement(int direction);
   bool selectIndexedSample(int direction);
+  bool clearCurrentPad();
+  void toggleSampleLayer();
+  int assignedPadCount() const;
   void prelisten();
 
-  IGfx& gfx_;
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
-  std::string title_ = "SAMPLER";
+  std::string title_ = "SAMPLES";
 
   bool initialized_ = false;
   int current_pad_ = 0;
 
-  // 0.9.3 recovers only the eight sampler pads wired into the drum sequencer.
+  // 0.9.3 exposes only the eight sampler pads wired into the drum sequencer.
   // Pads 9..16 remain internal/reserved until later productization.
   static constexpr int kRecoveredPadCount = 8;
 
+  std::shared_ptr<LabelValueComponent> layer_ctrl_;
   std::shared_ptr<LabelValueComponent> pad_ctrl_;
   std::shared_ptr<LabelValueComponent> file_ctrl_;
   std::shared_ptr<LabelValueComponent> volume_ctrl_;

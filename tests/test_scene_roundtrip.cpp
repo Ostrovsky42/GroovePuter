@@ -65,6 +65,7 @@ void populateNonDefaultScene(SceneManager& manager) {
   scene.genre.rhythmSelectionMode = static_cast<uint8_t>(
       GroovePuterRhythm::RhythmSelectionMode::Manual);
   scene.genre.rhythmArchetypeId = 712;
+  scene.samplerEnabled = false;
 
   scene.generatorParams.minNotes = 3;
   scene.generatorParams.maxNotes = 11;
@@ -146,6 +147,7 @@ void destroyRoundTripFields(SceneManager& manager) {
   scene.synthABanks[0].patterns[0].steps[5] = SynthStep();
   scene.customPhrases[0][0] = '\0';
   PhraseCore::reset(scene.phraseBank);
+  scene.samplerEnabled = true;
 }
 
 void verifyRoundTrip(const SceneManager& manager) {
@@ -182,6 +184,7 @@ void verifyRoundTrip(const SceneManager& manager) {
   assert(scene.genre.rhythmSelectionMode == static_cast<uint8_t>(
              GroovePuterRhythm::RhythmSelectionMode::Manual));
   assert(scene.genre.rhythmArchetypeId == 712);
+  assert(!scene.samplerEnabled);
 
   assert(scene.generatorParams.minNotes == 3);
   assert(scene.generatorParams.maxNotes == 11);
@@ -274,6 +277,7 @@ int main() {
   assert(json.find("\"synthParams\"") == std::string::npos);
   assert(json.find("\"rsm\":1") != std::string::npos);
   assert(json.find("\"rid\":712") != std::string::npos);
+  assert(json.find("\"samplerEnabled\":false") != std::string::npos);
 
   const std::string stableSynthState = extractSynthState(json);
   destroyRoundTripFields(manager);

@@ -60,13 +60,15 @@ constexpr int kGeneration = 11; // legacy persisted page id -> FEEL
 constexpr int kPerform = 12;
 constexpr int kPlayer = 13;
 constexpr int kPhrase = 14;
-// Standalone direct page; intentionally not a workflow child.
+// Legacy persisted/direct page id. Sampler product controls now live in the
+// SAMPLES tab inside DRUMS; page 15 normalizes to the owning DRUMS workflow.
 constexpr int kSampler = 15;
 
 inline int normalizeLegacyPage(int page) {
     if (page == kTexture || page == kGeneration) return kFeel;
     if (page == kSynthAParameters) return kSynthA;
     if (page == kSynthBParameters) return kSynthB;
+    if (page == kSampler) return kDrums;
     return page;
 }
 
@@ -111,7 +113,8 @@ inline bool isWorkspacePage(int page) {
 }
 
 inline bool isStandalonePage(int page) {
-    return page == kSampler;
+    (void)page;
+    return false;
 }
 
 inline Workspace workspaceForPage(int page) {

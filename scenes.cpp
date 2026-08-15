@@ -107,6 +107,7 @@ void clearSceneData(Scene& scene) {
   clearCustomPhrases(scene);
   PhraseCore::reset(scene.phraseBank);
   for (auto& pad : scene.samplerPads) pad = SamplerPadState();
+  scene.samplerEnabled = true;
   for (float& volume : scene.trackVolumes) volume = 1.0f;
   scene.masterVolume = 0.6f;
   scene.generatorParams = GeneratorParams();
@@ -1341,6 +1342,13 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
 void SceneJsonObserver::handlePrimitiveBool(bool value) {
   if (error_ || stackSize_ == 0) return;
   Path path = stack_[stackSize_ - 1].path;
+  // The streaming writer keeps project state in "state"; the older document
+  // writer placed this value at the root. Accept both layouts.
+  if ((path == Path::Root || path == Path::State) &&
+      lastKey_ == "samplerEnabled") {
+    target_.samplerEnabled = value;
+    return;
+  }
   if (path == Path::Song) {
       if (lastKey_ == "reverse") {
           int songIdx = 0;
@@ -2534,6 +2542,7 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
     padObj["rev"] = p.reverse;
     padObj["lop"] = p.loop;
   }
+  root["samplerEnabled"] = scene_->samplerEnabled;
 
   ArduinoJson::JsonObject tapeObj = root["tape"].to<ArduinoJson::JsonObject>();
   tapeObj["mode"] = static_cast<int>(scene_->tape.mode);

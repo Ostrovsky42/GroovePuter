@@ -1,0 +1,28 @@
+name: Sampler DRUMS workflow UX
+
+on:
+  pull_request:
+    paths:
+      - "src/sampler/drum_sampler_track.h"
+      - "src/sampler/drum_sampler_track.cpp"
+      - "src/ui/pages/sampler_page.h"
+      - "src/ui/pages/sampler_page.cpp"
+      - "src/ui/pages/drum_sequencer_page.cpp"
+      - "src/ui/workflow_mode.h"
+      - "src/ui/global_help_content.h"
+      - "tests/test_sampler_page_navigation_source_regressions.py"
+      - "docs/releases/0_9_3_SAMPLER_DRUM_WORKFLOW_UX.md"
+      - ".github/workflows/sampler-drum-workflow-ux.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sampler-drums-workflow-ux:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify sampler product workflow contracts
+        run: python3 tests/test_sampler_page_navigation_source_regressions.py
