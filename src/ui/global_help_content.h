@@ -18,7 +18,6 @@ constexpr const char* kGlobalLines[] = {
     "Alt/Fn+1..0 Direct page jump",
     "Space       Active transport",
     "Alt+P       MIDI Player",
-    "Alt+K       Sampler",
     "Alt+V       Groove Lab",
     "Alt+W       Waveform except PHRASE",
     "Alt+\\       Theme CARBON/CYBER",
@@ -120,7 +119,7 @@ constexpr const char* kSynthBSoundLines[] = {
 
 constexpr const char* kDrumLines[] = {
     "=== DRUMS ===",
-    "Tab         Sequencer/automation",
+    "Tab         Grid/feel/auto/samples",
     "Q..I        Select pattern 1..8",
     "B           Toggle bank A/B",
     "Ctrl+1/2    Bank A/B (direct)",
@@ -135,6 +134,11 @@ constexpr const char* kDrumLines[] = {
     "Bksp/Del    Clear hit/selection",
     "Alt+Bksp    Clear whole pattern",
     "Ctrl+C/V    Copy/Paste",
+    "SAMPLES M   Layer ON/OFF",
+    "SAMPLES Bksp Clear pad sample",
+    "SAMPLES Enter Preview pad",
+    "SAMPLES Q-I Audition pads 1..8",
+    "Space       Transport on every tab",
     "Esc/`       Clear selection",
 };
 
@@ -271,17 +275,8 @@ constexpr const char* kPlayerLines[] = {
     "X           Panic SMF notes",
 };
 
-constexpr const char* kSamplerLines[] = {
-    "=== SAMPLER ===",
-    "Up/Down     Focus field",
-    "Left/Right  Adjust/select",
-    "Q W E R T Y U I  Pads 1..8",
-    "Space       Prelisten current pad",
-    "Alt+0       Project / explicit Save",
-    "KIT LOAD    Deferred to 0.9.4",
-};
-
 inline const char* const* pageLines(int pageIndex, int& count) {
+    pageIndex = WorkflowPages::normalizeLegacyPage(pageIndex);
     switch (pageIndex) {
         case WorkflowPages::kGenre:
             count = sizeof(kGenreLines) / sizeof(kGenreLines[0]); return kGenreLines;
@@ -311,8 +306,6 @@ inline const char* const* pageLines(int pageIndex, int& count) {
             count = sizeof(kPerformLines) / sizeof(kPerformLines[0]); return kPerformLines;
         case WorkflowPages::kPlayer:
             count = sizeof(kPlayerLines) / sizeof(kPlayerLines[0]); return kPlayerLines;
-        case WorkflowPages::kSampler:
-            count = sizeof(kSamplerLines) / sizeof(kSamplerLines[0]); return kSamplerLines;
         default:
             count = 0; return nullptr;
     }
