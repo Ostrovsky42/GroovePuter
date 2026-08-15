@@ -71,8 +71,14 @@ class SamplerPage::LabelValueComponent : public FocusableComponent {
   IGfxColor value_color_;
 };
 
-SamplerPage::SamplerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
-    : gfx_(gfx), mini_acid_(mini_acid), audio_guard_(audio_guard) {}
+SamplerPage::SamplerPage(MiniAcid& mini_acid, AudioGuard audio_guard)
+    : mini_acid_(mini_acid), audio_guard_(audio_guard) {}
+
+SamplerPage::SamplerPage(IGfx& gfx, MiniAcid& mini_acid,
+                         AudioGuard audio_guard)
+    : SamplerPage(mini_acid, audio_guard) {
+  (void)gfx;
+}
 
 void SamplerPage::setBoundaries(const Rect& rect) {
   Frame::setBoundaries(rect);
@@ -206,9 +212,6 @@ bool SamplerPage::selectIndexedSample(int direction) {
   const int fileCount = static_cast<int>(files.size());
   const int step = direction < 0 ? -1 : 1;
 
-  // A rejected WAV must not trap the user on the same catalogue entry. Keep
-  // probing in the requested direction until the first playable candidate;
-  // metadata rejection is cheap and decode remains control-side.
   for (int attempt = 0; attempt < fileCount; ++attempt) {
     const SampleFileInfo& candidate = files[static_cast<size_t>(nextIndex)];
     const auto candidateRef = SampleIndex::calculateStableRef(candidate.fullPath);
@@ -219,8 +222,7 @@ bool SamplerPage::selectIndexedSample(int direction) {
     } else if (candidateId == previousId) {
       return false;
     } else {
-      // Path lookup, WAV I/O, allocation, conversion, LRU work and sample-store
-      // publication stay control-side, outside the short audio mutation guard.
+      // WAV I/O, allocation, conversion and LRU work remain outside AudioGuard.
       if (mini_acid_.sampleStore->preload(candidateId)) {
         withAudioGuard([&]() {
           mini_acid_.samplerTrack->pad(padIndex).id = candidateId;
@@ -371,7 +373,7 @@ bool SamplerPage::handleEvent(UIEvent& ui_event) {
   }
 
   // Space deliberately falls through. Once SAMPLES lives inside DRUMS,
-  // transport keeps owning Space instead of the sampler page hijacking it.
+  // transport keeps owning Space instead of this tab hijacking it.
   return Container::handleEvent(ui_event);
 }
 
