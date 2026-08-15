@@ -1,5 +1,6 @@
 #include "drum_sequencer_page.h"
 #include "drum_automation_page.h"
+#include "sampler_page.h"
 #include "../ui_common.h"
 #include "src/state/generation_request_state.h"
 #include "src/state/scene_revision.h"
@@ -95,6 +96,18 @@ void DrumSequencerPage::draw(IGfx& gfx) {
 }
 
 bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
+  // Product sampler controls belong to the DRUMS workflow. Keep the retained
+  // three-tab legacy constructor untouched and attach SAMPLES lazily before the
+  // first Drum event; components inside SamplerPage remain lazy until displayed.
+  if (pageCount() == 3) {
+    std::shared_ptr<Container> main = getPagePtr(0);
+    if (main) {
+      auto* mainPage = static_cast<DrumSequencerMainPage*>(main.get());
+      addPage(std::make_shared<SamplerPage>(
+          mainPage->mini_acid_, mainPage->audio_guard_));
+    }
+  }
+
   // Global Drum Feel replaces the owning DrumSynthVoice when Character changes.
   // That object is read by AudioTask for every rendered sample, so the existing
   // page AudioGuard must stop the renderer at a block boundary before the legacy
