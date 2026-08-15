@@ -10,8 +10,11 @@
 namespace fs = std::filesystem;
 using GroovePuterSampler::SampleRef;
 
-// RamSampleStore links the WAV loader even though these registry tests never
-// preload PCM. Keep the test host-only and deterministic.
+// RamSampleStore links the WAV probe/loader even though these registry tests
+// never preload PCM. Keep the test host-only and deterministic.
+bool inspectWavFileBounded(const char*, WavInfo&, std::size_t) {
+  return false;
+}
 bool loadWavFileBounded(const char*, WavInfo&, int16_t**, std::size_t) {
   return false;
 }
