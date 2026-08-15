@@ -44,6 +44,24 @@ std::string compactBrowserText(std::string value, size_t maxChars = 30) {
   return std::string("...") + value.substr(value.size() - (maxChars - 3));
 }
 
+std::string compactFileSize(uint32_t bytes) {
+  char text[16];
+  if (bytes < 1024) {
+    std::snprintf(text, sizeof(text), "%lu B",
+                  static_cast<unsigned long>(bytes));
+  } else if (bytes < 1024u * 1024u) {
+    const uint32_t kib = (bytes + 512u) / 1024u;
+    std::snprintf(text, sizeof(text), "%lu KB",
+                  static_cast<unsigned long>(kib));
+  } else {
+    const uint32_t tenths = (bytes + 52428u) / 104858u;
+    std::snprintf(text, sizeof(text), "%lu.%lu MB",
+                  static_cast<unsigned long>(tenths / 10u),
+                  static_cast<unsigned long>(tenths % 10u));
+  }
+  return text;
+}
+
 std::string normalizeDirectoryPath(std::string path) {
   while (path.size() > 1 && path.back() == '/') path.pop_back();
   return path;
@@ -546,7 +564,10 @@ void SamplerPage::drawSampleBrowser(IGfx& gfx) {
       logical -= static_cast<int>(browser_subdirs_.size());
       if (logical >= 0 && logical < static_cast<int>(browser_files_.size())) {
         const SampleFileInfo* file = browser_files_[static_cast<size_t>(logical)];
-        if (file != nullptr) label = "  " + file->filename;
+        if (file != nullptr) {
+          label = "  " + std::string(file->filename()) + "  " +
+                  compactFileSize(file->fileSizeBytes);
+        }
       }
     }
 

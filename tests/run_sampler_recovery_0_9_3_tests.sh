@@ -47,6 +47,7 @@ python3 "${ROOT_DIR}/tests/test_sampler_recovery_0_9_3_source_regressions.py"
   -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_sampler_preload_capacity.cpp" \
   "${ROOT_DIR}/src/sampler/ram_sample_store.cpp" \
+  "${ROOT_DIR}/src/sampler/sample_index.cpp" \
   -o "${BUILD_DIR}/test_sampler_preload_capacity"
 
 "${BUILD_DIR}/test_sampler_preload_capacity"

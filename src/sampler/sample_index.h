@@ -1,14 +1,23 @@
 #pragma once
 #include <cstddef>
+#include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 #include "sample_store.h"
 #include "sample_ref.h"
 
 struct SampleFileInfo {
   SampleId id{0}; // legacy basename-derived ID retained for old Scene compatibility
-  std::string filename;
+  uint32_t fileSizeBytes{0};
   std::string fullPath;
+
+  std::string_view filename() const {
+    const std::size_t slash = fullPath.find_last_of('/');
+    return slash == std::string::npos
+        ? std::string_view(fullPath)
+        : std::string_view(fullPath).substr(slash + 1);
+  }
 };
 
 struct SampleRegistryBindResult {

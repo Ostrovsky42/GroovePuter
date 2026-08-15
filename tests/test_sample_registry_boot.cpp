@@ -64,6 +64,31 @@ public:
   std::map<uint32_t, std::string> paths;
 };
 
+class IndexBackedCaptureStore final : public ISampleStore {
+public:
+  bool bindSampleIndex(const SampleIndex* index) override {
+    boundIndex = index;
+    return index != nullptr;
+  }
+  bool registerFile(SampleId, const std::string&) override {
+    ++copiedPathCount;
+    return true;
+  }
+  bool preload(SampleId) override { return false; }
+  SampleHandle acquireHandle(SampleId) override { return SampleHandle::invalid(); }
+  void releaseHandle(SampleHandle) override {}
+  SampleView viewHandle(SampleHandle) const override { return {nullptr, 0, 0}; }
+  void acquire(SampleId) override {}
+  void release(SampleId) override {}
+  SampleView view(SampleId) const override { return {nullptr, 0, 0}; }
+  void evictLRU() override {}
+  std::size_t freePoolBytes() const override { return 0; }
+  void setPoolSize(std::size_t) override {}
+
+  const SampleIndex* boundIndex = nullptr;
+  int copiedPathCount = 0;
+};
+
 void testUniqueRegistryBinding() {
   const fs::path root =
       fs::temp_directory_path() / "grooveputer_sampler_registry_unique";
@@ -90,7 +115,7 @@ void testUniqueRegistryBinding() {
   assert(index.findIdByFilename("kick.wav") == kickLegacy);
   const SampleFileInfo* kick = index.resolveLegacyFile(kickLegacy);
   assert(kick != nullptr);
-  assert(kick->filename == "kick.wav");
+  assert(kick->filename() == "kick.wav");
 
   const SampleRef kickRef = index.findRefByFilename("kick.wav");
   assert(kickRef.valid());
@@ -179,7 +204,8 @@ void testRecursiveLooseSampleFolders() {
 
   const auto rootFiles = index.filesInDirectory(root.string());
   assert(rootFiles.size() == 1);
-  assert(rootFiles[0]->filename == "root.wav");
+  assert(rootFiles[0]->filename() == "root.wav");
+  assert(rootFiles[0]->fileSizeBytes == 1);
 
   const auto rootDirs = index.indexedSubdirectories(root.string());
   assert(rootDirs.size() == 2);
@@ -188,8 +214,8 @@ void testRecursiveLooseSampleFolders() {
 
   const auto files909 = index.filesInDirectory((root / "909").string());
   assert(files909.size() == 2);
-  assert(files909[0]->filename == "kick.wav");
-  assert(files909[1]->filename == "snare.wav");
+  assert(files909[0]->filename() == "kick.wav");
+  assert(files909[1]->filename() == "snare.wav");
 
   const auto dirs909 = index.indexedSubdirectories((root / "909").string());
   assert(dirs909.size() == 1);
@@ -197,7 +223,7 @@ void testRecursiveLooseSampleFolders() {
 
   const auto hats = index.filesInDirectory((root / "909" / "hats").string());
   assert(hats.size() == 1);
-  assert(hats[0]->filename == "closed.wav");
+  assert(hats[0]->filename() == "closed.wav");
 
   // Same basename in different folders is intentionally ambiguous to every
   // legacy basename-only lookup. Stable path identity and runtime IDs remain
@@ -267,6 +293,12 @@ void testCatalogCanExceedResidentSlotCount() {
       (root / "bankB" / "sample_79.wav").string());
   assert(lastRef.valid());
   assert(index.runtimeIdForRef(lastRef).value != 0);
+
+  IndexBackedCaptureStore borrowedStore;
+  const SampleRegistryBindResult borrowed = index.bindToStore(borrowedStore);
+  assert(borrowed.clean());
+  assert(borrowedStore.boundIndex == &index);
+  assert(borrowedStore.copiedPathCount == 0);
 
   fs::remove_all(root);
 }

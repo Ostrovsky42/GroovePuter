@@ -41,6 +41,8 @@ struct SampleHandle {
   static SampleHandle invalid() { return {0xFFFF, {0}}; }
 };
 
+class SampleIndex;
+
 // Abstract interface for the Sample Store "Warehouse"
 class ISampleStore {
 public:
@@ -52,6 +54,14 @@ public:
   virtual bool registerFile(SampleId id, const std::string& path) {
     (void)id;
     (void)path;
+    return false;
+  }
+
+  // Control Thread: Borrow the session-stable sample index as the path
+  // resolver. Stores that support this avoid copying every catalog path into
+  // a second registry. The index must outlive the store binding.
+  virtual bool bindSampleIndex(const SampleIndex* index) {
+    (void)index;
     return false;
   }
 

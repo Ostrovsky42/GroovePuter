@@ -19,6 +19,7 @@ python3 "${ROOT_DIR}/tests/generate_sampler_wav_corpus.py" "${CORPUS_DIR}"
   "${ROOT_DIR}/tests/test_sampler_wav_loader.cpp" \
   "${ROOT_DIR}/src/sampler/sample_loader.cpp" \
   "${ROOT_DIR}/src/sampler/ram_sample_store.cpp" \
+  "${ROOT_DIR}/src/sampler/sample_index.cpp" \
   -o "${BUILD_DIR}/test_sampler_wav_loader"
 
 "${BUILD_DIR}/test_sampler_wav_loader" "${CORPUS_DIR}"

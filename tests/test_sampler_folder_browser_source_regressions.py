@@ -34,6 +34,8 @@ def main() -> None:
             "loose sample discovery must recurse without replacing the registry later")
     require("nameToId_" not in index_h and "std::map" not in index_h,
             "recursive catalog must not duplicate every basename in a second map")
+    require("fileSizeBytes" in index_h,
+            "indexed WAV metadata must retain file size for filesystem-free rendering")
 
     scan = function_body(
         index_cpp,
@@ -110,6 +112,8 @@ def main() -> None:
             "browser rendering must stay free of filesystem/loading work")
     require('label = "< .."' in draw and 'label = "> "' in draw,
             "browser must visibly distinguish parent and directory entries")
+    require("compactFileSize(file->fileSizeBytes)" in draw,
+            "browser file rows must display indexed WAV file size")
 
     browser_input = function_body(
         page,

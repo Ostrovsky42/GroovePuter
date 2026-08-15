@@ -422,25 +422,9 @@ void setup() {
   g_lastLiveInputEpoch = g_miniAcid->liveInputEpoch();
   markBootStage(51, "after MiniAcid::init");
 
-  // Scan samples from SD card (SD initialized by engine->init->sceneStorage)
-  screenLog("6b. Scan /sd/samples...");
-  markBootStage(60, "before sample scan");
-  g_miniAcid->sampleIndex.scanDirectory("/sd/samples");
-  
-  if (g_miniAcid->sampleIndex.getFiles().empty()) {
-     // Fallback: try different path if /sd/samples is not right
-     g_miniAcid->sampleIndex.scanDirectory("/samples");
-  }
-  markBootStage(61, "after sample scan");
-
-  for (const auto& file : g_miniAcid->sampleIndex.getFiles()) {
-      Serial.printf("Found sample: %s (id=%u)\n", file.filename.c_str(), file.id.value);
-      // Register with RamSampleStore. 
-      // Note: "registerFile" just stores the path for lazy loading.
-      g_sampleStore.registerFile(file.id, file.fullPath);
-  }
-
-  
+  // Sample discovery and registry binding already belong to the SD-ready hook
+  // before Scene restore. A second scan here clears the live index and a
+  // second register pass duplicates every path on the constrained heap.
   Serial.println("7a. UI Instance Created");
   markBootStage(70, "before MiniAcidDisplay alloc");
   g_miniDisplay = new (std::nothrow) MiniAcidDisplay(

@@ -143,6 +143,12 @@ bool RamSampleStore::registerFile(SampleId id, const std::string& path) {
   return false;
 }
 
+bool RamSampleStore::bindSampleIndex(const SampleIndex* index) {
+  if (index == nullptr) return false;
+  sampleIndex_ = index;
+  return true;
+}
+
 bool RamSampleStore::preload(SampleId id) {
   // 1. Check if already loaded and fully published.
   for (auto& slot : slots_) {
@@ -158,11 +164,15 @@ bool RamSampleStore::preload(SampleId id) {
   {
     std::lock_guard<std::mutex> lk(pathsMutex_);
     auto it = filePaths_.find(id.value);
-    if (it == filePaths_.end()) {
-      printf("Preload: ID %u not found in registry\n", id.value);
-      return false;
-    }
-    path = it->second;
+    if (it != filePaths_.end()) path = it->second;
+  }
+  if (path.empty() && sampleIndex_ != nullptr) {
+    const SampleFileInfo* file = sampleIndex_->resolveRuntimeFile(id);
+    if (file != nullptr) path = file->fullPath;
+  }
+  if (path.empty()) {
+    printf("Preload: ID %u not found in registry\n", id.value);
+    return false;
   }
 
   printf("Preload: Loading %s ...\n", path.c_str());

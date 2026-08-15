@@ -66,7 +66,7 @@ bool isWavName(const std::string& name) {
 }
 
 void populateLegacySampleId(SampleFileInfo& info) {
-  info.id.value = SampleIndex::calculateHash(info.filename.c_str());
+  info.id.value = SampleIndex::calculateHash(info.filename().data());
 }
 
 void logDiscoveredSample(const SampleFileInfo& info) {
@@ -102,9 +102,10 @@ void SampleIndex::scanDirectory(const std::string& dirPath) {
 
   std::sort(files_.begin(), files_.end(),
             [](const SampleFileInfo& a, const SampleFileInfo& b) {
-              if (a.filename != b.filename) return a.filename < b.filename;
+              if (a.filename() != b.filename()) return a.filename() < b.filename();
               return a.fullPath < b.fullPath;
             });
+  files_.shrink_to_fit();
 
   printf("SampleIndex::scanDirectory: Found %zu files\n", files_.size());
 }
@@ -142,6 +143,9 @@ void SampleIndex::scanDirectoryRecursive(const std::string& dirPath, int depth) 
 
     const std::string name = baseName(entry.name());
     const bool directory = entry.isDirectory();
+    const uint32_t fileSizeBytes = directory
+        ? 0
+        : static_cast<uint32_t>(entry.size());
     entry.close();
 
     if (name.empty() || isHiddenName(name)) continue;
@@ -155,7 +159,7 @@ void SampleIndex::scanDirectoryRecursive(const std::string& dirPath, int depth) 
     if (!isWavName(name)) continue;
 
     SampleFileInfo info;
-    info.filename = name;
+    info.fileSizeBytes = fileSizeBytes;
     info.fullPath = fullPath;
     populateLegacySampleId(info);
 
@@ -200,7 +204,10 @@ void SampleIndex::scanDirectoryRecursive(const std::string& dirPath, int depth) 
     if (!regular || !isWavName(name)) continue;
 
     SampleFileInfo info;
-    info.filename = name;
+    struct stat fileStat {};
+    if (lstat(fullPath.c_str(), &fileStat) == 0) {
+      info.fileSizeBytes = static_cast<uint32_t>(fileStat.st_size);
+    }
     info.fullPath = fullPath;
     populateLegacySampleId(info);
 
@@ -229,7 +236,7 @@ std::vector<const SampleFileInfo*> SampleIndex::filesInDirectory(
 
   std::sort(result.begin(), result.end(),
             [](const SampleFileInfo* a, const SampleFileInfo* b) {
-              if (a->filename != b->filename) return a->filename < b->filename;
+              if (a->filename() != b->filename()) return a->filename() < b->filename();
               return a->fullPath < b->fullPath;
             });
   return result;
@@ -262,7 +269,7 @@ std::vector<std::string> SampleIndex::indexedSubdirectories(
 SampleId SampleIndex::findIdByFilename(const std::string& filename) const {
   const SampleFileInfo* match = nullptr;
   for (const auto& file : files_) {
-    if (file.filename != filename) continue;
+    if (file.filename() != filename) continue;
     if (match != nullptr && match->fullPath != file.fullPath) return {0};
     match = &file;
   }
@@ -273,7 +280,7 @@ GroovePuterSampler::SampleRef SampleIndex::findRefByFilename(
     const std::string& filename) const {
   const SampleFileInfo* match = nullptr;
   for (const auto& file : files_) {
-    if (file.filename != filename) continue;
+    if (file.filename() != filename) continue;
     if (match != nullptr && match->fullPath != file.fullPath) return {};
     match = &file;
   }
@@ -437,6 +444,7 @@ const SampleFileInfo* SampleIndex::resolveRuntimeFile(
 SampleRegistryBindResult SampleIndex::bindToStore(ISampleStore& store) const {
   SampleRegistryBindResult result{};
   result.discovered = files_.size();
+  const bool indexBackedStore = store.bindSampleIndex(this);
 
   for (const auto& file : files_) {
     const auto stableRef = calculateStableRef(file.fullPath);
@@ -455,7 +463,7 @@ SampleRegistryBindResult SampleIndex::bindToStore(ISampleStore& store) const {
       continue;
     }
 
-    if (!store.registerFile(runtimeId, file.fullPath)) {
+    if (!indexBackedStore && !store.registerFile(runtimeId, file.fullPath)) {
       ++result.rejectedStore;
       continue;
     }
