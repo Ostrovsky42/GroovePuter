@@ -57,6 +57,7 @@ enum class UiStatusOutput : uint8_t {
     Internal = 3,
     Layer = 4,
     Legacy = 5,
+    TrackMidi = 6,
 };
 
 inline uint16_t normalizeUiStatusBpm(int bpm) {
@@ -213,11 +214,12 @@ inline const char* uiStatusClockToken(UiStatusClock clock) {
 inline const char* uiStatusOutputToken(UiStatusOutput output) {
     switch (output) {
         case UiStatusOutput::InternalAndMidi: return "BOTH";
-        case UiStatusOutput::Midi: return "[M]";
+        case UiStatusOutput::Midi: return "MIDI";
         case UiStatusOutput::Unknown: return "OUT?";
         case UiStatusOutput::Internal: return "[I]";
         case UiStatusOutput::Layer: return "[L]";
         case UiStatusOutput::Legacy: return "[-]";
+        case UiStatusOutput::TrackMidi: return "[M]";
     }
     return "OUT?";
 }
@@ -253,7 +255,7 @@ inline UiStatusOutput uiStatusCanonicalTrackOutput(
         case GroovePuterOutput::Mode::Internal:
             return UiStatusOutput::Internal;
         case GroovePuterOutput::Mode::Midi:
-            return UiStatusOutput::Midi;
+            return UiStatusOutput::TrackMidi;
         case GroovePuterOutput::Mode::Layer:
             return UiStatusOutput::Layer;
     }
