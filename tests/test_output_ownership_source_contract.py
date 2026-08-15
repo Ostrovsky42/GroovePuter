@@ -176,6 +176,29 @@ def test_alt_o_ui_uses_existing_audio_guards_and_dirty_state() -> None:
             "Drums output change must give an explicit toast")
 
 
+def test_status_chrome_exposes_compact_track_output() -> None:
+    chrome = (ROOT / "src/ui/ui_status_chrome.h").read_text(encoding="utf-8")
+
+    require('"src/output/output_ownership.h"' in chrome,
+            "status chrome must read the canonical OutputOwnership owner")
+    for token in ('"[I]"', '"[M]"', '"[L]"', '"[-]"'):
+        require(token in chrome,
+                f"status chrome must expose compact output token {token}")
+    require("UiStatusContext::SynthA" in chrome and
+            "Track::SynthA" in chrome and
+            "UiStatusContext::SynthB" in chrome and
+            "Track::SynthB" in chrome and
+            "UiStatusContext::Drums" in chrome and
+            "Track::Drums" in chrome,
+            "status chrome must map Synth A/B and Drums to their canonical owners")
+    require("hasExplicitMode(track)" in chrome and "UiStatusOutput::Legacy" in chrome,
+            "legacy Scenes must show a compact unset marker without a fourth mode")
+    require("sceneRevisionSnapshot" in chrome and "UiStatusDirtyStamp" in chrome,
+            "cached status chrome must refresh on every output Scene mutation")
+    require("uiStatusCanonicalTrackOutput(status)" in chrome,
+            "formatted status line must use the canonical track output")
+
+
 def test_sampler_layer_label_remains_source_layer() -> None:
     sampler = (ROOT / "src/ui/pages/sampler_page.cpp").read_text(encoding="utf-8")
     require("LAYER" in sampler and "samplerTrack" in sampler,
@@ -205,6 +228,7 @@ if __name__ == "__main__":
     test_transition_cleanup_reuses_existing_dispatcher()
     test_scene_persistence_is_transactional_and_composed()
     test_alt_o_ui_uses_existing_audio_guards_and_dirty_state()
+    test_status_chrome_exposes_compact_track_output()
     test_sampler_layer_label_remains_source_layer()
     test_no_new_routing_framework()
     print("Output ownership source contract: PASS")
