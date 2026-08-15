@@ -76,6 +76,29 @@ class PatternLockedDrumContainer : public Container {
 #undef drawStandardFooter
 
 bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
+  // Global Drum Feel replaces the owning DrumSynthVoice when Character changes.
+  // That object is read by AudioTask for every rendered sample, so the existing
+  // page AudioGuard must stop the renderer at a block boundary before the legacy
+  // handler performs setDrumEngine(). Other Feel rows keep their old realtime
+  // path and global navigation must not acquire the guard.
+  if (activePageIndex() == 1 &&
+      ui_event.event_type == GROOVEPUTER_KEY_DOWN &&
+      !UIInput::isGlobalNav(ui_event)) {
+    std::shared_ptr<Container> feel = getPagePtr(1);
+    std::shared_ptr<Container> main = getPagePtr(0);
+    if (feel && main) {
+      auto* feelPage = static_cast<GlobalDrumFeelPage*>(feel.get());
+      auto* mainPage = static_cast<DrumSequencerMainPage*>(main.get());
+      if (feelPage->selected_row_ == 0 && mainPage->audio_guard_) {
+        bool handled = false;
+        mainPage->audio_guard_([&]() {
+          handled = handleEventLegacy(ui_event);
+        });
+        return handled;
+      }
+    }
+  }
+
   // Only the first tab is the DrumSequencerMainPage. All other drum tabs keep
   // their previous handlers and must not inherit the pattern-grid bindings.
   if (activePageIndex() != 0 ||
