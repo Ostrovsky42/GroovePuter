@@ -7,6 +7,7 @@
 
 class SamplerPage : public IPage {
  public:
+  SamplerPage(MiniAcid& mini_acid, AudioGuard audio_guard);
   SamplerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
   bool handleEvent(UIEvent& ui_event) override;
@@ -30,7 +31,6 @@ class SamplerPage : public IPage {
   int assignedPadCount() const;
   void prelisten();
 
-  IGfx& gfx_;
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
   std::string title_ = "SAMPLES";
