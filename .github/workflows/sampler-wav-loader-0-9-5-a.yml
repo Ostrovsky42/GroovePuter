@@ -1,0 +1,38 @@
+name: Sampler WAV loader 0.9.5-A
+
+on:
+  pull_request:
+    paths:
+      - "src/sampler/sample_loader.cpp"
+      - "src/sampler/sample_loader.h"
+      - "src/sampler/ram_sample_store.cpp"
+      - "tests/generate_sampler_wav_corpus.py"
+      - "tests/test_sampler_wav_loader.cpp"
+      - "tests/run_sampler_wav_loader_tests.sh"
+      - "docs/releases/0_9_5_A_WAV_LOADER.md"
+      - ".github/workflows/sampler-wav-loader-0-9-5-a.yml"
+  push:
+    branches:
+      - dev_0.9.5
+    paths:
+      - "src/sampler/sample_loader.cpp"
+      - "src/sampler/sample_loader.h"
+      - "src/sampler/ram_sample_store.cpp"
+      - "tests/generate_sampler_wav_corpus.py"
+      - "tests/test_sampler_wav_loader.cpp"
+      - "tests/run_sampler_wav_loader_tests.sh"
+      - "docs/releases/0_9_5_A_WAV_LOADER.md"
+      - ".github/workflows/sampler-wav-loader-0-9-5-a.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wav-loader-host:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run hardened WAV loader regression corpus
+        run: bash tests/run_sampler_wav_loader_tests.sh

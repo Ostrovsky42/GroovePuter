@@ -44,13 +44,19 @@ require(boot_tab, "bindToStore(g_sampleStore)", "sampler_boot_registry.ino")
 require(boot_tab, "g_miniAcidInstance.sampleStore = &g_sampleStore", "sampler_boot_registry.ino")
 assert "preload(" not in boot_tab
 assert "loadWavFile" not in boot_tab
+assert "sampleIndex.scanDirectory" not in sketch
+assert "g_sampleStore.registerFile" not in sketch
 
 # Stable SampleRef still validates every binding. D may choose a collision-safe
 # compact runtime ID, but RamSampleStore must never accept last-write-wins ID
 # ownership.
 require(index_cpp, "calculateStableRef(file.fullPath)", "sample_index.cpp")
 require(index_cpp, "runtimeIdForFile(file)", "sample_index.cpp")
-require(index_cpp, "store.registerFile(runtimeId, file.fullPath)", "sample_index.cpp")
+require(index_cpp, "store.bindSampleIndex(this)", "sample_index.cpp")
+require(index_cpp,
+        "!indexBackedStore && !store.registerFile(runtimeId, file.fullPath)",
+        "sample_index.cpp")
+require(store_cpp, "sampleIndex_->resolveRuntimeFile(id)", "ram_sample_store.cpp")
 require(store_cpp, "refusing conflicting ID", "ram_sample_store.cpp")
 assert "filePaths_[id.value] = path" not in store_cpp
 

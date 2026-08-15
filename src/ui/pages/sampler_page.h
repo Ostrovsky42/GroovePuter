@@ -5,6 +5,8 @@
 #include "../ui_utils.h"
 #include "src/state/scene_revision.h"
 
+struct SampleFileInfo;
+
 class SamplerPage : public IPage {
  public:
   SamplerPage(MiniAcid& mini_acid, AudioGuard audio_guard);
@@ -25,11 +27,20 @@ class SamplerPage : public IPage {
 
   void initComponents();
   void adjustFocusedElement(int direction);
+  bool assignIndexedSample(const SampleFileInfo& candidate);
   bool selectIndexedSample(int direction);
   bool clearCurrentPad();
   void toggleSampleLayer();
   int assignedPadCount() const;
   void prelisten();
+
+  void openSampleBrowser();
+  void closeSampleBrowser();
+  void refreshSampleBrowser();
+  void drawSampleBrowser(IGfx& gfx);
+  bool handleSampleBrowserEvent(UIEvent& ui_event);
+  bool activateSampleBrowserSelection();
+  bool browserGoParent();
 
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
@@ -41,6 +52,15 @@ class SamplerPage : public IPage {
   // 0.9.3 exposes only the eight sampler pads wired into the drum sequencer.
   // Pads 9..16 remain internal/reserved until later productization.
   static constexpr int kRecoveredPadCount = 8;
+
+  // Folder browser is a control-side view over SampleIndex. It never rescans
+  // SD and never replaces the global registry while the page is active.
+  bool sample_browser_open_ = false;
+  std::string browser_dir_;
+  std::vector<std::string> browser_subdirs_;
+  std::vector<const SampleFileInfo*> browser_files_;
+  int browser_selection_ = 0;
+  int browser_scroll_offset_ = 0;
 
   std::shared_ptr<LabelValueComponent> layer_ctrl_;
   std::shared_ptr<LabelValueComponent> pad_ctrl_;

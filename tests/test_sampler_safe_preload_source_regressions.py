@@ -27,30 +27,37 @@ def main() -> None:
     ram_store = read("src/sampler/ram_sample_store.cpp")
     loader = read("src/sampler/sample_loader.cpp")
 
+    assignment = function_body(
+        page,
+        "bool SamplerPage::assignIndexedSample(const SampleFileInfo& candidate)",
+        "bool SamplerPage::selectIndexedSample(int direction)",
+    )
     selection = function_body(
         page,
         "bool SamplerPage::selectIndexedSample(int direction)",
-        "void SamplerPage::adjustFocusedElement(int direction)",
+        "bool SamplerPage::clearCurrentPad()",
     )
 
-    preload_pos = selection.index("sampleStore->preload(candidateId)")
-    guard_pos = selection.index("withAudioGuard([&]()", preload_pos)
-    assign_pos = selection.index(".id = candidateId", guard_pos)
+    preload_pos = assignment.index("sampleStore->preload(candidateId)")
+    guard_pos = assignment.index("withAudioGuard([&]()", preload_pos)
+    assign_pos = assignment.index(".id = candidateId", guard_pos)
     require(preload_pos < guard_pos < assign_pos,
             "WAV preload must complete before the short guarded pad publication")
-    require("mini_acid_.sampleStore->preload(candidateId)" in selection and
-            "if (mini_acid_.sampleStore->preload(candidateId))" in selection,
+    require("!mini_acid_.sampleStore->preload(candidateId)" in assignment,
             "sample assignment must validate preload success")
-    require("previous pad assignment kept" in selection,
+    require("preload failed; previous pad assignment kept" in assignment,
             "failed preload must preserve the previous valid pad assignment")
-    require("for (int attempt = 0; attempt < fileCount; ++attempt)" in selection and
-            "preload failed; trying next candidate" in selection,
-            "failed candidates must be skipped so arrows cannot trap the user")
-    require("return true;" in selection[guard_pos:assign_pos + 80] and
-            "return false;" in selection[assign_pos:],
+    require("return true;" in assignment[assign_pos:],
             "only a successfully preloaded candidate may publish candidateId")
 
-    # Prevent the historical regression even if code is later rearranged.
+    require("filesInDirectory(browser_dir_)" in selection,
+            "quick sample arrows must remain scoped to the current browser folder")
+    require("for (int attempt = 0; attempt < fileCount; ++attempt)" in selection and
+            "assignIndexedSample(candidate)" in selection,
+            "failed candidates must be skipped so arrows cannot trap the user")
+
+    # Prevent the historical realtime regression even if page code is later
+    # rearranged.
     guarded_blocks = re.findall(
         r"withAudioGuard\(\[&\]\(\)\s*\{(.*?)\}\);",
         page,
@@ -68,60 +75,94 @@ def main() -> None:
     require("Main Thread: Request to load a sample into RAM" in store_h,
             "ISampleStore must keep preload explicitly control-thread owned")
 
-    # inspectWavFileBounded() and loadWavFileBounded() must share the same
-    # metadata parser. The probe path itself may not allocate PCM, and the
-    # decoder must finish metadata admission before its first allocation/read.
-    parser_start = loader.index("bool probeWavMetadata(")
-    parser_end = loader.index("\n}  // namespace", parser_start)
-    parser = loader[parser_start:parser_end]
+    # 0.9.5-A replaces the 0.9.3 private probe with a public inspect/decode
+    # contract. The parser itself must stay allocation-free and must bound RIFF
+    # traversal including mandatory even-byte chunk padding.
+    parser = function_body(
+        loader,
+        "bool inspectOpenFile(WavFile& file, WavInspectResult& result,",
+        "int16_t decodeLe16(const uint8_t* p)",
+    )
     require("SAMPLE_MALLOC" not in parser and "malloc(" not in parser,
-            "shared WAV metadata parser must never allocate PCM")
-    require("truncated data payload" in parser,
-            "shared metadata parser must reject physically truncated data")
-    require("decodedBytes > maxDecodedBytes" in parser,
-            "shared metadata parser must enforce decoded-byte admission")
+            "WAV inspection/parser must never allocate PCM")
+    require("chunkSize & 1u" in parser and "paddedBytes" in parser,
+            "RIFF traversal must account for odd-sized chunk padding")
+    require("riffEnd > physicalSize" in parser,
+            "declared RIFF size must be bounded by physical file size")
+    require("paddedBytes > riffEnd - payloadOffset" in parser,
+            "chunk payload/padding must be bounded by declared RIFF end")
+    require("decodedBytes64 > maxDecodedBytes" in parser,
+            "inspection must enforce explicit decoded-byte admission")
+    require("channels != 1 && channels != 2" in parser,
+            "0.9.5-A must accept exactly mono/stereo source channels")
+    require("audioFormat != 1 || bitsPerSample != 16" in parser,
+            "0.9.5-A must remain PCM16-only")
+    require("byteRate = readLe32(fmt + 8)" in parser and
+            "expectedByteRate64" in parser and
+            "byteRate != static_cast<uint32_t>(expectedByteRate64)" in parser,
+            "PCM fmt byteRate must exactly match sampleRate * blockAlign")
+    require("if (fmtFound)" in parser and "if (dataFound)" in parser,
+            "duplicate required fmt/data chunks must fail closed")
+    require("if (fmtFound && dataFound) break;" not in parser,
+            "parser must traverse the complete declared RIFF after required chunks")
+    require("malformed trailing chunks" in parser,
+            "full-RIFF traversal intent must remain explicit in source")
 
-    inspect_start = loader.index("bool inspectWavFileBounded(")
-    bounded_start = loader.index("bool loadWavFileBounded(", inspect_start)
-    inspect = loader[inspect_start:bounded_start]
-    require("probeWavMetadata(path, probe, maxDecodedBytes)" in inspect,
-            "allocation-free inspect must use the shared WAV metadata parser")
+    inspect = function_body(
+        loader,
+        "bool inspectWavFileBounded(const char* path, WavInspectResult& out,",
+        "bool decodeWavFileBounded(const char* path, const WavInspectResult& inspected,",
+    )
+    require("inspectOpenFile(file, out, maxDecodedBytes, error)" in inspect,
+            "public allocation-free inspect must use the hardened parser")
 
-    wrapper_start = loader.index("\nbool loadWavFile(", bounded_start)
-    bounded = loader[bounded_start:wrapper_start]
-    admission_pos = bounded.index("probeWavMetadata(path, probe, maxDecodedBytes)")
-    allocation_pos = bounded.index("SAMPLE_MALLOC_PSRAM(rawBytes)")
-    payload_pos = bounded.index("Data-chunk read starts only after shared metadata admission")
-    require(admission_pos < allocation_pos < payload_pos,
-            "shared metadata admission must happen before PCM allocation/data read")
+    decode = function_body(
+        loader,
+        "bool decodeWavFileBounded(const char* path, const WavInspectResult& inspected,",
+        "bool inspectWavFileBounded(const char* path, WavInfo& outInfo,",
+    )
+    recheck_pos = decode.index("inspectOpenFile(file, current, maxDecodedBytes, &inspectError)")
+    changed_pos = decode.index("sameInspectResult(inspected, current)", recheck_pos)
+    allocation_pos = decode.index("SAMPLE_MALLOC_PSRAM(current.decodedBytes)", changed_pos)
+    require(recheck_pos < changed_pos < allocation_pos,
+            "decode must revalidate admitted metadata before PCM allocation")
+    require("uint8_t scratch[kStereoScratchBytes]" in decode and
+            "kStereoScratchBytes = 512" in loader,
+            "stereo decode must use bounded chunk scratch")
+    require("SAMPLE_MALLOC_PSRAM(current.sourceDataBytes)" not in decode,
+            "stereo source payload must never receive a full transient allocation")
 
-    # Near-full-pool admission is two-pass: metadata-only inspection first,
-    # then LRU reclamation/slot admission, then decode with the actual remaining
-    # pool capacity. The old allocate-then-evict order must not return.
+    # Near-full-pool admission remains two-pass, but production now consumes the
+    # split API directly: inspect -> LRU/slot admission -> decode.
     preload_body = function_body(
         ram_store,
         "bool RamSampleStore::preload(SampleId id)",
         "void RamSampleStore::evictLRU()",
     )
     inspect_pos = preload_body.index(
-        "inspectWavFileBounded(path.c_str(), inspectedInfo, maxPoolBytes_)")
-    evict_pos = preload_body.index("evictLRU();", inspect_pos)
+        "inspectWavFileBounded(path.c_str(), inspected, maxPoolBytes_,")
+    required_pos = preload_body.index(
+        "const std::size_t requiredSize = inspected.decodedBytes;", inspect_pos)
+    evict_pos = preload_body.index("evictLRU();", required_pos)
     budget_pos = preload_body.index(
         "const std::size_t decodeBudget = freePoolBytes();", evict_pos)
     decode_pos = preload_body.index(
-        "loadWavFileBounded(path.c_str(), info, &pcm, decodeBudget)", budget_pos)
-    require(inspect_pos < evict_pos < budget_pos < decode_pos,
-            "RamSampleStore must inspect and evict before WAV decode/allocation")
+        "decodeWavFileBounded(path.c_str(), inspected, &pcm, decodeBudget,",
+        budget_pos)
+    require(inspect_pos < required_pos < evict_pos < budget_pos < decode_pos,
+            "RamSampleStore must inspect/admit/evict before split WAV decode")
     require("currentPoolUsage_ + requiredSize > maxPoolBytes_" in preload_body,
-            "RamSampleStore must reclaim capacity based on probed decoded size")
+            "RamSampleStore must reclaim capacity using inspected decoded bytes")
     require("Pool is busy; no evictable sample slots" in preload_body,
             "busy referenced pool must fail before decode allocation")
+    require("loadWavFileBounded(" not in preload_body,
+            "production preload must not re-enter the combined compatibility wrapper")
 
-    # 0.9.3 deliberately removes the unsafe historical kit shortcut rather
-    # than leaving a second scan/register/preload path with different rules.
+    # The folder browser is allowed in this A checkpoint, but the unsafe old
+    # heuristic KIT LOAD path remains forbidden.
     require("loadKit(" not in page and "openLoadKitDialog" not in page and
             "kit_ctrl_" not in page_h,
-            "0.9.3 must not expose the old unsafe KIT LOAD path")
+            "folder browsing must not reintroduce the old unsafe KIT LOAD path")
 
     # No filesystem/loading work belongs in the render/trigger stack.
     for path in (

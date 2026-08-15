@@ -1,5 +1,5 @@
-#include "../audio/audio_config.h"
-#include "sample_store.h"
+#include "sample_loader.h"
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdio>
@@ -21,293 +21,426 @@
 
 namespace {
 
-struct WavRiffHeader {
-  char riff[4];
-  uint32_t totalSize;
-  char wave[4];
+constexpr uint64_t kRiffHeaderBytes = 12;
+constexpr uint64_t kChunkHeaderBytes = 8;
+constexpr uint32_t kPcmFmtBytes = 16;
+constexpr std::size_t kStereoScratchBytes = 512;
+
+void setError(WavLoadError* error, WavLoadError value) {
+  if (error != nullptr) *error = value;
+}
+
+uint16_t readLe16(const uint8_t* p) {
+  return static_cast<uint16_t>(p[0]) |
+         (static_cast<uint16_t>(p[1]) << 8);
+}
+
+uint32_t readLe32(const uint8_t* p) {
+  return static_cast<uint32_t>(p[0]) |
+         (static_cast<uint32_t>(p[1]) << 8) |
+         (static_cast<uint32_t>(p[2]) << 16) |
+         (static_cast<uint32_t>(p[3]) << 24);
+}
+
+class WavFile {
+ public:
+  bool open(const char* path) {
+#if USE_SD_OPEN
+    file_ = SD.open(path, FILE_READ);
+    if (!file_) return false;
+    size_ = static_cast<uint64_t>(file_.size());
+    return true;
+#else
+    file_ = fopen(path, "rb");
+    if (file_ == nullptr) return false;
+    if (fseek(file_, 0, SEEK_END) != 0) {
+      close();
+      return false;
+    }
+    const long end = ftell(file_);
+    if (end < 0 || fseek(file_, 0, SEEK_SET) != 0) {
+      close();
+      return false;
+    }
+    size_ = static_cast<uint64_t>(end);
+    return true;
+#endif
+  }
+
+  ~WavFile() { close(); }
+
+  void close() {
+#if USE_SD_OPEN
+    if (file_) file_.close();
+#else
+    if (file_ != nullptr) {
+      fclose(file_);
+      file_ = nullptr;
+    }
+#endif
+  }
+
+  uint64_t size() const { return size_; }
+
+  bool seek(uint64_t offset) {
+    if (offset > size_) return false;
+#if USE_SD_OPEN
+    if (offset > std::numeric_limits<uint32_t>::max()) return false;
+    return file_.seek(static_cast<uint32_t>(offset));
+#else
+    if (offset > static_cast<uint64_t>(std::numeric_limits<long>::max())) {
+      return false;
+    }
+    return fseek(file_, static_cast<long>(offset), SEEK_SET) == 0;
+#endif
+  }
+
+  bool readExact(void* dst, std::size_t bytes) {
+    if (bytes == 0) return true;
+#if USE_SD_OPEN
+    return file_.read(reinterpret_cast<uint8_t*>(dst), bytes) == bytes;
+#else
+    return fread(dst, 1, bytes, file_) == bytes;
+#endif
+  }
+
+ private:
+#if USE_SD_OPEN
+  File file_;
+#else
+  FILE* file_ = nullptr;
+#endif
+  uint64_t size_ = 0;
 };
 
-struct WavFmtChunk {
-  char fmt[4];
-  uint32_t chunkSize;
-  uint16_t audioFormat;
-  uint16_t numChannels;
-  uint32_t sampleRate;
-  uint32_t byteRate;
-  uint16_t blockAlign;
-  uint16_t bitsPerSample;
-};
+bool sameInspectResult(const WavInspectResult& a, const WavInspectResult& b) {
+  return a.info.sampleRate == b.info.sampleRate &&
+         a.info.channels == b.info.channels &&
+         a.info.bitsPerSample == b.info.bitsPerSample &&
+         a.info.numFrames == b.info.numFrames &&
+         a.sourceChannels == b.sourceChannels &&
+         a.sourceDataBytes == b.sourceDataBytes &&
+         a.dataOffset == b.dataOffset &&
+         a.decodedBytes == b.decodedBytes;
+}
 
-struct WavChunkHeader {
-  char id[4];
-  uint32_t size;
-};
-
-struct WavProbeResult {
-  WavInfo info{};
-  uint16_t sourceChannels = 0;
-  uint32_t dataBytes = 0;
-  uint64_t dataOffset = 0;
-  std::size_t decodedBytes = 0;
-};
-
-// Shared 0.9.3 metadata parser used by both the allocation-free probe and the
-// bounded decoder. It intentionally preserves the current loader's accepted
-// RIFF subset. Full odd-chunk padding/order hardening remains 0.9.5-A.
-bool probeWavMetadata(const char* path, WavProbeResult& result,
-                      std::size_t maxDecodedBytes) {
-  if (path == nullptr) return false;
+bool inspectOpenFile(WavFile& file, WavInspectResult& result,
+                     std::size_t maxDecodedBytes, WavLoadError* error) {
   result = {};
 
-#if USE_SD_OPEN
-  File f = SD.open(path, FILE_READ);
-  if (!f) {
-    printf("loadWavFile: SD.open failed for %s\n", path);
+  const uint64_t physicalSize = file.size();
+  if (physicalSize < kRiffHeaderBytes) {
+    setError(error, WavLoadError::Truncated);
     return false;
   }
-  const uint64_t physicalSize = static_cast<uint64_t>(f.size());
-  auto closeFile = [&]() { f.close(); };
-#else
-  FILE* f = fopen(path, "rb");
-  if (!f) {
-    printf("loadWavFile: fopen failed for %s\n", path);
-    return false;
-  }
-  if (fseek(f, 0, SEEK_END) != 0) {
-    fclose(f);
-    return false;
-  }
-  const long endPos = ftell(f);
-  if (endPos < 0 || fseek(f, 0, SEEK_SET) != 0) {
-    fclose(f);
-    return false;
-  }
-  const uint64_t physicalSize = static_cast<uint64_t>(endPos);
-  auto closeFile = [&]() { fclose(f); };
-#endif
 
-  WavRiffHeader riff{};
-#if USE_SD_OPEN
-  if (f.read(reinterpret_cast<uint8_t*>(&riff), sizeof(riff)) != sizeof(riff)) {
-    closeFile();
+  uint8_t riff[12]{};
+  if (!file.seek(0) || !file.readExact(riff, sizeof(riff))) {
+    setError(error, WavLoadError::IoError);
     return false;
   }
-#else
-  if (fread(&riff, 1, sizeof(riff), f) != sizeof(riff)) {
-    closeFile();
+  if (memcmp(riff, "RIFF", 4) != 0 || memcmp(riff + 8, "WAVE", 4) != 0) {
+    setError(error, WavLoadError::InvalidRiff);
     return false;
   }
-#endif
 
-  if (strncmp(riff.riff, "RIFF", 4) != 0 ||
-      strncmp(riff.wave, "WAVE", 4) != 0) {
-    printf("loadWavFile: Invalid RIFF/WAVE header\n");
-    closeFile();
+  const uint64_t declaredRiffBytes = static_cast<uint64_t>(readLe32(riff + 4));
+  if (declaredRiffBytes < 4) {
+    setError(error, WavLoadError::InvalidRiff);
+    return false;
+  }
+  const uint64_t riffEnd = declaredRiffBytes + 8u;
+  if (riffEnd < kRiffHeaderBytes || riffEnd > physicalSize) {
+    setError(error, WavLoadError::Truncated);
     return false;
   }
 
   bool fmtFound = false;
   bool dataFound = false;
-  WavFmtChunk fmt{};
+  uint16_t audioFormat = 0;
+  uint16_t channels = 0;
+  uint32_t sampleRate = 0;
+  uint32_t byteRate = 0;
+  uint16_t blockAlign = 0;
+  uint16_t bitsPerSample = 0;
 
-#if USE_SD_OPEN
-  while (!dataFound && f.available()) {
-    WavChunkHeader header{};
-    if (f.read(reinterpret_cast<uint8_t*>(&header), sizeof(header)) != sizeof(header)) break;
-
-    if (strncmp(header.id, "fmt ", 4) == 0) {
-      const std::size_t toRead =
-          std::min<std::size_t>(header.size, sizeof(fmt) - 8);
-      if (f.read(reinterpret_cast<uint8_t*>(&fmt.audioFormat), toRead) != toRead) break;
-      if (header.size > toRead &&
-          !f.seek(f.position() + static_cast<uint32_t>(header.size - toRead))) {
-        break;
-      }
-      fmtFound = true;
-      printf("loadWavFile: Found fmt. AudioFormat=%d Channels=%d Rate=%d Bits=%d\n",
-             fmt.audioFormat, fmt.numChannels, fmt.sampleRate, fmt.bitsPerSample);
-    } else if (strncmp(header.id, "data", 4) == 0) {
-      result.dataBytes = header.size;
-      result.dataOffset = static_cast<uint64_t>(f.position());
-      dataFound = true;
-      printf("loadWavFile: Found data size=%u\n", result.dataBytes);
-    } else {
-      if (!f.seek(f.position() + header.size)) break;
+  uint64_t cursor = kRiffHeaderBytes;
+  while (cursor < riffEnd) {
+    if (riffEnd - cursor < kChunkHeaderBytes) {
+      setError(error, WavLoadError::Truncated);
+      return false;
     }
-  }
-#else
-  while (!dataFound && !feof(f)) {
-    WavChunkHeader header{};
-    if (fread(&header, 1, sizeof(header), f) != sizeof(header)) break;
 
-    if (strncmp(header.id, "fmt ", 4) == 0) {
-      const std::size_t toRead =
-          std::min<std::size_t>(header.size, sizeof(fmt) - 8);
-      if (fread(&fmt.audioFormat, 1, toRead, f) != toRead) break;
-      if (header.size > toRead &&
-          fseek(f, static_cast<long>(header.size - toRead), SEEK_CUR) != 0) {
-        break;
-      }
-      fmtFound = true;
-      printf("loadWavFile: Found fmt. AudioFormat=%d Channels=%d Rate=%d Bits=%d\n",
-             fmt.audioFormat, fmt.numChannels, fmt.sampleRate, fmt.bitsPerSample);
-    } else if (strncmp(header.id, "data", 4) == 0) {
-      const long pos = ftell(f);
-      if (pos < 0) break;
-      result.dataBytes = header.size;
-      result.dataOffset = static_cast<uint64_t>(pos);
-      dataFound = true;
-      printf("loadWavFile: Found data size=%u\n", result.dataBytes);
-    } else {
-      if (fseek(f, static_cast<long>(header.size), SEEK_CUR) != 0) break;
+    uint8_t header[8]{};
+    if (!file.seek(cursor) || !file.readExact(header, sizeof(header))) {
+      setError(error, WavLoadError::IoError);
+      return false;
     }
+
+    const uint32_t chunkSize = readLe32(header + 4);
+    const uint64_t payloadOffset = cursor + kChunkHeaderBytes;
+    const uint64_t paddedBytes =
+        static_cast<uint64_t>(chunkSize) + static_cast<uint64_t>(chunkSize & 1u);
+    if (payloadOffset > riffEnd || paddedBytes > riffEnd - payloadOffset) {
+      setError(error, WavLoadError::Truncated);
+      return false;
+    }
+
+    if (memcmp(header, "fmt ", 4) == 0) {
+      if (fmtFound) {
+        setError(error, WavLoadError::InvalidFormat);
+        return false;
+      }
+      if (chunkSize < kPcmFmtBytes) {
+        setError(error, WavLoadError::InvalidFormat);
+        return false;
+      }
+      uint8_t fmt[kPcmFmtBytes]{};
+      if (!file.seek(payloadOffset) || !file.readExact(fmt, sizeof(fmt))) {
+        setError(error, WavLoadError::IoError);
+        return false;
+      }
+      audioFormat = readLe16(fmt);
+      channels = readLe16(fmt + 2);
+      sampleRate = readLe32(fmt + 4);
+      byteRate = readLe32(fmt + 8);
+      blockAlign = readLe16(fmt + 12);
+      bitsPerSample = readLe16(fmt + 14);
+      fmtFound = true;
+    } else if (memcmp(header, "data", 4) == 0) {
+      if (dataFound) {
+        setError(error, WavLoadError::InvalidFormat);
+        return false;
+      }
+      result.sourceDataBytes = chunkSize;
+      result.dataOffset = payloadOffset;
+      dataFound = true;
+    }
+
+    // Traverse the complete declared RIFF boundary even after both required
+    // chunks are known. This rejects malformed trailing chunks and enforces the
+    // strict duplicate fmt/data policy deterministically.
+    cursor = payloadOffset + paddedBytes;
   }
-#endif
+
+  if (!fmtFound) {
+    setError(error, WavLoadError::MissingFmt);
+    return false;
+  }
+  if (!dataFound) {
+    setError(error, WavLoadError::MissingData);
+    return false;
+  }
+  if (audioFormat != 1 || bitsPerSample != 16) {
+    setError(error, WavLoadError::UnsupportedEncoding);
+    return false;
+  }
+  if (channels != 1 && channels != 2) {
+    setError(error, WavLoadError::UnsupportedChannels);
+    return false;
+  }
+  if (sampleRate == 0) {
+    setError(error, WavLoadError::InvalidFormat);
+    return false;
+  }
 
   const uint32_t expectedBlockAlign =
-      static_cast<uint32_t>(fmt.numChannels) * sizeof(int16_t);
-  if (!fmtFound || !dataFound || fmt.audioFormat != 1 ||
-      fmt.bitsPerSample != 16 ||
-      (fmt.numChannels != 1 && fmt.numChannels != 2) ||
-      fmt.sampleRate == 0 || fmt.blockAlign != expectedBlockAlign ||
-      result.dataBytes == 0 || result.dataBytes % expectedBlockAlign != 0) {
-    printf("loadWavFile: Format not supported (req PCM16 mono/stereo with valid frame alignment)\n");
-    closeFile();
+      static_cast<uint32_t>(channels) * sizeof(int16_t);
+  const uint64_t expectedByteRate64 =
+      static_cast<uint64_t>(sampleRate) * expectedBlockAlign;
+  if (blockAlign != expectedBlockAlign ||
+      expectedByteRate64 > std::numeric_limits<uint32_t>::max() ||
+      byteRate != static_cast<uint32_t>(expectedByteRate64) ||
+      result.sourceDataBytes == 0 ||
+      result.sourceDataBytes % expectedBlockAlign != 0) {
+    setError(error, WavLoadError::InvalidFormat);
     return false;
   }
 
-  // A metadata probe runs before RamSampleStore evicts resident samples. Reject
-  // a truncated payload here so malformed input cannot cause destructive LRU
-  // churn before the decoder discovers the missing bytes.
-  if (result.dataOffset > physicalSize ||
-      static_cast<uint64_t>(result.dataBytes) > physicalSize - result.dataOffset) {
-    printf("loadWavFile: truncated data payload\n");
-    closeFile();
+  const uint64_t frames = result.sourceDataBytes / expectedBlockAlign;
+  if (frames > std::numeric_limits<uint32_t>::max()) {
+    setError(error, WavLoadError::TooLarge);
+    return false;
+  }
+  if (frames > std::numeric_limits<uint64_t>::max() / sizeof(int16_t)) {
+    setError(error, WavLoadError::TooLarge);
+    return false;
+  }
+  const uint64_t decodedBytes64 = frames * sizeof(int16_t);
+  if (decodedBytes64 > std::numeric_limits<std::size_t>::max() ||
+      decodedBytes64 > maxDecodedBytes) {
+    setError(error, WavLoadError::TooLarge);
     return false;
   }
 
-  result.sourceChannels = fmt.numChannels;
-  result.info.sampleRate = fmt.sampleRate;
+  result.info.sampleRate = sampleRate;
   result.info.channels = 1;
   result.info.bitsPerSample = 16;
-  result.info.numFrames = result.dataBytes / expectedBlockAlign;
-
-  if (result.info.numFrames >
-      std::numeric_limits<std::size_t>::max() / sizeof(int16_t)) {
-    closeFile();
-    return false;
-  }
-
-  result.decodedBytes =
-      static_cast<std::size_t>(result.info.numFrames) * sizeof(int16_t);
-  if (result.decodedBytes > maxDecodedBytes) {
-    printf("loadWavFile: decoded sample too large: %zu > %zu bytes\n",
-           result.decodedBytes, maxDecodedBytes);
-    closeFile();
-    return false;
-  }
-
-  closeFile();
+  result.info.numFrames = static_cast<uint32_t>(frames);
+  result.sourceChannels = channels;
+  result.decodedBytes = static_cast<std::size_t>(decodedBytes64);
+  setError(error, WavLoadError::Ok);
   return true;
+}
+
+int16_t decodeLe16(const uint8_t* p) {
+  return static_cast<int16_t>(readLe16(p));
 }
 
 }  // namespace
 
+const char* wavLoadErrorName(WavLoadError error) {
+  switch (error) {
+    case WavLoadError::Ok: return "ok";
+    case WavLoadError::InvalidArgument: return "invalid-argument";
+    case WavLoadError::OpenFailed: return "open-failed";
+    case WavLoadError::IoError: return "io-error";
+    case WavLoadError::InvalidRiff: return "invalid-riff";
+    case WavLoadError::Truncated: return "truncated";
+    case WavLoadError::MissingFmt: return "missing-fmt";
+    case WavLoadError::MissingData: return "missing-data";
+    case WavLoadError::UnsupportedEncoding: return "unsupported-encoding";
+    case WavLoadError::UnsupportedChannels: return "unsupported-channels";
+    case WavLoadError::InvalidFormat: return "invalid-format";
+    case WavLoadError::TooLarge: return "too-large";
+    case WavLoadError::OutOfMemory: return "out-of-memory";
+    case WavLoadError::ChangedAfterInspect: return "changed-after-inspect";
+  }
+  return "unknown";
+}
+
+bool inspectWavFileBounded(const char* path, WavInspectResult& out,
+                           std::size_t maxDecodedBytes, WavLoadError* error) {
+  out = {};
+  setError(error, WavLoadError::Ok);
+  if (path == nullptr || path[0] == '\0') {
+    setError(error, WavLoadError::InvalidArgument);
+    return false;
+  }
+
+  WavFile file;
+  if (!file.open(path)) {
+    setError(error, WavLoadError::OpenFailed);
+    return false;
+  }
+
+  return inspectOpenFile(file, out, maxDecodedBytes, error);
+}
+
+bool decodeWavFileBounded(const char* path, const WavInspectResult& inspected,
+                          int16_t** outPcm, std::size_t maxDecodedBytes,
+                          WavLoadError* error) {
+  setError(error, WavLoadError::Ok);
+  if (path == nullptr || path[0] == '\0' || outPcm == nullptr) {
+    setError(error, WavLoadError::InvalidArgument);
+    return false;
+  }
+  *outPcm = nullptr;
+  if (inspected.decodedBytes == 0 ||
+      inspected.decodedBytes > maxDecodedBytes) {
+    setError(error, WavLoadError::TooLarge);
+    return false;
+  }
+
+  WavFile file;
+  if (!file.open(path)) {
+    setError(error, WavLoadError::OpenFailed);
+    return false;
+  }
+
+  WavInspectResult current{};
+  WavLoadError inspectError = WavLoadError::Ok;
+  if (!inspectOpenFile(file, current, maxDecodedBytes, &inspectError)) {
+    setError(error, inspectError);
+    return false;
+  }
+  if (!sameInspectResult(inspected, current)) {
+    setError(error, WavLoadError::ChangedAfterInspect);
+    return false;
+  }
+  if (!file.seek(current.dataOffset)) {
+    setError(error, WavLoadError::IoError);
+    return false;
+  }
+
+  int16_t* pcm = static_cast<int16_t*>(SAMPLE_MALLOC_PSRAM(current.decodedBytes));
+  if (pcm == nullptr) {
+    pcm = static_cast<int16_t*>(SAMPLE_MALLOC_DRAM(current.decodedBytes));
+  }
+  if (pcm == nullptr) {
+    setError(error, WavLoadError::OutOfMemory);
+    return false;
+  }
+
+  if (current.sourceChannels == 1) {
+    if (!file.readExact(pcm, current.decodedBytes)) {
+      free(pcm);
+      setError(error, WavLoadError::IoError);
+      return false;
+    }
+  } else {
+    static_assert(kStereoScratchBytes % (2 * sizeof(int16_t)) == 0,
+                  "stereo scratch must contain whole frames");
+    uint8_t scratch[kStereoScratchBytes]{};
+    uint32_t frameIndex = 0;
+    while (frameIndex < current.info.numFrames) {
+      const uint32_t remaining = current.info.numFrames - frameIndex;
+      const uint32_t scratchFrames =
+          static_cast<uint32_t>(sizeof(scratch) / (2 * sizeof(int16_t)));
+      const uint32_t framesNow = std::min(remaining, scratchFrames);
+      const std::size_t bytesNow =
+          static_cast<std::size_t>(framesNow) * 2 * sizeof(int16_t);
+      if (!file.readExact(scratch, bytesNow)) {
+        free(pcm);
+        setError(error, WavLoadError::IoError);
+        return false;
+      }
+
+      for (uint32_t i = 0; i < framesNow; ++i) {
+        const uint8_t* frame = scratch + i * 4;
+        const int32_t left = decodeLe16(frame);
+        const int32_t right = decodeLe16(frame + 2);
+        pcm[frameIndex + i] = static_cast<int16_t>((left + right) / 2);
+      }
+      frameIndex += framesNow;
+    }
+  }
+
+  *outPcm = pcm;
+  setError(error, WavLoadError::Ok);
+  return true;
+}
+
 bool inspectWavFileBounded(const char* path, WavInfo& outInfo,
                            std::size_t maxDecodedBytes) {
   outInfo = {};
-  WavProbeResult probe{};
-  if (!probeWavMetadata(path, probe, maxDecodedBytes)) return false;
-  outInfo = probe.info;
+  WavInspectResult inspected{};
+  if (!inspectWavFileBounded(path, inspected, maxDecodedBytes, nullptr)) {
+    return false;
+  }
+  outInfo = inspected.info;
   return true;
 }
 
 bool loadWavFileBounded(const char* path, WavInfo& outInfo, int16_t** outPcm,
                         std::size_t maxDecodedBytes) {
-  if (path == nullptr || outPcm == nullptr) return false;
-  *outPcm = nullptr;
   outInfo = {};
-  printf("loadWavFile: %s\n", path);
+  if (outPcm == nullptr) return false;
+  *outPcm = nullptr;
 
-  // Re-probe with the caller's actual decode budget immediately before any
-  // allocation. This catches a file changed between Store inspect/eviction and
-  // decode without permitting an over-budget allocation.
-  WavProbeResult probe{};
-  if (!probeWavMetadata(path, probe, maxDecodedBytes)) return false;
-  outInfo = probe.info;
-
-#if USE_SD_OPEN
-  if (probe.dataOffset > std::numeric_limits<uint32_t>::max()) return false;
-  File f = SD.open(path, FILE_READ);
-  if (!f) return false;
-  if (!f.seek(static_cast<uint32_t>(probe.dataOffset))) {
-    f.close();
+  WavInspectResult inspected{};
+  WavLoadError error = WavLoadError::Ok;
+  if (!inspectWavFileBounded(path, inspected, maxDecodedBytes, &error)) {
+    printf("loadWavFile: %s: %s\n", path == nullptr ? "(null)" : path,
+           wavLoadErrorName(error));
     return false;
   }
-#else
-  if (probe.dataOffset > static_cast<uint64_t>(std::numeric_limits<long>::max())) {
-    return false;
-  }
-  FILE* f = fopen(path, "rb");
-  if (!f) return false;
-  if (fseek(f, static_cast<long>(probe.dataOffset), SEEK_SET) != 0) {
-    fclose(f);
-    return false;
-  }
-#endif
-
-  const std::size_t rawBytes = static_cast<std::size_t>(probe.dataBytes);
-  int16_t* pcm = static_cast<int16_t*>(SAMPLE_MALLOC_PSRAM(rawBytes));
-  if (!pcm) {
-    printf("loadWavFile: PSRAM alloc failed, trying DRAM\n");
-    pcm = static_cast<int16_t*>(SAMPLE_MALLOC_DRAM(rawBytes));
-  }
-  if (!pcm) {
-    printf("loadWavFile: Alloc failed for %zu bytes\n", rawBytes);
-#if USE_SD_OPEN
-    f.close();
-#else
-    fclose(f);
-#endif
+  if (!decodeWavFileBounded(path, inspected, outPcm, maxDecodedBytes, &error)) {
+    printf("loadWavFile: %s: %s\n", path, wavLoadErrorName(error));
     return false;
   }
 
-  // Data-chunk read starts only after shared metadata admission.
-#if USE_SD_OPEN
-  const bool payloadOk =
-      f.read(reinterpret_cast<uint8_t*>(pcm), rawBytes) == rawBytes;
-  f.close();
-#else
-  const bool payloadOk = fread(pcm, 1, rawBytes, f) == rawBytes;
-  fclose(f);
-#endif
-
-  if (!payloadOk) {
-    printf("loadWavFile: Incomplete data read\n");
-    free(pcm);
-    return false;
-  }
-
-  if (probe.sourceChannels == 2) {
-    for (uint32_t i = 0; i < outInfo.numFrames; ++i) {
-      const int32_t left = pcm[i * 2];
-      const int32_t right = pcm[i * 2 + 1];
-      pcm[i] = static_cast<int16_t>((left + right) / 2);
-    }
-
-    // Historical 0.9.3 stereo path retained for recovery scope. Replacing the
-    // full stereo allocation + mono copy with bounded chunk-wise conversion is
-    // explicitly 0.9.5-A work.
-    int16_t* mono = static_cast<int16_t*>(SAMPLE_MALLOC_PSRAM(probe.decodedBytes));
-    if (!mono) mono = static_cast<int16_t*>(SAMPLE_MALLOC_DRAM(probe.decodedBytes));
-    if (mono) {
-      for (uint32_t i = 0; i < outInfo.numFrames; ++i) mono[i] = pcm[i];
-      free(pcm);
-      pcm = mono;
-    }
-  }
-
-  *outPcm = pcm;
+  outInfo = inspected.info;
   return true;
 }
 

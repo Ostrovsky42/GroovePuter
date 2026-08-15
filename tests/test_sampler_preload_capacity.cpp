@@ -1,4 +1,5 @@
 #include "../src/sampler/ram_sample_store.h"
+#include "../src/sampler/sample_loader.h"
 
 #include <cassert>
 #include <cstddef>
@@ -62,9 +63,8 @@ void testEvictsBeforeDecodeAllocation() {
   assert(gDecodeCalls == 1);
   assert(gProbeBudget == 32);
 
-  // Old behavior passed the whole 32-byte pool to the decoder before eviction.
-  // Correct behavior evicts the 16-byte oldest slot first, leaving 20 bytes of
-  // actual pool capacity, then permits decode/allocation with that budget.
+  // The store must evict the 16-byte oldest slot first, leaving 20 bytes of
+  // actual capacity, then permit decode/allocation with exactly that budget.
   assert(gDecodeBudget == 20);
   assert(store.usage() == 28);
   assert(store.view({1}).empty());
@@ -97,38 +97,53 @@ void testBusyPoolRejectsBeforeDecodeAllocation() {
 
 }  // namespace
 
-bool inspectWavFileBounded(const char*, WavInfo& info,
-                           std::size_t maxDecodedBytes) {
-  ++gProbeCalls;
-  gProbeBudget = maxDecodedBytes;
-  info = {};
-  info.sampleRate = 22050;
-  info.channels = 1;
-  info.bitsPerSample = 16;
-  info.numFrames = gProbeFrames;
-  const std::size_t decodedBytes =
-      static_cast<std::size_t>(info.numFrames) * sizeof(int16_t);
-  return decodedBytes <= maxDecodedBytes;
+const char* wavLoadErrorName(WavLoadError) {
+  return "preload-capacity-test-stub";
 }
 
-bool loadWavFileBounded(const char*, WavInfo& info, int16_t** outPcm,
-                        std::size_t maxDecodedBytes) {
+bool inspectWavFileBounded(const char*, WavInspectResult& inspected,
+                           std::size_t maxDecodedBytes, WavLoadError* error) {
+  ++gProbeCalls;
+  gProbeBudget = maxDecodedBytes;
+  inspected = {};
+  inspected.info.sampleRate = 22050;
+  inspected.info.channels = 1;
+  inspected.info.bitsPerSample = 16;
+  inspected.info.numFrames = gProbeFrames;
+  inspected.sourceChannels = 1;
+  inspected.sourceDataBytes = gProbeFrames * sizeof(int16_t);
+  inspected.decodedBytes =
+      static_cast<std::size_t>(gProbeFrames) * sizeof(int16_t);
+  if (inspected.decodedBytes > maxDecodedBytes) {
+    if (error != nullptr) *error = WavLoadError::TooLarge;
+    return false;
+  }
+  if (error != nullptr) *error = WavLoadError::Ok;
+  return true;
+}
+
+bool decodeWavFileBounded(const char*, const WavInspectResult& inspected,
+                          int16_t** outPcm, std::size_t maxDecodedBytes,
+                          WavLoadError* error) {
   ++gDecodeCalls;
   gDecodeBudget = maxDecodedBytes;
-  if (outPcm == nullptr) return false;
+  if (outPcm == nullptr) {
+    if (error != nullptr) *error = WavLoadError::InvalidArgument;
+    return false;
+  }
   *outPcm = nullptr;
+  if (inspected.decodedBytes > maxDecodedBytes) {
+    if (error != nullptr) *error = WavLoadError::TooLarge;
+    return false;
+  }
 
-  info = {};
-  info.sampleRate = 22050;
-  info.channels = 1;
-  info.bitsPerSample = 16;
-  info.numFrames = gProbeFrames;
-  const std::size_t decodedBytes =
-      static_cast<std::size_t>(info.numFrames) * sizeof(int16_t);
-  if (decodedBytes > maxDecodedBytes) return false;
-
-  *outPcm = static_cast<int16_t*>(malloc(decodedBytes));
-  return *outPcm != nullptr;
+  *outPcm = static_cast<int16_t*>(malloc(inspected.decodedBytes));
+  if (*outPcm == nullptr) {
+    if (error != nullptr) *error = WavLoadError::OutOfMemory;
+    return false;
+  }
+  if (error != nullptr) *error = WavLoadError::Ok;
+  return true;
 }
 
 int main() {

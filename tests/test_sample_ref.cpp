@@ -107,7 +107,7 @@ void testLegacyFallbackResolvesKnownFile() {
   assert(kickRef.valid());
   assert(index.resolveLegacyId(kickLegacy) == kickRef);
   assert(index.findByRef(kickRef) != nullptr);
-  assert(index.findByRef(kickRef)->filename == "kick.wav");
+  assert(index.findByRef(kickRef)->filename() == "kick.wav");
 
   const SampleId missing{SampleIndex::calculateHash("missing.wav")};
   assert(!index.resolveLegacyId(missing).valid());

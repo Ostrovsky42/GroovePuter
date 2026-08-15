@@ -70,9 +70,12 @@ def main() -> None:
             "ui_event.key == '\\b' || ui_event.key == 0x7F" in page_cpp,
             "pad sample clear must be explicit and scoped to the SAMPLE row")
 
-    require("ui_event.key == '\\n' || ui_event.key == '\\r'" in page_cpp and
-            "prelisten();" in page_cpp,
-            "Enter must preview the selected pad")
+    require("void SamplerPage::openSampleBrowser()" in page_cpp and
+            "if (file_ctrl_->isFocused())" in page_cpp and
+            "openSampleBrowser();" in page_cpp,
+            "Enter on focused SAMPLE must open the folder browser")
+    require("prelisten();" in page_cpp,
+            "pad preview helper must remain available outside SAMPLE browser activation")
     require("ui_event.key == ' '" not in page_cpp,
             "SAMPLES must not hijack Space from transport")
 
@@ -83,17 +86,34 @@ def main() -> None:
     require("sampleStore->preload(candidateId)" in page_cpp and
             "mini_acid_.samplerTrack->pad(padIndex).id = candidateId;" in page_cpp,
             "sample preload must remain outside the short identity publication")
+
+    require("sample_browser_open_" in page_h and
+            "handleSampleBrowserEvent" in page_h,
+            "SAMPLES must own explicit modal folder-browser state")
+    require("if (sample_browser_open_) return handleSampleBrowserEvent(ui_event);" in page_cpp,
+            "folder browser must own navigation while open")
+    require("indexedSubdirectories(browser_dir_)" in page_cpp and
+            "filesInDirectory(browser_dir_)" in page_cpp,
+            "folder browser must use the boot-built in-memory sample catalog")
+    require("browserGoParent();" in page_cpp and
+            "GROOVEPUTER_ESCAPE" in page_cpp,
+            "folder browser must support parent navigation and cancel")
+
     require("kit_ctrl_" not in page_h and "openLoadKitDialog" not in page_cpp and
             '"/bonnethead/kits"' not in page_cpp,
-            "historical KIT LOAD must remain outside this UX cleanup")
+            "historical KIT LOAD must remain outside this folder-browser change")
 
     require('"Alt+K       Sampler"' not in help_source,
             "global help must stop advertising standalone Alt+K sampler")
     require('"Tab         Grid/feel/auto/samples"' in help_source and
             '"SAMPLES M   Layer ON/OFF"' in help_source and
             '"SAMPLES Bksp Clear pad sample"' in help_source and
-            '"SAMPLES Enter Preview pad"' in help_source,
-            "DRUMS help must document the product SAMPLES tab controls")
+            '"SAMPLES Enter Browse files"' in help_source and
+            '"BROWSER U/D Select entry"' in help_source and
+            '"BROWSER Ent/R Open/assign"' in help_source and
+            '"BROWSER L/Bk Parent; Esc close"' in help_source and
+            '"SAMPLES Q-I Audition pads 1..8"' in help_source,
+            "DRUMS help must document the product SAMPLES folder-browser controls")
     require('"=== SAMPLER ==="' not in help_source,
             "standalone debug-style SAMPLER help must be retired")
 

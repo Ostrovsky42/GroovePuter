@@ -39,6 +39,7 @@ public:
 
   // --- Control/Main Thread Interface ---
   bool registerFile(SampleId id, const std::string& path) override;
+  bool bindSampleIndex(const SampleIndex* index) override;
   bool preload(SampleId id) override;
   void evictLRU() override;
   std::size_t freePoolBytes() const override;
@@ -53,6 +54,7 @@ protected:
   // Main thread only state
   std::mutex pathsMutex_;
   std::map<uint32_t, std::string> filePaths_; // validated runtime ID -> Path
+  const SampleIndex* sampleIndex_ = nullptr;  // borrowed; session lifetime
   std::size_t currentPoolUsage_;
   std::size_t maxPoolBytes_;
   std::atomic<uint32_t> timeCounter_;
