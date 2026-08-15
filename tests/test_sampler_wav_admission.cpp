@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+bool inspectWavFileBounded(const char* path, WavInfo& outInfo,
+                           std::size_t maxDecodedBytes);
 bool loadWavFileBounded(const char* path, WavInfo& outInfo, int16_t** outPcm,
                         std::size_t maxDecodedBytes);
 
@@ -61,6 +63,30 @@ void testOversizedRejectsFromMetadata() {
   fs::remove(path);
 }
 
+void testMetadataProbeDoesNotNeedPayloadRead() {
+  const fs::path path = fs::temp_directory_path() / "grooveputer_probe.wav";
+  const std::vector<int16_t> source = {100, -200, 300, -400};
+  writePcm16Wav(path, 1, 22050, static_cast<uint32_t>(source.size()), source);
+
+  WavInfo info{};
+  assert(inspectWavFileBounded(path.string().c_str(), info,
+                               source.size() * sizeof(int16_t)));
+  assert(info.channels == 1);
+  assert(info.numFrames == source.size());
+  fs::remove(path);
+}
+
+void testProbeRejectsTruncatedDataBeforeEvictionCanBeNeeded() {
+  const fs::path path = fs::temp_directory_path() / "grooveputer_truncated_probe.wav";
+  const std::vector<int16_t> source = {100, 200, 300, 400};
+  writePcm16Wav(path, 1, 22050, static_cast<uint32_t>(source.size()), source);
+  fs::resize_file(path, fs::file_size(path) - sizeof(int16_t));
+
+  WavInfo info{};
+  assert(!inspectWavFileBounded(path.string().c_str(), info, 32 * 1024));
+  fs::remove(path);
+}
+
 void testFittingMonoLoadsExactly() {
   const fs::path path = fs::temp_directory_path() / "grooveputer_mono.wav";
   const std::vector<int16_t> source = {100, -200, 300, -400};
@@ -98,6 +124,8 @@ void testFittingStereoDecodesIntoFinalMonoBuffer() {
 
 int main() {
   testOversizedRejectsFromMetadata();
+  testMetadataProbeDoesNotNeedPayloadRead();
+  testProbeRejectsTruncatedDataBeforeEvictionCanBeNeeded();
   testFittingMonoLoadsExactly();
   testFittingStereoDecodesIntoFinalMonoBuffer();
   return 0;
