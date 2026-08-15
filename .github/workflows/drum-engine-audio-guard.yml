@@ -1,0 +1,30 @@
+name: Drum engine audio guard
+
+on:
+  pull_request:
+    paths:
+      - "src/ui/pages/drum_sequencer_page.cpp"
+      - "tests/test_drum_engine_audio_guard_source_regressions.py"
+      - "docs/releases/0_9_3_DRUM_ENGINE_AUDIO_GUARD.md"
+      - ".github/workflows/drum-engine-audio-guard.yml"
+  push:
+    branches:
+      - dev_0.9.3
+    paths:
+      - "src/ui/pages/drum_sequencer_page.cpp"
+      - "tests/test_drum_engine_audio_guard_source_regressions.py"
+      - "docs/releases/0_9_3_DRUM_ENGINE_AUDIO_GUARD.md"
+      - ".github/workflows/drum-engine-audio-guard.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drum-engine-audio-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify drum engine replacement is audio-guarded
+        run: python3 tests/test_drum_engine_audio_guard_source_regressions.py
