@@ -25,6 +25,7 @@ def main() -> None:
     page_h = read("src/ui/pages/sampler_page.h")
     store_h = read("src/sampler/sample_store.h")
     ram_store = read("src/sampler/ram_sample_store.cpp")
+    probe = read("src/sampler/sample_probe.cpp")
     loader = read("src/sampler/sample_loader.cpp")
 
     selection = function_body(
@@ -63,8 +64,8 @@ def main() -> None:
     require("Main Thread: Request to load a sample into RAM" in store_h,
             "ISampleStore must keep preload explicitly control-thread owned")
 
-    # Oversized WAV admission belongs before any PCM allocation or data-chunk
-    # read. Metadata parsing may read RIFF/fmt/data headers first.
+    # Whole-pool oversized WAV admission still belongs before any PCM allocation
+    # or data-chunk read inside the bounded decoder.
     bounded_start = loader.index("bool loadWavFileBounded(")
     wrapper_start = loader.index("\nbool loadWavFile(", bounded_start)
     bounded = loader[bounded_start:wrapper_start]
@@ -73,8 +74,36 @@ def main() -> None:
     payload_pos = bounded.index("Data-chunk read starts only after final decoded-size admission")
     require(admission_pos < allocation_pos < payload_pos,
             "decoded-size admission must happen before PCM allocation/data read")
-    require("loadWavFileBounded(path.c_str(), info, &pcm, maxPoolBytes_)" in ram_store,
-            "RamSampleStore must pass the active sampler pool budget into WAV admission")
+
+    # Near-full-pool admission is two-pass: metadata-only inspection first,
+    # then LRU reclamation/slot admission, then decode with the actual remaining
+    # pool capacity. The old allocate-then-evict order must not return.
+    preload_body = function_body(
+        ram_store,
+        "bool RamSampleStore::preload(SampleId id)",
+        "void RamSampleStore::evictLRU()",
+    )
+    inspect_pos = preload_body.index("inspectWavFileBounded(path.c_str(), inspectedInfo, maxPoolBytes_)")
+    evict_pos = preload_body.index("evictLRU();", inspect_pos)
+    budget_pos = preload_body.index("const std::size_t decodeBudget = freePoolBytes();", evict_pos)
+    decode_pos = preload_body.index(
+        "loadWavFileBounded(path.c_str(), info, &pcm, decodeBudget)", budget_pos)
+    require(inspect_pos < evict_pos < budget_pos < decode_pos,
+            "RamSampleStore must inspect and evict before WAV decode/allocation")
+    require("currentPoolUsage_ + requiredSize > maxPoolBytes_" in preload_body,
+            "RamSampleStore must reclaim capacity based on probed decoded size")
+    require("Pool is busy; no evictable sample slots" in preload_body,
+            "busy referenced pool must fail before decode allocation")
+
+    probe_body = function_body(
+        probe,
+        "bool inspectWavFileBounded(",
+        "\n}",
+    )
+    require("SAMPLE_MALLOC" not in probe and "malloc(" not in probe,
+            "metadata probe must never allocate PCM")
+    require("truncated data payload" in probe,
+            "metadata probe must reject physically truncated data before eviction")
 
     # 0.9.3 deliberately removes the unsafe historical kit shortcut rather
     # than leaving a second scan/register/preload path with different rules.
