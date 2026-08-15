@@ -92,6 +92,32 @@ void expectTargetMapping() {
         MusicalEventTarget::Dx, SourceClass::Performance));
 }
 
+void expectEventPredicates() {
+    GroovePuterOutput::restoreLegacyCompatibility(Track::SynthA);
+    MusicalEvent performanceOn{
+        MusicalEventType::NoteOn,
+        MusicalEventSource::PerformanceKeyboard,
+        MusicalEventTarget::SynthA,
+        0, 60, 100,
+    };
+    assert(GroovePuterOutput::allowsMidiNoteOn(performanceOn));
+    assert(!GroovePuterOutput::allowsInternalNoteOn(performanceOn));
+
+    assert(GroovePuterOutput::setMode(Track::SynthA, Mode::Internal));
+    assert(!GroovePuterOutput::allowsMidiNoteOn(performanceOn));
+    assert(GroovePuterOutput::allowsInternalNoteOn(performanceOn));
+
+    performanceOn.type = MusicalEventType::NoteOff;
+    assert(GroovePuterOutput::allowsMidiNoteOn(performanceOn));
+    assert(GroovePuterOutput::allowsInternalNoteOn(performanceOn));
+
+    // MidiInput remains outside this release's ownership migration.
+    performanceOn.type = MusicalEventType::NoteOn;
+    performanceOn.source = MusicalEventSource::MidiInput;
+    assert(GroovePuterOutput::allowsMidiNoteOn(performanceOn));
+    assert(GroovePuterOutput::allowsInternalNoteOn(performanceOn));
+}
+
 void expectCycleOrder() {
     assert(GroovePuterOutput::cycleMode(Mode::Internal) == Mode::Midi);
     assert(GroovePuterOutput::cycleMode(Mode::Midi) == Mode::Layer);
@@ -107,6 +133,7 @@ int main() {
     expectExplicitTruthTable(Track::SynthB);
     expectExplicitTruthTable(Track::Drums);
     expectTargetMapping();
+    expectEventPredicates();
     expectCycleOrder();
 
     std::cout << "Output ownership contract tests: PASS\n";

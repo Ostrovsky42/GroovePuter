@@ -7,6 +7,7 @@
 
 #include "midi_realtime_word.h"
 #include "../input/musical_event.h"
+#include "../output/output_ownership.h"
 
 // Single-producer/single-consumer handoff from the Arduino control loop to the
 // sole USB-MIDI owner task. Critical overflow degrades to a target-scoped live
@@ -21,6 +22,13 @@ public:
     static constexpr uint8_t kDxMask = 1u << 3;
 
     bool tryPush(const MusicalEvent& event) {
+        // Output ownership rejects only new external NoteOn. Cleanup events are
+        // still enqueued even after a live mode transition removes MIDI.
+        if (event.type == MusicalEventType::NoteOn &&
+            !GroovePuterOutput::allowsMidiNoteOn(event)) {
+            return false;
+        }
+
         const uint32_t head = head_.loadRelaxed();
         const uint32_t next = (head + 1u) % kStorageSize;
         if (next == tail_.loadAcquire()) {

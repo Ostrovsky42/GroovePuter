@@ -7,15 +7,23 @@ CXX="${CXX:-g++}"
 
 mkdir -p "${BUILD_DIR}"
 
-"${CXX}" \
-  -std=c++17 \
-  -Wall \
-  -Wextra \
-  -Werror \
-  -I"${ROOT_DIR}" \
+COMMON_FLAGS=(
+  -std=c++17
+  -Wall
+  -Wextra
+  -Werror
+  -I"${ROOT_DIR}"
+)
+
+"${CXX}" "${COMMON_FLAGS[@]}" \
   "${ROOT_DIR}/tests/test_output_ownership.cpp" \
   -o "${BUILD_DIR}/test_output_ownership"
 
+"${CXX}" "${COMMON_FLAGS[@]}" \
+  "${ROOT_DIR}/tests/test_output_ownership_queues.cpp" \
+  -o "${BUILD_DIR}/test_output_ownership_queues"
+
 "${BUILD_DIR}/test_output_ownership"
+"${BUILD_DIR}/test_output_ownership_queues"
 
 echo "0.9.6 output ownership contract gate: PASS"

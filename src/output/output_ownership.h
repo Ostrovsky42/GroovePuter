@@ -114,6 +114,25 @@ inline bool trackForTarget(MusicalEventTarget target, Track& track) {
     return false;
 }
 
+inline bool sourceClassForEvent(MusicalEventSource source,
+                                SourceClass& sourceClass) {
+    switch (source) {
+        case MusicalEventSource::PatternPlayer:
+            sourceClass = SourceClass::Pattern;
+            return true;
+        case MusicalEventSource::PerformanceKeyboard:
+        case MusicalEventSource::PerformanceKeyboardPoly:
+        case MusicalEventSource::Arpeggiator:
+            sourceClass = SourceClass::Performance;
+            return true;
+        case MusicalEventSource::MidiInput:
+            // MIDI-input ownership is a later roadmap item. Preserve its
+            // existing behavior instead of silently folding it into 0.9.6.
+            return false;
+    }
+    return false;
+}
+
 inline TrackState state(Track track) {
     const uint8_t raw = detail::rawMode(track);
     if (raw == 0u) return TrackState{};
@@ -149,6 +168,24 @@ inline bool allowsMidi(MusicalEventTarget target, SourceClass source) {
     return !trackForTarget(target, track) || allowsMidi(track, source);
 }
 
+inline bool allowsMidiNoteOn(const MusicalEvent& event) {
+    if (event.type != MusicalEventType::NoteOn) {
+        // NoteOff/AllNotesOff are cleanup-critical. Never suppress them because
+        // the current mode may have changed after the corresponding NoteOn.
+        return true;
+    }
+    SourceClass sourceClass = SourceClass::Pattern;
+    if (!sourceClassForEvent(event.source, sourceClass)) return true;
+    return allowsMidi(event.target, sourceClass);
+}
+
+inline bool allowsInternalNoteOn(const MusicalEvent& event) {
+    if (event.type != MusicalEventType::NoteOn) return true;
+    SourceClass sourceClass = SourceClass::Pattern;
+    if (!sourceClassForEvent(event.source, sourceClass)) return true;
+    return allowsInternal(event.target, sourceClass);
+}
+
 inline bool setMode(Track track, Mode nextMode) {
     const uint8_t nextRaw = static_cast<uint8_t>(nextMode);
     if (nextRaw < static_cast<uint8_t>(Mode::Internal) ||
@@ -182,16 +219,8 @@ inline void restoreLegacyCompatibility(Track track) {
     const uint8_t previousRaw = detail::rawModeFromWord(word, track);
     if (previousRaw == 0u) return;
 
-    const bool previousMidi =
-        detail::rawAllowsMidi(previousRaw, SourceClass::Pattern);
-    const bool legacyMidi = true;
-
     word &= ~(detail::kTrackMask << shift);
     detail::stateWord().storeRelease(word);
-
-    if (previousMidi && !legacyMidi) {
-        detail::incrementMidiDisableEpoch(track);
-    }
 }
 
 inline uint8_t midiDisableEpoch(Track track) {

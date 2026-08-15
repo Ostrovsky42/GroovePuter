@@ -3,19 +3,27 @@ name: 0.9.6 output ownership
 on:
   pull_request:
     paths:
-      - "src/output/output_ownership.h"
-      - "tests/test_output_ownership.cpp"
+      - "src/output/**"
+      - "src/input/internal_synth_output.cpp"
+      - "src/input/musical_event_queue.h"
+      - "src/midi/midi_control_event_queue.h"
+      - "src/dsp/miniacid_engine.h"
+      - "tests/test_output_ownership*.cpp"
       - "tests/run_output_ownership_tests.sh"
-      - "docs/releases/0_9_6_B_OUTPUT_OWNERSHIP_CONTRACT.md"
+      - "docs/releases/0_9_6_*OUTPUT_OWNERSHIP*.md"
       - ".github/workflows/output-ownership.yml"
   push:
     branches:
       - dev_0.9.6
     paths:
-      - "src/output/output_ownership.h"
-      - "tests/test_output_ownership.cpp"
+      - "src/output/**"
+      - "src/input/internal_synth_output.cpp"
+      - "src/input/musical_event_queue.h"
+      - "src/midi/midi_control_event_queue.h"
+      - "src/dsp/miniacid_engine.h"
+      - "tests/test_output_ownership*.cpp"
       - "tests/run_output_ownership_tests.sh"
-      - "docs/releases/0_9_6_B_OUTPUT_OWNERSHIP_CONTRACT.md"
+      - "docs/releases/0_9_6_*OUTPUT_OWNERSHIP*.md"
       - ".github/workflows/output-ownership.yml"
   workflow_dispatch:
 

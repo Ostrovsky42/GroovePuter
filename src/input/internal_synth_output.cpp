@@ -1,6 +1,7 @@
 #include "internal_synth_output.h"
 
 #include "src/dsp/miniacid_engine.h"
+#include "src/output/output_ownership.h"
 
 namespace {
 uint8_t clampInternalLiveNote(uint8_t note) {
@@ -12,6 +13,12 @@ uint8_t clampInternalLiveNote(uint8_t note) {
     }
     return note;
 }
+
+bool isPerformanceSource(MusicalEventSource source) {
+    return source == MusicalEventSource::PerformanceKeyboard ||
+           source == MusicalEventSource::PerformanceKeyboardPoly ||
+           source == MusicalEventSource::Arpeggiator;
+}
 }  // namespace
 
 int InternalSynthOutput::synthIndex(MusicalEventTarget target) {
@@ -22,23 +29,26 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
     // PatternPlayer already owns and renders the internal voices inside the
     // audio task. Its router fan-out is for additive outputs; taking the control
     // mutation gate here would deadlock the audio producer and double-trigger.
-    //
-    // PERFORM keyboard ownership is external-MIDI-only for Synth A/B/DX.
-    // Direct MONO, direct POLY and generated performance tools must never play
-    // the internal Synth A/B voices. Those voices remain sequencer/pattern
-    // instruments instead of doubling every Cardputer keyboard press locally.
     if (event.source == MusicalEventSource::PatternPlayer ||
-        event.source == MusicalEventSource::PerformanceKeyboard ||
-        event.source == MusicalEventSource::PerformanceKeyboardPoly ||
-        event.source == MusicalEventSource::Arpeggiator ||
         event.target == MusicalEventTarget::Drums ||
         event.target == MusicalEventTarget::Dx) {
         return;
     }
 
+    // <=0.9.5 PERFORM remains MIDI-only while the track has no explicit output
+    // mode. Once a project/user selects INTERNAL or LAYER, direct keyboard and
+    // generated performance tools may drive the existing monophonic local
+    // engine. MIDI mode rejects only new local NoteOn; NoteOff/AllNotesOff stay
+    // cleanup-critical so a Layer -> MIDI transition cannot strand a local note.
+    if (isPerformanceSource(event.source) &&
+        event.type == MusicalEventType::NoteOn &&
+        !GroovePuterOutput::allowsInternalNoteOn(event)) {
+        return;
+    }
+
     // Keep the existing internal live-input path for any non-PERFORM source
-    // that explicitly targets Synth A/B (for example future/local MIDI input).
-    // Clamp NoteOn and NoteOff identically to avoid mismatched ownership.
+    // that explicitly targets Synth A/B. Clamp NoteOn and NoteOff identically to
+    // avoid mismatched ownership.
     AudioMutationScope mutationScope(mutationGate_);
     const int voice = synthIndex(event.target);
     const uint8_t internalNote = clampInternalLiveNote(event.note);
