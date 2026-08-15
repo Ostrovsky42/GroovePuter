@@ -15,6 +15,7 @@
 #include "scenes.h"
 #include "src/audio/pattern_paging.h"
 #include "src/platform/cardputer_sd.h"
+#include "src/sampler/sample_scene_persistence.h"
 
 namespace {
 constexpr size_t kMaxSceneNamesInUi = 24;
@@ -254,7 +255,8 @@ bool SceneStorageCardputer::readScene(SceneManager& manager) {
   const std::string path = currentScenePath();
   File file = SD.open(path.c_str(), FILE_READ);
   if (file) {
-    const bool ok = manager.loadSceneEvented(file);
+    GroovePuterSampler::SamplerSceneReadFilter<File> filtered(file);
+    const bool ok = manager.loadSceneEvented(filtered) && !filtered.failed();
     file.close();
     if (ok) return true;
     Serial.printf("Main scene is invalid, trying backup: %s\n", path.c_str());
@@ -263,7 +265,9 @@ bool SceneStorageCardputer::readScene(SceneManager& manager) {
   const std::string backupPath = siblingPath(path, kBackupSuffix);
   File backup = SD.open(backupPath.c_str(), FILE_READ);
   if (!backup) return false;
-  const bool recovered = manager.loadSceneEvented(backup);
+  GroovePuterSampler::SamplerSceneReadFilter<File> filteredBackup(backup);
+  const bool recovered = manager.loadSceneEvented(filteredBackup) &&
+                         !filteredBackup.failed();
   backup.close();
   return recovered;
 }
@@ -281,7 +285,8 @@ bool SceneStorageCardputer::writeScene(const SceneManager& manager) {
     return false;
   }
 
-  const bool serialized = manager.writeSceneJson(file);
+  GroovePuterSampler::SamplerSceneWriteFilter<File> filtered(file);
+  const bool serialized = manager.writeSceneJson(filtered) && filtered.finish();
   file.flush();
   const size_t bytesWritten = file.size();
   file.close();
@@ -312,7 +317,8 @@ bool SceneStorageCardputer::writeSceneAuto(const SceneManager& manager) {
 
   File file = SD.open(tempPath.c_str(), FILE_WRITE);
   if (!file) return false;
-  const bool serialized = manager.writeSceneJson(file);
+  GroovePuterSampler::SamplerSceneWriteFilter<File> filtered(file);
+  const bool serialized = manager.writeSceneJson(filtered) && filtered.finish();
   file.flush();
   const size_t bytesWritten = file.size();
   file.close();
@@ -330,7 +336,8 @@ bool SceneStorageCardputer::readSceneAuto(SceneManager& manager) {
   const std::string autoPath = currentAutoScenePath();
   File autoFile = SD.open(autoPath.c_str(), FILE_READ);
   if (autoFile) {
-    const bool ok = manager.loadSceneEvented(autoFile);
+    GroovePuterSampler::SamplerSceneReadFilter<File> filtered(autoFile);
+    const bool ok = manager.loadSceneEvented(filtered) && !filtered.failed();
     autoFile.close();
     if (ok) return true;
   }
@@ -338,7 +345,10 @@ bool SceneStorageCardputer::readSceneAuto(SceneManager& manager) {
   const std::string autoBackup = siblingPath(autoPath, kBackupSuffix);
   File autoBackupFile = SD.open(autoBackup.c_str(), FILE_READ);
   if (autoBackupFile) {
-    const bool ok = manager.loadSceneEvented(autoBackupFile);
+    GroovePuterSampler::SamplerSceneReadFilter<File> filteredBackup(
+        autoBackupFile);
+    const bool ok = manager.loadSceneEvented(filteredBackup) &&
+                    !filteredBackup.failed();
     autoBackupFile.close();
     if (ok) return true;
   }

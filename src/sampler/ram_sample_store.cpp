@@ -9,8 +9,12 @@
 #include <limits>
 #include <algorithm>
 
-// External WAV loader
-bool loadWavFile(const char* path, WavInfo& info, int16_t** outPcm);
+// Metadata-only probe and bounded WAV loader. The store first inspects decoded
+// size, reclaims evictable pool capacity, then permits allocation/data read.
+bool inspectWavFileBounded(const char* path, WavInfo& info,
+                           std::size_t maxDecodedBytes);
+bool loadWavFileBounded(const char* path, WavInfo& info, int16_t** outPcm,
+                        std::size_t maxDecodedBytes);
 
 namespace {
 
@@ -169,60 +173,90 @@ bool RamSampleStore::preload(SampleId id) {
 
   printf("Preload: Loading %s ...\n", path.c_str());
 
-  // 3. Load from disk.
+  // 3. Metadata-only admission. No PCM allocation or data-chunk read is
+  // allowed before the store knows the decoded mono size.
+  WavInfo inspectedInfo{};
+  if (!inspectWavFileBounded(path.c_str(), inspectedInfo, maxPoolBytes_)) {
+    printf("Preload: WAV inspection failed for %s\n", path.c_str());
+    return false;
+  }
+
+  const std::size_t requiredSize =
+      static_cast<std::size_t>(inspectedInfo.numFrames) * sizeof(int16_t);
+  if (requiredSize > maxPoolBytes_) {
+    printf("Preload: Sample is larger than the entire pool\n");
+    return false;
+  }
+
+  // 4. Reclaim pool capacity before any PCM allocation. If every eviction
+  // candidate is referenced by active audio, fail without allocating the new
+  // sample. This removes the old-resident + new-sample transient pool peak.
+  while (currentPoolUsage_ + requiredSize > maxPoolBytes_) {
+    const std::size_t usageBefore = currentPoolUsage_;
+    evictLRU();
+    if (currentPoolUsage_ >= usageBefore) {
+      printf("Preload: Pool is busy; no evictable sample slots\n");
+      return false;
+    }
+  }
+
+  auto findQuiescentSlot = [&]() -> int {
+    for (int i = 0; i < kMaxSampleSlots; ++i) {
+      auto& slot = slots_[i];
+      if (slot.id.load(std::memory_order_acquire) == 0 &&
+          !slot.ready.load(std::memory_order_acquire) &&
+          slot.refCount.load(std::memory_order_acquire) == 0 &&
+          slot.data.load(std::memory_order_acquire) == nullptr) {
+        return i;
+      }
+    }
+    return -1;
+  };
+
+  // Slot pressure is also an admission condition. Free one slot before decode
+  // rather than allocating PCM and discovering the 64-slot table is full.
+  int slotIdx = findQuiescentSlot();
+  if (slotIdx < 0) {
+    const std::size_t usageBefore = currentPoolUsage_;
+    evictLRU();
+    if (currentPoolUsage_ >= usageBefore) {
+      printf("Preload: No evictable slot available\n");
+      return false;
+    }
+    slotIdx = findQuiescentSlot();
+    if (slotIdx < 0) {
+      printf("Preload: No quiescent free slots\n");
+      return false;
+    }
+  }
+
+  // 5. Decode only after admission/eviction. Pass the actual remaining pool
+  // capacity, not the entire configured pool, so a file that changes between
+  // probe and decode still fails before allocation if it no longer fits.
   WavInfo info{};
   int16_t* pcm = nullptr;
-  if (!loadWavFile(path.c_str(), info, &pcm)) {
+  const std::size_t decodeBudget = freePoolBytes();
+  if (!loadWavFileBounded(path.c_str(), info, &pcm, decodeBudget)) {
     printf("Preload: loadWavFile failed for %s\n", path.c_str());
     return false;
   }
 
-  const std::size_t size = info.numFrames * sizeof(int16_t);
+  const std::size_t size =
+      static_cast<std::size_t>(info.numFrames) * sizeof(int16_t);
   printf("Preload: Loaded %u frames (%u bytes). Pool usage: %u/%u\n",
          info.numFrames, static_cast<unsigned>(size),
          static_cast<unsigned>(currentPoolUsage_),
          static_cast<unsigned>(maxPoolBytes_));
 
-  if (size > maxPoolBytes_) {
-    printf("Preload: Sample is larger than the entire pool\n");
+  // Defensive invariants for a file changed between inspect and decode.
+  if (size > decodeBudget || currentPoolUsage_ + size > maxPoolBytes_) {
+    printf("Preload: Decoded sample no longer fits admitted pool capacity\n");
     free(pcm);
     return false;
   }
 
-  // 4. Evict until enough capacity exists. Abort when eviction makes no
-  // progress; all candidates are then referenced by active audio voices.
-  while (currentPoolUsage_ + size > maxPoolBytes_) {
-    const std::size_t usageBefore = currentPoolUsage_;
-    evictLRU();
-    if (currentPoolUsage_ >= usageBefore) {
-      printf("Preload: Pool is busy; no evictable sample slots\n");
-      free(pcm);
-      return false;
-    }
-  }
-
-  // 5. Find a fully quiescent empty slot. A withdrawn slot may temporarily
-  // retain a rollback reference from an acquisition that lost a race.
-  int slotIdx = -1;
-  for (int i = 0; i < kMaxSampleSlots; ++i) {
-    auto& slot = slots_[i];
-    if (slot.id.load(std::memory_order_acquire) == 0 &&
-        !slot.ready.load(std::memory_order_acquire) &&
-        slot.refCount.load(std::memory_order_acquire) == 0 &&
-        slot.data.load(std::memory_order_acquire) == nullptr) {
-      slotIdx = i;
-      break;
-    }
-  }
-
-  if (slotIdx < 0) {
-    printf("Preload: No quiescent free slots\n");
-    free(pcm);
-    return false;
-  }
-
-  // 6. Fill and publish the slot. Non-atomic metadata is protected by the
-  // final ready release and matching acquire in readers.
+  // 6. Fill and publish the pre-admitted slot. Non-atomic metadata is
+  // protected by the final ready release and matching acquire in readers.
   auto& slot = slots_[slotIdx];
   slot.frames = info.numFrames;
   slot.sampleRate = info.sampleRate;

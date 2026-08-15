@@ -3035,6 +3035,24 @@ void MiniAcid::syncSceneStateToManager() {
     sceneManager_.setLegacySynthParametersPresent(idx, false);
   }
 
+  // SamplerPage edits the realtime pad objects. Explicit Save must mirror
+  // those values into the resident Scene before the Scene writer converts the
+  // compact runtime SampleId to its authoritative stable SampleRef.
+  if (samplerTrack) {
+    for (int i = 0; i < 16; ++i) {
+      const auto& runtimePad = samplerTrack->pad(i);
+      auto& scenePad = sceneManager_.currentScene().samplerPads[i];
+      scenePad.sampleId = runtimePad.id.value;
+      scenePad.volume = runtimePad.volume;
+      scenePad.pitch = runtimePad.pitch;
+      scenePad.startFrame = runtimePad.startFrame;
+      scenePad.endFrame = runtimePad.endFrame;
+      scenePad.chokeGroup = runtimePad.chokeGroup;
+      scenePad.reverse = runtimePad.reverse;
+      scenePad.loop = runtimePad.loop;
+    }
+  }
+
   // Save voice parameters to scene
   auto& v = sceneManager_.currentScene().vocal;
   v.pitch = params[static_cast<int>(MiniAcidParamId::VoicePitch)].value();

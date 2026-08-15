@@ -1,12 +1,37 @@
 #include "sampler_page.h"
 #include "../../dsp/miniacid_engine.h"
-#include <cstdio>
+#include "../screen_geometry.h"
+#include "../ui_input.h"
+
 #include <algorithm>
+#include <cctype>
+#include <cstdio>
+#include <cstring>
+
+#ifdef ARDUINO
+#include <Arduino.h>
+#endif
 
 #include "src/state/scene_revision.h"
+
 namespace {
 inline constexpr IGfxColor kFocusColor = IGfxColor(0xB36A00);
+constexpr char kSequencedPadKeys[] = "qwertyui";
+
+void logSampleSelectionFailure(const char* reason, const std::string& path,
+                               uint32_t runtimeId) {
+#ifdef ARDUINO
+  Serial.printf("[SAMPLER] sample assignment rejected: %s path=%s id=%u\n",
+                reason ? reason : "unknown", path.c_str(),
+                static_cast<unsigned>(runtimeId));
+#else
+  std::fprintf(stderr,
+               "[SAMPLER] sample assignment rejected: %s path=%s id=%u\n",
+               reason ? reason : "unknown", path.c_str(),
+               static_cast<unsigned>(runtimeId));
+#endif
 }
+}  // namespace
 
 class SamplerPage::LabelValueComponent : public FocusableComponent {
  public:
@@ -22,39 +47,33 @@ class SamplerPage::LabelValueComponent : public FocusableComponent {
     const Rect& bounds = getBoundaries();
     gfx.setTextColor(label_color_);
     gfx.drawText(bounds.x, bounds.y, label_.c_str());
-    int label_w = textWidth(gfx, label_.c_str());
+    const int label_w = textWidth(gfx, label_.c_str());
     gfx.setTextColor(value_color_);
     gfx.drawText(bounds.x + label_w + 5, bounds.y, value_.c_str());
 
     if (isFocused()) {
-      int pad = 2;
+      constexpr int pad = 2;
       gfx.drawRect(bounds.x - pad, bounds.y - pad,
                    bounds.w + pad * 2, bounds.h + pad * 2, kFocusColor);
     }
   }
 
  private:
-  std::string label_ = "";
-  std::string value_ = "";
+  std::string label_;
+  std::string value_;
   IGfxColor label_color_;
   IGfxColor value_color_;
 };
 
 SamplerPage::SamplerPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
-    : gfx_(gfx), mini_acid_(mini_acid), audio_guard_(audio_guard) {
-}
+    : gfx_(gfx), mini_acid_(mini_acid), audio_guard_(audio_guard) {}
 
 void SamplerPage::setBoundaries(const Rect& rect) {
   Frame::setBoundaries(rect);
-  if (!initialized_) {
-    initComponents();
-  }
+  if (!initialized_) initComponents();
 }
 
 void SamplerPage::initComponents() {
-  kit_ctrl_ = std::make_shared<LabelValueComponent>("KIT:", COLOR_WHITE, COLOR_ACCENT);
-  kit_ctrl_->setValue("[LOAD]");
-  
   pad_ctrl_ = std::make_shared<LabelValueComponent>("PAD:", COLOR_WHITE, COLOR_KNOB_1);
   file_ctrl_ = std::make_shared<LabelValueComponent>("SMP:", COLOR_WHITE, COLOR_KNOB_2);
   volume_ctrl_ = std::make_shared<LabelValueComponent>("VOL:", COLOR_WHITE, COLOR_KNOB_3);
@@ -65,7 +84,6 @@ void SamplerPage::initComponents() {
   reverse_ctrl_ = std::make_shared<LabelValueComponent>("REV:", COLOR_WHITE, COLOR_KNOB_1);
   choke_ctrl_ = std::make_shared<LabelValueComponent>("CHK:", COLOR_WHITE, COLOR_KNOB_1);
 
-  addChild(kit_ctrl_);
   addChild(pad_ctrl_);
   addChild(file_ctrl_);
   addChild(volume_ctrl_);
@@ -76,28 +94,31 @@ void SamplerPage::initComponents() {
   addChild(reverse_ctrl_);
   addChild(choke_ctrl_);
 
-  int x = dx() + 4;
-  int y = dy() + 2;
-  int h = 12; 
-  int w_full = width() - 8;
-  int w1 = (width() - 8) / 2;
+  const int x = dx() + 4;
+  // MiniAcidDisplay composites the global 16 px status header after the page.
+  // Keep the first sampler control inside CONTENT so PAD and its number remain
+  // visible even though SamplerPage itself receives full-screen boundaries.
+  int y = Layout::CONTENT.y + Layout::CONTENT_PAD_Y;
+  constexpr int h = 12;
+  const int w_full = width() - 8;
+  const int w1 = (width() - 8) / 2;
 
-  kit_ctrl_->setBoundaries(Rect(x, y, w_full, h)); y += h + 2;
-  pad_ctrl_->setBoundaries(Rect(x, y, w_full, h)); y += h;
-  file_ctrl_->setBoundaries(Rect(x, y, w_full, h)); y += h + 2;
-  
-  // Two columns for the rest
-  int mid_x = x + w1 + 4;
-  volume_ctrl_->setBoundaries(Rect(x, y, w1, h)); 
-  pitch_ctrl_->setBoundaries(Rect(mid_x, y, w1, h)); 
+  pad_ctrl_->setBoundaries(Rect(x, y, w_full, h));
+  y += h;
+  file_ctrl_->setBoundaries(Rect(x, y, w_full, h));
+  y += h + 2;
+
+  const int mid_x = x + w1 + 4;
+  volume_ctrl_->setBoundaries(Rect(x, y, w1, h));
+  pitch_ctrl_->setBoundaries(Rect(mid_x, y, w1, h));
   y += h;
 
-  start_ctrl_->setBoundaries(Rect(x, y, w1, h)); 
-  end_ctrl_->setBoundaries(Rect(mid_x, y, w1, h)); 
+  start_ctrl_->setBoundaries(Rect(x, y, w1, h));
+  end_ctrl_->setBoundaries(Rect(mid_x, y, w1, h));
   y += h;
 
-  loop_ctrl_->setBoundaries(Rect(x, y, w1, h)); 
-  reverse_ctrl_->setBoundaries(Rect(mid_x, y, w1, h)); 
+  loop_ctrl_->setBoundaries(Rect(x, y, w1, h));
+  reverse_ctrl_->setBoundaries(Rect(mid_x, y, w1, h));
   y += h;
 
   choke_ctrl_->setBoundaries(Rect(x, y, w1, h));
@@ -108,23 +129,21 @@ void SamplerPage::initComponents() {
 void SamplerPage::draw(IGfx& gfx) {
   if (!initialized_) initComponents();
 
-  auto& p = mini_acid_.samplerTrack->pad(current_pad_);
-  
+  const auto& p = mini_acid_.samplerTrack->pad(current_pad_);
+
   char buf[64];
   pad_ctrl_->setValue(std::to_string(current_pad_ + 1));
-  
-  // Find filename in index
+
   std::string filename = "(empty)";
-  for(const auto& f : mini_acid_.sampleIndex.getFiles()) {
-      if (f.id.value == p.id.value) {
-          filename = f.filename;
-          break;
-      }
+  if (const SampleFileInfo* file = mini_acid_.sampleIndex.resolveRuntimeFile(p.id)) {
+    filename = file->filename;
   }
   file_ctrl_->setValue(filename);
-  
-  snprintf(buf, sizeof(buf), "%.2f", p.volume); volume_ctrl_->setValue(buf);
-  snprintf(buf, sizeof(buf), "%.2f", p.pitch); pitch_ctrl_->setValue(buf);
+
+  std::snprintf(buf, sizeof(buf), "%.2f", p.volume);
+  volume_ctrl_->setValue(buf);
+  std::snprintf(buf, sizeof(buf), "%.2f", p.pitch);
+  pitch_ctrl_->setValue(buf);
   start_ctrl_->setValue(std::to_string(p.startFrame));
   end_ctrl_->setValue(p.endFrame == 0 ? "END" : std::to_string(p.endFrame));
   loop_ctrl_->setValue(p.loop ? "ON" : "OFF");
@@ -132,17 +151,81 @@ void SamplerPage::draw(IGfx& gfx) {
   choke_ctrl_->setValue(p.chokeGroup == 0 ? "NONE" : std::to_string(p.chokeGroup));
 
   Container::draw(gfx);
-  
-  if (dialog_type_ != DialogType::None) {
-      drawDialog(gfx);
+}
+
+bool SamplerPage::selectIndexedSample(int direction) {
+  const auto& files = mini_acid_.sampleIndex.getFiles();
+  if (files.empty() || mini_acid_.sampleStore == nullptr) {
+    logSampleSelectionFailure(files.empty() ? "no indexed WAV files" : "sample store unavailable",
+                              "", 0);
+    return false;
   }
+
+  const int padIndex = current_pad_;
+  const SampleId previousId = mini_acid_.samplerTrack->pad(padIndex).id;
+  const SampleFileInfo* currentFile =
+      mini_acid_.sampleIndex.resolveRuntimeFile(previousId);
+
+  int currentIndex = -1;
+  if (currentFile != nullptr) {
+    for (size_t i = 0; i < files.size(); ++i) {
+      if (files[i].fullPath == currentFile->fullPath) {
+        currentIndex = static_cast<int>(i);
+        break;
+      }
+    }
+  }
+
+  int nextIndex = 0;
+  if (currentIndex < 0) {
+    nextIndex = direction < 0 ? static_cast<int>(files.size()) - 1 : 0;
+  } else {
+    nextIndex = (currentIndex + direction + static_cast<int>(files.size())) %
+                static_cast<int>(files.size());
+  }
+
+  const SampleFileInfo& candidate = files[static_cast<size_t>(nextIndex)];
+  const auto candidateRef = SampleIndex::calculateStableRef(candidate.fullPath);
+  const SampleId candidateId = mini_acid_.sampleIndex.runtimeIdForRef(candidateRef);
+  if (candidateId.value == 0) {
+    logSampleSelectionFailure("stable identity did not resolve",
+                              candidate.fullPath, candidateId.value);
+    return false;
+  }
+
+  // E invariant: path lookup, WAV I/O, allocation, conversion, LRU work and
+  // sample-store publication happen on the control/UI side, never while the
+  // audio mutation boundary is held.
+  if (!mini_acid_.sampleStore->preload(candidateId)) {
+    logSampleSelectionFailure("preload failed; previous pad assignment kept",
+                              candidate.fullPath, candidateId.value);
+    return false;
+  }
+
+  if (candidateId == previousId) return false;
+
+  // Only the pad identity publication is protected by the short audio guard.
+  withAudioGuard([&]() {
+    mini_acid_.samplerTrack->pad(padIndex).id = candidateId;
+  });
+  return true;
 }
 
 void SamplerPage::adjustFocusedElement(int direction) {
-  auto& p = mini_acid_.samplerTrack->pad(current_pad_);
-  const auto& files = mini_acid_.sampleIndex.getFiles();
+  if (pad_ctrl_->isFocused()) {
+    withAudioGuard([&]() {
+      current_pad_ =
+          (current_pad_ + direction + kRecoveredPadCount) % kRecoveredPadCount;
+    });
+    return;
+  }
 
-  const uint32_t beforeId = p.id.value;
+  if (file_ctrl_->isFocused()) {
+    if (selectIndexedSample(direction)) GroovePuterState::markSceneMutated();
+    return;
+  }
+
+  auto& p = mini_acid_.samplerTrack->pad(current_pad_);
   const float beforeVolume = p.volume;
   const float beforePitch = p.pitch;
   const uint32_t beforeStart = p.startFrame;
@@ -150,36 +233,18 @@ void SamplerPage::adjustFocusedElement(int direction) {
   const bool beforeLoop = p.loop;
   const bool beforeReverse = p.reverse;
   const uint8_t beforeChoke = p.chokeGroup;
-  const bool persistentTarget =
-      file_ctrl_->isFocused() || volume_ctrl_->isFocused() ||
-      pitch_ctrl_->isFocused() || start_ctrl_->isFocused() ||
-      end_ctrl_->isFocused() || loop_ctrl_->isFocused() ||
-      reverse_ctrl_->isFocused() || choke_ctrl_->isFocused();
 
-  audio_guard_([&]() {
-    if (pad_ctrl_->isFocused()) {
-      current_pad_ = (current_pad_ + direction + 16) % 16;
-    } else if (file_ctrl_->isFocused()) {
-      if (files.empty()) return;
-      int idx = -1;
-      for (size_t i = 0; i < files.size(); ++i) {
-        if (files[i].id.value == p.id.value) { idx = static_cast<int>(i); break; }
-      }
-      idx = (idx + direction + static_cast<int>(files.size())) % static_cast<int>(files.size());
-      p.id = files[static_cast<size_t>(idx)].id;
-      mini_acid_.sampleStore->preload(p.id);
-    } else if (kit_ctrl_->isFocused()) {
-      openLoadKitDialog();
-    } else if (volume_ctrl_->isFocused()) {
+  withAudioGuard([&]() {
+    if (volume_ctrl_->isFocused()) {
       p.volume = std::clamp(p.volume + direction * 0.05f, 0.0f, 2.0f);
     } else if (pitch_ctrl_->isFocused()) {
       p.pitch = std::clamp(p.pitch + direction * 0.05f, 0.1f, 4.0f);
     } else if (start_ctrl_->isFocused()) {
-      p.startFrame += direction * 500;
-      if (static_cast<int>(p.startFrame) < 0) p.startFrame = 0;
+      const int64_t next = static_cast<int64_t>(p.startFrame) + direction * 500LL;
+      p.startFrame = static_cast<uint32_t>(std::max<int64_t>(0, next));
     } else if (end_ctrl_->isFocused()) {
-      p.endFrame += direction * 500;
-      if (static_cast<int>(p.endFrame) < 0) p.endFrame = 0;
+      const int64_t next = static_cast<int64_t>(p.endFrame) + direction * 500LL;
+      p.endFrame = static_cast<uint32_t>(std::max<int64_t>(0, next));
     } else if (loop_ctrl_->isFocused()) {
       p.loop = !p.loop;
     } else if (reverse_ctrl_->isFocused()) {
@@ -190,17 +255,19 @@ void SamplerPage::adjustFocusedElement(int direction) {
   });
 
   const bool changed =
-      p.id.value != beforeId || p.volume != beforeVolume ||
-      p.pitch != beforePitch || p.startFrame != beforeStart ||
-      p.endFrame != beforeEnd || p.loop != beforeLoop ||
-      p.reverse != beforeReverse || p.chokeGroup != beforeChoke;
-  if (persistentTarget && changed) GroovePuterState::markSceneMutated();
+      p.volume != beforeVolume || p.pitch != beforePitch ||
+      p.startFrame != beforeStart || p.endFrame != beforeEnd ||
+      p.loop != beforeLoop || p.reverse != beforeReverse ||
+      p.chokeGroup != beforeChoke;
+  if (changed) GroovePuterState::markSceneMutated();
 }
 
 void SamplerPage::prelisten() {
-    audio_guard_([&]() {
-        mini_acid_.samplerTrack->triggerPad(current_pad_, 1.0f, *mini_acid_.sampleStore);
-    });
+  if (mini_acid_.sampleStore == nullptr) return;
+  withAudioGuard([&]() {
+    mini_acid_.samplerTrack->triggerPad(current_pad_, 1.0f,
+                                        *mini_acid_.sampleStore);
+  });
 }
 
 bool SamplerPage::handleEvent(UIEvent& ui_event) {
@@ -208,16 +275,16 @@ bool SamplerPage::handleEvent(UIEvent& ui_event) {
     return Container::handleEvent(ui_event);
   }
 
-  if (dialog_type_ != DialogType::None) {
-      return handleDialogEvent(ui_event);
-  }
-
-  switch (ui_event.scancode) {
+  const int nav = UIInput::navCode(ui_event);
+  switch (nav) {
     case GROOVEPUTER_UP:
       focusPrev();
       return true;
     case GROOVEPUTER_DOWN:
       focusNext();
+      return true;
+    case GROOVEPUTER_LEFT:
+      adjustFocusedElement(-1);
       return true;
     case GROOVEPUTER_RIGHT:
       adjustFocusedElement(1);
@@ -226,145 +293,24 @@ bool SamplerPage::handleEvent(UIEvent& ui_event) {
       break;
   }
 
-  char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(ui_event.key)));
-  
-  // Q-I triggered pads 1-8 (Standardized row)
-  const char* triggerKeys = "qwertyu";
-  const char* found = strchr(triggerKeys, lowerKey);
-  if (found) {
-    int padIdx = found - triggerKeys;
-    audio_guard_([&]() {
-        mini_acid_.samplerTrack->triggerPad(padIdx, 1.0f, *mini_acid_.sampleStore);
+  const char lowerKey = static_cast<char>(
+      std::tolower(static_cast<unsigned char>(ui_event.key)));
+  const char* found = std::strchr(kSequencedPadKeys, lowerKey);
+  if (found != nullptr && mini_acid_.sampleStore != nullptr) {
+    const int padIdx = static_cast<int>(found - kSequencedPadKeys);
+    withAudioGuard([&]() {
+      mini_acid_.samplerTrack->triggerPad(padIdx, 1.0f,
+                                          *mini_acid_.sampleStore);
     });
     return true;
   }
 
   if (ui_event.key == ' ') {
-      prelisten();
-      return true;
+    prelisten();
+    return true;
   }
 
   return Container::handleEvent(ui_event);
 }
 
 const std::string& SamplerPage::getTitle() const { return title_; }
-
-void SamplerPage::refreshKits() {
-    kits_ = mini_acid_.sampleIndex.getSubdirectories("/bonnethead/kits");
-    if (kits_.empty()) {
-        // Fallback for testing or bad path
-        kits_ = mini_acid_.sampleIndex.getSubdirectories("/sd/bonnethead/kits"); 
-    }
-    list_selection_index_ = 0;
-    list_scroll_offset_ = 0;
-}
-
-void SamplerPage::openLoadKitDialog() {
-    refreshKits();
-    dialog_type_ = DialogType::LoadKit;
-}
-
-void SamplerPage::closeDialog() {
-    dialog_type_ = DialogType::None;
-}
-
-void SamplerPage::loadKit(const std::string& kitName) {
-    if (kitName.empty()) return;
-    std::string path = "/bonnethead/kits/" + kitName;
-    mini_acid_.sampleIndex.scanDirectory(path);
-    
-    // Auto map
-    const auto& files = mini_acid_.sampleIndex.getFiles();
-    audio_guard_([&]() {
-        for (int i=0; i<16; ++i) {
-            auto& pad = mini_acid_.samplerTrack->pad(i);
-            // Heuristic or sequential
-            pad.id.value = 0;
-            if (i < (int)files.size()) {
-                pad.id = files[i].id;
-                // Detect specific samples for specific pads?
-                // Pad 0=Kick, 1=Snare, 2=Hat, 3=OpenHat
-                pad.volume = 1.0f;
-                pad.pitch = 1.0f;
-                pad.startFrame = 0;
-                pad.endFrame = 0;
-                pad.loop = false;
-                pad.reverse = false;
-                pad.chokeGroup = 0;
-                
-                mini_acid_.sampleStore->preload(pad.id);
-            }
-        }
-    });
-    GroovePuterState::markSceneMutated();
-    
-    kit_ctrl_->setValue(kitName);
-    closeDialog();
-}
-
-void SamplerPage::drawDialog(IGfx& gfx) {
-    int w = width() - 20;
-    int h = height() - 20;
-    int x = dx() + 10;
-    int y = dy() + 10;
-    
-    gfx.fillRect(x, y, w, h, COLOR_DARKER);
-    gfx.drawRect(x, y, w, h, COLOR_ACCENT);
-    
-    gfx.setTextColor(COLOR_WHITE);
-    gfx.drawText(x+5, y+5, "Select Kit:");
-    
-    int list_y = y + 20;
-    int row_h = 14;
-    int rows = (h - 30) / row_h;
-    
-    if (kits_.empty()) {
-        gfx.drawText(x+5, list_y, "(No kits found)");
-        return;
-    }
-    
-    int startIdx = list_scroll_offset_;
-    int endIdx = std::min((int)kits_.size(), startIdx + rows);
-    
-    for (int i = startIdx; i < endIdx; ++i) {
-         int ry = list_y + (i - startIdx) * row_h;
-         if (i == list_selection_index_) {
-             gfx.fillRect(x+2, ry, w-4, row_h, COLOR_PANEL);
-             gfx.drawRect(x+2, ry, w-4, row_h, COLOR_ACCENT);
-         }
-         gfx.drawText(x+5, ry+2, kits_[i].c_str());
-    }
-}
-
-bool SamplerPage::handleDialogEvent(UIEvent& ui_event) {
-    if (ui_event.event_type == GROOVEPUTER_KEY_DOWN) {
-        if (ui_event.scancode == GROOVEPUTER_UP) {
-            if (list_selection_index_ > 0) {
-                list_selection_index_--;
-                if (list_selection_index_ < list_scroll_offset_) list_scroll_offset_ = list_selection_index_;
-            }
-            return true;
-        }
-        if (ui_event.scancode == GROOVEPUTER_DOWN) {
-            if (list_selection_index_ < (int)kits_.size() - 1) {
-                list_selection_index_++;
-                int rows = (height() - 50) / 14; 
-                if (list_selection_index_ >= list_scroll_offset_ + rows) list_scroll_offset_ = list_selection_index_ - rows + 1;
-            }
-            return true;
-        }
-        if (ui_event.key == '\n' || ui_event.key == '\r') {
-            if (!kits_.empty() && list_selection_index_ >= 0 && list_selection_index_ < (int)kits_.size()) {
-                loadKit(kits_[list_selection_index_]);
-            } else {
-                closeDialog();
-            }
-            return true;
-        }
-        if (ui_event.scancode == GROOVEPUTER_ESCAPE || ui_event.key == 'q') {
-            closeDialog();
-            return true;
-        }
-    }
-    return true;
-}

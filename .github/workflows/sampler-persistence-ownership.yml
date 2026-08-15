@@ -1,0 +1,15 @@
+name: Sampler persistence ownership
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  sampler-persistence-ownership:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run sampler persistence ownership contract
+        run: bash tests/run_sampler_persistence_ownership_tests.sh

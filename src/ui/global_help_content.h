@@ -18,6 +18,7 @@ constexpr const char* kGlobalLines[] = {
     "Alt/Fn+1..0 Direct page jump",
     "Space       Active transport",
     "Alt+P       MIDI Player",
+    "Alt+K       Sampler",
     "Alt+V       Groove Lab",
     "Alt+W       Waveform except PHRASE",
     "Alt+\\       Theme CARBON/CYBER",
@@ -270,6 +271,16 @@ constexpr const char* kPlayerLines[] = {
     "X           Panic SMF notes",
 };
 
+constexpr const char* kSamplerLines[] = {
+    "=== SAMPLER ===",
+    "Up/Down     Focus field",
+    "Left/Right  Adjust/select",
+    "Q W E R T Y U I  Pads 1..8",
+    "Space       Prelisten current pad",
+    "Alt+0       Project / explicit Save",
+    "KIT LOAD    Deferred to 0.9.4",
+};
+
 inline const char* const* pageLines(int pageIndex, int& count) {
     switch (pageIndex) {
         case WorkflowPages::kGenre:
@@ -300,6 +311,8 @@ inline const char* const* pageLines(int pageIndex, int& count) {
             count = sizeof(kPerformLines) / sizeof(kPerformLines[0]); return kPerformLines;
         case WorkflowPages::kPlayer:
             count = sizeof(kPlayerLines) / sizeof(kPlayerLines[0]); return kPlayerLines;
+        case WorkflowPages::kSampler:
+            count = sizeof(kSamplerLines) / sizeof(kSamplerLines[0]); return kSamplerLines;
         default:
             count = 0; return nullptr;
     }

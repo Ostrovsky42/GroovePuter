@@ -45,15 +45,18 @@ require(boot_tab, "g_miniAcidInstance.sampleStore = &g_sampleStore", "sampler_bo
 assert "preload(" not in boot_tab
 assert "loadWavFile" not in boot_tab
 
-# Stable SampleRef validates identity before the current 32-bit runtime binding.
+# Stable SampleRef still validates every binding. D may choose a collision-safe
+# compact runtime ID, but RamSampleStore must never accept last-write-wins ID
+# ownership.
 require(index_cpp, "calculateStableRef(file.fullPath)", "sample_index.cpp")
-require(index_cpp, "resolveLegacyFile(file.id)", "sample_index.cpp")
-require(index_cpp, "store.registerFile(file.id, file.fullPath)", "sample_index.cpp")
+require(index_cpp, "runtimeIdForFile(file)", "sample_index.cpp")
+require(index_cpp, "store.registerFile(runtimeId, file.fullPath)", "sample_index.cpp")
 require(store_cpp, "refusing conflicting ID", "ram_sample_store.cpp")
 assert "filePaths_[id.value] = path" not in store_cpp
 
-# Persistence migration remains explicitly out of C: old Scene sampleId is
-# still uint32_t and applySceneStateFromManager still owns actual preload.
+# D must still leave the audio/runtime Scene payload compact. Stable refs are
+# translated at persistence/control boundaries; actual preload remains owned by
+# applySceneStateFromManager.
 require(scenes_h, "uint32_t sampleId = 0;", "scenes.h")
 require(engine_cpp, "p.id.value = s.sampleId;", "miniacid_engine.cpp")
 require(engine_cpp, "sampleStore->preload(p.id)", "miniacid_engine.cpp")

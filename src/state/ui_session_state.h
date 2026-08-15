@@ -17,7 +17,7 @@ enum class SessionWorkflow : uint8_t {
 };
 
 constexpr int kWorkflowSessionCount = 5;
-constexpr int kUiPageCount = 15;
+constexpr int kUiPageCount = 16;
 constexpr uint16_t kDefaultMasterVolumePermille = 600;
 constexpr uint16_t kMaxMasterVolumePermille = 1800;
 
@@ -37,6 +37,7 @@ constexpr int kGeneration = 11; // legacy persisted id -> FEEL
 constexpr int kPerform = 12;
 constexpr int kPlayer = 13;
 constexpr int kPhrase = 14;
+constexpr int kSampler = 15;
 }  // namespace SessionPages
 
 inline int normalizeLegacyUiPage(int page) {

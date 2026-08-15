@@ -109,8 +109,16 @@ def main() -> None:
 
     require("withRuntimeAudioGuard([&]()" in voice_source,
             "Voice preview and runtime controls need a non-persistent guard")
-    require("if (persistentTarget && changed) GroovePuterState::markSceneMutated();" in sampler_source,
-            "Sampler pad edits must mark only actual persistent changes")
+
+    # Sampler E splits one persistent mutation path into two ownership phases:
+    # sample selection becomes persistent only after successful control-side
+    # preload + short ID publication, while the remaining pad parameters mark
+    # the Scene dirty only if their value actually changed.
+    require("if (selectIndexedSample(direction)) GroovePuterState::markSceneMutated();" in sampler_source,
+            "Sampler sample assignment must mark only a successfully published replacement")
+    require("if (changed) GroovePuterState::markSceneMutated();" in sampler_source,
+            "Sampler pad parameter edits must mark only actual persistent changes")
+
     require("if (changed) GroovePuterState::markSceneMutated();" in drum_source,
             "Global Drum FX must mark actual persistent changes")
     require("GroovePuterState::markSceneMutated();" in automation_source,

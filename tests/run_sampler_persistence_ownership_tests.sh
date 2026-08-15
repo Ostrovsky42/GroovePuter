@@ -13,13 +13,12 @@ mkdir -p "${BUILD_DIR}"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
-  "${ROOT_DIR}/tests/test_sample_registry_boot.cpp" \
+  "${ROOT_DIR}/tests/test_sampler_persistence_ownership.cpp" \
   "${ROOT_DIR}/src/sampler/sample_index.cpp" \
   "${ROOT_DIR}/src/sampler/sample_scene_persistence.cpp" \
-  "${ROOT_DIR}/src/sampler/ram_sample_store.cpp" \
-  -o "${BUILD_DIR}/test_sample_registry_boot"
+  -o "${BUILD_DIR}/test_sampler_persistence_ownership"
 
-"${BUILD_DIR}/test_sample_registry_boot"
-python3 "${ROOT_DIR}/tests/test_sampler_registry_boot_source_regressions.py"
+"${BUILD_DIR}/test_sampler_persistence_ownership"
+python3 "${ROOT_DIR}/tests/test_sampler_persistence_source_regressions.py"
 
-echo "sampler registry/boot lifecycle tests passed"
+echo "sampler persistence ownership tests passed"
