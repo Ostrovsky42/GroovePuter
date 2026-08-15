@@ -16,6 +16,7 @@ def main() -> None:
     facade = (ROOT / "src/input/musical_event_queue.h").read_text(encoding="utf-8")
     transport_api = (ROOT / "src/midi/usb_midi_transport.h").read_text(encoding="utf-8")
     capabilities = (ROOT / "src/midi/midi_transport_capabilities.h").read_text(encoding="utf-8")
+    profile_runtime = (ROOT / "src/midi/midi_device_profile_runtime.h").read_text(encoding="utf-8")
     transport = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
     transport_h = (ROOT / "src/platform/cardputer_usb_midi_transport.h").read_text(encoding="utf-8")
     service = (ROOT / "src/platform/cardputer_usb_midi_service.h").read_text(encoding="utf-8")
@@ -106,9 +107,10 @@ def main() -> None:
             "songPositionPointerLsb" in capabilities and
             "songPositionPointerMsb" in capabilities,
             "SPP helpers must preserve PPQN conversion and the 14-bit payload")
-    require("midiTransportCapabilityRuntime().setDeviceProfile" in settings_session and
-            "settings_.profile" in settings_session,
-            "persisted MIDI device profile must initialize transport capabilities")
+    require("profileRuntime.initialize(loadedSettings)" in settings_session and
+            "midiDeviceProfileRuntime()" in settings_session and
+            "midiTransportCapabilityRuntime().setDeviceProfile(settings_.profile)" in profile_runtime,
+            "persisted MIDI device profile must initialize the single runtime owner, which publishes transport capabilities")
 
     seqtrak_start = capabilities.index(
         "constexpr MidiTransportCapabilities seqtrakValidatedTransportCapabilities()")
