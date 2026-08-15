@@ -25,5 +25,6 @@ COMMON_FLAGS=(
 
 "${BUILD_DIR}/test_output_ownership"
 "${BUILD_DIR}/test_output_ownership_queues"
+python3 "${ROOT_DIR}/tests/test_output_ownership_source_contract.py"
 
 echo "0.9.6 output ownership contract gate: PASS"

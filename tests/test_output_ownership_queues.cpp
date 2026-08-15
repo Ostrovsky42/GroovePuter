@@ -16,8 +16,9 @@ float phaseReader(void*) { return 0.0f; }
 MusicalEvent event(MusicalEventType type,
                    MusicalEventSource source,
                    MusicalEventTarget target,
-                   uint8_t note = 60) {
-    return MusicalEvent{type, source, target, 0, note, 100};
+                   uint8_t note = 60,
+                   uint8_t channel = 0) {
+    return MusicalEvent{type, source, target, channel, note, 100};
 }
 
 void resetLegacy() {
@@ -77,6 +78,22 @@ void expectControlQueuePolicy() {
     assert(queue.tryPush(bOn));
     assert(queue.tryPop(popped));
 
+    // Drums use the same explicit external truth table, lane by lane.
+    auto drumOn = event(MusicalEventType::NoteOn,
+                        MusicalEventSource::PerformanceKeyboard,
+                        MusicalEventTarget::Drums, 60, 5);
+    assert(GroovePuterOutput::setMode(Track::Drums, Mode::Internal));
+    assert(!queue.tryPush(drumOn));
+    assert(queue.approximateSize() == 0);
+    assert(GroovePuterOutput::setMode(Track::Drums, Mode::Midi));
+    assert(queue.tryPush(drumOn));
+    assert(queue.tryPop(popped));
+    assert(popped.target == MusicalEventTarget::Drums);
+    assert(popped.channel == 5);
+    assert(GroovePuterOutput::setMode(Track::Drums, Mode::Layer));
+    assert(queue.tryPush(drumOn));
+    assert(queue.tryPop(popped));
+
     // DX is outside the ownership axis.
     auto dxOn = event(MusicalEventType::NoteOn,
                       MusicalEventSource::PerformanceKeyboard,
@@ -126,6 +143,21 @@ void expectPatternQueuePolicy() {
     assert(queue.tryPush(patternPanic));
     assert(queue.generationFor(MusicalEventTarget::SynthA) ==
            generationBefore + 1u);
+
+    auto drumOn = event(MusicalEventType::NoteOn,
+                        MusicalEventSource::PatternPlayer,
+                        MusicalEventTarget::Drums, 60, 7);
+    assert(GroovePuterOutput::setMode(Track::Drums, Mode::Internal));
+    assert(!queue.tryPush(drumOn));
+    assert(queue.approximateSize() == 0);
+    assert(GroovePuterOutput::setMode(Track::Drums, Mode::Midi));
+    assert(queue.tryPush(drumOn));
+    assert(queue.tryPop(scheduled));
+    assert(scheduled.event.target == MusicalEventTarget::Drums);
+    assert(scheduled.event.channel == 7);
+    assert(GroovePuterOutput::setMode(Track::Drums, Mode::Layer));
+    assert(queue.tryPush(drumOn));
+    assert(queue.tryPop(scheduled));
 
     queue.endMidiRenderBlock();
 }

@@ -19,6 +19,12 @@ bool isPerformanceSource(MusicalEventSource source) {
            source == MusicalEventSource::PerformanceKeyboardPoly ||
            source == MusicalEventSource::Arpeggiator;
 }
+
+float samplerVelocity(uint8_t velocity) {
+    if (velocity < 1) velocity = 1;
+    if (velocity > 127) velocity = 127;
+    return static_cast<float>(velocity) / 127.0f;
+}
 }  // namespace
 
 int InternalSynthOutput::synthIndex(MusicalEventTarget target) {
@@ -26,12 +32,67 @@ int InternalSynthOutput::synthIndex(MusicalEventTarget target) {
 }
 
 void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
-    // PatternPlayer already owns and renders the internal voices inside the
-    // audio task. Its router fan-out is for additive outputs; taking the control
-    // mutation gate here would deadlock the audio producer and double-trigger.
+    // PatternPlayer already owns and renders internal voices inside AudioTask.
+    // Its router fan-out is additive output only; taking AudioMutationGate here
+    // would deadlock the realtime producer and double-trigger.
     if (event.source == MusicalEventSource::PatternPlayer ||
-        event.target == MusicalEventTarget::Drums ||
         event.target == MusicalEventTarget::Dx) {
+        return;
+    }
+
+    if (event.target == MusicalEventTarget::Drums) {
+        // Drums were external-only in <=0.9.5 PERFORM. Explicit INTERNAL/LAYER
+        // activates the already-existing local drum synth + optional sampler
+        // source layer. MidiInput is deliberately outside this 0.9.6 migration.
+        if (!isPerformanceSource(event.source)) return;
+        if (event.channel >= 8) return;
+        if (event.type == MusicalEventType::NoteOn &&
+            !GroovePuterOutput::allowsInternalNoteOn(event)) {
+            return;
+        }
+
+        AudioMutationScope mutationScope(mutationGate_);
+        const uint8_t lane = event.channel;
+        const uint8_t mask = static_cast<uint8_t>(1u << lane);
+
+        switch (event.type) {
+            case MusicalEventType::NoteOn: {
+                triggerRegisteredLocalDrumVoice(lane, event.velocity);
+                if (engine_.sampleStore && engine_.samplerTrack &&
+                    engine_.samplerTrack->isEnabled() &&
+                    engine_.samplerTrack->pad(lane).id.value != 0) {
+                    engine_.samplerTrack->triggerPad(
+                        lane,
+                        samplerVelocity(event.velocity),
+                        *engine_.sampleStore);
+                    liveDrumPadMask_ |= mask;
+                }
+                break;
+            }
+            case MusicalEventType::NoteOff:
+                if ((liveDrumPadMask_ & mask) != 0u) {
+                    // Drum one-shots keep their natural tail. A looping sample
+                    // follows key ownership and stops on the matching key-up.
+                    if (engine_.samplerTrack &&
+                        engine_.samplerTrack->pad(lane).loop) {
+                        engine_.samplerTrack->stopPad(lane);
+                    }
+                    liveDrumPadMask_ &= static_cast<uint8_t>(~mask);
+                }
+                break;
+            case MusicalEventType::AllNotesOff:
+                if (engine_.samplerTrack) {
+                    for (uint8_t pad = 0; pad < 8; ++pad) {
+                        const uint8_t padMask =
+                            static_cast<uint8_t>(1u << pad);
+                        if ((liveDrumPadMask_ & padMask) != 0u) {
+                            engine_.samplerTrack->stopPad(pad);
+                        }
+                    }
+                }
+                liveDrumPadMask_ = 0;
+                break;
+        }
         return;
     }
 

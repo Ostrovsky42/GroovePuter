@@ -8,6 +8,7 @@
 
 #include "mini_drumvoices.h"
 #include "../input/musical_event_queue.h"
+#include "../output/output_ownership.h"
 
 // The synth PatternPlayer already publishes normalized events from MiniAcid.
 // Drum engines have several implementations and every base/retrig/flam/roll hit
@@ -18,6 +19,16 @@
 inline MusicalEventQueue*& patternDrumEventQueueSlot() {
     static MusicalEventQueue* queue = nullptr;
     return queue;
+}
+
+class PatternPublishingDrumVoice;
+
+// Cardputer/SDL own one MiniAcid engine. Reuse the exact same drum wrapper for
+// explicit local PERFORM output rather than creating another drum synth, queue
+// or router. This mirrors the already-established Pattern queue slot above.
+inline PatternPublishingDrumVoice*& localDrumOwnerSlot() {
+    static PatternPublishingDrumVoice* owner = nullptr;
+    return owner;
 }
 
 class PatternEventQueueHandle {
@@ -85,15 +96,27 @@ inline void publishPatternDrumTrigger(uint8_t logicalVoice, uint8_t velocity) {
 
 class PatternPublishingDrumVoice {
 public:
-    PatternPublishingDrumVoice() = default;
+    PatternPublishingDrumVoice() {
+        localDrumOwnerSlot() = this;
+    }
 
     template <typename T>
     PatternPublishingDrumVoice(std::unique_ptr<T> voice)
-        : voice_(std::move(voice)) {}
+        : voice_(std::move(voice)) {
+        localDrumOwnerSlot() = this;
+    }
+
+    ~PatternPublishingDrumVoice() {
+        if (localDrumOwnerSlot() == this) localDrumOwnerSlot() = nullptr;
+    }
+
+    PatternPublishingDrumVoice(const PatternPublishingDrumVoice&) = delete;
+    PatternPublishingDrumVoice& operator=(const PatternPublishingDrumVoice&) = delete;
 
     template <typename T>
     PatternPublishingDrumVoice& operator=(std::unique_ptr<T> voice) {
         voice_ = std::move(voice);
+        localDrumOwnerSlot() = this;
         return *this;
     }
 
@@ -105,45 +128,59 @@ public:
     void setSampleRate(float sampleRate) { if (voice_) voice_->setSampleRate(sampleRate); }
     void beginSample() { if (voice_) voice_->beginSample(); }
 
+    void triggerLocal(uint8_t logicalVoice,
+                      bool accent = false,
+                      uint8_t velocity = 100) {
+        if (!voice_ || logicalVoice >= 8) return;
+        switch (logicalVoice) {
+            case 0: voice_->triggerKick(accent, velocity); break;
+            case 1: voice_->triggerSnare(accent, velocity); break;
+            case 2: voice_->triggerHat(accent, velocity); break;
+            case 3: voice_->triggerOpenHat(accent, velocity); break;
+            case 4: voice_->triggerMidTom(accent, velocity); break;
+            case 5: voice_->triggerHighTom(accent, velocity); break;
+            case 6: voice_->triggerRim(accent, velocity); break;
+            case 7: voice_->triggerClap(accent, velocity); break;
+        }
+    }
+
+    void triggerPattern(uint8_t logicalVoice,
+                        bool accent,
+                        uint8_t velocity) {
+        if (!voice_ || logicalVoice >= 8) return;
+        if (GroovePuterOutput::allowsInternal(
+                GroovePuterOutput::Track::Drums,
+                GroovePuterOutput::SourceClass::Pattern)) {
+            triggerLocal(logicalVoice, accent, velocity);
+        }
+        // External publication is independent from the local side. The bounded
+        // MusicalEventQueue applies the MIDI half of the same OutputMode.
+        publishPatternDrumTrigger(logicalVoice, velocity);
+    }
+
     void triggerKick(bool accent = false, uint8_t velocity = 100) {
-        if (!voice_) return;
-        voice_->triggerKick(accent, velocity);
-        publishPatternDrumTrigger(0, velocity);
+        triggerPattern(0, accent, velocity);
     }
     void triggerSnare(bool accent = false, uint8_t velocity = 100) {
-        if (!voice_) return;
-        voice_->triggerSnare(accent, velocity);
-        publishPatternDrumTrigger(1, velocity);
+        triggerPattern(1, accent, velocity);
     }
     void triggerHat(bool accent = false, uint8_t velocity = 100) {
-        if (!voice_) return;
-        voice_->triggerHat(accent, velocity);
-        publishPatternDrumTrigger(2, velocity);
+        triggerPattern(2, accent, velocity);
     }
     void triggerOpenHat(bool accent = false, uint8_t velocity = 100) {
-        if (!voice_) return;
-        voice_->triggerOpenHat(accent, velocity);
-        publishPatternDrumTrigger(3, velocity);
+        triggerPattern(3, accent, velocity);
     }
     void triggerMidTom(bool accent = false, uint8_t velocity = 100) {
-        if (!voice_) return;
-        voice_->triggerMidTom(accent, velocity);
-        publishPatternDrumTrigger(4, velocity);
+        triggerPattern(4, accent, velocity);
     }
     void triggerHighTom(bool accent = false, uint8_t velocity = 100) {
-        if (!voice_) return;
-        voice_->triggerHighTom(accent, velocity);
-        publishPatternDrumTrigger(5, velocity);
+        triggerPattern(5, accent, velocity);
     }
     void triggerRim(bool accent = false, uint8_t velocity = 100) {
-        if (!voice_) return;
-        voice_->triggerRim(accent, velocity);
-        publishPatternDrumTrigger(6, velocity);
+        triggerPattern(6, accent, velocity);
     }
     void triggerClap(bool accent = false, uint8_t velocity = 100) {
-        if (!voice_) return;
-        voice_->triggerClap(accent, velocity);
-        publishPatternDrumTrigger(7, velocity);
+        triggerPattern(7, accent, velocity);
     }
     void triggerCymbal(bool accent = false, uint8_t velocity = 100) {
         if (voice_) voice_->triggerCymbal(accent, velocity);
@@ -169,5 +206,13 @@ public:
 private:
     std::unique_ptr<DrumSynthVoice> voice_;
 };
+
+inline bool triggerRegisteredLocalDrumVoice(uint8_t logicalVoice,
+                                            uint8_t velocity) {
+    PatternPublishingDrumVoice* owner = localDrumOwnerSlot();
+    if (!owner || logicalVoice >= 8) return false;
+    owner->triggerLocal(logicalVoice, false, velocity);
+    return true;
+}
 
 #endif  // GROOVEPUTER_PATTERN_DRUM_EVENT_TAP_H
