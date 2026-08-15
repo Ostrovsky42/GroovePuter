@@ -31,14 +31,23 @@ void testSeqtrakRoutingBaseline() {
     assert(settings.synthAChannel == 7);
     assert(settings.synthBChannel == 8);
 
-    assert(routeFor(settings, MidiDrumVoice::Kick) == DrumMidiRoute{true, 0, 60});
-    assert(routeFor(settings, MidiDrumVoice::Snare) == DrumMidiRoute{true, 1, 60});
-    assert(routeFor(settings, MidiDrumVoice::Clap) == DrumMidiRoute{true, 2, 60});
-    assert(routeFor(settings, MidiDrumVoice::ClosedHat) == DrumMidiRoute{true, 3, 60});
-    assert(routeFor(settings, MidiDrumVoice::OpenHat) == DrumMidiRoute{true, 4, 60});
-    assert(routeFor(settings, MidiDrumVoice::MidTom) == DrumMidiRoute{true, 5, 60});
-    assert(routeFor(settings, MidiDrumVoice::Rim) == DrumMidiRoute{true, 5, 60});
-    assert(routeFor(settings, MidiDrumVoice::HighTom) == DrumMidiRoute{true, 6, 60});
+    const DrumMidiRoute kick{true, 0, 60};
+    const DrumMidiRoute snare{true, 1, 60};
+    const DrumMidiRoute clap{true, 2, 60};
+    const DrumMidiRoute closedHat{true, 3, 60};
+    const DrumMidiRoute openHat{true, 4, 60};
+    const DrumMidiRoute midTom{true, 5, 60};
+    const DrumMidiRoute rim{true, 5, 60};
+    const DrumMidiRoute highTom{true, 6, 60};
+
+    assert(routeFor(settings, MidiDrumVoice::Kick) == kick);
+    assert(routeFor(settings, MidiDrumVoice::Snare) == snare);
+    assert(routeFor(settings, MidiDrumVoice::Clap) == clap);
+    assert(routeFor(settings, MidiDrumVoice::ClosedHat) == closedHat);
+    assert(routeFor(settings, MidiDrumVoice::OpenHat) == openHat);
+    assert(routeFor(settings, MidiDrumVoice::MidTom) == midTom);
+    assert(routeFor(settings, MidiDrumVoice::Rim) == rim);
+    assert(routeFor(settings, MidiDrumVoice::HighTom) == highTom);
 }
 
 void testSeqtrakTransportClaimsStayConservative() {
@@ -140,8 +149,9 @@ void testCustomPreservesCustomRouting() {
     assert(settings.synthAChannel == 13);
     assert(settings.synthBChannel == 14);
     assert(settings.drumGateMs == 177);
-    assert(routeFor(settings, MidiDrumVoice::Kick) ==
-           DrumMidiRoute{false, 11, 71});
+
+    const DrumMidiRoute customKick{false, 11, 71};
+    assert(routeFor(settings, MidiDrumVoice::Kick) == customKick);
 
     constexpr MidiTransportCapabilities caps =
         midiTransportCapabilitiesForProfile(MidiDeviceProfile::Custom);
