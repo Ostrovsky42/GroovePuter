@@ -117,6 +117,7 @@ SOURCES := \
 	../src/audio/pattern_paging.cpp \
 	../src/audio/pattern_project_cleanup.cpp \
 	../src/audio/midi_importer.cpp \
+	../src/sampler/sample_probe.cpp \
 	../src/sampler/sample_loader.cpp \
 	../src/sampler/ram_sample_store.cpp \
 	../src/sampler/sample_index.cpp \
@@ -157,8 +158,7 @@ bundle: $(TARGET)
 	cp $(SDL2_DYLIB) $(APP_BUNDLE)/Contents/Frameworks/
 	cp $(SDL2_GFX_DYLIB) $(APP_BUNDLE)/Contents/Frameworks/
 	install_name_tool -change $(SDL2_DYLIB) @executable_path/../Frameworks/libSDL2-2.0.0.dylib $(APP_BUNDLE)/Contents/MacOS/$(TARGET)
-	install_name_tool -change $(SDL2_GFX_DYLIB) @executable_path/../Frameworks/libSDL2_gfx-1.0.0.dylib $(APP_BUNDLE)/Contents/MacOS/$(TARGET)
-	install_name_tool -change $(SDL2_DYLIB) @executable_path/../Frameworks/libSDL2-2.0.0.dylib $(APP_BUNDLE)/Contents/Frameworks/libSDL2_gfx-1.0.0.dylib
+	install_name_tool -change $(SDL2_GFX_DYLIB) @executable_path/../Frameworks/libSDL2_gfx-1.0.0.dylib $(APP_BUNDLE)/Contents/Frameworks/libSDL2_gfx-1.0.0.dylib
 	@echo "Code signing libraries and executable..."
 	codesign --force --deep --sign - $(APP_BUNDLE)/Contents/Frameworks/libSDL2-2.0.0.dylib
 	codesign --force --deep --sign - $(APP_BUNDLE)/Contents/Frameworks/libSDL2_gfx-1.0.0.dylib
