@@ -1,0 +1,44 @@
+name: Sampler folder browser 0.9.5-A
+
+on:
+  pull_request:
+    paths:
+      - "sampler_boot_registry.ino"
+      - "src/sampler/sample_index.cpp"
+      - "src/sampler/sample_index.h"
+      - "src/ui/pages/sampler_page.cpp"
+      - "src/ui/pages/sampler_page.h"
+      - "tests/test_sample_registry_boot.cpp"
+      - "tests/test_sampler_safe_preload_source_regressions.py"
+      - "tests/test_sampler_folder_browser_source_regressions.py"
+      - "tests/run_sampler_folder_browser_tests.sh"
+      - "docs/releases/0_9_5_SAMPLE_FOLDER_BROWSER.md"
+      - ".github/workflows/sampler-folder-browser-0-9-5-a.yml"
+  push:
+    branches:
+      - dev_0.9.5
+    paths:
+      - "sampler_boot_registry.ino"
+      - "src/sampler/sample_index.cpp"
+      - "src/sampler/sample_index.h"
+      - "src/ui/pages/sampler_page.cpp"
+      - "src/ui/pages/sampler_page.h"
+      - "tests/test_sample_registry_boot.cpp"
+      - "tests/test_sampler_safe_preload_source_regressions.py"
+      - "tests/test_sampler_folder_browser_source_regressions.py"
+      - "tests/run_sampler_folder_browser_tests.sh"
+      - "docs/releases/0_9_5_SAMPLE_FOLDER_BROWSER.md"
+      - ".github/workflows/sampler-folder-browser-0-9-5-a.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  folder-browser-host:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run recursive registry and folder browser contracts
+        run: bash tests/run_sampler_folder_browser_tests.sh

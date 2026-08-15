@@ -10,6 +10,7 @@
 #define USE_ARDUINO_SD 1
 #else
 #include <dirent.h>
+#include <sys/stat.h>
 #define USE_ARDUINO_SD 0
 #endif
 
@@ -28,6 +29,41 @@ GroovePuterSampler::SampleRef SampleIndex::calculateStableRef(
 }
 
 namespace {
+
+constexpr int kMaxSampleDirectoryDepth = 8;
+
+std::string normalizeDirectoryPath(std::string path) {
+  while (path.size() > 1 && path.back() == '/') path.pop_back();
+  return path;
+}
+
+std::string joinPath(const std::string& parent, const std::string& child) {
+  if (parent.empty()) return child;
+  if (parent.back() == '/') return parent + child;
+  return parent + "/" + child;
+}
+
+[[maybe_unused]] std::string baseName(const std::string& path) {
+  const std::size_t slash = path.find_last_of('/');
+  return slash == std::string::npos ? path : path.substr(slash + 1);
+}
+
+std::string parentDirectory(const std::string& path) {
+  const std::string normalized = normalizeDirectoryPath(path);
+  const std::size_t slash = normalized.find_last_of('/');
+  if (slash == std::string::npos) return {};
+  if (slash == 0) return "/";
+  return normalized.substr(0, slash);
+}
+
+bool isHiddenName(const std::string& name) {
+  return !name.empty() && name.front() == '.';
+}
+
+bool isWavName(const std::string& name) {
+  const char* ext = strrchr(name.c_str(), '.');
+  return ext != nullptr && strcasecmp(ext, ".wav") == 0;
+}
 
 void populateLegacySampleId(SampleFileInfo& info) {
   info.id.value = SampleIndex::calculateHash(info.filename.c_str());
@@ -52,18 +88,50 @@ uint32_t foldStableRef(GroovePuterSampler::SampleRef ref) {
 
 void SampleIndex::scanDirectory(const std::string& dirPath) {
   files_.clear();
-  nameToId_.clear();
+  rootDirectory_ = normalizeDirectoryPath(dirPath);
 
-  printf("SampleIndex::scanDirectory: Scanning '%s'...\n", dirPath.c_str());
+  printf("SampleIndex::scanDirectory: Recursively scanning '%s'...\n",
+         rootDirectory_.c_str());
+
+  if (rootDirectory_.empty()) {
+    printf("SampleIndex::scanDirectory: Empty directory path\n");
+    return;
+  }
+
+  scanDirectoryRecursive(rootDirectory_, 0);
+
+  std::sort(files_.begin(), files_.end(),
+            [](const SampleFileInfo& a, const SampleFileInfo& b) {
+              if (a.filename != b.filename) return a.filename < b.filename;
+              return a.fullPath < b.fullPath;
+            });
+
+  printf("SampleIndex::scanDirectory: Found %zu files\n", files_.size());
+}
+
+void SampleIndex::scanDirectoryRecursive(const std::string& dirPath, int depth) {
+  if (depth > kMaxSampleDirectoryDepth) {
+    printf("SampleIndex::scanDirectory: depth limit reached at '%s'\n",
+           dirPath.c_str());
+    return;
+  }
+
+  std::vector<std::string> childDirectories;
 
 #if USE_ARDUINO_SD
   File dir = SD.open(dirPath.c_str());
   if (!dir) {
-    printf("SampleIndex::scanDirectory: Failed to open directory\n");
+    if (depth == 0) {
+      printf("SampleIndex::scanDirectory: Failed to open directory\n");
+    } else {
+      printf("SampleIndex::scanDirectory: Failed to open child '%s'\n",
+             dirPath.c_str());
+    }
     return;
   }
   if (!dir.isDirectory()) {
-    printf("SampleIndex::scanDirectory: Path is not a directory\n");
+    printf("SampleIndex::scanDirectory: Path is not a directory: %s\n",
+           dirPath.c_str());
     dir.close();
     return;
   }
@@ -72,75 +140,133 @@ void SampleIndex::scanDirectory(const std::string& dirPath) {
     File entry = dir.openNextFile();
     if (!entry) break;
 
-    if (!entry.isDirectory()) {
-      const char* name = entry.name();
-      if (name[0] == '/') name++;
-      const char* lastSlash = strrchr(name, '/');
-      if (lastSlash) name = lastSlash + 1;
-
-      const char* ext = strrchr(name, '.');
-      if (ext && strcasecmp(ext, ".wav") == 0) {
-        SampleFileInfo info;
-        info.filename = name;
-        info.fullPath = dirPath;
-        if (!info.fullPath.empty() && info.fullPath.back() != '/') {
-          info.fullPath += "/";
-        }
-        info.fullPath += name;
-        populateLegacySampleId(info);
-
-        files_.push_back(info);
-        nameToId_[info.filename] = info.id;
-        logDiscoveredSample(info);
-      }
-    }
+    const std::string name = baseName(entry.name());
+    const bool directory = entry.isDirectory();
     entry.close();
+
+    if (name.empty() || isHiddenName(name)) continue;
+
+    const std::string fullPath = joinPath(dirPath, name);
+    if (directory) {
+      childDirectories.push_back(fullPath);
+      continue;
+    }
+
+    if (!isWavName(name)) continue;
+
+    SampleFileInfo info;
+    info.filename = name;
+    info.fullPath = fullPath;
+    populateLegacySampleId(info);
+
+    files_.push_back(info);
+    logDiscoveredSample(info);
   }
   dir.close();
 
 #else
   DIR* dir = opendir(dirPath.c_str());
   if (!dir) {
-    printf("SampleIndex::scanDirectory: opendir failed\n");
+    if (depth == 0) {
+      printf("SampleIndex::scanDirectory: opendir failed\n");
+    } else {
+      printf("SampleIndex::scanDirectory: child opendir failed: %s\n",
+             dirPath.c_str());
+    }
     return;
   }
 
   struct dirent* entry;
   while ((entry = readdir(dir)) != nullptr) {
-    if (entry->d_type == DT_REG) {
-      char* ext = strrchr(entry->d_name, '.');
-      if (ext && strcasecmp(ext, ".wav") == 0) {
-        SampleFileInfo info;
-        info.filename = entry->d_name;
-        info.fullPath = dirPath;
-        if (!info.fullPath.empty() && info.fullPath.back() != '/') {
-          info.fullPath += "/";
-        }
-        info.fullPath += entry->d_name;
-        populateLegacySampleId(info);
+    const std::string name = entry->d_name;
+    if (name == "." || name == ".." || isHiddenName(name)) continue;
 
-        files_.push_back(info);
-        nameToId_[info.filename] = info.id;
-        logDiscoveredSample(info);
+    const std::string fullPath = joinPath(dirPath, name);
+    bool directory = entry->d_type == DT_DIR;
+    bool regular = entry->d_type == DT_REG;
+
+    if (entry->d_type == DT_UNKNOWN) {
+      struct stat st {};
+      if (lstat(fullPath.c_str(), &st) == 0 && !S_ISLNK(st.st_mode)) {
+        directory = S_ISDIR(st.st_mode);
+        regular = S_ISREG(st.st_mode);
       }
     }
+
+    if (directory) {
+      childDirectories.push_back(fullPath);
+      continue;
+    }
+    if (!regular || !isWavName(name)) continue;
+
+    SampleFileInfo info;
+    info.filename = name;
+    info.fullPath = fullPath;
+    populateLegacySampleId(info);
+
+    files_.push_back(info);
+    logDiscoveredSample(info);
   }
   closedir(dir);
 #endif
 
-  printf("SampleIndex::scanDirectory: Found %zu files\n", files_.size());
+  std::sort(childDirectories.begin(), childDirectories.end());
+  for (const auto& child : childDirectories) {
+    scanDirectoryRecursive(child, depth + 1);
+  }
+}
 
-  std::sort(files_.begin(), files_.end(),
-            [](const SampleFileInfo& a, const SampleFileInfo& b) {
-              if (a.filename != b.filename) return a.filename < b.filename;
-              return a.fullPath < b.fullPath;
+std::vector<const SampleFileInfo*> SampleIndex::filesInDirectory(
+    const std::string& dirPath) const {
+  const std::string target = normalizeDirectoryPath(dirPath);
+  std::vector<const SampleFileInfo*> result;
+
+  for (const auto& file : files_) {
+    if (normalizeDirectoryPath(parentDirectory(file.fullPath)) == target) {
+      result.push_back(&file);
+    }
+  }
+
+  std::sort(result.begin(), result.end(),
+            [](const SampleFileInfo* a, const SampleFileInfo* b) {
+              if (a->filename != b->filename) return a->filename < b->filename;
+              return a->fullPath < b->fullPath;
             });
+  return result;
+}
+
+std::vector<std::string> SampleIndex::indexedSubdirectories(
+    const std::string& dirPath) const {
+  const std::string target = normalizeDirectoryPath(dirPath);
+  if (target.empty()) return {};
+
+  const std::string prefix = target.back() == '/' ? target : target + "/";
+  std::vector<std::string> result;
+
+  for (const auto& file : files_) {
+    if (file.fullPath.rfind(prefix, 0) != 0) continue;
+    const std::string remainder = file.fullPath.substr(prefix.size());
+    const std::size_t slash = remainder.find('/');
+    if (slash == std::string::npos) continue;
+
+    const std::string child = prefix + remainder.substr(0, slash);
+    if (std::find(result.begin(), result.end(), child) == result.end()) {
+      result.push_back(child);
+    }
+  }
+
+  std::sort(result.begin(), result.end());
+  return result;
 }
 
 SampleId SampleIndex::findIdByFilename(const std::string& filename) const {
-  auto it = nameToId_.find(filename);
-  if (it != nameToId_.end()) return it->second;
-  return {0};
+  const SampleFileInfo* match = nullptr;
+  for (const auto& file : files_) {
+    if (file.filename != filename) continue;
+    if (match != nullptr && match->fullPath != file.fullPath) return {0};
+    match = &file;
+  }
+  return match ? match->id : SampleId{0};
 }
 
 GroovePuterSampler::SampleRef SampleIndex::findRefByFilename(
@@ -353,12 +479,8 @@ std::vector<std::string> SampleIndex::getSubdirectories(
     if (!entry) break;
 
     if (entry.isDirectory()) {
-      const char* name = entry.name();
-      if (name[0] == '/') name++;
-      const char* lastSlash = strrchr(name, '/');
-      if (lastSlash) name = lastSlash + 1;
-
-      if (name[0] != '.') dirs.push_back(name);
+      const std::string name = baseName(entry.name());
+      if (!name.empty() && !isHiddenName(name)) dirs.push_back(name);
     }
     entry.close();
   }
@@ -370,7 +492,10 @@ std::vector<std::string> SampleIndex::getSubdirectories(
   struct dirent* entry;
   while ((entry = readdir(dir)) != nullptr) {
     if (entry->d_type == DT_DIR) {
-      if (entry->d_name[0] != '.') dirs.push_back(entry->d_name);
+      const std::string name = entry->d_name;
+      if (name != "." && name != ".." && !isHiddenName(name)) {
+        dirs.push_back(name);
+      }
     }
   }
   closedir(dir);

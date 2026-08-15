@@ -1,5 +1,6 @@
 #include "ram_sample_store.h"
 #include "sample_index.h"
+#include "sample_loader.h"
 #include <atomic>
 #include <mutex>
 #include <array>
@@ -8,13 +9,6 @@
 #include <cstdio>
 #include <limits>
 #include <algorithm>
-
-// Metadata-only probe and bounded WAV loader. The store first inspects decoded
-// size, reclaims evictable pool capacity, then permits allocation/data read.
-bool inspectWavFileBounded(const char* path, WavInfo& info,
-                           std::size_t maxDecodedBytes);
-bool loadWavFileBounded(const char* path, WavInfo& info, int16_t** outPcm,
-                        std::size_t maxDecodedBytes);
 
 namespace {
 
@@ -173,16 +167,18 @@ bool RamSampleStore::preload(SampleId id) {
 
   printf("Preload: Loading %s ...\n", path.c_str());
 
-  // 3. Metadata-only admission. No PCM allocation or data-chunk read is
-  // allowed before the store knows the decoded mono size.
-  WavInfo inspectedInfo{};
-  if (!inspectWavFileBounded(path.c_str(), inspectedInfo, maxPoolBytes_)) {
-    printf("Preload: WAV inspection failed for %s\n", path.c_str());
+  // 3. Inspect only. No PCM allocation or data-payload decode is allowed
+  // before the store knows the exact decoded mono byte requirement.
+  WavInspectResult inspected{};
+  WavLoadError inspectError = WavLoadError::Ok;
+  if (!inspectWavFileBounded(path.c_str(), inspected, maxPoolBytes_,
+                             &inspectError)) {
+    printf("Preload: WAV inspection failed for %s: %s\n", path.c_str(),
+           wavLoadErrorName(inspectError));
     return false;
   }
 
-  const std::size_t requiredSize =
-      static_cast<std::size_t>(inspectedInfo.numFrames) * sizeof(int16_t);
+  const std::size_t requiredSize = inspected.decodedBytes;
   if (requiredSize > maxPoolBytes_) {
     printf("Preload: Sample is larger than the entire pool\n");
     return false;
@@ -231,24 +227,26 @@ bool RamSampleStore::preload(SampleId id) {
   }
 
   // 5. Decode only after admission/eviction. Pass the actual remaining pool
-  // capacity, not the entire configured pool, so a file that changes between
-  // probe and decode still fails before allocation if it no longer fits.
-  WavInfo info{};
+  // capacity. decodeWavFileBounded re-inspects before allocation and fails
+  // closed if metadata changed since the admitted inspection.
   int16_t* pcm = nullptr;
   const std::size_t decodeBudget = freePoolBytes();
-  if (!loadWavFileBounded(path.c_str(), info, &pcm, decodeBudget)) {
-    printf("Preload: loadWavFile failed for %s\n", path.c_str());
+  WavLoadError decodeError = WavLoadError::Ok;
+  if (!decodeWavFileBounded(path.c_str(), inspected, &pcm, decodeBudget,
+                            &decodeError)) {
+    printf("Preload: WAV decode failed for %s: %s\n", path.c_str(),
+           wavLoadErrorName(decodeError));
     return false;
   }
 
-  const std::size_t size =
-      static_cast<std::size_t>(info.numFrames) * sizeof(int16_t);
+  const std::size_t size = inspected.decodedBytes;
   printf("Preload: Loaded %u frames (%u bytes). Pool usage: %u/%u\n",
-         info.numFrames, static_cast<unsigned>(size),
+         inspected.info.numFrames, static_cast<unsigned>(size),
          static_cast<unsigned>(currentPoolUsage_),
          static_cast<unsigned>(maxPoolBytes_));
 
-  // Defensive invariants for a file changed between inspect and decode.
+  // Defensive invariants: decoder must never publish beyond the exact bytes
+  // inspected and admitted above.
   if (size > decodeBudget || currentPoolUsage_ + size > maxPoolBytes_) {
     printf("Preload: Decoded sample no longer fits admitted pool capacity\n");
     free(pcm);
@@ -258,8 +256,8 @@ bool RamSampleStore::preload(SampleId id) {
   // 6. Fill and publish the pre-admitted slot. Non-atomic metadata is
   // protected by the final ready release and matching acquire in readers.
   auto& slot = slots_[slotIdx];
-  slot.frames = info.numFrames;
-  slot.sampleRate = info.sampleRate;
+  slot.frames = inspected.info.numFrames;
+  slot.sampleRate = inspected.info.sampleRate;
   slot.sizeBytes = size;
   slot.data.store(pcm, std::memory_order_relaxed);
   slot.lastAccess.store(nextTime(), std::memory_order_relaxed);

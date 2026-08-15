@@ -37,6 +37,51 @@ std::string compactFilename(std::string filename) {
   if (filename.size() <= kMaxChars) return filename;
   return std::string("...") + filename.substr(filename.size() - (kMaxChars - 3));
 }
+
+std::string compactBrowserText(std::string value, size_t maxChars = 30) {
+  if (value.size() <= maxChars) return value;
+  if (maxChars <= 3) return value.substr(value.size() - maxChars);
+  return std::string("...") + value.substr(value.size() - (maxChars - 3));
+}
+
+std::string normalizeDirectoryPath(std::string path) {
+  while (path.size() > 1 && path.back() == '/') path.pop_back();
+  return path;
+}
+
+std::string parentDirectoryPath(const std::string& path) {
+  const std::string normalized = normalizeDirectoryPath(path);
+  const size_t slash = normalized.find_last_of('/');
+  if (slash == std::string::npos) return {};
+  if (slash == 0) return "/";
+  return normalized.substr(0, slash);
+}
+
+std::string pathBaseName(const std::string& path) {
+  const std::string normalized = normalizeDirectoryPath(path);
+  const size_t slash = normalized.find_last_of('/');
+  return slash == std::string::npos ? normalized : normalized.substr(slash + 1);
+}
+
+bool pathWithinRoot(const std::string& path, const std::string& root) {
+  const std::string normalizedPath = normalizeDirectoryPath(path);
+  const std::string normalizedRoot = normalizeDirectoryPath(root);
+  if (normalizedRoot.empty()) return false;
+  if (normalizedPath == normalizedRoot) return true;
+  const std::string prefix = normalizedRoot + "/";
+  return normalizedPath.rfind(prefix, 0) == 0;
+}
+
+std::string relativeToRoot(const std::string& path, const std::string& root) {
+  const std::string normalizedPath = normalizeDirectoryPath(path);
+  const std::string normalizedRoot = normalizeDirectoryPath(root);
+  if (normalizedPath == normalizedRoot) return "/";
+  const std::string prefix = normalizedRoot + "/";
+  if (normalizedPath.rfind(prefix, 0) == 0) {
+    return normalizedPath.substr(prefix.size());
+  }
+  return normalizedPath;
+}
 }  // namespace
 
 class SamplerPage::LabelValueComponent : public FocusableComponent {
@@ -161,7 +206,8 @@ void SamplerPage::draw(IGfx& gfx) {
 
   std::string filename = "OFF";
   if (const SampleFileInfo* file = mini_acid_.sampleIndex.resolveRuntimeFile(p.id)) {
-    filename = compactFilename(file->filename);
+    filename = compactFilename(
+        relativeToRoot(file->fullPath, mini_acid_.sampleIndex.rootDirectory()));
   }
   file_ctrl_->setValue(filename);
 
@@ -176,25 +222,67 @@ void SamplerPage::draw(IGfx& gfx) {
   choke_ctrl_->setValue(p.chokeGroup == 0 ? "NONE" : std::to_string(p.chokeGroup));
 
   Container::draw(gfx);
+  if (sample_browser_open_) drawSampleBrowser(gfx);
 }
 
-bool SamplerPage::selectIndexedSample(int direction) {
-  const auto& files = mini_acid_.sampleIndex.getFiles();
-  if (files.empty() || mini_acid_.sampleStore == nullptr) {
-    logSampleSelectionFailure(files.empty() ? "no indexed WAV files" : "sample store unavailable",
-                              "", 0);
+bool SamplerPage::assignIndexedSample(const SampleFileInfo& candidate) {
+  if (mini_acid_.sampleStore == nullptr) {
+    logSampleSelectionFailure("sample store unavailable", candidate.fullPath, 0);
     return false;
   }
 
   const int padIndex = current_pad_;
   const SampleId previousId = mini_acid_.samplerTrack->pad(padIndex).id;
+  const auto candidateRef = SampleIndex::calculateStableRef(candidate.fullPath);
+  const SampleId candidateId = mini_acid_.sampleIndex.runtimeIdForRef(candidateRef);
+
+  if (candidateId.value == 0) {
+    logSampleSelectionFailure("stable identity did not resolve",
+                              candidate.fullPath, candidateId.value);
+    return false;
+  }
+  if (candidateId == previousId) return false;
+
+  // WAV I/O, allocation, conversion and LRU work remain outside AudioGuard.
+  if (!mini_acid_.sampleStore->preload(candidateId)) {
+    logSampleSelectionFailure("preload failed; previous pad assignment kept",
+                              candidate.fullPath, candidateId.value);
+    return false;
+  }
+
+  withAudioGuard([&]() {
+    mini_acid_.samplerTrack->pad(padIndex).id = candidateId;
+  });
+  return true;
+}
+
+bool SamplerPage::selectIndexedSample(int direction) {
+  if (mini_acid_.sampleStore == nullptr) {
+    logSampleSelectionFailure("sample store unavailable", "", 0);
+    return false;
+  }
+
+  const SampleId previousId = mini_acid_.samplerTrack->pad(current_pad_).id;
   const SampleFileInfo* currentFile =
       mini_acid_.sampleIndex.resolveRuntimeFile(previousId);
+
+  const std::string& root = mini_acid_.sampleIndex.rootDirectory();
+  if (currentFile != nullptr) {
+    browser_dir_ = parentDirectoryPath(currentFile->fullPath);
+  } else if (!pathWithinRoot(browser_dir_, root)) {
+    browser_dir_ = root;
+  }
+
+  const auto files = mini_acid_.sampleIndex.filesInDirectory(browser_dir_);
+  if (files.empty()) {
+    logSampleSelectionFailure("no WAV files in current folder", browser_dir_, 0);
+    return false;
+  }
 
   int currentIndex = -1;
   if (currentFile != nullptr) {
     for (size_t i = 0; i < files.size(); ++i) {
-      if (files[i].fullPath == currentFile->fullPath) {
+      if (files[i]->fullPath == currentFile->fullPath) {
         currentIndex = static_cast<int>(i);
         break;
       }
@@ -211,28 +299,9 @@ bool SamplerPage::selectIndexedSample(int direction) {
 
   const int fileCount = static_cast<int>(files.size());
   const int step = direction < 0 ? -1 : 1;
-
   for (int attempt = 0; attempt < fileCount; ++attempt) {
-    const SampleFileInfo& candidate = files[static_cast<size_t>(nextIndex)];
-    const auto candidateRef = SampleIndex::calculateStableRef(candidate.fullPath);
-    const SampleId candidateId = mini_acid_.sampleIndex.runtimeIdForRef(candidateRef);
-    if (candidateId.value == 0) {
-      logSampleSelectionFailure("stable identity did not resolve",
-                                candidate.fullPath, candidateId.value);
-    } else if (candidateId == previousId) {
-      return false;
-    } else {
-      // WAV I/O, allocation, conversion and LRU work remain outside AudioGuard.
-      if (mini_acid_.sampleStore->preload(candidateId)) {
-        withAudioGuard([&]() {
-          mini_acid_.samplerTrack->pad(padIndex).id = candidateId;
-        });
-        return true;
-      }
-      logSampleSelectionFailure(
-          "preload failed; trying next candidate; previous pad assignment kept",
-          candidate.fullPath, candidateId.value);
-    }
+    const SampleFileInfo& candidate = *files[static_cast<size_t>(nextIndex)];
+    if (assignIndexedSample(candidate)) return true;
 
     nextIndex = (nextIndex + step + fileCount) % fileCount;
   }
@@ -321,7 +390,232 @@ void SamplerPage::prelisten() {
   });
 }
 
+void SamplerPage::openSampleBrowser() {
+  const std::string& root = mini_acid_.sampleIndex.rootDirectory();
+  if (root.empty()) {
+    logSampleSelectionFailure("sample index root unavailable", "", 0);
+    return;
+  }
+
+  const SampleId currentId = mini_acid_.samplerTrack->pad(current_pad_).id;
+  if (const SampleFileInfo* currentFile =
+          mini_acid_.sampleIndex.resolveRuntimeFile(currentId)) {
+    const std::string currentDir = parentDirectoryPath(currentFile->fullPath);
+    browser_dir_ = pathWithinRoot(currentDir, root) ? currentDir : root;
+  } else if (!pathWithinRoot(browser_dir_, root)) {
+    browser_dir_ = root;
+  }
+
+  browser_selection_ = 0;
+  browser_scroll_offset_ = 0;
+  refreshSampleBrowser();
+  sample_browser_open_ = true;
+}
+
+void SamplerPage::closeSampleBrowser() {
+  sample_browser_open_ = false;
+  browser_subdirs_.clear();
+  browser_files_.clear();
+  browser_selection_ = 0;
+  browser_scroll_offset_ = 0;
+}
+
+void SamplerPage::refreshSampleBrowser() {
+  const std::string& root = mini_acid_.sampleIndex.rootDirectory();
+  if (!pathWithinRoot(browser_dir_, root)) browser_dir_ = root;
+
+  browser_subdirs_ = mini_acid_.sampleIndex.indexedSubdirectories(browser_dir_);
+  browser_files_ = mini_acid_.sampleIndex.filesInDirectory(browser_dir_);
+
+  const bool hasParent = !root.empty() && browser_dir_ != root;
+  const int total = static_cast<int>(browser_subdirs_.size() + browser_files_.size()) +
+                    (hasParent ? 1 : 0);
+  if (total <= 0) {
+    browser_selection_ = 0;
+    browser_scroll_offset_ = 0;
+    return;
+  }
+
+  browser_selection_ = std::clamp(browser_selection_, 0, total - 1);
+  browser_scroll_offset_ = std::clamp(browser_scroll_offset_, 0, total - 1);
+}
+
+bool SamplerPage::browserGoParent() {
+  const std::string& root = mini_acid_.sampleIndex.rootDirectory();
+  if (root.empty() || browser_dir_ == root) return false;
+
+  std::string parent = parentDirectoryPath(browser_dir_);
+  if (!pathWithinRoot(parent, root)) parent = root;
+  browser_dir_ = parent;
+  browser_selection_ = 0;
+  browser_scroll_offset_ = 0;
+  refreshSampleBrowser();
+  return true;
+}
+
+bool SamplerPage::activateSampleBrowserSelection() {
+  const std::string& root = mini_acid_.sampleIndex.rootDirectory();
+  const bool hasParent = !root.empty() && browser_dir_ != root;
+  int index = browser_selection_;
+
+  if (hasParent) {
+    if (index == 0) return browserGoParent();
+    --index;
+  }
+
+  if (index >= 0 && index < static_cast<int>(browser_subdirs_.size())) {
+    browser_dir_ = browser_subdirs_[static_cast<size_t>(index)];
+    browser_selection_ = 0;
+    browser_scroll_offset_ = 0;
+    refreshSampleBrowser();
+    return true;
+  }
+
+  index -= static_cast<int>(browser_subdirs_.size());
+  if (index < 0 || index >= static_cast<int>(browser_files_.size())) return false;
+
+  const SampleFileInfo* selected = browser_files_[static_cast<size_t>(index)];
+  if (selected == nullptr) return false;
+
+  const SampleId currentId = mini_acid_.samplerTrack->pad(current_pad_).id;
+  if (const SampleFileInfo* current = mini_acid_.sampleIndex.resolveRuntimeFile(currentId)) {
+    if (current->fullPath == selected->fullPath) {
+      closeSampleBrowser();
+      return true;
+    }
+  }
+
+  if (!assignIndexedSample(*selected)) return true;
+
+  GroovePuterState::markSceneMutated();
+  closeSampleBrowser();
+  return true;
+}
+
+void SamplerPage::drawSampleBrowser(IGfx& gfx) {
+  const int x = dx() + 4;
+  const int y = dy() + 4;
+  const int w = std::max(20, width() - 8);
+  const int h = std::max(40, height() - 8);
+
+  gfx.fillRect(x, y, w, h, COLOR_DARKER);
+  gfx.drawRect(x, y, w, h, COLOR_ACCENT);
+  gfx.setTextColor(COLOR_WHITE);
+  gfx.drawText(x + 4, y + 3, "SAMPLE BROWSER");
+
+  const std::string relative = relativeToRoot(
+      browser_dir_, mini_acid_.sampleIndex.rootDirectory());
+  const std::string pathText = compactBrowserText(
+      relative == "/" ? std::string("/") : std::string("/") + relative, 30);
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(x + 4, y + 13, pathText.c_str());
+
+  const bool hasParent =
+      !mini_acid_.sampleIndex.rootDirectory().empty() &&
+      browser_dir_ != mini_acid_.sampleIndex.rootDirectory();
+  const int total = static_cast<int>(browser_subdirs_.size() + browser_files_.size()) +
+                    (hasParent ? 1 : 0);
+
+  constexpr int rowHeight = 11;
+  const int listY = y + 25;
+  const int visibleRows = std::max(1, (h - 29) / rowHeight);
+
+  if (total <= 0) {
+    gfx.setTextColor(COLOR_WHITE);
+    gfx.drawText(x + 4, listY, "(NO WAV FILES)");
+    return;
+  }
+
+  const int start = std::clamp(browser_scroll_offset_, 0, total - 1);
+  const int end = std::min(total, start + visibleRows);
+  for (int displayIndex = start; displayIndex < end; ++displayIndex) {
+    int logical = displayIndex;
+    std::string label;
+
+    if (hasParent) {
+      if (logical == 0) {
+        label = "< ..";
+      } else {
+        --logical;
+      }
+    }
+
+    if (label.empty() && logical < static_cast<int>(browser_subdirs_.size())) {
+      label = "> " + pathBaseName(browser_subdirs_[static_cast<size_t>(logical)]) + "/";
+    } else if (label.empty()) {
+      logical -= static_cast<int>(browser_subdirs_.size());
+      if (logical >= 0 && logical < static_cast<int>(browser_files_.size())) {
+        const SampleFileInfo* file = browser_files_[static_cast<size_t>(logical)];
+        if (file != nullptr) label = "  " + file->filename;
+      }
+    }
+
+    label = compactBrowserText(label, 30);
+    const int rowY = listY + (displayIndex - start) * rowHeight;
+    if (displayIndex == browser_selection_) {
+      gfx.fillRect(x + 2, rowY - 1, w - 4, rowHeight, COLOR_PANEL);
+      gfx.drawRect(x + 2, rowY - 1, w - 4, rowHeight, COLOR_ACCENT);
+    }
+    gfx.setTextColor(COLOR_WHITE);
+    gfx.drawText(x + 5, rowY, label.c_str());
+  }
+}
+
+bool SamplerPage::handleSampleBrowserEvent(UIEvent& ui_event) {
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return true;
+
+  const std::string& root = mini_acid_.sampleIndex.rootDirectory();
+  const bool hasParent = !root.empty() && browser_dir_ != root;
+  const int total = static_cast<int>(browser_subdirs_.size() + browser_files_.size()) +
+                    (hasParent ? 1 : 0);
+  const int nav = UIInput::navCode(ui_event);
+
+  if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
+    if (total > 0) {
+      const int delta = nav == GROOVEPUTER_UP ? -1 : 1;
+      browser_selection_ = std::clamp(browser_selection_ + delta, 0, total - 1);
+
+      constexpr int rowHeight = 11;
+      const int visibleRows = std::max(1, (std::max(40, height() - 8) - 29) / rowHeight);
+      if (browser_selection_ < browser_scroll_offset_) {
+        browser_scroll_offset_ = browser_selection_;
+      } else if (browser_selection_ >= browser_scroll_offset_ + visibleRows) {
+        browser_scroll_offset_ = browser_selection_ - visibleRows + 1;
+      }
+    }
+    return true;
+  }
+
+  if (nav == GROOVEPUTER_LEFT) {
+    browserGoParent();
+    return true;
+  }
+  if (nav == GROOVEPUTER_RIGHT) {
+    activateSampleBrowserSelection();
+    return true;
+  }
+
+  if (ui_event.scancode == GROOVEPUTER_ESCAPE || ui_event.key == 27) {
+    closeSampleBrowser();
+    return true;
+  }
+
+  if (ui_event.key == '\b' || ui_event.key == 0x7F) {
+    if (!browserGoParent()) closeSampleBrowser();
+    return true;
+  }
+
+  if (ui_event.key == '\n' || ui_event.key == '\r') {
+    activateSampleBrowserSelection();
+    return true;
+  }
+
+  return true;
+}
+
 bool SamplerPage::handleEvent(UIEvent& ui_event) {
+  if (sample_browser_open_) return handleSampleBrowserEvent(ui_event);
+
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) {
     return Container::handleEvent(ui_event);
   }
@@ -369,7 +663,11 @@ bool SamplerPage::handleEvent(UIEvent& ui_event) {
   }
 
   if (ui_event.key == '\n' || ui_event.key == '\r') {
-    prelisten();
+    if (file_ctrl_->isFocused()) {
+      openSampleBrowser();
+    } else {
+      prelisten();
+    }
     return true;
   }
 
