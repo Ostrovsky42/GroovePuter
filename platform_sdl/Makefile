@@ -117,7 +117,6 @@ SOURCES := \
 	../src/audio/pattern_paging.cpp \
 	../src/audio/pattern_project_cleanup.cpp \
 	../src/audio/midi_importer.cpp \
-	../src/sampler/sample_probe.cpp \
 	../src/sampler/sample_loader.cpp \
 	../src/sampler/ram_sample_store.cpp \
 	../src/sampler/sample_index.cpp \
