@@ -29,6 +29,7 @@ class TestRamSampleStore final : public RamSampleStore {
     slot.frames = static_cast<uint32_t>(bytes / sizeof(int16_t));
     slot.sampleRate = 22050;
     slot.sizeBytes = bytes;
+    slot.kind = SampleSlotKind::Resident;
     slot.data.store(pcm, std::memory_order_relaxed);
     slot.refCount.store(0, std::memory_order_relaxed);
     slot.lastAccess.store(access, std::memory_order_relaxed);
