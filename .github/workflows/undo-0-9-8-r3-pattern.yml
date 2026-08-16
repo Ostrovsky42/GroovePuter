@@ -1,0 +1,31 @@
+name: Undo Safe Editing 0.9.8 R3
+
+on:
+  push:
+    branches:
+      - agent/20260816-0.9.8-r3-pattern-mutations
+  pull_request:
+    paths:
+      - 'src/state/**'
+      - 'src/ui/pages/pattern_edit_page.h'
+      - 'src/ui/pages/pattern_edit_page.cpp'
+      - 'src/ui/pages/pattern_edit_page_legacy.h'
+      - 'src/ui/components/pattern_selection_bar.h'
+      - 'src/ui/components/bank_selection_bar.h'
+      - 'tests/test_pattern_mutations_0_9_8_r3.cpp'
+      - 'tests/test_pattern_mutations_0_9_8_r3_source_regressions.py'
+      - 'tests/run_undo_0_9_8_r3_tests.sh'
+      - 'docs/releases/0_9_8_R3_PATTERN_MUTATIONS.md'
+      - '.github/workflows/undo-0-9-8-r3-pattern.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pattern-mutation-owner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run 0.9.8 R3 Pattern mutation ownership contracts
+        run: bash tests/run_undo_0_9_8_r3_tests.sh

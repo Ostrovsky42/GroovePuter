@@ -30,8 +30,18 @@ require("advanceNoteEntryCursor();" not in handler,
 require("if (key == '\\n' || key == '\\r')" in CPP and
         "advanceNoteEntryCursor();" in CPP,
         "Enter must be the explicit commit-and-advance action")
-require("mini_acid_.clear303Step(step, voice_index_)" in CPP,
-        "Backspace must clear the focused note step")
+
+public_start = CPP.index("bool PatternEditPage::handleEvent(UIEvent& ui_event)")
+public = CPP[public_start:]
+backspace_start = public.index("if (isBackspace)")
+backspace_end = public.index("if (key == '\\n' || key == '\\r')", backspace_start)
+backspace_block = public[backspace_start:backspace_end]
+require("commitPatternMutation" in backspace_block and
+        "GroovePuterUndo::PatternEdit::clearStep(pattern, step)" in backspace_block,
+        "NOTE ENTRY Backspace must clear through the canonical R3 Pattern owner")
+require("mini_acid_.clear303Step" not in backspace_block and
+        "editCurrentSynthPattern" not in backspace_block,
+        "NOTE ENTRY Backspace must not bypass R3 through a live Pattern mutator")
 
 repeat_start = CPP.index("if (key == ';' || key == ':')")
 repeat_end = CPP.index("if (handleNoteEntryKey(key))", repeat_start)

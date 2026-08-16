@@ -54,13 +54,285 @@ int indexInKeyRow(char key, const char* row) {
 }
 }  // namespace
 
-// Keep the established editor behavior intact under a private legacy entry
-// point. The public handler below owns only navigation and explicit selectors.
+// Keep the established editor implementation intact under a private unowned
+// entry point. R3 adds a narrow wrapper below that intercepts only persistent
+// Pattern writes; navigation, R2 reset/Undo, copy and unrelated behavior stay in
+// the retained implementation.
 #define drawStandardFooter drawPatternInputLockedFooter
-#define handleEvent handleEventLegacy
+#define handleEvent handleEventLegacyUnowned
 #include "pattern_edit_page_legacy.h"
 #undef handleEvent
 #undef drawStandardFooter
+
+bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
+  using GroovePuterUndo::PatternEdit::adjustFxParam;
+  using GroovePuterUndo::PatternEdit::adjustNote;
+  using GroovePuterUndo::PatternEdit::adjustOctave;
+  using GroovePuterUndo::PatternEdit::clearStep;
+  using GroovePuterUndo::PatternEdit::cycleFx;
+  using GroovePuterUndo::PatternEdit::rotate;
+  using GroovePuterUndo::PatternEdit::setAccent;
+  using GroovePuterUndo::PatternEdit::setSlide;
+
+  // Paste is a persistent Pattern edit. Build the complete destination on the
+  // prepared copy, then publish one receipt and perform one bounded COMMIT.
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+      ui_event.app_event_type == GROOVEPUTER_APP_EVENT_PASTE) {
+    if (!g_pattern_step_clipboard.has_data && !g_pattern_clipboard.has_pattern) {
+      return handleEventLegacyUnowned(ui_event);
+    }
+
+    commitPatternMutation([&](SynthPattern& dst) {
+      if (g_pattern_step_clipboard.has_data) {
+        int start_row = activePatternStep() / kPatternStepColumns;
+        int start_col = activePatternStep() % kPatternStepColumns;
+        if (has_selection_) {
+          int min_row, max_row, min_col, max_col;
+          getSelectionBounds(min_row, max_row, min_col, max_col);
+          start_row = min_row;
+          start_col = min_col;
+        }
+
+        int idx = 0;
+        for (int r = 0; r < g_pattern_step_clipboard.rows; ++r) {
+          for (int c = 0; c < g_pattern_step_clipboard.cols; ++c) {
+            if (idx >= static_cast<int>(g_pattern_step_clipboard.steps.size())) break;
+            const int tr = start_row + r;
+            const int tc = start_col + c;
+            if (tr < 0 || tr >= kPatternStepRows ||
+                tc < 0 || tc >= kPatternStepColumns) {
+              ++idx;
+              continue;
+            }
+            dst.steps[tr * kPatternStepColumns + tc] =
+                g_pattern_step_clipboard.steps[idx++];
+          }
+        }
+      } else {
+        const SynthPattern& src = g_pattern_clipboard.pattern;
+        for (int i = 0; i < SEQ_STEPS; ++i) dst.steps[i] = src.steps[i];
+      }
+    });
+    if (has_selection_) clearSelection();
+    return true;
+  }
+
+  if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) {
+    return handleEventLegacyUnowned(ui_event);
+  }
+
+  const int nav = UIInput::navCode(ui_event);
+  char key = ui_event.key;
+  if (key == 0 && ui_event.scancode >= GROOVEPUTER_F1 &&
+      ui_event.scancode <= GROOVEPUTER_F8) {
+    key = static_cast<char>('1' + (ui_event.scancode - GROOVEPUTER_F1));
+  }
+  const char lowerKey = key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(key)))
+      : 0;
+  const bool isBackspace = key == '\b' || key == 0x7F;
+
+  // R2 owns Reset Pattern and the existing application Undo implementation.
+  // Keep that exact vertical slice in the retained handler.
+  if (ui_event.alt && isBackspace) {
+    return handleEventLegacyUnowned(ui_event);
+  }
+
+  auto prepareSelectionOrCursor = [&](auto&& edit) {
+    if (patternRowFocused()) focusPatternSteps();
+    else ensureStepFocus();
+
+    if (has_selection_) {
+      int min_row, max_row, min_col, max_col;
+      getSelectionBounds(min_row, max_row, min_col, max_col);
+      return commitPatternMutation([&](SynthPattern& pattern) {
+        for (int r = min_row; r <= max_row; ++r) {
+          for (int c = min_col; c <= max_col; ++c) {
+            edit(pattern, r * kPatternStepColumns + c);
+          }
+        }
+      });
+    }
+
+    const int step = activePatternStep();
+    return commitPatternMutation(
+        [&](SynthPattern& pattern) { edit(pattern, step); });
+  };
+
+  // Pattern rotation is one logical mutation regardless of 16 affected steps.
+  if (ui_event.alt &&
+      (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT)) {
+    const int dir = nav == GROOVEPUTER_RIGHT ? 1 : -1;
+    commitPatternMutation(
+        [&](SynthPattern& pattern) { rotate(pattern, dir); });
+    return true;
+  }
+
+  // Meta arrows preserve the legacy note/octave semantics, but prepare the
+  // whole selected edit before publishing Undo/revision state.
+  if (ui_event.meta) {
+    switch (nav) {
+      case GROOVEPUTER_UP:
+        prepareSelectionOrCursor(
+            [&](SynthPattern& pattern, int step) { adjustNote(pattern, step, 1); });
+        return true;
+      case GROOVEPUTER_DOWN:
+        prepareSelectionOrCursor(
+            [&](SynthPattern& pattern, int step) { adjustNote(pattern, step, -1); });
+        return true;
+      case GROOVEPUTER_LEFT:
+        prepareSelectionOrCursor(
+            [&](SynthPattern& pattern, int step) { adjustOctave(pattern, step, -1); });
+        return true;
+      case GROOVEPUTER_RIGHT:
+        prepareSelectionOrCursor(
+            [&](SynthPattern& pattern, int step) { adjustOctave(pattern, step, 1); });
+        return true;
+      default:
+        break;
+    }
+  }
+
+  if (ui_event.alt &&
+      (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN)) {
+    ensureStepFocus();
+    const int step = activePatternStep();
+    const int delta = nav == GROOVEPUTER_UP ? 1 : -1;
+    commitPatternMutation([&](SynthPattern& pattern) {
+      adjustFxParam(pattern, step, delta);
+    });
+    return true;
+  }
+
+  const bool keyA = lowerKey == 'a' || ui_event.scancode == GROOVEPUTER_A;
+  const bool keyS = lowerKey == 's' || ui_event.scancode == GROOVEPUTER_S;
+  const bool keyZ = lowerKey == 'z' || ui_event.scancode == GROOVEPUTER_Z;
+  const bool keyX = lowerKey == 'x' || ui_event.scancode == GROOVEPUTER_X;
+  const bool keyG = lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G;
+  const bool keyF = lowerKey == 'f' || ui_event.scancode == GROOVEPUTER_F;
+  const bool keyV = lowerKey == 'v' || ui_event.scancode == GROOVEPUTER_V;
+
+  // The retained Ctrl+V handler recursively calls the retained handler after
+  // macro-renaming. Intercept it here so Paste cannot bypass R3 ownership.
+  if (keyV && ui_event.ctrl) {
+    UIEvent appEvent = ui_event;
+    appEvent.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    appEvent.app_event_type = GROOVEPUTER_APP_EVENT_PASTE;
+    return handleEventLegacy(appEvent);
+  }
+
+  if (keyS) {
+    if (ui_event.alt || ui_event.ctrl) {
+      if (patternRowFocused()) focusPatternSteps();
+      else ensureStepFocus();
+      if (has_selection_) {
+        int min_row, max_row, min_col, max_col;
+        getSelectionBounds(min_row, max_row, min_col, max_col);
+        commitPatternMutation([&](SynthPattern& pattern) {
+          const bool target = !pattern.steps[min_row * kPatternStepColumns + min_col].slide;
+          for (int r = min_row; r <= max_row; ++r) {
+            for (int c = min_col; c <= max_col; ++c) {
+              setSlide(pattern, r * kPatternStepColumns + c, target);
+            }
+          }
+        });
+      } else {
+        const int step = activePatternStep();
+        commitPatternMutation([&](SynthPattern& pattern) {
+          GroovePuterUndo::PatternEdit::toggleSlide(pattern, step);
+        });
+      }
+    } else {
+      prepareSelectionOrCursor(
+          [&](SynthPattern& pattern, int step) { adjustOctave(pattern, step, 1); });
+    }
+    return true;
+  }
+
+  if (keyA) {
+    if (ui_event.alt || ui_event.ctrl) {
+      if (patternRowFocused()) focusPatternSteps();
+      else ensureStepFocus();
+      if (has_selection_) {
+        int min_row, max_row, min_col, max_col;
+        getSelectionBounds(min_row, max_row, min_col, max_col);
+        commitPatternMutation([&](SynthPattern& pattern) {
+          const bool target = !pattern.steps[min_row * kPatternStepColumns + min_col].accent;
+          for (int r = min_row; r <= max_row; ++r) {
+            for (int c = min_col; c <= max_col; ++c) {
+              setAccent(pattern, r * kPatternStepColumns + c, target);
+            }
+          }
+        });
+      } else {
+        const int step = activePatternStep();
+        commitPatternMutation([&](SynthPattern& pattern) {
+          GroovePuterUndo::PatternEdit::toggleAccent(pattern, step);
+        });
+      }
+    } else {
+      prepareSelectionOrCursor(
+          [&](SynthPattern& pattern, int step) { adjustNote(pattern, step, 1); });
+    }
+    return true;
+  }
+
+  if (keyZ) {
+    prepareSelectionOrCursor(
+        [&](SynthPattern& pattern, int step) { adjustNote(pattern, step, -1); });
+    return true;
+  }
+
+  if (keyX) {
+    prepareSelectionOrCursor(
+        [&](SynthPattern& pattern, int step) { adjustOctave(pattern, step, -1); });
+    return true;
+  }
+
+  // Generation is intentionally not converted into a Pattern receipt in R3.
+  // It is not a bounded pure prepare operation and is part of the 0.9.9
+  // PREPARE/ACTIVATE handoff. Preserve its old mutation path but still advance
+  // the persistent revision so any older Pattern Undo expires safely.
+  if (keyG) {
+    const bool handled = handleEventLegacyUnowned(ui_event);
+    if (handled) GroovePuterState::markSceneMutated();
+    return handled;
+  }
+
+  if (keyF) {
+    ensureStepFocus();
+    const int step = activePatternStep();
+    commitPatternMutation(
+        [&](SynthPattern& pattern) { cycleFx(pattern, step); });
+    return true;
+  }
+
+  if (isBackspace && has_selection_) {
+    int min_row, max_row, min_col, max_col;
+    getSelectionBounds(min_row, max_row, min_col, max_col);
+    commitPatternMutation([&](SynthPattern& pattern) {
+      for (int r = min_row; r <= max_row; ++r) {
+        for (int c = min_col; c <= max_col; ++c) {
+          clearStep(pattern, r * kPatternStepColumns + c);
+        }
+      }
+    });
+    clearSelection();
+    UI::showToast("Selection Cleared");
+    return true;
+  }
+
+  if (isBackspace) {
+    if (patternRowFocused()) focusPatternSteps();
+    else ensureStepFocus();
+    const int step = activePatternStep();
+    commitPatternMutation(
+        [&](SynthPattern& pattern) { clearStep(pattern, step); });
+    return true;
+  }
+
+  return handleEventLegacyUnowned(ui_event);
+}
 
 int PatternEditPage::noteForEntryKey(char key) const {
   const char lower = static_cast<char>(
@@ -86,9 +358,7 @@ void PatternEditPage::advanceNoteEntryCursor() {
 
 void PatternEditPage::writeNoteEntryStep(int step, int note, bool continuation) {
   if (step < 0 || step >= SEQ_STEPS || note < 0 || note > 127) return;
-  withAudioGuard([&]() {
-    const int vIdx = voice_index_ < 0 ? 0 : (voice_index_ >= 2 ? 1 : voice_index_);
-    SynthPattern& pattern = mini_acid_.sceneManager().editCurrentSynthPattern(vIdx);
+  commitPatternMutation([&](SynthPattern& pattern) {
     if (continuation && last_entered_step_ >= 0 &&
         last_entered_step_ < SEQ_STEPS && last_entered_step_ != step) {
       pattern.steps[last_entered_step_].slide = true;
@@ -210,7 +480,9 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     const bool isBackspace = key == '\b' || key == 0x7F;
     if (isBackspace) {
       const int step = activePatternStep();
-      withAudioGuard([&]() { mini_acid_.clear303Step(step, voice_index_); });
+      commitPatternMutation([&](SynthPattern& pattern) {
+        GroovePuterUndo::PatternEdit::clearStep(pattern, step);
+      });
       resetNoteHoldTracking();
       return true;
     }
@@ -331,6 +603,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     if (patternIdx >= 0) {
       if (mini_acid_.songModeEnabled()) return true;
       setPatternCursor(patternIdx);
+      bool songMutated = false;
       withAudioGuard([&]() {
         mini_acid_.set303PatternIndex(voice_index_, patternIdx);
         if (chaining_mode_) {
@@ -340,11 +613,13 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
           for (int i = 0; i < Song::kMaxPositions; ++i) {
             if (mini_acid_.songPatternAt(i, track) == -1) {
               mini_acid_.setSongPattern(i, track, patternIdx);
+              songMutated = true;
               break;
             }
           }
         }
       });
+      if (songMutated) GroovePuterState::markSceneMutated();
       focus_ = Focus::Steps;
       return true;
     }

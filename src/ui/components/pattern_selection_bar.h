@@ -28,6 +28,7 @@ class PatternSelectionBarComponent : public Component {
 
   bool handleEvent(UIEvent& ui_event) override;
   bool handleEventLegacy(UIEvent& ui_event) { return handleEvent(ui_event); }
+  bool handleEventLegacyUnowned(UIEvent& ui_event) { return handleEvent(ui_event); }
   void draw(IGfx& gfx) override;
 
  private:
