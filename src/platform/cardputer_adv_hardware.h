@@ -8,10 +8,11 @@
 // Cardputer ADV speaker callback does not use GPIO21 as a one-wire amplifier
 // enable (that GPIO21 behavior belongs to a different M5 device). Keep the
 // legacy setup call source-compatible, but make it a typed no-op so GroovePuter
-// never claims or drives GPIO21 on Cardputer ADV.
-// RGB data remains disabled until a verified Cardputer ADV pin is available.
+// never claims or drives a phantom PA enable GPIO on Cardputer ADV.
+//
+// Current M5Unified maps the onboard RGB LED data line to GPIO21.
 
-#define GROOVEPUTER_CARDPUTER_ADV_RGB_LED_PIN (-1)
+#define GROOVEPUTER_CARDPUTER_ADV_RGB_LED_PIN 21
 
 namespace GroovePuterHardware {
 struct UnusedPowerAmplifierEnablePin {};
