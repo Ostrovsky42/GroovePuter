@@ -1,0 +1,32 @@
+name: Sampler streaming hardware candidate 0.9.5
+
+on:
+  pull_request:
+    paths:
+      - "src/sampler/sample_store.h"
+      - "src/sampler/ram_sample_store.h"
+      - "src/sampler/ram_sample_store.cpp"
+      - "src/sampler/sampler_voice.h"
+      - "src/sampler/sampler_voice.cpp"
+      - "sampler_boot_registry.ino"
+      - "miniacid_encoder8.cpp"
+      - "GroovePuter.ino"
+      - "src/ui/pages/sampler_page.cpp"
+      - "tests/test_sampler_stream_cache.cpp"
+      - "tests/test_sampler_streaming_source_regressions.py"
+      - "tests/run_sampler_stream_cache_tests.sh"
+      - "docs/releases/0_9_5_SAMPLER_STREAMING_HW.md"
+      - ".github/workflows/sampler-streaming-0-9-5.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sampler-stream-cache-host:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run bounded sampler streaming regressions
+        run: bash tests/run_sampler_stream_cache_tests.sh

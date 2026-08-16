@@ -39,6 +39,8 @@ void Encoder8Miniacid::initialize() {
 }
 
 void Encoder8Miniacid::update() {
+  // Sampler page refill is serviced by the dedicated low-priority control-side
+  // worker. Never place SD seek/read work back in this UI/input poll path.
   if (!sensor_initialized_) return;
 
   if (!initial_values_sent_) {

@@ -21,6 +21,30 @@
 class IAudioRecorder;
 class PerformanceKeyboard;
 
+namespace GroovePuterUiDetail {
+
+// Cardputer ADV has a single user-facing control loop and very little spare
+// internal RAM. Synchronous NVS/SD autosave from MiniAcidDisplay::update()
+// produced measured 1-7.5 second UI stalls on hardware even while the sampler
+// was completely idle. Keep dirty/revision tracking intact, but suppress only
+// the two automatic persistence jobs on the Cardputer build. Explicit Project
+// Save/Save As remains transactional and unchanged. Desktop/SDL retains the
+// existing automatic persistence behavior.
+#if defined(ARDUINO) && defined(ARDUINO_M5STACK_CARDPUTER)
+class RealtimeSafeAutoPersistenceFlag {
+public:
+  constexpr RealtimeSafeAutoPersistenceFlag(bool = false) {}
+  RealtimeSafeAutoPersistenceFlag& operator=(bool) { return *this; }
+  constexpr operator bool() const { return false; }
+};
+static_assert(sizeof(RealtimeSafeAutoPersistenceFlag) == 1,
+              "realtime-safe persistence gate must not grow Cardputer UI state");
+#else
+using RealtimeSafeAutoPersistenceFlag = bool;
+#endif
+
+}  // namespace GroovePuterUiDetail
+
 class MiniAcidDisplay {
 public:
   MiniAcidDisplay(IGfx& gfx, MiniAcid& mini_acid, PerformanceKeyboard& performance_keyboard);
@@ -109,9 +133,11 @@ private:
   bool visual_style_initialized_ = false;
   GroovePuterState::UiSessionState ui_session_{};
   bool ui_session_loaded_ = false;
-  bool ui_session_save_pending_ = false;
+  GroovePuterUiDetail::RealtimeSafeAutoPersistenceFlag
+      ui_session_save_pending_{false};
   unsigned long ui_session_save_due_ms_ = 0;
   uint32_t observed_scene_revision_ = 0;
-  bool recovery_save_pending_ = false;
+  GroovePuterUiDetail::RealtimeSafeAutoPersistenceFlag
+      recovery_save_pending_{false};
   unsigned long recovery_save_due_ms_ = 0;
 };
