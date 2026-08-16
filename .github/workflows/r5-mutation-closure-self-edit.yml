@@ -1,0 +1,35 @@
+name: R5 mutation closure self-edit
+
+on:
+  push:
+    branches:
+      - agent/20260816-0.9.8-r5-mutation-closure
+    paths:
+      - 'scripts/r5_remove_legacy_song_undo.py'
+      - '.github/workflows/r5-mutation-closure-self-edit.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Remove legacy Song retained Undo owner
+        run: python3 scripts/r5_remove_legacy_song_undo.py
+      - name: Verify R4 and R5 ownership contracts
+        run: bash tests/run_undo_0_9_8_r5_tests.sh
+      - name: Commit deterministic cleanup
+        run: |
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/ui/pages/song_page.cpp
+          if git diff --cached --quiet; then
+            echo "No cleanup changes to commit"
+            exit 0
+          fi
+          git commit -m "refactor(0.9.8-R5): remove legacy Song UndoHistory"
+          git push origin HEAD:${GITHUB_REF_NAME}
