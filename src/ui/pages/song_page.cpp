@@ -98,52 +98,10 @@ struct SongSlotClipboard {
   int source_slot = 0;
 };
 
-enum class UndoActionType {
-  None,
-  Paste,
-  Cut,
-  Delete,
-};
-
-struct UndoCell {
-  int row;
-  int track;
-  int pattern_index;
-};
-
-struct UndoHistory {
-  UndoActionType action_type = UndoActionType::None;
-  std::vector<UndoCell> cells;
-  
-  void clear() {
-    action_type = UndoActionType::None;
-    cells.clear();
-  }
-  
-  void saveSingleCell(int row, int track, int pattern_index) {
-    cells.clear();
-    cells.push_back({row, track, pattern_index});
-  }
-  
-  void saveArea(int min_row, int max_row, int min_track, int max_track, 
-                const std::vector<int>& pattern_indices) {
-    cells.clear();
-    int idx = 0;
-    for (int r = min_row; r <= max_row; ++r) {
-      for (int t = min_track; t <= max_track; ++t) {
-        if (idx < static_cast<int>(pattern_indices.size())) {
-          cells.push_back({r, t, pattern_indices[idx]});
-        }
-        ++idx;
-      }
-    }
-  }
-};
 
 SongPatternClipboard g_song_pattern_clipboard;
 SongAreaClipboard g_song_area_clipboard;
 SongSlotClipboard g_song_slot_clipboard;
-UndoHistory g_undo_history;
 
 // Little lock icon (5x6) for LiveMix/Edit Protection
 inline void drawLockIcon(IGfx& gfx, int x, int y, IGfxColor color) {
@@ -832,8 +790,6 @@ bool SongPage::clearPattern() {
     if (max_track > maxCol) max_track = maxCol;
     if (min_track > max_track) return false;
 
-    std::vector<int> old_patterns;
-    old_patterns.reserve((max_row - min_row + 1) * (max_track - min_track + 1));
     int cleared = 0;
 
     withAudioGuard([&]() {
@@ -843,7 +799,6 @@ bool SongPage::clearPattern() {
           SongTrack track = trackForColumn(t, valid);
           if (!valid) continue;
           int before = mini_acid_.songPatternAt(r, track);
-          old_patterns.push_back(before);
           if (before >= 0) ++cleared;
           mini_acid_.clearSongPattern(r, track);
         }
@@ -852,9 +807,6 @@ bool SongPage::clearPattern() {
         mini_acid_.setSongPosition(min_row);
       }
     });
-
-    g_undo_history.action_type = UndoActionType::Delete;
-    g_undo_history.saveArea(min_row, max_row, min_track, max_track, old_patterns);
     clearSelection();
     char toast[48];
     std::snprintf(toast, sizeof(toast), "Cleared %d cells", cleared);
@@ -866,12 +818,7 @@ bool SongPage::clearPattern() {
   SongTrack track = trackForColumn(cursorTrack(), trackValid);
   if (!trackValid) return false;
   int row = cursorRow();
-  
-  // Save undo state
-  int current_pattern = mini_acid_.songPatternAt(row, track);
-  g_undo_history.action_type = UndoActionType::Delete;
-  g_undo_history.saveSingleCell(row, cursorTrack(), current_pattern);
-  
+
   withAudioGuard([&]() {
     mini_acid_.clearSongPattern(row, track);
     if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
@@ -1064,10 +1011,6 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
           g_song_area_clipboard.pattern_indices.clear();
           g_song_area_clipboard.pattern_indices.reserve(rows * tracks);
           
-          // Save undo state and copy/clear
-          std::vector<int> old_patterns;
-          old_patterns.reserve(rows * tracks);
-          
           withAudioGuard([&]() {
             for (int r = min_row; r <= max_row; ++r) {
               for (int t = min_track; t <= max_track; ++t) {
@@ -1076,7 +1019,6 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
                 if (valid) {
                   int pattern = mini_acid_.songPatternAt(r, song_track);
                   g_song_area_clipboard.pattern_indices.push_back(pattern);
-                  old_patterns.push_back(pattern);
                   mini_acid_.clearSongPattern(r, song_track);
                 }
               }
@@ -1086,9 +1028,6 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
           g_song_area_clipboard.has_area = true;
           g_song_pattern_clipboard.has_pattern = false; // Clear single-cell clipboard
           
-          // Save undo history
-          g_undo_history.action_type = UndoActionType::Cut;
-          g_undo_history.saveArea(min_row, max_row, min_track, max_track, old_patterns);
         } else {
           // Cut single cell
           int row = cursorRow();
@@ -1097,10 +1036,6 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
           g_song_pattern_clipboard.pattern_index = current_pattern;
           g_song_pattern_clipboard.has_pattern = true;
           g_song_area_clipboard.has_area = false; // Clear area clipboard
-          
-          // Save undo state
-          g_undo_history.action_type = UndoActionType::Cut;
-          g_undo_history.saveSingleCell(row, cursorTrack(), current_pattern);
           
           withAudioGuard([&]() {
             mini_acid_.clearSongPattern(row, track);
@@ -1168,26 +1103,6 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
           if (paste_tracks > availableToRight) paste_tracks = availableToRight;
           if (paste_tracks <= 0) return false;
           
-          // Save old patterns for undo
-          std::vector<int> old_patterns;
-          int min_row = start_row;
-          int max_row = start_row + source_rows - 1;
-          int min_track = start_track;
-          int max_track = start_track + paste_tracks - 1;
-          
-          for (int r = min_row; r <= max_row; ++r) {
-            for (int t = min_track; t <= max_track; ++t) {
-              if (r >= Song::kMaxPositions) {
-                old_patterns.push_back(-1);
-                continue;
-              }
-              bool valid = false;
-              SongTrack song_track = trackForColumn(t, valid);
-              int pattern = valid ? mini_acid_.songPatternAt(r, song_track) : -1;
-              old_patterns.push_back(pattern);
-            }
-          }
-          
           withAudioGuard([&]() {
             for (int r = 0; r < source_rows; ++r) {
               for (int t = 0; t < paste_tracks; ++t) {
@@ -1212,19 +1127,10 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
             }
           });
           
-          // Save undo history
-          g_undo_history.action_type = UndoActionType::Paste;
-          g_undo_history.saveArea(min_row, max_row, min_track, max_track, old_patterns);
         } else if (g_song_pattern_clipboard.has_pattern) {
           // Paste single cell
           int row = cursorRow();
-          int track_idx = cursorTrack();
           int patternIndex = g_song_pattern_clipboard.pattern_index;
-          
-          // Save old pattern for undo
-          int old_pattern = mini_acid_.songPatternAt(row, track);
-          g_undo_history.action_type = UndoActionType::Paste;
-          g_undo_history.saveSingleCell(row, track_idx, old_pattern);
           
           withAudioGuard([&]() {
             if (patternIndex < 0) {
@@ -1240,36 +1146,6 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
           return false;
         }
         if (has_selection_) clearSelection();
-        return true;
-      }
-      case GROOVEPUTER_APP_EVENT_UNDO: {
-        if (!trackValid) return false;
-        if (g_undo_history.action_type == UndoActionType::None || g_undo_history.cells.empty()) {
-          return false;
-        }
-        
-        // Restore all cells from undo history
-        withAudioGuard([&]() {
-          for (const auto& cell : g_undo_history.cells) {
-            bool valid = false;
-            SongTrack song_track = trackForColumn(cell.track, valid);
-            if (valid && cell.row >= 0 && cell.row < Song::kMaxPositions) {
-              if (cell.pattern_index < 0) {
-                mini_acid_.clearSongPattern(cell.row, song_track);
-              } else {
-                mini_acid_.setSongPattern(cell.row, song_track, cell.pattern_index);
-              }
-            }
-          }
-          if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
-            if (!g_undo_history.cells.empty()) {
-              mini_acid_.setSongPosition(g_undo_history.cells[0].row);
-            }
-          }
-        });
-        
-        // Clear undo history after use
-        g_undo_history.clear();
         return true;
       }
       default:
