@@ -5,6 +5,7 @@ on:
     paths:
       - '.github/workflows/sampler-memory-audit.yml'
       - 'tests/test_sampler_memory_layout.cpp'
+      - 'tests/test_sampler_memory_dynamic_cost.cpp'
       - 'tests/test_sampler_memory_ownership_source.py'
       - 'tests/run_sampler_memory_cost_audit.sh'
       - 'docs/releases/0_9_5_SAMPLER_MEMORY_COST_AUDIT.md'
