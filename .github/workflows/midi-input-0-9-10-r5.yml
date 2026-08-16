@@ -1,0 +1,41 @@
+name: MIDI Input Controllers 0.9.10 R5
+
+on:
+  push:
+    branches:
+      - agent/20260816-0.9.10-r5-lifecycle
+  pull_request:
+    paths:
+      - 'src/input/midi_input_router.h'
+      - 'src/platform/cardputer_usb_midi_transport.cpp'
+      - 'docs/releases/0_9_10_R5_LIFECYCLE.md'
+      - 'tests/*midi_input_0_9_10_r5*'
+      - '.github/workflows/midi-input-0-9-10-r5.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    if: github.event_name == 'push' && github.event.head_commit.message == 'bootstrap R5 lifecycle'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: python3 tools/r5_bootstrap.py
+      - run: bash tests/run_midi_input_0_9_10_r5_tests.sh
+      - shell: bash
+        run: |
+          git config user.name "GroovePuter Agent"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "0.9.10-R5: harden MIDI input lifecycle"
+          git push origin HEAD:agent/20260816-0.9.10-r5-lifecycle
+
+  lifecycle-contract:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/run_midi_input_0_9_10_r5_tests.sh
