@@ -62,8 +62,9 @@ inline bool barPreview(const Scene& scene,
       *phrase, bar, scene, currentPageIndex, output);
 }
 
-// R4 PREPARE helpers mutate only caller-owned detached values. They know no
-// UndoOwner, revision tracker, AudioGuard, filesystem or activation boundary.
+// R4 PREPARE helpers mutate only caller-owned detached values. They own no
+// retained history, revision publication, audio exclusion, filesystem or
+// activation boundary.
 inline PhraseCore::Result capturePrepared(
     const Scene& sourceScene,
     const CaptureRequest& request,
