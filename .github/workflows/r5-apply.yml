@@ -1,0 +1,33 @@
+name: R5 surgical patch
+
+on:
+  push:
+    branches:
+      - agent/20260816-0.9.8-r5-ownership-closure
+    paths:
+      - tools/r5_apply.py
+      - .github/workflows/r5-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply deterministic R5 closure patch
+        run: python3 tools/r5_apply.py
+      - name: Validate patch hygiene and focused contracts
+        run: |
+          git diff --check
+          bash tests/run_undo_0_9_8_r5_tests.sh
+      - name: Commit R5 closure
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "0.9.8-R5: close persistent mutation ownership gaps"
+          git push origin HEAD:agent/20260816-0.9.8-r5-ownership-closure
