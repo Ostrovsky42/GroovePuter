@@ -24,69 +24,44 @@ jobs:
           p = Path('src/generation/migration/quantized_generation_undo_owner_impl.h')
           s = p.read_text()
 
-          old = '''inline const PendingGeneration* pendingAudibleActivation(
-              const MiniAcid& engine) {
-            const int slot = g_publishedSlot.load(std::memory_order_acquire);
-            if (slot < 0 || slot > 1) return nullptr;
-            const SlotState state = static_cast<SlotState>(
-                g_slotState[slot].load(std::memory_order_acquire));
-            if (state != SlotState::Armed && state != SlotState::Ready) return nullptr;
-            const PendingGeneration& pending = g_slots[slot];
-            if (pending.owner != &engine ||
-                !targetValid(pending.target) ||
-                !targetStillActive(engine.sceneManager(), pending.target)) {
-              return nullptr;
-            }
-            return &pending;
+          old = '''  if (pending.owner != &engine ||
+              !targetValid(pending.target) ||
+              !targetStillActive(engine.sceneManager(), pending.target)) {
+            return nullptr;
           }
+          return &pending;
           '''
-          new = '''inline const PendingGeneration* pendingAudibleActivation(
-              const MiniAcid& engine) {
-            const int slot = g_publishedSlot.load(std::memory_order_acquire);
-            if (slot < 0 || slot > 1) return nullptr;
-            const SlotState state = static_cast<SlotState>(
-                g_slotState[slot].load(std::memory_order_acquire));
-            if (state != SlotState::Armed && state != SlotState::Ready) return nullptr;
-            const PendingGeneration& pending = g_slots[slot];
-            if (pending.owner != &engine || !targetValid(pending.target)) return nullptr;
-            // Keep the old global audible truth (genre/swing/runtime controls)
-            // until BAR_START even if a selector changes. Material accessors
-            // below validate the exact target separately so an old Pattern is
-            // never redirected onto the newly selected target.
-            return &pending;
-          }
+          new = '''  if (pending.owner != &engine || !targetValid(pending.target)) return nullptr;
+          // Global audible truth stays on the old snapshot until BAR_START even
+          // if a selector changes. Material accessors validate target identity
+          // separately so old Pattern bytes are never redirected.
+          return &pending;
           '''
           if old not in s:
-              raise SystemExit('pendingAudibleActivation anchor missing')
+              raise SystemExit('pending owner target anchor missing')
           s = s.replace(old, new, 1)
 
-          old = '''  const bool included = pending->scope == QuantizedGenerationScope::Full ||
-              (voice == 0 && pending->scope == QuantizedGenerationScope::SynthA) ||
-              (voice == 1 && pending->scope == QuantizedGenerationScope::SynthB);
-            return included ? &pending->synth[voice] : nullptr;
+          old = '''  return included ? &pending->synth[voice] : nullptr;
           }
           '''
-          new = '''  const bool included = pending->scope == QuantizedGenerationScope::Full ||
-              (voice == 0 && pending->scope == QuantizedGenerationScope::SynthA) ||
-              (voice == 1 && pending->scope == QuantizedGenerationScope::SynthB);
-            if (!included ||
-                !targetStillActive(engine.sceneManager(), pending->target)) return nullptr;
-            return &pending->synth[voice];
+          new = '''  if (!included ||
+              !targetStillActive(engine.sceneManager(), pending->target)) return nullptr;
+          return &pending->synth[voice];
           }
           '''
           if old not in s:
-              raise SystemExit('synth overlay anchor missing')
+              raise SystemExit('synth overlay return anchor missing')
           s = s.replace(old, new, 1)
 
           old = '''  if (pending == nullptr ||
               pending->scope != QuantizedGenerationScope::Full) return nullptr;
-            return &pending->drums;
+          return &pending->drums;
           }
           '''
           new = '''  if (pending == nullptr ||
               pending->scope != QuantizedGenerationScope::Full ||
               !targetStillActive(engine.sceneManager(), pending->target)) return nullptr;
-            return &pending->drums;
+          return &pending->drums;
           }
           '''
           if old not in s:
@@ -101,51 +76,34 @@ jobs:
 
           '''
           insert = anchor + '''inline void synchronizeCommittedGenerationRuntime(MiniAcid& engine) {
-            // A pending cancellation/drop never rolls Scene back. Once the old
-            // audible overlay disappears, runtime controls must converge to the
-            // current committed Scene truth even when normal ACTIVATE was skipped.
+            // Removing pending never rolls persistent Scene truth back. If normal
+            // ACTIVATE is skipped, runtime controls converge to current committed
+            // mode/BPM so the next transport start cannot use stale controls.
             engine.activateCommittedGrooveboxModeRuntime(engine.sceneManager().getMode());
             engine.setBpm(engine.sceneManager().getBpm());
           }
 
           '''
           if anchor not in s:
-              raise SystemExit('runtime sync insertion anchor missing')
+              raise SystemExit('runtime synchronization anchor missing')
           s = s.replace(anchor, insert, 1)
 
-          old = '''    g_status.store(
-                static_cast<uint8_t>(QuantizedGenerationStatus::CancelledTargetChanged),
+          for status in ('CancelledTargetChanged', 'CancelledRevisionChanged'):
+              old = f'''    g_status.store(
+                static_cast<uint8_t>(QuantizedGenerationStatus::{status}),
                 std::memory_order_release);
               return false;
-            }
           '''
-          new = '''    synchronizeCommittedGenerationRuntime(*owner);
+              new = f'''    synchronizeCommittedGenerationRuntime(*owner);
               g_status.store(
-                static_cast<uint8_t>(QuantizedGenerationStatus::CancelledTargetChanged),
+                static_cast<uint8_t>(QuantizedGenerationStatus::{status}),
                 std::memory_order_release);
               return false;
-            }
           '''
-          if old not in s:
-              raise SystemExit('stale target BAR anchor missing')
-          s = s.replace(old, new, 1)
+              if old not in s:
+                  raise SystemExit(f'BAR_START {status} anchor missing')
+              s = s.replace(old, new, 1)
 
-          old = '''    g_status.store(
-                static_cast<uint8_t>(QuantizedGenerationStatus::CancelledRevisionChanged),
-                std::memory_order_release);
-              return false;
-            }
-          '''
-          new = '''    synchronizeCommittedGenerationRuntime(*owner);
-              g_status.store(
-                static_cast<uint8_t>(QuantizedGenerationStatus::CancelledRevisionChanged),
-                std::memory_order_release);
-              return false;
-            }
-          '''
-          if old not in s:
-              raise SystemExit('stale revision BAR anchor missing')
-          s = s.replace(old, new, 1)
           p.write_text(s)
 
           p = Path('src/dsp/miniacid_engine.cpp')
@@ -163,7 +121,7 @@ jobs:
             LOG_PRINTLN("[DSP] STOP command received");
           '''
           if old not in s:
-              raise SystemExit('stop settle anchor missing')
+              raise SystemExit('stop pending-settle anchor missing')
           s = s.replace(old, new, 1)
           p.write_text(s)
           PY
