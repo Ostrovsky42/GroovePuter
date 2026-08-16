@@ -1,6 +1,8 @@
 #include "miniacid_display.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/state/scene_revision.h"
+#include "src/state/undo_owner.h"
+#include "undo_ux.h"
 #include "src/platform/cardputer_ui_session.h"
 #include "src/platform/cardputer_smf_route_persistence.h"
 
@@ -582,6 +584,11 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
     }
     
+    // R6 exposes one global user gesture while preserving page ownership.
+    // The active page still decides whether it can restore the retained
+    // domain receipt; this layer only promotes Ctrl+U to APP_EVENT_UNDO.
+    GroovePuterUndoUx::promoteUndoShortcut(event);
+
     IPage* currentPage = getPage_(page_index_);
     if (currentPage) {
         if (currentPage->handleEvent(event)) {
@@ -655,6 +662,14 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
     }
     
+    // If the active page declined Undo, do not restore another domain here.
+    // A retained receipt remains intact so the user can return to its owner.
+    if (GroovePuterUndoUx::isUndoEvent(event)) {
+        const bool hasReceipt = GroovePuterUndo::undoOwner().hasUndo();
+        UI::showToast(GroovePuterUndoUx::fallbackToast(hasReceipt), 1000);
+        return true;
+    }
+
     if (event.event_type == GROOVEPUTER_APPLICATION_EVENT) {
         if (event.app_event_type == GROOVEPUTER_APP_EVENT_SET_VISUAL_STYLE) {
             UI::currentStyle = nextVisualStyle(UI::currentStyle);

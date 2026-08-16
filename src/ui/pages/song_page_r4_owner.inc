@@ -39,11 +39,11 @@ bool SongPage::undoPreparedSongState() {
         else restore();
       });
   if (result == UndoResult::Restored) {
-    showToast("Undo Song", 900);
+    showToast("UNDO: SONG", 900);
     return true;
   }
   if (result == UndoResult::TargetUnavailable) {
-    showToast("Undo target unavailable", 1100);
+    showToast("UNDO: RETURN PAGE", 1100);
     return true;
   }
   return result == UndoResult::Expired;

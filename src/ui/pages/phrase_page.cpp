@@ -554,11 +554,11 @@ bool PhrasePage::undoPreparedOwnedState() {
         });
     if (result == UndoResult::Restored) {
       invalidatePreview();
-      UI::showToast("Undo Phrase", 900);
+      UI::showToast("UNDO: PHRASE", 900);
       return true;
     }
     if (result == UndoResult::TargetUnavailable) {
-      UI::showToast("Undo target unavailable", 1100);
+      UI::showToast("UNDO: RETURN PAGE", 1100);
       return true;
     }
     return result == UndoResult::Expired;
@@ -581,11 +581,11 @@ bool PhrasePage::undoPreparedOwnedState() {
         });
     if (result == UndoResult::Restored) {
       invalidatePreview();
-      UI::showToast("Undo Song", 900);
+      UI::showToast("UNDO: SONG", 900);
       return true;
     }
     if (result == UndoResult::TargetUnavailable) {
-      UI::showToast("Undo target unavailable", 1100);
+      UI::showToast("UNDO: RETURN PAGE", 1100);
       return true;
     }
     return result == UndoResult::Expired;

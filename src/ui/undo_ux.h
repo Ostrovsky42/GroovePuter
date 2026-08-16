@@ -1,0 +1,33 @@
+#pragma once
+
+#include "ui_core.h"
+
+namespace GroovePuterUndoUx {
+
+inline bool isUndoShortcut(const UIEvent& event) {
+  if (event.event_type != GROOVEPUTER_KEY_DOWN || !event.ctrl ||
+      event.alt || event.meta || event.shift) {
+    return false;
+  }
+  const unsigned char key = static_cast<unsigned char>(event.key);
+  return event.scancode == GROOVEPUTER_U || event.key == 'u' || event.key == 'U' ||
+         key == 21;  // Ctrl+U control character on terminals/Cardputer paths.
+}
+
+inline bool promoteUndoShortcut(UIEvent& event) {
+  if (!isUndoShortcut(event)) return false;
+  event.event_type = GROOVEPUTER_APPLICATION_EVENT;
+  event.app_event_type = GROOVEPUTER_APP_EVENT_UNDO;
+  return true;
+}
+
+inline bool isUndoEvent(const UIEvent& event) {
+  return event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+         event.app_event_type == GROOVEPUTER_APP_EVENT_UNDO;
+}
+
+inline const char* fallbackToast(bool hasRetainedReceipt) {
+  return hasRetainedReceipt ? "UNDO: RETURN PAGE" : "UNDO: EMPTY";
+}
+
+}  // namespace GroovePuterUndoUx
