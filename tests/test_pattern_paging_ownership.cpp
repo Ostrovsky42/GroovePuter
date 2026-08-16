@@ -3,7 +3,9 @@
 #include "../src/dsp/song_pattern_materializer.h"
 
 #include <cassert>
+#include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 SerialMock Serial;
@@ -19,6 +21,7 @@ namespace {
 constexpr int kPage = 5;
 constexpr int kSynthLocalSlot = 2;
 constexpr int kDrumLocalSlot = 11;
+std::filesystem::path gRoot;
 
 void selectEmptyProject(const std::string& project) {
     assert(PatternPagingService::setProjectName(project));
@@ -90,11 +93,10 @@ void testBackupRecovery() {
     Scene second{};
     assert(PatternPagingService::savePage(kPage, second));
 
-    const std::filesystem::path root = SD.root();
     char fileName[32];
     std::snprintf(fileName, sizeof(fileName), "page_%02d.gpp", kPage);
     const std::filesystem::path main =
-        root / "patterns" / "ownership-backup" / fileName;
+        gRoot / "patterns" / "ownership-backup" / fileName;
 
     std::fstream file(main, std::ios::binary | std::ios::in | std::ios::out);
     assert(file.is_open());
@@ -114,18 +116,17 @@ void testBackupRecovery() {
 }  // namespace
 
 int main() {
-    const std::filesystem::path root =
-        std::filesystem::temp_directory_path() /
+    gRoot = std::filesystem::temp_directory_path() /
         "grooveputer-pattern-ownership-test";
     std::error_code ec;
-    std::filesystem::remove_all(root, ec);
-    std::filesystem::create_directories(root);
-    SD.setRoot(root);
+    std::filesystem::remove_all(gRoot, ec);
+    std::filesystem::create_directories(gRoot);
+    SD.setRoot(gRoot);
 
     testRoundTrip();
     testProjectIsolationAndReload();
     testBackupRecovery();
 
-    std::filesystem::remove_all(root, ec);
+    std::filesystem::remove_all(gRoot, ec);
     return 0;
 }
