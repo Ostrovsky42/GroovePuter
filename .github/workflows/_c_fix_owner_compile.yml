@@ -1,0 +1,49 @@
+name: temporary 0.9.9-C owner compile fix
+
+on:
+  push:
+    branches:
+      - feature/0.9.9-c-bounded-activation
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/0.9.9-c-bounded-activation
+
+      - name: Apply narrow owner fixes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/generation/migration/quantized_generation_undo_owner_impl.h')
+          s = p.read_text()
+          old = 'namespace GroovePuterRhythm {\nnamespace QuantizedGenerationDetail {\n'
+          new = ('namespace GroovePuterRhythm {\n\n'
+                 'bool commitQuantizedGenerationAtBarStart(SceneManager& scenes);\n\n'
+                 'namespace QuantizedGenerationDetail {\n')
+          if old not in s:
+              raise SystemExit('forward declaration anchor missing')
+          s = s.replace(old, new, 1)
+          old = ('    engine.setGrooveboxMode(before.mode);\n'
+                 '    engine.setBpm(before.bpm);\n')
+          new = ('    engine.setGrooveboxMode(before.mode);\n'
+                 '    engine.sceneManager().setBpm(before.bpm);\n'
+                 '    engine.setBpm(before.bpm);\n')
+          if old not in s:
+              raise SystemExit('Undo BPM restore anchor missing')
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+
+      - name: Commit fixes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/generation/migration/quantized_generation_undo_owner_impl.h
+          git commit -m "fix: complete C activation owner declaration and BPM Undo"
+          git push origin HEAD:feature/0.9.9-c-bounded-activation
