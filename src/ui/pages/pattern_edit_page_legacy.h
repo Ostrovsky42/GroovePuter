@@ -469,13 +469,13 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
             UI::showToast("UNDO: PATTERN", 900);
             return true;
           case UndoResult::NothingToUndo:
-            UI::showToast("NOTHING TO UNDO", 800);
+            UI::showToast("UNDO: EMPTY", 800);
             return true;
           case UndoResult::TargetUnavailable:
             UI::showToast("UNDO: RETURN PAGE", 1000);
             return true;
           case UndoResult::Expired:
-            UI::showToast("UNDO EXPIRED", 900);
+            UI::showToast("UNDO: EXPIRED", 900);
             return true;
           case UndoResult::KindMismatch:
           default:

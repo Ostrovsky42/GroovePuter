@@ -22,6 +22,7 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 | Key | Action |
 |---|---|
 | `Alt+H` | Toggle page-aware help |
+| `Ctrl+U` | Undo last retained Pattern / Song / Phrase edit |
 | `Fn+M` | Workspace launcher |
 | `Fn+Tab` / `Fn+Shift+Tab` | Next / previous workflow |
 | `[` / `]` | Previous / next page inside workflow |
