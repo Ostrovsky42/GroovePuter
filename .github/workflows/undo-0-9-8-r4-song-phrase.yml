@@ -1,0 +1,31 @@
+name: Undo Safe Editing 0.9.8 R4
+
+on:
+  push:
+    branches:
+      - agent/20260816-0.9.8-r4-song-phrase-safe-editing
+  pull_request:
+    paths:
+      - 'src/state/song_phrase_undo_receipts.h'
+      - 'src/phrase/phrase_workspace.h'
+      - 'src/ui/pages/song_page.h'
+      - 'src/ui/pages/song_page.cpp'
+      - 'src/ui/pages/phrase_page.h'
+      - 'src/ui/pages/phrase_page.cpp'
+      - 'tests/test_song_phrase_safe_editing_0_9_8_r4.cpp'
+      - 'tests/test_song_phrase_safe_editing_0_9_8_r4_source_regressions.py'
+      - 'tests/run_undo_0_9_8_r4_tests.sh'
+      - 'docs/releases/0_9_8_R4_SONG_PHRASE_SAFE_EDITING.md'
+      - '.github/workflows/undo-0-9-8-r4-song-phrase.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  song-phrase-safe-editing:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run 0.9.8 R4 Song/Phrase ownership contracts
+        run: bash tests/run_undo_0_9_8_r4_tests.sh
