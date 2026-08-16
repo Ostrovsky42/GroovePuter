@@ -19,9 +19,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Apply R8 ProjectPage patch
-        run: |
-          git apply --check tools/_r8_project_page.patch
-          git apply tools/_r8_project_page.patch
+        run: python3 tools/_r8_project_page.patch
       - name: Run dedicated R8 contract before publication
         run: bash tests/run_midi_device_profile_ui_0_9_7_tests.sh
       - name: Publish patched tree and remove transport files
