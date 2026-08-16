@@ -66,12 +66,25 @@ require("targetStillActive" in bar,
         "BAR_START must validate exact target identity")
 require("activatePreparedGenerationRuntime" in bar,
         "BAR_START must perform runtime activation")
+require(bar.count("synchronizeCommittedGenerationRuntime(*owner)") >= 2,
+        "stale target/revision drop must settle runtime to current committed Scene truth")
 for forbidden in ("commitPreparedGeneration(", "undoOwner().commitPrepared", "markSceneMutated",
                   "generatePattern", "generateDrum", "SD.", "File ", "ArduinoJson", "writeScene"):
     require(forbidden not in bar, f"BAR_START leaked forbidden work: {forbidden}")
 
 # Audio reads old audible material/swing/genre from the overlay while Scene is
-# already the persistent truth.
+# already the persistent truth. Global old truth remains pending through a
+# selector change; only material accessors require exact target identity so old
+# Pattern bytes can never be redirected to the new selector.
+base_overlay = between(OWNER, "inline const PendingGeneration* pendingAudibleActivation", "inline const SynthPattern* pendingAudibleSynthPattern")
+require("targetStillActive" not in base_overlay,
+        "global audible overlay must survive selector changes until BAR_START")
+synth_overlay = between(OWNER, "inline const SynthPattern* pendingAudibleSynthPattern", "inline const DrumPatternSet* pendingAudibleDrumPatternSet")
+require("targetStillActive" in synth_overlay,
+        "synth old-material overlay must validate exact target identity")
+drum_overlay = between(OWNER, "inline const DrumPatternSet* pendingAudibleDrumPatternSet", "inline const GenreSettings* pendingAudibleGenreSettings")
+require("targetStillActive" in drum_overlay,
+        "drum old-material overlay must validate exact target identity")
 require("pendingAudibleSynthPattern" in ENGINE,
         "synth playback must consult pending audible overlay")
 require(ENGINE.count("pendingAudibleDrumPatternSet") >= 3,
@@ -94,18 +107,29 @@ for persisted_file in (ROOT / "scene_storage.h", ROOT / "scenes.h", ROOT / "scen
                 f"pending activation leaked into persistence: {persisted_file.name}")
 
 # Lifecycle cancellation is runtime-only: load/new/reset/stop discard pending;
-# cancellation helpers themselves never restore Scene material.
+# cancellation helpers themselves never restore Scene material. STOP additionally
+# settles runtime to the already-committed Scene because no later BAR_START will
+# perform normal ACTIVATE.
 for anchor in ("void MiniAcid::reset()", "void MiniAcid::stop()",
                "bool MiniAcid::createNewSceneWithName", "void MiniAcid::loadSceneFromStorage"):
     block = ENGINE[ENGINE.find(anchor):ENGINE.find("}\n", ENGINE.find(anchor)) + 2]
     require("cancelPendingGenerationActivation" in block,
             f"pending activation not cancelled by lifecycle path: {anchor}")
+stop_block = between(ENGINE, "void MiniAcid::stop()", "void MiniAcid::pauseTransport()")
+require("cancelPendingGenerationActivation" in stop_block and
+        "synchronizeCommittedGenerationRuntime" in stop_block,
+        "STOP must drop pending and settle runtime to committed truth")
 require("cancelPendingGenerationActivation(*this);\n  Serial.println(\"[LoadScene] Applying scene state...\")" in ENGINE,
         "successful project Load must drop pending before applying loaded state")
 cancel = between(OWNER, "inline bool cancelPendingGenerationActivationForRevision", "inline int armCompactSynthActivation")
 for forbidden in ("restoreGenerationUndo", "restoreSynthPatternUndo", "setMode(", "setBpm("):
     require(forbidden not in cancel,
             f"pending cancellation must not roll back committed persistent truth: {forbidden}")
+settle = between(OWNER, "inline void synchronizeCommittedGenerationRuntime", "inline bool cancelPendingGenerationActivationForRevision")
+require("sceneManager().getMode()" in settle and "sceneManager().getBpm()" in settle,
+        "runtime settlement must derive from current committed Scene truth")
+require("markSceneMutated" not in settle and "commitPrepared" not in settle,
+        "runtime settlement must not create persistent mutation or Undo")
 
 # Undo of either receipt shape invalidates only a pending activation belonging
 # to the undone committed revision.
