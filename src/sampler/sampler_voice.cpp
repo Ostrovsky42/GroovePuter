@@ -13,6 +13,9 @@ void SamplerVoice::reset() {
   active_ = false;
   fadingOut_ = false;
   fadeCounter_ = 0;
+  streamed_ = false;
+  starvationFrames_ = 0;
+  starving_ = false;
 }
 
 void SamplerVoice::trigger(const Params& params, ISampleStore& store) {
@@ -20,20 +23,19 @@ void SamplerVoice::trigger(const Params& params, ISampleStore& store) {
 
   handle_ = store.acquireHandle(params.id);
   if (!handle_.valid()) {
-    pcm_ = nullptr;
-    active_ = false;
+    reset();
     return;
   }
 
-  const SampleView view = store.viewHandle(handle_);
-  if (view.empty()) {
+  const SampleSourceInfo source = store.sourceInfoHandle(handle_);
+  if (!source.valid()) {
     releaseHandle_(store);
     return;
   }
 
   const uint32_t actualEnd =
-      (params.endFrame == 0 || params.endFrame > view.frames)
-          ? view.frames
+      (params.endFrame == 0 || params.endFrame > source.frames)
+          ? source.frames
           : params.endFrame;
   const uint32_t actualStart =
       (params.startFrame < actualEnd) ? params.startFrame : 0;
@@ -43,13 +45,23 @@ void SamplerVoice::trigger(const Params& params, ISampleStore& store) {
     return;
   }
 
-  pcm_ = view.pcm;
+  streamed_ = source.storage == SampleStorageKind::Streamed;
+  pcm_ = nullptr;
+  if (!streamed_) {
+    const SampleView view = store.viewHandle(handle_);
+    if (view.empty()) {
+      releaseHandle_(store);
+      return;
+    }
+    pcm_ = view.pcm;
+  }
+
   startFrame_ = actualStart;
   endFrame_ = actualEnd;
   reverse_ = params.reverse;
   loop_ = params.loop;
   step_ = std::max(0.0f, params.pitch) *
-          (static_cast<float>(view.sampleRate) /
+          (static_cast<float>(source.sampleRate) /
            static_cast<float>(kSampleRate));
   if (reverse_) step_ = -step_;
   const float absStep = step_ < 0.0f ? -step_ : step_;
@@ -63,6 +75,13 @@ void SamplerVoice::trigger(const Params& params, ISampleStore& store) {
   active_ = true;
   fadingOut_ = false;
   fadeCounter_ = kFadeFrames;
+  starvationFrames_ = 0;
+  starving_ = false;
+
+  if (streamed_) {
+    store.requestFrameHandle(
+        handle_, reverse_ ? (actualEnd - 1) : actualStart);
+  }
 }
 
 void SamplerVoice::stop() {
@@ -72,7 +91,8 @@ void SamplerVoice::stop() {
   }
 }
 
-void SamplerVoice::process(float* output, uint32_t numFrames, ISampleStore& store) {
+void SamplerVoice::process(float* output, uint32_t numFrames,
+                           ISampleStore& store) {
   if (!active_ || !output || numFrames == 0) return;
 
   for (uint32_t i = 0; i < numFrames; ++i) {
@@ -86,4 +106,7 @@ void SamplerVoice::releaseHandle_(ISampleStore& store) {
   handle_ = SampleHandle::invalid();
   pcm_ = nullptr;
   active_ = false;
+  streamed_ = false;
+  starvationFrames_ = 0;
+  starving_ = false;
 }

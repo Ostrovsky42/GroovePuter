@@ -23,6 +23,15 @@ void logSamplerRegistryHeap(const char* phase) {
 }
 
 void prepareSamplerRegistryAfterSdMount() {
+  // Reserve the fixed streaming page cache before catalog/UI allocations
+  // fragment internal RAM. This is control-side setup; no PCM file is loaded.
+  logSamplerRegistryHeap("before-stream-cache");
+  if (!g_sampleStore.beginStreamingCache()) {
+    Serial.println(
+        "[SAMPLER-STREAM] WARN fixed cache unavailable; ordinary one-shots will reject");
+  }
+  logSamplerRegistryHeap("after-stream-cache");
+
   // C establishes the registry before Scene restore. D keeps that lifecycle
   // and publishes the same SampleIndex as the persistence identity authority.
   // No PCM is loaded here.
