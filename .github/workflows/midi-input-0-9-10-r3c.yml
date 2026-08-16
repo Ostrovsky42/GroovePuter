@@ -1,0 +1,18 @@
+name: MIDI Input Controllers 0.9.10 R3c
+
+on:
+  pull_request:
+    paths:
+      - 'src/dsp/miniacid_engine.cpp'
+      - 'src/input/internal_synth_output.cpp'
+      - 'src/input/midi_input_router.h'
+      - 'docs/releases/0_9_10_R3C_SYNTH_PLAY_CONTRACT.md'
+      - 'tests/*midi_input_0_9_10_r3c*'
+      - '.github/workflows/midi-input-0-9-10-r3c.yml'
+
+jobs:
+  synth-live-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/run_midi_input_0_9_10_r3c_tests.sh
