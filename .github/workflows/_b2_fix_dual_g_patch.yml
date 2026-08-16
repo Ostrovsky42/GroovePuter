@@ -1,0 +1,90 @@
+name: temporary B2 dual G ownership patch
+
+on:
+  push:
+    branches:
+      - feature/0.9.9-b2-pattern-generation-owner
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/0.9.9-b2-pattern-generation-owner
+
+      - name: Patch dual Pattern G ownership
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('src/ui/pages/pattern_edit_page.cpp')
+          s = p.read_text()
+
+          old = '''    auto& owner = GroovePuterUndo::undoOwner();
+    if (owner.kind() == UndoKind::Generation &&
+        owner.payloadSize() == sizeof(SynthPatternUndoPayload)) {
+'''
+          new = '''    auto& owner = GroovePuterUndo::undoOwner();
+    // Plain G uses the B1 quantized-generation receipt. Handle that exact
+    // larger payload first; the legacy/fallback G path below uses the compact
+    // SynthPattern receipt. Size discrimination prevents cross-decoding.
+    if (owner.kind() == UndoKind::Generation &&
+        owner.payloadSize() == GroovePuterRhythm::quantizedGenerationUndoPayloadSize()) {
+      const UndoResult result =
+          GroovePuterRhythm::undoLastQuantizedGeneration(mini_acid_);
+      switch (result) {
+        case UndoResult::Restored:
+          UI::showToast("UNDO: GENERATION", 900);
+          return true;
+        case UndoResult::NothingToUndo:
+          UI::showToast("NOTHING TO UNDO", 800);
+          return true;
+        case UndoResult::TargetUnavailable:
+          UI::showToast("UNDO: RETURN PAGE", 1000);
+          return true;
+        case UndoResult::Expired:
+          UI::showToast("UNDO EXPIRED", 900);
+          return true;
+        case UndoResult::KindMismatch:
+        default:
+          return false;
+      }
+    }
+    if (owner.kind() == UndoKind::Generation &&
+        owner.payloadSize() == sizeof(SynthPatternUndoPayload)) {
+'''
+          if old not in s:
+              raise SystemExit('B2 undo discriminator anchor not found')
+          s = s.replace(old, new, 1)
+
+          old_mark = '''    if (result == QuantizedGenerationResult::CommittedNow)
+      GroovePuterState::markSceneMutated();
+
+    const char* label = "GEN FAILED";
+'''
+          new_mark = '''    // B1 commitPrepared() is the sole persistent revision owner. Do not
+    // advance Scene revision again here for CommittedNow.
+
+    const char* label = "GEN FAILED";
+'''
+          if old_mark not in s:
+              raise SystemExit('plain G duplicate revision anchor not found')
+          s = s.replace(old_mark, new_mark, 1)
+
+          p.write_text(s)
+          PY
+
+      - name: Commit production fix
+        run: |
+          if git diff --quiet -- src/ui/pages/pattern_edit_page.cpp; then
+            echo "No production patch needed"
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/ui/pages/pattern_edit_page.cpp
+          git commit -m "fix: complete dual Pattern G generation ownership"
+          git push origin HEAD:feature/0.9.9-b2-pattern-generation-owner
