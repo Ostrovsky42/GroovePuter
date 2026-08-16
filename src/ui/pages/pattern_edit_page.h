@@ -1,10 +1,15 @@
 #pragma once
 
+#include <utility>
+
 #include "../ui_core.h"
 #include "../pages/help_dialog.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
 #include "src/state/scene_revision.h"
+#include "src/state/synth_pattern_edit.h"
+#include "src/state/undo_owner.h"
+#include "src/state/undo_receipts.h"
 
 class BankSelectionBarComponent;
 class PatternSelectionBarComponent;
@@ -40,11 +45,14 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
 
  private:
   enum class Focus { Steps = 0, PatternRow, BankRow };
+  enum class PatternMutationResult { Invalid = 0, NoChange, Committed };
 
-  // The original page handler remains intact behind a strict input router.
-  // This keeps all non-navigation behavior unchanged and makes the ownership
-  // of arrows/pattern/bank shortcuts explicit.
+  // R3 inserts a narrow persistent-mutation owner in front of the retained
+  // legacy event implementation. The unowned handler remains text-identical so
+  // navigation, copy, R2 reset/Undo and non-Pattern behavior keep their existing
+  // routing while manual Pattern writes are intercepted by handleEventLegacy().
   bool handleEventLegacy(UIEvent& ui_event);
+  bool handleEventLegacyUnowned(UIEvent& ui_event);
 
   void drawMinimalStyle(IGfx& gfx);
   void drawRetroClassicStyle(IGfx& gfx);
@@ -61,6 +69,45 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   void advanceNoteEntryCursor();
   void writeNoteEntryStep(int step, int note, bool continuation);
   bool handleNoteEntryKey(char key);
+
+  template <typename PrepareFn>
+  PatternMutationResult commitPatternMutation(PrepareFn&& prepare) {
+    using GroovePuterUndo::SynthPatternUndoPayload;
+    using GroovePuterUndo::UndoKind;
+
+    SceneManager& manager = mini_acid_.sceneManager();
+    SynthPatternUndoPayload before{};
+    if (!GroovePuterUndo::captureCurrentSynthPatternUndo(
+            manager, voice_index_, before)) {
+      return PatternMutationResult::Invalid;
+    }
+
+    SynthPattern after = before.before;
+    std::forward<PrepareFn>(prepare)(after);
+    if (GroovePuterUndo::PatternEdit::samePattern(before.before, after)) {
+      return PatternMutationResult::NoChange;
+    }
+
+    // Page residency is validated before owner publication. COMMIT itself is a
+    // single bounded in-memory assignment under the existing audio guard.
+    if (!GroovePuterUndo::synthPatternUndoTargetAvailable(manager, before)) {
+      return PatternMutationResult::Invalid;
+    }
+
+    SynthPatternUndoPayload prepared = before;
+    prepared.before = after;
+    const bool committed = GroovePuterUndo::undoOwner().commitPrepared(
+        UndoKind::Pattern, before, [&]() {
+          const auto apply = [&]() {
+            GroovePuterUndo::restoreSynthPatternUndo(manager, prepared);
+          };
+          if (audio_guard_) audio_guard_(apply);
+          else apply();
+        });
+    return committed ? PatternMutationResult::Committed
+                     : PatternMutationResult::Invalid;
+  }
+
   template <typename F>
   void withAudioGuard(F&& fn) {
       if (audio_guard_) audio_guard_(std::forward<F>(fn));
