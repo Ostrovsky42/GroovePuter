@@ -118,9 +118,9 @@ inline void rotate(SynthPattern& pattern, int steps) {
   int shift = steps % SynthPattern::kSteps;
   if (shift < 0) shift += SynthPattern::kSteps;
   if (shift == 0) return;
-  std::rotate(std::begin(pattern.steps),
-              std::end(pattern.steps) - shift,
-              std::end(pattern.steps));
+  std::rotate(pattern.steps,
+              pattern.steps + (SynthPattern::kSteps - shift),
+              pattern.steps + SynthPattern::kSteps);
 }
 
 }  // namespace PatternEdit
