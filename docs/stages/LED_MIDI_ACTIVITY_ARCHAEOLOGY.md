@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Restore the verified onboard RGB data path on Cardputer ADV, make LED feedback brighter and more musical without moving work into realtime paths, and document the safe boundary for future direct MIDI activity indication.
+Restore the verified onboard RGB data path on Cardputer ADV, make LED feedback brighter and more musical without moving work into realtime paths, make Beat the discoverable default, and document the safe boundary for future direct MIDI activity indication.
 
 ## Hardware
 
@@ -42,6 +42,17 @@ The old rectangular flash is replaced with:
 
 No allocation, mutex, delay, logging or new queue is added.
 
+## Default behavior
+
+`LedSettings` defaults to `LedMode::Beat` instead of `Off`.
+
+- fresh/default scenes start with Beat enabled;
+- `PROJECT RESET` returns to Beat through the canonical `LedSettings()` default;
+- saved scenes keep their serialized LED mode, including explicit `Off`;
+- there is no boot-time override, so saved user preference is not silently replaced.
+
+Beat is the default because it is source-independent and exposes the feature as soon as transport starts. `StepTrig` remains the source-specific mode for Kick, 303 and other voices.
+
 ## MIDI behavior
 
 Internal pattern MIDI and LED `StepTrig` share the same musical trigger sites, so restoring the LED path makes source-selected internal notes visibly track notes that are also emitted over USB MIDI.
@@ -50,19 +61,29 @@ Raw SMF output still bypasses those internal trigger sites. A future dedicated `
 
 ## Build / flash
 
-Build the normal Cardputer ADV target from the repository release tooling, flash it to Cardputer ADV and use Project > LED for manual mode selection.
+Build the normal Cardputer ADV target from the repository release tooling and flash it to Cardputer ADV. No external wiring or new dependency is required.
 
 ## Expected behavior
 
-- `StepTrig`: selected source gives an immediate bright attack and short smooth decay.
-- `Beat`: transport pulses use the same attack/decay character.
-- `MuteState`: low steady state remains separate from transient modes.
-- brightness 40 is visible indoors; 60/90 gives stronger short peaks.
+Default smoke test:
+
+1. use a fresh scene or `PROJECT RESET`;
+2. do not open Project > LED;
+3. start transport;
+4. the onboard LED pulses in Beat mode with an immediate bright attack and smooth decay.
+
+Mode-specific behavior:
+
+- `StepTrig`: selected source gives an immediate bright attack and short smooth decay;
+- `Beat`: transport pulses use the same attack/decay character;
+- `MuteState`: low steady state remains separate from transient modes;
+- brightness 40 is visible indoors; 60/90 gives stronger short peaks;
 - audio and USB MIDI timing remain unchanged.
 
 ## Troubleshooting
 
 - No light: verify Cardputer ADV target, GPIO21 mapping, and that `LedManager::init()` / `update()` run.
+- Fresh/reset project stays dark: verify `LedSettings::mode` is `Beat` and transport beat callbacks are active.
 - Wrong source: check Project > LED > Src; `StepTrig` remains source-filtered.
 - Too dim: try brightness 60 or 90.
 - Too long: reduce flash duration; it now controls the decay tail.
@@ -73,6 +94,9 @@ Build the normal Cardputer ADV target from the repository release tooling, flash
 
 - [ ] Cardputer ADV boots with internal audio intact.
 - [ ] GPIO21 drives the onboard RGB LED.
+- [ ] Fresh/default scene starts in Beat LED mode without visiting settings.
+- [ ] `PROJECT RESET` restores Beat as the LED default.
+- [ ] A saved scene with LED `Off` reloads as Off.
 - [ ] StepTrig follows the selected synth/drum source.
 - [ ] Beat mode visibly pulses with transport.
 - [ ] Pulse has instant attack and smooth decay.
