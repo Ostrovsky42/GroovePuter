@@ -52,3 +52,9 @@ jobs:
             src/audio/pattern_project_cleanup.cpp \
             -o build/host-tests/test_pattern_paging_ownership
           build/host-tests/test_pattern_paging_ownership
+
+      - name: Preserve 0.9.6 Output Ownership contracts
+        run: bash tests/run_output_ownership_tests.sh
+
+      - name: Preserve 0.9.7 Device Profile contracts
+        run: bash tests/run_midi_device_profile_ui_0_9_7_tests.sh
