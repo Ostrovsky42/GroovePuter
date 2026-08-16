@@ -958,7 +958,7 @@ void SongPage::setScrollToPlayhead(int playhead) {
   }
 }
 
-bool SongPage::handleEvent(UIEvent& ui_event) {
+bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
   // Handle mode button clicks
   if (mode_button_initialized_ && mode_button_container_.handleEvent(ui_event)) {
     return true;
@@ -3198,3 +3198,5 @@ bool SongPage::generateEntireRow() {
     showToast(message, 1100);
     return true;
 }
+
+#include "song_page_r4_owner.inc"

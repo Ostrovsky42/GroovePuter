@@ -594,7 +594,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   }
 
   // Q-I is the only keyboard path for slots 1-8 outside NOTE ENTRY. Selection
-  // is immediate and the next arrow continues moving inside the note grid.
+  // is runtime-only; optional chaining is a separate persistent Song edit.
   if (!note_entry_mode_ && !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
     int patternIdx = patternIndexFromKey(lowerKey);
     if (patternIdx < 0) {
@@ -603,23 +603,22 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     if (patternIdx >= 0) {
       if (mini_acid_.songModeEnabled()) return true;
       setPatternCursor(patternIdx);
-      bool songMutated = false;
       withAudioGuard([&]() {
         mini_acid_.set303PatternIndex(voice_index_, patternIdx);
-        if (chaining_mode_) {
-          const SongTrack track = voice_index_ == 0
-              ? SongTrack::SynthA
-              : SongTrack::SynthB;
-          for (int i = 0; i < Song::kMaxPositions; ++i) {
-            if (mini_acid_.songPatternAt(i, track) == -1) {
-              mini_acid_.setSongPattern(i, track, patternIdx);
-              songMutated = true;
+      });
+      if (chaining_mode_) {
+        const SongTrack track = voice_index_ == 0
+            ? SongTrack::SynthA
+            : SongTrack::SynthB;
+        commitSongMutation([&](Song& song) {
+          for (int row = 0; row < Song::kMaxPositions; ++row) {
+            if (GroovePuterUndo::SongEdit::patternAt(song, row, track) == -1) {
+              GroovePuterUndo::SongEdit::setPattern(song, row, track, patternIdx);
               break;
             }
           }
-        }
-      });
-      if (songMutated) GroovePuterState::markSceneMutated();
+        });
+      }
       focus_ = Focus::Steps;
       return true;
     }
