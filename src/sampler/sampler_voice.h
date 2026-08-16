@@ -1,6 +1,7 @@
 #pragma once
 #include "sample_store.h"
 #include <atomic>
+#include <cstdint>
 
 // SamplerVoice manages the playback state of a single sample instance.
 // Designed for the audio thread. Resident samples keep the pointer-fast path;
@@ -45,8 +46,12 @@ public:
 
     int16_t sample16 = 0;
     if (streamed_) {
-      if (!store.readFrameHandle(handle_, static_cast<uint32_t>(i0), sample16)) {
-        store.requestFrameHandle(handle_, static_cast<uint32_t>(i0));
+      const uint32_t frame = static_cast<uint32_t>(i0);
+      if (!store.readFrameHandle(handle_, frame, sample16)) {
+        // A miss never performs I/O here. Hold the source position and ask the
+        // control loop to publish the missing page. This degrades locally to
+        // silence rather than blocking the audio task.
+        store.requestFrameHandle(handle_, frame);
         if (!starving_) {
           starving_ = true;
           starvationFrames_ = 0;
@@ -62,19 +67,7 @@ public:
 
       starving_ = false;
       starvationFrames_ = 0;
-
-      // Fixed, bounded lookahead. requestFrameHandle() deduplicates requests
-      // at page granularity, so this does not grow work with audio rate.
-      constexpr uint32_t kLookAheadFrames = 64;
-      if (reverse_) {
-        if (static_cast<uint32_t>(i0) > startFrame_ + kLookAheadFrames) {
-          store.requestFrameHandle(
-              handle_, static_cast<uint32_t>(i0) - kLookAheadFrames);
-        }
-      } else if (static_cast<uint32_t>(i0) + kLookAheadFrames < endFrame_) {
-        store.requestFrameHandle(
-            handle_, static_cast<uint32_t>(i0) + kLookAheadFrames);
-      }
+      requestStreamWindow_(store, frame);
     } else {
       if (pcm_ == nullptr) return;
       sample16 = pcm_[i0];
@@ -131,7 +124,10 @@ public:
       if (position_ < static_cast<float>(startFrame_)) {
         if (loop_) {
           position_ = static_cast<float>(endFrame_ - 1);
-          if (streamed_) store.requestFrameHandle(handle_, endFrame_ - 1);
+          if (streamed_) {
+            lastStreamPageStart_ = kInvalidStreamPage;
+            store.requestFrameHandle(handle_, endFrame_ - 1);
+          }
         } else {
           releaseHandle_(store);
         }
@@ -139,7 +135,10 @@ public:
     } else if (position_ >= static_cast<float>(endFrame_)) {
       if (loop_) {
         position_ = static_cast<float>(startFrame_);
-        if (streamed_) store.requestFrameHandle(handle_, startFrame_);
+        if (streamed_) {
+          lastStreamPageStart_ = kInvalidStreamPage;
+          store.requestFrameHandle(handle_, startFrame_);
+        }
       } else {
         releaseHandle_(store);
       }
@@ -153,6 +152,13 @@ public:
   void setTag(int t) { tag_ = t; }
 
 private:
+  // These constants intentionally mirror the V1 RamSampleStore page contract.
+  // Keeping the request horizon at two pages gives about 23 ms at 22.05 kHz
+  // pitch 1 (about 11.6 ms at pitch 2), while eight physical pages bound the
+  // intended four-concurrent-stream research target.
+  static constexpr uint32_t kStreamPageFrames = 256;
+  static constexpr uint32_t kStreamPrefetchPages = 2;
+  static constexpr uint32_t kInvalidStreamPage = 0xFFFFFFFFu;
   static constexpr uint32_t kStreamDropFrames = kSampleRate / 20; // 50 ms
 
   SampleHandle handle_;
@@ -176,6 +182,36 @@ private:
 
   uint32_t starvationFrames_ = 0;
   bool starving_ = false;
+  uint32_t lastStreamPageStart_ = kInvalidStreamPage;
+
+  inline __attribute__((always_inline)) void requestStreamWindow_(
+      ISampleStore& store, uint32_t frame) {
+    const uint32_t pageStart =
+        (frame / kStreamPageFrames) * kStreamPageFrames;
+    if (pageStart == lastStreamPageStart_) return;
+    lastStreamPageStart_ = pageStart;
+
+    if (!reverse_) {
+      for (uint32_t page = 1; page <= kStreamPrefetchPages; ++page) {
+        const uint64_t target64 =
+            static_cast<uint64_t>(pageStart) +
+            static_cast<uint64_t>(page) * kStreamPageFrames;
+        if (target64 >= endFrame_) break;
+        store.requestFrameHandle(handle_, static_cast<uint32_t>(target64));
+      }
+      return;
+    }
+
+    for (uint32_t page = 1; page <= kStreamPrefetchPages; ++page) {
+      const uint64_t distance =
+          static_cast<uint64_t>(page - 1u) * kStreamPageFrames + 1u;
+      if (static_cast<uint64_t>(pageStart) < distance) break;
+      const uint32_t target =
+          static_cast<uint32_t>(static_cast<uint64_t>(pageStart) - distance);
+      if (target < startFrame_) break;
+      store.requestFrameHandle(handle_, target);
+    }
+  }
 
   void reset();
   void releaseHandle_(ISampleStore& store);
