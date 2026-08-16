@@ -6,6 +6,7 @@
 #include "../pages/help_dialog.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
+#include "../../dsp/miniacid_engine.h"
 #include "src/state/scene_revision.h"
 #include "src/state/synth_pattern_edit.h"
 #include "src/state/undo_owner.h"
@@ -47,11 +48,11 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   enum class Focus { Steps = 0, PatternRow, BankRow };
   enum class PatternMutationResult { Invalid = 0, NoChange, Committed };
 
-  // The retained editor body keeps its historical handleEventLegacy alias.
-  // Existing child Pattern/Bank bars explicitly support that alias, so R3 adds
-  // a separately named owned wrapper instead of widening the macro contract.
-  bool handleEventOwned(UIEvent& ui_event);
+  // R3 inserts a narrow persistent-mutation owner in front of the retained
+  // legacy event implementation. The unowned handler keeps the old routing;
+  // manual Pattern writes are intercepted by handleEventLegacy().
   bool handleEventLegacy(UIEvent& ui_event);
+  bool handleEventLegacyUnowned(UIEvent& ui_event);
 
   void drawMinimalStyle(IGfx& gfx);
   void drawRetroClassicStyle(IGfx& gfx);
@@ -68,14 +69,13 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   void advanceNoteEntryCursor();
   void writeNoteEntryStep(int step, int note, bool continuation);
   bool handleNoteEntryKey(char key);
-  SceneManager& sceneManager();
 
   template <typename PrepareFn>
   PatternMutationResult commitPatternMutation(PrepareFn&& prepare) {
     using GroovePuterUndo::SynthPatternUndoPayload;
     using GroovePuterUndo::UndoKind;
 
-    SceneManager& manager = sceneManager();
+    SceneManager& manager = mini_acid_.sceneManager();
     SynthPatternUndoPayload before{};
     if (!GroovePuterUndo::captureCurrentSynthPatternUndo(
             manager, voice_index_, before)) {
