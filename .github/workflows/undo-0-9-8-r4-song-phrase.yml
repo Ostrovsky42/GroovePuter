@@ -1,0 +1,47 @@
+name: Undo Safe Editing 0.9.8 R4
+
+on:
+  push:
+    paths:
+      - 'src/state/song_edit.h'
+      - 'src/state/undo_receipts.h'
+      - 'src/phrase/phrase_workspace.h'
+      - 'src/ui/pages/song_page.h'
+      - 'src/ui/pages/song_page.cpp'
+      - 'src/ui/pages/song_page_r4_owner.inc'
+      - 'src/ui/pages/pattern_edit_page.h'
+      - 'src/ui/pages/pattern_edit_page.cpp'
+      - 'src/ui/pages/drum_sequencer_page.cpp'
+      - 'src/ui/pages/phrase_page.h'
+      - 'src/ui/pages/phrase_page.cpp'
+      - 'tests/run_undo_0_9_8_r4_tests.sh'
+      - 'tests/test_song_phrase_edit_0_9_8_r4*'
+      - 'tests/test_pattern_mutations_0_9_8_r3_source_regressions.py'
+      - 'tests/test_scene_revision_source_regressions.py'
+      - '.github/workflows/undo-0-9-8-r4-song-phrase.yml'
+  pull_request:
+    paths:
+      - 'src/state/song_edit.h'
+      - 'src/state/undo_receipts.h'
+      - 'src/phrase/phrase_workspace.h'
+      - 'src/ui/pages/song_page.h'
+      - 'src/ui/pages/song_page.cpp'
+      - 'src/ui/pages/song_page_r4_owner.inc'
+      - 'src/ui/pages/pattern_edit_page.h'
+      - 'src/ui/pages/pattern_edit_page.cpp'
+      - 'src/ui/pages/drum_sequencer_page.cpp'
+      - 'src/ui/pages/phrase_page.h'
+      - 'src/ui/pages/phrase_page.cpp'
+      - 'tests/run_undo_0_9_8_r4_tests.sh'
+      - 'tests/test_song_phrase_edit_0_9_8_r4*'
+      - 'tests/test_pattern_mutations_0_9_8_r3_source_regressions.py'
+      - 'tests/test_scene_revision_source_regressions.py'
+      - '.github/workflows/undo-0-9-8-r4-song-phrase.yml'
+
+jobs:
+  song-phrase-owner:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run 0.9.8 R4 Song/Phrase ownership contracts
+        run: bash tests/run_undo_0_9_8_r4_tests.sh
