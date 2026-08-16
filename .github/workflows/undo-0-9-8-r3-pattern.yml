@@ -10,6 +10,8 @@ on:
       - 'src/ui/pages/pattern_edit_page.h'
       - 'src/ui/pages/pattern_edit_page.cpp'
       - 'src/ui/pages/pattern_edit_page_legacy.h'
+      - 'src/ui/components/pattern_selection_bar.h'
+      - 'src/ui/components/bank_selection_bar.h'
       - 'tests/test_pattern_mutations_0_9_8_r3.cpp'
       - 'tests/test_pattern_mutations_0_9_8_r3_source_regressions.py'
       - 'tests/run_undo_0_9_8_r3_tests.sh'
