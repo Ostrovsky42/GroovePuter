@@ -22,7 +22,7 @@ public:
     static constexpr uint8_t kDxMask = 1u << 3;
 
     bool tryPush(const MusicalEvent& event) {
-        // Output ownership rejects only new external NoteOn. Cleanup events are
+        // Output ownership rejects only fresh external NoteOn. Cleanup events are
         // still enqueued even after a live mode transition removes MIDI.
         if (event.type == MusicalEventType::NoteOn &&
             !GroovePuterOutput::allowsMidiNoteOn(event)) {
