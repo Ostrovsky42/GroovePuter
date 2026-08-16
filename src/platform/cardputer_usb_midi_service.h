@@ -6,6 +6,8 @@ class MusicalEventRouter;
 class MusicalEventQueue;
 class ScheduledSmfMidiEventQueue;
 class ExternalMidiTransportEventQueue;
+class MidiInputQueue;
+class MidiInputRouter;
 
 // Read-only endpoint state for the Cardputer UI. The dispatcher remains the
 // sole USB owner; this snapshot exists so MIDI-only firmware can be diagnosed
@@ -30,7 +32,9 @@ struct CardputerUsbMidiStatusSnapshot {
 bool registerCardputerUsbMidiSink(
     MusicalEventRouter& router,
     MusicalEventQueue& patternQueue,
-    ExternalMidiTransportEventQueue& externalTransportQueue);
+    ExternalMidiTransportEventQueue& externalTransportQueue,
+    MidiInputQueue& midiInputQueue,
+    MidiInputRouter& midiInputRouter);
 
 // Registers the separate SPSC queue produced by SmfPlayerTask. The queue does
 // not write USB itself; MidiDispatchTask remains the only consumer/USB owner.

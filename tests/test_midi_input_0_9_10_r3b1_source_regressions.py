@@ -33,20 +33,20 @@ def main() -> None:
     require("NormalizedMidiInputMessage::fromMidi1ChannelVoice" in parser,
             "USB adapter must reuse canonical R2 normalization")
 
-    # R3b1 proves framing only. The sole TinyUSB reader is wired in R3b2 after
-    # this parser gate is clean; no existing production source may use it yet.
-    refs = []
-    for path in (ROOT / "src").rglob("*"):
-        if not path.is_file() or path.suffix not in {".h", ".hpp", ".cpp", ".cc"}:
-            continue
-        if path == PARSER:
-            continue
-        text = path.read_text(encoding="utf-8")
-        if ("parseUsbMidiChannelVoice" in text or
-                "usb_midi_channel_voice_parser.h" in text):
-            refs.append(path.relative_to(ROOT).as_posix())
-    require(not refs,
-            "R3b1 must not wire channel-voice parser into runtime yet: " + ", ".join(refs))
+    later_runtime = (ROOT / "docs/releases/0_9_10_R3B2_USB_RUNTIME_WIRING.md").exists()
+    if not later_runtime:
+        refs = []
+        for path in (ROOT / "src").rglob("*"):
+            if not path.is_file() or path.suffix not in {".h", ".hpp", ".cpp", ".cc"}:
+                continue
+            if path == PARSER:
+                continue
+            text = path.read_text(encoding="utf-8")
+            if ("parseUsbMidiChannelVoice" in text or
+                    "usb_midi_channel_voice_parser.h" in text):
+                refs.append(path.relative_to(ROOT).as_posix())
+        require(not refs,
+                "R3b1 must not wire channel-voice parser into runtime yet: " + ", ".join(refs))
 
     transport = (ROOT / "src/platform/cardputer_usb_midi_transport.cpp").read_text(encoding="utf-8")
     require("configASSERT(xTaskGetCurrentTaskHandle() == g_dispatchTaskHandle);" in transport,
