@@ -274,9 +274,10 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
     });
   }
 
-  if (changed &&
-      (!doRegenerate ||
-       generationResult == GroovePuterRhythm::QuantizedGenerationResult::CommittedNow)) {
+  // 0.9.9-B: successful generation commits own their single revision transition
+  // through the canonical 0.9.8 UndoOwner. PROFILE ONLY remains a direct Genre
+  // mutation and therefore retains the page-level revision mark.
+  if (changed && !doRegenerate) {
     GroovePuterState::markSceneMutated();
   }
 

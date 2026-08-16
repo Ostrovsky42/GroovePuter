@@ -52,6 +52,34 @@ int indexInKeyRow(char key, const char* row) {
   const char* found = std::strchr(row, key);
   return found ? static_cast<int>(found - row) : -1;
 }
+
+// 0.9.9-B2: Pattern Editor G prepares the legacy material into a
+// scratch Pattern before the canonical UndoOwner publishes it. Keep
+// this logic in lockstep with MiniAcid::randomize303Pattern(): same
+// compiled genre parameters, Reggae voice split and mode generator.
+void preparePatternEditorGeneration(MiniAcid& engine,
+                                    int voiceIndex,
+                                    SynthPattern& pattern) {
+  const int idx = voiceIndex <= 0 ? 0 : 1;
+  const GenerativeParams& genreParams =
+      engine.genreManager().getCompiledGenerativeParams();
+  auto behavior = engine.genreManager().getBehavior();
+  if (engine.genreManager().generativeMode() == GenerativeMode::Reggae) {
+    if (idx == 0) {
+      behavior.stepMask = 0x1111;
+      behavior.motifLength = 2;
+      behavior.avoidClusters = true;
+      behavior.forceOctaveJump = false;
+    } else {
+      behavior.stepMask = 0xAAAA;
+      behavior.motifLength = 4;
+      behavior.avoidClusters = false;
+      behavior.forceOctaveJump = false;
+    }
+  }
+  engine.modeManager().generatePattern(
+      pattern, engine.bpm(), genreParams, behavior, idx);
+}
 }  // namespace
 
 // Keep the established editor implementation intact under a private unowned
@@ -65,6 +93,83 @@ int indexInKeyRow(char key, const char* row) {
 #undef drawStandardFooter
 
 bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
+  // B2 generation receipts use the same bounded Synth Pattern before-
+  // image as R3 manual edits, but a distinct Generation kind. Handle
+  // only that exact payload here so a full B1 generation receipt is
+  // not misread as a Pattern Editor receipt.
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+      ui_event.app_event_type == GROOVEPUTER_APP_EVENT_UNDO) {
+    using GroovePuterUndo::SynthPatternUndoPayload;
+    using GroovePuterUndo::UndoKind;
+    using GroovePuterUndo::UndoResult;
+    auto& owner = GroovePuterUndo::undoOwner();
+    // Plain G uses the B1 quantized-generation receipt. Handle that exact
+    // larger payload first; the legacy/fallback G path below uses the compact
+    // SynthPattern receipt. Size discrimination prevents cross-decoding.
+    if (owner.kind() == UndoKind::Generation &&
+        owner.payloadSize() == GroovePuterRhythm::quantizedGenerationUndoPayloadSize()) {
+      const UndoResult result =
+          GroovePuterRhythm::undoLastQuantizedGeneration(mini_acid_);
+      switch (result) {
+        case UndoResult::Restored:
+          UI::showToast("UNDO: GENERATION", 900);
+          return true;
+        case UndoResult::NothingToUndo:
+          UI::showToast("NOTHING TO UNDO", 800);
+          return true;
+        case UndoResult::TargetUnavailable:
+          UI::showToast("UNDO: RETURN PAGE", 1000);
+          return true;
+        case UndoResult::Expired:
+          UI::showToast("UNDO EXPIRED", 900);
+          return true;
+        case UndoResult::KindMismatch:
+        default:
+          return false;
+      }
+    }
+    if (owner.kind() == UndoKind::Generation &&
+        owner.payloadSize() == sizeof(SynthPatternUndoPayload)) {
+      const uint32_t committedRevision = owner.committedRevision();
+      const UndoResult result =
+          owner.undoPrepared<SynthPatternUndoPayload>(
+              UndoKind::Generation,
+              [&](const SynthPatternUndoPayload& receipt) {
+                return GroovePuterUndo::synthPatternUndoTargetAvailable(
+                    mini_acid_.sceneManager(), receipt);
+              },
+              [&](const SynthPatternUndoPayload& receipt) {
+                const auto restore = [&]() {
+                  GroovePuterUndo::restoreSynthPatternUndo(
+                      mini_acid_.sceneManager(), receipt);
+                };
+                if (audio_guard_) audio_guard_(restore);
+                else restore();
+              });
+      if (result == UndoResult::Restored) {
+        GroovePuterRhythm::QuantizedGenerationDetail::
+            cancelPendingGenerationActivationForRevision(
+                mini_acid_, committedRevision);
+      }
+      switch (result) {
+        case UndoResult::Restored:
+          UI::showToast("UNDO: GENERATION", 900);
+          return true;
+        case UndoResult::NothingToUndo:
+          UI::showToast("NOTHING TO UNDO", 800);
+          return true;
+        case UndoResult::TargetUnavailable:
+          UI::showToast("UNDO: RETURN PAGE", 1000);
+          return true;
+        case UndoResult::Expired:
+          UI::showToast("UNDO EXPIRED", 900);
+          return true;
+        case UndoResult::KindMismatch:
+        default:
+          return false;
+      }
+    }
+  }
   using GroovePuterUndo::PatternEdit::adjustFxParam;
   using GroovePuterUndo::PatternEdit::adjustNote;
   using GroovePuterUndo::PatternEdit::adjustOctave;
@@ -289,14 +394,65 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
     return true;
   }
 
-  // Generation is intentionally not converted into a Pattern receipt in R3.
-  // It is not a bounded pure prepare operation and is part of the 0.9.9
-  // PREPARE/ACTIVATE handoff. Preserve its old mutation path but still advance
-  // the persistent revision so any older Pattern Undo expires safely.
+  // C keeps B2's legacy/fallback musical generator but joins the one
+  // bounded activation contract. STOP commits and is audible immediately.
+  // PLAY arms the old Pattern as audible truth, commits the new Pattern now,
+  // then releases that overlay only at BAR_START.
   if (keyG) {
-    const bool handled = handleEventLegacyUnowned(ui_event);
-    if (handled) GroovePuterState::markSceneMutated();
-    return handled;
+    using GroovePuterUndo::SynthPatternUndoPayload;
+    using GroovePuterUndo::UndoKind;
+
+    SceneManager& manager = mini_acid_.sceneManager();
+    SynthPatternUndoPayload before{};
+    if (!GroovePuterUndo::captureCurrentSynthPatternUndo(
+            manager, voice_index_, before)) {
+      return true;
+    }
+
+    SynthPattern after = before.before;
+    preparePatternEditorGeneration(mini_acid_, voice_index_, after);
+    if (GroovePuterUndo::PatternEdit::samePattern(before.before, after)) {
+      return true;
+    }
+    if (!GroovePuterUndo::synthPatternUndoTargetAvailable(manager, before)) {
+      return true;
+    }
+
+    SynthPatternUndoPayload prepared = before;
+    prepared.before = after;
+    int activationSlot = -1;
+    if (mini_acid_.isPlaying()) {
+      const auto target = GroovePuterRhythm::QuantizedGenerationDetail::
+          captureGenerationActivationTarget(manager);
+      activationSlot = GroovePuterRhythm::QuantizedGenerationDetail::
+          armCompactSynthActivation(
+              mini_acid_, target, voice_index_, before.before);
+      if (activationSlot < 0) {
+        UI::showToast("GEN BUSY", 800);
+        return true;
+      }
+    }
+
+    const bool committed = GroovePuterUndo::undoOwner().commitPrepared(
+        UndoKind::Generation, before, [&]() {
+          GroovePuterUndo::restoreSynthPatternUndo(manager, prepared);
+        });
+    if (!committed) {
+      if (activationSlot >= 0) {
+        GroovePuterRhythm::QuantizedGenerationDetail::abortArmedActivation(
+            activationSlot,
+            GroovePuterRhythm::QuantizedGenerationStatus::Busy);
+      }
+      return true;
+    }
+
+    if (activationSlot >= 0) {
+      GroovePuterRhythm::QuantizedGenerationDetail::completeArmedActivation(
+          activationSlot,
+          GroovePuterUndo::undoOwner().committedRevision());
+      UI::showToast("GEN -> NEXT BAR", 1000);
+    }
+    return true;
   }
 
   if (keyF) {
@@ -532,8 +688,8 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     } else {
       withAudioGuard(generate);
     }
-    if (result == QuantizedGenerationResult::CommittedNow)
-      GroovePuterState::markSceneMutated();
+    // B1 commitPrepared() is the sole persistent revision owner. Do not
+    // advance Scene revision again here for CommittedNow.
 
     const char* label = "GEN FAILED";
     if (result == QuantizedGenerationResult::CommittedNow)

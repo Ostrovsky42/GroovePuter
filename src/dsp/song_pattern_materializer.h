@@ -190,6 +190,40 @@ inline void markSlotSongGenerated(
     }
 }
 
+inline bool phraseSlotHasPatternReferences(const PhraseCore::PhraseSlot& phrase) {
+    const PhraseCore::PhraseMetadata& metadata = phrase.metadata;
+    return (metadata.flags & PhraseCore::kFlagValid) != 0 &&
+           metadata.phraseId != PhraseCore::kNoPhraseId &&
+           PhraseCore::isValidLength(metadata.lengthBars) &&
+           PhraseCore::isValidRole(metadata.role) &&
+           PhraseCore::isSongReferenceSource(metadata.source) &&
+           metadata.storage == PhraseCore::StorageMode::ReferenceView &&
+           PhraseCore::isValidTrackMask(metadata.trackMask) &&
+           metadata.sourceSongSlot <= 1 &&
+           metadata.sourceStartRow < Song::kMaxPositions;
+}
+
+inline int phrasePatternReferenceCount(
+        const Scene& scene, SongTrack track, int globalPattern) {
+    const int trackIndex = editableTrackIndex(track);
+    if (trackIndex < 0 || globalPattern < 0) return 0;
+    const uint8_t trackMask = PhraseCore::maskForTrackIndex(trackIndex);
+    int references = 0;
+    for (int slotIndex = 0; slotIndex < PhraseCore::kSlotCount; ++slotIndex) {
+        const PhraseCore::PhraseSlot& phrase = scene.phraseBank.slots[slotIndex];
+        if (!phraseSlotHasPatternReferences(phrase) ||
+            (phrase.metadata.trackMask & trackMask) == 0) {
+            continue;
+        }
+        for (int bar = 0; bar < phrase.metadata.lengthBars; ++bar) {
+            if (phrase.patternRefs[bar][trackIndex] == globalPattern) {
+                ++references;
+            }
+        }
+    }
+    return references;
+}
+
 inline int globalPatternReferenceCount(
         const Scene& scene, SongTrack track, int globalPattern) {
     const int trackIndex = editableTrackIndex(track);
@@ -203,7 +237,7 @@ inline int globalPatternReferenceCount(
             }
         }
     }
-    return references;
+    return references + phrasePatternReferenceCount(scene, track, globalPattern);
 }
 
 inline bool globalPatternIsReferenced(
