@@ -1245,7 +1245,8 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
       case GROOVEPUTER_APP_EVENT_UNDO: {
         if (!trackValid) return false;
         if (g_undo_history.action_type == UndoActionType::None || g_undo_history.cells.empty()) {
-          return false;
+          showToast("Nothing to undo", 700);
+          return true;
         }
         
         // Restore all cells from undo history
@@ -1268,8 +1269,9 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
           }
         });
         
-        // Clear undo history after use
+        // One-step semantics: a successful restore consumes the receipt.
         g_undo_history.clear();
+        showToast("Undo: restored", 800);
         return true;
       }
       default:
@@ -1386,6 +1388,7 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
   bool key_n = (lowerKey == 'n') || (ui_event.scancode == GROOVEPUTER_N);
   bool key_r = (lowerKey == 'r') || (ui_event.scancode == GROOVEPUTER_R);
   bool key_v = (lowerKey == 'v') || (ui_event.scancode == GROOVEPUTER_V);
+  bool key_z = (lowerKey == 'z') || (ui_event.scancode == GROOVEPUTER_Z);
   bool key_x = (lowerKey == 'x') || (ui_event.scancode == GROOVEPUTER_X);
 
   auto markerFromLetter = [&](char ch) -> int {
@@ -1434,8 +1437,8 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // Local fallback for Ctrl+C / Ctrl+V, same pattern as Pattern/Drum pages.
-  // Needed because some keyboard paths do not route app events globally.
+  // Local fallbacks for clipboard/undo shortcuts. Cardputer keyboard paths may
+  // deliver Ctrl-letter input directly to the page without a global app event.
   if (ui_event.ctrl && key_c) {
     UIEvent app_evt = ui_event;
     app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
@@ -1446,6 +1449,12 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
     UIEvent app_evt = ui_event;
     app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
     app_evt.app_event_type = GROOVEPUTER_APP_EVENT_PASTE;
+    return handleEvent(app_evt);
+  }
+  if ((ui_event.ctrl || ui_event.meta) && !ui_event.alt && key_z) {
+    UIEvent app_evt = ui_event;
+    app_evt.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    app_evt.app_event_type = GROOVEPUTER_APP_EVENT_UNDO;
     return handleEvent(app_evt);
   }
 
