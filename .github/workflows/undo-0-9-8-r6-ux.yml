@@ -1,0 +1,37 @@
+name: Undo Safe Editing 0.9.8 R6
+
+on:
+  push:
+    paths:
+      - 'src/ui/miniacid_display.cpp'
+      - 'src/ui/undo_ux.h'
+      - 'src/ui/global_help_content.h'
+      - 'src/ui/docs/keys.md'
+      - 'src/ui/pages/pattern_edit_page_legacy.h'
+      - 'src/ui/pages/song_page_r4_owner.inc'
+      - 'src/ui/pages/phrase_page.cpp'
+      - 'tests/run_undo_0_9_8_r6_tests.sh'
+      - 'tests/test_undo_0_9_8_r6_ux_source_regressions.py'
+      - 'tests/test_undo_owner_0_9_8_source_regressions.py'
+      - '.github/workflows/undo-0-9-8-r6-ux.yml'
+  pull_request:
+    paths:
+      - 'src/ui/miniacid_display.cpp'
+      - 'src/ui/undo_ux.h'
+      - 'src/ui/global_help_content.h'
+      - 'src/ui/docs/keys.md'
+      - 'src/ui/pages/pattern_edit_page_legacy.h'
+      - 'src/ui/pages/song_page_r4_owner.inc'
+      - 'src/ui/pages/phrase_page.cpp'
+      - 'tests/run_undo_0_9_8_r6_tests.sh'
+      - 'tests/test_undo_0_9_8_r6_ux_source_regressions.py'
+      - 'tests/test_undo_owner_0_9_8_source_regressions.py'
+      - '.github/workflows/undo-0-9-8-r6-ux.yml'
+
+jobs:
+  undo-ux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run cumulative R2-R6 Undo UX contracts
+        run: bash tests/run_undo_0_9_8_r6_tests.sh
