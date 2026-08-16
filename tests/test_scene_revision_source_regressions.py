@@ -40,9 +40,11 @@ def main() -> None:
             "revision tracker must use two fixed-width counters")
     require("static_assert(sizeof(SceneRevisionState) == 8" in tracker,
             "revision tracker RAM contract is missing")
-    require("bool dirty{GroovePuterState::sceneDirty()}" in status and
+    require("UiStatusDirtyStamp dirty{}" in status and
+            "sceneRevisionSnapshot()" in status and
+            "revision.dirty()" in status and
             'status.dirty ? " *" : ""' in status,
-            "status chrome must snapshot and render dirty state")
+            "status chrome must snapshot revision-aware dirty state and render it")
     require("markSceneLoadSucceeded();" in project,
             "successful project load must establish a clean baseline")
     require("markSceneSaveSucceeded();" in project,

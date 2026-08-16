@@ -31,19 +31,9 @@ enum class UsbMidiStatus : uint8_t {
 };
 
 // Translates normalized GroovePuter events into fixed logical lanes.
-// Cardputer Synth A/B/DX key events keep exact per-note ownership regardless of
-// MONO/POLY. The external receiver owns voice allocation. For the established
-// SEQTRAK CH8..10 profile, CC26 is sent once when the requested receiver mode
-// changes: 0=MONO, 1=POLY. Generated performance tools request POLY so CHORD
-// output is never collapsed by a receiver left in mono mode. Unsupported CC26
-// is fail-open: notes still play, while generic receivers may require their
-// own mono/poly setting.
-//
-// Live Drums owns seven independent native SEQTRAK lanes (logical 0..6 -> MIDI
-// CH1..7). Pattern Drums retains all eight internal drum voices and maps them
-// onto the seven native SEQTRAK drum tracks. Wire-level channel+note ownership
-// remains reference counted so Pattern/SMF/PERFORM cleanup cannot silence a
-// still-owned shared note.
+// Device-profile routes are frozen while begin() configures the lanes. No
+// control-side profile state is re-read from the dispatcher path, so NoteOn,
+// NoteOff and scoped cleanup retain one physical wire identity until restart.
 class UsbMidiOutput final : public IMusicalEventSink {
 public:
     static constexpr uint8_t kSeqtrakDrumLaneCount = 7;
@@ -130,6 +120,7 @@ private:
     static bool sourceRequestsPolyReceiver(MusicalEventSource source);
 
     void configureLanes();
+    uint8_t wireNoteFor(const MidiVoiceLane& lane, uint8_t eventNote) const;
     uint8_t generatedChannel(MusicalEventTarget target) const;
     void ensurePerformanceReceiverMode(MusicalEventTarget target,
                                        bool polyphonic);
@@ -184,7 +175,12 @@ private:
     PerformanceReceiverMode performanceReceiverMode_[kGeneratedTargetCount];
     uint8_t wireOwners_[kMidiChannelCount][kMidiNoteCount];
     uint8_t smfOwners_[kMidiChannelCount][kMidiNoteCount];
+    uint8_t patternDrumNotes_[kPatternDrumVoiceCount];
+    uint8_t performanceDrumNotes_[kSeqtrakDrumLaneCount];
     uint16_t abandonedSmfChannels_;
+    bool patternStartupRoutesBound_;
+    bool performanceStartupRoutesComplete_;
+    bool seqtrakReceiverModeControl_;
     bool enabled_;
     bool begun_;
     bool mounted_;

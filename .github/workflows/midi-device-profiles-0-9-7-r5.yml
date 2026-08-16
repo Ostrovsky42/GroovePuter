@@ -1,0 +1,16 @@
+name: MIDI Device Profiles 0.9.7 R5
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pattern-route-binding:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run 0.9.7-R5 Pattern route binding contract
+        run: bash tests/run_midi_pattern_route_binding_0_9_7_tests.sh
