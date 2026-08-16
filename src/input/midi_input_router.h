@@ -9,12 +9,12 @@
 #include "musical_event_router.h"
 
 // MIDI-input routing is deliberately separate from output ownership and from
-// external device profiles. R3a supports only internal Synth A/B targets; Drums
-// is added in the following isolated checkpoint once the note->logical-lane map
-// is executable-test data.
+// external device profiles. The target is an incoming-controller destination,
+// not an outbound route/profile selection.
 enum class MidiInputTarget : uint8_t {
     SynthA = 0,
     SynthB = 1,
+    Drums = 2,
 };
 
 enum class MidiInputChannelMode : uint8_t {
@@ -23,8 +23,6 @@ enum class MidiInputChannelMode : uint8_t {
 };
 
 struct MidiInputRoutingConfig {
-    // Preserve <=0.9.9 behavior until a later UI/persistence checkpoint gives
-    // the user an explicit way to enable external controller input.
     bool enabled{false};
     MidiInputChannelMode channelMode{MidiInputChannelMode::Omni};
     uint8_t channel{0};
@@ -55,21 +53,13 @@ struct MidiInputRouterDiagnostics {
     uint32_t ownershipCapacityDrops{0};
     uint32_t overflowRecoveries{0};
     uint32_t configPanics{0};
+    uint32_t unmappedDrumNotes{0};
 };
 
 class MidiInputRouter {
 public:
-    // Keep the input core independent from the DSP header while matching the
-    // existing MiniAcid/ClampedLiveNoteIdentity public live-note range. Source
-    // regressions lock these constants together so a future engine-range change
-    // cannot silently break NoteOff ownership.
     static constexpr uint8_t kSynthNoteMin = 24u;  // C1
     static constexpr uint8_t kSynthNoteMax = 71u;  // B4
-
-    // 19 physical performance keys are already supported by Cardputer's own
-    // PerformanceKeyboard. 24 owner slots cover that existing proven density
-    // plus small controller headroom without allocating a 16x128 table. Sustain
-    // is out of R3a and must re-measure this capacity before R6.
     static constexpr std::size_t kMaxActiveNotes = 24u;
     static constexpr std::size_t kDefaultDrainBudget = 32u;
 
@@ -113,9 +103,6 @@ public:
         return setConfig(next);
     }
 
-    // Consumer-side service for the R2 SPSC queue. The physical producer is
-    // intentionally outside this class. Overflow is checked before and after
-    // draining so a lost NoteOff can never remain silently owned forever.
     std::size_t service(MidiInputQueue& queue,
                         std::size_t budget = kDefaultDrainBudget) {
         recoverOverflowIfNeeded(queue);
@@ -153,9 +140,7 @@ public:
         return false;
     }
 
-    void panic() {
-        releaseAllOwnedNotes();
-    }
+    void panic() { releaseAllOwnedNotes(); }
 
     std::size_t activeNoteCount() const {
         std::size_t count = 0;
@@ -183,6 +168,7 @@ public:
         switch (config.target) {
             case MidiInputTarget::SynthA:
             case MidiInputTarget::SynthB:
+            case MidiInputTarget::Drums:
                 return true;
         }
         return false;
@@ -194,24 +180,42 @@ public:
         return note;
     }
 
+    // Fixed GM-style v1 map into GroovePuter's eight logical drum lanes.
+    // This is incoming-controller policy and intentionally does not depend on
+    // the selected outbound DeviceProfile.
+    static bool mapDrumNote(uint8_t note, uint8_t& logicalLane) {
+        switch (note) {
+            case 36u: logicalLane = 0u; return true;  // Kick
+            case 38u: logicalLane = 1u; return true;  // Snare
+            case 42u: logicalLane = 2u; return true;  // Closed hat
+            case 46u: logicalLane = 3u; return true;  // Open hat
+            case 43u: logicalLane = 4u; return true;  // Mid tom
+            case 47u: logicalLane = 5u; return true;  // High tom
+            case 37u: logicalLane = 6u; return true;  // Rim
+            case 39u: logicalLane = 7u; return true;  // Clap
+            default: return false;
+        }
+    }
+
 private:
     struct ActiveNoteOwner {
         MidiInputSessionId sessionId{kInvalidMidiInputSessionId};
         MidiInputTransportId transportId{kInvalidMidiInputTransportId};
-        uint8_t channel{0};
-        // sourceNote is the raw normalized MIDI note used to match the future
-        // physical NoteOff. routedNote is the pitch actually published to the
-        // internal synth after applying the same C1..B4 contract as MiniAcid.
+        uint8_t inputChannel{0};
         uint8_t sourceNote{0};
+        uint8_t routedChannel{0};
         uint8_t routedNote{0};
         MusicalEventTarget target{MusicalEventTarget::SynthA};
         bool active{false};
     };
 
     static MusicalEventTarget musicalTarget(MidiInputTarget target) {
-        return target == MidiInputTarget::SynthB
-            ? MusicalEventTarget::SynthB
-            : MusicalEventTarget::SynthA;
+        switch (target) {
+            case MidiInputTarget::SynthB: return MusicalEventTarget::SynthB;
+            case MidiInputTarget::Drums: return MusicalEventTarget::Drums;
+            case MidiInputTarget::SynthA: return MusicalEventTarget::SynthA;
+        }
+        return MusicalEventTarget::SynthA;
     }
 
     bool channelAccepted(uint8_t channel) const {
@@ -225,7 +229,7 @@ private:
             if (owner.active &&
                 owner.transportId == message.transportId &&
                 owner.sessionId == message.sessionId &&
-                owner.channel == message.channel &&
+                owner.inputChannel == message.channel &&
                 owner.sourceNote == message.note()) {
                 return static_cast<int>(i);
             }
@@ -233,15 +237,16 @@ private:
         return -1;
     }
 
-    int findRoutedPitchOwner(MusicalEventTarget target,
-                             uint8_t routedNote) const {
+    int findResolvedOwner(MusicalEventTarget target,
+                          uint8_t routedChannel,
+                          uint8_t routedNote) const {
         for (std::size_t i = 0; i < kMaxActiveNotes; ++i) {
             const auto& owner = owners_[i];
-            if (owner.active &&
-                owner.target == target &&
-                owner.routedNote == routedNote) {
-                return static_cast<int>(i);
-            }
+            if (!owner.active || owner.target != target) continue;
+            const bool sameLogicalVoice = target == MusicalEventTarget::Drums
+                ? owner.routedChannel == routedChannel
+                : owner.routedNote == routedNote;
+            if (sameLogicalVoice) return static_cast<int>(i);
         }
         return -1;
     }
@@ -255,14 +260,14 @@ private:
 
     void publishNote(MusicalEventType type,
                      MusicalEventTarget target,
-                     uint8_t channel,
+                     uint8_t routedChannel,
                      uint8_t note,
                      uint8_t velocity) {
         router_.route(MusicalEvent{
             type,
             MusicalEventSource::MidiInput,
             target,
-            channel,
+            routedChannel,
             note,
             velocity,
         });
@@ -272,14 +277,12 @@ private:
         ActiveNoteOwner& owner = owners_[index];
         if (!owner.active) return;
         const MusicalEventTarget target = owner.target;
-        const uint8_t channel = owner.channel;
+        const uint8_t routedChannel = owner.routedChannel;
         const uint8_t routedNote = owner.routedNote;
         owner = ActiveNoteOwner{};
-        // Clear ownership before publication. If a synchronous sink indirectly
-        // causes a route/config change, this NoteOff cannot be released twice.
         publishNote(MusicalEventType::NoteOff,
                     target,
-                    channel,
+                    routedChannel,
                     routedNote,
                     velocity);
         ++diagnostics_.noteOffsRouted;
@@ -298,26 +301,28 @@ private:
         }
 
         const MusicalEventTarget target = musicalTarget(config_.target);
-        const uint8_t routedNote = normalizeSynthNote(message.note());
+        uint8_t routedChannel = message.channel;
+        uint8_t routedNote = normalizeSynthNote(message.note());
+        if (target == MusicalEventTarget::Drums) {
+            if (!mapDrumNote(message.note(), routedChannel)) {
+                ++diagnostics_.unmappedDrumNotes;
+                return false;
+            }
+            routedNote = message.note();
+        }
 
-        // First retire an exact physical owner. This is the deterministic
-        // repeated-NoteOn Off->On policy for one transport/session/key.
         int ownerIndex = findSourceOwner(message);
         if (ownerIndex >= 0) {
             releaseOwner(static_cast<std::size_t>(ownerIndex));
             ++diagnostics_.repeatedNoteRetriggers;
         }
 
-        // Internal Synth A/B voices use the clamped C1..B4 pitch as their live
-        // identity. A different source note/session may therefore resolve to the
-        // same sounding pitch. The newest NoteOn becomes the sole owner of that
-        // target+pitch; a later NoteOff from the retired source becomes orphaned
-        // instead of stopping the newer note.
-        const int pitchOwnerIndex = findRoutedPitchOwner(target, routedNote);
-        if (pitchOwnerIndex >= 0) {
-            releaseOwner(static_cast<std::size_t>(pitchOwnerIndex));
+        const int resolvedOwnerIndex =
+            findResolvedOwner(target, routedChannel, routedNote);
+        if (resolvedOwnerIndex >= 0) {
+            releaseOwner(static_cast<std::size_t>(resolvedOwnerIndex));
             ++diagnostics_.routedPitchReplacements;
-            if (ownerIndex < 0) ownerIndex = pitchOwnerIndex;
+            if (ownerIndex < 0) ownerIndex = resolvedOwnerIndex;
         }
 
         if (ownerIndex < 0) ownerIndex = findFreeOwner();
@@ -331,18 +336,16 @@ private:
         ActiveNoteOwner& owner = owners_[static_cast<std::size_t>(ownerIndex)];
         owner.sessionId = message.sessionId;
         owner.transportId = message.transportId;
-        owner.channel = message.channel;
+        owner.inputChannel = message.channel;
         owner.sourceNote = message.note();
+        owner.routedChannel = routedChannel;
         owner.routedNote = routedNote;
         owner.target = target;
         owner.active = true;
 
-        // The resolved target and routed pitch are committed to ownership before
-        // synchronous publication. NoteOff never re-reads current config or
-        // repeats pitch normalization against potentially changed engine state.
         publishNote(MusicalEventType::NoteOn,
                     owner.target,
-                    owner.channel,
+                    owner.routedChannel,
                     owner.routedNote,
                     message.velocity());
         ++diagnostics_.noteOnsRouted;
@@ -350,9 +353,8 @@ private:
     }
 
     bool handleNoteOff(const NormalizedMidiInputMessage& message) {
-        // NoteOff resolution intentionally ignores current enabled/channel/
-        // target configuration and looks up the retained raw source identity.
-        // The routed pitch comes from the owner created by NoteOn.
+        // NoteOff uses the retained physical owner and deliberately ignores the
+        // current enabled/channel/target configuration.
         const int ownerIndex = findSourceOwner(message);
         if (ownerIndex < 0) {
             ++diagnostics_.orphanNoteOffs;
@@ -381,6 +383,6 @@ private:
 };
 
 static_assert(sizeof(MidiInputRouter) <= 320u,
-              "MIDI input router/owner must remain below the 320-byte R3a budget");
+              "MIDI input router/owner must remain below the 320-byte budget");
 
 #endif  // GROOVEPUTER_MIDI_INPUT_ROUTER_H
