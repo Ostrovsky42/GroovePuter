@@ -9,8 +9,13 @@ mkdir -p "${BUILD_DIR}"
 
 python3 "${ROOT_DIR}/tests/test_sampler_memory_ownership_source.py"
 
+# scenes.h uses default member initializers on bit-fields. GCC diagnoses those
+# as a C++20 feature under -Werror in a strict C++17 host probe, even though the
+# production embedded toolchain accepts the source. Use GNU++20 only for this
+# ABI/layout measurement executable; this does not change firmware language
+# settings or production behavior.
 "${CXX}" \
-  -std=c++17 \
+  -std=gnu++20 \
   -Wall \
   -Wextra \
   -Werror \
