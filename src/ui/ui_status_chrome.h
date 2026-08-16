@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include "src/output/output_ownership.h"
 #include "src/pattern/pattern_address.h"
 #include "src/state/scene_revision.h"
 
@@ -53,6 +54,10 @@ enum class UiStatusOutput : uint8_t {
     Both = InternalAndMidi,
     Midi = 1,
     Unknown = 2,
+    Internal = 3,
+    Layer = 4,
+    Legacy = 5,
+    TrackMidi = 6,
 };
 
 inline uint16_t normalizeUiStatusBpm(int bpm) {
@@ -74,6 +79,42 @@ inline uint16_t uiStatusBpm() {
     return uiStatusBpmStorage();
 }
 
+// Keep the existing one-byte `dirty` member API while also carrying a tiny
+// revision fingerprint. OutputMode changes mark the Scene mutated; encoding the
+// low revision bits here makes the cached status line refresh on every explicit
+// mode transition, not only on the first clean -> dirty transition.
+struct UiStatusDirtyStamp {
+    uint8_t value{0};
+
+    UiStatusDirtyStamp() {
+        const GroovePuterState::SceneRevisionState revision =
+            GroovePuterState::sceneRevisionSnapshot();
+        value = static_cast<uint8_t>(
+            ((revision.currentRevision & 0x7Fu) << 1u) |
+            (revision.dirty() ? 1u : 0u));
+    }
+
+    UiStatusDirtyStamp& operator=(bool isDirty) {
+        value = static_cast<uint8_t>((value & 0xFEu) | (isDirty ? 1u : 0u));
+        return *this;
+    }
+
+    operator bool() const {
+        return (value & 1u) != 0u;
+    }
+
+    bool operator==(const UiStatusDirtyStamp& other) const {
+        return value == other.value;
+    }
+
+    bool operator!=(const UiStatusDirtyStamp& other) const {
+        return !(*this == other);
+    }
+};
+
+static_assert(sizeof(UiStatusDirtyStamp) == 1,
+              "status dirty/revision stamp must remain one byte");
+
 struct UiStatusSnapshot {
     UiStatusContext context{UiStatusContext::Unknown};
     UiStatusSource source{UiStatusSource::Pattern};
@@ -81,7 +122,7 @@ struct UiStatusSnapshot {
     UiStatusClock clock{UiStatusClock::Internal};
     UiStatusOutput output{UiStatusOutput::InternalAndMidi};
     bool liveMixLocked{false};
-    bool dirty{GroovePuterState::sceneDirty()};
+    UiStatusDirtyStamp dirty{};
     uint8_t patternPage{0xFF};
     uint8_t patternBank{0xFF};
     uint8_t patternSlot{0xFF};
@@ -175,8 +216,50 @@ inline const char* uiStatusOutputToken(UiStatusOutput output) {
         case UiStatusOutput::InternalAndMidi: return "BOTH";
         case UiStatusOutput::Midi: return "MIDI";
         case UiStatusOutput::Unknown: return "OUT?";
+        case UiStatusOutput::Internal: return "[I]";
+        case UiStatusOutput::Layer: return "[L]";
+        case UiStatusOutput::Legacy: return "[-]";
+        case UiStatusOutput::TrackMidi: return "[M]";
     }
     return "OUT?";
+}
+
+inline UiStatusOutput uiStatusCanonicalTrackOutput(
+    const UiStatusSnapshot& status) {
+    // SMF owns an external-only playback path independently from the logical
+    // GroovePuter track owner. Preserve the transport snapshot in that case.
+    if (status.source == UiStatusSource::Smf) return status.output;
+
+    GroovePuterOutput::Track track = GroovePuterOutput::Track::Count;
+    switch (status.context) {
+        case UiStatusContext::SynthA:
+        case UiStatusContext::SoundA:
+            track = GroovePuterOutput::Track::SynthA;
+            break;
+        case UiStatusContext::SynthB:
+        case UiStatusContext::SoundB:
+            track = GroovePuterOutput::Track::SynthB;
+            break;
+        case UiStatusContext::Drums:
+            track = GroovePuterOutput::Track::Drums;
+            break;
+        default:
+            return status.output;
+    }
+
+    if (!GroovePuterOutput::hasExplicitMode(track)) {
+        return UiStatusOutput::Legacy;
+    }
+
+    switch (GroovePuterOutput::mode(track)) {
+        case GroovePuterOutput::Mode::Internal:
+            return UiStatusOutput::Internal;
+        case GroovePuterOutput::Mode::Midi:
+            return UiStatusOutput::TrackMidi;
+        case GroovePuterOutput::Mode::Layer:
+            return UiStatusOutput::Layer;
+    }
+    return UiStatusOutput::Unknown;
 }
 
 inline void formatUiStatusLine(const UiStatusSnapshot& status,
@@ -208,7 +291,7 @@ inline void formatUiStatusLine(const UiStatusSnapshot& status,
                   bar,
                   total,
                   uiStatusClockToken(status.clock),
-                  uiStatusOutputToken(status.output),
+                  uiStatusOutputToken(uiStatusCanonicalTrackOutput(status)),
                   status.liveMixLocked ? " LM" : "",
                   status.dirty ? " *" : "");
 }

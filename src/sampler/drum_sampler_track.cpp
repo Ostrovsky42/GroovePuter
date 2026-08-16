@@ -1,11 +1,18 @@
 #include "drum_sampler_track.h"
 
+#include "src/output/output_ownership.h"
+
 DrumSamplerTrack::DrumSamplerTrack() {
     // Initialize pads with defaults if needed
 }
 
 void DrumSamplerTrack::triggerPad(int padIndex, float velocity, ISampleStore& store, bool forceReverse) {
     if (!enabled_) return;
+    if (!GroovePuterOutput::allowsInternal(
+            GroovePuterOutput::Track::Drums,
+            GroovePuterOutput::SourceClass::Preview)) {
+        return;
+    }
     if (padIndex < 0 || padIndex >= kNumPads) return;
     
     SamplerPad& p = pads_[padIndex];

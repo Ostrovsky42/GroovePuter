@@ -5,6 +5,7 @@
 #include "src/state/generation_request_state.h"
 #include "src/state/scene_revision.h"
 #include "src/generation/migration/strong_rhythm_live_bridge.h"
+#include "src/output/output_mode_runtime.h"
 
 #include <algorithm>
 #include <cctype>
@@ -50,6 +51,17 @@ inline void drawDrumInputLockedFooter(IGfx& gfx,
 
 namespace {
 bool g_suppressPatternLockedChildDraw = false;
+
+bool isDrumOutputCycleKey(const UIEvent& event) {
+  if (event.event_type != GROOVEPUTER_KEY_DOWN ||
+      !event.alt || event.ctrl || event.meta) {
+    return false;
+  }
+  const char key = event.key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)))
+      : 0;
+  return key == 'o' || event.scancode == GROOVEPUTER_O;
+}
 }
 
 class DrumSequencerMainPage;
@@ -106,6 +118,31 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
       addPage(std::make_shared<SamplerPage>(
           mainPage->mini_acid_, mainPage->audio_guard_));
     }
+  }
+
+  // Output ownership belongs to the logical DRUMS track, not to one sub-page.
+  // Alt+O therefore works from GRID/FEEL/AUTO/SAMPLES. A legacy project has no
+  // fourth visible mode: the first explicit press canonicalizes it to LAYER.
+  if (isDrumOutputCycleKey(ui_event)) {
+    std::shared_ptr<Container> main = getPagePtr(0);
+    if (!main) return true;
+    auto* mainPage = static_cast<DrumSequencerMainPage*>(main.get());
+    constexpr GroovePuterOutput::Track track = GroovePuterOutput::Track::Drums;
+    const GroovePuterOutput::Mode next =
+        GroovePuterOutput::hasExplicitMode(track)
+            ? GroovePuterOutput::cycleMode(GroovePuterOutput::mode(track))
+            : GroovePuterOutput::Mode::Layer;
+    bool changed = false;
+    mainPage->withAudioGuard([&]() {
+      changed = GroovePuterOutput::applyModeWithLocalCleanup(
+          mainPage->mini_acid_, track, next);
+    });
+    if (changed) GroovePuterState::markSceneMutated();
+    char toast[40];
+    std::snprintf(toast, sizeof(toast), "DRUMS OUT:%s",
+                  GroovePuterOutput::modeName(next));
+    UI::showToast(toast, 1200);
+    return true;
   }
 
   // Global Drum Feel replaces the owning DrumSynthVoice when Character changes.

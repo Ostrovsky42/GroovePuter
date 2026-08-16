@@ -17,6 +17,7 @@
 #include "clamped_live_note_identity.h"
 #include "mini_tb303.h"
 #include "swappable_synth_voice.h"
+#include "../output/output_owned_synth_voice.h"
 #include "mini_drumvoices.h"
 #include "pattern_drum_event_tap.h"
 #include "tube_distortion.h"
@@ -388,7 +389,10 @@ private:
   void advanceSongPlayhead();
   int clampSongPosition(int position) const;
 
-  std::unique_ptr<SwappableSynthVoice> synthVoices_[NUM_303_VOICES];
+  OutputOwnedSynthVoiceSlot synthVoices_[NUM_303_VOICES] = {
+      OutputOwnedSynthVoiceSlot(GroovePuterOutput::Track::SynthA),
+      OutputOwnedSynthVoiceSlot(GroovePuterOutput::Track::SynthB),
+  };
   std::string synthEngineNames_[NUM_303_VOICES];
 
   PatternPublishingDrumVoice drums;

@@ -9,6 +9,7 @@
 #include "../midi/midi_transport_clock_publisher.h"
 #include "../midi/project_transport_timeline.h"
 #include "../midi/scheduled_musical_event_queue.h"
+#include "../output/output_ownership.h"
 
 // Compatibility facade used by MiniAcid's existing PatternPlayer publication
 // API. MiniAcid still emits normalized MusicalEvent values at the exact point
@@ -94,6 +95,14 @@ public:
     }
 
     bool tryPush(const MusicalEvent& event) {
+        // Pattern output ownership is enforced at the AudioTask producer edge.
+        // Suppressed NoteOn never consumes the bounded queue. NoteOff and
+        // AllNotesOff remain cleanup-critical across mode changes.
+        if (event.type == MusicalEventType::NoteOn &&
+            !GroovePuterOutput::allowsMidiNoteOn(event)) {
+            return false;
+        }
+
         if (!renderBlockActive_) {
             return suppressNonRealtimeEvent(event);
         }

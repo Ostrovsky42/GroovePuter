@@ -34,6 +34,8 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   void drawTabIndicator(IGfx& gfx) const;
   const char* activeTabName() const;
 
+  MiniAcid& mini_acid_;
+  AudioGuard audio_guard_;
   int voice_index_ = 0;
   uint32_t last_tab_switch_ms_ = 0;
   SynthTab synth_tab_ = SynthTab::Notes;

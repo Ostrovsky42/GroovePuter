@@ -34,6 +34,10 @@ int main() {
     assert(std::strcmp(line, "GEN PAT PLAY 128 BPM B3/4 INT BOTH *") == 0);
     pattern.dirty = false;
 
+    constexpr GroovePuterOutput::Track synthBTrack =
+        GroovePuterOutput::Track::SynthB;
+    GroovePuterOutput::restoreLegacyCompatibility(synthBTrack);
+
     UiStatusSnapshot synth{};
     synth.context = UiStatusContext::SynthB;
     synth.source = UiStatusSource::Pattern;
@@ -43,13 +47,30 @@ int main() {
     synth.patternBank = 1;
     synth.patternSlot = 6;
     formatUiStatusLine(synth, line, sizeof(line));
-    assert(std::strcmp(line, "S-B 2B7 STOP 120 BPM B1/1 INT BOTH") == 0);
+    assert(std::strcmp(line, "S-B 2B7 STOP 120 BPM B1/1 INT [-]") == 0);
     assert(synth.hasPatternAddress());
+
+    assert(GroovePuterOutput::setMode(
+        synthBTrack, GroovePuterOutput::Mode::Internal));
+    formatUiStatusLine(synth, line, sizeof(line));
+    assert(std::strcmp(line, "S-B 2B7 STOP 120 BPM B1/1 INT [I]") == 0);
+
+    assert(GroovePuterOutput::setMode(
+        synthBTrack, GroovePuterOutput::Mode::Midi));
+    formatUiStatusLine(synth, line, sizeof(line));
+    assert(std::strcmp(line, "S-B 2B7 STOP 120 BPM B1/1 INT [M]") == 0);
+
+    assert(GroovePuterOutput::setMode(
+        synthBTrack, GroovePuterOutput::Mode::Layer));
+    formatUiStatusLine(synth, line, sizeof(line));
+    assert(std::strcmp(line, "S-B 2B7 STOP 120 BPM B1/1 INT [L]") == 0);
+
+    GroovePuterOutput::restoreLegacyCompatibility(synthBTrack);
 
     UiStatusSnapshot invalidAddress = synth;
     invalidAddress.patternBank = 0xFF;
     formatUiStatusLine(invalidAddress, line, sizeof(line));
-    assert(std::strcmp(line, "S-B PAT STOP 120 BPM B1/1 INT BOTH") == 0);
+    assert(std::strcmp(line, "S-B PAT STOP 120 BPM B1/1 INT [-]") == 0);
     assert(!invalidAddress.hasPatternAddress());
 
     UiStatusSnapshot smf{};

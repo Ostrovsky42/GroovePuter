@@ -10,6 +10,7 @@
 
 #include "scenes.h"
 #include "../src/audio/pattern_paging.h"
+#include "../src/output/output_scene_persistence.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/emscripten.h>
@@ -193,16 +194,24 @@ bool SceneStorageSdl::readScene(std::string& out) {
 }
 
 bool SceneStorageSdl::writeScene(const SceneManager& manager) {
-  std::string out;
-  bool ok = manager.writeSceneJson(out);
-  if (!ok) return false;
-  return writeScene(out);
+  std::string base;
+  if (!manager.writeSceneJson(base)) return false;
+  std::string persisted;
+  if (!GroovePuterOutput::injectOutputModesIntoScene(base, persisted)) {
+    return false;
+  }
+  return writeScene(persisted);
 }
 
 bool SceneStorageSdl::readScene(SceneManager& manager) {
   std::string serialized;
   if (!readScene(serialized)) return false;
-  return manager.loadScene(serialized);
+  GroovePuterOutput::PersistedOutputModes outputModes{};
+  if (!GroovePuterOutput::captureOutputModesFromScene(serialized, outputModes)) {
+    return false;
+  }
+  if (!manager.loadScene(serialized)) return false;
+  return outputModes.commit();
 }
 
 bool SceneStorageSdl::writeScene(const std::string& data) {
@@ -312,8 +321,12 @@ bool SceneStorageSdl::setCurrentSceneName(const std::string& name) {
 }
 
 bool SceneStorageSdl::writeSceneAuto(const SceneManager& manager) {
+  std::string base;
+  if (!manager.writeSceneJson(base)) return false;
   std::string serialized;
-  if (!manager.writeSceneJson(serialized)) return false;
+  if (!GroovePuterOutput::injectOutputModesIntoScene(base, serialized)) {
+    return false;
+  }
 #ifdef __EMSCRIPTEN__
   const std::string key = autoSceneKeyForStorage();
   return wasm_write_scene(key.c_str(), serialized.c_str()) > 0;
@@ -341,7 +354,13 @@ bool SceneStorageSdl::readSceneAuto(SceneManager& manager) {
   serialized.assign(std::istreambuf_iterator<char>(file),
                     std::istreambuf_iterator<char>());
 #endif
-  return !serialized.empty() && manager.loadScene(serialized);
+  if (serialized.empty()) return false;
+  GroovePuterOutput::PersistedOutputModes outputModes{};
+  if (!GroovePuterOutput::captureOutputModesFromScene(serialized, outputModes)) {
+    return false;
+  }
+  if (!manager.loadScene(serialized)) return false;
+  return outputModes.commit();
 }
 
 bool SceneStorageSdl::hasSceneAuto() const {
