@@ -103,6 +103,31 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
     using GroovePuterUndo::UndoKind;
     using GroovePuterUndo::UndoResult;
     auto& owner = GroovePuterUndo::undoOwner();
+    // Plain G uses the B1 quantized-generation receipt. Handle that exact
+    // larger payload first; the legacy/fallback G path below uses the compact
+    // SynthPattern receipt. Size discrimination prevents cross-decoding.
+    if (owner.kind() == UndoKind::Generation &&
+        owner.payloadSize() == GroovePuterRhythm::quantizedGenerationUndoPayloadSize()) {
+      const UndoResult result =
+          GroovePuterRhythm::undoLastQuantizedGeneration(mini_acid_);
+      switch (result) {
+        case UndoResult::Restored:
+          UI::showToast("UNDO: GENERATION", 900);
+          return true;
+        case UndoResult::NothingToUndo:
+          UI::showToast("NOTHING TO UNDO", 800);
+          return true;
+        case UndoResult::TargetUnavailable:
+          UI::showToast("UNDO: RETURN PAGE", 1000);
+          return true;
+        case UndoResult::Expired:
+          UI::showToast("UNDO EXPIRED", 900);
+          return true;
+        case UndoResult::KindMismatch:
+        default:
+          return false;
+      }
+    }
     if (owner.kind() == UndoKind::Generation &&
         owner.payloadSize() == sizeof(SynthPatternUndoPayload)) {
       const UndoResult result =
@@ -637,8 +662,8 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     } else {
       withAudioGuard(generate);
     }
-    if (result == QuantizedGenerationResult::CommittedNow)
-      GroovePuterState::markSceneMutated();
+    // B1 commitPrepared() is the sole persistent revision owner. Do not
+    // advance Scene revision again here for CommittedNow.
 
     const char* label = "GEN FAILED";
     if (result == QuantizedGenerationResult::CommittedNow)
