@@ -1,0 +1,198 @@
+name: temporary 0.9.9-B2 patch bootstrap
+
+on:
+  push:
+    branches:
+      - feature/0.9.9-b2-pattern-generation-owner
+
+permissions:
+  contents: write
+
+jobs:
+  apply-b2:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/0.9.9-b2-pattern-generation-owner
+
+      - name: Apply Pattern Editor G ownership patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/ui/pages/pattern_edit_page.cpp')
+          text = path.read_text()
+          marker = '0.9.9-B2: Pattern Editor G prepares the legacy material'
+          if marker in text:
+              print('B2 patch already present')
+              raise SystemExit(0)
+
+          namespace_old = '''int indexInKeyRow(char key, const char* row) {
+            if (!row) return -1;
+            const char* found = std::strchr(row, key);
+            return found ? static_cast<int>(found - row) : -1;
+          }
+          }  // namespace
+          '''
+          namespace_new = '''int indexInKeyRow(char key, const char* row) {
+            if (!row) return -1;
+            const char* found = std::strchr(row, key);
+            return found ? static_cast<int>(found - row) : -1;
+          }
+
+          // 0.9.9-B2: Pattern Editor G prepares the legacy material into a
+          // scratch Pattern before the canonical UndoOwner publishes it. Keep
+          // this logic in lockstep with MiniAcid::randomize303Pattern(): same
+          // compiled genre parameters, Reggae voice split and mode generator.
+          void preparePatternEditorGeneration(MiniAcid& engine,
+                                              int voiceIndex,
+                                              SynthPattern& pattern) {
+            const int idx = voiceIndex <= 0 ? 0 : 1;
+            const GenerativeParams& genreParams =
+                engine.genreManager().getCompiledGenerativeParams();
+            auto behavior = engine.genreManager().getBehavior();
+            if (engine.genreManager().generativeMode() == GenerativeMode::Reggae) {
+              if (idx == 0) {
+                behavior.stepMask = 0x1111;
+                behavior.motifLength = 2;
+                behavior.avoidClusters = true;
+                behavior.forceOctaveJump = false;
+              } else {
+                behavior.stepMask = 0xAAAA;
+                behavior.motifLength = 4;
+                behavior.avoidClusters = false;
+                behavior.forceOctaveJump = false;
+              }
+            }
+            engine.modeManager().generatePattern(
+                pattern, engine.bpm(), genreParams, behavior, idx);
+          }
+          }  // namespace
+          '''
+          if namespace_old not in text:
+              raise SystemExit('namespace insertion anchor not found')
+          text = text.replace(namespace_old, namespace_new, 1)
+
+          handler_anchor = 'bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {\n'
+          undo_block = '''bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
+            // B2 generation receipts use the same bounded Synth Pattern before-
+            // image as R3 manual edits, but a distinct Generation kind. Handle
+            // only that exact payload here so a full B1 generation receipt is
+            // not misread as a Pattern Editor receipt.
+            if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+                ui_event.app_event_type == GROOVEPUTER_APP_EVENT_UNDO) {
+              using GroovePuterUndo::SynthPatternUndoPayload;
+              using GroovePuterUndo::UndoKind;
+              using GroovePuterUndo::UndoResult;
+              auto& owner = GroovePuterUndo::undoOwner();
+              if (owner.kind() == UndoKind::Generation &&
+                  owner.payloadSize() == sizeof(SynthPatternUndoPayload)) {
+                const UndoResult result =
+                    owner.undoPrepared<SynthPatternUndoPayload>(
+                        UndoKind::Generation,
+                        [&](const SynthPatternUndoPayload& receipt) {
+                          return GroovePuterUndo::synthPatternUndoTargetAvailable(
+                              mini_acid_.sceneManager(), receipt);
+                        },
+                        [&](const SynthPatternUndoPayload& receipt) {
+                          const auto restore = [&]() {
+                            GroovePuterUndo::restoreSynthPatternUndo(
+                                mini_acid_.sceneManager(), receipt);
+                          };
+                          if (audio_guard_) audio_guard_(restore);
+                          else restore();
+                        });
+                switch (result) {
+                  case UndoResult::Restored:
+                    UI::showToast("UNDO: GENERATION", 900);
+                    return true;
+                  case UndoResult::NothingToUndo:
+                    UI::showToast("NOTHING TO UNDO", 800);
+                    return true;
+                  case UndoResult::TargetUnavailable:
+                    UI::showToast("UNDO: RETURN PAGE", 1000);
+                    return true;
+                  case UndoResult::Expired:
+                    UI::showToast("UNDO EXPIRED", 900);
+                    return true;
+                  case UndoResult::KindMismatch:
+                  default:
+                    return false;
+                }
+              }
+            }
+          '''
+          if handler_anchor not in text:
+              raise SystemExit('handler anchor not found')
+          text = text.replace(handler_anchor, undo_block, 1)
+
+          g_old = '''  // Generation is intentionally not converted into a Pattern receipt in R3.
+            // It is not a bounded pure prepare operation and is part of the 0.9.9
+            // PREPARE/ACTIVATE handoff. Preserve its old mutation path but still advance
+            // the persistent revision so any older Pattern Undo expires safely.
+            if (keyG) {
+              const bool handled = handleEventLegacyUnowned(ui_event);
+              if (handled) GroovePuterState::markSceneMutated();
+              return handled;
+            }
+          '''
+          g_new = '''  // B2 closes the R3 generation handoff without changing the musical
+            // generator. PREPARE runs entirely on a scratch SynthPattern; COMMIT is
+            // one bounded publish through the canonical UndoOwner. The same-index
+            // selector preserves the legacy PLAY note-off before replacing material
+            // and remains a runtime selector rather than a persistent mutation.
+            if (keyG) {
+              using GroovePuterUndo::SynthPatternUndoPayload;
+              using GroovePuterUndo::UndoKind;
+
+              SceneManager& manager = mini_acid_.sceneManager();
+              SynthPatternUndoPayload before{};
+              if (!GroovePuterUndo::captureCurrentSynthPatternUndo(
+                      manager, voice_index_, before)) {
+                return true;
+              }
+
+              SynthPattern after = before.before;
+              preparePatternEditorGeneration(mini_acid_, voice_index_, after);
+              if (GroovePuterUndo::PatternEdit::samePattern(before.before, after)) {
+                return true;
+              }
+              if (!GroovePuterUndo::synthPatternUndoTargetAvailable(manager, before)) {
+                return true;
+              }
+
+              SynthPatternUndoPayload prepared = before;
+              prepared.before = after;
+              GroovePuterUndo::undoOwner().commitPrepared(
+                  UndoKind::Generation, before, [&]() {
+                    const auto apply = [&]() {
+                      const int currentPattern =
+                          mini_acid_.current303PatternIndex(voice_index_);
+                      mini_acid_.set303PatternIndex(voice_index_, currentPattern);
+                      GroovePuterUndo::restoreSynthPatternUndo(manager, prepared);
+                    };
+                    if (audio_guard_) audio_guard_(apply);
+                    else apply();
+                  });
+              return true;
+            }
+          '''
+          if g_old not in text:
+              raise SystemExit('legacy G block not found')
+          text = text.replace(g_old, g_new, 1)
+
+          path.write_text(text)
+          PY
+
+      - name: Commit patch
+        run: |
+          if git diff --quiet -- src/ui/pages/pattern_edit_page.cpp; then
+            echo "No patch needed"
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/ui/pages/pattern_edit_page.cpp
+          git commit -m "feat: route Pattern Editor G through generation UndoOwner"
+          git push origin HEAD:feature/0.9.9-b2-pattern-generation-owner
