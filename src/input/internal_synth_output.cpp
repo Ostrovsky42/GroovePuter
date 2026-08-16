@@ -20,6 +20,10 @@ bool isPerformanceSource(MusicalEventSource source) {
            source == MusicalEventSource::Arpeggiator;
 }
 
+bool isMidiInputSource(MusicalEventSource source) {
+    return source == MusicalEventSource::MidiInput;
+}
+
 float samplerVelocity(uint8_t velocity) {
     if (velocity < 1) velocity = 1;
     if (velocity > 127) velocity = 127;
@@ -41,12 +45,16 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
     }
 
     if (event.target == MusicalEventTarget::Drums) {
-        // Drums were external-only in <=0.9.5 PERFORM. Explicit INTERNAL/LAYER
-        // activates the already-existing local drum synth + optional sampler
-        // source layer. MidiInput is deliberately outside this 0.9.6 migration.
-        if (!isPerformanceSource(event.source)) return;
+        // Performance sources still honor 0.9.6 INTERNAL/LAYER output ownership.
+        // MidiInput is a separate incoming-controller domain: R4 resolves its
+        // GM-style note map to a logical lane before this sink and must not be
+        // gated by the outbound DeviceProfile/OutputOwnership selection.
+        const bool performanceSource = isPerformanceSource(event.source);
+        const bool midiInputSource = isMidiInputSource(event.source);
+        if (!performanceSource && !midiInputSource) return;
         if (event.channel >= 8) return;
-        if (event.type == MusicalEventType::NoteOn &&
+        if (performanceSource &&
+            event.type == MusicalEventType::NoteOn &&
             !GroovePuterOutput::allowsInternalNoteOn(event)) {
             return;
         }
@@ -109,7 +117,7 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
 
     // Keep the existing internal live-input path for any non-PERFORM source
     // that explicitly targets Synth A/B. Clamp NoteOn and NoteOff identically to
-    // avoid mismatched ownership.
+    // avoid mismatched ownership. MiniAcid remains the PLAY-state voice owner.
     AudioMutationScope mutationScope(mutationGate_);
     const int voice = synthIndex(event.target);
     const uint8_t internalNote = clampInternalLiveNote(event.note);

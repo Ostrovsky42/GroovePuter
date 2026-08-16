@@ -1,0 +1,17 @@
+name: MIDI Input Controllers 0.9.10 R4
+
+on:
+  pull_request:
+    paths:
+      - 'src/input/midi_input_router.h'
+      - 'src/input/internal_synth_output.cpp'
+      - 'docs/releases/0_9_10_R4_DRUM_INPUT.md'
+      - 'tests/*midi_input_0_9_10_r4*'
+      - '.github/workflows/midi-input-0-9-10-r4.yml'
+
+jobs:
+  drum-input-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/run_midi_input_0_9_10_r4_tests.sh
