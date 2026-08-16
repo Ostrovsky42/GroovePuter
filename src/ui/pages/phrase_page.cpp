@@ -392,7 +392,7 @@ void PhrasePage::showResult(const char* action,
 }
 
 bool PhrasePage::captureCurrentRegion() {
-  Scene& scene = mini_acid_.sceneManager().currentScene();
+  const Scene& scene = mini_acid_.sceneManager().currentScene();
   PhraseWorkspace::CaptureRequest request{};
   request.targetSlot = selected_slot_;
   request.sourceSongSlot =
@@ -405,13 +405,9 @@ bool PhrasePage::captureCurrentRegion() {
   request.source = PhraseCore::Source::InternalPattern;
   request.trackMask = PhraseCore::kAllTracks;
 
-  const PhraseCore::Result result = PhraseWorkspace::capture(
-      scene, request, [&](auto&& operation) {
-        if (audio_guard_) {
-          audio_guard_(std::forward<decltype(operation)>(operation));
-        } else {
-          operation();
-        }
+  const PhraseCore::Result result = commitPhraseMutation(
+      [&](PhraseCore::PhraseBank& preparedBank) {
+        return PhraseWorkspace::capturePrepared(scene, request, preparedBank);
       });
   if (result) {
     preview_bar_ = 0;
@@ -474,18 +470,13 @@ bool PhrasePage::generatePhraseToSong() {
 }
 
 bool PhrasePage::deriveFromParent() {
-  Scene& scene = mini_acid_.sceneManager().currentScene();
   PhraseWorkspace::DeriveRequest request{};
   request.targetSlot = selected_slot_;
   request.parentSlot = parent_slot_;
   request.role = capture_role_;
-  const PhraseCore::Result result = PhraseWorkspace::derive(
-      scene, request, [&](auto&& operation) {
-        if (audio_guard_) {
-          audio_guard_(std::forward<decltype(operation)>(operation));
-        } else {
-          operation();
-        }
+  const PhraseCore::Result result = commitPhraseMutation(
+      [&](PhraseCore::PhraseBank& preparedBank) {
+        return PhraseWorkspace::derivePrepared(request, preparedBank);
       });
   if (result) {
     preview_bar_ = 0;
@@ -496,7 +487,7 @@ bool PhrasePage::deriveFromParent() {
 }
 
 bool PhrasePage::writeToCurrentRow(bool overwrite) {
-  Scene& scene = mini_acid_.sceneManager().currentScene();
+  const Scene& scene = mini_acid_.sceneManager().currentScene();
   const PhraseCore::SlotSummary source =
       PhraseWorkspace::summary(scene, selected_slot_);
   PhraseWorkspace::WriteRequest request{};
@@ -506,13 +497,10 @@ bool PhrasePage::writeToCurrentRow(bool overwrite) {
   request.startRow = destination_row_;
   request.overwrite = overwrite;
 
-  const PhraseCore::Result result = PhraseWorkspace::writeToSong(
-      scene, request, [&](auto&& operation) {
-        if (audio_guard_) {
-          audio_guard_(std::forward<decltype(operation)>(operation));
-        } else {
-          operation();
-        }
+  const PhraseCore::Result result = commitSongMutation(
+      [&](Song& preparedSong) {
+        return PhraseWorkspace::writeToSongPrepared(
+            scene.phraseBank, request, preparedSong);
       });
   if (result) {
     if (!overwrite && source.valid) {
@@ -528,14 +516,9 @@ bool PhrasePage::writeToCurrentRow(bool overwrite) {
 }
 
 bool PhrasePage::clearCurrentSlot() {
-  Scene& scene = mini_acid_.sceneManager().currentScene();
-  const PhraseCore::Result result = PhraseWorkspace::clear(
-      scene, selected_slot_, [&](auto&& operation) {
-        if (audio_guard_) {
-          audio_guard_(std::forward<decltype(operation)>(operation));
-        } else {
-          operation();
-        }
+  const PhraseCore::Result result = commitPhraseMutation(
+      [&](PhraseCore::PhraseBank& preparedBank) {
+        return PhraseWorkspace::clearPrepared(selected_slot_, preparedBank);
       });
   if (result) {
     preview_bar_ = 0;
@@ -543,6 +526,72 @@ bool PhrasePage::clearCurrentSlot() {
   }
   showResult("CLEAR", result);
   return true;
+}
+
+bool PhrasePage::undoPreparedOwnedState() {
+  using GroovePuterUndo::PhraseUndoPayload;
+  using GroovePuterUndo::SongUndoPayload;
+  using GroovePuterUndo::UndoKind;
+  using GroovePuterUndo::UndoResult;
+
+  auto& owner = GroovePuterUndo::undoOwner();
+  if (!owner.hasUndo()) return false;
+
+  if (owner.kind() == UndoKind::Phrase) {
+    const UndoResult result = owner.undoPrepared<PhraseUndoPayload>(
+        UndoKind::Phrase,
+        [&](const PhraseUndoPayload& receipt) {
+          return GroovePuterUndo::phraseUndoTargetAvailable(
+              mini_acid_.sceneManager(), receipt);
+        },
+        [&](const PhraseUndoPayload& receipt) {
+          const auto restore = [&]() {
+            GroovePuterUndo::restorePhraseUndo(
+                mini_acid_.sceneManager(), receipt);
+          };
+          if (audio_guard_) audio_guard_(restore);
+          else restore();
+        });
+    if (result == UndoResult::Restored) {
+      invalidatePreview();
+      UI::showToast("Undo Phrase", 900);
+      return true;
+    }
+    if (result == UndoResult::TargetUnavailable) {
+      UI::showToast("Undo target unavailable", 1100);
+      return true;
+    }
+    return result == UndoResult::Expired;
+  }
+
+  if (owner.kind() == UndoKind::Song) {
+    const UndoResult result = owner.undoPrepared<SongUndoPayload>(
+        UndoKind::Song,
+        [&](const SongUndoPayload& receipt) {
+          return GroovePuterUndo::songUndoTargetAvailable(
+              mini_acid_.sceneManager(), receipt);
+        },
+        [&](const SongUndoPayload& receipt) {
+          const auto restore = [&]() {
+            GroovePuterUndo::restoreSongUndo(
+                mini_acid_.sceneManager(), receipt);
+          };
+          if (audio_guard_) audio_guard_(restore);
+          else restore();
+        });
+    if (result == UndoResult::Restored) {
+      invalidatePreview();
+      UI::showToast("Undo Song", 900);
+      return true;
+    }
+    if (result == UndoResult::TargetUnavailable) {
+      UI::showToast("Undo target unavailable", 1100);
+      return true;
+    }
+    return result == UndoResult::Expired;
+  }
+
+  return false;
 }
 
 void PhrasePage::draw(IGfx& gfx) {
@@ -684,6 +733,10 @@ void PhrasePage::draw(IGfx& gfx) {
 }
 
 bool PhrasePage::handleEvent(UIEvent& ui_event) {
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+      ui_event.app_event_type == GROOVEPUTER_APP_EVENT_UNDO) {
+    return undoPreparedOwnedState();
+  }
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
   const int nav = UIInput::navCode(ui_event);

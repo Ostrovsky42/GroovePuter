@@ -30,24 +30,22 @@ Scene makeScene() {
   return scene;
 }
 
-struct GuardCounter {
-  int calls = 0;
-
-  template <typename F>
-  void operator()(F&& operation) {
-    ++calls;
-    operation();
-  }
-};
-
-void resetRevision() {
-  GroovePuterState::restoreSceneRevision({0, 0});
+PhraseCore::PhraseBank capturePhraseA(const Scene& scene, uint8_t lengthBars) {
+  PhraseCore::PhraseBank prepared = scene.phraseBank;
+  PhraseWorkspace::CaptureRequest request{};
+  request.targetSlot = PhraseCore::SlotId::A;
+  request.sourceSongSlot = 0;
+  request.startRow = 0;
+  request.lengthBars = lengthBars;
+  request.source = PhraseCore::Source::Generated;
+  assert(PhraseWorkspace::capturePrepared(scene, request, prepared));
+  return prepared;
 }
 
-void testCaptureMarksOnce() {
-  Scene scene = makeScene();
-  GuardCounter guard{};
-  resetRevision();
+void testCapturePreparedIsDetached() {
+  const Scene scene = makeScene();
+  const PhraseCore::PhraseBank sourceBefore = scene.phraseBank;
+  PhraseCore::PhraseBank prepared = scene.phraseBank;
 
   PhraseWorkspace::CaptureRequest request{};
   request.targetSlot = PhraseCore::SlotId::A;
@@ -58,17 +56,16 @@ void testCaptureMarksOnce() {
   request.source = PhraseCore::Source::Generated;
 
   const PhraseCore::Result result =
-      PhraseWorkspace::capture(scene, request, guard);
+      PhraseWorkspace::capturePrepared(scene, request, prepared);
   assert(result);
-  assert(guard.calls == 1);
-  assert(GroovePuterState::sceneRevisionSnapshot().currentRevision == 1);
-  assert(PhraseWorkspace::summary(scene, PhraseCore::SlotId::A).valid);
+  assert(std::memcmp(&scene.phraseBank, &sourceBefore, sizeof(sourceBefore)) == 0);
+  assert(PhraseCore::summarize(prepared, PhraseCore::SlotId::A).valid);
 }
 
-void testFailedCaptureDoesNotDirty() {
-  Scene scene = makeScene();
-  GuardCounter guard{};
-  resetRevision();
+void testFailedCapturePreservesPreparedValue() {
+  const Scene scene = makeScene();
+  PhraseCore::PhraseBank prepared = scene.phraseBank;
+  const PhraseCore::PhraseBank before = prepared;
 
   PhraseWorkspace::CaptureRequest request{};
   request.targetSlot = PhraseCore::SlotId::A;
@@ -77,188 +74,139 @@ void testFailedCaptureDoesNotDirty() {
   request.lengthBars = 4;
 
   const PhraseCore::Result result =
-      PhraseWorkspace::capture(scene, request, guard);
+      PhraseWorkspace::capturePrepared(scene, request, prepared);
   assert(!result);
   assert(result.error == PhraseCore::Error::RegionOutOfRange);
-  assert(guard.calls == 1);
-  assert(GroovePuterState::sceneRevisionSnapshot().currentRevision == 0);
-  assert(!PhraseWorkspace::summary(scene, PhraseCore::SlotId::A).valid);
+  assert(std::memcmp(&prepared, &before, sizeof(before)) == 0);
 }
 
-void testDeriveWriteAndClearEachMarkOnce() {
-  Scene scene = makeScene();
-  GuardCounter guard{};
-  resetRevision();
-
-  PhraseWorkspace::CaptureRequest capture{};
-  capture.targetSlot = PhraseCore::SlotId::A;
-  capture.sourceSongSlot = 0;
-  capture.startRow = 0;
-  capture.lengthBars = 2;
-  capture.source = PhraseCore::Source::Generated;
-  assert(PhraseWorkspace::capture(scene, capture, guard));
+void testDeriveWriteAndClearPreparedValues() {
+  const Scene scene = makeScene();
+  PhraseCore::PhraseBank preparedBank = capturePhraseA(scene, 2);
 
   PhraseWorkspace::DeriveRequest derive{};
   derive.targetSlot = PhraseCore::SlotId::B;
   derive.parentSlot = PhraseCore::SlotId::A;
   derive.role = PhraseCore::Role::Variation;
-  assert(PhraseWorkspace::derive(scene, derive, guard));
-  assert(PhraseWorkspace::summary(scene, PhraseCore::SlotId::B).parentId == 1);
+  assert(PhraseWorkspace::derivePrepared(derive, preparedBank));
+  assert(PhraseCore::summarize(preparedBank, PhraseCore::SlotId::B).parentId == 1);
 
+  const Song residentBefore = scene.songs[1];
+  Song preparedSong = residentBefore;
   PhraseWorkspace::WriteRequest write{};
   write.sourceSlot = PhraseCore::SlotId::B;
   write.destinationSongSlot = 1;
   write.startRow = 0;
   write.overwrite = false;
-  assert(PhraseWorkspace::writeToSong(scene, write, guard));
-  assert(scene.songs[1].length == 2);
-  assert(scene.songs[1].positions[1].patterns[2] == 5);
+  assert(PhraseWorkspace::writeToSongPrepared(preparedBank, write, preparedSong));
+  assert(preparedSong.length == 2);
+  assert(preparedSong.positions[1].patterns[2] == 5);
+  assert(std::memcmp(&scene.songs[1], &residentBefore, sizeof(residentBefore)) == 0);
 
-  assert(PhraseWorkspace::clear(scene, PhraseCore::SlotId::B, guard));
-  assert(!PhraseWorkspace::summary(scene, PhraseCore::SlotId::B).valid);
-
-  assert(guard.calls == 4);
-  assert(GroovePuterState::sceneRevisionSnapshot().currentRevision == 4);
+  assert(PhraseWorkspace::clearPrepared(PhraseCore::SlotId::B, preparedBank));
+  assert(!PhraseCore::summarize(preparedBank, PhraseCore::SlotId::B).valid);
 }
 
 void testNormalWriteInsertsOccupiedRow() {
-  Scene scene = makeScene();
-  GuardCounter guard{};
-  resetRevision();
+  const Scene scene = makeScene();
+  const PhraseCore::PhraseBank preparedBank = capturePhraseA(scene, 1);
 
-  PhraseWorkspace::CaptureRequest capture{};
-  capture.targetSlot = PhraseCore::SlotId::A;
-  capture.sourceSongSlot = 0;
-  capture.startRow = 0;
-  capture.lengthBars = 1;
-  assert(PhraseWorkspace::capture(scene, capture, guard));
-  const uint32_t revisionAfterCapture =
-      GroovePuterState::sceneRevisionSnapshot().currentRevision;
-
-  clearSongForTest(scene.songs[1], 2);
-  scene.songs[1].positions[0].patterns[0] = 99;
-  scene.songs[1].positions[0].patterns[3] = 77;
-  scene.songs[1].positions[1].patterns[0] = 100;
-  scene.songs[1].positions[1].patterns[3] = 78;
+  Song preparedSong = scene.songs[1];
+  clearSongForTest(preparedSong, 2);
+  preparedSong.positions[0].patterns[0] = 99;
+  preparedSong.positions[0].patterns[3] = 77;
+  preparedSong.positions[1].patterns[0] = 100;
+  preparedSong.positions[1].patterns[3] = 78;
 
   PhraseWorkspace::WriteRequest insert{};
   insert.sourceSlot = PhraseCore::SlotId::A;
   insert.destinationSongSlot = 1;
   insert.startRow = 0;
   insert.overwrite = false;
-  const PhraseCore::Result inserted =
-      PhraseWorkspace::writeToSong(scene, insert, guard);
-  assert(inserted);
-  assert(scene.songs[1].length == 3);
-  assert(scene.songs[1].positions[0].patterns[0] == 0);
-  assert(scene.songs[1].positions[0].patterns[1] == 8);
-  assert(scene.songs[1].positions[0].patterns[2] == 4);
-  assert(scene.songs[1].positions[0].patterns[3] == -1);
-  assert(scene.songs[1].positions[1].patterns[0] == 99);
-  assert(scene.songs[1].positions[1].patterns[3] == 77);
-  assert(scene.songs[1].positions[2].patterns[0] == 100);
-  assert(scene.songs[1].positions[2].patterns[3] == 78);
-  assert(GroovePuterState::sceneRevisionSnapshot().currentRevision ==
-         revisionAfterCapture + 1);
+  assert(PhraseWorkspace::writeToSongPrepared(preparedBank, insert, preparedSong));
+  assert(preparedSong.length == 3);
+  assert(preparedSong.positions[0].patterns[0] == 0);
+  assert(preparedSong.positions[0].patterns[1] == 8);
+  assert(preparedSong.positions[0].patterns[2] == 4);
+  assert(preparedSong.positions[0].patterns[3] == -1);
+  assert(preparedSong.positions[1].patterns[0] == 99);
+  assert(preparedSong.positions[1].patterns[3] == 77);
+  assert(preparedSong.positions[2].patterns[0] == 100);
+  assert(preparedSong.positions[2].patterns[3] == 78);
 }
 
 void testReplaceDoesNotShiftRows() {
-  Scene scene = makeScene();
-  GuardCounter guard{};
-  resetRevision();
+  const Scene scene = makeScene();
+  const PhraseCore::PhraseBank preparedBank = capturePhraseA(scene, 1);
 
-  PhraseWorkspace::CaptureRequest capture{};
-  capture.targetSlot = PhraseCore::SlotId::A;
-  capture.sourceSongSlot = 0;
-  capture.startRow = 0;
-  capture.lengthBars = 1;
-  assert(PhraseWorkspace::capture(scene, capture, guard));
-
-  clearSongForTest(scene.songs[1], 2);
-  scene.songs[1].positions[0].patterns[0] = 99;
-  scene.songs[1].positions[0].patterns[3] = 77;
-  scene.songs[1].positions[1].patterns[0] = 100;
+  Song preparedSong = scene.songs[1];
+  clearSongForTest(preparedSong, 2);
+  preparedSong.positions[0].patterns[0] = 99;
+  preparedSong.positions[0].patterns[3] = 77;
+  preparedSong.positions[1].patterns[0] = 100;
 
   PhraseWorkspace::WriteRequest replace{};
   replace.sourceSlot = PhraseCore::SlotId::A;
   replace.destinationSongSlot = 1;
   replace.startRow = 0;
   replace.overwrite = true;
-  assert(PhraseWorkspace::writeToSong(scene, replace, guard));
-  assert(scene.songs[1].length == 2);
-  assert(scene.songs[1].positions[0].patterns[0] == 0);
-  assert(scene.songs[1].positions[0].patterns[3] == 77);
-  assert(scene.songs[1].positions[1].patterns[0] == 100);
+  assert(PhraseWorkspace::writeToSongPrepared(preparedBank, replace, preparedSong));
+  assert(preparedSong.length == 2);
+  assert(preparedSong.positions[0].patterns[0] == 0);
+  assert(preparedSong.positions[0].patterns[3] == 77);
+  assert(preparedSong.positions[1].patterns[0] == 100);
 }
 
-void testEmptyClearAndFailedInsertStayClean() {
-  Scene scene = makeScene();
-  GuardCounter guard{};
-  resetRevision();
-
+void testFailedPreparedEditsPreserveInputs() {
+  const Scene scene = makeScene();
+  PhraseCore::PhraseBank preparedBank = scene.phraseBank;
+  const PhraseCore::PhraseBank emptyBefore = preparedBank;
   const PhraseCore::Result emptyClear =
-      PhraseWorkspace::clear(scene, PhraseCore::SlotId::D, guard);
+      PhraseWorkspace::clearPrepared(PhraseCore::SlotId::D, preparedBank);
   assert(!emptyClear);
   assert(emptyClear.error == PhraseCore::Error::InvalidPhrase);
-  assert(guard.calls == 0);
-  assert(GroovePuterState::sceneRevisionSnapshot().currentRevision == 0);
+  assert(std::memcmp(&preparedBank, &emptyBefore, sizeof(emptyBefore)) == 0);
 
-  PhraseWorkspace::CaptureRequest capture{};
-  capture.targetSlot = PhraseCore::SlotId::A;
-  capture.sourceSongSlot = 0;
-  capture.startRow = 0;
-  capture.lengthBars = 1;
-  assert(PhraseWorkspace::capture(scene, capture, guard));
-  const uint32_t revisionAfterCapture =
-      GroovePuterState::sceneRevisionSnapshot().currentRevision;
+  preparedBank = capturePhraseA(scene, 1);
+  Song preparedSong = scene.songs[1];
+  clearSongForTest(preparedSong, Song::kMaxPositions);
+  const Song songBefore = preparedSong;
 
-  clearSongForTest(scene.songs[1], Song::kMaxPositions);
-  const Song before = scene.songs[1];
   PhraseWorkspace::WriteRequest write{};
   write.sourceSlot = PhraseCore::SlotId::A;
   write.destinationSongSlot = 1;
   write.startRow = Song::kMaxPositions - 1;
   write.overwrite = false;
   const PhraseCore::Result range =
-      PhraseWorkspace::writeToSong(scene, write, guard);
+      PhraseWorkspace::writeToSongPrepared(preparedBank, write, preparedSong);
   assert(!range);
   assert(range.error == PhraseCore::Error::RegionOutOfRange);
-  assert(std::memcmp(&scene.songs[1], &before, sizeof(Song)) == 0);
-  assert(GroovePuterState::sceneRevisionSnapshot().currentRevision ==
-         revisionAfterCapture);
+  assert(std::memcmp(&preparedSong, &songBefore, sizeof(songBefore)) == 0);
 }
 
-void testPreviewQueryDoesNotDirty() {
+void testPreviewQueryUsesCommittedValueWithoutMutation() {
   Scene scene = makeScene();
-  GuardCounter guard{};
-  resetRevision();
-
   scene.synthABanks[0].patterns[0].steps[0].note = 48;
-  PhraseWorkspace::CaptureRequest capture{};
-  capture.targetSlot = PhraseCore::SlotId::A;
-  capture.sourceSongSlot = 0;
-  capture.startRow = 0;
-  capture.lengthBars = 1;
-  assert(PhraseWorkspace::capture(scene, capture, guard));
-  GroovePuterState::markSceneSaveSucceeded();
+  scene.phraseBank = capturePhraseA(scene, 1);
+  const Scene before = scene;
 
   PhraseCore::BarPreview preview{};
   assert(PhraseWorkspace::barPreview(
       scene, 0, PhraseCore::SlotId::A, 0, preview));
   assert((preview.synthAMask & 1u) != 0);
-  assert(!GroovePuterState::sceneDirty());
+  assert(std::memcmp(&scene, &before, sizeof(Scene)) == 0);
 }
 
 }  // namespace
 
 int main() {
-  testCaptureMarksOnce();
-  testFailedCaptureDoesNotDirty();
-  testDeriveWriteAndClearEachMarkOnce();
+  testCapturePreparedIsDetached();
+  testFailedCapturePreservesPreparedValue();
+  testDeriveWriteAndClearPreparedValues();
   testNormalWriteInsertsOccupiedRow();
   testReplaceDoesNotShiftRows();
-  testEmptyClearAndFailedInsertStayClean();
-  testPreviewQueryDoesNotDirty();
-  std::cout << "Phrase workspace tests passed\n";
+  testFailedPreparedEditsPreserveInputs();
+  testPreviewQueryUsesCommittedValueWithoutMutation();
+  std::cout << "Phrase workspace PREPARE tests passed\n";
   return 0;
 }

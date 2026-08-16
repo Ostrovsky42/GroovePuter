@@ -4,6 +4,9 @@
 #include "../ui_common.h"
 #include "src/state/generation_request_state.h"
 #include "src/state/scene_revision.h"
+#include "src/state/song_edit.h"
+#include "src/state/undo_owner.h"
+#include "src/state/undo_receipts.h"
 #include "src/generation/migration/strong_rhythm_live_bridge.h"
 #include "src/output/output_mode_runtime.h"
 
@@ -306,7 +309,8 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // Q-I changes the active slot but never hands keyboard focus to the selector.
+  // Q-I changes the active Drum slot as runtime state. Optional chaining is a
+  // separate persistent Song mutation owned by the canonical UndoOwner.
   if (!ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
     int patternIdx = page->patternIndexFromKey(lowerKey);
     if (patternIdx < 0) {
@@ -316,17 +320,38 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
       if (page->mini_acid_.songModeEnabled()) return true;
       page->setDrumPatternCursor(patternIdx);
       page->focusGrid();
-      page->withAudioGuard([&]() {
+      const auto selectPattern = [&]() {
         page->mini_acid_.setDrumPatternIndex(patternIdx);
-        if (page->chaining_mode_) {
-          for (int i = 0; i < Song::kMaxPositions; ++i) {
-            if (page->mini_acid_.songPatternAt(i, SongTrack::Drums) == -1) {
-              page->mini_acid_.setSongPattern(i, SongTrack::Drums, patternIdx);
+      };
+      if (page->audio_guard_) page->audio_guard_(selectPattern);
+      else selectPattern();
+
+      if (page->chaining_mode_) {
+        SceneManager& manager = page->mini_acid_.sceneManager();
+        GroovePuterUndo::SongUndoPayload before{};
+        if (GroovePuterUndo::captureCurrentSongUndo(manager, before)) {
+          Song after = before.before;
+          for (int row = 0; row < Song::kMaxPositions; ++row) {
+            if (GroovePuterUndo::SongEdit::patternAt(
+                    after, row, SongTrack::Drums) == -1) {
+              GroovePuterUndo::SongEdit::setPattern(
+                  after, row, SongTrack::Drums, patternIdx);
               break;
             }
           }
+          if (!GroovePuterUndo::sameSong(before.before, after) &&
+              GroovePuterUndo::songUndoTargetAvailable(manager, before)) {
+            GroovePuterUndo::undoOwner().commitPrepared(
+                GroovePuterUndo::UndoKind::Song, before, [&]() {
+                  const auto apply = [&]() {
+                    manager.currentScene().songs[before.songSlot] = after;
+                  };
+                  if (page->audio_guard_) page->audio_guard_(apply);
+                  else apply();
+                });
+          }
         }
-      });
+      }
       return true;
     }
   }
