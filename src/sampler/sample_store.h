@@ -94,7 +94,7 @@ public:
     return false;
   }
 
-  // Main Thread: Request to prepare a sample for playback.
+  // Control Thread: Request to prepare a sample for playback.
   // Implementations may choose resident PCM or a bounded streamed source.
   virtual bool preload(SampleId id) = 0;
 
