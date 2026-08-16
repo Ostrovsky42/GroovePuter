@@ -12,6 +12,10 @@
 #include <Arduino.h>
 #endif
 
+#if defined(ESP32) || defined(ESP_PLATFORM)
+#include <esp_heap_caps.h>
+#endif
+
 #include "src/state/scene_revision.h"
 
 namespace {
@@ -29,6 +33,27 @@ void logSampleSelectionFailure(const char* reason, const std::string& path,
                "[SAMPLER] sample assignment rejected: %s path=%s id=%u\n",
                reason ? reason : "unknown", path.c_str(),
                static_cast<unsigned>(runtimeId));
+#endif
+}
+
+void logSamplerHeap(const char* phase, int padIndex, uint32_t runtimeId,
+                    uint32_t fileSizeBytes = 0) {
+#if defined(ESP32) || defined(ESP_PLATFORM)
+  const std::size_t free8 = heap_caps_get_free_size(
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  const std::size_t largest8 = heap_caps_get_largest_free_block(
+      MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+  std::printf(
+      "[SAMPLER-HEAP] phase=%s pad=%d id=%u fileBytes=%u free8=%u largest8=%u\n",
+      phase ? phase : "unknown", padIndex + 1,
+      static_cast<unsigned>(runtimeId),
+      static_cast<unsigned>(fileSizeBytes),
+      static_cast<unsigned>(free8), static_cast<unsigned>(largest8));
+#else
+  (void)phase;
+  (void)padIndex;
+  (void)runtimeId;
+  (void)fileSizeBytes;
 #endif
 }
 
@@ -251,8 +276,12 @@ bool SamplerPage::assignIndexedSample(const SampleFileInfo& candidate) {
 
   const int padIndex = current_pad_;
   const SampleId previousId = mini_acid_.samplerTrack->pad(padIndex).id;
+  logSamplerHeap("before-resolve", padIndex, 0, candidate.fileSizeBytes);
+
   const auto candidateRef = SampleIndex::calculateStableRef(candidate.fullPath);
   const SampleId candidateId = mini_acid_.sampleIndex.runtimeIdForRef(candidateRef);
+  logSamplerHeap("after-resolve", padIndex, candidateId.value,
+                 candidate.fileSizeBytes);
 
   if (candidateId.value == 0) {
     logSampleSelectionFailure("stable identity did not resolve",
@@ -263,14 +292,20 @@ bool SamplerPage::assignIndexedSample(const SampleFileInfo& candidate) {
 
   // WAV I/O, allocation, conversion and LRU work remain outside AudioGuard.
   if (!mini_acid_.sampleStore->preload(candidateId)) {
+    logSamplerHeap("preload-failed", padIndex, candidateId.value,
+                   candidate.fileSizeBytes);
     logSampleSelectionFailure("preload failed; previous pad assignment kept",
                               candidate.fullPath, candidateId.value);
     return false;
   }
+  logSamplerHeap("after-preload", padIndex, candidateId.value,
+                 candidate.fileSizeBytes);
 
   withAudioGuard([&]() {
     mini_acid_.samplerTrack->pad(padIndex).id = candidateId;
   });
+  logSamplerHeap("after-assign", padIndex, candidateId.value,
+                 candidate.fileSizeBytes);
   return true;
 }
 
@@ -415,6 +450,9 @@ void SamplerPage::openSampleBrowser() {
     return;
   }
 
+  logSamplerHeap("browser-open-before", current_pad_,
+                 mini_acid_.samplerTrack->pad(current_pad_).id.value);
+
   const SampleId currentId = mini_acid_.samplerTrack->pad(current_pad_).id;
   if (const SampleFileInfo* currentFile =
           mini_acid_.sampleIndex.resolveRuntimeFile(currentId)) {
@@ -428,6 +466,7 @@ void SamplerPage::openSampleBrowser() {
   browser_scroll_offset_ = 0;
   refreshSampleBrowser();
   sample_browser_open_ = true;
+  logSamplerHeap("browser-open-after", current_pad_, currentId.value);
 }
 
 void SamplerPage::closeSampleBrowser() {
@@ -436,6 +475,8 @@ void SamplerPage::closeSampleBrowser() {
   browser_files_.clear();
   browser_selection_ = 0;
   browser_scroll_offset_ = 0;
+  logSamplerHeap("browser-close", current_pad_,
+                 mini_acid_.samplerTrack->pad(current_pad_).id.value);
 }
 
 void SamplerPage::refreshSampleBrowser() {
