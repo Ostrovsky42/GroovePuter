@@ -24,6 +24,7 @@ def section(text: str, start: str, end: str) -> str:
 
 # Fixed, bounded V1 cache. Logical polyphony/pad count stay intact.
 assert "kSamplerStreamPageBytes = 512" in store_h
+assert "kSamplerStreamPageFrames =" in store_h
 assert "kSamplerStreamPageCount = 8" in store_h
 assert "kSamplerStreamRequestCapacity = 16" in store_h
 assert "kSamplerStreamIoHandleCount = 4" in store_h
@@ -77,6 +78,14 @@ assert "store.readFrameHandle" in voice_h
 assert "store.requestFrameHandle" in voice_h
 assert "kStreamDropFrames" in voice_h
 assert "source.storage == SampleStorageKind::Streamed" in voice_cpp
+
+# Prefetch follows 256-frame page boundaries and only runs once per entered
+# page. Two pages is the fixed V1 horizon; the old 64-frame lookahead is gone.
+assert "kStreamPageFrames = 256" in voice_h
+assert "kStreamPrefetchPages = 2" in voice_h
+assert "lastStreamPageStart_" in voice_h
+assert "requestStreamWindow_(store, frame)" in voice_h
+assert "kLookAheadFrames" not in voice_h
 
 # Streaming cache is reserved before catalog scan/UI lifetime fragmentation.
 cache_pos = boot.find("beginStreamingCache")
