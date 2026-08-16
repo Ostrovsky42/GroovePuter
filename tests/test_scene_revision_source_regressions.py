@@ -11,6 +11,7 @@ def require(condition: bool, message: str) -> None:
 
 def main() -> None:
     tracker = (ROOT / "src/state/scene_revision.h").read_text(encoding="utf-8")
+    undo_owner = (ROOT / "src/state/undo_owner.h").read_text(encoding="utf-8")
     status = (ROOT / "src/ui/ui_status_chrome.h").read_text(encoding="utf-8")
     project = (ROOT / "src/ui/pages/project_page.cpp").read_text(encoding="utf-8")
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
@@ -68,8 +69,16 @@ def main() -> None:
     require("applySoundMacros" not in project,
             "removed Project sound-macro policy must not return")
 
-    require("markSceneMutated();" in pattern,
-            "step editor mutations must reach the tracker")
+    pattern_commit_start = pattern.index("template <typename PrepareFn>")
+    pattern_commit_end = pattern.index("template <typename F>", pattern_commit_start)
+    pattern_commit = pattern[pattern_commit_start:pattern_commit_end]
+    owner_commit_start = undo_owner.index("bool commitPrepared")
+    owner_commit_end = undo_owner.index("template <typename Payload>\n  bool read", owner_commit_start)
+    owner_commit = undo_owner[owner_commit_start:owner_commit_end]
+    require("undoOwner().commitPrepared" in pattern_commit and
+            "markSceneMutated" not in pattern_commit and
+            "GroovePuterState::markSceneMutated();" in owner_commit,
+            "step editor mutations must reach the tracker through canonical Undo ownership")
     require("markSceneMutated();" in feel_header,
             "FEEL timing/velocity mutations must reach the tracker")
 

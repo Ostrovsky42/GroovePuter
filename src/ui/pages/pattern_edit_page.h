@@ -7,10 +7,10 @@
 #include "../ui_colors.h"
 #include "../ui_utils.h"
 #include "../../dsp/miniacid_engine.h"
-#include "src/state/scene_revision.h"
+#include "../../state/scene_revision.h"
 #include "src/state/synth_pattern_edit.h"
-#include "src/state/undo_owner.h"
-#include "src/state/undo_receipts.h"
+#include "../../state/undo_owner.h"
+#include "../../state/undo_receipts.h"
 
 class BankSelectionBarComponent;
 class PatternSelectionBarComponent;
