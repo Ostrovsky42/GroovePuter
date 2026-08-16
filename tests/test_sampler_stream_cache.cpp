@@ -191,6 +191,73 @@ void testStereoStreamingDownmix(const fs::path& root) {
   store.releaseHandle(handle);
 }
 
+void testIdleAssignmentDoesNotRetainIoHandle(const fs::path& root) {
+#if !defined(_WIN32)
+  const fs::path wav = root / "idle_assignment_handle.wav";
+  writePcm16Wav(wav, 1, 22050, 1600);
+
+  RamSampleStore store;
+  assert(store.beginStreamingCache());
+  const SampleId id{61};
+  assert(store.registerFile(id, wav.string()));
+  assert(store.preload(id));
+
+  // Page 0 was synchronously prewarmed. Removing the pathname must make a
+  // later page refill fail: if preload retained FILE*, POSIX would continue
+  // reading the unlinked inode and this assertion would expose the leak.
+  assert(fs::remove(wav));
+
+  const SampleHandle handle = store.acquireHandle(id);
+  assert(handle.valid());
+  int16_t frame = 0;
+  assert(store.readFrameHandle(handle, 0, frame));
+  assert(frame == expectedMono(0));
+  assert(store.requestFrameHandle(handle, 300));
+  store.serviceIo(1);
+  assert(!store.readFrameHandle(handle, 300, frame));
+  store.releaseHandle(handle);
+#else
+  (void)root;
+#endif
+}
+
+void testInactivePlaybackHandleIsReaped(const fs::path& root) {
+#if !defined(_WIN32)
+  const fs::path wav = root / "inactive_playback_handle.wav";
+  writePcm16Wav(wav, 1, 22050, 1600);
+
+  RamSampleStore store;
+  assert(store.beginStreamingCache());
+  const SampleId id{62};
+  assert(store.registerFile(id, wav.string()));
+  assert(store.preload(id));
+
+  SampleHandle handle = store.acquireHandle(id);
+  assert(handle.valid());
+  assert(store.requestFrameHandle(handle, 300));
+  store.serviceIo(1);  // opens the active stream file and loads page 1
+
+  int16_t frame = 0;
+  assert(store.readFrameHandle(handle, 300, frame));
+  assert(frame == expectedMono(300));
+  store.releaseHandle(handle);
+
+  // No audio-side filesystem work: a normal control-loop service pass reaps
+  // the file after the last voice reference is gone.
+  store.serviceIo(1);
+  assert(fs::remove(wav));
+
+  handle = store.acquireHandle(id);
+  assert(handle.valid());
+  assert(store.requestFrameHandle(handle, 900));
+  store.serviceIo(1);
+  assert(!store.readFrameHandle(handle, 900, frame));
+  store.releaseHandle(handle);
+#else
+  (void)root;
+#endif
+}
+
 void testVoiceForwardPrefetch(const fs::path& root) {
   const fs::path wav = root / "voice_forward.wav";
   writePcm16Wav(wav, 1, 22050, 1600);
@@ -311,6 +378,8 @@ int main() {
   testResidentFastPath(root);
   testMonoStreamingAndRequestDedup(root);
   testStereoStreamingDownmix(root);
+  testIdleAssignmentDoesNotRetainIoHandle(root);
+  testInactivePlaybackHandleIsReaped(root);
   testVoiceForwardPrefetch(root);
   testVoiceReversePrefetch(root);
   testStreamDescriptorSurvivesResidentEviction(root);
