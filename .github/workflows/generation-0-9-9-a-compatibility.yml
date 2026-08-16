@@ -1,0 +1,43 @@
+name: 0.9.9-A generation compatibility
+
+on:
+  pull_request:
+  push:
+    branches:
+      - research/0.9.9-a1-compatibility-lock
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Freeze generation and Lo-Fi identities
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_generation_0_9_9_compatibility.cpp \
+            -o build/host-tests/test_generation_0_9_9_compatibility
+          build/host-tests/test_generation_0_9_9_compatibility
+          python3 tests/test_generation_0_9_9_source_regressions.py
+
+      - name: Protect Phrase-only Pattern references
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_song_pattern_phrase_liveness.cpp \
+            -o build/host-tests/test_song_pattern_phrase_liveness
+          build/host-tests/test_song_pattern_phrase_liveness
+
+      - name: Persist generated ownership through paging and recovery
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_pattern_paging_ownership.cpp \
+            src/audio/pattern_paging.cpp \
+            src/audio/pattern_project_cleanup.cpp \
+            -o build/host-tests/test_pattern_paging_ownership
+          build/host-tests/test_pattern_paging_ownership
