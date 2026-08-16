@@ -6,6 +6,8 @@ HEADER = (ROOT / "src/ui/pages/pattern_edit_page.h").read_text(encoding="utf-8")
 CPP = (ROOT / "src/ui/pages/pattern_edit_page.cpp").read_text(encoding="utf-8")
 LEGACY = (ROOT / "src/ui/pages/pattern_edit_page_legacy.h").read_text(encoding="utf-8")
 PREPARE = (ROOT / "src/state/synth_pattern_edit.h").read_text(encoding="utf-8")
+PATTERN_BAR = (ROOT / "src/ui/components/pattern_selection_bar.h").read_text(encoding="utf-8")
+BANK_BAR = (ROOT / "src/ui/components/bank_selection_bar.h").read_text(encoding="utf-8")
 
 
 def require(condition: bool, message: str) -> None:
@@ -79,6 +81,15 @@ def main() -> None:
         "int PatternEditPage::noteForEntryKey")
     require(wrapper.count("commitPatternMutation") >= 10,
             "R3 wrapper does not cover the expected manual Pattern edit surface")
+
+    # The include-level alias also rewrites child component handleEvent calls.
+    # Keep those forwarding shims explicit and side-effect free so the retained
+    # legacy body compiles without widening its behavior.
+    shim = "bool handleEventLegacyUnowned(UIEvent& ui_event) { return handleEvent(ui_event); }"
+    require(shim in PATTERN_BAR,
+            "Pattern selection bar must preserve R3 legacy-macro compatibility")
+    require(shim in BANK_BAR,
+            "Bank selection bar must preserve R3 legacy-macro compatibility")
 
     for forbidden in ("mini_acid_.clear303Step", "mini_acid_.adjust303Step",
                       "mini_acid_.toggle303", "mini_acid_.rotatePattern",
