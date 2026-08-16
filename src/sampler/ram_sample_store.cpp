@@ -413,7 +413,15 @@ bool RamSampleStore::preload(SampleId id) {
     return false;
   }
 
-  if (inspected.decodedBytes <= kSamplerResidentFastPathMaxBytes) {
+  const bool resident =
+      inspected.decodedBytes <= kSamplerResidentFastPathMaxBytes;
+  printf("[SAMPLER-ROUTE] id=%u decodedBytes=%u sourceBytes=%u route=%s path=%s\n",
+         static_cast<unsigned>(id.value),
+         static_cast<unsigned>(inspected.decodedBytes),
+         static_cast<unsigned>(inspected.sourceDataBytes),
+         resident ? "RESIDENT" : "STREAMED", path);
+
+  if (resident) {
     return preloadResident_(id, path, inspected);
   }
   return preloadStreamed_(id, path, inspected);
@@ -521,6 +529,10 @@ bool RamSampleStore::preloadStreamed_(SampleId id, const char* path,
     printf("[SAMPLER-STREAM] initial page failed for %s\n", path);
     return false;
   }
+
+  // Assignment owns only the descriptor and the fixed shared page cache. The
+  // SD file handle used to prewarm page 0 must not become per-assignment state.
+  closeIoForSample_(id.value);
 
   slot.ready.store(true, std::memory_order_release);
   printf("[SAMPLER-STREAM] prepared id=%u frames=%u sr=%u channels=%u\n",
@@ -644,21 +656,30 @@ int RamSampleStore::ensureIoSlot_(uint32_t sampleId, const char* path) {
 #endif
   io.sampleId = sampleId;
   io.lastAccess = ++streamIoClock_;
+  printf("[SAMPLER-STREAM-IO] open id=%u slot=%d\n",
+         static_cast<unsigned>(sampleId), target);
   return target;
 }
 
 void RamSampleStore::closeIoSlot_(int index) {
   if (index < 0 || index >= kSamplerStreamIoHandleCount) return;
   auto& io = streamIo_[index];
+  const uint32_t oldSampleId = io.sampleId;
 #if defined(ARDUINO)
+  const bool wasOpen = static_cast<bool>(io.file);
   if (io.file) io.file.close();
   io.file = File();
 #else
+  const bool wasOpen = io.file != nullptr;
   if (io.file) std::fclose(io.file);
   io.file = nullptr;
 #endif
   io.sampleId = 0;
   io.lastAccess = 0;
+  if (wasOpen) {
+    printf("[SAMPLER-STREAM-IO] close id=%u slot=%d\n",
+           static_cast<unsigned>(oldSampleId), index);
+  }
 }
 
 void RamSampleStore::closeIoForSample_(uint32_t sampleId) {
@@ -803,6 +824,25 @@ void RamSampleStore::serviceIo(std::size_t maxPages) {
       continue;
     }
     loadStreamPageControl_(request.handle, request.frame);
+  }
+
+  // File handles are part of the active-stream working set, not assignment
+  // state. Audio releases only the refCount; the control loop owns all File
+  // destruction and reaps a handle as soon as no voice references its source.
+  for (int i = 0; i < kSamplerStreamIoHandleCount; ++i) {
+    const uint32_t sampleId = streamIo_[i].sampleId;
+    if (sampleId == 0) continue;
+
+    bool active = false;
+    for (const auto& slot : slots_) {
+      if (slot.id.load(std::memory_order_acquire) == sampleId &&
+          slot.ready.load(std::memory_order_acquire) &&
+          slot.refCount.load(std::memory_order_acquire) != 0) {
+        active = true;
+        break;
+      }
+    }
+    if (!active) closeIoSlot_(i);
   }
 
 #if defined(ARDUINO)
