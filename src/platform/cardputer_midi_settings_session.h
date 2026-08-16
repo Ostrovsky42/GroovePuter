@@ -4,6 +4,7 @@
 
 #include "src/midi/midi_companion_settings.h"
 #include "src/midi/midi_device_profile_runtime.h"
+#include "src/input/midi_input_router.h"
 
 namespace GroovePuterPlatform {
 
@@ -16,6 +17,9 @@ GroovePuterMidi::MidiDeviceProfile pendingCardputerMidiDeviceProfile();
 bool selectCardputerMidiDeviceProfileForNextBoot(
     GroovePuterMidi::MidiDeviceProfile profile);
 bool cardputerMidiDeviceProfileRestartRequired();
+void initializeCardputerMidiInputSettings(MidiInputRouter& router);
+MidiInputRoutingConfig cardputerMidiInputRoutingConfig();
+bool setCardputerMidiInputRoutingConfig(const MidiInputRoutingConfig& config);
 #else
 namespace Detail {
 struct DesktopMidiProfileSelection {
@@ -60,6 +64,10 @@ inline bool cardputerMidiDeviceProfileRestartRequired() {
     return pendingCardputerMidiDeviceProfile() !=
            GroovePuterMidi::midiDeviceProfileRuntime().profile();
 }
+inline MidiInputRoutingConfig& desktopMidiInputConfig() { static MidiInputRoutingConfig c{}; return c; }
+inline void initializeCardputerMidiInputSettings(MidiInputRouter& router) { (void)router.setConfig(desktopMidiInputConfig()); }
+inline MidiInputRoutingConfig cardputerMidiInputRoutingConfig() { return desktopMidiInputConfig(); }
+inline bool setCardputerMidiInputRoutingConfig(const MidiInputRoutingConfig& config) { if (!MidiInputRouter::isValidConfig(config)) return false; desktopMidiInputConfig()=config; return true; }
 #endif
 
 // A lightweight member of the root UI object. On Cardputer it may call the
