@@ -473,8 +473,11 @@ void resetMidiInputSession() {
     if (g_midiInputQueue != nullptr) {
         g_midiInputQueue->discardPendingFromConsumer();
     }
-    if (g_midiInputRouter != nullptr) {
-        g_midiInputRouter->panic();
+    if (g_midiInputRouter != nullptr &&
+        g_midiInputSession != kInvalidMidiInputSessionId) {
+        (void)g_midiInputRouter->releaseSession(
+            kCardputerUsbInputTransportId,
+            g_midiInputSession);
     }
 }
 
