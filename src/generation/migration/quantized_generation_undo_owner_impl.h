@@ -7,6 +7,9 @@
 #include "../../state/undo_owner.h"
 
 namespace GroovePuterRhythm {
+
+bool commitQuantizedGenerationAtBarStart(SceneManager& scenes);
+
 namespace QuantizedGenerationDetail {
 
 struct GenerationUndoPayload {
@@ -332,6 +335,7 @@ inline void restoreGenerationUndo(
     scene.genre = before.genre;
     scene.feel.swingPct = before.swingPct;
     engine.setGrooveboxMode(before.mode);
+    engine.sceneManager().setBpm(before.bpm);
     engine.setBpm(before.bpm);
     return;
   }
