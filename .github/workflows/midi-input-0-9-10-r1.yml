@@ -1,0 +1,27 @@
+name: MIDI Input Controllers 0.9.10 R1
+
+on:
+  pull_request:
+    paths:
+      - "docs/releases/0_9_10_MIDI_INPUT_CONTROLLERS_RESEARCH.md"
+      - "tests/test_midi_input_0_9_10_r1_source_regressions.py"
+      - "tests/run_midi_input_0_9_10_r1_tests.sh"
+      - ".github/workflows/midi-input-0-9-10-r1.yml"
+      - "src/input/**"
+      - "src/output/output_ownership.h"
+      - "src/platform/cardputer_usb_midi_transport.*"
+      - "src/dsp/miniacid_engine.*"
+      - "src/ui/pages/pattern_edit_page.cpp"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  archaeology-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run 0.9.10-R1 MIDI input archaeology contract
+        run: bash tests/run_midi_input_0_9_10_r1_tests.sh
