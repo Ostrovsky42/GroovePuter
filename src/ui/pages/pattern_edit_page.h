@@ -47,12 +47,11 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   enum class Focus { Steps = 0, PatternRow, BankRow };
   enum class PatternMutationResult { Invalid = 0, NoChange, Committed };
 
-  // R3 inserts a narrow persistent-mutation owner in front of the retained
-  // legacy event implementation. The unowned handler remains text-identical so
-  // navigation, copy, R2 reset/Undo and non-Pattern behavior keep their existing
-  // routing while manual Pattern writes are intercepted by handleEventLegacy().
+  // The retained editor body keeps its historical handleEventLegacy alias.
+  // Existing child Pattern/Bank bars explicitly support that alias, so R3 adds
+  // a separately named owned wrapper instead of widening the macro contract.
+  bool handleEventOwned(UIEvent& ui_event);
   bool handleEventLegacy(UIEvent& ui_event);
-  bool handleEventLegacyUnowned(UIEvent& ui_event);
 
   void drawMinimalStyle(IGfx& gfx);
   void drawRetroClassicStyle(IGfx& gfx);
@@ -69,13 +68,14 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   void advanceNoteEntryCursor();
   void writeNoteEntryStep(int step, int note, bool continuation);
   bool handleNoteEntryKey(char key);
+  SceneManager& sceneManager();
 
   template <typename PrepareFn>
   PatternMutationResult commitPatternMutation(PrepareFn&& prepare) {
     using GroovePuterUndo::SynthPatternUndoPayload;
     using GroovePuterUndo::UndoKind;
 
-    SceneManager& manager = mini_acid_.sceneManager();
+    SceneManager& manager = sceneManager();
     SynthPatternUndoPayload before{};
     if (!GroovePuterUndo::captureCurrentSynthPatternUndo(
             manager, voice_index_, before)) {
