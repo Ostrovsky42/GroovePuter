@@ -11,6 +11,7 @@ boot = (ROOT / "sampler_boot_registry.ino").read_text()
 browser = (ROOT / "src/ui/pages/sampler_page.cpp").read_text()
 pool = (ROOT / "src/sampler/sampler_pool.h").read_text()
 track = (ROOT / "src/sampler/drum_sampler_track.h").read_text()
+encoder = (ROOT / "miniacid_encoder8.cpp").read_text()
 
 
 def section(text: str, start: str, end: str) -> str:
@@ -83,6 +84,20 @@ scan_pos = boot.find("index.scanDirectory")
 assert cache_pos >= 0 and scan_pos >= 0 and cache_pos < scan_pos
 assert 'logSamplerRegistryHeap("before-stream-cache")' in boot
 assert 'logSamplerRegistryHeap("after-stream-cache")' in boot
+
+# Page refill is serviced by the existing control-loop poll point before the
+# disabled Encoder8 early-return. No extra task/stack is introduced.
+encoder_update = section(
+    encoder,
+    "void Encoder8Miniacid::update()",
+    "void Encoder8Miniacid::setInitialColors()",
+)
+service_pos = encoder_update.find("sampleStore->serviceIo(4)")
+early_return_pos = encoder_update.find("if (!sensor_initialized_) return")
+assert service_pos >= 0
+assert early_return_pos >= 0
+assert service_pos < early_return_pos
+assert "xTaskCreate" not in encoder_update
 
 # The existing nested folder browser and stable selection path must survive.
 for required in (
