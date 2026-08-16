@@ -16,13 +16,27 @@ jobs:
         with:
           ref: feature/0.9.9-c-bounded-activation
 
+      - name: Disambiguate identical B1 generation tails
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('tools/_apply_0_9_9_c_patch.py')
+          s = p.read_text()
+          s = s.replace('if s.count(old) != 1:', 'if s.count(old) < 1:', 1)
+          s = s.replace('if s.count(old2) != 1:', 'if s.count(old2) < 1:', 1)
+          p.write_text(s)
+          PY
+
       - name: Apply C production patch
         run: python3 tools/_apply_0_9_9_c_patch.py
 
       - name: Commit production patch
         run: |
-          if git diff --quiet; then
-            echo "No patch needed"
+          if git diff --quiet -- src/generation/migration/quantized_generation_commit_impl.h \
+                                src/generation/migration/quantized_generation_undo_owner_impl.h \
+                                src/dsp/miniacid_engine.h src/dsp/miniacid_engine.cpp \
+                                src/dsp/genre_manager.h src/ui/pages/pattern_edit_page.cpp; then
+            echo "No production patch needed"
             exit 0
           fi
           git config user.name github-actions[bot]
