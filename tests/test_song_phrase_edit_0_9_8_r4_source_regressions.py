@@ -119,12 +119,14 @@ def main() -> None:
             "markSceneMutated" not in drum_selector,
             "Drum slot selection must not dirty the Scene or bypass Song ownership")
 
-    # PhraseWorkspace is PREPARE-only. Page helpers own publication.
+    # PhraseWorkspace is PREPARE-only. Check executable ownership hooks rather
+    # than comments so documentation can state the forbidden boundary plainly.
     for token in ("capturePrepared", "derivePrepared", "clearPrepared",
                   "writeToSongPrepared"):
         require(token in phrase_workspace, f"missing Phrase PREPARE API: {token}")
-    for forbidden in ("UndoOwner", "undoOwner", "markSceneMutated", "AudioGuard",
-                      "std::vector", "ArduinoJson", "SD."):
+    for forbidden in ("UndoOwner<", "undoOwner(", "markSceneMutated(",
+                      "audio_guard_", "withAudioGuard", "std::vector",
+                      "ArduinoJson", "SD."):
         require(forbidden not in phrase_workspace,
                 f"Phrase PREPARE leaked ownership/runtime dependency: {forbidden}")
     require("commitPhraseMutation" in phrase_header and
