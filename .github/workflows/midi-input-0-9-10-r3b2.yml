@@ -1,0 +1,19 @@
+name: MIDI Input Controllers 0.9.10 R3b2
+
+on:
+  pull_request:
+    paths:
+      - 'GroovePuter.ino'
+      - 'src/input/midi_input_*.h'
+      - 'src/midi/usb_midi_channel_voice_parser.h'
+      - 'src/platform/cardputer_usb_midi_service.h'
+      - 'src/platform/cardputer_usb_midi_transport.cpp'
+      - 'tests/*midi_input_0_9_10_r3b2*'
+      - '.github/workflows/midi-input-0-9-10-r3b2.yml'
+
+jobs:
+  runtime-ingress-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/run_midi_input_0_9_10_r3b2_tests.sh

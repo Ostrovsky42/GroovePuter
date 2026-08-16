@@ -29,6 +29,8 @@
 #include "src/input/cardputer_input_edges.h"
 #include "src/input/internal_synth_output.h"
 #include "src/input/musical_event_queue.h"
+#include "src/input/midi_input_queue.h"
+#include "src/input/midi_input_router.h"
 #include "src/midi/external_midi_clock_follower.h"
 #include "src/midi/external_midi_transport_event_queue.h"
 #include "src/midi/transport_clock_runtime.h"
@@ -60,6 +62,8 @@ static MiniAcid g_miniAcidInstance(kSampleRate, &g_sceneStorage);
 static MusicalEventRouter g_musicalEventRouter;
 static MusicalEventQueue g_patternMusicalEventQueue;
 static ExternalMidiTransportEventQueue g_externalMidiTransportQueue;
+static MidiInputQueue g_midiInputQueue;
+static MidiInputRouter g_midiInputRouter(g_musicalEventRouter);
 static GroovePuterMidi::ExternalMidiClockFollower g_externalClockFollower;
 static PerformanceKeyboard g_performanceKeyboard(g_musicalEventRouter);
 static InternalSynthOutput g_internalSynthOutput(g_miniAcidInstance, g_audioMutationGate);
@@ -399,7 +403,9 @@ void setup() {
   if (!registerCardputerUsbMidiSink(
           g_musicalEventRouter,
           g_patternMusicalEventQueue,
-          g_externalMidiTransportQueue)) {
+          g_externalMidiTransportQueue,
+          g_midiInputQueue,
+          g_midiInputRouter)) {
     Serial.println("[ERROR] USB MIDI runtime unavailable");
     markBootStage(952, "USB MIDI runtime unavailable");
   } else {

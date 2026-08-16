@@ -60,14 +60,14 @@ def main() -> None:
     require("MusicalEventSource::MidiInput" in router,
             "post-route events must reuse the canonical MidiInput source")
     require("MidiInputTarget::SynthA" in router and
-            "MidiInputTarget::SynthB" in router and
-            "MidiInputTarget::Drums" not in router,
-            "R3a target scope must remain Synth A/B only; Drums is R4")
+            "MidiInputTarget::SynthB" in router,
+            "R3a Synth A/B targets must remain present")
+    if not (ROOT / "docs/releases/0_9_10_R4_DRUM_INPUT.md").exists():
+        require("MidiInputTarget::Drums" not in router,
+                "R3a target scope must remain Synth A/B only before R4")
     require("sizeof(MidiInputRouter) <= 320u" in router,
             "R3a router/owner memory ceiling must remain explicit")
 
-    # The input core duplicates only the two numeric live-pitch boundaries to
-    # avoid importing DSP headers. Lock them to the existing engine identity.
     clamped = (ROOT / "src/dsp/clamped_live_note_identity.h").read_text(encoding="utf-8")
     engine = (ROOT / "src/dsp/miniacid_engine.h").read_text(encoding="utf-8")
     require("kMinNote = 24" in clamped and "kMaxNote = 71" in clamped,
@@ -75,23 +75,20 @@ def main() -> None:
     require("kMin303Note = 24" in engine and "kMax303Note = 71" in engine,
             "MiniAcid live range changed; audit MidiInputRouter range")
 
-    # R3a proves the core owner before physical wiring. Runtime instantiation and
-    # the existing TinyUSB reader are changed only in R3b after this gate is green.
-    runtime_refs = []
-    for path in (ROOT / "src").rglob("*"):
-        if not path.is_file() or path.suffix not in {".h", ".hpp", ".cpp", ".cc"}:
-            continue
-        if path == ROUTER:
-            continue
-        text = path.read_text(encoding="utf-8")
-        if "MidiInputRouter" in text:
-            runtime_refs.append(path.relative_to(ROOT).as_posix())
-    require(not runtime_refs,
-            "R3a must not wire the router into runtime yet: " + ", ".join(runtime_refs))
+    later_runtime = (ROOT / "docs/releases/0_9_10_R3B2_USB_RUNTIME_WIRING.md").exists()
+    if not later_runtime:
+        runtime_refs = []
+        for path in (ROOT / "src").rglob("*"):
+            if not path.is_file() or path.suffix not in {".h", ".hpp", ".cpp", ".cc"}:
+                continue
+            if path == ROUTER:
+                continue
+            text = path.read_text(encoding="utf-8")
+            if "MidiInputRouter" in text:
+                runtime_refs.append(path.relative_to(ROOT).as_posix())
+        require(not runtime_refs,
+                "R3a must not wire the router into runtime yet: " + ", ".join(runtime_refs))
 
-    # Common fan-out must not accidentally become MIDI THRU. The current USB
-    # output owns no MidiInput lane; freeze that fact until an explicit THRU
-    # product policy is introduced.
     usb_output_h = (ROOT / "src/midi/usb_midi_output.h").read_text(encoding="utf-8")
     usb_output_cpp = (ROOT / "src/midi/usb_midi_output.cpp").read_text(encoding="utf-8")
     require("MusicalEventSource::MidiInput" not in usb_output_h and

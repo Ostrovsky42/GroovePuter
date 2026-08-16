@@ -15,6 +15,8 @@
 #include "src/audio/audio_config.h"
 #include "src/input/musical_event_queue.h"
 #include "src/input/musical_event_router.h"
+#include "src/input/midi_input_queue.h"
+#include "src/input/midi_input_router.h"
 #include "src/midi/midi_companion_settings.h"
 #include "src/midi/midi_control_event_queue.h"
 #include "src/midi/external_midi_transport_event_queue.h"
@@ -31,6 +33,7 @@
 #include "src/midi/usb_endpoint_health.h"
 #include "src/midi/transport_clock_runtime.h"
 #include "src/midi/usb_midi_realtime_parser.h"
+#include "src/midi/usb_midi_channel_voice_parser.h"
 
 #if ARDUINO_USB_MODE
 #error "USB MIDI requires Cardputer USBMode=default (USB-OTG/TinyUSB)"
@@ -220,6 +223,12 @@ MidiControlEventQueue g_controlQueue;
 MusicalEventQueue* g_patternQueue = nullptr;
 ScheduledSmfMidiEventQueue* g_smfQueue = nullptr;
 ExternalMidiTransportEventQueue* g_externalTransportQueue = nullptr;
+MidiInputQueue* g_midiInputQueue = nullptr;
+MidiInputRouter* g_midiInputRouter = nullptr;
+constexpr MidiInputTransportId kCardputerUsbInputTransportId = 1u;
+MidiInputSessionId g_midiInputSession = kInvalidMidiInputSessionId;
+MidiInputSessionId g_midiInputSessionCounter = kInvalidMidiInputSessionId;
+bool g_midiInputMounted = false;
 PatternDrumGateScheduler g_patternDrumGates;
 MidiBlockAnchorClock g_anchorClock;
 MidiDispatchDiagnostics g_diagnostics;
@@ -452,53 +461,95 @@ void drainControlEvents(std::size_t budget = kControlDrainBudget) {
     }
 }
 
-void drainIncomingMidiPackets() {
-    if (g_externalTransportQueue == nullptr) return;
+MidiInputSessionId nextMidiInputSession() {
+    ++g_midiInputSessionCounter;
+    if (g_midiInputSessionCounter == kInvalidMidiInputSessionId) {
+        ++g_midiInputSessionCounter;
+    }
+    return g_midiInputSessionCounter;
+}
 
+void resetMidiInputSession() {
+    if (g_midiInputQueue != nullptr) {
+        g_midiInputQueue->discardPendingFromConsumer();
+    }
+    if (g_midiInputRouter != nullptr) {
+        g_midiInputRouter->panic();
+    }
+}
+
+void serviceMidiInputConnection() {
+    const bool mounted = g_transport.mounted();
+    if (mounted == g_midiInputMounted) return;
+
+    resetMidiInputSession();
+    g_midiInputMounted = mounted;
+    g_midiInputSession = mounted
+        ? nextMidiInputSession()
+        : kInvalidMidiInputSessionId;
+}
+
+void drainIncomingMidiPackets() {
     midiEventPacket_t packet{};
     for (std::size_t drained = 0;
          drained < kMidiRxDrainBudget && g_transport.readPacket(packet);
          ++drained) {
+        const uint32_t receivedAtMicros = micros();
+
         ExternalMidiTransportEventType type{};
-        if (!GroovePuterMidi::parseUsbMidiRealtimeTransport(
+        if (GroovePuterMidi::parseUsbMidiRealtimeTransport(
                 packet.header, packet.byte1, type)) {
-            ++g_diagnostics.externalRxIgnored;
-            continue;
-        }
-        if (GroovePuterMidi::transportClockRuntime().source() !=
-            GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
-            ++g_diagnostics.externalRxMasterIgnored;
+            if (g_externalTransportQueue == nullptr) {
+                ++g_diagnostics.externalRxIgnored;
+                continue;
+            }
+            if (GroovePuterMidi::transportClockRuntime().source() !=
+                GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
+                ++g_diagnostics.externalRxMasterIgnored;
+                continue;
+            }
+
+            switch (type) {
+                case ExternalMidiTransportEventType::Clock:
+                    ++g_externalRxPulseOrdinal;
+                    if (g_externalTransportQueue->tryPushClock(
+                            receivedAtMicros, g_externalRxPulseOrdinal)) {
+                        ++g_diagnostics.externalRxClock;
+                    }
+                    break;
+                case ExternalMidiTransportEventType::Start:
+                    if (g_externalTransportQueue->tryPushCritical(
+                            type, receivedAtMicros, g_externalRxPulseOrdinal)) {
+                        ++g_diagnostics.externalRxStart;
+                    }
+                    break;
+                case ExternalMidiTransportEventType::Continue:
+                    if (g_externalTransportQueue->tryPushCritical(
+                            type, receivedAtMicros, g_externalRxPulseOrdinal)) {
+                        ++g_diagnostics.externalRxContinue;
+                    }
+                    break;
+                case ExternalMidiTransportEventType::Stop:
+                    if (g_externalTransportQueue->tryPushCritical(
+                            type, receivedAtMicros, g_externalRxPulseOrdinal)) {
+                        ++g_diagnostics.externalRxStop;
+                    }
+                    break;
+            }
             continue;
         }
 
-        const uint32_t receivedAtMicros = micros();
-        switch (type) {
-            case ExternalMidiTransportEventType::Clock:
-                ++g_externalRxPulseOrdinal;
-                if (g_externalTransportQueue->tryPushClock(
-                        receivedAtMicros, g_externalRxPulseOrdinal)) {
-                    ++g_diagnostics.externalRxClock;
-                }
-                break;
-            case ExternalMidiTransportEventType::Start:
-                if (g_externalTransportQueue->tryPushCritical(
-                        type, receivedAtMicros, g_externalRxPulseOrdinal)) {
-                    ++g_diagnostics.externalRxStart;
-                }
-                break;
-            case ExternalMidiTransportEventType::Continue:
-                if (g_externalTransportQueue->tryPushCritical(
-                        type, receivedAtMicros, g_externalRxPulseOrdinal)) {
-                    ++g_diagnostics.externalRxContinue;
-                }
-                break;
-            case ExternalMidiTransportEventType::Stop:
-                if (g_externalTransportQueue->tryPushCritical(
-                        type, receivedAtMicros, g_externalRxPulseOrdinal)) {
-                    ++g_diagnostics.externalRxStop;
-                }
-                break;
+        NormalizedMidiInputMessage message{};
+        if (g_midiInputQueue != nullptr &&
+            g_midiInputSession != kInvalidMidiInputSessionId &&
+            GroovePuterMidi::parseUsbMidiChannelVoice(
+                packet.header, packet.byte1, packet.byte2, packet.byte3,
+                kCardputerUsbInputTransportId, g_midiInputSession,
+                receivedAtMicros, message)) {
+            (void)g_midiInputQueue->tryPush(message);
+            continue;
         }
+        ++g_diagnostics.externalRxIgnored;
     }
 }
 
@@ -811,7 +862,11 @@ void midiDispatchTask(void*) {
     while (true) {
         g_output.pollConnection();
         g_transport.pollSuspendState();
+        serviceMidiInputConnection();
         drainIncomingMidiPackets();
+        if (g_midiInputRouter != nullptr && g_midiInputQueue != nullptr) {
+            g_midiInputRouter->service(*g_midiInputQueue, kMidiRxDrainBudget);
+        }
 
         // Existing PatternPlayer and live cleanup remain ahead of scheduled
         // lifecycle traffic. SMF cleanup is independent and cannot silence a
@@ -1429,16 +1484,24 @@ void CardputerUsbMidiTransport::flush() {
 bool registerCardputerUsbMidiSink(
     MusicalEventRouter& router,
     MusicalEventQueue& patternQueue,
-    ExternalMidiTransportEventQueue& externalTransportQueue) {
+    ExternalMidiTransportEventQueue& externalTransportQueue,
+    MidiInputQueue& midiInputQueue,
+    MidiInputRouter& midiInputRouter) {
     if (g_registered) return true;
 
     g_patternQueue = &patternQueue;
     g_externalTransportQueue = &externalTransportQueue;
+    g_midiInputQueue = &midiInputQueue;
+    g_midiInputRouter = &midiInputRouter;
+    g_midiInputMounted = false;
+    g_midiInputSession = kInvalidMidiInputSessionId;
     g_patternDrumGates.clear();
     if (!router.addSink(g_queueSink)) {
         Serial.println("[MIDI-INIT] router sink registration failed");
         g_patternQueue = nullptr;
         g_externalTransportQueue = nullptr;
+        g_midiInputQueue = nullptr;
+        g_midiInputRouter = nullptr;
         return false;
     }
 
@@ -1461,6 +1524,8 @@ bool registerCardputerUsbMidiSink(
         router.removeSink(g_queueSink);
         g_patternQueue = nullptr;
         g_externalTransportQueue = nullptr;
+        g_midiInputQueue = nullptr;
+        g_midiInputRouter = nullptr;
         g_dispatchTaskHandle = nullptr;
         return false;
     }

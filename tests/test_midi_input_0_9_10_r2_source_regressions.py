@@ -15,8 +15,6 @@ def main() -> None:
     message = MESSAGE.read_text(encoding="utf-8")
     queue = QUEUE.read_text(encoding="utf-8")
 
-    # Core ingress must remain transport-independent. Comments may name future
-    # adapters, but production include dependencies may not.
     includes = "\n".join(
         line for line in (message + "\n" + queue).splitlines()
         if line.lstrip().startswith("#include")
@@ -55,19 +53,22 @@ def main() -> None:
         require(forbidden not in queue,
                 f"R2 ingress queue must not allocate dynamically: {forbidden}")
 
-    # R2 defines contracts only. No existing production source may instantiate
-    # or route through them yet; adapter/router integration starts in later R3.
-    references = []
-    for path in (ROOT / "src").rglob("*"):
-        if not path.is_file() or path.suffix not in {".h", ".hpp", ".cpp", ".cc"}:
-            continue
-        if path in {MESSAGE, QUEUE}:
-            continue
-        text = path.read_text(encoding="utf-8")
-        if "MidiInputQueue" in text or "NormalizedMidiInputMessage" in text:
-            references.append(path.relative_to(ROOT).as_posix())
-    require(not references,
-            "R2 must not add runtime ingress integration yet: " + ", ".join(references))
+    # On the original R2 checkpoint these types must be contract-only. Once the
+    # explicit R3b2 runtime marker exists, later stages are allowed to reference
+    # them while the transport-independent R2 core checks above remain active.
+    later_runtime = (ROOT / "docs/releases/0_9_10_R3B2_USB_RUNTIME_WIRING.md").exists()
+    if not later_runtime:
+        references = []
+        for path in (ROOT / "src").rglob("*"):
+            if not path.is_file() or path.suffix not in {".h", ".hpp", ".cpp", ".cc"}:
+                continue
+            if path in {MESSAGE, QUEUE}:
+                continue
+            text = path.read_text(encoding="utf-8")
+            if "MidiInputQueue" in text or "NormalizedMidiInputMessage" in text:
+                references.append(path.relative_to(ROOT).as_posix())
+        require(not references,
+                "R2 must not add runtime ingress integration yet: " + ", ".join(references))
 
     print("0.9.10 R2 source/ownership boundaries: PASS")
 
