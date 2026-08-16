@@ -39,6 +39,14 @@ void Encoder8Miniacid::initialize() {
 }
 
 void Encoder8Miniacid::update() {
+  // This object is already polled exactly once from the Cardputer control loop.
+  // Service bounded sampler page requests here before the optional Encoder8
+  // early-return so SD I/O never moves into AudioTask and no extra FreeRTOS
+  // task/stack is needed for the hardware research candidate.
+  if (miniAcid_.sampleStore) {
+    miniAcid_.sampleStore->serviceIo(4);
+  }
+
   if (!sensor_initialized_) return;
 
   if (!initial_values_sent_) {
