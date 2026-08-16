@@ -10,6 +10,10 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def strip_cpp_comments(text: str) -> str:
+    return re.sub(r"/\*.*?\*/|//[^\n]*", "", text, flags=re.DOTALL)
+
+
 def main() -> None:
     event_header = (ROOT / "src/input/musical_event.h").read_text(encoding="utf-8")
     sink = (ROOT / "src/midi/usb_midi_output.cpp").read_text(encoding="utf-8")
@@ -104,8 +108,9 @@ def main() -> None:
     require("kDxMask" in control_queue and "pendingDxEpoch_" in control_queue,
             "live DX overflow must retain a scoped cleanup path")
     for path_text in (queue, facade, control_queue, drum_gate):
+        code_text = strip_cpp_comments(path_text)
         for token in ("std::vector", "std::deque", "new ", "malloc("):
-            require(token not in path_text,
+            require(token not in code_text,
                     f"realtime MIDI queues/gates must not allocate: {token}")
 
     require("class MusicalEventQueue final : public ScheduledMusicalEventQueue" in facade,
