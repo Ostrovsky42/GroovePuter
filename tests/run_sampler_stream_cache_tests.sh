@@ -13,6 +13,7 @@ g++ -std=gnu++20 -Wall -Wextra -Werror -pthread \
   "${ROOT_DIR}/src/sampler/ram_sample_store.cpp" \
   "${ROOT_DIR}/src/sampler/sample_loader.cpp" \
   "${ROOT_DIR}/src/sampler/sample_index.cpp" \
+  "${ROOT_DIR}/src/sampler/sampler_voice.cpp" \
   -o "${BUILD_DIR}/test_sampler_stream_cache"
 
 "${BUILD_DIR}/test_sampler_stream_cache"
