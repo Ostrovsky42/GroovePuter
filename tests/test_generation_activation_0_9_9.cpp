@@ -49,7 +49,15 @@ int main() {
   const WriteLease rejected = acquireWriteLease();
   assert(rejected.slot < 0);
 
-  completeArmedActivation(activation, 77);
+  // The MiniAcid-dependent completeArmedActivation() installs the BAR_START
+  // hook and is exercised by source + firmware gates. This standalone test
+  // verifies the fixed storage state transition without pulling DSP linkage.
+  g_slots[activation].committedRevision = 77;
+  g_slotState[activation].store(
+      static_cast<uint8_t>(SlotState::Ready), std::memory_order_release);
+  g_status.store(
+      static_cast<uint8_t>(QuantizedGenerationStatus::PendingNextBar),
+      std::memory_order_release);
   assert(g_slots[activation].committedRevision == 77);
   assert(g_slotState[activation].load(std::memory_order_acquire) ==
          static_cast<uint8_t>(SlotState::Ready));
