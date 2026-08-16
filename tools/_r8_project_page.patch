@@ -1,0 +1,212 @@
+diff --git a/src/ui/pages/project_page.h b/src/ui/pages/project_page.h
+index 97d46ef..0000000 100644
+--- a/src/ui/pages/project_page.h
++++ b/src/ui/pages/project_page.h
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++#include <cstdint>
++
+ #include "../ui_core.h"
+ #include "../ui_colors.h"
+ #include "../ui_utils.h"
+@@ -27,8 +29,8 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
+   std::unique_ptr<MultiPageHelpDialog> getHelpDialog() override;
+   int getHelpFrameCount() const override;
+   void drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const override;
+-  enum class ProjectSection { Scenes = 0, Groove, Led };
+-  enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, GrooveMode, GrooveFlavor, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash };
++  enum class ProjectSection { Scenes = 0, Groove, Led, Midi };
++  enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, GrooveMode, GrooveFlavor, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash, MidiDevice };
+ 
+  private:
+   enum class DialogType { None = 0, Load, SaveAs, ImportMidi, MidiAdvance, ConfirmClear };
+@@ -124,6 +126,7 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
+ 
+   bool midi_import_append_ = false;
+   int midi_adv_scroll_ = 0;
++  uint8_t midi_profile_preview_ = 0xFF;
+   std::string save_name_;
+ };
+ 
+diff --git a/src/ui/pages/project_page.cpp b/src/ui/pages/project_page.cpp
+index ad3ce39..0000000 100644
+--- a/src/ui/pages/project_page.cpp
++++ b/src/ui/pages/project_page.cpp
+@@ -17,8 +17,11 @@
+ #include "../screen_geometry.h"
+ #include "../help_dialog_frames.h"
+ #include "../ui_widgets.h"
++#include "../midi_device_profile_ui.h"
++#include "src/platform/cardputer_midi_settings_session.h"
+ 
+ namespace {
++namespace ProfileUi = GroovePuterUi::MidiDeviceProfileUi;
+ std::string generateMemorableName() {
+   static const char* adjectives[] = {
+     "bright", "calm", "clear", "cosmic", "crisp", "deep", "dusty", "electric",
+@@ -105,6 +108,7 @@ const char* sectionName(int section) {
+     case 0: return "SCENES";
+     case 1: return "GROOVE";
+     case 2: return "LED";
++    case 3: return "MIDI";
+     default: return "SCENES";
+   }
+ }
+@@ -123,6 +127,10 @@ void sectionRange(int section, int& first, int& last) {
+       first = (int)ProjectPage::MainFocus::LedMode;
+       last = (int)ProjectPage::MainFocus::LedFlash;
+       return;
++    case 3: // midi
++      first = (int)ProjectPage::MainFocus::MidiDevice;
++      last = (int)ProjectPage::MainFocus::MidiDevice;
++      return;
+     default:
+       first = 0;
+       last = 2;
+@@ -372,6 +380,7 @@ void ProjectPage::onEnter(int context) {
+   dialog_type_ = DialogType::None;
+   main_focus_ = MainFocus::Load;
+   section_ = ProjectSection::Scenes;
++  midi_profile_preview_ = ProfileUi::kUnsetPreview;
+ }
+ 
+ bool ProjectPage::importMidiAtSelection() {
+@@ -1192,10 +1201,18 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
+ 
+     char key = ui_event.key;
+     if (key == '\t') {
++        const ProjectSection previousSection = section_;
+         int sectionIdx = static_cast<int>(section_);
+-        sectionIdx = (sectionIdx + 1) % 3;
++        sectionIdx = (sectionIdx + 1) % 4;
+         section_ = static_cast<ProjectSection>(sectionIdx);
+         int focusIdx = static_cast<int>(main_focus_);
+         if (!focusInSection(sectionIdx, focusIdx)) {
+             main_focus_ = static_cast<MainFocus>(firstFocusInSection(sectionIdx));
+         }
++        if (section_ == ProjectSection::Midi) {
++            midi_profile_preview_ = ProfileUi::encodePreview(
++                GroovePuterPlatform::pendingCardputerMidiDeviceProfile());
++        } else if (previousSection == ProjectSection::Midi) {
++            midi_profile_preview_ = ProfileUi::kUnsetPreview;
++        }
+         return true;
+     }
+ 
+@@ -1229,6 +1246,16 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
+         case GROOVEPUTER_RIGHT: {
+             const bool right = (ui_event.scancode == GROOVEPUTER_RIGHT);
+             auto& led = mini_acid_.sceneManager().currentScene().led;
++            if (main_focus_ == MainFocus::MidiDevice) {
++                const auto pending =
++                    GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
++                const auto current = ProfileUi::profileFromPreview(
++                    midi_profile_preview_, pending);
++                const auto next = ProfileUi::stepSelectableProfile(
++                    current, right ? 1 : -1);
++                midi_profile_preview_ = ProfileUi::encodePreview(next);
++                return true;
++            }
+             if (main_focus_ == MainFocus::Volume) {
+                 mini_acid_.adjustParameter(MiniAcidParamId::MainVolume, right ? 1 : -1);
+                 return true;
+@@ -1320,6 +1347,27 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
+     }
+ 
+     if (key == '\n' || key == '\r') {
++        if (main_focus_ == MainFocus::MidiDevice) {
++            const auto pending =
++                GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
++            const auto selected = ProfileUi::profileFromPreview(
++                midi_profile_preview_, pending);
++            if (!GroovePuterPlatform::selectCardputerMidiDeviceProfileForNextBoot(
++                    selected)) {
++                UI::showToast("MIDI profile save failed", 1400);
++                return true;
++            }
++            midi_profile_preview_ = ProfileUi::encodePreview(selected);
++            char toast[64];
++            std::snprintf(
++                toast, sizeof(toast), "MIDI %s %s",
++                ProfileUi::shortName(selected),
++                GroovePuterPlatform::cardputerMidiDeviceProfileRestartRequired()
++                    ? "SAVED - REBOOT"
++                    : "ACTIVE");
++            UI::showToast(toast, 1400);
++            return true;
++        }
+         if (main_focus_ == MainFocus::Load) { openLoadDialog(); return true; }
+         if (main_focus_ == MainFocus::SaveAs) { openSaveDialog(); return true; }
+         if (main_focus_ == MainFocus::New) return createNewScene();
+@@ -1564,6 +1612,16 @@ void ProjectPage::draw(IGfx& gfx) {
+       case MainFocus::LedFlash:
+         std::snprintf(line, sizeof(line), "LED Flash  %ums", (unsigned)led.flashMs);
+         break;
++      case MainFocus::MidiDevice: {
++        const auto pending =
++            GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
++        const auto selected = ProfileUi::profileFromPreview(
++            midi_profile_preview_, pending);
++        std::snprintf(line, sizeof(line), "Device     <%s>%s",
++                      ProfileUi::shortName(selected),
++                      selected != pending ? "*" : "");
++        break;
++      }
+     }
+     Widgets::drawListRow(gfx, x, LayoutManager::lineY(rowBase + row), listW, line, selected);
+   }
+@@ -1584,8 +1642,28 @@ void ProjectPage::draw(IGfx& gfx) {
+   std::snprintf(perf2, sizeof(perf2), "Th:%s  M:%s",
+                 styleShortName(UI::currentStyle), grooveModeName(mini_acid_.grooveboxMode()));
+-  const char* infoLines[3] = {perf0, perf1, perf2};
+-  Widgets::drawInfoBox(gfx, infoX, LayoutManager::lineY(2), infoW, infoLines, 3);
++  if (section_ == ProjectSection::Midi) {
++    static char midi0[42];
++    static char midi1[42];
++    static char midi2[42];
++    const auto pending =
++        GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
++    const auto selected = ProfileUi::profileFromPreview(
++        midi_profile_preview_, pending);
++    std::snprintf(midi0, sizeof(midi0), "Saved:%s",
++                  ProfileUi::shortName(pending));
++    if (selected != pending) {
++      std::snprintf(midi1, sizeof(midi1), "Apply:ENTER SAVE");
++    } else if (GroovePuterPlatform::cardputerMidiDeviceProfileRestartRequired()) {
++      std::snprintf(midi1, sizeof(midi1), "Apply:REBOOT");
++    } else {
++      std::snprintf(midi1, sizeof(midi1), "Apply:ACTIVE");
++    }
++    std::snprintf(midi2, sizeof(midi2), "Tab:Section  </>:Edit");
++    const char* midiLines[3] = {midi0, midi1, midi2};
++    Widgets::drawInfoBox(gfx, infoX, LayoutManager::lineY(2), infoW, midiLines, 3);
++  } else {
++    const char* infoLines[3] = {perf0, perf1, perf2};
++    Widgets::drawInfoBox(gfx, infoX, LayoutManager::lineY(2), infoW, infoLines, 3);
++  }
+ 
+ }
+ 
+@@ -1597,12 +1675,15 @@ int ProjectPage::firstFocusInSection(int sectionIdx) {
+   if (sectionIdx == 0) return (int)ProjectPage::MainFocus::Load;
+   if (sectionIdx == 1) return (int)ProjectPage::MainFocus::VisualStyle;
+   if (sectionIdx == 2) return (int)ProjectPage::MainFocus::LedMode;
++  if (sectionIdx == 3) return (int)ProjectPage::MainFocus::MidiDevice;
+   return 0;
+ }
+ 
+ int ProjectPage::lastFocusInSection(int sectionIdx) {
+   if (sectionIdx == 0) return (int)ProjectPage::MainFocus::ClearProject;
+   if (sectionIdx == 1) return (int)ProjectPage::MainFocus::Volume;
+   if (sectionIdx == 2) return (int)ProjectPage::MainFocus::LedFlash;
++  if (sectionIdx == 3) return (int)ProjectPage::MainFocus::MidiDevice;
+   return 0;
+ }
+@@ -1612,6 +1693,7 @@ bool ProjectPage::focusInSection(int sectionIdx, int focusIdx) {
+   if (sectionIdx == 0) return f >= ProjectPage::MainFocus::Load && f <= ProjectPage::MainFocus::ClearProject;
+   if (sectionIdx == 1) return f >= ProjectPage::MainFocus::VisualStyle && f <= ProjectPage::MainFocus::Volume;
+   if (sectionIdx == 2) return f >= ProjectPage::MainFocus::LedMode && f <= ProjectPage::MainFocus::LedFlash;
++  if (sectionIdx == 3) return f == ProjectPage::MainFocus::MidiDevice;
+   return false;
+ }
