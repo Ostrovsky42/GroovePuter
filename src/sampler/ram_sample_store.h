@@ -152,6 +152,10 @@ private:
   bool seekIoSlot_(int index, uint64_t absoluteOffset);
   std::size_t readIoSlot_(int index, uint8_t* dst, std::size_t bytes);
 
+  // Audio never takes this mutex. It serializes filesystem/cache mutation
+  // between explicit preload/eviction calls and the dedicated refill worker.
+  std::mutex streamControlMutex_;
+
   std::array<SamplerStreamPage, kSamplerStreamPageCount> streamPages_{};
   int16_t* streamCacheMemory_ = nullptr;
 
