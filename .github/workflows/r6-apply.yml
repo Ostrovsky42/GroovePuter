@@ -58,6 +58,19 @@ jobs:
           PY
       - name: Apply deterministic R6 UX patch
         run: python3 tools/r6_apply.py
+      - name: Update cumulative R2 UX expectation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("tests/test_undo_owner_0_9_8_source_regressions.py")
+          text = path.read_text(encoding="utf-8")
+          old = 'UI::showToast("UNDO EXPIRED"'
+          new = 'UI::showToast("UNDO: EXPIRED"'
+          if text.count(old) != 1:
+              raise RuntimeError("expected exactly one legacy Pattern expired-toast assertion")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
       - name: Validate R6 focused contracts
         run: |
           git diff --check
