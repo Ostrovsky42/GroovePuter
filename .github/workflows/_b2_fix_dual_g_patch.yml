@@ -20,60 +20,59 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('src/ui/pages/pattern_edit_page.cpp')
+          p = Path("src/ui/pages/pattern_edit_page.cpp")
           s = p.read_text()
-
-          old = '''    auto& owner = GroovePuterUndo::undoOwner();
-    if (owner.kind() == UndoKind::Generation &&
-        owner.payloadSize() == sizeof(SynthPatternUndoPayload)) {
-'''
-          new = '''    auto& owner = GroovePuterUndo::undoOwner();
-    // Plain G uses the B1 quantized-generation receipt. Handle that exact
-    // larger payload first; the legacy/fallback G path below uses the compact
-    // SynthPattern receipt. Size discrimination prevents cross-decoding.
-    if (owner.kind() == UndoKind::Generation &&
-        owner.payloadSize() == GroovePuterRhythm::quantizedGenerationUndoPayloadSize()) {
-      const UndoResult result =
-          GroovePuterRhythm::undoLastQuantizedGeneration(mini_acid_);
-      switch (result) {
-        case UndoResult::Restored:
-          UI::showToast("UNDO: GENERATION", 900);
-          return true;
-        case UndoResult::NothingToUndo:
-          UI::showToast("NOTHING TO UNDO", 800);
-          return true;
-        case UndoResult::TargetUnavailable:
-          UI::showToast("UNDO: RETURN PAGE", 1000);
-          return true;
-        case UndoResult::Expired:
-          UI::showToast("UNDO EXPIRED", 900);
-          return true;
-        case UndoResult::KindMismatch:
-        default:
-          return false;
-      }
-    }
-    if (owner.kind() == UndoKind::Generation &&
-        owner.payloadSize() == sizeof(SynthPatternUndoPayload)) {
-'''
+          old = (
+              "    auto& owner = GroovePuterUndo::undoOwner();\n"
+              "    if (owner.kind() == UndoKind::Generation &&\n"
+              "        owner.payloadSize() == sizeof(SynthPatternUndoPayload)) {\n"
+          )
+          insert = (
+              "    auto& owner = GroovePuterUndo::undoOwner();\n"
+              "    // Plain G uses the B1 quantized-generation receipt. Handle that exact\n"
+              "    // larger payload first; the legacy/fallback G path below uses the compact\n"
+              "    // SynthPattern receipt. Size discrimination prevents cross-decoding.\n"
+              "    if (owner.kind() == UndoKind::Generation &&\n"
+              "        owner.payloadSize() == GroovePuterRhythm::quantizedGenerationUndoPayloadSize()) {\n"
+              "      const UndoResult result =\n"
+              "          GroovePuterRhythm::undoLastQuantizedGeneration(mini_acid_);\n"
+              "      switch (result) {\n"
+              "        case UndoResult::Restored:\n"
+              "          UI::showToast(\"UNDO: GENERATION\", 900);\n"
+              "          return true;\n"
+              "        case UndoResult::NothingToUndo:\n"
+              "          UI::showToast(\"NOTHING TO UNDO\", 800);\n"
+              "          return true;\n"
+              "        case UndoResult::TargetUnavailable:\n"
+              "          UI::showToast(\"UNDO: RETURN PAGE\", 1000);\n"
+              "          return true;\n"
+              "        case UndoResult::Expired:\n"
+              "          UI::showToast(\"UNDO EXPIRED\", 900);\n"
+              "          return true;\n"
+              "        case UndoResult::KindMismatch:\n"
+              "        default:\n"
+              "          return false;\n"
+              "      }\n"
+              "    }\n"
+              "    if (owner.kind() == UndoKind::Generation &&\n"
+              "        owner.payloadSize() == sizeof(SynthPatternUndoPayload)) {\n"
+          )
           if old not in s:
-              raise SystemExit('B2 undo discriminator anchor not found')
-          s = s.replace(old, new, 1)
-
-          old_mark = '''    if (result == QuantizedGenerationResult::CommittedNow)
-      GroovePuterState::markSceneMutated();
-
-    const char* label = "GEN FAILED";
-'''
-          new_mark = '''    // B1 commitPrepared() is the sole persistent revision owner. Do not
-    // advance Scene revision again here for CommittedNow.
-
-    const char* label = "GEN FAILED";
-'''
+              raise SystemExit("B2 undo discriminator anchor not found")
+          s = s.replace(old, insert, 1)
+          old_mark = (
+              "    if (result == QuantizedGenerationResult::CommittedNow)\n"
+              "      GroovePuterState::markSceneMutated();\n\n"
+              "    const char* label = \"GEN FAILED\";\n"
+          )
+          new_mark = (
+              "    // B1 commitPrepared() is the sole persistent revision owner. Do not\n"
+              "    // advance Scene revision again here for CommittedNow.\n\n"
+              "    const char* label = \"GEN FAILED\";\n"
+          )
           if old_mark not in s:
-              raise SystemExit('plain G duplicate revision anchor not found')
+              raise SystemExit("plain G duplicate revision anchor not found")
           s = s.replace(old_mark, new_mark, 1)
-
           p.write_text(s)
           PY
 
