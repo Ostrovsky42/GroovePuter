@@ -1,0 +1,46 @@
+name: 0.9.6 + 0.9.7 integration
+
+on:
+  pull_request:
+    branches:
+      - dev_0.9.6
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  output-ownership-and-device-profiles:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run 0.9.6 Output Ownership contracts
+        run: bash tests/run_output_ownership_tests.sh
+
+      - name: Run 0.9.7 R1 profile contract
+        run: bash tests/run_midi_device_profiles_0_9_7_tests.sh
+
+      - name: Run 0.9.7 R2 capability model
+        run: bash tests/run_midi_device_capabilities_0_9_7_tests.sh
+
+      - name: Run 0.9.7 R3 runtime owner
+        run: bash tests/run_midi_device_profile_runtime_0_9_7_tests.sh
+
+      - name: Run 0.9.7 R4 route projection
+        run: bash tests/run_midi_output_route_projection_0_9_7_tests.sh
+
+      - name: Run 0.9.7 R5 Pattern route binding
+        run: bash tests/run_midi_pattern_route_binding_0_9_7_tests.sh
+
+      - name: Run 0.9.7 R5a settings boot order
+        run: bash tests/run_midi_settings_boot_order_0_9_7_tests.sh
+
+      - name: Run 0.9.7 R6 Performance route binding
+        run: bash tests/run_midi_performance_route_binding_0_9_7_tests.sh
+
+      - name: Run 0.9.7 R7 next-boot profile selection
+        run: bash tests/run_midi_profile_selection_0_9_7_tests.sh
+
+      - name: Run 0.9.7 R8 Device Profile UI contract
+        run: bash tests/run_midi_device_profile_ui_0_9_7_tests.sh
