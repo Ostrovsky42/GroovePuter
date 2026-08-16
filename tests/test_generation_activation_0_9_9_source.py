@@ -109,7 +109,7 @@ for forbidden in ("restoreGenerationUndo", "restoreSynthPatternUndo", "setMode("
 
 # Undo of either receipt shape invalidates only a pending activation belonging
 # to the undone committed revision.
-large_undo = between(OWNER, "inline GroovePuterUndo::UndoResult undoLastQuantizedGeneration", "inline size_t quantizedGenerationUndoPayloadSize")
+large_undo = between(OWNER, "inline GroovePuterUndo::UndoResult undoLastQuantizedGeneration", "inline std::size_t quantizedGenerationUndoPayloadSize")
 require("committedRevision" in large_undo and "cancelPendingGenerationActivationForRevision" in large_undo,
         "large quantized Undo must invalidate matching pending activation")
 compact_undo = between(PATTERN, "owner.payloadSize() == sizeof(SynthPatternUndoPayload)", "using GroovePuterUndo::PatternEdit::adjustFxParam")
