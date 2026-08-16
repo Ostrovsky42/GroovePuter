@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_MIGRATION_QUANTIZED_GENERATION_UNDO_OWNER_IMPL_H
+#define GROOVEPUTER_GENERATION_MIGRATION_QUANTIZED_GENERATION_UNDO_OWNER_IMPL_H
 
 #include <cstddef>
 #include <type_traits>
@@ -321,3 +322,5 @@ inline std::size_t quantizedGenerationUndoPayloadSize() {
 }
 
 }  // namespace GroovePuterRhythm
+
+#endif  // GROOVEPUTER_GENERATION_MIGRATION_QUANTIZED_GENERATION_UNDO_OWNER_IMPL_H
