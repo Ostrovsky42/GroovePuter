@@ -127,9 +127,9 @@ def main() -> None:
             "withAudioGuard" not in note_write,
             "NOTE ENTRY writes must publish one canonical Pattern receipt")
 
-    # Generation remains outside R3. Plain G can produce PendingNextBar and is
-    # therefore part of the PREPARE/ACTIVATE handoff rather than a manual Pattern
-    # before/after edit. It must advance revision only on CommittedNow.
+    # Generation remains outside the manual R3 Pattern helper. Post-B1, plain G
+    # is quantized generation and the Generation UndoOwner is the sole revision
+    # owner; the page must not add the old second markSceneMutated transition.
     public_generate = between(
         CPP,
         "// Outside NOTE ENTRY, plain G rerolls only this physical synth voice",
@@ -137,20 +137,25 @@ def main() -> None:
     require("regenerateSynthWithQuantizedCommit" in public_generate and
             "PendingNextBar" in public_generate,
             "R3 must preserve quantized generation / pending behavior")
-    require("if (result == QuantizedGenerationResult::CommittedNow)" in public_generate and
-            "GroovePuterState::markSceneMutated();" in public_generate,
-            "plain G must advance persistent revision only for immediate commit")
+    require("GroovePuterState::markSceneMutated();" not in public_generate,
+            "plain G must not double-own revision after B1 Generation commit ownership")
     require("commitPatternMutation" not in public_generate,
-            "R3 must not claim 0.9.9 activation ownership for quantized generation")
+            "manual Pattern owner must not claim quantized generation")
 
+    # B2 closes the former R3 legacy-generation handoff separately. Its musical
+    # generator remains legacy-compatible, but persistent publication is now a
+    # Generation receipt rather than an unowned write plus manual revision mark.
     generated_legacy = between(
         wrapper,
-        "// Generation is intentionally not converted into a Pattern receipt in R3.",
+        "// B2 closes the R3 generation handoff",
         "if (keyF)")
-    require("handleEventLegacyUnowned(ui_event)" in generated_legacy and
-            "markSceneMutated" in generated_legacy and
+    require("preparePatternEditorGeneration" in generated_legacy and
+            "undoOwner().commitPrepared" in generated_legacy and
+            "UndoKind::Generation" in generated_legacy and
+            "handleEventLegacyUnowned(ui_event)" not in generated_legacy and
+            "markSceneMutated" not in generated_legacy and
             "commitPatternMutation" not in generated_legacy,
-            "legacy generation must remain outside Pattern receipt ownership but expire stale Undo")
+            "B2 legacy generation must use its dedicated canonical Generation receipt")
 
     # Pattern/bank selection is runtime-only. Song chaining is a separate
     # persistent domain and retains a revision advance only when it really writes.
