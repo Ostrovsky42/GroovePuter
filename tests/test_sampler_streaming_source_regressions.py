@@ -53,6 +53,7 @@ for forbidden in (
     "new ",
     "delete ",
     "lock_guard",
+    "streamControlMutex_",
 ):
     assert forbidden not in read_frame, f"audio read contains {forbidden}"
     assert forbidden not in request_frame, f"audio request contains {forbidden}"
@@ -67,6 +68,28 @@ assert "SD.open" in control_io or "std::fopen" in control_io
 assert "loadStreamPageControl_" in control_io
 assert "void RamSampleStore::serviceIo" in control_io
 
+# The worker and explicit control-plane preload/eviction serialize page/File
+# mutation without changing the lock-free audio contract.
+assert "std::mutex streamControlMutex_" in store_h
+preload = section(
+    store_cpp,
+    "bool RamSampleStore::preload(SampleId id)",
+    "bool RamSampleStore::preloadResident_",
+)
+service_io = section(
+    store_cpp,
+    "void RamSampleStore::serviceIo",
+    "SamplerStreamStats RamSampleStore::streamStats",
+)
+evict_lru = section(
+    store_cpp,
+    "void RamSampleStore::evictLRU()",
+    "std::size_t RamSampleStore::freePoolBytes",
+)
+assert "streamControlMutex_" in preload
+assert "streamControlMutex_" in service_io
+assert "streamControlMutex_" in evict_lru
+
 # Request generation is page-deduplicated and bounded.
 assert "pendingPageStart == pageStart" in request_frame
 assert "write - read >= static_cast<uint32_t>(kSamplerStreamRequestCapacity)" in request_frame
@@ -80,33 +103,42 @@ assert "kStreamDropFrames" in voice_h
 assert "source.storage == SampleStorageKind::Streamed" in voice_cpp
 
 # Prefetch follows 256-frame page boundaries and only runs once per entered
-# page. Two pages is the fixed V1 horizon; the old 64-frame lookahead is gone.
+# page. Two pages is the fixed V1 horizon; page/cache tuning remains a later
+# hardware gate, not part of the scheduling fix.
 assert "kStreamPageFrames = 256" in voice_h
 assert "kStreamPrefetchPages = 2" in voice_h
 assert "lastStreamPageStart_" in voice_h
 assert "requestStreamWindow_(store, frame)" in voice_h
 assert "kLookAheadFrames" not in voice_h
 
-# Streaming cache is reserved before catalog scan/UI lifetime fragmentation.
+# Streaming cache and the 3072-byte worker stack are reserved before catalog/UI
+# fragmentation. ESP-IDF dynamic task stack size is specified in bytes.
 cache_pos = boot.find("beginStreamingCache")
+worker_pos = boot.find("startSamplerIoTask()")
 scan_pos = boot.find("index.scanDirectory")
-assert cache_pos >= 0 and scan_pos >= 0 and cache_pos < scan_pos
+assert cache_pos >= 0 and worker_pos >= 0 and scan_pos >= 0
+assert cache_pos < worker_pos < scan_pos
 assert 'logSamplerRegistryHeap("before-stream-cache")' in boot
 assert 'logSamplerRegistryHeap("after-stream-cache")' in boot
+assert 'logSamplerRegistryHeap("after-stream-worker")' in boot
+assert "kSamplerIoTaskStackBytes = 3072" in boot
+assert "kSamplerIoTaskPriority = 1" in boot
+assert "kSamplerIoTaskCore = 0" in boot
+assert '"SamplerIoTask"' in boot
+assert "xTaskCreatePinnedToCore" in boot
+assert "g_sampleStore.serviceIo(1)" in boot
+assert "vTaskDelay(pdMS_TO_TICKS(1))" in boot
 
-# Page refill is serviced by the existing control-loop poll point before the
-# disabled Encoder8 early-return. No extra task/stack is introduced.
+# The Cardputer UI/input/Encoder8 poll must never synchronously perform sampler
+# SD refills again. This is the hardware regression that caused system-wide lag.
 encoder_update = section(
     encoder,
     "void Encoder8Miniacid::update()",
     "void Encoder8Miniacid::setInitialColors()",
 )
-service_pos = encoder_update.find("sampleStore->serviceIo(4)")
-early_return_pos = encoder_update.find("if (!sensor_initialized_) return")
-assert service_pos >= 0
-assert early_return_pos >= 0
-assert service_pos < early_return_pos
-assert "xTaskCreate" not in encoder_update
+assert "serviceIo" not in encoder_update
+assert "sampleStore" not in encoder_update
+assert "if (!sensor_initialized_) return" in encoder_update
 
 # The existing nested folder browser and stable selection path must survive.
 for required in (
