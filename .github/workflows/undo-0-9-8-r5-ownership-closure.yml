@@ -13,6 +13,7 @@ on:
       - 'src/state/undo_owner.h'
       - 'tests/run_undo_0_9_8_r5_tests.sh'
       - 'tests/test_undo_0_9_8_r5_ownership_closure.py'
+      - 'tests/test_song_generation_source_regressions.py'
       - '.github/workflows/undo-0-9-8-r5-ownership-closure.yml'
   pull_request:
     paths:
@@ -26,6 +27,7 @@ on:
       - 'src/state/undo_owner.h'
       - 'tests/run_undo_0_9_8_r5_tests.sh'
       - 'tests/test_undo_0_9_8_r5_ownership_closure.py'
+      - 'tests/test_song_generation_source_regressions.py'
       - '.github/workflows/undo-0-9-8-r5-ownership-closure.yml'
 
 jobs:
