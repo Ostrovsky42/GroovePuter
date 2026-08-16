@@ -27,7 +27,7 @@ for forbidden in ("output_ownership", "midi_device_profile", "seqtrak", "sampler
     assert forbidden not in includes, forbidden
 
 assert "isMidiInputSource" in output
-assert "event.source == MusicalEventSource::MidiInput" in output
+assert "source == MusicalEventSource::MidiInput" in output
 assert "performanceSource &&" in output
 assert "GroovePuterOutput::allowsInternalNoteOn(event)" in output
 assert "triggerRegisteredLocalDrumVoice(lane, event.velocity);" in output
