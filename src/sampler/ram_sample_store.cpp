@@ -389,6 +389,8 @@ bool RamSampleStore::beginStreamingCache() {
 }
 
 bool RamSampleStore::preload(SampleId id) {
+  std::lock_guard<std::mutex> streamLock(streamControlMutex_);
+
   for (auto& slot : slots_) {
     if (slot.id.load(std::memory_order_acquire) == id.value &&
         slot.ready.load(std::memory_order_acquire)) {
@@ -804,6 +806,7 @@ bool RamSampleStore::loadStreamPageControl_(SampleHandle handle,
 
 void RamSampleStore::serviceIo(std::size_t maxPages) {
   if (!streamingCacheReady() || maxPages == 0) return;
+  std::lock_guard<std::mutex> streamLock(streamControlMutex_);
 
   std::size_t processed = 0;
   while (processed < maxPages) {
@@ -827,8 +830,8 @@ void RamSampleStore::serviceIo(std::size_t maxPages) {
   }
 
   // File handles are part of the active-stream working set, not assignment
-  // state. Audio releases only the refCount; the control loop owns all File
-  // destruction and reaps a handle as soon as no voice references its source.
+  // state. Audio releases only the refCount; the control-side worker owns all
+  // File destruction and reaps a handle as soon as no voice references it.
   for (int i = 0; i < kSamplerStreamIoHandleCount; ++i) {
     const uint32_t sampleId = streamIo_[i].sampleId;
     if (sampleId == 0) continue;
@@ -956,6 +959,7 @@ bool RamSampleStore::evictOne_(bool residentOnly) {
 }
 
 void RamSampleStore::evictLRU() {
+  std::lock_guard<std::mutex> streamLock(streamControlMutex_);
   (void)evictOne_(false);
 }
 
