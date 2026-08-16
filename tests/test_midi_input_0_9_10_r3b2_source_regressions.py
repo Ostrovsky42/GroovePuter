@@ -12,11 +12,19 @@ required = [
     'parseUsbMidiRealtimeTransport(',
     'kCardputerUsbInputTransportId',
     'nextMidiInputSession()',
-    'g_midiInputRouter->panic();',
     'g_midiInputQueue->discardPendingFromConsumer();',
 ]
 for token in required:
     assert token in transport, token
+
+# R3b2 originally used a conservative input-wide panic on a USB lifetime edge.
+# R5 narrows that cleanup to the retired transport/session while preserving all
+# other R3b2 runtime ownership guarantees.
+if Path("docs/releases/0_9_10_R5_LIFECYCLE.md").exists():
+    assert 'g_midiInputRouter->releaseSession(' in transport
+else:
+    assert 'g_midiInputRouter->panic();' in transport
+
 assert "tud_midi_rx_cb" not in transport
 assert transport.count("tud_midi_packet_read(") == 1
 assert transport.count("xTaskCreateStaticPinnedToCore(") == 1
