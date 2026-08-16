@@ -10,7 +10,11 @@
 namespace {
 
 #if defined(ESP32) || defined(ESP_PLATFORM) || defined(ARDUINO)
-constexpr uint32_t kSamplerIoTaskStackBytes = 3072;
+// SD.open() enters a substantially deeper Arduino/FS call chain than idle
+// serviceIo(). Hardware tracing measured only 1300 bytes free before the first
+// refill; loadStreamPageControl_ then consumes about 624 bytes before SD.open,
+// overflowing the former 3072-byte task stack on transport START.
+constexpr uint32_t kSamplerIoTaskStackBytes = 4096;
 constexpr UBaseType_t kSamplerIoTaskPriority = 1;
 constexpr BaseType_t kSamplerIoTaskCore = 0;
 TaskHandle_t g_samplerIoTaskHandle = nullptr;

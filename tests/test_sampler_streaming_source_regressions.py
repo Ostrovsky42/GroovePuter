@@ -111,7 +111,7 @@ assert "lastStreamPageStart_" in voice_h
 assert "requestStreamWindow_(store, frame)" in voice_h
 assert "kLookAheadFrames" not in voice_h
 
-# Streaming cache and the 3072-byte worker stack are reserved before catalog/UI
+# Streaming cache and the 4096-byte worker stack are reserved before catalog/UI
 # fragmentation. ESP-IDF dynamic task stack size is specified in bytes.
 cache_pos = boot.find("beginStreamingCache")
 worker_call_pos = boot.find("if (!startSamplerIoTask())")
@@ -121,7 +121,7 @@ assert cache_pos < worker_call_pos < scan_pos
 assert 'logSamplerRegistryHeap("before-stream-cache")' in boot
 assert 'logSamplerRegistryHeap("after-stream-cache")' in boot
 assert 'logSamplerRegistryHeap("after-stream-worker")' in boot
-assert "kSamplerIoTaskStackBytes = 3072" in boot
+assert "kSamplerIoTaskStackBytes = 4096" in boot
 assert "kSamplerIoTaskPriority = 1" in boot
 assert "kSamplerIoTaskCore = 0" in boot
 assert '"SamplerIoTask"' in boot
