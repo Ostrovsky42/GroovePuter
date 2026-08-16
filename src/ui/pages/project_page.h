@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include "../ui_core.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
@@ -26,8 +28,8 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   std::unique_ptr<MultiPageHelpDialog> getHelpDialog() override;
   int getHelpFrameCount() const override;
   void drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const override;
-  enum class ProjectSection { Scenes = 0, Groove, Led };
-  enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, GrooveMode, GrooveFlavor, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash };
+  enum class ProjectSection { Scenes = 0, Groove, Led, Midi };
+  enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, GrooveMode, GrooveFlavor, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash, MidiDevice };
 
  private:
   enum class DialogType { None = 0, Load, SaveAs, ImportMidi, MidiAdvance, ConfirmClear };
@@ -153,6 +155,7 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
 
   bool midi_import_append_ = false;
   int midi_adv_scroll_ = 0;
+  uint8_t midi_profile_preview_ = 0xFF;
   std::string save_name_;
 };
 

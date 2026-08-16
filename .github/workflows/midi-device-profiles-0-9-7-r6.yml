@@ -1,0 +1,16 @@
+name: MIDI Device Profiles 0.9.7 R6
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  performance-route-binding:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run 0.9.7-R6 Performance route binding contract
+        run: bash tests/run_midi_performance_route_binding_0_9_7_tests.sh

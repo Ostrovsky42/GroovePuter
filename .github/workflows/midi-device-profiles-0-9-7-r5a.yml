@@ -1,0 +1,16 @@
+name: MIDI Device Profiles 0.9.7 R5a
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  settings-boot-order:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run 0.9.7-R5a boot-order contract
+        run: bash tests/run_midi_settings_boot_order_0_9_7_tests.sh

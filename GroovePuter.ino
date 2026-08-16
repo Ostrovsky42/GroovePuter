@@ -20,6 +20,7 @@
 #include "src/audio/audio_mutation_gate.h"
 #include "src/platform/cardputer_adv_hardware.h"
 #include "src/platform/cardputer_smf_player_registry.h"
+#include "src/platform/cardputer_midi_settings_session.h"
 #include "src/platform/cardputer_usb_midi_service.h"
 #include "src/platform/cardputer_wdt_diagnostics.h"
 #include "src/ui/key_normalize.h"
@@ -383,6 +384,11 @@ void setup() {
     Serial.println("[WARN] SMF runtime unavailable; groovebox remains usable");
   }
   markBootStage(85, "after SMF runtime init");
+
+  // Global MIDI settings must be restored before the dispatcher starts. The
+  // profile runtime is an input to later route projection; letting UI creation
+  // initialize it would make the USB task observe only the SEQTRAK fallback.
+  GroovePuterPlatform::initializeCardputerMidiSettingsSession();
 
   // Start the dispatcher before engine/UI activity. Its full 4KB stack is
   // statically reserved, so startup no longer depends on the largest free heap

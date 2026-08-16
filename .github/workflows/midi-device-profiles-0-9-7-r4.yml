@@ -1,0 +1,16 @@
+name: MIDI Device Profiles 0.9.7 R4
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  route-projection:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run 0.9.7-R4 route projection
+        run: bash tests/run_midi_output_route_projection_0_9_7_tests.sh
