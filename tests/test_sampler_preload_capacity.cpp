@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 namespace {
 
@@ -62,10 +63,11 @@ void testEvictsBeforeDecodeAllocation() {
 
   assert(gProbeCalls == 1);
   assert(gDecodeCalls == 1);
-  assert(gProbeBudget == 32);
+  assert(gProbeBudget == std::numeric_limits<std::size_t>::max());
 
-  // The store must evict the 16-byte oldest slot first, leaving 20 bytes of
-  // actual capacity, then permit decode/allocation with exactly that budget.
+  // Storage policy is chosen only after allocation-free metadata inspection.
+  // The resident branch must then evict the 16-byte oldest slot first,
+  // leaving 20 bytes of actual capacity and decode with exactly that budget.
   assert(gDecodeBudget == 20);
   assert(store.usage() == 28);
   assert(store.view({1}).empty());
