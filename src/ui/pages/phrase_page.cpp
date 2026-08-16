@@ -1,4 +1,6 @@
 #include "phrase_page.h"
+#include "src/state/undo_owner.h"
+#include "src/state/song_phrase_undo_receipts.h"
 
 #include <algorithm>
 #include <cctype>
@@ -545,6 +547,38 @@ bool PhrasePage::clearCurrentSlot() {
   return true;
 }
 
+bool PhrasePage::undoCurrentEdit() {
+  SceneManager& manager = mini_acid_.sceneManager();
+  auto& owner = GroovePuterUndo::undoOwner();
+  GroovePuterUndo::UndoResult result = GroovePuterUndo::UndoResult::KindMismatch;
+  if (owner.kind() == UndoKind::Phrase) {
+    result = owner.undoPrepared<GroovePuterUndo::PhraseBankUndoPayload>(
+        UndoKind::Phrase,
+        [](const GroovePuterUndo::PhraseBankUndoPayload&) { return true; },
+        [&](const GroovePuterUndo::PhraseBankUndoPayload& receipt) {
+          auto restore = [&]() { GroovePuterUndo::restorePhraseBankUndo(manager, receipt); };
+          if (audio_guard_) audio_guard_(restore); else restore();
+        });
+  } else if (owner.kind() == UndoKind::Song) {
+    result = owner.undoPrepared<GroovePuterUndo::SongUndoPayload>(
+        UndoKind::Song,
+        [&](const GroovePuterUndo::SongUndoPayload& receipt) {
+          return GroovePuterUndo::songUndoTargetAvailable(manager, receipt);
+        },
+        [&](const GroovePuterUndo::SongUndoPayload& receipt) {
+          auto restore = [&]() { GroovePuterUndo::restoreSongUndo(manager, receipt); };
+          if (audio_guard_) audio_guard_(restore); else restore();
+        });
+  }
+  if (result == GroovePuterUndo::UndoResult::Restored) {
+    preview_bar_ = 0; invalidatePreview(); UI::showToast("Undo: restored", 850); return true;
+  }
+  if (result == GroovePuterUndo::UndoResult::Expired) {
+    UI::showToast("Undo expired", 800); return true;
+  }
+  return false;
+}
+
 void PhrasePage::draw(IGfx& gfx) {
   const Scene& scene = mini_acid_.sceneManager().currentScene();
   const PhraseCore::SlotSummary current =
@@ -684,6 +718,10 @@ void PhrasePage::draw(IGfx& gfx) {
 }
 
 bool PhrasePage::handleEvent(UIEvent& ui_event) {
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+      ui_event.app_event_type == GROOVEPUTER_APP_EVENT_UNDO) {
+    return undoCurrentEdit();
+  }
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
   const int nav = UIInput::navCode(ui_event);

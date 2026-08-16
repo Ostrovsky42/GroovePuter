@@ -1,6 +1,8 @@
 #include "song_page.h"
 #include "../../../scenes.h"
 #include "../../debug_log.h"
+#include "../../state/undo_owner.h"
+#include "../../state/song_phrase_undo_receipts.h"
 #include "../key_normalize.h"
 #include "../ui_input.h"
 #include "../ui_common.h"
@@ -98,54 +100,83 @@ struct SongSlotClipboard {
   int source_slot = 0;
 };
 
-enum class UndoActionType {
-  None,
-  Paste,
-  Cut,
-  Delete,
-};
+enum class UndoActionType : uint8_t { None, Paste, Cut, Delete };
 
-struct UndoCell {
-  int row;
-  int track;
-  int pattern_index;
-};
+struct UndoCell { int row; int track; int pattern_index; };
 
-struct UndoHistory {
+// R4 compatibility shim only: application Cut/Paste/Undo are intercepted by
+// SongPage::handleEvent before the retained legacy handler. It owns no history
+// payload and therefore cannot become a second Undo owner.
+struct LegacyUndoHistoryDisabled {
   UndoActionType action_type = UndoActionType::None;
-  std::vector<UndoCell> cells;
-  
-  void clear() {
-    action_type = UndoActionType::None;
-    cells.clear();
-  }
-  
-  void saveSingleCell(int row, int track, int pattern_index) {
-    cells.clear();
-    cells.push_back({row, track, pattern_index});
-  }
-  
-  void saveArea(int min_row, int max_row, int min_track, int max_track, 
-                const std::vector<int>& pattern_indices) {
-    cells.clear();
-    int idx = 0;
-    for (int r = min_row; r <= max_row; ++r) {
-      for (int t = min_track; t <= max_track; ++t) {
-        if (idx < static_cast<int>(pattern_indices.size())) {
-          cells.push_back({r, t, pattern_indices[idx]});
-        }
-        ++idx;
-      }
-    }
-  }
+  std::array<UndoCell, 0> cells{};
+  void clear() { action_type = UndoActionType::None; }
+  void saveSingleCell(int, int, int) {}
+  void saveArea(int, int, int, int, const std::vector<int>&) {}
 };
 
 SongPatternClipboard g_song_pattern_clipboard;
 SongAreaClipboard g_song_area_clipboard;
 SongSlotClipboard g_song_slot_clipboard;
-UndoHistory g_undo_history;
+LegacyUndoHistoryDisabled g_undo_history;
 
 // Little lock icon (5x6) for LiveMix/Edit Protection
+inline int songTrackIndex(SongTrack track) {
+  const int index = static_cast<int>(track);
+  return index >= 0 && index < SongPosition::kTrackCount ? index : -1;
+}
+
+inline int songPatternValue(const Song& song, int row, SongTrack track) {
+  const int index = songTrackIndex(track);
+  if (row < 0 || row >= Song::kMaxPositions || index < 0) return -1;
+  return song.positions[row].patterns[index];
+}
+
+inline void setSongPatternValue(Song& song, int row, SongTrack track, int value) {
+  const int index = songTrackIndex(track);
+  if (row < 0 || row >= Song::kMaxPositions || index < 0) return;
+  song.positions[row].patterns[index] = static_cast<int16_t>(value);
+  if (value >= 0 && row >= song.length) song.length = row + 1;
+}
+
+inline void clearSongPatternValue(Song& song, int row, SongTrack track) {
+  const int index = songTrackIndex(track);
+  if (row < 0 || row >= Song::kMaxPositions || index < 0) return;
+  song.positions[row].patterns[index] = -1;
+}
+
+inline void clearSongValue(Song& song) {
+  for (int r = 0; r < Song::kMaxPositions; ++r) {
+    for (int t = 0; t < SongPosition::kTrackCount; ++t) song.positions[r].patterns[t] = -1;
+  }
+  song.length = 1;
+  song.reverse = false;
+}
+
+inline bool insertSongRowValue(Song& song, int position) {
+  const int used = std::clamp(song.length, 1, Song::kMaxPositions);
+  if (used >= Song::kMaxPositions) return false;
+  const int pos = std::clamp(position, 0, used);
+  for (int row = used; row > pos; --row) song.positions[row] = song.positions[row - 1];
+  for (int t = 0; t < SongPosition::kTrackCount; ++t) song.positions[pos].patterns[t] = -1;
+  song.length = used + 1;
+  return true;
+}
+
+inline bool deleteSongRowValue(Song& song, int position) {
+  int used = std::clamp(song.length, 1, Song::kMaxPositions);
+  const int pos = std::clamp(position, 0, used - 1);
+  if (used <= 1) {
+    for (int t = 0; t < SongPosition::kTrackCount; ++t) song.positions[0].patterns[t] = -1;
+    song.length = 1;
+    return true;
+  }
+  for (int row = pos; row < used - 1; ++row) song.positions[row] = song.positions[row + 1];
+  for (int t = 0; t < SongPosition::kTrackCount; ++t) song.positions[used - 1].patterns[t] = -1;
+  song.length = used - 1;
+  return true;
+}
+
 inline void drawLockIcon(IGfx& gfx, int x, int y, IGfxColor color) {
   // Shackle (3x2)
   gfx.drawPixel(x + 1, y, color);
@@ -659,90 +690,66 @@ int SongPage::patternIndexFromKey(char key) const {
 
 bool SongPage::adjustSongPatternAtCursor(int delta) {
   bool trackValid = false;
-  SongTrack track = trackForColumn(cursorTrack(), trackValid);
+  const SongTrack track = trackForColumn(cursorTrack(), trackValid);
   if (!trackValid) return false;
-  int row = cursorRow();
-  int current = mini_acid_.songPatternAt(row, track);
-  int maxPattern = kMaxGlobalPatterns - 1;
+  const int row = cursorRow();
+  Scene& scene = mini_acid_.sceneManager().currentScene();
+  const int slot = std::clamp(scene.activeSongSlot, 0, 1);
+  Song after = scene.songs[slot];
+  const int current = songPatternValue(after, row, track);
   int next = current;
   if (delta > 0) next = current < 0 ? 0 : current + 1;
   else if (delta < 0) next = current < 0 ? -1 : current - 1;
-  if (next > maxPattern) next = maxPattern;
-  if (next < -1) next = -1;
+  next = std::clamp(next, -1, kMaxGlobalPatterns - 1);
   if (next == current) return false;
-  withAudioGuard([&]() {
-    if (next < 0) mini_acid_.clearSongPattern(row, track);
-    else mini_acid_.setSongPattern(row, track, next);
-    if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
-      mini_acid_.setSongPosition(row);
-    }
-  });
-  return true;
+  if (next < 0) clearSongPatternValue(after, row, track);
+  else setSongPatternValue(after, row, track, next);
+  return commitPreparedSong(slot, after, row);
 }
 
 bool SongPage::flipSongPatternBankAtCursorOrSelection() {
   auto flipPattern = [](int pattern) -> int {
     if (pattern < 0) return pattern;
-    int bank = songPatternBank(pattern);
-    int slot = songPatternIndexInBank(pattern);
-    if (bank < 0 || slot < 0) return pattern;
-    int flippedBank = (bank == 0) ? 1 : 0;
-    int page = songPatternPage(pattern);
-    return songPatternFromPageBankIndex(page, flippedBank, slot);
+    const int bank = songPatternBank(pattern);
+    const int index = songPatternIndexInBank(pattern);
+    if (bank < 0 || index < 0) return pattern;
+    return songPatternFromPageBankIndex(songPatternPage(pattern), bank == 0 ? 1 : 0, index);
   };
-
+  Scene& scene = mini_acid_.sceneManager().currentScene();
+  const int slot = std::clamp(scene.activeSongSlot, 0, 1);
+  Song after = scene.songs[slot];
+  int changed = 0;
+  int preferred = cursorRow();
   if (has_selection_) {
     int min_row, max_row, min_track, max_track;
     getSelectionBounds(min_row, max_row, min_track, max_track);
-    if (min_track < 0) min_track = 0;
-    int maxCol = maxPatternTrackColumn();
-    if (max_track > maxCol) max_track = maxCol;
+    min_track = std::max(0, min_track);
+    max_track = std::min(maxPatternTrackColumn(), max_track);
     if (min_track > max_track) return false;
-
-    int changed = 0;
-    withAudioGuard([&]() {
-      for (int r = min_row; r <= max_row; ++r) {
-        for (int t = min_track; t <= max_track; ++t) {
-          bool valid = false;
-          SongTrack track = trackForColumn(t, valid);
-          if (!valid) continue;
-          int current = mini_acid_.songPatternAt(r, track);
-          int next = flipPattern(current);
-          if (next != current) {
-            mini_acid_.setSongPattern(r, track, next);
-            ++changed;
-          }
-        }
+    preferred = min_row;
+    for (int r = min_row; r <= max_row; ++r) {
+      for (int t = min_track; t <= max_track; ++t) {
+        bool valid = false;
+        const SongTrack track = trackForColumn(t, valid);
+        if (!valid) continue;
+        const int current = songPatternValue(after, r, track);
+        const int next = flipPattern(current);
+        if (next != current) { setSongPatternValue(after, r, track, next); ++changed; }
       }
-      if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
-        mini_acid_.setSongPosition(min_row);
-      }
-    });
-
+    }
     clearSelection();
-    if (changed > 0) {
-      char toast[40];
-      std::snprintf(toast, sizeof(toast), "Bank flip: %d", changed);
-      showToast(toast, 900);
-    }
-    return changed > 0;
+  } else {
+    bool valid = false;
+    const SongTrack track = trackForColumn(cursorTrack(), valid);
+    if (!valid) return false;
+    const int current = songPatternValue(after, preferred, track);
+    const int next = flipPattern(current);
+    if (next != current) { setSongPatternValue(after, preferred, track, next); ++changed; }
   }
-
-  bool trackValid = false;
-  SongTrack track = trackForColumn(cursorTrack(), trackValid);
-  if (!trackValid) return false;
-  int row = cursorRow();
-  int current = mini_acid_.songPatternAt(row, track);
-  int next = flipPattern(current);
-  if (next == current) return false;
-  withAudioGuard([&]() {
-    mini_acid_.setSongPattern(row, track, next);
-    if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
-      mini_acid_.setSongPosition(row);
-    }
-  });
-  showToast("Bank flip", 700);
-  return true;
+  if (changed == 0) return false;
+  const bool committed = commitPreparedSong(slot, after, preferred);
+  if (committed) showToast(changed == 1 ? "Bank flip" : "Bank flip selection", 800);
+  return committed;
 }
 
 bool SongPage::adjustSongPlayhead(int delta) {
@@ -763,153 +770,94 @@ bool SongPage::adjustSongPlayhead(int delta) {
 
 bool SongPage::assignPattern(int patternIdx) {
   if (cursorOnModeButton()) return false;
-
-  // If we have a selection, fill the entire selected area
+  Scene& scene = mini_acid_.sceneManager().currentScene();
+  const int slot = std::clamp(scene.activeSongSlot, 0, 1);
+  Song after = scene.songs[slot];
+  const int combined = songPatternFromPageBankIndex(
+      mini_acid_.currentPageIndex(), assignment_bank_index_, patternIdx);
+  int preferred = cursorRow();
   if (has_selection_) {
     int min_row, max_row, min_track, max_track;
     getSelectionBounds(min_row, max_row, min_track, max_track);
-    // Selection can include non-track columns (playhead/mode). Clamp to real track cells.
-    if (min_track < 0) min_track = 0;
-    int maxCol = maxPatternTrackColumn();
-    if (max_track > maxCol) max_track = maxCol;
-    if (min_track > max_track) {
-      LOG_WARN_UI("Selection does not include track columns: [%d..%d]", min_track, max_track);
-      return false;
-    }
-    LOG_INFO_UI("Fill selection [%d-%d] x [%d-%d] with pattern %d",
-                min_row, max_row, min_track, max_track, patternIdx);
-    int write_count = 0;
-    int changed_count = 0;
-    withAudioGuard([&]() {
-      for (int r = min_row; r <= max_row; ++r) {
-        for (int t = min_track; t <= max_track; ++t) {
-          bool valid = false;
-          SongTrack track = trackForColumn(t, valid);
-          if (!valid) continue;
-          int bankIndex = assignment_bank_index_;
-          int combined = songPatternFromPageBankIndex(mini_acid_.currentPageIndex(), bankIndex, patternIdx);
-          int before = mini_acid_.songPatternAt(r, track);
-          mini_acid_.setSongPattern(r, track, combined);
-          int after = mini_acid_.songPatternAt(r, track);
-          ++write_count;
-          if (before != after) ++changed_count;
-          LOG_DEBUG_UI("Fill cell r=%d c=%d track=%d before=%d target=%d after=%d",
-                       r, t, (int)track, before, combined, after);
-        }
+    min_track = std::max(0, min_track);
+    max_track = std::min(maxPatternTrackColumn(), max_track);
+    if (min_track > max_track) return false;
+    preferred = min_row;
+    for (int r = min_row; r <= max_row; ++r) {
+      for (int t = min_track; t <= max_track; ++t) {
+        bool valid = false;
+        const SongTrack track = trackForColumn(t, valid);
+        if (valid) setSongPatternValue(after, r, track, combined);
       }
-    });
-    clearSelection();
-    char toast[48];
-    std::snprintf(toast, sizeof(toast), "Fill %d/%d -> P%d",
-                  changed_count, write_count, patternIdx + 1);
-    showToast(toast, 1200);
-    LOG_INFO_UI("Fill result: changed=%d/%d", changed_count, write_count);
-    return true;
-  }
-
-  // Single cell: assign to cursor position
-  bool trackValid = false;
-  SongTrack track = trackForColumn(cursorTrack(), trackValid);
-  if (!trackValid) return false;
-  int row = cursorRow();
-  int bankIndex = assignment_bank_index_;
-  int combined = songPatternFromPageBankIndex(mini_acid_.currentPageIndex(), bankIndex, patternIdx);
-  withAudioGuard([&]() {
-    mini_acid_.setSongPattern(row, track, combined);
-    if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
-      mini_acid_.setSongPosition(row);
     }
-  });
-  return true;
+    clearSelection();
+  } else {
+    bool valid = false;
+    const SongTrack track = trackForColumn(cursorTrack(), valid);
+    if (!valid) return false;
+    setSongPatternValue(after, preferred, track, combined);
+  }
+  return commitPreparedSong(slot, after, preferred);
 }
 
 bool SongPage::clearPattern() {
+  Scene& scene = mini_acid_.sceneManager().currentScene();
+  const int slot = std::clamp(scene.activeSongSlot, 0, 1);
+  Song after = scene.songs[slot];
+  int preferred = cursorRow();
+  int cleared = 0;
   if (has_selection_) {
     int min_row, max_row, min_track, max_track;
     getSelectionBounds(min_row, max_row, min_track, max_track);
-    if (min_track < 0) min_track = 0;
-    int maxCol = maxPatternTrackColumn();
-    if (max_track > maxCol) max_track = maxCol;
+    min_track = std::max(0, min_track);
+    max_track = std::min(maxPatternTrackColumn(), max_track);
     if (min_track > max_track) return false;
-
-    std::vector<int> old_patterns;
-    old_patterns.reserve((max_row - min_row + 1) * (max_track - min_track + 1));
-    int cleared = 0;
-
-    withAudioGuard([&]() {
-      for (int r = min_row; r <= max_row; ++r) {
-        for (int t = min_track; t <= max_track; ++t) {
-          bool valid = false;
-          SongTrack track = trackForColumn(t, valid);
-          if (!valid) continue;
-          int before = mini_acid_.songPatternAt(r, track);
-          old_patterns.push_back(before);
-          if (before >= 0) ++cleared;
-          mini_acid_.clearSongPattern(r, track);
-        }
+    preferred = min_row;
+    for (int r = min_row; r <= max_row; ++r) {
+      for (int t = min_track; t <= max_track; ++t) {
+        bool valid = false;
+        const SongTrack track = trackForColumn(t, valid);
+        if (!valid) continue;
+        if (songPatternValue(after, r, track) >= 0) ++cleared;
+        clearSongPatternValue(after, r, track);
       }
-      if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
-        mini_acid_.setSongPosition(min_row);
-      }
-    });
-
-    g_undo_history.action_type = UndoActionType::Delete;
-    g_undo_history.saveArea(min_row, max_row, min_track, max_track, old_patterns);
-    clearSelection();
-    char toast[48];
-    std::snprintf(toast, sizeof(toast), "Cleared %d cells", cleared);
-    showToast(toast, 900);
-    return true;
-  }
-
-  bool trackValid = false;
-  SongTrack track = trackForColumn(cursorTrack(), trackValid);
-  if (!trackValid) return false;
-  int row = cursorRow();
-  
-  // Save undo state
-  int current_pattern = mini_acid_.songPatternAt(row, track);
-  g_undo_history.action_type = UndoActionType::Delete;
-  g_undo_history.saveSingleCell(row, cursorTrack(), current_pattern);
-  
-  withAudioGuard([&]() {
-    mini_acid_.clearSongPattern(row, track);
-    if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
-      mini_acid_.setSongPosition(row);
     }
-  });
-  return true;
+    clearSelection();
+  } else {
+    bool valid = false;
+    const SongTrack track = trackForColumn(cursorTrack(), valid);
+    if (!valid) return false;
+    if (songPatternValue(after, preferred, track) >= 0) ++cleared;
+    clearSongPatternValue(after, preferred, track);
+  }
+  if (cleared == 0) return true;
+  const bool committed = commitPreparedSong(slot, after, preferred);
+  if (committed && cleared > 1) {
+    char toast[48]; std::snprintf(toast, sizeof(toast), "Cleared %d cells", cleared); showToast(toast, 900);
+  }
+  return committed;
 }
 
 bool SongPage::insertRowAtCursor() {
-  int row = cursorRow();
-  withAudioGuard([&]() {
-    mini_acid_.insertSongRow(row);
-    if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
-      mini_acid_.setSongPosition(row);
-    }
-  });
-  char toast[32];
-  std::snprintf(toast, sizeof(toast), "INS row %d", row + 1);
-  showToast(toast, 900);
+  const int row = cursorRow();
+  Scene& scene = mini_acid_.sceneManager().currentScene();
+  const int slot = std::clamp(scene.activeSongSlot, 0, 1);
+  Song after = scene.songs[slot];
+  if (!insertSongRowValue(after, row)) return false;
+  if (!commitPreparedSong(slot, after, row)) return false;
+  char toast[32]; std::snprintf(toast, sizeof(toast), "INS row %d", row + 1); showToast(toast, 900);
   return true;
 }
 
 bool SongPage::deleteRowAtCursor() {
-  int row = cursorRow();
-  withAudioGuard([&]() {
-    mini_acid_.deleteSongRow(row);
-    if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
-      int newPos = row;
-      int len = mini_acid_.songLength();
-      if (newPos >= len) newPos = std::max(0, len - 1);
-      mini_acid_.setSongPosition(newPos);
-    }
-  });
+  const int row = cursorRow();
+  Scene& scene = mini_acid_.sceneManager().currentScene();
+  const int slot = std::clamp(scene.activeSongSlot, 0, 1);
+  Song after = scene.songs[slot];
+  if (!deleteSongRowValue(after, row)) return false;
+  if (!commitPreparedSong(slot, after, row)) return false;
   cursor_row_ = clampCursorRow(cursor_row_);
-  char toast[32];
-  std::snprintf(toast, sizeof(toast), "DEL row %d", row + 1);
-  showToast(toast, 900);
+  char toast[32]; std::snprintf(toast, sizeof(toast), "DEL row %d", row + 1); showToast(toast, 900);
   return true;
 }
 
@@ -958,7 +906,7 @@ void SongPage::setScrollToPlayhead(int playhead) {
   }
 }
 
-bool SongPage::handleEvent(UIEvent& ui_event) {
+bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
   // Handle mode button clicks
   if (mode_button_initialized_ && mode_button_container_.handleEvent(ui_event)) {
     return true;
@@ -3197,4 +3145,169 @@ bool SongPage::generateEntireRow() {
                       mini_acid_.genreManager().recipe()));
     showToast(message, 1100);
     return true;
+}
+
+
+bool SongPage::commitPreparedSong(int songSlot, const Song& after, int preferredPosition) {
+  SceneManager& manager = mini_acid_.sceneManager();
+  GroovePuterUndo::SongUndoPayload before{};
+  if (!GroovePuterUndo::captureSongUndo(manager, songSlot, before)) return false;
+  if (GroovePuterUndo::songsEqual(before.before, after)) return false;
+  return GroovePuterUndo::undoOwner().commitPrepared(
+      UndoKind::Song, before, [&]() {
+        withRuntimeAudioGuard([&]() {
+          manager.currentScene().songs[songSlot] = after;
+          if (manager.currentScene().activeSongSlot == songSlot &&
+              mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
+            const int length = std::clamp(after.length, 1, Song::kMaxPositions);
+            mini_acid_.setSongPosition(std::clamp(preferredPosition, 0, length - 1));
+          }
+        });
+      });
+}
+
+bool SongPage::undoSongMutation() {
+  SceneManager& manager = mini_acid_.sceneManager();
+  const GroovePuterUndo::UndoResult result =
+      GroovePuterUndo::undoOwner().undoPrepared<GroovePuterUndo::SongUndoPayload>(
+          UndoKind::Song,
+          [&](const GroovePuterUndo::SongUndoPayload& receipt) {
+            return GroovePuterUndo::songUndoTargetAvailable(manager, receipt);
+          },
+          [&](const GroovePuterUndo::SongUndoPayload& receipt) {
+            withRuntimeAudioGuard([&]() {
+              GroovePuterUndo::restoreSongUndo(manager, receipt);
+              if (manager.currentScene().activeSongSlot == receipt.songSlot &&
+                  mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
+                const int length = std::clamp(receipt.before.length, 1, Song::kMaxPositions);
+                mini_acid_.setSongPosition(std::clamp(cursorRow(), 0, length - 1));
+              }
+            });
+          });
+  if (result == GroovePuterUndo::UndoResult::Restored) {
+    cursor_row_ = clampCursorRow(cursor_row_);
+    showToast("Undo: Song restored", 850);
+    return true;
+  }
+  if (result == GroovePuterUndo::UndoResult::Expired) {
+    showToast("Undo expired", 800);
+    return true;
+  }
+  return false;
+}
+
+bool SongPage::handleEvent(UIEvent& ui_event) {
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT) {
+    const bool wholeSongScope = cursorOnModeButton() || cursorOnPlayheadLabel();
+    bool trackValid = false;
+    const SongTrack track = trackForColumn(cursorTrack(), trackValid);
+    Scene& scene = mini_acid_.sceneManager().currentScene();
+    const int slot = std::clamp(scene.activeSongSlot, 0, 1);
+
+    if (ui_event.app_event_type == GROOVEPUTER_APP_EVENT_UNDO) return undoSongMutation();
+
+    if (ui_event.app_event_type == GROOVEPUTER_APP_EVENT_CUT) {
+      Song after = scene.songs[slot];
+      int preferred = cursorRow();
+      if (wholeSongScope) {
+        g_song_slot_clipboard.song = after;
+        g_song_slot_clipboard.source_slot = slot;
+        g_song_slot_clipboard.has_song = true;
+        g_song_area_clipboard.has_area = false;
+        g_song_pattern_clipboard.has_pattern = false;
+        clearSongValue(after);
+        preferred = 0;
+      } else if (has_selection_) {
+        int min_row, max_row, min_track, max_track;
+        getSelectionBounds(min_row, max_row, min_track, max_track);
+        min_track = std::max(0, min_track);
+        max_track = std::min(maxPatternTrackColumn(), max_track);
+        if (min_track > max_track) return false;
+        g_song_area_clipboard.pattern_indices.clear();
+        g_song_area_clipboard.rows = max_row - min_row + 1;
+        g_song_area_clipboard.tracks = max_track - min_track + 1;
+        for (int r = min_row; r <= max_row; ++r) {
+          for (int t = min_track; t <= max_track; ++t) {
+            bool valid = false; const SongTrack tr = trackForColumn(t, valid);
+            g_song_area_clipboard.pattern_indices.push_back(valid ? songPatternValue(after, r, tr) : -1);
+            if (valid) clearSongPatternValue(after, r, tr);
+          }
+        }
+        g_song_area_clipboard.has_area = true;
+        g_song_pattern_clipboard.has_pattern = false;
+        preferred = min_row;
+      } else {
+        if (!trackValid) return false;
+        const int row = cursorRow();
+        g_song_pattern_clipboard.pattern_index = songPatternValue(after, row, track);
+        g_song_pattern_clipboard.has_pattern = true;
+        g_song_area_clipboard.has_area = false;
+        clearSongPatternValue(after, row, track);
+        preferred = row;
+      }
+      const bool committed = commitPreparedSong(slot, after, preferred);
+      if (committed && wholeSongScope) showToast("Song cut", 900);
+      return committed;
+    }
+
+    if (ui_event.app_event_type == GROOVEPUTER_APP_EVENT_PASTE) {
+      Song after = scene.songs[slot];
+      int preferred = cursorRow();
+      if (wholeSongScope) {
+        if (!g_song_slot_clipboard.has_song) return false;
+        after = g_song_slot_clipboard.song;
+        preferred = 0;
+      } else if (g_song_area_clipboard.has_area) {
+        int startRow = cursorRow();
+        int startTrack = cursorTrack();
+        if (has_selection_) {
+          int maxRow, maxTrack; getSelectionBounds(startRow, maxRow, startTrack, maxTrack);
+        }
+        const int tracks = std::min(g_song_area_clipboard.tracks,
+                                    maxPatternTrackColumn() - startTrack + 1);
+        if (tracks <= 0) return false;
+        int index = 0;
+        for (int r = 0; r < g_song_area_clipboard.rows; ++r) {
+          for (int t = 0; t < g_song_area_clipboard.tracks; ++t, ++index) {
+            if (t >= tracks || startRow + r >= Song::kMaxPositions ||
+                index >= static_cast<int>(g_song_area_clipboard.pattern_indices.size())) continue;
+            bool valid = false; const SongTrack tr = trackForColumn(startTrack + t, valid);
+            if (!valid) continue;
+            const int value = g_song_area_clipboard.pattern_indices[index];
+            if (value < 0) clearSongPatternValue(after, startRow + r, tr);
+            else setSongPatternValue(after, startRow + r, tr, value);
+          }
+        }
+        preferred = startRow;
+      } else if (g_song_pattern_clipboard.has_pattern) {
+        if (!trackValid) return false;
+        const int row = cursorRow();
+        const int value = g_song_pattern_clipboard.pattern_index;
+        if (value < 0) clearSongPatternValue(after, row, track);
+        else setSongPatternValue(after, row, track, value);
+        preferred = row;
+      } else {
+        return false;
+      }
+      const bool committed = commitPreparedSong(slot, after, preferred);
+      if (has_selection_) clearSelection();
+      if (committed && wholeSongScope) showToast("Song pasted", 900);
+      return committed;
+    }
+
+    return handleEventLegacyUnowned(ui_event);
+  }
+
+  if (ui_event.event_type == GROOVEPUTER_KEY_DOWN && ui_event.alt &&
+      (ui_event.key == '\b' || ui_event.key == 0x7F)) {
+    Scene& scene = mini_acid_.sceneManager().currentScene();
+    const int slot = std::clamp(scene.activeSongSlot, 0, 1);
+    Song after = scene.songs[slot];
+    clearSongValue(after);
+    const bool committed = commitPreparedSong(slot, after, 0);
+    if (committed) { clearSelection(); showToast("Song reset", 900); }
+    return committed;
+  }
+
+  return handleEventLegacyUnowned(ui_event);
 }

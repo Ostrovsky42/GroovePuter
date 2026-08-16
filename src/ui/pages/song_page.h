@@ -8,6 +8,8 @@
 #include "../../dsp/pattern_generator.h"
 #include "../../dsp/song_pattern_materializer.h"
 #include "src/state/scene_revision.h"
+#include "src/state/undo_owner.h"
+#include "src/state/song_phrase_undo_receipts.h"
 
 class SongPage : public IPage, public IMultiHelpFramesProvider {
  public:
@@ -89,6 +91,9 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   // NEW: Row manipulation
   bool insertRowAtCursor();
   bool deleteRowAtCursor();
+  bool handleEventLegacyUnowned(UIEvent& ui_event);
+  bool commitPreparedSong(int songSlot, const Song& after, int preferredPosition);
+  bool undoSongMutation();
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;

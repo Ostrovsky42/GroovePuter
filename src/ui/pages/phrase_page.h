@@ -32,6 +32,7 @@ class PhrasePage : public IPage {
   bool deriveFromParent();
   bool writeToCurrentRow(bool overwrite);
   bool clearCurrentSlot();
+  bool undoCurrentEdit();
   void invalidatePreview();
   void refreshPreview();
   void showResult(const char* action, const PhraseCore::Result& result);
