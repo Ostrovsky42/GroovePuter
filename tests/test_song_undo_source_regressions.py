@@ -22,15 +22,33 @@ def main() -> None:
             "Song shortcut must route through the existing application Undo event")
     require("case GROOVEPUTER_APP_EVENT_UNDO" in SONG,
             "existing Song Undo handler must remain reachable")
-    require("withAudioGuard([&]()" in SONG and "g_undo_history.clear();" in SONG,
-            "Undo restore must remain audio-guarded and one-step")
-    require('showToast("Nothing to undo"' in SONG,
-            "empty Undo must be a safe handled no-op with feedback")
-    require('showToast("Undo: restored"' in SONG,
-            "successful Undo must provide explicit feedback")
+
+    require("static constexpr int kMaxCells = Song::kMaxPositions * kMaxTracks" in SONG,
+            "Undo payload must have an explicit compile-time cell bound")
+    require("static_assert(UndoHistory::kMaxCells == 512" in SONG,
+            "Undo bound must stay explicit for the current Song schema")
+    require("static_assert(sizeof(UndoHistory) <= 1056" in SONG,
+            "Undo DRAM budget must stay compile-time guarded")
+    require("std::vector<UndoCell>" not in SONG,
+            "Undo history must not allocate a dynamic cell vector")
+    require("std::vector<int> old_patterns" not in SONG,
+            "destructive Song edits must not allocate transient undo vectors")
+    require("SongTrack tracks[kMaxTracks]" in SONG,
+            "Undo must capture stable SongTrack identity, not lane-focus columns")
+    require("mutation_revision == GroovePuterState::sceneRevisionSnapshot().currentRevision" in SONG,
+            "Undo receipt must expire after a newer Scene mutation")
+    require('showToast("Undo expired"' in SONG,
+            "stale Undo must fail closed with feedback")
+    require("old_song_length" in SONG and "old_song_reverse" in SONG,
+            "Undo must restore Song structural metadata affected by whole-Song operations")
+    require("captureWholeSong(UndoActionType::Cut" in SONG and
+            "captureWholeSong(UndoActionType::Paste" in SONG,
+            "whole-Song cut/paste must participate in bounded one-step Undo")
+    require("g_undo_history.clear();" in SONG,
+            "successful Undo must consume the one-step receipt")
     require("GROOVEPUTER_APP_EVENT_REDO" not in CORE and
             "GROOVEPUTER_APP_EVENT_REDO" not in SONG,
-            "0.9.8-B1 must not introduce Redo")
+            "0.9.8-B2 must not introduce Redo")
     print("Song Undo source regressions: OK")
 
 
