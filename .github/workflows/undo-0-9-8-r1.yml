@@ -1,0 +1,23 @@
+name: Undo Safe Editing 0.9.8 R1
+
+on:
+  pull_request:
+    paths:
+      - "src/state/bounded_undo_slot.h"
+      - "tests/test_bounded_undo_slot_0_9_8.cpp"
+      - "tests/test_bounded_undo_slot_0_9_8_source_regressions.py"
+      - "tests/run_undo_0_9_8_r1_tests.sh"
+      - "docs/releases/0_9_8_R1_UNDO_CONTRACT.md"
+      - ".github/workflows/undo-0-9-8-r1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bounded-undo-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run 0.9.8 R1 bounded Undo contract
+        run: bash tests/run_undo_0_9_8_r1_tests.sh
