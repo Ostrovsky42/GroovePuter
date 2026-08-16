@@ -16,6 +16,7 @@ void SamplerVoice::reset() {
   streamed_ = false;
   starvationFrames_ = 0;
   starving_ = false;
+  lastStreamPageStart_ = kInvalidStreamPage;
 }
 
 void SamplerVoice::trigger(const Params& params, ISampleStore& store) {
@@ -77,6 +78,7 @@ void SamplerVoice::trigger(const Params& params, ISampleStore& store) {
   fadeCounter_ = kFadeFrames;
   starvationFrames_ = 0;
   starving_ = false;
+  lastStreamPageStart_ = kInvalidStreamPage;
 
   if (streamed_) {
     store.requestFrameHandle(
@@ -109,4 +111,5 @@ void SamplerVoice::releaseHandle_(ISampleStore& store) {
   streamed_ = false;
   starvationFrames_ = 0;
   starving_ = false;
+  lastStreamPageStart_ = kInvalidStreamPage;
 }
