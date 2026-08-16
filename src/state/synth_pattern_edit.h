@@ -37,7 +37,7 @@ inline bool samePattern(const SynthPattern& lhs, const SynthPattern& rhs) {
 
 inline void clearStep(SynthPattern& pattern, int stepIndex) {
   SynthStep& step = pattern.steps[clampStep(stepIndex)];
-  // Match MiniAcid::clear303Step exactly. Velocity and timing are retained.
+  // Match the existing clear303Step contract. Velocity and timing are retained.
   step.note = -1;
   step.slide = false;
   step.accent = false;
