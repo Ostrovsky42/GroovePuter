@@ -1,0 +1,26 @@
+name: MIDI Input Controllers 0.9.10 R2
+
+on:
+  pull_request:
+    paths:
+      - "src/input/midi_input_message.h"
+      - "src/input/midi_input_queue.h"
+      - "src/midi/midi_realtime_word.h"
+      - "tests/test_midi_input_0_9_10_r2.cpp"
+      - "tests/test_midi_input_0_9_10_r2_source_regressions.py"
+      - "tests/run_midi_input_0_9_10_r2_tests.sh"
+      - "docs/releases/0_9_10_R2_NORMALIZED_INGRESS.md"
+      - ".github/workflows/midi-input-0-9-10-r2.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  normalized-ingress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run 0.9.10-R2 normalized MIDI ingress tests
+        run: bash tests/run_midi_input_0_9_10_r2_tests.sh
