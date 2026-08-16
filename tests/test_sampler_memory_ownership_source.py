@@ -40,7 +40,7 @@ require(track_h, "std::array<SamplerPad, kNumPads> pads_;", "fixed pad array")
 
 # Whole-file resident PCM remains the current production-base architecture.
 require(ram_cpp, "int16_t* pcm = nullptr;", "whole-file PCM pointer")
-require(ram_cpp, "decodeWavFileBounded", "whole-file bounded decoder call")
+require(ram_cpp, "loadWavFileBounded", "whole-file bounded loader call")
 require(voice_h, "const int16_t* pcm_ = nullptr;", "voice resident PCM pointer")
 
 # UI remains lazy and owns shared components; exact dynamic cost is a hardware/runtime measurement.
