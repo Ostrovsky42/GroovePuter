@@ -12,9 +12,12 @@
 #include "src/midi/midi_device_profile_runtime.h"
 #include "src/midi/midi_pattern_startup_routes.h"
 #include "src/midi/transport_clock_runtime.h"
+#include "src/input/midi_input_settings.h"
 
 namespace GroovePuterPlatform {
 namespace {
+constexpr const char* kMidiInputNamespace = "grooveputer";
+constexpr const char* kMidiInputKey = "midi_in";
 
 bool validSelectableProfile(GroovePuterMidi::MidiDeviceProfile profile) {
     switch (profile) {
@@ -146,6 +149,37 @@ public:
         return saved;
     }
 
+    void initializeInput(MidiInputRouter& router) {
+        if (!initialized_) initialize();
+        MidiInputRoutingConfig loaded = GroovePuterMidiInput::defaultRoutingConfig();
+        Preferences preferences;
+        bool decoded = false;
+        if (preferences.begin(kMidiInputNamespace, true)) {
+            if (preferences.isKey(kMidiInputKey)) {
+                decoded = GroovePuterMidiInput::decodeRoutingConfig(
+                    preferences.getUInt(kMidiInputKey, 0u), loaded);
+            }
+            preferences.end();
+        }
+        inputRouter_ = &router;
+        inputConfig_ = decoded ? loaded : GroovePuterMidiInput::defaultRoutingConfig();
+        (void)inputRouter_->setConfig(inputConfig_);
+    }
+
+    MidiInputRoutingConfig inputConfig() const { return inputConfig_; }
+
+    bool setInputConfig(const MidiInputRoutingConfig& config) {
+        if (!MidiInputRouter::isValidConfig(config) || inputRouter_ == nullptr) return false;
+        Preferences preferences;
+        if (!preferences.begin(kMidiInputNamespace, false)) return false;
+        const size_t written = preferences.putUInt(kMidiInputKey, GroovePuterMidiInput::encodeRoutingConfig(config));
+        preferences.end();
+        if (written != sizeof(uint32_t)) return false;
+        if (!inputRouter_->setConfig(config)) return false;
+        inputConfig_ = config;
+        return true;
+    }
+
     bool persist(GroovePuterMidi::TransportClockSource source,
                  bool externalFollowEnabled) {
         if (!initialized_) initialize();
@@ -183,6 +217,8 @@ private:
     GroovePuterMidi::MidiDeviceProfile pendingProfile_{
         GroovePuterMidi::MidiDeviceProfile::SeqtrakNative};
     bool initialized_{false};
+    MidiInputRouter* inputRouter_{nullptr};
+    MidiInputRoutingConfig inputConfig_{};
 };
 
 CardputerMidiSettingsSession& settingsSession() {
@@ -214,6 +250,9 @@ bool selectCardputerMidiDeviceProfileForNextBoot(
 bool cardputerMidiDeviceProfileRestartRequired() {
     return settingsSession().restartRequired();
 }
+void initializeCardputerMidiInputSettings(MidiInputRouter& router) { settingsSession().initializeInput(router); }
+MidiInputRoutingConfig cardputerMidiInputRoutingConfig() { return settingsSession().inputConfig(); }
+bool setCardputerMidiInputRoutingConfig(const MidiInputRoutingConfig& config) { return settingsSession().setInputConfig(config); }
 
 }  // namespace GroovePuterPlatform
 

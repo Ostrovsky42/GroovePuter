@@ -1,0 +1,28 @@
+name: MIDI Input Controllers 0.9.10 R7
+on:
+  push:
+    branches: [agent/20260816-0.9.10-r7-input-persistence]
+  pull_request:
+    paths: ['GroovePuter.ino','src/input/midi_input_settings.h','src/platform/cardputer_midi_settings_session.*','docs/releases/0_9_10_R7_INPUT_PERSISTENCE.md','tests/*midi_input_0_9_10_r7*','.github/workflows/midi-input-0-9-10-r7.yml']
+permissions: {contents: write}
+jobs:
+  bootstrap:
+    if: github.event_name == 'push' && github.event.head_commit.message == 'bootstrap R7 persistence'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - run: python3 tools/r7_bootstrap.py
+      - run: bash tests/run_midi_input_0_9_10_r7_tests.sh
+      - run: |
+          git config user.name "GroovePuter Agent"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "0.9.10-R7: persist MIDI input configuration"
+          git push origin HEAD:agent/20260816-0.9.10-r7-input-persistence
+  persistence-contract:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/run_midi_input_0_9_10_r7_tests.sh

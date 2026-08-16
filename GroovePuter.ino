@@ -393,6 +393,7 @@ void setup() {
   // profile runtime is an input to later route projection; letting UI creation
   // initialize it would make the USB task observe only the SEQTRAK fallback.
   GroovePuterPlatform::initializeCardputerMidiSettingsSession();
+  GroovePuterPlatform::initializeCardputerMidiInputSettings(g_midiInputRouter);
 
   // Start the dispatcher before engine/UI activity. Its full 4KB stack is
   // statically reserved, so startup no longer depends on the largest free heap
