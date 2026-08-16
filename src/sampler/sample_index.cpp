@@ -437,6 +437,26 @@ GroovePuterSampler::SampleRef SampleIndex::resolveRuntimeId(
 
 const SampleFileInfo* SampleIndex::resolveRuntimeFile(
     SampleId runtimeId) const {
+  if (runtimeId.value == 0) return nullptr;
+
+  // The runtime contract deliberately preserves an unambiguous historical
+  // basename ID. SamplerPage::draw() asks for this lookup every redraw, so do
+  // not rebuild stable/runtime identity for the entire catalog on that common
+  // path. One scan is enough and adds no persistent index or heap ownership.
+  const SampleFileInfo* uniqueLegacy = nullptr;
+  bool ambiguousLegacy = false;
+  for (const auto& file : files_) {
+    if (file.id != runtimeId) continue;
+    if (uniqueLegacy != nullptr) {
+      ambiguousLegacy = true;
+      break;
+    }
+    uniqueLegacy = &file;
+  }
+  if (uniqueLegacy != nullptr && !ambiguousLegacy) return uniqueLegacy;
+
+  // Stable-only runtime IDs are used only for legacy collisions. Preserve the
+  // existing deterministic collision-safe resolver for that uncommon path.
   const auto ref = resolveRuntimeId(runtimeId);
   return ref.valid() ? findByRef(ref) : nullptr;
 }
