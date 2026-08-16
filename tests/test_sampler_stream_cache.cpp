@@ -1,5 +1,6 @@
 #include "../src/sampler/ram_sample_store.h"
 #include "../src/sampler/sample_loader.h"
+#include "../src/sampler/sampler_voice.h"
 
 #include <cassert>
 #include <cstdint>
@@ -190,6 +191,88 @@ void testStereoStreamingDownmix(const fs::path& root) {
   store.releaseHandle(handle);
 }
 
+void testVoiceForwardPrefetch(const fs::path& root) {
+  const fs::path wav = root / "voice_forward.wav";
+  writePcm16Wav(wav, 1, 22050, 1600);
+
+  RamSampleStore store;
+  assert(store.beginStreamingCache());
+  const SampleId id{51};
+  assert(store.registerFile(id, wav.string()));
+  assert(store.preload(id));
+  assert(store.streamStats().pagesLoaded == 1);
+
+  SamplerVoice voice;
+  SamplerVoice::Params params{};
+  params.id = id;
+  params.pitch = 1.0f;
+  params.gain = 1.0f;
+  voice.trigger(params, store);
+  assert(voice.isActive());
+
+  float out = 0.0f;
+  voice.processFrame(out, store);
+  // First successful frame in page 0 queues pages 1 and 2, but audio-side
+  // processing itself never loads them.
+  assert(store.streamStats().pagesLoaded == 1);
+  store.serviceIo(2);
+  assert(store.streamStats().pagesLoaded == 3);
+
+  const SampleHandle check = store.acquireHandle(id);
+  assert(check.valid());
+  int16_t frame = 0;
+  assert(store.readFrameHandle(check, 300, frame));
+  assert(frame == expectedMono(300));
+  assert(store.readFrameHandle(check, 600, frame));
+  assert(frame == expectedMono(600));
+  store.releaseHandle(check);
+}
+
+void testVoiceReversePrefetch(const fs::path& root) {
+  const fs::path wav = root / "voice_reverse.wav";
+  writePcm16Wav(wav, 1, 22050, 1600);
+
+  RamSampleStore store;
+  assert(store.beginStreamingCache());
+  const SampleId id{52};
+  assert(store.registerFile(id, wav.string()));
+  assert(store.preload(id));
+  assert(store.streamStats().pagesLoaded == 1);
+
+  SamplerVoice voice;
+  SamplerVoice::Params params{};
+  params.id = id;
+  params.pitch = 1.0f;
+  params.gain = 1.0f;
+  params.reverse = true;
+  voice.trigger(params, store);
+  assert(voice.isActive());
+
+  float out = 0.0f;
+  // Tail page is not the synchronous head page, so the first audio attempt
+  // queues it and holds the source position.
+  voice.processFrame(out, store);
+  assert(store.streamStats().pagesLoaded == 1);
+  store.serviceIo(1);
+  assert(store.streamStats().pagesLoaded == 2);
+
+  // Once the tail page is available, reverse playback queues the two pages
+  // immediately behind it.
+  voice.processFrame(out, store);
+  assert(store.streamStats().pagesLoaded == 2);
+  store.serviceIo(2);
+  assert(store.streamStats().pagesLoaded == 4);
+
+  const SampleHandle check = store.acquireHandle(id);
+  assert(check.valid());
+  int16_t frame = 0;
+  assert(store.readFrameHandle(check, 1300, frame));
+  assert(frame == expectedMono(1300));
+  assert(store.readFrameHandle(check, 1100, frame));
+  assert(frame == expectedMono(1100));
+  store.releaseHandle(check);
+}
+
 void testStreamDescriptorSurvivesResidentEviction(const fs::path& root) {
   const fs::path longWav = root / "long.wav";
   const fs::path tinyWav = root / "tiny2.wav";
@@ -228,6 +311,8 @@ int main() {
   testResidentFastPath(root);
   testMonoStreamingAndRequestDedup(root);
   testStereoStreamingDownmix(root);
+  testVoiceForwardPrefetch(root);
+  testVoiceReversePrefetch(root);
   testStreamDescriptorSurvivesResidentEviction(root);
 
   fs::remove_all(root);
