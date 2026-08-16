@@ -130,6 +130,7 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
     }
     if (owner.kind() == UndoKind::Generation &&
         owner.payloadSize() == sizeof(SynthPatternUndoPayload)) {
+      const uint32_t committedRevision = owner.committedRevision();
       const UndoResult result =
           owner.undoPrepared<SynthPatternUndoPayload>(
               UndoKind::Generation,
@@ -145,6 +146,11 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
                 if (audio_guard_) audio_guard_(restore);
                 else restore();
               });
+      if (result == UndoResult::Restored) {
+        GroovePuterRhythm::QuantizedGenerationDetail::
+            cancelPendingGenerationActivationForRevision(
+                mini_acid_, committedRevision);
+      }
       switch (result) {
         case UndoResult::Restored:
           UI::showToast("UNDO: GENERATION", 900);
@@ -388,11 +394,10 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
     return true;
   }
 
-  // B2 closes the R3 generation handoff without changing the musical
-  // generator. PREPARE runs entirely on a scratch SynthPattern; COMMIT is
-  // one bounded publish through the canonical UndoOwner. The same-index
-  // selector preserves the legacy PLAY note-off before replacing material
-  // and remains a runtime selector rather than a persistent mutation.
+  // C keeps B2's legacy/fallback musical generator but joins the one
+  // bounded activation contract. STOP commits and is audible immediately.
+  // PLAY arms the old Pattern as audible truth, commits the new Pattern now,
+  // then releases that overlay only at BAR_START.
   if (keyG) {
     using GroovePuterUndo::SynthPatternUndoPayload;
     using GroovePuterUndo::UndoKind;
@@ -415,17 +420,38 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
 
     SynthPatternUndoPayload prepared = before;
     prepared.before = after;
-    GroovePuterUndo::undoOwner().commitPrepared(
+    int activationSlot = -1;
+    if (mini_acid_.isPlaying()) {
+      const auto target = GroovePuterRhythm::QuantizedGenerationDetail::
+          captureGenerationActivationTarget(manager);
+      activationSlot = GroovePuterRhythm::QuantizedGenerationDetail::
+          armCompactSynthActivation(
+              mini_acid_, target, voice_index_, before.before);
+      if (activationSlot < 0) {
+        UI::showToast("GEN BUSY", 800);
+        return true;
+      }
+    }
+
+    const bool committed = GroovePuterUndo::undoOwner().commitPrepared(
         UndoKind::Generation, before, [&]() {
-          const auto apply = [&]() {
-            const int currentPattern =
-                mini_acid_.current303PatternIndex(voice_index_);
-            mini_acid_.set303PatternIndex(voice_index_, currentPattern);
-            GroovePuterUndo::restoreSynthPatternUndo(manager, prepared);
-          };
-          if (audio_guard_) audio_guard_(apply);
-          else apply();
+          GroovePuterUndo::restoreSynthPatternUndo(manager, prepared);
         });
+    if (!committed) {
+      if (activationSlot >= 0) {
+        GroovePuterRhythm::QuantizedGenerationDetail::abortArmedActivation(
+            activationSlot,
+            GroovePuterRhythm::QuantizedGenerationStatus::Busy);
+      }
+      return true;
+    }
+
+    if (activationSlot >= 0) {
+      GroovePuterRhythm::QuantizedGenerationDetail::completeArmedActivation(
+          activationSlot,
+          GroovePuterUndo::undoOwner().committedRevision());
+      UI::showToast("GEN -> NEXT BAR", 1000);
+    }
     return true;
   }
 

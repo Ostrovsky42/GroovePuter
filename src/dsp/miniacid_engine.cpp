@@ -17,6 +17,7 @@
 
 #include "../audio/audio_diagnostics.h"
 #include "../input/musical_event_queue.h"
+#include "../generation/migration/quantized_generation_commit.h"
 
 #include "../sampler/sample_index.h"
 #include "../ui/led_manager.h"
@@ -368,6 +369,7 @@ void MiniAcid::init() {
 }
 
 void MiniAcid::reset() {
+  GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
   LOG_PRINTLN("    - MiniAcid::reset: Start");
   if (synthVoices_[0]) synthVoices_[0]->reset();
   if (synthVoices_[1]) synthVoices_[1]->reset();
@@ -493,6 +495,7 @@ void MiniAcid::start() {
 }
 
 void MiniAcid::stop() {
+  GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
   LOG_PRINTLN("[DSP] STOP command received");
   publishPatternAllNotesOff_();
   playing = false;
@@ -1629,12 +1632,22 @@ const SynthPattern& MiniAcid::activeSynthPattern(int synthIndex) const {
   SongTrack track = idx == 0 ? SongTrack::SynthA : SongTrack::SynthB;
   int pat = songPatternIndexForTrack(track);
   if (pat < 0) return kEmptySynthPattern;
+  if (const SynthPattern* pending =
+          GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleSynthPattern(
+              *this, idx)) {
+    return *pending;
+  }
   return sceneManager_.getSynthPattern(idx, pat);
 }
 
 const DrumPattern& MiniAcid::activeDrumPattern(int drumVoiceIndex) const {
   int idx = clampDrumVoice(drumVoiceIndex);
   int pat = songPatternIndexForTrack(SongTrack::Drums);
+  if (const DrumPatternSet* pending =
+          GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleDrumPatternSet(
+              *this)) {
+    return pending->voices[idx];
+  }
   const DrumPatternSet& set = pat >= 0 ? sceneManager_.getDrumPatternSet(pat)
                                        : kEmptyDrumPatternSet;
   return set.voices[idx];
@@ -2013,8 +2026,10 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
     LedManager::instance().onBeat(currentStepIndex, sceneManager_.currentScene().led);
   }
 
-  // Timing constants
-  int swingPct = sceneManager_.currentScene().feel.swingPct;
+  // Timing constants. During C pending activation the Scene already holds
+  // committed truth, while the old swing remains the audible truth until BAR_START.
+  int swingPct = GroovePuterRhythm::QuantizedGenerationDetail::audibleGenerationSwingPct(
+      *this, sceneManager_.currentScene().feel.swingPct);
   if (swingPct < 50) swingPct = 50;
   if (swingPct > 75) swingPct = 75;
   int swingDelay = (int)std::round((swingPct - 50.0f) * 24.0f / 50.0f);
@@ -2043,7 +2058,11 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
     }
 
     // Drums
-    const DrumPatternSet& dSet = sceneManager_.getCurrentDrumPattern();
+    const DrumPatternSet* pendingDrums =
+        GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleDrumPatternSet(*this);
+    const DrumPatternSet& dSet = pendingDrums
+        ? *pendingDrums
+        : sceneManager_.getCurrentDrumPattern();
     for (int v = 0; v < 8; ++v) {
         VoiceId vId = (VoiceId)((int)VoiceId::DrumKick + v);
         int swingD = (s % 2 != 0 && (swingMask & (1 << (int)vId))) ? swingDelay : 0;
@@ -2578,6 +2597,13 @@ void MiniAcid::setGrooveboxMode(GrooveboxMode mode) {
   syncModeToVoices();
 }
 
+void MiniAcid::activateCommittedGrooveboxModeRuntime(GrooveboxMode mode) {
+  // SceneManager already contains the committed mode. ACTIVATE only publishes
+  // the matching DSP/runtime state and therefore owns no persistence revision.
+  modeManager_.setModeLocal(mode);
+  syncModeToVoices();
+}
+
 void MiniAcid::syncModeToVoices() {
   GrooveboxMode mode = sceneManager_.getMode();
   const ModeConfig& cfg = modeManager_.config();
@@ -2680,6 +2706,7 @@ bool MiniAcid::loadSceneByName(const std::string& name) {
     lastSceneLoadRecoveredAutosave_ = false;
     return false;
   }
+  GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
   Serial.println("[LoadScene] Applying scene state...");
   applySceneStateFromManager();
   Serial.println("[LoadScene] SUCCESS");
@@ -2697,6 +2724,7 @@ bool MiniAcid::saveSceneAs(const std::string& name) {
 
 bool MiniAcid::createNewSceneWithName(const std::string& name) {
   if (!sceneStorage_) return false;
+  GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
   const std::string previousName = sceneStorage_->getCurrentSceneName();
   if (!sceneStorage_->setCurrentSceneName(name)) return false;
 
@@ -2709,6 +2737,7 @@ bool MiniAcid::createNewSceneWithName(const std::string& name) {
 }
 
 void MiniAcid::loadSceneFromStorage() {
+  GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
   lastSceneLoadRecoveredAutosave_ = false;
   if (sceneStorage_) {
     if (sceneStorage_->hasSceneAuto() &&
@@ -2994,7 +3023,9 @@ void MiniAcid::applyFeelTimingFromScene_() {
 }
 
 void MiniAcid::syncSceneStateToManager() {
-  sceneManager_.setBpm(bpmValue);
+  if (!GroovePuterRhythm::QuantizedGenerationDetail::hasPendingFullGenerationActivation(*this)) {
+    sceneManager_.setBpm(bpmValue);
+  }
   sceneManager_.setDrumEngineName(drumEngineName_);
   sceneManager_.setSynthEngineName(0, currentSynthEngineName(0));
   sceneManager_.setSynthEngineName(1, currentSynthEngineName(1));
@@ -3441,7 +3472,11 @@ void MiniAcid::triggerSynthStep_(int synthIdx, int stepIdx) {
   const SynthPattern& pattern = activeSynthPattern(synthIdx);
   const SynthStep& step = pattern.steps[stepIdx];
 
-  const auto recipe = genreManager_.getGrooveRecipe();
+  const GenreSettings* audibleGenre =
+      GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleGenreSettings(*this);
+  const auto recipe = audibleGenre
+      ? GenreCatalog::grooveRecipe(*audibleGenre)
+      : genreManager_.getGrooveRecipe();
   float gateMult = recipe.gateLengthRatio;
   if (gateMult < 0.1f) gateMult = 0.5f;
   float vMult = (synthIdx == 0) ? 0.85f : 1.05f;
@@ -3485,7 +3520,11 @@ void MiniAcid::triggerDrumVoice_(int voiceIdx, int stepIdx) {
   int songPatternDrums = songPatternIndexForTrack(SongTrack::Drums);
   if (songPatternDrums < 0) return;
 
-  const DrumPatternSet& currentDrumPatternSet = sceneManager_.getCurrentDrumPattern();
+  const DrumPatternSet* pendingDrums =
+      GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleDrumPatternSet(*this);
+  const DrumPatternSet& currentDrumPatternSet = pendingDrums
+      ? *pendingDrums
+      : sceneManager_.getCurrentDrumPattern();
   if (stepIdx == currentStepIndex) {
       applyDrumAutomationLanesForStep_(currentDrumPatternSet, stepIdx);
   }

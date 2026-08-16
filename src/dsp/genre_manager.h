@@ -157,9 +157,9 @@ public:
     GenreBehavior getBehavior() const;
 
     // Compatibility bridge for MiniAcid's existing BAR_START hook. The old
-    // pending-recipe owner was removed; quantized material generation installs
-    // a bounded commit callback instead. Returning false prevents the legacy
-    // audio-thread regeneration path from running after the callback commits.
+    // pending-recipe owner was removed; 0.9.9-C installs a bounded ACTIVATE
+    // callback here. Persistent COMMIT has already completed on the control
+    // side. Returning false prevents the legacy audio-thread regeneration path.
     void setPendingCommitHook(PendingCommitHook hook) { pendingCommitHook_ = hook; }
     bool commitPendingRecipe() {
         if (pendingCommitHook_ != nullptr) pendingCommitHook_(scenes_);
