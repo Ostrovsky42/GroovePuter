@@ -1,6 +1,5 @@
 #include "../platform_sdl/arduino_compat.h"
 #include "../scenes.h"
-#include "../src/dsp/song_pattern_materializer.h"
 
 #include <cassert>
 #include <cstdint>
@@ -28,8 +27,6 @@ int main() {
     synth.fx = 2;
     synth.fxParam = 6;
     synth.probability = 81;
-    SongPatternMaterializer::markSlotSongGenerated(
-        before, SongTrack::SynthA, 2);
 
     DrumStep& drum = before.drumBanks[1].patterns[3].voices[4].steps[11];
     drum.hit = true;
@@ -39,8 +36,6 @@ int main() {
     drum.fx = 3;
     drum.fxParam = 4;
     drum.probability = 76;
-    SongPatternMaterializer::markSlotSongGenerated(
-        before, SongTrack::Drums, 11);
 
     const std::string json = manager.dumpCurrentScene();
     assert(!json.empty());
@@ -72,8 +67,6 @@ int main() {
     assert(loadedSynth.fx == 2);
     assert(loadedSynth.fxParam == 6);
     assert(loadedSynth.probability == 81);
-    assert(SongPatternMaterializer::slotIsSongGenerated(
-        after, SongTrack::SynthA, 2));
 
     const DrumStep& loadedDrum =
         after.drumBanks[1].patterns[3].voices[4].steps[11];
@@ -84,11 +77,10 @@ int main() {
     assert(loadedDrum.fx == 3);
     assert(loadedDrum.fxParam == 4);
     assert(loadedDrum.probability == 76);
-    assert(SongPatternMaterializer::slotIsSongGenerated(
-        after, SongTrack::Drums, 11));
 
-    // A second serialization must preserve both realized material and Lo-Fi
-    // semantic identity byte-for-byte at the relevant persistence fields.
+    // Generated ownership is intentionally asserted in the dedicated .gpp
+    // PatternPaging test; Scene JSON and Pattern pages are separate persistence
+    // layers. This test freezes realized musical content + semantic identity.
     const std::string secondJson = manager.dumpCurrentScene();
     assert(secondJson.find("\"gen\":15") != std::string::npos);
     assert(secondJson.find("\"rcp\":17") != std::string::npos);
