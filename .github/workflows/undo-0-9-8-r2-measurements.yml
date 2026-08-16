@@ -1,0 +1,27 @@
+name: Undo Safe Editing 0.9.8 R2
+
+on:
+  push:
+    branches:
+      - agent/20260816-0.9.8-r2-undo-owner
+  pull_request:
+    paths:
+      - 'src/state/**'
+      - 'src/phrase/**'
+      - 'src/ui/pages/pattern_edit_page.cpp'
+      - 'src/ui/pages/pattern_edit_page_legacy.h'
+      - 'scenes.h'
+      - 'tests/measure_undo_payloads_0_9_8.cpp'
+      - 'tests/test_undo_owner_0_9_8.cpp'
+      - 'tests/test_undo_owner_0_9_8_source_regressions.py'
+      - 'tests/run_undo_0_9_8_r2_measurements.sh'
+      - 'tests/run_undo_0_9_8_r2_tests.sh'
+      - '.github/workflows/undo-0-9-8-r2-measurements.yml'
+
+jobs:
+  owner-and-measurements:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run authoritative owner and measurement contracts
+        run: bash tests/run_undo_0_9_8_r2_tests.sh
