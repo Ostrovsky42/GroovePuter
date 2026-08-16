@@ -1,0 +1,29 @@
+name: MIDI Input Controllers 0.9.10 R3a
+
+on:
+  pull_request:
+    paths:
+      - "src/input/midi_input_message.h"
+      - "src/input/midi_input_queue.h"
+      - "src/input/midi_input_router.h"
+      - "src/input/musical_event.h"
+      - "src/input/musical_event_router.h"
+      - "src/midi/usb_midi_output.*"
+      - "tests/test_midi_input_0_9_10_r3a.cpp"
+      - "tests/test_midi_input_0_9_10_r3a_source_regressions.py"
+      - "tests/run_midi_input_0_9_10_r3a_tests.sh"
+      - "docs/releases/0_9_10_R3A_ROUTING_OWNERSHIP.md"
+      - ".github/workflows/midi-input-0-9-10-r3a.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  routing-ownership:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run 0.9.10-R3a MIDI input routing ownership tests
+        run: bash tests/run_midi_input_0_9_10_r3a_tests.sh
