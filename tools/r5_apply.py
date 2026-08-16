@@ -46,8 +46,7 @@ text = re.sub(
     flags=re.M,
 )
 
-# Remove transient before-image vectors whose sole consumer was the deleted
-# page-local history. Clipboard vectors remain untouched.
+# Remove history-only before-images. Clipboard vectors remain untouched.
 sub_once(
     r"\n[ \t]*// Save old patterns for undo\n[ \t]*std::vector<int> old_patterns;.*?\n[ \t]*withAudioGuard\(\[&\]\(\) \{",
     "\n          withAudioGuard([&]() {",
@@ -57,22 +56,13 @@ sub_once(
 text = re.sub(r"^[ \t]*std::vector<int> old_patterns;\n", "", text, flags=re.M)
 text = re.sub(r"^[ \t]*old_patterns\.reserve\([^\n]*\);\n", "", text, flags=re.M)
 text = re.sub(r"^[ \t]*old_patterns\.push_back\([^\n]*\);\n", "", text, flags=re.M)
-
-# Single-cell legacy captures were also only for the deleted history owner.
-text = re.sub(
-    r"^[ \t]*int track_idx = cursorTrack\(\);\n",
-    "",
-    text,
-    flags=re.M,
-)
+text = re.sub(r"^[ \t]*int track_idx = cursorTrack\(\);\n", "", text, flags=re.M)
 text = re.sub(
     r"^[ \t]*int old_pattern = mini_acid_\.songPatternAt\(row, track\);\n",
     "",
     text,
     flags=re.M,
 )
-# One delete path has a before value used only by saveSingleCell. The cut path's
-# current_pattern is retained because it is the clipboard payload.
 text = re.sub(
     r"([ \t]*// Save undo state\n)[ \t]*int current_pattern = mini_acid_\.songPatternAt\(row, track\);\n(?=[ \t]*\n[ \t]*withAudioGuard)",
     "",
@@ -130,8 +120,6 @@ def main() -> None:
     workspace = (ROOT / "src/phrase/phrase_workspace.h").read_text(encoding="utf-8")
     project = (ROOT / "src/ui/pages/project_page.cpp").read_text(encoding="utf-8")
 
-    # There is one retained history owner. Song clipboard storage may remain
-    # dynamic, but the old page-local vector Undo owner may not survive R5.
     require("kUndoPayloadBytes = 1536" in owner and "class UndoOwner" in owner,
             "canonical bounded UndoOwner<1536> is missing")
     for forbidden in ("UndoActionType", "struct UndoCell", "struct UndoHistory",
@@ -146,8 +134,6 @@ def main() -> None:
             "undoPreparedSongState" in song_r4,
             "Song Undo must route only through the R4 canonical owner")
 
-    # Pattern, Song and Phrase destructive/manual edits publish through the
-    # same authoritative owner; page helpers do not publish revision themselves.
     pattern_commit = between(pattern_h, "template <typename PrepareFn>",
                              "template <typename F>")
     require("undoOwner().commitPrepared" in pattern_commit and
@@ -170,14 +156,11 @@ def main() -> None:
             "markSceneMutated" not in phrase_commit,
             "Phrase/Song persistent edits escaped canonical ownership")
 
-    # Workspace is PREPARE-only; no hidden publication/history layer may return.
     for forbidden in ("UndoOwner", "undoOwner", "markSceneMutated", "AudioGuard",
                       "std::vector", "ArduinoJson", "SD."):
         require(forbidden not in workspace,
                 f"Phrase PREPARE layer leaked ownership/runtime state: {forbidden}")
 
-    # Generated Phrase->Song remains a separate generation/materialization
-    # owner. R5 must not pull 0.9.9 PREPARE/ACTIVATE semantics into 0.9.8.
     generated = between(phrase_cpp, "bool PhrasePage::generatePhraseToSong()",
                         "bool PhrasePage::deriveFromParent()")
     require("GeneratedPhraseSong::generate" in generated and
@@ -185,8 +168,6 @@ def main() -> None:
             "commitSongMutation" not in generated,
             "R5 crossed the generation/materialization ownership boundary")
 
-    # Persistence establishes/updates the clean baseline; Save itself is not a
-    # fake user mutation and therefore must not publish a new revision receipt.
     require("markSceneSaveSucceeded();" in project and
             "markSceneLoadSucceeded();" in project,
             "project persistence clean-baseline hooks are missing")
@@ -205,7 +186,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-# Closure is cumulative: accepted R2/R3/R4 contracts must remain green.
 bash tests/run_undo_0_9_8_r4_tests.sh
 python3 tests/test_undo_0_9_8_r5_ownership_closure.py
 
@@ -281,48 +261,3 @@ closure checks for the removed Song owner and current ownership boundaries.
 Normal exact-head host, SDL, ADV normal/fixed-DRAM and SEQTRAK MIDI-only gates
 remain mandatory before merge.
 ''', encoding="utf-8")
-
-FINAL_WF = ROOT / ".github/workflows/undo-0-9-8-r5-ownership-closure.yml"
-FINAL_WF.write_text('''name: Undo Safe Editing 0.9.8 R5
-
-on:
-  push:
-    paths:
-      - 'src/ui/pages/song_page.cpp'
-      - 'src/ui/pages/song_page.h'
-      - 'src/ui/pages/song_page_r4_owner.inc'
-      - 'src/ui/pages/pattern_edit_page.h'
-      - 'src/ui/pages/phrase_page.h'
-      - 'src/ui/pages/phrase_page.cpp'
-      - 'src/phrase/phrase_workspace.h'
-      - 'src/state/undo_owner.h'
-      - 'tests/run_undo_0_9_8_r5_tests.sh'
-      - 'tests/test_undo_0_9_8_r5_ownership_closure.py'
-      - '.github/workflows/undo-0-9-8-r5-ownership-closure.yml'
-  pull_request:
-    paths:
-      - 'src/ui/pages/song_page.cpp'
-      - 'src/ui/pages/song_page.h'
-      - 'src/ui/pages/song_page_r4_owner.inc'
-      - 'src/ui/pages/pattern_edit_page.h'
-      - 'src/ui/pages/phrase_page.h'
-      - 'src/ui/pages/phrase_page.cpp'
-      - 'src/phrase/phrase_workspace.h'
-      - 'src/state/undo_owner.h'
-      - 'tests/run_undo_0_9_8_r5_tests.sh'
-      - 'tests/test_undo_0_9_8_r5_ownership_closure.py'
-      - '.github/workflows/undo-0-9-8-r5-ownership-closure.yml'
-
-jobs:
-  ownership-closure:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Run 0.9.8 R5 ownership closure contracts
-        run: bash tests/run_undo_0_9_8_r5_tests.sh
-''', encoding="utf-8")
-
-# This helper exists only to safely transform the large legacy source through
-# GitHub Actions. It removes itself and its one-shot workflow from the final diff.
-(ROOT / "tools/r5_apply.py").unlink()
-(ROOT / ".github/workflows/r5-apply.yml").unlink()
