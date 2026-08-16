@@ -16,6 +16,17 @@
 namespace GroovePuterPlatform {
 namespace {
 
+bool validSelectableProfile(GroovePuterMidi::MidiDeviceProfile profile) {
+    switch (profile) {
+        case GroovePuterMidi::MidiDeviceProfile::SeqtrakNative:
+        case GroovePuterMidi::MidiDeviceProfile::GeneralMidi:
+        case GroovePuterMidi::MidiDeviceProfile::Custom:
+        case GroovePuterMidi::MidiDeviceProfile::GenericMidi:
+            return true;
+    }
+    return false;
+}
+
 class CardputerMidiSettingsStorage final
     : public GroovePuterMidi::IMidiSettingsStorage {
 public:
@@ -76,10 +87,11 @@ public:
         profileRuntime.initialize(loadedSettings);
         const GroovePuterMidi::MidiOutputSettings& settings =
             profileRuntime.settings();
+        pendingProfile_ = settings.profile;
 
-        // R5 publishes only the derived Pattern wire snapshot needed by the USB
-        // output. R5a guarantees this session runs before the dispatcher task,
-        // and UsbMidiOutput consumes the snapshot once in begin().
+        // R5/R6 publish the frozen Pattern + predefined Performance startup
+        // routes before the dispatcher begins. R7 profile edits intentionally
+        // do not republish this snapshot; they take effect only on next boot.
         GroovePuterMidi::publishMidiPatternStartupRoutes(settings);
 
         GroovePuterMidi::TransportClockRuntime& runtime =
@@ -100,6 +112,40 @@ public:
             static_cast<unsigned>(settings.externalFollowEnabled ? 1 : 0));
     }
 
+    GroovePuterMidi::MidiDeviceProfile pendingProfile() {
+        if (!initialized_) initialize();
+        return pendingProfile_;
+    }
+
+    bool restartRequired() {
+        if (!initialized_) initialize();
+        return pendingProfile_ !=
+               GroovePuterMidi::midiDeviceProfileRuntime().profile();
+    }
+
+    bool selectProfileForNextBoot(GroovePuterMidi::MidiDeviceProfile profile) {
+        if (!validSelectableProfile(profile)) return false;
+        if (!initialized_) initialize();
+        if (profile == pendingProfile_) return true;
+
+        // Build the persisted candidate from the active runtime snapshot. The
+        // active USB/transport capability owner stays unchanged until reboot.
+        GroovePuterMidi::MidiOutputSettings candidate =
+            GroovePuterMidi::midiDeviceProfileRuntime().settings();
+        GroovePuterMidi::applyMidiDeviceProfile(profile, candidate);
+
+        const bool saved = persistence_.save(candidate);
+        if (saved) pendingProfile_ = profile;
+        Serial.printf(
+            "[MIDI-SETTINGS] profile-save=%u selected=%s active=%s reboot=%u\n",
+            static_cast<unsigned>(saved ? 1 : 0),
+            GroovePuterMidi::midiDeviceProfileName(profile),
+            GroovePuterMidi::midiDeviceProfileName(
+                GroovePuterMidi::midiDeviceProfileRuntime().profile()),
+            static_cast<unsigned>(restartRequired() ? 1 : 0));
+        return saved;
+    }
+
     bool persist(GroovePuterMidi::TransportClockSource source,
                  bool externalFollowEnabled) {
         if (!initialized_) initialize();
@@ -107,16 +153,23 @@ public:
         GroovePuterMidi::MidiDeviceProfileRuntime& profileRuntime =
             GroovePuterMidi::midiDeviceProfileRuntime();
         profileRuntime.updateTransportControl(source, externalFollowEnabled);
-        const GroovePuterMidi::MidiOutputSettings& settings =
-            profileRuntime.settings();
 
-        const bool saved = persistence_.save(settings);
-        Serial.printf("[MIDI-SETTINGS] save=%u source=%s follow=%u\n",
-                      static_cast<unsigned>(saved ? 1 : 0),
-                      GroovePuterMidi::transportClockSourceName(
-                          settings.transportClockSource),
-                      static_cast<unsigned>(
-                          settings.externalFollowEnabled ? 1 : 0));
+        // Preserve a pending next-boot profile selection when a later transport
+        // control change is persisted before reboot.
+        GroovePuterMidi::MidiOutputSettings record = profileRuntime.settings();
+        if (pendingProfile_ != record.profile) {
+            GroovePuterMidi::applyMidiDeviceProfile(pendingProfile_, record);
+        }
+        record.transportClockSource = source;
+        record.externalFollowEnabled = externalFollowEnabled;
+
+        const bool saved = persistence_.save(record);
+        Serial.printf(
+            "[MIDI-SETTINGS] save=%u profile=%s source=%s follow=%u\n",
+            static_cast<unsigned>(saved ? 1 : 0),
+            GroovePuterMidi::midiDeviceProfileName(record.profile),
+            GroovePuterMidi::transportClockSourceName(source),
+            static_cast<unsigned>(externalFollowEnabled ? 1 : 0));
         return saved;
     }
 
@@ -127,6 +180,8 @@ private:
 
     CardputerMidiSettingsStorage storage_;
     GroovePuterMidi::MidiSettingsPersistence persistence_{storage_};
+    GroovePuterMidi::MidiDeviceProfile pendingProfile_{
+        GroovePuterMidi::MidiDeviceProfile::SeqtrakNative};
     bool initialized_{false};
 };
 
@@ -145,6 +200,19 @@ void CardputerMidiSettingsSession::persistControlChange(
 
 void initializeCardputerMidiSettingsSession() {
     settingsSession().initialize();
+}
+
+GroovePuterMidi::MidiDeviceProfile pendingCardputerMidiDeviceProfile() {
+    return settingsSession().pendingProfile();
+}
+
+bool selectCardputerMidiDeviceProfileForNextBoot(
+        GroovePuterMidi::MidiDeviceProfile profile) {
+    return settingsSession().selectProfileForNextBoot(profile);
+}
+
+bool cardputerMidiDeviceProfileRestartRequired() {
+    return settingsSession().restartRequired();
 }
 
 }  // namespace GroovePuterPlatform

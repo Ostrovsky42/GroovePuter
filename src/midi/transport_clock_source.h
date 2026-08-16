@@ -1,4 +1,6 @@
 #pragma once
+#ifndef GROOVEPUTER_TRANSPORT_CLOCK_SOURCE_H
+#define GROOVEPUTER_TRANSPORT_CLOCK_SOURCE_H
 
 #include <cstdint>
 
@@ -29,3 +31,5 @@ inline constexpr bool transportClockSourcePublishesOutboundClock(
 }
 
 }  // namespace GroovePuterMidi
+
+#endif  // GROOVEPUTER_TRANSPORT_CLOCK_SOURCE_H

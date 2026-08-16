@@ -33,11 +33,15 @@ assert "MidiDrumMappingKind::GeneralMidiPercussion" in capabilities_h
 assert "MidiDrumMappingKind::None" in capabilities_h
 assert "MidiDrumMappingKind::UserDefined" in capabilities_h
 
-# R2 is an API/capability checkpoint only. Persisted record shape and the
-# Cardputer runtime selection path intentionally stay untouched.
+# R2's durable boundary still applies after later stacked checkpoints: schema-v2
+# stays byte-compatible, and Generic is never silently promoted into the active
+# runtime. R7 may mention Generic only as a validated/persisted next-boot choice.
 assert "static constexpr uint16_t kSchemaVersion = 2;" in codec_h
 assert "static constexpr std::size_t kPayloadSize = 34;" in codec_h
-assert "GenericMidi" not in session_cpp
-assert "applyMidiDeviceProfile(" not in session_cpp
+assert "MidiDeviceProfile::GenericMidi" in session_cpp
+assert "profileRuntime.applyProfile" not in session_cpp
+assert "midiDeviceProfileRuntime().applyProfile" not in session_cpp
+assert "applyMidiDeviceProfile(profile, candidate)" in session_cpp
+assert "persistence_.save(candidate)" in session_cpp
 
 print("0.9.7-R2 device capability source regressions: PASS")
