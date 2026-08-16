@@ -6,6 +6,7 @@ BUILD_DIR="${ROOT_DIR}/.build/sampler_stream_cache"
 mkdir -p "${BUILD_DIR}"
 
 python3 "${ROOT_DIR}/tests/test_sampler_streaming_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_cardputer_realtime_persistence_source.py"
 
 g++ -std=gnu++20 -Wall -Wextra -Werror -pthread \
   -I"${ROOT_DIR}" \
