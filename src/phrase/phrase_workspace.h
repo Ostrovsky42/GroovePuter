@@ -4,7 +4,8 @@
 #include <utility>
 
 #include "phrase_song_insert.h"
-#include "src/state/scene_revision.h"
+#include "src/state/undo_owner.h"
+#include "src/state/song_phrase_undo_receipts.h"
 
 namespace PhraseWorkspace {
 
@@ -67,101 +68,128 @@ inline bool barPreview(const Scene& scene,
                        *phrase, bar, scene, currentPageIndex, output);
 }
 
-// Commit must execute its callable synchronously under the repository's
-// established AudioGuard. The command owns validation and advances Scene
-// revision exactly once after a successful mutation.
+// R4 preserves the existing synchronous AudioGuard contract but moves Scene
+// revision ownership to the canonical UndoOwner. PREPARE runs only on fixed
+// local copies; COMMIT only assigns the already-prepared bounded value.
+template <typename Commit, typename Prepare>
+PhraseCore::Result commitPhraseBank(Scene& scene,
+                                    PhraseCore::SlotId resultSlot,
+                                    Commit&& commit,
+                                    Prepare&& prepare) {
+  GroovePuterUndo::PhraseBankUndoPayload before{};
+  before.before = scene.phraseBank;
+  PhraseCore::PhraseBank after = before.before;
+
+  PhraseCore::Result result = std::forward<Prepare>(prepare)(after);
+  if (!result) return result;
+  if (GroovePuterUndo::phraseBanksEqual(before.before, after)) return result;
+
+  auto&& guardedCommit = commit;
+  const bool committed = GroovePuterUndo::undoOwner().commitPrepared(
+      UndoKind::Phrase, before, [&]() {
+        guardedCommit([&]() { scene.phraseBank = after; });
+      });
+  if (!committed) {
+    result = PhraseCore::Result{};
+    result.slot = resultSlot;
+    result.error = PhraseCore::Error::InvalidPhrase;
+  }
+  return result;
+}
+
 template <typename Commit>
 PhraseCore::Result capture(Scene& scene,
                            const CaptureRequest& request,
                            Commit&& commit) {
-  PhraseCore::Result result{};
-  result.slot = request.targetSlot;
+  PhraseCore::Result invalid{};
+  invalid.slot = request.targetSlot;
   if (request.sourceSongSlot > 1) {
-    result.error = PhraseCore::Error::InvalidSongSlot;
-    return result;
+    invalid.error = PhraseCore::Error::InvalidSongSlot;
+    return invalid;
   }
 
-  auto&& guardedCommit = commit;
-  guardedCommit([&]() {
-    result = PhraseCore::captureSongRegion(
-        scene.phraseBank,
-        request.targetSlot,
-        scene.songs[request.sourceSongSlot],
-        request.sourceSongSlot,
-        request.startRow,
-        request.lengthBars,
-        request.role,
-        request.source,
-        request.trackMask);
-  });
-  if (result) GroovePuterState::markSceneMutated();
-  return result;
+  const Song sourceSong = scene.songs[request.sourceSongSlot];
+  return commitPhraseBank(
+      scene, request.targetSlot, std::forward<Commit>(commit),
+      [&](PhraseCore::PhraseBank& bank) {
+        return PhraseCore::captureSongRegion(
+            bank,
+            request.targetSlot,
+            sourceSong,
+            request.sourceSongSlot,
+            request.startRow,
+            request.lengthBars,
+            request.role,
+            request.source,
+            request.trackMask);
+      });
 }
 
 template <typename Commit>
 PhraseCore::Result derive(Scene& scene,
                           const DeriveRequest& request,
                           Commit&& commit) {
-  PhraseCore::Result result{};
-  result.slot = request.targetSlot;
-  auto&& guardedCommit = commit;
-  guardedCommit([&]() {
-    result = PhraseCore::deriveReferenceView(
-        scene.phraseBank,
-        request.targetSlot,
-        request.parentSlot,
-        request.role);
-  });
-  if (result) GroovePuterState::markSceneMutated();
-  return result;
+  return commitPhraseBank(
+      scene, request.targetSlot, std::forward<Commit>(commit),
+      [&](PhraseCore::PhraseBank& bank) {
+        return PhraseCore::deriveReferenceView(
+            bank, request.targetSlot, request.parentSlot, request.role);
+      });
 }
 
 template <typename Commit>
 PhraseCore::Result clear(Scene& scene,
                          PhraseCore::SlotId slot,
                          Commit&& commit) {
-  PhraseCore::Result result{};
-  result.slot = slot;
+  PhraseCore::Result invalid{};
+  invalid.slot = slot;
   if (!PhraseCore::summarize(scene.phraseBank, slot).valid) {
-    result.error = PhraseCore::Error::InvalidPhrase;
-    return result;
+    invalid.error = PhraseCore::Error::InvalidPhrase;
+    return invalid;
   }
 
-  auto&& guardedCommit = commit;
-  guardedCommit([&]() { result = PhraseCore::clear(scene.phraseBank, slot); });
-  if (result) GroovePuterState::markSceneMutated();
-  return result;
+  return commitPhraseBank(
+      scene, slot, std::forward<Commit>(commit),
+      [&](PhraseCore::PhraseBank& bank) { return PhraseCore::clear(bank, slot); });
 }
 
 template <typename Commit>
 PhraseCore::Result writeToSong(Scene& scene,
                                const WriteRequest& request,
                                Commit&& commit) {
-  PhraseCore::Result result{};
-  result.slot = request.sourceSlot;
+  PhraseCore::Result invalid{};
+  invalid.slot = request.sourceSlot;
   if (request.destinationSongSlot > 1) {
-    result.error = PhraseCore::Error::InvalidSongSlot;
-    return result;
+    invalid.error = PhraseCore::Error::InvalidSongSlot;
+    return invalid;
   }
 
+  GroovePuterUndo::SongUndoPayload before{};
+  before.songSlot = request.destinationSongSlot;
+  before.before = scene.songs[request.destinationSongSlot];
+  Song after = before.before;
+
+  PhraseCore::Result result{};
+  if (request.overwrite) {
+    result = PhraseCore::writeToSong(
+        scene.phraseBank, request.sourceSlot, after, request.startRow, true);
+  } else {
+    result = PhraseCore::insertIntoSong(
+        scene.phraseBank, request.sourceSlot, after, request.startRow);
+  }
+  if (!result) return result;
+  if (GroovePuterUndo::songsEqual(before.before, after)) return result;
+
   auto&& guardedCommit = commit;
-  guardedCommit([&]() {
-    if (request.overwrite) {
-      result = PhraseCore::writeToSong(
-          scene.phraseBank,
-          request.sourceSlot,
-          scene.songs[request.destinationSongSlot],
-          request.startRow,
-          true);
-    } else {
-      result = PhraseCore::insertIntoSong(
-          scene.phraseBank,
-          request.sourceSlot,
-          scene.songs[request.destinationSongSlot],
-          request.startRow);
-    }
-  });
-  if (result) GroovePuterState::markSceneMutated();
+  const bool committed = GroovePuterUndo::undoOwner().commitPrepared(
+      UndoKind::Song, before, [&]() {
+        guardedCommit([&]() { scene.songs[request.destinationSongSlot] = after; });
+      });
+  if (!committed) {
+    result = PhraseCore::Result{};
+    result.slot = request.sourceSlot;
+    result.error = PhraseCore::Error::InvalidPhrase;
+  }
   return result;
 }
 
