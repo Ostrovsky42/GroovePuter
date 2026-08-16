@@ -1,0 +1,32 @@
+name: TEMP 0.9.8 Song Undo B2
+
+on:
+  push:
+    branches:
+      - agent/20260816-0.9.8-song-undo
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ github.actor != 'github-actions[bot]' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/20260816-0.9.8-song-undo
+          fetch-depth: 0
+      - name: Apply bounded Song Undo patch
+        run: python3 tools/apply_0_9_8_song_undo_b2.py
+      - name: Run focused regression
+        run: python3 tests/test_song_undo_source_regressions.py
+      - name: Validate whitespace
+        run: git diff --check
+      - name: Commit production patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "0.9.8-B2: bound Song undo memory and receipt lifetime"
+          git push origin HEAD:agent/20260816-0.9.8-song-undo
