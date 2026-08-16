@@ -1,0 +1,30 @@
+name: R4 deterministic transform once
+
+on:
+  push:
+    branches:
+      - agent/20260816-0.9.8-r4-song-phrase-safe-editing
+    paths:
+      - '.github/workflows/r4-transform-once.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  transform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/20260816-0.9.8-r4-song-phrase-safe-editing
+      - name: Apply deterministic R4 transform
+        run: python3 tools/r4_song_phrase_transform.py
+      - name: Commit transformed sources
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/ui/pages/song_page.h src/ui/pages/song_page.cpp src/ui/pages/phrase_page.h src/ui/pages/phrase_page.cpp
+          git diff --cached --check
+          git commit -m "feat: migrate song phrase safe editing"
+          git push origin HEAD:agent/20260816-0.9.8-r4-song-phrase-safe-editing
