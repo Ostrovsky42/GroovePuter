@@ -1,0 +1,39 @@
+name: Undo Safe Editing 0.9.8 R5
+
+on:
+  push:
+    paths:
+      - 'src/ui/pages/song_page.cpp'
+      - 'src/ui/pages/song_page.h'
+      - 'src/ui/pages/song_page_r4_owner.inc'
+      - 'src/ui/pages/pattern_edit_page.h'
+      - 'src/ui/pages/phrase_page.h'
+      - 'src/ui/pages/phrase_page.cpp'
+      - 'src/phrase/phrase_workspace.h'
+      - 'src/state/undo_owner.h'
+      - 'tests/run_undo_0_9_8_r5_tests.sh'
+      - 'tests/test_undo_0_9_8_r5_ownership_closure.py'
+      - 'tests/test_song_generation_source_regressions.py'
+      - '.github/workflows/undo-0-9-8-r5-ownership-closure.yml'
+  pull_request:
+    paths:
+      - 'src/ui/pages/song_page.cpp'
+      - 'src/ui/pages/song_page.h'
+      - 'src/ui/pages/song_page_r4_owner.inc'
+      - 'src/ui/pages/pattern_edit_page.h'
+      - 'src/ui/pages/phrase_page.h'
+      - 'src/ui/pages/phrase_page.cpp'
+      - 'src/phrase/phrase_workspace.h'
+      - 'src/state/undo_owner.h'
+      - 'tests/run_undo_0_9_8_r5_tests.sh'
+      - 'tests/test_undo_0_9_8_r5_ownership_closure.py'
+      - 'tests/test_song_generation_source_regressions.py'
+      - '.github/workflows/undo-0-9-8-r5-ownership-closure.yml'
+
+jobs:
+  ownership-closure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run 0.9.8 R5 ownership closure contracts
+        run: bash tests/run_undo_0_9_8_r5_tests.sh
