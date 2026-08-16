@@ -4,6 +4,31 @@
 
 Validate the first bounded-DRAM sampler playback candidate on a real M5Stack Cardputer ADV.
 
+## Current hardware status — P0 FAIL / Gate 0 only
+
+The first hardware run exposed a bounded-memory ownership failure before normal playback acceptance:
+
+```text
+3 ordinary streamed pad assignments
+free8    ~4 KiB
+largest8 ~1 KiB
+```
+
+Stop the old acceptance sequence here. Do **not** continue to four/eight pads, reverse, pitch, loop or soak until Gate 0 below passes.
+
+The code audit found a concrete lifetime bug in the previous candidate: `preloadStreamed_()` prewarmed page 0 through `SD.open()`, while the resulting file handle remained owned by the four-entry stream I/O pool even though the sample was only assigned and no sampler voice referenced it. That made assignment count grow the long-lived heap working set.
+
+The corrected contract is:
+
+- pad assignment owns a bounded descriptor only;
+- the fixed shared 4096-byte page cache is allocated once at boot;
+- the temporary file handle used to prewarm page 0 is closed before assignment completes;
+- file handles may exist during active streamed playback only;
+- the control loop closes a sample file after its last voice reference is released;
+- reducing the 4096-byte cache is not an acceptable substitute for fixing ownership.
+
+This document is intentionally not self-pinned to a commit SHA because changing a tracked file changes the commit SHA. Before flashing, use the exact `head_sha` recorded in PR #304 and keep all hardware measurements on that one SHA.
+
 This candidate keeps the recovered sampler surface intact:
 
 - 16 internal sampler pads; the recovered UI exposes pads 1..8 used by the drum sequencer;
@@ -19,7 +44,7 @@ The change under test is playback storage, not sampler product semantics:
 - larger WAV: streamed source descriptor;
 - fixed 4096-byte internal-RAM cache: 8 pages x 512 bytes;
 - bounded 16-request SPSC queue;
-- at most four control-side open sample files;
+- up to four control-side file-handle slots for **active playback**, not assigned pads;
 - two-page boundary-aware prefetch per active streamed voice;
 - SD open/seek/read and stereo-to-mono conversion run only from the control loop;
 - the audio path reads READY cache pages only and never opens SD, allocates, frees or locks a filesystem mutex.
@@ -72,6 +97,7 @@ Use PCM16 WAV files. Mono and stereo are accepted. Stereo is downmixed page-by-p
 
 For the first pass, include at least:
 
+- three ordinary streamed WAVs > 2048 decoded bytes for Gate 0;
 - one mono one-shot > 2 KiB decoded;
 - one stereo one-shot > 2 KiB decoded;
 - one longer WAV large enough that the old resident-only path could not obtain one contiguous decoded block after UI/catalog initialization;
@@ -84,9 +110,12 @@ From the exact candidate branch:
 ```bash
 git checkout agent/20260816-0.9.5-sampler-streaming-hw
 git pull --ff-only
+git rev-parse HEAD
 bash scripts/build.sh
 bash scripts/upload.sh /dev/ttyACM0
 ```
+
+The SHA printed by `git rev-parse HEAD` must equal the current PR #304 `head_sha`. Do not copy a SHA from this tracked document.
 
 If the serial port differs, pass the actual `/dev/ttyACM*` device to `scripts/upload.sh`.
 
@@ -128,15 +157,21 @@ Before catalog scan, the fixed stream cache must be reserved successfully:
 
 `fixed cache allocation failed` is a hard failure for this candidate.
 
-Selecting a normal one-shot should log a streamed descriptor rather than a large decoded PCM allocation:
+Selecting an ordinary one-shot must explicitly show that routing uses decoded bytes, not the browser's rounded file-size label:
 
 ```text
+[SAMPLER-ROUTE] id=... decodedBytes=... sourceBytes=... route=STREAMED path=...
+[SAMPLER-STREAM-IO] open id=... slot=...
+[SAMPLER-STREAM-IO] close id=... slot=...
 [SAMPLER-STREAM] prepared id=... frames=... sr=... channels=...
 ```
+
+For an **assigned but idle** streamed sample, the `open` produced by page-0 prewarm must be paired with `close` before assignment completes. PAD2/PAD3 must not leave additional file handles open.
 
 Very small files may intentionally use:
 
 ```text
+[SAMPLER-ROUTE] ... route=RESIDENT ...
 [SAMPLER] resident id=... frames=... bytes=... pool=.../...
 ```
 
@@ -145,6 +180,8 @@ While streamed samples play, the control loop periodically emits:
 ```text
 [SAMPLER-STREAM] active=... hit=... miss=... pages=... reqDrop=... starve=... voiceDrop=... sdMaxUs=...
 ```
+
+During active playback, `SAMPLER-STREAM-IO open` is expected. After the voice releases its handle, the control loop must emit the matching `close`; the file object must not remain as idle assignment state.
 
 Interpretation:
 
@@ -163,9 +200,55 @@ Interpretation:
 4. Selecting a WAV returns to the sampler page and the assigned relative filename is shown on the pad.
 5. The selected pad can be auditioned and triggered by the existing drum sequencer.
 6. Changing pad, pitch, reverse, loop, start/end and choke remains available as before.
-7. Leaving and reopening `SAMPLES` must not rebuild the catalog or cause a permanent heap step-down attributable to PCM loading.
+7. Leaving and reopening `SAMPLES` must not rebuild the catalog or cause a permanent heap step-down attributable to PCM loading or retained idle file handles.
 
 ## Test sequence
+
+### Gate 0. Assignment lifetime — mandatory before all audio acceptance
+
+Use three ordinary WAVs whose serial routing reports `route=STREAMED`.
+
+Record the existing RAM diagnostic after each step:
+
+```text
+phase                         free8      largest8
+BOOT / before SAMPLES         _____      _____
+SAMPLES / before assign       _____      _____
+PAD1 assigned                 _____      _____
+PAD2 assigned                 _____      _____
+PAD3 assigned                 _____      _____
+PAD1 replace                  _____      _____
+PAD1 replace x10              _____      _____
+leave SAMPLES                 _____      _____
+re-enter SAMPLES              _____      _____
+```
+
+For every assignment, capture these serial lines:
+
+```text
+[SAMPLER-ROUTE] ... decodedBytes=... route=STREAMED ...
+[SAMPLER-STREAM-IO] open ...
+[SAMPLER-STREAM-IO] close ...
+[SAMPLER-STREAM] prepared ...
+```
+
+**PASS:**
+
+- all three ordinary samples report `route=STREAMED`;
+- each idle assignment prewarm has a matching open/close pair;
+- PAD1 -> PAD2 -> PAD3 does not consume kilobytes per pad;
+- replacing PAD1 ten times does not produce monotonic free-heap or largest-block collapse;
+- leaving/re-entering SAMPLES does not introduce another permanent step-down;
+- no WDT/reset/heap corruption.
+
+**FAIL / stop immediately:**
+
+- any ordinary >2048 decoded-byte sample reports `route=RESIDENT`;
+- a prewarm file handle remains open merely because a pad is assigned;
+- free8/largest8 again collapses approximately per assignment;
+- repeated replacement causes monotonic loss.
+
+Do not continue to A-H unless Gate 0 passes.
 
 ### A. Boot topology
 
@@ -204,7 +287,8 @@ Pass criteria:
 - no WDT/reset;
 - no global audio stall caused by SD page reads during playback;
 - `reqDrop=0`;
-- `voiceDrop=0`.
+- `voiceDrop=0`;
+- stream I/O handle closes after the voice is no longer active.
 
 ### D. Two streamed voices
 
@@ -216,7 +300,7 @@ Pass criteria are the same as C. Record `sdMaxUs`, `miss`, `starve` and `pages`.
 
 Create a deliberate four-way overlap.
 
-This is the V1 cache design target: 8 physical pages with a two-page prefetch horizon and four bounded open file handles.
+This is the V1 cache design target: 8 physical pages with a two-page prefetch horizon and up to four active-playback file handles.
 
 Pass criteria:
 
@@ -224,7 +308,8 @@ Pass criteria:
 - no corruption/cross-sample audio;
 - `reqDrop=0`;
 - `voiceDrop=0`;
-- any starvation is local and recoverable, not a whole-engine stall.
+- any starvation is local and recoverable, not a whole-engine stall;
+- after voices finish, idle file-handle ownership returns to zero.
 
 The sampler still has 8 logical voices. This test does not redefine the product polyphony to four; it measures whether the first 4 KiB streaming cache is sufficient before tuning cache size/page count on hardware evidence.
 
@@ -260,7 +345,7 @@ Pass criteria:
 
 ### H. Browse / replay soak
 
-For at least 10 minutes:
+For at least 30 minutes:
 
 - move through several folders;
 - reassign pads;
@@ -272,7 +357,7 @@ Record beginning/end `free8` and `largest8` from available diagnostics.
 
 Pass criteria:
 
-- no monotonic heap collapse caused by sample PCM;
+- no monotonic heap collapse caused by sample PCM or retained idle file handles;
 - no WDT/reset;
 - no sample-ID/path cross-talk;
 - no growing `reqDrop`/`voiceDrop` during ordinary one/two-voice use.
@@ -292,6 +377,14 @@ Confirm the card contains `/samples/...` or the supported `/sd/samples/...` root
 ### `fixed cache allocation failed`
 
 Do not continue streaming acceptance. Capture all boot heap markers. The cache is intentionally reserved before catalog scan; failure here means the candidate does not have a reproducible fixed playback budget on that build.
+
+### Assignment reports `route=RESIDENT` for a normal WAV
+
+Use the serial `decodedBytes` value, not the rounded KB shown by the browser. The routing threshold is 2048 **decoded mono PCM bytes**. If `decodedBytes > 2048` and the route is RESIDENT, stop and report it as a routing bug.
+
+### Assignment opens a stream file but does not close it
+
+Do not continue playback testing. An assigned, idle streamed source must retain only its descriptor plus pages already inside the one fixed cache. A retained `SD.open()` object is a lifetime bug, not a reason to reduce cache size.
 
 ### WAV assignment is rejected
 
@@ -321,6 +414,9 @@ Record it separately from playback-stream starvation. File inspection and the fi
 
 Hardware acceptance is PASS only when all checked items refer to one exact SHA and one SD card image:
 
+- [ ] **Gate 0 PASS:** PAD1/PAD2/PAD3 streamed assignment does not consume kilobytes per pad.
+- [ ] **Gate 0 PASS:** each idle assignment prewarm logs matching stream-I/O open + close.
+- [ ] **Gate 0 PASS:** PAD1 replacement x10 does not cause monotonic free8/largest8 collapse.
 - [ ] Cardputer ADV DRAM-only firmware builds and flashes.
 - [ ] Boot reaches `setup() complete` without WDT/reset.
 - [ ] Fixed 4096-byte sampler cache reports ready before catalog scan.
@@ -333,20 +429,22 @@ Hardware acceptance is PASS only when all checked items refer to one exact SHA a
 - [ ] One streamed voice: `reqDrop=0`, `voiceDrop=0`.
 - [ ] Two overlapping streamed voices: `reqDrop=0`, `voiceDrop=0`.
 - [ ] Four overlapping streamed voices: no reset/corruption; counters recorded.
+- [ ] Active stream I/O handles are reaped after voices finish.
 - [ ] Reverse works on streamed WAV.
 - [ ] Pitch 0.5 / 1.0 / 2.0 works on streamed WAV.
 - [ ] Loop/start/end work on streamed WAV.
 - [ ] Choke behavior remains correct.
 - [ ] Scene Save -> reboot -> Load restores stable sample assignments.
 - [ ] Duplicate basenames in different folders resolve correctly.
-- [ ] 10-minute browse/replay soak has no WDT/reset or monotonic PCM heap loss.
+- [ ] 30-minute browse/replay soak has no WDT/reset or monotonic heap loss.
 - [ ] Final serial log includes stream counters and worst `sdMaxUs`.
 
 ## Decision after hardware run
 
 Do not tune several dimensions at once.
 
-- If streamed playback is clean but idle heap remains too low: proceed to bounded catalog/window work.
+- If Gate 0 still fails: stop and continue ownership/allocator investigation; do not shrink the stream cache to hide the failure.
+- If Gate 0 passes and streamed playback is clean but idle heap remains too low: proceed to bounded catalog/window work.
 - If `sdMaxUs` is high and starvation occurs before catalog pressure matters: tune streaming page/cache policy first.
 - If only four-way overlap fails while one/two voices are clean: keep 8 logical voices and benchmark a larger fixed cache before changing polyphony semantics.
 - If ordinary one-voice streaming fails: stop; do not proceed to catalog optimization until the control-side refill path is corrected.
