@@ -495,7 +495,11 @@ void MiniAcid::start() {
 }
 
 void MiniAcid::stop() {
-  GroovePuterRhythm::QuantizedGenerationDetail::cancelPendingGenerationActivation(*this);
+  if (GroovePuterRhythm::QuantizedGenerationDetail::
+          cancelPendingGenerationActivation(*this)) {
+    GroovePuterRhythm::QuantizedGenerationDetail::
+        synchronizeCommittedGenerationRuntime(*this);
+  }
   LOG_PRINTLN("[DSP] STOP command received");
   publishPatternAllNotesOff_();
   playing = false;

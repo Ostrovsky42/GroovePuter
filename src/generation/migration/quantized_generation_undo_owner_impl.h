@@ -177,11 +177,10 @@ inline const PendingGeneration* pendingAudibleActivation(
       g_slotState[slot].load(std::memory_order_acquire));
   if (state != SlotState::Armed && state != SlotState::Ready) return nullptr;
   const PendingGeneration& pending = g_slots[slot];
-  if (pending.owner != &engine ||
-      !targetValid(pending.target) ||
-      !targetStillActive(engine.sceneManager(), pending.target)) {
-    return nullptr;
-  }
+  if (pending.owner != &engine || !targetValid(pending.target)) return nullptr;
+  // Global audible truth stays on the old snapshot until BAR_START even
+  // if a selector changes. Material accessors validate target identity
+  // separately so old Pattern bytes are never redirected.
   return &pending;
 }
 
@@ -192,14 +191,17 @@ inline const SynthPattern* pendingAudibleSynthPattern(
   const bool included = pending->scope == QuantizedGenerationScope::Full ||
       (voice == 0 && pending->scope == QuantizedGenerationScope::SynthA) ||
       (voice == 1 && pending->scope == QuantizedGenerationScope::SynthB);
-  return included ? &pending->synth[voice] : nullptr;
+  if (!included ||
+      !targetStillActive(engine.sceneManager(), pending->target)) return nullptr;
+  return &pending->synth[voice];
 }
 
 inline const DrumPatternSet* pendingAudibleDrumPatternSet(
     const MiniAcid& engine) {
   const PendingGeneration* pending = pendingAudibleActivation(engine);
   if (pending == nullptr ||
-      pending->scope != QuantizedGenerationScope::Full) return nullptr;
+      pending->scope != QuantizedGenerationScope::Full ||
+      !targetStillActive(engine.sceneManager(), pending->target)) return nullptr;
   return &pending->drums;
 }
 
@@ -225,6 +227,14 @@ inline bool hasPendingFullGenerationActivation(const MiniAcid& engine) {
   const PendingGeneration* pending = pendingAudibleActivation(engine);
   return pending != nullptr &&
          pending->scope == QuantizedGenerationScope::Full;
+}
+
+inline void synchronizeCommittedGenerationRuntime(MiniAcid& engine) {
+  // Removing pending never rolls persistent Scene truth back. If normal
+  // ACTIVATE is skipped, runtime controls converge to current committed
+  // mode/BPM so the next transport start cannot use stale controls.
+  engine.activateCommittedGrooveboxModeRuntime(engine.sceneManager().getMode());
+  engine.setBpm(engine.sceneManager().getBpm());
 }
 
 inline bool cancelPendingGenerationActivationForRevision(
@@ -382,6 +392,7 @@ inline bool commitQuantizedGenerationAtBarStart(SceneManager& scenes) {
       !targetStillActive(scenes, pending.target)) {
     g_slotState[slot].store(
         static_cast<uint8_t>(SlotState::Empty), std::memory_order_release);
+    synchronizeCommittedGenerationRuntime(*owner);
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::CancelledTargetChanged),
         std::memory_order_release);
@@ -394,6 +405,7 @@ inline bool commitQuantizedGenerationAtBarStart(SceneManager& scenes) {
       currentRevision != pending.committedRevision) {
     g_slotState[slot].store(
         static_cast<uint8_t>(SlotState::Empty), std::memory_order_release);
+    synchronizeCommittedGenerationRuntime(*owner);
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::CancelledRevisionChanged),
         std::memory_order_release);
