@@ -37,5 +37,5 @@ jobs:
 
       - name: Preserve 0.9.8 Undo owner contracts
         run: |
-          bash tests/run_undo_safe_editing_0_9_8_r2_tests.sh
-          bash tests/run_undo_safe_editing_0_9_8_r3_tests.sh
+          bash tests/run_undo_0_9_8_r2_tests.sh
+          bash tests/run_undo_0_9_8_r3_tests.sh
