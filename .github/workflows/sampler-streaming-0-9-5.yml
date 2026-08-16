@@ -9,6 +9,7 @@ on:
       - "src/sampler/sampler_voice.h"
       - "src/sampler/sampler_voice.cpp"
       - "sampler_boot_registry.ino"
+      - "miniacid_encoder8.cpp"
       - "GroovePuter.ino"
       - "src/ui/pages/sampler_page.cpp"
       - "tests/test_sampler_stream_cache.cpp"
