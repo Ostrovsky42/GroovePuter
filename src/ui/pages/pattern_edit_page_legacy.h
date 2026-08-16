@@ -445,6 +445,43 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
         if (has_selection_) clearSelection();
         return true;
       }
+      case GROOVEPUTER_APP_EVENT_UNDO: {
+        using GroovePuterUndo::SynthPatternUndoPayload;
+        using GroovePuterUndo::UndoKind;
+        using GroovePuterUndo::UndoResult;
+        UndoResult result = GroovePuterUndo::undoOwner().undoPrepared<SynthPatternUndoPayload>(
+            UndoKind::Pattern,
+            [&](const SynthPatternUndoPayload& receipt) {
+              return GroovePuterUndo::synthPatternUndoTargetAvailable(
+                  mini_acid_.sceneManager(), receipt);
+            },
+            [&](const SynthPatternUndoPayload& receipt) {
+              const auto restore = [&]() {
+                GroovePuterUndo::restoreSynthPatternUndo(
+                    mini_acid_.sceneManager(), receipt);
+              };
+              if (audio_guard_) audio_guard_(restore);
+              else restore();
+            });
+
+        switch (result) {
+          case UndoResult::Restored:
+            UI::showToast("UNDO: PATTERN", 900);
+            return true;
+          case UndoResult::NothingToUndo:
+            UI::showToast("NOTHING TO UNDO", 800);
+            return true;
+          case UndoResult::TargetUnavailable:
+            UI::showToast("UNDO: RETURN PAGE", 1000);
+            return true;
+          case UndoResult::Expired:
+            UI::showToast("UNDO EXPIRED", 900);
+            return true;
+          case UndoResult::KindMismatch:
+          default:
+            return false;
+        }
+      }
       default:
         return false;
     }
@@ -827,14 +864,31 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     return false; 
   }
 
-  // Alt + Backspace = Reset Pattern
+  // Alt + Backspace = Reset Pattern. R2 routes this one destructive edit
+  // through the authoritative persistent-mutation/Undo owner.
   if (ui_event.alt && (key == '\b' || key == 0x7F)) {
-    withAudioGuard([&]() { 
-        for (int i=0; i<SEQ_STEPS; ++i) {
-            mini_acid_.clear303Step(i, voice_index_);
-        }
-    });
-    UI::showToast("Pattern Cleared");
+    GroovePuterUndo::SynthPatternUndoPayload before{};
+    if (!GroovePuterUndo::captureCurrentSynthPatternUndo(
+            mini_acid_.sceneManager(), voice_index_, before)) {
+      UI::showToast("PATTERN CLEAR FAILED", 1000);
+      return true;
+    }
+    if (GroovePuterUndo::isCanonicalClearedSynthPattern(before.before)) {
+      UI::showToast("PATTERN ALREADY CLEAR", 800);
+      return true;
+    }
+
+    const bool committed = GroovePuterUndo::undoOwner().commitPrepared(
+        GroovePuterUndo::UndoKind::Pattern, before, [&]() {
+          const auto clear_pattern = [&]() {
+            for (int i = 0; i < SEQ_STEPS; ++i) {
+              mini_acid_.clear303Step(i, voice_index_);
+            }
+          };
+          if (audio_guard_) audio_guard_(clear_pattern);
+          else clear_pattern();
+        });
+    UI::showToast(committed ? "Pattern Cleared" : "PATTERN CLEAR FAILED", 900);
     return true;
   }
 

@@ -21,6 +21,8 @@
 #include "../../debug_log.h"
 #include "../../generation/migration/quantized_generation_commit.h"
 #include "../../state/scene_revision.h"
+#include "../../state/undo_owner.h"
+#include "../../state/undo_receipts.h"
 #include "../key_normalize.h"
 
 namespace UI {
