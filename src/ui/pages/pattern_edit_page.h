@@ -108,11 +108,13 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
                      : PatternMutationResult::Invalid;
   }
 
+  // Audio exclusion and persistent-revision ownership are deliberately
+  // separate in R3. Runtime pattern/bank selection uses this guard but must not
+  // dirty the Scene or expire a valid retained Undo receipt.
   template <typename F>
   void withAudioGuard(F&& fn) {
       if (audio_guard_) audio_guard_(std::forward<F>(fn));
       else fn();
-      GroovePuterState::markSceneMutated();
   }
 
   IGfx& gfx_;
