@@ -1,0 +1,33 @@
+name: R6 surgical patch
+
+on:
+  push:
+    branches:
+      - agent/20260816-0.9.8-r6-undo-ux
+    paths:
+      - tools/r6_apply.py
+      - .github/workflows/r6-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply deterministic R6 UX patch
+        run: python3 tools/r6_apply.py
+      - name: Validate R6 focused contracts
+        run: |
+          git diff --check
+          bash tests/run_undo_0_9_8_r6_tests.sh
+      - name: Commit R6 UX
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/ui src/ui/pages tests docs
+          git commit -m "0.9.8-R6: unify Undo shortcut and page UX"
+          git push origin HEAD:agent/20260816-0.9.8-r6-undo-ux
