@@ -18,7 +18,7 @@ jobs:
       - name: Compile bounded Pattern generation receipt contract
         run: |
           mkdir -p build/host-tests
-          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
             tests/test_pattern_generation_owner_0_9_9.cpp \
             -o build/host-tests/test_pattern_generation_owner_0_9_9
           build/host-tests/test_pattern_generation_owner_0_9_9
