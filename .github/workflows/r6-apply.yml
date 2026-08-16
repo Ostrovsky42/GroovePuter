@@ -65,15 +65,17 @@ jobs:
 
           path = Path("tests/test_undo_0_9_8_r6_ux_source_regressions.py")
           text = path.read_text(encoding="utf-8")
-          old = '''    promotion = display.index("GroovePuterUndoUx::promoteUndoShortcut(event);")
-    page_dispatch = display.index("IPage* currentPage = getPage_(page_index_);")
-    fallback = display.index("GroovePuterUndoUx::isUndoEvent(event)", page_dispatch)
-'''
-          new = '''    handle_start = display.index("bool MiniAcidDisplay::handleEvent(UIEvent event)")
-    promotion = display.index("GroovePuterUndoUx::promoteUndoShortcut(event);", handle_start)
-    page_dispatch = display.index("IPage* currentPage = getPage_(page_index_);", promotion)
-    fallback = display.index("GroovePuterUndoUx::isUndoEvent(event)", page_dispatch)
-'''
+          old = (
+              '    promotion = display.index("GroovePuterUndoUx::promoteUndoShortcut(event);")\n'
+              '    page_dispatch = display.index("IPage* currentPage = getPage_(page_index_);")\n'
+              '    fallback = display.index("GroovePuterUndoUx::isUndoEvent(event)", page_dispatch)\n'
+          )
+          new = (
+              '    handle_start = display.index("bool MiniAcidDisplay::handleEvent(UIEvent event)")\n'
+              '    promotion = display.index("GroovePuterUndoUx::promoteUndoShortcut(event);", handle_start)\n'
+              '    page_dispatch = display.index("IPage* currentPage = getPage_(page_index_);", promotion)\n'
+              '    fallback = display.index("GroovePuterUndoUx::isUndoEvent(event)", page_dispatch)\n'
+          )
           if text.count(old) != 1:
               raise RuntimeError("expected exactly one unscoped R6 display-order assertion")
           path.write_text(text.replace(old, new, 1), encoding="utf-8")
