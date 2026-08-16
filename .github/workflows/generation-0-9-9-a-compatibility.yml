@@ -24,6 +24,17 @@ jobs:
           build/host-tests/test_generation_0_9_9_compatibility
           python3 tests/test_generation_0_9_9_source_regressions.py
 
+      - name: Preserve realized Lo-Fi material through Scene roundtrip
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-variable \
+            -Wno-unused-but-set-variable -Wno-c++20-extensions \
+            -I. -Iplatform_sdl -include platform_sdl/arduino_compat.h \
+            tests/test_generation_scene_roundtrip.cpp \
+            scenes.cpp json_evented.cpp src/audio/pattern_paging.cpp \
+            -o build/host-tests/test_generation_scene_roundtrip
+          build/host-tests/test_generation_scene_roundtrip
+
       - name: Protect Phrase-only Pattern references
         run: |
           mkdir -p build/host-tests
