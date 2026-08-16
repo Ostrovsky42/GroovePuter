@@ -1,0 +1,10 @@
+name: MIDI Input Controllers 0.9.10 R6
+on:
+  pull_request:
+    paths: ['src/input/midi_input_router.h','docs/releases/0_9_10_R6_CONTROLLER_BOUNDARY.md','tests/*midi_input_0_9_10_r6*','.github/workflows/midi-input-0-9-10-r6.yml']
+jobs:
+  controller-boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/run_midi_input_0_9_10_r6_tests.sh
