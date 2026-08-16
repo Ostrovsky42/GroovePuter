@@ -1,0 +1,21 @@
+name: Sampler memory audit
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/sampler-memory-audit.yml'
+      - 'tests/test_sampler_memory_layout.cpp'
+      - 'tests/test_sampler_memory_ownership_source.py'
+      - 'tests/run_sampler_memory_cost_audit.sh'
+      - 'docs/releases/0_9_5_SAMPLER_MEMORY_COST_AUDIT.md'
+  workflow_dispatch:
+
+jobs:
+  sampler-memory-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run sampler memory cost audit
+        run: bash tests/run_sampler_memory_cost_audit.sh
