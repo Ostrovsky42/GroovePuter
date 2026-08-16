@@ -54,6 +54,8 @@ struct MidiInputRouterDiagnostics {
     uint32_t overflowRecoveries{0};
     uint32_t configPanics{0};
     uint32_t unmappedDrumNotes{0};
+    uint32_t sessionCleanups{0};
+    uint32_t sessionNotesReleased{0};
 };
 
 class MidiInputRouter {
@@ -141,6 +143,27 @@ public:
     }
 
     void panic() { releaseAllOwnedNotes(); }
+
+    std::size_t releaseSession(MidiInputTransportId transportId,
+                               MidiInputSessionId sessionId) {
+        if (transportId == kInvalidMidiInputTransportId ||
+            sessionId == kInvalidMidiInputSessionId) {
+            return 0u;
+        }
+        std::size_t released = 0;
+        for (std::size_t i = 0; i < kMaxActiveNotes; ++i) {
+            const auto& owner = owners_[i];
+            if (!owner.active || owner.transportId != transportId ||
+                owner.sessionId != sessionId) {
+                continue;
+            }
+            releaseOwner(i);
+            ++released;
+        }
+        ++diagnostics_.sessionCleanups;
+        diagnostics_.sessionNotesReleased += static_cast<uint32_t>(released);
+        return released;
+    }
 
     std::size_t activeNoteCount() const {
         std::size_t count = 0;
