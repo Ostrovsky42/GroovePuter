@@ -1,0 +1,28 @@
+name: MIDI Input Controllers 0.9.10 R8
+on:
+  push:
+    branches: [agent/20260816-0.9.10-r8-input-ui]
+  pull_request:
+    paths: ['src/ui/midi_input_ui.h','src/ui/pages/project_page.*','docs/releases/0_9_10_R8_INPUT_UI.md','tests/*midi_input_0_9_10_r8*','.github/workflows/midi-input-0-9-10-r8.yml']
+permissions: {contents: write}
+jobs:
+  bootstrap:
+    if: github.event_name == 'push' && github.event.head_commit.message == 'bootstrap R8 UI'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 0}
+      - run: python3 tools/r8_bootstrap.py
+      - run: bash tests/run_midi_input_0_9_10_r8_tests.sh
+      - run: |
+          git config user.name "GroovePuter Agent"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "0.9.10-R8: expose MIDI input controls"
+          git push origin HEAD:agent/20260816-0.9.10-r8-input-ui
+  ui-contract:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash tests/run_midi_input_0_9_10_r8_tests.sh
