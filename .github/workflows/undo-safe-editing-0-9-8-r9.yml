@@ -1,0 +1,18 @@
+name: Undo Safe Editing 0.9.8 R9
+
+on:
+  pull_request:
+  push:
+    branches:
+      - agent/20260817-0.9.8-r8-global-ctrl-z
+
+permissions:
+  contents: read
+
+jobs:
+  one-slot-history:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run cumulative R9 Safe Editing contracts
+        run: bash tests/run_undo_0_9_8_r9_tests.sh
