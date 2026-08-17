@@ -8,6 +8,7 @@
 #include "src/state/undo_owner.h"
 #include "src/state/undo_receipts.h"
 #include "src/generation/migration/strong_rhythm_live_bridge.h"
+#include "src/generation/migration/quantized_generation_commit.h"
 #include "src/output/output_mode_runtime.h"
 
 #include <algorithm>
@@ -171,6 +172,63 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
     }
   }
 
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+      ui_event.app_event_type == GROOVEPUTER_APP_EVENT_UNDO) {
+    std::shared_ptr<Container> main = getPagePtr(0);
+    if (!main) return false;
+    auto* page = static_cast<DrumSequencerMainPage*>(main.get());
+    auto& owner = GroovePuterUndo::undoOwner();
+    if (!owner.hasUndo()) return false;
+
+    if (owner.kind() == GroovePuterUndo::UndoKind::Generation) {
+      const bool redo = owner.nextIsRedo();
+      GroovePuterUndo::UndoResult result = GroovePuterUndo::UndoResult::KindMismatch;
+      const auto apply = [&]() {
+        result = GroovePuterRhythm::toggleLastQuantizedGeneration(page->mini_acid_);
+      };
+      if (page->audio_guard_) page->audio_guard_(apply); else apply();
+      if (result == GroovePuterUndo::UndoResult::Restored) {
+        UI::showToast(redo ? "REDO: DRUM GEN" : "UNDO: DRUM GEN", 1100);
+        return true;
+      }
+      if (result == GroovePuterUndo::UndoResult::TargetUnavailable) {
+        UI::showToast("UNDO: RETURN PAGE", 1100);
+        return true;
+      }
+      return result == GroovePuterUndo::UndoResult::Expired;
+    }
+
+    if (owner.kind() == GroovePuterUndo::UndoKind::Pattern) {
+      GroovePuterUndo::DrumPatternUndoPayload retained{};
+      if (!owner.read(GroovePuterUndo::UndoKind::Pattern, retained)) return false;
+      const bool redo = owner.nextIsRedo();
+      const GroovePuterUndo::UndoResult result =
+owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
+    GroovePuterUndo::UndoKind::Pattern,
+    [&](const GroovePuterUndo::DrumPatternUndoPayload& receipt) {
+      return GroovePuterUndo::drumPatternUndoTargetAvailable(
+          page->mini_acid_.sceneManager(), receipt);
+    },
+    [&](GroovePuterUndo::DrumPatternUndoPayload& receipt) {
+      const auto exchange = [&]() {
+        GroovePuterUndo::exchangeDrumPatternUndo(
+            page->mini_acid_.sceneManager(), receipt);
+      };
+      if (page->audio_guard_) page->audio_guard_(exchange); else exchange();
+    });
+      if (result == GroovePuterUndo::UndoResult::Restored) {
+        UI::showToast(redo ? "REDO: DRUMS" : "UNDO: DRUMS", 900);
+        return true;
+      }
+      if (result == GroovePuterUndo::UndoResult::TargetUnavailable) {
+        UI::showToast("UNDO: RETURN PAGE", 1100);
+        return true;
+      }
+      return result == GroovePuterUndo::UndoResult::Expired;
+    }
+    return false;
+  }
+
   // Only the first tab is the DrumSequencerMainPage. All other drum tabs keep
   // their previous handlers and must not inherit the pattern-grid bindings.
   if (activePageIndex() != 0 ||
@@ -291,7 +349,7 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
   // to drums only. Cardputer may report G by scancode with key == 0.
   if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
     page->withAudioGuard([&]() {
-      GroovePuterRhythm::regenerateDrumsWithStrongRhythmMigration(
+      (void)GroovePuterRhythm::regenerateDrumsWithQuantizedCommit(
           page->mini_acid_);
     });
     return true;

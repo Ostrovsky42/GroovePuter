@@ -38,6 +38,8 @@ class BoundedUndoSlot {
   bool hasUndo() const { return kind_ != UndoKind::None; }
   UndoKind kind() const { return kind_; }
   uint16_t payloadSize() const { return payload_size_; }
+  bool nextIsRedo() const { return next_is_redo_; }
+  void setNextIsRedo(bool redo) { next_is_redo_ = redo; }
 
   const GroovePuterState::SceneRevisionState& revisionBefore() const {
     return revision_before_;
@@ -58,6 +60,7 @@ class BoundedUndoSlot {
     revision_before_ = revision_before;
     payload_size_ = static_cast<uint16_t>(sizeof(Payload));
     kind_ = kind;
+    next_is_redo_ = false;
     return true;
   }
 
@@ -75,6 +78,7 @@ class BoundedUndoSlot {
     kind_ = UndoKind::None;
     payload_size_ = 0;
     revision_before_ = GroovePuterState::SceneRevisionState{};
+    next_is_redo_ = false;
   }
 
  private:
@@ -82,6 +86,7 @@ class BoundedUndoSlot {
   GroovePuterState::SceneRevisionState revision_before_{};
   uint16_t payload_size_{0};
   UndoKind kind_{UndoKind::None};
+  bool next_is_redo_{false};
 };
 
 }  // namespace GroovePuterUndo

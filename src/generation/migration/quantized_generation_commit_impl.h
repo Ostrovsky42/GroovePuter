@@ -34,6 +34,7 @@ enum class QuantizedGenerationScope : uint8_t {
   Full = 0,
   SynthA,
   SynthB,
+  Drums,
 };
 
 namespace QuantizedGenerationDetail {

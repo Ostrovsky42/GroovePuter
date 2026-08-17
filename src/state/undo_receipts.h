@@ -159,4 +159,69 @@ inline void restorePhraseUndo(SceneManager& manager,
   manager.currentScene().phraseBank = receipt.before;
 }
 
+
+struct DrumPatternUndoPayload {
+  int16_t pageIndex{-1};
+  int16_t bankIndex{-1};
+  int16_t patternIndex{-1};
+  DrumPatternSet before{};
+};
+
+static_assert(std::is_trivially_copyable<DrumPatternUndoPayload>::value,
+    "Drum Pattern Undo receipt must remain fixed and trivially copyable");
+static_assert(sizeof(DrumPatternUndoPayload) <= kUndoPayloadBytes,
+    "Drum Pattern Undo receipt exceeds canonical owner capacity");
+
+inline bool captureCurrentDrumPatternUndo(SceneManager& manager,
+                                DrumPatternUndoPayload& out) {
+  const int page = manager.currentPageIndex();
+  const int bank = manager.getCurrentBankIndex(0);
+  const int pattern = manager.getCurrentDrumPatternIndex();
+  if (page < 0 || page >= kMaxPages || bank < 0 || bank >= kBankCount ||
+      pattern < 0 || pattern >= Bank<DrumPatternSet>::kPatterns) return false;
+  out.pageIndex = static_cast<int16_t>(page);
+  out.bankIndex = static_cast<int16_t>(bank);
+  out.patternIndex = static_cast<int16_t>(pattern);
+  out.before = manager.currentScene().drumBanks[bank].patterns[pattern];
+  return true;
+}
+
+inline bool drumPatternUndoTargetAvailable(const SceneManager& manager,
+                                 const DrumPatternUndoPayload& receipt) {
+  return receipt.pageIndex >= 0 && receipt.pageIndex < kMaxPages &&
+         receipt.pageIndex == manager.currentPageIndex() &&
+         receipt.bankIndex >= 0 && receipt.bankIndex < kBankCount &&
+         receipt.patternIndex >= 0 &&
+         receipt.patternIndex < Bank<DrumPatternSet>::kPatterns;
+}
+
+inline bool sameDrumPattern(const DrumPatternSet& lhs,
+                  const DrumPatternSet& rhs) {
+  return std::memcmp(&lhs, &rhs, sizeof(DrumPatternSet)) == 0;
+}
+
+inline void exchangeSynthPatternUndo(SceneManager& manager,
+                           SynthPatternUndoPayload& receipt) {
+  Scene& scene = manager.currentScene();
+  Bank<SynthPattern>& bank = receipt.synthIndex == 0
+      ? scene.synthABanks[receipt.bankIndex]
+      : scene.synthBBanks[receipt.bankIndex];
+  exchangeFixedValue(bank.patterns[receipt.patternIndex], receipt.before);
+}
+
+inline void exchangeSongUndo(SceneManager& manager, SongUndoPayload& receipt) {
+  exchangeFixedValue(manager.currentScene().songs[receipt.songSlot], receipt.before);
+}
+
+inline void exchangePhraseUndo(SceneManager& manager, PhraseUndoPayload& receipt) {
+  exchangeFixedValue(manager.currentScene().phraseBank, receipt.before);
+}
+
+inline void exchangeDrumPatternUndo(SceneManager& manager,
+                          DrumPatternUndoPayload& receipt) {
+  exchangeFixedValue(
+      manager.currentScene().drumBanks[receipt.bankIndex].patterns[receipt.patternIndex],
+      receipt.before);
+}
+
 }  // namespace GroovePuterUndo

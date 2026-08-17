@@ -274,9 +274,10 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
     });
   }
 
-  if (changed &&
-      (!doRegenerate ||
-       generationResult == GroovePuterRhythm::QuantizedGenerationResult::CommittedNow)) {
+  // 0.9.9-B: successful generation commits own their single revision transition
+  // through the canonical 0.9.8 UndoOwner. PROFILE ONLY remains a direct Genre
+  // mutation and therefore retains the page-level revision mark.
+  if (changed && !doRegenerate) {
     GroovePuterState::markSceneMutated();
   }
 
@@ -393,6 +394,31 @@ void GenrePage::draw(IGfx& gfx) {
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
+  if (event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+      event.app_event_type == GROOVEPUTER_APP_EVENT_UNDO) {
+    auto& owner = GroovePuterUndo::undoOwner();
+    if (!owner.hasUndo() || owner.kind() != GroovePuterUndo::UndoKind::Generation)
+      return false;
+    const bool redo = owner.nextIsRedo();
+    GroovePuterUndo::UndoResult result = GroovePuterUndo::UndoResult::KindMismatch;
+    withAudioGuard([&]() {
+      result = GroovePuterRhythm::toggleLastQuantizedGeneration(mini_acid_);
+    });
+    if (result == GroovePuterUndo::UndoResult::Restored) {
+      updateFromEngine();
+      UI::showToast(redo ? "REDO: GEN" : "UNDO: GEN", 1000);
+      return true;
+    }
+    if (result == GroovePuterUndo::UndoResult::TargetUnavailable) {
+      UI::showToast("UNDO: RETURN PAGE", 1100);
+      return true;
+    }
+    if (result == GroovePuterUndo::UndoResult::Expired) {
+      UI::showToast("UNDO: EXPIRED", 900);
+      return true;
+    }
+    return false;
+  }
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
   if (UIInput::isTab(event)) {

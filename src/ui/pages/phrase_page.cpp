@@ -538,15 +538,15 @@ bool PhrasePage::undoPreparedOwnedState() {
   if (!owner.hasUndo()) return false;
 
   if (owner.kind() == UndoKind::Phrase) {
-    const UndoResult result = owner.undoPrepared<PhraseUndoPayload>(
+    const UndoResult result = owner.togglePrepared<PhraseUndoPayload>(
         UndoKind::Phrase,
         [&](const PhraseUndoPayload& receipt) {
           return GroovePuterUndo::phraseUndoTargetAvailable(
               mini_acid_.sceneManager(), receipt);
         },
-        [&](const PhraseUndoPayload& receipt) {
+        [&](PhraseUndoPayload& receipt) {
           const auto restore = [&]() {
-            GroovePuterUndo::restorePhraseUndo(
+            GroovePuterUndo::exchangePhraseUndo(
                 mini_acid_.sceneManager(), receipt);
           };
           if (audio_guard_) audio_guard_(restore);
@@ -565,15 +565,15 @@ bool PhrasePage::undoPreparedOwnedState() {
   }
 
   if (owner.kind() == UndoKind::Song) {
-    const UndoResult result = owner.undoPrepared<SongUndoPayload>(
+    const UndoResult result = owner.togglePrepared<SongUndoPayload>(
         UndoKind::Song,
         [&](const SongUndoPayload& receipt) {
           return GroovePuterUndo::songUndoTargetAvailable(
               mini_acid_.sceneManager(), receipt);
         },
-        [&](const SongUndoPayload& receipt) {
+        [&](SongUndoPayload& receipt) {
           const auto restore = [&]() {
-            GroovePuterUndo::restoreSongUndo(
+            GroovePuterUndo::exchangeSongUndo(
                 mini_acid_.sceneManager(), receipt);
           };
           if (audio_guard_) audio_guard_(restore);

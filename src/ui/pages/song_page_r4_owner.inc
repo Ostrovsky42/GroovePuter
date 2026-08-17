@@ -25,15 +25,15 @@ bool SongPage::undoPreparedSongState() {
   using GroovePuterUndo::UndoResult;
   auto& owner = GroovePuterUndo::undoOwner();
   if (!owner.hasUndo() || owner.kind() != UndoKind::Song) return false;
-  const UndoResult result = owner.undoPrepared<SongUndoPayload>(
+  const UndoResult result = owner.togglePrepared<SongUndoPayload>(
       UndoKind::Song,
       [&](const SongUndoPayload& receipt) {
         return GroovePuterUndo::songUndoTargetAvailable(
             mini_acid_.sceneManager(), receipt);
       },
-      [&](const SongUndoPayload& receipt) {
+      [&](SongUndoPayload& receipt) {
         const auto restore = [&]() {
-          GroovePuterUndo::restoreSongUndo(mini_acid_.sceneManager(), receipt);
+          GroovePuterUndo::exchangeSongUndo(mini_acid_.sceneManager(), receipt);
         };
         if (audio_guard_) audio_guard_(restore);
         else restore();
