@@ -586,7 +586,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     
     // R6 exposes one global user gesture while preserving page ownership.
     // The active page still decides whether it can restore the retained
-    // domain receipt; this layer only promotes Ctrl+U to APP_EVENT_UNDO.
+    // domain receipt; this layer only promotes Ctrl+Z to APP_EVENT_UNDO.
     GroovePuterUndoUx::promoteUndoShortcut(event);
 
     IPage* currentPage = getPage_(page_index_);

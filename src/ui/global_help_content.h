@@ -7,7 +7,7 @@ namespace HelpContent {
 constexpr const char* kGlobalLines[] = {
     "=== GLOBAL ===",
     "Alt+H       Toggle this help",
-    "Ctrl+U      Undo last edit",
+    "Ctrl+Z      Undo last edit",
     "Up/Down     Scroll help",
     "Left/Right  Help top/end",
     "Fn+M        Workspace launcher",
@@ -100,7 +100,7 @@ constexpr const char* kSynthASoundLines[] = {
     "T/G         Oscillator +/-",
     "Y/H         Filter type +/-",
     "N/M         Distortion/Delay",
-    "Ctrl+Z/X/C/V Reset parameter",
+    "Ctrl+A/X/C/V Reset parameter",
 };
 
 constexpr const char* kSynthBSoundLines[] = {
@@ -115,7 +115,7 @@ constexpr const char* kSynthBSoundLines[] = {
     "T/G         Oscillator +/-",
     "Y/H         Filter type +/-",
     "N/M         Distortion/Delay",
-    "Ctrl+Z/X/C/V Reset parameter",
+    "Ctrl+A/X/C/V Reset parameter",
 };
 
 constexpr const char* kDrumLines[] = {

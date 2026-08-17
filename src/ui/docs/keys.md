@@ -22,7 +22,7 @@ sound editing lives in local `NOTES -> KNOBS -> MORE` tabs.
 | Key | Action |
 |---|---|
 | `Alt+H` | Toggle page-aware help |
-| `Ctrl+U` | Undo last retained Pattern / Song / Phrase edit |
+| `Ctrl+Z` | Undo last retained Pattern / Song / Phrase edit |
 | `Fn+M` | Workspace launcher |
 | `Fn+Tab` / `Fn+Shift+Tab` | Next / previous workflow |
 | `[` / `]` | Previous / next page inside workflow |
@@ -132,6 +132,7 @@ Inside NOTE ENTRY, `G` remains note input.
 | `T/G` | Oscillator +/- |
 | `Y/H` | Filter type +/- |
 | `N/M` | Distortion / Delay |
+| `Ctrl+A/X/C/V` | Reset Cutoff / Resonance / Env Amount / Env Decay |
 
 ## DRUMS
 

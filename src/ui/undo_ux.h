@@ -10,8 +10,8 @@ inline bool isUndoShortcut(const UIEvent& event) {
     return false;
   }
   const unsigned char key = static_cast<unsigned char>(event.key);
-  return event.scancode == GROOVEPUTER_U || event.key == 'u' || event.key == 'U' ||
-         key == 21;  // Ctrl+U control character on terminals/Cardputer paths.
+  return event.scancode == GROOVEPUTER_Z || event.key == 'z' || event.key == 'Z' ||
+         key == 26;  // Ctrl+Z control character on terminals/Cardputer paths.
 }
 
 inline bool promoteUndoShortcut(UIEvent& event) {
