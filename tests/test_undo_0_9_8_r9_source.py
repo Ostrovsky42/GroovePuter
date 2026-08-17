@@ -22,6 +22,9 @@ assert 'next_is_redo_' in slot
 assert 'DrumPatternUndoPayload' in receipts
 assert 'commitDrumPatternMutation' in drum_legacy
 assert 'regenerateDrumsWithQuantizedCommit' in drum
+plain_g = drum[drum.index('if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta)'):drum.index('// P owns the single P1/P2/P3 request selector.') ]
+assert 'page->withAudioGuard' not in plain_g
+assert 'page->audio_guard_' in plain_g
 assert 'toggleLastQuantizedGeneration' in generation
 assert 'GROOVEPUTER_APP_EVENT_UNDO' in genre
 assert 'REDO: GEN' in genre

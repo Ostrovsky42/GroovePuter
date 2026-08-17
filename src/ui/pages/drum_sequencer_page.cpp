@@ -348,10 +348,15 @@ owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
   // the legacy pattern as fallback, then apply selected Stage7/14 RHYTHM + FEEL
   // to drums only. Cardputer may report G by scancode with key == 0.
   if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
-    page->withAudioGuard([&]() {
+    const auto regenerate = [&]() {
       (void)GroovePuterRhythm::regenerateDrumsWithQuantizedCommit(
           page->mini_acid_);
-    });
+    };
+    // Canonical generation COMMIT owns the single Scene revision transition.
+    // Use the raw AudioGuard here: DrumSequencerMainPage::withAudioGuard() also
+    // calls markSceneMutated() and would immediately expire the fresh receipt.
+    if (page->audio_guard_) page->audio_guard_(regenerate);
+    else regenerate();
     return true;
   }
 
