@@ -1,0 +1,37 @@
+name: Undo Safe Editing 0.9.8 R8
+
+on:
+  push:
+    paths:
+      - 'src/ui/undo_ux.h'
+      - 'src/ui/global_help_content.h'
+      - 'src/ui/miniacid_display.cpp'
+      - 'src/ui/pages/tb303_params_page.cpp'
+      - 'src/ui/docs/keys.md'
+      - 'tests/test_undo_0_9_8_r6_ux_source_regressions.py'
+      - 'tests/test_undo_0_9_8_r7_acceptance_source.py'
+      - 'tests/test_undo_0_9_8_r8_global_ctrl_z_source.py'
+      - 'tests/run_undo_0_9_8_r8_tests.sh'
+      - 'docs/releases/0_9_8_R8_GLOBAL_CTRL_Z_FINAL.md'
+      - '.github/workflows/undo-0-9-8-r8-final.yml'
+  pull_request:
+    paths:
+      - 'src/ui/undo_ux.h'
+      - 'src/ui/global_help_content.h'
+      - 'src/ui/miniacid_display.cpp'
+      - 'src/ui/pages/tb303_params_page.cpp'
+      - 'src/ui/docs/keys.md'
+      - 'tests/test_undo_0_9_8_r6_ux_source_regressions.py'
+      - 'tests/test_undo_0_9_8_r7_acceptance_source.py'
+      - 'tests/test_undo_0_9_8_r8_global_ctrl_z_source.py'
+      - 'tests/run_undo_0_9_8_r8_tests.sh'
+      - 'docs/releases/0_9_8_R8_GLOBAL_CTRL_Z_FINAL.md'
+      - '.github/workflows/undo-0-9-8-r8-final.yml'
+
+jobs:
+  final-safe-editing-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run cumulative R2-R8 Safe Editing contracts
+        run: bash tests/run_undo_0_9_8_r8_tests.sh
