@@ -40,9 +40,12 @@ for needle in (
 ):
     require(BRIDGE_CPP, needle, f"drum-only bridge missing live context: {needle}")
 
-# Cardputer key events may carry only the hardware scancode. The strong plain-G
-# owner must match the same G representations as the retained legacy handler;
-# otherwise hardware falls through to randomizeDrumPattern().
+# Cardputer key events may carry only the hardware scancode. The plain-G owner
+# must match the same G representations as the retained legacy handler;
+# otherwise hardware falls through to randomizeDrumPattern(). R9 routes that
+# same Genre/Rhythm/Feel materialization through the canonical bounded generation
+# COMMIT so one Ctrl+Z slot can exchange OLD <-> GENERATED without changing the
+# Stage 14 musical source of truth above.
 require(
     DRUM_PAGE,
     "lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G",
@@ -55,8 +58,8 @@ require(
 )
 require(
     DRUM_PAGE,
-    "regenerateDrumsWithStrongRhythmMigration",
-    "plain DRUMS G still bypasses Genre/Rhythm/Feel materialization",
+    "regenerateDrumsWithQuantizedCommit",
+    "plain DRUMS G does not route Stage 14 materialization through canonical R9 COMMIT",
 )
 
 # Voice-local and chaos tools are intentionally not promoted into full relational
