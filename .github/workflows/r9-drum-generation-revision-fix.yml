@@ -1,0 +1,46 @@
+name: R9 drum generation revision fix
+
+on:
+  pull_request:
+    branches:
+      - dev_0.9.8
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.head_ref == 'agent/20260817-0.9.8-r8-global-ctrl-z' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/20260817-0.9.8-r8-global-ctrl-z
+      - name: Fix plain G revision ownership and source contract
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('src/ui/pages/drum_sequencer_page.cpp')
+          text = p.read_text()
+          old = '''  if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {\n    page->withAudioGuard([&]() {\n      (void)GroovePuterRhythm::regenerateDrumsWithQuantizedCommit(\n          page->mini_acid_);\n    });\n    return true;\n  }\n'''
+          new = '''  if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta) {\n    const auto regenerate = [&]() {\n      (void)GroovePuterRhythm::regenerateDrumsWithQuantizedCommit(\n          page->mini_acid_);\n    };\n    // Canonical generation COMMIT owns the single Scene revision transition.\n    // Use the raw AudioGuard here: DrumSequencerMainPage::withAudioGuard() also\n    // calls markSceneMutated() and would immediately expire the fresh receipt.\n    if (page->audio_guard_) page->audio_guard_(regenerate);\n    else regenerate();\n    return true;\n  }\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'plain G block mismatch: {text.count(old)}')
+          p.write_text(text.replace(old, new))
+
+          p = Path('tests/test_undo_0_9_8_r9_source.py')
+          text = p.read_text()
+          marker = "assert 'regenerateDrumsWithQuantizedCommit' in drum\n"
+          addition = """assert 'regenerateDrumsWithQuantizedCommit' in drum\nplain_g = drum[drum.index('if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta)'):drum.index('// P owns the single P1/P2/P3 request selector.') ]\nassert 'page->withAudioGuard' not in plain_g\nassert 'page->audio_guard_' in plain_g\n"""
+          if text.count(marker) != 1:
+              raise SystemExit('R9 source marker mismatch')
+          p.write_text(text.replace(marker, addition))
+          PY
+      - name: Commit source fix
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/ui/pages/drum_sequencer_page.cpp tests/test_undo_0_9_8_r9_source.py
+          git commit -m "fix: keep drum generation revision owner canonical"
+          git push origin HEAD:agent/20260817-0.9.8-r8-global-ctrl-z
