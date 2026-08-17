@@ -14,6 +14,7 @@ genre = read('src/ui/pages/genre_page.cpp')
 generation = read('src/generation/migration/quantized_generation_undo_owner_impl.h')
 tb = read('src/ui/pages/tb303_params_page.cpp')
 display = read('src/ui/miniacid_display.cpp')
+undo_ux = read('src/ui/undo_ux.h')
 
 assert 'togglePrepared' in owner
 assert 'exchangeFixedValue' in owner
@@ -28,6 +29,8 @@ assert 'REDO: DRUMS' in drum
 assert "value >= 1 && value <= 26" in tb
 for scan in ['GROOVEPUTER_A', 'GROOVEPUTER_X', 'GROOVEPUTER_C', 'GROOVEPUTER_V']:
     assert scan in tb
-assert 'UNDO: RETURN PAGE' in display and 'UNDO: EMPTY' in display
+assert 'GroovePuterUndoUx::isUndoEvent(event)' in display
+assert 'GroovePuterUndoUx::fallbackToast(hasReceipt)' in display
+assert 'UNDO: RETURN PAGE' in undo_ux and 'UNDO: EMPTY' in undo_ux
 assert 'QuantizedGenerationScope::Drums' in generation
 print('R9 source contracts PASS')
