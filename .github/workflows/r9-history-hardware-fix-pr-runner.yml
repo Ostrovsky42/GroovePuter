@@ -60,15 +60,16 @@ jobs:
           subprocess.run(['python3', str(script)], check=True)
           PY
 
-      - name: Commit clean successor
+      - name: Commit source successor
         run: |
-          rm -f \
-            .github/workflows/r9-history-hardware-fix-bootstrap.yml \
-            .github/workflows/r9-history-hardware-fix-pr-runner.yml \
-            .r9-bootstrap-trigger
+          # The repository App token cannot create/update workflow files from
+          # Actions. Keep bootstrap/runner unchanged here; connector cleanup
+          # happens after this source commit lands.
+          rm -f .github/workflows/undo-safe-editing-0-9-8-r9.yml
+          rm -f .r9-bootstrap-trigger
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src tests .github/workflows/undo-safe-editing-0-9-8-r9.yml
-          git add -u
+          git add src tests
+          git add -u .r9-bootstrap-trigger
           git commit -m "0.9.8-R9: complete one-step global history"
           git push origin HEAD:agent/20260817-0.9.8-r8-global-ctrl-z
