@@ -46,6 +46,15 @@ jobs:
           source = source.replace(
               "public_marker = 'inline bool undoLastQuantizedGeneration(MiniAcid& engine) {'",
               "public_marker = 'inline GroovePuterUndo::UndoResult undoLastQuantizedGeneration(MiniAcid& engine) {'")
+
+          # R8 already has the authoritative wrong-page/empty fallback after
+          # page dispatch. Do not duplicate it; keep only the R9 source check.
+          fallback_start = source.index('# If a page does not own the retained kind')
+          focused_start = source.index('# Focused source contract.', fallback_start)
+          source = (source[:fallback_start] +
+                    '# Existing R8 global Undo fallback retained unchanged.\n' +
+                    source[focused_start:])
+
           script = Path('/tmp/r9_patch.py')
           script.write_text(source)
           subprocess.run(['python3', str(script)], check=True)
