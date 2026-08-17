@@ -20,13 +20,17 @@ def main() -> None:
     keys = (ROOT / "src/ui/docs/keys.md").read_text(encoding="utf-8")
     owner = (ROOT / "src/state/undo_owner.h").read_text(encoding="utf-8")
 
-    require("event.ctrl" in ux and "GROOVEPUTER_U" in ux and "key == 21" in ux,
-            "R6 global Ctrl+U recognition is incomplete")
+    # R8 supersedes only the R6 public chord. The R6 page-owned restore model
+    # remains the current Safe Editing ownership contract.
+    require("event.ctrl" in ux and "GROOVEPUTER_Z" in ux and "key == 26" in ux,
+            "current global Ctrl+Z recognition is incomplete")
     require("event.alt || event.meta || event.shift" in ux,
-            "Undo shortcut must reject modified Ctrl+U variants")
+            "Undo shortcut must reject modified Ctrl+Z variants")
     require("GROOVEPUTER_APP_EVENT_UNDO" in ux and
             "GROOVEPUTER_APPLICATION_EVENT" in ux,
-            "Ctrl+U must reuse the existing application Undo event")
+            "Ctrl+Z must reuse the existing application Undo event")
+    require("GROOVEPUTER_U" not in ux and "key == 21" not in ux,
+            "legacy Ctrl+U must not remain a second global Undo chord")
     for forbidden in ("UndoOwner", "SceneManager", "AudioGuard", "std::vector", "new "):
         require(forbidden not in ux,
                 f"stateless Undo UX helper acquired ownership/state: {forbidden}")
@@ -55,24 +59,35 @@ def main() -> None:
             phrase.count('"UNDO: RETURN PAGE"') >= 2,
             "Phrase Undo UX is not normalized")
 
-    # Ctrl+Z remains a TB303 parameter reset. R6 must not steal it globally.
-    require("if (lowerKey == 'z')" in sound and
-            "set303Parameter(TB303ParamId::Cutoff, 800.0f" in sound,
-            "Synth Sound Ctrl+Z reset compatibility disappeared")
-    require("GROOVEPUTER_Z" not in ux and "'z'" not in ux and '"z"' not in ux,
-            "R6 must not bind global Undo to Z")
+    # Ctrl+Z is globally reserved. The former Cutoff reset moves to Ctrl+A;
+    # X/C/V retain their existing reset functions.
+    reset_start = sound.index("if (isTb303Engine() && ui_event.ctrl")
+    reset_end = sound.index("if (ui_event.ctrl && !ui_event.alt && key >= '1'", reset_start)
+    reset_block = sound[reset_start:reset_end]
+    require("lowerKey == 'a'" in reset_block and
+            "set303Parameter(TB303ParamId::Cutoff, 800.0f" in reset_block,
+            "Synth Sound Cutoff reset was not preserved on Ctrl+A")
+    require("lowerKey == 'z'" not in reset_block,
+            "Synth Sound must not consume the global Ctrl+Z chord")
+    for key, param in (("x", "Resonance"), ("c", "EnvAmount"), ("v", "EnvDecay")):
+        require(f"lowerKey == '{key}'" in reset_block and f"TB303ParamId::{param}" in reset_block,
+                f"Synth Sound Ctrl+{key.upper()} reset compatibility disappeared")
 
-    require('"Ctrl+U      Undo last edit"' in help_content,
-            "on-device global help must expose Ctrl+U Undo")
-    require("`Ctrl+U` | Undo last retained Pattern / Song / Phrase edit" in keys,
+    require('"Ctrl+Z      Undo last edit"' in help_content,
+            "on-device global help must expose Ctrl+Z Undo")
+    require('"Ctrl+A/X/C/V Reset parameter"' in help_content,
+            "on-device Synth help must expose relocated reset chord")
+    require("`Ctrl+Z` | Undo last retained Pattern / Song / Phrase edit" in keys,
             "canonical external key map must expose the same Undo chord")
+    require("`Ctrl+A/X/C/V` | Reset Cutoff / Resonance / Env Amount / Env Decay" in keys,
+            "canonical external key map must expose relocated Synth reset")
 
     require("class UndoOwner" in owner and "kUndoPayloadBytes = 1536" in owner,
-            "R6 must retain the accepted bounded owner")
+            "R8 must retain the accepted bounded owner")
     require("static UndoOwner owner" in owner,
-            "R6 must keep one authoritative retained owner")
+            "R8 must keep one authoritative retained owner")
 
-    print("0.9.8 R6 Undo UX source regressions: OK")
+    print("0.9.8 R6/R8 Undo UX source regressions: OK")
 
 
 if __name__ == "__main__":
