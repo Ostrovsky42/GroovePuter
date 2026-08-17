@@ -29,14 +29,16 @@ def require(text: str, needle: str, message: str) -> None:
 
 # Cardputer ADV has no dedicated Shift key in this workflow. Ctrl+Alt+G owns
 # the explicit audition path and recognizes scancode-only G. Plain G, Ctrl+G,
-# Alt+G and Ctrl+Alt+G must remain disjoint.
+# Alt+G and Ctrl+Alt+G must remain disjoint. R9 keeps plain-G Strong Rhythm
+# semantics but routes the persistent result through the canonical bounded
+# generation COMMIT so the same one-slot receipt can be toggled by Ctrl+Z.
 for needle in (
     "lowerKey == 'g' || ui_event.scancode == GROOVEPUTER_G",
     "if (keyG && ui_event.ctrl && ui_event.alt && !ui_event.meta)",
     "regeneratePhraseAuditionWithProbe",
     '"AUD %uB %s %s #%u"',
     "if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta)",
-    "regenerateDrumsWithStrongRhythmMigration",
+    "regenerateDrumsWithQuantizedCommit",
 ):
     require(DRUM_PAGE, needle, f"Stage 12 audition input contract changed: {needle}")
 
