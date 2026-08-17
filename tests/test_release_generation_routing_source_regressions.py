@@ -102,13 +102,15 @@ for source, name in ((GENRE, "GENRE"), (FEEL, "FEEL")):
     require(source, "GroovePuterState::cycleGenerationLevel()",
             f"{name} lost page-first P-level ownership")
 
-# DRUMS plain G remains drums-only strong generation. Ctrl+Alt+G is the
-# multi-bar audition. Ctrl+G and Alt+G stay distinct edit/chaos commands.
+# DRUMS plain G remains drums-only Strong Rhythm generation. R9 adds the
+# canonical bounded generation COMMIT around that same musical materialization
+# so Ctrl+Z can exchange OLD <-> GENERATED. Ctrl+Alt+G is the multi-bar audition;
+# Ctrl+G and Alt+G stay distinct edit/chaos commands.
 for needle in (
     "if (keyG && ui_event.ctrl && ui_event.alt && !ui_event.meta)",
     "regeneratePhraseAuditionWithProbe",
     "if (keyG && !ui_event.ctrl && !ui_event.alt && !ui_event.meta)",
-    "regenerateDrumsWithStrongRhythmMigration",
+    "regenerateDrumsWithQuantizedCommit",
     "GroovePuterState::cycleGenerationLevel()",
     '"LEGACY O GEN OFF"',
 ):
