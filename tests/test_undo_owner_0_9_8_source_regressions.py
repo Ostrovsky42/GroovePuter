@@ -57,8 +57,9 @@ def main() -> None:
             "Pattern Undo must capture stable persistent address identity")
     require("manager.currentPageIndex() == receipt.pageIndex" in RECEIPTS,
             "paged Pattern Undo must fail target validation instead of loading files")
-    require("restoreSynthPatternUndo" in RECEIPTS,
-            "Pattern receipt must expose bounded in-memory restoration")
+    require("restoreSynthPatternUndo" in RECEIPTS and
+            "exchangeSynthPatternUndo" in RECEIPTS,
+            "Pattern receipt must expose bounded in-memory restore/toggle primitives")
     require("isCanonicalClearedSynthPattern" in RECEIPTS and
             "value.velocity != 100" in RECEIPTS and
             "value.probability != 100" in RECEIPTS,
@@ -89,13 +90,13 @@ def main() -> None:
         PATTERN,
         "case GROOVEPUTER_APP_EVENT_UNDO:",
         "default:\n        return false;")
-    require("undoOwner().undoPrepared<SynthPatternUndoPayload>" in undo_case,
-            "Pattern application Undo must route through the authoritative owner")
+    require("undoOwner().togglePrepared<SynthPatternUndoPayload>" in undo_case,
+            "Pattern application Undo/redo toggle must route through the authoritative owner")
     require("synthPatternUndoTargetAvailable" in undo_case and
-            "restoreSynthPatternUndo" in undo_case,
-            "Pattern Undo must validate resident target before bounded restore")
+            "exchangeSynthPatternUndo" in undo_case,
+            "Pattern toggle must validate resident target before bounded exchange")
     require("audio_guard_(restore)" in undo_case,
-            "Pattern restore must remain audio-guarded")
+            "Pattern exchange must remain audio-guarded")
     require('UI::showToast("UNDO: RETURN PAGE"' in undo_case and
             'UI::showToast("UNDO: EXPIRED"' in undo_case,
             "Pattern Undo must expose fail-closed unavailable/expired states")
