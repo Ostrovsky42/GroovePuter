@@ -18,13 +18,15 @@ def require(text: str, needle: str, message: str) -> None:
 
 
 # GENRE owns full A+B+Drums reroll. SYNTH owns a Genre-aware single-voice
-# reroll. DRUMS keeps its established drums-only strong generation command.
+# reroll. DRUMS keeps the same drums-only Strong Rhythm musical ownership, but
+# R9 publishes it through the canonical bounded generation COMMIT so repeated
+# Ctrl+Z can exchange the previous and generated drum material.
 require(GENRE, "regenerateWithQuantizedCommit(",
         "GENRE G does not use the full action")
 require(SYNTH, "regenerateSynthWithQuantizedCommit(",
         "SYNTH G does not use the Genre-aware synth action")
-require(DRUMS, "regenerateDrumsWithStrongRhythmMigration(",
-        "DRUMS G lost drums-only ownership")
+require(DRUMS, "regenerateDrumsWithQuantizedCommit(",
+        "DRUMS G lost drums-only canonical generation ownership")
 for forbidden in ("randomize303Pattern", "randomizeDrumPattern"):
     if forbidden in GENRE:
         raise AssertionError(f"GENRE regained a second materializer: {forbidden}")
