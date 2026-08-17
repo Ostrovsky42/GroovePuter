@@ -304,7 +304,7 @@ decode but are not part of the public theme cycle.
 | `Alt+W` | Waveform overlay except Phrase `Alt+W` REPLACE |
 | `Alt+X` | LiveMix |
 | `Alt+M` | Song mode |
-| `Alt+\\` | `CARBON <-> CYBER` |
+| `Alt+\` | `CARBON <-> CYBER` |
 | `1..0` | Track-mute fallback when page does not own the digit |
 | `Esc` / `Backspace` / `` ` `` | Back/dismiss/previous page |
 | `Ctrl+Alt+Backspace` | Panic active notes and reset project |
@@ -342,7 +342,7 @@ No external GPIO wiring is required for the standard release build.
 bash scripts/install_arduino_deps.sh
 bash tests/run_host_tests.sh
 bash scripts/build.sh --warnings all
-bash scripts/check_cardputer_dram_budget.sh \\
+bash scripts/check_cardputer_dram_budget.sh \
   build/cardputer-adv-current/GroovePuter.ino.elf
 bash scripts/upload.sh /dev/ttyACM0
 arduino-cli monitor -p /dev/ttyACM0 -c baudrate=115200
