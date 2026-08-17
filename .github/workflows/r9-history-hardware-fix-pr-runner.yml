@@ -42,8 +42,12 @@ jobs:
               if line.startswith('          '):
                   line = line[10:]
               lines.append(line)
+          source = '\n'.join(lines) + '\n'
+          source = source.replace(
+              "public_marker = 'inline bool undoLastQuantizedGeneration(MiniAcid& engine) {'",
+              "public_marker = 'inline GroovePuterUndo::UndoResult undoLastQuantizedGeneration(MiniAcid& engine) {'")
           script = Path('/tmp/r9_patch.py')
-          script.write_text('\n'.join(lines) + '\n')
+          script.write_text(source)
           subprocess.run(['python3', str(script)], check=True)
           PY
 
