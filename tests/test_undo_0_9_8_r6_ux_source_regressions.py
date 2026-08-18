@@ -13,6 +13,7 @@ def main() -> None:
     ux = (ROOT / "src/ui/undo_ux.h").read_text(encoding="utf-8")
     display = (ROOT / "src/ui/miniacid_display.cpp").read_text(encoding="utf-8")
     pattern = (ROOT / "src/ui/pages/pattern_edit_page_legacy.h").read_text(encoding="utf-8")
+    synth_parent = (ROOT / "src/ui/pages/synth_sequencer_page.cpp").read_text(encoding="utf-8")
     song = (ROOT / "src/ui/pages/song_page_r4_owner.inc").read_text(encoding="utf-8")
     phrase = (ROOT / "src/ui/pages/phrase_page.cpp").read_text(encoding="utf-8")
     sound = (ROOT / "src/ui/pages/tb303_params_page.cpp").read_text(encoding="utf-8")
@@ -20,8 +21,9 @@ def main() -> None:
     keys = (ROOT / "src/ui/docs/keys.md").read_text(encoding="utf-8")
     owner = (ROOT / "src/state/undo_owner.h").read_text(encoding="utf-8")
 
-    # R8 supersedes only the R6 public chord. The R6 page-owned restore model
-    # remains the current Safe Editing ownership contract.
+    # R9 keeps the R6 public chord but makes wrong-context Ctrl+Z a retained
+    # no-op. Navigation/back belongs to Esc; the global display never restores
+    # another page on behalf of the active page.
     require("event.ctrl" in ux and "GROOVEPUTER_Z" in ux and "key == 26" in ux,
             "current global Ctrl+Z recognition is incomplete")
     require("event.alt || event.meta || event.shift" in ux,
@@ -31,9 +33,12 @@ def main() -> None:
             "Ctrl+Z must reuse the existing application Undo event")
     require("GROOVEPUTER_U" not in ux and "key == 21" not in ux,
             "legacy Ctrl+U must not remain a second global Undo chord")
-    for forbidden in ("UndoOwner", "SceneManager", "AudioGuard", "std::vector", "new "):
+    require('"UNDO: NOT HERE"' in ux and '"REDO: NOT HERE"' in ux and
+            '"UNDO: EMPTY"' in ux and "RETURN PAGE" not in ux,
+            "R9 fallback must retain history without return-page navigation")
+    for forbidden in ("SceneManager", "AudioGuard", "std::vector", "new "):
         require(forbidden not in ux,
-                f"stateless Undo UX helper acquired ownership/state: {forbidden}")
+                f"Undo UX helper acquired restore/allocation dependency: {forbidden}")
 
     handle_start = display.index("bool MiniAcidDisplay::handleEvent(UIEvent event)")
     promotion = display.index("GroovePuterUndoUx::promoteUndoShortcut(event);", handle_start)
@@ -45,19 +50,27 @@ def main() -> None:
             "Undo must be promoted before page dispatch and fall back only after page refusal")
     require("undoOwner().hasUndo()" in display[fallback:app_fallback] and
             "fallbackToast(hasReceipt)" in display[fallback:app_fallback],
-            "central fallback must distinguish EMPTY from retained other-page receipt")
+            "central fallback must distinguish EMPTY from retained wrong-context receipt")
     require("undoPrepared" not in display[fallback:app_fallback] and
             "restore" not in display[fallback:app_fallback].lower(),
             "MiniAcidDisplay must not become a second Undo restore owner")
 
-    require('"UNDO: PATTERN"' in pattern and '"UNDO: EMPTY"' in pattern and
-            '"UNDO: RETURN PAGE"' in pattern,
-            "Pattern Undo UX is not normalized")
-    require('"UNDO: SONG"' in song and '"UNDO: RETURN PAGE"' in song,
-            "Song Undo UX is not normalized")
-    require('"UNDO: PHRASE"' in phrase and '"UNDO: SONG"' in phrase and
-            phrase.count('"UNDO: RETURN PAGE"') >= 2,
-            "Phrase Undo UX is not normalized")
+    # Pattern's retained R2 handler is still the bounded exchange primitive, but
+    # the SYNTH parent admits it only from the already-visible NOTES tab for the
+    # matching voice and rewrites successful feedback as Undo/Redo.
+    require('"UNDO: PATTERN"' in pattern and '"UNDO: EMPTY"' in pattern,
+            "Pattern retained Undo handler disappeared")
+    require("synth_tab_ == SynthTab::Notes" in synth_parent and
+            "retained.synthIndex != static_cast<uint8_t>(voice_index_)" in synth_parent and
+            "pattern_page_->handleEvent(ui_event)" not in synth_parent,
+            "Pattern Undo must not cross-route into hidden NOTES/another synth")
+    require('"REDO: PATTERN"' in synth_parent and '"UNDO: PATTERN"' in synth_parent,
+            "Pattern one-slot feedback must distinguish Undo from Redo")
+    require('"REDO: SONG"' in song and '"UNDO: SONG"' in song,
+            "Song one-slot feedback must distinguish Undo from Redo")
+    require('"REDO: PHRASE"' in phrase and '"UNDO: PHRASE"' in phrase and
+            '"REDO: SONG"' in phrase and '"UNDO: SONG"' in phrase,
+            "Phrase one-slot feedback must distinguish Undo from Redo")
 
     # Ctrl+Z is globally reserved. The former Cutoff reset moves to Ctrl+A;
     # X/C/V retain their existing reset functions.
@@ -83,11 +96,11 @@ def main() -> None:
             "canonical external key map must expose relocated Synth reset")
 
     require("class UndoOwner" in owner and "kUndoPayloadBytes = 1536" in owner,
-            "R8 must retain the accepted bounded owner")
+            "R9 must retain the accepted bounded owner")
     require("static UndoOwner owner" in owner,
-            "R8 must keep one authoritative retained owner")
+            "R9 must keep one authoritative retained owner")
 
-    print("0.9.8 R6/R8 Undo UX source regressions: OK")
+    print("0.9.8 R6/R8/R9 Undo UX source regressions: OK")
 
 
 if __name__ == "__main__":
