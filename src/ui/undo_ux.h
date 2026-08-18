@@ -26,8 +26,10 @@ inline bool isUndoEvent(const UIEvent& event) {
          event.app_event_type == GROOVEPUTER_APP_EVENT_UNDO;
 }
 
+// Ctrl+Z never navigates. A receipt owned by another page/subpage stays intact;
+// Esc remains the explicit back/return gesture.
 inline const char* fallbackToast(bool hasRetainedReceipt) {
-  return hasRetainedReceipt ? "UNDO: RETURN PAGE" : "UNDO: EMPTY";
+  return hasRetainedReceipt ? "UNDO: NOT HERE" : "UNDO: EMPTY";
 }
 
 }  // namespace GroovePuterUndoUx
