@@ -37,20 +37,26 @@ for scan in ['GROOVEPUTER_A', 'GROOVEPUTER_X', 'GROOVEPUTER_C', 'GROOVEPUTER_V']
     assert scan in tb
 assert 'GroovePuterUndoUx::isUndoEvent(event)' in display
 assert 'GroovePuterUndoUx::fallbackToast(hasReceipt)' in display
-assert 'UNDO: RETURN PAGE' in undo_ux and 'UNDO: EMPTY' in undo_ux
+assert 'UNDO: NOT HERE' in undo_ux and 'REDO: NOT HERE' in undo_ux
+assert 'UNDO: EMPTY' in undo_ux
+assert 'RETURN PAGE' not in undo_ux
 assert 'QuantizedGenerationScope::Drums' in generation
 
-# A Synth Pattern receipt belongs to NOTES even while the visible subpage is
-# KNOBS/MORE. The parent must route the application Undo directly to the
-# matching PatternEditPage instead of leaking a false top-level RETURN PAGE.
+# Ctrl+Z never navigates or cross-routes to a hidden SYNTH subpage. Pattern
+# history is accepted only while NOTES for the matching Synth A/B is already
+# active; Esc/back remains the explicit return/navigation gesture.
 assert 'GroovePuterUndoUx::isUndoEvent(ui_event)' in synth_parent
-assert 'SynthPatternUndoPayload receipt' in synth_parent
-assert 'receipt.synthIndex == static_cast<uint8_t>(voice_index_)' in synth_parent
-assert 'pattern_page_->handleEvent(ui_event)' in synth_parent
+assert 'synth_tab_ == SynthTab::Notes' in synth_parent
+assert 'SynthPatternUndoPayload retained' in synth_parent
+assert 'retained.synthIndex != static_cast<uint8_t>(voice_index_)' in synth_parent
+assert 'synthPatternUndoTargetAvailable' in synth_parent
+assert 'MultiPage::handleEvent(ui_event)' in synth_parent
+assert 'pattern_page_->handleEvent(ui_event)' not in synth_parent
 
 # One-slot history is bidirectional. User feedback must describe the action
 # that just happened, not merely the shortcut name.
 assert 'const bool redo = owner.nextIsRedo();' in synth_parent
+assert 'owner.nextIsRedo() != redo' in synth_parent
 assert 'REDO: PATTERN' in synth_parent and 'UNDO: PATTERN' in synth_parent
 assert 'const bool redo = owner.nextIsRedo();' in song_owner
 assert 'REDO: SONG' in song_owner and 'UNDO: SONG' in song_owner
