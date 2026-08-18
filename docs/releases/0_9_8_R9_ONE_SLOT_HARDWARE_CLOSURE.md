@@ -63,18 +63,22 @@ There is intentionally:
 
 - `Ctrl+Z` is the single public history gesture.
 - The gesture is promoted to `GROOVEPUTER_APP_EVENT_UNDO` before active-page dispatch.
-- The owning page/domain performs the bounded exchange.
-- A wrong page does not consume the receipt and reports `UNDO: RETURN PAGE`.
+- The already-visible owning page/domain performs the bounded exchange.
+- `Ctrl+Z` **never navigates, changes tabs, or routes history into a hidden page**.
+- A receipt that belongs to another page/subpage is retained and reports `UNDO: NOT HERE` or `REDO: NOT HERE`, according to the pending direction.
+- `Esc` remains the explicit back/return navigation gesture.
 - Empty history reports `UNDO: EMPTY`.
 - `Ctrl+U` is not a public Undo alias.
 
-The internal owner tracks whether the next exchange is logically Undo or Redo. Some domains expose that distinction in their toast text; the state-machine contract does not depend on the toast wording.
+The internal owner tracks whether the next successful exchange is logically Undo or Redo. Successful domain feedback must therefore alternate `UNDO: ...` and `REDO: ...` with repeated `Ctrl+Z`.
 
 ## Covered persistent domains
 
 ### Pattern
 
 Ordinary persistent Pattern edits exchange the complete retained Pattern before/after image through the authoritative 0.9.8 owner.
+
+Pattern history is admitted only while the matching Synth A/B `NOTES` tab is already visible. `Ctrl+Z` on `KNOBS`/`MORE` or the other synth does not silently route to `NOTES`; it leaves the receipt untouched so the user can navigate explicitly.
 
 ### Song
 
@@ -143,50 +147,59 @@ Flash only the exact software-green SHA recorded in PR #331.
 
 ### 1. Pattern one-slot toggle
 
-1. Make one obvious ordinary Pattern edit.
-2. Press `Ctrl+Z`: previous Pattern state must return.
-3. Press `Ctrl+Z` again: edited state must return.
-4. Press `Ctrl+Z` once more: previous state must return again.
+1. Make one obvious ordinary Pattern edit on Synth A `NOTES`.
+2. Press `Ctrl+Z`: previous Pattern state must return and feedback must say `UNDO: PATTERN`.
+3. Press `Ctrl+Z` again: edited state must return and feedback must say `REDO: PATTERN`.
+4. Press `Ctrl+Z` once more: previous state must return again with `UNDO: PATTERN`.
 5. Make a different persistent edit.
 6. The old pair must be gone; `Ctrl+Z` now toggles only the new mutation.
 
-### 2. Song one-slot toggle
+### 2. Pattern wrong-context behavior
 
-Repeat the same before -> after -> before sequence using an ordinary Song assignment/edit. The complete Song mutation must exchange atomically.
+1. Retain a valid Pattern receipt on Synth A `NOTES`.
+2. Move to `KNOBS` or `MORE` without making another persistent edit.
+3. Press `Ctrl+Z`: it must **not** switch tabs, restore the hidden Pattern, or consume the receipt; feedback is `UNDO: NOT HERE` or `REDO: NOT HERE`.
+4. Navigate back explicitly (`Esc`/normal page navigation as appropriate) to the owning `NOTES` context.
+5. Press `Ctrl+Z`: the same retained pair must still toggle.
+6. Repeat once with a Synth A receipt while Synth B `NOTES` is active; Synth B must not consume or mutate Synth A history.
 
-### 3. Phrase one-slot toggle
+### 3. Song one-slot toggle
 
-Repeat with an ordinary persistent Phrase edit.
+Repeat the same before -> after -> before sequence using an ordinary Song assignment/edit. Successful feedback must alternate `UNDO: SONG` / `REDO: SONG`.
 
-### 4. DRUMS manual edit
+### 4. Phrase one-slot toggle
 
-Make an obvious drum-pattern edit, then verify `Ctrl+Z` toggles old <-> edited repeatedly.
+Repeat with an ordinary persistent Phrase edit. Successful feedback must alternate `UNDO: PHRASE` / `REDO: PHRASE` (or `UNDO/REDO: SONG` for Phrase actions that intentionally own a Song receipt).
 
-### 5. DRUMS plain G generation
+### 5. DRUMS manual edit
+
+Make an obvious drum-pattern edit, then verify `Ctrl+Z` toggles old <-> edited repeatedly and successful feedback alternates `UNDO: DRUMS` / `REDO: DRUMS`.
+
+### 6. DRUMS plain G generation
 
 1. Start from an easily recognizable drum pattern.
 2. Press plain `G` once.
 3. Confirm a new drums-only generated rhythm is audible/visible.
-4. Press `Ctrl+Z`: the exact previous drum pattern must return.
-5. Press `Ctrl+Z` again: the generated rhythm must return.
+4. Press `Ctrl+Z`: the exact previous drum pattern must return with `UNDO: DRUM GEN`.
+5. Press `Ctrl+Z` again: the generated rhythm must return with `REDO: DRUM GEN`.
 6. Press plain `G` again: this new generation must replace the old history pair.
 
 This is the physical regression that R8 did not cover.
 
-### 6. GENRE / GENERATION materialization
+### 7. GENRE / GENERATION materialization
 
 Test first with transport STOP to remove BAR_START timing from the acceptance question:
 
 1. Record/recognize the current material.
 2. Trigger one GENRE/GENERATION materialization with `G`.
 3. Confirm generated material changed.
-4. `Ctrl+Z` must restore the exact previous material.
-5. `Ctrl+Z` again must restore the generated material.
+4. `Ctrl+Z` must restore the exact previous material with `UNDO: GEN`.
+5. `Ctrl+Z` again must restore the generated material with `REDO: GEN`.
 6. A new generation must replace the previous history pair.
 
 PLAY/pending-boundary lifecycle belongs to the later activation acceptance and must not be used to hide a STOP-state failure here.
 
-### 7. TB303 reset chords
+### 8. TB303 reset chords
 
 On TB303 KNOBS/MORE, deliberately move each value away from its reset target, then verify physically:
 
@@ -197,13 +210,13 @@ On TB303 KNOBS/MORE, deliberately move each value away from its reset target, th
 
 Also verify ordinary unmodified `A/Z`, `S/X`, `D/C`, `F/V` quick-adjust behavior still works.
 
-### 8. Wrong page / empty history
+### 9. Wrong top-level context / empty history
 
-- Retain a valid receipt, navigate to a page that does not own it, press `Ctrl+Z`: show `UNDO: RETURN PAGE` and keep the receipt.
-- Return to the owning page and verify the same receipt still toggles.
+- Retain a valid receipt, navigate to a top-level page that does not own it, and press `Ctrl+Z`: there must be no navigation and no persistent mutation; feedback is direction-aware `UNDO: NOT HERE` / `REDO: NOT HERE`, and the receipt remains intact.
+- Return explicitly with `Esc`/normal navigation and verify the same receipt still toggles.
 - With no valid receipt, `Ctrl+Z` must show `UNDO: EMPTY`.
 
-### 9. Stability
+### 10. Stability
 
 Any reboot, Guru Meditation, stack canary, watchdog, stuck-note side effect, or obvious timing collapse during the smoke is a FAIL.
 
@@ -216,6 +229,7 @@ R9 may become the **FINAL 0.9.8 SHA** only when all of the following refer to on
 - cumulative R1-R9 Safe Editing gates PASS;
 - full Core/SDL/Cardputer/SEQTRAK software matrix PASS;
 - physical Pattern/Song/Phrase/DRUMS/GENERATION toggle smoke PASS;
+- wrong-context `Ctrl+Z` no-navigation/receipt-retention smoke PASS;
 - physical TB303 `Ctrl+A/X/C/V` smoke PASS;
 - stability smoke/soak PASS.
 
