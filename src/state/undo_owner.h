@@ -84,6 +84,9 @@ class UndoOwner {
     return true;
   }
 
+  // Receipt inspection stays typed and owned by the child that understands the
+  // payload. Do not add scalar-returning peek helpers: values such as synth 0
+  // are valid identities, not validity flags.
   template <typename Payload>
   bool read(UndoKind expected_kind, Payload& before) const {
     return slot_.read(expected_kind, before);
@@ -128,16 +131,15 @@ class UndoOwner {
     return UndoResult::Restored;
   }
 
-
   // One-step history toggle. The retained target payload is exchanged with the
   // live state in-place, then the same fixed slot stores the reverse transition.
   // No second resident payload and no second full-size stack object are created.
   template <typename Payload, typename ValidateFn, typename ExchangeFn>
   UndoResult togglePrepared(UndoKind expected_kind,
-                  ValidateFn&& validate,
-                  ExchangeFn&& exchange) {
+                            ValidateFn&& validate,
+                            ExchangeFn&& exchange) {
     static_assert(std::is_trivially_copyable<Payload>::value,
-        "Undo payloads must remain trivially copyable fixed values");
+                  "Undo payloads must remain trivially copyable fixed values");
     if (!slot_.hasUndo()) return UndoResult::NothingToUndo;
     if (slot_.kind() != expected_kind) return UndoResult::KindMismatch;
 
