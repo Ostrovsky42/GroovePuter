@@ -25,6 +25,7 @@ bool SongPage::undoPreparedSongState() {
   using GroovePuterUndo::UndoResult;
   auto& owner = GroovePuterUndo::undoOwner();
   if (!owner.hasUndo() || owner.kind() != UndoKind::Song) return false;
+  const bool redo = owner.nextIsRedo();
   const UndoResult result = owner.togglePrepared<SongUndoPayload>(
       UndoKind::Song,
       [&](const SongUndoPayload& receipt) {
@@ -39,11 +40,11 @@ bool SongPage::undoPreparedSongState() {
         else restore();
       });
   if (result == UndoResult::Restored) {
-    showToast("UNDO: SONG", 900);
+    showToast(redo ? "REDO: SONG" : "UNDO: SONG", 900);
     return true;
   }
   if (result == UndoResult::TargetUnavailable) {
-    showToast("UNDO: RETURN PAGE", 1100);
+    showToast(redo ? "REDO: RETURN PAGE" : "UNDO: RETURN PAGE", 1100);
     return true;
   }
   return result == UndoResult::Expired;
