@@ -17,11 +17,8 @@
 #include "../ui_common.h"
 #include "../ui_input.h"
 #include "../ui_theme.h"
-#include "../undo_ux.h"
 #include "src/output/output_mode_runtime.h"
 #include "src/state/scene_revision.h"
-#include "src/state/undo_owner.h"
-#include "src/state/undo_receipts.h"
 
 namespace {
 // The parent owns one compact tab indicator across NOTES, KNOBS and MORE.
@@ -129,28 +126,6 @@ void SynthSequencerPage::draw(IGfx& gfx) {
 }
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
-  // Ctrl+Z is global at the top-level display, but this page is itself a
-  // MultiPage. KNOBS/MORE must not swallow a retained NOTES Pattern receipt and
-  // turn it into a false "RETURN PAGE". Route only the matching synth Pattern
-  // receipt to its real owner while leaving Drum Pattern receipts untouched.
-  if (GroovePuterUndoUx::isUndoEvent(ui_event)) {
-    auto& owner = GroovePuterUndo::undoOwner();
-    if (owner.hasUndo() && owner.kind() == GroovePuterUndo::UndoKind::Pattern) {
-      GroovePuterUndo::SynthPatternUndoPayload receipt{};
-      if (owner.read(GroovePuterUndo::UndoKind::Pattern, receipt) &&
-          receipt.synthIndex == static_cast<uint8_t>(voice_index_) && pattern_page_) {
-        const bool redo = owner.nextIsRedo();
-        const bool handled = pattern_page_->handleEvent(ui_event);
-        if (handled && owner.hasUndo() &&
-            owner.kind() == GroovePuterUndo::UndoKind::Pattern &&
-            owner.nextIsRedo() != redo) {
-          UI::showToast(redo ? "REDO: PATTERN" : "UNDO: PATTERN", 900);
-        }
-        return handled;
-      }
-    }
-  }
-
   if (isOutputCycleKey(ui_event)) {
     const GroovePuterOutput::Track track = voice_index_ == 0
         ? GroovePuterOutput::Track::SynthA
