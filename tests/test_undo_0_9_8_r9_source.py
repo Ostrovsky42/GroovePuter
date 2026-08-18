@@ -15,6 +15,8 @@ generation = read('src/generation/migration/quantized_generation_undo_owner_impl
 tb = read('src/ui/pages/tb303_params_page.cpp')
 display = read('src/ui/miniacid_display.cpp')
 undo_ux = read('src/ui/undo_ux.h')
+synth_parent = read('src/ui/pages/synth_sequencer_page.cpp')
+song_owner = read('src/ui/pages/song_page_r4_owner.inc')
 
 assert 'togglePrepared' in owner
 assert 'exchangeFixedValue' in owner
@@ -36,4 +38,20 @@ assert 'GroovePuterUndoUx::isUndoEvent(event)' in display
 assert 'GroovePuterUndoUx::fallbackToast(hasReceipt)' in display
 assert 'UNDO: RETURN PAGE' in undo_ux and 'UNDO: EMPTY' in undo_ux
 assert 'QuantizedGenerationScope::Drums' in generation
+
+# A Synth Pattern receipt belongs to NOTES even while the visible subpage is
+# KNOBS/MORE. The parent must route the application Undo directly to the
+# matching PatternEditPage instead of leaking a false top-level RETURN PAGE.
+assert 'GroovePuterUndoUx::isUndoEvent(ui_event)' in synth_parent
+assert 'SynthPatternUndoPayload receipt' in synth_parent
+assert 'receipt.synthIndex == static_cast<uint8_t>(voice_index_)' in synth_parent
+assert 'pattern_page_->handleEvent(ui_event)' in synth_parent
+
+# One-slot history is bidirectional. User feedback must describe the action
+# that just happened, not merely the shortcut name.
+assert 'const bool redo = owner.nextIsRedo();' in synth_parent
+assert 'REDO: PATTERN' in synth_parent and 'UNDO: PATTERN' in synth_parent
+assert 'const bool redo = owner.nextIsRedo();' in song_owner
+assert 'REDO: SONG' in song_owner and 'UNDO: SONG' in song_owner
+
 print('R9 source contracts PASS')
