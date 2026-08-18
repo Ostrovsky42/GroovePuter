@@ -86,7 +86,7 @@ def test_performance_tools_use_fixed_control_rate_state() -> None:
 
     require("bool toolsLayerVisible_{false};" in page_header,
             "PERFORM must keep tool-layer state local to the page")
-    require("event.key == '\\t' || event.scancode == GROOVEPUTER_TAB" in page,
+    require("event.key == '\t' || event.scancode == GROOVEPUTER_TAB" in page,
             "plain Tab must open the local performance tool layer")
     tool_block = block(page, "bool PerformPage::handleToolKey", "void PerformPage::drawToolsLayer")
     for key in ("case '1':", "case '2':", "case '3':", "case '4':",
@@ -210,7 +210,7 @@ def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
 
     navigation = block(page,
                        "  const int nav = UIInput::navCode(ui_event);",
-                       "  const char key = ui_event.key;")
+                       "  char key = ui_event.key;")
     more_navigation = block(navigation,
                             "  if (more_tab_) {",
                             "  } else {")
