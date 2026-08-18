@@ -18,6 +18,7 @@ enum class UndoResult : uint8_t {
   NothingToUndo = 0,
   KindMismatch,
   TargetUnavailable,
+  ContextUnavailable,
   Expired,
   Restored,
 };
@@ -150,7 +151,10 @@ class UndoOwner {
     Payload retained{};
     if (!slot_.read(expected_kind, retained)) return UndoResult::KindMismatch;
     if (!std::forward<ValidateFn>(validate)(retained)) {
-      return UndoResult::TargetUnavailable;
+      // Wrong owner context is not an Undo operation and must not consume the
+      // retained pair. Let the application-level Ctrl+Z fallback report
+      // UNDO/REDO: NOT HERE; navigation remains an explicit Esc action.
+      return UndoResult::ContextUnavailable;
     }
 
     const bool was_redo = slot_.nextIsRedo();
