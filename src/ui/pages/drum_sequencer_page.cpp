@@ -241,6 +241,22 @@ owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
   if (!active) return handleEventLegacy(ui_event);
   auto* page = static_cast<DrumSequencerMainPage*>(active.get());
 
+  // Single-cell Backspace is a manual persistent Drum edit. Intercept it before
+  // the retained legacy handler so deletion uses the same bounded before-state
+  // receipt as tap/Enter toggles. Selection delete and Alt+Backspace keep their
+  // existing paths; this hardware follow-up is intentionally one-cell only.
+  const bool singleCellBackspace = ui_event.key == '\b' || ui_event.key == 0x7F;
+  if (singleCellBackspace && !ui_event.alt && !page->has_selection_ &&
+      !page->patternRowFocused() && !page->bankRowFocused()) {
+    const int voice = page->activeDrumVoice();
+    const int step = page->activeDrumStep();
+    page->commitDrumPatternMutation([&](DrumPatternSet& pattern) {
+      pattern.voices[voice].steps[step].hit = false;
+      pattern.voices[voice].steps[step].accent = false;
+    });
+    return true;
+  }
+
   const int nav = UIInput::navCode(ui_event);
   const bool gridArrow =
       nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT ||
