@@ -139,7 +139,14 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
       GroovePuterUndo::SynthPatternUndoPayload receipt{};
       if (owner.read(GroovePuterUndo::UndoKind::Pattern, receipt) &&
           receipt.synthIndex == static_cast<uint8_t>(voice_index_) && pattern_page_) {
-        return pattern_page_->handleEvent(ui_event);
+        const bool redo = owner.nextIsRedo();
+        const bool handled = pattern_page_->handleEvent(ui_event);
+        if (handled && owner.hasUndo() &&
+            owner.kind() == GroovePuterUndo::UndoKind::Pattern &&
+            owner.nextIsRedo() != redo) {
+          UI::showToast(redo ? "REDO: PATTERN" : "UNDO: PATTERN", 900);
+        }
+        return handled;
       }
     }
   }
