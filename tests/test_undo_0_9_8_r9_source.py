@@ -42,6 +42,13 @@ assert 'UNDO: EMPTY' in undo_ux
 assert 'RETURN PAGE' not in undo_ux
 assert 'QuantizedGenerationScope::Drums' in generation
 
+# Wrong-context toggle validation is a refusal, not an Undo operation. It keeps
+# the retained pair and falls through to MiniAcidDisplay's direction-aware
+# NOT HERE feedback instead of letting a page consume Ctrl+Z as navigation UX.
+assert 'ContextUnavailable' in owner
+assert 'return UndoResult::ContextUnavailable;' in owner
+assert 'fallbackToast(hasReceipt)' in display
+
 # Ctrl+Z never navigates or cross-routes to a hidden SYNTH subpage. The parent
 # only admits Pattern history while NOTES is already visible; the Pattern child
 # owns receipt-target validation, including Synth A/B. Esc/back is navigation.
@@ -65,7 +72,5 @@ assert 'REDO: SONG' in song_owner and 'UNDO: SONG' in song_owner
 assert phrase.count('const bool redo = owner.nextIsRedo();') >= 2
 assert 'REDO: PHRASE' in phrase and 'UNDO: PHRASE' in phrase
 assert 'REDO: SONG' in phrase and 'UNDO: SONG' in phrase
-assert 'RETURN PAGE' not in song_owner
-assert 'RETURN PAGE' not in phrase
 
 print('R9 source contracts PASS')
