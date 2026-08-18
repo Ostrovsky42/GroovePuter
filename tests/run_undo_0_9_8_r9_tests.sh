@@ -6,6 +6,7 @@ g++ -std=c++17 -Wall -Wextra -Werror -I. \
   -o build/host-tests/test_undo_0_9_8_r9_toggle
 build/host-tests/test_undo_0_9_8_r9_toggle
 python3 tests/test_undo_0_9_8_r9_source.py
+python3 tests/test_undo_0_9_8_r9_hardware_followup_source.py
 bash tests/run_undo_0_9_8_r2_tests.sh
 bash tests/run_undo_0_9_8_r3_tests.sh
 bash tests/run_undo_0_9_8_r4_tests.sh
