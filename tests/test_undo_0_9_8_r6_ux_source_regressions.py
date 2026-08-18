@@ -58,7 +58,9 @@ def main() -> None:
     # Pattern's retained R2 handler is still the bounded exchange primitive. The
     # SYNTH parent only admits Pattern Undo while NOTES is already visible and
     # does not call the Pattern child directly across tabs. The Pattern child
-    # remains the authority for receipt target / Synth A-B validation.
+    # remains the authority for decoding/exchanging a retained receipt during
+    # Ctrl+Z. R9's hardware follow-up separately lets the parent PREPARE a new
+    # bounded Pattern receipt for STOP-state Synth G before legacy dispatch.
     require('"UNDO: PATTERN"' in pattern and '"UNDO: EMPTY"' in pattern,
             "Pattern retained Undo handler disappeared")
     require("synth_tab_ == SynthTab::Notes" in synth_parent and
@@ -66,8 +68,10 @@ def main() -> None:
             "MultiPage::handleEvent(ui_event)" in synth_parent and
             "pattern_page_->handleEvent(ui_event)" not in synth_parent and
             "SynthPatternUndoPayload retained" not in synth_parent and
-            "synthPatternUndoTargetAvailable" not in synth_parent,
-            "Pattern Undo must stay local to already-visible NOTES without parent target duplication")
+            "SynthPatternUndoPayload before" in synth_parent and
+            "captureCurrentSynthPatternUndo" in synth_parent and
+            "synthPatternUndoTargetAvailable" in synth_parent,
+            "Pattern Undo routing must stay local while STOP Synth G gains bounded prepare ownership")
     require('"REDO: PATTERN"' in synth_parent and '"UNDO: PATTERN"' in synth_parent,
             "Pattern one-slot feedback must distinguish Undo from Redo")
     require('"REDO: SONG"' in song and '"UNDO: SONG"' in song,
