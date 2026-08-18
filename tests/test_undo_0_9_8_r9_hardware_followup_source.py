@@ -15,7 +15,7 @@ receipts = Path("src/state/undo_receipts.h").read_text()
 
 # One-cell Drum Backspace is intercepted before legacy dispatch and uses the
 # same bounded PREPARE -> canonical COMMIT helper as normal manual Drum edits.
-require(drum, "const bool singleCellBackspace = ui_event.key == '\\\\b' || ui_event.key == 0x7F;",
+require(drum, r"const bool singleCellBackspace = ui_event.key == '\b' || ui_event.key == 0x7F;",
         "single-cell Backspace interception")
 require(drum, "singleCellBackspace && !ui_event.alt && !page->has_selection_",
         "single-cell-only Drum scope")
