@@ -538,6 +538,7 @@ bool PhrasePage::undoPreparedOwnedState() {
   if (!owner.hasUndo()) return false;
 
   if (owner.kind() == UndoKind::Phrase) {
+    const bool redo = owner.nextIsRedo();
     const UndoResult result = owner.togglePrepared<PhraseUndoPayload>(
         UndoKind::Phrase,
         [&](const PhraseUndoPayload& receipt) {
@@ -554,17 +555,18 @@ bool PhrasePage::undoPreparedOwnedState() {
         });
     if (result == UndoResult::Restored) {
       invalidatePreview();
-      UI::showToast("UNDO: PHRASE", 900);
+      UI::showToast(redo ? "REDO: PHRASE" : "UNDO: PHRASE", 900);
       return true;
     }
     if (result == UndoResult::TargetUnavailable) {
-      UI::showToast("UNDO: RETURN PAGE", 1100);
+      UI::showToast(redo ? "REDO: RETURN PAGE" : "UNDO: RETURN PAGE", 1100);
       return true;
     }
     return result == UndoResult::Expired;
   }
 
   if (owner.kind() == UndoKind::Song) {
+    const bool redo = owner.nextIsRedo();
     const UndoResult result = owner.togglePrepared<SongUndoPayload>(
         UndoKind::Song,
         [&](const SongUndoPayload& receipt) {
@@ -581,11 +583,11 @@ bool PhrasePage::undoPreparedOwnedState() {
         });
     if (result == UndoResult::Restored) {
       invalidatePreview();
-      UI::showToast("UNDO: SONG", 900);
+      UI::showToast(redo ? "REDO: SONG" : "UNDO: SONG", 900);
       return true;
     }
     if (result == UndoResult::TargetUnavailable) {
-      UI::showToast("UNDO: RETURN PAGE", 1100);
+      UI::showToast(redo ? "REDO: RETURN PAGE" : "UNDO: RETURN PAGE", 1100);
       return true;
     }
     return result == UndoResult::Expired;
