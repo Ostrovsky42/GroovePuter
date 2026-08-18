@@ -42,16 +42,18 @@ assert 'UNDO: EMPTY' in undo_ux
 assert 'RETURN PAGE' not in undo_ux
 assert 'QuantizedGenerationScope::Drums' in generation
 
-# Ctrl+Z never navigates or cross-routes to a hidden SYNTH subpage. Pattern
-# history is accepted only while NOTES for the matching Synth A/B is already
-# active; Esc/back remains the explicit return/navigation gesture.
+# Ctrl+Z never navigates or cross-routes to a hidden SYNTH subpage. The parent
+# only admits Pattern history while NOTES is already visible; the Pattern child
+# owns receipt-target validation, including Synth A/B. Esc/back is navigation.
 assert 'GroovePuterUndoUx::isUndoEvent(ui_event)' in synth_parent
 assert 'synth_tab_ == SynthTab::Notes' in synth_parent
-assert 'SynthPatternUndoPayload retained' in synth_parent
-assert 'retained.synthIndex != static_cast<uint8_t>(voice_index_)' in synth_parent
-assert 'synthPatternUndoTargetAvailable' in synth_parent
+assert 'owner.kind() == GroovePuterUndo::UndoKind::Pattern' in synth_parent
 assert 'MultiPage::handleEvent(ui_event)' in synth_parent
 assert 'pattern_page_->handleEvent(ui_event)' not in synth_parent
+assert 'SynthPatternUndoPayload retained' not in synth_parent
+assert 'synthPatternUndoTargetAvailable' not in synth_parent
+assert 'src/state/undo_receipts.h' not in synth_parent
+assert 'RETURN PAGE' not in synth_parent
 
 # One-slot history is bidirectional. User feedback must describe the action
 # that just happened, not merely the shortcut name.
@@ -63,5 +65,7 @@ assert 'REDO: SONG' in song_owner and 'UNDO: SONG' in song_owner
 assert phrase.count('const bool redo = owner.nextIsRedo();') >= 2
 assert 'REDO: PHRASE' in phrase and 'UNDO: PHRASE' in phrase
 assert 'REDO: SONG' in phrase and 'UNDO: SONG' in phrase
+assert 'RETURN PAGE' not in song_owner
+assert 'RETURN PAGE' not in phrase
 
 print('R9 source contracts PASS')
