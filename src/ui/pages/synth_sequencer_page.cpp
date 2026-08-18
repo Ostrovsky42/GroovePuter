@@ -21,7 +21,6 @@
 #include "src/output/output_mode_runtime.h"
 #include "src/state/scene_revision.h"
 #include "src/state/undo_owner.h"
-#include "src/state/undo_receipts.h"
 
 namespace {
 // The parent owns one compact tab indicator across NOTES, KNOBS and MORE.
@@ -136,14 +135,8 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
       synth_tab_ == SynthTab::Notes) {
     auto& owner = GroovePuterUndo::undoOwner();
     if (owner.hasUndo() && owner.kind() == GroovePuterUndo::UndoKind::Pattern) {
-      GroovePuterUndo::SynthPatternUndoPayload retained{};
-      if (!owner.read(GroovePuterUndo::UndoKind::Pattern, retained) ||
-          retained.synthIndex != static_cast<uint8_t>(voice_index_) ||
-          !GroovePuterUndo::synthPatternUndoTargetAvailable(
-              mini_acid_.sceneManager(), retained)) {
-        return false;
-      }
-
+      // The visible Pattern child owns receipt-target validation (including
+      // Synth A/B). The parent only enforces the navigation boundary: NOTES.
       const bool redo = owner.nextIsRedo();
       const bool handled = MultiPage::handleEvent(ui_event);
       // A successful one-slot exchange keeps the receipt and flips its next
