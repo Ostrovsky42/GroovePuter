@@ -17,8 +17,11 @@
 #include "../ui_common.h"
 #include "../ui_input.h"
 #include "../ui_theme.h"
+#include "../undo_ux.h"
 #include "src/output/output_mode_runtime.h"
 #include "src/state/scene_revision.h"
+#include "src/state/undo_owner.h"
+#include "src/state/undo_receipts.h"
 
 namespace {
 // The parent owns one compact tab indicator across NOTES, KNOBS and MORE.
@@ -126,6 +129,34 @@ void SynthSequencerPage::draw(IGfx& gfx) {
 }
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
+  // Ctrl+Z is local to the visible owner context. The SYNTH parent never moves
+  // tabs and never forwards Pattern history from KNOBS/MORE into hidden NOTES.
+  // Esc/back navigation remains the explicit way to return to an owner page.
+  if (GroovePuterUndoUx::isUndoEvent(ui_event) &&
+      synth_tab_ == SynthTab::Notes) {
+    auto& owner = GroovePuterUndo::undoOwner();
+    if (owner.hasUndo() && owner.kind() == GroovePuterUndo::UndoKind::Pattern) {
+      GroovePuterUndo::SynthPatternUndoPayload retained{};
+      if (!owner.read(GroovePuterUndo::UndoKind::Pattern, retained) ||
+          retained.synthIndex != static_cast<uint8_t>(voice_index_) ||
+          !GroovePuterUndo::synthPatternUndoTargetAvailable(
+              mini_acid_.sceneManager(), retained)) {
+        return false;
+      }
+
+      const bool redo = owner.nextIsRedo();
+      const bool handled = MultiPage::handleEvent(ui_event);
+      // A successful one-slot exchange keeps the receipt and flips its next
+      // direction. Expired history clears the owner and must keep its own toast.
+      if (handled && owner.hasUndo() &&
+          owner.kind() == GroovePuterUndo::UndoKind::Pattern &&
+          owner.nextIsRedo() != redo) {
+        UI::showToast(redo ? "REDO: PATTERN" : "UNDO: PATTERN", 900);
+      }
+      return handled;
+    }
+  }
+
   if (isOutputCycleKey(ui_event)) {
     const GroovePuterOutput::Track track = voice_index_ == 0
         ? GroovePuterOutput::Track::SynthA
