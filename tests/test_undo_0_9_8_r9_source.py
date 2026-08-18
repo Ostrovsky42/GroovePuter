@@ -17,6 +17,7 @@ display = read('src/ui/miniacid_display.cpp')
 undo_ux = read('src/ui/undo_ux.h')
 synth_parent = read('src/ui/pages/synth_sequencer_page.cpp')
 song_owner = read('src/ui/pages/song_page_r4_owner.inc')
+phrase = read('src/ui/pages/phrase_page.cpp')
 
 assert 'togglePrepared' in owner
 assert 'exchangeFixedValue' in owner
@@ -53,5 +54,8 @@ assert 'const bool redo = owner.nextIsRedo();' in synth_parent
 assert 'REDO: PATTERN' in synth_parent and 'UNDO: PATTERN' in synth_parent
 assert 'const bool redo = owner.nextIsRedo();' in song_owner
 assert 'REDO: SONG' in song_owner and 'UNDO: SONG' in song_owner
+assert phrase.count('const bool redo = owner.nextIsRedo();') >= 2
+assert 'REDO: PHRASE' in phrase and 'UNDO: PHRASE' in phrase
+assert 'REDO: SONG' in phrase and 'UNDO: SONG' in phrase
 
 print('R9 source contracts PASS')
