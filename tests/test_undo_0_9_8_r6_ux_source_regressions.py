@@ -55,15 +55,19 @@ def main() -> None:
             "restore" not in display[fallback:app_fallback].lower(),
             "MiniAcidDisplay must not become a second Undo restore owner")
 
-    # Pattern's retained R2 handler is still the bounded exchange primitive, but
-    # the SYNTH parent admits it only from the already-visible NOTES tab for the
-    # matching voice and rewrites successful feedback as Undo/Redo.
+    # Pattern's retained R2 handler is still the bounded exchange primitive. The
+    # SYNTH parent only admits Pattern Undo while NOTES is already visible and
+    # does not call the Pattern child directly across tabs. The Pattern child
+    # remains the authority for receipt target / Synth A-B validation.
     require('"UNDO: PATTERN"' in pattern and '"UNDO: EMPTY"' in pattern,
             "Pattern retained Undo handler disappeared")
     require("synth_tab_ == SynthTab::Notes" in synth_parent and
-            "retained.synthIndex != static_cast<uint8_t>(voice_index_)" in synth_parent and
-            "pattern_page_->handleEvent(ui_event)" not in synth_parent,
-            "Pattern Undo must not cross-route into hidden NOTES/another synth")
+            "owner.kind() == GroovePuterUndo::UndoKind::Pattern" in synth_parent and
+            "MultiPage::handleEvent(ui_event)" in synth_parent and
+            "pattern_page_->handleEvent(ui_event)" not in synth_parent and
+            "SynthPatternUndoPayload retained" not in synth_parent and
+            "synthPatternUndoTargetAvailable" not in synth_parent,
+            "Pattern Undo must stay local to already-visible NOTES without parent target duplication")
     require('"REDO: PATTERN"' in synth_parent and '"UNDO: PATTERN"' in synth_parent,
             "Pattern one-slot feedback must distinguish Undo from Redo")
     require('"REDO: SONG"' in song and '"UNDO: SONG"' in song,
@@ -99,6 +103,8 @@ def main() -> None:
             "R9 must retain the accepted bounded owner")
     require("static UndoOwner owner" in owner,
             "R9 must keep one authoritative retained owner")
+    require("ContextUnavailable" in owner,
+            "wrong-context one-slot toggle must fall through without consuming history")
 
     print("0.9.8 R6/R8/R9 Undo UX source regressions: OK")
 
