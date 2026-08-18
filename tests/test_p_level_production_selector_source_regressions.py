@@ -142,11 +142,14 @@ for name, source in (("GENRE", GENRE), ("FEEL", FEEL), ("DRUMS", DRUM)):
 
 # Existing generation ownership remains separate: normal generation is G,
 # phrase audition is Ctrl+Alt+G, and CHAOS stays outside P1/P2/P3/reroll.
+# R9 keeps DRUMS G musically drums-only Strong Rhythm, but its persistent
+# publication now goes through the canonical bounded generation COMMIT so the
+# one retained Ctrl+Z slot can exchange OLD <-> GENERATED.
 require(GENRE, "applyCurrent(true);", "GENRE G production route disappeared")
 require(GENRE, '"REROLL", "REPEAT G"', "GENRE reroll affordance disappeared")
 require(
     DRUM,
-    "regenerateDrumsWithStrongRhythmMigration",
+    "regenerateDrumsWithQuantizedCommit",
     "DRUMS G production route disappeared",
 )
 require(
