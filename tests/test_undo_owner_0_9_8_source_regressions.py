@@ -97,9 +97,9 @@ def main() -> None:
             "Pattern toggle must validate resident target before bounded exchange")
     require("audio_guard_(restore)" in undo_case,
             "Pattern exchange must remain audio-guarded")
-    require('UI::showToast("UNDO: RETURN PAGE"' in undo_case and
+    require("UndoResult::TargetUnavailable" in undo_case and
             'UI::showToast("UNDO: EXPIRED"' in undo_case,
-            "Pattern Undo must expose fail-closed unavailable/expired states")
+            "Pattern Undo must remain fail-closed for unavailable/expired state")
 
     # R2 does not own shortcut rollout. It only makes the existing application
     # event semantically correct; global/local Ctrl+Z is deferred to the UI stage.
