@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ui_core.h"
+#include "../state/undo_owner.h"
 
 namespace GroovePuterUndoUx {
 
@@ -27,9 +28,13 @@ inline bool isUndoEvent(const UIEvent& event) {
 }
 
 // Ctrl+Z never navigates. A receipt owned by another page/subpage stays intact;
-// Esc remains the explicit back/return gesture.
+// Esc remains the explicit back/return gesture. The toast describes the action
+// still pending in the retained one-slot pair without consuming it.
 inline const char* fallbackToast(bool hasRetainedReceipt) {
-  return hasRetainedReceipt ? "UNDO: NOT HERE" : "UNDO: EMPTY";
+  if (!hasRetainedReceipt) return "UNDO: EMPTY";
+  return GroovePuterUndo::undoOwner().nextIsRedo()
+      ? "REDO: NOT HERE"
+      : "UNDO: NOT HERE";
 }
 
 }  // namespace GroovePuterUndoUx
