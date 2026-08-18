@@ -49,17 +49,21 @@ assert 'ContextUnavailable' in owner
 assert 'return UndoResult::ContextUnavailable;' in owner
 assert 'fallbackToast(hasReceipt)' in display
 
-# Ctrl+Z never navigates or cross-routes to a hidden SYNTH subpage. The parent
-# only admits Pattern history while NOTES is already visible; the Pattern child
-# owns receipt-target validation, including Synth A/B. Esc/back is navigation.
+# Ctrl+Z never navigates or cross-routes to a hidden SYNTH subpage. Undo itself
+# is still delegated to the visible NOTES child. The parent may now own the
+# bounded PREPARE -> Pattern COMMIT for STOP-state Synth G, because hardware
+# acceptance proved that leaving G in the unowned legacy path loses the exact
+# previous pattern. It still does not decode a retained payload during Undo.
 assert 'GroovePuterUndoUx::isUndoEvent(ui_event)' in synth_parent
 assert 'synth_tab_ == SynthTab::Notes' in synth_parent
 assert 'owner.kind() == GroovePuterUndo::UndoKind::Pattern' in synth_parent
 assert 'MultiPage::handleEvent(ui_event)' in synth_parent
 assert 'pattern_page_->handleEvent(ui_event)' not in synth_parent
 assert 'SynthPatternUndoPayload retained' not in synth_parent
-assert 'synthPatternUndoTargetAvailable' not in synth_parent
-assert 'src/state/undo_receipts.h' not in synth_parent
+assert 'SynthPatternUndoPayload before' in synth_parent
+assert 'captureCurrentSynthPatternUndo' in synth_parent
+assert 'synthPatternUndoTargetAvailable' in synth_parent
+assert 'src/state/undo_receipts.h' in synth_parent
 assert 'RETURN PAGE' not in synth_parent
 
 # One-slot history is bidirectional. User feedback must describe the action
