@@ -1,7 +1,7 @@
 # Groove Visual Event Protocol — Research Design Brief
 
 **Status:** research only; no production implementation is approved by this document  
-**Base:** `dev_0.9_test` @ `0a2fe15696eb7c8f0bdcc1a986aed3ca342dd948`  
+**Base:** `dev_0.9.8` @ `09d095e1`  
 **Research branch:** `agent/20260810-01-visual-event-protocol-research`  
 **Working name:** Groove Visual Event Protocol (`GVEP`)  
 **Initial transport candidate:** ESP-NOW on Cardputer ADV / ESP32-S3  
