@@ -520,6 +520,22 @@ void setup() {
 void loop() {
   M5Cardputer.update();
   eye_output_mode_flush();
+
+  // Transport events are produced at the AudioTask boundary and sent from
+  // this control loop. Report socket/radio admission outside realtime code so
+  // a hardware smoke test can distinguish no event from ESP-NOW rejection.
+  static uint32_t lastEyeDiagnosticsMs = 0;
+  const uint32_t eyeDiagnosticsNowMs = millis();
+  if (eyeDiagnosticsNowMs - lastEyeDiagnosticsMs >= 5000u) {
+    lastEyeDiagnosticsMs = eyeDiagnosticsNowMs;
+    const eye_transport_diagnostics_t eyeDiagnostics =
+        eye_output_mode_transport_diagnostics();
+    Serial.printf("[GVEP-TX] enabled=%u attempts=%lu accepted=%lu rejected=%lu\n",
+                  eye_output_mode_transport_enabled() ? 1u : 0u,
+                  static_cast<unsigned long>(eyeDiagnostics.send_attempts),
+                  static_cast<unsigned long>(eyeDiagnostics.send_accepted),
+                  static_cast<unsigned long>(eyeDiagnostics.send_rejected));
+  }
   LedManager::instance().update();
 
   if (g_miniAcid && g_miniDisplay) {

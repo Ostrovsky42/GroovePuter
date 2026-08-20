@@ -42,6 +42,7 @@ SOURCES := \
 	../src/dsp/pattern_generator.cpp \
 	../src/dsp/tape_fx.cpp \
 	../src/dsp/tape_looper.cpp \
+	../src/eye_pair_sync/eye_output_mode.cpp \
 	../src/dsp/drum_reverb.cpp \
 	../src/dsp/one_knob_compressor.cpp \
 	../src/dsp/transient_shaper.cpp \

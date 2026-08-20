@@ -5,11 +5,10 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-// Cardputer ADV is DRAM-only. Enabling the Wi-Fi driver currently consumes
-// more internal heap than the accepted runtime budget permits, so ESP-NOW is
-// an explicit experimental build opt-in rather than a production default.
+// Dual-Eye test builds use ESP-NOW on Cardputer. Cardputer ADV is DRAM-only,
+// so keep validating the runtime free/largest internal heap after Wi-Fi init.
 #ifndef GROOVEPUTER_ENABLE_DUAL_EYE_ESPNOW
-#define GROOVEPUTER_ENABLE_DUAL_EYE_ESPNOW 0
+#define GROOVEPUTER_ENABLE_DUAL_EYE_ESPNOW 1
 #endif
 
 #ifdef __cplusplus
@@ -65,6 +64,12 @@ typedef struct __attribute__((packed)) {
     uint8_t crc;           // CRC-8-CCITT over the first 22 bytes
 } eye_gvep_packet_t;
 
+typedef struct {
+    uint32_t send_attempts;
+    uint32_t send_accepted;
+    uint32_t send_rejected;
+} eye_transport_diagnostics_t;
+
 #ifdef __cplusplus
 static_assert(sizeof(eye_output_mode_packet_t) == 23,
               "Output Mode v2 packet layout changed");
@@ -88,6 +93,7 @@ _Static_assert(sizeof(eye_gvep_packet_t) == 23,
 void eye_output_mode_init(void);
 void eye_output_mode_flush(void);
 bool eye_output_mode_transport_enabled(void);
+eye_transport_diagnostics_t eye_output_mode_transport_diagnostics(void);
 uint32_t eye_output_mode_session_id(void);
 bool eye_output_mode_build_packet(eye_output_mode_packet_t* packet,
                                    eye_track_t track,

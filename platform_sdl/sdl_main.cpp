@@ -18,6 +18,7 @@
 #include "../src/input/performance_keyboard.h"
 #include "../src/input/internal_synth_output.h"
 #include "../src/audio/audio_mutation_gate.h"
+#include "../src/eye_pair_sync/eye_output_mode.h"
 #include "arduino_compat.h"
 
 // Define Serial and SD instances for SDL build
@@ -65,6 +66,23 @@ struct AppState {
   bool cleaned_up = false;
   unsigned long lastUIUpdate = 0;
 };
+
+static void publishTransportTransition(AppState& state, bool wasPlaying) {
+  const bool isPlaying = state.audio.synth.isPlaying();
+  if (isPlaying == wasPlaying) return;
+  const eye_transport_diagnostics_t before =
+      eye_output_mode_transport_diagnostics();
+  eye_gvep_notify_transport(isPlaying);
+  const eye_transport_diagnostics_t after =
+      eye_output_mode_transport_diagnostics();
+  const bool accepted = after.send_accepted > before.send_accepted;
+  std::printf("[GVEP-UDP-TX] TRANSPORT %s result=%s attempts=%u accepted=%u rejected=%u\n",
+              isPlaying ? "PLAY" : "STOP",
+              accepted ? "accepted" : "rejected",
+              static_cast<unsigned>(after.send_attempts),
+              static_cast<unsigned>(after.send_accepted),
+              static_cast<unsigned>(after.send_rejected));
+}
 
 static void audioCallback(void *userdata, Uint8 *stream, int len) {
   AudioContext *ctx = static_cast<AudioContext *>(userdata);
@@ -190,7 +208,9 @@ static void handleEvents(AppState& s) {
         grooveputerEvent.key = static_cast<char>(keycode);
       }
 
+      const bool wasPlaying = s.audio.synth.isPlaying();
       bool handledByUI = s.ui ? s.ui->handleEvent(grooveputerEvent) : false;
+      publishTransportTransition(s, wasPlaying);
       if (handledByUI) continue;
 
       if (sc == SDL_SCANCODE_ESCAPE) {
@@ -199,6 +219,7 @@ static void handleEvents(AppState& s) {
         if (s.ui) s.ui->dismissSplash();
         if (s.ui) s.ui->update();
       } else if (sc == SDL_SCANCODE_SPACE) {
+        const bool wasPlayingBeforeFallback = s.audio.synth.isPlaying();
         SDL_LockAudioDevice(s.audio.device);
         if (s.audio.synth.isPlaying()) {
           s.audio.synth.stop();
@@ -206,6 +227,7 @@ static void handleEvents(AppState& s) {
           s.audio.synth.start();
         }
         SDL_UnlockAudioDevice(s.audio.device);
+        publishTransportTransition(s, wasPlayingBeforeFallback);
       } else if (sc == SDL_SCANCODE_LEFTBRACKET) {
         if (s.ui) s.ui->previousPage();
         if (s.ui) s.ui->update();
@@ -350,6 +372,8 @@ int main(int argc, char **argv) {
   }
 
   AppState state;
+  eye_output_mode_init();
+  std::printf("[GVEP-UDP] sending v2 packets to 127.0.0.1:9876\n");
 
   int winw = 240;
   int winh = 135;

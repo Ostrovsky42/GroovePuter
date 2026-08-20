@@ -83,9 +83,9 @@ The following limitations are release blockers, not accepted behavior:
   can arrive before an older queued `0xB0`, causing a strict receiver to discard
   the delayed event. Both packet types need one ordered TX owner, with sequence
   assignment at the final serialization/send boundary.
-- ESP-NOW initialization and send results are not represented as runtime state.
-  Queue drops, `esp_now_send()` rejection, peer/channel failure, and successful
-  delivery are not exposed through durable diagnostics. Visual failures must
+- Immediate socket/ESP-NOW send admission is counted as attempt/accepted/rejected,
+  but initialization readiness, queue drops, delivery callbacks, and peer/channel
+  failure are not yet exposed through durable diagnostics. Visual failures must
   remain fail-soft, but they must be measurable.
 - Output Mode is state, not an ephemeral trigger. A lost Scene restore or
   Alt+O packet can leave a late/rebooted receiver stale indefinitely. Production
@@ -102,6 +102,53 @@ Until these items are closed, the only valid claim is that the branch provides
 an experimental semantic-event bridge with fail-soft, best-effort delivery.
 It does not yet guarantee loss recovery, frame-perfect synchronization, or
 binary compatibility with an independently specified Dual-Eye firmware.
+
+## Desktop UDP smoke test
+
+The first executable transport slice is deliberately local-only. It proves
+that a real SDL Space transport transition produces a valid GVEP packet and
+that an independent receiver can validate and decode it. It does not claim
+network broadcast, delivery acknowledgement, or synchronized rendering.
+
+Start the receiver in terminal 1:
+
+```bash
+make -C tools/eye_sim
+./tools/eye_sim/eye_sim
+```
+
+Start GroovePuter SDL in terminal 2:
+
+```bash
+make -C platform_sdl
+./platform_sdl/grooveputer
+```
+
+Press Space in GroovePuter. The sender and receiver should report exactly one
+transition per actual state change:
+
+```text
+[GVEP-UDP-TX] TRANSPORT PLAY result=accepted attempts=1 accepted=1 rejected=0
+[GVEP-RX] seq=1 event=TRANSPORT PLAY value0=1 value1=0 ...
+
+[GVEP-UDP-TX] TRANSPORT STOP result=accepted attempts=2 accepted=2 rejected=0
+[GVEP-RX] seq=2 event=TRANSPORT STOP value0=0 value1=0 ...
+```
+
+The receiver rejects wrong length, magic/version, CRC, invalid event fields,
+zero sequence numbers, and duplicate/stale sequence numbers. Its CLI can also
+inject decoder smoke packets with `transport play`, `transport stop`,
+`kick 120`, `bar 1`, and the existing `output ...` commands.
+
+`result=accepted` means the local UDP socket accepted the datagram. UDP has no
+delivery acknowledgement, so receiver `[GVEP-RX]` output remains the end-to-end
+proof that the packet arrived and decoded successfully.
+
+The automated loopback check is part of the focused gate:
+
+```bash
+./tests/run_output_ownership_tests.sh
+```
 
 ---
 

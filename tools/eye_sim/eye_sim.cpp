@@ -9,12 +9,15 @@
 #include <cstring>
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <cstdint>
 
 #if defined(__linux__) || defined(__APPLE__)
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
+#include <sys/time.h>
 #include <unistd.h>
 #endif
 
@@ -32,6 +35,48 @@ struct EyeVisualState {
 
 static EyeVisualState g_visualState;
 static std::atomic<bool> g_running{true};
+
+struct ReceiverSequenceState {
+    bool initialized{false};
+    uint32_t session_id{0};
+    uint32_t last_seq{0};
+};
+
+static ReceiverSequenceState g_sequenceState;
+
+bool acceptSequence(uint32_t session_id, uint32_t seq) {
+    if (seq == 0u) {
+        std::cout << "[GVEP-RX] REJECT seq=0\n";
+        return false;
+    }
+    if (!g_sequenceState.initialized ||
+        g_sequenceState.session_id != session_id) {
+        g_sequenceState.initialized = true;
+        g_sequenceState.session_id = session_id;
+        g_sequenceState.last_seq = seq;
+        std::cout << "[GVEP-RX] NEW SESSION id=" << session_id << "\n";
+        return true;
+    }
+    if (static_cast<int32_t>(seq - g_sequenceState.last_seq) <= 0) {
+        std::cout << "[GVEP-RX] REJECT stale/duplicate seq=" << seq
+                  << " last=" << g_sequenceState.last_seq << "\n";
+        return false;
+    }
+    g_sequenceState.last_seq = seq;
+    return true;
+}
+
+bool parseBoundedNumber(const std::string& text, long minimum,
+                        long maximum, long& value) {
+    char* end = nullptr;
+    const long parsed = std::strtol(text.c_str(), &end, 10);
+    if (end == text.c_str() || *end != '\0' ||
+        parsed < minimum || parsed > maximum) {
+        return false;
+    }
+    value = parsed;
+    return true;
+}
 
 const char* modeName(uint8_t m) {
     switch (m) {
@@ -61,6 +106,12 @@ void processPacket(const eye_output_mode_packet_t& pkt) {
         std::cout << "[SIM] CRC mismatch! Expected: " << (int)expected_crc << " Got: " << (int)pkt.crc << "\n";
         return;
     }
+    if (pkt.reserved != 0u || pkt.track > EYE_TRACK_DRUMS ||
+        pkt.mode > EYE_OUT_LAYER || (pkt.flags & ~0x01u) != 0u) {
+        std::cout << "[SIM] Rejecting invalid Output Mode fields\n";
+        return;
+    }
+    if (!acceptSequence(pkt.session_id, pkt.seq)) return;
 
     const char* trackName = (pkt.track == 0) ? "SYNTH A" : (pkt.track == 1) ? "SYNTH B" : "DRUMS";
     if (pkt.track == 0) g_visualState.synth_a_mode = pkt.mode;
@@ -78,6 +129,41 @@ void processPacket(const eye_output_mode_packet_t& pkt) {
     }
 }
 
+const char* eventName(uint8_t eventType, uint8_t value0) {
+    switch (eventType) {
+        case EYE_GVEP_TRANSPORT: return value0 != 0u ? "TRANSPORT PLAY" : "TRANSPORT STOP";
+        case EYE_GVEP_KICK: return "KICK";
+        case EYE_GVEP_BAR: return "BAR";
+        default: return "UNKNOWN";
+    }
+}
+
+void processGvepPacket(const eye_gvep_packet_t& pkt) {
+    if (pkt.magic != EYE_SYNC_MAGIC_GVEP ||
+        pkt.version != EYE_SYNC_VERSION_GVEP) {
+        std::cout << "[GVEP-RX] REJECT magic/version\n";
+        return;
+    }
+    if (pkt.crc != eye_gvep_calc_crc8(&pkt)) {
+        std::cout << "[GVEP-RX] REJECT CRC seq=" << pkt.seq << "\n";
+        return;
+    }
+    if (pkt.event_type > EYE_GVEP_BAR ||
+        (pkt.event_type == EYE_GVEP_TRANSPORT && pkt.value0 > 1u) ||
+        (pkt.event_type == EYE_GVEP_KICK && pkt.value0 > 127u) ||
+        (pkt.event_type == EYE_GVEP_BAR && pkt.value1 == 0u)) {
+        std::cout << "[GVEP-RX] REJECT fields seq=" << pkt.seq << "\n";
+        return;
+    }
+    if (!acceptSequence(pkt.session_id, pkt.seq)) return;
+
+    std::cout << "[GVEP-RX] seq=" << pkt.seq
+              << " event=" << eventName(pkt.event_type, pkt.value0)
+              << " value0=" << static_cast<unsigned>(pkt.value0)
+              << " value1=" << pkt.value1
+              << " timestamp_us=" << pkt.timestamp_us << "\n";
+}
+
 void udpListenerThread() {
     int sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock < 0) {
@@ -87,6 +173,10 @@ void udpListenerThread() {
 
     int opt = 1;
     setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (const char*)&opt, sizeof(opt));
+    struct timeval timeout{};
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 200000;
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
 
     struct sockaddr_in addr{};
     std::memset(&addr, 0, sizeof(addr));
@@ -100,15 +190,30 @@ void udpListenerThread() {
         return;
     }
 
-    std::cout << "[SIM] Listening for Dual-Eye 0xAF UDP packets on port 9876...\n";
+    std::cout << "[SIM] Listening for Dual-Eye 0xAF/0xB0 UDP packets on port 9876...\n";
 
     while (g_running) {
-        eye_output_mode_packet_t pkt{};
+        uint8_t bytes[sizeof(eye_gvep_packet_t)]{};
         struct sockaddr_in client{};
         socklen_t len = sizeof(client);
-        ssize_t n = recvfrom(sock, &pkt, sizeof(pkt), 0, (struct sockaddr*)&client, &len);
-        if (n == sizeof(pkt)) {
+        ssize_t n = recvfrom(sock, bytes, sizeof(bytes), 0,
+                             (struct sockaddr*)&client, &len);
+        if (n < 0) continue;
+        if (n != static_cast<ssize_t>(sizeof(bytes))) {
+            std::cout << "[GVEP-RX] REJECT length=" << n << "\n";
+            continue;
+        }
+        if (bytes[0] == EYE_SYNC_MAGIC_OUTPUT_MODE) {
+            eye_output_mode_packet_t pkt{};
+            std::memcpy(&pkt, bytes, sizeof(pkt));
             processPacket(pkt);
+        } else if (bytes[0] == EYE_SYNC_MAGIC_GVEP) {
+            eye_gvep_packet_t pkt{};
+            std::memcpy(&pkt, bytes, sizeof(pkt));
+            processGvepPacket(pkt);
+        } else {
+            std::cout << "[GVEP-RX] REJECT magic="
+                      << static_cast<unsigned>(bytes[0]) << "\n";
         }
     }
     close(sock);
@@ -120,6 +225,9 @@ void cliThread() {
     std::cout << "  master> output synth_a internal\n";
     std::cout << "  master> output synth_a midi\n";
     std::cout << "  master> output drums layer\n";
+    std::cout << "  master> transport play|stop\n";
+    std::cout << "  master> kick 1..127\n";
+    std::cout << "  master> bar 1..65535\n";
     std::cout << "  master> output status\n";
     std::cout << "  master> quit\n\n";
 
@@ -146,6 +254,29 @@ void cliThread() {
             continue;
         }
 
+        if (line == "transport play") {
+            eye_gvep_notify_transport(true);
+            continue;
+        }
+        if (line == "transport stop") {
+            eye_gvep_notify_transport(false);
+            continue;
+        }
+        if (line.find("kick ") == 0) {
+            long velocity = 0;
+            if (parseBoundedNumber(line.substr(5), 1, 127, velocity)) {
+                eye_gvep_notify_kick(static_cast<uint8_t>(velocity));
+                continue;
+            }
+        }
+        if (line.find("bar ") == 0) {
+            long bar = 0;
+            if (parseBoundedNumber(line.substr(4), 1, 65535, bar)) {
+                eye_gvep_notify_bar(static_cast<uint16_t>(bar));
+                continue;
+            }
+        }
+
         if (line.find("output ") == 0) {
             std::string sub = line.substr(7);
             size_t space = sub.find(' ');
@@ -167,7 +298,7 @@ void cliThread() {
             }
         }
 
-        std::cout << "Unknown command. Try: output synth_a internal | output synth_a midi | output drums layer | output status\n";
+        std::cout << "Unknown command. Try: transport play | transport stop | kick 120 | bar 1 | output status\n";
     }
 }
 

@@ -1,6 +1,7 @@
 #include "eye_output_mode.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstring>
 
 #if defined(ARDUINO) || defined(ESP_PLATFORM)
@@ -10,7 +11,6 @@
 #endif
 
 #if defined(__linux__) || defined(__APPLE__) || defined(_WIN32)
-#include <chrono>
 #include <sys/types.h>
 #if defined(_WIN32)
 #include <winsock2.h>
@@ -37,6 +37,9 @@ struct EyeState {
     bool initialized{false};
     uint32_t session_id{0};
     std::atomic<uint32_t> seq{0};
+    std::atomic<uint32_t> send_attempts{0};
+    std::atomic<uint32_t> send_accepted{0};
+    std::atomic<uint32_t> send_rejected{0};
     uint8_t modes[3]{EYE_OUT_LEGACY, EYE_OUT_LEGACY, EYE_OUT_LEGACY};
 #if defined(GVEP_USE_UDP)
     int udp_sock{-1};
@@ -108,26 +111,44 @@ uint32_t nextSequence() {
     }
 }
 
-void sendRaw(const void* data, size_t len) {
-    if (data == nullptr || len == 0u) return;
+bool sendRaw(const void* data, size_t len) {
+    if (data == nullptr || len == 0u) return false;
+
+    bool attempted = false;
+    bool accepted = false;
 
 #if defined(GVEP_USE_UDP)
     if (g_eyeState.udp_sock >= 0) {
+        attempted = true;
         struct sockaddr_in addr{};
         addr.sin_family = AF_INET;
         addr.sin_port = htons(9876);
         inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);
-        sendto(g_eyeState.udp_sock, data, len, 0,
-               reinterpret_cast<const struct sockaddr*>(&addr), sizeof(addr));
+        const ssize_t sent = sendto(
+            g_eyeState.udp_sock, data, len, 0,
+            reinterpret_cast<const struct sockaddr*>(&addr), sizeof(addr));
+        accepted = sent == static_cast<ssize_t>(len);
     }
 #endif
 
 #if defined(GVEP_USE_ESPNOW)
+    attempted = true;
     static uint8_t broadcastMac[6] = {
         0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
     };
-    esp_now_send(broadcastMac, static_cast<const uint8_t*>(data), len);
+    accepted = esp_now_send(
+        broadcastMac, static_cast<const uint8_t*>(data), len) == ESP_OK;
 #endif
+
+    if (attempted) {
+        g_eyeState.send_attempts.fetch_add(1u, std::memory_order_relaxed);
+        if (accepted) {
+            g_eyeState.send_accepted.fetch_add(1u, std::memory_order_relaxed);
+        } else {
+            g_eyeState.send_rejected.fetch_add(1u, std::memory_order_relaxed);
+        }
+    }
+    return attempted && accepted;
 }
 
 void enqueueOrSend(const eye_gvep_packet_t& packet) {
@@ -212,6 +233,17 @@ bool eye_output_mode_transport_enabled(void) {
 #else
     return false;
 #endif
+}
+
+eye_transport_diagnostics_t eye_output_mode_transport_diagnostics(void) {
+    eye_transport_diagnostics_t diagnostics{};
+    diagnostics.send_attempts = g_eyeState.send_attempts.load(
+        std::memory_order_relaxed);
+    diagnostics.send_accepted = g_eyeState.send_accepted.load(
+        std::memory_order_relaxed);
+    diagnostics.send_rejected = g_eyeState.send_rejected.load(
+        std::memory_order_relaxed);
+    return diagnostics;
 }
 
 uint32_t eye_output_mode_session_id(void) {
