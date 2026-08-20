@@ -1,5 +1,7 @@
 #pragma once
 
+#include <utility>
+
 #include "../../../scenes.h"
 #include "../ui_core.h"
 #include "../pages/help_dialog.h"
@@ -8,6 +10,9 @@
 #include "../../dsp/pattern_generator.h"
 #include "../../dsp/song_pattern_materializer.h"
 #include "src/state/scene_revision.h"
+#include "src/state/song_edit.h"
+#include "src/state/undo_owner.h"
+#include "src/state/undo_receipts.h"
 
 class SongPage : public IPage, public IMultiHelpFramesProvider {
  public:
@@ -30,6 +35,30 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   ::VisualStyle getVisualStyle() const { return visual_style_; }
 
  private:
+  bool handleEventLegacyUnowned(UIEvent& ui_event);
+  bool undoPreparedSongState();
+
+  template <typename PrepareFn>
+  bool commitSongMutation(PrepareFn&& prepare) {
+    using GroovePuterUndo::SongUndoPayload;
+    using GroovePuterUndo::UndoKind;
+    SceneManager& manager = mini_acid_.sceneManager();
+    SongUndoPayload before{};
+    if (!GroovePuterUndo::captureCurrentSongUndo(manager, before)) return false;
+    Song after = before.before;
+    std::forward<PrepareFn>(prepare)(after);
+    if (GroovePuterUndo::sameSong(before.before, after)) return false;
+    if (!GroovePuterUndo::songUndoTargetAvailable(manager, before)) return false;
+    return GroovePuterUndo::undoOwner().commitPrepared(
+        UndoKind::Song, before, [&]() {
+          const auto apply = [&]() {
+            manager.currentScene().songs[before.songSlot] = after;
+          };
+          if (audio_guard_) audio_guard_(apply);
+          else apply();
+        });
+  }
+
   void drawMinimalStyle(IGfx& gfx);
   void drawRetroClassicStyle(IGfx& gfx);
   void drawAmberStyle(IGfx& gfx);
@@ -43,18 +72,20 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   void moveCursorHorizontal(int delta, bool extend_selection);
   void moveCursorVertical(int delta, bool extend_selection);
   void syncSongPositionToCursor();
-    template <typename F>
-    void withAudioGuard(F&& fn) {
-        if (audio_guard_) audio_guard_(std::forward<F>(fn));
-        else fn();
-        GroovePuterState::markSceneMutated();
-    }
 
-    template <typename F>
-    void withRuntimeAudioGuard(F&& fn) {
-        if (audio_guard_) audio_guard_(std::forward<F>(fn));
-        else fn();
-    }
+  // Transport/navigation owns TIME. R4 persistent Song arrangement edits use
+  // commitSongMutation; audio exclusion alone must not dirty or expire Undo.
+  template <typename F>
+  void withAudioGuard(F&& fn) {
+    if (audio_guard_) audio_guard_(std::forward<F>(fn));
+    else fn();
+  }
+
+  template <typename F>
+  void withRuntimeAudioGuard(F&& fn) {
+    if (audio_guard_) audio_guard_(std::forward<F>(fn));
+    else fn();
+  }
   void startSelection();
   void updateSelection();
   void clearSelection();
@@ -86,7 +117,6 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   bool clearPattern();
   bool toggleSongMode();
   bool toggleLoopMode();
-  // NEW: Row manipulation
   bool insertRowAtCursor();
   bool deleteRowAtCursor();
 
@@ -103,11 +133,10 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   Container mode_button_container_;
   bool mode_button_initialized_ = false;
 
-  // Pattern Generator
   SmartPatternGenerator::Mode gen_mode_;
   bool show_genre_hint_;
   uint32_t hint_timer_;
-  uint32_t last_g_press_ = 0; // For double-tap detection
+  uint32_t last_g_press_ = 0;
   struct PendingCellGeneration {
     bool valid = false;
     int row = 0;
@@ -123,8 +152,8 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   uint32_t ctrl_r_hold_start_ms_ = 0;
   bool ctrl_r_long_fired_ = false;
   LaneFocusMode lane_focus_mode_ = LaneFocusMode::AllTracks;
-  int assignment_bank_index_ = 0;  // Song Q..I assignment context; independent from playback banks.
-  bool split_compare_ = true;       // single-pane editor by default
+  int assignment_bank_index_ = 0;
+  bool split_compare_ = true;
   int row_markers_[4] = {-1, -1, -1, -1};
 
   SongPatternMaterializer::Result materializeSongTracks(int row, uint8_t trackMask);

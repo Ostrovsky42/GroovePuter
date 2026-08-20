@@ -27,6 +27,7 @@ def function_body(source: str, signature: str) -> str:
 
 def main() -> None:
     song_page = (ROOT / "src/ui/pages/song_page.cpp").read_text(encoding="utf-8")
+    song_r4_owner = (ROOT / "src/ui/pages/song_page_r4_owner.inc").read_text(encoding="utf-8")
     phrase_page = (ROOT / "src/ui/pages/phrase_page.cpp").read_text(encoding="utf-8")
     phrase_header = (ROOT / "src/ui/pages/phrase_page.h").read_text(encoding="utf-8")
     phrase_generator = (ROOT / "src/dsp/phrase_generator.h").read_text(encoding="utf-8")
@@ -48,11 +49,15 @@ def main() -> None:
             "Q..I assignment no longer uses the canonical pattern mapping")
     require("return assignPattern(patternIdx);" in song_page,
             "Q..I no longer assigns existing Song references")
-    require("GROOVEPUTER_APP_EVENT_COPY" in song_page and
-            "GROOVEPUTER_APP_EVENT_PASTE" in song_page and
-            "UndoActionType::Paste" in song_page and
-            "UndoActionType::Delete" in song_page,
-            "Song copy/paste/undo paths disappeared")
+    require("GROOVEPUTER_APP_EVENT_COPY" in song_page,
+            "Song copy path disappeared")
+    require("GROOVEPUTER_APP_EVENT_PASTE" in song_r4_owner and
+            "GROOVEPUTER_APP_EVENT_UNDO" in song_r4_owner and
+            "undoPreparedSongState" in song_r4_owner,
+            "Song paste/undo no longer route through the canonical R4 owner")
+    require("UndoActionType::Paste" not in song_page and
+            "UndoActionType::Delete" not in song_page,
+            "legacy Song page-local Undo ownership returned")
     require("setActiveSongSlot(nextSlot)" in song_page and
             "setSongPlaybackSlot(nextPlaySlot)" in song_page,
             "Song A/B edit or playback switching disappeared")

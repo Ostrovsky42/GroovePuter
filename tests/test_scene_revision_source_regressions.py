@@ -20,6 +20,7 @@ def main() -> None:
     feel_source = (ROOT / "src/ui/pages/feel_page.cpp").read_text(encoding="utf-8")
     song_header = (ROOT / "src/ui/pages/song_page.h").read_text(encoding="utf-8")
     song_source = (ROOT / "src/ui/pages/song_page.cpp").read_text(encoding="utf-8")
+    song_owner = (ROOT / "src/ui/pages/song_page_r4_owner.inc").read_text(encoding="utf-8")
     genre_source = (ROOT / "src/ui/pages/genre_page.cpp").read_text(encoding="utf-8")
     voice_source = (ROOT / "src/ui/pages/voice_page.cpp").read_text(encoding="utf-8")
     sampler_source = (ROOT / "src/ui/pages/sampler_page.cpp").read_text(encoding="utf-8")
@@ -82,20 +83,30 @@ def main() -> None:
     require("markSceneMutated();" in feel_header,
             "FEEL timing/velocity mutations must reach the tracker")
 
-    # GENERATION no longer owns a standalone page. Song is the materialization
-    # owner, and its persistent guard marks every successful mutation path.
+    # R4 separates committed Song arrangement from transport/TIME. Arrangement
+    # mutations publish through UndoOwner; audio exclusion alone is runtime-only.
     require("SongPatternMaterializer::Result materializeSongTracks" in song_header and
             "bool generateCurrentCellPattern" in song_header and
             "bool generateEntireRow" in song_header,
-            "Song must own current generation/materialization entry points")
-    persistent_guard = song_header.index("void withAudioGuard")
-    runtime_guard = song_header.index("void withRuntimeAudioGuard", persistent_guard)
-    require("GroovePuterState::markSceneMutated();" in
-            song_header[persistent_guard:runtime_guard],
-            "Song persistent mutations, including generation, must reach the revision tracker")
+            "Song must retain current generation/materialization entry points")
+    song_commit_start = song_header.index("template <typename PrepareFn>")
+    song_guard_start = song_header.index("template <typename F>", song_commit_start)
+    song_commit = song_header[song_commit_start:song_guard_start]
+    runtime_guard = song_header.index("void withRuntimeAudioGuard", song_guard_start)
+    song_guard = song_header[song_guard_start:runtime_guard]
+    require("undoOwner().commitPrepared" in song_commit and
+            "UndoKind::Song" in song_commit and
+            "markSceneMutated" not in song_commit and
+            "GroovePuterState::markSceneMutated();" in owner_commit,
+            "Song arrangement mutations must reach revision through canonical Undo ownership")
+    require("markSceneMutated" not in song_guard,
+            "Song audio guard must remain runtime-only after R4")
+    require("commitSongMutation" in song_owner and
+            "handleEventLegacyUnowned" in song_owner,
+            "Song R4 owner wrapper must separate persistent edits from retained runtime routing")
     require("generateCurrentCellPattern();" in song_source and
             "generateEntireRow();" in song_source,
-            "Song generation gestures must route through the current materialization owner")
+            "Song generation gestures must retain their materialization owner")
 
     preset_guard = feel_source.index("if (focus_ == FocusRow::Preset)")
     feel_guard_end = feel_source.index("Scene& scene", preset_guard)
@@ -109,9 +120,9 @@ def main() -> None:
     require("withRuntimeAudioGuard([&]() { mini_acid_.setSongPlaybackSlot" in song_source,
             "Song playback slot must remain runtime-only")
     require("withAudioGuard([&]() { mini_acid_.toggleSongMode();" in song_source,
-            "persisted Song mode must remain a tracked mutation")
+            "Song mode must retain its audio-safe runtime route")
     require("withAudioGuard([&]() { mini_acid_.setSongPosition(next);" in song_source,
-            "persisted Song position must remain a tracked mutation")
+            "Song position must retain its audio-safe TIME route")
 
     apply_mode_start = genre_source.index("void GenrePage::cycleApplyMode")
     apply_mode_end = genre_source.index("void GenrePage::applyCurrent", apply_mode_start)

@@ -163,9 +163,10 @@ def main() -> None:
         CPP,
         "// Q-I is the only keyboard path for slots 1-8 outside NOTE ENTRY.",
         "// Bank selection has one unambiguous binding.")
-    require("songMutated = true" in selector and
-            "if (songMutated) GroovePuterState::markSceneMutated();" in selector,
-            "Song chaining must keep persistent revision ownership separate from selector navigation")
+    require("commitSongMutation" in selector and
+            "SongEdit::setPattern" in selector and
+            "markSceneMutated" not in selector,
+            "Song chaining must route through canonical R4 Song ownership while selector navigation stays runtime-only")
 
     print("0.9.8 R3 Pattern mutation ownership source regressions: OK")
 

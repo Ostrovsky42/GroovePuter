@@ -97,7 +97,7 @@ def main() -> None:
     require("audio_guard_(restore)" in undo_case,
             "Pattern restore must remain audio-guarded")
     require('UI::showToast("UNDO: RETURN PAGE"' in undo_case and
-            'UI::showToast("UNDO EXPIRED"' in undo_case,
+            'UI::showToast("UNDO: EXPIRED"' in undo_case,
             "Pattern Undo must expose fail-closed unavailable/expired states")
 
     # R2 does not own shortcut rollout. It only makes the existing application

@@ -9,6 +9,7 @@
 #include "../../dsp/miniacid_engine.h"
 #include "../../state/scene_revision.h"
 #include "src/state/synth_pattern_edit.h"
+#include "../../state/song_edit.h"
 #include "../../state/undo_owner.h"
 #include "../../state/undo_receipts.h"
 
@@ -106,6 +107,27 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
         });
     return committed ? PatternMutationResult::Committed
                      : PatternMutationResult::Invalid;
+  }
+
+  template <typename PrepareFn>
+  bool commitSongMutation(PrepareFn&& prepare) {
+    using GroovePuterUndo::SongUndoPayload;
+    using GroovePuterUndo::UndoKind;
+    SceneManager& manager = mini_acid_.sceneManager();
+    SongUndoPayload before{};
+    if (!GroovePuterUndo::captureCurrentSongUndo(manager, before)) return false;
+    Song after = before.before;
+    std::forward<PrepareFn>(prepare)(after);
+    if (GroovePuterUndo::sameSong(before.before, after)) return false;
+    if (!GroovePuterUndo::songUndoTargetAvailable(manager, before)) return false;
+    return GroovePuterUndo::undoOwner().commitPrepared(
+        UndoKind::Song, before, [&]() {
+          const auto apply = [&]() {
+            manager.currentScene().songs[before.songSlot] = after;
+          };
+          if (audio_guard_) audio_guard_(apply);
+          else apply();
+        });
   }
 
   // Audio exclusion and persistent-revision ownership are deliberately

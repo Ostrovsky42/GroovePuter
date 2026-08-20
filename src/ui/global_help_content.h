@@ -7,6 +7,7 @@ namespace HelpContent {
 constexpr const char* kGlobalLines[] = {
     "=== GLOBAL ===",
     "Alt+H       Toggle this help",
+    "Ctrl+U      Undo last edit",
     "Up/Down     Scroll help",
     "Left/Right  Help top/end",
     "Fn+M        Workspace launcher",
