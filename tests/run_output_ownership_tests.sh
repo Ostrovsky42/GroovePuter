@@ -44,5 +44,6 @@ COMMON_FLAGS=(
 "${BUILD_DIR}/test_eye_output_mode"
 "${BUILD_DIR}/test_eye_udp_integration"
 python3 "${ROOT_DIR}/tests/test_output_ownership_source_contract.py"
+python3 "${ROOT_DIR}/tests/test_gvep_r01_source_contract.py"
 
 echo "0.9.6 output ownership contract gate: PASS"
