@@ -28,6 +28,9 @@ enum class QuantizedGenerationStatus : uint8_t {
   CancelledTargetChanged,
   Busy,
   AttemptUnavailable,
+  Activated,
+  CancelledRevisionChanged,
+  CancelledExplicit,
 };
 
 enum class QuantizedGenerationScope : uint8_t {
@@ -56,11 +59,13 @@ struct PendingGeneration {
   QuantizedGenerationScope scope = QuantizedGenerationScope::Full;
   SynthPattern synth[2]{};
   DrumPatternSet drums{};
+  uint32_t committedRevision = 0;
 };
 
 enum class SlotState : uint8_t {
   Empty = 0,
   Writing,
+  Armed,
   Ready,
   Reading,
 };
@@ -84,7 +89,7 @@ inline std::atomic<uint8_t> g_status{
     static_cast<uint8_t>(QuantizedGenerationStatus::Idle)};
 inline std::atomic<uint32_t> g_commitSerial{0};
 
-inline PatternTarget captureTarget(SceneManager& scenes) {
+inline PatternTarget captureTarget(const SceneManager& scenes) {
   PatternTarget target{};
   target.page = scenes.currentPageIndex();
   target.synthBank[0] = scenes.getCurrentBankIndex(1);
@@ -123,7 +128,7 @@ inline int patternAddressFor(const PatternTarget& target) {
       target.page, target.drumBank, target.drumSlot);
 }
 
-inline bool targetStillActive(SceneManager& scenes, const PatternTarget& target) {
+inline bool targetStillActive(const SceneManager& scenes, const PatternTarget& target) {
   return sameTarget(captureTarget(scenes), target);
 }
 
@@ -144,26 +149,14 @@ inline void clearPublished(QuantizedGenerationStatus status) {
 }
 
 inline WriteLease acquireWriteLease() {
-  // Newest intent wins. First try to claim the currently published transaction
-  // back from BAR_START. If BAR_START already claimed it for Reading, fail fast
-  // rather than touching Scene while the audio thread is publishing material.
-  const int old = g_publishedSlot.exchange(-1, std::memory_order_acq_rel);
-  if (old >= 0 && old <= 1) {
-    uint8_t expected = static_cast<uint8_t>(SlotState::Ready);
-    if (g_slotState[old].compare_exchange_strong(
-            expected,
-            static_cast<uint8_t>(SlotState::Writing),
-            std::memory_order_acq_rel,
-            std::memory_order_acquire)) {
-      return WriteLease{old, true};
-    }
+  // 0.9.9-C policy: one pending audible activation, no hidden queue.
+  // A second generation intent while an activation is Armed/Ready is rejected
+  // before PREPARE/COMMIT. This deliberately replaces A-stage newest-wins
+  // recycling with an explicit Busy policy.
+  if (g_publishedSlot.load(std::memory_order_acquire) >= 0) {
     return WriteLease{};
   }
 
-  // A non-published Ready/Reading/Writing slot means BAR_START and the control
-  // side are crossing exactly now. The boundary copy is intentionally tiny;
-  // reject this keypress as Busy instead of introducing a data race or spin in
-  // AudioTask. A subsequent keypress can stage normally.
   for (int slot = 0; slot < 2; ++slot) {
     const auto state = static_cast<SlotState>(
         g_slotState[slot].load(std::memory_order_acquire));
@@ -181,6 +174,21 @@ inline WriteLease acquireWriteLease() {
     }
   }
   return WriteLease{};
+}
+
+inline int acquireCompanionActivationSlot(int preparedSlot) {
+  for (int slot = 0; slot < 2; ++slot) {
+    if (slot == preparedSlot) continue;
+    uint8_t expected = static_cast<uint8_t>(SlotState::Empty);
+    if (g_slotState[slot].compare_exchange_strong(
+            expected,
+            static_cast<uint8_t>(SlotState::Writing),
+            std::memory_order_acq_rel,
+            std::memory_order_acquire)) {
+      return slot;
+    }
+  }
+  return -1;
 }
 
 inline void releaseWriteSlot(int slot) {

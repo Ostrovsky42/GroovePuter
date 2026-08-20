@@ -297,6 +297,7 @@ public:
   void updateDrumReverbMix(float value);
   void updateDrumReverbDecay(float value);
   void setGrooveboxMode(GrooveboxMode mode);
+  void activateCommittedGrooveboxModeRuntime(GrooveboxMode mode);
   GrooveboxMode grooveboxMode() const;
   void toggleGrooveboxMode();
   void setGrooveFlavor(int flavor);

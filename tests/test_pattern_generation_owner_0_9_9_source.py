@@ -39,10 +39,11 @@ for token in ("getCompiledGenerativeParams()", "getBehavior()",
               "editSynthPattern(idx), bpmValue, genreParams, behavior, idx"):
     require(token in legacy, f"legacy randomize303Pattern semantic moved: {token}")
 
-# Modified/fallback G keeps the legacy musical generator but closes its R3
-# persistent-mutation handoff through a compact Generation receipt.
-b2_comment = page.index("// B2 closes the R3 generation handoff")
-g_start = page.index("if (keyG)", b2_comment)
+# C changes only audible publication timing. Modified/fallback G must keep the
+# exact B2 musical PREPARE and compact Generation receipt, but PLAY now joins
+# the shared bounded activation owner rather than replacing the Pattern mid-bar.
+c_comment = page.index("// C keeps B2's legacy/fallback musical generator")
+g_start = page.index("if (keyG)", c_comment)
 g_end = page.index("\n  if (keyF)", g_start)
 g_block = page[g_start:g_end]
 
@@ -51,7 +52,7 @@ require("captureCurrentSynthPatternUndo" in g_block,
 require("SynthPattern after = before.before" in g_block,
         "fallback Pattern G PREPARE must start from a scratch copy")
 require("preparePatternEditorGeneration" in g_block,
-        "fallback Pattern G must prepare before owner publication")
+        "fallback Pattern G must preserve the B2 musical generator")
 require("samePattern(before.before, after)" in g_block,
         "fallback Pattern G no-op must not publish a receipt/revision")
 require("synthPatternUndoTargetAvailable" in g_block,
@@ -60,36 +61,42 @@ require("undoOwner().commitPrepared(" in g_block,
         "fallback Pattern G must use the canonical UndoOwner")
 require("UndoKind::Generation" in g_block,
         "fallback Pattern G must publish a Generation receipt")
-require("set303PatternIndex(voice_index_, currentPattern)" in g_block,
-        "fallback Pattern G must preserve legacy PLAY note-off through the selector")
 require("restoreSynthPatternUndo(manager, prepared)" in g_block,
-        "fallback Pattern G COMMIT must be one bounded Pattern assignment")
+        "fallback Pattern G COMMIT must remain one bounded Pattern assignment")
+require("armCompactSynthActivation" in g_block and
+        "completeArmedActivation" in g_block,
+        "fallback PLAY G must use the shared C activation owner")
+require("set303PatternIndex(voice_index_, currentPattern)" not in g_block,
+        "fallback PLAY G must not replace audible material mid-bar")
 require("handleEventLegacyUnowned" not in g_block,
         "fallback Pattern G must not use the unowned legacy mutation path")
 require("markSceneMutated" not in g_block,
         "fallback Pattern G page code must not own Scene revision directly")
 require(g_block.index("preparePatternEditorGeneration") <
         g_block.index("undoOwner().commitPrepared("),
-        "fallback generation must finish before COMMIT publication")
+        "fallback generation must finish before persistent COMMIT publication")
+require(g_block.index("undoOwner().commitPrepared(") <
+        g_block.index("completeArmedActivation"),
+        "fallback activation may become Ready only after persistent COMMIT")
 
-# Plain unmodified G already uses the B1 quantized synth-generation path. B2
-# removes the remaining page-level second revision mark while preserving its
-# PendingNextBar behavior and B1 receipt.
+# Plain unmodified G keeps the B1 quantized synth-generation path. C changes
+# its internal COMMIT/ACTIVATE lifecycle, not its musical entry point or
+# PendingNextBar UI result.
 plain_start = page.index("// Outside NOTE ENTRY, plain G rerolls only this physical synth voice")
 plain_end = page.index("// Global navigation, pattern rotation/FX editing", plain_start)
 plain_g = page[plain_start:plain_end]
 require("regenerateSynthWithQuantizedCommit" in plain_g,
         "plain G must preserve the B1 quantized generator")
 require("PendingNextBar" in plain_g,
-        "plain G must preserve next-bar pending behavior")
+        "plain G must preserve next-bar activation UX")
 require("GroovePuterState::markSceneMutated();" not in plain_g,
-        "plain G must not double-advance Scene revision after B1")
+        "plain G must not double-advance Scene revision")
 require("commitPatternMutation" not in plain_g,
         "plain quantized G must not be rewritten as a manual Pattern edit")
 
 # Pattern-page Undo must route both Generation receipt shapes without decoding
-# one as the other: B1 quantized generation (1464 B today) and B2 compact
-# fallback generation (116 B).
+# one as the other. C additionally requires compact Undo to invalidate a pending
+# activation that belongs to the exact committed revision being undone.
 handler_start = page.index("bool PatternEditPage::handleEventLegacy(UIEvent& ui_event)")
 handler_prefix_end = page.index("using GroovePuterUndo::PatternEdit::adjustFxParam", handler_start)
 handler_prefix = page[handler_start:handler_prefix_end]
@@ -104,6 +111,9 @@ require("owner.payloadSize() == sizeof(SynthPatternUndoPayload)" in handler_pref
         "Pattern page must size-discriminate the compact B2 receipt")
 require("undoPrepared<SynthPatternUndoPayload>" in handler_prefix,
         "Pattern page must restore the compact B2 receipt")
+require("committedRevision" in handler_prefix and
+        "cancelPendingGenerationActivationForRevision" in handler_prefix,
+        "compact generation Undo must cancel only its matching C pending activation")
 require(handler_prefix.index("quantizedGenerationUndoPayloadSize()") <
         handler_prefix.index("sizeof(SynthPatternUndoPayload)"),
         "larger B1 Generation receipt must be dispatched before compact fallback")
