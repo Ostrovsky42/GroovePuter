@@ -1,0 +1,140 @@
+name: Temporary 0.9.8 to 0.9.9 sync
+
+on:
+  push:
+    branches:
+      - agent/20260821-02-sync-0.9.8-into-0.9.9-runner
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out authoritative 0.9.9 baseline
+        uses: actions/checkout@v4
+        with:
+          ref: dev_0.9.9
+          fetch-depth: 0
+
+      - name: Merge current 0.9.8 while preserving B1/B2 ownership
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin dev_0.9.8
+
+          set +e
+          git merge --no-ff --no-commit origin/dev_0.9.8
+          merge_status=$?
+          set -e
+
+          if [ "$merge_status" -ne 0 ]; then
+            conflicts="$(git diff --name-only --diff-filter=U | sort)"
+            expected="$(printf '%s\n' \
+              'src/ui/pages/pattern_edit_page.cpp' \
+              'tests/test_pattern_mutations_0_9_8_r3_source_regressions.py' | sort)"
+            if [ "$conflicts" != "$expected" ]; then
+              echo "Unexpected merge conflicts:"
+              printf '%s\n' "$conflicts"
+              exit 1
+            fi
+            git checkout --ours -- \
+              src/ui/pages/pattern_edit_page.cpp \
+              tests/test_pattern_mutations_0_9_8_r3_source_regressions.py
+          fi
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once_or_accept(path: Path, old: str, new: str, label: str) -> None:
+              text = path.read_text()
+              if old in text:
+                  if text.count(old) != 1:
+                      raise SystemExit(f"{label}: expected one old block, found {text.count(old)}")
+                  path.write_text(text.replace(old, new, 1))
+                  return
+              if new in text:
+                  return
+              raise SystemExit(f"{label}: neither old nor resolved block found")
+
+          pattern = Path("src/ui/pages/pattern_edit_page.cpp")
+          replace_once_or_accept(
+              pattern,
+              "  // is immediate and the next arrow continues moving inside the note grid.\n",
+              "  // is runtime-only; optional chaining is a separate persistent Song edit.\n",
+              "Pattern selector ownership comment",
+          )
+          replace_once_or_accept(
+              pattern,
+              """      setPatternCursor(patternIdx);
+          bool songMutated = false;
+          withAudioGuard([&]() {
+            mini_acid_.set303PatternIndex(voice_index_, patternIdx);
+            if (chaining_mode_) {
+              const SongTrack track = voice_index_ == 0
+                  ? SongTrack::SynthA
+                  : SongTrack::SynthB;
+              for (int i = 0; i < Song::kMaxPositions; ++i) {
+                if (mini_acid_.songPatternAt(i, track) == -1) {
+                  mini_acid_.setSongPattern(i, track, patternIdx);
+                  songMutated = true;
+                  break;
+                }
+              }
+            }
+          });
+          if (songMutated) GroovePuterState::markSceneMutated();
+          """,
+              """      setPatternCursor(patternIdx);
+          withAudioGuard([&]() {
+            mini_acid_.set303PatternIndex(voice_index_, patternIdx);
+          });
+          if (chaining_mode_) {
+            const SongTrack track = voice_index_ == 0
+                ? SongTrack::SynthA
+                : SongTrack::SynthB;
+            commitSongMutation([&](Song& song) {
+              for (int row = 0; row < Song::kMaxPositions; ++row) {
+                if (GroovePuterUndo::SongEdit::patternAt(song, row, track) == -1) {
+                  GroovePuterUndo::SongEdit::setPattern(song, row, track, patternIdx);
+                  break;
+                }
+              }
+            });
+          }
+          """,
+              "Pattern selector/chaining R4 ownership",
+          )
+
+          source_test = Path("tests/test_pattern_mutations_0_9_8_r3_source_regressions.py")
+          replace_once_or_accept(
+              source_test,
+              """    require("songMutated = true" in selector and
+                  "if (songMutated) GroovePuterState::markSceneMutated();" in selector,
+                  "Song chaining must keep persistent revision ownership separate from selector navigation")
+          """,
+              """    require("commitSongMutation" in selector and
+                  "SongEdit::setPattern" in selector and
+                  "markSceneMutated" not in selector,
+                  "Song chaining must route through canonical R4 Song ownership while selector navigation stays runtime-only")
+          """,
+              "R4 selector source regression",
+          )
+          PY
+
+          git add -- \
+            src/ui/pages/pattern_edit_page.cpp \
+            tests/test_pattern_mutations_0_9_8_r3_source_regressions.py
+
+          if git diff --name-only --diff-filter=U | grep -q .; then
+            echo "Unresolved conflicts remain"
+            git diff --name-only --diff-filter=U
+            exit 1
+          fi
+
+          git diff --cached --check
+          git commit -m "merge: sync 0.9.8 R7 into 0.9.9 before C"
+          git push origin HEAD:dev_0.9.9
