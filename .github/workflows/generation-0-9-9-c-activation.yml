@@ -1,0 +1,50 @@
+name: 0.9.9-C bounded activation
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feature/0.9.9-c-bounded-activation
+
+permissions:
+  contents: read
+
+jobs:
+  bounded-activation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile fixed activation owner contract
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_generation_activation_0_9_9.cpp \
+            -o build/host-tests/test_generation_activation_0_9_9
+          build/host-tests/test_generation_activation_0_9_9
+
+      - name: Enforce COMMIT PENDING ACTIVATE split
+        run: python3 tests/test_generation_activation_0_9_9_source.py
+
+      - name: Preserve B1 B2 mutation ownership
+        run: |
+          mkdir -p build/host-tests
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_generation_undo_owner_0_9_9.cpp \
+            -o build/host-tests/test_generation_undo_owner_0_9_9
+          build/host-tests/test_generation_undo_owner_0_9_9
+          python3 tests/test_generation_undo_owner_0_9_9_source.py
+          g++ -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I. \
+            tests/test_pattern_generation_owner_0_9_9.cpp \
+            -o build/host-tests/test_pattern_generation_owner_0_9_9
+          build/host-tests/test_pattern_generation_owner_0_9_9
+          python3 tests/test_pattern_generation_owner_0_9_9_source.py
+
+      - name: Preserve cumulative Undo and compatibility contracts
+        run: |
+          bash tests/run_undo_0_9_8_r7_tests.sh
+          g++ -std=c++17 -Wall -Wextra -Werror -I. \
+            tests/test_generation_0_9_9_compatibility.cpp \
+            -o build/host-tests/test_generation_0_9_9_compatibility
+          build/host-tests/test_generation_0_9_9_compatibility
+          python3 tests/test_generation_0_9_9_source_regressions.py
