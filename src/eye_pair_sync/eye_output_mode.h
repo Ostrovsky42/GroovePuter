@@ -5,10 +5,17 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-// Dual-Eye test builds use ESP-NOW on Cardputer. Cardputer ADV is DRAM-only,
-// so keep validating the runtime free/largest internal heap after Wi-Fi init.
+// Cardputer ADV is DRAM-only. ESP-NOW remains an explicit experimental opt-in
+// until the hardware memory and audio-jitter gates pass.
 #ifndef GROOVEPUTER_ENABLE_DUAL_EYE_ESPNOW
-#define GROOVEPUTER_ENABLE_DUAL_EYE_ESPNOW 1
+#define GROOVEPUTER_ENABLE_DUAL_EYE_ESPNOW 0
+#endif
+
+// R0.1 is a hardware-only memory feasibility probe. It records internal-heap
+// snapshots and AudioTask stack high-water mark while the experimental radio
+// is enabled. Keep disabled in normal builds.
+#ifndef GROOVEPUTER_GVEP_R01_MEMORY_PROBE
+#define GROOVEPUTER_GVEP_R01_MEMORY_PROBE 0
 #endif
 
 #ifdef __cplusplus
@@ -68,6 +75,15 @@ typedef struct {
     uint32_t send_attempts;
     uint32_t send_accepted;
     uint32_t send_rejected;
+    uint32_t queue_dropped;
+    uint32_t radio_init_failures;
+    uint32_t free_internal_before_radio;
+    uint32_t largest_internal_before_radio;
+    uint32_t free_internal_after_radio;
+    uint32_t largest_internal_after_radio;
+    uint32_t audio_stack_hwm_bytes;
+    uint8_t radio_init_attempted;
+    uint8_t radio_ready;
 } eye_transport_diagnostics_t;
 
 #ifdef __cplusplus
