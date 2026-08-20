@@ -17,6 +17,10 @@ ARDUINO_BUILD_PATH="${ARDUINO_BUILD_PATH:-${BUILD_PATH}/.arduino-build}"
 # ENTER applies a genre. Keep the audio task unchanged and reserve 12 KiB for
 # the control/UI task instead.
 ARDUINO_LOOP_STACK_SIZE="${ARDUINO_LOOP_STACK_SIZE:-12288}"
+# Optional experiment-only flags. Normal builds leave this empty. Keeping the
+# extension here prevents test commands from replacing the required loop-stack
+# and page include flags below.
+EXTRA_CPP_FLAGS="${EXTRA_CPP_FLAGS:-}"
 
 if ! command -v "${ARDUINO_CLI}" >/dev/null 2>&1; then
   echo "arduino-cli was not found: ${ARDUINO_CLI}" >&2
@@ -27,6 +31,9 @@ fi
 echo "=== Building GroovePuter for Cardputer ADV ==="
 echo "FQBN: ${FQBN}"
 echo "Output: ${BUILD_PATH}"
+if [[ -n "${EXTRA_CPP_FLAGS}" ]]; then
+  echo "Extra C++ flags: ${EXTRA_CPP_FLAGS}"
+fi
 
 # Arduino CLI requires the sketch directory name to match GroovePuter.ino.
 # The repository is named miniacid, so stage the current checkout under the
@@ -49,7 +56,7 @@ rsync -a --delete \
 # Arduino CLI may compile nested sketch sources from generated build paths.
 # Keep the staged page directory on the include search path so quoted
 # implementation fragments remain visible without compiling them separately.
-ARDUINO_CPP_EXTRA_FLAGS="-DARDUINO_LOOP_STACK_SIZE=${ARDUINO_LOOP_STACK_SIZE} -I${TEMP_ROOT}/GroovePuter/src/ui/pages"
+ARDUINO_CPP_EXTRA_FLAGS="-DARDUINO_LOOP_STACK_SIZE=${ARDUINO_LOOP_STACK_SIZE} -I${TEMP_ROOT}/GroovePuter/src/ui/pages ${EXTRA_CPP_FLAGS}"
 
 "${ARDUINO_CLI}" compile \
   --clean \
