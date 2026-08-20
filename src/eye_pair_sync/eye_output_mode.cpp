@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <cstring>
 
 #if defined(ARDUINO) || defined(ESP_PLATFORM)
@@ -27,8 +28,20 @@
 #if (defined(ARDUINO) || defined(ESP_PLATFORM)) && \
     GROOVEPUTER_ENABLE_DUAL_EYE_ESPNOW
 #include <WiFi.h>
+#include <esp_heap_caps.h>
 #include <esp_now.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#if defined(ARDUINO)
+#include <Arduino.h>
+#endif
 #define GVEP_USE_ESPNOW 1
+#endif
+
+#if defined(GVEP_USE_ESPNOW) && GROOVEPUTER_GVEP_R01_MEMORY_PROBE
+// The hardware probe is intentionally coupled only to the existing application
+// task handle. Normal builds do not depend on this symbol.
+extern TaskHandle_t g_audioTaskHandle;
 #endif
 
 namespace {
@@ -40,9 +53,21 @@ struct EyeState {
     std::atomic<uint32_t> send_attempts{0};
     std::atomic<uint32_t> send_accepted{0};
     std::atomic<uint32_t> send_rejected{0};
+    std::atomic<uint32_t> queue_dropped{0};
+    std::atomic<uint32_t> radio_init_failures{0};
+    std::atomic<uint32_t> free_internal_before_radio{0};
+    std::atomic<uint32_t> largest_internal_before_radio{0};
+    std::atomic<uint32_t> free_internal_after_radio{0};
+    std::atomic<uint32_t> largest_internal_after_radio{0};
+    std::atomic<uint32_t> audio_stack_hwm_bytes{0};
+    std::atomic<bool> radio_init_attempted{false};
+    std::atomic<bool> radio_ready{false};
     uint8_t modes[3]{EYE_OUT_LEGACY, EYE_OUT_LEGACY, EYE_OUT_LEGACY};
 #if defined(GVEP_USE_UDP)
     int udp_sock{-1};
+#endif
+#if defined(GVEP_USE_ESPNOW) && GROOVEPUTER_GVEP_R01_MEMORY_PROBE
+    int64_t last_probe_log_us{0};
 #endif
 };
 
@@ -54,7 +79,6 @@ struct GvepQueue {
     eye_gvep_packet_t packets[kGvepQueueCapacity]{};
     std::atomic<uint8_t> write{0};
     std::atomic<uint8_t> read{0};
-    std::atomic<uint32_t> dropped{0};
 };
 
 static GvepQueue g_gvepQueue;
@@ -111,6 +135,142 @@ uint32_t nextSequence() {
     }
 }
 
+#if defined(GVEP_USE_ESPNOW)
+uint32_t freeInternalBytes() {
+    return static_cast<uint32_t>(heap_caps_get_free_size(
+        MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+}
+
+uint32_t largestInternalBlockBytes() {
+    return static_cast<uint32_t>(heap_caps_get_largest_free_block(
+        MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+}
+
+#if GROOVEPUTER_GVEP_R01_MEMORY_PROBE
+uint32_t audioTaskStackHighWaterMarkBytes() {
+    if (::g_audioTaskHandle == nullptr) return 0u;
+    // ESP-IDF on ESP32-S3 reports this value in bytes, unlike vanilla
+    // FreeRTOS documentation which commonly describes stack units as words.
+    return static_cast<uint32_t>(
+        uxTaskGetStackHighWaterMark(::g_audioTaskHandle));
+}
+
+void logR01Probe(const char* phase) {
+    const uint32_t free_internal = freeInternalBytes();
+    const uint32_t largest_internal = largestInternalBlockBytes();
+    const uint32_t audio_hwm = audioTaskStackHighWaterMarkBytes();
+    g_eyeState.audio_stack_hwm_bytes.store(
+        audio_hwm, std::memory_order_relaxed);
+
+#if defined(ARDUINO)
+    Serial.printf(
+        "[GVEP-R01] phase=%s radio=%u freeInt=%lu largestInt=%lu "
+        "audioHwmBytes=%lu beforeFree=%lu beforeLargest=%lu "
+        "afterFree=%lu afterLargest=%lu initFailures=%lu queueDropped=%lu\n",
+        phase,
+        g_eyeState.radio_ready.load(std::memory_order_relaxed) ? 1u : 0u,
+        static_cast<unsigned long>(free_internal),
+        static_cast<unsigned long>(largest_internal),
+        static_cast<unsigned long>(audio_hwm),
+        static_cast<unsigned long>(g_eyeState.free_internal_before_radio.load(
+            std::memory_order_relaxed)),
+        static_cast<unsigned long>(g_eyeState.largest_internal_before_radio.load(
+            std::memory_order_relaxed)),
+        static_cast<unsigned long>(g_eyeState.free_internal_after_radio.load(
+            std::memory_order_relaxed)),
+        static_cast<unsigned long>(g_eyeState.largest_internal_after_radio.load(
+            std::memory_order_relaxed)),
+        static_cast<unsigned long>(g_eyeState.radio_init_failures.load(
+            std::memory_order_relaxed)),
+        static_cast<unsigned long>(g_eyeState.queue_dropped.load(
+            std::memory_order_relaxed)));
+#else
+    std::printf(
+        "[GVEP-R01] phase=%s radio=%u freeInt=%lu largestInt=%lu "
+        "audioHwmBytes=%lu beforeFree=%lu beforeLargest=%lu "
+        "afterFree=%lu afterLargest=%lu initFailures=%lu queueDropped=%lu\n",
+        phase,
+        g_eyeState.radio_ready.load(std::memory_order_relaxed) ? 1u : 0u,
+        static_cast<unsigned long>(free_internal),
+        static_cast<unsigned long>(largest_internal),
+        static_cast<unsigned long>(audio_hwm),
+        static_cast<unsigned long>(g_eyeState.free_internal_before_radio.load(
+            std::memory_order_relaxed)),
+        static_cast<unsigned long>(g_eyeState.largest_internal_before_radio.load(
+            std::memory_order_relaxed)),
+        static_cast<unsigned long>(g_eyeState.free_internal_after_radio.load(
+            std::memory_order_relaxed)),
+        static_cast<unsigned long>(g_eyeState.largest_internal_after_radio.load(
+            std::memory_order_relaxed)),
+        static_cast<unsigned long>(g_eyeState.radio_init_failures.load(
+            std::memory_order_relaxed)),
+        static_cast<unsigned long>(g_eyeState.queue_dropped.load(
+            std::memory_order_relaxed)));
+#endif
+}
+
+void logR01ProbeIfDue() {
+    const int64_t now_us = nowMicros();
+    if (g_eyeState.last_probe_log_us != 0 &&
+        now_us - g_eyeState.last_probe_log_us < 5000000LL) {
+        return;
+    }
+    g_eyeState.last_probe_log_us = now_us;
+    logR01Probe("runtime");
+}
+#endif
+
+void ensureEspNowStarted() {
+    bool expected = false;
+    if (!g_eyeState.radio_init_attempted.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel,
+            std::memory_order_relaxed)) {
+        return;
+    }
+
+    g_eyeState.free_internal_before_radio.store(
+        freeInternalBytes(), std::memory_order_relaxed);
+    g_eyeState.largest_internal_before_radio.store(
+        largestInternalBlockBytes(), std::memory_order_relaxed);
+
+    bool ready = false;
+    bool esp_now_initialized = false;
+
+    if (WiFi.mode(WIFI_STA)) {
+        WiFi.disconnect();
+        const esp_err_t init_result = esp_now_init();
+        if (init_result == ESP_OK) {
+            esp_now_initialized = true;
+            esp_now_peer_info_t peerInfo = {};
+            for (uint8_t i = 0; i < 6; ++i) peerInfo.peer_addr[i] = 0xFF;
+            peerInfo.channel = 0;
+            peerInfo.encrypt = false;
+            const esp_err_t peer_result = esp_now_add_peer(&peerInfo);
+            ready = peer_result == ESP_OK ||
+                    peer_result == ESP_ERR_ESPNOW_EXIST;
+        }
+    }
+
+    g_eyeState.free_internal_after_radio.store(
+        freeInternalBytes(), std::memory_order_relaxed);
+    g_eyeState.largest_internal_after_radio.store(
+        largestInternalBlockBytes(), std::memory_order_relaxed);
+    g_eyeState.radio_ready.store(ready, std::memory_order_release);
+
+    if (!ready) {
+        g_eyeState.radio_init_failures.fetch_add(1u, std::memory_order_relaxed);
+        if (esp_now_initialized) {
+            esp_now_deinit();
+        }
+        WiFi.mode(WIFI_OFF);
+    }
+
+#if GROOVEPUTER_GVEP_R01_MEMORY_PROBE
+    logR01Probe("radio-init");
+#endif
+}
+#endif
+
 bool sendRaw(const void* data, size_t len) {
     if (data == nullptr || len == 0u) return false;
 
@@ -132,12 +292,14 @@ bool sendRaw(const void* data, size_t len) {
 #endif
 
 #if defined(GVEP_USE_ESPNOW)
-    attempted = true;
-    static uint8_t broadcastMac[6] = {
-        0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-    };
-    accepted = esp_now_send(
-        broadcastMac, static_cast<const uint8_t*>(data), len) == ESP_OK;
+    if (g_eyeState.radio_ready.load(std::memory_order_acquire)) {
+        attempted = true;
+        static uint8_t broadcastMac[6] = {
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+        };
+        accepted = esp_now_send(
+            broadcastMac, static_cast<const uint8_t*>(data), len) == ESP_OK;
+    }
 #endif
 
     if (attempted) {
@@ -157,7 +319,7 @@ void enqueueOrSend(const eye_gvep_packet_t& packet) {
     const uint8_t next = static_cast<uint8_t>(
         (write + 1u) % kGvepQueueCapacity);
     if (next == g_gvepQueue.read.load(std::memory_order_acquire)) {
-        g_gvepQueue.dropped.fetch_add(1u, std::memory_order_relaxed);
+        g_eyeState.queue_dropped.fetch_add(1u, std::memory_order_relaxed);
         return;
     }
     g_gvepQueue.packets[write] = packet;
@@ -171,8 +333,6 @@ void enqueueOrSend(const eye_gvep_packet_t& packet) {
 
 #if defined(GVEP_USE_ESPNOW)
 void flushQueuedGvep() {
-    uint32_t dropped = g_gvepQueue.dropped.exchange(0u, std::memory_order_acq_rel);
-    (void)dropped;
     uint8_t read = g_gvepQueue.read.load(std::memory_order_relaxed);
     const uint8_t write = g_gvepQueue.write.load(std::memory_order_acquire);
     uint8_t budget = 8;
@@ -212,24 +372,19 @@ void eye_output_mode_init(void) {
     }
 #endif
 
-#if defined(GVEP_USE_ESPNOW)
-    WiFi.mode(WIFI_STA);
-    WiFi.disconnect();
-    if (esp_now_init() == ESP_OK) {
-        esp_now_peer_info_t peerInfo = {};
-        for (uint8_t i = 0; i < 6; ++i) peerInfo.peer_addr[i] = 0xFF;
-        peerInfo.channel = 0;
-        peerInfo.encrypt = false;
-        esp_now_add_peer(&peerInfo);
-    }
-#endif
+    // ESP-NOW is intentionally not initialized here. Cardputer setup calls this
+    // before AudioTask creation. The radio is started from eye_output_mode_flush()
+    // on the first normal loop iteration, after setup has reserved all critical
+    // realtime stacks and buffers. This is the R0.1 allocation-order experiment.
 
     g_eyeState.initialized = true;
 }
 
 bool eye_output_mode_transport_enabled(void) {
-#if defined(GVEP_USE_UDP) || defined(GVEP_USE_ESPNOW)
-    return true;
+#if defined(GVEP_USE_UDP)
+    return g_eyeState.udp_sock >= 0;
+#elif defined(GVEP_USE_ESPNOW)
+    return g_eyeState.radio_ready.load(std::memory_order_acquire);
 #else
     return false;
 #endif
@@ -243,6 +398,24 @@ eye_transport_diagnostics_t eye_output_mode_transport_diagnostics(void) {
         std::memory_order_relaxed);
     diagnostics.send_rejected = g_eyeState.send_rejected.load(
         std::memory_order_relaxed);
+    diagnostics.queue_dropped = g_eyeState.queue_dropped.load(
+        std::memory_order_relaxed);
+    diagnostics.radio_init_failures = g_eyeState.radio_init_failures.load(
+        std::memory_order_relaxed);
+    diagnostics.free_internal_before_radio =
+        g_eyeState.free_internal_before_radio.load(std::memory_order_relaxed);
+    diagnostics.largest_internal_before_radio =
+        g_eyeState.largest_internal_before_radio.load(std::memory_order_relaxed);
+    diagnostics.free_internal_after_radio =
+        g_eyeState.free_internal_after_radio.load(std::memory_order_relaxed);
+    diagnostics.largest_internal_after_radio =
+        g_eyeState.largest_internal_after_radio.load(std::memory_order_relaxed);
+    diagnostics.audio_stack_hwm_bytes = g_eyeState.audio_stack_hwm_bytes.load(
+        std::memory_order_relaxed);
+    diagnostics.radio_init_attempted =
+        g_eyeState.radio_init_attempted.load(std::memory_order_relaxed) ? 1u : 0u;
+    diagnostics.radio_ready =
+        g_eyeState.radio_ready.load(std::memory_order_relaxed) ? 1u : 0u;
     return diagnostics;
 }
 
@@ -298,7 +471,14 @@ void eye_output_mode_restore(eye_track_t track, eye_output_mode_t mode) {
 
 void eye_output_mode_flush(void) {
 #if defined(GVEP_USE_ESPNOW)
+    // Called from the normal Arduino loop, after setup() has created AudioTask
+    // and reserved the rest of the critical runtime. Never initialize Wi-Fi
+    // from a DSP/event producer.
+    ensureEspNowStarted();
     flushQueuedGvep();
+#if GROOVEPUTER_GVEP_R01_MEMORY_PROBE
+    logR01ProbeIfDue();
+#endif
 #endif
 }
 
