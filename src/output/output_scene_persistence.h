@@ -10,6 +10,7 @@
 #include <string>
 
 #include "output_ownership.h"
+#include "src/eye_pair_sync/eye_output_mode.h"
 
 namespace GroovePuterOutput {
 
@@ -26,6 +27,9 @@ struct PersistedOutputModes {
         for (std::size_t i = 0; i < 3; ++i) {
             const uint8_t raw = present ? values[i] : 0u;
             if (!restorePersistedModeValue(kTracks[i], raw)) return false;
+            eye_output_mode_restore(
+                static_cast<eye_track_t>(i),
+                static_cast<eye_output_mode_t>(raw));
         }
         return true;
     }

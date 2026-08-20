@@ -17,6 +17,7 @@
 #include "../ui_common.h"
 #include "../ui_input.h"
 #include "../ui_theme.h"
+#include "src/eye_pair_sync/eye_output_mode.h"
 #include "src/output/output_mode_runtime.h"
 #include "src/state/scene_revision.h"
 
@@ -143,7 +144,12 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
     if (audio_guard_) audio_guard_(apply);
     else apply();
 
-    if (changed) GroovePuterState::markSceneMutated();
+    if (changed) {
+      GroovePuterState::markSceneMutated();
+      eye_output_mode_notify(
+          voice_index_ == 0 ? EYE_TRACK_SYNTH_A : EYE_TRACK_SYNTH_B,
+          static_cast<eye_output_mode_t>(next));
+    }
     char toast[48];
     std::snprintf(toast, sizeof(toast), "SYNTH %c OUT:%s",
                   voice_index_ == 0 ? 'A' : 'B',

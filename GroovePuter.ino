@@ -33,6 +33,7 @@
 #include "src/midi/external_midi_transport_event_queue.h"
 #include "src/midi/transport_clock_runtime.h"
 #include "src/ui/workflow_mode.h"
+#include "src/eye_pair_sync/eye_output_mode.h"
 #include <new>
 
 static constexpr IGfxColor CP_BLACK = IGfxColor::Black();
@@ -152,7 +153,8 @@ void audioTask(void *param) {
           g_miniAcid->isPlaying(),
           GroovePuterMidi::transportClockSourcePublishesOutboundClock(
               clockSource),
-          restartFromBeginning);
+          restartFromBeginning,
+          static_cast<int64_t>(now));
       g_miniAcid->generateAudioBuffer(g_audioBuffer, kBlockFrames);
       g_patternMusicalEventQueue.endMidiRenderBlock();
       publishCardputerUsbMidiBlockAnchor(midiBlockSequence, now);
@@ -319,12 +321,33 @@ void setup() {
   Serial.printf("Reset Reason: %d\n", (int)reason);
   printAndClearCardputerWdtDiagnostic();
 
-  Serial.println("Creating Display...");
-  logHeapCaps("before-display");
-  markBootStage(30, "before display.begin");
+  // Reserve the 240x135 RGB565 framebuffer while a contiguous 64.8KB internal
+  // heap block is still available. CardputerDisplay::begin() owns this
+  // allocation; setRotation() only changes geometry.
+  Serial.println("Creating Display Buffer...");
+  logHeapCaps("before-display-buffer");
+  markBootStage(30, "before display framebuffer");
   g_display.setRotation(1);
+  markBootStage(31, "after display geometry");
+
+  Serial.println("Starting Display...");
+  logHeapCaps("before display.begin");
+  markBootStage(32, "before display.begin");
   g_display.begin();
-  markBootStage(31, "after display.begin");
+  markBootStage(33, "after display.begin");
+
+#if GROOVEPUTER_ENABLE_DUAL_EYE_ESPNOW
+  // Wi-Fi/ESP-NOW may fragment internal DRAM, so it must start only after the
+  // display back buffer has been allocated.
+  Serial.println("Initializing Dual-Eye ESP-NOW Protocol...");
+  eye_output_mode_init();
+#else
+  // Initialize the transport-neutral session/sequence state without starting
+  // Wi-Fi. The production DRAM gate disables the radio, but UDP/simulator and
+  // future event publishers still require a valid Master session.
+  eye_output_mode_init();
+  Serial.println("[Dual-Eye] ESP-NOW disabled: Cardputer DRAM gate");
+#endif
   
   Serial.println("Clearing Display...");
   g_display.clear(CP_BLACK);
@@ -496,6 +519,7 @@ void setup() {
 
 void loop() {
   M5Cardputer.update();
+  eye_output_mode_flush();
   LedManager::instance().update();
 
   if (g_miniAcid && g_miniDisplay) {

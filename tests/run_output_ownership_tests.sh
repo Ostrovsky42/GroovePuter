@@ -25,11 +25,18 @@ COMMON_FLAGS=(
 
 "${CXX}" "${COMMON_FLAGS[@]}" \
   "${ROOT_DIR}/tests/test_output_scene_persistence.cpp" \
+  "${ROOT_DIR}/src/eye_pair_sync/eye_output_mode.cpp" \
   -o "${BUILD_DIR}/test_output_scene_persistence"
+
+"${CXX}" "${COMMON_FLAGS[@]}" \
+  "${ROOT_DIR}/tests/test_eye_output_mode.cpp" \
+  "${ROOT_DIR}/src/eye_pair_sync/eye_output_mode.cpp" \
+  -o "${BUILD_DIR}/test_eye_output_mode"
 
 "${BUILD_DIR}/test_output_ownership"
 "${BUILD_DIR}/test_output_ownership_queues"
 "${BUILD_DIR}/test_output_scene_persistence"
+"${BUILD_DIR}/test_eye_output_mode"
 python3 "${ROOT_DIR}/tests/test_output_ownership_source_contract.py"
 
 echo "0.9.6 output ownership contract gate: PASS"

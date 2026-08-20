@@ -9,6 +9,7 @@
 #include "mini_drumvoices.h"
 #include "../input/musical_event_queue.h"
 #include "../output/output_ownership.h"
+#include "../eye_pair_sync/eye_output_mode.h"
 
 // The synth PatternPlayer already publishes normalized events from MiniAcid.
 // Drum engines have several implementations and every base/retrig/flam/roll hit
@@ -156,6 +157,11 @@ public:
         // External publication is independent from the local side. The bounded
         // MusicalEventQueue applies the MIDI half of the same OutputMode.
         publishPatternDrumTrigger(logicalVoice, velocity);
+        #if defined(ARDUINO) || defined(ESP_PLATFORM)
+        if (logicalVoice == 0u) {
+            eye_gvep_notify_kick(velocity);
+        }
+        #endif
     }
 
     void triggerKick(bool accent = false, uint8_t velocity = 100) {

@@ -221,6 +221,42 @@ def test_no_new_routing_framework() -> None:
             "local output ownership must stay independent from physical USB routing")
 
 
+def test_eye_transport_preserves_display_framebuffer_allocation() -> None:
+    sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
+    header = (ROOT / "src/eye_pair_sync/eye_output_mode.h").read_text(
+        encoding="utf-8")
+    implementation = (ROOT / "src/eye_pair_sync/eye_output_mode.cpp").read_text(
+        encoding="utf-8")
+    setup = sketch[sketch.index("void setup()") :]
+
+    reserve_framebuffer = setup.index("g_display.setRotation(1);")
+    initialize_eye_transport = setup.index("eye_output_mode_init();")
+    start_display = setup.index("g_display.begin();")
+
+    require("#define GROOVEPUTER_ENABLE_DUAL_EYE_ESPNOW 0" in header,
+            "Cardputer ESP-NOW must remain an explicit opt-in until it fits "
+            "the accepted DRAM budget")
+    require("#define EYE_SYNC_VERSION_OUTPUT_MODE 2" in header and
+            "#define EYE_SYNC_VERSION_GVEP 2" in header,
+            "Dual-Eye wire formats must be v2")
+    require("int64_t effect_t0_us" in header and
+            "uint8_t reserved;" in header and
+            "sizeof(eye_output_mode_packet_t) == 23" in header,
+            "Output Mode must use the authoritative 23-byte v2 layout")
+    require("sizeof(eye_gvep_packet_t) == 23" in header,
+            "GVEP must use the authoritative 23-byte v2 layout")
+    require("GROOVEPUTER_ENABLE_DUAL_EYE_ESPNOW" in implementation and
+            "#define GVEP_USE_ESPNOW 1" in implementation,
+            "Arduino ESP-NOW includes and transport must share the DRAM gate")
+    feature_guard = setup.rfind(
+        "#if GROOVEPUTER_ENABLE_DUAL_EYE_ESPNOW", 0, initialize_eye_transport)
+    require(feature_guard >= 0,
+            "Cardputer setup must not initialize ESP-NOW in the default build")
+    require(start_display < initialize_eye_transport,
+            "Cardputer framebuffer must be allocated before Wi-Fi/ESP-NOW "
+            "fragments the internal heap")
+
+
 if __name__ == "__main__":
     test_pattern_drums_split_local_and_midi()
     test_sampler_is_internal_source_layer_not_output_owner()
@@ -231,4 +267,5 @@ if __name__ == "__main__":
     test_status_chrome_exposes_compact_track_output()
     test_sampler_layer_label_remains_source_layer()
     test_no_new_routing_framework()
+    test_eye_transport_preserves_display_framebuffer_allocation()
     print("Output ownership source contract: PASS")

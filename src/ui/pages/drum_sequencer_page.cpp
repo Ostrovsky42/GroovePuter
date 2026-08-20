@@ -9,6 +9,7 @@
 #include "src/state/undo_receipts.h"
 #include "src/generation/migration/strong_rhythm_live_bridge.h"
 #include "src/output/output_mode_runtime.h"
+#include "src/eye_pair_sync/eye_output_mode.h"
 
 #include <algorithm>
 #include <cctype>
@@ -140,7 +141,10 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
       changed = GroovePuterOutput::applyModeWithLocalCleanup(
           mainPage->mini_acid_, track, next);
     });
-    if (changed) GroovePuterState::markSceneMutated();
+    if (changed) {
+      GroovePuterState::markSceneMutated();
+      eye_output_mode_notify(EYE_TRACK_DRUMS, static_cast<eye_output_mode_t>(next));
+    }
     char toast[40];
     std::snprintf(toast, sizeof(toast), "DRUMS OUT:%s",
                   GroovePuterOutput::modeName(next));

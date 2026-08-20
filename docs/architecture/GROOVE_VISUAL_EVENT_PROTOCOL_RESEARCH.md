@@ -48,6 +48,63 @@ A receiver decides what `KICK`, `SNARE`, `BAR`, `PLAY`, `STOP`, `FILL`, or other
 
 ---
 
+# Current spike limitations
+
+The branch contains an integration spike for Output Mode (`0xAF`) and semantic
+GVEP (`0xB0`) packets. It is useful for host simulation and source integration,
+but it is **not a production-ready implementation of the public protocol**.
+The following limitations are release blockers, not accepted behavior:
+
+- Cardputer ESP-NOW remains compile-time disabled by default because its DRAM
+  and audio-jitter cost has not passed the hardware gate. The current host UDP
+  adapter sends only to `127.0.0.1:9876`; it is a simulator transport, not a
+  network deployment configuration.
+- The spike's Output Mode v2 packet is 23 bytes and contains
+  `int64_t effect_t0_us`. A proposed 15-byte `0xAF` packet without that field is
+  wire-incompatible despite using the same magic/version. No 15-byte sender or
+  receiver may be called v2; adopting it requires a coordinated version or
+  magic change. The 23-byte GVEP packet CRC covers the first 22 bytes.
+- Multi-byte fields currently use the ESP32/compiler-native packed layout.
+  Public interoperability still requires an explicit little-endian wire
+  definition, exact length/offset assertions, and independent CRC golden
+  vectors.
+- Event timestamps are not yet frame-accurate. TRANSPORT/BAR currently inherit
+  a 32-bit `micros()` value while KICK uses 64-bit `esp_timer_get_time()` during
+  DSP rendering. The former wraps after about 71 minutes; the latter identifies
+  CPU render time rather than the audio frame's output deadline. GVEP must use
+  the existing audio block anchor plus frame offset/output latency before any
+  frame-perfect claim is made.
+- Sender and receiver clocks have independent boot origins. A raw Master
+  `esp_timer_get_time()` value does not synchronize a receiver by itself. A
+  measured clock-offset/lead-time mechanism is required for scheduled effects;
+  otherwise receivers must treat timestamps as best-effort metadata.
+- `0xB0` packets use a bounded queue, while `0xAF` packets bypass it. Since both
+  allocate from one sequence domain before transmission, a newer direct `0xAF`
+  can arrive before an older queued `0xB0`, causing a strict receiver to discard
+  the delayed event. Both packet types need one ordered TX owner, with sequence
+  assignment at the final serialization/send boundary.
+- ESP-NOW initialization and send results are not represented as runtime state.
+  Queue drops, `esp_now_send()` rejection, peer/channel failure, and successful
+  delivery are not exposed through durable diagnostics. Visual failures must
+  remain fail-soft, but they must be measurable.
+- Output Mode is state, not an ephemeral trigger. A lost Scene restore or
+  Alt+O packet can leave a late/rebooted receiver stale indefinitely. Production
+  requires an ACK/retry policy or periodic/coalesced three-track state snapshot.
+- `uint16_t` BAR currently saturates at 65535. Wrap, epoch, or wider-counter
+  semantics must be fixed before long-running receiver behavior is stable.
+- Host tests validate packet construction and source integration, but Arduino
+  event publication and the ESP-NOW queue are compiled out. The CRC test is
+  self-consistency-only, and no hardware test currently covers queue overflow,
+  sequence reordering, clock rollover, receiver reboot, init failure, or send
+  backpressure.
+
+Until these items are closed, the only valid claim is that the branch provides
+an experimental semantic-event bridge with fail-soft, best-effort delivery.
+It does not yet guarantee loss recovery, frame-perfect synchronization, or
+binary compatibility with an independently specified Dual-Eye firmware.
+
+---
+
 # User-visible feature boundary
 
 The feature must be separately enabled in Settings.

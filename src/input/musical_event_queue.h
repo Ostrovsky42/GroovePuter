@@ -10,6 +10,7 @@
 #include "../midi/project_transport_timeline.h"
 #include "../midi/scheduled_musical_event_queue.h"
 #include "../output/output_ownership.h"
+#include "../eye_pair_sync/eye_output_mode.h"
 
 // Compatibility facade used by MiniAcid's existing PatternPlayer publication
 // API. MiniAcid still emits normalized MusicalEvent values at the exact point
@@ -45,7 +46,13 @@ public:
                               float sampleRate,
                               bool transportPlaying,
                               bool publishOutboundTransport = true,
-                              bool restartFromBeginning = true) {
+                              bool restartFromBeginning = true,
+                              int64_t blockTimestampUs = 0) {
+#if defined(ARDUINO) || defined(ESP_PLATFORM)
+        const bool wasTransportPlaying = previousTransportPlaying_;
+#else
+        (void)blockTimestampUs;
+#endif
         renderBlockSequence_ = blockSequence;
         renderBlockFrames_ = blockFrames;
         renderBpm_ = bpm > 0.0f ? bpm : 120.0f;
@@ -71,6 +78,21 @@ public:
             renderSampleRate_,
             transportPlaying,
             restartFromBeginning);
+
+        const auto timeline = GroovePuterMidi::projectTransportTimeline().snapshot();
+#if defined(ARDUINO) || defined(ESP_PLATFORM)
+        if (transportPlaying != wasTransportPlaying) {
+            eye_gvep_notify_transport_at(transportPlaying, blockTimestampUs);
+        }
+        if (transportPlaying &&
+            (!wasTransportPlaying || timeline.barCounter != previousBarCounter_)) {
+            const uint32_t bar = timeline.barCounter + 1u;
+            eye_gvep_notify_bar_at(
+                static_cast<uint16_t>(bar > 65535u ? 65535u : bar),
+                blockTimestampUs);
+        }
+#endif
+        previousBarCounter_ = timeline.barCounter;
 
         if (publishOutboundTransport) {
             transportClockPublisher_.beginBlock(
@@ -167,6 +189,7 @@ private:
     float renderSampleRate_{44100.0f};
     bool renderBlockActive_{false};
     bool previousTransportPlaying_{false};
+    uint32_t previousBarCounter_{0};
     ScheduledMidiTransportEventQueue transportQueue_;
     MidiTransportClockPublisher transportClockPublisher_;
 };
