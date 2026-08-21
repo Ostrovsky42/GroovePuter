@@ -58,7 +58,7 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
     if (!lease.ok()) {
       if (lease.status ==
           GroovePuterRhythm::LiveSongArrangementDetail::SongLiveStatus::Busy) {
-        UI::showToast("SONG BUSY", 900);
+        showToast("SONG BUSY", 900);
       }
       return false;
     }
