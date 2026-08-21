@@ -1,0 +1,41 @@
+name: D3 apply integration
+
+on:
+  push:
+    branches:
+      - 'agent/20260821-03-0.9.9-d3-song-live-arrangement'
+    paths:
+      - 'tools/d3_apply_integration.py'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: ${{ !contains(github.event.head_commit.message, 'integrate Song live arrangement') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/20260821-03-0.9.9-d3-song-live-arrangement
+          fetch-depth: 0
+      - name: Apply exact D3 integration patch
+        run: python3 tools/d3_apply_integration.py
+      - name: Commit integration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm tools/d3_apply_integration.py
+          rm .github/workflows/d3-apply-integration.yml
+          git add -- \
+            src/generation/migration/live_song_arrangement_activation.h \
+            src/generation/migration/quantized_generation_commit.h \
+            src/ui/pages/song_page.h \
+            src/ui/pages/song_page.cpp \
+            src/ui/pages/song_page_r4_owner.inc \
+            src/dsp/miniacid_engine.h \
+            src/dsp/miniacid_engine.cpp \
+            tools/d3_apply_integration.py \
+            .github/workflows/d3-apply-integration.yml
+          git commit -m '0.9.9-D3: integrate Song live arrangement'
+          git push origin HEAD:agent/20260821-03-0.9.9-d3-song-live-arrangement
