@@ -536,7 +536,7 @@ Result generate(
   if (!committed) {
     if (engine.isPlaying()) {
       GroovePuterRhythm::PhraseLiveArrangementDetail::abortPhraseActivation(
-          lease.slot, QuantizedGenerationStatus::Busy);
+          lease.slot, GroovePuterRhythm::QuantizedGenerationStatus::Busy);
     } else {
       releaseWriteSlot(lease.slot);
     }
