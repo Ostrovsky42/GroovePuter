@@ -102,8 +102,9 @@ require('queueSongReverseToggle();' not in reverse_block,
 require('markSceneMutated' not in R4,
         'R4/D3 must not manually dirty Scene around canonical Song commits')
 
-# ACTIVATE is runtime-only and row-boundary gated.
-activate = between(ACT, 'inline bool activatePendingSongArrangementAtBarStart(', 'inline bool settlePendingSongArrangementOnStop(')
+# ACTIVATE is runtime-only and row-boundary gated. Anchor to the implementation
+# body, not the forward declaration near the top of the header.
+activate = between(ACT, 'inline bool activatePendingSongArrangementAtBarStart(SceneManager& scenes) {', 'inline bool settlePendingSongArrangementOnStop(')
 require('songRowBoundaryDue' in activate,
         'D3 live Song activation must wait for the existing musical row boundary')
 require('SlotState::Ready' in activate and 'SlotState::Reading' in activate,
