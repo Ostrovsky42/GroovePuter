@@ -86,9 +86,12 @@ def main() -> None:
     require("songR4GenerationGesture" in song_r4 and
             "return handleEventLegacyUnowned(ui_event);" in song_r4,
             "generation must remain outside R4 Song receipt ownership")
-    require("hasPendingSongReverseToggle" in song_r4 and
-            "GroovePuterState::markSceneMutated();" in song_r4,
-            "queued reverse must remain an explicit 0.9.9 boundary that expires stale Undo")
+    require("songR4QueuedReverseGesture" in song_r4 and
+            "return handleEventLegacyUnowned(ui_event);" in song_r4,
+            "D3 must preserve Ctrl+R gesture routing while moving reverse persistence to the canonical Song owner")
+    require("hasPendingSongReverseToggle" not in song_r4 and
+            "GroovePuterState::markSceneMutated();" not in song_r4,
+            "D3 must retire the private reverse queue and manual revision invalidation")
 
     # Cross-page Song writers must use the same canonical owner. Pattern/Drum
     # slot selection itself remains runtime-only.

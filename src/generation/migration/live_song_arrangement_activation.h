@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <type_traits>
 
+#include "../../state/undo_receipts.h"
+
 namespace GroovePuterRhythm::LiveSongArrangementDetail {
 
 using QuantizedGenerationDetail::PatternTarget;
