@@ -1,6 +1,8 @@
-#pragma once
+#ifndef GROOVEPUTER_GENERATION_MIGRATION_PHRASE_LIVE_ARRANGEMENT_ACTIVATION_H
+#define GROOVEPUTER_GENERATION_MIGRATION_PHRASE_LIVE_ARRANGEMENT_ACTIVATION_H
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 
@@ -335,3 +337,5 @@ inline std::size_t pendingPhraseActivationMetadataBytes() {
 }
 
 }  // namespace GroovePuterRhythm::PhraseLiveArrangementDetail
+
+#endif  // GROOVEPUTER_GENERATION_MIGRATION_PHRASE_LIVE_ARRANGEMENT_ACTIVATION_H
