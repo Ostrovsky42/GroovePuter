@@ -1,0 +1,30 @@
+name: 0.9.9-D3 live Song arrangement
+
+on:
+  pull_request:
+    paths:
+      - 'src/dsp/miniacid_engine.cpp'
+      - 'src/dsp/miniacid_engine.h'
+      - 'src/generation/migration/live_song_arrangement_activation.h'
+      - 'src/generation/migration/quantized_generation_commit.h'
+      - 'src/generation/migration/quantized_generation_commit_impl.h'
+      - 'src/generation/migration/quantized_generation_undo_owner_impl.h'
+      - 'src/ui/pages/song_page.cpp'
+      - 'src/ui/pages/song_page.h'
+      - 'src/ui/pages/song_page_r4_owner.inc'
+      - 'tests/test_song_live_arrangement_0_9_9.cpp'
+      - 'tests/test_song_live_arrangement_0_9_9_source.py'
+      - 'tests/run_0_9_9_d3_tests.sh'
+      - 'docs/releases/0_9_9_D3_SONG_LIVE_ARRANGEMENT.md'
+      - '.github/workflows/generation-0-9-9-d3-live-song.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  d3-live-song-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run D3 cumulative host contracts
+        run: bash tests/run_0_9_9_d3_tests.sh
