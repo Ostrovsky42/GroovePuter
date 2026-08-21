@@ -35,6 +35,7 @@ def print_hits(title, paths, pattern):
 
 miniacid = ROOT / "src/dsp/miniacid_engine.cpp"
 miniacid_h = ROOT / "src/dsp/miniacid_engine.h"
+song_boundary_h = ROOT / "src/dsp/song_cycle_boundary.h"
 all_prod = production_files()
 
 song_hits = print_hits(
@@ -45,6 +46,11 @@ write_hits = print_hits(
 )
 pattern_bars_hits = print_hits(
     "feel_patternBars_production_consumers", all_prod, r"\bpatternBars\b"
+)
+boundary_hits = print_hits(
+    "song_row_duration_boundary",
+    [song_boundary_h, miniacid],
+    r"nextSongCycleBoundary|normalizedSongPatternBars|cycleBarCount|advanceSongBar_",
 )
 
 role_paths = [
@@ -62,5 +68,7 @@ if song_hits == 0 or write_hits == 0:
     raise SystemExit("E3 audit failed: songBarIndex_ sites were not found")
 if pattern_bars_hits == 0:
     raise SystemExit("E3 audit failed: patternBars production consumers were not found")
+if boundary_hits == 0:
+    raise SystemExit("E3 audit failed: Song row duration boundary sites were not found")
 if role_hits == 0:
     raise SystemExit("E3 audit failed: semantic bar-sensitive roles were not found")
